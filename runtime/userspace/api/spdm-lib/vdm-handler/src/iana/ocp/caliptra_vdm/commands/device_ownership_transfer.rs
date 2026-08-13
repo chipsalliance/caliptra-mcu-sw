@@ -1,16 +1,17 @@
 // Licensed under the Apache-2.0 license
 
 use caliptra_mcu_common_commands::CaliptraCmdHandler;
-use caliptra_mcu_mbox_common::messages::{CommandId, DotUnlockPayload};
+use caliptra_mcu_mbox_common::messages::{CommandId, DotStatus, DotUnlockPayload};
 use caliptra_mcu_spdm_codec::vendor_defined::iana::ocp::caliptra::{
     CaliptraCompletionCode, CaliptraVdmCmdResult,
 };
 use caliptra_mcu_spdm_traits::SpdmPalAlloc;
-use zerocopy::FromBytes;
+use zerocopy::{FromBytes, IntoBytes};
 
 pub const DOT_LOCK_CMD_ID: u32 = CommandId::MC_DOT_LOCK.0;
 pub const DOT_DISABLE_CMD_ID: u32 = CommandId::MC_DOT_DISABLE.0;
 pub const DOT_ROTATE_CMD_ID: u32 = CommandId::MC_DOT_ROTATE.0;
+pub const DOT_STATUS_CMD_ID: u32 = CommandId::MC_DOT_STATUS.0;
 pub const DOT_UNLOCK_CHALLENGE_CMD_ID: u32 = CommandId::MC_DOT_UNLOCK_CHALLENGE.0;
 pub const DOT_UNLOCK_CMD_ID: u32 = CommandId::MC_DOT_UNLOCK.0;
 pub const GET_DOT_BACKUP_BLOB_CMD_ID: u32 = CommandId::MC_GET_DOT_BACKUP_BLOB.0;
@@ -38,8 +39,37 @@ where
         DOT_UNLOCK_CHALLENGE_CMD_ID => {
             handle_dot_unlock_challenge(commands, &request[4..], scratch, output).await
         }
+        DOT_STATUS_CMD_ID => handle_dot_status(commands, &request[4..], output).await,
         DOT_UNLOCK_CMD_ID => handle_dot_unlock(commands, &request[4..], scratch, output).await,
         _ => CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidParameter),
+    }
+}
+
+async fn handle_dot_status<H>(
+    commands: &H,
+    request: &[u8],
+    output: &mut [u8],
+) -> CaliptraVdmCmdResult
+where
+    H: CaliptraCmdHandler,
+{
+    if !request.is_empty() {
+        return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidPayloadSize);
+    }
+    let Some((completion, status_out)) = output.split_first_mut() else {
+        return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InsufficientResources);
+    };
+    let Some(status_out) = status_out.get_mut(..core::mem::size_of::<DotStatus>()) else {
+        return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InsufficientResources);
+    };
+    let mut status = DotStatus::default();
+    match commands.dot_status(&mut status).await {
+        Ok(()) => {
+            *completion = CaliptraCompletionCode::Success as u8;
+            status_out.copy_from_slice(status.as_bytes());
+            CaliptraVdmCmdResult::Response(1 + status_out.len())
+        }
+        Err(error) => CaliptraVdmCmdResult::Error(super::map_common_completion(error)),
     }
 }
 

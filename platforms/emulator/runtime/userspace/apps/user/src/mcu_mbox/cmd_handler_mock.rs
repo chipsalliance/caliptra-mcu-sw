@@ -6,7 +6,8 @@ use caliptra_mcu_common_commands::{
 };
 use caliptra_mcu_mbox_common::config;
 use caliptra_mcu_mbox_common::messages::{
-    DotDisablePayload, DotLockPayload, DotRotatePayload, DotUnlockPayload, DOT_BLOB_SIZE,
+    DotDisablePayload, DotLockPayload, DotRotatePayload, DotStatus, DotUnlockPayload,
+    DOT_BLOB_SIZE,
 };
 use mcu_caliptra_api::ApiAlloc;
 
@@ -180,6 +181,10 @@ impl CaliptraCmdHandler for NonCryptoCmdHandlerMock {
         request: &DotRotatePayload,
     ) -> CaliptraCmdResult<()> {
         CaliptraCmdBackend.dot_rotate(alloc, request).await
+    }
+
+    async fn dot_status(&self, status: &mut DotStatus) -> CaliptraCmdResult<()> {
+        CaliptraCmdBackend.dot_status(status).await
     }
 
     async fn dot_unlock_challenge<Alloc: ApiAlloc>(

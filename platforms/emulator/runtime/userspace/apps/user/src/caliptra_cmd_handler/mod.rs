@@ -15,7 +15,7 @@ use caliptra_mcu_config::capabilities::{
 };
 use caliptra_mcu_config::version::get_mcu_runtime_version;
 use caliptra_mcu_mbox_common::messages::{
-    DotDisablePayload, DotLockPayload, DotRotatePayload, DotUnlockPayload, DOT_BLOB_SIZE,
+    DotDisablePayload, DotLockPayload, DotRotatePayload, DotStatus, DotUnlockPayload, DOT_BLOB_SIZE,
 };
 use mcu_caliptra_api::{core_capabilities, core_firmware_version, ApiAlloc};
 #[cfg(feature = "pcr-quote")]
@@ -369,6 +369,11 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         request: &DotRotatePayload,
     ) -> CaliptraCmdResult<()> {
         device_ops::dot_rotate(alloc, request).await
+    }
+
+    async fn dot_status(&self, status: &mut DotStatus) -> CaliptraCmdResult<()> {
+        *status = device_ops::dot_status()?;
+        Ok(())
     }
 
     async fn dot_unlock_challenge<Alloc: ApiAlloc>(

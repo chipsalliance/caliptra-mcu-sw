@@ -731,6 +731,7 @@ mod tests {
         dot_lock_calls: AtomicUsize,
         dot_disable_calls: AtomicUsize,
         dot_rotate_calls: AtomicUsize,
+        dot_status_calls: AtomicUsize,
         dot_challenge_calls: AtomicUsize,
         dot_unlock_calls: AtomicUsize,
         dot_backup_calls: AtomicUsize,
@@ -761,6 +762,7 @@ mod tests {
                 dot_lock_calls: AtomicUsize::new(0),
                 dot_disable_calls: AtomicUsize::new(0),
                 dot_rotate_calls: AtomicUsize::new(0),
+                dot_status_calls: AtomicUsize::new(0),
                 dot_challenge_calls: AtomicUsize::new(0),
                 dot_unlock_calls: AtomicUsize::new(0),
                 dot_backup_calls: AtomicUsize::new(0),
@@ -948,6 +950,19 @@ mod tests {
             _request: &caliptra_mcu_mbox_common::messages::DotRotatePayload,
         ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
             self.dot_rotate_calls.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        }
+
+        async fn dot_status(
+            &self,
+            status: &mut caliptra_mcu_mbox_common::messages::DotStatus,
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            self.dot_status_calls.fetch_add(1, Ordering::Relaxed);
+            *status = caliptra_mcu_mbox_common::messages::DotStatus {
+                enabled: 1,
+                locked: 1,
+                burned: 3,
+            };
             Ok(())
         }
 
@@ -1790,6 +1805,32 @@ mod tests {
         assert_inline(response, 3);
         assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
         assert_eq!(cmds.dot_unlock_calls.load(Ordering::Relaxed), 1);
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    #[test]
+    fn dot_status_dispatches_through_device_ownership_transfer() {
+        use caliptra_mcu_mbox_common::messages::CommandId;
+
+        let cmds = TestCommands::new(0);
+        let mut request = vec![
+            CALIPTRA_VDM_COMMAND_VERSION,
+            CaliptraVdmCommand::DeviceOwnershipTransfer as u8,
+        ];
+        request.extend_from_slice(&CommandId::MC_DOT_STATUS.0.to_le_bytes());
+
+        let (response, inline, _) = dispatch(&cmds, &request, 16, 0);
+
+        assert_inline(response, 7);
+        assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+        assert_eq!(&inline[3..7], &[1, 1, 3, 0]);
+        assert_eq!(cmds.dot_status_calls.load(Ordering::Relaxed), 1);
+
+        request.push(0);
+        let (response, inline, _) = dispatch(&cmds, &request, 16, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::InvalidPayloadSize as u8);
+        assert_eq!(cmds.dot_status_calls.load(Ordering::Relaxed), 1);
     }
 
     #[cfg(feature = "device-ownership-transfer")]

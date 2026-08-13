@@ -1781,6 +1781,50 @@ mod test {
     }
 
     #[test]
+    fn test_runtime_dot_status() {
+        use crate::runtime::execute_authorized_req;
+        use caliptra_mcu_mbox_common::messages::{DotLockPayload, DotLockReq, DotStatusReq};
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            dot_enabled: true,
+            ..Default::default()
+        });
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        let status = hw.mailbox_execute_req(DotStatusReq::default()).unwrap();
+        assert_eq!(status.status.enabled, 1);
+        assert_eq!(status.status.locked, 0);
+        assert_eq!(status.status.burned, 0);
+
+        execute_authorized_req(
+            &mut hw,
+            DotLockReq {
+                payload: DotLockPayload {
+                    cak: [0xA5; 48],
+                    lak_hash: [0x5A; 48],
+                },
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let status = hw.mailbox_execute_req(DotStatusReq::default()).unwrap();
+        assert_eq!(status.status.enabled, 1);
+        assert_eq!(status.status.locked, 1);
+        assert_eq!(status.status.burned, 1);
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
     fn test_runtime_dot_unlock_challenge() {
         use caliptra_mcu_mbox_common::messages::DotUnlockChallengeReq;
 

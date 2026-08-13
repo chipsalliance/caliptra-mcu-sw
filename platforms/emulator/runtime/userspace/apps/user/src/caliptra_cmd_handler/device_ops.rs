@@ -25,7 +25,7 @@ use caliptra_mcu_libtock_platform::ErrorCode;
 // certificate; attestation evidence must be signed under the same label so the
 // leaf cert in the device's chain is the one that verifies it.
 use caliptra_mcu_mbox_common::messages::{
-    CommandId, DotDisablePayload, DotLockPayload, DotRotatePayload, DotUnlockPayload,
+    CommandId, DotDisablePayload, DotLockPayload, DotRotatePayload, DotStatus, DotUnlockPayload,
     HybridSignature, AUTH_CMD_NONCE_LEN, DOT_KEY_HASH_SIZE, DOT_MLDSA_PUBLIC_KEY_SIZE,
 };
 use caliptra_mcu_registers_generated::fuses;
@@ -513,13 +513,18 @@ async fn dot_lak_hash<A: ApiAlloc>(
 }
 
 fn read_dot_fuse_count() -> CaliptraCmdResult<u32> {
+    let status = dot_status()?;
+    if status.enabled == 0 {
+        return Err(CaliptraCompletionCode::InvalidState);
+    }
+    Ok(status.burned as u32)
+}
+
+pub fn dot_status() -> CaliptraCmdResult<DotStatus> {
     let otp = Otp::<DefaultSyscalls>::new();
     let initialized = otp
         .read_raw((fuses::DOT_INITIALIZED.byte_offset / 4) as u32, 0)
         .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
-    if initialized & 0x7 == 0 {
-        return Err(CaliptraCompletionCode::InvalidState);
-    }
 
     let mut burned = 0u32;
     for index in 0..(fuses::DOT_FUSE_ARRAY.byte_size / 4) {
@@ -528,7 +533,11 @@ fn read_dot_fuse_count() -> CaliptraCmdResult<u32> {
             .map_err(|_| CaliptraCompletionCode::OperationFailed)?
             .count_ones();
     }
-    Ok(burned)
+    Ok(DotStatus {
+        enabled: u8::from(initialized & 0x7 != 0),
+        locked: (burned & 1) as u8,
+        burned: u16::try_from(burned).map_err(|_| CaliptraCompletionCode::InvalidState)?,
+    })
 }
 
 fn dot_derivation_info(derivation_value: u32) -> CaliptraCmdResult<[u8; 32]> {

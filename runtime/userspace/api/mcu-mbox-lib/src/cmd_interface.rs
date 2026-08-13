@@ -25,9 +25,9 @@ use caliptra_mcu_mbox_common::messages::{
 };
 #[cfg(feature = "device-ownership-transfer")]
 use caliptra_mcu_mbox_common::messages::{
-    DotDisableReq, DotDisableResp, DotLockReq, DotLockResp, DotRotateReq, DotRotateResp,
-    DotUnlockChallengeReq, DotUnlockChallengeResp, DotUnlockReq, DotUnlockResp,
-    GetDotBackupBlobReq, GetDotBackupBlobResp,
+    DotDisableReq, DotDisableResp, DotLockReq, DotLockResp, DotRotateReq, DotRotateResp, DotStatus,
+    DotStatusReq, DotStatusResp, DotUnlockChallengeReq, DotUnlockChallengeResp, DotUnlockReq,
+    DotUnlockResp, GetDotBackupBlobReq, GetDotBackupBlobResp,
 };
 #[cfg(feature = "periodic-fips-self-test")]
 use caliptra_mcu_mbox_common::messages::{
@@ -363,6 +363,32 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
             DotRotateResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
         *resp = DotRotateResp {
             reset_required: 1,
+            ..Default::default()
+        };
+        let response_len = resp.as_bytes().len();
+        Ok((&mut resp_buf[..response_len], MbxCmdStatus::Complete))
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    async fn handle_dot_status<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req = DotStatusReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        if req.subcommand != CommandId::MC_DOT_STATUS.0 {
+            return Err(errors::UNSUPPORTED_COMMAND);
+        }
+        let mut status = DotStatus::default();
+        self.non_crypto_cmds_handler
+            .dot_status(&mut status)
+            .await
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+
+        let (resp, _) =
+            DotStatusResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = DotStatusResp {
+            status,
             ..Default::default()
         };
         let response_len = resp.as_bytes().len();
@@ -829,6 +855,9 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
             }
             value if value == CommandId::MC_DOT_UNLOCK_CHALLENGE.0 => {
                 self.handle_dot_unlock_challenge(req, resp_buf).await
+            }
+            value if value == CommandId::MC_DOT_STATUS.0 => {
+                self.handle_dot_status(req, resp_buf).await
             }
             value if value == CommandId::MC_DOT_UNLOCK.0 => {
                 self.handle_dot_unlock(req, resp_buf).await

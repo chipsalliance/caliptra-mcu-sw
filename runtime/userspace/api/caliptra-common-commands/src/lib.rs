@@ -4,7 +4,7 @@
 #![allow(async_fn_in_trait)]
 
 use caliptra_mcu_mbox_common::messages::{
-    CommandId, DotDisablePayload, DotLockPayload, DotRotatePayload, DotUnlockPayload,
+    CommandId, DotDisablePayload, DotLockPayload, DotRotatePayload, DotStatus, DotUnlockPayload,
     HybridSignature, AUTH_CMD_NONCE_LEN, DOT_BLOB_SIZE,
 };
 use mcu_caliptra_api::ApiAlloc;
@@ -522,6 +522,12 @@ pub trait CaliptraCmdHandler {
         request: &DotRotatePayload,
     ) -> CaliptraCmdResult<()> {
         let _ = (alloc, request);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Read the current DOT initialization, parity, and fuse count.
+    async fn dot_status(&self, status: &mut DotStatus) -> CaliptraCmdResult<()> {
+        let _ = status;
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 
