@@ -681,7 +681,7 @@
    id="shape25-68"
    v:mID="25"
    v:groupContext="shape"
-   transform="rotate(-90,-430.29,790.29)">
+   transform="rotate(-90,-427.495,787.495)">
 			<title
    id="title191">Sheet.25</title>
 			<desc
@@ -713,7 +713,7 @@
    id="shape26-71"
    v:mID="26"
    v:groupContext="shape"
-   transform="rotate(-90,-404.95,764.95)">
+   transform="rotate(-90,-399.366,759.366)">
 			<title
    id="title200">Sheet.26</title>
 			<desc
@@ -749,7 +749,7 @@
    id="shape27-75"
    v:mID="27"
    v:groupContext="shape"
-   transform="rotate(-90,-379.615,739.615)">
+   transform="rotate(-90,-371.236,731.236)">
 			<title
    id="title211">Sheet.27</title>
 			<desc
@@ -785,7 +785,7 @@
    id="shape28-79"
    v:mID="28"
    v:groupContext="shape"
-   transform="rotate(-90,-328.94,688.94)">
+   transform="rotate(-90,-314.977,674.977)">
 			<title
    id="title222">Sheet.28</title>
 			<desc
@@ -817,7 +817,7 @@
    id="shape29-82"
    v:mID="29"
    v:groupContext="shape"
-   transform="rotate(-90,-303.6,663.6)">
+   transform="rotate(-90,-286.847,646.847)">
 			<title
    id="title231">Sheet.29</title>
 			<desc
@@ -849,7 +849,7 @@
    id="shape30-85"
    v:mID="30"
    v:groupContext="shape"
-   transform="rotate(-90,-278.2625,638.2625)">
+   transform="rotate(-90,-258.717,618.717)">
 			<title
    id="title240">Sheet.30</title>
 			<desc
@@ -881,7 +881,7 @@
    id="shape31-88"
    v:mID="31"
    v:groupContext="shape"
-   transform="rotate(-90,-253.1335,613.1335)">
+   transform="rotate(-90,-230.793,590.793)">
 			<title
    id="title249">Sheet.31</title>
 			<desc
@@ -1590,7 +1590,7 @@
    id="shape1001-141"
    v:mID="1001"
    v:groupContext="shape"
-   transform="rotate(-90,-228.004,588.004)">
+   transform="rotate(-90,-202.663,562.663)">
 			<title
    id="title378">Sheet.1001</title>
 			<desc
@@ -1622,42 +1622,6 @@
    dy="1.2em"
    class="st4"
    id="tspan384">Store</tspan></text>		</g>
-		<g
-   id="shape1002-145"
-   v:mID="1002"
-   v:groupContext="shape"
-   transform="rotate(-90,-202.6665,562.6665)">
-			<title
-   id="title389">Sheet.1002</title>
-			<desc
-   id="desc391">Key Value Store</desc>
-			<v:textBlock
-   v:margins="rect(4,4,4,4)" />
-			<v:textRect
-   cx="72"
-   cy="1530.96"
-   width="144.01"
-   height="34.0833" />
-			<rect
-   x="0"
-   y="1513.92"
-   width="144"
-   height="34.083302"
-   rx="4.5"
-   ry="4.5"
-   class="st10"
-   id="rect393" />
-			<text
-   x="47.279999"
-   y="1527.36"
-   class="st2"
-   v:langID="1033"
-   id="text397"><v:paragraph
-   v:horizAlign="1" /><v:tabList />Key Value<v:newlineChar /><tspan
-   x="58.700001"
-   dy="1.2em"
-   class="st4"
-   id="tspan395">Store</tspan></text>		</g>
 		<g
    id="shape1003-149"
    v:mID="1003"
@@ -2002,7 +1966,7 @@
    id="shape1008-176"
    v:mID="1008"
    v:groupContext="shape"
-   transform="rotate(-90,-354.275,714.275)">
+   transform="rotate(-90,-343.106,703.106)">
 			<title
    id="title461">Sheet.1008</title>
 			<desc
