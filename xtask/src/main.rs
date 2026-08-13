@@ -600,6 +600,12 @@ EXAMPLES:
         /// mcu-test-soc-manifest-<feature>.bin instead of the generic entries.
         #[arg(long, value_name = "FEATURE")]
         feature: Option<String>,
+
+        /// Generate reference values for the payload shipped in the hitless
+        /// update package instead of the cold-boot payload. Reads
+        /// mcu-test-soc-manifest-update-<feature>.bin from the bundle.
+        #[arg(long)]
+        post_update: bool,
     },
     /// Print a sample JSON config file with all fields documented
     SampleConfig,
@@ -853,8 +859,9 @@ fn main() {
                 bundle,
                 config,
                 feature,
+                post_update,
             } => corim::CorimConfig::load(config.as_deref())
-                .and_then(|cfg| corim::generate(bundle, cfg, feature.as_deref())),
+                .and_then(|cfg| corim::generate(bundle, cfg, feature.as_deref(), *post_update)),
             CorimCommands::SampleConfig => {
                 corim::CorimConfig::print_sample();
                 Ok(())
