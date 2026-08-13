@@ -513,6 +513,15 @@ pub trait CaliptraCmdHandler {
         let _ = (alloc, request);
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
+
+    /// Authenticate the current DOT blob and generate a one-time unlock challenge.
+    async fn dot_unlock_challenge<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+    ) -> CaliptraCmdResult<[u8; AUTH_CMD_NONCE_LEN]> {
+        let _ = alloc;
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
 }
 
 pub struct AuthorizationError;

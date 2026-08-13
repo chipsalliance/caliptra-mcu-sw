@@ -30,14 +30,14 @@ use caliptra_mcu_mbox_common::messages::{
 };
 use caliptra_mcu_registers_generated::fuses;
 use caliptra_mcu_spdm_pal::cert::DPE_LEAF_LABEL;
-#[cfg(feature = "spdm")]
-use mcu_caliptra_api::rng_generate;
+use core::cell::RefCell;
+use embassy_sync::blocking_mutex::{raw::CriticalSectionRawMutex, Mutex as BlockingMutex};
 use mcu_caliptra_api::{
     cm_hmac_sha512, derive_stable_key, fe_prog, fw_info, get_attested_csr_ecc384,
     get_attested_csr_mldsa87, get_idev_csr_ecc384, hash_all, request_debug_unlock_challenge,
-    sha_finish, sha_init, sha_update, ApiAlloc, HashAlgo, McuErrorCode, StableKeyType,
-    PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_RSP_LEN,
-    SHA_CONTEXT_SIZE,
+    rng_generate, sha_finish, sha_init, sha_update, ApiAlloc, HashAlgo, McuErrorCode,
+    StableKeyType, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD,
+    PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_RSP_LEN, SHA_CONTEXT_SIZE,
 };
 use portable_atomic::{AtomicBool, Ordering};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
@@ -70,6 +70,17 @@ struct RuntimeDotBlob {
 
 const _: [(); DOT_BLOB_FIELDS_SIZE] = [(); core::mem::size_of::<RuntimeDotBlobFields>()];
 const _: [(); DOT_BLOB_SIZE] = [(); core::mem::size_of::<RuntimeDotBlob>()];
+
+#[derive(Clone, Copy)]
+#[allow(dead_code)]
+struct UnlockContext {
+    challenge: [u8; AUTH_CMD_NONCE_LEN],
+    lak_hash: [u8; DOT_KEY_HASH_SIZE],
+    fuse_count: u32,
+}
+
+static UNLOCK_CONTEXT: BlockingMutex<CriticalSectionRawMutex, RefCell<Option<UnlockContext>>> =
+    BlockingMutex::new(RefCell::new(None));
 
 static DOT_TRANSACTION_BUSY: AtomicBool = AtomicBool::new(false);
 
@@ -603,6 +614,38 @@ pub async fn increase_caliptra_min_svn<A: ApiAlloc>(alloc: &A, svn: u32) -> Cali
     Ok(())
 }
 
+async fn read_and_verify_dot_blob<A: ApiAlloc>(
+    alloc: &A,
+    derivation_value: u32,
+) -> CaliptraCmdResult<RuntimeDotBlob> {
+    if derivation_value & 1 == 0 {
+        return Err(CaliptraCompletionCode::InvalidState);
+    }
+    let flash = SpiFlash::<DefaultSyscalls>::new(caliptra_mcu_config::DOT_BLOB_STORE_DRIVER_NUM);
+    let mut bytes = [0u8; DOT_BLOB_SIZE];
+    flash
+        .read(0, DOT_BLOB_SIZE, &mut bytes)
+        .await
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+    let blob = RuntimeDotBlob::read_from_bytes(&bytes)
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+    if blob.fields.version != DOT_BLOB_VERSION {
+        return Err(CaliptraCompletionCode::InvalidState);
+    }
+    let info = dot_derivation_info(derivation_value)?;
+    let key = derive_stable_key(StableKeyType::IDevId, &info)
+        .await
+        .map_err(map_mcu_err)?;
+    let mut expected = [0u8; DOT_HMAC_SIZE];
+    cm_hmac_sha512(alloc, &key, blob.fields.as_bytes(), &mut expected)
+        .await
+        .map_err(map_mcu_err)?;
+    if !constant_time_eq::constant_time_eq(&expected, &blob.hmac) {
+        return Err(CaliptraCompletionCode::AccessDenied);
+    }
+    Ok(blob)
+}
+
 fn burn_next_dot_fuse(current_fuse_count: u32) -> CaliptraCmdResult<()> {
     let word_addr = (fuses::DOT_FUSE_ARRAY.byte_offset / 4) as u32 + current_fuse_count / 32;
     let bit_mask = 1u32 << (current_fuse_count % 32);
@@ -696,6 +739,36 @@ pub async fn dot_disable<A: ApiAlloc>(
         request.lak_hash,
     )
     .await
+}
+
+pub async fn dot_unlock_challenge<A: ApiAlloc>(
+    alloc: &A,
+) -> CaliptraCmdResult<[u8; AUTH_CMD_NONCE_LEN]> {
+    let _guard = DotTransactionGuard::acquire()?;
+    if UNLOCK_CONTEXT.lock(|state| state.borrow().is_some()) {
+        return Err(CaliptraCompletionCode::ResourceUnavailable);
+    }
+    let current_fuse_count = read_dot_fuse_count()?;
+    if current_fuse_count & 1 == 0 {
+        return Err(CaliptraCompletionCode::InvalidState);
+    }
+    let blob = read_and_verify_dot_blob(alloc, current_fuse_count).await?;
+    if blob.fields.lak_pub.iter().all(|byte| *byte == 0) {
+        return Err(CaliptraCompletionCode::InvalidState);
+    }
+
+    let mut challenge = [0u8; AUTH_CMD_NONCE_LEN];
+    rng_generate(alloc, &mut challenge)
+        .await
+        .map_err(map_mcu_err)?;
+    UNLOCK_CONTEXT.lock(|state| {
+        *state.borrow_mut() = Some(UnlockContext {
+            challenge,
+            lak_hash: blob.fields.lak_pub,
+            fuse_count: current_fuse_count,
+        });
+    });
+    Ok(challenge)
 }
 
 pub async fn revoke_vendor_pub_key<A: ApiAlloc>(

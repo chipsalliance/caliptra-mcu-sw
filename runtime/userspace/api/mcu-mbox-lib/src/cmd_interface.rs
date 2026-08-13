@@ -24,7 +24,10 @@ use caliptra_mcu_mbox_common::messages::{
     MAX_RESP_DATA_SIZE,
 };
 #[cfg(feature = "device-ownership-transfer")]
-use caliptra_mcu_mbox_common::messages::{DotDisableReq, DotDisableResp, DotLockReq, DotLockResp};
+use caliptra_mcu_mbox_common::messages::{
+    DotDisableReq, DotDisableResp, DotLockReq, DotLockResp, DotUnlockChallengeReq,
+    DotUnlockChallengeResp,
+};
 #[cfg(feature = "periodic-fips-self-test")]
 use caliptra_mcu_mbox_common::messages::{
     McuFipsPeriodicEnableReq, McuFipsPeriodicEnableResp, McuFipsPeriodicStatusReq,
@@ -220,9 +223,12 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
                 | inner @ CommandId::MC_FUSE_READ
                 | inner @ CommandId::MC_FUSE_WRITE
                 | inner @ CommandId::MC_FUSE_LOCK_PARTITION
-                | inner @ CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY
-                | inner @ CommandId::MC_DEVICE_OWNERSHIP_TRANSFER => {
+                | inner @ CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY => {
                     self.handle_authorized_command(inner, req, resp_buf).await
+                }
+                #[cfg(feature = "device-ownership-transfer")]
+                CommandId::MC_DEVICE_OWNERSHIP_TRANSFER => {
+                    self.handle_dot_command(req, resp_buf).await
                 }
                 CommandId::MC_EXPORT_ATTESTED_CSR => {
                     self.handle_export_attested_csr(req, resp_buf).await
@@ -331,6 +337,33 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
             DotDisableResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
         *resp = DotDisableResp {
             reset_required: 1,
+            ..Default::default()
+        };
+        let response_len = resp.as_bytes().len();
+        Ok((&mut resp_buf[..response_len], MbxCmdStatus::Complete))
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    async fn handle_dot_unlock_challenge<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let request =
+            DotUnlockChallengeReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        if request.subcommand != CommandId::MC_DOT_UNLOCK_CHALLENGE.0 {
+            return Err(errors::UNSUPPORTED_COMMAND);
+        }
+        let challenge = self
+            .non_crypto_cmds_handler
+            .dot_unlock_challenge(self.scratch)
+            .await
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+
+        let (resp, _) = DotUnlockChallengeResp::mut_from_prefix(resp_buf)
+            .map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = DotUnlockChallengeResp {
+            challenge,
             ..Default::default()
         };
         let response_len = resp.as_bytes().len();
@@ -692,6 +725,31 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         }
     }
 
+    #[cfg(feature = "device-ownership-transfer")]
+    async fn handle_dot_command<'r>(
+        &mut self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let subcommand = req
+            .get(size_of::<MailboxReqHeader>()..size_of::<MailboxReqHeader>() + 4)
+            .ok_or(errors::INVALID_PARAMS)?;
+        match u32::from_le_bytes(subcommand.try_into().map_err(|_| errors::INVALID_PARAMS)?) {
+            value if value == CommandId::MC_DOT_LOCK.0 || value == CommandId::MC_DOT_DISABLE.0 => {
+                self.handle_authorized_command(
+                    CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
+                    req,
+                    resp_buf,
+                )
+                .await
+            }
+            value if value == CommandId::MC_DOT_UNLOCK_CHALLENGE.0 => {
+                self.handle_dot_unlock_challenge(req, resp_buf).await
+            }
+            _ => Err(errors::UNSUPPORTED_COMMAND),
+        }
+    }
+
     async fn handle_fuse_read<'r>(
         &self,
         req: &[u8],
@@ -1015,7 +1073,7 @@ fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32) -> usize {
                 + H::MAX_ATTESTATION_EVIDENCE_LEN,
         ),
         #[cfg(feature = "device-ownership-transfer")]
-        CommandId::MC_DEVICE_OWNERSHIP_TRANSFER => size_of::<DotLockResp>(),
+        CommandId::MC_DEVICE_OWNERSHIP_TRANSFER => size_of::<DotUnlockChallengeResp>(),
         _ => size_of::<McuMailboxResp>(),
     }
 }

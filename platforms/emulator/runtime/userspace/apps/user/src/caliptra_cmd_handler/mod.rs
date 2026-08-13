@@ -72,6 +72,9 @@ fn external_command_capabilities() -> ExternalCommandCapabilities {
     {
         capabilities |= ExternalCommandCapabilities::GET_ATTESTATION;
     }
+    if cfg!(feature = "dot-spdm-vdm") {
+        capabilities |= ExternalCommandCapabilities::DEVICE_OWNERSHIP_TRANSFER;
+    }
     capabilities
 }
 
@@ -356,6 +359,13 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         device_ops::dot_disable(alloc, request).await
     }
 
+    async fn dot_unlock_challenge<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+    ) -> CaliptraCmdResult<[u8; caliptra_mcu_mbox_common::messages::AUTH_CMD_NONCE_LEN]> {
+        device_ops::dot_unlock_challenge(alloc).await
+    }
+
     async fn request_debug_unlock<Alloc: ApiAlloc>(
         &self,
         alloc: &Alloc,
@@ -419,6 +429,10 @@ mod tests {
             cfg!(feature = "spdm")
         );
         assert_eq!(commands.contains(spdm_commands), cfg!(feature = "spdm"));
+        assert_eq!(
+            commands.contains(ExternalCommandCapabilities::DEVICE_OWNERSHIP_TRANSFER),
+            cfg!(feature = "dot-spdm-vdm")
+        );
         assert_eq!(
             authorized.contains(
                 AuthorizedSubcommandCapabilities::GET_AUTH_CHALLENGE

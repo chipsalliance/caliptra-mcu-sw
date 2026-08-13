@@ -23,6 +23,7 @@ bitflags::bitflags! {
         const REQUEST_DEBUG_UNLOCK = command_capability(0x06);
         const AUTHORIZE_DEBUG_UNLOCK_TOKEN = command_capability(0x07);
         const EXPORT_ATTESTED_CSR = command_capability(0x08);
+        const DEVICE_OWNERSHIP_TRANSFER = command_capability(0x11);
         const AUTHORIZED_COMMAND = command_capability(0x12);
     }
 
