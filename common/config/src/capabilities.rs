@@ -37,6 +37,7 @@ bitflags::bitflags! {
         const FUSE_LOCK_PARTITION = 1 << 6;
         const PROVISION_OWNER_PK_HASH = 1 << 7;
         const DOT_LOCK = 1 << 8;
+        const DOT_DISABLE = 1 << 9;
     }
 }
 
@@ -95,5 +96,6 @@ mod tests {
             1 << 7
         );
         assert_eq!(AuthorizedSubcommandCapabilities::DOT_LOCK.bits(), 1 << 8);
+        assert_eq!(AuthorizedSubcommandCapabilities::DOT_DISABLE.bits(), 1 << 9);
     }
 }

@@ -8,6 +8,7 @@ use caliptra_mcu_spdm_codec::vendor_defined::iana::ocp::caliptra::{
 use caliptra_mcu_spdm_traits::SpdmPalAlloc;
 
 pub const DOT_LOCK_CMD_ID: u32 = CommandId::MC_DOT_LOCK.0;
+pub const DOT_DISABLE_CMD_ID: u32 = CommandId::MC_DOT_DISABLE.0;
 
 pub(crate) async fn handle<H, A>(
     _commands: &H,
@@ -26,7 +27,9 @@ where
         u32::from_le_bytes([subcommand[0], subcommand[1], subcommand[2], subcommand[3]]);
 
     match subcommand {
-        DOT_LOCK_CMD_ID => CaliptraVdmCmdResult::Error(CaliptraCompletionCode::AccessDenied),
+        DOT_LOCK_CMD_ID | DOT_DISABLE_CMD_ID => {
+            CaliptraVdmCmdResult::Error(CaliptraCompletionCode::AccessDenied)
+        }
         _ => CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidParameter),
     }
 }

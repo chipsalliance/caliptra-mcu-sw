@@ -25,7 +25,7 @@ use caliptra_mcu_libtock_platform::ErrorCode;
 // certificate; attestation evidence must be signed under the same label so the
 // leaf cert in the device's chain is the one that verifies it.
 use caliptra_mcu_mbox_common::messages::{
-    DotLockPayload, HybridSignature, AUTH_CMD_NONCE_LEN, DOT_KEY_HASH_SIZE,
+    DotDisablePayload, DotLockPayload, HybridSignature, AUTH_CMD_NONCE_LEN, DOT_KEY_HASH_SIZE,
     DOT_MLDSA_PUBLIC_KEY_SIZE,
 };
 use caliptra_mcu_registers_generated::fuses;
@@ -669,6 +669,30 @@ async fn dot_lock_impl<A: ApiAlloc>(alloc: &A, request: &DotLockPayload) -> Cali
         current_fuse_count,
         current_fuse_count + 1,
         request.cak,
+        request.lak_hash,
+    )
+    .await
+}
+
+pub async fn dot_disable<A: ApiAlloc>(
+    alloc: &A,
+    request: &DotDisablePayload,
+) -> CaliptraCmdResult<()> {
+    let _guard = DotTransactionGuard::acquire()?;
+    if request.lak_hash.iter().all(|byte| *byte == 0) {
+        return Err(CaliptraCompletionCode::InvalidParameter);
+    }
+
+    let current_fuse_count = read_dot_fuse_count()?;
+    if current_fuse_count & 1 != 0 || current_fuse_count >= 256 {
+        return Err(CaliptraCompletionCode::InvalidState);
+    }
+
+    commit_dot_transition(
+        alloc,
+        current_fuse_count,
+        current_fuse_count + 1,
+        [0; DOT_KEY_HASH_SIZE],
         request.lak_hash,
     )
     .await

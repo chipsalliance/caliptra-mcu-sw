@@ -4,7 +4,7 @@
 #![allow(async_fn_in_trait)]
 
 use caliptra_mcu_mbox_common::messages::{
-    CommandId, DotLockPayload, HybridSignature, AUTH_CMD_NONCE_LEN,
+    CommandId, DotDisablePayload, DotLockPayload, HybridSignature, AUTH_CMD_NONCE_LEN,
 };
 use mcu_caliptra_api::ApiAlloc;
 use zerocopy::{Immutable, IntoBytes};
@@ -499,6 +499,16 @@ pub trait CaliptraCmdHandler {
         &self,
         alloc: &Alloc,
         request: &DotLockPayload,
+    ) -> CaliptraCmdResult<()> {
+        let _ = (alloc, request);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Verify and commit a persistent DOT disabled-state transition.
+    async fn dot_disable<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        request: &DotDisablePayload,
     ) -> CaliptraCmdResult<()> {
         let _ = (alloc, request);
         Err(CaliptraCompletionCode::UnsupportedOperation)

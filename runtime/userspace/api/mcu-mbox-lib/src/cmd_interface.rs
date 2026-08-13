@@ -24,7 +24,7 @@ use caliptra_mcu_mbox_common::messages::{
     MAX_RESP_DATA_SIZE,
 };
 #[cfg(feature = "device-ownership-transfer")]
-use caliptra_mcu_mbox_common::messages::{DotLockReq, DotLockResp};
+use caliptra_mcu_mbox_common::messages::{DotDisableReq, DotDisableResp, DotLockReq, DotLockResp};
 #[cfg(feature = "periodic-fips-self-test")]
 use caliptra_mcu_mbox_common::messages::{
     McuFipsPeriodicEnableReq, McuFipsPeriodicEnableResp, McuFipsPeriodicStatusReq,
@@ -305,6 +305,31 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         let (resp, _) =
             DotLockResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
         *resp = DotLockResp {
+            reset_required: 1,
+            ..Default::default()
+        };
+        let response_len = resp.as_bytes().len();
+        Ok((&mut resp_buf[..response_len], MbxCmdStatus::Complete))
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    async fn handle_dot_disable<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req = DotDisableReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        if req.subcommand != CommandId::MC_DOT_DISABLE.0 {
+            return Err(errors::UNSUPPORTED_COMMAND);
+        }
+        self.non_crypto_cmds_handler
+            .dot_disable(self.scratch, &req.payload)
+            .await
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+
+        let (resp, _) =
+            DotDisableResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = DotDisableResp {
             reset_required: 1,
             ..Default::default()
         };
@@ -644,11 +669,16 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
             }
             #[cfg(feature = "device-ownership-transfer")]
             CommandId::MC_DEVICE_OWNERSHIP_TRANSFER => {
-                let request =
-                    DotLockReq::ref_from_bytes(cmd).map_err(|_| errors::INVALID_PARAMS)?;
-                match request.subcommand {
+                let subcommand = cmd
+                    .get(size_of::<MailboxReqHeader>()..size_of::<MailboxReqHeader>() + 4)
+                    .ok_or(errors::INVALID_PARAMS)?;
+                match u32::from_le_bytes(subcommand.try_into().map_err(|_| errors::INVALID_PARAMS)?)
+                {
                     value if value == CommandId::MC_DOT_LOCK.0 => {
                         self.handle_dot_lock(cmd, resp_buf).await
+                    }
+                    value if value == CommandId::MC_DOT_DISABLE.0 => {
+                        self.handle_dot_disable(cmd, resp_buf).await
                     }
                     _ => Err(errors::UNSUPPORTED_COMMAND),
                 }

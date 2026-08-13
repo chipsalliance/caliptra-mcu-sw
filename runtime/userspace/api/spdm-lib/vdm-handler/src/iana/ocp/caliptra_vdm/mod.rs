@@ -23,9 +23,10 @@ pub use caliptra_mcu_spdm_codec::vendor_defined::iana::ocp::caliptra::{
     CALIPTRA_VDM_COMMAND_VERSION, CALIPTRA_VENDOR_ID,
 };
 pub use commands::authorized_command::{
-    DEVICE_OWNERSHIP_TRANSFER_CMD_ID, DOT_LOCK_CMD_ID, FE_PROG_CMD_ID, FUSE_LOCK_PARTITION_CMD_ID,
-    GET_AUTH_CHALLENGE_CMD_ID, INCREASE_CALIPTRA_MIN_SVN_CMD_ID, PROVISION_OWNER_PK_HASH_CMD_ID,
-    PROVISION_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PUB_KEY_CMD_ID,
+    DEVICE_OWNERSHIP_TRANSFER_CMD_ID, DOT_DISABLE_CMD_ID, DOT_LOCK_CMD_ID, FE_PROG_CMD_ID,
+    FUSE_LOCK_PARTITION_CMD_ID, GET_AUTH_CHALLENGE_CMD_ID, INCREASE_CALIPTRA_MIN_SVN_CMD_ID,
+    PROVISION_OWNER_PK_HASH_CMD_ID, PROVISION_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PK_HASH_CMD_ID,
+    REVOKE_VENDOR_PUB_KEY_CMD_ID,
 };
 
 /// Caliptra VDM message header length: `[command_version, command_code]`.
@@ -184,6 +185,19 @@ pub trait CaliptraVdmAuthorization {
     async fn dot_lock<A: SpdmPalAlloc>(
         &self,
         request: &caliptra_mcu_mbox_common::messages::DotLockPayload,
+        payload: &[u8],
+        sig: &HybridSignature,
+        nonce: &[u8; AUTH_CMD_NONCE_LEN],
+        ecc_pub_x: &[u8; 48],
+        ecc_pub_y: &[u8; 48],
+        mldsa_pub: &[u8; 2592],
+        scratch: &A,
+    ) -> CaliptraVdmResult<()>;
+
+    #[allow(clippy::too_many_arguments)]
+    async fn dot_disable<A: SpdmPalAlloc>(
+        &self,
+        request: &caliptra_mcu_mbox_common::messages::DotDisablePayload,
         payload: &[u8],
         sig: &HybridSignature,
         nonce: &[u8; AUTH_CMD_NONCE_LEN],
@@ -673,6 +687,9 @@ mod tests {
             cak: [u8; 48],
             lak_hash: [u8; 48],
         },
+        DotDisable {
+            lak_hash: [u8; 48],
+        },
     }
 
     struct TestCommands {
@@ -680,6 +697,7 @@ mod tests {
         evidence_len: usize,
         authorized_token: Mutex<Option<Vec<u8>>>,
         dot_lock_calls: AtomicUsize,
+        dot_disable_calls: AtomicUsize,
         authorized_operation: Mutex<Option<AuthorizedOperation>>,
         authorization_error: Mutex<Option<CaliptraCompletionCode>>,
         enforce_authorization: bool,
@@ -705,6 +723,7 @@ mod tests {
                 evidence_len,
                 authorized_token: Mutex::new(None),
                 dot_lock_calls: AtomicUsize::new(0),
+                dot_disable_calls: AtomicUsize::new(0),
                 authorized_operation: Mutex::new(None),
                 authorization_error: Mutex::new(None),
                 enforce_authorization: false,
@@ -874,6 +893,14 @@ mod tests {
             self.dot_lock_calls.fetch_add(1, Ordering::Relaxed);
             Ok(())
         }
+        async fn dot_disable<Alloc: mcu_caliptra_api_lite::ApiAlloc>(
+            &self,
+            _alloc: &Alloc,
+            _request: &caliptra_mcu_mbox_common::messages::DotDisablePayload,
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            self.dot_disable_calls.fetch_add(1, Ordering::Relaxed);
+            Ok(())
+        }
     }
 
     impl CaliptraVdmStreamOps for TestCommands {}
@@ -1025,6 +1052,24 @@ mod tests {
             self.dot_lock_calls.fetch_add(1, Ordering::Relaxed);
             self.complete_authorized(AuthorizedOperation::DotLock {
                 cak: request.cak,
+                lak_hash: request.lak_hash,
+            })
+        }
+
+        async fn dot_disable<A: SpdmPalAlloc>(
+            &self,
+            request: &caliptra_mcu_mbox_common::messages::DotDisablePayload,
+            payload: &[u8],
+            sig: &HybridSignature,
+            _nonce: &[u8; AUTH_CMD_NONCE_LEN],
+            _ecc_pub_x: &[u8; 48],
+            _ecc_pub_y: &[u8; 48],
+            _mldsa_pub: &[u8; 2592],
+            _scratch: &A,
+        ) -> CaliptraVdmResult<()> {
+            self.verify_test_signature(DEVICE_OWNERSHIP_TRANSFER_CMD_ID, payload, sig)?;
+            self.dot_disable_calls.fetch_add(1, Ordering::Relaxed);
+            self.complete_authorized(AuthorizedOperation::DotDisable {
                 lak_hash: request.lak_hash,
             })
         }
@@ -1469,6 +1514,62 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "device-ownership-transfer")]
+    #[test]
+    fn direct_dot_disable_is_rejected() {
+        use caliptra_mcu_mbox_common::messages::{CommandId, DotDisablePayload};
+        use zerocopy::IntoBytes;
+
+        let cmds = TestCommands::new(0);
+        let mut payload = DotDisablePayload::default();
+        payload.lak_hash[0] = 1;
+        let mut request = vec![
+            CALIPTRA_VDM_COMMAND_VERSION,
+            CaliptraVdmCommand::DeviceOwnershipTransfer as u8,
+        ];
+        request.extend_from_slice(&CommandId::MC_DOT_DISABLE.0.to_le_bytes());
+        request.extend_from_slice(payload.as_bytes());
+
+        let (response, inline, _) = dispatch(&cmds, &request, 16, 0);
+
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::AccessDenied as u8);
+        assert_eq!(cmds.dot_disable_calls.load(Ordering::Relaxed), 0);
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    #[test]
+    fn authorized_dot_disable_dispatches_through_dot_family() {
+        use caliptra_mcu_mbox_common::messages::{CommandId, DotDisablePayload};
+
+        let cmds = TestCommands::new(0).with_authorization();
+        issue_test_challenge(&cmds);
+        let request_payload = DotDisablePayload {
+            lak_hash: [0x5A; 48],
+        };
+        let mut signed_payload = CommandId::MC_DOT_DISABLE.0.to_le_bytes().to_vec();
+        signed_payload.extend_from_slice(request_payload.as_bytes());
+        let sig = test_signature(
+            DEVICE_OWNERSHIP_TRANSFER_CMD_ID,
+            &signed_payload,
+            &TEST_AUTH_CHALLENGE,
+        );
+        let request =
+            authorized_req_with_sig(DEVICE_OWNERSHIP_TRANSFER_CMD_ID, &signed_payload, &sig);
+
+        let (response, inline, _) = dispatch(&cmds, &request, 16, 0);
+
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+        assert_eq!(cmds.dot_disable_calls.load(Ordering::Relaxed), 1);
+        assert_eq!(
+            cmds.authorized_operation.lock().unwrap().take(),
+            Some(AuthorizedOperation::DotDisable {
+                lak_hash: request_payload.lak_hash,
+            })
+        );
+    }
+
     #[test]
     fn fe_prog_accepts_unaligned_wire_payload() {
         let cmds = TestCommands::new(0);
@@ -1675,13 +1776,24 @@ mod tests {
             (REVOKE_VENDOR_PK_HASH_CMD_ID, vec![0u8; 8]),
             (FUSE_LOCK_PARTITION_CMD_ID, vec![0u8; 4]),
             #[cfg(feature = "device-ownership-transfer")]
-            (
-                DEVICE_OWNERSHIP_TRANSFER_CMD_ID,
-                vec![
-                    0u8;
-                    4 + core::mem::size_of::<caliptra_mcu_mbox_common::messages::DotLockPayload>()
-                ],
-            ),
+            (DEVICE_OWNERSHIP_TRANSFER_CMD_ID, {
+                let mut payload = DOT_LOCK_CMD_ID.to_le_bytes().to_vec();
+                payload.resize(
+                    4 + core::mem::size_of::<caliptra_mcu_mbox_common::messages::DotLockPayload>(),
+                    0,
+                );
+                payload
+            }),
+            #[cfg(feature = "device-ownership-transfer")]
+            (DEVICE_OWNERSHIP_TRANSFER_CMD_ID, {
+                let mut payload = DOT_DISABLE_CMD_ID.to_le_bytes().to_vec();
+                payload.resize(
+                    4 + core::mem::size_of::<caliptra_mcu_mbox_common::messages::DotDisablePayload>(
+                    ),
+                    0,
+                );
+                payload
+            }),
         ];
 
         for (sub_cmd, payload) in payloads {

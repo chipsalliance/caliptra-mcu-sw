@@ -150,6 +150,7 @@ impl CommandId {
     // The FourCC values below are little-endian u32 subcommands in its payload.
     pub const MC_DEVICE_OWNERSHIP_TRANSFER: Self = Self(0x0000_0011);
     pub const MC_DOT_LOCK: Self = Self(0x4D44_4C4B); // "MDLK"
+    pub const MC_DOT_DISABLE: Self = Self(0x4D44_4453); // "MDDS"
 }
 
 impl From<u32> for CommandId {
@@ -226,6 +227,7 @@ pub enum McuMailboxReq {
     GetAttestation(GetAttestationReq),
     // Device Ownership Transfer commands
     DotLock(DotLockReq),
+    DotDisable(DotDisableReq),
 }
 
 impl McuMailboxReq {
@@ -286,6 +288,7 @@ impl McuMailboxReq {
             McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_bytes()),
             McuMailboxReq::GetAttestation(req) => Ok(req.as_bytes()),
             McuMailboxReq::DotLock(req) => Ok(req.as_bytes()),
+            McuMailboxReq::DotDisable(req) => Ok(req.as_bytes()),
         }
     }
 
@@ -346,6 +349,7 @@ impl McuMailboxReq {
             McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::GetAttestation(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::DotLock(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::DotDisable(req) => Ok(req.as_mut_bytes()),
         }
     }
 
@@ -408,6 +412,7 @@ impl McuMailboxReq {
             McuMailboxReq::ExportAttestedCsr(_) => CommandId::MC_EXPORT_ATTESTED_CSR,
             McuMailboxReq::GetAttestation(_) => CommandId::MC_GET_ATTESTATION,
             McuMailboxReq::DotLock(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
+            McuMailboxReq::DotDisable(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
         }
     }
 
@@ -492,6 +497,7 @@ pub enum McuMailboxResp {
     ExportAttestedCsr(ExportAttestedCsrResp),
     // Device Ownership Transfer commands
     DotLock(DotLockResp),
+    DotDisable(DotDisableResp),
 }
 
 /// A trait for responses with variable size data.
@@ -610,6 +616,7 @@ impl McuMailboxResp {
             McuMailboxResp::FuseRevokeVendorPkHash(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial(),
             McuMailboxResp::DotLock(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::DotDisable(resp) => Ok(resp.as_bytes()),
         }
     }
 
@@ -668,6 +675,7 @@ impl McuMailboxResp {
             McuMailboxResp::FuseRevokeVendorPkHash(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::DotLock(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::DotDisable(resp) => Ok(resp.as_mut_bytes()),
         }
     }
 
@@ -1848,6 +1856,53 @@ pub struct DotLockResp {
 
 impl Response for DotLockResp {}
 
+/// Transport-neutral DOT_DISABLE payload.
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotDisablePayload {
+    pub lak_hash: [u8; DOT_KEY_HASH_SIZE],
+}
+
+impl Default for DotDisablePayload {
+    fn default() -> Self {
+        Self {
+            lak_hash: [0; DOT_KEY_HASH_SIZE],
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotDisableReq {
+    pub hdr: MailboxReqHeader,
+    pub subcommand: u32,
+    pub payload: DotDisablePayload,
+}
+
+impl Default for DotDisableReq {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxReqHeader::default(),
+            subcommand: CommandId::MC_DOT_DISABLE.0,
+            payload: DotDisablePayload::default(),
+        }
+    }
+}
+
+impl Request for DotDisableReq {
+    const ID: CommandId = CommandId::MC_DEVICE_OWNERSHIP_TRANSFER;
+    type Resp = DotDisableResp;
+}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotDisableResp {
+    pub hdr: MailboxRespHeader,
+    pub reset_required: u32,
+}
+
+impl Response for DotDisableResp {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1921,6 +1976,21 @@ mod tests {
                 + 2 * DOT_KEY_HASH_SIZE
         );
         assert_eq!(DotLockReq::default().subcommand, CommandId::MC_DOT_LOCK.0);
+    }
+
+    #[test]
+    fn dot_disable_wire_contract() {
+        assert_eq!(CommandId::MC_DOT_DISABLE.0, 0x4D44_4453);
+        assert_eq!(
+            core::mem::size_of::<DotDisableReq>(),
+            core::mem::size_of::<MailboxReqHeader>()
+                + core::mem::size_of::<u32>()
+                + DOT_KEY_HASH_SIZE
+        );
+        assert_eq!(
+            DotDisableReq::default().subcommand,
+            CommandId::MC_DOT_DISABLE.0
+        );
     }
 
     #[test]

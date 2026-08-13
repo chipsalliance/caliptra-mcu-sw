@@ -1508,6 +1508,75 @@ mod test {
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
+    #[test]
+    fn test_runtime_dot_disable_commits_transition() {
+        use crate::runtime::{execute_authorized_req, execute_authorized_req_tampered};
+        use caliptra_mcu_mbox_common::messages::{
+            DotDisablePayload, DotDisableReq, MailboxReqHeader,
+        };
+        use core::mem::size_of;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let payload = DotDisablePayload {
+            lak_hash: [0x5A; 48],
+        };
+        let mut otp = create_locked_otp_memory();
+        otp[caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset] = 0;
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            otp_memory: Some(otp),
+            ..Default::default()
+        });
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        let body_offset = size_of::<MailboxReqHeader>() + size_of::<u32>();
+        assert!(execute_authorized_req_tampered(
+            &mut hw,
+            DotDisableReq {
+                payload: payload.clone(),
+                ..Default::default()
+            },
+            |request| request[body_offset] ^= 1,
+        )
+        .is_err());
+
+        let response = execute_authorized_req(
+            &mut hw,
+            DotDisableReq {
+                payload: payload.clone(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(response.reset_required, 1);
+        assert!(execute_authorized_req(
+            &mut hw,
+            DotDisableReq {
+                payload,
+                ..Default::default()
+            },
+        )
+        .is_err());
+
+        let otp = hw.read_otp_memory();
+        assert_eq!(
+            otp[caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset] & 1,
+            1
+        );
+        let dot_blob = hw.read_dot_flash();
+        let blob = TestDotBlob::read_from_bytes(&dot_blob[..DOT_BLOB_SIZE]).unwrap();
+        assert!(blob.cak.iter().all(|word| *word == 0));
+        assert!(blob.lak_pub.iter().any(|word| *word != 0));
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
     /// Computes SHA-384 of the combined vendor public keys using the
     /// caliptra-sw owner-PK-hash convention: the ECC public key is
     /// per-dword byte-reversed before hashing, the MLDSA public key is
