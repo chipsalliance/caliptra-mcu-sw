@@ -20,10 +20,9 @@ use caliptra_mcu_libsyscall_caliptra::doe;
 use caliptra_mcu_libsyscall_caliptra::mctp;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_console::Console;
+use caliptra_mcu_scratch_alloc::{BitmapAllocator, StaticBitmapAllocatorCell, BITMAP_SLOT_SIZE};
 use caliptra_mcu_spdm_pal::cert::store::SharedCertStore;
-use caliptra_mcu_spdm_pal::{
-    BitmapAllocator, McuSpdmPal, StaticBitmapAllocatorCell, BITMAP_SLOT_SIZE,
-};
+use caliptra_mcu_spdm_pal::McuSpdmPal;
 use caliptra_mcu_spdm_stack::SpdmStack;
 #[cfg(feature = "doe")]
 use caliptra_mcu_spdm_transports::McuSpdmDoeTransport;

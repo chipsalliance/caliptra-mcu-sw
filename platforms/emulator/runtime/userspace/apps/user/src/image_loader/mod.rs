@@ -59,7 +59,7 @@ use caliptra_mcu_pldm_common::message::firmware_update::verify_complete::VerifyR
 ))]
 use caliptra_mcu_pldm_lib::daemon::PldmService;
 #[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
-use caliptra_mcu_spdm_pal::{BitmapAllocator, BITMAP_SLOT_SIZE};
+use caliptra_mcu_scratch_alloc::{BitmapAllocator, BITMAP_SLOT_SIZE};
 #[allow(unused_imports)]
 use core::fmt::Write;
 #[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]

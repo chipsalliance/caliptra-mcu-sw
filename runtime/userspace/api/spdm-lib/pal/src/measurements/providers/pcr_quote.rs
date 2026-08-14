@@ -6,11 +6,11 @@
 //! `caliptra-api`: the provider exposes one raw DMTF freeform manifest at
 //! index 0xFD and obtains the quote through `caliptra-api-lite`.
 
-use crate::alloc::BitmapAllocator;
 use crate::measurements::MeasurementProvider;
 use caliptra_mcu_attestation_evidence::pcr_quote::{
     encode_pcr_quote, PcrQuoteAlgorithm, PCR_QUOTE_MAX_SIZE,
 };
+use caliptra_mcu_scratch_alloc::BitmapAllocator;
 use caliptra_mcu_spdm_traits::{MeasurementInfo, SPDM_NONCE_LEN};
 use mcu_error::McuResult;
 

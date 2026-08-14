@@ -33,7 +33,7 @@ use super::measurements::MeasurementProvider;
 /// Owns the underlying byte-oriented PAL transport (held behind an
 /// [`UnsafeCell`] for interior mutability — the SPDM responder is
 /// strictly single-task, so we never observe concurrent access) plus a
-/// single [`BitmapAllocator`](super::alloc::BitmapAllocator) backed by
+/// single [`BitmapAllocator`](caliptra_mcu_scratch_alloc::BitmapAllocator) backed by
 /// a caller-supplied scratch region. The allocator serves both
 /// per-request scratch allocations and any large-message buffer
 /// retained on connection state across exchanges.
