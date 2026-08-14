@@ -18,7 +18,6 @@ caliptra-image-types.workspace = true
 caliptra-mcu-common-commands.workspace = true
 caliptra-mcu-flash-image.workspace = true
 caliptra-mcu-measurement-api.workspace = true
-caliptra-mcu-libapi-caliptra.workspace = true
 caliptra-mcu-libapi-emulated-caliptra.workspace = true
 caliptra-mcu-libsyscall-caliptra.workspace = true
 caliptra-mcu-userlog.workspace = true
@@ -67,15 +66,7 @@ toml.workspace = true
 [features]
 default = ["all-features"]
 # Caliptra MCU features
-all-features = [
-  "spdm",
-  "streaming-boot",
-  "flash-boot",
-  "firmware-update",
-  "doe",
-  "userspace-log",
-  "mctp-vdm-service",
-]
+all-features = ["spdm", "streaming-boot", "flash-boot", "firmware-update", "doe", "userspace-log", "mctp-vdm-service"]
 spdm = ["mcu-mbox-service"]
 streaming-boot = []
 flash-boot = []
@@ -92,7 +83,6 @@ hw-2-1 = []
 doe = ["spdm"]
 userspace-log = [
   "dep:defmt",
-  "caliptra-mcu-libapi-caliptra/release",
   "caliptra-mcu-mbox-lib/release",
   "caliptra-mcu-mctp-vdm-lib/release",
   "caliptra-mcu-pldm-lib/release",
@@ -158,7 +148,9 @@ test-firmware-v2 = []
 test-streaming-boot-flash-write-back = ["streaming-boot", "firmware-update"]
 test-mcu-mbox-fips-periodic = ["mcu-mbox-service", "caliptra-mcu-mbox-lib/periodic-fips-self-test"]
 test-mctp-vdm-cmds = ["mctp-vdm-service"]
-test-caliptra-util-host-mctp-vdm-validator = ["mctp-vdm-service"]
+# Exercise the production CaliptraCmdBackend rather than the VDM test mock.
+test-mctp-vdm-production = ["mctp-vdm-service"]
+test-caliptra-util-host-mctp-vdm-validator = ["mctp-vdm-service", "userspace-log"]
 test-caliptra-util-host-validator = ["mcu-mbox-service"]
 test-mcu-mbox-cmds = ["mcu-mbox-service"]
 test-mcu-mbox-fips-self-test = ["mcu-mbox-service"]

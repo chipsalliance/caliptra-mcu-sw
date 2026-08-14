@@ -24,9 +24,11 @@ zerocopy.workspace = true
 [target.'cfg(not(target_arch = "riscv32"))'.dependencies]
 caliptra-mcu-libtock_unittest.workspace = true
 
+[dev-dependencies]
+mcu-caliptra-api-lite.workspace = true
+
 [target.'cfg(target_arch = "riscv32")'.dependencies]
 embassy-executor = { version = "0.9.1", features = ["arch-riscv32"] }
-embedded-alloc.workspace = true
 
 [features]
 default = []

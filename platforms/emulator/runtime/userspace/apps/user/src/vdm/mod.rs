@@ -31,6 +31,8 @@ async fn start_vdm_service() -> Result<(), ErrorCode> {
     static CMD_INTERFACE: StaticCell<
         caliptra_mcu_mctp_vdm_lib::cmd_interface::CmdInterface<'static, VdmHandler>,
     > = StaticCell::new();
+    static MSG_BUFFER: StaticCell<[u8; caliptra_mcu_mctp_vdm_lib::daemon::MAX_VDM_MSG_SIZE]> =
+        StaticCell::new();
 
     let handler: &'static VdmHandler = HANDLER.init(VdmHandler);
     let transport: &'static mut caliptra_mcu_mctp_vdm_lib::transport::MctpVdmTransport =
@@ -55,7 +57,8 @@ async fn start_vdm_service() -> Result<(), ErrorCode> {
 
     crate::log_info!(console_writer, "Starting MCTP VDM service...");
 
-    caliptra_mcu_mctp_vdm_lib::daemon::vdm_responder(cmd_interface).await;
+    let msg_buffer = MSG_BUFFER.init([0; caliptra_mcu_mctp_vdm_lib::daemon::MAX_VDM_MSG_SIZE]);
+    caliptra_mcu_mctp_vdm_lib::daemon::vdm_responder(cmd_interface, msg_buffer).await;
     let suspend_signal: Signal<CriticalSectionRawMutex, ()> = Signal::new();
     suspend_signal.wait().await;
 

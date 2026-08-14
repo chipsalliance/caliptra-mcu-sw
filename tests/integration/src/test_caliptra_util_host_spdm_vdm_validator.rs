@@ -10,8 +10,7 @@
 #[cfg(test)]
 mod test {
     use crate::test::{
-        compile_runtime, finish_runtime_hw_model, start_runtime_hw_model, CustomCaliptraFw,
-        TestParams, TEST_LOCK,
+        compile_runtime, start_runtime_hw_model, CustomCaliptraFw, TestParams, TEST_LOCK,
     };
     use caliptra_api::SocManager;
     use caliptra_mcu_builder::{CaliptraBuildArgs, CaliptraBuilder, FirmwareBinaries};
@@ -20,15 +19,13 @@ mod test {
     use caliptra_mcu_testing_common::i3c::DynamicI3cAddress;
     use caliptra_mcu_testing_common::i3c_socket::BufferedStream;
     use caliptra_mcu_testing_common::spdm_responder_validator::mctp::MctpTransport;
-    use caliptra_mcu_testing_common::spdm_responder_validator::{
-        SpdmValidatorRunner, SERVER_LISTENING,
-    };
+    use caliptra_mcu_testing_common::spdm_responder_validator::SpdmValidatorRunner;
     use caliptra_mcu_testing_common::{
         is_emulator_running, spawn_with_emulator_state, wait_for_runtime_start,
     };
     use random_port::PortPicker;
     use std::net::{SocketAddr, TcpListener, TcpStream};
-    use std::process::{exit, Command, Stdio};
+    use std::process::{Command, Stdio};
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::Arc;
     use std::thread;
@@ -79,8 +76,7 @@ mod test {
         target_addr: DynamicI3cAddress,
         test_timeout: Duration,
         validator_args: &[&str],
-    ) -> Arc<AtomicBool> {
-        SERVER_LISTENING.store(false, Ordering::Relaxed);
+    ) -> (Arc<AtomicBool>, Arc<AtomicBool>) {
         let bridge_port = PortPicker::new().pick().unwrap();
         let addr = SocketAddr::from(([127, 0, 0, 1], i3c_port));
         let stream = TcpStream::connect(addr).unwrap();
@@ -89,7 +85,9 @@ mod test {
         // Timeout watchdog. The completion flag prevents a finished suite's
         // watchdog from terminating a later isolated emulator instance.
         let completed = Arc::new(AtomicBool::new(false));
+        let failed = Arc::new(AtomicBool::new(false));
         let watchdog_completed = completed.clone();
+        let watchdog_failed = failed.clone();
         thread::spawn(move || {
             thread::sleep(test_timeout);
             if !watchdog_completed.load(Ordering::Relaxed) {
@@ -98,12 +96,17 @@ mod test {
                     TEST_NAME,
                     test_timeout.as_secs()
                 );
-                exit(-1);
+                watchdog_failed.store(true, Ordering::Relaxed);
+                watchdog_completed.store(true, Ordering::Relaxed);
             }
         });
 
         let validator_args: Vec<String> = validator_args.iter().map(|s| s.to_string()).collect();
         let bridge_port_copy = bridge_port;
+        let bridge_completed = completed.clone();
+        let bridge_failed = failed.clone();
+        let server_listening = Arc::new(AtomicBool::new(false));
+        let bridge_listening = server_listening.clone();
 
         // Bridge thread: uses spawn_with_emulator_state so it inherits the
         // ModelEmulated's per-instance state and can call wait_for_runtime_start
@@ -111,18 +114,22 @@ mod test {
         spawn_with_emulator_state(move || {
             wait_for_runtime_start();
             if !is_emulator_running() {
-                exit(-1);
+                bridge_failed.store(true, Ordering::Relaxed);
+                bridge_completed.store(true, Ordering::Relaxed);
+                return;
             }
             thread::sleep(Duration::from_secs(5));
             if !is_emulator_running() {
-                exit(-1);
+                bridge_failed.store(true, Ordering::Relaxed);
+                bridge_completed.store(true, Ordering::Relaxed);
+                return;
             }
 
             let bridge_addr = format!("127.0.0.1:{}", bridge_port_copy);
             let listener =
                 TcpListener::bind(&bridge_addr).expect("Could not bind to the SPDM bridge port");
             println!("[{}]: Bridge listening on {}", TEST_NAME, bridge_addr);
-            SERVER_LISTENING.store(true, Ordering::Relaxed);
+            bridge_listening.store(true, Ordering::Relaxed);
 
             if let Some(spdm_stream) = listener.incoming().next() {
                 let mut spdm_stream = spdm_stream.expect("Failed to accept connection");
@@ -131,32 +138,41 @@ mod test {
 
                 if runner.is_passed() {
                     println!("[{}]: Bridge completed successfully", TEST_NAME);
-                    exit(0);
                 } else {
                     println!("[{}]: Bridge reported failure", TEST_NAME);
-                    exit(-1);
+                    bridge_failed.store(true, Ordering::Relaxed);
                 }
             }
+            bridge_completed.store(true, Ordering::Relaxed);
         });
 
         // Requester subprocess (uses spawn_with_emulator_state to inherit
         // per-instance state for is_emulator_running()-style checks).
+        let requester_completed = completed.clone();
+        let requester_failed = failed.clone();
         spawn_with_emulator_state(move || {
             println!("[{}]: Waiting for bridge to start...", TEST_NAME);
-            while !SERVER_LISTENING.load(Ordering::Relaxed) {
+            while !server_listening.load(Ordering::Relaxed) {
+                if requester_completed.load(Ordering::Relaxed) {
+                    return;
+                }
                 thread::sleep(Duration::from_millis(200));
             }
             thread::sleep(Duration::from_millis(500));
 
-            execute_spdm_validator(bridge_port, &validator_args);
+            if let Err(error) = execute_spdm_validator(bridge_port, &validator_args) {
+                println!("[{}]: {}", TEST_NAME, error);
+                requester_failed.store(true, Ordering::Relaxed);
+                requester_completed.store(true, Ordering::Relaxed);
+            }
         });
-        completed
+        (completed, failed)
     }
 
     /// Spawn the caliptra-spdm-validator binary as a subprocess.
-    fn execute_spdm_validator(bridge_port: u16, extra_args: &[String]) {
+    fn execute_spdm_validator(bridge_port: u16, extra_args: &[String]) -> Result<(), String> {
         let bridge_addr = format!("127.0.0.1:{}", bridge_port);
-        let binary_path = find_spdm_validator_binary();
+        let binary_path = find_spdm_validator_binary()?;
         println!(
             "[{}]: Spawning caliptra-spdm-validator at: {:?}",
             TEST_NAME, binary_path
@@ -173,13 +189,7 @@ mod test {
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
             .spawn()
-            .unwrap_or_else(|e| {
-                println!(
-                    "[{}]: Failed to spawn caliptra-spdm-validator: {:#}",
-                    TEST_NAME, e
-                );
-                exit(-1);
-            });
+            .map_err(|error| format!("Failed to spawn caliptra-spdm-validator: {error:#}"))?;
 
         while is_emulator_running() {
             match child.try_wait() {
@@ -189,37 +199,31 @@ mod test {
                         TEST_NAME, status
                     );
                     if !status.success() {
-                        exit(-1);
+                        return Err(format!(
+                            "caliptra-spdm-validator failed with status {status}"
+                        ));
                     }
-                    return;
+                    return Ok(());
                 }
                 Ok(None) => {}
-                Err(e) => {
-                    println!(
-                        "[{}]: Error waiting for caliptra-spdm-validator: {:?}",
-                        TEST_NAME, e
-                    );
-                    exit(-1);
-                }
+                Err(error) => return Err(format!("Error waiting for validator: {error:?}")),
             }
             thread::sleep(Duration::from_millis(100));
         }
         let _ = child.kill();
+        Err("emulator stopped before caliptra-spdm-validator completed".to_string())
     }
 
     /// Find the caliptra-spdm-validator binary from SPDM_VALIDATOR_BIN env var.
-    fn find_spdm_validator_binary() -> String {
+    fn find_spdm_validator_binary() -> Result<String, String> {
         match std::env::var("SPDM_VALIDATOR_BIN") {
-            Ok(path) => path,
-            Err(_) => {
-                println!(
-                    "[{}]: SPDM_VALIDATOR_BIN env var not set. \
+            Ok(path) => Ok(path),
+            Err(_) => Err(
+                "SPDM_VALIDATOR_BIN env var not set. \
                      Build with: cd caliptra-util-host && cargo xtask build\n\
-                     Then set: export SPDM_VALIDATOR_BIN=<repo>/target/caliptra-util-host/debug/caliptra-spdm-validator",
-                    TEST_NAME
-                );
-                exit(-1);
-            }
+                     Then set: export SPDM_VALIDATOR_BIN=<repo>/target/caliptra-util-host/debug/caliptra-spdm-validator"
+                    .to_string(),
+            ),
         }
     }
 
@@ -317,7 +321,7 @@ mod test {
             .write(|w| w.prod_dbg_unlock_req(true));
 
         let config_path = test_config_path();
-        let completed = run_spdm_vdm_test(
+        let (completed, failed) = run_spdm_vdm_test(
             hw.i3c_port().unwrap(),
             hw.i3c_address().unwrap().into(),
             Duration::from_secs(600),
@@ -337,9 +341,10 @@ mod test {
             ],
         );
 
-        let test = finish_runtime_hw_model(&mut hw);
-        completed.store(true, Ordering::Relaxed);
-        assert_eq!(0, test);
+        while !completed.load(Ordering::Relaxed) {
+            hw.step();
+        }
+        assert!(!failed.load(Ordering::Relaxed), "SPDM validator failed");
 
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }

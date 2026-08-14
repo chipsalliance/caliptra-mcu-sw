@@ -80,7 +80,6 @@ Caliptra RoT will provide common foundational services and APIs required to be i
 * Ownership Transfer
 * Cryptographic API
 * Certificate Store
-* Key-Value Store
 * Logging and Tracing API
 
 ### Applications

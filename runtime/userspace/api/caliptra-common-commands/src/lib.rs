@@ -78,8 +78,6 @@ pub struct FirmwareVersion {
 pub enum LogType {
     /// MCU debug log (Tock logging-flash capsule).
     Debug = 0,
-    /// Caliptra attestation log (sourced from Caliptra core).
-    Attestation = 1,
 }
 
 impl TryFrom<u32> for LogType {
@@ -87,7 +85,6 @@ impl TryFrom<u32> for LogType {
     fn try_from(value: u32) -> Result<Self, Self::Error> {
         match value {
             0 => Ok(LogType::Debug),
-            1 => Ok(LogType::Attestation),
             _ => Err(CaliptraCompletionCode::InvalidParameter),
         }
     }
@@ -377,8 +374,9 @@ pub trait CommandAuthorizer {
     ///   wire (hash-anchored device-side before use)
     /// * `sig` - The hybrid signature received from the host
     #[allow(clippy::too_many_arguments)]
-    async fn verify_signatures(
+    async fn verify_signatures<Alloc: ApiAlloc>(
         &mut self,
+        alloc: &Alloc,
         cmd_id: u32,
         payload: &[u8],
         nonce: &[u8; AUTH_CMD_NONCE_LEN],
