@@ -22,3 +22,4 @@ clap = { version = "4", features = ["derive"] }
 corim-rs = { git = "https://github.com/chipsalliance/caliptra-corim-rs.git", branch = "caliptra-main" }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 ciborium = "0.2"
+zeroize = { version = "1.6", default-features = false }
