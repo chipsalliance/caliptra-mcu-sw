@@ -51,7 +51,20 @@ pub fn runtime_build_with_apps(args: &CaliptraBuildArgs) -> Result<PathBuf> {
     let release_dir = common.release_dir()?;
     let runtime_bin = release_dir.join(&output_name);
 
-    let runtime_features = features.filter(|s| !s.is_empty()).map(|f| f.to_string());
+    let mut runtime_features = features.filter(|s| !s.is_empty()).map(|f| f.to_string());
+    if platform_str == "fpga" {
+        match runtime_features.as_mut() {
+            Some(features)
+                if !features
+                    .split(',')
+                    .any(|feature| feature == "disable-lms-sig-verify") =>
+            {
+                features.push_str(",disable-lms-sig-verify");
+            }
+            None => runtime_features = Some("disable-lms-sig-verify".to_string()),
+            _ => {}
+        }
+    }
     let bundle_cmd = BundleCommands::Bundle {
         common,
         ld: LdArgs::default(),

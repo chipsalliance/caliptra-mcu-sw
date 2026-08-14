@@ -33,7 +33,14 @@ pub fn sign_auth_cmd_challenge(
     let authorizer = AsymmetricCommandAuthorizer::new(&TEST_ECC_PRIV_KEY, &TEST_MLDSA_SEED)?;
     let cmd_body = &cmd[size_of::<MailboxReqHeader>()..];
     let sigs = authorizer.authorize(cmd_id, cmd_body, challenge)?;
-    Ok(sigs.as_bytes().to_vec())
+    let (ecc_pub_x, ecc_pub_y, mldsa_pub) = authorizer.public_keys()?;
+
+    let mut tail = challenge.to_vec();
+    tail.extend_from_slice(&ecc_pub_x);
+    tail.extend_from_slice(&ecc_pub_y);
+    tail.extend_from_slice(&mldsa_pub);
+    tail.extend_from_slice(sigs.as_bytes());
+    Ok(tail)
 }
 
 pub fn authorize_cmd(hw: &mut impl McuHwModel, cmd_id: u32, cmd: &[u8]) -> Result<Vec<u8>> {

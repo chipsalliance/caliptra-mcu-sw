@@ -264,7 +264,7 @@ mod test {
         hw.start_i3c_controller();
 
         let config_path = test_config_path();
-        let (completed, failed) = run_spdm_vdm_test(
+        let completed = run_spdm_vdm_test(
             hw.i3c_port().unwrap(),
             hw.i3c_address().unwrap().into(),
             Duration::from_secs(600),
@@ -278,10 +278,9 @@ mod test {
             ],
         );
 
-        while !completed.load(Ordering::Relaxed) {
-            hw.step();
-        }
-        assert!(!failed.load(Ordering::Relaxed), "SPDM validator failed");
+        let test = finish_runtime_hw_model(&mut hw);
+        completed.store(true, Ordering::Relaxed);
+        assert_eq!(0, test);
 
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }

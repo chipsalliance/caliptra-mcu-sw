@@ -68,6 +68,7 @@ toml.workspace = true
 
 [features]
 default = ["all-features"]
+disable-lms-sig-verify = ["caliptra-mcu-mbox-lib/disable-lms-sig-verify"]
 # Caliptra MCU features
 all-features = [
   "spdm",

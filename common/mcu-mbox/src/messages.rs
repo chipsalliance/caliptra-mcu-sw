@@ -8,6 +8,7 @@ use caliptra_mcu_registers_generated::fuses::{
     OTP_CPTRA_CORE_VENDOR_PK_HASH_0, OTP_CPTRA_SS_OWNER_PK_HASH,
 };
 use core::convert::From;
+use core::mem::size_of;
 use core::num::NonZeroU32;
 use mcu_caliptra_api_lite::mailbox::CommandId as CaliptraCommandId;
 pub use mcu_caliptra_api_lite::mailbox::{
@@ -25,11 +26,12 @@ pub use mcu_caliptra_api_lite::mailbox::{
     CmHmacKdfCounterResp, CmHmacReq, CmHmacResp, CmImportReq, CmImportResp, CmKeyUsage,
     CmMldsaPublicKeyReq, CmMldsaPublicKeyResp, CmMldsaSignReq, CmMldsaSignResp, CmMldsaVerifyReq,
     CmRandomGenerateReq, CmRandomGenerateResp, CmRandomStirReq, CmShaFinalReq, CmShaFinalResp,
-    CmShaInitReq, CmShaInitResp, CmShaUpdateReq, CmStatusResp, Cmk, MailboxReqHeader,
-    MailboxRespHeader, MailboxRespHeaderVarSize, ProductionAuthDebugUnlockChallenge,
-    ProductionAuthDebugUnlockReq, ProductionAuthDebugUnlockToken, ResponseVarSize,
-    CMB_AES_ENCRYPTED_CONTEXT_SIZE, CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE,
-    CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, CMB_HMAC_MAX_SIZE, MAX_CMB_DATA_SIZE,
+    CmShaInitReq, CmShaInitResp, CmShaUpdateReq, CmStatusResp, Cmk, EcdsaVerifyReq, LmsVerifyReq,
+    MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize,
+    ProductionAuthDebugUnlockChallenge, ProductionAuthDebugUnlockReq,
+    ProductionAuthDebugUnlockToken, ResponseVarSize, CMB_AES_ENCRYPTED_CONTEXT_SIZE,
+    CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, CMB_HMAC_MAX_SIZE,
+    MAX_CMB_DATA_SIZE,
 };
 use zerocopy::{FromBytes, FromZeros, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
@@ -115,6 +117,8 @@ impl CommandId {
     pub const MC_ECDSA_CMK_PUBLIC_KEY: Self = Self(0x4D43_4550); // "MCEP"
     pub const MC_ECDSA_CMK_SIGN: Self = Self(0x4D43_4553); // "MCES"
     pub const MC_ECDSA_CMK_VERIFY: Self = Self(0x4D43_4556); // "MCEV"
+    pub const MC_ECDSA384_SIG_VERIFY: Self = Self(0x4D45_4356); // "MECV"
+    pub const MC_LMS_SIG_VERIFY: Self = Self(0x4D4C_4D56); // "MLMV"
 
     // MLDSA CMK commands (MML prefix avoids collision with MC_FUSE_INCREASE_CALIPTRA_MIN_SVN "MCMS")
     pub const MC_MLDSA_CMK_PUBLIC_KEY: Self = Self(0x4D4D_4C50); // "MMLP"
@@ -205,6 +209,8 @@ pub enum McuMailboxReq {
     EcdsaCmkPublicKey(McuEcdsaCmkPublicKeyReq),
     EcdsaCmkSign(McuEcdsaCmkSignReq),
     EcdsaCmkVerify(McuEcdsaCmkVerifyReq),
+    Ecdsa384SigVerify(McuEcdsa384SigVerifyReq),
+    LmsSigVerify(McuLmsSigVerifyReq),
     MldsaCmkPublicKey(McuMldsaCmkPublicKeyReq),
     MldsaCmkSign(McuMldsaCmkSignReq),
     MldsaCmkVerify(McuMldsaCmkVerifyReq),
@@ -274,6 +280,8 @@ impl McuMailboxReq {
             McuMailboxReq::EcdsaCmkPublicKey(req) => Ok(req.as_bytes()),
             McuMailboxReq::EcdsaCmkSign(req) => req.as_bytes_partial(),
             McuMailboxReq::EcdsaCmkVerify(req) => req.as_bytes_partial(),
+            McuMailboxReq::Ecdsa384SigVerify(req) => Ok(req.as_bytes()),
+            McuMailboxReq::LmsSigVerify(req) => Ok(req.as_bytes()),
             McuMailboxReq::MldsaCmkPublicKey(req) => Ok(req.as_bytes()),
             McuMailboxReq::MldsaCmkSign(req) => req.as_bytes_partial(),
             McuMailboxReq::MldsaCmkVerify(req) => req.as_bytes_partial(),
@@ -339,6 +347,8 @@ impl McuMailboxReq {
             McuMailboxReq::EcdsaCmkPublicKey(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::EcdsaCmkSign(req) => req.as_bytes_partial_mut(),
             McuMailboxReq::EcdsaCmkVerify(req) => req.as_bytes_partial_mut(),
+            McuMailboxReq::Ecdsa384SigVerify(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::LmsSigVerify(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::MldsaCmkPublicKey(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::MldsaCmkSign(req) => req.as_bytes_partial_mut(),
             McuMailboxReq::MldsaCmkVerify(req) => req.as_bytes_partial_mut(),
@@ -404,6 +414,8 @@ impl McuMailboxReq {
             McuMailboxReq::EcdsaCmkPublicKey(_) => CommandId::MC_ECDSA_CMK_PUBLIC_KEY,
             McuMailboxReq::EcdsaCmkSign(_) => CommandId::MC_ECDSA_CMK_SIGN,
             McuMailboxReq::EcdsaCmkVerify(_) => CommandId::MC_ECDSA_CMK_VERIFY,
+            McuMailboxReq::Ecdsa384SigVerify(_) => CommandId::MC_ECDSA384_SIG_VERIFY,
+            McuMailboxReq::LmsSigVerify(_) => CommandId::MC_LMS_SIG_VERIFY,
             McuMailboxReq::MldsaCmkPublicKey(_) => CommandId::MC_MLDSA_CMK_PUBLIC_KEY,
             McuMailboxReq::MldsaCmkSign(_) => CommandId::MC_MLDSA_CMK_SIGN,
             McuMailboxReq::MldsaCmkVerify(_) => CommandId::MC_MLDSA_CMK_VERIFY,
@@ -500,6 +512,8 @@ pub enum McuMailboxResp {
     EcdsaCmkPublicKey(McuEcdsaCmkPublicKeyResp),
     EcdsaCmkSign(McuEcdsaCmkSignResp),
     EcdsaCmkVerify(McuEcdsaCmkVerifyResp),
+    Ecdsa384SigVerify(McuEcdsa384SigVerifyResp),
+    LmsSigVerify(McuLmsSigVerifyResp),
     MldsaCmkPublicKey(McuMldsaCmkPublicKeyResp),
     MldsaCmkSign(McuMldsaCmkSignResp),
     MldsaCmkVerify(McuMldsaCmkVerifyResp),
@@ -627,6 +641,8 @@ impl McuMailboxResp {
             McuMailboxResp::EcdsaCmkPublicKey(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::EcdsaCmkSign(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::EcdsaCmkVerify(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::Ecdsa384SigVerify(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::LmsSigVerify(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::MldsaCmkPublicKey(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::MldsaCmkSign(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::MldsaCmkVerify(resp) => Ok(resp.as_bytes()),
@@ -690,6 +706,8 @@ impl McuMailboxResp {
             McuMailboxResp::EcdsaCmkPublicKey(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::EcdsaCmkSign(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::EcdsaCmkVerify(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::Ecdsa384SigVerify(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::LmsSigVerify(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::MldsaCmkPublicKey(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::MldsaCmkSign(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::MldsaCmkVerify(resp) => Ok(resp.as_mut_bytes()),
@@ -1311,6 +1329,33 @@ impl_mcu_request_varsize!(McuEcdsaCmkVerifyReq, CmEcdsaVerifyReq);
 #[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
 pub struct McuEcdsaCmkVerifyResp(pub MailboxRespHeader);
 impl Response for McuEcdsaCmkVerifyResp {}
+
+// ---- Raw signature verification passthroughs ----
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuEcdsa384SigVerifyReq(pub EcdsaVerifyReq);
+impl Request for McuEcdsa384SigVerifyReq {
+    const ID: CommandId = CommandId::MC_ECDSA384_SIG_VERIFY;
+    type Resp = McuEcdsa384SigVerifyResp;
+}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuEcdsa384SigVerifyResp(pub MailboxRespHeader);
+impl Response for McuEcdsa384SigVerifyResp {}
+
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuLmsSigVerifyReq(pub LmsVerifyReq);
+impl Request for McuLmsSigVerifyReq {
+    const ID: CommandId = CommandId::MC_LMS_SIG_VERIFY;
+    type Resp = McuLmsSigVerifyResp;
+}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuLmsSigVerifyResp(pub MailboxRespHeader);
+impl Response for McuLmsSigVerifyResp {}
 
 // ---- MLDSA CMK wrappers ----
 #[repr(C)]
@@ -2039,6 +2084,20 @@ mod tests {
         assert_eq!(
             core::mem::size_of::<GetAttestationResp>(),
             core::mem::size_of::<MailboxRespHeaderVarSize>() + MAX_ATTESTATION_RESP_DATA_SIZE
+        );
+    }
+
+    #[test]
+    fn test_signature_verify_command_ids_and_layouts() {
+        assert_eq!(CommandId::MC_ECDSA384_SIG_VERIFY.0, 0x4D45_4356); // "MECV"
+        assert_eq!(CommandId::MC_LMS_SIG_VERIFY.0, 0x4D4C_4D56); // "MLMV"
+        assert_eq!(size_of::<McuEcdsa384SigVerifyReq>(), 244);
+        assert_eq!(size_of::<McuLmsSigVerifyReq>(), 1720);
+        assert_eq!(size_of::<McuEcdsa384SigVerifyResp>(), 8);
+        assert_eq!(size_of::<McuLmsSigVerifyResp>(), 8);
+        assert_eq!(
+            MailboxRespHeader::FIPS_STATUS_NOT_APPROVED_USER_SUPPLIED_DIGEST,
+            0x5553_5244
         );
     }
 
