@@ -36,6 +36,7 @@ pub(crate) const CMD_CM_SHA_INIT: u32 = 0x434D_5349; // "CMSI"
 pub(crate) const CMD_CM_SHA_UPDATE: u32 = 0x434D_5355; // "CMSU"
 pub(crate) const CMD_CM_SHA_FINAL: u32 = 0x434D_5346; // "CMSF"
 pub(crate) const CMD_CM_RANDOM_GENERATE: u32 = 0x434D_5247; // "CMRG"
+pub(crate) const CMD_ECDSA384_SIGNATURE_VERIFY: u32 = 0x4543_5632; // "ECV2"
 
 /// Caliptra mailbox command ID for `AUTHORIZE_AND_STASH`.
 /// Mirrored from `caliptra-api::CommandId::AUTHORIZE_AND_STASH`.

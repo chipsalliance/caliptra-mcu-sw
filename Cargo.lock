@@ -1540,36 +1540,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "caliptra-mcu-libapi-caliptra"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "caliptra-api",
- "caliptra-auth-man-types",
- "caliptra-error",
- "caliptra-image-types",
- "caliptra-mcu-flash-image",
- "caliptra-mcu-libsyscall-caliptra",
- "caliptra-mcu-libtock_console",
- "caliptra-mcu-libtock_platform",
- "caliptra-mcu-libtock_runtime",
- "caliptra-mcu-libtock_unittest",
- "caliptra-mcu-libtockasync",
- "caliptra-mcu-pldm-common",
- "caliptra-mcu-pldm-lib",
- "caliptra-mcu-runtime-userspace-error",
- "caliptra-mcu-userlog",
- "caliptra-ocp-eat",
- "defmt",
- "dpe",
- "embassy-executor",
- "embassy-sync",
- "embedded-alloc",
- "futures",
- "zerocopy",
-]
-
-[[package]]
 name = "caliptra-mcu-libapi-emulated-caliptra"
 version = "0.1.0"
 dependencies = [
@@ -3004,19 +2974,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 
 [[package]]
-name = "crypto"
-version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-dpe?rev=a26db5b869f13f0d2c5762b75f8892b9fe2d8055#a26db5b869f13f0d2c5762b75f8892b9fe2d8055"
-dependencies = [
- "arrayvec",
- "caliptra-cfi-derive-git",
- "caliptra-cfi-lib-git",
- "constant_time_eq 0.3.1",
- "zerocopy",
- "zeroize",
-]
-
-[[package]]
 name = "crypto-bigint"
 version = "0.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3292,23 +3249,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "dpe"
-version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-dpe?rev=a26db5b869f13f0d2c5762b75f8892b9fe2d8055#a26db5b869f13f0d2c5762b75f8892b9fe2d8055"
-dependencies = [
- "bitflags 2.13.0",
- "caliptra-cfi-derive-git",
- "caliptra-cfi-lib-git",
- "cfg-if",
- "constant_time_eq 0.3.1",
- "crypto",
- "platform",
- "ufmt 0.2.0",
- "zerocopy",
- "zeroize",
-]
-
-[[package]]
 name = "dunce"
 version = "1.0.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3504,7 +3444,6 @@ dependencies = [
  "caliptra-mcu-attestation-evidence",
  "caliptra-mcu-config-emulator",
  "caliptra-mcu-config-fpga",
- "caliptra-mcu-libapi-caliptra",
  "caliptra-mcu-libsyscall-caliptra",
  "caliptra-mcu-libtock",
  "caliptra-mcu-libtock_alarm",
@@ -3520,6 +3459,7 @@ dependencies = [
  "critical-section",
  "embassy-executor",
  "embedded-alloc",
+ "mcu-caliptra-api-lite",
  "portable-atomic",
  "zerocopy",
 ]
@@ -4708,7 +4648,6 @@ dependencies = [
  "caliptra-auth-man-types",
  "caliptra-image-types",
  "caliptra-mcu-flash-image",
- "caliptra-mcu-libapi-caliptra",
  "caliptra-mcu-libsyscall-caliptra",
  "caliptra-mcu-libtock_console",
  "caliptra-mcu-libtock_platform",
@@ -5292,16 +5231,6 @@ name = "pkg-config"
 version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7edddbd0b52d732b21ad9a5fab5c704c14cd949e5e9a1ec5929a24fded1b904c"
-
-[[package]]
-name = "platform"
-version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-dpe?rev=a26db5b869f13f0d2c5762b75f8892b9fe2d8055#a26db5b869f13f0d2c5762b75f8892b9fe2d8055"
-dependencies = [
- "arrayvec",
- "cfg-if",
- "ufmt 0.2.0",
-]
 
 [[package]]
 name = "polyval"
@@ -7106,7 +7035,6 @@ dependencies = [
  "caliptra-mcu-config-emulator",
  "caliptra-mcu-config-fpga",
  "caliptra-mcu-flash-image",
- "caliptra-mcu-libapi-caliptra",
  "caliptra-mcu-libapi-emulated-caliptra",
  "caliptra-mcu-libsyscall-caliptra",
  "caliptra-mcu-libtock",

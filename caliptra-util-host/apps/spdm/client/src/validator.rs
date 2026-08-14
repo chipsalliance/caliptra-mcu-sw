@@ -25,12 +25,10 @@ use caliptra_mcu_debug_unlock_signer::{DebugUnlockSigner, ProdDebugUnlockChallen
 use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
 use caliptra_util_host_commands::api::CaliptraApiError;
 
-const IMPLEMENTED_AUTHORIZED_SUBCOMMANDS: u32 = (1 << 0)
-    | (1 << 1)
-    | (1 << 2)
-    | (1 << 3)
-    | (1 << 4)
-    | (1 << 5);
+use crate::AuthorizedCommandData;
+
+const IMPLEMENTED_AUTHORIZED_SUBCOMMANDS: u32 =
+    (1 << 0) | (1 << 1) | (1 << 2) | (1 << 3) | (1 << 4) | (1 << 5);
 
 /// Result of a single validation check.
 #[derive(Debug, Clone)]
@@ -343,6 +341,18 @@ struct AuthorizedCommandAuthorization {
     mldsa_pub: [u8; 2592],
 }
 
+impl AuthorizedCommandAuthorization {
+    fn as_command_data(&self) -> AuthorizedCommandData<'_> {
+        AuthorizedCommandData {
+            sig: &self.sig,
+            nonce: &self.nonce,
+            ecc_pub_x: &self.ecc_pub_x,
+            ecc_pub_y: &self.ecc_pub_y,
+            mldsa_pub: &self.mldsa_pub,
+        }
+    }
+}
+
 fn authorize_command(
     client: &mut SpdmVdmClient,
     command_id: u32,
@@ -399,15 +409,7 @@ pub fn run_provision_vendor_pk_hash(
         Ok(auth) => auth,
         Err(e) => return ValidationResult::fail(test_name, e),
     };
-    match client.provision_vendor_pk_hash(
-        slot,
-        &hash,
-        &auth.sig,
-        &auth.nonce,
-        &auth.ecc_pub_x,
-        &auth.ecc_pub_y,
-        &auth.mldsa_pub,
-    ) {
+    match client.provision_vendor_pk_hash(slot, &hash, auth.as_command_data()) {
         Ok(_) => ValidationResult::pass(test_name, "hash provisioned"),
         Err(e) => ValidationResult::fail(test_name, e.to_string()),
     }
@@ -433,15 +435,7 @@ pub fn run_increase_caliptra_min_svn(
         Ok(auth) => auth,
         Err(e) => return ValidationResult::fail(test_name, e),
     };
-    match client.fuse_increase_caliptra_min_svn(
-        flags,
-        svn,
-        &auth.sig,
-        &auth.nonce,
-        &auth.ecc_pub_x,
-        &auth.ecc_pub_y,
-        &auth.mldsa_pub,
-    ) {
+    match client.fuse_increase_caliptra_min_svn(flags, svn, auth.as_command_data()) {
         Ok(_) => ValidationResult::pass(test_name, "minimum SVN updated"),
         Err(e) => ValidationResult::fail(test_name, e.to_string()),
     }
@@ -476,11 +470,7 @@ pub fn run_revoke_vendor_pub_key(
         slot,
         key_type,
         key_index,
-        &auth.sig,
-        &auth.nonce,
-        &auth.ecc_pub_x,
-        &auth.ecc_pub_y,
-        &auth.mldsa_pub,
+        auth.as_command_data(),
     ) {
         Ok(_) => ValidationResult::pass(test_name, "key revoked"),
         Err(e) => ValidationResult::fail(test_name, e.to_string()),
@@ -507,15 +497,7 @@ pub fn run_revoke_vendor_pk_hash(
         Ok(auth) => auth,
         Err(e) => return ValidationResult::fail(test_name, e),
     };
-    match client.fuse_revoke_vendor_pk_hash(
-        reserved,
-        slot,
-        &auth.sig,
-        &auth.nonce,
-        &auth.ecc_pub_x,
-        &auth.ecc_pub_y,
-        &auth.mldsa_pub,
-    ) {
+    match client.fuse_revoke_vendor_pk_hash(reserved, slot, auth.as_command_data()) {
         Ok(_) => ValidationResult::pass(test_name, "PK-hash slot revoked"),
         Err(e) => ValidationResult::fail(test_name, e.to_string()),
     }
@@ -544,15 +526,7 @@ fn signed_provision_vendor_pk_hash(
     )
     .map_err(AuthorizedCommandError::Preparation)?;
     client
-        .provision_vendor_pk_hash(
-            slot,
-            hash,
-            &auth.sig,
-            &auth.nonce,
-            &auth.ecc_pub_x,
-            &auth.ecc_pub_y,
-            &auth.mldsa_pub,
-        )
+        .provision_vendor_pk_hash(slot, hash, auth.as_command_data())
         .map(|_| ())
         .map_err(AuthorizedCommandError::Command)
 }
@@ -574,15 +548,7 @@ fn signed_increase_caliptra_min_svn(
     )
     .map_err(AuthorizedCommandError::Preparation)?;
     client
-        .fuse_increase_caliptra_min_svn(
-            flags,
-            svn,
-            &auth.sig,
-            &auth.nonce,
-            &auth.ecc_pub_x,
-            &auth.ecc_pub_y,
-            &auth.mldsa_pub,
-        )
+        .fuse_increase_caliptra_min_svn(flags, svn, auth.as_command_data())
         .map(|_| ())
         .map_err(AuthorizedCommandError::Command)
 }
@@ -607,17 +573,7 @@ fn signed_revoke_vendor_pub_key(
     )
     .map_err(AuthorizedCommandError::Preparation)?;
     client
-        .fuse_revoke_vendor_pub_key(
-            reserved,
-            slot,
-            key_type,
-            key_index,
-            &auth.sig,
-            &auth.nonce,
-            &auth.ecc_pub_x,
-            &auth.ecc_pub_y,
-            &auth.mldsa_pub,
-        )
+        .fuse_revoke_vendor_pub_key(reserved, slot, key_type, key_index, auth.as_command_data())
         .map(|_| ())
         .map_err(AuthorizedCommandError::Command)
 }
@@ -639,15 +595,7 @@ fn signed_revoke_vendor_pk_hash(
     )
     .map_err(AuthorizedCommandError::Preparation)?;
     client
-        .fuse_revoke_vendor_pk_hash(
-            reserved,
-            slot,
-            &auth.sig,
-            &auth.nonce,
-            &auth.ecc_pub_x,
-            &auth.ecc_pub_y,
-            &auth.mldsa_pub,
-        )
+        .fuse_revoke_vendor_pk_hash(reserved, slot, auth.as_command_data())
         .map(|_| ())
         .map_err(AuthorizedCommandError::Command)
 }
@@ -837,14 +785,11 @@ pub fn run_fuse_policy_rejection_tests(
     ]
 }
 
-fn run_authorized_subcommand_capability_test(
-    client: &mut SpdmVdmClient,
-) -> ValidationResult {
+fn run_authorized_subcommand_capability_test(client: &mut SpdmVdmClient) -> ValidationResult {
     match client.get_device_capabilities() {
         Ok(capabilities) => {
             let advertised = capabilities.authorized_subcommand_capabilities();
-            if advertised & IMPLEMENTED_AUTHORIZED_SUBCOMMANDS
-                == IMPLEMENTED_AUTHORIZED_SUBCOMMANDS
+            if advertised & IMPLEMENTED_AUTHORIZED_SUBCOMMANDS == IMPLEMENTED_AUTHORIZED_SUBCOMMANDS
             {
                 ValidationResult::pass(
                     "Authorized fuse capability advertisement",

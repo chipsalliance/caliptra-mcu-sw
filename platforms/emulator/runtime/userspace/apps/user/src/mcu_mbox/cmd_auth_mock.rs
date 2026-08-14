@@ -75,7 +75,7 @@ fn set_challenge(challenge: [u8; AUTH_CMD_NONCE_LEN]) {
 impl CommandAuthorizer for MockCommandAuthorizer {
     async fn is_authorized<'a, Alloc: ApiAlloc>(
         &mut self,
-        _alloc: &Alloc,
+        alloc: &Alloc,
         cmd_id: CommandId,
         req: &'a [u8],
     ) -> Result<&'a [u8], AuthorizationError> {
@@ -114,6 +114,7 @@ impl CommandAuthorizer for MockCommandAuthorizer {
 
         // Nonce gate + device_ops verify.
         self.verify_signatures(
+            alloc,
             u32::from(cmd_id),
             cmd_body,
             wire_nonce,
@@ -130,8 +131,9 @@ impl CommandAuthorizer for MockCommandAuthorizer {
     /// one-time challenge, compare it to the wire nonce (absent/mismatch ->
     /// denied), then verify via `device_ops`.
     #[allow(clippy::too_many_arguments)]
-    async fn verify_signatures(
+    async fn verify_signatures<Alloc: ApiAlloc>(
         &mut self,
+        alloc: &Alloc,
         cmd_id: u32,
         payload: &[u8],
         nonce: &[u8; AUTH_CMD_NONCE_LEN],
@@ -146,7 +148,7 @@ impl CommandAuthorizer for MockCommandAuthorizer {
         }
 
         crate::caliptra_cmd_handler::device_ops::verify_authorized_signatures(
-            cmd_id, payload, nonce, ecc_pub_x, ecc_pub_y, mldsa_pub, sig,
+            alloc, cmd_id, payload, nonce, ecc_pub_x, ecc_pub_y, mldsa_pub, sig,
         )
         .await
         .map_err(|_| AuthorizationError)

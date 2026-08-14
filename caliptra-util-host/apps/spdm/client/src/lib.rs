@@ -72,6 +72,14 @@ pub struct SpdmVdmClient<'a> {
     transport: SpdmVdmTransport<'a>,
 }
 
+pub struct AuthorizedCommandData<'a> {
+    pub sig: &'a HybridSignature,
+    pub nonce: &'a [u8; AUTH_CMD_NONCE_LEN],
+    pub ecc_pub_x: &'a [u8; 48],
+    pub ecc_pub_y: &'a [u8; 48],
+    pub mldsa_pub: &'a [u8; 2592],
+}
+
 impl<'a> SpdmVdmClient<'a> {
     /// Create a new SpdmVdmClient with the provided VDM driver.
     pub fn new(driver: &'a mut dyn SpdmVdmDriver) -> Self {
@@ -191,20 +199,16 @@ impl<'a> SpdmVdmClient<'a> {
         &mut self,
         slot: u32,
         hash: &[u8; 48],
-        sig: &HybridSignature,
-        nonce: &[u8; AUTH_CMD_NONCE_LEN],
-        ecc_pub_x: &[u8; 48],
-        ecc_pub_y: &[u8; 48],
-        mldsa_pub: &[u8; 2592],
+        auth: AuthorizedCommandData<'_>,
     ) -> CaliptraResult<ProvisionVendorPkHashResponse> {
         let request = ProvisionVendorPkHashRequest {
             slot,
             hash: *hash,
-            sig: sig.clone(),
-            nonce: *nonce,
-            ecc_pub_x: *ecc_pub_x,
-            ecc_pub_y: *ecc_pub_y,
-            mldsa_pub: *mldsa_pub,
+            sig: auth.sig.clone(),
+            nonce: *auth.nonce,
+            ecc_pub_x: *auth.ecc_pub_x,
+            ecc_pub_y: *auth.ecc_pub_y,
+            mldsa_pub: *auth.mldsa_pub,
         };
         let mut session = self
             .create_session()
@@ -216,20 +220,16 @@ impl<'a> SpdmVdmClient<'a> {
         &mut self,
         flags: u32,
         svn: u32,
-        sig: &HybridSignature,
-        nonce: &[u8; AUTH_CMD_NONCE_LEN],
-        ecc_pub_x: &[u8; 48],
-        ecc_pub_y: &[u8; 48],
-        mldsa_pub: &[u8; 2592],
+        auth: AuthorizedCommandData<'_>,
     ) -> CaliptraResult<FuseIncreaseCaliptraMinSvnResponse> {
         let request = FuseIncreaseCaliptraMinSvnRequest {
             flags,
             svn,
-            sig: sig.clone(),
-            nonce: *nonce,
-            ecc_pub_x: *ecc_pub_x,
-            ecc_pub_y: *ecc_pub_y,
-            mldsa_pub: *mldsa_pub,
+            sig: auth.sig.clone(),
+            nonce: *auth.nonce,
+            ecc_pub_x: *auth.ecc_pub_x,
+            ecc_pub_y: *auth.ecc_pub_y,
+            mldsa_pub: *auth.mldsa_pub,
         };
         let mut session = self
             .create_session()
@@ -243,22 +243,18 @@ impl<'a> SpdmVdmClient<'a> {
         vendor_pk_hash_slot: u32,
         key_type: u32,
         key_index: u32,
-        sig: &HybridSignature,
-        nonce: &[u8; AUTH_CMD_NONCE_LEN],
-        ecc_pub_x: &[u8; 48],
-        ecc_pub_y: &[u8; 48],
-        mldsa_pub: &[u8; 2592],
+        auth: AuthorizedCommandData<'_>,
     ) -> CaliptraResult<FuseRevokeVendorPubKeyResponse> {
         let request = FuseRevokeVendorPubKeyRequest {
             reserved,
             vendor_pk_hash_slot,
             key_type,
             key_index,
-            sig: sig.clone(),
-            nonce: *nonce,
-            ecc_pub_x: *ecc_pub_x,
-            ecc_pub_y: *ecc_pub_y,
-            mldsa_pub: *mldsa_pub,
+            sig: auth.sig.clone(),
+            nonce: *auth.nonce,
+            ecc_pub_x: *auth.ecc_pub_x,
+            ecc_pub_y: *auth.ecc_pub_y,
+            mldsa_pub: *auth.mldsa_pub,
         };
         let mut session = self
             .create_session()
@@ -270,20 +266,16 @@ impl<'a> SpdmVdmClient<'a> {
         &mut self,
         reserved: u32,
         vendor_pk_hash_slot: u32,
-        sig: &HybridSignature,
-        nonce: &[u8; AUTH_CMD_NONCE_LEN],
-        ecc_pub_x: &[u8; 48],
-        ecc_pub_y: &[u8; 48],
-        mldsa_pub: &[u8; 2592],
+        auth: AuthorizedCommandData<'_>,
     ) -> CaliptraResult<FuseRevokeVendorPkHashResponse> {
         let request = FuseRevokeVendorPkHashRequest {
             reserved,
             vendor_pk_hash_slot,
-            sig: sig.clone(),
-            nonce: *nonce,
-            ecc_pub_x: *ecc_pub_x,
-            ecc_pub_y: *ecc_pub_y,
-            mldsa_pub: *mldsa_pub,
+            sig: auth.sig.clone(),
+            nonce: *auth.nonce,
+            ecc_pub_x: *auth.ecc_pub_x,
+            ecc_pub_y: *auth.ecc_pub_y,
+            mldsa_pub: *auth.mldsa_pub,
         };
         let mut session = self
             .create_session()
