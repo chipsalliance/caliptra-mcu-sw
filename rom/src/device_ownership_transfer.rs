@@ -27,6 +27,7 @@ use caliptra_mcu_error::{McuError, McuResult};
 use caliptra_mcu_romtime::otp::Otp;
 use caliptra_mcu_romtime::{HexWord, McuRomBootStatus};
 use zerocopy::{transmute, FromBytes, Immutable, IntoBytes, KnownLayout};
+use zeroize::Zeroize;
 
 const DOT_LABEL: &[u8; 23] = b"Caliptra DOT stable key";
 pub const DOT_BLOB_SIZE: usize = core::mem::size_of::<DotBlob>();
@@ -176,12 +177,13 @@ pub(crate) fn install_owner_pk_hash(
 }
 
 /// Caliptra Cryptographic Mailbox Key (CMK) handle.
-#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq, Zeroize)]
 pub struct Cmk(pub [u32; 32]);
 
 /// DOT Effective Key derived from DOT_ROOT_KEY and DOT_FUSE_ARRAY state.
 ///
 /// This key is used to authenticate DOT blobs via HMAC.
+#[derive(Zeroize)]
 pub struct DotEffectiveKey(pub Cmk);
 
 /// The DOT blob data structure containing ownership credentials and locking keys.
@@ -287,9 +289,11 @@ pub fn dot_flow(
     env.mci
         .set_flow_checkpoint(McuRomBootStatus::DeviceOwnershipTransferStarted.into());
 
-    let dot_effective_key = derive_stable_key_flow(env, dot_fuses, stable_key_type)?;
+    let mut dot_effective_key = derive_stable_key_flow(env, dot_fuses, stable_key_type)?;
 
-    verify_dot_blob(&mut env.soc_manager, blob, &dot_effective_key)?;
+    let verify_result = verify_dot_blob(&mut env.soc_manager, blob, &dot_effective_key);
+    dot_effective_key.zeroize();
+    verify_result?;
 
     burn_dot_fuses(env, dot_fuses, blob)?;
 
