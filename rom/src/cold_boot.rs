@@ -445,10 +445,8 @@ fn enter_i3c_services(
     }
 
     let reassembly_buf = unsafe {
-        core::slice::from_raw_parts_mut(
-            mci.registers.mcu_mbox0_csr_mbox_sram.as_ptr() as *mut u32,
-            crate::i3c_mailbox::MAX_REASSEMBLY_WORDS,
-        )
+        &mut *(mci.registers.mcu_mbox0_csr_mbox_sram.as_ptr()
+            as *mut [u32; crate::i3c_mailbox::MAX_REASSEMBLY_WORDS])
     };
 
     let mut handler =

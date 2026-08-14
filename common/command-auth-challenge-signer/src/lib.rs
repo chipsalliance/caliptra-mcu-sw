@@ -15,6 +15,7 @@ use fips204::ml_dsa_87;
 use fips204::traits::{KeyGen, SerDes, Signer as MldsaSigner};
 use p384::ecdsa::{signature::Signer, Signature, SigningKey};
 use sha2::{Digest, Sha384, Sha512};
+use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 /// Width of the authorization challenge nonce in bytes. Re-exported from
 /// `caliptra-mcu-mbox-common`, the single source of truth for this size.
@@ -61,17 +62,28 @@ pub struct AsymmetricCommandAuthorizer {
     mldsa_pub: [u8; MLDSA87_PUB_KEY_BYTE_SIZE],
 }
 
+impl Drop for AsymmetricCommandAuthorizer {
+    fn drop(&mut self) {
+        self.mldsa_pub.zeroize();
+    }
+}
+
+// The ECC and ML-DSA private-key fields zeroize themselves on drop; the
+// implementation above covers the remaining cached key material.
+impl ZeroizeOnDrop for AsymmetricCommandAuthorizer {}
+
 impl AsymmetricCommandAuthorizer {
     /// Create a new authorizer using the provided ECC private key and ML-DSA seed.
     pub fn new(ecc_key: &[u8], mldsa_seed: &[u8]) -> Result<Self> {
         let ecc_key = SigningKey::from_slice(ecc_key)
             .map_err(|e| anyhow::anyhow!("Failed to load ECC private key: {}", e))?;
 
-        let seed: &[u8; 32] = mldsa_seed
-            .try_into()
-            .map_err(|_| anyhow::anyhow!("ML-DSA seed must be 32 bytes"))?;
+        let seed = Zeroizing::new(
+            <[u8; 32]>::try_from(mldsa_seed)
+                .map_err(|_| anyhow::anyhow!("ML-DSA seed must be 32 bytes"))?,
+        );
 
-        let (pk, mldsa_key) = ml_dsa_87::KG::keygen_from_seed(seed);
+        let (pk, mldsa_key) = ml_dsa_87::KG::keygen_from_seed(&seed);
 
         Ok(Self {
             ecc_key,
@@ -107,7 +119,8 @@ impl CommandAuthChallengeSigner for AsymmetricCommandAuthorizer {
         // inner-hashed transcript. The nonce TRAVELS on the wire (prod-debug-unlock
         // idiom): the device compares the wire nonce to its stored one-time challenge,
         // then rebuilds this identical pre-image from the wire copy before verifying.
-        let mut pre_image = Vec::with_capacity(4 + payload.len() + AUTH_CMD_NONCE_LEN);
+        let mut pre_image =
+            Zeroizing::new(Vec::with_capacity(4 + payload.len() + AUTH_CMD_NONCE_LEN));
         pre_image.extend_from_slice(&cmd_id.to_be_bytes());
         pre_image.extend_from_slice(payload);
         pre_image.extend_from_slice(challenge);
@@ -121,10 +134,10 @@ impl CommandAuthChallengeSigner for AsymmetricCommandAuthorizer {
         // 2. ML-DSA-87 over SHA-512(pre-image): sign the 64-byte SHA-512 digest as the
         //    message (external pre-hash), matching the device's verify over the same
         //    digest.
-        let mldsa_msg: [u8; 64] = Sha512::digest(&pre_image).into();
+        let mldsa_msg = Zeroizing::new(<[u8; 64]>::from(Sha512::digest(&pre_image)));
         let mldsa_sig = self
             .mldsa_key
-            .try_sign(&mldsa_msg, &[])
+            .try_sign(&mldsa_msg[..], &[])
             .map_err(|e| anyhow::anyhow!("ML-DSA signing failed: {:?}", e))?; // returns [u8; 4627]
 
         let mut padded_mldsa_sig = mldsa_sig.to_vec();
@@ -181,6 +194,15 @@ mod tests {
         164, 61, 183, 99, 202, 159, 47, 112, 54,
     ];
     const TEST_MLDSA_SEED: [u8; 32] = *b"caliptra-mcu-testing-mldsa-seed-";
+
+    #[test]
+    fn private_key_owners_zeroize_on_drop() {
+        fn assert_zeroize_on_drop<T: ZeroizeOnDrop>() {}
+
+        assert_zeroize_on_drop::<SigningKey>();
+        assert_zeroize_on_drop::<ml_dsa_87::PrivateKey>();
+        assert_zeroize_on_drop::<AsymmetricCommandAuthorizer>();
+    }
 
     /// Recreate the ML-DSA-87 public key from the test seed for verification.
     fn mldsa_pubkey() -> ml_dsa_87::PublicKey {

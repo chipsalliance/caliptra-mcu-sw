@@ -1021,10 +1021,10 @@ dependencies = [
  "caliptra-image-types",
  "caliptra-mcu-mbox-common",
  "fips204",
- "hmac",
  "p384",
  "sha2",
  "zerocopy",
+ "zeroize",
 ]
 
 [[package]]
