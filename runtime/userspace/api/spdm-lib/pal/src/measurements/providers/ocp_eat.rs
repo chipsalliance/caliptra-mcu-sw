@@ -12,7 +12,7 @@ use caliptra_mcu_attestation_evidence::{
 };
 use caliptra_mcu_scratch_alloc::BitmapAllocator;
 use caliptra_mcu_spdm_traits::{MeasurementInfo, SPDM_NONCE_LEN};
-use mcu_caliptra_api_lite::DPE_LABEL_LEN;
+use mcu_caliptra_api::DPE_LABEL_LEN;
 use mcu_error::McuResult;
 
 /// Single measurement entry: index 0xFD, StructuredManifest.

@@ -9,7 +9,7 @@ authors.workspace = true
 [dependencies]
 caliptra-api.workspace = true
 caliptra-mcu-mbox-common.workspace = true
-mcu-caliptra-api-lite = { workspace = true, features = ["mailbox-io"] }
+mcu-caliptra-api = { workspace = true, features = ["mailbox-io"] }
 zerocopy.workspace = true
 
 [features]

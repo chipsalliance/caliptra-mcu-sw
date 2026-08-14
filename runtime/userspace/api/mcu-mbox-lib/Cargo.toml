@@ -13,7 +13,7 @@ embassy-sync.workspace = true
 mcu-error.workspace = true
 caliptra-mcu-common-commands.workspace = true
 caliptra-mcu-measurement-api.workspace = true
-mcu-caliptra-api-lite = { workspace = true, features = ["mailbox-io"] }
+mcu-caliptra-api = { workspace = true, features = ["mailbox-io"] }
 dpe.workspace = true
 caliptra-mcu-libsyscall-caliptra.workspace = true
 caliptra-mcu-libtock_alarm.workspace = true

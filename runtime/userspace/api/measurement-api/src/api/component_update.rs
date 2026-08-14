@@ -9,7 +9,7 @@ use caliptra_mcu_libsyscall_caliptra::soft_pcr_store::{
     MeasurementRecord, SoftwarePcrStore, SOFT_PCR_STORE_DRIVER_NUM,
 };
 use caliptra_mcu_libtock_platform::Syscalls;
-use mcu_caliptra_api_lite::{
+use mcu_caliptra_api::{
     authorize_and_stash as caliptra_authorize, dpe_update_context_measurement, extend_pcr31,
     sha_finish, sha_init, sha_update, ApiAlloc, DpeUpdateContextMeasurementParams,
     DpeUpdateContextMeasurementResult, HashAlgo, SHA_CONTEXT_SIZE,

@@ -21,7 +21,7 @@ use caliptra_mcu_spdm_traits::{SpdmPalAsymAlgo, SpdmPalCertStore, SpdmPalHashAlg
 use core::ops::Range;
 use core::sync::atomic::Ordering;
 use endorsement::slot_index;
-use mcu_caliptra_api_lite::{
+use mcu_caliptra_api::{
     dpe_get_cert_chain_chunk, walk_dpe_chain, DpeChainSink, DPE_LABEL_LEN, DPE_MAX_CHUNK_SIZE,
 };
 use mcu_error::codes::{INTERNAL_BUG, INVARIANT};
@@ -153,19 +153,17 @@ async fn validate_root_hash<M: MeasurementProvider>(
     cert_chain: &[u8],
 ) -> McuResult<()> {
     let root_cert_len = der_first_seq_len(cert_chain).ok_or(INVARIANT)?;
-    let sha_buf =
-        mcu_caliptra_api_lite::ApiAlloc::alloc(pal, mcu_caliptra_api_lite::SHA_CONTEXT_SIZE)?;
+    let sha_buf = mcu_caliptra_api::ApiAlloc::alloc(pal, mcu_caliptra_api::SHA_CONTEXT_SIZE)?;
     let mut state =
-        mcu_caliptra_api_lite::sha_init(pal, sha_buf, mcu_caliptra_api_lite::HashAlgo::Sha384, &[])
-            .await?;
-    mcu_caliptra_api_lite::sha_update(
+        mcu_caliptra_api::sha_init(pal, sha_buf, mcu_caliptra_api::HashAlgo::Sha384, &[]).await?;
+    mcu_caliptra_api::sha_update(
         pal,
         &mut state,
         checked_slice(cert_chain, 0, root_cert_len)?,
     )
     .await?;
     let mut digest = [0u8; 48];
-    mcu_caliptra_api_lite::sha_finish(pal, &mut state, &mut digest).await?;
+    mcu_caliptra_api::sha_finish(pal, &mut state, &mut digest).await?;
     if &digest != root_hash {
         return Err(INVARIANT);
     }
@@ -184,11 +182,9 @@ async fn validate_streamed_root_hash<M: MeasurementProvider>(
     data_len: usize,
 ) -> McuResult<()> {
     let first_cert_len = streamed_first_der_len(managed, data_len).await?;
-    let sha_buf =
-        mcu_caliptra_api_lite::ApiAlloc::alloc(pal, mcu_caliptra_api_lite::SHA_CONTEXT_SIZE)?;
+    let sha_buf = mcu_caliptra_api::ApiAlloc::alloc(pal, mcu_caliptra_api::SHA_CONTEXT_SIZE)?;
     let mut state =
-        mcu_caliptra_api_lite::sha_init(pal, sha_buf, mcu_caliptra_api_lite::HashAlgo::Sha384, &[])
-            .await?;
+        mcu_caliptra_api::sha_init(pal, sha_buf, mcu_caliptra_api::HashAlgo::Sha384, &[]).await?;
     let mut offset = 0usize;
     let mut buf = [0u8; 256];
     while offset < first_cert_len {
@@ -199,11 +195,11 @@ async fn validate_streamed_root_hash<M: MeasurementProvider>(
         if read != n {
             return Err(INVARIANT);
         }
-        mcu_caliptra_api_lite::sha_update(pal, &mut state, checked_slice(&buf, 0, n)?).await?;
+        mcu_caliptra_api::sha_update(pal, &mut state, checked_slice(&buf, 0, n)?).await?;
         offset += n;
     }
     let mut digest = [0u8; 48];
-    mcu_caliptra_api_lite::sha_finish(pal, &mut state, &mut digest).await?;
+    mcu_caliptra_api::sha_finish(pal, &mut state, &mut digest).await?;
     if &digest != root_hash {
         return Err(INVARIANT);
     }
@@ -806,7 +802,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
     }
 
     async fn generate_nonce(&self, _io: &Self::Io<'_>, out: &mut [u8]) -> McuResult<()> {
-        mcu_caliptra_api_lite::rng_generate(self, out).await
+        mcu_caliptra_api::rng_generate(self, out).await
     }
 }
 

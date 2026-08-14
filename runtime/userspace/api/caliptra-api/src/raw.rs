@@ -4,7 +4,7 @@
 //!
 //! This is for transport pass-through paths that already own a complete
 //! command request/response buffer. It keeps checksum and mailbox error
-//! handling in `caliptra-api-lite` without importing the full `caliptra-api`
+//! handling in `caliptra-api` without importing the full `caliptra-api`
 //! crate.
 
 use mcu_error::McuResult;

@@ -15,7 +15,7 @@
 //!   [`ScratchBox`] / [`BitmapBytes`] from a caller-supplied scratch
 //!   region. The pool itself lives in [`caliptra_mcu_scratch_alloc`].
 //! * [`hash`] — [`SpdmPalHash`] impl and the running-hash bridge
-//!   into [`mcu_caliptra_api_lite`].
+//!   into [`mcu_caliptra_api`].
 //! * [`io`] — [`SpdmPalIo`] / [`SpdmPalIoTransport`] impls bridging
 //!   the higher-level framed-message API onto the byte-oriented
 //!   [`SpdmPalTransport`](caliptra_mcu_spdm_traits::SpdmPalTransport).

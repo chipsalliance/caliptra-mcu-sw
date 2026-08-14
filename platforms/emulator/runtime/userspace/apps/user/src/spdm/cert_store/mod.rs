@@ -15,7 +15,7 @@ use caliptra_mcu_config_emulator::flash::CERT_STORE_PARTITION;
 use caliptra_mcu_libsyscall_caliptra::external_otp::ExternalOtp;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_spdm_pal::cert::store::SharedCertStore;
-use mcu_caliptra_api_lite::{populate_idev_ecc384_cert, ApiAlloc};
+use mcu_caliptra_api::{populate_idev_ecc384_cert, ApiAlloc};
 use mcu_error::McuResult;
 
 /// SPDM slot IDs for OCP PKI entities.
