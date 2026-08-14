@@ -86,17 +86,25 @@ impl CertSlot {
     }
 
     pub fn is_provisioned(&self) -> bool {
-        !self.write_in_progress.load(Ordering::Relaxed) && self.endorsement.is_provisioned()
+        !self.write_in_progress.load(Ordering::Acquire) && self.endorsement.is_provisioned()
+    }
+
+    pub fn begin_write(&self) -> bool {
+        !self.write_in_progress.swap(true, Ordering::AcqRel)
+    }
+
+    pub fn end_write(&self) {
+        self.write_in_progress.store(false, Ordering::Release);
     }
 
     pub fn provisioning_state_version(&self) -> u32 {
-        self.provisioning_state_version.load(Ordering::Relaxed)
+        self.provisioning_state_version.load(Ordering::Acquire)
     }
 
     pub fn bump_provisioning_state_version(&self) {
         let version = self.provisioning_state_version();
         self.provisioning_state_version
-            .store(version.wrapping_add(1), Ordering::Relaxed);
+            .store(version.wrapping_add(1), Ordering::Release);
     }
 
     pub fn clear_metadata(&mut self) {

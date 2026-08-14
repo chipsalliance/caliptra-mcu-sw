@@ -580,10 +580,10 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         data: &[u8],
     ) -> McuResult<()> {
         let idx = slot_index(slot).ok_or(INVARIANT)?;
-        // Set write_in_progress to block transient readers during flash updates
-        self.cert_store.cert_slots()[idx]
-            .write_in_progress
-            .store(true, Ordering::Relaxed);
+        let cert_slot = &self.cert_store.cert_slots()[idx];
+        if !cert_slot.begin_write() {
+            return Err(INVARIANT);
+        }
         let result = async {
             let managed = match &self.cert_store.cert_slots()[idx].endorsement {
                 endorsement::SlotEndorsement::Managed(e) => *e,
@@ -603,11 +603,9 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
             Ok(())
         }
         .await;
-        self.cert_store.cert_slots()[idx]
-            .write_in_progress
-            .store(false, Ordering::Relaxed);
-        result?;
         self.cert_store.invalidate_cert_caches(slot);
+        cert_slot.end_write();
+        result?;
         Ok(())
     }
 
@@ -627,9 +625,10 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
                 return Err(INVARIANT);
             }
             let idx = slot_index(slot).ok_or(INVARIANT)?;
-            self.cert_store.cert_slots()[idx]
-                .write_in_progress
-                .store(true, Ordering::Relaxed);
+            let cert_slot = &self.cert_store.cert_slots()[idx];
+            if !cert_slot.begin_write() {
+                return Err(INVARIANT);
+            }
             let result = async {
                 let managed = match &self.cert_store.cert_slots()[idx].endorsement {
                     endorsement::SlotEndorsement::Managed(e) => *e,
@@ -646,9 +645,8 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
             }
             .await;
             if result.is_err() {
-                self.cert_store.cert_slots()[idx]
-                    .write_in_progress
-                    .store(false, Ordering::Relaxed);
+                self.cert_store.invalidate_cert_caches(slot);
+                cert_slot.end_write();
             }
             result
         }
@@ -702,6 +700,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         #[cfg(feature = "set-certificate")]
         {
             let idx = slot_index(slot).ok_or(INVARIANT)?;
+            let cert_slot = &self.cert_store.cert_slots()[idx];
             let result = async {
                 let managed = match &self.cert_store.cert_slots()[idx].endorsement {
                     endorsement::SlotEndorsement::Managed(e) => *e,
@@ -718,14 +717,13 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
                 cert_slot.endorsement = endorsement::SlotEndorsement::Managed(managed);
                 cert_slot.key_pair_id = Some(key_pair_id);
                 cert_slot.cert_info = Some(cert_info);
+                cert_slot.bump_provisioning_state_version();
                 Ok(())
             }
             .await;
-            self.cert_store.cert_slots()[idx]
-                .write_in_progress
-                .store(false, Ordering::Relaxed);
-            result?;
             self.cert_store.invalidate_cert_caches(slot);
+            cert_slot.end_write();
+            result?;
             Ok(())
         }
         #[cfg(not(feature = "set-certificate"))]
@@ -744,10 +742,9 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         #[cfg(feature = "set-certificate")]
         {
             let idx = slot_index(slot).ok_or(INVARIANT)?;
-            self.cert_store.cert_slots()[idx]
-                .write_in_progress
-                .store(false, Ordering::Relaxed);
+            let cert_slot = &self.cert_store.cert_slots()[idx];
             self.cert_store.invalidate_cert_caches(slot);
+            cert_slot.end_write();
             Ok(())
         }
         #[cfg(not(feature = "set-certificate"))]
@@ -765,9 +762,10 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         algo: SpdmPalAsymAlgo,
     ) -> McuResult<()> {
         let idx = slot_index(slot).ok_or(INVARIANT)?;
-        self.cert_store.cert_slots()[idx]
-            .write_in_progress
-            .store(true, Ordering::Relaxed);
+        let cert_slot = &self.cert_store.cert_slots()[idx];
+        if !cert_slot.begin_write() {
+            return Err(INVARIANT);
+        }
         let result = async {
             let managed = match &self.cert_store.cert_slots()[idx].endorsement {
                 endorsement::SlotEndorsement::Managed(e) => *e,
@@ -784,11 +782,9 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
             Ok(())
         }
         .await;
-        self.cert_store.cert_slots()[idx]
-            .write_in_progress
-            .store(false, Ordering::Relaxed);
-        result?;
         self.cert_store.invalidate_cert_caches(slot);
+        cert_slot.end_write();
+        result?;
         Ok(())
     }
 
