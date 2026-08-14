@@ -366,6 +366,26 @@ impl Otp {
         self.read_data(byte_offset, data.len(), data)
     }
 
+    /// Validates an IDevID manufacturer serial number.
+    fn validate_idevid_manufacturer_serial_number(serial_number: [u8; 16]) -> McuResult<[u8; 16]> {
+        if serial_number.iter().all(|&byte| byte == 0) {
+            return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);
+        }
+        Ok(serial_number)
+    }
+
+    /// Reads the 16-byte manufacturer serial number from the IDevID UEID fuse.
+    pub fn read_idevid_manufacturer_serial_number(&self) -> McuResult<[u8; 16]> {
+        const MANUFACTURER_SERIAL_NUMBER_OFFSET: usize = 12 * size_of::<u32>();
+        let mut serial_number = [0u8; 16];
+        self.read_otp_data(
+            fuses::OTP_CPTRA_CORE_IDEVID_CERT_IDEVID_ATTR.byte_offset
+                + MANUFACTURER_SERIAL_NUMBER_OFFSET,
+            &mut serial_number,
+        )?;
+        Self::validate_idevid_manufacturer_serial_number(serial_number)
+    }
+
     /// Reads a u32 from OTP at the given byte offset.
     pub fn read_u32_at(&self, byte_offset: usize) -> McuResult<u32> {
         let mut data = [0u8; 4];
@@ -1184,5 +1204,23 @@ mod tests {
         assert_eq!(data, ((value >> 32) as u32).to_le_bytes());
         assert_eq!(word_reads, 0);
         assert_eq!(dword_reads, [addr / 8]);
+    }
+
+    #[test]
+    fn test_idevid_manufacturer_serial_number_rejects_zero_values() {
+        let zero_uuid = [0u8; 16];
+        assert!(Otp::validate_idevid_manufacturer_serial_number(zero_uuid).is_err());
+    }
+
+    #[test]
+    fn test_idevid_manufacturer_serial_number_accepts_nonzero_values() {
+        let uuid = [
+            0x10, 0x32, 0x54, 0x76, 0x98, 0xba, 0xdc, 0xfe, 0x01, 0x23, 0x45, 0x67, 0x89, 0xab,
+            0xcd, 0xef,
+        ];
+        assert_eq!(
+            Otp::validate_idevid_manufacturer_serial_number(uuid),
+            Ok(uuid)
+        );
     }
 }
