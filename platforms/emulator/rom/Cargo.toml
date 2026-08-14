@@ -55,3 +55,5 @@ active-i3c1 = ["caliptra-mcu-config-emulator/active-i3c1"]
 test-i3c-services = ["caliptra-mcu-rom-common/test-i3c-services"]
 test-dot-recovery-reset-flow = ["caliptra-mcu-rom-common/test-dot-recovery-reset-flow"]
 test-rom-hooks = []
+# Runs the bulk of ROM logic from SRAM instead of ROM; see rom-ram-text-layout.ld.
+rom-from-ram = ["caliptra-mcu-rom-common/rom-from-ram"]

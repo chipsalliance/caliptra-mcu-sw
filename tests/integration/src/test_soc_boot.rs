@@ -1041,12 +1041,47 @@ mod test {
         }
     }
 
+    // Builds the ROM directly rather than via get_rom_with_feature: no
+    // prebuilt bundle has this variant, and its fallback on a miss is the
+    // plain default ROM, which would pass without testing rom-from-ram.
+    fn create_soc_boot_options_rom_from_ram(is_flash_based_boot: bool) -> TestOptions {
+        env::set_var(
+            "CPTRA_EMULATOR_SS_MCI_OFFSET",
+            format!("0x{:016x}", MCI_BASE_AXI_ADDRESS),
+        );
+
+        let feature = if is_flash_based_boot {
+            "test-flash-based-boot"
+        } else {
+            "test-pldm-streaming-boot"
+        };
+        let i3c_port = PortPicker::new().random(true).pick().unwrap().into();
+
+        let mut opts =
+            create_soc_boot_test_options_build(feature, is_flash_based_boot, i3c_port, false);
+        opts.rom = caliptra_mcu_builder::rom_build(&caliptra_mcu_builder::CaliptraBuildArgs {
+            platform: Some("emulator"),
+            features: Some(&format!("{feature},rom-from-ram")),
+            ..Default::default()
+        })
+        .expect("rom-from-ram ROM build failed");
+        opts
+    }
+
     // ==================== Flash-based boot tests ====================
 
     #[test]
     fn test_flash_soc_boot_successful() {
         let lock = TEST_LOCK.lock().unwrap();
         let opts = create_soc_boot_options(true);
+        test_successful_boot(&opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_flash_soc_boot_rom_from_ram() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_soc_boot_options_rom_from_ram(true);
         test_successful_boot(&opts);
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
