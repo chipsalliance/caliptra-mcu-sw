@@ -104,6 +104,8 @@ impl Default for DebugUnlockConfig {
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct FeProgConfig {
     #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
     pub partition: u32,
     #[serde(default)]
     pub ecc_auth_key: Option<String>,

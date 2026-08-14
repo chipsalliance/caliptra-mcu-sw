@@ -121,12 +121,14 @@ pub fn run_all(
         ));
     }
 
-    results.push(run_fe_prog(
-        client,
-        config.fe_prog.partition,
-        fe_prog_authorizer,
-        verbose,
-    ));
+    if config.fe_prog.enabled {
+        results.push(run_fe_prog(
+            client,
+            config.fe_prog.partition,
+            fe_prog_authorizer,
+            verbose,
+        ));
+    }
 
     results
 }
