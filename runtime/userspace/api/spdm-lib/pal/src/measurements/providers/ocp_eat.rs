@@ -6,12 +6,12 @@
 //! concise-evidence encoding. The shared attestation-evidence API wraps those
 //! bytes in OCP EAT claims and signs the payload with the selected AK.
 
-use crate::alloc::BitmapAllocator;
 use crate::measurements::MeasurementProvider;
 use caliptra_mcu_attestation_evidence::{
     encode_signed_ocp_eat, ocp_eat::NONCE_LEN, SIGNED_OCP_EAT_MAX_SIZE,
     SIGNED_OCP_EAT_WORKSPACE_SIZE,
 };
+use caliptra_mcu_scratch_alloc::BitmapAllocator;
 use caliptra_mcu_spdm_traits::{MeasurementInfo, SPDM_NONCE_LEN};
 use mcu_caliptra_api_lite::DPE_LABEL_LEN;
 use mcu_error::McuResult;

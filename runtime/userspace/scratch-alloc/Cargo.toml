@@ -1,0 +1,13 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "caliptra-mcu-scratch-alloc"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+# `ApiAlloc` / `ApiAllocPool` live behind api-lite's `mailbox-io` feature,
+# matching how `caliptra-mcu-spdm-pal` declares this dependency.
+mcu-caliptra-api-lite = { workspace = true, features = ["mailbox-io"] }
+mcu-error = { workspace = true }

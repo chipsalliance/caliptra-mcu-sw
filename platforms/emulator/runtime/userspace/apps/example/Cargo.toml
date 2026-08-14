@@ -26,6 +26,7 @@ caliptra-mcu-libtockasync.workspace = true
 caliptra-mcu-config-emulator.workspace = true
 caliptra-mcu-config-fpga.workspace = true
 caliptra-mcu-pldm-common.workspace = true
+caliptra-mcu-scratch-alloc.workspace = true
 caliptra-mcu-spdm-pal.workspace = true
 portable-atomic.workspace = true
 caliptra-mcu-romtime.workspace = true
