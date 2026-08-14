@@ -45,7 +45,7 @@ pub enum SessionState {
 ///
 /// # Heap allocation
 ///
-/// When `S = HashState` (the caliptra-api-lite backend), each
+/// When `S = HashState` (the caliptra-api backend), each
 /// `Option<S>` allocates 200 bytes on the global heap via `Box`.
 /// One instance exists per session, so N concurrent sessions add
 /// `N × 200` bytes of heap for TH. The owning [`SessionInfo`] is also

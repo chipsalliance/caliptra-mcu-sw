@@ -352,7 +352,7 @@ mod tests {
     use caliptra_mcu_common_commands::{CaliptraCmdResult, DebugUnlockChallenge};
     use caliptra_mcu_mctp_vdm_common::message::GetDebugLogResponse;
     use caliptra_mcu_mctp_vdm_common::protocol::VdmControlByte;
-    use mcu_caliptra_api_lite::ApiAlloc;
+    use mcu_caliptra_api::ApiAlloc;
     use std::boxed::Box;
     use std::future::Future;
     use std::pin::Pin;

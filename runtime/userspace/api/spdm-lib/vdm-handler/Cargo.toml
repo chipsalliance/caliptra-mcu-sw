@@ -20,4 +20,4 @@ zerocopy = { workspace = true }
 
 [dev-dependencies]
 futures = { workspace = true }
-mcu-caliptra-api-lite = { workspace = true, features = ["mailbox-io"] }
+mcu-caliptra-api = { workspace = true, features = ["mailbox-io"] }

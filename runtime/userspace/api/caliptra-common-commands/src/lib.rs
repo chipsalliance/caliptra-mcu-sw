@@ -4,7 +4,7 @@
 #![allow(async_fn_in_trait)]
 
 use caliptra_mcu_mbox_common::messages::{CommandId, HybridSignature, AUTH_CMD_NONCE_LEN};
-use mcu_caliptra_api_lite::ApiAlloc;
+use mcu_caliptra_api::ApiAlloc;
 use zerocopy::{Immutable, IntoBytes};
 
 pub const MAX_ATTESTED_CSR_DATA_LEN: usize = 12_800;

@@ -2,7 +2,7 @@
 
 //! Transport-neutral Caliptra PCR quote evidence format.
 
-use mcu_caliptra_api_lite::{
+use mcu_caliptra_api::{
     pcr_quote_ecc384, pcr_quote_mldsa87, ApiAlloc, PCR_QUOTE_MAX_BUF_LEN, PCR_QUOTE_MAX_LEN,
 };
 use mcu_error::McuResult;

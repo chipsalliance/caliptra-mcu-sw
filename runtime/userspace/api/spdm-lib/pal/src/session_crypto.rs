@@ -2,13 +2,13 @@
 
 //! [`SpdmPalSessionCrypto`] implementation for [`McuSpdmPal`].
 //!
-//! Thin wrappers over `caliptra-api-lite` ECDH, HKDF, HMAC,
+//! Thin wrappers over `caliptra-api` ECDH, HKDF, HMAC,
 //! AES-GCM, import, and delete functions.
 
 use super::measurements::MeasurementProvider;
 use super::*;
 use caliptra_mcu_spdm_traits::{McuResult, SpdmPalIo, SpdmPalSessionCrypto};
-use mcu_caliptra_api_lite::{
+use mcu_caliptra_api::{
     cm_hmac, cm_import, ecdh_finish as api_ecdh_finish, ecdh_generate as api_ecdh_generate,
     hkdf_expand, hkdf_extract, spdm_aes_gcm_decrypt, spdm_aes_gcm_encrypt, CmKeyUsage, Cmk,
     HkdfSalt,

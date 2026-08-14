@@ -11,7 +11,7 @@ pub mod pcr_quote;
 use caliptra_mcu_measurement_api::{
     EvidenceBuilder, ATTESTATION_P384_DIGEST_SIZE, ATTESTATION_P384_SIGNATURE_SIZE,
 };
-use mcu_caliptra_api_lite::{ApiAlloc, DPE_LABEL_LEN};
+use mcu_caliptra_api::{ApiAlloc, DPE_LABEL_LEN};
 use mcu_error::McuResult;
 use ocp_eat::{cose_sign1_len, ClaimsPayloadLayout, SignedEat};
 

@@ -933,7 +933,7 @@ dependencies = [
  "caliptra-mcu-runtime-userspace-error",
  "caliptra-ocp-eat",
  "coset 0.4.2",
- "mcu-caliptra-api-lite",
+ "mcu-caliptra-api",
  "serde",
  "toml 0.8.23",
 ]
@@ -1032,7 +1032,7 @@ name = "caliptra-mcu-common-commands"
 version = "0.1.0"
 dependencies = [
  "caliptra-mcu-mbox-common",
- "mcu-caliptra-api-lite",
+ "mcu-caliptra-api",
  "zerocopy",
 ]
 
@@ -1687,7 +1687,7 @@ version = "0.1.0"
 dependencies = [
  "caliptra-image-types",
  "caliptra-mcu-registers-generated",
- "mcu-caliptra-api-lite",
+ "mcu-caliptra-api",
  "zerocopy",
 ]
 
@@ -1721,7 +1721,7 @@ dependencies = [
  "embassy-executor",
  "embassy-sync",
  "futures",
- "mcu-caliptra-api-lite",
+ "mcu-caliptra-api",
  "zerocopy",
 ]
 
@@ -1750,7 +1750,7 @@ dependencies = [
  "defmt",
  "embassy-executor",
  "embassy-sync",
- "mcu-caliptra-api-lite",
+ "mcu-caliptra-api",
  "zerocopy",
 ]
 
@@ -1765,7 +1765,7 @@ dependencies = [
  "corim-rs",
  "coset 0.4.2",
  "embassy-sync",
- "mcu-caliptra-api-lite",
+ "mcu-caliptra-api",
  "sha2",
 ]
 
@@ -1977,7 +1977,7 @@ name = "caliptra-mcu-scratch-alloc"
 version = "0.1.0"
 dependencies = [
  "caliptra-mcu-runtime-userspace-error",
- "mcu-caliptra-api-lite",
+ "mcu-caliptra-api",
 ]
 
 [[package]]
@@ -2009,7 +2009,7 @@ dependencies = [
  "caliptra-mcu-scratch-alloc",
  "caliptra-mcu-spdm-codec",
  "caliptra-mcu-spdm-traits",
- "mcu-caliptra-api-lite",
+ "mcu-caliptra-api",
  "zerocopy",
 ]
 
@@ -2025,7 +2025,7 @@ dependencies = [
  "caliptra-mcu-spdm-errors",
  "caliptra-mcu-spdm-traits",
  "futures",
- "mcu-caliptra-api-lite",
+ "mcu-caliptra-api",
  "zerocopy",
 ]
 
@@ -2035,7 +2035,7 @@ version = "0.1.0"
 dependencies = [
  "async-trait",
  "caliptra-mcu-runtime-userspace-error",
- "mcu-caliptra-api-lite",
+ "mcu-caliptra-api",
 ]
 
 [[package]]
@@ -2060,7 +2060,7 @@ dependencies = [
  "caliptra-mcu-spdm-errors",
  "caliptra-mcu-spdm-traits",
  "futures",
- "mcu-caliptra-api-lite",
+ "mcu-caliptra-api",
  "zerocopy",
 ]
 
@@ -3472,7 +3472,7 @@ dependencies = [
  "critical-section",
  "embassy-executor",
  "embedded-alloc",
- "mcu-caliptra-api-lite",
+ "mcu-caliptra-api",
  "portable-atomic",
  "zerocopy",
 ]
@@ -4653,7 +4653,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0ca88d725a0a943b096803bd34e73a4437208b6077654cc4ecb2947a5f91618d"
 
 [[package]]
-name = "mcu-caliptra-api-lite"
+name = "mcu-caliptra-api"
 version = "0.1.0"
 dependencies = [
  "async-trait",
@@ -7081,7 +7081,7 @@ dependencies = [
  "embassy-executor",
  "embassy-sync",
  "embedded-alloc",
- "mcu-caliptra-api-lite",
+ "mcu-caliptra-api",
  "portable-atomic",
  "serde",
  "static_cell",

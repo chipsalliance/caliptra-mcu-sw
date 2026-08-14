@@ -1,7 +1,7 @@
 # Licensed under the Apache-2.0 license
 
 [package]
-name = "mcu-caliptra-api-lite"
+name = "mcu-caliptra-api"
 version.workspace = true
 authors.workspace = true
 edition.workspace = true

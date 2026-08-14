@@ -4,7 +4,7 @@
 //!
 //! This mirrors the non-lite PCR quote measurement form without depending on
 //! `caliptra-api`: the provider exposes one raw DMTF freeform manifest at
-//! index 0xFD and obtains the quote through `caliptra-api-lite`.
+//! index 0xFD and obtains the quote through `caliptra-api`.
 
 use crate::measurements::MeasurementProvider;
 use caliptra_mcu_attestation_evidence::pcr_quote::{

@@ -90,7 +90,7 @@ const MAX_SPDM_MSG_SIZE: usize = {
 /// here, but [`MAX_SPDM_MSG_SIZE`] must still admit it.
 const MAX_STREAMED_VDM_REQUEST_LEN: usize =
     caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::LARGE_REQUEST_FRAMING_LEN
-        + core::mem::size_of::<mcu_caliptra_api_lite::mailbox::ProductionAuthDebugUnlockToken>();
+        + core::mem::size_of::<mcu_caliptra_api::mailbox::ProductionAuthDebugUnlockToken>();
 
 /// Conservative upper bound on transport MTU. The real MTU is a runtime
 /// transport property, so the budget uses a declared ceiling instead.
@@ -184,7 +184,7 @@ fn measurement_provider(
 
 /// Initialize the shared cert store. First caller does the work;
 /// concurrent callers wait on a Signal (no busy-loop).
-async fn ensure_cert_store_init<A: mcu_caliptra_api_lite::ApiAlloc>(
+async fn ensure_cert_store_init<A: mcu_caliptra_api::ApiAlloc>(
     alloc: &A,
 ) -> mcu_error::McuResult<()> {
     // Single-core cooperative executor: no preemption between load and

@@ -14,9 +14,9 @@ use caliptra_mcu_config::capabilities::{
     McuRuntimeCapabilities,
 };
 use caliptra_mcu_config::version::get_mcu_runtime_version;
-use mcu_caliptra_api_lite::{core_capabilities, core_firmware_version, ApiAlloc};
+use mcu_caliptra_api::{core_capabilities, core_firmware_version, ApiAlloc};
 #[cfg(feature = "pcr-quote")]
-use mcu_caliptra_api_lite::{PCR_QUOTE_ECC384_BUF_LEN, PCR_QUOTE_MLDSA87_BUF_LEN};
+use mcu_caliptra_api::{PCR_QUOTE_ECC384_BUF_LEN, PCR_QUOTE_MLDSA87_BUF_LEN};
 
 pub struct CaliptraCmdBackend;
 

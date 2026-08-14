@@ -80,7 +80,7 @@ members = [
     "runtime/userspace/api/spdm-lib/traits",
     "runtime/userspace/api/spdm-lib/stack",
     "runtime/userspace/api/spdm-lib/codec",
-    "runtime/userspace/api/caliptra-api-lite",
+    "runtime/userspace/api/caliptra-api",
     "runtime/userspace/api/spdm-lib/transports",
     "runtime/userspace/api/spdm-lib/pal",
     "runtime/userspace/api/spdm-lib/errors",
@@ -304,7 +304,7 @@ caliptra-mcu-pldm-lib = { path = "runtime/userspace/api/pldm-lib" }
 caliptra-mcu-spdm-traits = { path = "runtime/userspace/api/spdm-lib/traits" }
 caliptra-mcu-spdm-stack = { path = "runtime/userspace/api/spdm-lib/stack" }
 caliptra-mcu-spdm-codec = { path = "runtime/userspace/api/spdm-lib/codec" }
-mcu-caliptra-api-lite = { path = "runtime/userspace/api/caliptra-api-lite", default-features = false }
+mcu-caliptra-api = { path = "runtime/userspace/api/caliptra-api", default-features = false }
 caliptra-mcu-scratch-alloc = { path = "runtime/userspace/scratch-alloc" }
 caliptra-mcu-spdm-transports = { path = "runtime/userspace/api/spdm-lib/transports" }
 caliptra-mcu-spdm-pal = { path = "runtime/userspace/api/spdm-lib/pal" }
