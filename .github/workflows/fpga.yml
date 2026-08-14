@@ -17,6 +17,7 @@ concurrency:
 
 jobs:
   build_test_binaries:
+    if: ${{ vars.RUN_FPGA_CI != 'false' }}
     runs-on: [e2-standard-8-big-disk]
     # Cross-compilation can consume almost the full hour on cache misses; leave
     # enough headroom for packaging and artifact uploads so the downstream FPGA
@@ -201,6 +202,7 @@ jobs:
           retention-days: 1
 
   test_artifacts:
+    if: ${{ vars.RUN_FPGA_CI != 'false' }}
     runs-on: vck190-subsystem
     needs: build_test_binaries
     timeout-minutes: 120
