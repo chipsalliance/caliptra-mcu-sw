@@ -115,6 +115,32 @@ pub struct MailboxReqHeader {
 }
 
 #[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+pub struct EcdsaVerifyReq {
+    pub hdr: MailboxReqHeader,
+    pub pub_key_x: [u8; 48],
+    pub pub_key_y: [u8; 48],
+    pub signature_r: [u8; 48],
+    pub signature_s: [u8; 48],
+    pub hash: [u8; 48],
+}
+
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+pub struct LmsVerifyReq {
+    pub hdr: MailboxReqHeader,
+    pub pub_key_tree_type: u32,
+    pub pub_key_ots_type: u32,
+    pub pub_key_id: [u8; 16],
+    pub pub_key_digest: [u8; 24],
+    pub signature_q: u32,
+    pub signature_ots: [u8; 1252],
+    pub signature_tree_type: u32,
+    pub signature_tree_path: [u8; 360],
+    pub hash: [u8; 48],
+}
+
+#[repr(C)]
 #[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq, Clone)]
 pub struct MailboxRespHeader {
     pub chksum: u32,
@@ -1681,6 +1707,14 @@ mod tests {
         assert_eq!(size_of::<CmEcdsaSignReq>(), 4232);
         assert_eq!(size_of::<CmEcdsaSignResp>(), 104);
         assert_eq!(size_of::<CmEcdsaVerifyReq>(), 4328);
+        assert_eq!(
+            size_of::<EcdsaVerifyReq>(),
+            size_of::<caliptra_api::mailbox::EcdsaVerifyReq>()
+        );
+        assert_eq!(
+            size_of::<LmsVerifyReq>(),
+            size_of::<caliptra_api::mailbox::LmsVerifyReq>()
+        );
     }
 
     #[test]

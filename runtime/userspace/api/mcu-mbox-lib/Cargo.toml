@@ -29,6 +29,7 @@ futures = { workspace = true }
 
 [features]
 default = []
+disable-lms-sig-verify = []
 periodic-fips-self-test = []
 release = [
 	"dep:defmt",

@@ -917,6 +917,9 @@ fn caliptra_passthrough_cmd(cmd: CommandId) -> Option<u32> {
         CommandId::MC_ECDSA_CMK_PUBLIC_KEY => raw::CMD_CM_ECDSA_PUBLIC_KEY,
         CommandId::MC_ECDSA_CMK_SIGN => raw::CMD_CM_ECDSA_SIGN,
         CommandId::MC_ECDSA_CMK_VERIFY => raw::CMD_CM_ECDSA_VERIFY,
+        CommandId::MC_ECDSA384_SIG_VERIFY => raw::CMD_ECDSA384_SIGNATURE_VERIFY,
+        #[cfg(not(feature = "disable-lms-sig-verify"))]
+        CommandId::MC_LMS_SIG_VERIFY => raw::CMD_LMS_SIGNATURE_VERIFY,
         CommandId::MC_MLDSA_CMK_PUBLIC_KEY => raw::CMD_CM_MLDSA_PUBLIC_KEY,
         CommandId::MC_MLDSA_CMK_SIGN => raw::CMD_CM_MLDSA_SIGN,
         CommandId::MC_MLDSA_CMK_VERIFY => raw::CMD_CM_MLDSA_VERIFY,
