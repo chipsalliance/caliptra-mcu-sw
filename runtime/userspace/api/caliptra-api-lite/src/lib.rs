@@ -39,6 +39,8 @@ mod dpe;
 #[cfg(feature = "mailbox-io")]
 mod ecdh;
 #[cfg(feature = "mailbox-io")]
+mod ecdsa;
+#[cfg(feature = "mailbox-io")]
 mod fe_prog;
 #[cfg(feature = "mailbox-io")]
 pub mod firmware_update;
@@ -110,11 +112,15 @@ pub use ecdh::{
     ecdh_finish, ecdh_generate, CMB_ECDH_ENCRYPTED_CONTEXT_SIZE, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE,
 };
 #[cfg(feature = "mailbox-io")]
+pub use ecdsa::{ecdsa_verify, ECDSA_P384_COORD_SIZE, ECDSA_P384_SIGNATURE_SIZE};
+#[cfg(feature = "mailbox-io")]
 pub use fe_prog::fe_prog;
 #[cfg(feature = "mailbox-io")]
 pub use fw_info::{fw_info, FwInfo};
 #[cfg(feature = "mailbox-io")]
 pub use hmac::{cm_hmac, hkdf_expand, hkdf_extract, HkdfSalt, CMB_HMAC_MAX_SIZE};
+#[cfg(feature = "mailbox-io")]
+pub use image_loader::{core_image_info, GetImageInfoResp};
 #[cfg(feature = "mailbox-io")]
 pub use import::{cm_delete, cm_import};
 #[cfg(feature = "mailbox-io")]
@@ -128,7 +134,8 @@ pub use pcr_quote::{
 pub use rng::rng_generate;
 #[cfg(feature = "mailbox-io")]
 pub use sha::{
-    sha_finish, sha_init, sha_update, HashAlgo, HashState, SHA_CHUNK_SIZE, SHA_CONTEXT_SIZE,
+    hash_all, sha_finish, sha_init, sha_update, HashAlgo, HashState, SHA_CHUNK_SIZE,
+    SHA_CONTEXT_SIZE,
 };
 pub use types::{CmKeyUsage, Cmk, CMK_SIZE};
 #[cfg(feature = "mailbox-io")]

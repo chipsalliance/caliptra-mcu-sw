@@ -8,8 +8,6 @@ use caliptra_mcu_common_commands::{
     CaliptraCmdResult, CaliptraCompletionCode, DEBUG_UNLOCK_CHALLENGE_SIZE,
     DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE,
 };
-use caliptra_mcu_libapi_caliptra::crypto::hash::{HashAlgoType, HashContext};
-use caliptra_mcu_libapi_caliptra::mailbox_api::execute_mailbox_cmd;
 use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_platform::ErrorCode;
@@ -17,8 +15,8 @@ use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use mcu_caliptra_api_lite::{
-    fe_prog, get_attested_csr_ecc384, get_attested_csr_mldsa87, get_idev_csr_ecc384,
-    request_debug_unlock_challenge, rng_generate, ApiAlloc, McuErrorCode,
+    fe_prog, get_attested_csr_ecc384, get_attested_csr_mldsa87, get_idev_csr_ecc384, hash_all,
+    request_debug_unlock_challenge, rng_generate, ApiAlloc, HashAlgo, McuErrorCode,
     PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_RSP_LEN,
 };
 use zerocopy::IntoBytes;
@@ -104,7 +102,9 @@ pub async fn generate_auth_challenge<A: ApiAlloc>(
     Ok(challenge)
 }
 
-pub async fn verify_authorized_signatures(
+#[allow(clippy::too_many_arguments)]
+pub async fn verify_authorized_signatures<A: ApiAlloc>(
+    alloc: &A,
     cmd_id: u32,
     payload: &[u8],
     challenge: &[u8; AUTH_CMD_NONCE_LEN],
@@ -127,11 +127,9 @@ pub async fn verify_authorized_signatures(
         .try_extend_from_slice(challenge)
         .map_err(|_| CaliptraCompletionCode::InsufficientResources)?;
 
-    let mailbox = Mailbox::new();
-
     // 1. Verify ECC P-384 Signature using Caliptra Mailbox (over SHA-384(pre-image)).
     let mut hash = [0u8; 48];
-    HashContext::hash_all(HashAlgoType::SHA384, pre_image.as_slice(), &mut hash)
+    hash_all(alloc, HashAlgo::Sha384, pre_image.as_slice(), &mut hash)
         .await
         .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
 
@@ -151,15 +149,24 @@ pub async fn verify_authorized_signatures(
 
     let cmd_ecdsa_verify: u32 = caliptra_api::mailbox::CommandId::ECDSA384_SIGNATURE_VERIFY.into();
 
-    execute_mailbox_cmd(&mailbox, cmd_ecdsa_verify, ecc_req_bytes, ecc_resp_bytes)
-        .await
-        .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
+    mcu_caliptra_api_lite::raw::raw_mailbox_execute(
+        cmd_ecdsa_verify,
+        ecc_req_bytes,
+        ecc_resp_bytes,
+    )
+    .await
+    .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
 
     // 2. Verify ML-DSA-87 Signature using Caliptra Mailbox (over SHA-512(pre-image)).
     let mut mldsa_msg = [0u8; 64];
-    HashContext::hash_all(HashAlgoType::SHA512, pre_image.as_slice(), &mut mldsa_msg)
-        .await
-        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+    hash_all(
+        alloc,
+        HashAlgo::Sha512,
+        pre_image.as_slice(),
+        &mut mldsa_msg,
+    )
+    .await
+    .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
 
     // Use a shared static buffer behind an async Mutex to avoid inflating
     // the async task future by ~11 KB.  The guard is held across `.await`.
@@ -187,8 +194,7 @@ pub async fn verify_authorized_signatures(
 
     let cmd_mldsa_verify: u32 = caliptra_api::mailbox::CommandId::MLDSA87_SIGNATURE_VERIFY.into();
 
-    execute_mailbox_cmd(
-        &mailbox,
+    mcu_caliptra_api_lite::raw::raw_mailbox_execute(
         cmd_mldsa_verify,
         mldsa_req_bytes,
         mldsa_resp_bytes,

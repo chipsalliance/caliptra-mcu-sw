@@ -98,7 +98,6 @@ ocp-lock = [
 doe = ["spdm"]
 userspace-log = [
   "dep:defmt",
-  "caliptra-mcu-libapi-caliptra/release",
   "caliptra-mcu-mbox-lib/release",
   "caliptra-mcu-mctp-vdm-lib/release",
   "caliptra-mcu-pldm-lib/release",

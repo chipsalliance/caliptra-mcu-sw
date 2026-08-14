@@ -5,7 +5,7 @@ mod pldm_client;
 mod pldm_context;
 mod pldm_fdops;
 
-use alloc::{boxed::Box, vec, vec::Vec};
+use alloc::boxed::Box;
 use async_trait::async_trait;
 use caliptra_api::mailbox::{
     ActivateFirmwareReq, ActivateFirmwareResp, CommandId, FirmwareVerifyResp, FirmwareVerifyResult,
@@ -48,18 +48,9 @@ use crate::{
     sha_finish, sha_init, sha_update, ApiAlloc, HashAlgo, SHA_CHUNK_SIZE, SHA_CONTEXT_SIZE,
 };
 
-struct FirmwareUpdateAlloc;
-
-impl ApiAlloc for FirmwareUpdateAlloc {
-    type Buf<'a> = Vec<u8>;
-
-    fn alloc(&self, len: usize) -> mcu_error::McuResult<Self::Buf<'_>> {
-        Ok(vec![0u8; len])
-    }
-}
-
-pub struct FirmwareUpdater<'a, D: DMAMapping> {
+pub struct FirmwareUpdater<'a, D: DMAMapping, A: ApiAlloc> {
     staging_memory: &'static dyn StagingMemory,
+    alloc: &'a A,
     mailbox: Mailbox,
     params: &'a PldmFirmwareDeviceParams,
     soc_image_load_fw_ids: &'a [u32],
@@ -82,9 +73,10 @@ pub enum CaliptraFwAction {
     Load = 2,
 }
 
-impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
+impl<'a, D: DMAMapping, A: ApiAlloc> FirmwareUpdater<'a, D, A> {
     pub fn new(
         staging_memory: &'static dyn StagingMemory,
+        alloc: &'a A,
         params: &'a PldmFirmwareDeviceParams,
         soc_image_load_fw_ids: &'a [u32],
         dma_mapping: &'a D,
@@ -93,6 +85,7 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
     ) -> Self {
         Self {
             staging_memory,
+            alloc,
             mailbox: Mailbox::new(),
             params,
             soc_image_load_fw_ids,
@@ -525,9 +518,11 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
             }
 
             // Compute SHA-384 of the downloaded image
-            let alloc = FirmwareUpdateAlloc;
-            let context = alloc.alloc(SHA_CONTEXT_SIZE).map_err(|_| ErrorCode::Fail)?;
-            let mut hasher = sha_init(&alloc, context, HashAlgo::Sha384, &[])
+            let hash_context = self
+                .alloc
+                .alloc(SHA_CONTEXT_SIZE)
+                .map_err(|_| ErrorCode::Fail)?;
+            let mut hasher = sha_init(self.alloc, hash_context, HashAlgo::Sha384, &[])
                 .await
                 .map_err(|_| ErrorCode::Fail)?;
             let mut buffer = [0u8; SHA_CHUNK_SIZE];
@@ -539,13 +534,13 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
                 self.staging_memory
                     .read(img_offset + total_bytes_read, &mut buffer[..bytes_to_read])
                     .await?;
-                sha_update(&alloc, &mut hasher, &buffer[..bytes_to_read])
+                sha_update(self.alloc, &mut hasher, &buffer[..bytes_to_read])
                     .await
                     .map_err(|_| ErrorCode::Fail)?;
                 total_bytes_read += bytes_to_read;
             }
             let mut hash = [0u8; 48];
-            sha_finish(&alloc, &mut hasher, &mut hash)
+            sha_finish(self.alloc, &mut hasher, &mut hash)
                 .await
                 .map_err(|_| ErrorCode::Fail)?;
 
@@ -873,9 +868,11 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
         len: usize,
         metadata: &AuthManifestImageMetadata,
     ) -> Result<(), ErrorCode> {
-        let alloc = FirmwareUpdateAlloc;
-        let context = alloc.alloc(SHA_CONTEXT_SIZE).map_err(|_| ErrorCode::Fail)?;
-        let mut hasher = sha_init(&alloc, context, HashAlgo::Sha384, &[])
+        let hash_context = self
+            .alloc
+            .alloc(SHA_CONTEXT_SIZE)
+            .map_err(|_| ErrorCode::Fail)?;
+        let mut hasher = sha_init(self.alloc, hash_context, HashAlgo::Sha384, &[])
             .await
             .map_err(|_| ErrorCode::Fail)?;
         let mut buffer = [0u8; SHA_CHUNK_SIZE];
@@ -890,13 +887,13 @@ impl<'a, D: DMAMapping> FirmwareUpdater<'a, D> {
                 )
                 .await
                 .map_err(|_| ErrorCode::Fail)?;
-            sha_update(&alloc, &mut hasher, &buffer[..bytes_to_read])
+            sha_update(self.alloc, &mut hasher, &buffer[..bytes_to_read])
                 .await
                 .map_err(|_| ErrorCode::Fail)?;
             total_bytes_read += bytes_to_read;
         }
 
-        sha_finish(&alloc, &mut hasher, &mut hash)
+        sha_finish(self.alloc, &mut hasher, &mut hash)
             .await
             .map_err(|_| ErrorCode::Fail)?;
 
