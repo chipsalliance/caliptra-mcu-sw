@@ -28,6 +28,8 @@ pub struct TestConfig {
     #[serde(default)]
     pub provision_vendor_pk_hash: ProvisionVendorPkHashConfig,
     #[serde(default)]
+    pub provision_owner_pk_hash: ProvisionOwnerPkHashConfig,
+    #[serde(default)]
     pub increase_caliptra_min_svn: IncreaseCaliptraMinSvnConfig,
     #[serde(default)]
     pub revoke_vendor_pub_key: RevokeVendorPubKeyConfig,
@@ -155,6 +157,14 @@ pub struct ProvisionVendorPkHashConfig {
     pub enabled: bool,
     #[serde(default)]
     pub slot: u32,
+    #[serde(default)]
+    pub hash: String,
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct ProvisionOwnerPkHashConfig {
+    #[serde(default)]
+    pub enabled: bool,
     #[serde(default)]
     pub hash: String,
 }
