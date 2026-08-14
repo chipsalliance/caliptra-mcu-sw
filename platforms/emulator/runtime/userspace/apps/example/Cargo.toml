@@ -48,6 +48,7 @@ embedded-alloc.workspace = true
 default = []
 debug = []
 doe = []
+disable-lms-sig-verify = []
 hw-2-1 = []
 ocp-lock = [
     "caliptra-mcu-libapi-caliptra/ocp-lock",

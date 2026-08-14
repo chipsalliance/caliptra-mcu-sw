@@ -1340,6 +1340,9 @@ fn caliptra_passthrough_cmd(cmd: CommandId) -> Option<u32> {
         CommandId::MC_ECDSA_CMK_PUBLIC_KEY => raw::CMD_CM_ECDSA_PUBLIC_KEY,
         CommandId::MC_ECDSA_CMK_SIGN => raw::CMD_CM_ECDSA_SIGN,
         CommandId::MC_ECDSA_CMK_VERIFY => raw::CMD_CM_ECDSA_VERIFY,
+        CommandId::MC_ECDSA384_SIG_VERIFY => raw::CMD_ECDSA384_SIGNATURE_VERIFY,
+        #[cfg(not(feature = "disable-lms-sig-verify"))]
+        CommandId::MC_LMS_SIG_VERIFY => raw::CMD_LMS_SIGNATURE_VERIFY,
         CommandId::MC_MLDSA_CMK_PUBLIC_KEY => raw::CMD_CM_MLDSA_PUBLIC_KEY,
         CommandId::MC_MLDSA_CMK_SIGN => raw::CMD_CM_MLDSA_SIGN,
         CommandId::MC_MLDSA_CMK_VERIFY => raw::CMD_CM_MLDSA_VERIFY,
@@ -1360,6 +1363,22 @@ fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32) -> usize {
         c if c == CommandId::MC_MLDSA_CMK_VERIFY || c == CommandId::MC_PROD_DEBUG_UNLOCK_TOKEN => {
             size_of::<MailboxRespHeader>()
         }
+        c if c == CommandId::MC_PROVISION_VENDOR_PK_HASH => size_of::<ProvisionVendorPkHashResp>(),
+        c if c == CommandId::MC_PROVISION_OWNER_PK_HASH => size_of::<ProvisionOwnerPkHashResp>(),
+        c if c == CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN => {
+            size_of::<FuseIncreaseCaliptraMinSvnResp>()
+        }
+        c if c == CommandId::MC_FE_PROG || c == CommandId::MC_FUSE_WRITE => {
+            size_of::<FuseWriteResp>()
+        }
+        c if c == CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY => {
+            size_of::<FuseRevokeVendorPubKeyResp>()
+        }
+        c if c == CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH => {
+            size_of::<FuseRevokeVendorPkHashResp>()
+        }
+        c if c == CommandId::MC_FUSE_READ => size_of::<FuseReadResp>(),
+        c if c == CommandId::MC_FUSE_LOCK_PARTITION => size_of::<FuseLockPartitionResp>(),
         #[cfg(feature = "ocp-lock")]
         c if c == CommandId::MC_OCP_LOCK_ROTATE_HEK => size_of::<OcpLockRotateHekResp>(),
         #[cfg(feature = "ocp-lock")]

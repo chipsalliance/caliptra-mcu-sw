@@ -2648,6 +2648,7 @@ dependencies = [
  "caliptra-emu-types",
  "caliptra-hw-model",
  "caliptra-hw-model-types",
+ "caliptra-image-crypto",
  "caliptra-image-fake-keys",
  "caliptra-image-gen",
  "caliptra-image-types",
