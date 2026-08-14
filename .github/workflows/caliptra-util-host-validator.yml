@@ -79,7 +79,6 @@ jobs:
 
   caliptra_util_host_validator_tests:
     runs-on: ubuntu-24.04
-    needs: [precheckin]
 
     env:
       CARGO_INCREMENTAL: 0
@@ -184,32 +183,36 @@ jobs:
           cargo xtask test
           popd
 
-      - name: Run Caliptra Util Host validator tests
+      - name: Build validator test firmware bundle
         run: |
-          cargo xtask all-build
+          cargo xtask all-build --separate-runtimes \
+            --runtime-features test-caliptra-util-host-validator,test-caliptra-util-host-mctp-vdm-validator,test-caliptra-util-host-spdm-vdm-validator,test-mctp-spdm-set-certificate
+
+      - name: Run Caliptra Util Host validator tests
+        env:
+          CPTRA_FIRMWARE_BUNDLE: ${{ github.workspace }}/target/all-fw.zip
+        run: |
           cargo test --package caliptra-mcu-tests-integration --lib -- test::test_caliptra_util_host_validator --nocapture --include-ignored
           sccache --show-stats
 
       - name: Run Caliptra Util Host MCTP VDM validator tests
+        env:
+          CPTRA_FIRMWARE_BUNDLE: ${{ github.workspace }}/target/all-fw.zip
         run: |
           cargo test --package caliptra-mcu-tests-integration --lib -- test_mctp_vdm_validator::test::test_caliptra_util_host_mctp_vdm_validator --nocapture --include-ignored
           sccache --show-stats
 
       - name: Run Caliptra Util Host SPDM VDM validator tests (production mode)
+        env:
+          CPTRA_FIRMWARE_BUNDLE: ${{ github.workspace }}/target/all-fw.zip
         run: |
-          cargo test --package caliptra-mcu-tests-integration --lib -- test_caliptra_util_host_spdm_vdm_validator::test::test_caliptra_util_host_spdm_vdm_validator --exact --nocapture --include-ignored
-          sccache --show-stats
-
-      - name: Run Caliptra Util Host SPDM VDM validator tests (manufacturing mode)
-        run: |
-          cargo test --package caliptra-mcu-tests-integration --lib -- test_caliptra_util_host_spdm_vdm_validator::test::test_caliptra_util_host_spdm_vdm_validator_mfg_mode --exact --nocapture --include-ignored
+          cargo test --package caliptra-mcu-tests-integration --lib -- test_caliptra_util_host_spdm_vdm_validator::test::test_caliptra_util_host_spdm_vdm_validator --nocapture --include-ignored
           sccache --show-stats
 
       - name: Run OCP Device Identity provisioning test
         env:
           CPTRA_FIRMWARE_BUNDLE: ${{ github.workspace }}/target/all-fw.zip
         run: |
-          cargo xtask all-build --separate-runtimes --runtime-features test-mctp-spdm-set-certificate
           cargo test --package caliptra-mcu-tests-integration --lib -- test_ocp_dev_identity_provision_tool::test::test_mctp_spdm_set_certificate_with_ocp_provision_tool --exact --nocapture --include-ignored
           sccache --show-stats
 

@@ -21,6 +21,8 @@ key_ids = [1, 2, 3]
 algorithm = 1
 
 [fe_prog]
+# FE_PROG is not part of the SPDM VDM validation sequence.
+enabled = false
 partition = 0
 # Hex-encoded ECC private key (P-384) and ML-DSA seed (32 bytes) for FE_PROG authorization.
 # Must match keys in the MCU firmware.
