@@ -39,6 +39,8 @@ These commands support common Caliptra management functions, including querying 
 | MC_DPE_SIGNER_CONTEXT_CERT    | 0x4D44_5343 ("MDSC") | Derives DPE signer context and returns the derived leaf certificate.                  |
 | MC_GET_DPE_CERTIFICATE_CHAIN  | 0x4D44_4343 ("MDCC") | Retrieves the DPE certificate chain.                                                  |
 | MC_GET_ATTESTATION            | 0x4D47_4154 ("MGAT") | Retrieves signed attestation evidence in a requester-selected format.                 |
+| MC_GET_CERT_CHAIN             | 0x4D47_4343 ("MGCC") | Reserved for future certificate-chain retrieval; not implemented.                    |
+| MC_SET_CERT_CHAIN             | 0x4D53_4343 ("MSCC") | Reserved for future certificate-chain updates; not implemented.                      |
 | MC_GET_LOG                    | 0x4D47_4C47 ("MGLG") | Retrieves the debug log                                                               |
 | MC_CLEAR_LOG                  | 0x4D43_4C47 ("MCLG") | Clears the debug log                                                                  |
 | MC_FIPS_SELF_TEST_START       | 0x4D46_5354 ("MFST") | Starts the FIPS self-test to exercise the crypto engine.                              |
