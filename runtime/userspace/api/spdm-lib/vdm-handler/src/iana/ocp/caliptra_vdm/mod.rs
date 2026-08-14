@@ -939,6 +939,27 @@ mod tests {
     }
 
     #[test]
+    fn fe_prog_accepts_unaligned_wire_payload() {
+        let cmds = TestCommands::new(0);
+        let mut req = vec![
+            CALIPTRA_VDM_COMMAND_VERSION,
+            CaliptraVdmCommand::AuthorizedCommand as u8,
+        ];
+        req.extend_from_slice(&FE_PROG_CMD_ID.to_le_bytes());
+        req.extend_from_slice(&0u32.to_le_bytes());
+        req.extend_from_slice(&[0u8; AUTH_CMD_NONCE_LEN]);
+        req.extend_from_slice(&[0u8; 48]);
+        req.extend_from_slice(&[0u8; 48]);
+        req.extend_from_slice(&[0u8; 2592]);
+        req.extend_from_slice(HybridSignature::default().as_bytes());
+
+        let (response, inline, _) = dispatch(&cmds, &req, 16, 0);
+
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+    }
+
+    #[test]
     fn export_attested_csr_uses_inline_response_when_it_fits() {
         let cmds = TestCommands::new(12);
         let req = export_attested_csr_req();

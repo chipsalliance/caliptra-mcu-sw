@@ -9,54 +9,17 @@ use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
 use caliptra_mcu_spdm_codec::vendor_defined::iana::ocp::caliptra::{
     CaliptraCompletionCode, CaliptraVdmCmdResult, CaliptraVdmResult,
 };
-use zerocopy::{FromBytes, Immutable, KnownLayout};
+use zerocopy::FromBytes;
 
 /// ECC P-384 public-key coordinate size (bytes).
 const ECC_P384_COORD_SIZE: usize = 48;
 /// ML-DSA-87 public-key size (bytes).
 const MLDSA87_PUB_KEY_SIZE: usize = 2592;
-#[repr(C)]
-#[derive(Debug, FromBytes, Immutable, KnownLayout)]
-struct FeProgVdmReq {
-    partition: u32,
-    nonce: [u8; AUTH_CMD_NONCE_LEN],
-    ecc_pub_x: [u8; ECC_P384_COORD_SIZE],
-    ecc_pub_y: [u8; ECC_P384_COORD_SIZE],
-    mldsa_pub: [u8; MLDSA87_PUB_KEY_SIZE],
-    sig: HybridSignature,
-}
+const FE_PROG_PAYLOAD_LEN: usize = 4;
 const PROVISION_VENDOR_PK_HASH_PAYLOAD_LEN: usize = 4 + 48;
 const INCREASE_CALIPTRA_MIN_SVN_PAYLOAD_LEN: usize = 4 + 4;
 const REVOKE_VENDOR_PUB_KEY_PAYLOAD_LEN: usize = 4 + 4 + 4 + 4;
 const REVOKE_VENDOR_PK_HASH_PAYLOAD_LEN: usize = 4 + 4;
-
-const _: () = assert!(
-    core::mem::size_of::<FeProgVdmReq>()
-        == core::mem::size_of::<u32>()
-            + AUTH_CMD_NONCE_LEN
-            + 2 * ECC_P384_COORD_SIZE
-            + MLDSA87_PUB_KEY_SIZE
-            + core::mem::size_of::<HybridSignature>()
-);
-// Per-field offset asserts lock the wire order at compile time (a size-only
-// assert passes for any field permutation). Mirrors the host `FeProgRequest`.
-const _: () = assert!(core::mem::offset_of!(FeProgVdmReq, nonce) == core::mem::size_of::<u32>());
-const _: () = assert!(
-    core::mem::offset_of!(FeProgVdmReq, ecc_pub_x)
-        == core::mem::offset_of!(FeProgVdmReq, nonce) + AUTH_CMD_NONCE_LEN
-);
-const _: () = assert!(
-    core::mem::offset_of!(FeProgVdmReq, ecc_pub_y)
-        == core::mem::offset_of!(FeProgVdmReq, ecc_pub_x) + ECC_P384_COORD_SIZE
-);
-const _: () = assert!(
-    core::mem::offset_of!(FeProgVdmReq, mldsa_pub)
-        == core::mem::offset_of!(FeProgVdmReq, ecc_pub_y) + ECC_P384_COORD_SIZE
-);
-const _: () = assert!(
-    core::mem::offset_of!(FeProgVdmReq, sig)
-        == core::mem::offset_of!(FeProgVdmReq, mldsa_pub) + MLDSA87_PUB_KEY_SIZE
-);
 
 /// MC_GET_AUTH_CMD_CHALLENGE sub-command (`MACC`).
 pub const GET_AUTH_CHALLENGE_CMD_ID: u32 = 0x4D41_4343;
@@ -212,21 +175,19 @@ where
     H: CaliptraVdmAuthorization,
     A: SpdmPalAlloc,
 {
-    let Ok(fe_req) = FeProgVdmReq::ref_from_bytes(req) else {
-        return CaliptraVdmCmdResult::Error(if req.len() != core::mem::size_of::<FeProgVdmReq>() {
-            CaliptraCompletionCode::InvalidPayloadSize
-        } else {
-            CaliptraCompletionCode::InvalidParameter
-        });
+    let parsed = match split_authorized_request(req, FE_PROG_PAYLOAD_LEN) {
+        Ok(parsed) => parsed,
+        Err(code) => return CaliptraVdmCmdResult::Error(code),
     };
+    let partition = read_u32_le(parsed.payload);
     match cmds
         .program_field_entropy(
-            fe_req.partition,
-            &fe_req.sig,
-            &fe_req.nonce,
-            &fe_req.ecc_pub_x,
-            &fe_req.ecc_pub_y,
-            &fe_req.mldsa_pub,
+            partition,
+            parsed.sig,
+            parsed.nonce,
+            parsed.ecc_pub_x,
+            parsed.ecc_pub_y,
+            parsed.mldsa_pub,
             scratch,
         )
         .await

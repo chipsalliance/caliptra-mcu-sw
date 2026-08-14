@@ -150,7 +150,7 @@ test-mcu-mbox-fips-periodic = ["mcu-mbox-service", "caliptra-mcu-mbox-lib/period
 test-mctp-vdm-cmds = ["mctp-vdm-service"]
 # Exercise the production CaliptraCmdBackend rather than the VDM test mock.
 test-mctp-vdm-production = ["mctp-vdm-service"]
-test-caliptra-util-host-mctp-vdm-validator = ["mctp-vdm-service"]
+test-caliptra-util-host-mctp-vdm-validator = ["mctp-vdm-service", "userspace-log"]
 test-caliptra-util-host-validator = ["mcu-mbox-service"]
 test-mcu-mbox-cmds = ["mcu-mbox-service"]
 test-mcu-mbox-fips-self-test = ["mcu-mbox-service"]

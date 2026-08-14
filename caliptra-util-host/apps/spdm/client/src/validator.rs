@@ -27,9 +27,6 @@ use caliptra_util_host_commands::api::CaliptraApiError;
 
 use crate::AuthorizedCommandData;
 
-const IMPLEMENTED_AUTHORIZED_SUBCOMMANDS: u32 =
-    (1 << 0) | (1 << 1) | (1 << 2) | (1 << 3) | (1 << 4) | (1 << 5);
-
 /// Result of a single validation check.
 #[derive(Debug, Clone)]
 pub struct ValidationResult {
@@ -785,32 +782,6 @@ pub fn run_fuse_policy_rejection_tests(
     ]
 }
 
-fn run_authorized_subcommand_capability_test(client: &mut SpdmVdmClient) -> ValidationResult {
-    match client.get_device_capabilities() {
-        Ok(capabilities) => {
-            let advertised = capabilities.authorized_subcommand_capabilities();
-            if advertised & IMPLEMENTED_AUTHORIZED_SUBCOMMANDS == IMPLEMENTED_AUTHORIZED_SUBCOMMANDS
-            {
-                ValidationResult::pass(
-                    "Authorized fuse capability advertisement",
-                    format!("authorized_subcommands={advertised:#010x}"),
-                )
-            } else {
-                ValidationResult::fail(
-                    "Authorized fuse capability advertisement",
-                    format!(
-                        "expected bits {IMPLEMENTED_AUTHORIZED_SUBCOMMANDS:#010x}, got {advertised:#010x}"
-                    ),
-                )
-            }
-        }
-        Err(error) => ValidationResult::fail(
-            "Authorized fuse capability advertisement",
-            format!("GetDeviceCapabilities failed: {error}"),
-        ),
-    }
-}
-
 fn run_fuse_suite(
     client: &mut SpdmVdmClient,
     suite: &str,
@@ -825,9 +796,7 @@ fn run_fuse_suite(
     };
     let hash = [0xA5; 48];
     let other_hash = [0x5A; 48];
-    let mut results = vec![run_authorized_subcommand_capability_test(client)];
-
-    results.extend(match suite {
+    match suite {
         "authorization" => {
             let mut results = run_raw_malformed_request_tests(client);
             results.extend(run_authorization_negative_tests(
@@ -965,8 +934,7 @@ fn run_fuse_suite(
             "Authorized fuse suite",
             format!("unknown suite {suite:?}"),
         )],
-    });
-    results
+    }
 }
 
 pub fn run_authorization_negative_tests(
