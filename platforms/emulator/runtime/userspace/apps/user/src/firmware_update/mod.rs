@@ -21,7 +21,7 @@ use mcu_caliptra_api_lite::firmware_update::{FirmwareUpdater, PldmFirmwareDevice
 use mcu_caliptra_api_lite::firmware_update::FirmwareUpdateHooks;
 
 use caliptra_mcu_libtock_platform::ErrorCode;
-use caliptra_mcu_spdm_pal::{BitmapAllocator, StaticBitmapAllocatorCell, BITMAP_SLOT_SIZE};
+use caliptra_mcu_scratch_alloc::{BitmapAllocator, StaticBitmapAllocatorCell, BITMAP_SLOT_SIZE};
 use core::ptr::NonNull;
 const RESET_REASON_FW_HITLESS_UPD_RESET_MASK: u32 = 0x1;
 const FW_UPDATE_SCRATCH_SIZE: usize = 2 * 1024;

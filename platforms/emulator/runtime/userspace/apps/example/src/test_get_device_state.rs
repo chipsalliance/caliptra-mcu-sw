@@ -3,7 +3,7 @@ use caliptra_mcu_attestation_evidence::pcr_quote::{
     encode_pcr_quote, PcrQuoteAlgorithm, PCR_QUOTE_MAX_BUF_SIZE,
 };
 use caliptra_mcu_romtime::{println, test_exit};
-use caliptra_mcu_spdm_pal::{BitmapAllocator, StaticBitmapAllocatorCell, BITMAP_SLOT_SIZE};
+use caliptra_mcu_scratch_alloc::{BitmapAllocator, StaticBitmapAllocatorCell, BITMAP_SLOT_SIZE};
 use core::ptr::NonNull;
 use mcu_caliptra_api_lite::{core_firmware_version, core_image_info, fw_info};
 
