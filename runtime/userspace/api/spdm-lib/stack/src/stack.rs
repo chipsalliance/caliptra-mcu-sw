@@ -32,7 +32,7 @@ use crate::key_schedule::SessionKeyType;
 use crate::session::{SessionInfo, SessionManager, SessionState};
 use crate::{
     algorithms, capabilities, certificate, challenge, chunk, digests, end_session, finish,
-    key_exchange, measurements, vendor_defined, version,
+    heartbeat, key_exchange, measurements, vendor_defined, version,
 };
 
 /// Type alias for the SessionManager with full PAL type resolution.
@@ -167,6 +167,7 @@ impl<S, L> ConnectionState<S, L> {
             | CapFlags::ENCRYPT
             | CapFlags::MAC
             | CapFlags::CHUNK
+            | heartbeat_cap_flags()
             | set_certificate_cap_flags();
         let other_param_support =
             OtherParamSupport::OPAQUE_DATA_FMT1 | set_certificate_other_params();
@@ -301,6 +302,20 @@ fn set_certificate_other_params() -> OtherParamSupport {
     OtherParamSupport::EMPTY
 }
 
+// Advertise HBEAT_CAP only when the heartbeat liveness watchdog is compiled in.
+// With the feature off, no HBEAT_CAP is advertised, so per DSP0274 the
+// HeartbeatPeriod is always zero and no liveness is expected (spec-legal
+// "heartbeat not supported").
+#[cfg(feature = "spdm-set-heartbeat")]
+fn heartbeat_cap_flags() -> CapFlags {
+    CapFlags::HBEAT
+}
+
+#[cfg(not(feature = "spdm-set-heartbeat"))]
+fn heartbeat_cap_flags() -> CapFlags {
+    CapFlags::EMPTY
+}
+
 /// SPDM responder state machine + dispatcher.
 ///
 /// Owns a `Pal` (transport + allocator), the [`ConnectionState`],
@@ -378,6 +393,33 @@ impl<Pal: SpdmPal, const MAX_SESSIONS: usize, Vdm: SpdmVdmBackend>
             caliptra_mcu_libsyscall_caliptra::DefaultSyscalls,
         >::writer();
         loop {
+            // Receive the next request. With the heartbeat watchdog enabled and
+            // at least one session armed, race the receive against the nearest
+            // liveness deadline; if the timer wins, tear down every expired
+            // session and wait again. With the feature off (or no armed session)
+            // this is a plain blocking receive, unchanged. Field borrows are
+            // kept disjoint (`self.pal` shared vs. `self.sessions` mutable) by
+            // inlining rather than delegating to a `&mut self` method.
+            #[cfg(feature = "spdm-set-heartbeat")]
+            let io = {
+                use crate::select::{select, Either};
+                loop {
+                    match self.sessions.nearest_deadline_ms() {
+                        Some(deadline) => {
+                            let delay = deadline.saturating_sub(self.pal.now_ms());
+                            match select(self.pal.recv_request(), self.pal.sleep_ms(delay)).await {
+                                Either::First(io) => break io?,
+                                Either::Second(()) => {
+                                    self.sessions.expire_due(self.pal.now_ms());
+                                    continue;
+                                }
+                            }
+                        }
+                        None => break self.pal.recv_request().await?,
+                    }
+                }
+            };
+            #[cfg(not(feature = "spdm-set-heartbeat"))]
             let io = self.pal.recv_request().await?;
             #[cfg(feature = "debug-trace")]
             {
@@ -628,7 +670,11 @@ async fn dispatch<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_SESSIONS: usi
         ReqRespCode::KEY_EXCHANGE => {
             key_exchange::handle_key_exchange(state, sessions, pal, io).await
         }
-        ReqRespCode::FINISH | ReqRespCode::END_SESSION => Err(SPDM_SESSION_REQUIRED),
+        // HEARTBEAT is advertised (HBEAT cap) but only valid inside a session,
+        // so an unsecured request gets SessionRequired, not UnsupportedRequest.
+        ReqRespCode::FINISH | ReqRespCode::END_SESSION | ReqRespCode::HEARTBEAT => {
+            Err(SPDM_SESSION_REQUIRED)
+        }
         ReqRespCode(0) => Err(SPDM_INVALID_REQUEST),
         _ => Err(SPDM_UNSUPPORTED_REQUEST.with_data(code.0)),
     }
@@ -800,7 +846,7 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_S
         state.large_msg_ctx.reset();
     }
 
-    match spdm_hdr.code {
+    let result = match spdm_hdr.code {
         ReqRespCode::FINISH => {
             let session = sessions.find_mut(session_id).ok_or(SPDM_UNSPECIFIED)?;
             let finish_rsp =
@@ -817,6 +863,10 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_S
             .await?;
             session.key_schedule.destroy_handshake_secrets();
             session.state = SessionState::Established;
+            // Arm the liveness watchdog at the FINISH_RSP transmission point
+            // (DSP0274 1.3.0 section 10.20). No-op when the negotiated period
+            // is zero (heartbeat disabled / feature off).
+            session.arm_heartbeat(pal.now_ms());
             Ok(rsp)
         }
         ReqRespCode::END_SESSION => {
@@ -834,6 +884,20 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_S
             .await?;
             sessions.remove_and_destroy(session_id);
             Ok(rsp)
+        }
+        ReqRespCode::HEARTBEAT => {
+            let heartbeat_ack = heartbeat::handle_heartbeat(version, spdm_msg)?;
+            let session = sessions.find_mut(session_id).ok_or(SPDM_UNSPECIFIED)?;
+            encrypt_secured_spdm_response(
+                pal,
+                io,
+                session,
+                session_id,
+                version,
+                response_key_type,
+                &heartbeat_ack,
+            )
+            .await
         }
         ReqRespCode::GET_DIGESTS => {
             let (digests_rsp, spdm_len) =
@@ -946,7 +1010,19 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_S
             .await
         }
         _ => Err(SPDM_UNSUPPORTED_REQUEST.with_data(spdm_hdr.code.0)),
+    };
+
+    // Keep-alive: any successfully handled secured command restarts the
+    // liveness watchdog (DSP0274 1.3.0 section 10.20 "session traffic"). FINISH
+    // arms it above and END_SESSION removes the session, so both are skipped
+    // here; touch is a no-op on a session whose watchdog is unarmed.
+    if result.is_ok() && code != ReqRespCode::FINISH && code != ReqRespCode::END_SESSION {
+        if let Some(session) = sessions.find_mut(session_id) {
+            session.touch_heartbeat(pal.now_ms());
+        }
     }
+
+    result
 }
 
 fn validate_message_allowed_phase(
@@ -975,7 +1051,9 @@ fn validate_message_allowed_phase(
         ReqRespCode::GET_DIGESTS
         | ReqRespCode::GET_CERTIFICATE
         | ReqRespCode::GET_MEASUREMENTS
-        | ReqRespCode::END_SESSION => application_key(),
+        | ReqRespCode::END_SESSION
+        // HEARTBEAT is only valid in an established secure session.
+        | ReqRespCode::HEARTBEAT => application_key(),
         ReqRespCode::SET_CERTIFICATE => Err(SPDM_UNSUPPORTED_REQUEST.with_data(code.0)),
         ReqRespCode::FINISH => {
             if session_state == SessionState::HandshakeInProgress {
@@ -1104,3 +1182,7 @@ fn decode_header(req: &[u8]) -> (ReqRespCode, SpdmVersion) {
 #[cfg(all(test, feature = "set-certificate"))]
 #[path = "tests/stack_set_certificate.rs"]
 mod tests;
+
+#[cfg(test)]
+#[path = "tests/heartbeat_liveness.rs"]
+mod heartbeat_liveness_tests;
