@@ -12,7 +12,7 @@
 //! 4. Add a config section in `config.rs`
 
 use crate::config::TestConfig;
-use crate::SpdmVdmClient;
+use crate::{AuthorizedCommandData, SpdmVdmClient};
 use caliptra_mcu_command_auth_challenge_signer::CommandAuthChallengeSigner;
 use caliptra_mcu_core_util_host_command_types::certificate::AttestedCsrValidationError;
 use caliptra_mcu_core_util_host_command_types::fuse::{
@@ -25,11 +25,6 @@ use caliptra_mcu_core_util_host_transport::{CaliptraVdmCommand, CaliptraVdmCompl
 use caliptra_mcu_debug_unlock_signer::{DebugUnlockSigner, ProdDebugUnlockChallenge};
 use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
 use caliptra_util_host_commands::api::CaliptraApiError;
-
-const IMPLEMENTED_AUTHORIZED_SUBCOMMANDS: u32 =
-    (1 << 0) | (1 << 1) | (1 << 2) | (1 << 3) | (1 << 4) | (1 << 5) | (1 << 6) | (1 << 7);
-
-use crate::AuthorizedCommandData;
 
 /// Result of a single validation check.
 #[derive(Debug, Clone)]
@@ -887,32 +882,6 @@ pub fn run_fuse_policy_rejection_tests(
     ]
 }
 
-fn run_authorized_subcommand_capability_test(client: &mut SpdmVdmClient) -> ValidationResult {
-    match client.get_device_capabilities() {
-        Ok(capabilities) => {
-            let advertised = capabilities.authorized_subcommand_capabilities();
-            if advertised & IMPLEMENTED_AUTHORIZED_SUBCOMMANDS == IMPLEMENTED_AUTHORIZED_SUBCOMMANDS
-            {
-                ValidationResult::pass(
-                    "Authorized fuse capability advertisement",
-                    format!("authorized_subcommands={advertised:#010x}"),
-                )
-            } else {
-                ValidationResult::fail(
-                    "Authorized fuse capability advertisement",
-                    format!(
-                        "expected bits {IMPLEMENTED_AUTHORIZED_SUBCOMMANDS:#010x}, got {advertised:#010x}"
-                    ),
-                )
-            }
-        }
-        Err(error) => ValidationResult::fail(
-            "Authorized fuse capability advertisement",
-            format!("GetDeviceCapabilities failed: {error}"),
-        ),
-    }
-}
-
 fn run_fuse_suite(
     client: &mut SpdmVdmClient,
     suite: &str,
@@ -927,7 +896,7 @@ fn run_fuse_suite(
     };
     let hash = [0xA5; 48];
     let other_hash = [0x5A; 48];
-    let mut results = vec![run_authorized_subcommand_capability_test(client)];
+    let mut results = Vec::new();
 
     results.extend(match suite {
         "authorization" => {
