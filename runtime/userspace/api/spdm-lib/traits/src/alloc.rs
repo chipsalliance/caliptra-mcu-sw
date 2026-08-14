@@ -66,8 +66,12 @@ pub trait SpdmPalAlloc: mcu_caliptra_api_lite::ApiAlloc {
     // exchanges until chunking completes.
 
     /// Maximum size, in bytes, of a single in-flight large SPDM message this
-    /// responder can hold. Drives the `CHUNK` capability advertisement
-    /// (`MaxSPDMmsgSize`) and buffered large-response/request validation.
+    /// responder can hold, already net of any CHUNK_GET transfer-buffer
+    /// headroom the implementation must reserve. Drives the `CHUNK` capability
+    /// advertisement (`MaxSPDMmsgSize`) and buffered large-response/request
+    /// validation, which the stack derives directly from this value. The
+    /// headroom reservation is an integrator memory-budget decision and lives in
+    /// the PAL implementation, not in the generic stack.
     fn large_capacity(&self) -> usize;
 
     /// RAII guard type returned by [`Self::alloc_large_buf`].
