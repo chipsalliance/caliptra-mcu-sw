@@ -3,7 +3,7 @@
 use caliptra_mcu_romtime::{println, test_exit, HexBytes};
 use caliptra_mcu_scratch_alloc::{BitmapAllocator, StaticBitmapAllocatorCell, BITMAP_SLOT_SIZE};
 use core::ptr::NonNull;
-use mcu_caliptra_api_lite::{
+use mcu_caliptra_api::{
     cm_hmac, cm_import, dpe_certify_key_pubkey, dpe_sign_ecc_p384, ecdh_finish, ecdh_generate,
     ecdsa_verify, hash_all, hkdf_expand, hkdf_extract, rng_generate, sha_finish, sha_init,
     sha_update, spdm_aes_gcm_decrypt, spdm_aes_gcm_encrypt, CmKeyUsage, HashAlgo, HkdfSalt,

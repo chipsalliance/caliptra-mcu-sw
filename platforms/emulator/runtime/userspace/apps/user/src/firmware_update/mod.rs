@@ -15,10 +15,10 @@ use core::fmt::Write;
 use crate::EXECUTOR;
 
 #[cfg(feature = "firmware-update")]
-use mcu_caliptra_api_lite::firmware_update::{FirmwareUpdater, PldmFirmwareDeviceParams};
+use mcu_caliptra_api::firmware_update::{FirmwareUpdater, PldmFirmwareDeviceParams};
 
 #[cfg(feature = "flash-boot")]
-use mcu_caliptra_api_lite::firmware_update::FirmwareUpdateHooks;
+use mcu_caliptra_api::firmware_update::FirmwareUpdateHooks;
 
 use caliptra_mcu_libtock_platform::ErrorCode;
 use caliptra_mcu_scratch_alloc::{BitmapAllocator, StaticBitmapAllocatorCell, BITMAP_SLOT_SIZE};
@@ -62,7 +62,7 @@ pub async fn firmware_update<D: DMAMapping>(
     #[cfg(feature = "test-firmware-update-streaming")]
     {
         use crate::EXECUTOR;
-        use mcu_caliptra_api_lite::firmware_update::{FirmwareUpdater, PldmFirmwareDeviceParams};
+        use mcu_caliptra_api::firmware_update::{FirmwareUpdater, PldmFirmwareDeviceParams};
         let fw_params = PldmFirmwareDeviceParams {
             descriptors: &config::fw_update_consts::DESCRIPTOR.get()[..],
             fw_params: config::fw_update_consts::FIRMWARE_PARAMS.get(),
@@ -176,7 +176,7 @@ pub async fn firmware_update<D: DMAMapping>(
     #[cfg(feature = "test-firmware-activate")]
     {
         use caliptra_mcu_flash_image::FlashHeader;
-        use mcu_caliptra_api_lite::firmware_update::StagingMemory;
+        use mcu_caliptra_api::firmware_update::StagingMemory;
         use zerocopy::FromBytes;
 
         let fw_params = PldmFirmwareDeviceParams {
@@ -235,7 +235,7 @@ mod external_memory {
     };
     use caliptra_mcu_libtock_platform::ErrorCode;
     use core::fmt::Debug;
-    use mcu_caliptra_api_lite::firmware_update::StagingMemory;
+    use mcu_caliptra_api::firmware_update::StagingMemory;
 
     use crate::image_loader::EMULATED_DMA_MAPPING;
 
@@ -319,7 +319,7 @@ mod dummy_flash {
     use caliptra_mcu_libsyscall_caliptra::flash::{FlashCapacity, SpiFlash as FlashSyscall};
     use caliptra_mcu_libtock_platform::ErrorCode;
     use core::fmt::Debug;
-    use mcu_caliptra_api_lite::firmware_update::StagingMemory;
+    use mcu_caliptra_api::firmware_update::StagingMemory;
 
     pub struct ExternalFlash {
         flash_syscall: FlashSyscall,
@@ -376,7 +376,7 @@ mod flash_memory {
     };
     use caliptra_mcu_libtock_platform::ErrorCode;
     use core::fmt::Debug;
-    use mcu_caliptra_api_lite::firmware_update::StagingMemory;
+    use mcu_caliptra_api::firmware_update::StagingMemory;
 
     use caliptra_mcu_libtock_console::Console;
     #[allow(unused_imports)]

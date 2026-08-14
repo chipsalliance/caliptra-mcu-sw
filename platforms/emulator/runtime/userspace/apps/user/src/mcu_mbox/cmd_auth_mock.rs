@@ -10,7 +10,7 @@ use caliptra_mcu_mbox_common::messages::{
 use core::cell::RefCell;
 use core::mem::{offset_of, size_of};
 use embassy_sync::blocking_mutex::{raw::CriticalSectionRawMutex, Mutex};
-use mcu_caliptra_api_lite::ApiAlloc;
+use mcu_caliptra_api::ApiAlloc;
 use zerocopy::{FromBytes, Immutable, KnownLayout};
 
 extern crate alloc;

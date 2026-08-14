@@ -5,7 +5,7 @@ use caliptra_mcu_common_commands::{
     DeviceCapabilities, FirmwareVersion, GetLogResult, MAX_FW_VERSION_LEN,
 };
 use caliptra_mcu_mbox_common::config;
-use mcu_caliptra_api_lite::ApiAlloc;
+use mcu_caliptra_api::ApiAlloc;
 
 use crate::caliptra_cmd_handler::CaliptraCmdBackend;
 

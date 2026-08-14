@@ -545,7 +545,7 @@ mod tests {
 
     struct TestAlloc;
 
-    impl mcu_caliptra_api_lite::ApiAlloc for TestAlloc {
+    impl mcu_caliptra_api::ApiAlloc for TestAlloc {
         type Buf<'a>
             = Vec<u8>
         where
@@ -556,7 +556,7 @@ mod tests {
         }
     }
 
-    impl mcu_caliptra_api_lite::ApiAllocPool for TestAlloc {
+    impl mcu_caliptra_api::ApiAllocPool for TestAlloc {
         type Pool = Self;
 
         fn pool(&self) -> &Self::Pool {
@@ -778,7 +778,7 @@ mod tests {
             }
         }
 
-        async fn get_attestation<Alloc: mcu_caliptra_api_lite::ApiAlloc>(
+        async fn get_attestation<Alloc: mcu_caliptra_api::ApiAlloc>(
             &self,
             _alloc: &Alloc,
             _format: EvidenceFormat,
@@ -798,7 +798,7 @@ mod tests {
             Ok(self.evidence_len)
         }
 
-        async fn export_attested_csr<Alloc: mcu_caliptra_api_lite::ApiAlloc>(
+        async fn export_attested_csr<Alloc: mcu_caliptra_api::ApiAlloc>(
             &self,
             _alloc: &Alloc,
             _device_key_id: u32,
@@ -809,7 +809,7 @@ mod tests {
             self.write_csr(out)
         }
 
-        async fn request_debug_unlock<Alloc: mcu_caliptra_api_lite::ApiAlloc>(
+        async fn request_debug_unlock<Alloc: mcu_caliptra_api::ApiAlloc>(
             &self,
             _alloc: &Alloc,
             unlock_level: u8,
@@ -823,7 +823,7 @@ mod tests {
             Ok(())
         }
 
-        async fn authorize_debug_unlock_token<Alloc: mcu_caliptra_api_lite::ApiAlloc>(
+        async fn authorize_debug_unlock_token<Alloc: mcu_caliptra_api::ApiAlloc>(
             &self,
             _alloc: &Alloc,
             token_data: &[u8],

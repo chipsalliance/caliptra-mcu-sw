@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! `mcu-caliptra-api-lite` — minimal Caliptra mailbox API surface.
+//! `mcu-caliptra-api` — minimal Caliptra mailbox API surface.
 //!
 //! Self-contained crate exposing the Caliptra-mailbox primitives
 //! consumers (today: SPDM-Lite, tomorrow: DPE clients, custom

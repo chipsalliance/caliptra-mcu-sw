@@ -16,8 +16,8 @@ use errors::{MeasurementApiError, MeasurementApiResult};
 pub use image_metadata::{
     ImageMetadata, ImageMetadataFlags, MeasurementOperation, IMAGE_MEASUREMENT_DIGEST_SIZE,
 };
-pub use mcu_caliptra_api_lite::ImageHashSource;
-use mcu_caliptra_api_lite::{ApiAlloc, DPE_LABEL_LEN};
+pub use mcu_caliptra_api::ImageHashSource;
+use mcu_caliptra_api::{ApiAlloc, DPE_LABEL_LEN};
 use mcu_error::McuResult;
 
 static MEASUREMENT_API: Mutex<

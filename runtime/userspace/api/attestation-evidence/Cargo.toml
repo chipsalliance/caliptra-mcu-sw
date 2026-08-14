@@ -9,7 +9,7 @@ edition.workspace = true
 [dependencies]
 caliptra-mcu-measurement-api = { workspace = true }
 caliptra-mcu-libsyscall-caliptra = { workspace = true }
-mcu-caliptra-api-lite = { workspace = true }
+mcu-caliptra-api = { workspace = true }
 mcu-error = { workspace = true }
 
 [features]

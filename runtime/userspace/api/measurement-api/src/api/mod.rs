@@ -24,7 +24,7 @@ use caliptra_mcu_libsyscall_caliptra::soft_pcr_store::{
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_platform::Syscalls;
 use core::marker::PhantomData;
-use mcu_caliptra_api_lite::{
+use mcu_caliptra_api::{
     dpe_certify_key_cert_size, dpe_certify_key_cert_slice, dpe_certify_key_pubkey,
     dpe_rotate_context_default, dpe_sign_ecc_p384, dpe_tag_tci, sha_finish, sha_init, sha_update,
     ApiAlloc, AuthorizeAndStashFlags, AuthorizeAndStashParams, DpeContextHandle, HashAlgo,

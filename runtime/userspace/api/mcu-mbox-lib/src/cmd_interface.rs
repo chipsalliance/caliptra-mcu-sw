@@ -30,7 +30,7 @@ use caliptra_mcu_mbox_common::messages::{
 };
 use caliptra_mcu_otp_fuse::fuse_read_dai_params;
 use core::sync::atomic::{AtomicBool, Ordering};
-use mcu_caliptra_api_lite::{raw, ApiAlloc, ApiAllocPool};
+use mcu_caliptra_api::{raw, ApiAlloc, ApiAllocPool};
 use mcu_error::{McuErrorCode, McuResult};
 use zerocopy::{FromBytes, IntoBytes};
 
@@ -557,7 +557,7 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
             .map_err(|_| errors::INVALID_PARAMS)?;
         *resp = GetAuthCmdChallengeResp::default();
 
-        mcu_caliptra_api_lite::rng_generate(self.scratch, &mut resp.challenge)
+        mcu_caliptra_api::rng_generate(self.scratch, &mut resp.challenge)
             .await
             .map_err(|_| errors::MCU_MBOX_COMMON)?;
 

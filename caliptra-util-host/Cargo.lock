@@ -621,7 +621,7 @@ version = "0.1.0"
 dependencies = [
  "caliptra-image-types",
  "caliptra-mcu-registers-generated",
- "mcu-caliptra-api-lite",
+ "mcu-caliptra-api",
  "zerocopy",
 ]
 
@@ -1948,7 +1948,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "mcu-caliptra-api-lite"
+name = "mcu-caliptra-api"
 version = "0.1.0"
 dependencies = [
  "zerocopy",

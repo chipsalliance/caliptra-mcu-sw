@@ -21,7 +21,7 @@ use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
 use caliptra_mcu_spdm_pal::cert::DPE_LEAF_LABEL;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
-use mcu_caliptra_api_lite::{
+use mcu_caliptra_api::{
     fe_prog, fw_info, get_attested_csr_ecc384, get_attested_csr_mldsa87, get_idev_csr_ecc384,
     hash_all, request_debug_unlock_challenge, sha_finish, sha_init, sha_update, ApiAlloc, HashAlgo,
     McuErrorCode, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD,
@@ -29,7 +29,7 @@ use mcu_caliptra_api_lite::{
 };
 // Only used by the SPDM/VDM-gated `generate_auth_challenge` below.
 #[cfg(feature = "spdm")]
-use mcu_caliptra_api_lite::rng_generate;
+use mcu_caliptra_api::rng_generate;
 use zerocopy::IntoBytes;
 
 const ALGO_ECC_P384: u32 = 0x0001;
@@ -252,13 +252,9 @@ pub async fn verify_authorized_signatures<A: ApiAlloc>(
 
     let cmd_ecdsa_verify: u32 = caliptra_api::mailbox::CommandId::ECDSA384_SIGNATURE_VERIFY.into();
 
-    mcu_caliptra_api_lite::raw::raw_mailbox_execute(
-        cmd_ecdsa_verify,
-        ecc_req_bytes,
-        ecc_resp_bytes,
-    )
-    .await
-    .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
+    mcu_caliptra_api::raw::raw_mailbox_execute(cmd_ecdsa_verify, ecc_req_bytes, ecc_resp_bytes)
+        .await
+        .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
 
     // ML-DSA-87 over SHA-512(pre-image): the 64-byte digest is the signed message
     // (external pre-hash), matching the host's `try_sign(&SHA-512(pre-image))`.
@@ -298,13 +294,9 @@ pub async fn verify_authorized_signatures<A: ApiAlloc>(
 
     let cmd_mldsa_verify: u32 = caliptra_api::mailbox::CommandId::MLDSA87_SIGNATURE_VERIFY.into();
 
-    mcu_caliptra_api_lite::raw::raw_mailbox_execute(
-        cmd_mldsa_verify,
-        mldsa_req_bytes,
-        mldsa_resp_bytes,
-    )
-    .await
-    .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
+    mcu_caliptra_api::raw::raw_mailbox_execute(cmd_mldsa_verify, mldsa_req_bytes, mldsa_resp_bytes)
+        .await
+        .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
 
     Ok(())
 }

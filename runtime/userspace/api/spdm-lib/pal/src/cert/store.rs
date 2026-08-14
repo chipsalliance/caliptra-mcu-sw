@@ -8,9 +8,7 @@
 
 use core::cell::UnsafeCell;
 
-use mcu_caliptra_api_lite::{
-    sha_finish, sha_init, sha_update, ApiAlloc, HashAlgo, SHA_CONTEXT_SIZE,
-};
+use mcu_caliptra_api::{sha_finish, sha_init, sha_update, ApiAlloc, HashAlgo, SHA_CONTEXT_SIZE};
 use mcu_error::McuResult;
 
 #[cfg(feature = "set-certificate")]

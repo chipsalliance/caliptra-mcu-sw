@@ -7,8 +7,8 @@ use caliptra_mcu_registers_generated::fuses::{
 use core::convert::From;
 use core::mem::size_of;
 use core::num::NonZeroU32;
-use mcu_caliptra_api_lite::mailbox::CommandId as CaliptraCommandId;
-pub use mcu_caliptra_api_lite::mailbox::{
+use mcu_caliptra_api::mailbox::CommandId as CaliptraCommandId;
+pub use mcu_caliptra_api::mailbox::{
     calc_checksum, verify_checksum, CmAesDecryptInitReq, CmAesDecryptUpdateReq,
     CmAesEncryptInitReq, CmAesEncryptInitResp, CmAesEncryptInitRespHeader, CmAesEncryptUpdateReq,
     CmAesGcmDecryptFinalReq, CmAesGcmDecryptFinalResp, CmAesGcmDecryptFinalRespHeader,

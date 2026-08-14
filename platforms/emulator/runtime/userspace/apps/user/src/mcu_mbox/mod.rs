@@ -34,7 +34,7 @@ const MCU_MBOX_SCRATCH_SIZE: usize = 16 * 1024;
 struct McuMboxScratchAlloc(&'static BitmapAllocator);
 
 #[cfg(feature = "mcu-mbox-service")]
-impl mcu_caliptra_api_lite::ApiAlloc for McuMboxScratchAlloc {
+impl mcu_caliptra_api::ApiAlloc for McuMboxScratchAlloc {
     type Buf<'a>
         = BitmapBytes<'a>
     where
@@ -46,7 +46,7 @@ impl mcu_caliptra_api_lite::ApiAlloc for McuMboxScratchAlloc {
 }
 
 #[cfg(feature = "mcu-mbox-service")]
-impl mcu_caliptra_api_lite::ApiAllocPool for McuMboxScratchAlloc {
+impl mcu_caliptra_api::ApiAllocPool for McuMboxScratchAlloc {
     type Pool = BitmapAllocator;
 
     fn pool(&self) -> &Self::Pool {

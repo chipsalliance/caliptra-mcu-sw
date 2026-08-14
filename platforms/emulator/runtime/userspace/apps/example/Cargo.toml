@@ -27,7 +27,7 @@ caliptra-mcu-config-fpga.workspace = true
 caliptra-mcu-pldm-common.workspace = true
 caliptra-mcu-scratch-alloc.workspace = true
 caliptra-mcu-spdm-pal.workspace = true
-mcu-caliptra-api-lite = { workspace = true, features = ["mailbox-io"] }
+mcu-caliptra-api = { workspace = true, features = ["mailbox-io"] }
 portable-atomic.workspace = true
 caliptra-mcu-romtime.workspace = true
 zerocopy.workspace = true
