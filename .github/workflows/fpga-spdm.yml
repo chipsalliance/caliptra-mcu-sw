@@ -17,6 +17,7 @@ concurrency:
 
 jobs:
   build_test_binaries:
+    if: ${{ vars.RUN_FPGA_CI != 'false' }}
     runs-on: [ e2-standard-8-big-disk ]
     # Cross-compilation plus spdm-emu can consume almost the full hour on cache misses.
     timeout-minutes: 90
@@ -220,6 +221,7 @@ jobs:
           retention-days: 1
 
   test_spdm:
+    if: ${{ vars.RUN_FPGA_CI != 'false' }}
     runs-on: vck190-subsystem
     needs: build_test_binaries
     timeout-minutes: 120
