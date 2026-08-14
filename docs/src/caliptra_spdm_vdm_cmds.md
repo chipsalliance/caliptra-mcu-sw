@@ -96,11 +96,12 @@ The following subcommands are assigned to the SPDM VDM IANA authorization-gated 
 | ---------------------- | -------------------------- | ------------- | --------------------------------------------------- |
 | `0x4D41_4343` (`MACC`) | GetAuthChallenge           | Supported     | Acquire a one-use 48-byte authorization challenge.  |
 | `0x5056_504B` (`PVPK`) | ProvisionVendorPkHash      | Supported     | Provision vendor public key hash.                   |
+| `0x504F_504B` (`POPK`) | ProvisionOwnerPkHash       | Supported     | Provision owner public key hash.                    |
 | `0x4D43_4D53` (`MCMS`) | FuseIncreaseCaliptraMinSvn | Supported     | Increase Caliptra minimum SVN.                      |
 | `0x4D43_4650` (`MCFP`) | ProgramFieldEntropy        | Supported     | Program field entropy.                              |
 | `0x4D52_564B` (`MRVK`) | FuseRevokeVendorPubKey     | Supported     | Revoke vendor public key.                           |
 | `0x5256_4B48` (`RVKH`) | FuseRevokeVendorPkHash     | Supported     | Revoke vendor public key hash.                      |
-| `0x4946_504B` (`IFPK`) | FuseLockPartition          | Planned (TBD) | Lock fuse partition.                                |
+| `0x4946_504B` (`IFPK`) | FuseLockPartition          | Supported     | Lock fuse partition.                                |
 
 ### Authorization Flow
 
@@ -130,6 +131,12 @@ Byte offsets below begin immediately after the four-byte `subcommand_id` and inc
 | | 148:195 | `ecc_pub_y` | u8[48] |
 | | 196:2787 | `mldsa_pub` | u8[2592] |
 | | 2788:7511 | `signature` | HybridSignature |
+| POPK | 0:47 | `hash` | u8[48], dword-reversed OTP representation |
+| | 48:95 | `nonce` | u8[48] |
+| | 96:143 | `ecc_pub_x` | u8[48] |
+| | 144:191 | `ecc_pub_y` | u8[48] |
+| | 192:2783 | `mldsa_pub` | u8[2592] |
+| | 2784:7507 | `signature` | HybridSignature |
 | MCMS | 0:3 | `flags` | u32, little-endian; must be zero |
 | | 4:7 | `svn` | u32, little-endian |
 | | 8:55 | `nonce` | u8[48] |
@@ -159,3 +166,9 @@ Byte offsets below begin immediately after the four-byte `subcommand_id` and inc
 | | 104:151 | `ecc_pub_y` | u8[48] |
 | | 152:2743 | `mldsa_pub` | u8[2592] |
 | | 2744:7467 | `signature` | HybridSignature |
+| IFPK | 0:3 | `partition` | u32, little-endian |
+| | 4:51 | `nonce` | u8[48] |
+| | 52:99 | `ecc_pub_x` | u8[48] |
+| | 100:147 | `ecc_pub_y` | u8[48] |
+| | 148:2739 | `mldsa_pub` | u8[2592] |
+| | 2740:7463 | `signature` | HybridSignature |

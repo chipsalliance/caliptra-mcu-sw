@@ -12,20 +12,19 @@
 //! 4. Add a config section in `config.rs`
 
 use crate::config::TestConfig;
-use crate::SpdmVdmClient;
+use crate::{AuthorizedCommandData, SpdmVdmClient};
 use caliptra_mcu_command_auth_challenge_signer::CommandAuthChallengeSigner;
 use caliptra_mcu_core_util_host_command_types::certificate::AttestedCsrValidationError;
 use caliptra_mcu_core_util_host_command_types::fuse::{
     MC_FE_PROG_CANONICAL_CMD_ID, MC_FUSE_INCREASE_CALIPTRA_MIN_SVN_CANONICAL_CMD_ID,
-    MC_FUSE_REVOKE_VENDOR_PK_HASH_CANONICAL_CMD_ID, MC_FUSE_REVOKE_VENDOR_PUB_KEY_CANONICAL_CMD_ID,
+    MC_FUSE_LOCK_PARTITION_CANONICAL_CMD_ID, MC_FUSE_REVOKE_VENDOR_PK_HASH_CANONICAL_CMD_ID,
+    MC_FUSE_REVOKE_VENDOR_PUB_KEY_CANONICAL_CMD_ID, MC_PROVISION_OWNER_PK_HASH_CANONICAL_CMD_ID,
     MC_PROVISION_VENDOR_PK_HASH_CANONICAL_CMD_ID,
 };
 use caliptra_mcu_core_util_host_transport::{CaliptraVdmCommand, CaliptraVdmCompletionCode};
 use caliptra_mcu_debug_unlock_signer::{DebugUnlockSigner, ProdDebugUnlockChallenge};
 use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
 use caliptra_util_host_commands::api::CaliptraApiError;
-
-use crate::AuthorizedCommandData;
 
 /// Result of a single validation check.
 #[derive(Debug, Clone)]
@@ -155,6 +154,14 @@ pub fn run_all(
             client,
             config.provision_vendor_pk_hash.slot,
             &config.provision_vendor_pk_hash.hash,
+            command_authorizer,
+            verbose,
+        ));
+    }
+    if config.provision_owner_pk_hash.enabled {
+        results.push(run_provision_owner_pk_hash(
+            client,
+            &config.provision_owner_pk_hash.hash,
             command_authorizer,
             verbose,
         ));
@@ -412,6 +419,48 @@ pub fn run_provision_vendor_pk_hash(
     }
 }
 
+pub fn run_provision_owner_pk_hash(
+    client: &mut SpdmVdmClient,
+    hash_hex: &str,
+    authorizer: Option<&dyn CommandAuthChallengeSigner>,
+    _verbose: bool,
+) -> ValidationResult {
+    let test_name = "ProvisionOwnerPkHash";
+    let hash_vec = match hex::decode(hash_hex) {
+        Ok(hash) if hash.len() == 48 => hash,
+        Ok(hash) => {
+            return ValidationResult::fail(
+                test_name,
+                format!("hash must be 48 bytes, got {}", hash.len()),
+            )
+        }
+        Err(error) => {
+            return ValidationResult::fail(test_name, format!("invalid hash hex: {error}"))
+        }
+    };
+    let hash: [u8; 48] = hash_vec.try_into().unwrap();
+    let auth = match authorize_command(
+        client,
+        MC_PROVISION_OWNER_PK_HASH_CANONICAL_CMD_ID,
+        &hash,
+        authorizer,
+    ) {
+        Ok(auth) => auth,
+        Err(error) => return ValidationResult::fail(test_name, error),
+    };
+    match client.provision_owner_pk_hash(
+        &hash,
+        &auth.sig,
+        &auth.nonce,
+        &auth.ecc_pub_x,
+        &auth.ecc_pub_y,
+        &auth.mldsa_pub,
+    ) {
+        Ok(_) => ValidationResult::pass(test_name, "hash provisioned"),
+        Err(error) => ValidationResult::fail(test_name, error.to_string()),
+    }
+}
+
 pub fn run_increase_caliptra_min_svn(
     client: &mut SpdmVdmClient,
     flags: u32,
@@ -528,6 +577,31 @@ fn signed_provision_vendor_pk_hash(
         .map_err(AuthorizedCommandError::Command)
 }
 
+fn signed_provision_owner_pk_hash(
+    client: &mut SpdmVdmClient,
+    hash: &[u8; 48],
+    authorizer: &dyn CommandAuthChallengeSigner,
+) -> Result<(), AuthorizedCommandError> {
+    let auth = authorize_command(
+        client,
+        MC_PROVISION_OWNER_PK_HASH_CANONICAL_CMD_ID,
+        hash,
+        Some(authorizer),
+    )
+    .map_err(AuthorizedCommandError::Preparation)?;
+    client
+        .provision_owner_pk_hash(
+            hash,
+            &auth.sig,
+            &auth.nonce,
+            &auth.ecc_pub_x,
+            &auth.ecc_pub_y,
+            &auth.mldsa_pub,
+        )
+        .map(|_| ())
+        .map_err(AuthorizedCommandError::Command)
+}
+
 fn signed_increase_caliptra_min_svn(
     client: &mut SpdmVdmClient,
     flags: u32,
@@ -593,6 +667,32 @@ fn signed_revoke_vendor_pk_hash(
     .map_err(AuthorizedCommandError::Preparation)?;
     client
         .fuse_revoke_vendor_pk_hash(reserved, slot, auth.as_command_data())
+        .map(|_| ())
+        .map_err(AuthorizedCommandError::Command)
+}
+
+fn signed_fuse_lock_partition(
+    client: &mut SpdmVdmClient,
+    partition: u32,
+    authorizer: &dyn CommandAuthChallengeSigner,
+) -> Result<(), AuthorizedCommandError> {
+    let payload = partition.to_le_bytes();
+    let auth = authorize_command(
+        client,
+        MC_FUSE_LOCK_PARTITION_CANONICAL_CMD_ID,
+        &payload,
+        Some(authorizer),
+    )
+    .map_err(AuthorizedCommandError::Preparation)?;
+    client
+        .fuse_lock_partition(
+            partition,
+            &auth.sig,
+            &auth.nonce,
+            &auth.ecc_pub_x,
+            &auth.ecc_pub_y,
+            &auth.mldsa_pub,
+        )
         .map(|_| ())
         .map_err(AuthorizedCommandError::Command)
 }
@@ -796,7 +896,9 @@ fn run_fuse_suite(
     };
     let hash = [0xA5; 48];
     let other_hash = [0x5A; 48];
-    match suite {
+    let mut results = Vec::new();
+
+    results.extend(match suite {
         "authorization" => {
             let mut results = run_raw_malformed_request_tests(client);
             results.extend(run_authorization_negative_tests(
@@ -824,6 +926,26 @@ fn run_fuse_suite(
                 "PVPK conflicting hash rejected",
                 signed_provision_vendor_pk_hash(client, 1, &other_hash, authorizer),
                 CaliptraVdmCompletionCode::OperationFailed,
+            ),
+        ],
+        "provision-owner-pk-hash" => vec![
+            expect_completion(
+                "POPK rejects zero hash",
+                signed_provision_owner_pk_hash(client, &[0; 48], authorizer),
+                CaliptraVdmCompletionCode::InvalidParameter,
+            ),
+            expect_success(
+                "POPK programs and reads back hash",
+                signed_provision_owner_pk_hash(client, &hash, authorizer),
+            ),
+            expect_success(
+                "POPK same hash is idempotent",
+                signed_provision_owner_pk_hash(client, &hash, authorizer),
+            ),
+            expect_completion(
+                "POPK conflicting hash rejected",
+                signed_provision_owner_pk_hash(client, &other_hash, authorizer),
+                CaliptraVdmCompletionCode::InvalidParameter,
             ),
         ],
         "increase-min-svn" => vec![
@@ -859,6 +981,21 @@ fn run_fuse_suite(
                 "MCMS rejects decrease",
                 signed_increase_caliptra_min_svn(client, 0, 4, authorizer),
                 CaliptraVdmCompletionCode::InvalidParameter,
+            ),
+        ],
+        "fuse-lock-partition" => vec![
+            expect_completion(
+                "IFPK rejects invalid partition",
+                signed_fuse_lock_partition(client, u32::MAX, authorizer),
+                CaliptraVdmCompletionCode::InvalidParameter,
+            ),
+            expect_success(
+                "IFPK locks partition",
+                signed_fuse_lock_partition(client, 0x0E, authorizer),
+            ),
+            expect_success(
+                "IFPK same partition is idempotent",
+                signed_fuse_lock_partition(client, 0x0E, authorizer),
             ),
         ],
         "revoke-vendor-pub-key" => vec![
@@ -934,7 +1071,8 @@ fn run_fuse_suite(
             "Authorized fuse suite",
             format!("unknown suite {suite:?}"),
         )],
-    }
+    });
+    results
 }
 
 pub fn run_authorization_negative_tests(

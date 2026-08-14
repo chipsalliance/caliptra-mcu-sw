@@ -14,9 +14,10 @@
 use crate::api::{CaliptraApiError, CaliptraResult};
 use caliptra_mcu_core_util_host_command_types::fuse::{
     FeProgRequest, FeProgResponse, FuseIncreaseCaliptraMinSvnRequest,
-    FuseIncreaseCaliptraMinSvnResponse, FuseRevokeVendorPkHashRequest,
-    FuseRevokeVendorPkHashResponse, FuseRevokeVendorPubKeyRequest, FuseRevokeVendorPubKeyResponse,
-    GetAuthCmdChallengeRequest, GetAuthCmdChallengeResponse, ProvisionVendorPkHashRequest,
+    FuseIncreaseCaliptraMinSvnResponse, FuseLockPartitionRequest, FuseLockPartitionResponse,
+    FuseRevokeVendorPkHashRequest, FuseRevokeVendorPkHashResponse, FuseRevokeVendorPubKeyRequest,
+    FuseRevokeVendorPubKeyResponse, GetAuthCmdChallengeRequest, GetAuthCmdChallengeResponse,
+    ProvisionOwnerPkHashRequest, ProvisionOwnerPkHashResponse, ProvisionVendorPkHashRequest,
     ProvisionVendorPkHashResponse,
 };
 use caliptra_mcu_core_util_host_command_types::CaliptraCommandId;
@@ -116,4 +117,18 @@ authorized_fuse_api!(
     FuseRevokeVendorPkHashResponse,
     FuseRevokeVendorPkHash,
     "FuseRevokeVendorPkHash command execution failed"
+);
+authorized_fuse_api!(
+    caliptra_cmd_fuse_lock_partition,
+    FuseLockPartitionRequest,
+    FuseLockPartitionResponse,
+    FuseLockPartition,
+    "FuseLockPartition command execution failed"
+);
+authorized_fuse_api!(
+    caliptra_cmd_provision_owner_pk_hash,
+    ProvisionOwnerPkHashRequest,
+    ProvisionOwnerPkHashResponse,
+    ProvisionOwnerPkHash,
+    "ProvisionOwnerPkHash command execution failed"
 );

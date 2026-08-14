@@ -4,7 +4,8 @@ use caliptra_mcu_common_commands::{AuthorizationError, CommandAuthorizer};
 use caliptra_mcu_mbox_common::messages::{
     CommandId, FuseIncreaseCaliptraMinSvnReq, FuseLockPartitionReq, FuseReadReq,
     FuseRevokeVendorPkHashReq, FuseRevokeVendorPubKeyReq, FuseWriteReq, HybridSignature,
-    MailboxReqHeader, McuFeProgReq, ProvisionVendorPkHashReq, AUTH_CMD_NONCE_LEN,
+    MailboxReqHeader, McuFeProgReq, ProvisionOwnerPkHashReq, ProvisionVendorPkHashReq,
+    AUTH_CMD_NONCE_LEN,
 };
 use core::cell::RefCell;
 use core::mem::{offset_of, size_of};
@@ -81,6 +82,7 @@ impl CommandAuthorizer for MockCommandAuthorizer {
     ) -> Result<&'a [u8], AuthorizationError> {
         let cmd_len = match cmd_id {
             CommandId::MC_PROVISION_VENDOR_PK_HASH => size_of::<ProvisionVendorPkHashReq>(),
+            CommandId::MC_PROVISION_OWNER_PK_HASH => size_of::<ProvisionOwnerPkHashReq>(),
             CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN => {
                 size_of::<FuseIncreaseCaliptraMinSvnReq>()
             }

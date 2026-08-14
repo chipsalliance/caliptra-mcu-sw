@@ -109,6 +109,14 @@ impl CaliptraCmdHandler for NonCryptoCmdHandlerMock {
             .await
     }
 
+    async fn provision_owner_pk_hash(&self, hash: &[u8; 48]) -> CaliptraCmdResult<()> {
+        CaliptraCmdBackend.provision_owner_pk_hash(hash).await
+    }
+
+    async fn fuse_lock_partition(&self, partition: u32) -> CaliptraCmdResult<()> {
+        CaliptraCmdBackend.fuse_lock_partition(partition).await
+    }
+
     async fn increase_caliptra_min_svn<Alloc: ApiAlloc>(
         &self,
         alloc: &Alloc,
