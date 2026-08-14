@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use caliptra_mcu_romtime::{println, test_exit, HexBytes};
-use caliptra_mcu_spdm_pal::{BitmapAllocator, StaticBitmapAllocatorCell, BITMAP_SLOT_SIZE};
+use caliptra_mcu_scratch_alloc::{BitmapAllocator, StaticBitmapAllocatorCell, BITMAP_SLOT_SIZE};
 use core::ptr::NonNull;
 use mcu_caliptra_api_lite::{
     cm_hmac, cm_import, dpe_certify_key_pubkey, dpe_sign_ecc_p384, ecdh_finish, ecdh_generate,

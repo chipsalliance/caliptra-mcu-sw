@@ -35,27 +35,6 @@ impl<M: MeasurementProvider> ApiAllocPool for McuSpdmPal<M> {
     }
 }
 
-impl ApiAlloc for BitmapAllocator {
-    type Buf<'a>
-        = BitmapBytes<'a>
-    where
-        Self: 'a;
-
-    #[inline]
-    fn alloc(&self, len: usize) -> McuResult<Self::Buf<'_>> {
-        self.alloc_bytes(len)
-    }
-}
-
-impl ApiAllocPool for BitmapAllocator {
-    type Pool = Self;
-
-    #[inline]
-    fn pool(&self) -> &Self::Pool {
-        self
-    }
-}
-
 impl<M: MeasurementProvider> SpdmPalHash for McuSpdmPal<M> {
     type State = HashState<BitmapBytes<'static>>;
 

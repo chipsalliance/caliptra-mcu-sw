@@ -10,7 +10,7 @@ use caliptra_mcu_libtock_platform::ErrorCode;
 #[cfg(feature = "mcu-mbox-service")]
 use caliptra_mcu_mbox_lib::cmd_interface::McuMboxScratch;
 #[cfg(feature = "mcu-mbox-service")]
-use caliptra_mcu_spdm_pal::{
+use caliptra_mcu_scratch_alloc::{
     BitmapAllocator, BitmapBytes, StaticBitmapAllocatorCell, BITMAP_SLOT_SIZE,
 };
 #[allow(unused_imports)]
