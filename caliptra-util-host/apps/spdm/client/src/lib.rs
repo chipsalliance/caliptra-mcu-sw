@@ -39,7 +39,6 @@ use caliptra_mcu_core_util_host_command_types::certificate::ExportAttestedCsrRes
 use caliptra_mcu_core_util_host_command_types::debug_unlock::{
     ProdDebugUnlockReqResponse, ProdDebugUnlockTokenRequest, ProdDebugUnlockTokenResponse,
 };
-use caliptra_mcu_core_util_host_command_types::device_info::GetDeviceCapabilitiesResponse;
 use caliptra_mcu_core_util_host_command_types::fuse::{
     FeProgResponse, FuseIncreaseCaliptraMinSvnRequest, FuseIncreaseCaliptraMinSvnResponse,
     FuseRevokeVendorPkHashRequest, FuseRevokeVendorPkHashResponse, FuseRevokeVendorPubKeyRequest,
@@ -55,7 +54,6 @@ use caliptra_util_host_commands::api::certificate::caliptra_cmd_export_attested_
 use caliptra_util_host_commands::api::debug_unlock::{
     caliptra_cmd_prod_debug_unlock_req, caliptra_cmd_prod_debug_unlock_token,
 };
-use caliptra_util_host_commands::api::device_info::caliptra_cmd_get_device_capabilities;
 use caliptra_util_host_commands::api::fuse::{
     caliptra_cmd_fe_prog, caliptra_cmd_fuse_increase_caliptra_min_svn,
     caliptra_cmd_fuse_revoke_vendor_pk_hash, caliptra_cmd_fuse_revoke_vendor_pub_key,
@@ -99,14 +97,6 @@ impl<'a> SpdmVdmClient<'a> {
         self.transport
             .disconnect()
             .map_err(|e| anyhow::anyhow!("Failed to disconnect SPDM VDM transport: {:?}", e))
-    }
-
-    /// Read the responder's Caliptra device capabilities.
-    pub fn get_device_capabilities(&mut self) -> CaliptraResult<GetDeviceCapabilitiesResponse> {
-        let mut session = self
-            .create_session()
-            .map_err(|_| CaliptraApiError::SessionError("Failed to create session"))?;
-        caliptra_cmd_get_device_capabilities(&mut session)
     }
 
     /// Execute the ExportAttestedCsr command.
