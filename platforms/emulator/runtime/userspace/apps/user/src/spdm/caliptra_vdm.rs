@@ -13,7 +13,8 @@ use caliptra_mcu_spdm_traits::{
 };
 use caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::{
     CaliptraCompletionCode, CaliptraVdm, CaliptraVdmAuthorization, CaliptraVdmResult,
-    CaliptraVdmStreamOps, FE_PROG_CMD_ID, INCREASE_CALIPTRA_MIN_SVN_CMD_ID,
+    CaliptraVdmStreamOps, FE_PROG_CMD_ID, FUSE_LOCK_PARTITION_CMD_ID,
+    INCREASE_CALIPTRA_MIN_SVN_CMD_ID, PROVISION_OWNER_PK_HASH_CMD_ID,
     PROVISION_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PUB_KEY_CMD_ID,
 };
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -288,6 +289,37 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
             .map_err(map_common_completion)
     }
 
+    async fn provision_owner_pk_hash<A: SpdmPalAlloc>(
+        &self,
+        hash: &[u8; 48],
+        payload: &[u8],
+        sig: &HybridSignature,
+        nonce: &[u8; AUTH_CMD_NONCE_LEN],
+        ecc_pub_x: &[u8; 48],
+        ecc_pub_y: &[u8; 48],
+        mldsa_pub: &[u8; 2592],
+        scratch: &A,
+    ) -> CaliptraVdmResult<()> {
+        let mut authorizer = cmd_auth_mock::MockCommandAuthorizer;
+        authorizer
+            .verify_signatures(
+                scratch,
+                PROVISION_OWNER_PK_HASH_CMD_ID,
+                payload,
+                nonce,
+                ecc_pub_x,
+                ecc_pub_y,
+                mldsa_pub,
+                sig,
+            )
+            .await
+            .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
+        CaliptraCmdBackend
+            .provision_owner_pk_hash(hash)
+            .await
+            .map_err(map_common_completion)
+    }
+
     async fn increase_caliptra_min_svn<A: SpdmPalAlloc>(
         &self,
         flags: u32,
@@ -422,6 +454,37 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
         }
         CaliptraCmdBackend
             .revoke_vendor_pk_hash(slot)
+            .await
+            .map_err(map_common_completion)
+    }
+
+    async fn fuse_lock_partition<A: SpdmPalAlloc>(
+        &self,
+        partition: u32,
+        payload: &[u8],
+        sig: &HybridSignature,
+        nonce: &[u8; AUTH_CMD_NONCE_LEN],
+        ecc_pub_x: &[u8; 48],
+        ecc_pub_y: &[u8; 48],
+        mldsa_pub: &[u8; 2592],
+        scratch: &A,
+    ) -> CaliptraVdmResult<()> {
+        let mut authorizer = cmd_auth_mock::MockCommandAuthorizer;
+        authorizer
+            .verify_signatures(
+                scratch,
+                FUSE_LOCK_PARTITION_CMD_ID,
+                payload,
+                nonce,
+                ecc_pub_x,
+                ecc_pub_y,
+                mldsa_pub,
+                sig,
+            )
+            .await
+            .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
+        CaliptraCmdBackend
+            .fuse_lock_partition(partition)
             .await
             .map_err(map_common_completion)
     }

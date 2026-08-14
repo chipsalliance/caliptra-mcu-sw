@@ -4,7 +4,9 @@ pub use caliptra_api::mailbox::{
     HpkeHandle, OcpLockEnumerateHpkeHandlesReq, OcpLockEnumerateHpkeHandlesResp,
 };
 use caliptra_image_types::{ECC384_SCALAR_BYTE_SIZE, MLDSA87_SIGNATURE_BYTE_SIZE};
-use caliptra_mcu_registers_generated::fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_0;
+use caliptra_mcu_registers_generated::fuses::{
+    OTP_CPTRA_CORE_VENDOR_PK_HASH_0, OTP_CPTRA_SS_OWNER_PK_HASH,
+};
 use core::convert::From;
 use core::num::NonZeroU32;
 use mcu_caliptra_api_lite::mailbox::CommandId as CaliptraCommandId;
@@ -131,6 +133,7 @@ impl CommandId {
     // Authorized commands
     pub const MC_GET_AUTH_CMD_CHALLENGE: Self = Self(0x4D414343); // "MACC"
     pub const MC_PROVISION_VENDOR_PK_HASH: Self = Self(0x5056_504b); // "PVPK"
+    pub const MC_PROVISION_OWNER_PK_HASH: Self = Self(0x504F_504B); // "POPK"
     pub const MC_FUSE_INCREASE_CALIPTRA_MIN_SVN: Self = Self(0x4D43_4D53); // "MCMS"
     pub const MC_FE_PROG: Self = Self(0x4D43_4650); // "MCFP"
     pub const MC_FUSE_REVOKE_VENDOR_PUB_KEY: Self = Self(0x4D52_564B); // "MRVK"
@@ -214,6 +217,7 @@ pub enum McuMailboxReq {
     GetAuthCmdChallenge(GetAuthCmdChallengeReq),
     FuseRevokeVendorPubKey(FuseRevokeVendorPubKeyReq),
     ProvisionVendorPkHash(ProvisionVendorPkHashReq),
+    ProvisionOwnerPkHash(ProvisionOwnerPkHashReq),
     FuseRevokeVendorPkHash(FuseRevokeVendorPkHashReq),
     // Certificate commands
     ExportAttestedCsr(ExportAttestedCsrReq),
@@ -279,6 +283,7 @@ impl McuMailboxReq {
             McuMailboxReq::GetAuthCmdChallenge(req) => Ok(req.as_bytes()),
             McuMailboxReq::FuseRevokeVendorPubKey(req) => Ok(req.as_bytes()),
             McuMailboxReq::ProvisionVendorPkHash(req) => Ok(req.as_bytes()),
+            McuMailboxReq::ProvisionOwnerPkHash(req) => Ok(req.as_bytes()),
             McuMailboxReq::FuseRevokeVendorPkHash(req) => Ok(req.as_bytes()),
             McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_bytes()),
             McuMailboxReq::DpeSignerContextCert(req) => Ok(req.as_bytes()),
@@ -342,6 +347,7 @@ impl McuMailboxReq {
             McuMailboxReq::GetAuthCmdChallenge(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FuseRevokeVendorPubKey(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::ProvisionVendorPkHash(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::ProvisionOwnerPkHash(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FuseRevokeVendorPkHash(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::DpeSignerContextCert(req) => Ok(req.as_mut_bytes()),
@@ -407,6 +413,7 @@ impl McuMailboxReq {
             McuMailboxReq::GetAuthCmdChallenge(_) => CommandId::MC_GET_AUTH_CMD_CHALLENGE,
             McuMailboxReq::FuseRevokeVendorPubKey(_) => CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY,
             McuMailboxReq::ProvisionVendorPkHash(_) => CommandId::MC_PROVISION_VENDOR_PK_HASH,
+            McuMailboxReq::ProvisionOwnerPkHash(_) => CommandId::MC_PROVISION_OWNER_PK_HASH,
             McuMailboxReq::FuseRevokeVendorPkHash(_) => CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH,
             McuMailboxReq::ExportAttestedCsr(_) => CommandId::MC_EXPORT_ATTESTED_CSR,
             McuMailboxReq::DpeSignerContextCert(_) => CommandId::MC_DPE_SIGNER_CONTEXT_CERT,
@@ -499,6 +506,7 @@ pub enum McuMailboxResp {
     GetAuthCmdChallenge(GetAuthCmdChallengeResp),
     FuseRevokeVendorPubKey(FuseRevokeVendorPubKeyResp),
     ProvisionVendorPkHash(ProvisionVendorPkHashResp),
+    ProvisionOwnerPkHash(ProvisionOwnerPkHashResp),
     FuseRevokeVendorPkHash(FuseRevokeVendorPkHashResp),
     // Certificate commands
     ExportAttestedCsr(ExportAttestedCsrResp),
@@ -623,6 +631,7 @@ impl McuMailboxResp {
             McuMailboxResp::GetAuthCmdChallenge(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FuseRevokeVendorPubKey(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::ProvisionVendorPkHash(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::ProvisionOwnerPkHash(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FuseRevokeVendorPkHash(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial(),
             McuMailboxResp::DpeSignerContextCert(resp) => resp.as_bytes_partial(),
@@ -685,6 +694,7 @@ impl McuMailboxResp {
             McuMailboxResp::GetAuthCmdChallenge(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FuseRevokeVendorPubKey(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::ProvisionVendorPkHash(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::ProvisionOwnerPkHash(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FuseRevokeVendorPkHash(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::DpeSignerContextCert(resp) => resp.as_bytes_partial_mut(),
@@ -1822,6 +1832,26 @@ impl Request for OcpLockEnumerateHpkeHandlesReq {
 }
 impl Response for OcpLockEnumerateHpkeHandlesResp {}
 
+/// MC_PROVISION_OWNER_PK_HASH request: Provision the owner public-key hash.
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct ProvisionOwnerPkHashReq {
+    pub hdr: MailboxReqHeader,
+    pub hash: [u8; OTP_CPTRA_SS_OWNER_PK_HASH.byte_size],
+}
+impl Request for ProvisionOwnerPkHashReq {
+    const ID: CommandId = CommandId::MC_PROVISION_OWNER_PK_HASH;
+    type Resp = ProvisionOwnerPkHashResp;
+}
+
+/// MC_PROVISION_OWNER_PK_HASH response: Header-only on success.
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct ProvisionOwnerPkHashResp {
+    pub hdr: MailboxRespHeader,
+}
+impl Response for ProvisionOwnerPkHashResp {}
+
 #[repr(C)]
 #[derive(Debug, Clone, IntoBytes, FromBytes, KnownLayout, Immutable)]
 pub struct HybridSignature {
@@ -1905,6 +1935,7 @@ mod tests {
         assert_eq!(CommandId::MC_FUSE_READ.0, 0x4946_5052); // "IFPR"
         assert_eq!(CommandId::MC_FUSE_WRITE.0, 0x4946_5057); // "IFPW"
         assert_eq!(CommandId::MC_FUSE_LOCK_PARTITION.0, 0x4946_504B); // "IFPK"
+        assert_eq!(CommandId::MC_PROVISION_OWNER_PK_HASH.0, 0x504F_504B); // "POPK"
     }
 
     #[test]
@@ -1963,6 +1994,20 @@ mod tests {
     }
 
     #[test]
+    fn test_provision_owner_pk_hash_req_serialization() {
+        let mut req = McuMailboxReq::ProvisionOwnerPkHash(ProvisionOwnerPkHashReq {
+            hdr: MailboxReqHeader::default(),
+            hash: [0xA5; 48],
+        });
+        req.populate_chksum().unwrap();
+
+        assert_eq!(req.cmd_code(), CommandId::MC_PROVISION_OWNER_PK_HASH);
+        let parsed = ProvisionOwnerPkHashReq::read_from_bytes(req.as_bytes().unwrap()).unwrap();
+        assert_ne!(parsed.hdr.chksum, 0);
+        assert_eq!(parsed.hash, [0xA5; 48]);
+    }
+
+    #[test]
     fn test_fuse_req_checksum() {
         let mut req = McuMailboxReq::FuseRead(FuseReadReq {
             hdr: MailboxReqHeader::default(),
@@ -2007,6 +2052,16 @@ mod tests {
         resp.populate_chksum().unwrap();
 
         // Zero checksum is valid for zero payload
+        let bytes = resp.as_bytes().unwrap();
+        let hdr = MailboxRespHeader::read_from_prefix(bytes).unwrap().0;
+        assert_eq!(hdr.chksum, 0);
+    }
+
+    #[test]
+    fn test_provision_owner_pk_hash_resp_checksum() {
+        let mut resp = McuMailboxResp::ProvisionOwnerPkHash(ProvisionOwnerPkHashResp::default());
+        resp.populate_chksum().unwrap();
+
         let bytes = resp.as_bytes().unwrap();
         let hdr = MailboxRespHeader::read_from_prefix(bytes).unwrap().0;
         assert_eq!(hdr.chksum, 0);

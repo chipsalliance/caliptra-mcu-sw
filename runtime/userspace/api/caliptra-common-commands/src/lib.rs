@@ -283,6 +283,12 @@ pub trait CaliptraCmdHandler {
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 
+    /// Provision the owner public-key hash in OTP.
+    async fn provision_owner_pk_hash(&self, hash: &[u8; 48]) -> CaliptraCmdResult<()> {
+        let _ = hash;
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
     /// Increase the minimum allowed Caliptra firmware SVN.
     async fn increase_caliptra_min_svn<Alloc: ApiAlloc>(
         &self,
@@ -361,6 +367,12 @@ pub trait CaliptraCmdHandler {
         report_buf: &mut [u8],
     ) -> CaliptraCmdResult<usize> {
         let _ = (nonce, sek_state, report_buf);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Lock an OTP partition against further writes.
+    async fn fuse_lock_partition(&self, partition: u32) -> CaliptraCmdResult<()> {
+        let _ = partition;
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 }

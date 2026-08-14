@@ -81,6 +81,7 @@ These commands support common Caliptra management functions, including querying 
 | MC_FUSE_WRITE                 | 0x4946_5057 ("IFPW") | See [fuses spec](fuses.md) for details                                                |
 | MC_FUSE_LOCK_PARTITION        | 0x4946_504B ("IFPK") | See [fuses spec](fuses.md) for details                                                |
 | MC_PROVISION_VENDOR_PK_HASH   | 0x5056_504b ("PVPK") | See [fuses spec](fuses.md) for details                                                |
+| MC_PROVISION_OWNER_PK_HASH    | 0x504F_504B ("POPK") | See [fuses spec](fuses.md) for details                                                |
 | MC_FE_PROG                    | 0x4D43_4650 ("MCFP") | See [fuses spec](fuses.md) for details                                                |
 | MC_FUSE_REVOKE_VENDOR_PUB_KEY | 0x4D52_564B ("MRVK") | See [fuses spec](fuses.md) for details                                                |
 | MC_FUSE_REVOKE_VENDOR_PK_HASH | 0x5256_4b48 ("RVKH") | See [fuses spec](fuses.md) for details                                                |
