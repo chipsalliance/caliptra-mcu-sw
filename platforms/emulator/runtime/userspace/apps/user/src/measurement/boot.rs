@@ -11,7 +11,7 @@ use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_console::Console;
 use caliptra_mcu_libtock_platform::ErrorCode;
 use caliptra_mcu_measurement_api::BootKind;
-use caliptra_mcu_spdm_pal::{BitmapAllocator, BITMAP_SLOT_SIZE};
+use caliptra_mcu_scratch_alloc::{BitmapAllocator, BITMAP_SLOT_SIZE};
 
 extern crate alloc;
 use alloc::vec::Vec;

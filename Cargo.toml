@@ -102,6 +102,7 @@ members = [
     "runtime/userspace/api/spdm-lib/errors",
     "runtime/userspace/api/spdm-lib/vdm-handler",
     "runtime/userspace/error",
+    "runtime/userspace/scratch-alloc",
     "runtime/userspace/libtock/apis/interface/console",
     "runtime/userspace/libtock/apis/kernel/low_level_debug",
     "runtime/userspace/libtock/apis/peripherals/alarm",
@@ -341,6 +342,7 @@ caliptra-mcu-spdm-traits = { path = "runtime/userspace/api/spdm-lib/traits" }
 caliptra-mcu-spdm-stack = { path = "runtime/userspace/api/spdm-lib/stack" }
 caliptra-mcu-spdm-codec = { path = "runtime/userspace/api/spdm-lib/codec" }
 mcu-caliptra-api-lite = { path = "runtime/userspace/api/caliptra-api-lite", default-features = false }
+caliptra-mcu-scratch-alloc = { path = "runtime/userspace/scratch-alloc" }
 caliptra-mcu-spdm-transports = { path = "runtime/userspace/api/spdm-lib/transports" }
 caliptra-mcu-spdm-pal = { path = "runtime/userspace/api/spdm-lib/pal" }
 caliptra-mcu-spdm-errors = { path = "runtime/userspace/api/spdm-lib/errors" }

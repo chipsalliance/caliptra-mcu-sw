@@ -1473,6 +1473,7 @@ dependencies = [
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-pldm-common",
  "caliptra-mcu-romtime",
+ "caliptra-mcu-scratch-alloc",
  "caliptra-mcu-spdm-pal",
  "const-oid 0.9.6",
  "critical-section",
@@ -2383,6 +2384,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-scratch-alloc"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-runtime-userspace-error",
+ "mcu-caliptra-api-lite",
+]
+
+[[package]]
 name = "caliptra-mcu-spdm-codec"
 version = "0.1.0"
 dependencies = [
@@ -2408,6 +2417,7 @@ dependencies = [
  "caliptra-mcu-libtock_platform",
  "caliptra-mcu-measurement-api",
  "caliptra-mcu-runtime-userspace-error",
+ "caliptra-mcu-scratch-alloc",
  "caliptra-mcu-spdm-codec",
  "caliptra-mcu-spdm-traits",
  "mcu-caliptra-api-lite",
@@ -7990,6 +8000,7 @@ dependencies = [
  "caliptra-mcu-pldm-lib",
  "caliptra-mcu-romtime",
  "caliptra-mcu-runtime-userspace-error",
+ "caliptra-mcu-scratch-alloc",
  "caliptra-mcu-spdm-codec",
  "caliptra-mcu-spdm-pal",
  "caliptra-mcu-spdm-stack",

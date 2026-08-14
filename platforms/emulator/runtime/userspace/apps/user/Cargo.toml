@@ -42,6 +42,7 @@ caliptra-mcu-pldm-lib.workspace = true
 mcu-error.workspace = true
 caliptra-mcu-romtime.workspace = true
 mcu-caliptra-api-lite = { workspace = true, features = ["mailbox-io"] }
+caliptra-mcu-scratch-alloc.workspace = true
 caliptra-mcu-spdm-codec.workspace = true
 caliptra-mcu-spdm-pal.workspace = true
 caliptra-mcu-spdm-stack = { workspace = true }
