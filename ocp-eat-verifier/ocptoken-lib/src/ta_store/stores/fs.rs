@@ -7,6 +7,9 @@ use openssl::x509::{X509StoreContext, X509};
 use std::collections::HashMap;
 use std::fs;
 use std::path::Path;
+use zeroize::{Zeroize, Zeroizing};
+
+type CertificateDer = Zeroizing<Vec<u8>>;
 
 /// Filesystem-backed Trust Anchor Store.
 ///
@@ -25,12 +28,10 @@ use std::path::Path;
 /// are indexed by their Subject Key Identifier (SKI) X.509 extension,
 /// which is used as the `kid` for lookup.
 pub struct FsTrustAnchorStore {
-    /// Trusted root CA certificates.
-    roots: Vec<X509>,
-    /// Pre-built OpenSSL X509 store from the root CAs (for chain validation).
-    store: X509Store,
-    /// Endorsement certificates indexed by kid (Subject Key Identifier).
-    endorsement_certs: HashMap<Vec<u8>, X509>,
+    /// Trusted root CA certificates in canonical DER form.
+    roots: Vec<CertificateDer>,
+    /// Endorsement certificate DER indexed by kid (Subject Key Identifier).
+    endorsement_certs: HashMap<Vec<u8>, CertificateDer>,
 }
 
 impl FsTrustAnchorStore {
@@ -55,9 +56,6 @@ impl FsTrustAnchorStore {
             ));
         }
 
-        // Build the X509 store from roots
-        let store = build_x509_store(&roots)?;
-
         // Load endorsement certs and index by kid (SKI)
         let endorsement_certs = if signing_dir.is_dir() {
             load_and_index_endorsement_certs(&signing_dir)?
@@ -67,7 +65,6 @@ impl FsTrustAnchorStore {
 
         Ok(Self {
             roots,
-            store,
             endorsement_certs,
         })
     }
@@ -76,8 +73,9 @@ impl FsTrustAnchorStore {
     /// the Subject Key Identifier, falling back to DER comparison.
     fn is_trusted_root(&self, cert: &X509) -> Result<bool, TrustAnchorError> {
         let candidate_ski = subject_key_identifier(cert)?;
-        for root in &self.roots {
-            let root_ski = subject_key_identifier(root)?;
+        for root_der in &self.roots {
+            let root = X509::from_der(root_der)?;
+            let root_ski = subject_key_identifier(&root)?;
             if let (Some(c), Some(r)) = (&candidate_ski, &root_ski) {
                 if c == r {
                     return Ok(true);
@@ -86,9 +84,9 @@ impl FsTrustAnchorStore {
         }
 
         // Fallback: compare DER-encoded forms directly
-        let candidate_der = cert.to_der()?;
-        for root in &self.roots {
-            if root.to_der()? == candidate_der {
+        let candidate_der = Zeroizing::new(cert.to_der()?);
+        for root_der in &self.roots {
+            if root_der.as_slice() == candidate_der.as_slice() {
                 return Ok(true);
             }
         }
@@ -97,17 +95,31 @@ impl FsTrustAnchorStore {
     }
 }
 
+impl Drop for FsTrustAnchorStore {
+    fn drop(&mut self) {
+        for root in &mut self.roots {
+            root.zeroize();
+        }
+        for (mut kid, mut cert) in self.endorsement_certs.drain() {
+            kid.zeroize();
+            cert.zeroize();
+        }
+    }
+}
+
 impl TrustAnchorStore for FsTrustAnchorStore {
     fn authenticate_by_kid(&self, kid: &[u8]) -> Result<Vec<u8>, TrustAnchorError> {
-        let cert = self
+        let cert_der = self
             .endorsement_certs
             .get(kid)
             .ok_or_else(|| TrustAnchorError::UnknownKid(hex::encode(kid)))?;
+        let cert = X509::from_der(cert_der)?;
+        let store = build_x509_store(&self.roots)?;
 
         // Validate the endorsement cert against the trusted roots
         let empty_chain = Stack::new()?;
         let mut ctx = X509StoreContext::new()?;
-        let valid = ctx.init(&self.store, cert, &empty_chain, |ctx| ctx.verify_cert())?;
+        let valid = ctx.init(&store, &cert, &empty_chain, |ctx| ctx.verify_cert())?;
 
         if !valid {
             return Err(TrustAnchorError::ChainValidation(format!(
@@ -116,7 +128,7 @@ impl TrustAnchorStore for FsTrustAnchorStore {
             )));
         }
 
-        Ok(cert.to_der()?)
+        Ok(cert_der.to_vec())
     }
 
     fn authenticate_chain(&self, chain: &[Vec<u8>]) -> Result<Vec<u8>, TrustAnchorError> {
@@ -131,6 +143,7 @@ impl TrustAnchorStore for FsTrustAnchorStore {
             .collect::<Result<Vec<_>, _>>()?;
 
         let leaf = &parsed[0];
+        let store = build_x509_store(&self.roots)?;
 
         // Check that the root of the provided chain is in our trusted roots
         let chain_root = &parsed[parsed.len() - 1];
@@ -146,7 +159,7 @@ impl TrustAnchorStore for FsTrustAnchorStore {
 
         // Validate: leaf → intermediates → trusted root
         let mut ctx = X509StoreContext::new()?;
-        let valid = ctx.init(&self.store, leaf, &untrusted, |ctx| ctx.verify_cert())?;
+        let valid = ctx.init(&store, leaf, &untrusted, |ctx| ctx.verify_cert())?;
 
         if !valid {
             return Err(TrustAnchorError::ChainValidation(
@@ -159,16 +172,16 @@ impl TrustAnchorStore for FsTrustAnchorStore {
 }
 
 /// Build an OpenSSL `X509Store` from a list of trusted root certificates.
-fn build_x509_store(roots: &[X509]) -> Result<X509Store, TrustAnchorError> {
+fn build_x509_store(roots: &[CertificateDer]) -> Result<X509Store, TrustAnchorError> {
     let mut builder = X509StoreBuilder::new()?;
-    for root in roots {
-        builder.add_cert(root.clone())?;
+    for root_der in roots {
+        builder.add_cert(X509::from_der(root_der)?)?;
     }
     Ok(builder.build())
 }
 
 /// Load all PEM and DER certificate files from a directory (non-recursive).
-fn load_certs_from_dir(dir: &Path) -> Result<Vec<X509>, TrustAnchorError> {
+fn load_certs_from_dir(dir: &Path) -> Result<Vec<CertificateDer>, TrustAnchorError> {
     let mut certs = Vec::new();
 
     let mut entries: Vec<_> = fs::read_dir(dir)?
@@ -179,7 +192,7 @@ fn load_certs_from_dir(dir: &Path) -> Result<Vec<X509>, TrustAnchorError> {
 
     for entry in entries {
         let path = entry.path();
-        let data = fs::read(&path)?;
+        let data = Zeroizing::new(fs::read(&path)?);
 
         let cert = if looks_like_pem(&data) {
             X509::from_pem(&data)
@@ -188,7 +201,7 @@ fn load_certs_from_dir(dir: &Path) -> Result<Vec<X509>, TrustAnchorError> {
         };
 
         match cert {
-            Ok(c) => certs.push(c),
+            Ok(c) => certs.push(Zeroizing::new(c.to_der()?)),
             Err(e) => {
                 return Err(TrustAnchorError::Load(format!(
                     "Failed to parse certificate '{}': {}",
@@ -204,18 +217,21 @@ fn load_certs_from_dir(dir: &Path) -> Result<Vec<X509>, TrustAnchorError> {
 
 /// Load endorsement certificates from a directory and index them by their
 /// Subject Key Identifier (SKI).
-fn load_and_index_endorsement_certs(dir: &Path) -> Result<HashMap<Vec<u8>, X509>, TrustAnchorError> {
+fn load_and_index_endorsement_certs(
+    dir: &Path,
+) -> Result<HashMap<Vec<u8>, CertificateDer>, TrustAnchorError> {
     let certs = load_certs_from_dir(dir)?;
     let mut map = HashMap::new();
 
-    for cert in certs {
+    for cert_der in certs {
+        let cert = X509::from_der(&cert_der)?;
         let ski = subject_key_identifier(&cert)?.ok_or_else(|| {
             TrustAnchorError::Load(format!(
                 "Endorsement certificate has no Subject Key Identifier extension: {:?}",
                 cert.subject_name()
             ))
         })?;
-        map.insert(ski, cert);
+        map.insert(ski, cert_der);
     }
 
     Ok(map)
@@ -233,4 +249,26 @@ fn subject_key_identifier(cert: &X509) -> Result<Option<Vec<u8>>, TrustAnchorErr
 /// Heuristic check: does the data look like PEM-encoded content?
 fn looks_like_pem(data: &[u8]) -> bool {
     data.starts_with(b"-----BEGIN ")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn loads_roots_into_zeroizing_der_storage() {
+        let store_path =
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("../ocptoken/test-data/ta-store");
+        let store = FsTrustAnchorStore::load(&store_path).unwrap();
+
+        assert_eq!(store.roots.len(), 1);
+        let root = X509::from_der(&store.roots[0]).unwrap();
+        assert!(store.is_trusted_root(&root).unwrap());
+
+        let root_der = store.roots[0].to_vec();
+        assert_eq!(
+            store.authenticate_chain(&[root_der.clone()]).unwrap(),
+            root_der
+        );
+    }
 }
