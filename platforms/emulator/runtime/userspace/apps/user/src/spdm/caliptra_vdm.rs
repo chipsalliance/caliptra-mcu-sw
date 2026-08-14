@@ -138,7 +138,7 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
     ) -> CaliptraVdmResult<()> {
         let mut authorizer = cmd_auth_mock::MockCommandAuthorizer;
         authorizer
-            .verify_signatures(FE_PROG_CMD_ID, &partition.to_le_bytes(), sig)
+            .verify_signatures(scratch, FE_PROG_CMD_ID, &partition.to_le_bytes(), sig)
             .await
             .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
         CaliptraCmdBackend

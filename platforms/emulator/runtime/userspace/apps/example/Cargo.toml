@@ -16,7 +16,6 @@ critical-section.workspace = true
 dpe.workspace = true
 embassy-executor.workspace = true
 caliptra-mcu-libapi-caliptra.workspace = true
-caliptra-mcu-libapi-emulated-caliptra.workspace = true
 caliptra-mcu-libsyscall-caliptra.workspace = true
 const-oid.workspace = true
 der.workspace = true
@@ -32,6 +31,7 @@ caliptra-mcu-config-emulator.workspace = true
 caliptra-mcu-config-fpga.workspace = true
 caliptra-mcu-pldm-common.workspace = true
 caliptra-mcu-spdm-pal.workspace = true
+mcu-caliptra-api-lite = { workspace = true, features = ["mailbox-io"] }
 portable-atomic.workspace = true
 caliptra-mcu-romtime.workspace = true
 zerocopy.workspace = true

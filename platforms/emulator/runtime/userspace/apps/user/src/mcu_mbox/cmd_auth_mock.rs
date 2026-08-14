@@ -28,7 +28,7 @@ fn set_challenge(challenge: [u8; AUTH_CMD_NONCE_LEN]) {
 impl CommandAuthorizer for MockCommandAuthorizer {
     async fn is_authorized<'a, Alloc: ApiAlloc>(
         &mut self,
-        _alloc: &Alloc,
+        alloc: &Alloc,
         cmd_id: CommandId,
         req: &'a [u8],
     ) -> Result<&'a [u8], AuthorizationError> {
@@ -53,13 +53,14 @@ impl CommandAuthorizer for MockCommandAuthorizer {
             .get(size_of::<MailboxReqHeader>()..cmd_len)
             .ok_or(AuthorizationError)?;
 
-        self.verify_signatures(u32::from(cmd_id), cmd_body, sig)
+        self.verify_signatures(alloc, u32::from(cmd_id), cmd_body, sig)
             .await?;
         Ok(&req[..cmd_len])
     }
 
-    async fn verify_signatures(
+    async fn verify_signatures<Alloc: ApiAlloc>(
         &mut self,
+        alloc: &Alloc,
         cmd_id: u32,
         payload: &[u8],
         sig: &HybridSignature,
@@ -69,6 +70,7 @@ impl CommandAuthorizer for MockCommandAuthorizer {
             .ok_or(AuthorizationError)?;
 
         crate::caliptra_cmd_handler::device_ops::verify_authorized_signatures(
+            alloc,
             cmd_id,
             payload,
             &challenge,

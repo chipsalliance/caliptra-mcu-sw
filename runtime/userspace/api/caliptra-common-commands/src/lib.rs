@@ -367,8 +367,9 @@ pub trait CommandAuthorizer {
     /// * `cmd_id` - Raw command identifier (u32, serialized big-endian in verification)
     /// * `payload` - Command-specific payload bytes
     /// * `sig` - The hybrid signature received from the host
-    async fn verify_signatures(
+    async fn verify_signatures<Alloc: ApiAlloc>(
         &mut self,
+        alloc: &Alloc,
         cmd_id: u32,
         payload: &[u8],
         sig: &HybridSignature,
