@@ -3,7 +3,7 @@
 use caliptra_mcu_romtime::{println, test_exit};
 use caliptra_mcu_scratch_alloc::{BitmapAllocator, StaticBitmapAllocatorCell, BITMAP_SLOT_SIZE};
 use core::ptr::NonNull;
-use mcu_caliptra_api_lite::{
+use mcu_caliptra_api::{
     dpe_certify_key_cert_size, dpe_certify_key_cert_slice, dpe_get_cert_chain_chunk,
     dpe_sign_ecc_p384, get_attested_csr_ecc384, get_attested_csr_mldsa87, get_idev_csr_ecc384,
     populate_idev_ecc384_cert, DPE_LABEL_LEN, DPE_MAX_CHUNK_SIZE, DPE_P384_SIGNATURE_SIZE,

@@ -44,7 +44,7 @@ use caliptra_mcu_userlog::{log_info, Hex32};
 #[allow(unused_imports)]
 use core::fmt::Write;
 use core::sync::atomic::{AtomicBool, Ordering};
-use mcu_caliptra_api_lite::{raw, ApiAlloc, ApiAllocPool, FwInfo};
+use mcu_caliptra_api::{raw, ApiAlloc, ApiAllocPool, FwInfo};
 use mcu_error::{McuErrorCode, McuResult};
 use zerocopy::{FromBytes, IntoBytes};
 
@@ -610,10 +610,9 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         let mut cert_len = 0;
         let mut ret = Ok(());
         while cert_len < requested_size {
-            let chunk_len =
-                (requested_size - cert_len).min(mcu_caliptra_api_lite::DPE_MAX_CHUNK_SIZE);
+            let chunk_len = (requested_size - cert_len).min(mcu_caliptra_api::DPE_MAX_CHUNK_SIZE);
             let chunk = &mut resp_buf[header_len + cert_len..header_len + cert_len + chunk_len];
-            match mcu_caliptra_api_lite::dpe_get_cert_chain_chunk(
+            match mcu_caliptra_api::dpe_get_cert_chain_chunk(
                 self.scratch,
                 req.offset + cert_len as u32,
                 chunk,
@@ -803,7 +802,7 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
             .map_err(|_| errors::INVALID_PARAMS)?;
         *resp = GetAuthCmdChallengeResp::default();
 
-        mcu_caliptra_api_lite::rng_generate(self.scratch, &mut resp.challenge)
+        mcu_caliptra_api::rng_generate(self.scratch, &mut resp.challenge)
             .await
             .map_err(|_| errors::MCU_MBOX_COMMON)?;
 
@@ -1196,7 +1195,7 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
     }
 
     async fn get_caliptra_fw_info(&self) -> McuResult<FwInfo> {
-        mcu_caliptra_api_lite::fw_info(self.scratch)
+        mcu_caliptra_api::fw_info(self.scratch)
             .await
             .map_err(|_| errors::MCU_MBOX_COMMON)
     }
@@ -1236,7 +1235,7 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         *resp = OcpLockRotateHekResp::default();
 
         let mut seed = [0u8; 32];
-        mcu_caliptra_api_lite::rng_generate(self.scratch, &mut seed)
+        mcu_caliptra_api::rng_generate(self.scratch, &mut seed)
             .await
             .map_err(|_| errors::MCU_MBOX_COMMON)?;
 

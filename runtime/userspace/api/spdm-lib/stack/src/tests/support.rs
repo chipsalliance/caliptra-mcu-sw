@@ -131,7 +131,7 @@ impl Default for TestPal {
     }
 }
 
-impl mcu_caliptra_api_lite::ApiAlloc for TestPal {
+impl mcu_caliptra_api::ApiAlloc for TestPal {
     type Buf<'a>
         = Vec<u8>
     where
@@ -142,7 +142,7 @@ impl mcu_caliptra_api_lite::ApiAlloc for TestPal {
     }
 }
 
-impl mcu_caliptra_api_lite::ApiAllocPool for TestPal {
+impl mcu_caliptra_api::ApiAllocPool for TestPal {
     type Pool = Self;
 
     fn pool(&self) -> &Self::Pool {

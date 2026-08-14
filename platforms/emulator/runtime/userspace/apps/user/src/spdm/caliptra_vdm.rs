@@ -19,7 +19,7 @@ use caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::{
 };
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
-use mcu_caliptra_api_lite::{
+use mcu_caliptra_api::{
     rng_generate, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD,
     PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_RSP_LEN,
 };

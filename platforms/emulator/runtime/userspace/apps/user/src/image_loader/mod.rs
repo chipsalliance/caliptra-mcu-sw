@@ -80,9 +80,7 @@ use embassy_sync::{lazy_lock::LazyLock, signal::Signal};
     feature = "test-pldm-fw-update-e2e",
     feature = "test-pldm-streaming-boot"
 )))]
-use mcu_caliptra_api_lite::image_loader::{
-    dma_transfer::DmaTransfer, FlashImageLoader, ImageLoader,
-};
+use mcu_caliptra_api::image_loader::{dma_transfer::DmaTransfer, FlashImageLoader, ImageLoader};
 #[allow(unused)]
 #[cfg(any(
     feature = "streaming-boot",
@@ -91,7 +89,7 @@ use mcu_caliptra_api_lite::image_loader::{
     feature = "test-pldm-fw-update-e2e",
     feature = "test-pldm-streaming-boot"
 ))]
-use mcu_caliptra_api_lite::image_loader::{
+use mcu_caliptra_api::image_loader::{
     dma_transfer::DmaTransfer, FlashImageLoader, ImageLoader, PldmFirmwareDeviceParams,
     PldmImageLoader,
 };

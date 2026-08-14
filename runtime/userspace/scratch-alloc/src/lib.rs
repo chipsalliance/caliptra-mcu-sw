@@ -36,7 +36,7 @@ use core::marker::PhantomData;
 use core::mem::{align_of, size_of, MaybeUninit};
 use core::ptr::NonNull;
 
-use mcu_caliptra_api_lite::{ApiAlloc, ApiAllocPool};
+use mcu_caliptra_api::{ApiAlloc, ApiAllocPool};
 use mcu_error::codes::{BAD_ALIGNMENT as ERR_BAD_ALIGNMENT, OUT_OF_MEMORY as ERR_OUT_OF_MEMORY};
 use mcu_error::McuResult;
 

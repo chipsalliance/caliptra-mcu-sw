@@ -2,7 +2,7 @@
 
 //! Concise-evidence contract helpers.
 
-use mcu_caliptra_api_lite::DPE_TCI_MEASUREMENT_SIZE;
+use mcu_caliptra_api::DPE_TCI_MEASUREMENT_SIZE;
 
 use super::read::MeasurementValue;
 use crate::attestation_manifest::AttestationManifestEntry;

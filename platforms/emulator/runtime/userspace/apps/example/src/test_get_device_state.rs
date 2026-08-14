@@ -5,7 +5,7 @@ use caliptra_mcu_attestation_evidence::pcr_quote::{
 use caliptra_mcu_romtime::{println, test_exit};
 use caliptra_mcu_scratch_alloc::{BitmapAllocator, StaticBitmapAllocatorCell, BITMAP_SLOT_SIZE};
 use core::ptr::NonNull;
-use mcu_caliptra_api_lite::{core_firmware_version, core_image_info, fw_info};
+use mcu_caliptra_api::{core_firmware_version, core_image_info, fw_info};
 
 const PCR_QUOTE_SCRATCH_SIZE: usize = 8192;
 const PCR_QUOTE_SCRATCH_SLOTS: usize = PCR_QUOTE_SCRATCH_SIZE / BITMAP_SLOT_SIZE;
