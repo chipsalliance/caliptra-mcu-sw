@@ -38,7 +38,7 @@ use core::ptr::NonNull;
 use core::sync::atomic::{AtomicU8, Ordering};
 use embassy_executor::Spawner;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::signal::Signal;
+use embassy_sync::watch::Watch;
 
 /// Largest single in-flight SPDM message (request or response) this responder
 /// supports.
@@ -168,8 +168,13 @@ const SUPPORTED_TDISP_VERSIONS: &[TdispVersion] = &[TdispVersion::V10];
 /// Single cert store shared by all SPDM responder tasks.
 static CERT_STORE: SharedCertStore = SharedCertStore::new();
 
-/// Signal fired when cert store init completes.
-static CERT_STORE_DONE: Signal<CriticalSectionRawMutex, bool> = Signal::new();
+/// Consumers of [`CERT_STORE_INIT`]: MCTP responder, DOE responder, ML-DSA installer.
+const CERT_STORE_WAITERS: usize = 3;
+
+/// Cert-store init outcome. `Watch`, not `Signal`: it retains the value for
+/// several independent consumers, where `Signal::wait` consumes it and so needed
+/// one signal per waiter.
+static CERT_STORE_INIT: Watch<CriticalSectionRawMutex, bool, CERT_STORE_WAITERS> = Watch::new();
 
 /// Cert store init state: 0 = uninit, 1 = in progress, 2 = done.
 static CERT_STORE_STATE: AtomicU8 = AtomicU8::new(0);
@@ -189,7 +194,7 @@ fn measurement_provider(
 }
 
 /// Initialize the shared cert store. First caller does the work;
-/// concurrent callers wait on a Signal (no busy-loop).
+/// concurrent callers wait on the outcome watch (no busy-loop).
 async fn ensure_cert_store_init<A: mcu_caliptra_api::ApiAlloc>(
     alloc: &A,
 ) -> mcu_error::McuResult<()> {
@@ -202,17 +207,21 @@ async fn ensure_cert_store_init<A: mcu_caliptra_api::ApiAlloc>(
             CERT_STORE_STATE.store(1, Ordering::Release);
             if let Err(e) = cert_store::populate_idev(alloc).await {
                 CERT_STORE_STATE.store(0, Ordering::Release);
-                CERT_STORE_DONE.signal(false);
+                CERT_STORE_INIT.sender().send(false);
                 return Err(e);
             }
             let r = cert_store::setup_endorsements(&CERT_STORE, alloc).await;
             CERT_STORE_STATE.store(if r.is_ok() { 2 } else { 0 }, Ordering::Release);
-            CERT_STORE_DONE.signal(r.is_ok());
+            CERT_STORE_INIT.sender().send(r.is_ok());
             r
         }
         1 => {
-            let ok = CERT_STORE_DONE.wait().await;
-            if ok {
+            // A receiver created after the send still observes it, so there is
+            // no lost-wakeup window here.
+            let Some(mut rx) = CERT_STORE_INIT.receiver() else {
+                return Err(mcu_error::codes::INTERNAL_BUG);
+            };
+            if rx.changed().await {
                 Ok(())
             } else {
                 Err(mcu_error::codes::INTERNAL_BUG)
@@ -235,6 +244,83 @@ pub(crate) fn spawn_spdm_tasks(spawner: &Spawner) {
             crate::log_error!(cw, "SPDM: Failed to spawn DOE responder");
         }
     }
+    if spawner.spawn(idev_mldsa_installer()).is_err() {
+        crate::log_error!(cw, "SPDM: Failed to spawn ML-DSA IDevID installer");
+    }
+}
+
+/// Install the IDevID ML-DSA-87 certificate once the responders are serving.
+///
+/// Its own task because the install is ~1,900 sequential 4-byte OTP reads —
+/// doing it inside `ensure_cert_store_init` delayed responder startup past the
+/// point where an already-connected requester gives up. It waits for the ECC
+/// cert store to be ready so the two installs do not contend for the mailbox,
+/// and nothing can read the ML-DSA chain yet, so ordering after SPDM comes up
+/// costs nothing.
+#[embassy_executor::task]
+async fn idev_mldsa_installer() {
+    let mut cw = Console::<DefaultSyscalls>::writer();
+
+    // Wait for cert-store init (driven by whichever responder wins the race)
+    // before adding mailbox traffic of our own. Log the give-up paths so a
+    // skipped install is distinguishable from a successful one.
+    let Some(mut rx) = CERT_STORE_INIT.receiver() else {
+        crate::log_error!(cw, "SPDM: no cert-store receiver for ML-DSA install");
+        return;
+    };
+    if !rx.changed().await {
+        crate::log_warn!(
+            cw,
+            "SPDM: cert store init failed; skipping ML-DSA-87 IDevID install"
+        );
+        return;
+    }
+
+    // Sized for one ML-DSA-87 certificate (Caliptra caps it at 8192) plus the
+    // allocator bitmap and the 8-byte mailbox response — not the responders'
+    // 12 KiB, since this task only ever stages the certificate.
+    const MLDSA_SCRATCH_SIZE: usize = 9 * 1024;
+
+    // Heap, not a `static`: this buffer is touched once at boot and never again,
+    // so a `static` would hold 9 KiB of SRAM for the life of the app to serve a
+    // one-shot install. `Vec` returns it to the allocator when this task ends.
+    // `try_reserve_exact` rather than `with_capacity` so exhaustion is an error
+    // we log, not a panic (a panic in this app is fatal); same pattern as
+    // `image_loader::load_soc_images`.
+    //
+    // Over-allocated by one slot so the base can be walked forward to a
+    // `BITMAP_SLOT_SIZE` boundary: the heap only guarantees `align_of::<u8>()`,
+    // and `BitmapAllocator::new` requires a slot-aligned base.
+    let mut scratch: alloc::vec::Vec<u8> = alloc::vec::Vec::new();
+    if scratch
+        .try_reserve_exact(MLDSA_SCRATCH_SIZE + BITMAP_SLOT_SIZE)
+        .is_err()
+    {
+        crate::log_error!(cw, "SPDM: no heap for ML-DSA-87 IDevID scratch");
+        return;
+    }
+    scratch.resize(MLDSA_SCRATCH_SIZE + BITMAP_SLOT_SIZE, 0);
+
+    let base = scratch.as_mut_ptr();
+    let pad = base.align_offset(BITMAP_SLOT_SIZE);
+    // `pad <= BITMAP_SLOT_SIZE` and the buffer is oversized by exactly that, so
+    // the aligned window is always fully in bounds.
+    let Some(aligned) = scratch.get_mut(pad..pad + MLDSA_SCRATCH_SIZE) else {
+        crate::log_error!(cw, "SPDM: ML-DSA-87 IDevID scratch alignment failed");
+        return;
+    };
+    let scratch_ptr: NonNull<u8> = NonNull::from(&mut aligned[0]);
+    debug_assert_eq!(scratch_ptr.as_ptr() as usize % BITMAP_SLOT_SIZE, 0);
+
+    // SAFETY: `scratch_ptr` is non-null, slot-aligned, and points at
+    // `MLDSA_SCRATCH_SIZE` writable bytes exclusively owned by this allocator.
+    // `allocator` and every handle it hands out are confined to the
+    // `populate_idev_mldsa` call below, which returns before `scratch` is
+    // dropped at end of task — so the memory outlives the allocator. The
+    // allocator is a local, so it is never moved across threads.
+    let allocator = unsafe { BitmapAllocator::new(scratch_ptr, MLDSA_SCRATCH_SIZE) };
+
+    cert_store::populate_idev_mldsa(&allocator).await;
 }
 
 #[embassy_executor::task]
