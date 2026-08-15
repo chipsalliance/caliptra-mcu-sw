@@ -1031,7 +1031,11 @@ dependencies = [
 name = "caliptra-mcu-common-commands"
 version = "0.1.0"
 dependencies = [
+ "caliptra-mcu-libsyscall-caliptra",
+ "caliptra-mcu-libtock_platform",
  "caliptra-mcu-mbox-common",
+ "caliptra-mcu-otp-fuse",
+ "caliptra-mcu-runtime-userspace-error",
  "mcu-caliptra-api",
  "zerocopy",
 ]
@@ -7063,6 +7067,7 @@ dependencies = [
  "caliptra-mcu-mctp-vdm-common",
  "caliptra-mcu-mctp-vdm-lib",
  "caliptra-mcu-measurement-api",
+ "caliptra-mcu-otp-fuse",
  "caliptra-mcu-pldm-common",
  "caliptra-mcu-pldm-lib",
  "caliptra-mcu-romtime",

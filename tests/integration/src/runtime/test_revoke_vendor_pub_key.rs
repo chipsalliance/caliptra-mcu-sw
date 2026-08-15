@@ -9,8 +9,9 @@ use caliptra_api::{error::CaliptraError, SocManager};
 use caliptra_mcu_builder::{CaliptraBuildArgs, CaliptraBuilder, FirmwareBinaries};
 use caliptra_mcu_hw_model::{LifecycleControllerState, McuHwModel};
 use caliptra_mcu_mbox_common::messages::{
-    FuseRevokeVendorPkHashReq, FuseRevokeVendorPubKeyReq, MailboxReqHeader,
-    ProvisionVendorPkHashReq, RevokeVendorPubKeyType,
+    FuseRevokeVendorPkHashReq, FuseRevokeVendorPkHashReqPayload, FuseRevokeVendorPubKeyReq,
+    FuseRevokeVendorPubKeyReqPayload, MailboxReqHeader, ProvisionVendorPkHashReq,
+    ProvisionVendorPkHashReqPayload, RevokeVendorPubKeyType,
 };
 use caliptra_mcu_romtime::McuBootMilestones;
 
@@ -66,9 +67,12 @@ fn test_revoke_vendor_pub_key0_ecdsa() -> Result<()> {
 
     // Check revoking the boot ECC key fails
     let cmd = FuseRevokeVendorPubKeyReq {
-        vendor_pk_hash_slot: 0,
-        key_type: RevokeVendorPubKeyType::Ecdsa384.into(),
-        key_index: 0,
+        payload: FuseRevokeVendorPubKeyReqPayload {
+            vendor_pk_hash_slot: 0,
+            key_type: RevokeVendorPubKeyType::Ecdsa384.into(),
+            key_index: 0,
+            ..Default::default()
+        },
         ..Default::default()
     };
     let result = execute_authorized_req(&mut hw, cmd);
@@ -76,9 +80,12 @@ fn test_revoke_vendor_pub_key0_ecdsa() -> Result<()> {
 
     // Check revoking a non-existent slot fails
     let cmd = FuseRevokeVendorPubKeyReq {
-        vendor_pk_hash_slot: 16,
-        key_type: RevokeVendorPubKeyType::Ecdsa384.into(),
-        key_index: 0,
+        payload: FuseRevokeVendorPubKeyReqPayload {
+            vendor_pk_hash_slot: 16,
+            key_type: RevokeVendorPubKeyType::Ecdsa384.into(),
+            key_index: 0,
+            ..Default::default()
+        },
         ..Default::default()
     };
     let result = execute_authorized_req(&mut hw, cmd);
@@ -86,9 +93,12 @@ fn test_revoke_vendor_pub_key0_ecdsa() -> Result<()> {
 
     // Check revoking an ECC key that wasn't used to boot succeeds
     let cmd = FuseRevokeVendorPubKeyReq {
-        vendor_pk_hash_slot: 0,
-        key_type: RevokeVendorPubKeyType::Ecdsa384.into(),
-        key_index: 1,
+        payload: FuseRevokeVendorPubKeyReqPayload {
+            vendor_pk_hash_slot: 0,
+            key_type: RevokeVendorPubKeyType::Ecdsa384.into(),
+            key_index: 1,
+            ..Default::default()
+        },
         ..Default::default()
     };
     let _resp = execute_authorized_req(&mut hw, cmd);
@@ -153,9 +163,12 @@ fn test_revoke_vendor_pub_key0_lms() -> Result<()> {
 
     // Check revoking the boot PQC key fails
     let cmd = FuseRevokeVendorPubKeyReq {
-        vendor_pk_hash_slot: 0,
-        key_type: RevokeVendorPubKeyType::Lms.into(),
-        key_index: 0,
+        payload: FuseRevokeVendorPubKeyReqPayload {
+            vendor_pk_hash_slot: 0,
+            key_type: RevokeVendorPubKeyType::Lms.into(),
+            key_index: 0,
+            ..Default::default()
+        },
         ..Default::default()
     };
     let result = execute_authorized_req(&mut hw, cmd);
@@ -163,9 +176,12 @@ fn test_revoke_vendor_pub_key0_lms() -> Result<()> {
 
     // Check revoking a PQC key that wasn't used to boot succeeds
     let cmd = FuseRevokeVendorPubKeyReq {
-        vendor_pk_hash_slot: 0,
-        key_type: RevokeVendorPubKeyType::Lms.into(),
-        key_index: 1,
+        payload: FuseRevokeVendorPubKeyReqPayload {
+            vendor_pk_hash_slot: 0,
+            key_type: RevokeVendorPubKeyType::Lms.into(),
+            key_index: 1,
+            ..Default::default()
+        },
         ..Default::default()
     };
     let _resp = execute_authorized_req(&mut hw, cmd);
@@ -230,7 +246,10 @@ fn test_rotate_vendor_pk_hash() -> Result<()> {
 
     // Check revoking the active PK hash fails
     let cmd = FuseRevokeVendorPkHashReq {
-        vendor_pk_hash_slot: 0,
+        payload: FuseRevokeVendorPkHashReqPayload {
+            vendor_pk_hash_slot: 0,
+            ..Default::default()
+        },
         ..Default::default()
     };
     let result = execute_authorized_req(&mut hw, cmd);
@@ -242,16 +261,21 @@ fn test_rotate_vendor_pk_hash() -> Result<()> {
     new_pk_hash[0] = 0x42;
     // Provision a new vendor PK hash
     let cmd = ProvisionVendorPkHashReq {
-        slot: 1,
-        hash: new_pk_hash,
         hdr: MailboxReqHeader::default(),
+        payload: ProvisionVendorPkHashReqPayload {
+            slot: 1,
+            hash: new_pk_hash,
+        },
     };
     let resp = execute_authorized_req(&mut hw, cmd);
     assert!(resp.is_ok(), "{:?}", resp);
 
     // Check revoking a pk hash that isn't active succeeds
     let cmd = FuseRevokeVendorPkHashReq {
-        vendor_pk_hash_slot: 1,
+        payload: FuseRevokeVendorPkHashReqPayload {
+            vendor_pk_hash_slot: 1,
+            ..Default::default()
+        },
         ..Default::default()
     };
     let resp = execute_authorized_req(&mut hw, cmd);

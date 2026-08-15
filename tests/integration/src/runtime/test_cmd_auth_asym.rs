@@ -13,8 +13,10 @@ use caliptra_mcu_builder::{CaliptraBuildArgs, CaliptraBuilder, FirmwareBinaries}
 use caliptra_mcu_command_auth_challenge_signer::AUTH_CMD_NONCE_LEN;
 use caliptra_mcu_hw_model::{DefaultHwModel, LifecycleControllerState, McuHwModel};
 use caliptra_mcu_mbox_common::messages::{
-    FuseLockPartitionReq, FuseReadReq, FuseWriteReq, HybridSignature, MailboxReqHeader,
-    McuFeProgReq, ProvisionOwnerPkHashReq, ProvisionVendorPkHashReq,
+    FuseLockPartitionReq, FuseLockPartitionReqPayload, FuseReadReq, FuseReadReqPayload,
+    FuseWriteReq, FuseWriteReqPayload, HybridSignature, MailboxReqHeader, McuFeProgReq,
+    McuFeProgReqPayload, ProvisionOwnerPkHashReq, ProvisionOwnerPkHashReqPayload,
+    ProvisionVendorPkHashReq, ProvisionVendorPkHashReqPayload,
 };
 use caliptra_mcu_romtime::McuBootMilestones;
 use core::mem::size_of;
@@ -92,7 +94,7 @@ fn assert_rejected_not_timeout<T: std::fmt::Debug>(result: Result<T>, gate: &str
 fn test_fe_prog_authorized_req_g1() -> Result<()> {
     let mut hw = boot_mcu_mbox_hw();
     let cmd = McuFeProgReq {
-        partition: 0,
+        payload: McuFeProgReqPayload { partition: 0 },
         ..Default::default()
     };
     let result = execute_authorized_req(&mut hw, cmd);
@@ -109,8 +111,10 @@ fn test_provision_vendor_pk_hash_authorized_req_g1() -> Result<()> {
     let mut hw = boot_mcu_mbox_hw();
     let cmd = ProvisionVendorPkHashReq {
         hdr: MailboxReqHeader::default(),
-        slot: 1,
-        hash: [0x11u8; 48],
+        payload: ProvisionVendorPkHashReqPayload {
+            slot: 1,
+            hash: [0x11u8; 48],
+        },
     };
     let result = execute_authorized_req(&mut hw, cmd);
     assert!(
@@ -128,14 +132,14 @@ fn test_provision_owner_pk_hash_authorized_req_g1() -> Result<()> {
         &mut hw,
         ProvisionOwnerPkHashReq {
             hdr: MailboxReqHeader::default(),
-            hash: [0; 48],
+            payload: ProvisionOwnerPkHashReqPayload { hash: [0; 48] },
         },
     );
     assert_rejected_not_timeout(zero, "PROVISION_OWNER_PK_HASH zero hash");
 
     let request = || ProvisionOwnerPkHashReq {
         hdr: MailboxReqHeader::default(),
-        hash: [0x11; 48],
+        payload: ProvisionOwnerPkHashReqPayload { hash: [0x11; 48] },
     };
     let result = execute_authorized_req(&mut hw, request());
     assert!(
@@ -152,7 +156,7 @@ fn test_provision_owner_pk_hash_authorized_req_g1() -> Result<()> {
         &mut hw,
         ProvisionOwnerPkHashReq {
             hdr: MailboxReqHeader::default(),
-            hash: [0x22; 48],
+            payload: ProvisionOwnerPkHashReqPayload { hash: [0x22; 48] },
         },
     );
     assert_rejected_not_timeout(conflicting, "PROVISION_OWNER_PK_HASH conflicting hash");
@@ -164,8 +168,10 @@ fn test_fuse_read_authorized_req_g1() -> Result<()> {
     // Non-secret, present partition (SVN = 0x08), aligned entry 0.
     let mut hw = boot_mcu_mbox_hw();
     let cmd = FuseReadReq {
-        partition: 0x08,
-        entry: 0,
+        payload: FuseReadReqPayload {
+            partition: 0x08,
+            entry: 0,
+        },
         ..Default::default()
     };
     let result = execute_authorized_req(&mut hw, cmd);
@@ -181,9 +187,11 @@ fn test_fuse_write_authorized_req_g1() -> Result<()> {
     // mask = 0 is a no-op write that still exercises authorize->dispatch->handle.
     let mut hw = boot_mcu_mbox_hw();
     let cmd = FuseWriteReq {
-        word_addr: 0,
-        data: 0,
-        mask: 0,
+        payload: FuseWriteReqPayload {
+            word_addr: 0,
+            data: 0,
+            mask: 0,
+        },
         ..Default::default()
     };
     let result = execute_authorized_req(&mut hw, cmd);
@@ -199,7 +207,7 @@ fn test_fuse_lock_partition_authorized_req_g1() -> Result<()> {
     // Valid PartitionId (VendorNonSecretProd = 0x0E); fresh throwaway hw model.
     let mut hw = boot_mcu_mbox_hw();
     let cmd = FuseLockPartitionReq {
-        partition: 0x0E,
+        payload: FuseLockPartitionReqPayload { partition: 0x0E },
         ..Default::default()
     };
     let result = execute_authorized_req(&mut hw, cmd);
@@ -232,7 +240,7 @@ fn test_fe_prog_auth_negative_gates() -> Result<()> {
     let body_off = size_of::<MailboxReqHeader>(); // first signed body byte (partition)
 
     let cmd = || McuFeProgReq {
-        partition: 0,
+        payload: McuFeProgReqPayload { partition: 0 },
         ..Default::default()
     };
 
@@ -274,8 +282,10 @@ fn test_fuse_read_auth_negative_gates() -> Result<()> {
     let body_off = size_of::<MailboxReqHeader>();
 
     let cmd = || FuseReadReq {
-        partition: 0,
-        entry: 0,
+        payload: FuseReadReqPayload {
+            partition: 0,
+            entry: 0,
+        },
         ..Default::default()
     };
 
@@ -352,7 +362,7 @@ fn test_fe_prog_auth_key_substitution_rejected() -> Result<()> {
     let mut hw = boot_mcu_mbox_hw();
 
     let mut req = McuFeProgReq {
-        partition: 0,
+        payload: McuFeProgReqPayload { partition: 0 },
         ..Default::default()
     };
     let cmd_id: u32 = <McuFeProgReq as caliptra_mcu_mbox_common::messages::Request>::ID.into();
@@ -386,7 +396,7 @@ fn test_fe_prog_auth_replay_rejected() -> Result<()> {
     let mut hw = boot_mcu_mbox_hw();
 
     let mut req = McuFeProgReq {
-        partition: 0,
+        payload: McuFeProgReqPayload { partition: 0 },
         ..Default::default()
     };
     let cmd_id: u32 = <McuFeProgReq as caliptra_mcu_mbox_common::messages::Request>::ID.into();

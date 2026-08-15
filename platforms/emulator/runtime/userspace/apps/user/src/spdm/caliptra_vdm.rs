@@ -2,18 +2,12 @@
 
 //! Platform hooks for Caliptra SPDM VDM streaming and authorization.
 
-use caliptra_mcu_common_commands::{
-    CaliptraCmdHandler, CaliptraCompletionCode as CommonCode, CommandAuthorizer,
-};
+use caliptra_mcu_common_commands::{CaliptraCompletionCode as CommonCode, CommandAuthorizer};
 use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
-use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
 use caliptra_mcu_spdm_traits::SpdmPalAlloc;
 use caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::{
     CaliptraCompletionCode, CaliptraVdmAuthorization, CaliptraVdmResult, CaliptraVdmStreamOps,
-    FE_PROG_CMD_ID, FUSE_LOCK_PARTITION_CMD_ID, INCREASE_CALIPTRA_MIN_SVN_CMD_ID,
-    PROVISION_OWNER_PK_HASH_CMD_ID, PROVISION_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PK_HASH_CMD_ID,
-    REVOKE_VENDOR_PUB_KEY_CMD_ID,
 };
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
@@ -21,7 +15,6 @@ use mcu_caliptra_api::{
     PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_RSP_LEN,
 };
 
-use crate::caliptra_cmd_handler::CaliptraCmdBackend;
 use crate::mcu_mbox::cmd_auth_mock;
 
 // Kernel chunked-mailbox state rejects other processes; this flag serializes this
@@ -119,7 +112,7 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
         let challenge = crate::caliptra_cmd_handler::device_ops::generate_auth_challenge(scratch)
             .await
             .map_err(map_common_completion)?;
-        let mut authorizer = cmd_auth_mock::MockCommandAuthorizer;
+        let mut authorizer = cmd_auth_mock::MockCommandAuthorizer::new(false);
         authorizer.set_challenge(challenge);
         out.get_mut(..challenge.len())
             .ok_or(CaliptraCompletionCode::InsufficientResources)?
@@ -127,242 +120,24 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
         Ok(challenge.len())
     }
 
-    #[allow(clippy::too_many_arguments)]
-    async fn provision_vendor_pk_hash<A: SpdmPalAlloc>(
+    async fn execute_authorized_command<A: SpdmPalAlloc>(
         &self,
-        slot: u32,
-        hash: &[u8; 48],
-        payload: &[u8],
-        sig: &HybridSignature,
-        nonce: &[u8; AUTH_CMD_NONCE_LEN],
-        ecc_pub_x: &[u8; 48],
-        ecc_pub_y: &[u8; 48],
-        mldsa_pub: &[u8; 2592],
+        cmd_id: u32,
+        req: &[u8],
         scratch: &A,
-    ) -> CaliptraVdmResult<()> {
-        let mut authorizer = cmd_auth_mock::MockCommandAuthorizer;
-        authorizer
-            .verify_signatures(
-                scratch,
-                PROVISION_VENDOR_PK_HASH_CMD_ID,
-                payload,
-                nonce,
-                ecc_pub_x,
-                ecc_pub_y,
-                mldsa_pub,
-                sig,
-            )
-            .await
-            .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
-        CaliptraCmdBackend
-            .provision_vendor_pk_hash(slot, hash)
-            .await
-            .map_err(map_common_completion)
-    }
-
-    async fn provision_owner_pk_hash<A: SpdmPalAlloc>(
-        &self,
-        hash: &[u8; 48],
-        payload: &[u8],
-        sig: &HybridSignature,
-        nonce: &[u8; AUTH_CMD_NONCE_LEN],
-        ecc_pub_x: &[u8; 48],
-        ecc_pub_y: &[u8; 48],
-        mldsa_pub: &[u8; 2592],
-        scratch: &A,
-    ) -> CaliptraVdmResult<()> {
-        let mut authorizer = cmd_auth_mock::MockCommandAuthorizer;
-        authorizer
-            .verify_signatures(
-                scratch,
-                PROVISION_OWNER_PK_HASH_CMD_ID,
-                payload,
-                nonce,
-                ecc_pub_x,
-                ecc_pub_y,
-                mldsa_pub,
-                sig,
-            )
-            .await
-            .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
-        CaliptraCmdBackend
-            .provision_owner_pk_hash(hash)
-            .await
-            .map_err(map_common_completion)
-    }
-
-    async fn increase_caliptra_min_svn<A: SpdmPalAlloc>(
-        &self,
-        flags: u32,
-        svn: u32,
-        payload: &[u8],
-        sig: &HybridSignature,
-        nonce: &[u8; AUTH_CMD_NONCE_LEN],
-        ecc_pub_x: &[u8; 48],
-        ecc_pub_y: &[u8; 48],
-        mldsa_pub: &[u8; 2592],
-        scratch: &A,
-    ) -> CaliptraVdmResult<()> {
-        let mut authorizer = cmd_auth_mock::MockCommandAuthorizer;
-        authorizer
-            .verify_signatures(
-                scratch,
-                INCREASE_CALIPTRA_MIN_SVN_CMD_ID,
-                payload,
-                nonce,
-                ecc_pub_x,
-                ecc_pub_y,
-                mldsa_pub,
-                sig,
-            )
-            .await
-            .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
-        if flags != 0 {
-            return Err(CaliptraCompletionCode::InvalidParameter);
-        }
-        CaliptraCmdBackend
-            .increase_caliptra_min_svn(scratch, svn)
-            .await
-            .map_err(map_common_completion)
-    }
-
-    async fn program_field_entropy<A: SpdmPalAlloc>(
-        &self,
-        partition: u32,
-        sig: &HybridSignature,
-        nonce: &[u8; AUTH_CMD_NONCE_LEN],
-        ecc_pub_x: &[u8; 48],
-        ecc_pub_y: &[u8; 48],
-        mldsa_pub: &[u8; 2592],
-        scratch: &A,
-    ) -> CaliptraVdmResult<()> {
-        let mut authorizer = cmd_auth_mock::MockCommandAuthorizer;
-        // Forward the WIRE nonce and public keys by reference. `verify_signatures`
-        // performs step-1 (stored one-time challenge present AND wire-nonce ==
-        // stored, redundant compare) and hands the equality-checked wire nonce
-        // plus the received public keys to device_ops::verify_authorized_signatures
-        // for step-0 anchor + ECDSA + ML-DSA.
-        authorizer
-            .verify_signatures(
-                scratch,
-                FE_PROG_CMD_ID,
-                &partition.to_le_bytes(),
-                nonce,
-                ecc_pub_x,
-                ecc_pub_y,
-                mldsa_pub,
-                sig,
-            )
-            .await
-            .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
-        CaliptraCmdBackend
-            .program_field_entropy(scratch, partition)
-            .await
-            .map_err(map_common_completion)
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    async fn revoke_vendor_pub_key<A: SpdmPalAlloc>(
-        &self,
-        reserved: u32,
-        slot: u32,
-        key_type: u32,
-        key_index: u32,
-        payload: &[u8],
-        sig: &HybridSignature,
-        nonce: &[u8; AUTH_CMD_NONCE_LEN],
-        ecc_pub_x: &[u8; 48],
-        ecc_pub_y: &[u8; 48],
-        mldsa_pub: &[u8; 2592],
-        scratch: &A,
-    ) -> CaliptraVdmResult<()> {
-        let mut authorizer = cmd_auth_mock::MockCommandAuthorizer;
-        authorizer
-            .verify_signatures(
-                scratch,
-                REVOKE_VENDOR_PUB_KEY_CMD_ID,
-                payload,
-                nonce,
-                ecc_pub_x,
-                ecc_pub_y,
-                mldsa_pub,
-                sig,
-            )
-            .await
-            .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
-        if reserved != 0 {
-            return Err(CaliptraCompletionCode::InvalidParameter);
-        }
-        CaliptraCmdBackend
-            .revoke_vendor_pub_key(scratch, slot, key_type, key_index)
-            .await
-            .map_err(map_common_completion)
-    }
-
-    async fn revoke_vendor_pk_hash<A: SpdmPalAlloc>(
-        &self,
-        reserved: u32,
-        slot: u32,
-        payload: &[u8],
-        sig: &HybridSignature,
-        nonce: &[u8; AUTH_CMD_NONCE_LEN],
-        ecc_pub_x: &[u8; 48],
-        ecc_pub_y: &[u8; 48],
-        mldsa_pub: &[u8; 2592],
-        scratch: &A,
-    ) -> CaliptraVdmResult<()> {
-        let mut authorizer = cmd_auth_mock::MockCommandAuthorizer;
-        authorizer
-            .verify_signatures(
-                scratch,
-                REVOKE_VENDOR_PK_HASH_CMD_ID,
-                payload,
-                nonce,
-                ecc_pub_x,
-                ecc_pub_y,
-                mldsa_pub,
-                sig,
-            )
-            .await
-            .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
-        if reserved != 0 {
-            return Err(CaliptraCompletionCode::InvalidParameter);
-        }
-        CaliptraCmdBackend
-            .revoke_vendor_pk_hash(slot)
-            .await
-            .map_err(map_common_completion)
-    }
-
-    async fn fuse_lock_partition<A: SpdmPalAlloc>(
-        &self,
-        partition: u32,
-        payload: &[u8],
-        sig: &HybridSignature,
-        nonce: &[u8; AUTH_CMD_NONCE_LEN],
-        ecc_pub_x: &[u8; 48],
-        ecc_pub_y: &[u8; 48],
-        mldsa_pub: &[u8; 2592],
-        scratch: &A,
-    ) -> CaliptraVdmResult<()> {
-        let mut authorizer = cmd_auth_mock::MockCommandAuthorizer;
-        authorizer
-            .verify_signatures(
-                scratch,
-                FUSE_LOCK_PARTITION_CMD_ID,
-                payload,
-                nonce,
-                ecc_pub_x,
-                ecc_pub_y,
-                mldsa_pub,
-                sig,
-            )
-            .await
-            .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
-        CaliptraCmdBackend
-            .fuse_lock_partition(partition)
-            .await
-            .map_err(map_common_completion)
+        out: &mut [u8],
+    ) -> CaliptraVdmResult<usize> {
+        let cmd = caliptra_mcu_mbox_common::messages::CommandId::from(cmd_id);
+        let mut authorizer = cmd_auth_mock::MockCommandAuthorizer::new(false);
+        caliptra_mcu_common_commands::AuthorizedCmdExecutor::execute(
+            &mut authorizer,
+            scratch,
+            cmd,
+            req,
+            out,
+        )
+        .await
+        .map_err(map_common_completion)
     }
 }
 

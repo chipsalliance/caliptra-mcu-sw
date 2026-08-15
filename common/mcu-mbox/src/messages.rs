@@ -588,7 +588,7 @@ impl McuMailboxResp {
             McuMailboxResp::MldsaCmkVerify(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::ProdDebugUnlockReq(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::ProdDebugUnlockToken(resp) => Ok(resp.as_bytes()),
-            McuMailboxResp::FuseRead(resp) => resp.as_bytes_partial(),
+            McuMailboxResp::FuseRead(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FuseWrite(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FuseLockPartition(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::GetAuthCmdChallenge(resp) => Ok(resp.as_bytes()),
@@ -645,7 +645,7 @@ impl McuMailboxResp {
             McuMailboxResp::MldsaCmkVerify(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::ProdDebugUnlockReq(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::ProdDebugUnlockToken(resp) => Ok(resp.as_mut_bytes()),
-            McuMailboxResp::FuseRead(resp) => resp.as_bytes_partial_mut(),
+            McuMailboxResp::FuseRead(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FuseWrite(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FuseLockPartition(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::GetAuthCmdChallenge(resp) => Ok(resp.as_mut_bytes()),
@@ -1389,32 +1389,44 @@ pub const MAX_FUSE_DATA_SIZE: usize = 128;
 #[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
 pub struct FuseReadReq {
     pub hdr: MailboxReqHeader,
-    /// Partition number to read from
-    pub partition: u32,
-    /// Entry index within the partition
-    pub entry: u32,
+    pub payload: FuseReadReqPayload,
 }
 impl Request for FuseReadReq {
     const ID: CommandId = CommandId::MC_FUSE_READ;
     type Resp = FuseReadResp;
 }
 
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct FuseReadReqPayload {
+    /// Partition number to read from
+    pub partition: u32,
+    /// Entry index within the partition
+    pub entry: u32,
+}
+
 /// MC_FUSE_READ response: Returns fuse data with length in bits.
 #[repr(C)]
-#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
 pub struct FuseReadResp {
-    pub hdr: MailboxRespHeaderVarSize,
+    pub hdr: MailboxRespHeader,
+    pub payload: FuseReadRespPayload,
+}
+impl Response for FuseReadResp {}
+
+/// MC_FUSE_READ response payload (excluding the 8-byte MailboxRespHeader).
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct FuseReadRespPayload {
     /// Number of valid bits in the data field
     pub length_bits: u32,
     /// Fuse data (variable length, up to MAX_FUSE_DATA_SIZE bytes)
     pub data: [u8; MAX_FUSE_DATA_SIZE],
 }
-impl McuResponseVarSize for FuseReadResp {}
 
-impl Default for FuseReadResp {
+impl Default for FuseReadRespPayload {
     fn default() -> Self {
         Self {
-            hdr: MailboxRespHeaderVarSize::default(),
             length_bits: 0,
             data: [0u8; MAX_FUSE_DATA_SIZE],
         }
@@ -1426,17 +1438,23 @@ impl Default for FuseReadResp {
 #[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq, Default)]
 pub struct FuseWriteReq {
     pub hdr: MailboxReqHeader,
+    pub payload: FuseWriteReqPayload,
+}
+
+impl Request for FuseWriteReq {
+    const ID: CommandId = CommandId::MC_FUSE_WRITE;
+    type Resp = FuseWriteResp;
+}
+
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq, Default)]
+pub struct FuseWriteReqPayload {
     /// Word address
     pub word_addr: u32,
     /// Data to write
     pub data: u32,
     /// Bit-Mask to only write specified bits
     pub mask: u32,
-}
-
-impl Request for FuseWriteReq {
-    const ID: CommandId = CommandId::MC_FUSE_WRITE;
-    type Resp = FuseWriteResp;
 }
 
 /// MC_FUSE_WRITE response: Indicates success or failure.
@@ -1452,12 +1470,18 @@ impl Response for FuseWriteResp {}
 #[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
 pub struct FuseLockPartitionReq {
     pub hdr: MailboxReqHeader,
-    /// Partition number to lock
-    pub partition: u32,
+    pub payload: FuseLockPartitionReqPayload,
 }
 impl Request for FuseLockPartitionReq {
     const ID: CommandId = CommandId::MC_FUSE_LOCK_PARTITION;
     type Resp = FuseLockPartitionResp;
+}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct FuseLockPartitionReqPayload {
+    /// Partition number to lock
+    pub partition: u32,
 }
 
 /// MC_FUSE_LOCK_PARTITION response: Indicates success or failure.
@@ -1514,12 +1538,18 @@ impl Response for GetAuthCmdChallengeResp {}
 #[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
 pub struct FuseIncreaseCaliptraMinSvnReq {
     pub hdr: MailboxReqHeader,
-    pub flags: u32,
-    pub svn: u32,
+    pub payload: FuseIncreaseCaliptraMinSvnReqPayload,
 }
 impl Request for FuseIncreaseCaliptraMinSvnReq {
     const ID: CommandId = CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN;
     type Resp = FuseIncreaseCaliptraMinSvnResp;
+}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct FuseIncreaseCaliptraMinSvnReqPayload {
+    pub flags: u32,
+    pub svn: u32,
 }
 
 /// MC_FUSE_INCREASE_CALIPTRA_MIN_SVN response: Indicates success or failure.
@@ -1535,11 +1565,17 @@ impl Response for FuseIncreaseCaliptraMinSvnResp {}
 #[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
 pub struct McuFeProgReq {
     pub hdr: MailboxReqHeader,
-    pub partition: u32,
+    pub payload: McuFeProgReqPayload,
 }
 impl Request for McuFeProgReq {
     const ID: CommandId = CommandId::MC_FE_PROG;
     type Resp = FuseWriteResp; // Reuse FuseWriteResp as it only contains header
+}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuFeProgReqPayload {
+    pub partition: u32,
 }
 
 /// MC_FUSE_REVOKE_VENDOR_PUB_KEY request: Revoke a vendor firmware verification key.
@@ -1547,14 +1583,20 @@ impl Request for McuFeProgReq {
 #[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
 pub struct FuseRevokeVendorPubKeyReq {
     pub hdr: MailboxReqHeader,
-    pub reserved: u32,
-    pub vendor_pk_hash_slot: u32,
-    pub key_type: u32,
-    pub key_index: u32,
+    pub payload: FuseRevokeVendorPubKeyReqPayload,
 }
 impl Request for FuseRevokeVendorPubKeyReq {
     const ID: CommandId = CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY;
     type Resp = FuseRevokeVendorPubKeyResp;
+}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct FuseRevokeVendorPubKeyReqPayload {
+    pub reserved: u32,
+    pub vendor_pk_hash_slot: u32,
+    pub key_type: u32,
+    pub key_index: u32,
 }
 
 /// MC_FUSE_LOCK_PARTITION response: Indicates success or failure.
@@ -1596,12 +1638,18 @@ impl From<RevokeVendorPubKeyType> for u32 {
 #[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
 pub struct FuseRevokeVendorPkHashReq {
     pub hdr: MailboxReqHeader,
-    pub reserved: u32,
-    pub vendor_pk_hash_slot: u32,
+    pub payload: FuseRevokeVendorPkHashReqPayload,
 }
 impl Request for FuseRevokeVendorPkHashReq {
     const ID: CommandId = CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH;
     type Resp = FuseRevokeVendorPubKeyResp;
+}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct FuseRevokeVendorPkHashReqPayload {
+    pub reserved: u32,
+    pub vendor_pk_hash_slot: u32,
 }
 
 /// MC_FUSE_REVOKE_VENDOR_PK_HASH response: Indicates success or failure.
@@ -1724,15 +1772,21 @@ impl McuResponseVarSize for GetAttestationResp {}
 #[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
 pub struct ProvisionVendorPkHashReq {
     pub hdr: MailboxReqHeader,
-    /// The vendor PK hash slot to use
-    pub slot: u32,
-    /// New vendor PK hash
-    pub hash: [u8; OTP_CPTRA_CORE_VENDOR_PK_HASH_0.byte_size],
+    pub payload: ProvisionVendorPkHashReqPayload,
 }
 impl Request for ProvisionVendorPkHashReq {
     const ID: CommandId = CommandId::MC_PROVISION_VENDOR_PK_HASH;
 
     type Resp = ProvisionVendorPkHashResp;
+}
+
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct ProvisionVendorPkHashReqPayload {
+    /// The vendor PK hash slot to use
+    pub slot: u32,
+    /// New vendor PK hash
+    pub hash: [u8; OTP_CPTRA_CORE_VENDOR_PK_HASH_0.byte_size],
 }
 
 /// MC_PROVISION_VENDOR_PK_HASH response: Response for provisioning a new vendor PK hash
@@ -1748,11 +1802,17 @@ impl Response for ProvisionVendorPkHashResp {}
 #[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
 pub struct ProvisionOwnerPkHashReq {
     pub hdr: MailboxReqHeader,
-    pub hash: [u8; OTP_CPTRA_SS_OWNER_PK_HASH.byte_size],
+    pub payload: ProvisionOwnerPkHashReqPayload,
 }
 impl Request for ProvisionOwnerPkHashReq {
     const ID: CommandId = CommandId::MC_PROVISION_OWNER_PK_HASH;
     type Resp = ProvisionOwnerPkHashResp;
+}
+
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct ProvisionOwnerPkHashReqPayload {
+    pub hash: [u8; OTP_CPTRA_SS_OWNER_PK_HASH.byte_size],
 }
 
 /// MC_PROVISION_OWNER_PK_HASH response: Header-only on success.
@@ -1847,8 +1907,10 @@ mod tests {
     fn test_fuse_read_req_serialization() {
         let req = FuseReadReq {
             hdr: MailboxReqHeader { chksum: 0x1234 },
-            partition: 5,
-            entry: 2,
+            payload: FuseReadReqPayload {
+                partition: 5,
+                entry: 2,
+            },
         };
 
         let bytes = req.as_bytes();
@@ -1857,24 +1919,23 @@ mod tests {
         // Verify fields are at expected offsets (little-endian)
         let parsed = FuseReadReq::read_from_bytes(bytes).unwrap();
         assert_eq!(parsed.hdr.chksum, 0x1234);
-        assert_eq!(parsed.partition, 5);
-        assert_eq!(parsed.entry, 2);
+        assert_eq!(parsed.payload.partition, 5);
+        assert_eq!(parsed.payload.entry, 2);
     }
 
     #[test]
     fn test_fuse_read_resp_serialization() {
         let mut resp = FuseReadResp::default();
-        resp.hdr.hdr.fips_status = 0;
-        resp.hdr.data_len = 8; // 8 bytes of data
-        resp.length_bits = 64;
-        resp.data[0..8].copy_from_slice(&[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
+        resp.hdr.fips_status = 0;
+        resp.payload.length_bits = 64;
+        resp.payload.data[0..8].copy_from_slice(&[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]);
 
         let bytes = resp.as_bytes();
         let parsed = FuseReadResp::read_from_bytes(bytes).unwrap();
-        assert_eq!(parsed.hdr.hdr.fips_status, 0);
-        assert_eq!(parsed.length_bits, 64);
+        assert_eq!(parsed.hdr.fips_status, 0);
+        assert_eq!(parsed.payload.length_bits, 64);
         assert_eq!(
-            &parsed.data[0..8],
+            &parsed.payload.data[0..8],
             &[0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08]
         );
     }
@@ -1883,35 +1944,37 @@ mod tests {
     fn test_fuse_lock_partition_req_serialization() {
         let req = FuseLockPartitionReq {
             hdr: MailboxReqHeader { chksum: 0x5678 },
-            partition: 7,
+            payload: FuseLockPartitionReqPayload { partition: 7 },
         };
 
         let bytes = req.as_bytes();
         let parsed = FuseLockPartitionReq::read_from_bytes(bytes).unwrap();
         assert_eq!(parsed.hdr.chksum, 0x5678);
-        assert_eq!(parsed.partition, 7);
+        assert_eq!(parsed.payload.partition, 7);
     }
 
     #[test]
     fn test_provision_owner_pk_hash_req_serialization() {
         let mut req = McuMailboxReq::ProvisionOwnerPkHash(ProvisionOwnerPkHashReq {
             hdr: MailboxReqHeader::default(),
-            hash: [0xA5; 48],
+            payload: ProvisionOwnerPkHashReqPayload { hash: [0xA5; 48] },
         });
         req.populate_chksum().unwrap();
 
         assert_eq!(req.cmd_code(), CommandId::MC_PROVISION_OWNER_PK_HASH);
         let parsed = ProvisionOwnerPkHashReq::read_from_bytes(req.as_bytes().unwrap()).unwrap();
         assert_ne!(parsed.hdr.chksum, 0);
-        assert_eq!(parsed.hash, [0xA5; 48]);
+        assert_eq!(parsed.payload.hash, [0xA5; 48]);
     }
 
     #[test]
     fn test_fuse_req_checksum() {
         let mut req = McuMailboxReq::FuseRead(FuseReadReq {
             hdr: MailboxReqHeader::default(),
-            partition: 1,
-            entry: 2,
+            payload: FuseReadReqPayload {
+                partition: 1,
+                entry: 2,
+            },
         });
 
         // Populate checksum
@@ -1969,9 +2032,8 @@ mod tests {
     #[test]
     fn test_fuse_read_resp_checksum_with_data() {
         let mut resp = FuseReadResp::default();
-        resp.hdr.data_len = 4;
-        resp.length_bits = 32;
-        resp.data[0..4].copy_from_slice(&[0x01, 0x02, 0x03, 0x04]);
+        resp.payload.length_bits = 32;
+        resp.payload.data[0..4].copy_from_slice(&[0x01, 0x02, 0x03, 0x04]);
 
         let mut mbox_resp = McuMailboxResp::FuseRead(resp);
         mbox_resp.populate_chksum().unwrap();

@@ -67,10 +67,36 @@ static CHALLENGE: Mutex<CriticalSectionRawMutex, RefCell<Option<[u8; AUTH_CMD_NO
     Mutex::new(RefCell::new(None));
 
 #[derive(Default)]
-pub struct MockCommandAuthorizer;
+pub struct MockCommandAuthorizer {
+    allow_raw_fuse_ops: bool,
+}
 
-fn set_challenge(challenge: [u8; AUTH_CMD_NONCE_LEN]) {
-    CHALLENGE.lock(|state| *state.borrow_mut() = Some(challenge));
+impl MockCommandAuthorizer {
+    pub const fn new(allow_raw_fuse_ops: bool) -> Self {
+        Self { allow_raw_fuse_ops }
+    }
+
+    fn cmd_len(&self, cmd_id: CommandId) -> Result<usize, AuthorizationError> {
+        let len = match cmd_id {
+            CommandId::MC_PROVISION_VENDOR_PK_HASH => size_of::<ProvisionVendorPkHashReq>(),
+            CommandId::MC_PROVISION_OWNER_PK_HASH => size_of::<ProvisionOwnerPkHashReq>(),
+            CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN => {
+                size_of::<FuseIncreaseCaliptraMinSvnReq>()
+            }
+            CommandId::MC_FE_PROG => size_of::<McuFeProgReq>(),
+            CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY => size_of::<FuseRevokeVendorPubKeyReq>(),
+            CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH => size_of::<FuseRevokeVendorPkHashReq>(),
+            CommandId::MC_FUSE_READ if self.allow_raw_fuse_ops => size_of::<FuseReadReq>(),
+            CommandId::MC_FUSE_WRITE if self.allow_raw_fuse_ops => size_of::<FuseWriteReq>(),
+            CommandId::MC_FUSE_LOCK_PARTITION => size_of::<FuseLockPartitionReq>(),
+            _ => return Err(AuthorizationError),
+        };
+        Ok(len)
+    }
+
+    pub fn cmd_body_len(&self, cmd_id: CommandId) -> Result<usize, AuthorizationError> {
+        Ok(self.cmd_len(cmd_id)? - size_of::<MailboxReqHeader>())
+    }
 }
 
 impl CommandAuthorizer for MockCommandAuthorizer {
@@ -80,27 +106,9 @@ impl CommandAuthorizer for MockCommandAuthorizer {
         cmd_id: CommandId,
         req: &'a [u8],
     ) -> Result<&'a [u8], AuthorizationError> {
-        let cmd_len = match cmd_id {
-            CommandId::MC_PROVISION_VENDOR_PK_HASH => size_of::<ProvisionVendorPkHashReq>(),
-            CommandId::MC_PROVISION_OWNER_PK_HASH => size_of::<ProvisionOwnerPkHashReq>(),
-            CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN => {
-                size_of::<FuseIncreaseCaliptraMinSvnReq>()
-            }
-            CommandId::MC_FE_PROG => size_of::<McuFeProgReq>(),
-            CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY => size_of::<FuseRevokeVendorPubKeyReq>(),
-            CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH => size_of::<FuseRevokeVendorPkHashReq>(),
-            CommandId::MC_FUSE_READ => size_of::<FuseReadReq>(),
-            CommandId::MC_FUSE_WRITE => size_of::<FuseWriteReq>(),
-            CommandId::MC_FUSE_LOCK_PARTITION => size_of::<FuseLockPartitionReq>(),
-            _ => return Err(AuthorizationError),
-        };
-
-        // Tail starts at `cmd_len`, which INCLUDES the MailboxReqHeader; `cmd_body`
-        // below starts after it, so the two bases differ deliberately.
-        // `ref_from_prefix` keeps the old walk's tolerance of trailing bytes
-        // (`ref_from_bytes` is exact-size; `ref_from_suffix` would silently shift the window).
+        let body_len = self.cmd_body_len(cmd_id)?;
         let (auth, _trailing) =
-            AuthorizationBlock::ref_from_prefix(req.get(cmd_len..).ok_or(AuthorizationError)?)
+            AuthorizationBlock::ref_from_prefix(req.get(body_len..).ok_or(AuthorizationError)?)
                 .map_err(|_| AuthorizationError)?;
         let AuthorizationBlock {
             nonce: wire_nonce,
@@ -110,11 +118,8 @@ impl CommandAuthorizer for MockCommandAuthorizer {
             sig,
         } = auth;
 
-        let cmd_body = req
-            .get(size_of::<MailboxReqHeader>()..cmd_len)
-            .ok_or(AuthorizationError)?;
+        let cmd_body = req.get(..body_len).ok_or(AuthorizationError)?;
 
-        // Nonce gate + device_ops verify.
         self.verify_signatures(
             alloc,
             u32::from(cmd_id),
@@ -126,7 +131,8 @@ impl CommandAuthorizer for MockCommandAuthorizer {
             sig,
         )
         .await?;
-        Ok(&req[..cmd_len])
+
+        Ok(cmd_body)
     }
 
     /// Nonce gate shared by the mailbox and VDM paths: consume the stored
@@ -161,6 +167,29 @@ impl CommandAuthorizer for MockCommandAuthorizer {
     }
 
     fn set_challenge(&mut self, challenge: [u8; AUTH_CMD_NONCE_LEN]) {
-        set_challenge(challenge);
+        CHALLENGE.lock(|state| *state.borrow_mut() = Some(challenge));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_allow_raw_fuse_ops_setting() {
+        let disabled = MockCommandAuthorizer::new(false);
+        assert!(disabled.cmd_len(CommandId::MC_FUSE_READ).is_err());
+        assert!(disabled.cmd_len(CommandId::MC_FUSE_WRITE).is_err());
+        assert!(disabled.cmd_len(CommandId::MC_FE_PROG).is_ok());
+
+        let default = MockCommandAuthorizer::default();
+        assert!(default.cmd_len(CommandId::MC_FUSE_READ).is_err());
+        assert!(default.cmd_len(CommandId::MC_FUSE_WRITE).is_err());
+        assert!(default.cmd_len(CommandId::MC_FE_PROG).is_ok());
+
+        let enabled = MockCommandAuthorizer::new(true);
+        assert!(enabled.cmd_len(CommandId::MC_FUSE_READ).is_ok());
+        assert!(enabled.cmd_len(CommandId::MC_FUSE_WRITE).is_ok());
+        assert!(enabled.cmd_len(CommandId::MC_FE_PROG).is_ok());
     }
 }

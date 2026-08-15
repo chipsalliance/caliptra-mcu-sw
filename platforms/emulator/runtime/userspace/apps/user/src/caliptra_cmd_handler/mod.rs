@@ -293,48 +293,6 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         device_ops::clear_debug_log(log_type).await
     }
 
-    async fn provision_vendor_pk_hash(&self, slot: u32, hash: &[u8; 48]) -> CaliptraCmdResult<()> {
-        device_ops::provision_vendor_pk_hash(slot, hash)
-    }
-
-    async fn provision_owner_pk_hash(&self, hash: &[u8; 48]) -> CaliptraCmdResult<()> {
-        device_ops::provision_owner_pk_hash(hash)
-    }
-
-    async fn fuse_lock_partition(&self, partition: u32) -> CaliptraCmdResult<()> {
-        device_ops::fuse_lock_partition(partition)
-    }
-
-    async fn increase_caliptra_min_svn<Alloc: ApiAlloc>(
-        &self,
-        alloc: &Alloc,
-        svn: u32,
-    ) -> CaliptraCmdResult<()> {
-        device_ops::increase_caliptra_min_svn(alloc, svn).await
-    }
-
-    async fn revoke_vendor_pub_key<Alloc: ApiAlloc>(
-        &self,
-        alloc: &Alloc,
-        vendor_pk_hash_slot: u32,
-        key_type: u32,
-        key_index: u32,
-    ) -> CaliptraCmdResult<()> {
-        device_ops::revoke_vendor_pub_key(alloc, vendor_pk_hash_slot, key_type, key_index).await
-    }
-
-    async fn revoke_vendor_pk_hash(&self, vendor_pk_hash_slot: u32) -> CaliptraCmdResult<()> {
-        device_ops::revoke_vendor_pk_hash(vendor_pk_hash_slot)
-    }
-
-    async fn program_field_entropy<Alloc: ApiAlloc>(
-        &self,
-        alloc: &Alloc,
-        partition: u32,
-    ) -> CaliptraCmdResult<()> {
-        device_ops::program_field_entropy(alloc, partition).await
-    }
-
     async fn request_debug_unlock<Alloc: ApiAlloc>(
         &self,
         alloc: &Alloc,

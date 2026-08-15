@@ -12,7 +12,7 @@ use caliptra_mcu_hw_model::{LifecycleControllerState, McuHwModel};
 use caliptra_mcu_mbox_common::messages::{
     DeviceCapsReq, EcdsaVerifyReq, FirmwareVersionReq, GetAuthCmdChallengeReq, LmsVerifyReq,
     MailboxReqHeader as McuMailboxReqHeader, MailboxRespHeader, McuEcdsa384SigVerifyReq,
-    McuFeProgReq, McuLmsSigVerifyReq,
+    McuFeProgReq, McuFeProgReqPayload, McuLmsSigVerifyReq,
 };
 use caliptra_mcu_romtime::McuBootMilestones;
 use zerocopy::{FromBytes, IntoBytes};
@@ -356,7 +356,7 @@ fn test_fe_prog_authorized_req() -> Result<()> {
 
     // Verify FE_PROG authorized request succeeds
     let cmd = McuFeProgReq {
-        partition: 0,
+        payload: McuFeProgReqPayload { partition: 0 },
         ..Default::default()
     };
     let result = execute_authorized_req(&mut hw, cmd);

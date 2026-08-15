@@ -14,22 +14,13 @@ use crate::{HexWord, Mci, Otp};
 use caliptra_api::mailbox::populate_checksum;
 use caliptra_mcu_error::McuError;
 use caliptra_mcu_mbox_common::messages::{
-    verify_checksum, CommandId, FuseLockPartitionReq, FuseReadReq, FuseWriteReq, MailboxRespHeader,
-    MAX_FUSE_DATA_WORDS,
+    verify_checksum, CommandId, FuseLockPartitionReq, FuseReadReq, FuseReadResp, FuseWriteReq,
+    MailboxRespHeader, MAX_FUSE_DATA_WORDS,
 };
 use caliptra_mcu_registers_generated::mci;
 use core::mem::size_of;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
-use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
-
-/// Wire-format response for MC_FUSE_READ.
-#[repr(C)]
-#[derive(IntoBytes, FromBytes, KnownLayout, Immutable)]
-struct FuseReadResp {
-    pub hdr: MailboxRespHeader,
-    pub valid_bits: u32,
-    pub data: [u32; MAX_FUSE_DATA_WORDS],
-}
+use zerocopy::FromBytes;
 
 /// Workaround to find the max of two usizes in a const context.
 ///
@@ -43,14 +34,16 @@ const fn const_max_usize(a: usize, b: usize) -> usize {
         b
     }
 }
-const MAX_FUSE_REQ_BYTES: usize =
-    const_max_usize(size_of::<FuseWriteReq>(), size_of::<FuseReadReq>());
+const MAX_FUSE_MBOX_BYTES: usize = const_max_usize(
+    const_max_usize(size_of::<FuseWriteReq>(), size_of::<FuseReadReq>()),
+    size_of::<FuseReadResp>(),
+);
 const RESP_HDR_BYTES: usize = size_of::<MailboxRespHeader>();
 
 /// 4-byte–aligned buffer so zerocopy `ref_from_bytes` can produce references
 /// to structs containing `u32` fields without alignment errors.
 #[repr(C, align(4))]
-struct AlignedBuf([u8; MAX_FUSE_REQ_BYTES]);
+struct AlignedBuf([u8; MAX_FUSE_MBOX_BYTES]);
 
 struct MciMboxRegs<'a> {
     execute: &'a tock_registers::registers::ReadWrite<u32, mci::bits::MboxExecute::Register>,
@@ -125,12 +118,12 @@ fn dispatch_fuse_command(
     buf: &mut [u8],
     otp: &Otp,
 ) -> Result<usize, McuError> {
-    if input_dlen < size_of::<u32>() || input_dlen > MAX_FUSE_REQ_BYTES {
+    if input_dlen < size_of::<u32>() || input_dlen > MAX_FUSE_MBOX_BYTES {
         crate::println!(
             "[mci-mbox] Invalid dlen {} (must be {}..={})",
             input_dlen,
             size_of::<u32>(),
-            MAX_FUSE_REQ_BYTES
+            MAX_FUSE_MBOX_BYTES
         );
         return Err(McuError::ROM_OTP_FUSE_INVALID_LENGTH);
     }
@@ -184,8 +177,8 @@ fn handle_fuse_read(buf: &mut [u8], dlen: usize, otp: &Otp) -> Result<usize, Mcu
 
     let req = FuseReadReq::ref_from_bytes(&buf[..size_of::<FuseReadReq>()])
         .map_err(|_| McuError::ROM_OTP_FUSE_INVALID_LENGTH)?;
-    let partition = req.partition;
-    let entry = req.entry;
+    let partition = req.payload.partition;
+    let entry = req.payload.entry;
     crate::println!(
         "[mci-mbox] IFPR: partition={}, entry={}",
         HexWord(partition),
@@ -196,10 +189,14 @@ fn handle_fuse_read(buf: &mut [u8], dlen: usize, otp: &Otp) -> Result<usize, Mcu
 
     let resp = FuseReadResp::mut_from_bytes(&mut buf[..size_of::<FuseReadResp>()])
         .map_err(|_| McuError::ROM_OTP_FUSE_INVALID_LENGTH)?;
-    resp.valid_bits = params.valid_bits;
+    *resp = FuseReadResp::default();
+    resp.payload.length_bits = params.valid_bits;
     for i in 0..params.words_to_read {
         match otp.read_word(params.base_word_addr + i) {
-            Ok(word) => resp.data[i] = word,
+            Ok(word) => {
+                let bytes = word.to_le_bytes();
+                resp.payload.data[i * 4..i * 4 + 4].copy_from_slice(&bytes);
+            }
             Err(_) => {
                 crate::println!(
                     "[mci-mbox] IFPR: DAI read error at word addr {}",
@@ -233,11 +230,16 @@ fn handle_fuse_write(buf: &mut [u8], dlen: usize, otp: &Otp) -> Result<usize, Mc
 
     crate::println!(
         "[mci-mbox] IFPW: word_addr={:08X}, mask={:032b}",
-        req.word_addr,
-        req.mask,
+        req.payload.word_addr,
+        req.payload.mask,
     );
 
-    fuse_write_dai(otp, req.word_addr, req.data, req.mask)?;
+    fuse_write_dai(
+        otp,
+        req.payload.word_addr,
+        req.payload.data,
+        req.payload.mask,
+    )?;
 
     crate::println!("[mci-mbox] IFPW: success");
     Ok(RESP_HDR_BYTES)
@@ -257,7 +259,7 @@ fn handle_fuse_lock_partition(buf: &mut [u8], dlen: usize, otp: &Otp) -> Result<
 
     let req = FuseLockPartitionReq::ref_from_bytes(&buf[..size_of::<FuseLockPartitionReq>()])
         .map_err(|_| McuError::ROM_OTP_FUSE_INVALID_LENGTH)?;
-    let partition = req.partition;
+    let partition = req.payload.partition;
     crate::println!("[mci-mbox] IFPK: partition={}", HexWord(partition));
 
     fuse_lock_partition_dai(otp, partition)?;
@@ -340,7 +342,7 @@ pub fn process_fuse_mbox_commands(mci: &Mci, otp: &Otp) {
             input_dlen
         );
 
-        let mut aligned_buf = AlignedBuf([0u8; MAX_FUSE_REQ_BYTES]);
+        let mut aligned_buf = AlignedBuf([0u8; MAX_FUSE_MBOX_BYTES]);
         let buf = &mut aligned_buf.0[..];
 
         let result = dispatch_fuse_command(cmd, input_dlen, active_mbox.sram, buf, otp);
