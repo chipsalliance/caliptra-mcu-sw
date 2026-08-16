@@ -14,6 +14,18 @@ const LENGTH_MASK: u32 = (1 << LENGTH_FIELD_BITS) - 1;
 const PCISIG_DOE_VENDOR_ID: u16 = 0x0001;
 const LENGTH_FIELD_BITS: u32 = 18;
 
+/// Vendor ID reported in a DOE Discovery Response when there is no Data Object
+/// Protocol associated with the requested index.
+const UNSUPPORTED_VENDOR_ID: u16 = 0xFFFF;
+
+/// DOE Discovery Version used when the DOE Extended Capability Version is 01h.
+/// The field is reserved (and therefore zero) in that revision.
+const DOE_DISCOVERY_VERSION_LEGACY: u8 = 0x00;
+
+/// DOE Discovery Version required when the DOE Extended Capability Version is
+/// 02h or greater.
+const DOE_DISCOVERY_VERSION_2: u8 = 0x02;
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[repr(u8)]
 pub enum DataObjectType {
@@ -126,12 +138,20 @@ bitfield! {
     pub struct DoeDiscoveryRequest(u32);
     impl Debug;
     pub u8, index, _: 7, 0;
-    u32, reserved_1, _: 31, 8;
+    pub u8, version, _: 15, 8;
+    u16, reserved_1, _: 31, 16;
 }
 
 impl DoeDiscoveryRequest {
     pub fn decode(data: u32) -> Self {
         Self(data)
+    }
+
+    pub fn is_version_supported(&self) -> bool {
+        matches!(
+            self.version(),
+            DOE_DISCOVERY_VERSION_LEGACY | DOE_DISCOVERY_VERSION_2
+        )
     }
 }
 
@@ -151,6 +171,15 @@ impl DoeDiscoveryResponse {
         response.set_vendor_id(PCISIG_DOE_VENDOR_ID);
         response.set_data_object_protocol(data_object_protocol);
         response.set_next_index(next_index);
+        response
+    }
+
+    /// Response for a request that cannot be satisfied, i.e. the index is out of
+    /// range or the DOE Discovery Version is not supported. A Vendor ID of FFFFh
+    /// tells the requester there is no Data Object Protocol at the requested index.
+    pub fn unsupported() -> Self {
+        let mut response = Self(0);
+        response.set_vendor_id(UNSUPPORTED_VENDOR_ID);
         response
     }
 
