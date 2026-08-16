@@ -15,6 +15,7 @@
 //! - RequestDebugUnlock (0x06)
 //! - AuthorizeDebugUnlockToken (0x07)
 //! - ExportAttestedCsr (0x08)
+//! - DeviceOwnershipTransfer (0x11)
 //! - AuthorizedCommand (0x12)
 
 use super::protocol::{
@@ -81,6 +82,266 @@ fn send_vdm_request(
     }
 
     Ok(resp_len)
+}
+
+fn send_dot_request(
+    command: CaliptraVdmCommand,
+    subcommand: u32,
+    payload: &[u8],
+    driver: &mut dyn SpdmVdmDriver,
+) -> Result<Vec<u8>, TransportError> {
+    // Caliptra VDM payload dwords are little-endian even though their numeric
+    // constants are written as readable ASCII FourCC values.
+    let mut vdm_payload = Vec::with_capacity(4 + payload.len());
+    vdm_payload.extend_from_slice(&subcommand.to_le_bytes());
+    vdm_payload.extend_from_slice(payload);
+
+    let mut resp_buf = [0u8; MAX_VDM_RESPONSE_SIZE];
+    let resp_len = send_vdm_request(command, &vdm_payload, driver, &mut resp_buf)?;
+    Ok(resp_buf[VDM_RESPONSE_HEADER_SIZE..resp_len].to_vec())
+}
+
+fn send_authorized_dot_request(
+    subcommand: u32,
+    payload: &[u8],
+    driver: &mut dyn SpdmVdmDriver,
+) -> Result<Vec<u8>, TransportError> {
+    // AuthorizedCommand expects the DOT family first; send_dot_request then
+    // prepends that family to produce [family 0x11][FourCC][payload][trailer].
+    let mut family_payload = Vec::with_capacity(4 + payload.len());
+    family_payload.extend_from_slice(&subcommand.to_le_bytes());
+    family_payload.extend_from_slice(payload);
+    send_dot_request(
+        CaliptraVdmCommand::AuthorizedCommand,
+        DOT_FAMILY_ID,
+        &family_payload,
+        driver,
+    )
+}
+
+fn write_dot_transition_response(
+    data: &[u8],
+    response_buffer: &mut [u8],
+) -> Result<usize, TransportError> {
+    if !data.is_empty() {
+        return Err(TransportError::InvalidMessage);
+    }
+
+    let internal_resp = DotTransitionResponse {
+        common: CommonResponse { fips_status: 0 },
+        reset_required: 1,
+    };
+    let resp_bytes = internal_resp.as_bytes();
+    if response_buffer.len() < resp_bytes.len() {
+        return Err(TransportError::BufferError("Response buffer too small"));
+    }
+    response_buffer[..resp_bytes.len()].copy_from_slice(resp_bytes);
+    Ok(resp_bytes.len())
+}
+
+// ---------------------------------------------------------------------------
+// DeviceOwnershipTransfer (CaliptraVdmCommand::DeviceOwnershipTransfer)
+// ---------------------------------------------------------------------------
+
+pub fn handle_dot_lock(
+    payload: &[u8],
+    driver: &mut dyn SpdmVdmDriver,
+    response_buffer: &mut [u8],
+) -> Result<usize, TransportError> {
+    let request =
+        DotLockRequest::from_bytes(payload).map_err(|_| TransportError::InvalidMessage)?;
+    let data =
+        send_authorized_dot_request(MC_DOT_LOCK_CANONICAL_CMD_ID, request.as_bytes(), driver)?;
+    write_dot_transition_response(&data, response_buffer)
+}
+
+pub fn handle_dot_disable(
+    payload: &[u8],
+    driver: &mut dyn SpdmVdmDriver,
+    response_buffer: &mut [u8],
+) -> Result<usize, TransportError> {
+    let request =
+        DotDisableRequest::from_bytes(payload).map_err(|_| TransportError::InvalidMessage)?;
+    let data =
+        send_authorized_dot_request(MC_DOT_DISABLE_CANONICAL_CMD_ID, request.as_bytes(), driver)?;
+    write_dot_transition_response(&data, response_buffer)
+}
+
+pub fn handle_dot_rotate(
+    payload: &[u8],
+    driver: &mut dyn SpdmVdmDriver,
+    response_buffer: &mut [u8],
+) -> Result<usize, TransportError> {
+    let request =
+        DotRotateRequest::from_bytes(payload).map_err(|_| TransportError::InvalidMessage)?;
+    let data =
+        send_authorized_dot_request(MC_DOT_ROTATE_CANONICAL_CMD_ID, request.as_bytes(), driver)?;
+    write_dot_transition_response(&data, response_buffer)
+}
+
+pub fn handle_dot_unlock_challenge(
+    payload: &[u8],
+    driver: &mut dyn SpdmVdmDriver,
+    response_buffer: &mut [u8],
+) -> Result<usize, TransportError> {
+    DotUnlockChallengeRequest::from_bytes(payload).map_err(|_| TransportError::InvalidMessage)?;
+
+    let challenge = send_dot_request(
+        CaliptraVdmCommand::DeviceOwnershipTransfer,
+        MC_DOT_UNLOCK_CHALLENGE_CANONICAL_CMD_ID,
+        &[],
+        driver,
+    )?;
+    if challenge.len() != AUTH_CMD_NONCE_LEN {
+        return Err(TransportError::InvalidMessage);
+    }
+
+    let mut internal_resp = DotChallengeResponse::default();
+    internal_resp.challenge.copy_from_slice(&challenge);
+    let resp_bytes = internal_resp.as_bytes();
+    if response_buffer.len() < resp_bytes.len() {
+        return Err(TransportError::BufferError("Response buffer too small"));
+    }
+    response_buffer[..resp_bytes.len()].copy_from_slice(resp_bytes);
+    Ok(resp_bytes.len())
+}
+
+pub fn handle_dot_unlock(
+    payload: &[u8],
+    driver: &mut dyn SpdmVdmDriver,
+    response_buffer: &mut [u8],
+) -> Result<usize, TransportError> {
+    let request =
+        DotUnlockRequest::from_bytes(payload).map_err(|_| TransportError::InvalidMessage)?;
+    let data = send_dot_request(
+        CaliptraVdmCommand::DeviceOwnershipTransfer,
+        MC_DOT_UNLOCK_CANONICAL_CMD_ID,
+        request.as_bytes(),
+        driver,
+    )?;
+    write_dot_transition_response(&data, response_buffer)
+}
+
+pub fn handle_get_dot_backup_blob(
+    payload: &[u8],
+    driver: &mut dyn SpdmVdmDriver,
+    response_buffer: &mut [u8],
+) -> Result<usize, TransportError> {
+    let request =
+        GetDotBackupBlobRequest::from_bytes(payload).map_err(|_| TransportError::InvalidMessage)?;
+    let data = send_authorized_dot_request(
+        MC_GET_DOT_BACKUP_BLOB_CANONICAL_CMD_ID,
+        request.as_bytes(),
+        driver,
+    )?;
+    if data.len() != DOT_BLOB_SIZE {
+        return Err(TransportError::InvalidMessage);
+    }
+    let response = GetDotBackupBlobResponse {
+        common: CommonResponse { fips_status: 0 },
+        blob: data
+            .try_into()
+            .map_err(|_| TransportError::InvalidMessage)?,
+    };
+    let bytes = response.as_bytes();
+    if response_buffer.len() < bytes.len() {
+        return Err(TransportError::BufferError("Response buffer too small"));
+    }
+    response_buffer[..bytes.len()].copy_from_slice(bytes);
+    Ok(bytes.len())
+}
+
+pub fn handle_dot_status(
+    payload: &[u8],
+    driver: &mut dyn SpdmVdmDriver,
+    response_buffer: &mut [u8],
+) -> Result<usize, TransportError> {
+    DotStatusRequest::from_bytes(payload).map_err(|_| TransportError::InvalidMessage)?;
+    let data = send_dot_request(
+        CaliptraVdmCommand::DeviceOwnershipTransfer,
+        MC_DOT_STATUS_CANONICAL_CMD_ID,
+        &[],
+        driver,
+    )?;
+    if data.len() != 4 {
+        return Err(TransportError::InvalidMessage);
+    }
+    let response = DotStatusResponse {
+        common: CommonResponse { fips_status: 0 },
+        status: DotStatus {
+            enabled: data[0],
+            locked: data[1],
+            burned: u16::from_le_bytes([data[2], data[3]]),
+        },
+    };
+    let bytes = response.as_bytes();
+    if response_buffer.len() < bytes.len() {
+        return Err(TransportError::BufferError("Response buffer too small"));
+    }
+    response_buffer[..bytes.len()].copy_from_slice(bytes);
+    Ok(bytes.len())
+}
+
+pub fn handle_dot_recovery(
+    payload: &[u8],
+    driver: &mut dyn SpdmVdmDriver,
+    response_buffer: &mut [u8],
+) -> Result<usize, TransportError> {
+    let request =
+        DotRecoveryRequest::from_bytes(payload).map_err(|_| TransportError::InvalidMessage)?;
+    let data = send_dot_request(
+        CaliptraVdmCommand::DeviceOwnershipTransfer,
+        MC_DOT_RECOVERY_CANONICAL_CMD_ID,
+        &request.blob,
+        driver,
+    )?;
+    write_dot_transition_response(&data, response_buffer)
+}
+
+pub fn handle_dot_override_challenge(
+    payload: &[u8],
+    driver: &mut dyn SpdmVdmDriver,
+    response_buffer: &mut [u8],
+) -> Result<usize, TransportError> {
+    let request = DotOverrideChallengeRequest::from_bytes(payload)
+        .map_err(|_| TransportError::InvalidMessage)?;
+    let challenge = send_dot_request(
+        CaliptraVdmCommand::DeviceOwnershipTransfer,
+        MC_DOT_OVERRIDE_CHALLENGE_CANONICAL_CMD_ID,
+        request.as_bytes(),
+        driver,
+    )?;
+    if challenge.len() != AUTH_CMD_NONCE_LEN {
+        return Err(TransportError::InvalidMessage);
+    }
+    let response = DotChallengeResponse {
+        common: CommonResponse { fips_status: 0 },
+        challenge: challenge
+            .try_into()
+            .map_err(|_| TransportError::InvalidMessage)?,
+    };
+    let bytes = response.as_bytes();
+    if response_buffer.len() < bytes.len() {
+        return Err(TransportError::BufferError("Response buffer too small"));
+    }
+    response_buffer[..bytes.len()].copy_from_slice(bytes);
+    Ok(bytes.len())
+}
+
+pub fn handle_dot_override(
+    payload: &[u8],
+    driver: &mut dyn SpdmVdmDriver,
+    response_buffer: &mut [u8],
+) -> Result<usize, TransportError> {
+    let request =
+        DotOverrideRequest::from_bytes(payload).map_err(|_| TransportError::InvalidMessage)?;
+    let data = send_dot_request(
+        CaliptraVdmCommand::DeviceOwnershipTransfer,
+        MC_DOT_OVERRIDE_CANONICAL_CMD_ID,
+        request.as_bytes(),
+        driver,
+    )?;
+    write_dot_transition_response(&data, response_buffer)
 }
 
 // ---------------------------------------------------------------------------
@@ -464,6 +725,7 @@ mod tests {
     extern crate std;
 
     use super::*;
+    use crate::transports::spdm_vdm::dispatch::VdmCommandHandlerFn;
     use std::vec;
     use std::vec::Vec;
     use zerocopy::IntoBytes;
@@ -910,5 +1172,216 @@ mod tests {
                 req.unlock_level,
             ]
         );
+    }
+
+    #[test]
+    fn authorized_dot_commands_preserve_family_subcommand_and_payload() {
+        let cases: [(u32, Vec<u8>, VdmCommandHandlerFn); 3] = [
+            (
+                MC_DOT_LOCK_CANONICAL_CMD_ID,
+                DotLockRequest::default().as_bytes().to_vec(),
+                handle_dot_lock,
+            ),
+            (
+                MC_DOT_DISABLE_CANONICAL_CMD_ID,
+                DotDisableRequest::default().as_bytes().to_vec(),
+                handle_dot_disable,
+            ),
+            (
+                MC_DOT_ROTATE_CANONICAL_CMD_ID,
+                DotRotateRequest::default().as_bytes().to_vec(),
+                handle_dot_rotate,
+            ),
+        ];
+
+        for (subcommand, payload, handler) in cases {
+            let mut driver = FakeDriver {
+                response: success_response(CaliptraVdmCommand::AuthorizedCommand, &[]),
+                last_request: Vec::new(),
+            };
+            let mut response_buffer = [0u8; core::mem::size_of::<DotTransitionResponse>()];
+
+            handler(&payload, &mut driver, &mut response_buffer)
+                .expect("authorized DOT command should be accepted");
+
+            assert_eq!(
+                &driver.last_request[..2],
+                &[
+                    CALIPTRA_VDM_COMMAND_VERSION,
+                    CaliptraVdmCommand::AuthorizedCommand as u8,
+                ]
+            );
+            assert_eq!(&driver.last_request[2..6], &DOT_FAMILY_ID.to_le_bytes());
+            assert_eq!(&driver.last_request[6..10], &subcommand.to_le_bytes());
+            assert_eq!(&driver.last_request[10..], payload);
+            let response = DotTransitionResponse::read_from_bytes(&response_buffer).unwrap();
+            assert_eq!(response.reset_required, 1);
+        }
+    }
+
+    #[test]
+    fn native_dot_transition_commands_preserve_subcommand_and_payload() {
+        let cases: [(u32, Vec<u8>, VdmCommandHandlerFn); 3] = [
+            (
+                MC_DOT_UNLOCK_CANONICAL_CMD_ID,
+                DotUnlockRequest::default().as_bytes().to_vec(),
+                handle_dot_unlock,
+            ),
+            (
+                MC_DOT_RECOVERY_CANONICAL_CMD_ID,
+                DotRecoveryRequest::default().as_bytes().to_vec(),
+                handle_dot_recovery,
+            ),
+            (
+                MC_DOT_OVERRIDE_CANONICAL_CMD_ID,
+                DotOverrideRequest::default().as_bytes().to_vec(),
+                handle_dot_override,
+            ),
+        ];
+
+        for (subcommand, payload, handler) in cases {
+            let mut driver = FakeDriver {
+                response: success_response(CaliptraVdmCommand::DeviceOwnershipTransfer, &[]),
+                last_request: Vec::new(),
+            };
+            let mut response_buffer = [0u8; core::mem::size_of::<DotTransitionResponse>()];
+
+            handler(&payload, &mut driver, &mut response_buffer)
+                .expect("native DOT transition should be accepted");
+
+            assert_eq!(
+                &driver.last_request[..2],
+                &[
+                    CALIPTRA_VDM_COMMAND_VERSION,
+                    CaliptraVdmCommand::DeviceOwnershipTransfer as u8,
+                ]
+            );
+            assert_eq!(&driver.last_request[2..6], &subcommand.to_le_bytes());
+            assert_eq!(&driver.last_request[6..], payload);
+            let response = DotTransitionResponse::read_from_bytes(&response_buffer).unwrap();
+            assert_eq!(response.reset_required, 1);
+        }
+    }
+
+    #[test]
+    fn dot_requests_fit_session_and_spdm_large_message_limits() {
+        const SESSION_LIMIT: usize = 8 * 1024;
+        const LIBSPDM_LIMIT: usize = 0x2000;
+        const AUTHORIZED_ENVELOPE: usize = 2 + 4 + 4;
+        const NATIVE_ENVELOPE: usize = 2 + 4;
+
+        let largest_request = [
+            core::mem::size_of::<DotLockRequest>() + AUTHORIZED_ENVELOPE,
+            core::mem::size_of::<DotDisableRequest>() + AUTHORIZED_ENVELOPE,
+            core::mem::size_of::<DotRotateRequest>() + AUTHORIZED_ENVELOPE,
+            core::mem::size_of::<GetDotBackupBlobRequest>() + AUTHORIZED_ENVELOPE,
+            core::mem::size_of::<DotUnlockRequest>() + NATIVE_ENVELOPE,
+            core::mem::size_of::<DotRecoveryRequest>() + NATIVE_ENVELOPE,
+            core::mem::size_of::<DotOverrideChallengeRequest>() + NATIVE_ENVELOPE,
+            core::mem::size_of::<DotOverrideRequest>() + NATIVE_ENVELOPE,
+        ]
+        .into_iter()
+        .max()
+        .unwrap();
+        assert!(largest_request <= SESSION_LIMIT);
+        assert!(largest_request <= LIBSPDM_LIMIT);
+    }
+
+    #[test]
+    fn dot_unlock_challenge_decodes_exact_length_response() {
+        let expected_challenge = [0xA5; AUTH_CMD_NONCE_LEN];
+        let mut driver = FakeDriver {
+            response: success_response(
+                CaliptraVdmCommand::DeviceOwnershipTransfer,
+                &expected_challenge,
+            ),
+            last_request: Vec::new(),
+        };
+        let mut response_buffer = [0u8; core::mem::size_of::<DotChallengeResponse>()];
+
+        handle_dot_unlock_challenge(&[], &mut driver, &mut response_buffer)
+            .expect("DOT unlock challenge should be accepted");
+
+        assert_eq!(
+            driver.last_request,
+            [
+                CALIPTRA_VDM_COMMAND_VERSION,
+                CaliptraVdmCommand::DeviceOwnershipTransfer as u8,
+                MC_DOT_UNLOCK_CHALLENGE_CANONICAL_CMD_ID.to_le_bytes()[0],
+                MC_DOT_UNLOCK_CHALLENGE_CANONICAL_CMD_ID.to_le_bytes()[1],
+                MC_DOT_UNLOCK_CHALLENGE_CANONICAL_CMD_ID.to_le_bytes()[2],
+                MC_DOT_UNLOCK_CHALLENGE_CANONICAL_CMD_ID.to_le_bytes()[3],
+            ]
+        );
+        assert_eq!(&response_buffer[4..], &expected_challenge);
+
+        driver.response = success_response(
+            CaliptraVdmCommand::DeviceOwnershipTransfer,
+            &[0; AUTH_CMD_NONCE_LEN - 1],
+        );
+        assert!(matches!(
+            handle_dot_unlock_challenge(&[], &mut driver, &mut response_buffer),
+            Err(TransportError::InvalidMessage)
+        ));
+    }
+
+    #[test]
+    fn dot_backup_status_and_override_challenge_use_expected_envelopes() {
+        let backup_blob = [0x5A; DOT_BLOB_SIZE];
+        let backup_request = GetDotBackupBlobRequest::default();
+        let mut driver = FakeDriver {
+            response: success_response(CaliptraVdmCommand::AuthorizedCommand, &backup_blob),
+            last_request: Vec::new(),
+        };
+        let mut backup_response = vec![0u8; core::mem::size_of::<GetDotBackupBlobResponse>()];
+        handle_get_dot_backup_blob(backup_request.as_bytes(), &mut driver, &mut backup_response)
+            .unwrap();
+        assert_eq!(
+            driver.last_request[1],
+            CaliptraVdmCommand::AuthorizedCommand as u8
+        );
+        assert_eq!(&driver.last_request[2..6], &DOT_FAMILY_ID.to_le_bytes());
+        assert_eq!(
+            &driver.last_request[6..10],
+            &MC_GET_DOT_BACKUP_BLOB_CANONICAL_CMD_ID.to_le_bytes()
+        );
+        assert_eq!(&driver.last_request[10..], backup_request.as_bytes());
+        let backup = GetDotBackupBlobResponse::read_from_bytes(&backup_response).unwrap();
+        assert_eq!(backup.blob, backup_blob);
+
+        driver.response =
+            success_response(CaliptraVdmCommand::DeviceOwnershipTransfer, &[1, 1, 3, 0]);
+        let mut status_response = [0u8; core::mem::size_of::<DotStatusResponse>()];
+        handle_dot_status(&[], &mut driver, &mut status_response).unwrap();
+        assert_eq!(
+            driver.last_request[1],
+            CaliptraVdmCommand::DeviceOwnershipTransfer as u8
+        );
+        assert_eq!(
+            &driver.last_request[2..6],
+            &MC_DOT_STATUS_CANONICAL_CMD_ID.to_le_bytes()
+        );
+        let status = DotStatusResponse::read_from_bytes(&status_response).unwrap();
+        assert_eq!(status.status.enabled, 1);
+        assert_eq!(status.status.locked, 1);
+        assert_eq!(status.status.burned, 3);
+
+        let challenge = [0xC3; AUTH_CMD_NONCE_LEN];
+        let override_request = DotOverrideChallengeRequest::default();
+        driver.response = success_response(CaliptraVdmCommand::DeviceOwnershipTransfer, &challenge);
+        let mut challenge_response = [0u8; core::mem::size_of::<DotChallengeResponse>()];
+        handle_dot_override_challenge(
+            override_request.as_bytes(),
+            &mut driver,
+            &mut challenge_response,
+        )
+        .unwrap();
+        assert_eq!(
+            &driver.last_request[2..6],
+            &MC_DOT_OVERRIDE_CHALLENGE_CANONICAL_CMD_ID.to_le_bytes()
+        );
+        assert_eq!(&driver.last_request[6..], override_request.as_bytes());
+        let response = DotChallengeResponse::read_from_bytes(&challenge_response).unwrap();
+        assert_eq!(response.challenge, challenge);
     }
 }

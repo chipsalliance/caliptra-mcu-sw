@@ -33,6 +33,7 @@ caliptra-mcu-config-emulator.workspace = true
 caliptra-mcu-config-fpga.workspace = true
 caliptra-mcu-mbox-lib.workspace = true
 caliptra-mcu-mbox-common.workspace = true
+caliptra-mcu-registers-generated.workspace = true
 caliptra-mcu-mctp-vdm-common.workspace = true
 caliptra-mcu-mctp-vdm-lib.workspace = true
 portable-atomic.workspace = true
@@ -69,12 +70,33 @@ toml.workspace = true
 default = ["all-features"]
 disable-lms-sig-verify = ["caliptra-mcu-mbox-lib/disable-lms-sig-verify"]
 # Caliptra MCU features
-all-features = ["spdm", "streaming-boot", "flash-boot", "firmware-update", "doe", "userspace-log", "mctp-vdm-service"]
+# DOT is platform-gated by the runtime builder because FPGA has no Runtime
+# driver for ROM's physical DOT blob storage yet.
+all-features = [
+  "spdm",
+  "streaming-boot",
+  "flash-boot",
+  "firmware-update",
+  "doe",
+  "userspace-log",
+  "mctp-vdm-service",
+]
 spdm = ["mcu-mbox-service"]
 streaming-boot = []
 flash-boot = []
 firmware-update = []
 mcu-mbox-service = []
+dot-mci-mailbox = [
+  "mcu-mbox-service",
+  "caliptra-mcu-mbox-lib/device-ownership-transfer",
+]
+dot-spdm-vdm = [
+  "spdm",
+  "caliptra-mcu-spdm-vdm-handler/device-ownership-transfer",
+  "caliptra-mcu-spdm-stack/generic-large-request",
+]
+# Test-only mock command handler for integration-test device identity responses.
+mcu-mbox-test-handlers = ["mcu-mbox-service"]
 # Measurement boot init (off by default). Runs DPE Handle Storage / Software PCR
 # Storage cold-boot and hitless-update initialization. Cold boot rotates MCU-RT
 # off the default DPE handle, so keep this off until the SPDM evidence path is
@@ -161,9 +183,9 @@ test-mctp-vdm-cmds = ["mctp-vdm-service"]
 # Exercise the production CaliptraCmdBackend rather than the VDM test mock.
 test-mctp-vdm-production = ["mctp-vdm-service"]
 test-caliptra-util-host-mctp-vdm-validator = ["mctp-vdm-service", "userspace-log"]
-test-caliptra-util-host-validator = ["mcu-mbox-service"]
-test-mcu-mbox-cmds = ["mcu-mbox-service"]
-test-mcu-mbox-fips-self-test = ["mcu-mbox-service"]
+test-caliptra-util-host-validator = ["mcu-mbox-test-handlers", "dot-mci-mailbox"]
+test-mcu-mbox-cmds = ["mcu-mbox-test-handlers", "dot-mci-mailbox"]
+test-mcu-mbox-fips-self-test = ["mcu-mbox-test-handlers"]
 test-pldm-discovery = []
 test-pldm-fw-update = []
 test-pldm-fw-update-e2e = []
@@ -173,8 +195,7 @@ test-pldm-streaming-boot = ["streaming-boot"]
 # the general SPDM feature so production and unrelated test bundles do not pay
 # the code-size and build-time cost.
 test-caliptra-util-host-spdm-vdm-validator = [
-  "spdm",
-  "caliptra-mcu-spdm-stack/generic-large-request",
+  "dot-spdm-vdm",
 ]
 test-mctp-spdm-attestation = ["spdm", "flash-boot"]
 test-mctp-spdm-attestation-tcb = ["spdm", "flash-boot"]

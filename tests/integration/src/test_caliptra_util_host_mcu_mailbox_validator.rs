@@ -168,6 +168,8 @@ pub mod test {
         // --- Start hw_model with keys provisioned in fuses ---
         let mut hw = start_runtime_hw_model(TestParams {
             feature: Some(feature),
+            dot_enabled: true,
+            use_strap_secrets: true,
             debug_intent: true,
             lifecycle_controller_state: Some(caliptra_mcu_hw_model::LifecycleControllerState::Prod),
             prod_dbg_unlock_keypairs: prod_dbg_keypairs,
@@ -206,20 +208,49 @@ pub mod test {
                 .set_debug_unlock_signer(Box::new(debug_unlock_signer))
                 .set_command_authorizer(Box::new(
                     AsymmetricCommandAuthorizer::new(&TEST_ECC_PRIV_KEY, &TEST_MLDSA_SEED).unwrap(),
-                ));
+                ))
+                .set_dot_validation(
+                    Box::new(
+                        AsymmetricCommandAuthorizer::new(&TEST_ECC_PRIV_KEY, &TEST_MLDSA_SEED)
+                            .unwrap(),
+                    ),
+                    [0xA5; 48],
+                );
 
             println!("Running Mailbox validator in-process (port={})", udp_port);
 
             match validator.start() {
                 Ok(results) => {
                     let all_passed = results.iter().all(|r| r.passed);
-                    if all_passed {
+                    let required_dot_results = [
+                        "DotStatus",
+                        "DotLock",
+                        "GetDotBackupBlob",
+                        "DotRotate",
+                        "DotUnlockChallenge",
+                        "DotUnlock",
+                        "DotDisable",
+                    ];
+                    let all_dot_results_passed = required_dot_results.iter().all(|test_name| {
+                        results
+                            .iter()
+                            .any(|result| result.test_name == *test_name && result.passed)
+                    });
+                    if all_passed && all_dot_results_passed {
                         println!("✓ Caliptra Mailbox validator PASSED");
                     } else {
                         println!("✗ Caliptra Mailbox validator FAILED");
                         for r in &results {
                             if !r.passed {
                                 println!("  FAIL: {} — {:?}", r.test_name, r.error_message);
+                            }
+                        }
+                        for test_name in required_dot_results {
+                            if !results
+                                .iter()
+                                .any(|result| result.test_name == test_name && result.passed)
+                            {
+                                println!("  FAIL: missing successful DOT result {test_name}");
                             }
                         }
                         validator_failed_clone.store(true, Ordering::Relaxed);

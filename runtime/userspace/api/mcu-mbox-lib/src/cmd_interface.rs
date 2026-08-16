@@ -23,6 +23,13 @@ use caliptra_mcu_mbox_common::messages::{
     GET_ATTESTATION_RESP_PREFIX_LEN, MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN,
     MAX_RESP_DATA_SIZE,
 };
+#[cfg(feature = "device-ownership-transfer")]
+use caliptra_mcu_mbox_common::messages::{
+    DotDisableReq, DotDisableResp, DotLockReq, DotLockResp, DotOverrideChallengeReq,
+    DotOverrideChallengeResp, DotOverrideReq, DotOverrideResp, DotRecoveryReq, DotRecoveryResp,
+    DotRotateReq, DotRotateResp, DotStatus, DotStatusReq, DotStatusResp, DotUnlockChallengeReq,
+    DotUnlockChallengeResp, DotUnlockReq, DotUnlockResp, GetDotBackupBlobReq, GetDotBackupBlobResp,
+};
 #[cfg(feature = "periodic-fips-self-test")]
 use caliptra_mcu_mbox_common::messages::{
     McuFipsPeriodicEnableReq, McuFipsPeriodicEnableResp, McuFipsPeriodicStatusReq,
@@ -221,6 +228,10 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
                 | inner @ CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY => {
                     self.handle_authorized_command(inner, req, resp_buf).await
                 }
+                #[cfg(feature = "device-ownership-transfer")]
+                CommandId::MC_DEVICE_OWNERSHIP_TRANSFER => {
+                    self.handle_dot_command(req, resp_buf).await
+                }
                 CommandId::MC_EXPORT_ATTESTED_CSR => {
                     self.handle_export_attested_csr(req, resp_buf).await
                 }
@@ -282,6 +293,258 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
 
         Ok((&mut resp_buf[..resp_bytes.len()], mbox_cmd_status))
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    async fn handle_dot_lock<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req = DotLockReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        if req.subcommand != CommandId::MC_DOT_LOCK.0 {
+            return Err(errors::UNSUPPORTED_COMMAND);
+        }
+        self.non_crypto_cmds_handler
+            .dot_lock(self.scratch, &req.payload)
+            .await
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+
+        let (resp, _) =
+            DotLockResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = DotLockResp {
+            reset_required: 1,
+            ..Default::default()
+        };
+        let response_len = resp.as_bytes().len();
+        Ok((&mut resp_buf[..response_len], MbxCmdStatus::Complete))
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    async fn handle_dot_disable<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req = DotDisableReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        if req.subcommand != CommandId::MC_DOT_DISABLE.0 {
+            return Err(errors::UNSUPPORTED_COMMAND);
+        }
+        self.non_crypto_cmds_handler
+            .dot_disable(self.scratch, &req.payload)
+            .await
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+
+        let (resp, _) =
+            DotDisableResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = DotDisableResp {
+            reset_required: 1,
+            ..Default::default()
+        };
+        let response_len = resp.as_bytes().len();
+        Ok((&mut resp_buf[..response_len], MbxCmdStatus::Complete))
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    async fn handle_dot_rotate<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req = DotRotateReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        if req.subcommand != CommandId::MC_DOT_ROTATE.0 {
+            return Err(errors::UNSUPPORTED_COMMAND);
+        }
+        self.non_crypto_cmds_handler
+            .dot_rotate(self.scratch, &req.payload)
+            .await
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+
+        let (resp, _) =
+            DotRotateResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = DotRotateResp {
+            reset_required: 1,
+            ..Default::default()
+        };
+        let response_len = resp.as_bytes().len();
+        Ok((&mut resp_buf[..response_len], MbxCmdStatus::Complete))
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    async fn handle_dot_status<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req = DotStatusReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        if req.subcommand != CommandId::MC_DOT_STATUS.0 {
+            return Err(errors::UNSUPPORTED_COMMAND);
+        }
+        let mut status = DotStatus::default();
+        self.non_crypto_cmds_handler
+            .dot_status(&mut status)
+            .await
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+
+        let (resp, _) =
+            DotStatusResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = DotStatusResp {
+            status,
+            ..Default::default()
+        };
+        let response_len = resp.as_bytes().len();
+        Ok((&mut resp_buf[..response_len], MbxCmdStatus::Complete))
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    async fn handle_dot_recovery<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req = DotRecoveryReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        if req.subcommand != CommandId::MC_DOT_RECOVERY.0 {
+            return Err(errors::UNSUPPORTED_COMMAND);
+        }
+        self.non_crypto_cmds_handler
+            .dot_recovery(self.scratch, &req.blob)
+            .await
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+
+        let (resp, _) =
+            DotRecoveryResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = DotRecoveryResp {
+            reset_required: 1,
+            ..Default::default()
+        };
+        let response_len = resp.as_bytes().len();
+        Ok((&mut resp_buf[..response_len], MbxCmdStatus::Complete))
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    async fn handle_dot_override_challenge<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req =
+            DotOverrideChallengeReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        if req.subcommand != CommandId::MC_DOT_OVERRIDE_CHALLENGE.0 {
+            return Err(errors::UNSUPPORTED_COMMAND);
+        }
+        let challenge = self
+            .non_crypto_cmds_handler
+            .dot_override_challenge(self.scratch, &req.payload)
+            .await
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+
+        let (resp, _) = DotOverrideChallengeResp::mut_from_prefix(resp_buf)
+            .map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = DotOverrideChallengeResp {
+            challenge,
+            ..Default::default()
+        };
+        let response_len = resp.as_bytes().len();
+        Ok((&mut resp_buf[..response_len], MbxCmdStatus::Complete))
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    async fn handle_dot_override<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req = DotOverrideReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        if req.subcommand != CommandId::MC_DOT_OVERRIDE.0 {
+            return Err(errors::UNSUPPORTED_COMMAND);
+        }
+        self.non_crypto_cmds_handler
+            .dot_override(self.scratch, &req.payload)
+            .await
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+
+        let (resp, _) =
+            DotOverrideResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = DotOverrideResp {
+            reset_required: 1,
+            ..Default::default()
+        };
+        let response_len = resp.as_bytes().len();
+        Ok((&mut resp_buf[..response_len], MbxCmdStatus::Complete))
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    async fn handle_dot_unlock_challenge<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let request =
+            DotUnlockChallengeReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        if request.subcommand != CommandId::MC_DOT_UNLOCK_CHALLENGE.0 {
+            return Err(errors::UNSUPPORTED_COMMAND);
+        }
+        let challenge = self
+            .non_crypto_cmds_handler
+            .dot_unlock_challenge(self.scratch)
+            .await
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+
+        let (resp, _) = DotUnlockChallengeResp::mut_from_prefix(resp_buf)
+            .map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = DotUnlockChallengeResp {
+            challenge,
+            ..Default::default()
+        };
+        let response_len = resp.as_bytes().len();
+        Ok((&mut resp_buf[..response_len], MbxCmdStatus::Complete))
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    async fn handle_dot_unlock<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req = DotUnlockReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        if req.subcommand != CommandId::MC_DOT_UNLOCK.0 {
+            return Err(errors::UNSUPPORTED_COMMAND);
+        }
+        self.non_crypto_cmds_handler
+            .dot_unlock(self.scratch, &req.payload)
+            .await
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+
+        let (resp, _) =
+            DotUnlockResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = DotUnlockResp {
+            reset_required: 1,
+            ..Default::default()
+        };
+        let response_len = resp.as_bytes().len();
+        Ok((&mut resp_buf[..response_len], MbxCmdStatus::Complete))
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    async fn handle_dot_get_backup_blob<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let request =
+            GetDotBackupBlobReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        if request.subcommand != CommandId::MC_GET_DOT_BACKUP_BLOB.0 {
+            return Err(errors::UNSUPPORTED_COMMAND);
+        }
+        let (resp, _) =
+            GetDotBackupBlobResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
+        self.non_crypto_cmds_handler
+            .dot_get_backup_blob(self.scratch, &mut resp.blob)
+            .await
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+        resp.hdr = MailboxRespHeader::default();
+        let response_len = resp.as_bytes().len();
+        Ok((&mut resp_buf[..response_len], MbxCmdStatus::Complete))
     }
 
     async fn handle_device_caps<'r>(
@@ -614,10 +877,80 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
             CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH => {
                 self.handle_revoke_vendor_pk_hash(cmd, resp_buf).await
             }
+            #[cfg(feature = "device-ownership-transfer")]
+            CommandId::MC_DEVICE_OWNERSHIP_TRANSFER => {
+                let subcommand = cmd
+                    .get(size_of::<MailboxReqHeader>()..size_of::<MailboxReqHeader>() + 4)
+                    .ok_or(errors::INVALID_PARAMS)?;
+                match u32::from_le_bytes(subcommand.try_into().map_err(|_| errors::INVALID_PARAMS)?)
+                {
+                    value if value == CommandId::MC_DOT_LOCK.0 => {
+                        self.handle_dot_lock(cmd, resp_buf).await
+                    }
+                    value if value == CommandId::MC_DOT_DISABLE.0 => {
+                        self.handle_dot_disable(cmd, resp_buf).await
+                    }
+                    value if value == CommandId::MC_DOT_ROTATE.0 => {
+                        self.handle_dot_rotate(cmd, resp_buf).await
+                    }
+                    value if value == CommandId::MC_GET_DOT_BACKUP_BLOB.0 => {
+                        self.handle_dot_get_backup_blob(cmd, resp_buf).await
+                    }
+                    _ => Err(errors::UNSUPPORTED_COMMAND),
+                }
+            }
             CommandId::MC_FUSE_READ => self.handle_fuse_read(cmd, resp_buf).await,
             CommandId::MC_FUSE_WRITE => self.handle_fuse_write(cmd, resp_buf).await,
             CommandId::MC_FUSE_LOCK_PARTITION => {
                 self.handle_fuse_lock_partition(cmd, resp_buf).await
+            }
+            _ => Err(errors::UNSUPPORTED_COMMAND),
+        }
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    async fn handle_dot_command<'r>(
+        &mut self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        // MCI uses one outer family command. The first payload dword selects
+        // the DOT operation; protected operations retain the exact request and
+        // authorization trailer while native operations dispatch directly.
+        let subcommand = req
+            .get(size_of::<MailboxReqHeader>()..size_of::<MailboxReqHeader>() + 4)
+            .ok_or(errors::INVALID_PARAMS)?;
+        match u32::from_le_bytes(subcommand.try_into().map_err(|_| errors::INVALID_PARAMS)?) {
+            value
+                if value == CommandId::MC_DOT_LOCK.0
+                    || value == CommandId::MC_DOT_DISABLE.0
+                    || value == CommandId::MC_DOT_ROTATE.0
+                    || value == CommandId::MC_GET_DOT_BACKUP_BLOB.0 =>
+            {
+                self.handle_authorized_command(
+                    CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
+                    req,
+                    resp_buf,
+                )
+                .await
+            }
+            value if value == CommandId::MC_DOT_UNLOCK_CHALLENGE.0 => {
+                self.handle_dot_unlock_challenge(req, resp_buf).await
+            }
+            value if value == CommandId::MC_DOT_STATUS.0 => {
+                self.handle_dot_status(req, resp_buf).await
+            }
+            value if value == CommandId::MC_DOT_RECOVERY.0 => {
+                self.handle_dot_recovery(req, resp_buf).await
+            }
+            value if value == CommandId::MC_DOT_OVERRIDE_CHALLENGE.0 => {
+                self.handle_dot_override_challenge(req, resp_buf).await
+            }
+            value if value == CommandId::MC_DOT_OVERRIDE.0 => {
+                self.handle_dot_override(req, resp_buf).await
+            }
+            value if value == CommandId::MC_DOT_UNLOCK.0 => {
+                self.handle_dot_unlock(req, resp_buf).await
             }
             _ => Err(errors::UNSUPPORTED_COMMAND),
         }
@@ -945,6 +1278,8 @@ fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32) -> usize {
                 + GET_ATTESTATION_RESP_PREFIX_LEN
                 + H::MAX_ATTESTATION_EVIDENCE_LEN,
         ),
+        #[cfg(feature = "device-ownership-transfer")]
+        CommandId::MC_DEVICE_OWNERSHIP_TRANSFER => size_of::<GetDotBackupBlobResp>(),
         _ => size_of::<McuMailboxResp>(),
     }
 }

@@ -7065,6 +7065,7 @@ dependencies = [
  "caliptra-mcu-measurement-api",
  "caliptra-mcu-pldm-common",
  "caliptra-mcu-pldm-lib",
+ "caliptra-mcu-registers-generated",
  "caliptra-mcu-romtime",
  "caliptra-mcu-runtime-userspace-error",
  "caliptra-mcu-scratch-alloc",

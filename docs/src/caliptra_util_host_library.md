@@ -25,6 +25,9 @@ The Caliptra Utility host library is a modular, extensible, and transport-agnost
 - **Debug Unlock Mechanisms**
     - Facilitate secure debugging in production environments
     - Ensure controlled access to debugging features
+- **Device Ownership Transfer**
+    - Issue all ten Runtime DOT commands through the Rust API over either MCU mailbox or SPDM VDM
+    - Preserve each command's generic authorization or native authentication envelope across transports
 - **Cryptographic Services**
     - AES encryption and decryption
     - SHA hashing

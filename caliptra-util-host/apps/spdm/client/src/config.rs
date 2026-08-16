@@ -37,6 +37,8 @@ pub struct TestConfig {
     pub revoke_vendor_pub_key: RevokeVendorPubKeyConfig,
     #[serde(default)]
     pub revoke_vendor_pk_hash: RevokeVendorPkHashConfig,
+    #[serde(default)]
+    pub dot: DotConfig,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -261,4 +263,16 @@ pub struct RevokeVendorPkHashConfig {
 
 fn default_true() -> bool {
     true
+}
+
+#[derive(Debug, Clone, Default, Deserialize)]
+pub struct DotConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub cak: Option<String>,
+    #[serde(default)]
+    pub ecc_lak_private_key: Option<String>,
+    #[serde(default)]
+    pub mldsa_lak_seed: Option<String>,
 }

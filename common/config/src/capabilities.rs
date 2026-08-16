@@ -23,6 +23,7 @@ bitflags::bitflags! {
         const REQUEST_DEBUG_UNLOCK = command_capability(0x06);
         const AUTHORIZE_DEBUG_UNLOCK_TOKEN = command_capability(0x07);
         const EXPORT_ATTESTED_CSR = command_capability(0x08);
+        const DEVICE_OWNERSHIP_TRANSFER = command_capability(0x11);
         const AUTHORIZED_COMMAND = command_capability(0x12);
     }
 
@@ -36,6 +37,10 @@ bitflags::bitflags! {
         const FUSE_REVOKE_VENDOR_PK_HASH = 1 << 5;
         const FUSE_LOCK_PARTITION = 1 << 6;
         const PROVISION_OWNER_PK_HASH = 1 << 7;
+        const DOT_LOCK = 1 << 8;
+        const DOT_DISABLE = 1 << 9;
+        const DOT_ROTATE = 1 << 10;
+        const GET_DOT_BACKUP_BLOB = 1 << 11;
     }
 }
 
@@ -92,6 +97,13 @@ mod tests {
         assert_eq!(
             AuthorizedSubcommandCapabilities::PROVISION_OWNER_PK_HASH.bits(),
             1 << 7
+        );
+        assert_eq!(AuthorizedSubcommandCapabilities::DOT_LOCK.bits(), 1 << 8);
+        assert_eq!(AuthorizedSubcommandCapabilities::DOT_DISABLE.bits(), 1 << 9);
+        assert_eq!(AuthorizedSubcommandCapabilities::DOT_ROTATE.bits(), 1 << 10);
+        assert_eq!(
+            AuthorizedSubcommandCapabilities::GET_DOT_BACKUP_BLOB.bits(),
+            1 << 11
         );
     }
 }

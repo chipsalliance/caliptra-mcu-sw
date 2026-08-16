@@ -13,11 +13,17 @@
 
 use crate::config::TestConfig;
 use crate::{AuthorizedCommandData, SpdmVdmClient};
-use caliptra_mcu_command_auth_challenge_signer::CommandAuthChallengeSigner;
+use caliptra_mcu_command_auth_challenge_signer::{CommandAuthChallengeSigner, HybridMessageSigner};
 use caliptra_mcu_core_util_host_command_types::attestation::{
     formats_from_bitmap, AsymAlgo, AttestationValidationError, EvidenceFormat, PkiEntitySlot,
 };
 use caliptra_mcu_core_util_host_command_types::certificate::AttestedCsrValidationError;
+use caliptra_mcu_core_util_host_command_types::device_ownership_transfer::{
+    DotAuthorizationTrailer, DotDisableRequest, DotLockRequest, DotRotateRequest, DotUnlockRequest,
+    GetDotBackupBlobRequest, DOT_FAMILY_ID, MC_DOT_DISABLE_CANONICAL_CMD_ID,
+    MC_DOT_LOCK_CANONICAL_CMD_ID, MC_DOT_ROTATE_CANONICAL_CMD_ID, MC_DOT_UNLOCK_CANONICAL_CMD_ID,
+    MC_GET_DOT_BACKUP_BLOB_CANONICAL_CMD_ID,
+};
 use caliptra_mcu_core_util_host_command_types::fuse::{
     MC_FE_PROG_CANONICAL_CMD_ID, MC_FUSE_INCREASE_CALIPTRA_MIN_SVN_CANONICAL_CMD_ID,
     MC_FUSE_LOCK_PARTITION_CANONICAL_CMD_ID, MC_FUSE_REVOKE_VENDOR_PK_HASH_CANONICAL_CMD_ID,
@@ -112,10 +118,18 @@ pub fn run_all(
     config: &TestConfig,
     debug_unlock_signer: Option<&dyn DebugUnlockSigner>,
     command_authorizer: Option<&dyn CommandAuthChallengeSigner>,
+    dot_signer: Option<&dyn HybridMessageSigner>,
     verbose: bool,
 ) -> Vec<ValidationResult> {
     if let Some(suite) = config.validation.fuse_suite.as_deref() {
-        return run_fuse_suite(client, suite, command_authorizer, verbose);
+        return run_fuse_suite(
+            client,
+            suite,
+            command_authorizer,
+            dot_signer,
+            config.dot.cak.as_deref(),
+            verbose,
+        );
     }
 
     let mut results = Vec::new();
@@ -232,6 +246,338 @@ pub fn run_all(
         ));
     }
 
+    if config.dot.enabled {
+        results.extend(run_dot(
+            client,
+            config.dot.cak.as_deref(),
+            command_authorizer,
+            dot_signer,
+            verbose,
+        ));
+    }
+
+    results
+}
+
+/// Validate authorized and native DOT commands over SPDM VDM.
+///
+/// The disposable test device follows one coherent sequence so every command
+/// is exercised: unlocked -> locked -> unlocked -> disabled.
+pub fn run_dot(
+    client: &mut SpdmVdmClient,
+    cak_hex: Option<&str>,
+    command_authorizer: Option<&dyn CommandAuthChallengeSigner>,
+    native_signer: Option<&dyn HybridMessageSigner>,
+    verbose: bool,
+) -> Vec<ValidationResult> {
+    const STATUS_NAME: &str = "DotStatus";
+    const LOCK_NAME: &str = "DotLock";
+    const BACKUP_NAME: &str = "GetDotBackupBlob";
+    const ROTATE_NAME: &str = "DotRotate";
+    const CHALLENGE_NAME: &str = "DotUnlockChallenge";
+    const UNLOCK_NAME: &str = "DotUnlock";
+    const DISABLE_NAME: &str = "DotDisable";
+
+    let mut results = Vec::new();
+    let Some(command_authorizer) = command_authorizer else {
+        results.push(ValidationResult::skip(
+            LOCK_NAME,
+            "no command authorizer provided",
+        ));
+        return results;
+    };
+    let Some(native_signer) = native_signer else {
+        results.push(ValidationResult::skip(
+            CHALLENGE_NAME,
+            "no native DOT signer provided",
+        ));
+        return results;
+    };
+    let Some(cak_hex) = cak_hex else {
+        results.push(ValidationResult::fail(
+            LOCK_NAME,
+            "DOT CAK is not configured",
+        ));
+        return results;
+    };
+    let cak_bytes = match hex::decode(cak_hex) {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            results.push(ValidationResult::fail(
+                LOCK_NAME,
+                format!("invalid DOT CAK hex: {error}"),
+            ));
+            return results;
+        }
+    };
+    let cak: [u8; 48] = match cak_bytes.try_into() {
+        Ok(cak) => cak,
+        Err(bytes) => {
+            results.push(ValidationResult::fail(
+                LOCK_NAME,
+                format!("DOT CAK must be 48 bytes, got {}", bytes.len()),
+            ));
+            return results;
+        }
+    };
+
+    match client.dot_status() {
+        Ok(response) if response.status.enabled == 1 && response.status.locked == 0 => {
+            results.push(ValidationResult::pass(
+                STATUS_NAME,
+                format!("unlocked, {} fuses burned", response.status.burned),
+            ));
+        }
+        Ok(response) => {
+            results.push(ValidationResult::fail(
+                STATUS_NAME,
+                format!(
+                    "expected enabled unlocked state, got enabled={} locked={} burned={}",
+                    response.status.enabled, response.status.locked, response.status.burned
+                ),
+            ));
+            return results;
+        }
+        Err(error) => {
+            results.push(ValidationResult::fail(STATUS_NAME, error.to_string()));
+            return results;
+        }
+    }
+
+    let keys = match native_signer.dot_public_keys() {
+        Ok(keys) => keys,
+        Err(error) => {
+            results.push(ValidationResult::fail(
+                LOCK_NAME,
+                format!("failed to derive DOT LAK public keys: {error}"),
+            ));
+            return results;
+        }
+    };
+    let lak_hash = keys.dot_lak_hash();
+
+    let mut lock_payload = MC_DOT_LOCK_CANONICAL_CMD_ID.to_le_bytes().to_vec();
+    lock_payload.extend_from_slice(&cak);
+    lock_payload.extend_from_slice(&lak_hash);
+    let lock_auth = match authorize_command(
+        client,
+        DOT_FAMILY_ID,
+        &lock_payload,
+        Some(command_authorizer),
+    ) {
+        Ok(authorization) => authorization,
+        Err(error) => {
+            results.push(ValidationResult::fail(
+                LOCK_NAME,
+                format!("failed to authorize DOT_LOCK: {error}"),
+            ));
+            return results;
+        }
+    };
+    let lock_request = DotLockRequest {
+        cak,
+        lak_hash,
+        authorization: DotAuthorizationTrailer {
+            nonce: lock_auth.nonce,
+            ecc_pub_x: lock_auth.ecc_pub_x,
+            ecc_pub_y: lock_auth.ecc_pub_y,
+            mldsa_pub: lock_auth.mldsa_pub,
+            signature: lock_auth.sig,
+        },
+    };
+    match client.dot_lock(&lock_request) {
+        Ok(response) if response.reset_required == 1 => {
+            results.push(ValidationResult::pass(LOCK_NAME, "transition committed"));
+        }
+        Ok(response) => {
+            results.push(ValidationResult::fail(
+                LOCK_NAME,
+                format!("unexpected reset_required={}", response.reset_required),
+            ));
+            return results;
+        }
+        Err(error) => {
+            results.push(ValidationResult::fail(LOCK_NAME, error.to_string()));
+            return results;
+        }
+    }
+
+    let backup_payload = MC_GET_DOT_BACKUP_BLOB_CANONICAL_CMD_ID.to_le_bytes();
+    let backup_auth = match authorize_command(
+        client,
+        DOT_FAMILY_ID,
+        &backup_payload,
+        Some(command_authorizer),
+    ) {
+        Ok(authorization) => authorization,
+        Err(error) => {
+            results.push(ValidationResult::fail(BACKUP_NAME, error));
+            return results;
+        }
+    };
+    let backup_request = GetDotBackupBlobRequest {
+        authorization: DotAuthorizationTrailer {
+            nonce: backup_auth.nonce,
+            ecc_pub_x: backup_auth.ecc_pub_x,
+            ecc_pub_y: backup_auth.ecc_pub_y,
+            mldsa_pub: backup_auth.mldsa_pub,
+            signature: backup_auth.sig,
+        },
+    };
+    match client.get_dot_backup_blob(&backup_request) {
+        Ok(response) if response.blob.iter().any(|byte| *byte != 0) => {
+            results.push(ValidationResult::pass(
+                BACKUP_NAME,
+                "authenticated blob returned",
+            ));
+        }
+        Ok(_) => {
+            results.push(ValidationResult::fail(BACKUP_NAME, "empty blob returned"));
+            return results;
+        }
+        Err(error) => {
+            results.push(ValidationResult::fail(BACKUP_NAME, error.to_string()));
+            return results;
+        }
+    }
+
+    let min_fuse_count = 3u32;
+    let mut rotate_payload = MC_DOT_ROTATE_CANONICAL_CMD_ID.to_le_bytes().to_vec();
+    rotate_payload.extend_from_slice(&min_fuse_count.to_le_bytes());
+    rotate_payload.extend_from_slice(&cak);
+    rotate_payload.extend_from_slice(&lak_hash);
+    let rotate_auth = match authorize_command(
+        client,
+        DOT_FAMILY_ID,
+        &rotate_payload,
+        Some(command_authorizer),
+    ) {
+        Ok(authorization) => authorization,
+        Err(error) => {
+            results.push(ValidationResult::fail(ROTATE_NAME, error));
+            return results;
+        }
+    };
+    let rotate_request = DotRotateRequest {
+        min_fuse_count,
+        cak,
+        lak_hash,
+        authorization: DotAuthorizationTrailer {
+            nonce: rotate_auth.nonce,
+            ecc_pub_x: rotate_auth.ecc_pub_x,
+            ecc_pub_y: rotate_auth.ecc_pub_y,
+            mldsa_pub: rotate_auth.mldsa_pub,
+            signature: rotate_auth.sig,
+        },
+    };
+    match client.dot_rotate(&rotate_request) {
+        Ok(response) if response.reset_required == 1 => {
+            results.push(ValidationResult::pass(ROTATE_NAME, "epoch rotated"));
+        }
+        Ok(response) => {
+            results.push(ValidationResult::fail(
+                ROTATE_NAME,
+                format!("unexpected reset_required={}", response.reset_required),
+            ));
+            return results;
+        }
+        Err(error) => {
+            results.push(ValidationResult::fail(ROTATE_NAME, error.to_string()));
+            return results;
+        }
+    }
+
+    let challenge = match client.dot_unlock_challenge() {
+        Ok(response) => {
+            results.push(ValidationResult::pass(
+                CHALLENGE_NAME,
+                "48-byte challenge received",
+            ));
+            response.challenge
+        }
+        Err(error) => {
+            results.push(ValidationResult::fail(CHALLENGE_NAME, error.to_string()));
+            return results;
+        }
+    };
+
+    let mut unlock_transcript = Vec::with_capacity(52);
+    unlock_transcript.extend_from_slice(&MC_DOT_UNLOCK_CANONICAL_CMD_ID.to_be_bytes());
+    unlock_transcript.extend_from_slice(&challenge);
+    let unlock_signature = match native_signer.sign_message(&unlock_transcript) {
+        Ok(signature) => signature,
+        Err(error) => {
+            results.push(ValidationResult::fail(
+                UNLOCK_NAME,
+                format!("failed to sign DOT_UNLOCK: {error}"),
+            ));
+            return results;
+        }
+    };
+    let unlock_request = DotUnlockRequest {
+        lak_ecc_pub_x: keys.ecc_pub_x,
+        lak_ecc_pub_y: keys.ecc_pub_y,
+        lak_mldsa_pub: keys.mldsa_pub,
+        signature: unlock_signature,
+    };
+    match client.dot_unlock(&unlock_request) {
+        Ok(response) if response.reset_required == 1 => {
+            results.push(ValidationResult::pass(UNLOCK_NAME, "transition committed"));
+        }
+        Ok(response) => {
+            results.push(ValidationResult::fail(
+                UNLOCK_NAME,
+                format!("unexpected reset_required={}", response.reset_required),
+            ));
+            return results;
+        }
+        Err(error) => {
+            results.push(ValidationResult::fail(UNLOCK_NAME, error.to_string()));
+            return results;
+        }
+    }
+
+    let mut disable_payload = MC_DOT_DISABLE_CANONICAL_CMD_ID.to_le_bytes().to_vec();
+    disable_payload.extend_from_slice(&lak_hash);
+    let disable_auth = match authorize_command(
+        client,
+        DOT_FAMILY_ID,
+        &disable_payload,
+        Some(command_authorizer),
+    ) {
+        Ok(authorization) => authorization,
+        Err(error) => {
+            results.push(ValidationResult::fail(
+                DISABLE_NAME,
+                format!("failed to authorize DOT_DISABLE: {error}"),
+            ));
+            return results;
+        }
+    };
+    let disable_request = DotDisableRequest {
+        lak_hash,
+        authorization: DotAuthorizationTrailer {
+            nonce: disable_auth.nonce,
+            ecc_pub_x: disable_auth.ecc_pub_x,
+            ecc_pub_y: disable_auth.ecc_pub_y,
+            mldsa_pub: disable_auth.mldsa_pub,
+            signature: disable_auth.sig,
+        },
+    };
+    match client.dot_disable(&disable_request) {
+        Ok(response) if response.reset_required == 1 => {
+            results.push(ValidationResult::pass(DISABLE_NAME, "transition committed"));
+        }
+        Ok(response) => results.push(ValidationResult::fail(
+            DISABLE_NAME,
+            format!("unexpected reset_required={}", response.reset_required),
+        )),
+        Err(error) => results.push(ValidationResult::fail(DISABLE_NAME, error.to_string())),
+    }
+
+    if verbose {
+        println!("  DOT authorized/native command sequence completed over SPDM VDM");
+    }
     results
 }
 
@@ -1039,6 +1385,8 @@ fn run_fuse_suite(
     client: &mut SpdmVdmClient,
     suite: &str,
     authorizer: Option<&dyn CommandAuthChallengeSigner>,
+    dot_signer: Option<&dyn HybridMessageSigner>,
+    dot_cak: Option<&str>,
     verbose: bool,
 ) -> Vec<ValidationResult> {
     let Some(authorizer) = authorizer else {
@@ -1052,6 +1400,7 @@ fn run_fuse_suite(
     let mut results = Vec::new();
 
     results.extend(match suite {
+        "dot" => run_dot(client, dot_cak, Some(authorizer), dot_signer, verbose),
         "authorization" => {
             let mut results = run_raw_malformed_request_tests(client);
             results.extend(run_authorization_negative_tests(

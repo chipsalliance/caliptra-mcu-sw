@@ -15,6 +15,29 @@ The library is organized into several focused crates:
 - `apps/mailbox`: Mailbox client/server applications
 - `apps/spdm`: SPDM VDM client and requester library for Caliptra VDM over SPDM
 
+## Device Ownership Transfer
+
+The Rust command API supports all ten Runtime Device Ownership Transfer (DOT)
+commands over both the `Mailbox` and `SpdmVdm` transports:
+
+- Generic-authorized: `DOT_LOCK`, `DOT_DISABLE`, `DOT_ROTATE`, and
+    `GET_DOT_BACKUP_BLOB`
+- Native: `DOT_UNLOCK_CHALLENGE`, `DOT_UNLOCK`, `DOT_STATUS`, `DOT_RECOVERY`,
+    `DOT_OVERRIDE_CHALLENGE`, and `DOT_OVERRIDE`
+
+Applications use the same high-level API with either transport. The mailbox
+transport sends the DOT family command `0x00000011` with a little-endian DOT
+FourCC in the payload; the SPDM transport selects the native or authorized VDM
+envelope as required by the command.
+
+The integration validator exercises `DOT_STATUS`, lock, backup, rotate, unlock
+challenge, unlock, and disable through a UDP bridge to a DOT-enabled emulator
+Runtime. The sample UDP mock server does not emulate DOT, and recovery/override
+require separately provisioned test states. DOT APIs are not currently exported
+by the C bindings. See the
+[DOT documentation](../docs/src/dot.md#runtime-commands) for target platform and
+authorization requirements.
+
 ## Quick Start
 
 ### Rust API

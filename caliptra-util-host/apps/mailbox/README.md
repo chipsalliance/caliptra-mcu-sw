@@ -69,12 +69,20 @@ for result in results {
 - Centralized device management
 - Remote debugging and diagnostics
 
-## Supported Commands
+## Sample Mock Server Commands
 
-Currently implemented:
+The bundled UDP mock server currently emulates:
 
 - **GetFirmwareVersion**: Retrieve firmware version information
 - **GetDeviceCapabilities**: Retrieve device capability information
+
+This is not the command support list for the reusable `Mailbox` transport or
+client. The integration validator exercises a broader command set, including
+FE_PROG, against an MCU Runtime. On a DOT-enabled emulator Runtime it also runs
+an end-to-end DOT status, lock, backup, rotate, unlock, and disable sequence.
+The transport supports all ten Runtime Device Ownership Transfer commands; the
+sample mock server does not emulate them, and recovery/override require
+separately provisioned integration-test states.
 
 ## Network Protocol
 

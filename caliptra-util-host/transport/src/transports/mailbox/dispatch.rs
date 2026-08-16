@@ -22,6 +22,10 @@ use super::debug_unlock::{ProdDebugUnlockReqCmd, ProdDebugUnlockTokenCmd};
 use super::delete::DeleteCmd;
 use super::device_info::{GetDeviceCapabilitiesCmd, GetFirmwareVersionCmd};
 use super::device_log::{DebugClearLogCmd, DebugGetLogCmd};
+use super::device_ownership_transfer::{
+    DotDisableCmd, DotLockCmd, DotOverrideChallengeCmd, DotOverrideCmd, DotRecoveryCmd,
+    DotRotateCmd, DotStatusCmd, DotUnlockChallengeCmd, DotUnlockCmd, GetDotBackupBlobCmd,
+};
 use super::fuse::{FeProgCmd, GetAuthCmdChallengeCmd};
 use super::hmac::{HmacCmd, HmacKdfCounterCmd};
 use super::import::ImportCmd;
@@ -88,6 +92,17 @@ pub fn get_command_handler(command_id: u32) -> Option<CommandHandlerFn> {
         // Authorized / Fuse Commands (0x8010-0x8011)
         0x8010 => Some(process_command_with_metadata::<GetAuthCmdChallengeCmd>), // GetAuthCmdChallenge
         0x8011 => Some(process_command_with_metadata::<FeProgCmd>),              // FeProg
+        // Device Ownership Transfer Commands (0x8020-0x8029)
+        0x8020 => Some(process_command_with_metadata::<DotLockCmd>),
+        0x8021 => Some(process_command_with_metadata::<DotDisableCmd>),
+        0x8022 => Some(process_command_with_metadata::<DotUnlockChallengeCmd>),
+        0x8023 => Some(process_command_with_metadata::<DotUnlockCmd>),
+        0x8024 => Some(process_command_with_metadata::<DotRotateCmd>),
+        0x8025 => Some(process_command_with_metadata::<GetDotBackupBlobCmd>),
+        0x8026 => Some(process_command_with_metadata::<DotStatusCmd>),
+        0x8027 => Some(process_command_with_metadata::<DotRecoveryCmd>),
+        0x8028 => Some(process_command_with_metadata::<DotOverrideChallengeCmd>),
+        0x8029 => Some(process_command_with_metadata::<DotOverrideCmd>),
         _ => None,
     }
 }
@@ -146,6 +161,36 @@ pub fn get_external_cmd_code(command_id: u32) -> Option<u32> {
         // Authorized / Fuse Commands
         0x8010 => Some(0x4D41_4343), // GetAuthCmdChallenge -> MC_GET_AUTH_CMD_CHALLENGE ("MACC")
         0x8011 => Some(0x4D43_4650), // FeProg -> MC_FE_PROG ("MCFP")
+        // Device Ownership Transfer Commands share the MCI DOT family ID.
+        0x8020..=0x8029 => Some(0x0000_0011),
         _ => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use caliptra_mcu_core_util_host_command_types::device_ownership_transfer::DOT_FAMILY_ID;
+    use caliptra_mcu_core_util_host_command_types::CaliptraCommandId;
+
+    #[test]
+    fn all_dot_commands_are_dispatched_to_the_family_command() {
+        let commands = [
+            CaliptraCommandId::DotLock,
+            CaliptraCommandId::DotDisable,
+            CaliptraCommandId::DotUnlockChallenge,
+            CaliptraCommandId::DotUnlock,
+            CaliptraCommandId::DotRotate,
+            CaliptraCommandId::GetDotBackupBlob,
+            CaliptraCommandId::DotStatus,
+            CaliptraCommandId::DotRecovery,
+            CaliptraCommandId::DotOverrideChallenge,
+            CaliptraCommandId::DotOverride,
+        ];
+
+        for command in commands {
+            assert!(get_command_handler(command as u32).is_some());
+            assert_eq!(get_external_cmd_code(command as u32), Some(DOT_FAMILY_ID));
+        }
     }
 }
