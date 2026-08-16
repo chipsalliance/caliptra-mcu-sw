@@ -2,10 +2,10 @@
 
 use caliptra_mcu_common_commands::{AuthorizationError, CommandAuthorizer};
 use caliptra_mcu_mbox_common::messages::{
-    CommandId, FuseIncreaseCaliptraMinSvnReq, FuseLockPartitionReq, FuseReadReq,
-    FuseRevokeVendorPkHashReq, FuseRevokeVendorPubKeyReq, FuseWriteReq, HybridSignature,
-    MailboxReqHeader, McuFeProgReq, ProvisionOwnerPkHashReq, ProvisionVendorPkHashReq,
-    AUTH_CMD_NONCE_LEN,
+    CommandId, DotDisableReq, DotLockReq, DotRotateReq, FuseIncreaseCaliptraMinSvnReq,
+    FuseLockPartitionReq, FuseReadReq, FuseRevokeVendorPkHashReq, FuseRevokeVendorPubKeyReq,
+    FuseWriteReq, GetDotBackupBlobReq, HybridSignature, MailboxReqHeader, McuFeProgReq,
+    ProvisionOwnerPkHashReq, ProvisionVendorPkHashReq, AUTH_CMD_NONCE_LEN,
 };
 use core::cell::RefCell;
 use core::mem::{offset_of, size_of};
@@ -92,6 +92,20 @@ impl CommandAuthorizer for MockCommandAuthorizer {
             CommandId::MC_FUSE_READ => size_of::<FuseReadReq>(),
             CommandId::MC_FUSE_WRITE => size_of::<FuseWriteReq>(),
             CommandId::MC_FUSE_LOCK_PARTITION => size_of::<FuseLockPartitionReq>(),
+            CommandId::MC_DEVICE_OWNERSHIP_TRANSFER => {
+                let subcommand = req
+                    .get(size_of::<MailboxReqHeader>()..size_of::<MailboxReqHeader>() + 4)
+                    .ok_or(AuthorizationError)?;
+                match u32::from_le_bytes(subcommand.try_into().map_err(|_| AuthorizationError)?) {
+                    value if value == CommandId::MC_DOT_LOCK.0 => size_of::<DotLockReq>(),
+                    value if value == CommandId::MC_DOT_DISABLE.0 => size_of::<DotDisableReq>(),
+                    value if value == CommandId::MC_DOT_ROTATE.0 => size_of::<DotRotateReq>(),
+                    value if value == CommandId::MC_GET_DOT_BACKUP_BLOB.0 => {
+                        size_of::<GetDotBackupBlobReq>()
+                    }
+                    _ => return Err(AuthorizationError),
+                }
+            }
             _ => return Err(AuthorizationError),
         };
 

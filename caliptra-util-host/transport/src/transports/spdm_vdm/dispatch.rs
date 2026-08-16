@@ -54,6 +54,22 @@ pub fn get_command_handler(command_id: u32) -> Option<VdmCommandHandlerFn> {
         x if x == CaliptraCommandId::GetAuthCmdChallenge as u32 => {
             Some(commands::handle_get_auth_challenge)
         }
+        x if x == CaliptraCommandId::DotLock as u32 => Some(commands::handle_dot_lock),
+        x if x == CaliptraCommandId::DotDisable as u32 => Some(commands::handle_dot_disable),
+        x if x == CaliptraCommandId::DotRotate as u32 => Some(commands::handle_dot_rotate),
+        x if x == CaliptraCommandId::DotUnlockChallenge as u32 => {
+            Some(commands::handle_dot_unlock_challenge)
+        }
+        x if x == CaliptraCommandId::DotUnlock as u32 => Some(commands::handle_dot_unlock),
+        x if x == CaliptraCommandId::GetDotBackupBlob as u32 => {
+            Some(commands::handle_get_dot_backup_blob)
+        }
+        x if x == CaliptraCommandId::DotStatus as u32 => Some(commands::handle_dot_status),
+        x if x == CaliptraCommandId::DotRecovery as u32 => Some(commands::handle_dot_recovery),
+        x if x == CaliptraCommandId::DotOverrideChallenge as u32 => {
+            Some(commands::handle_dot_override_challenge)
+        }
+        x if x == CaliptraCommandId::DotOverride as u32 => Some(commands::handle_dot_override),
         _ => None,
     }
 }
@@ -79,6 +95,16 @@ mod tests {
             CaliptraCommandId::FuseLockPartition,
             CaliptraCommandId::ProvisionOwnerPkHash,
             CaliptraCommandId::GetAuthCmdChallenge,
+            CaliptraCommandId::DotLock,
+            CaliptraCommandId::DotDisable,
+            CaliptraCommandId::DotRotate,
+            CaliptraCommandId::DotUnlockChallenge,
+            CaliptraCommandId::DotUnlock,
+            CaliptraCommandId::GetDotBackupBlob,
+            CaliptraCommandId::DotStatus,
+            CaliptraCommandId::DotRecovery,
+            CaliptraCommandId::DotOverrideChallenge,
+            CaliptraCommandId::DotOverride,
         ];
 
         for id in ids {
