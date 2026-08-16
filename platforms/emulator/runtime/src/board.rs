@@ -13,7 +13,12 @@ use crate::MCU_STRAPS;
 use arrayvec::ArrayVec;
 #[cfg(feature = "doe")]
 use caliptra_mcu_capsules_runtime::doe::driver::DoeDriver;
-#[cfg(any(feature = "flash-boot", feature = "firmware-update"))]
+#[cfg(any(
+    feature = "flash-boot",
+    feature = "firmware-update",
+    feature = "dot-mci-mailbox",
+    feature = "dot-spdm-vdm"
+))]
 use caliptra_mcu_capsules_runtime::flash_partition::FlashPartition;
 #[cfg(any(
     feature = "spdm",
@@ -45,6 +50,8 @@ use caliptra_mcu_components::mctp_driver_component_static;
 use caliptra_mcu_components::mctp_mux_component_static;
 #[cfg(feature = "mcu-mbox-service")]
 use caliptra_mcu_components::mcu_mbox_component_static;
+#[cfg(any(feature = "dot-mci-mailbox", feature = "dot-spdm-vdm"))]
+use caliptra_mcu_components::memory_flash_partition_component_static;
 use caliptra_mcu_components::{
     dpe_handle_store_component_static, external_otp_component_static, mailbox_component_static,
     mbox_sram_component_static, soft_pcr_store_component_static,
@@ -222,6 +229,8 @@ struct VeeR {
     external_otp: &'static caliptra_mcu_capsules_runtime::external_otp::ExternalOtpCapsule<'static>,
     dpe_handle_store: &'static caliptra_mcu_capsules_runtime::dpe_handle_store::DpeHandleStore,
     pcr_store: &'static caliptra_mcu_capsules_runtime::soft_pcr_store::SoftPcrStore,
+    #[cfg(any(feature = "dot-mci-mailbox", feature = "dot-spdm-vdm"))]
+    dot_blob_store: &'static FlashPartition<'static>,
     system: &'static caliptra_mcu_capsules_runtime::system::System<'static, EmulatorExiter>,
 }
 
@@ -303,6 +312,10 @@ impl SyscallDriverLookup for VeeR {
                 f(Some(self.dpe_handle_store))
             }
             caliptra_mcu_capsules_runtime::soft_pcr_store::DRIVER_NUM => f(Some(self.pcr_store)),
+            #[cfg(any(feature = "dot-mci-mailbox", feature = "dot-spdm-vdm"))]
+            n if n == caliptra_mcu_config::DOT_BLOB_STORE_DRIVER_NUM as usize => {
+                f(Some(self.dot_blob_store))
+            }
             caliptra_mcu_capsules_runtime::system::DRIVER_NUM => f(Some(self.system)),
 
             _ => f(None),
@@ -534,6 +547,20 @@ pub unsafe fn main() {
     platform_regions.push(PlatformRegion {
         start_addr: caliptra_mcu_registers_generated::axicdma::AXICDMA_ADDR as *const u8,
         size: 0x1000,
+        is_mmio: true,
+        user_accessible: false,
+        read: true,
+        write: true,
+        execute: false,
+    });
+
+    // The emulator root bus owns this dedicated region across MCU resets, and
+    // shipped ROM accesses the same bytes directly through SimpleFlash. Keep it
+    // kernel-only; Runtime userspace reaches it through a bounded flash syscall.
+    #[cfg(any(feature = "dot-mci-mailbox", feature = "dot-spdm-vdm"))]
+    platform_regions.push(PlatformRegion {
+        start_addr: 0x8100_0000 as *const u8,
+        size: caliptra_mcu_config::DOT_BLOB_STORE_SIZE,
         is_mmio: true,
         user_accessible: false,
         read: true,
@@ -891,6 +918,22 @@ pub unsafe fn main() {
         caliptra_mcu_flash_ctrl_emulator::ERASE_SECTOR_SIZE
     );
 
+    #[cfg(any(feature = "dot-mci-mailbox", feature = "dot-spdm-vdm"))]
+    // SAFETY: the emulator root bus maps this exact 4 KiB range as dedicated
+    // DOT storage, and MemoryFlash takes its sole mutable kernel reference.
+    let dot_blob_memory = core::slice::from_raw_parts_mut(
+        0x8100_0000 as *mut u8,
+        caliptra_mcu_config::DOT_BLOB_STORE_SIZE,
+    );
+    #[cfg(any(feature = "dot-mci-mailbox", feature = "dot-spdm-vdm"))]
+    let dot_blob_store =
+        caliptra_mcu_components::memory_flash_partition::MemoryFlashPartitionComponent::new(
+            board_kernel,
+            caliptra_mcu_config::DOT_BLOB_STORE_DRIVER_NUM as usize,
+            dot_blob_memory,
+        )
+        .finalize(memory_flash_partition_component_static!());
+
     #[cfg(feature = "userspace-log")]
     let mut logging_flash: [Option<
         &'static caliptra_mcu_capsules_runtime::logging::driver::LoggingFlashDriver<'static>,
@@ -1100,6 +1143,8 @@ pub unsafe fn main() {
             external_otp,
             dpe_handle_store,
             pcr_store,
+            #[cfg(any(feature = "dot-mci-mailbox", feature = "dot-spdm-vdm"))]
+            dot_blob_store,
             system,
         }
     );

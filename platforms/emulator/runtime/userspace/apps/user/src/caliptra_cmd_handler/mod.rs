@@ -24,6 +24,10 @@ use caliptra_mcu_libapi_caliptra::ocp_lock::{
 use caliptra_mcu_libapi_caliptra::signer::CaliptraDpeSigner;
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
+use caliptra_mcu_mbox_common::messages::{
+    DotDisablePayload, DotLockPayload, DotOverrideChallengePayload, DotOverridePayload,
+    DotRotatePayload, DotStatus, DotUnlockPayload, AUTH_CMD_NONCE_LEN, DOT_BLOB_SIZE,
+};
 use mcu_caliptra_api::{core_capabilities, core_firmware_version, ApiAlloc};
 #[cfg(feature = "pcr-quote")]
 use mcu_caliptra_api::{PCR_QUOTE_ECC384_BUF_LEN, PCR_QUOTE_MLDSA87_BUF_LEN};
@@ -80,6 +84,9 @@ fn external_command_capabilities() -> ExternalCommandCapabilities {
         && SUPPORTED_EVIDENCE_FORMATS != 0
     {
         capabilities |= ExternalCommandCapabilities::GET_ATTESTATION;
+    }
+    if cfg!(feature = "dot-spdm-vdm") {
+        capabilities |= ExternalCommandCapabilities::DEVICE_OWNERSHIP_TRANSFER;
     }
     capabilities
 }
@@ -148,18 +155,24 @@ const MAX_ATTESTATION_EVIDENCE_LEN: usize = {
 };
 
 fn authorized_subcommand_capabilities() -> AuthorizedSubcommandCapabilities {
+    let mut capabilities = AuthorizedSubcommandCapabilities::empty();
     if cfg!(feature = "spdm") {
-        AuthorizedSubcommandCapabilities::GET_AUTH_CHALLENGE
+        capabilities |= AuthorizedSubcommandCapabilities::GET_AUTH_CHALLENGE
             | AuthorizedSubcommandCapabilities::PROVISION_VENDOR_PK_HASH
             | AuthorizedSubcommandCapabilities::FUSE_INCREASE_CALIPTRA_MIN_SVN
             | AuthorizedSubcommandCapabilities::PROGRAM_FIELD_ENTROPY
             | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PUBLIC_KEY
             | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PK_HASH
             | AuthorizedSubcommandCapabilities::FUSE_LOCK_PARTITION
-            | AuthorizedSubcommandCapabilities::PROVISION_OWNER_PK_HASH
-    } else {
-        AuthorizedSubcommandCapabilities::empty()
+            | AuthorizedSubcommandCapabilities::PROVISION_OWNER_PK_HASH;
     }
+    if cfg!(feature = "dot-spdm-vdm") {
+        capabilities |= AuthorizedSubcommandCapabilities::DOT_LOCK
+            | AuthorizedSubcommandCapabilities::DOT_DISABLE
+            | AuthorizedSubcommandCapabilities::DOT_ROTATE
+            | AuthorizedSubcommandCapabilities::GET_DOT_BACKUP_BLOB;
+    }
+    capabilities
 }
 
 fn write_firmware_version(
@@ -354,6 +367,82 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         device_ops::program_field_entropy(alloc, partition).await
     }
 
+    async fn dot_lock<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        request: &DotLockPayload,
+    ) -> CaliptraCmdResult<()> {
+        device_ops::dot_lock(alloc, request).await
+    }
+
+    async fn dot_disable<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        request: &DotDisablePayload,
+    ) -> CaliptraCmdResult<()> {
+        device_ops::dot_disable(alloc, request).await
+    }
+
+    async fn dot_rotate<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        request: &DotRotatePayload,
+    ) -> CaliptraCmdResult<()> {
+        device_ops::dot_rotate(alloc, request).await
+    }
+
+    async fn dot_status(&self, status: &mut DotStatus) -> CaliptraCmdResult<()> {
+        *status = device_ops::dot_status()?;
+        Ok(())
+    }
+
+    async fn dot_recovery<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        blob: &[u8; DOT_BLOB_SIZE],
+    ) -> CaliptraCmdResult<()> {
+        device_ops::dot_recovery(alloc, blob).await
+    }
+
+    async fn dot_override_challenge<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        request: &DotOverrideChallengePayload,
+    ) -> CaliptraCmdResult<[u8; AUTH_CMD_NONCE_LEN]> {
+        device_ops::dot_override_challenge(alloc, request).await
+    }
+
+    async fn dot_override<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        request: &DotOverridePayload,
+    ) -> CaliptraCmdResult<()> {
+        device_ops::dot_override(alloc, request).await
+    }
+
+    async fn dot_unlock_challenge<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+    ) -> CaliptraCmdResult<[u8; caliptra_mcu_mbox_common::messages::AUTH_CMD_NONCE_LEN]> {
+        device_ops::dot_unlock_challenge(alloc).await
+    }
+
+    async fn dot_unlock<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        request: &DotUnlockPayload,
+    ) -> CaliptraCmdResult<()> {
+        device_ops::dot_unlock(alloc, request).await
+    }
+
+    async fn dot_get_backup_blob<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        blob: &mut [u8; DOT_BLOB_SIZE],
+    ) -> CaliptraCmdResult<()> {
+        device_ops::dot_get_backup_blob(alloc, blob).await
+    }
+
     async fn request_debug_unlock<Alloc: ApiAlloc>(
         &self,
         alloc: &Alloc,
@@ -480,6 +569,10 @@ mod tests {
         );
         assert_eq!(commands.contains(spdm_commands), cfg!(feature = "spdm"));
         assert_eq!(
+            commands.contains(ExternalCommandCapabilities::DEVICE_OWNERSHIP_TRANSFER),
+            cfg!(feature = "dot-spdm-vdm")
+        );
+        assert_eq!(
             authorized.contains(
                 AuthorizedSubcommandCapabilities::GET_AUTH_CHALLENGE
                     | AuthorizedSubcommandCapabilities::PROVISION_VENDOR_PK_HASH
@@ -489,6 +582,15 @@ mod tests {
                     | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PK_HASH
             ),
             cfg!(feature = "spdm")
+        );
+        assert_eq!(
+            authorized.contains(
+                AuthorizedSubcommandCapabilities::DOT_LOCK
+                    | AuthorizedSubcommandCapabilities::DOT_DISABLE
+                    | AuthorizedSubcommandCapabilities::DOT_ROTATE
+                    | AuthorizedSubcommandCapabilities::GET_DOT_BACKUP_BLOB
+            ),
+            cfg!(feature = "dot-spdm-vdm")
         );
         assert_eq!(
             runtime.contains(McuRuntimeCapabilities::DOE),

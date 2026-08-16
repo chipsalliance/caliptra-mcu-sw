@@ -91,10 +91,42 @@ These commands support common Caliptra management functions, including querying 
 | MC_FE_PROG                    | 0x4D43_4650 ("MCFP") | See [fuses spec](fuses.md) for details                                                |
 | MC_FUSE_REVOKE_VENDOR_PUB_KEY | 0x4D52_564B ("MRVK") | See [fuses spec](fuses.md) for details                                                |
 | MC_FUSE_REVOKE_VENDOR_PK_HASH | 0x5256_4b48 ("RVKH") | See [fuses spec](fuses.md) for details                                                |
+| MC_DEVICE_OWNERSHIP_TRANSFER  | 0x0000_0011          | Device Ownership Transfer family; subcommand is carried in mailbox SRAM                |
 
 ## Command Format
 
 Common command payloads are defined in [Caliptra Common Commands](caliptra_common_commands.md#command-definitions). This section lists the MCI mailbox command code for each common command and keeps mailbox-only command definitions in this document. MCI mailbox checksum, `fips_status`, and variable-length `data_len` fields are transport-specific response framing and are not part of the common command payload tables.
+
+### MC_DEVICE_OWNERSHIP_TRANSFER
+
+All MCU Runtime DOT requests use MCI command register value `0x00000011`.
+Mailbox SRAM begins with the normal checksum followed by a little-endian DOT
+FourCC and its payload.
+
+```text
+Native:     checksum || DOT_FourCC || DOT_payload
+Authorized: checksum || DOT_FourCC || DOT_payload || authorization_trailer
+```
+
+The authorized trailer is
+`nonce[48] || ecc_pub_x[48] || ecc_pub_y[48] || mldsa_pub[2592] || HybridSignature`.
+For authorized DOT commands the signed preimage is
+`0x00000011(BE) || DOT_FourCC(LE) || DOT_payload || nonce`.
+
+| FourCC | Command | Classification |
+| ------ | ------- | -------------- |
+| `MDLK` | Lock | Authorized |
+| `MDDS` | Disable | Authorized |
+| `MDRT` | Rotate | Authorized |
+| `MDBB` | Get backup blob | Authorized |
+| `MDUC` | Unlock challenge | Native |
+| `MDUL` | Unlock | Native LAK signatures |
+| `MDST` | Status | Native/read-only |
+| `MDRC` | Restore backup blob | Native blob HMAC |
+| `DOTW` | Override challenge | Native fused recovery key |
+| `DOTX` | Override | Native recovery-key signatures |
+
+Payload semantics match [Caliptra SPDM VDM DOT commands](caliptra_spdm_vdm_cmds.md#device-ownership-transfer-commands).
 
 ### MC_FIRMWARE_VERSION
 

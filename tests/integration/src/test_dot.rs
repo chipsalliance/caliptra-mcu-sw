@@ -15,9 +15,7 @@ mod test {
     use caliptra_auth_man_types::{AuthManifestPrivKeysConfig, AuthManifestPubKeysConfig};
     use caliptra_image_gen::ImageGeneratorOwnerConfig;
     use caliptra_image_types::{ImageManifest, ImageOwnerPrivKeys, OwnerPubKeyConfig};
-    use caliptra_mcu_builder::{
-        AuthManifestOwnerConfig, CaliptraBuildArgs, CaliptraBuilder, FirmwareBinaries,
-    };
+    use caliptra_mcu_builder::{AuthManifestOwnerConfig, CaliptraBuilder, FirmwareBinaries};
     use caliptra_mcu_error::McuError;
     use caliptra_mcu_hw_model::McuHwModel;
     use caliptra_mcu_romtime::McuBootMilestones;
@@ -104,7 +102,7 @@ mod test {
         }
 
         // Fall back to computing from compiled FW bundle
-        let mut builder = CaliptraBuilder::new(&CaliptraBuildArgs {
+        let mut builder = CaliptraBuilder::new(&caliptra_mcu_builder::CaliptraBuildArgs {
             fpga: cfg!(feature = "fpga_realtime"),
             ..Default::default()
         });
@@ -164,6 +162,10 @@ mod test {
     /// Caller MUST hold `TEST_LOCK` before calling this function, since it builds and runs
     /// firmware internally via `start_runtime_hw_model`.
     fn compute_hmac(blob: &[u8]) -> Vec<u8> {
+        compute_hmac_for_derivation(blob, 1)
+    }
+
+    fn compute_hmac_for_derivation(blob: &[u8], derivation_value: u16) -> Vec<u8> {
         let mut hw = start_runtime_hw_model(TestParams {
             feature: Some("test-do-nothing"),
             ..Default::default()
@@ -179,9 +181,7 @@ mod test {
             ..Default::default()
         };
         req.info[..23].copy_from_slice(b"Caliptra DOT stable key");
-        // EVEN state (burned=0) derives with n+1 = 1 per spec
-        req.info[23] = 1;
-        req.info[24] = 0;
+        req.info[23..25].copy_from_slice(&derivation_value.to_le_bytes());
         let req = req.as_mut_bytes();
         let chksum = calc_checksum(CommandId::CM_DERIVE_STABLE_KEY.into(), req);
         req[..4].copy_from_slice(&chksum.to_le_bytes());
@@ -390,11 +390,11 @@ mod test {
                 (rt_path, None, None)
             };
 
-        let mut builder = CaliptraBuilder::new(&CaliptraBuildArgs {
+        let mut builder = CaliptraBuilder::new(&caliptra_mcu_builder::CaliptraBuildArgs {
             fpga: cfg!(feature = "fpga_realtime"),
+            mcu_firmware: Some(mcu_runtime_path),
             caliptra_firmware: prebuilt_caliptra_fw,
             vendor_pk_hash: prebuilt_vendor_pk_hash,
-            mcu_firmware: Some(mcu_runtime_path),
             ..Default::default()
         })
         .with_owner_config(custom_owner_config)
@@ -1409,550 +1409,7 @@ mod test {
     }
 
     // -----------------------------------------------------------------------
-    // Firmware manifest DOT command tests
-    // -----------------------------------------------------------------------
-
-    /// Creates a firmware manifest DOT section as raw bytes (128 bytes)
-    /// with a valid checksum and the provided keys.
-    fn create_manifest_section(
-        commands: &[u8],
-        min_fuse_count: u32,
-        cak: [u32; 12],
-        lak: [u32; 12],
-    ) -> Vec<u8> {
-        use caliptra_mcu_rom_common::{FwManifestDotSection, FW_MANIFEST_DOT_MAGIC};
-        use zerocopy::IntoBytes;
-
-        let mut cmd_array = [0u8; 8];
-        for (i, &c) in commands.iter().enumerate().take(8) {
-            cmd_array[i] = c;
-        }
-
-        let section = FwManifestDotSection {
-            magic: FW_MANIFEST_DOT_MAGIC,
-            checksum: 0,
-            version: 1,
-            num_commands: commands.len().min(8) as u32,
-            min_fuse_count,
-            commands: cmd_array,
-            cak,
-            lak,
-            _reserved: [0u8; 4],
-        }
-        .with_checksum();
-
-        section.as_bytes().to_vec()
-    }
-
-    /// Test: LOCK command in firmware manifest burns a fuse when device is in EVEN (unlocked) state.
-    ///
-    /// Setup:
-    /// - DOT enabled in fuses, EVEN state (burned=0)
-    /// - Valid DOT blob with CAK only (no LAK → DOT blob processing does NOT auto-lock)
-    /// - Firmware manifest with LOCK command
-    ///
-    /// Expected: The manifest LOCK command burns the lock fuse (EVEN → ODD).
-    #[test]
-    fn test_fw_manifest_dot_lock() {
-        use caliptra_mcu_registers_generated::fuses;
-        use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_LOCK;
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
-        let owner_pk_hash = get_owner_pk_hash();
-        let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
-        let dot_flash = blob.to_flash_contents();
-
-        let manifest =
-            create_manifest_section(&[FW_MANIFEST_DOT_CMD_LOCK], 0, owner_pk_hash, test_lak());
-
-        let mut hw = start_runtime_hw_model(TestParams {
-            firmware_prefix: Some(manifest),
-            dot_flash_initial_contents: Some(dot_flash),
-            dot_enabled: true,
-            rom_only: true,
-            ..Default::default()
-        });
-
-        hw.step_until(|m| {
-            m.mci_boot_milestones()
-                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
-                || m.mci_fw_fatal_error().is_some()
-                || m.cycle_count() > 100_000_000
-        });
-
-        let fatal_error = hw.mci_fw_fatal_error();
-        assert!(
-            fatal_error.is_none(),
-            "Manifest LOCK test failed with fatal error: 0x{:x}",
-            fatal_error.unwrap_or(0)
-        );
-
-        let otp_memory = hw.read_otp_memory();
-        let fuse_byte = otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset];
-        assert!(
-            fuse_byte & 0x01 != 0,
-            "Manifest LOCK should have burned the lock fuse, got 0x{:02x}",
-            fuse_byte
-        );
-
-        let fuse_array = &otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset
-            ..fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size];
-        let burned: u32 = fuse_array.iter().map(|b| b.count_ones()).sum();
-        assert_eq!(
-            burned, 1,
-            "Expected 1 fuse burned by manifest LOCK, found {}",
-            burned
-        );
-
-        println!("[TEST] Firmware manifest LOCK command successfully burned lock fuse");
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    }
-
-    /// Test: LOCK command is idempotent when device is already in ODD (locked) state.
-    ///
-    /// Setup:
-    /// - DOT in locked state (ODD, 1 fuse burned)
-    /// - Valid DOT blob for locked state
-    /// - Firmware manifest with LOCK command
-    ///
-    /// Expected: No additional fuses burned (idempotent).
-    #[test]
-    fn test_fw_manifest_dot_lock_idempotent() {
-        use caliptra_mcu_registers_generated::fuses;
-        use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_LOCK;
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
-        let owner_pk_hash = get_owner_pk_hash();
-        let blob = create_valid_dot_blob(owner_pk_hash, test_lak());
-        let dot_flash = blob.to_flash_contents();
-
-        let manifest =
-            create_manifest_section(&[FW_MANIFEST_DOT_CMD_LOCK], 0, owner_pk_hash, test_lak());
-
-        let mut hw = start_runtime_hw_model(TestParams {
-            firmware_prefix: Some(manifest),
-            dot_flash_initial_contents: Some(dot_flash),
-            rom_only: true,
-            otp_memory: Some(create_locked_otp_memory()),
-            ..Default::default()
-        });
-
-        hw.step_until(|m| {
-            m.mci_boot_milestones()
-                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
-                || m.mci_fw_fatal_error().is_some()
-                || m.cycle_count() > 100_000_000
-        });
-
-        let fatal_error = hw.mci_fw_fatal_error();
-        assert!(
-            fatal_error.is_none(),
-            "Idempotent LOCK test failed: 0x{:x}",
-            fatal_error.unwrap_or(0)
-        );
-
-        // Verify still exactly 1 fuse burned (no additional fuse from manifest)
-        let otp_memory = hw.read_otp_memory();
-        let fuse_array = &otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset
-            ..fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size];
-        let burned: u32 = fuse_array.iter().map(|b| b.count_ones()).sum();
-        assert_eq!(
-            burned, 1,
-            "LOCK should be idempotent: expected 1 fuse, found {}",
-            burned
-        );
-
-        println!("[TEST] Firmware manifest LOCK idempotent (no additional fuse burned)");
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    }
-
-    /// Test: UNLOCK command burns a fuse when device is in ODD (locked) state.
-    ///
-    /// Setup:
-    /// - DOT in locked state (ODD, 1 fuse burned)
-    /// - Valid DOT blob for locked state
-    /// - Firmware manifest with UNLOCK command
-    ///
-    /// Expected: One additional fuse burned (ODD → EVEN), total 2.
-    #[test]
-    fn test_fw_manifest_dot_unlock() {
-        use caliptra_mcu_registers_generated::fuses;
-        use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_UNLOCK;
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
-        let owner_pk_hash = get_owner_pk_hash();
-        let blob = create_valid_dot_blob(owner_pk_hash, test_lak());
-        let dot_flash = blob.to_flash_contents();
-
-        // UNLOCK needs a LAK in the manifest for writing the unlock DOT blob.
-        let manifest =
-            create_manifest_section(&[FW_MANIFEST_DOT_CMD_UNLOCK], 0, [0u32; 12], test_lak());
-
-        let mut hw = start_runtime_hw_model(TestParams {
-            firmware_prefix: Some(manifest),
-            dot_flash_initial_contents: Some(dot_flash),
-            rom_only: true,
-            otp_memory: Some(create_locked_otp_memory()),
-            ..Default::default()
-        });
-
-        hw.step_until(|m| {
-            m.mci_boot_milestones()
-                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
-                || m.mci_fw_fatal_error().is_some()
-                || m.cycle_count() > 100_000_000
-        });
-
-        let fatal_error = hw.mci_fw_fatal_error();
-        assert!(
-            fatal_error.is_none(),
-            "Manifest UNLOCK test failed: 0x{:x}",
-            fatal_error.unwrap_or(0)
-        );
-
-        let otp_memory = hw.read_otp_memory();
-        let fuse_array = &otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset
-            ..fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size];
-        let burned: u32 = fuse_array.iter().map(|b| b.count_ones()).sum();
-        assert_eq!(
-            burned, 2,
-            "UNLOCK should burn 1 fuse: expected 2 total, found {}",
-            burned
-        );
-
-        println!("[TEST] Firmware manifest UNLOCK command burned fuse (ODD → EVEN)");
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    }
-
-    /// Test: UNLOCK command is idempotent when device is already in EVEN (unlocked) state.
-    #[test]
-    fn test_fw_manifest_dot_unlock_idempotent() {
-        use caliptra_mcu_registers_generated::fuses;
-        use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_UNLOCK;
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
-        let owner_pk_hash = get_owner_pk_hash();
-        let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
-        let dot_flash = blob.to_flash_contents();
-
-        let manifest =
-            create_manifest_section(&[FW_MANIFEST_DOT_CMD_UNLOCK], 0, [0u32; 12], test_lak());
-
-        let mut hw = start_runtime_hw_model(TestParams {
-            firmware_prefix: Some(manifest),
-            dot_flash_initial_contents: Some(dot_flash),
-            dot_enabled: true,
-            rom_only: true,
-            ..Default::default()
-        });
-
-        hw.step_until(|m| {
-            m.mci_boot_milestones()
-                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
-                || m.mci_fw_fatal_error().is_some()
-                || m.cycle_count() > 100_000_000
-        });
-
-        let fatal_error = hw.mci_fw_fatal_error();
-        assert!(
-            fatal_error.is_none(),
-            "Idempotent UNLOCK test failed: 0x{:x}",
-            fatal_error.unwrap_or(0)
-        );
-
-        // Verify 0 fuses burned (UNLOCK on EVEN state is a no-op)
-        let otp_memory = hw.read_otp_memory();
-        let fuse_array = &otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset
-            ..fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size];
-        let burned: u32 = fuse_array.iter().map(|b| b.count_ones()).sum();
-        assert_eq!(
-            burned, 0,
-            "UNLOCK should be idempotent on EVEN state, found {} fuses",
-            burned
-        );
-
-        println!("[TEST] Firmware manifest UNLOCK idempotent on EVEN state");
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    }
-
-    /// Test: DISABLE command burns a fuse when in EVEN (unlocked) state.
-    #[test]
-    fn test_fw_manifest_dot_disable() {
-        use caliptra_mcu_registers_generated::fuses;
-        use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_DISABLE;
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
-        let owner_pk_hash = get_owner_pk_hash();
-        let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
-        let dot_flash = blob.to_flash_contents();
-
-        let manifest =
-            create_manifest_section(&[FW_MANIFEST_DOT_CMD_DISABLE], 0, [0u32; 12], test_lak());
-
-        let mut hw = start_runtime_hw_model(TestParams {
-            firmware_prefix: Some(manifest),
-            dot_flash_initial_contents: Some(dot_flash),
-            dot_enabled: true,
-            rom_only: true,
-            ..Default::default()
-        });
-
-        hw.step_until(|m| {
-            m.mci_boot_milestones()
-                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
-                || m.mci_fw_fatal_error().is_some()
-                || m.cycle_count() > 100_000_000
-        });
-
-        let fatal_error = hw.mci_fw_fatal_error();
-        assert!(
-            fatal_error.is_none(),
-            "Manifest DISABLE test failed: 0x{:x}",
-            fatal_error.unwrap_or(0)
-        );
-
-        let otp_memory = hw.read_otp_memory();
-        let fuse_byte = otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset];
-        assert!(
-            fuse_byte & 0x01 != 0,
-            "DISABLE should burn lock fuse, got 0x{:02x}",
-            fuse_byte
-        );
-
-        println!("[TEST] Firmware manifest DISABLE command burned fuse (EVEN → ODD)");
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    }
-
-    /// Test: No manifest magic means DOT commands are silently skipped.
-    #[test]
-    fn test_fw_manifest_dot_no_magic_skipped() {
-        use caliptra_mcu_registers_generated::fuses;
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
-        let owner_pk_hash = get_owner_pk_hash();
-        let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
-        let dot_flash = blob.to_flash_contents();
-
-        // No firmware_prefix → fw_manifest_dot_enabled is false in the ROM,
-        // so DOT manifest processing is entirely skipped.  This verifies
-        // that the default ROM configuration never accidentally processes
-        // DOT manifests.
-
-        let mut hw = start_runtime_hw_model(TestParams {
-            dot_flash_initial_contents: Some(dot_flash),
-            dot_enabled: true,
-            rom_only: true,
-            ..Default::default()
-        });
-
-        hw.step_until(|m| {
-            m.mci_boot_milestones()
-                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
-                || m.mci_fw_fatal_error().is_some()
-                || m.cycle_count() > 100_000_000
-        });
-
-        let fatal_error = hw.mci_fw_fatal_error();
-        assert!(
-            fatal_error.is_none(),
-            "No-magic test failed: 0x{:x}",
-            fatal_error.unwrap_or(0)
-        );
-
-        // No fuses should be burned (manifest was skipped)
-        let otp_memory = hw.read_otp_memory();
-        let fuse_array = &otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset
-            ..fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size];
-        let burned: u32 = fuse_array.iter().map(|b| b.count_ones()).sum();
-        assert_eq!(
-            burned, 0,
-            "No manifest magic: expected 0 fuses burned, found {}",
-            burned
-        );
-
-        println!("[TEST] No manifest magic: DOT commands correctly skipped");
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    }
-
-    /// Test: ROTATE command burns 2 fuses when below min_fuse_count threshold.
-    #[test]
-    fn test_fw_manifest_dot_rotate() {
-        use caliptra_mcu_registers_generated::fuses;
-        use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_ROTATE;
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
-        let owner_pk_hash = get_owner_pk_hash();
-        let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
-        let dot_flash = blob.to_flash_contents();
-
-        // ROTATE with min_fuse_count=2 (current burned=0, so rotation will apply)
-        let manifest =
-            create_manifest_section(&[FW_MANIFEST_DOT_CMD_ROTATE], 2, owner_pk_hash, test_lak());
-
-        let mut hw = start_runtime_hw_model(TestParams {
-            firmware_prefix: Some(manifest),
-            dot_flash_initial_contents: Some(dot_flash),
-            dot_enabled: true,
-            rom_only: true,
-            ..Default::default()
-        });
-
-        hw.step_until(|m| {
-            m.mci_boot_milestones()
-                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
-                || m.mci_fw_fatal_error().is_some()
-                || m.cycle_count() > 100_000_000
-        });
-
-        let fatal_error = hw.mci_fw_fatal_error();
-        assert!(
-            fatal_error.is_none(),
-            "Manifest ROTATE test failed: 0x{:x}",
-            fatal_error.unwrap_or(0)
-        );
-
-        // Verify 2 fuses burned (rotation = 2 fuse burns, preserving parity)
-        let otp_memory = hw.read_otp_memory();
-        let fuse_array = &otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset
-            ..fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size];
-        let burned: u32 = fuse_array.iter().map(|b| b.count_ones()).sum();
-        assert_eq!(burned, 2, "ROTATE should burn 2 fuses, found {}", burned);
-
-        println!("[TEST] Firmware manifest ROTATE command burned 2 fuses");
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    }
-
-    /// Test: ROTATE command is idempotent when burned count already meets min_fuse_count.
-    #[test]
-    fn test_fw_manifest_dot_rotate_idempotent() {
-        use caliptra_mcu_registers_generated::fuses;
-        use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_ROTATE;
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
-        let owner_pk_hash = get_owner_pk_hash();
-        let blob = create_valid_dot_blob(owner_pk_hash, test_lak());
-        let dot_flash = blob.to_flash_contents();
-
-        // ROTATE with min_fuse_count=1 but device already has 1 fuse burned (locked state)
-        let manifest =
-            create_manifest_section(&[FW_MANIFEST_DOT_CMD_ROTATE], 1, owner_pk_hash, test_lak());
-
-        let mut hw = start_runtime_hw_model(TestParams {
-            firmware_prefix: Some(manifest),
-            dot_flash_initial_contents: Some(dot_flash),
-            rom_only: true,
-            otp_memory: Some(create_locked_otp_memory()),
-            ..Default::default()
-        });
-
-        hw.step_until(|m| {
-            m.mci_boot_milestones()
-                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
-                || m.mci_fw_fatal_error().is_some()
-                || m.cycle_count() > 100_000_000
-        });
-
-        let fatal_error = hw.mci_fw_fatal_error();
-        assert!(
-            fatal_error.is_none(),
-            "Idempotent ROTATE test failed: 0x{:x}",
-            fatal_error.unwrap_or(0)
-        );
-
-        // Verify still exactly 1 fuse burned (rotation not applied)
-        let otp_memory = hw.read_otp_memory();
-        let fuse_array = &otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset
-            ..fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size];
-        let burned: u32 = fuse_array.iter().map(|b| b.count_ones()).sum();
-        assert_eq!(
-            burned, 1,
-            "ROTATE idempotent: expected 1 fuse, found {}",
-            burned
-        );
-
-        println!("[TEST] Firmware manifest ROTATE idempotent when already at target");
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    }
-
-    /// Test: Unsupported manifest version causes a fatal error.
-    ///
-    /// Setup:
-    /// - DOT enabled, EVEN state
-    /// - Valid DOT blob
-    /// - Firmware manifest with correct magic but version = 99
-    ///
-    /// Expected: ROM halts with ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR.
-    #[test]
-    fn test_fw_manifest_dot_bad_version() {
-        use caliptra_mcu_rom_common::{FwManifestDotSection, FW_MANIFEST_DOT_MAGIC};
-        use zerocopy::IntoBytes;
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
-        let owner_pk_hash = get_owner_pk_hash();
-        let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
-        let dot_flash = blob.to_flash_contents();
-
-        // Create a manifest with valid magic and checksum but unsupported version (99)
-        let section = FwManifestDotSection {
-            magic: FW_MANIFEST_DOT_MAGIC,
-            checksum: 0,
-            version: 99,
-            num_commands: 0,
-            min_fuse_count: 0,
-            commands: [0u8; 8],
-            cak: [0u32; 12],
-            lak: [0u32; 12],
-            _reserved: [0u8; 4],
-        }
-        .with_checksum();
-        let manifest = section.as_bytes().to_vec();
-
-        let mut hw = start_runtime_hw_model(TestParams {
-            firmware_prefix: Some(manifest),
-            dot_flash_initial_contents: Some(dot_flash),
-            dot_enabled: true,
-            rom_only: true,
-            ..Default::default()
-        });
-
-        hw.step_until(|m| m.mci_fw_fatal_error().is_some() || m.cycle_count() > 100_000_000);
-
-        let fatal_error = hw.mci_fw_fatal_error();
-        assert!(
-            fatal_error.is_some(),
-            "Expected fatal error for unsupported manifest version, but boot completed"
-        );
-        assert_eq!(
-            fatal_error.unwrap(),
-            u32::from(caliptra_mcu_error::McuError::ROM_FW_MANIFEST_DOT_UNSUPPORTED_VERSION),
-            "Expected ROM_FW_MANIFEST_DOT_UNSUPPORTED_VERSION, got 0x{:x}",
-            fatal_error.unwrap()
-        );
-
-        println!("[TEST] Unsupported manifest version correctly triggers fatal error");
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    }
-
-    // -----------------------------------------------------------------------
-    // Challenge/Response DOT Recovery Tests (ECDSA P-384 + MLDSA-87)
+    // DOT Override Challenge/Response Tests (ECDSA P-384)
     // -----------------------------------------------------------------------
 
     /// Generates a random ECC P-384 key pair, returning the public key
@@ -1967,10 +1424,8 @@ mod test {
         let secret_key = p384::SecretKey::random(&mut rand::thread_rng());
         let pub_point = secret_key.public_key().to_encoded_point(false);
 
-        let mut x_bytes = [0u8; 48];
-        x_bytes.copy_from_slice(pub_point.x().unwrap());
-        let mut y_bytes = [0u8; 48];
-        y_bytes.copy_from_slice(pub_point.y().unwrap());
+        let x_bytes: [u8; 48] = pub_point.x().unwrap().as_slice().try_into().unwrap();
+        let y_bytes: [u8; 48] = pub_point.y().unwrap().as_slice().try_into().unwrap();
         let priv_bytes: [u8; 48] = secret_key.to_bytes().into();
         (x_bytes, y_bytes, priv_bytes)
     }
@@ -1985,6 +1440,726 @@ mod test {
             ml_dsa_87::try_keygen_with_rng(&mut rand::thread_rng()).expect("MLDSA keygen failed");
         let pk_bytes = pk.into_bytes();
         (pk_bytes.to_vec(), sk)
+    }
+
+    #[test]
+    fn test_runtime_dot_lock_commits_transition() {
+        use crate::runtime::{execute_authorized_req, execute_authorized_req_tampered};
+        use caliptra_mcu_mbox_common::messages::{DotLockPayload, DotLockReq, MailboxReqHeader};
+        use core::mem::size_of;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let cak = [0xA5; 48];
+        let payload = DotLockPayload {
+            cak,
+            lak_hash: [0x5A; 48],
+        };
+
+        let mut otp = create_locked_otp_memory();
+        otp[caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset] = 0;
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            otp_memory: Some(otp),
+            ..Default::default()
+        });
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        let body_offset = size_of::<MailboxReqHeader>() + size_of::<u32>();
+        assert!(execute_authorized_req_tampered(
+            &mut hw,
+            DotLockReq {
+                payload: payload.clone(),
+                ..Default::default()
+            },
+            |request| request[body_offset] ^= 1,
+        )
+        .is_err());
+
+        let response = execute_authorized_req(
+            &mut hw,
+            DotLockReq {
+                payload: payload.clone(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(response.reset_required, 1);
+        assert!(execute_authorized_req(
+            &mut hw,
+            DotLockReq {
+                payload,
+                ..Default::default()
+            },
+        )
+        .is_err());
+
+        let otp = hw.read_otp_memory();
+        assert_eq!(
+            otp[caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset] & 1,
+            1
+        );
+        let dot_blob = hw.read_dot_flash();
+        assert!(dot_blob[..DOT_BLOB_SIZE].iter().any(|byte| *byte != 0));
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_runtime_dot_get_backup_blob() {
+        use crate::runtime::execute_authorized_req;
+        use caliptra_mcu_mbox_common::messages::{DotLockPayload, DotLockReq, GetDotBackupBlobReq};
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let mut otp = create_locked_otp_memory();
+        otp[caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset] = 0;
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            otp_memory: Some(otp),
+            ..Default::default()
+        });
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        execute_authorized_req(
+            &mut hw,
+            DotLockReq {
+                payload: DotLockPayload {
+                    cak: [0xA5; 48],
+                    lak_hash: [0x5A; 48],
+                },
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let dot_blob = hw.read_dot_flash();
+        let backup = execute_authorized_req(&mut hw, GetDotBackupBlobReq::default()).unwrap();
+        assert_eq!(&backup.blob, &dot_blob[..DOT_BLOB_SIZE]);
+
+        let mut corrupted_blob = dot_blob.clone();
+        corrupted_blob[DOT_BLOB_SIZE - 1] ^= 1;
+        hw.write_dot_flash(&corrupted_blob).unwrap();
+        assert!(execute_authorized_req(&mut hw, GetDotBackupBlobReq::default()).is_err());
+
+        corrupted_blob = dot_blob;
+        corrupted_blob[0] ^= 1;
+        hw.write_dot_flash(&corrupted_blob).unwrap();
+        assert!(execute_authorized_req(&mut hw, GetDotBackupBlobReq::default()).is_err());
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_runtime_dot_get_backup_blob_rejects_even_state() {
+        use crate::runtime::execute_authorized_req;
+        use caliptra_mcu_mbox_common::messages::GetDotBackupBlobReq;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            dot_enabled: true,
+            ..Default::default()
+        });
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        assert!(execute_authorized_req(&mut hw, GetDotBackupBlobReq::default()).is_err());
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_runtime_dot_disable_commits_transition() {
+        use crate::runtime::{execute_authorized_req, execute_authorized_req_tampered};
+        use caliptra_mcu_mbox_common::messages::{
+            DotDisablePayload, DotDisableReq, MailboxReqHeader,
+        };
+        use core::mem::size_of;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let payload = DotDisablePayload {
+            lak_hash: [0x5A; 48],
+        };
+        let mut otp = create_locked_otp_memory();
+        otp[caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset] = 0;
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            otp_memory: Some(otp),
+            ..Default::default()
+        });
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        let body_offset = size_of::<MailboxReqHeader>() + size_of::<u32>();
+        assert!(execute_authorized_req_tampered(
+            &mut hw,
+            DotDisableReq {
+                payload: payload.clone(),
+                ..Default::default()
+            },
+            |request| request[body_offset] ^= 1,
+        )
+        .is_err());
+
+        let response = execute_authorized_req(
+            &mut hw,
+            DotDisableReq {
+                payload: payload.clone(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(response.reset_required, 1);
+        assert!(execute_authorized_req(
+            &mut hw,
+            DotDisableReq {
+                payload,
+                ..Default::default()
+            },
+        )
+        .is_err());
+
+        let otp = hw.read_otp_memory();
+        assert_eq!(
+            otp[caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset] & 1,
+            1
+        );
+        let dot_blob = hw.read_dot_flash();
+        let blob = TestDotBlob::read_from_bytes(&dot_blob[..DOT_BLOB_SIZE]).unwrap();
+        assert!(blob.cak.iter().all(|word| *word == 0));
+        assert!(blob.lak_pub.iter().any(|word| *word != 0));
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_runtime_dot_rotate_commits_transition() {
+        use crate::runtime::{execute_authorized_req, execute_authorized_req_tampered};
+        use caliptra_mcu_mbox_common::messages::{
+            DotRotatePayload, DotRotateReq, MailboxReqHeader,
+        };
+        use core::mem::size_of;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let cak = [0xA5; 48];
+        let lak_hash = [0x5A; 48];
+        let payload = DotRotatePayload {
+            min_fuse_count: 2,
+            cak,
+            lak_hash,
+        };
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            dot_enabled: true,
+            ..Default::default()
+        });
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        assert!(execute_authorized_req(
+            &mut hw,
+            DotRotateReq {
+                payload: DotRotatePayload {
+                    min_fuse_count: 0,
+                    cak: [0; 48],
+                    lak_hash,
+                },
+                ..Default::default()
+            },
+        )
+        .is_err());
+        assert!(execute_authorized_req(
+            &mut hw,
+            DotRotateReq {
+                payload: DotRotatePayload {
+                    min_fuse_count: 2,
+                    cak,
+                    lak_hash: [0; 48],
+                },
+                ..Default::default()
+            },
+        )
+        .is_err());
+        let otp = hw.read_otp_memory();
+        assert_eq!(
+            otp[caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset].count_ones(),
+            0
+        );
+        assert!(hw.read_dot_flash()[..DOT_BLOB_SIZE]
+            .iter()
+            .all(|byte| *byte == 0));
+
+        let body_offset = size_of::<MailboxReqHeader>() + size_of::<u32>();
+        assert!(execute_authorized_req_tampered(
+            &mut hw,
+            DotRotateReq {
+                payload: payload.clone(),
+                ..Default::default()
+            },
+            |request| request[body_offset] ^= 1,
+        )
+        .is_err());
+
+        let response = execute_authorized_req(
+            &mut hw,
+            DotRotateReq {
+                payload: payload.clone(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(response.reset_required, 1);
+
+        let otp = hw.read_otp_memory();
+        assert_eq!(
+            otp[caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset].count_ones(),
+            2
+        );
+        let dot_blob = hw.read_dot_flash();
+        let blob = TestDotBlob::read_from_bytes(&dot_blob[..DOT_BLOB_SIZE]).unwrap();
+        let mut expected_cak = [0u32; 12];
+        let mut expected_lak = [0u32; 12];
+        for (word, bytes) in expected_cak.iter_mut().zip(cak.chunks_exact(4)) {
+            *word = u32::from_le_bytes(bytes.try_into().unwrap());
+        }
+        for (word, bytes) in expected_lak.iter_mut().zip(lak_hash.chunks_exact(4)) {
+            *word = u32::from_le_bytes(bytes.try_into().unwrap());
+        }
+        assert_eq!(blob.cak, expected_cak);
+        assert_eq!(blob.lak_pub, expected_lak);
+        let rotated_blob_fields = blob.data_for_hmac();
+        let rotated_blob_hmac = blob.hmac.as_bytes().to_vec();
+
+        execute_authorized_req(
+            &mut hw,
+            DotRotateReq {
+                payload,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let otp = hw.read_otp_memory();
+        assert_eq!(
+            otp[caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset].count_ones(),
+            2
+        );
+        drop(hw);
+
+        let expected_hmac = compute_hmac_for_derivation(&rotated_blob_fields, 3);
+        assert_eq!(
+            rotated_blob_hmac, expected_hmac,
+            "EVEN-state ROTATE blob must use the post-rotation n+1 effective key"
+        );
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_runtime_dot_status() {
+        use crate::runtime::execute_authorized_req;
+        use caliptra_mcu_mbox_common::messages::{DotLockPayload, DotLockReq, DotStatusReq};
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            dot_enabled: true,
+            ..Default::default()
+        });
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        let status = hw.mailbox_execute_req(DotStatusReq::default()).unwrap();
+        assert_eq!(status.status.enabled, 1);
+        assert_eq!(status.status.locked, 0);
+        assert_eq!(status.status.burned, 0);
+
+        execute_authorized_req(
+            &mut hw,
+            DotLockReq {
+                payload: DotLockPayload {
+                    cak: [0xA5; 48],
+                    lak_hash: [0x5A; 48],
+                },
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let status = hw.mailbox_execute_req(DotStatusReq::default()).unwrap();
+        assert_eq!(status.status.enabled, 1);
+        assert_eq!(status.status.locked, 1);
+        assert_eq!(status.status.burned, 1);
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_runtime_dot_recovery() {
+        use caliptra_mcu_mbox_common::messages::DotRecoveryReq;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let backup = create_valid_dot_blob(get_owner_pk_hash(), test_lak()).to_flash_contents();
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            otp_memory: Some(create_locked_otp_memory()),
+            dot_flash_initial_contents: Some(backup.clone()),
+            ..Default::default()
+        });
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        let mut corrupted = backup.clone();
+        corrupted[DOT_BLOB_SIZE - 1] ^= 1;
+        hw.write_dot_flash(&corrupted).unwrap();
+
+        let response = hw
+            .mailbox_execute_req(DotRecoveryReq {
+                blob: backup[..DOT_BLOB_SIZE].try_into().unwrap(),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(response.reset_required, 1);
+        assert_eq!(
+            &hw.read_dot_flash()[..DOT_BLOB_SIZE],
+            &backup[..DOT_BLOB_SIZE]
+        );
+
+        let mut invalid_backup: [u8; DOT_BLOB_SIZE] = backup[..DOT_BLOB_SIZE].try_into().unwrap();
+        invalid_backup[DOT_BLOB_SIZE - 1] ^= 1;
+        assert!(hw
+            .mailbox_execute_req(DotRecoveryReq {
+                blob: invalid_backup,
+                ..Default::default()
+            })
+            .is_err());
+        assert_eq!(
+            &hw.read_dot_flash()[..DOT_BLOB_SIZE],
+            &backup[..DOT_BLOB_SIZE]
+        );
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_runtime_dot_override_challenge() {
+        use caliptra_mcu_mbox_common::messages::{
+            DotOverrideChallengePayload, DotOverrideChallengeReq,
+        };
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let (recovery_ecc_pub_x, recovery_ecc_pub_y, _) = generate_random_ecc_keys();
+        let (recovery_mldsa_pub, _) = generate_random_mldsa_keys();
+        let recovery_hash = compute_recovery_pk_hash(
+            &recovery_ecc_pub_x,
+            &recovery_ecc_pub_y,
+            &recovery_mldsa_pub,
+        );
+        let blob = create_valid_dot_blob(get_owner_pk_hash(), test_lak()).to_flash_contents();
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            otp_memory: Some(create_challenge_recovery_otp_memory(&recovery_hash)),
+            dot_flash_initial_contents: Some(blob),
+            ..Default::default()
+        });
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        let mut wrong_x = recovery_ecc_pub_x;
+        wrong_x[0] ^= 1;
+        assert!(hw
+            .mailbox_execute_req(DotOverrideChallengeReq {
+                payload: DotOverrideChallengePayload {
+                    recovery_ecc_pub_x: wrong_x,
+                    recovery_ecc_pub_y,
+                    recovery_mldsa_pub: recovery_mldsa_pub.clone().try_into().unwrap(),
+                },
+                ..Default::default()
+            })
+            .is_err());
+
+        let response = hw
+            .mailbox_execute_req(DotOverrideChallengeReq {
+                payload: DotOverrideChallengePayload {
+                    recovery_ecc_pub_x,
+                    recovery_ecc_pub_y,
+                    recovery_mldsa_pub: recovery_mldsa_pub.try_into().unwrap(),
+                },
+                ..Default::default()
+            })
+            .unwrap();
+        assert!(response.challenge.iter().any(|byte| *byte != 0));
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_runtime_dot_override() {
+        use caliptra_mcu_mbox_common::messages::{
+            DotOverrideChallengePayload, DotOverrideChallengeReq, DotOverridePayload,
+            DotOverrideReq, HybridSignature,
+        };
+        use ecdsa::signature::hazmat::PrehashSigner;
+        use fips204::traits::Signer;
+        use p384::ecdsa::SigningKey;
+        use sha2::{Digest, Sha384};
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let (recovery_ecc_pub_x, recovery_ecc_pub_y, recovery_ecc_private) =
+            generate_random_ecc_keys();
+        let (recovery_mldsa_pub, recovery_mldsa_private) = generate_random_mldsa_keys();
+        let recovery_hash = compute_recovery_pk_hash(
+            &recovery_ecc_pub_x,
+            &recovery_ecc_pub_y,
+            &recovery_mldsa_pub,
+        );
+        let blob = create_valid_dot_blob(get_owner_pk_hash(), test_lak()).to_flash_contents();
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            otp_memory: Some(create_challenge_recovery_otp_memory(&recovery_hash)),
+            dot_flash_initial_contents: Some(blob),
+            ..Default::default()
+        });
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        let challenge = hw
+            .mailbox_execute_req(DotOverrideChallengeReq {
+                payload: DotOverrideChallengePayload {
+                    recovery_ecc_pub_x,
+                    recovery_ecc_pub_y,
+                    recovery_mldsa_pub: recovery_mldsa_pub.clone().try_into().unwrap(),
+                },
+                ..Default::default()
+            })
+            .unwrap()
+            .challenge;
+
+        let signing_key = SigningKey::from_bytes((&recovery_ecc_private).into()).unwrap();
+        let digest = Sha384::digest(challenge);
+        let ecc_signature: p384::ecdsa::Signature = signing_key.sign_prehash(&digest).unwrap();
+        let mldsa_signature = recovery_mldsa_private
+            .try_sign_with_seed(&[0u8; 32], &challenge, &[])
+            .unwrap();
+        let mut signature = HybridSignature {
+            ecc_sig_r: ecc_signature.r().to_bytes().into(),
+            ecc_sig_s: ecc_signature.s().to_bytes().into(),
+            ..Default::default()
+        };
+        signature.mldsa_sig[..mldsa_signature.len()].copy_from_slice(&mldsa_signature);
+        let payload = DotOverridePayload {
+            recovery_ecc_pub_x,
+            recovery_ecc_pub_y,
+            recovery_mldsa_pub: recovery_mldsa_pub.try_into().unwrap(),
+            signature,
+        };
+
+        let mut bad_payload = payload.clone();
+        bad_payload.signature.ecc_sig_r[0] ^= 1;
+        assert!(hw
+            .mailbox_execute_req(DotOverrideReq {
+                payload: bad_payload,
+                ..Default::default()
+            })
+            .is_err());
+
+        let response = hw
+            .mailbox_execute_req(DotOverrideReq {
+                payload: payload.clone(),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(response.reset_required, 1);
+        assert!(hw
+            .mailbox_execute_req(DotOverrideReq {
+                payload,
+                ..Default::default()
+            })
+            .is_err());
+
+        let otp = hw.read_otp_memory();
+        assert_eq!(
+            otp[caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset].count_ones(),
+            2
+        );
+        let dot_blob = hw.read_dot_flash();
+        let blob = TestDotBlob::read_from_bytes(&dot_blob[..DOT_BLOB_SIZE]).unwrap();
+        assert!(blob.cak.iter().all(|word| *word == 0));
+        assert!(blob.lak_pub.iter().all(|word| *word == 0));
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_runtime_dot_unlock_challenge() {
+        use caliptra_mcu_mbox_common::messages::DotUnlockChallengeReq;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let blob = create_valid_dot_blob(get_owner_pk_hash(), test_lak());
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            otp_memory: Some(create_locked_otp_memory()),
+            dot_flash_initial_contents: Some(blob.to_flash_contents()),
+            ..Default::default()
+        });
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        let first = hw
+            .mailbox_execute_req(DotUnlockChallengeReq::default())
+            .unwrap();
+        assert!(first.challenge.iter().any(|byte| *byte != 0));
+        assert!(hw
+            .mailbox_execute_req(DotUnlockChallengeReq::default())
+            .is_err());
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_runtime_dot_unlock() {
+        use caliptra_mcu_mbox_common::messages::{
+            CommandId as McuCommandId, DotUnlockChallengeReq, DotUnlockPayload, DotUnlockReq,
+            HybridSignature,
+        };
+        use ecdsa::signature::hazmat::PrehashSigner;
+        use fips204::traits::Signer;
+        use p384::ecdsa::SigningKey;
+        use sha2::{Digest, Sha384};
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let (ecc_pub_x, ecc_pub_y, ecc_private) = generate_random_ecc_keys();
+        let (mldsa_public, mldsa_private) = generate_random_mldsa_keys();
+        let lak_hash = compute_recovery_pk_hash(&ecc_pub_x, &ecc_pub_y, &mldsa_public);
+        let mut lak_words = [0u32; 12];
+        for (word, bytes) in lak_words.iter_mut().zip(lak_hash.chunks_exact(4)) {
+            *word = u32::from_le_bytes(bytes.try_into().unwrap());
+        }
+        let blob = create_valid_dot_blob(get_owner_pk_hash(), lak_words);
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            otp_memory: Some(create_locked_otp_memory()),
+            dot_flash_initial_contents: Some(blob.to_flash_contents()),
+            ..Default::default()
+        });
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        let challenge = hw
+            .mailbox_execute_req(DotUnlockChallengeReq::default())
+            .unwrap()
+            .challenge;
+        let mut transcript = [0u8; 52];
+        transcript[..4].copy_from_slice(&McuCommandId::MC_DOT_UNLOCK.0.to_be_bytes());
+        transcript[4..].copy_from_slice(&challenge);
+
+        let signing_key = SigningKey::from_bytes((&ecc_private).into()).unwrap();
+        let digest = Sha384::digest(transcript);
+        let ecc_signature: p384::ecdsa::Signature = signing_key.sign_prehash(&digest).unwrap();
+        let mldsa_signature = mldsa_private
+            .try_sign_with_seed(&[0u8; 32], &transcript, &[])
+            .unwrap();
+        let mut hybrid_signature = HybridSignature {
+            ecc_sig_r: ecc_signature.r().to_bytes().into(),
+            ecc_sig_s: ecc_signature.s().to_bytes().into(),
+            ..Default::default()
+        };
+        hybrid_signature.mldsa_sig[..mldsa_signature.len()].copy_from_slice(&mldsa_signature);
+        let payload = DotUnlockPayload {
+            lak_ecc_pub_x: ecc_pub_x,
+            lak_ecc_pub_y: ecc_pub_y,
+            lak_mldsa_pub: mldsa_public.try_into().unwrap(),
+            signature: hybrid_signature,
+        };
+
+        let mut bad_payload = payload.clone();
+        bad_payload.signature.ecc_sig_r[0] ^= 1;
+        assert!(hw
+            .mailbox_execute_req(DotUnlockReq {
+                payload: bad_payload,
+                ..Default::default()
+            })
+            .is_err());
+        let response = hw
+            .mailbox_execute_req(DotUnlockReq {
+                payload: payload.clone(),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(response.reset_required, 1);
+        assert!(hw
+            .mailbox_execute_req(DotUnlockReq {
+                payload,
+                ..Default::default()
+            })
+            .is_err());
+
+        let otp = hw.read_otp_memory();
+        assert_eq!(
+            otp[caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset].count_ones(),
+            2
+        );
+        let dot_blob = hw.read_dot_flash();
+        let blob = TestDotBlob::read_from_bytes(&dot_blob[..DOT_BLOB_SIZE]).unwrap();
+        assert!(blob.cak.iter().all(|word| *word == 0));
+        assert_eq!(blob.lak_pub, lak_words);
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Computes SHA-384 of the combined vendor public keys using the
@@ -2584,6 +2759,645 @@ mod test {
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
+    // Firmware manifest DOT command tests
+    // -----------------------------------------------------------------------
+
+    /// Creates a firmware manifest DOT section as raw bytes (128 bytes)
+    /// with a valid checksum and the provided keys.
+    fn create_manifest_section(
+        commands: &[u8],
+        min_fuse_count: u32,
+        cak: [u32; 12],
+        lak: [u32; 12],
+    ) -> Vec<u8> {
+        use caliptra_mcu_rom_common::{FwManifestDotSection, FW_MANIFEST_DOT_MAGIC};
+        use zerocopy::IntoBytes;
+
+        let mut cmd_array = [0u8; 8];
+        for (i, &c) in commands.iter().enumerate().take(8) {
+            cmd_array[i] = c;
+        }
+
+        let section = FwManifestDotSection {
+            magic: FW_MANIFEST_DOT_MAGIC,
+            checksum: 0,
+            version: 1,
+            num_commands: commands.len().min(8) as u32,
+            min_fuse_count,
+            commands: cmd_array,
+            cak,
+            lak,
+            _reserved: [0u8; 4],
+        }
+        .with_checksum();
+
+        section.as_bytes().to_vec()
+    }
+
+    /// Test: LOCK command in firmware manifest burns a fuse when device is in EVEN (unlocked) state.
+    ///
+    /// Setup:
+    /// - DOT enabled in fuses, EVEN state (burned=0)
+    /// - Valid DOT blob with CAK only (no LAK → DOT blob processing does NOT auto-lock)
+    /// - Firmware manifest with LOCK command
+    ///
+    /// Expected: The manifest LOCK command burns the lock fuse (EVEN → ODD).
+    #[test]
+    fn test_fw_manifest_dot_lock() {
+        use caliptra_mcu_registers_generated::fuses;
+        use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_LOCK;
+        use caliptra_mcu_romtime::McuBootMilestones;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let owner_pk_hash = get_owner_pk_hash();
+        let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
+        let dot_flash = blob.to_flash_contents();
+
+        let manifest =
+            create_manifest_section(&[FW_MANIFEST_DOT_CMD_LOCK], 0, owner_pk_hash, test_lak());
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            firmware_prefix: Some(manifest),
+            dot_flash_initial_contents: Some(dot_flash),
+            dot_enabled: true,
+            rom_only: true,
+            ..Default::default()
+        });
+
+        hw.step_until(|m| {
+            m.mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
+                || m.mci_fw_fatal_error().is_some()
+                || m.cycle_count() > 100_000_000
+        });
+
+        let fatal_error = hw.mci_fw_fatal_error();
+        assert!(
+            fatal_error.is_none(),
+            "Manifest LOCK test failed with fatal error: 0x{:x}",
+            fatal_error.unwrap_or(0)
+        );
+
+        let otp_memory = hw.read_otp_memory();
+        let fuse_byte = otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset];
+        assert!(
+            fuse_byte & 0x01 != 0,
+            "Manifest LOCK should have burned the lock fuse, got 0x{:02x}",
+            fuse_byte
+        );
+
+        let fuse_array = &otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset
+            ..fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size];
+        let burned: u32 = fuse_array.iter().map(|b| b.count_ones()).sum();
+        assert_eq!(
+            burned, 1,
+            "Expected 1 fuse burned by manifest LOCK, found {}",
+            burned
+        );
+        let dot_flash = hw.read_dot_flash();
+        let blob = TestDotBlob::read_from_bytes(&dot_flash[..DOT_BLOB_SIZE]).unwrap();
+        assert_eq!(blob.reserved[0] & 1, 0);
+
+        println!("[TEST] Firmware manifest LOCK command successfully burned lock fuse");
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Test: Firmware manifest DOT commands are applied on a hitless firmware
+    /// update boot path.
+    ///
+    /// This is a scaled-down test: rather than running a full PLDM firmware
+    /// update cycle (which the integration harness cannot exercise while
+    /// retaining OTP/flash observability), the ROM is built with the
+    /// `test-fw-manifest-dot-hitless` feature. That feature causes the
+    /// end-of-cold-boot warm reset to come back as `FirmwareHitlessUpdate`
+    /// instead of `FirmwareBootReset`, so `FwHitlessUpdate::run` is the path
+    /// that sees the SRAM firmware image + DOT manifest prefix and executes
+    /// the manifest commands.
+    ///
+    /// Setup:
+    /// - DOT enabled in fuses, EVEN state (burned=0)
+    /// - Valid DOT blob with CAK only (no LAK)
+    /// - Firmware manifest with LOCK command
+    ///
+    /// Expected: On the hitless path, the manifest LOCK command still burns
+    /// the lock fuse (EVEN → ODD) and the boot completes successfully.
+    #[test]
+    fn test_fw_manifest_dot_hitless_lock() {
+        use caliptra_mcu_registers_generated::fuses;
+        use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_LOCK;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let owner_pk_hash = get_owner_pk_hash();
+        let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
+        let dot_flash = blob.to_flash_contents();
+
+        let manifest =
+            create_manifest_section(&[FW_MANIFEST_DOT_CMD_LOCK], 0, owner_pk_hash, test_lak());
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            firmware_prefix: Some(manifest),
+            fw_manifest_dot_hitless: true,
+            dot_flash_initial_contents: Some(dot_flash),
+            dot_enabled: true,
+            rom_only: true,
+            ..Default::default()
+        });
+
+        hw.step_until(|m| {
+            m.mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
+                || m.mci_fw_fatal_error().is_some()
+                || m.cycle_count() > 100_000_000
+        });
+
+        let fatal_error = hw.mci_fw_fatal_error();
+        assert!(
+            fatal_error.is_none(),
+            "Hitless manifest LOCK test failed with fatal error: 0x{:x}",
+            fatal_error.unwrap_or(0)
+        );
+
+        assert!(
+            hw.mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE),
+            "Hitless boot did not complete within cycle budget"
+        );
+
+        let otp_memory = hw.read_otp_memory();
+        let fuse_byte = otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset];
+        assert!(
+            fuse_byte & 0x01 != 0,
+            "Hitless manifest LOCK should have burned the lock fuse, got 0x{:02x}",
+            fuse_byte
+        );
+
+        let fuse_array = &otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset
+            ..fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size];
+        let burned: u32 = fuse_array.iter().map(|b| b.count_ones()).sum();
+        assert_eq!(
+            burned, 1,
+            "Expected 1 fuse burned by hitless manifest LOCK, found {}",
+            burned
+        );
+
+        println!(
+            "[TEST] Hitless-path firmware manifest LOCK command successfully burned lock fuse"
+        );
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Test: LOCK command is idempotent when device is already in ODD (locked) state.
+    ///
+    /// Setup:
+    /// - DOT in locked state (ODD, 1 fuse burned)
+    /// - Valid DOT blob for locked state
+    /// - Firmware manifest with LOCK command
+    ///
+    /// Expected: No additional fuses burned (idempotent).
+    #[test]
+    fn test_fw_manifest_dot_lock_idempotent() {
+        use caliptra_mcu_registers_generated::fuses;
+        use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_LOCK;
+        use caliptra_mcu_romtime::McuBootMilestones;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let owner_pk_hash = get_owner_pk_hash();
+        let blob = create_valid_dot_blob(owner_pk_hash, test_lak());
+        let dot_flash = blob.to_flash_contents();
+
+        let manifest =
+            create_manifest_section(&[FW_MANIFEST_DOT_CMD_LOCK], 0, owner_pk_hash, test_lak());
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            firmware_prefix: Some(manifest),
+            dot_flash_initial_contents: Some(dot_flash),
+            rom_only: true,
+            otp_memory: Some(create_locked_otp_memory()),
+            ..Default::default()
+        });
+
+        hw.step_until(|m| {
+            m.mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
+                || m.mci_fw_fatal_error().is_some()
+                || m.cycle_count() > 100_000_000
+        });
+
+        let fatal_error = hw.mci_fw_fatal_error();
+        assert!(
+            fatal_error.is_none(),
+            "Idempotent LOCK test failed: 0x{:x}",
+            fatal_error.unwrap_or(0)
+        );
+
+        // Verify still exactly 1 fuse burned (no additional fuse from manifest)
+        let otp_memory = hw.read_otp_memory();
+        let fuse_array = &otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset
+            ..fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size];
+        let burned: u32 = fuse_array.iter().map(|b| b.count_ones()).sum();
+        assert_eq!(
+            burned, 1,
+            "LOCK should be idempotent: expected 1 fuse, found {}",
+            burned
+        );
+
+        println!("[TEST] Firmware manifest LOCK idempotent (no additional fuse burned)");
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Test: UNLOCK command burns a fuse when device is in ODD (locked) state.
+    ///
+    /// Setup:
+    /// - DOT in locked state (ODD, 1 fuse burned)
+    /// - Valid DOT blob for locked state
+    /// - Firmware manifest with UNLOCK command
+    ///
+    /// Expected: One additional fuse burned (ODD → EVEN), total 2.
+    #[test]
+    fn test_fw_manifest_dot_unlock() {
+        use caliptra_mcu_registers_generated::fuses;
+        use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_UNLOCK;
+        use caliptra_mcu_romtime::McuBootMilestones;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let owner_pk_hash = get_owner_pk_hash();
+        let blob = create_valid_dot_blob(owner_pk_hash, test_lak());
+        let dot_flash = blob.to_flash_contents();
+
+        // UNLOCK needs a LAK in the manifest for writing the unlock DOT blob.
+        let manifest =
+            create_manifest_section(&[FW_MANIFEST_DOT_CMD_UNLOCK], 0, [0u32; 12], test_lak());
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            firmware_prefix: Some(manifest),
+            dot_flash_initial_contents: Some(dot_flash),
+            rom_only: true,
+            otp_memory: Some(create_locked_otp_memory()),
+            ..Default::default()
+        });
+
+        hw.step_until(|m| {
+            m.mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
+                || m.mci_fw_fatal_error().is_some()
+                || m.cycle_count() > 100_000_000
+        });
+
+        let fatal_error = hw.mci_fw_fatal_error();
+        assert!(
+            fatal_error.is_none(),
+            "Manifest UNLOCK test failed: 0x{:x}",
+            fatal_error.unwrap_or(0)
+        );
+
+        let otp_memory = hw.read_otp_memory();
+        let fuse_array = &otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset
+            ..fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size];
+        let burned: u32 = fuse_array.iter().map(|b| b.count_ones()).sum();
+        assert_eq!(
+            burned, 2,
+            "UNLOCK should burn 1 fuse: expected 2 total, found {}",
+            burned
+        );
+
+        println!("[TEST] Firmware manifest UNLOCK command burned fuse (ODD → EVEN)");
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Test: UNLOCK command is idempotent when device is already in EVEN (unlocked) state.
+    #[test]
+    fn test_fw_manifest_dot_unlock_idempotent() {
+        use caliptra_mcu_registers_generated::fuses;
+        use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_UNLOCK;
+        use caliptra_mcu_romtime::McuBootMilestones;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let owner_pk_hash = get_owner_pk_hash();
+        let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
+        let dot_flash = blob.to_flash_contents();
+
+        let manifest =
+            create_manifest_section(&[FW_MANIFEST_DOT_CMD_UNLOCK], 0, [0u32; 12], test_lak());
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            firmware_prefix: Some(manifest),
+            dot_flash_initial_contents: Some(dot_flash),
+            dot_enabled: true,
+            rom_only: true,
+            ..Default::default()
+        });
+
+        hw.step_until(|m| {
+            m.mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
+                || m.mci_fw_fatal_error().is_some()
+                || m.cycle_count() > 100_000_000
+        });
+
+        let fatal_error = hw.mci_fw_fatal_error();
+        assert!(
+            fatal_error.is_none(),
+            "Idempotent UNLOCK test failed: 0x{:x}",
+            fatal_error.unwrap_or(0)
+        );
+
+        // Verify 0 fuses burned (UNLOCK on EVEN state is a no-op)
+        let otp_memory = hw.read_otp_memory();
+        let fuse_array = &otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset
+            ..fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size];
+        let burned: u32 = fuse_array.iter().map(|b| b.count_ones()).sum();
+        assert_eq!(
+            burned, 0,
+            "UNLOCK should be idempotent on EVEN state, found {} fuses",
+            burned
+        );
+
+        println!("[TEST] Firmware manifest UNLOCK idempotent on EVEN state");
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Test: DISABLE command burns a fuse when in EVEN (unlocked) state.
+    #[test]
+    fn test_fw_manifest_dot_disable() {
+        use caliptra_mcu_registers_generated::fuses;
+        use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_DISABLE;
+        use caliptra_mcu_romtime::McuBootMilestones;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let owner_pk_hash = get_owner_pk_hash();
+        let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
+        let dot_flash = blob.to_flash_contents();
+
+        let manifest =
+            create_manifest_section(&[FW_MANIFEST_DOT_CMD_DISABLE], 0, [0u32; 12], test_lak());
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            firmware_prefix: Some(manifest),
+            dot_flash_initial_contents: Some(dot_flash),
+            dot_enabled: true,
+            rom_only: true,
+            ..Default::default()
+        });
+
+        hw.step_until(|m| {
+            m.mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
+                || m.mci_fw_fatal_error().is_some()
+                || m.cycle_count() > 100_000_000
+        });
+
+        let fatal_error = hw.mci_fw_fatal_error();
+        assert!(
+            fatal_error.is_none(),
+            "Manifest DISABLE test failed: 0x{:x}",
+            fatal_error.unwrap_or(0)
+        );
+
+        let otp_memory = hw.read_otp_memory();
+        let fuse_byte = otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset];
+        assert!(
+            fuse_byte & 0x01 != 0,
+            "DISABLE should burn lock fuse, got 0x{:02x}",
+            fuse_byte
+        );
+
+        println!("[TEST] Firmware manifest DISABLE command burned fuse (EVEN → ODD)");
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Test: No manifest magic means DOT commands are silently skipped.
+    #[test]
+    fn test_fw_manifest_dot_no_magic_skipped() {
+        use caliptra_mcu_registers_generated::fuses;
+        use caliptra_mcu_romtime::McuBootMilestones;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let owner_pk_hash = get_owner_pk_hash();
+        let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
+        let dot_flash = blob.to_flash_contents();
+
+        // No firmware_prefix → fw_manifest_dot_enabled is false in the ROM,
+        // so DOT manifest processing is entirely skipped.  This verifies
+        // that the default ROM configuration never accidentally processes
+        // DOT manifests.
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            dot_flash_initial_contents: Some(dot_flash),
+            dot_enabled: true,
+            rom_only: true,
+            ..Default::default()
+        });
+
+        hw.step_until(|m| {
+            m.mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
+                || m.mci_fw_fatal_error().is_some()
+                || m.cycle_count() > 100_000_000
+        });
+
+        let fatal_error = hw.mci_fw_fatal_error();
+        assert!(
+            fatal_error.is_none(),
+            "No-magic test failed: 0x{:x}",
+            fatal_error.unwrap_or(0)
+        );
+
+        // No fuses should be burned (manifest was skipped)
+        let otp_memory = hw.read_otp_memory();
+        let fuse_array = &otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset
+            ..fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size];
+        let burned: u32 = fuse_array.iter().map(|b| b.count_ones()).sum();
+        assert_eq!(
+            burned, 0,
+            "No manifest magic: expected 0 fuses burned, found {}",
+            burned
+        );
+
+        println!("[TEST] No manifest magic: DOT commands correctly skipped");
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Test: ROTATE command burns 2 fuses when below min_fuse_count threshold.
+    #[test]
+    fn test_fw_manifest_dot_rotate() {
+        use caliptra_mcu_registers_generated::fuses;
+        use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_ROTATE;
+        use caliptra_mcu_romtime::McuBootMilestones;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let owner_pk_hash = get_owner_pk_hash();
+        let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
+        let dot_flash = blob.to_flash_contents();
+
+        // ROTATE with min_fuse_count=2 (current burned=0, so rotation will apply)
+        let manifest =
+            create_manifest_section(&[FW_MANIFEST_DOT_CMD_ROTATE], 2, owner_pk_hash, test_lak());
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            firmware_prefix: Some(manifest),
+            dot_flash_initial_contents: Some(dot_flash),
+            dot_enabled: true,
+            rom_only: true,
+            ..Default::default()
+        });
+
+        hw.step_until(|m| {
+            m.mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
+                || m.mci_fw_fatal_error().is_some()
+                || m.cycle_count() > 100_000_000
+        });
+
+        let fatal_error = hw.mci_fw_fatal_error();
+        assert!(
+            fatal_error.is_none(),
+            "Manifest ROTATE test failed: 0x{:x}",
+            fatal_error.unwrap_or(0)
+        );
+
+        // Verify 2 fuses burned (rotation = 2 fuse burns, preserving parity)
+        let otp_memory = hw.read_otp_memory();
+        let fuse_array = &otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset
+            ..fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size];
+        let burned: u32 = fuse_array.iter().map(|b| b.count_ones()).sum();
+        assert_eq!(burned, 2, "ROTATE should burn 2 fuses, found {}", burned);
+
+        println!("[TEST] Firmware manifest ROTATE command burned 2 fuses");
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Test: ROTATE command is idempotent when burned count already meets min_fuse_count.
+    #[test]
+    fn test_fw_manifest_dot_rotate_idempotent() {
+        use caliptra_mcu_registers_generated::fuses;
+        use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_ROTATE;
+        use caliptra_mcu_romtime::McuBootMilestones;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let owner_pk_hash = get_owner_pk_hash();
+        let blob = create_valid_dot_blob(owner_pk_hash, test_lak());
+        let dot_flash = blob.to_flash_contents();
+
+        // ROTATE with min_fuse_count=1 but device already has 1 fuse burned (locked state)
+        let manifest =
+            create_manifest_section(&[FW_MANIFEST_DOT_CMD_ROTATE], 1, owner_pk_hash, test_lak());
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            firmware_prefix: Some(manifest),
+            dot_flash_initial_contents: Some(dot_flash),
+            rom_only: true,
+            otp_memory: Some(create_locked_otp_memory()),
+            ..Default::default()
+        });
+
+        hw.step_until(|m| {
+            m.mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
+                || m.mci_fw_fatal_error().is_some()
+                || m.cycle_count() > 100_000_000
+        });
+
+        let fatal_error = hw.mci_fw_fatal_error();
+        assert!(
+            fatal_error.is_none(),
+            "Idempotent ROTATE test failed: 0x{:x}",
+            fatal_error.unwrap_or(0)
+        );
+
+        // Verify still exactly 1 fuse burned (rotation not applied)
+        let otp_memory = hw.read_otp_memory();
+        let fuse_array = &otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset
+            ..fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size];
+        let burned: u32 = fuse_array.iter().map(|b| b.count_ones()).sum();
+        assert_eq!(
+            burned, 1,
+            "ROTATE idempotent: expected 1 fuse, found {}",
+            burned
+        );
+
+        println!("[TEST] Firmware manifest ROTATE idempotent when already at target");
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Test: Unsupported manifest version causes a fatal error.
+    ///
+    /// Setup:
+    /// - DOT enabled, EVEN state
+    /// - Valid DOT blob
+    /// - Firmware manifest with correct magic but version = 99
+    ///
+    /// Expected: ROM halts with ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR.
+    #[test]
+    fn test_fw_manifest_dot_bad_version() {
+        use caliptra_mcu_rom_common::{FwManifestDotSection, FW_MANIFEST_DOT_MAGIC};
+        use zerocopy::IntoBytes;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let owner_pk_hash = get_owner_pk_hash();
+        let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
+        let dot_flash = blob.to_flash_contents();
+
+        // Create a manifest with valid magic and checksum but unsupported version (99)
+        let section = FwManifestDotSection {
+            magic: FW_MANIFEST_DOT_MAGIC,
+            checksum: 0,
+            version: 99,
+            num_commands: 0,
+            min_fuse_count: 0,
+            commands: [0u8; 8],
+            cak: [0u32; 12],
+            lak: [0u32; 12],
+            _reserved: [0u8; 4],
+        }
+        .with_checksum();
+        let manifest = section.as_bytes().to_vec();
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            firmware_prefix: Some(manifest),
+            dot_flash_initial_contents: Some(dot_flash),
+            dot_enabled: true,
+            rom_only: true,
+            ..Default::default()
+        });
+
+        hw.step_until(|m| m.mci_fw_fatal_error().is_some() || m.cycle_count() > 100_000_000);
+
+        let fatal_error = hw.mci_fw_fatal_error();
+        assert!(
+            fatal_error.is_some(),
+            "Expected fatal error for unsupported manifest version, but boot completed"
+        );
+        assert_eq!(
+            fatal_error.unwrap(),
+            u32::from(caliptra_mcu_error::McuError::ROM_COLD_BOOT_DOT_ERROR),
+            "Expected ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR, got 0x{:x}",
+            fatal_error.unwrap()
+        );
+
+        println!("[TEST] Unsupported manifest version correctly triggers fatal error");
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
     /// Test: After UNLOCK command, the device boots successfully on the next cold boot.
     #[test]
     fn test_fw_manifest_dot_unlock_second_boot_succeeds() {
@@ -2696,13 +3510,13 @@ mod test {
         );
         assert_eq!(
             fatal_error.unwrap(),
-            u32::from(caliptra_mcu_error::McuError::ROM_FW_MANIFEST_DOT_UNKNOWN_COMMAND),
-            "Expected ROM_FW_MANIFEST_DOT_UNKNOWN_COMMAND for unknown command, got 0x{:x}",
+            u32::from(caliptra_mcu_error::McuError::ROM_COLD_BOOT_DOT_ERROR),
+            "Expected ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR for unknown command, got 0x{:x}",
             fatal_error.unwrap()
         );
 
         println!(
-            "[TEST] Unknown DOT command correctly triggers ROM_FW_MANIFEST_DOT_UNKNOWN_COMMAND"
+            "[TEST] Unknown DOT command correctly triggers ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR"
         );
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
@@ -2728,92 +3542,6 @@ mod test {
         });
 
         println!("[TEST] Runtime boots correctly with DOT manifest header prepended");
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    }
-
-    /// Test: Firmware manifest DOT commands are applied on a hitless firmware
-    /// update boot path.
-    ///
-    /// This is a scaled-down test: rather than running a full PLDM firmware
-    /// update cycle (which the integration harness cannot exercise while
-    /// retaining OTP/flash observability), the ROM is built with the
-    /// `test-fw-manifest-dot-hitless` feature. That feature causes the
-    /// end-of-cold-boot warm reset to come back as `FirmwareHitlessUpdate`
-    /// instead of `FirmwareBootReset`, so `FwHitlessUpdate::run` is the path
-    /// that sees the SRAM firmware image + DOT manifest prefix and executes
-    /// the manifest commands.
-    ///
-    /// Setup:
-    /// - DOT enabled in fuses, EVEN state (burned=0)
-    /// - Valid DOT blob with CAK only (no LAK)
-    /// - Firmware manifest with LOCK command
-    ///
-    /// Expected: On the hitless path, the manifest LOCK command still burns
-    /// the lock fuse (EVEN → ODD) and the boot completes successfully.
-    #[test]
-    fn test_fw_manifest_dot_hitless_lock() {
-        use caliptra_mcu_registers_generated::fuses;
-        use caliptra_mcu_rom_common::FW_MANIFEST_DOT_CMD_LOCK;
-
-        let lock = TEST_LOCK.lock().unwrap();
-        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-
-        let owner_pk_hash = get_owner_pk_hash();
-        let blob = create_valid_dot_blob(owner_pk_hash, [0u32; 12]);
-        let dot_flash = blob.to_flash_contents();
-
-        let manifest =
-            create_manifest_section(&[FW_MANIFEST_DOT_CMD_LOCK], 0, owner_pk_hash, test_lak());
-
-        let mut hw = start_runtime_hw_model(TestParams {
-            firmware_prefix: Some(manifest),
-            fw_manifest_dot_hitless: true,
-            dot_flash_initial_contents: Some(dot_flash),
-            dot_enabled: true,
-            rom_only: true,
-            ..Default::default()
-        });
-
-        hw.step_until(|m| {
-            m.mci_boot_milestones()
-                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
-                || m.mci_fw_fatal_error().is_some()
-                || m.cycle_count() > 100_000_000
-        });
-
-        let fatal_error = hw.mci_fw_fatal_error();
-        assert!(
-            fatal_error.is_none(),
-            "Hitless manifest LOCK test failed with fatal error: 0x{:x}",
-            fatal_error.unwrap_or(0)
-        );
-
-        assert!(
-            hw.mci_boot_milestones()
-                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE),
-            "Hitless boot did not complete within cycle budget"
-        );
-
-        let otp_memory = hw.read_otp_memory();
-        let fuse_byte = otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset];
-        assert!(
-            fuse_byte & 0x01 != 0,
-            "Hitless manifest LOCK should have burned the lock fuse, got 0x{:02x}",
-            fuse_byte
-        );
-
-        let fuse_array = &otp_memory[fuses::DOT_FUSE_ARRAY.byte_offset
-            ..fuses::DOT_FUSE_ARRAY.byte_offset + fuses::DOT_FUSE_ARRAY.byte_size];
-        let burned: u32 = fuse_array.iter().map(|b| b.count_ones()).sum();
-        assert_eq!(
-            burned, 1,
-            "Expected 1 fuse burned by hitless manifest LOCK, found {}",
-            burned
-        );
-
-        println!(
-            "[TEST] Hitless-path firmware manifest LOCK command successfully burned lock fuse"
-        );
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 }

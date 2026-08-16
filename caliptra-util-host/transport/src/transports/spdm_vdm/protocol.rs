@@ -35,6 +35,7 @@ pub enum CaliptraVdmCommand {
     RequestDebugUnlock = 0x06,
     AuthorizeDebugUnlockToken = 0x07,
     ExportAttestedCsr = 0x08,
+    DeviceOwnershipTransfer = 0x11,
     /// Single entry point for all authorized sub-commands (GetAuthChallenge, ProgramFieldEntropy).
     AuthorizedCommand = 0x12,
 }
@@ -48,6 +49,7 @@ impl TryFrom<u8> for CaliptraVdmCommand {
             0x06 => Ok(Self::RequestDebugUnlock),
             0x07 => Ok(Self::AuthorizeDebugUnlockToken),
             0x08 => Ok(Self::ExportAttestedCsr),
+            0x11 => Ok(Self::DeviceOwnershipTransfer),
             0x12 => Ok(Self::AuthorizedCommand),
             _ => Err(SpdmVdmProtocolError::UnknownCommand(value)),
         }
@@ -146,6 +148,22 @@ pub fn command_id_to_vdm(command_id: u32) -> Option<CaliptraVdmCommand> {
         x if x == CaliptraCommandId::GetAuthCmdChallenge as u32 => {
             Some(CaliptraVdmCommand::AuthorizedCommand)
         }
+        x if x == CaliptraCommandId::DotLock as u32
+            || x == CaliptraCommandId::DotDisable as u32
+            || x == CaliptraCommandId::DotRotate as u32
+            || x == CaliptraCommandId::GetDotBackupBlob as u32 =>
+        {
+            Some(CaliptraVdmCommand::AuthorizedCommand)
+        }
+        x if x == CaliptraCommandId::DotUnlockChallenge as u32
+            || x == CaliptraCommandId::DotUnlock as u32
+            || x == CaliptraCommandId::DotStatus as u32
+            || x == CaliptraCommandId::DotRecovery as u32
+            || x == CaliptraCommandId::DotOverrideChallenge as u32
+            || x == CaliptraCommandId::DotOverride as u32 =>
+        {
+            Some(CaliptraVdmCommand::DeviceOwnershipTransfer)
+        }
         _ => None,
     }
 }
@@ -156,7 +174,7 @@ mod tests {
 
     #[test]
     fn test_command_roundtrip() {
-        let valid_codes: &[u8] = &[0x05, 0x06, 0x07, 0x08, 0x12];
+        let valid_codes: &[u8] = &[0x05, 0x06, 0x07, 0x08, 0x11, 0x12];
         for &code in valid_codes {
             let cmd = CaliptraVdmCommand::try_from(code).unwrap();
             assert_eq!(cmd as u8, code);
@@ -196,6 +214,30 @@ mod tests {
             command_id_to_vdm(CaliptraCommandId::ProdDebugUnlockReq as u32),
             Some(CaliptraVdmCommand::RequestDebugUnlock)
         );
+        for id in [
+            CaliptraCommandId::DotLock,
+            CaliptraCommandId::DotDisable,
+            CaliptraCommandId::DotRotate,
+            CaliptraCommandId::GetDotBackupBlob,
+        ] {
+            assert_eq!(
+                command_id_to_vdm(id as u32),
+                Some(CaliptraVdmCommand::AuthorizedCommand)
+            );
+        }
+        for id in [
+            CaliptraCommandId::DotUnlockChallenge,
+            CaliptraCommandId::DotUnlock,
+            CaliptraCommandId::DotStatus,
+            CaliptraCommandId::DotRecovery,
+            CaliptraCommandId::DotOverrideChallenge,
+            CaliptraCommandId::DotOverride,
+        ] {
+            assert_eq!(
+                command_id_to_vdm(id as u32),
+                Some(CaliptraVdmCommand::DeviceOwnershipTransfer)
+            );
+        }
         for id in [
             CaliptraCommandId::GetAuthCmdChallenge,
             CaliptraCommandId::FeProg,

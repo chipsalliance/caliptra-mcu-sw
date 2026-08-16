@@ -37,6 +37,7 @@ pub(crate) const CMD_CM_SHA_UPDATE: u32 = 0x434D_5355; // "CMSU"
 pub(crate) const CMD_CM_SHA_FINAL: u32 = 0x434D_5346; // "CMSF"
 pub(crate) const CMD_CM_RANDOM_GENERATE: u32 = 0x434D_5247; // "CMRG"
 pub(crate) const CMD_ECDSA384_SIGNATURE_VERIFY: u32 = 0x4543_5632; // "ECV2"
+pub(crate) const CMD_CM_DERIVE_STABLE_KEY: u32 = 0x494D_4453; // "CMDS"
 
 /// Caliptra mailbox command ID for `AUTHORIZE_AND_STASH`.
 /// Mirrored from `caliptra-api::CommandId::AUTHORIZE_AND_STASH`.
@@ -136,7 +137,6 @@ pub(crate) const CMD_CM_AES_GCM_DECRYPT_FINAL: u32 = 0x434D_4446; // "CMDF"
 // ---- Hash algorithm discriminator -----------------------------------------
 
 pub(crate) const CM_HASH_ALGO_SHA384: u32 = 1;
-#[allow(dead_code)]
 pub(crate) const CM_HASH_ALGO_SHA512: u32 = 2;
 
 // ---- Mailbox error mapping -------------------------------------------------

@@ -32,6 +32,7 @@ futures = { workspace = true }
 [features]
 default = []
 disable-lms-sig-verify = []
+device-ownership-transfer = []
 periodic-fips-self-test = []
 ocp-lock = ["caliptra-mcu-common-commands/ocp-lock"]
 release = [
