@@ -94,6 +94,8 @@ const FEATURES_REQUIRING_SOC_IMAGES: &[&str] = &[
     "test-mctp-spdm-attestation",
     "test-mctp-spdm-attestation-pcr-quote",
     "test-firmware-v2",
+    "test-mctp-capsule-loopback",
+    "test-mctp-capsule-loopback-warm-reset",
 ];
 
 /// Features that require flash-based boot (partition table at offset 0)

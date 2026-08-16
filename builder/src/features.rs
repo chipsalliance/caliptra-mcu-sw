@@ -78,6 +78,7 @@ pub const FPGA_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-log-flash-usermode",
     "test-get-alarm-expired",
     "test-ocp-lock",
+    "test-mctp-capsule-loopback-warm-reset",
 ];
 
 /// Release-profile runtime test features (emulator).
