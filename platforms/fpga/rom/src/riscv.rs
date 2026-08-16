@@ -408,7 +408,7 @@ pub extern "C" fn rom_entry() -> ! {
         burn_lifecycle_tokens,
         program_field_entropy: [program_field_entropy; 4],
         // The DOT/recovery FPGA tests inject OTP fuses (DOT state + the
-        // vendor recovery PK hash in the scrambled VENDOR_SECRET_PROD
+        // DOT recovery key hash in the scrambled VENDOR_SECRET_PROD
         // partition) through the hw-model OTP backdoor. That backdoor image is
         // not formatted for the OTP controller's background integrity/
         // consistency checks, which then fault the controller on real

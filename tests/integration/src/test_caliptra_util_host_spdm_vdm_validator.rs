@@ -346,6 +346,7 @@ mod test {
             feature: Some(TEST_FEATURE),
             custom_caliptra_fw: Some(caliptra_fw_svn7()),
             i3c_port: Some(PortPicker::new().pick().unwrap()),
+            dot_enabled: true,
             use_strap_secrets: true,
             debug_intent: true,
             lifecycle_controller_state: Some(caliptra_mcu_hw_model::LifecycleControllerState::Prod),
@@ -404,6 +405,7 @@ mod test {
         test_caliptra_util_host_spdm_vdm_validator_authorization,
         "authorization"
     );
+    isolated_fuse_suite_test!(test_caliptra_util_host_spdm_vdm_validator_dot, "dot");
     isolated_fuse_suite_test!(
         test_caliptra_util_host_spdm_vdm_validator_provision_vendor_pk_hash,
         "provision-vendor-pk-hash"

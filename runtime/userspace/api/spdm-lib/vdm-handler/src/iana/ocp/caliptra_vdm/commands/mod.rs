@@ -7,6 +7,8 @@ use caliptra_mcu_spdm_codec::vendor_defined::iana::ocp::caliptra::CaliptraComple
 
 pub(crate) mod authorized_command;
 pub(crate) mod debug_unlock;
+#[cfg(feature = "device-ownership-transfer")]
+pub(crate) mod device_ownership_transfer;
 pub(crate) mod export_attested_csr;
 pub(crate) mod get_attestation;
 

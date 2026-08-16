@@ -82,6 +82,7 @@ These command codes are assigned from the Caliptra range reserved in the [OCP co
 | `0x06`       | RequestDebugUnlock        | O   | Request debug unlock in production environment.                            |
 | `0x07`       | AuthorizeDebugUnlockToken | O   | Send debug unlock token to device for authorization.                       |
 | `0x08`       | ExportAttestedCsr         | O   | Export attested CSR for a Caliptra device identity key.                    |
+| `0x11`       | DeviceOwnershipTransfer   | O   | Carry DOT commands with native authentication.                             |
 | `0x12`       | AuthorizedCommand         | O   | Carry challenge-authorized provisioning and fuse subcommands.              |
 
 R = Required, O = Optional
@@ -102,6 +103,7 @@ The following subcommands are assigned to the SPDM VDM IANA authorization-gated 
 | `0x4D52_564B` (`MRVK`) | FuseRevokeVendorPubKey     | Supported     | Revoke vendor public key.                           |
 | `0x5256_4B48` (`RVKH`) | FuseRevokeVendorPkHash     | Supported     | Revoke vendor public key hash.                      |
 | `0x4946_504B` (`IFPK`) | FuseLockPartition          | Supported     | Lock fuse partition.                                |
+| `0x0000_0011`          | DeviceOwnershipTransfer    | Supported     | Carry authorization-gated DOT subcommands.          |
 
 ### Authorization Flow
 
@@ -109,6 +111,15 @@ The following subcommands are assigned to the SPDM VDM IANA authorization-gated 
 2. Serialize the target subcommand payload exactly as listed below, excluding the common authorization trailer.
 3. Sign `subcommand_id(BE) || payload || challenge` with both the authorized ECC P-384 and ML-DSA-87 keys. The signed command ID is big-endian even though the `AuthorizedCommand` wire field is little-endian.
 4. Append the common authorization trailer and submit the complete request under `AuthorizedCommand`.
+
+For ordinary authorized subcommands, `subcommand_id` is the FourCC shown in the
+table. For DOT, `subcommand_id` is the family ID `0x00000011`; the signed payload
+is `DOT_FourCC(LE) || DOT_payload`. Thus both MCI and SPDM verify the same
+preimage:
+
+```text
+0x00000011(BE) || DOT_FourCC(LE) || DOT_payload || challenge
+```
 
 The common authorization trailer is:
 
@@ -172,3 +183,39 @@ Byte offsets below begin immediately after the four-byte `subcommand_id` and inc
 | | 100:147 | `ecc_pub_y` | u8[48] |
 | | 148:2739 | `mldsa_pub` | u8[2592] |
 | | 2740:7463 | `signature` | HybridSignature |
+
+## Device Ownership Transfer Commands
+
+Runtime DOT commands use a common four-byte subcommand namespace under family
+ID `0x11`. Multi-byte fields are little-endian.
+
+Authorization-gated DOT request:
+
+```text
+[version=1][command=0x12][family=0x11:u32][DOT FourCC:u32]
+[DOT payload][authorization trailer]
+```
+
+Native-authenticated/read-only DOT request:
+
+```text
+[version=1][command=0x11][DOT FourCC:u32][DOT payload]
+```
+
+| FourCC | Command | Path | DOT payload | Validation |
+| ------ | ------- | ---- | ----------- | ---------- |
+| `MDLK` | Lock | Authorized | `cak[48] || lak_hash[48]` | Nonzero keys; EVEN state |
+| `MDDS` | Disable | Authorized | `lak_hash[48]` | Nonzero LAK hash; EVEN state |
+| `MDRT` | Rotate | Authorized | `min_fuse_count:u32 || cak[48] || lak_hash[48]` | Runs when burned count is below the minimum |
+| `MDBB` | Get backup blob | Authorized | Empty | ODD state and valid blob HMAC |
+| `MDUC` | Unlock challenge | Native | Empty | ODD state and valid current blob |
+| `MDUL` | Unlock | Native | LAK ECC key, ML-DSA key, hybrid signature | Existing LAK hash and challenge signatures |
+| `MDST` | Status | Native/read-only | Empty | Returns `enabled:u8 || locked:u8 || burned:u16` |
+| `MDRC` | Recovery | Native | `DOT_BLOB[168]` | ODD state and current-epoch blob HMAC |
+| `DOTW` | Override challenge | Native | Recovery ECC key and ML-DSA key | Keys match fused recovery-key hash |
+| `DOTX` | Override | Native | Recovery keys and hybrid signature | Fused key hash and challenge signatures |
+
+`MDLK`, `MDDS`, `MDRT`, and `MDBB` are rejected with `AccessDenied` when sent
+directly under top-level command `0x11`. Recovery-mode gating for `MDRC`,
+`DOTW`, and `DOTX` is deferred; their native cryptographic and state checks are
+always enforced.

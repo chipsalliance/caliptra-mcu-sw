@@ -2,13 +2,19 @@
 
 use crate::{MailboxClient, TestConfig, UdpTransportDriver};
 use anyhow::Result;
-use caliptra_mcu_command_auth_challenge_signer::CommandAuthChallengeSigner;
+use caliptra_mcu_command_auth_challenge_signer::{CommandAuthChallengeSigner, HybridMessageSigner};
 use caliptra_mcu_core_util_host_command_types::attestation::{
     formats_from_bitmap, AsymAlgo, EvidenceFormat, PkiEntitySlot,
 };
 use caliptra_mcu_core_util_host_command_types::certificate::AttestedCsrValidationError;
 use caliptra_mcu_core_util_host_command_types::crypto_aes::AesMode;
 use caliptra_mcu_core_util_host_command_types::crypto_hmac::CmKeyUsage;
+use caliptra_mcu_core_util_host_command_types::device_ownership_transfer::{
+    DotAuthorizationTrailer, DotDisableRequest, DotLockRequest, DotRotateRequest, DotUnlockRequest,
+    GetDotBackupBlobRequest, DOT_FAMILY_ID, MC_DOT_DISABLE_CANONICAL_CMD_ID,
+    MC_DOT_LOCK_CANONICAL_CMD_ID, MC_DOT_ROTATE_CANONICAL_CMD_ID, MC_DOT_UNLOCK_CANONICAL_CMD_ID,
+    MC_GET_DOT_BACKUP_BLOB_CANONICAL_CMD_ID,
+};
 use caliptra_mcu_debug_unlock_signer::{DebugUnlockSigner, ProdDebugUnlockChallenge};
 use std::net::SocketAddr;
 use std::time::Duration;
@@ -31,6 +37,8 @@ pub struct Validator {
     recv_timeout: Duration,
     debug_unlock_signer: Option<Box<dyn DebugUnlockSigner>>,
     command_authorizer: Option<Box<dyn CommandAuthChallengeSigner>>,
+    dot_signer: Option<Box<dyn HybridMessageSigner>>,
+    dot_cak: Option<[u8; 48]>,
 }
 
 /// Default UDP receive timeout (5 seconds).
@@ -46,6 +54,8 @@ impl Validator {
             recv_timeout: DEFAULT_RECV_TIMEOUT,
             debug_unlock_signer: None,
             command_authorizer: None,
+            dot_signer: None,
+            dot_cak: None,
         }
     }
 
@@ -64,6 +74,8 @@ impl Validator {
             recv_timeout: Duration::from_secs(config.validation.timeout_seconds),
             debug_unlock_signer: None,
             command_authorizer: None,
+            dot_signer: None,
+            dot_cak: None,
         })
     }
 
@@ -97,6 +109,18 @@ impl Validator {
         authorizer: Box<dyn CommandAuthChallengeSigner>,
     ) -> Self {
         self.command_authorizer = Some(authorizer);
+        self
+    }
+
+    /// Enable the destructive DOT validation sequence with caller-provided
+    /// native signing keys and CAK.
+    pub fn set_dot_validation(
+        mut self,
+        signer: Box<dyn HybridMessageSigner>,
+        cak: [u8; 48],
+    ) -> Self {
+        self.dot_signer = Some(signer);
+        self.dot_cak = Some(cak);
         self
     }
 
@@ -177,6 +201,12 @@ impl Validator {
         let get_attestation_results = self.validate_get_attestation_all(&mut client);
         results.extend(get_attestation_results);
 
+        // Run DOT last: FE_PROG changes field entropy and would invalidate a
+        // DOT blob created earlier in the same disposable emulator instance.
+        if self.dot_signer.is_some() {
+            results.extend(self.validate_dot(&mut client));
+        }
+
         if self.verbose {
             self.print_summary(&results);
         }
@@ -186,6 +216,242 @@ impl Validator {
 }
 
 impl Validator {
+    fn authorize_dot(
+        &self,
+        client: &mut MailboxClient,
+        payload: &[u8],
+    ) -> Result<DotAuthorizationTrailer> {
+        let authorizer = self
+            .command_authorizer
+            .as_deref()
+            .ok_or_else(|| anyhow::anyhow!("DOT command authorizer is not configured"))?;
+        let challenge = client.get_auth_challenge()?.challenge;
+        let signature = authorizer.authorize(DOT_FAMILY_ID, payload, &challenge)?;
+        let (ecc_pub_x, ecc_pub_y, mldsa_pub) = authorizer.public_keys()?;
+        Ok(DotAuthorizationTrailer {
+            nonce: challenge,
+            ecc_pub_x,
+            ecc_pub_y,
+            mldsa_pub,
+            signature,
+        })
+    }
+
+    /// Exercise one coherent sequence on a disposable DOT-enabled target:
+    /// unlocked -> locked -> rotated -> unlocked -> disabled.
+    fn validate_dot(&self, client: &mut MailboxClient) -> Vec<ValidationResult> {
+        const STATUS_NAME: &str = "DotStatus";
+        const LOCK_NAME: &str = "DotLock";
+        const BACKUP_NAME: &str = "GetDotBackupBlob";
+        const ROTATE_NAME: &str = "DotRotate";
+        const CHALLENGE_NAME: &str = "DotUnlockChallenge";
+        const UNLOCK_NAME: &str = "DotUnlock";
+        const DISABLE_NAME: &str = "DotDisable";
+
+        let pass = |test_name: &str| ValidationResult {
+            test_name: test_name.to_string(),
+            passed: true,
+            error_message: None,
+        };
+        let fail = |test_name: &str, error: String| ValidationResult {
+            test_name: test_name.to_string(),
+            passed: false,
+            error_message: Some(error),
+        };
+
+        let mut results = Vec::new();
+        let Some(signer) = self.dot_signer.as_deref() else {
+            results.push(fail(CHALLENGE_NAME, "DOT signer is not configured".into()));
+            return results;
+        };
+        let Some(cak) = self.dot_cak else {
+            results.push(fail(LOCK_NAME, "DOT CAK is not configured".into()));
+            return results;
+        };
+
+        match client.dot_status() {
+            Ok(response) if response.status.enabled == 1 && response.status.locked == 0 => {
+                results.push(pass(STATUS_NAME));
+            }
+            Ok(response) => {
+                results.push(fail(
+                    STATUS_NAME,
+                    format!(
+                        "expected enabled unlocked state, got enabled={} locked={} burned={}",
+                        response.status.enabled, response.status.locked, response.status.burned
+                    ),
+                ));
+                return results;
+            }
+            Err(error) => {
+                results.push(fail(STATUS_NAME, error.to_string()));
+                return results;
+            }
+        }
+
+        let keys = match signer.dot_public_keys() {
+            Ok(keys) => keys,
+            Err(error) => {
+                results.push(fail(LOCK_NAME, error.to_string()));
+                return results;
+            }
+        };
+        let lak_hash = keys.dot_lak_hash();
+
+        let mut lock_payload = MC_DOT_LOCK_CANONICAL_CMD_ID.to_le_bytes().to_vec();
+        lock_payload.extend_from_slice(&cak);
+        lock_payload.extend_from_slice(&lak_hash);
+        let lock_authorization = match self.authorize_dot(client, &lock_payload) {
+            Ok(authorization) => authorization,
+            Err(error) => {
+                results.push(fail(LOCK_NAME, error.to_string()));
+                return results;
+            }
+        };
+        let lock_request = DotLockRequest {
+            cak,
+            lak_hash,
+            authorization: lock_authorization,
+        };
+        match client.dot_lock(&lock_request) {
+            Ok(response) if response.reset_required == 1 => results.push(pass(LOCK_NAME)),
+            Ok(response) => {
+                results.push(fail(
+                    LOCK_NAME,
+                    format!("unexpected reset_required={}", response.reset_required),
+                ));
+                return results;
+            }
+            Err(error) => {
+                results.push(fail(LOCK_NAME, error.to_string()));
+                return results;
+            }
+        }
+
+        let backup_payload = MC_GET_DOT_BACKUP_BLOB_CANONICAL_CMD_ID.to_le_bytes();
+        let backup_authorization = match self.authorize_dot(client, &backup_payload) {
+            Ok(authorization) => authorization,
+            Err(error) => {
+                results.push(fail(BACKUP_NAME, error.to_string()));
+                return results;
+            }
+        };
+        let backup_request = GetDotBackupBlobRequest {
+            authorization: backup_authorization,
+        };
+        match client.get_dot_backup_blob(&backup_request) {
+            Ok(response) if response.blob.iter().any(|byte| *byte != 0) => {
+                results.push(pass(BACKUP_NAME));
+            }
+            Ok(_) => {
+                results.push(fail(BACKUP_NAME, "empty blob returned".into()));
+                return results;
+            }
+            Err(error) => {
+                results.push(fail(BACKUP_NAME, error.to_string()));
+                return results;
+            }
+        }
+
+        let min_fuse_count = 3u32;
+        let mut rotate_payload = MC_DOT_ROTATE_CANONICAL_CMD_ID.to_le_bytes().to_vec();
+        rotate_payload.extend_from_slice(&min_fuse_count.to_le_bytes());
+        rotate_payload.extend_from_slice(&cak);
+        rotate_payload.extend_from_slice(&lak_hash);
+        let rotate_authorization = match self.authorize_dot(client, &rotate_payload) {
+            Ok(authorization) => authorization,
+            Err(error) => {
+                results.push(fail(ROTATE_NAME, error.to_string()));
+                return results;
+            }
+        };
+        let rotate_request = DotRotateRequest {
+            min_fuse_count,
+            cak,
+            lak_hash,
+            authorization: rotate_authorization,
+        };
+        match client.dot_rotate(&rotate_request) {
+            Ok(response) if response.reset_required == 1 => results.push(pass(ROTATE_NAME)),
+            Ok(response) => {
+                results.push(fail(
+                    ROTATE_NAME,
+                    format!("unexpected reset_required={}", response.reset_required),
+                ));
+                return results;
+            }
+            Err(error) => {
+                results.push(fail(ROTATE_NAME, error.to_string()));
+                return results;
+            }
+        }
+
+        let challenge = match client.dot_unlock_challenge() {
+            Ok(response) => {
+                results.push(pass(CHALLENGE_NAME));
+                response.challenge
+            }
+            Err(error) => {
+                results.push(fail(CHALLENGE_NAME, error.to_string()));
+                return results;
+            }
+        };
+        let mut unlock_transcript = Vec::with_capacity(52);
+        unlock_transcript.extend_from_slice(&MC_DOT_UNLOCK_CANONICAL_CMD_ID.to_be_bytes());
+        unlock_transcript.extend_from_slice(&challenge);
+        let signature = match signer.sign_message(&unlock_transcript) {
+            Ok(signature) => signature,
+            Err(error) => {
+                results.push(fail(UNLOCK_NAME, error.to_string()));
+                return results;
+            }
+        };
+        let unlock_request = DotUnlockRequest {
+            lak_ecc_pub_x: keys.ecc_pub_x,
+            lak_ecc_pub_y: keys.ecc_pub_y,
+            lak_mldsa_pub: keys.mldsa_pub,
+            signature,
+        };
+        match client.dot_unlock(&unlock_request) {
+            Ok(response) if response.reset_required == 1 => results.push(pass(UNLOCK_NAME)),
+            Ok(response) => {
+                results.push(fail(
+                    UNLOCK_NAME,
+                    format!("unexpected reset_required={}", response.reset_required),
+                ));
+                return results;
+            }
+            Err(error) => {
+                results.push(fail(UNLOCK_NAME, error.to_string()));
+                return results;
+            }
+        }
+
+        let mut disable_payload = MC_DOT_DISABLE_CANONICAL_CMD_ID.to_le_bytes().to_vec();
+        disable_payload.extend_from_slice(&lak_hash);
+        let disable_authorization = match self.authorize_dot(client, &disable_payload) {
+            Ok(authorization) => authorization,
+            Err(error) => {
+                results.push(fail(DISABLE_NAME, error.to_string()));
+                return results;
+            }
+        };
+        let disable_request = DotDisableRequest {
+            lak_hash,
+            authorization: disable_authorization,
+        };
+        match client.dot_disable(&disable_request) {
+            Ok(response) if response.reset_required == 1 => results.push(pass(DISABLE_NAME)),
+            Ok(response) => results.push(fail(
+                DISABLE_NAME,
+                format!("unexpected reset_required={}", response.reset_required),
+            )),
+            Err(error) => results.push(fail(DISABLE_NAME, error.to_string())),
+        }
+
+        results
+    }
+
     /// Validate GetDeviceCapabilities command
     fn validate_get_device_capabilities(&self, client: &mut MailboxClient) -> ValidationResult {
         let test_name = "GetDeviceCapabilities".to_string();

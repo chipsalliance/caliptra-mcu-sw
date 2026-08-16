@@ -101,6 +101,7 @@ Versions use `major.minor.patch` ASCII format. Index `02h` returns `UnsupportedO
 | 5          | `06h`        | `RequestDebugUnlock`        | SPDM VDM              |
 | 6          | `07h`        | `AuthorizeDebugUnlockToken` | SPDM VDM              |
 | 7          | `08h`        | `ExportAttestedCsr`         | SPDM VDM              |
+| 16         | `11h`        | `DeviceOwnershipTransfer`   | SPDM VDM              |
 | 17         | `12h`        | `AuthorizedCommand`         | SPDM VDM              |
 
 This table defines the bit assignment for every allocated command code. A responder sets a bit only when the corresponding command is implemented. `GetAttestation` is set when a responder that carries it is built and the device can produce at least one evidence format. `AuthorizedCommand` is set when its wrapper and at least one authorized subcommand are implemented.
@@ -117,7 +118,11 @@ This table defines the bit assignment for every allocated command code. A respon
 | 5          | `FuseRevokeVendorPkHash`     | Implemented |
 | 6          | `FuseLockPartition`          | Implemented |
 | 7          | `ProvisionOwnerPkHash`       | Implemented |
-| 8:31       | Reserved                     | —           |
+| 8          | `DotLock`                    | Implemented |
+| 9          | `DotDisable`                 | Implemented |
+| 10         | `DotRotate`                  | Implemented |
+| 11         | `GetDotBackupBlob`           | Implemented |
+| 12:31      | Reserved                     | —           |
 
 The authorized-subcommand assignments are stable capability indexes; they are not transport command IDs. A responder sets a bit only when that subcommand is implemented under `AuthorizedCommand`. Authorization, lifecycle, or policy restrictions do not clear an implementation capability bit; execution can still return `AccessDenied`, `PolicyViolation`, or `InvalidState`.
 

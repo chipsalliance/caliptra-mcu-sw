@@ -7,6 +7,11 @@ pub mod capabilities;
 pub mod flash;
 pub mod version;
 
+/// Userspace flash-partition driver used for the ROM-compatible DOT blob.
+pub const DOT_BLOB_STORE_DRIVER_NUM: u32 = 0x8000_0023;
+/// Minimum capacity required from a platform's DOT blob store.
+pub const DOT_BLOB_STORE_SIZE: usize = 4 * 1024;
+
 /// Configures the memory map for the MCU.
 /// These are the defaults that can be overridden and provided to the ROM and runtime builds.
 #[repr(C)]

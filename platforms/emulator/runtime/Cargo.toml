@@ -42,8 +42,13 @@ rv32i.workspace = true
 
 [features]
 default = ["all-features"]
+# Runtime-kernel features are forwarded to the bundled user app. Keep both DOT
+# gates in the default set so an app with DOT commands always has its storage
+# syscall and transport drivers instantiated by the kernel.
 all-features = [
 	"spdm",
+	"dot-mci-mailbox",
+	"dot-spdm-vdm",
 	"streaming-boot",
 	"flash-boot",
 	"firmware-update",
@@ -67,6 +72,8 @@ doe = [
 ]
 userspace-log = []
 debug = []
+dot-mci-mailbox = []
+dot-spdm-vdm = []
 # Production / minimal-size build.  Strips:
 #   - kernel `debug!()` macro          (via kernel/no_debug_panics)
 #   - romtime `print!`/`println!`      (via caliptra-mcu-romtime/no-print)
@@ -101,9 +108,9 @@ test-sw-pcr-store = []
 # Kernel only test
 test-exit-immediately = []
 test-xtask-runtime = []
-test-caliptra-util-host-validator = ["mcu-mbox-service"]
+test-caliptra-util-host-validator = ["mcu-mbox-service", "dot-mci-mailbox"]
 test-caliptra-util-host-mctp-vdm-validator = ["mctp-vdm-service", "userspace-log"]
-test-caliptra-util-host-spdm-vdm-validator = ["spdm"]
+test-caliptra-util-host-spdm-vdm-validator = ["spdm", "dot-spdm-vdm"]
 test-i3c-simple = []
 test-i3c-constant-writes = []
 test-flash-based-boot = ["flash-boot"]
@@ -125,7 +132,7 @@ test-defmt-logging-release = ["userspace-log", "mcu-mbox-service"]
 test-defmt-logging-vdm = ["userspace-log", "mcu-mbox-service", "mctp-vdm-service"]
 test-firmware-v2 = []
 test-mcu-mbox-driver = []
-test-mcu-mbox-cmds = ["mcu-mbox-service"]
+test-mcu-mbox-cmds = ["mcu-mbox-service", "dot-mci-mailbox"]
 test-ekp = ["ocp-lock", "test-mcu-mbox-cmds"]
 test-mcu-mbox-fips-self-test = ["mcu-mbox-service"]
 test-mcu-mbox-fips-periodic = ["mcu-mbox-service"]
