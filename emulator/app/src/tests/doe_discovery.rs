@@ -14,6 +14,10 @@ pub enum DoeDiscoveryTest {
     DoeDiscovery,
     Spdm,
     SecureSpdm,
+    OutOfRangeIndex,
+    MaxIndex,
+    SupportedVersion,
+    UnsupportedVersion,
 }
 
 impl std::fmt::Display for DoeDiscoveryTest {
@@ -22,6 +26,10 @@ impl std::fmt::Display for DoeDiscoveryTest {
             DoeDiscoveryTest::DoeDiscovery => write!(f, "DoeDiscovery"),
             DoeDiscoveryTest::Spdm => write!(f, "DoeSpdm"),
             DoeDiscoveryTest::SecureSpdm => write!(f, "DoeSecureSpdm"),
+            DoeDiscoveryTest::OutOfRangeIndex => write!(f, "DoeOutOfRangeIndex"),
+            DoeDiscoveryTest::MaxIndex => write!(f, "DoeMaxIndex"),
+            DoeDiscoveryTest::SupportedVersion => write!(f, "DoeSupportedDiscoveryVersion"),
+            DoeDiscoveryTest::UnsupportedVersion => write!(f, "DoeUnsupportedDiscoveryVersion"),
         }
     }
 }
@@ -39,24 +47,46 @@ impl DoeDiscoveryTest {
     }
 
     fn request_message(&self) -> Vec<u8> {
-        let index = match self {
-            DoeDiscoveryTest::DoeDiscovery => DataObjectType::DoeDiscovery as u8,
-            DoeDiscoveryTest::Spdm => DataObjectType::DoeSpdm as u8,
-            DoeDiscoveryTest::SecureSpdm => DataObjectType::DoeSecureSpdm as u8,
+        let (index, version) = match self {
+            DoeDiscoveryTest::DoeDiscovery => (
+                DataObjectType::DoeDiscovery as u8,
+                DOE_DISCOVERY_VERSION_LEGACY,
+            ),
+            DoeDiscoveryTest::Spdm => (DataObjectType::DoeSpdm as u8, DOE_DISCOVERY_VERSION_LEGACY),
+            DoeDiscoveryTest::SecureSpdm => (
+                DataObjectType::DoeSecureSpdm as u8,
+                DOE_DISCOVERY_VERSION_LEGACY,
+            ),
+            DoeDiscoveryTest::OutOfRangeIndex => (
+                DataObjectType::DoeSecureSpdm as u8 + 1,
+                DOE_DISCOVERY_VERSION_LEGACY,
+            ),
+            DoeDiscoveryTest::MaxIndex => (u8::MAX, DOE_DISCOVERY_VERSION_LEGACY),
+            DoeDiscoveryTest::SupportedVersion => {
+                (DataObjectType::DoeDiscovery as u8, DOE_DISCOVERY_VERSION_2)
+            }
+            DoeDiscoveryTest::UnsupportedVersion => (DataObjectType::DoeDiscovery as u8, 0x01),
         };
-        DoeDiscoveryRequest::new(index).as_bytes().to_vec()
+        DoeDiscoveryRequest::new_with_version(index, version)
+            .as_bytes()
+            .to_vec()
     }
 
     fn response_message(&self) -> Vec<u8> {
         match self {
-            DoeDiscoveryTest::DoeDiscovery => Self::build_response(
-                DataObjectType::DoeDiscovery,
-                DataObjectType::DoeDiscovery as u8 + 1,
-            ),
+            DoeDiscoveryTest::DoeDiscovery | DoeDiscoveryTest::SupportedVersion => {
+                Self::build_response(
+                    DataObjectType::DoeDiscovery,
+                    DataObjectType::DoeDiscovery as u8 + 1,
+                )
+            }
             DoeDiscoveryTest::Spdm => {
                 Self::build_response(DataObjectType::DoeSpdm, DataObjectType::DoeSpdm as u8 + 1)
             }
             DoeDiscoveryTest::SecureSpdm => Self::build_response(DataObjectType::DoeSecureSpdm, 0),
+            DoeDiscoveryTest::OutOfRangeIndex
+            | DoeDiscoveryTest::MaxIndex
+            | DoeDiscoveryTest::UnsupportedVersion => Self::build_unsupported_response(),
         }
     }
 
@@ -65,13 +95,25 @@ impl DoeDiscoveryTest {
             .as_bytes()
             .to_vec()
     }
+
+    /// Expected response for an out-of-range index or an unsupported DOE
+    /// Discovery Version: Vendor ID FFFFh with a zero protocol and next index.
+    fn build_unsupported_response() -> Vec<u8> {
+        DoeDiscoveryResponse::unsupported().as_bytes().to_vec()
+    }
 }
+
+/// Number of polling attempts before a test case is declared failed for not
+/// receiving a response. Bounding this keeps a non-responsive firmware from
+/// hanging the whole test binary until the global timeout fires.
+const MAX_RECEIVE_ATTEMPTS: u32 = 60;
 
 struct Test {
     name: String,
     req_msg: Vec<u8>,
     resp_msg: Vec<u8>,
     test_state: DoeTestState,
+    recv_attempts: u32,
     passed: bool,
 }
 
@@ -82,6 +124,7 @@ impl Test {
             req_msg,
             resp_msg,
             test_state: DoeTestState::Start,
+            recv_attempts: 0,
             passed: false,
         }
     }
@@ -97,6 +140,7 @@ impl DoeTransportTest for Test {
         println!("DOE_DISCOVERY_TEST: Running test: {}", self.name);
 
         self.test_state = DoeTestState::Start;
+        self.recv_attempts = 0;
 
         while caliptra_mcu_testing_common::is_emulator_running() {
             match self.test_state {
@@ -136,8 +180,18 @@ impl DoeTransportTest for Test {
                         self.test_state = DoeTestState::Finish;
                     }
                     Ok(_) => {
-                        // Stay in ReceiveData state and yield for a bit
-                        sleep_emulator_ticks(100_000);
+                        self.recv_attempts += 1;
+                        if self.recv_attempts >= MAX_RECEIVE_ATTEMPTS {
+                            println!(
+                                "DOE_DISCOVERY_TEST: No response received for {}, expected: {:?}",
+                                self.name, self.resp_msg
+                            );
+                            self.passed = false;
+                            self.test_state = DoeTestState::Finish;
+                        } else {
+                            // Stay in ReceiveData state and yield for a bit
+                            sleep_emulator_ticks(100_000);
+                        }
                     }
                     Err(e) => {
                         println!("DOE_DISCOVERY_TEST: Failed to receive response: {:?}", e);
