@@ -144,6 +144,7 @@ test-mcu-mbox-driver = []
 test-mcu-mbox-soc-requester-loopback = []
 test-mcu-rom-flash-access = []
 test-mctp-capsule-loopback = []
+test-mctp-capsule-loopback-warm-reset = []
 # --- Test features: user-app ---
 test-do-nothing = []
 test-defmt-logging-mailbox = ["userspace-log", "mcu-mbox-service"]

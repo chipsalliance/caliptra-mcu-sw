@@ -75,6 +75,7 @@ pub const FPGA_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-mctp-spdm-attestation-pcr-quote",
     "test-mctp-spdm-responder-conformance",
     "test-external-otp",
+    "test-mctp-capsule-loopback-warm-reset",
 ];
 
 /// Release-profile runtime test features (emulator).

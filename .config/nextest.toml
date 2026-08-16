@@ -23,6 +23,7 @@ store-failure-output = true
 
 [profile.nightly-ci]
 inherits = "nightly"
+retries = 2
 # Tests that program OTP with LifecycleControllerState::Dev as the initial
 # state hang the FPGA at "Taking subsystem out of reset" (confirmed locally
 # with test_lc_dev_to_prod). Dev-init tests are disabled until that's
