@@ -131,17 +131,31 @@ impl<'a, T: DoeTransport<'a>> DoeDriver<'a, T> {
 
     fn handle_doe_discovery(&self, doe_req: DoeDiscoveryRequest) {
         let data_object_protocol = DataObjectType::from(doe_req.index());
-        if data_object_protocol == DataObjectType::Unsupported {
-            capsule_debug!("DOE", "Unsupported DOE Discovery Request");
-            return;
-        }
 
-        let next_index = (data_object_protocol as u8 + 1) % NUM_DATA_OBJECT_PROTOCOL_TYPES as u8;
+        // An out-of-range index or an unsupported Discovery Version is still
+        // answered, with a Vendor ID of FFFFh, so the requester is not left waiting.
+        let unsupported =
+            !doe_req.is_version_supported() || data_object_protocol == DataObjectType::Unsupported;
 
+        let discovery_response = if unsupported {
+            capsule_debug!(
+                "DOE",
+                "Unsupported DOE Discovery Request: index {}, version {}",
+                doe_req.index(),
+                doe_req.version()
+            );
+            DoeDiscoveryResponse::unsupported()
+        } else {
+            let next_index =
+                (data_object_protocol as u8 + 1) % NUM_DATA_OBJECT_PROTOCOL_TYPES as u8;
+            DoeDiscoveryResponse::new(data_object_protocol as u8, next_index)
+        };
+
+        self.send_doe_discovery_response(discovery_response);
+    }
+
+    fn send_doe_discovery_response(&self, discovery_response: DoeDiscoveryResponse) {
         let mut doe_resp = [0u32; DOE_DISCOVERY_DATA_OBJECT_LEN_DW];
-
-        // Prepare the DOE Discovery Response
-        let discovery_response = DoeDiscoveryResponse::new(data_object_protocol as u8, next_index);
 
         // Prepare the response buffer
         let doe_header = DoeDataObjectHeader::new(DOE_DISCOVERY_DATA_OBJECT_LEN_DW as u32);
