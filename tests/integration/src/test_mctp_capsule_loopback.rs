@@ -47,7 +47,7 @@ mod test {
     #[cfg_attr(not(feature = "fpga_realtime"), ignore)]
     #[test]
     fn test_mctp_capsule_loopback_after_warm_reset() {
-        let feature = "test-mctp-capsule-loopback";
+        let feature = "test-mctp-capsule-loopback-warm-reset";
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
@@ -58,15 +58,8 @@ mod test {
             ..Default::default()
         });
 
-        hw.warm_reset();
-        hw.step_until(|hw| {
-            hw.mci_boot_milestones()
-                .contains(McuBootMilestones::WARM_RESET_FLOW_COMPLETE)
-        });
-
-        assert!(hw
-            .mci_boot_milestones()
-            .contains(McuBootMilestones::WARM_RESET_FLOW_COMPLETE));
+        hw.step_until_output_contains("test-mctp-capsule-loopback-warm-reset")
+            .expect("Warm-reset MCTP capsule loopback runtime did not start");
 
         hw.start_i3c_controller();
 
