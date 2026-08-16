@@ -9,6 +9,17 @@ const PCISIG_DOE_VENDOR_ID: u16 = 0x0001;
 const LENGTH_FIELD_BITS: u32 = 18;
 const LENGTH_MASK: u32 = (1 << LENGTH_FIELD_BITS) - 1;
 
+/// Vendor ID reported in a DOE Discovery Response when there is no Data Object
+/// Protocol associated with the requested index.
+pub const UNSUPPORTED_VENDOR_ID: u16 = 0xFFFF;
+
+/// DOE Discovery Version used when the DOE Extended Capability Version is 01h.
+pub const DOE_DISCOVERY_VERSION_LEGACY: u8 = 0x00;
+
+/// DOE Discovery Version required when the DOE Extended Capability Version is
+/// 02h or greater.
+pub const DOE_DISCOVERY_VERSION_2: u8 = 0x02;
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[repr(u8)]
 pub enum DataObjectType {
@@ -64,7 +75,8 @@ bitfield! {
     pub struct DoeDiscoveryRequest([u8]);
     impl Debug;
     pub u8, index, set_index: 7, 0;
-    u32, reserved_1, _: 31, 8;
+    pub u8, version, set_version: 15, 8;
+    u16, reserved_1, _: 31, 16;
 }
 
 impl Default for DoeDiscoveryRequest<[u8; DOE_DISCOVERY_REQ_RESP_LEN]> {
@@ -75,8 +87,13 @@ impl Default for DoeDiscoveryRequest<[u8; DOE_DISCOVERY_REQ_RESP_LEN]> {
 
 impl DoeDiscoveryRequest<[u8; DOE_DISCOVERY_REQ_RESP_LEN]> {
     pub fn new(index: u8) -> Self {
+        Self::new_with_version(index, DOE_DISCOVERY_VERSION_LEGACY)
+    }
+
+    pub fn new_with_version(index: u8, version: u8) -> Self {
         let mut req = Self::default();
         req.set_index(index);
+        req.set_version(version);
         req
     }
 }
@@ -103,6 +120,14 @@ impl DoeDiscoveryResponse<[u8; DOE_DISCOVERY_REQ_RESP_LEN]> {
         response.set_vendor_id(PCISIG_DOE_VENDOR_ID);
         response.set_data_object_protocol(data_object_protocol);
         response.set_next_index(next_index);
+        response
+    }
+
+    /// Response expected when the requested index is out of range or the DOE
+    /// Discovery Version is not supported.
+    pub fn unsupported() -> Self {
+        let mut response = Self::default();
+        response.set_vendor_id(UNSUPPORTED_VENDOR_ID);
         response
     }
 }
