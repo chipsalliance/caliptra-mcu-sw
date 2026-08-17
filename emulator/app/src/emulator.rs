@@ -902,6 +902,9 @@ impl Emulator {
                 soc_manifest_max_svn: cli.fuse_soc_manifest_max_svn.map(|v| v as u8),
                 vendor_hashes_prod_partition: fuse_vendor_hashes_prod_partition,
                 vendor_test_partition: fuse_vendor_test_partition,
+                idevid_manufacturer_serial_number: Some(
+                    caliptra_mcu_config_emulator::EMULATOR_UEID_SERIAL_NUMBER,
+                ),
                 lifecycle_state: lifecycle_fuse_data,
                 ..Default::default()
             },

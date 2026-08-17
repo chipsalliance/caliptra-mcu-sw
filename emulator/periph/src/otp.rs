@@ -56,6 +56,7 @@ pub struct OtpArgs {
     pub soc_manifest_max_svn: Option<u8>,
     pub vendor_hashes_prod_partition: Option<Vec<u8>>,
     pub vendor_test_partition: Option<Vec<u8>>,
+    pub idevid_manufacturer_serial_number: Option<[u8; 16]>,
     /// Raw lifecycle partition data (LIFECYCLE_MEM_SIZE bytes) to provision.
     /// If set, written to the LIFE_CYCLE partition in OTP.
     pub lifecycle_state: Option<Vec<u8>>,
@@ -165,6 +166,16 @@ impl Otp {
         }
         {
             let mut partitions = otp.partitions.borrow_mut();
+            if let Some(serial_number) = args.idevid_manufacturer_serial_number {
+                const MANUFACTURER_SERIAL_NUMBER_OFFSET: usize = 12 * size_of::<u32>();
+                let start = fuses::OTP_CPTRA_CORE_IDEVID_CERT_IDEVID_ATTR.byte_offset
+                    + MANUFACTURER_SERIAL_NUMBER_OFFSET;
+                let end = start + serial_number.len();
+                if partitions[start..end].iter().all(|&byte| byte == 0) {
+                    partitions[start..end].copy_from_slice(&serial_number);
+                }
+            }
+
             partitions[fuses::SVN_PARTITION_BYTE_OFFSET + 36] =
                 args.soc_manifest_max_svn.unwrap_or(0);
             if let Some(soc_manifest_svn) = args.soc_manifest_svn {
@@ -691,6 +702,38 @@ mod test {
         otp.write_check_trigger_regwen(0u32.into());
         // block read access to the SW managed partitions
         otp.write_vendor_test_partition_read_lock(0u32.into());
+    }
+
+    #[test]
+    fn test_idevid_manufacturer_serial_number_provisioning() {
+        const SERIAL_NUMBER_OFFSET: usize = 12 * size_of::<u32>();
+        let start =
+            fuses::OTP_CPTRA_CORE_IDEVID_CERT_IDEVID_ATTR.byte_offset + SERIAL_NUMBER_OFFSET;
+        let serial_number = [0xA5; 16];
+
+        let clock = Clock::new();
+        let otp = Otp::new(
+            &clock,
+            OtpArgs {
+                idevid_manufacturer_serial_number: Some(serial_number),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(&otp.partitions.borrow()[start..start + 16], &serial_number);
+
+        let mut raw_memory = vec![0u8; TOTAL_SIZE];
+        raw_memory[start..start + 16].fill(0x5A);
+        let otp = Otp::new(
+            &clock,
+            OtpArgs {
+                raw_memory: Some(raw_memory),
+                idevid_manufacturer_serial_number: Some(serial_number),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(&otp.partitions.borrow()[start..start + 16], &[0x5A; 16]);
     }
 
     #[test]
