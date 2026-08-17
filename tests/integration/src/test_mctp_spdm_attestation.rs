@@ -168,6 +168,8 @@ pub(crate) mod test {
             );
             SERVER_LISTENING.store(true, Ordering::Relaxed);
 
+            let requester = execute_spdm_attestation_with_port("MCTP", Some(spdm_port));
+
             if let Some(spdm_stream) = listener.incoming().next() {
                 let mut spdm_stream = spdm_stream.expect("Failed to accept connection");
 
@@ -177,6 +179,17 @@ pub(crate) mod test {
                     println!("[{}]: Spdm Attestation Test Failed", test_name);
                     exit(-1);
                 } else {
+                    match requester.join() {
+                        Ok(true) => {}
+                        Ok(false) => {
+                            println!("[{}]: spdm_requester_emu failed", test_name);
+                            exit(-1);
+                        }
+                        Err(_) => {
+                            println!("[{}]: spdm_requester_emu panicked", test_name);
+                            exit(-1);
+                        }
+                    }
                     if let Err(err) = validate_spdm_attestation_artifacts() {
                         println!(
                             "[{}]: Spdm Attestation Artifact Check Failed: {err}",
@@ -188,10 +201,6 @@ pub(crate) mod test {
                     exit(0);
                 }
             }
-        });
-
-        caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
-            execute_spdm_attestation_with_port("MCTP", Some(spdm_port));
         });
     }
 }

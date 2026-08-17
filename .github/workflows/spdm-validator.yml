@@ -6,6 +6,17 @@ on:
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
   workflow_call:
+  # SPDM 1.4 is developed on this branch, so the SPDM suites gate its pull
+  # requests instead of only running in the nightly job. Other branches are
+  # deliberately excluded: these tests build spdm-emu from source and run four
+  # emulator suites, which is too slow to put in front of every pull request.
+  pull_request:
+    # TODO: Remove this filter after feature/spdm-1_4 merges to main.
+    branches: [ feature/spdm-1_4 ]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   # Pin the Caliptra core ROM to a release tag; image/update crates continue
@@ -83,7 +94,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: chipsalliance/caliptra-spdm-emu
-          ref: caliptra-main
+          ref: caliptra-main-14
           path: spdm-emu
           submodules: recursive
 
@@ -146,6 +157,19 @@ jobs:
         run: |
           cargo xtask all-build
           cargo t -p caliptra-mcu-tests-integration -- --test test_mctp_spdm_attestation_pcr_quote --nocapture --include-ignored
+
+      - name: Upload attestation logs and traces for MCTP transport
+        if: always()
+        uses: actions/upload-artifact@v7
+        env:
+          SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
+        with:
+          name: spdm-mctp-attestation-results
+          if-no-files-found: warn
+          path: |
+            ${{ env.SPDM_VALIDATOR_DIR }}/spdm_requester_emu_output.txt
+            ${{ env.SPDM_VALIDATOR_DIR }}/caliptra-evidence.pcap
+            ${{ env.SPDM_VALIDATOR_DIR }}/measurement_block_*.bin
 
       - name: Run SPDM validator tests on DOE transport
         env:

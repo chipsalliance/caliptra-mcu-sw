@@ -10,6 +10,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use zerocopy::{transmute, FromBytes, Immutable, IntoBytes};
 
 const RECEIVER_BUFFER_SIZE: usize = 4160;
+const ATTESTATION_REQUESTER_CAPABILITIES: &str = "CERT,CHAL,CHUNK,LARGE_RESP";
 pub const SOCKET_SPDM_COMMAND_NORMAL: u32 = 0x0001;
 pub const SOCKET_SPDM_COMMAND_STOP: u32 = 0xFFFE;
 pub const SOCKET_SPDM_COMMAND_TEST: u32 = 0xDEAD;
@@ -280,10 +281,13 @@ pub fn execute_spdm_tee_io_validator(transport: &'static str) {
 }
 
 pub fn execute_spdm_attestation(transport: &'static str) {
-    execute_spdm_attestation_with_port(transport, None);
+    let _ = execute_spdm_attestation_with_port(transport, None);
 }
 
-pub fn execute_spdm_attestation_with_port(transport: &'static str, port: Option<u16>) {
+pub fn execute_spdm_attestation_with_port(
+    transport: &'static str,
+    port: Option<u16>,
+) -> std::thread::JoinHandle<bool> {
     crate::spawn_with_emulator_state(move || {
         println!("Starting spdm_requester_emu process. Waiting for SPDM listener to start...");
         while !SERVER_LISTENING.load(Ordering::Relaxed) {
@@ -296,23 +300,25 @@ pub fn execute_spdm_attestation_with_port(transport: &'static str, port: Option<
                     match child.try_wait() {
                         Ok(Some(status)) => {
                             println!("spdm_requester_emu exited with status: {:?}", status);
-                            break;
+                            return status.success();
                         }
                         Ok(None) => {}
                         Err(e) => {
                             println!("Error: {:?}", e);
-                            std::process::exit(1);
+                            return false;
                         }
                     }
                     std::thread::sleep(std::time::Duration::from_millis(100));
                 }
                 let _ = child.kill();
+                false
             }
             Err(e) => {
                 println!("Error: {:?} Failed to spawn spdm_requester_emu!!", e);
+                false
             }
         }
-    });
+    })
 }
 
 pub fn execute_spdm_responder_validator(transport: &'static str) {
@@ -380,20 +386,25 @@ fn start_spdm_attestation_with_port(
     spawn_validator_binary(
         "spdm_requester_emu",
         "spdm_requester_emu_output.txt",
-        |cmd| {
-            println!(
-                "Starting spdm_requester_emu process with transport: {}",
-                transport
-            );
-            cmd.arg("--trans")
-                .arg(transport)
-                .arg("--pcap")
-                .arg("caliptra-evidence.pcap");
-            if let Some(port) = port {
-                cmd.arg("--port").arg(port.to_string());
-            }
-        },
+        |cmd| configure_spdm_attestation_command(cmd, transport, port),
     )
+}
+
+fn configure_spdm_attestation_command(cmd: &mut Command, transport: &str, port: Option<u16>) {
+    println!(
+        "Starting spdm_requester_emu process with transport: {}",
+        transport
+    );
+    cmd.arg("--trans")
+        .arg(transport)
+        // Endpoint information is not part of this attestation flow.
+        .arg("--cap")
+        .arg(ATTESTATION_REQUESTER_CAPABILITIES)
+        .arg("--pcap")
+        .arg("caliptra-evidence.pcap");
+    if let Some(port) = port {
+        cmd.arg("--port").arg(port.to_string());
+    }
 }
 
 pub fn start_spdm_tee_io_validator(
@@ -468,4 +479,33 @@ where
         .stderr(Stdio::from(output_file_clone))
         .current_dir(&dir_path)
         .spawn()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn attestation_requester_excludes_endpoint_info() {
+        let mut command = Command::new("spdm_requester_emu");
+        configure_spdm_attestation_command(&mut command, "MCTP", Some(1025));
+
+        let args = command
+            .get_args()
+            .map(|arg| arg.to_str().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            args,
+            [
+                "--trans",
+                "MCTP",
+                "--cap",
+                "CERT,CHAL,CHUNK,LARGE_RESP",
+                "--pcap",
+                "caliptra-evidence.pcap",
+                "--port",
+                "1025",
+            ]
+        );
+    }
 }
