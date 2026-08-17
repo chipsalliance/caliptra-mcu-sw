@@ -45,6 +45,10 @@ The following subcommands are assigned to the SPDM VDM IANA authorization-gated 
 | Fuse Revoke Vendor Public Key  | SPDM VDM IANA, MCI Mailbox | Revoke vendor public key.                          |
 | Fuse Revoke Vendor PK Hash     | SPDM VDM IANA, MCI Mailbox | Revoke vendor public key hash.                     |
 | Fuse Lock Partition            | SPDM VDM IANA, MCI Mailbox | Lock fuse partition.                               |
+| Dot Lock                       | SPDM VDM IANA, MCI Mailbox | Lock the DOT after ownership validation.          |
+| Dot Disable                    | SPDM VDM IANA, MCI Mailbox | Disable DOT while preserving ownership state.     |
+| Dot Rotate                     | SPDM VDM IANA, MCI Mailbox | Rotate ownership keys and increment the epoch.    |
+| Get Dot Backup Blob            | SPDM VDM IANA, MCI Mailbox | Export the current DOT backup blob.               |
 
 ## Command Definitions
 
@@ -357,6 +361,8 @@ Security-sensitive provisioning and fuse subcommands are assigned to the SPDM VD
 
 The subcommands covered by this wrapper are listed in [Authorization-Gated Subcommands](#authorization-gated-subcommands).
 
+`DotLock`, `DotDisable`, `DotRotate`, and `GetDotBackupBlob` are the DOT-family subcommands that use this authorization wrapper. The remaining DOT commands (`DotUnlockChallenge`, `DotUnlock`, `DotStatus`, `DotRecovery`, `DotOverrideChallenge`, and `DotOverride`) are native device-ownership-transfer commands carried under top-level command `0x11` rather than via the `AuthorizedCommand` wrapper.
+
 Subcommand-specific payloads are defined by the corresponding command specifications and contain no mailbox request header.
 
 ### Get Auth Challenge
@@ -418,6 +424,30 @@ Locks a fuse partition.
 **Request Payload**: TBD
 
 **Response Payload**: TBD
+
+### Device Ownership Transfer (DOT)
+
+The device-ownership-transfer family is carried under the top-level `DeviceOwnershipTransfer` command (`0x11`). This family uses the DOT FourCC namespace and is split between authorization-gated and native commands:
+
+- Authorization-gated: `MDLK` (`DotLock`), `MDDS` (`DotDisable`), `MDRT` (`DotRotate`), `MDBB` (`GetDotBackupBlob`)
+- Native: `MDUC` (`DotUnlockChallenge`), `MDUL` (`DotUnlock`), `MDST` (`DotStatus`), `MDRC` (`DotRecovery`), `DOTW` (`DotOverrideChallenge`), `DOTX` (`DotOverride`)
+
+The authorization-gated DOT commands are sent via the `AuthorizedCommand` wrapper and are rejected if delivered directly under `0x11`. The native DOT commands perform challenge-and-signature verification against the current ownership blob or the recovery-key hash, as appropriate for the command.
+
+| FourCC | Command | Path | Description |
+| ------ | ------- | ---- | ----------- |
+| `MDLK` | `DotLock` | Authorized | Lock DOT after validating the CAK/LAK ownership state. |
+| `MDDS` | `DotDisable` | Authorized | Disable DOT while preserving the ownership blob. |
+| `MDRT` | `DotRotate` | Authorized | Rotate ownership state and advance the DOT epoch. |
+| `MDBB` | `GetDotBackupBlob` | Authorized | Export a valid backup copy of the active DOT blob. |
+| `MDUC` | `DotUnlockChallenge` | Native | Request the unlock challenge for a valid ODD DOT state. |
+| `MDUL` | `DotUnlock` | Native | Complete ownership unlock using the stored LAK and challenge signatures. |
+| `MDST` | `DotStatus` | Native/read-only | Return the current DOT status and fuse state. |
+| `MDRC` | `DotRecovery` | Native | Restore DOT from a previously backed-up blob. |
+| `DOTW` | `DotOverrideChallenge` | Native | Start DOT recovery using the recovery-key challenge flow. |
+| `DOTX` | `DotOverride` | Native | Complete DOT recovery by verifying the hybrid recovery signature. |
+
+See [DOT Commands](dot.md#runtime-commands) for the detailed state machine, validation rules, and command sequencing.
 
 ## Completion Codes
 
