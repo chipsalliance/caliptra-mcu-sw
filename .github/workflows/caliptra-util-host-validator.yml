@@ -195,6 +195,26 @@ jobs:
           cargo test --package caliptra-mcu-tests-integration --lib -- test::test_caliptra_util_host_validator --nocapture --include-ignored
           sccache --show-stats
 
+      - name: Run Caliptra Util Host destructive mailbox fuse suites
+        env:
+          CPTRA_FIRMWARE_BUNDLE: ${{ github.workspace }}/target/all-fw.zip
+        run: |
+          for suite in \
+            fe-prog \
+            provision-vendor-pk-hash \
+            increase-min-svn \
+            revoke-vendor-pub-key \
+            revoke-vendor-pk-hash \
+            fuse-lock-partition
+          do
+            echo "=== Running mailbox fuse suite: ${suite} ==="
+            MAILBOX_FUSE_SUITE="${suite}" \
+              cargo test --package caliptra-mcu-tests-integration --lib -- \
+                test_caliptra_util_host_mcu_mailbox_validator::test::test_caliptra_util_host_validator \
+                --exact --nocapture --include-ignored
+          done
+          sccache --show-stats
+
       - name: Run Caliptra Util Host MCTP VDM validator tests
         env:
           CPTRA_FIRMWARE_BUNDLE: ${{ github.workspace }}/target/all-fw.zip
