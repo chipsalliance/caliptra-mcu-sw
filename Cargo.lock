@@ -2234,6 +2234,7 @@ dependencies = [
  "p384",
  "rand 0.8.5",
  "random-port",
+ "serde_json",
  "sha2",
  "simple_logger",
  "tempfile",
