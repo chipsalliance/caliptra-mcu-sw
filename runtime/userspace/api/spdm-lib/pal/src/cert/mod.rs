@@ -21,7 +21,6 @@ use caliptra_mcu_spdm_traits::{
     CertSlotSnapshot, SpdmPalAsymAlgo, SpdmPalCertStore, SpdmPalHashAlgo,
 };
 use core::ops::Range;
-use core::sync::atomic::Ordering;
 use endorsement::slot_index;
 use mcu_caliptra_api::{
     dpe_get_cert_chain_chunk, walk_dpe_chain, DpeChainSink, DPE_LABEL_LEN, DPE_MAX_CHUNK_SIZE,
@@ -172,6 +171,24 @@ async fn validate_root_hash<M: MeasurementProvider>(
     Ok(())
 }
 
+#[cfg(feature = "set-certificate")]
+fn validate_der_cert_chain(cert_chain: &[u8]) -> McuResult<()> {
+    if cert_chain.is_empty() {
+        return Err(INVARIANT);
+    }
+
+    let mut offset = 0usize;
+    while offset < cert_chain.len() {
+        let remaining = cert_chain.get(offset..).ok_or(INVARIANT)?;
+        let cert_len = der_first_seq_len(remaining).ok_or(INVARIANT)?;
+        if cert_len > remaining.len() {
+            return Err(INVARIANT);
+        }
+        offset = offset.checked_add(cert_len).ok_or(INVARIANT)?;
+    }
+    Ok(())
+}
+
 // ---------------------------------------------------------------------------
 // Streaming SET_CERTIFICATE validation helpers
 // ---------------------------------------------------------------------------
@@ -209,14 +226,40 @@ async fn validate_streamed_root_hash<M: MeasurementProvider>(
 }
 
 #[cfg(feature = "set-certificate")]
+async fn validate_streamed_der_chain(
+    managed: &endorsement::ManagedEndorsement,
+    data_len: usize,
+) -> McuResult<()> {
+    if data_len == 0 {
+        return Err(INVARIANT);
+    }
+
+    let mut offset = 0usize;
+    while offset < data_len {
+        let cert_len = streamed_der_sequence_len(managed, offset, data_len - offset).await?;
+        offset = offset.checked_add(cert_len).ok_or(INVARIANT)?;
+    }
+    Ok(())
+}
+
+#[cfg(feature = "set-certificate")]
 async fn streamed_first_der_len(
     managed: &endorsement::ManagedEndorsement,
     data_len: usize,
 ) -> McuResult<usize> {
+    streamed_der_sequence_len(managed, 0, data_len).await
+}
+
+#[cfg(feature = "set-certificate")]
+async fn streamed_der_sequence_len(
+    managed: &endorsement::ManagedEndorsement,
+    offset: usize,
+    available: usize,
+) -> McuResult<usize> {
     let mut header = [0u8; 6];
-    if data_len < 2
+    if available < 2
         || managed
-            .read_stream_chunk(0, checked_slice_mut(&mut header, 0, 2)?)
+            .read_stream_chunk(offset, checked_slice_mut(&mut header, 0, 2)?)
             .await?
             != 2
     {
@@ -230,11 +273,12 @@ async fn streamed_first_der_len(
         (2usize, len_byte as usize)
     } else {
         let len_len = (len_byte & 0x7f) as usize;
-        if len_len == 0 || len_len > 4 || data_len < 2 + len_len {
+        if len_len == 0 || len_len > 4 || available < 2 + len_len {
             return Err(INVARIANT);
         }
         let len_buf = checked_slice_mut(&mut header, 2, len_len)?;
-        if managed.read_stream_chunk(2, len_buf).await? != len_len {
+        let length_offset = offset.checked_add(2).ok_or(INVARIANT)?;
+        if managed.read_stream_chunk(length_offset, len_buf).await? != len_len {
             return Err(INVARIANT);
         }
         let mut content_len = 0usize;
@@ -248,7 +292,7 @@ async fn streamed_first_der_len(
         return Err(INVARIANT);
     }
     let cert_len = header_len.checked_add(content_len).ok_or(INVARIANT)?;
-    if cert_len > data_len {
+    if cert_len > available {
         return Err(INVARIANT);
     }
     Ok(cert_len)
@@ -286,20 +330,22 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         _algo: SpdmPalAsymAlgo,
     ) -> McuResult<usize> {
         let idx = slot_index(slot).ok_or(INVARIANT)?;
-        let cert_slot = &self.cert_store.cert_slots()[idx];
-
         // Slot-size queries are valid for supported but unprovisioned writable
         // slots, so capture the generation directly instead of requiring a
-        // provisioned CertSlotSnapshot.
-        if cert_slot.write_in_progress.load(Ordering::Acquire) {
-            return Err(INVARIANT);
-        }
-        let provisioning_state_version = cert_slot.provisioning_state_version();
-        let capacity = cert_slot
-            .endorsement
+        // provisioned CertSlotSnapshot. An update stages in the inactive bank,
+        // leaving this active view valid until its generation changes.
+        let (endorsement, writable, provisioning_state_version) = {
+            let cert_slot = &self.cert_store.cert_slots()[idx];
+            (
+                cert_slot.endorsement,
+                cert_slot.is_writable(),
+                cert_slot.provisioning_state_version(),
+            )
+        };
+        let capacity = endorsement
             .capacity(SpdmPalAsymAlgo::EccP384)
             .map_err(|_| INVARIANT)?;
-        let total = if cert_slot.is_writable() {
+        let total = if writable {
             let (dpe_len, dpe_skip_len) =
                 dpe_chain_len_and_skip_prefix(self, DPE_IDEVID_AND_LDEVID_CERT_COUNT).await?;
             let leaf_len = probe_leaf_len(self).await?;
@@ -308,12 +354,11 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
             capacity
         };
 
-        // Reject a writer that is still active, or one that committed while
-        // the async DPE/leaf sizing work was in flight.
-        if cert_slot.write_in_progress.load(Ordering::Acquire) {
-            return Err(INVARIANT);
-        }
-        if cert_slot.provisioning_state_version() != provisioning_state_version {
+        // Reject a committed bank switch while the async DPE/leaf sizing work
+        // was in flight.
+        if self.cert_store.cert_slots()[idx].provisioning_state_version()
+            != provisioning_state_version
+        {
             return Err(crate::errors::CERT_SLOT_STATE_CHANGED);
         }
 
@@ -349,6 +394,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         if cert_model != CERT_MODEL_ALIAS_CERT {
             return Err(INVARIANT);
         }
+        validate_der_cert_chain(cert_chain)?;
         validate_root_hash(self, root_hash, cert_chain).await?;
         Ok(())
     }
@@ -360,13 +406,17 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         _algo: SpdmPalAsymAlgo,
     ) -> McuResult<usize> {
         let idx = slot_index(slot).ok_or(INVARIANT)?;
-        let cert_slot = &self.cert_store.cert_slots()[idx];
-
-        // 1. PRE-CHECK: Ensure Slot is provisioned and not undergoing updates before starting
-        if !cert_slot.is_provisioned() {
-            return Err(INVARIANT);
-        }
-        let provisioning_state_version = cert_slot.provisioning_state_version();
+        let (endorsement, writable, provisioning_state_version) = {
+            let cert_slot = &self.cert_store.cert_slots()[idx];
+            if !cert_slot.is_provisioned() {
+                return Err(INVARIANT);
+            }
+            (
+                cert_slot.endorsement,
+                cert_slot.is_writable(),
+                cert_slot.provisioning_state_version(),
+            )
+        };
 
         if let Some(n) = self
             .cert_store
@@ -378,11 +428,10 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         // Cache miss: Invalidate stale leaf and digest caches before starting recomputation
         self.cert_store.invalidate_cert_caches(slot);
 
-        let slot_chain_len = cert_slot
-            .endorsement
+        let slot_chain_len = endorsement
             .size(SpdmPalAsymAlgo::EccP384)
             .map_err(|_| INVARIANT)?;
-        let dpe_skip = if cert_slot.is_writable() {
+        let dpe_skip = if writable {
             DPE_IDEVID_AND_LDEVID_CERT_COUNT
         } else {
             0
@@ -394,9 +443,12 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         let total = ChainLayout::new(slot_chain_len, dpe_len, dpe_skip_len, leaf_len)?.total_len();
 
         // 2. POST-CHECK: Verify Slot remained unlocked during the intermediate async .await points
-        if !cert_slot.is_provisioned()
-            || cert_slot.provisioning_state_version() != provisioning_state_version
-        {
+        let slot_unchanged = {
+            let cert_slot = &self.cert_store.cert_slots()[idx];
+            cert_slot.is_provisioned()
+                && cert_slot.provisioning_state_version() == provisioning_state_version
+        };
+        if !slot_unchanged {
             return Err(crate::errors::CERT_SLOT_STATE_CHANGED);
         }
 
@@ -431,11 +483,17 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         if dst.is_empty() {
             return Ok(0);
         }
-        let cert_slot = &self.cert_store.cert_slots()[idx];
-        if !cert_slot.is_provisioned() {
-            return Err(INVARIANT);
-        }
-        let provisioning_state_version = cert_slot.provisioning_state_version();
+        let (endorsement, writable, provisioning_state_version) = {
+            let cert_slot = &self.cert_store.cert_slots()[idx];
+            if !cert_slot.is_provisioned() {
+                return Err(INVARIANT);
+            }
+            (
+                cert_slot.endorsement,
+                cert_slot.is_writable(),
+                cert_slot.provisioning_state_version(),
+            )
+        };
         let total = self
             .cert_store
             .cached_chain_len(slot, provisioning_state_version)
@@ -446,8 +504,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         if offset >= total {
             return Ok(0);
         }
-        let slot_chain_len = cert_slot
-            .endorsement
+        let slot_chain_len = endorsement
             .size(SpdmPalAsymAlgo::EccP384)
             .map_err(|_| INVARIANT)?;
         let want = (total - offset).min(dst.len());
@@ -467,7 +524,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
                 n
             }
         };
-        let dpe_skip = if cert_slot.is_writable() {
+        let dpe_skip = if writable {
             DPE_IDEVID_AND_LDEVID_CERT_COUNT
         } else {
             0
@@ -482,8 +539,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
 
         // 1. Endorsement region
         if cur_offset < layout.endorsement.end && written < want {
-            let n = cert_slot
-                .endorsement
+            let n = endorsement
                 .read(
                     SpdmPalAsymAlgo::EccP384,
                     cur_offset,
@@ -534,9 +590,12 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
             }
             written += got;
         }
-        if !cert_slot.is_provisioned()
-            || cert_slot.provisioning_state_version() != provisioning_state_version
-        {
+        let slot_unchanged = {
+            let cert_slot = &self.cert_store.cert_slots()[idx];
+            cert_slot.is_provisioned()
+                && cert_slot.provisioning_state_version() == provisioning_state_version
+        };
+        if !slot_unchanged {
             return Err(crate::errors::CERT_SLOT_STATE_CHANGED);
         }
         Ok(written)
@@ -551,18 +610,23 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         signature: &mut [u8],
     ) -> McuResult<usize> {
         let idx = slot_index(slot).ok_or(INVARIANT)?;
-        let cert_slot = &self.cert_store.cert_slots()[idx];
-        if !cert_slot.is_provisioned() {
-            return Err(INVARIANT);
-        }
-        let provisioning_state_version = cert_slot.provisioning_state_version();
+        let provisioning_state_version = {
+            let cert_slot = &self.cert_store.cert_slots()[idx];
+            if !cert_slot.is_provisioned() {
+                return Err(INVARIANT);
+            }
+            cert_slot.provisioning_state_version()
+        };
         let sig_len =
             caliptra_mcu_measurement_api::sign(self.allocator, &DPE_LEAF_LABEL, digest, signature)
                 .await
                 .map_err(|_| INTERNAL_BUG)?;
-        if !cert_slot.is_provisioned()
-            || cert_slot.provisioning_state_version() != provisioning_state_version
-        {
+        let slot_unchanged = {
+            let cert_slot = &self.cert_store.cert_slots()[idx];
+            cert_slot.is_provisioned()
+                && cert_slot.provisioning_state_version() == provisioning_state_version
+        };
+        if !slot_unchanged {
             return Err(crate::errors::CERT_SLOT_STATE_CHANGED);
         }
         Ok(sig_len)
@@ -580,13 +644,12 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         data: &[u8],
     ) -> McuResult<()> {
         let idx = slot_index(slot).ok_or(INVARIANT)?;
-        let cert_slot = &self.cert_store.cert_slots()[idx];
-        if !cert_slot.begin_write() {
+        if !self.cert_store.cert_slots()[idx].begin_write() {
             return Err(INVARIANT);
         }
         let result = async {
-            let managed = match &self.cert_store.cert_slots()[idx].endorsement {
-                endorsement::SlotEndorsement::Managed(e) => *e,
+            let managed = match self.cert_store.cert_slots()[idx].endorsement {
+                endorsement::SlotEndorsement::Managed(e) => e,
                 endorsement::SlotEndorsement::ReadOnly(_) => {
                     return Err(mcu_error::codes::NOT_IMPLEMENTED);
                 }
@@ -604,7 +667,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         }
         .await;
         self.cert_store.invalidate_cert_caches(slot);
-        cert_slot.end_write();
+        self.cert_store.cert_slots()[idx].end_write();
         result?;
         Ok(())
     }
@@ -625,13 +688,12 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
                 return Err(INVARIANT);
             }
             let idx = slot_index(slot).ok_or(INVARIANT)?;
-            let cert_slot = &self.cert_store.cert_slots()[idx];
-            if !cert_slot.begin_write() {
+            if !self.cert_store.cert_slots()[idx].begin_write() {
                 return Err(INVARIANT);
             }
             let result = async {
-                let managed = match &self.cert_store.cert_slots()[idx].endorsement {
-                    endorsement::SlotEndorsement::Managed(e) => *e,
+                let managed = match self.cert_store.cert_slots()[idx].endorsement {
+                    endorsement::SlotEndorsement::Managed(e) => e,
                     endorsement::SlotEndorsement::ReadOnly(_) => {
                         return Err(mcu_error::codes::NOT_IMPLEMENTED);
                     }
@@ -640,13 +702,12 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
                 let managed = managed.begin_stream_update(algo, data_len).await?;
                 let cert_slot = self.cert_store.cert_slot_mut(idx).ok_or(INVARIANT)?;
                 cert_slot.endorsement = endorsement::SlotEndorsement::Managed(managed);
-                cert_slot.clear_metadata();
                 Ok(())
             }
             .await;
             if result.is_err() {
                 self.cert_store.invalidate_cert_caches(slot);
-                cert_slot.end_write();
+                self.cert_store.cert_slots()[idx].end_write();
             }
             result
         }
@@ -668,8 +729,8 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         #[cfg(feature = "set-certificate")]
         {
             let idx = slot_index(slot).ok_or(INVARIANT)?;
-            let managed = match &self.cert_store.cert_slots()[idx].endorsement {
-                endorsement::SlotEndorsement::Managed(e) => *e,
+            let managed = match self.cert_store.cert_slots()[idx].endorsement {
+                endorsement::SlotEndorsement::Managed(e) => e,
                 endorsement::SlotEndorsement::ReadOnly(_) => {
                     return Err(mcu_error::codes::NOT_IMPLEMENTED);
                 }
@@ -700,15 +761,15 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         #[cfg(feature = "set-certificate")]
         {
             let idx = slot_index(slot).ok_or(INVARIANT)?;
-            let cert_slot = &self.cert_store.cert_slots()[idx];
             let result = async {
-                let managed = match &self.cert_store.cert_slots()[idx].endorsement {
-                    endorsement::SlotEndorsement::Managed(e) => *e,
+                let managed = match self.cert_store.cert_slots()[idx].endorsement {
+                    endorsement::SlotEndorsement::Managed(e) => e,
                     endorsement::SlotEndorsement::ReadOnly(_) => {
                         return Err(mcu_error::codes::NOT_IMPLEMENTED);
                     }
                     endorsement::SlotEndorsement::Empty => return Err(INVARIANT),
                 };
+                validate_streamed_der_chain(&managed, data_len).await?;
                 validate_streamed_root_hash(self, &managed, root_hash, data_len).await?;
                 let managed = managed
                     .finish_stream_update(algo, key_pair_id, cert_info, root_hash, data_len)
@@ -722,7 +783,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
             }
             .await;
             self.cert_store.invalidate_cert_caches(slot);
-            cert_slot.end_write();
+            self.cert_store.cert_slots()[idx].end_write();
             result?;
             Ok(())
         }
@@ -742,10 +803,22 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         #[cfg(feature = "set-certificate")]
         {
             let idx = slot_index(slot).ok_or(INVARIANT)?;
-            let cert_slot = &self.cert_store.cert_slots()[idx];
+            let result = match self.cert_store.cert_slots()[idx].endorsement {
+                endorsement::SlotEndorsement::Managed(managed) => {
+                    if let Some(cert_slot) = self.cert_store.cert_slot_mut(idx) {
+                        cert_slot.endorsement =
+                            endorsement::SlotEndorsement::Managed(managed.abort_stream_update());
+                        Ok(())
+                    } else {
+                        Err(INVARIANT)
+                    }
+                }
+                endorsement::SlotEndorsement::ReadOnly(_) => Err(mcu_error::codes::NOT_IMPLEMENTED),
+                endorsement::SlotEndorsement::Empty => Err(INVARIANT),
+            };
             self.cert_store.invalidate_cert_caches(slot);
-            cert_slot.end_write();
-            Ok(())
+            self.cert_store.cert_slots()[idx].end_write();
+            result
         }
         #[cfg(not(feature = "set-certificate"))]
         {
@@ -762,13 +835,12 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         algo: SpdmPalAsymAlgo,
     ) -> McuResult<()> {
         let idx = slot_index(slot).ok_or(INVARIANT)?;
-        let cert_slot = &self.cert_store.cert_slots()[idx];
-        if !cert_slot.begin_write() {
+        if !self.cert_store.cert_slots()[idx].begin_write() {
             return Err(INVARIANT);
         }
         let result = async {
-            let managed = match &self.cert_store.cert_slots()[idx].endorsement {
-                endorsement::SlotEndorsement::Managed(e) => *e,
+            let managed = match self.cert_store.cert_slots()[idx].endorsement {
+                endorsement::SlotEndorsement::Managed(e) => e,
                 endorsement::SlotEndorsement::ReadOnly(_) => {
                     return Err(mcu_error::codes::NOT_IMPLEMENTED);
                 }
@@ -783,7 +855,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         }
         .await;
         self.cert_store.invalidate_cert_caches(slot);
-        cert_slot.end_write();
+        self.cert_store.cert_slots()[idx].end_write();
         result?;
         Ok(())
     }
@@ -943,6 +1015,8 @@ fn der_first_seq_len(buf: &[u8]) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(feature = "set-certificate")]
+    use super::validate_der_cert_chain;
     use super::{der_first_seq_len, DpePrefixScanner};
 
     #[test]
@@ -967,5 +1041,13 @@ mod tests {
 
         assert_eq!(scanner.certs_left, 0);
         assert_eq!(scanner.skip_len, 9);
+    }
+
+    #[cfg(feature = "set-certificate")]
+    #[test]
+    fn certificate_chain_requires_complete_der_sequences() {
+        assert!(validate_der_cert_chain(&[0x30, 0x01, 0x01, 0x30, 0x01, 0x02]).is_ok());
+        assert!(validate_der_cert_chain(&[0x30, 0x02, 0x01]).is_err());
+        assert!(validate_der_cert_chain(&[0x30, 0x01, 0x01, 0xff]).is_err());
     }
 }

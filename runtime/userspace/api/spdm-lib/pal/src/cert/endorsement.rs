@@ -60,7 +60,7 @@ pub struct CertSlot {
     /// CertificateInfo/CertModel associated with this slot.
     /// `None` for unprovisioned slots.
     pub cert_info: Option<u8>,
-    /// State lock high when an active async write (flash erase/write) is in progress on this slot.
+    /// Serializes writers while they stage an update in the inactive bank.
     pub write_in_progress: AtomicBool,
     /// Bumped when this slot's endorsement/provisioning state changes.
     pub provisioning_state_version: AtomicU32,
@@ -86,15 +86,22 @@ impl CertSlot {
     }
 
     pub fn is_provisioned(&self) -> bool {
-        !self.write_in_progress.load(Ordering::Acquire) && self.endorsement.is_provisioned()
+        self.endorsement.is_provisioned()
     }
 
     pub fn begin_write(&self) -> bool {
-        !self.write_in_progress.swap(true, Ordering::AcqRel)
+        critical_section::with(|_| {
+            if self.write_in_progress.load(Ordering::Acquire) {
+                false
+            } else {
+                self.write_in_progress.store(true, Ordering::Release);
+                true
+            }
+        })
     }
 
     pub fn end_write(&self) {
-        self.write_in_progress.store(false, Ordering::Release);
+        critical_section::with(|_| self.write_in_progress.store(false, Ordering::Release));
     }
 
     pub fn provisioning_state_version(&self) -> u32 {
@@ -102,9 +109,11 @@ impl CertSlot {
     }
 
     pub fn bump_provisioning_state_version(&self) {
-        let version = self.provisioning_state_version();
-        self.provisioning_state_version
-            .store(version.wrapping_add(1), Ordering::Release);
+        critical_section::with(|_| {
+            let version = self.provisioning_state_version.load(Ordering::Acquire);
+            self.provisioning_state_version
+                .store(version.wrapping_add(1), Ordering::Release);
+        });
     }
 
     pub fn clear_metadata(&mut self) {
@@ -114,6 +123,7 @@ impl CertSlot {
 }
 
 /// Per-slot endorsement cert chain — enum dispatch.
+#[derive(Clone, Copy)]
 pub enum SlotEndorsement {
     /// Not provisioned and not exposed as a supported SPDM slot.
     Empty,
@@ -192,6 +202,7 @@ impl SlotEndorsement {
 }
 
 /// Read-only endorsement — static root CA cert chain.
+#[derive(Clone, Copy)]
 pub struct ReadOnlyEndorsement {
     root_cert_hash: [u8; 48],
     chain: &'static [&'static [u8]],
@@ -254,7 +265,9 @@ impl ReadOnlyEndorsement {
 #[cfg(feature = "set-certificate")]
 const MANAGED_MAGIC: [u8; 4] = *b"SPCE";
 #[cfg(feature = "set-certificate")]
-const MANAGED_FORMAT_VERSION: u16 = 1;
+const MANAGED_LEGACY_FORMAT_VERSION: u16 = 1;
+#[cfg(feature = "set-certificate")]
+const MANAGED_FORMAT_VERSION: u16 = 2;
 #[cfg(feature = "set-certificate")]
 const MANAGED_HEADER_SIZE: usize = 80;
 #[cfg(feature = "set-certificate")]
@@ -265,6 +278,14 @@ const MANAGED_ERASED_BYTE: u8 = 0xFF;
 const MANAGED_KEY_USAGE_MASK: u16 = 0x0003;
 #[cfg(feature = "set-certificate")]
 const MANAGED_MAX_DER_LEN: usize = (u16::MAX as usize) - 52;
+#[cfg(feature = "set-certificate")]
+const MANAGED_RECORD_DATA: u8 = 1;
+#[cfg(feature = "set-certificate")]
+const MANAGED_RECORD_TOMBSTONE: u8 = 2;
+#[cfg(feature = "set-certificate")]
+const MANAGED_COMMIT_OFFSET: usize = MANAGED_HEADER_SIZE - size_of::<u32>();
+#[cfg(feature = "set-certificate")]
+const MANAGED_COMMIT_TAG: u32 = 0x4345_5254;
 
 #[cfg(feature = "set-certificate")]
 type CertStoreFlash = SpiFlash<DefaultSyscalls>;
@@ -274,9 +295,12 @@ type CertStoreFlash = SpiFlash<DefaultSyscalls>;
 #[derive(Clone, Copy)]
 pub struct ManagedEndorsement {
     slot: u8,
-    driver_num: u32,
+    driver_nums: [u32; 2],
     base: usize,
     capacity: usize,
+    active_bank: Option<usize>,
+    staging_bank: Option<usize>,
+    generation: u32,
     initialized: bool,
     algo: SpdmPalAsymAlgo,
     len: usize,
@@ -288,12 +312,21 @@ pub struct ManagedEndorsement {
 
 #[cfg(feature = "set-certificate")]
 impl ManagedEndorsement {
-    pub const fn new(slot: u8, driver_num: u32, base: usize, capacity: usize) -> Self {
+    pub const fn new(
+        slot: u8,
+        driver_num: u32,
+        backup_driver_num: u32,
+        base: usize,
+        capacity: usize,
+    ) -> Self {
         Self {
             slot,
-            driver_num,
+            driver_nums: [driver_num, backup_driver_num],
             base,
             capacity,
+            active_bank: None,
+            staging_bank: None,
+            generation: 0,
             initialized: false,
             algo: SpdmPalAsymAlgo::EccP384,
             len: 0,
@@ -305,38 +338,23 @@ impl ManagedEndorsement {
     }
 
     pub async fn load(&mut self) -> McuResult<()> {
-        self.initialized = false;
-        self.len = 0;
-        let mut header = [0u8; MANAGED_HEADER_SIZE];
-        let flash = self.flash();
-        match flash.exists() {
-            Ok(()) => {}
-            Err(ErrorCode::NoDevice | ErrorCode::NoSupport | ErrorCode::Uninstalled) => {
-                return Ok(())
-            }
-            Err(err) => return Err(map_flash_error(err)),
-        }
-        flash
-            .read(self.base, MANAGED_HEADER_SIZE, &mut header)
-            .await
-            .map_err(map_flash_error)?;
-        if header.iter().all(|&b| b == MANAGED_ERASED_BYTE) || header[0..4] != MANAGED_MAGIC {
-            return Ok(());
-        }
-        let Some(record) = ManagedRecord::decode(&header) else {
+        self.clear_active_state();
+        self.active_bank = None;
+        self.staging_bank = None;
+        self.generation = 0;
+
+        let primary = self.load_bank(0).await?;
+        let backup = self.load_bank(1).await?;
+        let Some((bank, record)) = self.select_active_record(primary, backup) else {
             return Ok(());
         };
-        if record.version != MANAGED_FORMAT_VERSION
-            || record.header_size as usize != MANAGED_HEADER_SIZE
-            || record.slot != self.slot
-            || record.algo != MANAGED_ALGO_ECC_P384
-            || record.cert_len > self.der_capacity()
-        {
+
+        self.active_bank = Some(bank);
+        self.generation = record.generation;
+        if record.kind == ManagedRecordKind::Tombstone {
             return Ok(());
         }
-        if self.stored_checksum(record.cert_len).await? != record.data_checksum {
-            return Ok(());
-        }
+
         self.initialized = true;
         self.algo = SpdmPalAsymAlgo::EccP384;
         self.len = record.cert_len;
@@ -397,8 +415,9 @@ impl ManagedEndorsement {
             return Ok(0);
         }
         let n = (self.len - offset).min(buf.len());
-        self.flash()
-            .read(self.data_base() + offset, n, &mut buf[..n])
+        let active_bank = self.active_bank.ok_or(mcu_error::codes::INVARIANT)?;
+        self.flash(active_bank)
+            .read(self.data_base(active_bank) + offset, n, &mut buf[..n])
             .await
             .map_err(map_flash_error)?;
         Ok(n)
@@ -412,15 +431,12 @@ impl ManagedEndorsement {
         if algo != SpdmPalAsymAlgo::EccP384 || data_len > self.der_capacity() {
             return Err(mcu_error::codes::INVARIANT);
         }
-        self.flash()
+        let staging_bank = self.inactive_bank();
+        self.flash(staging_bank)
             .erase(self.base, self.capacity)
             .await
             .map_err(map_flash_error)?;
-        self.initialized = false;
-        self.len = 0;
-        self.root_hash = [0; 48];
-        self.key_pair_id = 0;
-        self.cert_info = 0;
+        self.staging_bank = Some(staging_bank);
         Ok(self)
     }
 
@@ -432,8 +448,9 @@ impl ManagedEndorsement {
             return Err(mcu_error::codes::INVARIANT);
         }
         if !data.is_empty() {
-            self.flash()
-                .write(self.data_base() + offset, data.len(), data)
+            let staging_bank = self.staging_bank.ok_or(mcu_error::codes::INVARIANT)?;
+            self.flash(staging_bank)
+                .write(self.data_base(staging_bank) + offset, data.len(), data)
                 .await
                 .map_err(map_flash_error)?;
         }
@@ -445,8 +462,9 @@ impl ManagedEndorsement {
             return Ok(0);
         }
         let n = (self.der_capacity() - offset).min(buf.len());
-        self.flash()
-            .read(self.data_base() + offset, n, &mut buf[..n])
+        let staging_bank = self.staging_bank.ok_or(mcu_error::codes::INVARIANT)?;
+        self.flash(staging_bank)
+            .read(self.data_base(staging_bank) + offset, n, &mut buf[..n])
             .await
             .map_err(map_flash_error)?;
         Ok(n)
@@ -463,32 +481,11 @@ impl ManagedEndorsement {
         if algo != SpdmPalAsymAlgo::EccP384 || data_len > self.der_capacity() {
             return Err(mcu_error::codes::INVARIANT);
         }
-        let data_checksum = self.stored_checksum(data_len).await?;
-        let record = ManagedRecord {
-            version: MANAGED_FORMAT_VERSION,
-            header_size: MANAGED_HEADER_SIZE as u16,
-            slot: self.slot,
-            algo: MANAGED_ALGO_ECC_P384,
-            key_pair_id,
-            cert_info,
-            key_usage_mask: MANAGED_KEY_USAGE_MASK,
-            cert_len: data_len,
-            data_checksum,
-            root_hash: *root_hash,
-        };
-        let mut header = [MANAGED_ERASED_BYTE; MANAGED_HEADER_SIZE];
-        record.encode(&mut header);
-        self.flash()
-            .write(self.base, MANAGED_HEADER_SIZE, &header)
-            .await
-            .map_err(map_flash_error)?;
-        self.initialized = true;
-        self.algo = algo;
-        self.len = data_len;
-        self.root_hash = *root_hash;
-        self.key_pair_id = key_pair_id;
-        self.cert_info = cert_info;
-        self.key_usage_mask = MANAGED_KEY_USAGE_MASK;
+        let staging_bank = self.staging_bank.ok_or(mcu_error::codes::INVARIANT)?;
+        let data_checksum = self.stored_crc32(staging_bank, data_len).await?;
+        let record = self.data_record(key_pair_id, cert_info, root_hash, data_len, data_checksum);
+        self.write_record(staging_bank, &record).await?;
+        self.publish_data(staging_bank, algo, &record);
         Ok(self)
     }
 
@@ -504,7 +501,121 @@ impl ManagedEndorsement {
             return Err(mcu_error::codes::INVARIANT);
         }
 
-        let record = ManagedRecord {
+        let staging_bank = self.inactive_bank();
+        let flash = self.flash(staging_bank);
+        flash
+            .erase(self.base, self.capacity)
+            .await
+            .map_err(map_flash_error)?;
+        if !data.is_empty() {
+            flash
+                .write(self.data_base(staging_bank), data.len(), data)
+                .await
+                .map_err(map_flash_error)?;
+        }
+        let record = self.data_record(key_pair_id, cert_info, root_hash, data.len(), crc32(data));
+        self.write_record(staging_bank, &record).await?;
+        self.publish_data(staging_bank, algo, &record);
+        Ok(self)
+    }
+
+    pub async fn erase_updated(mut self, _algo: SpdmPalAsymAlgo) -> McuResult<Self> {
+        let staging_bank = self.inactive_bank();
+        self.flash(staging_bank)
+            .erase(self.base, self.capacity)
+            .await
+            .map_err(map_flash_error)?;
+        let record = ManagedRecord::tombstone(self.slot, self.next_generation());
+        self.write_record(staging_bank, &record).await?;
+        self.publish_tombstone(staging_bank, &record);
+        Ok(self)
+    }
+
+    pub fn abort_stream_update(mut self) -> Self {
+        self.staging_bank = None;
+        self
+    }
+
+    fn flash(&self, bank: usize) -> CertStoreFlash {
+        CertStoreFlash::new(self.driver_nums[bank])
+    }
+
+    async fn load_bank(&self, bank: usize) -> McuResult<Option<ManagedRecord>> {
+        let flash = self.flash(bank);
+        match flash.exists() {
+            Ok(()) => {}
+            Err(ErrorCode::NoDevice | ErrorCode::NoSupport | ErrorCode::Uninstalled) => {
+                return Ok(None)
+            }
+            Err(err) => return Err(map_flash_error(err)),
+        }
+
+        let mut header = [0u8; MANAGED_HEADER_SIZE];
+        flash
+            .read(self.base, MANAGED_HEADER_SIZE, &mut header)
+            .await
+            .map_err(map_flash_error)?;
+        if header.iter().all(|&b| b == MANAGED_ERASED_BYTE) || header[0..4] != MANAGED_MAGIC {
+            return Ok(None);
+        }
+
+        let Some(record) = ManagedRecord::decode(&header) else {
+            return Ok(None);
+        };
+        if !record.is_valid_for(self.slot, self.der_capacity()) {
+            return Ok(None);
+        }
+        if record.kind == ManagedRecordKind::Data {
+            let data_checksum = if record.version == MANAGED_LEGACY_FORMAT_VERSION {
+                self.stored_legacy_checksum(bank, record.cert_len).await?
+            } else {
+                self.stored_crc32(bank, record.cert_len).await?
+            };
+            if data_checksum != record.data_checksum {
+                return Ok(None);
+            }
+        }
+        Ok(Some(record))
+    }
+
+    fn select_active_record(
+        &self,
+        primary: Option<ManagedRecord>,
+        backup: Option<ManagedRecord>,
+    ) -> Option<(usize, ManagedRecord)> {
+        match (primary, backup) {
+            (Some(primary), Some(backup)) => {
+                if generation_is_newer(backup.generation, primary.generation) {
+                    Some((1, backup))
+                } else {
+                    // Equal generations are not expected for a completed
+                    // transaction. Prefer the original bank deterministically.
+                    Some((0, primary))
+                }
+            }
+            (Some(record), None) => Some((0, record)),
+            (None, Some(record)) => Some((1, record)),
+            (None, None) => None,
+        }
+    }
+
+    fn inactive_bank(&self) -> usize {
+        self.active_bank.map(|bank| 1 - bank).unwrap_or(0)
+    }
+
+    fn next_generation(&self) -> u32 {
+        self.generation.wrapping_add(1)
+    }
+
+    fn data_record(
+        &self,
+        key_pair_id: u8,
+        cert_info: u8,
+        root_hash: &[u8; 48],
+        cert_len: usize,
+        data_checksum: u32,
+    ) -> ManagedRecord {
+        ManagedRecord {
             version: MANAGED_FORMAT_VERSION,
             header_size: MANAGED_HEADER_SIZE as u16,
             slot: self.slot,
@@ -512,78 +623,101 @@ impl ManagedEndorsement {
             key_pair_id,
             cert_info,
             key_usage_mask: MANAGED_KEY_USAGE_MASK,
-            cert_len: data.len(),
-            data_checksum: checksum(data),
+            kind: ManagedRecordKind::Data,
+            generation: self.next_generation(),
+            cert_len,
+            data_checksum,
             root_hash: *root_hash,
-        };
+        }
+    }
+
+    async fn write_record(&self, bank: usize, record: &ManagedRecord) -> McuResult<()> {
         let mut header = [MANAGED_ERASED_BYTE; MANAGED_HEADER_SIZE];
         record.encode(&mut header);
-
-        let flash = self.flash();
-        flash
-            .erase(self.base, self.capacity)
-            .await
-            .map_err(map_flash_error)?;
-        if !data.is_empty() {
-            flash
-                .write(self.data_base(), data.len(), data)
-                .await
-                .map_err(map_flash_error)?;
-        }
-        // Commit the record last so an interrupted write is seen as empty/invalid.
+        let flash = self.flash(bank);
         flash
             .write(self.base, MANAGED_HEADER_SIZE, &header)
             .await
             .map_err(map_flash_error)?;
 
-        self.initialized = true;
-        self.algo = algo;
-        self.len = data.len();
-        self.root_hash = *root_hash;
-        self.key_pair_id = key_pair_id;
-        self.cert_info = cert_info;
-        self.key_usage_mask = MANAGED_KEY_USAGE_MASK;
-        Ok(self)
+        // The computed marker covers the header and is written separately,
+        // after every staged byte and the uncommitted header are durable.
+        let commit = ManagedRecord::commit_word(&header).to_le_bytes();
+        flash
+            .write(self.base + MANAGED_COMMIT_OFFSET, commit.len(), &commit)
+            .await
+            .map_err(map_flash_error)
     }
 
-    pub async fn erase_updated(mut self, _algo: SpdmPalAsymAlgo) -> McuResult<Self> {
-        self.flash()
-            .erase(self.base, self.capacity)
-            .await
-            .map_err(map_flash_error)?;
+    fn publish_data(&mut self, bank: usize, algo: SpdmPalAsymAlgo, record: &ManagedRecord) {
+        self.active_bank = Some(bank);
+        self.staging_bank = None;
+        self.generation = record.generation;
+        self.initialized = true;
+        self.algo = algo;
+        self.len = record.cert_len;
+        self.root_hash = record.root_hash;
+        self.key_pair_id = record.key_pair_id;
+        self.cert_info = record.cert_info;
+        self.key_usage_mask = record.key_usage_mask;
+    }
+
+    fn publish_tombstone(&mut self, bank: usize, record: &ManagedRecord) {
+        self.active_bank = Some(bank);
+        self.staging_bank = None;
+        self.generation = record.generation;
+        self.clear_active_state();
+    }
+
+    fn clear_active_state(&mut self) {
         self.initialized = false;
+        self.algo = SpdmPalAsymAlgo::EccP384;
         self.len = 0;
         self.root_hash = [0; 48];
         self.key_pair_id = 0;
         self.cert_info = 0;
         self.key_usage_mask = MANAGED_KEY_USAGE_MASK;
-        Ok(self)
     }
 
-    fn flash(&self) -> CertStoreFlash {
-        CertStoreFlash::new(self.driver_num)
+    async fn stored_crc32(&self, bank: usize, len: usize) -> McuResult<u32> {
+        let mut remaining = len;
+        let mut offset = 0usize;
+        let mut crc = !0u32;
+        let mut chunk = [0u8; 256];
+        let flash = self.flash(bank);
+        while remaining > 0 {
+            let n = remaining.min(chunk.len());
+            flash
+                .read(self.data_base(bank) + offset, n, &mut chunk[..n])
+                .await
+                .map_err(map_flash_error)?;
+            crc = crc32_update(crc, &chunk[..n]);
+            remaining -= n;
+            offset += n;
+        }
+        Ok(!crc)
     }
 
-    async fn stored_checksum(&self, len: usize) -> McuResult<u32> {
+    async fn stored_legacy_checksum(&self, bank: usize, len: usize) -> McuResult<u32> {
         let mut remaining = len;
         let mut offset = 0usize;
         let mut sum = 0u32;
         let mut chunk = [0u8; 256];
-        let flash = self.flash();
+        let flash = self.flash(bank);
         while remaining > 0 {
             let n = remaining.min(chunk.len());
             flash
-                .read(self.data_base() + offset, n, &mut chunk[..n])
+                .read(self.data_base(bank) + offset, n, &mut chunk[..n])
                 .await
                 .map_err(map_flash_error)?;
-            sum = sum.wrapping_add(checksum(&chunk[..n]));
+            sum = sum.wrapping_add(legacy_checksum(&chunk[..n]));
             remaining -= n;
             offset += n;
         }
         Ok(sum)
     }
 
-    fn data_base(&self) -> usize {
+    fn data_base(&self, _bank: usize) -> usize {
         self.base + MANAGED_HEADER_SIZE
     }
 
@@ -604,9 +738,18 @@ struct ManagedRecord {
     key_pair_id: u8,
     cert_info: u8,
     key_usage_mask: u16,
+    kind: ManagedRecordKind,
+    generation: u32,
     cert_len: usize,
     data_checksum: u32,
     root_hash: [u8; 48],
+}
+
+#[cfg(feature = "set-certificate")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ManagedRecordKind {
+    Data,
+    Tombstone,
 }
 
 #[cfg(feature = "set-certificate")]
@@ -621,11 +764,14 @@ impl ManagedRecord {
         //   [10]     key_pair_id
         //   [11]     cert_info
         //   [12..14] key_usage_mask (LE)
-        //   [14..16] reserved (zero)
-        //   [16..20] cert_len (LE u32)
-        //   [20..24] data_checksum (LE)
-        //   [24..72] root_hash
-        //   [72..80] reserved (zero)
+        //   [14]     record kind
+        //   [15]     reserved (zero)
+        //   [16..20] record generation (LE)
+        //   [20..24] cert_len (LE u32)
+        //   [24..28] payload CRC-32 (LE)
+        //   [28..76] root_hash
+        //   [76..80] commit marker, written separately
+        out.fill(MANAGED_ERASED_BYTE);
         let (magic, rest) = out.split_first_chunk_mut::<4>().unwrap();
         *magic = MANAGED_MAGIC;
         let (version, rest) = rest.split_first_chunk_mut::<2>().unwrap();
@@ -639,8 +785,14 @@ impl ManagedRecord {
         let rest = &mut rest[4..];
         let (kum, rest) = rest.split_first_chunk_mut::<2>().unwrap();
         *kum = self.key_usage_mask.to_le_bytes();
-        // skip [14..16] reserved (already MANAGED_ERASED_BYTE-filled)
+        rest[0] = match self.kind {
+            ManagedRecordKind::Data => MANAGED_RECORD_DATA,
+            ManagedRecordKind::Tombstone => MANAGED_RECORD_TOMBSTONE,
+        };
+        rest[1] = 0;
         let rest = &mut rest[2..];
+        let (generation, rest) = rest.split_first_chunk_mut::<4>().unwrap();
+        *generation = self.generation.to_le_bytes();
         let (len, rest) = rest.split_first_chunk_mut::<4>().unwrap();
         *len = (self.cert_len as u32).to_le_bytes();
         let (chk, rest) = rest.split_first_chunk_mut::<4>().unwrap();
@@ -650,39 +802,142 @@ impl ManagedRecord {
     }
 
     fn decode(input: &[u8; MANAGED_HEADER_SIZE]) -> Option<Self> {
-        let (magic, rest) = input.split_first_chunk::<4>()?;
-        let (version, rest) = rest.split_first_chunk::<2>()?;
-        let (header_size, rest) = rest.split_first_chunk::<2>()?;
-        let (slot, rest) = rest.split_first()?;
-        let (algo, rest) = rest.split_first()?;
-        let (key_pair_id, rest) = rest.split_first()?;
-        let (cert_info, rest) = rest.split_first()?;
-        let (kum, rest) = rest.split_first_chunk::<2>()?;
-        let (_reserved, rest) = rest.split_first_chunk::<2>()?;
-        let (cert_len, rest) = rest.split_first_chunk::<4>()?;
-        let (data_checksum, rest) = rest.split_first_chunk::<4>()?;
-        let (root_hash, _) = rest.split_first_chunk::<48>()?;
-        // magic is not parsed here; caller checks it before invoking decode.
-        let _ = magic;
+        let version = u16::from_le_bytes(*input.get(4..6)?.first_chunk::<2>()?);
+        match version {
+            MANAGED_LEGACY_FORMAT_VERSION => Self::decode_legacy(input),
+            MANAGED_FORMAT_VERSION => Self::decode_current(input),
+            _ => None,
+        }
+    }
+
+    fn decode_legacy(input: &[u8; MANAGED_HEADER_SIZE]) -> Option<Self> {
+        let header_size = u16::from_le_bytes(*input.get(6..8)?.first_chunk::<2>()?);
+        let key_usage_mask = u16::from_le_bytes(*input.get(12..14)?.first_chunk::<2>()?);
+        let cert_len = u32::from_le_bytes(*input.get(16..20)?.first_chunk::<4>()?) as usize;
+        let data_checksum = u32::from_le_bytes(*input.get(20..24)?.first_chunk::<4>()?);
         Some(Self {
-            version: u16::from_le_bytes(*version),
-            header_size: u16::from_le_bytes(*header_size),
-            slot: *slot,
-            algo: *algo,
-            key_pair_id: *key_pair_id,
-            cert_info: *cert_info,
-            key_usage_mask: u16::from_le_bytes(*kum),
-            cert_len: u32::from_le_bytes(*cert_len) as usize,
-            data_checksum: u32::from_le_bytes(*data_checksum),
-            root_hash: *root_hash,
+            version: MANAGED_LEGACY_FORMAT_VERSION,
+            header_size,
+            slot: *input.get(8)?,
+            algo: *input.get(9)?,
+            key_pair_id: *input.get(10)?,
+            cert_info: *input.get(11)?,
+            key_usage_mask,
+            kind: ManagedRecordKind::Data,
+            generation: 0,
+            cert_len,
+            data_checksum,
+            root_hash: *input.get(24..72)?.first_chunk::<48>()?,
         })
+    }
+
+    fn decode_current(input: &[u8; MANAGED_HEADER_SIZE]) -> Option<Self> {
+        let stored_commit =
+            u32::from_le_bytes(*input.get(MANAGED_COMMIT_OFFSET..)?.first_chunk::<4>()?);
+        if stored_commit != Self::commit_word(input) {
+            return None;
+        }
+        let header_size = u16::from_le_bytes(*input.get(6..8)?.first_chunk::<2>()?);
+        let key_usage_mask = u16::from_le_bytes(*input.get(12..14)?.first_chunk::<2>()?);
+        let kind = match *input.get(14)? {
+            MANAGED_RECORD_DATA => ManagedRecordKind::Data,
+            MANAGED_RECORD_TOMBSTONE => ManagedRecordKind::Tombstone,
+            _ => return None,
+        };
+        let generation = u32::from_le_bytes(*input.get(16..20)?.first_chunk::<4>()?);
+        let cert_len = u32::from_le_bytes(*input.get(20..24)?.first_chunk::<4>()?) as usize;
+        let data_checksum = u32::from_le_bytes(*input.get(24..28)?.first_chunk::<4>()?);
+        Some(Self {
+            version: MANAGED_FORMAT_VERSION,
+            header_size,
+            slot: *input.get(8)?,
+            algo: *input.get(9)?,
+            key_pair_id: *input.get(10)?,
+            cert_info: *input.get(11)?,
+            key_usage_mask,
+            kind,
+            generation,
+            cert_len,
+            data_checksum,
+            root_hash: *input.get(28..76)?.first_chunk::<48>()?,
+        })
+    }
+
+    fn tombstone(slot: u8, generation: u32) -> Self {
+        Self {
+            version: MANAGED_FORMAT_VERSION,
+            header_size: MANAGED_HEADER_SIZE as u16,
+            slot,
+            algo: MANAGED_ALGO_ECC_P384,
+            key_pair_id: 0,
+            cert_info: 0,
+            key_usage_mask: MANAGED_KEY_USAGE_MASK,
+            kind: ManagedRecordKind::Tombstone,
+            generation,
+            cert_len: 0,
+            data_checksum: 0,
+            root_hash: [0; 48],
+        }
+    }
+
+    fn is_valid_for(&self, slot: u8, capacity: usize) -> bool {
+        matches!(
+            self.version,
+            MANAGED_LEGACY_FORMAT_VERSION | MANAGED_FORMAT_VERSION
+        ) && self.header_size as usize == MANAGED_HEADER_SIZE
+            && self.slot == slot
+            && self.algo == MANAGED_ALGO_ECC_P384
+            && match self.kind {
+                ManagedRecordKind::Data => self.cert_len <= capacity,
+                ManagedRecordKind::Tombstone => {
+                    self.cert_len == 0
+                        && self.data_checksum == 0
+                        && self.root_hash == [0; 48]
+                        && self.key_pair_id == 0
+                        && self.cert_info == 0
+                }
+            }
+    }
+
+    fn commit_word(header: &[u8; MANAGED_HEADER_SIZE]) -> u32 {
+        let commit = crc32(&header[..MANAGED_COMMIT_OFFSET]) ^ MANAGED_COMMIT_TAG;
+        if commit == u32::MAX {
+            0
+        } else {
+            commit
+        }
     }
 }
 
 #[cfg(feature = "set-certificate")]
-fn checksum(data: &[u8]) -> u32 {
+fn generation_is_newer(candidate: u32, current: u32) -> bool {
+    candidate != current && candidate.wrapping_sub(current) < (1 << 31)
+}
+
+#[cfg(feature = "set-certificate")]
+fn legacy_checksum(data: &[u8]) -> u32 {
     data.iter()
         .fold(0u32, |acc, &byte| acc.wrapping_add(byte as u32))
+}
+
+#[cfg(feature = "set-certificate")]
+fn crc32(data: &[u8]) -> u32 {
+    !crc32_update(!0u32, data)
+}
+
+#[cfg(feature = "set-certificate")]
+fn crc32_update(mut crc: u32, data: &[u8]) -> u32 {
+    for &byte in data {
+        crc ^= byte as u32;
+        for _ in 0..8 {
+            crc = if crc & 1 == 0 {
+                crc >> 1
+            } else {
+                (crc >> 1) ^ 0xedb8_8320
+            };
+        }
+    }
+    crc
 }
 
 #[cfg(feature = "set-certificate")]
@@ -709,6 +964,8 @@ mod tests {
             key_pair_id: 7,
             cert_info: 3,
             key_usage_mask: 0x0003,
+            kind: ManagedRecordKind::Data,
+            generation: 42,
             cert_len: 1234,
             data_checksum: 0xfeed_beef,
             root_hash: [0x5a; 48],
@@ -716,12 +973,82 @@ mod tests {
         let mut buf = [MANAGED_ERASED_BYTE; MANAGED_HEADER_SIZE];
         record.encode(&mut buf);
         assert_eq!(&buf[0..4], &MANAGED_MAGIC);
+        assert_eq!(ManagedRecord::decode(&buf), None);
+        let commit = ManagedRecord::commit_word(&buf).to_le_bytes();
+        buf[MANAGED_COMMIT_OFFSET..].copy_from_slice(&commit);
         assert_eq!(ManagedRecord::decode(&buf), Some(record));
+
+        buf[28] ^= 1;
+        assert_eq!(ManagedRecord::decode(&buf), None);
     }
 
     #[test]
     fn managed_capacity_excludes_header() {
-        let endorsement = ManagedEndorsement::new(2, 0x7000_000A, 0, 4096);
+        let endorsement = ManagedEndorsement::new(2, 0x7000_000A, 0x7000_000C, 0, 4096);
         assert_eq!(endorsement.der_capacity(), 4096 - MANAGED_HEADER_SIZE);
+    }
+
+    #[test]
+    fn newer_generation_selects_backup_record() {
+        let endorsement = ManagedEndorsement::new(2, 0x7000_000A, 0x7000_000C, 0, 4096);
+        let primary = ManagedRecord::tombstone(2, 4);
+        let backup = ManagedRecord::tombstone(2, 5);
+        assert_eq!(
+            endorsement.select_active_record(Some(primary), Some(backup)),
+            Some((1, backup))
+        );
+    }
+
+    #[test]
+    fn legacy_record_remains_loadable() {
+        let mut buf = [MANAGED_ERASED_BYTE; MANAGED_HEADER_SIZE];
+        buf[..4].copy_from_slice(&MANAGED_MAGIC);
+        buf[4..6].copy_from_slice(&MANAGED_LEGACY_FORMAT_VERSION.to_le_bytes());
+        buf[6..8].copy_from_slice(&(MANAGED_HEADER_SIZE as u16).to_le_bytes());
+        buf[8] = 2;
+        buf[9] = MANAGED_ALGO_ECC_P384;
+        buf[10] = 7;
+        buf[11] = 3;
+        buf[12..14].copy_from_slice(&MANAGED_KEY_USAGE_MASK.to_le_bytes());
+        buf[16..20].copy_from_slice(&1234u32.to_le_bytes());
+        buf[20..24].copy_from_slice(&0xfeed_beefu32.to_le_bytes());
+        buf[24..72].fill(0x5a);
+
+        assert_eq!(
+            ManagedRecord::decode(&buf),
+            Some(ManagedRecord {
+                version: MANAGED_LEGACY_FORMAT_VERSION,
+                header_size: MANAGED_HEADER_SIZE as u16,
+                slot: 2,
+                algo: MANAGED_ALGO_ECC_P384,
+                key_pair_id: 7,
+                cert_info: 3,
+                key_usage_mask: MANAGED_KEY_USAGE_MASK,
+                kind: ManagedRecordKind::Data,
+                generation: 0,
+                cert_len: 1234,
+                data_checksum: 0xfeed_beef,
+                root_hash: [0x5a; 48],
+            })
+        );
+    }
+
+    #[test]
+    fn crc32_matches_standard_vector() {
+        assert_eq!(crc32(b"123456789"), 0xcbf4_3926);
+    }
+
+    #[test]
+    fn writer_gate_and_generation_advance() {
+        let slot = CertSlot::empty();
+        assert!(slot.begin_write());
+        assert!(!slot.begin_write());
+        slot.end_write();
+        assert!(slot.begin_write());
+        slot.end_write();
+
+        assert_eq!(slot.provisioning_state_version(), 0);
+        slot.bump_provisioning_state_version();
+        assert_eq!(slot.provisioning_state_version(), 1);
     }
 }

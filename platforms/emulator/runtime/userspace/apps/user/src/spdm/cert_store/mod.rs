@@ -11,7 +11,7 @@
 mod slot0_endorsements;
 
 #[cfg(feature = "test-mctp-spdm-set-certificate")]
-use caliptra_mcu_config_emulator::flash::CERT_STORE_PARTITION;
+use caliptra_mcu_config_emulator::flash::{CERT_STORE_BACKUP_PARTITION, CERT_STORE_PARTITION};
 use caliptra_mcu_libsyscall_caliptra::external_otp::ExternalOtp;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_spdm_pal::cert::store::SharedCertStore;
@@ -77,6 +77,7 @@ pub async fn setup_endorsements<A: ApiAlloc>(store: &SharedCertStore, alloc: &A)
                 1,
                 OWNER_SPDM_SLOT,
                 CERT_STORE_PARTITION.driver_num,
+                CERT_STORE_BACKUP_PARTITION.driver_num,
                 0,
                 MANAGED_SLOT_REGION_SIZE,
             )
@@ -86,6 +87,7 @@ pub async fn setup_endorsements<A: ApiAlloc>(store: &SharedCertStore, alloc: &A)
                 2,
                 TENANT_SPDM_SLOT,
                 CERT_STORE_PARTITION.driver_num,
+                CERT_STORE_BACKUP_PARTITION.driver_num,
                 MANAGED_SLOT_REGION_SIZE,
                 MANAGED_SLOT_REGION_SIZE,
             )

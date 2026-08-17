@@ -5,11 +5,11 @@ use caliptra_mcu_config::flash::FlashPartition;
 use core::mem::offset_of;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-pub const FLASH_PARTITIONS_COUNT: usize = 6; // Number of flash partitions
+pub const FLASH_PARTITIONS_COUNT: usize = 7; // Number of flash partitions
 
 // Allocate driver numbers for flash partitions
 pub const DRIVER_NUM_START: usize = 0x7000_0006; // Base driver number for flash partitions
-pub const DRIVER_NUM_END: usize = 0x7000_000B; // End driver number for flash partitions
+pub const DRIVER_NUM_END: usize = 0x7000_000C; // End driver number for flash partitions
 
 pub const BLOCK_SIZE: usize = 64 * 1024; // Block size for flash partitions
 
@@ -55,6 +55,17 @@ pub const EMULATED_EXT_OTP_PARTITION: FlashPartition = FlashPartition {
     driver_num: 0x7000_000B,
 };
 
+/// Inactive bank for transactional managed-certificate updates.
+///
+/// The active cert store remains readable while a complete replacement record
+/// is staged and validated here.
+pub const CERT_STORE_BACKUP_PARTITION: FlashPartition = FlashPartition {
+    name: "cert_store_backup",
+    offset: EMULATED_EXT_OTP_PARTITION.offset + EMULATED_EXT_OTP_PARTITION.size,
+    size: CERT_STORE_PARTITION.size,
+    driver_num: 0x7000_000C,
+};
+
 #[macro_export]
 macro_rules! flash_partition_list_primary {
     ($macro:ident) => {{
@@ -70,6 +81,7 @@ macro_rules! flash_partition_list_secondary {
         $macro!(3, image_b, IMAGE_B_PARTITION);
         $macro!(4, staging, STAGING_PARTITION);
         $macro!(5, cert_store, CERT_STORE_PARTITION);
+        $macro!(6, cert_store_backup, CERT_STORE_BACKUP_PARTITION);
     }};
 }
 

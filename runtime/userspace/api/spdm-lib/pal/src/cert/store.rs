@@ -100,13 +100,15 @@ impl SharedCertStore {
         idx: usize,
         spdm_slot: u8,
         driver_num: u32,
+        backup_driver_num: u32,
         base: usize,
         capacity: usize,
     ) -> McuResult<()> {
         if idx >= NUM_CERT_SLOTS || capacity == 0 {
             return Err(mcu_error::codes::INVARIANT);
         }
-        let mut endorsement = ManagedEndorsement::new(spdm_slot, driver_num, base, capacity);
+        let mut endorsement =
+            ManagedEndorsement::new(spdm_slot, driver_num, backup_driver_num, base, capacity);
         endorsement.load().await?;
         let slot = self.cert_slot_mut(idx).ok_or(mcu_error::codes::INVARIANT)?;
         slot.key_pair_id = endorsement.key_pair_id();

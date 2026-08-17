@@ -65,7 +65,8 @@ use caliptra_mcu_config_emulator::flash::EMULATED_EXT_OTP_PARTITION;
 use caliptra_mcu_config_emulator::flash::LOGGING_PARTITION;
 #[cfg(any(feature = "flash-boot", feature = "firmware-update"))]
 use caliptra_mcu_config_emulator::flash::{
-    CERT_STORE_PARTITION, IMAGE_A_PARTITION, IMAGE_B_PARTITION, PARTITION_TABLE, STAGING_PARTITION,
+    CERT_STORE_BACKUP_PARTITION, CERT_STORE_PARTITION, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
+    PARTITION_TABLE, STAGING_PARTITION,
 };
 #[cfg(feature = "userspace-log")]
 use caliptra_mcu_config_emulator::logging_flash_list;

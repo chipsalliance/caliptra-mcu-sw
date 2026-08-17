@@ -2009,6 +2009,7 @@ dependencies = [
  "caliptra-mcu-scratch-alloc",
  "caliptra-mcu-spdm-codec",
  "caliptra-mcu-spdm-traits",
+ "critical-section",
  "mcu-caliptra-api",
  "zerocopy",
 ]
