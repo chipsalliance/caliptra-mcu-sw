@@ -286,16 +286,15 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         _algo: SpdmPalAsymAlgo,
     ) -> McuResult<usize> {
         let idx = slot_index(slot).ok_or(INVARIANT)?;
+        let cert_slot = &self.cert_store.cert_slots()[idx];
 
-        // 1. PRE-CHECK: Ensure Slot is provisioned and not undergoing updates before starting
-        if self.cert_store.cert_slots()[idx]
-            .write_in_progress
-            .load(Ordering::Relaxed)
-        {
+        // Slot-size queries are valid for supported but unprovisioned writable
+        // slots, so capture the generation directly instead of requiring a
+        // provisioned CertSlotSnapshot.
+        if cert_slot.write_in_progress.load(Ordering::Acquire) {
             return Err(INVARIANT);
         }
-
-        let cert_slot = &self.cert_store.cert_slots()[idx];
+        let provisioning_state_version = cert_slot.provisioning_state_version();
         let capacity = cert_slot
             .endorsement
             .capacity(SpdmPalAsymAlgo::EccP384)
@@ -309,12 +308,13 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
             capacity
         };
 
-        // 2. POST-CHECK: Verify Slot remained unlocked during the intermediate async .await points
-        if self.cert_store.cert_slots()[idx]
-            .write_in_progress
-            .load(Ordering::Relaxed)
-        {
+        // Reject a writer that is still active, or one that committed while
+        // the async DPE/leaf sizing work was in flight.
+        if cert_slot.write_in_progress.load(Ordering::Acquire) {
             return Err(INVARIANT);
+        }
+        if cert_slot.provisioning_state_version() != provisioning_state_version {
+            return Err(crate::errors::CERT_SLOT_STATE_CHANGED);
         }
 
         Ok(total)
