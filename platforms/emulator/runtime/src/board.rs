@@ -687,6 +687,24 @@ pub unsafe fn main() {
         VeeRDefaultPeripherals::new(emulator_peripherals, mux_alarm, &MCU_MEMORY_MAP, mci_regs)
     );
 
+    #[cfg(any(
+        feature = "spdm",
+        feature = "streaming-boot",
+        feature = "firmware-update",
+        feature = "mctp-vdm-service",
+        feature = "test-mctp-capsule-loopback"
+    ))]
+    // Read directly from OTP so endpoint identity does not depend on the ROM ABI.
+    let mctp_endpoint_uuid = match peripherals.otp.read_idevid_manufacturer_serial_number() {
+        Ok(uuid) => uuid,
+        Err(err) => {
+            caliptra_mcu_romtime::println!(
+                "[mcu-runtime] UUID missing or invalid in OTP ({err:?}), using zero UUID"
+            );
+            [0; 16]
+        }
+    };
+
     let mci = caliptra_mcu_components::mci::MciComponent::new(
         board_kernel,
         caliptra_mcu_capsules_runtime::mci::DRIVER_NUM,
@@ -824,6 +842,7 @@ pub unsafe fn main() {
             MCU_STRAPS.active_i3c
         );
         caliptra_mcu_components::mux_mctp::MCTPMuxComponent::new(active_i3c_core, mux_alarm)
+            .with_uuid(mctp_endpoint_uuid)
             .finalize(mctp_mux_component_static!(InternalTimers, MCTPI3CBinding))
     };
 
