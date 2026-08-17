@@ -1864,7 +1864,6 @@ impl TryFrom<u16> for SekState {
     }
 }
 
-// TODO(clundin): Update to the release EKP spec once published.
 #[repr(C)]
 #[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq, Default)]
 pub struct GetOcpLockEpochKeyReportReq {

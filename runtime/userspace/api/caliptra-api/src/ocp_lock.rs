@@ -748,12 +748,6 @@ fn encode_subject_name<'a>(cn: &[u8], buf: &'a mut [u8]) -> CaliptraApiResult<An
     Ok(AnyRef::from_der(bytes)?)
 }
 
-// TODO(clundin): Update the code to the release EKP spec once published.
-// Spec Versioning Notice: The following EKP implementation is written against:
-// - TCG Storage Epoch Key Purge Feature Specification v1.00 r0.33
-// - OCP L.O.C.K. Specification v1.1
-// These are subject to change once official releases are available.
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EkpEvidence<'a> {
     pub nonce: &'a [u8; 32],
@@ -795,7 +789,6 @@ impl<'a> EkpEvidence<'a> {
         encoder.encode_uint(Self::CLAIM_EKP_ALLOWED)?;
         encoder.encode_bool(self.ekp_allowed)?;
 
-        // Note: Spec draft example encoded these as bytes(2), but CDDL specifies uint. We use uint (u16).
         encoder.encode_uint(Self::CLAIM_MAX_HEK_SANITIZATIONS)?;
         encoder.encode_uint(self.max_hek_sanitizations as u64)?;
 

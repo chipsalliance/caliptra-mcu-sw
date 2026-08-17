@@ -1,5 +1,4 @@
 // Licensed under the Apache-2.0 license
-// TODO(clundin): Update test assertions to the release EKP spec once published.
 
 #[cfg(all(test, not(feature = "fpga_realtime")))]
 mod test {
