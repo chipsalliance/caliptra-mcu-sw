@@ -9,9 +9,9 @@ use caliptra_mcu_spdm_codec::{
     CHUNK_ATTR_LAST_CHUNK, SECURED_MSG_HDR_SIZE,
 };
 use caliptra_mcu_spdm_traits::{
-    MeasurementInfo, SpdmPalAlloc, SpdmPalAsymAlgo, SpdmPalCertStore, SpdmPalHash, SpdmPalHashAlgo,
-    SpdmPalIo, SpdmPalIoKind, SpdmPalIoTransport, SpdmPalMeasurements, SpdmPalSessionCrypto,
-    SPDM_NONCE_LEN,
+    CertWriteSession, MeasurementInfo, SpdmPalAlloc, SpdmPalAsymAlgo, SpdmPalCertStore,
+    SpdmPalHash, SpdmPalHashAlgo, SpdmPalIo, SpdmPalIoKind, SpdmPalIoTransport,
+    SpdmPalMeasurements, SpdmPalSessionCrypto, SPDM_NONCE_LEN,
 };
 use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut};
@@ -395,7 +395,7 @@ impl SpdmPalCertStore for TestPal {
         cert_model: u8,
         root_hash: &[u8; SHA384_DIGEST_SIZE],
         data_len: usize,
-    ) -> McuResult<()> {
+    ) -> McuResult<CertWriteSession> {
         if let Some(err) = self.write_error {
             return Err(err);
         }
@@ -403,12 +403,13 @@ impl SpdmPalCertStore for TestPal {
         data.clear();
         data.resize(data_len, 0);
         let _ = (slot, key_pair_id, cert_model, root_hash);
-        Ok(())
+        Ok(CertWriteSession::new(slot, 1))
     }
 
     async fn write_cert_chain_stream_chunk(
         &self,
         _io: &Self::Io<'_>,
+        _session: CertWriteSession,
         _slot: u8,
         _algo: SpdmPalAsymAlgo,
         offset: usize,
@@ -422,6 +423,7 @@ impl SpdmPalCertStore for TestPal {
     async fn finish_write_cert_chain_stream(
         &self,
         _io: &Self::Io<'_>,
+        _session: CertWriteSession,
         slot: u8,
         _algo: SpdmPalAsymAlgo,
         key_pair_id: u8,
@@ -457,6 +459,7 @@ impl SpdmPalCertStore for TestPal {
     async fn abort_write_cert_chain_stream(
         &self,
         _io: &Self::Io<'_>,
+        _session: CertWriteSession,
         _slot: u8,
         _algo: SpdmPalAsymAlgo,
     ) -> McuResult<()> {

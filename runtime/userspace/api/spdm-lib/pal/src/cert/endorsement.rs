@@ -11,10 +11,14 @@
 use caliptra_mcu_libsyscall_caliptra::{flash::SpiFlash, DefaultSyscalls};
 #[cfg(feature = "set-certificate")]
 use caliptra_mcu_libtock_platform::ErrorCode;
+#[cfg(feature = "set-certificate")]
+use caliptra_mcu_spdm_traits::CertWriteSession;
 use caliptra_mcu_spdm_traits::SpdmPalAsymAlgo;
 use mcu_error::McuResult;
 
-use core::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+#[cfg(feature = "set-certificate")]
+use core::sync::atomic::AtomicBool;
+use core::sync::atomic::{AtomicU32, Ordering};
 
 /// Number of cert slots managed by the PAL.
 pub const NUM_CERT_SLOTS: usize = 3;
@@ -60,8 +64,12 @@ pub struct CertSlot {
     /// CertificateInfo/CertModel associated with this slot.
     /// `None` for unprovisioned slots.
     pub cert_info: Option<u8>,
-    /// Serializes writers while they stage an update in the inactive bank.
-    pub write_in_progress: AtomicBool,
+    /// True while the current write session owns inactive-bank staging.
+    #[cfg(feature = "set-certificate")]
+    write_in_progress: AtomicBool,
+    /// Volatile identity for the currently authorized streaming write.
+    #[cfg(feature = "set-certificate")]
+    write_session_epoch: AtomicU32,
     /// Bumped when this slot's endorsement/provisioning state changes.
     pub provisioning_state_version: AtomicU32,
 }
@@ -72,7 +80,10 @@ impl CertSlot {
             endorsement: SlotEndorsement::Empty,
             key_pair_id: None,
             cert_info: None,
+            #[cfg(feature = "set-certificate")]
             write_in_progress: AtomicBool::new(false),
+            #[cfg(feature = "set-certificate")]
+            write_session_epoch: AtomicU32::new(0),
             provisioning_state_version: AtomicU32::new(0),
         }
     }
@@ -89,19 +100,36 @@ impl CertSlot {
         self.endorsement.is_provisioned()
     }
 
-    pub fn begin_write(&self) -> bool {
+    #[cfg(feature = "set-certificate")]
+    pub(crate) fn begin_write_session(&self, slot: u8) -> CertWriteSession {
         critical_section::with(|_| {
-            if self.write_in_progress.load(Ordering::Acquire) {
-                false
-            } else {
-                self.write_in_progress.store(true, Ordering::Release);
-                true
-            }
+            let epoch = self
+                .write_session_epoch
+                .load(Ordering::Acquire)
+                .wrapping_add(1);
+            self.write_session_epoch.store(epoch, Ordering::Release);
+            self.write_in_progress.store(true, Ordering::Release);
+            CertWriteSession::new(slot, epoch)
         })
     }
 
-    pub fn end_write(&self) {
-        critical_section::with(|_| self.write_in_progress.store(false, Ordering::Release));
+    #[cfg(feature = "set-certificate")]
+    pub(crate) fn write_session_matches(&self, slot: u8, session: CertWriteSession) -> bool {
+        session.matches_slot(slot)
+            && self.write_in_progress.load(Ordering::Acquire)
+            && self.write_session_epoch.load(Ordering::Acquire) == session.epoch()
+    }
+
+    #[cfg(feature = "set-certificate")]
+    pub(crate) fn end_write_session(&self, slot: u8, session: CertWriteSession) -> bool {
+        critical_section::with(|_| {
+            if self.write_session_matches(slot, session) {
+                self.write_in_progress.store(false, Ordering::Release);
+                true
+            } else {
+                false
+            }
+        })
     }
 
     pub fn provisioning_state_version(&self) -> u32 {
@@ -300,6 +328,8 @@ pub struct ManagedEndorsement {
     capacity: usize,
     active_bank: Option<usize>,
     staging_bank: Option<usize>,
+    staging_data_len: Option<usize>,
+    staging_next_offset: usize,
     generation: u32,
     initialized: bool,
     algo: SpdmPalAsymAlgo,
@@ -326,6 +356,8 @@ impl ManagedEndorsement {
             capacity,
             active_bank: None,
             staging_bank: None,
+            staging_data_len: None,
+            staging_next_offset: 0,
             generation: 0,
             initialized: false,
             algo: SpdmPalAsymAlgo::EccP384,
@@ -341,6 +373,8 @@ impl ManagedEndorsement {
         self.clear_active_state();
         self.active_bank = None;
         self.staging_bank = None;
+        self.staging_data_len = None;
+        self.staging_next_offset = 0;
         self.generation = 0;
 
         let primary = self.load_bank(0).await?;
@@ -428,7 +462,7 @@ impl ManagedEndorsement {
         algo: SpdmPalAsymAlgo,
         data_len: usize,
     ) -> McuResult<Self> {
-        if algo != SpdmPalAsymAlgo::EccP384 || data_len > self.der_capacity() {
+        if algo != SpdmPalAsymAlgo::EccP384 || data_len == 0 || data_len > self.der_capacity() {
             return Err(mcu_error::codes::INVARIANT);
         }
         let staging_bank = self.inactive_bank();
@@ -437,31 +471,30 @@ impl ManagedEndorsement {
             .await
             .map_err(map_flash_error)?;
         self.staging_bank = Some(staging_bank);
+        self.staging_data_len = Some(data_len);
+        self.staging_next_offset = 0;
         Ok(self)
     }
 
-    pub async fn write_stream_chunk(&self, offset: usize, data: &[u8]) -> McuResult<()> {
-        let end = offset
-            .checked_add(data.len())
-            .ok_or(mcu_error::codes::INVARIANT)?;
-        if end > self.der_capacity() {
-            return Err(mcu_error::codes::INVARIANT);
-        }
+    pub async fn write_stream_chunk(mut self, offset: usize, data: &[u8]) -> McuResult<Self> {
+        let staging_bank = self.staging_bank.ok_or(mcu_error::codes::INVARIANT)?;
+        let end = self.stream_chunk_end(offset, data.len())?;
         if !data.is_empty() {
-            let staging_bank = self.staging_bank.ok_or(mcu_error::codes::INVARIANT)?;
             self.flash(staging_bank)
                 .write(self.data_base(staging_bank) + offset, data.len(), data)
                 .await
                 .map_err(map_flash_error)?;
         }
-        Ok(())
+        self.staging_next_offset = end;
+        Ok(self)
     }
 
     pub async fn read_stream_chunk(&self, offset: usize, buf: &mut [u8]) -> McuResult<usize> {
-        if offset >= self.der_capacity() || buf.is_empty() {
+        let staging_data_len = self.staging_data_len.ok_or(mcu_error::codes::INVARIANT)?;
+        if offset >= staging_data_len || buf.is_empty() {
             return Ok(0);
         }
-        let n = (self.der_capacity() - offset).min(buf.len());
+        let n = (staging_data_len - offset).min(buf.len());
         let staging_bank = self.staging_bank.ok_or(mcu_error::codes::INVARIANT)?;
         self.flash(staging_bank)
             .read(self.data_base(staging_bank) + offset, n, &mut buf[..n])
@@ -482,6 +515,9 @@ impl ManagedEndorsement {
             return Err(mcu_error::codes::INVARIANT);
         }
         let staging_bank = self.staging_bank.ok_or(mcu_error::codes::INVARIANT)?;
+        if !self.stream_is_complete(data_len) {
+            return Err(mcu_error::codes::INVARIANT);
+        }
         let data_checksum = self.stored_crc32(staging_bank, data_len).await?;
         let record = self.data_record(key_pair_id, cert_info, root_hash, data_len, data_checksum);
         self.write_record(staging_bank, &record).await?;
@@ -533,6 +569,8 @@ impl ManagedEndorsement {
 
     pub fn abort_stream_update(mut self) -> Self {
         self.staging_bank = None;
+        self.staging_data_len = None;
+        self.staging_next_offset = 0;
         self
     }
 
@@ -651,7 +689,7 @@ impl ManagedEndorsement {
 
     fn publish_data(&mut self, bank: usize, algo: SpdmPalAsymAlgo, record: &ManagedRecord) {
         self.active_bank = Some(bank);
-        self.staging_bank = None;
+        self.clear_staging_state();
         self.generation = record.generation;
         self.initialized = true;
         self.algo = algo;
@@ -664,7 +702,7 @@ impl ManagedEndorsement {
 
     fn publish_tombstone(&mut self, bank: usize, record: &ManagedRecord) {
         self.active_bank = Some(bank);
-        self.staging_bank = None;
+        self.clear_staging_state();
         self.generation = record.generation;
         self.clear_active_state();
     }
@@ -677,6 +715,28 @@ impl ManagedEndorsement {
         self.key_pair_id = 0;
         self.cert_info = 0;
         self.key_usage_mask = MANAGED_KEY_USAGE_MASK;
+    }
+
+    fn clear_staging_state(&mut self) {
+        self.staging_bank = None;
+        self.staging_data_len = None;
+        self.staging_next_offset = 0;
+    }
+
+    fn stream_is_complete(&self, data_len: usize) -> bool {
+        self.staging_data_len == Some(data_len) && self.staging_next_offset == data_len
+    }
+
+    fn stream_chunk_end(&self, offset: usize, len: usize) -> McuResult<usize> {
+        let staging_data_len = self.staging_data_len.ok_or(mcu_error::codes::INVARIANT)?;
+        if offset != self.staging_next_offset {
+            return Err(mcu_error::codes::INVARIANT);
+        }
+        let end = offset.checked_add(len).ok_or(mcu_error::codes::INVARIANT)?;
+        if end > staging_data_len {
+            return Err(mcu_error::codes::INVARIANT);
+        }
+        Ok(end)
     }
 
     async fn stored_crc32(&self, bank: usize, len: usize) -> McuResult<u32> {
@@ -1039,16 +1099,42 @@ mod tests {
     }
 
     #[test]
-    fn writer_gate_and_generation_advance() {
+    fn generation_advances() {
         let slot = CertSlot::empty();
-        assert!(slot.begin_write());
-        assert!(!slot.begin_write());
-        slot.end_write();
-        assert!(slot.begin_write());
-        slot.end_write();
-
         assert_eq!(slot.provisioning_state_version(), 0);
         slot.bump_provisioning_state_version();
         assert_eq!(slot.provisioning_state_version(), 1);
+    }
+
+    #[test]
+    fn newer_write_session_supersedes_older_callbacks() {
+        let slot = CertSlot::empty();
+        let first = slot.begin_write_session(2);
+        assert!(slot.write_session_matches(2, first));
+
+        let second = slot.begin_write_session(2);
+        assert!(!slot.write_session_matches(2, first));
+        assert!(!slot.end_write_session(2, first));
+        assert!(slot.write_session_matches(2, second));
+        assert!(slot.end_write_session(2, second));
+        assert!(!slot.write_session_matches(2, second));
+        assert!(!slot.write_session_matches(3, second));
+    }
+
+    #[test]
+    fn stream_completion_requires_full_coverage() {
+        let mut endorsement = ManagedEndorsement::new(2, 0x7000_000A, 0x7000_000C, 0, 4096);
+        endorsement.staging_bank = Some(0);
+        endorsement.staging_data_len = Some(16);
+        endorsement.staging_next_offset = 8;
+        assert!(!endorsement.stream_is_complete(16));
+
+        endorsement.staging_next_offset = 16;
+        assert!(endorsement.stream_is_complete(16));
+        assert!(!endorsement.stream_is_complete(15));
+
+        assert_eq!(endorsement.stream_chunk_end(16, 0), Ok(16));
+        assert!(endorsement.stream_chunk_end(15, 1).is_err());
+        assert!(endorsement.stream_chunk_end(16, 1).is_err());
     }
 }

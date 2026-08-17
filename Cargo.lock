@@ -2010,6 +2010,7 @@ dependencies = [
  "caliptra-mcu-spdm-codec",
  "caliptra-mcu-spdm-traits",
  "critical-section",
+ "embassy-sync",
  "mcu-caliptra-api",
  "zerocopy",
 ]

@@ -14,6 +14,7 @@ caliptra-mcu-measurement-api = { workspace = true }
 mcu-caliptra-api = { workspace = true, features = ["mailbox-io"] }
 caliptra-mcu-scratch-alloc = { workspace = true }
 critical-section.workspace = true
+embassy-sync = { workspace = true, optional = true }
 mcu-error = { workspace = true }
 caliptra-mcu-libsyscall-caliptra = { workspace = true, optional = true }
 caliptra-mcu-libtock_platform = { workspace = true, optional = true }
@@ -26,4 +27,5 @@ set-certificate = [
   "caliptra-mcu-spdm-traits/set-certificate",
   "caliptra-mcu-libsyscall-caliptra",
   "caliptra-mcu-libtock_platform",
+  "dep:embassy-sync",
 ]

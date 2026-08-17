@@ -7,6 +7,8 @@
 //! on a single-core MCU — only one task runs at a time.
 
 use core::cell::UnsafeCell;
+#[cfg(feature = "set-certificate")]
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 
 use mcu_caliptra_api::{sha_finish, sha_init, sha_update, ApiAlloc, HashAlgo, SHA_CONTEXT_SIZE};
 use mcu_error::McuResult;
@@ -26,6 +28,8 @@ const DEFAULT_CERT_INFO: u8 = 0x01;
 /// `&'static SharedCertStore`.
 pub struct SharedCertStore {
     cert_slots: UnsafeCell<[CertSlot; NUM_CERT_SLOTS]>,
+    #[cfg(feature = "set-certificate")]
+    stream_operation_locks: [Mutex<CriticalSectionRawMutex, ()>; NUM_CERT_SLOTS],
 }
 
 // SAFETY: single-core cooperative scheduling — no concurrent access.
@@ -41,6 +45,8 @@ impl SharedCertStore {
     pub const fn new() -> Self {
         Self {
             cert_slots: UnsafeCell::new([CertSlot::empty(), CertSlot::empty(), CertSlot::empty()]),
+            #[cfg(feature = "set-certificate")]
+            stream_operation_locks: [Mutex::new(()), Mutex::new(()), Mutex::new(())],
         }
     }
 
@@ -57,6 +63,14 @@ impl SharedCertStore {
     pub(crate) fn cert_slot_mut(&self, idx: usize) -> Option<&mut CertSlot> {
         // SAFETY: single-task invariant.
         unsafe { (*self.cert_slots.get()).get_mut(idx) }
+    }
+
+    #[cfg(feature = "set-certificate")]
+    pub(crate) fn stream_operation_lock(
+        &self,
+        idx: usize,
+    ) -> Option<&Mutex<CriticalSectionRawMutex, ()>> {
+        self.stream_operation_locks.get(idx)
     }
 
     // ---------------------------------------------------------------
@@ -168,6 +182,14 @@ impl TaskCertStore {
     #[allow(dead_code)]
     pub(crate) fn cert_slot_mut(&self, idx: usize) -> Option<&mut CertSlot> {
         self.shared.cert_slot_mut(idx)
+    }
+
+    #[cfg(feature = "set-certificate")]
+    pub(crate) fn stream_operation_lock(
+        &self,
+        idx: usize,
+    ) -> Option<&Mutex<CriticalSectionRawMutex, ()>> {
+        self.shared.stream_operation_lock(idx)
     }
 
     pub(crate) fn cached_chain_len(

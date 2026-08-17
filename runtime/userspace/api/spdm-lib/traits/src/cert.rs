@@ -24,6 +24,31 @@ pub struct CertSlotSnapshot {
     provisioning_state_version: u32,
 }
 
+/// Opaque PAL-owned identity for one streaming certificate write.
+///
+/// This is internal responder state, not an SPDM wire value. The stack only
+/// carries it between callbacks; the PAL rejects callbacks from an older
+/// superseded stream.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub struct CertWriteSession {
+    slot: u8,
+    epoch: u32,
+}
+
+impl CertWriteSession {
+    pub const fn new(slot: u8, epoch: u32) -> Self {
+        Self { slot, epoch }
+    }
+
+    pub const fn matches_slot(self, slot: u8) -> bool {
+        self.slot == slot
+    }
+
+    pub const fn epoch(self) -> u32 {
+        self.epoch
+    }
+}
+
 impl CertSlotSnapshot {
     pub const fn new(slot: u8, provisioning_state_version: u32) -> Self {
         Self {
@@ -192,11 +217,10 @@ pub trait SpdmPalCertStore: crate::SpdmPalIoTransport {
         data: &[u8],
     ) -> McuResult<()>;
 
-    /// Begins a non-atomic streaming SET_CERTIFICATE write transaction.
+    /// Begins a streaming SET_CERTIFICATE write transaction.
     ///
-    /// Implementations may erase/overwrite target storage at begin time. A
-    /// request becomes valid only after [`finish_write_cert_chain_stream`](Self::finish_write_cert_chain_stream)
-    /// commits metadata; interrupted or invalid requests need not preserve the old chain.
+    /// The returned session is PAL-owned and must be passed to each later
+    /// callback. A newer begin may supersede an unfinished session.
     #[allow(clippy::too_many_arguments)]
     async fn begin_write_cert_chain_stream(
         &self,
@@ -207,7 +231,7 @@ pub trait SpdmPalCertStore: crate::SpdmPalIoTransport {
         _cert_info: u8,
         _root_hash: &[u8; 48],
         _data_len: usize,
-    ) -> McuResult<()> {
+    ) -> McuResult<CertWriteSession> {
         Err(mcu_error::codes::NOT_IMPLEMENTED)
     }
 
@@ -215,6 +239,7 @@ pub trait SpdmPalCertStore: crate::SpdmPalIoTransport {
     async fn write_cert_chain_stream_chunk(
         &self,
         _io: &Self::Io<'_>,
+        _session: CertWriteSession,
         _slot: u8,
         _algo: SpdmPalAsymAlgo,
         _offset: usize,
@@ -228,6 +253,7 @@ pub trait SpdmPalCertStore: crate::SpdmPalIoTransport {
     async fn finish_write_cert_chain_stream(
         &self,
         _io: &Self::Io<'_>,
+        _session: CertWriteSession,
         _slot: u8,
         _algo: SpdmPalAsymAlgo,
         _key_pair_id: u8,
@@ -242,6 +268,7 @@ pub trait SpdmPalCertStore: crate::SpdmPalIoTransport {
     async fn abort_write_cert_chain_stream(
         &self,
         _io: &Self::Io<'_>,
+        _session: CertWriteSession,
         _slot: u8,
         _algo: SpdmPalAsymAlgo,
     ) -> McuResult<()> {

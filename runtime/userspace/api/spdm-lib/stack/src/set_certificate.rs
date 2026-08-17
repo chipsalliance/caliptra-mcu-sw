@@ -13,7 +13,7 @@ use caliptra_mcu_spdm_codec::{
 };
 use caliptra_mcu_spdm_errors::as_spdm_wire;
 use caliptra_mcu_spdm_traits::{
-    PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalIo, SpdmPalIoTransport, MAX_SLOTS,
+    CertWriteSession, PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalIo, SpdmPalIoTransport, MAX_SLOTS,
 };
 use mcu_error::McuErrorCode;
 use zerocopy::FromBytes;
@@ -124,6 +124,7 @@ pub(crate) async fn handle_set_certificate_request<Pal: SpdmPal>(
 
 #[derive(Copy, Clone)]
 pub(crate) struct SetCertificateStreamState {
+    write_session: CertWriteSession,
     slot_id: u8,
     key_pair_id: u8,
     cert_model: u8,
@@ -199,18 +200,20 @@ pub(crate) async fn start_set_certificate_stream<Pal: SpdmPal>(
         return Err(SPDM_INVALID_REQUEST);
     }
 
-    pal.begin_write_cert_chain_stream(
-        io,
-        slot_id,
-        state.asym_algo(),
-        req_body.key_pair_id,
-        cert_model,
-        &root_hash,
-        der_len,
-    )
-    .await?;
+    let write_session = pal
+        .begin_write_cert_chain_stream(
+            io,
+            slot_id,
+            state.asym_algo(),
+            req_body.key_pair_id,
+            cert_model,
+            &root_hash,
+            der_len,
+        )
+        .await?;
 
     let mut stream = SetCertificateStreamState {
+        write_session,
         slot_id,
         key_pair_id: req_body.key_pair_id,
         cert_model,
@@ -250,8 +253,15 @@ pub(crate) async fn continue_set_certificate_stream<Pal: SpdmPal>(
         return Err(SPDM_INVALID_REQUEST);
     }
     validate_der_stream_chunk(stream, der)?;
-    pal.write_cert_chain_stream_chunk(io, stream.slot_id, algo, stream.der_received, der)
-        .await?;
+    pal.write_cert_chain_stream_chunk(
+        io,
+        stream.write_session,
+        stream.slot_id,
+        algo,
+        stream.der_received,
+        der,
+    )
+    .await?;
     stream.der_received = end;
     Ok(())
 }
@@ -271,6 +281,7 @@ pub(crate) async fn finish_set_certificate_stream<Pal: SpdmPal>(
     }
     pal.finish_write_cert_chain_stream(
         io,
+        stream.write_session,
         stream.slot_id,
         state.asym_algo(),
         stream.key_pair_id,
@@ -290,7 +301,7 @@ pub(crate) async fn abort_set_certificate_stream<Pal: SpdmPal>(
     stream: &SetCertificateStreamState,
 ) {
     let _ = pal
-        .abort_write_cert_chain_stream(io, stream.slot_id, state.asym_algo())
+        .abort_write_cert_chain_stream(io, stream.write_session, stream.slot_id, state.asym_algo())
         .await;
 }
 
