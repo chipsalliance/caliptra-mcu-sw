@@ -219,3 +219,5 @@ Native-authenticated/read-only DOT request:
 directly under top-level command `0x11`. Recovery-mode gating for `MDRC`,
 `DOTW`, and `DOTX` is deferred; their native cryptographic and state checks are
 always enforced.
+
+**For detailed command flows, state transitions, security properties, and use cases**, see [Device Ownership Transfer (DOT)](dot.md#runtime-commands).

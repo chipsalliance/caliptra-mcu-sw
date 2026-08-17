@@ -865,7 +865,7 @@ DOT_BLOB[168]
 
 ### 8. DOT_OVERRIDE_CHALLENGE / DOT_OVERRIDE
 
-**Purpose:** Authorize catastrophic recovery and device reset via recovery keys (ECC P-384 and ML-DSA-87) when normal ownership mechanisms are unavailable or compromised.
+**Purpose:** Authorize catastrophic recovery and device reset via DOT recovery keys (ECC P-384 and ML-DSA-87) when normal ownership mechanisms are unavailable or compromised.
 
 **Use Case:** Provides a secure mechanism for device recovery when:
 - Normal DOT unlock flow is unavailable
@@ -882,7 +882,7 @@ DOT_BLOB[168]
 **DOT_OVERRIDE_CHALLENGE (DOTW) Flow:**
 
 **Preconditions:**
-- Recovery key hash must be provisioned in OTP
+- DOT recovery key hash must be provisioned in OTP
 - No authorization trailer required
 
 **Flow:**
@@ -904,16 +904,16 @@ challenge[48]
 
 **Preconditions:**
 - Must have previously issued DOTW and received valid challenge
-- Recovery key hash must match OTP
+- DOT recovery key hash must match OTP
 - Can be issued in any DOT state (EVEN or ODD)
 
 **Flow:**
 1. BMC issues a native `DOTX` request containing:
-   - Recovery ECC P-384 public key (same as in DOTW)
-   - Recovery ML-DSA-87 public key (same as in DOTW)
+   - DOT recovery ECC P-384 public key (same as in DOTW)
+   - DOT recovery ML-DSA-87 public key (same as in DOTW)
    - ECC P-384 signature over challenge
    - ML-DSA-87 signature over challenge
-2. MCU RT verifies recovery-key hash matches OTP (same as DOTW):
+2. MCU RT verifies DOT recovery-key hash matches OTP (same as DOTW):
    - If hash does not match: Return error
 3. MCU RT verifies ECC P-384 signature:
    - If signature invalid: Return error
