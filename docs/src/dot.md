@@ -748,6 +748,255 @@ bit, and writes an empty blob sealed for the new EVEN epoch. These commands do
 not use generic authorization. Restricting them to a ROM-signaled recovery
 Runtime is deferred to a future hardening change.
 
+The retained LAK hash keeps the post-burn blob well formed and matches firmware-manifest unlock semantics.
+
+### 4. DOT_ROTATE
+
+**Purpose:** Refresh the code authentication and lock authentication key hashes while advancing fuse state, maintaining the current parity (EVEN/ODD) to preserve the ownership state.
+
+**Use Case:** Enables periodic key rotation without losing device ownership or requiring an unlock-relock cycle. Allows updating CAK and LAK hashes to new keys while keeping the device in the same locked/unlocked state.
+
+**Preconditions:**
+- DOT_FUSE_ARRAY in either EVEN or ODD state
+- `min_fuse_count` value provided in command
+- Current burned count is below `min_fuse_count`
+- Nonzero CAK and LAK hashes provided
+- Sufficient remaining fuse bits to complete the rotation
+
+**Flow:**
+1. BMC obtains `MACC` and issues an authorized `MDRT` request containing `min_fuse_count`, new CAK hash, and new LAK hash.
+2. MCU RT verifies generic command authorization.
+3. MCU RT checks if current burned count is below `min_fuse_count`:
+   - If already met: Return success without burning (no-op on threshold)
+   - If below threshold: Continue to rotation
+4. MCU RT burns exactly two fuse bits (advancing by 2), preserving parity:
+   - If current state is EVEN (n): Result is EVEN (n+2)
+   - If current state is ODD (n): Result is ODD (n+2)
+5. MCU RT derives DOT_EFFECTIVE_KEY for the new epoch.
+6. MCU RT creates and HMAC-seals a new DOT_BLOB with the new CAK/LAK hashes.
+7. MCU RT writes and read-back verifies the DOT_BLOB.
+8. MCU RT returns success with `reset_required = 1`.
+9. **On the subsequent boot**:
+   - Device boots with the same parity (EVEN/ODD) as before
+   - Ownership state (uninitialized/locked/disabled) is unchanged
+   - New CAK/LAK hashes are active
+
+**Result:** Keys are rotated while maintaining device ownership state. Parity and ownership model are preserved.
+
+### 5. GET_DOT_BACKUP_BLOB
+
+**Purpose:** Retrieve a backup copy of the current DOT_BLOB for external storage or recovery preparation.
+
+**Use Case:** Enables backup and recovery workflows where the owner maintains an off-device copy of the DOT_BLOB to ensure it can be recovered if the on-device storage becomes corrupted. The returned blob can be restored using DOT_RECOVERY command.
+
+**Preconditions:**
+- DOT_FUSE_ARRAY in ODD state (device must be in Locked or Disabled state)
+- Valid DOT_BLOB present in storage with correct HMAC
+- Current epoch blob version must be valid
+
+**Validation:**
+- Command is generic-authorized (requires `MACC` challenge)
+- Blob must be in ODD-state format with valid HMAC
+- Blob cannot be in EVEN state (pre-burn blob)
+- Blob cannot be corrupt or have mismatched HMAC
+
+**Flow:**
+1. BMC obtains `MACC` and issues an authorized `MDBB` request (empty payload).
+2. MCU RT verifies generic command authorization.
+3. MCU RT checks DOT_FUSE_ARRAY state:
+   - If EVEN state: Return error (backup not available in uninitialized state)
+4. MCU RT derives the current DOT_EFFECTIVE_KEY using current fuse count.
+5. MCU RT reads DOT_BLOB from storage.
+6. MCU RT validates blob version and HMAC with current epoch key:
+   - If validation fails: Return error (blob is corrupted or stale)
+7. MCU RT returns the exact 168-byte DOT_BLOB to BMC.
+
+**Response:**
+```
+status || DOT_BLOB[168]
+```
+
+**Security Properties:**
+- Only available in ODD state (ownership is locked)
+- Returns only authenticated blobs (HMAC verified)
+- Does not return pre-burn (EVEN-epoch) blobs
+- Does not modify device state
+- No fuse bits are burned
+
+### 6. DOT_STATUS
+
+**Purpose:** Query the current DOT state without modifying device ownership or performing any mutations.
+
+**Use Case:** Enables BMC and system integrators to query device DOT status at any time to determine current ownership configuration and fuse burn progress without side effects.
+
+**Preconditions:**
+- None (no state-specific requirements)
+- No authorization required (read-only command)
+
+**Flow:**
+1. BMC issues a native (non-authorized) `MDST` request (empty payload).
+2. MCU RT reads DOT_FUSE_ARRAY current burned count.
+3. MCU RT determines state parity:
+   - `locked = burned_count % 2` (0 = EVEN/Uninitialized, 1 = ODD/Locked or Disabled)
+4. MCU RT determines enabled status:
+   - `enabled = 1` if DOT is in Locked state (has valid CAK)
+   - `enabled = 0` if DOT is in Disabled or Uninitialized state
+5. MCU RT returns status fields to BMC.
+
+**Response Payload:**
+```
+enabled:u8 || locked:u8 || burned:u16_le
+```
+
+Where:
+- `enabled`: 1 if CAK is installed and active, 0 otherwise
+- `locked`: 1 if DOT_FUSE_ARRAY is in ODD state, 0 if in EVEN state
+- `burned`: Current burned fuse count (little-endian u16)
+
+**State Mapping:**
+| enabled | locked | State |
+|---------|--------|-------|
+| 0 | 0 | Uninitialized/Volatile |
+| 1 | 1 | Locked |
+| 0 | 1 | Disabled |
+
+**Security Properties:**
+- Read-only operation
+- No state mutations
+- No authorization check required
+- Always returns current state from fuse array
+
+### 7. DOT_RECOVERY
+
+**Purpose:** Restore a previously backed-up DOT_BLOB to storage when the on-device copy has been corrupted or lost.
+
+**Use Case:** Enables recovery from flash storage corruption. If the active DOT_BLOB becomes corrupted and the device boots into recovery mode, the owner can supply a previously backed-up blob obtained via GET_DOT_BACKUP_BLOB to restore valid ownership state.
+
+**Preconditions:**
+- DOT_FUSE_ARRAY in ODD state (device must be in Locked or Disabled state, or in recovery mode)
+- Backup DOT_BLOB must have been obtained via GET_DOT_BACKUP_BLOB from the same epoch
+- Backup BLOB must be exactly 168 bytes
+
+**Validation:**
+- Command uses native authentication (HMAC-based proof in the blob itself)
+- No generic authorization required
+- Blob HMAC must be valid with the current device-derived DOT_EFFECTIVE_KEY
+- Invalid backup BLOB cannot modify flash (HMAC validates before write)
+
+**Flow:**
+1. BMC issues a native `MDRC` request containing a 168-byte backup DOT_BLOB.
+2. MCU RT checks DOT_FUSE_ARRAY state:
+   - If EVEN state: Return error (recovery only valid in ODD state)
+3. MCU RT derives the current DOT_EFFECTIVE_KEY using current fuse count.
+4. MCU RT verifies the backup BLOB's HMAC with current epoch key:
+   - If HMAC validation fails: Return error (blob is invalid, no writes occur)
+5. If HMAC is valid, MCU RT writes the backup BLOB to storage.
+6. MCU RT performs read-back verification to ensure write succeeded.
+7. MCU RT returns success.
+8. **On the subsequent boot**:
+   - Device boots in ODD state
+   - Restored DOT_BLOB is authenticated
+   - CAK/LAK are recovered from the restored blob
+   - Device resumes normal operation in Locked or Disabled state
+
+**Request Payload:**
+```
+DOT_BLOB[168]
+```
+
+**Security Properties:**
+- Native HMAC-based authentication (no external signatures required)
+- Invalid BLOB cannot corrupt flash (HMAC check precedes writes)
+- No privilege escalation possible (HMAC is cryptographic proof)
+- Read-back verify ensures durability
+- HMAC prevents injection of arbitrary data
+
+### 8. DOT_OVERRIDE_CHALLENGE / DOT_OVERRIDE
+
+**Purpose:** Authorize catastrophic recovery and device reset via DOT recovery keys (ECC P-384 and ML-DSA-87) when normal ownership mechanisms are unavailable or compromised.
+
+**Use Case:** Provides a secure mechanism for device recovery when:
+- Normal DOT unlock flow is unavailable
+- Device is in corrupted state beyond normal recovery
+- Emergency device recovery is required by authorized recovery administrators
+- Ownership state needs to be forcibly reset to Uninitialized state
+
+**Security Model:**
+- Recovery authorization requires both ECC P-384 and ML-DSA-87 signatures (hybrid cryptography)
+- Recovery keys are provisioned in OTP as a public-key hash during manufacturing
+- Recovery operation is irreversible (forces transition to EVEN state)
+- Recovery resets all DOT state and ownership
+
+**DOT_OVERRIDE_CHALLENGE (DOTW) Flow:**
+
+**Preconditions:**
+- DOT recovery key hash must be provisioned in OTP
+- No authorization trailer required
+
+**Flow:**
+1. BMC issues a native `DOTW` request containing:
+   - Recovery ECC P-384 public key
+   - Recovery ML-DSA-87 public key
+2. MCU RT hashes both keys using Caliptra's recovery-key hash convention.
+3. MCU RT compares the combined hash with the fused recovery-key hash in OTP:
+   - If hash does not match: Return error (invalid recovery keys)
+4. MCU RT generates a fresh challenge (random nonce/timestamp).
+5. MCU RT returns the challenge to BMC.
+
+**Response:**
+```
+challenge[48]
+```
+
+**DOT_OVERRIDE (DOTX) Flow:**
+
+**Preconditions:**
+- Must have previously issued DOTW and received valid challenge
+- DOT recovery key hash must match OTP
+- Can be issued in any DOT state (EVEN or ODD)
+
+**Flow:**
+1. BMC issues a native `DOTX` request containing:
+   - DOT recovery ECC P-384 public key (same as in DOTW)
+   - DOT recovery ML-DSA-87 public key (same as in DOTW)
+   - ECC P-384 signature over challenge
+   - ML-DSA-87 signature over challenge
+2. MCU RT verifies DOT recovery-key hash matches OTP (same as DOTW):
+   - If hash does not match: Return error
+3. MCU RT verifies ECC P-384 signature:
+   - If signature invalid: Return error
+4. MCU RT verifies ML-DSA-87 signature:
+   - If signature invalid: Return error
+5. MCU RT consumes the challenge (prevents reuse).
+6. MCU RT burns one fuse bit, advancing state by 1:
+   - If current state is EVEN (n): Result is ODD (n+1)
+   - If current state is ODD (n): Result is EVEN (n+1)
+7. MCU RT creates and HMAC-seals an empty-CAK blob for the new epoch.
+8. MCU RT writes and read-back verifies the blob.
+9. MCU RT returns success with `reset_required = 1`.
+10. **On the subsequent boot**:
+    - Device boots with reversed parity
+    - If was EVEN (uninitialized): Now ODD (but with no CAK in blob)
+    - If was ODD (locked/disabled): Now EVEN (uninitialized)
+    - Recovery operation is complete
+
+**Request Payload (DOTX):**
+```
+recovery_ecc_key[48] || recovery_mldsa_key[2592] || ecc_sig[96] || mldsa_sig[4627]
+```
+
+**Security Properties:**
+- Requires hybrid cryptography (both ECC and ML-DSA valid signatures)
+- Recovery-key hash provisioned in OTP prevents key substitution
+- Challenge prevents replay attacks
+- Single-use challenge prevents bypass via replay
+- Fuse burn is irreversible
+- Timestamps/nonces ensure freshness
+- No generic authorization used (native recovery-key authentication only)
+
+**Limitations (Deferred):**
+Recovery-mode gating for `MDRC`, `DOTW`, and `DOTX` is deferred to a future hardening change. Currently, these commands are available in all runtime states. Future versions will restrict them to ROM-signaled recovery runtime to prevent their use during normal operation.
+
 ---
 
 ## State Management
