@@ -21,8 +21,8 @@ caliptra-auth-man-types.workspace = true
 caliptra-builder.workspace = true
 caliptra-hw-model-types.workspace = true
 caliptra-hw-model.workspace = true
-caliptra-image-gen.workspace = true
 caliptra-image-crypto.workspace = true
+caliptra-image-gen.workspace = true
 caliptra-image-types = { workspace = true, features = ["std"] }
 caliptra-image-fake-keys.workspace = true
 chrono.workspace = true
@@ -69,6 +69,7 @@ simple_logger.workspace = true
 openssl.workspace = true
 caliptra-mcu-romtime.workspace = true
 tempfile.workspace = true
+serde_json.workspace = true
 uio = { workspace = true, optional = true }
 uuid.workspace = true
 zerocopy.workspace = true
