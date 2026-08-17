@@ -126,6 +126,8 @@ For authorized DOT commands the signed preimage is
 
 Payload semantics match [Caliptra SPDM VDM DOT commands](caliptra_spdm_vdm_cmds.md#device-ownership-transfer-commands).
 
+**For detailed command flows, state transitions, security properties, and use cases**, see [Device Ownership Transfer (DOT)](dot.md#runtime-commands)
+
 ### MC_FIRMWARE_VERSION
 
 Retrieves the version of the target firmware.
