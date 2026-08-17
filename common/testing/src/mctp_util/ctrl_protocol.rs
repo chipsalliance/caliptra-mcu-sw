@@ -41,6 +41,13 @@ pub fn get_eid_resp_bytes(cc: CmdCompletionCode, eid: u8) -> Vec<u8> {
     resp_bytes.to_vec()
 }
 
+pub fn get_endpoint_uuid_resp_bytes(cc: CmdCompletionCode, uuid: &[u8; 16]) -> Vec<u8> {
+    let mut resp_bytes = Vec::with_capacity(17);
+    resp_bytes.push(cc as u8);
+    resp_bytes.extend_from_slice(uuid);
+    resp_bytes
+}
+
 pub fn get_version_support_resp_bytes(cc: u8, entries: Option<&[VersionEntry]>) -> Vec<u8> {
     let entry_count = entries.map_or(0, |entries| entries.len());
     let mut resp_bytes = vec![0; 2 + entry_count * 4];
@@ -109,6 +116,7 @@ impl MCTPCtrlMsgHdr<[u8; MCTP_CTRL_MSG_HDR_SIZE]> {
 pub enum MCTPCtrlCmd {
     SetEID = 1,
     GetEID = 2,
+    GetEndpointUUID = 3,
     GetMctpVersionSupport = 4,
     GetMsgTypeSupport = 5,
     GetVendorDefinedMsgSupport = 6,
@@ -121,6 +129,7 @@ impl TryFrom<u8> for MCTPCtrlCmd {
         Ok(match val {
             1 => Self::SetEID,
             2 => Self::GetEID,
+            3 => Self::GetEndpointUUID,
             4 => Self::GetMctpVersionSupport,
             5 => Self::GetMsgTypeSupport,
             6 => Self::GetVendorDefinedMsgSupport,
