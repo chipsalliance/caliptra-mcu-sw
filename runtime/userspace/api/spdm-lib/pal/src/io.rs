@@ -209,15 +209,15 @@ impl<M: MeasurementProvider> SpdmPalIoTransport for McuSpdmPal<M> {
     /// used by the HEARTBEAT liveness watchdog. Returns 0 when the alarm
     /// capsule is unavailable, which keeps the watchdog inert.
     #[cfg(feature = "spdm-set-heartbeat")]
-    fn now_ms(&self) -> u64 {
-        super::clock::now_ms()
+    fn now(&self) -> Milliseconds {
+        Milliseconds(super::clock::now_ms())
     }
 
-    /// Sleep until at least `ms` milliseconds elapse, via the libtock alarm
-    /// capsule. Raced against `recv_request` in the responder run loop so an
-    /// idle session is torn down on watchdog expiry.
+    /// Sleep until at least `dur` elapses, via the libtock alarm capsule.
+    /// Raced against `recv_request` in the responder run loop so an idle
+    /// session is torn down on watchdog expiry.
     #[cfg(feature = "spdm-set-heartbeat")]
-    async fn sleep_ms(&self, ms: u64) {
-        super::clock::sleep_ms(ms).await
+    async fn sleep(&self, dur: Milliseconds) {
+        super::clock::sleep_ms(dur.0).await
     }
 }

@@ -335,11 +335,11 @@ async fn recv_next<'p, Pal: SpdmPal, const N: usize>(
     loop {
         match sessions.nearest_deadline_ms() {
             Some(deadline) => {
-                let delay = deadline.saturating_sub(pal.now_ms());
-                match select(pal.recv_request(), pal.sleep_ms(delay)).await {
+                let delay = deadline.saturating_sub(pal.now().0);
+                match select(pal.recv_request(), pal.sleep(Milliseconds(delay))).await {
                     Either::First(io) => return io,
                     Either::Second(()) => {
-                        sessions.expire_due(pal.now_ms());
+                        sessions.expire_due(pal.now().0);
                         continue;
                     }
                 }
@@ -885,7 +885,7 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_S
             // Arm the liveness watchdog at the FINISH_RSP transmission point
             // (DSP0274 1.3.0 section 10.20). No-op when the negotiated period
             // is zero (heartbeat disabled / feature off).
-            session.arm_heartbeat(pal.now_ms());
+            session.arm_heartbeat(pal.now().0);
             Ok(rsp)
         }
         ReqRespCode::END_SESSION => {
@@ -1037,7 +1037,7 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_S
     // here; touch is a no-op on a session whose watchdog is unarmed.
     if result.is_ok() && code != ReqRespCode::FINISH && code != ReqRespCode::END_SESSION {
         if let Some(session) = sessions.find_mut(session_id) {
-            session.touch_heartbeat(pal.now_ms());
+            session.touch_heartbeat(pal.now().0);
         }
     }
 

@@ -38,6 +38,14 @@ pub trait SpdmPalIo {
     fn request(&self) -> &[u8];
 }
 
+/// A quantity of milliseconds used by the HEARTBEAT liveness watchdog for
+/// both the monotonic clock reading and sleep durations. Wrapping the raw
+/// count in a newtype keeps the unit in the type signature so it can't be
+/// confused with an unrelated integer. `u64`-backed so per-session deadlines
+/// don't overflow at seconds-scale heartbeat periods.
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Default)]
+pub struct Milliseconds(pub u64);
+
 /// Transport-layer abstraction for SPDM request/response exchange.
 ///
 /// Implementations of this trait handle the mechanics of receiving SPDM
@@ -123,19 +131,19 @@ pub trait SpdmPalIoTransport {
     /// check per-session deadlines. The default returns 0; a PAL that wants
     /// heartbeat-driven session teardown must override this with a real
     /// monotonic source (e.g. the libtock alarm capsule). With the default,
-    /// `now_ms` never advances so no watchdog deadline is ever reached.
-    fn now_ms(&self) -> u64 {
-        0
+    /// `now` never advances so no watchdog deadline is ever reached.
+    fn now(&self) -> Milliseconds {
+        Milliseconds(0)
     }
 
-    /// Sleep until at least `ms` milliseconds have elapsed.
+    /// Sleep until at least `dur` has elapsed.
     ///
     /// Raced against [`Self::recv_request`] in the responder run loop so a
     /// silent peer's session can be torn down on watchdog expiry. The default
     /// never resolves, so a PAL that does not provide a real clock simply
     /// waits on `recv_request` alone (the pre-heartbeat behavior).
-    async fn sleep_ms(&self, ms: u64) {
-        let _ = ms;
+    async fn sleep(&self, dur: Milliseconds) {
+        let _ = dur;
         core::future::pending::<()>().await
     }
 }

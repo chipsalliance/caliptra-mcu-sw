@@ -9,9 +9,9 @@ use caliptra_mcu_spdm_codec::{
     CHUNK_ATTR_LAST_CHUNK, SECURED_MSG_HDR_SIZE,
 };
 use caliptra_mcu_spdm_traits::{
-    MeasurementInfo, SpdmPalAlloc, SpdmPalAsymAlgo, SpdmPalCertStore, SpdmPalHash, SpdmPalHashAlgo,
-    SpdmPalIo, SpdmPalIoKind, SpdmPalIoTransport, SpdmPalMeasurements, SpdmPalSessionCrypto,
-    SPDM_NONCE_LEN,
+    MeasurementInfo, Milliseconds, SpdmPalAlloc, SpdmPalAsymAlgo, SpdmPalCertStore, SpdmPalHash,
+    SpdmPalHashAlgo, SpdmPalIo, SpdmPalIoKind, SpdmPalIoTransport, SpdmPalMeasurements,
+    SpdmPalSessionCrypto, SPDM_NONCE_LEN,
 };
 use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut};
@@ -237,11 +237,11 @@ impl SpdmPalIoTransport for TestPal {
         Err(mcu_error::codes::NOT_IMPLEMENTED)
     }
 
-    fn now_ms(&self) -> u64 {
-        *self.now_ms.borrow()
+    fn now(&self) -> Milliseconds {
+        Milliseconds(*self.now_ms.borrow())
     }
 
-    async fn sleep_ms(&self, _ms: u64) {
+    async fn sleep(&self, _dur: Milliseconds) {
         // Tests drive the clock explicitly via `set_now_ms`; never block.
     }
 }
