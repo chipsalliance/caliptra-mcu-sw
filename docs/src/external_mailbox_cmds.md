@@ -37,8 +37,8 @@ These commands support common Caliptra management functions, including querying 
 | MC_DEVICE_CAPABILITIES        | 0x4D43_4150 ("MCAP") | Retrieve the device capabilities.                                                     |
 | MC_EXPORT_ATTESTED_CSR        | 0x4D45_4143 ("MEAC") | Exports an attested CSR for a specified device key, wrapped in a CoseSign1 structure. |
 | MC_GET_ATTESTATION            | 0x4D47_4154 ("MGAT") | Retrieves signed attestation evidence in a requester-selected format.                 |
-| MC_GET_CERT_CHAIN             | 0x4D47_4343 ("MGCC") | Reserved for future certificate-chain retrieval; not implemented.                    |
-| MC_SET_CERT_CHAIN             | 0x4D53_4343 ("MSCC") | Reserved for future certificate-chain updates; not implemented.                      |
+| MC_GET_CERT_CHAIN             | 0x4D47_4343 ("MGCC") | Retrieves a complete DER certificate chain in offset-addressed chunks.               |
+| MC_SET_CERT_CHAIN             | 0x4D53_4343 ("MSCC") | Authorizes and transactionally updates a certificate chain.                          |
 | MC_GET_LOG                    | 0x4D47_4C47 ("MGLG") | Retrieves the debug log                                                               |
 | MC_CLEAR_LOG                  | 0x4D43_4C47 ("MCLG") | Clears the debug log                                                                  |
 | MC_FIPS_SELF_TEST_START       | 0x4D46_5354 ("MFST") | Starts the FIPS self-test to exercise the crypto engine.                              |
@@ -177,6 +177,181 @@ MCI mailbox response payload:
 | data_len        | u32            | Length in bytes of `evidence_format` plus `evidence`.                                 |
 | evidence_format | u32            | Echo of the requested `evidence_format`.                                              |
 | evidence        | u8[data_len-4] | Signed evidence blob, or a `u32` supported-format bitmap when responding to the query. |
+
+### MC_GET_CERT_CHAIN
+
+Retrieves the complete active certificate chain for a BankID and SlotID pair.
+Command Code: `0x4D47_4343` ("MGCC").
+
+*Status:* This is the wire contract for the pending implementation. Current
+runtime builds do not yet dispatch this command and continue to report it as
+unsupported.
+
+`MC_GET_CERT_CHAIN` returns the complete certificate chain for the selected
+BankID and SlotID pair as one or more DER `Certificate` SEQUENCE values
+concatenated in chain order. It includes device-generated certificates,
+including the leaf certificate, needed to form that complete chain.
+
+`MC_SET_CERT_CHAIN` accepts the mutable, caller-provisioned portion of the
+chain. Device-generated certificates are not writable through the command and
+are added by the certificate service when the complete chain is read.
+
+All integer fields in the following tables are little-endian. The normal MCI
+mailbox `chksum`, `fips_status`, and `data_len` fields remain transport
+framing.
+
+The BankID and SlotID fields follow the DSP0274 banked certificate-slot model.
+`asym_algo` identifies the asymmetric algorithm for the request and must match
+the selected BankID:
+
+| BankID | asym_algo | Algorithm | Current availability |
+| ------ | --------- | --------- | -------------------- |
+| `0` | `0x0000_0001` | ECDSA P-384 / SHA-384 | Available |
+| `1` | `0x0000_0002` | ML-DSA-87 | Defined, but unavailable until the certificate service can provide its complete ML-DSA-87 chain |
+
+Bank 1 requests currently fail as unsupported. Its address and algorithm
+mapping are part of this contract so that it can be enabled without changing
+the wire format once complete ML-DSA-87 certificate-chain support is
+available.
+
+Each available bank uses the following SlotID assignments:
+
+| SlotID | PKI entity | MCI support |
+| ------ | ---------- | ----------- |
+| `0` | Vendor | Read-only |
+| `2` | Owner | Read/write |
+| `3` | Tenant | Not yet supported |
+
+The maximum certificate bytes returned by one `MC_GET_CERT_CHAIN` response is
+`4028`. The standard 4096-byte variable response payload reserves 68 bytes for
+the response metadata below.
+
+MCI mailbox request payload:
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| chksum | u32 | Normal mailbox request checksum. |
+| bank_id | u8 | BankID from the table above. |
+| slot_id | u8 | SlotID from the table above. |
+| reserved | u8[2] | Must be zero. |
+| asym_algo | u32 | Asymmetric algorithm from the table above. |
+| offset | u32 | Byte offset into the complete active certificate chain. |
+| max_chunk_len | u32 | Requested byte count, from `0` through `4028`. |
+
+MCI mailbox response payload:
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| chksum | u32 | Normal mailbox response checksum. |
+| fips_status | u32 | FIPS approved or an error. |
+| data_len | u32 | `68 + chunk_len`. |
+| bank_id | u8 | Echo of the request BankID. |
+| slot_id | u8 | Echo of the request SlotID. |
+| reserved | u8[2] | Zero. |
+| asym_algo | u32 | Echo of the request asymmetric algorithm. |
+| total_len | u32 | Total bytes in the complete active certificate chain. |
+| offset | u32 | Echo of the request offset. |
+| root_hash | u8[48] | SHA-384 digest of the first DER certificate in the chain. |
+| chunk_len | u32 | Number of bytes in `certificate_chain`. |
+| certificate_chain | u8[chunk_len] | Bytes beginning at `offset`. |
+
+`max_chunk_len = 0` is a metadata query. It requires `offset = 0` and returns
+`chunk_len = 0`. For a data request, `offset` can equal `total_len` to return
+an empty final chunk; larger offsets fail. A successful data response returns
+`min(max_chunk_len, total_len - offset)` bytes.
+
+The command reads only a committed active chain. A write in progress continues
+to expose the previous active chain. If a concurrent publication changes the
+slot while the handler reads it, the handler retries or fails the request; it
+must never combine bytes or metadata from two generations. An unprovisioned
+slot has no active chain and fails the request.
+
+### MC_SET_CERT_CHAIN
+
+Creates, replaces, or erases the mutable certificate chain portion for a
+BankID and SlotID pair. Command Code: `0x4D53_4343` ("MSCC").
+
+*Status:* This is the wire contract for the pending implementation. Current
+runtime builds do not yet dispatch this command and continue to report it as
+unsupported.
+
+Every `MC_SET_CERT_CHAIN` request is authorization-gated, including individual
+write chunks and finish operations. It appends the existing MCI command
+authorization trailer after the command body. The body from `operation` through
+`certificate_chain` is signed using the one-use challenge flow described in
+[Command Authorization Mechanism](integrator-guide.md#command-authorization-mechanism).
+The caller obtains a fresh challenge and sends a freshly authorized request for
+each operation. This prevents an unauthenticated party from injecting a chunk
+or publishing another caller's staged data.
+
+`asym_algo` is required on every `MC_SET_CERT_CHAIN` operation and must match
+the request BankID.
+
+The maximum `certificate_chain` byte count in one `WRITE` request is `4096`.
+
+MCI mailbox request payload:
+
+| Name | Type | Description |
+| ---- | ---- | ----------- |
+| chksum | u32 | Normal mailbox request checksum. |
+| operation | u32 | `BEGIN`, `WRITE`, `FINISH`, or `ERASE`, defined below. |
+| bank_id | u8 | BankID from the table above. |
+| slot_id | u8 | SlotID from the table above. |
+| reserved | u8[2] | Must be zero. |
+| asym_algo | u32 | Asymmetric algorithm from the table above. |
+| total_len | u32 | Mutable chain portion length for `BEGIN`; zero for all other operations. |
+| offset | u32 | Byte offset for `WRITE`; zero for all other operations. |
+| root_hash | u8[48] | SHA-384 digest of the first DER certificate for `BEGIN`; all zeroes otherwise. |
+| chunk_len | u32 | `certificate_chain` length for `WRITE`; zero for all other operations. |
+| certificate_chain | u8[chunk_len] | Certificate bytes for `WRITE`; absent otherwise. |
+| authorization_trailer | variable | Existing MCI authorization trailer, present on every request. |
+
+| operation | Value | Required request fields and behavior |
+| --------- | ----- | ------------------------------------ |
+| `BEGIN` | `1` | `asym_algo`, `total_len`, and `root_hash` identify a new mutable chain portion for the selected BankID and SlotID. `total_len` must be nonzero and fit the selected slot. This initializes a new staged update; it does not change the active chain. |
+| `WRITE` | `2` | `offset`, `chunk_len`, and `certificate_chain` supply the next sequential bytes. `chunk_len` is in `1..=4096`; `offset` must equal the staging stream's next expected offset, and the chunk must not exceed `total_len`. |
+| `FINISH` | `3` | All operation-specific fields are zero. The handler accepts it only after exactly `total_len` bytes have been written. It validates the complete DER sequence, verifies `root_hash`, and atomically publishes the new chain portion. |
+| `ERASE` | `4` | All operation-specific fields are zero. The handler atomically makes the slot unprovisioned. |
+
+`MC_SET_CERT_CHAIN` returns the normal header-only mailbox response on success.
+It does not return staging-state data.
+
+#### Transaction, recovery, and concurrency semantics
+
+`BEGIN` starts a new staged transaction. `WRITE` changes only the staged data.
+`FINISH` first validates the entire staged chain and then durably publishes the
+new chain; only that final publication switches the active chain. On reset,
+validation failure, a short write, or an interrupted update, the previously
+committed active chain remains readable. `ERASE` likewise does not make the
+slot unprovisioned until that new state has been durably published.
+
+There is intentionally no host-visible write-session token. An accepted
+`BEGIN` is latest-begin-wins: it abandons any existing staging stream for that
+BankID and SlotID pair and starts a new internal write session. This also
+invalidates stale callbacks from another protocol adapter that retains the
+internal session identity.
+
+There is no `ABORT` operation. Abandoned staging is never active, and a later
+`BEGIN` replaces it. An accepted `ERASE` likewise invalidates any staged stream
+before it publishes the unprovisioned state.
+
+Without a wire token, MCI cannot distinguish a delayed `WRITE` or `FINISH`
+from a previous MCI producer when its offset happens to match the new stream.
+The contract therefore requires one management producer per BankID and SlotID
+pair at a time, ordered requests, and a completed response before sending the
+next operation. On a missing response, authorization failure, offset failure,
+or other uncertainty, the producer must send a new `BEGIN` and retransmit the
+entire chain from offset zero. It must not attempt to resume a partially staged
+transaction. This deliberate stateless behavior keeps abandoned or invalid
+writes unpublished without exposing a wire session handle.
+
+Malformed fields, unsupported BankID, SlotID, or asymmetric-algorithm values,
+a BankID/asymmetric-algorithm mismatch, reads or writes of an unprovisioned
+slot where an active chain is required, attempts to update a read-only slot, an
+invalid stream order or offset, authorization failure, DER or root-hash
+validation failure, and internal errors all complete the mailbox command with
+failure and no command-specific response payload. None of these failures
+publishes partial certificate bytes.
 
 ### MC_GET_LOG
 
