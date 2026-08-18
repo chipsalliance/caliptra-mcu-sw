@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! SPDM CAPABILITIES wire types.
+//! SPDM CAPABILITIES wire types (DSP0274 §10.3).
 //!
 //! Two layers:
 //!
@@ -20,7 +20,7 @@ use crate::flag_macros::def_flag_set_le;
 use crate::{ReqRespCode, ResponseBody, WireError, WireWriter};
 
 def_flag_set_le! {
-    /// SPDM capability bitfield. Constants
+    /// SPDM capability bitfield (DSP0274 §10.3). Constants
     /// cover single-bit flags directly. The 2-bit `MEAS` and `PSK`
     /// fields are exposed as per-value constants (`MEAS_NO_SIG`,
     /// `MEAS_SIG`, `PSK`, `PSK_WITH_CTX`).
@@ -83,11 +83,17 @@ impl CapFlags {
     pub fn multi_key_field(self) -> u8 {
         ((self.into_bits() >> 26) & 0b11) as u8
     }
+
+    /// 2-bit `EP_INFO_CAP` field value (bits 22..=23).
+    #[inline]
+    pub fn ep_info_field(self) -> u8 {
+        ((self.into_bits() >> 22) & 0b11) as u8
+    }
 }
 
 def_flag_set_le! {
-    /// SPDM V1.4 extended responder capability flags. The requester
-    /// field is reserved; responders ignore its value.
+    /// SPDM V1.4 extended responder capability flags. Requester
+    /// ExtFlags are reserved in V1.4 and therefore must be zero.
     pub struct ExtCapFlags(U16: u16) {
         SLOT_MGMT = 1 << 0,
     }
@@ -117,8 +123,8 @@ impl CapabilitiesBody {
     /// Minimum DataTransferSize for V1.2+ is 42 bytes.
     pub const MIN_DATA_TRANSFER_SIZE: u32 = 42;
 
-    /// Practical upper bound on CTExponent (CT = 2^32 µs ≈ 1.2 h).
-    pub const MAX_CT_EXPONENT: u8 = 32;
+    /// Maximum CTExponent accepted by libspdm and the responder validator.
+    pub const MAX_CT_EXPONENT: u8 = 31;
 }
 
 const _: () = assert!(core::mem::size_of::<CapabilitiesBody>() == CapabilitiesBody::SIZE);
