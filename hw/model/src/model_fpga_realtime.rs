@@ -10,8 +10,8 @@ use caliptra_emu_periph::MailboxRequester;
 use caliptra_emu_types::{RvAddr, RvData, RvSize};
 use caliptra_hw_model::openocd::openocd_jtag_tap::{JtagParams, JtagTap, OpenOcdJtagTap};
 use caliptra_hw_model::{
-    DeviceLifecycle, HwModel, InitParams as CaliptraInitParams, ModelFpgaSubsystem, Output,
-    SecurityState, SubsystemInitParams, XI3CWrapper,
+    CaliptraHwVersion, DeviceLifecycle, HwModel, InitParams as CaliptraInitParams,
+    ModelFpgaSubsystem, Output, SecurityState, SubsystemInitParams, XI3CWrapper,
 };
 use caliptra_mcu_romtime::LifecycleControllerState;
 use caliptra_mcu_romtime::McuBootMilestones;
@@ -441,6 +441,7 @@ impl McuHwModel for ModelFpgaRealtime {
         };
 
         let cptra_init = CaliptraInitParams {
+            hw_version: CaliptraHwVersion::V2_1,
             fuses: params.fuses,
             rom: params.caliptra_rom,
             dccm: params.caliptra_dccm,
