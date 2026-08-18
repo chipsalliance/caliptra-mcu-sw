@@ -1,0 +1,22 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "caliptra-mcu-hw-model-c-binding"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+caliptra-cfi-lib.workspace = true
+caliptra-mcu-hw-model.workspace = true
+caliptra-ureg.workspace = true
+
+[lib]
+crate-type = ["staticlib"]
+
+[features]
+default = []
+fpga_realtime = ["caliptra-mcu-hw-model/fpga_realtime"]
+itrng = ["caliptra-mcu-hw-model/itrng"]
+
+[build-dependencies]
+cbindgen.workspace = true
