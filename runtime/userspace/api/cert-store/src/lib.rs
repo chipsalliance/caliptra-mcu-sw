@@ -23,8 +23,10 @@ use core::{mem::size_of, sync::atomic::AtomicBool};
 #[cfg(feature = "set-certificate")]
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 
-/// Number of certificate slots in the reference store.
+/// Number of certificate roles in the reference store.
 pub const NUM_CERT_SLOTS: usize = 3;
+/// Number of certificate algorithms supported by the common store.
+pub const NUM_CERT_ALGORITHMS: usize = 2;
 
 /// Flash was busy while a managed certificate operation was in flight.
 pub const CERT_STORE_BUSY: McuErrorCode = McuErrorCode::new(domain::CERT_STORE, 0, 0x0001);
@@ -37,8 +39,55 @@ pub const CERT_STORE_OPERATION_FAILED: McuErrorCode =
 pub enum CertificateAlgorithm {
     /// ECDSA P-384 / SHA-384 certificate chain.
     EccP384,
-    /// ML-DSA-87 certificate chain, reserved for future use.
+    /// ML-DSA-87 certificate chain.
     MlDsa87,
+}
+
+impl CertificateAlgorithm {
+    pub const fn index(self) -> usize {
+        match self {
+            Self::EccP384 => 0,
+            Self::MlDsa87 => 1,
+        }
+    }
+
+    #[cfg(feature = "set-certificate")]
+    const fn managed_record_code(self) -> u8 {
+        match self {
+            Self::EccP384 => 1,
+            Self::MlDsa87 => 2,
+        }
+    }
+}
+
+/// Protocol-neutral role of a certificate chain.
+///
+/// Protocol adapters map their own slot identifiers to this role before
+/// accessing the shared store.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CertificateRole {
+    Vendor,
+    Owner,
+    Tenant,
+}
+
+impl CertificateRole {
+    pub const fn index(self) -> usize {
+        match self {
+            Self::Vendor => 0,
+            Self::Owner => 1,
+            Self::Tenant => 2,
+        }
+    }
+
+    pub const fn from_index(index: usize) -> Option<Self> {
+        match index {
+            0 => Some(Self::Vendor),
+            1 => Some(Self::Owner),
+            2 => Some(Self::Tenant),
+            _ => None,
+        }
+    }
 }
 
 /// Opaque certificate attributes supplied by a protocol adapter.
@@ -73,21 +122,25 @@ impl CertificateAttributes {
 /// It is local responder state rather than a wire-level transaction token.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct CertWriteSession {
-    slot: u8,
+    scope: u8,
     epoch: u32,
 }
 
 impl CertWriteSession {
-    pub const fn new(slot: u8, epoch: u32) -> Self {
-        Self { slot, epoch }
+    pub const fn new(scope: u8, epoch: u32) -> Self {
+        Self { scope, epoch }
     }
 
-    pub const fn matches_slot(self, slot: u8) -> bool {
-        self.slot == slot
+    pub const fn matches(self, algorithm: CertificateAlgorithm, role: CertificateRole) -> bool {
+        self.scope == Self::certificate_scope(algorithm, role)
     }
 
     pub const fn epoch(self) -> u32 {
         self.epoch
+    }
+
+    const fn certificate_scope(algorithm: CertificateAlgorithm, role: CertificateRole) -> u8 {
+        (algorithm.index() * NUM_CERT_SLOTS + role.index()) as u8
     }
 }
 
@@ -134,7 +187,11 @@ impl CertSlot {
     }
 
     #[cfg(feature = "set-certificate")]
-    pub fn begin_write_session(&self, slot: u8) -> CertWriteSession {
+    pub fn begin_write_session(
+        &self,
+        algorithm: CertificateAlgorithm,
+        role: CertificateRole,
+    ) -> CertWriteSession {
         critical_section::with(|_| {
             let epoch = self
                 .write_session_epoch
@@ -142,21 +199,31 @@ impl CertSlot {
                 .wrapping_add(1);
             self.write_session_epoch.store(epoch, Ordering::Release);
             self.write_in_progress.store(true, Ordering::Release);
-            CertWriteSession::new(slot, epoch)
+            CertWriteSession::new(CertWriteSession::certificate_scope(algorithm, role), epoch)
         })
     }
 
     #[cfg(feature = "set-certificate")]
-    pub fn write_session_matches(&self, slot: u8, session: CertWriteSession) -> bool {
-        session.matches_slot(slot)
+    pub fn write_session_matches(
+        &self,
+        algorithm: CertificateAlgorithm,
+        role: CertificateRole,
+        session: CertWriteSession,
+    ) -> bool {
+        session.matches(algorithm, role)
             && self.write_in_progress.load(Ordering::Acquire)
             && self.write_session_epoch.load(Ordering::Acquire) == session.epoch()
     }
 
     #[cfg(feature = "set-certificate")]
-    pub fn end_write_session(&self, slot: u8, session: CertWriteSession) -> bool {
+    pub fn end_write_session(
+        &self,
+        algorithm: CertificateAlgorithm,
+        role: CertificateRole,
+        session: CertWriteSession,
+    ) -> bool {
         critical_section::with(|_| {
-            if self.write_session_matches(slot, session) {
+            if self.write_session_matches(algorithm, role, session) {
                 self.write_in_progress.store(false, Ordering::Release);
                 true
             } else {
@@ -182,16 +249,17 @@ impl CertSlot {
     }
 }
 
-/// Static certificate slots shared by every transport.
+/// Static certificate slots keyed by algorithm and role, shared by every transport.
 ///
 /// Runtime slot updates hold the corresponding per-slot operation lock;
 /// initialization completes before transports start. Readers must copy any
 /// backing state before awaiting, then validate the provisioning generation
 /// after the await completes.
 pub struct SharedCertStore {
-    cert_slots: UnsafeCell<[CertSlot; NUM_CERT_SLOTS]>,
+    cert_slots: UnsafeCell<[[CertSlot; NUM_CERT_SLOTS]; NUM_CERT_ALGORITHMS]>,
     #[cfg(feature = "set-certificate")]
-    stream_operation_locks: [Mutex<CriticalSectionRawMutex, ()>; NUM_CERT_SLOTS],
+    stream_operation_locks:
+        [[Mutex<CriticalSectionRawMutex, ()>; NUM_CERT_SLOTS]; NUM_CERT_ALGORITHMS],
 }
 
 // SAFETY: the MCU has cooperative single-core scheduling. Mutations are
@@ -208,80 +276,108 @@ impl Default for SharedCertStore {
 impl SharedCertStore {
     pub const fn new() -> Self {
         Self {
-            cert_slots: UnsafeCell::new([CertSlot::empty(), CertSlot::empty(), CertSlot::empty()]),
+            cert_slots: UnsafeCell::new([
+                [CertSlot::empty(), CertSlot::empty(), CertSlot::empty()],
+                [CertSlot::empty(), CertSlot::empty(), CertSlot::empty()],
+            ]),
             #[cfg(feature = "set-certificate")]
-            stream_operation_locks: [Mutex::new(()), Mutex::new(()), Mutex::new(())],
+            stream_operation_locks: [
+                [Mutex::new(()), Mutex::new(()), Mutex::new(())],
+                [Mutex::new(()), Mutex::new(()), Mutex::new(())],
+            ],
         }
     }
 
-    pub fn cert_slots(&self) -> &[CertSlot; NUM_CERT_SLOTS] {
+    pub fn cert_slots(&self, algorithm: CertificateAlgorithm) -> &[CertSlot; NUM_CERT_SLOTS] {
         // SAFETY: readers do not retain references across await points.
-        unsafe { &*self.cert_slots.get() }
+        unsafe { &(*self.cert_slots.get())[algorithm.index()] }
+    }
+
+    pub fn cert_slot(&self, algorithm: CertificateAlgorithm, role: CertificateRole) -> &CertSlot {
+        &self.cert_slots(algorithm)[role.index()]
     }
 
     /// Update one slot without allowing its mutable reference to escape.
     ///
     /// Runtime callers must hold the matching operation lock. Initialization
     /// callers may update a slot before transports start.
-    pub fn update_cert_slot(&self, idx: usize, update: impl FnOnce(&mut CertSlot)) -> bool {
+    pub fn update_cert_slot(
+        &self,
+        algorithm: CertificateAlgorithm,
+        role: CertificateRole,
+        update: impl FnOnce(&mut CertSlot),
+    ) {
         // SAFETY: writers are serialized by the per-slot operation lock and
         // the callback cannot retain the mutable reference across an await.
-        let Some(slot) = (unsafe { (*self.cert_slots.get()).get_mut(idx) }) else {
-            return false;
-        };
+        let slot = unsafe { &mut (*self.cert_slots.get())[algorithm.index()][role.index()] };
         update(slot);
-        true
     }
 
     #[cfg(feature = "set-certificate")]
-    pub fn stream_operation_lock(&self, idx: usize) -> Option<&Mutex<CriticalSectionRawMutex, ()>> {
-        self.stream_operation_locks.get(idx)
+    pub fn stream_operation_lock(
+        &self,
+        algorithm: CertificateAlgorithm,
+        role: CertificateRole,
+    ) -> &Mutex<CriticalSectionRawMutex, ()> {
+        &self.stream_operation_locks[algorithm.index()][role.index()]
     }
 
     /// Configure a static, read-only certificate chain for a slot.
     pub fn configure_read_only_slot(
         &self,
-        idx: usize,
+        algorithm: CertificateAlgorithm,
+        role: CertificateRole,
         chain: &'static [&'static [u8]],
         root_cert_hash: [u8; 48],
         attributes: CertificateAttributes,
     ) -> McuResult<()> {
-        if idx >= NUM_CERT_SLOTS || chain.is_empty() {
+        if chain.is_empty() {
             return Err(mcu_error::codes::INVARIANT);
         }
-        self.update_cert_slot(idx, |slot| {
-            slot.endorsement =
-                SlotEndorsement::ReadOnly(ReadOnlyEndorsement::new(chain, root_cert_hash));
+        self.update_cert_slot(algorithm, role, |slot| {
+            slot.endorsement = SlotEndorsement::ReadOnly(ReadOnlyEndorsement::new(
+                algorithm,
+                chain,
+                root_cert_hash,
+            ));
             slot.attributes = Some(attributes);
-        })
-        .then_some(())
-        .ok_or(mcu_error::codes::INVARIANT)
+        });
+        Ok(())
     }
 
     /// Configure a flash-backed certificate chain slot and recover its active
     /// record, if one exists.
+    ///
+    /// `storage_id` is an opaque persistent-record discriminator. It is not a
+    /// protocol-visible certificate address.
     #[cfg(feature = "set-certificate")]
     pub async fn configure_managed_slot(
         &self,
-        idx: usize,
-        slot_id: u8,
+        algorithm: CertificateAlgorithm,
+        role: CertificateRole,
+        storage_id: u8,
         driver_num: u32,
         backup_driver_num: u32,
         base: usize,
         capacity: usize,
     ) -> McuResult<()> {
-        if idx >= NUM_CERT_SLOTS || capacity == 0 {
+        if capacity == 0 {
             return Err(mcu_error::codes::INVARIANT);
         }
-        let mut endorsement =
-            ManagedEndorsement::new(slot_id, driver_num, backup_driver_num, base, capacity);
+        let mut endorsement = ManagedEndorsement::new(
+            algorithm,
+            storage_id,
+            driver_num,
+            backup_driver_num,
+            base,
+            capacity,
+        );
         endorsement.load().await?;
-        self.update_cert_slot(idx, |slot| {
+        self.update_cert_slot(algorithm, role, |slot| {
             slot.attributes = endorsement.attributes();
             slot.endorsement = SlotEndorsement::Managed(endorsement);
-        })
-        .then_some(())
-        .ok_or(mcu_error::codes::INVARIANT)
+        });
+        Ok(())
     }
 }
 
@@ -367,15 +463,21 @@ impl SlotEndorsement {
 /// Read-only endorsement — static root CA cert chain.
 #[derive(Clone, Copy)]
 pub struct ReadOnlyEndorsement {
+    algorithm: CertificateAlgorithm,
     root_cert_hash: [u8; 48],
     chain: &'static [&'static [u8]],
     chain_len: usize,
 }
 
 impl ReadOnlyEndorsement {
-    pub fn new(chain: &'static [&'static [u8]], root_cert_hash: [u8; 48]) -> Self {
+    pub fn new(
+        algorithm: CertificateAlgorithm,
+        chain: &'static [&'static [u8]],
+        root_cert_hash: [u8; 48],
+    ) -> Self {
         let chain_len = chain.iter().map(|c| c.len()).sum();
         Self {
+            algorithm,
             root_cert_hash,
             chain,
             chain_len,
@@ -383,7 +485,7 @@ impl ReadOnlyEndorsement {
     }
 
     fn root_cert_hash(&self, algo: CertificateAlgorithm, out: &mut [u8]) -> McuResult<()> {
-        if algo != CertificateAlgorithm::EccP384 {
+        if algo != self.algorithm {
             return Err(mcu_error::codes::INVARIANT);
         }
         // Copies `min(out.len(), root_cert_hash.len())` bytes with no
@@ -395,14 +497,14 @@ impl ReadOnlyEndorsement {
     }
 
     fn size(&self, algo: CertificateAlgorithm) -> McuResult<usize> {
-        if algo != CertificateAlgorithm::EccP384 {
+        if algo != self.algorithm {
             return Err(mcu_error::codes::INVARIANT);
         }
         Ok(self.chain_len)
     }
 
     fn read(&self, algo: CertificateAlgorithm, offset: usize, buf: &mut [u8]) -> McuResult<usize> {
-        if algo != CertificateAlgorithm::EccP384 {
+        if algo != self.algorithm {
             return Err(mcu_error::codes::INVARIANT);
         }
         let mut cert_offset = offset;
@@ -443,8 +545,6 @@ const MANAGED_FORMAT_VERSION: u16 = 2;
 #[cfg(feature = "set-certificate")]
 const MANAGED_HEADER_SIZE: usize = 80;
 #[cfg(feature = "set-certificate")]
-const MANAGED_ALGO_ECC_P384: u8 = 1;
-#[cfg(feature = "set-certificate")]
 const MANAGED_ERASED_BYTE: u8 = 0xFF;
 #[cfg(feature = "set-certificate")]
 const MANAGED_KEY_USAGE_MASK: u16 = 0x0003;
@@ -466,7 +566,8 @@ type CertStoreFlash = SpiFlash<DefaultSyscalls>;
 #[cfg(feature = "set-certificate")]
 #[derive(Clone, Copy)]
 pub struct ManagedEndorsement {
-    slot: u8,
+    storage_id: u8,
+    algorithm: CertificateAlgorithm,
     driver_nums: [u32; 2],
     base: usize,
     capacity: usize,
@@ -476,7 +577,6 @@ pub struct ManagedEndorsement {
     staging_next_offset: usize,
     generation: u32,
     initialized: bool,
-    algo: CertificateAlgorithm,
     len: usize,
     root_hash: [u8; 48],
     attributes: CertificateAttributes,
@@ -486,14 +586,16 @@ pub struct ManagedEndorsement {
 #[cfg(feature = "set-certificate")]
 impl ManagedEndorsement {
     pub const fn new(
-        slot: u8,
+        algorithm: CertificateAlgorithm,
+        storage_id: u8,
         driver_num: u32,
         backup_driver_num: u32,
         base: usize,
         capacity: usize,
     ) -> Self {
         Self {
-            slot,
+            storage_id,
+            algorithm,
             driver_nums: [driver_num, backup_driver_num],
             base,
             capacity,
@@ -503,7 +605,6 @@ impl ManagedEndorsement {
             staging_next_offset: 0,
             generation: 0,
             initialized: false,
-            algo: CertificateAlgorithm::EccP384,
             len: 0,
             root_hash: [0; 48],
             attributes: CertificateAttributes::new(0, 0),
@@ -532,7 +633,6 @@ impl ManagedEndorsement {
         }
 
         self.initialized = true;
-        self.algo = CertificateAlgorithm::EccP384;
         self.len = record.cert_len;
         self.root_hash = record.root_hash;
         self.attributes = record.attributes;
@@ -553,7 +653,7 @@ impl ManagedEndorsement {
     }
 
     fn root_cert_hash(&self, algo: CertificateAlgorithm, out: &mut [u8]) -> McuResult<()> {
-        if algo != CertificateAlgorithm::EccP384 || !self.initialized {
+        if algo != self.algorithm || !self.initialized {
             return Err(mcu_error::codes::INVARIANT);
         }
         let n = out.len().min(self.root_hash.len());
@@ -562,7 +662,7 @@ impl ManagedEndorsement {
     }
 
     fn size(&self, algo: CertificateAlgorithm) -> McuResult<usize> {
-        if algo != CertificateAlgorithm::EccP384 {
+        if algo != self.algorithm {
             return Err(mcu_error::codes::INVARIANT);
         }
         if self.initialized {
@@ -573,7 +673,7 @@ impl ManagedEndorsement {
     }
 
     fn capacity(&self, algo: CertificateAlgorithm) -> McuResult<usize> {
-        if algo != CertificateAlgorithm::EccP384 {
+        if algo != self.algorithm {
             return Err(mcu_error::codes::INVARIANT);
         }
         Ok(self.der_capacity())
@@ -585,7 +685,7 @@ impl ManagedEndorsement {
         offset: usize,
         buf: &mut [u8],
     ) -> McuResult<usize> {
-        if algo != CertificateAlgorithm::EccP384 || !self.initialized {
+        if algo != self.algorithm || !self.initialized {
             return Err(mcu_error::codes::INVARIANT);
         }
         if offset >= self.len || buf.is_empty() {
@@ -605,8 +705,7 @@ impl ManagedEndorsement {
         algo: CertificateAlgorithm,
         data_len: usize,
     ) -> McuResult<Self> {
-        if algo != CertificateAlgorithm::EccP384 || data_len == 0 || data_len > self.der_capacity()
-        {
+        if algo != self.algorithm || data_len == 0 || data_len > self.der_capacity() {
             return Err(mcu_error::codes::INVARIANT);
         }
         let staging_bank = self.inactive_bank();
@@ -654,7 +753,7 @@ impl ManagedEndorsement {
         root_hash: &[u8; 48],
         data_len: usize,
     ) -> McuResult<Self> {
-        if algo != CertificateAlgorithm::EccP384 || data_len > self.der_capacity() {
+        if algo != self.algorithm || data_len > self.der_capacity() {
             return Err(mcu_error::codes::INVARIANT);
         }
         let staging_bank = self.staging_bank.ok_or(mcu_error::codes::INVARIANT)?;
@@ -664,7 +763,7 @@ impl ManagedEndorsement {
         let data_checksum = self.stored_crc32(staging_bank, data_len).await?;
         let record = self.data_record(attributes, root_hash, data_len, data_checksum);
         self.write_record(staging_bank, &record).await?;
-        self.publish_data(staging_bank, algo, &record);
+        self.publish_data(staging_bank, &record);
         Ok(self)
     }
 
@@ -675,7 +774,7 @@ impl ManagedEndorsement {
         root_hash: &[u8; 48],
         data: &[u8],
     ) -> McuResult<Self> {
-        if algo != CertificateAlgorithm::EccP384 || data.len() > self.der_capacity() {
+        if algo != self.algorithm || data.len() > self.der_capacity() {
             return Err(mcu_error::codes::INVARIANT);
         }
 
@@ -693,12 +792,12 @@ impl ManagedEndorsement {
         }
         let record = self.data_record(attributes, root_hash, data.len(), crc32(data));
         self.write_record(staging_bank, &record).await?;
-        self.publish_data(staging_bank, algo, &record);
+        self.publish_data(staging_bank, &record);
         Ok(self)
     }
 
     pub async fn erase_updated(mut self, algo: CertificateAlgorithm) -> McuResult<Self> {
-        if algo != CertificateAlgorithm::EccP384 {
+        if algo != self.algorithm {
             return Err(mcu_error::codes::INVARIANT);
         }
         let staging_bank = self.inactive_bank();
@@ -706,7 +805,8 @@ impl ManagedEndorsement {
             .erase(self.base, self.capacity)
             .await
             .map_err(map_flash_error)?;
-        let record = ManagedRecord::tombstone(self.slot, self.next_generation());
+        let record =
+            ManagedRecord::tombstone(self.storage_id, self.algorithm, self.next_generation());
         self.write_record(staging_bank, &record).await?;
         self.publish_tombstone(staging_bank, &record);
         Ok(self)
@@ -745,7 +845,7 @@ impl ManagedEndorsement {
         let Some(record) = ManagedRecord::decode(&header) else {
             return Ok(None);
         };
-        if !record.is_valid_for(self.slot, self.der_capacity()) {
+        if !record.is_valid_for(self.storage_id, self.algorithm, self.der_capacity()) {
             return Ok(None);
         }
         if record.kind == ManagedRecordKind::Data {
@@ -800,8 +900,8 @@ impl ManagedEndorsement {
         ManagedRecord {
             version: MANAGED_FORMAT_VERSION,
             header_size: MANAGED_HEADER_SIZE as u16,
-            slot: self.slot,
-            algo: MANAGED_ALGO_ECC_P384,
+            slot: self.storage_id,
+            algo: self.algorithm.managed_record_code(),
             attributes,
             key_usage_mask: MANAGED_KEY_USAGE_MASK,
             kind: ManagedRecordKind::Data,
@@ -830,12 +930,11 @@ impl ManagedEndorsement {
             .map_err(map_flash_error)
     }
 
-    fn publish_data(&mut self, bank: usize, algo: CertificateAlgorithm, record: &ManagedRecord) {
+    fn publish_data(&mut self, bank: usize, record: &ManagedRecord) {
         self.active_bank = Some(bank);
         self.clear_staging_state();
         self.generation = record.generation;
         self.initialized = true;
-        self.algo = algo;
         self.len = record.cert_len;
         self.root_hash = record.root_hash;
         self.attributes = record.attributes;
@@ -851,7 +950,6 @@ impl ManagedEndorsement {
 
     fn clear_active_state(&mut self) {
         self.initialized = false;
-        self.algo = CertificateAlgorithm::EccP384;
         self.len = 0;
         self.root_hash = [0; 48];
         self.attributes = CertificateAttributes::new(0, 0);
@@ -1061,12 +1159,12 @@ impl ManagedRecord {
         })
     }
 
-    fn tombstone(slot: u8, generation: u32) -> Self {
+    fn tombstone(slot: u8, algorithm: CertificateAlgorithm, generation: u32) -> Self {
         Self {
             version: MANAGED_FORMAT_VERSION,
             header_size: MANAGED_HEADER_SIZE as u16,
             slot,
-            algo: MANAGED_ALGO_ECC_P384,
+            algo: algorithm.managed_record_code(),
             attributes: CertificateAttributes::new(0, 0),
             key_usage_mask: MANAGED_KEY_USAGE_MASK,
             kind: ManagedRecordKind::Tombstone,
@@ -1077,13 +1175,18 @@ impl ManagedRecord {
         }
     }
 
-    fn is_valid_for(&self, slot: u8, capacity: usize) -> bool {
+    fn is_valid_for(
+        &self,
+        storage_id: u8,
+        algorithm: CertificateAlgorithm,
+        capacity: usize,
+    ) -> bool {
         matches!(
             self.version,
             MANAGED_LEGACY_FORMAT_VERSION | MANAGED_FORMAT_VERSION
         ) && self.header_size as usize == MANAGED_HEADER_SIZE
-            && self.slot == slot
-            && self.algo == MANAGED_ALGO_ECC_P384
+            && self.slot == storage_id
+            && self.algo == algorithm.managed_record_code()
             && match self.kind {
                 ManagedRecordKind::Data => self.cert_len <= capacity,
                 ManagedRecordKind::Tombstone => {
@@ -1149,25 +1252,55 @@ mod tests {
     use super::*;
 
     #[test]
-    fn shared_store_configures_read_only_slot() {
-        static CHAIN: &[&[u8]] = &[b"root"];
+    fn shared_store_separates_slots_by_algorithm_and_role() {
+        static ECC_CHAIN: &[&[u8]] = &[b"ecc-root"];
+        static MLDSA_CHAIN: &[&[u8]] = &[b"mldsa-root"];
 
         let store = SharedCertStore::new();
         store
-            .configure_read_only_slot(0, CHAIN, [0x5a; 48], CertificateAttributes::new(7, 2))
+            .configure_read_only_slot(
+                CertificateAlgorithm::EccP384,
+                CertificateRole::Vendor,
+                ECC_CHAIN,
+                [0x5a; 48],
+                CertificateAttributes::new(7, 2),
+            )
+            .unwrap();
+        store
+            .configure_read_only_slot(
+                CertificateAlgorithm::MlDsa87,
+                CertificateRole::Vendor,
+                MLDSA_CHAIN,
+                [0xa5; 48],
+                CertificateAttributes::new(8, 3),
+            )
             .unwrap();
 
-        let slot = &store.cert_slots()[0];
-        assert!(slot.is_provisioned());
-        assert_eq!(slot.attributes, Some(CertificateAttributes::new(7, 2)));
+        let ecc_slot = store.cert_slot(CertificateAlgorithm::EccP384, CertificateRole::Vendor);
+        assert!(ecc_slot.is_provisioned());
+        assert_eq!(ecc_slot.attributes, Some(CertificateAttributes::new(7, 2)));
         assert_eq!(
-            slot.endorsement.size(CertificateAlgorithm::EccP384),
-            Ok(b"root".len())
+            ecc_slot.endorsement.size(CertificateAlgorithm::EccP384),
+            Ok(b"ecc-root".len())
         );
         assert_eq!(
-            slot.endorsement.size(CertificateAlgorithm::MlDsa87),
+            ecc_slot.endorsement.size(CertificateAlgorithm::MlDsa87),
             Err(mcu_error::codes::INVARIANT)
         );
+
+        let mldsa_slot = store.cert_slot(CertificateAlgorithm::MlDsa87, CertificateRole::Vendor);
+        assert!(mldsa_slot.is_provisioned());
+        assert_eq!(
+            mldsa_slot.attributes,
+            Some(CertificateAttributes::new(8, 3))
+        );
+        assert_eq!(
+            mldsa_slot.endorsement.size(CertificateAlgorithm::MlDsa87),
+            Ok(b"mldsa-root".len())
+        );
+        assert!(!store
+            .cert_slot(CertificateAlgorithm::MlDsa87, CertificateRole::Owner)
+            .is_supported());
     }
 
     #[test]
@@ -1176,7 +1309,7 @@ mod tests {
             version: MANAGED_FORMAT_VERSION,
             header_size: MANAGED_HEADER_SIZE as u16,
             slot: 2,
-            algo: MANAGED_ALGO_ECC_P384,
+            algo: CertificateAlgorithm::EccP384.managed_record_code(),
             attributes: CertificateAttributes::new(7, 3),
             key_usage_mask: 0x0003,
             kind: ManagedRecordKind::Data,
@@ -1201,15 +1334,29 @@ mod tests {
 
     #[test]
     fn managed_capacity_excludes_header() {
-        let endorsement = ManagedEndorsement::new(2, 0x7000_000A, 0x7000_000C, 0, 4096);
+        let endorsement = ManagedEndorsement::new(
+            CertificateAlgorithm::EccP384,
+            2,
+            0x7000_000A,
+            0x7000_000C,
+            0,
+            4096,
+        );
         assert_eq!(endorsement.der_capacity(), 4096 - MANAGED_HEADER_SIZE);
     }
 
     #[test]
     fn newer_generation_selects_backup_record() {
-        let endorsement = ManagedEndorsement::new(2, 0x7000_000A, 0x7000_000C, 0, 4096);
-        let primary = ManagedRecord::tombstone(2, 4);
-        let backup = ManagedRecord::tombstone(2, 5);
+        let endorsement = ManagedEndorsement::new(
+            CertificateAlgorithm::EccP384,
+            2,
+            0x7000_000A,
+            0x7000_000C,
+            0,
+            4096,
+        );
+        let primary = ManagedRecord::tombstone(2, CertificateAlgorithm::EccP384, 4);
+        let backup = ManagedRecord::tombstone(2, CertificateAlgorithm::EccP384, 5);
         assert_eq!(
             endorsement.select_active_record(Some(primary), Some(backup)),
             Some((1, backup))
@@ -1223,7 +1370,7 @@ mod tests {
         buf[4..6].copy_from_slice(&MANAGED_LEGACY_FORMAT_VERSION.to_le_bytes());
         buf[6..8].copy_from_slice(&(MANAGED_HEADER_SIZE as u16).to_le_bytes());
         buf[8] = 2;
-        buf[9] = MANAGED_ALGO_ECC_P384;
+        buf[9] = CertificateAlgorithm::EccP384.managed_record_code();
         buf[10] = 7;
         buf[11] = 3;
         buf[12..14].copy_from_slice(&MANAGED_KEY_USAGE_MASK.to_le_bytes());
@@ -1237,7 +1384,7 @@ mod tests {
                 version: MANAGED_LEGACY_FORMAT_VERSION,
                 header_size: MANAGED_HEADER_SIZE as u16,
                 slot: 2,
-                algo: MANAGED_ALGO_ECC_P384,
+                algo: CertificateAlgorithm::EccP384.managed_record_code(),
                 attributes: CertificateAttributes::new(7, 3),
                 key_usage_mask: MANAGED_KEY_USAGE_MASK,
                 kind: ManagedRecordKind::Data,
@@ -1265,21 +1412,62 @@ mod tests {
     #[test]
     fn newer_write_session_supersedes_older_callbacks() {
         let slot = CertSlot::empty();
-        let first = slot.begin_write_session(2);
-        assert!(slot.write_session_matches(2, first));
+        let first = slot.begin_write_session(CertificateAlgorithm::EccP384, CertificateRole::Owner);
+        assert!(slot.write_session_matches(
+            CertificateAlgorithm::EccP384,
+            CertificateRole::Owner,
+            first
+        ));
 
-        let second = slot.begin_write_session(2);
-        assert!(!slot.write_session_matches(2, first));
-        assert!(!slot.end_write_session(2, first));
-        assert!(slot.write_session_matches(2, second));
-        assert!(slot.end_write_session(2, second));
-        assert!(!slot.write_session_matches(2, second));
-        assert!(!slot.write_session_matches(3, second));
+        let second =
+            slot.begin_write_session(CertificateAlgorithm::EccP384, CertificateRole::Owner);
+        assert!(!slot.write_session_matches(
+            CertificateAlgorithm::EccP384,
+            CertificateRole::Owner,
+            first
+        ));
+        assert!(!slot.end_write_session(
+            CertificateAlgorithm::EccP384,
+            CertificateRole::Owner,
+            first
+        ));
+        assert!(slot.write_session_matches(
+            CertificateAlgorithm::EccP384,
+            CertificateRole::Owner,
+            second
+        ));
+        assert!(slot.end_write_session(
+            CertificateAlgorithm::EccP384,
+            CertificateRole::Owner,
+            second
+        ));
+        assert!(!slot.write_session_matches(
+            CertificateAlgorithm::EccP384,
+            CertificateRole::Owner,
+            second
+        ));
+        assert!(!slot.write_session_matches(
+            CertificateAlgorithm::MlDsa87,
+            CertificateRole::Owner,
+            second
+        ));
+        assert!(!slot.write_session_matches(
+            CertificateAlgorithm::EccP384,
+            CertificateRole::Tenant,
+            second
+        ));
     }
 
     #[test]
     fn stream_completion_requires_full_coverage() {
-        let mut endorsement = ManagedEndorsement::new(2, 0x7000_000A, 0x7000_000C, 0, 4096);
+        let mut endorsement = ManagedEndorsement::new(
+            CertificateAlgorithm::EccP384,
+            2,
+            0x7000_000A,
+            0x7000_000C,
+            0,
+            4096,
+        );
         endorsement.staging_bank = Some(0);
         endorsement.staging_data_len = Some(16);
         endorsement.staging_next_offset = 8;
@@ -1292,5 +1480,12 @@ mod tests {
         assert_eq!(endorsement.stream_chunk_end(16, 0), Ok(16));
         assert!(endorsement.stream_chunk_end(15, 1).is_err());
         assert!(endorsement.stream_chunk_end(16, 1).is_err());
+    }
+
+    #[test]
+    fn managed_record_rejects_a_different_configured_algorithm() {
+        let record = ManagedRecord::tombstone(2, CertificateAlgorithm::MlDsa87, 1);
+        assert!(record.is_valid_for(2, CertificateAlgorithm::MlDsa87, 1024));
+        assert!(!record.is_valid_for(2, CertificateAlgorithm::EccP384, 1024));
     }
 }

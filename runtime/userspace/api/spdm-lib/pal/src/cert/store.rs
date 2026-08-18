@@ -9,11 +9,18 @@ use core::cell::UnsafeCell;
 #[cfg(feature = "set-certificate")]
 use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
 
+#[cfg(feature = "set-certificate")]
+use caliptra_mcu_cert_store::CertWriteSession;
 pub use caliptra_mcu_cert_store::SharedCertStore;
 use mcu_caliptra_api::{sha_finish, sha_init, sha_update, ApiAlloc, HashAlgo, SHA_CONTEXT_SIZE};
 use mcu_error::McuResult;
 
-use super::endorsement::{slot_index, CertSlot, CertificateAttributes, NUM_CERT_SLOTS};
+use super::endorsement::{
+    slot_index, CertSlot, CertificateAlgorithm, CertificateAttributes, CertificateRole,
+    NUM_CERT_SLOTS,
+};
+#[cfg(feature = "set-certificate")]
+use super::endorsement::slot_role;
 
 const DEFAULT_CERT_INFO: u8 = 0x01;
 
@@ -24,11 +31,11 @@ const DEFAULT_CERT_INFO: u8 = 0x01;
 pub async fn set_endorsement_chain<A: ApiAlloc>(
     store: &SharedCertStore,
     alloc: &A,
-    idx: usize,
+    role: CertificateRole,
     chain: &'static [&'static [u8]],
     key_pair_id: u8,
 ) -> McuResult<()> {
-    if idx >= NUM_CERT_SLOTS || chain.is_empty() {
+    if chain.is_empty() {
         return Err(mcu_error::codes::INVARIANT);
     }
     let root_cert = chain[0];
@@ -39,7 +46,8 @@ pub async fn set_endorsement_chain<A: ApiAlloc>(
     sha_finish(alloc, &mut state, &mut hash).await?;
 
     store.configure_read_only_slot(
-        idx,
+        CertificateAlgorithm::EccP384,
+        role,
         chain,
         hash,
         CertificateAttributes::new(key_pair_id, DEFAULT_CERT_INFO),
@@ -89,13 +97,18 @@ impl TaskCertStore {
 
     #[inline]
     pub fn cert_slots(&self) -> &[CertSlot; NUM_CERT_SLOTS] {
-        self.shared.cert_slots()
+        self.shared.cert_slots(CertificateAlgorithm::EccP384)
     }
 
     #[inline]
     #[cfg(feature = "set-certificate")]
     pub(crate) fn update_cert_slot(&self, idx: usize, update: impl FnOnce(&mut CertSlot)) -> bool {
-        self.shared.update_cert_slot(idx, update)
+        let Some(role) = CertificateRole::from_index(idx) else {
+            return false;
+        };
+        self.shared
+            .update_cert_slot(CertificateAlgorithm::EccP384, role, update);
+        true
     }
 
     #[cfg(feature = "set-certificate")]
@@ -103,7 +116,45 @@ impl TaskCertStore {
         &self,
         idx: usize,
     ) -> Option<&Mutex<CriticalSectionRawMutex, ()>> {
-        self.shared.stream_operation_lock(idx)
+        let role = CertificateRole::from_index(idx)?;
+        Some(
+            self.shared
+                .stream_operation_lock(CertificateAlgorithm::EccP384, role),
+        )
+    }
+
+    #[cfg(feature = "set-certificate")]
+    pub(crate) fn begin_write_session(&self, slot: u8) -> Option<CertWriteSession> {
+        let role = slot_role(slot)?;
+        Some(
+            self.shared
+                .cert_slot(CertificateAlgorithm::EccP384, role)
+                .begin_write_session(CertificateAlgorithm::EccP384, role),
+        )
+    }
+
+    #[cfg(feature = "set-certificate")]
+    pub(crate) fn write_session_matches(
+        &self,
+        slot: u8,
+        session: CertWriteSession,
+    ) -> Option<bool> {
+        let role = slot_role(slot)?;
+        Some(
+            self.shared
+                .cert_slot(CertificateAlgorithm::EccP384, role)
+                .write_session_matches(CertificateAlgorithm::EccP384, role, session),
+        )
+    }
+
+    #[cfg(feature = "set-certificate")]
+    pub(crate) fn end_write_session(&self, slot: u8, session: CertWriteSession) -> Option<bool> {
+        let role = slot_role(slot)?;
+        Some(
+            self.shared
+                .cert_slot(CertificateAlgorithm::EccP384, role)
+                .end_write_session(CertificateAlgorithm::EccP384, role, session),
+        )
     }
 
     pub(crate) fn cached_chain_len(

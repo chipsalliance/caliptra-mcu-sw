@@ -5,8 +5,8 @@
 #[cfg(feature = "set-certificate")]
 pub use caliptra_mcu_cert_store::ManagedEndorsement;
 pub use caliptra_mcu_cert_store::{
-    CertSlot, CertificateAlgorithm, CertificateAttributes, ReadOnlyEndorsement, SlotEndorsement,
-    NUM_CERT_SLOTS,
+    CertSlot, CertificateAlgorithm, CertificateAttributes, CertificateRole, ReadOnlyEndorsement,
+    SlotEndorsement, NUM_CERT_SLOTS,
 };
 
 /// SPDM slot_id to internal certificate-store index mapping.
@@ -27,12 +27,21 @@ pub const SUPPORTED_SLOT_MASK: u8 = {
 
 /// Map an SPDM slot id to a certificate-store index.
 pub const fn slot_index(slot_id: u8) -> Option<usize> {
-    let mut i = 0;
-    while i < NUM_CERT_SLOTS {
-        if DEFAULT_SLOT_MAP[i] == slot_id {
-            return Some(i);
-        }
-        i += 1;
+    match slot_role(slot_id) {
+        Some(role) => Some(role.index()),
+        None => None,
     }
-    None
+}
+
+/// Map an SPDM slot id to its protocol-neutral certificate role.
+pub const fn slot_role(slot_id: u8) -> Option<CertificateRole> {
+    if slot_id == DEFAULT_SLOT_MAP[0] {
+        Some(CertificateRole::Vendor)
+    } else if slot_id == DEFAULT_SLOT_MAP[1] {
+        Some(CertificateRole::Owner)
+    } else if slot_id == DEFAULT_SLOT_MAP[2] {
+        Some(CertificateRole::Tenant)
+    } else {
+        None
+    }
 }

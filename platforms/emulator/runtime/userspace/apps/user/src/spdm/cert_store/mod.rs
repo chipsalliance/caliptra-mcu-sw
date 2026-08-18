@@ -14,16 +14,17 @@ mod slot0_endorsements;
 use caliptra_mcu_config_emulator::flash::{CERT_STORE_BACKUP_PARTITION, CERT_STORE_PARTITION};
 use caliptra_mcu_libsyscall_caliptra::external_otp::ExternalOtp;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
+use caliptra_mcu_spdm_pal::cert::endorsement::{CertificateAlgorithm, CertificateRole};
 use caliptra_mcu_spdm_pal::cert::store::{set_endorsement_chain, SharedCertStore};
 use mcu_caliptra_api::{populate_idev_ecc384_cert, ApiAlloc};
 use mcu_error::McuResult;
 
-/// SPDM slot IDs for OCP PKI entities.
-const VENDOR_STORE_SLOT: usize = 0;
+/// Persistent record identifiers retained for managed OCP PKI entities.
+const VENDOR_CERTIFICATE_ROLE: CertificateRole = CertificateRole::Vendor;
 #[cfg(feature = "test-mctp-spdm-set-certificate")]
-const OWNER_SPDM_SLOT: u8 = 2;
+const OWNER_CERT_STORE_STORAGE_ID: u8 = 2;
 #[cfg(feature = "test-mctp-spdm-set-certificate")]
-const TENANT_SPDM_SLOT: u8 = 3;
+const TENANT_CERT_STORE_STORAGE_ID: u8 = 3;
 
 /// IDevID ECC cert size in OTP partition 1.
 const ECC_DEVID_CERT_SIZE: usize = 547;
@@ -55,7 +56,7 @@ pub async fn setup_endorsements<A: ApiAlloc>(store: &SharedCertStore, alloc: &A)
         match set_endorsement_chain(
             store,
             alloc,
-            VENDOR_STORE_SLOT,
+            VENDOR_CERTIFICATE_ROLE,
             slot0_endorsements::SLOT0_ECC_ROOT_CERT_CHAIN,
             0, // key_pair_id
         )
@@ -74,8 +75,9 @@ pub async fn setup_endorsements<A: ApiAlloc>(store: &SharedCertStore, alloc: &A)
     {
         store
             .configure_managed_slot(
-                1,
-                OWNER_SPDM_SLOT,
+                CertificateAlgorithm::EccP384,
+                CertificateRole::Owner,
+                OWNER_CERT_STORE_STORAGE_ID,
                 CERT_STORE_PARTITION.driver_num,
                 CERT_STORE_BACKUP_PARTITION.driver_num,
                 0,
@@ -84,8 +86,9 @@ pub async fn setup_endorsements<A: ApiAlloc>(store: &SharedCertStore, alloc: &A)
             .await?;
         store
             .configure_managed_slot(
-                2,
-                TENANT_SPDM_SLOT,
+                CertificateAlgorithm::EccP384,
+                CertificateRole::Tenant,
+                TENANT_CERT_STORE_STORAGE_ID,
                 CERT_STORE_PARTITION.driver_num,
                 CERT_STORE_BACKUP_PARTITION.driver_num,
                 MANAGED_SLOT_REGION_SIZE,

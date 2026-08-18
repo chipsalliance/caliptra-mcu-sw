@@ -657,7 +657,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
             .stream_operation_lock(idx)
             .ok_or(INVARIANT)?;
         let _operation = operation_lock.lock().await;
-        let write_session = self.cert_store.cert_slots()[idx].begin_write_session(slot);
+        let write_session = self.cert_store.begin_write_session(slot).ok_or(INVARIANT)?;
         let result = async {
             let managed = match self.cert_store.cert_slots()[idx].endorsement {
                 endorsement::SlotEndorsement::Managed(e) => e,
@@ -685,7 +685,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         }
         .await;
         self.cert_store.invalidate_cert_caches(slot);
-        self.cert_store.cert_slots()[idx].end_write_session(slot, write_session);
+        let _ = self.cert_store.end_write_session(slot, write_session);
         result?;
         Ok(())
     }
@@ -711,7 +711,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
                 .stream_operation_lock(idx)
                 .ok_or(INVARIANT)?;
             let _operation = operation_lock.lock().await;
-            let write_session = self.cert_store.cert_slots()[idx].begin_write_session(slot);
+            let write_session = self.cert_store.begin_write_session(slot).ok_or(INVARIANT)?;
             let result = async {
                 let managed = match self.cert_store.cert_slots()[idx].endorsement {
                     endorsement::SlotEndorsement::Managed(e) => e,
@@ -733,7 +733,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
             .await;
             if result.is_err() {
                 self.cert_store.invalidate_cert_caches(slot);
-                self.cert_store.cert_slots()[idx].end_write_session(slot, write_session);
+                let _ = self.cert_store.end_write_session(slot, write_session);
             }
             result.map(|_| write_session)
         }
@@ -761,7 +761,11 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
                 .stream_operation_lock(idx)
                 .ok_or(INVARIANT)?;
             let _operation = operation_lock.lock().await;
-            if !self.cert_store.cert_slots()[idx].write_session_matches(slot, write_session) {
+            if !self
+                .cert_store
+                .write_session_matches(slot, write_session)
+                .ok_or(INVARIANT)?
+            {
                 return Err(crate::errors::CERT_SLOT_STATE_CHANGED);
             }
             let managed = match self.cert_store.cert_slots()[idx].endorsement {
@@ -808,7 +812,11 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
                 .stream_operation_lock(idx)
                 .ok_or(INVARIANT)?;
             let _operation = operation_lock.lock().await;
-            if !self.cert_store.cert_slots()[idx].write_session_matches(slot, write_session) {
+            if !self
+                .cert_store
+                .write_session_matches(slot, write_session)
+                .ok_or(INVARIANT)?
+            {
                 return Err(crate::errors::CERT_SLOT_STATE_CHANGED);
             }
             let result = async {
@@ -831,8 +839,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
                     .await?;
                 if !self.cert_store.update_cert_slot(idx, |cert_slot| {
                     cert_slot.endorsement = endorsement::SlotEndorsement::Managed(managed);
-                    cert_slot.attributes =
-                        Some(CertificateAttributes::new(key_pair_id, cert_info));
+                    cert_slot.attributes = Some(CertificateAttributes::new(key_pair_id, cert_info));
                     cert_slot.bump_provisioning_state_version();
                 }) {
                     return Err(INVARIANT);
@@ -840,7 +847,11 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
                 Ok(())
             }
             .await;
-            if self.cert_store.cert_slots()[idx].end_write_session(slot, write_session) {
+            if self
+                .cert_store
+                .end_write_session(slot, write_session)
+                .ok_or(INVARIANT)?
+            {
                 self.cert_store.invalidate_cert_caches(slot);
             }
             result?;
@@ -876,7 +887,11 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
                 .stream_operation_lock(idx)
                 .ok_or(INVARIANT)?;
             let _operation = operation_lock.lock().await;
-            if !self.cert_store.cert_slots()[idx].write_session_matches(slot, write_session) {
+            if !self
+                .cert_store
+                .write_session_matches(slot, write_session)
+                .ok_or(INVARIANT)?
+            {
                 return Err(crate::errors::CERT_SLOT_STATE_CHANGED);
             }
             let result = match self.cert_store.cert_slots()[idx].endorsement {
@@ -891,7 +906,11 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
                 endorsement::SlotEndorsement::ReadOnly(_) => Err(mcu_error::codes::NOT_IMPLEMENTED),
                 endorsement::SlotEndorsement::Empty => Err(INVARIANT),
             };
-            if self.cert_store.cert_slots()[idx].end_write_session(slot, write_session) {
+            if self
+                .cert_store
+                .end_write_session(slot, write_session)
+                .ok_or(INVARIANT)?
+            {
                 self.cert_store.invalidate_cert_caches(slot);
             }
             result
@@ -916,7 +935,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
             .stream_operation_lock(idx)
             .ok_or(INVARIANT)?;
         let _operation = operation_lock.lock().await;
-        let write_session = self.cert_store.cert_slots()[idx].begin_write_session(slot);
+        let write_session = self.cert_store.begin_write_session(slot).ok_or(INVARIANT)?;
         let result = async {
             let managed = match self.cert_store.cert_slots()[idx].endorsement {
                 endorsement::SlotEndorsement::Managed(e) => e,
@@ -937,7 +956,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         }
         .await;
         self.cert_store.invalidate_cert_caches(slot);
-        self.cert_store.cert_slots()[idx].end_write_session(slot, write_session);
+        let _ = self.cert_store.end_write_session(slot, write_session);
         result?;
         Ok(())
     }
