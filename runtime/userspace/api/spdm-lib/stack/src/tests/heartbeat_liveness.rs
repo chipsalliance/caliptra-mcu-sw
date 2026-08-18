@@ -10,6 +10,7 @@
 extern crate std;
 
 use super::*;
+use caliptra_mcu_spdm_codec::HeartBeatPeriod;
 use caliptra_mcu_spdm_traits::NoVdmBackend;
 use futures::executor::block_on;
 use std::vec;
@@ -29,7 +30,7 @@ fn arm_sets_deadline_from_period() {
     let pal = TestPal::default();
     let (_state, mut sessions, session_id) = established_session(&pal);
     let session = sessions.find_mut(session_id).unwrap();
-    session.heartbeat_period_secs = PERIOD_SECS;
+    session.heartbeat_period = HeartBeatPeriod(PERIOD_SECS);
     session.arm_heartbeat(1000);
     assert_eq!(session.deadline_ms, Some(1000 + WINDOW_MS));
 }
@@ -40,7 +41,7 @@ fn arm_is_inert_when_period_zero() {
     let pal = TestPal::default();
     let (_state, mut sessions, session_id) = established_session(&pal);
     let session = sessions.find_mut(session_id).unwrap();
-    session.heartbeat_period_secs = 0;
+    session.heartbeat_period = HeartBeatPeriod::DISABLED;
     session.arm_heartbeat(1000);
     assert_eq!(session.deadline_ms, None);
 }
@@ -51,7 +52,7 @@ fn touch_restarts_only_armed_watchdog() {
     let pal = TestPal::default();
     let (_state, mut sessions, session_id) = established_session(&pal);
     let session = sessions.find_mut(session_id).unwrap();
-    session.heartbeat_period_secs = PERIOD_SECS;
+    session.heartbeat_period = HeartBeatPeriod(PERIOD_SECS);
     session.arm_heartbeat(1000);
     session.touch_heartbeat(5000);
     assert_eq!(session.deadline_ms, Some(5000 + WINDOW_MS));
@@ -69,7 +70,7 @@ fn nearest_deadline_reports_min() {
     let (_state, mut sessions, session_id) = established_session(&pal);
     assert_eq!(sessions.nearest_deadline_ms(), None);
     let session = sessions.find_mut(session_id).unwrap();
-    session.heartbeat_period_secs = PERIOD_SECS;
+    session.heartbeat_period = HeartBeatPeriod(PERIOD_SECS);
     session.arm_heartbeat(1000);
     assert_eq!(sessions.nearest_deadline_ms(), Some(1000 + WINDOW_MS));
 }
@@ -81,7 +82,7 @@ fn expire_due_clears_only_expired_sessions() {
     let pal = TestPal::default();
     let (_state, mut sessions, session_id) = established_session(&pal);
     let session = sessions.find_mut(session_id).unwrap();
-    session.heartbeat_period_secs = PERIOD_SECS;
+    session.heartbeat_period = HeartBeatPeriod(PERIOD_SECS);
     session.arm_heartbeat(1000);
     let deadline = 1000 + WINDOW_MS;
 
@@ -102,7 +103,7 @@ fn secured_heartbeat_refreshes_deadline() {
     let (mut state, mut sessions, session_id) = established_session(&pal);
     {
         let session = sessions.find_mut(session_id).unwrap();
-        session.heartbeat_period_secs = PERIOD_SECS;
+        session.heartbeat_period = HeartBeatPeriod(PERIOD_SECS);
         session.arm_heartbeat(0);
         assert_eq!(session.deadline_ms, Some(WINDOW_MS));
     }

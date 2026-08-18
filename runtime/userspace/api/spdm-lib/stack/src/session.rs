@@ -11,7 +11,7 @@
 //! 3. Session used for secured message framing
 //! 4. GET_VERSION or error → [`SessionManager::remove_all_and_destroy`]
 
-use caliptra_mcu_spdm_codec::{errors::SPDM_SESSION_LIMIT_EXCEEDED, SpdmVersion};
+use caliptra_mcu_spdm_codec::{errors::SPDM_SESSION_LIMIT_EXCEEDED, HeartBeatPeriod, SpdmVersion};
 use caliptra_mcu_spdm_traits::{McuResult, SpdmPalHash, SpdmPalIo};
 use core::ops::{Deref, DerefMut};
 
@@ -145,8 +145,9 @@ pub struct SessionInfo<K: Clone, S> {
     pub key_schedule: KeySchedule<K>,
     /// Per-session TH transcript hash state.
     pub transcript: SessionTranscript<S>,
-    /// HeartbeatPeriod negotiated for this session (seconds); 0 disables the watchdog.
-    pub heartbeat_period_secs: u8,
+    /// HeartbeatPeriod negotiated for this session; `DISABLED` (zero) disables
+    /// the watchdog.
+    pub heartbeat_period: HeartBeatPeriod,
     /// Absolute watchdog deadline (monotonic ms); `None` while unarmed.
     pub deadline_ms: Option<u64>,
 }
@@ -168,7 +169,7 @@ impl<K: Clone, S> SessionInfo<K, S> {
             state: SessionState::HandshakeInProgress,
             key_schedule: KeySchedule::new(spdm_version_str(version)),
             transcript: SessionTranscript::new(),
-            heartbeat_period_secs: 0,
+            heartbeat_period: HeartBeatPeriod::DISABLED,
             deadline_ms: None,
         }
     }
@@ -190,11 +191,11 @@ impl<K: Clone, S> SessionInfo<K, S> {
     }
 
     fn heartbeat_deadline(&self, now_ms: u64) -> Option<u64> {
-        if self.heartbeat_period_secs == 0 {
+        if !self.heartbeat_period.is_enabled() {
             return None;
         }
         let window_ms = crate::heartbeat::HEARTBEAT_TIMEOUT_MULTIPLIER
-            .saturating_mul(self.heartbeat_period_secs as u64)
+            .saturating_mul(self.heartbeat_period.secs() as u64)
             .saturating_mul(1000);
         Some(now_ms.saturating_add(window_ms))
     }
