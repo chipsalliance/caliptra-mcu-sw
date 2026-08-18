@@ -57,8 +57,7 @@ flags = 0
 svn = 7
 
 [fe_prog]
-# FE_PROG is not part of the fuse VDM validation sequence.
-enabled = false
+enabled = true
 partition = 0
 
 [revoke_vendor_pub_key]

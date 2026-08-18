@@ -536,10 +536,10 @@ dependencies = [
  "caliptra-image-types",
  "caliptra-mcu-mbox-common",
  "fips204",
- "hmac",
  "p384",
  "sha2",
  "zerocopy",
+ "zeroize",
 ]
 
 [[package]]
@@ -610,12 +610,14 @@ dependencies = [
  "caliptra-mcu-core-util-host-mailbox-test-config",
  "caliptra-mcu-core-util-host-transport",
  "caliptra-mcu-debug-unlock-signer",
+ "caliptra-mcu-mbox-common",
  "caliptra-util-host-commands",
  "caliptra-util-host-session",
  "clap 4.6.1",
  "ecdsa",
  "fips204",
  "getrandom 0.2.17",
+ "hex",
  "p384",
  "sha2",
  "zerocopy",

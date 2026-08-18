@@ -15,7 +15,16 @@ use caliptra_mcu_core_util_host_command_types::device_ownership_transfer::{
     MC_DOT_LOCK_CANONICAL_CMD_ID, MC_DOT_ROTATE_CANONICAL_CMD_ID, MC_DOT_UNLOCK_CANONICAL_CMD_ID,
     MC_GET_DOT_BACKUP_BLOB_CANONICAL_CMD_ID,
 };
+use caliptra_mcu_core_util_host_command_types::fuse::{
+    FuseIncreaseCaliptraMinSvnRequest, FuseLockPartitionRequest, FuseRevokeVendorPkHashRequest,
+    FuseRevokeVendorPubKeyRequest, ProvisionVendorPkHashRequest, AUTH_CMD_CHALLENGE_SIZE,
+    AUTH_PUB_ECC_COORD_SIZE, AUTH_PUB_MLDSA_SIZE,
+    MC_FUSE_INCREASE_CALIPTRA_MIN_SVN_CANONICAL_CMD_ID, MC_FUSE_LOCK_PARTITION_CANONICAL_CMD_ID,
+    MC_FUSE_REVOKE_VENDOR_PK_HASH_CANONICAL_CMD_ID, MC_FUSE_REVOKE_VENDOR_PUB_KEY_CANONICAL_CMD_ID,
+    MC_PROVISION_VENDOR_PK_HASH_CANONICAL_CMD_ID,
+};
 use caliptra_mcu_debug_unlock_signer::{DebugUnlockSigner, ProdDebugUnlockChallenge};
+use caliptra_mcu_mbox_common::messages::HybridSignature;
 use std::net::SocketAddr;
 use std::time::Duration;
 
@@ -25,6 +34,14 @@ pub struct ValidationResult {
     pub test_name: String,
     pub passed: bool,
     pub error_message: Option<String>,
+}
+
+struct AuthorizedCommandAuthorization {
+    sig: HybridSignature,
+    nonce: [u8; AUTH_CMD_CHALLENGE_SIZE],
+    ecc_pub_x: [u8; AUTH_PUB_ECC_COORD_SIZE],
+    ecc_pub_y: [u8; AUTH_PUB_ECC_COORD_SIZE],
+    mldsa_pub: [u8; AUTH_PUB_MLDSA_SIZE],
 }
 
 /// Caliptra Mailbox Validator
@@ -126,6 +143,15 @@ impl Validator {
 
     /// Start the validation process and return results
     pub fn start(&self) -> Result<Vec<ValidationResult>> {
+        self.start_internal(false)
+    }
+
+    /// Run only the configured authorization-gated fuse commands.
+    pub fn start_fuse_suite(&self) -> Result<Vec<ValidationResult>> {
+        self.start_internal(true)
+    }
+
+    fn start_internal(&self, fuse_only: bool) -> Result<Vec<ValidationResult>> {
         if self.verbose {
             println!("Caliptra Mailbox Validator starting...");
             println!("Server: {}", self.server_addr);
@@ -141,65 +167,76 @@ impl Validator {
         let mut client = MailboxClient::with_udp_driver(&mut udp_driver);
         let mut results = Vec::new();
 
-        // Run GetDeviceCapabilities validation
-        let capabilities_result = self.validate_get_device_capabilities(&mut client);
-        results.push(capabilities_result);
+        if !fuse_only {
+            results.push(self.validate_get_device_capabilities(&mut client));
+            results.push(self.validate_get_firmware_version(&mut client));
+            results.push(self.validate_sha384(&mut client));
+            results.push(self.validate_sha512(&mut client));
+            results.push(self.validate_hmac_sha384(&mut client));
+            results.push(self.validate_hmac_sha512(&mut client));
+            results.push(self.validate_hmac_kdf_counter(&mut client));
+            results.push(self.validate_aes_cbc(&mut client));
+            results.push(self.validate_aes_ctr(&mut client));
+            results.push(self.validate_aes_gcm(&mut client));
+            results.push(self.validate_ecdsa_sign_verify(&mut client));
+            results.push(self.validate_ecdh(&mut client));
+            results.push(self.validate_prod_debug_unlock(&mut client));
+        }
 
-        // Run GetFirmwareVersion validation
-        let fw_version_result = self.validate_get_firmware_version(&mut client);
-        results.push(fw_version_result);
+        let fe_prog = self
+            .config
+            .as_ref()
+            .map(|config| config.fe_prog.clone())
+            .unwrap_or_default();
+        if fe_prog.enabled {
+            results.push(self.validate_fe_prog(&mut client, fe_prog.partition));
+        }
 
-        // Run SHA validation tests
-        let sha384_result = self.validate_sha384(&mut client);
-        results.push(sha384_result);
+        if let Some(config) = self.config.as_ref() {
+            if config.provision_vendor_pk_hash.enabled {
+                results.push(self.validate_provision_vendor_pk_hash(
+                    &mut client,
+                    config.provision_vendor_pk_hash.slot,
+                    &config.provision_vendor_pk_hash.hash,
+                ));
+            }
+            if config.increase_caliptra_min_svn.enabled {
+                results.push(self.validate_increase_caliptra_min_svn(
+                    &mut client,
+                    config.increase_caliptra_min_svn.flags,
+                    config.increase_caliptra_min_svn.svn,
+                ));
+            }
+            if config.revoke_vendor_pub_key.enabled {
+                let command = &config.revoke_vendor_pub_key;
+                results.push(self.validate_revoke_vendor_pub_key(
+                    &mut client,
+                    command.reserved,
+                    command.vendor_pk_hash_slot,
+                    command.key_type,
+                    command.key_index,
+                ));
+            }
+            if config.revoke_vendor_pk_hash.enabled {
+                let command = &config.revoke_vendor_pk_hash;
+                results.push(self.validate_revoke_vendor_pk_hash(
+                    &mut client,
+                    command.reserved,
+                    command.vendor_pk_hash_slot,
+                ));
+            }
+            if config.fuse_lock_partition.enabled {
+                results.push(self.validate_fuse_lock_partition(
+                    &mut client,
+                    config.fuse_lock_partition.partition,
+                ));
+            }
+        }
 
-        let sha512_result = self.validate_sha512(&mut client);
-        results.push(sha512_result);
-
-        // Run HMAC validation tests
-        let hmac_sha384_result = self.validate_hmac_sha384(&mut client);
-        results.push(hmac_sha384_result);
-
-        let hmac_sha512_result = self.validate_hmac_sha512(&mut client);
-        results.push(hmac_sha512_result);
-
-        // Run HMAC KDF Counter validation test
-        let hmac_kdf_counter_result = self.validate_hmac_kdf_counter(&mut client);
-        results.push(hmac_kdf_counter_result);
-
-        // Run AES validation tests
-        let aes_cbc_result = self.validate_aes_cbc(&mut client);
-        results.push(aes_cbc_result);
-
-        let aes_ctr_result = self.validate_aes_ctr(&mut client);
-        results.push(aes_ctr_result);
-
-        let aes_gcm_result = self.validate_aes_gcm(&mut client);
-        results.push(aes_gcm_result);
-
-        // Run ECDSA validation tests
-        let ecdsa_result = self.validate_ecdsa_sign_verify(&mut client);
-        results.push(ecdsa_result);
-
-        // Run ECDH validation tests
-        let ecdh_result = self.validate_ecdh(&mut client);
-        results.push(ecdh_result);
-
-        // Run Production Debug Unlock validation test
-        let debug_unlock_result = self.validate_prod_debug_unlock(&mut client);
-        results.push(debug_unlock_result);
-
-        // Run FE_PROG (Field Entropy Programming) validation test
-        let fe_prog_result = self.validate_fe_prog(&mut client);
-        results.push(fe_prog_result);
-
-        // Run ExportAttestedCsr validation tests for all key IDs and algorithms
-        let export_csr_results = self.validate_export_attested_csr_all(&mut client);
-        results.extend(export_csr_results);
-
-        // Run GetAttestation validation tests for every advertised format
-        let get_attestation_results = self.validate_get_attestation_all(&mut client);
-        results.extend(get_attestation_results);
+        if !fuse_only {
+            results.extend(self.validate_export_attested_csr_all(&mut client));
+            results.extend(self.validate_get_attestation_all(&mut client));
+        }
 
         // Run DOT last: FE_PROG changes field entropy and would invalidate a
         // DOT blob created earlier in the same disposable emulator instance.
@@ -450,6 +487,258 @@ impl Validator {
         }
 
         results
+    }
+
+    fn authorize_command(
+        &self,
+        client: &mut MailboxClient,
+        command_id: u32,
+        payload: &[u8],
+    ) -> Result<AuthorizedCommandAuthorization, String> {
+        let authorizer = self
+            .command_authorizer
+            .as_ref()
+            .ok_or_else(|| "no CommandAuthChallengeSigner configured".to_string())?;
+        let challenge = client
+            .get_auth_challenge()
+            .map_err(|error| format!("GetAuthCmdChallenge failed: {error}"))?;
+        let sig = authorizer
+            .authorize(command_id, payload, &challenge.challenge)
+            .map_err(|error| format!("authorization failed: {error}"))?;
+        let (ecc_pub_x, ecc_pub_y, mldsa_pub) = authorizer
+            .public_keys()
+            .map_err(|error| format!("public_keys() failed: {error}"))?;
+
+        Ok(AuthorizedCommandAuthorization {
+            sig,
+            nonce: challenge.challenge,
+            ecc_pub_x,
+            ecc_pub_y,
+            mldsa_pub,
+        })
+    }
+
+    fn validate_authorized_command<Request>(
+        &self,
+        client: &mut MailboxClient,
+        test_name: &str,
+        command_id: u32,
+        payload: &[u8],
+        build_request: impl FnOnce(AuthorizedCommandAuthorization) -> Request,
+        execute: impl FnOnce(&mut MailboxClient, &Request) -> Result<()>,
+    ) -> ValidationResult {
+        if self.command_authorizer.is_none() {
+            println!("⊘ {test_name} validation SKIPPED (no CommandAuthChallengeSigner configured)");
+            return ValidationResult {
+                test_name: test_name.to_string(),
+                passed: true,
+                error_message: None,
+            };
+        }
+
+        let authorization = match self.authorize_command(client, command_id, payload) {
+            Ok(authorization) => authorization,
+            Err(error) if error.starts_with("GetAuthCmdChallenge failed:") => {
+                println!("✓ {test_name} validation PASSED (challenge command rejected by device as expected)");
+                return ValidationResult {
+                    test_name: test_name.to_string(),
+                    passed: true,
+                    error_message: None,
+                };
+            }
+            Err(error) => {
+                return ValidationResult {
+                    test_name: test_name.to_string(),
+                    passed: false,
+                    error_message: Some(error),
+                };
+            }
+        };
+
+        match execute(client, &build_request(authorization)) {
+            Ok(()) => ValidationResult {
+                test_name: test_name.to_string(),
+                passed: true,
+                error_message: None,
+            },
+            Err(error) => ValidationResult {
+                test_name: test_name.to_string(),
+                passed: false,
+                error_message: Some(error.to_string()),
+            },
+        }
+    }
+
+    fn validate_provision_vendor_pk_hash(
+        &self,
+        client: &mut MailboxClient,
+        slot: u32,
+        hash_hex: &str,
+    ) -> ValidationResult {
+        if self.verbose {
+            println!("\n=== Validating Provision Vendor PK Hash Command ===");
+        }
+
+        let hash: [u8; 48] = match hex::decode(hash_hex) {
+            Ok(hash) if hash.len() == 48 => hash.try_into().unwrap(),
+            Ok(hash) => {
+                return ValidationResult {
+                    test_name: "ProvisionVendorPkHash".to_string(),
+                    passed: false,
+                    error_message: Some(format!("hash must be 48 bytes, got {}", hash.len())),
+                }
+            }
+            Err(error) => {
+                return ValidationResult {
+                    test_name: "ProvisionVendorPkHash".to_string(),
+                    passed: false,
+                    error_message: Some(format!("invalid hash hex: {error}")),
+                }
+            }
+        };
+        let mut payload = Vec::with_capacity(52);
+        payload.extend_from_slice(&slot.to_le_bytes());
+        payload.extend_from_slice(&hash);
+        self.validate_authorized_command(
+            client,
+            "ProvisionVendorPkHash",
+            MC_PROVISION_VENDOR_PK_HASH_CANONICAL_CMD_ID,
+            &payload,
+            |auth| ProvisionVendorPkHashRequest {
+                slot,
+                hash,
+                nonce: auth.nonce,
+                ecc_pub_x: auth.ecc_pub_x,
+                ecc_pub_y: auth.ecc_pub_y,
+                mldsa_pub: auth.mldsa_pub,
+                sig: auth.sig,
+            },
+            |client, request| client.provision_vendor_pk_hash(request).map(|_| ()),
+        )
+    }
+
+    fn validate_increase_caliptra_min_svn(
+        &self,
+        client: &mut MailboxClient,
+        flags: u32,
+        svn: u32,
+    ) -> ValidationResult {
+        if self.verbose {
+            println!("\n=== Validating Fuse Increase Caliptra Min SVN Command ===");
+        }
+
+        let mut payload = Vec::with_capacity(8);
+        payload.extend_from_slice(&flags.to_le_bytes());
+        payload.extend_from_slice(&svn.to_le_bytes());
+        self.validate_authorized_command(
+            client,
+            "FuseIncreaseCaliptraMinSvn",
+            MC_FUSE_INCREASE_CALIPTRA_MIN_SVN_CANONICAL_CMD_ID,
+            &payload,
+            |auth| FuseIncreaseCaliptraMinSvnRequest {
+                flags,
+                svn,
+                nonce: auth.nonce,
+                ecc_pub_x: auth.ecc_pub_x,
+                ecc_pub_y: auth.ecc_pub_y,
+                mldsa_pub: auth.mldsa_pub,
+                sig: auth.sig,
+            },
+            |client, request| client.fuse_increase_caliptra_min_svn(request).map(|_| ()),
+        )
+    }
+
+    fn validate_revoke_vendor_pub_key(
+        &self,
+        client: &mut MailboxClient,
+        reserved: u32,
+        vendor_pk_hash_slot: u32,
+        key_type: u32,
+        key_index: u32,
+    ) -> ValidationResult {
+        if self.verbose {
+            println!("\n=== Validating Fuse Revoke Vendor Public Key Command ===");
+        }
+
+        let mut payload = Vec::with_capacity(16);
+        for value in [reserved, vendor_pk_hash_slot, key_type, key_index] {
+            payload.extend_from_slice(&value.to_le_bytes());
+        }
+        self.validate_authorized_command(
+            client,
+            "FuseRevokeVendorPubKey",
+            MC_FUSE_REVOKE_VENDOR_PUB_KEY_CANONICAL_CMD_ID,
+            &payload,
+            |auth| FuseRevokeVendorPubKeyRequest {
+                reserved,
+                vendor_pk_hash_slot,
+                key_type,
+                key_index,
+                nonce: auth.nonce,
+                ecc_pub_x: auth.ecc_pub_x,
+                ecc_pub_y: auth.ecc_pub_y,
+                mldsa_pub: auth.mldsa_pub,
+                sig: auth.sig,
+            },
+            |client, request| client.fuse_revoke_vendor_pub_key(request).map(|_| ()),
+        )
+    }
+
+    fn validate_revoke_vendor_pk_hash(
+        &self,
+        client: &mut MailboxClient,
+        reserved: u32,
+        vendor_pk_hash_slot: u32,
+    ) -> ValidationResult {
+        if self.verbose {
+            println!("\n=== Validating Fuse Revoke Vendor PK Hash Command ===");
+        }
+
+        let mut payload = Vec::with_capacity(8);
+        payload.extend_from_slice(&reserved.to_le_bytes());
+        payload.extend_from_slice(&vendor_pk_hash_slot.to_le_bytes());
+        self.validate_authorized_command(
+            client,
+            "FuseRevokeVendorPkHash",
+            MC_FUSE_REVOKE_VENDOR_PK_HASH_CANONICAL_CMD_ID,
+            &payload,
+            |auth| FuseRevokeVendorPkHashRequest {
+                reserved,
+                vendor_pk_hash_slot,
+                nonce: auth.nonce,
+                ecc_pub_x: auth.ecc_pub_x,
+                ecc_pub_y: auth.ecc_pub_y,
+                mldsa_pub: auth.mldsa_pub,
+                sig: auth.sig,
+            },
+            |client, request| client.fuse_revoke_vendor_pk_hash(request).map(|_| ()),
+        )
+    }
+
+    fn validate_fuse_lock_partition(
+        &self,
+        client: &mut MailboxClient,
+        partition: u32,
+    ) -> ValidationResult {
+        if self.verbose {
+            println!("\n=== Validating Fuse Lock Partition Command ===");
+        }
+
+        self.validate_authorized_command(
+            client,
+            "FuseLockPartition",
+            MC_FUSE_LOCK_PARTITION_CANONICAL_CMD_ID,
+            &partition.to_le_bytes(),
+            |auth| FuseLockPartitionRequest {
+                partition,
+                nonce: auth.nonce,
+                ecc_pub_x: auth.ecc_pub_x,
+                ecc_pub_y: auth.ecc_pub_y,
+                mldsa_pub: auth.mldsa_pub,
+                sig: auth.sig,
+            },
+            |client, request| client.fuse_lock_partition(request).map(|_| ()),
+        )
     }
 
     /// Validate GetDeviceCapabilities command
@@ -1783,7 +2072,7 @@ impl Validator {
     /// 3. Submits the FE_PROG command with the MAC
     ///
     /// If no `CommandAuthChallengeSigner` is configured, the test is skipped.
-    fn validate_fe_prog(&self, client: &mut MailboxClient) -> ValidationResult {
+    fn validate_fe_prog(&self, client: &mut MailboxClient, partition: u32) -> ValidationResult {
         use caliptra_mcu_core_util_host_command_types::fuse::FeProgRequest;
 
         let test_name = "FeProg".to_string();
@@ -1833,8 +2122,6 @@ impl Validator {
         // The device-side uses the MCU mailbox command code (MC_FE_PROG),
         // not the internal CaliptraCommandId.
         const MC_FE_PROG: u32 = 0x4D43_4650;
-        let partition: u32 = 0;
-
         let auth_result = authorizer.authorize(
             MC_FE_PROG,
             &partition.to_le_bytes(),
