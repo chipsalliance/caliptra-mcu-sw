@@ -13,14 +13,14 @@ use std::{env, error::Error, fs, io};
 const CACHE_FORMAT_VERSION: &str = "main-2.1-v2";
 
 pub const MCU_KERNEL_FPGA: FwId = FwId {
-    crate_name: "mcu-runtime-fpga",
-    bin_name: "mcu-runtime-fpga",
+    crate_name: "caliptra-mcu-runtime-fpga",
+    bin_name: "caliptra-mcu-runtime-fpga",
     fw_type: FirmwareType::Source { features: &[] },
 };
 
 pub const MCU_ROM_FPGA: FwId = FwId {
-    crate_name: "mcu-rom-fpga",
-    bin_name: "mcu-rom-fpga",
+    crate_name: "caliptra-mcu-rom-fpga",
+    bin_name: "caliptra-mcu-rom-fpga",
     fw_type: FirmwareType::Source { features: &[] },
 };
 
@@ -104,6 +104,8 @@ fn build_runtime(target_dir: &Path) -> Result<PathBuf> {
         .context("size-history target directory has no workspace parent")?
         .join("Cargo.lock");
     let original_lock = fs::read(&lock_path).context("failed to snapshot Cargo.lock")?;
+
+    eprintln!("Target directory: {:?}", target_dir.to_path_buf());
 
     // FPGA does not have a `*-devel.toml` manifest variant (HW-fixed SRAM);
     // still exercise the `release` cargo feature / `release` cargo profile
