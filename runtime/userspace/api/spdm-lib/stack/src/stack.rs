@@ -306,14 +306,55 @@ fn set_certificate_other_params() -> OtherParamSupport {
 // With the feature off, no HBEAT_CAP is advertised, so per DSP0274 the
 // HeartbeatPeriod is always zero and no liveness is expected (spec-legal
 // "heartbeat not supported").
-#[cfg(feature = "spdm-set-heartbeat")]
 fn heartbeat_cap_flags() -> CapFlags {
-    CapFlags::HBEAT
+    if cfg!(feature = "spdm-set-heartbeat") {
+        CapFlags::HBEAT
+    } else {
+        CapFlags::EMPTY
+    }
+}
+
+/// Receive the next request for the run loop.
+///
+/// With the heartbeat liveness watchdog compiled in and at least one session
+/// armed, this races `recv_request` against the nearest liveness deadline; if
+/// the timer wins, every expired session is torn down and the wait restarts.
+/// With no armed session — or with the feature off — it is a plain blocking
+/// receive, unchanged.
+///
+/// Taken as a free function over split borrows (`pal` shared, `sessions`
+/// mutable) rather than a `&mut self` method: the returned `Io` borrows only
+/// `pal`, so the caller keeps `sessions`/`state` free to borrow mutably for
+/// dispatch. This also keeps the feature-flag branching out of the run loop.
+#[cfg(feature = "spdm-set-heartbeat")]
+async fn recv_next<'p, Pal: SpdmPal, const N: usize>(
+    pal: &'p Pal,
+    sessions: &mut Sessions<Pal, N>,
+) -> McuResult<<Pal as SpdmPalIoTransport>::Io<'p>> {
+    use crate::select::{select, Either};
+    loop {
+        match sessions.nearest_deadline_ms() {
+            Some(deadline) => {
+                let delay = deadline.saturating_sub(pal.now_ms());
+                match select(pal.recv_request(), pal.sleep_ms(delay)).await {
+                    Either::First(io) => return io,
+                    Either::Second(()) => {
+                        sessions.expire_due(pal.now_ms());
+                        continue;
+                    }
+                }
+            }
+            None => return pal.recv_request().await,
+        }
+    }
 }
 
 #[cfg(not(feature = "spdm-set-heartbeat"))]
-fn heartbeat_cap_flags() -> CapFlags {
-    CapFlags::EMPTY
+async fn recv_next<'p, Pal: SpdmPal, const N: usize>(
+    pal: &'p Pal,
+    _sessions: &mut Sessions<Pal, N>,
+) -> McuResult<<Pal as SpdmPalIoTransport>::Io<'p>> {
+    pal.recv_request().await
 }
 
 /// SPDM responder state machine + dispatcher.
@@ -393,34 +434,12 @@ impl<Pal: SpdmPal, const MAX_SESSIONS: usize, Vdm: SpdmVdmBackend>
             caliptra_mcu_libsyscall_caliptra::DefaultSyscalls,
         >::writer();
         loop {
-            // Receive the next request. With the heartbeat watchdog enabled and
-            // at least one session armed, race the receive against the nearest
-            // liveness deadline; if the timer wins, tear down every expired
-            // session and wait again. With the feature off (or no armed session)
-            // this is a plain blocking receive, unchanged. Field borrows are
-            // kept disjoint (`self.pal` shared vs. `self.sessions` mutable) by
-            // inlining rather than delegating to a `&mut self` method.
-            #[cfg(feature = "spdm-set-heartbeat")]
-            let io = {
-                use crate::select::{select, Either};
-                loop {
-                    match self.sessions.nearest_deadline_ms() {
-                        Some(deadline) => {
-                            let delay = deadline.saturating_sub(self.pal.now_ms());
-                            match select(self.pal.recv_request(), self.pal.sleep_ms(delay)).await {
-                                Either::First(io) => break io?,
-                                Either::Second(()) => {
-                                    self.sessions.expire_due(self.pal.now_ms());
-                                    continue;
-                                }
-                            }
-                        }
-                        None => break self.pal.recv_request().await?,
-                    }
-                }
-            };
-            #[cfg(not(feature = "spdm-set-heartbeat"))]
-            let io = self.pal.recv_request().await?;
+            // Receive the next request. With the heartbeat watchdog compiled in,
+            // this races the receive against the nearest session liveness
+            // deadline; with the feature off it is a plain blocking receive.
+            // Kept disjoint from the other fields so `io` (which borrows
+            // `self.pal`) does not pin a `&mut self` borrow across the loop.
+            let io = recv_next(&self.pal, &mut self.sessions).await?;
             #[cfg(feature = "debug-trace")]
             {
                 let r = io.request();

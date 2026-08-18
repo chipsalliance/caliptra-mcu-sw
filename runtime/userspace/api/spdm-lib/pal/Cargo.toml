@@ -18,7 +18,6 @@ caliptra-mcu-libsyscall-caliptra = { workspace = true, optional = true }
 caliptra-mcu-libtock_platform = { workspace = true, optional = true }
 caliptra-mcu-libtock_alarm = { workspace = true, optional = true }
 caliptra-mcu-libtockasync = { workspace = true, optional = true }
-embassy-sync = { workspace = true, optional = true }
 zerocopy = { workspace = true }
 
 [features]
@@ -36,5 +35,4 @@ spdm-set-heartbeat = [
   "caliptra-mcu-libtock_platform",
   "caliptra-mcu-libtock_alarm",
   "caliptra-mcu-libtockasync",
-  "embassy-sync",
 ]

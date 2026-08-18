@@ -2011,7 +2011,6 @@ dependencies = [
  "caliptra-mcu-scratch-alloc",
  "caliptra-mcu-spdm-codec",
  "caliptra-mcu-spdm-traits",
- "embassy-sync",
  "mcu-caliptra-api",
  "zerocopy",
 ]
