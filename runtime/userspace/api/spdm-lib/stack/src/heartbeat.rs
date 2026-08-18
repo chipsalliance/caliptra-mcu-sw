@@ -19,7 +19,9 @@ pub(crate) const HEARTBEAT_ACK_SPDM_SIZE: usize = SpdmMsgHdrPdu::SIZE + 2;
 
 /// Default HeartbeatPeriod (seconds) advertised in KEY_EXCHANGE_RSP when both
 /// endpoints support HEARTBEAT. Matches the Micron Aegis6 reference default.
-#[cfg(feature = "spdm-set-heartbeat")]
+/// Not feature-gated so `heartbeat_period_for` can select on it with `cfg!()`
+/// (both branches must compile); the value is dead-code-eliminated when the
+/// `spdm-set-heartbeat` feature is off.
 pub(crate) const DEFAULT_HEARTBEAT_PERIOD_SECS: u8 = 3;
 
 /// Number of successive missed HeartbeatPeriods after which the responder

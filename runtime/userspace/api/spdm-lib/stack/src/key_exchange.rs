@@ -372,19 +372,13 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
 /// `DISABLED` (per DSP0274, zero when either endpoint lacks Heartbeat support).
 /// Always `DISABLED` when the `spdm-set-heartbeat` feature is off.
 fn heartbeat_period_for<Pal: SpdmPal>(state: &ConnState<'_, Pal>) -> HeartBeatPeriod {
-    #[cfg(feature = "spdm-set-heartbeat")]
+    use caliptra_mcu_spdm_codec::CapFlags;
+    if cfg!(feature = "spdm-set-heartbeat")
+        && state.cap_flags.contains(CapFlags::HBEAT)
+        && state.peer_cap_flags.contains(CapFlags::HBEAT)
     {
-        use caliptra_mcu_spdm_codec::CapFlags;
-        if state.cap_flags.contains(CapFlags::HBEAT)
-            && state.peer_cap_flags.contains(CapFlags::HBEAT)
-        {
-            return HeartBeatPeriod(crate::heartbeat::DEFAULT_HEARTBEAT_PERIOD_SECS);
-        }
-        HeartBeatPeriod::DISABLED
-    }
-    #[cfg(not(feature = "spdm-set-heartbeat"))]
-    {
-        let _ = state;
+        HeartBeatPeriod(crate::heartbeat::DEFAULT_HEARTBEAT_PERIOD_SECS)
+    } else {
         HeartBeatPeriod::DISABLED
     }
 }
