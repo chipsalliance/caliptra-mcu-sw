@@ -53,6 +53,7 @@ pub fn run_caliptra_util_host_validator() {
                 rom_firmware_id: 0,
                 runtime_firmware_id: 1,
             }),
+            ..Default::default()
         };
 
         let temp_file = NamedTempFile::new().expect("Failed to create temporary file");

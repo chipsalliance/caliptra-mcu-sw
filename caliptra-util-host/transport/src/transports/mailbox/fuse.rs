@@ -14,8 +14,11 @@ use super::command_traits::{
 };
 use alloc::vec::Vec;
 use caliptra_mcu_core_util_host_command_types::fuse::{
-    FeProgRequest, FeProgResponse, GetAuthCmdChallengeRequest, GetAuthCmdChallengeResponse,
-    AUTH_CMD_CHALLENGE_SIZE,
+    FeProgRequest, FeProgResponse, FuseIncreaseCaliptraMinSvnRequest,
+    FuseIncreaseCaliptraMinSvnResponse, FuseLockPartitionRequest, FuseLockPartitionResponse,
+    FuseRevokeVendorPkHashRequest, FuseRevokeVendorPkHashResponse, FuseRevokeVendorPubKeyRequest,
+    FuseRevokeVendorPubKeyResponse, GetAuthCmdChallengeRequest, GetAuthCmdChallengeResponse,
+    ProvisionVendorPkHashRequest, ProvisionVendorPkHashResponse, AUTH_CMD_CHALLENGE_SIZE,
 };
 use caliptra_mcu_core_util_host_command_types::CommonResponse;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
@@ -147,4 +150,94 @@ define_command!(
     FeProgResponse,
     ExtCmdFeProgRequest,
     ExtCmdFeProgResponse
+);
+
+macro_rules! define_authorized_fuse_mailbox_command {
+    ($cmd:ident, $code:literal, $request:ident, $response:ident, $ext_request:ident, $ext_response:ident) => {
+        #[repr(C)]
+        #[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+        pub struct $ext_request {
+            pub chksum: u32,
+            pub internal: $request,
+        }
+
+        #[repr(C)]
+        #[derive(Debug, Clone, Default, IntoBytes, FromBytes, Immutable)]
+        pub struct $ext_response {
+            pub chksum: u32,
+            pub fips_status: u32,
+        }
+
+        impl FromInternalRequest<$request> for $ext_request {
+            fn from_internal(internal: &$request, command_code: u32) -> Self {
+                Self {
+                    chksum: calc_checksum(command_code, internal.as_bytes()),
+                    internal: internal.clone(),
+                }
+            }
+        }
+
+        impl ToInternalResponse<$response> for $ext_response {
+            fn to_internal(&self) -> $response {
+                $response {
+                    common: CommonResponse {
+                        fips_status: self.fips_status,
+                    },
+                }
+            }
+        }
+
+        impl VariableSizeBytes for $ext_request {}
+        impl VariableSizeBytes for $ext_response {}
+
+        define_command!(
+            $cmd,
+            $code,
+            $request,
+            $response,
+            $ext_request,
+            $ext_response
+        );
+    };
+}
+
+define_authorized_fuse_mailbox_command!(
+    ProvisionVendorPkHashCmd,
+    0x5056_504B,
+    ProvisionVendorPkHashRequest,
+    ProvisionVendorPkHashResponse,
+    ExtCmdProvisionVendorPkHashRequest,
+    ExtCmdProvisionVendorPkHashResponse
+);
+define_authorized_fuse_mailbox_command!(
+    FuseIncreaseCaliptraMinSvnCmd,
+    0x4D43_4D53,
+    FuseIncreaseCaliptraMinSvnRequest,
+    FuseIncreaseCaliptraMinSvnResponse,
+    ExtCmdFuseIncreaseCaliptraMinSvnRequest,
+    ExtCmdFuseIncreaseCaliptraMinSvnResponse
+);
+define_authorized_fuse_mailbox_command!(
+    FuseRevokeVendorPubKeyCmd,
+    0x4D52_564B,
+    FuseRevokeVendorPubKeyRequest,
+    FuseRevokeVendorPubKeyResponse,
+    ExtCmdFuseRevokeVendorPubKeyRequest,
+    ExtCmdFuseRevokeVendorPubKeyResponse
+);
+define_authorized_fuse_mailbox_command!(
+    FuseRevokeVendorPkHashCmd,
+    0x5256_4B48,
+    FuseRevokeVendorPkHashRequest,
+    FuseRevokeVendorPkHashResponse,
+    ExtCmdFuseRevokeVendorPkHashRequest,
+    ExtCmdFuseRevokeVendorPkHashResponse
+);
+define_authorized_fuse_mailbox_command!(
+    FuseLockPartitionCmd,
+    0x4946_504B,
+    FuseLockPartitionRequest,
+    FuseLockPartitionResponse,
+    ExtCmdFuseLockPartitionRequest,
+    ExtCmdFuseLockPartitionResponse
 );
