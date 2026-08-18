@@ -603,7 +603,8 @@ pub unsafe fn main() {
         feature = "streaming-boot",
         feature = "firmware-update",
         feature = "mctp-vdm-service",
-        feature = "test-mctp-capsule-loopback"
+        feature = "test-mctp-capsule-loopback",
+        feature = "test-mctp-capsule-loopback-warm-reset"
     ))]
     // Read directly from OTP so endpoint identity does not depend on the ROM ABI.
     let mctp_endpoint_uuid = match peripherals.otp.read_idevid_manufacturer_serial_number() {
