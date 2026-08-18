@@ -10,7 +10,7 @@ The Security Protocol and Data Model (SPDM) is a protocol designed to ensure sec
 | Secured Messages using SPDM over MCTP Binding | [DSP0276](https://www.dmtf.org/sites/default/files/standards/documents/DSP0276_1.2.0.pdf) |
 
 ## Certificate Store
-The Caliptra MCU SPDM responder exposes certificate slots through the PAL certificate store. For slot mapping, chain composition, task-local caching, and `SET_CERTIFICATE` storage behavior, see [SPDM Certificate Store Design](./cert_store_design.md).
+The Caliptra MCU SPDM responder exposes certificate slots through the PAL certificate store. For the shared certificate-service architecture, slot mapping, chain composition, task-local caching, and `SET_CERTIFICATE` storage behavior, see [MCU Certificate Store Design](./cert_store_design.md).
 
 For in-field certificate-slot provisioning workflows and requester-visible slot management, see [In-field SPDM CertSlot Provisioning](./cert_slot_mgmt.md).
 
