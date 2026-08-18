@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! SPDM CAPABILITIES wire types (DSP0274 §10.5).
+//! SPDM CAPABILITIES wire types.
 //!
 //! Two layers:
 //!
@@ -11,13 +11,16 @@
 //!    GET_CAPABILITIES request and CAPABILITIES response (same wire
 //!    shape in both directions).
 
-use zerocopy::{little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
+use zerocopy::{
+    little_endian::{U16, U32},
+    FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned,
+};
 
 use crate::flag_macros::def_flag_set_le;
 use crate::{ReqRespCode, ResponseBody, WireError, WireWriter};
 
 def_flag_set_le! {
-    /// SPDM capability bitfield (DSP0274 §10.5.1 Table 11). Constants
+    /// SPDM capability bitfield. Constants
     /// cover single-bit flags directly. The 2-bit `MEAS` and `PSK`
     /// fields are exposed as per-value constants (`MEAS_NO_SIG`,
     /// `MEAS_SIG`, `PSK`, `PSK_WITH_CTX`).
@@ -46,9 +49,20 @@ def_flag_set_le! {
         CHUNK = 1 << 17,
         ALIAS_CERT = 1 << 18,
         SET_CERT = 1 << 19,
+        CSR = 1 << 20,
+        CERT_INSTALL_RESET = 1 << 21,
+        EP_INFO_NO_SIG = 1 << 22,
+        EP_INFO_SIG = 2 << 22,
+        MEL = 1 << 24,
+        EVENT = 1 << 25,
+        /// `MULTI_KEY_CAP` field bits 27:26 set to `01b` (`MultiKeyOnly`).
+        MULTI_KEY_ONLY = 1 << 26,
         /// `MULTI_KEY_CAP` field bits 27:26 set to `10b` (`MultiKeyConnRsp`).
         MULTI_KEY_CONN_RSP = 2 << 26,
         GET_KEY_PAIR_INFO = 1 << 28,
+        SET_KEY_PAIR_INFO = 1 << 29,
+        SET_KEY_PAIR_RESET = 1 << 30,
+        LARGE_RESP = 1 << 31,
     }
 }
 
@@ -71,7 +85,15 @@ impl CapFlags {
     }
 }
 
-/// 18-byte CAPABILITIES body (DSP0274 §10.5.1, v1.2+). Identical
+def_flag_set_le! {
+    /// SPDM V1.4 extended responder capability flags. The requester
+    /// field is reserved; responders ignore its value.
+    pub struct ExtCapFlags(U16: u16) {
+        SLOT_MGMT = 1 << 0,
+    }
+}
+
+/// 18-byte CAPABILITIES body for v1.2+. Identical
 /// layout for `GET_CAPABILITIES` request and `CAPABILITIES`
 /// response.
 #[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned, Copy, Clone, Default)]
@@ -81,7 +103,9 @@ pub struct CapabilitiesBody {
     pub param2: u8,
     pub reserved: u8,
     pub ct_exponent: u8,
-    pub reserved2: [u8; 2],
+    /// Extended response capability flags in V1.4. The request field is reserved;
+    /// the field is reserved in both directions in older versions.
+    pub ext_flags: ExtCapFlags,
     pub flags: CapFlags,
     pub data_transfer_size: U32,
     pub max_spdm_msg_size: U32,
@@ -90,8 +114,7 @@ pub struct CapabilitiesBody {
 impl CapabilitiesBody {
     pub const SIZE: usize = 18;
 
-    /// DSP0274 §10.3: minimum DataTransferSize for V1.2+ is 42 bytes
-    /// ("MinDataTransferSize" in the spec).
+    /// Minimum DataTransferSize for V1.2+ is 42 bytes.
     pub const MIN_DATA_TRANSFER_SIZE: u32 = 42;
 
     /// Practical upper bound on CTExponent (CT = 2^32 µs ≈ 1.2 h).
@@ -103,6 +126,7 @@ const _: () = assert!(core::mem::size_of::<CapabilitiesBody>() == CapabilitiesBo
 /// Builder for a CAPABILITIES response.
 pub struct CapabilitiesRsp {
     pub ct_exponent: u8,
+    pub ext_flags: ExtCapFlags,
     pub flags: CapFlags,
     pub data_transfer_size: u32,
     pub max_spdm_msg_size: u32,
@@ -121,7 +145,7 @@ impl ResponseBody for CapabilitiesRsp {
             param2: 0,
             reserved: 0,
             ct_exponent: self.ct_exponent,
-            reserved2: [0; 2],
+            ext_flags: self.ext_flags,
             flags: self.flags,
             data_transfer_size: U32::new(self.data_transfer_size),
             max_spdm_msg_size: U32::new(self.max_spdm_msg_size),
