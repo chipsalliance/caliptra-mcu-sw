@@ -8,7 +8,8 @@
 //! 2. Negotiates the SPDM version using the requester's
 //!    common-header `version` byte (must be one of
 //!    [`SUPPORTED_VERSIONS`](crate::version::SUPPORTED_VERSIONS)).
-//! 3. Validates the V1.2+ `CapabilitiesBody` fields used by the responder.
+//! 3. Validates the V1.2+ `CapabilitiesBody`, version-specific capability
+//!    masks, extended flags, and capability dependencies.
 //! 4. Stashes the peer's advertised `DataTransferSize`,
 //!    `MaxSPDMmsgSize`, and capability flags into [`ConnectionState`].
 //! 5. Builds the `CAPABILITIES` response from the responder's fixed
@@ -72,7 +73,7 @@ pub(crate) async fn handle_get_capabilities<'a, Pal: SpdmPal>(
     )
     .map_err(|_| SPDM_INVALID_REQUEST)?;
 
-    let (peer_dts, peer_max) = validate_capabilities_body(body)?;
+    let (peer_dts, peer_max) = validate_capabilities_body(version, body)?;
     state.version = version;
     state.peer_data_transfer_size = peer_dts;
     state.peer_max_spdm_msg_size = peer_max;
@@ -114,7 +115,7 @@ pub(crate) async fn handle_get_capabilities<'a, Pal: SpdmPal>(
     Ok(resp)
 }
 
-/// Validates the `CapabilitiesBody` fields used by the responder.
+/// Validates a `CapabilitiesBody` against the negotiated SPDM version.
 ///
 /// # Parameters
 ///
@@ -127,15 +128,33 @@ pub(crate) async fn handle_get_capabilities<'a, Pal: SpdmPal>(
 ///
 /// # Errors
 ///
-/// * [`SPDM_INVALID_REQUEST`] — `ct_exponent` exceeds the protocol maximum,
-///   transfer sizes are invalid, or the Supported Algorithms request is made
-///   without requester CHUNK support.
-fn validate_capabilities_body(body: &CapabilitiesBody) -> SpdmResult<(u32, u32)> {
+/// * [`SPDM_INVALID_REQUEST`] — a reserved/version-inapplicable field or flag
+///   is non-zero, capability dependencies are invalid, `ct_exponent` exceeds
+///   the protocol maximum, transfer sizes are invalid, or the Supported
+///   Algorithms request is made without CHUNK support at both endpoints.
+fn validate_capabilities_body(
+    version: SpdmVersion,
+    body: &CapabilitiesBody,
+) -> SpdmResult<(u32, u32)> {
+    let param1_mask = if version >= SpdmVersion::V13 { 0x01 } else { 0 };
+    if body.param1 & !param1_mask != 0 || body.param2 != 0 || body.reserved != 0 {
+        return Err(SPDM_INVALID_REQUEST);
+    }
+    // Requester ExtFlags are reserved in SPDM V1.4 and the same bytes
+    // are reserved in all earlier versions.
+    if !body.ext_flags.is_empty() {
+        return Err(SPDM_INVALID_REQUEST);
+    }
     if body.ct_exponent > CapabilitiesBody::MAX_CT_EXPONENT {
         return Err(SPDM_INVALID_REQUEST);
     }
 
     let flags = body.flags;
+    if flags.into_bits() & !requester_cap_mask(version) != 0 {
+        return Err(SPDM_INVALID_REQUEST);
+    }
+    validate_request_flag_compatibility(version, flags)?;
+
     // A requester can only request the Supported Algorithms block when it
     // supports chunking. This responder does not currently include the
     // optional block, so Param1 remains zero in the response even when this
@@ -157,9 +176,90 @@ fn validate_capabilities_body(body: &CapabilitiesBody) -> SpdmResult<(u32, u32)>
     Ok((peer_dts, peer_max))
 }
 
+fn validate_request_flag_compatibility(version: SpdmVersion, flags: CapFlags) -> SpdmResult<()> {
+    let cert = flags.contains(CapFlags::CERT);
+    let chal = flags.contains(CapFlags::CHAL);
+    let encrypt = flags.contains(CapFlags::ENCRYPT);
+    let mac = flags.contains(CapFlags::MAC);
+    let mut_auth = flags.contains(CapFlags::MUT_AUTH);
+    let key_ex = flags.contains(CapFlags::KEY_EX);
+    let psk = flags.psk_field();
+    let pub_key_id = flags.contains(CapFlags::PUB_KEY_ID);
+    let ep_info = flags.ep_info_field();
+    let multi_key = flags.multi_key_field();
+
+    // Requesters may advertise PSK_CAP=00b or 01b. The 10b value is
+    // responder-only and 11b is reserved.
+    if psk > 1 || ep_info == 3 || multi_key == 3 {
+        return Err(SPDM_INVALID_REQUEST);
+    }
+
+    let has_session_exchange = key_ex || psk != 0;
+    if has_session_exchange {
+        if !encrypt && !mac {
+            return Err(SPDM_INVALID_REQUEST);
+        }
+    } else if encrypt
+        || mac
+        || flags.contains(CapFlags::HANDSHAKE_IN_THE_CLEAR)
+        || flags.contains(CapFlags::HBEAT)
+        || flags.contains(CapFlags::KEY_UPD)
+        || (version >= SpdmVersion::V13 && flags.contains(CapFlags::EVENT))
+    {
+        return Err(SPDM_INVALID_REQUEST);
+    }
+    if !key_ex && psk == 1 && flags.contains(CapFlags::HANDSHAKE_IN_THE_CLEAR) {
+        return Err(SPDM_INVALID_REQUEST);
+    }
+
+    if cert || pub_key_id {
+        if cert && pub_key_id {
+            return Err(SPDM_INVALID_REQUEST);
+        }
+        if !(chal || key_ex || (version >= SpdmVersion::V13 && ep_info == 2)) {
+            return Err(SPDM_INVALID_REQUEST);
+        }
+    } else if chal || mut_auth || (version >= SpdmVersion::V13 && ep_info == 2) {
+        return Err(SPDM_INVALID_REQUEST);
+    }
+
+    if mut_auth && !key_ex && !chal {
+        return Err(SPDM_INVALID_REQUEST);
+    }
+    if version >= SpdmVersion::V13 && multi_key != 0 && (!cert || pub_key_id) {
+        return Err(SPDM_INVALID_REQUEST);
+    }
+    Ok(())
+}
+
+const REQUESTER_CAP_FLAGS_V12_MASK: u32 = (1 << 1)
+    | (1 << 2)
+    | (1 << 6)
+    | (1 << 7)
+    | (1 << 8)
+    | (1 << 9)
+    | (0b11 << 10)
+    | (1 << 12)
+    | (1 << 13)
+    | (1 << 14)
+    | (1 << 15)
+    | (1 << 16)
+    | (1 << 17);
+const REQUESTER_CAP_FLAGS_V13_MASK: u32 =
+    REQUESTER_CAP_FLAGS_V12_MASK | (0b11 << 22) | (1 << 25) | (0b11 << 26);
+const REQUESTER_CAP_FLAGS_V14_MASK: u32 = REQUESTER_CAP_FLAGS_V13_MASK | (1 << 31);
+
 const RESPONDER_CAP_FLAGS_V12_MASK: u32 = (1 << 22) - 1;
 const RESPONDER_CAP_FLAGS_V13_MASK: u32 = (1 << 30) - 1;
 const RESPONDER_CAP_FLAGS_V14_MASK: u32 = u32::MAX;
+
+fn requester_cap_mask(version: SpdmVersion) -> u32 {
+    match version {
+        SpdmVersion::V10 | SpdmVersion::V11 | SpdmVersion::V12 => REQUESTER_CAP_FLAGS_V12_MASK,
+        SpdmVersion::V13 => REQUESTER_CAP_FLAGS_V13_MASK,
+        SpdmVersion::V14 => REQUESTER_CAP_FLAGS_V14_MASK,
+    }
+}
 
 fn responder_cap_mask(version: SpdmVersion) -> u32 {
     match version {

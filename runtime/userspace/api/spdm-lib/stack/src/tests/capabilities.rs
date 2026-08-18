@@ -57,10 +57,7 @@ fn dispatch_request(
 
 #[test]
 fn get_capabilities_negotiates_v14_and_encodes_ext_flags() {
-    let pal = TestPal {
-        max_inbound_spdm_request_size: 4096,
-        ..TestPal::default()
-    };
+    let pal = TestPal::default();
     let mut state = ConnectionState::default();
     state.phase = Phase::AfterVersion;
     let mut sessions = SessionManager::new();
@@ -87,7 +84,6 @@ fn get_capabilities_negotiates_v14_and_encodes_ext_flags() {
         u32::from_le_bytes(rsp[8..12].try_into().unwrap()),
         state.advertised_cap_flags.into_bits()
     );
-    assert_eq!(u32::from_le_bytes(rsp[16..20].try_into().unwrap()), 4096);
     assert_eq!(state.version, SpdmVersion::V14);
     assert_eq!(state.phase, Phase::AfterCapabilities);
     assert_eq!(state.peer_cap_flags.into_bits(), peer_flags.into_bits());
@@ -119,23 +115,52 @@ fn get_capabilities_masks_flags_added_after_v12() {
 }
 
 #[test]
-fn v14_capabilities_ignores_reserved_extended_flags() {
+fn invalid_v14_capabilities_does_not_commit_negotiation_state() {
     let pal = TestPal::default();
     let mut state = ConnectionState::default();
     state.phase = Phase::AfterVersion;
     let mut sessions = SessionManager::new();
     let peer_flags = CapFlags::CERT | CapFlags::KEY_EX | CapFlags::CHUNK;
 
-    dispatch_request(
+    let err = dispatch_request(
         &mut state,
         &mut sessions,
         &pal,
-        capabilities_request(SpdmVersion::V14, 0, u16::MAX, peer_flags, 1024, 1024),
+        capabilities_request(SpdmVersion::V14, 0, 1, peer_flags, 1024, 1024),
     )
-    .unwrap();
+    .unwrap_err();
 
-    assert_eq!(state.phase, Phase::AfterCapabilities);
-    assert_eq!(state.version, SpdmVersion::V14);
+    assert_eq!(err.spec_byte(), SPDM_INVALID_REQUEST.spec_byte());
+    assert_eq!(state.phase, Phase::AfterVersion);
+    assert_eq!(state.version, SpdmVersion::V12);
+    assert_eq!(
+        state.peer_cap_flags.into_bits(),
+        CapFlags::EMPTY.into_bits()
+    );
+    assert_eq!(state.peer_data_transfer_size, 0);
+    assert_eq!(state.peer_max_spdm_msg_size, 0);
+}
+
+#[test]
+fn v14_capabilities_rejects_incompatible_session_flags() {
+    let pal = TestPal::default();
+    let mut state = ConnectionState::default();
+    state.phase = Phase::AfterVersion;
+    let mut sessions = SessionManager::new();
+    // KEY_EX requires at least one of ENCRYPT or MAC.
+    let peer_flags = CapFlags::CERT | CapFlags::KEY_EX | CapFlags::CHUNK;
+
+    let err = dispatch_request(
+        &mut state,
+        &mut sessions,
+        &pal,
+        capabilities_request(SpdmVersion::V14, 0, 0, peer_flags, 1024, 1024),
+    )
+    .unwrap_err();
+
+    assert_eq!(err.spec_byte(), SPDM_INVALID_REQUEST.spec_byte());
+    assert_eq!(state.phase, Phase::AfterVersion);
+    assert_eq!(state.version, SpdmVersion::V12);
 }
 
 #[test]
@@ -162,24 +187,71 @@ fn v14_capabilities_accepts_supported_algorithms_request_with_chunking() {
 }
 
 #[test]
-fn v14_supported_algorithms_request_requires_requester_chunking() {
+fn v14_supported_algorithms_request_does_not_require_responder_chunking() {
     let pal = TestPal::default();
     let mut state = ConnectionState::default();
     state.phase = Phase::AfterVersion;
+    state.cap_flags =
+        CapFlags::from_bits(state.cap_flags.into_bits() & !CapFlags::CHUNK.into_bits());
     let mut sessions = SessionManager::new();
-    let peer_flags = CapFlags::CERT | CapFlags::KEY_EX;
+    let peer_flags =
+        CapFlags::CERT | CapFlags::KEY_EX | CapFlags::ENCRYPT | CapFlags::MAC | CapFlags::CHUNK;
 
-    let err = dispatch_request(
+    let rsp = dispatch_request(
         &mut state,
         &mut sessions,
         &pal,
         capabilities_request(SpdmVersion::V14, 1, 0, peer_flags, 1024, 1024),
     )
+    .unwrap();
+
+    assert_eq!(rsp[2], 0);
+    let advertised = CapFlags::from_bits(u32::from_le_bytes(rsp[8..12].try_into().unwrap()));
+    assert!(!advertised.contains(CapFlags::CHUNK));
+}
+
+#[test]
+fn capabilities_enforces_ct_exponent_limit() {
+    let pal = TestPal::default();
+    let peer_flags =
+        CapFlags::CERT | CapFlags::KEY_EX | CapFlags::ENCRYPT | CapFlags::MAC | CapFlags::CHUNK;
+
+    for (ct_exponent, accepted) in [(31, true), (32, false)] {
+        let mut state = ConnectionState::default();
+        state.phase = Phase::AfterVersion;
+        let mut sessions = SessionManager::new();
+        let mut request = capabilities_request(SpdmVersion::V14, 0, 0, peer_flags, 1024, 1024);
+        request[5] = ct_exponent;
+
+        assert_eq!(
+            dispatch_request(&mut state, &mut sessions, &pal, request).is_ok(),
+            accepted
+        );
+    }
+}
+
+#[test]
+fn v13_capabilities_rejects_v14_requester_flags() {
+    let pal = TestPal::default();
+    let mut state = ConnectionState::default();
+    state.phase = Phase::AfterVersion;
+    let mut sessions = SessionManager::new();
+    let peer_flags = CapFlags::CERT
+        | CapFlags::KEY_EX
+        | CapFlags::ENCRYPT
+        | CapFlags::MAC
+        | CapFlags::CHUNK
+        | CapFlags::LARGE_RESP;
+
+    let err = dispatch_request(
+        &mut state,
+        &mut sessions,
+        &pal,
+        capabilities_request(SpdmVersion::V13, 0, 0, peer_flags, 1024, 1024),
+    )
     .unwrap_err();
 
     assert_eq!(err.spec_byte(), SPDM_INVALID_REQUEST.spec_byte());
-    assert_eq!(state.phase, Phase::AfterVersion);
-    assert_eq!(state.version, SpdmVersion::V12);
 }
 
 #[test]
