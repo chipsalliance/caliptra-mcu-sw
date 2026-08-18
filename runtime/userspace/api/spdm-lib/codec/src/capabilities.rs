@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! SPDM CAPABILITIES wire types (DSP0274 §10.5).
+//! SPDM CAPABILITIES wire types (DSP0274 §10.3).
 //!
 //! Two layers:
 //!
@@ -11,13 +11,16 @@
 //!    GET_CAPABILITIES request and CAPABILITIES response (same wire
 //!    shape in both directions).
 
-use zerocopy::{little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
+use zerocopy::{
+    little_endian::{U16, U32},
+    FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned,
+};
 
 use crate::flag_macros::def_flag_set_le;
 use crate::{ReqRespCode, ResponseBody, WireError, WireWriter};
 
 def_flag_set_le! {
-    /// SPDM capability bitfield (DSP0274 §10.5.1 Table 11). Constants
+    /// SPDM capability bitfield (DSP0274 §10.3). Constants
     /// cover single-bit flags directly. The 2-bit `MEAS` and `PSK`
     /// fields are exposed as per-value constants (`MEAS_NO_SIG`,
     /// `MEAS_SIG`, `PSK`, `PSK_WITH_CTX`).
@@ -46,9 +49,20 @@ def_flag_set_le! {
         CHUNK = 1 << 17,
         ALIAS_CERT = 1 << 18,
         SET_CERT = 1 << 19,
+        CSR = 1 << 20,
+        CERT_INSTALL_RESET = 1 << 21,
+        EP_INFO_NO_SIG = 1 << 22,
+        EP_INFO_SIG = 2 << 22,
+        MEL = 1 << 24,
+        EVENT = 1 << 25,
+        /// `MULTI_KEY_CAP` field bits 27:26 set to `01b` (`MultiKeyOnly`).
+        MULTI_KEY_ONLY = 1 << 26,
         /// `MULTI_KEY_CAP` field bits 27:26 set to `10b` (`MultiKeyConnRsp`).
         MULTI_KEY_CONN_RSP = 2 << 26,
         GET_KEY_PAIR_INFO = 1 << 28,
+        SET_KEY_PAIR_INFO = 1 << 29,
+        SET_KEY_PAIR_RESET = 1 << 30,
+        LARGE_RESP = 1 << 31,
     }
 }
 
@@ -69,6 +83,20 @@ impl CapFlags {
     pub fn multi_key_field(self) -> u8 {
         ((self.into_bits() >> 26) & 0b11) as u8
     }
+
+    /// 2-bit `EP_INFO_CAP` field value (bits 22..=23).
+    #[inline]
+    pub fn ep_info_field(self) -> u8 {
+        ((self.into_bits() >> 22) & 0b11) as u8
+    }
+}
+
+def_flag_set_le! {
+    /// SPDM V1.4 extended responder capability flags. Requester
+    /// ExtFlags are reserved in V1.4 and therefore must be zero.
+    pub struct ExtCapFlags(U16: u16) {
+        SLOT_MGMT = 1 << 0,
+    }
 }
 
 /// 18-byte CAPABILITIES body (DSP0274 §10.5.1, v1.2+). Identical
@@ -81,7 +109,8 @@ pub struct CapabilitiesBody {
     pub param2: u8,
     pub reserved: u8,
     pub ct_exponent: u8,
-    pub reserved2: [u8; 2],
+    /// Extended capability flags in V1.4; reserved and zero in older versions.
+    pub ext_flags: ExtCapFlags,
     pub flags: CapFlags,
     pub data_transfer_size: U32,
     pub max_spdm_msg_size: U32,
@@ -103,6 +132,7 @@ const _: () = assert!(core::mem::size_of::<CapabilitiesBody>() == CapabilitiesBo
 /// Builder for a CAPABILITIES response.
 pub struct CapabilitiesRsp {
     pub ct_exponent: u8,
+    pub ext_flags: ExtCapFlags,
     pub flags: CapFlags,
     pub data_transfer_size: u32,
     pub max_spdm_msg_size: u32,
@@ -121,7 +151,7 @@ impl ResponseBody for CapabilitiesRsp {
             param2: 0,
             reserved: 0,
             ct_exponent: self.ct_exponent,
-            reserved2: [0; 2],
+            ext_flags: self.ext_flags,
             flags: self.flags,
             data_transfer_size: U32::new(self.data_transfer_size),
             max_spdm_msg_size: U32::new(self.max_spdm_msg_size),
