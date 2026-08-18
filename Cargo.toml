@@ -306,7 +306,7 @@ caliptra-mcu-pldm-lib = { path = "runtime/userspace/api/pldm-lib" }
 caliptra-mcu-spdm-traits = { path = "runtime/userspace/api/spdm-lib/traits" }
 caliptra-mcu-spdm-stack = { path = "runtime/userspace/api/spdm-lib/stack" }
 caliptra-mcu-spdm-codec = { path = "runtime/userspace/api/spdm-lib/codec" }
-mcu-caliptra-api = { path = "runtime/userspace/api/caliptra-api" }
+mcu-caliptra-api = { path = "runtime/userspace/api/caliptra-api", default-features = false }
 caliptra-mcu-scratch-alloc = { path = "runtime/userspace/scratch-alloc" }
 caliptra-mcu-spdm-transports = { path = "runtime/userspace/api/spdm-lib/transports" }
 caliptra-mcu-spdm-pal = { path = "runtime/userspace/api/spdm-lib/pal" }
