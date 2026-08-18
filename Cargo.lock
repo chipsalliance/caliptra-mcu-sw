@@ -1013,6 +1013,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-cert-store"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-libsyscall-caliptra",
+ "caliptra-mcu-libtock_platform",
+ "caliptra-mcu-runtime-userspace-error",
+ "critical-section",
+ "embassy-sync",
+]
+
+[[package]]
 name = "caliptra-mcu-command-auth-challenge-signer"
 version = "0.1.0"
 dependencies = [
@@ -2002,6 +2013,7 @@ name = "caliptra-mcu-spdm-pal"
 version = "0.1.0"
 dependencies = [
  "caliptra-mcu-attestation-evidence",
+ "caliptra-mcu-cert-store",
  "caliptra-mcu-libsyscall-caliptra",
  "caliptra-mcu-libtock_platform",
  "caliptra-mcu-measurement-api",
@@ -2036,6 +2048,7 @@ name = "caliptra-mcu-spdm-traits"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "caliptra-mcu-cert-store",
  "caliptra-mcu-runtime-userspace-error",
  "mcu-caliptra-api",
 ]

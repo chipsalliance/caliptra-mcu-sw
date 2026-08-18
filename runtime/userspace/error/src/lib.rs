@@ -143,6 +143,9 @@ pub mod domain {
     /// Attestation / measurement API (`caliptra-mcu-measurement-api`).
     pub const ATTESTATION: u8 = 0x07;
 
+    /// Protocol-neutral managed certificate storage.
+    pub const CERT_STORE: u8 = 0x08;
+
     /// Memory / allocator failures (singleton — any allocator may
     /// produce these, but the meaning never varies).
     pub const MEMORY: u8 = 0x10;

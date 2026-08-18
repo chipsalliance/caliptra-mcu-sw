@@ -1,0 +1,25 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "caliptra-mcu-cert-store"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+critical-section.workspace = true
+embassy-sync = { workspace = true, optional = true }
+mcu-error.workspace = true
+caliptra-mcu-libsyscall-caliptra = { workspace = true, optional = true }
+caliptra-mcu-libtock_platform = { workspace = true, optional = true }
+
+[features]
+default = []
+set-certificate = [
+  "caliptra-mcu-libsyscall-caliptra",
+  "caliptra-mcu-libtock_platform",
+  "dep:embassy-sync",
+]
+managed = [
+  "set-certificate",
+]

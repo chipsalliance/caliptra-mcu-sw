@@ -116,6 +116,13 @@ impl From<McuErrorCode> for SpdmError {
         match e.domain() {
             // Allocator pool exhausted → ask the requester to retry.
             domain::MEMORY => SPDM_BUSY,
+            // Managed certificate storage preserves the distinction between
+            // a retryable busy flash driver and a failed update.
+            domain::CERT_STORE => match e.code() {
+                0x0001 => SPDM_BUSY,
+                0x0002 => SPDM_OPERATION_FAILED,
+                _ => SPDM_UNSPECIFIED,
+            },
             // Anything else (internal bugs, libtock errors, …) is a
             // catch-all unspecified failure on the responder side.
             _ => SPDM_UNSPECIFIED,
@@ -173,3 +180,20 @@ pub const SPDM_OPERATION_FAILED: SpdmError = SpdmError::new(0x44);
 pub const SPDM_LARGE_RESPONSE: SpdmError = SpdmError::new(0x0F);
 /// `VendorDefined` — vendor-specific error with extended data.
 pub const SPDM_VENDOR_DEFINED: SpdmError = SpdmError::new(0xFF);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn managed_cert_store_errors_preserve_spdm_semantics() {
+        assert_eq!(
+            SpdmError::from(McuErrorCode::new(domain::CERT_STORE, 0, 0x0001)),
+            SPDM_BUSY
+        );
+        assert_eq!(
+            SpdmError::from(McuErrorCode::new(domain::CERT_STORE, 0, 0x0002)),
+            SPDM_OPERATION_FAILED
+        );
+    }
+}

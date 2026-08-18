@@ -8,6 +8,7 @@ edition.workspace = true
 
 [dependencies]
 caliptra-mcu-attestation-evidence = { workspace = true }
+caliptra-mcu-cert-store.workspace = true
 caliptra-mcu-spdm-traits = { workspace = true }
 caliptra-mcu-spdm-codec = { workspace = true }
 caliptra-mcu-measurement-api = { workspace = true }
@@ -25,6 +26,7 @@ default = []
 pcr-quote = ["caliptra-mcu-attestation-evidence/pcr-quote"]
 set-certificate = [
   "caliptra-mcu-spdm-traits/set-certificate",
+  "caliptra-mcu-cert-store/managed",
   "caliptra-mcu-libsyscall-caliptra",
   "caliptra-mcu-libtock_platform",
   "dep:embassy-sync",

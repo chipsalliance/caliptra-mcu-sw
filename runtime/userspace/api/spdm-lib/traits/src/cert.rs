@@ -8,6 +8,7 @@
 //! MLDSA-87 will be added later using the same interfaces.
 
 use crate::SpdmPalHashAlgo;
+pub use caliptra_mcu_cert_store::CertWriteSession;
 use mcu_error::McuResult;
 
 /// Maximum number of cert-chain slots the responder advertises.
@@ -22,31 +23,6 @@ pub const MAX_SLOTS: u8 = 8;
 pub struct CertSlotSnapshot {
     slot: u8,
     provisioning_state_version: u32,
-}
-
-/// Opaque PAL-owned identity for one streaming certificate write.
-///
-/// This is internal responder state, not an SPDM wire value. The stack only
-/// carries it between callbacks; the PAL rejects callbacks from an older
-/// superseded stream.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct CertWriteSession {
-    slot: u8,
-    epoch: u32,
-}
-
-impl CertWriteSession {
-    pub const fn new(slot: u8, epoch: u32) -> Self {
-        Self { slot, epoch }
-    }
-
-    pub const fn matches_slot(self, slot: u8) -> bool {
-        self.slot == slot
-    }
-
-    pub const fn epoch(self) -> u32 {
-        self.epoch
-    }
 }
 
 impl CertSlotSnapshot {

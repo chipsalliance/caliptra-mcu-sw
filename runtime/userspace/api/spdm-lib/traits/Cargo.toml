@@ -8,6 +8,7 @@ edition.workspace = true
 
 [dependencies]
 async-trait.workspace = true
+caliptra-mcu-cert-store.workspace = true
 mcu-caliptra-api = { workspace = true, features = ["mailbox-io"] }
 mcu-error = { workspace = true }
 

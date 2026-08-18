@@ -14,7 +14,7 @@ mod slot0_endorsements;
 use caliptra_mcu_config_emulator::flash::{CERT_STORE_BACKUP_PARTITION, CERT_STORE_PARTITION};
 use caliptra_mcu_libsyscall_caliptra::external_otp::ExternalOtp;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
-use caliptra_mcu_spdm_pal::cert::store::SharedCertStore;
+use caliptra_mcu_spdm_pal::cert::store::{set_endorsement_chain, SharedCertStore};
 use mcu_caliptra_api::{populate_idev_ecc384_cert, ApiAlloc};
 use mcu_error::McuResult;
 
@@ -52,14 +52,14 @@ pub async fn setup_endorsements<A: ApiAlloc>(store: &SharedCertStore, alloc: &A)
     // Slot 0 (Vendor): ReadOnly endorsement with static Root CA.
     // Retry on mailbox busy (SHA calls during root cert hashing).
     loop {
-        match store
-            .set_endorsement_chain(
-                alloc,
-                VENDOR_STORE_SLOT,
-                slot0_endorsements::SLOT0_ECC_ROOT_CERT_CHAIN,
-                0, // key_pair_id
-            )
-            .await
+        match set_endorsement_chain(
+            store,
+            alloc,
+            VENDOR_STORE_SLOT,
+            slot0_endorsements::SLOT0_ECC_ROOT_CERT_CHAIN,
+            0, // key_pair_id
+        )
+        .await
         {
             Ok(()) => break,
             Err(e) if e == mcu_error::codes::MAILBOX_BUSY => continue,
@@ -73,7 +73,7 @@ pub async fn setup_endorsements<A: ApiAlloc>(store: &SharedCertStore, alloc: &A)
     #[cfg(feature = "test-mctp-spdm-set-certificate")]
     {
         store
-            .set_managed_endorsement(
+            .configure_managed_slot(
                 1,
                 OWNER_SPDM_SLOT,
                 CERT_STORE_PARTITION.driver_num,
@@ -83,7 +83,7 @@ pub async fn setup_endorsements<A: ApiAlloc>(store: &SharedCertStore, alloc: &A)
             )
             .await?;
         store
-            .set_managed_endorsement(
+            .configure_managed_slot(
                 2,
                 TENANT_SPDM_SLOT,
                 CERT_STORE_PARTITION.driver_num,
