@@ -46,15 +46,14 @@ pub(crate) fn now_ms() -> u64 {
 }
 
 /// Sleep for at least `ms` milliseconds using the alarm capsule.
-pub(crate) async fn sleep_ms(ms: u64) {
+pub(crate) async fn sleep_ms(ms: u32) {
     let Ok(freq) = get_frequency() else {
         // No clock: fall back to never-resolving so the run loop waits on
         // recv_request alone (the pre-heartbeat behavior).
         core::future::pending::<()>().await;
         return;
     };
-    let ms_u32 = u32::try_from(ms).unwrap_or(u32::MAX);
-    let ticks = Milliseconds(ms_u32).to_ticks(Hz(freq)).0;
+    let ticks = Milliseconds(ms).to_ticks(Hz(freq)).0;
     let sub = TockSubscribe::subscribe::<DefaultSyscalls>(DRIVER_NUM, 0);
     if DefaultSyscalls::command(DRIVER_NUM, command::SET_RELATIVE, ticks, 0)
         .to_result::<u32, ErrorCode>()

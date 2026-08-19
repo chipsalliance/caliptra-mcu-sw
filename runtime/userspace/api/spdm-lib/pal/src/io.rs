@@ -218,6 +218,6 @@ impl<M: MeasurementProvider> SpdmPalIoTransport for McuSpdmPal<M> {
     /// session is torn down on watchdog expiry.
     #[cfg(feature = "spdm-set-heartbeat")]
     async fn sleep(&self, dur: Milliseconds) {
-        super::clock::sleep_ms(dur.0).await
+        super::clock::sleep_ms(u32::try_from(dur.0).unwrap_or(u32::MAX)).await
     }
 }
