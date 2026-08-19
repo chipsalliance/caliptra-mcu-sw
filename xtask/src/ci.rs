@@ -105,8 +105,6 @@ fn build_runtime(target_dir: &Path) -> Result<PathBuf> {
         .join("Cargo.lock");
     let original_lock = fs::read(&lock_path).context("failed to snapshot Cargo.lock")?;
 
-    eprintln!("Target directory: {:?}", target_dir.to_path_buf());
-    
     // FPGA does not have a `*-devel.toml` manifest variant (HW-fixed SRAM);
     // still exercise the `release` cargo feature / `release` cargo profile
     // against its single 512 KB layout so size regressions and
