@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use crate::spdm_responder_validator::transport::Transport;
-use std::fs::File;
+use std::fs::{self, File};
 use std::io::{self, ErrorKind, Read, Write};
 use std::net::TcpStream;
 use std::path::PathBuf;
@@ -10,12 +10,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use zerocopy::{transmute, FromBytes, Immutable, IntoBytes};
 
 const RECEIVER_BUFFER_SIZE: usize = 4160;
+const ATTESTATION_REQUESTER_CAPABILITIES: &str = "CERT,CHAL,CHUNK,LARGE_RESP";
 pub const SOCKET_SPDM_COMMAND_NORMAL: u32 = 0x0001;
 pub const SOCKET_SPDM_COMMAND_STOP: u32 = 0xFFFE;
 pub const SOCKET_SPDM_COMMAND_TEST: u32 = 0xDEAD;
 pub const SOCKET_HEADER_LEN: usize = 12;
 
 pub static SERVER_LISTENING: AtomicBool = AtomicBool::new(false);
+static SPDM_RESPONDER_VALIDATOR_DONE: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Copy, Clone, Default, FromBytes, IntoBytes, Immutable)]
 pub struct SpdmSocketHeader {
@@ -280,10 +282,13 @@ pub fn execute_spdm_tee_io_validator(transport: &'static str) {
 }
 
 pub fn execute_spdm_attestation(transport: &'static str) {
-    execute_spdm_attestation_with_port(transport, None);
+    let _ = execute_spdm_attestation_with_port(transport, None);
 }
 
-pub fn execute_spdm_attestation_with_port(transport: &'static str, port: Option<u16>) {
+pub fn execute_spdm_attestation_with_port(
+    transport: &'static str,
+    port: Option<u16>,
+) -> std::thread::JoinHandle<bool> {
     crate::spawn_with_emulator_state(move || {
         println!("Starting spdm_requester_emu process. Waiting for SPDM listener to start...");
         while !SERVER_LISTENING.load(Ordering::Relaxed) {
@@ -296,26 +301,110 @@ pub fn execute_spdm_attestation_with_port(transport: &'static str, port: Option<
                     match child.try_wait() {
                         Ok(Some(status)) => {
                             println!("spdm_requester_emu exited with status: {:?}", status);
-                            break;
+                            return status.success();
                         }
                         Ok(None) => {}
                         Err(e) => {
                             println!("Error: {:?}", e);
-                            std::process::exit(1);
+                            return false;
                         }
                     }
                     std::thread::sleep(std::time::Duration::from_millis(100));
                 }
                 let _ = child.kill();
+                false
             }
             Err(e) => {
                 println!("Error: {:?} Failed to spawn spdm_requester_emu!!", e);
+                false
             }
         }
+    })
+}
+
+fn check_spdm_responder_validator_results(log: &str, test_groups: &str) -> Result<String, String> {
+    if !log.trim_end().ends_with("test result done") {
+        return Err("log does not end with a complete test result".into());
+    }
+
+    let mut suite_summaries = log.lines().filter_map(|line| {
+        let summary = line.strip_prefix("test suite (")?;
+        let (suite_name, counts) = summary.split_once(") - pass: ")?;
+        let (pass_count, fail_count) = counts.split_once(", fail: ")?;
+        Some((suite_name, pass_count, fail_count))
     });
+    let Some((suite_name, pass_count, fail_count)) = suite_summaries.next() else {
+        return Err("expected one suite summary, found none".into());
+    };
+    if suite_summaries.next().is_some() {
+        return Err("expected one suite summary, found multiple".into());
+    }
+
+    let pass_count = pass_count
+        .parse::<u32>()
+        .map_err(|_| "suite pass count is invalid")?;
+    let fail_count = fail_count
+        .parse::<u32>()
+        .map_err(|_| "suite fail count is invalid")?;
+    if pass_count == 0 {
+        return Err("suite executed zero passing assertions".into());
+    }
+    if fail_count != 0 {
+        return Err(format!("suite recorded {fail_count} failed assertions"));
+    }
+    if log.lines().any(|line| {
+        let line = line.trim_start();
+        line.starts_with("test assertion ") && line.contains(" - FAIL")
+    }) {
+        return Err("log contains a failed assertion".into());
+    }
+
+    let selected_groups: Vec<_> = test_groups
+        .split(',')
+        .map(str::trim)
+        .filter(|group| !group.is_empty())
+        .collect();
+    // CAPABILITIES is selected alongside VERSION so its existing cases run, but
+    // dedicated SPDM 1.4 capability assertions will be required separately as
+    // that validator coverage is added.
+    if selected_groups.contains(&"VERSION")
+        && !log.lines().any(|line| {
+            line.trim_start()
+                == "test assertion 1.1.5 - PASS response version_number_entry - 0x1400"
+        })
+    {
+        return Err("VERSION did not advertise a passing 0x1400 entry".into());
+    }
+
+    Ok(format!(
+        "SPDM validator suite {suite_name}: pass={pass_count}, fail={fail_count}; selected_groups={}",
+        if test_groups.is_empty() {
+            "ALL"
+        } else {
+            test_groups
+        }
+    ))
+}
+
+fn check_spdm_responder_validator_log() -> Result<String, String> {
+    let log_path = validator_dir()
+        .map_err(|error| format!("SPDM_VALIDATOR_DIR is unavailable: {error}"))?
+        .join("test.log");
+    let log = fs::read_to_string(&log_path)
+        .map_err(|error| format!("failed to read {}: {error}", log_path.display()))?;
+    let test_groups = std::env::var("SPDM_VALIDATOR_TEST_GROUPS").unwrap_or_default();
+    check_spdm_responder_validator_results(&log, &test_groups)
+}
+
+pub fn wait_for_spdm_responder_validator() -> bool {
+    while crate::is_emulator_running() && !SPDM_RESPONDER_VALIDATOR_DONE.load(Ordering::Acquire) {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    SPDM_RESPONDER_VALIDATOR_DONE.load(Ordering::Acquire)
 }
 
 pub fn execute_spdm_responder_validator(transport: &'static str) {
+    SPDM_RESPONDER_VALIDATOR_DONE.store(false, Ordering::Release);
     crate::spawn_with_emulator_state(move || {
         println!(
             "Starting spdm_device_validator_sample process on transport: {}. Waiting for SPDM listener to start...",
@@ -334,6 +423,19 @@ pub fn execute_spdm_responder_validator(transport: &'static str) {
                                 "spdm_device_validator_sample exited with status: {:?}",
                                 status
                             );
+                            if !status.success() {
+                                std::process::exit(1);
+                            }
+                            match check_spdm_responder_validator_log() {
+                                Ok(summary) => {
+                                    println!("{summary}");
+                                    SPDM_RESPONDER_VALIDATOR_DONE.store(true, Ordering::Release);
+                                }
+                                Err(error) => {
+                                    println!("SPDM validator result check failed: {error}");
+                                    std::process::exit(1);
+                                }
+                            }
                             break;
                         }
                         Ok(None) => {}
@@ -351,6 +453,7 @@ pub fn execute_spdm_responder_validator(transport: &'static str) {
                     "Error: {:?} Failed to spawn spdm_device_validator_sample!!",
                     e
                 );
+                std::process::exit(1);
             }
         }
     });
@@ -369,6 +472,12 @@ pub fn start_spdm_responder_validator(transport: &'static str) -> io::Result<Chi
                 .arg(transport)
                 .arg("--pcap")
                 .arg("caliptra_spdm_validator.pcap");
+            if let Ok(test_groups) = std::env::var("SPDM_VALIDATOR_TEST_GROUPS") {
+                if !test_groups.is_empty() {
+                    println!("Selecting SPDM validator test groups: {test_groups}");
+                    cmd.arg("--test-groups").arg(test_groups);
+                }
+            }
         },
     )
 }
@@ -380,20 +489,25 @@ fn start_spdm_attestation_with_port(
     spawn_validator_binary(
         "spdm_requester_emu",
         "spdm_requester_emu_output.txt",
-        |cmd| {
-            println!(
-                "Starting spdm_requester_emu process with transport: {}",
-                transport
-            );
-            cmd.arg("--trans")
-                .arg(transport)
-                .arg("--pcap")
-                .arg("caliptra-evidence.pcap");
-            if let Some(port) = port {
-                cmd.arg("--port").arg(port.to_string());
-            }
-        },
+        |cmd| configure_spdm_attestation_command(cmd, transport, port),
     )
+}
+
+fn configure_spdm_attestation_command(cmd: &mut Command, transport: &str, port: Option<u16>) {
+    println!(
+        "Starting spdm_requester_emu process with transport: {}",
+        transport
+    );
+    cmd.arg("--trans")
+        .arg(transport)
+        // Endpoint information is not part of this attestation flow.
+        .arg("--cap")
+        .arg(ATTESTATION_REQUESTER_CAPABILITIES)
+        .arg("--pcap")
+        .arg("caliptra-evidence.pcap");
+    if let Some(port) = port {
+        cmd.arg("--port").arg(port.to_string());
+    }
 }
 
 pub fn start_spdm_tee_io_validator(
@@ -468,4 +582,73 @@ where
         .stderr(Stdio::from(output_file_clone))
         .current_dir(&dir_path)
         .spawn()
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const COMPLETE_LOG: &str = "\
+    test assertion 1.1.5 - PASS response version_number_entry - 0x1400
+test suite (spdm_responder_conformance_test) - pass: 1, fail: 0
+test result done
+";
+
+    #[test]
+    fn attestation_requester_excludes_endpoint_info() {
+        let mut command = Command::new("spdm_requester_emu");
+        configure_spdm_attestation_command(&mut command, "MCTP", Some(1025));
+
+        let args = command
+            .get_args()
+            .map(|arg| arg.to_str().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            args,
+            [
+                "--trans",
+                "MCTP",
+                "--cap",
+                "CERT,CHAL,CHUNK,LARGE_RESP",
+                "--pcap",
+                "caliptra-evidence.pcap",
+                "--port",
+                "1025",
+            ]
+        );
+    }
+
+    #[test]
+    fn accepts_complete_selected_group_results() {
+        let result = check_spdm_responder_validator_results(COMPLETE_LOG, "VERSION,CAPABILITIES");
+        assert!(result.is_ok(), "{result:?}");
+    }
+
+    #[test]
+    fn rejects_incomplete_results() {
+        let result = check_spdm_responder_validator_results(
+            COMPLETE_LOG.trim_end_matches("test result done\n"),
+            "",
+        );
+        assert_eq!(
+            result.unwrap_err(),
+            "log does not end with a complete test result"
+        );
+    }
+
+    #[test]
+    fn rejects_failed_suite() {
+        let log = COMPLETE_LOG.replace("pass: 1, fail: 0", "pass: 1, fail: 1");
+        let result = check_spdm_responder_validator_results(&log, "");
+        assert_eq!(result.unwrap_err(), "suite recorded 1 failed assertions");
+    }
+
+    #[test]
+    fn rejects_missing_spdm_1_4_version() {
+        let log = COMPLETE_LOG.replace("0x1400", "0x1300");
+        let result = check_spdm_responder_validator_results(&log, "VERSION");
+        assert_eq!(
+            result.unwrap_err(),
+            "VERSION did not advertise a passing 0x1400 entry"
+        );
+    }
 }
