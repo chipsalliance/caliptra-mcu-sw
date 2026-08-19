@@ -488,8 +488,6 @@ impl Soc {
             }
         }
 
-        caliptra_mcu_romtime::println!("");
-
         #[cfg(feature = "ocp-lock")]
         let ocp_lock = if let Some(ref mut config) = params.ocp_lock_config {
             caliptra_mcu_romtime::println!("[mcu-rom] OCP LOCK enabled");

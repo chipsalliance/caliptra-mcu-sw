@@ -940,9 +940,6 @@ fn attempt_dot_locked_recovery(
     let mut manager = DotLockedRecoveryManager::new(params.dot_locked_recovery_handlers);
     match manager.run(env, &ctx) {
         Ok(()) => {
-            caliptra_mcu_romtime::println!(
-                "[mcu-rom] DOT locked-state recovery succeeded, resetting"
-            );
             env.mci.trigger_warm_reset();
             fatal_error(McuError::ROM_COLD_BOOT_RESET_ERROR);
         }
