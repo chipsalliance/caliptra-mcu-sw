@@ -117,6 +117,9 @@ const FEATURES_REQUIRING_HW_2_1_RUNTIME: &[&str] = &[
     "test-flash-based-boot",
     "test-firmware-activate",
     "test-firmware-update-flash",
+    "test-mctp-spdm-attestation-hitless",
+    "test-mctp-spdm-attestation-hitless-tcb",
+    "test-mctp-spdm-attestation-hitless-mixed",
     "test-usb-ocp-recovery",
 ];
 
@@ -1167,6 +1170,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                     let update_runtime_file = tempfile::NamedTempFile::new().unwrap();
                     let update_runtime_path =
                         update_runtime_file.path().to_str().unwrap().to_string();
+                    let update_features = format!("{update_feature},hw-2-1");
                     // Ship a different SoC payload in the update package so the
                     // post-update evidence carries different component digests.
                     let (update_soc_images, update_soc_images_paths) =
@@ -1178,7 +1182,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                         &update_soc_images,
                     )?;
                     crate::runtime_build_with_apps(&CaliptraBuildArgs {
-                        features: Some(update_feature),
+                        features: Some(&update_features),
                         output_name: Some(update_runtime_path),
                         example_app: FEATURES_WITH_EXAMPLE_APP.contains(&update_feature),
                         platform: Some(platform),
