@@ -29,7 +29,7 @@ The following table describes the commands defined under this specification. The
 | Get Attestation                 | O   | SPDM VDM, MCI Mailbox | Retrieve signed attestation evidence in a requester-selected format.                                                                 |
 | Request Debug Unlock            | O   | SPDM VDM, MCI Mailbox | Request debug unlock in production environment.                                                                                      |
 | Authorize Debug Unlock Token    | O   | SPDM VDM, MCI Mailbox | Send debug unlock token to device for authorization.                                                                                 |
-| Export Attested CSR             | O   | SPDM VDM, MCI Mailbox | Export attested CSR for a Caliptra device identity key (LDevID, FMC Alias, or RT Alias).                                             |
+| Export Attested CSR             | O   | SPDM VDM, MCI Mailbox | Discover Caliptra identity keys or export an attested CSR for LDevID, FMC Alias, or RT Alias.                                        |
 | Device Ownership Transfer       | O   | SPDM VDM, MCI Mailbox | Query and change the implemented DOT state.                                                                                          |
 | Authorization-Gated Subcommands | O   | SPDM VDM, MCI Mailbox | Security-sensitive provisioning and fuse subcommands using a one-use challenge and hybrid signature.                                |
 
@@ -314,13 +314,14 @@ Authorizes the debug unlock token. The request body is identical for MCI mailbox
 
 ### Export Attested CSR
 
-Exports an attested Certificate Signing Request (CSR) for a specified device key.
+Discovers supported Caliptra identity keys or exports an attested Certificate
+Signing Request (CSR) for a specified device key.
 
 **Request Payload**:
 
 | Byte(s) | Name          | Type   | Description                                                                                         |
 | ------- | ------------- | ------ | --------------------------------------------------------------------------------------------------- |
-| 0:3     | device_key_id | u32    | Device Key Identifier: <br>- `0x0001` = LDevID <br>- `0x0002` = FMC Alias <br>- `0x0003` = RT Alias |
+| 0:3     | device_key_id | u32    | Device Key Identifier: <br>- `0x0000` = Discover supported identity keys <br>- `0x0001` = LDevID <br>- `0x0002` = FMC Alias <br>- `0x0003` = RT Alias |
 | 4:7     | algorithm     | u32    | Asymmetric Algorithm: <br>- `0x0001` = ECC P-384 <br>- `0x0002` = ML-DSA-87                         |
 | 8:39    | nonce         | u8[32] | 32-byte nonce for freshness                                                                         |
 
@@ -328,8 +329,16 @@ Exports an attested Certificate Signing Request (CSR) for a specified device key
 
 | Byte(s) | Name      | Type          | Description                              |
 | ------- | --------- | ------------- | ---------------------------------------- |
-| 0:3     | data_size | u32           | Length in bytes of the attested CSR data |
-| 4:N     | data      | u8[data_size] | Attested CSR data blob                   |
+| 0:3     | data_size | u32           | Length in bytes of the attested response data |
+| 4:N     | data      | u8[data_size] | Attested key inventory or attested CSR data   |
+
+When `device_key_id` is `0`, the response contains an OCP DIP key-pair
+inventory for the selected algorithm. Each inventory entry identifies a
+supported device key and its derivation attributes. The inventory is signed
+and bound to the request nonce.
+
+When `device_key_id` is nonzero, the response contains the attested CSR for
+the selected device key and algorithm.
 
 ### Authorization-Gated Subcommand Wrapper
 
