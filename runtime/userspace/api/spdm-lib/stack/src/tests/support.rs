@@ -100,6 +100,7 @@ impl<T> DerefMut for TestBox<'_, T> {
 pub struct TestPal {
     pub mtu: usize,
     pub supported_slots: u8,
+    pub provisioned_slots: u8,
     pub authorized: bool,
     pub validate_error: Option<McuErrorCode>,
     pub write_error: Option<McuErrorCode>,
@@ -107,6 +108,8 @@ pub struct TestPal {
     pub cert_chain: &'static [u8],
     pub measurement_info: &'static [MeasurementInfo],
     pub measurement_value: &'static [u8],
+    pub hash_seeds: RefCell<Vec<Vec<u8>>>,
+    pub signed_hashes: RefCell<Vec<Vec<u8>>>,
     pub op: RefCell<Option<StoreOp>>,
     pub stream_cert: RefCell<Vec<u8>>,
     pub stream_aborts: Cell<usize>,
@@ -117,6 +120,7 @@ impl Default for TestPal {
         Self {
             mtu: 1024,
             supported_slots: u8::MAX,
+            provisioned_slots: 0,
             authorized: true,
             validate_error: None,
             write_error: None,
@@ -124,6 +128,8 @@ impl Default for TestPal {
             cert_chain: TEST_CERT_CHAIN,
             measurement_info: &[],
             measurement_value: &[],
+            hash_seeds: RefCell::new(Vec::new()),
+            signed_hashes: RefCell::new(Vec::new()),
             op: RefCell::new(None),
             stream_cert: RefCell::new(Vec::new()),
             stream_aborts: Cell::new(0),
@@ -230,6 +236,7 @@ impl SpdmPalHash for TestPal {
         _algo: SpdmPalHashAlgo,
         seed: &[u8],
     ) -> McuResult<Self::State> {
+        self.hash_seeds.borrow_mut().push(seed.to_vec());
         Ok(TestHashState {
             digest: test_digest(seed),
         })
@@ -262,7 +269,7 @@ impl SpdmPalHash for TestPal {
 
 impl SpdmPalCertStore for TestPal {
     fn provisioned_slots(&self) -> u8 {
-        0
+        self.provisioned_slots
     }
 
     fn supported_slots(&self) -> u8 {
@@ -347,9 +354,10 @@ impl SpdmPalCertStore for TestPal {
         _io: &Self::Io<'_>,
         _slot: u8,
         _algo: SpdmPalAsymAlgo,
-        _digest: &[u8],
+        digest: &[u8],
         signature: &mut [u8],
     ) -> McuResult<usize> {
+        self.signed_hashes.borrow_mut().push(digest.to_vec());
         signature.fill(0x77);
         Ok(signature.len())
     }

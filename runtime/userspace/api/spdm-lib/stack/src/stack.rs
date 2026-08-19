@@ -1113,3 +1113,11 @@ mod tests;
 #[cfg(test)]
 #[path = "tests/version.rs"]
 mod version_tests;
+
+#[cfg(test)]
+#[path = "tests/capabilities.rs"]
+mod capabilities_tests;
+
+#[cfg(test)]
+#[path = "tests/challenge_measurements.rs"]
+mod challenge_measurements_tests;
