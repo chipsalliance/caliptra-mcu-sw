@@ -2005,7 +2005,9 @@ version = "0.1.0"
 dependencies = [
  "caliptra-mcu-attestation-evidence",
  "caliptra-mcu-libsyscall-caliptra",
+ "caliptra-mcu-libtock_alarm",
  "caliptra-mcu-libtock_platform",
+ "caliptra-mcu-libtockasync",
  "caliptra-mcu-measurement-api",
  "caliptra-mcu-runtime-userspace-error",
  "caliptra-mcu-scratch-alloc",
