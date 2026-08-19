@@ -22,6 +22,7 @@
         - [In-field Provisioning and Management of SPDM Certificate Slots](./cert_slot_mgmt.md)
     - [PLDM](./pldm.md)
     - [Firmware Update](./firmware_update.md)
+    - [Caliptra Authorization Model](./caliptra_authorization_model.md)
     - [Common Caliptra Commands](./caliptra_common_commands.md)
         - [SPDM VDM Commands](./caliptra_spdm_vdm_cmds.md)
         - [Unified Command Handling](./unified_caliptra_command_handling.md)
