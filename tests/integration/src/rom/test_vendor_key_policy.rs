@@ -84,12 +84,28 @@ mod test {
     }
 
     fn setup_hw_model(valid_mask: u16, slot_configs: &[(usize, SlotConfig)]) -> DefaultHwModel {
+        setup_hw_model_with_rom_feature(valid_mask, slot_configs, None)
+    }
+
+    fn setup_core_test_hw_model(
+        valid_mask: u16,
+        slot_configs: &[(usize, SlotConfig)],
+    ) -> DefaultHwModel {
+        setup_hw_model_with_rom_feature(valid_mask, slot_configs, Some("core_test"))
+    }
+
+    fn setup_hw_model_with_rom_feature(
+        valid_mask: u16,
+        slot_configs: &[(usize, SlotConfig)],
+        rom_feature: Option<&str>,
+    ) -> DefaultHwModel {
         let otp_memory = build_otp_memory(valid_mask, slot_configs);
 
         start_runtime_hw_model(TestParams {
             otp_memory: Some(otp_memory),
             rom_only: true,
             vendor_pqc_type: None,
+            rom_feature,
             ..Default::default()
         })
     }
@@ -244,14 +260,14 @@ mod test {
 
     #[test]
     fn test_vendor_pk_lock_not_applied() -> Result<()> {
-        let mut hw = setup_hw_model(0x0000, &[(0, SlotConfig::default())]);
+        let mut hw = setup_core_test_hw_model(0x0000, &[(0, SlotConfig::default())]);
 
-        // Set input wire bit to not lock the pk hashes
-        hw.set_mcu_generic_input_wires(&[0, 0x1]);
+        // Skip the lock and allow both core-test pause points to proceed.
+        hw.set_mcu_generic_input_wires(&[0, 0xc000_0001]);
 
         hw.step_until_output_contains("[mcu-fuse-write] Selected vendor PK slot 0")?;
 
-        // Step a few cycles
+        // Step a few cycles.
         for _ in 0..100 {
             hw.step();
         }
@@ -265,17 +281,51 @@ mod test {
 
     #[test]
     fn test_key_rotation_strap() -> Result<()> {
-        let mut hw = setup_hw_model(
+        let mut hw = setup_core_test_hw_model(
             0x0002,
             &[(0, SlotConfig::default()), (2, SlotConfig::default())],
         );
-        // Set input wire bit to jump 1 PK hash slot
-        hw.set_mcu_generic_input_wires(&[0, 0x2]);
+        // Rotate one PK hash slot and allow both core-test pause points to proceed.
+        hw.set_mcu_generic_input_wires(&[0, 0xc000_0002]);
 
         // Slot 0 is the first functional slot which we skip
         // Slot 1 is marked invalid
         // Slot 2 should be selected
         hw.step_until_output_contains("[mcu-fuse-write] Selected vendor PK slot 2")?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_flash_boot_wire_requests_flash_boot() -> Result<()> {
+        let mut hw = setup_core_test_hw_model(0x0000, &[(0, SlotConfig::default())]);
+        // Request flash boot without providing the flash driver feature. This
+        // should reach the explicit flash-not-configured error, proving bit 29
+        // was translated into RomParameters::request_flash_boot.
+        hw.set_mcu_generic_input_wires(&[0, 0xe000_0000]);
+
+        hw.step_until(|hw| hw.mci_fw_fatal_error().is_some());
+        assert_eq!(
+            hw.mci_fw_fatal_error(),
+            Some(u32::from(
+                McuError::ROM_COLD_BOOT_FLASH_NOT_CONFIGURED_ERROR
+            ))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn test_input_wires_ignored_without_core_test() -> Result<()> {
+        let mut hw = setup_hw_model(
+            0x0000,
+            &[(0, SlotConfig::default()), (1, SlotConfig::default())],
+        );
+        // Assert the policy controls while leaving both continuation bits
+        // clear. A core_test ROM would pause after boot-go; a production ROM
+        // must continue with streaming boot and select the first key slot.
+        hw.set_mcu_generic_input_wires(&[0, 0x3000_0003]);
+
+        hw.step_until_output_contains("[mcu-fuse-write] Selected vendor PK slot 0")?;
+        assert!(hw.mci_fw_fatal_error().is_none());
         Ok(())
     }
 }

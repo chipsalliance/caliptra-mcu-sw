@@ -89,6 +89,7 @@ pub const RELEASE_RUNTIME_TEST_FEATURES: &[&str] =
 /// These features exist in both the emulator and FPGA ROM crates; the
 /// standard runtime is used unmodified.
 pub const ROM_ONLY_TEST_FEATURES: &[&str] = &[
+    "core_test",
     "test-i3c-services",
     "test-fw-manifest-dot",
     "test-fw-manifest-dot-hitless",
