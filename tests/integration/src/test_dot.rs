@@ -3344,7 +3344,7 @@ mod test {
     /// - Valid DOT blob
     /// - Firmware manifest with correct magic but version = 99
     ///
-    /// Expected: ROM halts with ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR.
+    /// Expected: ROM halts with ROM_FW_MANIFEST_DOT_UNSUPPORTED_VERSION.
     #[test]
     fn test_fw_manifest_dot_bad_version() {
         use caliptra_mcu_rom_common::{FwManifestDotSection, FW_MANIFEST_DOT_MAGIC};
@@ -3389,8 +3389,8 @@ mod test {
         );
         assert_eq!(
             fatal_error.unwrap(),
-            u32::from(caliptra_mcu_error::McuError::ROM_COLD_BOOT_DOT_ERROR),
-            "Expected ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR, got 0x{:x}",
+            u32::from(caliptra_mcu_error::McuError::ROM_FW_MANIFEST_DOT_UNSUPPORTED_VERSION),
+            "Expected ROM_FW_MANIFEST_DOT_UNSUPPORTED_VERSION, got 0x{:x}",
             fatal_error.unwrap()
         );
 
@@ -3510,13 +3510,13 @@ mod test {
         );
         assert_eq!(
             fatal_error.unwrap(),
-            u32::from(caliptra_mcu_error::McuError::ROM_COLD_BOOT_DOT_ERROR),
-            "Expected ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR for unknown command, got 0x{:x}",
+            u32::from(caliptra_mcu_error::McuError::ROM_FW_MANIFEST_DOT_UNKNOWN_COMMAND),
+            "Expected ROM_FW_MANIFEST_DOT_UNKNOWN_COMMAND for unknown command, got 0x{:x}",
             fatal_error.unwrap()
         );
 
         println!(
-            "[TEST] Unknown DOT command correctly triggers ROM_COLD_BOOT_FW_MANIFEST_DOT_ERROR"
+            "[TEST] Unknown DOT command correctly triggers ROM_FW_MANIFEST_DOT_UNKNOWN_COMMAND"
         );
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
