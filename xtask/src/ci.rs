@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{Context, Result};
-use caliptra_builder::{elf_size, FwId};
+use caliptra_builder::{elf_size, FirmwareType, FwId};
 use elf::endian::LittleEndian;
 use size_history::{
     ArtifactBuilder, Cache, FsCache, GitHubStepSummary, GithubActionCache, HtmlTableReport,
@@ -15,19 +15,19 @@ const CACHE_FORMAT_VERSION: &str = "v5";
 pub const MCU_KERNEL_FPGA: FwId = FwId {
     crate_name: "mcu-runtime-fpga",
     bin_name: "mcu-runtime-fpga",
-    features: &[],
+    fw_type: FirmwareType::Source { features: &[] },
 };
 
 pub const MCU_ROM_FPGA: FwId = FwId {
     crate_name: "mcu-rom-fpga",
     bin_name: "mcu-rom-fpga",
-    features: &[],
+    fw_type: FirmwareType::Source { features: &[] },
 };
 
 pub const MCU_USER_FPGA: FwId = FwId {
     crate_name: "user-app",
     bin_name: "user-app",
-    features: &[],
+    fw_type: FirmwareType::Source { features: &[] },
 };
 
 pub(crate) fn size_history() -> Result<(), anyhow::Error> {
