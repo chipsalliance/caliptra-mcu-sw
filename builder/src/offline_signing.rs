@@ -180,9 +180,10 @@ impl ImagePqcSignatureExt for ImagePqcSignature {
                 max_size
             ));
         }
-        if bytes.len() != 2420 && bytes.len() != 4627 {
+        if bytes.len() != 1620 && bytes.len() != 2420 && bytes.len() != 4627 && bytes.len() != 4628
+        {
             return Err(anyhow!(
-                "Invalid PQC signature length {} (expected LMS 2420 bytes or ML-DSA-87 4627 bytes)",
+                "Invalid PQC signature length {} (expected LMS 1620/2420 bytes or ML-DSA-87 4627/4628 bytes)",
                 bytes.len()
             ));
         }
@@ -196,9 +197,13 @@ impl ImagePqcSignatureExt for ImagePqcSignature {
             return Err(anyhow!("PQC signature cannot be zero-filled"));
         }
         let non_zero_len = bytes.iter().rposition(|&b| b != 0).map_or(0, |i| i + 1);
-        if non_zero_len != 2420 && non_zero_len != 4627 {
+        if non_zero_len != 1620
+            && non_zero_len != 2420
+            && non_zero_len != 4627
+            && non_zero_len != 4628
+        {
             return Err(anyhow!(
-                "Invalid PQC signature payload size {} (expected LMS 2420 bytes or ML-DSA-87 4627 bytes)",
+                "Invalid PQC signature payload size {} (expected LMS 1620/2420 bytes or ML-DSA-87 4627/4628 bytes)",
                 non_zero_len
             ));
         }

@@ -950,14 +950,50 @@ fn main() -> Result<()> {
         Ok((path, signing_request))
     }
 
+    /// Loads an LMS public key from a file path.
+    ///
+    /// Unlike ECC (`Crypto::ecc_pub_key_from_pem`) and ML-DSA (`Crypto::mldsa_pub_key_from_file`)
+    /// which are provided by upstream `caliptra-image-crypto`, `caliptra_image_crypto::lms_pub_key_from_pem`
+    /// does not handle standard SubjectPublicKeyInfo (SPKI) headers in PEM files. This helper
+    /// attempts:
+    /// 1. `caliptra_image_crypto::lms_pub_key_from_pem`
+    /// 2. Raw binary byte parsing (`ImageLmsPublicKey::read_from_bytes`)
+    /// 3. PEM decoding by stripping headers and extracting the 48-byte LMS public key from the SPKI DER payload
+    fn load_lms_pub_key(path: &Path) -> Result<caliptra_image_types::ImageLmsPublicKey> {
+        use zerocopy::FromBytes;
+        if let Ok(pub_key) = caliptra_image_crypto::lms_pub_key_from_pem(&path.to_path_buf()) {
+            return Ok(pub_key);
+        }
+        let data = std::fs::read(path)?;
+        if let Ok(pub_key) = caliptra_image_types::ImageLmsPublicKey::read_from_bytes(&data) {
+            return Ok(pub_key);
+        }
+        if let Ok(pem_str) = std::str::from_utf8(&data) {
+            let b64_lines: String = pem_str
+                .lines()
+                .filter(|l| !l.starts_with("-----"))
+                .collect::<Vec<_>>()
+                .join("");
+            if let Ok(der) = openssl::base64::decode_block(&b64_lines) {
+                if der.len() >= 48 {
+                    let start = der.len() - 48;
+                    if let Ok(pub_key) =
+                        caliptra_image_types::ImageLmsPublicKey::read_from_bytes(&der[start..])
+                    {
+                        return Ok(pub_key);
+                    }
+                }
+            }
+        }
+        anyhow::bail!("Failed to parse LMS public key from {}", path.display())
+    }
+
     /// Creates an unsigned `AuthorizationManifest` with the specified image metadata list and public key paths.
     fn create_unsigned_auth_manifest_with_metadata(
         image_metadata_list: Vec<AuthManifestImageMetadata>,
         svn: u32,
         pub_key_paths: Option<&AuthManifestPubKeysPaths>,
     ) -> Result<AuthorizationManifest> {
-        use zerocopy::FromBytes;
-
         let empty_paths = AuthManifestPubKeysPaths::default();
         let keys = pub_key_paths.unwrap_or(&empty_paths);
 
@@ -967,10 +1003,7 @@ fn main() -> Result<()> {
             VENDOR_ECC_KEY_0_PUBLIC
         };
         let vendor_fw_lms_pub = if let Some(path) = keys.vendor_fw_lms_pub_key {
-            caliptra_image_types::ImageLmsPublicKey::read_from_bytes(&std::fs::read(path)?)
-                .map_err(|_| {
-                    anyhow::anyhow!("Failed to parse LMS public key from {}", path.display())
-                })?
+            Self::load_lms_pub_key(path)?
         } else {
             VENDOR_LMS_KEY_0_PUBLIC
         };
@@ -986,10 +1019,7 @@ fn main() -> Result<()> {
             VENDOR_ECC_KEY_1_PUBLIC
         };
         let vendor_man_lms_pub = if let Some(path) = keys.vendor_man_lms_pub_key {
-            caliptra_image_types::ImageLmsPublicKey::read_from_bytes(&std::fs::read(path)?)
-                .map_err(|_| {
-                    anyhow::anyhow!("Failed to parse LMS public key from {}", path.display())
-                })?
+            Self::load_lms_pub_key(path)?
         } else {
             VENDOR_LMS_KEY_1_PUBLIC
         };
@@ -1005,10 +1035,7 @@ fn main() -> Result<()> {
             OWNER_ECC_KEY_PUBLIC
         };
         let owner_fw_lms_pub = if let Some(path) = keys.owner_fw_lms_pub_key {
-            caliptra_image_types::ImageLmsPublicKey::read_from_bytes(&std::fs::read(path)?)
-                .map_err(|_| {
-                    anyhow::anyhow!("Failed to parse LMS public key from {}", path.display())
-                })?
+            Self::load_lms_pub_key(path)?
         } else {
             OWNER_LMS_KEY_PUBLIC
         };
@@ -1024,10 +1051,7 @@ fn main() -> Result<()> {
             OWNER_ECC_KEY_PUBLIC
         };
         let owner_man_lms_pub = if let Some(path) = keys.owner_man_lms_pub_key {
-            caliptra_image_types::ImageLmsPublicKey::read_from_bytes(&std::fs::read(path)?)
-                .map_err(|_| {
-                    anyhow::anyhow!("Failed to parse LMS public key from {}", path.display())
-                })?
+            Self::load_lms_pub_key(path)?
         } else {
             OWNER_LMS_KEY_PUBLIC
         };
