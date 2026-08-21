@@ -38,6 +38,7 @@ mod test_raw_lifecycle_boot;
 mod test_soc_boot;
 mod test_svn_manifest;
 mod test_sw_pcr_store;
+mod test_timer_alarm;
 
 pub fn platform() -> &'static str {
     if cfg!(feature = "fpga_realtime") {
@@ -55,18 +56,20 @@ mod test {
     };
     use caliptra_mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
     use caliptra_mcu_config_emulator::flash::{
-        PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION,
+        PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, STAGING_PARTITION,
     };
     use caliptra_mcu_hw_model::{DefaultHwModel, Fuses, InitParams, McuHwModel};
-    use caliptra_mcu_testing_common::DeviceLifecycle;
+    use caliptra_mcu_testing_common::{i3c::DynamicI3cAddress, DeviceLifecycle, EmulatorState};
     use random_port::PortPicker;
+    use std::io::{BufRead, BufReader, Write};
     use std::sync::atomic::AtomicU32;
-    use std::sync::Mutex;
+    use std::sync::{Arc, Condvar, Mutex};
     use std::{
         path::{Path, PathBuf},
-        process::Command,
+        process::{Child, Command, Stdio},
         sync::LazyLock,
     };
+    use std::{thread, time::Duration};
     use zerocopy::FromBytes;
 
     /// Custom Caliptra firmware bundle for testing with custom keys.
@@ -1383,9 +1386,47 @@ mod test {
         fuse_soc_manifest_max_svn: Option<u8>,
         fuse_vendor_test_partition: Option<Vec<u8>>,
     ) -> i32 {
+        let mut cmd = runtime_command(
+            feature,
+            rom_path,
+            runtime_path,
+            i3c_port,
+            active_mode,
+            device_security_state,
+            soc_images,
+            streaming_boot_package_path,
+            primary_flash_image_path,
+            secondary_flash_image_path,
+            caliptra_builder,
+            hw_revision,
+            fuse_soc_manifest_svn,
+            fuse_soc_manifest_max_svn,
+            fuse_vendor_test_partition,
+        );
+
+        cmd.status().unwrap().code().unwrap_or(1)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn runtime_command(
+        feature: &str,
+        rom_path: PathBuf,
+        runtime_path: PathBuf,
+        i3c_port: String,
+        active_mode: bool,
+        device_security_state: DeviceLifecycle,
+        soc_images: Option<Vec<ImageCfg>>,
+        streaming_boot_package_path: Option<PathBuf>,
+        primary_flash_image_path: Option<PathBuf>,
+        secondary_flash_image_path: Option<PathBuf>,
+        caliptra_builder: Option<CaliptraBuilder>,
+        hw_revision: Option<String>,
+        fuse_soc_manifest_svn: Option<u8>,
+        fuse_soc_manifest_max_svn: Option<u8>,
+        fuse_vendor_test_partition: Option<Vec<u8>>,
+    ) -> Command {
         // Check for prebuilt emulator first
         let prebuilt_emulator = get_prebuilt_emulator(feature);
-
         // Build emulator arguments (these are the same whether using prebuilt or cargo run)
         let rom_path_str = rom_path.to_str().unwrap().to_string();
         let runtime_path_str = runtime_path.to_str().unwrap().to_string();
@@ -1599,8 +1640,8 @@ mod test {
         // Use prebuilt emulator if available, otherwise fall back to cargo run
         if let Some(emulator_path) = prebuilt_emulator {
             let mut cmd = Command::new(&emulator_path);
-            let cmd = cmd.args(&emulator_args).current_dir(&*PROJECT_ROOT);
-            cmd.status().unwrap().code().unwrap_or(1)
+            cmd.args(&emulator_args).current_dir(&*PROJECT_ROOT);
+            cmd
         } else {
             println!("No prebuilt emulator available, using cargo run...");
             let mut cargo_args: Vec<String> = vec![
@@ -1613,9 +1654,364 @@ mod test {
             ];
             cargo_args.extend(emulator_args);
             let mut cmd = Command::new("cargo");
-            let cmd = cmd.args(&cargo_args).current_dir(&*PROJECT_ROOT);
-            cmd.status().unwrap().code().unwrap_or(1)
+            cmd.args(&cargo_args).current_dir(&*PROJECT_ROOT);
+            cmd
         }
+    }
+
+    struct SpawnedRuntimeOutput {
+        text: Mutex<String>,
+        available: Condvar,
+    }
+
+    pub struct SpawnedRuntime {
+        child: Option<Child>,
+        output: Arc<SpawnedRuntimeOutput>,
+        stdout_thread: Option<thread::JoinHandle<()>>,
+        stderr_thread: Option<thread::JoinHandle<()>>,
+        tick_thread: Option<thread::JoinHandle<()>>,
+        i3c_port: u16,
+        i3c_address: DynamicI3cAddress,
+        _primary_flash_file: Option<tempfile::NamedTempFile>,
+        _secondary_flash_file: Option<tempfile::NamedTempFile>,
+    }
+
+    impl SpawnedRuntime {
+        pub fn i3c_port(&self) -> u16 {
+            self.i3c_port
+        }
+
+        pub fn i3c_address(&self) -> DynamicI3cAddress {
+            self.i3c_address
+        }
+
+        pub fn wait_for_next_output_contains(
+            &mut self,
+            needle: &str,
+            timeout: Duration,
+        ) -> Result<(), String> {
+            let occurrence = self.output_occurrences(needle) + 1;
+            self.wait_for_output_occurrences(needle, occurrence, timeout)?;
+            caliptra_mcu_testing_common::set_runtime_started(true);
+            Ok(())
+        }
+
+        pub fn stop(mut self) -> Result<(), String> {
+            self.stop_child(false)
+        }
+
+        fn output_occurrences(&self, needle: &str) -> usize {
+            self.output.text.lock().unwrap().matches(needle).count()
+        }
+
+        fn wait_for_output_occurrences(
+            &mut self,
+            needle: &str,
+            occurrences: usize,
+            timeout: Duration,
+        ) -> Result<(), String> {
+            let start = std::time::Instant::now();
+            loop {
+                {
+                    let output = self.output.text.lock().unwrap();
+                    if output.matches(needle).count() >= occurrences {
+                        return Ok(());
+                    }
+                }
+
+                if let Some(status) = self
+                    .child
+                    .as_mut()
+                    .expect("emulator child already consumed")
+                    .try_wait()
+                    .map_err(|err| format!("failed to poll emulator child: {err}"))?
+                {
+                    return Err(format!(
+                        "emulator exited before output contained {needle:?} {occurrences} time(s): {status}; output tail:\n{}",
+                        self.output_tail()
+                    ));
+                }
+
+                let elapsed = start.elapsed();
+                if elapsed >= timeout {
+                    return Err(format!(
+                        "timed out after {:?} waiting for emulator output to contain {needle:?} {occurrences} time(s); output tail:\n{}",
+                        timeout,
+                        self.output_tail()
+                    ));
+                }
+
+                let remaining = timeout - elapsed;
+                let wait = remaining.min(Duration::from_secs(1));
+                let output = self.output.text.lock().unwrap();
+                let _ = self.output.available.wait_timeout(output, wait).unwrap();
+            }
+        }
+
+        fn output_tail(&self) -> String {
+            const TAIL_LEN: usize = 4096;
+            let output = self.output.text.lock().unwrap();
+            output
+                .char_indices()
+                .rev()
+                .nth(TAIL_LEN)
+                .map(|(idx, _)| output[idx..].to_string())
+                .unwrap_or_else(|| output.clone())
+        }
+
+        fn stop_child(&mut self, allow_killed: bool) -> Result<(), String> {
+            caliptra_mcu_testing_common::set_emulator_running(false);
+
+            let Some(mut child) = self.child.take() else {
+                return Ok(());
+            };
+
+            match child
+                .try_wait()
+                .map_err(|err| format!("failed to poll emulator child: {err}"))?
+            {
+                Some(status) if status.success() || allow_killed => {}
+                Some(status) => {
+                    return Err(format!(
+                        "emulator exited unexpectedly with {status}; output tail:\n{}",
+                        self.output_tail()
+                    ));
+                }
+                None => {
+                    child
+                        .kill()
+                        .map_err(|err| format!("failed to kill emulator child: {err}"))?;
+                    child
+                        .wait()
+                        .map_err(|err| format!("failed to wait for emulator child: {err}"))?;
+                }
+            }
+
+            if let Some(handle) = self.stdout_thread.take() {
+                let _ = handle.join();
+            }
+            if let Some(handle) = self.stderr_thread.take() {
+                let _ = handle.join();
+            }
+            if let Some(handle) = self.tick_thread.take() {
+                let _ = handle.join();
+            }
+            Ok(())
+        }
+    }
+
+    impl Drop for SpawnedRuntime {
+        fn drop(&mut self) {
+            let _ = self.stop_child(true);
+        }
+    }
+
+    fn pump_child_output<R: std::io::Read + Send + 'static>(
+        reader: R,
+        output: Arc<SpawnedRuntimeOutput>,
+    ) -> thread::JoinHandle<()> {
+        thread::spawn(move || {
+            let mut reader = BufReader::new(reader);
+            let mut line = String::new();
+            loop {
+                line.clear();
+                match reader.read_line(&mut line) {
+                    Ok(0) => break,
+                    Ok(_) => {
+                        print!("{line}");
+                        let _ = std::io::stdout().flush();
+                        let mut text = output.text.lock().unwrap();
+                        text.push_str(&line);
+                        output.available.notify_all();
+                    }
+                    Err(err) => {
+                        eprintln!("failed to read emulator output: {err}");
+                        break;
+                    }
+                }
+            }
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn spawn_runtime(
+        feature: &str,
+        rom_path: PathBuf,
+        runtime_path: PathBuf,
+        i3c_port: u16,
+        active_mode: bool,
+        device_security_state: DeviceLifecycle,
+        soc_images: Option<Vec<ImageCfg>>,
+        streaming_boot_package_path: Option<PathBuf>,
+        primary_flash_image_path: Option<PathBuf>,
+        secondary_flash_image_path: Option<PathBuf>,
+        caliptra_builder: Option<CaliptraBuilder>,
+        hw_revision: Option<String>,
+        fuse_soc_manifest_svn: Option<u8>,
+        fuse_soc_manifest_max_svn: Option<u8>,
+        fuse_vendor_test_partition: Option<Vec<u8>>,
+        primary_flash_file: Option<tempfile::NamedTempFile>,
+        secondary_flash_file: Option<tempfile::NamedTempFile>,
+    ) -> SpawnedRuntime {
+        caliptra_mcu_testing_common::init_emulator_state(EmulatorState::new_arc());
+        caliptra_mcu_testing_common::set_emulator_running(true);
+        caliptra_mcu_testing_common::set_runtime_started(false);
+
+        let mut cmd = runtime_command(
+            feature,
+            rom_path,
+            runtime_path,
+            i3c_port.to_string(),
+            active_mode,
+            device_security_state,
+            soc_images,
+            streaming_boot_package_path,
+            primary_flash_image_path,
+            secondary_flash_image_path,
+            caliptra_builder,
+            hw_revision,
+            fuse_soc_manifest_svn,
+            fuse_soc_manifest_max_svn,
+            fuse_vendor_test_partition,
+        );
+        cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+
+        let mut child = cmd.spawn().expect("failed to spawn emulator");
+        let output = Arc::new(SpawnedRuntimeOutput {
+            text: Mutex::new(String::new()),
+            available: Condvar::new(),
+        });
+        let stdout_thread = child
+            .stdout
+            .take()
+            .map(|stdout| pump_child_output(stdout, output.clone()));
+        let stderr_thread = child
+            .stderr
+            .take()
+            .map(|stderr| pump_child_output(stderr, output.clone()));
+        let tick_thread = Some(caliptra_mcu_testing_common::spawn_with_emulator_state(
+            || {
+                let mut ticks = 0u64;
+                while caliptra_mcu_testing_common::is_emulator_running() {
+                    thread::sleep(Duration::from_millis(1));
+                    ticks = ticks.saturating_add(caliptra_mcu_testing_common::TICK_NOTIFY_TICKS);
+                    caliptra_mcu_testing_common::update_ticks(ticks);
+                }
+            },
+        ));
+
+        SpawnedRuntime {
+            child: Some(child),
+            output,
+            stdout_thread,
+            stderr_thread,
+            tick_thread,
+            i3c_port,
+            // The emulator attaches one I3C target for these tests; the first
+            // dynamic address assigned by the shared I3C controller is 0x08.
+            i3c_address: DynamicI3cAddress::new(8).unwrap(),
+            _primary_flash_file: primary_flash_file,
+            _secondary_flash_file: secondary_flash_file,
+        }
+    }
+
+    pub fn start_attestation_standalone_runtime(feature: &str) -> SpawnedRuntime {
+        let feature = feature.replace('_', "-");
+        let test_runtime = get_or_compile_runtime(&feature, false);
+        let i3c_port = PortPicker::new().random(true).pick().unwrap();
+        let mut caliptra_builder =
+            create_caliptra_builder_with_prebuilt(test_runtime.clone(), &feature).unwrap_or_else(
+                || {
+                    CaliptraBuilder::new(&caliptra_mcu_builder::CaliptraBuildArgs {
+                        fpga: cfg!(feature = "fpga_realtime"),
+                        mcu_firmware: Some(test_runtime.clone()),
+                        ..Default::default()
+                    })
+                },
+            );
+
+        let mut flash = if let Some(flash) = FirmwareBinaries::from_env()
+            .ok()
+            .and_then(|binaries| binaries.test_flash_image(&feature).ok())
+        {
+            flash
+        } else {
+            let caliptra_fw = std::fs::read(
+                caliptra_builder
+                    .get_caliptra_fw()
+                    .expect("Failed to build Caliptra firmware"),
+            )
+            .unwrap();
+            let soc_manifest = std::fs::read(
+                caliptra_builder
+                    .get_soc_manifest(None)
+                    .expect("Failed to build SoC manifest"),
+            )
+            .unwrap();
+            let mcu_runtime = std::fs::read(&test_runtime).unwrap();
+            build_flash_image_bytes(Some(&caliptra_fw), Some(&soc_manifest), Some(&mcu_runtime))
+        };
+        write_valid_partition_table_for_runtime_flash_load(&mut flash);
+
+        let primary_flash = build_primary_flash_initial_contents(
+            Some(flash),
+            Some(ECC_DEVID_CERT_DER.as_slice()),
+            Some(MLDSA_IDEVID_CERT.as_slice()),
+            None,
+        )
+        .expect("failed to seed primary flash");
+        let mut primary_flash_file =
+            tempfile::NamedTempFile::new().expect("failed to create primary flash temp file");
+        primary_flash_file
+            .write_all(&primary_flash)
+            .expect("failed to write primary flash temp file");
+        primary_flash_file
+            .flush()
+            .expect("failed to flush primary flash temp file");
+        let primary_flash_path = primary_flash_file.path().to_path_buf();
+
+        // Mirror the firmware-update "fast" strategy: pre-populate the staging
+        // (secondary) flash with the full update image so the PLDM transfer can
+        // be truncated to a token payload. See `hitless_update_pldm_package`.
+        let secondary_flash_file = FirmwareBinaries::from_env()
+            .ok()
+            .and_then(|binaries| binaries.test_update_flash_image(&feature).ok())
+            .map(|update_flash| {
+                let mut contents = update_flash.clone();
+                if contents.len() < STAGING_PARTITION.offset {
+                    contents.resize(STAGING_PARTITION.offset, 0);
+                }
+                contents.extend_from_slice(&update_flash);
+                let mut file = tempfile::NamedTempFile::new()
+                    .expect("failed to create secondary flash temp file");
+                file.write_all(&contents)
+                    .expect("failed to write secondary flash temp file");
+                file.flush().expect("failed to flush secondary flash file");
+                file
+            });
+        let secondary_flash_path = secondary_flash_file
+            .as_ref()
+            .map(|f| f.path().to_path_buf());
+
+        spawn_runtime(
+            &feature,
+            ROM.to_path_buf(),
+            test_runtime,
+            i3c_port,
+            true,
+            DeviceLifecycle::Production,
+            None,
+            None,
+            Some(primary_flash_path),
+            secondary_flash_path,
+            Some(caliptra_builder),
+            Some("2.1.0".to_string()),
+            None,
+            None,
+            None,
+            Some(primary_flash_file),
+            secondary_flash_file,
+        )
     }
 
     /// Get prebuilt emulator from EmulatorBinaries if available.

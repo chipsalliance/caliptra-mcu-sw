@@ -133,7 +133,7 @@ pub(crate) enum Fpga {
         separate_runtimes: bool,
 
         // MCU configuration to include in the SoC manifest
-        // format: mcu,<load_addr>,<staging_addr>,<image_id>,<exec_bit>,<component_id>,<feature>
+        // format: mcu,<load_addr>,<staging_addr>,<image_id>,<exec_bit>,<component_id>,<feature>[,<is_tcb>[,<is_ak_target>[,<network_filename>]]]
         // Example: --mcu_cfg mcu,0x10000000,0x10000000,1,1,1,test-dma
         #[arg(
             long = "mcu_cfg",

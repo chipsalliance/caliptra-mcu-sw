@@ -20,15 +20,13 @@ use caliptra_mcu_libsyscall_caliptra::doe;
 use caliptra_mcu_libsyscall_caliptra::mctp;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_console::Console;
+use caliptra_mcu_scratch_alloc::{BitmapAllocator, StaticBitmapAllocatorCell, BITMAP_SLOT_SIZE};
 use caliptra_mcu_spdm_pal::cert::store::SharedCertStore;
-use caliptra_mcu_spdm_pal::{
-    BitmapAllocator, McuSpdmPal, StaticBitmapAllocatorCell, BITMAP_SLOT_SIZE,
-};
+use caliptra_mcu_spdm_pal::McuSpdmPal;
 use caliptra_mcu_spdm_stack::SpdmStack;
 #[cfg(feature = "doe")]
 use caliptra_mcu_spdm_transports::McuSpdmDoeTransport;
 use caliptra_mcu_spdm_transports::McuSpdmMctpTransport;
-use caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::CaliptraVdm;
 #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
 use caliptra_mcu_spdm_vdm_handler::pci_sig::{
     ide_km::PciSigIdeKmTdispVdm,
@@ -40,14 +38,127 @@ use core::ptr::NonNull;
 use core::sync::atomic::{AtomicU8, Ordering};
 use embassy_executor::Spawner;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::signal::Signal;
+use embassy_sync::watch::Watch;
+
+/// Largest single in-flight SPDM message (request or response) this responder
+/// supports.
+///
+/// This is a contract, not a measurement: it is advertised verbatim as
+/// `MaxSPDMmsgSize` in `CAPABILITIES`, so [`SPDM_SCRATCH_SIZE`] must be able to
+/// satisfy it. Raising this requires raising the scratch pool; the assertion
+/// below enforces that.
+///
+/// Sized to cover both directions, because `MaxSPDMmsgSize` caps every SPDM
+/// message and the `CHUNK_SEND` admission check compares against it before the
+/// streaming path is reached:
+///
+/// * Responses — the largest evidence this build can emit (an ML-DSA-87 PCR
+///   quote is 6388 bytes) plus SPDM and vendor-defined framing.
+/// * Requests — the production debug unlock token (7504 bytes of ML-DSA-87 key
+///   and signature material) plus framing. This one is streamed into the
+///   Caliptra mailbox and never occupies the scratch pool, but declaring a
+///   smaller `MaxSPDMmsgSize` would have the responder reject it outright.
+///
+/// The assertions below check both against what the build actually enables, so
+/// turning on a larger generator or a larger inbound command fails the build
+/// rather than failing at runtime.
+const MAX_SPDM_MSG_SIZE: usize = {
+    let declared = 8 * 1024;
+    assert!(
+        declared
+            >= caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::large_response_capacity::<
+                crate::caliptra_cmd_handler::CaliptraCmdBackend,
+            >(),
+        "MaxSPDMmsgSize is smaller than the largest Caliptra VDM response this build can \
+         produce; raise MAX_SPDM_MSG_SIZE (and SPDM_SCRATCH_SIZE with it) or disable an \
+         evidence generator"
+    );
+    assert!(
+        declared >= MAX_STREAMED_VDM_REQUEST_LEN,
+        "MaxSPDMmsgSize is smaller than the largest Caliptra VDM request this build must \
+         accept (the debug unlock token); raise MAX_SPDM_MSG_SIZE and SPDM_SCRATCH_SIZE with it"
+    );
+    declared
+};
+
+/// Largest streamed Caliptra VDM request this responder must accept.
+///
+/// The production debug unlock token dominates every other inbound request: it
+/// carries an ML-DSA-87 public key and signature. It is streamed into the
+/// Caliptra mailbox and never occupies the scratch pool, so it costs no memory
+/// here, but [`MAX_SPDM_MSG_SIZE`] must still admit it.
+const MAX_STREAMED_VDM_REQUEST_LEN: usize =
+    caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::LARGE_REQUEST_FRAMING_LEN
+        + core::mem::size_of::<mcu_caliptra_api::mailbox::ProductionAuthDebugUnlockToken>();
+
+/// Conservative upper bound on transport MTU. The real MTU is a runtime
+/// transport property, so the budget uses a declared ceiling instead.
+const MAX_TRANSPORT_MTU: usize = 1024;
+
+/// Pool-resident state that survives across requests once a secure session is
+/// established: the `SessionInfo` box (key schedule holds up to nine 128-byte
+/// CMKs) plus the VCA / M1 / L1 / TH hash contexts (200 bytes each, one slot
+/// run apiece). Measured at roughly 2.3 KiB; rounded up for slot granularity.
+const SESSION_WORKING_SET: usize = 2560;
+
+/// Peak transient mailbox/DPE/SHA working set, measured during `certify_key`
+/// kid computation.
+///
+/// This is the one term in the budget that cannot be derived from a declared
+/// constant; it must be re-measured if the certificate or DPE paths change.
+const TRANSIENT_MAILBOX_PEAK: usize = 2560;
+
+/// Peak concurrent allocation while building a chunked large response: the
+/// rented large buffer plus the inline response buffer allocated alongside it.
+///
+/// The receive buffer is not counted: it is shrunk to the actual frame length
+/// immediately after receive, and the request that triggers a large response
+/// is always a single small frame.
+const LARGE_MSG_PATH_PEAK: usize = MAX_SPDM_MSG_SIZE + MAX_TRANSPORT_MTU;
+
+/// Peak concurrent allocation on the certificate / secure-session path: the
+/// mailbox working set plus the secured-message plaintext and ciphertext
+/// staging buffers.
+const CRYPTO_PATH_PEAK: usize = TRANSIENT_MAILBOX_PEAK + 2 * MAX_TRANSPORT_MTU;
+
+/// Minimum scratch pool that can satisfy [`MAX_SPDM_MSG_SIZE`].
+///
+/// The two request paths are mutually exclusive: a single request either
+/// builds a large chunked response or runs the certificate/crypto path, never
+/// both. Likewise the stack rents exactly one large buffer, for a `CHUNK_SEND`
+/// reassembly or a `CHUNK_GET` response but not both. So the transient term is
+/// a max, not a sum, laid on top of the session state that persists across
+/// requests.
+const fn required_scratch() -> usize {
+    let transient_peak = if LARGE_MSG_PATH_PEAK > CRYPTO_PATH_PEAK {
+        LARGE_MSG_PATH_PEAK
+    } else {
+        CRYPTO_PATH_PEAK
+    };
+    SESSION_WORKING_SET + transient_peak
+}
 
 /// Bitmap allocator pool size per responder task.
 ///
-/// Must hold `MEAS_RECORD_BUF_SIZE + MeasurementProvider::SCRATCH_SIZE`
-/// plus transient DPE/SHA mailbox buffers (peak ~2.4 KB during
-/// certify_key for kid computation).
-const SPDM_SCRATCH_SIZE: usize = 12 * 1024;
+/// Declared explicitly rather than derived, so the pool size stays a
+/// deliberate integrator choice; the embedded assertion fails the build if a
+/// configuration change outgrows it.
+const MCTP_SPDM_SCRATCH_SIZE: usize = {
+    let declared = 12 * 1024;
+    assert!(
+        declared >= required_scratch(),
+        "MCTP SPDM scratch pool is too small for the configured MAX_SPDM_MSG_SIZE"
+    );
+    declared
+};
+const DOE_SPDM_SCRATCH_SIZE: usize = {
+    let declared = 12 * 1024;
+    assert!(
+        declared >= required_scratch(),
+        "DOE SPDM scratch pool is too small for the configured MAX_SPDM_MSG_SIZE"
+    );
+    declared
+};
 
 #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
 const TEST_PCI_SIG_VENDOR_ID: u16 = 0x0001;
@@ -57,8 +168,13 @@ const SUPPORTED_TDISP_VERSIONS: &[TdispVersion] = &[TdispVersion::V10];
 /// Single cert store shared by all SPDM responder tasks.
 static CERT_STORE: SharedCertStore = SharedCertStore::new();
 
-/// Signal fired when cert store init completes.
-static CERT_STORE_DONE: Signal<CriticalSectionRawMutex, bool> = Signal::new();
+/// Consumers of [`CERT_STORE_INIT`]: MCTP responder, DOE responder, ML-DSA installer.
+const CERT_STORE_WAITERS: usize = 3;
+
+/// Cert-store init outcome. `Watch`, not `Signal`: it retains the value for
+/// several independent consumers, where `Signal::wait` consumes it and so needed
+/// one signal per waiter.
+static CERT_STORE_INIT: Watch<CriticalSectionRawMutex, bool, CERT_STORE_WAITERS> = Watch::new();
 
 /// Cert store init state: 0 = uninit, 1 = in progress, 2 = done.
 static CERT_STORE_STATE: AtomicU8 = AtomicU8::new(0);
@@ -78,8 +194,8 @@ fn measurement_provider(
 }
 
 /// Initialize the shared cert store. First caller does the work;
-/// concurrent callers wait on a Signal (no busy-loop).
-async fn ensure_cert_store_init<A: mcu_caliptra_api_lite::ApiAlloc>(
+/// concurrent callers wait on the outcome watch (no busy-loop).
+async fn ensure_cert_store_init<A: mcu_caliptra_api::ApiAlloc>(
     alloc: &A,
 ) -> mcu_error::McuResult<()> {
     // Single-core cooperative executor: no preemption between load and
@@ -91,17 +207,21 @@ async fn ensure_cert_store_init<A: mcu_caliptra_api_lite::ApiAlloc>(
             CERT_STORE_STATE.store(1, Ordering::Release);
             if let Err(e) = cert_store::populate_idev(alloc).await {
                 CERT_STORE_STATE.store(0, Ordering::Release);
-                CERT_STORE_DONE.signal(false);
+                CERT_STORE_INIT.sender().send(false);
                 return Err(e);
             }
             let r = cert_store::setup_endorsements(&CERT_STORE, alloc).await;
             CERT_STORE_STATE.store(if r.is_ok() { 2 } else { 0 }, Ordering::Release);
-            CERT_STORE_DONE.signal(r.is_ok());
+            CERT_STORE_INIT.sender().send(r.is_ok());
             r
         }
         1 => {
-            let ok = CERT_STORE_DONE.wait().await;
-            if ok {
+            // A receiver created after the send still observes it, so there is
+            // no lost-wakeup window here.
+            let Some(mut rx) = CERT_STORE_INIT.receiver() else {
+                return Err(mcu_error::codes::INTERNAL_BUG);
+            };
+            if rx.changed().await {
                 Ok(())
             } else {
                 Err(mcu_error::codes::INTERNAL_BUG)
@@ -124,6 +244,83 @@ pub(crate) fn spawn_spdm_tasks(spawner: &Spawner) {
             crate::log_error!(cw, "SPDM: Failed to spawn DOE responder");
         }
     }
+    if spawner.spawn(idev_mldsa_installer()).is_err() {
+        crate::log_error!(cw, "SPDM: Failed to spawn ML-DSA IDevID installer");
+    }
+}
+
+/// Install the IDevID ML-DSA-87 certificate once the responders are serving.
+///
+/// Its own task because the install is ~1,900 sequential 4-byte OTP reads —
+/// doing it inside `ensure_cert_store_init` delayed responder startup past the
+/// point where an already-connected requester gives up. It waits for the ECC
+/// cert store to be ready so the two installs do not contend for the mailbox,
+/// and nothing can read the ML-DSA chain yet, so ordering after SPDM comes up
+/// costs nothing.
+#[embassy_executor::task]
+async fn idev_mldsa_installer() {
+    let mut cw = Console::<DefaultSyscalls>::writer();
+
+    // Wait for cert-store init (driven by whichever responder wins the race)
+    // before adding mailbox traffic of our own. Log the give-up paths so a
+    // skipped install is distinguishable from a successful one.
+    let Some(mut rx) = CERT_STORE_INIT.receiver() else {
+        crate::log_error!(cw, "SPDM: no cert-store receiver for ML-DSA install");
+        return;
+    };
+    if !rx.changed().await {
+        crate::log_warn!(
+            cw,
+            "SPDM: cert store init failed; skipping ML-DSA-87 IDevID install"
+        );
+        return;
+    }
+
+    // Sized for one ML-DSA-87 certificate (Caliptra caps it at 8192) plus the
+    // allocator bitmap and the 8-byte mailbox response — not the responders'
+    // 12 KiB, since this task only ever stages the certificate.
+    const MLDSA_SCRATCH_SIZE: usize = 9 * 1024;
+
+    // Heap, not a `static`: this buffer is touched once at boot and never again,
+    // so a `static` would hold 9 KiB of SRAM for the life of the app to serve a
+    // one-shot install. `Vec` returns it to the allocator when this task ends.
+    // `try_reserve_exact` rather than `with_capacity` so exhaustion is an error
+    // we log, not a panic (a panic in this app is fatal); same pattern as
+    // `image_loader::load_soc_images`.
+    //
+    // Over-allocated by one slot so the base can be walked forward to a
+    // `BITMAP_SLOT_SIZE` boundary: the heap only guarantees `align_of::<u8>()`,
+    // and `BitmapAllocator::new` requires a slot-aligned base.
+    let mut scratch: alloc::vec::Vec<u8> = alloc::vec::Vec::new();
+    if scratch
+        .try_reserve_exact(MLDSA_SCRATCH_SIZE + BITMAP_SLOT_SIZE)
+        .is_err()
+    {
+        crate::log_error!(cw, "SPDM: no heap for ML-DSA-87 IDevID scratch");
+        return;
+    }
+    scratch.resize(MLDSA_SCRATCH_SIZE + BITMAP_SLOT_SIZE, 0);
+
+    let base = scratch.as_mut_ptr();
+    let pad = base.align_offset(BITMAP_SLOT_SIZE);
+    // `pad <= BITMAP_SLOT_SIZE` and the buffer is oversized by exactly that, so
+    // the aligned window is always fully in bounds.
+    let Some(aligned) = scratch.get_mut(pad..pad + MLDSA_SCRATCH_SIZE) else {
+        crate::log_error!(cw, "SPDM: ML-DSA-87 IDevID scratch alignment failed");
+        return;
+    };
+    let scratch_ptr: NonNull<u8> = NonNull::from(&mut aligned[0]);
+    debug_assert_eq!(scratch_ptr.as_ptr() as usize % BITMAP_SLOT_SIZE, 0);
+
+    // SAFETY: `scratch_ptr` is non-null, slot-aligned, and points at
+    // `MLDSA_SCRATCH_SIZE` writable bytes exclusively owned by this allocator.
+    // `allocator` and every handle it hands out are confined to the
+    // `populate_idev_mldsa` call below, which returns before `scratch` is
+    // dropped at end of task — so the memory outlives the allocator. The
+    // allocator is a local, so it is never moved across threads.
+    let allocator = unsafe { BitmapAllocator::new(scratch_ptr, MLDSA_SCRATCH_SIZE) };
+
+    cert_store::populate_idev_mldsa(&allocator).await;
 }
 
 #[embassy_executor::task]
@@ -131,8 +328,8 @@ async fn spdm_mctp_responder() {
     let mut cw = Console::<DefaultSyscalls>::writer();
 
     #[repr(C, align(64))]
-    struct ScratchBuf([u8; SPDM_SCRATCH_SIZE]);
-    static mut MCTP_SCRATCH: ScratchBuf = ScratchBuf([0u8; SPDM_SCRATCH_SIZE]);
+    struct ScratchBuf([u8; MCTP_SPDM_SCRATCH_SIZE]);
+    static mut MCTP_SCRATCH: ScratchBuf = ScratchBuf([0u8; MCTP_SPDM_SCRATCH_SIZE]);
     // SAFETY: this task is the sole owner of `MCTP_SCRATCH`.
     let scratch_ptr: NonNull<u8> = unsafe { NonNull::new_unchecked(MCTP_SCRATCH.0.as_mut_ptr()) };
     debug_assert_eq!(scratch_ptr.as_ptr() as usize % BITMAP_SLOT_SIZE, 0);
@@ -141,7 +338,7 @@ async fn spdm_mctp_responder() {
     // MCTP responder task. Backing memory (`MCTP_SCRATCH`) is `'static`.
     static MCTP_ALLOC_CELL: StaticBitmapAllocatorCell = StaticBitmapAllocatorCell::new();
     let allocator: &'static BitmapAllocator =
-        unsafe { MCTP_ALLOC_CELL.init_once(scratch_ptr, SPDM_SCRATCH_SIZE) };
+        unsafe { MCTP_ALLOC_CELL.init_once(scratch_ptr, MCTP_SPDM_SCRATCH_SIZE) };
 
     {
         if let Err(e) = ensure_cert_store_init(allocator).await {
@@ -164,7 +361,15 @@ async fn spdm_mctp_responder() {
 
     // SAFETY: `allocator` is the `&'static` handle obtained above and is
     // exclusive to this task.
-    let pal = unsafe { McuSpdmPal::new(transport, allocator, &CERT_STORE, measurement_provider()) };
+    let pal = unsafe {
+        McuSpdmPal::new(
+            transport,
+            allocator,
+            &CERT_STORE,
+            measurement_provider(),
+            MAX_SPDM_MSG_SIZE,
+        )
+    };
     // MCTP hosts the IANA / Caliptra VDM backend (plaintext today). DOE uses
     // the default NoVdmBackend unless the TDISP/IDE validator feature wires PCI-SIG.
     static COMMANDS: crate::caliptra_cmd_handler::CaliptraCmdBackend =
@@ -172,7 +377,7 @@ async fn spdm_mctp_responder() {
     static STREAM: caliptra_vdm::CaliptraVdmStreamHook = caliptra_vdm::CaliptraVdmStreamHook;
     static AUTHORIZATION: caliptra_vdm::CaliptraVdmAuthorizationHook =
         caliptra_vdm::CaliptraVdmAuthorizationHook;
-    let vdm = CaliptraVdm::new(&COMMANDS, &STREAM, &AUTHORIZATION);
+    let vdm = caliptra_vdm::AppVdmBackend::enabled(&COMMANDS, &STREAM, &AUTHORIZATION);
     let mut stack = SpdmStack::<_, 1, _>::with_vdm_backend(pal, vdm);
 
     crate::log_info!(cw, "SPDM_MCTP: starting spdm-lib MCTP run loop");
@@ -197,8 +402,8 @@ async fn spdm_doe_responder() {
     }
 
     #[repr(C, align(64))]
-    struct ScratchBuf([u8; SPDM_SCRATCH_SIZE]);
-    static mut DOE_SCRATCH: ScratchBuf = ScratchBuf([0u8; SPDM_SCRATCH_SIZE]);
+    struct ScratchBuf([u8; DOE_SPDM_SCRATCH_SIZE]);
+    static mut DOE_SCRATCH: ScratchBuf = ScratchBuf([0u8; DOE_SPDM_SCRATCH_SIZE]);
     // SAFETY: this task is the sole owner of `DOE_SCRATCH`.
     let scratch_ptr: NonNull<u8> = unsafe { NonNull::new_unchecked(DOE_SCRATCH.0.as_mut_ptr()) };
     debug_assert_eq!(scratch_ptr.as_ptr() as usize % BITMAP_SLOT_SIZE, 0);
@@ -207,7 +412,7 @@ async fn spdm_doe_responder() {
     // DOE responder task. Backing memory (`DOE_SCRATCH`) is `'static`.
     static DOE_ALLOC_CELL: StaticBitmapAllocatorCell = StaticBitmapAllocatorCell::new();
     let allocator: &'static BitmapAllocator =
-        unsafe { DOE_ALLOC_CELL.init_once(scratch_ptr, SPDM_SCRATCH_SIZE) };
+        unsafe { DOE_ALLOC_CELL.init_once(scratch_ptr, DOE_SPDM_SCRATCH_SIZE) };
 
     {
         if let Err(e) = ensure_cert_store_init(allocator).await {
@@ -223,7 +428,15 @@ async fn spdm_doe_responder() {
     let transport = alloc::boxed::Box::new(doe_transport);
     // SAFETY: `allocator` is the `&'static` handle obtained above and is
     // exclusive to this task.
-    let pal = unsafe { McuSpdmPal::new(transport, allocator, &CERT_STORE, measurement_provider()) };
+    let pal = unsafe {
+        McuSpdmPal::new(
+            transport,
+            allocator,
+            &CERT_STORE,
+            measurement_provider(),
+            MAX_SPDM_MSG_SIZE,
+        )
+    };
     #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
     let mut stack = SpdmStack::<_, 1, _>::with_vdm_backend(
         pal,
@@ -235,7 +448,8 @@ async fn spdm_doe_responder() {
         ),
     );
     #[cfg(not(feature = "test-doe-spdm-tdisp-ide-validator"))]
-    let mut stack: SpdmStack<_, 1> = SpdmStack::new(pal);
+    let mut stack =
+        SpdmStack::<_, 1, _>::with_vdm_backend(pal, caliptra_vdm::AppVdmBackend::disabled());
 
     crate::log_info!(cw, "SPDM_DOE: starting spdm-lib DOE run loop");
     if let Err(e) = stack.run().await {

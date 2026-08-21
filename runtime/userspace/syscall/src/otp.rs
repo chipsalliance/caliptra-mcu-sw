@@ -8,6 +8,8 @@ use core::{iter::repeat, marker::PhantomData};
 
 pub const VENDOR_PK_HASH_SIZE: usize =
     caliptra_mcu_registers_generated::fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_0.byte_size;
+pub const OWNER_PK_HASH_SIZE: usize =
+    caliptra_mcu_registers_generated::fuses::OTP_CPTRA_SS_OWNER_PK_HASH.byte_size;
 pub const MAX_NUM_VENDOR_PK_HASH: usize = 16;
 pub const VENDOR_ECC_MAX_KEY_COUNT: u32 = 4;
 pub const VENDOR_LMS_MAX_KEY_COUNT: u32 = 32;
@@ -208,6 +210,68 @@ impl<S: Syscalls> Otp<S> {
         // Read back the fuse and compare to validate writing was successfull
         let fuse_value = self.read_vendor_pk_hash(slot)?;
         if new_hash != &fuse_value {
+            return Err(ErrorCode::Fail);
+        }
+
+        Ok(())
+    }
+
+    /// Provision the owner public-key hash in its write-once OTP entry.
+    ///
+    /// # Reset safety
+    ///
+    /// Current MCU ROM consumes `CPTRA_SS_OWNER_PK_HASH` without checking
+    /// `CPTRA_SS_OWNER_PK_HASH_VALID`. Provisioning must not be interrupted by
+    /// reset or power loss; otherwise ROM can consume a partial hash and the
+    /// intended hash may no longer be programmable.
+    pub fn provision_owner_pk_hash(
+        &self,
+        new_hash: &[u8; OWNER_PK_HASH_SIZE],
+    ) -> Result<(), ErrorCode> {
+        if new_hash.iter().all(|byte| *byte == 0) {
+            return Err(ErrorCode::Invalid);
+        }
+
+        let base_word_addr = (caliptra_mcu_registers_generated::fuses::OTP_CPTRA_SS_OWNER_PK_HASH
+            .byte_offset
+            / 4) as u32;
+        let valid_word_addr =
+            (caliptra_mcu_registers_generated::fuses::OTP_CPTRA_SS_OWNER_PK_HASH_VALID.byte_offset
+                / 4) as u32;
+        let mut fuse_value = [0u8; OWNER_PK_HASH_SIZE];
+        for (index, chunk) in fuse_value.chunks_exact_mut(4).enumerate() {
+            let word = self.read_raw(base_word_addr, index as u32)?;
+            chunk.copy_from_slice(&word.to_le_bytes());
+        }
+
+        let valid = self.read_raw(valid_word_addr, 0)? & 1 != 0;
+        if valid {
+            return if new_hash == &fuse_value {
+                Ok(())
+            } else {
+                Err(ErrorCode::Invalid)
+            };
+        }
+        if new_hash != &fuse_value && fuse_value.iter().any(|byte| *byte != 0) {
+            return Err(ErrorCode::Invalid);
+        }
+
+        if new_hash != &fuse_value {
+            for (index, chunk) in new_hash.chunks_exact(4).enumerate() {
+                let word = u32::from_le_bytes(chunk.try_into().map_err(|_| ErrorCode::Fail)?);
+                self.write_raw(base_word_addr + index as u32, word, u32::MAX)?;
+            }
+        }
+
+        for (index, chunk) in new_hash.chunks_exact(4).enumerate() {
+            let expected = u32::from_le_bytes(chunk.try_into().map_err(|_| ErrorCode::Fail)?);
+            if self.read_raw(base_word_addr, index as u32)? != expected {
+                return Err(ErrorCode::Fail);
+            }
+        }
+
+        self.write_raw(valid_word_addr, 1, 1)?;
+        if self.read_raw(valid_word_addr, 0)? & 1 == 0 {
             return Err(ErrorCode::Fail);
         }
 

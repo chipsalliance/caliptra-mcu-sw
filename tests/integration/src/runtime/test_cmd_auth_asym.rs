@@ -14,7 +14,7 @@ use caliptra_mcu_command_auth_challenge_signer::AUTH_CMD_NONCE_LEN;
 use caliptra_mcu_hw_model::{DefaultHwModel, LifecycleControllerState, McuHwModel};
 use caliptra_mcu_mbox_common::messages::{
     FuseLockPartitionReq, FuseReadReq, FuseWriteReq, HybridSignature, MailboxReqHeader,
-    McuFeProgReq, ProvisionVendorPkHashReq,
+    McuFeProgReq, ProvisionOwnerPkHashReq, ProvisionVendorPkHashReq,
 };
 use caliptra_mcu_romtime::McuBootMilestones;
 use core::mem::size_of;
@@ -117,6 +117,45 @@ fn test_provision_vendor_pk_hash_authorized_req_g1() -> Result<()> {
         result.is_ok(),
         "PROVISION_VENDOR_PK_HASH authorized request failed: {result:?}"
     );
+    Ok(())
+}
+
+#[test]
+fn test_provision_owner_pk_hash_authorized_req_g1() -> Result<()> {
+    let mut hw = boot_mcu_mbox_hw();
+
+    let zero = execute_authorized_req(
+        &mut hw,
+        ProvisionOwnerPkHashReq {
+            hdr: MailboxReqHeader::default(),
+            hash: [0; 48],
+        },
+    );
+    assert_rejected_not_timeout(zero, "PROVISION_OWNER_PK_HASH zero hash");
+
+    let request = || ProvisionOwnerPkHashReq {
+        hdr: MailboxReqHeader::default(),
+        hash: [0x11; 48],
+    };
+    let result = execute_authorized_req(&mut hw, request());
+    assert!(
+        result.is_ok(),
+        "PROVISION_OWNER_PK_HASH authorized request failed: {result:?}"
+    );
+    let result = execute_authorized_req(&mut hw, request());
+    assert!(
+        result.is_ok(),
+        "PROVISION_OWNER_PK_HASH idempotent request failed: {result:?}"
+    );
+
+    let conflicting = execute_authorized_req(
+        &mut hw,
+        ProvisionOwnerPkHashReq {
+            hdr: MailboxReqHeader::default(),
+            hash: [0x22; 48],
+        },
+    );
+    assert_rejected_not_timeout(conflicting, "PROVISION_OWNER_PK_HASH conflicting hash");
     Ok(())
 }
 

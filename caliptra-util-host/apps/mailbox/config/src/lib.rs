@@ -19,6 +19,91 @@ pub struct TestConfig {
     pub device_capabilities: Option<DeviceCapabilitiesConfig>,
     #[serde(default)]
     pub firmware_version: Option<FirmwareVersionConfig>,
+    #[serde(default)]
+    pub fe_prog: FeProgConfig,
+    #[serde(default)]
+    pub provision_vendor_pk_hash: ProvisionVendorPkHashConfig,
+    #[serde(default)]
+    pub increase_caliptra_min_svn: IncreaseCaliptraMinSvnConfig,
+    #[serde(default)]
+    pub revoke_vendor_pub_key: RevokeVendorPubKeyConfig,
+    #[serde(default)]
+    pub revoke_vendor_pk_hash: RevokeVendorPkHashConfig,
+    #[serde(default)]
+    pub fuse_lock_partition: FuseLockPartitionConfig,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FeProgConfig {
+    #[serde(default = "default_true")]
+    pub enabled: bool,
+    #[serde(default)]
+    pub partition: u32,
+}
+
+impl Default for FeProgConfig {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            partition: 0,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct ProvisionVendorPkHashConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub slot: u32,
+    #[serde(default)]
+    pub hash: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct IncreaseCaliptraMinSvnConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub flags: u32,
+    #[serde(default)]
+    pub svn: u32,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct RevokeVendorPubKeyConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub reserved: u32,
+    #[serde(default)]
+    pub vendor_pk_hash_slot: u32,
+    #[serde(default)]
+    pub key_type: u32,
+    #[serde(default)]
+    pub key_index: u32,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct RevokeVendorPkHashConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub reserved: u32,
+    #[serde(default)]
+    pub vendor_pk_hash_slot: u32,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct FuseLockPartitionConfig {
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub partition: u32,
+}
+
+fn default_true() -> bool {
+    true
 }
 
 /// Network configuration
@@ -182,6 +267,12 @@ impl Default for TestConfig {
                 rom_firmware_id: 0,
                 runtime_firmware_id: 1,
             }),
+            fe_prog: FeProgConfig::default(),
+            provision_vendor_pk_hash: ProvisionVendorPkHashConfig::default(),
+            increase_caliptra_min_svn: IncreaseCaliptraMinSvnConfig::default(),
+            revoke_vendor_pub_key: RevokeVendorPubKeyConfig::default(),
+            revoke_vendor_pk_hash: RevokeVendorPkHashConfig::default(),
+            fuse_lock_partition: FuseLockPartitionConfig::default(),
         }
     }
 }

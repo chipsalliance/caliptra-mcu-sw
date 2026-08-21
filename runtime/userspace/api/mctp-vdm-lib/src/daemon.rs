@@ -36,12 +36,12 @@ pub fn is_vdm_service_running() -> bool {
 
 /// VDM responder loop.
 pub async fn vdm_responder<H: CaliptraCmdHandler>(
-    cmd_interface: &'static mut CmdInterface<'static, H>,
+    cmd_interface: &mut CmdInterface<'_, H>,
+    msg_buffer: &mut [u8],
 ) {
-    let mut msg_buffer = [0u8; MAX_VDM_MSG_SIZE];
     VDM_SERVICE_RUNNING.store(true, Ordering::SeqCst);
     while VDM_SERVICE_RUNNING.load(Ordering::SeqCst) {
-        if let Err(e) = cmd_interface.handle_responder_msg(&mut msg_buffer).await {
+        if let Err(e) = cmd_interface.handle_responder_msg(msg_buffer).await {
             log_error!(
                 Console::<DefaultSyscalls>::writer(),
                 "vdm_responder error={}",

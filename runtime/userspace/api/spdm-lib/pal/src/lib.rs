@@ -11,11 +11,11 @@
 //!
 //! # Modules
 //!
-//! * [`alloc`] — Bitmap allocator and the [`SpdmPalAlloc`] impl
-//!   that hands out [`McuSpdmBox`] / [`BitmapBytes`] from a
-//!   caller-supplied scratch region.
+//! * [`alloc`] — The [`SpdmPalAlloc`] impl that hands out
+//!   [`ScratchBox`] / [`BitmapBytes`] from a caller-supplied scratch
+//!   region. The pool itself lives in [`caliptra_mcu_scratch_alloc`].
 //! * [`hash`] — [`SpdmPalHash`] impl and the running-hash bridge
-//!   into [`mcu_caliptra_api_lite`].
+//!   into [`mcu_caliptra_api`].
 //! * [`io`] — [`SpdmPalIo`] / [`SpdmPalIoTransport`] impls bridging
 //!   the higher-level framed-message API onto the byte-oriented
 //!   [`SpdmPalTransport`](caliptra_mcu_spdm_traits::SpdmPalTransport).
@@ -24,10 +24,12 @@
 //!
 //! # Re-exports
 //!
-//! * The whole [`alloc`] / [`pal`] surface is re-exported at the
-//!   crate root so consumers write `use caliptra_mcu_spdm_pal::*`.
+//! * The whole [`pal`] surface is re-exported at the crate root so
+//!   consumers write `use caliptra_mcu_spdm_pal::*`.
 //! * [`caliptra_mcu_spdm_codec`] is re-exported as [`codec`] so the stack
 //!   and downstream code share one wire-codec version.
+//! * The scratch-pool types are deliberately *not* re-exported — see the
+//!   note on the private import below.
 
 #![no_std]
 
@@ -39,10 +41,15 @@ pub mod measurements;
 mod pal;
 mod session_crypto;
 
-pub use self::alloc::*;
 pub use measurements::MeasurementProvider;
 pub use pal::*;
 
 pub use caliptra_mcu_spdm_codec as codec;
 
 use caliptra_mcu_spdm_traits::*;
+
+// Pool types are referenced throughout this crate's modules (which pull them
+// in via `use super::*`), but are intentionally not re-exported: non-SPDM
+// tasks must depend on `caliptra-mcu-scratch-alloc` directly rather than
+// reaching for the allocator through the SPDM PAL.
+use caliptra_mcu_scratch_alloc::*;

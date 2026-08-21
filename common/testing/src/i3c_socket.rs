@@ -160,6 +160,53 @@ impl BufferedStream {
         })
     }
 
+    /// Closes the underlying TCP connection.
+    ///
+    /// The emulator's I3C socket server services a single client at a time, so
+    /// a client must release the connection before another one can be accepted.
+    pub fn shutdown(&self) {
+        let _ = self.stream.shutdown(std::net::Shutdown::Both);
+    }
+
+    /// `true` once the peer is gone, which is the expected outcome when a
+    /// client deliberately releases the shared I3C socket.
+    fn is_peer_gone(err: &std::io::Error) -> bool {
+        matches!(
+            err.kind(),
+            ErrorKind::UnexpectedEof
+                | ErrorKind::ConnectionReset
+                | ErrorKind::ConnectionAborted
+                | ErrorKind::BrokenPipe
+                | ErrorKind::NotConnected
+        )
+    }
+
+    /// Writes to the socket, reporting `false` instead of panicking once the
+    /// connection has been closed.
+    fn write_all_tolerant(&mut self, buf: &[u8]) -> bool {
+        match self.stream.write_all(buf) {
+            Ok(()) => true,
+            Err(ref e) if Self::is_peer_gone(e) => false,
+            Err(e) => panic!("Error writing message to socket: {}", e),
+        }
+    }
+
+    /// Switches the socket's blocking mode, reporting `false` instead of
+    /// panicking once the connection has been closed.
+    fn set_blocking_tolerant(&mut self, blocking: bool) -> bool {
+        match self.stream.set_nonblocking(!blocking) {
+            Ok(()) => true,
+            Err(ref e) if Self::is_peer_gone(e) => false,
+            Err(e) => panic!("Error configuring socket: {}", e),
+        }
+    }
+
+    fn write_private_cmd(&mut self, cmd: &[u8]) -> bool {
+        self.set_blocking_tolerant(true)
+            && self.write_all_tolerant(cmd)
+            && self.set_blocking_tolerant(false)
+    }
+
     fn read_packet(&mut self) -> Option<Packet> {
         let mut out_header_bytes: [u8; 6] = [0u8; 6];
         match self.stream.read_exact(&mut out_header_bytes) {
@@ -178,6 +225,10 @@ impl BufferedStream {
                 Some(Packet { header, data })
             }
             Err(ref e) if e.kind() == ErrorKind::WouldBlock => None,
+            // A closed connection simply has no more packets to hand out. The
+            // callers surface this as a receive timeout, which lets a client
+            // that deliberately released the socket unwind without panicking.
+            Err(ref e) if Self::is_peer_gone(e) => None,
             Err(e) => panic!("Error reading message from socket: {}", e),
         }
     }
@@ -198,11 +249,13 @@ impl BufferedStream {
         pkt.push(pec);
 
         let pvt_write_cmd = prepare_private_write_cmd(addr, pkt.len() as u16);
-        self.stream.set_nonblocking(false).unwrap();
-        self.stream.write_all(&pvt_write_cmd).unwrap();
-        self.stream.set_nonblocking(true).unwrap();
-        self.stream.write_all(&pkt).unwrap();
-        true
+        if !self.set_blocking_tolerant(true) || !self.write_all_tolerant(&pvt_write_cmd) {
+            return false;
+        }
+        if !self.set_blocking_tolerant(false) {
+            return false;
+        }
+        self.write_all_tolerant(&pkt)
     }
 
     /// Send a command with payload using the packetized protocol.
@@ -255,9 +308,7 @@ impl BufferedStream {
     /// retrieved with [`receive_private_read`].
     pub fn request_private_read(&mut self, target_addr: u8) {
         let pvt_read_cmd = prepare_private_read_cmd(target_addr);
-        self.stream.set_nonblocking(false).unwrap();
-        self.stream.write_all(&pvt_read_cmd).unwrap();
-        self.stream.set_nonblocking(true).unwrap();
+        self.write_private_cmd(&pvt_read_cmd);
     }
 
     pub fn receive_ibi(&mut self, target_addr: u8) -> bool {
@@ -269,10 +320,7 @@ impl BufferedStream {
             {
                 self.read_buffer.remove(i);
                 let pvt_read_cmd = prepare_private_read_cmd(target_addr);
-                self.stream.set_nonblocking(false).unwrap();
-                self.stream.write_all(&pvt_read_cmd).unwrap();
-                self.stream.set_nonblocking(true).unwrap();
-                return true;
+                return self.write_private_cmd(&pvt_read_cmd);
             }
             i += 1;
         }
@@ -313,9 +361,7 @@ impl BufferedStream {
     /// If len is 0, the model uses DEFAULT_PRIVATE_READ_LEN.
     pub fn send_private_read_request_with_len(&mut self, target_addr: u8, len: u16) {
         let pvt_read_cmd = prepare_private_read_cmd_with_len(target_addr, len);
-        self.stream.set_nonblocking(false).unwrap();
-        self.stream.write_all(&pvt_read_cmd).unwrap();
-        self.stream.set_nonblocking(true).unwrap();
+        self.write_private_cmd(&pvt_read_cmd);
     }
 
     /// Drain any pending IBI packets from the buffer without triggering reads.

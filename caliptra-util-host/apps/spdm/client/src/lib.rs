@@ -26,7 +26,7 @@ pub use validator::{all_passed, print_summary, run_all, ValidationResult, Valida
 
 // Re-export the command authorizer trait and types from the common crate
 pub use caliptra_mcu_command_auth_challenge_signer::{
-    AsymmetricCommandAuthorizer, CommandAuthChallengeSigner,
+    AsymmetricCommandAuthorizer, CommandAuthChallengeSigner, HybridMessageSigner,
 };
 
 // Re-export the debug unlock signer trait and types from the common crate
@@ -35,25 +35,50 @@ pub use caliptra_mcu_debug_unlock_signer::{
 };
 
 use anyhow::Result;
+use caliptra_mcu_core_util_host_command_types::attestation::{
+    AsymAlgo, EvidenceFormat, GetAttestationResponse, PkiEntitySlot,
+};
 use caliptra_mcu_core_util_host_command_types::certificate::ExportAttestedCsrResponse;
 use caliptra_mcu_core_util_host_command_types::debug_unlock::{
     ProdDebugUnlockReqResponse, ProdDebugUnlockTokenRequest, ProdDebugUnlockTokenResponse,
 };
-use caliptra_mcu_core_util_host_command_types::fuse::{
-    FeProgResponse, GetAuthCmdChallengeResponse,
+use caliptra_mcu_core_util_host_command_types::device_ownership_transfer::{
+    DotChallengeResponse, DotDisableRequest, DotLockRequest, DotOverrideChallengeRequest,
+    DotOverrideRequest, DotRecoveryRequest, DotRotateRequest, DotStatusResponse,
+    DotTransitionResponse, DotUnlockRequest, GetDotBackupBlobRequest, GetDotBackupBlobResponse,
 };
-use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
+use caliptra_mcu_core_util_host_command_types::fuse::{
+    FeProgResponse, FuseIncreaseCaliptraMinSvnRequest, FuseIncreaseCaliptraMinSvnResponse,
+    FuseLockPartitionRequest, FuseLockPartitionResponse, FuseRevokeVendorPkHashRequest,
+    FuseRevokeVendorPkHashResponse, FuseRevokeVendorPubKeyRequest, FuseRevokeVendorPubKeyResponse,
+    GetAuthCmdChallengeResponse, ProvisionOwnerPkHashRequest, ProvisionOwnerPkHashResponse,
+    ProvisionVendorPkHashRequest, ProvisionVendorPkHashResponse,
+};
 use caliptra_mcu_core_util_host_transport::transports::spdm_vdm::transport::{
-    SpdmVdmDriver, SpdmVdmTransport,
+    SpdmVdmDriver, SpdmVdmError, SpdmVdmTransport,
 };
 use caliptra_mcu_core_util_host_transport::Transport;
+use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
+use caliptra_util_host_commands::api::attestation::{
+    caliptra_cmd_get_attestation, caliptra_cmd_get_attestation_formats,
+};
 use caliptra_util_host_commands::api::certificate::caliptra_cmd_export_attested_csr;
 use caliptra_util_host_commands::api::debug_unlock::{
     caliptra_cmd_prod_debug_unlock_req, caliptra_cmd_prod_debug_unlock_token,
 };
-use caliptra_util_host_commands::api::fuse::{
-    caliptra_cmd_fe_prog, caliptra_cmd_get_auth_challenge,
+use caliptra_util_host_commands::api::device_ownership_transfer::{
+    caliptra_cmd_dot_disable, caliptra_cmd_dot_lock, caliptra_cmd_dot_override,
+    caliptra_cmd_dot_override_challenge, caliptra_cmd_dot_recovery, caliptra_cmd_dot_rotate,
+    caliptra_cmd_dot_status, caliptra_cmd_dot_unlock, caliptra_cmd_dot_unlock_challenge,
+    caliptra_cmd_get_dot_backup_blob,
 };
+use caliptra_util_host_commands::api::fuse::{
+    caliptra_cmd_fe_prog, caliptra_cmd_fuse_increase_caliptra_min_svn,
+    caliptra_cmd_fuse_lock_partition, caliptra_cmd_fuse_revoke_vendor_pk_hash,
+    caliptra_cmd_fuse_revoke_vendor_pub_key, caliptra_cmd_get_auth_challenge,
+    caliptra_cmd_provision_owner_pk_hash, caliptra_cmd_provision_vendor_pk_hash,
+};
+use caliptra_util_host_commands::api::{CaliptraApiError, CaliptraResult};
 use caliptra_util_host_session::CaliptraSession;
 
 /// High-level SPDM VDM Client for communicating with Caliptra devices.
@@ -62,6 +87,14 @@ use caliptra_util_host_session::CaliptraSession;
 /// `CaliptraSession` dispatch (same pattern as `MailboxClient`).
 pub struct SpdmVdmClient<'a> {
     transport: SpdmVdmTransport<'a>,
+}
+
+pub struct AuthorizedCommandData<'a> {
+    pub sig: &'a HybridSignature,
+    pub nonce: &'a [u8; AUTH_CMD_NONCE_LEN],
+    pub ecc_pub_x: &'a [u8; 48],
+    pub ecc_pub_y: &'a [u8; 48],
+    pub mldsa_pub: &'a [u8; 2592],
 }
 
 impl<'a> SpdmVdmClient<'a> {
@@ -102,6 +135,33 @@ impl<'a> SpdmVdmClient<'a> {
             .map_err(|e| anyhow::anyhow!("ExportAttestedCsr failed: {:?}", e))
     }
 
+    /// Retrieve signed attestation evidence from the device.
+    ///
+    /// # Parameters
+    /// - `format`: Evidence format (OCP EAT or PCR quote)
+    /// - `algorithm`: Signing algorithm (ECC P-384 or ML-DSA-87)
+    /// - `nonce`: 32-byte nonce for freshness, bound into the signed evidence
+    pub fn get_attestation(
+        &mut self,
+        format: EvidenceFormat,
+        algorithm: AsymAlgo,
+        entity: PkiEntitySlot,
+        nonce: &[u8; 32],
+    ) -> Result<GetAttestationResponse> {
+        let mut session = self.create_session()?;
+        caliptra_cmd_get_attestation(&mut session, format, algorithm, entity, nonce)
+            .map_err(|e| anyhow::anyhow!("GetAttestation failed: {:?}", e))
+    }
+
+    /// Query which evidence formats the device supports.
+    ///
+    /// Returns a response whose `supported_formats()` decodes the bitmap.
+    pub fn get_attestation_formats(&mut self) -> Result<GetAttestationResponse> {
+        let mut session = self.create_session()?;
+        caliptra_cmd_get_attestation_formats(&mut session)
+            .map_err(|e| anyhow::anyhow!("GetAttestation format query failed: {:?}", e))
+    }
+
     /// Request a production debug unlock challenge.
     ///
     /// # Parameters
@@ -129,10 +189,11 @@ impl<'a> SpdmVdmClient<'a> {
     }
 
     /// Request an authorization challenge for authorized commands (e.g., FE_PROG).
-    pub fn get_auth_challenge(&mut self) -> Result<GetAuthCmdChallengeResponse> {
-        let mut session = self.create_session()?;
+    pub fn get_auth_challenge(&mut self) -> CaliptraResult<GetAuthCmdChallengeResponse> {
+        let mut session = self
+            .create_session()
+            .map_err(|_| CaliptraApiError::SessionError("Failed to create session"))?;
         caliptra_cmd_get_auth_challenge(&mut session)
-            .map_err(|e| anyhow::anyhow!("GetAuthChallenge failed: {:?}", e))
     }
 
     /// Program field entropy for an OTP partition (authorized command).
@@ -154,7 +215,7 @@ impl<'a> SpdmVdmClient<'a> {
         ecc_pub_x: &[u8; 48],
         ecc_pub_y: &[u8; 48],
         mldsa_pub: &[u8; 2592],
-    ) -> Result<FeProgResponse> {
+    ) -> CaliptraResult<FeProgResponse> {
         use caliptra_mcu_core_util_host_command_types::fuse::FeProgRequest;
         let request = FeProgRequest {
             partition,
@@ -164,9 +225,223 @@ impl<'a> SpdmVdmClient<'a> {
             ecc_pub_y: *ecc_pub_y,
             mldsa_pub: *mldsa_pub,
         };
-        let mut session = self.create_session()?;
+        let mut session = self
+            .create_session()
+            .map_err(|_| CaliptraApiError::SessionError("Failed to create session"))?;
         caliptra_cmd_fe_prog(&mut session, &request)
-            .map_err(|e| anyhow::anyhow!("FeProg failed: {:?}", e))
+    }
+
+    pub fn provision_vendor_pk_hash(
+        &mut self,
+        slot: u32,
+        hash: &[u8; 48],
+        auth: AuthorizedCommandData<'_>,
+    ) -> CaliptraResult<ProvisionVendorPkHashResponse> {
+        let request = ProvisionVendorPkHashRequest {
+            slot,
+            hash: *hash,
+            sig: auth.sig.clone(),
+            nonce: *auth.nonce,
+            ecc_pub_x: *auth.ecc_pub_x,
+            ecc_pub_y: *auth.ecc_pub_y,
+            mldsa_pub: *auth.mldsa_pub,
+        };
+        let mut session = self
+            .create_session()
+            .map_err(|_| CaliptraApiError::SessionError("Failed to create session"))?;
+        caliptra_cmd_provision_vendor_pk_hash(&mut session, &request)
+    }
+
+    pub fn fuse_lock_partition(
+        &mut self,
+        partition: u32,
+        sig: &HybridSignature,
+        nonce: &[u8; AUTH_CMD_NONCE_LEN],
+        ecc_pub_x: &[u8; 48],
+        ecc_pub_y: &[u8; 48],
+        mldsa_pub: &[u8; 2592],
+    ) -> CaliptraResult<FuseLockPartitionResponse> {
+        let request = FuseLockPartitionRequest {
+            partition,
+            sig: sig.clone(),
+            nonce: *nonce,
+            ecc_pub_x: *ecc_pub_x,
+            ecc_pub_y: *ecc_pub_y,
+            mldsa_pub: *mldsa_pub,
+        };
+        let mut session = self
+            .create_session()
+            .map_err(|_| CaliptraApiError::SessionError("Failed to create session"))?;
+        caliptra_cmd_fuse_lock_partition(&mut session, &request)
+    }
+
+    pub fn provision_owner_pk_hash(
+        &mut self,
+        hash: &[u8; 48],
+        sig: &HybridSignature,
+        nonce: &[u8; AUTH_CMD_NONCE_LEN],
+        ecc_pub_x: &[u8; 48],
+        ecc_pub_y: &[u8; 48],
+        mldsa_pub: &[u8; 2592],
+    ) -> CaliptraResult<ProvisionOwnerPkHashResponse> {
+        let request = ProvisionOwnerPkHashRequest {
+            hash: *hash,
+            sig: sig.clone(),
+            nonce: *nonce,
+            ecc_pub_x: *ecc_pub_x,
+            ecc_pub_y: *ecc_pub_y,
+            mldsa_pub: *mldsa_pub,
+        };
+        let mut session = self
+            .create_session()
+            .map_err(|_| CaliptraApiError::SessionError("Failed to create session"))?;
+        caliptra_cmd_provision_owner_pk_hash(&mut session, &request)
+    }
+
+    pub fn fuse_increase_caliptra_min_svn(
+        &mut self,
+        flags: u32,
+        svn: u32,
+        auth: AuthorizedCommandData<'_>,
+    ) -> CaliptraResult<FuseIncreaseCaliptraMinSvnResponse> {
+        let request = FuseIncreaseCaliptraMinSvnRequest {
+            flags,
+            svn,
+            sig: auth.sig.clone(),
+            nonce: *auth.nonce,
+            ecc_pub_x: *auth.ecc_pub_x,
+            ecc_pub_y: *auth.ecc_pub_y,
+            mldsa_pub: *auth.mldsa_pub,
+        };
+        let mut session = self
+            .create_session()
+            .map_err(|_| CaliptraApiError::SessionError("Failed to create session"))?;
+        caliptra_cmd_fuse_increase_caliptra_min_svn(&mut session, &request)
+    }
+
+    pub fn fuse_revoke_vendor_pub_key(
+        &mut self,
+        reserved: u32,
+        vendor_pk_hash_slot: u32,
+        key_type: u32,
+        key_index: u32,
+        auth: AuthorizedCommandData<'_>,
+    ) -> CaliptraResult<FuseRevokeVendorPubKeyResponse> {
+        let request = FuseRevokeVendorPubKeyRequest {
+            reserved,
+            vendor_pk_hash_slot,
+            key_type,
+            key_index,
+            sig: auth.sig.clone(),
+            nonce: *auth.nonce,
+            ecc_pub_x: *auth.ecc_pub_x,
+            ecc_pub_y: *auth.ecc_pub_y,
+            mldsa_pub: *auth.mldsa_pub,
+        };
+        let mut session = self
+            .create_session()
+            .map_err(|_| CaliptraApiError::SessionError("Failed to create session"))?;
+        caliptra_cmd_fuse_revoke_vendor_pub_key(&mut session, &request)
+    }
+
+    pub fn fuse_revoke_vendor_pk_hash(
+        &mut self,
+        reserved: u32,
+        vendor_pk_hash_slot: u32,
+        auth: AuthorizedCommandData<'_>,
+    ) -> CaliptraResult<FuseRevokeVendorPkHashResponse> {
+        let request = FuseRevokeVendorPkHashRequest {
+            reserved,
+            vendor_pk_hash_slot,
+            sig: auth.sig.clone(),
+            nonce: *auth.nonce,
+            ecc_pub_x: *auth.ecc_pub_x,
+            ecc_pub_y: *auth.ecc_pub_y,
+            mldsa_pub: *auth.mldsa_pub,
+        };
+        let mut session = self
+            .create_session()
+            .map_err(|_| CaliptraApiError::SessionError("Failed to create session"))?;
+        caliptra_cmd_fuse_revoke_vendor_pk_hash(&mut session, &request)
+    }
+
+    /// Send an unencoded Caliptra VDM payload for responder-negative validation.
+    pub fn send_raw_vdm(
+        &mut self,
+        request: &[u8],
+        response: &mut [u8],
+    ) -> Result<usize, SpdmVdmError> {
+        self.transport.send_raw_vdm(request, response)
+    }
+
+    /// Lock device ownership using generic command authorization.
+    pub fn dot_lock(&mut self, request: &DotLockRequest) -> Result<DotTransitionResponse> {
+        let mut session = self.create_session()?;
+        caliptra_cmd_dot_lock(&mut session, request)
+            .map_err(|e| anyhow::anyhow!("DOT_LOCK failed: {:?}", e))
+    }
+
+    /// Disable device ownership using generic command authorization.
+    pub fn dot_disable(&mut self, request: &DotDisableRequest) -> Result<DotTransitionResponse> {
+        let mut session = self.create_session()?;
+        caliptra_cmd_dot_disable(&mut session, request)
+            .map_err(|e| anyhow::anyhow!("DOT_DISABLE failed: {:?}", e))
+    }
+
+    /// Request the challenge for a subsequent DOT_UNLOCK command.
+    pub fn dot_unlock_challenge(&mut self) -> Result<DotChallengeResponse> {
+        let mut session = self.create_session()?;
+        caliptra_cmd_dot_unlock_challenge(&mut session)
+            .map_err(|e| anyhow::anyhow!("DOT_UNLOCK_CHALLENGE failed: {:?}", e))
+    }
+
+    /// Unlock device ownership using the LAK public keys and challenge signature.
+    pub fn dot_unlock(&mut self, request: &DotUnlockRequest) -> Result<DotTransitionResponse> {
+        let mut session = self.create_session()?;
+        caliptra_cmd_dot_unlock(&mut session, request)
+            .map_err(|e| anyhow::anyhow!("DOT_UNLOCK failed: {:?}", e))
+    }
+
+    pub fn dot_rotate(&mut self, request: &DotRotateRequest) -> Result<DotTransitionResponse> {
+        let mut session = self.create_session()?;
+        caliptra_cmd_dot_rotate(&mut session, request)
+            .map_err(|e| anyhow::anyhow!("DOT_ROTATE failed: {:?}", e))
+    }
+
+    pub fn get_dot_backup_blob(
+        &mut self,
+        request: &GetDotBackupBlobRequest,
+    ) -> Result<GetDotBackupBlobResponse> {
+        let mut session = self.create_session()?;
+        caliptra_cmd_get_dot_backup_blob(&mut session, request)
+            .map_err(|e| anyhow::anyhow!("GET_DOT_BACKUP_BLOB failed: {:?}", e))
+    }
+
+    pub fn dot_status(&mut self) -> Result<DotStatusResponse> {
+        let mut session = self.create_session()?;
+        caliptra_cmd_dot_status(&mut session)
+            .map_err(|e| anyhow::anyhow!("DOT_STATUS failed: {:?}", e))
+    }
+
+    pub fn dot_recovery(&mut self, request: &DotRecoveryRequest) -> Result<DotTransitionResponse> {
+        let mut session = self.create_session()?;
+        caliptra_cmd_dot_recovery(&mut session, request)
+            .map_err(|e| anyhow::anyhow!("DOT_RECOVERY failed: {:?}", e))
+    }
+
+    pub fn dot_override_challenge(
+        &mut self,
+        request: &DotOverrideChallengeRequest,
+    ) -> Result<DotChallengeResponse> {
+        let mut session = self.create_session()?;
+        caliptra_cmd_dot_override_challenge(&mut session, request)
+            .map_err(|e| anyhow::anyhow!("DOT_OVERRIDE_CHALLENGE failed: {:?}", e))
+    }
+
+    pub fn dot_override(&mut self, request: &DotOverrideRequest) -> Result<DotTransitionResponse> {
+        let mut session = self.create_session()?;
+        caliptra_cmd_dot_override(&mut session, request)
+            .map_err(|e| anyhow::anyhow!("DOT_OVERRIDE failed: {:?}", e))
     }
 
     fn create_session(&mut self) -> Result<CaliptraSession> {

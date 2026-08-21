@@ -9,6 +9,7 @@
 // Re-export types that API consumers might need
 // Note: These imports might appear unused but are used by other modules or re-exports
 
+pub mod attestation;
 pub mod certificate;
 pub mod crypto_aes;
 pub mod crypto_asymmetric;
@@ -19,8 +20,10 @@ pub mod crypto_import;
 pub mod debug_unlock;
 pub mod device_info;
 pub mod device_log;
+pub mod device_ownership_transfer;
 pub mod fuse;
 
+pub use attestation::*;
 pub use caliptra_util_host_session::CommandSession;
 pub use certificate::*;
 pub use crypto_aes::*;
@@ -32,6 +35,7 @@ pub use crypto_import::*;
 pub use debug_unlock::*;
 pub use device_info::*;
 pub use device_log::*;
+pub use device_ownership_transfer::*;
 pub use fuse::*;
 
 /// High-level result type for API functions
@@ -50,6 +54,8 @@ pub enum CaliptraApiError {
     TransportNotAvailable,
     /// Command execution failed
     CommandFailed(&'static str),
+    /// Device returned a protocol completion code.
+    DeviceError(u8),
     /// Session error (generic session layer error)
     SessionError(&'static str),
 }
@@ -80,6 +86,9 @@ impl core::fmt::Display for CaliptraApiError {
             CaliptraApiError::SessionNotInitialized => write!(f, "Session not initialized"),
             CaliptraApiError::TransportNotAvailable => write!(f, "Transport not available"),
             CaliptraApiError::CommandFailed(msg) => write!(f, "Command failed: {}", msg),
+            CaliptraApiError::DeviceError(code) => {
+                write!(f, "Device completion code: {code:#04x}")
+            }
             CaliptraApiError::SessionError(msg) => write!(f, "Session error: {}", msg),
         }
     }

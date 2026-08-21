@@ -61,6 +61,8 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use tests::pldm_request_response_test::PldmRequestResponseTest;
 
+const STREAMING_BOOT_UA_EID: u8 = 11;
+
 // Type aliases for external shim callbacks
 pub type ExternalReadCallback =
     Box<dyn Fn(caliptra_emu_types::RvSize, caliptra_emu_types::RvAddr, &mut u32) -> bool>;
@@ -707,6 +709,13 @@ impl Emulator {
                 None,
             );
         }
+        if test_feature.starts_with("test-mctp-spdm-attestation") {
+            i3c_controller_join_handle = Some(i3c_controller.start());
+            println!(
+                "Starting external MCTP SPDM attestation test transport for target {:?}",
+                i3c.get_dynamic_address().unwrap()
+            );
+        }
         if test_feature == "test-doe-spdm-responder-conformance" {
             if std::env::var("SPDM_VALIDATOR_DIR").is_err() {
                 println!("SPDM_VALIDATOR_DIR environment variable is not set. Skipping test");
@@ -882,6 +891,9 @@ impl Emulator {
                 soc_manifest_max_svn: cli.fuse_soc_manifest_max_svn.map(|v| v as u8),
                 vendor_hashes_prod_partition: fuse_vendor_hashes_prod_partition,
                 vendor_test_partition: fuse_vendor_test_partition,
+                idevid_manufacturer_serial_number: Some(
+                    caliptra_mcu_config_emulator::EMULATOR_UEID_SERIAL_NUMBER,
+                ),
                 lifecycle_state: lifecycle_fuse_data,
                 ..Default::default()
             },
@@ -1052,8 +1064,13 @@ impl Emulator {
             // Start the PLDM Daemon
             i3c_controller_join_handle = Some(i3c_controller.start());
             let pldm_transport = MctpTransport::new(cli.i3c_port.unwrap(), i3c_dynamic_address);
+            let ua_eid = if test_feature == "test-pldm-streaming-boot" {
+                STREAMING_BOOT_UA_EID
+            } else {
+                LOCAL_TEST_ENDPOINT_EID
+            };
             let pldm_socket = pldm_transport
-                .create_socket(EndpointId(LOCAL_TEST_ENDPOINT_EID), EndpointId(0))
+                .create_socket(EndpointId(ua_eid), EndpointId(0))
                 .unwrap();
             if test_feature == "test-pldm-streaming-boot" {
                 // If we are running the PLDM daemon from an integration test,

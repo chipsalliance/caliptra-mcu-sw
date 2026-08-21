@@ -7,6 +7,7 @@ use caliptra_mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
 use caliptra_mcu_config_emulator::flash::{
     PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION,
 };
+use caliptra_mcu_flash_image::MCU_RT_IDENTIFIER;
 use caliptra_mcu_pldm_fw_pkg::{
     manifest::{
         ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
@@ -39,6 +40,10 @@ struct FeatureTestResource {
     flash_image: PathBuf,
     pldm_fw_pkg: tempfile::NamedTempFile,
     update_flash_image: Option<PathBuf>,
+    /// SoC manifest that authorizes the payload shipped in the hitless update
+    /// package. Only set for the hitless attestation features, where the update
+    /// carries a different SoC payload than cold boot.
+    update_soc_manifest_file: Option<tempfile::NamedTempFile>,
     /// Raw bytes of the user-app ELF for this feature build. Carries the
     /// `.defmt` table needed by host-side defmt decoders.
     user_app_elf: Option<Vec<u8>>,
@@ -92,9 +97,13 @@ const FEATURES_REQUIRING_SOC_IMAGES: &[&str] = &[
     "test-mctp-spdm-attestation",
     "test-mctp-spdm-attestation-tcb",
     "test-mctp-spdm-attestation-mixed",
+    "test-mctp-spdm-attestation-hitless",
+    "test-mctp-spdm-attestation-hitless-tcb",
+    "test-mctp-spdm-attestation-hitless-mixed",
     "test-mctp-spdm-attestation-pcr-quote",
     "test-firmware-v2",
     "test-mctp-capsule-loopback",
+    "test-mctp-capsule-loopback-warm-reset",
 ];
 
 /// Features that require flash-based boot (partition table at offset 0)
@@ -154,6 +163,7 @@ pub fn build_emulator_with_feature(feature: &str) -> Result<Option<PathBuf>> {
 /// MCU MBOX SRAM1 offset from MCI base.
 /// Matches caliptra_mcu_mbox_driver::MCU_MBOX1_SRAM_OFFSET (0x80_0000).
 const MCU_MBOX_SRAM1_OFFSET: u64 = 0x80_0000;
+const MCU_SRAM_OFFSET: u64 = 0xc0_0000;
 
 /// Creates default SoC images for tests that require them.
 /// Returns (soc_images_config, soc_images_paths).
@@ -197,11 +207,30 @@ fn create_default_soc_images() -> (Vec<ImageCfg>, Vec<PathBuf>) {
 /// remains the attestation node. The TCB/non-TCB flags exercise both
 /// Measurement API evidence read paths.
 fn create_attestation_soc_images(feature: Option<&str>) -> (Vec<ImageCfg>, Vec<PathBuf>) {
+    create_attestation_soc_images_variant(feature, false)
+}
+
+/// Same as [`create_attestation_soc_images`], but `post_update` selects the
+/// payload shipped in the hitless update package.
+///
+/// The post-update images keep the same `fw_id`/`component_id`/TCB flags and
+/// load addresses, and only differ in content. That makes the SoC component
+/// digests in the post-update evidence differ from the cold-boot ones, so the
+/// two appraisals are distinguishable instead of being byte-identical.
+fn create_attestation_soc_images_variant(
+    feature: Option<&str>,
+    post_update: bool,
+) -> (Vec<ImageCfg>, Vec<PathBuf>) {
     // The default OCP EAT attestation scenario uses only non-TCB SoC
     // components; dedicated features opt in to TCB-only or mixed coverage.
     let specs: &[(u8, u32, bool)] = match feature {
-        Some("test-mctp-spdm-attestation-tcb") => &[(0xde, 0x0003, true)],
-        Some("test-mctp-spdm-attestation-mixed") => &[(0xde, 0x0003, true), (0xad, 0x0004, false)],
+        Some("test-mctp-spdm-attestation-tcb") | Some("test-mctp-spdm-attestation-hitless-tcb") => {
+            &[(0xde, 0x0003, true)]
+        }
+        Some("test-mctp-spdm-attestation-mixed")
+        | Some("test-mctp-spdm-attestation-hitless-mixed") => {
+            &[(0xde, 0x0003, true), (0xad, 0x0004, false)]
+        }
         _ => &[(0xde, 0x0003, false)],
     };
 
@@ -210,9 +239,13 @@ fn create_attestation_soc_images(feature: Option<&str>) -> (Vec<ImageCfg>, Vec<P
     let mut load_addr = MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET;
 
     for (idx, (fill, fw_id, is_tcb)) in specs.iter().enumerate() {
-        let soc_image_fw = vec![*fill; 512];
+        // Invert the fill byte for the update payload so the SHA-384 of the
+        // component changes while its size and placement stay identical.
+        let fill = if post_update { !*fill } else { *fill };
+        let suffix = if post_update { "-update" } else { "" };
+        let soc_image_fw = vec![fill; 512];
         let soc_image_path =
-            std::env::temp_dir().join(format!("attestation-soc-image-{fw_id:08x}.bin"));
+            std::env::temp_dir().join(format!("attestation-soc-image-{fw_id:08x}{suffix}.bin"));
         std::fs::write(&soc_image_path, &soc_image_fw)
             .expect("Failed to write attestation SoC image");
         soc_images.push(ImageCfg {
@@ -230,6 +263,15 @@ fn create_attestation_soc_images(feature: Option<&str>) -> (Vec<ImageCfg>, Vec<P
     }
 
     (soc_images, soc_image_paths)
+}
+
+fn hitless_attestation_update_feature(feature: &str) -> Option<&'static str> {
+    match feature {
+        "test-mctp-spdm-attestation-hitless" => Some("test-mctp-spdm-attestation"),
+        "test-mctp-spdm-attestation-hitless-tcb" => Some("test-mctp-spdm-attestation-tcb"),
+        "test-mctp-spdm-attestation-hitless-mixed" => Some("test-mctp-spdm-attestation-mixed"),
+        _ => None,
+    }
 }
 
 /// Pre-generate the target-dir `generated/` configs so the runtime build can
@@ -586,6 +628,8 @@ pub struct AllBuildArgs<'a> {
     pub separate_runtimes: bool,
     pub soc_images: Option<Vec<ImageCfg>>,
     pub mcu_cfgs: Option<Vec<ImageCfg>>,
+    pub caliptra_firmware_network_filename: Option<&'a str>,
+    pub soc_manifest_network_filename: Option<&'a str>,
     pub pldm_manifest: Option<&'a str>,
     pub vendor: Option<&'a str>,
     pub model: Option<&'a str>,
@@ -602,6 +646,8 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         separate_runtimes,
         soc_images,
         mcu_cfgs,
+        caliptra_firmware_network_filename,
+        soc_manifest_network_filename,
         pldm_manifest,
         vendor,
         model,
@@ -786,7 +832,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         fpga: platform == "fpga",
         mcu_firmware: Some(mcu_runtime.into()),
         soc_images: effective_soc_images.clone(),
-        mcu_image_cfg,
+        mcu_image_cfg: mcu_image_cfg.clone(),
         vendor: vendor.map(|s| s.to_string()),
         model: model.map(|s| s.to_string()),
         ..Default::default()
@@ -816,19 +862,22 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         ..Default::default()
     });
     let caliptra_fw_key2 = builder_key2.get_caliptra_fw()?;
-    let flash_image = create_flash_image(
-        Some(caliptra_fw.clone()),
-        Some(soc_manifest.clone()),
-        Some(mcu_runtime.into()),
-        effective_soc_images
+    let flash_image = create_flash_image(FlashImageBuildArgs {
+        caliptra_fw_path: Some(caliptra_fw.clone()),
+        soc_manifest_path: Some(soc_manifest.clone()),
+        mcu_runtime_path: Some(mcu_runtime.into()),
+        mcu_image_cfg: mcu_image_cfg.clone(),
+        caliptra_firmware_network_filename,
+        soc_manifest_network_filename,
+        soc_images_paths: effective_soc_images
             .clone()
             .unwrap_or_default()
             .iter()
             .map(|img| img.path.clone())
             .collect(),
-        effective_soc_images.clone(),
-        false, // Base flash image is not for flash-based boot
-    )?;
+        soc_images: effective_soc_images.clone(),
+        is_flash_based_boot: false,
+    })?;
     let pldm_manifest_decoded = match pldm_manifest {
         Some(path) => {
             let mut file = std::fs::File::open(path)?;
@@ -993,30 +1042,98 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             // Clone paths for potential second use
             let feature_soc_images_paths_clone = feature_soc_images_paths.clone();
 
-            let feature_flash_image = create_flash_image(
-                Some(caliptra_fw.clone()),
-                Some(feature_soc_manifest_file.path().to_path_buf()),
-                Some(feature_runtime_file.path().to_path_buf()),
-                feature_soc_images_paths,
-                feature_soc_images.clone(),
+            let feature_flash_image = create_flash_image(FlashImageBuildArgs {
+                caliptra_fw_path: Some(caliptra_fw.clone()),
+                soc_manifest_path: Some(feature_soc_manifest_file.path().to_path_buf()),
+                mcu_runtime_path: Some(feature_runtime_file.path().to_path_buf()),
+                mcu_image_cfg: mcu_image_cfg.clone(),
+                caliptra_firmware_network_filename,
+                soc_manifest_network_filename,
+                soc_images_paths: feature_soc_images_paths,
+                soc_images: feature_soc_images.clone(),
                 is_flash_based_boot,
-            )?;
+            })?;
 
             // For firmware update tests, create a separate "update" flash image WITHOUT partition table
             // This is used for the PLDM update package (the downloaded firmware)
             let is_firmware_update_feature = *feature == "test-firmware-update-flash"
                 || *feature == "test-firmware-update-streaming"
                 || *feature == "test-streaming-boot-flash-write-back"
-                || *feature == "test-firmware-activate";
+                || *feature == "test-firmware-activate"
+                || *feature == "test-mctp-spdm-attestation-hitless"
+                || *feature == "test-mctp-spdm-attestation-hitless-tcb"
+                || *feature == "test-mctp-spdm-attestation-hitless-mixed";
+            let mut feature_update_soc_manifest_file: Option<tempfile::NamedTempFile> = None;
             let feature_update_flash_image = if is_firmware_update_feature {
-                Some(create_flash_image(
-                    Some(caliptra_fw.clone()),
-                    Some(feature_soc_manifest_file.path().to_path_buf()),
-                    Some(feature_runtime_file.path().to_path_buf()),
-                    feature_soc_images_paths_clone,
-                    feature_soc_images.clone(),
-                    false, // No partition table for update image
-                )?)
+                if let Some(update_feature) = hitless_attestation_update_feature(feature) {
+                    let update_target_dir =
+                        crate::target_dir().join(format!("target-runtime-update-{}", feature));
+                    let update_runtime_file = tempfile::NamedTempFile::new().unwrap();
+                    let update_runtime_path =
+                        update_runtime_file.path().to_str().unwrap().to_string();
+                    // Ship a different SoC payload in the update package so the
+                    // post-update evidence carries different component digests.
+                    let (update_soc_images, update_soc_images_paths) =
+                        create_attestation_soc_images_variant(Some(feature), true);
+                    pre_generate_attestation_manifest_config_to_target_dir(
+                        &update_target_dir,
+                        effective_vendor,
+                        effective_model,
+                        &update_soc_images,
+                    )?;
+                    crate::runtime_build_with_apps(&CaliptraBuildArgs {
+                        features: Some(update_feature),
+                        output_name: Some(update_runtime_path),
+                        example_app: FEATURES_WITH_EXAMPLE_APP.contains(&update_feature),
+                        platform: Some(platform),
+                        profile,
+                        target_dir: Some(update_target_dir),
+                        no_default_features: true,
+                        ..Default::default()
+                    })?;
+
+                    let mut update_builder = crate::CaliptraBuilder::new(&CaliptraBuildArgs {
+                        fpga: platform == "fpga",
+                        caliptra_rom: Some(caliptra_rom.clone()),
+                        caliptra_firmware: Some(caliptra_fw.clone()),
+                        vendor_pk_hash: Some(vendor_pk_hash.clone()),
+                        mcu_firmware: Some(update_runtime_file.path().to_path_buf()),
+                        soc_images: Some(update_soc_images.clone()),
+                        mcu_image_cfg: mcu_image_cfg.clone(),
+                        vendor: vendor.map(|s| s.to_string()),
+                        model: model.map(|s| s.to_string()),
+                        ..Default::default()
+                    });
+                    let update_soc_manifest_file = tempfile::NamedTempFile::new().unwrap();
+                    update_builder.get_soc_manifest(update_soc_manifest_file.path().to_str())?;
+                    let update_flash = create_flash_image(FlashImageBuildArgs {
+                        caliptra_fw_path: Some(caliptra_fw.clone()),
+                        soc_manifest_path: Some(update_soc_manifest_file.path().to_path_buf()),
+                        mcu_runtime_path: Some(update_runtime_file.path().to_path_buf()),
+                        mcu_image_cfg: mcu_image_cfg.clone(),
+                        caliptra_firmware_network_filename,
+                        soc_manifest_network_filename,
+                        soc_images_paths: update_soc_images_paths,
+                        soc_images: Some(update_soc_images),
+                        is_flash_based_boot: false,
+                    })?;
+                    // Retain the manifest so `corim gen-refval --post-update`
+                    // can derive post-update reference values from it.
+                    feature_update_soc_manifest_file = Some(update_soc_manifest_file);
+                    Some(update_flash)
+                } else {
+                    Some(create_flash_image(FlashImageBuildArgs {
+                        caliptra_fw_path: Some(caliptra_fw.clone()),
+                        soc_manifest_path: Some(feature_soc_manifest_file.path().to_path_buf()),
+                        mcu_runtime_path: Some(feature_runtime_file.path().to_path_buf()),
+                        mcu_image_cfg: mcu_image_cfg.clone(),
+                        caliptra_firmware_network_filename,
+                        soc_manifest_network_filename,
+                        soc_images_paths: feature_soc_images_paths_clone,
+                        soc_images: feature_soc_images.clone(),
+                        is_flash_based_boot: false, // No partition table for update image
+                    })?)
+                }
             } else {
                 None
             };
@@ -1056,6 +1173,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                 flash_image: feature_flash_image,
                 pldm_fw_pkg: feature_pldm_fw_pkg,
                 update_flash_image: feature_update_flash_image,
+                update_soc_manifest_file: feature_update_soc_manifest_file,
                 user_app_elf,
             })
         })
@@ -1157,6 +1275,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         flash_image,
         pldm_fw_pkg,
         update_flash_image,
+        update_soc_manifest_file: update_soc_manifest,
         user_app_elf,
     } in test_runtimes
     {
@@ -1181,6 +1300,21 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             &mut zip,
             options,
         )?;
+
+        if let Some(update_soc_manifest) = update_soc_manifest.as_ref() {
+            let update_soc_manifest_name = format!("mcu-test-soc-manifest-update-{}.bin", feature);
+            println!(
+                "Adding {} -> {}",
+                update_soc_manifest.path().display(),
+                update_soc_manifest_name
+            );
+            add_to_zip(
+                &update_soc_manifest.path().to_path_buf(),
+                &update_soc_manifest_name,
+                &mut zip,
+                options,
+            )?;
+        }
 
         if let Some(elf_bytes) = user_app_elf.as_ref() {
             let elf_name = format!("mcu-test-user-app-elf-{}.bin", feature);
@@ -1263,7 +1397,23 @@ fn get_image_cfg_feature(image_cfg: &[ImageCfg], feature: &str) -> Option<ImageC
             return Some(img.clone());
         }
     }
+    if hitless_attestation_update_feature(feature).is_some() {
+        return Some(default_hitless_attestation_mcu_cfg(feature));
+    }
     None
+}
+
+fn default_hitless_attestation_mcu_cfg(feature: &str) -> ImageCfg {
+    ImageCfg {
+        path: "mcu".into(),
+        load_addr: MCI_BASE_AXI_ADDRESS + MCU_SRAM_OFFSET,
+        staging_addr: MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET + (512 * 1024) as u64,
+        image_id: MCU_RT_IDENTIFIER,
+        component_id: MCU_RT_IDENTIFIER,
+        exec_bit: 2,
+        feature: feature.to_string(),
+        ..Default::default()
+    }
 }
 
 fn add_to_zip(
@@ -1291,14 +1441,31 @@ fn add_bytes_to_zip(
     Ok(())
 }
 
-fn create_flash_image(
+struct FlashImageBuildArgs<'a> {
     caliptra_fw_path: Option<PathBuf>,
     soc_manifest_path: Option<PathBuf>,
     mcu_runtime_path: Option<PathBuf>,
+    mcu_image_cfg: Option<ImageCfg>,
+    caliptra_firmware_network_filename: Option<&'a str>,
+    soc_manifest_network_filename: Option<&'a str>,
     soc_images_paths: Vec<PathBuf>,
     soc_images: Option<Vec<ImageCfg>>,
     is_flash_based_boot: bool,
-) -> Result<PathBuf> {
+}
+
+fn create_flash_image(args: FlashImageBuildArgs<'_>) -> Result<PathBuf> {
+    let FlashImageBuildArgs {
+        caliptra_fw_path,
+        soc_manifest_path,
+        mcu_runtime_path,
+        mcu_image_cfg,
+        caliptra_firmware_network_filename,
+        soc_manifest_network_filename,
+        soc_images_paths,
+        soc_images,
+        is_flash_based_boot,
+    } = args;
+
     let flash_image_path = tempfile::NamedTempFile::new()
         .expect("Failed to create flash image file")
         .path()
@@ -1315,8 +1482,11 @@ fn create_flash_image(
 
     crate::flash_image::flash_image_create(&CaliptraBuildArgs {
         caliptra_firmware: caliptra_fw_path,
+        caliptra_firmware_network_filename: caliptra_firmware_network_filename.map(str::to_string),
         soc_manifest: soc_manifest_path,
+        soc_manifest_network_filename: soc_manifest_network_filename.map(str::to_string),
         mcu_firmware: mcu_runtime_path,
+        mcu_image_cfg,
         soc_image_paths: Some(
             soc_images_paths
                 .iter()

@@ -11,26 +11,54 @@
 //!
 //! ## SRAM layout
 //!
-//! ### Header (72 bytes)
+//! ### Header (104 bytes)
 //!
 //! ```text
 //! offset  0 : magic                     u32 LE  (0xD9E4_C7A1)
 //! offset  4 : version                   u8      (1)
 //! offset  5 : _pad                      u8
-//! offset  6 : header_size               u16 LE  (72)
+//! offset  6 : header_size               u16 LE  (104)
 //! offset  8 : record_size               u16 LE  (DPE_HANDLE_RECORD_SIZE = 32)
 //! offset 10 : record_capacity           u16 LE
 //! offset 12 : record_count              u32 LE
 //! offset 16 : attestation_target_fw_id  u32 LE  (0xFFFF_FFFF = none)
 //! offset 20 : _pad                      [u8; 4]
 //! offset 24 : attestation_policy_digest [u8; 48]
-//! offset 72 : records[0..capacity]      DPE_HANDLE_RECORD_SIZE bytes each
+//! offset 72 : exported_cdi_handle       [u8; 32]
+//! offset 104: records[0..capacity]      DPE_HANDLE_RECORD_SIZE bytes each
 //! ```
 //!
 //! Records at indices 0..(record_count-1) are all valid.  The `flags` byte
 //! within each record (offset 28) is **reserved** — the capsule does not
 //! interpret it for validity.  Record validity is determined solely by
 //! position relative to `record_count`.
+//!
+//! ## Exported CDI Lifecycle
+//!
+//! The `exported_cdi_handle` field (offset 72) is used to retain the handle
+//! of the exported Compound Device Identifier (CDI) derived from DPE.
+//!
+//! ### Creation
+//! - Derived via a DPE `DeriveContext` command with `EXPORT_CDI` flag.
+//! - DPE generates the CDI and returns a 32-byte handle.
+//! - MCU Runtime stores this handle in this capsule.
+//!
+//! ### Usage
+//! - Subsequent signing operations (e.g., OCP LOCK) retrieve this handle and
+//!   pass it to Caliptra via `SignWithExportedEcdsa` to sign data using the CDI.
+//!
+//! ### Destruction, Invalidation & Revocation
+//! - **Cold Boot / Power Cycle**: SRAM is cleared/reinitialized, destroying the stored handle.
+//!   Caliptra internal state is also lost, invalidating the CDI.
+//! - **Caliptra Reset**: If Caliptra undergoes a cold reset, its internal state
+//!   is lost, invalidating the CDI. The stored handle becomes invalid.
+//! - **Revocation**: The handle can be explicitly revoked.
+//!   - On the MCU side: By clearing it from the store (e.g., writing zeros) to prevent further use.
+//!   - On the Caliptra side: By calling the Caliptra `REVOKE_EXPORTED_CDI_HANDLE` mailbox command.
+//!     This is **required** before a new exported CDI can be derived, as Caliptra typically
+//!     supports only one active exported CDI slot and will reject new derivations if one is already active.
+//!
+//!
 //!
 //! ### Record layout (`DPE_HANDLE_RECORD_SIZE` = 32 bytes)
 //!
@@ -55,6 +83,8 @@
 //! | 5   | MARK_ATTESTATION_TARGET | fw_id | —             |
 //! | 6   | READ_ATTESTATION_TARGET | —     | RW 0 (output) |
 //! | 7   | VALIDATE_STORE          | —     | RO 0 (digest) |
+//! | 8   | READ_EXPORTED_CDI       | —     | RW 0 (output) |
+//! | 9   | WRITE_EXPORTED_CDI      | —     | RO 0 (input)  |
 
 use core::cell::RefCell;
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant, UpcallCount};
@@ -67,6 +97,7 @@ use kernel::{ErrorCode, ProcessId};
 pub const DRIVER_NUM: usize = 0x8000_0020;
 pub const DPE_HANDLE_RECORD_SIZE: usize = 32;
 pub const POLICY_DIGEST_SIZE: usize = 48;
+pub const EXPORTED_CDI_SIZE: usize = 32;
 
 const HEADER_MAGIC: u32 = 0xD9E4_C7A1;
 const HEADER_VERSION: u8 = 1;
@@ -80,7 +111,8 @@ const META_RECORD_CAPACITY: usize = 10;
 const META_RECORD_COUNT: usize = 12;
 const META_ATTEST_TARGET: usize = 16;
 const META_POLICY_DIGEST: usize = 24;
-const META_SIZE: usize = 72;
+const META_EXPORTED_CDI: usize = 72;
+const META_SIZE: usize = 104;
 
 const REC_FW_ID: usize = 0;
 
@@ -248,6 +280,9 @@ impl DpeHandleStore {
             .get(0..POLICY_DIGEST_SIZE)
             .ok_or(ErrorCode::SIZE)?
             .copy_to_slice(&mut mem[META_POLICY_DIGEST..META_POLICY_DIGEST + POLICY_DIGEST_SIZE]);
+        for b in mem[META_EXPORTED_CDI..META_EXPORTED_CDI + EXPORTED_CDI_SIZE].iter_mut() {
+            *b = 0;
+        }
         let slots_end = (META_SIZE + capacity * DPE_HANDLE_RECORD_SIZE).min(mem.len());
         for b in mem[META_SIZE..slots_end].iter_mut() {
             *b = 0;
@@ -332,6 +367,30 @@ impl DpeHandleStore {
             .find_record_index(attest_fw_id)
             .ok_or(ErrorCode::FAIL)?;
         self.copy_record_to_slice(index, slice)
+    }
+
+    fn do_read_exported_cdi(&self, slice: &WriteableProcessSlice) -> Result<(), ErrorCode> {
+        if slice.len() < EXPORTED_CDI_SIZE {
+            return Err(ErrorCode::SIZE);
+        }
+        let mem = self.mem.borrow();
+        slice
+            .get(0..EXPORTED_CDI_SIZE)
+            .ok_or(ErrorCode::SIZE)?
+            .copy_from_slice(&mem[META_EXPORTED_CDI..META_EXPORTED_CDI + EXPORTED_CDI_SIZE]);
+        Ok(())
+    }
+
+    fn do_write_exported_cdi(&self, slice: &ReadableProcessSlice) -> Result<(), ErrorCode> {
+        if slice.len() < EXPORTED_CDI_SIZE {
+            return Err(ErrorCode::SIZE);
+        }
+        let mut mem = self.mem.borrow_mut();
+        slice
+            .get(0..EXPORTED_CDI_SIZE)
+            .ok_or(ErrorCode::SIZE)?
+            .copy_to_slice(&mut mem[META_EXPORTED_CDI..META_EXPORTED_CDI + EXPORTED_CDI_SIZE]);
+        Ok(())
     }
 }
 
@@ -452,6 +511,38 @@ impl SyscallDriver for DpeHandleStore {
                 }
             }
 
+            cmd::READ_EXPORTED_CDI => {
+                match self.apps.enter(processid, |_app, kernel_data| {
+                    kernel_data
+                        .get_readwrite_processbuffer(rw_allow::OUTPUT)
+                        .map_err(|_| ErrorCode::INVAL)
+                        .and_then(|buf| {
+                            buf.mut_enter(|slice| self.do_read_exported_cdi(slice))
+                                .map_err(|_| ErrorCode::FAIL)?
+                        })
+                }) {
+                    Ok(Ok(())) => CommandReturn::success(),
+                    Ok(Err(e)) => CommandReturn::failure(e),
+                    Err(_) => CommandReturn::failure(ErrorCode::FAIL),
+                }
+            }
+
+            cmd::WRITE_EXPORTED_CDI => {
+                match self.apps.enter(processid, |_app, kernel_data| {
+                    kernel_data
+                        .get_readonly_processbuffer(ro_allow::INPUT)
+                        .map_err(|_| ErrorCode::INVAL)
+                        .and_then(|buf| {
+                            buf.enter(|slice| self.do_write_exported_cdi(slice))
+                                .map_err(|_| ErrorCode::FAIL)?
+                        })
+                }) {
+                    Ok(Ok(())) => CommandReturn::success(),
+                    Ok(Err(e)) => CommandReturn::failure(e),
+                    Err(_) => CommandReturn::failure(ErrorCode::FAIL),
+                }
+            }
+
             _ => CommandReturn::failure(ErrorCode::NOSUPPORT),
         }
     }
@@ -501,6 +592,8 @@ mod cmd {
     pub const MARK_ATTESTATION_TARGET: u32 = 5;
     pub const READ_ATTESTATION_TARGET: u32 = 6;
     pub const VALIDATE_STORE: u32 = 7;
+    pub const READ_EXPORTED_CDI: u32 = 8;
+    pub const WRITE_EXPORTED_CDI: u32 = 9;
 }
 
 impl DpeHandleStore {

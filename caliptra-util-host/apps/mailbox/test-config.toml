@@ -40,3 +40,35 @@ fips_status = 0x00000001
 # Firmware IDs for validation
 rom_firmware_id = 0
 runtime_firmware_id = 1
+
+[fe_prog]
+enabled = true
+partition = 0
+
+# Run each destructive fuse command against a fresh device. Enabling multiple
+# commands can create order-dependent OTP state and invalidate later tests.
+[provision_vendor_pk_hash]
+enabled = false
+slot = 1
+hash = "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"
+
+[increase_caliptra_min_svn]
+enabled = false
+flags = 0
+svn = 7
+
+[revoke_vendor_pub_key]
+enabled = false
+reserved = 0
+vendor_pk_hash_slot = 1
+key_type = 0
+key_index = 0
+
+[revoke_vendor_pk_hash]
+enabled = false
+reserved = 0
+vendor_pk_hash_slot = 1
+
+[fuse_lock_partition]
+enabled = false
+partition = 14

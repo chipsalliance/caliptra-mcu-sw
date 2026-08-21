@@ -281,12 +281,17 @@ pub fn execute_spdm_tee_io_validator(transport: &'static str) {
 }
 
 pub fn execute_spdm_attestation(transport: &'static str) {
-    let _ = execute_spdm_attestation_with_port(transport, None);
+    let _ = execute_spdm_attestation_with_port(transport, None, None);
 }
 
+/// `nonce` overrides the `SPDM_NONCE` the requester uses for
+/// GET_MEASUREMENTS. Passing a distinct value per SPDM session keeps the
+/// resulting evidence replay-distinguishable; `None` inherits the ambient
+/// environment.
 pub fn execute_spdm_attestation_with_port(
     transport: &'static str,
     port: Option<u16>,
+    nonce: Option<String>,
 ) -> std::thread::JoinHandle<bool> {
     crate::spawn_with_emulator_state(move || {
         println!("Starting spdm_requester_emu process. Waiting for SPDM listener to start...");
@@ -294,7 +299,7 @@ pub fn execute_spdm_attestation_with_port(
             std::thread::sleep(std::time::Duration::from_millis(200));
         }
 
-        match start_spdm_attestation_with_port(transport, port) {
+        match start_spdm_attestation_with_port(transport, port, nonce.clone()) {
             Ok(mut child) => {
                 while crate::is_emulator_running() {
                     match child.try_wait() {
@@ -382,15 +387,21 @@ pub fn start_spdm_responder_validator(transport: &'static str) -> io::Result<Chi
 fn start_spdm_attestation_with_port(
     transport: &'static str,
     port: Option<u16>,
+    nonce: Option<String>,
 ) -> io::Result<Child> {
     spawn_validator_binary(
         "spdm_requester_emu",
         "spdm_requester_emu_output.txt",
-        |cmd| configure_spdm_attestation_command(cmd, transport, port),
+        |cmd| configure_spdm_attestation_command(cmd, transport, port, nonce),
     )
 }
 
-fn configure_spdm_attestation_command(cmd: &mut Command, transport: &str, port: Option<u16>) {
+fn configure_spdm_attestation_command(
+    cmd: &mut Command,
+    transport: &str,
+    port: Option<u16>,
+    nonce: Option<String>,
+) {
     println!(
         "Starting spdm_requester_emu process with transport: {}",
         transport
@@ -404,6 +415,9 @@ fn configure_spdm_attestation_command(cmd: &mut Command, transport: &str, port: 
         .arg("caliptra-evidence.pcap");
     if let Some(port) = port {
         cmd.arg("--port").arg(port.to_string());
+    }
+    if let Some(nonce) = nonce {
+        cmd.env("SPDM_NONCE", nonce);
     }
 }
 
@@ -488,7 +502,7 @@ mod tests {
     #[test]
     fn attestation_requester_excludes_endpoint_info() {
         let mut command = Command::new("spdm_requester_emu");
-        configure_spdm_attestation_command(&mut command, "MCTP", Some(1025));
+        configure_spdm_attestation_command(&mut command, "MCTP", Some(1025), None);
 
         let args = command
             .get_args()

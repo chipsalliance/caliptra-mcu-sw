@@ -33,7 +33,7 @@ use super::measurements::MeasurementProvider;
 /// Owns the underlying byte-oriented PAL transport (held behind an
 /// [`UnsafeCell`] for interior mutability — the SPDM responder is
 /// strictly single-task, so we never observe concurrent access) plus a
-/// single [`BitmapAllocator`](super::alloc::BitmapAllocator) backed by
+/// single [`BitmapAllocator`](caliptra_mcu_scratch_alloc::BitmapAllocator) backed by
 /// a caller-supplied scratch region. The allocator serves both
 /// per-request scratch allocations and any large-message buffer
 /// retained on connection state across exchanges.
@@ -53,6 +53,16 @@ pub struct McuSpdmPal<M: MeasurementProvider> {
 
     /// Measurement data provider (monomorphized).
     pub(crate) meas_provider: M,
+
+    /// Largest single in-flight SPDM message (request or response) this
+    /// responder supports, as declared by the integrator.
+    ///
+    /// This is a contract, not a measurement: it is advertised verbatim as
+    /// `MaxSPDMmsgSize` in `CAPABILITIES` and used for buffered large
+    /// request/response admission checks. The scratch pool backing
+    /// [`Self::allocator`] must be sized to satisfy it; see the platform's
+    /// scratch budget assertion.
+    pub(crate) max_spdm_msg_size: usize,
 }
 
 impl<M: MeasurementProvider> McuSpdmPal<M> {
@@ -67,17 +77,25 @@ impl<M: MeasurementProvider> McuSpdmPal<M> {
     /// * The constructed `McuSpdmPal` must only be driven from a single
     ///   task; calling `recv_request` / `send_response` concurrently is
     ///   undefined behavior (interior mutability is not synchronized).
+    ///
+    /// # Parameters
+    ///
+    /// * `max_spdm_msg_size` — Largest single in-flight SPDM message this
+    ///   responder supports. Advertised as `MaxSPDMmsgSize`, so the caller
+    ///   must have sized the scratch region behind `allocator` to satisfy it.
     pub unsafe fn new(
         transport: Box<dyn SpdmPalTransport>,
         allocator: &'static BitmapAllocator,
         cert_store: &'static SharedCertStore,
         meas_provider: M,
+        max_spdm_msg_size: usize,
     ) -> Self {
         Self {
             transport: UnsafeCell::new(transport),
             allocator,
             cert_store: TaskCertStore::new(cert_store),
             meas_provider,
+            max_spdm_msg_size,
         }
     }
 

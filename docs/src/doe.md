@@ -48,6 +48,19 @@ The DOE capsule implements the system calls for the user space applications to s
 
 During board initialization, a `DoeDriver` instance is created and registered with a unique driver number. This instance manages the handling of DOE Discovery (Data Object Type 0), SPDM (Data Object Type 1), and Secure-SPDM (Data Object Type 2) data objects.
 
+### DOE Discovery handling
+Every well-formed DOE Discovery Request is answered with a DOE Discovery Response; the capsule never silently discards one. The response contents depend on the request:
+
+| Request | Discovery Response |
+| --- | --- |
+| Index 0, 1 or 2 with a supported Discovery Version | Vendor ID `0001h` (PCI-SIG), the matching Data Object Protocol, and the next index (wrapping to `0` after the last protocol) |
+| Index greater than 2 | Vendor ID `FFFFh`, Data Object Protocol `0`, Next Index `0` |
+| Unsupported DOE Discovery Version | Vendor ID `FFFFh`, Data Object Protocol `0`, Next Index `0` |
+
+A Vendor ID of `FFFFh` tells the requester there is no Data Object Protocol at the requested index, which is how discovery enumeration terminates. Responding rather than dropping the request also keeps the DOE transport from stalling a requester that is waiting on `Data Object Ready`.
+
+The DOE Discovery Version occupies bits 15:8 of the request payload. Version `00h` (used when the DOE Extended Capability Version is `01h`, where the field is reserved) and version `02h` (required when the Capability Version is `02h` or greater) are accepted; any other value is rejected with the `FFFFh` response above.
+
 
 ```Rust
 

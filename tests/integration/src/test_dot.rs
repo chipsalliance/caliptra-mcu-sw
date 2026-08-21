@@ -162,6 +162,10 @@ mod test {
     /// Caller MUST hold `TEST_LOCK` before calling this function, since it builds and runs
     /// firmware internally via `start_runtime_hw_model`.
     fn compute_hmac(blob: &[u8]) -> Vec<u8> {
+        compute_hmac_for_derivation(blob, 1)
+    }
+
+    fn compute_hmac_for_derivation(blob: &[u8], derivation_value: u16) -> Vec<u8> {
         let mut hw = start_runtime_hw_model(TestParams {
             feature: Some("test-do-nothing"),
             ..Default::default()
@@ -177,9 +181,7 @@ mod test {
             ..Default::default()
         };
         req.info[..23].copy_from_slice(b"Caliptra DOT stable key");
-        // EVEN state (burned=0) derives with n+1 = 1 per spec
-        req.info[23] = 1;
-        req.info[24] = 0;
+        req.info[23..25].copy_from_slice(&derivation_value.to_le_bytes());
         let req = req.as_mut_bytes();
         let chksum = calc_checksum(CommandId::CM_DERIVE_STABLE_KEY.into(), req);
         req[..4].copy_from_slice(&chksum.to_le_bytes());
@@ -1440,6 +1442,726 @@ mod test {
         (pk_bytes.to_vec(), sk)
     }
 
+    #[test]
+    fn test_runtime_dot_lock_commits_transition() {
+        use crate::runtime::{execute_authorized_req, execute_authorized_req_tampered};
+        use caliptra_mcu_mbox_common::messages::{DotLockPayload, DotLockReq, MailboxReqHeader};
+        use core::mem::size_of;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let cak = [0xA5; 48];
+        let payload = DotLockPayload {
+            cak,
+            lak_hash: [0x5A; 48],
+        };
+
+        let mut otp = create_locked_otp_memory();
+        otp[caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset] = 0;
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            otp_memory: Some(otp),
+            ..Default::default()
+        });
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        let body_offset = size_of::<MailboxReqHeader>() + size_of::<u32>();
+        assert!(execute_authorized_req_tampered(
+            &mut hw,
+            DotLockReq {
+                payload: payload.clone(),
+                ..Default::default()
+            },
+            |request| request[body_offset] ^= 1,
+        )
+        .is_err());
+
+        let response = execute_authorized_req(
+            &mut hw,
+            DotLockReq {
+                payload: payload.clone(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(response.reset_required, 1);
+        assert!(execute_authorized_req(
+            &mut hw,
+            DotLockReq {
+                payload,
+                ..Default::default()
+            },
+        )
+        .is_err());
+
+        let otp = hw.read_otp_memory();
+        assert_eq!(
+            otp[caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset] & 1,
+            1
+        );
+        let dot_blob = hw.read_dot_flash();
+        assert!(dot_blob[..DOT_BLOB_SIZE].iter().any(|byte| *byte != 0));
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_runtime_dot_get_backup_blob() {
+        use crate::runtime::execute_authorized_req;
+        use caliptra_mcu_mbox_common::messages::{DotLockPayload, DotLockReq, GetDotBackupBlobReq};
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let mut otp = create_locked_otp_memory();
+        otp[caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset] = 0;
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            otp_memory: Some(otp),
+            ..Default::default()
+        });
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        execute_authorized_req(
+            &mut hw,
+            DotLockReq {
+                payload: DotLockPayload {
+                    cak: [0xA5; 48],
+                    lak_hash: [0x5A; 48],
+                },
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let dot_blob = hw.read_dot_flash();
+        let backup = execute_authorized_req(&mut hw, GetDotBackupBlobReq::default()).unwrap();
+        assert_eq!(&backup.blob, &dot_blob[..DOT_BLOB_SIZE]);
+
+        let mut corrupted_blob = dot_blob.clone();
+        corrupted_blob[DOT_BLOB_SIZE - 1] ^= 1;
+        hw.write_dot_flash(&corrupted_blob).unwrap();
+        assert!(execute_authorized_req(&mut hw, GetDotBackupBlobReq::default()).is_err());
+
+        corrupted_blob = dot_blob;
+        corrupted_blob[0] ^= 1;
+        hw.write_dot_flash(&corrupted_blob).unwrap();
+        assert!(execute_authorized_req(&mut hw, GetDotBackupBlobReq::default()).is_err());
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_runtime_dot_get_backup_blob_rejects_even_state() {
+        use crate::runtime::execute_authorized_req;
+        use caliptra_mcu_mbox_common::messages::GetDotBackupBlobReq;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            dot_enabled: true,
+            ..Default::default()
+        });
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        assert!(execute_authorized_req(&mut hw, GetDotBackupBlobReq::default()).is_err());
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_runtime_dot_disable_commits_transition() {
+        use crate::runtime::{execute_authorized_req, execute_authorized_req_tampered};
+        use caliptra_mcu_mbox_common::messages::{
+            DotDisablePayload, DotDisableReq, MailboxReqHeader,
+        };
+        use core::mem::size_of;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let payload = DotDisablePayload {
+            lak_hash: [0x5A; 48],
+        };
+        let mut otp = create_locked_otp_memory();
+        otp[caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset] = 0;
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            otp_memory: Some(otp),
+            ..Default::default()
+        });
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        let body_offset = size_of::<MailboxReqHeader>() + size_of::<u32>();
+        assert!(execute_authorized_req_tampered(
+            &mut hw,
+            DotDisableReq {
+                payload: payload.clone(),
+                ..Default::default()
+            },
+            |request| request[body_offset] ^= 1,
+        )
+        .is_err());
+
+        let response = execute_authorized_req(
+            &mut hw,
+            DotDisableReq {
+                payload: payload.clone(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(response.reset_required, 1);
+        assert!(execute_authorized_req(
+            &mut hw,
+            DotDisableReq {
+                payload,
+                ..Default::default()
+            },
+        )
+        .is_err());
+
+        let otp = hw.read_otp_memory();
+        assert_eq!(
+            otp[caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset] & 1,
+            1
+        );
+        let dot_blob = hw.read_dot_flash();
+        let blob = TestDotBlob::read_from_bytes(&dot_blob[..DOT_BLOB_SIZE]).unwrap();
+        assert!(blob.cak.iter().all(|word| *word == 0));
+        assert!(blob.lak_pub.iter().any(|word| *word != 0));
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_runtime_dot_rotate_commits_transition() {
+        use crate::runtime::{execute_authorized_req, execute_authorized_req_tampered};
+        use caliptra_mcu_mbox_common::messages::{
+            DotRotatePayload, DotRotateReq, MailboxReqHeader,
+        };
+        use core::mem::size_of;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let cak = [0xA5; 48];
+        let lak_hash = [0x5A; 48];
+        let payload = DotRotatePayload {
+            min_fuse_count: 2,
+            cak,
+            lak_hash,
+        };
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            dot_enabled: true,
+            ..Default::default()
+        });
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        assert!(execute_authorized_req(
+            &mut hw,
+            DotRotateReq {
+                payload: DotRotatePayload {
+                    min_fuse_count: 0,
+                    cak: [0; 48],
+                    lak_hash,
+                },
+                ..Default::default()
+            },
+        )
+        .is_err());
+        assert!(execute_authorized_req(
+            &mut hw,
+            DotRotateReq {
+                payload: DotRotatePayload {
+                    min_fuse_count: 2,
+                    cak,
+                    lak_hash: [0; 48],
+                },
+                ..Default::default()
+            },
+        )
+        .is_err());
+        let otp = hw.read_otp_memory();
+        assert_eq!(
+            otp[caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset].count_ones(),
+            0
+        );
+        assert!(hw.read_dot_flash()[..DOT_BLOB_SIZE]
+            .iter()
+            .all(|byte| *byte == 0));
+
+        let body_offset = size_of::<MailboxReqHeader>() + size_of::<u32>();
+        assert!(execute_authorized_req_tampered(
+            &mut hw,
+            DotRotateReq {
+                payload: payload.clone(),
+                ..Default::default()
+            },
+            |request| request[body_offset] ^= 1,
+        )
+        .is_err());
+
+        let response = execute_authorized_req(
+            &mut hw,
+            DotRotateReq {
+                payload: payload.clone(),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(response.reset_required, 1);
+
+        let otp = hw.read_otp_memory();
+        assert_eq!(
+            otp[caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset].count_ones(),
+            2
+        );
+        let dot_blob = hw.read_dot_flash();
+        let blob = TestDotBlob::read_from_bytes(&dot_blob[..DOT_BLOB_SIZE]).unwrap();
+        let mut expected_cak = [0u32; 12];
+        let mut expected_lak = [0u32; 12];
+        for (word, bytes) in expected_cak.iter_mut().zip(cak.chunks_exact(4)) {
+            *word = u32::from_le_bytes(bytes.try_into().unwrap());
+        }
+        for (word, bytes) in expected_lak.iter_mut().zip(lak_hash.chunks_exact(4)) {
+            *word = u32::from_le_bytes(bytes.try_into().unwrap());
+        }
+        assert_eq!(blob.cak, expected_cak);
+        assert_eq!(blob.lak_pub, expected_lak);
+        let rotated_blob_fields = blob.data_for_hmac();
+        let rotated_blob_hmac = blob.hmac.as_bytes().to_vec();
+
+        execute_authorized_req(
+            &mut hw,
+            DotRotateReq {
+                payload,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let otp = hw.read_otp_memory();
+        assert_eq!(
+            otp[caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset].count_ones(),
+            2
+        );
+        drop(hw);
+
+        let expected_hmac = compute_hmac_for_derivation(&rotated_blob_fields, 3);
+        assert_eq!(
+            rotated_blob_hmac, expected_hmac,
+            "EVEN-state ROTATE blob must use the post-rotation n+1 effective key"
+        );
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_runtime_dot_status() {
+        use crate::runtime::execute_authorized_req;
+        use caliptra_mcu_mbox_common::messages::{DotLockPayload, DotLockReq, DotStatusReq};
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            dot_enabled: true,
+            ..Default::default()
+        });
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        let status = hw.mailbox_execute_req(DotStatusReq::default()).unwrap();
+        assert_eq!(status.status.enabled, 1);
+        assert_eq!(status.status.locked, 0);
+        assert_eq!(status.status.burned, 0);
+
+        execute_authorized_req(
+            &mut hw,
+            DotLockReq {
+                payload: DotLockPayload {
+                    cak: [0xA5; 48],
+                    lak_hash: [0x5A; 48],
+                },
+                ..Default::default()
+            },
+        )
+        .unwrap();
+
+        let status = hw.mailbox_execute_req(DotStatusReq::default()).unwrap();
+        assert_eq!(status.status.enabled, 1);
+        assert_eq!(status.status.locked, 1);
+        assert_eq!(status.status.burned, 1);
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_runtime_dot_recovery() {
+        use caliptra_mcu_mbox_common::messages::DotRecoveryReq;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let backup = create_valid_dot_blob(get_owner_pk_hash(), test_lak()).to_flash_contents();
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            otp_memory: Some(create_locked_otp_memory()),
+            dot_flash_initial_contents: Some(backup.clone()),
+            ..Default::default()
+        });
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        let mut corrupted = backup.clone();
+        corrupted[DOT_BLOB_SIZE - 1] ^= 1;
+        hw.write_dot_flash(&corrupted).unwrap();
+
+        let response = hw
+            .mailbox_execute_req(DotRecoveryReq {
+                blob: backup[..DOT_BLOB_SIZE].try_into().unwrap(),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(response.reset_required, 1);
+        assert_eq!(
+            &hw.read_dot_flash()[..DOT_BLOB_SIZE],
+            &backup[..DOT_BLOB_SIZE]
+        );
+
+        let mut invalid_backup: [u8; DOT_BLOB_SIZE] = backup[..DOT_BLOB_SIZE].try_into().unwrap();
+        invalid_backup[DOT_BLOB_SIZE - 1] ^= 1;
+        assert!(hw
+            .mailbox_execute_req(DotRecoveryReq {
+                blob: invalid_backup,
+                ..Default::default()
+            })
+            .is_err());
+        assert_eq!(
+            &hw.read_dot_flash()[..DOT_BLOB_SIZE],
+            &backup[..DOT_BLOB_SIZE]
+        );
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_runtime_dot_override_challenge() {
+        use caliptra_mcu_mbox_common::messages::{
+            DotOverrideChallengePayload, DotOverrideChallengeReq,
+        };
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let (recovery_ecc_pub_x, recovery_ecc_pub_y, _) = generate_random_ecc_keys();
+        let (recovery_mldsa_pub, _) = generate_random_mldsa_keys();
+        let recovery_hash = compute_recovery_pk_hash(
+            &recovery_ecc_pub_x,
+            &recovery_ecc_pub_y,
+            &recovery_mldsa_pub,
+        );
+        let blob = create_valid_dot_blob(get_owner_pk_hash(), test_lak()).to_flash_contents();
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            otp_memory: Some(create_challenge_recovery_otp_memory(&recovery_hash)),
+            dot_flash_initial_contents: Some(blob),
+            ..Default::default()
+        });
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        let mut wrong_x = recovery_ecc_pub_x;
+        wrong_x[0] ^= 1;
+        assert!(hw
+            .mailbox_execute_req(DotOverrideChallengeReq {
+                payload: DotOverrideChallengePayload {
+                    recovery_ecc_pub_x: wrong_x,
+                    recovery_ecc_pub_y,
+                    recovery_mldsa_pub: recovery_mldsa_pub.clone().try_into().unwrap(),
+                },
+                ..Default::default()
+            })
+            .is_err());
+
+        let response = hw
+            .mailbox_execute_req(DotOverrideChallengeReq {
+                payload: DotOverrideChallengePayload {
+                    recovery_ecc_pub_x,
+                    recovery_ecc_pub_y,
+                    recovery_mldsa_pub: recovery_mldsa_pub.try_into().unwrap(),
+                },
+                ..Default::default()
+            })
+            .unwrap();
+        assert!(response.challenge.iter().any(|byte| *byte != 0));
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_runtime_dot_override() {
+        use caliptra_mcu_mbox_common::messages::{
+            DotOverrideChallengePayload, DotOverrideChallengeReq, DotOverridePayload,
+            DotOverrideReq, HybridSignature,
+        };
+        use ecdsa::signature::hazmat::PrehashSigner;
+        use fips204::traits::Signer;
+        use p384::ecdsa::SigningKey;
+        use sha2::{Digest, Sha384};
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let (recovery_ecc_pub_x, recovery_ecc_pub_y, recovery_ecc_private) =
+            generate_random_ecc_keys();
+        let (recovery_mldsa_pub, recovery_mldsa_private) = generate_random_mldsa_keys();
+        let recovery_hash = compute_recovery_pk_hash(
+            &recovery_ecc_pub_x,
+            &recovery_ecc_pub_y,
+            &recovery_mldsa_pub,
+        );
+        let blob = create_valid_dot_blob(get_owner_pk_hash(), test_lak()).to_flash_contents();
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            otp_memory: Some(create_challenge_recovery_otp_memory(&recovery_hash)),
+            dot_flash_initial_contents: Some(blob),
+            ..Default::default()
+        });
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        let challenge = hw
+            .mailbox_execute_req(DotOverrideChallengeReq {
+                payload: DotOverrideChallengePayload {
+                    recovery_ecc_pub_x,
+                    recovery_ecc_pub_y,
+                    recovery_mldsa_pub: recovery_mldsa_pub.clone().try_into().unwrap(),
+                },
+                ..Default::default()
+            })
+            .unwrap()
+            .challenge;
+
+        let signing_key = SigningKey::from_bytes((&recovery_ecc_private).into()).unwrap();
+        let digest = Sha384::digest(challenge);
+        let ecc_signature: p384::ecdsa::Signature = signing_key.sign_prehash(&digest).unwrap();
+        let mldsa_signature = recovery_mldsa_private
+            .try_sign_with_seed(&[0u8; 32], &challenge, &[])
+            .unwrap();
+        let mut signature = HybridSignature {
+            ecc_sig_r: ecc_signature.r().to_bytes().into(),
+            ecc_sig_s: ecc_signature.s().to_bytes().into(),
+            ..Default::default()
+        };
+        signature.mldsa_sig[..mldsa_signature.len()].copy_from_slice(&mldsa_signature);
+        let payload = DotOverridePayload {
+            recovery_ecc_pub_x,
+            recovery_ecc_pub_y,
+            recovery_mldsa_pub: recovery_mldsa_pub.try_into().unwrap(),
+            signature,
+        };
+
+        let mut bad_payload = payload.clone();
+        bad_payload.signature.ecc_sig_r[0] ^= 1;
+        assert!(hw
+            .mailbox_execute_req(DotOverrideReq {
+                payload: bad_payload,
+                ..Default::default()
+            })
+            .is_err());
+
+        let response = hw
+            .mailbox_execute_req(DotOverrideReq {
+                payload: payload.clone(),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(response.reset_required, 1);
+        assert!(hw
+            .mailbox_execute_req(DotOverrideReq {
+                payload,
+                ..Default::default()
+            })
+            .is_err());
+
+        let otp = hw.read_otp_memory();
+        assert_eq!(
+            otp[caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset].count_ones(),
+            2
+        );
+        let dot_blob = hw.read_dot_flash();
+        let blob = TestDotBlob::read_from_bytes(&dot_blob[..DOT_BLOB_SIZE]).unwrap();
+        assert!(blob.cak.iter().all(|word| *word == 0));
+        assert!(blob.lak_pub.iter().all(|word| *word == 0));
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_runtime_dot_unlock_challenge() {
+        use caliptra_mcu_mbox_common::messages::DotUnlockChallengeReq;
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let blob = create_valid_dot_blob(get_owner_pk_hash(), test_lak());
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            otp_memory: Some(create_locked_otp_memory()),
+            dot_flash_initial_contents: Some(blob.to_flash_contents()),
+            ..Default::default()
+        });
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        let first = hw
+            .mailbox_execute_req(DotUnlockChallengeReq::default())
+            .unwrap();
+        assert!(first.challenge.iter().any(|byte| *byte != 0));
+        assert!(hw
+            .mailbox_execute_req(DotUnlockChallengeReq::default())
+            .is_err());
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_runtime_dot_unlock() {
+        use caliptra_mcu_mbox_common::messages::{
+            CommandId as McuCommandId, DotUnlockChallengeReq, DotUnlockPayload, DotUnlockReq,
+            HybridSignature,
+        };
+        use ecdsa::signature::hazmat::PrehashSigner;
+        use fips204::traits::Signer;
+        use p384::ecdsa::SigningKey;
+        use sha2::{Digest, Sha384};
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let (ecc_pub_x, ecc_pub_y, ecc_private) = generate_random_ecc_keys();
+        let (mldsa_public, mldsa_private) = generate_random_mldsa_keys();
+        let lak_hash = compute_recovery_pk_hash(&ecc_pub_x, &ecc_pub_y, &mldsa_public);
+        let mut lak_words = [0u32; 12];
+        for (word, bytes) in lak_words.iter_mut().zip(lak_hash.chunks_exact(4)) {
+            *word = u32::from_le_bytes(bytes.try_into().unwrap());
+        }
+        let blob = create_valid_dot_blob(get_owner_pk_hash(), lak_words);
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            otp_memory: Some(create_locked_otp_memory()),
+            dot_flash_initial_contents: Some(blob.to_flash_contents()),
+            ..Default::default()
+        });
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        let challenge = hw
+            .mailbox_execute_req(DotUnlockChallengeReq::default())
+            .unwrap()
+            .challenge;
+        let mut transcript = [0u8; 52];
+        transcript[..4].copy_from_slice(&McuCommandId::MC_DOT_UNLOCK.0.to_be_bytes());
+        transcript[4..].copy_from_slice(&challenge);
+
+        let signing_key = SigningKey::from_bytes((&ecc_private).into()).unwrap();
+        let digest = Sha384::digest(transcript);
+        let ecc_signature: p384::ecdsa::Signature = signing_key.sign_prehash(&digest).unwrap();
+        let mldsa_signature = mldsa_private
+            .try_sign_with_seed(&[0u8; 32], &transcript, &[])
+            .unwrap();
+        let mut hybrid_signature = HybridSignature {
+            ecc_sig_r: ecc_signature.r().to_bytes().into(),
+            ecc_sig_s: ecc_signature.s().to_bytes().into(),
+            ..Default::default()
+        };
+        hybrid_signature.mldsa_sig[..mldsa_signature.len()].copy_from_slice(&mldsa_signature);
+        let payload = DotUnlockPayload {
+            lak_ecc_pub_x: ecc_pub_x,
+            lak_ecc_pub_y: ecc_pub_y,
+            lak_mldsa_pub: mldsa_public.try_into().unwrap(),
+            signature: hybrid_signature,
+        };
+
+        let mut bad_payload = payload.clone();
+        bad_payload.signature.ecc_sig_r[0] ^= 1;
+        assert!(hw
+            .mailbox_execute_req(DotUnlockReq {
+                payload: bad_payload,
+                ..Default::default()
+            })
+            .is_err());
+        let response = hw
+            .mailbox_execute_req(DotUnlockReq {
+                payload: payload.clone(),
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(response.reset_required, 1);
+        assert!(hw
+            .mailbox_execute_req(DotUnlockReq {
+                payload,
+                ..Default::default()
+            })
+            .is_err());
+
+        let otp = hw.read_otp_memory();
+        assert_eq!(
+            otp[caliptra_mcu_registers_generated::fuses::DOT_FUSE_ARRAY.byte_offset].count_ones(),
+            2
+        );
+        let dot_blob = hw.read_dot_flash();
+        let blob = TestDotBlob::read_from_bytes(&dot_blob[..DOT_BLOB_SIZE]).unwrap();
+        assert!(blob.cak.iter().all(|word| *word == 0));
+        assert_eq!(blob.lak_pub, lak_words);
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
     /// Computes SHA-384 of the combined vendor public keys using the
     /// caliptra-sw owner-PK-hash convention: the ECC public key is
     /// per-dword byte-reversed before hashing, the MLDSA public key is
@@ -2134,6 +2856,9 @@ mod test {
             "Expected 1 fuse burned by manifest LOCK, found {}",
             burned
         );
+        let dot_flash = hw.read_dot_flash();
+        let blob = TestDotBlob::read_from_bytes(&dot_flash[..DOT_BLOB_SIZE]).unwrap();
+        assert_eq!(blob.reserved[0] & 1, 0);
 
         println!("[TEST] Firmware manifest LOCK command successfully burned lock fuse");
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);

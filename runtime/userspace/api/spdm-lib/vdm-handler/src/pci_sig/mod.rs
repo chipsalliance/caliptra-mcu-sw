@@ -162,7 +162,7 @@ mod tests {
 
     struct TestAlloc;
 
-    impl mcu_caliptra_api_lite::ApiAlloc for TestAlloc {
+    impl mcu_caliptra_api::ApiAlloc for TestAlloc {
         type Buf<'a>
             = Vec<u8>
         where
@@ -170,6 +170,14 @@ mod tests {
 
         fn alloc(&self, len: usize) -> McuResult<Self::Buf<'_>> {
             Ok(vec![0; len])
+        }
+    }
+
+    impl mcu_caliptra_api::ApiAllocPool for TestAlloc {
+        type Pool = Self;
+
+        fn pool(&self) -> &Self::Pool {
+            self
         }
     }
 

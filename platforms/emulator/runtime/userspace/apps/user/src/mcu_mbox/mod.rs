@@ -10,7 +10,7 @@ use caliptra_mcu_libtock_platform::ErrorCode;
 #[cfg(feature = "mcu-mbox-service")]
 use caliptra_mcu_mbox_lib::cmd_interface::McuMboxScratch;
 #[cfg(feature = "mcu-mbox-service")]
-use caliptra_mcu_spdm_pal::{
+use caliptra_mcu_scratch_alloc::{
     BitmapAllocator, BitmapBytes, StaticBitmapAllocatorCell, BITMAP_SLOT_SIZE,
 };
 #[allow(unused_imports)]
@@ -34,7 +34,7 @@ const MCU_MBOX_SCRATCH_SIZE: usize = 16 * 1024;
 struct McuMboxScratchAlloc(&'static BitmapAllocator);
 
 #[cfg(feature = "mcu-mbox-service")]
-impl mcu_caliptra_api_lite::ApiAlloc for McuMboxScratchAlloc {
+impl mcu_caliptra_api::ApiAlloc for McuMboxScratchAlloc {
     type Buf<'a>
         = BitmapBytes<'a>
     where
@@ -42,6 +42,15 @@ impl mcu_caliptra_api_lite::ApiAlloc for McuMboxScratchAlloc {
 
     fn alloc(&self, len: usize) -> mcu_error::McuResult<Self::Buf<'_>> {
         self.0.alloc_bytes(len)
+    }
+}
+
+#[cfg(feature = "mcu-mbox-service")]
+impl mcu_caliptra_api::ApiAllocPool for McuMboxScratchAlloc {
+    type Pool = BitmapAllocator;
+
+    fn pool(&self) -> &Self::Pool {
+        self.0
     }
 }
 

@@ -3,16 +3,24 @@
 pub(crate) mod debug_log;
 pub(crate) mod device_ops;
 
+use caliptra_mcu_attestation_evidence::SIGNED_OCP_EAT_MAX_SIZE;
 use caliptra_mcu_common_commands::{
-    CaliptraCmdHandler, CaliptraCmdResult, CaliptraCompletionCode, DebugUnlockChallenge,
-    DeviceCapabilities, FirmwareVersion, GetLogResult, LogType,
+    AsymAlgo, CaliptraCmdHandler, CaliptraCmdResult, CaliptraCompletionCode, DebugUnlockChallenge,
+    DeviceCapabilities, EvidenceFormat, FirmwareVersion, GetLogResult, PkiEntitySlot,
+    ATTESTATION_NONCE_LEN,
 };
 use caliptra_mcu_config::capabilities::{
     encode_capabilities, AuthorizedSubcommandCapabilities, ExternalCommandCapabilities,
     McuRuntimeCapabilities,
 };
 use caliptra_mcu_config::version::get_mcu_runtime_version;
-use mcu_caliptra_api_lite::{core_capabilities, core_firmware_version, ApiAlloc};
+use caliptra_mcu_mbox_common::messages::{
+    DotDisablePayload, DotLockPayload, DotOverrideChallengePayload, DotOverridePayload,
+    DotRotatePayload, DotStatus, DotUnlockPayload, AUTH_CMD_NONCE_LEN, DOT_BLOB_SIZE,
+};
+use mcu_caliptra_api::{core_capabilities, core_firmware_version, ApiAlloc};
+#[cfg(feature = "pcr-quote")]
+use mcu_caliptra_api::{PCR_QUOTE_ECC384_BUF_LEN, PCR_QUOTE_MLDSA87_BUF_LEN};
 
 pub struct CaliptraCmdBackend;
 
@@ -59,16 +67,102 @@ fn external_command_capabilities() -> ExternalCommandCapabilities {
             | ExternalCommandCapabilities::EXPORT_ATTESTED_CSR
             | ExternalCommandCapabilities::AUTHORIZED_COMMAND;
     }
+    // GET_ATTESTATION is transport-agnostic: it is reachable over the SPDM VDM
+    // transport and the MCU mailbox, so advertise it whenever either responder
+    // is built and this build can produce at least one evidence format.
+    if (cfg!(feature = "spdm") || cfg!(feature = "mcu-mbox-service"))
+        && SUPPORTED_EVIDENCE_FORMATS != 0
+    {
+        capabilities |= ExternalCommandCapabilities::GET_ATTESTATION;
+    }
+    if cfg!(feature = "dot-spdm-vdm") {
+        capabilities |= ExternalCommandCapabilities::DEVICE_OWNERSHIP_TRANSFER;
+    }
     capabilities
 }
 
-fn authorized_subcommand_capabilities() -> AuthorizedSubcommandCapabilities {
-    if cfg!(feature = "spdm") {
-        AuthorizedSubcommandCapabilities::GET_AUTH_CHALLENGE
-            | AuthorizedSubcommandCapabilities::PROGRAM_FIELD_ENTROPY
-    } else {
-        AuthorizedSubcommandCapabilities::empty()
+/// Upper bound, in bytes, on evidence for one `(format, algorithm)` pair; `0`
+/// when this build cannot produce it.
+///
+/// Every bound comes from the generator that would actually run, so the
+/// transports' buffer reservations follow automatically when a generator is
+/// enabled, disabled, or resized. Nothing here is an independently declared
+/// number.
+const fn evidence_len(format: EvidenceFormat, algorithm: AsymAlgo) -> usize {
+    match (format, algorithm) {
+        // The EAT signer emits only ES384 today, so there is no ML-DSA EAT
+        // length to report yet.
+        (EvidenceFormat::OcpEat, AsymAlgo::EccP384) => SIGNED_OCP_EAT_MAX_SIZE,
+        #[cfg(feature = "pcr-quote")]
+        (EvidenceFormat::PcrQuote, AsymAlgo::EccP384) => PCR_QUOTE_ECC384_BUF_LEN,
+        #[cfg(feature = "pcr-quote")]
+        (EvidenceFormat::PcrQuote, AsymAlgo::Mldsa87) => PCR_QUOTE_MLDSA87_BUF_LEN,
+        _ => 0,
     }
+}
+
+/// Every `(format, algorithm)` pair `GET_ATTESTATION` can name, in bitmap and
+/// worst-case-size order. Keeping one list means the bitmap, the worst-case
+/// bound, and the per-pair lookup cannot drift apart.
+const EVIDENCE_PAIRS: [(EvidenceFormat, AsymAlgo); 4] = [
+    (EvidenceFormat::OcpEat, AsymAlgo::EccP384),
+    (EvidenceFormat::OcpEat, AsymAlgo::Mldsa87),
+    (EvidenceFormat::PcrQuote, AsymAlgo::EccP384),
+    (EvidenceFormat::PcrQuote, AsymAlgo::Mldsa87),
+];
+
+/// Bitmap of formats this build can produce, returned for a format-discovery
+/// query. A format is advertised when at least one algorithm works for it.
+const SUPPORTED_EVIDENCE_FORMATS: u32 = {
+    let mut bits = 0u32;
+    let mut i = 0;
+    while i < EVIDENCE_PAIRS.len() {
+        let (format, algorithm) = EVIDENCE_PAIRS[i];
+        if evidence_len(format, algorithm) != 0 {
+            bits |= format.bit();
+        }
+        i += 1;
+    }
+    bits
+};
+
+/// Worst case across every enabled generator. Transports use this to size
+/// static contracts (the VDM large-response capacity and the mailbox response
+/// allocation); the per-request path still uses the per-pair value so a small
+/// format never reserves the large one's buffer.
+const MAX_ATTESTATION_EVIDENCE_LEN: usize = {
+    let mut max = 0;
+    let mut i = 0;
+    while i < EVIDENCE_PAIRS.len() {
+        let (format, algorithm) = EVIDENCE_PAIRS[i];
+        let len = evidence_len(format, algorithm);
+        if len > max {
+            max = len;
+        }
+        i += 1;
+    }
+    max
+};
+
+fn authorized_subcommand_capabilities() -> AuthorizedSubcommandCapabilities {
+    let mut capabilities = AuthorizedSubcommandCapabilities::empty();
+    if cfg!(feature = "spdm") {
+        capabilities |= AuthorizedSubcommandCapabilities::GET_AUTH_CHALLENGE
+            | AuthorizedSubcommandCapabilities::PROVISION_VENDOR_PK_HASH
+            | AuthorizedSubcommandCapabilities::FUSE_INCREASE_CALIPTRA_MIN_SVN
+            | AuthorizedSubcommandCapabilities::PROGRAM_FIELD_ENTROPY
+            | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PUBLIC_KEY
+            | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PK_HASH
+            | AuthorizedSubcommandCapabilities::FUSE_LOCK_PARTITION
+            | AuthorizedSubcommandCapabilities::PROVISION_OWNER_PK_HASH;
+    }
+    if cfg!(feature = "dot-spdm-vdm") {
+        capabilities |= AuthorizedSubcommandCapabilities::DOT_LOCK
+            | AuthorizedSubcommandCapabilities::DOT_DISABLE
+            | AuthorizedSubcommandCapabilities::DOT_ROTATE
+            | AuthorizedSubcommandCapabilities::GET_DOT_BACKUP_BLOB;
+    }
+    capabilities
 }
 
 fn write_firmware_version(
@@ -178,28 +272,72 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         device_ops::export_idevid_csr(algorithm, csr_buf).await
     }
 
+    const SUPPORTED_EVIDENCE_FORMATS: u32 = SUPPORTED_EVIDENCE_FORMATS;
+    const MAX_ATTESTATION_EVIDENCE_LEN: usize = MAX_ATTESTATION_EVIDENCE_LEN;
+
+    fn attestation_evidence_len(format: EvidenceFormat, algorithm: AsymAlgo) -> usize {
+        evidence_len(format, algorithm)
+    }
+
+    async fn get_attestation<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        format: EvidenceFormat,
+        algorithm: AsymAlgo,
+        entity: PkiEntitySlot,
+        nonce: &[u8; ATTESTATION_NONCE_LEN],
+        out: &mut [u8],
+    ) -> CaliptraCmdResult<usize> {
+        device_ops::get_attestation(alloc, format, algorithm, entity, nonce, out).await
+    }
+
     /// Drain entries of `log_type` from the backing store.
     ///
-    /// `LogType::Debug` is backed by the Tock logging-flash capsule via
+    /// The debug log is backed by the Tock logging-flash capsule via
     /// [`LoggingSyscall`](caliptra_mcu_libsyscall_caliptra::logging::LoggingSyscall);
     /// the kernel cursor is advanced as entries are consumed and any entry
     /// that does not fit is held over for the next call.
-    ///
-    /// `LogType::Attestation` returns `UnsupportedOperation` until the
-    /// Caliptra-mailbox-backed implementation lands.
     async fn get_log(&self, log_type: u32, data: &mut [u8]) -> CaliptraCmdResult<GetLogResult> {
-        match LogType::try_from(log_type)? {
-            LogType::Debug => debug_log::drain(data).await,
-            LogType::Attestation => Err(CaliptraCompletionCode::UnsupportedOperation),
-        }
+        device_ops::get_debug_log(log_type, data).await
     }
 
     /// Erase the log of `log_type` and reset the read cursor.
     async fn clear_log(&self, log_type: u32) -> CaliptraCmdResult<()> {
-        match LogType::try_from(log_type)? {
-            LogType::Debug => debug_log::clear().await,
-            LogType::Attestation => Err(CaliptraCompletionCode::UnsupportedOperation),
-        }
+        device_ops::clear_debug_log(log_type).await
+    }
+
+    async fn provision_vendor_pk_hash(&self, slot: u32, hash: &[u8; 48]) -> CaliptraCmdResult<()> {
+        device_ops::provision_vendor_pk_hash(slot, hash)
+    }
+
+    async fn provision_owner_pk_hash(&self, hash: &[u8; 48]) -> CaliptraCmdResult<()> {
+        device_ops::provision_owner_pk_hash(hash)
+    }
+
+    async fn fuse_lock_partition(&self, partition: u32) -> CaliptraCmdResult<()> {
+        device_ops::fuse_lock_partition(partition)
+    }
+
+    async fn increase_caliptra_min_svn<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        svn: u32,
+    ) -> CaliptraCmdResult<()> {
+        device_ops::increase_caliptra_min_svn(alloc, svn).await
+    }
+
+    async fn revoke_vendor_pub_key<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        vendor_pk_hash_slot: u32,
+        key_type: u32,
+        key_index: u32,
+    ) -> CaliptraCmdResult<()> {
+        device_ops::revoke_vendor_pub_key(alloc, vendor_pk_hash_slot, key_type, key_index).await
+    }
+
+    async fn revoke_vendor_pk_hash(&self, vendor_pk_hash_slot: u32) -> CaliptraCmdResult<()> {
+        device_ops::revoke_vendor_pk_hash(vendor_pk_hash_slot)
     }
 
     async fn program_field_entropy<Alloc: ApiAlloc>(
@@ -208,6 +346,82 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         partition: u32,
     ) -> CaliptraCmdResult<()> {
         device_ops::program_field_entropy(alloc, partition).await
+    }
+
+    async fn dot_lock<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        request: &DotLockPayload,
+    ) -> CaliptraCmdResult<()> {
+        device_ops::dot_lock(alloc, request).await
+    }
+
+    async fn dot_disable<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        request: &DotDisablePayload,
+    ) -> CaliptraCmdResult<()> {
+        device_ops::dot_disable(alloc, request).await
+    }
+
+    async fn dot_rotate<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        request: &DotRotatePayload,
+    ) -> CaliptraCmdResult<()> {
+        device_ops::dot_rotate(alloc, request).await
+    }
+
+    async fn dot_status(&self, status: &mut DotStatus) -> CaliptraCmdResult<()> {
+        *status = device_ops::dot_status()?;
+        Ok(())
+    }
+
+    async fn dot_recovery<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        blob: &[u8; DOT_BLOB_SIZE],
+    ) -> CaliptraCmdResult<()> {
+        device_ops::dot_recovery(alloc, blob).await
+    }
+
+    async fn dot_override_challenge<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        request: &DotOverrideChallengePayload,
+    ) -> CaliptraCmdResult<[u8; AUTH_CMD_NONCE_LEN]> {
+        device_ops::dot_override_challenge(alloc, request).await
+    }
+
+    async fn dot_override<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        request: &DotOverridePayload,
+    ) -> CaliptraCmdResult<()> {
+        device_ops::dot_override(alloc, request).await
+    }
+
+    async fn dot_unlock_challenge<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+    ) -> CaliptraCmdResult<[u8; caliptra_mcu_mbox_common::messages::AUTH_CMD_NONCE_LEN]> {
+        device_ops::dot_unlock_challenge(alloc).await
+    }
+
+    async fn dot_unlock<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        request: &DotUnlockPayload,
+    ) -> CaliptraCmdResult<()> {
+        device_ops::dot_unlock(alloc, request).await
+    }
+
+    async fn dot_get_backup_blob<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        blob: &mut [u8; DOT_BLOB_SIZE],
+    ) -> CaliptraCmdResult<()> {
+        device_ops::dot_get_backup_blob(alloc, blob).await
     }
 
     async fn request_debug_unlock<Alloc: ApiAlloc>(
@@ -274,20 +488,37 @@ mod tests {
         );
         assert_eq!(commands.contains(spdm_commands), cfg!(feature = "spdm"));
         assert_eq!(
+            commands.contains(ExternalCommandCapabilities::DEVICE_OWNERSHIP_TRANSFER),
+            cfg!(feature = "dot-spdm-vdm")
+        );
+        assert_eq!(
             authorized.contains(
                 AuthorizedSubcommandCapabilities::GET_AUTH_CHALLENGE
+                    | AuthorizedSubcommandCapabilities::PROVISION_VENDOR_PK_HASH
+                    | AuthorizedSubcommandCapabilities::FUSE_INCREASE_CALIPTRA_MIN_SVN
                     | AuthorizedSubcommandCapabilities::PROGRAM_FIELD_ENTROPY
+                    | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PUBLIC_KEY
+                    | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PK_HASH
             ),
             cfg!(feature = "spdm")
+        );
+        assert_eq!(
+            authorized.contains(
+                AuthorizedSubcommandCapabilities::DOT_LOCK
+                    | AuthorizedSubcommandCapabilities::DOT_DISABLE
+                    | AuthorizedSubcommandCapabilities::DOT_ROTATE
+                    | AuthorizedSubcommandCapabilities::GET_DOT_BACKUP_BLOB
+            ),
+            cfg!(feature = "dot-spdm-vdm")
         );
         assert_eq!(
             runtime.contains(McuRuntimeCapabilities::DOE),
             cfg!(feature = "doe")
         );
-        assert_eq!(commands.bits() & command_capability_for_test(0x05), 0);
-    }
-
-    const fn command_capability_for_test(command_code: u8) -> u32 {
-        1u32 << (command_code as u32 - 1)
+        assert_eq!(
+            commands.contains(ExternalCommandCapabilities::GET_ATTESTATION),
+            (cfg!(feature = "spdm") || cfg!(feature = "mcu-mbox-service"))
+                && SUPPORTED_EVIDENCE_FORMATS != 0
+        );
     }
 }

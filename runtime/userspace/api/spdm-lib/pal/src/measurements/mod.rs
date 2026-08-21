@@ -5,7 +5,7 @@
 //! Measurement data is supplied by the platform via a generic
 //! [`MeasurementProvider`] type parameter on [`McuSpdmPal`].
 
-use crate::alloc::BitmapAllocator;
+use caliptra_mcu_scratch_alloc::BitmapAllocator;
 use caliptra_mcu_spdm_traits::{MeasurementInfo, SpdmPalMeasurements, SPDM_NONCE_LEN};
 use mcu_error::McuResult;
 

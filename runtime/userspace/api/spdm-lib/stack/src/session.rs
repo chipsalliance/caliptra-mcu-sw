@@ -45,7 +45,7 @@ pub enum SessionState {
 ///
 /// # Heap allocation
 ///
-/// When `S = HashState` (the caliptra-api-lite backend), each
+/// When `S = HashState` (the caliptra-api backend), each
 /// `Option<S>` allocates 200 bytes on the global heap via `Box`.
 /// One instance exists per session, so N concurrent sessions add
 /// `N × 200` bytes of heap for TH. The owning [`SessionInfo`] is also
@@ -151,7 +151,7 @@ impl<K: Clone, S> Drop for SessionInfo<K, S> {
     fn drop(&mut self) {
         self.key_schedule.destroy_all();
         // NOTE: The physical backing memory slot of this SessionInfo structure in the coordinator pool
-        // is guaranteed to be securely zeroized/wiped inside `McuSpdmBox::drop()` upon slot reclamation.
+        // is guaranteed to be securely zeroized/wiped inside `ScratchBox::drop()` upon slot reclamation.
     }
 }
 
@@ -202,7 +202,7 @@ impl<K: Clone, S, B: Deref<Target = SessionInfo<K, S>> + DerefMut, const N: usiz
     /// Allocate a new session slot.
     ///
     /// `alloc_fn` is called to wrap the constructed `SessionInfo` in the
-    /// platform box type (e.g., `McuSpdmBox` from bitmap, or `Box` in tests).
+    /// platform box type (e.g., `ScratchBox` from bitmap, or `Box` in tests).
     ///
     /// Returns the combined session ID on success. The session starts
     /// in [`SessionState::HandshakeInProgress`].

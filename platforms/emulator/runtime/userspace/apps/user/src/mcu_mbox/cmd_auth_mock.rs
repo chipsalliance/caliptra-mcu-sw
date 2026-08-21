@@ -2,14 +2,15 @@
 
 use caliptra_mcu_common_commands::{AuthorizationError, CommandAuthorizer};
 use caliptra_mcu_mbox_common::messages::{
-    CommandId, FuseIncreaseCaliptraMinSvnReq, FuseLockPartitionReq, FuseReadReq,
-    FuseRevokeVendorPkHashReq, FuseRevokeVendorPubKeyReq, FuseWriteReq, HybridSignature,
-    MailboxReqHeader, McuFeProgReq, ProvisionVendorPkHashReq, AUTH_CMD_NONCE_LEN,
+    CommandId, DotDisableReq, DotLockReq, DotRotateReq, FuseIncreaseCaliptraMinSvnReq,
+    FuseLockPartitionReq, FuseReadReq, FuseRevokeVendorPkHashReq, FuseRevokeVendorPubKeyReq,
+    FuseWriteReq, GetDotBackupBlobReq, HybridSignature, MailboxReqHeader, McuFeProgReq,
+    ProvisionOwnerPkHashReq, ProvisionVendorPkHashReq, AUTH_CMD_NONCE_LEN,
 };
 use core::cell::RefCell;
 use core::mem::{offset_of, size_of};
 use embassy_sync::blocking_mutex::{raw::CriticalSectionRawMutex, Mutex};
-use mcu_caliptra_api_lite::ApiAlloc;
+use mcu_caliptra_api::ApiAlloc;
 use zerocopy::{FromBytes, Immutable, KnownLayout};
 
 extern crate alloc;
@@ -75,12 +76,13 @@ fn set_challenge(challenge: [u8; AUTH_CMD_NONCE_LEN]) {
 impl CommandAuthorizer for MockCommandAuthorizer {
     async fn is_authorized<'a, Alloc: ApiAlloc>(
         &mut self,
-        _alloc: &Alloc,
+        alloc: &Alloc,
         cmd_id: CommandId,
         req: &'a [u8],
     ) -> Result<&'a [u8], AuthorizationError> {
         let cmd_len = match cmd_id {
             CommandId::MC_PROVISION_VENDOR_PK_HASH => size_of::<ProvisionVendorPkHashReq>(),
+            CommandId::MC_PROVISION_OWNER_PK_HASH => size_of::<ProvisionOwnerPkHashReq>(),
             CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN => {
                 size_of::<FuseIncreaseCaliptraMinSvnReq>()
             }
@@ -90,6 +92,20 @@ impl CommandAuthorizer for MockCommandAuthorizer {
             CommandId::MC_FUSE_READ => size_of::<FuseReadReq>(),
             CommandId::MC_FUSE_WRITE => size_of::<FuseWriteReq>(),
             CommandId::MC_FUSE_LOCK_PARTITION => size_of::<FuseLockPartitionReq>(),
+            CommandId::MC_DEVICE_OWNERSHIP_TRANSFER => {
+                let subcommand = req
+                    .get(size_of::<MailboxReqHeader>()..size_of::<MailboxReqHeader>() + 4)
+                    .ok_or(AuthorizationError)?;
+                match u32::from_le_bytes(subcommand.try_into().map_err(|_| AuthorizationError)?) {
+                    value if value == CommandId::MC_DOT_LOCK.0 => size_of::<DotLockReq>(),
+                    value if value == CommandId::MC_DOT_DISABLE.0 => size_of::<DotDisableReq>(),
+                    value if value == CommandId::MC_DOT_ROTATE.0 => size_of::<DotRotateReq>(),
+                    value if value == CommandId::MC_GET_DOT_BACKUP_BLOB.0 => {
+                        size_of::<GetDotBackupBlobReq>()
+                    }
+                    _ => return Err(AuthorizationError),
+                }
+            }
             _ => return Err(AuthorizationError),
         };
 
@@ -114,6 +130,7 @@ impl CommandAuthorizer for MockCommandAuthorizer {
 
         // Nonce gate + device_ops verify.
         self.verify_signatures(
+            alloc,
             u32::from(cmd_id),
             cmd_body,
             wire_nonce,
@@ -130,8 +147,9 @@ impl CommandAuthorizer for MockCommandAuthorizer {
     /// one-time challenge, compare it to the wire nonce (absent/mismatch ->
     /// denied), then verify via `device_ops`.
     #[allow(clippy::too_many_arguments)]
-    async fn verify_signatures(
+    async fn verify_signatures<Alloc: ApiAlloc>(
         &mut self,
+        alloc: &Alloc,
         cmd_id: u32,
         payload: &[u8],
         nonce: &[u8; AUTH_CMD_NONCE_LEN],
@@ -146,7 +164,7 @@ impl CommandAuthorizer for MockCommandAuthorizer {
         }
 
         crate::caliptra_cmd_handler::device_ops::verify_authorized_signatures(
-            cmd_id, payload, nonce, ecc_pub_x, ecc_pub_y, mldsa_pub, sig,
+            alloc, cmd_id, payload, nonce, ecc_pub_x, ecc_pub_y, mldsa_pub, sig,
         )
         .await
         .map_err(|_| AuthorizationError)

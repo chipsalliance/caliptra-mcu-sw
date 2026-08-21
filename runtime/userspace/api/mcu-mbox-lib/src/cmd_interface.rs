@@ -3,38 +3,53 @@
 use crate::errors;
 use crate::transport::McuMboxTransport;
 use caliptra_mcu_common_commands::{
-    CaliptraCmdHandler, CommandAuthorizer, DebugUnlockChallenge, DeviceCapabilities,
-    FirmwareVersion, GetLogResult,
+    AsymAlgo, CaliptraCmdHandler, CaliptraCompletionCode, CommandAuthorizer, DebugUnlockChallenge,
+    DeviceCapabilities, EvidenceFormat, FirmwareVersion, GetLogResult, PkiEntitySlot,
+    EVIDENCE_FORMAT_QUERY,
 };
 use caliptra_mcu_libsyscall_caliptra::mcu_mbox::MbxCmdStatus;
-use caliptra_mcu_libsyscall_caliptra::otp::{Otp, RevokeVendorPubKeyType};
-use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
-use caliptra_mcu_libsyscall_caliptra::{caliptra, otp};
+use caliptra_mcu_libsyscall_caliptra::{otp, DefaultSyscalls};
 use caliptra_mcu_mbox_common::messages::{
     ClearLogReq, ClearLogResp, CommandId, DeviceCapsReq, DeviceCapsResp, ExportAttestedCsrReq,
     FirmwareVersionReq, FirmwareVersionResp, FuseIncreaseCaliptraMinSvnReq,
     FuseIncreaseCaliptraMinSvnResp, FuseLockPartitionReq, FuseLockPartitionResp, FuseReadReq,
     FuseReadResp, FuseRevokeVendorPkHashReq, FuseRevokeVendorPkHashResp, FuseRevokeVendorPubKeyReq,
-    FuseRevokeVendorPubKeyResp, FuseWriteReq, FuseWriteResp, GetAuthCmdChallengeReq,
-    GetAuthCmdChallengeResp, GetLogReq, LogType, MailboxReqHeader, MailboxRespHeader,
-    MailboxRespHeaderVarSize, McuFeProgReq, McuMailboxReq, McuMailboxResp,
+    FuseRevokeVendorPubKeyResp, FuseWriteReq, FuseWriteResp, GetAttestationReq,
+    GetAuthCmdChallengeReq, GetAuthCmdChallengeResp, GetLogReq, LogType, MailboxReqHeader,
+    MailboxRespHeader, MailboxRespHeaderVarSize, McuFeProgReq, McuMailboxReq, McuMailboxResp,
     McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq,
-    McuResponseVarSize, ProvisionVendorPkHashReq, ProvisionVendorPkHashResp, DEVICE_CAPS_SIZE,
-    MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
+    McuResponseVarSize, ProvisionOwnerPkHashReq, ProvisionOwnerPkHashResp,
+    ProvisionVendorPkHashReq, ProvisionVendorPkHashResp, DEVICE_CAPS_SIZE,
+    GET_ATTESTATION_RESP_PREFIX_LEN, MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN,
+    MAX_RESP_DATA_SIZE,
+};
+#[cfg(feature = "device-ownership-transfer")]
+use caliptra_mcu_mbox_common::messages::{
+    DotDisableReq, DotDisableResp, DotLockReq, DotLockResp, DotOverrideChallengeReq,
+    DotOverrideChallengeResp, DotOverrideReq, DotOverrideResp, DotRecoveryReq, DotRecoveryResp,
+    DotRotateReq, DotRotateResp, DotStatus, DotStatusReq, DotStatusResp, DotUnlockChallengeReq,
+    DotUnlockChallengeResp, DotUnlockReq, DotUnlockResp, GetDotBackupBlobReq, GetDotBackupBlobResp,
 };
 #[cfg(feature = "periodic-fips-self-test")]
 use caliptra_mcu_mbox_common::messages::{
     McuFipsPeriodicEnableReq, McuFipsPeriodicEnableResp, McuFipsPeriodicStatusReq,
     McuFipsPeriodicStatusResp,
 };
-use caliptra_mcu_otp_fuse::{fuse_read_dai_params, PartitionId};
+use caliptra_mcu_otp_fuse::fuse_read_dai_params;
 use core::sync::atomic::{AtomicBool, Ordering};
-use mcu_caliptra_api_lite::{raw, ApiAlloc, FwInfo};
-use mcu_error::McuResult;
+use mcu_caliptra_api::{raw, ApiAlloc, ApiAllocPool};
+use mcu_error::{McuErrorCode, McuResult};
 use zerocopy::{FromBytes, IntoBytes};
 
-pub trait McuMboxScratch: ApiAlloc {
+pub trait McuMboxScratch: ApiAlloc + ApiAllocPool {
     fn shrink(buf: &mut Self::Buf<'_>, new_len: usize) -> McuResult<()>;
+}
+
+fn map_common_cmd_error(error: CaliptraCompletionCode) -> McuErrorCode {
+    match error {
+        CaliptraCompletionCode::InvalidParameter => errors::INVALID_PARAMS,
+        _ => errors::MCU_MBOX_COMMON,
+    }
 }
 
 /// Command interface for handling MCU mailbox commands.
@@ -136,7 +151,7 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         };
         Alloc::shrink(&mut req_buf, req_len)?;
 
-        let mut resp_buf = self.scratch.alloc(response_buffer_size(cmd_id))?;
+        let mut resp_buf = self.scratch.alloc(response_buffer_size::<H>(cmd_id))?;
         let status = match self
             .process_request(&mut req_buf, req_len, cmd_id, &mut resp_buf)
             .await
@@ -203,6 +218,7 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
                     self.handle_get_auth_cmd_challenge(req, resp_buf).await
                 }
                 inner @ CommandId::MC_PROVISION_VENDOR_PK_HASH
+                | inner @ CommandId::MC_PROVISION_OWNER_PK_HASH
                 | inner @ CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN
                 | inner @ CommandId::MC_FE_PROG
                 | inner @ CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH
@@ -212,9 +228,14 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
                 | inner @ CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY => {
                     self.handle_authorized_command(inner, req, resp_buf).await
                 }
+                #[cfg(feature = "device-ownership-transfer")]
+                CommandId::MC_DEVICE_OWNERSHIP_TRANSFER => {
+                    self.handle_dot_command(req, resp_buf).await
+                }
                 CommandId::MC_EXPORT_ATTESTED_CSR => {
                     self.handle_export_attested_csr(req, resp_buf).await
                 }
+                CommandId::MC_GET_ATTESTATION => self.handle_get_attestation(req, resp_buf).await,
                 CommandId::MC_PROD_DEBUG_UNLOCK_REQ => {
                     self.handle_prod_debug_unlock_req(req, resp_buf).await
                 }
@@ -272,6 +293,258 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
 
         Ok((&mut resp_buf[..resp_bytes.len()], mbox_cmd_status))
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    async fn handle_dot_lock<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req = DotLockReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        if req.subcommand != CommandId::MC_DOT_LOCK.0 {
+            return Err(errors::UNSUPPORTED_COMMAND);
+        }
+        self.non_crypto_cmds_handler
+            .dot_lock(self.scratch, &req.payload)
+            .await
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+
+        let (resp, _) =
+            DotLockResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = DotLockResp {
+            reset_required: 1,
+            ..Default::default()
+        };
+        let response_len = resp.as_bytes().len();
+        Ok((&mut resp_buf[..response_len], MbxCmdStatus::Complete))
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    async fn handle_dot_disable<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req = DotDisableReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        if req.subcommand != CommandId::MC_DOT_DISABLE.0 {
+            return Err(errors::UNSUPPORTED_COMMAND);
+        }
+        self.non_crypto_cmds_handler
+            .dot_disable(self.scratch, &req.payload)
+            .await
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+
+        let (resp, _) =
+            DotDisableResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = DotDisableResp {
+            reset_required: 1,
+            ..Default::default()
+        };
+        let response_len = resp.as_bytes().len();
+        Ok((&mut resp_buf[..response_len], MbxCmdStatus::Complete))
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    async fn handle_dot_rotate<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req = DotRotateReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        if req.subcommand != CommandId::MC_DOT_ROTATE.0 {
+            return Err(errors::UNSUPPORTED_COMMAND);
+        }
+        self.non_crypto_cmds_handler
+            .dot_rotate(self.scratch, &req.payload)
+            .await
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+
+        let (resp, _) =
+            DotRotateResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = DotRotateResp {
+            reset_required: 1,
+            ..Default::default()
+        };
+        let response_len = resp.as_bytes().len();
+        Ok((&mut resp_buf[..response_len], MbxCmdStatus::Complete))
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    async fn handle_dot_status<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req = DotStatusReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        if req.subcommand != CommandId::MC_DOT_STATUS.0 {
+            return Err(errors::UNSUPPORTED_COMMAND);
+        }
+        let mut status = DotStatus::default();
+        self.non_crypto_cmds_handler
+            .dot_status(&mut status)
+            .await
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+
+        let (resp, _) =
+            DotStatusResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = DotStatusResp {
+            status,
+            ..Default::default()
+        };
+        let response_len = resp.as_bytes().len();
+        Ok((&mut resp_buf[..response_len], MbxCmdStatus::Complete))
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    async fn handle_dot_recovery<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req = DotRecoveryReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        if req.subcommand != CommandId::MC_DOT_RECOVERY.0 {
+            return Err(errors::UNSUPPORTED_COMMAND);
+        }
+        self.non_crypto_cmds_handler
+            .dot_recovery(self.scratch, &req.blob)
+            .await
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+
+        let (resp, _) =
+            DotRecoveryResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = DotRecoveryResp {
+            reset_required: 1,
+            ..Default::default()
+        };
+        let response_len = resp.as_bytes().len();
+        Ok((&mut resp_buf[..response_len], MbxCmdStatus::Complete))
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    async fn handle_dot_override_challenge<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req =
+            DotOverrideChallengeReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        if req.subcommand != CommandId::MC_DOT_OVERRIDE_CHALLENGE.0 {
+            return Err(errors::UNSUPPORTED_COMMAND);
+        }
+        let challenge = self
+            .non_crypto_cmds_handler
+            .dot_override_challenge(self.scratch, &req.payload)
+            .await
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+
+        let (resp, _) = DotOverrideChallengeResp::mut_from_prefix(resp_buf)
+            .map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = DotOverrideChallengeResp {
+            challenge,
+            ..Default::default()
+        };
+        let response_len = resp.as_bytes().len();
+        Ok((&mut resp_buf[..response_len], MbxCmdStatus::Complete))
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    async fn handle_dot_override<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req = DotOverrideReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        if req.subcommand != CommandId::MC_DOT_OVERRIDE.0 {
+            return Err(errors::UNSUPPORTED_COMMAND);
+        }
+        self.non_crypto_cmds_handler
+            .dot_override(self.scratch, &req.payload)
+            .await
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+
+        let (resp, _) =
+            DotOverrideResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = DotOverrideResp {
+            reset_required: 1,
+            ..Default::default()
+        };
+        let response_len = resp.as_bytes().len();
+        Ok((&mut resp_buf[..response_len], MbxCmdStatus::Complete))
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    async fn handle_dot_unlock_challenge<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let request =
+            DotUnlockChallengeReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        if request.subcommand != CommandId::MC_DOT_UNLOCK_CHALLENGE.0 {
+            return Err(errors::UNSUPPORTED_COMMAND);
+        }
+        let challenge = self
+            .non_crypto_cmds_handler
+            .dot_unlock_challenge(self.scratch)
+            .await
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+
+        let (resp, _) = DotUnlockChallengeResp::mut_from_prefix(resp_buf)
+            .map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = DotUnlockChallengeResp {
+            challenge,
+            ..Default::default()
+        };
+        let response_len = resp.as_bytes().len();
+        Ok((&mut resp_buf[..response_len], MbxCmdStatus::Complete))
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    async fn handle_dot_unlock<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req = DotUnlockReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        if req.subcommand != CommandId::MC_DOT_UNLOCK.0 {
+            return Err(errors::UNSUPPORTED_COMMAND);
+        }
+        self.non_crypto_cmds_handler
+            .dot_unlock(self.scratch, &req.payload)
+            .await
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+
+        let (resp, _) =
+            DotUnlockResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = DotUnlockResp {
+            reset_required: 1,
+            ..Default::default()
+        };
+        let response_len = resp.as_bytes().len();
+        Ok((&mut resp_buf[..response_len], MbxCmdStatus::Complete))
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    async fn handle_dot_get_backup_blob<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let request =
+            GetDotBackupBlobReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        if request.subcommand != CommandId::MC_GET_DOT_BACKUP_BLOB.0 {
+            return Err(errors::UNSUPPORTED_COMMAND);
+        }
+        let (resp, _) =
+            GetDotBackupBlobResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
+        self.non_crypto_cmds_handler
+            .dot_get_backup_blob(self.scratch, &mut resp.blob)
+            .await
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+        resp.hdr = MailboxRespHeader::default();
+        let response_len = resp.as_bytes().len();
+        Ok((&mut resp_buf[..response_len], MbxCmdStatus::Complete))
     }
 
     async fn handle_device_caps<'r>(
@@ -438,6 +711,41 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         Ok((&mut resp_buf[..resp_len], mbox_cmd_status))
     }
 
+    /// Handles `MC_GET_ATTESTATION`.
+    ///
+    /// The response body is `[evidence_format:u32][evidence...]`, framed
+    /// directly in `resp_buf` so the evidence is never copied.
+    ///
+    /// A request whose `evidence_format` is [`EVIDENCE_FORMAT_QUERY`] is a
+    /// capability query and returns the supported-format bitmap instead of
+    /// evidence, mirroring the SPDM VDM transport.
+    async fn handle_get_attestation<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req = GetAttestationReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+
+        let (hdr_bytes, body) = resp_buf
+            .split_at_mut_checked(size_of::<MailboxRespHeaderVarSize>())
+            .ok_or(errors::INVALID_PARAMS)?;
+
+        let (mbox_cmd_status, data_len) =
+            match stage_attestation(self.non_crypto_cmds_handler, self.scratch, req, body).await {
+                Ok(len) => (MbxCmdStatus::Complete, len),
+                Err(_) => (MbxCmdStatus::Failure, 0),
+            };
+
+        let hdr = MailboxRespHeaderVarSize {
+            data_len: data_len as u32,
+            ..Default::default()
+        };
+        hdr_bytes.copy_from_slice(hdr.as_bytes());
+
+        let resp_len = size_of::<MailboxRespHeaderVarSize>() + data_len;
+        Ok((&mut resp_buf[..resp_len], mbox_cmd_status))
+    }
+
     async fn handle_prod_debug_unlock_token<'r>(
         &self,
         req: &[u8],
@@ -512,7 +820,7 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
             .map_err(|_| errors::INVALID_PARAMS)?;
         *resp = GetAuthCmdChallengeResp::default();
 
-        mcu_caliptra_api_lite::rng_generate(self.scratch, &mut resp.challenge)
+        mcu_caliptra_api::rng_generate(self.scratch, &mut resp.challenge)
             .await
             .map_err(|_| errors::MCU_MBOX_COMMON)?;
 
@@ -556,6 +864,9 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
             CommandId::MC_PROVISION_VENDOR_PK_HASH => {
                 self.handle_provision_vendor_pk_hash(cmd, resp_buf).await
             }
+            CommandId::MC_PROVISION_OWNER_PK_HASH => {
+                self.handle_provision_owner_pk_hash(cmd, resp_buf).await
+            }
             CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN => {
                 self.handle_increase_caliptra_min_svn(cmd, resp_buf).await
             }
@@ -566,10 +877,80 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
             CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH => {
                 self.handle_revoke_vendor_pk_hash(cmd, resp_buf).await
             }
+            #[cfg(feature = "device-ownership-transfer")]
+            CommandId::MC_DEVICE_OWNERSHIP_TRANSFER => {
+                let subcommand = cmd
+                    .get(size_of::<MailboxReqHeader>()..size_of::<MailboxReqHeader>() + 4)
+                    .ok_or(errors::INVALID_PARAMS)?;
+                match u32::from_le_bytes(subcommand.try_into().map_err(|_| errors::INVALID_PARAMS)?)
+                {
+                    value if value == CommandId::MC_DOT_LOCK.0 => {
+                        self.handle_dot_lock(cmd, resp_buf).await
+                    }
+                    value if value == CommandId::MC_DOT_DISABLE.0 => {
+                        self.handle_dot_disable(cmd, resp_buf).await
+                    }
+                    value if value == CommandId::MC_DOT_ROTATE.0 => {
+                        self.handle_dot_rotate(cmd, resp_buf).await
+                    }
+                    value if value == CommandId::MC_GET_DOT_BACKUP_BLOB.0 => {
+                        self.handle_dot_get_backup_blob(cmd, resp_buf).await
+                    }
+                    _ => Err(errors::UNSUPPORTED_COMMAND),
+                }
+            }
             CommandId::MC_FUSE_READ => self.handle_fuse_read(cmd, resp_buf).await,
             CommandId::MC_FUSE_WRITE => self.handle_fuse_write(cmd, resp_buf).await,
             CommandId::MC_FUSE_LOCK_PARTITION => {
                 self.handle_fuse_lock_partition(cmd, resp_buf).await
+            }
+            _ => Err(errors::UNSUPPORTED_COMMAND),
+        }
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    async fn handle_dot_command<'r>(
+        &mut self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        // MCI uses one outer family command. The first payload dword selects
+        // the DOT operation; protected operations retain the exact request and
+        // authorization trailer while native operations dispatch directly.
+        let subcommand = req
+            .get(size_of::<MailboxReqHeader>()..size_of::<MailboxReqHeader>() + 4)
+            .ok_or(errors::INVALID_PARAMS)?;
+        match u32::from_le_bytes(subcommand.try_into().map_err(|_| errors::INVALID_PARAMS)?) {
+            value
+                if value == CommandId::MC_DOT_LOCK.0
+                    || value == CommandId::MC_DOT_DISABLE.0
+                    || value == CommandId::MC_DOT_ROTATE.0
+                    || value == CommandId::MC_GET_DOT_BACKUP_BLOB.0 =>
+            {
+                self.handle_authorized_command(
+                    CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
+                    req,
+                    resp_buf,
+                )
+                .await
+            }
+            value if value == CommandId::MC_DOT_UNLOCK_CHALLENGE.0 => {
+                self.handle_dot_unlock_challenge(req, resp_buf).await
+            }
+            value if value == CommandId::MC_DOT_STATUS.0 => {
+                self.handle_dot_status(req, resp_buf).await
+            }
+            value if value == CommandId::MC_DOT_RECOVERY.0 => {
+                self.handle_dot_recovery(req, resp_buf).await
+            }
+            value if value == CommandId::MC_DOT_OVERRIDE_CHALLENGE.0 => {
+                self.handle_dot_override_challenge(req, resp_buf).await
+            }
+            value if value == CommandId::MC_DOT_OVERRIDE.0 => {
+                self.handle_dot_override(req, resp_buf).await
+            }
+            value if value == CommandId::MC_DOT_UNLOCK.0 => {
+                self.handle_dot_unlock(req, resp_buf).await
             }
             _ => Err(errors::UNSUPPORTED_COMMAND),
         }
@@ -642,11 +1023,10 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         let (resp, _) =
             FuseLockPartitionResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
 
-        PartitionId::try_from(req.partition).map_err(|_| errors::INVALID_PARAMS)?;
-
-        let otp: otp::Otp<DefaultSyscalls> = otp::Otp::new();
-        otp.lock_partition(req.partition)
-            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+        self.non_crypto_cmds_handler
+            .fuse_lock_partition(req.partition)
+            .await
+            .map_err(map_common_cmd_error)?;
 
         *resp = FuseLockPartitionResp::default();
         Ok((resp.as_mut_bytes(), MbxCmdStatus::Complete))
@@ -659,15 +1039,36 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
     ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
         let req =
             ProvisionVendorPkHashReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
-        let otp: Otp<DefaultSyscalls> = Otp::new();
-        let res = match otp.provision_vendor_pk_hash(req.slot, &req.hash) {
-            Ok(_) => MbxCmdStatus::Complete,
+        let res = match self
+            .non_crypto_cmds_handler
+            .provision_vendor_pk_hash(req.slot, &req.hash)
+            .await
+        {
+            Ok(()) => MbxCmdStatus::Complete,
             Err(_) => MbxCmdStatus::Failure,
         };
         let resp = ProvisionVendorPkHashResp::default();
         let resp_slice = &mut resp_buf[..size_of::<ProvisionVendorPkHashResp>()];
         resp.write_to(resp_slice).unwrap();
         Ok((resp_slice, res))
+    }
+
+    async fn handle_provision_owner_pk_hash<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req =
+            ProvisionOwnerPkHashReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        self.non_crypto_cmds_handler
+            .provision_owner_pk_hash(&req.hash)
+            .await
+            .map_err(map_common_cmd_error)?;
+
+        let resp = ProvisionOwnerPkHashResp::default();
+        let resp_bytes = resp.as_bytes();
+        resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
+        Ok((&mut resp_buf[..resp_bytes.len()], MbxCmdStatus::Complete))
     }
 
     async fn handle_increase_caliptra_min_svn<'r>(
@@ -683,67 +1084,10 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         let req = FuseIncreaseCaliptraMinSvnReq::ref_from_bytes(req)
             .map_err(|_| errors::INVALID_PARAMS)?;
 
-        // Check the request has a valid SVN value
-        if req.svn == 0 {
-            return Err(errors::INVALID_PARAMS);
-        }
-        if req.svn > 128 {
-            return Err(errors::INVALID_PARAMS);
-        }
-
-        let caliptra_fw_info = self.get_caliptra_fw_info().await?;
-
-        // Ensure the requested SVN will allow current Caliptra firmware to run
-        if req.svn > caliptra_fw_info.fw_svn {
-            return Err(errors::INVALID_PARAMS);
-        }
-
-        // Get the minimum SVN set in fuses
-        let otp: otp::Otp<DefaultSyscalls> = otp::Otp::new();
-        let mut current_fuses = [0u32; 4];
-        for (i, fuse) in current_fuses.iter_mut().enumerate() {
-            *fuse = otp
-                .read(otp::reg::CALIPTRA_FW_SVN, i as u32)
-                .map_err(|_| errors::MCU_MBOX_COMMON)?;
-        }
-
-        // Convert the fuses to the SVN value
-        let fused_min_svn = {
-            // Value is take as the most significant bit set in fuses
-            let fuse: u128 = u128::from_le_bytes(current_fuses.as_bytes().try_into().unwrap());
-            128 - fuse.leading_zeros()
-        };
-
-        // Ensure we are not trying to decrease the SVN
-        if req.svn < fused_min_svn {
-            return Err(errors::INVALID_PARAMS);
-        }
-
-        // We are done, if the fuses already match the requested SVN.
-        if fused_min_svn == req.svn {
-            let resp = FuseIncreaseCaliptraMinSvnResp::default();
-            let resp_bytes = resp.as_bytes();
-            resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
-            return Ok((&mut resp_buf[..resp_bytes.len()], MbxCmdStatus::Complete));
-        }
-
-        let new_fuse_svn = if req.svn == 128 {
-            u128::MAX
-        } else {
-            !(u128::MAX << req.svn)
-        };
-
-        for (i, (current, new_bytes)) in current_fuses
-            .iter()
-            .zip(new_fuse_svn.as_bytes().chunks_exact(4))
-            .enumerate()
-        {
-            let new_svn_word = u32::from_le_bytes(new_bytes.try_into().unwrap());
-            if *current != new_svn_word {
-                otp.write(otp::reg::CALIPTRA_FW_SVN, i as u32, new_svn_word)
-                    .map_err(|_| errors::INVALID_PARAMS)?;
-            }
-        }
+        self.non_crypto_cmds_handler
+            .increase_caliptra_min_svn(self.scratch, req.svn)
+            .await
+            .map_err(map_common_cmd_error)?;
 
         let resp = FuseIncreaseCaliptraMinSvnResp::default();
         let resp_bytes = resp.as_bytes();
@@ -780,56 +1124,15 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
             FuseRevokeVendorPubKeyReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
         let (resp, _) = FuseRevokeVendorPubKeyResp::mut_from_prefix(resp_buf)
             .map_err(|_| errors::INVALID_PARAMS)?;
-        let key_type =
-            RevokeVendorPubKeyType::try_from(req.key_type).map_err(|_| errors::INVALID_PARAMS)?;
-
-        // Check the given slot has a valid PK hash provisioned
-        let otp = otp::Otp::<DefaultSyscalls>::new();
-        if !otp.valid_vendor_pk_hash_slot(req.vendor_pk_hash_slot) {
-            Err(errors::INVALID_PARAMS)?;
-        }
-
-        let caliptra_info = self.get_caliptra_fw_info().await?;
-
-        // Check if the key to be revoked was a key used to boot. If so, return an error as a form
-        // of proof of possession for other keys.
-        let same_key_used_to_boot = || -> McuResult<bool> {
-            let caliptra_soc = caliptra::Caliptra::<DefaultSyscalls>::new();
-            let booted_pk_hash = caliptra_soc
-                .read_vendor_pk_hash()
-                .map_err(|_| errors::MCU_MBOX_COMMON)?;
-            let pk_hash_from_slot = otp
-                .read_vendor_pk_hash(req.vendor_pk_hash_slot)
-                .map_err(|_| errors::MCU_MBOX_COMMON)?;
-
-            // Check if the requested slot was the one used to boot
-            if booted_pk_hash != pk_hash_from_slot {
-                return Ok(false);
-            }
-
-            const FW_VERIFICATION_PQC_TYPE_MLDSA: u32 = 1;
-            const FW_VERIFICATION_PQC_TYPE_LMS: u32 = 3;
-            let same_key = match (key_type, caliptra_info.image_manifest_pqc_type) {
-                (RevokeVendorPubKeyType::Ecdsa384, _) => {
-                    req.key_index == caliptra_info.vendor_ecc384_pub_key_index
-                }
-                // Same PQC type
-                (RevokeVendorPubKeyType::Lms, FW_VERIFICATION_PQC_TYPE_LMS)
-                | (RevokeVendorPubKeyType::Mldsa87, FW_VERIFICATION_PQC_TYPE_MLDSA) => {
-                    req.key_index == caliptra_info.vendor_pqc_pub_key_index
-                }
-                // Different PQC types
-                _ => false,
-            };
-            Ok(same_key)
-        };
-
-        if same_key_used_to_boot()? {
-            Err(errors::INVALID_PARAMS)?;
-        }
-
-        otp.revoke_vendor_pub_key(req.vendor_pk_hash_slot, key_type, req.key_index)
-            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+        self.non_crypto_cmds_handler
+            .revoke_vendor_pub_key(
+                self.scratch,
+                req.vendor_pk_hash_slot,
+                req.key_type,
+                req.key_index,
+            )
+            .await
+            .map_err(map_common_cmd_error)?;
 
         *resp = FuseRevokeVendorPubKeyResp::default();
         let len = size_of_val(resp);
@@ -847,39 +1150,14 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         let (resp, _) = FuseRevokeVendorPkHashResp::mut_from_prefix(resp_buf)
             .map_err(|_| errors::INVALID_PARAMS)?;
 
-        let otp = otp::Otp::<DefaultSyscalls>::new();
-
-        // Check if the PK hash to be revoked was used to boot. If so, return an error as a form
-        // of proof of possession for other keys.
-        let same_key_used_to_boot = || -> McuResult<bool> {
-            let caliptra_soc = caliptra::Caliptra::<DefaultSyscalls>::new();
-            let booted_pk_hash = caliptra_soc
-                .read_vendor_pk_hash()
-                .map_err(|_| errors::MCU_MBOX_COMMON)?;
-            let pk_hash_from_slot = otp
-                .read_vendor_pk_hash(req.vendor_pk_hash_slot)
-                .map_err(|_| errors::MCU_MBOX_COMMON)?;
-
-            // Check if the requested slot was the one used to boot
-            Ok(booted_pk_hash == pk_hash_from_slot)
-        };
-
-        if same_key_used_to_boot()? {
-            Err(errors::INVALID_PARAMS)?;
-        }
-
-        otp.revoke_vendor_pk_hash(req.vendor_pk_hash_slot)
-            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+        self.non_crypto_cmds_handler
+            .revoke_vendor_pk_hash(req.vendor_pk_hash_slot)
+            .await
+            .map_err(map_common_cmd_error)?;
 
         *resp = FuseRevokeVendorPkHashResp::default();
         let resp_len = resp.as_bytes().len();
         Ok((&mut resp_buf[..resp_len], MbxCmdStatus::Complete))
-    }
-
-    async fn get_caliptra_fw_info(&self) -> McuResult<FwInfo> {
-        mcu_caliptra_api_lite::fw_info(self.scratch)
-            .await
-            .map_err(|_| errors::MCU_MBOX_COMMON)
     }
 
     #[cfg(feature = "periodic-fips-self-test")]
@@ -972,6 +1250,9 @@ fn caliptra_passthrough_cmd(cmd: CommandId) -> Option<u32> {
         CommandId::MC_ECDSA_CMK_PUBLIC_KEY => raw::CMD_CM_ECDSA_PUBLIC_KEY,
         CommandId::MC_ECDSA_CMK_SIGN => raw::CMD_CM_ECDSA_SIGN,
         CommandId::MC_ECDSA_CMK_VERIFY => raw::CMD_CM_ECDSA_VERIFY,
+        CommandId::MC_ECDSA384_SIG_VERIFY => raw::CMD_ECDSA384_SIGNATURE_VERIFY,
+        #[cfg(not(feature = "disable-lms-sig-verify"))]
+        CommandId::MC_LMS_SIG_VERIFY => raw::CMD_LMS_SIGNATURE_VERIFY,
         CommandId::MC_MLDSA_CMK_PUBLIC_KEY => raw::CMD_CM_MLDSA_PUBLIC_KEY,
         CommandId::MC_MLDSA_CMK_SIGN => raw::CMD_CM_MLDSA_SIGN,
         CommandId::MC_MLDSA_CMK_VERIFY => raw::CMD_CM_MLDSA_VERIFY,
@@ -980,13 +1261,80 @@ fn caliptra_passthrough_cmd(cmd: CommandId) -> Option<u32> {
     Some(code)
 }
 
-fn response_buffer_size(cmd: u32) -> usize {
+/// Bytes to allocate for a command's response.
+///
+/// Generic over the handler because `MC_GET_ATTESTATION` is sized from the
+/// evidence generators the build enables rather than from a fixed enum variant.
+/// It is deliberately not a [`McuMailboxResp`] variant: that enum sizes *every*
+/// command's allocation by its largest variant, so folding attestation in would
+/// inflate all of them.
+fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32) -> usize {
     match CommandId::from(cmd) {
         c if c == CommandId::MC_MLDSA_CMK_VERIFY || c == CommandId::MC_PROD_DEBUG_UNLOCK_TOKEN => {
             size_of::<MailboxRespHeader>()
         }
+        c if c == CommandId::MC_GET_ATTESTATION => size_of::<McuMailboxResp>().max(
+            size_of::<MailboxRespHeaderVarSize>()
+                + GET_ATTESTATION_RESP_PREFIX_LEN
+                + H::MAX_ATTESTATION_EVIDENCE_LEN,
+        ),
+        #[cfg(feature = "device-ownership-transfer")]
+        CommandId::MC_DEVICE_OWNERSHIP_TRANSFER => size_of::<GetDotBackupBlobResp>(),
         _ => size_of::<McuMailboxResp>(),
     }
+}
+
+/// Writes the `MC_GET_ATTESTATION` response body into `body` and returns its
+/// length.
+///
+/// A free function rather than a `CmdInterface` method so it can be tested
+/// without standing up a transport.
+async fn stage_attestation<H: CaliptraCmdHandler, Alloc: ApiAllocPool>(
+    handler: &H,
+    alloc: &Alloc,
+    req: &GetAttestationReq,
+    body: &mut [u8],
+) -> McuResult<usize> {
+    let (fmt_bytes, rest) = body
+        .split_at_mut_checked(GET_ATTESTATION_RESP_PREFIX_LEN)
+        .ok_or(errors::BUFFER_TOO_SMALL)?;
+    fmt_bytes.copy_from_slice(&req.evidence_format.to_le_bytes());
+
+    if req.evidence_format == EVIDENCE_FORMAT_QUERY {
+        let bitmap = rest
+            .get_mut(..size_of::<u32>())
+            .ok_or(errors::BUFFER_TOO_SMALL)?;
+        bitmap.copy_from_slice(&H::SUPPORTED_EVIDENCE_FORMATS.to_le_bytes());
+        return Ok(GET_ATTESTATION_RESP_PREFIX_LEN + size_of::<u32>());
+    }
+
+    let format =
+        EvidenceFormat::try_from(req.evidence_format).map_err(|_| errors::INVALID_PARAMS)?;
+    let algorithm = AsymAlgo::try_from(req.algorithm).map_err(|_| errors::INVALID_PARAMS)?;
+    let entity =
+        PkiEntitySlot::try_from(req.pki_entity_slot).map_err(|_| errors::INVALID_PARAMS)?;
+
+    // Reject pairs this build cannot produce before touching the buffer, so an
+    // unsupported request costs nothing.
+    let max_len = H::attestation_evidence_len(format, algorithm);
+    if max_len == 0 {
+        return Err(errors::UNSUPPORTED_COMMAND);
+    }
+
+    // Truncated evidence cannot pass signature verification, so refuse rather
+    // than emit a `Complete` response with partial evidence.
+    let out = rest.get_mut(..max_len).ok_or(errors::BUFFER_TOO_SMALL)?;
+
+    // Hand the handler the underlying pool rather than this wrapper: the SPDM
+    // VDM transport reaches the same handler through a different `ApiAlloc`
+    // wrapper, and instantiating it over the shared pool type keeps one copy of
+    // the evidence-generation code in the image instead of one per transport.
+    let evidence_len = handler
+        .get_attestation(alloc.pool(), format, algorithm, entity, &req.nonce, out)
+        .await
+        .map_err(|_| errors::MCU_MBOX_COMMON)?;
+
+    Ok(GET_ATTESTATION_RESP_PREFIX_LEN + evidence_len)
 }
 
 fn populate_response_checksum(resp: &mut [u8]) -> McuResult<()> {
@@ -996,4 +1344,217 @@ fn populate_response_checksum(resp: &mut [u8]) -> McuResult<()> {
     let checksum = raw::mailbox_checksum(0, &resp[size_of::<u32>()..]);
     resp[..size_of::<u32>()].copy_from_slice(&checksum.to_le_bytes());
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    extern crate std;
+
+    use super::*;
+    use caliptra_mcu_mbox_common::messages::MAX_ATTESTATION_RESP_DATA_SIZE;
+    use futures::executor::block_on;
+    use std::vec;
+    use std::vec::Vec;
+
+    const TEST_EAT_LEN: usize = 3059;
+    const TEST_QUOTE_MLDSA_LEN: usize = 6388;
+
+    struct TestAlloc;
+
+    impl ApiAlloc for TestAlloc {
+        type Buf<'a>
+            = Vec<u8>
+        where
+            Self: 'a;
+
+        fn alloc(&self, len: usize) -> McuResult<Self::Buf<'_>> {
+            Ok(vec![0; len])
+        }
+    }
+
+    impl ApiAllocPool for TestAlloc {
+        type Pool = Self;
+
+        fn pool(&self) -> &Self::Pool {
+            self
+        }
+    }
+
+    /// Handler advertising both formats, with ML-DSA available only for quotes.
+    /// Mirrors the emulator backend: the EAT is ES384-only today.
+    struct TestHandler;
+
+    impl CaliptraCmdHandler for TestHandler {
+        async fn get_firmware_version(
+            &self,
+            _index: u32,
+            _version: &mut FirmwareVersion,
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            unimplemented!("not exercised by the attestation tests")
+        }
+
+        async fn get_device_capabilities(
+            &self,
+            _capabilities: &mut DeviceCapabilities,
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            unimplemented!("not exercised by the attestation tests")
+        }
+
+        async fn export_attested_csr<Alloc: ApiAlloc>(
+            &self,
+            _alloc: &Alloc,
+            _device_key_id: u32,
+            _algorithm: u32,
+            _nonce: &[u8; 32],
+            _csr_buf: &mut [u8],
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<usize> {
+            unimplemented!("not exercised by the attestation tests")
+        }
+
+        async fn request_debug_unlock<Alloc: ApiAlloc>(
+            &self,
+            _alloc: &Alloc,
+            _unlock_level: u8,
+            _challenge: &mut DebugUnlockChallenge,
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            unimplemented!("not exercised by the attestation tests")
+        }
+
+        async fn authorize_debug_unlock_token<Alloc: ApiAlloc>(
+            &self,
+            _alloc: &Alloc,
+            _token_data: &[u8],
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            unimplemented!("not exercised by the attestation tests")
+        }
+
+        const SUPPORTED_EVIDENCE_FORMATS: u32 =
+            EvidenceFormat::OcpEat.bit() | EvidenceFormat::PcrQuote.bit();
+        const MAX_ATTESTATION_EVIDENCE_LEN: usize = TEST_QUOTE_MLDSA_LEN;
+
+        fn attestation_evidence_len(format: EvidenceFormat, algorithm: AsymAlgo) -> usize {
+            match (format, algorithm) {
+                (EvidenceFormat::OcpEat, AsymAlgo::EccP384) => TEST_EAT_LEN,
+                (EvidenceFormat::PcrQuote, AsymAlgo::EccP384) => 1840,
+                (EvidenceFormat::PcrQuote, AsymAlgo::Mldsa87) => TEST_QUOTE_MLDSA_LEN,
+                _ => 0,
+            }
+        }
+
+        async fn get_attestation<Alloc: ApiAlloc>(
+            &self,
+            _alloc: &Alloc,
+            format: EvidenceFormat,
+            algorithm: AsymAlgo,
+            _entity: PkiEntitySlot,
+            nonce: &[u8; 32],
+            out: &mut [u8],
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<usize> {
+            let len = Self::attestation_evidence_len(format, algorithm);
+            // Evidence shorter than the reservation is the normal case; fill a
+            // recognizable prefix so the test can prove framing offsets.
+            let len = len - 8;
+            out[..4].copy_from_slice(&(format as u32).to_le_bytes());
+            out[4..8].copy_from_slice(&nonce[..4]);
+            out[8..len].fill(0xAB);
+            Ok(len)
+        }
+    }
+
+    fn request(format: u32, algorithm: u32) -> GetAttestationReq {
+        GetAttestationReq {
+            hdr: MailboxReqHeader { chksum: 0 },
+            evidence_format: format,
+            algorithm,
+            pki_entity_slot: PkiEntitySlot::Vendor as u32,
+            nonce: [0x5A; 32],
+        }
+    }
+
+    #[test]
+    fn response_buffer_is_sized_from_the_handler_not_a_fixed_variant() {
+        let sized = response_buffer_size::<TestHandler>(CommandId::MC_GET_ATTESTATION.0);
+        assert!(
+            sized
+                >= size_of::<MailboxRespHeaderVarSize>()
+                    + GET_ATTESTATION_RESP_PREFIX_LEN
+                    + TEST_QUOTE_MLDSA_LEN
+        );
+        // Other commands must not grow because attestation needs a big buffer.
+        assert_eq!(
+            response_buffer_size::<TestHandler>(CommandId::MC_FIRMWARE_VERSION.0),
+            size_of::<McuMailboxResp>()
+        );
+    }
+
+    #[test]
+    fn query_returns_the_supported_format_bitmap() {
+        let req = request(EVIDENCE_FORMAT_QUERY, 0);
+        let mut body = vec![0u8; 64];
+        let len = block_on(stage_attestation(&TestHandler, &TestAlloc, &req, &mut body)).unwrap();
+
+        assert_eq!(len, 8);
+        assert_eq!(u32::from_le_bytes(body[..4].try_into().unwrap()), 0);
+        assert_eq!(
+            u32::from_le_bytes(body[4..8].try_into().unwrap()),
+            TestHandler::SUPPORTED_EVIDENCE_FORMATS
+        );
+    }
+
+    #[test]
+    fn evidence_is_framed_after_the_echoed_format() {
+        let req = request(EvidenceFormat::PcrQuote as u32, AsymAlgo::Mldsa87 as u32);
+        let mut body = vec![0u8; MAX_ATTESTATION_RESP_DATA_SIZE];
+        let len = block_on(stage_attestation(&TestHandler, &TestAlloc, &req, &mut body)).unwrap();
+
+        assert_eq!(
+            len,
+            GET_ATTESTATION_RESP_PREFIX_LEN + TEST_QUOTE_MLDSA_LEN - 8
+        );
+        assert_eq!(
+            u32::from_le_bytes(body[..4].try_into().unwrap()),
+            EvidenceFormat::PcrQuote as u32
+        );
+        // Evidence starts immediately after the echoed format, and the nonce
+        // reached the generator.
+        assert_eq!(
+            u32::from_le_bytes(body[4..8].try_into().unwrap()),
+            EvidenceFormat::PcrQuote as u32
+        );
+        assert_eq!(&body[8..12], &[0x5A; 4]);
+    }
+
+    #[test]
+    fn unsupported_pairs_are_rejected_before_generation() {
+        // The EAT is ES384-only today; ML-DSA-87 is not implemented yet.
+        let req = request(EvidenceFormat::OcpEat as u32, AsymAlgo::Mldsa87 as u32);
+        let mut body = vec![0u8; MAX_ATTESTATION_RESP_DATA_SIZE];
+        assert_eq!(
+            block_on(stage_attestation(&TestHandler, &TestAlloc, &req, &mut body)),
+            Err(errors::UNSUPPORTED_COMMAND)
+        );
+
+        // Unknown format and unknown algorithm are parameter errors.
+        let req = request(0xFF, AsymAlgo::EccP384 as u32);
+        assert_eq!(
+            block_on(stage_attestation(&TestHandler, &TestAlloc, &req, &mut body)),
+            Err(errors::INVALID_PARAMS)
+        );
+        let req = request(EvidenceFormat::PcrQuote as u32, 0xFF);
+        assert_eq!(
+            block_on(stage_attestation(&TestHandler, &TestAlloc, &req, &mut body)),
+            Err(errors::INVALID_PARAMS)
+        );
+    }
+
+    #[test]
+    fn a_buffer_too_small_for_the_reservation_fails_instead_of_truncating() {
+        let req = request(EvidenceFormat::PcrQuote as u32, AsymAlgo::Mldsa87 as u32);
+        // One byte short of the worst case for this pair.
+        let mut body = vec![0u8; GET_ATTESTATION_RESP_PREFIX_LEN + TEST_QUOTE_MLDSA_LEN - 1];
+        assert_eq!(
+            block_on(stage_attestation(&TestHandler, &TestAlloc, &req, &mut body)),
+            Err(errors::BUFFER_TOO_SMALL)
+        );
+    }
 }

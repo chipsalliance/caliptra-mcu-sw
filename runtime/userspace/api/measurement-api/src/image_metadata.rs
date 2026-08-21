@@ -2,7 +2,7 @@
 
 //! Metadata passed to Measurement API for MCU-managed image measurement flows.
 
-use mcu_caliptra_api_lite::ImageHashSource;
+use mcu_caliptra_api::ImageHashSource;
 
 /// SHA-384 digest size used for SoC image measurements.
 pub const IMAGE_MEASUREMENT_DIGEST_SIZE: usize = 48;

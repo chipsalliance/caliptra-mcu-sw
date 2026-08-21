@@ -44,6 +44,7 @@ struct MctpPldmSocketData {
 impl PldmSocket for MctpPldmSocket {
     fn send(&self, payload: &[u8]) -> Result<(), PldmTransportError> {
         let mut mctp_util = MctpUtil::new();
+        mctp_util.set_src_eid(self.source.0);
         let mut mctp_common_header = MctpCommonHeader(0);
         mctp_common_header.set_ic(0);
         mctp_common_header.set_msg_type(MCTP_PLDM_MSG_TYPE);
@@ -153,7 +154,10 @@ impl PldmSocket for MctpPldmSocket {
     }
 
     fn disconnect(&self) {
-        // Not supported
+        // The emulator's I3C socket server only services one client at a time,
+        // so the connection has to be released for the next client to be
+        // accepted.
+        self.stream.shutdown();
     }
 
     fn clone(&self) -> Self {

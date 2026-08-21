@@ -105,7 +105,12 @@ impl CorimConfig {
   // Signing configuration (omit entirely for unsigned output)
   "signing": {
     // Option A: Deterministic test key — seed string hashed with SHA-384 to derive P-384 key pair
-    "test_key": "my-test-seed-string"
+    "test_key": "my-test-seed-string",
+
+    // Directory for the generated key/certificate (default: "<output_dir>/fake_keys").
+    // Point several CoRIM generations at one directory so they share a single
+    // signer identity and only one certificate needs to be trusted.
+    // "keys_dir": "attestation-artifacts/fake_keys"
 
     // Option B: External signing key (mutually exclusive with test_key)
     // "key":  "/path/to/signing-key.jwk",   // JWK private key file (required)
@@ -139,6 +144,14 @@ impl CorimConfig {
 pub struct SigningConfig {
     /// Seed string for deterministic test key generation.
     pub test_key: Option<String>,
+    /// Directory holding the generated test signing key and certificate.
+    /// Defaults to `<output_dir>/fake_keys`. Point several CoRIM generations
+    /// at one directory so they share a single signer identity: the key is
+    /// derived deterministically from the seed, but the self-signed
+    /// certificate wrapping it is not reproducible across runs, so separate
+    /// directories would yield certificates that must each be trusted
+    /// separately.
+    pub keys_dir: Option<String>,
     /// Path to JWK signing key file.
     pub key: Option<String>,
     /// Path to DER signing certificate file.
@@ -178,13 +191,20 @@ fn read_evidence_components(
     bundle_path: &Path,
     config: &CorimConfig,
     feature: Option<&str>,
+    post_update: bool,
 ) -> Result<Vec<EvidenceComponent>> {
     let file = std::fs::File::open(bundle_path)?;
     let mut zip = zip::ZipArchive::new(file)?;
 
     // When a feature is specified, prefer per-feature entries over generic ones.
     let soc_manifest_name = feature
-        .map(|f| format!("mcu-test-soc-manifest-{}.bin", f))
+        .map(|f| {
+            if post_update {
+                format!("mcu-test-soc-manifest-update-{}.bin", f)
+            } else {
+                format!("mcu-test-soc-manifest-{}.bin", f)
+            }
+        })
         .unwrap_or_else(|| SOC_MANIFEST_NAME.to_string());
     let mut soc_manifest_data: Option<Vec<u8>> = None;
 
@@ -470,7 +490,12 @@ fn generate_meta_template(output_dir: &Path) -> Result<PathBuf> {
 /// Note: integrity-registers (journey PCR values) are runtime-computed and
 /// cannot be pre-determined from static build artifacts. They are not included
 /// in the reference values.
-pub fn generate(bundle: &str, config: CorimConfig, feature: Option<&str>) -> Result<()> {
+pub fn generate(
+    bundle: &str,
+    config: CorimConfig,
+    feature: Option<&str>,
+    post_update: bool,
+) -> Result<()> {
     let bundle_path = Path::new(bundle);
     if !bundle_path.exists() {
         bail!(
@@ -484,7 +509,7 @@ pub fn generate(bundle: &str, config: CorimConfig, feature: Option<&str>) -> Res
 
     // Step 1: Read and decompose firmware binaries to match evidence structure
     println!("Reading firmware binaries from: {}", bundle);
-    let components = read_evidence_components(bundle_path, &config, feature)?;
+    let components = read_evidence_components(bundle_path, &config, feature, post_update)?;
     for comp in &components {
         println!(
             "  [mkey {}] {} ({})",
@@ -601,10 +626,16 @@ pub fn generate(bundle: &str, config: CorimConfig, feature: Option<&str>) -> Res
 
     // Resolve signing key and certificate paths — always sign the CoRIM.
     // When no signing config is provided, use a default test key seed.
+    let test_keys_dir = |sign_cfg: Option<&SigningConfig>| {
+        sign_cfg
+            .and_then(|c| c.keys_dir.as_ref())
+            .map(PathBuf::from)
+            .unwrap_or_else(|| output_path.join("fake_keys"))
+    };
     let (jwk_path, cert_path) = if let Some(ref sign_cfg) = config.signing {
         if let Some(ref seed_str) = sign_cfg.test_key {
             // Generate deterministic test keys from seed
-            let keys_dir = output_path.join("fake_keys");
+            let keys_dir = test_keys_dir(Some(sign_cfg));
             println!("Generating deterministic P-384 test signing keys...");
             let seed: [u8; 48] = Sha384::digest(seed_str.as_bytes()).into();
             generate_test_keys(&keys_dir, &seed, "/CN=Caliptra Test Signer/O=ChipsAlliance")?
@@ -621,14 +652,14 @@ pub fn generate(bundle: &str, config: CorimConfig, feature: Option<&str>) -> Res
             (jwk_path, cert_path)
         } else {
             // signing config present but no key specified — use default test key
-            let keys_dir = output_path.join("fake_keys");
+            let keys_dir = test_keys_dir(Some(sign_cfg));
             println!("Generating deterministic P-384 test signing keys (default seed)...");
             let seed: [u8; 48] = Sha384::digest(DEFAULT_TEST_KEY_SEED.as_bytes()).into();
             generate_test_keys(&keys_dir, &seed, "/CN=Caliptra Test Signer/O=ChipsAlliance")?
         }
     } else {
         // No signing config at all — use default test key
-        let keys_dir = output_path.join("fake_keys");
+        let keys_dir = test_keys_dir(None);
         println!("Generating deterministic P-384 test signing keys (default seed)...");
         let seed: [u8; 48] = Sha384::digest(DEFAULT_TEST_KEY_SEED.as_bytes()).into();
         generate_test_keys(&keys_dir, &seed, "/CN=Caliptra Test Signer/O=ChipsAlliance")?

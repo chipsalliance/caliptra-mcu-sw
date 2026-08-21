@@ -39,6 +39,8 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
     let features_str = features.join(",");
     let rom_binary =
         caliptra_mcu_builder::rom_build(&caliptra_mcu_builder::CaliptraBuildArgs::default())?;
+    CaliptraBuilder::new(&caliptra_mcu_builder::CaliptraBuildArgs::default())
+        .write_attestation_manifest_config(soc_images.as_deref().unwrap_or(&[]))?;
     let tock_binary = runtime_build_with_apps(&caliptra_mcu_builder::CaliptraBuildArgs {
         features: Some(&features_str),
         ..Default::default()
@@ -210,9 +212,12 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
             flash_image.as_ref().unwrap().to_str().unwrap(),
         ]);
     }
-    Command::new("cargo")
+    let status = Command::new("cargo")
         .args(cargo_run_args)
         .current_dir(&*PROJECT_ROOT)
         .status()?;
+    if !status.success() {
+        return Err(anyhow!("runtime emulator exited with status {status}"));
+    }
     Ok(())
 }

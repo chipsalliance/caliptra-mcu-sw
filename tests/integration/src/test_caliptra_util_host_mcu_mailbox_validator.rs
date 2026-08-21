@@ -15,11 +15,12 @@
 
 #[cfg(test)]
 pub mod test {
-    use crate::test::{start_runtime_hw_model, TestParams, TEST_LOCK};
+    use crate::test::{start_runtime_hw_model, CustomCaliptraFw, TestParams, TEST_LOCK};
     use caliptra_api::SocManager;
     use caliptra_mailbox_client::{
-        AsymmetricCommandAuthorizer, DebugUnlockKeys, LocalDebugUnlockSigner, Validator,
+        AsymmetricCommandAuthorizer, DebugUnlockKeys, LocalDebugUnlockSigner, TestConfig, Validator,
     };
+    use caliptra_mcu_builder::FirmwareBinaries;
     use caliptra_mcu_hw_model::{McuHwModel, McuManager};
     use caliptra_mcu_romtime::McuBootMilestones;
     use random_port::PortPicker;
@@ -36,6 +37,61 @@ pub mod test {
     /// Crypto operations (ECDH, ECDSA, AES, etc.) are slow in the emulator
     /// and need significantly more than the default 40M cycles.
     const MAILBOX_TIMEOUT_CYCLES: u64 = 200_000_000;
+    const TEST_FEATURE: &str = "test-caliptra-util-host-validator";
+
+    fn caliptra_fw_svn7() -> CustomCaliptraFw {
+        let binaries = FirmwareBinaries::from_env().expect("validator firmware bundle is required");
+        CustomCaliptraFw {
+            fw_bytes: binaries.caliptra_fw_svn7.clone(),
+            vendor_pk_hash: binaries.vendor_pk_hash().unwrap(),
+            soc_manifest: binaries.test_soc_manifest(TEST_FEATURE).unwrap().clone(),
+        }
+    }
+
+    fn validator_config(server_addr: String, fuse_suite: Option<&str>) -> TestConfig {
+        let mut config = TestConfig::default();
+        config.network.default_server_address = server_addr;
+        config.validation.timeout_seconds = 120;
+        config.validation.verbose_output = true;
+        config.device_capabilities = None;
+        config.firmware_version = None;
+        config.fe_prog.enabled = fuse_suite.is_none() || fuse_suite == Some("fe-prog");
+
+        match fuse_suite {
+            None | Some("fe-prog") => {}
+            Some("provision-vendor-pk-hash") => {
+                config.provision_vendor_pk_hash.enabled = true;
+                config.provision_vendor_pk_hash.slot = 1;
+                config.provision_vendor_pk_hash.hash = "a5".repeat(48);
+            }
+            Some("increase-min-svn") => {
+                config.increase_caliptra_min_svn.enabled = true;
+                config.increase_caliptra_min_svn.flags = 0;
+                config.increase_caliptra_min_svn.svn = 7;
+            }
+            Some("revoke-vendor-pub-key") => {
+                config.provision_vendor_pk_hash.enabled = true;
+                config.provision_vendor_pk_hash.slot = 1;
+                config.provision_vendor_pk_hash.hash = "a5".repeat(48);
+                config.revoke_vendor_pub_key.enabled = true;
+                config.revoke_vendor_pub_key.vendor_pk_hash_slot = 1;
+            }
+            Some("revoke-vendor-pk-hash") => {
+                config.provision_vendor_pk_hash.enabled = true;
+                config.provision_vendor_pk_hash.slot = 1;
+                config.provision_vendor_pk_hash.hash = "a5".repeat(48);
+                config.revoke_vendor_pk_hash.enabled = true;
+                config.revoke_vendor_pk_hash.vendor_pk_hash_slot = 1;
+            }
+            Some("fuse-lock-partition") => {
+                config.fuse_lock_partition.enabled = true;
+                config.fuse_lock_partition.partition = 14;
+            }
+            Some(suite) => panic!("unknown MAILBOX_FUSE_SUITE: {suite}"),
+        }
+
+        config
+    }
 
     // Hardcoded testing keys.
     // These match the public keys hardcoded in the mock authorizer.
@@ -121,7 +177,7 @@ pub mod test {
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, Ordering::Relaxed);
 
-        let feature = "test-caliptra-util-host-validator";
+        let fuse_suite = std::env::var("MAILBOX_FUSE_SUITE").ok();
         let udp_port = PortPicker::new().random(true).pick().unwrap();
         let unlock_level = 1u8;
 
@@ -167,7 +223,11 @@ pub mod test {
 
         // --- Start hw_model with keys provisioned in fuses ---
         let mut hw = start_runtime_hw_model(TestParams {
-            feature: Some(feature),
+            feature: Some(TEST_FEATURE),
+            custom_caliptra_fw: (fuse_suite.as_deref() == Some("increase-min-svn"))
+                .then(caliptra_fw_svn7),
+            dot_enabled: true,
+            use_strap_secrets: true,
             debug_intent: true,
             lifecycle_controller_state: Some(caliptra_mcu_hw_model::LifecycleControllerState::Prod),
             prod_dbg_unlock_keypairs: prod_dbg_keypairs,
@@ -194,32 +254,67 @@ pub mod test {
         let done_clone = done.clone();
         let validator_failed = Arc::new(AtomicBool::new(false));
         let validator_failed_clone = validator_failed.clone();
+        let validator_config = validator_config(bind_addr, fuse_suite.as_deref());
+        let fuse_only = fuse_suite.is_some();
 
         // Spawn the validator client in a background thread.
         let validator_handle = std::thread::spawn(move || {
-            let server_addr = format!("127.0.0.1:{}", udp_port)
-                .parse()
-                .expect("Failed to parse server address");
-            let validator = Validator::new(server_addr)
+            let validator = Validator::from_config(&validator_config)
+                .expect("Failed to create validator from test config")
                 .set_recv_timeout(Duration::from_secs(120))
                 .set_verbose(true)
                 .set_debug_unlock_signer(Box::new(debug_unlock_signer))
                 .set_command_authorizer(Box::new(
                     AsymmetricCommandAuthorizer::new(&TEST_ECC_PRIV_KEY, &TEST_MLDSA_SEED).unwrap(),
-                ));
+                ))
+                .set_dot_validation(
+                    Box::new(
+                        AsymmetricCommandAuthorizer::new(&TEST_ECC_PRIV_KEY, &TEST_MLDSA_SEED)
+                            .unwrap(),
+                    ),
+                    [0xA5; 48],
+                );
 
             println!("Running Mailbox validator in-process (port={})", udp_port);
 
-            match validator.start() {
+            let validation = if fuse_only {
+                validator.start_fuse_suite()
+            } else {
+                validator.start()
+            };
+
+            match validation {
                 Ok(results) => {
                     let all_passed = results.iter().all(|r| r.passed);
-                    if all_passed {
+                    let required_dot_results = [
+                        "DotStatus",
+                        "DotLock",
+                        "GetDotBackupBlob",
+                        "DotRotate",
+                        "DotUnlockChallenge",
+                        "DotUnlock",
+                        "DotDisable",
+                    ];
+                    let all_dot_results_passed = required_dot_results.iter().all(|test_name| {
+                        results
+                            .iter()
+                            .any(|result| result.test_name == *test_name && result.passed)
+                    });
+                    if all_passed && all_dot_results_passed {
                         println!("✓ Caliptra Mailbox validator PASSED");
                     } else {
                         println!("✗ Caliptra Mailbox validator FAILED");
                         for r in &results {
                             if !r.passed {
                                 println!("  FAIL: {} — {:?}", r.test_name, r.error_message);
+                            }
+                        }
+                        for test_name in required_dot_results {
+                            if !results
+                                .iter()
+                                .any(|result| result.test_name == test_name && result.passed)
+                            {
+                                println!("  FAIL: missing successful DOT result {test_name}");
                             }
                         }
                         validator_failed_clone.store(true, Ordering::Relaxed);

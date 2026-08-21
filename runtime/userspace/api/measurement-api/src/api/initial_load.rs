@@ -9,7 +9,7 @@ use caliptra_mcu_libsyscall_caliptra::soft_pcr_store::{
     MeasurementRecord, SoftwarePcrStore, SOFT_PCR_STORE_DRIVER_NUM,
 };
 use caliptra_mcu_libtock_platform::Syscalls;
-use mcu_caliptra_api_lite::{
+use mcu_caliptra_api::{
     authorize_and_stash as caliptra_authorize, dpe_derive_context, dpe_tag_tci, extend_pcr31,
     sha_finish, sha_init, sha_update, ApiAlloc, DpeContextHandle, DpeDeriveContextFlags,
     DpeDeriveContextParams, HashAlgo, SHA_CONTEXT_SIZE,
@@ -195,7 +195,7 @@ mod tests {
 
     use super::*;
     use crate::attestation_manifest::MCU_RT_FW_ID;
-    use mcu_caliptra_api_lite::AuthorizeAndStashFlags;
+    use mcu_caliptra_api::AuthorizeAndStashFlags;
 
     #[test]
     fn caliptra_authorize_params_force_skip_stash_for_initial_load() {

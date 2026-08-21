@@ -44,6 +44,14 @@ pub const MC_GET_AUTH_CMD_CHALLENGE_CANONICAL_CMD_ID: u32 = 0x4D41_4343;
 /// transports (SPDM VDM and MCU mailbox) to ensure interoperability.
 pub const MC_FE_PROG_CANONICAL_CMD_ID: u32 = 0x4D43_4650;
 
+/// Canonical FOURCC command identifiers used for authorized fuse operations.
+pub const MC_PROVISION_VENDOR_PK_HASH_CANONICAL_CMD_ID: u32 = 0x5056_504B;
+pub const MC_FUSE_INCREASE_CALIPTRA_MIN_SVN_CANONICAL_CMD_ID: u32 = 0x4D43_4D53;
+pub const MC_FUSE_REVOKE_VENDOR_PUB_KEY_CANONICAL_CMD_ID: u32 = 0x4D52_564B;
+pub const MC_FUSE_REVOKE_VENDOR_PK_HASH_CANONICAL_CMD_ID: u32 = 0x5256_4B48;
+pub const MC_FUSE_LOCK_PARTITION_CANONICAL_CMD_ID: u32 = 0x4946_504B;
+pub const MC_PROVISION_OWNER_PK_HASH_CANONICAL_CMD_ID: u32 = 0x504F_504B;
+
 // ---- Get Authorization Command Challenge ----
 
 /// Request a challenge nonce for authorizing privileged commands.
@@ -170,6 +178,76 @@ impl CommandRequest for FeProgRequest {
 }
 
 impl CommandResponse for FeProgResponse {}
+
+macro_rules! authorized_fuse_command {
+    ($request:ident, $response:ident, $command_id:ident, { $($field:ident: $ty:ty),+ $(,)? }) => {
+        #[repr(C)]
+        #[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+        pub struct $request {
+            $(pub $field: $ty,)+
+            pub nonce: [u8; AUTH_CMD_CHALLENGE_SIZE],
+            pub ecc_pub_x: [u8; AUTH_PUB_ECC_COORD_SIZE],
+            pub ecc_pub_y: [u8; AUTH_PUB_ECC_COORD_SIZE],
+            pub mldsa_pub: [u8; AUTH_PUB_MLDSA_SIZE],
+            pub sig: HybridSignature,
+        }
+
+        #[repr(C)]
+        #[derive(Debug, Default, Clone, IntoBytes, FromBytes, Immutable)]
+        pub struct $response {
+            pub common: CommonResponse,
+        }
+
+        impl CommandRequest for $request {
+            type Response = $response;
+            const COMMAND_ID: CaliptraCommandId = CaliptraCommandId::$command_id;
+        }
+
+        impl CommandResponse for $response {}
+    };
+}
+
+authorized_fuse_command!(
+    ProvisionVendorPkHashRequest,
+    ProvisionVendorPkHashResponse,
+    ProvisionVendorPkHash,
+    { slot: u32, hash: [u8; 48] }
+);
+authorized_fuse_command!(
+    FuseIncreaseCaliptraMinSvnRequest,
+    FuseIncreaseCaliptraMinSvnResponse,
+    FuseIncreaseCaliptraMinSvn,
+    { flags: u32, svn: u32 }
+);
+authorized_fuse_command!(
+    FuseRevokeVendorPubKeyRequest,
+    FuseRevokeVendorPubKeyResponse,
+    FuseRevokeVendorPubKey,
+    {
+        reserved: u32,
+        vendor_pk_hash_slot: u32,
+        key_type: u32,
+        key_index: u32
+    }
+);
+authorized_fuse_command!(
+    FuseRevokeVendorPkHashRequest,
+    FuseRevokeVendorPkHashResponse,
+    FuseRevokeVendorPkHash,
+    { reserved: u32, vendor_pk_hash_slot: u32 }
+);
+authorized_fuse_command!(
+    FuseLockPartitionRequest,
+    FuseLockPartitionResponse,
+    FuseLockPartition,
+    { partition: u32 }
+);
+authorized_fuse_command!(
+    ProvisionOwnerPkHashRequest,
+    ProvisionOwnerPkHashResponse,
+    ProvisionOwnerPkHash,
+    { hash: [u8; 48] }
+);
 
 // ---- Placeholder fuse commands ----
 

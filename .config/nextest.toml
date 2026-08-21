@@ -23,6 +23,7 @@ store-failure-output = true
 
 [profile.nightly-ci]
 inherits = "nightly"
+retries = 2
 # Tests that program OTP with LifecycleControllerState::Dev as the initial
 # state hang the FPGA at "Taking subsystem out of reset" (confirmed locally
 # with test_lc_dev_to_prod). Dev-init tests are disabled until that's
@@ -38,6 +39,8 @@ default-filter = """
 (package(caliptra-mcu-tests-integration) and test(test_fw_update_e2e)) |
 (package(caliptra-mcu-tests-integration) and test(test_mctp_vdm_cmds)) |
 (package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_usermode)) |
+(package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_ecdsa384_sig_verify)) |
+(package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_lms_sig_verify)) |
 (package(caliptra-mcu-tests-integration) and test(test_i3c_constant_writes)) |
 (package(caliptra-mcu-tests-integration) and test(test_i3c_simple)) |
 (package(caliptra-mcu-tests-integration) and test(test_i3c_services_ping)) |
@@ -60,6 +63,7 @@ default-filter = """
 (package(caliptra-mcu-tests-integration) and test(test_otp_blank_check)) |
 (package(caliptra-mcu-tests-integration) and test(test_otp_scramble_check)) |
 (package(caliptra-mcu-tests-integration) and test(test_firmware_activate_fpga)) |
+(package(caliptra-mcu-tests-integration) and test(test_get_alarm_expired_fpga)) |
 (package(caliptra-mcu-tests-integration) and test(test_mctp_capsule_loopback_after_warm_reset)) |
 (package(caliptra-mcu-tests-integration) and test(test_mctp_capsule_loopback_after_hitless_update_reset))
 """
