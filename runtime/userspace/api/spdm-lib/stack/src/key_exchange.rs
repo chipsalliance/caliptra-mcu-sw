@@ -46,6 +46,8 @@ const KEY_EXCHANGE_SIGNING_PREFIX_V12: &[u8; KEY_EXCHANGE_SIGNING_PREFIX_CHUNK_L
     b"dmtf-spdm-v1.2.*";
 const KEY_EXCHANGE_SIGNING_PREFIX_V13: &[u8; KEY_EXCHANGE_SIGNING_PREFIX_CHUNK_LEN] =
     b"dmtf-spdm-v1.3.*";
+const KEY_EXCHANGE_SIGNING_PREFIX_V14: &[u8; KEY_EXCHANGE_SIGNING_PREFIX_CHUNK_LEN] =
+    b"dmtf-spdm-v1.4.*";
 const KEY_EXCHANGE_SIGNING_OP: &[u8; 34] = b"responder-key_exchange_rsp signing";
 
 pub(crate) async fn handle_key_exchange<'a, Pal: SpdmPal, const N: usize>(
@@ -369,6 +371,7 @@ fn build_signing_context(version: SpdmVersion, ctx: &mut [u8; SPDM_SIGNING_CONTE
         SpdmVersion::V11 => KEY_EXCHANGE_SIGNING_PREFIX_V11,
         SpdmVersion::V12 => KEY_EXCHANGE_SIGNING_PREFIX_V12,
         SpdmVersion::V13 => KEY_EXCHANGE_SIGNING_PREFIX_V13,
+        SpdmVersion::V14 => KEY_EXCHANGE_SIGNING_PREFIX_V14,
     };
     let mut pos = 0;
     for _ in 0..4 {
