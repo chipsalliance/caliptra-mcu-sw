@@ -35,7 +35,7 @@ These commands support common Caliptra management functions, including querying 
 | ----------------------------- | -------------------- | ------------------------------------------------------------------------------------- |
 | MC_FIRMWARE_VERSION           | 0x4D46_5756 ("MFWV") | Retrieves the version of the target firmware.                                         |
 | MC_DEVICE_CAPABILITIES        | 0x4D43_4150 ("MCAP") | Retrieve the device capabilities.                                                     |
-| MC_EXPORT_ATTESTED_CSR        | 0x4D45_4143 ("MEAC") | Exports an attested CSR for a specified device key, wrapped in a CoseSign1 structure. |
+| MC_EXPORT_ATTESTED_CSR        | 0x4D45_4143 ("MEAC") | Discovers supported device keys or exports an attested CSR, wrapped in a CoseSign1 structure. |
 | MC_DPE_SIGNER_CONTEXT_CERT    | 0x4D44_5343 ("MDSC") | Derives DPE signer context and returns the derived leaf certificate.                  |
 | MC_GET_DPE_CERTIFICATE_CHAIN  | 0x4D44_4343 ("MDCC") | Retrieves the DPE certificate chain.                                                  |
 | MC_GET_ATTESTATION            | 0x4D47_4154 ("MGAT") | Retrieves signed attestation evidence in a requester-selected format.                 |
@@ -157,7 +157,8 @@ Payload semantics are defined by [Device Capabilities](caliptra_common_commands.
 
 ### MC_EXPORT_ATTESTED_CSR
 
-Exports an attested Certificate Signing Request (CSR) for a specified device key.
+Discovers supported Caliptra identity keys or exports an attested Certificate
+Signing Request (CSR) for a specified device key.
 
 Command Code: `0x4D45_4143` ("MEAC")
 
