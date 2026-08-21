@@ -18,7 +18,7 @@ use caliptra_mcu_config::version::get_mcu_runtime_version;
 use caliptra_mcu_libapi_caliptra::error::CaliptraApiError;
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_libapi_caliptra::ocp_lock::{
-    HpkeHandle, OcpLock, OcpLockEnumerateHpkeHandlesResp,
+    EndorsementAlgorithm, HpkeHandle, OcpLock, OcpLockEnumerateHpkeHandlesResp,
 };
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_libapi_caliptra::signer::CaliptraDpeSigner;
@@ -469,11 +469,17 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
     async fn get_ocp_lock_endorsement_cert(
         &self,
         hpke_handle: &HpkeHandle,
+        algorithm: u32,
         cert_buf: &mut [u8],
     ) -> CaliptraCmdResult<usize> {
+        let algo = match algorithm {
+            0 | 1 => EndorsementAlgorithm::EcdsaP384Sha384,
+            2 => EndorsementAlgorithm::MlDsa87,
+            _ => return Err(CaliptraCompletionCode::InvalidParameter),
+        };
         let mailbox = Mailbox::new();
         let ocp_lock = OcpLock::new(&mailbox, &crate::ocp_lock_config::APP_RUNTIME_CONFIG);
-        let signer = CaliptraDpeSigner::new(&mailbox);
+        let signer = CaliptraDpeSigner::with_algorithm(&mailbox, algo);
 
         ocp_lock
             .get_hpke_public_key_x509(hpke_handle, cert_buf, &signer)

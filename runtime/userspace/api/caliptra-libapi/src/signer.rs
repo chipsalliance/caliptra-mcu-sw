@@ -112,7 +112,7 @@ impl OcpLockSigner for CaliptraDpeSigner<'_> {
                 let mut req = Box::new(SignWithExportedMldsaReq {
                     hdr: MailboxReqHeader::default(),
                     exported_cdi_handle: exported_cdi,
-                    sign_type: MldsaSignType::Mu as u32,
+                    sign_type: MldsaSignType::Raw as u32,
                     tbs_size: data.len() as u32,
                     tbs: [0u8; SignWithExportedMldsaReq::MAX_TBS_SIZE],
                 });

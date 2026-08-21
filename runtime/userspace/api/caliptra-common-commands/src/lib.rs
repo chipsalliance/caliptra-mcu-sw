@@ -506,9 +506,10 @@ pub trait CaliptraCmdHandler {
     async fn get_ocp_lock_endorsement_cert(
         &self,
         hpke_handle: &HpkeHandle,
+        algorithm: u32,
         cert_buf: &mut [u8],
     ) -> CaliptraCmdResult<usize> {
-        let _ = (hpke_handle, cert_buf);
+        let _ = (hpke_handle, algorithm, cert_buf);
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 

@@ -337,14 +337,14 @@ impl<'a> OcpLock<'a> {
         tbs: &TbsCertificate,
         digest: &mut [u8; SHA384_HASH_SIZE],
     ) -> CaliptraApiResult<()> {
-        let mut tbs_der = [0u8; OcpLock::MAX_ENDORSEMENT_CERT_SIZE];
-        let mut writer = der::SliceWriter::new(&mut tbs_der[..]);
+        let tbs_len: usize = tbs.encoded_len()?.try_into()?;
+        let mut tbs_der = alloc::vec![0u8; tbs_len];
+        let mut writer = der::SliceWriter::new(&mut tbs_der);
         writer.encode(tbs)?;
-        let tbs_len = tbs.encoded_len()?.try_into()?;
 
         use sha2::{Digest, Sha384};
         let mut hasher = Sha384::new();
-        hasher.update(&tbs_der[..tbs_len]);
+        hasher.update(&tbs_der);
         digest.copy_from_slice(&hasher.finalize());
         Ok(())
     }
