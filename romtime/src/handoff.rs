@@ -241,6 +241,7 @@ pub static mut HANDOFF: HandoffData = HandoffData {
 /// Safe accessor for the entire OCP LOCK state in handoff table.
 /// Available to kernel capsules without requiring unsafe blocks.
 #[cfg(feature = "ocp-lock")]
+#[allow(clippy::result_unit_err)]
 pub fn get_ocp_lock_state() -> Result<&'static OcpLockState, ()> {
     // SAFETY: HANDOFF is populated by ROM at boot and is read-only for Runtime.
     // The linker will place the handoff struct in the correct location.

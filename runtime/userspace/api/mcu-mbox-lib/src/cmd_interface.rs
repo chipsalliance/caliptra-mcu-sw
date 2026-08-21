@@ -12,8 +12,8 @@ use caliptra_mcu_libsyscall_caliptra::otp::{Otp, RevokeVendorPubKeyType};
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libsyscall_caliptra::{caliptra, otp};
 use caliptra_mcu_mbox_common::messages::{
-    ClearLogReq, ClearLogResp, CommandId, DeviceCapsReq, DeviceCapsResp, ExportAttestedCsrReq,
-    FirmwareVersionReq, FirmwareVersionResp, FuseIncreaseCaliptraMinSvnReq,
+    ClearLogReq, ClearLogResp, CommandId, DeviceCapsReq, DeviceCapsResp, DpeSignerContextCertReq,
+    ExportAttestedCsrReq, FirmwareVersionReq, FirmwareVersionResp, FuseIncreaseCaliptraMinSvnReq,
     FuseIncreaseCaliptraMinSvnResp, FuseLockPartitionReq, FuseLockPartitionResp, FuseReadReq,
     FuseReadResp, FuseRevokeVendorPkHashReq, FuseRevokeVendorPkHashResp, FuseRevokeVendorPubKeyReq,
     FuseRevokeVendorPubKeyResp, FuseWriteReq, FuseWriteResp, GetAttestationReq,
@@ -770,7 +770,7 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
 
         let ret = self
             .non_crypto_cmds_handler
-            .get_ocp_lock_endorsement_cert(&req.hpke_handle, &mut resp.data)
+            .get_ocp_lock_endorsement_cert(&req.hpke_handle, req.algorithm, &mut resp.data)
             .await;
         let (mbox_cmd_status, data_len) = match ret {
             Ok(len) => (MbxCmdStatus::Complete, len.min(MAX_RESP_DATA_SIZE)),
@@ -821,9 +821,11 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
 
     async fn handle_dpe_signer_context_cert<'r>(
         &mut self,
-        _req: &[u8],
+        req: &[u8],
         resp_buf: &'r mut [u8],
     ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let _req = DpeSignerContextCertReq::ref_from_bytes(req)
+            .map_err(|_| errors::INVALID_PARAMS)?;
         let header_len = core::mem::size_of::<MailboxRespHeaderVarSize>();
         if resp_buf.len() < header_len {
             return Err(errors::INVALID_PARAMS);

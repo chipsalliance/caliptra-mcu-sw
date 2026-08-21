@@ -35,7 +35,7 @@ pub use mcu_caliptra_api::mailbox::{
 };
 use zerocopy::{FromBytes, FromZeros, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
-pub const MAX_RESP_DATA_SIZE: usize = 4 * 1024;
+pub const MAX_RESP_DATA_SIZE: usize = 8 * 1024;
 pub const MAX_FW_VERSION_STR_LEN: usize = 32;
 pub const DEVICE_CAPS_SIZE: usize = 36;
 pub const DOT_BLOB_SIZE: usize = 168;
@@ -1815,6 +1815,8 @@ impl McuResponseVarSize for ExportAttestedCsrResp {}
 #[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq, Default)]
 pub struct DpeSignerContextCertReq {
     pub hdr: MailboxReqHeader,
+    /// Asymmetric algorithm (0x0001=ECC384, 0x0002=MLDSA87)
+    pub algorithm: u32,
 }
 
 impl Request for DpeSignerContextCertReq {
@@ -2009,10 +2011,12 @@ pub struct OcpLockRotateHekResp {
 impl Response for OcpLockRotateHekResp {}
 /// MC_GET_OCP_LOCK_ENDORSEMENT_CERT request
 #[repr(C)]
-#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq, Default)]
 pub struct GetOcpLockEndorsementCertReq {
     pub hdr: MailboxReqHeader,
     pub hpke_handle: HpkeHandle,
+    /// Asymmetric algorithm (0x0001=ECC384, 0x0002=MLDSA87)
+    pub algorithm: u32,
 }
 impl Request for GetOcpLockEndorsementCertReq {
     const ID: CommandId = CommandId::MC_GET_OCP_LOCK_ENDORSEMENT_CERT;
@@ -2993,6 +2997,7 @@ mod tests {
     fn test_dpe_signer_context_cert_req_serialization() {
         let req = DpeSignerContextCertReq {
             hdr: MailboxReqHeader { chksum: 0xABCD },
+            algorithm: 1,
         };
 
         let bytes = req.as_bytes();
@@ -3000,6 +3005,26 @@ mod tests {
 
         let parsed = DpeSignerContextCertReq::read_from_bytes(bytes).unwrap();
         assert_eq!(parsed.hdr.chksum, 0xABCD);
+        assert_eq!(parsed.algorithm, 1);
+    }
+
+    #[test]
+    fn test_get_ocp_lock_endorsement_cert_req_serialization() {
+        let req = GetOcpLockEndorsementCertReq {
+            hdr: MailboxReqHeader { chksum: 0xABCD },
+            hpke_handle: HpkeHandle::default(),
+            algorithm: 2,
+        };
+
+        let bytes = req.as_bytes();
+        assert_eq!(
+            bytes.len(),
+            core::mem::size_of::<GetOcpLockEndorsementCertReq>()
+        );
+
+        let parsed = GetOcpLockEndorsementCertReq::read_from_bytes(bytes).unwrap();
+        assert_eq!(parsed.hdr.chksum, 0xABCD);
+        assert_eq!(parsed.algorithm, 2);
     }
 
     #[test]
