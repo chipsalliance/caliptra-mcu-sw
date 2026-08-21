@@ -11,3 +11,4 @@ zerocopy = { workspace = true }
 caliptra-mcu-spdm-traits = { workspace = true }
 caliptra-mcu-spdm-errors = { workspace = true }
 mcu-error = { workspace = true }
+bitfield-struct = { workspace = true }

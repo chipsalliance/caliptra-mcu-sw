@@ -2374,6 +2374,7 @@ dependencies = [
 name = "caliptra-mcu-spdm-codec"
 version = "0.1.0"
 dependencies = [
+ "bitfield-struct",
  "caliptra-mcu-runtime-userspace-error",
  "caliptra-mcu-spdm-errors",
  "caliptra-mcu-spdm-traits",

@@ -5,8 +5,9 @@
 extern crate std;
 
 use caliptra_mcu_spdm_codec::{
-    AsymAlgos, CapFlags, HashAlgos, ReqRespCode, SpdmVersion, AES_256_GCM_TAG_SIZE,
-    CHUNK_ATTR_LAST_CHUNK, SECURED_MSG_HDR_SIZE,
+    AsymAlgos, CapFlags, ChunkGetReqBody, ChunkResponseBody, HashAlgos, ReqRespCode, SpdmMsgHdrPdu,
+    SpdmVersion, WireWriter, AES_256_GCM_TAG_SIZE, CHUNK_ATTR_LAST_CHUNK,
+    LARGE_RESPONSE_SIZE_FIELD_SIZE, SECURED_MSG_HDR_SIZE,
 };
 use caliptra_mcu_spdm_traits::{
     MeasurementInfo, SpdmPalAlloc, SpdmPalAsymAlgo, SpdmPalCertStore, SpdmPalHash, SpdmPalHashAlgo,
@@ -21,6 +22,7 @@ use std::boxed::Box;
 use std::cell::{Cell, RefCell};
 use std::vec;
 use std::vec::Vec;
+use zerocopy::FromBytes;
 
 use crate::stack::{ConnectionState, Phase, Sessions};
 
@@ -100,6 +102,7 @@ impl<T> DerefMut for TestBox<'_, T> {
 pub struct TestPal {
     pub mtu: usize,
     pub supported_slots: u8,
+    pub provisioned_slots: u8,
     pub authorized: bool,
     pub validate_error: Option<McuErrorCode>,
     pub write_error: Option<McuErrorCode>,
@@ -117,6 +120,7 @@ impl Default for TestPal {
         Self {
             mtu: 1024,
             supported_slots: u8::MAX,
+            provisioned_slots: 1,
             authorized: true,
             validate_error: None,
             write_error: None,
@@ -270,7 +274,7 @@ impl SpdmPalHash for TestPal {
 
 impl SpdmPalCertStore for TestPal {
     fn provisioned_slots(&self) -> u8 {
-        0
+        self.provisioned_slots
     }
 
     fn supported_slots(&self) -> u8 {
@@ -773,4 +777,62 @@ pub fn established_session(
     session.key_schedule.destroy_handshake_secrets();
     session.state = crate::session::SessionState::Established;
     (state, sessions, session_id)
+}
+
+/// Drive a multi-chunk `CHUNK_GET` transfer to reassemble a complete SPDM large response message.
+pub async fn drain_chunked_response(
+    state: &mut ConnectionState<TestHashState, Vec<u8>>,
+    pal: &TestPal,
+    io: &TestIo,
+    handle: u8,
+) -> Result<Vec<u8>, crate::error::SpdmError> {
+    let mut chunk_seq_num = 0u16;
+    let mut reassembled = Vec::new();
+
+    loop {
+        let mut chunk_get_buf = [0u8; SpdmMsgHdrPdu::SIZE + ChunkGetReqBody::SIZE];
+        let mut writer = WireWriter::new(&mut chunk_get_buf);
+        writer
+            .write(&SpdmMsgHdrPdu::new(state.version, ReqRespCode::CHUNK_GET))
+            .map_err(|_| crate::error::SPDM_INVALID_REQUEST)?;
+        writer
+            .write(&ChunkGetReqBody {
+                param1: 0,
+                handle,
+                chunk_seq_num: zerocopy::little_endian::U16::new(chunk_seq_num),
+            })
+            .map_err(|_| crate::error::SPDM_INVALID_REQUEST)?;
+
+        let chunk_rsp = crate::chunk::handle_chunk_get(state, pal, io, &chunk_get_buf).await?;
+        let head = pal.header_size();
+        let spdm_msg = &chunk_rsp[head..];
+
+        let (hdr, rest) = SpdmMsgHdrPdu::ref_from_prefix(spdm_msg)
+            .map_err(|_| crate::error::SPDM_INVALID_REQUEST)?;
+        assert_eq!(hdr.code, ReqRespCode::CHUNK_RESPONSE);
+
+        let (body, chunk_data) = ChunkResponseBody::ref_from_prefix(rest)
+            .map_err(|_| crate::error::SPDM_INVALID_REQUEST)?;
+        assert_eq!(body.handle, handle);
+        assert_eq!(body.chunk_seq_num.get(), chunk_seq_num);
+
+        let payload = if chunk_seq_num == 0 {
+            // First chunk is prepended with 4-byte large_response_size
+            assert!(chunk_data.len() >= LARGE_RESPONSE_SIZE_FIELD_SIZE);
+            &chunk_data[LARGE_RESPONSE_SIZE_FIELD_SIZE..]
+        } else {
+            chunk_data
+        };
+        reassembled.extend_from_slice(payload);
+
+        let is_last = (body.chunk_sender_attr & CHUNK_ATTR_LAST_CHUNK) != 0;
+        if is_last {
+            break;
+        }
+        chunk_seq_num = chunk_seq_num
+            .checked_add(1)
+            .ok_or(crate::error::SPDM_INVALID_REQUEST)?;
+    }
+
+    Ok(reassembled)
 }
