@@ -132,6 +132,7 @@ struct AlgoCache {
     chain_len: Option<u32>,
     leaf_len: Option<u32>,
     chain_digest: Option<[u8; 48]>,
+    dpe_skip_len: Option<u32>,
 }
 
 #[derive(Copy, Clone, Default)]
@@ -180,11 +181,13 @@ impl TaskCertStore {
                         chain_len: None,
                         leaf_len: None,
                         chain_digest: None,
+                        dpe_skip_len: None,
                     },
                     mldsa: AlgoCache {
                         chain_len: None,
                         leaf_len: None,
                         chain_digest: None,
+                        dpe_skip_len: None,
                     },
                 }; NUM_CERT_SLOTS],
             ),
@@ -229,6 +232,19 @@ impl TaskCertStore {
         if let Some(idx) = slot_index(slot) {
             unsafe {
                 (*self.caches.get())[idx].algo_cache_mut(algo).leaf_len = Some(len);
+            }
+        }
+    }
+
+    pub(crate) fn cached_dpe_skip_len(&self, slot: u8, algo: SpdmPalAsymAlgo) -> Option<u32> {
+        let idx = slot_index(slot)?;
+        unsafe { (*self.caches.get())[idx].algo_cache(algo).dpe_skip_len }
+    }
+
+    pub(crate) fn set_cached_dpe_skip_len(&self, slot: u8, algo: SpdmPalAsymAlgo, len: u32) {
+        if let Some(idx) = slot_index(slot) {
+            unsafe {
+                (*self.caches.get())[idx].algo_cache_mut(algo).dpe_skip_len = Some(len);
             }
         }
     }

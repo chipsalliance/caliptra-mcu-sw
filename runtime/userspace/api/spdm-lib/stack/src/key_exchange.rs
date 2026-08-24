@@ -221,7 +221,7 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
     // ── Cert chain hash ─────────────────────────────────────────────
     let asym_algo = state.asym_algo();
     let cert_chain_hash = &mut *hash_scratch;
-    if let Some(cached) = pal.cached_chain_digest(slot_id, SpdmPalHashAlgo::Sha384) {
+    if let Some(cached) = pal.cached_chain_digest(slot_id, asym_algo, SpdmPalHashAlgo::Sha384) {
         *cert_chain_hash = cached;
     } else {
         crate::digests::cert_chain_hash(
@@ -234,7 +234,7 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
         )
         .await
         .map_err(|_| SPDM_UNSPECIFIED)?;
-        pal.cache_chain_digest(slot_id, SpdmPalHashAlgo::Sha384, cert_chain_hash);
+        pal.cache_chain_digest(slot_id, asym_algo, SpdmPalHashAlgo::Sha384, cert_chain_hash);
     }
 
     // ── Feed TH: cert_chain_hash ────────────────────────────────────

@@ -344,7 +344,7 @@ impl MctpUtil {
         target_addr: u8,
         timeout: Option<u32>,
     ) -> Vec<u8> {
-        let retry_count = timeout.unwrap_or(0) * 5;
+        let retry_count = timeout.unwrap_or(0) * 20;
         self.new_resp();
         let mut message_identifier = MessageIdentifier::default();
 
