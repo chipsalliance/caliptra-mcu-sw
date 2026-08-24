@@ -535,8 +535,13 @@ pub async fn dpe_derive_context_exported_cdi<A: ApiAlloc>(
     };
     let mut rsp = alloc.alloc(max_resp_len)?;
     let axi_response = if profile == DPE_PROFILE_MLDSA87 {
+        // Caliptra Subsystem Integration Spec: MCU local SRAM base is 0x4000_0000,
+        // and AXI DMA base is MCI_BASE_AXI_ADDRESS (0xA800_0000) + MCU_SRAM_OFFSET (0x00C0_0000).
         const MCU_SRAM_LOCAL_BASE: u32 = 0x4000_0000;
-        const MCU_SRAM_AXI_BASE: u32 = 0xA8C0_0000;
+        const MCI_BASE_AXI_ADDRESS: u32 = 0xA800_0000;
+        const MCU_SRAM_AXI_OFFSET: u32 = 0x00C0_0000;
+        const MCU_SRAM_AXI_BASE: u32 = MCI_BASE_AXI_ADDRESS + MCU_SRAM_AXI_OFFSET;
+
         let sram_offset = (rsp.as_ptr() as u32)
             .checked_sub(MCU_SRAM_LOCAL_BASE)
             .ok_or(INVARIANT)?;
@@ -1409,7 +1414,9 @@ mod tests {
             svn: 7,
         };
 
-        let req = build_derive_context_req(&alloc, &params).unwrap();
+        let (req, mbox_cmd) =
+            build_derive_context_req(&alloc, &params, DPE_PROFILE_P384_SHA384, None).unwrap();
+        assert_eq!(mbox_cmd, CMD_INVOKE_DPE);
         let payload_len =
             u32::from_le_bytes(*req.get(4..8).and_then(|s| s.first_chunk::<4>()).unwrap());
         let hdr = DpeCommandHdr::ref_from_bytes(&req[8..20]).unwrap();
@@ -1423,6 +1430,37 @@ mod tests {
         assert_eq!(cmd.tci_type.get(), params.tci_type);
         assert_eq!(cmd.target_locality.get(), params.target_locality);
         assert_eq!(cmd.svn.get(), params.svn);
+    }
+
+    #[test]
+    fn derive_context_mldsa87_request_preserves_fields() {
+        let alloc = TestAlloc;
+        let params = DpeDeriveContextParams {
+            parent_handle: [0xa5u8; DPE_CONTEXT_HANDLE_SIZE],
+            measurement: [0x5au8; DPE_TCI_MEASUREMENT_SIZE],
+            flags: DpeDeriveContextFlags::RETAIN_PARENT_CONTEXT,
+            tci_type: 0x1122_3344,
+            target_locality: 0,
+            svn: 7,
+        };
+
+        let (req, mbox_cmd) = build_derive_context_req(
+            &alloc,
+            &params,
+            DPE_PROFILE_MLDSA87,
+            Some((0xA8C0_1000, 24576)),
+        )
+        .unwrap();
+        assert_eq!(mbox_cmd, CMD_INVOKE_DPE_MLDSA87);
+        let prefix = InvokeDpeMldsa87ReqPrefix::ref_from_bytes(
+            &req[..size_of::<InvokeDpeMldsa87ReqPrefix>()],
+        )
+        .unwrap();
+        assert_eq!(prefix.flags.get(), 1 << 31);
+        assert_eq!(prefix.axi_addr_lo.get(), 0xA8C0_1000);
+        assert_eq!(prefix.axi_addr_hi.get(), 0);
+        assert_eq!(prefix.axi_max_size.get(), 24576);
+        assert_eq!(prefix.data_size.get(), DERIVE_CONTEXT_DPE_PAYLOAD_LEN);
     }
 
     #[test]
