@@ -142,6 +142,24 @@ impl ChainLayout {
         })
     }
 
+    fn from_total(
+        endorsement_len: usize,
+        total: usize,
+        dpe_source_offset: usize,
+        leaf_len: usize,
+    ) -> McuResult<Self> {
+        let leaf_start = total.checked_sub(leaf_len).ok_or(INVARIANT)?;
+        if leaf_start < endorsement_len {
+            return Err(INVARIANT);
+        }
+        Ok(Self {
+            endorsement: 0..endorsement_len,
+            dpe: endorsement_len..leaf_start,
+            leaf: leaf_start..total,
+            dpe_source_offset,
+        })
+    }
+
     fn total_len(&self) -> usize {
         self.leaf.end
     }
@@ -391,6 +409,8 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         let leaf_len = probe_leaf_len(self, DpeProfile::from(algo)).await?;
         self.cert_store
             .set_cached_leaf_len(slot, algo, leaf_len as u32);
+        self.cert_store
+            .set_cached_dpe_skip_len(slot, algo, dpe_skip_len as u32);
         let total = ChainLayout::new(slot_chain_len, dpe_len, dpe_skip_len, leaf_len)?.total_len();
 
         // 2. POST-CHECK: Verify Slot remained unlocked during the intermediate async .await points
@@ -455,14 +475,25 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
                 n
             }
         };
-        let dpe_skip = if cert_slot.is_writable() {
-            DPE_IDEVID_AND_LDEVID_CERT_COUNT
+        let dpe_skip_len = if cert_slot.is_writable() {
+            match self.cert_store.cached_dpe_skip_len(slot, algo) {
+                Some(n) => n as usize,
+                None => {
+                    let (_, skip) = dpe_chain_len_and_skip_prefix(
+                        self,
+                        DpeProfile::from(algo),
+                        DPE_IDEVID_AND_LDEVID_CERT_COUNT,
+                    )
+                    .await?;
+                    self.cert_store
+                        .set_cached_dpe_skip_len(slot, algo, skip as u32);
+                    skip
+                }
+            }
         } else {
             0
         };
-        let (full_dpe_len, dpe_skip_len) =
-            dpe_chain_len_and_skip_prefix(self, DpeProfile::from(algo), dpe_skip).await?;
-        let layout = ChainLayout::new(endorsement_len, full_dpe_len, dpe_skip_len, leaf_len)?;
+        let layout = ChainLayout::from_total(endorsement_len, total, dpe_skip_len, leaf_len)?;
         if total != layout.total_len() {
             return Err(INVARIANT);
         }
@@ -797,15 +828,24 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
     }
 
     #[inline]
-    fn cached_chain_digest(&self, slot: u8, _algo: SpdmPalHashAlgo) -> Option<[u8; 48]> {
-        self.cert_store
-            .cached_chain_digest(slot, SpdmPalAsymAlgo::EccP384)
+    fn cached_chain_digest(
+        &self,
+        slot: u8,
+        asym_algo: SpdmPalAsymAlgo,
+        _algo: SpdmPalHashAlgo,
+    ) -> Option<[u8; 48]> {
+        self.cert_store.cached_chain_digest(slot, asym_algo)
     }
 
     #[inline]
-    fn cache_chain_digest(&self, slot: u8, _algo: SpdmPalHashAlgo, digest: &[u8]) {
-        self.cert_store
-            .cache_chain_digest(slot, SpdmPalAsymAlgo::EccP384, digest);
+    fn cache_chain_digest(
+        &self,
+        slot: u8,
+        asym_algo: SpdmPalAsymAlgo,
+        _algo: SpdmPalHashAlgo,
+        digest: &[u8],
+    ) {
+        self.cert_store.cache_chain_digest(slot, asym_algo, digest);
     }
 
     async fn generate_nonce(&self, _io: &Self::Io<'_>, out: &mut [u8]) -> McuResult<()> {

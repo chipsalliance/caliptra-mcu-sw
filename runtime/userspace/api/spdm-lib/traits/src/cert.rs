@@ -261,10 +261,15 @@ pub trait SpdmPalCertStore: crate::SpdmPalIoTransport {
     fn key_usage_mask(&self, slot: u8) -> Option<u16>;
 
     /// Optional cache hook: return a previously stored full
-    /// SPDM-cert-chain digest for `(slot, algo)`, or `None` to
+    /// SPDM-cert-chain digest for `(slot, asym_algo, hash_algo)`, or `None` to
     /// force recomputation. Default impl never caches.
     #[inline]
-    fn cached_chain_digest(&self, _slot: u8, _algo: SpdmPalHashAlgo) -> Option<[u8; 48]> {
+    fn cached_chain_digest(
+        &self,
+        _slot: u8,
+        _asym_algo: SpdmPalAsymAlgo,
+        _hash_algo: SpdmPalHashAlgo,
+    ) -> Option<[u8; 48]> {
         None
     }
 
@@ -273,7 +278,14 @@ pub trait SpdmPalCertStore: crate::SpdmPalIoTransport {
     /// [`cached_chain_digest`](Self::cached_chain_digest) lookups.
     /// Default impl is a no-op.
     #[inline]
-    fn cache_chain_digest(&self, _slot: u8, _algo: SpdmPalHashAlgo, _digest: &[u8]) {}
+    fn cache_chain_digest(
+        &self,
+        _slot: u8,
+        _asym_algo: SpdmPalAsymAlgo,
+        _hash_algo: SpdmPalHashAlgo,
+        _digest: &[u8],
+    ) {
+    }
 
     /// Fill `out` with random bytes from the platform RNG.
     async fn generate_nonce(&self, io: &Self::Io<'_>, out: &mut [u8]) -> McuResult<()>;

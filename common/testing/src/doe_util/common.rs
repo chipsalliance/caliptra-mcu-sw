@@ -83,7 +83,7 @@ impl DoeUtil {
     pub fn receive_raw_data_object(rx: &Receiver<Vec<u8>>) -> Result<Vec<u8>, DoeUtilError> {
         // Certificate operations on Caliptra 2.1 can take more than
         // 6,000,000 emulator ticks to complete.
-        for _ in 0..120 {
+        for _ in 0..800 {
             match rx.try_recv() {
                 Ok(message) => {
                     println!(
