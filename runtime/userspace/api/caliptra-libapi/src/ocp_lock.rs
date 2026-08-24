@@ -515,16 +515,14 @@ impl<'a> OcpLock<'a> {
                     signature: BitStringRef::new(0, sig_der_slice)?,
                 }
             }
-            EndorsementAlgorithm::MlDsa87 => {
-                Certificate {
-                    tbs_certificate: tbs,
-                    signature_algorithm: AlgorithmIdentifier {
-                        oid: ID_ML_DSA_87,
-                        parameters: None,
-                    },
-                    signature: BitStringRef::new(0, &signature_bytes[..sig_len])?,
-                }
-            }
+            EndorsementAlgorithm::MlDsa87 => Certificate {
+                tbs_certificate: tbs,
+                signature_algorithm: AlgorithmIdentifier {
+                    oid: ID_ML_DSA_87,
+                    parameters: None,
+                },
+                signature: BitStringRef::new(0, &signature_bytes[..sig_len])?,
+            },
         };
 
         let mut writer = der::SliceWriter::new(cert_buf);

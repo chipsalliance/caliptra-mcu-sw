@@ -3047,7 +3047,10 @@ mod tests {
         resp.cert_data[..4].copy_from_slice(&[0x30, 0x82, 0x01, 0x00]);
 
         let bytes = resp.as_bytes();
-        assert_eq!(bytes.len(), core::mem::size_of::<DpeSignerContextCertResp>());
+        assert_eq!(
+            bytes.len(),
+            core::mem::size_of::<DpeSignerContextCertResp>()
+        );
         assert_eq!(
             resp.partial_len().unwrap(),
             core::mem::size_of::<MailboxRespHeaderVarSize>() + 128

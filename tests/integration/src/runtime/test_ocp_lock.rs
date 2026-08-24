@@ -507,10 +507,7 @@ fn test_get_ocp_lock_endorsement_cert_cmd() -> Result<()> {
             mldsa_bc.critical,
             "ML-DSA Basic constraints should be critical"
         );
-        assert!(
-            !mldsa_bc.value.ca,
-            "ML-DSA Certificate should not be a CA"
-        );
+        assert!(!mldsa_bc.value.ca, "ML-DSA Certificate should not be a CA");
 
         // Verify Key Usage (critical, key encipherment only)
         let mldsa_ku = parsed_mldsa_cert
@@ -532,10 +529,9 @@ fn test_get_ocp_lock_endorsement_cert_cmd() -> Result<()> {
         );
 
         // Verify Signature Algorithm OID is ML-DSA-87 (2.16.840.1.101.3.4.3.19)
-        let mldsa_sig_oid = x509_parser::oid_registry::asn1_rs::oid!(2.16.840.1.101.3.4.3.19);
+        let mldsa_sig_oid = x509_parser::oid_registry::asn1_rs::oid!(2.16.840 .1 .101 .3 .4 .3 .19);
         assert_eq!(
-            parsed_mldsa_cert.signature_algorithm.algorithm,
-            mldsa_sig_oid,
+            parsed_mldsa_cert.signature_algorithm.algorithm, mldsa_sig_oid,
             "ML-DSA-87 signature algorithm OID mismatch"
         );
 
@@ -587,7 +583,11 @@ fn test_get_ocp_lock_endorsement_cert_cmd() -> Result<()> {
 
         // Verify SPKI Algorithm OID
         assert_eq!(
-            parsed_mldsa_cert.tbs_certificate.public_key().algorithm.algorithm,
+            parsed_mldsa_cert
+                .tbs_certificate
+                .public_key()
+                .algorithm
+                .algorithm,
             expected_spki_oid,
             "ML-DSA SPKI Algorithm OID mismatch"
         );
