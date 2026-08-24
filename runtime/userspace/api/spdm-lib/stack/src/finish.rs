@@ -15,8 +15,8 @@
 //! transitioning the session to [`SessionState::Established`].
 
 use caliptra_mcu_spdm_codec::{
-    FinishReqBody, FinishRsp, ResponseBody, SpdmMsgHdrPdu, SpdmVersion, WireWriter,
-    SHA384_HASH_SIZE,
+    FinishReq, FinishReqBody, FinishReqBody14, FinishRsp, ResponseBody, SpdmMsgHdrPdu, SpdmVersion,
+    WireWriter, SHA384_HASH_SIZE,
 };
 use caliptra_mcu_spdm_traits::*;
 use zerocopy::FromBytes;
@@ -58,19 +58,43 @@ pub(crate) async fn handle_finish<Pal: SpdmPal>(
         return Err(crate::error::SPDM_VERSION_MISMATCH);
     }
 
-    let (finish_req, req_verify_data, request_prefix_len) =
-        split_finish_request_payload(version, rest)?;
+    let (finish_req_fixed, after) = if version <= SpdmVersion::V13 {
+        let (finish_req, after) =
+            FinishReqBody::ref_from_prefix(rest).map_err(|_| SPDM_INVALID_REQUEST)?;
+        (finish_req as &dyn FinishReq, after)
+    } else {
+        let (finish_req, after) =
+            FinishReqBody14::ref_from_prefix(rest).map_err(|_| SPDM_INVALID_REQUEST)?;
+        (finish_req as &dyn FinishReq, after)
+    };
 
     // No mutual auth — reject if requester signature present.
-    if finish_req.signature_present() {
+    if finish_req_fixed.signature_present() {
         return Err(SPDM_INVALID_REQUEST);
     }
 
-    // ── Feed FINISH header + params + V1.4 OpaqueData (without verify_data) to TH ──
-    let finish_prefix_len = SpdmMsgHdrPdu::SIZE + request_prefix_len;
+    // Parse the Opaque data field (if present, introduced in version 1.4)
+    let opaque_data_length = finish_req_fixed.opaque_data_len();
+    if opaque_data_length > 1024 {
+        return Err(SPDM_INVALID_REQUEST);
+    }
+    let (_opaque_data, after) = after
+        .split_at_checked(opaque_data_length as usize)
+        .ok_or(SPDM_INVALID_REQUEST)?;
+
+    // Requester verify_data (SHA-384 HMAC).
+    if after.len() != SHA384_HASH_SIZE {
+        return Err(SPDM_INVALID_REQUEST);
+    }
+    let req_verify_data = &after[..SHA384_HASH_SIZE];
+
+    // ── Feed FINISH header + params + opaque data (without verify_data) to TH ────
+    let finish_hdr_len = SpdmMsgHdrPdu::SIZE
+        + finish_req_fixed.size_of()
+        + finish_req_fixed.opaque_data_len() as usize;
     session
         .transcript
-        .append(pal, io, &spdm_msg[..finish_prefix_len])
+        .append(pal, io, &spdm_msg[..finish_hdr_len])
         .await?;
 
     // ── Verify requester HMAC ───────────────────────────────────────
