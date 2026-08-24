@@ -833,8 +833,8 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         }
 
         let profile = match req.algorithm {
-            EndorsementAlgorithm::ECDSA_384 => mcu_caliptra_api::DPE_PROFILE_P384_SHA384,
-            EndorsementAlgorithm::MLDSA_87 => mcu_caliptra_api::DPE_PROFILE_MLDSA87,
+            EndorsementAlgorithm::ECDSA_384 => mcu_caliptra_api::DpeProfile::P384Sha384,
+            EndorsementAlgorithm::MLDSA_87 => mcu_caliptra_api::DpeProfile::Mldsa87,
             _ => return Err(errors::INVALID_PARAMS),
         };
 
@@ -887,6 +887,7 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
             let chunk = &mut resp_buf[header_len + cert_len..header_len + cert_len + chunk_len];
             match mcu_caliptra_api::dpe_get_cert_chain_chunk(
                 self.scratch,
+                mcu_caliptra_api::DpeProfile::P384Sha384,
                 req.offset + cert_len as u32,
                 chunk,
             )

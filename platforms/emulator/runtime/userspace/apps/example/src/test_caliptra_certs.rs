@@ -12,8 +12,8 @@ use mcu_caliptra_api::{
     dpe_certify_key_cert_size, dpe_certify_key_cert_slice, dpe_get_cert_chain_chunk,
     dpe_sign_ecc_p384, get_attested_csr_ecc384, get_attested_csr_mldsa87, get_idev_csr_ecc384,
     get_idev_csr_mldsa87, mldsa87_cert_der_len, populate_idev_ecc384_cert,
-    populate_idev_mldsa87_cert, DPE_LABEL_LEN, DPE_MAX_CHUNK_SIZE, DPE_P384_SIGNATURE_SIZE,
-    IDEV_MLDSA87_CSR_MAX_SIZE, IDEV_MLDSA87_CSR_RSP_BUF_SIZE,
+    populate_idev_mldsa87_cert, DpeProfile, DPE_LABEL_LEN, DPE_MAX_CHUNK_SIZE,
+    DPE_P384_SIGNATURE_SIZE, IDEV_MLDSA87_CSR_MAX_SIZE, IDEV_MLDSA87_CSR_RSP_BUF_SIZE,
 };
 use zerocopy::{FromBytes, IntoBytes};
 
@@ -204,52 +204,60 @@ pub async fn test_populate_idev_ecc384_cert(alloc: &BitmapAllocator) {
 }
 
 pub async fn test_get_cert_chain(alloc: &BitmapAllocator) {
-    let mut chunk = [0u8; DPE_MAX_CHUNK_SIZE];
-    let mut offset = 0u32;
-    loop {
-        let size = dpe_get_cert_chain_chunk(alloc, offset, &mut chunk)
-            .await
-            .unwrap_or_else(|_| test_exit(1));
-        offset += size as u32;
-        if size < chunk.len() {
-            break;
+    for profile in [DpeProfile::P384Sha384, DpeProfile::Mldsa87] {
+        let mut chunk = [0u8; DPE_MAX_CHUNK_SIZE];
+        let mut offset = 0u32;
+        loop {
+            let size = dpe_get_cert_chain_chunk(alloc, profile, offset, &mut chunk)
+                .await
+                .unwrap_or_else(|_| test_exit(1));
+            offset += size as u32;
+            if size < chunk.len() {
+                break;
+            }
         }
+        if offset == 0 {
+            test_exit(1);
+        }
+        println!("Certificate chain size for {:?}: {}", profile, offset);
     }
-    if offset == 0 {
-        test_exit(1);
-    }
-    println!("Certificate chain size: {}", offset);
 }
 
 pub async fn test_certify_key(alloc: &BitmapAllocator) {
-    let (_, size) = dpe_certify_key_cert_size(alloc, None, &TEST_KEY_LABEL)
-        .await
-        .unwrap_or_else(|_| test_exit(1));
-    if size == 0 {
-        test_exit(1);
-    }
-    let mut chunk = [0u8; DPE_MAX_CHUNK_SIZE];
-    let mut offset = 0;
-    while offset < size {
-        let requested = (size - offset).min(chunk.len());
-        let (_, copied) = dpe_certify_key_cert_slice(
-            alloc,
-            None,
-            &TEST_KEY_LABEL,
-            offset as u32,
-            &mut chunk[..requested],
-        )
-        .await
-        .unwrap_or_else(|_| test_exit(1));
-        if copied == 0 || copied > requested {
+    for profile in [DpeProfile::P384Sha384, DpeProfile::Mldsa87] {
+        let (_, size) = dpe_certify_key_cert_size(alloc, profile, None, &TEST_KEY_LABEL)
+            .await
+            .unwrap_or_else(|_| test_exit(1));
+        if size == 0 {
             test_exit(1);
         }
-        offset += copied;
+        let mut chunk = [0u8; DPE_MAX_CHUNK_SIZE];
+        let mut offset = 0;
+        while offset < size {
+            let requested = (size - offset).min(chunk.len());
+            let (_, copied) = dpe_certify_key_cert_slice(
+                alloc,
+                profile,
+                None,
+                &TEST_KEY_LABEL,
+                offset as u32,
+                &mut chunk[..requested],
+            )
+            .await
+            .unwrap_or_else(|_| test_exit(1));
+            if copied == 0 || copied > requested {
+                test_exit(1);
+            }
+            offset += copied;
+        }
+        if offset != size {
+            test_exit(1);
+        }
+        println!(
+            "Attestation key certificate size for {:?}: {}",
+            profile, size
+        );
     }
-    if offset != size {
-        test_exit(1);
-    }
-    println!("Attestation key certificate size: {}", size);
 }
 
 pub async fn test_sign_with_test_key(alloc: &BitmapAllocator) {
