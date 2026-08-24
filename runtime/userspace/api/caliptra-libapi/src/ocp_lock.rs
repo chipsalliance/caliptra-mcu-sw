@@ -225,7 +225,7 @@ impl OcpLock<'_> {
     pub const P384_PUB_KEY_SIZE: usize = 1 + 2 * Self::P384_SCALAR_SIZE;
 
     // ML-DSA-87 signature size (FIPS 204)
-    pub const MLDSA87_SIGNATURE_SIZE: usize = 4628;
+    pub const MLDSA87_SIGNATURE_SIZE: usize = 4627;
 
     // Temp buffer sizes
     pub const SUBJECT_DER_BUF_SIZE: usize = 64;
@@ -234,7 +234,7 @@ impl OcpLock<'_> {
     pub const BASIC_CONSTRAINTS_DER_BUF_SIZE: usize = 16;
     pub const KEY_USAGE_DER_BUF_SIZE: usize = 16;
     pub const SIGNATURE_DER_BUF_SIZE: usize = 128;
-    pub const MAX_SIGNATURE_BYTES: usize = 4628;
+    pub const MAX_SIGNATURE_BYTES: usize = 4627;
 }
 
 impl<'a> OcpLock<'a> {
@@ -516,22 +516,13 @@ impl<'a> OcpLock<'a> {
                 }
             }
             EndorsementAlgorithm::MlDsa87 => {
-                // FIPS 204 ML-DSA-87 signatures are exactly 4627 bytes. Caliptra mailbox
-                // responses pad the signature to a 4-byte word boundary (4628 bytes).
-                // Strip the trailing padding byte if present so that the X.509 BIT STRING
-                // contains the canonical 4627-byte signature.
-                let actual_sig = if sig_len == 4628 && signature_bytes[4627] == 0 {
-                    &signature_bytes[..4627]
-                } else {
-                    &signature_bytes[..sig_len]
-                };
                 Certificate {
                     tbs_certificate: tbs,
                     signature_algorithm: AlgorithmIdentifier {
                         oid: ID_ML_DSA_87,
                         parameters: None,
                     },
-                    signature: BitStringRef::new(0, actual_sig)?,
+                    signature: BitStringRef::new(0, &signature_bytes[..sig_len])?,
                 }
             }
         };

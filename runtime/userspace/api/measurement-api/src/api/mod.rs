@@ -367,6 +367,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
     pub async fn export_cdi_and_stash<A: ApiAlloc>(
         &mut self,
         alloc: &A,
+        profile: u32,
         cert_out: &mut [u8],
     ) -> MeasurementApiResult<usize> {
         self.attestation_state_active()?;
@@ -390,7 +391,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
             target_locality: 0,
             svn: 0,
         };
-        let derived = dpe_derive_context_exported_cdi(alloc, &params, cert_out)
+        let derived = dpe_derive_context_exported_cdi(alloc, &params, profile, cert_out)
             .await
             .map_err(|_| MeasurementApiError::DpeCommandFailed)?;
 
