@@ -15,7 +15,7 @@ use mcu_error::codes::{INTERNAL_BUG, INVARIANT};
 use mcu_error::McuResult;
 use zerocopy::{little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
 
-use crate::slice::{checked_slice_mut, copy_bytes, internal_slice};
+use crate::slice::{checked_slice, checked_slice_mut, copy_bytes, internal_slice};
 use crate::wire::{
     calc_checksum, mbox_execute, populate_checksum, CMD_CERTIFY_KEY_CHUNKS, CMD_DPE_GET_TAGGED_TCI,
     CMD_DPE_TAG_TCI, CMD_INVOKE_DPE, CMD_INVOKE_DPE_MLDSA87, DPE_CMD_DERIVE_CONTEXT,
@@ -48,7 +48,7 @@ const DEFAULT_DPE_CONTEXT_HANDLE: DpeContextHandle = [0u8; DPE_CONTEXT_HANDLE_SI
 
 /// Upper bound on the X.509 leaf certificate Caliptra's DPE can
 /// emit — fits both ECC-384 and ML-DSA-87 leaf certificates.
-pub const DPE_MAX_LEAF_CERT_SIZE: usize = 8192;
+pub const DPE_MAX_LEAF_CERT_SIZE: usize = 12 * 1024;
 
 /// Maximum bytes that may be fetched in a single
 /// [`dpe_get_cert_chain_chunk`] call. Bounded well below the
@@ -71,6 +71,20 @@ const CERTIFY_KEY_CHUNKS_CERTIFY_KEY_REQ_SIZE: usize = 72;
 #[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned)]
 struct InvokeDpeReqPrefix {
     chksum: U32,
+    data_size: U32,
+}
+
+/// Caliptra `InvokeDpeMldsa87Req` prefix: `MailboxReqHeader { chksum }` +
+/// `flags(4)` + `axi_response(12)` + `data_size(4)`. The DPE-level payload
+/// follows immediately.
+#[repr(C)]
+#[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned)]
+struct InvokeDpeMldsa87ReqPrefix {
+    chksum: U32,
+    flags: U32,
+    axi_addr_lo: U32,
+    axi_addr_hi: U32,
+    axi_max_size: U32,
     data_size: U32,
 }
 
@@ -248,6 +262,9 @@ const SIGN_REQ_LEN: usize =
 const SIGN_DPE_PAYLOAD_LEN: u32 = (size_of::<DpeCommandHdr>() + size_of::<SignP384Cmd>()) as u32;
 const DERIVE_CONTEXT_REQ_LEN: usize =
     size_of::<InvokeDpeReqPrefix>() + size_of::<DpeCommandHdr>() + size_of::<DeriveContextCmd>();
+const DERIVE_CONTEXT_MLDSA87_REQ_LEN: usize = size_of::<InvokeDpeMldsa87ReqPrefix>()
+    + size_of::<DpeCommandHdr>()
+    + size_of::<DeriveContextCmd>();
 const DERIVE_CONTEXT_DPE_PAYLOAD_LEN: u32 =
     (size_of::<DpeCommandHdr>() + size_of::<DeriveContextCmd>()) as u32;
 const UPDATE_CONTEXT_MEASUREMENT_REQ_LEN: usize = size_of::<InvokeDpeReqPrefix>()
@@ -280,6 +297,7 @@ const ROTATE_CTX_DPE_PAYLOAD_LEN: u32 =
     (size_of::<DpeCommandHdr>() + size_of::<RotateCtxCmd>()) as u32;
 
 const _: () = assert!(size_of::<InvokeDpeReqPrefix>() == 8);
+const _: () = assert!(size_of::<InvokeDpeMldsa87ReqPrefix>() == 24);
 const _: () = assert!(size_of::<DpeCommandHdr>() == 12);
 const _: () = assert!(size_of::<GetCertChainCmd>() == 8);
 const _: () = assert!(size_of::<SignP384Cmd>() == DPE_CONTEXT_HANDLE_SIZE + 48 + 4 + 48);
@@ -304,6 +322,7 @@ const _: () = assert!(size_of::<DpeResponseHdr>() == 12);
 const _: () = assert!(GET_CERT_CHAIN_REQ_LEN == 28);
 const _: () = assert!(SIGN_REQ_LEN == 8 + 12 + 116);
 const _: () = assert!(DERIVE_CONTEXT_REQ_LEN == 8 + 12 + 80);
+const _: () = assert!(DERIVE_CONTEXT_MLDSA87_REQ_LEN == 24 + 12 + 80);
 const _: () = assert!(UPDATE_CONTEXT_MEASUREMENT_REQ_LEN == 8 + 12 + 76);
 const _: () =
     assert!(CERTIFY_KEY_CHUNKS_CERTIFY_KEY_REQ_SIZE == DPE_CONTEXT_HANDLE_SIZE + 4 + 4 + 48);
@@ -421,7 +440,7 @@ pub async fn dpe_derive_context<A: ApiAlloc>(
     alloc: &A,
     params: &DpeDeriveContextParams,
 ) -> McuResult<DpeDeriveContextResult> {
-    let (req, mbox_cmd) = build_derive_context_req(alloc, params, DPE_PROFILE_P384_SHA384)?;
+    let (req, mbox_cmd) = build_derive_context_req(alloc, params, DPE_PROFILE_P384_SHA384, None)?;
     let mut rsp =
         alloc.alloc(size_of::<InvokeDpeRespPrefix>() + size_of::<DeriveContextRespBody>())?;
     let rsp_len = mbox_execute(mbox_cmd, &req, &mut rsp).await?;
@@ -432,14 +451,21 @@ fn build_derive_context_req<'a, A: ApiAlloc>(
     alloc: &'a A,
     params: &DpeDeriveContextParams,
     profile: u32,
+    axi_response: Option<(u32, u32)>,
 ) -> McuResult<(A::Buf<'a>, u32)> {
-    let mut req = alloc.alloc(DERIVE_CONTEXT_REQ_LEN)?;
+    let req_len = if profile == DPE_PROFILE_MLDSA87 {
+        DERIVE_CONTEXT_MLDSA87_REQ_LEN
+    } else {
+        DERIVE_CONTEXT_REQ_LEN
+    };
+    let mut req = alloc.alloc(req_len)?;
     req.fill(0);
     let cur = build_invoke_dpe_header_profile(
         &mut req,
         DERIVE_CONTEXT_DPE_PAYLOAD_LEN,
         DPE_CMD_DERIVE_CONTEXT,
         profile,
+        axi_response,
     )?;
     {
         let cmd = DeriveContextCmd::mut_from_bytes(checked_slice_mut(
@@ -500,13 +526,41 @@ pub async fn dpe_derive_context_exported_cdi<A: ApiAlloc>(
     profile: u32,
     cert_dst: &mut [u8],
 ) -> McuResult<DpeDeriveContextExportedCdiResult> {
-    let (req, mbox_cmd) = build_derive_context_req(alloc, params, profile)?;
-    let max_resp_len = size_of::<InvokeDpeRespPrefix>()
-        + size_of::<DeriveContextExportedCdiRespPrefix>()
-        + cert_dst.len().min(DPE_MAX_LEAF_CERT_SIZE);
+    let max_resp_len = if profile == DPE_PROFILE_MLDSA87 {
+        24 * 1024
+    } else {
+        size_of::<InvokeDpeRespPrefix>()
+            + size_of::<DeriveContextExportedCdiRespPrefix>()
+            + cert_dst.len().min(DPE_MAX_LEAF_CERT_SIZE)
+    };
     let mut rsp = alloc.alloc(max_resp_len)?;
+    let axi_response = if profile == DPE_PROFILE_MLDSA87 {
+        const MCU_SRAM_LOCAL_BASE: u32 = 0x4000_0000;
+        const MCU_SRAM_AXI_BASE: u32 = 0xA8C0_0000;
+        let sram_offset = (rsp.as_ptr() as u32)
+            .checked_sub(MCU_SRAM_LOCAL_BASE)
+            .ok_or(INVARIANT)?;
+        let axi_addr = MCU_SRAM_AXI_BASE
+            .checked_add(sram_offset)
+            .ok_or(INVARIANT)?;
+        Some((axi_addr, max_resp_len as u32))
+    } else {
+        None
+    };
+    let (req, mbox_cmd) = build_derive_context_req(alloc, params, profile, axi_response)?;
     let rsp_len = mbox_execute(mbox_cmd, &req, &mut rsp).await?;
-    parse_derive_context_exported_cdi_response(&rsp, rsp_len, cert_dst)
+    let effective_rsp_len = if profile == DPE_PROFILE_MLDSA87 {
+        let prefix = InvokeDpeRespPrefix::ref_from_bytes(checked_slice(
+            &rsp,
+            0,
+            size_of::<InvokeDpeRespPrefix>(),
+        )?)
+        .map_err(|_| INVARIANT)?;
+        size_of::<InvokeDpeRespPrefix>() + prefix.data_size.get() as usize
+    } else {
+        rsp_len
+    };
+    parse_derive_context_exported_cdi_response(&rsp, effective_rsp_len, cert_dst)
 }
 
 fn parse_derive_context_exported_cdi_response(
@@ -911,7 +965,7 @@ fn build_certify_key_chunks_req<'a, A: ApiAlloc>(
 }
 
 fn build_invoke_dpe_header(req: &mut [u8], dpe_payload_len: u32, cmd_id: u32) -> McuResult<usize> {
-    build_invoke_dpe_header_profile(req, dpe_payload_len, cmd_id, DPE_PROFILE_P384_SHA384)
+    build_invoke_dpe_header_profile(req, dpe_payload_len, cmd_id, DPE_PROFILE_P384_SHA384, None)
 }
 
 fn build_invoke_dpe_header_profile(
@@ -919,8 +973,24 @@ fn build_invoke_dpe_header_profile(
     dpe_payload_len: u32,
     cmd_id: u32,
     profile: u32,
+    axi_response: Option<(u32, u32)>,
 ) -> McuResult<usize> {
-    {
+    let cur = if profile == DPE_PROFILE_MLDSA87 {
+        let prefix = InvokeDpeMldsa87ReqPrefix::mut_from_bytes(checked_slice_mut(
+            req,
+            0,
+            size_of::<InvokeDpeMldsa87ReqPrefix>(),
+        )?)
+        .map_err(|_| INVARIANT)?;
+        if let Some((addr_lo, max_size)) = axi_response {
+            prefix.flags = U32::new(1 << 31);
+            prefix.axi_addr_lo = U32::new(addr_lo);
+            prefix.axi_addr_hi = U32::new(0);
+            prefix.axi_max_size = U32::new(max_size);
+        }
+        prefix.data_size = U32::new(dpe_payload_len);
+        size_of::<InvokeDpeMldsa87ReqPrefix>()
+    } else {
         let prefix = InvokeDpeReqPrefix::mut_from_bytes(checked_slice_mut(
             req,
             0,
@@ -928,9 +998,9 @@ fn build_invoke_dpe_header_profile(
         )?)
         .map_err(|_| INVARIANT)?;
         prefix.data_size = U32::new(dpe_payload_len);
-    }
+        size_of::<InvokeDpeReqPrefix>()
+    };
 
-    let cur = size_of::<InvokeDpeReqPrefix>();
     {
         let hdr =
             DpeCommandHdr::mut_from_bytes(checked_slice_mut(req, cur, size_of::<DpeCommandHdr>())?)

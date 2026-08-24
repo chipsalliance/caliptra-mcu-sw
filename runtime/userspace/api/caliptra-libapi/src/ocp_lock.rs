@@ -69,6 +69,31 @@ impl EndorsementAlgorithm {
     }
 }
 
+impl TryFrom<caliptra_mcu_mbox_common::messages::EndorsementAlgorithm> for EndorsementAlgorithm {
+    type Error = CaliptraApiError;
+
+    fn try_from(
+        algo: caliptra_mcu_mbox_common::messages::EndorsementAlgorithm,
+    ) -> Result<Self, Self::Error> {
+        match algo {
+            caliptra_mcu_mbox_common::messages::EndorsementAlgorithm::ECDSA_384 => {
+                Ok(Self::EcdsaP384Sha384)
+            }
+            caliptra_mcu_mbox_common::messages::EndorsementAlgorithm::MLDSA_87 => Ok(Self::MlDsa87),
+            _ => Err(CaliptraApiError::AsymAlgoUnsupported),
+        }
+    }
+}
+
+impl From<EndorsementAlgorithm> for caliptra_mcu_mbox_common::messages::EndorsementAlgorithm {
+    fn from(algo: EndorsementAlgorithm) -> Self {
+        match algo {
+            EndorsementAlgorithm::EcdsaP384Sha384 => Self::ECDSA_384,
+            EndorsementAlgorithm::MlDsa87 => Self::MLDSA_87,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq, Sequence)]
 pub struct HpkeIdentifiers {
     pub kem_id: u16,
@@ -208,7 +233,7 @@ pub struct OcpLock<'a> {
 }
 
 impl OcpLock<'_> {
-    pub const MAX_ENDORSEMENT_CERT_SIZE: usize = 8192;
+    pub const MAX_ENDORSEMENT_CERT_SIZE: usize = 12 * 1024;
     pub const DPE_LABEL: &'static [u8] = b"MCU FW HPKE Endorsement";
     pub const EKP_DPE_LABEL: &'static [u8] = b"MCU EKP Attestation";
     pub const ENDORSEMENT_CERT_CN: &'static [u8] = b"Caliptra MCU OCP LOCK Endorsement";

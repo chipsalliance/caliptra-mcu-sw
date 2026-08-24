@@ -9,7 +9,9 @@ use caliptra_mcu_mbox_common::messages::{
 };
 use caliptra_mcu_registers_generated::fuses;
 use caliptra_mcu_romtime::McuBootMilestones;
+use fips204::traits::{SerDes, Verifier as MldsaVerifier};
 use openssl::x509::X509;
+use sha2::{Digest, Sha384};
 use x509_parser::der_parser::ber::parse_ber_sequence;
 use x509_parser::nom::Parser;
 use x509_parser::prelude::X509CertificateParser;
@@ -430,8 +432,72 @@ fn test_get_ocp_lock_endorsement_cert_cmd() -> Result<()> {
             expected_key_len,
             "Public key length mismatch"
         );
+    }
 
-        // 4. Get OCP LOCK Endorsement Certificate (ML-DSA-87) from MCU Mailbox
+    Ok(())
+}
+
+#[test]
+fn test_get_ocp_lock_endorsement_cert_mldsa_cmd() -> Result<()> {
+    let _lock = crate::test::TEST_LOCK.lock().unwrap();
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-ocp-lock"),
+        rom_feature: Some("ocp-lock"),
+        ocp_lock_en: true,
+        ..Default::default()
+    });
+
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    // 1. Fetch DPE Signer Context Certificate via MC_DPE_SIGNER_CONTEXT_CERT (ML-DSA-87)
+    let dpe_req = DpeSignerContextCertReq {
+        algorithm: EndorsementAlgorithm::MLDSA_87,
+        ..Default::default()
+    };
+    let dpe_resp = hw.mailbox_execute_req(dpe_req)?;
+    let dpe_cert_len = dpe_resp.hdr.data_len as usize;
+    assert!(
+        dpe_cert_len > 0,
+        "DPE Signer Context Certificate length should be greater than 0"
+    );
+    let dpe_cert_der = &dpe_resp.cert_data[..dpe_cert_len];
+    assert_eq!(
+        dpe_cert_der[0], 0x30,
+        "DPE Signer Context Certificate should start with ASN.1 SEQUENCE tag 0x30"
+    );
+
+    let mut dpe_parser = X509CertificateParser::new().with_deep_parse_extensions(true);
+    let (_, parsed_dpe_cert) = dpe_parser
+        .parse(dpe_cert_der)
+        .expect("Failed to parse ML-DSA DPE signer context certificate");
+    let dpe_mldsa_pubkey_bytes = &parsed_dpe_cert
+        .tbs_certificate
+        .public_key()
+        .subject_public_key
+        .data;
+    assert_eq!(
+        dpe_mldsa_pubkey_bytes.len(),
+        2592,
+        "ML-DSA-87 public key must be 2592 bytes"
+    );
+    let dpe_mldsa_pubkey_arr: [u8; 2592] = dpe_mldsa_pubkey_bytes
+        .as_ref()
+        .try_into()
+        .expect("Invalid ML-DSA-87 public key size");
+    let mldsa_verifying_key = fips204::ml_dsa_87::PublicKey::try_from_bytes(dpe_mldsa_pubkey_arr)
+        .expect("Failed to construct ML-DSA-87 PublicKey");
+
+    let enum_cmd = caliptra_mcu_mbox_common::messages::OcpLockEnumerateHpkeHandlesReq::default();
+    let enum_resp = hw.mailbox_execute_req(enum_cmd)?;
+
+    let handles = &enum_resp.hpke_handles[..enum_resp.hpke_handle_count as usize];
+    assert_eq!(handles.len(), 3, "Expected 3 HPKE handles");
+
+    for handle in handles {
+        // 2. Get OCP LOCK Endorsement Certificate (ML-DSA-87) from MCU Mailbox
         let mldsa_cmd = caliptra_mcu_mbox_common::messages::GetOcpLockEndorsementCertReq {
             hdr: caliptra_mcu_mbox_common::messages::MailboxReqHeader::default(),
             hpke_handle: handle.clone(),
@@ -491,6 +557,20 @@ fn test_get_ocp_lock_endorsement_cert_cmd() -> Result<()> {
             Err(e) => panic!("ML-DSA x509 parsing failed: {:?}", e),
         };
 
+        // Verify that the ML-DSA endorsement certificate is signed by the ML-DSA DPE signer context
+        let tbs_digest: [u8; 48] =
+            Sha384::digest(parsed_mldsa_cert.tbs_certificate.as_ref()).into();
+        let mldsa_sig: [u8; 4627] = parsed_mldsa_cert
+            .signature_value
+            .data
+            .as_ref()
+            .try_into()
+            .expect("ML-DSA-87 signature length mismatch");
+        assert!(
+            mldsa_verifying_key.verify(&tbs_digest, &mldsa_sig, &[]),
+            "ML-DSA DPE signer context certificate should be the valid signing issuer of the OCP LOCK endorsement certificate"
+        );
+
         // Verify Serial Number is the expected 20-byte constant [0x7F; 20]
         assert_eq!(
             parsed_mldsa_cert.tbs_certificate.serial.to_bytes_be(),
@@ -543,6 +623,7 @@ fn test_get_ocp_lock_endorsement_cert_cmd() -> Result<()> {
         );
 
         // Verify HPKE Identifiers extension is present and correct
+        let hpke_oid = x509_parser::oid_registry::asn1_rs::oid!(2.23.133 .21 .1 .1);
         let mldsa_hpke_ext = parsed_mldsa_cert
             .tbs_certificate
             .extensions()
@@ -565,6 +646,12 @@ fn test_get_ocp_lock_endorsement_cert_cmd() -> Result<()> {
             3,
             "ML-DSA HPKE Identifiers sequence must have exactly 3 items"
         );
+        let expected_kem_id: u32 = match handle.hpke_algorithm {
+            caliptra_api::mailbox::HpkeAlgorithms::ECDH_P384_HKDF_SHA384_AES_256_GCM => 0x0011,
+            caliptra_api::mailbox::HpkeAlgorithms::ML_KEM_1024_HKDF_SHA384_AES_256_GCM => 0x0042,
+            caliptra_api::mailbox::HpkeAlgorithms::ML_KEM_1024_ECDH_P384_HKDF_SHA384_AES_256_GCM => 0x0051,
+            _ => panic!("Unknown HPKE algorithm"),
+        };
         assert_eq!(
             mldsa_items[0].as_u32().unwrap(),
             expected_kem_id,
@@ -582,6 +669,18 @@ fn test_get_ocp_lock_endorsement_cert_cmd() -> Result<()> {
         );
 
         // Verify SPKI Algorithm OID
+        let expected_spki_oid = match handle.hpke_algorithm {
+            caliptra_api::mailbox::HpkeAlgorithms::ECDH_P384_HKDF_SHA384_AES_256_GCM => {
+                x509_parser::oid_registry::asn1_rs::oid!(1.2.840 .10045 .2 .1)
+            }
+            caliptra_api::mailbox::HpkeAlgorithms::ML_KEM_1024_HKDF_SHA384_AES_256_GCM => {
+                x509_parser::oid_registry::asn1_rs::oid!(2.16.840 .1 .101 .3 .4 .4 .3)
+            }
+            caliptra_api::mailbox::HpkeAlgorithms::ML_KEM_1024_ECDH_P384_HKDF_SHA384_AES_256_GCM => {
+                x509_parser::oid_registry::asn1_rs::oid!(1.3.6 .1 .5 .5 .7 .6 .63)
+            }
+            _ => panic!("Unknown HPKE algorithm"),
+        };
         assert_eq!(
             parsed_mldsa_cert
                 .tbs_certificate
@@ -591,6 +690,12 @@ fn test_get_ocp_lock_endorsement_cert_cmd() -> Result<()> {
             expected_spki_oid,
             "ML-DSA SPKI Algorithm OID mismatch"
         );
+        let expected_key_len = match handle.hpke_algorithm {
+            caliptra_api::mailbox::HpkeAlgorithms::ECDH_P384_HKDF_SHA384_AES_256_GCM => 97,
+            caliptra_api::mailbox::HpkeAlgorithms::ML_KEM_1024_HKDF_SHA384_AES_256_GCM => 1568,
+            caliptra_api::mailbox::HpkeAlgorithms::ML_KEM_1024_ECDH_P384_HKDF_SHA384_AES_256_GCM => 1665,
+            _ => panic!("Unknown HPKE algorithm"),
+        };
         assert_eq!(
             parsed_mldsa_cert
                 .tbs_certificate

@@ -13,17 +13,17 @@ use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libsyscall_caliptra::{caliptra, otp};
 use caliptra_mcu_mbox_common::messages::{
     ClearLogReq, ClearLogResp, CommandId, DeviceCapsReq, DeviceCapsResp, DpeSignerContextCertReq,
-    EndorsementAlgorithm, ExportAttestedCsrReq, FirmwareVersionReq, FirmwareVersionResp,
-    FuseIncreaseCaliptraMinSvnReq, FuseIncreaseCaliptraMinSvnResp, FuseLockPartitionReq,
-    FuseLockPartitionResp, FuseReadReq, FuseReadResp, FuseRevokeVendorPkHashReq,
-    FuseRevokeVendorPkHashResp, FuseRevokeVendorPubKeyReq, FuseRevokeVendorPubKeyResp,
-    FuseWriteReq, FuseWriteResp, GetAttestationReq, GetAuthCmdChallengeReq,
-    GetAuthCmdChallengeResp, GetDpeCertChainReq, GetLogReq, LogType, MailboxReqHeader,
-    MailboxRespHeader, MailboxRespHeaderVarSize, McuFeProgReq, McuMailboxReq, McuMailboxResp,
-    McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq,
-    McuResponseVarSize, ProvisionOwnerPkHashReq, ProvisionOwnerPkHashResp,
-    ProvisionVendorPkHashReq, ProvisionVendorPkHashResp, DEVICE_CAPS_SIZE,
-    GET_ATTESTATION_RESP_PREFIX_LEN, MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN,
+    DpeSignerContextCertResp, EndorsementAlgorithm, ExportAttestedCsrReq, FirmwareVersionReq,
+    FirmwareVersionResp, FuseIncreaseCaliptraMinSvnReq, FuseIncreaseCaliptraMinSvnResp,
+    FuseLockPartitionReq, FuseLockPartitionResp, FuseReadReq, FuseReadResp,
+    FuseRevokeVendorPkHashReq, FuseRevokeVendorPkHashResp, FuseRevokeVendorPubKeyReq,
+    FuseRevokeVendorPubKeyResp, FuseWriteReq, FuseWriteResp, GetAttestationReq,
+    GetAuthCmdChallengeReq, GetAuthCmdChallengeResp, GetDpeCertChainReq, GetLogReq, LogType,
+    MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize, McuFeProgReq, McuMailboxReq,
+    McuMailboxResp, McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp,
+    McuProdDebugUnlockTokenReq, McuResponseVarSize, ProvisionOwnerPkHashReq,
+    ProvisionOwnerPkHashResp, ProvisionVendorPkHashReq, ProvisionVendorPkHashResp,
+    DEVICE_CAPS_SIZE, GET_ATTESTATION_RESP_PREFIX_LEN, MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN,
     MAX_RESP_DATA_SIZE,
 };
 
@@ -1733,9 +1733,7 @@ fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32) -> usize {
         c if c == CommandId::MC_OCP_LOCK_ENUMERATE_HPKE_HANDLES => {
             size_of::<OcpLockEnumerateHpkeHandlesResp>()
         }
-        c if c == CommandId::MC_DPE_SIGNER_CONTEXT_CERT => {
-            size_of::<MailboxRespHeaderVarSize>() + 2048
-        }
+        c if c == CommandId::MC_DPE_SIGNER_CONTEXT_CERT => size_of::<DpeSignerContextCertResp>(),
         c if c == CommandId::MC_GET_DPE_CERTIFICATE_CHAIN => {
             size_of::<MailboxRespHeaderVarSize>() + 1024
         }

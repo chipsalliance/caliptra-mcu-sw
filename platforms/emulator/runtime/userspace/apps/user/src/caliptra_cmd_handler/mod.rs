@@ -474,11 +474,9 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         algorithm: MboxEndorsementAlgorithm,
         cert_buf: &mut [u8],
     ) -> CaliptraCmdResult<usize> {
-        let algo = match algorithm {
-            MboxEndorsementAlgorithm::ECDSA_384 => EndorsementAlgorithm::EcdsaP384Sha384,
-            MboxEndorsementAlgorithm::MLDSA_87 => EndorsementAlgorithm::MlDsa87,
-            _ => return Err(CaliptraCompletionCode::InvalidParameter),
-        };
+        let algo = algorithm
+            .try_into()
+            .map_err(|_| CaliptraCompletionCode::InvalidParameter)?;
         let mailbox = caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox::new();
         let ocp_lock = OcpLock::new(&mailbox, &crate::ocp_lock_config::APP_RUNTIME_CONFIG);
         let signer = CaliptraDpeSigner::with_algorithm(&mailbox, algo);
