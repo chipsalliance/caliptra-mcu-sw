@@ -129,12 +129,13 @@ async fn populate_idev<A: ApiAlloc>(alloc: &A) -> McuResult<()> {
 /// provisioned via SET_CERTIFICATE).
 #[cfg(feature = "spdm")]
 async fn setup_endorsements<A: ApiAlloc>(store: &SharedCertStore, alloc: &A) -> McuResult<()> {
-    // Slot 0 (Vendor): ReadOnly endorsement with static Root CA.
+    // Slot 0 (Vendor): ReadOnly endorsement with static Root CA (ECC & ML-DSA).
     store
-        .set_endorsement_chain(
+        .set_endorsement_chains(
             alloc,
             VENDOR_STORE_SLOT,
             slot0_endorsements::SLOT0_ECC_ROOT_CERT_CHAIN,
+            Some(slot0_endorsements::SLOT0_MLDSA_ROOT_CERT_CHAIN),
             0, // key_pair_id
         )
         .await?;
