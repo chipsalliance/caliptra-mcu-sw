@@ -69,7 +69,7 @@ pub(crate) async fn handle_challenge<'a, Pal: SpdmPal>(
 
     // Get cert chain hash — use cache if available, else compute.
     let mut cert_chain_hash = [0u8; SHA384_HASH_SIZE];
-    if let Some(cached) = pal.cached_chain_digest(slot_id, SpdmPalHashAlgo::Sha384) {
+    if let Some(cached) = pal.cached_chain_digest(slot_id, asym_algo, SpdmPalHashAlgo::Sha384) {
         cert_chain_hash = cached;
     } else {
         crate::digests::cert_chain_hash(
@@ -82,7 +82,12 @@ pub(crate) async fn handle_challenge<'a, Pal: SpdmPal>(
         )
         .await
         .map_err(|_| SPDM_UNSPECIFIED)?;
-        pal.cache_chain_digest(slot_id, SpdmPalHashAlgo::Sha384, &cert_chain_hash);
+        pal.cache_chain_digest(
+            slot_id,
+            asym_algo,
+            SpdmPalHashAlgo::Sha384,
+            &cert_chain_hash,
+        );
     }
 
     // Generate nonce via PAL RNG.
