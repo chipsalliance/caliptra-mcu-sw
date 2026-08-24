@@ -9,9 +9,9 @@ use caliptra_mcu_spdm_codec::{
     CHUNK_ATTR_LAST_CHUNK, SECURED_MSG_HDR_SIZE,
 };
 use caliptra_mcu_spdm_traits::{
-    MeasurementInfo, SpdmPalAlloc, SpdmPalAsymAlgo, SpdmPalCertStore, SpdmPalHash, SpdmPalHashAlgo,
-    SpdmPalIo, SpdmPalIoKind, SpdmPalIoTransport, SpdmPalMeasurements, SpdmPalSessionCrypto,
-    SPDM_NONCE_LEN,
+    MeasurementInfo, Milliseconds, SpdmPalAlloc, SpdmPalAsymAlgo, SpdmPalCertStore, SpdmPalHash,
+    SpdmPalHashAlgo, SpdmPalIo, SpdmPalIoKind, SpdmPalIoTransport, SpdmPalMeasurements,
+    SpdmPalSessionCrypto, SPDM_NONCE_LEN,
 };
 use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut};
@@ -110,6 +110,14 @@ pub struct TestPal {
     pub op: RefCell<Option<StoreOp>>,
     pub stream_cert: RefCell<Vec<u8>>,
     pub stream_aborts: Cell<usize>,
+    pub now_ms: RefCell<u64>,
+}
+
+impl TestPal {
+    /// Advance / set the fake monotonic clock used by `now_ms()`.
+    pub fn set_now_ms(&self, ms: u64) {
+        *self.now_ms.borrow_mut() = ms;
+    }
 }
 
 impl Default for TestPal {
@@ -127,6 +135,7 @@ impl Default for TestPal {
             op: RefCell::new(None),
             stream_cert: RefCell::new(Vec::new()),
             stream_aborts: Cell::new(0),
+            now_ms: RefCell::new(0),
         }
     }
 }
@@ -226,6 +235,14 @@ impl SpdmPalIoTransport for TestPal {
         _msg: &mut [u8],
     ) -> McuResult<()> {
         Err(mcu_error::codes::NOT_IMPLEMENTED)
+    }
+
+    fn now(&self) -> Milliseconds {
+        Milliseconds(*self.now_ms.borrow())
+    }
+
+    async fn sleep(&self, _dur: Milliseconds) {
+        // Tests drive the clock explicitly via `set_now_ms`; never block.
     }
 }
 
