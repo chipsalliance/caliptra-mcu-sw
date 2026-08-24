@@ -36,7 +36,7 @@ pub use mcu_caliptra_api::mailbox::{
 use zerocopy::{FromBytes, FromZeros, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
 pub const MAX_RESP_DATA_SIZE: usize = 4 * 1024;
-pub const MAX_ENDORSEMENT_CERT_SIZE: usize = 8 * 1024;
+pub const MAX_ENDORSEMENT_CERT_SIZE: usize = 12 * 1024;
 pub const MAX_FW_VERSION_STR_LEN: usize = 32;
 pub const DEVICE_CAPS_SIZE: usize = 36;
 pub const DOT_BLOB_SIZE: usize = 168;
@@ -588,11 +588,13 @@ pub enum McuMailboxResp {
     FuseRevokeVendorPkHash(FuseRevokeVendorPkHashResp),
     // Certificate commands
     ExportAttestedCsr(ExportAttestedCsrResp),
+    DpeSignerContextCert(DpeSignerContextCertResp),
     GetDpeCertChain(GetDpeCertChainResp),
 
     // OCP Lock
     OcpLockSetPermaHek(OcpLockSetPermaHekResp),
     OcpLockRotateHek(OcpLockRotateHekResp),
+    GetOcpLockEndorsementCert(GetOcpLockEndorsementCertResp),
     OcpLockEnumerateHpkeHandles(OcpLockEnumerateHpkeHandlesResp),
     GetOcpLockEpochKeyReport(GetOcpLockEpochKeyReportResp),
     // Device Ownership Transfer commands
@@ -723,10 +725,12 @@ impl McuMailboxResp {
             McuMailboxResp::ProvisionOwnerPkHash(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FuseRevokeVendorPkHash(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial(),
+            McuMailboxResp::DpeSignerContextCert(resp) => resp.as_bytes_partial(),
             McuMailboxResp::GetDpeCertChain(resp) => resp.as_bytes_partial(),
 
             McuMailboxResp::OcpLockSetPermaHek(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::OcpLockRotateHek(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::GetOcpLockEndorsementCert(resp) => resp.as_bytes_partial(),
             McuMailboxResp::OcpLockEnumerateHpkeHandles(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::GetOcpLockEpochKeyReport(resp) => resp.as_bytes_partial(),
             McuMailboxResp::DotLock(resp) => Ok(resp.as_bytes()),
@@ -796,10 +800,12 @@ impl McuMailboxResp {
             McuMailboxResp::ProvisionOwnerPkHash(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FuseRevokeVendorPkHash(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial_mut(),
+            McuMailboxResp::DpeSignerContextCert(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::GetDpeCertChain(resp) => resp.as_bytes_partial_mut(),
 
             McuMailboxResp::OcpLockSetPermaHek(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::OcpLockRotateHek(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::GetOcpLockEndorsementCert(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::OcpLockEnumerateHpkeHandles(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::GetOcpLockEpochKeyReport(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::DotLock(resp) => Ok(resp.as_mut_bytes()),
@@ -2643,12 +2649,7 @@ mod tests {
     }
 
     #[test]
-    fn get_attestation_resp_is_excluded_from_the_shared_response_union() {
-        // The response carries attestation-sized evidence, so folding it into
-        // `McuMailboxResp` would enlarge every other command's allocation.
-        assert!(
-            core::mem::size_of::<GetAttestationResp>() > core::mem::size_of::<McuMailboxResp>()
-        );
+    fn get_attestation_resp_layout() {
         assert_eq!(
             core::mem::size_of::<GetAttestationResp>(),
             core::mem::size_of::<MailboxRespHeaderVarSize>() + MAX_ATTESTATION_RESP_DATA_SIZE
@@ -3046,14 +3047,14 @@ mod tests {
         resp.hdr.data_len = 128;
         resp.cert_data[..4].copy_from_slice(&[0x30, 0x82, 0x01, 0x00]);
 
-        let bytes = resp.as_bytes();
-        assert_eq!(
-            bytes.len(),
-            core::mem::size_of::<DpeSignerContextCertResp>()
-        );
-        assert_eq!(
-            resp.partial_len().unwrap(),
-            core::mem::size_of::<MailboxRespHeaderVarSize>() + 128
-        );
+        let mut mbox_resp = McuMailboxResp::DpeSignerContextCert(resp);
+        mbox_resp.populate_chksum().unwrap();
+
+        let bytes = mbox_resp.as_bytes().unwrap();
+        let hdr = MailboxRespHeader::read_from_prefix(bytes).unwrap().0;
+        assert_ne!(hdr.chksum, 0);
+
+        let payload = &bytes[core::mem::size_of::<u32>()..];
+        assert!(verify_checksum(hdr.chksum, 0, payload));
     }
 }

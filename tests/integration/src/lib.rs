@@ -723,6 +723,7 @@ mod test {
     }
 
     pub fn start_runtime_hw_model(params: TestParams) -> DefaultHwModel {
+        std::env::set_var("CPTRA_EMULATOR_SS_MCI_OFFSET", "0x00000000a8000000");
         let TestBinaries {
             vendor_pk_hash_u8,
             caliptra_rom,
