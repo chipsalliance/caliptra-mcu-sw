@@ -42,9 +42,12 @@ mod digests;
 mod end_session;
 mod error;
 mod finish;
+mod heartbeat;
 mod key_exchange;
 pub mod key_schedule;
 mod measurements;
+#[cfg(feature = "spdm-set-heartbeat")]
+mod select;
 pub mod session;
 #[cfg(feature = "set-certificate")]
 mod set_certificate;
