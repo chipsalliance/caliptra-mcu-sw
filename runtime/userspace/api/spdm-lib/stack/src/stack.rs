@@ -16,8 +16,8 @@
 
 use caliptra_mcu_spdm_codec::{
     encode_aad, AeadAlgos, AsymAlgos, CapFlags, DheAlgos, HashAlgos, KeyScheduleAlgos,
-    MeasHashAlgos, MeasSpec, OtherParamSupport, ReqRespCode, SecuredMessageHeader, SpdmMsgHdrPdu,
-    SpdmVersion, AES_256_GCM_TAG_SIZE, SECURED_MSG_HDR_SIZE,
+    MeasHashAlgos, MeasSpec, OtherParamSupport, PqcAsymAlgos, ReqRespCode, SecuredMessageHeader,
+    SpdmMsgHdrPdu, SpdmVersion, AES_256_GCM_TAG_SIZE, SECURED_MSG_HDR_SIZE,
 };
 use caliptra_mcu_spdm_traits::SpdmPalAlloc;
 use caliptra_mcu_spdm_traits::*;
@@ -105,6 +105,8 @@ pub struct ConnectionState<S, L> {
     pub base_asym_sel: AsymAlgos,
     /// Base hash algorithm (transcript hash + everything else).
     pub base_hash_sel: HashAlgos,
+    /// Post-quantum asymmetric algorithm advertised for `CHALLENGE_AUTH`.
+    pub pqc_asym_sel: PqcAsymAlgos,
     /// Diffie-Hellman group bitmap for `KEY_EXCHANGE`.
     pub dhe: DheAlgos,
     /// AEAD suite bitmap for secured-message protection.
@@ -134,6 +136,8 @@ pub struct ConnectionState<S, L> {
     pub negotiated_base_asym_sel: AsymAlgos,
     /// Negotiated BaseHashSel from NEGOTIATE_ALGORITHMS.
     pub negotiated_base_hash_sel: HashAlgos,
+    /// Negotiated PqcAsymSel from NEGOTIATE_ALGORITHMS.
+    pub negotiated_pqc_asym_sel: PqcAsymAlgos,
     /// Transcript state (running VCA/M1/L1 hashes per SPDM).
     pub transcript: crate::transcript::Transcript<S>,
     /// Consolidated context managing large-payload request reassembly and response chunking.
@@ -180,6 +184,7 @@ impl<S, L> ConnectionState<S, L> {
             meas_hash_algo: MeasHashAlgos::SHA_384,
             base_asym_sel: AsymAlgos::ECDSA_ECC_NIST_P384,
             base_hash_sel: HashAlgos::SHA_384,
+            pqc_asym_sel: PqcAsymAlgos::ML_DSA_87,
             dhe: DheAlgos::SECP_384_R1,
             aead: AeadAlgos::AES_256_GCM,
             key_schedule: KeyScheduleAlgos::SPDM,
@@ -193,6 +198,7 @@ impl<S, L> ConnectionState<S, L> {
             other_param_sel: OtherParamSupport::EMPTY,
             negotiated_base_asym_sel: AsymAlgos::EMPTY,
             negotiated_base_hash_sel: HashAlgos::EMPTY,
+            negotiated_pqc_asym_sel: PqcAsymAlgos::EMPTY,
             transcript: crate::transcript::Transcript::new(),
             large_msg_ctx: chunk::LargeMessageCtx::new(),
         }
@@ -222,11 +228,17 @@ impl<S, L> ConnectionState<S, L> {
         local.min(peer)
     }
 
-    /// Convert the negotiated `base_asym_sel` bitfield to
+    /// Convert the negotiated asymmetric algorithm to
     /// [`SpdmPalAsymAlgo`] for cert-store calls.
     pub(crate) fn asym_algo(&self) -> SpdmPalAsymAlgo {
-        // TODO: add MLDSA-87 mapping once codec and DPE support it.
-        SpdmPalAsymAlgo::EccP384
+        if self
+            .negotiated_pqc_asym_sel
+            .contains(PqcAsymAlgos::ML_DSA_87)
+        {
+            SpdmPalAsymAlgo::MlDsa87
+        } else {
+            SpdmPalAsymAlgo::EccP384
+        }
     }
 }
 
@@ -242,6 +254,7 @@ impl<S, L: core::ops::DerefMut<Target = [u8]>> ConnectionState<S, L> {
         self.other_param_sel = OtherParamSupport::EMPTY;
         self.negotiated_base_asym_sel = AsymAlgos::EMPTY;
         self.negotiated_base_hash_sel = HashAlgos::EMPTY;
+        self.negotiated_pqc_asym_sel = PqcAsymAlgos::EMPTY;
         self.transcript.reset();
         self.large_msg_ctx.reset();
     }
