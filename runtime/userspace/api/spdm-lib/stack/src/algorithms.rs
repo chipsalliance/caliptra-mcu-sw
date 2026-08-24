@@ -23,9 +23,9 @@
 //! accepted but ignored.
 
 use caliptra_mcu_spdm_codec::{
-    alg_type, AeadAlgos, AlgStructEntry, AlgorithmsRsp, CapFlags, DheAlgos, KeyScheduleAlgos,
-    NegotiateAlgorithmsReqBodyFixed, OtherParamSupport, PqcAsymAlgos, ResponseBody, SpdmMsgHdrPdu,
-    SpdmVersion,
+    alg_type, AeadAlgos, AlgStructEntry, AlgorithmsRsp, AsymAlgos, CapFlags, DheAlgos,
+    KeyScheduleAlgos, NegotiateAlgorithmsReqBodyFixed, OtherParamSupport, PqcAsymAlgos,
+    ResponseBody, SpdmMsgHdrPdu, SpdmVersion,
 };
 use caliptra_mcu_spdm_traits::{PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalIo, SpdmPalIoTransport};
 use zerocopy::FromBytes;
@@ -95,6 +95,7 @@ pub(crate) async fn handle_negotiate_algorithms<'a, Pal: SpdmPal>(
         state.other_param_sel = rsp_body.other_param_support;
         state.negotiated_base_asym_sel = rsp_body.base_asym_sel;
         state.negotiated_base_hash_sel = rsp_body.base_hash_sel;
+        state.negotiated_pqc_asym_sel = rsp_body.pqc_asym_sel;
 
         let resp = build_response(pal, io, state.version, &rsp_body)?;
         (resp, spdm_len)
@@ -267,16 +268,26 @@ fn build_response_body<S, L>(
         );
     }
 
+    let (base_asym_sel, pqc_asym_sel) = if state.version >= SpdmVersion::V14
+        && !(state.pqc_asym_sel & fixed.pqc_asym_algo).is_empty()
+    {
+        (AsymAlgos::EMPTY, state.pqc_asym_sel & fixed.pqc_asym_algo)
+    } else {
+        (
+            state.base_asym_sel & fixed.base_asym_algo,
+            PqcAsymAlgos::EMPTY,
+        )
+    };
+
     AlgorithmsRsp {
         measurement_spec_sel: state.measurement_spec & fixed.measurement_spec,
         other_param_support,
         // MeasurementHashAlgo has no peer bitmap to intersect — the
         // requester relies on the responder's choice.
         meas_hash_algo: state.meas_hash_algo,
-        base_asym_sel: state.base_asym_sel & fixed.base_asym_algo,
+        base_asym_sel,
         base_hash_sel: state.base_hash_sel & fixed.base_hash_algo,
-        // This responder currently implements only classical signatures.
-        pqc_asym_sel: PqcAsymAlgos::EMPTY,
+        pqc_asym_sel,
         alg_structs: [
             (!dhe.is_empty()).then(|| AlgStructEntry::dhe(dhe)),
             (!aead.is_empty()).then(|| AlgStructEntry::aead(aead)),
@@ -511,10 +522,10 @@ mod tests {
     }
 
     #[test]
-    fn v14_accepts_pqc_offer_and_selects_classical_algorithms_only() {
+    fn v14_accepts_unsupported_pqc_offer_and_selects_classical_algorithms_only() {
         let request = negotiate_request(
             SpdmVersion::V14,
-            PqcAsymAlgos::ML_DSA_87,
+            PqcAsymAlgos::ML_DSA_44,
             AsymAlgos::ECDSA_ECC_NIST_P384,
             false,
         );
@@ -556,7 +567,7 @@ mod tests {
     fn v14_ignores_reserved_pqc_asym_bits() {
         let request = negotiate_request(
             SpdmVersion::V14,
-            PqcAsymAlgos::from_bits(PqcAsymAlgos::ML_DSA_87.into_bits() | (1 << 31)),
+            PqcAsymAlgos::from_bits(1 << 31),
             AsymAlgos::ECDSA_ECC_NIST_P384,
             false,
         );
@@ -623,5 +634,89 @@ mod tests {
             &expected_entries,
         );
         assert_eq!(state.phase, Phase::AfterAlgorithms);
+    }
+
+    #[test]
+    fn test_algorithms_v14_negotiates_mldsa87_and_sets_asym_algo() {
+        let req = negotiate_request(
+            SpdmVersion::V14,
+            PqcAsymAlgos::ML_DSA_87,
+            AsymAlgos::ECDSA_ECC_NIST_P384,
+            false,
+        );
+
+        let pal = TestPal::default();
+        let mut state = ConnectionState {
+            version: SpdmVersion::V14,
+            phase: Phase::AfterCapabilities,
+            ..ConnectionState::default()
+        };
+        let io = TestIo::message(req);
+        let response = block_on(handle_negotiate_algorithms(&mut state, &pal, &io)).unwrap();
+
+        assert_eq!(
+            state.negotiated_base_asym_sel.into_bits(),
+            AsymAlgos::EMPTY.into_bits()
+        );
+        assert_eq!(
+            state.negotiated_pqc_asym_sel.into_bits(),
+            PqcAsymAlgos::ML_DSA_87.into_bits()
+        );
+        assert_eq!(
+            state.asym_algo(),
+            caliptra_mcu_spdm_traits::SpdmPalAsymAlgo::MlDsa87
+        );
+        assert_eq!(state.phase, Phase::AfterAlgorithms);
+
+        let (_hdr, body) = SpdmMsgHdrPdu::ref_from_prefix(&response[..]).unwrap();
+        let fixed = AlgorithmsRspBodyFixed::ref_from_bytes(
+            body.get(..AlgorithmsRspBodyFixed::SIZE).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            fixed.base_asym_sel.into_bits(),
+            AsymAlgos::EMPTY.into_bits()
+        );
+        assert_eq!(
+            fixed.pqc_asym_sel.into_bits(),
+            PqcAsymAlgos::ML_DSA_87.into_bits()
+        );
+    }
+
+    #[test]
+    fn test_algorithms_v12_omits_pqc_asym_algo() {
+        let req = negotiate_request(
+            SpdmVersion::V12,
+            PqcAsymAlgos::EMPTY,
+            AsymAlgos::ECDSA_ECC_NIST_P384,
+            false,
+        );
+        let pal = TestPal::default();
+        let mut state = ConnectionState {
+            version: SpdmVersion::V12,
+            phase: Phase::AfterCapabilities,
+            ..ConnectionState::default()
+        };
+        let io = TestIo::message(req);
+        let response = block_on(handle_negotiate_algorithms(&mut state, &pal, &io)).unwrap();
+
+        assert_eq!(
+            state.negotiated_pqc_asym_sel.into_bits(),
+            PqcAsymAlgos::EMPTY.into_bits()
+        );
+        assert_eq!(
+            state.asym_algo(),
+            caliptra_mcu_spdm_traits::SpdmPalAsymAlgo::EccP384
+        );
+
+        let (_hdr, body) = SpdmMsgHdrPdu::ref_from_prefix(&response[..]).unwrap();
+        let fixed = AlgorithmsRspBodyFixed::ref_from_bytes(
+            body.get(..AlgorithmsRspBodyFixed::SIZE).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            fixed.pqc_asym_sel.into_bits(),
+            PqcAsymAlgos::EMPTY.into_bits()
+        );
     }
 }

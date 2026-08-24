@@ -298,3 +298,35 @@ fn test_get_certificate_chunked_full_fetch() {
     // Followed by SPDM cert chain header + DER certs
     assert_eq!(&payload[SPDM_CERT_CHAIN_HDR_LEN..], TEST_CERT_CHAIN);
 }
+
+#[test]
+fn test_get_certificate_v14_with_mldsa87_negotiated() {
+    let pal = TestPal::default();
+    let mut state = init_cert_test_state(SpdmVersion::V14, &pal);
+    state.advertised_cap_flags |= CapFlags::LARGE_RESP;
+    state.negotiated_pqc_asym_sel = caliptra_mcu_spdm_codec::PqcAsymAlgos::ML_DSA_87;
+    assert_eq!(
+        state.asym_algo(),
+        caliptra_mcu_spdm_traits::SpdmPalAsymAlgo::MlDsa87
+    );
+
+    let mut sessions = SessionManager::new();
+    let total_len = (SPDM_CERT_CHAIN_HDR_LEN + TEST_CERT_CHAIN.len()) as u32;
+
+    // Query size using large cert request
+    let req = large_cert_request(SpdmVersion::V14, 0, ATTR_SLOT_SIZE_REQUESTED, 0, 0);
+    let rsp = dispatch_cert_request(&mut state, &mut sessions, &pal, req).unwrap();
+
+    let (_hdr, rest) = SpdmMsgHdrPdu::ref_from_prefix(&rsp).unwrap();
+    let (body, payload) = CertificateLargeRspBody::ref_from_prefix(rest).unwrap();
+    let wanted_body = CertificateLargeRspBody {
+        param1: GetCertificateParam1::new().with_large_cert_chain(true),
+        param2: 0,
+        portion_length: U16::new(0),
+        remainder_length: U16::new(0),
+        large_portion_length: U32::new(0),
+        large_remainder_length: U32::new(total_len),
+    };
+    assert_eq!(body, &wanted_body);
+    assert!(payload.is_empty());
+}
