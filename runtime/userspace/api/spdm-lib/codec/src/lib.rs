@@ -44,7 +44,7 @@ pub use chunk::{
 };
 pub use digests::{DigestsRsp, DigestsRspBody};
 pub use end_session::{EndSessionAck, EndSessionReqBody};
-pub use finish::{FinishReqBody, FinishRsp};
+pub use finish::{FinishReq, FinishReqBody, FinishReqBody14, FinishRsp};
 pub use header::{
     ReqRespCode, SpdmMsgHdrPdu, ECC_P384_SIGNATURE_SIZE, REQUESTER_CONTEXT_LEN, SHA384_HASH_SIZE,
     SPDM_CONTEXT_LEN, SPDM_MSG_HDR_SIZE, SPDM_NONCE_LEN, SPDM_PREFIX_LEN, SPDM_SIGNING_CONTEXT_LEN,
