@@ -55,9 +55,12 @@ pub(crate) const CMD_POPULATE_IDEV_MLDSA87_CERT: u32 = 0x4944_4D50; // "IDMP"
 
 // ---- DPE (Caliptra `InvokeDpeCommand`) ------------------------------------
 
-/// Caliptra mailbox command ID for `INVOKE_DPE`.
-/// Mirrored from `caliptra-api::CommandId::INVOKE_DPE`.
+/// Caliptra mailbox command ID for `INVOKE_DPE_ECC384`.
+/// Mirrored from `caliptra-api::CommandId::INVOKE_DPE_ECC384`.
 pub(crate) const CMD_INVOKE_DPE: u32 = 0x4450_4543; // "DPEC"
+
+/// Caliptra mailbox command ID for `INVOKE_DPE_MLDSA87`.
+/// Mirrored from `caliptra-api::CommandId::INVOKE_DPE_MLDSA87`.
 pub(crate) const CMD_INVOKE_DPE_MLDSA87: u32 = 0x4450_454D; // "DPEM"
 
 /// Caliptra mailbox command ID for `CERTIFY_KEY_CHUNKS`.

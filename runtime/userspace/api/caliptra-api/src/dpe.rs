@@ -10,7 +10,10 @@
 //! allocated from the caller's [`ApiAlloc`] — never the stack —
 //! keeping async futures small.
 
-use core::{mem::size_of, ops::Deref};
+use core::{
+    mem::{offset_of, size_of},
+    ops::Deref,
+};
 use mcu_error::codes::{INTERNAL_BUG, INVARIANT};
 use mcu_error::McuResult;
 use zerocopy::{little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
@@ -24,6 +27,27 @@ use crate::wire::{
     DPE_PROFILE_P384_SHA384, DPE_RESPONSE_MAGIC, MBOX_RESP_HEADER_SIZE,
 };
 use crate::ApiAlloc;
+
+/// DPE profile identifier used for DPE command dispatch.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[repr(u32)]
+pub enum DpeProfile {
+    P384Sha384 = DPE_PROFILE_P384_SHA384,
+    Mldsa87 = DPE_PROFILE_MLDSA87,
+}
+
+impl DpeProfile {
+    pub const fn profile_id(self) -> u32 {
+        self as u32
+    }
+
+    pub const fn invoke_cmd_id(self) -> u32 {
+        match self {
+            Self::P384Sha384 => CMD_INVOKE_DPE,
+            Self::Mldsa87 => CMD_INVOKE_DPE_MLDSA87,
+        }
+    }
+}
 
 /// Length in bytes of the DPE key/UEID label used by every
 /// `CertifyKey` / `Sign` call in this crate.
@@ -56,10 +80,6 @@ pub const DPE_MAX_LEAF_CERT_SIZE: usize = 12 * 1024;
 /// few bitmap-allocator slots.
 pub const DPE_MAX_CHUNK_SIZE: usize = 1024;
 
-/// Serialized `dpe::commands::CertifyKeyP384Cmd` body length carried by
-/// Caliptra's `CertifyKeyChunksReq`.
-const CERTIFY_KEY_CHUNKS_CERTIFY_KEY_REQ_SIZE: usize = 72;
-
 // ---------------------------------------------------------------------------
 // Slim wire types
 // ---------------------------------------------------------------------------
@@ -76,7 +96,7 @@ struct InvokeDpeReqPrefix {
 
 /// Caliptra `InvokeDpeMldsa87Req` prefix: `MailboxReqHeader { chksum }` +
 /// `flags(4)` + `axi_response(12)` + `data_size(4)`. The DPE-level payload
-/// follows immediately.
+/// (`CommandHdr` + command body) follows immediately.
 #[repr(C)]
 #[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned)]
 struct InvokeDpeMldsa87ReqPrefix {
@@ -252,8 +272,11 @@ const _: () = assert!(TAG_TCI_REQ_LEN == 4 + DPE_CONTEXT_HANDLE_SIZE + 4);
 const _: () = assert!(GET_TAGGED_TCI_REQ_LEN == 4 + 4);
 const _: () = assert!(GET_TAGGED_TCI_RESP_LEN == MBOX_RESP_HEADER_SIZE + 48 + 48);
 
-const GET_CERT_CHAIN_REQ_LEN: usize =
+const GET_CERT_CHAIN_REQ_P384_LEN: usize =
     size_of::<InvokeDpeReqPrefix>() + size_of::<DpeCommandHdr>() + size_of::<GetCertChainCmd>();
+const GET_CERT_CHAIN_REQ_MLDSA87_LEN: usize = size_of::<InvokeDpeMldsa87ReqPrefix>()
+    + size_of::<DpeCommandHdr>()
+    + size_of::<GetCertChainCmd>();
 const GET_CERT_CHAIN_DPE_PAYLOAD_LEN: u32 =
     (size_of::<DpeCommandHdr>() + size_of::<GetCertChainCmd>()) as u32;
 
@@ -272,22 +295,59 @@ const UPDATE_CONTEXT_MEASUREMENT_REQ_LEN: usize = size_of::<InvokeDpeReqPrefix>(
     + size_of::<UpdateContextMeasurementCmd>();
 const UPDATE_CONTEXT_MEASUREMENT_DPE_PAYLOAD_LEN: u32 =
     (size_of::<DpeCommandHdr>() + size_of::<UpdateContextMeasurementCmd>()) as u32;
-const CERTIFY_KEY_P384_RESP_PREFIX_LEN: usize = 12 + DPE_CONTEXT_HANDLE_SIZE + 48 + 48 + 4;
-const CERTIFY_KEY_CHUNKS_REQ_LEN: usize =
-    4 + 4 + 4 + 4 + 4 + CERTIFY_KEY_CHUNKS_CERTIFY_KEY_REQ_SIZE;
-const CERTIFY_KEY_CHUNKS_RESP_INFO_LEN: usize = 4 + 4 + DPE_CONTEXT_HANDLE_SIZE + 4 + 4;
-const CERTIFY_KEY_RESP_PUBKEY_X_OFF: usize = 12 + DPE_CONTEXT_HANDLE_SIZE;
+const CERTIFY_KEY_P384_RESP_PREFIX_LEN: usize =
+    size_of::<DpeResponseHdr>() + DPE_CONTEXT_HANDLE_SIZE + 48 + 48 + 4;
+pub const CERTIFY_KEY_MLDSA87_PUBKEY_SIZE: usize = caliptra_image_types::MLDSA87_PUB_KEY_BYTE_SIZE;
+pub const CERTIFY_KEY_MLDSA87_RESP_PREFIX_LEN: usize =
+    size_of::<DpeResponseHdr>() + DPE_CONTEXT_HANDLE_SIZE + CERTIFY_KEY_MLDSA87_PUBKEY_SIZE + 4;
+pub const CERTIFY_KEY_FLAG_USE_MLDSA: u32 =
+    caliptra_api::mailbox::CertifyKeyChunksFlags::USE_MLDSA.bits();
+const CERTIFY_KEY_CHUNKS_REQ_LEN: usize = size_of::<caliptra_api::mailbox::CertifyKeyChunksReq>();
+const CERTIFY_KEY_CHUNKS_RESP_INFO_LEN: usize =
+    size_of::<caliptra_api::mailbox::CertifyKeyChunksRespInfo>();
+const CERTIFY_KEY_CHUNKS_MAX_REQ_SIZE: usize =
+    if CERTIFY_KEY_MLDSA87_RESP_PREFIX_LEN > DPE_MAX_CHUNK_SIZE {
+        CERTIFY_KEY_MLDSA87_RESP_PREFIX_LEN
+    } else {
+        DPE_MAX_CHUNK_SIZE
+    };
+const CERTIFY_KEY_RESP_PUBKEY_X_OFF: usize = size_of::<DpeResponseHdr>() + DPE_CONTEXT_HANDLE_SIZE;
 const CERTIFY_KEY_RESP_PUBKEY_Y_OFF: usize = CERTIFY_KEY_RESP_PUBKEY_X_OFF + 48;
 const CERTIFY_KEY_RESP_CERT_SIZE_OFF: usize = CERTIFY_KEY_RESP_PUBKEY_Y_OFF + 48;
-const CERTIFY_KEY_CHUNKS_REQ_MAX_SIZE_OFF: usize = 12;
-const CERTIFY_KEY_CHUNKS_REQ_OFFSET_OFF: usize = 16;
-const CERTIFY_KEY_CHUNKS_REQ_DPE_CMD_OFF: usize = 20;
+
+#[inline]
+fn certify_key_prefix_len(profile: DpeProfile) -> usize {
+    match profile {
+        DpeProfile::P384Sha384 => CERTIFY_KEY_P384_RESP_PREFIX_LEN,
+        DpeProfile::Mldsa87 => CERTIFY_KEY_MLDSA87_RESP_PREFIX_LEN,
+    }
+}
+
+#[inline]
+fn certify_key_cert_size_offset(profile: DpeProfile) -> usize {
+    match profile {
+        DpeProfile::P384Sha384 => CERTIFY_KEY_RESP_CERT_SIZE_OFF,
+        DpeProfile::Mldsa87 => {
+            size_of::<DpeResponseHdr>() + DPE_CONTEXT_HANDLE_SIZE + CERTIFY_KEY_MLDSA87_PUBKEY_SIZE
+        }
+    }
+}
+const CERTIFY_KEY_CHUNKS_REQ_MAX_SIZE_OFF: usize =
+    offset_of!(caliptra_api::mailbox::CertifyKeyChunksReq, max_size);
+const CERTIFY_KEY_CHUNKS_REQ_OFFSET_OFF: usize =
+    offset_of!(caliptra_api::mailbox::CertifyKeyChunksReq, offset);
+const CERTIFY_KEY_CHUNKS_REQ_DPE_CMD_OFF: usize =
+    offset_of!(caliptra_api::mailbox::CertifyKeyChunksReq, certify_key_req);
 const CERTIFY_KEY_CHUNKS_REQ_HANDLE_OFF: usize = CERTIFY_KEY_CHUNKS_REQ_DPE_CMD_OFF;
 const CERTIFY_KEY_CHUNKS_REQ_FORMAT_OFF: usize =
     CERTIFY_KEY_CHUNKS_REQ_DPE_CMD_OFF + DPE_CONTEXT_HANDLE_SIZE + 4;
 const CERTIFY_KEY_CHUNKS_REQ_LABEL_OFF: usize = CERTIFY_KEY_CHUNKS_REQ_FORMAT_OFF + 4;
-const CERTIFY_KEY_CHUNKS_RESP_HANDLE_OFF: usize = 4 + 4;
-const CERTIFY_KEY_CHUNKS_RESP_CHUNK_LEN_OFF: usize = 4 + 4 + DPE_CONTEXT_HANDLE_SIZE;
+const CERTIFY_KEY_CHUNKS_RESP_HANDLE_OFF: usize = offset_of!(
+    caliptra_api::mailbox::CertifyKeyChunksRespInfo,
+    context_handle
+);
+const CERTIFY_KEY_CHUNKS_RESP_CHUNK_LEN_OFF: usize =
+    offset_of!(caliptra_api::mailbox::CertifyKeyChunksRespInfo, chunk_len);
 
 const ROTATE_CTX_REQ_LEN: usize =
     size_of::<InvokeDpeReqPrefix>() + size_of::<DpeCommandHdr>() + size_of::<RotateCtxCmd>();
@@ -317,14 +377,19 @@ const _: () = assert!(
 );
 const _: () = assert!(size_of::<InvokeDpeRespPrefix>() == 12);
 const _: () = assert!(size_of::<DpeResponseHdr>() == 12);
-const _: () = assert!(GET_CERT_CHAIN_REQ_LEN == 28);
+const _: () = assert!(GET_CERT_CHAIN_REQ_P384_LEN == 28);
+const _: () = assert!(GET_CERT_CHAIN_REQ_MLDSA87_LEN == 44);
 const _: () = assert!(SIGN_REQ_LEN == 8 + 12 + 116);
 const _: () = assert!(DERIVE_CONTEXT_REQ_LEN == 8 + 12 + 80);
 const _: () = assert!(DERIVE_CONTEXT_MLDSA87_REQ_LEN == 24 + 12 + 80);
 const _: () = assert!(UPDATE_CONTEXT_MEASUREMENT_REQ_LEN == 8 + 12 + 76);
-const _: () =
-    assert!(CERTIFY_KEY_CHUNKS_CERTIFY_KEY_REQ_SIZE == DPE_CONTEXT_HANDLE_SIZE + 4 + 4 + 48);
+const _: () = assert!(
+    caliptra_api::mailbox::CertifyKeyChunksReq::CERTIFY_KEY_REQ_SIZE
+        == DPE_CONTEXT_HANDLE_SIZE + 4 + 4 + 48
+);
 const _: () = assert!(CERTIFY_KEY_P384_RESP_PREFIX_LEN == 128);
+const _: () = assert!(CERTIFY_KEY_MLDSA87_PUBKEY_SIZE == 2592);
+const _: () = assert!(CERTIFY_KEY_MLDSA87_RESP_PREFIX_LEN == 2624);
 const _: () = assert!(CERTIFY_KEY_CHUNKS_REQ_LEN == 92);
 const _: () = assert!(CERTIFY_KEY_CHUNKS_RESP_INFO_LEN == 32);
 const _: () = assert!(size_of::<RotateCtxCmd>() == DPE_CONTEXT_HANDLE_SIZE + 4);
@@ -438,7 +503,7 @@ pub async fn dpe_derive_context<A: ApiAlloc>(
     alloc: &A,
     params: &DpeDeriveContextParams,
 ) -> McuResult<DpeDeriveContextResult> {
-    let (req, mbox_cmd) = build_derive_context_req(alloc, params, DPE_PROFILE_P384_SHA384, None)?;
+    let (req, mbox_cmd) = build_derive_context_req(alloc, params, DpeProfile::P384Sha384, None)?;
     let mut rsp =
         alloc.alloc(size_of::<InvokeDpeRespPrefix>() + size_of::<DeriveContextRespBody>())?;
     let rsp_len = mbox_execute(mbox_cmd, &req, &mut rsp).await?;
@@ -448,13 +513,12 @@ pub async fn dpe_derive_context<A: ApiAlloc>(
 fn build_derive_context_req<'a, A: ApiAlloc>(
     alloc: &'a A,
     params: &DpeDeriveContextParams,
-    profile: u32,
+    profile: DpeProfile,
     axi_response: Option<(u32, u32)>,
 ) -> McuResult<(A::Buf<'a>, u32)> {
-    let req_len = if profile == DPE_PROFILE_MLDSA87 {
-        DERIVE_CONTEXT_MLDSA87_REQ_LEN
-    } else {
-        DERIVE_CONTEXT_REQ_LEN
+    let req_len = match profile {
+        DpeProfile::Mldsa87 => DERIVE_CONTEXT_MLDSA87_REQ_LEN,
+        DpeProfile::P384Sha384 => DERIVE_CONTEXT_REQ_LEN,
     };
     let mut req = alloc.alloc(req_len)?;
     req.fill(0);
@@ -479,11 +543,7 @@ fn build_derive_context_req<'a, A: ApiAlloc>(
         cmd.target_locality = U32::new(params.target_locality);
         cmd.svn = U32::new(params.svn);
     }
-    let mbox_cmd = if profile == DPE_PROFILE_MLDSA87 {
-        CMD_INVOKE_DPE_MLDSA87
-    } else {
-        CMD_INVOKE_DPE
-    };
+    let mbox_cmd = profile.invoke_cmd_id();
     let checksum = calc_checksum(mbox_cmd, &req);
     *req.first_chunk_mut::<4>().ok_or(INVARIANT)? = checksum.to_le_bytes();
     Ok((req, mbox_cmd))
@@ -521,47 +581,50 @@ fn parse_derive_context_response(rsp: &[u8], rsp_len: usize) -> McuResult<DpeDer
 pub async fn dpe_derive_context_exported_cdi<A: ApiAlloc>(
     alloc: &A,
     params: &DpeDeriveContextParams,
-    profile: u32,
+    profile: DpeProfile,
     cert_dst: &mut [u8],
 ) -> McuResult<DpeDeriveContextExportedCdiResult> {
-    let max_resp_len = if profile == DPE_PROFILE_MLDSA87 {
-        24 * 1024
-    } else {
-        size_of::<InvokeDpeRespPrefix>()
-            + size_of::<DeriveContextExportedCdiRespPrefix>()
-            + cert_dst.len().min(DPE_MAX_LEAF_CERT_SIZE)
+    let max_resp_len = match profile {
+        DpeProfile::Mldsa87 => 24 * 1024,
+        DpeProfile::P384Sha384 => {
+            size_of::<InvokeDpeRespPrefix>()
+                + size_of::<DeriveContextExportedCdiRespPrefix>()
+                + cert_dst.len().min(DPE_MAX_LEAF_CERT_SIZE)
+        }
     };
     let mut rsp = alloc.alloc(max_resp_len)?;
-    let axi_response = if profile == DPE_PROFILE_MLDSA87 {
-        // Caliptra Subsystem Integration Spec: MCU local SRAM base is 0x4000_0000,
-        // and AXI DMA base is MCI_BASE_AXI_ADDRESS (0xA800_0000) + MCU_SRAM_OFFSET (0x00C0_0000).
-        const MCU_SRAM_LOCAL_BASE: u32 = 0x4000_0000;
-        const MCI_BASE_AXI_ADDRESS: u32 = 0xA800_0000;
-        const MCU_SRAM_AXI_OFFSET: u32 = 0x00C0_0000;
-        const MCU_SRAM_AXI_BASE: u32 = MCI_BASE_AXI_ADDRESS + MCU_SRAM_AXI_OFFSET;
+    let axi_response = match profile {
+        DpeProfile::Mldsa87 => {
+            // Caliptra Subsystem Integration Spec: MCU local SRAM base is 0x4000_0000,
+            // and AXI DMA base is MCI_BASE_AXI_ADDRESS (0xA800_0000) + MCU_SRAM_OFFSET (0x00C0_0000).
+            const MCU_SRAM_LOCAL_BASE: u32 = 0x4000_0000;
+            const MCI_BASE_AXI_ADDRESS: u32 = 0xA800_0000;
+            const MCU_SRAM_AXI_OFFSET: u32 = 0x00C0_0000;
+            const MCU_SRAM_AXI_BASE: u32 = MCI_BASE_AXI_ADDRESS + MCU_SRAM_AXI_OFFSET;
 
-        let sram_offset = (rsp.as_ptr() as u32)
-            .checked_sub(MCU_SRAM_LOCAL_BASE)
-            .ok_or(INVARIANT)?;
-        let axi_addr = MCU_SRAM_AXI_BASE
-            .checked_add(sram_offset)
-            .ok_or(INVARIANT)?;
-        Some((axi_addr, max_resp_len as u32))
-    } else {
-        None
+            let sram_offset = (rsp.as_ptr() as u32)
+                .checked_sub(MCU_SRAM_LOCAL_BASE)
+                .ok_or(INVARIANT)?;
+            let axi_addr = MCU_SRAM_AXI_BASE
+                .checked_add(sram_offset)
+                .ok_or(INVARIANT)?;
+            Some((axi_addr, max_resp_len as u32))
+        }
+        DpeProfile::P384Sha384 => None,
     };
     let (req, mbox_cmd) = build_derive_context_req(alloc, params, profile, axi_response)?;
     let rsp_len = mbox_execute(mbox_cmd, &req, &mut rsp).await?;
-    let effective_rsp_len = if profile == DPE_PROFILE_MLDSA87 {
-        let prefix = InvokeDpeRespPrefix::ref_from_bytes(checked_slice(
-            &rsp,
-            0,
-            size_of::<InvokeDpeRespPrefix>(),
-        )?)
-        .map_err(|_| INVARIANT)?;
-        size_of::<InvokeDpeRespPrefix>() + prefix.data_size.get() as usize
-    } else {
-        rsp_len
+    let effective_rsp_len = match profile {
+        DpeProfile::Mldsa87 => {
+            let prefix = InvokeDpeRespPrefix::ref_from_bytes(checked_slice(
+                &rsp,
+                0,
+                size_of::<InvokeDpeRespPrefix>(),
+            )?)
+            .map_err(|_| INVARIANT)?;
+            size_of::<InvokeDpeRespPrefix>() + prefix.data_size.get() as usize
+        }
+        DpeProfile::P384Sha384 => rsp_len,
     };
     parse_derive_context_exported_cdi_response(&rsp, effective_rsp_len, cert_dst)
 }
@@ -682,7 +745,7 @@ fn parse_update_context_measurement_response(
 }
 
 /// Fetch a chunk of the Caliptra-managed DPE certificate chain via
-/// the `INVOKE_DPE / GetCertificateChain` mailbox command.
+/// the `INVOKE_DPE` (ECC-384) or `INVOKE_DPE_MLDSA87` (ML-DSA-87) mailbox command.
 ///
 /// `dst.len()` is the requested chunk size and MUST be in
 /// `1..=DPE_MAX_CHUNK_SIZE`. Returns the number of bytes Caliptra
@@ -691,6 +754,7 @@ fn parse_update_context_measurement_response(
 #[inline(never)]
 pub async fn dpe_get_cert_chain_chunk<A: ApiAlloc>(
     alloc: &A,
+    profile: DpeProfile,
     offset: u32,
     dst: &mut [u8],
 ) -> McuResult<usize> {
@@ -699,13 +763,20 @@ pub async fn dpe_get_cert_chain_chunk<A: ApiAlloc>(
     }
     let size = dst.len() as u32;
 
+    let req_len = match profile {
+        DpeProfile::P384Sha384 => GET_CERT_CHAIN_REQ_P384_LEN,
+        DpeProfile::Mldsa87 => GET_CERT_CHAIN_REQ_MLDSA87_LEN,
+    };
+
     // Build request: prefix + DPE command header + GetCertChain body.
-    let mut req = alloc.alloc(GET_CERT_CHAIN_REQ_LEN)?;
+    let mut req = alloc.alloc(req_len)?;
     req.fill(0);
-    let cur = build_invoke_dpe_header(
+    let cur = build_invoke_dpe_header_profile(
         &mut req,
         GET_CERT_CHAIN_DPE_PAYLOAD_LEN,
         DPE_CMD_GET_CERTIFICATE_CHAIN,
+        profile,
+        None,
     )?;
     {
         let cmd = GetCertChainCmd::mut_from_bytes(checked_slice_mut(
@@ -717,7 +788,8 @@ pub async fn dpe_get_cert_chain_chunk<A: ApiAlloc>(
         cmd.offset = U32::new(offset);
         cmd.size = U32::new(size);
     }
-    let checksum = calc_checksum(CMD_INVOKE_DPE, &req);
+    let mbox_cmd = profile.invoke_cmd_id();
+    let checksum = calc_checksum(mbox_cmd, &req);
     *req.first_chunk_mut::<4>().ok_or(INVARIANT)? = checksum.to_le_bytes();
 
     // Allocate response: outer prefix + DPE response hdr + cert_size
@@ -725,7 +797,7 @@ pub async fn dpe_get_cert_chain_chunk<A: ApiAlloc>(
     let rsp_max =
         size_of::<InvokeDpeRespPrefix>() + size_of::<DpeResponseHdr>() + 4 + DPE_MAX_CHUNK_SIZE;
     let mut rsp = alloc.alloc(rsp_max)?;
-    let rsp_len = mbox_execute(CMD_INVOKE_DPE, &req, &mut rsp).await?;
+    let rsp_len = mbox_execute(mbox_cmd, &req, &mut rsp).await?;
 
     let outer_prefix_len = size_of::<InvokeDpeRespPrefix>();
     let dpe_hdr_off = outer_prefix_len;
@@ -766,11 +838,12 @@ pub async fn dpe_get_cert_chain_chunk<A: ApiAlloc>(
 #[inline(never)]
 pub async fn dpe_certify_key<A: ApiAlloc>(
     alloc: &A,
+    profile: DpeProfile,
     handle: Option<&DpeContextHandle>,
     label: &[u8; DPE_LABEL_LEN],
     dst: &mut [u8],
 ) -> McuResult<(DpeContextHandle, usize)> {
-    let (_, cert_size) = dpe_certify_key_cert_size(alloc, handle, label).await?;
+    let (_, cert_size) = dpe_certify_key_cert_size(alloc, profile, handle, label).await?;
     if cert_size == 0 || cert_size > dst.len() {
         return Err(INVARIANT);
     }
@@ -781,6 +854,7 @@ pub async fn dpe_certify_key<A: ApiAlloc>(
         let end = cert_size.min(offset + DPE_MAX_CHUNK_SIZE);
         let (rotated_handle, copied) = dpe_certify_key_cert_slice(
             alloc,
+            profile,
             handle,
             label,
             offset as u32,
@@ -802,22 +876,25 @@ pub async fn dpe_certify_key<A: ApiAlloc>(
 #[inline(never)]
 pub async fn dpe_certify_key_cert_size<A: ApiAlloc>(
     alloc: &A,
+    profile: DpeProfile,
     handle: Option<&DpeContextHandle>,
     label: &[u8; DPE_LABEL_LEN],
 ) -> McuResult<(DpeContextHandle, usize)> {
+    let prefix_len = certify_key_prefix_len(profile);
     let chunk = certify_key_chunks_response(
         alloc,
+        profile,
         label,
         dpe_handle_or_default(handle),
         0,
-        CERTIFY_KEY_P384_RESP_PREFIX_LEN,
+        prefix_len,
     )
     .await?;
     let response = chunk.chunk()?;
-    validate_certify_key_prefix(response)?;
+    validate_certify_key_prefix(response, profile)?;
     Ok((
         chunk.next_handle,
-        read_le_u32(response, CERTIFY_KEY_RESP_CERT_SIZE_OFF)? as usize,
+        read_le_u32(response, certify_key_cert_size_offset(profile))? as usize,
     ))
 }
 
@@ -829,6 +906,7 @@ pub async fn dpe_certify_key_cert_size<A: ApiAlloc>(
 #[inline(never)]
 pub async fn dpe_certify_key_cert_slice<A: ApiAlloc>(
     alloc: &A,
+    profile: DpeProfile,
     handle: Option<&DpeContextHandle>,
     label: &[u8; DPE_LABEL_LEN],
     cert_offset: u32,
@@ -838,11 +916,13 @@ pub async fn dpe_certify_key_cert_slice<A: ApiAlloc>(
         return Err(INVARIANT);
     }
 
-    let dpe_offset = CERTIFY_KEY_P384_RESP_PREFIX_LEN
+    let prefix_len = certify_key_prefix_len(profile);
+    let dpe_offset = prefix_len
         .checked_add(cert_offset as usize)
         .ok_or(INVARIANT)?;
     let chunk = certify_key_chunks_response(
         alloc,
+        profile,
         label,
         dpe_handle_or_default(handle),
         dpe_offset as u32,
@@ -874,6 +954,7 @@ pub async fn dpe_certify_key_pubkey<A: ApiAlloc>(
 ) -> McuResult<DpeContextHandle> {
     let chunk = certify_key_chunks_response(
         alloc,
+        DpeProfile::P384Sha384,
         label,
         dpe_handle_or_default(handle),
         0,
@@ -881,7 +962,7 @@ pub async fn dpe_certify_key_pubkey<A: ApiAlloc>(
     )
     .await?;
     let response = chunk.chunk()?;
-    validate_certify_key_prefix(response)?;
+    validate_certify_key_prefix(response, DpeProfile::P384Sha384)?;
     let pubkey_x_bytes = internal_slice(response, CERTIFY_KEY_RESP_PUBKEY_X_OFF, 48)?;
     let pubkey_y_bytes = internal_slice(response, CERTIFY_KEY_RESP_PUBKEY_Y_OFF, 48)?;
     copy_bytes(pubkey_x, pubkey_x_bytes)?;
@@ -903,6 +984,7 @@ impl<B: Deref<Target = [u8]>> CertifyKeyChunk<B> {
 
 async fn certify_key_chunks_response<'a, A>(
     alloc: &'a A,
+    profile: DpeProfile,
     label: &[u8; DPE_LABEL_LEN],
     handle: &[u8; DPE_CONTEXT_HANDLE_SIZE],
     dpe_resp_offset: u32,
@@ -911,11 +993,12 @@ async fn certify_key_chunks_response<'a, A>(
 where
     A: ApiAlloc,
 {
-    if max_size == 0 || max_size > DPE_MAX_CHUNK_SIZE {
+    if max_size == 0 || max_size > CERTIFY_KEY_CHUNKS_MAX_REQ_SIZE {
         return Err(INVARIANT);
     }
 
-    let req = build_certify_key_chunks_req(alloc, label, handle, dpe_resp_offset, max_size)?;
+    let req =
+        build_certify_key_chunks_req(alloc, profile, label, handle, dpe_resp_offset, max_size)?;
     let mut rsp = alloc.alloc(CERTIFY_KEY_CHUNKS_RESP_INFO_LEN + max_size)?;
     let rsp_len = crate::wire::mbox_execute(CMD_CERTIFY_KEY_CHUNKS, &req, &mut rsp).await?;
     if rsp_len < CERTIFY_KEY_CHUNKS_RESP_INFO_LEN {
@@ -937,6 +1020,7 @@ where
 
 fn build_certify_key_chunks_req<'a, A: ApiAlloc>(
     alloc: &'a A,
+    profile: DpeProfile,
     label: &[u8; DPE_LABEL_LEN],
     handle: &[u8; DPE_CONTEXT_HANDLE_SIZE],
     offset: u32,
@@ -944,6 +1028,11 @@ fn build_certify_key_chunks_req<'a, A: ApiAlloc>(
 ) -> McuResult<A::Buf<'a>> {
     let mut req = alloc.alloc(CERTIFY_KEY_CHUNKS_REQ_LEN)?;
     req.fill(0);
+    let flags: u32 = match profile {
+        DpeProfile::P384Sha384 => 0,
+        DpeProfile::Mldsa87 => CERTIFY_KEY_FLAG_USE_MLDSA,
+    };
+    write_fixed(&mut req, 4, &flags.to_le_bytes())?;
     write_fixed(
         &mut req,
         CERTIFY_KEY_CHUNKS_REQ_MAX_SIZE_OFF,
@@ -968,50 +1057,56 @@ fn build_certify_key_chunks_req<'a, A: ApiAlloc>(
 }
 
 fn build_invoke_dpe_header(req: &mut [u8], dpe_payload_len: u32, cmd_id: u32) -> McuResult<usize> {
-    build_invoke_dpe_header_profile(req, dpe_payload_len, cmd_id, DPE_PROFILE_P384_SHA384, None)
+    build_invoke_dpe_header_profile(req, dpe_payload_len, cmd_id, DpeProfile::P384Sha384, None)
 }
 
 fn build_invoke_dpe_header_profile(
     req: &mut [u8],
     dpe_payload_len: u32,
     cmd_id: u32,
-    profile: u32,
+    profile: DpeProfile,
     axi_response: Option<(u32, u32)>,
 ) -> McuResult<usize> {
-    let cur = if profile == DPE_PROFILE_MLDSA87 {
-        let prefix = InvokeDpeMldsa87ReqPrefix::mut_from_bytes(checked_slice_mut(
-            req,
-            0,
-            size_of::<InvokeDpeMldsa87ReqPrefix>(),
-        )?)
-        .map_err(|_| INVARIANT)?;
-        if let Some((addr_lo, max_size)) = axi_response {
-            prefix.flags = U32::new(1 << 31);
-            prefix.axi_addr_lo = U32::new(addr_lo);
-            prefix.axi_addr_hi = U32::new(0);
-            prefix.axi_max_size = U32::new(max_size);
+    let cur = match profile {
+        DpeProfile::Mldsa87 => {
+            let prefix = InvokeDpeMldsa87ReqPrefix::mut_from_bytes(checked_slice_mut(
+                req,
+                0,
+                size_of::<InvokeDpeMldsa87ReqPrefix>(),
+            )?)
+            .map_err(|_| INVARIANT)?;
+            if let Some((addr_lo, max_size)) = axi_response {
+                prefix.flags = U32::new(1 << 31);
+                prefix.axi_addr_lo = U32::new(addr_lo);
+                prefix.axi_addr_hi = U32::new(0);
+                prefix.axi_max_size = U32::new(max_size);
+            } else {
+                prefix.flags = U32::new(0);
+                prefix.axi_addr_lo = U32::new(0);
+                prefix.axi_addr_hi = U32::new(0);
+                prefix.axi_max_size = U32::new(0);
+            }
+            prefix.data_size = U32::new(dpe_payload_len);
+            size_of::<InvokeDpeMldsa87ReqPrefix>()
         }
-        prefix.data_size = U32::new(dpe_payload_len);
-        size_of::<InvokeDpeMldsa87ReqPrefix>()
-    } else {
-        let prefix = InvokeDpeReqPrefix::mut_from_bytes(checked_slice_mut(
-            req,
-            0,
-            size_of::<InvokeDpeReqPrefix>(),
-        )?)
-        .map_err(|_| INVARIANT)?;
-        prefix.data_size = U32::new(dpe_payload_len);
-        size_of::<InvokeDpeReqPrefix>()
+        DpeProfile::P384Sha384 => {
+            let prefix = InvokeDpeReqPrefix::mut_from_bytes(checked_slice_mut(
+                req,
+                0,
+                size_of::<InvokeDpeReqPrefix>(),
+            )?)
+            .map_err(|_| INVARIANT)?;
+            prefix.data_size = U32::new(dpe_payload_len);
+            size_of::<InvokeDpeReqPrefix>()
+        }
     };
 
-    {
-        let hdr =
-            DpeCommandHdr::mut_from_bytes(checked_slice_mut(req, cur, size_of::<DpeCommandHdr>())?)
-                .map_err(|_| INVARIANT)?;
-        hdr.magic = U32::new(DPE_COMMAND_MAGIC);
-        hdr.cmd_id = U32::new(cmd_id);
-        hdr.profile = U32::new(profile);
-    }
+    let hdr =
+        DpeCommandHdr::mut_from_bytes(checked_slice_mut(req, cur, size_of::<DpeCommandHdr>())?)
+            .map_err(|_| INVARIANT)?;
+    hdr.magic = U32::new(DPE_COMMAND_MAGIC);
+    hdr.cmd_id = U32::new(cmd_id);
+    hdr.profile = U32::new(profile.profile_id());
 
     Ok(cur + size_of::<DpeCommandHdr>())
 }
@@ -1041,8 +1136,8 @@ fn read_context_handle(src: &[u8], offset: usize) -> McuResult<DpeContextHandle>
 }
 
 #[inline]
-fn validate_certify_key_prefix(chunk: &[u8]) -> McuResult<()> {
-    if chunk.len() < CERTIFY_KEY_P384_RESP_PREFIX_LEN {
+fn validate_certify_key_prefix(chunk: &[u8], profile: DpeProfile) -> McuResult<()> {
+    if chunk.len() < certify_key_prefix_len(profile) {
         return Err(INTERNAL_BUG);
     }
     if read_le_u32(chunk, 0)? != DPE_RESPONSE_MAGIC || read_le_u32(chunk, 4)? != 0 {
@@ -1062,19 +1157,20 @@ pub trait DpeChainSink {
     async fn on_chunk(&mut self, chunk: &[u8]) -> McuResult<()>;
 }
 
-/// Walks the entire DPE certificate chain in
+/// Walks the entire DPE certificate chain for `profile` in
 /// [`DPE_MAX_CHUNK_SIZE`]-byte chunks, feeding each chunk to `sink`.
 /// Returns the total number of bytes walked. A short read
 /// (`returned < DPE_MAX_CHUNK_SIZE`) ends the walk.
 pub async fn walk_dpe_chain<A: ApiAlloc, S: DpeChainSink>(
     alloc: &A,
+    profile: DpeProfile,
     sink: &mut S,
 ) -> McuResult<u32> {
-    const MAX_CHAIN_LEN: u32 = 16 * 1024;
+    const MAX_CHAIN_LEN: u32 = 48 * 1024;
     let mut buf = alloc.alloc(DPE_MAX_CHUNK_SIZE)?;
     let mut total: u32 = 0;
     loop {
-        let n = dpe_get_cert_chain_chunk(alloc, total, &mut buf).await?;
+        let n = dpe_get_cert_chain_chunk(alloc, profile, total, &mut buf).await?;
         let chunk = internal_slice(&buf, 0, n)?;
         sink.on_chunk(chunk).await?;
         total = total.checked_add(n as u32).ok_or(INVARIANT)?;
@@ -1391,12 +1487,22 @@ mod tests {
         let label = [0x5au8; DPE_LABEL_LEN];
         let alloc = TestAlloc;
 
-        let req = build_certify_key_chunks_req(&alloc, &label, &handle, 0, 128).unwrap();
+        let req =
+            build_certify_key_chunks_req(&alloc, DpeProfile::P384Sha384, &label, &handle, 0, 128)
+                .unwrap();
 
         assert_eq!(
             &req[CERTIFY_KEY_CHUNKS_REQ_HANDLE_OFF
                 ..CERTIFY_KEY_CHUNKS_REQ_HANDLE_OFF + DPE_CONTEXT_HANDLE_SIZE],
             &handle
+        );
+
+        let req_mldsa =
+            build_certify_key_chunks_req(&alloc, DpeProfile::Mldsa87, &label, &handle, 0, 128)
+                .unwrap();
+        assert_eq!(
+            u32::from_le_bytes(req_mldsa[4..8].try_into().unwrap()),
+            CERTIFY_KEY_FLAG_USE_MLDSA
         );
     }
 
@@ -1413,7 +1519,7 @@ mod tests {
         };
 
         let (req, mbox_cmd) =
-            build_derive_context_req(&alloc, &params, DPE_PROFILE_P384_SHA384, None).unwrap();
+            build_derive_context_req(&alloc, &params, DpeProfile::P384Sha384, None).unwrap();
         assert_eq!(mbox_cmd, CMD_INVOKE_DPE);
         let payload_len =
             u32::from_le_bytes(*req.get(4..8).and_then(|s| s.first_chunk::<4>()).unwrap());
@@ -1445,7 +1551,7 @@ mod tests {
         let (req, mbox_cmd) = build_derive_context_req(
             &alloc,
             &params,
-            DPE_PROFILE_MLDSA87,
+            DpeProfile::Mldsa87,
             Some((0xA8C0_1000, 24576)),
         )
         .unwrap();
@@ -1587,7 +1693,6 @@ mod tests {
 
         assert!(parse_get_tagged_tci_response(&rsp, rsp.len()).is_err());
     }
-
     #[test]
     fn derive_context_exported_cdi_reads_handles_cdi_and_cert() {
         let child_handle = [0x11u8; DPE_CONTEXT_HANDLE_SIZE];
@@ -1632,5 +1737,56 @@ mod tests {
             | DpeDeriveContextFlags::CREATE_CERTIFICATE
             | DpeDeriveContextFlags::RETAIN_PARENT_CONTEXT;
         assert_eq!(flags.bits(), (1u32 << 23) | (1u32 << 22) | (1u32 << 29));
+    }
+
+    #[test]
+    fn dpe_profile_command_and_profile_ids() {
+        assert_eq!(DpeProfile::P384Sha384.profile_id(), 4);
+        assert_eq!(DpeProfile::P384Sha384.invoke_cmd_id(), CMD_INVOKE_DPE);
+        assert_eq!(DpeProfile::Mldsa87.profile_id(), 5);
+        assert_eq!(DpeProfile::Mldsa87.invoke_cmd_id(), CMD_INVOKE_DPE_MLDSA87);
+    }
+
+    #[test]
+    fn build_invoke_dpe_header_profile_p384_and_mldsa87() {
+        let mut buf_p384 = [0u8; GET_CERT_CHAIN_REQ_P384_LEN];
+        let off_p384 = build_invoke_dpe_header_profile(
+            &mut buf_p384,
+            GET_CERT_CHAIN_DPE_PAYLOAD_LEN,
+            DPE_CMD_GET_CERTIFICATE_CHAIN,
+            DpeProfile::P384Sha384,
+            None,
+        )
+        .unwrap();
+        assert_eq!(off_p384, 8 + 12);
+        let p384_prefix = InvokeDpeReqPrefix::ref_from_prefix(&buf_p384).unwrap().0;
+        assert_eq!(p384_prefix.data_size.get(), GET_CERT_CHAIN_DPE_PAYLOAD_LEN);
+        let p384_hdr = DpeCommandHdr::ref_from_prefix(&buf_p384[8..]).unwrap().0;
+        assert_eq!(p384_hdr.magic.get(), DPE_COMMAND_MAGIC);
+        assert_eq!(p384_hdr.cmd_id.get(), DPE_CMD_GET_CERTIFICATE_CHAIN);
+        assert_eq!(p384_hdr.profile.get(), 4);
+
+        let mut buf_mldsa = [0u8; GET_CERT_CHAIN_REQ_MLDSA87_LEN];
+        let off_mldsa = build_invoke_dpe_header_profile(
+            &mut buf_mldsa,
+            GET_CERT_CHAIN_DPE_PAYLOAD_LEN,
+            DPE_CMD_GET_CERTIFICATE_CHAIN,
+            DpeProfile::Mldsa87,
+            None,
+        )
+        .unwrap();
+        assert_eq!(off_mldsa, 24 + 12);
+        let mldsa_prefix = InvokeDpeMldsa87ReqPrefix::ref_from_prefix(&buf_mldsa)
+            .unwrap()
+            .0;
+        assert_eq!(mldsa_prefix.flags.get(), 0);
+        assert_eq!(mldsa_prefix.axi_addr_lo.get(), 0);
+        assert_eq!(mldsa_prefix.axi_addr_hi.get(), 0);
+        assert_eq!(mldsa_prefix.axi_max_size.get(), 0);
+        assert_eq!(mldsa_prefix.data_size.get(), GET_CERT_CHAIN_DPE_PAYLOAD_LEN);
+        let mldsa_hdr = DpeCommandHdr::ref_from_prefix(&buf_mldsa[24..]).unwrap().0;
+        assert_eq!(mldsa_hdr.magic.get(), DPE_COMMAND_MAGIC);
+        assert_eq!(mldsa_hdr.cmd_id.get(), DPE_CMD_GET_CERTIFICATE_CHAIN);
+        assert_eq!(mldsa_hdr.profile.get(), 5);
     }
 }
