@@ -247,25 +247,76 @@ mod test {
             .to_string()
     }
 
+    fn debug_unlock_material(unlock_level: u8) -> (Vec<([u8; 96], [u8; 2592])>, DebugUnlockKeys) {
+        use caliptra_image_fake_keys::{
+            VENDOR_ECC_KEY_0_PRIVATE, VENDOR_ECC_KEY_0_PUBLIC, VENDOR_MLDSA_KEY_0_PRIVATE,
+            VENDOR_MLDSA_KEY_0_PUBLIC,
+        };
+        use caliptra_image_types::{ECC384_SCALAR_BYTE_SIZE, ECC384_SCALAR_WORD_SIZE};
+
+        let mut ecc_pub_key_u32 = [0u32; ECC384_SCALAR_WORD_SIZE * 2];
+        ecc_pub_key_u32[..12].copy_from_slice(&VENDOR_ECC_KEY_0_PUBLIC.x);
+        ecc_pub_key_u32[12..].copy_from_slice(&VENDOR_ECC_KEY_0_PUBLIC.y);
+        let ecc_pub_key_bytes: [u8; 96] = ecc_pub_key_u32.as_bytes().try_into().unwrap();
+
+        let mldsa_pub_key_u32: Vec<u32> = VENDOR_MLDSA_KEY_0_PUBLIC
+            .0
+            .as_bytes()
+            .chunks(4)
+            .map(|chunk| u32::from_le_bytes(chunk.try_into().unwrap()))
+            .collect();
+        let mldsa_pub_key_bytes: [u8; 2592] = mldsa_pub_key_u32.as_bytes().try_into().unwrap();
+
+        let mut prod_dbg_keypairs = vec![([0u8; 96], [0u8; 2592]); 8];
+        prod_dbg_keypairs[(unlock_level - 1) as usize] = (ecc_pub_key_bytes, mldsa_pub_key_bytes);
+
+        let mut ecc_private_key_bytes = [0u8; ECC384_SCALAR_BYTE_SIZE];
+        for (index, word) in VENDOR_ECC_KEY_0_PRIVATE.iter().enumerate() {
+            ecc_private_key_bytes[index * 4..index * 4 + 4].copy_from_slice(&word.to_be_bytes());
+        }
+
+        let keys = DebugUnlockKeys {
+            ecc_private_key_bytes,
+            ecc_public_key: ecc_pub_key_u32,
+            mldsa_private_key_bytes: VENDOR_MLDSA_KEY_0_PRIVATE.0.as_bytes().to_vec(),
+            mldsa_public_key: mldsa_pub_key_u32.try_into().unwrap(),
+        };
+        (prod_dbg_keypairs, keys)
+    }
+
     /// Exercises the non-fuse command suite: ExportAttestedCsr and
     /// GetAttestation. The fuse-suite tests below cannot cover these, because
     /// `--fuse-suite` makes the validator run that suite alone.
     ///
-    /// No debug-unlock keys are passed, so the validator skips ProdDebugUnlock;
-    /// this test needs neither provisioned fuses nor a Prod lifecycle.
     #[ignore]
     #[test]
     fn test_caliptra_util_host_spdm_vdm_validator_commands() {
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
+        let unlock_level = 1u8;
+        let (prod_dbg_unlock_keypairs, debug_unlock_keys) = debug_unlock_material(unlock_level);
+        let keys_file = tempfile::NamedTempFile::new().expect("Failed to create temp file");
+        debug_unlock_keys
+            .save_to_file(keys_file.path())
+            .expect("Failed to write debug unlock keys");
+        let keys_path = keys_file.path().to_str().unwrap().to_string();
+
         let mut hw = start_runtime_hw_model(TestParams {
             feature: Some(TEST_FEATURE),
             i3c_port: Some(PortPicker::new().pick().unwrap()),
+            debug_intent: true,
+            lifecycle_controller_state: Some(caliptra_mcu_hw_model::LifecycleControllerState::Prod),
+            prod_dbg_unlock_keypairs,
+            use_strap_secrets: true,
             ..Default::default()
         });
 
         hw.start_i3c_controller();
+        hw.caliptra_soc_manager()
+            .soc_ifc()
+            .ss_dbg_manuf_service_reg_req()
+            .write(|w| w.prod_dbg_unlock_req(true));
 
         let config_path = test_config_path();
         let (completed, failed) = run_spdm_vdm_test(
@@ -279,6 +330,10 @@ mod test {
                 "1,2,3",
                 "--algorithm",
                 "1",
+                "--debug-unlock-keys-file",
+                &keys_path,
+                "--unlock-level",
+                &unlock_level.to_string(),
             ],
         );
 
@@ -291,55 +346,11 @@ mod test {
     }
 
     fn run_isolated_fuse_suite(suite: &str) {
-        use caliptra_image_fake_keys::{
-            VENDOR_ECC_KEY_0_PRIVATE, VENDOR_ECC_KEY_0_PUBLIC, VENDOR_MLDSA_KEY_0_PRIVATE,
-            VENDOR_MLDSA_KEY_0_PUBLIC,
-        };
-        use caliptra_image_types::{ECC384_SCALAR_BYTE_SIZE, ECC384_SCALAR_WORD_SIZE};
-
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
         let unlock_level = 1u8;
-
-        // --- Prepare ECC public key in hardware format (big-endian u32 words) ---
-        let mut ecc_pub_key_u32 = [0u32; ECC384_SCALAR_WORD_SIZE * 2];
-        ecc_pub_key_u32[..12].copy_from_slice(&VENDOR_ECC_KEY_0_PUBLIC.x);
-        ecc_pub_key_u32[12..].copy_from_slice(&VENDOR_ECC_KEY_0_PUBLIC.y);
-        let ecc_pub_key_bytes: [u8; 96] = ecc_pub_key_u32.as_bytes().try_into().unwrap();
-
-        // --- Prepare MLDSA public key in hardware format (little-endian u32 words) ---
-        let mldsa_pub_key_raw = VENDOR_MLDSA_KEY_0_PUBLIC.0.as_bytes();
-        let mldsa_pub_key_u32: Vec<u32> = mldsa_pub_key_raw
-            .chunks(4)
-            .map(|chunk| {
-                let mut arr = [0u8; 4];
-                arr.copy_from_slice(chunk);
-                u32::from_le_bytes(arr)
-            })
-            .collect();
-        let mldsa_pub_key_bytes: [u8; 2592] = mldsa_pub_key_u32.as_bytes().try_into().unwrap();
-
-        // --- Set up keypairs for fuse provisioning ---
-        let mut prod_dbg_keypairs: Vec<([u8; 96], [u8; 2592])> = vec![([0u8; 96], [0u8; 2592]); 8];
-        prod_dbg_keypairs[(unlock_level - 1) as usize] = (ecc_pub_key_bytes, mldsa_pub_key_bytes);
-
-        // --- Prepare ECC private key bytes for signing ---
-        let mut be_ecc_priv_key_bytes = [0u8; ECC384_SCALAR_BYTE_SIZE];
-        for (i, word) in VENDOR_ECC_KEY_0_PRIVATE.iter().enumerate() {
-            be_ecc_priv_key_bytes[i * 4..i * 4 + 4].copy_from_slice(&word.to_be_bytes());
-        }
-
-        // --- Prepare MLDSA private key bytes for signing ---
-        let mldsa_priv_key_bytes: Vec<u8> = VENDOR_MLDSA_KEY_0_PRIVATE.0.as_bytes().to_vec();
-
-        // --- Build DebugUnlockKeys and write to temp file for the validator binary ---
-        let debug_unlock_keys = DebugUnlockKeys {
-            ecc_private_key_bytes: be_ecc_priv_key_bytes,
-            ecc_public_key: ecc_pub_key_u32,
-            mldsa_private_key_bytes: mldsa_priv_key_bytes,
-            mldsa_public_key: <[u32; 648]>::try_from(mldsa_pub_key_u32.as_slice()).unwrap(),
-        };
+        let (prod_dbg_keypairs, debug_unlock_keys) = debug_unlock_material(unlock_level);
         let keys_file = tempfile::NamedTempFile::new().expect("Failed to create temp file");
         debug_unlock_keys
             .save_to_file(keys_file.path())
