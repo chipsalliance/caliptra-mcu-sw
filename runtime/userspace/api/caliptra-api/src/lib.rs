@@ -105,7 +105,7 @@ pub use dpe::{
     dpe_derive_context, dpe_get_cert_chain_chunk, dpe_get_tagged_tci, dpe_rotate_context_default,
     dpe_sign_ecc_p384, dpe_tag_tci, dpe_update_context_measurement, walk_dpe_chain, DpeChainSink,
     DpeContextHandle, DpeDeriveContextFlags, DpeDeriveContextParams, DpeDeriveContextResult,
-    DpeTaggedTci, DpeUpdateContextMeasurementParams, DpeUpdateContextMeasurementResult,
+    DpeProfile, DpeTaggedTci, DpeUpdateContextMeasurementParams, DpeUpdateContextMeasurementResult,
     DPE_CONTEXT_HANDLE_SIZE, DPE_LABEL_LEN, DPE_MAX_CHUNK_SIZE, DPE_MAX_LEAF_CERT_SIZE,
     DPE_P384_SIGNATURE_SIZE, DPE_TCI_MEASUREMENT_SIZE,
 };

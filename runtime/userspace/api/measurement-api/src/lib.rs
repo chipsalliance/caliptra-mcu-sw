@@ -16,6 +16,7 @@ use errors::{MeasurementApiError, MeasurementApiResult};
 pub use image_metadata::{
     ImageMetadata, ImageMetadataFlags, MeasurementOperation, IMAGE_MEASUREMENT_DIGEST_SIZE,
 };
+pub use mcu_caliptra_api::DpeProfile;
 pub use mcu_caliptra_api::ImageHashSource;
 use mcu_caliptra_api::{ApiAlloc, DPE_LABEL_LEN};
 use mcu_error::McuResult;
@@ -121,13 +122,14 @@ pub async fn init<A: ApiAlloc>(
 /// Return the DPE leaf certificate length for the configured attestation target.
 pub async fn leaf_cert_size<A: ApiAlloc>(
     alloc: &A,
+    profile: DpeProfile,
     key_label: &[u8; DPE_LABEL_LEN],
 ) -> MeasurementApiResult<usize> {
     let mut guard = MEASUREMENT_API.lock().await;
     let api = guard
         .as_mut()
         .ok_or(MeasurementApiError::AttestationDisabled)?;
-    api.leaf_cert_size(alloc, key_label).await
+    api.leaf_cert_size(alloc, profile, key_label).await
 }
 
 /// Authorize one MCU-managed initial-load component.
@@ -155,6 +157,7 @@ pub async fn mark_initial_soc_load_complete() -> MeasurementApiResult {
 /// Fetch a DPE leaf certificate slice for the configured attestation target.
 pub async fn leaf_cert_slice<A: ApiAlloc>(
     alloc: &A,
+    profile: DpeProfile,
     key_label: &[u8; DPE_LABEL_LEN],
     cert_offset: u32,
     dst: &mut [u8],
@@ -163,7 +166,7 @@ pub async fn leaf_cert_slice<A: ApiAlloc>(
     let api = guard
         .as_mut()
         .ok_or(MeasurementApiError::AttestationDisabled)?;
-    api.leaf_cert_slice(alloc, key_label, cert_offset, dst)
+    api.leaf_cert_slice(alloc, profile, key_label, cert_offset, dst)
         .await
 }
 

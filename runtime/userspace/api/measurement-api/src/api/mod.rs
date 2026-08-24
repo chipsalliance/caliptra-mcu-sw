@@ -27,8 +27,8 @@ use core::marker::PhantomData;
 use mcu_caliptra_api::{
     dpe_certify_key_cert_size, dpe_certify_key_cert_slice, dpe_certify_key_pubkey,
     dpe_rotate_context_default, dpe_sign_ecc_p384, dpe_tag_tci, sha_finish, sha_init, sha_update,
-    ApiAlloc, AuthorizeAndStashFlags, AuthorizeAndStashParams, DpeContextHandle, HashAlgo,
-    DPE_CONTEXT_HANDLE_SIZE, DPE_LABEL_LEN, SHA_CONTEXT_SIZE,
+    ApiAlloc, AuthorizeAndStashFlags, AuthorizeAndStashParams, DpeContextHandle, DpeProfile,
+    HashAlgo, DPE_CONTEXT_HANDLE_SIZE, DPE_LABEL_LEN, SHA_CONTEXT_SIZE,
 };
 
 use crate::attestation_manifest::{parse_and_validate, AttestationManifest, MCU_RT_FW_ID};
@@ -251,11 +251,12 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
     pub async fn leaf_cert_size<A: ApiAlloc>(
         &mut self,
         alloc: &A,
+        profile: DpeProfile,
         key_label: &[u8; DPE_LABEL_LEN],
     ) -> MeasurementApiResult<usize> {
         let target = self.read_attestation_target_record()?;
         let (next_handle, cert_size) =
-            dpe_certify_key_cert_size(alloc, Some(&target.context_handle), key_label)
+            dpe_certify_key_cert_size(alloc, profile, Some(&target.context_handle), key_label)
                 .await
                 .map_err(|_| MeasurementApiError::DpeCommandFailed)?;
         self.write_attestation_target_handle(target, next_handle)?;
@@ -267,6 +268,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
     pub async fn leaf_cert_slice<A: ApiAlloc>(
         &mut self,
         alloc: &A,
+        profile: DpeProfile,
         key_label: &[u8; DPE_LABEL_LEN],
         cert_offset: u32,
         dst: &mut [u8],
@@ -274,6 +276,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
         let target = self.read_attestation_target_record()?;
         let (next_handle, bytes_written) = dpe_certify_key_cert_slice(
             alloc,
+            profile,
             Some(&target.context_handle),
             key_label,
             cert_offset,

@@ -27,6 +27,24 @@ pub enum SpdmPalAsymAlgo {
     MlDsa87,
 }
 
+impl From<SpdmPalAsymAlgo> for mcu_caliptra_api::DpeProfile {
+    fn from(algo: SpdmPalAsymAlgo) -> Self {
+        match algo {
+            SpdmPalAsymAlgo::EccP384 => mcu_caliptra_api::DpeProfile::P384Sha384,
+            SpdmPalAsymAlgo::MlDsa87 => mcu_caliptra_api::DpeProfile::Mldsa87,
+        }
+    }
+}
+
+impl From<mcu_caliptra_api::DpeProfile> for SpdmPalAsymAlgo {
+    fn from(profile: mcu_caliptra_api::DpeProfile) -> Self {
+        match profile {
+            mcu_caliptra_api::DpeProfile::P384Sha384 => SpdmPalAsymAlgo::EccP384,
+            mcu_caliptra_api::DpeProfile::Mldsa87 => SpdmPalAsymAlgo::MlDsa87,
+        }
+    }
+}
+
 /// Endorsement certificate chain provider for a single slot.
 ///
 /// Integrators implement this for each endorsement type:
