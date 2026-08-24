@@ -4,8 +4,8 @@ use crate::test::{start_runtime_hw_model, TestParams};
 use anyhow::Result;
 use caliptra_mcu_hw_model::McuHwModel;
 use caliptra_mcu_mbox_common::messages::{
-    DpeSignerContextCertReq, OcpLockRotateHekReq, OcpLockRotateHekResp, OcpLockSetPermaHekReq,
-    OcpLockSetPermaHekResp,
+    DpeSignerContextCertReq, EndorsementAlgorithm, OcpLockRotateHekReq, OcpLockRotateHekResp,
+    OcpLockSetPermaHekReq, OcpLockSetPermaHekResp,
 };
 use caliptra_mcu_registers_generated::fuses;
 use caliptra_mcu_romtime::McuBootMilestones;
@@ -213,7 +213,7 @@ fn test_get_ocp_lock_endorsement_cert_cmd() -> Result<()> {
 
     // 1. Fetch DPE Signer Context Certificate via MC_DPE_SIGNER_CONTEXT_CERT
     let dpe_req = DpeSignerContextCertReq {
-        algorithm: 1,
+        algorithm: EndorsementAlgorithm::ECDSA_384,
         ..Default::default()
     };
     let dpe_resp = hw.mailbox_execute_req(dpe_req)?;
@@ -244,7 +244,7 @@ fn test_get_ocp_lock_endorsement_cert_cmd() -> Result<()> {
         let cmd = caliptra_mcu_mbox_common::messages::GetOcpLockEndorsementCertReq {
             hdr: caliptra_mcu_mbox_common::messages::MailboxReqHeader::default(),
             hpke_handle: handle.clone(),
-            algorithm: 1,
+            algorithm: EndorsementAlgorithm::ECDSA_384,
         };
 
         let resp = hw.mailbox_execute_req(cmd)?;
@@ -252,7 +252,7 @@ fn test_get_ocp_lock_endorsement_cert_cmd() -> Result<()> {
         let cert_len = resp.hdr.data_len as usize;
         assert!(cert_len > 0, "Certificate length should be greater than 0");
         assert!(
-            cert_len <= caliptra_mcu_mbox_common::messages::MAX_RESP_DATA_SIZE,
+            cert_len <= caliptra_mcu_mbox_common::messages::MAX_ENDORSEMENT_CERT_SIZE,
             "Certificate length should be within limits"
         );
 
@@ -435,7 +435,7 @@ fn test_get_ocp_lock_endorsement_cert_cmd() -> Result<()> {
         let mldsa_cmd = caliptra_mcu_mbox_common::messages::GetOcpLockEndorsementCertReq {
             hdr: caliptra_mcu_mbox_common::messages::MailboxReqHeader::default(),
             hpke_handle: handle.clone(),
-            algorithm: 2,
+            algorithm: EndorsementAlgorithm::MLDSA_87,
         };
 
         let mldsa_resp = hw.mailbox_execute_req(mldsa_cmd)?;
@@ -446,7 +446,7 @@ fn test_get_ocp_lock_endorsement_cert_cmd() -> Result<()> {
             "ML-DSA Certificate length should be greater than 0"
         );
         assert!(
-            mldsa_cert_len <= caliptra_mcu_mbox_common::messages::MAX_RESP_DATA_SIZE,
+            mldsa_cert_len <= caliptra_mcu_mbox_common::messages::MAX_ENDORSEMENT_CERT_SIZE,
             "ML-DSA Certificate length should be within limits"
         );
 

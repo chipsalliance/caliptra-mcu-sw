@@ -18,9 +18,10 @@ use zerocopy::{little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout,
 use crate::slice::{checked_slice_mut, copy_bytes, internal_slice};
 use crate::wire::{
     calc_checksum, mbox_execute, populate_checksum, CMD_CERTIFY_KEY_CHUNKS, CMD_DPE_GET_TAGGED_TCI,
-    CMD_DPE_TAG_TCI, CMD_INVOKE_DPE, DPE_CMD_DERIVE_CONTEXT, DPE_CMD_GET_CERTIFICATE_CHAIN,
-    DPE_CMD_ROTATE_CONTEXT_HANDLE, DPE_CMD_SIGN, DPE_CMD_UPDATE_CONTEXT_MEASUREMENT,
-    DPE_COMMAND_MAGIC, DPE_PROFILE_P384_SHA384, DPE_RESPONSE_MAGIC, MBOX_RESP_HEADER_SIZE,
+    CMD_DPE_TAG_TCI, CMD_INVOKE_DPE, CMD_INVOKE_DPE_MLDSA87, DPE_CMD_DERIVE_CONTEXT,
+    DPE_CMD_GET_CERTIFICATE_CHAIN, DPE_CMD_ROTATE_CONTEXT_HANDLE, DPE_CMD_SIGN,
+    DPE_CMD_UPDATE_CONTEXT_MEASUREMENT, DPE_COMMAND_MAGIC, DPE_PROFILE_MLDSA87,
+    DPE_PROFILE_P384_SHA384, DPE_RESPONSE_MAGIC, MBOX_RESP_HEADER_SIZE,
 };
 use crate::ApiAlloc;
 
@@ -46,8 +47,8 @@ pub const DPE_TCI_MEASUREMENT_SIZE: usize = 48;
 const DEFAULT_DPE_CONTEXT_HANDLE: DpeContextHandle = [0u8; DPE_CONTEXT_HANDLE_SIZE];
 
 /// Upper bound on the X.509 leaf certificate Caliptra's DPE can
-/// emit — mirrored from `dpe::MAX_CERT_SIZE` (2 KB).
-pub const DPE_MAX_LEAF_CERT_SIZE: usize = 2048;
+/// emit — fits both ECC-384 and ML-DSA-87 leaf certificates.
+pub const DPE_MAX_LEAF_CERT_SIZE: usize = 8192;
 
 /// Maximum bytes that may be fetched in a single
 /// [`dpe_get_cert_chain_chunk`] call. Bounded well below the
@@ -420,23 +421,25 @@ pub async fn dpe_derive_context<A: ApiAlloc>(
     alloc: &A,
     params: &DpeDeriveContextParams,
 ) -> McuResult<DpeDeriveContextResult> {
-    let req = build_derive_context_req(alloc, params)?;
+    let (req, mbox_cmd) = build_derive_context_req(alloc, params, DPE_PROFILE_P384_SHA384)?;
     let mut rsp =
         alloc.alloc(size_of::<InvokeDpeRespPrefix>() + size_of::<DeriveContextRespBody>())?;
-    let rsp_len = mbox_execute(CMD_INVOKE_DPE, &req, &mut rsp).await?;
+    let rsp_len = mbox_execute(mbox_cmd, &req, &mut rsp).await?;
     parse_derive_context_response(&rsp, rsp_len)
 }
 
 fn build_derive_context_req<'a, A: ApiAlloc>(
     alloc: &'a A,
     params: &DpeDeriveContextParams,
-) -> McuResult<A::Buf<'a>> {
+    profile: u32,
+) -> McuResult<(A::Buf<'a>, u32)> {
     let mut req = alloc.alloc(DERIVE_CONTEXT_REQ_LEN)?;
     req.fill(0);
-    let cur = build_invoke_dpe_header(
+    let cur = build_invoke_dpe_header_profile(
         &mut req,
         DERIVE_CONTEXT_DPE_PAYLOAD_LEN,
         DPE_CMD_DERIVE_CONTEXT,
+        profile,
     )?;
     {
         let cmd = DeriveContextCmd::mut_from_bytes(checked_slice_mut(
@@ -452,9 +455,14 @@ fn build_derive_context_req<'a, A: ApiAlloc>(
         cmd.target_locality = U32::new(params.target_locality);
         cmd.svn = U32::new(params.svn);
     }
-    let checksum = calc_checksum(CMD_INVOKE_DPE, &req);
+    let mbox_cmd = if profile == DPE_PROFILE_MLDSA87 {
+        CMD_INVOKE_DPE_MLDSA87
+    } else {
+        CMD_INVOKE_DPE
+    };
+    let checksum = calc_checksum(mbox_cmd, &req);
     *req.first_chunk_mut::<4>().ok_or(INVARIANT)? = checksum.to_le_bytes();
-    Ok(req)
+    Ok((req, mbox_cmd))
 }
 
 fn parse_derive_context_response(rsp: &[u8], rsp_len: usize) -> McuResult<DpeDeriveContextResult> {
@@ -489,14 +497,15 @@ fn parse_derive_context_response(rsp: &[u8], rsp_len: usize) -> McuResult<DpeDer
 pub async fn dpe_derive_context_exported_cdi<A: ApiAlloc>(
     alloc: &A,
     params: &DpeDeriveContextParams,
+    profile: u32,
     cert_dst: &mut [u8],
 ) -> McuResult<DpeDeriveContextExportedCdiResult> {
-    let req = build_derive_context_req(alloc, params)?;
+    let (req, mbox_cmd) = build_derive_context_req(alloc, params, profile)?;
     let max_resp_len = size_of::<InvokeDpeRespPrefix>()
         + size_of::<DeriveContextExportedCdiRespPrefix>()
         + cert_dst.len().min(DPE_MAX_LEAF_CERT_SIZE);
     let mut rsp = alloc.alloc(max_resp_len)?;
-    let rsp_len = mbox_execute(CMD_INVOKE_DPE, &req, &mut rsp).await?;
+    let rsp_len = mbox_execute(mbox_cmd, &req, &mut rsp).await?;
     parse_derive_context_exported_cdi_response(&rsp, rsp_len, cert_dst)
 }
 
@@ -902,6 +911,15 @@ fn build_certify_key_chunks_req<'a, A: ApiAlloc>(
 }
 
 fn build_invoke_dpe_header(req: &mut [u8], dpe_payload_len: u32, cmd_id: u32) -> McuResult<usize> {
+    build_invoke_dpe_header_profile(req, dpe_payload_len, cmd_id, DPE_PROFILE_P384_SHA384)
+}
+
+fn build_invoke_dpe_header_profile(
+    req: &mut [u8],
+    dpe_payload_len: u32,
+    cmd_id: u32,
+    profile: u32,
+) -> McuResult<usize> {
     {
         let prefix = InvokeDpeReqPrefix::mut_from_bytes(checked_slice_mut(
             req,
@@ -919,7 +937,7 @@ fn build_invoke_dpe_header(req: &mut [u8], dpe_payload_len: u32, cmd_id: u32) ->
                 .map_err(|_| INVARIANT)?;
         hdr.magic = U32::new(DPE_COMMAND_MAGIC);
         hdr.cmd_id = U32::new(cmd_id);
-        hdr.profile = U32::new(DPE_PROFILE_P384_SHA384);
+        hdr.profile = U32::new(profile);
     }
 
     Ok(cur + size_of::<DpeCommandHdr>())

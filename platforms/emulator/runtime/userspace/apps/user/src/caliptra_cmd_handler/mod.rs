@@ -24,6 +24,8 @@ use caliptra_mcu_libapi_caliptra::ocp_lock::{
 use caliptra_mcu_libapi_caliptra::signer::CaliptraDpeSigner;
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
+#[cfg(feature = "ocp-lock")]
+use caliptra_mcu_mbox_common::messages::EndorsementAlgorithm as MboxEndorsementAlgorithm;
 use caliptra_mcu_mbox_common::messages::{
     DotDisablePayload, DotLockPayload, DotOverrideChallengePayload, DotOverridePayload,
     DotRotatePayload, DotStatus, DotUnlockPayload, AUTH_CMD_NONCE_LEN, DOT_BLOB_SIZE,
@@ -469,15 +471,15 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
     async fn get_ocp_lock_endorsement_cert(
         &self,
         hpke_handle: &HpkeHandle,
-        algorithm: u32,
+        algorithm: MboxEndorsementAlgorithm,
         cert_buf: &mut [u8],
     ) -> CaliptraCmdResult<usize> {
         let algo = match algorithm {
-            0 | 1 => EndorsementAlgorithm::EcdsaP384Sha384,
-            2 => EndorsementAlgorithm::MlDsa87,
+            MboxEndorsementAlgorithm::ECDSA_384 => EndorsementAlgorithm::EcdsaP384Sha384,
+            MboxEndorsementAlgorithm::MLDSA_87 => EndorsementAlgorithm::MlDsa87,
             _ => return Err(CaliptraCompletionCode::InvalidParameter),
         };
-        let mailbox = Mailbox::new();
+        let mailbox = caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox::new();
         let ocp_lock = OcpLock::new(&mailbox, &crate::ocp_lock_config::APP_RUNTIME_CONFIG);
         let signer = CaliptraDpeSigner::with_algorithm(&mailbox, algo);
 

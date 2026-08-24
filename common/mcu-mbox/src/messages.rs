@@ -35,7 +35,8 @@ pub use mcu_caliptra_api::mailbox::{
 };
 use zerocopy::{FromBytes, FromZeros, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
-pub const MAX_RESP_DATA_SIZE: usize = 8 * 1024;
+pub const MAX_RESP_DATA_SIZE: usize = 4 * 1024;
+pub const MAX_ENDORSEMENT_CERT_SIZE: usize = 8 * 1024;
 pub const MAX_FW_VERSION_STR_LEN: usize = 32;
 pub const DEVICE_CAPS_SIZE: usize = 36;
 pub const DOT_BLOB_SIZE: usize = 168;
@@ -587,13 +588,11 @@ pub enum McuMailboxResp {
     FuseRevokeVendorPkHash(FuseRevokeVendorPkHashResp),
     // Certificate commands
     ExportAttestedCsr(ExportAttestedCsrResp),
-    DpeSignerContextCert(DpeSignerContextCertResp),
     GetDpeCertChain(GetDpeCertChainResp),
 
     // OCP Lock
     OcpLockSetPermaHek(OcpLockSetPermaHekResp),
     OcpLockRotateHek(OcpLockRotateHekResp),
-    GetOcpLockEndorsementCert(GetOcpLockEndorsementCertResp),
     OcpLockEnumerateHpkeHandles(OcpLockEnumerateHpkeHandlesResp),
     GetOcpLockEpochKeyReport(GetOcpLockEpochKeyReportResp),
     // Device Ownership Transfer commands
@@ -724,12 +723,10 @@ impl McuMailboxResp {
             McuMailboxResp::ProvisionOwnerPkHash(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FuseRevokeVendorPkHash(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial(),
-            McuMailboxResp::DpeSignerContextCert(resp) => resp.as_bytes_partial(),
             McuMailboxResp::GetDpeCertChain(resp) => resp.as_bytes_partial(),
 
             McuMailboxResp::OcpLockSetPermaHek(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::OcpLockRotateHek(resp) => Ok(resp.as_bytes()),
-            McuMailboxResp::GetOcpLockEndorsementCert(resp) => resp.as_bytes_partial(),
             McuMailboxResp::OcpLockEnumerateHpkeHandles(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::GetOcpLockEpochKeyReport(resp) => resp.as_bytes_partial(),
             McuMailboxResp::DotLock(resp) => Ok(resp.as_bytes()),
@@ -799,12 +796,10 @@ impl McuMailboxResp {
             McuMailboxResp::ProvisionOwnerPkHash(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FuseRevokeVendorPkHash(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial_mut(),
-            McuMailboxResp::DpeSignerContextCert(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::GetDpeCertChain(resp) => resp.as_bytes_partial_mut(),
 
             McuMailboxResp::OcpLockSetPermaHek(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::OcpLockRotateHek(resp) => Ok(resp.as_mut_bytes()),
-            McuMailboxResp::GetOcpLockEndorsementCert(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::OcpLockEnumerateHpkeHandles(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::GetOcpLockEpochKeyReport(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::DotLock(resp) => Ok(resp.as_mut_bytes()),
@@ -1810,13 +1805,27 @@ impl Default for ExportAttestedCsrResp {
 }
 impl McuResponseVarSize for ExportAttestedCsrResp {}
 
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, IntoBytes, FromBytes, KnownLayout, Immutable)]
+pub struct EndorsementAlgorithm(pub u32);
+
+impl EndorsementAlgorithm {
+    pub const ECDSA_384: Self = Self(0x1);
+    pub const MLDSA_87: Self = Self(0x2);
+}
+
+impl Default for EndorsementAlgorithm {
+    fn default() -> Self {
+        Self::ECDSA_384
+    }
+}
+
 /// MC_DPE_SIGNER_CONTEXT_CERT Command (0x4D44_5343 - "MDSC")
 #[repr(C)]
 #[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq, Default)]
 pub struct DpeSignerContextCertReq {
     pub hdr: MailboxReqHeader,
-    /// Asymmetric algorithm (0x0001=ECC384, 0x0002=MLDSA87)
-    pub algorithm: u32,
+    pub algorithm: EndorsementAlgorithm,
 }
 
 impl Request for DpeSignerContextCertReq {
@@ -1824,17 +1833,20 @@ impl Request for DpeSignerContextCertReq {
     type Resp = DpeSignerContextCertResp;
 }
 
+/// MC_DPE_SIGNER_CONTEXT_CERT response
+///
+/// Deliberately absent from [`McuMailboxResp`]: certs can be up to 8 KiB with ML-DSA-87.
 #[repr(C)]
 #[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
 pub struct DpeSignerContextCertResp {
     pub hdr: MailboxRespHeaderVarSize,
-    pub cert_data: [u8; MAX_RESP_DATA_SIZE],
+    pub cert_data: [u8; MAX_ENDORSEMENT_CERT_SIZE],
 }
 impl Default for DpeSignerContextCertResp {
     fn default() -> Self {
         Self {
             hdr: MailboxRespHeaderVarSize::default(),
-            cert_data: [0u8; MAX_RESP_DATA_SIZE],
+            cert_data: [0u8; MAX_ENDORSEMENT_CERT_SIZE],
         }
     }
 }
@@ -2015,8 +2027,7 @@ impl Response for OcpLockRotateHekResp {}
 pub struct GetOcpLockEndorsementCertReq {
     pub hdr: MailboxReqHeader,
     pub hpke_handle: HpkeHandle,
-    /// Asymmetric algorithm (0x0001=ECC384, 0x0002=MLDSA87)
-    pub algorithm: u32,
+    pub algorithm: EndorsementAlgorithm,
 }
 impl Request for GetOcpLockEndorsementCertReq {
     const ID: CommandId = CommandId::MC_GET_OCP_LOCK_ENDORSEMENT_CERT;
@@ -2024,17 +2035,19 @@ impl Request for GetOcpLockEndorsementCertReq {
 }
 
 /// MC_GET_OCP_LOCK_ENDORSEMENT_CERT response
+///
+/// Deliberately absent from [`McuMailboxResp`]: certs can be up to 8 KiB with ML-DSA-87.
 #[repr(C)]
 #[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
 pub struct GetOcpLockEndorsementCertResp {
     pub hdr: MailboxRespHeaderVarSize,
-    pub data: [u8; MAX_RESP_DATA_SIZE],
+    pub data: [u8; MAX_ENDORSEMENT_CERT_SIZE],
 }
 impl Default for GetOcpLockEndorsementCertResp {
     fn default() -> Self {
         Self {
             hdr: MailboxRespHeaderVarSize::default(),
-            data: [0u8; MAX_RESP_DATA_SIZE],
+            data: [0u8; MAX_ENDORSEMENT_CERT_SIZE],
         }
     }
 }
@@ -2997,7 +3010,7 @@ mod tests {
     fn test_dpe_signer_context_cert_req_serialization() {
         let req = DpeSignerContextCertReq {
             hdr: MailboxReqHeader { chksum: 0xABCD },
-            algorithm: 1,
+            algorithm: EndorsementAlgorithm::ECDSA_384,
         };
 
         let bytes = req.as_bytes();
@@ -3005,7 +3018,7 @@ mod tests {
 
         let parsed = DpeSignerContextCertReq::read_from_bytes(bytes).unwrap();
         assert_eq!(parsed.hdr.chksum, 0xABCD);
-        assert_eq!(parsed.algorithm, 1);
+        assert_eq!(parsed.algorithm, EndorsementAlgorithm::ECDSA_384);
     }
 
     #[test]
@@ -3013,7 +3026,7 @@ mod tests {
         let req = GetOcpLockEndorsementCertReq {
             hdr: MailboxReqHeader { chksum: 0xABCD },
             hpke_handle: HpkeHandle::default(),
-            algorithm: 2,
+            algorithm: EndorsementAlgorithm::MLDSA_87,
         };
 
         let bytes = req.as_bytes();
@@ -3024,7 +3037,7 @@ mod tests {
 
         let parsed = GetOcpLockEndorsementCertReq::read_from_bytes(bytes).unwrap();
         assert_eq!(parsed.hdr.chksum, 0xABCD);
-        assert_eq!(parsed.algorithm, 2);
+        assert_eq!(parsed.algorithm, EndorsementAlgorithm::MLDSA_87);
     }
 
     #[test]
@@ -3033,14 +3046,11 @@ mod tests {
         resp.hdr.data_len = 128;
         resp.cert_data[..4].copy_from_slice(&[0x30, 0x82, 0x01, 0x00]);
 
-        let mut mbox_resp = McuMailboxResp::DpeSignerContextCert(resp);
-        mbox_resp.populate_chksum().unwrap();
-
-        let bytes = mbox_resp.as_bytes().unwrap();
-        let hdr = MailboxRespHeader::read_from_prefix(bytes).unwrap().0;
-        assert_ne!(hdr.chksum, 0);
-
-        let payload = &bytes[core::mem::size_of::<u32>()..];
-        assert!(verify_checksum(hdr.chksum, 0, payload));
+        let bytes = resp.as_bytes();
+        assert_eq!(bytes.len(), core::mem::size_of::<DpeSignerContextCertResp>());
+        assert_eq!(
+            resp.partial_len().unwrap(),
+            core::mem::size_of::<MailboxRespHeaderVarSize>() + 128
+        );
     }
 }
