@@ -88,7 +88,7 @@ pub(crate) async fn handle_negotiate_algorithms<'a, Pal: SpdmPal>(
     // Keep negotiation-only values out of the async state carried across
     // transcript hashing. The encoded response itself is scratch-backed.
     let (resp, spdm_len) = {
-        let alg_structs = locate_alg_structs(fixed, body)?;
+        let alg_structs = locate_alg_structs(state.version, fixed, body)?;
         let peer = parse_peer_algs(alg_structs)?;
         let rsp_body = build_response_body(state, fixed, &peer, pal.secure_message_supported());
         let spdm_len = rsp_body.encoded_size();
@@ -135,11 +135,24 @@ pub(crate) async fn handle_negotiate_algorithms<'a, Pal: SpdmPal>(
 ///   extended-hash entries overflow the body, or the trailing
 ///   `AlgStruct[]` does not consume the remaining bytes exactly.
 fn locate_alg_structs<'a>(
+    version: SpdmVersion,
     fixed: &NegotiateAlgorithmsReqBodyFixed,
     body: &'a [u8],
 ) -> SpdmResult<&'a [u8]> {
-    // PQCAsymAlgo is ignored because this responder only selects classical
-    // signatures. Reserved fields and bits are ignored when received.
+    if fixed.param2 != 0 || fixed.reserved1 != [0; 8] || fixed.reserved2 != 0 {
+        return Err(SPDM_INVALID_REQUEST);
+    }
+
+    // PQCAsymAlgo occupies bytes that were reserved before V1.4. Valid V1.4
+    // offers are accepted (and may select ML-DSA, see `build_response_body`);
+    // reserved bits, or any non-zero value negotiated below V1.4, are rejected
+    // rather than treated as reserved.
+    let pqc_asym_algo = PqcAsymAlgos::from_bits(fixed.pqc_asym_algo.into_bits());
+    if (version < SpdmVersion::V14 && pqc_asym_algo != PqcAsymAlgos::EMPTY)
+        || (version >= SpdmVersion::V14 && pqc_asym_algo.has_reserved_bits())
+    {
+        return Err(SPDM_INVALID_REQUEST);
+    }
 
     // `length` is the full request size including the 2-byte SPDM
     // common header — `body` starts after it.
@@ -315,7 +328,10 @@ mod tests {
     use futures::executor::block_on;
     use std::vec;
     use std::vec::Vec;
-    use zerocopy::{little_endian::U16, FromBytes, IntoBytes};
+    use zerocopy::{
+        little_endian::U16,
+        FromBytes, IntoBytes,
+    };
 
     use crate::measurements::support;
     use support::{test_digest, TestHashState, TestIo, TestPal};
@@ -371,6 +387,12 @@ mod tests {
     }
 
     fn run_negotiate(request: Vec<u8>) -> (ConnectionState<TestHashState, Vec<u8>>, Vec<u8>) {
+        try_negotiate(request).unwrap()
+    }
+
+    fn try_negotiate(
+        request: Vec<u8>,
+    ) -> SpdmResult<(ConnectionState<TestHashState, Vec<u8>>, Vec<u8>)> {
         let pal = TestPal::default();
         let version = SpdmVersion::from_u8(request[0]).unwrap();
         let mut state = ConnectionState {
@@ -379,8 +401,8 @@ mod tests {
             ..ConnectionState::default()
         };
         let io = TestIo::message(request);
-        let response = block_on(handle_negotiate_algorithms(&mut state, &pal, &io)).unwrap();
-        (state, response[..].to_vec())
+        let response = block_on(handle_negotiate_algorithms(&mut state, &pal, &io))?;
+        Ok((state, response[..].to_vec()))
     }
 
     fn append_alg_structs(request: &mut Vec<u8>, entries: &[AlgStructEntry]) {
@@ -547,7 +569,7 @@ mod tests {
     }
 
     #[test]
-    fn algorithms_ignores_reserved_fixed_fields() {
+    fn algorithms_rejects_reserved_fixed_fields() {
         let mut request = negotiate_request(
             SpdmVersion::V14,
             PqcAsymAlgos::EMPTY,
@@ -559,12 +581,12 @@ mod tests {
         request[fixed_offset + 18..fixed_offset + 26].fill(0xa5);
         request[fixed_offset + 28] = 0xa5;
 
-        let (state, _) = run_negotiate(request);
-        assert_eq!(state.phase, Phase::AfterAlgorithms);
+        let err = try_negotiate(request).err().expect("expected INVALID_REQUEST");
+        assert_eq!(err.spec_byte(), SPDM_INVALID_REQUEST.spec_byte());
     }
 
     #[test]
-    fn v14_ignores_reserved_pqc_asym_bits() {
+    fn v14_rejects_reserved_pqc_asym_bits() {
         let request = negotiate_request(
             SpdmVersion::V14,
             PqcAsymAlgos::from_bits(1 << 31),
@@ -572,16 +594,12 @@ mod tests {
             false,
         );
 
-        let (state, _) = run_negotiate(request);
-        assert_eq!(state.phase, Phase::AfterAlgorithms);
-        assert_eq!(
-            state.negotiated_base_asym_sel.into_bits(),
-            AsymAlgos::ECDSA_ECC_NIST_P384.into_bits()
-        );
+        let err = try_negotiate(request).err().expect("expected INVALID_REQUEST");
+        assert_eq!(err.spec_byte(), SPDM_INVALID_REQUEST.spec_byte());
     }
 
     #[test]
-    fn pre_v14_ignores_pqc_asym_field() {
+    fn pre_v14_rejects_pqc_asym_field() {
         let request = negotiate_request(
             SpdmVersion::V13,
             PqcAsymAlgos::ML_DSA_87,
@@ -589,12 +607,8 @@ mod tests {
             false,
         );
 
-        let (state, _) = run_negotiate(request);
-        assert_eq!(state.phase, Phase::AfterAlgorithms);
-        assert_eq!(
-            state.negotiated_base_asym_sel.into_bits(),
-            AsymAlgos::ECDSA_ECC_NIST_P384.into_bits()
-        );
+        let err = try_negotiate(request).err().expect("expected INVALID_REQUEST");
+        assert_eq!(err.spec_byte(), SPDM_INVALID_REQUEST.spec_byte());
     }
 
     #[test]
@@ -718,5 +732,50 @@ mod tests {
             fixed.pqc_asym_sel.into_bits(),
             PqcAsymAlgos::EMPTY.into_bits()
         );
+    }
+
+    #[test]
+    fn v14_accepts_pqc_offer_and_selects_mldsa87() {
+        let request = negotiate_request(
+            SpdmVersion::V14,
+            PqcAsymAlgos::ML_DSA_87,
+            AsymAlgos::ECDSA_ECC_NIST_P384,
+            false,
+        );
+        let (mut state, response) = run_negotiate(request);
+        let expected_entries = [
+            AlgStructEntry::dhe(DheAlgos::SECP_384_R1),
+            AlgStructEntry::aead(AeadAlgos::AES_256_GCM),
+            AlgStructEntry::key_schedule(KeyScheduleAlgos::SPDM),
+        ];
+        let expected_len = SpdmMsgHdrPdu::SIZE
+            + AlgorithmsRspBodyFixed::SIZE
+            + expected_entries.len() * AlgStructEntry::SIZE;
+        assert_eq!(response.len(), expected_len);
+
+        assert_eq!(
+            state.negotiated_base_asym_sel.into_bits(),
+            AsymAlgos::EMPTY.into_bits()
+        );
+        assert_eq!(
+            state.negotiated_pqc_asym_sel.into_bits(),
+            PqcAsymAlgos::ML_DSA_87.into_bits()
+        );
+        assert_eq!(state.phase, Phase::AfterAlgorithms);
+
+        let (_hdr, body) = SpdmMsgHdrPdu::ref_from_prefix(&response).unwrap();
+        let fixed = AlgorithmsRspBodyFixed::ref_from_bytes(
+            body.get(..AlgorithmsRspBodyFixed::SIZE).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            fixed.base_asym_sel.into_bits(),
+            AsymAlgos::EMPTY.into_bits()
+        );
+        assert_eq!(
+            fixed.pqc_asym_sel.into_bits(),
+            PqcAsymAlgos::ML_DSA_87.into_bits()
+        );
+        assert_response_was_appended_to_vca(&mut state, &response);
     }
 }
