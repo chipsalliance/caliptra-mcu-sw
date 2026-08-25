@@ -66,6 +66,47 @@ def_flag_set_le! {
     }
 }
 
+/// SPDM 1.4 PQCAsymAlgo/PQCAsymSel bitmap.
+///
+/// This semantic type uses a native `u32`; endian conversion remains confined
+/// to the zerocopy wire structs below.
+#[repr(transparent)]
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq)]
+pub struct PqcAsymAlgos(u32);
+
+impl PqcAsymAlgos {
+    pub const EMPTY: Self = Self(0);
+    pub const ML_DSA_44: Self = Self(1 << 0);
+    pub const ML_DSA_65: Self = Self(1 << 1);
+    pub const ML_DSA_87: Self = Self(1 << 2);
+    pub const SLH_DSA_SHA2_128S: Self = Self(1 << 3);
+    pub const SLH_DSA_SHAKE_128S: Self = Self(1 << 4);
+    pub const SLH_DSA_SHA2_128F: Self = Self(1 << 5);
+    pub const SLH_DSA_SHAKE_128F: Self = Self(1 << 6);
+    pub const SLH_DSA_SHA2_192S: Self = Self(1 << 7);
+    pub const SLH_DSA_SHAKE_192S: Self = Self(1 << 8);
+    pub const SLH_DSA_SHA2_192F: Self = Self(1 << 9);
+    pub const SLH_DSA_SHAKE_192F: Self = Self(1 << 10);
+    pub const SLH_DSA_SHA2_256S: Self = Self(1 << 11);
+    pub const SLH_DSA_SHAKE_256S: Self = Self(1 << 12);
+    pub const SLH_DSA_SHA2_256F: Self = Self(1 << 13);
+    pub const SLH_DSA_SHAKE_256F: Self = Self(1 << 14);
+
+    const VALID_MASK: u32 = 0x0000_7fff;
+
+    pub const fn from_bits(bits: u32) -> Self {
+        Self(bits)
+    }
+
+    pub const fn bits(self) -> u32 {
+        self.0
+    }
+
+    pub const fn has_reserved_bits(self) -> bool {
+        self.0 & !Self::VALID_MASK != 0
+    }
+}
+
 def_flag_set_le! {
   /// BaseHashAlgo / BaseHashSel.
     pub struct HashAlgos(U32: u32) {
@@ -138,7 +179,10 @@ pub struct NegotiateAlgorithmsReqBodyFixed {
     pub other_param_support: OtherParamSupport,
     pub base_asym_algo: AsymAlgos,
     pub base_hash_algo: HashAlgos,
-    pub reserved1: [u8; 12],
+    /// PQC asymmetric algorithms offered by the requester in V1.4.
+    /// Reserved and zero in earlier versions.
+    pub pqc_asym_algo: U32,
+    pub reserved1: [u8; 8],
     pub ext_asym_count: u8,
     pub ext_hash_count: u8,
     /// Byte 28: Reserved.
@@ -173,7 +217,11 @@ pub struct AlgorithmsRspBodyFixed {
     pub meas_hash_algo: MeasHashAlgos,
     pub base_asym_sel: AsymAlgos,
     pub base_hash_sel: HashAlgos,
-    pub reserved3: [u8; 12],
+    /// Selected PQC asymmetric algorithm in V1.4. This classical-only
+    /// responder always returns zero.
+    pub pqc_asym_sel: U32,
+    pub reserved3: [u8; 7],
+    pub mel_specification_sel: u8,
     pub ext_asym_sel_count: u8,
     pub ext_hash_sel_count: u8,
     pub reserved4: [u8; 2],
@@ -242,6 +290,7 @@ pub struct AlgorithmsRsp {
     pub meas_hash_algo: MeasHashAlgos,
     pub base_asym_sel: AsymAlgos,
     pub base_hash_sel: HashAlgos,
+    pub pqc_asym_sel: PqcAsymAlgos,
     /// AlgStruct entries to advertise; `None` slots are skipped.
     pub alg_structs: [Option<AlgStructEntry>; MAX_ALG_STRUCT_ENTRIES],
 }
@@ -271,7 +320,9 @@ impl ResponseBody for AlgorithmsRsp {
             meas_hash_algo: self.meas_hash_algo,
             base_asym_sel: self.base_asym_sel,
             base_hash_sel: self.base_hash_sel,
-            reserved3: [0; 12],
+            pqc_asym_sel: U32::new(self.pqc_asym_sel.bits()),
+            reserved3: [0; 7],
+            mel_specification_sel: 0,
             ext_asym_sel_count: 0,
             ext_hash_sel_count: 0,
             reserved4: [0; 2],
