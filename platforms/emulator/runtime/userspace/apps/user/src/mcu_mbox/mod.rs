@@ -23,7 +23,11 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
 
 #[cfg(feature = "mcu-mbox-service")]
-const MCU_MBOX_SCRATCH_SIZE: usize = 44 * 1024;
+const MCU_MBOX_SCRATCH_SIZE: usize = if cfg!(feature = "ocp-lock") {
+    44 * 1024
+} else {
+    12 * 1024
+};
 
 #[cfg(feature = "mcu-mbox-service")]
 struct McuMboxScratchAlloc(&'static BitmapAllocator);
