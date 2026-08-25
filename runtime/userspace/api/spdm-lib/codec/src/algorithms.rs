@@ -87,6 +87,16 @@ def_flag_set_le! {
     }
 }
 
+impl PqcAsymAlgos {
+    /// Bitmask of defined PQC asymmetric algorithm bits (DSP0274 §10.6).
+    const VALID_MASK: u32 = 0x0000_7fff;
+
+    /// True when any reserved bit is set.
+    pub fn has_reserved_bits(self) -> bool {
+        self.into_bits() & !Self::VALID_MASK != 0
+    }
+}
+
 def_flag_set_le! {
   /// BaseHashAlgo / BaseHashSel.
     pub struct HashAlgos(U32: u32) {
