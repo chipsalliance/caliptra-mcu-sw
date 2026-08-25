@@ -3,6 +3,27 @@
 use crate::DefaultSyscalls;
 use caliptra_mcu_libtock_platform::{ErrorCode, Syscalls};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
+pub enum FirmwareBootType {
+    Unknown = 0,
+    Flash = 1,
+    Pldm = 2,
+}
+
+impl TryFrom<u32> for FirmwareBootType {
+    type Error = ErrorCode;
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            value if value == Self::Unknown as u32 => Ok(Self::Unknown),
+            value if value == Self::Flash as u32 => Ok(Self::Flash),
+            value if value == Self::Pldm as u32 => Ok(Self::Pldm),
+            _ => Err(ErrorCode::Invalid),
+        }
+    }
+}
+
 pub struct System {}
 
 impl System {
@@ -11,10 +32,30 @@ impl System {
             .to_result::<(), ErrorCode>()
             .unwrap();
     }
+
+    pub fn firmware_boot_type() -> Result<FirmwareBootType, ErrorCode> {
+        let value = DefaultSyscalls::command(DRIVER_NUM, cmd::GET_FIRMWARE_BOOT_TYPE, 0, 0)
+            .to_result::<u32, ErrorCode>()?;
+        FirmwareBootType::try_from(value)
+    }
 }
 
 pub const DRIVER_NUM: u32 = 0xC000_0000;
 
 mod cmd {
     pub const EXIT: u32 = 1;
+    pub const GET_FIRMWARE_BOOT_TYPE: u32 = 2;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn firmware_boot_type_encoding() {
+        assert_eq!(FirmwareBootType::try_from(0), Ok(FirmwareBootType::Unknown));
+        assert_eq!(FirmwareBootType::try_from(1), Ok(FirmwareBootType::Flash));
+        assert_eq!(FirmwareBootType::try_from(2), Ok(FirmwareBootType::Pldm));
+        assert_eq!(FirmwareBootType::try_from(3), Err(ErrorCode::Invalid));
+    }
 }
