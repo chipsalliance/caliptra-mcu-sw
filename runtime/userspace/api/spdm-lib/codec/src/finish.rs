@@ -4,7 +4,7 @@
 
 use zerocopy::{little_endian::U16, FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
 
-use crate::{ReqRespCode, ResponseBody, WireError, WireWriter};
+use crate::{ReqRespCode, ResponseBody, SpdmMsgHdrPdu, SpdmVersion, WireError, WireWriter};
 
 // ---- Request ---------------------------------------------------------------
 
@@ -14,7 +14,7 @@ pub trait FinishReq {
     /// Whether the requester signature is present (bit 0).
     fn signature_present(&self) -> bool;
     /// Length of the opaque data field (always 0 for version <= 1.3).
-    fn opaque_data_len(&self) -> u16;
+    fn opaque_data_len(&self) -> usize;
     fn size_of(&self) -> usize;
 }
 
@@ -49,7 +49,7 @@ impl FinishReq for FinishReqBody {
     }
 
     #[inline]
-    fn opaque_data_len(&self) -> u16 {
+    fn opaque_data_len(&self) -> usize {
         0
     }
 
@@ -94,8 +94,8 @@ impl FinishReq for FinishReqBody14 {
     }
 
     #[inline]
-    fn opaque_data_len(&self) -> u16 {
-        self.req_opaque_data_length.get()
+    fn opaque_data_len(&self) -> usize {
+        self.req_opaque_data_length.get() as usize
     }
 
     #[inline]
@@ -104,33 +104,87 @@ impl FinishReq for FinishReqBody14 {
     }
 }
 
-// ---- Response builder ------------------------------------------------------
+// ---- Response --------------------------------------------------------------
 
-/// FINISH_RSP response builder.
-///
-/// Wire layout: `reserved(1) + reserved(1)`, followed in V1.4 by an
-/// empty `OpaqueData` field (`opaque_length(2)`). No ResponderVerifyData is
-/// present when HBITC is not negotiated (our case).
-pub struct FinishRsp {
-    pub include_opaque: bool,
+/// FINISH_RSP builder.
+pub struct FinishRspBuilder {
+    version: SpdmVersion,
+}
+impl FinishRspBuilder {
+    /// Maximum FINISH_RSP SPDM message size (common header + response body).
+    pub const MAX_RSP_SIZE: usize = SpdmMsgHdrPdu::SIZE + size_of::<FinishRsp14>();
+
+    pub fn new(version: SpdmVersion) -> Self {
+        FinishRspBuilder { version }
+    }
 }
 
-impl ResponseBody for FinishRsp {
+impl ResponseBody for FinishRspBuilder {
     const RESPONSE_CODE: ReqRespCode = ReqRespCode::FINISH_RSP;
 
     fn body_size(&self) -> usize {
-        if self.include_opaque {
-            4
-        } else {
-            2
+        match self.version {
+            SpdmVersion::V10 | SpdmVersion::V11 | SpdmVersion::V12 | SpdmVersion::V13 => {
+                size_of::<FinishRsp>()
+            }
+            SpdmVersion::V14 => size_of::<FinishRsp14>(),
         }
     }
 
     fn encode_body(&self, w: &mut WireWriter<'_>) -> Result<(), WireError> {
-        w.write_bytes(&[0u8, 0u8])?;
-        if self.include_opaque {
-            w.write_bytes(&0u16.to_le_bytes())?;
+        match self.version {
+            SpdmVersion::V10 | SpdmVersion::V11 | SpdmVersion::V12 | SpdmVersion::V13 => {
+                w.write(&FinishRsp::new())
+            }
+            SpdmVersion::V14 => w.write(&FinishRsp14::new()),
         }
-        Ok(())
     }
 }
+
+/// FINISH_RSP for version <= 1.3.
+///
+/// Wire layout: `reserved(1) + reserved(1)`, followed in V1.4 by an
+/// empty `OpaqueData` field (`opaque_length(2)`). No ResponderVerifyData is
+/// present when HBITC is not negotiated (our case).
+#[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned, Copy, Clone, Debug, Default)]
+#[repr(C)]
+struct FinishRsp {
+    reserved1: u8,
+    reserved2: u8,
+}
+
+impl FinishRsp {
+    fn new() -> Self {
+        FinishRsp {
+            reserved1: 0,
+            reserved2: 0,
+        }
+    }
+}
+
+const _: () = assert!(core::mem::size_of::<FinishRsp>() == 2);
+
+/// FINISH_RSP for version 1.4.
+///
+/// Wire layout: `reserved(1) + reserved(1) + OpaqueDataLength(2)`.
+/// No opaque data supported at this point.
+/// No ResponderVerifyData when HBITC is NOT negotiated (our case).
+#[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned, Copy, Clone, Debug, Default)]
+#[repr(C)]
+struct FinishRsp14 {
+    reserved1: u8,
+    reserved2: u8,
+    opaque_data_length: U16,
+}
+
+impl FinishRsp14 {
+    fn new() -> Self {
+        FinishRsp14 {
+            reserved1: 0,
+            reserved2: 0,
+            opaque_data_length: U16::new(0),
+        }
+    }
+}
+
+const _: () = assert!(core::mem::size_of::<FinishRsp14>() == 4);

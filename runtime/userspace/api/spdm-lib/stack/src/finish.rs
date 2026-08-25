@@ -15,8 +15,8 @@
 //! transitioning the session to [`SessionState::Established`].
 
 use caliptra_mcu_spdm_codec::{
-    FinishReq, FinishReqBody, FinishReqBody14, FinishRsp, ResponseBody, SpdmMsgHdrPdu, SpdmVersion,
-    WireWriter, SHA384_HASH_SIZE,
+    FinishReq, FinishReqBody, FinishReqBody14, FinishRspBuilder, ResponseBody, SpdmMsgHdrPdu,
+    SpdmVersion, WireWriter, SHA384_HASH_SIZE,
 };
 use caliptra_mcu_spdm_traits::*;
 use zerocopy::FromBytes;
@@ -24,10 +24,6 @@ use zerocopy::FromBytes;
 use crate::error::{SpdmResult, SPDM_DECRYPT_ERROR, SPDM_INVALID_REQUEST, SPDM_UNSPECIFIED};
 use crate::key_schedule::SessionKeyType;
 use crate::session::{SessionInfo, SessionState};
-
-/// Maximum FINISH_RSP SPDM message size (common header, 2 reserved bytes,
-/// and the V1.4 empty OpaqueData length).
-pub(crate) const FINISH_RSP_MAX_SPDM_SIZE: usize = SpdmMsgHdrPdu::SIZE + 4;
 
 /// Handle a decrypted FINISH request.
 ///
@@ -46,7 +42,7 @@ pub(crate) async fn handle_finish<Pal: SpdmPal>(
     pal: &Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     spdm_msg: &[u8],
-) -> SpdmResult<([u8; FINISH_RSP_MAX_SPDM_SIZE], usize)> {
+) -> SpdmResult<([u8; FinishRspBuilder::MAX_RSP_SIZE], usize)> {
     // ── Validate session state ──────────────────────────────────────
     if session.state != SessionState::HandshakeInProgress {
         return Err(SPDM_INVALID_REQUEST);
@@ -79,7 +75,7 @@ pub(crate) async fn handle_finish<Pal: SpdmPal>(
         return Err(SPDM_INVALID_REQUEST);
     }
     let (_opaque_data, after) = after
-        .split_at_checked(opaque_data_length as usize)
+        .split_at_checked(opaque_data_length)
         .ok_or(SPDM_INVALID_REQUEST)?;
 
     // Requester verify_data (SHA-384 HMAC).
@@ -89,9 +85,8 @@ pub(crate) async fn handle_finish<Pal: SpdmPal>(
     let req_verify_data = &after[..SHA384_HASH_SIZE];
 
     // ── Feed FINISH header + params + opaque data (without verify_data) to TH ────
-    let finish_hdr_len = SpdmMsgHdrPdu::SIZE
-        + finish_req_fixed.size_of()
-        + finish_req_fixed.opaque_data_len() as usize;
+    let finish_hdr_len =
+        SpdmMsgHdrPdu::SIZE + finish_req_fixed.size_of() + finish_req_fixed.opaque_data_len();
     session
         .transcript
         .append(pal, io, &spdm_msg[..finish_hdr_len])
@@ -132,12 +127,10 @@ pub(crate) async fn handle_finish<Pal: SpdmPal>(
     session.transcript.append(pal, io, req_verify_data).await?;
 
     // ── Build FINISH_RSP SPDM message ──────────────────────────────
-    let mut rsp_buf = [0u8; FINISH_RSP_MAX_SPDM_SIZE];
-    let rsp_body = FinishRsp {
-        include_opaque: version >= SpdmVersion::V14,
-    };
-    let rsp_len = rsp_body.encoded_size();
-    rsp_body
+    let mut rsp_buf = [0u8; FinishRspBuilder::MAX_RSP_SIZE];
+    let rsp_builder = FinishRspBuilder::new(version);
+    let rsp_len = rsp_builder.encoded_size();
+    rsp_builder
         .encode_with_header(version, &mut WireWriter::new(&mut rsp_buf))
         .map_err(|_| SPDM_UNSPECIFIED)?;
 
@@ -158,31 +151,6 @@ pub(crate) async fn handle_finish<Pal: SpdmPal>(
         .await?;
 
     Ok((rsp_buf, rsp_len))
-}
-
-fn split_finish_request_payload(
-    version: SpdmVersion,
-    rest: &[u8],
-) -> SpdmResult<(&FinishReqBody, &[u8], usize)> {
-    let (finish_req, after_fixed) =
-        FinishReqBody::ref_from_prefix(rest).map_err(|_| SPDM_INVALID_REQUEST)?;
-
-    let after_opaque = if version >= SpdmVersion::V14 {
-        let opaque_len_bytes = after_fixed.get(..2).ok_or(SPDM_INVALID_REQUEST)?;
-        let opaque_len = u16::from_le_bytes([opaque_len_bytes[0], opaque_len_bytes[1]]) as usize;
-        after_fixed
-            .get(2 + opaque_len..)
-            .ok_or(SPDM_INVALID_REQUEST)?
-    } else {
-        after_fixed
-    };
-
-    if after_opaque.len() != SHA384_HASH_SIZE {
-        return Err(SPDM_INVALID_REQUEST);
-    }
-
-    let request_prefix_len = rest.len() - after_opaque.len();
-    Ok((finish_req, after_opaque, request_prefix_len))
 }
 
 #[cfg(test)]
