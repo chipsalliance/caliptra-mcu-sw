@@ -588,13 +588,11 @@ pub enum McuMailboxResp {
     FuseRevokeVendorPkHash(FuseRevokeVendorPkHashResp),
     // Certificate commands
     ExportAttestedCsr(ExportAttestedCsrResp),
-    DpeSignerContextCert(DpeSignerContextCertResp),
     GetDpeCertChain(GetDpeCertChainResp),
 
     // OCP Lock
     OcpLockSetPermaHek(OcpLockSetPermaHekResp),
     OcpLockRotateHek(OcpLockRotateHekResp),
-    GetOcpLockEndorsementCert(GetOcpLockEndorsementCertResp),
     OcpLockEnumerateHpkeHandles(OcpLockEnumerateHpkeHandlesResp),
     GetOcpLockEpochKeyReport(GetOcpLockEpochKeyReportResp),
     // Device Ownership Transfer commands
@@ -725,12 +723,10 @@ impl McuMailboxResp {
             McuMailboxResp::ProvisionOwnerPkHash(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FuseRevokeVendorPkHash(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial(),
-            McuMailboxResp::DpeSignerContextCert(resp) => resp.as_bytes_partial(),
             McuMailboxResp::GetDpeCertChain(resp) => resp.as_bytes_partial(),
 
             McuMailboxResp::OcpLockSetPermaHek(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::OcpLockRotateHek(resp) => Ok(resp.as_bytes()),
-            McuMailboxResp::GetOcpLockEndorsementCert(resp) => resp.as_bytes_partial(),
             McuMailboxResp::OcpLockEnumerateHpkeHandles(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::GetOcpLockEpochKeyReport(resp) => resp.as_bytes_partial(),
             McuMailboxResp::DotLock(resp) => Ok(resp.as_bytes()),
@@ -800,12 +796,10 @@ impl McuMailboxResp {
             McuMailboxResp::ProvisionOwnerPkHash(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FuseRevokeVendorPkHash(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial_mut(),
-            McuMailboxResp::DpeSignerContextCert(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::GetDpeCertChain(resp) => resp.as_bytes_partial_mut(),
 
             McuMailboxResp::OcpLockSetPermaHek(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::OcpLockRotateHek(resp) => Ok(resp.as_mut_bytes()),
-            McuMailboxResp::GetOcpLockEndorsementCert(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::OcpLockEnumerateHpkeHandles(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::GetOcpLockEpochKeyReport(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::DotLock(resp) => Ok(resp.as_mut_bytes()),
@@ -3047,14 +3041,15 @@ mod tests {
         resp.hdr.data_len = 128;
         resp.cert_data[..4].copy_from_slice(&[0x30, 0x82, 0x01, 0x00]);
 
-        let mut mbox_resp = McuMailboxResp::DpeSignerContextCert(resp);
-        mbox_resp.populate_chksum().unwrap();
-
-        let bytes = mbox_resp.as_bytes().unwrap();
-        let hdr = MailboxRespHeader::read_from_prefix(bytes).unwrap().0;
-        assert_ne!(hdr.chksum, 0);
-
-        let payload = &bytes[core::mem::size_of::<u32>()..];
-        assert!(verify_checksum(hdr.chksum, 0, payload));
+        let bytes = resp.as_bytes_partial().unwrap();
+        assert_eq!(
+            bytes.len(),
+            core::mem::size_of::<MailboxRespHeaderVarSize>() + 128
+        );
+        assert_eq!(
+            &bytes[core::mem::size_of::<MailboxRespHeaderVarSize>()
+                ..core::mem::size_of::<MailboxRespHeaderVarSize>() + 4],
+            &[0x30, 0x82, 0x01, 0x00]
+        );
     }
 }
