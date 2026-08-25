@@ -12,7 +12,7 @@ software must not treat it as persistent storage across a power cycle.
 
 | Offset | Size | Owner | Purpose |
 |---:|---:|---|---|
-| 0 | 64 bytes | ROM | Data produced by ROM and consumed by Runtime |
+| 0 | 64 bytes | ROM | Version, firmware boot type, and ROM state consumed by Runtime |
 | 64 | 64 bytes | Runtime | Data produced or updated by Runtime |
 | 128 | 132 bytes | ROM | Stable owner key CMK extension |
 
@@ -46,6 +46,34 @@ This permits an older Runtime to ignore appended data from a newer ROM. A newer
 Runtime must use the minor version to avoid interpreting uninitialized bytes
 when booted by an older ROM. The complete structure must remain within the
 platform's 1 KiB reservation.
+
+## ROM Handoff Table
+
+The 64-byte `RomHandoffTable` has the following layout:
+
+| Offset | Size | Field | Description |
+|---:|---:|---|---|
+| 0 | 4 bytes | `fht_marker` | Handoff marker, `0x4855434D` (`MCUH` in little-endian) |
+| 4 | 2 bytes | `fht_major_ver` | Major ABI version |
+| 6 | 2 bytes | `fht_minor_ver` | Minor ABI version |
+| 8 | 12 bytes | `ocp_lock` or `reserved_hek` | OCP LOCK state when enabled; otherwise reserved |
+| 20 | 1 byte | `firmware_boot_type` | Source used to boot MCU firmware |
+| 21 | 43 bytes | `padding` | Reserved for backward-compatible fields |
+
+Handoff version 1.2 defines `firmware_boot_type` as follows:
+
+| Value | Boot type | Description |
+|---:|---|---|
+| 0 | Unknown | Source is unavailable |
+| 1 | Flash | MCU ROM loaded the firmware from flash |
+| 2 | PLDM | Firmware was streamed through PLDM |
+| Other | Invalid | Runtime rejects the value |
+
+Runtime uses `HandOff::firmware_boot_type()` so tables from versions before 1.2
+and invalid values are reported as unavailable. Userspace applications use
+`System::firmware_boot_type()`; the System capsule validates the handoff while
+keeping the DCCM region inaccessible to userspace. The Runtime image-loading
+task uses this API to select the PLDM streaming loader or flash loader.
 
 ## Stable Owner Key
 
