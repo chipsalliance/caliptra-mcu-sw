@@ -1335,6 +1335,11 @@ impl BootFlow for ColdBoot {
         // Create handoff data
         caliptra_mcu_romtime::handoff::HandoffData::write(
             caliptra_mcu_romtime::handoff::HandoffArgs {
+                firmware_boot_type: if recovery_boot {
+                    caliptra_mcu_romtime::handoff::FirmwareBootType::Flash
+                } else {
+                    caliptra_mcu_romtime::handoff::FirmwareBootType::Pldm
+                },
                 #[cfg(feature = "ocp-lock")]
                 ocp_lock: _fuse_state.ocp_lock.clone().unwrap_or_default(),
             },
