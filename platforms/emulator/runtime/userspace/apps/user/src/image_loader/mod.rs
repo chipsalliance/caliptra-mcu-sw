@@ -35,7 +35,7 @@ use caliptra_mcu_libsyscall_caliptra::flash::SpiFlash;
 use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
 use caliptra_mcu_libsyscall_caliptra::mci::{mci_reg::RESET_REASON, Mci as MciSyscall};
 #[allow(unused)]
-use caliptra_mcu_libsyscall_caliptra::system::System;
+use caliptra_mcu_libsyscall_caliptra::system::{FirmwareBootType, System};
 use caliptra_mcu_libtock_console::Console;
 use caliptra_mcu_libtock_platform::ErrorCode;
 #[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
@@ -243,103 +243,117 @@ async fn image_loading<D: DMAMapping>(
 ) -> Result<(), ErrorCode> {
     let mut console_writer = Console::<DefaultSyscalls>::writer();
     crate::log_info!(console_writer, "IMAGE_LOADER_APP: Hello async world!");
-    #[cfg(feature = "streaming-boot")]
-    {
-        let fw_params = PldmFirmwareDeviceParams {
-            descriptors: &config::streaming_boot_consts::DESCRIPTOR.get()[..],
-            fw_params: config::streaming_boot_consts::STREAMING_BOOT_FIRMWARE_PARAMS.get(),
-        };
-        let pldm_image_loader =
-            PldmImageLoader::new(&fw_params, EXECUTOR.get().spawner(), dma_mapping);
-        load_soc_images(&pldm_image_loader, soc_image_load_list, false)
-            .await
-            .inspect_err(|_e| {
-                // Report load/authorization failure to the PLDM Update Agent
-                let _ = pldm_image_loader.finalize(VerifyResult::VerifyFailedFdSecurityChecks);
-            })?;
-        // Close the PLDM session on success
-        pldm_image_loader.finalize(VerifyResult::VerifySuccess)?;
-        // Wait for the PLDM service to fully complete the protocol before proceeding
-        pldm_image_loader.wait_for_service_stopped().await;
-        // Activate the SoC Images (set FW_EXEC_CTRL bit of the corresponding SoC)
-        activate_soc_images(soc_image_load_list).await?;
-        #[cfg(feature = "test-xtask-runtime")]
-        {
-            System::exit(0);
+    #[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
+    match System::firmware_boot_type()? {
+        FirmwareBootType::Unknown => return Err(ErrorCode::Invalid),
+        FirmwareBootType::Pldm => {
+            #[cfg(feature = "streaming-boot")]
+            {
+                let fw_params = PldmFirmwareDeviceParams {
+                    descriptors: &config::streaming_boot_consts::DESCRIPTOR.get()[..],
+                    fw_params: config::streaming_boot_consts::STREAMING_BOOT_FIRMWARE_PARAMS.get(),
+                };
+                let pldm_image_loader =
+                    PldmImageLoader::new(&fw_params, EXECUTOR.get().spawner(), dma_mapping);
+                load_soc_images(&pldm_image_loader, soc_image_load_list, false)
+                    .await
+                    .inspect_err(|_e| {
+                        // Report load/authorization failure to the PLDM Update Agent
+                        let _ =
+                            pldm_image_loader.finalize(VerifyResult::VerifyFailedFdSecurityChecks);
+                    })?;
+                // Close the PLDM session on success
+                pldm_image_loader.finalize(VerifyResult::VerifySuccess)?;
+                // Wait for the PLDM service to fully complete the protocol before proceeding
+                pldm_image_loader.wait_for_service_stopped().await;
+                // Activate the SoC Images (set FW_EXEC_CTRL bit of the corresponding SoC)
+                activate_soc_images(soc_image_load_list).await?;
+                #[cfg(feature = "test-xtask-runtime")]
+                {
+                    System::exit(0);
+                }
+            }
+            #[cfg(not(feature = "streaming-boot"))]
+            return Err(ErrorCode::NoSupport);
         }
-    }
-    #[cfg(feature = "flash-boot")]
-    {
-        let mut boot_config = FlashBootConfig::new();
-        let active_partition_id = boot_config
-            .get_active_partition()
-            .await
-            .map_err(|_| ErrorCode::Fail)?;
-        let active_partition = boot_config
-            .get_partition_from_id(active_partition_id)
-            .map_err(|_| ErrorCode::Fail)?;
-
-        let active = (active_partition_id, active_partition);
-
-        let pending = {
-            let pending_partition_id = boot_config.get_pending_partition().await;
-            if pending_partition_id.is_ok() {
-                let pending_partition_id = pending_partition_id.unwrap();
-                let pending_partition = boot_config
-                    .get_partition_from_id(pending_partition_id)
+        FirmwareBootType::Flash => {
+            #[cfg(feature = "flash-boot")]
+            {
+                let mut boot_config = FlashBootConfig::new();
+                let active_partition_id = boot_config
+                    .get_active_partition()
+                    .await
+                    .map_err(|_| ErrorCode::Fail)?;
+                let active_partition = boot_config
+                    .get_partition_from_id(active_partition_id)
                     .map_err(|_| ErrorCode::Fail)?;
 
-                Some((pending_partition_id, pending_partition))
-            } else {
-                None
+                let active = (active_partition_id, active_partition);
+
+                let pending = {
+                    let pending_partition_id = boot_config.get_pending_partition().await;
+                    if pending_partition_id.is_ok() {
+                        let pending_partition_id = pending_partition_id.unwrap();
+                        let pending_partition = boot_config
+                            .get_partition_from_id(pending_partition_id)
+                            .map_err(|_| ErrorCode::Fail)?;
+
+                        Some((pending_partition_id, pending_partition))
+                    } else {
+                        None
+                    }
+                };
+
+                let load_partition =
+                    if let Some((pending_partition_id, pending_partition)) = pending {
+                        (pending_partition_id, pending_partition)
+                    } else {
+                        // No pending partition, use the active one
+                        active
+                    };
+
+                let buffered_dma =
+                    FlashReaderDma::new(SpiFlash::new(load_partition.1.driver_num), dma_mapping);
+                let flash_syscall = SpiFlash::new(load_partition.1.driver_num);
+                let flash_image_loader = FlashImageLoader::new(flash_syscall, &buffered_dma);
+                let component_update = pending.is_some() && mcu_fw_hitless_update_reset;
+
+                if pending.is_some() && !mcu_fw_hitless_update_reset {
+                    // In the full MCU firmware-update hitless path, FirmwareUpdater already
+                    // sets the auth manifest before reset. Keep this call for direct
+                    // pending-partition boot and future SoC-only update paths until the
+                    // platform owns an explicit "auth manifest already set" signal.
+                    // Depending on whether the SoC manifest preamble DPE contexts are
+                    // updated during hitless update, setting the manifest here may also
+                    // create mismatched journey measurements.
+                    flash_image_loader.set_auth_manifest().await?;
+                }
+
+                load_soc_images(&flash_image_loader, soc_image_load_list, component_update).await?;
+                boot_config
+                    .set_partition_status(load_partition.0, PartitionStatus::BootSuccessful)
+                    .await
+                    .map_err(|_| ErrorCode::Fail)?;
+                boot_config
+                    .set_active_partition(load_partition.0)
+                    .await
+                    .map_err(|_| ErrorCode::Fail)?;
+                #[cfg(any(
+                    feature = "test-mctp-spdm-attestation",
+                    feature = "test-mctp-spdm-attestation-tcb",
+                    feature = "test-mctp-spdm-attestation-mixed",
+                    feature = "test-mctp-spdm-attestation-hitless",
+                    feature = "test-mctp-spdm-attestation-hitless-tcb",
+                    feature = "test-mctp-spdm-attestation-hitless-mixed"
+                ))]
+                {
+                    return Ok(());
+                }
+                activate_soc_images(soc_image_load_list).await?;
             }
-        };
-
-        let load_partition = if let Some((pending_partition_id, pending_partition)) = pending {
-            (pending_partition_id, pending_partition)
-        } else {
-            // No pending partition, use the active one
-            active
-        };
-
-        let buffered_dma =
-            FlashReaderDma::new(SpiFlash::new(load_partition.1.driver_num), dma_mapping);
-        let flash_syscall = SpiFlash::new(load_partition.1.driver_num);
-        let flash_image_loader = FlashImageLoader::new(flash_syscall, &buffered_dma);
-        let component_update = pending.is_some() && mcu_fw_hitless_update_reset;
-
-        if pending.is_some() && !mcu_fw_hitless_update_reset {
-            // In the full MCU firmware-update hitless path, FirmwareUpdater already
-            // sets the auth manifest before reset. Keep this call for direct
-            // pending-partition boot and future SoC-only update paths until the
-            // platform owns an explicit "auth manifest already set" signal.
-            // Depending on whether the SoC manifest preamble DPE contexts are
-            // updated during hitless update, setting the manifest here may also
-            // create mismatched journey measurements.
-            flash_image_loader.set_auth_manifest().await?;
+            #[cfg(not(feature = "flash-boot"))]
+            return Err(ErrorCode::NoSupport);
         }
-
-        load_soc_images(&flash_image_loader, soc_image_load_list, component_update).await?;
-        boot_config
-            .set_partition_status(load_partition.0, PartitionStatus::BootSuccessful)
-            .await
-            .map_err(|_| ErrorCode::Fail)?;
-        boot_config
-            .set_active_partition(load_partition.0)
-            .await
-            .map_err(|_| ErrorCode::Fail)?;
-        #[cfg(any(
-            feature = "test-mctp-spdm-attestation",
-            feature = "test-mctp-spdm-attestation-tcb",
-            feature = "test-mctp-spdm-attestation-mixed",
-            feature = "test-mctp-spdm-attestation-hitless",
-            feature = "test-mctp-spdm-attestation-hitless-tcb",
-            feature = "test-mctp-spdm-attestation-hitless-mixed"
-        ))]
-        {
-            return Ok(());
-        }
-        activate_soc_images(soc_image_load_list).await?
     }
 
     #[cfg(any(

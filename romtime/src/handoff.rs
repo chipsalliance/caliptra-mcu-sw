@@ -12,16 +12,45 @@ pub const FHT_MARKER: u32 = 0x4855434D;
 pub const FHT_MAJOR_VERSION: u16 = 1;
 
 /// Minor version of the handoff table.
-pub const FHT_MINOR_VERSION: u16 = 1;
+pub const FHT_MINOR_VERSION: u16 = 2;
 
 /// Minor version that introduced the stable owner key handoff.
 pub const STABLE_OWNER_KEY_FHT_MINOR_VERSION: u16 = 1;
+
+/// Minor version that introduced the firmware boot type handoff.
+pub const FIRMWARE_BOOT_TYPE_FHT_MINOR_VERSION: u16 = 2;
 
 /// Size of an encrypted Caliptra Cryptographic Manager key blob.
 pub const STABLE_OWNER_KEY_CMK_SIZE: usize = caliptra_api::mailbox::CMK_SIZE_BYTES;
 
 /// Valid marker for a stable owner key handoff ("SOKV" in little-endian).
 pub const STABLE_OWNER_KEY_VALID_MARKER: u32 = 0x564B4F53;
+
+/// Source used to boot the MCU firmware.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[repr(u8)]
+pub enum FirmwareBootType {
+    /// The firmware source is unavailable or invalid.
+    #[default]
+    Unknown = 0,
+    /// Firmware was loaded from flash by MCU ROM.
+    Flash = 1,
+    /// Firmware was streamed through PLDM.
+    Pldm = 2,
+}
+
+impl TryFrom<u8> for FirmwareBootType {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            value if value == Self::Unknown as u8 => Ok(Self::Unknown),
+            value if value == Self::Flash as u8 => Ok(Self::Flash),
+            value if value == Self::Pldm as u8 => Ok(Self::Pldm),
+            _ => Err(()),
+        }
+    }
+}
 
 /// Handoff data produced by ROM.
 #[derive(Debug, TryFromBytes, IntoBytes, KnownLayout, Immutable, Clone)]
@@ -42,8 +71,11 @@ pub struct RomHandoffTable {
     #[cfg(not(feature = "ocp-lock"))]
     pub reserved_hek: [u32; 3], // 12 bytes
 
+    /// Source used to boot the MCU firmware.
+    firmware_boot_type: u8,
+
     /// Padding to reach 64 bytes total.
-    pub padding: [u8; 44],
+    pub padding: [u8; 43],
 }
 
 impl Default for RomHandoffTable {
@@ -56,7 +88,8 @@ impl Default for RomHandoffTable {
             ocp_lock: OcpLockState::default(),
             #[cfg(not(feature = "ocp-lock"))]
             reserved_hek: [0; 3],
-            padding: [0; 44],
+            firmware_boot_type: FirmwareBootType::Unknown as u8,
+            padding: [0; 43],
         }
     }
 }
@@ -138,6 +171,7 @@ pub struct HandoffData {
 
 // Keep the original tables fixed so append-only extensions do not move either ABI.
 const _: () = assert!(core::mem::size_of::<RomHandoffTable>() == 64);
+const _: () = assert!(core::mem::offset_of!(RomHandoffTable, firmware_boot_type) == 20);
 const _: () = assert!(core::mem::size_of::<RuntimeHandoffTable>() == 64);
 const _: () = assert!(core::mem::size_of::<StableOwnerKeyHandoff>() == 132);
 const _: () = assert!(core::mem::offset_of!(HandoffData, rom) == 0);
@@ -154,6 +188,9 @@ const _: () = assert!(core::mem::align_of::<HandoffData>() == 4);
 /// Arguments for initializing the handoff table.
 #[derive(Debug, Default, Clone)]
 pub struct HandoffArgs {
+    /// Source used to boot the MCU firmware.
+    pub firmware_boot_type: FirmwareBootType,
+
     /// OCP LOCK state from fuse population.
     #[cfg(feature = "ocp-lock")]
     pub ocp_lock: OcpLockState,
@@ -162,6 +199,14 @@ pub struct HandoffArgs {
 impl HandoffData {
     /// Size of the handoff data structure.
     pub const SIZE: usize = core::mem::size_of::<Self>();
+
+    /// Return the source used to boot the MCU firmware.
+    pub fn firmware_boot_type(&self) -> Option<FirmwareBootType> {
+        if self.rom.fht_minor_ver < FIRMWARE_BOOT_TYPE_FHT_MINOR_VERSION {
+            return None;
+        }
+        FirmwareBootType::try_from(self.rom.firmware_boot_type).ok()
+    }
 
     /// Return the stable owner CMK when this handoff version supports it.
     pub fn stable_owner_key(&self) -> Option<&[u8; STABLE_OWNER_KEY_CMK_SIZE]> {
@@ -185,6 +230,7 @@ impl HandoffData {
         unsafe {
             HANDOFF = Self {
                 rom: RomHandoffTable {
+                    firmware_boot_type: _args.firmware_boot_type as u8,
                     #[cfg(feature = "ocp-lock")]
                     ocp_lock: _args.ocp_lock,
                     #[cfg(not(feature = "ocp-lock"))]
@@ -229,7 +275,8 @@ pub static mut HANDOFF: HandoffData = HandoffData {
         },
         #[cfg(not(feature = "ocp-lock"))]
         reserved_hek: [0; 3],
-        padding: [0; 44],
+        firmware_boot_type: FirmwareBootType::Unknown as u8,
+        padding: [0; 43],
     },
     runtime: RuntimeHandoffTable { reserved: [0; 64] },
     rom_stable_owner_key: StableOwnerKeyHandoff {
@@ -237,6 +284,16 @@ pub static mut HANDOFF: HandoffData = HandoffData {
         valid_marker: 0,
     },
 };
+
+/// Return the firmware boot type from a valid handoff table.
+pub fn get_firmware_boot_type() -> Option<FirmwareBootType> {
+    // SAFETY: Runtime treats ROM-owned handoff data as read-only.
+    let handoff = unsafe { &*core::ptr::addr_of!(HANDOFF) };
+    if handoff.rom.fht_marker != FHT_MARKER || handoff.rom.fht_major_ver != FHT_MAJOR_VERSION {
+        return None;
+    }
+    handoff.firmware_boot_type()
+}
 
 /// Safe accessor for the entire OCP LOCK state in handoff table.
 /// Available to kernel capsules without requiring unsafe blocks.
@@ -255,6 +312,7 @@ mod tests {
     #[test]
     fn handoff_layout_is_append_only() {
         assert_eq!(size_of::<RomHandoffTable>(), 64);
+        assert_eq!(offset_of!(RomHandoffTable, firmware_boot_type), 20);
         assert_eq!(size_of::<RuntimeHandoffTable>(), 64);
         assert_eq!(size_of::<StableOwnerKeyHandoff>(), 132);
         assert_eq!(offset_of!(HandoffData, rom), 0);
@@ -279,5 +337,22 @@ mod tests {
 
         handoff.rom.fht_minor_ver = STABLE_OWNER_KEY_FHT_MINOR_VERSION - 1;
         assert!(handoff.stable_owner_key().is_none());
+    }
+
+    #[test]
+    fn firmware_boot_type_requires_supported_version_and_value() {
+        let mut handoff = HandoffData::default();
+        handoff.rom.firmware_boot_type = FirmwareBootType::Flash as u8;
+        assert_eq!(handoff.firmware_boot_type(), Some(FirmwareBootType::Flash));
+
+        handoff.rom.firmware_boot_type = FirmwareBootType::Pldm as u8;
+        assert_eq!(handoff.firmware_boot_type(), Some(FirmwareBootType::Pldm));
+
+        handoff.rom.firmware_boot_type = u8::MAX;
+        assert_eq!(handoff.firmware_boot_type(), None);
+
+        handoff.rom.fht_minor_ver = FIRMWARE_BOOT_TYPE_FHT_MINOR_VERSION - 1;
+        handoff.rom.firmware_boot_type = FirmwareBootType::Flash as u8;
+        assert_eq!(handoff.firmware_boot_type(), None);
     }
 }
