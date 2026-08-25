@@ -7,7 +7,10 @@ use crate::spdm_responder_validator::common::{
 };
 use crate::spdm_responder_validator::transport::{Transport, SOCKET_TRANSPORT_TYPE_PCI_DOE};
 use crate::spdm_responder_validator::SpdmTestType;
-use crate::{sleep_emulator_ticks, wait_for_runtime_start};
+use crate::{
+    sleep_emulator_ticks, wait_for_runtime_start, wait_for_spdm_responder_ready,
+    SpdmResponderTransport,
+};
 use std::net::TcpListener;
 use std::process::exit;
 use std::sync::atomic::Ordering;
@@ -127,8 +130,7 @@ pub fn run_doe_spdm_conformance_test(
     // Spawn a thread to run the tests
     crate::spawn_with_emulator_state(move || {
         wait_for_runtime_start();
-        // give time for the app to be loaded and ready
-        sleep_emulator_ticks(1_000_000);
+        wait_for_spdm_responder_ready(SpdmResponderTransport::Doe);
 
         if !crate::is_emulator_running() {
             exit(-1);

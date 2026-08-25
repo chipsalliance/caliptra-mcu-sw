@@ -24,5 +24,6 @@ pub use caliptra_mcu_emulator_state::{
     emulator_ticks_elapsed, get_emulator_state, get_emulator_ticks, init_emulator_state,
     is_emulator_running, set_emulator_running, set_runtime_started, sleep_emulator_ticks,
     spawn_with_emulator_state, stop_emulator, update_ticks, wait_emulator_ticks,
-    wait_for_runtime_start, EmulatorState, TICK_NOTIFY_TICKS,
+    wait_for_runtime_start, wait_for_spdm_responder_ready, EmulatorState, SpdmResponderTransport,
+    TICK_NOTIFY_TICKS,
 };

@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! Cert store initialization for the spdm-lib emulator platform.
+//! Certificate-store initialization.
 //!
 //! Reads the IDevID certificates from OTP, installs them into Caliptra, and
 //! configures the cert slots:
@@ -14,6 +14,9 @@
 //! read here and prepended to their respective Caliptra cert chains via the
 //! `POPULATE_IDEV_*_CERT` mailbox commands.
 
+extern crate alloc;
+
+#[cfg(feature = "spdm")]
 mod slot0_endorsements;
 
 #[cfg(feature = "test-mctp-spdm-set-certificate")]
@@ -21,18 +24,22 @@ use caliptra_mcu_config_emulator::flash::CERT_STORE_PARTITION;
 use caliptra_mcu_libsyscall_caliptra::external_otp::ExternalOtp;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_console::Console;
+use caliptra_mcu_scratch_alloc::{BitmapAllocator, BITMAP_SLOT_SIZE};
+#[cfg(feature = "spdm")]
 use caliptra_mcu_spdm_pal::cert::store::SharedCertStore;
 // `log_warn!` writes through the console writer, so the trait must be in scope;
 // the macro compiles to nothing without a log transport, which makes the import
 // look unused.
 #[allow(unused_imports)]
 use core::fmt::Write as _;
+use core::ptr::NonNull;
 use mcu_caliptra_api::{
     mldsa87_cert_der_len, populate_idev_ecc384_cert, populate_idev_mldsa87_cert, ApiAlloc,
 };
 use mcu_error::McuResult;
 
 /// SPDM slot IDs for OCP PKI entities.
+#[cfg(feature = "spdm")]
 const VENDOR_STORE_SLOT: usize = 0;
 #[cfg(feature = "test-mctp-spdm-set-certificate")]
 const OWNER_SPDM_SLOT: u8 = 2;
@@ -48,143 +55,89 @@ const OTP_IDEVID_ECC_PARTITION: u32 = 0x01;
 /// OTP partition ID for the IDevID ML-DSA-87 certificate.
 const OTP_IDEVID_MLDSA_PARTITION: u32 = 0x02;
 
+/// Temporary boot pool for the ML-DSA certificate plus mailbox response.
+///
+/// This reuses the global heap after measurement boot releases its temporary
+/// allocation, and is released before any service task is spawned.
+const CERT_STORE_BOOT_SCRATCH_SIZE: usize = 9 * 1024;
+const CERT_STORE_BOOT_SCRATCH_SLOTS: usize = CERT_STORE_BOOT_SCRATCH_SIZE / BITMAP_SLOT_SIZE;
+
+#[repr(C, align(64))]
+#[derive(Clone, Copy)]
+struct CertStoreBootScratchSlot([u8; BITMAP_SLOT_SIZE]);
+
+#[cfg(feature = "spdm")]
+static CERT_STORE: SharedCertStore = SharedCertStore::new();
+
 #[cfg(feature = "test-mctp-spdm-set-certificate")]
 const MANAGED_SLOT_COUNT: usize = 2;
 #[cfg(feature = "test-mctp-spdm-set-certificate")]
 const MANAGED_SLOT_REGION_SIZE: usize = CERT_STORE_PARTITION.size / MANAGED_SLOT_COUNT;
 
-/// Mailbox-busy retries allowed for the *best-effort* ML-DSA-87 install.
-///
-/// Generous, because the contending operation can be a full ECDSA-P384 signature
-/// over a large SPDM transcript, but finite: nothing reads the ML-DSA chain yet,
-/// so giving up and logging is strictly better than a task that lingers forever
-/// re-arming against a mailbox somebody else owns.
-const MLDSA_INSTALL_MAX_ATTEMPTS: u32 = 64;
+/// Initialize Caliptra identity chains before any SPDM or MCU-mailbox task can
+/// contend for the mailbox, then configure SPDM endorsements when enabled.
+pub(crate) async fn boot_init() -> McuResult<()> {
+    let mut scratch = alloc::vec::Vec::new();
+    scratch
+        .try_reserve_exact(CERT_STORE_BOOT_SCRATCH_SLOTS)
+        .map_err(|_| mcu_error::codes::OUT_OF_MEMORY)?;
+    scratch.resize(
+        CERT_STORE_BOOT_SCRATCH_SLOTS,
+        CertStoreBootScratchSlot([0; BITMAP_SLOT_SIZE]),
+    );
+    let scratch_ptr =
+        NonNull::new(scratch.as_mut_ptr().cast::<u8>()).ok_or(mcu_error::codes::OUT_OF_MEMORY)?;
 
-/// Retry `$op` while Caliptra's mailbox is held by another task, **yielding**
-/// between attempts. With a second argument, also give up after that many
-/// attempts and return `MAILBOX_BUSY`.
-///
-/// The yield is the load-bearing part. These operations run concurrently with
-/// the SPDM responders (which hold the same mailbox for every
-/// CHALLENGE/MEASUREMENTS signature) and with the PLDM and MCU-mailbox services.
-/// A bare `continue` re-polls this task without ever handing the single-threaded
-/// cooperative executor back, so the task that would *release* the mailbox never
-/// runs: the retry can never succeed, the app spins at 100% CPU, and every later
-/// SPDM request times out.
-///
-/// Whether to bound it is a separate, per-call-site question, and the answer is
-/// not the same everywhere:
-///
-/// * On the **critical path** (slot-0 endorsement, ECC-384 install) a bound would
-///   trade a wait for a hard failure, and failing cert-store init means no SPDM
-///   at all. A legitimate holder can be slow — a PLDM firmware-update
-///   verification holds the mailbox far longer than a signature — so waiting is
-///   the correct outcome and the yield alone removes the live-lock.
-/// * On the **best-effort ML-DSA path** nothing consumes the result, so a bound
-///   is free and keeps a stuck mailbox from leaving a task alive forever.
-macro_rules! retry_on_mailbox_busy {
-    ($op:expr) => {{
-        // `$op` is re-evaluated per attempt: a future cannot be polled again
-        // after it completes.
-        loop {
-            match $op.await {
-                Ok(v) => break Ok(v),
-                Err(e) if e == mcu_error::codes::MAILBOX_BUSY => {
-                    // Hand the executor back so the mailbox owner can finish.
-                    yield_now().await;
-                }
-                Err(e) => break Err(e),
-            }
-        }
-    }};
-    ($op:expr, $max_attempts:expr) => {{
-        let mut attempts = 0u32;
-        loop {
-            match $op.await {
-                Ok(v) => break Ok(v),
-                Err(e) if e == mcu_error::codes::MAILBOX_BUSY => {
-                    attempts += 1;
-                    if attempts > $max_attempts {
-                        break Err(e);
-                    }
-                    yield_now().await;
-                }
-                Err(e) => break Err(e),
-            }
-        }
-    }};
+    // SAFETY: `scratch_ptr` points at aligned heap memory owned by `scratch`.
+    // The vector outlives every allocation, and no allocation escapes.
+    let allocator = unsafe { BitmapAllocator::new(scratch_ptr, CERT_STORE_BOOT_SCRATCH_SIZE) };
+
+    populate_idev(&allocator).await?;
+    #[cfg(feature = "spdm")]
+    setup_endorsements(&CERT_STORE, &allocator).await?;
+    Ok(())
 }
 
-/// Yield to the executor once, so another task can make progress.
-///
-/// Hand-rolled rather than adding `embassy-futures` for one function: wake
-/// immediately and return `Pending` exactly once, which re-queues this task
-/// behind the others instead of busy-spinning.
-async fn yield_now() {
-    use core::future::Future;
-    use core::pin::Pin;
-    use core::task::{Context, Poll};
-
-    struct YieldNow(bool);
-    impl Future for YieldNow {
-        type Output = ();
-        fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
-            if self.0 {
-                Poll::Ready(())
-            } else {
-                self.0 = true;
-                cx.waker().wake_by_ref();
-                Poll::Pending
-            }
-        }
-    }
-    YieldNow(false).await
+#[cfg(feature = "spdm")]
+pub(crate) fn shared() -> &'static SharedCertStore {
+    &CERT_STORE
 }
 
 /// One-time Caliptra setup: read the IDevID certs from OTP and install them.
 ///
-/// Only the ECC-384 install runs here, and its failure aborts cert-store init.
-/// The ML-DSA-87 install is best-effort and lives in its own task so a
-/// PQC-provisioning defect cannot take down the ECC chain.
-pub async fn populate_idev<A: ApiAlloc>(alloc: &A) -> McuResult<()> {
-    populate_idev_from_otp(alloc).await
-}
-
-/// Install the IDevID ML-DSA-87 cert, off the responder-startup path.
-///
-/// Separate from [`populate_idev`] because the OTP driver reads 4 bytes per
-/// syscall: 1,936 reads for this cert against the ECC cert's 137, which delayed
-/// responder startup past the point a connected requester gives up.
-///
-/// Best-effort — errors are logged, not returned, so a PQC-provisioning defect
-/// cannot disturb the live ECC chain. Every exit leaves a distinct warning, and
-/// the mailbox-busy retry is bounded and yields.
-pub async fn populate_idev_mldsa<A: ApiAlloc>(alloc: &A) {
-    if let Err(e) = populate_idev_mldsa_from_otp(alloc).await {
+/// Boot initialization invokes this before spawning any mailbox-using task, so
+/// the installs cannot contend with an SPDM responder or the MCU mailbox
+/// service. ECC-384 is required; ML-DSA-87 remains best-effort until SPDM can
+/// negotiate that algorithm.
+async fn populate_idev<A: ApiAlloc>(alloc: &A) -> McuResult<()> {
+    populate_idev_cert_from_otp_ecc(alloc).await?;
+    if let Err(e) = populate_idev_cert_from_otp_mldsa(alloc).await {
         let mut cw = Console::<DefaultSyscalls>::writer();
         crate::log_warn!(
             cw,
-            "SPDM: ML-DSA-87 IDevID cert not installed: 0x{}",
+            "CERT_STORE: ML-DSA-87 IDevID cert not installed: 0x{}",
             crate::Hex32(u32::from(e))
         );
     }
+    Ok(())
 }
 
 /// Configure endorsement chains on the shared cert store, for all 3 slots.
 ///
-/// Called once from spdm_task before spawning responders. Slot 0 failure is
-/// fatal. Slots 1-2 stay unprovisioned if flash is empty (they'll be
+/// Called once during boot initialization before spawning responders. Slot 0
+/// failure is fatal. Slots 1-2 stay unprovisioned if flash is empty (they'll be
 /// provisioned via SET_CERTIFICATE).
-pub async fn setup_endorsements<A: ApiAlloc>(store: &SharedCertStore, alloc: &A) -> McuResult<()> {
+#[cfg(feature = "spdm")]
+async fn setup_endorsements<A: ApiAlloc>(store: &SharedCertStore, alloc: &A) -> McuResult<()> {
     // Slot 0 (Vendor): ReadOnly endorsement with static Root CA.
-    // Retry on mailbox busy (SHA calls during root cert hashing).
-    retry_on_mailbox_busy!(store.set_endorsement_chain(
-        alloc,
-        VENDOR_STORE_SLOT,
-        slot0_endorsements::SLOT0_ECC_ROOT_CERT_CHAIN,
-        0, // key_pair_id
-    ))?;
+    store
+        .set_endorsement_chain(
+            alloc,
+            VENDOR_STORE_SLOT,
+            slot0_endorsements::SLOT0_ECC_ROOT_CERT_CHAIN,
+            0, // key_pair_id
+        )
+        .await?;
 
     // Slots 1-2 (Owner/Tenant): Managed endorsement, initially empty or loaded
     // from the cert-store flash partition. This remains test-only until a
@@ -215,7 +168,7 @@ pub async fn setup_endorsements<A: ApiAlloc>(store: &SharedCertStore, alloc: &A)
 }
 
 /// Read the IDevID ECC-384 cert from OTP and install it into Caliptra.
-async fn populate_idev_from_otp<A: ApiAlloc>(alloc: &A) -> McuResult<()> {
+async fn populate_idev_cert_from_otp_ecc<A: ApiAlloc>(alloc: &A) -> McuResult<()> {
     let mut cert_buf = [0u8; ECC_DEVID_CERT_SIZE];
     let otp = ExternalOtp::<DefaultSyscalls>::new();
 
@@ -223,7 +176,7 @@ async fn populate_idev_from_otp<A: ApiAlloc>(alloc: &A) -> McuResult<()> {
     // so the final word contributes 3 bytes.
     read_otp_range(&otp, OTP_IDEVID_ECC_PARTITION, &mut cert_buf).await?;
 
-    retry_on_mailbox_busy!(populate_idev_ecc384_cert(alloc, &cert_buf))
+    populate_idev_ecc384_cert(alloc, &cert_buf).await
 }
 
 /// Read the IDevID ML-DSA-87 cert from OTP and install it into Caliptra.
@@ -235,23 +188,15 @@ async fn populate_idev_from_otp<A: ApiAlloc>(alloc: &A) -> McuResult<()> {
 /// rather than streamed out of OTP. `execute_with_payload_stream` takes the
 /// mailbox mutex *before* pulling from the stream, so streaming would hold the
 /// Caliptra mailbox with EXECUTE asserted across ~1,900 sequential 4-byte OTP
-/// syscalls — long enough to starve an SPDM requester that is already
-/// connected. Staging keeps the mailbox held only for the transfer itself.
-async fn populate_idev_mldsa_from_otp<A: ApiAlloc>(alloc: &A) -> McuResult<()> {
+/// syscalls. Staging keeps the mailbox held only for the transfer itself.
+async fn populate_idev_cert_from_otp_mldsa<A: ApiAlloc>(alloc: &A) -> McuResult<()> {
     let otp = ExternalOtp::<DefaultSyscalls>::new();
 
     // Submit the cert's own DER length, not the whole partition: a production
     // cert shorter than its partition would otherwise splice the 0xFF fill into
     // the chain.
     let Some(cert_size) = mldsa_cert_der_len(&otp).await? else {
-        // No cert provisioned — leave the MLDSA chain as Caliptra built it. Say
-        // so: this is the branch that decides a device ships without a PQC
-        // IDevID, so the log has to distinguish it from a successful install.
-        let mut cw = Console::<DefaultSyscalls>::writer();
-        crate::log_warn!(
-            cw,
-            "SPDM: no ML-DSA-87 IDevID cert in OTP; skipping install"
-        );
+        // An empty ML-DSA partition is a supported configuration.
         return Ok(());
     };
 
@@ -260,10 +205,7 @@ async fn populate_idev_mldsa_from_otp<A: ApiAlloc>(alloc: &A) -> McuResult<()> {
     let mut cert = alloc.alloc(cert_size)?;
     read_otp_range(&otp, OTP_IDEVID_MLDSA_PARTITION, &mut cert).await?;
 
-    retry_on_mailbox_busy!(
-        populate_idev_mldsa87_cert(alloc, &cert),
-        MLDSA_INSTALL_MAX_ATTEMPTS
-    )
+    populate_idev_mldsa87_cert(alloc, &cert).await
 }
 
 /// Determine the ML-DSA-87 IDevID cert length from its own DER header.
@@ -294,8 +236,8 @@ async fn mldsa_cert_der_len(otp: &ExternalOtp<DefaultSyscalls>) -> McuResult<Opt
 /// The driver returns one 32-bit word per call from a byte offset, clamping a
 /// read that would straddle the partition end and padding with `0xFF`
 /// (`platforms/emulator/runtime/kernel/drivers/external_otp/src/ext_flash_otp.rs`
-/// `read`). `out.len()` need not be a word multiple — the ML-DSA-87 cert is
-/// 7741 bytes — so the last word contributes only `total - offset` bytes.
+/// `read`). `out.len()` need not be a word multiple, so the last word
+/// contributes only `total - offset` bytes.
 ///
 /// Panic-free by construction, which matters because a panic in this app is
 /// fatal: there is no slice indexing here at all. `zip` stops at the shorter of

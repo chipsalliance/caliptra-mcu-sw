@@ -59,6 +59,7 @@ pub const EMULATOR_RUNTIME_TEST_FEATURES: &[&str] = &[
 pub const FPGA_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-i3c-simple",
     "test-i3c-constant-writes",
+    "test-caliptra-certs",
     "test-mctp-capsule-loopback",
     "test-fpga-flash-ctrl",
     "test-pldm-fw-update-e2e",
