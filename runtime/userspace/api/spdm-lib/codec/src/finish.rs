@@ -14,7 +14,7 @@ pub trait FinishReq {
     /// Whether the requester signature is present (bit 0).
     fn signature_present(&self) -> bool;
     /// Length of the opaque data field (always 0 for version <= 1.3).
-    fn opaque_data_len(&self) -> u16;
+    fn opaque_data_len(&self) -> usize;
     fn size_of(&self) -> usize;
 }
 
@@ -49,7 +49,7 @@ impl FinishReq for FinishReqBody {
     }
 
     #[inline]
-    fn opaque_data_len(&self) -> u16 {
+    fn opaque_data_len(&self) -> usize {
         0
     }
 
@@ -94,8 +94,8 @@ impl FinishReq for FinishReqBody14 {
     }
 
     #[inline]
-    fn opaque_data_len(&self) -> u16 {
-        self.req_opaque_data_length.get()
+    fn opaque_data_len(&self) -> usize {
+        self.req_opaque_data_length.get() as usize
     }
 
     #[inline]
@@ -106,7 +106,7 @@ impl FinishReq for FinishReqBody14 {
 
 // ---- Response builder ------------------------------------------------------
 
-/// FINISH_RSP response builder.
+/// FINISH_RSP response builder (version <= 1.3).
 ///
 /// Wire layout: `reserved(1) + reserved(1)`.
 /// No ResponderVerifyData when HBITC is NOT negotiated (our case).
@@ -121,5 +121,42 @@ impl ResponseBody for FinishRsp {
 
     fn encode_body(&self, w: &mut WireWriter<'_>) -> Result<(), WireError> {
         w.write_bytes(&[0u8, 0u8])
+    }
+}
+
+/// FINISH_RSP response builder for version 1.4.
+///
+/// Wire layout: `reserved(1) + reserved(1) + OpaqueDataLength(2)`.
+/// No opaque data supported at this point.
+/// No ResponderVerifyData when HBITC is NOT negotiated (our case).
+#[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned, Copy, Clone, Debug, Default)]
+#[repr(C)]
+pub struct FinishRsp14 {
+    reserved1: u8,
+    reserved2: u8,
+    opaque_data_length: U16,
+}
+
+const _: () = assert!(core::mem::size_of::<FinishRsp14>() == 4);
+
+impl FinishRsp14 {
+    pub fn new() -> Self {
+        FinishRsp14 {
+            reserved1: 0,
+            reserved2: 0,
+            opaque_data_length: 0.into(),
+        }
+    }
+}
+
+impl ResponseBody for FinishRsp14 {
+    const RESPONSE_CODE: ReqRespCode = ReqRespCode::FINISH_RSP;
+
+    fn body_size(&self) -> usize {
+        4
+    }
+
+    fn encode_body(&self, w: &mut WireWriter<'_>) -> Result<(), WireError> {
+        w.write_bytes(self.as_bytes())
     }
 }

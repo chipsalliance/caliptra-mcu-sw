@@ -15,8 +15,8 @@
 //! transitioning the session to [`SessionState::Established`].
 
 use caliptra_mcu_spdm_codec::{
-    FinishReq, FinishReqBody, FinishReqBody14, FinishRsp, ResponseBody, SpdmMsgHdrPdu, SpdmVersion,
-    WireWriter, SHA384_HASH_SIZE,
+    FinishReq, FinishReqBody, FinishReqBody14, FinishRsp, FinishRsp14, ResponseBody, SpdmMsgHdrPdu,
+    SpdmVersion, WireWriter, SHA384_HASH_SIZE,
 };
 use caliptra_mcu_spdm_traits::*;
 use zerocopy::FromBytes;
@@ -78,7 +78,7 @@ pub(crate) async fn handle_finish<Pal: SpdmPal>(
         return Err(SPDM_INVALID_REQUEST);
     }
     let (_opaque_data, after) = after
-        .split_at_checked(opaque_data_length as usize)
+        .split_at_checked(opaque_data_length)
         .ok_or(SPDM_INVALID_REQUEST)?;
 
     // Requester verify_data (SHA-384 HMAC).
@@ -88,9 +88,8 @@ pub(crate) async fn handle_finish<Pal: SpdmPal>(
     let req_verify_data = &after[..SHA384_HASH_SIZE];
 
     // ── Feed FINISH header + params + opaque data (without verify_data) to TH ────
-    let finish_hdr_len = SpdmMsgHdrPdu::SIZE
-        + finish_req_fixed.size_of()
-        + finish_req_fixed.opaque_data_len() as usize;
+    let finish_hdr_len =
+        SpdmMsgHdrPdu::SIZE + finish_req_fixed.size_of() + finish_req_fixed.opaque_data_len();
     session
         .transcript
         .append(pal, io, &spdm_msg[..finish_hdr_len])
@@ -132,9 +131,15 @@ pub(crate) async fn handle_finish<Pal: SpdmPal>(
 
     // ── Build FINISH_RSP SPDM message ──────────────────────────────
     let mut rsp_buf = [0u8; FINISH_RSP_SPDM_SIZE];
-    FinishRsp
-        .encode_with_header(version, &mut WireWriter::new(&mut rsp_buf))
-        .map_err(|_| SPDM_UNSPECIFIED)?;
+    if version <= SpdmVersion::V13 {
+        FinishRsp
+            .encode_with_header(version, &mut WireWriter::new(&mut rsp_buf))
+            .map_err(|_| SPDM_UNSPECIFIED)?;
+    } else {
+        FinishRsp14::new()
+            .encode_with_header(version, &mut WireWriter::new(&mut rsp_buf))
+            .map_err(|_| SPDM_UNSPECIFIED)?;
+    }
 
     // ── Feed FINISH_RSP to TH ──────────────────────────────────────
     session.transcript.append(pal, io, &rsp_buf).await?;
