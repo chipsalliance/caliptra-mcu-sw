@@ -20,5 +20,5 @@ jobs:
   spdm_validator_version_1_4_tests:
     uses: ./.github/workflows/spdm-validator.yml
     with:
-      validator_test_groups: VERSION,CAPABILITIES
+      validator_test_groups: VERSION,CAPABILITIES,ALGORITHMS
 
