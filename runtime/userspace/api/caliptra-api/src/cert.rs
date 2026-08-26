@@ -17,8 +17,9 @@ use crate::ApiAlloc;
 /// Caliptra command ID for `POPULATE_IDEV_ECC384_CERT`.
 const CMD_POPULATE_IDEV_ECC384_CERT: u32 = 0x4944_4550; // "IDEP"
 
-/// Maximum IDevID cert size accepted by Caliptra.
-const POPULATE_IDEV_MAX_CERT_SIZE: usize = 1024;
+/// Maximum IDevID ECC-384 cert size accepted by Caliptra
+/// (`PopulateIdevEcc384CertReq::MAX_CERT_SIZE`).
+pub const POPULATE_IDEV_ECC384_MAX_CERT_SIZE: usize = 1024;
 
 /// Fixed-size head of a `POPULATE_IDEV_*_CERT` request:
 /// `MailboxReqHeader.chksum(4) | cert_size(4)`, followed on the wire by exactly
@@ -65,19 +66,21 @@ const _: () = assert!(
         == offset_of!(PopulateIdevCertReqHeader, cert_size)
 );
 const _: () = assert!(offset_of!(PopulateIdevEcc384CertReq, cert) == PREFIX_LEN);
-const _: () = assert!(POPULATE_IDEV_MAX_CERT_SIZE == PopulateIdevEcc384CertReq::MAX_CERT_SIZE);
 const _: () =
-    assert!(PREFIX_LEN + POPULATE_IDEV_MAX_CERT_SIZE == size_of::<PopulateIdevEcc384CertReq>());
+    assert!(POPULATE_IDEV_ECC384_MAX_CERT_SIZE == PopulateIdevEcc384CertReq::MAX_CERT_SIZE);
+const _: () = assert!(
+    PREFIX_LEN + POPULATE_IDEV_ECC384_MAX_CERT_SIZE == size_of::<PopulateIdevEcc384CertReq>()
+);
 
 /// Populate the signed IDevID ECC-384 certificate into Caliptra via
 /// the `POPULATE_IDEV_ECC384_CERT` mailbox command.
 #[inline(never)]
 pub async fn populate_idev_ecc384_cert<A: ApiAlloc>(alloc: &A, cert: &[u8]) -> McuResult<()> {
-    if cert.is_empty() || cert.len() > POPULATE_IDEV_MAX_CERT_SIZE {
+    if cert.is_empty() || cert.len() > POPULATE_IDEV_ECC384_MAX_CERT_SIZE {
         return Err(INVARIANT);
     }
 
-    let req_len = PREFIX_LEN + POPULATE_IDEV_MAX_CERT_SIZE;
+    let req_len = PREFIX_LEN + POPULATE_IDEV_ECC384_MAX_CERT_SIZE;
     let mut req = alloc.alloc(req_len)?;
     req.fill(0);
 
@@ -100,23 +103,25 @@ pub async fn populate_idev_ecc384_cert<A: ApiAlloc>(alloc: &A, cert: &[u8]) -> M
 /// (`PopulateIdevMldsa87CertReq::MAX_CERT_SIZE`).
 pub const POPULATE_IDEV_MLDSA87_MAX_CERT_SIZE: usize = 8192;
 
-/// Length of an ML-DSA-87 IDevID certificate held in an OTP partition, decided
-/// from the partition's first word and its size.
+/// Length of an IDevID certificate held in an OTP partition, decided from the
+/// partition's first word.
 ///
 /// A certificate is an ASN.1 SEQUENCE: tag `0x30` then a long-form length.
-/// `0x82` (2 length bytes) is the only form these certs can take — an
-/// ML-DSA-87 signature alone exceeds 4 KiB, so the body is always in
-/// `128..=65535`, and Caliptra's 8192-byte cap rules out `0x83`.
+/// `0x82` (2 length bytes) is the only form these certs can take — both exceed
+/// 127 bytes, and Caliptra's 8192-byte cap rules out `0x83`.
 ///
 /// Returns `None` for anything not installable: erased OTP (which reads back
-/// `0xFF`), a non-SEQUENCE tag, a zero body, or a length that overruns either
-/// the partition or Caliptra's cap. Bounding by the *partition* matters because
-/// an OTP read clamps a straddling word to the partition end and pads with
-/// `0xFF`, so an over-long length would silently splice fill bytes into the
-/// attestation chain.
+/// `0xFF`), a non-SEQUENCE tag, a zero body, or a length overrunning the
+/// partition or `max_cert_size`. Bounding by the *partition* matters because an
+/// OTP read clamps a straddling word to the partition end and pads with `0xFF`,
+/// so an over-long length would splice fill into the attestation chain.
 ///
 /// `header_word` is the first 4 bytes of the partition, little-endian.
-pub fn mldsa87_cert_der_len(header_word: u32, partition_size: usize) -> Option<usize> {
+pub fn cert_der_len(
+    header_word: u32,
+    partition_size: usize,
+    max_cert_size: usize,
+) -> Option<usize> {
     let b = header_word.to_le_bytes();
     if b[0] != 0x30 || b[1] != 0x82 {
         return None;
@@ -127,10 +132,28 @@ pub fn mldsa87_cert_der_len(header_word: u32, partition_size: usize) -> Option<u
     }
     // 4 header bytes (tag + 0x82 + 2 length bytes) precede the body.
     let total = body_len + 4;
-    if total > partition_size || total > POPULATE_IDEV_MLDSA87_MAX_CERT_SIZE {
+    if total > partition_size || total > max_cert_size {
         return None;
     }
     Some(total)
+}
+
+/// [`cert_der_len`] with Caliptra's ECC-384 cap applied.
+pub fn ecc384_cert_der_len(header_word: u32, partition_size: usize) -> Option<usize> {
+    cert_der_len(
+        header_word,
+        partition_size,
+        POPULATE_IDEV_ECC384_MAX_CERT_SIZE,
+    )
+}
+
+/// [`cert_der_len`] with Caliptra's ML-DSA-87 cap applied.
+pub fn mldsa87_cert_der_len(header_word: u32, partition_size: usize) -> Option<usize> {
+    cert_der_len(
+        header_word,
+        partition_size,
+        POPULATE_IDEV_MLDSA87_MAX_CERT_SIZE,
+    )
 }
 
 /// Populate the signed IDevID ML-DSA-87 certificate into Caliptra via the
@@ -347,6 +370,29 @@ mod tests {
         // The emulator's ML-DSA-87 IDevID cert, and the exact cap.
         assert!(mldsa87_cert_len_ok(7741));
         assert!(mldsa87_cert_len_ok(POPULATE_IDEV_MLDSA87_MAX_CERT_SIZE));
+    }
+
+    /// The ECC-384 cap and partition bound, which decide whether an erased or
+    /// short partition reaches Caliptra.
+    #[test]
+    fn ecc384_cert_der_len_cases() {
+        // The emulator fixture: 30 82 02 1f -> 0x021f + 4 = 547.
+        let good = u32::from_le_bytes([0x30, 0x82, 0x02, 0x1f]);
+        assert_eq!(ecc384_cert_der_len(good, 547), Some(547));
+        // Erased OTP - the case that matters.
+        assert_eq!(ecc384_cert_der_len(u32::MAX, 547), None);
+        assert_eq!(ecc384_cert_der_len(0, 547), None);
+        // A cert one byte longer than its partition would splice 0xFF fill.
+        assert_eq!(ecc384_cert_der_len(good, 546), None);
+        // Past Caliptra's 1024-byte ECC cap even though the partition allows it.
+        let over_cap = u32::from_le_bytes([0x30, 0x82, 0x04, 0x00]); // 1024 + 4
+        assert_eq!(ecc384_cert_der_len(over_cap, 2048), None);
+        // Exactly the cap is accepted.
+        let at_cap = u32::from_le_bytes([0x30, 0x82, 0x03, 0xfc]); // 1020 + 4
+        assert_eq!(
+            ecc384_cert_der_len(at_cap, 2048),
+            Some(POPULATE_IDEV_ECC384_MAX_CERT_SIZE)
+        );
     }
 
     /// Every accept/reject path of the DER length discovery. The reject cases

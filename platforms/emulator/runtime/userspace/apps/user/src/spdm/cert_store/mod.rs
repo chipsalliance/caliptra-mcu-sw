@@ -10,9 +10,9 @@
 //!
 //! Caliptra generates the IDevID *keypair* and a self-signed CSR, but never the
 //! IDevID *certificate* — that is issued externally and provisioned into OTP.
-//! Both the ECC-384 (partition 1) and ML-DSA-87 (partition 2) IDevID certs are
-//! read here and prepended to their respective Caliptra cert chains via the
-//! `POPULATE_IDEV_*_CERT` mailbox commands.
+//! When provisioned, the ECC-384 (partition 1) and ML-DSA-87 (partition 2) IDevID
+//! certs are read here and prepended to their respective Caliptra cert chains via
+//! the `POPULATE_IDEV_*_CERT` mailbox commands.
 
 mod slot0_endorsements;
 
@@ -28,7 +28,8 @@ use caliptra_mcu_spdm_pal::cert::store::SharedCertStore;
 #[allow(unused_imports)]
 use core::fmt::Write as _;
 use mcu_caliptra_api::{
-    mldsa87_cert_der_len, populate_idev_ecc384_cert, populate_idev_mldsa87_cert, ApiAlloc,
+    ecc384_cert_der_len, mldsa87_cert_der_len, populate_idev_ecc384_cert,
+    populate_idev_mldsa87_cert, ApiAlloc,
 };
 use mcu_error::McuResult;
 
@@ -38,9 +39,6 @@ const VENDOR_STORE_SLOT: usize = 0;
 const OWNER_SPDM_SLOT: u8 = 2;
 #[cfg(feature = "test-mctp-spdm-set-certificate")]
 const TENANT_SPDM_SLOT: u8 = 3;
-
-/// IDevID ECC cert size in OTP partition 1.
-const ECC_DEVID_CERT_SIZE: usize = 547;
 
 /// OTP partition ID for the IDevID ECC certificate.
 const OTP_IDEVID_ECC_PARTITION: u32 = 0x01;
@@ -142,12 +140,12 @@ async fn yield_now() {
     YieldNow(false).await
 }
 
-/// One-time Caliptra setup: read the IDevID certs from OTP and install them.
+/// One-time Caliptra setup: read the IDevID ECC-384 cert from OTP and install it.
 ///
-/// Only the ECC-384 install runs here, and its failure aborts cert-store init.
-/// The ML-DSA-87 install is best-effort and lives in its own task so a
-/// PQC-provisioning defect cannot take down the ECC chain.
-pub async fn populate_idev<A: ApiAlloc>(alloc: &A) -> McuResult<()> {
+/// Returns `false` when partition 1 holds no cert, so the caller can leave slot 0
+/// unprovisioned rather than endorsing a chain with no IDevID in it. The
+/// ML-DSA-87 install is best-effort and lives in its own task.
+pub async fn populate_idev<A: ApiAlloc>(alloc: &A) -> McuResult<bool> {
     populate_idev_from_otp(alloc).await
 }
 
@@ -171,26 +169,39 @@ pub async fn populate_idev_mldsa<A: ApiAlloc>(alloc: &A) {
     }
 }
 
-/// Configure endorsement chains on the shared cert store, for all 3 slots.
+/// Configure endorsement chains on the shared cert store.
 ///
-/// Called once from spdm_task before spawning responders. Slot 0 failure is
-/// fatal. Slots 1-2 stay unprovisioned if flash is empty (they'll be
-/// provisioned via SET_CERTIFICATE).
-pub async fn setup_endorsements<A: ApiAlloc>(store: &SharedCertStore, alloc: &A) -> McuResult<()> {
+/// `idev_installed` gates slot 0: endorsing it without an IDevID would advertise
+/// the slot as provisioned while serving a chain whose Root CA makes no statement
+/// about this device. Left `Empty` instead, so the SPDM slot masks report it
+/// absent. Slots 1-2 stay unprovisioned if flash is empty (they'll be provisioned
+/// via SET_CERTIFICATE).
+pub async fn setup_endorsements<A: ApiAlloc>(
+    store: &SharedCertStore,
+    alloc: &A,
+    idev_installed: bool,
+) -> McuResult<()> {
     // Slot 0 (Vendor): ReadOnly endorsement with static Root CA.
     // Retry on mailbox busy (SHA calls during root cert hashing).
-    retry_on_mailbox_busy!(store.set_endorsement_chain(
-        alloc,
-        VENDOR_STORE_SLOT,
-        slot0_endorsements::SLOT0_ECC_ROOT_CERT_CHAIN,
-        0, // key_pair_id
-    ))?;
+    if idev_installed {
+        retry_on_mailbox_busy!(store.set_endorsement_chain(
+            alloc,
+            VENDOR_STORE_SLOT,
+            slot0_endorsements::SLOT0_ECC_ROOT_CERT_CHAIN,
+            0, // key_pair_id
+        ))?;
+    }
 
     // Slots 1-2 (Owner/Tenant): Managed endorsement, initially empty or loaded
     // from the cert-store flash partition. This remains test-only until a
     // production authorization/key-binding policy exists.
+    //
+    // Also gated on `idev_installed`: a managed slot serves the DPE chain with a
+    // fixed two-cert prefix skipped (Caliptra's IDevID and LDevID). Without the
+    // IDevID install that chain is one cert shorter, so the skip would drop the
+    // FMC alias too and serve a chain with a broken issuer link.
     #[cfg(feature = "test-mctp-spdm-set-certificate")]
-    {
+    if idev_installed {
         store
             .set_managed_endorsement(
                 1,
@@ -215,15 +226,48 @@ pub async fn setup_endorsements<A: ApiAlloc>(store: &SharedCertStore, alloc: &A)
 }
 
 /// Read the IDevID ECC-384 cert from OTP and install it into Caliptra.
-async fn populate_idev_from_otp<A: ApiAlloc>(alloc: &A) -> McuResult<()> {
-    let mut cert_buf = [0u8; ECC_DEVID_CERT_SIZE];
+///
+/// Submits the cert's own DER length, not the partition size: nothing downstream
+/// parses the DER — not Caliptra's `POPULATE_IDEV_ECC384_CERT` handler either —
+/// so an erased or short partition would otherwise splice `0xFF` fill into the
+/// attestation chain and still report success.
+async fn populate_idev_from_otp<A: ApiAlloc>(alloc: &A) -> McuResult<bool> {
     let otp = ExternalOtp::<DefaultSyscalls>::new();
 
-    // Same word-at-a-time read as the ML-DSA path; 547 is not a word multiple,
-    // so the final word contributes 3 bytes.
-    read_otp_range(&otp, OTP_IDEVID_ECC_PARTITION, &mut cert_buf).await?;
+    let Some(cert_size) = cert_der_len(&otp, OTP_IDEVID_ECC_PARTITION, ecc384_cert_der_len).await?
+    else {
+        let mut cw = Console::<DefaultSyscalls>::writer();
+        crate::log_warn!(cw, "SPDM: no ECC-384 IDevID cert in OTP; skipping install");
+        return Ok(false);
+    };
 
-    retry_on_mailbox_busy!(populate_idev_ecc384_cert(alloc, &cert_buf))
+    // Staged in scratch rather than a stack buffer: this runs inside an embassy
+    // task future, where a 1 KiB frame is expensive.
+    let mut cert = alloc.alloc(cert_size)?;
+    read_otp_range(&otp, OTP_IDEVID_ECC_PARTITION, &mut cert).await?;
+
+    retry_on_mailbox_busy!(populate_idev_ecc384_cert(alloc, &cert))?;
+    Ok(true)
+}
+
+/// Length of the cert in an OTP partition, or `None` if it holds no usable cert.
+///
+/// `len_policy` is the per-algorithm bound from `mcu-caliptra-api`, where it is
+/// covered by host unit tests; user-app is excluded from `cargo test`
+/// (xtask/src/test.rs).
+async fn cert_der_len(
+    otp: &ExternalOtp<DefaultSyscalls>,
+    partition_id: u32,
+    len_policy: fn(u32, usize) -> Option<usize>,
+) -> McuResult<Option<usize>> {
+    let word = otp
+        .read(partition_id, 0)
+        .await
+        .map_err(|_| mcu_error::codes::INTERNAL_BUG)?;
+    let partition_size = otp
+        .partition_size(partition_id)
+        .map_err(|_| mcu_error::codes::INTERNAL_BUG)? as usize;
+    Ok(len_policy(word, partition_size))
 }
 
 /// Read the IDevID ML-DSA-87 cert from OTP and install it into Caliptra.
@@ -243,7 +287,9 @@ async fn populate_idev_mldsa_from_otp<A: ApiAlloc>(alloc: &A) -> McuResult<()> {
     // Submit the cert's own DER length, not the whole partition: a production
     // cert shorter than its partition would otherwise splice the 0xFF fill into
     // the chain.
-    let Some(cert_size) = mldsa_cert_der_len(&otp).await? else {
+    let Some(cert_size) =
+        cert_der_len(&otp, OTP_IDEVID_MLDSA_PARTITION, mldsa87_cert_der_len).await?
+    else {
         // No cert provisioned — leave the MLDSA chain as Caliptra built it. Say
         // so: this is the branch that decides a device ships without a PQC
         // IDevID, so the log has to distinguish it from a successful install.
@@ -264,29 +310,6 @@ async fn populate_idev_mldsa_from_otp<A: ApiAlloc>(alloc: &A) -> McuResult<()> {
         populate_idev_mldsa87_cert(alloc, &cert),
         MLDSA_INSTALL_MAX_ATTEMPTS
     )
-}
-
-/// Determine the ML-DSA-87 IDevID cert length from its own DER header.
-///
-/// A certificate is an ASN.1 SEQUENCE: tag `0x30`, then a long-form length.
-/// `0x82` (2 length bytes) is the only form these certs can take: the ML-DSA-87
-/// signature alone exceeds 4 KiB, so the body is always in `128..=65535`.
-///
-/// Returns `Ok(None)` for anything that is not a cert this device can install —
-/// erased OTP, a truncated header, or a length that overruns the partition.
-/// All of those mean "no usable PQC cert provisioned", which the caller skips;
-/// none of them should be able to take down the ECC chain.
-async fn mldsa_cert_der_len(otp: &ExternalOtp<DefaultSyscalls>) -> McuResult<Option<usize>> {
-    let word = otp
-        .read(OTP_IDEVID_MLDSA_PARTITION, 0)
-        .await
-        .map_err(|_| mcu_error::codes::INTERNAL_BUG)?;
-    let partition_size = otp
-        .partition_size(OTP_IDEVID_MLDSA_PARTITION)
-        .map_err(|_| mcu_error::codes::INTERNAL_BUG)? as usize;
-    // Length policy lives in api-lite so it is covered by host unit tests;
-    // user-app itself is excluded from `cargo test` (xtask/src/test.rs).
-    Ok(mldsa87_cert_der_len(word, partition_size))
 }
 
 /// Read `out.len()` bytes from the start of an OTP partition.
