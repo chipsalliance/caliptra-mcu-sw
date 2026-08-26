@@ -471,10 +471,11 @@ This flow is used when an entire vendor PK hash slot must be replaced.
 
 **Process**:
 
-1. Prepare target slot `S`. Its PQC key type and revocation metadata must make
-   it functional. If its hash is empty, complete the authorization flow and use
-   `MC_PROVISION_VENDOR_PK_HASH` to write the hash; that command writes only the
-   hash.
+1. Prepare target slot `S`. It must not be marked invalid in
+    `VENDOR_PK_HASH_VALID`, and its PQC key type and revocation metadata must
+    make it functional. If its hash is empty, complete the authorization flow
+    and use `MC_PROVISION_VENDOR_PK_HASH` to write the hash; that command writes
+    only the hash.
 2. With the default `VendorKeyPolicy`, ensure `S` is the second functional slot
    in the slot 0-to-15 scan order. The rotation strap does not select an
    arbitrary slot or necessarily the numerically adjacent slot. Use a custom
@@ -506,7 +507,7 @@ sequenceDiagram
     MCU_RT->>Fuses: Write and verify hash in slot S
     Requester->>Requester: Stage Caliptra bundle matching slot S
     Requester->>Strap: Assert rotation
-    Requester->>MCU_ROM: Trigger Reboot
+    Requester->>MCU_ROM: Trigger cold reboot
     MCU_ROM->>Strap: Read rotation enabled
     MCU_ROM->>Fuses: Scan valid and functional slots
     MCU_ROM->>MCU_ROM: Select second functional slot S
