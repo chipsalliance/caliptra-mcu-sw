@@ -341,13 +341,14 @@ async fn spdm_mctp_responder() {
         unsafe { MCTP_ALLOC_CELL.init_once(scratch_ptr, MCTP_SPDM_SCRATCH_SIZE) };
 
     {
+        // Serve anyway: returning here would skip `stack.run()` and the device
+        // would look hung. Slot 0 stays Empty, so it is reported absent.
         if let Err(e) = ensure_cert_store_init(allocator).await {
             crate::log_error!(
                 cw,
-                "SPDM_MCTP: cert store init failed: 0x{}",
+                "SPDM_MCTP: cert store init failed, serving without slot 0: 0x{}",
                 crate::Hex32(u32::from(e))
             );
-            return;
         }
     }
 
@@ -415,13 +416,13 @@ async fn spdm_doe_responder() {
         unsafe { DOE_ALLOC_CELL.init_once(scratch_ptr, DOE_SPDM_SCRATCH_SIZE) };
 
     {
+        // Serve anyway — same reasoning as the MCTP responder above.
         if let Err(e) = ensure_cert_store_init(allocator).await {
             crate::log_error!(
                 cw,
-                "SPDM_DOE: cert store init failed: 0x{}",
+                "SPDM_DOE: cert store init failed, serving without slot 0: 0x{}",
                 crate::Hex32(u32::from(e))
             );
-            return;
         }
     }
 

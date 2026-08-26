@@ -28,7 +28,8 @@ use caliptra_mcu_spdm_pal::cert::store::SharedCertStore;
 #[allow(unused_imports)]
 use core::fmt::Write as _;
 use mcu_caliptra_api::{
-    mldsa87_cert_der_len, populate_idev_ecc384_cert, populate_idev_mldsa87_cert, ApiAlloc,
+    is_der_cert_header, mldsa87_cert_der_len, populate_idev_ecc384_cert,
+    populate_idev_mldsa87_cert, ApiAlloc,
 };
 use mcu_error::McuResult;
 
@@ -144,9 +145,9 @@ async fn yield_now() {
 
 /// One-time Caliptra setup: read the IDevID certs from OTP and install them.
 ///
-/// Only the ECC-384 install runs here, and its failure aborts cert-store init.
-/// The ML-DSA-87 install is best-effort and lives in its own task so a
-/// PQC-provisioning defect cannot take down the ECC chain.
+/// Only the ECC-384 install runs here; its failure fails cert-store init, which
+/// leaves slot 0 unprovisioned but no longer stops the responders from serving.
+/// The ML-DSA-87 install is best-effort and lives in its own task.
 pub async fn populate_idev<A: ApiAlloc>(alloc: &A) -> McuResult<()> {
     populate_idev_from_otp(alloc).await
 }
@@ -215,15 +216,40 @@ pub async fn setup_endorsements<A: ApiAlloc>(store: &SharedCertStore, alloc: &A)
 }
 
 /// Read the IDevID ECC-384 cert from OTP and install it into Caliptra.
+///
+/// Skips the install when partition 1 is unprovisioned. Nothing downstream
+/// parses the DER, so submitting an erased partition would splice 547 bytes of
+/// `0xFF` into the attestation chain and still report success.
 async fn populate_idev_from_otp<A: ApiAlloc>(alloc: &A) -> McuResult<()> {
     let mut cert_buf = [0u8; ECC_DEVID_CERT_SIZE];
     let otp = ExternalOtp::<DefaultSyscalls>::new();
+
+    if !otp_holds_der_cert(&otp, OTP_IDEVID_ECC_PARTITION).await? {
+        let mut cw = Console::<DefaultSyscalls>::writer();
+        crate::log_warn!(cw, "SPDM: no ECC-384 IDevID cert in OTP; skipping install");
+        return Ok(());
+    }
 
     // Same word-at-a-time read as the ML-DSA path; 547 is not a word multiple,
     // so the final word contributes 3 bytes.
     read_otp_range(&otp, OTP_IDEVID_ECC_PARTITION, &mut cert_buf).await?;
 
     retry_on_mailbox_busy!(populate_idev_ecc384_cert(alloc, &cert_buf))
+}
+
+/// Whether an OTP partition holds a DER certificate rather than erased fill.
+///
+/// Header policy lives in api-lite so it is covered by host unit tests;
+/// user-app itself is excluded from `cargo test` (xtask/src/test.rs).
+async fn otp_holds_der_cert(
+    otp: &ExternalOtp<DefaultSyscalls>,
+    partition_id: u32,
+) -> McuResult<bool> {
+    let word = otp
+        .read(partition_id, 0)
+        .await
+        .map_err(|_| mcu_error::codes::INTERNAL_BUG)?;
+    Ok(is_der_cert_header(word))
 }
 
 /// Read the IDevID ML-DSA-87 cert from OTP and install it into Caliptra.

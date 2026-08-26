@@ -100,6 +100,18 @@ pub async fn populate_idev_ecc384_cert<A: ApiAlloc>(alloc: &A, cert: &[u8]) -> M
 /// (`PopulateIdevMldsa87CertReq::MAX_CERT_SIZE`).
 pub const POPULATE_IDEV_MLDSA87_MAX_CERT_SIZE: usize = 8192;
 
+/// Whether an OTP partition's first word looks like a DER certificate header.
+///
+/// Provisioning check for the fixed-size ECC path, which has no length to
+/// derive: both IDevID certs exceed 127 bytes, so `30 82` is the only header
+/// they can carry, and an erased partition reads `0xFF` and fails it.
+///
+/// `header_word` is the first 4 bytes of the partition, little-endian.
+pub fn is_der_cert_header(header_word: u32) -> bool {
+    let b = header_word.to_le_bytes();
+    b[0] == 0x30 && b[1] == 0x82
+}
+
 /// Length of an ML-DSA-87 IDevID certificate held in an OTP partition, decided
 /// from the partition's first word and its size.
 ///
@@ -352,6 +364,31 @@ mod tests {
     /// Every accept/reject path of the DER length discovery. The reject cases
     /// are what keep an unprovisioned or malformed partition from splicing
     /// `0xFF` fill into the ML-DSA attestation chain.
+    #[test]
+    /// The ECC path submits a fixed 547 bytes with no length to validate, so
+    /// this predicate is the only thing standing between an erased partition and
+    /// 547 bytes of `0xFF` spliced into the attestation chain.
+    #[test]
+    fn is_der_cert_header_cases() {
+        // Erased OTP - the case that matters.
+        assert!(!is_der_cert_header(u32::MAX));
+        assert!(!is_der_cert_header(0));
+        // Real headers: the emulator ECC fixture (30 82 02 19) and ML-DSA one.
+        assert!(is_der_cert_header(u32::from_le_bytes([
+            0x30, 0x82, 0x02, 0x19
+        ])));
+        assert!(is_der_cert_header(u32::from_le_bytes([
+            0x30, 0x82, 0x1e, 0x39
+        ])));
+        // Wrong tag (SET, not SEQUENCE) and short-form length.
+        assert!(!is_der_cert_header(u32::from_le_bytes([
+            0x31, 0x82, 0x02, 0x19
+        ])));
+        assert!(!is_der_cert_header(u32::from_le_bytes([
+            0x30, 0x81, 0x7f, 0x00
+        ])));
+    }
+
     #[test]
     fn mldsa87_cert_der_len_cases() {
         // `30 82 1e 39` -> body 0x1e39 (7737) + 4 = 7741, the emulator fixture.
