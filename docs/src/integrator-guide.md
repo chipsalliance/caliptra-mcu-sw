@@ -491,7 +491,7 @@ sequenceDiagram
      Requester->>Requester: Stage Caliptra FMC + RT bundle signed with replacement key
      Requester->>MCU_ROM: Trigger cold reboot
      MCU_ROM->>Fuses: Read selected hash, PQC type, and revocations
-     MCU_ROM->>Core: Populate fuses; RI_DOWNLOAD_FIRMWARE
+    MCU_ROM->>Core: Populate fuses and send RI_DOWNLOAD_FIRMWARE
      Core->>Core: Verify Caliptra bundle with replacement key
      Core->>MCU_RT: Load and verify MCU Runtime
      Requester->>MCU_RT: Get Auth Challenge
@@ -549,7 +549,7 @@ sequenceDiagram
     MCU_ROM->>Strap: Read rotation enabled
     MCU_ROM->>Fuses: Scan valid and functional slots
     MCU_ROM->>MCU_ROM: Select second functional slot S
-    MCU_ROM->>Core: Populate slot S fuses; RI_DOWNLOAD_FIRMWARE
+    MCU_ROM->>Core: Populate slot S fuses and send RI_DOWNLOAD_FIRMWARE
     Core->>Core: Verify Caliptra bundle against slot S
     Core->>MCU_RT: Load and verify MCU Runtime
     Requester->>MCU_RT: Get Auth Challenge
