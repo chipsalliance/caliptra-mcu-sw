@@ -205,12 +205,15 @@ async fn ensure_cert_store_init<A: mcu_caliptra_api::ApiAlloc>(
     match state {
         0 => {
             CERT_STORE_STATE.store(1, Ordering::Release);
-            if let Err(e) = cert_store::populate_idev(alloc).await {
-                CERT_STORE_STATE.store(0, Ordering::Release);
-                CERT_STORE_INIT.sender().send(false);
-                return Err(e);
-            }
-            let r = cert_store::setup_endorsements(&CERT_STORE, alloc).await;
+            let idev_installed = match cert_store::populate_idev(alloc).await {
+                Ok(installed) => installed,
+                Err(e) => {
+                    CERT_STORE_STATE.store(0, Ordering::Release);
+                    CERT_STORE_INIT.sender().send(false);
+                    return Err(e);
+                }
+            };
+            let r = cert_store::setup_endorsements(&CERT_STORE, alloc, idev_installed).await;
             CERT_STORE_STATE.store(if r.is_ok() { 2 } else { 0 }, Ordering::Release);
             CERT_STORE_INIT.sender().send(r.is_ok());
             r
@@ -341,8 +344,8 @@ async fn spdm_mctp_responder() {
         unsafe { MCTP_ALLOC_CELL.init_once(scratch_ptr, MCTP_SPDM_SCRATCH_SIZE) };
 
     {
-        // Serve anyway: returning here would skip `stack.run()` and the device
-        // would look hung. Slot 0 stays Empty, so it is reported absent.
+        // Serve anyway: returning would skip `stack.run()`, so nothing would
+        // answer GET_VERSION and the device would look hung, not degraded.
         if let Err(e) = ensure_cert_store_init(allocator).await {
             crate::log_error!(
                 cw,
@@ -416,7 +419,7 @@ async fn spdm_doe_responder() {
         unsafe { DOE_ALLOC_CELL.init_once(scratch_ptr, DOE_SPDM_SCRATCH_SIZE) };
 
     {
-        // Serve anyway — same reasoning as the MCTP responder above.
+        // Serve anyway: a missing slot 0 must degrade, not hang the transport.
         if let Err(e) = ensure_cert_store_init(allocator).await {
             crate::log_error!(
                 cw,

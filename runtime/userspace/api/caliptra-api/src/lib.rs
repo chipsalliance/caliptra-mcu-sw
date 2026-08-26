@@ -90,9 +90,9 @@ pub use auth_stash::{
 pub use capabilities::{core_capabilities, CORE_CAPABILITIES_SIZE};
 #[cfg(feature = "mailbox-io")]
 pub use cert::{
-    get_attested_csr_ecc384, get_attested_csr_mldsa87, get_idev_csr_ecc384, is_der_cert_header,
-    mldsa87_cert_der_len, populate_idev_ecc384_cert, populate_idev_mldsa87_cert,
-    POPULATE_IDEV_MLDSA87_MAX_CERT_SIZE,
+    cert_der_len, ecc384_cert_der_len, get_attested_csr_ecc384, get_attested_csr_mldsa87,
+    get_idev_csr_ecc384, mldsa87_cert_der_len, populate_idev_ecc384_cert,
+    populate_idev_mldsa87_cert, POPULATE_IDEV_MLDSA87_MAX_CERT_SIZE,
 };
 #[cfg(feature = "mailbox-io")]
 pub use debug_unlock::{
