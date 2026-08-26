@@ -23,6 +23,7 @@
     - [PLDM](./pldm.md)
     - [Firmware Update](./firmware_update.md)
     - [Caliptra Authorization Model](./caliptra_authorization_model.md)
+    - [Caliptra Authorization Credential Provisioning](./caliptra_credential_provisioning.md)
     - [Common Caliptra Commands](./caliptra_common_commands.md)
         - [SPDM VDM Commands](./caliptra_spdm_vdm_cmds.md)
         - [Unified Command Handling](./unified_caliptra_command_handling.md)
