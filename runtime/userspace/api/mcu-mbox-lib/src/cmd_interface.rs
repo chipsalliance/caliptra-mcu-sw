@@ -1735,7 +1735,11 @@ fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32) -> usize {
         }
         c if c == CommandId::MC_DPE_SIGNER_CONTEXT_CERT => {
             size_of::<MailboxRespHeaderVarSize>()
-                + caliptra_mcu_mbox_common::messages::MAX_ENDORSEMENT_CERT_SIZE
+                + if cfg!(feature = "ocp-lock") {
+                    caliptra_mcu_mbox_common::messages::MAX_ENDORSEMENT_CERT_SIZE
+                } else {
+                    caliptra_mcu_mbox_common::messages::MAX_RESP_DATA_SIZE
+                }
         }
         c if c == CommandId::MC_GET_DPE_CERTIFICATE_CHAIN => {
             size_of::<MailboxRespHeaderVarSize>() + 1024
