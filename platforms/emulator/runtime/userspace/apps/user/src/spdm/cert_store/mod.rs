@@ -195,8 +195,13 @@ pub async fn setup_endorsements<A: ApiAlloc>(
     // Slots 1-2 (Owner/Tenant): Managed endorsement, initially empty or loaded
     // from the cert-store flash partition. This remains test-only until a
     // production authorization/key-binding policy exists.
+    //
+    // Also gated on `idev_installed`: a managed slot serves the DPE chain with a
+    // fixed two-cert prefix skipped (Caliptra's IDevID and LDevID). Without the
+    // IDevID install that chain is one cert shorter, so the skip would drop the
+    // FMC alias too and serve a chain with a broken issuer link.
     #[cfg(feature = "test-mctp-spdm-set-certificate")]
-    {
+    if idev_installed {
         store
             .set_managed_endorsement(
                 1,
