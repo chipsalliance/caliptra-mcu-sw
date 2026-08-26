@@ -40,9 +40,6 @@ const OWNER_SPDM_SLOT: u8 = 2;
 #[cfg(feature = "test-mctp-spdm-set-certificate")]
 const TENANT_SPDM_SLOT: u8 = 3;
 
-/// IDevID ECC cert size in OTP partition 1.
-const ECC_DEVID_CERT_SIZE: usize = 547;
-
 /// OTP partition ID for the IDevID ECC certificate.
 const OTP_IDEVID_ECC_PARTITION: u32 = 0x01;
 
