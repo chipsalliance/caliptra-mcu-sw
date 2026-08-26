@@ -411,10 +411,10 @@ fresh emulator instance for each independently destructive scenario. The
 checked-in test keys are emulator fixtures only and must not be used as
 production authorization credentials.
 
-For per-key revocation, once all usable bits for a key type are burned in a
-slot, that key type is fully revoked in that slot. The last key index for a
-given key type cannot be revoked, matching Caliptra's requirement that a slot
-retain at least one usable key of each required type.
+For per-key revocation, the reference implementation rejects the maximum key
+index for each key type; it does not dynamically identify the last remaining
+unrevoked key. It also rejects the ECC key, or active-type PQC key, that
+authenticated the currently running Caliptra firmware.
 
 ### Key Revocation Flows
 
@@ -423,68 +423,105 @@ within the same PK hash slot or in a different slot.
 
 #### Case 1: Revocation Within the Same PK Hash Slot
 
-This flow is used when a specific sub-key within a PK hash slot needs to be
-revoked (e.g., moving to a new key version) but other keys within that PK hash
-remain trusted.
+This flow is used when a specific verification key covered by a vendor PK hash
+needs to be revoked while the remaining keys covered by that hash stay trusted.
 
 **Process**:
 
-1. Push a new Runtime (RT) firmware signed with a new key.
-2. After the device boots with the replacement key, an authorized requester
-    sends `MC_FUSE_REVOKE_VENDOR_PUB_KEY` to MCU Runtime for the old key.
-3. MCU Runtime validates that the target key was not used for the current boot
-    and burns the corresponding revocation bit.
+1. Stage a Caliptra FMC + RT firmware bundle signed with a replacement vendor
+    key covered by the same vendor PK hash.
+2. Cold reboot. MCU ROM forwards the selected hash, PQC type, and revocation
+    masks to Caliptra Core. Caliptra Core ROM authenticates the new bundle; its
+    Runtime then loads and verifies MCU Runtime through the SoC manifest.
+3. After MCU Runtime starts, the requester obtains a one-use authorization
+    challenge and submits `MC_FUSE_REVOKE_VENDOR_PUB_KEY` for the old key.
+4. MCU Runtime reads the active key indexes from Caliptra `FW_INFO`, rejects a
+    request targeting a key used for the current boot, and burns the old key's
+    revocation bit.
+5. On subsequent cold boots, MCU ROM forwards the updated revocation mask and
+    Caliptra Core rejects firmware authenticated with the revoked key.
 
 ```mermaid
 sequenceDiagram
     participant Requester
     participant MCU_ROM as MCU ROM
-    participant MCU_RT as MCU RT
+     participant Core as Caliptra Core
+     participant MCU_RT as MCU Runtime
     participant Fuses as OTP Fuses
 
-    Requester->>MCU_ROM: Push new RT FW (signed with Key N+1)
-    MCU_ROM->>Fuses: Read revocation bitmask
-    MCU_ROM->>MCU_ROM: Verify signature with Key N+1
-    MCU_ROM->>MCU_RT: Boot into new MCU RT
-    Requester->>MCU_RT: MC_FUSE_REVOKE_VENDOR_PUB_KEY(slot, type, Key N)
-    MCU_RT->>Fuses: Burn revocation bit for Key N
+     Requester->>Requester: Stage Caliptra FMC + RT bundle signed with replacement key
+     Requester->>MCU_ROM: Trigger cold reboot
+     MCU_ROM->>Fuses: Read selected hash, PQC type, and revocations
+     MCU_ROM->>Core: Populate fuses; RI_DOWNLOAD_FIRMWARE
+     Core->>Core: Verify Caliptra bundle with replacement key
+     Core->>MCU_RT: Load and verify MCU Runtime
+     Requester->>MCU_RT: Get Auth Challenge
+     MCU_RT-->>Requester: One-use nonce
+    Requester->>Requester: Sign command payload and nonce
+     Requester->>MCU_RT: Authorized revoke command for old key
+     MCU_RT->>Core: Read FW_INFO and active vendor hash
+     Core-->>MCU_RT: Active key indexes and hash
+     MCU_RT->>Fuses: Burn old key revocation bit
+     MCU_RT-->>Requester: Success
 ```
 
 #### Case 2: Revocation Across Different PK Hash Slots
 
-This flow is used when the entire PK hash slot is compromised or needs to be
-replaced, requiring a transition to a new PK hash slot.
+This flow is used when an entire vendor PK hash slot must be replaced.
 
 **Process**:
 
-1. Provision the new vendor PK hash into an empty inactive slot if it was not
-    provisioned during manufacturing.
-2. Push a new Runtime (RT) firmware signed with a key from the new PK hash slot.
-3. Additionally assert the hardware strapping pin (bit 1 of
-    `mci_reg_generic_input_wires[1]`) to enable rotation.
-4. On reboot, the MCU ROM will select the new PK hash slot.
-5. An authorized requester sends `MC_FUSE_REVOKE_VENDOR_PK_HASH` to MCU
-    Runtime to burn the old PK hash slot as invalid.
+1. Prepare target slot `S`. Its PQC key type and revocation metadata must make
+   it functional. If its hash is empty, complete the authorization flow and use
+   `MC_PROVISION_VENDOR_PK_HASH` to write the hash; that command writes only the
+   hash.
+2. With the default `VendorKeyPolicy`, ensure `S` is the second functional slot
+   in the slot 0-to-15 scan order. The rotation strap does not select an
+   arbitrary slot or necessarily the numerically adjacent slot. Use a custom
+   policy when a different selection rule is required.
+3. Stage a Caliptra FMC + RT bundle whose vendor key descriptors match slot `S`,
+   assert bit 1 of `mci_reg_generic_input_wires[1]`, and cold reboot.
+4. MCU ROM selects the second functional slot and forwards its fuse values.
+   Caliptra Core ROM authenticates the bundle against slot `S`.
+5. After MCU Runtime starts, obtain a new authorization challenge and submit
+   `MC_FUSE_REVOKE_VENDOR_PK_HASH` for old slot `O`. MCU Runtime rejects the
+   command if `O` contains the active hash, then marks `O` invalid.
+6. Deassert the rotation strap after revoking `O`. On the next cold boot, `S`
+   is selected as the first functional slot. Leaving the strap asserted when
+   additional functional slots exist could select a different slot.
 
 ```mermaid
 sequenceDiagram
     participant Requester
-    participant Strapping as Strapping Pin
+    participant Strap as Rotation Strap
     participant MCU_ROM as MCU ROM
-    participant MCU_RT as MCU RT
+    participant Core as Caliptra Core
+    participant MCU_RT as MCU Runtime
     participant Fuses as OTP Fuses
 
-    Requester->>MCU_RT: MC_PROVISION_VENDOR_PK_HASH(slot M+1)
-    MCU_RT->>Fuses: Provision PK hash in slot M+1
-    Requester->>MCU_ROM: Push new RT FW (signed with Key in Slot M+1)
-    Requester->>Strapping: Assert Rotation Strap
+    Requester->>MCU_RT: Get Auth Challenge
+    MCU_RT-->>Requester: One-use nonce
+    Requester->>Requester: Sign provision command and nonce
+    Requester->>MCU_RT: Authorized provision hash for slot S, if needed
+    MCU_RT->>Fuses: Write and verify hash in slot S
+    Requester->>Requester: Stage Caliptra bundle matching slot S
+    Requester->>Strap: Assert rotation
     Requester->>MCU_ROM: Trigger Reboot
-    MCU_ROM->>Strapping: Read Strap (Rotation Enabled)
-    MCU_ROM->>Fuses: Read valid slots & functional status
-    MCU_ROM->>MCU_ROM: Skip PK Hash Slot N (first functional), Select PK Hash Slot N+1
-    MCU_ROM->>MCU_RT: Boot into new MCU RT
-    Requester->>MCU_RT: MC_FUSE_REVOKE_VENDOR_PK_HASH(slot N)
-    MCU_RT->>Fuses: Mark PK Hash Slot N as invalid
+    MCU_ROM->>Strap: Read rotation enabled
+    MCU_ROM->>Fuses: Scan valid and functional slots
+    MCU_ROM->>MCU_ROM: Select second functional slot S
+    MCU_ROM->>Core: Populate slot S fuses; RI_DOWNLOAD_FIRMWARE
+    Core->>Core: Verify Caliptra bundle against slot S
+    Core->>MCU_RT: Load and verify MCU Runtime
+    Requester->>MCU_RT: Get Auth Challenge
+    MCU_RT-->>Requester: New one-use nonce
+    Requester->>Requester: Sign revoke command and nonce
+    Requester->>MCU_RT: Authorized revoke command for old slot O
+    MCU_RT->>Core: Read active vendor hash
+    Core-->>MCU_RT: Active hash from slot S
+    MCU_RT->>Fuses: Mark old slot O invalid
+    MCU_RT-->>Requester: Success
+    Requester->>Strap: Deassert rotation
 ```
 
 ## ROM Milestone Hooks
