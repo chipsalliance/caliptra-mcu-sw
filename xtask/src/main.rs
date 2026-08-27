@@ -831,6 +831,7 @@ fn main() {
                 signing_request,
                 key_paths,
                 svn,
+                component_svn_config,
             } => auth_manifest::create(
                 images,
                 mcu_image,
@@ -838,6 +839,7 @@ fn main() {
                 signing_request.as_deref(),
                 key_paths,
                 *svn,
+                component_svn_config.as_deref(),
             ),
             AuthManifestCommands::AttachSignatures {
                 unsigned_manifest,
