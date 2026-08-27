@@ -152,6 +152,10 @@ pub struct EmulatorArgs {
     #[arg(long)]
     pub soc_manifest: PathBuf,
 
+    /// Value reported by the read-only MCI_REG_MCU_LSU_AXI_USER strap.
+    #[arg(long, value_parser=maybe_hex::<u32>, default_value_t = 0)]
+    pub mcu_lsu_axi_user: u32,
+
     #[arg(long)]
     pub i3c_port: Option<u16>,
 
@@ -921,7 +925,7 @@ impl Emulator {
 
         let cptra_boot_go = Rc::new(Cell::new(false));
 
-        let mci = Mci::new(
+        let mut mci = Mci::new(
             &clock.clone(),
             ext_mci,
             mci_irq,
@@ -931,6 +935,7 @@ impl Emulator {
             [0, 0],
             cptra_boot_go.clone(),
         );
+        mci.set_mcu_lsu_axi_user(cli.mcu_lsu_axi_user);
 
         let mut auto_root_bus = AutoRootBus::new(
             delegates,
