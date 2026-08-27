@@ -17,6 +17,7 @@ pub enum SpdmVersion {
     V11 = 0x11,
     V12 = 0x12,
     V13 = 0x13,
+    V14 = 0x14,
 }
 
 impl SpdmVersion {
@@ -36,6 +37,7 @@ impl SpdmVersion {
             0x11 => Some(SpdmVersion::V11),
             0x12 => Some(SpdmVersion::V12),
             0x13 => Some(SpdmVersion::V13),
+            0x14 => Some(SpdmVersion::V14),
             _ => None,
         }
     }
@@ -48,6 +50,7 @@ impl SpdmVersion {
             SpdmVersion::V11 => "1.1",
             SpdmVersion::V12 => "1.2",
             SpdmVersion::V13 => "1.3",
+            SpdmVersion::V14 => "1.4",
         }
     }
 }
