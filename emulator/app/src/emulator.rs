@@ -152,6 +152,12 @@ pub struct EmulatorArgs {
     #[arg(long)]
     pub soc_manifest: PathBuf,
 
+    /// Models the SoC strap `SS_SOC_DBG_UNLOCK_LEVEL[0]` at reset deassertion.
+    /// Combined with debug intent to decide whether the Caliptra security state
+    /// is latched as Production or honours the requested device lifecycle.
+    #[arg(long, default_value_t = false)]
+    pub ss_soc_dbg_unlock_level0: bool,
+
     #[arg(long)]
     pub i3c_port: Option<u16>,
 
@@ -438,6 +444,7 @@ impl Emulator {
         let use_mcu_recovery_interface = is_flash_based_boot;
 
         let (mut caliptra_cpu, soc_to_caliptra, _, ext_mci) = start_caliptra(&StartCaliptraArgs {
+            ss_soc_dbg_unlock_level0: cli.ss_soc_dbg_unlock_level0,
             rom: BytesOrPath::Path(cli.caliptra_rom),
             device_lifecycle: device_lifecycle_str,
             req_idevid_csr,
