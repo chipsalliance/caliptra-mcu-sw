@@ -1284,7 +1284,7 @@ fn run_kernel_tests(
                 && ho.rom.ocp_lock.hek_state.active_state == HekSeedState::Programmed
                 && ho.rom.ocp_lock.hek_state.total_slots == 8
                 && ho.firmware_boot_type()
-                    == Some(caliptra_mcu_romtime::handoff::FirmwareBootType::Pldm)
+                    == Some(caliptra_mcu_romtime::handoff::FirmwareBootType::Streaming)
                 && ho_addr == expected_addr
                 && ho.rom.fht_major_ver == caliptra_mcu_romtime::handoff::FHT_MAJOR_VERSION
                 && ho.rom.fht_minor_ver == caliptra_mcu_romtime::handoff::FHT_MINOR_VERSION

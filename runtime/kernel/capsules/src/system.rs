@@ -42,8 +42,13 @@ impl<E: caliptra_mcu_romtime::Exit> SyscallDriver for System<'_, E> {
             }
             cmd::GET_FIRMWARE_BOOT_TYPE => {
                 match caliptra_mcu_romtime::handoff::get_firmware_boot_type() {
-                    Some(boot_type) => CommandReturn::success_u32(boot_type as u32),
-                    None => CommandReturn::failure(ErrorCode::NOSUPPORT),
+                    Ok(boot_type) => CommandReturn::success_u32(boot_type as u32),
+                    Err(caliptra_mcu_romtime::handoff::FirmwareBootTypeReadError::Unsupported) => {
+                        CommandReturn::failure(ErrorCode::NOSUPPORT)
+                    }
+                    Err(caliptra_mcu_romtime::handoff::FirmwareBootTypeReadError::Invalid) => {
+                        CommandReturn::failure(ErrorCode::INVAL)
+                    }
                 }
             }
             _ => CommandReturn::failure(ErrorCode::NOSUPPORT),

@@ -35,8 +35,10 @@ pub enum FirmwareBootType {
     Unknown = 0,
     /// Firmware was loaded from flash by MCU ROM.
     Flash = 1,
-    /// Firmware was streamed through PLDM.
-    Pldm = 2,
+    /// Firmware used streaming boot.
+    Streaming = 2,
+    /// Firmware was loaded over the network.
+    Network = 3,
 }
 
 impl TryFrom<u8> for FirmwareBootType {
@@ -46,10 +48,17 @@ impl TryFrom<u8> for FirmwareBootType {
         match value {
             value if value == Self::Unknown as u8 => Ok(Self::Unknown),
             value if value == Self::Flash as u8 => Ok(Self::Flash),
-            value if value == Self::Pldm as u8 => Ok(Self::Pldm),
+            value if value == Self::Streaming as u8 => Ok(Self::Streaming),
+            value if value == Self::Network as u8 => Ok(Self::Network),
             _ => Err(()),
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FirmwareBootTypeReadError {
+    Unsupported,
+    Invalid,
 }
 
 /// Handoff data produced by ROM.
@@ -202,10 +211,16 @@ impl HandoffData {
 
     /// Return the source used to boot the MCU firmware.
     pub fn firmware_boot_type(&self) -> Option<FirmwareBootType> {
+        self.read_firmware_boot_type().ok()
+    }
+
+    /// Read the MCU firmware boot source with version and encoding validation.
+    pub fn read_firmware_boot_type(&self) -> Result<FirmwareBootType, FirmwareBootTypeReadError> {
         if self.rom.fht_minor_ver < FIRMWARE_BOOT_TYPE_FHT_MINOR_VERSION {
-            return None;
+            return Err(FirmwareBootTypeReadError::Unsupported);
         }
-        FirmwareBootType::try_from(self.rom.firmware_boot_type).ok()
+        FirmwareBootType::try_from(self.rom.firmware_boot_type)
+            .map_err(|()| FirmwareBootTypeReadError::Invalid)
     }
 
     /// Return the stable owner CMK when this handoff version supports it.
@@ -240,6 +255,15 @@ impl HandoffData {
                 runtime: RuntimeHandoffTable::default(),
                 rom_stable_owner_key: StableOwnerKeyHandoff::default(),
             }
+        }
+    }
+
+    /// Record the source selected to boot the MCU firmware.
+    pub fn write_firmware_boot_type(firmware_boot_type: FirmwareBootType) {
+        // Safety: ROM owns the handoff table while constructing data for Runtime.
+        unsafe {
+            let handoff = &raw mut HANDOFF;
+            (*handoff).rom.firmware_boot_type = firmware_boot_type as u8;
         }
     }
 
@@ -286,13 +310,13 @@ pub static mut HANDOFF: HandoffData = HandoffData {
 };
 
 /// Return the firmware boot type from a valid handoff table.
-pub fn get_firmware_boot_type() -> Option<FirmwareBootType> {
+pub fn get_firmware_boot_type() -> Result<FirmwareBootType, FirmwareBootTypeReadError> {
     // SAFETY: Runtime treats ROM-owned handoff data as read-only.
     let handoff = unsafe { &*core::ptr::addr_of!(HANDOFF) };
     if handoff.rom.fht_marker != FHT_MARKER || handoff.rom.fht_major_ver != FHT_MAJOR_VERSION {
-        return None;
+        return Err(FirmwareBootTypeReadError::Unsupported);
     }
-    handoff.firmware_boot_type()
+    handoff.read_firmware_boot_type()
 }
 
 /// Safe accessor for the entire OCP LOCK state in handoff table.
@@ -345,14 +369,31 @@ mod tests {
         handoff.rom.firmware_boot_type = FirmwareBootType::Flash as u8;
         assert_eq!(handoff.firmware_boot_type(), Some(FirmwareBootType::Flash));
 
-        handoff.rom.firmware_boot_type = FirmwareBootType::Pldm as u8;
-        assert_eq!(handoff.firmware_boot_type(), Some(FirmwareBootType::Pldm));
+        handoff.rom.firmware_boot_type = FirmwareBootType::Streaming as u8;
+        assert_eq!(
+            handoff.firmware_boot_type(),
+            Some(FirmwareBootType::Streaming)
+        );
+
+        handoff.rom.firmware_boot_type = FirmwareBootType::Network as u8;
+        assert_eq!(
+            handoff.firmware_boot_type(),
+            Some(FirmwareBootType::Network)
+        );
 
         handoff.rom.firmware_boot_type = u8::MAX;
         assert_eq!(handoff.firmware_boot_type(), None);
+        assert_eq!(
+            handoff.read_firmware_boot_type(),
+            Err(FirmwareBootTypeReadError::Invalid)
+        );
 
         handoff.rom.fht_minor_ver = FIRMWARE_BOOT_TYPE_FHT_MINOR_VERSION - 1;
         handoff.rom.firmware_boot_type = FirmwareBootType::Flash as u8;
         assert_eq!(handoff.firmware_boot_type(), None);
+        assert_eq!(
+            handoff.read_firmware_boot_type(),
+            Err(FirmwareBootTypeReadError::Unsupported)
+        );
     }
 }
