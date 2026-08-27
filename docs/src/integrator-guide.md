@@ -158,11 +158,12 @@ In the reference schema and map, `soc_image_min_svn_0` and `soc_image_min_svn_1`
 - If you are **not** using DOT, then `CPTRA_SS_OWNER_PK_HASH` is the sole
   source of the owner PK hash and must be provisioned or another integrator-
   specific mechanism must be used.
-- Reference platform ROMs also support a force-fuse-owner recovery policy:
-    asserting `mci_reg_generic_input_wires[1]` bit 28 sets
-    `OwnerPkHashPolicy::ForceFuse`, bypasses the DOT blob, and requires
-    `CPTRA_SS_OWNER_PK_HASH` to be provisioned. If the forced fuse owner path is
-    requested while the fuse is empty, ROM reports a fatal error.
+- Platforms can select a force-fuse-owner recovery policy by setting
+    `RomParameters::owner_pk_hash_policy` to `OwnerPkHashPolicy::ForceFuse`.
+    This bypasses the DOT blob and requires `CPTRA_SS_OWNER_PK_HASH` to be
+    provisioned. If the forced fuse owner path is requested while the fuse is
+    empty, ROM reports a fatal error. Reference `core_test` builds map generic
+    input wire 1 bit 28 to this parameter.
 
 ## SVN Anti-Rollback Integration
 
@@ -294,10 +295,10 @@ service or bridge that owns MCI access and enforces the deployment policy.
 
 ## Vendor Public Key Selection and Rotation
 
-Caliptra MCU supports a vendor public key selection and rotation scheme
-based on fuses and hardware strapping pins. This section describes how the ROM
-selects the active vendor public key slot and how integrators can manage
-rotation and revocation.
+Caliptra MCU supports a vendor public key selection and rotation scheme based
+on fuses and platform policy. This section describes how the ROM selects the
+active vendor public key slot and how integrators can manage rotation and
+revocation.
 
 ### Key Policy and Selection Process
 
@@ -321,24 +322,20 @@ available slots):
     be overridden by passing a different implementation of the `VendorKeyPolicy`
     into the ROM parameters.
 
-### Key Rotation via Strapping
+### Key Rotation Policy
 
-Integrators can force the ROM to rotate to the next available key by using a
-hardware strapping pin:
+Integrators can ask the default ROM policy to rotate to the next available key
+by setting `RomParameters::vendor_pk_hash_rotation`. The ROM then skips the
+first functional slot and selects the second functional slot. This allows a
+platform to switch to a new key without burning fuses, provided that a second
+valid and functional key is provisioned. If only one functional slot exists,
+the default policy falls back to that slot.
 
-- **Generic Input Wires**: `mci_reg_generic_input_wires[1]`
-- **Bit 1 (Rotation)**: If this bit is set to `1`, the ROM will **skip the
-  first functional slot** it finds and select the **second functional slot**.
-  This allows a platform to switch to a new key without burning fuses, simply
-  by changing a strapping register or GPIO state, provided that a second valid and
-  functional key is provisioned in the fuses. This enables rolling back to the
-  previous known-good firmware image should the new one have a fatal issue.
-
-If the rotation strap is asserted but only one functional slot exists, the
-default policy falls back to that one slot. Platforms that need arbitrary slot
-selection or more complex rollout policy should provide a custom
-`VendorKeyPolicy` in `RomParameters` instead of relying only on the reference
-strap behavior.
+Platforms that need arbitrary slot selection or more complex rollout policy
+should provide a custom `VendorKeyPolicy` in `RomParameters`. The reference
+`core_test` builds map generic input wire 1 bit 1 to
+`vendor_pk_hash_rotation`, but production common ROM code does not read that
+wire. See [Reference ROM Specification](./rom.md#reference-core_test-configuration).
 
 ### Vendor PK Hash Provisioning
 
@@ -460,8 +457,9 @@ replaced, requiring a transition to a new PK hash slot.
 1. Provision the new vendor PK hash into an empty inactive slot if it was not
     provisioned during manufacturing.
 2. Push a new Runtime (RT) firmware signed with a key from the new PK hash slot.
-3. Additionally assert the hardware strapping pin (bit 1 of
-    `mci_reg_generic_input_wires[1]`) to enable rotation.
+3. Configure the platform ROM to set
+    `RomParameters::vendor_pk_hash_rotation` (or select the replacement slot
+    with a custom `VendorKeyPolicy`).
 4. On reboot, the MCU ROM will select the new PK hash slot.
 5. An authorized requester sends `MC_FUSE_REVOKE_VENDOR_PK_HASH` to MCU
     Runtime to burn the old PK hash slot as invalid.
@@ -469,7 +467,7 @@ replaced, requiring a transition to a new PK hash slot.
 ```mermaid
 sequenceDiagram
     participant Requester
-    participant Strapping as Strapping Pin
+    participant Platform as Platform Policy
     participant MCU_ROM as MCU ROM
     participant MCU_RT as MCU RT
     participant Fuses as OTP Fuses
@@ -477,9 +475,9 @@ sequenceDiagram
     Requester->>MCU_RT: MC_PROVISION_VENDOR_PK_HASH(slot M+1)
     MCU_RT->>Fuses: Provision PK hash in slot M+1
     Requester->>MCU_ROM: Push new RT FW (signed with Key in Slot M+1)
-    Requester->>Strapping: Assert Rotation Strap
+    Requester->>Platform: Select replacement key
     Requester->>MCU_ROM: Trigger Reboot
-    MCU_ROM->>Strapping: Read Strap (Rotation Enabled)
+    MCU_ROM->>Platform: Receive vendor key policy in RomParameters
     MCU_ROM->>Fuses: Read valid slots & functional status
     MCU_ROM->>MCU_ROM: Skip PK Hash Slot N (first functional), Select PK Hash Slot N+1
     MCU_ROM->>MCU_RT: Boot into new MCU RT

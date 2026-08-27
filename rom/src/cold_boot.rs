@@ -518,9 +518,8 @@ impl BootFlow for ColdBoot {
         mci.set_flow_checkpoint(McuRomBootStatus::CaliptraBootGoAsserted.into());
         mci.set_flow_milestone(McuBootMilestones::CPTRA_BOOT_GO_ASSERTED.into());
 
-        // If testing Caliptra Core, hang here until the test signals it to continue.
-        if cfg!(feature = "core_test") {
-            while mci.registers.mci_reg_generic_input_wires[1].get() & (1 << 30) == 0 {}
+        if let Some(callback) = params.post_caliptra_boot_go {
+            callback();
         }
 
         lc.init().unwrap();
@@ -582,8 +581,7 @@ impl BootFlow for ColdBoot {
 
         caliptra_mcu_romtime::println!("[mcu-rom] OTP initialized");
 
-        let flash_boot = ((mci.registers.mci_reg_generic_input_wires[1].get() & (1 << 29)) != 0)
-            || params.request_flash_boot;
+        let flash_boot = params.request_flash_boot;
 
         if flash_boot && (params.flash_partition_driver.is_none() || !cfg!(feature = "hw-2-1")) {
             caliptra_mcu_romtime::println!(
@@ -759,9 +757,8 @@ impl BootFlow for ColdBoot {
         mci.set_flow_milestone(McuBootMilestones::CPTRA_FUSES_WRITTEN.into());
         crate::call_hook(params.hooks, |h| h.post_populate_fuses_to_caliptra());
 
-        // If testing Caliptra Core, hang here until the test signals it to continue.
-        if cfg!(feature = "core_test") {
-            while mci.registers.mci_reg_generic_input_wires[1].get() & (1 << 31) == 0 {}
+        if let Some(callback) = params.post_caliptra_fuses_written {
+            callback();
         }
 
         caliptra_mcu_romtime::println!("[mcu-rom] Waiting for Caliptra Core boot FSM to be DONE");
@@ -986,7 +983,11 @@ impl BootFlow for ColdBoot {
         caliptra_mcu_romtime::println!("[mcu-rom] Firmware is ready");
         mci.set_flow_checkpoint(McuRomBootStatus::FirmwareReadyDetected.into());
 
-        soc.pk_hash_volatile_lock(&env.otp, &env.mci, pk_hash_idx);
+        soc.pk_hash_volatile_lock(
+            &env.otp,
+            params.skip_vendor_pk_hash_volatile_lock,
+            pk_hash_idx,
+        );
         if env.otp.check_error().is_some() {
             caliptra_mcu_romtime::println!("[mcu-rom] OTP error: {}", HexWord(env.otp.status()));
             env.otp.print_errors();
