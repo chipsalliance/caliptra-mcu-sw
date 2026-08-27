@@ -337,6 +337,10 @@ impl McuHwModel for ModelEmulated {
         // Use MCU recovery interface when flash-based boot is enabled
         let use_mcu_recovery_interface = params.flash_boot;
 
+        if std::env::var("CPTRA_EMULATOR_SS_MCI_OFFSET").is_err() {
+            std::env::set_var("CPTRA_EMULATOR_SS_MCI_OFFSET", "0x00000000a8000000");
+        }
+
         let (mut caliptra_cpu, soc_to_caliptra, soc_to_caliptra_bus, ext_mci) =
             start_caliptra(&StartCaliptraArgs {
                 rom: BytesOrPath::Bytes(params.caliptra_rom.to_vec()),

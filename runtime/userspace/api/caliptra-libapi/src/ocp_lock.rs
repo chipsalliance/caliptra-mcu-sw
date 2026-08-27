@@ -233,6 +233,7 @@ pub struct OcpLock<'a> {
 }
 
 impl OcpLock<'_> {
+    // TODO(#1732): Calculate MAX_ENDORSEMENT_CERT_SIZE at build time based on the active algorithms.
     pub const MAX_ENDORSEMENT_CERT_SIZE: usize = 12 * 1024;
     pub const DPE_LABEL: &'static [u8] = b"MCU FW HPKE Endorsement";
     pub const EKP_DPE_LABEL: &'static [u8] = b"MCU EKP Attestation";
