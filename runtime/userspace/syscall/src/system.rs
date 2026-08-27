@@ -8,7 +8,8 @@ use caliptra_mcu_libtock_platform::{ErrorCode, Syscalls};
 pub enum FirmwareBootType {
     Unknown = 0,
     Flash = 1,
-    Pldm = 2,
+    Streaming = 2,
+    Network = 3,
 }
 
 impl TryFrom<u32> for FirmwareBootType {
@@ -18,7 +19,8 @@ impl TryFrom<u32> for FirmwareBootType {
         match value {
             value if value == Self::Unknown as u32 => Ok(Self::Unknown),
             value if value == Self::Flash as u32 => Ok(Self::Flash),
-            value if value == Self::Pldm as u32 => Ok(Self::Pldm),
+            value if value == Self::Streaming as u32 => Ok(Self::Streaming),
+            value if value == Self::Network as u32 => Ok(Self::Network),
             _ => Err(ErrorCode::Invalid),
         }
     }
@@ -55,7 +57,11 @@ mod tests {
     fn firmware_boot_type_encoding() {
         assert_eq!(FirmwareBootType::try_from(0), Ok(FirmwareBootType::Unknown));
         assert_eq!(FirmwareBootType::try_from(1), Ok(FirmwareBootType::Flash));
-        assert_eq!(FirmwareBootType::try_from(2), Ok(FirmwareBootType::Pldm));
-        assert_eq!(FirmwareBootType::try_from(3), Err(ErrorCode::Invalid));
+        assert_eq!(
+            FirmwareBootType::try_from(2),
+            Ok(FirmwareBootType::Streaming)
+        );
+        assert_eq!(FirmwareBootType::try_from(3), Ok(FirmwareBootType::Network));
+        assert_eq!(FirmwareBootType::try_from(4), Err(ErrorCode::Invalid));
     }
 }
