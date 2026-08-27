@@ -885,13 +885,19 @@ impl I3cPeripheral for I3c {
         }
 
         let address: usize = address.try_into().unwrap();
-        let range = address..(address + 4);
-        let data = &self.indirect_fifo_data.clone()[range];
+        // Read the 4-byte word directly from the FIFO backing store. Avoid
+        // cloning the entire (up to ~200 KB) image Vec on every word read,
+        // which was O(image_size) per access and O(image_size^2) overall.
+        let word = u32::from_le_bytes(
+            self.indirect_fifo_data[address..address + 4]
+                .try_into()
+                .unwrap(),
+        );
         self.i3c_ec_sec_fw_recovery_if_indirect_fifo_status_2
             .reg
             .set(read_index + 1);
 
-        u32::from_le_bytes(data.try_into().unwrap())
+        word
     }
 
     fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0(
