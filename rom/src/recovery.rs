@@ -10,7 +10,7 @@ use caliptra_mcu_registers_generated::i3c;
 use caliptra_mcu_registers_generated::i3c::bits::{
     DeviceReset, IndirectFifoStatus0, RecIntfCfg, RecIntfRegW1cAccess,
 };
-use caliptra_mcu_romtime::handoff::FirmwareBootType;
+use caliptra_mcu_romtime::handoff::{FirmwareBootType, McuRomCapabilities};
 use caliptra_mcu_romtime::StaticRef;
 use smlang::statemachine;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
@@ -81,6 +81,21 @@ impl<'a> ImageProviderManager<'a> {
             current: 0,
             retries: 0,
         }
+    }
+
+    /// Return the boot capabilities represented by the configured providers.
+    pub(crate) fn capabilities(&self) -> McuRomCapabilities {
+        self.entries
+            .iter()
+            .fold(McuRomCapabilities::empty(), |capabilities, entry| {
+                capabilities
+                    | match entry.boot_type {
+                        FirmwareBootType::Unknown => McuRomCapabilities::empty(),
+                        FirmwareBootType::Flash => McuRomCapabilities::FLASH_BOOT,
+                        FirmwareBootType::Streaming => McuRomCapabilities::STREAMING_BOOT_I3C,
+                        FirmwareBootType::Network => McuRomCapabilities::NETWORK_BOOT,
+                    }
+            })
     }
 
     /// Returns the current provider, incrementing the retry counter.
@@ -536,6 +551,11 @@ mod tests {
             },
         ];
         let mut manager = ImageProviderManager::new(&mut entries);
+
+        assert_eq!(
+            manager.capabilities(),
+            McuRomCapabilities::FLASH_BOOT | McuRomCapabilities::NETWORK_BOOT
+        );
 
         assert_eq!(
             manager.provider().map(|(boot_type, _)| boot_type),

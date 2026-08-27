@@ -12,7 +12,7 @@ pub const FHT_MARKER: u32 = 0x4855434D;
 pub const FHT_MAJOR_VERSION: u16 = 1;
 
 /// Minor version of the handoff table.
-pub const FHT_MINOR_VERSION: u16 = 2;
+pub const FHT_MINOR_VERSION: u16 = 3;
 
 /// Minor version that introduced the stable owner key handoff.
 pub const STABLE_OWNER_KEY_FHT_MINOR_VERSION: u16 = 1;
@@ -20,11 +20,27 @@ pub const STABLE_OWNER_KEY_FHT_MINOR_VERSION: u16 = 1;
 /// Minor version that introduced the firmware boot type handoff.
 pub const FIRMWARE_BOOT_TYPE_FHT_MINOR_VERSION: u16 = 2;
 
+/// Minor version that introduced the MCU ROM capabilities handoff.
+pub const MCU_ROM_CAPABILITIES_FHT_MINOR_VERSION: u16 = 3;
+
 /// Size of an encrypted Caliptra Cryptographic Manager key blob.
 pub const STABLE_OWNER_KEY_CMK_SIZE: usize = caliptra_api::mailbox::CMK_SIZE_BYTES;
 
 /// Valid marker for a stable owner key handoff ("SOKV" in little-endian).
 pub const STABLE_OWNER_KEY_VALID_MARKER: u32 = 0x564B4F53;
+
+bitflags::bitflags! {
+    /// Capabilities implemented by the MCU ROM image.
+    #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+    pub struct McuRomCapabilities: u32 {
+        /// MCU ROM supports streaming boot over I3C.
+        const STREAMING_BOOT_I3C = 1 << 0;
+        /// MCU ROM supports flash boot.
+        const FLASH_BOOT = 1 << 1;
+        /// MCU ROM supports network boot.
+        const NETWORK_BOOT = 1 << 2;
+    }
+}
 
 /// Source used to boot the MCU firmware.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -83,8 +99,14 @@ pub struct RomHandoffTable {
     /// Source used to boot the MCU firmware.
     firmware_boot_type: u8,
 
+    /// Reserved for alignment and future byte-sized fields.
+    pub reserved: [u8; 3],
+
+    /// Capabilities implemented by this MCU ROM image.
+    mcu_rom_capabilities: u32,
+
     /// Padding to reach 64 bytes total.
-    pub padding: [u8; 43],
+    pub padding: [u8; 36],
 }
 
 impl Default for RomHandoffTable {
@@ -98,7 +120,9 @@ impl Default for RomHandoffTable {
             #[cfg(not(feature = "ocp-lock"))]
             reserved_hek: [0; 3],
             firmware_boot_type: FirmwareBootType::Unknown as u8,
-            padding: [0; 43],
+            reserved: [0; 3],
+            mcu_rom_capabilities: McuRomCapabilities::empty().bits(),
+            padding: [0; 36],
         }
     }
 }
@@ -181,6 +205,7 @@ pub struct HandoffData {
 // Keep the original tables fixed so append-only extensions do not move either ABI.
 const _: () = assert!(core::mem::size_of::<RomHandoffTable>() == 64);
 const _: () = assert!(core::mem::offset_of!(RomHandoffTable, firmware_boot_type) == 20);
+const _: () = assert!(core::mem::offset_of!(RomHandoffTable, mcu_rom_capabilities) == 24);
 const _: () = assert!(core::mem::size_of::<RuntimeHandoffTable>() == 64);
 const _: () = assert!(core::mem::size_of::<StableOwnerKeyHandoff>() == 132);
 const _: () = assert!(core::mem::offset_of!(HandoffData, rom) == 0);
@@ -199,6 +224,9 @@ const _: () = assert!(core::mem::align_of::<HandoffData>() == 4);
 pub struct HandoffArgs {
     /// Source used to boot the MCU firmware.
     pub firmware_boot_type: FirmwareBootType,
+
+    /// Capabilities implemented by this MCU ROM image.
+    pub mcu_rom_capabilities: McuRomCapabilities,
 
     /// OCP LOCK state from fuse population.
     #[cfg(feature = "ocp-lock")]
@@ -221,6 +249,16 @@ impl HandoffData {
         }
         FirmwareBootType::try_from(self.rom.firmware_boot_type)
             .map_err(|()| FirmwareBootTypeReadError::Invalid)
+    }
+
+    /// Return the capabilities implemented by this MCU ROM image.
+    pub fn mcu_rom_capabilities(&self) -> Option<McuRomCapabilities> {
+        if self.rom.fht_minor_ver < MCU_ROM_CAPABILITIES_FHT_MINOR_VERSION {
+            return None;
+        }
+        Some(McuRomCapabilities::from_bits_truncate(
+            self.rom.mcu_rom_capabilities,
+        ))
     }
 
     /// Return the stable owner CMK when this handoff version supports it.
@@ -246,6 +284,7 @@ impl HandoffData {
             HANDOFF = Self {
                 rom: RomHandoffTable {
                     firmware_boot_type: _args.firmware_boot_type as u8,
+                    mcu_rom_capabilities: _args.mcu_rom_capabilities.bits(),
                     #[cfg(feature = "ocp-lock")]
                     ocp_lock: _args.ocp_lock,
                     #[cfg(not(feature = "ocp-lock"))]
@@ -300,7 +339,9 @@ pub static mut HANDOFF: HandoffData = HandoffData {
         #[cfg(not(feature = "ocp-lock"))]
         reserved_hek: [0; 3],
         firmware_boot_type: FirmwareBootType::Unknown as u8,
-        padding: [0; 43],
+        reserved: [0; 3],
+        mcu_rom_capabilities: McuRomCapabilities::empty().bits(),
+        padding: [0; 36],
     },
     runtime: RuntimeHandoffTable { reserved: [0; 64] },
     rom_stable_owner_key: StableOwnerKeyHandoff {
@@ -317,6 +358,16 @@ pub fn get_firmware_boot_type() -> Result<FirmwareBootType, FirmwareBootTypeRead
         return Err(FirmwareBootTypeReadError::Unsupported);
     }
     handoff.read_firmware_boot_type()
+}
+
+/// Return MCU ROM capabilities from a valid handoff table that supports them.
+pub fn get_mcu_rom_capabilities() -> Option<McuRomCapabilities> {
+    // SAFETY: Runtime treats ROM-owned handoff data as read-only.
+    let handoff = unsafe { &*core::ptr::addr_of!(HANDOFF) };
+    if handoff.rom.fht_marker != FHT_MARKER || handoff.rom.fht_major_ver != FHT_MAJOR_VERSION {
+        return None;
+    }
+    handoff.mcu_rom_capabilities()
 }
 
 /// Safe accessor for the entire OCP LOCK state in handoff table.
@@ -337,6 +388,7 @@ mod tests {
     fn handoff_layout_is_append_only() {
         assert_eq!(size_of::<RomHandoffTable>(), 64);
         assert_eq!(offset_of!(RomHandoffTable, firmware_boot_type), 20);
+        assert_eq!(offset_of!(RomHandoffTable, mcu_rom_capabilities), 24);
         assert_eq!(size_of::<RuntimeHandoffTable>(), 64);
         assert_eq!(size_of::<StableOwnerKeyHandoff>(), 132);
         assert_eq!(offset_of!(HandoffData, rom), 0);
@@ -395,5 +447,19 @@ mod tests {
             handoff.read_firmware_boot_type(),
             Err(FirmwareBootTypeReadError::Unsupported)
         );
+    }
+
+    #[test]
+    fn mcu_rom_capabilities_require_supported_version() {
+        let mut handoff = HandoffData::default();
+        handoff.rom.mcu_rom_capabilities =
+            (McuRomCapabilities::STREAMING_BOOT_I3C | McuRomCapabilities::FLASH_BOOT).bits();
+        assert_eq!(
+            handoff.mcu_rom_capabilities(),
+            Some(McuRomCapabilities::STREAMING_BOOT_I3C | McuRomCapabilities::FLASH_BOOT)
+        );
+
+        handoff.rom.fht_minor_ver = MCU_ROM_CAPABILITIES_FHT_MINOR_VERSION - 1;
+        assert_eq!(handoff.mcu_rom_capabilities(), None);
     }
 }

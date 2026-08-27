@@ -12,6 +12,7 @@ pub const DRIVER_NUM: usize = 0xC000_0000;
 mod cmd {
     pub const EXIT: u32 = 1;
     pub const GET_FIRMWARE_BOOT_TYPE: u32 = 2;
+    pub const GET_MCU_ROM_CAPABILITIES: u32 = 3;
 }
 
 pub struct System<'a, E: caliptra_mcu_romtime::Exit> {
@@ -49,6 +50,12 @@ impl<E: caliptra_mcu_romtime::Exit> SyscallDriver for System<'_, E> {
                     Err(caliptra_mcu_romtime::handoff::FirmwareBootTypeReadError::Invalid) => {
                         CommandReturn::failure(ErrorCode::INVAL)
                     }
+                }
+            }
+            cmd::GET_MCU_ROM_CAPABILITIES => {
+                match caliptra_mcu_romtime::handoff::get_mcu_rom_capabilities() {
+                    Some(capabilities) => CommandReturn::success_u32(capabilities.bits()),
+                    None => CommandReturn::failure(ErrorCode::NOSUPPORT),
                 }
             }
             _ => CommandReturn::failure(ErrorCode::NOSUPPORT),

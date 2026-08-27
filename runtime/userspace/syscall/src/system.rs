@@ -40,6 +40,11 @@ impl System {
             .to_result::<u32, ErrorCode>()?;
         FirmwareBootType::try_from(value)
     }
+
+    pub fn mcu_rom_capabilities() -> Result<u32, ErrorCode> {
+        DefaultSyscalls::command(DRIVER_NUM, cmd::GET_MCU_ROM_CAPABILITIES, 0, 0)
+            .to_result::<u32, ErrorCode>()
+    }
 }
 
 pub const DRIVER_NUM: u32 = 0xC000_0000;
@@ -47,6 +52,7 @@ pub const DRIVER_NUM: u32 = 0xC000_0000;
 mod cmd {
     pub const EXIT: u32 = 1;
     pub const GET_FIRMWARE_BOOT_TYPE: u32 = 2;
+    pub const GET_MCU_ROM_CAPABILITIES: u32 = 3;
 }
 
 #[cfg(test)]
