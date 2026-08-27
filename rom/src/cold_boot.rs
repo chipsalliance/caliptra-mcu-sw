@@ -1140,10 +1140,7 @@ impl BootFlow for ColdBoot {
         // read-only.
         let fips_zeroization = mci.fips_zeroization_requested();
         if fips_zeroization {
-            caliptra_mcu_romtime::println!(
-                "[mcu-rom] FIPS zeroization PPD signal detected; \
-                 will execute zeroization after Caliptra boot"
-            );
+            caliptra_mcu_romtime::println!("[mcu-rom] FIPS zeroization requested");
             mci.set_flow_checkpoint(McuRomBootStatus::FipsZeroizationDetected.into());
             mci.set_fips_zeroization_mask(0xFFFF_FFFF);
             mci.set_flow_checkpoint(McuRomBootStatus::FipsZeroizationMaskSet.into());
@@ -1332,6 +1329,14 @@ impl BootFlow for ColdBoot {
         #[cfg(feature = "ocp-lock")]
         crate::call_hook(params.hooks, |h| h.post_set_ocp_lock_fuses());
 
+        let mut mcu_rom_capabilities =
+            caliptra_mcu_romtime::handoff::McuRomCapabilities::STREAMING_BOOT_I3C;
+        if cfg!(feature = "hw-2-1") {
+            if let Some(manager) = params.image_provider_manager.as_ref() {
+                mcu_rom_capabilities |= manager.capabilities();
+            }
+        }
+
         // Create handoff data
         caliptra_mcu_romtime::handoff::HandoffData::write(
             caliptra_mcu_romtime::handoff::HandoffArgs {
@@ -1340,6 +1345,7 @@ impl BootFlow for ColdBoot {
                 } else {
                     caliptra_mcu_romtime::handoff::FirmwareBootType::Streaming
                 },
+                mcu_rom_capabilities,
                 #[cfg(feature = "ocp-lock")]
                 ocp_lock: _fuse_state.ocp_lock.clone().unwrap_or_default(),
             },

@@ -12,7 +12,7 @@ software must not treat it as persistent storage across a power cycle.
 
 | Offset | Size | Owner | Purpose |
 |---:|---:|---|---|
-| 0 | 64 bytes | ROM | Version, firmware boot type, and ROM state consumed by Runtime |
+| 0 | 64 bytes | ROM | Version, firmware boot type, capabilities, and ROM state consumed by Runtime |
 | 64 | 64 bytes | Runtime | Data produced or updated by Runtime |
 | 128 | 132 bytes | ROM | Stable owner key CMK extension |
 
@@ -58,7 +58,9 @@ The 64-byte `RomHandoffTable` has the following layout:
 | 6 | 2 bytes | `fht_minor_ver` | Minor ABI version |
 | 8 | 12 bytes | `ocp_lock` or `reserved_hek` | OCP LOCK state when enabled; otherwise reserved |
 | 20 | 1 byte | `firmware_boot_type` | Source used to boot MCU firmware |
-| 21 | 43 bytes | `padding` | Reserved for backward-compatible fields |
+| 21 | 3 bytes | `reserved` | Reserved for alignment and future byte-sized fields |
+| 24 | 4 bytes | `mcu_rom_capabilities` | MCU ROM capability bitmap |
+| 28 | 36 bytes | `padding` | Reserved for backward-compatible fields |
 
 Handoff version 1.2 defines `firmware_boot_type` as follows:
 
@@ -76,6 +78,19 @@ and invalid values are reported as unavailable. Userspace applications use
 keeping the DCCM region inaccessible to userspace. The Runtime image-loading
 task uses this API to select the streaming loader or flash loader. For handoff
 versions before 1.2, the task preserves the legacy streaming-boot behavior.
+
+Handoff version 1.3 defines `mcu_rom_capabilities` as follows:
+
+| Bit | Name | Description |
+|---:|---|---|
+| 0 | `STREAMING_BOOT_I3C` | MCU ROM supports streaming boot over I3C |
+| 1 | `FLASH_BOOT` | MCU ROM supports flash boot |
+| 2 | `NETWORK_BOOT` | MCU ROM supports network boot |
+| 3:31 | Reserved | ROM writes zero; consumers ignore these bits |
+
+The bitmap describes capabilities implemented by the ROM image, independent of
+the source selected for the current boot. Runtime reports zero when paired with
+a handoff version before 1.3.
 
 ## Stable Owner Key
 
