@@ -468,8 +468,13 @@ impl Emulator {
         .expect("Failed to start Caliptra CPU");
 
         let rom_buffer = read_binary(args_rom, 0)?;
-        if rom_buffer.len() > ROM_SIZE as usize {
-            println!("ROM File Size must not exceed {} bytes", ROM_SIZE);
+        // Honor the `--rom-size` override when validating the ROM image. The
+        // compile-time `ROM_SIZE` is only the default; the configured size
+        // (e.g. from the CaliptraMCU model's `/emulator/rom_size`) governs how
+        // large a ROM the emulator can load.
+        let effective_rom_size = cli.rom_size.unwrap_or(ROM_SIZE);
+        if rom_buffer.len() > effective_rom_size as usize {
+            println!("ROM File Size must not exceed {} bytes", effective_rom_size);
             exit(-1);
         }
         println!(
