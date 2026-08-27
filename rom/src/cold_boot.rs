@@ -1336,9 +1336,9 @@ impl BootFlow for ColdBoot {
         caliptra_mcu_romtime::handoff::HandoffData::write(
             caliptra_mcu_romtime::handoff::HandoffArgs {
                 firmware_boot_type: if recovery_boot {
-                    caliptra_mcu_romtime::handoff::FirmwareBootType::Flash
+                    caliptra_mcu_romtime::handoff::FirmwareBootType::Unknown
                 } else {
-                    caliptra_mcu_romtime::handoff::FirmwareBootType::Pldm
+                    caliptra_mcu_romtime::handoff::FirmwareBootType::Streaming
                 },
                 #[cfg(feature = "ocp-lock")]
                 ocp_lock: _fuse_state.ocp_lock.clone().unwrap_or_default(),
@@ -1686,8 +1686,11 @@ impl BootFlow for ColdBoot {
                     .soc_mgmt_if_rec_intf_cfg
                     .modify(RecIntfCfg::RecIntfBypass::SET);
 
-                crate::recovery::load_image_with_retry(i3c_base, manager)
+                let firmware_boot_type = crate::recovery::load_image_with_retry(i3c_base, manager)
                     .unwrap_or_else(|_| fatal_error(McuError::ROM_COLD_BOOT_LOAD_IMAGE_ERROR));
+                caliptra_mcu_romtime::handoff::HandoffData::write_firmware_boot_type(
+                    firmware_boot_type,
+                );
 
                 caliptra_mcu_romtime::println!("[mcu-rom] Recovery flow complete");
                 mci.set_flow_checkpoint(McuRomBootStatus::FlashRecoveryFlowComplete.into());
