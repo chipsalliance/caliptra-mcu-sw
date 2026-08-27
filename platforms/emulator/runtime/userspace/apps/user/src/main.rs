@@ -25,6 +25,10 @@ pub use caliptra_mcu_libsyscall_caliptra::console_writeln;
 
 pub(crate) mod auth_keys;
 mod caliptra_cmd_handler;
+// SPDM is the only current consumer; widen this gate when another protocol
+// integrates the boot-provisioned certificate chains.
+#[cfg(feature = "spdm")]
+mod cert_store;
 #[cfg(any(
     feature = "test-defmt-logging-mailbox",
     feature = "test-defmt-logging-release",
@@ -119,7 +123,21 @@ pub(crate) async fn async_main() {
     .await;
 
     #[cfg(feature = "spdm")]
-    spdm::spawn_spdm_tasks(&EXECUTOR.get().spawner());
+    match cert_store::boot_init().await {
+        Ok(()) => {
+            spdm::spawn_spdm_tasks(&EXECUTOR.get().spawner());
+        }
+        Err(e) => {
+            let mut cw = caliptra_mcu_libtock_console::Console::<
+                caliptra_mcu_libsyscall_caliptra::DefaultSyscalls,
+            >::writer();
+            crate::log_error!(
+                cw,
+                "CERT_STORE: boot initialization failed: 0x{}",
+                crate::Hex32(u32::from(e))
+            );
+        }
+    }
 
     EXECUTOR
         .get()

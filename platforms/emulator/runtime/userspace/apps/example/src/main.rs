@@ -29,7 +29,11 @@ mod test_dma;
 #[cfg(feature = "test-doe-user-loopback")]
 mod test_doe_loopback;
 
-#[cfg(feature = "test-caliptra-certs")]
+#[allow(dead_code)]
+#[cfg(any(
+    feature = "test-caliptra-certs",
+    feature = "test-get-caliptra-idev-csr"
+))]
 mod test_caliptra_certs;
 
 #[cfg(feature = "test-log-flash-usermode")]
@@ -189,12 +193,19 @@ pub(crate) async fn async_main<S: Syscalls>() {
     #[cfg(feature = "test-caliptra-certs")]
     {
         let alloc = test_caliptra_certs::init_cert_allocator();
-        // test_caliptra_certs::test_get_idev_csr().await;
         test_caliptra_certs::test_populate_idev_ecc384_cert(alloc).await;
+        test_caliptra_certs::populate_idevid_cert_mldsa87_from_otp(alloc).await;
         test_caliptra_certs::test_get_cert_chain(alloc).await;
         test_caliptra_certs::test_certify_key(alloc).await;
         test_caliptra_certs::test_sign_with_test_key(alloc).await;
         test_caliptra_certs::test_get_attested_csr().await;
+        test_caliptra_certs::test_get_ldev_cert_mldsa87().await;
+        System::exit(0);
+    }
+    #[cfg(feature = "test-get-caliptra-idev-csr")]
+    {
+        test_caliptra_certs::test_get_idev_csr_ecc384().await;
+        test_caliptra_certs::test_get_idev_csr_mldsa87().await;
         System::exit(0);
     }
     #[cfg(feature = "test-dma")]

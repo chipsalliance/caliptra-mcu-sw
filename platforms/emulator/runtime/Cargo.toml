@@ -87,6 +87,7 @@ release = [
 hw-2-1 = []
 # Example app test features
 test-caliptra-certs = []
+test-get-caliptra-idev-csr = []
 test-caliptra-crypto = []
 test-caliptra-mailbox = []
 test-do-nothing = []

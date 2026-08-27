@@ -1255,6 +1255,7 @@ dependencies = [
  "caliptra-mcu-pldm-fw-pkg",
  "caliptra-mcu-pldm-ua",
  "caliptra-mcu-registers-generated",
+ "caliptra-mcu-romtime",
  "caliptra-mcu-testing-common",
  "caliptra-registers",
  "caliptra-test",

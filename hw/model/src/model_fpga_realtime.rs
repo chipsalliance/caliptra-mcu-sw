@@ -18,7 +18,7 @@ use caliptra_mcu_romtime::McuBootMilestones;
 use caliptra_mcu_testing_common::i3c::{
     I3cBusCommand, I3cBusResponse, I3cTcriCommand, I3cTcriResponseXfer, ResponseDescriptor,
 };
-use caliptra_mcu_testing_common::{update_ticks, EmulatorState};
+use caliptra_mcu_testing_common::{update_ticks, EmulatorState, SpdmResponderTransport};
 use caliptra_registers::i3ccsr::regs::StbyCrDeviceAddrWriteVal;
 use std::collections::VecDeque;
 use std::io::Write;
@@ -33,6 +33,7 @@ use tock_registers::interfaces::{Readable, Writeable};
 
 const DEFAULT_AXI_PAUSER: u32 = 0x1;
 const MCU_BOOT_FSM_READY_FOR_FUSES: u32 = 7;
+const SPDM_READINESS_POLL_CYCLES: u64 = 10_000_000;
 
 /// MCTP-over-I3C Mandatory Data Byte value. Only IBIs with this MDB
 /// carry a pending-read length in bytes 1-2.
@@ -93,10 +94,29 @@ pub struct ModelFpgaRealtime {
     /// Per-instance emulator coordination state. Kept alive for as long
     /// as this model exists so worker threads that captured an Arc clone
     /// observe writes from step()/boot().
-    _state: Arc<EmulatorState>,
+    state: Arc<EmulatorState>,
+    next_spdm_readiness_poll_cycle: u64,
 }
 
 impl ModelFpgaRealtime {
+    fn sync_spdm_responder_readiness(&mut self) {
+        let cycle = self.cycle_count();
+        if cycle < self.next_spdm_readiness_poll_cycle {
+            return;
+        }
+        self.next_spdm_readiness_poll_cycle = cycle.saturating_add(SPDM_READINESS_POLL_CYCLES);
+
+        let milestones = self.mci_boot_milestones();
+        self.state.set_spdm_responder_ready(
+            SpdmResponderTransport::Mctp,
+            milestones.contains(McuBootMilestones::FIRMWARE_SPDM_MCTP_READY),
+        );
+        self.state.set_spdm_responder_ready(
+            SpdmResponderTransport::Doe,
+            milestones.contains(McuBootMilestones::FIRMWARE_SPDM_DOE_READY),
+        );
+    }
+
     pub fn set_subsystem_reset(&mut self, reset: bool) {
         self.base.set_subsystem_reset(reset);
     }
@@ -375,6 +395,7 @@ impl McuHwModel for ModelFpgaRealtime {
     fn step(&mut self) {
         self.base.step();
         self.handle_i3c();
+        self.sync_spdm_responder_readiness();
         update_ticks(self.cycle_count() / 100); // notify tests about current time, but reduce effective speed
     }
 
@@ -570,7 +591,8 @@ impl McuHwModel for ModelFpgaRealtime {
             soc_manifest: Some(params.soc_manifest.to_vec()).filter(|f| !f.is_empty()),
             mcu_firmware: Some(params.mcu_firmware.to_vec()).filter(|f| !f.is_empty()),
             check_booted_to_runtime: params.check_booted_to_runtime,
-            _state: state,
+            state,
+            next_spdm_readiness_poll_cycle: 0,
         };
 
         if let Some(dot_flash_data) = params.dot_flash_initial_contents.as_deref() {

@@ -64,6 +64,7 @@ cfg_if::cfg_if! {
 /// These are determined by which tests use `run_test!(test_name, example_app)` in tests/integration/src/lib.rs
 const FEATURES_WITH_EXAMPLE_APP: &[&str] = &[
     "test-caliptra-certs",
+    "test-get-caliptra-idev-csr",
     "test-caliptra-crypto",
     "test-caliptra-mailbox",
     "test-dma",

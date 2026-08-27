@@ -110,6 +110,9 @@ pub(crate) const CMD_EXTEND_PCR: u32 = 0x5043_5245; // "PCRE"
 /// `GET_IDEV_ECC384_CSR` command ID.
 pub(crate) const CMD_GET_IDEV_ECC384_CSR: u32 = 0x4944_4352; // "IDCR"
 
+/// `GET_IDEV_MLDSA87_CSR` command ID.
+pub(crate) const CMD_GET_IDEV_MLDSA87_CSR: u32 = 0x4944_4d52; // "IDMR"
+
 /// `GET_ATTESTED_ECC384_CSR` command ID.
 pub(crate) const CMD_GET_ATTESTED_ECC384_CSR: u32 = 0x4145_4352; // "AECR"
 
