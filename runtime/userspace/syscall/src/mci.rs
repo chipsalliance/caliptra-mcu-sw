@@ -46,6 +46,21 @@ impl<S: Syscalls> Mci<S> {
     pub fn set_mailbox_ready(&self) -> Result<(), ErrorCode> {
         S::command(self.driver_num, cmd::MCI_SET_MAILBOX_READY, 0, 0).to_result::<(), ErrorCode>()
     }
+
+    pub fn set_spdm_mctp_responder_ready(&self) -> Result<(), ErrorCode> {
+        S::command(
+            self.driver_num,
+            cmd::MCI_SET_SPDM_MCTP_RESPONDER_READY,
+            0,
+            0,
+        )
+        .to_result::<(), ErrorCode>()
+    }
+
+    pub fn set_spdm_doe_responder_ready(&self) -> Result<(), ErrorCode> {
+        S::command(self.driver_num, cmd::MCI_SET_SPDM_DOE_RESPONDER_READY, 0, 0)
+            .to_result::<(), ErrorCode>()
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -61,6 +76,8 @@ pub mod cmd {
     pub const MCI_SET_REGISTER: u32 = 3;
     pub const MCI_TRIGGER_WARM_RESET: u32 = 4;
     pub const MCI_SET_MAILBOX_READY: u32 = 5;
+    pub const MCI_SET_SPDM_MCTP_RESPONDER_READY: u32 = 6;
+    pub const MCI_SET_SPDM_DOE_RESPONDER_READY: u32 = 7;
 }
 
 pub mod mci_reg {

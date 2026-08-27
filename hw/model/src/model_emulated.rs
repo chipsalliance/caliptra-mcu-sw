@@ -45,7 +45,7 @@ use caliptra_mcu_registers_generated::fuses;
 use caliptra_mcu_romtime::LifecycleControllerState;
 use caliptra_mcu_romtime::McuBootMilestones;
 use caliptra_mcu_testing_common::i3c_socket_server::start_i3c_socket;
-use caliptra_mcu_testing_common::EmulatorState;
+use caliptra_mcu_testing_common::{EmulatorState, SpdmResponderTransport};
 use semver::Version;
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -99,7 +99,7 @@ pub struct ModelEmulated {
     /// Per-instance emulator coordination state. Kept alive for as long as
     /// this model exists so that worker threads that hold an Arc clone
     /// (via spawn_with_emulator_state) observe writes from step()/boot().
-    _state: Arc<EmulatorState>,
+    state: Arc<EmulatorState>,
 }
 
 fn hash_slice(slice: &[u8]) -> u64 {
@@ -547,7 +547,7 @@ impl McuHwModel for ModelEmulated {
             check_booted_to_runtime: params.check_booted_to_runtime,
             step_lock,
             usb_host_controller,
-            _state: state,
+            state,
         };
         // Turn tracing on if the trace path was set
         m.tracing_hint(true);
@@ -628,6 +628,16 @@ impl McuHwModel for ModelEmulated {
         self.collected_events_from_caliptra.extend(events);
         if self.cycle_count() % caliptra_mcu_testing_common::TICK_NOTIFY_TICKS == 0 {
             caliptra_mcu_testing_common::update_ticks(self.cycle_count());
+            let milestones =
+                McuBootMilestones::from((self.mci_regs.borrow().flow_status >> 16) as u16);
+            self.state.set_spdm_responder_ready(
+                SpdmResponderTransport::Mctp,
+                milestones.contains(McuBootMilestones::FIRMWARE_SPDM_MCTP_READY),
+            );
+            self.state.set_spdm_responder_ready(
+                SpdmResponderTransport::Doe,
+                milestones.contains(McuBootMilestones::FIRMWARE_SPDM_DOE_READY),
+            );
         }
     }
 

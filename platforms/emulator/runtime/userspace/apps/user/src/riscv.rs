@@ -9,14 +9,10 @@ use caliptra_mcu_libtock::runtime::set_main;
 use core::fmt::Write;
 use core::mem::MaybeUninit;
 use embedded_alloc::Heap;
-/// Userspace heap. `HEAP_MEM` below is `.bss`, so this is a permanent RAM cost
-/// for every user-app build; only the `spdm` build needs the larger pool, for
-/// the 9 KiB ML-DSA-87 IDevID cert scratch in `spdm::idev_mldsa_installer`.
-const HEAP_SIZE: usize = if cfg!(feature = "spdm") {
-    0x4000
-} else {
-    0x2000
-};
+/// Boot initialization allocates at most one temporary scratch pool at a time:
+/// 4 KiB for measurements, then 9 KiB for certificate-store setup. The
+/// remaining 1 KiB covers heap metadata and alignment.
+const HEAP_SIZE: usize = 10 * 1024;
 #[global_allocator]
 static HEAP: Heap = Heap::empty();
 
