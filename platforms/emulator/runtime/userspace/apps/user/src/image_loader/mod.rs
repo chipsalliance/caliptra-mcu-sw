@@ -244,7 +244,22 @@ async fn image_loading<D: DMAMapping>(
     let mut console_writer = Console::<DefaultSyscalls>::writer();
     crate::log_info!(console_writer, "IMAGE_LOADER_APP: Hello async world!");
     #[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
-    match System::firmware_boot_type()? {
+    let firmware_boot_type = {
+        #[cfg(all(feature = "streaming-boot", feature = "flash-boot"))]
+        {
+            System::firmware_boot_type()?
+        }
+        #[cfg(all(feature = "streaming-boot", not(feature = "flash-boot")))]
+        {
+            FirmwareBootType::Pldm
+        }
+        #[cfg(all(feature = "flash-boot", not(feature = "streaming-boot")))]
+        {
+            FirmwareBootType::Flash
+        }
+    };
+    #[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
+    match firmware_boot_type {
         FirmwareBootType::Unknown => return Err(ErrorCode::Invalid),
         FirmwareBootType::Pldm => {
             #[cfg(feature = "streaming-boot")]
