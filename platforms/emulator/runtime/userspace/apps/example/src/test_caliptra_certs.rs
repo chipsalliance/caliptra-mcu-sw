@@ -1,9 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use caliptra_api::mailbox::{GetLdevCertResp, GetLdevMldsa87CertReq, Request};
-use caliptra_mcu_libapi_caliptra::mailbox_api::execute_mailbox_cmd;
 use caliptra_mcu_libsyscall_caliptra::external_otp::ExternalOtp;
-use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_romtime::{println, test_exit};
 use caliptra_mcu_scratch_alloc::{BitmapAllocator, StaticBitmapAllocatorCell, BITMAP_SLOT_SIZE};
@@ -12,8 +10,8 @@ use mcu_caliptra_api::{
     dpe_certify_key_cert_size, dpe_certify_key_cert_slice, dpe_get_cert_chain_chunk,
     dpe_sign_ecc_p384, get_attested_csr_ecc384, get_attested_csr_mldsa87, get_idev_csr_ecc384,
     get_idev_csr_mldsa87, mldsa87_cert_der_len, populate_idev_ecc384_cert,
-    populate_idev_mldsa87_cert, DPE_LABEL_LEN, DPE_MAX_CHUNK_SIZE, DPE_P384_SIGNATURE_SIZE,
-    IDEV_MLDSA87_CSR_MAX_SIZE, IDEV_MLDSA87_CSR_RSP_BUF_SIZE,
+    populate_idev_mldsa87_cert, raw::raw_mailbox_execute, DPE_LABEL_LEN, DPE_MAX_CHUNK_SIZE,
+    DPE_P384_SIGNATURE_SIZE, IDEV_MLDSA87_CSR_MAX_SIZE, IDEV_MLDSA87_CSR_RSP_BUF_SIZE,
 };
 use zerocopy::{FromBytes, IntoBytes};
 
@@ -107,16 +105,10 @@ pub async fn test_get_ldev_cert_mldsa87() {
         test_exit(1);
     }
 
-    let mailbox = Mailbox::new();
     let mut req = GetLdevMldsa87CertReq::default();
-    let actual = execute_mailbox_cmd(
-        &mailbox,
-        GetLdevMldsa87CertReq::ID.0,
-        req.as_mut_bytes(),
-        buf,
-    )
-    .await
-    .unwrap_or_else(|_| test_exit(1));
+    let actual = raw_mailbox_execute(GetLdevMldsa87CertReq::ID.0, req.as_mut_bytes(), buf)
+        .await
+        .unwrap_or_else(|_| test_exit(1));
     let resp =
         GetLdevCertResp::ref_from_bytes(&buf[..response_len]).unwrap_or_else(|_| test_exit(1));
     let size = resp.data_size as usize;
