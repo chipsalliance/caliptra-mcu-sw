@@ -116,7 +116,6 @@ fn build_runtime(target_dir: &Path) -> Result<PathBuf> {
             platform: Some("fpga"),
             features: Some("release"),
             profile: Some("release"),
-            no_default_features: true,
             target_dir: Some(target_dir.to_path_buf()),
             ..Default::default()
         });
