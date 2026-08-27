@@ -66,14 +66,16 @@ Handoff version 1.2 defines `firmware_boot_type` as follows:
 |---:|---|---|
 | 0 | Unknown | Source is unavailable |
 | 1 | Flash | MCU ROM loaded the firmware from flash |
-| 2 | PLDM | Firmware was streamed through PLDM |
+| 2 | Streaming | Early firmware was streamed through the OCP recovery interface; remainder firmware uses the Runtime streaming loader (typically PLDM) |
+| 3 | Network | Firmware was loaded over the network |
 | Other | Invalid | Runtime rejects the value |
 
 Runtime uses `HandOff::firmware_boot_type()` so tables from versions before 1.2
 and invalid values are reported as unavailable. Userspace applications use
 `System::firmware_boot_type()`; the System capsule validates the handoff while
 keeping the DCCM region inaccessible to userspace. The Runtime image-loading
-task uses this API to select the PLDM streaming loader or flash loader.
+task uses this API to select the streaming loader or flash loader. For handoff
+versions before 1.2, the task preserves the legacy streaming-boot behavior.
 
 ## Stable Owner Key
 
