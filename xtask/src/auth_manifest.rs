@@ -1,8 +1,8 @@
 // Licensed under the Apache-2.0 license
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use caliptra_auth_man_types::AuthorizationManifest;
-use caliptra_mcu_builder::{CaliptraBuilder, ImageCfg};
+use caliptra_mcu_builder::{CaliptraBuilder, ComponentSvnValidationConfig, ImageCfg};
 use clap::{Args, Subcommand};
 use hex::ToHex;
 use std::path::{Path, PathBuf};
@@ -63,6 +63,10 @@ pub enum AuthManifestCommands {
         /// Auth Manifest SVN value
         #[arg(long = "svn", value_name = "SVN")]
         svn: Option<u32>,
+
+        /// JSON component SVN entries, fuse mapping, and explicit exceptions
+        #[arg(long = "component-svn-config", value_name = "COMPONENT_SVN_CONFIG")]
+        component_svn_config: Option<String>,
     },
     /// Attach signatures to an unsigned auth manifest file and verify all signatures
     AttachSignatures {
@@ -106,12 +110,23 @@ pub fn create(
     signing_request_path: Option<&str>,
     key_paths: &AuthManifestKeyPaths,
     svn: Option<u32>,
+    component_svn_config_path: Option<&str>,
 ) -> Result<()> {
+    let component_svn_validation = component_svn_config_path
+        .map(|path| {
+            let data = std::fs::read_to_string(path)
+                .with_context(|| format!("Failed to read component SVN config {path}"))?;
+            serde_json::from_str::<ComponentSvnValidationConfig>(&data)
+                .with_context(|| format!("Failed to parse component SVN config {path}"))
+        })
+        .transpose()?;
+
     let mut builder = CaliptraBuilder::new(&caliptra_mcu_builder::CaliptraBuildArgs {
         mcu_firmware: Some(mcu_image.clone().path),
         soc_images: Some(soc_images.to_vec()),
         mcu_image_cfg: Some(mcu_image.clone()),
         soc_manifest_svn: svn,
+        component_svn_validation,
         ..Default::default()
     });
 
@@ -250,6 +265,8 @@ mod tests {
             "owner.pem",
             "--svn",
             "5",
+            "--component-svn-config",
+            "component-svn.json",
         ];
 
         let cli = Cli::parse_from(args);
@@ -259,6 +276,7 @@ mod tests {
                 signing_request,
                 key_paths,
                 svn,
+                component_svn_config,
                 ..
             } => {
                 assert_eq!(output, "out.bin");
@@ -266,6 +284,7 @@ mod tests {
                 assert_eq!(key_paths.vendor_man_pub_key, Some("vendor.pem".to_string()));
                 assert_eq!(key_paths.owner_man_pub_key, Some("owner.pem".to_string()));
                 assert_eq!(svn, Some(5));
+                assert_eq!(component_svn_config, Some("component-svn.json".to_string()));
             }
             _ => panic!("Expected AuthManifestCommands::Create"),
         }
