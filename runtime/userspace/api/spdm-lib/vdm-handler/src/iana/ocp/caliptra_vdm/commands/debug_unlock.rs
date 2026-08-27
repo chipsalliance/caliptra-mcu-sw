@@ -20,15 +20,23 @@ where
     H: CaliptraCmdHandler,
     A: SpdmPalAlloc,
 {
-    let &[unlock_level] = req else {
+    const REQUEST_LENGTH_DWORDS: u32 = 2;
+    let Ok(&[length_0, length_1, length_2, length_3, unlock_level, _, _, _]) =
+        <&[u8; 8]>::try_from(req)
+    else {
         return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidPayloadSize);
     };
+    if u32::from_le_bytes([length_0, length_1, length_2, length_3]) != REQUEST_LENGTH_DWORDS {
+        return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidPayloadSize);
+    }
 
     let data = match super::write_success(out) {
         Ok(data) => data,
         Err(code) => return CaliptraVdmCmdResult::Error(code),
     };
-    let needed = DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE + DEBUG_UNLOCK_CHALLENGE_SIZE;
+    const RESPONSE_LENGTH_DWORDS: u32 = 21;
+    const LENGTH_SIZE: usize = core::mem::size_of::<u32>();
+    let needed = LENGTH_SIZE + DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE + DEBUG_UNLOCK_CHALLENGE_SIZE;
     if data.len() < needed {
         return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InsufficientResources);
     }
@@ -39,9 +47,11 @@ where
         .await
     {
         Ok(()) => {
-            data[..DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE]
+            data[..LENGTH_SIZE].copy_from_slice(&RESPONSE_LENGTH_DWORDS.to_le_bytes());
+            data[LENGTH_SIZE..LENGTH_SIZE + DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE]
                 .copy_from_slice(&challenge.unique_device_identifier);
-            data[DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE..needed].copy_from_slice(&challenge.challenge);
+            data[LENGTH_SIZE + DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE..needed]
+                .copy_from_slice(&challenge.challenge);
             CaliptraVdmCmdResult::Response(1 + needed)
         }
         Err(code) => CaliptraVdmCmdResult::Error(super::map_common_completion(code)),
