@@ -440,7 +440,6 @@ fn test_get_ocp_lock_endorsement_cert_cmd() -> Result<()> {
 #[test]
 fn test_get_ocp_lock_endorsement_cert_mldsa_cmd() -> Result<()> {
     let _lock = crate::test::TEST_LOCK.lock().unwrap();
-    std::env::set_var("CPTRA_EMULATOR_SS_MCI_OFFSET", "0x00000000a8000000");
     let mut hw = start_runtime_hw_model(TestParams {
         feature: Some("test-ocp-lock"),
         rom_feature: Some("ocp-lock"),
