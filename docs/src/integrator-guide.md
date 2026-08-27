@@ -474,9 +474,9 @@ needs to be revoked while the remaining keys covered by that hash stay trusted.
     Runtime then loads and verifies MCU Runtime through the SoC manifest.
 3. After MCU Runtime starts, the requester obtains a one-use authorization
     challenge and submits `MC_FUSE_REVOKE_VENDOR_PUB_KEY` for the old key.
-4. MCU Runtime reads the active key indexes from Caliptra `FW_INFO`, rejects a
-    request targeting a key used for the current boot, and burns the old key's
-    revocation bit.
+4. MCU Runtime reads the active key indexes from Caliptra `FW_INFO`. It rejects
+    the request if the requested key was used for the current boot; otherwise,
+    it burns that key's revocation bit.
 5. On subsequent cold boots, MCU ROM forwards the updated revocation mask and
     Caliptra Core rejects firmware authenticated with the revoked key.
 
