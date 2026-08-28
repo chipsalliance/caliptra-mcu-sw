@@ -141,6 +141,8 @@ bitflags! {
         const FIRMWARE_BOOT_FLOW_COMPLETE   = 0b1 << 7;
         const FIRMWARE_OS_INITIALIZED       = 0b1 << 8;
         const FIRMWARE_MAILBOX_READY        = 0b1 << 9;
+        const FIRMWARE_SPDM_MCTP_READY      = 0b1 << 10;
+        const FIRMWARE_SPDM_DOE_READY       = 0b1 << 11;
     }
 }
 

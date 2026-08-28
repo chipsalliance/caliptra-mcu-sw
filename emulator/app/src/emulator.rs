@@ -39,12 +39,13 @@ use caliptra_mcu_emulator_registers_generated::root_bus::{AutoRootBus, AutoRootB
 use caliptra_mcu_pldm_fw_pkg::FirmwareManifest;
 use caliptra_mcu_pldm_ua::daemon::PldmDaemon;
 use caliptra_mcu_pldm_ua::transport::{EndpointId, PldmTransport};
+use caliptra_mcu_romtime::McuBootMilestones;
 use caliptra_mcu_testing_common::i3c_socket;
 use caliptra_mcu_testing_common::i3c_socket_server::start_i3c_socket;
 use caliptra_mcu_testing_common::mctp_transport::MctpTransport;
 use caliptra_mcu_testing_common::mctp_util::base_protocol::LOCAL_TEST_ENDPOINT_EID;
 use caliptra_mcu_testing_common::spdm_responder_validator::SpdmTestType;
-use caliptra_mcu_testing_common::EmulatorState;
+use caliptra_mcu_testing_common::{EmulatorState, SpdmResponderTransport};
 use clap::{ArgAction, Parser};
 use clap_num::maybe_hex;
 use crossterm::event::{Event, KeyCode, KeyEvent};
@@ -324,6 +325,7 @@ pub struct Emulator {
     pub step_lock: Arc<Mutex<()>>,
     /// Caliptra CPU is held until MCU ROM writes CPTRA_BOOT_GO
     pub cptra_boot_go: Rc<Cell<bool>>,
+    mci_regs: Rc<RefCell<caliptra_emu_periph::mci::MciRegs>>,
     /// Per-instance emulator state. Multi-instance setups each get their
     /// own state so stopping one does not stop the other.
     /// The current thread's thread-local is set to this on construction.
@@ -921,6 +923,7 @@ impl Emulator {
 
         let cptra_boot_go = Rc::new(Cell::new(false));
 
+        let mci_regs = ext_mci.regs.clone();
         let mci = Mci::new(
             &clock.clone(),
             ext_mci,
@@ -1160,6 +1163,7 @@ impl Emulator {
             i3c_controller_join_handle,
             step_lock,
             cptra_boot_go,
+            mci_regs,
             state,
         ))
     }
@@ -1181,6 +1185,7 @@ impl Emulator {
         i3c_controller_join_handle: Option<JoinHandle<()>>,
         step_lock: Arc<Mutex<()>>,
         cptra_boot_go: Rc<Cell<bool>>,
+        mci_regs: Rc<RefCell<caliptra_emu_periph::mci::MciRegs>>,
         state: Arc<EmulatorState>,
     ) -> Self {
         // Note: the caller (from_args_with_callbacks, or a C-binding
@@ -1216,6 +1221,7 @@ impl Emulator {
             i3c_controller_join_handle,
             step_lock,
             cptra_boot_go,
+            mci_regs,
             state,
         }
     }
@@ -1243,6 +1249,16 @@ impl Emulator {
         self.state.ticks.store(now, Ordering::Relaxed);
         if now % 1000 == 0 {
             self.state.tick_cond.notify_all();
+            let milestones =
+                McuBootMilestones::from((self.mci_regs.borrow().flow_status >> 16) as u16);
+            self.state.set_spdm_responder_ready(
+                SpdmResponderTransport::Mctp,
+                milestones.contains(McuBootMilestones::FIRMWARE_SPDM_MCTP_READY),
+            );
+            self.state.set_spdm_responder_ready(
+                SpdmResponderTransport::Doe,
+                milestones.contains(McuBootMilestones::FIRMWARE_SPDM_DOE_READY),
+            );
         }
 
         if let Some(ref stdin_uart) = self.stdin_uart {

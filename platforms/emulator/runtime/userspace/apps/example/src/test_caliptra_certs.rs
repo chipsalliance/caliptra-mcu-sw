@@ -1,14 +1,21 @@
 // Licensed under the Apache-2.0 license
 
+use caliptra_api::mailbox::{GetLdevCertResp, GetLdevMldsa87CertReq, Request};
+use caliptra_mcu_libsyscall_caliptra::external_otp::ExternalOtp;
+use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_romtime::{println, test_exit};
 use caliptra_mcu_scratch_alloc::{BitmapAllocator, StaticBitmapAllocatorCell, BITMAP_SLOT_SIZE};
 use core::ptr::NonNull;
 use mcu_caliptra_api::{
     dpe_certify_key_cert_size, dpe_certify_key_cert_slice, dpe_get_cert_chain_chunk,
     dpe_sign_ecc_p384, get_attested_csr_ecc384, get_attested_csr_mldsa87, get_idev_csr_ecc384,
-    populate_idev_ecc384_cert, DPE_LABEL_LEN, DPE_MAX_CHUNK_SIZE, DPE_P384_SIGNATURE_SIZE,
+    get_idev_csr_mldsa87, mldsa87_cert_der_len, populate_idev_ecc384_cert,
+    populate_idev_mldsa87_cert, raw::raw_mailbox_execute, DPE_LABEL_LEN, DPE_MAX_CHUNK_SIZE,
+    DPE_P384_SIGNATURE_SIZE, IDEV_MLDSA87_CSR_MAX_SIZE, IDEV_MLDSA87_CSR_RSP_BUF_SIZE,
 };
+use zerocopy::{FromBytes, IntoBytes};
 
+const OTP_IDEVID_MLDSA_PARTITION: u32 = 0x02;
 const CERT_SCRATCH_SIZE: usize = 16 * 1024;
 const CERT_SCRATCH_SLOTS: usize = CERT_SCRATCH_SIZE / BITMAP_SLOT_SIZE;
 const MAX_ATTESTED_CSR_SIZE: usize = 12_812;
@@ -32,7 +39,7 @@ pub fn init_cert_allocator() -> &'static BitmapAllocator {
     unsafe { CERT_ALLOCATOR.init_once(scratch_ptr, CERT_SCRATCH_SIZE) }
 }
 
-pub async fn test_get_idev_csr() {
+pub async fn test_get_idev_csr_ecc384() {
     let csr = unsafe { &mut ATTESTED_CSR_BUFFER };
     let size = get_idev_csr_ecc384(csr)
         .await
@@ -42,6 +49,106 @@ pub async fn test_get_idev_csr() {
         test_exit(1);
     }
     println!("IDevID CSR size: {}", size);
+    dump_der_hex("ECC384 IDEVID CSR", &csr[..size]);
+}
+
+/// Dump DER as hexadecimal for offline processing.
+fn dump_der_hex(label: &str, der: &[u8]) {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+
+    println!("---BEGIN {} ({} bytes)---", label, der.len());
+    for line in der.chunks(32) {
+        let mut buf = [0u8; 64];
+        for (i, byte) in line.iter().enumerate() {
+            buf[i * 2] = HEX[(byte >> 4) as usize];
+            buf[i * 2 + 1] = HEX[(byte & 0x0f) as usize];
+        }
+        println!("{}", core::str::from_utf8(&buf[..line.len() * 2]).unwrap());
+    }
+    println!("---END {}---", label);
+}
+
+/// Fetch the ML-DSA-87 IDevID CSR from Caliptra and dump it as hex.
+///
+/// This is the extraction step for the ML-DSA test PKI: the dumped CSR is
+/// signed offline by a test root CA to produce the IDevID certificate that
+/// gets seeded into the emulated OTP.
+///
+/// Caliptra only generates an IDevID CSR when the manufacturing flag
+/// `mfg_flag_gen_idev_id_csr` was set at cold boot. The integration test does
+/// this by selecting `DeviceLifecycle::Manufacturing`, so an absent CSR is a
+/// test failure.
+pub async fn test_get_idev_csr_mldsa87() {
+    let buf = unsafe { &mut ATTESTED_CSR_BUFFER };
+    // The response buffer must hold the mailbox response prefix as well as the
+    // CSR itself.
+    if buf.len() < IDEV_MLDSA87_CSR_RSP_BUF_SIZE {
+        test_exit(1);
+    }
+
+    let size = get_idev_csr_mldsa87(buf)
+        .await
+        .unwrap_or_else(|_| test_exit(1))
+        .unwrap_or_else(|| test_exit(1));
+    if size == 0 || size > IDEV_MLDSA87_CSR_MAX_SIZE {
+        test_exit(1);
+    }
+    println!("IDevID ML-DSA-87 CSR size: {}", size);
+    dump_der_hex("MLDSA87 IDEVID CSR", &buf[..size]);
+}
+
+/// Fetch the ML-DSA-87 LDevID certificate and validate its response size.
+pub async fn test_get_ldev_cert_mldsa87() {
+    let buf = unsafe { &mut ATTESTED_CSR_BUFFER };
+    let response_len = core::mem::size_of::<GetLdevCertResp>();
+    if buf.len() < response_len {
+        test_exit(1);
+    }
+
+    let mut req = GetLdevMldsa87CertReq::default();
+    let actual = raw_mailbox_execute(GetLdevMldsa87CertReq::ID.0, req.as_mut_bytes(), buf)
+        .await
+        .unwrap_or_else(|_| test_exit(1));
+    let resp =
+        GetLdevCertResp::ref_from_bytes(&buf[..response_len]).unwrap_or_else(|_| test_exit(1));
+    let size = resp.data_size as usize;
+    let prefix_len = core::mem::offset_of!(GetLdevCertResp, data);
+    if size == 0 || size > resp.data.len() || prefix_len + size > actual {
+        test_exit(1);
+    }
+    println!("LDevID ML-DSA-87 certificate size: {}", size);
+}
+
+/// Read the provisioned ML-DSA-87 IDevID certificate from OTP and install it
+/// into Caliptra.
+pub async fn populate_idevid_cert_mldsa87_from_otp(alloc: &BitmapAllocator) {
+    let otp = ExternalOtp::<DefaultSyscalls>::new();
+    let partition_size = otp
+        .partition_size(OTP_IDEVID_MLDSA_PARTITION)
+        .unwrap_or_else(|_| test_exit(1)) as usize;
+    let first_word = otp
+        .read(OTP_IDEVID_MLDSA_PARTITION, 0)
+        .await
+        .unwrap_or_else(|_| test_exit(1));
+    let size = mldsa87_cert_der_len(first_word, partition_size).unwrap_or_else(|| test_exit(1));
+
+    let buf = unsafe { &mut ATTESTED_CSR_BUFFER };
+    if size > buf.len() {
+        test_exit(1);
+    }
+    for offset in (0..size).step_by(4) {
+        let word = otp
+            .read(OTP_IDEVID_MLDSA_PARTITION, offset as u32)
+            .await
+            .unwrap_or_else(|_| test_exit(1))
+            .to_le_bytes();
+        let end = (offset + word.len()).min(size);
+        buf[offset..end].copy_from_slice(&word[..end - offset]);
+    }
+    populate_idev_mldsa87_cert(alloc, &buf[..size])
+        .await
+        .unwrap_or_else(|_| test_exit(1));
+    println!("Populate IDevID ML-DSA-87 certificate completed successfully");
 }
 
 const SIGNED_IDEV_CERT_DER: [u8; 541] = [

@@ -8,13 +8,28 @@
 //! dependency cycle.
 
 use std::cell::RefCell;
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, AtomicU8, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
 /// Tick-notify quantum. Producers (emulator step loops) call
 /// `update_ticks()` every `TICK_NOTIFY_TICKS` cycles to wake consumers.
 pub const TICK_NOTIFY_TICKS: u64 = 1000;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum SpdmResponderTransport {
+    Mctp,
+    Doe,
+}
+
+impl SpdmResponderTransport {
+    const fn ready_mask(self) -> u8 {
+        match self {
+            Self::Mctp => 1 << 0,
+            Self::Doe => 1 << 1,
+        }
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Per-instance emulator state
@@ -35,6 +50,7 @@ pub struct EmulatorState {
     pub ticks: AtomicU64,
     pub tick_lock: Mutex<()>,
     pub tick_cond: Condvar,
+    spdm_responder_ready: AtomicU8,
 }
 
 impl EmulatorState {
@@ -45,11 +61,29 @@ impl EmulatorState {
             ticks: AtomicU64::new(0),
             tick_lock: Mutex::new(()),
             tick_cond: Condvar::new(),
+            spdm_responder_ready: AtomicU8::new(0),
         }
     }
 
     pub fn new_arc() -> Arc<Self> {
         Arc::new(Self::new())
+    }
+
+    pub fn set_spdm_responder_ready(&self, transport: SpdmResponderTransport, ready: bool) {
+        let mask = transport.ready_mask();
+        let previous = if ready {
+            self.spdm_responder_ready.fetch_or(mask, Ordering::Release)
+        } else {
+            self.spdm_responder_ready
+                .fetch_and(!mask, Ordering::Release)
+        };
+        if (previous & mask != 0) != ready {
+            self.tick_cond.notify_all();
+        }
+    }
+
+    pub fn is_spdm_responder_ready(&self, transport: SpdmResponderTransport) -> bool {
+        self.spdm_responder_ready.load(Ordering::Acquire) & transport.ready_mask() != 0
     }
 }
 
@@ -138,6 +172,15 @@ pub fn wait_for_runtime_start() {
     });
 }
 
+pub fn wait_for_spdm_responder_ready(transport: SpdmResponderTransport) {
+    with_state(|state| {
+        while state.running.load(Ordering::Relaxed) && !state.is_spdm_responder_ready(transport) {
+            let lock = state.tick_lock.lock().unwrap();
+            let _ = state.tick_cond.wait_timeout(lock, Duration::from_secs(1));
+        }
+    });
+}
+
 /// Sleep for the specified number of emulator ticks.
 /// This is deterministic and exact if ticks is a multiple of 1,000, unless
 /// the emulator is very slow (<1,000 ticks per second), in which case
@@ -214,4 +257,23 @@ pub fn update_ticks(ticks: u64) {
         state.ticks.store(ticks, Ordering::Relaxed);
         state.tick_cond.notify_all();
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn spdm_responder_readiness_is_transport_specific() {
+        let state = EmulatorState::new();
+
+        state.set_spdm_responder_ready(SpdmResponderTransport::Mctp, true);
+        assert!(state.is_spdm_responder_ready(SpdmResponderTransport::Mctp));
+        assert!(!state.is_spdm_responder_ready(SpdmResponderTransport::Doe));
+
+        state.set_spdm_responder_ready(SpdmResponderTransport::Doe, true);
+        state.set_spdm_responder_ready(SpdmResponderTransport::Mctp, false);
+        assert!(!state.is_spdm_responder_ready(SpdmResponderTransport::Mctp));
+        assert!(state.is_spdm_responder_ready(SpdmResponderTransport::Doe));
+    }
 }

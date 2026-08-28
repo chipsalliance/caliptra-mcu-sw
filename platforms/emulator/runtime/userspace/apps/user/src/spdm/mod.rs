@@ -9,7 +9,6 @@
 extern crate alloc;
 
 mod caliptra_vdm;
-mod cert_store;
 #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
 mod pci_sig_vdm;
 
@@ -17,11 +16,11 @@ mod pci_sig_vdm;
 use self::pci_sig_vdm::{emulated_ide_km::EmulatedIdeDriver, emulated_tdisp::EmulatedTdispDriver};
 #[cfg(feature = "doe")]
 use caliptra_mcu_libsyscall_caliptra::doe;
+use caliptra_mcu_libsyscall_caliptra::mci::Mci;
 use caliptra_mcu_libsyscall_caliptra::mctp;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_console::Console;
 use caliptra_mcu_scratch_alloc::{BitmapAllocator, StaticBitmapAllocatorCell, BITMAP_SLOT_SIZE};
-use caliptra_mcu_spdm_pal::cert::store::SharedCertStore;
 use caliptra_mcu_spdm_pal::McuSpdmPal;
 use caliptra_mcu_spdm_stack::SpdmStack;
 #[cfg(feature = "doe")]
@@ -35,10 +34,7 @@ use caliptra_mcu_spdm_vdm_handler::pci_sig::{
 #[allow(unused_imports)]
 use core::fmt::Write as _;
 use core::ptr::NonNull;
-use core::sync::atomic::{AtomicU8, Ordering};
 use embassy_executor::Spawner;
-use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
-use embassy_sync::watch::Watch;
 
 /// Largest single in-flight SPDM message (request or response) this responder
 /// supports.
@@ -165,20 +161,6 @@ const TEST_PCI_SIG_VENDOR_ID: u16 = 0x0001;
 #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
 const SUPPORTED_TDISP_VERSIONS: &[TdispVersion] = &[TdispVersion::V10];
 
-/// Single cert store shared by all SPDM responder tasks.
-static CERT_STORE: SharedCertStore = SharedCertStore::new();
-
-/// Consumers of [`CERT_STORE_INIT`]: MCTP responder, DOE responder, ML-DSA installer.
-const CERT_STORE_WAITERS: usize = 3;
-
-/// Cert-store init outcome. `Watch`, not `Signal`: it retains the value for
-/// several independent consumers, where `Signal::wait` consumes it and so needed
-/// one signal per waiter.
-static CERT_STORE_INIT: Watch<CriticalSectionRawMutex, bool, CERT_STORE_WAITERS> = Watch::new();
-
-/// Cert store init state: 0 = uninit, 1 = in progress, 2 = done.
-static CERT_STORE_STATE: AtomicU8 = AtomicU8::new(0);
-
 #[cfg(feature = "test-mctp-spdm-attestation-pcr-quote")]
 fn measurement_provider(
 ) -> caliptra_mcu_spdm_pal::measurements::providers::pcr_quote::PcrQuoteMeasurementProvider {
@@ -193,45 +175,7 @@ fn measurement_provider(
     )
 }
 
-/// Initialize the shared cert store. First caller does the work;
-/// concurrent callers wait on the outcome watch (no busy-loop).
-async fn ensure_cert_store_init<A: mcu_caliptra_api::ApiAlloc>(
-    alloc: &A,
-) -> mcu_error::McuResult<()> {
-    // Single-core cooperative executor: no preemption between load and
-    // store, so load+store is equivalent to compare_exchange here.
-    // (riscv32imc lacks hardware CAS.)
-    let state = CERT_STORE_STATE.load(Ordering::Acquire);
-    match state {
-        0 => {
-            CERT_STORE_STATE.store(1, Ordering::Release);
-            if let Err(e) = cert_store::populate_idev(alloc).await {
-                CERT_STORE_STATE.store(0, Ordering::Release);
-                CERT_STORE_INIT.sender().send(false);
-                return Err(e);
-            }
-            let r = cert_store::setup_endorsements(&CERT_STORE, alloc).await;
-            CERT_STORE_STATE.store(if r.is_ok() { 2 } else { 0 }, Ordering::Release);
-            CERT_STORE_INIT.sender().send(r.is_ok());
-            r
-        }
-        1 => {
-            // A receiver created after the send still observes it, so there is
-            // no lost-wakeup window here.
-            let Some(mut rx) = CERT_STORE_INIT.receiver() else {
-                return Err(mcu_error::codes::INTERNAL_BUG);
-            };
-            if rx.changed().await {
-                Ok(())
-            } else {
-                Err(mcu_error::codes::INTERNAL_BUG)
-            }
-        }
-        _ => Ok(()),
-    }
-}
-
-/// Spawn SPDM responder tasks on the given executor.
+/// Spawn SPDM responder tasks after [`crate::cert_store::boot_init`] succeeds.
 pub(crate) fn spawn_spdm_tasks(spawner: &Spawner) {
     let mut cw = Console::<DefaultSyscalls>::writer();
 
@@ -244,83 +188,6 @@ pub(crate) fn spawn_spdm_tasks(spawner: &Spawner) {
             crate::log_error!(cw, "SPDM: Failed to spawn DOE responder");
         }
     }
-    if spawner.spawn(idev_mldsa_installer()).is_err() {
-        crate::log_error!(cw, "SPDM: Failed to spawn ML-DSA IDevID installer");
-    }
-}
-
-/// Install the IDevID ML-DSA-87 certificate once the responders are serving.
-///
-/// Its own task because the install is ~1,900 sequential 4-byte OTP reads —
-/// doing it inside `ensure_cert_store_init` delayed responder startup past the
-/// point where an already-connected requester gives up. It waits for the ECC
-/// cert store to be ready so the two installs do not contend for the mailbox,
-/// and nothing can read the ML-DSA chain yet, so ordering after SPDM comes up
-/// costs nothing.
-#[embassy_executor::task]
-async fn idev_mldsa_installer() {
-    let mut cw = Console::<DefaultSyscalls>::writer();
-
-    // Wait for cert-store init (driven by whichever responder wins the race)
-    // before adding mailbox traffic of our own. Log the give-up paths so a
-    // skipped install is distinguishable from a successful one.
-    let Some(mut rx) = CERT_STORE_INIT.receiver() else {
-        crate::log_error!(cw, "SPDM: no cert-store receiver for ML-DSA install");
-        return;
-    };
-    if !rx.changed().await {
-        crate::log_warn!(
-            cw,
-            "SPDM: cert store init failed; skipping ML-DSA-87 IDevID install"
-        );
-        return;
-    }
-
-    // Sized for one ML-DSA-87 certificate (Caliptra caps it at 8192) plus the
-    // allocator bitmap and the 8-byte mailbox response — not the responders'
-    // 12 KiB, since this task only ever stages the certificate.
-    const MLDSA_SCRATCH_SIZE: usize = 9 * 1024;
-
-    // Heap, not a `static`: this buffer is touched once at boot and never again,
-    // so a `static` would hold 9 KiB of SRAM for the life of the app to serve a
-    // one-shot install. `Vec` returns it to the allocator when this task ends.
-    // `try_reserve_exact` rather than `with_capacity` so exhaustion is an error
-    // we log, not a panic (a panic in this app is fatal); same pattern as
-    // `image_loader::load_soc_images`.
-    //
-    // Over-allocated by one slot so the base can be walked forward to a
-    // `BITMAP_SLOT_SIZE` boundary: the heap only guarantees `align_of::<u8>()`,
-    // and `BitmapAllocator::new` requires a slot-aligned base.
-    let mut scratch: alloc::vec::Vec<u8> = alloc::vec::Vec::new();
-    if scratch
-        .try_reserve_exact(MLDSA_SCRATCH_SIZE + BITMAP_SLOT_SIZE)
-        .is_err()
-    {
-        crate::log_error!(cw, "SPDM: no heap for ML-DSA-87 IDevID scratch");
-        return;
-    }
-    scratch.resize(MLDSA_SCRATCH_SIZE + BITMAP_SLOT_SIZE, 0);
-
-    let base = scratch.as_mut_ptr();
-    let pad = base.align_offset(BITMAP_SLOT_SIZE);
-    // `pad <= BITMAP_SLOT_SIZE` and the buffer is oversized by exactly that, so
-    // the aligned window is always fully in bounds.
-    let Some(aligned) = scratch.get_mut(pad..pad + MLDSA_SCRATCH_SIZE) else {
-        crate::log_error!(cw, "SPDM: ML-DSA-87 IDevID scratch alignment failed");
-        return;
-    };
-    let scratch_ptr: NonNull<u8> = NonNull::from(&mut aligned[0]);
-    debug_assert_eq!(scratch_ptr.as_ptr() as usize % BITMAP_SLOT_SIZE, 0);
-
-    // SAFETY: `scratch_ptr` is non-null, slot-aligned, and points at
-    // `MLDSA_SCRATCH_SIZE` writable bytes exclusively owned by this allocator.
-    // `allocator` and every handle it hands out are confined to the
-    // `populate_idev_mldsa` call below, which returns before `scratch` is
-    // dropped at end of task — so the memory outlives the allocator. The
-    // allocator is a local, so it is never moved across threads.
-    let allocator = unsafe { BitmapAllocator::new(scratch_ptr, MLDSA_SCRATCH_SIZE) };
-
-    cert_store::populate_idev_mldsa(&allocator).await;
 }
 
 #[embassy_executor::task]
@@ -340,17 +207,6 @@ async fn spdm_mctp_responder() {
     let allocator: &'static BitmapAllocator =
         unsafe { MCTP_ALLOC_CELL.init_once(scratch_ptr, MCTP_SPDM_SCRATCH_SIZE) };
 
-    {
-        if let Err(e) = ensure_cert_store_init(allocator).await {
-            crate::log_error!(
-                cw,
-                "SPDM_MCTP: cert store init failed: 0x{}",
-                crate::Hex32(u32::from(e))
-            );
-            return;
-        }
-    }
-
     let transport = alloc::boxed::Box::new(
         McuSpdmMctpTransport::new(
             mctp::driver_num::MCTP_SPDM,
@@ -365,7 +221,7 @@ async fn spdm_mctp_responder() {
         McuSpdmPal::new(
             transport,
             allocator,
-            &CERT_STORE,
+            crate::cert_store::shared(),
             measurement_provider(),
             MAX_SPDM_MSG_SIZE,
         )
@@ -381,6 +237,9 @@ async fn spdm_mctp_responder() {
     let mut stack = SpdmStack::<_, 1, _>::with_vdm_backend(pal, vdm);
 
     crate::log_info!(cw, "SPDM_MCTP: starting spdm-lib MCTP run loop");
+    Mci::<DefaultSyscalls>::new()
+        .set_spdm_mctp_responder_ready()
+        .unwrap();
     if let Err(e) = stack.run().await {
         crate::log_error!(
             cw,
@@ -414,17 +273,6 @@ async fn spdm_doe_responder() {
     let allocator: &'static BitmapAllocator =
         unsafe { DOE_ALLOC_CELL.init_once(scratch_ptr, DOE_SPDM_SCRATCH_SIZE) };
 
-    {
-        if let Err(e) = ensure_cert_store_init(allocator).await {
-            crate::log_error!(
-                cw,
-                "SPDM_DOE: cert store init failed: 0x{}",
-                crate::Hex32(u32::from(e))
-            );
-            return;
-        }
-    }
-
     let transport = alloc::boxed::Box::new(doe_transport);
     // SAFETY: `allocator` is the `&'static` handle obtained above and is
     // exclusive to this task.
@@ -432,7 +280,7 @@ async fn spdm_doe_responder() {
         McuSpdmPal::new(
             transport,
             allocator,
-            &CERT_STORE,
+            crate::cert_store::shared(),
             measurement_provider(),
             MAX_SPDM_MSG_SIZE,
         )
@@ -452,6 +300,9 @@ async fn spdm_doe_responder() {
         SpdmStack::<_, 1, _>::with_vdm_backend(pal, caliptra_vdm::AppVdmBackend::disabled());
 
     crate::log_info!(cw, "SPDM_DOE: starting spdm-lib DOE run loop");
+    Mci::<DefaultSyscalls>::new()
+        .set_spdm_doe_responder_ready()
+        .unwrap();
     if let Err(e) = stack.run().await {
         crate::log_error!(
             cw,

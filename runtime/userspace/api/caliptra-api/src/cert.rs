@@ -2,7 +2,10 @@
 
 //! Miscellaneous certificate mailbox commands.
 
-use caliptra_api::mailbox::{PopulateIdevEcc384CertReq, PopulateIdevMldsa87CertReq};
+use caliptra_api::mailbox::{
+    CommandId, GetIdevCsrResp, GetIdevMldsaCsrResp, PopulateIdevEcc384CertReq,
+    PopulateIdevMldsa87CertReq, VarSizeDataResp,
+};
 use core::mem::{offset_of, size_of};
 use mcu_error::codes::INVARIANT;
 use mcu_error::McuResult;
@@ -10,12 +13,16 @@ use zerocopy::{little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout,
 
 use crate::wire::{
     calc_checksum, CMD_GET_ATTESTED_ECC384_CSR, CMD_GET_ATTESTED_MLDSA87_CSR,
-    CMD_GET_IDEV_ECC384_CSR, CMD_POPULATE_IDEV_MLDSA87_CERT, MBOX_RESP_HEADER_SIZE,
+    CMD_GET_IDEV_ECC384_CSR, CMD_GET_IDEV_MLDSA87_CSR, CMD_POPULATE_IDEV_MLDSA87_CERT,
+    MBOX_RESP_HEADER_SIZE,
 };
 use crate::ApiAlloc;
 
 /// Caliptra command ID for `POPULATE_IDEV_ECC384_CERT`.
 const CMD_POPULATE_IDEV_ECC384_CERT: u32 = 0x4944_4550; // "IDEP"
+
+const _: () = assert!(CMD_GET_IDEV_ECC384_CSR == CommandId::GET_IDEV_ECC384_CSR.0);
+const _: () = assert!(CMD_GET_IDEV_MLDSA87_CSR == CommandId::GET_IDEV_MLDSA87_CSR.0);
 
 /// Maximum IDevID cert size accepted by Caliptra.
 const POPULATE_IDEV_MAX_CERT_SIZE: usize = 1024;
@@ -186,26 +193,70 @@ fn populate_idev_mldsa87_header(cert_size: u32, cert_bytesum: u32) -> PopulateId
 }
 
 // ---------------------------------------------------------------------------
-// GET_*_CSR — in-place response handling
+// Variable-size certificate and CSR responses
 // ---------------------------------------------------------------------------
 
-/// Bytes preceding variable CSR data in a mailbox response:
+/// Bytes preceding variable data in a mailbox response:
 /// `MailboxRespHeader(8) | data_size(4)`.
-const CSR_RSP_PREFIX_LEN: usize = MBOX_RESP_HEADER_SIZE + 4;
+const VAR_SIZE_RSP_PREFIX_LEN: usize = MBOX_RESP_HEADER_SIZE + 4;
+
+const _: () = assert!(size_of::<GetIdevCsrResp>() == size_of::<GetIdevMldsaCsrResp>());
+const _: () = assert!(offset_of!(VarSizeDataResp, data_size) == MBOX_RESP_HEADER_SIZE);
+const _: () = assert!(offset_of!(VarSizeDataResp, data) == VAR_SIZE_RSP_PREFIX_LEN);
+
+/// Largest ML-DSA-87 IDevID CSR Caliptra can return.
+///
+/// Mirrors `caliptra_drivers::MLDSA87_MAX_CSR_SIZE`, which is not reachable
+/// from this crate (only `caliptra-api` is a dependency, not
+/// `caliptra-drivers`). The value has differed across Caliptra revisions —
+/// 8192 at the currently pinned `caliptra-api` rev, 7680 on newer tips — so
+/// the larger is used to stay correct across the rev bump. The const assert
+/// below breaks the build if a future rev shrinks the mailbox response cap
+/// below this buffer.
+pub const IDEV_MLDSA87_CSR_MAX_SIZE: usize = 8192;
+
+const _: () = assert!(IDEV_MLDSA87_CSR_MAX_SIZE <= caliptra_api::mailbox::MAX_RESP_DATA_SIZE);
+
+/// Minimum buffer size to pass to [`get_idev_csr_mldsa87`].
+///
+/// The buffer doubles as the mailbox response buffer, so it must hold the
+/// response prefix in addition to the CSR itself.
+pub const IDEV_MLDSA87_CSR_RSP_BUF_SIZE: usize =
+    VAR_SIZE_RSP_PREFIX_LEN + IDEV_MLDSA87_CSR_MAX_SIZE;
 
 /// Issue `GET_IDEV_ECC384_CSR` and write the returned CSR DER bytes into
 /// `csr_out`. Returns `Ok(None)` when the CSR is not provisioned.
 #[inline(never)]
 pub async fn get_idev_csr_ecc384(csr_out: &mut [u8]) -> McuResult<Option<usize>> {
-    if csr_out.len() <= CSR_RSP_PREFIX_LEN {
+    get_idev_csr_inner(CMD_GET_IDEV_ECC384_CSR, csr_out).await
+}
+
+/// Issue `GET_IDEV_MLDSA87_CSR` and write the returned CSR DER bytes into
+/// `csr_out`. Returns `Ok(None)` when the CSR is not provisioned.
+///
+/// Wire format is identical to [`get_idev_csr_ecc384`]; only the payload size
+/// differs. An ML-DSA-87 CSR runs up to [`IDEV_MLDSA87_CSR_MAX_SIZE`] bytes
+/// versus a few hundred for ECC, so `csr_out` must be sized accordingly —
+/// see that constant for the required buffer size.
+#[inline(never)]
+pub async fn get_idev_csr_mldsa87(csr_out: &mut [u8]) -> McuResult<Option<usize>> {
+    get_idev_csr_inner(CMD_GET_IDEV_MLDSA87_CSR, csr_out).await
+}
+
+/// Shared implementation of `GET_IDEV_*_CSR`.
+///
+/// Both variants take an empty request (checksum only) and return a
+/// `VarSizeDataResp`, so the only difference is the command ID.
+async fn get_idev_csr_inner(cmd: u32, csr_out: &mut [u8]) -> McuResult<Option<usize>> {
+    if csr_out.len() <= VAR_SIZE_RSP_PREFIX_LEN {
         return Err(INVARIANT);
     }
 
     let mut req = [0u8; 4];
-    req.copy_from_slice(&calc_checksum(CMD_GET_IDEV_ECC384_CSR, &[]).to_le_bytes());
+    req.copy_from_slice(&calc_checksum(cmd, &[]).to_le_bytes());
 
-    let actual = crate::wire::mbox_execute(CMD_GET_IDEV_ECC384_CSR, &req, csr_out).await?;
-    if actual < CSR_RSP_PREFIX_LEN {
+    let actual = crate::wire::mbox_execute(cmd, &req, csr_out).await?;
+    if actual < VAR_SIZE_RSP_PREFIX_LEN {
         return Err(INVARIANT);
     }
     let data_size = u32::from_le_bytes([csr_out[8], csr_out[9], csr_out[10], csr_out[11]]);
@@ -214,12 +265,15 @@ pub async fn get_idev_csr_ecc384(csr_out: &mut [u8]) -> McuResult<Option<usize>>
     }
     let data_size = data_size as usize;
     if data_size == 0
-        || data_size > csr_out.len() - CSR_RSP_PREFIX_LEN
-        || CSR_RSP_PREFIX_LEN + data_size > actual
+        || data_size > csr_out.len() - VAR_SIZE_RSP_PREFIX_LEN
+        || VAR_SIZE_RSP_PREFIX_LEN + data_size > actual
     {
         return Err(INVARIANT);
     }
-    csr_out.copy_within(CSR_RSP_PREFIX_LEN..CSR_RSP_PREFIX_LEN + data_size, 0);
+    csr_out.copy_within(
+        VAR_SIZE_RSP_PREFIX_LEN..VAR_SIZE_RSP_PREFIX_LEN + data_size,
+        0,
+    );
     Ok(Some(data_size))
 }
 
@@ -232,7 +286,7 @@ const ATTESTED_CSR_REQ_LEN: usize = 40;
 ///
 /// `csr_out` is also used as the mailbox response buffer for the duration of
 /// the call; on return, only the CSR data occupies its prefix. The caller must
-/// provide a `csr_out` of at least [`CSR_RSP_PREFIX_LEN`] bytes plus
+/// provide a `csr_out` of at least [`VAR_SIZE_RSP_PREFIX_LEN`] bytes plus
 /// the expected CSR size.
 #[inline(never)]
 pub async fn get_attested_csr_ecc384(
@@ -260,7 +314,7 @@ async fn get_attested_csr_inner(
     nonce: &[u8; 32],
     csr_out: &mut [u8],
 ) -> McuResult<usize> {
-    if csr_out.len() <= CSR_RSP_PREFIX_LEN {
+    if csr_out.len() <= VAR_SIZE_RSP_PREFIX_LEN {
         return Err(INVARIANT);
     }
 
@@ -276,17 +330,20 @@ async fn get_attested_csr_inner(
     // Use the caller's buffer as the mailbox response buffer; afterwards
     // memmove the CSR data over the response prefix.
     let actual = crate::wire::mbox_execute(cmd, &req, csr_out).await?;
-    if actual < CSR_RSP_PREFIX_LEN {
+    if actual < VAR_SIZE_RSP_PREFIX_LEN {
         return Err(INVARIANT);
     }
     let data_size = u32::from_le_bytes([csr_out[8], csr_out[9], csr_out[10], csr_out[11]]) as usize;
     if data_size == 0
-        || data_size > csr_out.len() - CSR_RSP_PREFIX_LEN
-        || CSR_RSP_PREFIX_LEN + data_size > actual
+        || data_size > csr_out.len() - VAR_SIZE_RSP_PREFIX_LEN
+        || VAR_SIZE_RSP_PREFIX_LEN + data_size > actual
     {
         return Err(INVARIANT);
     }
-    csr_out.copy_within(CSR_RSP_PREFIX_LEN..CSR_RSP_PREFIX_LEN + data_size, 0);
+    csr_out.copy_within(
+        VAR_SIZE_RSP_PREFIX_LEN..VAR_SIZE_RSP_PREFIX_LEN + data_size,
+        0,
+    );
     Ok(data_size)
 }
 

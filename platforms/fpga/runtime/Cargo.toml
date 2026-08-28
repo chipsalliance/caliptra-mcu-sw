@@ -67,6 +67,7 @@ release = [
 	"caliptra-mcu-romtime/no-print",
 ]
 test-caliptra-certs = []
+test-get-caliptra-idev-csr = []
 test-caliptra-crypto = []
 test-caliptra-mailbox = []
 test-caliptra-util-host-validator = ["mcu-mbox-service"]
