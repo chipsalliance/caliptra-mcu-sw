@@ -16,18 +16,22 @@ choices that must be made by an integrator.
 
 ### DOT mode and storage planning
 
-DOT can be deployed in two broad modes:
+The reference implementation supports mutable-locking DOT:
 
 | Mode | Persistent ownership | Fuse use | Required platform storage |
 |---|---|---|---|
-| Volatile DOT | No. Ownership is lost on power cycle. | None beyond optional DOT enablement. | Ownership storage that is retained across the reset level needed by the DOT flow. |
-| Mutable locking DOT | Yes. Ownership is sealed to the device across power cycles. | `dot_fuse_array` bits consumed by lock/unlock/disable/override and rotation transitions. | DOT blob flash storage plus ownership storage handoff between ROM and runtime. |
+| Mutable locking DOT | Yes. Ownership is sealed to the device across power cycles. | `dot_fuse_array` bits consumed by lock/unlock/disable/override and rotation transitions. | Non-volatile DOT blob storage. |
 
 If mutable locking DOT is enabled, the platform must provide non-volatile DOT
 blob storage through `RomParameters::dot_flash`. The DOT blob is not secret, but
 it must be available and authenticated on every ODD-state boot. If the blob is
 missing, erased, corrupt, or HMAC-invalid while the part is in ODD state, ROM
 enters the configured locked-state recovery path or reports a fatal DOT error.
+
+The reference ROM and Runtime DOT paths both derive blob keys from stable
+IDevID. ROM's `dot_stable_key_type` parameter can select another root for
+ROM-only paths, but the reference Runtime remains on IDevID and there is no blob
+migration when the root changes.
 
 Integrators should treat the DOT blob flash layout as a platform-owned recovery
 asset. Keep enough space for the active blob and any backup blob policy your
@@ -53,8 +57,7 @@ transition (ODD → EVEN). Therefore:
 
 | Logical fuse bits | Lock/unlock cycles | Notes |
 |:---------:|:------------------:|-------|
-| 64        | 32                 | Recommended minimum. |
-| 256       | 128                | Default in the reference `hw/fuses.hjson`. |
+| 256       | 128                | Size used by the reference fuse map and MCU implementation. |
 
 The right size depends on how many ownership transfers the part is expected to
 undergo in its lifetime. There is no way to reclaim burned fuse bits — once the
@@ -64,9 +67,7 @@ service events such as unlock, override, and key-rotation flows rather than
 sizing only for the happy-path number of ownership transfers.
 
 The reference implementation burns the next sequential bit and reports a fatal
-DOT error if no bit remains. Platforms that need stronger wear budgeting or
-product-specific lifetime policy should size the field accordingly or provide a
-custom DOT state policy in their platform integration.
+DOT error if no bit remains.
 
 ### DOT blob and transition power-loss policy
 
@@ -74,18 +75,18 @@ The DOT fuse and DOT blob must advance together. A state transition that burns a
 fuse without leaving a matching HMAC-sealed blob can strand the device in a
 state that requires recovery on the next boot.
 
-The ROM-owned firmware manifest DOT section provides an owner-signed,
-idempotent way to request DOT state changes during boot. It is the preferred
-path for field-driven DOT lock, unlock, rotate, and disable operations when the
-platform wants immutable ROM code to perform the fuse burn. See
+The ROM-owned firmware manifest DOT section provides an authenticated,
+idempotent way to request DOT state changes during boot. Its directives are
+covered by the MCU image digest authenticated through the SoC manifest. See
 [Firmware Manifest DOT Section](./firmware_format.md#firmware-manifest-dot-section)
 for the exact header format and power-loss windows.
 
-For platforms that expose runtime DOT commands directly, the runtime must follow
-the same ordering rules: write the DOT blob expected by the post-transition fuse
-state, verify it can be recovered if power is lost, and only then ask ROM or the
-trusted fuse-burning path to advance the fuse. Maintaining redundant active and
-backup DOT blobs is strongly recommended for mutable locking deployments.
+For platforms that expose runtime DOT commands directly, Runtime performs the
+DOT blob and fuse writes itself. It must follow the command-specific ordering:
+write and read-back verify the target blob before the one-bit LOCK, DISABLE, or
+UNLOCK burn; ROTATE burns two bits before sealing the rotated-epoch blob.
+Maintaining redundant active and backup DOT blobs is strongly recommended for
+mutable-locking deployments.
 
 ### Vendor recovery PK hash
 
@@ -114,31 +115,31 @@ policy is compiled into `RomParameters::dot_locked_recovery_handlers`:
 
 | Recovery option | Required platform support | Result |
 |---|---|---|
-| Backup blob recovery | A recovery handler that can read a backup DOT blob sealed for the current fuse count. | Restores the DOT blob and resets without changing DOT fuse state. |
+| Reset-flow backup recovery | `dot_recovery_reset_flow`, `DotRecoveryPolicy::BackupBlob`, and `dot_recovery_handler`. | Restores and re-verifies the active blob, then continues the same cold boot without changing DOT fuse state. |
+| Ordered backup recovery | A `BackupBlobRecoveryHandler` entry in `dot_locked_recovery_handlers`. | Restores the active blob; the handler manager then requests a warm reset. |
 | I3C DOT recovery services | `I3cServicesModes::DOT_RECOVERY` plus an external recovery agent over I3C. | Allows `DOT_STATUS`, `DOT_RECOVERY`, and `DOT_OVERRIDE` commands over ROM I3C services. |
 | DOT recovery reset coordination | `RomParameters::dot_recovery_reset_flow` plus BMC policy for the next boot. | On locked DOT failure, ROM publishes `DEVICE_STATUS_0 = 0x0094_000E` before fatal error. On the subsequent cold boot, BMC writes `DEVICE_RESET.RESET_CTRL = 0x10` to force the fused owner hash, or `0x11` to continue regular DOT verification. |
 
 Integrators may configure more than one locked-state recovery handler; ROM tries
 the configured handlers in order and stops at the first one that succeeds. The
-I3C service path is a ROM recovery protocol and is separate from runtime
-management paths. Runtime-originated recovery or field-management workflows
-should be described by transport: in-band through a SoC-side MCI mailbox agent,
-or out-of-band through SPDM VDM over MCTP/I3C. All DOT I3C service commands are
-available only when the platform explicitly enables the corresponding ROM
-service mode.
+ordered handler chain runs only when `dot_recovery_reset_flow` is disabled; the
+reset-coordination path instead attempts its singular backup handler and then
+reports failure to the BMC. The I3C service path is a ROM recovery protocol and
+is separate from Runtime's in-band MCI mailbox and out-of-band SPDM VDM command
+paths. DOT I3C service commands are available only when the platform enables
+the corresponding ROM service mode.
 
 ### Fuse storage cost summary
 
 | Fuse field | Partition | Size | Encoding | Notes |
 |---|---|:---:|---|---|
-| `dot_initialized` | `VENDOR_NON_SECRET_PROD_PARTITION` | 1 bit (3 bytes with 3x OR duplication) | `LinearOr` | Gates the DOT flow. |
-| `dot_fuse_array` | `VENDOR_TEST_PARTITION` | 256 bits (32 bytes) | `OneHot` (bit-count counter) | State counter. Must be in a non-ECC partition. Scales linearly with desired lock/unlock cycles. |
+| `dot_initialized` | `VENDOR_NON_SECRET_PROD_PARTITION` | 1 logical bit encoded in 3 raw bits | `LinearOr` | Gates the DOT flow. |
+| `dot_fuse_array` | `VENDOR_TEST_PARTITION` | 256 bits (32 bytes) | `OneHot` (bit-count counter) | State counter. Must be in a non-ECC partition. |
 | `vendor_recovery_pk_hash` | `VENDOR_NON_SECRET_PROD_PARTITION` | 384 bits (48 bytes) | `Single` | Optional. For `DOT_OVERRIDE` catastrophic recovery. |
 
-If OTP space is constrained, the `dot_fuse_array` can be made smaller — the
-minimum useful size is 2 bits, but this only allows a single lock/unlock cycle
-with no margin. If redundant bit-count encoding (`OneHotLinearOr`) is used,
-multiply the raw bit count by the duplication factor (e.g., 3×).
+The reference MCU implementation reads the full 256-bit `dot_fuse_array` and
+uses 256 as its transition limit; changing that size requires corresponding
+implementation changes.
 
 ### Non-ECC Partition Requirement for Incremental Counters
 
@@ -257,7 +258,7 @@ When adding storage for MCU-owned SVN fuses, integrators should:
 5. Validate update and power-loss behavior: ROM intentionally performs the SVN
     Anti-Rollback flow's anti-rollback and range checks before burning any SVN
     fuse, but the platform must still ensure OTP write, digest, and
-    partition-lock policy are compatible with the planned field workflow.
+    partition-lock policy are compatible with the field workflow below.
 
 ### Field update workflow
 
@@ -450,10 +451,10 @@ fresh emulator instance for each independently destructive scenario. The
 checked-in test keys are emulator fixtures only and must not be used as
 production authorization credentials.
 
-For per-key revocation, once all usable bits for a key type are burned in a
-slot, that key type is fully revoked in that slot. The last key index for a
-given key type cannot be revoked, matching Caliptra's requirement that a slot
-retain at least one usable key of each required type.
+For per-key revocation, the reference implementation rejects the maximum key
+index for each key type; it does not dynamically identify the last remaining
+unrevoked key. It also rejects the ECC key, or active-type PQC key, that
+authenticated the currently running Caliptra firmware.
 
 ### Key Revocation Flows
 
@@ -462,68 +463,106 @@ within the same PK hash slot or in a different slot.
 
 #### Case 1: Revocation Within the Same PK Hash Slot
 
-This flow is used when a specific sub-key within a PK hash slot needs to be
-revoked (e.g., moving to a new key version) but other keys within that PK hash
-remain trusted.
+This flow is used when a specific verification key covered by a vendor PK hash
+needs to be revoked while the remaining keys covered by that hash stay trusted.
 
 **Process**:
 
-1. Push a new Runtime (RT) firmware signed with a new key.
-2. After the device boots with the replacement key, an authorized requester
-    sends `MC_FUSE_REVOKE_VENDOR_PUB_KEY` to MCU Runtime for the old key.
-3. MCU Runtime validates that the target key was not used for the current boot
-    and burns the corresponding revocation bit.
+1. Stage a Caliptra FMC + RT firmware bundle signed with a replacement vendor
+    key covered by the same vendor PK hash.
+2. Cold reboot. MCU ROM forwards the selected hash, PQC type, and revocation
+    masks to Caliptra Core. Caliptra Core ROM authenticates the new bundle; its
+    Runtime then loads and verifies MCU Runtime through the SoC manifest.
+3. After MCU Runtime starts, the requester obtains a one-use authorization
+    challenge and submits `MC_FUSE_REVOKE_VENDOR_PUB_KEY` for the old key.
+4. MCU Runtime reads the active key indexes from Caliptra `FW_INFO`. It rejects
+    the request if the requested key was used for the current boot; otherwise,
+    it burns that key's revocation bit.
+5. On subsequent cold boots, MCU ROM forwards the updated revocation mask and
+    Caliptra Core rejects firmware authenticated with the revoked key.
 
 ```mermaid
 sequenceDiagram
     participant Requester
     participant MCU_ROM as MCU ROM
-    participant MCU_RT as MCU RT
+     participant Core as Caliptra Core
+     participant MCU_RT as MCU Runtime
     participant Fuses as OTP Fuses
 
-    Requester->>MCU_ROM: Push new RT FW (signed with Key N+1)
-    MCU_ROM->>Fuses: Read revocation bitmask
-    MCU_ROM->>MCU_ROM: Verify signature with Key N+1
-    MCU_ROM->>MCU_RT: Boot into new MCU RT
-    Requester->>MCU_RT: MC_FUSE_REVOKE_VENDOR_PUB_KEY(slot, type, Key N)
-    MCU_RT->>Fuses: Burn revocation bit for Key N
+     Requester->>Requester: Stage Caliptra FMC + RT bundle signed with replacement key
+     Requester->>MCU_ROM: Trigger cold reboot
+     MCU_ROM->>Fuses: Read selected hash, PQC type, and revocations
+    MCU_ROM->>Core: Populate fuses and send RI_DOWNLOAD_FIRMWARE
+     Core->>Core: Verify Caliptra bundle with replacement key
+     Core->>MCU_RT: Load and verify MCU Runtime
+     Requester->>MCU_RT: Get Auth Challenge
+     MCU_RT-->>Requester: One-use nonce
+    Requester->>Requester: Sign command payload and nonce
+     Requester->>MCU_RT: Authorized revoke command for old key
+     MCU_RT->>Core: Read FW_INFO and active vendor hash
+     Core-->>MCU_RT: Active key indexes and hash
+     MCU_RT->>Fuses: Burn old key revocation bit
+     MCU_RT-->>Requester: Success
 ```
 
 #### Case 2: Revocation Across Different PK Hash Slots
 
-This flow is used when the entire PK hash slot is compromised or needs to be
-replaced, requiring a transition to a new PK hash slot.
+This flow is used when an entire vendor PK hash slot must be replaced.
 
 **Process**:
 
-1. Provision the new vendor PK hash into an empty inactive slot if it was not
-    provisioned during manufacturing.
-2. Push a new Runtime (RT) firmware signed with a key from the new PK hash slot.
-3. Additionally assert the hardware strapping pin (bit 1 of
-    `mci_reg_generic_input_wires[1]`) to enable rotation.
-4. On reboot, the MCU ROM will select the new PK hash slot.
-5. An authorized requester sends `MC_FUSE_REVOKE_VENDOR_PK_HASH` to MCU
-    Runtime to burn the old PK hash slot as invalid.
+1. Prepare target slot `S`. It must not be marked invalid in
+    `VENDOR_PK_HASH_VALID`, and its PQC key type and revocation metadata must
+    make it functional. If its hash is empty, complete the authorization flow
+    and use `MC_PROVISION_VENDOR_PK_HASH` to write the hash; that command writes
+    only the hash.
+2. With the default `VendorKeyPolicy`, ensure `S` is the second functional slot
+   in the slot 0-to-15 scan order. The rotation strap does not select an
+   arbitrary slot or necessarily the numerically adjacent slot. Use a custom
+   policy when a different selection rule is required.
+3. Stage a Caliptra FMC + RT bundle whose vendor key descriptors match slot `S`,
+   assert bit 1 of `mci_reg_generic_input_wires[1]`, and cold reboot.
+4. MCU ROM selects the second functional slot and forwards its fuse values.
+   Caliptra Core ROM authenticates the bundle against slot `S`.
+5. After MCU Runtime starts, obtain a new authorization challenge and submit
+   `MC_FUSE_REVOKE_VENDOR_PK_HASH` for old slot `O`. MCU Runtime rejects the
+   command if `O` contains the active hash, then marks `O` invalid.
+6. Deassert the rotation strap after revoking `O`. On the next cold boot, `S`
+   is selected as the first functional slot. Leaving the strap asserted when
+   additional functional slots exist could select a different slot.
 
 ```mermaid
 sequenceDiagram
     participant Requester
-    participant Strapping as Strapping Pin
+    participant Strap as Rotation Strap
     participant MCU_ROM as MCU ROM
-    participant MCU_RT as MCU RT
+    participant Core as Caliptra Core
+    participant MCU_RT as MCU Runtime
     participant Fuses as OTP Fuses
 
-    Requester->>MCU_RT: MC_PROVISION_VENDOR_PK_HASH(slot M+1)
-    MCU_RT->>Fuses: Provision PK hash in slot M+1
-    Requester->>MCU_ROM: Push new RT FW (signed with Key in Slot M+1)
-    Requester->>Strapping: Assert Rotation Strap
-    Requester->>MCU_ROM: Trigger Reboot
-    MCU_ROM->>Strapping: Read Strap (Rotation Enabled)
-    MCU_ROM->>Fuses: Read valid slots & functional status
-    MCU_ROM->>MCU_ROM: Skip PK Hash Slot N (first functional), Select PK Hash Slot N+1
-    MCU_ROM->>MCU_RT: Boot into new MCU RT
-    Requester->>MCU_RT: MC_FUSE_REVOKE_VENDOR_PK_HASH(slot N)
-    MCU_RT->>Fuses: Mark PK Hash Slot N as invalid
+    Requester->>MCU_RT: Get Auth Challenge
+    MCU_RT-->>Requester: One-use nonce
+    Requester->>Requester: Sign provision command and nonce
+    Requester->>MCU_RT: Authorized provision hash for slot S, if needed
+    MCU_RT->>Fuses: Write and verify hash in slot S
+    Requester->>Requester: Stage Caliptra bundle matching slot S
+    Requester->>Strap: Assert rotation
+    Requester->>MCU_ROM: Trigger cold reboot
+    MCU_ROM->>Strap: Read rotation enabled
+    MCU_ROM->>Fuses: Scan valid and functional slots
+    MCU_ROM->>MCU_ROM: Select second functional slot S
+    MCU_ROM->>Core: Populate slot S fuses and send RI_DOWNLOAD_FIRMWARE
+    Core->>Core: Verify Caliptra bundle against slot S
+    Core->>MCU_RT: Load and verify MCU Runtime
+    Requester->>MCU_RT: Get Auth Challenge
+    MCU_RT-->>Requester: New one-use nonce
+    Requester->>Requester: Sign revoke command and nonce
+    Requester->>MCU_RT: Authorized revoke command for old slot O
+    MCU_RT->>Core: Read active vendor hash
+    Core-->>MCU_RT: Active hash from slot S
+    MCU_RT->>Fuses: Mark old slot O invalid
+    MCU_RT-->>Requester: Success
+    Requester->>Strap: Deassert rotation
 ```
 
 ## ROM Milestone Hooks

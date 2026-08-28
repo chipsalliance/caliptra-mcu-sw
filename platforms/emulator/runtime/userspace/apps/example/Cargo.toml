@@ -58,6 +58,7 @@ ocp-lock = [
 # lives in `mcu-runtime-emulator`/`mcu-runtime-fpga`.
 release = []
 test-caliptra-certs = []
+test-get-caliptra-idev-csr = []
 test-caliptra-crypto = []
 test-caliptra-mailbox = []
 test-caliptra-util-host-validator = []

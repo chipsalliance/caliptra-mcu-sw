@@ -30,11 +30,12 @@ The following table describes the commands defined under this specification. The
 | Request Debug Unlock            | O   | SPDM VDM, MCI Mailbox | Request debug unlock in production environment.                                                                                      |
 | Authorize Debug Unlock Token    | O   | SPDM VDM, MCI Mailbox | Send debug unlock token to device for authorization.                                                                                 |
 | Export Attested CSR             | O   | SPDM VDM, MCI Mailbox | Export attested CSR for a Caliptra device identity key (LDevID, FMC Alias, or RT Alias).                                             |
-| Authorization-Gated Subcommands | O   | SPDM VDM, MCI Mailbox | Security-sensitive provisioning and fuse subcommands. SPDM VDM uses a one-use challenge and hybrid signature.                        |
+| Device Ownership Transfer       | O   | SPDM VDM, MCI Mailbox | Query and change the implemented DOT state.                                                                                          |
+| Authorization-Gated Subcommands | O   | SPDM VDM, MCI Mailbox | Security-sensitive provisioning and fuse subcommands using a one-use challenge and hybrid signature.                                |
 
 ### Authorization-Gated Subcommands
 
-The following subcommands are assigned to the SPDM VDM IANA authorization-gated path and are also available through the MCI mailbox path where implemented. SPDM VDM requests use the challenge and hybrid-signature flow described in [Caliptra SPDM VDM Commands](caliptra_spdm_vdm_cmds.md#authorization-flow). For the MCI mailbox path, access control is governed by the mailbox security boundary and platform policy.
+The following subcommands are assigned to the SPDM VDM IANA authorization-gated path and are also available through the MCI mailbox path where implemented. Both paths use the same one-use challenge and hybrid-signature verification described in [Caliptra SPDM VDM Commands](caliptra_spdm_vdm_cmds.md#authorization-flow); only their outer framing differs.
 
 | Subcommand Name                | Transport(s)               | Description                                        |
 | ------------------------------ | -------------------------- | -------------------------------------------------- |
@@ -46,8 +47,8 @@ The following subcommands are assigned to the SPDM VDM IANA authorization-gated 
 | Fuse Revoke Vendor PK Hash     | SPDM VDM IANA, MCI Mailbox | Revoke vendor public key hash.                     |
 | Fuse Lock Partition            | SPDM VDM IANA, MCI Mailbox | Lock fuse partition.                               |
 | Dot Lock                       | SPDM VDM IANA, MCI Mailbox | Lock the DOT after ownership validation.          |
-| Dot Disable                    | SPDM VDM IANA, MCI Mailbox | Disable DOT while preserving ownership state.     |
-| Dot Rotate                     | SPDM VDM IANA, MCI Mailbox | Rotate ownership keys and increment the epoch.    |
+| Dot Disable                    | SPDM VDM IANA, MCI Mailbox | Enter ODD state with no DOT-supplied CAK.          |
+| Dot Rotate                     | SPDM VDM IANA, MCI Mailbox | Replace DOT key digests and advance the epoch.     |
 | Get Dot Backup Blob            | SPDM VDM IANA, MCI Mailbox | Export the current DOT backup blob.               |
 
 ## Command Definitions
@@ -220,11 +221,8 @@ request naming an unsupported `(evidence_format, algorithm)` pair returns
 | `0x0001` | Owner  | Owner hierarchy. Reserved.     |
 
 A value not listed above returns `INVALID_PARAMS`. `Owner` is reserved and
-returns `UNSUPPORTED_OPERATION` today: signing is not yet slot-aware, so every
-entity would resolve to the same vendor key, and serving it would return
-evidence claiming an endorsement that was never selected or provisioned. Once
-signing is slot-aware, whether an entity can be served follows the provisioning
-state of its endorsement slot.
+returns `UNSUPPORTED_OPERATION`; the current signer supports only the Vendor
+entity.
 
 #### Format Discovery
 
@@ -318,9 +316,9 @@ Authorizes the debug unlock token. The request body is identical for MCI mailbox
 | 41:43     | reserved                 | u8[3]     | Reserved field                                                                        |
 | 44:91     | challenge                | u8[48]    | Random number challenge                                                               |
 | 92:187    | ecc_public_key           | u32[24]   | ECC public key in hardware format (little endian)                                     |
-| 188:2639  | mldsa_public_key         | u32[648]  | MLDSA public key in hardware format (little endian)                                   |
-| 2640:2735 | ecc_signature            | u32[24]   | ECC P-384 signature of the message hashed using SHA2-384 (R and S coordinates)        |
-| 2736:6199 | mldsa_signature          | u32[1157] | MLDSA signature of the message hashed using SHA2-512 (4627 bytes + 1 reserved byte)   |
+| 188:2779  | mldsa_public_key         | u32[648]  | MLDSA public key in hardware format (little endian)                                   |
+| 2780:2875 | ecc_signature            | u32[24]   | ECC P-384 signature of the message hashed using SHA2-384 (R and S coordinates)        |
+| 2876:7503 | mldsa_signature          | u32[1157] | MLDSA signature of the message hashed using SHA2-512 (4627 bytes + 1 reserved byte)   |
 
 **Response Payload**: Empty. Command completion status is carried by the transport-specific response framing.
 
@@ -345,7 +343,14 @@ Exports an attested Certificate Signing Request (CSR) for a specified device key
 
 ### Authorization-Gated Subcommand Wrapper
 
-Security-sensitive provisioning and fuse subcommands are assigned to the SPDM VDM IANA authorization-gated path and the MCI mailbox path. The SPDM VDM transport uses an `Authorized Command` wrapper. Its requester first obtains a one-use 48-byte challenge, then appends a hybrid signature over `sub_cmd_id(BE) || sub_payload || challenge`. See [Caliptra SPDM VDM Commands](caliptra_spdm_vdm_cmds.md#authorization-flow) for the byte-exact transport payloads.
+Security-sensitive provisioning and fuse subcommands are assigned to the SPDM
+VDM IANA authorization-gated path and the MCI mailbox path. The SPDM VDM
+transport uses an `Authorized Command` wrapper, while MCI uses each operation's
+mailbox command ID directly. In both cases the requester first obtains a one-use
+48-byte challenge and appends the common public-key and hybrid-signature trailer
+over `command_id(BE) || command_payload || challenge`. See
+[Caliptra SPDM VDM Commands](caliptra_spdm_vdm_cmds.md#authorization-flow) for
+the byte-exact SPDM framing.
 
 #### Request Payload
 
@@ -423,9 +428,9 @@ Revokes a vendor public key hash.
 
 Locks a fuse partition.
 
-**Request Payload**: TBD
+**Request Payload**: `partition:u32 | HybridSignature`
 
-**Response Payload**: TBD
+**Response Payload**: Empty
 
 ### Device Ownership Transfer (DOT)
 
@@ -438,12 +443,12 @@ The authorization-gated DOT commands are sent via the `AuthorizedCommand` wrappe
 
 | FourCC | Command | Path | Description |
 | ------ | ------- | ---- | ----------- |
-| `MDLK` | `DotLock` | Authorized | Lock DOT after validating the CAK/LAK ownership state. |
-| `MDDS` | `DotDisable` | Authorized | Disable DOT while preserving the ownership blob. |
-| `MDRT` | `DotRotate` | Authorized | Rotate ownership state and advance the DOT epoch. |
+| `MDLK` | `DotLock` | Authorized | Lock DOT with a nonzero CAK digest and LAK digest. |
+| `MDDS` | `DotDisable` | Authorized | Enter ODD state with a zero CAK digest and a nonzero LAK digest. |
+| `MDRT` | `DotRotate` | Authorized | Replace the CAK and LAK digests and advance the DOT epoch by two. |
 | `MDBB` | `GetDotBackupBlob` | Authorized | Export a valid backup copy of the active DOT blob. |
 | `MDUC` | `DotUnlockChallenge` | Native | Request the unlock challenge for a valid ODD DOT state. |
-| `MDUL` | `DotUnlock` | Native | Complete ownership unlock using the stored LAK and challenge signatures. |
+| `MDUL` | `DotUnlock` | Native | Complete ownership unlock using public keys matching the stored LAK digest and both challenge signatures. |
 | `MDST` | `DotStatus` | Native/read-only | Return the current DOT status and fuse state. |
 | `MDRC` | `DotRecovery` | Native | Restore DOT from a previously backed-up blob. |
 | `DOTW` | `DotOverrideChallenge` | Native | Start DOT recovery using the recovery-key challenge flow. |

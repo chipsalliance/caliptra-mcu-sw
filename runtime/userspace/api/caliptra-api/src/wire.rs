@@ -8,9 +8,15 @@
 //! would also break Caliptra's own clients, so they are effectively
 //! stable.
 //!
-//! Keeping them here lets this crate stay free of the
-//! `caliptra-api` dependency, which would otherwise be pulled into
-//! every consumer of [`crate::Alloc`].
+//! What this crate avoids is not the `caliptra-api` *dependency* — that is a
+//! hard dependency of the `mailbox-io` feature, used by
+//! [`crate::firmware_update`] and [`crate::image_loader`] — but `caliptra-api`'s
+//! large fixed-size request/response **values**, which would put multi-kilobyte
+//! `[u8; N]` arrays on the stack of every consumer of [`crate::ApiAlloc`].
+//! Mirroring the constants and building slim wire prefixes here keeps those
+//! types out of the code paths, while `const _: () = assert!(...)` cross-checks
+//! against `caliptra-api`'s `size_of` / `offset_of` (see [`crate::cert`]) keep
+//! the mirror honest at compile time for free.
 
 use crate::slice::copy_bytes;
 
@@ -42,6 +48,10 @@ pub(crate) const CMD_CM_DERIVE_STABLE_KEY: u32 = 0x494D_4453; // "CMDS"
 /// Caliptra mailbox command ID for `AUTHORIZE_AND_STASH`.
 /// Mirrored from `caliptra-api::CommandId::AUTHORIZE_AND_STASH`.
 pub(crate) const CMD_AUTHORIZE_AND_STASH: u32 = 0x4154_5348; // "ATSH"
+
+/// Caliptra mailbox command ID for `POPULATE_IDEV_MLDSA87_CERT`.
+/// Mirrored from `caliptra-api::CommandId::POPULATE_IDEV_MLDSA87_CERT`.
+pub(crate) const CMD_POPULATE_IDEV_MLDSA87_CERT: u32 = 0x4944_4D50; // "IDMP"
 
 // ---- DPE (Caliptra `InvokeDpeCommand`) ------------------------------------
 
@@ -99,6 +109,9 @@ pub(crate) const CMD_EXTEND_PCR: u32 = 0x5043_5245; // "PCRE"
 
 /// `GET_IDEV_ECC384_CSR` command ID.
 pub(crate) const CMD_GET_IDEV_ECC384_CSR: u32 = 0x4944_4352; // "IDCR"
+
+/// `GET_IDEV_MLDSA87_CSR` command ID.
+pub(crate) const CMD_GET_IDEV_MLDSA87_CSR: u32 = 0x4944_4d52; // "IDMR"
 
 /// `GET_ATTESTED_ECC384_CSR` command ID.
 pub(crate) const CMD_GET_ATTESTED_ECC384_CSR: u32 = 0x4145_4352; // "AECR"
@@ -184,6 +197,25 @@ pub(crate) async fn mbox_execute(
         caliptra_mcu_libsyscall_caliptra::DefaultSyscalls,
     >::new();
     mbox.execute(cmd, req, rsp).await.map_err(map_mbox_err)
+}
+
+/// Execute a mailbox command whose request is a header followed by a separate
+/// contiguous payload, without concatenating the two into one buffer.
+///
+/// `header` is sent verbatim ahead of `payload`. Unlike a streamed send, the
+/// payload is already in memory, so the mailbox is held only for the transfer.
+pub(crate) async fn mbox_execute_slice(
+    cmd: u32,
+    header: Option<&[u8]>,
+    payload: &[u8],
+    rsp: &mut [u8],
+) -> mcu_error::McuResult<usize> {
+    let mbox = caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox::<
+        caliptra_mcu_libsyscall_caliptra::DefaultSyscalls,
+    >::new();
+    mbox.execute_with_payload_slice(cmd, header, payload, rsp)
+        .await
+        .map_err(map_mbox_err)
 }
 
 // ---- Shared utilities -----------------------------------------------------

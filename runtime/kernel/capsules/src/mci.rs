@@ -15,6 +15,8 @@ mod cmd {
     pub const MCI_SET_REGISTER: u32 = 3;
     pub const MCI_TRIGGER_WARM_RESET: u32 = 4;
     pub const MCI_SET_MAILBOX_READY: u32 = 5;
+    pub const MCI_SET_SPDM_MCTP_RESPONDER_READY: u32 = 6;
+    pub const MCI_SET_SPDM_DOE_RESPONDER_READY: u32 = 7;
 }
 
 mod mci_reg {
@@ -114,6 +116,18 @@ impl SyscallDriver for Mci {
             cmd::MCI_SET_MAILBOX_READY => {
                 self.driver.set_flow_milestone(
                     caliptra_mcu_romtime::McuBootMilestones::FIRMWARE_MAILBOX_READY.into(),
+                );
+                CommandReturn::success()
+            }
+            cmd::MCI_SET_SPDM_MCTP_RESPONDER_READY => {
+                self.driver.set_flow_milestone(
+                    caliptra_mcu_romtime::McuBootMilestones::FIRMWARE_SPDM_MCTP_READY.into(),
+                );
+                CommandReturn::success()
+            }
+            cmd::MCI_SET_SPDM_DOE_RESPONDER_READY => {
+                self.driver.set_flow_milestone(
+                    caliptra_mcu_romtime::McuBootMilestones::FIRMWARE_SPDM_DOE_READY.into(),
                 );
                 CommandReturn::success()
             }

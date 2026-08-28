@@ -29,10 +29,10 @@ mod wire;
 pub use algorithms::{
     alg_type, AeadAlgos, AlgStructEntry, AlgorithmsRsp, AlgorithmsRspBodyFixed, AsymAlgos,
     DheAlgos, HashAlgos, KeyScheduleAlgos, MeasHashAlgos, MeasSpec,
-    NegotiateAlgorithmsReqBodyFixed, OtherParamSupport, MAX_ALG_STRUCT_ENTRIES,
+    NegotiateAlgorithmsReqBodyFixed, OtherParamSupport, PqcAsymAlgos, MAX_ALG_STRUCT_ENTRIES,
 };
 pub use builder::ResponseBody;
-pub use capabilities::{CapFlags, CapabilitiesBody, CapabilitiesRsp};
+pub use capabilities::{CapFlags, CapabilitiesBody, CapabilitiesRsp, ExtCapFlags};
 pub use certificate::{
     CertificateRsp, CertificateRspBody, GetCertificateReqBody, ATTR_SLOT_SIZE_REQUESTED,
 };
