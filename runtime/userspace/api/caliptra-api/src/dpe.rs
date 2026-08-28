@@ -276,8 +276,6 @@ const CERTIFY_KEY_P384_RESP_PREFIX_LEN: usize = 12 + DPE_CONTEXT_HANDLE_SIZE + 4
 const CERTIFY_KEY_CHUNKS_REQ_LEN: usize =
     4 + 4 + 4 + 4 + 4 + CERTIFY_KEY_CHUNKS_CERTIFY_KEY_REQ_SIZE;
 const CERTIFY_KEY_CHUNKS_RESP_INFO_LEN: usize = 4 + 4 + DPE_CONTEXT_HANDLE_SIZE + 4 + 4;
-const CERTIFY_KEY_CHUNKS_RESP_BUF_LEN: usize =
-    CERTIFY_KEY_CHUNKS_RESP_INFO_LEN + CERTIFY_KEY_P384_RESP_PREFIX_LEN + DPE_MAX_LEAF_CERT_SIZE;
 const CERTIFY_KEY_RESP_PUBKEY_X_OFF: usize = 12 + DPE_CONTEXT_HANDLE_SIZE;
 const CERTIFY_KEY_RESP_PUBKEY_Y_OFF: usize = CERTIFY_KEY_RESP_PUBKEY_X_OFF + 48;
 const CERTIFY_KEY_RESP_CERT_SIZE_OFF: usize = CERTIFY_KEY_RESP_PUBKEY_Y_OFF + 48;
@@ -918,7 +916,7 @@ where
     }
 
     let req = build_certify_key_chunks_req(alloc, label, handle, dpe_resp_offset, max_size)?;
-    let mut rsp = alloc.alloc(CERTIFY_KEY_CHUNKS_RESP_BUF_LEN)?;
+    let mut rsp = alloc.alloc(CERTIFY_KEY_CHUNKS_RESP_INFO_LEN + max_size)?;
     let rsp_len = crate::wire::mbox_execute(CMD_CERTIFY_KEY_CHUNKS, &req, &mut rsp).await?;
     if rsp_len < CERTIFY_KEY_CHUNKS_RESP_INFO_LEN {
         return Err(INTERNAL_BUG);
