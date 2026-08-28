@@ -185,7 +185,7 @@
 			<text x="31.9" y="566.15" class="st13" v:langID="1033"><v:paragraph v:horizAlign="1"/><v:tabList/>CertStore API</text>		</g>
 		<g id="shape32-62" v:mID="32" v:groupContext="shape" transform="translate(54.25,-54.25)">
 			<title>Rectangle.32</title>
-			<desc>Vendor Endorsement certificate storage (MCU Binrary + Externa...</desc>
+			<desc>Vendor Endorsement certificate storage (MCU Binary + Externa...</desc>
 			<v:userDefs>
 				<v:ud v:nameU="visVersion" v:val="VT0(15):26"/>
 			</v:userDefs>
@@ -194,7 +194,7 @@
 			<rect x="0" y="513.5" width="108" height="72" class="st14"/>
 			<text x="36.05" y="524.3" class="st3" v:langID="1033"><v:paragraph v:horizAlign="1"/><v:tabList/>Vendor <tspan
 						x="21.24" dy="1.2em" class="st4">Endorsement </tspan><tspan x="9.73" dy="1.2em" class="st4">certificate storage<v:newlineChar/></tspan><tspan
-						x="16.73" dy="1.2em" class="st4">(MCU Binrary + </tspan><tspan x="20.81" dy="1.2em" class="st4">External OTP)</tspan></text>		</g>
+						x="16.73" dy="1.2em" class="st4">(MCU Binary + </tspan><tspan x="20.81" dy="1.2em" class="st4">External OTP)</tspan></text>		</g>
 		<g id="shape33-69" v:mID="33" v:groupContext="shape" transform="translate(162.25,-180.25)">
 			<title>Rectangle.33</title>
 			<desc>Vendor CertSlot (ECC384 MLDSA87)</desc>

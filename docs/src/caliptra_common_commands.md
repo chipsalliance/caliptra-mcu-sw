@@ -332,13 +332,40 @@ Signing Request (CSR) for a specified device key.
 | 0:3     | data_size | u32           | Length in bytes of the attested response data |
 | 4:N     | data      | u8[data_size] | Attested key inventory or attested CSR data   |
 
-When `device_key_id` is `0`, the response contains an OCP DIP key-pair
-inventory for the selected algorithm. Each inventory entry identifies a
-supported device key and its derivation attributes. The inventory is signed
-and bound to the request nonce.
+When `device_key_id` is `0`, `data` SHALL contain the OCP Device Identity
+Provisioning (DIP) `signed-cwt` discovery response, encoded as a tagged
+`COSE_Sign1` object whose payload is a `cwt-attested-csr-eat-inventory` map:
 
-When `device_key_id` is nonzero, the response contains the attested CSR for
-the selected device key and algorithm.
+| CWT claim         | Label    | Type       | Value |
+| ----------------- | -------- | ---------- | ----- |
+| Nonce             | `10`     | byte string | The 32-byte request `nonce` |
+| KeyPair Inventory | `-70003` | CBOR array | One entry for every supported identity key for the requested `algorithm` |
+
+Each KeyPair Inventory entry has this CBOR structure:
+
+```text
+[
+  device_key_id: uint (1..255),
+  derivation_attributes: { tagged_oid: uint_bitfield, ... }
+]
+```
+
+The derivation-attribute map SHALL contain OID
+`1.3.6.1.4.1.42623.1.2`, encoded using CBOR tag 111. Its unsigned-integer
+bitfield identifies the inputs used to derive the key: bit 0 = UDS, bit 1 =
+field entropy, bit 2 = owner-provisioned non-confidential fuse, bit 3 =
+vendor-provisioned non-confidential fuse, bit 4 = FMC, and bit 5 = runtime
+firmware. Additional vendor OIDs MAY be present.
+
+This encoding is defined by the OCP DIP
+[`cwt-attested-csr-eat-inventory`](https://github.com/opencomputeproject/Security/blob/main/specifications/device-identity-provisioning/cddl/attested-csr-eat.cddl)
+CDDL. `data_size` covers the complete tagged `COSE_Sign1` object.
+
+When `device_key_id` is nonzero, `data` SHALL contain the OCP DIP
+`cwt-attested-csr-eat-csr` signed CWT for the selected device key and
+algorithm. Its payload contains the request nonce (claim `10`), the DER-encoded
+CSR (private claim `-70001`), and the key's derivation-attribute map (private
+claim `-70002`).
 
 ### Authorization-Gated Subcommand Wrapper
 
