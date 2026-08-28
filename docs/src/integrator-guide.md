@@ -16,18 +16,22 @@ choices that must be made by an integrator.
 
 ### DOT mode and storage planning
 
-DOT can be deployed in two broad modes:
+The reference implementation supports mutable-locking DOT:
 
 | Mode | Persistent ownership | Fuse use | Required platform storage |
 |---|---|---|---|
-| Volatile DOT | No. Ownership is lost on power cycle. | None beyond optional DOT enablement. | Ownership storage that is retained across the reset level needed by the DOT flow. |
-| Mutable locking DOT | Yes. Ownership is sealed to the device across power cycles. | `dot_fuse_array` bits consumed by lock/unlock/disable/override and rotation transitions. | DOT blob flash storage plus ownership storage handoff between ROM and runtime. |
+| Mutable locking DOT | Yes. Ownership is sealed to the device across power cycles. | `dot_fuse_array` bits consumed by lock/unlock/disable/override and rotation transitions. | Non-volatile DOT blob storage. |
 
 If mutable locking DOT is enabled, the platform must provide non-volatile DOT
 blob storage through `RomParameters::dot_flash`. The DOT blob is not secret, but
 it must be available and authenticated on every ODD-state boot. If the blob is
 missing, erased, corrupt, or HMAC-invalid while the part is in ODD state, ROM
 enters the configured locked-state recovery path or reports a fatal DOT error.
+
+The reference ROM and Runtime DOT paths both derive blob keys from stable
+IDevID. ROM's `dot_stable_key_type` parameter can select another root for
+ROM-only paths, but the reference Runtime remains on IDevID and there is no blob
+migration when the root changes.
 
 Integrators should treat the DOT blob flash layout as a platform-owned recovery
 asset. Keep enough space for the active blob and any backup blob policy your
@@ -53,8 +57,7 @@ transition (ODD → EVEN). Therefore:
 
 | Logical fuse bits | Lock/unlock cycles | Notes |
 |:---------:|:------------------:|-------|
-| 64        | 32                 | Recommended minimum. |
-| 256       | 128                | Default in the reference `hw/fuses.hjson`. |
+| 256       | 128                | Size used by the reference fuse map and MCU implementation. |
 
 The right size depends on how many ownership transfers the part is expected to
 undergo in its lifetime. There is no way to reclaim burned fuse bits — once the
@@ -64,9 +67,7 @@ service events such as unlock, override, and key-rotation flows rather than
 sizing only for the happy-path number of ownership transfers.
 
 The reference implementation burns the next sequential bit and reports a fatal
-DOT error if no bit remains. Platforms that need stronger wear budgeting or
-product-specific lifetime policy should size the field accordingly or provide a
-custom DOT state policy in their platform integration.
+DOT error if no bit remains.
 
 ### DOT blob and transition power-loss policy
 
@@ -74,18 +75,18 @@ The DOT fuse and DOT blob must advance together. A state transition that burns a
 fuse without leaving a matching HMAC-sealed blob can strand the device in a
 state that requires recovery on the next boot.
 
-The ROM-owned firmware manifest DOT section provides an owner-signed,
-idempotent way to request DOT state changes during boot. It is the preferred
-path for field-driven DOT lock, unlock, rotate, and disable operations when the
-platform wants immutable ROM code to perform the fuse burn. See
+The ROM-owned firmware manifest DOT section provides an authenticated,
+idempotent way to request DOT state changes during boot. Its directives are
+covered by the MCU image digest authenticated through the SoC manifest. See
 [Firmware Manifest DOT Section](./firmware_format.md#firmware-manifest-dot-section)
 for the exact header format and power-loss windows.
 
-For platforms that expose runtime DOT commands directly, the runtime must follow
-the same ordering rules: write the DOT blob expected by the post-transition fuse
-state, verify it can be recovered if power is lost, and only then ask ROM or the
-trusted fuse-burning path to advance the fuse. Maintaining redundant active and
-backup DOT blobs is strongly recommended for mutable locking deployments.
+For platforms that expose runtime DOT commands directly, Runtime performs the
+DOT blob and fuse writes itself. It must follow the command-specific ordering:
+write and read-back verify the target blob before the one-bit LOCK, DISABLE, or
+UNLOCK burn; ROTATE burns two bits before sealing the rotated-epoch blob.
+Maintaining redundant active and backup DOT blobs is strongly recommended for
+mutable-locking deployments.
 
 ### Vendor recovery PK hash
 
@@ -114,31 +115,31 @@ policy is compiled into `RomParameters::dot_locked_recovery_handlers`:
 
 | Recovery option | Required platform support | Result |
 |---|---|---|
-| Backup blob recovery | A recovery handler that can read a backup DOT blob sealed for the current fuse count. | Restores the DOT blob and resets without changing DOT fuse state. |
+| Reset-flow backup recovery | `dot_recovery_reset_flow`, `DotRecoveryPolicy::BackupBlob`, and `dot_recovery_handler`. | Restores and re-verifies the active blob, then continues the same cold boot without changing DOT fuse state. |
+| Ordered backup recovery | A `BackupBlobRecoveryHandler` entry in `dot_locked_recovery_handlers`. | Restores the active blob; the handler manager then requests a warm reset. |
 | I3C DOT recovery services | `I3cServicesModes::DOT_RECOVERY` plus an external recovery agent over I3C. | Allows `DOT_STATUS`, `DOT_RECOVERY`, and `DOT_OVERRIDE` commands over ROM I3C services. |
 | DOT recovery reset coordination | `RomParameters::dot_recovery_reset_flow` plus BMC policy for the next boot. | On locked DOT failure, ROM publishes `DEVICE_STATUS_0 = 0x0094_000E` before fatal error. On the subsequent cold boot, BMC writes `DEVICE_RESET.RESET_CTRL = 0x10` to force the fused owner hash, or `0x11` to continue regular DOT verification. |
 
 Integrators may configure more than one locked-state recovery handler; ROM tries
 the configured handlers in order and stops at the first one that succeeds. The
-I3C service path is a ROM recovery protocol and is separate from runtime
-management paths. Runtime-originated recovery or field-management workflows
-should be described by transport: in-band through a SoC-side MCI mailbox agent,
-or out-of-band through SPDM VDM over MCTP/I3C. All DOT I3C service commands are
-available only when the platform explicitly enables the corresponding ROM
-service mode.
+ordered handler chain runs only when `dot_recovery_reset_flow` is disabled; the
+reset-coordination path instead attempts its singular backup handler and then
+reports failure to the BMC. The I3C service path is a ROM recovery protocol and
+is separate from Runtime's in-band MCI mailbox and out-of-band SPDM VDM command
+paths. DOT I3C service commands are available only when the platform enables
+the corresponding ROM service mode.
 
 ### Fuse storage cost summary
 
 | Fuse field | Partition | Size | Encoding | Notes |
 |---|---|:---:|---|---|
-| `dot_initialized` | `VENDOR_NON_SECRET_PROD_PARTITION` | 1 bit (3 bytes with 3x OR duplication) | `LinearOr` | Gates the DOT flow. |
-| `dot_fuse_array` | `VENDOR_TEST_PARTITION` | 256 bits (32 bytes) | `OneHot` (bit-count counter) | State counter. Must be in a non-ECC partition. Scales linearly with desired lock/unlock cycles. |
+| `dot_initialized` | `VENDOR_NON_SECRET_PROD_PARTITION` | 1 logical bit encoded in 3 raw bits | `LinearOr` | Gates the DOT flow. |
+| `dot_fuse_array` | `VENDOR_TEST_PARTITION` | 256 bits (32 bytes) | `OneHot` (bit-count counter) | State counter. Must be in a non-ECC partition. |
 | `vendor_recovery_pk_hash` | `VENDOR_NON_SECRET_PROD_PARTITION` | 384 bits (48 bytes) | `Single` | Optional. For `DOT_OVERRIDE` catastrophic recovery. |
 
-If OTP space is constrained, the `dot_fuse_array` can be made smaller — the
-minimum useful size is 2 bits, but this only allows a single lock/unlock cycle
-with no margin. If redundant bit-count encoding (`OneHotLinearOr`) is used,
-multiply the raw bit count by the duplication factor (e.g., 3×).
+The reference MCU implementation reads the full 256-bit `dot_fuse_array` and
+uses 256 as its transition limit; changing that size requires corresponding
+implementation changes.
 
 ### Non-ECC Partition Requirement for Incremental Counters
 
@@ -257,7 +258,7 @@ When adding storage for MCU-owned SVN fuses, integrators should:
 5. Validate update and power-loss behavior: ROM intentionally performs the SVN
     Anti-Rollback flow's anti-rollback and range checks before burning any SVN
     fuse, but the platform must still ensure OTP write, digest, and
-    partition-lock policy are compatible with the planned field workflow.
+    partition-lock policy are compatible with the field workflow below.
 
 ### Field update workflow
 
