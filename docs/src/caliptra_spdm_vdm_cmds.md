@@ -98,7 +98,7 @@ The following subcommands are assigned to the SPDM VDM IANA authorization-gated 
 | `0x4D41_4343` (`MACC`) | GetAuthChallenge           | Supported     | Acquire a one-use 48-byte authorization challenge.  |
 | `0x5056_504B` (`PVPK`) | ProvisionVendorPkHash      | Supported     | Provision vendor public key hash.                   |
 | `0x504F_504B` (`POPK`) | ProvisionOwnerPkHash       | Supported     | Provision owner public key hash.                    |
-| `0x4D43_4D53` (`MCMS`) | FuseIncreaseMinSvn         | Supported     | Increase the Caliptra Runtime or SoC Manifest minimum SVN. |
+| `0x4D43_4D53` (`MCMS`) | FuseIncreaseMinSvn         | Supported     | Increase the Caliptra Runtime, SoC Manifest, or Owner SoC Manifest minimum SVN. |
 | `0x4D43_4650` (`MCFP`) | ProgramFieldEntropy        | Supported     | Program field entropy.                              |
 | `0x4D52_564B` (`MRVK`) | FuseRevokeVendorPubKey     | Supported     | Revoke vendor public key.                           |
 | `0x5256_4B48` (`RVKH`) | FuseRevokeVendorPkHash     | Supported     | Revoke vendor public key hash.                      |
@@ -213,20 +213,20 @@ Native-authenticated/read-only DOT request:
 | FourCC | Command | Path | DOT payload | Validation |
 | ------ | ------- | ---- | ----------- | ---------- |
 | `MDEN` (`0x4D44_454E`) | Enable | Authorized | Empty | Initialization gate clear and zero epoch bits; programs all three redundant gate bits |
-| `MDLK` | Lock | Authorized | `cak[48] || lak_hash[48]` | Nonzero keys; EVEN state |
-| `MDDS` | Disable | Authorized | `lak_hash[48]` | Nonzero LAK hash; EVEN state |
-| `MDRT` | Rotate | Authorized | `min_fuse_count:u32 || cak[48] || lak_hash[48]` | Runs when burned count is below the minimum |
+| `MDLK` | Lock | Authorized | `cak_digest[48] || lak_digest[48]` | Nonzero digests; EVEN state |
+| `MDDS` | Disable | Authorized | `lak_digest[48]` | Nonzero LAK digest; EVEN state |
+| `MDRT` | Rotate | Authorized | `min_fuse_count:u32 || cak_digest[48] || lak_digest[48]` | Runs when burned count is below the minimum |
 | `MDBB` | Get backup blob | Authorized | Empty | ODD state and valid blob HMAC |
 | `MDUC` | Unlock challenge | Native | Empty | ODD state and valid current blob |
-| `MDUL` | Unlock | Native | LAK ECC key, ML-DSA key, hybrid signature | Existing LAK hash and challenge signatures |
+| `MDUL` | Unlock | Native | LAK ECC key, ML-DSA key, hybrid signature | Existing LAK digest and challenge signatures |
 | `MDST` | Status | Native/read-only | Empty | Returns `enabled:u8 || locked:u8 || burned:u16` |
 | `MDRC` | Recovery | Native | `DOT_BLOB[168]` | ODD state and current-epoch blob HMAC |
 | `DOTW` | Override challenge | Native | Recovery ECC key and ML-DSA key | Keys match fused recovery-key hash |
 | `DOTX` | Override | Native | Recovery keys and hybrid signature | Fused key hash and challenge signatures |
 
 `MDEN`, `MDLK`, `MDDS`, `MDRT`, and `MDBB` are rejected with `AccessDenied` when sent
-directly under top-level command `0x11`. Recovery-mode gating for `MDRC`,
-`DOTW`, and `DOTX` is deferred; their native cryptographic and state checks are
-always enforced.
+directly under top-level command `0x11`. `MDRC`, `DOTW`, and `DOTX` are not
+gated by a ROM recovery-mode signal; their native cryptographic and state checks
+are always enforced.
 
 **For detailed command flows, state transitions, security properties, and use cases**, see [Device Ownership Transfer (DOT)](dot.md#runtime-commands).
