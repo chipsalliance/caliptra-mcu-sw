@@ -6,7 +6,9 @@ The hardware has provisioned the OTP controller with an overall structure that h
 
 As part of the Fuse API, we support defining the vendor-specific fuses and assist in provisioning the Caliptra- and vendor-specific fuses.
 
-In general, the Fuse API gives the SoC an easy way to read and write fuses with bit granularity via MCTP or mailbox commands.
+The Runtime fuse API provides authorized MCU mailbox operations for reading and
+writing OTP and transport-neutral commands for supported provisioning and lock
+operations.
 
 ## Fuse Defining
 
@@ -17,7 +19,7 @@ There are two places where we expand on the standard [OTP memory map](https://gi
 1. Defining how many bits are backed by actual fuses in each field
 2. Defining vendor-specific fields
 
-For an example of (1), the `CPTRA_SS_OWNER_ECC_REVOCATION` is specified as 1 byte (8 bits) in the memory map, but the may only have 4 bits backed by actual fuses in hardware. Our additional fuse map contains a section to define how many bits are available in each field as this information is vendor-specific and hence not present in the standard memory map.
+For an example of (1), the `CPTRA_SS_OWNER_ECC_REVOCATION` is specified as 1 byte (8 bits) in the memory map, but may have only 4 bits backed by actual fuses in hardware. The additional fuse map defines how many bits are available in each field because this information is vendor-specific and is not present in the standard memory map.
 
 For (2), there are two defined partitions, `VENDOR_SECRET_PROD_PARTITION` (520 bits) and `VENDOR_NON_SECRET_PROD_PARTITION` (984 bits) in the standard memory map. In addition, the vendor can choose to provide additional fuses. We provide a way to split these up into specific areas and automatically generate Rust code to manage them.
 
@@ -38,8 +40,6 @@ Here is an example fuse definition file, for example, `vendor_fuses.hjson`:
   non_secret_vendor: [
     {"example_key_revocation": 1}
   ],
-  // TBD how we allow additional fuses outside of these areas, if this is allowed by OTP
-  other_fuses: {},
   // entries to define how many bits are in each field, and potentially other information
   fields: [
     // set specifics on Subsystem fuses
@@ -54,20 +54,25 @@ Here is an example fuse definition file, for example, `vendor_fuses.hjson`:
 
 By default, all bits in each field are assumed to be backed by actual fuse bits unless they have an entry in the `fields` array.
 
-## Fuse definition script
+## Fuse definition generation
 
-We will provide a script, `cargo xtask fuse-autogen`, that can be used to process an `.hjson` file into:
+The implemented generator runs as:
 
-* Firmware definitions and code for the fuses and bits (Rust)
-* Documentation on the fuses and bits (Markdown)
+```shell
+cargo xtask registers-autogen --fuses-hjson <path> --otp-mmap-hjson <path>
+```
 
-The command will use either a `--platform` flag to indicate the file is `platforms/{platform}/fuse_bits.hjson` or a `--file` to specify the file manually.
+Both path options are optional and default to `hw/fuses.hjson` and the
+Caliptra subsystem OTP memory map. The command generates:
 
-This script can optionally generate extra commands for programming specific fuses as well as Rust and C code to access them.
+* Rust fuse definitions in the selected generated-register output
+* The corresponding `fuse_map.md`
 
 ## Fuse Provisioning Commands
 
-The fuse provisioning commands can be used over our [generic command](#mc_fuse_read) interface through MCTP, mailboxes, etc., or through commands in firmware manifest (except read operations).
+MCU Runtime implements generic fuse read, write, and partition-lock operations
+through the MCI mailbox. Supported provisioning and lock operations are also
+exposed through the common SPDM VDM command interface.
 
 The commands are:
 
@@ -77,17 +82,13 @@ The commands are:
 
 ### Authorization
 
-Only authorized SoC users shall call these commands. This can be authorized through the mechanism itself (i.e., a mailbox that only a trusted SoC component has access to) or cryptographically.
+The reference Runtime routes these operations through its generic authorized
+command handler. The requester first obtains a one-use `MACC` challenge and
+then supplies the configured ECC P-384 and ML-DSA-87 public keys plus hybrid
+signatures over the command payload and challenge. See
+[Authorization-Gated Subcommand Wrapper](./caliptra_common_commands.md#authorization-gated-subcommand-wrapper).
 
-Some example cryptographic mechanisms that could be used:
-
-* A certificate provided to MCU during boot, which will be used to validate signatures on each message.
-* An HMAC key imported into Caliptra's cryptographic mailbox during boot, which MCU can use to validate a request. (The key could itself be stored as fuses.)
-* Asymmetric verification public keys imported or accessed during boot, which MCU can use to validate a challenge-response signature on each request. (The public keys or hashes could themselves be stored in fuses or embedded in the firmware directly.)
-
-It will be integrator-defined which authorization mechanism is required, but we provide reference implementations with stubs for source-based and asymmetric signature-based authorization.
-
-These commands reference partition, fuse, and bit numbers that must use the same numbers generated from the [Fuse definition script](#fuse-definition-script).
+These commands reference partition, fuse, and bit numbers that must use the same numbers generated by [Fuse definition generation](#fuse-definition-generation).
 
 ### Limitations
 
@@ -103,55 +104,20 @@ These commands reference partition, fuse, and bit numbers that must use the same
 
 ### Field Entropy Provisioning
 
-Field entropy fuses can only be burned by Caliptra runtime, so the flow for provisioning them is different and any changes in them will **invalidate any OCP Device Ownership Transfer blob** stored on the device. See the [MCU OCP DOT implementation spec](dot.md).
+Field entropy can only be programmed by Caliptra. MCU Runtime exposes the
+authorized `MC_FE_PROG` (`MCFP`) command, which accepts one partition index and
+forwards Caliptra's `FE_PROG` mailbox command. MCU ROM can also program the
+partitions selected by `RomParameters::program_field_entropy` during cold boot;
+that path records `Started` and `Finished` state in `FIELD_ENTROPY_STATE` and
+rejects partial or zeroized slots.
 
-This will be an MCU mailbox API command (or other signal to MCU runtime) to trigger that MCU should use the Caliptra mailbox PROGRAM_FIELD_ENTROPY command. If a mailbox command is used, it must be authorized in the same way as other fuse programming API commands (see [authorization](#Authorization))
-
-If OCP DOT is being used, then the MCU ROM must also update the DOT blob after Caliptra core burns field entropy. **Failure to do so may "brick" a device or require a DOT recovery flow, as the ownership information could be corrupted after provisioning field entropy if the DOT root key is derived from the LDevID CDI.**
-
-The flow will be:
-1. MCU runtime receives a MCU_PROGRAM_FIELD_ENTROPY command through a mailbox or other signal.
-2. If DOT is enabled and the DOT root key is derived from LDevID, we need to store the DOT blob (and re-sign it after FE is updated):
-	1. MCU runtime stores the current DOT blob in non-volatile storage, e.g., SRAM that won't be cleared on reset
-	2. MCU runtime verifies this DOT blob using the current DOT root key.
-	3. MCU runtime indicates that the DOT blob must be checked and re-derived by setting a register or other signal in non-volatile storage, for example, a generic output wire or SRAM.
-	4. Sign the DOT blob copy with a new special DOT root key **derived from IDevID**.
-3. MCU runtime sends to Caliptra's runtime mailbox the PROGRAM_FIELD_ENTROPY command.
-4. MCU runtime waits for a successful response.
-5. MCU runtime initiates a reset.
-6. If DOT is enabled and the DOT root key is derived from LDevID
-	1. MCU ROM checks if we are in a FE programming mode (i.e., from register, input wires, or SRAM contents)
-	2. MCU derives both special DOT root key (from IDevID) and the normal DOT root key (from LDevID)
-	3. MCU ROM verifies the DOT blob copy in non-volatile storage against the special **IDevID** DOT root key.
-	4. MCU ROM copies the DOT blob copy into the standard DOT blob location
-	5. MCU ROM asks Caliptra core signs the DOT blob with the current DOT root key.
-	6. Continue with the normal boot flow
-
-```mermaid
-sequenceDiagram
-  Participant SoC
-
-  Note over MCU,Caliptra: Runtime
-  SoC->>MCU: MCU_PROGRAM_FIELD_ENTROPY
-
-  alt DOT enabled and LDevID DOT key used
-  MCU->>Caliptra: Derive special DOT key
-  MCU->>Caliptra: HMAC DOT blob with special DOT key
-  end
-
-  MCU->>Caliptra: PROGRAM_FIELD_ENTROPY
-  Caliptra->>OTP: (Burn)
-  Caliptra->>MCU: Done
-  MCU->>SoC: Reset subsystem
-
-  Note over MCU,Caliptra: ROM
-  alt DOT enabled and LDevID DOT key used
-  MCU->>Caliptra: Derive DOT normal and special key
-  MCU->>Caliptra: HMAC DOT blob with special key
-  MCU->>MCU: verify HMAC
-  MCU->>Caliptra: HMAC DOT blob with normal key
-  end
-```
+The reference DOT configuration derives its effective key from the stable
+IDevID root, so Field Entropy programming does not invalidate the DOT_BLOB.
+`RomParameters::dot_stable_key_type` can select LDevID for ROM paths, but the
+reference Runtime always derives DOT keys from IDevID and no implementation
+re-HMACs an existing DOT_BLOB when Field Entropy changes. The LDevID override is
+therefore not compatible with the reference Runtime DOT commands or an existing
+IDevID-sealed blob without corresponding platform code changes.
 
 ## Fuse Layout Options
 
