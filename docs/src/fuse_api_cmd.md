@@ -33,8 +33,6 @@ Command Code: `0x4946_5057` ("IFPW")
 | data       |  u32           | Word to write                         |
 | mask       |  u32           | Bit-Mask to only write specified bits |
 
-
-
 *Table: `MC_FUSE_WRITE` output arguments*
 | **Name**      | **Type**       | **Description**                         |
 | ------------- | -------------- | --------------------------------------- |
@@ -45,7 +43,7 @@ Command Code: `0x4946_5057` ("IFPW")
 Caveats:
 * This command is **idempotent**, so that identical writes will have no effect.
 * Will fail if any of the existing data is 1 but is set to 0 in the input data.
-* Bits masked with `mask` will be ignored
+* Bits cleared in `mask` are ignored
 * Writes to buffered partitions will not take effect until the next reset.
 
 ### MC_FUSE_LOCK_PARTITION
