@@ -548,9 +548,14 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
         match driver.finish_mailbox_resp(self.resp_min_size.get(), self.resp_size.get()) {
             Ok(resp_option) => {
                 if let Some(mut resp) = resp_option {
+                    let out_len = output.len();
                     for (i, word) in (&mut resp).enumerate() {
-                        if let Some(out) = output.get(i * 4..((i + 1) * 4)) {
-                            out.copy_from_slice(&word.to_le_bytes());
+                        let start = i * 4;
+                        if start < out_len {
+                            let end = (start + 4).min(out_len);
+                            if let Some(out) = output.get(start..end) {
+                                out.copy_from_slice(&word.to_le_bytes()[..end - start]);
+                            }
                         }
                     }
                     resp.verify_checksum().map(|_| resp.len())
