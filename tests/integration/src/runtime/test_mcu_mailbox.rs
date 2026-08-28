@@ -15,7 +15,7 @@ use caliptra_mcu_mbox_common::messages::{
     MailboxReqHeader as McuMailboxReqHeader, MailboxRespHeader, McuEcdsa384SigVerifyReq,
     McuFeProgReq, McuLmsSigVerifyReq,
 };
-use caliptra_mcu_romtime::McuBootMilestones;
+use caliptra_mcu_romtime::{handoff::McuRomCapabilities, McuBootMilestones};
 use zerocopy::{FromBytes, IntoBytes};
 
 fn semantic_version(packed_version: u32) -> String {
@@ -123,7 +123,12 @@ fn test_device_capabilities_cmd() -> Result<()> {
 
     let resp = hw.mailbox_execute_req(DeviceCapsReq::default())?;
     assert_eq!(&resp.caps[..16], &core_caps);
-    assert_eq!(u32::from_be_bytes(resp.caps[16..20].try_into().unwrap()), 0);
+    let expected_rom =
+        (McuRomCapabilities::STREAMING_BOOT_I3C | McuRomCapabilities::FLASH_BOOT).bits();
+    assert_eq!(
+        u32::from_be_bytes(resp.caps[16..20].try_into().unwrap()),
+        expected_rom
+    );
     assert_eq!(
         u32::from_be_bytes(resp.caps[20..24].try_into().unwrap()),
         McuRuntimeCapabilities::MCI_MAILBOX_SERVICE.bits()
