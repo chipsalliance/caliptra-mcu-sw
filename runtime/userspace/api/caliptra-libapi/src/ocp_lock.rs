@@ -45,6 +45,7 @@ use der::{
     asn1::{BitStringRef, GeneralizedTime, ObjectIdentifier, SetOf, UintRef},
     AnyRef, DateTime, Decode, Encode, Sequence, Tag, ValueOrd,
 };
+use sha2::{Digest, Sha384};
 use spki::{AlgorithmIdentifier, SubjectPublicKeyInfo};
 
 const TCG_HPKE_IDENTIFIERS: ObjectIdentifier = ObjectIdentifier::new_unwrap("2.23.133.21.1.1");
@@ -227,6 +228,15 @@ pub trait OcpLockSigner: Send + Sync {
     fn algorithm(&self) -> EndorsementAlgorithm;
 }
 
+struct DigestWriter<'a, D: Digest>(&'a mut D);
+
+impl<'a, D: Digest> der::Writer for DigestWriter<'a, D> {
+    fn write(&mut self, slice: &[u8]) -> der::Result<()> {
+        self.0.update(slice);
+        Ok(())
+    }
+}
+
 pub struct OcpLock<'a> {
     mailbox: &'a Mailbox,
     config: &'static dyn RuntimeConfig,
@@ -363,14 +373,9 @@ impl<'a> OcpLock<'a> {
         tbs: &TbsCertificate,
         digest: &mut [u8; SHA384_HASH_SIZE],
     ) -> CaliptraApiResult<()> {
-        let tbs_len: usize = tbs.encoded_len()?.try_into()?;
-        let mut tbs_der = alloc::vec![0u8; tbs_len];
-        let mut writer = der::SliceWriter::new(&mut tbs_der);
-        writer.encode(tbs)?;
-
-        use sha2::{Digest, Sha384};
         let mut hasher = Sha384::new();
-        hasher.update(&tbs_der);
+        let mut writer = DigestWriter(&mut hasher);
+        tbs.encode(&mut writer)?;
         digest.copy_from_slice(&hasher.finalize());
         Ok(())
     }
@@ -507,19 +512,19 @@ impl<'a> OcpLock<'a> {
         Self::serialize_and_hash_tbs(&tbs, &mut digest)?;
 
         let sig_len = signer.signature_size();
+        if cert_buf.len() < sig_len {
+            return Err(CaliptraApiError::InvalidArgBufferTooSmall);
+        }
+        let (out_buf, sig_buf) = cert_buf.split_at_mut(cert_buf.len() - sig_len);
 
-        let mut signature_bytes = alloc::vec![0u8; sig_len];
-
-        signer
-            .sign(Self::DPE_LABEL, &digest, &mut signature_bytes)
-            .await?;
+        signer.sign(Self::DPE_LABEL, &digest, sig_buf).await?;
 
         let mut sig_der = [0u8; Self::SIGNATURE_DER_BUF_SIZE];
         let cert = match signer.algorithm() {
             EndorsementAlgorithm::EcdsaP384Sha384 => {
-                let r_stripped = strip_leading_zeros(&signature_bytes[..Self::P384_SCALAR_SIZE]);
+                let r_stripped = strip_leading_zeros(&sig_buf[..Self::P384_SCALAR_SIZE]);
                 let s_stripped = strip_leading_zeros(
-                    &signature_bytes[Self::P384_SCALAR_SIZE..Self::P384_SIGNATURE_SIZE],
+                    &sig_buf[Self::P384_SCALAR_SIZE..Self::P384_SIGNATURE_SIZE],
                 );
 
                 let r = der::asn1::UintRef::new(r_stripped)?;
@@ -547,11 +552,11 @@ impl<'a> OcpLock<'a> {
                     oid: ID_ML_DSA_87,
                     parameters: None,
                 },
-                signature: BitStringRef::new(0, &signature_bytes[..sig_len])?,
+                signature: BitStringRef::new(0, &sig_buf[..sig_len])?,
             },
         };
 
-        let mut writer = der::SliceWriter::new(cert_buf);
+        let mut writer = der::SliceWriter::new(out_buf);
         writer.encode(&cert)?;
 
         let cert_len: usize = cert.encoded_len()?.try_into()?;
