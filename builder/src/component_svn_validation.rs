@@ -2,6 +2,8 @@
 
 use crate::ImageCfg;
 use anyhow::{bail, Result};
+use caliptra_mcu_registers_generated::fuses::FuseLayoutType;
+use caliptra_mcu_romtime::SvnFuseMapEntry;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -12,18 +14,10 @@ pub struct ComponentSvnEntry {
     pub min_svn: u16,
 }
 
-#[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq, Serialize)]
-pub struct ComponentSvnFuseMapEntry {
-    pub component_id: u32,
-    pub fuse_slot: u32,
-    pub max_svn: u16,
-}
-
 #[derive(Clone, Debug, Default, Deserialize, Serialize)]
 #[serde(default, deny_unknown_fields)]
 pub struct ComponentSvnValidationConfig {
     pub entries: Vec<ComponentSvnEntry>,
-    pub fuse_map: Vec<ComponentSvnFuseMapEntry>,
     pub unenforced_component_ids: Vec<u32>,
     pub future_or_absent_component_ids: Vec<u32>,
 }
@@ -31,6 +25,18 @@ pub struct ComponentSvnValidationConfig {
 pub(crate) fn validate_component_svns(
     images: &[ImageCfg],
     config: &ComponentSvnValidationConfig,
+) -> Result<()> {
+    validate_component_svns_with_map(
+        images,
+        config,
+        caliptra_mcu_romtime::REFERENCE_SVN_FUSE_MAP,
+    )
+}
+
+fn validate_component_svns_with_map(
+    images: &[ImageCfg],
+    config: &ComponentSvnValidationConfig,
+    svn_fuse_map: &[SvnFuseMapEntry],
 ) -> Result<()> {
     let image_components: BTreeSet<_> = images.iter().map(|image| image.component_id).collect();
     let unenforced: BTreeSet<_> = config.unenforced_component_ids.iter().copied().collect();
@@ -42,6 +48,9 @@ pub(crate) fn validate_component_svns(
 
     let mut entries = BTreeMap::new();
     for entry in &config.entries {
+        if entry.component_id == 0 && entry.current_svn == 0 && entry.min_svn == 0 {
+            bail!("all-zero SVN entry is reserved as an empty manifest slot");
+        }
         if let Some(previous) = entries.insert(entry.component_id, *entry) {
             if previous != *entry {
                 bail!(
@@ -77,42 +86,42 @@ pub(crate) fn validate_component_svns(
         }
     }
 
-    let mut fuse_map = BTreeMap::new();
-    for mapping in &config.fuse_map {
-        if let Some(previous) = fuse_map.insert(mapping.component_id, *mapping) {
-            if previous != *mapping {
-                bail!(
-                    "conflicting fuse mappings for component_id {:#x}",
-                    mapping.component_id
-                );
-            }
-        }
-    }
-
     let mut slot_floors = BTreeMap::new();
     for entry in entries.values() {
         if unenforced.contains(&entry.component_id) {
             continue;
         }
-        let Some(mapping) = fuse_map.get(&entry.component_id) else {
+        let Some(fuse_entry) = SvnFuseMapEntry::lookup(svn_fuse_map, entry.component_id) else {
             bail!(
                 "protected component_id {:#x} has no SVN fuse mapping",
                 entry.component_id
             );
         };
-        if entry.current_svn > mapping.max_svn || entry.min_svn > mapping.max_svn {
+        let max_svn = match fuse_entry.layout {
+            FuseLayoutType::OneHot { bits }
+            | FuseLayoutType::OneHotLinearMajorityVote { bits, .. }
+            | FuseLayoutType::OneHotLinearOr { bits, .. } => bits,
+            _ => {
             bail!(
-                "component_id {:#x} SVN exceeds fuse slot {} maximum {}",
+                "component_id {:#x} maps to fuse {} without a bit-count layout",
                 entry.component_id,
-                mapping.fuse_slot,
-                mapping.max_svn
+                fuse_entry.name
+            );
+            }
+        };
+        if u32::from(entry.current_svn) > max_svn || u32::from(entry.min_svn) > max_svn {
+            bail!(
+                "component_id {:#x} SVN exceeds fuse {} maximum {}",
+                entry.component_id,
+                fuse_entry.name,
+                max_svn
             );
         }
-        if let Some(previous_floor) = slot_floors.insert(mapping.fuse_slot, entry.min_svn) {
+        if let Some(previous_floor) = slot_floors.insert(fuse_entry.name, entry.min_svn) {
             if previous_floor != entry.min_svn {
                 bail!(
-                    "components sharing fuse slot {} request conflicting floors {} and {}",
-                    mapping.fuse_slot,
+                    "components sharing fuse {} request conflicting floors {} and {}",
+                    fuse_entry.name,
                     previous_floor,
                     entry.min_svn
                 );
@@ -126,6 +135,9 @@ pub(crate) fn validate_component_svns(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use caliptra_mcu_registers_generated::fuses::{
+        SOC_IMAGE_MIN_SVN_0, SOC_IMAGE_MIN_SVN_1,
+    };
 
     fn image(image_id: u32, component_id: u32) -> ImageCfg {
         ImageCfg {
@@ -143,11 +155,14 @@ mod tests {
         }
     }
 
-    fn mapping(component_id: u32, fuse_slot: u32) -> ComponentSvnFuseMapEntry {
-        ComponentSvnFuseMapEntry {
+    fn mapping(component_id: u32, fuse_slot: u32) -> SvnFuseMapEntry {
+        SvnFuseMapEntry {
             component_id,
-            fuse_slot,
-            max_svn: 10,
+            fuse_entry: match fuse_slot {
+                0 => SOC_IMAGE_MIN_SVN_0,
+                1 => SOC_IMAGE_MIN_SVN_1,
+                _ => panic!("test mapping uses an unknown fuse slot"),
+            },
         }
     }
 
@@ -155,60 +170,73 @@ mod tests {
     fn accepts_multiple_fw_ids_for_one_component() {
         let config = ComponentSvnValidationConfig {
             entries: vec![entry(0x1000, 5, 3)],
-            fuse_map: vec![mapping(0x1000, 0)],
             ..Default::default()
         };
+        let fuse_map = [mapping(0x1000, 0)];
 
-        validate_component_svns(&[image(1, 0x1000), image(2, 0x1000)], &config).unwrap();
+        validate_component_svns_with_map(
+            &[image(1, 0x1000), image(2, 0x1000)],
+            &config,
+            &fuse_map,
+        )
+        .unwrap();
     }
 
     #[test]
     fn rejects_conflicting_duplicate_entries() {
         let config = ComponentSvnValidationConfig {
             entries: vec![entry(0x1000, 5, 3), entry(0x1000, 6, 3)],
-            fuse_map: vec![mapping(0x1000, 0)],
             ..Default::default()
         };
 
-        assert!(validate_component_svns(&[image(1, 0x1000)], &config)
+        assert!(validate_component_svns_with_map(&[image(1, 0x1000)], &config, &[mapping(0x1000, 0)])
             .unwrap_err()
             .to_string()
             .contains("conflicting SVN entries"));
     }
 
     #[test]
-    fn rejects_unknown_component_unless_future_or_absent() {
-        let mut config = ComponentSvnValidationConfig {
-            entries: vec![entry(0x2000, 5, 3)],
-            fuse_map: vec![mapping(0x2000, 0)],
+    fn rejects_all_zero_entry() {
+        let config = ComponentSvnValidationConfig {
+            entries: vec![entry(0, 0, 0)],
             ..Default::default()
         };
 
-        assert!(validate_component_svns(&[], &config).is_err());
+        assert!(validate_component_svns_with_map(&[image(1, 0)], &config, &[]).is_err());
+    }
+
+    #[test]
+    fn rejects_unknown_component_unless_future_or_absent() {
+        let mut config = ComponentSvnValidationConfig {
+            entries: vec![entry(0x2000, 5, 3)],
+            ..Default::default()
+        };
+
+        assert!(validate_component_svns_with_map(&[], &config, &[mapping(0x2000, 0)]).is_err());
         config.future_or_absent_component_ids.push(0x2000);
-        validate_component_svns(&[], &config).unwrap();
+        validate_component_svns_with_map(&[], &config, &[mapping(0x2000, 0)]).unwrap();
     }
 
     #[test]
     fn rejects_missing_metadata_unless_unenforced() {
         let mut config = ComponentSvnValidationConfig::default();
 
-        assert!(validate_component_svns(&[image(1, 0x1000)], &config).is_err());
+        assert!(validate_component_svns_with_map(&[image(1, 0x1000)], &config, &[]).is_err());
         config.unenforced_component_ids.push(0x1000);
-        validate_component_svns(&[image(1, 0x1000)], &config).unwrap();
+        validate_component_svns_with_map(&[image(1, 0x1000)], &config, &[]).unwrap();
     }
 
     #[test]
     fn rejects_invalid_svn_and_fuse_range() {
         let mut config = ComponentSvnValidationConfig {
             entries: vec![entry(0x1000, 3, 4)],
-            fuse_map: vec![mapping(0x1000, 0)],
             ..Default::default()
         };
-        assert!(validate_component_svns(&[image(1, 0x1000)], &config).is_err());
+        let fuse_map = [mapping(0x1000, 0)];
+        assert!(validate_component_svns_with_map(&[image(1, 0x1000)], &config, &fuse_map).is_err());
 
         config.entries[0] = entry(0x1000, 11, 3);
-        assert!(validate_component_svns(&[image(1, 0x1000)], &config).is_err());
+        assert!(validate_component_svns_with_map(&[image(1, 0x1000)], &config, &fuse_map).is_err());
     }
 
     #[test]
@@ -218,20 +246,21 @@ mod tests {
             ..Default::default()
         };
 
-        assert!(validate_component_svns(&[image(1, 0x1000)], &config).is_err());
+        assert!(validate_component_svns_with_map(&[image(1, 0x1000)], &config, &[]).is_err());
     }
 
     #[test]
     fn validates_shared_fuse_slot_floor_policy() {
         let mut config = ComponentSvnValidationConfig {
             entries: vec![entry(0x1000, 5, 3), entry(0x1001, 6, 3)],
-            fuse_map: vec![mapping(0x1000, 0), mapping(0x1001, 0)],
             ..Default::default()
         };
         let images = [image(1, 0x1000), image(2, 0x1001)];
+        let fuse_map = [mapping(0x1000, 0), mapping(0x1001, 0)];
 
-        validate_component_svns(&images, &config).unwrap();
+        validate_component_svns_with_map(&images, &config, &fuse_map).unwrap();
         config.entries[1].min_svn = 4;
-        assert!(validate_component_svns(&images, &config).is_err());
+        assert!(validate_component_svns_with_map(&images, &config, &fuse_map).is_err());
     }
+
 }
