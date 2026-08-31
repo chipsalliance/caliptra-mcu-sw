@@ -35,6 +35,7 @@
 - [Running with an FPGA](./fpga.md)
 - [Caliptra Utility Host Library](./caliptra_util_host_library.md)
 - [Network Boot Recovery](./network_boot.md)
+- [USB Recovery Emulation](./usb_recovery_emulation.md)
 - [Integrator's Guide](./integrator-guide.md)
     - [OCP LOCK Integrator Guide](./ocp_lock_integrator_guide.md)
     - [SPDM Integration Guide](./spdm-integrator-guide.md)
