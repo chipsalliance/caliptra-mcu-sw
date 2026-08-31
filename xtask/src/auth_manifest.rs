@@ -102,6 +102,18 @@ pub enum AuthManifestCommands {
     },
 }
 
+pub(crate) fn load_component_svn_config(
+    path: Option<&str>,
+) -> Result<Option<ComponentSvnValidationConfig>> {
+    path.map(|path| {
+        let data = std::fs::read_to_string(path)
+            .with_context(|| format!("Failed to read component SVN config {path}"))?;
+        serde_json::from_str::<ComponentSvnValidationConfig>(&data)
+            .with_context(|| format!("Failed to parse component SVN config {path}"))
+    })
+    .transpose()
+}
+
 /// Creates a signed or unsigned authorization manifest from SoC and MCU image configurations.
 pub fn create(
     soc_images: &[ImageCfg],
@@ -112,14 +124,7 @@ pub fn create(
     svn: Option<u32>,
     component_svn_config_path: Option<&str>,
 ) -> Result<()> {
-    let component_svn_validation = component_svn_config_path
-        .map(|path| {
-            let data = std::fs::read_to_string(path)
-                .with_context(|| format!("Failed to read component SVN config {path}"))?;
-            serde_json::from_str::<ComponentSvnValidationConfig>(&data)
-                .with_context(|| format!("Failed to parse component SVN config {path}"))
-        })
-        .transpose()?;
+    let component_svn_validation = load_component_svn_config(component_svn_config_path)?;
 
     let mut builder = CaliptraBuilder::new(&caliptra_mcu_builder::CaliptraBuildArgs {
         mcu_firmware: Some(mcu_image.clone().path),

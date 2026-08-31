@@ -980,6 +980,8 @@ dependencies = [
  "caliptra-mcu-firmware-bundler",
  "caliptra-mcu-flash-image",
  "caliptra-mcu-pldm-fw-pkg",
+ "caliptra-mcu-registers-generated",
+ "caliptra-mcu-romtime",
  "caliptra-mcu-tbf-header",
  "cargo_metadata",
  "cfg-if",

@@ -181,6 +181,10 @@ enum Commands {
         #[arg(long = "soc_image", value_name = "SOC_IMAGE", num_args = 1.., required = false)]
         soc_images: Option<Vec<ImageCfg>>,
 
+        /// JSON component SVN entries and explicit policy exceptions
+        #[arg(long = "component-svn-config", value_name = "COMPONENT_SVN_CONFIG")]
+        component_svn_config: Option<String>,
+
         // MCU configuration to include in the SoC manifest
         // format: mcu,<load_addr>,<staging_addr>,<image_id>,<exec_bit>,<component_id>,<feature>[,<is_tcb>[,<is_ak_target>[,<network_filename>]]]
         // Example: --mcu_cfg mcu,0x10000000,0x10000000,1,1,test-dma
@@ -604,6 +608,7 @@ fn main() {
             runtime_features,
             separate_runtimes,
             soc_images,
+            component_svn_config,
             mcu_cfgs,
             caliptra_firmware_network_filename,
             soc_manifest_network_filename,
@@ -611,21 +616,27 @@ fn main() {
             vendor,
             model,
             profile,
-        } => caliptra_mcu_builder::all_build(caliptra_mcu_builder::AllBuildArgs {
-            output: output.as_deref(),
-            platform: platform.as_deref(),
-            rom_features: rom_features.as_deref(),
-            runtime_features: runtime_features.as_deref(),
-            separate_runtimes: *separate_runtimes,
-            soc_images: soc_images.clone(),
-            mcu_cfgs: mcu_cfgs.clone(),
-            caliptra_firmware_network_filename: caliptra_firmware_network_filename.as_deref(),
-            soc_manifest_network_filename: soc_manifest_network_filename.as_deref(),
-            pldm_manifest: pldm_manifest.as_deref(),
-            vendor: vendor.as_deref(),
-            model: model.as_deref(),
-            profile: Some(profile.as_str()),
-        }),
+        } => auth_manifest::load_component_svn_config(component_svn_config.as_deref()).and_then(
+            |component_svn_validation| {
+                caliptra_mcu_builder::all_build(caliptra_mcu_builder::AllBuildArgs {
+                    output: output.as_deref(),
+                    platform: platform.as_deref(),
+                    rom_features: rom_features.as_deref(),
+                    runtime_features: runtime_features.as_deref(),
+                    separate_runtimes: *separate_runtimes,
+                    soc_images: soc_images.clone(),
+                    component_svn_validation,
+                    mcu_cfgs: mcu_cfgs.clone(),
+                    caliptra_firmware_network_filename: caliptra_firmware_network_filename
+                        .as_deref(),
+                    soc_manifest_network_filename: soc_manifest_network_filename.as_deref(),
+                    pldm_manifest: pldm_manifest.as_deref(),
+                    vendor: vendor.as_deref(),
+                    model: model.as_deref(),
+                    profile: Some(profile.as_str()),
+                })
+            },
+        ),
         Commands::EmulatorBuild { output } => {
             caliptra_mcu_builder::emulator_build(caliptra_mcu_builder::EmulatorBuildArgs {
                 output: output.as_deref(),

@@ -279,12 +279,14 @@ impl CaliptraBuilder {
     }
 
     fn validate_component_svns(&self) -> Result<()> {
-        if let Some(config) = &self.component_svn_validation {
-            crate::component_svn_validation::validate_component_svns(
-                self.soc_images.as_deref().unwrap_or(&[]),
-                config,
-            )?;
-        }
+        let images = self.soc_images.as_deref().unwrap_or(&[]);
+        let Some(config) = &self.component_svn_validation else {
+            if images.is_empty() {
+                return Ok(());
+            }
+            bail!("component SVN validation policy is required for SoC images");
+        };
+        crate::component_svn_validation::validate_component_svns(images, config)?;
         Ok(())
     }
 
@@ -1212,6 +1214,7 @@ impl FromStr for ImageCfg {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ComponentSvnEntry;
 
     #[test]
     fn test_image_cfg_optional_network_filename() {
@@ -1311,5 +1314,49 @@ mod tests {
 
         let req = create_signing_request(&manifest).unwrap();
         assert_eq!(req.version, 1);
+    }
+
+    #[test]
+    fn signing_rejects_soc_images_without_component_svn_policy() {
+        let mut builder = CaliptraBuilder::new(&CaliptraBuildArgs {
+            mcu_firmware: Some("unused-runtime.bin".into()),
+            soc_images: Some(vec![ImageCfg {
+                component_id: 0x1000,
+                ..Default::default()
+            }]),
+            ..Default::default()
+        });
+
+        let error = builder
+            .get_unsigned_auth_manifest(None, None)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("validation policy is required"));
+    }
+
+    #[test]
+    fn signing_rejects_invalid_component_svn_policy_before_reading_images() {
+        let mut builder = CaliptraBuilder::new(&CaliptraBuildArgs {
+            mcu_firmware: Some("unused-runtime.bin".into()),
+            soc_images: Some(vec![ImageCfg {
+                component_id: 0x1000,
+                ..Default::default()
+            }]),
+            component_svn_validation: Some(ComponentSvnValidationConfig {
+                entries: vec![ComponentSvnEntry {
+                    component_id: 0x1000,
+                    current_svn: 3,
+                    min_svn: 4,
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
+
+        let error = builder
+            .get_unsigned_auth_manifest(None, None)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("min_svn 4 greater than current_svn 3"));
     }
 }
