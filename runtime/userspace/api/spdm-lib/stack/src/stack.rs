@@ -1139,3 +1139,7 @@ mod capabilities_tests;
 #[cfg(test)]
 #[path = "tests/certificate.rs"]
 mod certificate_tests;
+
+#[cfg(test)]
+#[path = "tests/challenge_v14.rs"]
+mod challenge_v14_tests;
