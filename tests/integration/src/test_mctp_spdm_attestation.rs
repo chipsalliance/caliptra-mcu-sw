@@ -20,7 +20,9 @@ pub(crate) mod test {
     use caliptra_mcu_testing_common::spdm_responder_validator::{
         execute_spdm_attestation_with_port, SpdmValidatorRunner, SERVER_LISTENING,
     };
-    use caliptra_mcu_testing_common::wait_for_runtime_start;
+    use caliptra_mcu_testing_common::{
+        wait_for_runtime_start, wait_for_spdm_responder_ready, SpdmResponderTransport,
+    };
     use random_port::PortPicker;
     use std::io::Write;
     use std::net::{SocketAddr, TcpListener, TcpStream};
@@ -383,7 +385,7 @@ pub(crate) mod test {
             if !caliptra_mcu_testing_common::is_emulator_running() {
                 exit(-1);
             }
-            thread::sleep(Duration::from_secs(5)); // give time for the app to be loaded and ready
+            wait_for_spdm_responder_ready(SpdmResponderTransport::Mctp);
             if !caliptra_mcu_testing_common::is_emulator_running() {
                 exit(-1);
             }
