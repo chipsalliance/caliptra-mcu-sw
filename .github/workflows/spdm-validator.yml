@@ -11,7 +11,7 @@ on:
   # excluded: these tests build spdm-emu from source and run four emulator
   # suites, which is too slow to put in front of every pull request.
   pull_request:
-    branches: [ main, main-2.1 ]
+    branches: [main, main-2.1]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
@@ -95,7 +95,7 @@ jobs:
           repository: chipsalliance/caliptra-spdm-emu
           # TODO: Update this pull-request ref to the corresponding unmerged
           # caliptra-spdm-emu PR for each SPDM change.
-          ref: ${{ github.event_name == 'pull_request' && 'refs/pull/4/head' || 'caliptra-main-14' }}
+          ref: ${{ github.event_name == 'pull_request' && 'refs/pull/5/head' || 'caliptra-main-14' }}
           path: spdm-emu
           submodules: recursive
 
