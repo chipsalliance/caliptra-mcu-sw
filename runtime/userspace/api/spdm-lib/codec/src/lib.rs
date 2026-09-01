@@ -34,7 +34,9 @@ pub use algorithms::{
 pub use builder::ResponseBody;
 pub use capabilities::{CapFlags, CapabilitiesBody, CapabilitiesRsp, ExtCapFlags};
 pub use certificate::{
-    CertificateRsp, CertificateRspBody, GetCertificateReqBody, ATTR_SLOT_SIZE_REQUESTED,
+    CertificateLargeRsp, CertificateLargeRspBody, CertificateRsp, CertificateRspBody,
+    GetCertificateLargeReqBody, GetCertificateParam1, GetCertificateReq, GetCertificateReqBody,
+    ATTR_SLOT_SIZE_REQUESTED,
 };
 pub use challenge::{ChallengeAuthRsp, ChallengeReqBody};
 pub use chunk::{

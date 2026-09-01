@@ -1218,3 +1218,7 @@ mod version_tests;
 #[cfg(test)]
 #[path = "tests/capabilities.rs"]
 mod capabilities_tests;
+
+#[cfg(test)]
+#[path = "tests/certificate.rs"]
+mod certificate_tests;
