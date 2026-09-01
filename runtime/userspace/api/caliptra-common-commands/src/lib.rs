@@ -5,13 +5,13 @@
 
 #[cfg(feature = "ocp-lock")]
 use caliptra_api::mailbox::{HpkeHandle, OcpLockEnumerateHpkeHandlesResp};
-#[cfg(feature = "ocp-lock")]
-use caliptra_mcu_mbox_common::messages::SekState;
 use caliptra_mcu_mbox_common::messages::{
     CommandId, DotDisablePayload, DotLockPayload, DotOverrideChallengePayload, DotOverridePayload,
     DotRotatePayload, DotStatus, DotUnlockPayload, HybridSignature, AUTH_CMD_NONCE_LEN,
     DOT_BLOB_SIZE,
 };
+#[cfg(feature = "ocp-lock")]
+use caliptra_mcu_mbox_common::messages::{EndorsementAlgorithm, SekState};
 use mcu_caliptra_api::ApiAlloc;
 use zerocopy::{Immutable, IntoBytes};
 
@@ -506,9 +506,10 @@ pub trait CaliptraCmdHandler {
     async fn get_ocp_lock_endorsement_cert(
         &self,
         hpke_handle: &HpkeHandle,
+        algorithm: EndorsementAlgorithm,
         cert_buf: &mut [u8],
     ) -> CaliptraCmdResult<usize> {
-        let _ = (hpke_handle, cert_buf);
+        let _ = (hpke_handle, algorithm, cert_buf);
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 

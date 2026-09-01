@@ -264,13 +264,14 @@ pub async fn encode_measurement_evidence<A: ApiAlloc>(
 /// and write the emitted leaf certificate into `cert_out`.
 pub async fn export_cdi_and_stash<A: ApiAlloc>(
     alloc: &A,
+    profile: u32,
     cert_out: &mut [u8],
 ) -> MeasurementApiResult<usize> {
     let mut guard = MEASUREMENT_API.lock().await;
     let api = guard
         .as_mut()
         .ok_or(MeasurementApiError::AttestationDisabled)?;
-    api.export_cdi_and_stash(alloc, cert_out).await
+    api.export_cdi_and_stash(alloc, profile, cert_out).await
 }
 
 /// Retrieve the stashed 32-byte exported CDI handle via an outparam.

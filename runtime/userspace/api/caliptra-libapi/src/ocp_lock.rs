@@ -45,6 +45,7 @@ use der::{
     asn1::{BitStringRef, GeneralizedTime, ObjectIdentifier, SetOf, UintRef},
     AnyRef, DateTime, Decode, Encode, Sequence, Tag, ValueOrd,
 };
+use sha2::{Digest, Sha384};
 use spki::{AlgorithmIdentifier, SubjectPublicKeyInfo};
 
 const TCG_HPKE_IDENTIFIERS: ObjectIdentifier = ObjectIdentifier::new_unwrap("2.23.133.21.1.1");
@@ -52,6 +53,47 @@ const TCG_HPKE_IDENTIFIERS: ObjectIdentifier = ObjectIdentifier::new_unwrap("2.2
 const ID_ALG_ML_KEM_1024: ObjectIdentifier = ObjectIdentifier::new_unwrap("2.16.840.1.101.3.4.4.3");
 const ID_ALG_HYBRID_MLKEM_1024_ECDH_P384: ObjectIdentifier =
     ObjectIdentifier::new_unwrap("1.3.6.1.5.5.7.6.63");
+pub const ID_ML_DSA_87: ObjectIdentifier = ObjectIdentifier::new_unwrap("2.16.840.1.101.3.4.3.19");
+
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum EndorsementAlgorithm {
+    EcdsaP384Sha384,
+    MlDsa87,
+}
+
+impl EndorsementAlgorithm {
+    pub fn signature_oid(&self) -> ObjectIdentifier {
+        match self {
+            Self::EcdsaP384Sha384 => ECDSA_WITH_SHA_384,
+            Self::MlDsa87 => ID_ML_DSA_87,
+        }
+    }
+}
+
+impl TryFrom<caliptra_mcu_mbox_common::messages::EndorsementAlgorithm> for EndorsementAlgorithm {
+    type Error = CaliptraApiError;
+
+    fn try_from(
+        algo: caliptra_mcu_mbox_common::messages::EndorsementAlgorithm,
+    ) -> Result<Self, Self::Error> {
+        match algo {
+            caliptra_mcu_mbox_common::messages::EndorsementAlgorithm::ECDSA_384 => {
+                Ok(Self::EcdsaP384Sha384)
+            }
+            caliptra_mcu_mbox_common::messages::EndorsementAlgorithm::MLDSA_87 => Ok(Self::MlDsa87),
+            _ => Err(CaliptraApiError::AsymAlgoUnsupported),
+        }
+    }
+}
+
+impl From<EndorsementAlgorithm> for caliptra_mcu_mbox_common::messages::EndorsementAlgorithm {
+    fn from(algo: EndorsementAlgorithm) -> Self {
+        match algo {
+            EndorsementAlgorithm::EcdsaP384Sha384 => Self::ECDSA_384,
+            EndorsementAlgorithm::MlDsa87 => Self::MLDSA_87,
+        }
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq, Sequence)]
 pub struct HpkeIdentifiers {
@@ -183,6 +225,16 @@ pub struct Certificate<'a> {
 pub trait OcpLockSigner: Send + Sync {
     async fn sign(&self, label: &[u8], data: &[u8], signature: &mut [u8]) -> CaliptraApiResult<()>;
     fn signature_size(&self) -> usize;
+    fn algorithm(&self) -> EndorsementAlgorithm;
+}
+
+struct DigestWriter<'a, D: Digest>(&'a mut D);
+
+impl<'a, D: Digest> der::Writer for DigestWriter<'a, D> {
+    fn write(&mut self, slice: &[u8]) -> der::Result<()> {
+        self.0.update(slice);
+        Ok(())
+    }
 }
 
 pub struct OcpLock<'a> {
@@ -191,7 +243,8 @@ pub struct OcpLock<'a> {
 }
 
 impl OcpLock<'_> {
-    pub const MAX_ENDORSEMENT_CERT_SIZE: usize = 2048;
+    // TODO(#2049): Calculate MAX_ENDORSEMENT_CERT_SIZE at build time based on the active algorithms.
+    pub const MAX_ENDORSEMENT_CERT_SIZE: usize = 12 * 1024;
     pub const DPE_LABEL: &'static [u8] = b"MCU FW HPKE Endorsement";
     pub const EKP_DPE_LABEL: &'static [u8] = b"MCU EKP Attestation";
     pub const ENDORSEMENT_CERT_CN: &'static [u8] = b"Caliptra MCU OCP LOCK Endorsement";
@@ -207,6 +260,9 @@ impl OcpLock<'_> {
     pub const P384_SIGNATURE_SIZE: usize = 96;
     pub const P384_PUB_KEY_SIZE: usize = 1 + 2 * Self::P384_SCALAR_SIZE;
 
+    // ML-DSA-87 signature size (FIPS 204)
+    pub const MLDSA87_SIGNATURE_SIZE: usize = 4627;
+
     // Temp buffer sizes
     pub const SUBJECT_DER_BUF_SIZE: usize = 64;
     pub const ISSUER_DER_BUF_SIZE: usize = 64;
@@ -214,7 +270,7 @@ impl OcpLock<'_> {
     pub const BASIC_CONSTRAINTS_DER_BUF_SIZE: usize = 16;
     pub const KEY_USAGE_DER_BUF_SIZE: usize = 16;
     pub const SIGNATURE_DER_BUF_SIZE: usize = 128;
-    pub const MAX_SIGNATURE_BYTES: usize = 128;
+    pub const MAX_SIGNATURE_BYTES: usize = 4627;
 }
 
 impl<'a> OcpLock<'a> {
@@ -317,14 +373,9 @@ impl<'a> OcpLock<'a> {
         tbs: &TbsCertificate,
         digest: &mut [u8; SHA384_HASH_SIZE],
     ) -> CaliptraApiResult<()> {
-        let mut tbs_der = [0u8; OcpLock::MAX_ENDORSEMENT_CERT_SIZE];
-        let mut writer = der::SliceWriter::new(&mut tbs_der[..]);
-        writer.encode(tbs)?;
-        let tbs_len = tbs.encoded_len()?.try_into()?;
-
-        use sha2::{Digest, Sha384};
         let mut hasher = Sha384::new();
-        hasher.update(&tbs_der[..tbs_len]);
+        let mut writer = DigestWriter(&mut hasher);
+        tbs.encode(&mut writer)?;
         digest.copy_from_slice(&hasher.finalize());
         Ok(())
     }
@@ -432,11 +483,13 @@ impl<'a> OcpLock<'a> {
             critical: true,
             extn_value: ku_der_slice,
         };
+        let sig_algo_oid = signer.algorithm().signature_oid();
+
         let tbs = TbsCertificate {
             version: Self::X509_VERSION_3,
             serial_number: UintRef::new(self.config.endorsement_cert_serial_number())?,
             signature: AlgorithmIdentifier {
-                oid: ECDSA_WITH_SHA_384,
+                oid: sig_algo_oid,
                 parameters: None,
             },
             // TODO(clundin): Get issuer from DPE Certify Key
@@ -459,43 +512,51 @@ impl<'a> OcpLock<'a> {
         Self::serialize_and_hash_tbs(&tbs, &mut digest)?;
 
         let sig_len = signer.signature_size();
-
-        let mut signature_bytes = [0u8; Self::MAX_SIGNATURE_BYTES];
-        if sig_len > signature_bytes.len() {
-            return Err(CaliptraApiError::InvalidResponse);
+        if cert_buf.len() < sig_len {
+            return Err(CaliptraApiError::InvalidArgBufferTooSmall);
         }
+        let (out_buf, sig_buf) = cert_buf.split_at_mut(cert_buf.len() - sig_len);
 
-        signer
-            .sign(Self::DPE_LABEL, &digest, &mut signature_bytes[..sig_len])
-            .await?;
-
-        let r_raw = &signature_bytes[..Self::P384_SCALAR_SIZE];
-        let s_raw = &signature_bytes[Self::P384_SCALAR_SIZE..Self::P384_SIGNATURE_SIZE];
-
-        let r_stripped = strip_leading_zeros(r_raw);
-        let s_stripped = strip_leading_zeros(s_raw);
-
-        let r = der::asn1::UintRef::new(r_stripped)?;
-        let s = der::asn1::UintRef::new(s_stripped)?;
-
-        let sig = EcdsaSignature { r, s };
+        signer.sign(Self::DPE_LABEL, &digest, sig_buf).await?;
 
         let mut sig_der = [0u8; Self::SIGNATURE_DER_BUF_SIZE];
-        let mut writer = der::SliceWriter::new(&mut sig_der);
-        writer.encode(&sig)?;
-        let sig_der_len = sig.encoded_len()?.try_into()?;
-        let sig_der_slice = &sig_der[..sig_der_len];
+        let cert = match signer.algorithm() {
+            EndorsementAlgorithm::EcdsaP384Sha384 => {
+                let r_stripped = strip_leading_zeros(&sig_buf[..Self::P384_SCALAR_SIZE]);
+                let s_stripped = strip_leading_zeros(
+                    &sig_buf[Self::P384_SCALAR_SIZE..Self::P384_SIGNATURE_SIZE],
+                );
 
-        let cert = Certificate {
-            tbs_certificate: tbs,
-            signature_algorithm: AlgorithmIdentifier {
-                oid: ECDSA_WITH_SHA_384,
-                parameters: None,
+                let r = der::asn1::UintRef::new(r_stripped)?;
+                let s = der::asn1::UintRef::new(s_stripped)?;
+
+                let sig = EcdsaSignature { r, s };
+
+                let mut writer = der::SliceWriter::new(&mut sig_der);
+                writer.encode(&sig)?;
+                let sig_der_len = sig.encoded_len()?.try_into()?;
+                let sig_der_slice = &sig_der[..sig_der_len];
+
+                Certificate {
+                    tbs_certificate: tbs,
+                    signature_algorithm: AlgorithmIdentifier {
+                        oid: ECDSA_WITH_SHA_384,
+                        parameters: None,
+                    },
+                    signature: BitStringRef::new(0, sig_der_slice)?,
+                }
+            }
+            EndorsementAlgorithm::MlDsa87 => Certificate {
+                tbs_certificate: tbs,
+                signature_algorithm: AlgorithmIdentifier {
+                    oid: ID_ML_DSA_87,
+                    parameters: None,
+                },
+                signature: BitStringRef::new(0, &sig_buf[..sig_len])?,
             },
-            signature: BitStringRef::new(0, sig_der_slice)?,
         };
 
-        let mut writer = der::SliceWriter::new(cert_buf);
+        let mut writer = der::SliceWriter::new(out_buf);
         writer.encode(&cert)?;
 
         let cert_len: usize = cert.encoded_len()?.try_into()?;
@@ -759,7 +820,7 @@ pub struct EkpEvidence<'a> {
     pub hek_state_list: &'a [HekSeedState],
 }
 
-impl<'a> EkpEvidence<'a> {
+impl EkpEvidence<'_> {
     pub const MAP_HEADER_COUNT: u64 = 9;
     pub const MAP_LABEL: &'static str = "TCG EKP Feature Set Evidence";
     pub const VERSION: &'static str = "1.00";

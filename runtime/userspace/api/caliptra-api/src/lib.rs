@@ -147,4 +147,7 @@ pub use types::{CmKeyUsage, Cmk, CMK_SIZE};
 pub use version::{core_firmware_version, CoreFirmwareVersion};
 
 #[cfg(feature = "mailbox-io")]
+pub use wire::{DPE_PROFILE_MLDSA87, DPE_PROFILE_P384_SHA384};
+
+#[cfg(feature = "mailbox-io")]
 pub use mcu_error::{McuErrorCode, McuResult};

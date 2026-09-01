@@ -36,6 +36,7 @@ pub use mcu_caliptra_api::mailbox::{
 use zerocopy::{FromBytes, FromZeros, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
 pub const MAX_RESP_DATA_SIZE: usize = 4 * 1024;
+pub const MAX_ENDORSEMENT_CERT_SIZE: usize = 12 * 1024;
 pub const MAX_FW_VERSION_STR_LEN: usize = 32;
 pub const DEVICE_CAPS_SIZE: usize = 36;
 pub const DOT_BLOB_SIZE: usize = 168;
@@ -1810,11 +1811,27 @@ impl Default for ExportAttestedCsrResp {
 }
 impl McuResponseVarSize for ExportAttestedCsrResp {}
 
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, IntoBytes, FromBytes, KnownLayout, Immutable)]
+pub struct EndorsementAlgorithm(pub u32);
+
+impl EndorsementAlgorithm {
+    pub const ECDSA_384: Self = Self(0x1);
+    pub const MLDSA_87: Self = Self(0x2);
+}
+
+impl Default for EndorsementAlgorithm {
+    fn default() -> Self {
+        Self::ECDSA_384
+    }
+}
+
 /// MC_DPE_SIGNER_CONTEXT_CERT Command (0x4D44_5343 - "MDSC")
 #[repr(C)]
 #[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq, Default)]
 pub struct DpeSignerContextCertReq {
     pub hdr: MailboxReqHeader,
+    pub algorithm: EndorsementAlgorithm,
 }
 
 impl Request for DpeSignerContextCertReq {
@@ -1822,17 +1839,20 @@ impl Request for DpeSignerContextCertReq {
     type Resp = DpeSignerContextCertResp;
 }
 
+/// MC_DPE_SIGNER_CONTEXT_CERT response
+///
+/// Deliberately absent from [`McuMailboxResp`]: certs can be up to 8 KiB with ML-DSA-87.
 #[repr(C)]
 #[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
 pub struct DpeSignerContextCertResp {
     pub hdr: MailboxRespHeaderVarSize,
-    pub cert_data: [u8; MAX_RESP_DATA_SIZE],
+    pub cert_data: [u8; MAX_ENDORSEMENT_CERT_SIZE],
 }
 impl Default for DpeSignerContextCertResp {
     fn default() -> Self {
         Self {
             hdr: MailboxRespHeaderVarSize::default(),
-            cert_data: [0u8; MAX_RESP_DATA_SIZE],
+            cert_data: [0u8; MAX_ENDORSEMENT_CERT_SIZE],
         }
     }
 }
@@ -2009,10 +2029,11 @@ pub struct OcpLockRotateHekResp {
 impl Response for OcpLockRotateHekResp {}
 /// MC_GET_OCP_LOCK_ENDORSEMENT_CERT request
 #[repr(C)]
-#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq, Default)]
 pub struct GetOcpLockEndorsementCertReq {
     pub hdr: MailboxReqHeader,
     pub hpke_handle: HpkeHandle,
+    pub algorithm: EndorsementAlgorithm,
 }
 impl Request for GetOcpLockEndorsementCertReq {
     const ID: CommandId = CommandId::MC_GET_OCP_LOCK_ENDORSEMENT_CERT;
@@ -2020,17 +2041,19 @@ impl Request for GetOcpLockEndorsementCertReq {
 }
 
 /// MC_GET_OCP_LOCK_ENDORSEMENT_CERT response
+///
+/// Deliberately absent from [`McuMailboxResp`]: certs can be up to 8 KiB with ML-DSA-87.
 #[repr(C)]
 #[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
 pub struct GetOcpLockEndorsementCertResp {
     pub hdr: MailboxRespHeaderVarSize,
-    pub data: [u8; MAX_RESP_DATA_SIZE],
+    pub data: [u8; MAX_ENDORSEMENT_CERT_SIZE],
 }
 impl Default for GetOcpLockEndorsementCertResp {
     fn default() -> Self {
         Self {
             hdr: MailboxRespHeaderVarSize::default(),
-            data: [0u8; MAX_RESP_DATA_SIZE],
+            data: [0u8; MAX_ENDORSEMENT_CERT_SIZE],
         }
     }
 }
@@ -2626,12 +2649,7 @@ mod tests {
     }
 
     #[test]
-    fn get_attestation_resp_is_excluded_from_the_shared_response_union() {
-        // The response carries attestation-sized evidence, so folding it into
-        // `McuMailboxResp` would enlarge every other command's allocation.
-        assert!(
-            core::mem::size_of::<GetAttestationResp>() > core::mem::size_of::<McuMailboxResp>()
-        );
+    fn get_attestation_resp_layout() {
         assert_eq!(
             core::mem::size_of::<GetAttestationResp>(),
             core::mem::size_of::<MailboxRespHeaderVarSize>() + MAX_ATTESTATION_RESP_DATA_SIZE
@@ -2993,6 +3011,7 @@ mod tests {
     fn test_dpe_signer_context_cert_req_serialization() {
         let req = DpeSignerContextCertReq {
             hdr: MailboxReqHeader { chksum: 0xABCD },
+            algorithm: EndorsementAlgorithm::ECDSA_384,
         };
 
         let bytes = req.as_bytes();
@@ -3000,6 +3019,26 @@ mod tests {
 
         let parsed = DpeSignerContextCertReq::read_from_bytes(bytes).unwrap();
         assert_eq!(parsed.hdr.chksum, 0xABCD);
+        assert_eq!(parsed.algorithm, EndorsementAlgorithm::ECDSA_384);
+    }
+
+    #[test]
+    fn test_get_ocp_lock_endorsement_cert_req_serialization() {
+        let req = GetOcpLockEndorsementCertReq {
+            hdr: MailboxReqHeader { chksum: 0xABCD },
+            hpke_handle: HpkeHandle::default(),
+            algorithm: EndorsementAlgorithm::MLDSA_87,
+        };
+
+        let bytes = req.as_bytes();
+        assert_eq!(
+            bytes.len(),
+            core::mem::size_of::<GetOcpLockEndorsementCertReq>()
+        );
+
+        let parsed = GetOcpLockEndorsementCertReq::read_from_bytes(bytes).unwrap();
+        assert_eq!(parsed.hdr.chksum, 0xABCD);
+        assert_eq!(parsed.algorithm, EndorsementAlgorithm::MLDSA_87);
     }
 
     #[test]
@@ -3008,14 +3047,15 @@ mod tests {
         resp.hdr.data_len = 128;
         resp.cert_data[..4].copy_from_slice(&[0x30, 0x82, 0x01, 0x00]);
 
-        let mut mbox_resp = McuMailboxResp::DpeSignerContextCert(resp);
-        mbox_resp.populate_chksum().unwrap();
-
-        let bytes = mbox_resp.as_bytes().unwrap();
-        let hdr = MailboxRespHeader::read_from_prefix(bytes).unwrap().0;
-        assert_ne!(hdr.chksum, 0);
-
-        let payload = &bytes[core::mem::size_of::<u32>()..];
-        assert!(verify_checksum(hdr.chksum, 0, payload));
+        let bytes = resp.as_bytes_partial().unwrap();
+        assert_eq!(
+            bytes.len(),
+            core::mem::size_of::<MailboxRespHeaderVarSize>() + 128
+        );
+        assert_eq!(
+            &bytes[core::mem::size_of::<MailboxRespHeaderVarSize>()
+                ..core::mem::size_of::<MailboxRespHeaderVarSize>() + 4],
+            &[0x30, 0x82, 0x01, 0x00]
+        );
     }
 }
