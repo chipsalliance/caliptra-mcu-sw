@@ -11,8 +11,9 @@
 //! stack-allocated `[u8; N]` array for cert payload.
 
 use caliptra_mcu_spdm_codec::{
-    CertificateRsp, CertificateRspBody, GetCertificateReqBody, ReqRespCode, ResponseBody,
-    SpdmMsgHdrPdu, SpdmVersion, WireWriter, ATTR_SLOT_SIZE_REQUESTED,
+    CertificateLargeRsp, CertificateLargeRspBody, CertificateRsp, CertificateRspBody,
+    GetCertificateParam1, GetCertificateReq, ReqRespCode, ResponseBody, SpdmMsgHdrPdu, SpdmVersion,
+    WireWriter,
 };
 use caliptra_mcu_spdm_traits::{
     PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalAsymAlgo, SpdmPalIo, SpdmPalIoTransport, MAX_SLOTS,
@@ -22,8 +23,8 @@ use zerocopy::{little_endian::U16, FromBytes};
 use crate::build::{build_error_response, build_response};
 use crate::chunk::LargeResponse;
 use crate::error::{
-    SpdmResult, SPDM_INVALID_REQUEST, SPDM_LARGE_RESPONSE, SPDM_UNEXPECTED_REQUEST,
-    SPDM_UNSPECIFIED,
+    SpdmResult, SPDM_DATA_TOO_LARGE, SPDM_INVALID_REQUEST, SPDM_LARGE_RESPONSE,
+    SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED,
 };
 use crate::stack::{multi_key_conn_rsp, ConnectionState, Phase};
 
@@ -33,15 +34,18 @@ use crate::stack::{multi_key_conn_rsp, ConnectionState, Phase};
 const SPDM_CERT_CHAIN_HDR_LEN: usize = 4 + 48;
 const SHA384_DIGEST_SIZE: usize = 48;
 const CERTIFICATE_RESPONSE_HEADER_SIZE: usize = SpdmMsgHdrPdu::SIZE + CertificateRspBody::SIZE;
+const CERTIFICATE_LARGE_RESPONSE_HEADER_SIZE: usize =
+    SpdmMsgHdrPdu::SIZE + CertificateLargeRspBody::SIZE;
 
 #[derive(Copy, Clone)]
 pub(crate) struct CertificateLargeResponse {
     slot_id: u8,
     param2: u8,
     asym_algo: SpdmPalAsymAlgo,
-    cert_offset: u16,
-    portion_len: u16,
-    remainder_len: u16,
+    cert_offset: u32,
+    portion_len: u32,
+    remainder_len: u32,
+    large: bool,
 }
 
 impl CertificateLargeResponse {
@@ -50,9 +54,10 @@ impl CertificateLargeResponse {
         slot_id: u8,
         param2: u8,
         asym_algo: SpdmPalAsymAlgo,
-        cert_offset: u16,
-        portion_len: u16,
-        remainder_len: u16,
+        cert_offset: u32,
+        portion_len: u32,
+        remainder_len: u32,
+        large: bool,
     ) -> Self {
         Self {
             slot_id,
@@ -61,12 +66,22 @@ impl CertificateLargeResponse {
             cert_offset,
             portion_len,
             remainder_len,
+            large,
+        }
+    }
+
+    #[inline]
+    pub(crate) fn header_size(&self) -> usize {
+        if self.large {
+            CERTIFICATE_LARGE_RESPONSE_HEADER_SIZE
+        } else {
+            CERTIFICATE_RESPONSE_HEADER_SIZE
         }
     }
 
     #[inline]
     pub(crate) fn response_size(&self) -> usize {
-        CERTIFICATE_RESPONSE_HEADER_SIZE + self.portion_len as usize
+        self.header_size() + self.portion_len as usize
     }
 
     pub(crate) async fn fill_chunk<Pal: SpdmPal>(
@@ -84,22 +99,40 @@ impl CertificateLargeResponse {
             return Err(mcu_error::codes::INVARIANT);
         }
 
+        let hdr_size = self.header_size();
         let mut written = 0;
-        if offset < CERTIFICATE_RESPONSE_HEADER_SIZE {
-            let mut hdr = [0u8; CERTIFICATE_RESPONSE_HEADER_SIZE];
-            let mut writer = WireWriter::new(&mut hdr);
+        if offset < hdr_size {
+            let mut hdr = [0u8; CERTIFICATE_LARGE_RESPONSE_HEADER_SIZE];
+            let mut writer = WireWriter::new(&mut hdr[..hdr_size]);
             writer
                 .write(&SpdmMsgHdrPdu::new(version, ReqRespCode::CERTIFICATE))
                 .map_err(|_| mcu_error::codes::INVARIANT)?;
-            writer
-                .write(&CertificateRspBody {
-                    slot_id: self.slot_id,
-                    param2: self.param2,
-                    portion_length: U16::new(self.portion_len),
-                    remainder_length: U16::new(self.remainder_len),
-                })
-                .map_err(|_| mcu_error::codes::INVARIANT)?;
-            let hdr_end = CERTIFICATE_RESPONSE_HEADER_SIZE.min(end);
+            if self.large {
+                writer
+                    .write(&CertificateLargeRspBody {
+                        param1: GetCertificateParam1::new()
+                            .with_slot_id(self.slot_id)
+                            .with_large_cert_chain(true),
+                        param2: self.param2,
+                        portion_length: U16::new(0),
+                        remainder_length: U16::new(0),
+                        large_portion_length: zerocopy::little_endian::U32::new(self.portion_len),
+                        large_remainder_length: zerocopy::little_endian::U32::new(
+                            self.remainder_len,
+                        ),
+                    })
+                    .map_err(|_| mcu_error::codes::INVARIANT)?;
+            } else {
+                writer
+                    .write(&CertificateRspBody {
+                        slot_id: self.slot_id,
+                        param2: self.param2,
+                        portion_length: U16::new(self.portion_len as u16),
+                        remainder_length: U16::new(self.remainder_len as u16),
+                    })
+                    .map_err(|_| mcu_error::codes::INVARIANT)?;
+            }
+            let hdr_end = hdr_size.min(end);
             let copy_len = hdr_end - offset;
             let src = hdr
                 .get(offset..hdr_end)
@@ -112,8 +145,7 @@ impl CertificateLargeResponse {
         }
 
         if written < dst.len() {
-            let cert_offset =
-                self.cert_offset as usize + offset + written - CERTIFICATE_RESPONSE_HEADER_SIZE;
+            let cert_offset = self.cert_offset as usize + offset + written - hdr_size;
             fill_cert_chain_portion(
                 pal,
                 io,
@@ -149,24 +181,23 @@ pub(crate) async fn handle_get_certificate_req<'a, Pal: SpdmPal>(
         return Err(SPDM_UNEXPECTED_REQUEST);
     }
 
-    // Decode the 6-byte request body.
     let (hdr, body) = SpdmMsgHdrPdu::ref_from_prefix(spdm_msg).map_err(|_| SPDM_INVALID_REQUEST)?;
     if hdr.version != state.version.to_u8() {
         return Err(crate::error::SPDM_VERSION_MISMATCH);
     }
-    let req_body = GetCertificateReqBody::ref_from_bytes(
-        body.get(..GetCertificateReqBody::SIZE)
-            .ok_or(SPDM_INVALID_REQUEST)?,
-    )
-    .map_err(|_| SPDM_INVALID_REQUEST)?;
 
-    let slot_id = req_body.slot_id & 0x0F;
+    let req = GetCertificateReq::parse(body).map_err(|_| SPDM_INVALID_REQUEST)?;
+
+    if req.is_large() && state.version < SpdmVersion::V14 {
+        return Err(SPDM_INVALID_REQUEST);
+    }
+
+    let slot_id = req.slot_id();
     if slot_id >= MAX_SLOTS {
         return Err(SPDM_INVALID_REQUEST);
     }
+    let slot_size_only = state.version >= SpdmVersion::V13 && req.is_slot_size_requested();
     let provisioned = pal.provisioned_slots();
-    let slot_size_only =
-        state.version >= SpdmVersion::V13 && (req_body.attributes & ATTR_SLOT_SIZE_REQUESTED) != 0;
     if provisioned & (1 << slot_id) == 0 && !slot_size_only {
         return Err(SPDM_INVALID_REQUEST);
     }
@@ -182,35 +213,37 @@ pub(crate) async fn handle_get_certificate_req<'a, Pal: SpdmPal>(
     let total_len_usize = SPDM_CERT_CHAIN_HDR_LEN
         .checked_add(der_len)
         .ok_or(SPDM_UNSPECIFIED)?;
-    let total_len = u16::try_from(total_len_usize).map_err(|_| SPDM_UNSPECIFIED)?;
+
+    if total_len_usize > req.max_length_cap() {
+        return Err(SPDM_DATA_TOO_LARGE);
+    }
 
     let single_frame_portion = state
         .effective_data_transfer_size(pal)
-        .saturating_sub(SpdmMsgHdrPdu::SIZE + CertificateRspBody::SIZE);
+        .saturating_sub(SpdmMsgHdrPdu::SIZE + req.rsp_header_body_size());
 
     let (offset, portion_len, remainder_len) = if slot_size_only {
-        // V1.3 SlotSizeRequested: report total in RemainderLength.
-        (0u16, 0u16, total_len)
+        (0u32, 0u32, total_len_usize as u32)
     } else {
-        let off = req_body.offset.get() as usize;
-        if off > total_len_usize {
+        if req.offset() > total_len_usize {
             return Err(SPDM_INVALID_REQUEST);
         }
-        let remaining = total_len_usize - off;
+        let remaining = total_len_usize - req.offset();
         let chunking = state.chunking_enabled();
         let max_portion = if chunking {
             state
                 .effective_max_spdm_msg_size(pal)
-                .saturating_sub(SpdmMsgHdrPdu::SIZE + CertificateRspBody::SIZE)
+                .saturating_sub(SpdmMsgHdrPdu::SIZE + req.rsp_header_body_size())
         } else {
             single_frame_portion
         };
-        let portion = (req_body.length.get() as usize)
+        let portion = req
+            .length()
             .min(remaining)
             .min(max_portion)
-            .min(u16::MAX as usize);
+            .min(req.max_length_cap());
         let remainder = remaining - portion;
-        (off as u16, portion as u16, remainder as u16)
+        (req.offset() as u32, portion as u32, remainder as u32)
     };
 
     let cert_info = if multi_key_conn_rsp(state)? {
@@ -227,6 +260,7 @@ pub(crate) async fn handle_get_certificate_req<'a, Pal: SpdmPal>(
             offset,
             portion_len,
             remainder_len,
+            req.is_large(),
         );
         let handle = state.large_msg_ctx.next_handle();
         let resp = build_error_response(
@@ -248,55 +282,41 @@ pub(crate) async fn handle_get_certificate_req<'a, Pal: SpdmPal>(
         return Ok((resp, SpdmMsgHdrPdu::SIZE + 2 + 1));
     }
 
-    if portion_len == 0 {
-        let resp = build_response(
-            pal,
-            io,
-            state.version,
-            &CertificateRsp {
-                slot_id,
-                param2: cert_info,
-                portion_length: 0,
-                remainder_length: remainder_len,
-                chain_portion: &[],
-            },
-        )?;
+    let portion = if portion_len > 0 {
+        let mut p = pal.alloc_bytes(io, portion_len as usize)?;
+        fill_cert_chain_portion(pal, io, slot_id, asym_algo, offset as usize, &mut p).await?;
+        Some(p)
+    } else {
+        None
+    };
+    let chain_slice: &[u8] = match &portion {
+        Some(p) => p.as_ref(),
+        None => &[],
+    };
 
-        let spdm_len = CertificateRsp {
+    let (resp, spdm_len) = if req.is_large() {
+        let cert_body = CertificateLargeRsp {
             slot_id,
             param2: cert_info,
-            portion_length: 0,
-            remainder_length: remainder_len,
-            chain_portion: &[],
-        }
-        .encoded_size();
-        let head = pal.header_size();
-        state.transcript.append_m1(pal, io, spdm_msg).await?;
-        state
-            .transcript
-            .append_m1(pal, io, &resp[head..head + spdm_len])
-            .await?;
-
-        state.phase = Phase::AfterCertificate;
-        return Ok((resp, spdm_len));
-    }
-
-    // Allocate the portion buffer from the per-IO pool. Bytes
-    // are spliced in below: [0, 52) from the SPDM cert-chain
-    // header, [52, total_len) from the raw DER chain.
-    let mut portion = pal.alloc_bytes(io, portion_len as usize)?;
-    fill_cert_chain_portion(pal, io, slot_id, asym_algo, offset as usize, &mut portion).await?;
-
-    let cert_body = CertificateRsp {
-        slot_id,
-        param2: cert_info,
-        portion_length: portion_len,
-        remainder_length: remainder_len,
-        chain_portion: &portion,
+            large_portion_length: portion_len,
+            large_remainder_length: remainder_len,
+            chain_portion: chain_slice,
+        };
+        let spdm_len = cert_body.encoded_size();
+        let resp = build_response(pal, io, state.version, &cert_body)?;
+        (resp, spdm_len)
+    } else {
+        let cert_body = CertificateRsp {
+            slot_id,
+            param2: cert_info,
+            portion_length: portion_len as u16,
+            remainder_length: remainder_len as u16,
+            chain_portion: chain_slice,
+        };
+        let spdm_len = cert_body.encoded_size();
+        let resp = build_response(pal, io, state.version, &cert_body)?;
+        (resp, spdm_len)
     };
-    let spdm_len = cert_body.encoded_size();
-
-    let resp = build_response(pal, io, state.version, &cert_body)?;
 
     let head = pal.header_size();
     state.transcript.append_m1(pal, io, spdm_msg).await?;
