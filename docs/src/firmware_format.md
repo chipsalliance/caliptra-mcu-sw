@@ -220,6 +220,21 @@ Integrators who need stronger power-loss guarantees should layer such
 mechanisms on top of the firmware manifest DOT section; the format
 itself intentionally keeps the ROM-side logic minimal.
 
+## Vendor PK Hash Management Manifest
+
+The **Vendor PK Hash Management Manifest** allows a firmware release to
+provision new vendor PK hash fuse slots, revoke individual signing keys
+within a slot, or revoke entire vendor PK hash slots. The full
+specification — including the manifest format, ROM processing flow, and
+security considerations — is in
+[Vendor PK Hash Management Firmware Header](./vendor-pk-hash-management.md).
+
+* **Magic:** `0x56504B48` (`"VPKH"`)
+* **Size:** 1024 bytes (8-byte header + 16 × 60-byte entries + 56 bytes reserved)
+* **Version:** 1
+* **Cargo feature:** `fw-manifest-vendor-pk-hash` on the ROM crate
+* **Runtime gate:** `RomParameters::fw_manifest_vendor_pk_hash_enabled`
+
 ## Future Headers
 
 Additional headers of the same shape — magic, version, checksum,
