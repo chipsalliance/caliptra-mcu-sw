@@ -350,6 +350,7 @@ pub unsafe extern "C" fn emulator_init(
             config.hw_revision_patch as u64,
         ),
         flash_based_boot: config.flash_based_boot != 0,
+        external_recovery_initiator: false,
         allow_sideloaded_rom: config.allow_sideloaded_rom != 0,
         // Use provided offset and size override parameters (-1 means use default)
         rom_offset: convert_optional_offset_size(config.rom_offset),

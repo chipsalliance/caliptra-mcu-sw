@@ -47,6 +47,7 @@ fn test_emulator_args_creation() {
         _no_stdin_uart: false,
         allow_sideloaded_rom: false,
         flash_based_boot: false,
+        external_recovery_initiator: false,
         i3c_port: None,
         device_security_state: DeviceLifecycle::Production as u32,
         test_feature: None,
