@@ -51,6 +51,7 @@ use clap_num::maybe_hex;
 use crossterm::event::{Event, KeyCode, KeyEvent};
 use std::cell::Cell;
 use std::cell::RefCell;
+use std::collections::HashSet;
 use std::fs::File;
 use std::io::{self, IsTerminal, Read, Write};
 use std::ops::Range;
@@ -152,6 +153,11 @@ pub struct EmulatorArgs {
 
     #[arg(long)]
     pub soc_manifest: PathBuf,
+
+    /// Log unique MCU program counters to `pc.log` in the log directory,
+    /// one PC per line in first-seen order.
+    #[arg(long, default_value_t = false)]
+    pub pc_coverage: bool,
 
     #[arg(long)]
     pub i3c_port: Option<u16>,
@@ -306,6 +312,8 @@ pub struct Emulator {
     pub bmc: Option<Bmc>,
     pub timer: Timer,
     pub trace_file: Option<File>,
+    pub coverage_file: Option<File>,
+    pub coverage_seen: HashSet<u32>,
     pub stdin_uart: Option<Arc<Mutex<Option<u8>>>>,
     pub sram_range: Range<u32>,
     #[allow(dead_code)]
@@ -1142,6 +1150,12 @@ impl Emulator {
             None
         };
 
+        let pc_coverage_trace = if cli.pc_coverage {
+            Some(args_log_dir.join("pc.log"))
+        } else {
+            None
+        };
+
         let sram_range = mcu_root_bus_offsets.ram_offset
             ..mcu_root_bus_offsets.ram_offset + mcu_root_bus_offsets.ram_size;
 
@@ -1151,6 +1165,7 @@ impl Emulator {
             cpu,
             caliptra_cpu,
             instr_trace,
+            pc_coverage_trace,
             stdin_uart,
             bmc,
             sram_range,
@@ -1173,6 +1188,7 @@ impl Emulator {
         mcu_cpu: Cpu<AutoRootBus>,
         caliptra_cpu: Cpu<CaliptraMainRootBus>,
         trace_path: Option<PathBuf>,
+        coverage_path: Option<PathBuf>,
         stdin_uart: Option<Arc<Mutex<Option<u8>>>>,
         bmc: Option<Bmc>,
         sram_range: Range<u32>,
@@ -1203,6 +1219,7 @@ impl Emulator {
 
         let timer = Timer::new(&mcu_cpu.clock.clone());
         let trace_file = trace_path.map(|path| File::create(path).unwrap());
+        let coverage_file = coverage_path.map(|path| File::create(path).unwrap());
 
         Self {
             mcu_cpu,
@@ -1210,6 +1227,8 @@ impl Emulator {
             bmc,
             timer,
             trace_file,
+            coverage_file,
+            coverage_seen: HashSet::new(),
             stdin_uart,
             sram_range,
             clock,
@@ -1272,15 +1291,25 @@ impl Emulator {
         // mid-step clock value.
         let _step_guard = self.step_lock.lock().unwrap();
 
-        let action = if let Some(ref mut trace_file) = self.trace_file {
-            let trace_fn: &mut dyn FnMut(u32, RvInstr) = &mut |pc, instr| match instr {
-                RvInstr::Instr32(instr32) => {
-                    let _ = writeln!(trace_file, "{}", disassemble(pc, instr32));
-                    println!("{{mcu cpu}}      {}", disassemble(pc, instr32));
-                }
-                RvInstr::Instr16(instr16) => {
-                    let _ = writeln!(trace_file, "{}", disassemble(pc, instr16 as u32));
-                    println!("{{mcu cpu}}      {}", disassemble(pc, instr16 as u32));
+        let action = if self.trace_file.is_some() || self.coverage_file.is_some() {
+            let mut trace_file = self.trace_file.as_mut();
+            let mut coverage_file = self.coverage_file.as_mut();
+            let coverage_seen = &mut self.coverage_seen;
+
+            let trace_fn: &mut dyn FnMut(u32, RvInstr) = &mut |pc, instr| {
+                write_unique_pc_coverage_entry(coverage_file.as_deref_mut(), coverage_seen, pc);
+
+                if let Some(file) = trace_file.as_mut() {
+                    match instr {
+                        RvInstr::Instr32(instr32) => {
+                            let _ = writeln!(file, "{}", disassemble(pc, instr32));
+                            println!("{{mcu cpu}}      {}", disassemble(pc, instr32));
+                        }
+                        RvInstr::Instr16(instr16) => {
+                            let _ = writeln!(file, "{}", disassemble(pc, instr16 as u32));
+                            println!("{{mcu cpu}}      {}", disassemble(pc, instr16 as u32));
+                        }
+                    }
                 }
             };
             self.mcu_cpu.step(Some(trace_fn))
@@ -1330,6 +1359,18 @@ impl Emulator {
     /// Get the current program counter (PC) of the MCU CPU
     pub fn get_pc(&self) -> u32 {
         self.mcu_cpu.read_pc()
+    }
+}
+
+fn write_unique_pc_coverage_entry(
+    coverage_file: Option<&mut File>,
+    coverage_seen: &mut HashSet<u32>,
+    pc: u32,
+) {
+    if let Some(file) = coverage_file {
+        if coverage_seen.insert(pc) {
+            let _ = writeln!(file, "0x{:08x}", pc);
+        }
     }
 }
 
