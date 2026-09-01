@@ -529,9 +529,10 @@ pub trait CaliptraCmdHandler {
         &self,
         nonce: &[u8; 32],
         sek_state: SekState,
+        algorithm: EndorsementAlgorithm,
         report_buf: &mut [u8],
     ) -> CaliptraCmdResult<usize> {
-        let _ = (nonce, sek_state, report_buf);
+        let _ = (nonce, sek_state, algorithm, report_buf);
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 

@@ -2136,6 +2136,7 @@ pub struct GetOcpLockEpochKeyReportReq {
     /// SEK state (0=Unused, 1=Programmed, 2=Sanitized)
     pub sek_state: u16,
     pub reserved: u16,
+    pub algorithm: EndorsementAlgorithm,
 }
 impl Request for GetOcpLockEpochKeyReportReq {
     const ID: CommandId = CommandId::MC_GET_OCP_LOCK_EPOCH_KEY_REPORT;
@@ -2146,13 +2147,13 @@ impl Request for GetOcpLockEpochKeyReportReq {
 #[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
 pub struct GetOcpLockEpochKeyReportResp {
     pub hdr: MailboxRespHeaderVarSize,
-    pub data: [u8; MAX_RESP_DATA_SIZE],
+    pub data: [u8; MAX_ENDORSEMENT_CERT_SIZE],
 }
 impl Default for GetOcpLockEpochKeyReportResp {
     fn default() -> Self {
         Self {
             hdr: MailboxRespHeaderVarSize::default(),
-            data: [0u8; MAX_RESP_DATA_SIZE],
+            data: [0u8; MAX_ENDORSEMENT_CERT_SIZE],
         }
     }
 }

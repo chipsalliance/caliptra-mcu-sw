@@ -722,15 +722,18 @@ impl<'a> OcpLock<'a> {
         )
         .await?;
 
-        let mut signature = [0u8; 96];
-        signer
-            .sign(Self::EKP_DPE_LABEL, &digest, &mut signature)
-            .await?;
+        let sig_len = signer.signature_size();
+        if report_buf.len() < sig_len {
+            return Err(CaliptraApiError::InvalidArgBufferTooSmall);
+        }
+        let (out_buf, sig_buf) = report_buf.split_at_mut(report_buf.len() - sig_len);
 
-        let mut report_encoder = CborEncoder::new(report_buf);
+        signer.sign(Self::EKP_DPE_LABEL, &digest, sig_buf).await?;
+
+        let mut report_encoder = CborEncoder::new(out_buf);
         EkpEvidence::assemble_cose_sign1(
             &evidence_buf[..evidence_len],
-            &signature,
+            sig_buf,
             &mut report_encoder,
         )?;
 
