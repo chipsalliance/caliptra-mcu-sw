@@ -9,6 +9,17 @@ The Security Protocol and Data Model (SPDM) is a protocol designed to ensure sec
 | SPDM over MCTP Binding Specification          | [DSP0275](https://www.dmtf.org/sites/default/files/standards/documents/DSP0275_1.0.2.pdf) |
 | Secured Messages using SPDM over MCTP Binding | [DSP0276](https://www.dmtf.org/sites/default/files/standards/documents/DSP0276_1.2.0.pdf) |
 
+## Caliptra Device Identity Authentication
+
+For the device-trust model, PKI ownership, and certificate-chain composition,
+see the [Caliptra Certificate Model](./certificate_model.md).
+
+For platform certificate-store configuration, see the [Caliptra MCU
+Certificate Store](./cert_store.md).
+
+For the in-field Owner and Tenant provisioning workflow, see [In-field
+Certificate Provisioning and Management](./certificate_provisioning.md).
+
 ## SPDM Protocol Sequence
 ```mermaid
 sequenceDiagram

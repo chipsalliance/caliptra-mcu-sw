@@ -14,7 +14,7 @@ The Caliptra MCU firmware provides three external command interfaces: [MCTP VDM 
 | Clear Debug Log              | MCTP VDM          | MC_CLEAR_LOG               | Clears the MCU Runtime debug log.                  |
 | Request Debug Unlock         | SPDM VDM          | MC_PROD_DEBUG_UNLOCK_REQ   | Requests debug unlock in a production environment. |
 | Authorize Debug Unlock Token | SPDM VDM          | MC_PROD_DEBUG_UNLOCK_TOKEN | Sends the debug unlock token for authorization.    |
-| Export Attested CSR          | SPDM VDM          | MC_EXPORT_ATTESTED_CSR     | Exports attested CSR for a specified device key.   |
+| Export Attested CSR          | SPDM VDM          | MC_EXPORT_ATTESTED_CSR     | Discovers device keys or exports an attested CSR.  |
 
 To ensure consistent command behavior and maximize code reuse, we define a protocol-agnostic command handler trait (`CaliptraCmdHandler`) with unified input/output types in the `caliptra-mcu-common-commands` crate. All protocol frontends parse their respective protocol, then call the same backend handler, ensuring code reuse and consistent behavior.
 
@@ -108,7 +108,7 @@ pub trait CaliptraCmdHandler: Send + Sync {
         capabilities: &mut DeviceCapabilities,
     ) -> Result<(), CaliptraCompletionCode>;
 
-    /// Exports an attested CSR for the specified device key.
+    /// Discovers supported device keys or exports an attested CSR.
     ///
     /// Writes the CSR DER data directly into the provided buffer.
     /// Returns the number of bytes written on success.
