@@ -33,6 +33,53 @@ const DOT_ROTATE_PAYLOAD_LEN: usize = 4 + core::mem::size_of::<DotRotatePayload>
 #[cfg(feature = "device-ownership-transfer")]
 const DOT_BACKUP_PAYLOAD_LEN: usize = 4;
 
+const AUTHORIZATION_TRAILER_LEN: usize = AUTH_CMD_NONCE_LEN
+    + 2 * ECC_P384_COORD_SIZE
+    + MLDSA87_PUB_KEY_SIZE
+    + core::mem::size_of::<HybridSignature>();
+
+const MAX_AUTHORIZED_PAYLOAD_LEN: usize = {
+    let mut max = FE_PROG_PAYLOAD_LEN;
+    if PROVISION_VENDOR_PK_HASH_PAYLOAD_LEN > max {
+        max = PROVISION_VENDOR_PK_HASH_PAYLOAD_LEN;
+    }
+    if PROVISION_OWNER_PK_HASH_PAYLOAD_LEN > max {
+        max = PROVISION_OWNER_PK_HASH_PAYLOAD_LEN;
+    }
+    if INCREASE_CALIPTRA_MIN_SVN_PAYLOAD_LEN > max {
+        max = INCREASE_CALIPTRA_MIN_SVN_PAYLOAD_LEN;
+    }
+    if REVOKE_VENDOR_PUB_KEY_PAYLOAD_LEN > max {
+        max = REVOKE_VENDOR_PUB_KEY_PAYLOAD_LEN;
+    }
+    if REVOKE_VENDOR_PK_HASH_PAYLOAD_LEN > max {
+        max = REVOKE_VENDOR_PK_HASH_PAYLOAD_LEN;
+    }
+    if FUSE_LOCK_PARTITION_PAYLOAD_LEN > max {
+        max = FUSE_LOCK_PARTITION_PAYLOAD_LEN;
+    }
+    #[cfg(feature = "device-ownership-transfer")]
+    {
+        if DOT_LOCK_PAYLOAD_LEN > max {
+            max = DOT_LOCK_PAYLOAD_LEN;
+        }
+        if DOT_DISABLE_PAYLOAD_LEN > max {
+            max = DOT_DISABLE_PAYLOAD_LEN;
+        }
+        if DOT_ROTATE_PAYLOAD_LEN > max {
+            max = DOT_ROTATE_PAYLOAD_LEN;
+        }
+        if DOT_BACKUP_PAYLOAD_LEN > max {
+            max = DOT_BACKUP_PAYLOAD_LEN;
+        }
+    }
+    max
+};
+
+/// Largest `AuthorizedCommand` body after the Caliptra VDM header.
+pub(in crate::iana::ocp::caliptra_vdm) const MAX_REQUEST_LEN: usize =
+    core::mem::size_of::<u32>() + MAX_AUTHORIZED_PAYLOAD_LEN + AUTHORIZATION_TRAILER_LEN;
+
 /// MC_GET_AUTH_CMD_CHALLENGE sub-command (`MACC`).
 pub const GET_AUTH_CHALLENGE_CMD_ID: u32 = 0x4D41_4343;
 /// MC_PROVISION_VENDOR_PK_HASH sub-command (`PVPK`).
@@ -566,12 +613,8 @@ fn split_authorized_request(
     req: &[u8],
     payload_len: usize,
 ) -> Result<AuthorizedRequest<'_>, CaliptraCompletionCode> {
-    let auth_len = AUTH_CMD_NONCE_LEN
-        + 2 * ECC_P384_COORD_SIZE
-        + MLDSA87_PUB_KEY_SIZE
-        + core::mem::size_of::<HybridSignature>();
     let expected_len = payload_len
-        .checked_add(auth_len)
+        .checked_add(AUTHORIZATION_TRAILER_LEN)
         .ok_or(CaliptraCompletionCode::InvalidPayloadSize)?;
     if req.len() != expected_len {
         return Err(CaliptraCompletionCode::InvalidPayloadSize);

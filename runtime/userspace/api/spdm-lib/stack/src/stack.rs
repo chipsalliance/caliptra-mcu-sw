@@ -218,14 +218,19 @@ impl<S, L> ConnectionState<S, L> {
         pal.mtu().min(peer)
     }
 
-    pub(crate) fn effective_max_spdm_msg_size<Pal: SpdmPal>(&self, pal: &Pal) -> usize {
-        let local = pal.large_capacity().max(pal.mtu());
-        let peer = if self.peer_max_spdm_msg_size == 0 {
-            local
-        } else {
-            self.peer_max_spdm_msg_size as usize
-        };
-        local.min(peer)
+    /// Peer-advertised maximum logical response we may send.
+    ///
+    /// Successful capabilities negotiation guarantees a non-zero peer limit.
+    pub(crate) fn max_streamed_response_size(&self) -> SpdmResult<usize> {
+        if self.peer_max_spdm_msg_size == 0 {
+            return Err(SPDM_UNSPECIFIED);
+        }
+        Ok(self.peer_max_spdm_msg_size as usize)
+    }
+
+    /// Maximum buffered response allowed by both local storage and the peer.
+    pub(crate) fn max_buffered_response_size(&self, local_capacity: usize) -> SpdmResult<usize> {
+        Ok(local_capacity.min(self.max_streamed_response_size()?))
     }
 
     /// Convert the negotiated asymmetric algorithm to
@@ -359,8 +364,16 @@ impl<Pal: SpdmPal, const MAX_SESSIONS: usize, Vdm: SpdmVdmBackend>
     /// If the PAL cannot hold at least one transport-sized large message,
     /// `CHUNK` is removed from the advertised capabilities.
     pub fn with_vdm_backend(pal: Pal, vdm_backend: Vdm) -> Self {
+        assert!(
+            pal.max_inbound_spdm_request_size() >= pal.mtu(),
+            "MaxSPDMmsgSize must be at least DataTransferSize"
+        );
+        assert!(
+            pal.max_inbound_spdm_request_size() <= u32::MAX as usize,
+            "MaxSPDMmsgSize exceeds the SPDM field width"
+        );
         let mut state = ConnectionState::<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>::default();
-        if pal.large_capacity() < pal.mtu() {
+        if pal.large_buffered_msg_capacity() < pal.mtu() {
             state.cap_flags =
                 CapFlags::from_bits(state.cap_flags.into_bits() & !CapFlags::CHUNK.into_bits());
         }

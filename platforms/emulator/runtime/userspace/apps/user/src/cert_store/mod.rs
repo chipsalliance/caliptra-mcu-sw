@@ -70,9 +70,20 @@ struct CertStoreBootScratchSlot([u8; BITMAP_SLOT_SIZE]);
 static CERT_STORE: SharedCertStore = SharedCertStore::new();
 
 #[cfg(feature = "test-mctp-spdm-set-certificate")]
-const MANAGED_SLOT_COUNT: usize = 2;
+const MANAGED_ENDORSEMENT_SLOTS: &[(usize, u8)] = &[(1, OWNER_SPDM_SLOT), (2, TENANT_SPDM_SLOT)];
 #[cfg(feature = "test-mctp-spdm-set-certificate")]
-const MANAGED_SLOT_REGION_SIZE: usize = CERT_STORE_PARTITION.size / MANAGED_SLOT_COUNT;
+pub(crate) const MANAGED_ENDORSEMENT_COUNT: usize = MANAGED_ENDORSEMENT_SLOTS.len();
+#[cfg(feature = "test-mctp-spdm-set-certificate")]
+const MANAGED_SLOT_REGION_SIZE: usize = {
+    assert!(MANAGED_ENDORSEMENT_COUNT != 0);
+    assert!(CERT_STORE_PARTITION.size % MANAGED_ENDORSEMENT_COUNT == 0);
+    CERT_STORE_PARTITION.size / MANAGED_ENDORSEMENT_COUNT
+};
+#[cfg(feature = "test-mctp-spdm-set-certificate")]
+pub(crate) const MAX_MANAGED_ENDORSEMENT_CERT_CHAIN_LEN: usize =
+    caliptra_mcu_spdm_pal::cert::endorsement::managed_endorsement_cert_chain_capacity(
+        MANAGED_SLOT_REGION_SIZE,
+    );
 
 /// Initialize Caliptra identity chains before any SPDM or MCU-mailbox task can
 /// contend for the mailbox, then configure SPDM endorsements when enabled.
@@ -145,24 +156,19 @@ async fn setup_endorsements<A: ApiAlloc>(store: &SharedCertStore, alloc: &A) -> 
     // production authorization/key-binding policy exists.
     #[cfg(feature = "test-mctp-spdm-set-certificate")]
     {
-        store
-            .set_managed_endorsement(
-                1,
-                OWNER_SPDM_SLOT,
-                CERT_STORE_PARTITION.driver_num,
-                0,
-                MANAGED_SLOT_REGION_SIZE,
-            )
-            .await?;
-        store
-            .set_managed_endorsement(
-                2,
-                TENANT_SPDM_SLOT,
-                CERT_STORE_PARTITION.driver_num,
-                MANAGED_SLOT_REGION_SIZE,
-                MANAGED_SLOT_REGION_SIZE,
-            )
-            .await?;
+        for (region, (store_slot, spdm_slot)) in
+            MANAGED_ENDORSEMENT_SLOTS.iter().copied().enumerate()
+        {
+            store
+                .set_managed_endorsement(
+                    store_slot,
+                    spdm_slot,
+                    CERT_STORE_PARTITION.driver_num,
+                    region * MANAGED_SLOT_REGION_SIZE,
+                    MANAGED_SLOT_REGION_SIZE,
+                )
+                .await?;
+        }
     }
 
     Ok(())

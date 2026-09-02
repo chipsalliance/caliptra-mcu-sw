@@ -71,8 +71,7 @@ pub(crate) async fn handle_vendor_defined_request<'a, Pal: SpdmPal, V: SpdmVdmBa
         let requested = vdm.large_response_capacity(decoded.payload);
         if requested > inline_cap {
             state
-                .effective_max_spdm_msg_size(pal)
-                .min(pal.large_capacity())
+                .max_buffered_response_size(pal.large_buffered_msg_capacity())?
                 .saturating_sub(envelope)
                 .min(requested)
         } else {

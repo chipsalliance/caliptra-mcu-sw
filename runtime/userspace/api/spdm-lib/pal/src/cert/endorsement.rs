@@ -271,7 +271,26 @@ const MANAGED_ERASED_BYTE: u8 = 0xFF;
 #[cfg(feature = "set-certificate")]
 const MANAGED_KEY_USAGE_MASK: u16 = 0x0003;
 #[cfg(feature = "set-certificate")]
-const MANAGED_MAX_DER_LEN: usize = (u16::MAX as usize) - 52;
+const SPDM_CERT_CHAIN_HEADER_SIZE: usize = 4 + 48;
+#[cfg(feature = "set-certificate")]
+const MANAGED_MAX_DER_LEN: usize = (u16::MAX as usize) - SPDM_CERT_CHAIN_HEADER_SIZE;
+
+/// Usable DER bytes in one managed endorsement region.
+#[cfg(feature = "set-certificate")]
+pub const fn managed_endorsement_der_capacity(region_size: usize) -> usize {
+    let available = region_size.saturating_sub(MANAGED_HEADER_SIZE);
+    if available < MANAGED_MAX_DER_LEN {
+        available
+    } else {
+        MANAGED_MAX_DER_LEN
+    }
+}
+
+/// Maximum standard SPDM CertChain field backed by one managed region.
+#[cfg(feature = "set-certificate")]
+pub const fn managed_endorsement_cert_chain_capacity(region_size: usize) -> usize {
+    SPDM_CERT_CHAIN_HEADER_SIZE + managed_endorsement_der_capacity(region_size)
+}
 
 #[cfg(feature = "set-certificate")]
 type CertStoreFlash = SpiFlash<DefaultSyscalls>;
@@ -595,9 +614,7 @@ impl ManagedEndorsement {
     }
 
     fn der_capacity(&self) -> usize {
-        self.capacity
-            .saturating_sub(MANAGED_HEADER_SIZE)
-            .min(MANAGED_MAX_DER_LEN)
+        managed_endorsement_der_capacity(self.capacity)
     }
 }
 
@@ -730,5 +747,13 @@ mod tests {
     fn managed_capacity_excludes_header() {
         let endorsement = ManagedEndorsement::new(2, 0x7000_000A, 0, 4096);
         assert_eq!(endorsement.der_capacity(), 4096 - MANAGED_HEADER_SIZE);
+    }
+
+    #[test]
+    fn managed_capacity_obeys_standard_cert_chain_limit() {
+        assert_eq!(
+            managed_endorsement_cert_chain_capacity(usize::MAX),
+            u16::MAX as usize
+        );
     }
 }
