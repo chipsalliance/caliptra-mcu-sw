@@ -136,6 +136,11 @@ pub use image_loader::{core_image_info, GetImageInfoResp};
 #[cfg(feature = "mailbox-io")]
 pub use import::{cm_delete, cm_import};
 #[cfg(feature = "mailbox-io")]
+pub use ml_kem::{
+    mlkem_decapsulate, mlkem_encapsulate, mlkem_key_gen, MLKEM1024_CIPHERTEXT_SIZE,
+    MLKEM1024_ENCAPS_KEY_SIZE,
+};
+#[cfg(feature = "mailbox-io")]
 pub use mldsa::{
     mldsa87_compute_mu, mldsa87_compute_tr, MLDSA87_CONTEXT_MAX_SIZE, MLDSA87_TR_SIZE,
 };

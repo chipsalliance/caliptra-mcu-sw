@@ -2,7 +2,9 @@
 
 //! Shared types for Caliptra Cryptographic Manager (CM) mailbox commands.
 
-use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
+#[cfg(feature = "mailbox-io")]
+use caliptra_api::mailbox::Cmk as CoreCmk;
+use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
 
 /// Size in bytes of a CMK handle.
 pub const CMK_SIZE: usize = 128;
@@ -13,7 +15,9 @@ pub const CMK_SIZE: usize = 128;
 /// 128-byte encrypted key material returned by CM mailbox commands and
 /// supplied back to subsequent CM commands.
 #[repr(transparent)]
-#[derive(Clone, Copy, Debug, FromBytes, Immutable, IntoBytes, KnownLayout, PartialEq, Eq)]
+#[derive(
+    Clone, Copy, Debug, FromBytes, Immutable, IntoBytes, KnownLayout, PartialEq, Eq, Unaligned,
+)]
 pub struct Cmk(pub [u8; CMK_SIZE]);
 
 impl Default for Cmk {
@@ -57,5 +61,19 @@ impl From<CmKeyUsage> for u32 {
             CmKeyUsage::MlKem => 5,
             CmKeyUsage::Reserved => 0,
         }
+    }
+}
+
+#[cfg(feature = "mailbox-io")]
+impl From<&CoreCmk> for Cmk {
+    fn from(value: &CoreCmk) -> Self {
+        Cmk(value.0)
+    }
+}
+
+#[cfg(feature = "mailbox-io")]
+impl From<Cmk> for CoreCmk {
+    fn from(value: Cmk) -> Self {
+        CoreCmk(value.0)
     }
 }
