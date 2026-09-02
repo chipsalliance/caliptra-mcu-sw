@@ -250,7 +250,13 @@ async fn handle_measurements_response<'a, Pal: SpdmPal>(
             .get_mut(signature_offset..signature_offset + ECC_P384_SIGNATURE_SIZE)
             .ok_or(SPDM_UNSPECIFIED)?;
         let sig_len = pal
-            .sign_hash(io, plan.slot_id, asym_algo, &hash, signature)
+            .sign(
+                io,
+                plan.slot_id,
+                asym_algo,
+                SigningInput::EccP384Digest(&hash),
+                signature,
+            )
             .await
             .map_err(|_| SPDM_UNSPECIFIED)?;
         if sig_len != ECC_P384_SIGNATURE_SIZE {

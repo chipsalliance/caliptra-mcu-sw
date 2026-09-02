@@ -302,10 +302,18 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
     compute_tbs_hash(pal, io, signing_ctx, th1)
         .await
         .map_err(|_| SPDM_UNSPECIFIED)?;
-    let tbs_hash = &signing_ctx[..SHA384_HASH_SIZE];
+    let tbs_hash = signing_ctx[..]
+        .first_chunk::<SHA384_HASH_SIZE>()
+        .ok_or(SPDM_UNSPECIFIED)?;
 
     let sig_len = pal
-        .sign_hash(io, slot_id, asym_algo, tbs_hash, signature)
+        .sign(
+            io,
+            slot_id,
+            asym_algo,
+            SigningInput::EccP384Digest(tbs_hash),
+            signature,
+        )
         .await
         .map_err(|_| SPDM_UNSPECIFIED)?;
     if sig_len != ECC_P384_SIGNATURE_SIZE {
