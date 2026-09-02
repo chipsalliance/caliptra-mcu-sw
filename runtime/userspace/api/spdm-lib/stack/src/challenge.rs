@@ -156,7 +156,13 @@ pub(crate) async fn handle_challenge<'a, Pal: SpdmPal>(
         .get_mut(head + no_sig_len..head + no_sig_len + ECC_P384_SIGNATURE_SIZE)
         .ok_or(SPDM_UNSPECIFIED)?;
     let sig_len = pal
-        .sign_hash(io, slot_id, asym_algo, &m1_hash, sig_slot)
+        .sign(
+            io,
+            slot_id,
+            asym_algo,
+            SigningInput::EccP384Digest(&m1_hash),
+            sig_slot,
+        )
         .await
         .map_err(|_| SPDM_UNSPECIFIED)?;
     if sig_len != ECC_P384_SIGNATURE_SIZE {
