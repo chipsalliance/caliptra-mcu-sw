@@ -77,6 +77,41 @@ pub const DPE_MAX_LEAF_CERT_SIZE: usize = 12 * 1024;
 /// few bitmap-allocator slots.
 pub const DPE_MAX_CHUNK_SIZE: usize = 1024;
 
+/// Maximum raw message width consumed by Caliptra 2.0 DPE ML-DSA-87 `Sign`.
+pub const DPE_MLDSA87_RAW_MAX_SIZE: usize = 1024;
+
+/// ML-DSA-87 signature width returned by DPE `Sign`.
+pub const DPE_MLDSA87_SIGNATURE_SIZE: usize = 4627;
+
+const DPE_SIGN_FLAG_IS_RAW: u32 = 1 << 0;
+
+/// SHA-384 digest width consumed by DPE P-384 `Sign`.
+pub const DPE_P384_DIGEST_SIZE: usize = 48;
+
+/// Typed input to DPE-backed attestation signing.
+///
+/// Caliptra 2.0 accepts the raw ML-DSA message and computes the message
+/// representative internally.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum SigningInput<'a> {
+    /// SHA-384 digest for ECDSA P-384.
+    EccP384Digest(&'a [u8; DPE_P384_DIGEST_SIZE]),
+    /// Raw ML-DSA-87 message accepted by the Caliptra 2.0 DPE interface.
+    ///
+    /// The 2.0 form uses an implicit empty FIPS 204 context and limits the
+    /// message to 1024 bytes.
+    Mldsa87RawMessage(&'a [u8]),
+}
+
+impl SigningInput<'_> {
+    /// DPE profile required by this signing input.
+    pub const fn profile(&self) -> DpeProfile {
+        match self {
+            Self::EccP384Digest(_) => DpeProfile::P384Sha384,
+            Self::Mldsa87RawMessage(_) => DpeProfile::Mldsa87,
+        }
+    }
+}
 // ---------------------------------------------------------------------------
 // Slim wire types
 // ---------------------------------------------------------------------------
@@ -129,7 +164,18 @@ struct SignP384Cmd {
     handle: [u8; DPE_CONTEXT_HANDLE_SIZE],
     label: [u8; DPE_LABEL_LEN],
     flags: U32,
-    digest: [u8; DPE_LABEL_LEN], // same size as hash (48)
+    digest: [u8; DPE_P384_DIGEST_SIZE],
+}
+
+/// `dpe::commands::SignMldsa87RawCmd`.
+#[repr(C)]
+#[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned)]
+struct SignMldsa87RawCmd {
+    handle: [u8; DPE_CONTEXT_HANDLE_SIZE],
+    label: [u8; DPE_LABEL_LEN],
+    flags: U32,
+    size: U32,
+    raw_data: [u8; DPE_MLDSA87_RAW_MAX_SIZE],
 }
 
 /// `dpe::commands::DeriveContextCmd`.
@@ -163,6 +209,16 @@ struct SignP384RespBody {
     _new_context_handle: [u8; DPE_CONTEXT_HANDLE_SIZE],
     sig_r: [u8; 48],
     sig_s: [u8; 48],
+}
+
+/// `dpe::response::SignMlDsaResp`.
+#[repr(C)]
+#[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned)]
+struct SignMldsa87RespBody {
+    _resp_hdr: [u8; 12],
+    new_context_handle: [u8; DPE_CONTEXT_HANDLE_SIZE],
+    signature: [u8; DPE_MLDSA87_SIGNATURE_SIZE],
+    padding: [u8; 1],
 }
 
 /// ECC P-384 signature size (r + s, 48 bytes each).
@@ -269,6 +325,13 @@ const GET_CERT_CHAIN_DPE_PAYLOAD_LEN: u32 =
 const SIGN_REQ_LEN: usize =
     size_of::<InvokeDpeReqPrefix>() + size_of::<DpeCommandHdr>() + size_of::<SignP384Cmd>();
 const SIGN_DPE_PAYLOAD_LEN: u32 = (size_of::<DpeCommandHdr>() + size_of::<SignP384Cmd>()) as u32;
+const SIGN_MLDSA87_REQ_LEN: usize = size_of::<InvokeDpeMldsa87ReqPrefix>()
+    + size_of::<DpeCommandHdr>()
+    + size_of::<SignMldsa87RawCmd>();
+const SIGN_MLDSA87_DPE_PAYLOAD_LEN: u32 =
+    (size_of::<DpeCommandHdr>() + size_of::<SignMldsa87RawCmd>()) as u32;
+const SIGN_MLDSA87_RESP_LEN: usize =
+    size_of::<InvokeDpeRespPrefix>() + size_of::<SignMldsa87RespBody>();
 const DERIVE_CONTEXT_REQ_LEN: usize =
     size_of::<InvokeDpeReqPrefix>() + size_of::<DpeCommandHdr>() + size_of::<DeriveContextCmd>();
 const DERIVE_CONTEXT_DPE_PAYLOAD_LEN: u32 =
@@ -345,6 +408,14 @@ const _: () = assert!(size_of::<DpeCommandHdr>() == 12);
 const _: () = assert!(size_of::<GetCertChainCmd>() == 8);
 const _: () = assert!(size_of::<SignP384Cmd>() == DPE_CONTEXT_HANDLE_SIZE + 48 + 4 + 48);
 const _: () = assert!(size_of::<SignP384RespBody>() == 12 + DPE_CONTEXT_HANDLE_SIZE + 48 + 48);
+const _: () = assert!(
+    size_of::<SignMldsa87RawCmd>()
+        == DPE_CONTEXT_HANDLE_SIZE + DPE_LABEL_LEN + 4 + 4 + DPE_MLDSA87_RAW_MAX_SIZE
+);
+const _: () = assert!(
+    size_of::<SignMldsa87RespBody>()
+        == 12 + DPE_CONTEXT_HANDLE_SIZE + DPE_MLDSA87_SIGNATURE_SIZE + 1
+);
 const _: () =
     assert!(size_of::<DeriveContextCmd>() == DPE_CONTEXT_HANDLE_SIZE + 48 + 4 + 4 + 4 + 4);
 const _: () =
@@ -361,6 +432,9 @@ const _: () = assert!(size_of::<DpeResponseHdr>() == 12);
 const _: () = assert!(GET_CERT_CHAIN_REQ_P384_LEN == 28);
 const _: () = assert!(GET_CERT_CHAIN_REQ_MLDSA87_LEN == 44);
 const _: () = assert!(SIGN_REQ_LEN == 8 + 12 + 116);
+const _: () = assert!(SIGN_MLDSA87_REQ_LEN == 24 + 12 + 1096);
+const _: () = assert!(SIGN_MLDSA87_RESP_LEN == 12 + 12 + 16 + 4627 + 1);
+const _: () = assert!(SIGN_MLDSA87_RESP_LEN <= caliptra_api::mailbox::MAILBOX_SIZE);
 const _: () = assert!(DERIVE_CONTEXT_REQ_LEN == 8 + 12 + 80);
 const _: () = assert!(UPDATE_CONTEXT_MEASUREMENT_REQ_LEN == 8 + 12 + 76);
 const _: () = assert!(
@@ -1012,6 +1086,25 @@ pub async fn walk_dpe_chain<A: ApiAlloc, S: DpeChainSink>(
     Ok(total)
 }
 
+/// Invoke DPE `Sign` for a typed signing input.
+#[inline(never)]
+pub async fn dpe_sign<A: ApiAlloc>(
+    alloc: &A,
+    handle: Option<&DpeContextHandle>,
+    label: &[u8; DPE_LABEL_LEN],
+    signing_input: SigningInput<'_>,
+    signature: &mut [u8],
+) -> McuResult<(DpeContextHandle, usize)> {
+    match signing_input {
+        SigningInput::EccP384Digest(digest) => {
+            dpe_sign_ecc_p384(alloc, handle, label, digest, signature).await
+        }
+        SigningInput::Mldsa87RawMessage(message) => {
+            dpe_sign_mldsa87(alloc, handle, label, message, signature).await
+        }
+    }
+}
+
 /// Invoke DPE `Sign` (P-384 / SHA-384) for the default context handle
 /// and the given 48-byte `label`. Signs `digest` and writes the
 /// concatenated (r || s) signature into `signature`.
@@ -1026,7 +1119,7 @@ pub async fn dpe_sign_ecc_p384<A: ApiAlloc>(
     digest: &[u8],
     signature: &mut [u8],
 ) -> McuResult<(DpeContextHandle, usize)> {
-    if signature.len() < DPE_P384_SIGNATURE_SIZE || digest.len() < DPE_LABEL_LEN {
+    if signature.len() < DPE_P384_SIGNATURE_SIZE || digest.len() < DPE_P384_DIGEST_SIZE {
         return Err(INVARIANT);
     }
 
@@ -1043,7 +1136,9 @@ pub async fn dpe_sign_ecc_p384<A: ApiAlloc>(
         cmd.handle = *dpe_handle_or_default(handle);
         cmd.label = *label;
         cmd.flags = U32::new(0);
-        cmd.digest = *digest.first_chunk::<DPE_LABEL_LEN>().ok_or(INVARIANT)?;
+        cmd.digest = *digest
+            .first_chunk::<DPE_P384_DIGEST_SIZE>()
+            .ok_or(INVARIANT)?;
     }
     let checksum = calc_checksum(CMD_INVOKE_DPE, &req);
     *req.first_chunk_mut::<4>().ok_or(INVARIANT)? = checksum.to_le_bytes();
@@ -1079,6 +1174,114 @@ pub async fn dpe_sign_ecc_p384<A: ApiAlloc>(
     let (sig_s, _) = rest.split_first_chunk_mut::<48>().ok_or(INVARIANT)?;
     *sig_s = sign_resp.sig_s;
     Ok((sign_resp._new_context_handle, DPE_P384_SIGNATURE_SIZE))
+}
+
+/// Invoke Caliptra 2.0 DPE `Sign` for an ML-DSA-87 raw message.
+///
+/// `signature` must provide at least [`DPE_MLDSA87_SIGNATURE_SIZE`] bytes.
+/// `message` must not exceed [`DPE_MLDSA87_RAW_MAX_SIZE`] bytes.
+/// Returns the rotated context handle and signature length.
+#[inline(never)]
+pub async fn dpe_sign_mldsa87<A: ApiAlloc>(
+    alloc: &A,
+    handle: Option<&DpeContextHandle>,
+    label: &[u8; DPE_LABEL_LEN],
+    message: &[u8],
+    signature: &mut [u8],
+) -> McuResult<(DpeContextHandle, usize)> {
+    if signature.len() < DPE_MLDSA87_SIGNATURE_SIZE || message.len() > DPE_MLDSA87_RAW_MAX_SIZE {
+        return Err(INVARIANT);
+    }
+
+    let request = build_sign_mldsa87_req(alloc, dpe_handle_or_default(handle), label, message)?;
+    let mut response = alloc.alloc(SIGN_MLDSA87_RESP_LEN)?;
+    let response_len = mbox_execute(CMD_INVOKE_DPE_MLDSA87, &request, &mut response).await?;
+    parse_sign_mldsa87_response(&response, response_len, signature)
+}
+
+fn build_sign_mldsa87_req<'a, A: ApiAlloc>(
+    alloc: &'a A,
+    handle: &DpeContextHandle,
+    label: &[u8; DPE_LABEL_LEN],
+    message: &[u8],
+) -> McuResult<A::Buf<'a>> {
+    if message.len() > DPE_MLDSA87_RAW_MAX_SIZE {
+        return Err(INVARIANT);
+    }
+
+    let mut request = alloc.alloc(SIGN_MLDSA87_REQ_LEN)?;
+    request.fill(0);
+    let command_offset = build_invoke_dpe_header_profile(
+        &mut request,
+        SIGN_MLDSA87_DPE_PAYLOAD_LEN,
+        DPE_CMD_SIGN,
+        DpeProfile::Mldsa87,
+    )?;
+    let command = SignMldsa87RawCmd::mut_from_bytes(checked_slice_mut(
+        &mut request,
+        command_offset,
+        size_of::<SignMldsa87RawCmd>(),
+    )?)
+    .map_err(|_| INVARIANT)?;
+    command.handle = *handle;
+    command.label = *label;
+    command.flags = U32::new(DPE_SIGN_FLAG_IS_RAW);
+    command.size = U32::new(message.len() as u32);
+    copy_bytes(
+        command.raw_data.get_mut(..message.len()).ok_or(INVARIANT)?,
+        message,
+    )?;
+
+    let checksum = calc_checksum(CMD_INVOKE_DPE_MLDSA87, &request);
+    *request.first_chunk_mut::<4>().ok_or(INVARIANT)? = checksum.to_le_bytes();
+    Ok(request)
+}
+
+fn parse_sign_mldsa87_response(
+    response: &[u8],
+    response_len: usize,
+    signature: &mut [u8],
+) -> McuResult<(DpeContextHandle, usize)> {
+    if signature.len() < DPE_MLDSA87_SIGNATURE_SIZE {
+        return Err(INVARIANT);
+    }
+
+    let body_offset = size_of::<InvokeDpeRespPrefix>();
+    if response_len < body_offset + size_of::<DpeResponseHdr>() {
+        return Err(INTERNAL_BUG);
+    }
+    let dpe_header = DpeResponseHdr::ref_from_bytes(internal_slice(
+        response,
+        body_offset,
+        size_of::<DpeResponseHdr>(),
+    )?)
+    .map_err(|_| INTERNAL_BUG)?;
+    if dpe_header.magic.get() != DPE_RESPONSE_MAGIC
+        || dpe_header.status.get() != 0
+        || dpe_header.profile.get() != DPE_PROFILE_MLDSA87
+    {
+        return Err(INTERNAL_BUG);
+    }
+    if response_len != SIGN_MLDSA87_RESP_LEN {
+        return Err(INTERNAL_BUG);
+    }
+
+    let sign_response = SignMldsa87RespBody::ref_from_bytes(internal_slice(
+        response,
+        body_offset,
+        size_of::<SignMldsa87RespBody>(),
+    )?)
+    .map_err(|_| INTERNAL_BUG)?;
+    if sign_response.padding != [0] {
+        return Err(INTERNAL_BUG);
+    }
+    copy_bytes(
+        signature
+            .get_mut(..DPE_MLDSA87_SIGNATURE_SIZE)
+            .ok_or(INVARIANT)?,
+        &sign_response.signature,
+    )?;
+    Ok((sign_response.new_context_handle, DPE_MLDSA87_SIGNATURE_SIZE))
 }
 
 /// Invoke DPE `RotateContextHandle` for the default context handle,
@@ -1433,6 +1636,106 @@ mod tests {
     }
 
     #[test]
+    fn sign_mldsa87_request_preserves_fields() {
+        let alloc = TestAlloc;
+        let handle = [0x11u8; DPE_CONTEXT_HANDLE_SIZE];
+        let label = [0x22u8; DPE_LABEL_LEN];
+        let message = [0x33u8; 17];
+        let request = build_sign_mldsa87_req(&alloc, &handle, &label, &message).unwrap();
+
+        let prefix = InvokeDpeMldsa87ReqPrefix::ref_from_prefix(&request)
+            .unwrap()
+            .0;
+        assert_eq!(prefix.flags.get(), 0);
+        assert_eq!(prefix.axi_addr_lo.get(), 0);
+        assert_eq!(prefix.axi_addr_hi.get(), 0);
+        assert_eq!(prefix.axi_max_size.get(), 0);
+        assert_eq!(prefix.data_size.get(), SIGN_MLDSA87_DPE_PAYLOAD_LEN);
+
+        let header_offset = size_of::<InvokeDpeMldsa87ReqPrefix>();
+        let header = DpeCommandHdr::ref_from_prefix(&request[header_offset..])
+            .unwrap()
+            .0;
+        assert_eq!(header.magic.get(), DPE_COMMAND_MAGIC);
+        assert_eq!(header.cmd_id.get(), DPE_CMD_SIGN);
+        assert_eq!(header.profile.get(), DPE_PROFILE_MLDSA87);
+
+        let command_offset = header_offset + size_of::<DpeCommandHdr>();
+        let command = SignMldsa87RawCmd::ref_from_prefix(&request[command_offset..])
+            .unwrap()
+            .0;
+        assert_eq!(command.handle, handle);
+        assert_eq!(command.label, label);
+        assert_eq!(command.flags.get(), DPE_SIGN_FLAG_IS_RAW);
+        assert_eq!(command.size.get(), message.len() as u32);
+        assert_eq!(&command.raw_data[..message.len()], &message);
+        assert!(command.raw_data[message.len()..]
+            .iter()
+            .all(|byte| *byte == 0));
+
+        let mut checksum_input = request.clone();
+        checksum_input[..4].fill(0);
+        assert_eq!(
+            prefix.chksum.get(),
+            calc_checksum(CMD_INVOKE_DPE_MLDSA87, &checksum_input)
+        );
+    }
+
+    #[test]
+    fn sign_mldsa87_request_rejects_oversized_message() {
+        let alloc = TestAlloc;
+        let message = [0u8; DPE_MLDSA87_RAW_MAX_SIZE + 1];
+
+        assert!(build_sign_mldsa87_req(
+            &alloc,
+            &DEFAULT_DPE_CONTEXT_HANDLE,
+            &[0u8; DPE_LABEL_LEN],
+            &message,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn sign_mldsa87_response_parser_returns_handle_and_signature() {
+        let handle = [0x44u8; DPE_CONTEXT_HANDLE_SIZE];
+        let expected_signature = [0x55u8; DPE_MLDSA87_SIGNATURE_SIZE];
+        let mut response = std::vec![0u8; SIGN_MLDSA87_RESP_LEN];
+        let body_offset = size_of::<InvokeDpeRespPrefix>();
+        response[body_offset..body_offset + 4].copy_from_slice(&DPE_RESPONSE_MAGIC.to_le_bytes());
+        response[body_offset + 8..body_offset + 12]
+            .copy_from_slice(&DPE_PROFILE_MLDSA87.to_le_bytes());
+        response[body_offset + 12..body_offset + 12 + DPE_CONTEXT_HANDLE_SIZE]
+            .copy_from_slice(&handle);
+        let signature_offset = body_offset + 12 + DPE_CONTEXT_HANDLE_SIZE;
+        response[signature_offset..signature_offset + DPE_MLDSA87_SIGNATURE_SIZE]
+            .copy_from_slice(&expected_signature);
+
+        let mut signature = std::vec![0u8; DPE_MLDSA87_SIGNATURE_SIZE];
+        let result =
+            parse_sign_mldsa87_response(&response, response.len(), &mut signature).unwrap();
+
+        assert_eq!(result, (handle, DPE_MLDSA87_SIGNATURE_SIZE));
+        assert_eq!(signature, expected_signature);
+    }
+
+    #[test]
+    fn sign_mldsa87_response_parser_rejects_error_and_padding() {
+        let mut response = std::vec![0u8; SIGN_MLDSA87_RESP_LEN];
+        let body_offset = size_of::<InvokeDpeRespPrefix>();
+        response[body_offset..body_offset + 4].copy_from_slice(&DPE_RESPONSE_MAGIC.to_le_bytes());
+        response[body_offset + 8..body_offset + 12]
+            .copy_from_slice(&DPE_PROFILE_MLDSA87.to_le_bytes());
+        let mut signature = std::vec![0u8; DPE_MLDSA87_SIGNATURE_SIZE];
+
+        response[body_offset + 4..body_offset + 8].copy_from_slice(&1u32.to_le_bytes());
+        assert!(parse_sign_mldsa87_response(&response, response.len(), &mut signature).is_err());
+
+        response[body_offset + 4..body_offset + 8].fill(0);
+        *response.last_mut().unwrap() = 1;
+        assert!(parse_sign_mldsa87_response(&response, response.len(), &mut signature).is_err());
+    }
+
+    #[test]
     fn derive_context_reads_child_and_parent_handles() {
         let child_handle = [0x3cu8; DPE_CONTEXT_HANDLE_SIZE];
         let parent_handle = [0xc3u8; DPE_CONTEXT_HANDLE_SIZE];
@@ -1521,5 +1824,20 @@ mod tests {
         assert_eq!(DpeProfile::P384Sha384.invoke_cmd_id(), CMD_INVOKE_DPE);
         assert_eq!(DpeProfile::Mldsa87.profile_id(), 5);
         assert_eq!(DpeProfile::Mldsa87.invoke_cmd_id(), CMD_INVOKE_DPE_MLDSA87);
+    }
+
+    #[test]
+    fn signing_input_selects_dpe_profile() {
+        let digest = [0u8; DPE_P384_DIGEST_SIZE];
+        let message = [0u8; 1];
+
+        assert_eq!(
+            SigningInput::EccP384Digest(&digest).profile(),
+            DpeProfile::P384Sha384
+        );
+        assert_eq!(
+            SigningInput::Mldsa87RawMessage(&message).profile(),
+            DpeProfile::Mldsa87
+        );
     }
 }
