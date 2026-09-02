@@ -26,11 +26,7 @@ pub(crate) fn validate_component_svns(
     images: &[ImageCfg],
     config: &ComponentSvnValidationConfig,
 ) -> Result<()> {
-    validate_component_svns_with_map(
-        images,
-        config,
-        caliptra_mcu_romtime::REFERENCE_SVN_FUSE_MAP,
-    )
+    validate_component_svns_with_map(images, config, caliptra_mcu_romtime::REFERENCE_SVN_FUSE_MAP)
 }
 
 fn validate_component_svns_with_map(
@@ -102,11 +98,11 @@ fn validate_component_svns_with_map(
             | FuseLayoutType::OneHotLinearMajorityVote { bits, .. }
             | FuseLayoutType::OneHotLinearOr { bits, .. } => bits,
             _ => {
-            bail!(
-                "component_id {:#x} maps to fuse {} without a bit-count layout",
-                entry.component_id,
-                fuse_entry.name
-            );
+                bail!(
+                    "component_id {:#x} maps to fuse {} without a bit-count layout",
+                    entry.component_id,
+                    fuse_entry.name
+                );
             }
         };
         if u32::from(entry.current_svn) > max_svn || u32::from(entry.min_svn) > max_svn {
@@ -135,9 +131,7 @@ fn validate_component_svns_with_map(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use caliptra_mcu_registers_generated::fuses::{
-        SOC_IMAGE_MIN_SVN_0, SOC_IMAGE_MIN_SVN_1,
-    };
+    use caliptra_mcu_registers_generated::fuses::{SOC_IMAGE_MIN_SVN_0, SOC_IMAGE_MIN_SVN_1};
 
     fn image(image_id: u32, component_id: u32) -> ImageCfg {
         ImageCfg {
@@ -174,12 +168,8 @@ mod tests {
         };
         let fuse_map = [mapping(0x1000, 0)];
 
-        validate_component_svns_with_map(
-            &[image(1, 0x1000), image(2, 0x1000)],
-            &config,
-            &fuse_map,
-        )
-        .unwrap();
+        validate_component_svns_with_map(&[image(1, 0x1000), image(2, 0x1000)], &config, &fuse_map)
+            .unwrap();
     }
 
     #[test]
@@ -189,10 +179,14 @@ mod tests {
             ..Default::default()
         };
 
-        assert!(validate_component_svns_with_map(&[image(1, 0x1000)], &config, &[mapping(0x1000, 0)])
-            .unwrap_err()
-            .to_string()
-            .contains("conflicting SVN entries"));
+        assert!(validate_component_svns_with_map(
+            &[image(1, 0x1000)],
+            &config,
+            &[mapping(0x1000, 0)]
+        )
+        .unwrap_err()
+        .to_string()
+        .contains("conflicting SVN entries"));
     }
 
     #[test]
@@ -262,5 +256,4 @@ mod tests {
         config.entries[1].min_svn = 4;
         assert!(validate_component_svns_with_map(&images, &config, &fuse_map).is_err());
     }
-
 }
