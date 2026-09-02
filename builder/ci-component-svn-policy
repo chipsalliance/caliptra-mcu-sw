@@ -1,0 +1,16 @@
+{
+  "entries": [
+    {
+      "component_id": 4096,
+      "current_svn": 0,
+      "min_svn": 0
+    },
+    {
+      "component_id": 4097,
+      "current_svn": 0,
+      "min_svn": 0
+    }
+  ],
+  "unenforced_component_ids": [3, 4],
+  "future_or_absent_component_ids": [4096, 4097]
+}
