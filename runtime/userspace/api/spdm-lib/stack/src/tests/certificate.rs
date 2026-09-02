@@ -25,6 +25,8 @@ use support::{
     SPDM_CERT_CHAIN_HDR_LEN, TEST_CERT_CHAIN,
 };
 
+const STREAMED_CERT_CHAIN: &[u8] = &[0xA5; 2048];
+
 fn init_cert_test_state(
     version: SpdmVersion,
     pal: &TestPal,
@@ -297,6 +299,47 @@ fn test_get_certificate_chunked_full_fetch() {
 
     // Followed by SPDM cert chain header + DER certs
     assert_eq!(&payload[SPDM_CERT_CHAIN_HDR_LEN..], TEST_CERT_CHAIN);
+}
+
+#[test]
+fn test_get_certificate_chunked_full_fetch_exceeds_local_buffer() {
+    let pal = TestPal {
+        cert_chain: STREAMED_CERT_CHAIN,
+        ..TestPal::default()
+    };
+    assert!(
+        SPDM_CERT_CHAIN_HDR_LEN + STREAMED_CERT_CHAIN.len() > pal.large_buffered_msg_capacity()
+    );
+
+    let mut state = init_cert_test_state(SpdmVersion::V14, &pal);
+    state.cap_flags |= CapFlags::CHUNK;
+    state.peer_cap_flags |= CapFlags::CHUNK;
+    state.advertised_cap_flags |= CapFlags::CHUNK;
+    state.peer_data_transfer_size = 256;
+    state.peer_max_spdm_msg_size = 4096;
+    let mut sessions = SessionManager::new();
+
+    let total_len = SPDM_CERT_CHAIN_HDR_LEN + STREAMED_CERT_CHAIN.len();
+    let total_spdm_msg_len = SpdmMsgHdrPdu::SIZE + CertificateRspBody::SIZE + total_len;
+    let req = standard_cert_request(SpdmVersion::V14, 0, 0, 0, u16::MAX);
+    let err_rsp = dispatch_cert_request(&mut state, &mut sessions, &pal, req).unwrap();
+
+    let (_err_hdr, err_body) = SpdmMsgHdrPdu::ref_from_prefix(&err_rsp).unwrap();
+    assert_eq!(err_body[0], SPDM_LARGE_RESPONSE.spec_byte());
+    let handle = err_body[2];
+
+    let io = TestIo::message(Vec::new());
+    let reassembled = block_on(drain_chunked_response(&mut state, &pal, &io, handle)).unwrap();
+    assert_eq!(reassembled.len(), total_spdm_msg_len);
+
+    let (rsp_hdr, rsp_rest) = SpdmMsgHdrPdu::ref_from_prefix(&reassembled).unwrap();
+    assert_eq!(rsp_hdr.version, SpdmVersion::V14.to_u8());
+    assert_eq!(rsp_hdr.code, ReqRespCode::CERTIFICATE);
+
+    let (body, payload) = CertificateRspBody::ref_from_prefix(rsp_rest).unwrap();
+    assert_eq!(body.portion_length.get() as usize, total_len);
+    assert_eq!(body.remainder_length.get(), 0);
+    assert_eq!(&payload[SPDM_CERT_CHAIN_HDR_LEN..], STREAMED_CERT_CHAIN);
 }
 
 #[test]
