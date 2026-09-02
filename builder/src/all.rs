@@ -1104,6 +1104,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                         vendor_pk_hash: Some(vendor_pk_hash.clone()),
                         mcu_firmware: Some(update_runtime_file.path().to_path_buf()),
                         soc_images: Some(update_soc_images.clone()),
+                        component_svn_validation: component_svn_validation.clone(),
                         mcu_image_cfg: mcu_image_cfg.clone(),
                         vendor: vendor.map(|s| s.to_string()),
                         model: model.map(|s| s.to_string()),
