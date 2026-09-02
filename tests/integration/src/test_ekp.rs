@@ -55,6 +55,7 @@ mod test {
     struct EkpReport {
         protected_hdr: Vec<u8>,
         payload: Vec<u8>,
+        tbs_digest: [u8; 48],
         signature: Vec<u8>,
         map_label: String,
         version: String,
@@ -98,6 +99,16 @@ mod test {
 
         // Signature byte string
         let signature = outer_decoder.bytes().expect("parse signature").to_vec();
+
+        // Reconstruct COSE_Sign1 Sig_structure: ["Signature1", protected_hdr, external_aad, payload]
+        let mut sig_struct_buf = Vec::new();
+        let mut encoder = minicbor::Encoder::new(&mut sig_struct_buf);
+        encoder.array(4).unwrap();
+        encoder.str("Signature1").unwrap();
+        encoder.bytes(&protected_hdr).unwrap();
+        encoder.bytes(&[]).unwrap();
+        encoder.bytes(payload).unwrap();
+        let tbs_digest: [u8; 48] = Sha384::digest(&sig_struct_buf).into();
 
         // Decode EKP evidence map from payload
         let mut payload_decoder = Decoder::new(payload);
@@ -185,6 +196,7 @@ mod test {
         EkpReport {
             protected_hdr,
             payload: payload.to_vec(),
+            tbs_digest,
             signature,
             map_label,
             version,
@@ -198,31 +210,7 @@ mod test {
         }
     }
 
-    fn verify_ekp_report(
-        report: &EkpReport,
-        expected_nonce: &[u8; 32],
-        expected_ekp_allowed: bool,
-        expected_max_sanitizations: u16,
-        expected_remaining_sanitizations: u16,
-        expected_active_hek_state: u16,
-        expected_sek_state: u16,
-        expected_hek_state_list: &[u16],
-        algo: EndorsementAlgorithm,
-        dpe_cert_der: &[u8],
-    ) {
-        assert_eq!(report.protected_hdr, &[0xA0]);
-
-        // Reconstruct COSE_Sign1 Sig_structure: ["Signature1", protected_hdr, external_aad, payload]
-        let mut sig_struct_buf = Vec::new();
-        let mut encoder = minicbor::Encoder::new(&mut sig_struct_buf);
-        encoder.array(4).unwrap();
-        encoder.str("Signature1").unwrap();
-        encoder.bytes(&report.protected_hdr).unwrap();
-        encoder.bytes(&[]).unwrap();
-        encoder.bytes(&report.payload).unwrap();
-
-        let tbs_digest: [u8; 48] = Sha384::digest(&sig_struct_buf).into();
-
+    fn verify_dpe_signature(report: &EkpReport, algo: EndorsementAlgorithm, dpe_cert_der: &[u8]) {
         match algo {
             EndorsementAlgorithm::ECDSA_384 => {
                 assert_eq!(report.signature.len(), 96);
@@ -237,7 +225,7 @@ mod test {
                 let s = openssl::bn::BigNum::from_slice(&report.signature[48..96]).unwrap();
                 let sig = openssl::ecdsa::EcdsaSig::from_private_components(r, s).unwrap();
                 assert!(
-                    sig.verify(&tbs_digest, &dpe_ec_key).unwrap(),
+                    sig.verify(&report.tbs_digest, &dpe_ec_key).unwrap(),
                     "EKP report signature must be validly signed by DPE signer context ECDSA public key"
                 );
             }
@@ -270,12 +258,29 @@ mod test {
                     .try_into()
                     .expect("ML-DSA-87 signature length mismatch");
                 assert!(
-                    mldsa_verifying_key.verify(&tbs_digest, &mldsa_sig, &[]),
+                    mldsa_verifying_key.verify(&report.tbs_digest, &mldsa_sig, &[]),
                     "EKP report signature must be validly signed by DPE signer context ML-DSA public key"
                 );
             }
             _ => panic!("Unsupported endorsement algorithm: {:?}", algo),
         }
+    }
+
+    fn verify_ekp_report(
+        report: &EkpReport,
+        expected_nonce: &[u8; 32],
+        expected_ekp_allowed: bool,
+        expected_max_sanitizations: u16,
+        expected_remaining_sanitizations: u16,
+        expected_active_hek_state: u16,
+        expected_sek_state: u16,
+        expected_hek_state_list: &[u16],
+        algo: EndorsementAlgorithm,
+        dpe_cert_der: &[u8],
+    ) {
+        assert_eq!(report.protected_hdr, &[0xA0]);
+
+        verify_dpe_signature(report, algo, dpe_cert_der);
 
         assert_eq!(report.map_label, MAP_LABEL_VAL);
         assert_eq!(report.version, VERSION_VAL);
@@ -345,39 +350,47 @@ mod test {
 
     #[test]
     fn test_ekp_attested_report_with_perma_bit_set() {
-        let algo = EndorsementAlgorithm::MLDSA_87;
-        let (data, nonce, dpe_cert_der) = run_ekp_report_test(true, algo);
-        let report = parse_ekp_report(&data);
-        verify_ekp_report(
-            &report,
-            &nonce,
-            false,
-            8,
-            0,
-            4,
-            1,
-            &[4, 4, 4, 4, 4, 4, 4, 4],
-            algo,
-            &dpe_cert_der,
-        );
+        for algo in [
+            EndorsementAlgorithm::ECDSA_384,
+            EndorsementAlgorithm::MLDSA_87,
+        ] {
+            let (data, nonce, dpe_cert_der) = run_ekp_report_test(true, algo);
+            let report = parse_ekp_report(&data);
+            verify_ekp_report(
+                &report,
+                &nonce,
+                false,
+                8,
+                0,
+                4,
+                1,
+                &[4, 4, 4, 4, 4, 4, 4, 4],
+                algo,
+                &dpe_cert_der,
+            );
+        }
     }
 
     #[test]
     fn test_ekp_attested_report_without_perma_bit_set() {
-        let algo = EndorsementAlgorithm::MLDSA_87;
-        let (data, nonce, dpe_cert_der) = run_ekp_report_test(false, algo);
-        let report = parse_ekp_report(&data);
-        verify_ekp_report(
-            &report,
-            &nonce,
-            false,
-            8,
-            6,
-            1,
-            1,
-            &[5, 1, 0, 5, 1, 0, 0, 1],
-            algo,
-            &dpe_cert_der,
-        );
+        for algo in [
+            EndorsementAlgorithm::ECDSA_384,
+            EndorsementAlgorithm::MLDSA_87,
+        ] {
+            let (data, nonce, dpe_cert_der) = run_ekp_report_test(false, algo);
+            let report = parse_ekp_report(&data);
+            verify_ekp_report(
+                &report,
+                &nonce,
+                false,
+                8,
+                6,
+                1,
+                1,
+                &[5, 1, 0, 5, 1, 0, 0, 1],
+                algo,
+                &dpe_cert_der,
+            );
+        }
     }
 }
