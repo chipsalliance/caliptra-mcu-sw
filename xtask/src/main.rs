@@ -27,6 +27,7 @@ mod registers;
 mod rom;
 mod runtime;
 mod sizes;
+mod submodules;
 mod test;
 mod vertex_ai;
 
