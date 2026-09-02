@@ -36,56 +36,93 @@ use core::fmt::Write as _;
 use core::ptr::NonNull;
 use embassy_executor::Spawner;
 
-/// Largest single in-flight SPDM message (request or response) this responder
-/// supports.
+/// Scratch-backed limit for large messages retained in full.
 ///
-/// This is a contract, not a measurement: it is advertised verbatim as
-/// `MaxSPDMmsgSize` in `CAPABILITIES`, so each responder scratch pool must be
-/// able to satisfy it. Raising this requires raising both scratch pools; the
-/// assertions below enforce that.
-///
-/// Sized to cover both directions, because `MaxSPDMmsgSize` caps every SPDM
-/// message and the `CHUNK_SEND` admission check compares against it before the
-/// streaming path is reached:
-///
-/// * Responses — the largest evidence this build can emit (an ML-DSA-87 PCR
-///   quote is 6388 bytes) plus SPDM and vendor-defined framing.
-/// * Requests — the production debug unlock token (7504 bytes of ML-DSA-87 key
-///   and signature material) plus framing. This one is streamed into the
-///   Caliptra mailbox and never occupies the scratch pool, but declaring a
-///   smaller `MaxSPDMmsgSize` would have the responder reject it outright.
-///
-/// The assertions below check both against what the build actually enables, so
-/// turning on a larger generator or a larger inbound command fails the build
-/// rather than failing at runtime.
-const MAX_SPDM_MSG_SIZE: usize = {
+/// It contributes to `MaxSPDMmsgSize` only when buffered large requests are
+/// enabled. Raising it requires larger scratch pools.
+const MAX_BUFFERED_SPDM_MSG_SIZE: usize = {
     let declared = 8 * 1024;
     assert!(
         declared
             >= caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::large_response_capacity::<
                 crate::caliptra_cmd_handler::CaliptraCmdBackend,
             >(),
-        "MaxSPDMmsgSize is smaller than the largest Caliptra VDM response this build can \
-         produce; raise MAX_SPDM_MSG_SIZE (and both scratch pools with it) or disable an \
-         evidence generator"
-    );
-    assert!(
-        declared >= MAX_STREAMED_VDM_REQUEST_LEN,
-        "MaxSPDMmsgSize is smaller than the largest Caliptra VDM request this build must \
-         accept (the debug unlock token); raise MAX_SPDM_MSG_SIZE and both scratch pools with it"
+        "SPDM scratch capacity is smaller than the largest buffered VDM response; raise \
+         MAX_BUFFERED_SPDM_MSG_SIZE and both responder scratch pools"
     );
     declared
 };
 
-/// Largest streamed Caliptra VDM request this responder must accept.
+/// Endpoint-wide logical request limit advertised as `MaxSPDMmsgSize`.
 ///
-/// The production debug unlock token dominates every other inbound request: it
-/// carries an ML-DSA-87 public key and signature. It is streamed into the
-/// Caliptra mailbox and never occupies the scratch pool, so it costs no memory
-/// here, but [`MAX_SPDM_MSG_SIZE`] must still admit it.
+/// This is the maximum across buffered and streamed inbound request paths.
+const MAX_INBOUND_SPDM_REQUEST_SIZE: usize = {
+    let mut required = MAX_TRANSPORT_MTU;
+    if MAX_BUFFERED_SPDM_REQUEST_LEN > required {
+        required = MAX_BUFFERED_SPDM_REQUEST_LEN;
+    }
+    if MAX_STREAMED_SPDM_REQUEST_LEN > required {
+        required = MAX_STREAMED_SPDM_REQUEST_LEN;
+    }
+    required
+};
+
+/// Maximum across scratch-backed request handlers. Add new buffered request
+/// limits to this block.
+const MAX_BUFFERED_SPDM_REQUEST_LEN: usize = {
+    let mut required = 0;
+    if MAX_BUFFERED_VDM_REQUEST_LEN > required {
+        required = MAX_BUFFERED_VDM_REQUEST_LEN;
+    }
+    required
+};
+
+/// Logical request ceiling for generic VDM CHUNK_SEND reassembly.
+///
+/// Caliptra `AuthorizedCommand` requests are retained here in full before VDM
+/// dispatch. Streamed debug-unlock and SET_CERTIFICATE requests bypass this
+/// buffer. Raise this together with both SPDM scratch pools when a buffered
+/// request grows, or add a streaming handler instead.
+const MAX_BUFFERED_VDM_REQUEST_LEN: usize = MAX_BUFFERED_SPDM_MSG_SIZE;
+const _: () = assert!(
+    MAX_BUFFERED_VDM_REQUEST_LEN
+        >= caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::
+            MAX_AUTHORIZED_COMMAND_SPDM_REQUEST_LEN,
+    "buffered SPDM request capacity is smaller than an AuthorizedCommand request"
+);
+
+/// Maximum across streaming request handlers. Add new streamed request limits
+/// to this block.
+const MAX_STREAMED_SPDM_REQUEST_LEN: usize = {
+    #[cfg(feature = "test-mctp-spdm-set-certificate")]
+    {
+        if MAX_STREAMED_SET_CERTIFICATE_REQUEST_LEN > MAX_STREAMED_VDM_REQUEST_LEN {
+            MAX_STREAMED_SET_CERTIFICATE_REQUEST_LEN
+        } else {
+            MAX_STREAMED_VDM_REQUEST_LEN
+        }
+    }
+
+    #[cfg(not(feature = "test-mctp-spdm-set-certificate"))]
+    {
+        MAX_STREAMED_VDM_REQUEST_LEN
+    }
+};
+
+/// Maximum logical size of the streamed debug-unlock VDM request.
 const MAX_STREAMED_VDM_REQUEST_LEN: usize =
-    caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::LARGE_REQUEST_FRAMING_LEN
+    caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::SPDM_REQUEST_FRAMING_LEN
         + core::mem::size_of::<mcu_caliptra_api::mailbox::ProductionAuthDebugUnlockToken>();
+
+/// Maximum streamed SET_CERTIFICATE request for a CertChain.
+///
+/// This limit is tunable based on the integrator's requirements.
+#[cfg(feature = "test-mctp-spdm-set-certificate")]
+const MAX_STANDARD_CERT_CHAIN_LEN: usize = u16::MAX as usize;
+#[cfg(feature = "test-mctp-spdm-set-certificate")]
+const MAX_STREAMED_SET_CERTIFICATE_REQUEST_LEN: usize = caliptra_mcu_spdm_codec::SpdmMsgHdrPdu::SIZE
+    + caliptra_mcu_spdm_codec::SetCertificateReqBody::SIZE
+    + MAX_STANDARD_CERT_CHAIN_LEN;
 
 /// Conservative upper bound on transport MTU. The real MTU is a runtime
 /// transport property, so the budget uses a declared ceiling instead.
@@ -110,14 +147,14 @@ const TRANSIENT_MAILBOX_PEAK: usize = 2560;
 /// The receive buffer is not counted: it is shrunk to the actual frame length
 /// immediately after receive, and the request that triggers a large response
 /// is always a single small frame.
-const LARGE_MSG_PATH_PEAK: usize = MAX_SPDM_MSG_SIZE + MAX_TRANSPORT_MTU;
+const LARGE_MSG_PATH_PEAK: usize = MAX_BUFFERED_SPDM_MSG_SIZE + MAX_TRANSPORT_MTU;
 
 /// Peak concurrent allocation on the certificate / secure-session path: the
 /// mailbox working set plus the secured-message plaintext and ciphertext
 /// staging buffers.
 const CRYPTO_PATH_PEAK: usize = TRANSIENT_MAILBOX_PEAK + 2 * MAX_TRANSPORT_MTU;
 
-/// Minimum scratch pool that can satisfy [`MAX_SPDM_MSG_SIZE`].
+/// Minimum scratch pool that can satisfy [`MAX_BUFFERED_SPDM_MSG_SIZE`].
 ///
 /// The two request paths are mutually exclusive: a single request either
 /// builds a large chunked response or runs the certificate/crypto path, never
@@ -142,7 +179,7 @@ const MCTP_SPDM_SCRATCH_SIZE: usize = {
     let declared = 12 * 1024;
     assert!(
         declared >= required_scratch(),
-        "MCTP SPDM scratch pool is too small for the configured MAX_SPDM_MSG_SIZE"
+        "MCTP SPDM scratch pool is too small for MAX_BUFFERED_SPDM_MSG_SIZE"
     );
     declared
 };
@@ -151,7 +188,7 @@ const DOE_SPDM_SCRATCH_SIZE: usize = {
     let declared = 12 * 1024;
     assert!(
         declared >= required_scratch(),
-        "DOE SPDM scratch pool is too small for the configured MAX_SPDM_MSG_SIZE"
+        "DOE SPDM scratch pool is too small for MAX_BUFFERED_SPDM_MSG_SIZE"
     );
     declared
 };
@@ -223,7 +260,8 @@ async fn spdm_mctp_responder() {
             allocator,
             crate::cert_store::shared(),
             measurement_provider(),
-            MAX_SPDM_MSG_SIZE,
+            MAX_INBOUND_SPDM_REQUEST_SIZE,
+            MAX_BUFFERED_SPDM_MSG_SIZE,
         )
     };
     // MCTP hosts the IANA / Caliptra VDM backend (plaintext today). DOE uses
@@ -282,7 +320,8 @@ async fn spdm_doe_responder() {
             allocator,
             crate::cert_store::shared(),
             measurement_provider(),
-            MAX_SPDM_MSG_SIZE,
+            MAX_INBOUND_SPDM_REQUEST_SIZE,
+            MAX_BUFFERED_SPDM_MSG_SIZE,
         )
     };
     #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]

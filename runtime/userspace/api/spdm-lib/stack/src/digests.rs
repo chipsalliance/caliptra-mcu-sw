@@ -136,11 +136,8 @@ fn fill_multi_key_conn_rsp_data<Pal: SpdmPal>(pal: &Pal, provisioned: u8, dst: &
 /// Stream a slot's SPDM cert-chain bytes through the negotiated
 /// hash and write the digest into `out`.
 ///
-/// The SPDM cert-chain wire format (DSP0274 §10.6.1 Table 33) is
-/// `Length(2) | Reserved(2) | RootHash(48) | DER chain[..]`. We
-/// build the 52-byte header on the stack (the user explicitly
-/// allowed this small allocation) and stream the variable-length
-/// DER bytes from a pool-allocated chunk buffer.
+/// The current SPDM cert-chain wire format is
+/// `Length(2) | Reserved(2) | RootHash(48) | DER chain[..]`.
 #[inline(never)]
 pub(crate) async fn cert_chain_hash<Pal: SpdmPal>(
     pal: &Pal,
@@ -157,12 +154,13 @@ pub(crate) async fn cert_chain_hash<Pal: SpdmPal>(
     let der_len = pal.cert_chain_len(io, slot, asym_algo).await?;
     let digest_size = algo.hash_size();
 
-    // 52-byte SPDM cert-chain header on the stack. Per the user:
-    // allocating 52 B on the stack is fine.
     let mut hdr = [0u8; 4 + 48];
-    let total = (hdr.len() + der_len) as u16;
-    write_fixed(&mut hdr, 0, &total.to_le_bytes());
-    // bytes 2..4 (Reserved) already zero
+    let total_len = hdr
+        .len()
+        .checked_add(der_len)
+        .ok_or(mcu_error::codes::INVARIANT)?;
+    let length = u16::try_from(total_len).map_err(|_| mcu_error::codes::INVARIANT)?;
+    write_fixed(&mut hdr, 0, &length.to_le_bytes());
     pal.root_cert_hash(io, slot, asym_algo, algo, &mut hdr[4..4 + digest_size])
         .await?;
 

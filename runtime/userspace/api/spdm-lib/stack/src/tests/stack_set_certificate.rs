@@ -3,14 +3,28 @@
 extern crate std;
 
 use super::*;
-use caliptra_mcu_spdm_codec::CHUNK_ACK_ATTR_EARLY_ERROR;
+use caliptra_mcu_spdm_codec::{SetCertificateReqBody, CHUNK_ACK_ATTR_EARLY_ERROR};
 use caliptra_mcu_spdm_traits::NoVdmBackend;
 use futures::executor::block_on;
+use std::vec;
 use std::vec::Vec;
 
 #[path = "support.rs"]
 mod support;
 use support::*;
+
+const CHUNKED_TEST_CERT_CHAIN: &[u8] = &[
+    0x30, 0x03, 1, 2, 3, 0x30, 0x01, 4, 0x30, 0x03, 1, 2, 3, 0x30, 0x01, 4, 0x30, 0x03, 1, 2, 3,
+    0x30, 0x01, 4,
+];
+
+fn chunked_set_certificate_pal() -> TestPal {
+    TestPal {
+        mtu: 76,
+        cert_chain: CHUNKED_TEST_CERT_CHAIN,
+        ..TestPal::default()
+    }
+}
 
 fn send_secured_chunk(
     state: &mut ConnectionState<TestHashState, Vec<u8>>,
@@ -51,7 +65,7 @@ fn send_plaintext_chunk(
 
 #[test]
 fn plaintext_chunked_set_certificate_succeeds() {
-    let pal = TestPal::default();
+    let pal = chunked_set_certificate_pal();
     let mut state = chunking_state();
     let mut sessions = crate::session::SessionManager::new();
     let large_req = set_certificate_request(&pal);
@@ -104,8 +118,84 @@ fn plaintext_chunked_set_certificate_succeeds() {
 }
 
 #[test]
+fn plaintext_chunked_set_certificate_can_stream_beyond_8k_buffer() {
+    let pal = TestPal {
+        large_buffered_msg_capacity: 8 * 1024,
+        max_inbound_spdm_request_size: SpdmMsgHdrPdu::SIZE
+            + SetCertificateReqBody::SIZE
+            + u16::MAX as usize,
+        ..TestPal::default()
+    };
+    let mut state = chunking_state();
+    let mut sessions = crate::session::SessionManager::new();
+
+    let mut der = Vec::new();
+    for _ in 0..8185 {
+        der.extend_from_slice(TEST_CERT_CHAIN);
+    }
+    der.extend_from_slice(&[0x30, 0x01, 4]);
+    let payload = cert_payload(&der, test_digest(&der[..5]));
+    let mut large_req = vec![
+        SpdmVersion::V12.to_u8(),
+        ReqRespCode::SET_CERTIFICATE.0,
+        1,
+        0,
+    ];
+    large_req.extend_from_slice(&payload);
+
+    assert!(large_req.len() > pal.large_buffered_msg_capacity());
+    assert_eq!(large_req.len(), pal.max_inbound_spdm_request_size());
+
+    let mut offset = 0;
+    let mut seq = 0u16;
+    while offset < large_req.len() {
+        let overhead = SpdmMsgHdrPdu::SIZE
+            + caliptra_mcu_spdm_codec::ChunkSendReqBody::SIZE
+            + usize::from(seq == 0) * 4;
+        let end = (offset + pal.mtu() - overhead).min(large_req.len());
+        let last = end == large_req.len();
+        let chunk = chunk_send_request(
+            7,
+            seq,
+            last,
+            (seq == 0).then_some(large_req.len()),
+            &large_req[offset..end],
+        );
+        let rsp = send_plaintext_chunk(&mut state, &mut sessions, &pal, &chunk);
+        if last {
+            assert_eq!(
+                &rsp[6..],
+                &[
+                    SpdmVersion::V12.to_u8(),
+                    ReqRespCode::SET_CERTIFICATE_RSP.0,
+                    1,
+                    0,
+                ]
+            );
+        } else {
+            assert!(state.large_msg_ctx.request_in_progress());
+            assert!(state.large_msg_ctx.get_buffer().is_none());
+        }
+        offset = end;
+        seq += 1;
+    }
+
+    assert!(!state.large_msg_ctx.request_in_progress());
+    assert_eq!(
+        pal.op.take(),
+        Some(StoreOp::Write {
+            slot: 1,
+            key_pair_id: 0,
+            cert_model: 2,
+            root_hash: test_digest(&der[..5]),
+            cert_chain: der,
+        })
+    );
+}
+
+#[test]
 fn get_version_aborts_chunked_set_certificate_stream() {
-    let pal = TestPal::default();
+    let pal = chunked_set_certificate_pal();
     let mut state = chunking_state();
     let mut sessions = crate::session::SessionManager::new();
     let large_req = set_certificate_request(&pal);
@@ -137,7 +227,7 @@ fn get_version_aborts_chunked_set_certificate_stream() {
 
 #[test]
 fn chunked_set_certificate_rejects_context_switch_without_resetting() {
-    let pal = TestPal::default();
+    let pal = chunked_set_certificate_pal();
     let (mut state, mut sessions, session_id) = handshake_session(&pal);
     let large_req = set_certificate_request(&pal);
     let (first, second) = split_large_request(&large_req);
@@ -175,7 +265,7 @@ fn chunked_set_certificate_rejects_context_switch_without_resetting() {
 
 #[test]
 fn secured_chunked_set_certificate_succeeds() {
-    let pal = TestPal::default();
+    let pal = chunked_set_certificate_pal();
     let (mut state, mut sessions, session_id) = established_session(&pal);
     let large_req = set_certificate_request(&pal);
     let (first, second) = split_large_request(&large_req);
@@ -228,7 +318,7 @@ fn secured_chunked_set_certificate_succeeds() {
 
 #[test]
 fn handshake_session_chunked_set_certificate_is_rejected() {
-    let pal = TestPal::default();
+    let pal = chunked_set_certificate_pal();
     let (mut state, mut sessions, session_id) = handshake_session(&pal);
     let large_req = set_certificate_request(&pal);
     let (first, _) = split_large_request(&large_req);
@@ -256,7 +346,7 @@ fn handshake_session_chunked_set_certificate_is_rejected() {
 
 #[test]
 fn plaintext_chunked_set_certificate_bad_root_hash_does_not_commit() {
-    let pal = TestPal::default();
+    let pal = chunked_set_certificate_pal();
     let mut state = chunking_state();
     let mut sessions = crate::session::SessionManager::new();
     let mut large_req = set_certificate_request(&pal);
@@ -305,7 +395,7 @@ fn plaintext_chunked_set_certificate_bad_root_hash_does_not_commit() {
 
 #[test]
 fn plaintext_chunked_set_certificate_truncated_final_der_aborts() {
-    let pal = TestPal::default();
+    let pal = chunked_set_certificate_pal();
     let mut state = chunking_state();
     let mut sessions = crate::session::SessionManager::new();
     let mut large_req = set_certificate_request(&pal);

@@ -23,10 +23,11 @@ use caliptra_mcu_spdm_traits::SpdmPalAlloc;
 use caliptra_mcu_spdm_traits::*;
 use zerocopy::FromBytes;
 
-use crate::build::{alloc_padded, build_error_response};
+use crate::build::{alloc_padded, build_error_response, encode_error_response};
 use crate::error::{
-    SpdmError, SpdmResult, SPDM_DECRYPT_ERROR, SPDM_INVALID_REQUEST, SPDM_SESSION_REQUIRED,
-    SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED, SPDM_UNSUPPORTED_REQUEST, SPDM_VERSION_MISMATCH,
+    SpdmError, SpdmResult, CALIPTRA_EXTENDED_ERROR_SIZE, SPDM_DECRYPT_ERROR, SPDM_INVALID_REQUEST,
+    SPDM_SESSION_REQUIRED, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED, SPDM_UNSUPPORTED_REQUEST,
+    SPDM_VERSION_MISMATCH,
 };
 use crate::key_schedule::SessionKeyType;
 use crate::session::{SessionInfo, SessionManager, SessionState};
@@ -218,14 +219,19 @@ impl<S, L> ConnectionState<S, L> {
         pal.mtu().min(peer)
     }
 
-    pub(crate) fn effective_max_spdm_msg_size<Pal: SpdmPal>(&self, pal: &Pal) -> usize {
-        let local = pal.large_capacity().max(pal.mtu());
-        let peer = if self.peer_max_spdm_msg_size == 0 {
-            local
-        } else {
-            self.peer_max_spdm_msg_size as usize
-        };
-        local.min(peer)
+    /// Peer-advertised `MaxSPDMmsgSize`.
+    ///
+    /// Successful capabilities negotiation guarantees a non-zero peer limit.
+    pub(crate) fn peer_max_spdm_message_size(&self) -> SpdmResult<usize> {
+        if self.peer_max_spdm_msg_size == 0 {
+            return Err(SPDM_UNSPECIFIED);
+        }
+        Ok(self.peer_max_spdm_msg_size as usize)
+    }
+
+    /// Maximum buffered response allowed by both local storage and the peer.
+    pub(crate) fn max_buffered_response_size(&self, local_capacity: usize) -> SpdmResult<usize> {
+        Ok(local_capacity.min(self.peer_max_spdm_message_size()?))
     }
 
     /// Convert the negotiated asymmetric algorithm to
@@ -359,8 +365,16 @@ impl<Pal: SpdmPal, const MAX_SESSIONS: usize, Vdm: SpdmVdmBackend>
     /// If the PAL cannot hold at least one transport-sized large message,
     /// `CHUNK` is removed from the advertised capabilities.
     pub fn with_vdm_backend(pal: Pal, vdm_backend: Vdm) -> Self {
+        assert!(
+            pal.max_inbound_spdm_request_size() >= pal.mtu(),
+            "MaxSPDMmsgSize must be at least DataTransferSize"
+        );
+        assert!(
+            pal.max_inbound_spdm_request_size() <= u32::MAX as usize,
+            "MaxSPDMmsgSize exceeds the SPDM field width"
+        );
         let mut state = ConnectionState::<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>::default();
-        if pal.large_capacity() < pal.mtu() {
+        if pal.large_buffered_msg_capacity() < pal.mtu() {
             state.cap_flags =
                 CapFlags::from_bits(state.cap_flags.into_bits() & !CapFlags::CHUNK.into_bits());
         }
@@ -537,14 +551,7 @@ impl<Pal: SpdmPal, const MAX_SESSIONS: usize, Vdm: SpdmVdmBackend>
             req_version
         };
 
-        let Ok(mut err_rsp) = build_error_response(
-            &self.pal,
-            io,
-            rsp_version,
-            err.spec_byte(),
-            err.error_data(),
-            &[],
-        ) else {
+        let Ok(mut err_rsp) = build_error_response(&self.pal, io, rsp_version, err) else {
             // Allocator exhausted or codec failure — nothing more we
             // can do for this exchange.
             return Ok(());
@@ -706,12 +713,10 @@ async fn handle_secured_request<
                 SessionState::HandshakeInProgress => SessionKeyType::ResponseHandshakeKey,
                 SessionState::Established => SessionKeyType::ResponseDataKey,
             };
-            let error_rsp = [
-                state.version.to_u8(),
-                ReqRespCode::ERROR.0,
-                e.spec_byte(),
-                e.error_data(),
-            ];
+            let mut error_rsp = [0u8; SpdmMsgHdrPdu::SIZE + 2 + CALIPTRA_EXTENDED_ERROR_SIZE];
+            let Ok(error_rsp_len) = encode_error_response(&mut error_rsp, state.version, e) else {
+                return Ok(None);
+            };
             let rsp = encrypt_secured_spdm_response(
                 pal,
                 io,
@@ -719,7 +724,7 @@ async fn handle_secured_request<
                 session_id,
                 state.version,
                 key_type,
-                &error_rsp,
+                &error_rsp[..error_rsp_len],
             )
             .await
             .ok();
