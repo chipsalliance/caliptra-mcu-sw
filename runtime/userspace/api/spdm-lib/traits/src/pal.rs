@@ -24,4 +24,11 @@ pub trait SpdmPal:
     + SpdmPalMeasurements
     + SpdmPalSessionCrypto
 {
+    /// Endpoint-wide maximum logical SPDM request this responder accepts.
+    ///
+    /// Advertised as `MaxSPDMmsgSize`. This is the maximum across buffered and
+    /// streamed request paths, and must be at least [`Self::mtu`].
+    fn max_inbound_spdm_request_size(&self) -> usize {
+        self.large_buffered_msg_capacity().max(self.mtu())
+    }
 }

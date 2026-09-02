@@ -28,8 +28,7 @@ use crate::error::{
 };
 use crate::stack::{multi_key_conn_rsp, ConnectionState, Phase};
 
-/// Size of the SPDM cert-chain wire header that prepends every cert
-/// chain (DSP0274 §10.6.1 Table 33):
+/// Size of the currently supported SPDM cert-chain wire header:
 /// `Length(2) | Reserved(2) | RootHash(48)`.
 const SPDM_CERT_CHAIN_HDR_LEN: usize = 4 + 48;
 const SHA384_DIGEST_SIZE: usize = 48;
@@ -214,8 +213,12 @@ pub(crate) async fn handle_get_certificate_req<'a, Pal: SpdmPal>(
         .checked_add(der_len)
         .ok_or(SPDM_UNSPECIFIED)?;
 
-    if total_len_usize > req.max_length_cap() {
-        return Err(SPDM_DATA_TOO_LARGE);
+    if total_len_usize > u16::MAX as usize {
+        if state.version >= SpdmVersion::V14 && !req.is_large() {
+            let actual_size = u32::try_from(total_len_usize).map_err(|_| SPDM_UNSPECIFIED)?;
+            return Err(SPDM_DATA_TOO_LARGE.with_extended_data(actual_size.to_le_bytes()));
+        }
+        return Err(SPDM_UNSPECIFIED);
     }
 
     let single_frame_portion = state
@@ -232,7 +235,7 @@ pub(crate) async fn handle_get_certificate_req<'a, Pal: SpdmPal>(
         let chunking = state.chunking_enabled();
         let max_portion = if chunking {
             state
-                .effective_max_spdm_msg_size(pal)
+                .peer_max_spdm_message_size()?
                 .saturating_sub(SpdmMsgHdrPdu::SIZE + req.rsp_header_body_size())
         } else {
             single_frame_portion
@@ -267,9 +270,7 @@ pub(crate) async fn handle_get_certificate_req<'a, Pal: SpdmPal>(
             pal,
             io,
             state.version,
-            SPDM_LARGE_RESPONSE.spec_byte(),
-            0,
-            &[handle],
+            SPDM_LARGE_RESPONSE.with_extended_data([handle]),
         )?;
 
         state.transcript.append_m1(pal, io, spdm_msg).await?;
@@ -346,7 +347,9 @@ pub(crate) async fn fill_cert_chain_portion<Pal: SpdmPal>(
         return Ok(());
     }
     let der_len = pal.cert_chain_len(io, slot, asym_algo).await?;
-    let total_len = SPDM_CERT_CHAIN_HDR_LEN + der_len;
+    let total_len = SPDM_CERT_CHAIN_HDR_LEN
+        .checked_add(der_len)
+        .ok_or(mcu_error::codes::INVARIANT)?;
     let end = offset
         .checked_add(dst.len())
         .ok_or(mcu_error::codes::INVARIANT)?;
@@ -358,11 +361,8 @@ pub(crate) async fn fill_cert_chain_portion<Pal: SpdmPal>(
     let mut written = 0;
     if offset < SPDM_CERT_CHAIN_HDR_LEN {
         let mut hdr = [0u8; SPDM_CERT_CHAIN_HDR_LEN];
-        let len_bytes = (total_len as u16).to_le_bytes();
-        for (d, s) in hdr.iter_mut().take(len_bytes.len()).zip(&len_bytes) {
-            *d = *s;
-        }
-        // bytes 2..4 (Reserved) stay zero
+        let length = u16::try_from(total_len).map_err(|_| mcu_error::codes::INVARIANT)?;
+        hdr[..2].copy_from_slice(&length.to_le_bytes());
         let root_hash = hdr
             .get_mut(4..4 + SHA384_DIGEST_SIZE)
             .ok_or(mcu_error::codes::INVARIANT)?;

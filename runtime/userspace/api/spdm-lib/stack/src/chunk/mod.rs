@@ -14,8 +14,8 @@ use caliptra_mcu_spdm_traits::{PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalIoTranspo
 use crate::build::build_error_response;
 use crate::certificate::CertificateLargeResponse;
 use crate::error::{
-    SpdmError, SpdmResult, SPDM_INVALID_REQUEST, SPDM_LARGE_RESPONSE, SPDM_UNEXPECTED_REQUEST,
-    SPDM_UNSPECIFIED,
+    SpdmError, SpdmResult, SPDM_INVALID_REQUEST, SPDM_LARGE_RESPONSE, SPDM_RESPONSE_TOO_LARGE,
+    SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED,
 };
 use crate::stack::ConnectionState;
 
@@ -355,15 +355,17 @@ pub(crate) fn validate_buffered_large_response<Pal: SpdmPal>(
     let capacity = if let Some(buf) = state.large_msg_ctx.get_buffer() {
         buf.len()
     } else {
-        pal.large_capacity()
+        pal.large_buffered_msg_capacity()
     };
 
-    validate_buffered_large_response_with_capacity(state, pal, large_resp_len, capacity)
+    validate_buffered_large_response_with_capacity(state, large_resp_len, capacity)
 }
 
-pub(crate) fn validate_buffered_large_response_with_capacity<Pal: SpdmPal>(
-    state: &ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
-    pal: &Pal,
+pub(crate) fn validate_buffered_large_response_with_capacity<
+    S,
+    L: core::ops::DerefMut<Target = [u8]>,
+>(
+    state: &ConnectionState<S, L>,
     large_resp_len: usize,
     capacity: usize,
 ) -> SpdmResult<()> {
@@ -374,15 +376,15 @@ pub(crate) fn validate_buffered_large_response_with_capacity<Pal: SpdmPal>(
         return Err(SPDM_UNSPECIFIED);
     }
 
-    let local_max_spdm_msg_size = capacity.max(pal.mtu());
-    let peer_max_spdm_msg_size = if state.peer_max_spdm_msg_size == 0 {
-        local_max_spdm_msg_size
-    } else {
-        state.peer_max_spdm_msg_size as usize
-    };
-    let effective_max_spdm_msg_size = local_max_spdm_msg_size.min(peer_max_spdm_msg_size);
+    // ResponseTooLarge applies only when the response exceeds the requester's
+    // advertised MaxSPDMmsgSize.
+    if large_resp_len > state.peer_max_spdm_message_size()? {
+        let actual_size = u32::try_from(large_resp_len).map_err(|_| SPDM_UNSPECIFIED)?;
+        return Err(SPDM_RESPONSE_TOO_LARGE.with_extended_data(actual_size.to_le_bytes()));
+    }
 
-    if large_resp_len > capacity || large_resp_len > effective_max_spdm_msg_size {
+    // Exceeding Caliptra's buffer is a local capacity failure.
+    if large_resp_len > capacity {
         return Err(SPDM_UNSPECIFIED);
     }
     Ok(())
@@ -400,9 +402,7 @@ pub(crate) fn start_buffered_large_response<'a, Pal: SpdmPal>(
         pal,
         io,
         state.version,
-        SPDM_LARGE_RESPONSE.spec_byte(),
-        0,
-        &[handle],
+        SPDM_LARGE_RESPONSE.with_extended_data([handle]),
     )?;
     let spdm_len = resp.len() - pal.header_size();
     let rent_buf = state.large_msg_ctx.take_buffer();
@@ -410,4 +410,49 @@ pub(crate) fn start_buffered_large_response<'a, Pal: SpdmPal>(
         .large_msg_ctx
         .start_response(LargeResponse::Buffered, large_resp_len, rent_buf)?;
     Ok((resp, spdm_len))
+}
+
+#[cfg(test)]
+mod tests {
+    extern crate alloc;
+
+    use alloc::vec::Vec;
+    use caliptra_mcu_spdm_codec::{CapFlags, ReqRespCode, SpdmVersion};
+
+    use super::*;
+    use crate::build::encode_error_response;
+
+    #[test]
+    fn buffered_response_distinguishes_peer_and_local_limits() {
+        let mut state: ConnectionState<(), Vec<u8>> = ConnectionState::default();
+        state.peer_cap_flags = CapFlags::CHUNK;
+        state.peer_max_spdm_msg_size = 1024;
+
+        let err = validate_buffered_large_response_with_capacity(&state, 1025, 2048).unwrap_err();
+        assert_eq!(err.spec_byte(), SPDM_RESPONSE_TOO_LARGE.spec_byte());
+        assert_eq!(err.error_data(), 0);
+        assert_eq!(err.extended_data(), 1025u32.to_le_bytes());
+
+        let mut error_rsp = [0u8; 8];
+        let error_rsp_len = encode_error_response(&mut error_rsp, SpdmVersion::V12, err).unwrap();
+        assert_eq!(error_rsp_len, error_rsp.len());
+        assert_eq!(
+            error_rsp,
+            [
+                SpdmVersion::V12.to_u8(),
+                ReqRespCode::ERROR.0,
+                SPDM_RESPONSE_TOO_LARGE.spec_byte(),
+                0,
+                1,
+                4,
+                0,
+                0,
+            ]
+        );
+
+        state.peer_max_spdm_msg_size = 2048;
+        let err = validate_buffered_large_response_with_capacity(&state, 1025, 1024).unwrap_err();
+        assert_eq!(err, SPDM_UNSPECIFIED);
+        assert!(err.extended_data().is_empty());
+    }
 }
