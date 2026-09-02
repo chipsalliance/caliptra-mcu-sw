@@ -3,11 +3,11 @@
 //! SPDM cert-store abstraction (DSP0274 §10.5 / §10.6).
 //!
 //! All cert-chain methods take an [`SpdmPalAsymAlgo`] parameter
-//! so each slot can hold chains for multiple algorithms (e.g.
-//! ECC-384 and MLDSA-87). Only ECC-384 is implemented today;
-//! MLDSA-87 will be added later using the same interfaces.
+//! so each slot can hold chains and signing keys for multiple algorithms
+//! such as ECC-384 and ML-DSA-87.
 
 use crate::SpdmPalHashAlgo;
+pub use mcu_caliptra_api::SigningInput;
 use mcu_error::McuResult;
 
 /// Maximum number of cert-chain slots the responder advertises.
@@ -23,7 +23,7 @@ pub const MAX_SLOTS: u8 = 8;
 pub enum SpdmPalAsymAlgo {
     /// ECDSA P-384 / SHA-384 (96-byte signature: r || s).
     EccP384,
-    /// ML-DSA-87 (post-quantum). Reserved for future use.
+    /// ML-DSA-87 (post-quantum).
     MlDsa87,
 }
 
@@ -158,13 +158,15 @@ pub trait SpdmPalCertStore: crate::SpdmPalIoTransport {
         dst: &mut [u8],
     ) -> McuResult<usize>;
 
-    /// Sign `digest` using the key in `slot` for the given algorithm.
-    async fn sign_hash(
+    /// Sign the caller-prepared input using the key in `slot`.
+    ///
+    /// `algo` must identify the same DPE profile as `signing_input`.
+    async fn sign(
         &self,
         io: &Self::Io<'_>,
         slot: u8,
         algo: SpdmPalAsymAlgo,
-        digest: &[u8],
+        signing_input: SigningInput<'_>,
         signature: &mut [u8],
     ) -> McuResult<usize>;
 
