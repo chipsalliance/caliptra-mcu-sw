@@ -27,6 +27,7 @@ mod registers;
 mod rom;
 mod runtime;
 mod sizes;
+mod submodules;
 mod test;
 mod vertex_ai;
 
@@ -336,6 +337,9 @@ enum Commands {
     },
     /// Check dependencies
     Deps,
+    /// Verify that git submodules are checked out
+    #[command(alias = "check-submodules", alias = "submodules")]
+    SubmoduleCheck,
     /// Manage FPGA Life cycle
     #[cfg(feature = "fpga_realtime")]
     Fpga {
@@ -762,6 +766,7 @@ fn main() {
             otp_mmap_hjson.as_deref(),
         ),
         Commands::Deps => deps::check(),
+        Commands::SubmoduleCheck => submodules::check(),
         #[cfg(feature = "fpga_realtime")]
         Commands::Fpga { subcommand } => fpga::fpga_entry(subcommand),
         // TODO(clundin): Refactor into FPGA module.
