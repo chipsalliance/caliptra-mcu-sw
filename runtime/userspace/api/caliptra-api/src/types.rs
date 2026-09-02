@@ -31,6 +31,7 @@ pub enum CmKeyUsage {
     Aes = 2,
     Ecdsa = 3,
     Mldsa = 4,
+    MlKem = 5,
 }
 
 impl From<u32> for CmKeyUsage {
@@ -40,6 +41,7 @@ impl From<u32> for CmKeyUsage {
             2 => CmKeyUsage::Aes,
             3 => CmKeyUsage::Ecdsa,
             4 => CmKeyUsage::Mldsa,
+            5 => CmKeyUsage::MlKem,
             _ => CmKeyUsage::Reserved,
         }
     }
@@ -52,6 +54,7 @@ impl From<CmKeyUsage> for u32 {
             CmKeyUsage::Aes => 2,
             CmKeyUsage::Ecdsa => 3,
             CmKeyUsage::Mldsa => 4,
+            CmKeyUsage::MlKem => 5,
             CmKeyUsage::Reserved => 0,
         }
     }
