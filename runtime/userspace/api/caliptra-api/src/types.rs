@@ -2,7 +2,7 @@
 
 //! Shared types for Caliptra Cryptographic Manager (CM) mailbox commands.
 
-use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
+use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
 
 /// Size in bytes of a CMK handle.
 pub const CMK_SIZE: usize = 128;
@@ -13,7 +13,9 @@ pub const CMK_SIZE: usize = 128;
 /// 128-byte encrypted key material returned by CM mailbox commands and
 /// supplied back to subsequent CM commands.
 #[repr(transparent)]
-#[derive(Clone, Copy, Debug, FromBytes, Immutable, IntoBytes, KnownLayout, PartialEq, Eq)]
+#[derive(
+    Clone, Copy, Debug, FromBytes, Immutable, IntoBytes, KnownLayout, PartialEq, Eq, Unaligned,
+)]
 pub struct Cmk(pub [u8; CMK_SIZE]);
 
 impl Default for Cmk {

@@ -129,6 +129,11 @@ pub use image_loader::{core_image_info, GetImageInfoResp};
 #[cfg(feature = "mailbox-io")]
 pub use import::{cm_delete, cm_import};
 #[cfg(feature = "mailbox-io")]
+pub use ml_kem::{
+    mlkem_decapsulate, mlkem_encapsulate, mlkem_key_gen, CMB_MLKEM_CIPHERTEXT_SIZE,
+    CMB_MLKEM_ENCAPS_KEY_SIZE,
+};
+#[cfg(feature = "mailbox-io")]
 pub use pcr::{extend_pcr31, PCR31_INDEX, PCR31_MEASUREMENT_SIZE};
 #[cfg(feature = "mailbox-io")]
 pub use pcr_quote::{
