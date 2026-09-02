@@ -17,7 +17,7 @@ pub mod store;
 
 use super::measurements::MeasurementProvider;
 use super::*;
-use caliptra_mcu_spdm_traits::{SpdmPalAsymAlgo, SpdmPalCertStore, SpdmPalHashAlgo};
+use caliptra_mcu_spdm_traits::{SigningInput, SpdmPalAsymAlgo, SpdmPalCertStore, SpdmPalHashAlgo};
 use core::ops::Range;
 use core::sync::atomic::Ordering;
 use endorsement::slot_index;
@@ -537,18 +537,26 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         Ok(written)
     }
 
-    async fn sign_hash(
+    async fn sign(
         &self,
         _io: &Self::Io<'_>,
         slot: u8,
-        _algo: SpdmPalAsymAlgo,
-        digest: &[u8],
+        algo: SpdmPalAsymAlgo,
+        signing_input: SigningInput<'_>,
         signature: &mut [u8],
     ) -> McuResult<usize> {
         let _idx = slot_index(slot).ok_or(INVARIANT)?;
-        caliptra_mcu_measurement_api::sign(self.allocator, &DPE_LEAF_LABEL, digest, signature)
-            .await
-            .map_err(|_| INTERNAL_BUG)
+        if DpeProfile::from(algo) != signing_input.profile() {
+            return Err(INVARIANT);
+        }
+        caliptra_mcu_measurement_api::sign(
+            self.allocator,
+            &DPE_LEAF_LABEL,
+            signing_input,
+            signature,
+        )
+        .await
+        .map_err(|_| INTERNAL_BUG)
     }
 
     #[cfg(feature = "set-certificate")]

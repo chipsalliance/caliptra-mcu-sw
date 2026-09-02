@@ -10,9 +10,9 @@ use caliptra_mcu_spdm_codec::{
     LARGE_RESPONSE_SIZE_FIELD_SIZE, SECURED_MSG_HDR_SIZE,
 };
 use caliptra_mcu_spdm_traits::{
-    MeasurementInfo, SpdmPalAlloc, SpdmPalAsymAlgo, SpdmPalCertStore, SpdmPalHash, SpdmPalHashAlgo,
-    SpdmPalIo, SpdmPalIoKind, SpdmPalIoTransport, SpdmPalMeasurements, SpdmPalSessionCrypto,
-    SPDM_NONCE_LEN,
+    MeasurementInfo, SigningInput, SpdmPalAlloc, SpdmPalAsymAlgo, SpdmPalCertStore, SpdmPalHash,
+    SpdmPalHashAlgo, SpdmPalIo, SpdmPalIoKind, SpdmPalIoTransport, SpdmPalMeasurements,
+    SpdmPalSessionCrypto, SPDM_NONCE_LEN,
 };
 use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut};
@@ -358,12 +358,12 @@ impl SpdmPalCertStore for TestPal {
         Ok(src.len())
     }
 
-    async fn sign_hash(
+    async fn sign(
         &self,
         _io: &Self::Io<'_>,
         _slot: u8,
         _algo: SpdmPalAsymAlgo,
-        _digest: &[u8],
+        _signing_input: SigningInput<'_>,
         signature: &mut [u8],
     ) -> McuResult<usize> {
         signature.fill(0x77);
