@@ -54,6 +54,8 @@ pub mod image_loader;
 mod import;
 pub mod mailbox;
 #[cfg(feature = "mailbox-io")]
+mod ml_kem;
+#[cfg(feature = "mailbox-io")]
 mod pcr;
 #[cfg(feature = "mailbox-io")]
 mod pcr_quote;
