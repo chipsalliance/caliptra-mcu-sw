@@ -35,9 +35,8 @@ use crate::version::SUPPORTED_VERSIONS;
 /// * `state` — Mutable connection state. On success, peer capability
 ///   fields are populated and `phase` advances to
 ///   [`Phase::AfterCapabilities`].
-/// * `pal` — Borrowed PAL used to allocate the response and query
-///   `mtu()` for the responder's `DataTransferSize` /
-///   `MaxSPDMmsgSize` fields.
+/// * `pal` — Borrowed PAL providing the single-frame and logical-request
+///   receive limits.
 /// * `io` — The I/O handle for the current request.
 ///
 /// # Returns
@@ -86,8 +85,9 @@ pub(crate) async fn handle_get_capabilities<'a, Pal: SpdmPal>(
         flags = CapFlags::from_bits(flags.into_bits() & !secure_session_caps.into_bits());
     }
     state.advertised_cap_flags = flags;
+    // MaxSPDMmsgSize covers all buffered and streamed inbound request paths.
     let max_spdm_msg_size = if flags.contains(CapFlags::CHUNK) {
-        pal.large_capacity().max(mtu)
+        pal.max_inbound_spdm_request_size()
     } else {
         mtu
     } as u32;

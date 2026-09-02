@@ -304,7 +304,6 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
     ) -> McuResult<usize> {
         let idx = slot_index(slot).ok_or(INVARIANT)?;
 
-        // 1. PRE-CHECK: Ensure Slot is provisioned and not undergoing updates before starting
         if self.cert_store.cert_slots()[idx]
             .write_in_progress
             .load(Ordering::Relaxed)
@@ -312,33 +311,12 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
             return Err(INVARIANT);
         }
 
-        let cert_slot = &self.cert_store.cert_slots()[idx];
-        let capacity = cert_slot
+        // SlotSizeRequested describes endorsement storage. The generated DPE
+        // and leaf certificates appended to GET_CERTIFICATE are not stored here.
+        self.cert_store.cert_slots()[idx]
             .endorsement
             .capacity(algo)
-            .map_err(|_| INVARIANT)?;
-        let total = if cert_slot.is_writable() {
-            let (dpe_len, dpe_skip_len) = dpe_chain_len_and_skip_prefix(
-                self,
-                DpeProfile::from(algo),
-                DPE_IDEVID_AND_LDEVID_CERT_COUNT,
-            )
-            .await?;
-            let leaf_len = probe_leaf_len(self, DpeProfile::from(algo)).await?;
-            ChainLayout::new(capacity, dpe_len, dpe_skip_len, leaf_len)?.total_len()
-        } else {
-            capacity
-        };
-
-        // 2. POST-CHECK: Verify Slot remained unlocked during the intermediate async .await points
-        if self.cert_store.cert_slots()[idx]
-            .write_in_progress
-            .load(Ordering::Relaxed)
-        {
-            return Err(INVARIANT);
-        }
-
-        Ok(total)
+            .map_err(|_| INVARIANT)
     }
 
     #[inline]
