@@ -35,6 +35,8 @@ mod cert;
 #[cfg(feature = "mailbox-io")]
 mod debug_unlock;
 #[cfg(feature = "mailbox-io")]
+pub mod dma;
+#[cfg(feature = "mailbox-io")]
 mod dpe;
 #[cfg(feature = "mailbox-io")]
 mod ecdh;
@@ -98,6 +100,11 @@ pub use cert::{
 pub use debug_unlock::{
     request_debug_unlock_challenge, DEBUG_UNLOCK_CHALLENGE_LEN,
     PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_RSP_LEN,
+};
+#[cfg(feature = "mailbox-io")]
+pub use dma::{
+    mcu_sram_to_axi_dma, AxiDmaTarget, MCI_BASE_AXI_ADDRESS, MCU_SRAM_AXI_BASE,
+    MCU_SRAM_AXI_OFFSET, MCU_SRAM_LOCAL_BASE,
 };
 #[cfg(feature = "mailbox-io")]
 pub use dpe::{
