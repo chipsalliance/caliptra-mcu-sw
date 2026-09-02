@@ -101,12 +101,15 @@ impl<T> DerefMut for TestBox<'_, T> {
 
 pub struct TestPal {
     pub mtu: usize,
+    pub large_buffered_msg_capacity: usize,
+    pub max_inbound_spdm_request_size: usize,
     pub supported_slots: u8,
     pub provisioned_slots: u8,
     pub authorized: bool,
     pub validate_error: Option<McuErrorCode>,
     pub write_error: Option<McuErrorCode>,
     pub erase_error: Option<McuErrorCode>,
+    pub typed_alloc_error: Option<McuErrorCode>,
     pub cert_chain: &'static [u8],
     pub measurement_info: &'static [MeasurementInfo],
     pub measurement_value: &'static [u8],
@@ -119,12 +122,15 @@ impl Default for TestPal {
     fn default() -> Self {
         Self {
             mtu: 1024,
+            large_buffered_msg_capacity: 1024,
+            max_inbound_spdm_request_size: 1024,
             supported_slots: u8::MAX,
             provisioned_slots: 1,
             authorized: true,
             validate_error: None,
             write_error: None,
             erase_error: None,
+            typed_alloc_error: None,
             cert_chain: TEST_CERT_CHAIN,
             measurement_info: &[],
             measurement_value: &[],
@@ -167,6 +173,9 @@ impl SpdmPalAlloc for TestPal {
     type LargeBuf = Vec<u8>;
 
     fn alloc<T: Sized>(&self, _io: &impl SpdmPalIo, value: T) -> McuResult<Self::Box<'_, T>> {
+        if let Some(err) = self.typed_alloc_error {
+            return Err(err);
+        }
         Ok(TestBox {
             value: Box::new(value),
             _lifetime: PhantomData,
@@ -177,8 +186,8 @@ impl SpdmPalAlloc for TestPal {
         Ok(vec![0u8; len])
     }
 
-    fn large_capacity(&self) -> usize {
-        self.mtu
+    fn large_buffered_msg_capacity(&self) -> usize {
+        self.large_buffered_msg_capacity
     }
 
     fn alloc_large_buf(&self, len: usize) -> McuResult<Self::LargeBuf> {
@@ -622,7 +631,11 @@ impl SpdmPalSessionCrypto for TestPal {
     }
 }
 
-impl caliptra_mcu_spdm_traits::SpdmPal for TestPal {}
+impl caliptra_mcu_spdm_traits::SpdmPal for TestPal {
+    fn max_inbound_spdm_request_size(&self) -> usize {
+        self.max_inbound_spdm_request_size
+    }
+}
 
 pub fn test_digest(data: &[u8]) -> [u8; SHA384_DIGEST_SIZE] {
     let mut digest = [0u8; SHA384_DIGEST_SIZE];
@@ -731,6 +744,8 @@ pub fn negotiated_state(version: SpdmVersion) -> ConnectionState<TestHashState, 
 pub fn chunking_state() -> ConnectionState<TestHashState, Vec<u8>> {
     let mut state = negotiated_state(SpdmVersion::V12);
     state.peer_cap_flags = CapFlags::CHUNK;
+    state.peer_data_transfer_size = 1024;
+    state.peer_max_spdm_msg_size = 1024;
     state
 }
 

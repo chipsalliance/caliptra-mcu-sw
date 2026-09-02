@@ -61,8 +61,8 @@ impl<M: MeasurementProvider> SpdmPalAlloc for McuSpdmPal<M> {
         self.allocator.alloc_bytes(len)
     }
 
-    fn large_capacity(&self) -> usize {
-        self.max_spdm_msg_size
+    fn large_buffered_msg_capacity(&self) -> usize {
+        self.large_buffered_msg_capacity
     }
 
     type LargeBuf = BitmapBytes<'static>;
@@ -109,7 +109,7 @@ mod tests {
     }
 
     /// Validates the *shipping* emulator configuration: a 12 KiB pool must be
-    /// able to hand out the declared `MAX_SPDM_MSG_SIZE` (8 KiB) large buffer
+    /// able to hand out the declared 8 KiB buffered large-message allocation
     /// while the session working set is live, after sustained request churn.
     ///
     /// This is the empirical counterpart to the platform's `required_scratch()`
@@ -117,19 +117,18 @@ mod tests {
     /// allocator can actually place the run.
     ///
     /// Mirrors `platforms/emulator/.../spdm/mod.rs`:
-    ///   * pool            = `SPDM_SCRATCH_SIZE`      = 12 KiB
-    ///   * large buffer    = `MAX_SPDM_MSG_SIZE`      =  8 KiB
-    ///   * session set     = `SESSION_WORKING_SET`    = ~2.3 KiB live throughout
-    ///   * inline response = `MAX_TRANSPORT_MTU`      =  1 KiB, concurrent with
+    ///   * pool            = `SPDM_SCRATCH_SIZE`              = 12 KiB
+    ///   * large buffer    = `MAX_BUFFERED_SPDM_MSG_SIZE`      =  8 KiB
+    ///   * session set     = `SESSION_WORKING_SET`            = ~2.3 KiB live throughout
+    ///   * inline response = `MAX_TRANSPORT_MTU`              =  1 KiB, concurrent with
     ///     the large buffer
     ///
     /// If this fails, either `SPDM_SCRATCH_SIZE` must grow or
-    /// `MAX_SPDM_MSG_SIZE` must shrink — the responder would otherwise
-    /// advertise a `MaxSPDMmsgSize` it cannot honor.
+    /// `MAX_BUFFERED_SPDM_MSG_SIZE` must shrink.
     #[test]
-    fn declared_max_spdm_msg_size_is_allocatable_from_shipping_pool() {
+    fn buffered_large_message_capacity_is_allocatable_from_shipping_pool() {
         const POOL: usize = 12 * 1024;
-        const MAX_SPDM_MSG_SIZE: usize = 8 * 1024;
+        const MAX_BUFFERED_SPDM_MSG_SIZE: usize = 8 * 1024;
         const MAX_TRANSPORT_MTU: usize = 1024;
 
         let (alloc, _buf) = make_alloc(POOL);
@@ -177,16 +176,16 @@ mod tests {
             .expect("inline response buffer must fit alongside the session set");
 
         let largest_run_bytes = alloc.largest_free_run() * BITMAP_SLOT_SIZE;
-        let large = alloc.alloc_bytes(MAX_SPDM_MSG_SIZE);
+        let large = alloc.alloc_bytes(MAX_BUFFERED_SPDM_MSG_SIZE);
 
         match large {
-            Ok(buf) => assert_eq!(buf.len(), MAX_SPDM_MSG_SIZE),
+            Ok(buf) => assert_eq!(buf.len(), MAX_BUFFERED_SPDM_MSG_SIZE),
             Err(_) => panic!(
-                "declared MaxSPDMmsgSize is not deliverable: {} B allocation failed \
+                "buffered large-message allocation is not deliverable: {} B allocation failed \
                  from a {} B pool after 50 cycles. baseline_live={} slots, \
                  largest_free_run={} bytes. Raise SPDM_SCRATCH_SIZE or lower \
-                 MAX_SPDM_MSG_SIZE in the platform SPDM config.",
-                MAX_SPDM_MSG_SIZE, POOL, baseline_live, largest_run_bytes
+                 MAX_BUFFERED_SPDM_MSG_SIZE in the platform SPDM config.",
+                MAX_BUFFERED_SPDM_MSG_SIZE, POOL, baseline_live, largest_run_bytes
             ),
         }
     }

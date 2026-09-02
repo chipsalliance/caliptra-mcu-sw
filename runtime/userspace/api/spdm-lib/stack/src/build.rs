@@ -12,10 +12,10 @@
 //! never touch the PAL allocator directly, and never forget to
 //! reserve the transport-framing header.
 
-use caliptra_mcu_spdm_codec::{ResponseBody, SpdmVersion, WireWriter};
+use caliptra_mcu_spdm_codec::{ReqRespCode, ResponseBody, SpdmMsgHdrPdu, SpdmVersion, WireWriter};
 use caliptra_mcu_spdm_traits::{PalBytes, SpdmPal};
 
-use crate::error::SpdmResult;
+use crate::error::{SpdmError, SpdmResult};
 
 /// Copy a fixed-size array `src` into `buf` at `pos`, returning the advanced
 /// cursor.
@@ -108,26 +108,33 @@ where
     Ok(buf)
 }
 
-/// Non-generic helper for the error path. Builds an ERROR PDU
-/// (DSP0274 §10.10) without going through the generic
-/// [`build_response`] — saves one monomorphisation worth of code and
-/// keeps the dispatcher's error branch tiny.
+/// Encodes an SPDM ERROR PDU into an existing buffer.
+pub(crate) fn encode_error_response(
+    out: &mut [u8],
+    version: SpdmVersion,
+    error: SpdmError,
+) -> SpdmResult<usize> {
+    let extended_data = error.extended_data();
+    let mut w = WireWriter::new(out);
+    w.write(&SpdmMsgHdrPdu::new(version, ReqRespCode::ERROR))?;
+    w.write(&[error.spec_byte(), error.error_data()])?;
+    w.write(extended_data)?;
+    Ok(SpdmMsgHdrPdu::SIZE + 2 + extended_data.len())
+}
+
+/// Non-generic helper for the error path. Builds an ERROR PDU without going
+/// through the generic [`build_response`], saving one monomorphisation and
+/// keeping the dispatcher's error branch tiny.
 #[inline(never)]
 pub(crate) fn build_error_response<'a, Pal: SpdmPal>(
     pal: &'a Pal,
     io: &Pal::Io<'_>,
     version: SpdmVersion,
-    error_code: u8,
-    error_data: u8,
-    extended_data: &[u8],
+    error: SpdmError,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
-    use caliptra_mcu_spdm_codec::{ReqRespCode, SpdmMsgHdrPdu};
     let head = pal.header_size();
-    let raw_len = head + SpdmMsgHdrPdu::SIZE + 2 + extended_data.len();
+    let raw_len = head + SpdmMsgHdrPdu::SIZE + 2 + error.extended_data().len();
     let mut buf = alloc_padded(pal, io, raw_len)?;
-    let mut w = WireWriter::new(&mut buf[head..]);
-    w.write(&SpdmMsgHdrPdu::new(version, ReqRespCode::ERROR))?;
-    w.write(&[error_code, error_data])?;
-    w.write(extended_data)?;
+    encode_error_response(&mut buf[head..], version, error)?;
     Ok(buf)
 }

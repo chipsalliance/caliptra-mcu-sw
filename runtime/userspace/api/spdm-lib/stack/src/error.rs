@@ -2,7 +2,7 @@
 
 //! SPDM-level error type for handler ↔ dispatcher boundary.
 //!
-//! [`SpdmError`] carries the SPDM `ERROR` wire byte and any
+//! [`SpdmError`] carries the SPDM `ERROR` wire byte and up to four
 //! associated extended-data bytes that an SPDM responder needs to put
 //! into an `ERROR` PDU. Handlers return [`SpdmResult<T>`]; the
 //! dispatcher catches `Err(SpdmError)` and emits the wire-format
@@ -17,14 +17,21 @@
 use caliptra_mcu_spdm_errors::{as_spdm_wire, is_mctp_error, is_vdm_no_response};
 use mcu_error::{domain, McuErrorCode};
 
+/// SPDM permits up to 32 bytes of extended error data. Caliptra's generic
+/// error path currently retains at most four bytes.
+pub(crate) const CALIPTRA_EXTENDED_ERROR_SIZE: usize = 4;
+
 /// SPDM-level error suitable for emission as an `ERROR` PDU.
 ///
 /// Carries the SPDM `ERROR` wire byte and the one-byte `Param2`
-/// error data field used by errors such as `UnsupportedRequest`.
+/// error data field used by errors such as `UnsupportedRequest`, plus
+/// fixed-size extended data used by errors such as `ResponseTooLarge`.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub struct SpdmError {
     spec_byte: u8,
     error_data: u8,
+    extended_data_len: u8,
+    extended_data: [u8; CALIPTRA_EXTENDED_ERROR_SIZE],
 }
 
 /// Convenience alias for `core::result::Result<T, SpdmError>`.
@@ -37,6 +44,8 @@ impl SpdmError {
         Self {
             spec_byte: 0,
             error_data: 0,
+            extended_data_len: 0,
+            extended_data: [0; CALIPTRA_EXTENDED_ERROR_SIZE],
         }
     }
 
@@ -61,6 +70,8 @@ impl SpdmError {
         Self {
             spec_byte,
             error_data: 0,
+            extended_data_len: 0,
+            extended_data: [0; CALIPTRA_EXTENDED_ERROR_SIZE],
         }
     }
 
@@ -68,6 +79,19 @@ impl SpdmError {
     #[inline]
     pub const fn with_data(self, error_data: u8) -> Self {
         Self { error_data, ..self }
+    }
+
+    /// Attaches up to four bytes of extended error data.
+    #[inline]
+    pub const fn with_extended_data<const N: usize>(mut self, extended_data: [u8; N]) -> Self {
+        assert!(N <= CALIPTRA_EXTENDED_ERROR_SIZE);
+        let mut index = 0;
+        while index < N {
+            self.extended_data[index] = extended_data[index];
+            index += 1;
+        }
+        self.extended_data_len = N as u8;
+        self
     }
 
     /// Returns the SPDM `ERROR` wire byte for this error.
@@ -85,6 +109,12 @@ impl SpdmError {
     #[inline]
     pub const fn error_data(&self) -> u8 {
         self.error_data
+    }
+
+    /// Returns the extended error data associated with this error.
+    #[inline]
+    pub fn extended_data(&self) -> &[u8] {
+        &self.extended_data[..self.extended_data_len as usize]
     }
 }
 
@@ -149,6 +179,8 @@ pub const SPDM_SESSION_REQUIRED: SpdmError = SpdmError::new(0x0B);
 pub const SPDM_SESSION_LIMIT_EXCEEDED: SpdmError = SpdmError::new(0x0A);
 /// `ResetRequired` — responder requires a reset before the request can complete.
 pub const SPDM_RESET_REQUIRED: SpdmError = SpdmError::new(0x0C);
+/// `ResponseTooLarge` — response exceeds the requester's `MaxSPDMmsgSize`.
+pub const SPDM_RESPONSE_TOO_LARGE: SpdmError = SpdmError::new(0x0D);
 /// `DecryptError` — secured-message decryption / MAC verification
 /// failed.
 pub const SPDM_DECRYPT_ERROR: SpdmError = SpdmError::new(0x06);
