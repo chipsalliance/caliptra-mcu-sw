@@ -421,6 +421,8 @@ fn configure_spdm_attestation_command(
     );
     cmd.arg("--trans")
         .arg(transport)
+        .arg("--ver")
+        .arg("1.3")
         // Endpoint information is not part of this attestation flow.
         .arg("--cap")
         .arg(ATTESTATION_REQUESTER_CAPABILITIES)
@@ -526,6 +528,8 @@ mod tests {
             [
                 "--trans",
                 "MCTP",
+                "--ver",
+                "1.3",
                 "--cap",
                 "CERT,CHAL,CHUNK,LARGE_RESP",
                 "--pcap",
