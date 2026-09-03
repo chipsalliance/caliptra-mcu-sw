@@ -103,6 +103,12 @@ pub enum SigningInput<'a> {
     /// The 2.0 form uses an implicit empty FIPS 204 context and limits the
     /// message to 1024 bytes.
     Mldsa87RawMessage(&'a [u8]),
+    /// Pure ML-DSA-87 message and FIPS 204 context. Higher-level APIs convert
+    /// this to an external `mu` after deriving `tr` from the signing key.
+    Mldsa87Message {
+        context: &'a [u8],
+        message: &'a [u8],
+    },
     /// External ML-DSA-87 `mu` accepted by the Caliptra 2.1 DPE interface.
     Mldsa87ExternalMu(&'a [u8; DPE_MLDSA87_MU_SIZE]),
 }
@@ -112,7 +118,9 @@ impl SigningInput<'_> {
     pub const fn profile(&self) -> DpeProfile {
         match self {
             Self::EccP384Digest(_) => DpeProfile::P384Sha384,
-            Self::Mldsa87RawMessage(_) | Self::Mldsa87ExternalMu(_) => DpeProfile::Mldsa87,
+            Self::Mldsa87RawMessage(_)
+            | Self::Mldsa87Message { .. }
+            | Self::Mldsa87ExternalMu(_) => DpeProfile::Mldsa87,
         }
     }
 }
@@ -1309,7 +1317,9 @@ pub async fn dpe_sign<A: ApiAlloc>(
         SigningInput::EccP384Digest(digest) => {
             dpe_sign_ecc_p384(alloc, handle, label, digest, signature).await
         }
-        SigningInput::Mldsa87RawMessage(_) => Err(NOT_IMPLEMENTED),
+        SigningInput::Mldsa87RawMessage(_) | SigningInput::Mldsa87Message { .. } => {
+            Err(NOT_IMPLEMENTED)
+        }
         SigningInput::Mldsa87ExternalMu(mu) => {
             dpe_sign_mldsa87(alloc, handle, label, mu, signature).await
         }
@@ -2101,6 +2111,14 @@ mod tests {
         );
         assert_eq!(
             SigningInput::Mldsa87RawMessage(&message).profile(),
+            DpeProfile::Mldsa87
+        );
+        assert_eq!(
+            SigningInput::Mldsa87Message {
+                context: b"context",
+                message: &message,
+            }
+            .profile(),
             DpeProfile::Mldsa87
         );
         assert_eq!(

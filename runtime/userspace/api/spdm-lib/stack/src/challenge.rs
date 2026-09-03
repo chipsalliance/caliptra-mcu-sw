@@ -3,15 +3,15 @@
 //! CHALLENGE / CHALLENGE_AUTH handler.
 
 use caliptra_mcu_spdm_codec::{
-    ChallengeAuthRsp, ChallengeReqBody, ResponseBody, SpdmMsgHdrPdu, SpdmVersion,
-    ECC_P384_SIGNATURE_SIZE, REQUESTER_CONTEXT_LEN, SHA384_HASH_SIZE, SPDM_CONTEXT_LEN,
-    SPDM_PREFIX_LEN, SPDM_SIGNING_CONTEXT_LEN,
+    ChallengeAuthRsp, ChallengeReqBody, ResponseBody, SpdmMsgHdrPdu, SpdmVersion, WireWriter,
+    REQUESTER_CONTEXT_LEN, SHA384_HASH_SIZE, SPDM_CONTEXT_LEN, SPDM_PREFIX_LEN,
+    SPDM_SIGNING_CONTEXT_LEN,
 };
 use caliptra_mcu_spdm_traits::SpdmPalAlloc;
 use caliptra_mcu_spdm_traits::*;
 use zerocopy::FromBytes;
 
-use crate::build::build_response;
+use crate::chunk;
 use crate::error::{SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED};
 use crate::stack::{ConnectionState, Phase};
 
@@ -106,12 +106,8 @@ pub(crate) async fn handle_challenge<'a, Pal: SpdmPal>(
         )
         .await?;
     }
-    // Build the full response with a zeroed signature placeholder, then sign
-    // into the trailing signature slot in place. This avoids a 96-byte stack
-    // buffer that would live across the sign `.await`, and avoids building the
-    // response twice.
-    const ZERO_SIG: [u8; ECC_P384_SIGNATURE_SIZE] = [0u8; ECC_P384_SIGNATURE_SIZE];
-    let (mut resp, no_sig_len) = {
+    let signature_len = asym_algo.signature_size();
+    let (body, no_sig_len) = {
         let meas_hash_ref = if meas_hash_type != 0 {
             Some(&meas_summary_hash)
         } else {
@@ -124,18 +120,27 @@ pub(crate) async fn handle_challenge<'a, Pal: SpdmPal>(
             meas_summary_hash: meas_hash_ref,
             opaque_len: 0,
             requester_context: requester_context.as_ref(),
-            signature: &ZERO_SIG,
+            signature: &[],
         };
-
-        let resp = build_response(pal, io, state.version, &body).map_err(|_| SPDM_UNSPECIFIED)?;
-        let no_sig_len = body
-            .encoded_size()
-            .checked_sub(ECC_P384_SIGNATURE_SIZE)
-            .ok_or(SPDM_UNSPECIFIED)?;
-        (resp, no_sig_len)
+        let no_sig_len = body.encoded_size();
+        (body, no_sig_len)
     };
 
     let head = pal.header_size();
+    let spdm_len = no_sig_len
+        .checked_add(signature_len)
+        .ok_or(SPDM_UNSPECIFIED)?;
+    let raw_len = head.checked_add(spdm_len).ok_or(SPDM_UNSPECIFIED)?;
+    let padded_len = align_send_len(pal, raw_len)?;
+    let mut guard = chunk::WipeOnDrop {
+        buf: Some(pal.alloc_large_buf(padded_len)?),
+    };
+    let resp = guard.buf.as_mut().ok_or(SPDM_UNSPECIFIED)?;
+    body.encode_with_header(
+        state.version,
+        &mut WireWriter::new(&mut resp[head..head + no_sig_len]),
+    )
+    .map_err(|_| SPDM_UNSPECIFIED)?;
 
     // Append CHALLENGE_AUTH response (without signature) to M1.
     // Only the SPDM message bytes, not transport padding.
@@ -146,33 +151,77 @@ pub(crate) async fn handle_challenge<'a, Pal: SpdmPal>(
     let mut m1_hash = [0u8; SHA384_HASH_SIZE];
     state.transcript.finalize_m1(pal, io, &mut m1_hash).await?;
 
-    // Compute TBS hash in-place over the M1 hash.
-    compute_tbs_hash(pal, io, signing_context(state.version), &mut m1_hash)
-        .await
-        .map_err(|_| SPDM_UNSPECIFIED)?;
-
-    // Sign the TBS hash directly into the response's signature slot.
+    // Sign directly into the response's signature slot.
     let sig_slot = resp
-        .get_mut(head + no_sig_len..head + no_sig_len + ECC_P384_SIGNATURE_SIZE)
+        .get_mut(head + no_sig_len..head + no_sig_len + signature_len)
         .ok_or(SPDM_UNSPECIFIED)?;
+    let signing_ctx = signing_context(state.version);
+    let mut mldsa_message = [0u8; SPDM_SIGNING_CONTEXT_LEN + SHA384_HASH_SIZE];
+    let signing_input = match asym_algo {
+        SpdmPalAsymAlgo::EccP384 => {
+            compute_tbs_hash(pal, io, signing_ctx, &mut m1_hash)
+                .await
+                .map_err(|_| SPDM_UNSPECIFIED)?;
+            SigningInput::EccP384Digest(&m1_hash)
+        }
+        SpdmPalAsymAlgo::MlDsa87 => {
+            mldsa_message[..SPDM_SIGNING_CONTEXT_LEN].copy_from_slice(signing_ctx);
+            mldsa_message[SPDM_SIGNING_CONTEXT_LEN..].copy_from_slice(&m1_hash);
+            SigningInput::Mldsa87Message {
+                context: CHALLENGE_AUTH_SIGNING_CONTEXT,
+                message: &mldsa_message,
+            }
+        }
+    };
     let sig_len = pal
-        .sign(
-            io,
-            slot_id,
-            asym_algo,
-            SigningInput::EccP384Digest(&m1_hash),
-            sig_slot,
-        )
+        .sign(io, slot_id, asym_algo, signing_input, sig_slot)
         .await
         .map_err(|_| SPDM_UNSPECIFIED)?;
-    if sig_len != ECC_P384_SIGNATURE_SIZE {
+    if sig_len != signature_len {
         return Err(SPDM_UNSPECIFIED);
     }
 
-    // Transition to authenticated.
-    state.phase = Phase::AfterCertificate; // TODO: add Phase::Authenticated
+    let use_normal_response = spdm_len <= state.effective_data_transfer_size(pal);
+    if use_normal_response {
+        resp[raw_len..padded_len].fill(0);
+        let final_buf = guard.buf.take().ok_or(SPDM_UNSPECIFIED)?;
+        let response = pal
+            .large_buf_into_bytes(final_buf, padded_len)
+            .map_err(|_| SPDM_UNSPECIFIED)?;
+        state.phase = Phase::AfterCertificate; // TODO: add Phase::Authenticated
+        return Ok(response);
+    }
 
-    Ok(resp)
+    chunk::validate_buffered_large_response_with_capacity(
+        state,
+        spdm_len,
+        pal.large_buffered_msg_capacity(),
+    )?;
+    resp.copy_within(head..head + spdm_len, 0);
+    let final_buf = guard.buf.take().ok_or(SPDM_UNSPECIFIED)?;
+    state.large_msg_ctx.set_buffer(final_buf);
+    match chunk::start_buffered_large_response(state, pal, io, spdm_len) {
+        Ok((response, _)) => {
+            state.phase = Phase::AfterCertificate; // TODO: add Phase::Authenticated
+            Ok(response)
+        }
+        Err(err) => {
+            state.large_msg_ctx.reset();
+            Err(err)
+        }
+    }
+}
+
+const CHALLENGE_AUTH_SIGNING_CONTEXT: &[u8] = b"responder-challenge_auth signing";
+
+fn align_send_len<Pal: SpdmPal>(pal: &Pal, len: usize) -> SpdmResult<usize> {
+    let align = pal.send_len_alignment();
+    if align == 0 {
+        return Err(SPDM_UNSPECIFIED);
+    }
+    len.checked_add(align - 1)
+        .map(|n| n / align * align)
+        .ok_or(SPDM_UNSPECIFIED)
 }
 
 const SIGNING_CTX_V10: [u8; SPDM_SIGNING_CONTEXT_LEN] = build_signing_context(b"1.0.*");
@@ -239,4 +288,71 @@ async fn compute_tbs_hash<Pal: SpdmPal>(
         .await?;
     pal.hash_update(io, &mut state, m1_hash).await?;
     pal.hash_finish(io, &mut state, m1_hash).await
+}
+
+#[cfg(test)]
+#[allow(clippy::duplicate_mod)]
+#[path = "tests/support.rs"]
+mod support;
+
+#[cfg(test)]
+mod tests {
+    extern crate std;
+
+    use super::*;
+    use caliptra_mcu_spdm_codec::{CapFlags, PqcAsymAlgos, ReqRespCode};
+    use futures::executor::block_on;
+    use std::vec;
+
+    #[test]
+    fn mldsa87_challenge_auth_is_returned_as_a_large_response() {
+        let pal = support::TestPal {
+            mtu: 1024,
+            large_buffered_msg_capacity: 8192,
+            ..Default::default()
+        };
+        let mut state = support::negotiated_state(SpdmVersion::V14);
+        state.negotiated_base_asym_sel = caliptra_mcu_spdm_codec::AsymAlgos::EMPTY;
+        state.negotiated_pqc_asym_sel = PqcAsymAlgos::ML_DSA_87;
+        state.peer_cap_flags = CapFlags::CHUNK;
+        state.peer_data_transfer_size = 1024;
+        state.peer_max_spdm_msg_size = 8192;
+
+        let mut request = vec![SpdmVersion::V14.to_u8(), ReqRespCode::CHALLENGE.0, 0, 0];
+        request.extend_from_slice(&[0xA5; SPDM_NONCE_LEN]);
+        request.extend_from_slice(&[0x5A; REQUESTER_CONTEXT_LEN]);
+        let io = support::TestIo::message(request);
+        block_on(state.transcript.append_vca(&pal, &io, b"vca")).unwrap();
+
+        let error = block_on(handle_challenge(&mut state, &pal, &io)).unwrap();
+        assert_eq!(error[1], ReqRespCode::ERROR.0);
+        let handle = *error.last().unwrap();
+        let response = block_on(support::drain_chunked_response(
+            &mut state, &pal, &io, handle,
+        ))
+        .unwrap();
+
+        assert_eq!(response[1], ReqRespCode::CHALLENGE_AUTH.0);
+        assert_eq!(
+            response.len(),
+            2 + 2 + 48 + 32 + 2 + REQUESTER_CONTEXT_LEN + 4627
+        );
+        assert!(response[response.len() - 4627..]
+            .iter()
+            .all(|byte| *byte == 0x77));
+        let sign_op = pal.sign_op.borrow();
+        let support::SignOp::Mldsa87Message { context, message } = sign_op.as_ref().unwrap() else {
+            panic!("expected ML-DSA message signing input");
+        };
+        assert_eq!(context, CHALLENGE_AUTH_SIGNING_CONTEXT);
+        assert_eq!(message.len(), SPDM_SIGNING_CONTEXT_LEN + SHA384_HASH_SIZE);
+        assert_eq!(
+            &message[..SPDM_SIGNING_CONTEXT_LEN],
+            signing_context(SpdmVersion::V14)
+        );
+        assert_ne!(
+            &message[SPDM_SIGNING_CONTEXT_LEN..],
+            vec![0; SHA384_HASH_SIZE]
+        );
+    }
 }

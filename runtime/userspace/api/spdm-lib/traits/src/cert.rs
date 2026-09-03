@@ -27,6 +27,16 @@ pub enum SpdmPalAsymAlgo {
     MlDsa87,
 }
 
+impl SpdmPalAsymAlgo {
+    /// Signature width on the SPDM wire for this algorithm.
+    pub const fn signature_size(self) -> usize {
+        match self {
+            Self::EccP384 => mcu_caliptra_api::DPE_P384_SIGNATURE_SIZE,
+            Self::MlDsa87 => mcu_caliptra_api::DPE_MLDSA87_SIGNATURE_SIZE,
+        }
+    }
+}
+
 impl From<SpdmPalAsymAlgo> for mcu_caliptra_api::DpeProfile {
     fn from(algo: SpdmPalAsymAlgo) -> Self {
         match algo {

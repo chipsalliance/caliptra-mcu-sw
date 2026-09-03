@@ -154,6 +154,16 @@ const LARGE_MSG_PATH_PEAK: usize = MAX_BUFFERED_SPDM_MSG_SIZE + MAX_TRANSPORT_MT
 /// staging buffers.
 const CRYPTO_PATH_PEAK: usize = TRANSIENT_MAILBOX_PEAK + 2 * MAX_TRANSPORT_MTU;
 
+/// Peak mailbox allocation held alongside a buffered SPDM response while
+/// producing an ML-DSA-87 signature. DPE signing concurrently owns its
+/// 192-byte rounded request and 4,672-byte rounded response allocations.
+const MLDSA_SIGN_TRANSIENT_PEAK: usize = 5 * 1024;
+
+/// ML-DSA Challenge and Measurements sign directly into the retained large
+/// response, so the response and DPE signing workspace are live together.
+const LARGE_RESPONSE_MLDSA_PATH_PEAK: usize =
+    MAX_BUFFERED_SPDM_MSG_SIZE + MLDSA_SIGN_TRANSIENT_PEAK;
+
 /// Minimum scratch pool that can satisfy [`MAX_BUFFERED_SPDM_MSG_SIZE`].
 ///
 /// The two request paths are mutually exclusive: a single request either
@@ -163,11 +173,14 @@ const CRYPTO_PATH_PEAK: usize = TRANSIENT_MAILBOX_PEAK + 2 * MAX_TRANSPORT_MTU;
 /// a max, not a sum, laid on top of the session state that persists across
 /// requests.
 const fn required_scratch() -> usize {
-    let transient_peak = if LARGE_MSG_PATH_PEAK > CRYPTO_PATH_PEAK {
+    let mut transient_peak = if LARGE_MSG_PATH_PEAK > CRYPTO_PATH_PEAK {
         LARGE_MSG_PATH_PEAK
     } else {
         CRYPTO_PATH_PEAK
     };
+    if LARGE_RESPONSE_MLDSA_PATH_PEAK > transient_peak {
+        transient_peak = LARGE_RESPONSE_MLDSA_PATH_PEAK;
+    }
     SESSION_WORKING_SET + transient_peak
 }
 
@@ -176,7 +189,7 @@ const fn required_scratch() -> usize {
 /// MCTP hosts Caliptra VDM and must hold a buffered large request while its
 /// handler uses transient DPE/SHA mailbox workspaces.
 const MCTP_SPDM_SCRATCH_SIZE: usize = {
-    let declared = 12 * 1024;
+    let declared = 16 * 1024;
     assert!(
         declared >= required_scratch(),
         "MCTP SPDM scratch pool is too small for MAX_BUFFERED_SPDM_MSG_SIZE"
@@ -185,7 +198,7 @@ const MCTP_SPDM_SCRATCH_SIZE: usize = {
 };
 /// DOE needs room for measurement records and secure-session crypto workspaces.
 const DOE_SPDM_SCRATCH_SIZE: usize = {
-    let declared = 12 * 1024;
+    let declared = 16 * 1024;
     assert!(
         declared >= required_scratch(),
         "DOE SPDM scratch pool is too small for MAX_BUFFERED_SPDM_MSG_SIZE"

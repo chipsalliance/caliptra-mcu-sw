@@ -80,6 +80,14 @@ pub enum StoreOp {
     },
 }
 
+#[derive(Debug, PartialEq, Eq)]
+pub enum SignOp {
+    EccP384Digest([u8; SHA384_DIGEST_SIZE]),
+    Mldsa87Message { context: Vec<u8>, message: Vec<u8> },
+    Mldsa87RawMessage(Vec<u8>),
+    Mldsa87ExternalMu([u8; mcu_caliptra_api::DPE_MLDSA87_MU_SIZE]),
+}
+
 pub struct TestBox<'a, T: 'a> {
     value: Box<T>,
     _lifetime: PhantomData<&'a ()>,
@@ -113,6 +121,7 @@ pub struct TestPal {
     pub measurement_info: &'static [MeasurementInfo],
     pub measurement_value: &'static [u8],
     pub op: RefCell<Option<StoreOp>>,
+    pub sign_op: RefCell<Option<SignOp>>,
     pub stream_cert: RefCell<Vec<u8>>,
     pub stream_aborts: Cell<usize>,
 }
@@ -133,6 +142,7 @@ impl Default for TestPal {
             measurement_info: &[],
             measurement_value: &[],
             op: RefCell::new(None),
+            sign_op: RefCell::new(None),
             stream_cert: RefCell::new(Vec::new()),
             stream_aborts: Cell::new(0),
         }
@@ -362,10 +372,23 @@ impl SpdmPalCertStore for TestPal {
         &self,
         _io: &Self::Io<'_>,
         _slot: u8,
-        _algo: SpdmPalAsymAlgo,
-        _signing_input: SigningInput<'_>,
+        algo: SpdmPalAsymAlgo,
+        signing_input: SigningInput<'_>,
         signature: &mut [u8],
     ) -> McuResult<usize> {
+        if mcu_caliptra_api::DpeProfile::from(algo) != signing_input.profile() {
+            return Err(mcu_error::codes::INVARIANT);
+        }
+        let op = match signing_input {
+            SigningInput::EccP384Digest(digest) => SignOp::EccP384Digest(*digest),
+            SigningInput::Mldsa87Message { context, message } => SignOp::Mldsa87Message {
+                context: context.to_vec(),
+                message: message.to_vec(),
+            },
+            SigningInput::Mldsa87RawMessage(message) => SignOp::Mldsa87RawMessage(message.to_vec()),
+            SigningInput::Mldsa87ExternalMu(mu) => SignOp::Mldsa87ExternalMu(*mu),
+        };
+        *self.sign_op.borrow_mut() = Some(op);
         signature.fill(0x77);
         Ok(signature.len())
     }

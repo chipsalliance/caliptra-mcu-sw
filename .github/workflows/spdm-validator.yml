@@ -93,9 +93,9 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: chipsalliance/caliptra-spdm-emu
-          # TODO: Update this pull-request ref to the corresponding unmerged
-          # caliptra-spdm-emu PR for each SPDM change.
-          ref: ${{ github.event_name == 'pull_request' && 'refs/pull/5/head' || 'caliptra-main-14' }}
+          # Use the SPDM 1.4 MEASUREMENTS integration until it lands on the
+          # caliptra-main-14 branch.
+          ref: refs/pull/7/head
           path: spdm-emu
           submodules: recursive
 

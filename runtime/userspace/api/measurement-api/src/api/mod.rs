@@ -26,12 +26,13 @@ use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_platform::Syscalls;
 use core::marker::PhantomData;
 use mcu_caliptra_api::{
-    dpe_certify_key_cert_size, dpe_certify_key_cert_slice, dpe_certify_key_pubkey,
-    dpe_derive_context_exported_cdi, dpe_rotate_context_default, dpe_sign, dpe_tag_tci, sha_finish,
-    sha_init, sha_update, ApiAlloc, AuthorizeAndStashFlags, AuthorizeAndStashParams,
-    DpeContextHandle, DpeDeriveContextFlags, DpeDeriveContextParams, DpeProfile, HashAlgo,
-    SigningInput, DPE_CONTEXT_HANDLE_SIZE, DPE_LABEL_LEN, DPE_TCI_MEASUREMENT_SIZE,
-    SHA_CONTEXT_SIZE,
+    dpe_certify_key_cert_size, dpe_certify_key_cert_slice, dpe_certify_key_mldsa87_pubkey,
+    dpe_certify_key_pubkey, dpe_derive_context_exported_cdi, dpe_rotate_context_default, dpe_sign,
+    dpe_tag_tci, mldsa87_compute_mu, mldsa87_compute_tr, sha_finish, sha_init, sha_update,
+    ApiAlloc, AuthorizeAndStashFlags, AuthorizeAndStashParams, DpeContextHandle,
+    DpeDeriveContextFlags, DpeDeriveContextParams, DpeProfile, HashAlgo, SigningInput,
+    CERTIFY_KEY_MLDSA87_PUBKEY_SIZE, DPE_CONTEXT_HANDLE_SIZE, DPE_LABEL_LEN, DPE_MLDSA87_MU_SIZE,
+    DPE_TCI_MEASUREMENT_SIZE, MLDSA87_TR_SIZE, SHA_CONTEXT_SIZE,
 };
 
 use crate::attestation_manifest::{parse_and_validate, AttestationManifest, MCU_RT_FW_ID};
@@ -352,6 +353,45 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
         signature: &mut [u8],
     ) -> MeasurementApiResult<usize> {
         let target = self.read_attestation_target_record()?;
+        if let SigningInput::Mldsa87Message { context, message } = signing_input {
+            let mut public_key_buf = alloc
+                .alloc(CERTIFY_KEY_MLDSA87_PUBKEY_SIZE)
+                .map_err(|_| MeasurementApiError::DpeCommandFailed)?;
+            let public_key = public_key_buf
+                .get_mut(..CERTIFY_KEY_MLDSA87_PUBKEY_SIZE)
+                .and_then(|buf| buf.first_chunk_mut::<CERTIFY_KEY_MLDSA87_PUBKEY_SIZE>())
+                .ok_or(MeasurementApiError::DpeCommandFailed)?;
+            let sign_handle = dpe_certify_key_mldsa87_pubkey(
+                alloc,
+                Some(&target.context_handle),
+                key_label,
+                public_key,
+            )
+            .await
+            .map_err(|_| MeasurementApiError::DpeCommandFailed)?;
+            self.write_attestation_target_handle(target, sign_handle)?;
+            let mut tr = [0u8; MLDSA87_TR_SIZE];
+            mldsa87_compute_tr(alloc, public_key, &mut tr)
+                .await
+                .map_err(|_| MeasurementApiError::DpeCommandFailed)?;
+            drop(public_key_buf);
+
+            let mut mu = [0u8; DPE_MLDSA87_MU_SIZE];
+            mldsa87_compute_mu(alloc, &tr, context, &[message], &mut mu)
+                .await
+                .map_err(|_| MeasurementApiError::DpeCommandFailed)?;
+            let (next_handle, signature_len) = dpe_sign(
+                alloc,
+                Some(&sign_handle),
+                key_label,
+                SigningInput::Mldsa87ExternalMu(&mu),
+                signature,
+            )
+            .await
+            .map_err(|_| MeasurementApiError::DpeCommandFailed)?;
+            self.write_attestation_target_handle(target, next_handle)?;
+            return Ok(signature_len);
+        }
         let (next_handle, signature_len) = dpe_sign(
             alloc,
             Some(&target.context_handle),
