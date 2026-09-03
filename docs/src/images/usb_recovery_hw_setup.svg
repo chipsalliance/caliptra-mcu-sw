@@ -1,0 +1,80 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" role="img" aria-labelledby="title desc">
+  <title id="title">USB recovery hardware setup</title>
+  <desc id="desc">A laptop running the recovery agent connects by USB cable to an HTG-FMC-8639 daughter board, which plugs into an HTG-940 FPGA board through an FMC connector.</desc>
+  <defs>
+    <pattern id="grid" width="16" height="16" patternUnits="userSpaceOnUse">
+      <path d="M 16 0 L 0 0 0 16" fill="none" stroke="#cbd5e1" stroke-width="0.7" opacity="0.45"/>
+    </pattern>
+  </defs>
+
+  <rect width="1200" height="420" fill="#f8fafc"/>
+  <path d="M 0 348 H 1200" stroke="#cbd5e1" stroke-width="2"/>
+
+  <!-- Recovery-agent laptop -->
+  <g aria-label="Recovery Agent laptop">
+    <rect x="55" y="100" width="245" height="166" rx="8" fill="#334155" stroke="#0f172a" stroke-width="3"/>
+    <rect x="69" y="114" width="217" height="138" rx="3" fill="#dbeafe"/>
+    <rect x="87" y="136" width="181" height="88" rx="4" fill="#ffffff" stroke="#93c5fd" stroke-width="2"/>
+    <text x="177.5" y="166" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#0f172a">Recovery Agent</text>
+    <text x="177.5" y="193" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="14" fill="#334155">libusb application</text>
+    <path d="M 32 277 H 323 L 350 309 Q 354 318 340 318 H 15 Q 1 318 5 309 Z" fill="#64748b" stroke="#334155" stroke-width="3"/>
+    <rect x="138" y="286" width="79" height="8" rx="4" fill="#cbd5e1"/>
+    <text x="177.5" y="374" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="700" fill="#0f172a">Laptop / USB Host</text>
+  </g>
+
+  <!-- USB cable -->
+  <g aria-label="USB cable">
+    <path d="M 350 231 C 392 231 394 179 438 179 H 476" fill="none" stroke="#2563eb" stroke-width="8" stroke-linecap="round"/>
+    <rect x="466" y="165" width="30" height="28" rx="3" fill="#475569" stroke="#1e293b" stroke-width="2"/>
+    <rect x="490" y="169" width="18" height="20" fill="#cbd5e1" stroke="#64748b" stroke-width="2"/>
+    <text x="414" y="145" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#1d4ed8">USB cable</text>
+    <text x="414" y="264" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="14" fill="#475569">Control transfers</text>
+  </g>
+
+  <!-- Daughter board -->
+  <g aria-label="HTG-FMC-8639 daughter board">
+    <rect x="508" y="89" width="250" height="222" rx="6" fill="#d9f99d" stroke="#3f6212" stroke-width="4"/>
+    <rect x="518" y="99" width="230" height="202" fill="url(#grid)"/>
+    <circle cx="528" cy="109" r="7" fill="#f8fafc" stroke="#3f6212" stroke-width="2"/>
+    <circle cx="738" cy="109" r="7" fill="#f8fafc" stroke="#3f6212" stroke-width="2"/>
+    <circle cx="528" cy="291" r="7" fill="#f8fafc" stroke="#3f6212" stroke-width="2"/>
+    <circle cx="738" cy="291" r="7" fill="#f8fafc" stroke="#3f6212" stroke-width="2"/>
+    <rect x="508" y="163" width="24" height="42" rx="2" fill="#94a3b8" stroke="#334155" stroke-width="2"/>
+    <rect x="552" y="128" width="90" height="75" rx="4" fill="#0f766e" stroke="#134e4a" stroke-width="3"/>
+    <path d="M 564 145 H 630 M 564 160 H 630 M 564 175 H 610" stroke="#5eead4" stroke-width="3"/>
+    <rect x="660" y="132" width="62" height="34" rx="3" fill="#f8fafc" stroke="#475569" stroke-width="2"/>
+    <rect x="660" y="181" width="62" height="76" rx="3" fill="#1e293b"/>
+    <path d="M 672 194 H 710 M 672 207 H 710 M 672 220 H 710 M 672 233 H 710" stroke="#94a3b8" stroke-width="3"/>
+    <rect x="578" y="226" width="55" height="36" rx="3" fill="#fde68a" stroke="#a16207" stroke-width="2"/>
+    <path d="M 758 127 H 780 V 274 H 758" fill="#d4a72c" stroke="#854d0e" stroke-width="2"/>
+    <path d="M 763 139 H 780 M 763 151 H 780 M 763 163 H 780 M 763 175 H 780 M 763 187 H 780 M 763 199 H 780 M 763 211 H 780 M 763 223 H 780 M 763 235 H 780 M 763 247 H 780 M 763 259 H 780" stroke="#fef3c7" stroke-width="3"/>
+    <text x="633" y="342" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="700" fill="#0f172a">HTG-FMC-8639</text>
+    <text x="633" y="369" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="15" fill="#475569">USB daughter board</text>
+  </g>
+
+  <!-- Plug-in direction -->
+  <g aria-label="Daughter board plugs into FPGA board">
+    <path d="M 793 200 H 852" fill="none" stroke="#334155" stroke-width="5"/>
+    <path d="M 852 188 L 875 200 L 852 212 Z" fill="#334155"/>
+    <text x="827" y="163" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="700" fill="#334155">Plugs into</text>
+    <text x="827" y="259" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="14" fill="#475569">FMC connector</text>
+  </g>
+
+  <!-- FPGA board -->
+  <g aria-label="HTG-940 FPGA board">
+    <rect x="879" y="53" width="270" height="294" rx="6" fill="#bfdbfe" stroke="#1e40af" stroke-width="4"/>
+    <rect x="891" y="65" width="246" height="270" fill="url(#grid)"/>
+    <circle cx="899" cy="73" r="7" fill="#f8fafc" stroke="#1e40af" stroke-width="2"/>
+    <circle cx="1129" cy="73" r="7" fill="#f8fafc" stroke="#1e40af" stroke-width="2"/>
+    <circle cx="899" cy="327" r="7" fill="#f8fafc" stroke="#1e40af" stroke-width="2"/>
+    <circle cx="1129" cy="327" r="7" fill="#f8fafc" stroke="#1e40af" stroke-width="2"/>
+    <rect x="879" y="127" width="25" height="147" fill="#d4a72c" stroke="#854d0e" stroke-width="2"/>
+    <path d="M 879 139 H 897 M 879 151 H 897 M 879 163 H 897 M 879 175 H 897 M 879 187 H 897 M 879 199 H 897 M 879 211 H 897 M 879 223 H 897 M 879 235 H 897 M 879 247 H 897 M 879 259 H 897" stroke="#fef3c7" stroke-width="3"/>
+    <rect x="941" y="104" width="138" height="122" rx="5" fill="#1e3a8a" stroke="#172554" stroke-width="4"/>
+    <path d="M 958 124 H 1062 M 958 145 H 1062 M 958 166 H 1062 M 958 187 H 1062 M 979 111 V 219 M 1006 111 V 219 M 1033 111 V 219" stroke="#60a5fa" stroke-width="2" opacity="0.8"/>
+    <text x="1010" y="171" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="700" fill="#ffffff">FPGA</text>
+    <rect x="935" y="251" width="55" height="35" rx="3" fill="#475569"/>
+    <rect x="1010" y="251" width="95" height="35" rx="3" fill="#f8fafc" stroke="#475569" stroke-width="2"/>
+    <text x="1014" y="379" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="700" fill="#0f172a">HTG-940 FPGA Board</text>
+  </g>
+</svg>

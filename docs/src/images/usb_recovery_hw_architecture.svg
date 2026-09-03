@@ -1,0 +1,96 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="760" viewBox="0 0 1400 760" role="img" aria-labelledby="title desc">
+  <title id="title">USB recovery hardware architecture and software stacks</title>
+  <desc id="desc">The HTG-940 FPGA contains Caliptra Core, Caliptra MCU, the Caliptra subsystem bus, recovery interface, mailbox, and LPCIP3511 USB controller. MCU ROM runs a ROM application over the OCP USBDeviceDriver and LPCIP3511 driver. The controller connects through the HTG-FMC-8639 USB PHY and a USB cable to a Linux host running the Recovery Agent application over libusb and the kernel USB stack.</desc>
+  <defs>
+    <marker id="arrow-blue" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 Z" fill="#176b87"/>
+    </marker>
+    <marker id="arrow-gray" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 Z" fill="#475569"/>
+    </marker>
+  </defs>
+
+  <rect width="1400" height="760" fill="#ffffff"/>
+  <text x="42" y="46" font-family="DejaVu Sans, sans-serif" font-size="26" font-weight="700" fill="#0f3d5c">USB Recovery Hardware Architecture</text>
+
+  <!-- HTG-940 FPGA -->
+  <rect x="35" y="72" width="825" height="638" fill="#f8fbfd" stroke="#d07a45" stroke-width="2"/>
+  <text x="58" y="104" font-family="DejaVu Sans, sans-serif" font-size="20" font-weight="700" fill="#0f3d5c">HTG-940 FPGA Board / Caliptra Subsystem</text>
+
+  <!-- Firmware columns -->
+  <text x="180" y="145" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="18" font-weight="700" fill="#0f3d5c">Caliptra Core</text>
+  <rect x="75" y="164" width="210" height="62" fill="#176b87" stroke="#0b4f6c" stroke-width="2"/>
+  <text x="180" y="201" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="700" fill="#ffffff">Caliptra ROM / RT</text>
+
+  <text x="500" y="145" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="18" font-weight="700" fill="#0f3d5c">Caliptra MCU ROM Software</text>
+  <rect x="360" y="164" width="280" height="47" fill="#176b87" stroke="#0b4f6c" stroke-width="2"/>
+  <text x="500" y="193" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="700" fill="#ffffff">ROM Application</text>
+  <rect x="360" y="211" width="280" height="47" fill="#1b718f" stroke="#0b4f6c" stroke-width="2"/>
+  <text x="500" y="240" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="700" fill="#ffffff">OcpImageProvider</text>
+  <rect x="360" y="258" width="280" height="47" fill="#1f7897" stroke="#0b4f6c" stroke-width="2"/>
+  <text x="500" y="287" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="700" fill="#ffffff">OCP USBDeviceDriver</text>
+  <rect x="360" y="305" width="280" height="47" fill="#2b86a5" stroke="#0b4f6c" stroke-width="2"/>
+  <text x="500" y="334" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="700" fill="#ffffff">LPCIP3511 Driver</text>
+
+  <!-- CPU and bus -->
+  <rect x="75" y="392" width="210" height="62" fill="#7c8790" stroke="#475569" stroke-width="2"/>
+  <text x="180" y="429" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="700" fill="#ffffff">Caliptra RISC-V Core</text>
+  <rect x="395" y="392" width="210" height="62" fill="#7c8790" stroke="#475569" stroke-width="2"/>
+  <text x="500" y="429" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="700" fill="#ffffff">MCU RISC-V Core</text>
+  <path d="M 180 226 V 392" fill="none" stroke="#176b87" stroke-width="3" marker-end="url(#arrow-blue)"/>
+  <path d="M 500 352 V 392" fill="none" stroke="#176b87" stroke-width="3" marker-end="url(#arrow-blue)"/>
+
+  <rect x="75" y="493" width="710" height="48" fill="#7c8790" stroke="#475569" stroke-width="2"/>
+  <text x="430" y="524" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="700" fill="#ffffff">Caliptra Subsystem Hardware Interconnect</text>
+  <path d="M 180 454 V 493 M 500 454 V 493" fill="none" stroke="#176b87" stroke-width="3"/>
+
+  <!-- Hardware peripherals -->
+  <rect x="65" y="590" width="190" height="70" fill="#7c8790" stroke="#475569" stroke-width="2"/>
+  <text x="160" y="632" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="700" fill="#ffffff">Recovery I/F</text>
+  <rect x="280" y="590" width="190" height="70" fill="#7c8790" stroke="#475569" stroke-width="2"/>
+  <text x="375" y="632" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="700" fill="#ffffff">Caliptra Mailbox</text>
+  <rect x="495" y="590" width="290" height="70" fill="#7c8790" stroke="#475569" stroke-width="2"/>
+  <text x="640" y="619" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="700" fill="#ffffff">LPCIP3511</text>
+  <text x="640" y="643" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="15" fill="#ffffff">USB Device Controller</text>
+  <path d="M 160 541 V 590 M 375 541 V 590 M 640 541 V 590" fill="none" stroke="#176b87" stroke-width="3" marker-end="url(#arrow-blue)"/>
+
+  <!-- FMC daughter board -->
+  <rect x="895" y="448" width="210" height="212" fill="#eff8e8" stroke="#4d7c3a" stroke-width="2"/>
+  <text x="1000" y="481" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#315d2e">HTG-FMC-8639</text>
+  <rect x="925" y="515" width="150" height="82" fill="#5b8d55" stroke="#315d2e" stroke-width="2"/>
+  <text x="1000" y="550" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="700" fill="#ffffff">USB PHY</text>
+  <text x="1000" y="575" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="14" fill="#ffffff">Physical interface</text>
+  <path d="M 785 625 H 925" fill="none" stroke="#176b87" stroke-width="4" marker-end="url(#arrow-blue)"/>
+  <text x="840" y="605" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="14" fill="#0f3d5c">FMC interface</text>
+
+  <!-- Recovery-agent host stack -->
+  <rect x="1115" y="72" width="250" height="388" fill="#f8fbfd" stroke="#8b6ca8" stroke-width="2"/>
+  <text x="1240" y="108" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#523b68">Linux Recovery-Agent Host</text>
+  <rect x="1145" y="142" width="190" height="72" fill="#176b87" stroke="#0b4f6c" stroke-width="2"/>
+  <text x="1252.5" y="172" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="700" fill="#ffffff">Recovery Agent</text>
+  <text x="1252.5" y="194" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="700" fill="#ffffff">Application</text>
+  <rect x="1145" y="214" width="190" height="62" fill="#1f7897" stroke="#0b4f6c" stroke-width="2"/>
+  <text x="1252.5" y="251" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="700" fill="#ffffff">libusb</text>
+  <rect x="1145" y="276" width="190" height="72" fill="#2b86a5" stroke="#0b4f6c" stroke-width="2"/>
+  <text x="1252.5" y="306" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="700" fill="#ffffff">Linux Kernel</text>
+  <text x="1252.5" y="328" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="700" fill="#ffffff">USB Stack</text>
+  <rect x="1145" y="348" width="190" height="72" fill="#7c8790" stroke="#475569" stroke-width="2"/>
+  <text x="1252.5" y="378" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="700" fill="#ffffff">USB Host</text>
+  <text x="1252.5" y="400" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="700" fill="#ffffff">Controller</text>
+
+  <!-- Physical USB connection -->
+  <path d="M 1075 556 H 1100 V 384 H 1145" fill="none" stroke="#176b87" stroke-width="5"/>
+  <path d="M 1145 384 H 1100 V 556 H 1075" fill="none" stroke="#176b87" stroke-width="5" marker-end="url(#arrow-blue)"/>
+  <text x="1090" y="382" text-anchor="end" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="700" fill="#0f3d5c">USB cable</text>
+  <text x="1090" y="404" text-anchor="end" font-family="DejaVu Sans, sans-serif" font-size="13" fill="#475569">EP0 control transfers</text>
+
+  <!-- Image store -->
+  <ellipse cx="1252.5" cy="531" rx="82.5" ry="23" fill="#8aa7b8" stroke="#0b4f6c" stroke-width="2"/>
+  <rect x="1170" y="531" width="165" height="94" fill="#8aa7b8" stroke="#0b4f6c" stroke-width="2"/>
+  <ellipse cx="1252.5" cy="625" rx="82.5" ry="23" fill="#8aa7b8" stroke="#0b4f6c" stroke-width="2"/>
+  <ellipse cx="1252.5" cy="531" rx="82.5" ry="23" fill="#a9bfca" stroke="#0b4f6c" stroke-width="2"/>
+  <text x="1252.5" y="560" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="700" fill="#ffffff">Recovery Images</text>
+  <text x="1252.5" y="585" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="13" fill="#ffffff">Caliptra FW</text>
+  <text x="1252.5" y="605" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="13" fill="#ffffff">SoC Manifest / MCU RT</text>
+  <path d="M 1335 556 H 1375 V 178 H 1335" fill="none" stroke="#475569" stroke-width="2.5" marker-end="url(#arrow-gray)"/>
+</svg>

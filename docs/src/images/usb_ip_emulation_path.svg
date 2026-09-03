@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="720" viewBox="0 0 1280 720" role="img" aria-labelledby="title desc">
+  <title id="title">USB/IP emulation path</title>
+  <desc id="desc">The Recovery Agent computer runs the application over libusb, the Linux USB subsystem, VHCI, and a USB/IP client. USB control URBs cross TCP/IP to the Caliptra subsystem, where the emulator's USB/IP server drives the LPCIP3511 host controller and peripheral connected to MCU ROM.</desc>
+  <rect width="1280" height="720" fill="#ffffff"/>
+  <text x="40" y="48" font-family="DejaVu Sans, sans-serif" font-size="26" font-weight="700" fill="#0f3d5c">USB/IP Emulation Transport</text>
+
+  <!-- Recovery Agent host -->
+  <rect x="55" y="82" width="400" height="520" fill="#f8fbfd" stroke="#8b6ca8" stroke-width="2"/>
+  <text x="255" y="119" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="19" font-weight="700" fill="#523b68">Recovery-Agent Computer</text>
+
+  <rect x="120" y="150" width="270" height="62" fill="#176b87" stroke="#0b4f6c" stroke-width="2"/>
+  <text x="255" y="187" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="700" fill="#ffffff">Recovery Agent Application</text>
+  <rect x="120" y="212" width="270" height="62" fill="#1f7897" stroke="#0b4f6c" stroke-width="2"/>
+  <text x="255" y="249" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="700" fill="#ffffff">libusb</text>
+  <rect x="120" y="274" width="270" height="70" fill="#2b86a5" stroke="#0b4f6c" stroke-width="2"/>
+  <text x="255" y="302" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="700" fill="#ffffff">Linux USB Subsystem</text>
+  <text x="255" y="326" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="14" fill="#ffffff">Kernel USB Core</text>
+  <rect x="120" y="344" width="270" height="70" fill="#71808b" stroke="#475569" stroke-width="2"/>
+  <text x="255" y="372" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="700" fill="#ffffff">VHCI</text>
+  <text x="255" y="396" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="14" fill="#ffffff">Virtual USB Host Controller</text>
+  <rect x="120" y="414" width="270" height="62" fill="#176b87" stroke="#0b4f6c" stroke-width="2"/>
+  <text x="255" y="451" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="700" fill="#ffffff">USB/IP Client</text>
+
+  <path d="M 255 476 V 511" fill="none" stroke="#176b87" stroke-width="4"/>
+  <path d="M 244 507 L 255 525 L 266 507 Z" fill="#176b87"/>
+  <rect x="120" y="525" width="270" height="48" fill="#ffffff" stroke="#176b87" stroke-width="3"/>
+  <text x="255" y="555" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="700" fill="#0f3d5c">TCP/IP Network Interface</text>
+
+  <!-- Network bridge -->
+  <path d="M 408 549 H 872" fill="none" stroke="#176b87" stroke-width="4"/>
+  <path d="M 408 538 L 390 549 L 408 560 Z" fill="#176b87"/>
+  <path d="M 872 538 L 890 549 L 872 560 Z" fill="#176b87"/>
+  <rect x="510" y="500" width="260" height="74" fill="#ffffff" stroke="#176b87" stroke-width="2"/>
+  <text x="640" y="529" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="17" font-weight="700" fill="#0f3d5c">USB/IP over TCP/IP</text>
+  <text x="640" y="554" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="14" fill="#475569">USB control URBs</text>
+
+  <!-- Emulator -->
+  <rect x="825" y="82" width="400" height="520" fill="#f8fbfd" stroke="#d07a45" stroke-width="2"/>
+  <text x="1025" y="119" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="19" font-weight="700" fill="#8a4d29">Caliptra Subsystem</text>
+
+  <rect x="890" y="150" width="270" height="60" fill="#1b718f" stroke="#0b4f6c" stroke-width="2"/>
+  <text x="1025" y="186" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="700" fill="#ffffff">MCU ROM</text>
+
+  <path d="M 1025 210 V 266" fill="none" stroke="#176b87" stroke-width="4"/>
+  <path d="M 1014 262 L 1025 280 L 1036 262 Z" fill="#176b87"/>
+
+  <rect x="870" y="260" width="310" height="226" fill="none" stroke="#d07a45" stroke-width="2"/>
+  <rect x="890" y="250" width="100" height="22" fill="#f8fbfd"/>
+  <text x="940" y="267" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="700" fill="#8a4d29">Emulator</text>
+
+  <rect x="890" y="286" width="270" height="60" fill="#2b86a5" stroke="#0b4f6c" stroke-width="2"/>
+  <text x="1025" y="311" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="700" fill="#ffffff">LPCIP3511 Periph</text>
+  <text x="1025" y="333" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="13" fill="#ffffff">UsbDevPeriph MMIO Model</text>
+  <rect x="890" y="346" width="270" height="60" fill="#71808b" stroke="#475569" stroke-width="2"/>
+  <text x="1025" y="371" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="700" fill="#ffffff">LPCIP3511 HostController</text>
+  <text x="1025" y="393" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="13" fill="#ffffff">UsbHostController Model</text>
+  <rect x="890" y="406" width="270" height="60" fill="#176b87" stroke="#0b4f6c" stroke-width="2"/>
+  <text x="1025" y="431" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="700" fill="#ffffff">USB/IP Server</text>
+  <text x="1025" y="453" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="13" fill="#ffffff">URB Adapter</text>
+
+  <path d="M 1025 466 V 511" fill="none" stroke="#176b87" stroke-width="4"/>
+  <path d="M 1014 507 L 1025 525 L 1036 507 Z" fill="#176b87"/>
+  <rect x="890" y="525" width="270" height="48" fill="#ffffff" stroke="#176b87" stroke-width="3"/>
+  <text x="1025" y="555" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="16" font-weight="700" fill="#0f3d5c">TCP/IP Network Interface</text>
+
+  <!-- Replacement boundary -->
+  <rect x="245" y="636" width="790" height="54" fill="#f1f5f9" stroke="#64748b" stroke-width="2" stroke-dasharray="8 6"/>
+  <text x="640" y="658" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="15" font-weight="700" fill="#334155">USB/IP replaces the physical transport path</text>
+  <text x="640" y="679" text-anchor="middle" font-family="DejaVu Sans, sans-serif" font-size="14" fill="#475569">Physical host controller + USB cable + HTG-FMC-8639 PHY + LPCIP3511 controller RTL</text>
+</svg>

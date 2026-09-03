@@ -146,7 +146,55 @@ CRC, PID, and bit-stuffing failures are represented by fault-injection events an
 
 ## 6. OCP Recovery over USB
 
-### 6.1 Descriptors
+### 6.1 High-level boot architecture
+
+Unlike network recovery, USB recovery does not use a separate boot coprocessor.
+MCU ROM runs the USB device stack and OCP recovery responder. The host-side
+Recovery Agent discovers the device and pushes images from its image store over
+EP0 control transfers.
+
+```mermaid
+flowchart LR
+    subgraph Caliptra_Subsystem["Caliptra Subsystem"]
+        Caliptra["Caliptra"]
+        RecoveryIF["Recovery I/F"]
+        MCU_ROM["MCU ROM<br/>- USB Device Stack<br/>- OCP Recovery Responder<br/>- Image Routing"]
+        Mailbox["Mailbox"]
+        MCU_RT["MCU Runtime"]
+        USBDev["USB Device Controller<br/>EP0"]
+
+        Caliptra <--> RecoveryIF
+        RecoveryIF <--> MCU_ROM
+        Caliptra <--> Mailbox
+        Mailbox <--> MCU_RT
+        MCU_ROM <--> USBDev
+    end
+
+    USBDev <-->|"USB control transfers"| RecoveryHost["Recovery Agent Host<br/>- OCP Recovery Agent<br/>- libusb<br/>- Image Store"]
+```
+
+### 6.2 Physical hardware and software stacks
+
+#### Demo Setup
+
+The recovery-agent connects by USB to the HTG-FMC-8639 daughter
+board. The daughter board plugs into the HTG-940 FPGA board through its FMC
+connector.
+
+<p align="center">
+    <img src="images/usb_recovery_hw_setup.svg" alt="Laptop connected by USB cable to an HTG-FMC-8639 daughter board that plugs into an HTG-940 FPGA board" width="100%">
+</p>
+
+#### System Architecture
+
+<p align="center">
+    <img src="images/usb_recovery_hw_architecture.svg" alt="Physical USB recovery architecture showing the MCU ROM and Linux recovery-agent software stacks over the Caliptra hardware interconnect" width="100%">
+</p>
+
+HTG-FMC-8639 : Board containing USB Phy NXP lpcip3511
+HTG-940: FPGA Board with Caliptra SubsystemIP
+
+### 6.3 Descriptors
 
 The OCP v1.1 recovery function uses a composite-device descriptor at device level and identifies recovery at interface level.
 
@@ -165,7 +213,7 @@ The class-specific functional descriptor advertises `wMaxWrTransferSize`, `wMaxR
 
 The final VID, PID, strings, maximum transfer sizes, power attributes, and composite-interface layout are platform configuration, not emulator-only constants. The emulator and VCK190 firmware must derive them from one shared configuration or compare them in parity tests.
 
-### 6.2 Command encapsulation
+### 6.4 Command encapsulation
 
 One OCP command maps to exactly one EP0 control transfer. The SETUP packet is:
 
@@ -181,7 +229,7 @@ One OCP command maps to exactly one EP0 control transfer. The SETUP packet is:
 
 Fields and OCP payloads are little-endian. The USB driver removes USB framing and presents `(RecoveryCommand, RecoveryRequest)` to the OCP state machine.
 
-### 6.3 Layering
+### 6.5 Layering
 
 ```mermaid
 flowchart LR
@@ -197,7 +245,7 @@ flowchart LR
 
 The USB layer owns enumeration, packetization, NAK, STALL, and status stages. The OCP layer owns command legality, `PROT_CAP`, device and recovery status, CMS selection, image activation, and protocol error reporting. ROM/platform code owns the policy for consuming an activated image and advancing to the next boot stage.
 
-### 6.4 Image transfer
+### 6.6 Image transfer
 
 After enumeration, the RA discovers the device capabilities and transfers each required image using either an indirect (buffered) CMS or a FIFO (streaming) CMS. The enumeration exchange is omitted here because it is shown in Section 5.2.
 
@@ -281,7 +329,7 @@ sequenceDiagram
 
 Every arrow marked "via USB EP0" represents one complete OCP control transfer through `libusb`, USB/IP, the emulated controller, and the MCU ROM USB stack. Reporting `StageSuccess` or `Complete` corresponds to calling `RecoveryStateMachine::complete_activation` after the Caliptra recovery interface returns the image result; the ROM adapter must wire this completion path. OCP transfer size and USB packet size are independent. For example, a 1024-byte `INDIRECT_FIFO_DATA` command is one OCP control transfer containing sixteen 64-byte USB packets.
 
-### 6.5 Error hierarchy
+### 6.7 Error hierarchy
 
 Errors must be handled at the layer where they originate:
 
@@ -343,40 +391,31 @@ This backend is deterministic and appropriate for CI, but it is an in-process Ru
 
 ### 7.5 Current integration-test sequence
 
-The current tests emulate a USB host at the transaction level. The Rust test harness owns a `UsbHostController`, while the RISC-V CPU emulator executes firmware containing `ExamplarUsbDriver`. Both sides interact through the shared `UsbDevPeriph` state. The driver does not call the peripheral model directly; it reads and writes the OpenTitan-derived `usbdev` MMIO registers exactly as firmware would access RTL.
+The current tests emulate a USB host at the transaction level. The Rust test
+harness owns a `UsbHostController`, while MCU ROM accesses `UsbDevPeriph`
+through the OpenTitan-derived `usbdev` MMIO register interface used by RTL.
 
 ```mermaid
 sequenceDiagram
     participant Test as Rust Integration Test
     participant Host as UsbHostController
     participant Dev as UsbDevPeriph
-    participant CPU as RISC-V CPU Emulator
-    participant Driver as ExamplarUsbDriver
+    participant ROM as MCU ROM
     participant Recovery as OCP Recovery Logic
 
-    loop Until firmware enables USB
-        Test->>CPU: Step emulated CPU
-        CPU->>Driver: Execute USB initialization
-        Driver->>Dev: Write usbdev MMIO registers
-        Test->>Host: Check device_enabled
-        Host-->>Test: Enabled or not ready
-    end
+    ROM->>Dev: Initialize USB through MMIO registers
+    Test->>Host: Check device_enabled
+    Host-->>Test: USB enabled
 
     Test->>Host: Generate USB bus reset
     Host->>Dev: Set LINK_RESET interrupt state
-    Test->>CPU: Continue stepping
-    Dev-->>Driver: LINK_RESET visible through MMIO
+    Dev-->>ROM: LINK_RESET visible through MMIO
 
     loop USB enumeration requests
         Test->>Host: Submit standard EP0 SETUP packet
         Host->>Dev: Place SETUP in buffer and RX FIFO
-        Dev-->>Driver: PKT_RECEIVED visible through MMIO
-        Driver->>Dev: Read SETUP and prepare EP0 response
-        loop While response is not ready
-            Test->>CPU: Step emulated CPU
-            Test->>Host: Request EP0 IN packet
-            Host-->>Test: NAK
-        end
+        Dev-->>ROM: PKT_RECEIVED visible through MMIO
+        ROM->>Dev: Read SETUP and prepare EP0 response
         Test->>Host: Request EP0 IN packet
         Host->>Dev: Consume configured IN buffer
         Dev-->>Host: Descriptor or status ZLP
@@ -391,13 +430,10 @@ sequenceDiagram
             Host->>Dev: Place OUT data in RX FIFO
         end
 
-        loop Firmware processes request
-            Test->>CPU: Step emulated CPU
-            Dev-->>Driver: SETUP and optional OUT data through MMIO
-            Driver->>Recovery: Complete OCP command and payload
-            Recovery-->>Driver: Response, status, or recovery action
-            Driver->>Dev: Configure IN response or EP0 STALL
-        end
+        Dev-->>ROM: SETUP and optional OUT data through MMIO
+        ROM->>Recovery: Complete OCP command and payload
+        Recovery-->>ROM: Response, status, or recovery action
+        ROM->>Dev: Configure IN response or EP0 STALL
 
         Test->>Host: Request EP0 IN response
         Host->>Dev: Consume configured IN buffer
@@ -418,83 +454,20 @@ This setup emulates host transactions, device-controller registers, and the RISC
 
 ### 8.1 Architecture
 
-```mermaid
-flowchart LR
-    subgraph DeviceEmulator["Caliptra Subsystem Emulator"]
-        direction TB
-
-        subgraph Firmware["RISC-V Firmware"]
-            direction LR
-            CaliptraFw["Caliptra ROM / RT"]
-            McuFw["MCU ROM / RT<br/>OCP RecoveryStateMachine<br/>OcpImageProvider"]
-            UsbDriver["USB Device Driver<br/>Enumeration + EP0"]
-            McuFw --- UsbDriver
-        end
-
-        subgraph CpuModels["CPU Models"]
-            direction LR
-            CaliptraCpu["Caliptra RISC-V<br/>Emulator"]
-            McuCpu["MCU RISC-V<br/>Emulator"]
-        end
-
-        Bus["Caliptra SS Bus"]
-
-        subgraph PeripheralModels["Emulated Peripherals"]
-            direction LR
-            RecoveryIf["Caliptra<br/>Recovery I/F"]
-            Mailbox["Caliptra<br/>Mailbox"]
-            UsbDev["USB Device Peripheral<br/>UsbDevPeriph / MMIO / FIFOs"]
-        end
-
-        UsbHost["USB Host Transaction Engine<br/>UsbHostController"]
-        UsbIpServer["USB/IP Server<br/>URB Adapter"]
-
-        CaliptraFw --> CaliptraCpu
-        McuFw --> McuCpu
-        UsbDriver --> McuCpu
-        CaliptraCpu <--> Bus
-        McuCpu <--> Bus
-        Bus <--> RecoveryIf
-        Bus <--> Mailbox
-        Bus <--> UsbDev
-        UsbDev <--> UsbHost
-        UsbHost <--> UsbIpServer
-        McuFw -->|Recovery image chunks| RecoveryIf
-    end
-
-    subgraph LinuxHost["Linux Recovery-Agent Host"]
-        direction TB
-        RecoveryAgent["OCP Recovery Agent<br/>High-level application"]
-        LibUsb["libusb"]
-        UsbCore["Linux USB Core"]
-        Vhci["USB/IP Client + VHCI<br/>Virtual Host Controller"]
-        ImageStore[("Recovery Images<br/>Caliptra FW + SoC Manifest + MCU RT")]
-
-        ImageStore --> RecoveryAgent
-        RecoveryAgent <--> LibUsb
-        LibUsb <--> UsbCore
-        UsbCore <--> Vhci
-    end
-
-    Vhci <-->|"USB/IP over TCP<br/>USB control URBs"| UsbIpServer
-
-    classDef firmware fill:#176b87,color:#fff,stroke:#0b4f6c;
-    classDef model fill:#808080,color:#fff,stroke:#4f4f4f;
-    classDef peripheral fill:#707070,color:#fff,stroke:#3f3f3f;
-    classDef host fill:#176b87,color:#fff,stroke:#0b4f6c;
-    classDef storage fill:#8aa7b8,color:#fff,stroke:#0b4f6c;
-    class CaliptraFw,McuFw,UsbDriver firmware;
-    class CaliptraCpu,McuCpu,Bus model;
-    class RecoveryIf,Mailbox,UsbDev,UsbHost peripheral;
-    class UsbIpServer,RecoveryAgent,LibUsb,UsbCore,Vhci host;
-    class ImageStore storage;
-```
+<p align="center">
+    <img src="images/usb_ip_emulation_path.svg" alt="USB/IP transport between the Recovery Agent computer and the Caliptra subsystem, with the controller models and USB/IP server enclosed in the emulator" width="100%">
+</p>
 
 Unlike network boot, USB Recovery does not need a third RISC-V coprocessor. The Linux recovery agent is the USB host and pushes images through `libusb`, the Linux virtual host controller, and USB/IP. Inside the emulator, the USB/IP adapter converts URBs into host transactions for the emulated USB device peripheral. MCU firmware sees only the `usbdev` MMIO programming model and therefore follows the same driver path intended for RTL.
 
 The host transaction engine converts each USB/IP control URB into SETUP, packetized data, and status stages. Existing in-process tests may continue using `UsbHostController` as test infrastructure, but they are not a proposed application-facing backend. The supported external architecture is USB/IP.
 
-### 8.2 USB/IP adapter interface
+USB/IP replaces the physical USB transport, not the USB software stacks. The
+Recovery Agent still uses `libusb` and the Linux USB subsystem. MCU ROM still
+uses its `UsbDeviceDriver` implementation and accesses `UsbDevPeriph` through
+the same MMIO contract used by RTL. VHCI and the USB/IP client serialize USB
+requests as URBs over TCP/IP. The USB/IP server converts those URBs into
+transactions for `UsbHostController`.
 
 The USB/IP adapter should expose these operations to its internal transaction engine:
 
@@ -507,7 +480,7 @@ The USB/IP adapter should expose these operations to its internal transaction en
 
 The result of a control transfer is success plus IN data, STALL, timeout/disconnect, or a USB/IP error. NAK and temporary lack of a device buffer are internal retry conditions until timeout. USB/IP sequence numbers prevent a timed-out or unlinked request from consuming a later response.
 
-### 8.3 USB/IP implementation
+### 8.2 USB/IP implementation
 
 USB/IP is the selected external application-development backend. A Linux USB/IP server presents the emulated device to the kernel's virtual host controller, allowing ordinary discovery and `libusb` control-transfer APIs to be exercised without changing the RA. The same high-level RA and `libusb` transport can therefore target the emulator now and the physical VCK190 later.
 
@@ -522,13 +495,13 @@ The adapter maps one EP0 URB to one host-engine control transfer:
 
 USB/IP does not validate PHY-level behavior and requires Linux USB/IP kernel setup to attach the virtual device. It is the application-facing emulation path and validates the real RA, `libusb`, Linux USB stack, enumeration, and recovery control transfers.
 
-### 8.4 Concurrency and determinism
+### 8.3 Concurrency and determinism
 
 USB/IP server threads must never write firmware MMIO directly. They submit bounded host events to the model and wait for completion. The emulator main loop continues stepping the RISC-V CPU and polling the peripheral. Peripheral state changes remain serialized under the existing state lock or, preferably, through bounded request/response queues.
 
 The USB/IP adapter must not block the emulator while holding the device-state lock. Retries occur after releasing the lock. Transaction processing uses emulator cycle deadlines and a wall-clock watchdog so a stopped emulator cannot retain a USB/IP client forever.
 
-### 8.5 Configuration
+### 8.4 Configuration
 
 Add an emulator option to enable or disable USB/IP export. Associated options select bind address/port, exported USB bus and device ID, VID/PID override for development, attach-on-start, transfer timeout, and fault-injection policy. USB/IP export remains disabled unless explicitly selected.
 
