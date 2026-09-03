@@ -12,8 +12,8 @@
 
 use caliptra_mcu_spdm_codec::{
     CertificateLargeRsp, CertificateLargeRspBody, CertificateRsp, CertificateRspBody,
-    GetCertificateParam1, GetCertificateReq, ReqRespCode, ResponseBody, SpdmMsgHdrPdu, SpdmVersion,
-    WireWriter,
+    GetCertificateLargeReqBody, GetCertificateParam1, GetCertificateReq, GetCertificateReqBody,
+    ReqRespCode, ResponseBody, SpdmMsgHdrPdu, SpdmVersion, WireWriter,
 };
 use caliptra_mcu_spdm_traits::{
     PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalAsymAlgo, SpdmPalIo, SpdmPalIoTransport, MAX_SLOTS,
@@ -192,6 +192,18 @@ pub(crate) async fn handle_get_certificate_req<'a, Pal: SpdmPal>(
         return Err(SPDM_INVALID_REQUEST);
     }
 
+    // Trim any transport-layer padding (e.g. PCIe-VDM DWORD alignment) before
+    // feeding the request into M1: hash only the exact GET_CERTIFICATE message
+    // (common header + request body), matching what the requester hashes.
+    let req_body_size = if req.is_large() {
+        GetCertificateLargeReqBody::SIZE
+    } else {
+        GetCertificateReqBody::SIZE
+    };
+    let req_msg = spdm_msg
+        .get(..SpdmMsgHdrPdu::SIZE + req_body_size)
+        .ok_or(SPDM_INVALID_REQUEST)?;
+
     let slot_id = req.slot_id();
     if slot_id >= MAX_SLOTS {
         return Err(SPDM_INVALID_REQUEST);
@@ -272,7 +284,7 @@ pub(crate) async fn handle_get_certificate_req<'a, Pal: SpdmPal>(
             &[handle],
         )?;
 
-        state.transcript.append_m1(pal, io, spdm_msg).await?;
+        state.transcript.append_m1(pal, io, req_msg).await?;
         state.large_msg_ctx.start_response(
             LargeResponse::Certificate(cert_rsp),
             cert_rsp.response_size(),
@@ -319,7 +331,7 @@ pub(crate) async fn handle_get_certificate_req<'a, Pal: SpdmPal>(
     };
 
     let head = pal.header_size();
-    state.transcript.append_m1(pal, io, spdm_msg).await?;
+    state.transcript.append_m1(pal, io, req_msg).await?;
     state
         .transcript
         .append_m1(pal, io, &resp[head..head + spdm_len])

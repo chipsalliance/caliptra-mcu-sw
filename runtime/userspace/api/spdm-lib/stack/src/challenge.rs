@@ -63,7 +63,20 @@ pub(crate) async fn handle_challenge<'a, Pal: SpdmPal>(
     }
 
     // Append CHALLENGE request to M1 transcript.
-    state.transcript.append_m1(pal, io, req).await?;
+    // Trim any transport-layer padding (e.g. PCIe-VDM DWORD alignment) so only
+    // the exact SPDM message bytes feed M1. DSP0274 section 10.9 (request
+    // ordering) makes the requester hash the same exact-length bytes into M2;
+    // hashing trailing padding here would diverge M1 from M2 and break the
+    // CHALLENGE_AUTH signature verification.
+    let challenge_req_len = SpdmMsgHdrPdu::SIZE
+        + core::mem::size_of::<ChallengeReqBody>()
+        + if state.version >= SpdmVersion::V13 {
+            REQUESTER_CONTEXT_LEN
+        } else {
+            0
+        };
+    let req_msg = req.get(..challenge_req_len).ok_or(SPDM_INVALID_REQUEST)?;
+    state.transcript.append_m1(pal, io, req_msg).await?;
 
     let asym_algo = state.asym_algo();
 
