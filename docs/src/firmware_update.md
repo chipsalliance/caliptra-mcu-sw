@@ -23,7 +23,174 @@ graph TD;
 
 ## PLDM Firmware Download Sequence
 
-The diagram below shows the steps and interactions between different software layers during the firmware update process.
+The end-to-end sequence below assumes `skip_activation = false` and
+`verify_same_image = false`. Therefore, activation is performed and the optional
+comparison against the currently running image is omitted.
+
+```mermaid
+sequenceDiagram
+    title End-to-End Firmware Update (Activation Enabled)
+    participant BMC as BMC (PLDM Recovery Agent)
+    participant MCU_RT as MCU RT
+    participant MCU_ROM as MCU ROM
+    participant Caliptra as Caliptra Core
+    participant Flash as Flash Storage
+    participant ExtSRAM as External Staging SRAM
+    participant SRAM as MCU SRAM
+
+    Note over MCU_RT,BMC: Initialize and discover firmware-device capabilities
+    MCU_RT->>MCU_RT: Start FirmwareUpdater and PLDM firmware-device service
+    BMC->>MCU_RT: QueryDeviceIdentifiers
+    MCU_RT-->>BMC: Device identifiers
+    BMC->>MCU_RT: GetFirmwareParameters
+    MCU_RT-->>BMC: Component parameters and capabilities
+    BMC->>MCU_RT: RequestUpdate
+    MCU_RT-->>BMC: Transfer parameters
+    BMC->>MCU_RT: PassComponentTable and UpdateComponent (full image)
+    MCU_RT->>MCU_RT: Validate component and staging capacity
+    MCU_RT-->>BMC: Component can be updated
+
+    Note over MCU_RT,Flash: Download the full flash image
+    loop Until the full component is downloaded
+        MCU_RT->>BMC: RequestFirmwareData(offset, length)
+        BMC-->>MCU_RT: FirmwareData(chunk)
+        MCU_RT->>Flash: Write chunk to flash staging partition<br/>at component-relative offset
+    end
+    MCU_RT->>BMC: TransferComplete(success)
+    BMC-->>MCU_RT: TransferComplete response
+
+    Note over MCU_RT,Caliptra: Verify the component from the flash staging partition
+    MCU_RT->>Flash: Read and verify FlashHeader and each ImageHeader checksum
+    Flash-->>MCU_RT: Caliptra FMC + Runtime bundle
+    MCU_RT->>Caliptra: FIRMWARE_VERIFY(bundle stream)
+    Caliptra->>Caliptra: Verify Caliptra image manifest, signatures,<br/>anti-rollback policy, FMC, and Runtime digests
+    Caliptra-->>MCU_RT: FirmwareVerifyResp(success)
+    Flash-->>MCU_RT: SoC authorization manifest
+    MCU_RT->>Caliptra: VERIFY_AUTH_MANIFEST(manifest stream)
+    Caliptra->>Caliptra: Verify manifest signature and authorization policy
+    Caliptra-->>MCU_RT: Success
+    loop MCU RT and each SoC image
+        MCU_RT->>Flash: Read image in SHA-384 chunks
+        MCU_RT->>MCU_RT: Compute SHA-384 and compare with<br/>the verified manifest digest
+    end
+    Note right of MCU_RT: verify_same_image is false:<br/>do not compare with running firmware
+    MCU_RT->>BMC: VerifyComplete(success)
+    BMC-->>MCU_RT: VerifyComplete response
+
+    Note over MCU_RT,Flash: Apply the verified component
+    MCU_RT->>Flash: Mark inactive partition INVALID
+    MCU_RT->>Flash: Copy full image from staging partition<br/>to inactive partition
+    MCU_RT->>Flash: Mark inactive partition VALID
+    MCU_RT->>BMC: ApplyComplete(success)
+    BMC-->>MCU_RT: ApplyComplete response
+    BMC->>MCU_RT: ActivateFirmware(self-contained activation)
+    MCU_RT-->>BMC: ActivateFirmware response
+    Note right of MCU_RT: skip_activation is false:<br/>continue with activation
+
+    Note over MCU_RT,Caliptra: Activate the new Caliptra FMC + Runtime
+    MCU_RT->>Flash: Read Caliptra FMC + Runtime bundle
+    Flash-->>MCU_RT: Bundle stream
+    MCU_RT->>Caliptra: FIRMWARE_LOAD(bundle stream)
+    Caliptra->>Caliptra: Assert Caliptra update reset
+    Caliptra->>Caliptra: Caliptra ROM authenticates and launches FMC
+    Caliptra->>Caliptra: FMC authenticates and launches Runtime
+    loop Until the new Caliptra Runtime accepts commands
+        MCU_RT->>Caliptra: FW_INFO
+        Caliptra-->>MCU_RT: Busy/error or firmware information
+    end
+
+    Note over MCU_RT,Caliptra: Install the manifest used to authorize MCU/SoC images
+    MCU_RT->>Flash: Read SoC authorization manifest
+    Flash-->>MCU_RT: Manifest stream
+    MCU_RT->>Caliptra: SET_AUTH_MANIFEST(manifest stream)
+    Caliptra->>Caliptra: Store verified image metadata and staging addresses
+    Caliptra-->>MCU_RT: Success
+
+    Note over MCU_RT,SRAM: Stage and activate the new MCU Runtime
+    MCU_RT->>Caliptra: GET_IMAGE_INFO(MCU_RT identifier)
+    Caliptra-->>MCU_RT: DMA-accessible external SRAM address from manifest
+    MCU_RT->>Flash: Read MCU RT subimage in chunks
+    MCU_RT->>ExtSRAM: Copy MCU RT subimage to DMA staging address
+    Note right of ExtSRAM: Caliptra can DMA-read this SRAM.<br/>The image is not executable here.
+    MCU_RT->>Caliptra: ACTIVATE_FIRMWARE(MCU_RT identifier, image size)
+
+    rect rgb(235, 245, 255)
+        Note over MCU_RT,Caliptra: Caliptra Core MCU hitless-update flow
+        Caliptra->>Caliptra: Validate request and manifest metadata
+        Caliptra->>Caliptra: Set RESET_REASON = FW_HITLESS_UPD_RESET
+        Caliptra->>Caliptra: Clear MCU FW_EXEC_CTRL
+        Caliptra-->>MCU_RT: MCU-reset-request notification interrupt
+        MCU_RT->>MCU_RT: Acknowledge interrupt and set RESET_REQUEST.mcu_req
+        Caliptra->>Caliptra: Wait until MCU reset is asserted
+        Caliptra->>ExtSRAM: DMA-read staged MCU RT image
+        Caliptra->>SRAM: Copy image into MCU SRAM updatable region
+        Caliptra->>SRAM: SHA-384 hash image from its load address
+        Caliptra->>Caliptra: AuthorizeAndStash and compare digest<br/>with verified manifest metadata
+        Caliptra->>Caliptra: Update MCU RT DPE measurement context
+        Caliptra->>Caliptra: Set MCU FW_EXEC_CTRL / firmware-ready indication
+        Caliptra->>MCU_ROM: Release MCU reset
+    end
+
+    MCU_ROM->>MCU_ROM: Detect FW_HITLESS_UPD_RESET
+    MCU_ROM->>Caliptra: Complete original ACTIVATE_FIRMWARE mailbox response
+    MCU_ROM->>Caliptra: Poll firmware-ready indication
+    Caliptra-->>MCU_ROM: MCU image ready in SRAM
+    MCU_ROM->>SRAM: Parse optional headers and determine firmware entry
+    MCU_ROM->>MCU_ROM: Set FIRMWARE_BOOT_FLOW_COMPLETE milestone
+    MCU_ROM->>SRAM: Jump to new MCU Runtime entry point
+    SRAM-->>MCU_RT: Execute updated MCU RT
+```
+
+### Loading Updated SoC Images After MCU Reboot
+
+After the hitless reset, the updated MCU Runtime detects the firmware-update
+reset reason and loads SoC images from the pending flash partition. The
+authorization manifest was installed before the reset, so it is not installed
+again in this path.
+
+```mermaid
+sequenceDiagram
+    title Post-Reboot SoC Image Update
+    participant MCU_RT as Updated MCU RT
+    participant Flash as Flash Storage
+    participant Caliptra as Caliptra Core
+    participant SocMemory as SoC Executable Regions
+    participant SoC as SoC Components
+
+    MCU_RT->>MCU_RT: Read RESET_REASON and detect FW_HITLESS_UPD_RESET
+    MCU_RT->>MCU_RT: Release firmware-update SRAM lock
+    MCU_RT->>Flash: Read active and pending partition metadata
+    Flash-->>MCU_RT: Pending partition is VALID
+    MCU_RT->>MCU_RT: Select pending partition for image loading
+    Note over MCU_RT,Caliptra: SET_AUTH_MANIFEST is skipped because the updater<br/>installed the new manifest before the hitless reset.
+
+    loop For each configured SoC firmware ID
+        MCU_RT->>Caliptra: GET_IMAGE_INFO(firmware ID)
+        Caliptra-->>MCU_RT: Component ID, executable load address,<br/>size metadata, and expected SHA-384 digest
+        MCU_RT->>Flash: Read FlashHeader and locate component in TOC
+        loop Until the SoC image is copied
+            MCU_RT->>Flash: Read image chunk from pending partition
+            MCU_RT->>SocMemory: DMA-write chunk to executable load address
+        end
+        MCU_RT->>Caliptra: AUTHORIZE_AND_STASH(firmware ID,<br/>source = LoadAddress, image size)
+        Caliptra->>SocMemory: SHA-384 hash image at executable load address
+        Caliptra->>Caliptra: Compare digest with verified authorization manifest
+        Caliptra-->>MCU_RT: Image authorized
+        MCU_RT->>MCU_RT: Update component attestation measurement state
+    end
+
+    MCU_RT->>Flash: Mark pending partition BOOT_SUCCESSFUL
+    MCU_RT->>Flash: Set pending partition as ACTIVE
+    MCU_RT->>Caliptra: ACTIVATE_FIRMWARE(all SoC firmware IDs,<br/>MCU image size = 0)
+    Caliptra->>Caliptra: Resolve each firmware ID to its manifest EXEC bit
+    Caliptra->>SoC: Publish corresponding FW_EXEC_CTRL bits
+    SoC->>SocMemory: Begin execution from updated image regions
+    Caliptra-->>MCU_RT: ActivateFirmwareResp(success)
+    Note over MCU_RT,SoC: All updated SoC images are loaded, authorized, and active.
+```
+
+The diagrams below break the PLDM portions of this sequence into individual
+protocol phases.
 
 
 ```mermaid
