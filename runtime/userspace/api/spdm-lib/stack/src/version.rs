@@ -79,7 +79,14 @@ pub(crate) async fn handle_get_version<'a, Pal: SpdmPal>(
     // DSP0274 §10.4.1: GET_VERSION + VERSION contribute to VCA.
     // Use spdm_len to exclude any transport-layer padding (e.g. DOE DWORD alignment).
     let head = pal.header_size();
-    state.transcript.append_vca(pal, io, io.request()).await?;
+    // Trim transport padding (e.g. PCIe-VDM DWORD alignment): only the exact
+    // 4-byte GET_VERSION message (header + Param1 + Param2) contributes to VCA,
+    // matching what the requester hashes.
+    let req_msg = io
+        .request()
+        .get(..SpdmMsgHdrPdu::SIZE + 2)
+        .ok_or(SPDM_INVALID_REQUEST)?;
+    state.transcript.append_vca(pal, io, req_msg).await?;
     state
         .transcript
         .append_vca(pal, io, &resp[head..head + spdm_len])
