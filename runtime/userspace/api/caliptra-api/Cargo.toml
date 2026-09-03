@@ -43,3 +43,4 @@ mailbox-io = [
     "dep:caliptra-mcu-libsyscall-caliptra",
     "dep:caliptra-mcu-libtock_platform",
 ]
+fpga = []

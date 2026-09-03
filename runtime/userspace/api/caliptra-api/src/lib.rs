@@ -103,8 +103,8 @@ pub use debug_unlock::{
 };
 #[cfg(feature = "mailbox-io")]
 pub use dma::{
-    mcu_sram_to_axi_dma, AxiDmaTarget, MCI_BASE_AXI_ADDRESS, MCU_SRAM_AXI_BASE,
-    MCU_SRAM_AXI_OFFSET, MCU_SRAM_LOCAL_BASE,
+    mcu_sram_to_axi_dma, mcu_sram_to_axi_dma_with_config, AxiDmaConfig, AxiDmaTarget,
+    MCI_BASE_AXI_ADDRESS, MCU_SRAM_AXI_BASE, MCU_SRAM_AXI_OFFSET,
 };
 #[cfg(feature = "mailbox-io")]
 pub use dpe::{
