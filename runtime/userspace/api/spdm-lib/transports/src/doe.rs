@@ -47,9 +47,10 @@ const DOE_TYPE_SECURE_SPDM: u8 = 2;
 
 /// Default SPDM `DataTransferSize` (payload bytes) when a caller uses
 /// [`McuSpdmDoeTransport::new`]. This is a transport convenience default,
-/// **not** a profile policy: an OCP NVMe integration selects a larger value
-/// (e.g. 4 KiB) via [`McuSpdmDoeTransport::with_transfer_size`] and validates
-/// the OCP minimum once at initialization (the transport itself carries no OCP
+/// **not** a profile policy: an integration with a larger transfer-size
+/// requirement selects a bigger value (e.g. 4 KiB) via
+/// [`McuSpdmDoeTransport::with_transfer_size`] and validates its own profile
+/// minimum once at initialization (the transport itself carries no profile
 /// rule). The generic default is kept small so a stock integration uses a
 /// modest transfer buffer and chunks larger messages.
 const DEFAULT_TRANSFER_SIZE: usize = 1024;
@@ -81,8 +82,8 @@ impl McuSpdmDoeTransport {
     /// `transfer_size` is the SPDM payload size (excluding the DOE header)
     /// this transport advertises; [`mtu`](SpdmPalTransport::mtu) bounds it by
     /// the driver-reported message capacity. Callers that must satisfy a
-    /// profile minimum (e.g. OCP NVMe v2.7's 4 KiB `DataTransferSize`) select
-    /// it here and validate the resulting `mtu()` once at initialization.
+    /// profile minimum (e.g. a 4 KiB `DataTransferSize`) select it here and
+    /// validate the resulting `mtu()` once at initialization.
     pub fn with_transfer_size(driver_num: u32, transfer_size: usize) -> Self {
         Self {
             doe: Doe::new(driver_num),
@@ -124,7 +125,7 @@ impl SpdmPalTransport for McuSpdmDoeTransport {
     /// the DOE header). The stack advertises `MaxSPDMmsgSize` independently and
     /// chunks messages larger than this MTU via CHUNK_SEND/CHUNK_GET, so a
     /// smaller transfer buffer is a valid integration. Any profile minimum
-    /// (e.g. OCP 2.7 SPDM-14's 4 KiB) is enforced by the integrator against
+    /// (e.g. a 4 KiB `DataTransferSize`) is enforced by the integrator against
     /// this value at init — the transport never panics on a small driver MTU.
     fn mtu(&self) -> usize {
         let max = self.doe.max_message_size().unwrap_or(0) as usize;
