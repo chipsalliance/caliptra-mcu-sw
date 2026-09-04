@@ -4,7 +4,7 @@
 //! the ROM, firwmare, and SoC manifest.
 
 use crate::offline_signing::{create_signing_request, SigningRequestJson};
-use crate::target_dir;
+use crate::{target_dir, ComponentSvnValidationConfig};
 use anyhow::{bail, Context, Result};
 use caliptra_auth_man_gen::{
     AuthManifestGenerator, AuthManifestGeneratorConfig, AuthManifestGeneratorKeyConfig,
@@ -103,6 +103,7 @@ pub struct CaliptraBuilder {
     soc_images: Option<Vec<ImageCfg>>,
     mcu_image_cfg: Option<ImageCfg>,
     soc_manifest_svn: Option<u32>,
+    component_svn_validation: Option<ComponentSvnValidationConfig>,
     vendor: String,
     model: String,
     /// Optional custom owner configuration for re-signing FW bundles.
@@ -130,6 +131,7 @@ impl CaliptraBuilder {
             soc_images: args.soc_images.clone(),
             mcu_image_cfg: args.mcu_image_cfg.clone(),
             soc_manifest_svn: args.soc_manifest_svn,
+            component_svn_validation: args.component_svn_validation.clone(),
             vendor: args
                 .vendor
                 .clone()
@@ -257,6 +259,7 @@ impl CaliptraBuilder {
             if self.mcu_firmware.is_none() {
                 bail!("MCU firmware is required to build SoC manifest");
             }
+            self.validate_component_svns()?;
             let mcu_fw_metadata =
                 self.get_mcu_manifest_metadata(self.mcu_firmware.as_ref().unwrap())?;
             let soc_images_metadata = self.get_soc_images_metadata()?;
@@ -273,6 +276,18 @@ impl CaliptraBuilder {
             self.soc_manifest = Some(path);
         }
         Ok(self.soc_manifest.clone().unwrap())
+    }
+
+    fn validate_component_svns(&self) -> Result<()> {
+        let images = self.soc_images.as_deref().unwrap_or(&[]);
+        let Some(config) = &self.component_svn_validation else {
+            if images.is_empty() {
+                return Ok(());
+            }
+            bail!("component SVN validation policy is required for SoC images");
+        };
+        crate::component_svn_validation::validate_component_svns(images, config)?;
+        Ok(())
     }
 
     pub fn replace_manifest_config(
@@ -923,6 +938,7 @@ fn main() -> Result<()> {
         if self.mcu_firmware.is_none() {
             bail!("MCU firmware is required to build auth manifest");
         }
+        self.validate_component_svns()?;
         let mcu_fw_metadata =
             self.get_mcu_manifest_metadata(self.mcu_firmware.as_ref().unwrap())?;
         let soc_images_metadata = self.get_soc_images_metadata()?;
@@ -1198,6 +1214,7 @@ impl FromStr for ImageCfg {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::ComponentSvnEntry;
 
     #[test]
     fn test_image_cfg_optional_network_filename() {
@@ -1297,5 +1314,49 @@ mod tests {
 
         let req = create_signing_request(&manifest).unwrap();
         assert_eq!(req.version, 1);
+    }
+
+    #[test]
+    fn signing_rejects_soc_images_without_component_svn_policy() {
+        let mut builder = CaliptraBuilder::new(&CaliptraBuildArgs {
+            mcu_firmware: Some("unused-runtime.bin".into()),
+            soc_images: Some(vec![ImageCfg {
+                component_id: 0x1000,
+                ..Default::default()
+            }]),
+            ..Default::default()
+        });
+
+        let error = builder
+            .get_unsigned_auth_manifest(None, None)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("validation policy is required"));
+    }
+
+    #[test]
+    fn signing_rejects_invalid_component_svn_policy_before_reading_images() {
+        let mut builder = CaliptraBuilder::new(&CaliptraBuildArgs {
+            mcu_firmware: Some("unused-runtime.bin".into()),
+            soc_images: Some(vec![ImageCfg {
+                component_id: 0x1000,
+                ..Default::default()
+            }]),
+            component_svn_validation: Some(ComponentSvnValidationConfig {
+                entries: vec![ComponentSvnEntry {
+                    component_id: 0x1000,
+                    current_svn: 3,
+                    min_svn: 4,
+                }],
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
+
+        let error = builder
+            .get_unsigned_auth_manifest(None, None)
+            .unwrap_err()
+            .to_string();
+        assert!(error.contains("min_svn 4 greater than current_svn 3"));
     }
 }

@@ -230,10 +230,28 @@ impl SvnFuseMapEntry {
     /// entries with the same `component_id` are equivalent).
     pub fn lookup(map: &[SvnFuseMapEntry], component_id: u32) -> Option<&'static FuseEntryInfo> {
         map.iter()
-            .find(|e| e.component_id == component_id)
-            .map(|e| e.fuse_entry)
+            .find(|entry| entry.component_id == component_id)
+            .map(|entry| entry.fuse_entry)
     }
 }
+
+use caliptra_mcu_registers_generated::fuses::{SOC_IMAGE_MIN_SVN_0, SOC_IMAGE_MIN_SVN_1};
+
+/// Reference platform mapping used by ROM and host-side artifact validation.
+pub const REFERENCE_SVN_FUSE_MAP: &[SvnFuseMapEntry] = &[
+    SvnFuseMapEntry {
+        component_id: 0x1000,
+        fuse_entry: SOC_IMAGE_MIN_SVN_0,
+    },
+    SvnFuseMapEntry {
+        component_id: 0x1001,
+        fuse_entry: SOC_IMAGE_MIN_SVN_0,
+    },
+    SvnFuseMapEntry {
+        component_id: 0x1002,
+        fuse_entry: SOC_IMAGE_MIN_SVN_1,
+    },
+];
 
 #[cfg(test)]
 mod tests {
