@@ -17,6 +17,7 @@ concurrency:
 
 jobs:
   build_firmware_fpga:
+    if: ${{ vars.RUN_FPGA_CI != 'false' }}
     runs-on: [e2-standard-8-big-disk]
     timeout-minutes: 45
     strategy:
@@ -155,6 +156,7 @@ jobs:
           retention-days: 1
 
   build_test_binaries:
+    if: ${{ vars.RUN_FPGA_CI != 'false' }}
     needs: build_firmware_fpga
     runs-on: [e2-standard-8-big-disk]
     timeout-minutes: 60
@@ -335,6 +337,7 @@ jobs:
           retention-days: 1
 
   test_artifacts:
+    if: ${{ vars.RUN_FPGA_CI != 'false' }}
     runs-on: vck190-subsystem
     needs: build_test_binaries
     timeout-minutes: 120

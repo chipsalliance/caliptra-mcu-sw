@@ -20,7 +20,23 @@ use crate::stack::{ConnectionState, Phase};
 ///
 /// V1.2 is the floor because our CAPABILITIES / ALGORITHMS request
 /// bodies only support the V1.2+ wire shape.
-pub(crate) const SUPPORTED_VERSIONS: &[SpdmVersion] = &[SpdmVersion::V13, SpdmVersion::V12];
+pub(crate) const SUPPORTED_VERSIONS: &[SpdmVersion] =
+    &[SpdmVersion::V14, SpdmVersion::V13, SpdmVersion::V12];
+
+/// Validate a GET_VERSION request without mutating connection or session state.
+///
+/// The dispatcher uses this before applying the protocol-mandated connection
+/// reset so malformed GET_VERSION requests leave existing state untouched.
+pub(crate) fn validate_get_version(req: &[u8]) -> SpdmResult<()> {
+    let (hdr, rest) = SpdmMsgHdrPdu::ref_from_prefix(req).map_err(|_| SPDM_INVALID_REQUEST)?;
+    if hdr.version != SpdmVersion::V10.to_u8() {
+        return Err(SPDM_VERSION_MISMATCH);
+    }
+    if rest.len() < 2 {
+        return Err(SPDM_INVALID_REQUEST);
+    }
+    Ok(())
+}
 
 /// Handles a `GET_VERSION` request and produces the matching `VERSION` response.
 ///
@@ -46,9 +62,6 @@ pub(crate) const SUPPORTED_VERSIONS: &[SpdmVersion] = &[SpdmVersion::V13, SpdmVe
 ///
 /// # Errors
 ///
-/// * [`SPDM_INVALID_REQUEST`] — request header could not be decoded,
-///   or `Param1`/`Param2` are non-zero.
-/// * [`SPDM_VERSION_MISMATCH`] — header's SPDM version is not 0x10.
 /// * Allocator / codec errors from [`build_response`] propagate via
 ///   `?` and end up as [`SPDM_BUSY`](crate::error::SPDM_BUSY) /
 ///   [`SPDM_INVALID_REQUEST`] respectively.
@@ -57,17 +70,6 @@ pub(crate) async fn handle_get_version<'a, Pal: SpdmPal>(
     pal: &'a Pal,
     io: &Pal::Io<'_>,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
-    // DSP0274 §10.2 Table 8: GET_VERSION header version shall be 0x10.
-    let req = io.request();
-    let (hdr, rest) = SpdmMsgHdrPdu::ref_from_prefix(req).map_err(|_| SPDM_INVALID_REQUEST)?;
-    if hdr.version != SpdmVersion::V10.to_u8() {
-        return Err(SPDM_VERSION_MISMATCH);
-    }
-    // Table 8: Param1, Param2 are Reserved.
-    if rest.len() < 2 || rest[0] != 0 || rest[1] != 0 {
-        return Err(SPDM_INVALID_REQUEST);
-    }
-
     let body = VersionRsp {
         versions: SUPPORTED_VERSIONS,
     };

@@ -15,6 +15,45 @@ use caliptra_mcu_firmware_bundler::args::{
 use std::io::Write;
 use std::path::PathBuf;
 
+fn runtime_features(
+    features: Option<&str>,
+    platform: &str,
+    no_default_features: bool,
+    example_app: bool,
+) -> Option<String> {
+    let mut runtime_features = features.filter(|s| !s.is_empty()).map(str::to_string);
+
+    // The user app is shared by emulator and FPGA, but DOT Runtime storage is
+    // currently implemented only by the emulator kernel. Keep DOT out of the
+    // app's platform-neutral default feature set and add it for emulator builds.
+    if platform == "emulator" && !no_default_features && !example_app {
+        for feature in ["dot-mci-mailbox", "dot-spdm-vdm"] {
+            let features = runtime_features.get_or_insert_with(String::new);
+            if !features.split(',').any(|enabled| enabled == feature) {
+                if !features.is_empty() {
+                    features.push(',');
+                }
+                features.push_str(feature);
+            }
+        }
+    }
+
+    if platform == "fpga" {
+        let features = runtime_features.get_or_insert_with(String::new);
+        if !features
+            .split(',')
+            .any(|feature| feature == "disable-lms-sig-verify")
+        {
+            if !features.is_empty() {
+                features.push(',');
+            }
+            features.push_str("disable-lms-sig-verify");
+        }
+    }
+
+    runtime_features
+}
+
 pub fn runtime_build_with_apps(args: &CaliptraBuildArgs) -> Result<PathBuf> {
     let features = args.features;
     let output_name = args.output_name.clone();
@@ -51,7 +90,12 @@ pub fn runtime_build_with_apps(args: &CaliptraBuildArgs) -> Result<PathBuf> {
     let release_dir = common.release_dir()?;
     let runtime_bin = release_dir.join(&output_name);
 
-    let runtime_features = features.filter(|s| !s.is_empty()).map(|f| f.to_string());
+    let runtime_features = runtime_features(
+        features,
+        platform_str,
+        args.no_default_features,
+        example_app,
+    );
     let bundle_cmd = BundleCommands::Bundle {
         common,
         ld: LdArgs::default(),
@@ -125,4 +169,47 @@ pub fn bare_metal_build(platform: Option<&str>, package_name: &str) -> Result<Pa
 
     caliptra_mcu_firmware_bundler::execute(bundle_cmd)?;
     Ok(runtime_bin)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::runtime_features;
+
+    #[test]
+    fn emulator_defaults_enable_dot() {
+        assert_eq!(
+            runtime_features(Some("release,all-features"), "emulator", false, false).as_deref(),
+            Some("release,all-features,dot-mci-mailbox,dot-spdm-vdm")
+        );
+    }
+
+    #[test]
+    fn emulator_example_app_does_not_receive_user_app_dot_features() {
+        assert_eq!(
+            runtime_features(Some("test-mcu-svn-gt-fuse"), "emulator", false, true).as_deref(),
+            Some("test-mcu-svn-gt-fuse")
+        );
+    }
+
+    #[test]
+    fn explicit_emulator_features_are_unchanged_without_defaults() {
+        assert_eq!(
+            runtime_features(
+                Some("test-caliptra-util-host-spdm-vdm-validator"),
+                "emulator",
+                true,
+                false,
+            )
+            .as_deref(),
+            Some("test-caliptra-util-host-spdm-vdm-validator")
+        );
+    }
+
+    #[test]
+    fn fpga_defaults_exclude_dot() {
+        assert_eq!(
+            runtime_features(Some("release,all-features"), "fpga", false, false).as_deref(),
+            Some("release,all-features,disable-lms-sig-verify")
+        );
+    }
 }

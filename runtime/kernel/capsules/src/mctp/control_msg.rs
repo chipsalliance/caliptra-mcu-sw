@@ -91,6 +91,7 @@ pub fn process_mctp_control_msg(
     msg_buf: &[u8],
     local_eid: u8,
     supported_msg_types: &[MessageType],
+    uuid: &[u8; 16],
     resp_buf: &mut [u8],
 ) -> Result<MCTPCtrlMsgResp, ErrorCode> {
     if msg_buf.len() < MCTP_CTRL_MSG_HEADER_LEN {
@@ -136,6 +137,9 @@ pub fn process_mctp_control_msg(
                 MCTPCtrlCmd::GetEID => mctp_ctrl_cmd
                     .process_get_endpoint_id(local_eid, rsp_payload)
                     .map(|_| mctp_ctrl_cmd.resp_data_len()),
+                MCTPCtrlCmd::GetEndpointUUID => mctp_ctrl_cmd
+                    .process_get_endpoint_uuid(uuid, rsp_payload)
+                    .map(|_| mctp_ctrl_cmd.resp_data_len()),
                 MCTPCtrlCmd::GetVersionSupport => mctp_ctrl_cmd.process_get_version_support(
                     req_buf,
                     rsp_payload,
@@ -176,6 +180,7 @@ pub fn process_mctp_control_msg(
 pub enum MCTPCtrlCmd {
     SetEID = 1,
     GetEID = 2,
+    GetEndpointUUID = 3,
     GetVersionSupport = 4,
     GetMsgTypeSupport = 5,
     GetVendorDefinedMsgSupport = 6,
@@ -188,6 +193,7 @@ impl TryFrom<u8> for MCTPCtrlCmd {
         Ok(match val {
             1 => Self::SetEID,
             2 => Self::GetEID,
+            3 => Self::GetEndpointUUID,
             4 => Self::GetVersionSupport,
             5 => Self::GetMsgTypeSupport,
             6 => Self::GetVendorDefinedMsgSupport,
@@ -201,6 +207,7 @@ impl MCTPCtrlCmd {
         match self {
             MCTPCtrlCmd::SetEID => 2,
             MCTPCtrlCmd::GetEID => 0,
+            MCTPCtrlCmd::GetEndpointUUID => 0,
             MCTPCtrlCmd::GetVersionSupport => 1,
             MCTPCtrlCmd::GetMsgTypeSupport => 0,
             MCTPCtrlCmd::GetVendorDefinedMsgSupport => 1,
@@ -211,6 +218,7 @@ impl MCTPCtrlCmd {
         match self {
             MCTPCtrlCmd::SetEID => 4,
             MCTPCtrlCmd::GetEID => 4,
+            MCTPCtrlCmd::GetEndpointUUID => 17,
             MCTPCtrlCmd::GetVersionSupport => 18, // 2 bytes header + 4 entries * 4 bytes each
             MCTPCtrlCmd::GetMsgTypeSupport => 2 + MCTP_NUM_MSG_TYPES_SUPPORTED, // 1 byte for completion code + 1 byte for count + supported message types
             MCTPCtrlCmd::GetVendorDefinedMsgSupport => {
@@ -282,6 +290,20 @@ impl MCTPCtrlCmd {
 
         resp.write_to(&mut rsp_buf[..self.resp_data_len()])
             .map_err(|_| ErrorCode::FAIL)
+    }
+
+    pub fn process_get_endpoint_uuid(
+        &self,
+        uuid: &[u8; 16],
+        rsp_buf: &mut [u8],
+    ) -> Result<(), ErrorCode> {
+        if rsp_buf.len() < self.resp_data_len() {
+            return Err(ErrorCode::NOMEM);
+        }
+
+        rsp_buf[0] = CmdCompletionCode::Success as u8;
+        rsp_buf[1..self.resp_data_len()].copy_from_slice(uuid);
+        Ok(())
     }
 
     pub fn process_get_version_support(
@@ -665,6 +687,45 @@ mod tests {
     }
 
     #[test]
+    fn test_get_endpoint_uuid() {
+        let uuid = [
+            0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E,
+            0x0F, 0x10,
+        ];
+        let rsp_buf = &mut [0; 17];
+
+        MCTPCtrlCmd::GetEndpointUUID
+            .process_get_endpoint_uuid(&uuid, rsp_buf)
+            .unwrap();
+
+        assert_eq!(rsp_buf[0], CmdCompletionCode::Success as u8);
+        assert_eq!(&rsp_buf[1..], &uuid);
+    }
+
+    #[test]
+    fn test_process_mctp_control_msg_get_endpoint_uuid() {
+        let mut msg_req = [0; MCTP_CTRL_MSG_HEADER_LEN];
+        let mut msg_hdr = MCTPCtrlMsgHdr::new();
+        msg_hdr.prepare_header(1, 0, 0, MCTPCtrlCmd::GetEndpointUUID as u8);
+        msg_hdr.write_to_buf(&mut msg_req).unwrap();
+
+        let uuid = [
+            0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7, 0xA8, 0xA9, 0xAA, 0xAB, 0xAC, 0xAD,
+            0xAE, 0xAF,
+        ];
+        let rsp_buf = &mut [0; MCTP_CTRL_MSG_HEADER_LEN + 17];
+        let resp = process_mctp_control_msg(&msg_req, 0x0A, &[], &uuid, rsp_buf).unwrap();
+
+        assert_eq!(resp.assigned_eid, None);
+        assert_eq!(resp.resp_len, MCTP_CTRL_MSG_HEADER_LEN + 17);
+        assert_eq!(
+            rsp_buf[MCTP_CTRL_MSG_HEADER_LEN],
+            CmdCompletionCode::Success as u8
+        );
+        assert_eq!(&rsp_buf[MCTP_CTRL_MSG_HEADER_LEN + 1..], &uuid);
+    }
+
+    #[test]
     fn test_process_mctp_control_msg_returns_assigned_eid() {
         let mut msg_req = [0; MCTP_CTRL_MSG_HEADER_LEN + 2];
         let mut msg_hdr = MCTPCtrlMsgHdr::new();
@@ -675,7 +736,7 @@ mod tests {
         msg_req[MCTP_CTRL_MSG_HEADER_LEN..].copy_from_slice(&[0x00, 0x0A]);
 
         let rsp_buf = &mut [0; MCTP_CTRL_MSG_HEADER_LEN + 4];
-        let resp = process_mctp_control_msg(&msg_req, 0, &[], rsp_buf).unwrap();
+        let resp = process_mctp_control_msg(&msg_req, 0, &[], &[0; 16], rsp_buf).unwrap();
 
         assert_eq!(resp.assigned_eid, Some(0x0A));
         assert_eq!(resp.resp_len, MCTP_CTRL_MSG_HEADER_LEN + 4);
@@ -700,7 +761,8 @@ mod tests {
 
         let rsp_buf = &mut [0xA5; MCTP_CTRL_MSG_HEADER_LEN + 9];
         let resp =
-            process_mctp_control_msg(&msg_req, 0, &[MessageType::Caliptra], rsp_buf).unwrap();
+            process_mctp_control_msg(&msg_req, 0, &[MessageType::Caliptra], &[0; 16], rsp_buf)
+                .unwrap();
 
         let mut hdr = [0; 4];
         hdr[..MCTP_CTRL_MSG_HEADER_LEN].copy_from_slice(&rsp_buf[..MCTP_CTRL_MSG_HEADER_LEN]);
@@ -741,7 +803,7 @@ mod tests {
             .unwrap();
 
         let rsp_buf = &mut [0xA5; MCTP_CTRL_MSG_HEADER_LEN + 1];
-        let resp = process_mctp_control_msg(&msg_req, 0, &[], rsp_buf).unwrap();
+        let resp = process_mctp_control_msg(&msg_req, 0, &[], &[0; 16], rsp_buf).unwrap();
 
         let mut hdr = [0; 4];
         hdr[..MCTP_CTRL_MSG_HEADER_LEN].copy_from_slice(&rsp_buf[..MCTP_CTRL_MSG_HEADER_LEN]);

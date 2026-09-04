@@ -8,6 +8,7 @@ edition.workspace = true
 
 [features]
 default = []
+device-ownership-transfer = []
 
 [dependencies]
 caliptra-mcu-common-commands = { workspace = true }
@@ -20,4 +21,4 @@ zerocopy = { workspace = true }
 
 [dev-dependencies]
 futures = { workspace = true }
-mcu-caliptra-api-lite = { workspace = true, features = ["mailbox-io"] }
+mcu-caliptra-api = { workspace = true, features = ["mailbox-io"] }

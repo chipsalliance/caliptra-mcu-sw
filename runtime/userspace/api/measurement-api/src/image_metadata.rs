@@ -2,7 +2,7 @@
 
 //! Metadata passed to Measurement API for MCU-managed image measurement flows.
 
-use mcu_caliptra_api_lite::ImageHashSource;
+use mcu_caliptra_api::ImageHashSource;
 
 /// SHA-384 digest size used for SoC image measurements.
 pub const IMAGE_MEASUREMENT_DIGEST_SIZE: usize = 48;
@@ -65,6 +65,23 @@ impl ImageMetadata {
             // TODO: replace explicit zeroes when svn/version sources are wired.
             svn: 0,
             version: 0,
+            flags: ImageMetadataFlags::EMPTY,
+        }
+    }
+
+    /// Build initial-load metadata when the trusted caller already has the
+    /// authenticated image digest and does not need Caliptra to hash memory.
+    pub const fn initial_load_from_digest(
+        image_size: u32,
+        measurement: [u8; IMAGE_MEASUREMENT_DIGEST_SIZE],
+    ) -> Self {
+        Self {
+            operation: MeasurementOperation::InitialLoad,
+            source: ImageHashSource::InRequest,
+            image_size,
+            svn: 0,
+            version: 0,
+            measurement,
             flags: ImageMetadataFlags::EMPTY,
         }
     }

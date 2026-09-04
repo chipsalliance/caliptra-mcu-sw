@@ -13,9 +13,12 @@ mod test {
     use caliptra_mcu_testing_common::i3c_socket::BufferedStream;
     use caliptra_mcu_testing_common::spdm_responder_validator::mctp::MctpTransport;
     use caliptra_mcu_testing_common::spdm_responder_validator::{
-        execute_spdm_responder_validator, SpdmValidatorRunner, SERVER_LISTENING,
+        execute_spdm_responder_validator, wait_for_spdm_responder_validator, SpdmValidatorRunner,
+        SERVER_LISTENING,
     };
-    use caliptra_mcu_testing_common::wait_for_runtime_start;
+    use caliptra_mcu_testing_common::{
+        wait_for_runtime_start, wait_for_spdm_responder_ready, SpdmResponderTransport,
+    };
     use random_port::PortPicker;
     use std::net::{SocketAddr, TcpListener, TcpStream};
     use std::process::exit;
@@ -85,7 +88,7 @@ mod test {
             if !caliptra_mcu_testing_common::is_emulator_running() {
                 exit(-1);
             }
-            thread::sleep(Duration::from_secs(5)); // give time for the app to be loaded and ready
+            wait_for_spdm_responder_ready(SpdmResponderTransport::Mctp);
             if !caliptra_mcu_testing_common::is_emulator_running() {
                 exit(-1);
             }
@@ -102,9 +105,12 @@ mod test {
                 if !test.is_passed() {
                     println!("[{}]: Spdm Responder Conformance Test Failed", TEST_NAME);
                     exit(-1);
-                } else {
+                } else if wait_for_spdm_responder_validator() {
                     println!("[{}]: Spdm Responder Conformance Test Passed", TEST_NAME);
                     exit(0);
+                } else {
+                    println!("[{}]: Spdm Validator Result Check Failed", TEST_NAME);
+                    exit(-1);
                 }
             }
         });

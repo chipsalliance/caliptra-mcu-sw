@@ -2,14 +2,14 @@
 
 This contains details about the Caliptra implementation of Device Ownership Transfer (DOT) with MCU to assist.
 
-Device Ownership Transfer (DOT) is a security mechanism implemented in Caliptra that enables device owners to establish code signing capabilities rooted in the hardware root of trust without permanently burning the Code Authentication Key (CAK) into fuses. This provides flexibility in ownership management while maintaining strong security guarantees.
+Device Ownership Transfer (DOT) is a security mechanism implemented in Caliptra that enables device owners to establish code signing capabilities rooted in the hardware root of trust without permanently burning the Code Authentication Key (CAK) digest into fuses. This provides flexibility in ownership management while maintaining strong security guarantees.
 
 Reference: [OCP Device Ownership Transfer specification](https://opencomputeproject.github.io/Security/device-ownership-transfer/HEAD/).
 
 ## Table of Contents
 1. [Diagrams](#diagrams)
 1. [Glossary](#glossary)
-1. [DOT Modes](#dot-modes)
+1. [Implemented DOT Model](#implemented-dot-model)
 1. [Cryptographic Binding Mechanism](#cryptographic-binding-mechanism)
 1. [System Components](#system-components)
 1. [State Machine](#state-machine)
@@ -17,20 +17,19 @@ Reference: [OCP Device Ownership Transfer specification](https://opencomputeproj
 1. [Runtime Commands](#runtime-commands)
 1. [Lifecycle Transitions](#lifecycle-transitions)
 1. [Recovery Mechanisms](#recovery-mechanisms)
-1. [Ownership RAM Recommendations](#ownership-ram-recommendations)
 1. [Security Considerations](#security-considerations)
+1. [Appendix: Command Reference](#appendix-command-reference)
 
 
 ## Diagrams
 
 * [ROM Startup and DOT State Initialization](#dot-1-init)
-* [Recovery Mode and FMC Flow Management](#dot-2-recovery)
+* [Locked-State Recovery](#dot-2-recovery)
 * [State Management](#dot-3-state)
-* [Runtime Command: DOT_CAK_INSTALL](#dot-4-command-cak-install)
 * [Runtime Commands: DOT_LOCK / DOT_DISABLE](#dot-5-command-lock)
 * [Runtime Commands: DOT_UNLOCK_CHALLENGE / DOT_UNLOCK](#dot-6-command-unlock)
-* [Lifecycle: Uninitialized → Volatile → Locked](#dot-7-install-lock)
-* [Unlock Flow: Locked → Volatile → Uninitialized](#dot-8-unlock-flow)
+* [Lifecycle: Uninitialized → Locked](#dot-7-install-lock)
+* [Unlock Flow: Locked → Uninitialized](#dot-8-unlock-flow)
 * [Recovery: Handling Corrupted DOT_BLOB](#dot-9-recovery-corrupted-blob)
 
 ---
@@ -39,84 +38,77 @@ Reference: [OCP Device Ownership Transfer specification](https://opencomputeproj
 
 **BMC (Baseboard Management Controller)**: System management controller that interfaces with Caliptra to issue DOT commands and manage recovery procedures.
 
-**CAK (Code Authentication Key)**: The public key used to authenticate firmware and code running on the device. This is the owner's code signing key rooted in Caliptra.
+**CAK (Code Authentication Key)**: The owner's public code-signing key set used
+to authenticate owner-signed firmware before execution.
+
+**CAK digest**: The SHA-384 digest of the CAK. DOT carries this 48-byte digest
+and installs it into Caliptra as the owner public-key hash, thereby rooting the
+CAK in Caliptra.
 
 **Caliptra**: Hardware root of trust providing secure boot and cryptographic services.
 
 **Caliptra_Core**: Component within Caliptra that performs cryptographic operations offload (key derivation, HMAC, signature verification), derives DOT_EFFECTIVE_KEY, authenticates DOT_BLOBs and commands, and manages owner public key hash.
 
-**Caliptra_MCU**: Microcontroller component that manages DOT state machine, handles runtime commands, controls fuse burning operations, coordinates with Caliptra_Core, and manages Ownership_Storage.
+**Caliptra_MCU**: Microcontroller component that manages the DOT state machine, handles runtime commands, controls fuse burning operations, coordinates with Caliptra_Core, and reads and writes the DOT_BLOB.
 
 **DOT (Device Ownership Transfer)**: Security mechanism for flexible ownership management that enables device owners to establish code signing capabilities rooted in hardware without permanently burning keys into fuses.
 
-**DOT_BLOB**: A cryptographically authenticated data structure containing the CAK and LAK, sealed with the DOT_EFFECTIVE_KEY via HMAC. Stored in external flash storage.
+**DOT_BLOB**: A cryptographically authenticated data structure containing the
+CAK digest and LAK digest, sealed with the DOT_EFFECTIVE_KEY via HMAC.
+Stored in external flash storage.
 
-**DOT_EFFECTIVE_KEY**: A key derived from DOT_ROOT_KEY and the DOT_FUSE_ARRAY value, used to authenticate DOT_BLOBs via HMAC. The derivation varies based on EVEN/ODD state.
+**DOT_EFFECTIVE_KEY**: An HMAC key derived inside Caliptra from a selected stable
+identity root, the DOT domain-separation label, and the DOT fuse epoch. The
+reference ROM and Runtime use the stable IDevID root. The key is returned to MCU only as an
+opaque encrypted CMK and is used to authenticate DOT_BLOBs via HMAC.
 
 **DOT_FUSE_ARRAY**: A minimal fuse array using 1 bit per state change to track DOT state transitions. The fuse value acts as a counter that increments with each state change (one-time programmable). Must reside in a non-ECC protected fuse partition (e.g., `VENDOR_TEST_PARTITION` in the reference map) so that individual bits can be burned sequentially over time without invalidating partition ECC protections.
 
-**DOT_ROOT_KEY**: A hardware-derived secret key unique to the silicon, used as the basis for deriving DOT_EFFECTIVE_KEY. Provides silicon binding.
-
-**EVEN STATE**: Uninitialized/Volatile state (fuse value % 2 == 0) where no persistent ownership is bound to the silicon.
-
-**FMC (First Mutable Code)**: First stage of mutable firmware. In Caliptra MCU architecture, FMC and RT are not differentiated as separate binaries (FMC is RT).
+**EVEN STATE**: Uninitialized state (fuse value % 2 == 0) where DOT does not provide an active owner.
 
 **HMAC (Hash-based Message Authentication Code)**: Cryptographic authentication method used to seal and verify DOT_BLOBs.
 
-**LAK (Lock Authentication Key)**: The private key used to lock/unlock the DOT state and control the Disabled state. The entity possessing LAK.priv has the authority to:
-- Lock ownership to the device (DOT_LOCK)
-- Disable DOT while maintaining ownership (DOT_DISABLE)
-- Unlock and release ownership (DOT_UNLOCK)
+**LAK (Lock Authentication Key)**: The owner's hybrid authorization key set,
+comprising an ECDSA P-384 key pair and an ML-DSA-87 key pair. To authorize
+`DOT_UNLOCK`, the owner signs the one-time challenge transcript with both LAK
+private keys, and the device verifies both signatures with the corresponding
+LAK public keys. The private keys remain with the owner.
+
+**LAK digest**: The SHA-384 digest of the LAK public-key set. DOT carries this
+48-byte digest in lock, disable, and rotate requests and stores it in the
+authenticated DOT_BLOB. During `DOT_UNLOCK`, the device hashes the supplied LAK
+public keys and compares the result with the stored LAK digest before verifying
+both signatures. Current Rust APIs use the legacy field name `lak_hash` for
+this value.
 
 **ODD STATE**: Locked/Disabled state (fuse value % 2 == 1) where ownership is cryptographically bound to the silicon via DOT_BLOB.
 
-**Ownership_Storage**: Volatile memory (e.g., FLOP-based register) that stores the current CAK and LAK during runtime. Must be retained across at least one MCU reset level and invalidated power cycle. Contents are not updatable once marked valid by a non-Caliptra entity. Also stores desired DOT_FUSE_ARRAY state for pending transitions.
-
 **ROM (Read-Only Memory)**: Immutable boot code that executes first on device startup.
 
-**RT (Runtime)**: Main operating firmware that executes after ROM and FMC initialization.
+**RT (Runtime)**: Main operating firmware that executes after ROM.
 
-**VendorKey**: Vendor master key used for DOT_OVERRIDE operations in catastrophic recovery scenarios. Highest privilege key in the system.
+**DOT recovery key**: Hybrid ECC and ML-DSA key used to authorize DOT_OVERRIDE in catastrophic recovery scenarios. Its public-key hash is provisioned in OTP.
 
-**Volatile DOT**: Operating mode where CAK is installed per boot cycle and ownership is lost on power cycle. No fuse burning required.
-
-**Mutable Locking DOT**: Operating mode where ownership is locked and bound to silicon via cryptographic binding using DOT_FUSE_ARRAY. Persists across power cycles.
+**Mutable Locking DOT**: The implemented ownership model, where ownership is locked and bound to silicon via cryptographic binding using DOT_FUSE_ARRAY. It persists across power cycles.
 
 ### Goals
 - Enable owner-specific code signing rooted in Caliptra (the root of trust)
 - Avoid permanent fuse programming for ownership keys
-- Support both temporary (volatile) and persistent (mutable locking) ownership models
+- Support persistent mutable-locking ownership
 - Provide secure ownership transfer mechanisms
 - Enable recovery from corrupted states
 
 ---
 
-## DOT Modes
+## Implemented DOT Model
 
-### 1. Volatile DOT
-
-**Characteristics:**
-- CAK is installed per boot cycle
-- Ownership information is stored only in Ownership_Storage
-- Power cycle clears ownership
-- No fuse burning required
-- DOT_FUSE_ARRAY remains in EVEN state
-
-**Use Cases:**
-- Temporary ownership scenarios
-
-**Flow:**
-```
-Uninitialized (EVEN) → [DOT_CAK_INSTALL] → Volatile (EVEN) → [Power Cycle] → Uninitialized (EVEN)
-```
-
-### 2. Mutable Locking DOT
+### Mutable Locking DOT
 
 **Characteristics:**
 - CAK is locked and bound to silicon via cryptographic binding
 - Uses DOT_FUSE_ARRAY to create cryptographic binding (1 bit per state change)
 - Ownership persists across power cycles
-- Requires LAK authentication for lock/unlock/disable operations
+- Uses generic command authorization for lock, disable, and rotate; unlock uses LAK authentication
 - DOT_BLOB stored in external storage (flash)
 - State transitions require fuse burning
 - Supports both Locked (with CAK) and Disabled (without CAK) states
@@ -126,8 +118,8 @@ Uninitialized (EVEN) → [DOT_CAK_INSTALL] → Volatile (EVEN) → [Power Cycle]
 
 **Flow:**
 ```
-Uninitialized (EVEN) → Volatile (EVEN) → [DOT_LOCK] → Locked (ODD) → [DOT_UNLOCK] → Volatile (EVEN) → Uninitialized (EVEN)
-                     ↘ [DOT_DISABLE] → Disabled (ODD) → [DOT_UNLOCK] → Uninitialized (EVEN)
+Uninitialized (EVEN) → [DOT_LOCK] → Locked (ODD) → [DOT_UNLOCK] → Uninitialized (EVEN)
+                     ↘ [DOT_DISABLE] → Disabled (ODD) → [DOT_UNLOCK] ↗
 ```
 
 ---
@@ -138,11 +130,27 @@ The mutable locking DOT mechanism achieves secure binding without secure storage
 
 ### Key Derivation
 
-The DOT_EFFECTIVE_KEY is derived as follows:
+Caliptra ROM derives and write-locks stable IDevID and LDevID roots in its key
+vault. The IDevID root is ultimately derived from the device UDS; the LDevID
+root additionally incorporates Field Entropy. The reference DOT ROM and Runtime
+paths both use the stable IDevID root.
 
+`RomParameters::dot_stable_key_type` can change the root used by ROM-only DOT
+paths, but the reference Runtime always requests IDevID. A platform that changes
+the ROM setting must make the corresponding Runtime change and migrate or
+recover any existing blob; the reference implementation does neither.
+
+MCU requests the effective key with `CM_DERIVE_STABLE_KEY` using this 32-byte
+context:
+
+```text
+info = "Caliptra DOT stable key" || epoch_u16_le || zero_padding
+DOT_EFFECTIVE_KEY = CM_DERIVE_STABLE_KEY(selected_stable_identity_root, info)
 ```
-DOT_EFFECTIVE_KEY = KDF(DOT_ROOT_KEY, DOT_FUSE_ARRAY_VALUE)
-```
+
+The selected stable identity root and plaintext effective key remain inside
+Caliptra. MCU receives an opaque encrypted CMK that it can pass to Caliptra's
+HMAC service.
 
 ### State-Dependent Derivation
 
@@ -159,15 +167,16 @@ DOT_EFFECTIVE_KEY = KDF(DOT_ROOT_KEY, DOT_FUSE_ARRAY_VALUE)
 ### DOT_BLOB Authentication
 
 ```
-DOT_BLOB = {CAK, LAK, metadata}
+DOT_BLOB = {CAK_DIGEST, LAK_DIGEST, metadata}
 HMAC_TAG = HMAC-SHA-512(DOT_EFFECTIVE_KEY, DOT_BLOB)
 ```
 
-The DOT_BLOB is authenticated on every boot in ODD state to ensure the CAK and LAK is authentic.
+The DOT_BLOB is authenticated on every boot in ODD state to ensure the CAK and
+LAK digests are authentic.
 
 ### Security Properties
 
-1. **Binding to Silicon**: DOT_ROOT_KEY is unique per device, preventing DOT_BLOB portability
+1. **Binding to Silicon**: The selected stable identity root is device-derived, preventing DOT_BLOB portability
 2. **Binding to State**: Fuse value is incorporated into key derivation, preventing rollback attacks
 3. **Forward Security**: Unlocking increments fuses, invalidating old DOT_BLOBs
 4. **No Secure Storage Required**: Cryptographic binding replaces need for secure non-volatile storage
@@ -181,13 +190,13 @@ The DOT_BLOB is authenticated on every boot in ODD state to ensure the CAK and L
 - Handles runtime commands
 - Controls fuse burning operations
 - Coordinates with Caliptra_Core for cryptographic operations
-- Manages Ownership_Storage
+- Reads, authenticates, and updates the DOT_BLOB
 
 ### Caliptra_Core
 - Performs cryptographic operations offload(key derivation, HMAC, signature verification)
 - Derives DOT_EFFECTIVE_KEY
 - Authenticates DOT_BLOBs and commands
-- Manages owner public key hash (SET_OWNER_PK_HASH)
+- Installs the selected owner public key hash (`INSTALL_OWNER_PK_HASH`)
 
 ### DOT_FUSE_ARRAY
 - Hardware fuse array
@@ -197,18 +206,9 @@ The DOT_BLOB is authenticated on every boot in ODD state to ensure the CAK and L
 - Written during state transitions
 - One-time programmable (OTP) per bit
 
-### Ownership_Storage
-- Volatile storage for current CAK and LAK (ex, FLOP based register)
-- Content must be retained across at least one MCU reset level; should be retained across as many MCU reset levels as possible
-- Ownership data must be invalidated and/or scrubbed on power cycle
-- Ownership data must not be updatable once marked as valid by a non-Caliptra entity
-- Stores desired DOT_FUSE_ARRAY state for pending transitions
-
-See [Ownership RAM Recommendations](#ownership-ram-recommendations) for detailed guidance on how this storage should be sized, laid out, retained across resets, and used to coordinate DOT flows between ROM and runtime.
-
 ### Storage (Flash)
 - Non-volatile external storage
-- Stores DOT_BLOB (with redundancy)
+- Stores the active DOT_BLOB
 - Not assumed to be secure
 
 ### BMC (Baseboard Management Controller)
@@ -225,74 +225,49 @@ See [Ownership RAM Recommendations](#ownership-ram-recommendations) for detailed
 
 #### 1. Uninitialized (EVEN State)
 - DOT_FUSE_ARRAY is in EVEN state
-- No CAK in Ownership_Storage
-- Device boots without owner authentication
-- No DOT_BLOB exists
+- DOT does not provide an active owner
+- ROM installs the fused owner PK hash when it is provisioned
+- An empty DOT_BLOB is permitted; a nonempty blob must authenticate with the next-epoch key
 
-#### 2. Volatile (EVEN State)
-- DOT_FUSE_ARRAY is in EVEN state
-- CAK present in Ownership_Storage
-- Device boots with owner authentication
-- Ownership lost on power cycle
-- No DOT_BLOB present
-
-#### 3. Locked (ODD State)
+#### 2. Locked (ODD State)
 - DOT_FUSE_ARRAY is in ODD state
-- CAK present in Ownership_Storage (retrieved from DOT_BLOB)
+- Authenticated DOT_BLOB contains a nonzero CAK digest
 - DOT_BLOB authenticated
 - Device boots with owner authentication
 - Ownership persists across power cycles
 - DOT_BLOB present in storage
 
-#### 4. Disabled (ODD State)
+#### 3. Disabled (ODD State)
 - DOT_FUSE_ARRAY is in ODD state
-- LAK present in DOT_BLOB, but no CAK
-- Device boots without code authentication enforcement
+- LAK digest present in DOT_BLOB, but no CAK digest
+- ROM authenticates the DOT_BLOB and installs the fused owner PK hash when it is provisioned
 - Ownership is locked to silicon (via LAK) preventing unauthorized takeover
-- Useful when owner doesn't want code signing but wants to prevent others from claiming ownership
 
-#### 5. Corrupted (ODD State)
+#### 4. Corrupted (ODD State)
 - DOT_FUSE_ARRAY is in ODD state
 - DOT_BLOB is corrupted or missing
-- Device boots into recovery mode (ROM or FMC)
+- Normal firmware boot stops while ROM invokes the platform's configured locked-state recovery policy
 - No CAK available
-- Special recovery or override commands accepted
+- Configured ROM recovery handlers may restore a backup blob or perform a recovery-key override
 
 ### State Transitions
 
-```
-         ┌─────────────────┐
-         │ Uninitialized   │ (EVEN, n)
-         │ No CAK          │
-         └────────┬────────┘
-                  │
-                  ├─────────────────────────────────────┐
-                  │ DOT_CAK_INSTALL + Reset             │ DOT_DISABLE + Reset + Fuse Burn
-                  ▼                                     ▼
-         ┌─────────────────┐                  ┌─────────────────┐
-         │ Volatile        │ (EVEN, n)        │ Disabled        │ (ODD, n+1)
-         │ CAK in RAM      │                  │ LAK from BLOB   │
-         └────────┬────────┘                  │ No CAK          │
-                  │ DOT_LOCK + Reset          └────────┬────────┘
-                  │ + Fuse Burn                        │ DOT_UNLOCK + Reset + Fuse Burn
-                  ▼                                    │
-         ┌─────────────────┐                           │
-         │ Locked          │ (ODD, n+1)                │
-         │ CAK from BLOB   │                           │
-         └────────┬────────┘                           │
-                  │ DOT_UNLOCK + Reset + Fuse Burn     │
-                  ▼                                    │
-         ┌─────────────────┐                           │
-         │ Volatile        │ (EVEN, n+2)               │
-         │ CAK in RAM      │                           │
-         └────────┬────────┘                           │
-                  │ Power Cycle                        │
-                  └─────────────┬──────────────────────┘
-                                ▼
-                       ┌─────────────────┐
-                       │ Uninitialized   │ (EVEN, n+2)
-                       │ No CAK          │
-                       └─────────────────┘
+```text
+Uninitialized (EVEN, n)
+    ├─ DOT_LOCK    → Locked  (ODD, n+1)
+    └─ DOT_DISABLE → Disabled (ODD, n+1)
+
+Locked / Disabled (ODD, n)
+    └─ DOT_UNLOCK  → Uninitialized (EVEN, n+1)
+
+Locked (ODD, n)
+    └─ DOT_ROTATE  → Locked (ODD, n+2)
+
+Disabled (ODD, n)
+    └─ DOT_ROTATE  → Locked (ODD, n+2)
+
+Uninitialized (EVEN, n)
+    └─ DOT_ROTATE  → EVEN at command completion; stages a boot-time lock
 ```
 
 ---
@@ -335,36 +310,39 @@ skinparam sequence {
 participant Caliptra_MCU
 participant Caliptra_Core
 participant DOT_FUSE_ARRAY
-participant Ownership_Storage
 participant Storage
 
 autonumber
 
-Caliptra_MCU -> Caliptra_MCU : Start up MCU ROM
-Caliptra_MCU -> Caliptra_Core : Start Core
-Caliptra_MCU -> DOT_FUSE_ARRAY : MCU ROM read DOT_FUSE_ARRAY for State (n)
-note across : DOT_FUSE_ARRAY is either in EVEN STATE (not locked, not disabled) or in ODD STATE dot-1(locked or disabled)
-Caliptra_MCU -> Caliptra_Core : MCU ROM calls Core ROM to DERIVE_KEY with DOT_FUSE_ARRAY as input
-alt DOT FUSE is in EVEN STATE
-    Caliptra_Core -> Caliptra_Core : Core-ROM derive DOT_EFFECTIVE_KEY with DOT_ROOT_KEY and DOT_FUSE_ARRAY value (n+1)
-    note across : The derived key represent the key that will be used to seal the next DOT_BLOB
-else DOT FUSE is in ODD STATE
-    Caliptra_Core -> Caliptra_Core : Core-ROM derive DOT_EFFECTIVE_KEY with DOT_ROOT_KEY and DOT_FUSE_ARRAY value (n)
-    note across : The derived key represent the key that is used to authenticate the current DOT_BLOB
-    Caliptra_MCU -> Storage : MCU ROM reads DOT_BLOB from storage
-    note across : In the ODD State, DOT_BLOB must be available from storage
-    Caliptra_MCU -> Caliptra_Core : MCU ROM asks Core-ROM to authenticate DOT_BLOB with DOT_EFFECTIVE_KEY (HMAC function)
-    alt DOT_BLOB is authentic (Contains CAK / LAK)
-        Caliptra_MCU -> Ownership_Storage : MCU ROM programs CAK / LAK from DOT_BLOB into Ownership_Storage
-        note across : This would overwrite existing CAK / LAK from previous volatile install if exist, but that's ok
+Caliptra_MCU -> Caliptra_MCU : Start MCU ROM and initialize Caliptra Core
+Caliptra_MCU -> DOT_FUSE_ARRAY : Read DOT initialization, fuse count, and parity
+Caliptra_MCU -> Storage : Read DOT_BLOB
+alt DOT_BLOB is empty or erased
+    alt DOT initialized and parity is ODD
+        Caliptra_MCU -> Caliptra_MCU : Enter configured locked-state recovery path
+    else
+        Caliptra_MCU -> Caliptra_MCU : Select fused owner PK hash fallback, if provisioned
     end
-    alt DOT_BLOB corruptted
-        Caliptra_MCU -> Caliptra_MCU : MCU ROM boots MCU RT without Stage 2 CAK / LAK indicating DOT recovery mode
-        note across: MCU RT is implemented to only recover device DOT state when booted into DOT recovery mode
-        note across : For more details, Ref "DOT Recovery Mode and FMC Flow Management"
+else DOT_BLOB is present
+    Caliptra_MCU -> Caliptra_Core : Derive DOT_EFFECTIVE_KEY with epoch n (ODD) or n+1 (EVEN)
+    Caliptra_MCU -> Caliptra_Core : Authenticate DOT_BLOB HMAC
+    alt Authentication fails in ODD state
+        Caliptra_MCU -> Caliptra_MCU : Enter configured locked-state recovery path
+    else Authentication fails in EVEN state
+        Caliptra_MCU -> Caliptra_MCU : Fatal DOT boot error
+    else Authentication succeeds
+        opt DOT initialized, parity EVEN, and blob has nonzero CAK and LAK digests
+            Caliptra_MCU -> DOT_FUSE_ARRAY : Burn next bit as pending lock transition
+        end
+        alt Boot-start parity was ODD and CAK digest is nonzero
+            Caliptra_MCU -> Caliptra_MCU : Select DOT_BLOB CAK digest
+        else
+            Caliptra_MCU -> Caliptra_MCU : Select fused owner PK hash fallback, if provisioned
+        end
     end
-    Caliptra_MCU -> Ownership_Storage : MCU ROM reads Ownership_Storage for CAK and calls Core-ROM to SET_OWNER_PK_HASH with CAK as input
-    note across : This is the common path, either volatile or locked CAK might exist (or none)
+end
+opt Selected owner digest is nonzero
+    Caliptra_MCU -> Caliptra_Core : MCU ROM calls INSTALL_OWNER_PK_HASH with selected digest
 end
 Caliptra_MCU -> Caliptra_Core : MCU ROM asks Core-ROM to run RI_DOWNLOAD_FIRMWARE to boot
 Caliptra_MCU -> Caliptra_MCU : MCU ROM resets and jumps to RT
@@ -373,50 +351,48 @@ Caliptra_MCU -> Caliptra_MCU : MCU ROM resets and jumps to RT
 ```
 
 
-1. **MCU ROM Startup**
-   - Caliptra_MCU boots and starts MCU ROM
-   - MCU ROM initializes Caliptra_Core
+This diagram shows the production-lifecycle path when DOT flash is configured
+and the normal `DotThenFuse` owner policy is selected. Non-production lifecycle
+states and the `ForceFuse` policy bypass the DOT blob and use the fused owner.
 
-2. **Read DOT_FUSE_ARRAY State**
-   - MCU ROM reads current DOT_FUSE_ARRAY value (n)
-   - Determines if state is EVEN or ODD
-
-3. **Derive DOT_EFFECTIVE_KEY**
-   - MCU ROM calls Caliptra_Core ROM to derive key
-   - **If EVEN state**: Derive with (n+1) for next DOT_BLOB sealing
-   - **If ODD state**: Derive with (n) for current DOT_BLOB authentication
-
-4. **ODD State Processing**
-   - Read DOT_BLOB from storage
-   - Authenticate DOT_BLOB using HMAC with DOT_EFFECTIVE_KEY
-   - **If authentic**: Extract CAK/LAK and program into Ownership_Storage
-   - **If corrupted**: Boot into DOT recovery mode (recovery flow documented in [later diagram](#dot-2-recovery))
-
-5. **Set Owner Public Key**
-   - Read CAK from Ownership_Storage (if present)
-   - Call Caliptra_Core ROM SET_OWNER_PK_HASH with CAK
-
-6. **Boot Firmware**
-   - Call Caliptra_Core ROM RI_DOWNLOAD_FIRMWARE
-   - MCU ROM resets and jumps to RT (Runtime)
+1. ROM reads the DOT fuses and active blob.
+2. An empty blob falls back to the fused owner unless DOT is initialized in ODD
+    state, where it invokes the configured locked-state recovery policy.
+3. A nonempty blob is authenticated with epoch `n` in ODD state or `n+1` in
+    EVEN state. Authentication failure invokes recovery only in ODD state; it is
+    fatal in EVEN state.
+4. For an authenticated EVEN-state blob containing nonzero CAK and LAK digests,
+    ROM burns the next fuse as its implemented pending-lock transition. Owner
+    selection for that boot still uses the state read before the burn, so the
+    fused owner remains the fallback until the next boot.
+5. For an authenticated ODD-state blob, ROM selects its nonzero CAK digest;
+    otherwise it selects the fused owner PK hash.
+6. ROM sends a nonzero selected digest through `INSTALL_OWNER_PK_HASH`, then
+    continues the normal firmware-load flow.
 
 ### State Determination Logic
 
 ```
-if (DOT_FUSE_ARRAY % 2 == 0) {
-    // EVEN STATE - Unlocked/Disabled
-    DOT_EFFECTIVE_KEY = Derive(DOT_ROOT_KEY, n+1)
-    // Ready to seal new DOT_BLOB
+DOT_BLOB = Read_Storage()
+if (DOT_BLOB is empty) {
+    if (DOT_INITIALIZED && n is ODD) Recover_Locked_DOT()
+    OWNER_DIGEST = Read_Fused_Owner_Pk_Hash()
 } else {
-    // ODD STATE - Locked/Enabled
-    DOT_EFFECTIVE_KEY = Derive(DOT_ROOT_KEY, n)
-    DOT_BLOB = Read_Storage()
-    if (Authenticate(DOT_BLOB, DOT_EFFECTIVE_KEY)) {
-        CAK, LAK = Extract(DOT_BLOB)
-        Write_Ownership_Storage(CAK, LAK)
-    } else {
-        Boot_Recovery_Mode()
+    epoch = (n is EVEN) ? n + 1 : n
+    DOT_EFFECTIVE_KEY = DeriveStableKey(IDevID, epoch)
+    if (!Authenticate(DOT_BLOB, DOT_EFFECTIVE_KEY)) {
+        if (n is ODD) Recover_Locked_DOT()
+        else Fatal_DOT_Error()
     }
+    if (DOT_INITIALIZED && n is EVEN && CAK != 0 && LAK != 0) {
+        Burn_Next_DOT_Fuse()
+    }
+    OWNER_DIGEST = (DOT_INITIALIZED && n is ODD && CAK != 0)
+        ? DOT_BLOB.CAK_DIGEST
+        : Read_Fused_Owner_Pk_Hash()
+}
+if (OWNER_DIGEST != 0) {
+    Install_Owner_Pk_Hash(OWNER_DIGEST)
 }
 ```
 
@@ -424,76 +400,101 @@ if (DOT_FUSE_ARRAY % 2 == 0) {
 
 ## Runtime Commands
 
-### 1. DOT_CAK_INSTALL
+MCU Runtime exposes one transport-neutral DOT family. MCI uses command register
+`0x00000011` and carries the DOT FourCC in mailbox SRAM. SPDM uses top-level
+`DeviceOwnershipTransfer` (`0x11`) for native commands and wraps protected
+commands as `AuthorizedCommand (0x12) -> family 0x11 -> DOT FourCC`.
 
-<a id="dot-4-command-cak-install"></a>
+| Command | FourCC | Classification | Core validation |
+| ------- | ------ | -------------- | --------------- |
+| `DOT_LOCK` | `MDLK` | Generic-authorized | Nonzero CAK digest and LAK digest, EVEN state |
+| `DOT_DISABLE` | `MDDS` | Generic-authorized | Nonzero LAK digest, EVEN state |
+| `DOT_ROTATE` | `MDRT` | Generic-authorized | Current burned count below requested minimum |
+| `GET_DOT_BACKUP_BLOB` | `MDBB` | Generic-authorized | ODD state and valid blob HMAC |
+| `DOT_UNLOCK_CHALLENGE` | `MDUC` | Native | ODD state and valid current blob |
+| `DOT_UNLOCK` | `MDUL` | Native LAK signatures | Stored LAK digest, challenge, and fuse epoch |
+| `DOT_STATUS` | `MDST` | Native/read-only | OTP state read |
+| `DOT_RECOVERY` | `MDRC` | Native blob authentication | ODD state and current-epoch blob HMAC |
+| `DOT_OVERRIDE_CHALLENGE` | `DOTW` | Native recovery authority | Keys match fused recovery-key hash |
+| `DOT_OVERRIDE` | `DOTX` | Native recovery authority | Recovery-key hash and hybrid challenge signatures |
 
-```plantuml
-@startuml
+Generic authorization uses the shared `MACC` challenge and signs
+`0x00000011(BE) || DOT_FourCC(LE) || DOT_payload || nonce`. Direct `0x11`
+requests for `MDLK`, `MDDS`, `MDRT`, or `MDBB` are rejected. Runtime commits
+blob and fuse changes directly and read-back verifies them before returning.
+The response's `reset_required` field tells the caller that the new ownership
+state becomes active on a subsequent reset.
 
-title DOT Runtime Command Processing: DOT_CAK_INSTALL
+### Host Utility Support
 
-skinparam maxMessageSize 250
-skinparam wrapWidth 700
-skinparam backgroundColor white
-skinparam NoteBackgroundColor #76b900
-skinparam NoteFontSize 14
-skinparam SequenceGroupBodyBackgroundColor #EEEEEE
-skinparam defaultFontName Open Sans
+The `caliptra-util-host` Rust API exposes all ten commands in the table above
+through the same transport-neutral command functions. Both its MCU mailbox and
+SPDM VDM transports implement every command. The mailbox transport emits the
+outer family command `0x00000011`, little-endian DOT FourCC, payload, and, for
+generic-authorized commands, the authorization trailer. The SPDM VDM transport
+selects the native `0x11` envelope or the protected `0x12 -> 0x11` envelope.
 
-skinparam sequence {
-    ArrowColor #76b900
-    ActorBorderColor #76b900
-    LifeLineBorderColor #000000
-    LifeLineBackgroundColor #76b900
-    GroupHeaderFontsize 15
-    GroupHeaderFontColor #76b900
-    GroupFontSize 15
-    GroupFontColor #76b900
-    ArrowFontSize 15
-    ParticipantBorderColor #76b900
-    ParticipantBackgroundColor #76b900
-    ParticipantFontSize 18
-    ParticipantFontColor black
-    ArrowFontSize 14
-}
+The mailbox integration validator connects the Rust host API through a UDP
+bridge to a DOT-enabled emulator Runtime. It exercises `DOT_STATUS`, lock,
+backup, rotate, unlock challenge, unlock, and disable as one end-to-end
+sequence. Recovery and override require separately provisioned recovery states
+and remain covered by their focused transport and device tests. The sample UDP
+mock server does not emulate DOT. These DOT APIs are currently Rust-only and are
+not exported through the host library's C bindings.
 
-participant BMC
-participant Caliptra_MCU
-participant Caliptra_Core
-participant Ownership_Storage
+### Runtime Platform Support
 
-autonumber
+Runtime DOT commands are enabled and tested on the reference emulator. The
+emulator registers reset-retained storage shared by ROM and Runtime as a
+userspace flash partition with driver number `DOT_BLOB_STORE_DRIVER_NUM`.
 
-BMC -> Caliptra_MCU : DOT_CAK_INSTALL command to install Volatile DOT
-Caliptra_MCU -> Ownership_Storage : Check existing ownership
-alt Existing ownership
-    Caliptra_MCU -> BMC : Error
-end
-Caliptra_MCU -> Ownership_Storage : MCU RT installs ownership
-Caliptra_MCU -> Caliptra_MCU : Requests subsystem reset
-note across : The request to reset can be self reset or waiting for BMC to reset
-note across : After reset, Ref "DOT State Management" for more details
-@enduml
+| Platform | Runtime DOT support | DOT blob backend |
+| -------- | ------------------- | ---------------- |
+| Emulator | Enabled for MCI and SPDM VDM | Reset-retained storage shared with ROM |
+| FPGA | Not currently enabled | ROM uses physical secondary flash, but Runtime currently exposes only mailbox-backed imaginary flash |
+| Other platforms | Opt-in | Platform must provide persistent storage visible to both ROM and Runtime |
+
+The FPGA limitation is a software integration gap, not a hardware restriction.
+FPGA ROM accesses the physical secondary flash controller directly, but FPGA
+Runtime does not yet provide a Tock-compatible asynchronous driver for that
+controller. Enabling Runtime DOT on FPGA requires adding that driver and
+registering a bounded DOT blob partition over the same physical storage used by
+ROM. Until then, FPGA production and `all-features` builds intentionally exclude
+the Runtime DOT features; emulator builds enable them explicitly.
+
+To enable Runtime DOT on another platform:
+
+1. Provide persistent storage visible to both ROM and Runtime using the same
+    offset and layout.
+2. Register a userspace `FlashPartition` with driver number
+    `DOT_BLOB_STORE_DRIVER_NUM` and at least `DOT_BLOB_STORE_SIZE` bytes.
+3. Ensure blob reads, writes, and erases use the platform's asynchronous flash
+    HIL and complete through its normal callback path.
+4. Enable `dot-mci-mailbox` for MCI commands and `dot-spdm-vdm` for SPDM VDM
+    commands.
+5. Provision `dot_initialized`, the non-ECC `dot_fuse_array`, the generic
+    command-authorization key hash, and, when override is required,
+    `vendor_recovery_pk_hash`.
+6. Use Caliptra firmware that supports stable-key derivation, HMAC-SHA-512,
+    SHA-384/SHA-512, ECDSA P-384 verification, and ML-DSA-87 verification.
+
+For example:
+
+```shell
+cargo xtask runtime-build \
+  --platform <platform> \
+  --features dot-mci-mailbox \
+  --features dot-spdm-vdm
 ```
 
-**Purpose:** Install CAK for volatile DOT ownership.
+A platform must not enable these features until its Runtime storage backend
+refers to the same persistent DOT blob storage consumed by ROM.
 
-**Preconditions:**
-- No existing ownership (Ownership_Storage empty)
-- DOT_FUSE_ARRAY is in EVEN state
+Runtime `MDRC`, `DOTW`, and `DOTX` are not gated by a ROM recovery-mode signal.
+Their native blob-HMAC, recovery-key, challenge, and fuse-state checks are
+always enforced.
 
-**Flow:**
-1. BMC issues DOT_CAK_INSTALL command with CAK (and optionally LAK)
-2. MCU RT checks Ownership_Storage for existing ownership
-   - If ownership exists: Return error
-3. MCU RT writes CAK/LAK to Ownership_Storage
-4. Request subsystem reset (lower level reset that should not clear out Ownership_Storage)
-5. On next boot, CAK will be active for firmware authentication
-
-**Result:** Device enters Volatile state with CAK active until power cycle.
-
-### 2. DOT_LOCK
+### 1. DOT_LOCK
 
 <a id="dot-5-command-lock"></a>
 
@@ -529,7 +530,6 @@ skinparam sequence {
 participant BMC
 participant Caliptra_MCU
 participant Caliptra_Core
-participant Ownership_Storage
 participant Storage
 
 autonumber
@@ -543,97 +543,76 @@ alt DOT_FUSE_ARRAY is in ODD STATE
     note across : DOT State is already either locked or disabled
     Caliptra_MCU -> Caliptra_MCU : Abort sequence
 end
-Caliptra_MCU -> Caliptra_Core : MCU requests Caliptra Core authenticates command with LAK public key
-note across : ensure the locking entity has proper access to LAK.priv
+Caliptra_MCU -> Caliptra_Core : Verify generic command authorization
+note across : MACC challenge binds family 0x11, DOT FourCC, and exact payload
 alt Authentication Fail
     Caliptra_MCU -> BMC : DOT request invalid
     Caliptra_MCU -> Caliptra_MCU : Abort sequence
 end
 Caliptra_MCU -> Caliptra_MCU : MCU creates a valid DOT_BLOB with DOT_EFFECTIVE_KEY
 Caliptra_MCU -> Storage : MCU updates DOT_BLOB
-note across : Updates both primary and redundant DOT_BLOB.
-Caliptra_MCU -> Ownership_Storage : MCU updates Ownership_Storage with DOT desired state
-note across : Ownership_Storage is updated with the new desired DOT_FUSE_ARRAY state
-Caliptra_MCU -> BMC : DOT process started, request subsystem reset
-note across : Only Caliptra_MCU ROM/FMC should blow fuses
-note across : After reset, Ref "DOT State Management" for more details
+Caliptra_MCU -> Storage : Read-back verify DOT_BLOB
+Caliptra_MCU -> Caliptra_MCU : Burn and verify next DOT fuse bit
+Caliptra_MCU -> BMC : Success; reset required to activate ownership
 
 @enduml
 ```
 
-**Purpose:** Lock current volatile ownership to silicon, creating mutable locking DOT.
+**Purpose:** Install a CAK digest and LAK digest in a DOT_BLOB and lock ownership to silicon.
 
 **Preconditions:**
 - DOT_FUSE_ARRAY in EVEN state
-- CAK present in Ownership_Storage
+- Nonzero CAK digest and LAK digest provided in the command
 
 **Flow:**
-1. BMC issues DOT_LOCK command (signed with LAK.priv)
-2. MCU RT checks DOT_FUSE_ARRAY state
+1. BMC obtains `MACC` and issues an authorized `MDLK` request containing a CAK digest and LAK digest.
+2. MCU RT verifies generic command authorization and checks DOT_FUSE_ARRAY state.
    - If ODD state: Return error (already locked)
-3. MCU RT authenticates command with LAK.pub
-   - If authentication fails: Return error
-4. MCU RT creates DOT_BLOB containing CAK and LAK
-5. MCU RT seals DOT_BLOB with HMAC-SHA-512(DOT_EFFECTIVE_KEY, DOT_BLOB)
-   - DOT_EFFECTIVE_KEY was derived with (n+1) during boot
-6. Write DOT_BLOB to storage (primary and redundant copies)
-7. Update Ownership_Storage with desired DOT_FUSE_ARRAY state = (n+1)
-8. Return success and request subsystem reset
-9. **On next boot** (see State Management, diagram reference: `dot-3-state`):
-   - ROM/FMC reads Ownership_Storage desired state
-   - Verifies DOT_BLOB is valid in storage
-   - Burns DOT_FUSE_ARRAY from (n) to (n+1)
-   - Requests another reset
-10. **On subsequent boot**:
+3. MCU RT creates and HMAC-seals the ODD-state DOT_BLOB using epoch `(n+1)`.
+4. MCU RT writes and read-back verifies the DOT_BLOB.
+5. MCU RT burns and verifies the next DOT_FUSE_ARRAY bit.
+6. MCU RT returns success with `reset_required = 1`.
+7. **On the subsequent boot**:
     - Device boots in ODD state (n+1)
-    - DOT_BLOB is authenticated and CAK/LAK retrieved
+    - DOT_BLOB is authenticated and its CAK and LAK digests are retrieved
     - Device is now in Locked state
 
 **Result:** Device enters Locked state with ownership persisting across power cycles.
 
-### 3. DOT_DISABLE
+### 2. DOT_DISABLE
 
 Diagram is [above](#dot-5-command-lock).
 
-**Purpose:** Lock DOT mechanism in disabled state directly from uninitialized state, maintaining ownership control without code authentication requirements.
+**Purpose:** Enter ODD state with a nonzero LAK digest but no DOT-supplied CAK.
 
-**Use Case:** When the owner does not want to sign code with CAK but also does not want to leave the system in an uninitialized state where others could take over ownership. This provides a secure "parked" state where:
-- The device remains under the owner's control (via LAK)
-- No code authentication is enforced (no CAK)
-- Unauthorized parties cannot install their own CAK or disable the device
-- The owner can later unlock to return to uninitialized state
+**Use Case:** Park DOT ownership behind the LAK-authenticated unlock flow without
+installing a CAK from the DOT_BLOB. On boot, ROM uses the fused owner PK hash as
+the owner fallback when that fuse is provisioned; if it is zero, no owner hash
+is installed.
 
 **Preconditions:**
 - DOT_FUSE_ARRAY in EVEN state
-- Device in Uninitialized state (no ownership in Ownership_Storage)
-- LAK provided in command
+- Nonzero LAK digest provided in command
 
 **Flow:**
-1. BMC issues DOT_DISABLE command with LAK (signed with LAK.priv)
-2. MCU RT checks DOT_FUSE_ARRAY state
+1. BMC obtains `MACC` and issues an authorized `MDDS` request containing the LAK digest.
+2. MCU RT verifies generic command authorization and checks DOT_FUSE_ARRAY state.
    - If ODD state: Return error (already locked or disabled)
-3. MCU RT checks Ownership_Storage is empty (Uninitialized state)
-   - If ownership exists: Return error
-4. MCU RT authenticates command with LAK.pub
-   - If authentication fails: Return error
-5. MCU RT creates DOT_BLOB containing LAK but no CAK
-6. MCU RT seals DOT_BLOB with HMAC-SHA512(DOT_EFFECTIVE_KEY, DOT_BLOB)
-7. Write DOT_BLOB to storage (primary and redundant copies)
-8. Update Ownership_Storage with desired DOT_FUSE_ARRAY state = (n+1)
-9. Return success and request subsystem reset
-10. **On next boot** (see [State Management](#dot-3-state)):
-    - ROM/FMC reads Ownership_Storage desired state
-    - Verifies DOT_BLOB is valid in storage
-    - Burns DOT_FUSE_ARRAY from (n) to (n+1)
-    - Requests another reset
-11. **On subsequent boot**:
+3. MCU RT creates and HMAC-seals an ODD-state DOT_BLOB containing the LAK digest but a zero CAK digest.
+4. MCU RT writes and read-back verifies the DOT_BLOB.
+5. MCU RT burns and verifies the next DOT_FUSE_ARRAY bit.
+6. MCU RT returns success with `reset_required = 1`.
+7. **On the subsequent boot**:
     - Device boots in ODD state (n+1)
-    - DOT_BLOB is authenticated and LAK recovered (but no CAK)
+    - DOT_BLOB is authenticated and its LAK digest is recovered, but no CAK digest is active
+    - ROM installs the fused owner PK hash when it is provisioned
     - Device is now in Disabled state
 
-**Result:** Device enters Disabled state - ownership is locked to the silicon (preventing takeover) but no code authentication is active. The owner retains authority to unlock via LAK.priv, which will return the device to Uninitialized state.
+**Result:** Device enters Disabled state. DOT supplies no CAK, and the LAK
+holder can return the device to Uninitialized state by completing the hybrid
+unlock challenge.
 
-### 4. DOT_UNLOCK_CHALLENGE / DOT_UNLOCK
+### 3. DOT_UNLOCK_CHALLENGE / DOT_UNLOCK
 
 <a id="dot-6-command-unlock"></a>
 
@@ -670,7 +649,6 @@ skinparam sequence {
 participant BMC
 participant Caliptra_MCU
 participant Caliptra_Core
-participant Ownership_Storage
 
 autonumber
 
@@ -681,55 +659,310 @@ alt DOT_FUSE_ARRAY is in EVEN STATE
 end
 
 Caliptra_MCU -> BMC : Return challenge
-note across : Challenge is based on previous DOT_LOCK / DOT_DISABLE command's Unlock_Method
-BMC -> Caliptra_MCU : Signs DOT_UNLOCK command + challenge
-Caliptra_MCU -> Caliptra_Core : Authenticate DOT_UNLOCK with LAK public key from DOT_BLOB
+note across : Challenge is a fresh 48-byte random value
+BMC -> Caliptra_MCU : Signs DOT_UNLOCK challenge transcript with both LAK private keys
+Caliptra_MCU -> Caliptra_Core : Hash supplied LAK public keys, compare with stored LAK digest, and verify both signatures
 note across : ensure the locking entity has proper authority
 alt Authentication Fail
     Caliptra_MCU -> BMC : DOT request invalid
     Caliptra_MCU -> Caliptra_MCU : Abort sequence
 end
-Caliptra_MCU -> Ownership_Storage : MCU updates with DOT_FUSE_ARRAY desired state
-note across : Ownership_Storage is updated with the new desired DOT_FUSE_ARRAY state
-Caliptra_MCU -> BMC : DOT process started, request subsystem reset
-note across : Only Caliptra_MCU ROM/FMC should blow fuses, do not delete DOT_BLOB until fuse has advanced
-note across : After reset, Ref "DOT State Management" for more details
+Caliptra_MCU -> Caliptra_MCU : Seal post-burn blob retaining authenticated LAK digest
+Caliptra_MCU -> Caliptra_MCU : Write/read-back blob and burn next DOT fuse
+Caliptra_MCU -> BMC : Success; reset required
 
 @enduml
 ```
 
-**Purpose:** Unlock and unbind ownership from silicon, returning to volatile or uninitialized state.
+**Purpose:** Remove the DOT-supplied CAK and return DOT to the Uninitialized state.
 
 **Preconditions:**
 - DOT_FUSE_ARRAY in ODD state (Locked or Disabled)
-- Valid DOT_BLOB in storage (for LAK.pub)
+- Valid DOT_BLOB in storage containing a nonzero LAK digest
 
 **Flow:**
 1. BMC issues DOT_UNLOCK_CHALLENGE
 2. MCU RT checks DOT_FUSE_ARRAY state
    - If EVEN state: Return error (already unlocked)
 3. MCU RT generates and returns challenge
-   - Challenge based on Unlock_Method from previous LOCK/DISABLE
-4. BMC provides signed challenge with LAK.priv
-5. BMC issues DOT_UNLOCK command with signed challenge
+    - The challenge is a fresh 48-byte random value
+4. BMC signs `MDUL(BE) || challenge` with both LAK private keys.
+5. BMC issues `DOT_UNLOCK` with the LAK public keys and both signatures.
 6. MCU RT verifies challenge matches
-7. MCU RT authenticates command using LAK.pub from DOT_BLOB
+7. MCU RT hashes the supplied LAK public keys, compares the result with the LAK digest in the DOT_BLOB, and verifies both signatures.
    - If authentication fails: Return error
-8. MCU RT updates Ownership_Storage with desired DOT_FUSE_ARRAY state = (n+1)
-9. Return success and request subsystem reset
-10. **On next boot** (see [State Management](#dot-3-state)):
-    - ROM/FMC reads Ownership_Storage desired state
-    - Burns DOT_FUSE_ARRAY from (n) to (n+1)
-    - Erases DOT_BLOB from storage (no longer needed)
-    - Requests another reset
-11. **On subsequent boot**:
-    - Device boots in EVEN state (n+1)
-    - **If unlocked from Locked state:** CAK still in Ownership_Storage → enters Volatile state
-    - **If unlocked from Disabled state:** No CAK in Ownership_Storage → enters Uninitialized state
+8. MCU RT seals a post-burn blob with a zero CAK digest while retaining the authenticated LAK digest.
+9. MCU RT writes/read-back verifies the blob, burns one fuse bit, and verifies the new count.
+10. MCU RT consumes the challenge and returns success with `reset_required = 1`.
+11. On the subsequent boot, the device is in EVEN state `(n+1)`. DOT supplies no owner, and ROM installs the fused owner PK hash when it is provisioned.
 
 **Result:**
-- **From Locked:** Device enters Volatile state. Power cycle will return to Uninitialized.
-- **From Disabled:** Device enters Uninitialized state immediately (no CAK was present).
+- Device enters the unlocked/uninitialized EVEN state.
+- Runtime retains the HMAC-authenticated LAK digest from the current blob in the post-burn blob.
+
+Firmware-manifest UNLOCK is a separate ROM path authorized by the authenticated
+MCU image. It stores the manifest section's LAK digest and does not perform the
+Runtime LAK challenge flow.
+
+### 4. DOT_ROTATE
+
+**Purpose:** Replace the CAK and LAK digests while advancing the fuse count by
+two and preserving parity when the command completes.
+
+**Use Case:** From Locked state, rotate the active CAK and LAK digests without
+an unlock-relock cycle. Because the command always requires a nonzero CAK, a
+rotation from Disabled state produces Locked state. The implementation also
+accepts rotation in EVEN state; the resulting CAK-bearing blob is treated by
+ROM as a pending lock on the next boot.
+
+**Preconditions:**
+- DOT_FUSE_ARRAY in either EVEN or ODD state
+- `min_fuse_count` value provided in command
+- Current burned count is below `min_fuse_count`
+- Nonzero CAK digest and LAK digest provided
+- Sufficient remaining fuse bits to complete the rotation
+
+**Flow:**
+1. BMC obtains `MACC` and issues an authorized `MDRT` request containing `min_fuse_count`, a new CAK digest, and a new LAK digest.
+2. MCU RT verifies generic command authorization.
+3. MCU RT checks if current burned count is below `min_fuse_count`:
+   - If already met: Return success without burning (no-op on threshold)
+   - If below threshold: Continue to rotation
+4. MCU RT burns exactly two fuse bits (advancing by 2), preserving parity:
+   - If current state is EVEN (n): Result is EVEN (n+2)
+   - If current state is ODD (n): Result is ODD (n+2)
+5. MCU RT derives DOT_EFFECTIVE_KEY for the new epoch.
+6. MCU RT creates and HMAC-seals a new DOT_BLOB with the new CAK and LAK digests.
+7. MCU RT writes and read-back verifies the DOT_BLOB.
+8. MCU RT returns success with `reset_required = 1`.
+9. **On the subsequent boot**:
+    - From ODD state, the device remains ODD and becomes Locked with the new CAK and LAK digests.
+    - From EVEN state, ROM authenticates the CAK-bearing blob and burns the next fuse as its implemented boot-time lock transition. The new CAK becomes active on the following boot.
+
+**Result:** The command advances the epoch by two. ODD-state rotation preserves
+parity and installs a Locked-state blob; EVEN-state rotation stages a subsequent
+lock.
+
+### 5. GET_DOT_BACKUP_BLOB
+
+**Purpose:** Retrieve a backup copy of the current DOT_BLOB for external storage or recovery preparation.
+
+**Use Case:** Enables backup and recovery workflows where the owner maintains an off-device copy of the DOT_BLOB to ensure it can be recovered if the on-device storage becomes corrupted. The returned blob can be restored using DOT_RECOVERY command.
+
+**Preconditions:**
+- DOT_FUSE_ARRAY in ODD state (device must be in Locked or Disabled state)
+- Valid DOT_BLOB present in storage with correct HMAC
+- Current epoch blob version must be valid
+
+**Validation:**
+- Command is generic-authorized (requires `MACC` challenge)
+- Blob must be in ODD-state format with valid HMAC
+- Blob cannot be in EVEN state (pre-burn blob)
+- Blob cannot be corrupt or have mismatched HMAC
+
+**Flow:**
+1. BMC obtains `MACC` and issues an authorized `MDBB` request (empty payload).
+2. MCU RT verifies generic command authorization.
+3. MCU RT checks DOT_FUSE_ARRAY state:
+   - If EVEN state: Return error (backup not available in uninitialized state)
+4. MCU RT derives the current DOT_EFFECTIVE_KEY using current fuse count.
+5. MCU RT reads DOT_BLOB from storage.
+6. MCU RT validates blob version and HMAC with current epoch key:
+   - If validation fails: Return error (blob is corrupted or stale)
+7. MCU RT returns the exact 168-byte DOT_BLOB to BMC.
+
+**Response:**
+```
+status || DOT_BLOB[168]
+```
+
+**Security Properties:**
+- Only available in ODD state (ownership is locked)
+- Returns only authenticated blobs (HMAC verified)
+- Does not return pre-burn (EVEN-epoch) blobs
+- Does not modify device state
+- No fuse bits are burned
+
+### 6. DOT_STATUS
+
+**Purpose:** Query the current DOT state without modifying device ownership or performing any mutations.
+
+**Use Case:** Enables BMC and system integrators to query device DOT status at any time to determine current ownership configuration and fuse burn progress without side effects.
+
+**Preconditions:**
+- None (no state-specific requirements)
+- No authorization required (read-only command)
+
+**Flow:**
+1. BMC issues a native (non-authorized) `MDST` request (empty payload).
+2. MCU RT reads DOT_FUSE_ARRAY current burned count.
+3. MCU RT determines state parity:
+   - `locked = burned_count % 2` (0 = EVEN/Uninitialized, 1 = ODD/Locked or Disabled)
+4. MCU RT determines enabled status:
+    - `enabled = 1` when the `dot_initialized` fuse is set
+    - `enabled = 0` when DOT has not been initialized for the device
+5. MCU RT returns status fields to BMC.
+
+**Response Payload:**
+```
+enabled:u8 || locked:u8 || burned:u16_le
+```
+
+Where:
+- `enabled`: logical value of the `dot_initialized` fuse
+- `locked`: 1 if DOT_FUSE_ARRAY is in ODD state, 0 if in EVEN state
+- `burned`: Current burned fuse count (little-endian u16)
+
+**State Mapping:**
+| enabled | locked | State |
+|---------|--------|-------|
+| 0 | 0 | DOT not initialized |
+| 1 | 0 | Uninitialized (EVEN) |
+| 1 | 1 | ODD state (Locked or Disabled) |
+
+`DOT_STATUS` does not distinguish Locked from Disabled; that distinction
+depends on whether the authenticated DOT_BLOB contains a nonzero CAK digest.
+
+**Security Properties:**
+- Read-only operation
+- No state mutations
+- No authorization check required
+- Always returns current state from fuse array
+
+### 7. DOT_RECOVERY
+
+**Purpose:** Restore a previously backed-up DOT_BLOB to storage when the on-device copy has been corrupted or lost.
+
+**Use Case:** While Runtime is executing, replace a damaged or stale active
+DOT_BLOB with a previously exported blob before the next boot. An ODD-state
+boot that already cannot authenticate its active blob is handled separately by
+the configured ROM locked-state recovery policy.
+
+**Preconditions:**
+- DOT_FUSE_ARRAY in ODD state (Locked or Disabled)
+- Backup DOT_BLOB must have been obtained via GET_DOT_BACKUP_BLOB from the same epoch
+- Backup BLOB must be exactly 168 bytes
+
+**Validation:**
+- Command uses native authentication (HMAC-based proof in the blob itself)
+- No generic authorization required
+- Blob HMAC must be valid with the current device-derived DOT_EFFECTIVE_KEY
+- Invalid backup BLOB cannot modify flash (HMAC validates before write)
+
+**Flow:**
+1. BMC issues a native `MDRC` request containing a 168-byte backup DOT_BLOB.
+2. MCU RT checks DOT_FUSE_ARRAY state:
+   - If EVEN state: Return error (recovery only valid in ODD state)
+3. MCU RT derives the current DOT_EFFECTIVE_KEY using current fuse count.
+4. MCU RT verifies the backup BLOB's HMAC with current epoch key:
+   - If HMAC validation fails: Return error (blob is invalid, no writes occur)
+5. If HMAC is valid, MCU RT writes the backup BLOB to storage.
+6. MCU RT performs read-back verification to ensure write succeeded.
+7. MCU RT returns success with `reset_required = 1`.
+8. **On the subsequent boot**:
+   - Device boots in ODD state
+   - Restored DOT_BLOB is authenticated
+    - The CAK and LAK digests are recovered from the restored blob
+   - Device resumes normal operation in Locked or Disabled state
+
+**Request Payload:**
+```
+DOT_BLOB[168]
+```
+
+**Security Properties:**
+- Native HMAC-based authentication (no external signatures required)
+- Invalid BLOB cannot corrupt flash (HMAC check precedes writes)
+- No privilege escalation possible (HMAC is cryptographic proof)
+- Read-back verify ensures durability
+- HMAC prevents injection of arbitrary data
+
+### 8. DOT_OVERRIDE_CHALLENGE / DOT_OVERRIDE
+
+**Purpose:** Authorize catastrophic recovery and device reset via DOT recovery keys (ECC P-384 and ML-DSA-87) when normal ownership mechanisms are unavailable or compromised.
+
+**Use Case:** Provides a secure mechanism for device recovery when:
+- Normal DOT unlock flow is unavailable
+- Device is in corrupted state beyond normal recovery
+- Emergency device recovery is required by authorized recovery administrators
+- Ownership state needs to be forcibly reset to Uninitialized state
+
+**Security Model:**
+- Recovery authorization requires both ECC P-384 and ML-DSA-87 signatures (hybrid cryptography)
+- Recovery keys are provisioned in OTP as a public-key hash during manufacturing
+- The recovery fuse burn is irreversible and transitions the device to EVEN state
+- Recovery clears the DOT CAK and LAK while retaining the monotonic fuse history
+
+**DOT_OVERRIDE_CHALLENGE (DOTW) Flow:**
+
+**Preconditions:**
+- DOT_FUSE_ARRAY is in ODD state
+- DOT recovery key hash must be provisioned in OTP
+- No authorization trailer required
+
+**Flow:**
+1. BMC issues a native `DOTW` request containing:
+   - Recovery ECC P-384 public key
+   - Recovery ML-DSA-87 public key
+2. MCU RT hashes both keys using Caliptra's recovery-key hash convention.
+3. MCU RT compares the combined hash with the fused recovery-key hash in OTP:
+   - If hash does not match: Return error (invalid recovery keys)
+4. MCU RT generates a fresh random challenge.
+5. MCU RT returns the challenge to BMC.
+
+**Response:**
+```
+challenge[48]
+```
+
+**DOT_OVERRIDE (DOTX) Flow:**
+
+**Preconditions:**
+- Must have previously issued DOTW and received valid challenge
+- DOT recovery key hash must match OTP
+- DOT_FUSE_ARRAY remains in the same ODD state used to issue the challenge
+
+**Flow:**
+1. BMC issues a native `DOTX` request containing:
+   - DOT recovery ECC P-384 public key (same as in DOTW)
+   - DOT recovery ML-DSA-87 public key (same as in DOTW)
+   - ECC P-384 signature over challenge
+   - ML-DSA-87 signature over challenge
+2. MCU RT verifies DOT recovery-key hash matches OTP (same as DOTW):
+   - If hash does not match: Return error
+3. MCU RT verifies ECC P-384 signature:
+   - If signature invalid: Return error
+4. MCU RT verifies ML-DSA-87 signature:
+   - If signature invalid: Return error
+5. MCU RT burns one fuse bit, advancing state by 1:
+    - Current state is ODD (n); result is EVEN (n+1)
+6. MCU RT creates and HMAC-seals a blob with zero CAK and LAK digests for the new epoch.
+7. MCU RT writes and read-back verifies the blob.
+8. MCU RT consumes the challenge after the transition commits.
+9. MCU RT returns success with `reset_required = 1`.
+10. **On the subsequent boot**:
+    - Device boots in EVEN state (uninitialized)
+    - DOT supplies no owner; ROM installs the fused owner PK hash when it is provisioned
+    - Recovery operation is complete
+
+**Request Payload (DOTX):**
+```
+recovery_ecc_x[48] || recovery_ecc_y[48] || recovery_mldsa_key[2592] || ecc_sig_r[48] || ecc_sig_s[48] || mldsa_sig[4628]
+```
+
+**Security Properties:**
+- Requires hybrid cryptography (both ECC and ML-DSA valid signatures)
+- Recovery-key hash provisioned in OTP prevents key substitution
+- Challenge prevents replay attacks
+- Single-use challenge prevents bypass via replay
+- Fuse burn is irreversible
+- The one-time random challenge ensures freshness
+- No generic authorization used (native recovery-key authentication only)
+
+**Runtime scope:** `MDRC`, `DOTW`, and `DOTX` are available whenever the DOT
+Runtime command service is running. They are not gated by a ROM recovery-mode
+signal; their command-specific cryptographic and fuse-state checks provide the
+authorization boundary.
 
 ---
 
@@ -767,117 +1000,69 @@ skinparam sequence {
     ArrowFontSize 14
 }
 
-participant Caliptra_MCU
+participant MCU_Runtime
 participant Caliptra_Core
-participant Ownership_Storage
-participant DOT_FUSE_ARRAY
 participant Storage
+participant DOT_FUSE_ARRAY
 
 autonumber
-Caliptra_MCU -> Ownership_Storage : Check if Ownership_Storage indicates a desired DOT_FUSE_ARRAY state change is needed
-Caliptra_MCU -> Ownership_Storage : check if desired DOT_FUSE_ARRAY state is exactly 1 more (n+1) than current DOT_FUSE_ARRAY state (n)
-alt DOT_FUSE_ARRAY state change is needed
-    alt DOT_FUSE_ARRAY is in EVEN STATE
-        note across : DOT_LOCK / DOT_DISABLE scenario
-        Caliptra_MCU -> Storage : MCU reads DOT_BLOB from storage
-        Caliptra_MCU -> Caliptra_Core : MCU asks Caliptra_Core to authenticate DOT_BLOB with DOT_EFFECTIVE_KEY (DOT_EFFECTIVE_KEY is derived from using n+1)
-        note across : Make sure valid DOT_BLOB is available from storage before fuse burning
-        Caliptra_MCU -> DOT_FUSE_ARRAY : MCU increments DOT_FUSE_ARRAY from State (n, EVEN) to (n+1, ODD)
-    end
-    alt DOT_FUSE_ARRAY is in ODD STATE
-        note across : DOT_UNLOCK / DOT_ENABLE scenario
-        Caliptra_MCU -> DOT_FUSE_ARRAY : MCU increments DOT_FUSE_ARRAY from State (n, ODD) to (n+1, EVEN)
-        Caliptra_MCU -> Storage : MCU erases existing DOT_BLOB
-        note across : After successful fuse burn, DOT_BLOB is no longer needed
-    end
+MCU_Runtime -> DOT_FUSE_ARRAY : Read current burned count and parity
+alt LOCK / DISABLE (EVEN to ODD)
+    MCU_Runtime -> Caliptra_Core : Derive target epoch key and HMAC new DOT_BLOB
+    MCU_Runtime -> Storage : Write and read-back verify DOT_BLOB
+    MCU_Runtime -> DOT_FUSE_ARRAY : Burn and verify next fuse bit
+else UNLOCK (ODD to EVEN)
+    MCU_Runtime -> Caliptra_Core : Authenticate current hybrid LAK challenge response against stored LAK digest
+    MCU_Runtime -> Caliptra_Core : HMAC post-burn DOT_BLOB with zero CAK digest
+    MCU_Runtime -> Storage : Write and read-back verify DOT_BLOB
+    MCU_Runtime -> DOT_FUSE_ARRAY : Burn and verify next fuse bit
+else ROTATE
+    MCU_Runtime -> DOT_FUSE_ARRAY : Burn and verify two fuse bits
+    MCU_Runtime -> Caliptra_Core : HMAC DOT_BLOB at rotated epoch
+    MCU_Runtime -> Storage : Write and read-back verify DOT_BLOB
 end
 @enduml
 ```
 
-State transitions require fuse burning, which is performed by ROM/FMC (not RT) for security reasons. The Ownership_Storage is used to communicate the desired state change from RT to ROM/FMC.
+Interactive Runtime commands perform blob and fuse transitions directly. The
+firmware-manifest path remains separate and is processed by ROM while the
+containing MCU Runtime image supplies authorization.
 
 ### State Transition Protocol
 
-**Executed by ROM/FMC on boot:**
+1. Serialize transitions so only one DOT mutation can run at a time.
+2. Validate command authorization and the current fuse state.
+3. Derive the target epoch key and create the required DOT_BLOB.
+4. Apply command-specific power-fail ordering.
+5. Read back storage and OTP state after each write.
+6. Return success with reset required only after the transition is committed.
 
-1. Check Ownership_Storage for desired DOT_FUSE_ARRAY state
-2. Verify desired state is exactly (n+1) where n is current state
-3. **If transition from EVEN to ODD (LOCK/DISABLE):**
-   - Read DOT_BLOB from storage
-   - Authenticate DOT_BLOB with DOT_EFFECTIVE_KEY
-   - **If invalid:** Abort (should not happen if RT did its job)
-   - Increment DOT_FUSE_ARRAY from (n) to (n+1)
-4. **If transition from ODD to EVEN (UNLOCK/ENABLE):**
-   - Increment DOT_FUSE_ARRAY from (n) to (n+1)
-   - Erase DOT_BLOB from storage
-5. Request subsystem reset
+### Transition Ownership
 
-### ROM vs FMC Implementation Options
+The reference implementation deliberately splits transition ownership by entry
+point:
 
-The DOT specification allows integrators of Caliptra MCU to choose which component handles fuse burning and state transitions. This flexibility accommodates different security models and implementation constraints.
+- MCU Runtime directly commits interactive MCI and SPDM commands, including
+    blob storage and OTP read-back verification.
+- MCU ROM retains firmware-manifest DOT processing.
+- MCU ROM retains its I3C recovery and override path.
 
-#### Option 1: ROM-Based State Transitions
-
-**Characteristics:**
-- ROM performs all fuse burning and state transition operations
-- Provides a known, immutable, and trusted implementation
-- State transitions occur in the most trusted execution environment
-
-**Advantages:**
-- ROM provides a sane and known state
-- Immutable code reduces attack surface
-- Consistent behavior across all boots
-
-**Disadvantages:**
-- Requires complex and error-prone code (fuse burning) to be in ROM
-- ROM must implement complicated protocols with BMC or other EC
-- Any bugs or limitations in ROM cannot be fixed without hardware revision
-- Less flexibility for integrators to customize behavior
-
-#### Option 2: FMC-Based State Transitions
-
-**Characteristics:**
-- FMC/RT performs fuse burning and state transition operations
-- Note: In Caliptra MCU architecture, FMC and RT are not differentiated as separate binaries (FMC is RT)
-- ROM indicates to FMC that it is in a DOT-related recovery/transition boot
-
-**Advantages:**
-- Gives integrators more flexibility to implement fuse burning in mutable code
-- Easier to update and fix issues in the field
-- Simplifies ROM implementation
-- Allows customization of protocols and recovery flows
-
-**Disadvantages:**
-- Requires ROM to signal FMC about DOT recovery/transition boot mode
-- FMC must be trusted to handle state transitions correctly
-- FMC must block normal system boot and only conduct DOT recovery/override operations when in recovery mode
-
-**Requirements for FMC Implementation:**
-- ROM must indicate to FMC that it is in DOT-related recovery/transition boot
-- FMC must not allow full system boot during DOT operations
-- FMC must only accept DOT recovery/override commands in recovery mode
-- FMC must properly validate and execute state transitions
-
-#### Implementation Guidelines
-
-Regardless of which option is chosen:
-- Fuse burning is a sensitive operation and must not be performed by RT during normal operation
-- The component performing fuse burning must validate DOT_BLOB before committing to fuse changes
-- State transitions must be atomic (fuse + storage operations together)
-- The system must be able to recover from partial state transitions
+Runtime recovery and override commands use the same direct-commit backend as
+the other Runtime commands. They are not gated by a ROM recovery-mode signal;
+their cryptographic and state checks remain mandatory.
 
 ---
 
 ## Lifecycle Transitions
 
-### Full Lifecycle: Uninitialized → Volatile → Locked
+### Full Lifecycle: Uninitialized → Locked
 
 <a id="dot-7-install-lock"></a>
 
 ```plantuml
 @startuml
 
-title DOT Lifecycle: Uninitialized → Volatile → Locked States
+title DOT Lifecycle: Uninitialized → Locked
 
 skinparam maxMessageSize 250
 skinparam wrapWidth 700
@@ -907,78 +1092,48 @@ skinparam sequence {
 participant BMC
 participant Caliptra_MCU
 participant Caliptra_Core
-participant Ownership_Storage
 participant Storage
 participant DOT_FUSE_ARRAY
 
 Caliptra_MCU -> Caliptra_MCU : MCU boots up to RT
 
 group Uninitialized
-    note across : DOT_FUSE_ARRAY is in EVEN state, Ownership_Storage is empty, Device boot up with out owner authentication and is in uninitialized state
-    BMC -> Caliptra_MCU : DOT_CAK_INSTALL
-    Caliptra_MCU -> Caliptra_MCU : Installs CAK into Ownership_Storage
-    Caliptra_MCU -> BMC : Success
-    Caliptra_MCU -> Caliptra_MCU : Request subsystem reset
-end
-
-group Volatile
-    note across : DOT_FUSE_ARRAY is in EVEN state, Ownership_Storage has CAK, Device boot up with CAK used for owner authentication and is now in a volatile state
-    BMC -> Caliptra_MCU : DOT_LOCK to lock CAK, mark Ownership_Storage with new desired DOT_FUSE_ARRAY state
-    Caliptra_MCU -> Caliptra_Core : Authenticates DOT_LOCK command
+    note across : DOT_FUSE_ARRAY is in EVEN state and no owner authentication is active
+    BMC -> Caliptra_MCU : Authorized DOT_LOCK with CAK digest and LAK digest
+    Caliptra_MCU -> Caliptra_Core : Verify generic command authorization
     Caliptra_MCU -> Caliptra_MCU : Creates new DOT_BLOB
     Caliptra_MCU -> Caliptra_Core : HMACs DOT_BLOB
     Caliptra_MCU -> Storage : Store new DOT_BLOB in flash
-    Caliptra_MCU -> Ownership_Storage : Update Ownership_Storage with new desired DOT_FUSE_ARRAY state
-    Caliptra_MCU -> BMC : Waiting for reset to complete
-    Caliptra_MCU -> Caliptra_MCU : Request subsystem reset
-    Caliptra_MCU -> Caliptra_MCU : Boots to ROM or RT
-    note across : DOT_FUSE_ARRAY is in EVEN state, Ownership_Storage has CAK and DOT_FUSE_ARRAY has new desired state, Device boot up with CAK used for owner authentication and is still in a volatile state
-    Caliptra_MCU -> DOT_FUSE_ARRAY : ROM or FMC increment DOT_FUSE_ARRAY from EVEN to ODD
-    Caliptra_MCU -> Caliptra_MCU : Request subsystem reset
+    Caliptra_MCU -> Storage : Read-back verify DOT_BLOB
+    Caliptra_MCU -> DOT_FUSE_ARRAY : Runtime increments DOT_FUSE_ARRAY from EVEN to ODD
+    Caliptra_MCU -> BMC : Success; reset required
 end
 
 group Locked
-    note across : DOT_FUSE_ARRAY is in ODD state, Ownership_Storage has CAK, Device boot up with CAK used for owner authentication and is now in a Locked state
+    note across : On the next boot, ROM authenticates the blob and activates the CAK
 end
 
 @enduml
 ```
 
-**Phase 1: Uninitialized → Volatile**
-1. Device boots with DOT_FUSE_ARRAY in EVEN state
-2. Ownership_Storage is empty
-3. No owner authentication active
-4. BMC issues DOT_CAK_INSTALL with CAK and LAK
-5. CAK/LAK written to Ownership_Storage
-6. Reset device
-7. Device boots with CAK active for authentication
-8. **Result:** Volatile ownership (lost on power cycle)
+1. Device boots with DOT_FUSE_ARRAY in EVEN state and no owner authentication active.
+2. BMC obtains `MACC` and issues an authorized `DOT_LOCK` with a CAK digest and LAK digest.
+3. Runtime verifies generic command authorization and creates the DOT_BLOB.
+4. Runtime seals the blob with the `(n+1)` DOT effective key.
+5. Runtime writes and read-back verifies the blob.
+6. Runtime burns and verifies DOT_FUSE_ARRAY from EVEN `(n)` to ODD `(n+1)`.
+7. Runtime returns success with reset required.
+8. On the subsequent boot, ROM authenticates the blob and activates its CAK.
+9. **Result:** Locked ownership persists across power cycles.
 
-**Phase 2: Volatile → Locked**
-1. Device in Volatile state (EVEN, CAK in RAM)
-2. BMC issues DOT_LOCK command (signed with LAK.priv)
-3. Command authenticated with LAK.pub
-4. MCU RT creates DOT_BLOB with CAK and LAK
-5. DOT_BLOB sealed with HMAC using DOT_EFFECTIVE_KEY
-6. DOT_BLOB written to flash storage
-7. Ownership_Storage updated with desired state (n+1)
-8. Reset device
-9. ROM/FMC reads desired state from Ownership_Storage
-10. ROM/FMC validates DOT_BLOB in storage
-11. ROM/FMC burns DOT_FUSE_ARRAY from EVEN(n) to ODD(n+1)
-12. Reset device again
-13. Device boots in ODD state
-14. DOT_BLOB authenticated and CAK/LAK recovered to Ownership_Storage
-15. **Result:** Locked ownership (persists across power cycles)
-
-### Full Lifecycle: Locked → Volatile → Uninitialized
+### Full Lifecycle: Locked → Uninitialized
 
 <a id="dot-8-unlock-flow"></a>
 
 ```plantuml
 @startuml
 
-title DOT Unlock Flow: Locked → Volatile → Uninitialized States
+title DOT Unlock Flow: Locked → Uninitialized
 
 skinparam maxMessageSize 250
 skinparam wrapWidth 700
@@ -1008,163 +1163,62 @@ skinparam sequence {
 participant BMC
 participant Caliptra_MCU
 participant Caliptra_Core
-participant Ownership_Storage
 participant Storage
 participant DOT_FUSE_ARRAY
 
 Caliptra_MCU -> Caliptra_MCU : MCU boots to runtime
 group Locked
-    note across : DOT_FUSE_ARRAY is in ODD state, Ownership_Storage has CAK, Device boot up with CAK used for owner authentication and is in a Locked state
+    note across : DOT_FUSE_ARRAY is in ODD state and the authenticated DOT_BLOB supplies CAK and LAK digests
     BMC -> Caliptra_MCU : DOT_UNLOCK_CHALLENGE
     Caliptra_MCU -> BMC : Challenge
-    BMC -> Caliptra_MCU : BMC issue DOT_UNLOCK command to Caliptra_MCU where the command is signed by LAK.priv
-    Caliptra_MCU -> Caliptra_MCU: Ensures challenge matches
-    Caliptra_MCU -> Caliptra_Core : Authenticate command with LAK.pub
-    Caliptra_MCU -> Ownership_Storage : Caliptra_MCU writes to Ownership_Storage to indicate DOT_FUSE_ARRAY state change is needed
-    Caliptra_MCU -> BMC : Reset needed to complete DOT_UNLOCK command
-    Caliptra_MCU -> Caliptra_MCU : Request subsystem reset
-    Caliptra_MCU -> Caliptra_MCU : Caliptra_MCU boot up to ROM or FMC
-    note across : DOT_FUSE_ARRAY is in ODD state, Ownership_Storage has CAK and DOT_FUSE_ARRAY new desired state, Device boot up with CAK used for owner authentication and is in a Locked state
-    Caliptra_MCU -> DOT_FUSE_ARRAY : ROM or FMC increment DOT_FUSE_ARRAY from ODD to EVEN
-    Caliptra_MCU -> Storage : Erase DOT_BLOB
-    Caliptra_MCU -> Caliptra_MCU : Request subsystem reset
-    note across : BMC could choose to reset to go to Volatile orpower cycle the device to go directly to Uninitialized
-end
-
-group Volatile (assume reset)
-    note across : DOT_FUSE_ARRAY is in EVEN state, Ownership_Storage has CAK, Device boot up with CAK used for owner authentication and is now in a volatile state
-    BMC -> Caliptra_MCU : BMC power cycles the device so the device loses Ownership_Storage contents
+    BMC -> Caliptra_MCU : DOT_UNLOCK signed by LAK private keys
+    Caliptra_MCU -> Caliptra_Core : Verify challenge and hybrid LAK signatures
+    Caliptra_MCU -> Storage : Write/read-back blob with zero CAK digest, retaining LAK digest
+    Caliptra_MCU -> DOT_FUSE_ARRAY : Runtime burns and verifies next fuse bit
+    Caliptra_MCU -> BMC : Success; reset required
 end
 
 group Uninitialized
-    note across : DOT_FUSE_ARRAY is in EVEN state, Ownership_Storage is empty, Device boot up with out owner authentication and is now in uninitialized state
+    note across : On the next boot, DOT supplies no CAK; ROM may install the fused owner fallback
 end
 
 @enduml
 ```
 
-**Phase 1: Locked → Volatile**
-1. Device in Locked state (ODD, CAK from DOT_BLOB)
+1. Device is in Locked or Disabled state with an ODD fuse count.
 2. BMC issues DOT_UNLOCK_CHALLENGE
 3. MCU RT returns challenge
-4. BMC signs challenge with LAK.priv
-5. BMC issues DOT_UNLOCK command with signed challenge
-6. MCU RT verifies challenge and authenticates with LAK.pub
-7. Ownership_Storage updated with desired state (n+1)
-8. Reset device
-9. ROM/FMC reads desired state
-10. ROM/FMC burns DOT_FUSE_ARRAY from ODD(n) to EVEN(n+1)
-11. ROM/FMC erases DOT_BLOB from storage
-12. Reset device again
-13. Device boots in EVEN state with CAK still in Ownership_Storage
-14. **Result:** Volatile ownership (temporary)
-
-**Phase 2: Volatile → Uninitialized**
-1. Device in Volatile state (EVEN, CAK in RAM)
-2. BMC power cycles device
-3. Ownership_Storage contents lost
-4. Device boots with no CAK
-5. **Result:** Uninitialized state (no ownership)
+4. BMC signs the challenge transcript with both LAK private keys.
+5. BMC issues `DOT_UNLOCK` with the LAK public keys and both signatures.
+6. MCU RT compares the supplied public-key digest with the stored LAK digest and verifies both signatures.
+7. Runtime seals and read-back verifies a blob with a zero CAK digest for the post-burn epoch while retaining the authenticated LAK digest.
+8. Runtime burns and verifies DOT_FUSE_ARRAY from ODD `(n)` to EVEN `(n+1)`.
+9. Runtime consumes the challenge and returns success with reset required.
+10. On the subsequent boot, DOT supplies no CAK; ROM installs the fused owner PK hash when it is provisioned.
+11. **Result:** The device is Uninitialized in the EVEN state.
 
 ---
 
 ## Recovery Mechanisms
 
-Failure scenario in
-[dot-1-init](#dot-1-init)
-
 <a id="dot-2-recovery"></a>
 
-```plantuml
-@startuml
+When ROM cannot authenticate the DOT_BLOB in ODD state, it does not continue
+the normal firmware boot. It invokes the locked-state recovery policy configured
+by the platform.
 
-title DOT Recovery Mode and FMC Flow Management
+| Implemented path | Entry point | Result |
+|---|---|---|
+| Reset-flow backup | `dot_recovery_reset_flow`, `DotRecoveryPolicy::BackupBlob`, and `dot_recovery_handler` | Restores and re-verifies the active blob, then continues the same cold boot. |
+| Ordered ROM handler chain | `dot_locked_recovery_handlers` when reset coordination is disabled | Tries each configured handler according to its retry policy; the first success triggers a warm reset. |
+| ROM I3C recovery service | `I3cDotLockedRecoveryHandler` with `I3cServicesModes::DOT_RECOVERY` in the ordered chain | Accepts status, blob recovery, and recovery-authority override operations while ROM owns the recovery flow. |
+| ROM MCI mailbox override | `OverrideChallengeRecoveryHandler` with `Mbox0RecoveryTransport` in the ordered chain | Performs the recovery-authority challenge and override flow. The reference emulator wires this path under its `test-dot-recovery` feature. |
+| Reset coordination | `dot_recovery_reset_flow` when local backup recovery does not succeed | Publishes the DOT failure status and halts so the BMC can select fused-owner recovery or regular DOT verification on the next cold boot. |
+| Runtime native commands | `MDRC`, `DOTW`, and `DOTX` | Available when Runtime is already executing; these commands enforce blob HMAC or recovery-key authentication but are not gated by a ROM recovery-mode signal. |
 
-skinparam maxMessageSize 250
-skinparam wrapWidth 700
-skinparam backgroundColor white
-skinparam NoteBackgroundColor #76b900
-skinparam NoteFontSize 14
-skinparam SequenceGroupBodyBackgroundColor #EEEEEE
-skinparam defaultFontName Open Sans
+The sections below describe the command-level recovery and override protocols.
 
-skinparam sequence {
-    ArrowColor #76b900
-    ActorBorderColor #76b900
-    LifeLineBorderColor #000000
-    LifeLineBackgroundColor #76b900
-    GroupHeaderFontsize 15
-    GroupHeaderFontColor #76b900
-    GroupFontSize 15
-    GroupFontColor #76b900
-    ArrowFontSize 15
-    ParticipantBorderColor #76b900
-    ParticipantBackgroundColor #76b900
-    ParticipantFontSize 18
-    ParticipantFontColor black
-    ArrowFontSize 14
-}
-
-participant BMC
-participant Caliptra_MCU
-participant Caliptra_Core
-participant DOT_FUSE_ARRAY
-participant Storage
-
-autonumber
-note across : This diagram follows the "DOT ROM Startup and DOT State Initialization" diagram in the failure case where DOT_BLOB is corrupted
-note across : There are two options for recovery: ROM faciliated or FMC facilitated (have to block regular boot) recovery/override
-alt FMC facilitaed recovery/override Flow
-    Caliptra_MCU -> Caliptra_Core : MCU ROM asks Core-ROM to run RI_DOWNLOAD_FIRMWARE to boot
-    Caliptra_MCU -> Caliptra_MCU : MCU ROM resets and jumps to RT
-    note across : a flag should be passed from MCU ROM to RT to indicate that this is a recovery/override flow so that RT will only accept recovery/override commands and not facilitate normal boot flow
-end
-note across : now assume we are either in ROM or FMC waiting for BMC to issue a recovery/override command
-BMC -> Caliptra_MCU : Check to confirm silicon is in DOT recovery/override mode
-alt BMC has recovery DOT_BLOB for recovery (DOT_RECOVERY)
-    BMC -> Caliptra_MCU : BMC issues DOT_RECOVERY command with DOT_BLOB
-    Caliptra_MCU -> Caliptra_Core : MCU asks Caliptra_Core to authenticate DOT_BLOB with DOT_EFFECTIVE_KEY
-    alt Authentication failed
-        Caliptra_MCU -> Caliptra_MCU: Error and abort sequence
-    end
-    Caliptra_MCU -> Storage : Store authenticated DOT_BLOB to flash
-else BMC does not have recovery DOT_BLOB for recovery (DOT_OVERRIDE)
-    BMC -> Caliptra_MCU : Issues DOT_UNLOCK_CHALLENGE
-    Caliptra_MCU -> BMC : MCU returns challenge
-    BMC -> Caliptra_MCU : BMC signs challenge and issues DOT_OVERRIDE command to force DOT_FUSE_ARRAY increase
-    Caliptra_MCU -> Caliptra_MCU : MCU verifies challenge matches
-    Caliptra_MCU -> Caliptra_Core : Authenticates DOT_OVERRIDE with Vendor private key
-    alt Authentication failed
-        Caliptra_MCU -> Caliptra_MCU: Error and abort sequence
-    end
-    Caliptra_MCU -> DOT_FUSE_ARRAY : MCU burns DOT_FUSE_ARRAY from State (n) to (n+1)
-    note across : this is an ODD to EVEN transition only
-end
-Caliptra_MCU -> Caliptra_MCU : Requests subsystem reset
-note across : The request to reset can be self reset or waiting for BMC to reset
-
-@enduml
-```
-
-**Detection:**
-- Device in ODD state (should have valid DOT_BLOB)
-- DOT_BLOB read from storage
-- HMAC authentication fails
-
-**Recovery Flow:**
-1. MCU ROM detects corrupted DOT_BLOB during initialization
-2. MCU ROM boots MCU RT without CAK/LAK
-3. MCU RT flag indicates DOT recovery mode
-4. RT only accepts recovery commands (no normal boot)
-5. BMC detects silicon in DOT recovery mode
-   - Via boot progress tracking
-   - Via error codes
-   - Via explicit notification
-6. MCU ROM/FMC conduct DOT recovery flow
-   - Option 1: Recovery (BMC or EC has backup DOT_BLOB)
-   - Option 2: Override (Vendor only command)
-
-### Option 1: DOT_RECOVERY Command
+### DOT_RECOVERY Command
 
 <a id="dot-9-recovery-corrupted-blob"></a>
 
@@ -1203,9 +1257,9 @@ participant Caliptra_MCU
 participant Caliptra_Core
 
 group Locked
-    Caliptra_MCU -> Caliptra_MCU : MCU boots to ROM but DOT_BLOB is corrupted, ROM boots up to FMC or RT for DOT recovery
-    note across : DOT_FUSE_ARRAY is in ODD state, Ownership_Storage has no CAK, Device boot up with FMC without CAK in DOT recovery mode
-    note across : Either MCU notify BMC or BMC detects that the silicon is in DOT recovery mode. This is a silicon-specific function, examples can be BMC tracking boot progress/error codes of the silicon boot
+    Caliptra_MCU -> Caliptra_MCU : ROM detects an invalid DOT_BLOB and invokes configured locked-state recovery handlers
+    note across : DOT_FUSE_ARRAY is in ODD state and no owner digest is installed while the DOT_BLOB is invalid
+    note across : ROM retains control; normal firmware boot does not continue until recovery succeeds
     alt BMC / platform has a backup copy of DOT_BLOB
         BMC -> Caliptra_MCU : DOT_RECOVERY
         Caliptra_MCU -> Caliptra_Core : authenticate to ensure DOT_BLOB is valid
@@ -1213,9 +1267,9 @@ group Locked
     else BMC / platform does not have a backup copy of DOT_BLOB
         BMC -> Caliptra_MCU : DOT_UNLOCK_CHALLENGE
         Caliptra_MCU -> BMC : Challenge
-        BMC -> Caliptra_MCU : DOT_OVERRIDE command signed by VendorKey.priv
+        BMC -> Caliptra_MCU : DOT_OVERRIDE signed by DOT recovery private keys
         Caliptra_MCU -> Caliptra_MCU : Ensure challenge matches
-        Caliptra_MCU -> Caliptra_Core : Authenticates the command with VendorKey.pub
+        Caliptra_MCU -> Caliptra_Core : Authenticates the command with DOT recovery public keys
         Caliptra_MCU -> Caliptra_MCU : MCU increment DOT_FUSE_ARRAY from ODD to EVEN
         Caliptra_MCU -> BMC : Complete
     end
@@ -1227,10 +1281,14 @@ note across : DOT_RECOVERY will cause the system to go back to mutable lock stat
 @enduml
 ```
 
-**When:** BMC has a backup copy of the DOT_BLOB
+The restore operation is implemented by Runtime `MDRC`, the ROM I3C recovery
+service, and ROM backup-blob handlers. Each path invokes the same current-epoch
+HMAC validation before replacing the active blob.
+
+**When:** A current-epoch backup copy of the DOT_BLOB is available.
 
 **Flow:**
-1. BMC issues DOT_RECOVERY command with backup DOT_BLOB
+1. The recovery caller or configured handler supplies the backup DOT_BLOB.
 2. MCU authenticates DOT_BLOB with DOT_EFFECTIVE_KEY
    - If authentication fails: Return error and abort
 3. MCU writes authenticated DOT_BLOB to flash
@@ -1239,115 +1297,32 @@ note across : DOT_RECOVERY will cause the system to go back to mutable lock stat
 6. **Result:** Device returns to Locked state with recovered ownership
 
 **Requirements:**
-- BMC must maintain backup DOT_BLOB
+- A backup DOT_BLOB must be available
 - DOT_BLOB must match current DOT_FUSE_ARRAY state
 - Cannot recover if backup is also corrupted
 
-#### Challenge/Response Recovery via MCI Mailbox
-
-An example specific implementation of the DOT_RECOVERY method using the MCI mailbox is provided below.
-
-**When:** The platform provides an external recovery agent (e.g., BMC or host) that controls (or can ask for signatures) using the vendor ECDSA P-384 and MLDSA-87 private keys.
-
-The reference MCU ROM uses MCI mailbox 0 (`mcu_mbox0`) to perform a
-two-transaction challenge/response protocol with the external agent.
-The agent provides public keys and signs the challenge externally; the ROM
-verifies the signatures using Caliptra's `CM_ECDSA384_VERIFY` and
-`CM_MLDSA87_VERIFY` mailbox commands.
-
-**Protocol:**
-
-#### Transaction 1: DOT_RECOVERY_REQUEST
-
-Command Code: `0x444F_5451` ("DOTQ")
-
-*Table: `DOT_RECOVERY_REQUEST` input arguments*
-
-| **Name**        | **Type**     | **Description**                     |
-| --------------- | ------------ | ----------------------------------- |
-| chksum          | u32          | Checksum (Caliptra standard formula)|
-| ecc_pub_key_x   | u8[48]       | ECDSA P-384 public key X coordinate |
-| ecc_pub_key_y   | u8[48]       | ECDSA P-384 public key Y coordinate |
-| mldsa_pub_key   | u8[2592]     | MLDSA-87 public key                 |
-| cak             | u8[48]       | New Code Authentication Key hash    |
-| lak             | u8[48]       | New Lock Authentication Key hash    |
-
-*Table: `DOT_RECOVERY_REQUEST` output arguments*
-
-| **Name**        | **Type**     | **Description**                      |
-| --------------- | ------------ | ------------------------------------ |
-| challenge       | u8[48]       | Random 48-byte challenge for signing |
-
-The ROM computes SHA-384 of the concatenated public keys (ECC X ‖ ECC Y ‖ MLDSA)
-and verifies the hash against the vendor recovery PK hash stored in OTP fuses.
-If the hash matches, the ROM generates a random 48-byte challenge and returns it
-via `DataReady` status.
-
-#### Transaction 2: DOT_CHALLENGE_RESPONSE
-
-Command Code: `0x444F_5452` ("DOTR")
-
-*Table: `DOT_CHALLENGE_RESPONSE` input arguments*
-
-| **Name**        | **Type**     | **Description**                     |
-| --------------- | ------------ | ----------------------------------- |
-| chksum          | u32          | Checksum (Caliptra standard formula)|
-| ecc_sig_r       | u8[48]       | ECDSA P-384 signature R component   |
-| ecc_sig_s       | u8[48]       | ECDSA P-384 signature S component   |
-| mldsa_pub_key   | u8[2592]     | MLDSA-87 public key                 |
-| mldsa_signature | u8[4627]     | MLDSA-87 signature                  |
-| padding         | u8           | Padding for MLDSA signature         |
-
-The ECDSA signature is over `SHA-384(challenge)`. The MLDSA signature is
-over the raw challenge bytes.
-
-The ROM verifies both signatures over the challenge. The ROM
-intentionally does **not** set `CmdComplete` after reading this transaction
-so that the SRAM data remains valid during signature verification (the
-MLDSA pub key and signature are read directly from SRAM in zero-copy mode).
-
-**Flow:**
-1. ROM boots and detects DOT recovery mode (corrupted DOT_BLOB)
-2. ROM polls MCI mbox0 for `DOT_RECOVERY_REQUEST` command
-3. Agent writes pub keys + new DOT blob data → mbox0 SRAM
-4. ROM hashes pub keys and verifies against vendor recovery PK hash in OTP
-5. ROM generates random 48-byte challenge → responds via mbox0 `DataReady`
-6. Agent signs challenge with ECC and MLDSA private keys
-7. Agent writes signatures + MLDSA pub key → mbox0 as `DOT_CHALLENGE_RESPONSE`
-8. ROM verifies ECC signature via `CM_ECDSA384_VERIFY`
-9. ROM verifies MLDSA signature via `CM_MLDSA87_VERIFY`
-10. If both pass: ROM writes new DOT_BLOB and requests subsystem reset
-11. **Result:** Device returns to Locked state with new ownership keys
-
-**Requirements:**
-- External agent must hold vendor ECDSA P-384 and MLDSA-87 private keys
-- Vendor recovery PK hash must be burned in OTP fuses
-- MCI mbox0 must be accessible to the agent
-- Public key hash must match the OTP vendor recovery PK hash
-
-
-### Option 2: DOT_OVERRIDE Command
+### DOT_OVERRIDE Command
 
 **When:** BMC does not have backup DOT_BLOB (catastrophic recovery, RMA to vendor)
 
 **Flow:**
 1. BMC issues DOT_UNLOCK_CHALLENGE
 2. MCU returns challenge
-3. BMC signs challenge with Vendor private key (VendorKey.priv)
+3. BMC signs challenge with the DOT recovery private keys
 4. BMC issues DOT_OVERRIDE command with signed challenge
 5. MCU verifies challenge matches
-6. MCU authenticates command with Vendor public key (VendorKey.pub)
+6. MCU authenticates command with the DOT recovery public keys
    - If authentication fails: Return error and abort
 7. MCU burns DOT_FUSE_ARRAY from ODD(n) to EVEN(n+1)
    - This is an ODD to EVEN transition only
 8. Request subsystem reset
 9. On next boot, device is in EVEN state (Uninitialized)
-10. **Result:** Device unlocked, but ownership lost (factory reset equivalent)
+10. **Result:** DOT is Uninitialized with no DOT-supplied owner; the fused owner fallback is unchanged.
 
 
-### Vendor Recovery PK Hash Format
+### DOT Recovery PK Hash Format
 
-The vendor recovery PK hash is the value stored in the
+The DOT recovery public-key hash is stored in the
 `vendor_recovery_pk_hash` OTP fuse and matched by MCU ROM before any
 `DOT_OVERRIDE` flow proceeds. **The format is identical to Caliptra's
 [Owner PK hash](https://github.com/chipsalliance/caliptra-sw/blob/main/rom/dev/README.md#owner-pk-hash)
@@ -1356,15 +1331,8 @@ The vendor recovery PK hash is the value stored in the
 (`MCI_PROD_DEBUG_UNLOCK_PK_HASH_REG_*`).** All three are computed the same
 way and stored in the same byte order, so an integrator can — if they
 choose — provision the same `(ECC P-384, MLDSA-87)` key pair as owner key,
-debug unlock key, and vendor recovery key and reuse one hashing pipeline
+debug unlock key, and DOT recovery key and reuse one hashing pipeline
 to compute all three fuse values.
-
-> **Implementation status:** the reference MCU ROM currently hashes ECC
-> coordinates in standard SEC1 big-endian byte order and stores the
-> SHA-384 output byte-for-byte in OTP, which differs from the Caliptra
-> convention described below. The format documented here is the
-> **target/aligned** format; aligning the DOT code and integration test
-> with this format is tracked in a separate PR.
 
 #### Hash construction
 
@@ -1384,13 +1352,10 @@ Total input: **2688 bytes** (96 B ECC + 2592 B MLDSA). Output: **48 bytes**
 Byte order matches Caliptra's [Public key hash byte ordering](https://github.com/chipsalliance/caliptra-sw/blob/main/rom/dev/README.md#public-key-hash-byte-ordering-dword-reversal)
 exactly:
 
-- **ECC P-384 X/Y coordinates** are in **dword-reversed format**. Take the
-  48-byte standard SEC1 (big-endian) coordinate, group it into 12 four-byte
-  dwords, and reverse the bytes within each dword. Equivalently, this is
-  the in-memory layout of `[u32; 12]` where each `u32` is the standard
-  big-endian dword interpreted as a native (little-endian) `u32` word.
-  These dword-reversed bytes are what travels on the Caliptra mailbox wire
-  (and what `CM_SHA` / `CM_ECDSA384_VERIFY` consume).
+- **ECC P-384 X/Y coordinates** travel over the MCI and I3C recovery
+    protocols in standard SEC1 big-endian byte order. Before hashing, MCU ROM
+    groups each coordinate into 12 four-byte dwords and reverses the bytes
+    within each dword to match Caliptra's image public-key representation.
 - **MLDSA-87 public key** bytes are passed through as raw FIPS 204 bytes,
   with no dword reversal.
 - **SHA-384 output** in OTP is also **dword-reversed**: the 48-byte
@@ -1435,11 +1400,12 @@ Y (SEC1 / openssl output, 48 bytes):
   be14794d 27789964 7735fde8 328afd84 cd4d4aa8 72d40b42
 ```
 
-#### Step 2: Dword-reverse the ECC coordinates
+#### Step 2: Build the ECC hash input
 
-Group each 48-byte coordinate into 12 four-byte dwords and reverse the
-bytes within each dword. These are the bytes that get hashed (and the
-bytes the BMC sends on the mailbox wire for `DOT_OVERRIDE`):
+MCU ROM groups each 48-byte coordinate into 12 four-byte dwords and reverses
+the bytes within each dword before hashing. The BMC sends the Step 1 natural
+SEC1 bytes on the recovery protocol; these are the transformed bytes that ROM
+passes to SHA-384:
 
 ```text
 X (dword-reversed, hashed bytes), first 16 bytes:
@@ -1515,13 +1481,7 @@ otp_bytes = dword_reverse(digest)                  # 48 bytes to write to OTP
   hash that is burned at manufacture and to sign the `DOT_OVERRIDE`
   challenge response at recovery time. There is no separate "key index"
   field — the hash binds both keys together.
-- The reference fuse map allocates exactly one recovery PK hash. If
-  rotation of the vendor recovery key is required in the field, integrators
-  should add multiple `vendor_recovery_pk_hash_{0..N}` slots in a vendor
-  secret partition, plus a `vendor_recovery_pk_hash_valid` revocation
-  bitmask analogous to `CPTRA_CORE_VENDOR_PK_HASH_VALID`. ROM would then
-  pick the first valid slot using the same selection policy as the regular
-  vendor PK hash.
+- The reference fuse map and MCU ROM support one recovery PK hash.
 - A fuse value of all-zero bytes is treated as "not provisioned" by MCU ROM;
   in that case `DOT_OVERRIDE` is permanently disabled for the part.
 
@@ -1530,25 +1490,26 @@ otp_bytes = dword_reverse(digest)                  # 48 bytes to write to OTP
 ```
 Locked (ODD, n) + Corrupted BLOB
     ↓
-Recovery Mode
+ROM locked-state recovery
     ├─→ [DOT_RECOVERY with valid backup] → Locked (ODD, n) [restored]
-    ├─→ [Challenge/Response via MCI mbox0] → Locked (ODD, n) [new ownership]
+    └─→ [DOT_OVERRIDE with DOT recovery key] → Uninitialized (EVEN, n+1) [DOT CAK/LAK cleared]
 ```
 
 
-### DOT_OVERRIDE via MCI Mailbox (Reference Implementation)
+### DOT_OVERRIDE via MCI Mailbox (Emulator Test Integration)
 
-An example implementation of DOT_OVERRIDE using the MCI mailbox is provided below.
-This is for disaster recovery when no backup blob is available.
+The emulator ROM wires `Mbox0RecoveryTransport` into its locked-state handler
+chain when built with `test-dot-recovery`. This path exercises DOT_OVERRIDE over
+MCI mailbox 0 when no backup blob is available.
 
 **When:** Device is in Locked (ODD) state with a corrupted or missing DOT_BLOB. The BMC
-holds the VendorKey private key corresponding to the vendor recovery PK hash stored
+holds the DOT recovery private keys corresponding to the recovery key hash stored
 in OTP fuses.
 
-The reference MCU ROM uses MCI mailbox 0 (`mcu_mbox0`) to perform a
+This integration uses MCI mailbox 0 (`mcu_mbox0`) to perform a
 two-transaction challenge/response protocol with the BMC.
-The BMC provides its VendorKey public keys (ECC P-384 + MLDSA-87) and signs the
-challenge with both VendorKey.priv keys; the ROM verifies the signatures using
+The BMC provides the DOT recovery public keys (ECC P-384 + MLDSA-87) and signs
+the challenge with both corresponding private keys; ROM verifies the signatures using
 Caliptra's `CM_ECDSA384_VERIFY` and `CM_MLDSA87_VERIFY` commands.
 
 **Protocol:**
@@ -1557,24 +1518,21 @@ Caliptra's `CM_ECDSA384_VERIFY` and `CM_MLDSA87_VERIFY` commands.
 
 Command Code: `0x444F_5457` ("DOTW")
 
-The `DOT_UNLOCK_CHALLENGE` command is a unified challenge request used for both
-owner unlock and vendor override. The `challenge_type` field indicates
-which operation is requested.
+The MCI recovery transport uses `DOT_UNLOCK_CHALLENGE` to begin vendor
+override. Its `challenge_type` field must request override.
 
 *Table: `DOT_UNLOCK_CHALLENGE` input arguments*
 
 | **Name**        | **Type**     | **Description**                              |
 | --------------- | ------------ | -------------------------------------------- |
 | chksum          | u32          | Checksum (Caliptra standard formula)         |
-| challenge_type  | u32          | `0x01` = UNLOCK (owner), `0x02` = OVERRIDE (vendor) |
+| challenge_type  | u32          | `0x02` = OVERRIDE; other values are rejected |
 | ecc_pub_key_x   | u8[48]       | Public key ECDSA P-384 X coordinate          |
 | ecc_pub_key_y   | u8[48]       | Public key ECDSA P-384 Y coordinate          |
 | mldsa_pub_key   | u8[2592]     | MLDSA-87 public key                          |
 
-For `challenge_type = OVERRIDE`, the public keys are the VendorKey and are
-verified against the vendor recovery PK hash in OTP fuses.
-For `challenge_type = UNLOCK`, the public keys are the LAK and are
-verified against the LAK hash in the DOT_BLOB.
+The public keys are the DOT recovery keys and are verified against the recovery
+key hash in OTP fuses.
 
 *Table: `DOT_UNLOCK_CHALLENGE` output arguments*
 
@@ -1582,9 +1540,8 @@ verified against the LAK hash in the DOT_BLOB.
 | --------------- | ------------ | ------------------------------------ |
 | challenge       | u8[48]       | Random 48-byte challenge for signing |
 
-The ROM computes SHA-384 of the provided public keys (ECC X ‖ ECC Y ‖ MLDSA)
-and verifies the hash against the appropriate PK hash (OTP fuses for OVERRIDE,
-DOT_BLOB for UNLOCK).
+The ROM computes the Caliptra-format SHA-384 digest of the provided public keys
+and verifies it against the recovery PK hash in OTP fuses.
 If the hash matches, the ROM generates a random 48-byte challenge and
 returns it via `DataReady` status.
 
@@ -1602,171 +1559,33 @@ Command Code: `0x444F_5458` ("DOTX")
 | ecc_sig_r       | u8[48]       | ECDSA P-384 signature R component   |
 | ecc_sig_s       | u8[48]       | ECDSA P-384 signature S component   |
 | mldsa_pub_key   | u8[2592]     | MLDSA-87 public key                 |
-| mldsa_signature | u8[4627]     | MLDSA-87 signature                  |
-| padding         | u8           | Padding for MLDSA signature         |
+| mldsa_signature | u8[4628]     | Padded MLDSA-87 signature           |
 
-The ROM re-verifies the vendor public key hash (ECC + MLDSA) against the
+The ROM re-verifies the DOT recovery public-key hash (ECC + MLDSA) against the
 OTP fuses before verifying signatures. The ECDSA signature is over
 `SHA-384(challenge)`. The MLDSA signature is over the raw challenge bytes.
 
 **Flow:**
 1. ROM boots, detects DOT_BLOB is corrupted/missing in Locked (ODD) state
 2. ROM polls MCI mbox0 for `DOT_UNLOCK_CHALLENGE` command
-3. BMC writes `challenge_type = OVERRIDE` + VendorKey public keys (ECC + MLDSA) → mbox0 SRAM
-4. ROM checks `challenge_type` and verifies VendorKey hash against vendor recovery PK hash in OTP fuses
+3. BMC writes `challenge_type = OVERRIDE` + DOT recovery public keys (ECC + MLDSA) → mbox0 SRAM
+4. ROM checks `challenge_type` and verifies the key hash against `vendor_recovery_pk_hash` in OTP fuses
 5. ROM generates random 48-byte challenge → responds via mbox0 `DataReady`
-6. BMC signs challenge with VendorKey.priv (ECDSA P-384 + MLDSA-87)
+6. BMC signs challenge with the DOT recovery private keys (ECDSA P-384 + MLDSA-87)
 7. BMC writes public keys + signatures → mbox0 as `DOT_OVERRIDE` command
-8. ROM re-verifies VendorKey hash against OTP fuses
+8. ROM re-verifies the DOT recovery key hash against OTP fuses
 9. ROM verifies ECDSA signature via `CM_ECDSA384_VERIFY`
 10. ROM verifies MLDSA signature via `CM_MLDSA87_VERIFY`
-11. If both pass: ROM burns DOT fuse (n→n+1) and writes a new empty DOT_BLOB (no CAK/LAK) HMAC'd with the EVEN-state key
+11. If both pass: ROM burns DOT fuse (n→n+1) and writes a new DOT_BLOB with zero CAK and LAK digests, HMAC'd with the EVEN-state key
 12. ROM triggers warm reset
 13. **Result:** Device transitions to EVEN (Uninitialized) state with a valid DOT_BLOB
 
 **Requirements:**
 - Device must be in Locked (ODD) state (blob may be corrupted or missing)
-- BMC must hold the VendorKey private keys (ECC + MLDSA)
-- VendorKey public key hash must match the vendor recovery PK hash in OTP fuses
+- BMC must hold the DOT recovery private keys (ECC + MLDSA)
+- DOT recovery public-key hash must match `vendor_recovery_pk_hash` in OTP fuses
 - MCI mbox0 must be accessible to the BMC
 - Override failure is non-fatal: boot continues with recovery attempts
-
----
-
-## Ownership RAM Recommendations
-
-The `Ownership_Storage` (also referred to as *ownership RAM*) is the volatile,
-reset-surviving scratch area that DOT uses to carry ownership material and DOT
-boot intent across resets and between the ROM and runtime (RT/FMC) flows. The
-DOT specification deliberately describes it abstractly (a "FLOP-based register"
-or sticky RAM) so that integrators can map it onto whatever hardware their SoC
-provides. This section gives concrete recommendations for implementing and using
-it.
-
-> **Optional / not yet implemented:** Ownership RAM is one recommended way to
-> carry DOT material and intent across the flows described here, but it is
-> **optional**. Integrators may instead use flash, other sticky/scratch
-> registers, or any storage that meets the retention and access-control
-> properties below. These flows are **not currently supported** in the MCU
-> reference ROM/runtime code, the emulator, or the FPGA integration; the
-> recommendations in this section are forward-looking design guidance, not a
-> description of existing behavior.
-
-> **Why ownership RAM is needed:** DOT state transitions and recovery span
-> multiple boot stages and multiple resets. The CAK/LAK extracted from the
-> DOT_BLOB by ROM must be visible to RT; the desired fuse state requested by RT
-> must be visible to the ROM/FMC component that actually burns fuses; and the
-> "this is a DOT recovery/transition boot, do not run normal boot" intent must
-> survive the reset that hands control between stages. A volatile RAM that is
-> retained across resets but cleared on power loss is one natural primitive for
-> this hand-off, but the same intent can be carried in flash or other sticky
-> registers if they provide equivalent retention and integrity guarantees.
-
-### Retention and Reset Domain
-
-Ownership RAM must sit in a reset domain that is **retained across MCU/subsystem
-resets but cleared when `powergood` drops (power cycle)**. Mapping this onto the
-MCU reset flows (selected by the MCI `RESET_REASON` register, see the
-[Reference ROM Specification](rom.md)):
-
-| Reset / event | `RESET_REASON` | Ownership RAM |
-|---|---|---|
-| Cold boot (first boot after power-good asserted / MCI reset) | none set | **Cleared / invalid** (must be re-derived from DOT_BLOB) |
-| Firmware Boot Reset | `FwBootUpdReset` | **Retained** |
-| Firmware Hitless Update | `FwHitlessUpdReset` | **Retained** |
-| Warm Reset (subsystem reset with `powergood` held) | `WarmReset` | **Retained** |
-| Power cycle / `powergood` de-assert | (next boot is cold) | **Cleared / scrubbed** |
-
-Recommendations:
-
-- Place ownership RAM in MCI sticky/FLOP storage (or equivalent SoC sticky
-  registers) that shares the retention domain of other reset-surviving MCI
-  state, so that warm and firmware resets preserve it while a power-good drop
-  clears it.
-- It must be retained across **at least one** MCU reset level (required for the
-  RT→ROM/FMC fuse-burn hand-off); retaining it across as many MCU reset levels
-  as possible simplifies multi-reset transition and recovery sequences.
-- On any boot where the hardware cannot guarantee retention (e.g. a cold boot),
-  the contents must be treated as invalid and re-derived from the DOT_BLOB.
-
-### Sizing and Layout
-
-Size the region to hold the largest CAK/LAK material plus control and integrity
-fields. A recommended logical layout:
-
-| Field | Purpose | Writer |
-|---|---|---|
-| `magic` / `version` | Identifies a valid, correctly-versioned ownership RAM block | ROM |
-| `valid` flag | Set once ROM has populated the block this power cycle | ROM |
-| `locked` flag | Set once the block is sealed; further non-Caliptra writes are rejected | ROM/RT |
-| `dot_boot_mode` | Normal boot vs. DOT recovery/transition boot (see below) | ROM |
-| `current_fuse_state` (n) | DOT_FUSE_ARRAY value observed at boot | ROM |
-| `desired_fuse_state` (n+1) | Pending transition requested by RT for ROM/FMC to apply | RT |
-| `CAK` | Current code authentication key (present in Volatile/Locked) | ROM (from blob) / RT (install) |
-| `LAK` | Current lock authentication key | ROM (from blob) / RT (install) |
-| `integrity` (CRC/checksum) | Detects corruption of the block | last writer |
-
-Keep the layout fixed and versioned so that ROM and RT agree on the contents
-across firmware updates. Reserve space for future fields.
-
-### Access Control and Locking
-
-- **Ownership data must not be updatable once marked valid by a non-Caliptra
-  entity.** Once ROM (or RT, on `DOT_CAK_INSTALL`) seals the block, set the
-  `locked` flag and have the hardware/firmware reject further writes from
-  untrusted AXI users until the next power cycle. This prevents another agent
-  from substituting CAK/LAK after they have been committed.
-- Lock ownership RAM before handing control to less-trusted code or exposing
-  mailbox/interfaces to external entities (mirror the MCI configuration locking
-  performed around `SS_CONFIG_DONE_STICKY` / `SS_CONFIG_DONE` in the ROM).
-- Only ROM/FMC should be permitted to act on `desired_fuse_state` (fuse burning
-  is never performed by RT during normal operation — see
-  [ROM vs FMC Implementation Options](#rom-vs-fmc-implementation-options)).
-
-### Integrity and Scrubbing
-
-- Protect the block with a `magic`/`version` and a CRC/checksum so consumers can
-  distinguish a validly retained block from uninitialized or corrupted RAM. If
-  the integrity check fails, treat the block as invalid and fall back to the
-  DOT_BLOB / fuse state on flash and OTP.
-- **Scrub secrets on power cycle and on transition completion.** CAK/LAK must be
-  zeroized when ownership is lost (power cycle, or `DOT_UNLOCK`/`DOT_OVERRIDE`
-  that drops to Uninitialized). Do not rely solely on the retention domain
-  clearing — explicitly invalidate the `valid` flag and zero secret fields when
-  a flow completes so stale keys are never re-used.
-
-### Using Ownership RAM Across Boot Stages
-
-Ownership RAM is the hand-off channel between the DOT actors at each boot stage.
-The producer/consumer relationships are:
-
-1. **ROM (boot):** Reads `DOT_FUSE_ARRAY` to get the current state (n). In ODD
-   state, authenticates the DOT_BLOB and, if valid, programs `CAK`/`LAK` into
-   ownership RAM and marks it valid. Records `current_fuse_state` and the
-   `dot_boot_mode` (normal vs. recovery/transition) for RT to read.
-2. **ROM → RT hand-off (recovery/transition boot):** When the DOT_BLOB is
-   corrupt/missing in ODD state, or a fuse transition is pending, ROM sets
-   `dot_boot_mode` to indicate a DOT recovery/transition boot. After the reset
-   that jumps to RT, RT reads this field and **only accepts DOT
-   recovery/override/transition commands** instead of running the normal boot
-   flow. This is the concrete mechanism behind the "a flag should be passed from
-   MCU ROM to RT" note in the [Recovery Mechanisms](#recovery-mechanisms) and
-   [State Management](#state-management) flows.
-3. **RT (runtime):** On `DOT_CAK_INSTALL`, writes `CAK`/`LAK` into ownership RAM
-   (Volatile state). On `DOT_LOCK`/`DOT_DISABLE`/`DOT_UNLOCK`, writes
-   `desired_fuse_state = n+1` so the fuse-burning component can apply it on the
-   next boot, then requests a subsystem reset that preserves ownership RAM.
-4. **ROM/FMC (transition boot):** Reads `desired_fuse_state`, verifies it is
-   exactly `n+1` of `current_fuse_state`, validates the DOT_BLOB where required,
-   burns `DOT_FUSE_ARRAY`, updates flash storage, and clears the pending
-   `desired_fuse_state` before requesting the final reset.
-
-Because each of these steps is separated by a reset, the retention guarantees
-above are what make the multi-reset DOT state machine work. The reset that
-hands control between stages must be a level that preserves ownership RAM (a
-subsystem/warm/firmware reset, **not** a power cycle); a power cycle in the
-middle of a transition simply returns the device to a clean state derived from
-the persisted `DOT_FUSE_ARRAY` and DOT_BLOB.
 
 ---
 
@@ -1775,7 +1594,8 @@ the persisted `DOT_FUSE_ARRAY` and DOT_BLOB.
 ### Security Properties
 
 1. **Silicon Binding**
-   - DOT_ROOT_KEY is unique per device, for Caliptra 2.0/2.1, it is up to the integrator to decide how to form this per-device unique key.
+   - The selected Caliptra stable identity root is device-derived. The reference
+    implementation uses the UDS-derived stable IDevID root by default.
    - DOT_BLOBs cannot be authenticated / used between devices of the same model
    - Each device requires its own unique DOT_BLOB
 
@@ -1790,26 +1610,25 @@ the persisted `DOT_FUSE_ARRAY` and DOT_BLOB.
    - Each lock operation requires new DOT_BLOB
 
 4. **Authenticity**
-   - DOT_LOCK requires LAK.priv signature
-   - DOT_DISABLE requires LAK.priv signature
-   - DOT_UNLOCK requires LAK.priv signature
-   - DOT_OVERRIDE requires VendorKey.priv signature
-   - All commands that touches fuse state are cryptographically authenticated
+    - DOT_LOCK, DOT_DISABLE, DOT_ROTATE, and GET_DOT_BACKUP_BLOB require generic command authorization
+    - DOT_UNLOCK requires both LAK signatures and public keys matching the stored LAK digest
+    - DOT_RECOVERY requires a current-epoch DOT_BLOB HMAC
+    - DOT_OVERRIDE requires recovery-key signatures anchored in fused PK hash
+    - All commands that touch fuse state are cryptographically authenticated
 
 5. **Ownership Protection**
-   - Disabled state prevents unauthorized ownership takeover
-   - Owner maintains control via LAK even without CAK enforcement
-   - Uninitialized devices can be claimed by any party, Disabled devices cannot
+    - Generic authorization protects lock, disable, and rotate operations
+    - In Disabled state, the LAK holder can authorize unlock while DOT supplies no CAK
+    - In Uninitialized state, DOT supplies no owner; a lock or disable still requires generic authorization
 
 6. **Minimal Fuse Usage**
-   - Only 1 bit per state change
-   - Efficient use of limited fuse resources
-   - Supports many lock/unlock cycles
+    - One bit per parity-changing transition; two bits per rotation
+    - The 256-bit reference counter supports at most 256 one-bit transitions
 
 ### Threat Model
 
 **Protected Against:**
-- Unauthorized ownership changes (requires LAK.priv)
+- Unauthorized ownership changes (generic command authority, current LAK, or fused recovery authority)
 - DOT_BLOB tampering (HMAC-authenticated)
 - DOT_BLOB replay from different device (silicon binding)
 - DOT_BLOB replay from previous state (state binding)
@@ -1818,60 +1637,22 @@ the persisted `DOT_FUSE_ARRAY` and DOT_BLOB.
 
 **Not Protected Against:**
 - Physical attacks on fuses (assumed secure)
-- Compromise of DOT_ROOT_KEY (silicon security boundary)
-- Compromise of LAK.priv (ownership credential)
-- Compromise of VendorKey.priv (vendor master key)
+- Compromise of the selected Caliptra stable identity root (silicon security boundary)
+- Compromise of both LAK private keys (ownership credentials)
+- Compromise of the DOT recovery private keys
 - Side-channel attacks on cryptographic operations
-
-### Best Practices
-
-1. **LAK Management**
-   - Store LAK.priv securely (HSM, secure enclave)
-   - Control LAK.priv access carefully
-   - Consider key escrow for recovery scenarios
-   - Implement proper key rotation when re-locking
-
-2. **DOT_BLOB Backup**
-   - Maintain redundant backups of DOT_BLOB
-   - Store in multiple locations
-   - Verify backups periodically
-   - Secure backup storage (integrity and availability)
-
-3. **State Transition Management**
-   - Verify DOT_BLOB integrity before DOT_LOCK fuse burn
-   - Ensure storage is reliable
-   - Handle reset failures gracefully
-   - Monitor fuse budget (total available transitions)
-
-4. **Recovery Planning**
-   - Define recovery procedures between device and BMC or EC
-   - Test recovery scenarios
-   - Maintain secure access to VendorKey.priv
-   - Document override procedures
-
-5. **Operational Security**
-   - Audit DOT command invocations
-   - Monitor DOT state changes
-   - Alert on recovery mode entries
-   - Track fuse usage over time
 
 ### Fuse Budget Planning
 
-Each state transition consumes one fuse bit:
+LOCK, DISABLE, UNLOCK, and OVERRIDE consume one fuse bit. ROTATE consumes two:
 ```
-Uninitialized(0) → Volatile(0) → Locked(1) → Volatile(2) → Locked(3) → ...
+Uninitialized(0) → Locked(1) → Uninitialized(2) → Locked(3) → ...
 ```
 
-With N fuse bits:
-- Maximum N state transitions
-- Approximately N/2 lock/unlock cycles
-- Plan for expected device lifetime
-- Reserve bits for recovery scenarios
-
-Example with 128-bit fuse array:
-- 256 total state transitions
-- ~128 lock/unlock cycles
-- More than sufficient for most use cases
+The 256-bit reference fuse array permits at most 256 one-bit transitions, or
+128 complete lock/unlock cycles when no bits are consumed by rotations or
+overrides. Each rotation consumes the same fuse budget as one complete
+lock/unlock cycle.
 
 ---
 
@@ -1881,25 +1662,27 @@ Example with 128-bit fuse array:
 
 | Command | State Requirement | Authentication | Fuse Impact | Purpose |
 |---------|------------------|----------------|-------------|---------|
-| DOT_CAK_INSTALL | EVEN | None | No | Install volatile ownership |
-| DOT_LOCK | EVEN | LAK.priv | Yes (n→n+1) | Lock ownership to silicon |
-| DOT_DISABLE | EVEN | LAK.priv | Yes (n→n+1) | Disable DOT in locked state |
+| DOT_LOCK | EVEN | Generic authorization | Yes (n→n+1) | Lock ownership to silicon |
+| DOT_DISABLE | EVEN | Generic authorization | Yes (n→n+1) | Disable DOT in locked state |
+| DOT_ROTATE | DOT enabled; below threshold | Generic authorization | Yes (n→n+2) | Replace CAK/LAK digests while preserving parity |
+| GET_DOT_BACKUP_BLOB | ODD | Generic authorization + blob HMAC | No | Export authenticated backup |
 | DOT_UNLOCK_CHALLENGE | ODD | None | No | Request unlock challenge |
-| DOT_UNLOCK | ODD | LAK.priv | Yes (n→n+1) | Unlock ownership from silicon |
-| DOT_RECOVERY | ODD (Recovery) | DOT_BLOB HMAC | No | Restore corrupted DOT_BLOB |
-| DOT_OVERRIDE | ODD (Recovery) | VendorKey.priv | Yes (n→n+1) | Force unlock (destructive) |
-| DOT_RECOVERY_REQUEST | ODD (Recovery) | VendorKey (ECC+MLDSA) | No | Challenge/response recovery |
+| DOT_UNLOCK | ODD | Both LAK private-key signatures | Yes (n→n+1) | Unlock ownership from silicon |
+| DOT_STATUS | Any | None (read-only) | No | Query initialization, parity, and fuse count |
+| DOT_RECOVERY | ODD | DOT_BLOB HMAC | No | Restore corrupted DOT_BLOB |
+| DOT_OVERRIDE_CHALLENGE | ODD | Fused recovery-key hash | No | Start destructive override |
+| DOT_OVERRIDE | ODD | Fused recovery-key hybrid signatures | Yes (n→n+1) | Clear DOT CAK/LAK and enter EVEN state |
 
 ### State Transition Table
 
 | From State | Command | To State | Fuse Change | Storage Change |
 |------------|---------|----------|-------------|----------------|
-| Uninitialized (EVEN) | DOT_CAK_INSTALL | Volatile (EVEN) | No | None |
-| Volatile (EVEN) | Power Cycle | Uninitialized (EVEN) | No | None |
-| Volatile (EVEN) | DOT_LOCK | Locked (ODD) | EVEN→ODD | Create DOT_BLOB |
-| Volatile (EVEN) | DOT_DISABLE | Disabled (ODD) | EVEN→ODD | Create DOT_BLOB (no CAK) |
-| Locked (ODD) | DOT_UNLOCK | Volatile (EVEN) | ODD→EVEN | Delete DOT_BLOB |
+| Unlocked (EVEN) | DOT_LOCK | Locked (ODD) | EVEN→ODD | Create DOT_BLOB |
+| Unlocked (EVEN) | DOT_DISABLE | Disabled (ODD) | EVEN→ODD | Create DOT_BLOB (no CAK) |
+| Locked (ODD) | DOT_UNLOCK | Uninitialized (EVEN) | ODD→EVEN | Seal blob with zero CAK digest, retaining LAK digest |
+| Locked (ODD) | DOT_ROTATE | Locked (ODD) | n→n+2 | Replace DOT_BLOB with new CAK and LAK digests |
+| Disabled (ODD) | DOT_ROTATE | Locked (ODD) | n→n+2 | Replace DOT_BLOB with nonzero CAK and LAK digests |
+| Uninitialized (EVEN) | DOT_ROTATE | Pending lock | n→n+2, then n→n+3 on boot | Write CAK-bearing blob; ROM performs its blob-driven lock transition |
 | Locked (ODD) | Corrupted BLOB | Recovery (ODD) | No | None |
 | Recovery (ODD) | DOT_RECOVERY | Locked (ODD) | No | Restore DOT_BLOB |
-| Recovery (ODD) | DOT_RECOVERY_REQUEST | Locked (ODD) | No | New DOT_BLOB via challenge/response |
-| Recovery (ODD) | DOT_OVERRIDE | Uninitialized (EVEN) | ODD→EVEN | Delete DOT_BLOB |
+| Recovery (ODD) | DOT_OVERRIDE | Uninitialized (EVEN) | ODD→EVEN | Seal empty DOT_BLOB |

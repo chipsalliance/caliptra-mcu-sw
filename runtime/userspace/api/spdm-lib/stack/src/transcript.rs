@@ -37,10 +37,10 @@ pub enum Slot {
 ///
 /// # Heap allocation
 ///
-/// When `S = HashState` (the caliptra-api-lite backend), each of
+/// When `S = HashState` (the caliptra-api backend), each of
 /// the three `Option<S>` slots allocates 200 bytes on the global
 /// heap via `Box` when initialized — up to 600 bytes total.
-/// See [`HashState`](caliptra_api_lite::sha::HashState) for details.
+/// See [`HashState`](caliptra_api::sha::HashState) for details.
 pub struct Transcript<S> {
     pub(crate) vca: Option<S>,
     pub(crate) m1: Option<S>,

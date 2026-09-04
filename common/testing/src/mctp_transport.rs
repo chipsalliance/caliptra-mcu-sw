@@ -158,7 +158,10 @@ impl PldmSocket for MctpPldmSocket {
     }
 
     fn disconnect(&self) {
-        // Not supported
+        // The emulator's I3C socket server only services one client at a time,
+        // so the connection has to be released for the next client to be
+        // accepted.
+        self.tx_stream.shutdown();
     }
 
     fn clone(&self) -> Self {

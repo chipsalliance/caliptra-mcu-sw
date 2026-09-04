@@ -42,8 +42,13 @@ rv32i.workspace = true
 
 [features]
 default = ["all-features"]
+# Runtime-kernel features are forwarded to the bundled user app. Keep both DOT
+# gates in the default set so an app with DOT commands always has its storage
+# syscall and transport drivers instantiated by the kernel.
 all-features = [
 	"spdm",
+	"dot-mci-mailbox",
+	"dot-spdm-vdm",
 	"streaming-boot",
 	"flash-boot",
 	"firmware-update",
@@ -67,6 +72,8 @@ doe = [
 ]
 userspace-log = []
 debug = []
+dot-mci-mailbox = []
+dot-spdm-vdm = []
 # Production / minimal-size build.  Strips:
 #   - kernel `debug!()` macro          (via kernel/no_debug_panics)
 #   - romtime `print!`/`println!`      (via caliptra-mcu-romtime/no-print)
@@ -81,6 +88,7 @@ hw-2-1 = []
 ocp-lock = ["caliptra-mcu-romtime/ocp-lock", "caliptra-mcu-capsules-runtime/ocp-lock", "caliptra-mcu-components/ocp-lock", "caliptra-mcu-platforms-common/ocp-lock"]
 # Example app test features
 test-caliptra-certs = []
+test-get-caliptra-idev-csr = []
 test-caliptra-crypto = []
 test-caliptra-mailbox = []
 test-do-nothing = []
@@ -101,9 +109,9 @@ test-sw-pcr-store = []
 # Kernel only test
 test-exit-immediately = []
 test-xtask-runtime = []
-test-caliptra-util-host-validator = ["mcu-mbox-service"]
-test-caliptra-util-host-mctp-vdm-validator = ["mctp-vdm-service"]
-test-caliptra-util-host-spdm-vdm-validator = ["spdm"]
+test-caliptra-util-host-validator = ["mcu-mbox-service", "dot-mci-mailbox"]
+test-caliptra-util-host-mctp-vdm-validator = ["mctp-vdm-service", "userspace-log"]
+test-caliptra-util-host-spdm-vdm-validator = ["spdm", "dot-spdm-vdm"]
 test-i3c-simple = []
 test-i3c-constant-writes = []
 test-flash-based-boot = ["flash-boot"]
@@ -125,7 +133,7 @@ test-defmt-logging-release = ["userspace-log", "mcu-mbox-service"]
 test-defmt-logging-vdm = ["userspace-log", "mcu-mbox-service", "mctp-vdm-service"]
 test-firmware-v2 = []
 test-mcu-mbox-driver = []
-test-mcu-mbox-cmds = ["mcu-mbox-service"]
+test-mcu-mbox-cmds = ["mcu-mbox-service", "dot-mci-mailbox"]
 test-ekp = ["ocp-lock", "test-mcu-mbox-cmds"]
 test-mcu-mbox-fips-self-test = ["mcu-mbox-service"]
 test-mcu-mbox-fips-periodic = ["mcu-mbox-service"]
@@ -135,10 +143,11 @@ test-mctp-ctrl-cmds = ["spdm", "streaming-boot", "mctp-vdm-service"]
 test-mctp-capsule-loopback = []
 test-mctp-user-loopback = ["mctp-vdm-service"]
 test-mctp-vdm-cmds = ["mctp-vdm-service", "userspace-log"]
+test-mctp-vdm-production = ["mctp-vdm-service"]
 test-mcu-rom-flash-access = []
 test-mcu-svn-gt-fuse = []
 test-mcu-svn-lt-fuse = []
-test-ocp-lock = ["ocp-lock"]
+test-ocp-lock = ["ocp-lock", "mcu-mbox-service"]
 test-handoff = ["ocp-lock", "test-exit-immediately"]
 test-pldm-request-response = ["streaming-boot"]
 test-pldm-discovery = ["streaming-boot"]
@@ -148,6 +157,11 @@ test-pldm-streaming-boot = ["streaming-boot"]
 test-streaming-boot-flash-write-back = ["streaming-boot", "firmware-update"]
 test-mctp-spdm-responder-conformance = ["spdm"]
 test-mctp-spdm-attestation = ["spdm", "flash-boot"]
+test-mctp-spdm-attestation-tcb = ["spdm", "flash-boot"]
+test-mctp-spdm-attestation-mixed = ["spdm", "flash-boot"]
+test-mctp-spdm-attestation-hitless = ["spdm", "flash-boot", "firmware-update"]
+test-mctp-spdm-attestation-hitless-tcb = ["spdm", "flash-boot", "firmware-update"]
+test-mctp-spdm-attestation-hitless-mixed = ["spdm", "flash-boot", "firmware-update"]
 test-mctp-spdm-attestation-pcr-quote = ["spdm"]
 test-mctp-spdm-set-certificate = ["spdm", "flash-boot"]
 test-doe-spdm-responder-conformance = ["doe"]

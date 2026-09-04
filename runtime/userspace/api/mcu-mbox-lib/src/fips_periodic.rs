@@ -17,7 +17,7 @@ use core::sync::atomic::{AtomicU32, Ordering};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use embassy_sync::signal::Signal;
-use mcu_caliptra_api_lite::raw;
+use mcu_caliptra_api::raw;
 
 /// Periodic FIPS self-test interval in milliseconds.
 /// Default: 60 seconds (60000 ms)

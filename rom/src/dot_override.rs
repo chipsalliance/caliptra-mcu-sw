@@ -27,6 +27,7 @@ use crate::{
 use caliptra_mcu_registers_generated::mci;
 use caliptra_mcu_romtime::StaticRef;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
+use zeroize::Zeroize;
 
 pub const CMD_DOT_UNLOCK_CHALLENGE: u32 = 0x444F_5457;
 pub const CMD_DOT_OVERRIDE: u32 = 0x444F_5458;
@@ -119,6 +120,7 @@ impl Mbox0Helpers {
     }
 
     fn send_mbox0_response(&self, data: &[u8]) {
+        self.zeroize_sram();
         let sram = &self.mci.mcu_mbox0_csr_mbox_sram;
         let sram =
             unsafe { core::slice::from_raw_parts_mut(sram.as_ptr() as *mut u32, sram.len()) };
@@ -142,12 +144,14 @@ impl Mbox0Helpers {
     }
 
     fn cmd_failure(&self) {
+        self.zeroize_sram();
         self.mci
             .mcu_mbox0_csr_mbox_cmd_status
             .write(mci::bits::MboxCmdStatus::Status::CmdFailure);
     }
 
     fn cmd_complete(&self) {
+        self.zeroize_sram();
         self.mci
             .mcu_mbox0_csr_mbox_cmd_status
             .write(mci::bits::MboxCmdStatus::Status::CmdComplete);
@@ -155,6 +159,13 @@ impl Mbox0Helpers {
 
     fn dlen(&self) -> usize {
         self.mci.mcu_mbox0_csr_mbox_dlen.get() as usize
+    }
+
+    fn zeroize_sram(&self) {
+        let sram = &self.mci.mcu_mbox0_csr_mbox_sram;
+        let sram =
+            unsafe { core::slice::from_raw_parts_mut(sram.as_ptr() as *mut u32, sram.len()) };
+        sram.zeroize();
     }
 }
 
@@ -279,5 +290,9 @@ impl RecoveryTransport for Mbox0RecoveryTransport {
         } else {
             self.helpers.cmd_failure();
         }
+    }
+
+    fn zeroize_sensitive_data(&self) {
+        self.helpers.zeroize_sram();
     }
 }

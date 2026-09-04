@@ -560,11 +560,9 @@ Generate a reference-value CoRIM from a firmware bundle.
 Reads the all-build ZIP bundle (from `cargo xtask all-build`) and produces
 CoMID/CoRIM CBOR files with reference value digests for each firmware component.
 
-Components are auto-discovered from the bundle:
-  mkey 0: FMC_INFO      - Caliptra FMC (from caliptra_fw.bin)
-  mkey 1: RT_INFO        - Caliptra Runtime (from caliptra_fw.bin)
-  mkey 2: SOC_MANIFEST   - Authorization Manifest (soc_manifest.bin)
-  mkey 3+: SoC firmware  - Auto-discovered from AuthManifest metadata
+Components are auto-discovered from the bundle's SoC manifest metadata and
+encoded to match Measurement API evidence:
+    mkey 1: SoC firmware  - Auto-discovered from AuthManifest metadata
 
 CONFIG FILE (--config):
   Optional JSON file controlling vendor/model, hash algorithm, output
@@ -602,6 +600,12 @@ EXAMPLES:
         /// mcu-test-soc-manifest-<feature>.bin instead of the generic entries.
         #[arg(long, value_name = "FEATURE")]
         feature: Option<String>,
+
+        /// Generate reference values for the payload shipped in the hitless
+        /// update package instead of the cold-boot payload. Reads
+        /// mcu-test-soc-manifest-update-<feature>.bin from the bundle.
+        #[arg(long)]
+        post_update: bool,
     },
     /// Print a sample JSON config file with all fields documented
     SampleConfig,
@@ -855,8 +859,9 @@ fn main() {
                 bundle,
                 config,
                 feature,
+                post_update,
             } => corim::CorimConfig::load(config.as_deref())
-                .and_then(|cfg| corim::generate(bundle, cfg, feature.as_deref())),
+                .and_then(|cfg| corim::generate(bundle, cfg, feature.as_deref(), *post_update)),
             CorimCommands::SampleConfig => {
                 corim::CorimConfig::print_sample();
                 Ok(())

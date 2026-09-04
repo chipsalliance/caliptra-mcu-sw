@@ -29,7 +29,11 @@ mod test_dma;
 #[cfg(feature = "test-doe-user-loopback")]
 mod test_doe_loopback;
 
-#[cfg(feature = "test-caliptra-certs")]
+#[allow(dead_code)]
+#[cfg(any(
+    feature = "test-caliptra-certs",
+    feature = "test-get-caliptra-idev-csr"
+))]
 mod test_caliptra_certs;
 
 #[cfg(feature = "test-log-flash-usermode")]
@@ -169,9 +173,9 @@ pub(crate) async fn async_main<S: Syscalls>() {
 
     #[cfg(feature = "test-get-device-state")]
     {
-        let pcr_quote_alloc = test_get_device_state::init_pcr_quote_allocator();
-        test_get_device_state::test_get_pcr_quote(pcr_quote_alloc).await;
-        test_get_device_state::test_get_fw_info().await;
+        let alloc = test_get_device_state::init_pcr_quote_allocator();
+        test_get_device_state::test_get_pcr_quote(alloc).await;
+        test_get_device_state::test_get_fw_info(alloc).await;
         test_get_device_state::test_get_image_info().await;
         test_get_device_state::test_get_fw_version().await;
         System::exit(0);
@@ -179,26 +183,32 @@ pub(crate) async fn async_main<S: Syscalls>() {
 
     #[cfg(feature = "test-caliptra-crypto")]
     {
-        test_caliptra_crypto::test_caliptra_sha().await;
-        test_caliptra_crypto::test_caliptra_rng().await;
-        test_caliptra_crypto::test_caliptra_ecdh().await;
-        test_caliptra_crypto::test_caliptra_hmac().await;
-        test_caliptra_crypto::test_caliptra_aes_gcm_cipher().await;
-        test_caliptra_crypto::test_caliptra_ecdsa().await;
+        let alloc = test_caliptra_crypto::init_crypto_allocator();
+        test_caliptra_crypto::test_caliptra_sha(alloc).await;
+        test_caliptra_crypto::test_caliptra_rng(alloc).await;
+        test_caliptra_crypto::test_caliptra_ecdh(alloc).await;
+        test_caliptra_crypto::test_caliptra_hmac(alloc).await;
+        test_caliptra_crypto::test_caliptra_aes_gcm_cipher(alloc).await;
+        test_caliptra_crypto::test_caliptra_ecdsa(alloc).await;
         System::exit(0);
     }
 
     #[cfg(feature = "test-caliptra-certs")]
     {
-        // test_caliptra_certs::test_get_idev_csr().await;
-        test_caliptra_certs::test_populate_idev_ecc384_cert().await;
-        test_caliptra_certs::test_get_ldev_ecc384_cert().await;
-        test_caliptra_certs::test_get_fmc_alias_ecc384cert().await;
-        test_caliptra_certs::test_get_rt_alias_ecc384cert().await;
-        test_caliptra_certs::test_get_cert_chain().await;
-        test_caliptra_certs::test_certify_key().await;
-        test_caliptra_certs::test_sign_with_test_key().await;
+        let alloc = test_caliptra_certs::init_cert_allocator();
+        test_caliptra_certs::test_populate_idev_ecc384_cert(alloc).await;
+        test_caliptra_certs::populate_idevid_cert_mldsa87_from_otp(alloc).await;
+        test_caliptra_certs::test_get_cert_chain(alloc).await;
+        test_caliptra_certs::test_certify_key(alloc).await;
+        test_caliptra_certs::test_sign_with_test_key(alloc).await;
         test_caliptra_certs::test_get_attested_csr().await;
+        test_caliptra_certs::test_get_ldev_cert_mldsa87().await;
+        System::exit(0);
+    }
+    #[cfg(feature = "test-get-caliptra-idev-csr")]
+    {
+        test_caliptra_certs::test_get_idev_csr_ecc384().await;
+        test_caliptra_certs::test_get_idev_csr_mldsa87().await;
         System::exit(0);
     }
     #[cfg(feature = "test-dma")]

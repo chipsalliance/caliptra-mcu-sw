@@ -20,9 +20,60 @@ key_ids = [1, 2, 3]
 # ECC384 = 1, MlDsa87 = 2
 algorithm = 1
 
-[fe_prog]
-partition = 0
-# Hex-encoded ECC private key (P-384) and ML-DSA seed (32 bytes) for FE_PROG authorization.
-# Must match keys in the MCU firmware.
+[get_attestation]
+# Signing algorithm: ECC384 = 1, MlDsa87 = 2
+algorithm = 1
+# 32-byte freshness nonce, hex-encoded. Randomly generated per run when
+# omitted; pin it only to reproduce a specific failure.
+# nonce = "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"
+#
+# The evidence formats exercised are not configured here: the validator queries
+# the device for its supported-format bitmap and drives whatever it advertises,
+# so this test tracks the firmware's build-time feature set automatically.
+
+[authorized_commands]
+# Test-only authorization keys. Production integrations must provide their own key source.
 ecc_auth_key = "3da9e680aff5a1cea96a3e89810286fb3b3030a9c924ad2f2031a07d294052a97cafa1fc6ea760a43db763ca9f2f7036"
 mldsa_auth_key = "63616c69707472612d6d63752d74657374696e672d6d6c6473612d736565642d"
+# The integration harness selects isolated suites with --fuse-suite. Keep the
+# aggregate switches disabled so destructive operations cannot accidentally run
+# together when this config is used directly.
+negative_authorization_tests = false
+policy_rejection_tests = false
+
+[provision_vendor_pk_hash]
+enabled = false
+slot = 1
+hash = "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"
+
+[provision_owner_pk_hash]
+enabled = false
+hash = "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"
+
+[increase_caliptra_min_svn]
+# The integration test boots disposable Caliptra firmware with SVN 7.
+enabled = false
+flags = 0
+svn = 7
+
+[fe_prog]
+enabled = true
+partition = 0
+
+[revoke_vendor_pub_key]
+enabled = false
+reserved = 0
+vendor_pk_hash_slot = 1
+key_type = 0
+key_index = 0
+
+[revoke_vendor_pk_hash]
+enabled = false
+reserved = 0
+vendor_pk_hash_slot = 1
+
+[dot]
+enabled = false
+cak = "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"
+ecc_lak_private_key = "3da9e680aff5a1cea96a3e89810286fb3b3030a9c924ad2f2031a07d294052a97cafa1fc6ea760a43db763ca9f2f7036"
+mldsa_lak_seed = "63616c69707472612d6d63752d74657374696e672d6d6c6473612d736565642d"

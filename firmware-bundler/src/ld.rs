@@ -89,6 +89,16 @@ pub fn generate_maximal_link_scripts(
     LdGeneration::new(manifest, common, ld)?.maximal()
 }
 
+fn split_sram_for_sizing(mut memory: Memory) -> Result<(Memory, Memory)> {
+    // Initialized data is also stored in the instruction image, so reserve
+    // 9/16 of SRAM for instructions while retaining 7/16 for runtime data.
+    let split = (memory.offset + memory.size / 2 + memory.size / 16)
+        .next_multiple_of(TOCK_ALIGNMENT)
+        - memory.offset;
+    let instructions = memory.consume(split)?;
+    Ok((instructions, memory))
+}
+
 /// A helper struct containing the context required to do a linker script generation.
 struct LdGeneration<'a> {
     manifest: &'a Manifest,
@@ -162,18 +172,7 @@ impl<'a> LdGeneration<'a> {
 
         // Determine the maximal size of itcm/dtcm for the application.
         let (itcm, dtcm) = match self.manifest.platform.runtime_memory.clone() {
-            RuntimeMemory::Sram(mut mem) => {
-                // If in SRAM mode, split the memory in approximately half for instructions and
-                // data.  They cannot be the same, as it causes allocations to overlap and fail to
-                // compile.
-                //
-                // Note: The in half split is arbitrary.  This may have to be adjusted if real world
-                // applications are found not to compile with this split, but can fit in the SRAM.
-                let split =
-                    (mem.offset + (mem.size / 2)).next_multiple_of(TOCK_ALIGNMENT) - mem.offset;
-                let instructions = mem.consume(split)?;
-                (instructions, mem)
-            }
+            RuntimeMemory::Sram(mem) => split_sram_for_sizing(mem)?,
             RuntimeMemory::Tcm { itcm, dtcm } => (itcm, dtcm),
         };
 
@@ -752,6 +751,21 @@ mod tests {
     }
 
     // ==================== Happy Path Tests ====================
+
+    #[test]
+    fn sizing_split_biases_sram_toward_instructions() {
+        let memory = Memory {
+            offset: 0xa8c0_0000,
+            size: 0x8_0000,
+        };
+
+        let (instructions, data) = split_sram_for_sizing(memory).unwrap();
+
+        assert_eq!(instructions.offset, 0xa8c0_0000);
+        assert_eq!(instructions.size, 0x4_8000);
+        assert_eq!(data.offset, 0xa8c4_8000);
+        assert_eq!(data.size, 0x3_8000);
+    }
 
     #[test]
     fn kernel_only_fits() {

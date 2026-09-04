@@ -152,6 +152,8 @@ pub const SPDM_RESET_REQUIRED: SpdmError = SpdmError::new(0x0C);
 /// `DecryptError` — secured-message decryption / MAC verification
 /// failed.
 pub const SPDM_DECRYPT_ERROR: SpdmError = SpdmError::new(0x06);
+/// `DataTooLarge` - Data is too large to be represented by message fields
+pub const SPDM_DATA_TOO_LARGE: SpdmError = SpdmError::new(0x12);
 /// `VersionMismatch` — requester's SPDM version is not supported.
 pub const SPDM_VERSION_MISMATCH: SpdmError = SpdmError::new(0x41);
 /// `ResponseNotReady` — responder needs more time; requester should

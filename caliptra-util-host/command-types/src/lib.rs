@@ -13,6 +13,7 @@ pub use zerocopy::{
     FromBytes as ZeroCopyFromBytes, FromZeros as ZeroCopyFromZeros, IntoBytes as ZeroCopyIntoBytes,
 };
 
+pub mod attestation;
 pub mod certificate;
 pub mod crypto_aes;
 pub mod crypto_asymmetric;
@@ -23,10 +24,12 @@ pub mod crypto_import;
 pub mod debug_unlock;
 pub mod device_info;
 pub mod device_log;
+pub mod device_ownership_transfer;
 pub mod error;
 pub mod fuse;
 
 // Re-export all types
+pub use attestation::*;
 pub use certificate::*;
 pub use crypto_aes::*;
 pub use crypto_asymmetric::*;
@@ -37,6 +40,7 @@ pub use crypto_import::*;
 pub use debug_unlock::*;
 pub use device_info::*;
 pub use device_log::*;
+pub use device_ownership_transfer::*;
 pub use error::*;
 pub use fuse::*;
 
@@ -55,6 +59,7 @@ pub enum CaliptraCommandId {
     GetRtAliasCert = 0x1004,
     ExportAttestedCsr = 0x1005,
     ExportIdevidCsr = 0x1006,
+    GetAttestation = 0x1007,
     GetCertChain = 0x1010,
     StoreCertificate = 0x1011,
     GetCertificate = 0x1012, // Generic get certificate
@@ -121,6 +126,24 @@ pub enum CaliptraCommandId {
     // Authorized Commands (0x8010-0x801F)
     GetAuthCmdChallenge = 0x8010,
     FeProg = 0x8011,
+    ProvisionVendorPkHash = 0x8012,
+    FuseIncreaseCaliptraMinSvn = 0x8013,
+    FuseRevokeVendorPubKey = 0x8014,
+    FuseRevokeVendorPkHash = 0x8015,
+    FuseLockPartition = 0x8016,
+    ProvisionOwnerPkHash = 0x8017,
+
+    // Device Ownership Transfer Commands (0x8020-0x8029)
+    DotLock = 0x8020,
+    DotDisable = 0x8021,
+    DotUnlockChallenge = 0x8022,
+    DotUnlock = 0x8023,
+    DotRotate = 0x8024,
+    GetDotBackupBlob = 0x8025,
+    DotStatus = 0x8026,
+    DotRecovery = 0x8027,
+    DotOverrideChallenge = 0x8028,
+    DotOverride = 0x8029,
 }
 
 /// Common response header for all commands

@@ -5,6 +5,7 @@
 //! This module provides mailbox transport implementation with external mailbox protocol support.
 
 pub mod aes;
+pub mod attestation;
 pub mod certificate;
 pub mod checksum;
 pub mod command_traits;
@@ -13,6 +14,7 @@ pub mod debug_unlock;
 pub mod delete;
 pub mod device_info;
 pub mod device_log;
+pub mod device_ownership_transfer;
 pub mod dispatch;
 pub mod fuse;
 pub mod hmac;
@@ -31,11 +33,13 @@ pub use command_traits::{
 
 // Re-export external command types for testing
 pub use aes::*;
+pub use attestation::*;
 pub use certificate::*;
 pub use crypto_asymmetric::*;
 pub use debug_unlock::*;
 pub use delete::*;
 pub use device_info::*;
+pub use device_ownership_transfer::*;
 pub use hmac::*;
 pub use import::*;
 pub use sha::*;

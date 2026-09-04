@@ -1,11 +1,11 @@
 // Licensed under the Apache-2.0 license
 use caliptra_mcu_attestation_evidence::pcr_quote::{
-    encode_pcr_quote, PcrQuoteAlgorithm, PCR_QUOTE_MAX_SIZE,
+    encode_pcr_quote, PcrQuoteAlgorithm, PCR_QUOTE_MAX_BUF_SIZE,
 };
-use caliptra_mcu_libapi_caliptra::evidence::device_state::*;
 use caliptra_mcu_romtime::{println, test_exit};
-use caliptra_mcu_spdm_pal::{BitmapAllocator, StaticBitmapAllocatorCell, BITMAP_SLOT_SIZE};
+use caliptra_mcu_scratch_alloc::{BitmapAllocator, StaticBitmapAllocatorCell, BITMAP_SLOT_SIZE};
 use core::ptr::NonNull;
+use mcu_caliptra_api::{core_firmware_version, core_image_info, fw_info};
 
 const PCR_QUOTE_SCRATCH_SIZE: usize = 8192;
 const PCR_QUOTE_SCRATCH_SLOTS: usize = PCR_QUOTE_SCRATCH_SIZE / BITMAP_SLOT_SIZE;
@@ -17,7 +17,7 @@ struct PcrQuoteScratchSlot([u8; BITMAP_SLOT_SIZE]);
 static PCR_QUOTE_ALLOCATOR: StaticBitmapAllocatorCell = StaticBitmapAllocatorCell::new();
 static mut PCR_QUOTE_SCRATCH: [PcrQuoteScratchSlot; PCR_QUOTE_SCRATCH_SLOTS] =
     [PcrQuoteScratchSlot([0; BITMAP_SLOT_SIZE]); PCR_QUOTE_SCRATCH_SLOTS];
-static mut PCR_QUOTE_BUFFER: [u8; PCR_QUOTE_MAX_SIZE] = [0; PCR_QUOTE_MAX_SIZE];
+static mut PCR_QUOTE_BUFFER: [u8; PCR_QUOTE_MAX_BUF_SIZE] = [0; PCR_QUOTE_MAX_BUF_SIZE];
 
 pub(crate) fn init_pcr_quote_allocator() -> &'static BitmapAllocator {
     let scratch_ptr =
@@ -86,9 +86,9 @@ async fn test_pcr_quote_with_ecc_signature(alloc: &BitmapAllocator) {
     println!("PCR Quote ECC signature test success");
 }
 
-pub async fn test_get_fw_info() {
+pub async fn test_get_fw_info(alloc: &BitmapAllocator) {
     println!("==Starting get FW_INFO test==");
-    let fw_info = match DeviceState::fw_info().await {
+    let fw_info = match fw_info(alloc).await {
         Ok(fw_info) => fw_info,
         Err(err) => {
             println!("Failed to get the FW_INFO. {:?}", err);
@@ -104,7 +104,7 @@ pub async fn test_get_image_info() {
     println!("==Starting get IMAGE_INFO test==");
     // Example: Get image info for MCU firmware (fw_id = 0x02)
     let mcu_fw_id: u32 = 0x02;
-    let mcu_image_info = match DeviceState::image_info(mcu_fw_id).await {
+    let mcu_image_info = match core_image_info(mcu_fw_id).await {
         Ok(image_info) => image_info,
         Err(err) => {
             println!("Failed to get image info for id {}: {:?}", mcu_fw_id, err);
@@ -121,18 +121,17 @@ pub async fn test_get_image_info() {
 
 pub async fn test_get_fw_version() {
     println!("==Starting get FW_VERSION test==");
-    let (received_hw_rev, received_rom_version, received_fmc_version, received_rt_version) =
-        match DeviceState::fw_version().await {
-            Ok(version) => version,
-            Err(err) => {
-                println!("Failed to get the HW_VERSION. {:?}", err);
-                test_exit(1);
-            }
-        };
+    let version = match core_firmware_version().await {
+        Ok(version) => version,
+        Err(err) => {
+            println!("Failed to get the HW_VERSION. {:?}", err);
+            test_exit(1);
+        }
+    };
 
     println!(
         "HW_REV: {:x}, ROM_VERSION: {:x}, FMC_VERSION: {:x}, RT_VERSION: {:x}",
-        received_hw_rev, received_rom_version, received_fmc_version, received_rt_version
+        version.hardware, version.rom, version.fmc, version.runtime
     );
     println!("==Get FW_VERSION test success==");
 }

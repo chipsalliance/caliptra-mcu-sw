@@ -1,24 +1,163 @@
 // Licensed under the Apache-2.0 license
 
-extern crate alloc;
-
-use alloc::boxed::Box;
-use async_trait::async_trait;
-use caliptra_mcu_libapi_caliptra::certificate::{
-    AsymAlgo, CertContext, IDEV_ECC_CSR_MAX_SIZE, KEY_LABEL_SIZE, MAX_ATTESTED_CSR_SIZE,
-    MAX_CERT_CHUNK_SIZE, MAX_ECC_CERT_SIZE,
-};
+use caliptra_api::mailbox::{GetLdevCertResp, GetLdevMldsa87CertReq, Request};
+use caliptra_mcu_libapi_caliptra::mailbox_api::execute_mailbox_cmd;
 use caliptra_mcu_libsyscall_caliptra::external_otp::ExternalOtp;
-use caliptra_mcu_libsyscall_caliptra::mailbox::PayloadStream;
+use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
-use caliptra_mcu_libtock_platform::ErrorCode;
-use caliptra_mcu_romtime::println;
-use caliptra_mcu_romtime::test_exit;
+use caliptra_mcu_romtime::{println, test_exit};
+use caliptra_mcu_scratch_alloc::{BitmapAllocator, StaticBitmapAllocatorCell, BITMAP_SLOT_SIZE};
+use core::ptr::NonNull;
+use mcu_caliptra_api::{
+    dpe_certify_key_cert_size, dpe_certify_key_cert_slice, dpe_get_cert_chain_chunk,
+    dpe_sign_ecc_p384, get_attested_csr_ecc384, get_attested_csr_mldsa87, get_idev_csr_ecc384,
+    get_idev_csr_mldsa87, mldsa87_cert_der_len, populate_idev_ecc384_cert,
+    populate_idev_mldsa87_cert, DpeProfile, DPE_LABEL_LEN, DPE_MAX_CHUNK_SIZE,
+    DPE_P384_SIGNATURE_SIZE, IDEV_MLDSA87_CSR_MAX_SIZE, IDEV_MLDSA87_CSR_RSP_BUF_SIZE,
+};
+use zerocopy::{FromBytes, IntoBytes};
 
-const TEST_KEY_LABEL: [u8; KEY_LABEL_SIZE] = [
+const OTP_IDEVID_MLDSA_PARTITION: u32 = 0x02;
+const CERT_SCRATCH_SIZE: usize = 16 * 1024;
+const CERT_SCRATCH_SLOTS: usize = CERT_SCRATCH_SIZE / BITMAP_SLOT_SIZE;
+const MAX_ATTESTED_CSR_SIZE: usize = 12_812;
+const TEST_KEY_LABEL: [u8; DPE_LABEL_LEN] = [
     48, 47, 46, 45, 44, 43, 42, 41, 40, 39, 38, 37, 36, 35, 34, 33, 32, 31, 30, 29, 28, 27, 26, 25,
     24, 23, 22, 21, 20, 19, 18, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1,
 ];
+
+#[repr(C, align(64))]
+#[derive(Clone, Copy)]
+struct CertScratchSlot([u8; BITMAP_SLOT_SIZE]);
+
+static CERT_ALLOCATOR: StaticBitmapAllocatorCell = StaticBitmapAllocatorCell::new();
+static mut CERT_SCRATCH: [CertScratchSlot; CERT_SCRATCH_SLOTS] =
+    [CertScratchSlot([0; BITMAP_SLOT_SIZE]); CERT_SCRATCH_SLOTS];
+static mut ATTESTED_CSR_BUFFER: [u8; MAX_ATTESTED_CSR_SIZE] = [0; MAX_ATTESTED_CSR_SIZE];
+
+pub fn init_cert_allocator() -> &'static BitmapAllocator {
+    let scratch_ptr =
+        unsafe { NonNull::new_unchecked(core::ptr::addr_of_mut!(CERT_SCRATCH).cast::<u8>()) };
+    unsafe { CERT_ALLOCATOR.init_once(scratch_ptr, CERT_SCRATCH_SIZE) }
+}
+
+pub async fn test_get_idev_csr_ecc384() {
+    let csr = unsafe { &mut ATTESTED_CSR_BUFFER };
+    let size = get_idev_csr_ecc384(csr)
+        .await
+        .unwrap_or_else(|_| test_exit(1))
+        .unwrap_or_else(|| test_exit(1));
+    if size == 0 {
+        test_exit(1);
+    }
+    println!("IDevID CSR size: {}", size);
+    dump_der_hex("ECC384 IDEVID CSR", &csr[..size]);
+}
+
+/// Dump DER as hexadecimal for offline processing.
+fn dump_der_hex(label: &str, der: &[u8]) {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+
+    println!("---BEGIN {} ({} bytes)---", label, der.len());
+    for line in der.chunks(32) {
+        let mut buf = [0u8; 64];
+        for (i, byte) in line.iter().enumerate() {
+            buf[i * 2] = HEX[(byte >> 4) as usize];
+            buf[i * 2 + 1] = HEX[(byte & 0x0f) as usize];
+        }
+        println!("{}", core::str::from_utf8(&buf[..line.len() * 2]).unwrap());
+    }
+    println!("---END {}---", label);
+}
+
+/// Fetch the ML-DSA-87 IDevID CSR from Caliptra and dump it as hex.
+///
+/// This is the extraction step for the ML-DSA test PKI: the dumped CSR is
+/// signed offline by a test root CA to produce the IDevID certificate that
+/// gets seeded into the emulated OTP.
+///
+/// Caliptra only generates an IDevID CSR when the manufacturing flag
+/// `mfg_flag_gen_idev_id_csr` was set at cold boot. The integration test does
+/// this by selecting `DeviceLifecycle::Manufacturing`, so an absent CSR is a
+/// test failure.
+pub async fn test_get_idev_csr_mldsa87() {
+    let buf = unsafe { &mut ATTESTED_CSR_BUFFER };
+    // The response buffer must hold the mailbox response prefix as well as the
+    // CSR itself.
+    if buf.len() < IDEV_MLDSA87_CSR_RSP_BUF_SIZE {
+        test_exit(1);
+    }
+
+    let size = get_idev_csr_mldsa87(buf)
+        .await
+        .unwrap_or_else(|_| test_exit(1))
+        .unwrap_or_else(|| test_exit(1));
+    if size == 0 || size > IDEV_MLDSA87_CSR_MAX_SIZE {
+        test_exit(1);
+    }
+    println!("IDevID ML-DSA-87 CSR size: {}", size);
+    dump_der_hex("MLDSA87 IDEVID CSR", &buf[..size]);
+}
+
+/// Fetch the ML-DSA-87 LDevID certificate and validate its response size.
+pub async fn test_get_ldev_cert_mldsa87() {
+    let buf = unsafe { &mut ATTESTED_CSR_BUFFER };
+    let response_len = core::mem::size_of::<GetLdevCertResp>();
+    if buf.len() < response_len {
+        test_exit(1);
+    }
+
+    let mailbox = Mailbox::new();
+    let mut req = GetLdevMldsa87CertReq::default();
+    let actual = execute_mailbox_cmd(
+        &mailbox,
+        GetLdevMldsa87CertReq::ID.0,
+        req.as_mut_bytes(),
+        buf,
+    )
+    .await
+    .unwrap_or_else(|_| test_exit(1));
+    let resp =
+        GetLdevCertResp::ref_from_bytes(&buf[..response_len]).unwrap_or_else(|_| test_exit(1));
+    let size = resp.data_size as usize;
+    let prefix_len = core::mem::offset_of!(GetLdevCertResp, data);
+    if size == 0 || size > resp.data.len() || prefix_len + size > actual {
+        test_exit(1);
+    }
+    println!("LDevID ML-DSA-87 certificate size: {}", size);
+}
+
+/// Read the provisioned ML-DSA-87 IDevID certificate from OTP and install it
+/// into Caliptra.
+pub async fn populate_idevid_cert_mldsa87_from_otp(alloc: &BitmapAllocator) {
+    let otp = ExternalOtp::<DefaultSyscalls>::new();
+    let partition_size = otp
+        .partition_size(OTP_IDEVID_MLDSA_PARTITION)
+        .unwrap_or_else(|_| test_exit(1)) as usize;
+    let first_word = otp
+        .read(OTP_IDEVID_MLDSA_PARTITION, 0)
+        .await
+        .unwrap_or_else(|_| test_exit(1));
+    let size = mldsa87_cert_der_len(first_word, partition_size).unwrap_or_else(|| test_exit(1));
+
+    let buf = unsafe { &mut ATTESTED_CSR_BUFFER };
+    if size > buf.len() {
+        test_exit(1);
+    }
+    for offset in (0..size).step_by(4) {
+        let word = otp
+            .read(OTP_IDEVID_MLDSA_PARTITION, offset as u32)
+            .await
+            .unwrap_or_else(|_| test_exit(1))
+            .to_le_bytes();
+        let end = (offset + word.len()).min(size);
+        buf[offset..end].copy_from_slice(&word[..end - offset]);
+    }
+    populate_idev_mldsa87_cert(alloc, &buf[..size])
+        .await
+        .unwrap_or_else(|_| test_exit(1));
+    println!("Populate IDevID ML-DSA-87 certificate completed successfully");
+}
 
 const SIGNED_IDEV_CERT_DER: [u8; 541] = [
     0x30, 0x82, 0x02, 0x19, 0x30, 0x82, 0x01, 0x9f, 0xa0, 0x03, 0x02, 0x01, 0x02, 0x02, 0x01, 0x00,
@@ -57,439 +196,110 @@ const SIGNED_IDEV_CERT_DER: [u8; 541] = [
     0xe5, 0x40, 0x6f, 0xa0, 0x49, 0xa9, 0x61, 0x17, 0x38, 0x5f, 0x5a, 0x5c, 0x93,
 ];
 
-// test get idev_csr
-#[inline(never)]
-pub async fn test_get_idev_csr() {
-    println!("Starting Caliptra mailbox get idev csr test");
-
-    let mut cert_mgr = CertContext::new();
-    let mut csr_der = [0u8; IDEV_ECC_CSR_MAX_SIZE];
-    let result = cert_mgr.get_idev_csr(&mut csr_der).await;
-    match result {
-        Ok(size) => {
-            println!("Retrieved CSR of size: {}", size);
-            if size > IDEV_ECC_CSR_MAX_SIZE {
-                println!("CSR retrieval failed: size exceeds maximum");
-                test_exit(1);
-            }
-            if size == 0 {
-                println!("CSR retrieval failed: size is zero");
-                test_exit(1);
-            }
-
-            println!("CSR data: {:?}", &csr_der[..size]);
-        }
-        Err(e) => {
-            println!("Failed to get CSR with error: {:?}", e);
-            test_exit(1);
-        }
-    }
-    println!("Get idev csr test completed successfully");
+pub async fn test_populate_idev_ecc384_cert(alloc: &BitmapAllocator) {
+    populate_idev_ecc384_cert(alloc, &SIGNED_IDEV_CERT_DER)
+        .await
+        .unwrap_or_else(|_| test_exit(1));
+    println!("Populate IDev ECC-384 certificate test completed successfully");
 }
 
-#[inline(never)]
-pub async fn test_populate_idev_ecc384_cert() {
-    println!("Starting Caliptra mailbox populate idev cert test");
-
-    println!(
-        "Populating idev certificate with size: {}",
-        SIGNED_IDEV_CERT_DER.len()
-    );
-    println!("Signed idev certificate data: {:?}", &SIGNED_IDEV_CERT_DER);
-
-    let mut cert_mgr = CertContext::new();
-    let result = cert_mgr
-        .populate_idev_ecc384_cert(&SIGNED_IDEV_CERT_DER)
-        .await;
-    match result {
-        Ok(_) => {
-            println!("Successfully populated idev certificate");
-        }
-        Err(e) => {
-            println!("Failed to populate idev certificate with error: {:?}", e);
-            test_exit(1);
-        }
-    }
-    println!("Populate idev cert test completed successfully");
-}
-
-struct OtpPayloadStream {
-    otp: ExternalOtp<DefaultSyscalls>,
-    partition_id: u32,
-    total_size: usize,
-    cursor: usize,
-}
-
-impl OtpPayloadStream {
-    fn new(partition_id: u32, total_size: usize) -> Self {
-        Self {
-            otp: ExternalOtp::new(),
-            partition_id,
-            total_size,
-            cursor: 0,
-        }
-    }
-
-    fn reset(&mut self) {
-        self.cursor = 0;
-    }
-
-    async fn get_bytesum(&mut self) -> Result<u32, ErrorCode> {
-        self.reset();
-        let mut sum = 0u32;
-        let mut buf = [0u8; 256];
+pub async fn test_get_cert_chain(alloc: &BitmapAllocator) {
+    for profile in [DpeProfile::P384Sha384, DpeProfile::Mldsa87] {
+        let mut chunk = [0u8; DPE_MAX_CHUNK_SIZE];
+        let mut offset = 0u32;
         loop {
-            let n = self.read(&mut buf).await?;
-            if n == 0 {
+            let size = dpe_get_cert_chain_chunk(alloc, profile, offset, &mut chunk)
+                .await
+                .unwrap_or_else(|_| test_exit(1));
+            offset += size as u32;
+            if size < chunk.len() {
                 break;
             }
-            for b in &buf[..n] {
-                sum = sum.wrapping_add(u32::from(*b));
-            }
         }
-        self.reset();
-        Ok(sum)
-    }
-}
-
-#[async_trait(?Send)]
-impl PayloadStream for OtpPayloadStream {
-    fn size(&self) -> usize {
-        self.total_size
-    }
-
-    async fn read(&mut self, buffer: &mut [u8]) -> Result<usize, ErrorCode> {
-        if self.cursor >= self.total_size || buffer.is_empty() {
-            return Ok(0);
-        }
-
-        let mut written = 0;
-
-        // Read full words while there's room in the buffer and data in the partition
-        while self.cursor + 4 <= self.total_size && written + 4 <= buffer.len() {
-            let word = self
-                .otp
-                .read(self.partition_id, self.cursor as u32)
-                .await
-                .map_err(|_| ErrorCode::Fail)?;
-            buffer[written..written + 4].copy_from_slice(&word.to_le_bytes());
-            written += 4;
-            self.cursor += 4;
-        }
-
-        // Handle tail bytes (remaining bytes < 4)
-        if self.cursor < self.total_size && written < buffer.len() {
-            let tail_len = self.total_size - self.cursor;
-            let word = self
-                .otp
-                .read(self.partition_id, self.cursor as u32)
-                .await
-                .map_err(|_| ErrorCode::Fail)?;
-            let word_bytes = word.to_le_bytes();
-            let n = tail_len.min(buffer.len() - written);
-            buffer[written..written + n].copy_from_slice(&word_bytes[..n]);
-            written += n;
-            self.cursor += n;
-        }
-
-        Ok(written)
-    }
-}
-
-pub async fn test_populate_idev_mldsa87_cert() {
-    println!("Starting Caliptra mailbox populate idev MLDSA cert test");
-
-    const MLDSA_CERT_SIZE: usize = 4627;
-    let mut stream = OtpPayloadStream::new(0x02, MLDSA_CERT_SIZE);
-
-    let bytesum = match stream.get_bytesum().await {
-        Ok(sum) => sum,
-        Err(e) => {
-            println!("Failed to compute MLDSA cert bytesum: {:?}", e);
-            test_exit(1);
-            return;
-        }
-    };
-
-    println!(
-        "Populating idev MLDSA certificate with size: {}, bytesum: 0x{:08x}",
-        MLDSA_CERT_SIZE, bytesum
-    );
-
-    let mut cert_mgr = CertContext::new();
-    let result = cert_mgr
-        .populate_idev_mldsa87_cert(MLDSA_CERT_SIZE, bytesum, &mut stream)
-        .await;
-    match result {
-        Ok(_) => {
-            println!("Successfully populated idev MLDSA certificate");
-        }
-        Err(e) => {
-            println!(
-                "Failed to populate idev MLDSA certificate with error: {:?}",
-                e
-            );
+        if offset == 0 {
             test_exit(1);
         }
+        println!("Certificate chain size for {:?}: {}", profile, offset);
     }
-    println!("Populate idev MLDSA cert test completed successfully");
 }
 
-#[inline(never)]
-pub async fn test_get_ldev_ecc384_cert() {
-    println!("Starting Caliptra mailbox get ldev cert test");
-
-    let mut cert_mgr = CertContext::new();
-    let mut cert = [0u8; MAX_ECC_CERT_SIZE];
-    let result = cert_mgr.get_ldev_ecc384_cert(&mut cert).await;
-    match result {
-        Ok(size) => {
-            println!("Retrieved LDEV certificate of size: {}", size);
-
-            if size == 0 {
-                println!("LDEV certificate retrieval failed: size is zero");
+pub async fn test_certify_key(alloc: &BitmapAllocator) {
+    for profile in [DpeProfile::P384Sha384, DpeProfile::Mldsa87] {
+        let (_, size) = dpe_certify_key_cert_size(alloc, profile, None, &TEST_KEY_LABEL)
+            .await
+            .unwrap_or_else(|_| test_exit(1));
+        if size == 0 {
+            test_exit(1);
+        }
+        let mut chunk = [0u8; DPE_MAX_CHUNK_SIZE];
+        let mut offset = 0;
+        while offset < size {
+            let requested = (size - offset).min(chunk.len());
+            let (_, copied) = dpe_certify_key_cert_slice(
+                alloc,
+                profile,
+                None,
+                &TEST_KEY_LABEL,
+                offset as u32,
+                &mut chunk[..requested],
+            )
+            .await
+            .unwrap_or_else(|_| test_exit(1));
+            if copied == 0 || copied > requested {
                 test_exit(1);
             }
-
-            println!("LDEV certificate data: {:?}", &cert[..size]);
+            offset += copied;
         }
-        Err(e) => {
-            println!("Failed to get LDEV certificate with error: {:?}", e);
+        if offset != size {
             test_exit(1);
         }
+        println!(
+            "Attestation key certificate size for {:?}: {}",
+            profile, size
+        );
     }
-    println!("Get ldev cert test completed successfully");
 }
 
-#[inline(never)]
-pub async fn test_get_fmc_alias_ecc384cert() {
-    println!("Starting Caliptra mailbox get FMC alias cert test");
-
-    let mut cert_mgr = CertContext::new();
-    let mut cert = [0u8; MAX_ECC_CERT_SIZE];
-    let result = cert_mgr.get_fmc_alias_ecc384_cert(&mut cert).await;
-    match result {
-        Ok(size) => {
-            println!("Retrieved FMC alias certificate of size: {}", size);
-
-            if size == 0 {
-                println!("FMC alias certificate retrieval failed: size is zero");
-                test_exit(1);
-            }
-
-            println!("FMC alias certificate data: {:?}", &cert[..size]);
-        }
-        Err(e) => {
-            println!("Failed to get FMC alias certificate with error: {:?}", e);
-            test_exit(1);
-        }
+pub async fn test_sign_with_test_key(alloc: &BitmapAllocator) {
+    let mut signature = [0u8; DPE_P384_SIGNATURE_SIZE];
+    let (_, size) = dpe_sign_ecc_p384(
+        alloc,
+        None,
+        &TEST_KEY_LABEL,
+        &[0x5a; DPE_LABEL_LEN],
+        &mut signature,
+    )
+    .await
+    .unwrap_or_else(|_| test_exit(1));
+    if size != DPE_P384_SIGNATURE_SIZE {
+        test_exit(1);
     }
-    println!("Get FMC alias cert test completed successfully");
+    println!("Attestation key signing test completed successfully");
 }
-
-#[inline(never)]
-pub async fn test_get_rt_alias_ecc384cert() {
-    println!("Starting Caliptra mailbox get FMC cert test");
-
-    let mut cert_mgr = CertContext::new();
-    let mut cert = [0u8; MAX_ECC_CERT_SIZE];
-    let result = cert_mgr.get_rt_alias_384cert(&mut cert).await;
-    match result {
-        Ok(size) => {
-            println!("Retrieved RT alias certificate of size: {}", size);
-
-            if size == 0 {
-                println!("RT alias certificate retrieval failed: size is zero");
-                test_exit(1);
-            }
-
-            println!("RT alias certificate data: {:?}", &cert[..size]);
-        }
-        Err(e) => {
-            println!("Failed to get RT alias certificate with error: {:?}", e);
-            test_exit(1);
-        }
-    }
-    println!("Get RT alias cert test completed successfully");
-}
-
-#[inline(never)]
-pub async fn test_get_cert_chain() {
-    println!("Starting Caliptra mailbox get cert chain test");
-
-    let mut cert_chain = [0u8; 4098];
-
-    let mut cert_mgr = CertContext::new();
-    let mut cert_chunk = [0u8; MAX_CERT_CHUNK_SIZE];
-    let mut offset = 0;
-
-    let mut cert_chain_complete = false;
-
-    loop {
-        if cert_chain_complete {
-            break;
-        }
-
-        cert_chunk.fill(0);
-        println!("Getting certificate chain chunk at offset: {}", offset);
-
-        // Get the next chunk of the certificate chain
-        let result = cert_mgr.cert_chain_chunk(offset, &mut cert_chunk).await;
-        match result {
-            Ok(size) => {
-                println!("Retrieved certificate chain of size: {}", size);
-
-                if size < MAX_CERT_CHUNK_SIZE {
-                    println!("Certificate chain retrieval completed");
-                    cert_chain_complete = true;
-                }
-
-                // println!("Certificate chain data: {:?}", &cert_chain[..size]);
-                if size > 0 {
-                    cert_chain[offset..offset + size].copy_from_slice(&cert_chunk[..size]);
-                    offset += size;
-                }
-            }
-            Err(e) => {
-                println!("Failed to get certificate chain with error: {:x?}", e);
-                test_exit(1);
-            }
-        }
-    }
-    println!(
-        "Get cert chain test completed successfully. Cert chain size: {}",
-        offset
-    );
-    println!("Cert chain data: {:?}", &cert_chain[..offset]);
-}
-
-#[inline(never)]
-pub async fn test_certify_key() {
-    println!("Starting Caliptra mailbox certify attestation key test");
-
-    let mut cert_mgr = CertContext::new();
-    let mut cert = [0u8; MAX_ECC_CERT_SIZE];
-    let mut pubkey_x = [0u8; 48];
-    let mut pubkey_y = [0u8; 48];
-    let result = cert_mgr
-        .certify_key(
-            &mut cert,
-            Some(&TEST_KEY_LABEL),
-            Some(&mut pubkey_x),
-            Some(&mut pubkey_y),
-        )
-        .await;
-    match result {
-        Ok(size) => {
-            println!("Retrieved attestation key certificate of size: {}", size);
-
-            if size == 0 {
-                println!("Attestation key certificate retrieval failed: size is zero");
-                test_exit(1);
-            }
-
-            println!("Attestation key certificate data: {:?}", &cert[..size]);
-            println!("Attestation key public key X: {:?}", &pubkey_x[..]);
-            println!("Attestation key public key Y: {:?}", &pubkey_y[..]);
-        }
-        Err(e) => {
-            println!(
-                "Failed to get attestation key certificate with error: {:?}",
-                e
-            );
-            test_exit(1);
-        }
-    }
-
-    println!("Certify attestation key test completed successfully");
-}
-
-#[inline(never)]
-pub async fn test_sign_with_test_key() {
-    println!("Starting Caliptra mailbox sign with attestation key test");
-
-    let mut cert_mgr = CertContext::new();
-    let test_digest: [u8; 48] = [
-        0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
-        0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e,
-        0x1f, 0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d,
-        0x2e, 0x2f, 0x30,
-    ];
-    let mut signature = [0u8; 128];
-    let result = cert_mgr
-        .sign(Some(&TEST_KEY_LABEL), &test_digest, &mut signature)
-        .await;
-    match result {
-        Ok(size) => {
-            println!("Retrieved attestation key signature of size: {}", size);
-
-            if size == 0 {
-                println!("Attestation key signature retrieval failed: size is zero");
-                test_exit(1);
-            }
-
-            println!("Attestation key signature data: {:?}", &signature[..size]);
-        }
-        Err(e) => {
-            println!(
-                "Failed to get attestation key signature with error: {:?}",
-                e
-            );
-            test_exit(1);
-        }
-    }
-    println!("Sign with attestation key test completed successfully");
-}
-
-// Key IDs for attested CSR requests (matches DeviceKeyId in VDM protocol)
-const KEY_ID_LDEVID: u32 = 0x0001;
-const KEY_ID_FMC_ALIAS: u32 = 0x0002;
-const KEY_ID_RT_ALIAS: u32 = 0x0003;
 
 const TEST_NONCE: [u8; 32] = [
     0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f, 0x10,
     0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f, 0x20,
 ];
 
-fn key_type_name(key_id: u32) -> &'static str {
-    match key_id {
-        KEY_ID_LDEVID => "LDevID",
-        KEY_ID_FMC_ALIAS => "FMC Alias",
-        KEY_ID_RT_ALIAS => "RT Alias",
-        _ => "Unknown",
-    }
-}
-
-async fn test_get_attested_csr_for(algo: AsymAlgo, key_id: u32) {
-    println!(
-        "Starting get attested {:?} CSR test for key: {} (0x{:04x})",
-        algo,
-        key_type_name(key_id),
-        key_id
-    );
-    let mut cert_mgr = CertContext::new();
-    let mut csr_data = [0u8; MAX_ATTESTED_CSR_SIZE];
-    match cert_mgr
-        .get_attested_csr(algo, key_id, &TEST_NONCE, &mut csr_data)
-        .await
-    {
-        Ok(size) => {
-            println!("Retrieved attested {:?} CSR of size: {}", algo, size);
-            println!("Attested {:?} CSR data: {:?}", algo, &csr_data[..size]);
-        }
-        Err(e) => {
-            println!("Failed to get attested {:?} CSR: {:?}", algo, e);
+pub async fn test_get_attested_csr() {
+    for key_id in [0x0001, 0x0002, 0x0003] {
+        let csr = unsafe { &mut ATTESTED_CSR_BUFFER };
+        let ecc_size = get_attested_csr_ecc384(key_id, &TEST_NONCE, csr)
+            .await
+            .unwrap_or_else(|_| test_exit(1));
+        if ecc_size == 0 {
             test_exit(1);
         }
-    }
-    println!("Get attested {:?} CSR test completed successfully", algo);
-}
-
-pub async fn test_get_attested_csr() {
-    for &key_id in &[KEY_ID_LDEVID, KEY_ID_FMC_ALIAS, KEY_ID_RT_ALIAS] {
-        test_get_attested_csr_for(AsymAlgo::EccP384, key_id).await;
-        // Test is failing due to caliptra-core stack overflow when processing MLDSA CSR requests,
-        // so skipping MLDSA for now until that is resolved.
-        // test_get_attested_csr_for(AsymAlgo::MlDsa87, key_id).await;
+        let mldsa_size = get_attested_csr_mldsa87(key_id, &TEST_NONCE, csr)
+            .await
+            .unwrap_or_else(|_| test_exit(1));
+        if mldsa_size == 0 {
+            test_exit(1);
+        }
+        println!(
+            "Attested CSR sizes for key {}: {}, {}",
+            key_id, ecc_size, mldsa_size
+        );
     }
 }

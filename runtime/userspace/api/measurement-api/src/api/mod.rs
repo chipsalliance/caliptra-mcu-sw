@@ -16,7 +16,8 @@ mod initial_load;
 pub(crate) mod read;
 
 use caliptra_mcu_libsyscall_caliptra::dpe_handle_store::{
-    DpeHandleRecord, DpeHandleStore, DPE_HANDLE_STORE_DRIVER_NUM, POLICY_DIGEST_SIZE,
+    DpeHandleRecord, DpeHandleStore, DPE_HANDLE_STORE_DRIVER_NUM, EXPORTED_CDI_SIZE,
+    POLICY_DIGEST_SIZE,
 };
 use caliptra_mcu_libsyscall_caliptra::soft_pcr_store::{
     SoftwarePcrStore, SOFT_PCR_STORE_DRIVER_NUM,
@@ -24,16 +25,19 @@ use caliptra_mcu_libsyscall_caliptra::soft_pcr_store::{
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_platform::Syscalls;
 use core::marker::PhantomData;
-use mcu_caliptra_api_lite::{
+use mcu_caliptra_api::{
     dpe_certify_key_cert_size, dpe_certify_key_cert_slice, dpe_certify_key_pubkey,
-    dpe_rotate_context_default, dpe_sign_ecc_p384, dpe_tag_tci, sha_finish, sha_init, sha_update,
-    ApiAlloc, AuthorizeAndStashFlags, AuthorizeAndStashParams, DpeContextHandle, HashAlgo,
-    DPE_LABEL_LEN, SHA_CONTEXT_SIZE,
+    dpe_derive_context_exported_cdi, dpe_rotate_context_default, dpe_sign_ecc_p384, dpe_tag_tci,
+    sha_finish, sha_init, sha_update, ApiAlloc, AuthorizeAndStashFlags, AuthorizeAndStashParams,
+    DpeContextHandle, DpeDeriveContextFlags, DpeDeriveContextParams, DpeProfile, HashAlgo,
+    DPE_CONTEXT_HANDLE_SIZE, DPE_LABEL_LEN, DPE_TCI_MEASUREMENT_SIZE, SHA_CONTEXT_SIZE,
 };
 
 use crate::attestation_manifest::{parse_and_validate, AttestationManifest, MCU_RT_FW_ID};
 use crate::errors::{MeasurementApiError, MeasurementApiResult};
-use crate::{AttestationState, BootKind, ImageMetadata, MeasurementOperation};
+use crate::{
+    AttestationState, BootKind, EvidenceReadinessPolicy, ImageMetadata, MeasurementOperation,
+};
 
 /// Owns the attestation configuration and attestation boot/error state.
 ///
@@ -108,6 +112,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
     pub async fn measurement_boot_init<A: ApiAlloc>(
         &mut self,
         boot: BootKind,
+        readiness_policy: EvidenceReadinessPolicy,
         alloc: &A,
     ) -> MeasurementApiResult {
         let result = match boot {
@@ -115,7 +120,12 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
             BootKind::HitlessUpdate => self.hitless_update_init(alloc).await,
         };
         self.state = if result.is_ok() {
-            AttestationState::Active
+            match (boot, readiness_policy) {
+                (BootKind::ColdBoot, EvidenceReadinessPolicy::RequireInitialSocLoadComplete) => {
+                    AttestationState::InitialMeasurementsPending
+                }
+                _ => AttestationState::Active,
+            }
         } else {
             AttestationState::Error
         };
@@ -243,11 +253,12 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
     pub async fn leaf_cert_size<A: ApiAlloc>(
         &mut self,
         alloc: &A,
+        profile: DpeProfile,
         key_label: &[u8; DPE_LABEL_LEN],
     ) -> MeasurementApiResult<usize> {
         let target = self.read_attestation_target_record()?;
         let (next_handle, cert_size) =
-            dpe_certify_key_cert_size(alloc, Some(&target.context_handle), key_label)
+            dpe_certify_key_cert_size(alloc, profile, Some(&target.context_handle), key_label)
                 .await
                 .map_err(|_| MeasurementApiError::DpeCommandFailed)?;
         self.write_attestation_target_handle(target, next_handle)?;
@@ -259,6 +270,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
     pub async fn leaf_cert_slice<A: ApiAlloc>(
         &mut self,
         alloc: &A,
+        profile: DpeProfile,
         key_label: &[u8; DPE_LABEL_LEN],
         cert_offset: u32,
         dst: &mut [u8],
@@ -266,6 +278,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
         let target = self.read_attestation_target_record()?;
         let (next_handle, bytes_written) = dpe_certify_key_cert_slice(
             alloc,
+            profile,
             Some(&target.context_handle),
             key_label,
             cert_offset,
@@ -351,6 +364,61 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
         Ok(signature_len)
     }
 
+    /// Derive an exported CDI context from the active attestation target, persist the
+    /// 32-byte exported CDI handle in DPE handle storage, persist the rotated target handle
+    /// returned by DPE, and write the emitted leaf certificate into `cert_out`.
+    pub async fn export_cdi_and_stash<A: ApiAlloc>(
+        &mut self,
+        alloc: &A,
+        profile: DpeProfile,
+        cert_out: &mut [u8],
+    ) -> MeasurementApiResult<usize> {
+        self.attestation_state_active()?;
+
+        let dpe_store = DpeHandleStore::<S>::new(DPE_HANDLE_STORE_DRIVER_NUM);
+        let mut existing_cdi = [0u8; EXPORTED_CDI_SIZE];
+        if dpe_store.read_exported_cdi(&mut existing_cdi).is_ok()
+            && existing_cdi != [0u8; EXPORTED_CDI_SIZE]
+        {
+            return Err(MeasurementApiError::ExportedCdiAlreadyDerived);
+        }
+
+        let target = self.read_attestation_target_record()?;
+        let params = DpeDeriveContextParams {
+            parent_handle: target.context_handle,
+            measurement: [0u8; DPE_TCI_MEASUREMENT_SIZE],
+            flags: DpeDeriveContextFlags::EXPORT_CDI
+                | DpeDeriveContextFlags::CREATE_CERTIFICATE
+                | DpeDeriveContextFlags::RETAIN_PARENT_CONTEXT,
+            tci_type: 0,
+            target_locality: 0,
+            svn: 0,
+        };
+        let derived = dpe_derive_context_exported_cdi(alloc, &params, profile, cert_out)
+            .await
+            .map_err(|_| MeasurementApiError::DpeCommandFailed)?;
+
+        dpe_store
+            .write_exported_cdi(&derived.exported_cdi)
+            .map_err(|_| self.enter_error_state(MeasurementApiError::StoreFailed))?;
+
+        self.write_attestation_target_handle(target, derived.parent_handle)?;
+        Ok(derived.cert_size)
+    }
+
+    /// Read the stored 32-byte exported CDI handle from DPE handle storage into `cdi_out`.
+    pub fn read_exported_cdi(&self, cdi_out: &mut [u8; EXPORTED_CDI_SIZE]) -> MeasurementApiResult {
+        self.attestation_state_active()?;
+        let dpe_store = DpeHandleStore::<S>::new(DPE_HANDLE_STORE_DRIVER_NUM);
+        dpe_store
+            .read_exported_cdi(cdi_out)
+            .map_err(|_| MeasurementApiError::StoreFailed)?;
+        if *cdi_out == [0u8; EXPORTED_CDI_SIZE] {
+            return Err(MeasurementApiError::ExportedCdiNotDerived);
+        }
+        Ok(())
+    }
+
     /// Read stored measurement state for one manifest `fw_id`.
     ///
     /// This is an internal Measurement API primitive for evidence generation and
@@ -407,6 +475,30 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
         encoder.finish()
     }
 
+    /// Mark initial SoC image measurement state complete.
+    pub fn mark_initial_soc_load_complete(&mut self) -> MeasurementApiResult {
+        match self.state {
+            AttestationState::InitialMeasurementsPending | AttestationState::Active => {}
+            AttestationState::Uninitialized | AttestationState::Error => {
+                return Err(MeasurementApiError::AttestationDisabled);
+            }
+        }
+
+        for fw_id in self.soc_image_load_fw_ids {
+            let entry = self
+                .manifest
+                .lookup(*fw_id)
+                .map_err(|_| MeasurementApiError::UnknownFwId)?;
+            if entry.is_tcb() {
+                validate_loaded_tcb_record::<S>(*fw_id)?;
+            } else {
+                validate_loaded_non_tcb_record::<S>(*fw_id)?;
+            }
+        }
+        self.state = AttestationState::Active;
+        Ok(())
+    }
+
     /// Current attestation availability state.
     #[cfg(test)]
     pub fn attestation_state(&self) -> AttestationState {
@@ -418,6 +510,15 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
             Ok(())
         } else {
             Err(MeasurementApiError::AttestationDisabled)
+        }
+    }
+
+    fn initial_load_measurement_state_ready(&self) -> MeasurementApiResult {
+        match self.state {
+            AttestationState::InitialMeasurementsPending | AttestationState::Active => Ok(()),
+            AttestationState::Uninitialized | AttestationState::Error => {
+                Err(MeasurementApiError::AttestationDisabled)
+            }
         }
     }
 
@@ -474,6 +575,43 @@ fn is_mcu_root_record(record: &DpeHandleRecord) -> bool {
         && record.parent_fw_id.is_none()
         && record.tci_tag == MCU_RT_FW_ID
         && record.context_handle != [0u8; 16]
+}
+
+fn validate_loaded_tcb_record<S: Syscalls>(fw_id: u32) -> MeasurementApiResult {
+    let dpe_store = DpeHandleStore::<S>::new(DPE_HANDLE_STORE_DRIVER_NUM);
+    let mut record = DpeHandleRecord::default();
+    dpe_store
+        .read_record(fw_id, &mut record)
+        .map_err(|_| MeasurementApiError::InvalidDpeHandleStoreState)?;
+    if record.fw_id != fw_id {
+        return Err(MeasurementApiError::InvalidDpeHandleStoreState);
+    }
+    if record.fw_id == MCU_RT_FW_ID {
+        if is_mcu_root_record(&record) {
+            return Ok(());
+        }
+        return Err(MeasurementApiError::InvalidDpeHandleStoreState);
+    }
+    if record.parent_fw_id.is_none()
+        || record.tci_tag != fw_id
+        || record.context_handle == [0u8; DPE_CONTEXT_HANDLE_SIZE]
+    {
+        return Err(MeasurementApiError::InvalidDpeHandleStoreState);
+    }
+    Ok(())
+}
+
+fn validate_loaded_non_tcb_record<S: Syscalls>(fw_id: u32) -> MeasurementApiResult {
+    let pcr_store = SoftwarePcrStore::<S>::new(SOFT_PCR_STORE_DRIVER_NUM);
+    let mut record = caliptra_mcu_libsyscall_caliptra::soft_pcr_store::MeasurementRecord::default();
+    pcr_store
+        .read_measurement(fw_id, &mut record)
+        .map_err(|_| MeasurementApiError::InvalidSoftwarePcrStoreState)?;
+    if record.fw_id == fw_id {
+        Ok(())
+    } else {
+        Err(MeasurementApiError::InvalidSoftwarePcrStoreState)
+    }
 }
 
 fn validate_soc_image_load_fw_ids(
@@ -622,6 +760,20 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn pending_initial_measurements_allow_initial_load_but_not_evidence() {
+        let bytes = valid_empty_manifest();
+        let mut api = MeasurementApi::<DefaultSyscalls>::new(&bytes, &[]).unwrap();
+
+        api.state = AttestationState::InitialMeasurementsPending;
+
+        assert_eq!(api.initial_load_measurement_state_ready(), Ok(()));
+        assert_eq!(
+            api.attestation_state_active(),
+            Err(MeasurementApiError::AttestationDisabled)
+        );
+    }
+
     fn reference_measurement_policy_digest(
         manifest_bytes: &[u8],
         soc_image_load_fw_ids: &[u32],
@@ -694,5 +846,16 @@ mod tests {
             context_handle: [0u8; 16],
             ..valid
         }));
+    }
+
+    #[test]
+    fn read_exported_cdi_fails_when_uninitialized() {
+        let bytes = valid_manifest_with_entries(&[(0x1000, 0)]);
+        let api = MeasurementApi::<DefaultSyscalls>::new(&bytes, &[0x1000]).unwrap();
+        let mut cdi = [0u8; EXPORTED_CDI_SIZE];
+        assert_eq!(
+            api.read_exported_cdi(&mut cdi),
+            Err(MeasurementApiError::AttestationDisabled)
+        );
     }
 }

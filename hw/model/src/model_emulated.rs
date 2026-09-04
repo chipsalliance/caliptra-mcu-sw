@@ -19,6 +19,7 @@ use caliptra_emu_bus::Ram;
 use caliptra_emu_bus::{Clock, Event};
 use caliptra_emu_cpu::{Cpu, CpuArgs, CpuOrgArgs, InstrTracer, Pic};
 use caliptra_emu_periph::CaliptraRootBus as CaliptraMainRootBus;
+use caliptra_emu_periph::MailboxRequester;
 use caliptra_emu_periph::SocToCaliptraBus;
 use caliptra_emu_types::RvAddr;
 use caliptra_emu_types::RvData;
@@ -44,7 +45,7 @@ use caliptra_mcu_registers_generated::fuses;
 use caliptra_mcu_romtime::LifecycleControllerState;
 use caliptra_mcu_romtime::McuBootMilestones;
 use caliptra_mcu_testing_common::i3c_socket_server::start_i3c_socket;
-use caliptra_mcu_testing_common::EmulatorState;
+use caliptra_mcu_testing_common::{EmulatorState, SpdmResponderTransport};
 use semver::Version;
 use std::cell::Cell;
 use std::cell::RefCell;
@@ -98,7 +99,7 @@ pub struct ModelEmulated {
     /// Per-instance emulator coordination state. Kept alive for as long as
     /// this model exists so that worker threads that hold an Arc clone
     /// (via spawn_with_emulator_state) observe writes from step()/boot().
-    _state: Arc<EmulatorState>,
+    state: Arc<EmulatorState>,
 }
 
 fn hash_slice(slice: &[u8]) -> u64 {
@@ -336,6 +337,10 @@ impl McuHwModel for ModelEmulated {
         // Use MCU recovery interface when flash-based boot is enabled
         let use_mcu_recovery_interface = params.flash_boot;
 
+        if std::env::var("CPTRA_EMULATOR_SS_MCI_OFFSET").is_err() {
+            std::env::set_var("CPTRA_EMULATOR_SS_MCI_OFFSET", "0x00000000a8000000");
+        }
+
         let (mut caliptra_cpu, soc_to_caliptra, soc_to_caliptra_bus, ext_mci) =
             start_caliptra(&StartCaliptraArgs {
                 rom: BytesOrPath::Bytes(params.caliptra_rom.to_vec()),
@@ -368,13 +373,27 @@ impl McuHwModel for ModelEmulated {
             [0, wire1]
         };
         let mci_regs = ext_mci.regs.clone();
+        // Give MCI a view of Caliptra's SoC interface registers so the hitless
+        // update reset can coordinate through ss_generic_fw_exec_ctrl, matching
+        // the standalone emulator. Without this the MCU reboots immediately on
+        // an ACTIVATE_FIRMWARE reset, before Caliptra has completed the command.
+        let soc_ifc = unsafe {
+            caliptra_registers::soc_ifc::RegisterBlock::new_with_mmio(
+                0x3003_0000 as *mut u32,
+                BusMmio::new(
+                    caliptra_cpu
+                        .bus
+                        .soc_to_caliptra_bus(MailboxRequester::Caliptra),
+                ),
+            )
+        };
         let mut mci = Mci::new(
             &clock.clone(),
             ext_mci,
             Rc::new(RefCell::new(mci_irq)),
             Some(mcu_mailbox0),
             Some(mcu_mailbox1),
-            None,
+            Some(soc_ifc),
             mci_generic_input_wires,
             params.fips_zeroization,
             Rc::new(Cell::new(true)),
@@ -532,7 +551,7 @@ impl McuHwModel for ModelEmulated {
             check_booted_to_runtime: params.check_booted_to_runtime,
             step_lock,
             usb_host_controller,
-            _state: state,
+            state,
         };
         // Turn tracing on if the trace path was set
         m.tracing_hint(true);
@@ -613,6 +632,16 @@ impl McuHwModel for ModelEmulated {
         self.collected_events_from_caliptra.extend(events);
         if self.cycle_count() % caliptra_mcu_testing_common::TICK_NOTIFY_TICKS == 0 {
             caliptra_mcu_testing_common::update_ticks(self.cycle_count());
+            let milestones =
+                McuBootMilestones::from((self.mci_regs.borrow().flow_status >> 16) as u16);
+            self.state.set_spdm_responder_ready(
+                SpdmResponderTransport::Mctp,
+                milestones.contains(McuBootMilestones::FIRMWARE_SPDM_MCTP_READY),
+            );
+            self.state.set_spdm_responder_ready(
+                SpdmResponderTransport::Doe,
+                milestones.contains(McuBootMilestones::FIRMWARE_SPDM_DOE_READY),
+            );
         }
     }
 

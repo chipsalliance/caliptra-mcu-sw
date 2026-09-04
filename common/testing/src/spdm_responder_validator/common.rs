@@ -10,12 +10,14 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use zerocopy::{transmute, FromBytes, Immutable, IntoBytes};
 
 const RECEIVER_BUFFER_SIZE: usize = 4160;
+const ATTESTATION_REQUESTER_CAPABILITIES: &str = "CERT,CHAL,CHUNK,LARGE_RESP";
 pub const SOCKET_SPDM_COMMAND_NORMAL: u32 = 0x0001;
 pub const SOCKET_SPDM_COMMAND_STOP: u32 = 0xFFFE;
 pub const SOCKET_SPDM_COMMAND_TEST: u32 = 0xDEAD;
 pub const SOCKET_HEADER_LEN: usize = 12;
 
 pub static SERVER_LISTENING: AtomicBool = AtomicBool::new(false);
+static SPDM_RESPONDER_VALIDATOR_DONE: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Copy, Clone, Default, FromBytes, IntoBytes, Immutable)]
 pub struct SpdmSocketHeader {
@@ -235,7 +237,6 @@ impl SpdmValidatorRunner {
                         return false;
                     }
                 };
-
                 self.state = SpdmServerState::SendResponse;
                 true
             }
@@ -281,38 +282,60 @@ pub fn execute_spdm_tee_io_validator(transport: &'static str) {
 }
 
 pub fn execute_spdm_attestation(transport: &'static str) {
+    let _ = execute_spdm_attestation_with_port(transport, None, None);
+}
+
+/// `nonce` overrides the `SPDM_NONCE` the requester uses for
+/// GET_MEASUREMENTS. Passing a distinct value per SPDM session keeps the
+/// resulting evidence replay-distinguishable; `None` inherits the ambient
+/// environment.
+pub fn execute_spdm_attestation_with_port(
+    transport: &'static str,
+    port: Option<u16>,
+    nonce: Option<String>,
+) -> std::thread::JoinHandle<bool> {
     crate::spawn_with_emulator_state(move || {
         println!("Starting spdm_requester_emu process. Waiting for SPDM listener to start...");
         while !SERVER_LISTENING.load(Ordering::Relaxed) {
             std::thread::sleep(std::time::Duration::from_millis(200));
         }
 
-        match start_spdm_attestation(transport) {
+        match start_spdm_attestation_with_port(transport, port, nonce.clone()) {
             Ok(mut child) => {
                 while crate::is_emulator_running() {
                     match child.try_wait() {
                         Ok(Some(status)) => {
                             println!("spdm_requester_emu exited with status: {:?}", status);
-                            break;
+                            return status.success();
                         }
                         Ok(None) => {}
                         Err(e) => {
                             println!("Error: {:?}", e);
-                            std::process::exit(1);
+                            return false;
                         }
                     }
                     std::thread::sleep(std::time::Duration::from_millis(100));
                 }
                 let _ = child.kill();
+                false
             }
             Err(e) => {
                 println!("Error: {:?} Failed to spawn spdm_requester_emu!!", e);
+                false
             }
         }
-    });
+    })
+}
+
+pub fn wait_for_spdm_responder_validator() -> bool {
+    while crate::is_emulator_running() && !SPDM_RESPONDER_VALIDATOR_DONE.load(Ordering::Acquire) {
+        std::thread::sleep(std::time::Duration::from_millis(100));
+    }
+    SPDM_RESPONDER_VALIDATOR_DONE.load(Ordering::Acquire)
 }
 
 pub fn execute_spdm_responder_validator(transport: &'static str) {
+    SPDM_RESPONDER_VALIDATOR_DONE.store(false, Ordering::Release);
     crate::spawn_with_emulator_state(move || {
         println!(
             "Starting spdm_device_validator_sample process on transport: {}. Waiting for SPDM listener to start...",
@@ -331,6 +354,10 @@ pub fn execute_spdm_responder_validator(transport: &'static str) {
                                 "spdm_device_validator_sample exited with status: {:?}",
                                 status
                             );
+                            if !status.success() {
+                                std::process::exit(1);
+                            }
+                            SPDM_RESPONDER_VALIDATOR_DONE.store(true, Ordering::Release);
                             break;
                         }
                         Ok(None) => {}
@@ -370,21 +397,43 @@ pub fn start_spdm_responder_validator(transport: &'static str) -> io::Result<Chi
     )
 }
 
-pub fn start_spdm_attestation(transport: &'static str) -> io::Result<Child> {
+fn start_spdm_attestation_with_port(
+    transport: &'static str,
+    port: Option<u16>,
+    nonce: Option<String>,
+) -> io::Result<Child> {
     spawn_validator_binary(
         "spdm_requester_emu",
         "spdm_requester_emu_output.txt",
-        |cmd| {
-            println!(
-                "Starting spdm_requester_emu process with transport: {}",
-                transport
-            );
-            cmd.arg("--trans")
-                .arg(transport)
-                .arg("--pcap")
-                .arg("caliptra-evidence.pcap");
-        },
+        |cmd| configure_spdm_attestation_command(cmd, transport, port, nonce.as_deref()),
     )
+}
+
+fn configure_spdm_attestation_command(
+    cmd: &mut Command,
+    transport: &str,
+    port: Option<u16>,
+    nonce: Option<&str>,
+) {
+    println!(
+        "Starting spdm_requester_emu process with transport: {}",
+        transport
+    );
+    cmd.arg("--trans")
+        .arg(transport)
+        .arg("--ver")
+        .arg("1.3")
+        // Endpoint information is not part of this attestation flow.
+        .arg("--cap")
+        .arg(ATTESTATION_REQUESTER_CAPABILITIES)
+        .arg("--pcap")
+        .arg("caliptra-evidence.pcap");
+    if let Some(port) = port {
+        cmd.arg("--port").arg(port.to_string());
+    }
+    if let Some(nonce) = nonce {
+        cmd.env("SPDM_NONCE", nonce);
+    }
 }
 
 pub fn start_spdm_tee_io_validator(
@@ -459,4 +508,35 @@ where
         .stderr(Stdio::from(output_file_clone))
         .current_dir(&dir_path)
         .spawn()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn attestation_requester_excludes_endpoint_info() {
+        let mut command = Command::new("spdm_requester_emu");
+        configure_spdm_attestation_command(&mut command, "MCTP", Some(1025), None);
+
+        let args = command
+            .get_args()
+            .map(|arg| arg.to_str().unwrap())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            args,
+            [
+                "--trans",
+                "MCTP",
+                "--ver",
+                "1.3",
+                "--cap",
+                "CERT,CHAL,CHUNK,LARGE_RESP",
+                "--pcap",
+                "caliptra-evidence.pcap",
+                "--port",
+                "1025",
+            ]
+        );
+    }
 }

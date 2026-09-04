@@ -52,6 +52,8 @@ use core::ops::Deref;
 
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
 use zerocopy::{transmute, FromBytes, Immutable, IntoBytes, KnownLayout};
+#[cfg(feature = "stable-owner-key")]
+use zeroize::Zeroize;
 
 // TODO: Remove these local CM_AES_GCM_DECRYPT_DMA definitions once caliptra-sw
 // includes the DMA decrypt command and the caliptra-sw git pointer is updated.
@@ -938,9 +940,6 @@ fn attempt_dot_locked_recovery(
     let mut manager = DotLockedRecoveryManager::new(params.dot_locked_recovery_handlers);
     match manager.run(env, &ctx) {
         Ok(()) => {
-            caliptra_mcu_romtime::println!(
-                "[mcu-rom] DOT locked-state recovery succeeded, resetting"
-            );
             env.mci.trigger_warm_reset();
             fatal_error(McuError::ROM_COLD_BOOT_RESET_ERROR);
         }
@@ -1048,10 +1047,8 @@ fn enter_i3c_services(
     }
 
     let reassembly_buf = unsafe {
-        core::slice::from_raw_parts_mut(
-            mci.registers.mcu_mbox0_csr_mbox_sram.as_ptr() as *mut u32,
-            crate::i3c_mailbox::MAX_REASSEMBLY_WORDS,
-        )
+        &mut *(mci.registers.mcu_mbox0_csr_mbox_sram.as_ptr()
+            as *mut [u32; crate::i3c_mailbox::MAX_REASSEMBLY_WORDS])
     };
 
     let mut handler =
@@ -1576,7 +1573,7 @@ impl BootFlow for ColdBoot {
         {
             // Derive stable owner key using the OTP personalization seed.
             crate::call_hook(params.hooks, |h| h.pre_stable_owner_key_derivation());
-            let stable_owner_key = crate::stable_owner_key::derive_stable_owner_key(env)
+            let mut stable_owner_key = crate::stable_owner_key::derive_stable_owner_key(env)
                 .unwrap_or_else(|err| {
                     caliptra_mcu_romtime::println!(
                         "[mcu-rom] Stable owner key derivation failed: {}",
@@ -1584,9 +1581,11 @@ impl BootFlow for ColdBoot {
                     );
                     fatal_error(err);
                 });
-            let stable_owner_key_cmk: [u8; STABLE_OWNER_KEY_CMK_SIZE] =
+            let mut stable_owner_key_cmk: [u8; STABLE_OWNER_KEY_CMK_SIZE] =
                 transmute!(stable_owner_key.0);
             HandoffData::write_stable_owner_key(&stable_owner_key_cmk);
+            stable_owner_key.zeroize();
+            stable_owner_key_cmk.zeroize();
             crate::call_hook(params.hooks, |h| h.post_stable_owner_key_derivation());
         }
 

@@ -69,7 +69,7 @@ pub(crate) async fn handle_challenge<'a, Pal: SpdmPal>(
 
     // Get cert chain hash — use cache if available, else compute.
     let mut cert_chain_hash = [0u8; SHA384_HASH_SIZE];
-    if let Some(cached) = pal.cached_chain_digest(slot_id, SpdmPalHashAlgo::Sha384) {
+    if let Some(cached) = pal.cached_chain_digest(slot_id, asym_algo, SpdmPalHashAlgo::Sha384) {
         cert_chain_hash = cached;
     } else {
         crate::digests::cert_chain_hash(
@@ -82,7 +82,12 @@ pub(crate) async fn handle_challenge<'a, Pal: SpdmPal>(
         )
         .await
         .map_err(|_| SPDM_UNSPECIFIED)?;
-        pal.cache_chain_digest(slot_id, SpdmPalHashAlgo::Sha384, &cert_chain_hash);
+        pal.cache_chain_digest(
+            slot_id,
+            asym_algo,
+            SpdmPalHashAlgo::Sha384,
+            &cert_chain_hash,
+        );
     }
 
     // Generate nonce via PAL RNG.
@@ -168,6 +173,7 @@ const SIGNING_CTX_V10: [u8; SPDM_SIGNING_CONTEXT_LEN] = build_signing_context(b"
 const SIGNING_CTX_V11: [u8; SPDM_SIGNING_CONTEXT_LEN] = build_signing_context(b"1.1.*");
 const SIGNING_CTX_V12: [u8; SPDM_SIGNING_CONTEXT_LEN] = build_signing_context(b"1.2.*");
 const SIGNING_CTX_V13: [u8; SPDM_SIGNING_CONTEXT_LEN] = build_signing_context(b"1.3.*");
+const SIGNING_CTX_V14: [u8; SPDM_SIGNING_CONTEXT_LEN] = build_signing_context(b"1.4.*");
 
 /// Build the SPDM signing context for CHALLENGE_AUTH.
 const fn build_signing_context(ver: &[u8; 5]) -> [u8; SPDM_SIGNING_CONTEXT_LEN] {
@@ -211,6 +217,7 @@ fn signing_context(version: SpdmVersion) -> &'static [u8; SPDM_SIGNING_CONTEXT_L
         SpdmVersion::V11 => &SIGNING_CTX_V11,
         SpdmVersion::V12 => &SIGNING_CTX_V12,
         SpdmVersion::V13 => &SIGNING_CTX_V13,
+        SpdmVersion::V14 => &SIGNING_CTX_V14,
     }
 }
 

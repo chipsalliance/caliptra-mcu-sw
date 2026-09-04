@@ -26,24 +26,12 @@ Write fuse values.
 Command Code: `0x4946_5057` ("IFPW")
 
 *Table: `MC_FUSE_WRITE` input arguments*
-<<<<<<< HEAD
-| **Name**   | **Type**       | **Description**               |
-| ---------- | -------------- | ----------------------------- |
-| chksum     |  u32           |                               |
-| partition  |  u32           | Partition number to write to  |
-| entry      |  u32           | Entry to write                |
-| start bit  |  u32           | Starting bit to write to (least significant bit in entry is 0). |
-| length     | u32            | in bits                       |
-| data       | u8[...]        | length/8
-=======
 | **Name**   | **Type**       | **Description**                       |
 | ---------- | -------------- | ------------------------------------- |
 | chksum     |  u32           |                                       |
 | word_addr  |  u32           | Entry to write (word offset)          |
 | data       |  u32           | Word to write                         |
 | mask       |  u32           | Bit-Mask to only write specified bits |
-
->>>>>>> 56fcd2fa ([mcu-mbox] fuse read write lock commands (#1380))
 
 
 *Table: `MC_FUSE_WRITE` output arguments*
@@ -56,7 +44,7 @@ Command Code: `0x4946_5057` ("IFPW")
 Caveats:
 * This command is **idempotent**, so that identical writes will have no effect.
 * Will fail if any of the existing data is 1 but is set to 0 in the input data.
-* Bits masked with `mask` will be ignored
+* Bits cleared in `mask` are ignored
 * Writes to buffered partitions will not take effect until the next reset.
 
 ### MC_FUSE_LOCK_PARTITION
@@ -105,6 +93,33 @@ Command Code: `0x5056_504b` ("PVPK")
 
 Caveats:
 * Fails if the slot already contains data
+
+### MC_PROVISION_OWNER_PK_HASH
+
+Provision `CPTRA_SS_OWNER_PK_HASH` using its 48-byte dword-reversed OTP
+representation.
+
+Command Code: `0x504F_504B` ("POPK")
+
+*Table: `MC_PROVISION_OWNER_PK_HASH` input arguments*
+| **Name** | **Type**    | **Description**              |
+| -------- | ----------- | ---------------------------- |
+| chksum   | u32         |                              |
+| hash     | \[u8; 48\] | New owner public-key hash    |
+
+*Table: `MC_PROVISION_OWNER_PK_HASH` output arguments*
+| **Name**    | **Type** | **Description**           |
+| ----------- | -------- | ------------------------- |
+| chksum      | u32      |                           |
+| fips_status | u32      | FIPS approved or an error |
+
+Caveats:
+* The all-zero hash is rejected.
+* Reprovisioning the identical hash is idempotent.
+* Provisioning a different hash after any owner-hash data has been burned is rejected.
+* After verifying the hash, the command burns and verifies bit 0 of `CPTRA_SS_OWNER_PK_HASH_VALID` for use as a commit marker by ROM versions that enforce it.
+* Current MCU ROM does not check `CPTRA_SS_OWNER_PK_HASH_VALID` before consuming the hash. Provisioning must not be interrupted by reset or power loss; an interruption can cause ROM to consume a partial hash and prevent retrying the intended hash.
+* The newly provisioned owner hash is consumed by MCU ROM on the next reset.
 
 ### MC_FUSE_REVOKE_VENDOR_PUB_KEY
 

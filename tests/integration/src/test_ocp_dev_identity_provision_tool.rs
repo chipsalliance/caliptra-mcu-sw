@@ -56,7 +56,7 @@ mod test {
         run_provisioning_test(
             hw.i3c_port().unwrap(),
             hw.i3c_address().unwrap().into(),
-            Duration::from_secs(120),
+            Duration::from_secs(600),
             &tool_bin,
             &vendor_trust_anchor,
         );

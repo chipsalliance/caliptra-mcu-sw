@@ -6,11 +6,10 @@
 //! Interior mutability is safe because embassy tasks are cooperative
 //! on a single-core MCU — only one task runs at a time.
 
+use caliptra_mcu_spdm_traits::SpdmPalAsymAlgo;
 use core::cell::UnsafeCell;
 
-use mcu_caliptra_api_lite::{
-    sha_finish, sha_init, sha_update, ApiAlloc, HashAlgo, SHA_CONTEXT_SIZE,
-};
+use mcu_caliptra_api::{sha_finish, sha_init, sha_update, ApiAlloc, HashAlgo, SHA_CONTEXT_SIZE};
 use mcu_error::McuResult;
 
 #[cfg(feature = "set-certificate")]
@@ -20,6 +19,15 @@ use super::endorsement::{
 };
 
 const DEFAULT_CERT_INFO: u8 = 0x01;
+
+async fn compute_root_hash<A: ApiAlloc>(alloc: &A, root_cert: &[u8]) -> McuResult<[u8; 48]> {
+    let sha_buf = alloc.alloc(SHA_CONTEXT_SIZE)?;
+    let mut state = sha_init(alloc, sha_buf, HashAlgo::Sha384, &[]).await?;
+    sha_update(alloc, &mut state, root_cert).await?;
+    let mut hash = [0u8; 48];
+    sha_finish(alloc, &mut state, &mut hash).await?;
+    Ok(hash)
+}
 
 /// Static shared cert store.
 ///
@@ -65,29 +73,30 @@ impl SharedCertStore {
     // Endorsement setup
     // ---------------------------------------------------------------
 
-    /// Configure a read-only endorsement chain for the given slot.
-    ///
-    /// Computes the SHA-384 hash of the root cert (first chain entry)
-    /// using the provided allocator, then stores the endorsement.
-    pub async fn set_endorsement_chain<A: ApiAlloc>(
+    /// Configure a read-only endorsement chain with both ECC and optional ML-DSA roots.
+    pub async fn set_endorsement_chains<A: ApiAlloc>(
         &self,
         alloc: &A,
         idx: usize,
-        chain: &'static [&'static [u8]],
+        ecc_chain: &'static [&'static [u8]],
+        mldsa_chain: Option<&'static [&'static [u8]]>,
         key_pair_id: u8,
     ) -> McuResult<()> {
-        if idx >= NUM_CERT_SLOTS || chain.is_empty() {
+        if idx >= NUM_CERT_SLOTS || ecc_chain.is_empty() {
             return Err(mcu_error::codes::INVARIANT);
         }
-        let root_cert = chain[0];
-        let sha_buf = alloc.alloc(SHA_CONTEXT_SIZE)?;
-        let mut state = sha_init(alloc, sha_buf, HashAlgo::Sha384, &[]).await?;
-        sha_update(alloc, &mut state, root_cert).await?;
-        let mut hash = [0u8; 48];
-        sha_finish(alloc, &mut state, &mut hash).await?;
+        let ecc_hash = compute_root_hash(alloc, ecc_chain[0]).await?;
+        let mut ro = ReadOnlyEndorsement::new(ecc_chain, ecc_hash);
+
+        if let Some(mldsa) = mldsa_chain {
+            if !mldsa.is_empty() {
+                let mldsa_hash = compute_root_hash(alloc, mldsa[0]).await?;
+                ro = ro.with_mldsa(mldsa, mldsa_hash);
+            }
+        }
 
         let slot = self.cert_slot_mut(idx).ok_or(mcu_error::codes::INVARIANT)?;
-        slot.endorsement = SlotEndorsement::ReadOnly(ReadOnlyEndorsement::new(chain, hash));
+        slot.endorsement = SlotEndorsement::ReadOnly(ro);
         slot.key_pair_id = Some(key_pair_id);
         slot.cert_info = Some(DEFAULT_CERT_INFO);
         Ok(())
@@ -119,10 +128,38 @@ impl SharedCertStore {
 }
 
 #[derive(Copy, Clone, Default)]
-struct SlotCache {
+struct AlgoCache {
     chain_len: Option<u32>,
     leaf_len: Option<u32>,
     chain_digest: Option<[u8; 48]>,
+    dpe_skip_len: Option<u32>,
+}
+
+#[derive(Copy, Clone, Default)]
+struct SlotCache {
+    ecc: AlgoCache,
+    mldsa: AlgoCache,
+}
+
+impl SlotCache {
+    fn algo_cache(&self, algo: SpdmPalAsymAlgo) -> &AlgoCache {
+        match algo {
+            SpdmPalAsymAlgo::EccP384 => &self.ecc,
+            SpdmPalAsymAlgo::MlDsa87 => &self.mldsa,
+        }
+    }
+
+    fn algo_cache_mut(&mut self, algo: SpdmPalAsymAlgo) -> &mut AlgoCache {
+        match algo {
+            SpdmPalAsymAlgo::EccP384 => &mut self.ecc,
+            SpdmPalAsymAlgo::MlDsa87 => &mut self.mldsa,
+        }
+    }
+
+    fn invalidate(&mut self) {
+        self.ecc = AlgoCache::default();
+        self.mldsa = AlgoCache::default();
+    }
 }
 
 /// Per-task cert store wrapper.
@@ -140,9 +177,18 @@ impl TaskCertStore {
             shared,
             caches: UnsafeCell::new(
                 [SlotCache {
-                    chain_len: None,
-                    leaf_len: None,
-                    chain_digest: None,
+                    ecc: AlgoCache {
+                        chain_len: None,
+                        leaf_len: None,
+                        chain_digest: None,
+                        dpe_skip_len: None,
+                    },
+                    mldsa: AlgoCache {
+                        chain_len: None,
+                        leaf_len: None,
+                        chain_digest: None,
+                        dpe_skip_len: None,
+                    },
                 }; NUM_CERT_SLOTS],
             ),
         }
@@ -164,38 +210,51 @@ impl TaskCertStore {
         self.shared.cert_slot_mut(idx)
     }
 
-    pub(crate) fn cached_chain_len(&self, slot: u8) -> Option<u32> {
+    pub(crate) fn cached_chain_len(&self, slot: u8, algo: SpdmPalAsymAlgo) -> Option<u32> {
         let idx = slot_index(slot)?;
-        unsafe { (*self.caches.get())[idx].chain_len }
+        unsafe { (*self.caches.get())[idx].algo_cache(algo).chain_len }
     }
 
-    pub(crate) fn set_cached_chain_len(&self, slot: u8, len: u32) {
+    pub(crate) fn set_cached_chain_len(&self, slot: u8, algo: SpdmPalAsymAlgo, len: u32) {
         if let Some(idx) = slot_index(slot) {
             unsafe {
-                (*self.caches.get())[idx].chain_len = Some(len);
+                (*self.caches.get())[idx].algo_cache_mut(algo).chain_len = Some(len);
             }
         }
     }
 
-    pub(crate) fn cached_leaf_len(&self, slot: u8) -> Option<u32> {
+    pub(crate) fn cached_leaf_len(&self, slot: u8, algo: SpdmPalAsymAlgo) -> Option<u32> {
         let idx = slot_index(slot)?;
-        unsafe { (*self.caches.get())[idx].leaf_len }
+        unsafe { (*self.caches.get())[idx].algo_cache(algo).leaf_len }
     }
 
-    pub(crate) fn set_cached_leaf_len(&self, slot: u8, len: u32) {
+    pub(crate) fn set_cached_leaf_len(&self, slot: u8, algo: SpdmPalAsymAlgo, len: u32) {
         if let Some(idx) = slot_index(slot) {
             unsafe {
-                (*self.caches.get())[idx].leaf_len = Some(len);
+                (*self.caches.get())[idx].algo_cache_mut(algo).leaf_len = Some(len);
             }
         }
     }
 
-    pub(crate) fn cached_chain_digest(&self, slot: u8) -> Option<[u8; 48]> {
+    pub(crate) fn cached_dpe_skip_len(&self, slot: u8, algo: SpdmPalAsymAlgo) -> Option<u32> {
         let idx = slot_index(slot)?;
-        unsafe { (*self.caches.get())[idx].chain_digest }
+        unsafe { (*self.caches.get())[idx].algo_cache(algo).dpe_skip_len }
     }
 
-    pub(crate) fn cache_chain_digest(&self, slot: u8, digest: &[u8]) {
+    pub(crate) fn set_cached_dpe_skip_len(&self, slot: u8, algo: SpdmPalAsymAlgo, len: u32) {
+        if let Some(idx) = slot_index(slot) {
+            unsafe {
+                (*self.caches.get())[idx].algo_cache_mut(algo).dpe_skip_len = Some(len);
+            }
+        }
+    }
+
+    pub(crate) fn cached_chain_digest(&self, slot: u8, algo: SpdmPalAsymAlgo) -> Option<[u8; 48]> {
+        let idx = slot_index(slot)?;
+        unsafe { (*self.caches.get())[idx].algo_cache(algo).chain_digest }
+    }
+
+    pub(crate) fn cache_chain_digest(&self, slot: u8, algo: SpdmPalAsymAlgo, digest: &[u8]) {
         if let Some(idx) = slot_index(slot) {
             if digest.len() > 48 {
                 return;
@@ -205,7 +264,7 @@ impl TaskCertStore {
                 *d = *s;
             }
             unsafe {
-                (*self.caches.get())[idx].chain_digest = Some(entry);
+                (*self.caches.get())[idx].algo_cache_mut(algo).chain_digest = Some(entry);
             }
         }
     }
@@ -214,9 +273,7 @@ impl TaskCertStore {
     pub(crate) fn invalidate_cert_caches(&self, slot: u8) {
         if let Some(idx) = slot_index(slot) {
             unsafe {
-                (*self.caches.get())[idx].chain_len = None;
-                (*self.caches.get())[idx].leaf_len = None;
-                (*self.caches.get())[idx].chain_digest = None;
+                (*self.caches.get())[idx].invalidate();
             }
         }
     }

@@ -10,8 +10,8 @@ use caliptra_mcu_libsyscall_caliptra::mci::{mci_reg::RESET_REASON, Mci as MciSys
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_console::Console;
 use caliptra_mcu_libtock_platform::ErrorCode;
-use caliptra_mcu_measurement_api::BootKind;
-use caliptra_mcu_spdm_pal::{BitmapAllocator, BITMAP_SLOT_SIZE};
+use caliptra_mcu_measurement_api::{BootKind, EvidenceReadinessPolicy};
+use caliptra_mcu_scratch_alloc::{BitmapAllocator, BITMAP_SLOT_SIZE};
 
 extern crate alloc;
 use alloc::vec::Vec;
@@ -79,12 +79,28 @@ pub(crate) async fn boot_init(
         attestation_manifest,
         soc_image_load_fw_ids,
         boot_kind,
+        evidence_readiness_policy(),
         &allocator,
     )
     .await
     .is_err()
     {
         log_boot_init_error(BootInitLog::Init);
+    }
+
+    fn evidence_readiness_policy() -> EvidenceReadinessPolicy {
+        if cfg!(any(
+            feature = "test-mctp-spdm-attestation",
+            feature = "test-mctp-spdm-attestation-tcb",
+            feature = "test-mctp-spdm-attestation-mixed",
+            feature = "test-mctp-spdm-attestation-hitless",
+            feature = "test-mctp-spdm-attestation-hitless-tcb",
+            feature = "test-mctp-spdm-attestation-hitless-mixed"
+        )) {
+            EvidenceReadinessPolicy::RequireInitialSocLoadComplete
+        } else {
+            EvidenceReadinessPolicy::ReadyAfterBootInit
+        }
     }
 }
 

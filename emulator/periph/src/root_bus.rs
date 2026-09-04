@@ -466,12 +466,21 @@ impl Bus for McuRootBus {
                     start + len
                 );
             } else {
-                let data = self
-                    .mcu_mailbox0
-                    .regs
-                    .lock()
-                    .unwrap()
-                    .read_mcu_mbox0_csr_mbox_sram_block(start, len);
+                let data = (start..start + len).step_by(4).map(|index| {
+                    self.mcu_mailbox0
+                        .regs
+                        .lock()
+                        .unwrap()
+                        .read_mcu_mbox0_csr_mbox_sram(index / 4)
+                });
+                // `index` walks byte offsets while the register accessor takes a
+                // word index. Caliptra decodes the response little-endian, which
+                // matches the little-endian serialization used here.
+                let data: Vec<u8> = data
+                    .flat_map(|val| val.to_le_bytes().to_vec())
+                    .take(len)
+                    .collect();
+
                 if let Some(event_sender) = self.event_sender.as_ref() {
                     event_sender
                         .send(Event {

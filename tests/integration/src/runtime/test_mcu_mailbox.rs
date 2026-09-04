@@ -7,11 +7,13 @@ use caliptra_api::{
     mailbox::{CapabilitiesResp, CommandId, MailboxReqHeader},
     SocManager,
 };
-use caliptra_mcu_config::capabilities::McuRuntimeCapabilities;
+use caliptra_mcu_config::capabilities::{ExternalCommandCapabilities, McuRuntimeCapabilities};
 use caliptra_mcu_hw_model::{LifecycleControllerState, McuHwModel};
 use caliptra_mcu_mbox_common::messages::{
-    DeviceCapsReq, DpeSignerContextCertReq, FirmwareVersionReq, GetAuthCmdChallengeReq,
-    GetDpeCertChainReq, McuFeProgReq,
+    DeviceCapsReq, DpeSignerContextCertReq, EcdsaVerifyReq, FirmwareVersionReq,
+    GetAuthCmdChallengeReq, GetDpeCertChainReq, LmsVerifyReq,
+    MailboxReqHeader as McuMailboxReqHeader, MailboxRespHeader, McuEcdsa384SigVerifyReq,
+    McuFeProgReq, McuLmsSigVerifyReq,
 };
 use caliptra_mcu_romtime::McuBootMilestones;
 use zerocopy::{FromBytes, IntoBytes};
@@ -126,7 +128,10 @@ fn test_device_capabilities_cmd() -> Result<()> {
         u32::from_be_bytes(resp.caps[20..24].try_into().unwrap()),
         McuRuntimeCapabilities::MCI_MAILBOX_SERVICE.bits()
     );
-    assert_eq!(u32::from_be_bytes(resp.caps[24..28].try_into().unwrap()), 0);
+    assert_eq!(
+        u32::from_be_bytes(resp.caps[24..28].try_into().unwrap()),
+        ExternalCommandCapabilities::GET_ATTESTATION.bits()
+    );
     assert_eq!(u32::from_be_bytes(resp.caps[28..32].try_into().unwrap()), 0);
     assert_eq!(&resp.caps[32..], &[0; 4]);
     Ok(())
@@ -165,6 +170,149 @@ fn test_get_auth_cmd_challenge_cmd() -> Result<()> {
 }
 
 #[test]
+fn test_mcu_mbox_ecdsa384_sig_verify() -> Result<()> {
+    use caliptra_image_crypto::RustCrypto;
+    use caliptra_image_fake_keys::{VENDOR_ECC_KEY_0_PRIVATE, VENDOR_ECC_KEY_0_PUBLIC};
+    use caliptra_image_gen::{from_hw_format, to_hw_format, ImageGeneratorCrypto};
+
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-mcu-mbox-cmds"),
+        ..Default::default()
+    });
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    let digest = [0x5au8; 48];
+    let signature = RustCrypto::default().ecdsa384_sign(
+        &to_hw_format(&digest),
+        &VENDOR_ECC_KEY_0_PRIVATE,
+        &VENDOR_ECC_KEY_0_PUBLIC,
+    )?;
+    let signature_r = from_hw_format(&signature.r);
+    let signature_s = from_hw_format(&signature.s);
+
+    let resp = hw.mailbox_execute_req(McuEcdsa384SigVerifyReq(EcdsaVerifyReq {
+        hdr: McuMailboxReqHeader::default(),
+        pub_key_x: from_hw_format(&VENDOR_ECC_KEY_0_PUBLIC.x),
+        pub_key_y: from_hw_format(&VENDOR_ECC_KEY_0_PUBLIC.y),
+        signature_r,
+        signature_s,
+        hash: digest,
+    }))?;
+    assert_eq!(
+        resp.0.fips_status,
+        MailboxRespHeader::FIPS_STATUS_NOT_APPROVED_USER_SUPPLIED_DIGEST
+    );
+
+    let mut invalid_signature_r = signature_r;
+    invalid_signature_r[0] ^= 1;
+    let invalid = McuEcdsa384SigVerifyReq(EcdsaVerifyReq {
+        hdr: McuMailboxReqHeader::default(),
+        pub_key_x: from_hw_format(&VENDOR_ECC_KEY_0_PUBLIC.x),
+        pub_key_y: from_hw_format(&VENDOR_ECC_KEY_0_PUBLIC.y),
+        signature_r: invalid_signature_r,
+        signature_s,
+        hash: digest,
+    });
+    assert!(hw.mailbox_execute_req(invalid).is_err());
+    Ok(())
+}
+
+#[cfg(not(feature = "fpga_realtime"))]
+#[test]
+fn test_mcu_mbox_lms_sig_verify() -> Result<()> {
+    use caliptra_image_crypto::RustCrypto;
+    use caliptra_image_fake_keys::{VENDOR_LMS_KEY_0_PRIVATE, VENDOR_LMS_KEY_0_PUBLIC};
+    use caliptra_image_gen::{to_hw_format, ImageGeneratorCrypto};
+
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-mcu-mbox-cmds"),
+        ..Default::default()
+    });
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    let digest = [0xa5u8; 48];
+    let signature =
+        RustCrypto::default().lms_sign(&to_hw_format(&digest), &VENDOR_LMS_KEY_0_PRIVATE)?;
+    let signature_ots = signature.ots.as_bytes().try_into().unwrap();
+
+    let resp = hw.mailbox_execute_req(McuLmsSigVerifyReq(LmsVerifyReq {
+        hdr: McuMailboxReqHeader::default(),
+        pub_key_tree_type: u32::from(VENDOR_LMS_KEY_0_PUBLIC.tree_type.0),
+        pub_key_ots_type: u32::from(VENDOR_LMS_KEY_0_PUBLIC.otstype.0),
+        pub_key_id: VENDOR_LMS_KEY_0_PUBLIC.id,
+        pub_key_digest: VENDOR_LMS_KEY_0_PUBLIC
+            .digest
+            .as_bytes()
+            .try_into()
+            .unwrap(),
+        signature_q: u32::from(signature.q),
+        signature_ots,
+        signature_tree_type: u32::from(signature.tree_type.0),
+        signature_tree_path: signature.tree_path.as_bytes().try_into().unwrap(),
+        hash: digest,
+    }))?;
+    assert_eq!(
+        resp.0.fips_status,
+        MailboxRespHeader::FIPS_STATUS_NOT_APPROVED_USER_SUPPLIED_DIGEST
+    );
+
+    let mut invalid_signature_ots = signature_ots;
+    invalid_signature_ots[4] ^= 1;
+    let invalid = McuLmsSigVerifyReq(LmsVerifyReq {
+        hdr: McuMailboxReqHeader::default(),
+        pub_key_tree_type: u32::from(VENDOR_LMS_KEY_0_PUBLIC.tree_type.0),
+        pub_key_ots_type: u32::from(VENDOR_LMS_KEY_0_PUBLIC.otstype.0),
+        pub_key_id: VENDOR_LMS_KEY_0_PUBLIC.id,
+        pub_key_digest: VENDOR_LMS_KEY_0_PUBLIC
+            .digest
+            .as_bytes()
+            .try_into()
+            .unwrap(),
+        signature_q: u32::from(signature.q),
+        signature_ots: invalid_signature_ots,
+        signature_tree_type: u32::from(signature.tree_type.0),
+        signature_tree_path: signature.tree_path.as_bytes().try_into().unwrap(),
+        hash: digest,
+    });
+    assert!(hw.mailbox_execute_req(invalid).is_err());
+    Ok(())
+}
+
+#[cfg(feature = "fpga_realtime")]
+#[test]
+fn test_mcu_mbox_lms_sig_verify() -> Result<()> {
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-mcu-mbox-cmds"),
+        ..Default::default()
+    });
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    let request = McuLmsSigVerifyReq(LmsVerifyReq {
+        hdr: McuMailboxReqHeader::default(),
+        pub_key_tree_type: 0,
+        pub_key_ots_type: 0,
+        pub_key_id: [0; 16],
+        pub_key_digest: [0; 24],
+        signature_q: 0,
+        signature_ots: [0; 1252],
+        signature_tree_type: 0,
+        signature_tree_path: [0; 360],
+        hash: [0; 48],
+    });
+    assert!(hw.mailbox_execute_req(request).is_err());
+    Ok(())
+}
+
+#[test]
 fn test_fe_prog_authorized_req() -> Result<()> {
     use crate::runtime::execute_authorized_req;
     use caliptra_mcu_builder::{CaliptraBuildArgs, CaliptraBuilder, FirmwareBinaries};
@@ -196,7 +344,7 @@ fn test_fe_prog_authorized_req() -> Result<()> {
         custom_caliptra_fw: Some(CustomCaliptraFw {
             fw_bytes: caliptra_fw,
             vendor_pk_hash: vendor_pk_hash_arr,
-            soc_manifest: soc_manifest,
+            soc_manifest,
         }),
         lifecycle_controller_state: Some(LifecycleControllerState::Prod),
         ..Default::default()

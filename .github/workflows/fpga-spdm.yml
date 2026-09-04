@@ -17,6 +17,7 @@ concurrency:
 
 jobs:
   build_test_binaries:
+    if: ${{ vars.RUN_FPGA_CI != 'false' }}
     runs-on: [ e2-standard-8-big-disk ]
     timeout-minutes: 60
     env:
@@ -220,6 +221,7 @@ jobs:
           retention-days: 1
 
   test_spdm:
+    if: ${{ vars.RUN_FPGA_CI != 'false' }}
     runs-on: vck190-subsystem
     needs: build_test_binaries
     timeout-minutes: 120

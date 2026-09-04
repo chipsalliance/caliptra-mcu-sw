@@ -27,6 +27,7 @@ use caliptra_mcu_error::{McuError, McuResult};
 use caliptra_mcu_romtime::otp::Otp;
 use caliptra_mcu_romtime::{HexWord, McuRomBootStatus};
 use zerocopy::{transmute, FromBytes, Immutable, IntoBytes, KnownLayout};
+use zeroize::{Zeroize, Zeroizing};
 
 const DOT_LABEL: &[u8; 23] = b"Caliptra DOT stable key";
 pub const DOT_BLOB_SIZE: usize = core::mem::size_of::<DotBlob>();
@@ -176,13 +177,20 @@ pub(crate) fn install_owner_pk_hash(
 }
 
 /// Caliptra Cryptographic Mailbox Key (CMK) handle.
-#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq, Zeroize)]
 pub struct Cmk(pub [u32; 32]);
 
 /// DOT Effective Key derived from DOT_ROOT_KEY and DOT_FUSE_ARRAY state.
 ///
 /// This key is used to authenticate DOT blobs via HMAC.
+#[derive(Zeroize)]
 pub struct DotEffectiveKey(pub Cmk);
+
+impl Drop for DotEffectiveKey {
+    fn drop(&mut self) {
+        self.0.zeroize();
+    }
+}
 
 /// The DOT blob data structure containing ownership credentials and locking keys.
 ///
@@ -287,9 +295,11 @@ pub fn dot_flow(
     env.mci
         .set_flow_checkpoint(McuRomBootStatus::DeviceOwnershipTransferStarted.into());
 
-    let dot_effective_key = derive_stable_key_flow(env, dot_fuses, stable_key_type)?;
+    let mut dot_effective_key = derive_stable_key_flow(env, dot_fuses, stable_key_type)?;
 
-    verify_dot_blob(&mut env.soc_manager, blob, &dot_effective_key)?;
+    let verify_result = verify_dot_blob(&mut env.soc_manager, blob, &dot_effective_key);
+    dot_effective_key.zeroize();
+    verify_result?;
 
     burn_dot_fuses(env, dot_fuses, blob)?;
 
@@ -360,7 +370,7 @@ pub(crate) fn cm_derive_stable_key_impl(
     info[LABEL_LEN] = fuse_slice[0];
     info[LABEL_LEN + 1] = fuse_slice[1];
 
-    let mut resp = [0u32; core::mem::size_of::<CmDeriveStableKeyResp>() / 4];
+    let mut resp = Zeroizing::new([0u32; core::mem::size_of::<CmDeriveStableKeyResp>() / 4]);
     let req = CmDeriveStableKeyReq {
         info,
         key_type: key_type.into(),
@@ -371,14 +381,24 @@ pub(crate) fn cm_derive_stable_key_impl(
     if let Err(err) = soc_manager.exec_mailbox_req_u32(
         CommandId::CM_DERIVE_STABLE_KEY.into(),
         &mut req32,
-        &mut resp,
+        &mut resp[..],
     ) {
         let _ = err;
         caliptra_mcu_romtime::println!("[mcu-rom] DOT key err");
         return Err(McuError::ROM_COLD_BOOT_DOT_ERROR);
     }
-    let resp: CmDeriveStableKeyResp = transmute!(resp);
-    let dot_effective_key = DotEffectiveKey(Cmk(transmute!(resp.cmk)));
+    let resp = CmDeriveStableKeyResp::ref_from_bytes(resp.as_bytes())
+        .map_err(|_| McuError::ROM_COLD_BOOT_DOT_ERROR)?;
+    let mut dot_effective_key = DotEffectiveKey(Cmk::default());
+    for (dest, source) in dot_effective_key
+        .0
+         .0
+        .as_mut_bytes()
+        .iter_mut()
+        .zip(resp.cmk.0.iter())
+    {
+        *dest = *source;
+    }
     Ok(dot_effective_key)
 }
 
@@ -393,6 +413,12 @@ pub struct CmHmacDotBlobReq {
     pub data: DotBlobFields,
 }
 
+impl Zeroize for CmHmacDotBlobReq {
+    fn zeroize(&mut self) {
+        self.cmk.zeroize();
+    }
+}
+
 /// Calls Caliptra to compute an HMAC over DotBlobFields.
 pub(crate) fn cm_hmac(
     soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
@@ -400,17 +426,23 @@ pub(crate) fn cm_hmac(
     fields: &DotBlobFields,
 ) -> McuResult<[u32; 16]> {
     let mut resp = [0u32; core::mem::size_of::<CmHmacResp>() / 4];
-    let req = CmHmacDotBlobReq {
-        cmk: transmute!(key.0),
+    let mut req = Zeroizing::new(CmHmacDotBlobReq {
+        cmk: Cmk::default(),
         hash_algorithm: CmHashAlgorithm::Sha512.into(),
         data_size: core::mem::size_of::<DotBlobFields>() as u32,
         data: fields.clone(),
         ..Default::default()
+    });
+    req.cmk.0.copy_from_slice(&key.0);
+    let req_words = unsafe {
+        core::slice::from_raw_parts_mut(
+            core::ptr::from_mut(&mut *req).cast::<u32>(),
+            core::mem::size_of::<CmHmacDotBlobReq>() / 4,
+        )
     };
-    let mut req: [u32; core::mem::size_of::<CmHmacDotBlobReq>() / 4] = transmute!(req);
 
     if soc_manager
-        .exec_mailbox_req_u32(CommandId::CM_HMAC.into(), &mut req, &mut resp)
+        .exec_mailbox_req_u32(CommandId::CM_HMAC.into(), req_words, &mut resp)
         .is_err()
     {
         return Err(McuError::ROM_DOT_HMAC_FAILED);
@@ -607,7 +639,7 @@ pub(crate) fn burn_dot_lock_fuse(otp: &Otp, dot_fuses: &DotFuses) -> McuResult<(
 }
 
 #[repr(C)]
-#[derive(Clone, Debug, FromBytes, IntoBytes, Immutable, KnownLayout)]
+#[derive(Clone, Debug, FromBytes, IntoBytes, Immutable, KnownLayout, Zeroize)]
 pub struct EccP384PublicKey {
     pub x: [u32; 12],
     pub y: [u32; 12],
@@ -622,6 +654,12 @@ pub struct OverrideRequest<'a> {
     pub mldsa_pub_key: &'a [u32; MLDSA87_PUB_KEY_SIZE_DWORDS],
 }
 
+impl Drop for OverrideRequest<'_> {
+    fn drop(&mut self) {
+        self.ecc_pub_key.zeroize();
+    }
+}
+
 /// Override challenge response containing vendor public keys and dual signatures over the challenge.
 pub struct OverrideChallengeResponse<'a> {
     pub ecc_pub_key: EccP384PublicKey,
@@ -629,6 +667,14 @@ pub struct OverrideChallengeResponse<'a> {
     pub ecc_signature_s: [u8; 48],
     pub mldsa_signature: &'a [u32; MLDSA87_SIGNATURE_SIZE_DWORDS],
     pub mldsa_pub_key: &'a [u32; MLDSA87_PUB_KEY_SIZE_DWORDS],
+}
+
+impl Drop for OverrideChallengeResponse<'_> {
+    fn drop(&mut self) {
+        self.ecc_pub_key.zeroize();
+        self.ecc_signature_r.zeroize();
+        self.ecc_signature_s.zeroize();
+    }
 }
 
 /// Authentication parameters for a DOT override challenge/response.
@@ -668,6 +714,17 @@ pub trait RecoveryTransport {
     /// when the override completed successfully, or `false` if signature
     /// verification or fuse/flash operations failed.
     fn notify_override_result(&self, success: bool);
+
+    /// Clear transport-owned cryptographic material that is no longer needed.
+    fn zeroize_sensitive_data(&self);
+}
+
+struct RecoveryTransportZeroizeGuard<'a>(&'a dyn RecoveryTransport);
+
+impl Drop for RecoveryTransportZeroizeGuard<'_> {
+    fn drop(&mut self) {
+        self.0.zeroize_sensitive_data();
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -1138,6 +1195,8 @@ pub fn dot_override_challenge_flow(
         }
     };
 
+    let _transport_zeroize_guard = RecoveryTransportZeroizeGuard(transport);
+
     let request = transport.wait_for_override_request().inspect_err(|_e| {
         env.mci
             .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
@@ -1146,29 +1205,38 @@ pub fn dot_override_challenge_flow(
     // Verify vendor public key hash matches recovery PK hash in OTP fuses
     // using the caliptra-sw owner-PK-hash convention (per-dword-reversed
     // ECC || natural MLDSA).
-    let computed_hash = cm_owner_pk_hash_sha384(
-        &mut env.soc_manager,
-        &request.ecc_pub_key,
-        request.mldsa_pub_key,
-    )
-    .inspect_err(|_e| {
-        env.mci
-            .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
-    })?;
+    let computed_hash = Zeroizing::new(
+        cm_owner_pk_hash_sha384(
+            &mut env.soc_manager,
+            &request.ecc_pub_key,
+            request.mldsa_pub_key,
+        )
+        .inspect_err(|_e| {
+            env.mci
+                .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
+        })?,
+    );
+
+    drop(request);
+    transport.zeroize_sensitive_data();
 
     let fuse_hash_bytes: [u8; 48] = transmute!(recovery_pk_hash.0);
-    if !constant_time_eq::constant_time_eq(&computed_hash, &fuse_hash_bytes) {
+    let fuse_hash_bytes = Zeroizing::new(fuse_hash_bytes);
+    if !constant_time_eq::constant_time_eq(&computed_hash[..], &fuse_hash_bytes[..]) {
         caliptra_mcu_romtime::println!("[mcu-rom-dot] Vendor recovery PK hash mismatch");
         env.mci
             .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
         return Err(McuError::ROM_DOT_OVERRIDE_PK_HASH_MISMATCH);
     }
 
+    drop(computed_hash);
+    drop(fuse_hash_bytes);
+
     // Generate and send challenge
-    let challenge = cm_random_generate(&mut env.soc_manager).inspect_err(|_e| {
+    let challenge = Zeroizing::new(cm_random_generate(&mut env.soc_manager).inspect_err(|_e| {
         env.mci
             .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
-    })?;
+    })?);
 
     transport.send_challenge(&challenge).inspect_err(|_e| {
         env.mci
@@ -1197,6 +1265,9 @@ pub fn dot_override_challenge_flow(
         env.mci
             .set_flow_checkpoint(McuRomBootStatus::DotOverrideFailed.into());
     })?;
+
+    drop(response);
+    transport.zeroize_sensitive_data();
 
     env.mci
         .set_flow_checkpoint(McuRomBootStatus::DotOverrideSigVerified.into());

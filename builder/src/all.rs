@@ -40,6 +40,10 @@ struct FeatureTestResource {
     flash_image: PathBuf,
     pldm_fw_pkg: tempfile::NamedTempFile,
     update_flash_image: Option<PathBuf>,
+    /// SoC manifest that authorizes the payload shipped in the hitless update
+    /// package. Only set for the hitless attestation features, where the update
+    /// carries a different SoC payload than cold boot.
+    update_soc_manifest_file: Option<tempfile::NamedTempFile>,
     /// Raw bytes of the user-app ELF for this feature build. Carries the
     /// `.defmt` table needed by host-side defmt decoders.
     user_app_elf: Option<Vec<u8>>,
@@ -60,6 +64,7 @@ cfg_if::cfg_if! {
 /// These are determined by which tests use `run_test!(test_name, example_app)` in tests/integration/src/lib.rs
 const FEATURES_WITH_EXAMPLE_APP: &[&str] = &[
     "test-caliptra-certs",
+    "test-get-caliptra-idev-csr",
     "test-caliptra-crypto",
     "test-caliptra-mailbox",
     "test-dma",
@@ -92,8 +97,15 @@ const FEATURES_REQUIRING_SOC_IMAGES: &[&str] = &[
     "test-firmware-update-streaming",
     "test-streaming-boot-flash-write-back",
     "test-mctp-spdm-attestation",
+    "test-mctp-spdm-attestation-tcb",
+    "test-mctp-spdm-attestation-mixed",
+    "test-mctp-spdm-attestation-hitless",
+    "test-mctp-spdm-attestation-hitless-tcb",
+    "test-mctp-spdm-attestation-hitless-mixed",
     "test-mctp-spdm-attestation-pcr-quote",
     "test-firmware-v2",
+    "test-mctp-capsule-loopback",
+    "test-mctp-capsule-loopback-warm-reset",
 ];
 
 /// Features that require flash-based boot (partition table at offset 0)
@@ -106,6 +118,9 @@ const FEATURES_REQUIRING_HW_2_1_RUNTIME: &[&str] = &[
     "test-flash-based-boot",
     "test-firmware-activate",
     "test-firmware-update-flash",
+    "test-mctp-spdm-attestation-hitless",
+    "test-mctp-spdm-attestation-hitless-tcb",
+    "test-mctp-spdm-attestation-hitless-mixed",
     "test-usb-ocp-recovery",
 ];
 
@@ -205,24 +220,77 @@ fn create_default_soc_images() -> (Vec<ImageCfg>, Vec<PathBuf>) {
     (soc_images, soc_images_paths)
 }
 
-/// Creates a single dummy SoC image for the attestation demo.
-/// Uses fw_id 0x0003 so it appears as a distinct SoC firmware component
-/// in the auth manifest, evidence, and reference value CoRIM.
-fn create_attestation_soc_images() -> (Vec<ImageCfg>, Vec<PathBuf>) {
-    let soc_image_fw = vec![0xDEu8; 512];
-    let soc_image_path = std::env::temp_dir().join("attestation-soc-image.bin");
-    std::fs::write(&soc_image_path, &soc_image_fw).expect("Failed to write attestation SoC image");
+/// Creates dummy SoC images for attestation integration tests.
+///
+/// The test features intentionally leave `is_ak_target = false` so MCU Runtime
+/// remains the attestation node. The TCB/non-TCB flags exercise both
+/// Measurement API evidence read paths.
+fn create_attestation_soc_images(feature: Option<&str>) -> (Vec<ImageCfg>, Vec<PathBuf>) {
+    create_attestation_soc_images_variant(feature, false)
+}
 
-    let soc_images = vec![ImageCfg {
-        path: soc_image_path.clone(),
-        load_addr: MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET,
-        image_id: 0x0003,
-        component_id: 0x0003,
-        exec_bit: 5,
-        ..Default::default()
-    }];
+/// Same as [`create_attestation_soc_images`], but `post_update` selects the
+/// payload shipped in the hitless update package.
+///
+/// The post-update images keep the same `fw_id`/`component_id`/TCB flags and
+/// load addresses, and only differ in content. That makes the SoC component
+/// digests in the post-update evidence differ from the cold-boot ones, so the
+/// two appraisals are distinguishable instead of being byte-identical.
+fn create_attestation_soc_images_variant(
+    feature: Option<&str>,
+    post_update: bool,
+) -> (Vec<ImageCfg>, Vec<PathBuf>) {
+    // The default OCP EAT attestation scenario uses only non-TCB SoC
+    // components; dedicated features opt in to TCB-only or mixed coverage.
+    let specs: &[(u8, u32, bool)] = match feature {
+        Some("test-mctp-spdm-attestation-tcb") | Some("test-mctp-spdm-attestation-hitless-tcb") => {
+            &[(0xde, 0x0003, true)]
+        }
+        Some("test-mctp-spdm-attestation-mixed")
+        | Some("test-mctp-spdm-attestation-hitless-mixed") => {
+            &[(0xde, 0x0003, true), (0xad, 0x0004, false)]
+        }
+        _ => &[(0xde, 0x0003, false)],
+    };
 
-    (soc_images, vec![soc_image_path])
+    let mut soc_images = Vec::with_capacity(specs.len());
+    let mut soc_image_paths = Vec::with_capacity(specs.len());
+    let mut load_addr = MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET;
+
+    for (idx, (fill, fw_id, is_tcb)) in specs.iter().enumerate() {
+        // Invert the fill byte for the update payload so the SHA-384 of the
+        // component changes while its size and placement stay identical.
+        let fill = if post_update { !*fill } else { *fill };
+        let suffix = if post_update { "-update" } else { "" };
+        let soc_image_fw = vec![fill; 512];
+        let soc_image_path =
+            std::env::temp_dir().join(format!("attestation-soc-image-{fw_id:08x}{suffix}.bin"));
+        std::fs::write(&soc_image_path, &soc_image_fw)
+            .expect("Failed to write attestation SoC image");
+        soc_images.push(ImageCfg {
+            path: soc_image_path.clone(),
+            load_addr,
+            image_id: *fw_id,
+            component_id: *fw_id,
+            exec_bit: 5 + idx as u32,
+            is_tcb: *is_tcb,
+            is_ak_target: false,
+            ..Default::default()
+        });
+        soc_image_paths.push(soc_image_path);
+        load_addr += soc_image_fw.len() as u64;
+    }
+
+    (soc_images, soc_image_paths)
+}
+
+fn hitless_attestation_update_feature(feature: &str) -> Option<&'static str> {
+    match feature {
+        "test-mctp-spdm-attestation-hitless" => Some("test-mctp-spdm-attestation"),
+        "test-mctp-spdm-attestation-hitless-tcb" => Some("test-mctp-spdm-attestation-tcb"),
+        "test-mctp-spdm-attestation-hitless-mixed" => Some("test-mctp-spdm-attestation-mixed"),
+        _ => None,
+    }
 }
 
 /// Pre-generate the target-dir `generated/` configs so the runtime build can
@@ -756,11 +824,15 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             .iter()
             .any(|f| FEATURES_REQUIRING_SOC_IMAGES.contains(f));
         if needs_soc {
-            let is_attestation = base_runtime_features.iter().any(|f| {
-                *f == "test-mctp-spdm-attestation" || *f == "test-mctp-spdm-attestation-pcr-quote"
+            let attestation_feature = base_runtime_features.iter().find_map(|f| {
+                if f.starts_with("test-mctp-spdm-attestation") {
+                    Some(*f)
+                } else {
+                    None
+                }
             });
-            let (images, _paths) = if is_attestation {
-                create_attestation_soc_images()
+            let (images, _paths) = if let Some(feature) = attestation_feature {
+                create_attestation_soc_images(Some(feature))
             } else {
                 create_default_soc_images()
             };
@@ -980,10 +1052,8 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             // in the feature-specific SoC manifest below.
             let (feature_soc_images, feature_soc_images_paths) =
                 if FEATURES_REQUIRING_SOC_IMAGES.contains(feature) && soc_images.is_none() {
-                    let (images, paths) = if *feature == "test-mctp-spdm-attestation"
-                        || *feature == "test-mctp-spdm-attestation-pcr-quote"
-                    {
-                        create_attestation_soc_images()
+                    let (images, paths) = if feature.starts_with("test-mctp-spdm-attestation") {
+                        create_attestation_soc_images(Some(feature))
                     } else {
                         create_default_soc_images()
                     };
@@ -1089,19 +1159,82 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             let is_firmware_update_feature = *feature == "test-firmware-update-flash"
                 || *feature == "test-firmware-update-streaming"
                 || *feature == "test-streaming-boot-flash-write-back"
-                || *feature == "test-firmware-activate";
+                || *feature == "test-firmware-activate"
+                || *feature == "test-mctp-spdm-attestation-hitless"
+                || *feature == "test-mctp-spdm-attestation-hitless-tcb"
+                || *feature == "test-mctp-spdm-attestation-hitless-mixed";
+            let mut feature_update_soc_manifest_file: Option<tempfile::NamedTempFile> = None;
             let feature_update_flash_image = if is_firmware_update_feature {
-                Some(create_flash_image(FlashImageBuildArgs {
-                    caliptra_fw_path: Some(caliptra_fw.clone()),
-                    soc_manifest_path: Some(feature_soc_manifest_file.path().to_path_buf()),
-                    mcu_runtime_path: Some(feature_runtime_file.path().to_path_buf()),
-                    mcu_image_cfg: mcu_image_cfg.clone(),
-                    caliptra_firmware_network_filename,
-                    soc_manifest_network_filename,
-                    soc_images_paths: feature_soc_images_paths_clone,
-                    soc_images: feature_soc_images.clone(),
-                    is_flash_based_boot: false,
-                })?)
+                if let Some(update_feature) = hitless_attestation_update_feature(feature) {
+                    let update_target_dir =
+                        crate::target_dir().join(format!("target-runtime-update-{}", feature));
+                    let update_runtime_file = tempfile::NamedTempFile::new().unwrap();
+                    let update_runtime_path =
+                        update_runtime_file.path().to_str().unwrap().to_string();
+                    let update_features = format!("{update_feature},hw-2-1");
+                    // Ship a different SoC payload in the update package so the
+                    // post-update evidence carries different component digests.
+                    let (update_soc_images, update_soc_images_paths) =
+                        create_attestation_soc_images_variant(Some(feature), true);
+                    pre_generate_attestation_manifest_config_to_target_dir(
+                        &update_target_dir,
+                        effective_vendor,
+                        effective_model,
+                        &update_soc_images,
+                    )?;
+                    crate::runtime_build_with_apps(&CaliptraBuildArgs {
+                        features: Some(&update_features),
+                        output_name: Some(update_runtime_path),
+                        example_app: FEATURES_WITH_EXAMPLE_APP.contains(&update_feature),
+                        platform: Some(platform),
+                        profile,
+                        target_dir: Some(update_target_dir),
+                        no_default_features: true,
+                        ..Default::default()
+                    })?;
+
+                    let mut update_builder = crate::CaliptraBuilder::new(&CaliptraBuildArgs {
+                        fpga: platform == "fpga",
+                        caliptra_rom: Some(caliptra_rom.clone()),
+                        caliptra_firmware: Some(caliptra_fw.clone()),
+                        vendor_pk_hash: Some(vendor_pk_hash.clone()),
+                        mcu_firmware: Some(update_runtime_file.path().to_path_buf()),
+                        soc_images: Some(update_soc_images.clone()),
+                        mcu_image_cfg: mcu_image_cfg.clone(),
+                        vendor: vendor.map(|s| s.to_string()),
+                        model: model.map(|s| s.to_string()),
+                        ..Default::default()
+                    });
+                    let update_soc_manifest_file = tempfile::NamedTempFile::new().unwrap();
+                    update_builder.get_soc_manifest(update_soc_manifest_file.path().to_str())?;
+                    let update_flash = create_flash_image(FlashImageBuildArgs {
+                        caliptra_fw_path: Some(caliptra_fw.clone()),
+                        soc_manifest_path: Some(update_soc_manifest_file.path().to_path_buf()),
+                        mcu_runtime_path: Some(update_runtime_file.path().to_path_buf()),
+                        mcu_image_cfg: mcu_image_cfg.clone(),
+                        caliptra_firmware_network_filename,
+                        soc_manifest_network_filename,
+                        soc_images_paths: update_soc_images_paths,
+                        soc_images: Some(update_soc_images),
+                        is_flash_based_boot: false,
+                    })?;
+                    // Retain the manifest so `corim gen-refval --post-update`
+                    // can derive post-update reference values from it.
+                    feature_update_soc_manifest_file = Some(update_soc_manifest_file);
+                    Some(update_flash)
+                } else {
+                    Some(create_flash_image(FlashImageBuildArgs {
+                        caliptra_fw_path: Some(caliptra_fw.clone()),
+                        soc_manifest_path: Some(feature_soc_manifest_file.path().to_path_buf()),
+                        mcu_runtime_path: Some(feature_runtime_file.path().to_path_buf()),
+                        mcu_image_cfg: mcu_image_cfg.clone(),
+                        caliptra_firmware_network_filename,
+                        soc_manifest_network_filename,
+                        soc_images_paths: feature_soc_images_paths_clone,
+                        soc_images: feature_soc_images.clone(),
+                        is_flash_based_boot: false, // No partition table for update image
+                    })?)
+                }
             } else {
                 None
             };
@@ -1141,6 +1274,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                 flash_image: feature_flash_image,
                 pldm_fw_pkg: feature_pldm_fw_pkg,
                 update_flash_image: feature_update_flash_image,
+                update_soc_manifest_file: feature_update_soc_manifest_file,
                 user_app_elf,
             })
         })
@@ -1245,6 +1379,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         flash_image,
         pldm_fw_pkg,
         update_flash_image,
+        update_soc_manifest_file: update_soc_manifest,
         user_app_elf,
     } in test_runtimes
     {
@@ -1269,6 +1404,21 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             &mut zip,
             options,
         )?;
+
+        if let Some(update_soc_manifest) = update_soc_manifest.as_ref() {
+            let update_soc_manifest_name = format!("mcu-test-soc-manifest-update-{}.bin", feature);
+            println!(
+                "Adding {} -> {}",
+                update_soc_manifest.path().display(),
+                update_soc_manifest_name
+            );
+            add_to_zip(
+                &update_soc_manifest.path().to_path_buf(),
+                &update_soc_manifest_name,
+                &mut zip,
+                options,
+            )?;
+        }
 
         if let Some(elf_bytes) = user_app_elf.as_ref() {
             let elf_name = format!("mcu-test-user-app-elf-{}.bin", feature);
@@ -1351,6 +1501,9 @@ fn get_image_cfg_feature(image_cfg: &[ImageCfg], feature: &str) -> Option<ImageC
             return Some(img.clone());
         }
     }
+    if hitless_attestation_update_feature(feature).is_some() {
+        return Some(default_hitless_attestation_mcu_cfg(feature));
+    }
     None
 }
 
@@ -1373,6 +1526,19 @@ fn default_mcu_image_cfg_for_feature(feature: &str, runtime_path: &Path) -> Opti
         feature: feature.to_string(),
         ..Default::default()
     })
+}
+
+fn default_hitless_attestation_mcu_cfg(feature: &str) -> ImageCfg {
+    ImageCfg {
+        path: "mcu".into(),
+        load_addr: MCI_BASE_AXI_ADDRESS + MCU_SRAM_OFFSET,
+        staging_addr: MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET + (512 * 1024),
+        image_id: MCU_RT_IDENTIFIER,
+        component_id: MCU_RT_IDENTIFIER,
+        exec_bit: 2,
+        feature: feature.to_string(),
+        ..Default::default()
+    }
 }
 
 fn add_to_zip(

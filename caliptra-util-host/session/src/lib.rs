@@ -10,7 +10,7 @@ use caliptra_mcu_core_util_host_command_types::{
     CaliptraCommandId, CommandRequest, CommandResponse,
 };
 use caliptra_mcu_core_util_host_osal::time::{sleep, Duration, Instant};
-use caliptra_mcu_core_util_host_transport::Transport;
+use caliptra_mcu_core_util_host_transport::{Transport, TransportError};
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 /// Maximum size for command packets
@@ -51,6 +51,9 @@ pub enum SessionError {
 
     /// Transport layer error
     TransportError(&'static str),
+
+    /// Device returned a protocol completion code.
+    DeviceError(u8),
 
     /// OSAL error
     OsalError(&'static str),
@@ -426,7 +429,10 @@ impl<'t> CaliptraSession<'t> {
             // Send the command with command_id as separate parameter
             transport
                 .send(command_id as u32, request_bytes)
-                .map_err(|_| SessionError::TransportError("Send failed"))?;
+                .map_err(|err| match err {
+                    TransportError::DeviceError(code) => SessionError::DeviceError(code),
+                    _ => SessionError::TransportError("Send failed"),
+                })?;
 
             // Receive the response
             let mut response_buffer = [0u8; MAX_COMMAND_PACKET_SIZE];

@@ -81,10 +81,9 @@ impl DoeUtil {
     }
 
     pub fn receive_raw_data_object(rx: &Receiver<Vec<u8>>) -> Result<Vec<u8>, DoeUtilError> {
-        // TODO: this should not need to be so high.
-        // Nothing should take >3,500,000 ticks to respond,
-        // but setting it to 35 will fail tests.
-        for _ in 0..60 {
+        // Certificate operations on Caliptra 2.1 can take more than
+        // 6,000,000 emulator ticks to complete.
+        for _ in 0..800 {
             match rx.try_recv() {
                 Ok(message) => {
                     println!(

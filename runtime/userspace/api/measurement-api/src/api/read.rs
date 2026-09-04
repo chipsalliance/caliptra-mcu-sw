@@ -9,7 +9,7 @@ use caliptra_mcu_libsyscall_caliptra::soft_pcr_store::{
     MeasurementRecord, SoftwarePcrStore, SOFT_PCR_STORE_DRIVER_NUM,
 };
 use caliptra_mcu_libtock_platform::Syscalls;
-use mcu_caliptra_api_lite::{
+use mcu_caliptra_api::{
     dpe_get_tagged_tci, ApiAlloc, DpeTaggedTci, DPE_CONTEXT_HANDLE_SIZE, DPE_TCI_MEASUREMENT_SIZE,
 };
 

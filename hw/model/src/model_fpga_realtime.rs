@@ -10,15 +10,15 @@ use caliptra_emu_periph::MailboxRequester;
 use caliptra_emu_types::{RvAddr, RvData, RvSize};
 use caliptra_hw_model::openocd::openocd_jtag_tap::{JtagParams, JtagTap, OpenOcdJtagTap};
 use caliptra_hw_model::{
-    DeviceLifecycle, HwModel, InitParams as CaliptraInitParams, ModelFpgaSubsystem, Output,
-    SecurityState, SubsystemInitParams, XI3CWrapper,
+    CaliptraHwVersion, DeviceLifecycle, HwModel, InitParams as CaliptraInitParams,
+    ModelFpgaSubsystem, Output, SecurityState, SubsystemInitParams, XI3CWrapper,
 };
 use caliptra_mcu_romtime::LifecycleControllerState;
 use caliptra_mcu_romtime::McuBootMilestones;
 use caliptra_mcu_testing_common::i3c::{
     I3cBusCommand, I3cBusResponse, I3cTcriCommand, I3cTcriResponseXfer, ResponseDescriptor,
 };
-use caliptra_mcu_testing_common::{update_ticks, EmulatorState};
+use caliptra_mcu_testing_common::{update_ticks, EmulatorState, SpdmResponderTransport};
 use caliptra_registers::i3ccsr::regs::StbyCrDeviceAddrWriteVal;
 use std::collections::VecDeque;
 use std::io::Write;
@@ -33,6 +33,7 @@ use tock_registers::interfaces::{Readable, Writeable};
 
 const DEFAULT_AXI_PAUSER: u32 = 0x1;
 const MCU_BOOT_FSM_READY_FOR_FUSES: u32 = 7;
+const SPDM_READINESS_POLL_CYCLES: u64 = 10_000_000;
 
 /// MCTP-over-I3C Mandatory Data Byte value. Only IBIs with this MDB
 /// carry a pending-read length in bytes 1-2.
@@ -90,14 +91,38 @@ pub struct ModelFpgaRealtime {
     caliptra_firmware: Option<Vec<u8>>,
     soc_manifest: Option<Vec<u8>>,
     mcu_firmware: Option<Vec<u8>>,
+    primary_flash_initial_contents: Option<Vec<u8>>,
     pub usb_host_controller: caliptra_mcu_emulator_periph::UsbHostController,
     /// Per-instance emulator coordination state. Kept alive for as long
     /// as this model exists so worker threads that captured an Arc clone
     /// observe writes from step()/boot().
-    _state: Arc<EmulatorState>,
+    state: Arc<EmulatorState>,
+    next_spdm_readiness_poll_cycle: u64,
 }
 
 impl ModelFpgaRealtime {
+    pub fn primary_flash_initial_contents(&self) -> Option<&[u8]> {
+        self.primary_flash_initial_contents.as_deref()
+    }
+
+    fn sync_spdm_responder_readiness(&mut self) {
+        let cycle = self.cycle_count();
+        if cycle < self.next_spdm_readiness_poll_cycle {
+            return;
+        }
+        self.next_spdm_readiness_poll_cycle = cycle.saturating_add(SPDM_READINESS_POLL_CYCLES);
+
+        let milestones = self.mci_boot_milestones();
+        self.state.set_spdm_responder_ready(
+            SpdmResponderTransport::Mctp,
+            milestones.contains(McuBootMilestones::FIRMWARE_SPDM_MCTP_READY),
+        );
+        self.state.set_spdm_responder_ready(
+            SpdmResponderTransport::Doe,
+            milestones.contains(McuBootMilestones::FIRMWARE_SPDM_DOE_READY),
+        );
+    }
+
     /// Set or clear the FIPS zeroization PPD signal in the FPGA wrapper
     /// control register (bit 20).
     fn set_fips_zeroization_ppd(&mut self, val: bool) {
@@ -396,6 +421,7 @@ impl McuHwModel for ModelFpgaRealtime {
     fn step(&mut self) {
         self.base.step();
         self.handle_i3c();
+        self.sync_spdm_responder_readiness();
         update_ticks(self.cycle_count() / 100); // notify tests about current time, but reduce effective speed
     }
 
@@ -441,6 +467,7 @@ impl McuHwModel for ModelFpgaRealtime {
         };
 
         let cptra_init = CaliptraInitParams {
+            hw_version: CaliptraHwVersion::V2_1,
             fuses: params.fuses,
             rom: params.caliptra_rom,
             dccm: params.caliptra_dccm,
@@ -607,8 +634,10 @@ impl McuHwModel for ModelFpgaRealtime {
             caliptra_firmware: Some(params.caliptra_firmware.to_vec()).filter(|f| !f.is_empty()),
             soc_manifest: Some(params.soc_manifest.to_vec()).filter(|f| !f.is_empty()),
             mcu_firmware: Some(params.mcu_firmware.to_vec()).filter(|f| !f.is_empty()),
+            primary_flash_initial_contents: params.primary_flash_initial_contents.map(Vec::from),
             usb_host_controller,
-            _state: state,
+            state,
+            next_spdm_readiness_poll_cycle: 0,
         };
 
         // Set the FIPS zeroization PPD signal in the FPGA wrapper control

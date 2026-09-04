@@ -170,14 +170,14 @@ impl SlotEndorsement {
     }
 }
 
-/// Read-only endorsement — static root CA cert chain.
-pub struct ReadOnlyEndorsement {
-    root_cert_hash: [u8; 48],
-    chain: &'static [&'static [u8]],
-    chain_len: usize,
+#[derive(Clone, Copy)]
+pub struct SingleEndorsementChain {
+    pub root_cert_hash: [u8; 48],
+    pub chain: &'static [&'static [u8]],
+    pub chain_len: usize,
 }
 
-impl ReadOnlyEndorsement {
+impl SingleEndorsementChain {
     pub fn new(chain: &'static [&'static [u8]], root_cert_hash: [u8; 48]) -> Self {
         let chain_len = chain.iter().map(|c| c.len()).sum();
         Self {
@@ -186,24 +186,52 @@ impl ReadOnlyEndorsement {
             chain_len,
         }
     }
+}
 
-    fn root_cert_hash(&self, _algo: SpdmPalAsymAlgo, out: &mut [u8]) -> McuResult<()> {
-        // Copies `min(out.len(), root_cert_hash.len())` bytes with no
-        // length-equality check, so no `copy_from_slice` panic path.
-        for (d, s) in out.iter_mut().zip(&self.root_cert_hash) {
+/// Read-only endorsement — static root CA cert chain for ECC and optional ML-DSA.
+pub struct ReadOnlyEndorsement {
+    ecc: SingleEndorsementChain,
+    mldsa: Option<SingleEndorsementChain>,
+}
+
+impl ReadOnlyEndorsement {
+    pub fn new(chain: &'static [&'static [u8]], root_cert_hash: [u8; 48]) -> Self {
+        Self {
+            ecc: SingleEndorsementChain::new(chain, root_cert_hash),
+            mldsa: None,
+        }
+    }
+
+    pub fn with_mldsa(mut self, chain: &'static [&'static [u8]], root_cert_hash: [u8; 48]) -> Self {
+        self.mldsa = Some(SingleEndorsementChain::new(chain, root_cert_hash));
+        self
+    }
+
+    pub fn get_chain(&self, algo: SpdmPalAsymAlgo) -> Option<&SingleEndorsementChain> {
+        match algo {
+            SpdmPalAsymAlgo::EccP384 => Some(&self.ecc),
+            SpdmPalAsymAlgo::MlDsa87 => self.mldsa.as_ref(),
+        }
+    }
+
+    fn root_cert_hash(&self, algo: SpdmPalAsymAlgo, out: &mut [u8]) -> McuResult<()> {
+        let chain = self.get_chain(algo).ok_or(mcu_error::codes::INVARIANT)?;
+        for (d, s) in out.iter_mut().zip(&chain.root_cert_hash) {
             *d = *s;
         }
         Ok(())
     }
 
-    fn size(&self, _algo: SpdmPalAsymAlgo) -> McuResult<usize> {
-        Ok(self.chain_len)
+    fn size(&self, algo: SpdmPalAsymAlgo) -> McuResult<usize> {
+        let chain = self.get_chain(algo).ok_or(mcu_error::codes::INVARIANT)?;
+        Ok(chain.chain_len)
     }
 
-    fn read(&self, _algo: SpdmPalAsymAlgo, offset: usize, buf: &mut [u8]) -> McuResult<usize> {
+    fn read(&self, algo: SpdmPalAsymAlgo, offset: usize, buf: &mut [u8]) -> McuResult<usize> {
+        let chain = self.get_chain(algo).ok_or(mcu_error::codes::INVARIANT)?;
         let mut cert_offset = offset;
         let mut pos = 0;
-        for cert in self.chain.iter() {
+        for cert in chain.chain.iter() {
             if cert_offset < cert.len() {
                 let len = cert
                     .len()

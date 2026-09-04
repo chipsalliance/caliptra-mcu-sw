@@ -26,6 +26,9 @@ pub use caliptra_mcu_command_auth_challenge_signer::{
 pub use caliptra_mcu_core_util_host_mailbox_test_config::*;
 
 use anyhow::Result;
+use caliptra_mcu_core_util_host_command_types::attestation::{
+    AsymAlgo, EvidenceFormat, GetAttestationResponse, PkiEntitySlot,
+};
 use caliptra_mcu_core_util_host_command_types::certificate::ExportAttestedCsrResponse;
 use caliptra_mcu_core_util_host_command_types::crypto_aes::{
     AesMode, AES_GCM_IV_SIZE, AES_GCM_TAG_SIZE, AES_IV_SIZE,
@@ -45,13 +48,24 @@ use caliptra_mcu_core_util_host_command_types::crypto_import::ImportResponse;
 use caliptra_mcu_core_util_host_command_types::debug_unlock::{
     ProdDebugUnlockReqResponse, ProdDebugUnlockTokenRequest, ProdDebugUnlockTokenResponse,
 };
+use caliptra_mcu_core_util_host_command_types::device_ownership_transfer::{
+    DotChallengeResponse, DotDisableRequest, DotLockRequest, DotRotateRequest, DotStatusResponse,
+    DotTransitionResponse, DotUnlockRequest, GetDotBackupBlobRequest, GetDotBackupBlobResponse,
+};
 use caliptra_mcu_core_util_host_command_types::fuse::{
-    FeProgRequest, FeProgResponse, GetAuthCmdChallengeResponse,
+    FeProgRequest, FeProgResponse, FuseIncreaseCaliptraMinSvnRequest,
+    FuseIncreaseCaliptraMinSvnResponse, FuseLockPartitionRequest, FuseLockPartitionResponse,
+    FuseRevokeVendorPkHashRequest, FuseRevokeVendorPkHashResponse, FuseRevokeVendorPubKeyRequest,
+    FuseRevokeVendorPubKeyResponse, GetAuthCmdChallengeResponse, ProvisionVendorPkHashRequest,
+    ProvisionVendorPkHashResponse,
 };
 use caliptra_mcu_core_util_host_command_types::{
     GetDeviceCapabilitiesResponse, GetFirmwareVersionResponse,
 };
 use caliptra_mcu_core_util_host_transport::Mailbox;
+use caliptra_util_host_commands::api::attestation::{
+    caliptra_cmd_get_attestation, caliptra_cmd_get_attestation_formats,
+};
 use caliptra_util_host_commands::api::certificate::caliptra_cmd_export_attested_csr;
 use caliptra_util_host_commands::api::crypto_aes::{
     caliptra_aes_decrypt, caliptra_aes_encrypt, caliptra_aes_gcm_decrypt, caliptra_aes_gcm_encrypt,
@@ -75,8 +89,16 @@ use caliptra_util_host_commands::api::debug_unlock::{
 use caliptra_util_host_commands::api::device_info::{
     caliptra_cmd_get_device_capabilities, caliptra_cmd_get_firmware_version,
 };
+use caliptra_util_host_commands::api::device_ownership_transfer::{
+    caliptra_cmd_dot_disable, caliptra_cmd_dot_lock, caliptra_cmd_dot_rotate,
+    caliptra_cmd_dot_status, caliptra_cmd_dot_unlock, caliptra_cmd_dot_unlock_challenge,
+    caliptra_cmd_get_dot_backup_blob,
+};
 use caliptra_util_host_commands::api::fuse::{
-    caliptra_cmd_fe_prog, caliptra_cmd_get_auth_challenge,
+    caliptra_cmd_fe_prog, caliptra_cmd_fuse_increase_caliptra_min_svn,
+    caliptra_cmd_fuse_lock_partition, caliptra_cmd_fuse_revoke_vendor_pk_hash,
+    caliptra_cmd_fuse_revoke_vendor_pub_key, caliptra_cmd_get_auth_challenge,
+    caliptra_cmd_provision_vendor_pk_hash,
 };
 use caliptra_util_host_session::CaliptraSession;
 
@@ -874,10 +896,79 @@ impl<'a> MailboxClient<'a> {
         }
     }
 
+    /// Retrieve signed attestation evidence from the device
+    pub fn get_attestation(
+        &mut self,
+        format: EvidenceFormat,
+        algorithm: AsymAlgo,
+        entity: PkiEntitySlot,
+        nonce: &[u8; 32],
+    ) -> Result<GetAttestationResponse> {
+        println!("Executing GetAttestation command...");
+
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+
+        match caliptra_cmd_get_attestation(&mut session, format, algorithm, entity, nonce) {
+            Ok(response) => {
+                println!("✓ GetAttestation succeeded!");
+                println!(
+                    "  format: {}, evidence length: {} bytes",
+                    format.name(),
+                    response.data_len
+                );
+                Ok(response)
+            }
+            Err(e) => {
+                eprintln!("✗ GetAttestation failed: {:?}", e);
+                Err(anyhow::anyhow!("GetAttestation command failed: {:?}", e))
+            }
+        }
+    }
+
+    /// Query which evidence formats the device supports
+    ///
+    /// The returned response carries a supported-format bitmap, decodable with
+    /// `supported_formats()`.
+    pub fn get_attestation_formats(&mut self) -> Result<GetAttestationResponse> {
+        println!("Executing GetAttestation format query...");
+
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+
+        match caliptra_cmd_get_attestation_formats(&mut session) {
+            Ok(response) => {
+                println!("✓ GetAttestation format query succeeded!");
+                Ok(response)
+            }
+            Err(e) => {
+                eprintln!("✗ GetAttestation format query failed: {:?}", e);
+                Err(anyhow::anyhow!(
+                    "GetAttestation format query failed: {:?}",
+                    e
+                ))
+            }
+        }
+    }
+
     /// Request an authorization command challenge nonce
     ///
-    /// Returns a 32-byte random challenge that must be included in the
-    /// HMAC computation for the next authorized command.
+    /// Returns a 48-byte random challenge that must be included in the
+    /// hybrid-signature transcript for the next authorized command.
     pub fn get_auth_challenge(&mut self) -> Result<GetAuthCmdChallengeResponse> {
         println!("Executing GetAuthCmdChallenge command...");
 
@@ -908,9 +999,9 @@ impl<'a> MailboxClient<'a> {
 
     /// Program field entropy for an OTP partition (authorized command)
     ///
-    /// The `request` must contain a valid HMAC-SHA384 MAC in its `mac` field,
-    /// computed over `cmd_id(BE) || partition(LE) || challenge` using the
-    /// shared authorization key.
+    /// The request carries a valid hybrid signature over
+    /// `cmd_id(BE) || partition(LE) || challenge` and the corresponding public
+    /// keys.
     pub fn fe_prog(&mut self, request: &FeProgRequest) -> Result<FeProgResponse> {
         println!(
             "Executing FE_PROG command (partition={})...",
@@ -937,5 +1028,184 @@ impl<'a> MailboxClient<'a> {
                 Err(anyhow::anyhow!("FE_PROG command failed: {:?}", e))
             }
         }
+    }
+
+    pub fn dot_status(&mut self) -> Result<DotStatusResponse> {
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+        )
+        .map_err(|error| anyhow::anyhow!("Failed to create session: {error:?}"))?;
+        session
+            .connect()
+            .map_err(|error| anyhow::anyhow!("Failed to connect to device: {error:?}"))?;
+        caliptra_cmd_dot_status(&mut session)
+            .map_err(|error| anyhow::anyhow!("DOT_STATUS command failed: {error:?}"))
+    }
+
+    pub fn dot_lock(&mut self, request: &DotLockRequest) -> Result<DotTransitionResponse> {
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+        )
+        .map_err(|error| anyhow::anyhow!("Failed to create session: {error:?}"))?;
+        session
+            .connect()
+            .map_err(|error| anyhow::anyhow!("Failed to connect to device: {error:?}"))?;
+        caliptra_cmd_dot_lock(&mut session, request)
+            .map_err(|error| anyhow::anyhow!("DOT_LOCK command failed: {error:?}"))
+    }
+
+    pub fn get_dot_backup_blob(
+        &mut self,
+        request: &GetDotBackupBlobRequest,
+    ) -> Result<GetDotBackupBlobResponse> {
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+        )
+        .map_err(|error| anyhow::anyhow!("Failed to create session: {error:?}"))?;
+        session
+            .connect()
+            .map_err(|error| anyhow::anyhow!("Failed to connect to device: {error:?}"))?;
+        caliptra_cmd_get_dot_backup_blob(&mut session, request)
+            .map_err(|error| anyhow::anyhow!("GET_DOT_BACKUP_BLOB command failed: {error:?}"))
+    }
+
+    pub fn dot_rotate(&mut self, request: &DotRotateRequest) -> Result<DotTransitionResponse> {
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+        )
+        .map_err(|error| anyhow::anyhow!("Failed to create session: {error:?}"))?;
+        session
+            .connect()
+            .map_err(|error| anyhow::anyhow!("Failed to connect to device: {error:?}"))?;
+        caliptra_cmd_dot_rotate(&mut session, request)
+            .map_err(|error| anyhow::anyhow!("DOT_ROTATE command failed: {error:?}"))
+    }
+
+    pub fn dot_unlock_challenge(&mut self) -> Result<DotChallengeResponse> {
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+        )
+        .map_err(|error| anyhow::anyhow!("Failed to create session: {error:?}"))?;
+        session
+            .connect()
+            .map_err(|error| anyhow::anyhow!("Failed to connect to device: {error:?}"))?;
+        caliptra_cmd_dot_unlock_challenge(&mut session)
+            .map_err(|error| anyhow::anyhow!("DOT_UNLOCK_CHALLENGE command failed: {error:?}"))
+    }
+
+    pub fn dot_unlock(&mut self, request: &DotUnlockRequest) -> Result<DotTransitionResponse> {
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+        )
+        .map_err(|error| anyhow::anyhow!("Failed to create session: {error:?}"))?;
+        session
+            .connect()
+            .map_err(|error| anyhow::anyhow!("Failed to connect to device: {error:?}"))?;
+        caliptra_cmd_dot_unlock(&mut session, request)
+            .map_err(|error| anyhow::anyhow!("DOT_UNLOCK command failed: {error:?}"))
+    }
+
+    pub fn dot_disable(&mut self, request: &DotDisableRequest) -> Result<DotTransitionResponse> {
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+        )
+        .map_err(|error| anyhow::anyhow!("Failed to create session: {error:?}"))?;
+        session
+            .connect()
+            .map_err(|error| anyhow::anyhow!("Failed to connect to device: {error:?}"))?;
+        caliptra_cmd_dot_disable(&mut session, request)
+            .map_err(|error| anyhow::anyhow!("DOT_DISABLE command failed: {error:?}"))
+    }
+
+    /// Provision a vendor public-key hash (authorized command).
+    pub fn provision_vendor_pk_hash(
+        &mut self,
+        request: &ProvisionVendorPkHashRequest,
+    ) -> Result<ProvisionVendorPkHashResponse> {
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+        caliptra_cmd_provision_vendor_pk_hash(&mut session, request)
+            .map_err(|e| anyhow::anyhow!("ProvisionVendorPkHash command failed: {:?}", e))
+    }
+
+    /// Increase the Caliptra minimum SVN (authorized command).
+    pub fn fuse_increase_caliptra_min_svn(
+        &mut self,
+        request: &FuseIncreaseCaliptraMinSvnRequest,
+    ) -> Result<FuseIncreaseCaliptraMinSvnResponse> {
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+        caliptra_cmd_fuse_increase_caliptra_min_svn(&mut session, request)
+            .map_err(|e| anyhow::anyhow!("FuseIncreaseCaliptraMinSvn command failed: {:?}", e))
+    }
+
+    /// Revoke a vendor public key (authorized command).
+    pub fn fuse_revoke_vendor_pub_key(
+        &mut self,
+        request: &FuseRevokeVendorPubKeyRequest,
+    ) -> Result<FuseRevokeVendorPubKeyResponse> {
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+        caliptra_cmd_fuse_revoke_vendor_pub_key(&mut session, request)
+            .map_err(|e| anyhow::anyhow!("FuseRevokeVendorPubKey command failed: {:?}", e))
+    }
+
+    /// Revoke a vendor public-key hash (authorized command).
+    pub fn fuse_revoke_vendor_pk_hash(
+        &mut self,
+        request: &FuseRevokeVendorPkHashRequest,
+    ) -> Result<FuseRevokeVendorPkHashResponse> {
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+        caliptra_cmd_fuse_revoke_vendor_pk_hash(&mut session, request)
+            .map_err(|e| anyhow::anyhow!("FuseRevokeVendorPkHash command failed: {:?}", e))
+    }
+
+    /// Lock a fuse partition (authorized command).
+    pub fn fuse_lock_partition(
+        &mut self,
+        request: &FuseLockPartitionRequest,
+    ) -> Result<FuseLockPartitionResponse> {
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+        caliptra_cmd_fuse_lock_partition(&mut session, request)
+            .map_err(|e| anyhow::anyhow!("FuseLockPartition command failed: {:?}", e))
     }
 }

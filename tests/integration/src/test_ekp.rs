@@ -1,21 +1,20 @@
 // Licensed under the Apache-2.0 license
-// TODO(clundin): Update test assertions to the release EKP spec once published.
 
 #[cfg(all(test, not(feature = "fpga_realtime")))]
 mod test {
-    use crate::test::{
-        mailbox_execute_with_timeout, start_runtime_hw_model, TestParams, TEST_LOCK,
-    };
+    use crate::test::{start_runtime_hw_model, TestParams, TEST_LOCK};
     use caliptra_mcu_hw_model::McuHwModel;
     use caliptra_mcu_mbox_common::messages::{
-        GetOcpLockEpochKeyReportReq, MailboxReqHeader, MailboxRespHeaderVarSize, McuMailboxReq,
-        SekState,
+        DpeSignerContextCertReq, EndorsementAlgorithm, GetOcpLockEpochKeyReportReq,
+        MailboxReqHeader, SekState,
     };
     use caliptra_mcu_romtime::McuBootMilestones;
+    use fips204::traits::{SerDes, Verifier as MldsaVerifier};
     use minicbor::data::Type;
     use minicbor::Decoder;
-    use std::mem::size_of;
-    use zerocopy::FromBytes;
+    use sha2::{Digest, Sha384};
+    use x509_parser::nom::Parser;
+    use x509_parser::prelude::X509CertificateParser;
 
     const MAP_LABEL_CLAIM: u64 = 0;
     const VERSION_CLAIM: u64 = 1;
@@ -55,6 +54,8 @@ mod test {
     #[derive(Debug, PartialEq, Eq)]
     struct EkpReport {
         protected_hdr: Vec<u8>,
+        payload: Vec<u8>,
+        tbs_digest: [u8; 48],
         signature: Vec<u8>,
         map_label: String,
         version: String,
@@ -98,6 +99,16 @@ mod test {
 
         // Signature byte string
         let signature = outer_decoder.bytes().expect("parse signature").to_vec();
+
+        // Reconstruct COSE_Sign1 Sig_structure: ["Signature1", protected_hdr, external_aad, payload]
+        let mut sig_struct_buf = Vec::new();
+        let mut encoder = minicbor::Encoder::new(&mut sig_struct_buf);
+        encoder.array(4).unwrap();
+        encoder.str("Signature1").unwrap();
+        encoder.bytes(&protected_hdr).unwrap();
+        encoder.bytes(&[]).unwrap();
+        encoder.bytes(payload).unwrap();
+        let tbs_digest: [u8; 48] = Sha384::digest(&sig_struct_buf).into();
 
         // Decode EKP evidence map from payload
         let mut payload_decoder = Decoder::new(payload);
@@ -184,6 +195,8 @@ mod test {
 
         EkpReport {
             protected_hdr,
+            payload: payload.to_vec(),
+            tbs_digest,
             signature,
             map_label,
             version,
@@ -197,6 +210,62 @@ mod test {
         }
     }
 
+    fn verify_dpe_signature(report: &EkpReport, algo: EndorsementAlgorithm, dpe_cert_der: &[u8]) {
+        match algo {
+            EndorsementAlgorithm::ECDSA_384 => {
+                assert_eq!(report.signature.len(), 96);
+                let dpe_cert = openssl::x509::X509::from_der(dpe_cert_der)
+                    .expect("Failed to parse DPE signer context certificate");
+                let dpe_ec_key = dpe_cert
+                    .public_key()
+                    .expect("DPE cert public key")
+                    .ec_key()
+                    .expect("DPE cert EC key");
+                let r = openssl::bn::BigNum::from_slice(&report.signature[..48]).unwrap();
+                let s = openssl::bn::BigNum::from_slice(&report.signature[48..96]).unwrap();
+                let sig = openssl::ecdsa::EcdsaSig::from_private_components(r, s).unwrap();
+                assert!(
+                    sig.verify(&report.tbs_digest, &dpe_ec_key).unwrap(),
+                    "EKP report signature must be validly signed by DPE signer context ECDSA public key"
+                );
+            }
+            EndorsementAlgorithm::MLDSA_87 => {
+                assert_eq!(report.signature.len(), 4627);
+                let mut dpe_parser = X509CertificateParser::new().with_deep_parse_extensions(true);
+                let (_, parsed_dpe_cert) = dpe_parser
+                    .parse(dpe_cert_der)
+                    .expect("Failed to parse ML-DSA DPE signer context certificate");
+                let dpe_mldsa_pubkey_bytes = &parsed_dpe_cert
+                    .tbs_certificate
+                    .public_key()
+                    .subject_public_key
+                    .data;
+                assert_eq!(
+                    dpe_mldsa_pubkey_bytes.len(),
+                    2592,
+                    "ML-DSA-87 public key must be 2592 bytes"
+                );
+                let dpe_mldsa_pubkey_arr: [u8; 2592] = dpe_mldsa_pubkey_bytes
+                    .as_ref()
+                    .try_into()
+                    .expect("Invalid ML-DSA-87 public key size");
+                let mldsa_verifying_key =
+                    fips204::ml_dsa_87::PublicKey::try_from_bytes(dpe_mldsa_pubkey_arr)
+                        .expect("Failed to construct ML-DSA-87 PublicKey");
+                let mldsa_sig: [u8; 4627] = report
+                    .signature
+                    .as_slice()
+                    .try_into()
+                    .expect("ML-DSA-87 signature length mismatch");
+                assert!(
+                    mldsa_verifying_key.verify(&report.tbs_digest, &mldsa_sig, &[]),
+                    "EKP report signature must be validly signed by DPE signer context ML-DSA public key"
+                );
+            }
+            _ => panic!("Unsupported endorsement algorithm: {:?}", algo),
+        }
+    }
+
     fn verify_ekp_report(
         report: &EkpReport,
         expected_nonce: &[u8; 32],
@@ -206,9 +275,12 @@ mod test {
         expected_active_hek_state: u16,
         expected_sek_state: u16,
         expected_hek_state_list: &[u16],
+        algo: EndorsementAlgorithm,
+        dpe_cert_der: &[u8],
     ) {
         assert_eq!(report.protected_hdr, &[0xA0]);
-        assert_eq!(report.signature.len(), 96);
+
+        verify_dpe_signature(report, algo, dpe_cert_der);
 
         assert_eq!(report.map_label, MAP_LABEL_VAL);
         assert_eq!(report.version, VERSION_VAL);
@@ -224,7 +296,10 @@ mod test {
         assert_eq!(report.hek_state_list, expected_hek_state_list);
     }
 
-    fn run_ekp_report_test(set_perma: bool) -> (Vec<u8>, [u8; 32]) {
+    fn run_ekp_report_test(
+        set_perma: bool,
+        algo: EndorsementAlgorithm,
+    ) -> (Vec<u8>, [u8; 32], Vec<u8>) {
         let _lock = TEST_LOCK.lock().unwrap();
         let otp = setup_ekp_test_otp(set_perma);
 
@@ -243,63 +318,79 @@ mod test {
                 .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
         });
 
+        // Initialize DPE signer by retrieving the signer context certificate
+        let dpe_req = DpeSignerContextCertReq {
+            algorithm: algo,
+            ..Default::default()
+        };
+        let dpe_resp = hw
+            .mailbox_execute_req(dpe_req)
+            .expect("DPE signer context cert request failed");
+        let dpe_cert_len = dpe_resp.hdr.data_len as usize;
+        let dpe_cert_der = dpe_resp.cert_data[..dpe_cert_len].to_vec();
+
         let nonce = [0xAAu8; 32];
         let sek_state = SekState::Programmed;
 
-        let mut req = McuMailboxReq::GetOcpLockEpochKeyReport(GetOcpLockEpochKeyReportReq {
+        let req = GetOcpLockEpochKeyReportReq {
             hdr: MailboxReqHeader::default(),
             nonce,
             sek_state: sek_state as u16,
             reserved: 0,
-        });
-        req.populate_chksum().expect("populate_chksum");
-        let cmd = req.cmd_code().0;
-        let payload = req.as_bytes().expect("as_bytes").to_vec();
+            algorithm: algo,
+        };
+        let resp = hw
+            .mailbox_execute_req(req)
+            .expect("GetOcpLockEpochKeyReport mailbox command failed");
+        let data_len = resp.hdr.data_len as usize;
+        let data = resp.data[..data_len].to_vec();
 
-        let resp_bytes = mailbox_execute_with_timeout(&mut hw, cmd, &payload)
-            .expect("GetOcpLockEpochKeyReport mailbox command failed")
-            .unwrap_or_default();
-
-        const HDR_LEN: usize = size_of::<MailboxRespHeaderVarSize>();
-        assert!(resp_bytes.len() >= HDR_LEN);
-
-        let hdr = MailboxRespHeaderVarSize::read_from_bytes(&resp_bytes[..HDR_LEN])
-            .expect("parse response header");
-        let data_len = hdr.data_len as usize;
-        let data = resp_bytes[HDR_LEN..HDR_LEN + data_len].to_vec();
-
-        (data, nonce)
+        (data, nonce, dpe_cert_der)
     }
 
     #[test]
     fn test_ekp_attested_report_with_perma_bit_set() {
-        let (data, nonce) = run_ekp_report_test(true);
-        let report = parse_ekp_report(&data);
-        verify_ekp_report(
-            &report,
-            &nonce,
-            false,
-            8,
-            0,
-            4,
-            1,
-            &[4, 4, 4, 4, 4, 4, 4, 4],
-        );
+        for algo in [
+            EndorsementAlgorithm::ECDSA_384,
+            EndorsementAlgorithm::MLDSA_87,
+        ] {
+            let (data, nonce, dpe_cert_der) = run_ekp_report_test(true, algo);
+            let report = parse_ekp_report(&data);
+            verify_ekp_report(
+                &report,
+                &nonce,
+                false,
+                8,
+                0,
+                4,
+                1,
+                &[4, 4, 4, 4, 4, 4, 4, 4],
+                algo,
+                &dpe_cert_der,
+            );
+        }
     }
 
     #[test]
     fn test_ekp_attested_report_without_perma_bit_set() {
-        let (data, nonce) = run_ekp_report_test(false);
-        let report = parse_ekp_report(&data);
-        verify_ekp_report(
-            &report,
-            &nonce,
-            false,
-            8,
-            6,
-            1,
-            1,
-            &[5, 1, 0, 5, 1, 0, 0, 1],
-        );
+        for algo in [
+            EndorsementAlgorithm::ECDSA_384,
+            EndorsementAlgorithm::MLDSA_87,
+        ] {
+            let (data, nonce, dpe_cert_der) = run_ekp_report_test(false, algo);
+            let report = parse_ekp_report(&data);
+            verify_ekp_report(
+                &report,
+                &nonce,
+                false,
+                8,
+                6,
+                1,
+                1,
+                &[5, 1, 0, 5, 1, 0, 0, 1],
+                algo,
+                &dpe_cert_der,
+            );
+        }
     }
 }

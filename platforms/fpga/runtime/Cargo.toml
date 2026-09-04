@@ -39,6 +39,7 @@ rv32i.workspace = true
 
 [features]
 default = ["all-features"]
+disable-lms-sig-verify = []
 all-features = [
 	"spdm",
 	"streaming-boot",
@@ -68,6 +69,7 @@ release = [
 	"caliptra-mcu-romtime/no-print",
 ]
 test-caliptra-certs = []
+test-get-caliptra-idev-csr = []
 test-caliptra-crypto = []
 test-caliptra-mailbox = []
 test-caliptra-util-host-validator = ["mcu-mbox-service"]
@@ -103,8 +105,10 @@ test-firmware-v2 = []
 test-mci = []
 test-mctp-ctrl-cmds = ["spdm", "streaming-boot", "mctp-vdm-service"]
 test-mctp-capsule-loopback = []
+test-mctp-capsule-loopback-warm-reset = []
 test-mctp-user-loopback = ["mctp-vdm-service"]
 test-mctp-vdm-cmds = ["mctp-vdm-service", "userspace-log"]
+test-mctp-vdm-production = ["mctp-vdm-service"]
 test-mcu-mbox-driver = []
 test-mcu-mbox-cmds = ["mcu-mbox-service"]
 test-mcu-mbox-fips-self-test = ["mcu-mbox-service"]
@@ -120,6 +124,8 @@ test-pldm-fw-update = ["firmware-update"]
 test-pldm-fw-update-e2e = ["firmware-update"]
 test-pldm-streaming-boot = ["streaming-boot"]
 test-mctp-spdm-attestation = ["spdm", "flash-boot"]
+test-mctp-spdm-attestation-tcb = ["spdm", "flash-boot"]
+test-mctp-spdm-attestation-mixed = ["spdm", "flash-boot"]
 test-mctp-spdm-attestation-pcr-quote = ["spdm"]
 test-mctp-spdm-responder-conformance = ["spdm"]
 test-mctp-spdm-set-certificate = ["spdm", "flash-boot"]

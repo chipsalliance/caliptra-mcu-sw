@@ -12,8 +12,8 @@ embassy-executor.workspace = true
 embassy-sync.workspace = true
 mcu-error.workspace = true
 caliptra-mcu-common-commands.workspace = true
-mcu-caliptra-api-lite = { workspace = true, features = ["mailbox-io"] }
-caliptra-mcu-libapi-caliptra.workspace = true
+caliptra-mcu-measurement-api.workspace = true
+mcu-caliptra-api = { workspace = true, features = ["mailbox-io"] }
 dpe.workspace = true
 caliptra-mcu-libsyscall-caliptra.workspace = true
 caliptra-mcu-libtock_alarm.workspace = true
@@ -26,8 +26,13 @@ caliptra-mcu-otp-fuse.workspace = true
 caliptra-mcu-userlog.workspace = true
 zerocopy.workspace = true
 
+[dev-dependencies]
+futures = { workspace = true }
+
 [features]
 default = []
+disable-lms-sig-verify = []
+device-ownership-transfer = []
 periodic-fips-self-test = []
 ocp-lock = ["caliptra-mcu-common-commands/ocp-lock"]
 release = [

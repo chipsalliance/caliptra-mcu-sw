@@ -35,6 +35,7 @@ pub const EMULATOR_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-mctp-ctrl-cmds",
     "test-mctp-user-loopback",
     "test-mctp-vdm-cmds",
+    "test-mctp-vdm-production",
     "test-pldm-discovery",
     "test-pldm-fw-update",
     "test-mci",
@@ -58,6 +59,7 @@ pub const EMULATOR_RUNTIME_TEST_FEATURES: &[&str] = &[
 pub const FPGA_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-i3c-simple",
     "test-i3c-constant-writes",
+    "test-caliptra-certs",
     "test-mctp-capsule-loopback",
     "test-fpga-flash-ctrl",
     "test-pldm-fw-update-e2e",
@@ -67,17 +69,21 @@ pub const FPGA_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-mcu-mbox-usermode",
     "test-mcu-mbox-cmds",
     "test-mctp-vdm-cmds",
+    "test-mctp-vdm-production",
     "test-mcu-mbox-fips-self-test",
     "test-mcu-mbox-fips-periodic",
     "test-defmt-logging-vdm",
     "test-exit-immediately",
     "test-mctp-spdm-attestation",
+    "test-mctp-spdm-attestation-tcb",
+    "test-mctp-spdm-attestation-mixed",
     "test-mctp-spdm-attestation-pcr-quote",
     "test-mctp-spdm-responder-conformance",
     "test-do-nothing",
     "test-log-flash-usermode",
     "test-get-alarm-expired",
     "test-ocp-lock",
+    "test-mctp-capsule-loopback-warm-reset",
 ];
 
 /// Release-profile runtime test features (emulator).

@@ -26,15 +26,16 @@ The following table describes the commands defined under this specification. The
 | Device Capabilities             | R   | MCTP VDM, MCI Mailbox | Retrieve device capabilities.                                                                                                        |
 | Get Debug Log                   | R   | MCTP VDM, MCI Mailbox | Retrieve debug log.                                                                                                                  |
 | Clear Debug Log                 | R   | MCTP VDM, MCI Mailbox | Clear debug log.                                                                                                                     |
-| Get Attestation                 | O   | SPDM VDM              | Retrieve attestation evidence. MCI Mailbox support is TBD.                                                                           |
+| Get Attestation                 | O   | SPDM VDM, MCI Mailbox | Retrieve signed attestation evidence in a requester-selected format.                                                                 |
 | Request Debug Unlock            | O   | SPDM VDM, MCI Mailbox | Request debug unlock in production environment.                                                                                      |
 | Authorize Debug Unlock Token    | O   | SPDM VDM, MCI Mailbox | Send debug unlock token to device for authorization.                                                                                 |
-| Export Attested CSR             | O   | SPDM VDM, MCI Mailbox | Export attested CSR for a Caliptra device identity key (LDevID, FMC Alias, or RT Alias).                                             |
-| Authorization-Gated Subcommands | O   | SPDM VDM, MCI Mailbox | Security-sensitive provisioning and fuse subcommands. Authorization requirements and transport-specific authorization flows are TBD. |
+| Export Attested CSR             | O   | SPDM VDM, MCI Mailbox | Discover Caliptra identity keys or export an attested CSR for LDevID, FMC Alias, or RT Alias.                                        |
+| Device Ownership Transfer       | O   | SPDM VDM, MCI Mailbox | Query and change the implemented DOT state.                                                                                          |
+| Authorization-Gated Subcommands | O   | SPDM VDM, MCI Mailbox | Security-sensitive provisioning and fuse subcommands using a one-use challenge and hybrid signature.                                |
 
 ### Authorization-Gated Subcommands
 
-The following subcommands are assigned to the SPDM VDM IANA authorization-gated path and are also available through the MCI mailbox path where implemented. The concrete SPDM authorization mechanism and message flow are still under design and will be specified separately. For the MCI mailbox path, access control is governed by the mailbox security boundary and platform policy.
+The following subcommands are assigned to the SPDM VDM IANA authorization-gated path and are also available through the MCI mailbox path where implemented. Both paths use the same one-use challenge and hybrid-signature verification described in [Caliptra SPDM VDM Commands](caliptra_spdm_vdm_cmds.md#authorization-flow); only their outer framing differs.
 
 | Subcommand Name                | Transport(s)               | Description                                        |
 | ------------------------------ | -------------------------- | -------------------------------------------------- |
@@ -45,7 +46,10 @@ The following subcommands are assigned to the SPDM VDM IANA authorization-gated 
 | Fuse Revoke Vendor Public Key  | SPDM VDM IANA, MCI Mailbox | Revoke vendor public key.                          |
 | Fuse Revoke Vendor PK Hash     | SPDM VDM IANA, MCI Mailbox | Revoke vendor public key hash.                     |
 | Fuse Lock Partition            | SPDM VDM IANA, MCI Mailbox | Lock fuse partition.                               |
-
+| Dot Lock                       | SPDM VDM IANA, MCI Mailbox | Lock the DOT after ownership validation.          |
+| Dot Disable                    | SPDM VDM IANA, MCI Mailbox | Enter ODD state with no DOT-supplied CAK.          |
+| Dot Rotate                     | SPDM VDM IANA, MCI Mailbox | Replace DOT key digests and advance the epoch.     |
+| Get Dot Backup Blob            | SPDM VDM IANA, MCI Mailbox | Export the current DOT backup blob.               |
 
 ## Command Definitions
 
@@ -92,32 +96,38 @@ Versions use `major.minor.patch` ASCII format. Index `02h` returns `UnsupportedO
 
 **External Common-Command Capability Flags**:
 
-| Bitmap Bit | Command Code | Command                     | Transport |
-| ---------- | ------------ | --------------------------- | --------- |
-| 0          | `01h`        | `FirmwareVersion`           | MCTP VDM  |
-| 1          | `02h`        | `DeviceCapabilities`        | MCTP VDM  |
-| 2          | `03h`        | `GetDebugLog`               | MCTP VDM  |
-| 3          | `04h`        | `ClearDebugLog`             | MCTP VDM  |
-| 4          | `05h`        | `GetAttestation`            | SPDM VDM  |
-| 5          | `06h`        | `RequestDebugUnlock`        | SPDM VDM  |
-| 6          | `07h`        | `AuthorizeDebugUnlockToken` | SPDM VDM  |
-| 7          | `08h`        | `ExportAttestedCsr`         | SPDM VDM  |
-| 17         | `12h`        | `AuthorizedCommand`         | SPDM VDM  |
+| Bitmap Bit | Command Code | Command                     | Transport             |
+| ---------- | ------------ | --------------------------- | --------------------- |
+| 0          | `01h`        | `FirmwareVersion`           | MCTP VDM              |
+| 1          | `02h`        | `DeviceCapabilities`        | MCTP VDM              |
+| 2          | `03h`        | `GetDebugLog`               | MCTP VDM              |
+| 3          | `04h`        | `ClearDebugLog`             | MCTP VDM              |
+| 4          | `05h`        | `GetAttestation`            | SPDM VDM, MCU mailbox |
+| 5          | `06h`        | `RequestDebugUnlock`        | SPDM VDM              |
+| 6          | `07h`        | `AuthorizeDebugUnlockToken` | SPDM VDM              |
+| 7          | `08h`        | `ExportAttestedCsr`         | SPDM VDM              |
+| 16         | `11h`        | `DeviceOwnershipTransfer`   | SPDM VDM              |
+| 17         | `12h`        | `AuthorizedCommand`         | SPDM VDM              |
 
-This table defines the bit assignment for every allocated command code. A responder sets a bit only when the corresponding command is implemented. `GetAttestation` is defined but not yet implemented, so its bit remains zero. `AuthorizedCommand` is set when its wrapper and at least one authorized subcommand are implemented.
+This table defines the bit assignment for every allocated command code. A responder sets a bit only when the corresponding command is implemented. `GetAttestation` is set when a responder that carries it is built and the device can produce at least one evidence format. `AuthorizedCommand` is set when its wrapper and at least one authorized subcommand are implemented.
 
 **Authorized-Subcommand Capability Flags**:
 
 | Bitmap Bit | Subcommand                   | Status      |
 | ---------- | ---------------------------- | ----------- |
 | 0          | `GetAuthChallenge`           | Implemented |
-| 1          | `ProvisionVendorPkHash`      | Planned     |
-| 2          | `FuseIncreaseCaliptraMinSvn` | Planned     |
+| 1          | `ProvisionVendorPkHash`      | Implemented |
+| 2          | `FuseIncreaseCaliptraMinSvn` | Implemented |
 | 3          | `ProgramFieldEntropy`        | Implemented |
-| 4          | `FuseRevokeVendorPublicKey`  | Planned     |
-| 5          | `FuseRevokeVendorPkHash`     | Planned     |
-| 6          | `FuseLockPartition`          | Planned     |
-| 7:31       | Reserved                     | —           |
+| 4          | `FuseRevokeVendorPublicKey`  | Implemented |
+| 5          | `FuseRevokeVendorPkHash`     | Implemented |
+| 6          | `FuseLockPartition`          | Implemented |
+| 7          | `ProvisionOwnerPkHash`       | Implemented |
+| 8          | `DotLock`                    | Implemented |
+| 9          | `DotDisable`                 | Implemented |
+| 10         | `DotRotate`                  | Implemented |
+| 11         | `GetDotBackupBlob`           | Implemented |
+| 12:31      | Reserved                     | —           |
 
 The authorized-subcommand assignments are stable capability indexes; they are not transport command IDs. A responder sets a bit only when that subcommand is implemented under `AuthorizedCommand`. Authorization, lifecycle, or policy restrictions do not clear an implementation capability bit; execution can still return `AccessDenied`, `PolicyViolation`, or `InvalidState`.
 
@@ -134,15 +144,7 @@ The authorized-subcommand assignments are stable capability indexes; they are no
 | 6   | `MCI_MAILBOX_SERVICE` | MCU Runtime includes the external MCI mailbox service |
 | 7   | `DOE`                 | MCU Runtime includes the DOE transport                |
 
-The `mcu_rom` field is reserved for a future versioned ROM-to-Runtime capability handoff. Until that handoff is specified, responders set `mcu_rom` to zero and the following assignments are not advertised.
-
-**Proposed MCU ROM Capability Flags**:
-
-| Bit | Name                 | Description                              |
-| --- | -------------------- | ---------------------------------------- |
-| 0   | `STREAMING_BOOT_I3C` | MCU ROM supports streaming boot over I3C |
-| 1   | `FLASH_BOOT`         | MCU ROM supports flash boot              |
-| 2   | `NETWORK_BOOT`       | MCU ROM supports network boot            |
+The `mcu_rom` field is reserved and responders currently set it to zero.
 
 ### Get Debug Log
 
@@ -176,11 +178,98 @@ Clears the debug log in the MCU Runtime. No authorization is required.
 
 ### Get Attestation
 
-Retrieves attestation evidence. This command is assigned to SPDM VDM IANA. MCI Mailbox support and the payload format are TBD.
+Retrieves signed attestation evidence bound to a requester-supplied nonce.
 
-**Request Payload**: TBD
+The requester selects the evidence format at runtime. The set of formats a
+device can produce is fixed at build time by the evidence generators it links.
+A requester discovers that set with the format-discovery query below.
 
-**Response Payload**: TBD
+All formats are signed with the device attestation key that terminates the
+device's SPDM certificate chain. Evidence retrieved over the MCI mailbox
+verifies against a certificate chain retrieved over SPDM, and the reverse.
+
+#### Evidence Formats
+
+| Value    | Name      | Description                                                                       |
+| -------- | --------- | --------------------------------------------------------------------------------- |
+| `0x0000` | (query)   | Reserved. Selects the format-discovery query.                                     |
+| `0x0001` | OCP EAT   | Signed OCP Entity Attestation Token (COSE_Sign1) carrying OCP EAT profile claims. |
+| `0x0002` | PCR Quote | Caliptra PCR quote.                                                               |
+
+A device that supports a format need not support it under every algorithm. The
+OCP EAT signer emits ES384 only; ML-DSA-87 EATs are not implemented yet. A
+request naming an unsupported `(evidence_format, algorithm)` pair returns
+`UNSUPPORTED_OPERATION` and no evidence is generated.
+
+#### PKI Entity Slot
+
+`pki_entity_slot` names the PKI entity whose hierarchy endorses the signing key.
+
+| Value    | Name   | Description                    |
+| -------- | ------ | ------------------------------ |
+| `0x0000` | Vendor | Device manufacturer hierarchy. |
+| `0x0001` | Owner  | Owner hierarchy. Reserved.     |
+
+A value not listed above returns `INVALID_PARAMS`. `Owner` is reserved and
+returns `UNSUPPORTED_OPERATION`; the current signer supports only the Vendor
+entity.
+
+#### Format Discovery
+
+A request with `evidence_format` = `0x0000` is a query, not an evidence request.
+The device returns a bitmap of the formats it can produce instead of evidence.
+Bit *n* of the bitmap is set when the device supports the format whose wire
+value is *n*; bit 0 is never set.
+
+The supported set depends on which evidence generators the integrator built into
+the device. A requester issues this query before requesting evidence rather than
+inferring the set from `DeviceCapabilities`.
+
+**Request Payload**:
+
+| Byte(s) | Name            | Type   | Description                                                                                          |
+| ------- | --------------- | ------ | ---------------------------------------------------------------------------------------------------- |
+| 0:3     | evidence_format | u32    | Requested evidence format, or `0x0000` for the format-discovery query                                |
+| 4:7     | algorithm       | u32    | Asymmetric Algorithm: <br>- `0x0001` = ECC P-384 <br>- `0x0002` = ML-DSA-87 <br>Ignored for the query request |
+| 8:11    | pki_entity_slot | u32    | PKI entity: <br>- `0x0000` = Vendor <br>- `0x0001` = Owner <br>Ignored for the query request |
+| 12:43   | nonce           | u8[32] | Nonce bound into the signed evidence for freshness. Ignored for the query request.                    |
+
+For the query request, `algorithm`, `pki_entity_slot`, and `nonce` are ignored.
+For an evidence request, a value outside the tables above returns
+`INVALID_PARAMS`.
+
+**Response Payload**:
+
+| Byte(s) | Name            | Type          | Description                                                                                                    |
+| ------- | --------------- | ------------- | -------------------------------------------------------------------------------------------------------------- |
+| 0:3     | evidence_format | u32           | Echo of the requested `evidence_format`                                                                        |
+| 4:N     | data            | u8[]          | For a format request: the signed evidence blob. For the query (`evidence_format` = `0x0000`): a `u32` bitmap of supported formats. |
+
+The evidence blob is variable length, delimited by the transport's length field.
+The transports scope that field differently:
+
+| Transport   | Length field                          | Counts                                            |
+| ----------- | ------------------------------------- | ------------------------------------------------- |
+| SPDM VDM    | `data_len`, framed after `evidence_format` | The evidence bytes only                      |
+| MCI Mailbox | `MailboxRespHeaderVarSize.data_len`   | The `evidence_format` field plus the evidence bytes |
+
+For the MCI mailbox the evidence length is therefore `data_len - 4`.
+
+Truncated evidence cannot pass signature verification, so a device that cannot
+fit the evidence in the response buffer fails the command instead.
+
+#### Transport Sizing
+
+Attestation evidence is variable length, and its size depends on which evidence
+generators the integrator builds into the device. Each transport sizes its
+response buffer from those generators:
+
+- **SPDM VDM** reserves the size the requested format needs. Evidence that does
+  not fit in a single message is returned over the large-response (chunked)
+  path. The advertised `MaxSPDMmsgSize` must cover the largest evidence the
+  device can produce. See [SPDM VDM commands](caliptra_spdm_vdm_cmds.md).
+- **MCI Mailbox** sizes the `GET_ATTESTATION` response buffer for the largest
+  supported evidence. Other commands' response buffers are unaffected.
 
 ### Request Debug Unlock
 
@@ -217,21 +306,22 @@ Authorizes the debug unlock token. The request body is identical for MCI mailbox
 | 41:43     | reserved                 | u8[3]     | Reserved field                                                                        |
 | 44:91     | challenge                | u8[48]    | Random number challenge                                                               |
 | 92:187    | ecc_public_key           | u32[24]   | ECC public key in hardware format (little endian)                                     |
-| 188:2639  | mldsa_public_key         | u32[648]  | MLDSA public key in hardware format (little endian)                                   |
-| 2640:2735 | ecc_signature            | u32[24]   | ECC P-384 signature of the message hashed using SHA2-384 (R and S coordinates)        |
-| 2736:6199 | mldsa_signature          | u32[1157] | MLDSA signature of the message hashed using SHA2-512 (4627 bytes + 1 reserved byte)   |
+| 188:2779  | mldsa_public_key         | u32[648]  | MLDSA public key in hardware format (little endian)                                   |
+| 2780:2875 | ecc_signature            | u32[24]   | ECC P-384 signature of the message hashed using SHA2-384 (R and S coordinates)        |
+| 2876:7503 | mldsa_signature          | u32[1157] | MLDSA signature of the message hashed using SHA2-512 (4627 bytes + 1 reserved byte)   |
 
 **Response Payload**: Empty. Command completion status is carried by the transport-specific response framing.
 
 ### Export Attested CSR
 
-Exports an attested Certificate Signing Request (CSR) for a specified device key.
+Discovers supported Caliptra identity keys or exports an attested Certificate
+Signing Request (CSR) for a specified device key.
 
 **Request Payload**:
 
 | Byte(s) | Name          | Type   | Description                                                                                         |
 | ------- | ------------- | ------ | --------------------------------------------------------------------------------------------------- |
-| 0:3     | device_key_id | u32    | Device Key Identifier: <br>- `0x0001` = LDevID <br>- `0x0002` = FMC Alias <br>- `0x0003` = RT Alias |
+| 0:3     | device_key_id | u32    | Device Key Identifier: <br>- `0x0000` = Discover supported identity keys <br>- `0x0001` = LDevID <br>- `0x0002` = FMC Alias <br>- `0x0003` = RT Alias |
 | 4:7     | algorithm     | u32    | Asymmetric Algorithm: <br>- `0x0001` = ECC P-384 <br>- `0x0002` = ML-DSA-87                         |
 | 8:39    | nonce         | u8[32] | 32-byte nonce for freshness                                                                         |
 
@@ -239,12 +329,54 @@ Exports an attested Certificate Signing Request (CSR) for a specified device key
 
 | Byte(s) | Name      | Type          | Description                              |
 | ------- | --------- | ------------- | ---------------------------------------- |
-| 0:3     | data_size | u32           | Length in bytes of the attested CSR data |
-| 4:N     | data      | u8[data_size] | Attested CSR data blob                   |
+| 0:3     | data_size | u32           | Length in bytes of the attested response data |
+| 4:N     | data      | u8[data_size] | Attested key inventory or attested CSR data   |
+
+When `device_key_id` is `0`, `data` SHALL contain the OCP Device Identity
+Provisioning (DIP) `signed-cwt` discovery response, encoded as a tagged
+`COSE_Sign1` object whose payload is a `cwt-attested-csr-eat-inventory` map:
+
+| CWT claim         | Label    | Type       | Value |
+| ----------------- | -------- | ---------- | ----- |
+| Nonce             | `10`     | byte string | The 32-byte request `nonce` |
+| KeyPair Inventory | `-70003` | CBOR array | One entry for every supported identity key for the requested `algorithm` |
+
+Each KeyPair Inventory entry has this CBOR structure:
+
+```text
+[
+  device_key_id: uint (1..255),
+  derivation_attributes: { tagged_oid: uint_bitfield, ... }
+]
+```
+
+The derivation-attribute map SHALL contain OID
+`1.3.6.1.4.1.42623.1.2`, encoded using CBOR tag 111. Its unsigned-integer
+bitfield identifies the inputs used to derive the key: bit 0 = UDS, bit 1 =
+field entropy, bit 2 = owner-provisioned non-confidential fuse, bit 3 =
+vendor-provisioned non-confidential fuse, bit 4 = FMC, and bit 5 = runtime
+firmware. Additional vendor OIDs MAY be present.
+
+This encoding is defined by the OCP DIP
+[`cwt-attested-csr-eat-inventory`](https://github.com/opencomputeproject/Security/blob/main/specifications/device-identity-provisioning/cddl/attested-csr-eat.cddl)
+CDDL. `data_size` covers the complete tagged `COSE_Sign1` object.
+
+When `device_key_id` is nonzero, `data` SHALL contain the OCP DIP
+`cwt-attested-csr-eat-csr` signed CWT for the selected device key and
+algorithm. Its payload contains the request nonce (claim `10`), the DER-encoded
+CSR (private claim `-70001`), and the key's derivation-attribute map (private
+claim `-70002`).
 
 ### Authorization-Gated Subcommand Wrapper
 
-Security-sensitive provisioning and fuse subcommands are assigned to the SPDM VDM IANA authorization-gated path and the MCI mailbox path. Authorization requirements and transport-specific authorization flows are TBD. The SPDM VDM transport uses an `Authorized Command` wrapper to carry subcommands, but the wrapper does not define the authorization mechanism by itself.
+Security-sensitive provisioning and fuse subcommands are assigned to the SPDM
+VDM IANA authorization-gated path and the MCI mailbox path. The SPDM VDM
+transport uses an `Authorized Command` wrapper, while MCI uses each operation's
+mailbox command ID directly. In both cases the requester first obtains a one-use
+48-byte challenge and appends the common public-key and hybrid-signature trailer
+over `command_id(BE) || command_payload || challenge`. See
+[Caliptra SPDM VDM Commands](caliptra_spdm_vdm_cmds.md#authorization-flow) for
+the byte-exact SPDM framing.
 
 #### Request Payload
 
@@ -262,63 +394,93 @@ Security-sensitive provisioning and fuse subcommands are assigned to the SPDM VD
 
 The subcommands covered by this wrapper are listed in [Authorization-Gated Subcommands](#authorization-gated-subcommands).
 
-Subcommand-specific payloads are defined by the corresponding command specifications. Any additional SPDM authorization wrapper fields are TBD.
+`DotLock`, `DotDisable`, `DotRotate`, and `GetDotBackupBlob` are the DOT-family subcommands that use this authorization wrapper. The remaining DOT commands (`DotUnlockChallenge`, `DotUnlock`, `DotStatus`, `DotRecovery`, `DotOverrideChallenge`, and `DotOverride`) are native device-ownership-transfer commands carried under top-level command `0x11` rather than via the `AuthorizedCommand` wrapper.
+
+Subcommand-specific payloads are defined by the corresponding command specifications and contain no mailbox request header.
 
 ### Get Auth Challenge
 
-Requests a challenge for authorization-gated commands.
+Requests a one-use challenge for authorization-gated commands.
 
-**Request Payload**: TBD
+**Request Payload**: Empty
 
-**Response Payload**: TBD
+**Response Payload**:
+
+| Byte(s) | Name      | Type   | Description                               |
+| ------- | --------- | ------ | ----------------------------------------- |
+| 0:47    | challenge | u8[48] | One-use command authorization challenge.  |
 
 ### Provision Vendor PK Hash
 
 Provisions the vendor public key hash.
 
-**Request Payload**: TBD
+**Request Payload**: `slot:u32 | hash:u8[48] | HybridSignature`
 
-**Response Payload**: TBD
+**Response Payload**: Empty
 
 ### Fuse Increase Caliptra Min SVN
 
 Increases the Caliptra minimum SVN.
 
-**Request Payload**: TBD
+**Request Payload**: `flags:u32 | svn:u32 | HybridSignature`
 
-**Response Payload**: TBD
+**Response Payload**: Empty
 
 ### Program Field Entropy
 
 Programs field entropy.
 
-**Request Payload**: TBD
+**Request Payload**: `partition:u32 | HybridSignature`
 
-**Response Payload**: TBD
+**Response Payload**: Empty
 
 ### Fuse Revoke Vendor Public Key
 
 Revokes a vendor public key.
 
-**Request Payload**: TBD
+**Request Payload**: `reserved:u32 | slot:u32 | key_type:u32 | key_index:u32 | HybridSignature`
 
-**Response Payload**: TBD
+**Response Payload**: Empty
 
 ### Fuse Revoke Vendor PK Hash
 
 Revokes a vendor public key hash.
 
-**Request Payload**: TBD
+**Request Payload**: `reserved:u32 | slot:u32 | HybridSignature`
 
-**Response Payload**: TBD
+**Response Payload**: Empty
 
 ### Fuse Lock Partition
 
 Locks a fuse partition.
 
-**Request Payload**: TBD
+**Request Payload**: `partition:u32 | HybridSignature`
 
-**Response Payload**: TBD
+**Response Payload**: Empty
+
+### Device Ownership Transfer (DOT)
+
+The device-ownership-transfer family is carried under the top-level `DeviceOwnershipTransfer` command (`0x11`). This family uses the DOT FourCC namespace and is split between authorization-gated and native commands:
+
+- Authorization-gated: `MDLK` (`DotLock`), `MDDS` (`DotDisable`), `MDRT` (`DotRotate`), `MDBB` (`GetDotBackupBlob`)
+- Native: `MDUC` (`DotUnlockChallenge`), `MDUL` (`DotUnlock`), `MDST` (`DotStatus`), `MDRC` (`DotRecovery`), `DOTW` (`DotOverrideChallenge`), `DOTX` (`DotOverride`)
+
+The authorization-gated DOT commands are sent via the `AuthorizedCommand` wrapper and are rejected if delivered directly under `0x11`. The native DOT commands perform challenge-and-signature verification against the current ownership blob or the recovery-key hash, as appropriate for the command.
+
+| FourCC | Command | Path | Description |
+| ------ | ------- | ---- | ----------- |
+| `MDLK` | `DotLock` | Authorized | Lock DOT with a nonzero CAK digest and LAK digest. |
+| `MDDS` | `DotDisable` | Authorized | Enter ODD state with a zero CAK digest and a nonzero LAK digest. |
+| `MDRT` | `DotRotate` | Authorized | Replace the CAK and LAK digests and advance the DOT epoch by two. |
+| `MDBB` | `GetDotBackupBlob` | Authorized | Export a valid backup copy of the active DOT blob. |
+| `MDUC` | `DotUnlockChallenge` | Native | Request the unlock challenge for a valid ODD DOT state. |
+| `MDUL` | `DotUnlock` | Native | Complete ownership unlock using public keys matching the stored LAK digest and both challenge signatures. |
+| `MDST` | `DotStatus` | Native/read-only | Return the current DOT status and fuse state. |
+| `MDRC` | `DotRecovery` | Native | Restore DOT from a previously backed-up blob. |
+| `DOTW` | `DotOverrideChallenge` | Native | Start DOT recovery using the recovery-key challenge flow. |
+| `DOTX` | `DotOverride` | Native | Complete DOT recovery by verifying the hybrid recovery signature. |
+
+See [DOT Commands](dot.md#runtime-commands) for the detailed state machine, validation rules, and command sequencing.
 
 ## Completion Codes
 

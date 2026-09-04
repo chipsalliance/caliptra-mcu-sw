@@ -5,10 +5,14 @@
 
 #[cfg(feature = "ocp-lock")]
 use caliptra_api::mailbox::{HpkeHandle, OcpLockEnumerateHpkeHandlesResp};
+use caliptra_mcu_mbox_common::messages::{
+    CommandId, DotDisablePayload, DotLockPayload, DotOverrideChallengePayload, DotOverridePayload,
+    DotRotatePayload, DotStatus, DotUnlockPayload, HybridSignature, AUTH_CMD_NONCE_LEN,
+    DOT_BLOB_SIZE,
+};
 #[cfg(feature = "ocp-lock")]
-use caliptra_mcu_mbox_common::messages::SekState;
-use caliptra_mcu_mbox_common::messages::{CommandId, HybridSignature, AUTH_CMD_NONCE_LEN};
-use mcu_caliptra_api_lite::ApiAlloc;
+use caliptra_mcu_mbox_common::messages::{EndorsementAlgorithm, SekState};
+use mcu_caliptra_api::ApiAlloc;
 use zerocopy::{Immutable, IntoBytes};
 
 pub use caliptra_api::mailbox::MAX_ATTESTED_CSR_RESP_DATA_SIZE as MAX_ATTESTED_CSR_DATA_LEN;
@@ -73,6 +77,105 @@ pub struct FirmwareVersion {
     pub ver_str: [u8; MAX_FW_VERSION_LEN],
 }
 
+/// Attestation evidence formats carried by `GET_ATTESTATION`.
+///
+/// Wire-stable: these values appear verbatim in the `evidence_format` field of
+/// both the SPDM VDM and MCU mailbox requests.
+///
+/// `0` is reserved on the wire as the format-discovery query and therefore has
+/// no enum variant; the dispatch layer handles it before decoding.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
+pub enum EvidenceFormat {
+    /// Signed OCP Entity Attestation Token carrying OCP EAT profile claims.
+    OcpEat = 1,
+    /// Caliptra PCR quote.
+    PcrQuote = 2,
+}
+
+/// Wire value reserved for the format-discovery query.
+///
+/// A request carrying this `evidence_format` returns the responder's
+/// [`EvidenceFormat`] bitmap instead of evidence.
+pub const EVIDENCE_FORMAT_QUERY: u32 = 0;
+
+/// Nonce length for `GET_ATTESTATION`, matching `EXPORT_ATTESTED_CSR`.
+pub const ATTESTATION_NONCE_LEN: usize = 32;
+
+impl EvidenceFormat {
+    /// Bit position of this format in a supported-formats bitmap.
+    ///
+    /// Bit `n` is set when the responder supports the format whose wire value
+    /// is `n`, so bit 0 is never set (it is the query sentinel).
+    pub const fn bit(self) -> u32 {
+        1u32 << (self as u32)
+    }
+}
+
+impl TryFrom<u32> for EvidenceFormat {
+    type Error = CaliptraCompletionCode;
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            1 => Ok(EvidenceFormat::OcpEat),
+            2 => Ok(EvidenceFormat::PcrQuote),
+            _ => Err(CaliptraCompletionCode::InvalidParameter),
+        }
+    }
+}
+
+/// Signing algorithms selectable by `GET_ATTESTATION`.
+///
+/// Values match the `algorithm` field already used by `EXPORT_ATTESTED_CSR`
+/// (`0x0001` = ECC384, `0x0002` = MLDSA87).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
+pub enum AsymAlgo {
+    EccP384 = 1,
+    Mldsa87 = 2,
+}
+
+impl TryFrom<u32> for AsymAlgo {
+    type Error = CaliptraCompletionCode;
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            1 => Ok(AsymAlgo::EccP384),
+            2 => Ok(AsymAlgo::Mldsa87),
+            _ => Err(CaliptraCompletionCode::InvalidParameter),
+        }
+    }
+}
+
+/// PKI entity whose hierarchy endorses the evidence's signing key.
+///
+/// This selects an endorsement hierarchy, not a signing key: every slot signs
+/// with the same DPE leaf key today.
+///
+/// Because signing is not slot-aware yet, only [`PkiEntitySlot::Vendor`] is
+/// served; responders reject [`PkiEntitySlot::Owner`] with
+/// `UNSUPPORTED_OPERATION` rather than return evidence claiming an endorsement
+/// that was never selected. Once signing is slot-aware, whether an entity can
+/// be served follows the provisioning state of its endorsement slot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[repr(u32)]
+pub enum PkiEntitySlot {
+    /// Vendor (device manufacturer) hierarchy.
+    #[default]
+    Vendor = 0,
+    /// Owner hierarchy. Reserved.
+    Owner = 1,
+}
+
+impl TryFrom<u32> for PkiEntitySlot {
+    type Error = CaliptraCompletionCode;
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(PkiEntitySlot::Vendor),
+            1 => Ok(PkiEntitySlot::Owner),
+            _ => Err(CaliptraCompletionCode::InvalidParameter),
+        }
+    }
+}
+
 /// Log type identifiers used by `get_log` / `clear_log`.
 ///
 /// These values are wire-stable (carried in the MCU mailbox `log_type` field
@@ -82,8 +185,6 @@ pub struct FirmwareVersion {
 pub enum LogType {
     /// MCU debug log (Tock logging-flash capsule).
     Debug = 0,
-    /// Caliptra attestation log (sourced from Caliptra core).
-    Attestation = 1,
 }
 
 impl TryFrom<u32> for LogType {
@@ -91,7 +192,6 @@ impl TryFrom<u32> for LogType {
     fn try_from(value: u32) -> Result<Self, Self::Error> {
         match value {
             0 => Ok(LogType::Debug),
-            1 => Ok(LogType::Attestation),
             _ => Err(CaliptraCompletionCode::InvalidParameter),
         }
     }
@@ -208,6 +308,70 @@ pub trait CaliptraCmdHandler {
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 
+    /// Bitmap of [`EvidenceFormat`]s this build can produce.
+    ///
+    /// Bit `n` is set when the format whose wire value is `n` is supported; see
+    /// [`EvidenceFormat::bit`]. Returned verbatim to a requester that issues a
+    /// [`EVIDENCE_FORMAT_QUERY`] request.
+    ///
+    /// Implementors must keep this consistent with
+    /// [`attestation_evidence_len`](Self::attestation_evidence_len): a format
+    /// advertised here must report a non-zero length for at least one
+    /// algorithm.
+    const SUPPORTED_EVIDENCE_FORMATS: u32 = 0;
+
+    /// Largest evidence this build can emit for any supported format and
+    /// algorithm.
+    ///
+    /// This is the worst case across every enabled evidence generator and is
+    /// what transports use to size static contracts (VDM large-response
+    /// capacity, mailbox response buffers). Per-request buffers should use the
+    /// narrower [`attestation_evidence_len`](Self::attestation_evidence_len)
+    /// instead, so that an ECC quote does not reserve an ML-DSA-sized buffer.
+    const MAX_ATTESTATION_EVIDENCE_LEN: usize = 0;
+
+    /// Upper bound, in bytes, on evidence for one specific format and
+    /// algorithm; `0` when the pair is not supported by this build.
+    ///
+    /// Transports call this before generating evidence so they can reserve
+    /// exactly what the requested pair needs and reject unsupported pairs
+    /// without allocating.
+    fn attestation_evidence_len(format: EvidenceFormat, algorithm: AsymAlgo) -> usize {
+        let _ = (format, algorithm);
+        0
+    }
+
+    /// Generates signed attestation evidence in the requested format.
+    ///
+    /// # Arguments
+    /// * `format` - Evidence encoding; see [`EvidenceFormat`].
+    /// * `algorithm` - Signing algorithm; see [`AsymAlgo`].
+    /// * `entity` - PKI entity whose hierarchy signs; see [`PkiEntitySlot`].
+    /// * `nonce` - Requester-supplied freshness nonce, bound into the evidence.
+    /// * `out` - Destination buffer. Callers must size it to at least
+    ///   [`attestation_evidence_len`](Self::attestation_evidence_len) for the
+    ///   requested pair.
+    ///
+    /// # Returns
+    /// * `Ok(usize)` - Number of evidence bytes written into `out`.
+    /// * `Err(CaliptraCompletionCode::UnsupportedOperation)` - The
+    ///   format/algorithm pair, or the requested entity, is not enabled in this
+    ///   build.
+    /// * `Err(CaliptraCompletionCode::InsufficientResources)` - `out` is too
+    ///   small for the generated evidence.
+    async fn get_attestation<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        format: EvidenceFormat,
+        algorithm: AsymAlgo,
+        entity: PkiEntitySlot,
+        nonce: &[u8; ATTESTATION_NONCE_LEN],
+        out: &mut [u8],
+    ) -> CaliptraCmdResult<usize> {
+        let _ = (alloc, format, algorithm, entity, nonce, out);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
     /// Requests a production debug unlock challenge.
     ///
     /// # Arguments
@@ -277,6 +441,46 @@ pub trait CaliptraCmdHandler {
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 
+    /// Provision a vendor public-key hash in an OTP slot.
+    async fn provision_vendor_pk_hash(&self, slot: u32, hash: &[u8; 48]) -> CaliptraCmdResult<()> {
+        let _ = (slot, hash);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Provision the owner public-key hash in OTP.
+    async fn provision_owner_pk_hash(&self, hash: &[u8; 48]) -> CaliptraCmdResult<()> {
+        let _ = hash;
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Increase the minimum allowed Caliptra firmware SVN.
+    async fn increase_caliptra_min_svn<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        svn: u32,
+    ) -> CaliptraCmdResult<()> {
+        let _ = (alloc, svn);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Revoke one vendor public key in a provisioned public-key-hash slot.
+    async fn revoke_vendor_pub_key<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        vendor_pk_hash_slot: u32,
+        key_type: u32,
+        key_index: u32,
+    ) -> CaliptraCmdResult<()> {
+        let _ = (alloc, vendor_pk_hash_slot, key_type, key_index);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Revoke a provisioned vendor public-key-hash slot.
+    async fn revoke_vendor_pk_hash(&self, vendor_pk_hash_slot: u32) -> CaliptraCmdResult<()> {
+        let _ = vendor_pk_hash_slot;
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
     /// Program field entropy for a given partition.
     ///
     /// Over both the MCU mailbox and VDM paths, the dispatch layer verifies
@@ -302,9 +506,10 @@ pub trait CaliptraCmdHandler {
     async fn get_ocp_lock_endorsement_cert(
         &self,
         hpke_handle: &HpkeHandle,
+        algorithm: EndorsementAlgorithm,
         cert_buf: &mut [u8],
     ) -> CaliptraCmdResult<usize> {
-        let _ = (hpke_handle, cert_buf);
+        let _ = (hpke_handle, algorithm, cert_buf);
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 
@@ -324,9 +529,116 @@ pub trait CaliptraCmdHandler {
         &self,
         nonce: &[u8; 32],
         sek_state: SekState,
+        algorithm: EndorsementAlgorithm,
         report_buf: &mut [u8],
     ) -> CaliptraCmdResult<usize> {
-        let _ = (nonce, sek_state, report_buf);
+        let _ = (nonce, sek_state, algorithm, report_buf);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Lock an OTP partition against further writes.
+    async fn fuse_lock_partition(&self, partition: u32) -> CaliptraCmdResult<()> {
+        let _ = partition;
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Verify and commit a persistent DOT lock transition.
+    async fn dot_lock<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        request: &DotLockPayload,
+    ) -> CaliptraCmdResult<()> {
+        let _ = (alloc, request);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Verify and commit a persistent DOT disabled-state transition.
+    async fn dot_disable<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        request: &DotDisablePayload,
+    ) -> CaliptraCmdResult<()> {
+        let _ = (alloc, request);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Rotate the DOT epoch by two fuse bits and reseal ownership state.
+    async fn dot_rotate<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        request: &DotRotatePayload,
+    ) -> CaliptraCmdResult<()> {
+        let _ = (alloc, request);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Read the current DOT initialization, parity, and fuse count.
+    async fn dot_status(&self, status: &mut DotStatus) -> CaliptraCmdResult<()> {
+        let _ = status;
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Authenticate and restore a DOT blob for the current locked fuse epoch.
+    async fn dot_recovery<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        blob: &[u8; DOT_BLOB_SIZE],
+    ) -> CaliptraCmdResult<()> {
+        let _ = (alloc, blob);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Validate recovery public keys and generate an override challenge.
+    async fn dot_override_challenge<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        request: &DotOverrideChallengePayload,
+    ) -> CaliptraCmdResult<[u8; AUTH_CMD_NONCE_LEN]> {
+        let _ = (alloc, request);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Verify recovery-key signatures and apply a DOT override transition.
+    async fn dot_override<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        request: &DotOverridePayload,
+    ) -> CaliptraCmdResult<()> {
+        let _ = (alloc, request);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Authenticate the current DOT blob and generate a one-time unlock challenge.
+    async fn dot_unlock_challenge<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+    ) -> CaliptraCmdResult<[u8; AUTH_CMD_NONCE_LEN]> {
+        let _ = alloc;
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Verify and commit an ODD-to-EVEN DOT unlock transition.
+    async fn dot_unlock<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        request: &DotUnlockPayload,
+    ) -> CaliptraCmdResult<()> {
+        let _ = (alloc, request);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Authenticate and return the current ODD-state DOT blob for backup.
+    ///
+    /// No LAK signature is required: the opaque blob contains public key
+    /// hashes and an HMAC, not secret key material. Transport access remains a
+    /// platform policy decision, and implementations must verify the HMAC
+    /// before returning bytes.
+    async fn dot_get_backup_blob<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        blob: &mut [u8; DOT_BLOB_SIZE],
+    ) -> CaliptraCmdResult<()> {
+        let _ = (alloc, blob);
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 }
@@ -355,22 +667,17 @@ pub trait CommandAuthorizer {
         req: &'a [u8],
     ) -> Result<&'a [u8], AuthorizationError>;
 
-    /// Verify signatures over a command using the stored challenge.
-    ///
-    /// This is transport-agnostic: the caller provides the raw command ID
-    /// (which may differ between mailbox and SPDM VDM namespaces), the
-    /// command payload, and the received signature.
-    ///
-    /// Consumes the stored challenge (one-time use).
-    ///
-    /// # Arguments
-    /// * `cmd_id` - Raw command identifier (u32, serialized big-endian in verification)
-    /// * `payload` - Command-specific payload bytes
-    /// * `sig` - The hybrid signature received from the host
-    async fn verify_signatures(
+    /// Verify signatures over a command using the stored challenge and wire keys.
+    #[allow(clippy::too_many_arguments)]
+    async fn verify_signatures<Alloc: ApiAlloc>(
         &mut self,
+        alloc: &Alloc,
         cmd_id: u32,
         payload: &[u8],
+        nonce: &[u8; AUTH_CMD_NONCE_LEN],
+        ecc_pub_x: &[u8; 48],
+        ecc_pub_y: &[u8; 48],
+        mldsa_pub: &[u8; 2592],
         sig: &HybridSignature,
     ) -> Result<(), AuthorizationError>;
 

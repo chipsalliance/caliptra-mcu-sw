@@ -9,7 +9,7 @@ use caliptra_mcu_libsyscall_caliptra::soft_pcr_store::{
     MeasurementRecord, SoftwarePcrStore, SOFT_PCR_STORE_DRIVER_NUM,
 };
 use caliptra_mcu_libtock_platform::Syscalls;
-use mcu_caliptra_api_lite::{
+use mcu_caliptra_api::{
     authorize_and_stash as caliptra_authorize, dpe_derive_context, dpe_tag_tci, extend_pcr31,
     sha_finish, sha_init, sha_update, ApiAlloc, DpeContextHandle, DpeDeriveContextFlags,
     DpeDeriveContextParams, HashAlgo, SHA_CONTEXT_SIZE,
@@ -26,7 +26,7 @@ pub(super) async fn authorize_and_stash<S: Syscalls, A: ApiAlloc>(
     fw_id: u32,
     metadata: ImageMetadata,
 ) -> MeasurementApiResult {
-    api.attestation_state_active()?;
+    api.initial_load_measurement_state_ready()?;
     let entry = api
         .manifest
         .lookup(fw_id)
@@ -70,7 +70,9 @@ async fn create_dpe_context<S: Syscalls, A: ApiAlloc>(
         &DpeDeriveContextParams {
             parent_handle: parent.context_handle,
             measurement: metadata.measurement,
-            flags: DpeDeriveContextFlags::RETAIN_PARENT_CONTEXT,
+            flags: DpeDeriveContextFlags::RETAIN_PARENT_CONTEXT
+                | DpeDeriveContextFlags::ALLOW_NEW_CONTEXT_TO_EXPORT
+                | DpeDeriveContextFlags::INPUT_ALLOW_X509,
             tci_type: entry.fw_id,
             target_locality: 0,
             svn: metadata.svn,
@@ -195,7 +197,7 @@ mod tests {
 
     use super::*;
     use crate::attestation_manifest::MCU_RT_FW_ID;
-    use mcu_caliptra_api_lite::AuthorizeAndStashFlags;
+    use mcu_caliptra_api::AuthorizeAndStashFlags;
 
     #[test]
     fn caliptra_authorize_params_force_skip_stash_for_initial_load() {

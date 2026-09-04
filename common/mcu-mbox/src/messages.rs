@@ -4,11 +4,14 @@ pub use caliptra_api::mailbox::{
     HpkeHandle, OcpLockEnumerateHpkeHandlesReq, OcpLockEnumerateHpkeHandlesResp,
 };
 use caliptra_image_types::{ECC384_SCALAR_BYTE_SIZE, MLDSA87_SIGNATURE_BYTE_SIZE};
-use caliptra_mcu_registers_generated::fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_0;
+use caliptra_mcu_registers_generated::fuses::{
+    OTP_CPTRA_CORE_VENDOR_PK_HASH_0, OTP_CPTRA_SS_OWNER_PK_HASH,
+};
 use core::convert::From;
+use core::mem::size_of;
 use core::num::NonZeroU32;
-use mcu_caliptra_api_lite::mailbox::CommandId as CaliptraCommandId;
-pub use mcu_caliptra_api_lite::mailbox::{
+use mcu_caliptra_api::mailbox::CommandId as CaliptraCommandId;
+pub use mcu_caliptra_api::mailbox::{
     calc_checksum, verify_checksum, CmAesDecryptInitReq, CmAesDecryptUpdateReq,
     CmAesEncryptInitReq, CmAesEncryptInitResp, CmAesEncryptInitRespHeader, CmAesEncryptUpdateReq,
     CmAesGcmDecryptFinalReq, CmAesGcmDecryptFinalResp, CmAesGcmDecryptFinalRespHeader,
@@ -23,17 +26,20 @@ pub use mcu_caliptra_api_lite::mailbox::{
     CmHmacKdfCounterResp, CmHmacReq, CmHmacResp, CmImportReq, CmImportResp, CmKeyUsage,
     CmMldsaPublicKeyReq, CmMldsaPublicKeyResp, CmMldsaSignReq, CmMldsaSignResp, CmMldsaVerifyReq,
     CmRandomGenerateReq, CmRandomGenerateResp, CmRandomStirReq, CmShaFinalReq, CmShaFinalResp,
-    CmShaInitReq, CmShaInitResp, CmShaUpdateReq, CmStatusResp, Cmk, MailboxReqHeader,
-    MailboxRespHeader, MailboxRespHeaderVarSize, ProductionAuthDebugUnlockChallenge,
-    ProductionAuthDebugUnlockReq, ProductionAuthDebugUnlockToken, ResponseVarSize,
-    CMB_AES_ENCRYPTED_CONTEXT_SIZE, CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE,
-    CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, CMB_HMAC_MAX_SIZE, MAX_CMB_DATA_SIZE,
+    CmShaInitReq, CmShaInitResp, CmShaUpdateReq, CmStatusResp, Cmk, EcdsaVerifyReq, LmsVerifyReq,
+    MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize,
+    ProductionAuthDebugUnlockChallenge, ProductionAuthDebugUnlockReq,
+    ProductionAuthDebugUnlockToken, ResponseVarSize, CMB_AES_ENCRYPTED_CONTEXT_SIZE,
+    CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, CMB_HMAC_MAX_SIZE,
+    MAX_CMB_DATA_SIZE,
 };
 use zerocopy::{FromBytes, FromZeros, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
 pub const MAX_RESP_DATA_SIZE: usize = 4 * 1024;
+pub const MAX_ENDORSEMENT_CERT_SIZE: usize = 12 * 1024;
 pub const MAX_FW_VERSION_STR_LEN: usize = 32;
 pub const DEVICE_CAPS_SIZE: usize = 36;
+pub const DOT_BLOB_SIZE: usize = 168;
 pub const MAX_UUID_SIZE: usize = 32;
 pub const MAX_FUSE_DATA_BYTES: usize = 512;
 pub const MAX_FUSE_DATA_WORDS: usize = MAX_FUSE_DATA_BYTES / 4;
@@ -113,6 +119,8 @@ impl CommandId {
     pub const MC_ECDSA_CMK_PUBLIC_KEY: Self = Self(0x4D43_4550); // "MCEP"
     pub const MC_ECDSA_CMK_SIGN: Self = Self(0x4D43_4553); // "MCES"
     pub const MC_ECDSA_CMK_VERIFY: Self = Self(0x4D43_4556); // "MCEV"
+    pub const MC_ECDSA384_SIG_VERIFY: Self = Self(0x4D45_4356); // "MECV"
+    pub const MC_LMS_SIG_VERIFY: Self = Self(0x4D4C_4D56); // "MLMV"
 
     // MLDSA CMK commands (MML prefix avoids collision with MC_FUSE_INCREASE_CALIPTRA_MIN_SVN "MCMS")
     pub const MC_MLDSA_CMK_PUBLIC_KEY: Self = Self(0x4D4D_4C50); // "MMLP"
@@ -131,6 +139,7 @@ impl CommandId {
     // Authorized commands
     pub const MC_GET_AUTH_CMD_CHALLENGE: Self = Self(0x4D414343); // "MACC"
     pub const MC_PROVISION_VENDOR_PK_HASH: Self = Self(0x5056_504b); // "PVPK"
+    pub const MC_PROVISION_OWNER_PK_HASH: Self = Self(0x504F_504B); // "POPK"
     pub const MC_FUSE_INCREASE_CALIPTRA_MIN_SVN: Self = Self(0x4D43_4D53); // "MCMS"
     pub const MC_FE_PROG: Self = Self(0x4D43_4650); // "MCFP"
     pub const MC_FUSE_REVOKE_VENDOR_PUB_KEY: Self = Self(0x4D52_564B); // "MRVK"
@@ -147,6 +156,23 @@ impl CommandId {
     pub const MC_GET_OCP_LOCK_ENDORSEMENT_CERT: Self = Self(0x4F4C_4543); // "OLEC"
     pub const MC_OCP_LOCK_ENUMERATE_HPKE_HANDLES: Self = Self(0x4F4C_4548); // "OLEH"
     pub const MC_GET_OCP_LOCK_EPOCH_KEY_REPORT: Self = Self(0x4F4C_4552); // "OLER"
+
+    // Attestation commands
+    pub const MC_GET_ATTESTATION: Self = Self(0x4D47_4154); // "MGAT"
+
+    // The outer family ID is used as the MCI command and authorization domain.
+    // The FourCC values below are little-endian u32 subcommands in its payload.
+    pub const MC_DEVICE_OWNERSHIP_TRANSFER: Self = Self(0x0000_0011);
+    pub const MC_DOT_LOCK: Self = Self(0x4D44_4C4B); // "MDLK"
+    pub const MC_DOT_DISABLE: Self = Self(0x4D44_4453); // "MDDS"
+    pub const MC_DOT_ROTATE: Self = Self(0x4D44_5254); // "MDRT"
+    pub const MC_DOT_RECOVERY: Self = Self(0x4D44_5243); // "MDRC"
+    pub const MC_DOT_STATUS: Self = Self(0x4D44_5354); // "MDST"
+    pub const MC_DOT_UNLOCK_CHALLENGE: Self = Self(0x4D44_5543); // "MDUC"
+    pub const MC_DOT_UNLOCK: Self = Self(0x4D44_554C); // "MDUL"
+    pub const MC_GET_DOT_BACKUP_BLOB: Self = Self(0x4D44_4242); // "MDBB"
+    pub const MC_DOT_OVERRIDE_CHALLENGE: Self = Self(0x444F_5457); // "DOTW"
+    pub const MC_DOT_OVERRIDE: Self = Self(0x444F_5458); // "DOTX"
 }
 
 impl From<u32> for CommandId {
@@ -199,6 +225,8 @@ pub enum McuMailboxReq {
     EcdsaCmkPublicKey(McuEcdsaCmkPublicKeyReq),
     EcdsaCmkSign(McuEcdsaCmkSignReq),
     EcdsaCmkVerify(McuEcdsaCmkVerifyReq),
+    Ecdsa384SigVerify(McuEcdsa384SigVerifyReq),
+    LmsSigVerify(McuLmsSigVerifyReq),
     MldsaCmkPublicKey(McuMldsaCmkPublicKeyReq),
     MldsaCmkSign(McuMldsaCmkSignReq),
     MldsaCmkVerify(McuMldsaCmkVerifyReq),
@@ -214,11 +242,13 @@ pub enum McuMailboxReq {
     GetAuthCmdChallenge(GetAuthCmdChallengeReq),
     FuseRevokeVendorPubKey(FuseRevokeVendorPubKeyReq),
     ProvisionVendorPkHash(ProvisionVendorPkHashReq),
+    ProvisionOwnerPkHash(ProvisionOwnerPkHashReq),
     FuseRevokeVendorPkHash(FuseRevokeVendorPkHashReq),
     // Certificate commands
     ExportAttestedCsr(ExportAttestedCsrReq),
     DpeSignerContextCert(DpeSignerContextCertReq),
     GetDpeCertChain(GetDpeCertChainReq),
+    GetAttestation(GetAttestationReq),
 
     // OCP Lock
     OcpLockSetPermaHek(OcpLockSetPermaHekReq),
@@ -226,6 +256,17 @@ pub enum McuMailboxReq {
     GetOcpLockEndorsementCert(GetOcpLockEndorsementCertReq),
     OcpLockEnumerateHpkeHandles(OcpLockEnumerateHpkeHandlesReq),
     GetOcpLockEpochKeyReport(GetOcpLockEpochKeyReportReq),
+    // Device Ownership Transfer commands
+    DotLock(DotLockReq),
+    DotDisable(DotDisableReq),
+    DotRotate(DotRotateReq),
+    DotRecovery(DotRecoveryReq),
+    DotStatus(DotStatusReq),
+    DotOverrideChallenge(DotOverrideChallengeReq),
+    DotOverride(DotOverrideReq),
+    DotUnlockChallenge(DotUnlockChallengeReq),
+    DotUnlock(DotUnlockReq),
+    GetDotBackupBlob(GetDotBackupBlobReq),
 }
 
 impl McuMailboxReq {
@@ -266,6 +307,8 @@ impl McuMailboxReq {
             McuMailboxReq::EcdsaCmkPublicKey(req) => Ok(req.as_bytes()),
             McuMailboxReq::EcdsaCmkSign(req) => req.as_bytes_partial(),
             McuMailboxReq::EcdsaCmkVerify(req) => req.as_bytes_partial(),
+            McuMailboxReq::Ecdsa384SigVerify(req) => Ok(req.as_bytes()),
+            McuMailboxReq::LmsSigVerify(req) => Ok(req.as_bytes()),
             McuMailboxReq::MldsaCmkPublicKey(req) => Ok(req.as_bytes()),
             McuMailboxReq::MldsaCmkSign(req) => req.as_bytes_partial(),
             McuMailboxReq::MldsaCmkVerify(req) => req.as_bytes_partial(),
@@ -279,16 +322,28 @@ impl McuMailboxReq {
             McuMailboxReq::GetAuthCmdChallenge(req) => Ok(req.as_bytes()),
             McuMailboxReq::FuseRevokeVendorPubKey(req) => Ok(req.as_bytes()),
             McuMailboxReq::ProvisionVendorPkHash(req) => Ok(req.as_bytes()),
+            McuMailboxReq::ProvisionOwnerPkHash(req) => Ok(req.as_bytes()),
             McuMailboxReq::FuseRevokeVendorPkHash(req) => Ok(req.as_bytes()),
             McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_bytes()),
             McuMailboxReq::DpeSignerContextCert(req) => Ok(req.as_bytes()),
             McuMailboxReq::GetDpeCertChain(req) => Ok(req.as_bytes()),
+            McuMailboxReq::GetAttestation(req) => Ok(req.as_bytes()),
 
             McuMailboxReq::OcpLockSetPermaHek(req) => Ok(req.as_bytes()),
             McuMailboxReq::OcpLockRotateHek(req) => Ok(req.as_bytes()),
             McuMailboxReq::GetOcpLockEndorsementCert(req) => Ok(req.as_bytes()),
             McuMailboxReq::OcpLockEnumerateHpkeHandles(req) => Ok(req.as_bytes()),
             McuMailboxReq::GetOcpLockEpochKeyReport(req) => Ok(req.as_bytes()),
+            McuMailboxReq::DotLock(req) => Ok(req.as_bytes()),
+            McuMailboxReq::DotDisable(req) => Ok(req.as_bytes()),
+            McuMailboxReq::DotRotate(req) => Ok(req.as_bytes()),
+            McuMailboxReq::DotRecovery(req) => Ok(req.as_bytes()),
+            McuMailboxReq::DotStatus(req) => Ok(req.as_bytes()),
+            McuMailboxReq::DotOverrideChallenge(req) => Ok(req.as_bytes()),
+            McuMailboxReq::DotOverride(req) => Ok(req.as_bytes()),
+            McuMailboxReq::DotUnlockChallenge(req) => Ok(req.as_bytes()),
+            McuMailboxReq::DotUnlock(req) => Ok(req.as_bytes()),
+            McuMailboxReq::GetDotBackupBlob(req) => Ok(req.as_bytes()),
         }
     }
 
@@ -329,6 +384,8 @@ impl McuMailboxReq {
             McuMailboxReq::EcdsaCmkPublicKey(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::EcdsaCmkSign(req) => req.as_bytes_partial_mut(),
             McuMailboxReq::EcdsaCmkVerify(req) => req.as_bytes_partial_mut(),
+            McuMailboxReq::Ecdsa384SigVerify(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::LmsSigVerify(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::MldsaCmkPublicKey(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::MldsaCmkSign(req) => req.as_bytes_partial_mut(),
             McuMailboxReq::MldsaCmkVerify(req) => req.as_bytes_partial_mut(),
@@ -342,16 +399,28 @@ impl McuMailboxReq {
             McuMailboxReq::GetAuthCmdChallenge(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FuseRevokeVendorPubKey(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::ProvisionVendorPkHash(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::ProvisionOwnerPkHash(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FuseRevokeVendorPkHash(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::DpeSignerContextCert(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::GetDpeCertChain(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::GetAttestation(req) => Ok(req.as_mut_bytes()),
 
             McuMailboxReq::OcpLockSetPermaHek(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::OcpLockRotateHek(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::GetOcpLockEndorsementCert(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::OcpLockEnumerateHpkeHandles(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::GetOcpLockEpochKeyReport(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::DotLock(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::DotDisable(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::DotRotate(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::DotRecovery(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::DotStatus(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::DotOverrideChallenge(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::DotOverride(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::DotUnlockChallenge(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::DotUnlock(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::GetDotBackupBlob(req) => Ok(req.as_mut_bytes()),
         }
     }
 
@@ -392,6 +461,8 @@ impl McuMailboxReq {
             McuMailboxReq::EcdsaCmkPublicKey(_) => CommandId::MC_ECDSA_CMK_PUBLIC_KEY,
             McuMailboxReq::EcdsaCmkSign(_) => CommandId::MC_ECDSA_CMK_SIGN,
             McuMailboxReq::EcdsaCmkVerify(_) => CommandId::MC_ECDSA_CMK_VERIFY,
+            McuMailboxReq::Ecdsa384SigVerify(_) => CommandId::MC_ECDSA384_SIG_VERIFY,
+            McuMailboxReq::LmsSigVerify(_) => CommandId::MC_LMS_SIG_VERIFY,
             McuMailboxReq::MldsaCmkPublicKey(_) => CommandId::MC_MLDSA_CMK_PUBLIC_KEY,
             McuMailboxReq::MldsaCmkSign(_) => CommandId::MC_MLDSA_CMK_SIGN,
             McuMailboxReq::MldsaCmkVerify(_) => CommandId::MC_MLDSA_CMK_VERIFY,
@@ -407,10 +478,12 @@ impl McuMailboxReq {
             McuMailboxReq::GetAuthCmdChallenge(_) => CommandId::MC_GET_AUTH_CMD_CHALLENGE,
             McuMailboxReq::FuseRevokeVendorPubKey(_) => CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY,
             McuMailboxReq::ProvisionVendorPkHash(_) => CommandId::MC_PROVISION_VENDOR_PK_HASH,
+            McuMailboxReq::ProvisionOwnerPkHash(_) => CommandId::MC_PROVISION_OWNER_PK_HASH,
             McuMailboxReq::FuseRevokeVendorPkHash(_) => CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH,
             McuMailboxReq::ExportAttestedCsr(_) => CommandId::MC_EXPORT_ATTESTED_CSR,
             McuMailboxReq::DpeSignerContextCert(_) => CommandId::MC_DPE_SIGNER_CONTEXT_CERT,
             McuMailboxReq::GetDpeCertChain(_) => CommandId::MC_GET_DPE_CERTIFICATE_CHAIN,
+            McuMailboxReq::GetAttestation(_) => CommandId::MC_GET_ATTESTATION,
 
             McuMailboxReq::OcpLockSetPermaHek(_) => CommandId::MC_OCP_LOCK_SET_PERMA_HEK,
             McuMailboxReq::OcpLockRotateHek(_) => CommandId::MC_OCP_LOCK_ROTATE_HEK,
@@ -423,6 +496,16 @@ impl McuMailboxReq {
             McuMailboxReq::GetOcpLockEpochKeyReport(_) => {
                 CommandId::MC_GET_OCP_LOCK_EPOCH_KEY_REPORT
             }
+            McuMailboxReq::DotLock(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
+            McuMailboxReq::DotDisable(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
+            McuMailboxReq::DotRotate(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
+            McuMailboxReq::DotRecovery(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
+            McuMailboxReq::DotStatus(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
+            McuMailboxReq::DotOverrideChallenge(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
+            McuMailboxReq::DotOverride(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
+            McuMailboxReq::DotUnlockChallenge(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
+            McuMailboxReq::DotUnlock(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
+            McuMailboxReq::GetDotBackupBlob(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
         }
     }
 
@@ -486,6 +569,8 @@ pub enum McuMailboxResp {
     EcdsaCmkPublicKey(McuEcdsaCmkPublicKeyResp),
     EcdsaCmkSign(McuEcdsaCmkSignResp),
     EcdsaCmkVerify(McuEcdsaCmkVerifyResp),
+    Ecdsa384SigVerify(McuEcdsa384SigVerifyResp),
+    LmsSigVerify(McuLmsSigVerifyResp),
     MldsaCmkPublicKey(McuMldsaCmkPublicKeyResp),
     MldsaCmkSign(McuMldsaCmkSignResp),
     MldsaCmkVerify(McuMldsaCmkVerifyResp),
@@ -499,6 +584,7 @@ pub enum McuMailboxResp {
     GetAuthCmdChallenge(GetAuthCmdChallengeResp),
     FuseRevokeVendorPubKey(FuseRevokeVendorPubKeyResp),
     ProvisionVendorPkHash(ProvisionVendorPkHashResp),
+    ProvisionOwnerPkHash(ProvisionOwnerPkHashResp),
     FuseRevokeVendorPkHash(FuseRevokeVendorPkHashResp),
     // Certificate commands
     ExportAttestedCsr(ExportAttestedCsrResp),
@@ -511,6 +597,17 @@ pub enum McuMailboxResp {
     GetOcpLockEndorsementCert(GetOcpLockEndorsementCertResp),
     OcpLockEnumerateHpkeHandles(OcpLockEnumerateHpkeHandlesResp),
     GetOcpLockEpochKeyReport(GetOcpLockEpochKeyReportResp),
+    // Device Ownership Transfer commands
+    DotLock(DotLockResp),
+    DotDisable(DotDisableResp),
+    DotRotate(DotRotateResp),
+    DotRecovery(DotRecoveryResp),
+    DotStatus(DotStatusResp),
+    DotOverrideChallenge(DotOverrideChallengeResp),
+    DotOverride(DotOverrideResp),
+    DotUnlockChallenge(DotUnlockChallengeResp),
+    DotUnlock(DotUnlockResp),
+    GetDotBackupBlob(GetDotBackupBlobResp),
 }
 
 /// A trait for responses with variable size data.
@@ -612,6 +709,8 @@ impl McuMailboxResp {
             McuMailboxResp::EcdsaCmkPublicKey(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::EcdsaCmkSign(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::EcdsaCmkVerify(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::Ecdsa384SigVerify(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::LmsSigVerify(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::MldsaCmkPublicKey(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::MldsaCmkSign(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::MldsaCmkVerify(resp) => Ok(resp.as_bytes()),
@@ -623,6 +722,7 @@ impl McuMailboxResp {
             McuMailboxResp::GetAuthCmdChallenge(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FuseRevokeVendorPubKey(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::ProvisionVendorPkHash(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::ProvisionOwnerPkHash(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FuseRevokeVendorPkHash(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial(),
             McuMailboxResp::DpeSignerContextCert(resp) => resp.as_bytes_partial(),
@@ -633,6 +733,16 @@ impl McuMailboxResp {
             McuMailboxResp::GetOcpLockEndorsementCert(resp) => resp.as_bytes_partial(),
             McuMailboxResp::OcpLockEnumerateHpkeHandles(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::GetOcpLockEpochKeyReport(resp) => resp.as_bytes_partial(),
+            McuMailboxResp::DotLock(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::DotDisable(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::DotRotate(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::DotRecovery(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::DotStatus(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::DotOverrideChallenge(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::DotOverride(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::DotUnlockChallenge(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::DotUnlock(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::GetDotBackupBlob(resp) => Ok(resp.as_bytes()),
         }
     }
 
@@ -674,6 +784,8 @@ impl McuMailboxResp {
             McuMailboxResp::EcdsaCmkPublicKey(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::EcdsaCmkSign(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::EcdsaCmkVerify(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::Ecdsa384SigVerify(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::LmsSigVerify(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::MldsaCmkPublicKey(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::MldsaCmkSign(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::MldsaCmkVerify(resp) => Ok(resp.as_mut_bytes()),
@@ -685,6 +797,7 @@ impl McuMailboxResp {
             McuMailboxResp::GetAuthCmdChallenge(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FuseRevokeVendorPubKey(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::ProvisionVendorPkHash(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::ProvisionOwnerPkHash(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FuseRevokeVendorPkHash(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::DpeSignerContextCert(resp) => resp.as_bytes_partial_mut(),
@@ -695,6 +808,16 @@ impl McuMailboxResp {
             McuMailboxResp::GetOcpLockEndorsementCert(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::OcpLockEnumerateHpkeHandles(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::GetOcpLockEpochKeyReport(resp) => resp.as_bytes_partial_mut(),
+            McuMailboxResp::DotLock(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::DotDisable(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::DotRotate(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::DotRecovery(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::DotStatus(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::DotOverrideChallenge(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::DotOverride(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::DotUnlockChallenge(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::DotUnlock(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::GetDotBackupBlob(resp) => Ok(resp.as_mut_bytes()),
         }
     }
 
@@ -1295,6 +1418,33 @@ impl_mcu_request_varsize!(McuEcdsaCmkVerifyReq, CmEcdsaVerifyReq);
 pub struct McuEcdsaCmkVerifyResp(pub MailboxRespHeader);
 impl Response for McuEcdsaCmkVerifyResp {}
 
+// ---- Raw signature verification passthroughs ----
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuEcdsa384SigVerifyReq(pub EcdsaVerifyReq);
+impl Request for McuEcdsa384SigVerifyReq {
+    const ID: CommandId = CommandId::MC_ECDSA384_SIG_VERIFY;
+    type Resp = McuEcdsa384SigVerifyResp;
+}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuEcdsa384SigVerifyResp(pub MailboxRespHeader);
+impl Response for McuEcdsa384SigVerifyResp {}
+
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuLmsSigVerifyReq(pub LmsVerifyReq);
+impl Request for McuLmsSigVerifyReq {
+    const ID: CommandId = CommandId::MC_LMS_SIG_VERIFY;
+    type Resp = McuLmsSigVerifyResp;
+}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuLmsSigVerifyResp(pub MailboxRespHeader);
+impl Response for McuLmsSigVerifyResp {}
+
 // ---- MLDSA CMK wrappers ----
 #[repr(C)]
 #[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
@@ -1661,11 +1811,27 @@ impl Default for ExportAttestedCsrResp {
 }
 impl McuResponseVarSize for ExportAttestedCsrResp {}
 
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, IntoBytes, FromBytes, KnownLayout, Immutable)]
+pub struct EndorsementAlgorithm(pub u32);
+
+impl EndorsementAlgorithm {
+    pub const ECDSA_384: Self = Self(0x1);
+    pub const MLDSA_87: Self = Self(0x2);
+}
+
+impl Default for EndorsementAlgorithm {
+    fn default() -> Self {
+        Self::ECDSA_384
+    }
+}
+
 /// MC_DPE_SIGNER_CONTEXT_CERT Command (0x4D44_5343 - "MDSC")
 #[repr(C)]
 #[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq, Default)]
 pub struct DpeSignerContextCertReq {
     pub hdr: MailboxReqHeader,
+    pub algorithm: EndorsementAlgorithm,
 }
 
 impl Request for DpeSignerContextCertReq {
@@ -1673,17 +1839,20 @@ impl Request for DpeSignerContextCertReq {
     type Resp = DpeSignerContextCertResp;
 }
 
+/// MC_DPE_SIGNER_CONTEXT_CERT response
+///
+/// Deliberately absent from [`McuMailboxResp`]: certs can be up to 8 KiB with ML-DSA-87.
 #[repr(C)]
 #[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
 pub struct DpeSignerContextCertResp {
     pub hdr: MailboxRespHeaderVarSize,
-    pub cert_data: [u8; MAX_RESP_DATA_SIZE],
+    pub cert_data: [u8; MAX_ENDORSEMENT_CERT_SIZE],
 }
 impl Default for DpeSignerContextCertResp {
     fn default() -> Self {
         Self {
             hdr: MailboxRespHeaderVarSize::default(),
-            cert_data: [0u8; MAX_RESP_DATA_SIZE],
+            cert_data: [0u8; MAX_ENDORSEMENT_CERT_SIZE],
         }
     }
 }
@@ -1721,6 +1890,77 @@ impl Default for GetDpeCertChainResp {
 }
 
 impl McuResponseVarSize for GetDpeCertChainResp {}
+
+// ============================================================================
+// MC_GET_ATTESTATION Command (0x4D47_4154 - "MGAT")
+// ============================================================================
+
+/// MC_GET_ATTESTATION request: retrieve signed attestation evidence.
+///
+/// `evidence_format` selects among the formats the responder was built with;
+/// `0` queries the supported-format bitmap instead of returning evidence. The
+/// format, algorithm, and entity values match [`caliptra_mcu_common_commands`]'s
+/// `EvidenceFormat` / `AsymAlgo` / `PkiEntitySlot`.
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+pub struct GetAttestationReq {
+    pub hdr: MailboxReqHeader,
+    /// Evidence format (0=query supported formats, 1=OCP EAT, 2=PCR Quote)
+    pub evidence_format: u32,
+    /// Asymmetric algorithm (0x0001=ECC384, 0x0002=MLDSA87)
+    pub algorithm: u32,
+    /// PKI entity whose hierarchy signs (0=Vendor, 1=Owner). The
+    /// `GET_ATTESTATION` analogue of the SPDM `GET_MEASUREMENTS` SlotID.
+    pub pki_entity_slot: u32,
+    /// 32-byte nonce for freshness
+    pub nonce: [u8; 32],
+}
+impl Request for GetAttestationReq {
+    const ID: CommandId = CommandId::MC_GET_ATTESTATION;
+    type Resp = GetAttestationResp;
+}
+
+/// Bytes of `MC_GET_ATTESTATION` response data that precede the evidence.
+///
+/// The response body is `[evidence_format:u32][evidence...]`, and
+/// `MailboxRespHeaderVarSize::data_len` covers both, so a generic var-size
+/// reader yields the whole body and the command-specific parser splits off this
+/// prefix.
+pub const GET_ATTESTATION_RESP_PREFIX_LEN: usize = 4;
+
+/// Maximum `MC_GET_ATTESTATION` response data: the echoed format plus evidence.
+///
+/// Larger than [`MAX_RESP_DATA_SIZE`] because attestation evidence can exceed
+/// 4 KiB: an ML-DSA-87 PCR quote is 6388 bytes. Rounded up to 8 KiB for
+/// headroom.
+///
+/// This bounds the *decode* type only. The responder never allocates this
+/// struct: it sizes its response buffer from
+/// `CaliptraCmdHandler::MAX_ATTESTATION_EVIDENCE_LEN`, which is derived from
+/// the evidence generators the build actually enables, and frames the response
+/// in place.
+pub const MAX_ATTESTATION_RESP_DATA_SIZE: usize = 8 * 1024;
+
+/// MC_GET_ATTESTATION response: `[evidence_format:u32][evidence...]`.
+///
+/// Deliberately absent from [`McuMailboxResp`]: that enum sizes every command's
+/// response allocation by its largest variant, so including an
+/// attestation-sized array here would enlarge the buffer for every command.
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+pub struct GetAttestationResp {
+    pub hdr: MailboxRespHeaderVarSize,
+    pub data: [u8; MAX_ATTESTATION_RESP_DATA_SIZE], // variable length
+}
+impl Default for GetAttestationResp {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxRespHeaderVarSize::default(),
+            data: [0u8; MAX_ATTESTATION_RESP_DATA_SIZE],
+        }
+    }
+}
+impl McuResponseVarSize for GetAttestationResp {}
 
 /// MC_PROVISION_VENDOR_PK_HASH request: Provision a new vendor PK hash
 #[repr(C)]
@@ -1789,10 +2029,11 @@ pub struct OcpLockRotateHekResp {
 impl Response for OcpLockRotateHekResp {}
 /// MC_GET_OCP_LOCK_ENDORSEMENT_CERT request
 #[repr(C)]
-#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq, Default)]
 pub struct GetOcpLockEndorsementCertReq {
     pub hdr: MailboxReqHeader,
     pub hpke_handle: HpkeHandle,
+    pub algorithm: EndorsementAlgorithm,
 }
 impl Request for GetOcpLockEndorsementCertReq {
     const ID: CommandId = CommandId::MC_GET_OCP_LOCK_ENDORSEMENT_CERT;
@@ -1800,17 +2041,19 @@ impl Request for GetOcpLockEndorsementCertReq {
 }
 
 /// MC_GET_OCP_LOCK_ENDORSEMENT_CERT response
+///
+/// Deliberately absent from [`McuMailboxResp`]: certs can be up to 8 KiB with ML-DSA-87.
 #[repr(C)]
 #[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
 pub struct GetOcpLockEndorsementCertResp {
     pub hdr: MailboxRespHeaderVarSize,
-    pub data: [u8; MAX_RESP_DATA_SIZE],
+    pub data: [u8; MAX_ENDORSEMENT_CERT_SIZE],
 }
 impl Default for GetOcpLockEndorsementCertResp {
     fn default() -> Self {
         Self {
             hdr: MailboxRespHeaderVarSize::default(),
-            data: [0u8; MAX_RESP_DATA_SIZE],
+            data: [0u8; MAX_ENDORSEMENT_CERT_SIZE],
         }
     }
 }
@@ -1822,8 +2065,28 @@ impl Request for OcpLockEnumerateHpkeHandlesReq {
 }
 impl Response for OcpLockEnumerateHpkeHandlesResp {}
 
+/// MC_PROVISION_OWNER_PK_HASH request: Provision the owner public-key hash.
 #[repr(C)]
-#[derive(Debug, Clone, IntoBytes, FromBytes, KnownLayout, Immutable)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct ProvisionOwnerPkHashReq {
+    pub hdr: MailboxReqHeader,
+    pub hash: [u8; OTP_CPTRA_SS_OWNER_PK_HASH.byte_size],
+}
+impl Request for ProvisionOwnerPkHashReq {
+    const ID: CommandId = CommandId::MC_PROVISION_OWNER_PK_HASH;
+    type Resp = ProvisionOwnerPkHashResp;
+}
+
+/// MC_PROVISION_OWNER_PK_HASH response: Header-only on success.
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct ProvisionOwnerPkHashResp {
+    pub hdr: MailboxRespHeader,
+}
+impl Response for ProvisionOwnerPkHashResp {}
+
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
 pub struct HybridSignature {
     pub ecc_sig_r: [u8; ECC384_SCALAR_BYTE_SIZE],
     pub ecc_sig_s: [u8; ECC384_SCALAR_BYTE_SIZE],
@@ -1864,7 +2127,6 @@ impl TryFrom<u16> for SekState {
     }
 }
 
-// TODO(clundin): Update to the release EKP spec once published.
 #[repr(C)]
 #[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq, Default)]
 pub struct GetOcpLockEpochKeyReportReq {
@@ -1874,6 +2136,7 @@ pub struct GetOcpLockEpochKeyReportReq {
     /// SEK state (0=Unused, 1=Programmed, 2=Sanitized)
     pub sek_state: u16,
     pub reserved: u16,
+    pub algorithm: EndorsementAlgorithm,
 }
 impl Request for GetOcpLockEpochKeyReportReq {
     const ID: CommandId = CommandId::MC_GET_OCP_LOCK_EPOCH_KEY_REPORT;
@@ -1884,21 +2147,529 @@ impl Request for GetOcpLockEpochKeyReportReq {
 #[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
 pub struct GetOcpLockEpochKeyReportResp {
     pub hdr: MailboxRespHeaderVarSize,
-    pub data: [u8; MAX_RESP_DATA_SIZE],
+    pub data: [u8; MAX_ENDORSEMENT_CERT_SIZE],
 }
 impl Default for GetOcpLockEpochKeyReportResp {
     fn default() -> Self {
         Self {
             hdr: MailboxRespHeaderVarSize::default(),
-            data: [0u8; MAX_RESP_DATA_SIZE],
+            data: [0u8; MAX_ENDORSEMENT_CERT_SIZE],
         }
     }
 }
 impl McuResponseVarSize for GetOcpLockEpochKeyReportResp {}
 
+pub const DOT_KEY_HASH_SIZE: usize = 48;
+pub const DOT_ECC_PUBLIC_KEY_COORD_SIZE: usize = 48;
+pub const DOT_MLDSA_PUBLIC_KEY_SIZE: usize = 2592;
+
+/// Transport-neutral DOT_LOCK payload.
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotLockPayload {
+    pub cak: [u8; DOT_KEY_HASH_SIZE],
+    pub lak_hash: [u8; DOT_KEY_HASH_SIZE],
+}
+
+impl Default for DotLockPayload {
+    fn default() -> Self {
+        Self {
+            cak: [0; DOT_KEY_HASH_SIZE],
+            lak_hash: [0; DOT_KEY_HASH_SIZE],
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotLockReq {
+    pub hdr: MailboxReqHeader,
+    pub subcommand: u32,
+    pub payload: DotLockPayload,
+}
+
+impl Default for DotLockReq {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxReqHeader::default(),
+            subcommand: CommandId::MC_DOT_LOCK.0,
+            payload: DotLockPayload::default(),
+        }
+    }
+}
+
+impl Request for DotLockReq {
+    const ID: CommandId = CommandId::MC_DEVICE_OWNERSHIP_TRANSFER;
+    type Resp = DotLockResp;
+}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotLockResp {
+    pub hdr: MailboxRespHeader,
+    pub reset_required: u32,
+}
+
+impl Response for DotLockResp {}
+
+/// Transport-neutral DOT_DISABLE payload.
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotDisablePayload {
+    pub lak_hash: [u8; DOT_KEY_HASH_SIZE],
+}
+
+impl Default for DotDisablePayload {
+    fn default() -> Self {
+        Self {
+            lak_hash: [0; DOT_KEY_HASH_SIZE],
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotDisableReq {
+    pub hdr: MailboxReqHeader,
+    pub subcommand: u32,
+    pub payload: DotDisablePayload,
+}
+
+impl Default for DotDisableReq {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxReqHeader::default(),
+            subcommand: CommandId::MC_DOT_DISABLE.0,
+            payload: DotDisablePayload::default(),
+        }
+    }
+}
+
+impl Request for DotDisableReq {
+    const ID: CommandId = CommandId::MC_DEVICE_OWNERSHIP_TRANSFER;
+    type Resp = DotDisableResp;
+}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotDisableResp {
+    pub hdr: MailboxRespHeader,
+    pub reset_required: u32,
+}
+
+impl Response for DotDisableResp {}
+
+/// Transport-neutral DOT_ROTATE payload.
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotRotatePayload {
+    pub min_fuse_count: u32,
+    pub cak: [u8; DOT_KEY_HASH_SIZE],
+    pub lak_hash: [u8; DOT_KEY_HASH_SIZE],
+}
+
+impl Default for DotRotatePayload {
+    fn default() -> Self {
+        Self {
+            min_fuse_count: 0,
+            cak: [0; DOT_KEY_HASH_SIZE],
+            lak_hash: [0; DOT_KEY_HASH_SIZE],
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotRotateReq {
+    pub hdr: MailboxReqHeader,
+    pub subcommand: u32,
+    pub payload: DotRotatePayload,
+}
+
+impl Default for DotRotateReq {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxReqHeader::default(),
+            subcommand: CommandId::MC_DOT_ROTATE.0,
+            payload: DotRotatePayload::default(),
+        }
+    }
+}
+
+impl Request for DotRotateReq {
+    const ID: CommandId = CommandId::MC_DEVICE_OWNERSHIP_TRANSFER;
+    type Resp = DotRotateResp;
+}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotRotateResp {
+    pub hdr: MailboxRespHeader,
+    pub reset_required: u32,
+}
+
+impl Response for DotRotateResp {}
+
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotRecoveryReq {
+    pub hdr: MailboxReqHeader,
+    pub subcommand: u32,
+    pub blob: [u8; DOT_BLOB_SIZE],
+}
+
+impl Default for DotRecoveryReq {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxReqHeader::default(),
+            subcommand: CommandId::MC_DOT_RECOVERY.0,
+            blob: [0; DOT_BLOB_SIZE],
+        }
+    }
+}
+
+impl Request for DotRecoveryReq {
+    const ID: CommandId = CommandId::MC_DEVICE_OWNERSHIP_TRANSFER;
+    type Resp = DotRecoveryResp;
+}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotRecoveryResp {
+    pub hdr: MailboxRespHeader,
+    pub reset_required: u32,
+}
+
+impl Response for DotRecoveryResp {}
+
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotStatusReq {
+    pub hdr: MailboxReqHeader,
+    pub subcommand: u32,
+}
+
+impl Default for DotStatusReq {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxReqHeader::default(),
+            subcommand: CommandId::MC_DOT_STATUS.0,
+        }
+    }
+}
+
+impl Request for DotStatusReq {
+    const ID: CommandId = CommandId::MC_DEVICE_OWNERSHIP_TRANSFER;
+    type Resp = DotStatusResp;
+}
+
+#[repr(C)]
+#[derive(
+    Debug, Default, Clone, Copy, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq,
+)]
+pub struct DotStatus {
+    pub enabled: u8,
+    pub locked: u8,
+    pub burned: u16,
+}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotStatusResp {
+    pub hdr: MailboxRespHeader,
+    pub status: DotStatus,
+}
+
+impl Response for DotStatusResp {}
+
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotOverrideChallengePayload {
+    pub recovery_ecc_pub_x: [u8; DOT_ECC_PUBLIC_KEY_COORD_SIZE],
+    pub recovery_ecc_pub_y: [u8; DOT_ECC_PUBLIC_KEY_COORD_SIZE],
+    pub recovery_mldsa_pub: [u8; DOT_MLDSA_PUBLIC_KEY_SIZE],
+}
+
+impl Default for DotOverrideChallengePayload {
+    fn default() -> Self {
+        Self {
+            recovery_ecc_pub_x: [0; DOT_ECC_PUBLIC_KEY_COORD_SIZE],
+            recovery_ecc_pub_y: [0; DOT_ECC_PUBLIC_KEY_COORD_SIZE],
+            recovery_mldsa_pub: [0; DOT_MLDSA_PUBLIC_KEY_SIZE],
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotOverrideChallengeReq {
+    pub hdr: MailboxReqHeader,
+    pub subcommand: u32,
+    pub payload: DotOverrideChallengePayload,
+}
+
+impl Default for DotOverrideChallengeReq {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxReqHeader::default(),
+            subcommand: CommandId::MC_DOT_OVERRIDE_CHALLENGE.0,
+            payload: DotOverrideChallengePayload::default(),
+        }
+    }
+}
+
+impl Request for DotOverrideChallengeReq {
+    const ID: CommandId = CommandId::MC_DEVICE_OWNERSHIP_TRANSFER;
+    type Resp = DotOverrideChallengeResp;
+}
+
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotOverrideChallengeResp {
+    pub hdr: MailboxRespHeader,
+    pub challenge: [u8; AUTH_CMD_NONCE_LEN],
+}
+
+impl Default for DotOverrideChallengeResp {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxRespHeader::default(),
+            challenge: [0; AUTH_CMD_NONCE_LEN],
+        }
+    }
+}
+
+impl Response for DotOverrideChallengeResp {}
+
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotOverridePayload {
+    pub recovery_ecc_pub_x: [u8; DOT_ECC_PUBLIC_KEY_COORD_SIZE],
+    pub recovery_ecc_pub_y: [u8; DOT_ECC_PUBLIC_KEY_COORD_SIZE],
+    pub recovery_mldsa_pub: [u8; DOT_MLDSA_PUBLIC_KEY_SIZE],
+    pub signature: HybridSignature,
+}
+
+impl Default for DotOverridePayload {
+    fn default() -> Self {
+        Self {
+            recovery_ecc_pub_x: [0; DOT_ECC_PUBLIC_KEY_COORD_SIZE],
+            recovery_ecc_pub_y: [0; DOT_ECC_PUBLIC_KEY_COORD_SIZE],
+            recovery_mldsa_pub: [0; DOT_MLDSA_PUBLIC_KEY_SIZE],
+            signature: HybridSignature::default(),
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotOverrideReq {
+    pub hdr: MailboxReqHeader,
+    pub subcommand: u32,
+    pub payload: DotOverridePayload,
+}
+
+impl Default for DotOverrideReq {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxReqHeader::default(),
+            subcommand: CommandId::MC_DOT_OVERRIDE.0,
+            payload: DotOverridePayload::default(),
+        }
+    }
+}
+
+impl Request for DotOverrideReq {
+    const ID: CommandId = CommandId::MC_DEVICE_OWNERSHIP_TRANSFER;
+    type Resp = DotOverrideResp;
+}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotOverrideResp {
+    pub hdr: MailboxRespHeader,
+    pub reset_required: u32,
+}
+
+impl Response for DotOverrideResp {}
+
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotUnlockChallengeReq {
+    pub hdr: MailboxReqHeader,
+    pub subcommand: u32,
+}
+
+impl Default for DotUnlockChallengeReq {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxReqHeader::default(),
+            subcommand: CommandId::MC_DOT_UNLOCK_CHALLENGE.0,
+        }
+    }
+}
+
+impl Request for DotUnlockChallengeReq {
+    const ID: CommandId = CommandId::MC_DEVICE_OWNERSHIP_TRANSFER;
+    type Resp = DotUnlockChallengeResp;
+}
+
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotUnlockChallengeResp {
+    pub hdr: MailboxRespHeader,
+    pub challenge: [u8; AUTH_CMD_NONCE_LEN],
+}
+
+impl Default for DotUnlockChallengeResp {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxRespHeader::default(),
+            challenge: [0; AUTH_CMD_NONCE_LEN],
+        }
+    }
+}
+
+impl Response for DotUnlockChallengeResp {}
+
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotUnlockPayload {
+    pub lak_ecc_pub_x: [u8; DOT_ECC_PUBLIC_KEY_COORD_SIZE],
+    pub lak_ecc_pub_y: [u8; DOT_ECC_PUBLIC_KEY_COORD_SIZE],
+    pub lak_mldsa_pub: [u8; DOT_MLDSA_PUBLIC_KEY_SIZE],
+    pub signature: HybridSignature,
+}
+
+impl Default for DotUnlockPayload {
+    fn default() -> Self {
+        Self {
+            lak_ecc_pub_x: [0; DOT_ECC_PUBLIC_KEY_COORD_SIZE],
+            lak_ecc_pub_y: [0; DOT_ECC_PUBLIC_KEY_COORD_SIZE],
+            lak_mldsa_pub: [0; DOT_MLDSA_PUBLIC_KEY_SIZE],
+            signature: HybridSignature::default(),
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotUnlockReq {
+    pub hdr: MailboxReqHeader,
+    pub subcommand: u32,
+    pub payload: DotUnlockPayload,
+}
+
+impl Default for DotUnlockReq {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxReqHeader::default(),
+            subcommand: CommandId::MC_DOT_UNLOCK.0,
+            payload: DotUnlockPayload::default(),
+        }
+    }
+}
+
+impl Request for DotUnlockReq {
+    const ID: CommandId = CommandId::MC_DEVICE_OWNERSHIP_TRANSFER;
+    type Resp = DotUnlockResp;
+}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct DotUnlockResp {
+    pub hdr: MailboxRespHeader,
+    pub reset_required: u32,
+}
+
+impl Response for DotUnlockResp {}
+
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct GetDotBackupBlobReq {
+    pub hdr: MailboxReqHeader,
+    pub subcommand: u32,
+}
+
+impl Default for GetDotBackupBlobReq {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxReqHeader::default(),
+            subcommand: CommandId::MC_GET_DOT_BACKUP_BLOB.0,
+        }
+    }
+}
+
+impl Request for GetDotBackupBlobReq {
+    const ID: CommandId = CommandId::MC_DEVICE_OWNERSHIP_TRANSFER;
+    type Resp = GetDotBackupBlobResp;
+}
+
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct GetDotBackupBlobResp {
+    pub hdr: MailboxRespHeader,
+    pub blob: [u8; DOT_BLOB_SIZE],
+}
+
+impl Default for GetDotBackupBlobResp {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxRespHeader::default(),
+            blob: [0; DOT_BLOB_SIZE],
+        }
+    }
+}
+
+impl Response for GetDotBackupBlobResp {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn get_attestation_wire_layout() {
+        assert_eq!(CommandId::MC_GET_ATTESTATION.0, 0x4D47_4154); // "MGAT"
+                                                                  // hdr(4) + evidence_format(4) + algorithm(4)
+                                                                  // + pki_entity_slot(4) + nonce(32)
+        assert_eq!(core::mem::size_of::<GetAttestationReq>(), 48);
+
+        let req = GetAttestationReq {
+            hdr: MailboxReqHeader { chksum: 0xABCD },
+            evidence_format: 2,
+            algorithm: 1,
+            pki_entity_slot: 0,
+            nonce: [0x5A; 32],
+        };
+        let parsed = GetAttestationReq::read_from_bytes(req.as_bytes()).unwrap();
+        assert_eq!(parsed.hdr.chksum, 0xABCD);
+        assert_eq!(parsed.evidence_format, 2);
+        assert_eq!(parsed.algorithm, 1);
+        assert_eq!(parsed.pki_entity_slot, 0);
+        assert_eq!(parsed.nonce, [0x5A; 32]);
+    }
+
+    #[test]
+    fn get_attestation_resp_layout() {
+        assert_eq!(
+            core::mem::size_of::<GetAttestationResp>(),
+            core::mem::size_of::<MailboxRespHeaderVarSize>() + MAX_ATTESTATION_RESP_DATA_SIZE
+        );
+    }
+
+    #[test]
+    fn test_signature_verify_command_ids_and_layouts() {
+        assert_eq!(CommandId::MC_ECDSA384_SIG_VERIFY.0, 0x4D45_4356); // "MECV"
+        assert_eq!(CommandId::MC_LMS_SIG_VERIFY.0, 0x4D4C_4D56); // "MLMV"
+        assert_eq!(size_of::<McuEcdsa384SigVerifyReq>(), 244);
+        assert_eq!(size_of::<McuLmsSigVerifyReq>(), 1720);
+        assert_eq!(size_of::<McuEcdsa384SigVerifyResp>(), 8);
+        assert_eq!(size_of::<McuLmsSigVerifyResp>(), 8);
+        assert_eq!(
+            MailboxRespHeader::FIPS_STATUS_NOT_APPROVED_USER_SUPPLIED_DIGEST,
+            0x5553_5244
+        );
+    }
 
     #[test]
     fn test_fuse_command_ids() {
@@ -1906,12 +2677,170 @@ mod tests {
         assert_eq!(CommandId::MC_FUSE_READ.0, 0x4946_5052); // "IFPR"
         assert_eq!(CommandId::MC_FUSE_WRITE.0, 0x4946_5057); // "IFPW"
         assert_eq!(CommandId::MC_FUSE_LOCK_PARTITION.0, 0x4946_504B); // "IFPK"
+        assert_eq!(CommandId::MC_PROVISION_OWNER_PK_HASH.0, 0x504F_504B); // "POPK"
     }
 
     #[test]
     fn test_ocp_lock_command_ids() {
         assert_eq!(CommandId::MC_OCP_LOCK_ROTATE_HEK.0, 0x4F4C_5248); // "OLRH"
         assert_eq!(CommandId::MC_OCP_LOCK_SET_PERMA_HEK.0, 0x4F4C_5350); // "OLSP"
+    }
+
+    #[test]
+    fn dot_lock_wire_contract() {
+        assert_eq!(CommandId::MC_DEVICE_OWNERSHIP_TRANSFER.0, 0x11);
+        assert_eq!(CommandId::MC_DOT_LOCK.0, 0x4D44_4C4B);
+        assert_eq!(
+            core::mem::size_of::<DotLockReq>(),
+            core::mem::size_of::<MailboxReqHeader>()
+                + core::mem::size_of::<u32>()
+                + 2 * DOT_KEY_HASH_SIZE
+        );
+        assert_eq!(DotLockReq::default().subcommand, CommandId::MC_DOT_LOCK.0);
+    }
+
+    #[test]
+    fn dot_disable_wire_contract() {
+        assert_eq!(CommandId::MC_DOT_DISABLE.0, 0x4D44_4453);
+        assert_eq!(
+            core::mem::size_of::<DotDisableReq>(),
+            core::mem::size_of::<MailboxReqHeader>()
+                + core::mem::size_of::<u32>()
+                + DOT_KEY_HASH_SIZE
+        );
+        assert_eq!(
+            DotDisableReq::default().subcommand,
+            CommandId::MC_DOT_DISABLE.0
+        );
+    }
+
+    #[test]
+    fn dot_rotate_wire_contract() {
+        assert_eq!(CommandId::MC_DOT_ROTATE.0, 0x4D44_5254);
+        assert_eq!(
+            core::mem::size_of::<DotRotateReq>(),
+            core::mem::size_of::<MailboxReqHeader>()
+                + 2 * core::mem::size_of::<u32>()
+                + 2 * DOT_KEY_HASH_SIZE
+        );
+        assert_eq!(
+            DotRotateReq::default().subcommand,
+            CommandId::MC_DOT_ROTATE.0
+        );
+    }
+
+    #[test]
+    fn dot_recovery_wire_contract() {
+        assert_eq!(CommandId::MC_DOT_RECOVERY.0, 0x4D44_5243);
+        assert_eq!(
+            core::mem::size_of::<DotRecoveryReq>(),
+            core::mem::size_of::<MailboxReqHeader>() + core::mem::size_of::<u32>() + DOT_BLOB_SIZE
+        );
+        assert_eq!(
+            DotRecoveryReq::default().subcommand,
+            CommandId::MC_DOT_RECOVERY.0
+        );
+    }
+
+    #[test]
+    fn dot_status_wire_contract() {
+        assert_eq!(CommandId::MC_DOT_STATUS.0, 0x4D44_5354);
+        assert_eq!(
+            core::mem::size_of::<DotStatusReq>(),
+            core::mem::size_of::<MailboxReqHeader>() + core::mem::size_of::<u32>()
+        );
+        assert_eq!(
+            DotStatusReq::default().subcommand,
+            CommandId::MC_DOT_STATUS.0
+        );
+        assert_eq!(
+            core::mem::size_of::<DotStatusResp>(),
+            core::mem::size_of::<MailboxRespHeader>() + core::mem::size_of::<u32>()
+        );
+    }
+
+    #[test]
+    fn dot_override_challenge_wire_contract() {
+        assert_eq!(CommandId::MC_DOT_OVERRIDE_CHALLENGE.0, 0x444F_5457);
+        assert_eq!(
+            core::mem::size_of::<DotOverrideChallengeReq>(),
+            core::mem::size_of::<MailboxReqHeader>()
+                + core::mem::size_of::<u32>()
+                + 2 * DOT_ECC_PUBLIC_KEY_COORD_SIZE
+                + DOT_MLDSA_PUBLIC_KEY_SIZE
+        );
+        assert_eq!(
+            DotOverrideChallengeReq::default().subcommand,
+            CommandId::MC_DOT_OVERRIDE_CHALLENGE.0
+        );
+    }
+
+    #[test]
+    fn dot_override_wire_contract() {
+        assert_eq!(CommandId::MC_DOT_OVERRIDE.0, 0x444F_5458);
+        assert_eq!(
+            core::mem::size_of::<DotOverrideReq>(),
+            core::mem::size_of::<MailboxReqHeader>()
+                + core::mem::size_of::<u32>()
+                + 2 * DOT_ECC_PUBLIC_KEY_COORD_SIZE
+                + DOT_MLDSA_PUBLIC_KEY_SIZE
+                + core::mem::size_of::<HybridSignature>()
+        );
+        assert_eq!(
+            DotOverrideReq::default().subcommand,
+            CommandId::MC_DOT_OVERRIDE.0
+        );
+    }
+
+    #[test]
+    fn dot_unlock_challenge_wire_contract() {
+        assert_eq!(CommandId::MC_DOT_UNLOCK_CHALLENGE.0, 0x4D44_5543);
+        assert_eq!(
+            core::mem::size_of::<DotUnlockChallengeReq>(),
+            core::mem::size_of::<MailboxReqHeader>() + core::mem::size_of::<u32>()
+        );
+        assert_eq!(
+            DotUnlockChallengeReq::default().subcommand,
+            CommandId::MC_DOT_UNLOCK_CHALLENGE.0
+        );
+        assert_eq!(
+            core::mem::size_of::<DotUnlockChallengeResp>(),
+            core::mem::size_of::<MailboxRespHeader>() + AUTH_CMD_NONCE_LEN
+        );
+    }
+
+    #[test]
+    fn dot_unlock_wire_contract() {
+        assert_eq!(CommandId::MC_DOT_UNLOCK.0, 0x4D44_554C);
+        assert_eq!(
+            core::mem::size_of::<DotUnlockReq>(),
+            core::mem::size_of::<MailboxReqHeader>()
+                + core::mem::size_of::<u32>()
+                + 2 * DOT_ECC_PUBLIC_KEY_COORD_SIZE
+                + DOT_MLDSA_PUBLIC_KEY_SIZE
+                + core::mem::size_of::<HybridSignature>()
+        );
+        assert_eq!(
+            DotUnlockReq::default().subcommand,
+            CommandId::MC_DOT_UNLOCK.0
+        );
+    }
+
+    #[test]
+    fn get_dot_backup_blob_wire_contract() {
+        assert_eq!(CommandId::MC_GET_DOT_BACKUP_BLOB.0, 0x4D44_4242);
+        assert_eq!(
+            core::mem::size_of::<GetDotBackupBlobReq>(),
+            core::mem::size_of::<MailboxReqHeader>() + core::mem::size_of::<u32>()
+        );
+        assert_eq!(
+            GetDotBackupBlobReq::default().subcommand,
+            CommandId::MC_GET_DOT_BACKUP_BLOB.0
+        );
+        assert_eq!(
+            core::mem::size_of::<GetDotBackupBlobResp>(),
+            core::mem::size_of::<MailboxRespHeader>() + DOT_BLOB_SIZE
+        );
     }
 
     #[test]
@@ -1961,6 +2890,20 @@ mod tests {
         let parsed = FuseLockPartitionReq::read_from_bytes(bytes).unwrap();
         assert_eq!(parsed.hdr.chksum, 0x5678);
         assert_eq!(parsed.partition, 7);
+    }
+
+    #[test]
+    fn test_provision_owner_pk_hash_req_serialization() {
+        let mut req = McuMailboxReq::ProvisionOwnerPkHash(ProvisionOwnerPkHashReq {
+            hdr: MailboxReqHeader::default(),
+            hash: [0xA5; 48],
+        });
+        req.populate_chksum().unwrap();
+
+        assert_eq!(req.cmd_code(), CommandId::MC_PROVISION_OWNER_PK_HASH);
+        let parsed = ProvisionOwnerPkHashReq::read_from_bytes(req.as_bytes().unwrap()).unwrap();
+        assert_ne!(parsed.hdr.chksum, 0);
+        assert_eq!(parsed.hash, [0xA5; 48]);
     }
 
     #[test]
@@ -2014,6 +2957,16 @@ mod tests {
     }
 
     #[test]
+    fn test_provision_owner_pk_hash_resp_checksum() {
+        let mut resp = McuMailboxResp::ProvisionOwnerPkHash(ProvisionOwnerPkHashResp::default());
+        resp.populate_chksum().unwrap();
+
+        let bytes = resp.as_bytes().unwrap();
+        let hdr = MailboxRespHeader::read_from_prefix(bytes).unwrap().0;
+        assert_eq!(hdr.chksum, 0);
+    }
+
+    #[test]
     fn test_fuse_read_resp_checksum_with_data() {
         let mut resp = FuseReadResp::default();
         resp.hdr.data_len = 4;
@@ -2059,6 +3012,7 @@ mod tests {
     fn test_dpe_signer_context_cert_req_serialization() {
         let req = DpeSignerContextCertReq {
             hdr: MailboxReqHeader { chksum: 0xABCD },
+            algorithm: EndorsementAlgorithm::ECDSA_384,
         };
 
         let bytes = req.as_bytes();
@@ -2066,6 +3020,26 @@ mod tests {
 
         let parsed = DpeSignerContextCertReq::read_from_bytes(bytes).unwrap();
         assert_eq!(parsed.hdr.chksum, 0xABCD);
+        assert_eq!(parsed.algorithm, EndorsementAlgorithm::ECDSA_384);
+    }
+
+    #[test]
+    fn test_get_ocp_lock_endorsement_cert_req_serialization() {
+        let req = GetOcpLockEndorsementCertReq {
+            hdr: MailboxReqHeader { chksum: 0xABCD },
+            hpke_handle: HpkeHandle::default(),
+            algorithm: EndorsementAlgorithm::MLDSA_87,
+        };
+
+        let bytes = req.as_bytes();
+        assert_eq!(
+            bytes.len(),
+            core::mem::size_of::<GetOcpLockEndorsementCertReq>()
+        );
+
+        let parsed = GetOcpLockEndorsementCertReq::read_from_bytes(bytes).unwrap();
+        assert_eq!(parsed.hdr.chksum, 0xABCD);
+        assert_eq!(parsed.algorithm, EndorsementAlgorithm::MLDSA_87);
     }
 
     #[test]
@@ -2074,14 +3048,15 @@ mod tests {
         resp.hdr.data_len = 128;
         resp.cert_data[..4].copy_from_slice(&[0x30, 0x82, 0x01, 0x00]);
 
-        let mut mbox_resp = McuMailboxResp::DpeSignerContextCert(resp);
-        mbox_resp.populate_chksum().unwrap();
-
-        let bytes = mbox_resp.as_bytes().unwrap();
-        let hdr = MailboxRespHeader::read_from_prefix(bytes).unwrap().0;
-        assert_ne!(hdr.chksum, 0);
-
-        let payload = &bytes[core::mem::size_of::<u32>()..];
-        assert!(verify_checksum(hdr.chksum, 0, payload));
+        let bytes = resp.as_bytes_partial().unwrap();
+        assert_eq!(
+            bytes.len(),
+            core::mem::size_of::<MailboxRespHeaderVarSize>() + 128
+        );
+        assert_eq!(
+            &bytes[core::mem::size_of::<MailboxRespHeaderVarSize>()
+                ..core::mem::size_of::<MailboxRespHeaderVarSize>() + 4],
+            &[0x30, 0x82, 0x01, 0x00]
+        );
     }
 }

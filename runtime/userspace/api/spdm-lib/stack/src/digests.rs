@@ -74,7 +74,7 @@ pub(crate) async fn handle_get_digests_req<'a, Pal: SpdmPal>(
         let dst = tail
             .get_mut(cursor..cursor + digest_size)
             .ok_or(SPDM_UNSPECIFIED)?;
-        if let Some(cached) = pal.cached_chain_digest(slot, SpdmPalHashAlgo::Sha384) {
+        if let Some(cached) = pal.cached_chain_digest(slot, asym_algo, SpdmPalHashAlgo::Sha384) {
             let dst = dst
                 .first_chunk_mut::<SHA384_HASH_SIZE>()
                 .ok_or(SPDM_UNSPECIFIED)?;
@@ -83,7 +83,7 @@ pub(crate) async fn handle_get_digests_req<'a, Pal: SpdmPal>(
             cert_chain_hash(pal, io, slot, asym_algo, SpdmPalHashAlgo::Sha384, dst)
                 .await
                 .map_err(|_| SPDM_UNSPECIFIED)?;
-            pal.cache_chain_digest(slot, SpdmPalHashAlgo::Sha384, dst);
+            pal.cache_chain_digest(slot, asym_algo, SpdmPalHashAlgo::Sha384, dst);
         }
         cursor += digest_size;
     }

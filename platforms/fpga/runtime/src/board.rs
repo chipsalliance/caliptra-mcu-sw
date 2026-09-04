@@ -7,7 +7,8 @@ use crate::MCU_MEMORY_MAP;
     feature = "streaming-boot",
     feature = "firmware-update",
     feature = "mctp-vdm-service",
-    feature = "test-mctp-capsule-loopback"
+    feature = "test-mctp-capsule-loopback",
+    feature = "test-mctp-capsule-loopback-warm-reset"
 ))]
 use crate::MCU_STRAPS;
 use arrayvec::ArrayVec;
@@ -39,7 +40,8 @@ use caliptra_mcu_components::mctp_driver_component_static;
     feature = "streaming-boot",
     feature = "firmware-update",
     feature = "mctp-vdm-service",
-    feature = "test-mctp-capsule-loopback"
+    feature = "test-mctp-capsule-loopback",
+    feature = "test-mctp-capsule-loopback-warm-reset"
 ))]
 use caliptra_mcu_components::mctp_mux_component_static;
 #[cfg(feature = "mcu-mbox-service")]
@@ -648,6 +650,25 @@ pub unsafe fn main() {
     );
     caliptra_mcu_romtime::println!("[mcu-runtime] Peripherals created");
 
+    #[cfg(any(
+        feature = "spdm",
+        feature = "streaming-boot",
+        feature = "firmware-update",
+        feature = "mctp-vdm-service",
+        feature = "test-mctp-capsule-loopback",
+        feature = "test-mctp-capsule-loopback-warm-reset"
+    ))]
+    // Read directly from OTP so endpoint identity does not depend on the ROM ABI.
+    let mctp_endpoint_uuid = match peripherals.otp.read_idevid_manufacturer_serial_number() {
+        Ok(uuid) => uuid,
+        Err(err) => {
+            caliptra_mcu_romtime::println!(
+                "[mcu-runtime] UUID missing or invalid in OTP ({err:?}), using zero UUID"
+            );
+            [0; 16]
+        }
+    };
+
     let chip = static_init!(
         VeeRChip,
         caliptra_mcu_tock_veer::chip::VeeR::new(peripherals, epmp)
@@ -725,7 +746,8 @@ pub unsafe fn main() {
         feature = "streaming-boot",
         feature = "firmware-update",
         feature = "mctp-vdm-service",
-        feature = "test-mctp-capsule-loopback"
+        feature = "test-mctp-capsule-loopback",
+        feature = "test-mctp-capsule-loopback-warm-reset"
     ))]
     let mux_mctp = {
         if MCU_STRAPS.active_i3c > 1 {
@@ -744,6 +766,7 @@ pub unsafe fn main() {
             MCU_STRAPS.active_i3c
         );
         caliptra_mcu_components::mux_mctp::MCTPMuxComponent::new(active_i3c_core, mux_alarm)
+            .with_uuid(mctp_endpoint_uuid)
             .finalize(mctp_mux_component_static!(InternalTimers, MCTPI3CBinding))
     };
     #[cfg(any(
@@ -751,7 +774,8 @@ pub unsafe fn main() {
         feature = "streaming-boot",
         feature = "firmware-update",
         feature = "mctp-vdm-service",
-        feature = "test-mctp-capsule-loopback"
+        feature = "test-mctp-capsule-loopback",
+        feature = "test-mctp-capsule-loopback-warm-reset"
     ))]
     caliptra_mcu_romtime::println!("[mcu-runtime] MCTP mux initialized");
 
@@ -1023,7 +1047,8 @@ pub unsafe fn main() {
         feature = "streaming-boot",
         feature = "firmware-update",
         feature = "mctp-vdm-service",
-        feature = "test-mctp-capsule-loopback"
+        feature = "test-mctp-capsule-loopback",
+        feature = "test-mctp-capsule-loopback-warm-reset"
     ))]
     {
         caliptra_mcu_romtime::println!("MUX MCTP enable");
@@ -1182,6 +1207,26 @@ pub unsafe fn main() {
     {
         caliptra_mcu_romtime::println!("Executing test-mctp-capsule-loopback");
         crate::tests::mctp_test::test_mctp_capsule_loopback(mux_mctp);
+    }
+
+    #[cfg(feature = "test-mctp-capsule-loopback-warm-reset")]
+    {
+        const WARM_RESET_REQUESTED: u32 = 0x5752_5354;
+
+        let mci = caliptra_mcu_romtime::Mci::new(StaticRef::new(
+            MCU_MEMORY_MAP.mci_offset as *const mci::regs::Mci,
+        ));
+        let reset_marker = addr_of!(_sstorage) as *mut u32;
+        if reset_marker.read_volatile() == WARM_RESET_REQUESTED {
+            reset_marker.write_volatile(0);
+            caliptra_mcu_romtime::println!("Executing test-mctp-capsule-loopback-warm-reset");
+            crate::tests::mctp_test::test_mctp_capsule_loopback(mux_mctp);
+        } else {
+            caliptra_mcu_romtime::println!("Requesting warm reset for MCTP capsule loopback test");
+            reset_marker.write_volatile(WARM_RESET_REQUESTED);
+            mci.trigger_warm_reset();
+            loop {}
+        }
     }
 
     #[cfg(feature = "test-firmware-activate")]

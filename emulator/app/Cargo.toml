@@ -47,6 +47,7 @@ p384.workspace = true
 caliptra-mcu-pldm-common.workspace = true
 caliptra-mcu-pldm-fw-pkg.workspace = true
 caliptra-mcu-pldm-ua.workspace = true
+caliptra-mcu-romtime.workspace = true
 rand.workspace = true
 caliptra-mcu-registers-generated.workspace = true
 sec1.workspace = true

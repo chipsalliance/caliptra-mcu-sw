@@ -100,7 +100,7 @@ pub const POLICY_DIGEST_SIZE: usize = 48;
 pub const EXPORTED_CDI_SIZE: usize = 32;
 
 const HEADER_MAGIC: u32 = 0xD9E4_C7A1;
-const HEADER_VERSION: u8 = 2;
+const HEADER_VERSION: u8 = 1;
 const SENTINEL_NONE: u32 = 0xFFFF_FFFF;
 
 const META_MAGIC: usize = 0;

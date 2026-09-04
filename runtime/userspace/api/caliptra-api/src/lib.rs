@@ -1,23 +1,153 @@
 // Licensed under the Apache-2.0 license
+
+//! `mcu-caliptra-api` — minimal Caliptra mailbox API surface.
+//!
+//! Self-contained crate exposing the Caliptra-mailbox primitives
+//! consumers (today: SPDM-Lite, tomorrow: DPE clients, custom
+//! attestation flows) actually need, without dragging in the heavy
+//! `caliptra-api` crate.
+//!
+//! Two abstractions:
+//!
+//! * [`ApiAlloc`] — per-call scratch-allocator the caller
+//!   implements. Large mailbox request / response buffers come from
+//!   here so large `[u8; N]` arrays do not sit on the stack across an
+//!   `.await`.
+//! * Free functions [`sha_init`] / [`sha_update`] / [`sha_finish`]
+//!   driving Caliptra's `CM_SHA_*` mailbox commands.
+//!
+//! Future modules (`cert`, `dpe`, `ecdsa`) will follow the same
+//! pattern: free `async` functions taking `&impl ApiAlloc`.
+
 #![no_std]
+#![allow(async_fn_in_trait)]
 
-extern crate alloc;
+#[cfg(feature = "mailbox-io")]
+mod aes_gcm;
+#[cfg(feature = "mailbox-io")]
+mod alloc;
+#[cfg(feature = "mailbox-io")]
+mod auth_stash;
+#[cfg(feature = "mailbox-io")]
+mod capabilities;
+#[cfg(feature = "mailbox-io")]
+mod cert;
+#[cfg(feature = "mailbox-io")]
+mod debug_unlock;
+#[cfg(feature = "mailbox-io")]
+mod dpe;
+#[cfg(feature = "mailbox-io")]
+mod ecdh;
+#[cfg(feature = "mailbox-io")]
+mod ecdsa;
+#[cfg(feature = "mailbox-io")]
+mod fe_prog;
+#[cfg(feature = "mailbox-io")]
+pub mod firmware_update;
+#[cfg(feature = "mailbox-io")]
+mod fw_info;
+#[cfg(feature = "mailbox-io")]
+mod hmac;
+#[cfg(feature = "mailbox-io")]
+pub mod image_loader;
+#[cfg(feature = "mailbox-io")]
+mod import;
+pub mod mailbox;
+#[cfg(feature = "mailbox-io")]
+mod pcr;
+#[cfg(feature = "mailbox-io")]
+mod pcr_quote;
+#[cfg(feature = "mailbox-io")]
+pub mod raw;
+#[cfg(feature = "mailbox-io")]
+mod rng;
+#[cfg(feature = "mailbox-io")]
+mod sha;
+#[cfg(feature = "mailbox-io")]
+mod slice;
+#[cfg(feature = "mailbox-io")]
+mod stable_key;
+mod types;
+#[cfg(feature = "mailbox-io")]
+mod version;
+#[cfg(feature = "mailbox-io")]
+mod wire;
 
-#[cfg(feature = "ocp-lock")]
-extern crate async_trait;
+#[cfg(feature = "mailbox-io")]
+pub use aes_gcm::{
+    spdm_aes_gcm_decrypt, spdm_aes_gcm_decrypt_final, spdm_aes_gcm_decrypt_init,
+    spdm_aes_gcm_decrypt_update, spdm_aes_gcm_encrypt, spdm_aes_gcm_encrypt_final,
+    spdm_aes_gcm_encrypt_init, spdm_aes_gcm_encrypt_update, Aes256GcmTag, AesGcmCtx,
+};
+#[cfg(feature = "mailbox-io")]
+pub use alloc::{ApiAlloc, ApiAllocPool};
+#[cfg(feature = "mailbox-io")]
+pub use auth_stash::{
+    authorize_and_stash, AuthorizeAndStashFlags, AuthorizeAndStashParams, ImageHashSource,
+    AUTHORIZE_AND_STASH_CONTEXT_SIZE, AUTHORIZE_AND_STASH_MEASUREMENT_SIZE,
+};
+#[cfg(feature = "mailbox-io")]
+pub use capabilities::{core_capabilities, CORE_CAPABILITIES_SIZE};
+#[cfg(feature = "mailbox-io")]
+pub use cert::{
+    get_attested_csr_ecc384, get_attested_csr_mldsa87, get_idev_csr_ecc384, get_idev_csr_mldsa87,
+    mldsa87_cert_der_len, populate_idev_ecc384_cert, populate_idev_mldsa87_cert,
+    IDEV_MLDSA87_CSR_MAX_SIZE, IDEV_MLDSA87_CSR_RSP_BUF_SIZE, POPULATE_IDEV_MLDSA87_MAX_CERT_SIZE,
+};
+#[cfg(feature = "mailbox-io")]
+pub use debug_unlock::{
+    request_debug_unlock_challenge, DEBUG_UNLOCK_CHALLENGE_LEN,
+    PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_RSP_LEN,
+};
+#[cfg(feature = "mailbox-io")]
+pub use dpe::{
+    dpe_certify_key, dpe_certify_key_cert_size, dpe_certify_key_cert_slice, dpe_certify_key_pubkey,
+    dpe_derive_context, dpe_derive_context_exported_cdi, dpe_get_cert_chain_chunk,
+    dpe_get_tagged_tci, dpe_rotate_context_default, dpe_sign_ecc_p384, dpe_tag_tci,
+    dpe_update_context_measurement, walk_dpe_chain, DpeChainSink, DpeContextHandle,
+    DpeDeriveContextExportedCdiResult, DpeDeriveContextFlags, DpeDeriveContextParams,
+    DpeDeriveContextResult, DpeProfile, DpeTaggedTci, DpeUpdateContextMeasurementParams,
+    DpeUpdateContextMeasurementResult, DPE_CONTEXT_HANDLE_SIZE, DPE_LABEL_LEN, DPE_MAX_CHUNK_SIZE,
+    DPE_MAX_LEAF_CERT_SIZE, DPE_P384_SIGNATURE_SIZE, DPE_TCI_MEASUREMENT_SIZE, EXPORTED_CDI_SIZE,
+};
+#[cfg(feature = "mailbox-io")]
+pub use ecdh::{
+    ecdh_finish, ecdh_generate, CMB_ECDH_ENCRYPTED_CONTEXT_SIZE, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE,
+};
+#[cfg(feature = "mailbox-io")]
+pub use ecdsa::{ecdsa_verify, ECDSA_P384_COORD_SIZE, ECDSA_P384_SIGNATURE_SIZE};
+#[cfg(feature = "mailbox-io")]
+pub use fe_prog::fe_prog;
+#[cfg(feature = "mailbox-io")]
+pub use fw_info::{fw_info, FwInfo};
+#[cfg(feature = "mailbox-io")]
+pub use hmac::{cm_hmac, cm_hmac_sha512, hkdf_expand, hkdf_extract, HkdfSalt, CMB_HMAC_MAX_SIZE};
+#[cfg(feature = "mailbox-io")]
+pub use image_loader::{core_image_info, GetImageInfoResp};
+#[cfg(feature = "mailbox-io")]
+pub use import::{cm_delete, cm_import};
+#[cfg(feature = "mailbox-io")]
+pub use pcr::{extend_pcr31, PCR31_INDEX, PCR31_MEASUREMENT_SIZE};
+#[cfg(feature = "mailbox-io")]
+pub use pcr_quote::{
+    pcr_quote_ecc384, pcr_quote_mldsa87, PCR_QUOTE_ECC384_BUF_LEN, PCR_QUOTE_ECC384_LEN,
+    PCR_QUOTE_MAX_BUF_LEN, PCR_QUOTE_MAX_LEN, PCR_QUOTE_MLDSA87_BUF_LEN, PCR_QUOTE_MLDSA87_LEN,
+};
+#[cfg(feature = "mailbox-io")]
+pub use rng::rng_generate;
+#[cfg(feature = "mailbox-io")]
+pub use sha::{
+    hash_all, sha_finish, sha_init, sha_update, HashAlgo, HashState, SHA_CHUNK_SIZE,
+    SHA_CONTEXT_SIZE,
+};
+#[cfg(feature = "mailbox-io")]
+pub use stable_key::{derive_stable_key, StableKeyType, CM_STABLE_KEY_INFO_SIZE};
+pub use types::{CmKeyUsage, Cmk, CMK_SIZE};
+#[cfg(feature = "mailbox-io")]
+pub use version::{core_firmware_version, CoreFirmwareVersion};
 
-pub mod certificate;
-pub mod checksum;
-pub mod crypto;
-pub mod error;
-pub mod evidence;
-pub mod mailbox_api;
-#[cfg(feature = "ocp-lock")]
-pub mod ocp_lock;
-#[cfg(feature = "ocp-lock")]
-pub mod signer;
+#[cfg(feature = "mailbox-io")]
+pub use wire::{DPE_PROFILE_MLDSA87, DPE_PROFILE_P384_SHA384};
 
-/// Max PLDM firmware data transfer size per RequestFirmwareData.
-/// Derived from MAX_MCTP_PLDM_MSG_SIZE minus MCTP message type byte and PLDM response header overhead.
-pub const MAX_PLDM_TRANSFER_SIZE: usize =
-    caliptra_mcu_pldm_common::message::firmware_update::request_fw_data::MAX_PLDM_FW_DATA_SIZE;
+#[cfg(feature = "mailbox-io")]
+pub use mcu_error::{McuErrorCode, McuResult};

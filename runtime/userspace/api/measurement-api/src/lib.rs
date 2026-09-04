@@ -16,8 +16,9 @@ use errors::{MeasurementApiError, MeasurementApiResult};
 pub use image_metadata::{
     ImageMetadata, ImageMetadataFlags, MeasurementOperation, IMAGE_MEASUREMENT_DIGEST_SIZE,
 };
-pub use mcu_caliptra_api_lite::ImageHashSource;
-use mcu_caliptra_api_lite::{ApiAlloc, DPE_LABEL_LEN};
+pub use mcu_caliptra_api::DpeProfile;
+pub use mcu_caliptra_api::ImageHashSource;
+use mcu_caliptra_api::{ApiAlloc, DPE_LABEL_LEN};
 use mcu_error::McuResult;
 
 static MEASUREMENT_API: Mutex<
@@ -27,6 +28,7 @@ static MEASUREMENT_API: Mutex<
 
 pub const ATTESTATION_P384_DIGEST_SIZE: usize = 48;
 pub const ATTESTATION_P384_SIGNATURE_SIZE: usize = 96;
+pub const EXPORTED_CDI_SIZE: usize = 32;
 
 /// Builds evidence token buffers and the to-be-signed digest while Measurement
 /// API keeps measurement state locked.
@@ -69,6 +71,15 @@ pub enum BootKind {
     HitlessUpdate,
 }
 
+/// Policy for when evidence generation becomes available after boot init.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum EvidenceReadinessPolicy {
+    /// Evidence can be emitted immediately after Measurement API boot init.
+    ReadyAfterBootInit,
+    /// Evidence is blocked until all initial SoC image measurements are stashed.
+    RequireInitialSocLoadComplete,
+}
+
 /// Attestation availability state owned by the Measurement API.
 ///
 /// Later Measurement API entry points gate evidence generation and component
@@ -77,6 +88,9 @@ pub enum BootKind {
 pub enum AttestationState {
     /// Boot initialization has not completed yet.
     Uninitialized,
+    /// Boot policy/root state is initialized, but initial SoC image
+    /// measurements are not yet complete.
+    InitialMeasurementsPending,
     /// Measurement state is valid; attestation flows may run.
     Active,
     /// Measurement state is invalid; normal attestation flows are blocked
@@ -94,10 +108,13 @@ pub async fn init<A: ApiAlloc>(
     manifest_bytes: &'static [u8],
     soc_image_load_fw_ids: &'static [u32],
     boot_kind: BootKind,
+    readiness_policy: EvidenceReadinessPolicy,
     alloc: &A,
 ) -> MeasurementApiResult {
     let mut api = MeasurementApi::<DefaultSyscalls>::new(manifest_bytes, soc_image_load_fw_ids)?;
-    let result = api.measurement_boot_init(boot_kind, alloc).await;
+    let result = api
+        .measurement_boot_init(boot_kind, readiness_policy, alloc)
+        .await;
     let mut guard = MEASUREMENT_API.lock().await;
     guard.replace(api);
     result
@@ -106,13 +123,14 @@ pub async fn init<A: ApiAlloc>(
 /// Return the DPE leaf certificate length for the configured attestation target.
 pub async fn leaf_cert_size<A: ApiAlloc>(
     alloc: &A,
+    profile: DpeProfile,
     key_label: &[u8; DPE_LABEL_LEN],
 ) -> MeasurementApiResult<usize> {
     let mut guard = MEASUREMENT_API.lock().await;
     let api = guard
         .as_mut()
         .ok_or(MeasurementApiError::AttestationDisabled)?;
-    api.leaf_cert_size(alloc, key_label).await
+    api.leaf_cert_size(alloc, profile, key_label).await
 }
 
 /// Authorize one MCU-managed initial-load component.
@@ -128,9 +146,19 @@ pub async fn authorize_and_stash<A: ApiAlloc>(
     api.authorize_and_stash(alloc, fw_id, metadata).await
 }
 
+/// Mark initial SoC image measurements complete after regular image loading.
+pub async fn mark_initial_soc_load_complete() -> MeasurementApiResult {
+    let mut guard = MEASUREMENT_API.lock().await;
+    let api = guard
+        .as_mut()
+        .ok_or(MeasurementApiError::AttestationDisabled)?;
+    api.mark_initial_soc_load_complete()
+}
+
 /// Fetch a DPE leaf certificate slice for the configured attestation target.
 pub async fn leaf_cert_slice<A: ApiAlloc>(
     alloc: &A,
+    profile: DpeProfile,
     key_label: &[u8; DPE_LABEL_LEN],
     cert_offset: u32,
     dst: &mut [u8],
@@ -139,7 +167,7 @@ pub async fn leaf_cert_slice<A: ApiAlloc>(
     let api = guard
         .as_mut()
         .ok_or(MeasurementApiError::AttestationDisabled)?;
-    api.leaf_cert_slice(alloc, key_label, cert_offset, dst)
+    api.leaf_cert_slice(alloc, profile, key_label, cert_offset, dst)
         .await
 }
 
@@ -177,9 +205,14 @@ pub async fn sign<A: ApiAlloc>(
 /// the `kid`/evidence read and final signature. The caller supplies
 /// `digest_builder` for the transport-neutral payload shape, but that builder
 /// must not call Measurement API while this function holds the lock.
+///
+/// `pki_entity_slot` selects the endorsement hierarchy for the signing key.
+/// TODO: it is unused while every slot signs with the same DPE leaf key; pass
+/// it to the cert store once signing is slot-aware.
 pub async fn measure_and_sign_evidence<A, B>(
     alloc: &A,
     key_label: &[u8; DPE_LABEL_LEN],
+    _pki_entity_slot: u8,
     evidence_builder: &mut B,
 ) -> McuResult<usize>
 where
@@ -227,4 +260,28 @@ pub async fn encode_measurement_evidence<A: ApiAlloc>(
         .as_mut()
         .ok_or(MeasurementApiError::AttestationDisabled)?;
     api.encode_measurement_evidence(alloc, buffer).await
+}
+
+/// Derive an exported CDI context from the configured attestation target, persist the
+/// 32-byte exported CDI handle in DPE handle storage, update the rotated target handle,
+/// and write the emitted leaf certificate into `cert_out`.
+pub async fn export_cdi_and_stash<A: ApiAlloc>(
+    alloc: &A,
+    profile: DpeProfile,
+    cert_out: &mut [u8],
+) -> MeasurementApiResult<usize> {
+    let mut guard = MEASUREMENT_API.lock().await;
+    let api = guard
+        .as_mut()
+        .ok_or(MeasurementApiError::AttestationDisabled)?;
+    api.export_cdi_and_stash(alloc, profile, cert_out).await
+}
+
+/// Retrieve the stashed 32-byte exported CDI handle via an outparam.
+pub async fn read_exported_cdi(cdi_out: &mut [u8; EXPORTED_CDI_SIZE]) -> MeasurementApiResult {
+    let guard = MEASUREMENT_API.lock().await;
+    let api = guard
+        .as_ref()
+        .ok_or(MeasurementApiError::AttestationDisabled)?;
+    api.read_exported_cdi(cdi_out)
 }
