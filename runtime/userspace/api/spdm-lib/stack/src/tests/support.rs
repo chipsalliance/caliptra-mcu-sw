@@ -101,6 +101,10 @@ impl<T> DerefMut for TestBox<'_, T> {
 
 pub struct TestPal {
     pub mtu: usize,
+    /// Usable large-message capacity reported verbatim by `large_capacity()`,
+    /// kept independent of `mtu` so tests can exercise the CHUNK advertise/strip
+    /// and large-response validation paths.
+    pub large_capacity: usize,
     pub supported_slots: u8,
     pub provisioned_slots: u8,
     pub authorized: bool,
@@ -119,6 +123,9 @@ impl Default for TestPal {
     fn default() -> Self {
         Self {
             mtu: 1024,
+            // Generous by default so existing chunk tests have ample usable
+            // large-message capacity.
+            large_capacity: 64 * 1024,
             supported_slots: u8::MAX,
             provisioned_slots: 1,
             authorized: true,
@@ -178,7 +185,7 @@ impl SpdmPalAlloc for TestPal {
     }
 
     fn large_capacity(&self) -> usize {
-        self.mtu
+        self.large_capacity
     }
 
     fn alloc_large_buf(&self, len: usize) -> McuResult<Self::LargeBuf> {

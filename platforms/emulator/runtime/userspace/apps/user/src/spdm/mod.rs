@@ -23,6 +23,8 @@ use caliptra_mcu_libtock_console::Console;
 use caliptra_mcu_scratch_alloc::{BitmapAllocator, StaticBitmapAllocatorCell, BITMAP_SLOT_SIZE};
 use caliptra_mcu_spdm_pal::McuSpdmPal;
 use caliptra_mcu_spdm_stack::SpdmStack;
+#[cfg(feature = "ocp-nvme-profile")]
+use caliptra_mcu_spdm_traits::SpdmPalTransport;
 #[cfg(feature = "doe")]
 use caliptra_mcu_spdm_transports::McuSpdmDoeTransport;
 use caliptra_mcu_spdm_transports::McuSpdmMctpTransport;
@@ -89,6 +91,13 @@ const MAX_STREAMED_VDM_REQUEST_LEN: usize =
 
 /// Conservative upper bound on transport MTU. The real MTU is a runtime
 /// transport property, so the budget uses a declared ceiling instead.
+///
+/// The `ocp-nvme-profile` feature configures a 4 KiB DOE `DataTransferSize`,
+/// so the ceiling — and the scratch budget derived from it — rises to match.
+/// The default remains 1024.
+#[cfg(feature = "ocp-nvme-profile")]
+const MAX_TRANSPORT_MTU: usize = 4096;
+#[cfg(not(feature = "ocp-nvme-profile"))]
 const MAX_TRANSPORT_MTU: usize = 1024;
 
 /// Pool-resident state that survives across requests once a secure session is
@@ -134,12 +143,27 @@ const fn required_scratch() -> usize {
     SESSION_WORKING_SET + transient_peak
 }
 
-/// Bitmap allocator pool size per responder task.
+/// Declared per-responder scratch pool size.
 ///
+/// The default 12 KiB is the compact footprint. At a 4 KiB transport MTU the
+/// large-message and crypto paths need more headroom (see [`required_scratch`]),
+/// so the `ocp-nvme-profile` feature grows the pools to 20 KiB — the cost of
+/// keeping CHUNK advertised at a 4 KiB DataTransferSize is ~8 KiB BSS per
+/// responder task.
+///
+/// This is only the reference app's demonstration profile. Sizing is
+/// an integrator decision: the reusable libraries expose the transfer-size and
+/// allocator APIs, so an integrator configures its own pool directly rather
+/// than through this feature.
+#[cfg(feature = "ocp-nvme-profile")]
+const DECLARED_SPDM_SCRATCH_SIZE: usize = 20 * 1024;
+#[cfg(not(feature = "ocp-nvme-profile"))]
+const DECLARED_SPDM_SCRATCH_SIZE: usize = 12 * 1024;
+
 /// MCTP hosts Caliptra VDM and must hold a buffered large request while its
 /// handler uses transient DPE/SHA mailbox workspaces.
 const MCTP_SPDM_SCRATCH_SIZE: usize = {
-    let declared = 12 * 1024;
+    let declared = DECLARED_SPDM_SCRATCH_SIZE;
     assert!(
         declared >= required_scratch(),
         "MCTP SPDM scratch pool is too small for the configured MAX_SPDM_MSG_SIZE"
@@ -148,7 +172,7 @@ const MCTP_SPDM_SCRATCH_SIZE: usize = {
 };
 /// DOE needs room for measurement records and secure-session crypto workspaces.
 const DOE_SPDM_SCRATCH_SIZE: usize = {
-    let declared = 12 * 1024;
+    let declared = DECLARED_SPDM_SCRATCH_SIZE;
     assert!(
         declared >= required_scratch(),
         "DOE SPDM scratch pool is too small for the configured MAX_SPDM_MSG_SIZE"
@@ -254,11 +278,46 @@ async fn spdm_mctp_responder() {
 async fn spdm_doe_responder() {
     let mut cw = Console::<DefaultSyscalls>::writer();
 
-    let doe_transport = McuSpdmDoeTransport::new(doe::driver_num::DOE_SPDM);
-    if !doe_transport.exists() {
-        crate::log_info!(cw, "SPDM_DOE: No DOE device, exiting");
-        return;
-    }
+    // This reference app's datacenter storage profile requires a 4 KiB
+    // DataTransferSize. That minimum is integrator/profile policy, so the app
+    // selects it here (behind the `ocp-nvme-profile` feature) rather than baking
+    // it into the reusable DOE transport, which carries no profile rule of its
+    // own. Without the feature the transport uses its own default
+    // DataTransferSize and the stack chunks larger messages as usual.
+    #[cfg(feature = "ocp-nvme-profile")]
+    let doe_transport = {
+        const PROFILE_MIN_DATA_TRANSFER_SIZE: usize = 4096;
+        let doe_transport = McuSpdmDoeTransport::with_transfer_size(
+            doe::driver_num::DOE_SPDM,
+            PROFILE_MIN_DATA_TRANSFER_SIZE,
+        );
+        if !doe_transport.exists() {
+            crate::log_info!(cw, "SPDM_DOE: No DOE device, exiting");
+            return;
+        }
+        // Enforce the profile minimum once at init against the driver-bounded
+        // MTU. A short driver MTU exits this task gracefully rather than
+        // panicking deep in the transport.
+        let doe_mtu = SpdmPalTransport::mtu(&doe_transport);
+        if doe_mtu < PROFILE_MIN_DATA_TRANSFER_SIZE {
+            crate::log_info!(
+                cw,
+                "SPDM_DOE: DataTransferSize 0x{} < profile min, exiting",
+                crate::Hex32(doe_mtu as u32)
+            );
+            return;
+        }
+        doe_transport
+    };
+    #[cfg(not(feature = "ocp-nvme-profile"))]
+    let doe_transport = {
+        let doe_transport = McuSpdmDoeTransport::new(doe::driver_num::DOE_SPDM);
+        if !doe_transport.exists() {
+            crate::log_info!(cw, "SPDM_DOE: No DOE device, exiting");
+            return;
+        }
+        doe_transport
+    };
 
     #[repr(C, align(64))]
     struct ScratchBuf([u8; DOE_SPDM_SCRATCH_SIZE]);
