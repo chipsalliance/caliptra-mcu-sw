@@ -7,7 +7,9 @@
 //! array. Chunk buffers come from the per-IO bitmap pool — no
 //! stack-allocated `[u8; N]` arrays for cert content.
 
-use caliptra_mcu_spdm_codec::{DigestsRsp, ResponseBody, SpdmMsgHdrPdu, SHA384_HASH_SIZE};
+use caliptra_mcu_spdm_codec::{
+    DigestsRsp, ResponseBody, SpdmMsgHdrPdu, SpdmVersion, SHA384_HASH_SIZE,
+};
 use caliptra_mcu_spdm_traits::{
     PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalAsymAlgo, SpdmPalHashAlgo, SpdmPalIo,
     SpdmPalIoTransport, MAX_SLOTS,
@@ -51,7 +53,13 @@ pub(crate) async fn handle_get_digests_req<'a, Pal: SpdmPal>(
         return Err(SPDM_INVALID_REQUEST);
     }
 
-    let supported = pal.supported_slots();
+    // DSP0274: DIGESTS Param1 is SupportedSlotMask only in 1.3+ (Table 35);
+    // in 1.2 and earlier (Table 28) Param1 is Reserved and shall be 0.
+    let supported = if state.version >= SpdmVersion::V13 {
+        pal.supported_slots()
+    } else {
+        0
+    };
     let provisioned = pal.provisioned_slots();
     let digest_size = SpdmPalHashAlgo::Sha384.hash_size();
     let num_slots = provisioned.count_ones() as usize;
@@ -101,7 +109,13 @@ pub(crate) async fn handle_get_digests_req<'a, Pal: SpdmPal>(
     let resp = build_response(pal, io, state.version, &digests_body)?;
 
     let head = pal.header_size();
-    state.transcript.append_m1(pal, io, spdm_msg).await?;
+    // Trim transport padding (e.g. PCIe-VDM DWORD alignment): only the exact
+    // 4-byte GET_DIGESTS message (header + Param1 + Param2) feeds M1, matching
+    // what the requester hashes.
+    let req_msg = spdm_msg
+        .get(..SpdmMsgHdrPdu::SIZE + 2)
+        .ok_or(SPDM_INVALID_REQUEST)?;
+    state.transcript.append_m1(pal, io, req_msg).await?;
     state
         .transcript
         .append_m1(pal, io, &resp[head..head + spdm_len])
