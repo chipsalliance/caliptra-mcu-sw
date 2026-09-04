@@ -18,6 +18,7 @@ use mcu_error::codes::{INTERNAL_BUG, INVARIANT};
 use mcu_error::McuResult;
 use zerocopy::{little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
 
+use crate::dma::mcu_sram_to_axi_dma;
 use crate::slice::{checked_slice, checked_slice_mut, copy_bytes, internal_slice};
 use crate::wire::{
     calc_checksum, mbox_execute, populate_checksum, CMD_CERTIFY_KEY_CHUNKS, CMD_DPE_GET_TAGGED_TCI,
@@ -594,22 +595,7 @@ pub async fn dpe_derive_context_exported_cdi<A: ApiAlloc>(
     };
     let mut rsp = alloc.alloc(max_resp_len)?;
     let axi_response = match profile {
-        DpeProfile::Mldsa87 => {
-            // Caliptra Subsystem Integration Spec: MCU local SRAM base is 0x4000_0000,
-            // and AXI DMA base is MCI_BASE_AXI_ADDRESS (0xA800_0000) + MCU_SRAM_OFFSET (0x00C0_0000).
-            const MCU_SRAM_LOCAL_BASE: u32 = 0x4000_0000;
-            const MCI_BASE_AXI_ADDRESS: u32 = 0xA800_0000;
-            const MCU_SRAM_AXI_OFFSET: u32 = 0x00C0_0000;
-            const MCU_SRAM_AXI_BASE: u32 = MCI_BASE_AXI_ADDRESS + MCU_SRAM_AXI_OFFSET;
-
-            let sram_offset = (rsp.as_ptr() as u32)
-                .checked_sub(MCU_SRAM_LOCAL_BASE)
-                .ok_or(INVARIANT)?;
-            let axi_addr = MCU_SRAM_AXI_BASE
-                .checked_add(sram_offset)
-                .ok_or(INVARIANT)?;
-            Some((axi_addr, max_resp_len as u32))
-        }
+        DpeProfile::Mldsa87 => Some(mcu_sram_to_axi_dma(&rsp)?),
         DpeProfile::P384Sha384 => None,
     };
     let (req, mbox_cmd) = build_derive_context_req(alloc, params, profile, axi_response)?;
