@@ -54,6 +54,8 @@ pub mod image_loader;
 mod import;
 pub mod mailbox;
 #[cfg(feature = "mailbox-io")]
+mod ml_kem;
+#[cfg(feature = "mailbox-io")]
 mod pcr;
 #[cfg(feature = "mailbox-io")]
 mod pcr_quote;
@@ -126,6 +128,11 @@ pub use hmac::{cm_hmac, cm_hmac_sha512, hkdf_expand, hkdf_extract, HkdfSalt, CMB
 pub use image_loader::{core_image_info, GetImageInfoResp};
 #[cfg(feature = "mailbox-io")]
 pub use import::{cm_delete, cm_import};
+#[cfg(feature = "mailbox-io")]
+pub use ml_kem::{
+    mlkem_decapsulate, mlkem_encapsulate, mlkem_key_gen, CMB_MLKEM_CIPHERTEXT_SIZE,
+    CMB_MLKEM_ENCAPS_KEY_SIZE,
+};
 #[cfg(feature = "mailbox-io")]
 pub use pcr::{extend_pcr31, PCR31_INDEX, PCR31_MEASUREMENT_SIZE};
 #[cfg(feature = "mailbox-io")]

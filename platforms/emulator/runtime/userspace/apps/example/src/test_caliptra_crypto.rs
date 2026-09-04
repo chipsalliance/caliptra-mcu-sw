@@ -5,10 +5,11 @@ use caliptra_mcu_scratch_alloc::{BitmapAllocator, StaticBitmapAllocatorCell, BIT
 use core::ptr::NonNull;
 use mcu_caliptra_api::{
     cm_hmac, cm_import, dpe_certify_key_pubkey, dpe_sign_ecc_p384, ecdh_finish, ecdh_generate,
-    ecdsa_verify, hash_all, hkdf_expand, hkdf_extract, rng_generate, sha_finish, sha_init,
-    sha_update, spdm_aes_gcm_decrypt, spdm_aes_gcm_encrypt, CmKeyUsage, HashAlgo, HkdfSalt,
-    CMB_ECDH_ENCRYPTED_CONTEXT_SIZE, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, DPE_LABEL_LEN,
-    DPE_P384_SIGNATURE_SIZE, SHA_CONTEXT_SIZE,
+    ecdsa_verify, hash_all, hkdf_expand, hkdf_extract, mlkem_decapsulate, mlkem_encapsulate,
+    mlkem_key_gen, rng_generate, sha_finish, sha_init, sha_update, spdm_aes_gcm_decrypt,
+    spdm_aes_gcm_encrypt, CmKeyUsage, HashAlgo, HkdfSalt, CMB_ECDH_ENCRYPTED_CONTEXT_SIZE,
+    CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, CMB_MLKEM_CIPHERTEXT_SIZE, CMB_MLKEM_ENCAPS_KEY_SIZE,
+    DPE_LABEL_LEN, DPE_P384_SIGNATURE_SIZE, SHA_CONTEXT_SIZE,
 };
 
 const CRYPTO_SCRATCH_SIZE: usize = 16 * 1024;
@@ -100,6 +101,58 @@ pub async fn test_caliptra_ecdh(alloc: &BitmapAllocator) {
         .await
         .unwrap_or_else(|_| test_exit(1));
     println!("ECDH/HMAC test completed successfully: {}", HexBytes(&mac));
+}
+
+pub async fn test_caliptra_mlkem(alloc: &BitmapAllocator) {
+    // Generate a seed CMK for ML-KEM (64 bytes: seed_d || seed_z)
+    let seed = [0x42; 64];
+    let seed_cmk = cm_import(alloc, CmKeyUsage::MlKem, &seed)
+        .await
+        .unwrap_or_else(|_| test_exit(1));
+
+    // Responder: Generate ML-KEM-1024 encapsulation key from seed
+    let mut encaps_key = [0u8; CMB_MLKEM_ENCAPS_KEY_SIZE];
+    mlkem_key_gen(alloc, &seed_cmk, &mut encaps_key)
+        .await
+        .unwrap_or_else(|_| test_exit(1));
+
+    // Initiator: Encapsulate to produce ciphertext and shared secret
+    let mut ciphertext = [0u8; CMB_MLKEM_CIPHERTEXT_SIZE];
+    let initiator_secret = mlkem_encapsulate(alloc, CmKeyUsage::Hmac, &encaps_key, &mut ciphertext)
+        .await
+        .unwrap_or_else(|_| test_exit(1));
+
+    // Responder: Decapsulate to recover shared secret
+    let responder_secret = mlkem_decapsulate(alloc, CmKeyUsage::Hmac, &seed_cmk, &ciphertext)
+        .await
+        .unwrap_or_else(|_| test_exit(1));
+
+    println!("ML-KEM key exchange finished. Testing if keys match...");
+
+    // Verify both sides derived the same secret by using them with HMAC
+    let test_data = b"ML-KEM-1024 test data";
+    let mut mac1 = [0u8; 48];
+    let mut mac2 = [0u8; 48];
+
+    cm_hmac(alloc, &initiator_secret, test_data, &mut mac1)
+        .await
+        .unwrap_or_else(|_| test_exit(1));
+
+    cm_hmac(alloc, &responder_secret, test_data, &mut mac2)
+        .await
+        .unwrap_or_else(|_| test_exit(1));
+
+    if mac1 != mac2 {
+        println!("ERROR: ML-KEM shared secrets don't match!");
+        println!("Initiator MAC: {}", HexBytes(&mac1));
+        println!("Responder MAC: {}", HexBytes(&mac2));
+        test_exit(1);
+    }
+
+    println!(
+        "ML-KEM/HMAC test completed successfully: {}",
+        HexBytes(&mac1)
+    );
 }
 
 pub async fn test_caliptra_hmac(alloc: &BitmapAllocator) {

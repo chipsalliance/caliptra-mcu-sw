@@ -2,7 +2,7 @@
 
 //! Shared types for Caliptra Cryptographic Manager (CM) mailbox commands.
 
-use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
+use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
 
 /// Size in bytes of a CMK handle.
 pub const CMK_SIZE: usize = 128;
@@ -13,7 +13,9 @@ pub const CMK_SIZE: usize = 128;
 /// 128-byte encrypted key material returned by CM mailbox commands and
 /// supplied back to subsequent CM commands.
 #[repr(transparent)]
-#[derive(Clone, Copy, Debug, FromBytes, Immutable, IntoBytes, KnownLayout, PartialEq, Eq)]
+#[derive(
+    Clone, Copy, Debug, FromBytes, Immutable, IntoBytes, KnownLayout, PartialEq, Eq, Unaligned,
+)]
 pub struct Cmk(pub [u8; CMK_SIZE]);
 
 impl Default for Cmk {
@@ -31,6 +33,7 @@ pub enum CmKeyUsage {
     Aes = 2,
     Ecdsa = 3,
     Mldsa = 4,
+    MlKem = 5,
 }
 
 impl From<u32> for CmKeyUsage {
@@ -40,6 +43,7 @@ impl From<u32> for CmKeyUsage {
             2 => CmKeyUsage::Aes,
             3 => CmKeyUsage::Ecdsa,
             4 => CmKeyUsage::Mldsa,
+            5 => CmKeyUsage::MlKem,
             _ => CmKeyUsage::Reserved,
         }
     }
@@ -52,6 +56,7 @@ impl From<CmKeyUsage> for u32 {
             CmKeyUsage::Aes => 2,
             CmKeyUsage::Ecdsa => 3,
             CmKeyUsage::Mldsa => 4,
+            CmKeyUsage::MlKem => 5,
             CmKeyUsage::Reserved => 0,
         }
     }
