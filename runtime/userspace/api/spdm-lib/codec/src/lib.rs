@@ -32,7 +32,7 @@ pub use algorithms::{
     NegotiateAlgorithmsReqBodyFixed, OtherParamSupport, MAX_ALG_STRUCT_ENTRIES,
 };
 pub use builder::ResponseBody;
-pub use capabilities::{CapFlags, CapabilitiesBody, CapabilitiesRsp};
+pub use capabilities::{CapFlags, CapabilitiesBody, CapabilitiesBodyV11, CapabilitiesRsp};
 pub use certificate::{
     CertificateRsp, CertificateRspBody, GetCertificateReqBody, ATTR_SLOT_SIZE_REQUESTED,
 };

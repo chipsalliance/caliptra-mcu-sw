@@ -96,15 +96,26 @@ impl<S> Transcript<S> {
         self.append(Slot::M1, hash, io, bytes).await
     }
 
+    /// Appends `bytes` to the running L1/L2 measurement transcript.
+    ///
+    /// `include_vca` selects the version-specific L1/L2 layout. From SPDM 1.2
+    /// the transcript is `VCA || message_m`, so the L1 hash is forked from the
+    /// running VCA state. At SPDM 1.0/1.1 the transcript is `message_m` alone
+    /// (DSP0274 1.1.1 §10.11) — VCA is *not* prepended — so on first append the
+    /// L1 hash is seeded empty instead of forking VCA.
     pub async fn append_l1<H>(
         &mut self,
         hash: &H,
         io: &impl SpdmPalIo,
+        include_vca: bool,
         bytes: &[u8],
     ) -> McuResult<()>
     where
         H: SpdmPalHash<State = S>,
     {
+        if self.l1.is_none() && !include_vca {
+            self.l1 = Some(hash.hash_init(io, SpdmPalHashAlgo::Sha384, &[]).await?);
+        }
         self.append(Slot::L1, hash, io, bytes).await
     }
 

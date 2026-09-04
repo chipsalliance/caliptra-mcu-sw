@@ -300,12 +300,19 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
     let th1 = &mut *hash_scratch;
     session.transcript.clone_and_finalize(pal, io, th1).await?;
 
-    // ── Sign TH1 ────────────────────────────────────────────────────
-    build_signing_context(state.version, signing_ctx);
-    compute_tbs_hash(pal, io, signing_ctx, th1)
-        .await
-        .map_err(|_| SPDM_UNSPECIFIED)?;
-    let tbs_hash = &signing_ctx[..SHA384_HASH_SIZE];
+    // Sign TH1. The signing-context prefix is V1.2+; a V1.0/1.1 Responder signs
+    // the raw TH1 hash with no prefix (DSP0274 1.1.1).
+    let tbs_hash: &[u8; SHA384_HASH_SIZE] = if state.version < SpdmVersion::V12 {
+        &*th1
+    } else {
+        build_signing_context(state.version, signing_ctx);
+        compute_tbs_hash(pal, io, signing_ctx, th1)
+            .await
+            .map_err(|_| SPDM_UNSPECIFIED)?;
+        signing_ctx[..SHA384_HASH_SIZE]
+            .try_into()
+            .map_err(|_| SPDM_UNSPECIFIED)?
+    };
 
     let sig_len = pal
         .sign_hash(io, slot_id, asym_algo, tbs_hash, signature)
