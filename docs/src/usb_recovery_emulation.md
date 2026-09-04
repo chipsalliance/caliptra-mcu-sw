@@ -158,19 +158,20 @@ flowchart LR
     subgraph Caliptra_Subsystem["Caliptra Subsystem"]
         Caliptra["Caliptra"]
         RecoveryIF["Recovery I/F"]
-        MCU_ROM["MCU ROM<br/>- USB Device Stack<br/>- OCP Recovery Responder<br/>- Image Routing"]
+        MCU_ROM["MCU ROM<br/><br/>USB Device Controller"]
         Mailbox["Mailbox"]
-        MCU_RT["MCU Runtime"]
-        USBDev["USB Device Controller<br/>EP0"]
+        MCU_RT["MCU Runtime<br/><br/>USB Device Controller"]
 
         Caliptra <--> RecoveryIF
         RecoveryIF <--> MCU_ROM
         Caliptra <--> Mailbox
         Mailbox <--> MCU_RT
-        MCU_ROM <--> USBDev
     end
 
-    USBDev <-->|"USB control transfers"| RecoveryHost["Recovery Agent Host<br/>- OCP Recovery Agent<br/>- libusb<br/>- Image Store"]
+    MCU_ROM <--> USBPhy["USB PHY"]
+    MCU_RT <--> USBPhy
+    USBPhy <-->|"USB control transfers"| HostUSBPhy["USB PHY"]
+    HostUSBPhy <--> RecoveryHost["Recovery Agent Host<br/><br/>OCP Recovery Agent<br/>USB Host Controller<br/>"]
 ```
 
 ### 6.2 Physical hardware and software stacks
