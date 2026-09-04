@@ -5,10 +5,11 @@ use caliptra_mcu_scratch_alloc::{BitmapAllocator, StaticBitmapAllocatorCell, BIT
 use core::ptr::NonNull;
 use mcu_caliptra_api::{
     cm_hmac, cm_import, dpe_certify_key_pubkey, dpe_sign_ecc_p384, ecdh_finish, ecdh_generate,
-    ecdsa_verify, hash_all, hkdf_expand, hkdf_extract, rng_generate, sha_finish, sha_init,
-    sha_update, spdm_aes_gcm_decrypt, spdm_aes_gcm_encrypt, CmKeyUsage, HashAlgo, HkdfSalt,
+    ecdsa_verify, hash_all, hkdf_expand, hkdf_extract, mldsa87_compute_mu, mldsa87_compute_tr,
+    rng_generate, sha_finish, sha_init, sha_update, spdm_aes_gcm_decrypt, spdm_aes_gcm_encrypt,
+    CmKeyUsage, HashAlgo, HkdfSalt, CERTIFY_KEY_MLDSA87_PUBKEY_SIZE,
     CMB_ECDH_ENCRYPTED_CONTEXT_SIZE, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, DPE_LABEL_LEN,
-    DPE_P384_SIGNATURE_SIZE, SHA_CONTEXT_SIZE,
+    DPE_MLDSA87_MU_SIZE, DPE_P384_SIGNATURE_SIZE, MLDSA87_TR_SIZE, SHA_CONTEXT_SIZE,
 };
 
 const CRYPTO_SCRATCH_SIZE: usize = 16 * 1024;
@@ -45,7 +46,50 @@ pub async fn test_caliptra_sha(alloc: &BitmapAllocator) {
     ];
     test_sha(alloc, DATA, HashAlgo::Sha384, &SHA384).await;
     test_sha(alloc, DATA, HashAlgo::Sha512, &SHA512).await;
+    test_mldsa87_message_representative(alloc).await;
     println!("SHA test completed successfully");
+}
+
+async fn test_mldsa87_message_representative(alloc: &BitmapAllocator) {
+    const RAW_PUBLIC_KEY: [u8; CERTIFY_KEY_MLDSA87_PUBKEY_SIZE] =
+        [0xa5; CERTIFY_KEY_MLDSA87_PUBKEY_SIZE];
+    const CONTEXT: &[u8] = b"Caliptra EAT";
+    const MESSAGE_COMPONENT: [u8; 32] = [
+        0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e,
+        0x0f, 0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d,
+        0x1e, 0x1f,
+    ];
+    const EXPECTED_TR: [u8; MLDSA87_TR_SIZE] = [
+        0x86, 0x5a, 0xcd, 0x16, 0xa5, 0xe1, 0x9e, 0x9c, 0x6b, 0x52, 0x52, 0x60, 0x83, 0xcf, 0x3d,
+        0xfb, 0xcc, 0x59, 0x6c, 0x2b, 0xe3, 0xc3, 0x85, 0xa2, 0x56, 0x99, 0x39, 0x9c, 0x91, 0x82,
+        0xff, 0x98, 0x5b, 0x89, 0xfc, 0x3c, 0xc6, 0x5f, 0x18, 0xa3, 0xda, 0x1a, 0x16, 0xac, 0x3f,
+        0xa1, 0xba, 0x54, 0x3c, 0x57, 0xe0, 0xb8, 0x72, 0xda, 0x2b, 0xa5, 0xa6, 0x8d, 0x6a, 0xd7,
+        0xad, 0x37, 0xac, 0x5e,
+    ];
+    const EXPECTED_MU: [u8; DPE_MLDSA87_MU_SIZE] = [
+        0x7a, 0x5c, 0xb5, 0x0b, 0xe8, 0xf4, 0x65, 0xde, 0xa1, 0xb6, 0xb4, 0xf4, 0xef, 0x6f, 0x38,
+        0x1f, 0x69, 0x3b, 0x31, 0xc1, 0xb7, 0x15, 0x72, 0x4f, 0xed, 0x29, 0xa9, 0x39, 0x3a, 0xf0,
+        0xf4, 0x24, 0x02, 0xd3, 0xe0, 0x0a, 0x4f, 0x2e, 0x1b, 0x35, 0x50, 0x0e, 0x4c, 0x73, 0x32,
+        0xa8, 0x12, 0x39, 0x96, 0x94, 0xff, 0x38, 0xec, 0x06, 0x52, 0xba, 0x16, 0x2a, 0x6c, 0x87,
+        0xca, 0xa0, 0xee, 0xca,
+    ];
+
+    let mut tr = [0u8; MLDSA87_TR_SIZE];
+    mldsa87_compute_tr(alloc, &RAW_PUBLIC_KEY, &mut tr)
+        .await
+        .unwrap_or_else(|_| test_exit(1));
+    if tr != EXPECTED_TR {
+        test_exit(1);
+    }
+
+    let message_parts: [&[u8]; 3] = [b"Signature1", &MESSAGE_COMPONENT, b"payload"];
+    let mut mu = [0u8; DPE_MLDSA87_MU_SIZE];
+    mldsa87_compute_mu(alloc, &tr, CONTEXT, &message_parts, &mut mu)
+        .await
+        .unwrap_or_else(|_| test_exit(1));
+    if mu != EXPECTED_MU {
+        test_exit(1);
+    }
 }
 
 async fn test_sha(alloc: &BitmapAllocator, data: &[u8], algo: HashAlgo, expected: &[u8]) {

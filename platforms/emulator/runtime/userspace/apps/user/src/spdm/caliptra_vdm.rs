@@ -142,19 +142,17 @@ impl SpdmVdmBackend for AppVdmBackend {
         }
     }
 
-    async fn handle_request<Alloc, Io>(
+    fn handle_request<Alloc, Io>(
         &self,
         req: &[u8],
         rsp: VdmResponseBuffer<'_, Alloc, Io>,
-    ) -> McuResult<VdmResponse>
+    ) -> impl core::future::Future<Output = McuResult<VdmResponse>>
     where
         Alloc: SpdmPalAlloc,
         Io: SpdmPalIo,
     {
-        match &self.0 {
-            Some(backend) => backend.handle_request(req, rsp).await,
-            None => Err(mcu_error::codes::NOT_IMPLEMENTED),
-        }
+        // The stack calls handle_request only after match_id succeeds.
+        self.0.as_ref().unwrap().handle_request(req, rsp)
     }
 }
 

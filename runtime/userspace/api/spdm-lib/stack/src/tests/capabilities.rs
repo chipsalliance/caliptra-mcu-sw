@@ -57,7 +57,10 @@ fn dispatch_request(
 
 #[test]
 fn get_capabilities_negotiates_v14_and_encodes_ext_flags() {
-    let pal = TestPal::default();
+    let pal = TestPal {
+        max_inbound_spdm_request_size: 4096,
+        ..TestPal::default()
+    };
     let mut state = ConnectionState::default();
     state.phase = Phase::AfterVersion;
     let mut sessions = SessionManager::new();
@@ -84,6 +87,7 @@ fn get_capabilities_negotiates_v14_and_encodes_ext_flags() {
         u32::from_le_bytes(rsp[8..12].try_into().unwrap()),
         state.advertised_cap_flags.into_bits()
     );
+    assert_eq!(u32::from_le_bytes(rsp[16..20].try_into().unwrap()), 4096);
     assert_eq!(state.version, SpdmVersion::V14);
     assert_eq!(state.phase, Phase::AfterCapabilities);
     assert_eq!(state.peer_cap_flags.into_bits(), peer_flags.into_bits());

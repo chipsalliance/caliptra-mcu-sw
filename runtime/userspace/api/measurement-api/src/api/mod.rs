@@ -27,10 +27,11 @@ use caliptra_mcu_libtock_platform::Syscalls;
 use core::marker::PhantomData;
 use mcu_caliptra_api::{
     dpe_certify_key_cert_size, dpe_certify_key_cert_slice, dpe_certify_key_pubkey,
-    dpe_derive_context_exported_cdi, dpe_rotate_context_default, dpe_sign_ecc_p384, dpe_tag_tci,
-    sha_finish, sha_init, sha_update, ApiAlloc, AuthorizeAndStashFlags, AuthorizeAndStashParams,
+    dpe_derive_context_exported_cdi, dpe_rotate_context_default, dpe_sign, dpe_tag_tci, sha_finish,
+    sha_init, sha_update, ApiAlloc, AuthorizeAndStashFlags, AuthorizeAndStashParams,
     DpeContextHandle, DpeDeriveContextFlags, DpeDeriveContextParams, DpeProfile, HashAlgo,
-    DPE_CONTEXT_HANDLE_SIZE, DPE_LABEL_LEN, DPE_TCI_MEASUREMENT_SIZE, SHA_CONTEXT_SIZE,
+    SigningInput, DPE_CONTEXT_HANDLE_SIZE, DPE_LABEL_LEN, DPE_TCI_MEASUREMENT_SIZE,
+    SHA_CONTEXT_SIZE,
 };
 
 use crate::attestation_manifest::{parse_and_validate, AttestationManifest, MCU_RT_FW_ID};
@@ -341,21 +342,21 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
             .map_err(|_| MeasurementApiError::DigestFailed)
     }
 
-    /// Sign a digest with the configured attestation target and persist the
-    /// rotated target handle returned by DPE.
+    /// Sign a typed input with the configured attestation target and persist
+    /// the rotated target handle returned by DPE.
     pub async fn sign<A: ApiAlloc>(
         &mut self,
         alloc: &A,
         key_label: &[u8; DPE_LABEL_LEN],
-        digest: &[u8],
+        signing_input: SigningInput<'_>,
         signature: &mut [u8],
     ) -> MeasurementApiResult<usize> {
         let target = self.read_attestation_target_record()?;
-        let (next_handle, signature_len) = dpe_sign_ecc_p384(
+        let (next_handle, signature_len) = dpe_sign(
             alloc,
             Some(&target.context_handle),
             key_label,
-            digest,
+            signing_input,
             signature,
         )
         .await

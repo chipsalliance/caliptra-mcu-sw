@@ -16,9 +16,8 @@ use errors::{MeasurementApiError, MeasurementApiResult};
 pub use image_metadata::{
     ImageMetadata, ImageMetadataFlags, MeasurementOperation, IMAGE_MEASUREMENT_DIGEST_SIZE,
 };
-pub use mcu_caliptra_api::DpeProfile;
-pub use mcu_caliptra_api::ImageHashSource;
 use mcu_caliptra_api::{ApiAlloc, DPE_LABEL_LEN};
+pub use mcu_caliptra_api::{DpeProfile, ImageHashSource, SigningInput};
 use mcu_error::McuResult;
 
 static MEASUREMENT_API: Mutex<
@@ -184,18 +183,18 @@ pub async fn leaf_kid<A: ApiAlloc>(
     api.leaf_kid(alloc, key_label, kid).await
 }
 
-/// Sign `digest` with the configured attestation target.
+/// Sign a typed input with the configured attestation target.
 pub async fn sign<A: ApiAlloc>(
     alloc: &A,
     key_label: &[u8; DPE_LABEL_LEN],
-    digest: &[u8],
+    signing_input: SigningInput<'_>,
     signature: &mut [u8],
 ) -> MeasurementApiResult<usize> {
     let mut guard = MEASUREMENT_API.lock().await;
     let api = guard
         .as_mut()
         .ok_or(MeasurementApiError::AttestationDisabled)?;
-    api.sign(alloc, key_label, digest, signature).await
+    api.sign(alloc, key_label, signing_input, signature).await
 }
 
 /// Generate a selected-AK `kid`, encode concise evidence, build the evidence
@@ -243,7 +242,14 @@ where
         .digest_for_signature(alloc, concise_evidence_len, sig_digest)
         .await?;
     let (evidence_len, signature) = evidence_builder.signature_buffer_mut(payload_len)?;
-    let sig_len = api.sign(alloc, key_label, sig_digest, signature).await?;
+    let sig_len = api
+        .sign(
+            alloc,
+            key_label,
+            SigningInput::EccP384Digest(sig_digest),
+            signature,
+        )
+        .await?;
     if sig_len != signature.len() {
         return Err(mcu_error::codes::INTERNAL_BUG);
     }

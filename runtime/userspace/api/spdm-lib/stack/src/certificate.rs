@@ -232,7 +232,7 @@ pub(crate) async fn handle_get_certificate_req<'a, Pal: SpdmPal>(
         let chunking = state.chunking_enabled();
         let max_portion = if chunking {
             state
-                .effective_max_spdm_msg_size(pal)
+                .max_streamed_response_size()?
                 .saturating_sub(SpdmMsgHdrPdu::SIZE + req.rsp_header_body_size())
         } else {
             single_frame_portion
