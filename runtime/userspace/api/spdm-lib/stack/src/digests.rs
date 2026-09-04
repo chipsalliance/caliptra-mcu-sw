@@ -7,7 +7,9 @@
 //! array. Chunk buffers come from the per-IO bitmap pool — no
 //! stack-allocated `[u8; N]` arrays for cert content.
 
-use caliptra_mcu_spdm_codec::{DigestsRsp, ResponseBody, SpdmMsgHdrPdu, SpdmVersion, SHA384_HASH_SIZE};
+use caliptra_mcu_spdm_codec::{
+    DigestsRsp, ResponseBody, SpdmMsgHdrPdu, SpdmVersion, SHA384_HASH_SIZE,
+};
 use caliptra_mcu_spdm_traits::{
     PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalAsymAlgo, SpdmPalHashAlgo, SpdmPalIo,
     SpdmPalIoTransport, MAX_SLOTS,
