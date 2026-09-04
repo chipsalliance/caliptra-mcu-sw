@@ -12,6 +12,7 @@ use caliptra_mcu_registers_generated::i3c;
 use caliptra_mcu_registers_generated::i3c::bits::{
     DeviceReset, IndirectFifoStatus0, RecIntfCfg, RecIntfRegW1cAccess,
 };
+use caliptra_mcu_romtime::handoff::{FirmwareBootType, McuRomCapabilities};
 use caliptra_mcu_romtime::StaticRef;
 use smlang::statemachine;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
@@ -63,6 +64,8 @@ pub enum ErrorPolicy {
 pub struct ImageProviderEntry<'a> {
     pub provider: &'a mut dyn ImageProvider,
     pub policy: ErrorPolicy,
+    /// Boot source to report if this provider completes the recovery flow.
+    pub boot_type: FirmwareBootType,
 }
 
 /// Manages a sequence of [`ImageProviderEntry`]s, tracking the active provider
@@ -82,6 +85,21 @@ impl<'a> ImageProviderManager<'a> {
         }
     }
 
+    /// Return the boot capabilities represented by the configured providers.
+    pub(crate) fn capabilities(&self) -> McuRomCapabilities {
+        self.entries
+            .iter()
+            .fold(McuRomCapabilities::empty(), |capabilities, entry| {
+                capabilities
+                    | match entry.boot_type {
+                        FirmwareBootType::Unknown => McuRomCapabilities::empty(),
+                        FirmwareBootType::Flash => McuRomCapabilities::FLASH_BOOT,
+                        FirmwareBootType::Streaming => McuRomCapabilities::STREAMING_BOOT_I3C,
+                        FirmwareBootType::Network => McuRomCapabilities::NETWORK_BOOT,
+                    }
+            })
+    }
+
     /// Returns the current provider, incrementing the retry counter.
     /// Uses the retry policy to determine whether to stay on the current
     /// provider or advance.
@@ -92,7 +110,7 @@ impl<'a> ImageProviderManager<'a> {
     /// - `RetryForever`: stays on current indefinitely.
     ///
     /// Returns `None` if all providers are exhausted.
-    fn provider(&mut self) -> Option<&mut (dyn ImageProvider + 'a)> {
+    fn provider(&mut self) -> Option<(FirmwareBootType, &mut (dyn ImageProvider + 'a))> {
         if self.retries == 0 {
             self.retries += 1;
         } else if let Some(policy) = self.entries.get(self.current).map(|c| c.policy) {
@@ -121,7 +139,9 @@ impl<'a> ImageProviderManager<'a> {
         // The `+ 'a` on the return type is also necessary: without it the
         // default trait-object bound ties to the `&mut self` borrow, which
         // is shorter than `'a` and causes a lifetime mismatch.
-        self.entries.get_mut(self.current).map(|c| &mut *c.provider)
+        self.entries
+            .get_mut(self.current)
+            .map(|entry| (entry.boot_type, &mut *entry.provider))
     }
 }
 
@@ -339,15 +359,14 @@ impl StateMachineContext for Context {
 /// Attempt to load an image using the [`ImageProviderManager`], retrying with
 /// subsequent providers according to each entry's [`ErrorPolicy`].
 ///
-/// Returns `Ok(())` once a provider succeeds, or `Err(())` if all providers
-/// are exhausted.
+/// Returns the successful provider's boot type, or `Err(())` if all providers are exhausted.
 pub(crate) fn load_image_with_retry(
     i3c_periph: StaticRef<i3c::regs::I3c>,
     manager: &mut ImageProviderManager<'_>,
-) -> Result<(), ()> {
-    while let Some(provider) = manager.provider() {
+) -> Result<FirmwareBootType, ()> {
+    while let Some((boot_type, provider)) = manager.provider() {
         match load_image_to_recovery(i3c_periph, provider) {
-            Ok(()) => return Ok(()),
+            Ok(()) => return Ok(boot_type),
             Err(()) => {
                 caliptra_mcu_romtime::println!("[mcu-rom] Image provider failed, trying next");
                 continue;
@@ -496,10 +515,59 @@ pub(crate) fn load_image_to_recovery(
 mod tests {
     use super::*;
 
+    struct TestImageProvider;
+
+    impl ImageProvider for TestImageProvider {
+        fn image_ready(&mut self, _image_index: u32) -> Result<usize, ()> {
+            Ok(0)
+        }
+
+        fn next_bytes(&mut self, _data: &mut [u8]) -> Result<(), ()> {
+            Ok(())
+        }
+
+        fn bytes_loaded(&self) -> usize {
+            0
+        }
+    }
+
     #[test]
     fn dot_recovery_reset_ctrl_values_match_protocol() {
         assert_eq!(DOT_RECOVERY_DEVICE_STATUS, 0x0094_000E);
         assert_eq!(DEVICE_RESET_CTRL_PREVIOUS_DOT_FAILED, 0x10);
         assert_eq!(DEVICE_RESET_CTRL_PREVIOUS_DOT_SUCCEEDED, 0x11);
+    }
+
+    #[test]
+    fn provider_reports_source_after_fallback() {
+        let mut flash_provider = TestImageProvider;
+        let mut network_provider = TestImageProvider;
+        let mut entries = [
+            ImageProviderEntry {
+                provider: &mut flash_provider,
+                policy: ErrorPolicy::Continue,
+                boot_type: FirmwareBootType::Flash,
+            },
+            ImageProviderEntry {
+                provider: &mut network_provider,
+                policy: ErrorPolicy::Continue,
+                boot_type: FirmwareBootType::Network,
+            },
+        ];
+        let mut manager = ImageProviderManager::new(&mut entries);
+
+        assert_eq!(
+            manager.capabilities(),
+            McuRomCapabilities::FLASH_BOOT | McuRomCapabilities::NETWORK_BOOT
+        );
+
+        assert_eq!(
+            manager.provider().map(|(boot_type, _)| boot_type),
+            Some(FirmwareBootType::Flash)
+        );
+        assert_eq!(
+            manager.provider().map(|(boot_type, _)| boot_type),
+            Some(FirmwareBootType::Network)
+        );
     }
 }

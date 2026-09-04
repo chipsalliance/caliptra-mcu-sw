@@ -254,7 +254,10 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         capabilities.caliptra_rt.copy_from_slice(&core[..8]);
         capabilities.caliptra_fmc.copy_from_slice(&core[8..12]);
         capabilities.caliptra_rom.copy_from_slice(&core[12..16]);
-        capabilities.mcu_rom.fill(0);
+        capabilities.mcu_rom = encode_capabilities(
+            caliptra_mcu_libsyscall_caliptra::system::System::mcu_rom_capabilities()
+                .unwrap_or_default(),
+        );
         capabilities.mcu_rt = encode_capabilities(mcu_runtime_capabilities().bits());
         capabilities.external_commands =
             encode_capabilities(external_command_capabilities().bits());

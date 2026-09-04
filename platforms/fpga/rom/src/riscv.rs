@@ -273,6 +273,7 @@ pub extern "C" fn rom_entry() -> ! {
     let mut entries = [ImageProviderEntry {
         provider: &mut flash_provider,
         policy: ErrorPolicy::Continue,
+        boot_type: caliptra_mcu_romtime::handoff::FirmwareBootType::Flash,
     }];
     let manager = ImageProviderManager::new(&mut entries);
 
