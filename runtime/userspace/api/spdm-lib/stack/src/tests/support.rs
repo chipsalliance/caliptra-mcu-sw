@@ -101,10 +101,9 @@ impl<T> DerefMut for TestBox<'_, T> {
 
 pub struct TestPal {
     pub mtu: usize,
-    /// Usable large-message capacity reported verbatim by `large_capacity()`
-    /// (already net of any CHUNK_GET headroom a real PAL would reserve), kept
-    /// independent of `mtu` so tests can exercise the CHUNK advertise/strip and
-    /// large-response validation paths.
+    /// Usable large-message capacity reported verbatim by `large_capacity()`,
+    /// kept independent of `mtu` so tests can exercise the CHUNK advertise/strip
+    /// and large-response validation paths.
     pub large_capacity: usize,
     pub supported_slots: u8,
     pub provisioned_slots: u8,

@@ -356,9 +356,8 @@ impl<Pal: SpdmPal, const MAX_SESSIONS: usize, Vdm: SpdmVdmBackend>
 {
     /// Constructs a responder over `pal` with a static-dispatch VDM backend.
     ///
-    /// If the PAL cannot hold at least one transport-sized large message
-    /// (after reserving CHUNK_GET transfer-buffer headroom), `CHUNK` is
-    /// removed from the advertised capabilities.
+    /// If the PAL cannot hold at least one transport-sized large message,
+    /// `CHUNK` is removed from the advertised capabilities.
     pub fn with_vdm_backend(pal: Pal, vdm_backend: Vdm) -> Self {
         let mut state = ConnectionState::<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>::default();
         if pal.large_capacity() < pal.mtu() {

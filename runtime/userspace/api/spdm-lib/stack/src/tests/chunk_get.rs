@@ -3,11 +3,11 @@
 //! CHUNK_GET large-response sizing + drive tests at a 4 KiB `DataTransferSize`.
 //!
 //! These cover how the stack consumes `pal.large_capacity()` — the PAL-reported
-//! usable large-message capacity (already net of CHUNK_GET transfer-buffer
-//! headroom): the advertised / effective `MaxSPDMmsgSize` tracks it, and a
-//! capacity too small to hold one transport-sized message strips CHUNK from the
-//! advertised capabilities. The headroom reservation itself is a PAL concern,
-//! covered against the real allocator in the `pal` crate.
+//! usable large-message capacity: the advertised / effective `MaxSPDMmsgSize`
+//! tracks it, and a capacity too small to hold one transport-sized message
+//! strips CHUNK from the advertised capabilities. How the PAL sizes that
+//! capacity against its scratch pool is a PAL/integrator concern, covered
+//! against the real allocator in the `pal` crate.
 
 extern crate std;
 
@@ -29,18 +29,16 @@ mod support;
 use support::*;
 
 const MTU: usize = 4096;
-/// A PAL usable large-message capacity (already net of CHUNK_GET headroom) that
-/// holds at least one transport frame, so CHUNK stays advertised. Corresponds to
-/// a ~20 KiB pool at a 4 KiB MTU.
+/// A PAL usable large-message capacity that holds at least one transport frame,
+/// so CHUNK stays advertised.
 const USABLE_KEEPS_CHUNK: usize = 10 * 1024;
-/// A usable capacity below one transport frame, so CHUNK is stripped. Corresponds
-/// to a ~12 KiB pool (only ~2 KiB usable after headroom).
+/// A usable capacity below one transport frame, so CHUNK is stripped.
 const USABLE_STRIPS_CHUNK: usize = 2 * 1024;
 /// Backing pool held by the buffered large response in the drive test.
 const LARGE_RESP_SIZE: usize = 8 * 1024;
 
-/// `large_capacity` is the PAL's usable large-message capacity (already net of
-/// any CHUNK_GET headroom the PAL reserves) — the stack consumes it directly.
+/// `large_capacity` is the PAL's usable large-message capacity — the stack
+/// consumes it directly.
 fn pal_with(mtu: usize, large_capacity: usize) -> TestPal {
     TestPal {
         mtu,
