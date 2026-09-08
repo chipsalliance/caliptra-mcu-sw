@@ -4,6 +4,7 @@ use anyhow::Result;
 use caliptra_mcu_builder::features::RomVariant;
 
 pub(crate) fn precheckin(rom_variants: &[RomVariant]) -> Result<()> {
+    crate::submodules::check()?;
     crate::cargo_lock::cargo_lock()?;
     crate::format::format()?;
     crate::clippy::clippy(rom_variants)?;
