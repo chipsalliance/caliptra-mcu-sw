@@ -34,7 +34,7 @@ const LIFE_CYCLE_BYTE_OFFSET: usize = 0xc80;
 // Source: caliptra-ss/src/fuse_ctrl/data/otp_ctrl_mmap.hjson
 const LC_TOKENS_SCRAMBLE_KEY: u128 = 0xB7474D640F8A7F5D60822E1FAEC5C72;
 
-// Hardcoded raw unlock token matching the caliptra-ss RTL netlist constant.
+// Default raw unlock token matching the caliptra-ss RTL netlist constant.
 // Source: caliptra-ss/src/lc_ctrl/rtl/lc_ctrl_pkg.sv (RndCnstRawUnlockToken)
 const RAW_UNLOCK_TOKEN: [u8; 16] = [
     0xca, 0xa0, 0x32, 0xb5, 0x87, 0x96, 0xce, 0x74, 0x9a, 0xef, 0xec, 0xa2, 0x65, 0xbe, 0x41, 0x61,
@@ -152,6 +152,8 @@ pub struct LcCtrl {
     transition_target: u32,
     token: [u32; 4],
 
+    raw_unlock_token: [u8; 16],
+
     /// Shared reference to OTP partition data for token reads and state writes.
     otp_partitions: Option<Rc<RefCell<Vec<u8>>>>,
 }
@@ -184,6 +186,7 @@ impl LcCtrl {
             mutex_claimed: false,
             transition_target: 0,
             token: [0; 4],
+            raw_unlock_token: RAW_UNLOCK_TOKEN,
             otp_partitions: None,
         }
     }
@@ -191,6 +194,13 @@ impl LcCtrl {
     /// Provide OTP partition access after construction.
     pub fn set_otp_partitions(&mut self, otp: Rc<RefCell<Vec<u8>>>) {
         self.otp_partitions = Some(otp);
+    }
+
+    /// Override the unhashed token for Raw -> TestUnlocked0.
+    /// Bytes are ordered from the least-significant byte of TRANSITION_TOKEN_0.
+    /// This configuration is retained across resets and does not change OTP tokens.
+    pub fn set_raw_unlock_token(&mut self, token: [u8; 16]) {
+        self.raw_unlock_token = token;
     }
 
     /// Re-read lifecycle state from OTP and reset transient state.
@@ -291,7 +301,7 @@ impl LcCtrl {
         match token_req {
             TokenRequirement::None => {}
             TokenRequirement::RawUnlock => {
-                if self.token_as_bytes() != RAW_UNLOCK_TOKEN {
+                if self.token_as_bytes() != self.raw_unlock_token {
                     self.transition_error(STATUS_TOKEN_ERROR);
                     return;
                 }
@@ -521,6 +531,45 @@ mod tests {
     fn test_raw_to_test_unlocked0_wrong_token() {
         let mut lc = make_lc_ctrl(RAW, 0, &TEST_RAW_TOKEN);
         let status = do_transition(&mut lc, TEST_UNLOCKED0, [0xdead, 0xbeef, 0xcafe, 0xbabe]);
+        assert_ne!(status & STATUS_TOKEN_ERROR, 0);
+    }
+
+    #[test]
+    fn test_raw_unlock_token_override() {
+        let mut lc = make_lc_ctrl(RAW, 0, &TEST_RAW_TOKEN);
+        lc.set_raw_unlock_token(TEST_RAW_TOKEN);
+        let status = do_transition(&mut lc, TEST_UNLOCKED0, token_to_words(&TEST_RAW_TOKEN));
+        assert_ne!(status & STATUS_TRANSITION_SUCCESSFUL, 0);
+        assert_eq!(lc.lc_state_index, POST_TRANSITION);
+        assert_eq!(lc.lc_transition_cnt, 1);
+
+        let mut lc = make_lc_ctrl(RAW, 0, &TEST_RAW_TOKEN);
+        lc.set_raw_unlock_token(TEST_RAW_TOKEN);
+        let status = do_transition(&mut lc, TEST_UNLOCKED0, token_to_words(&RAW_UNLOCK_TOKEN));
+        assert_ne!(status & STATUS_TOKEN_ERROR, 0);
+    }
+
+    #[test]
+    fn test_raw_unlock_token_override_survives_warm_reset() {
+        use caliptra_mcu_emulator_registers_generated::lc::LcPeripheral;
+
+        let mut lc = make_lc_ctrl(RAW, 0, &TEST_RAW_TOKEN);
+        lc.set_raw_unlock_token(TEST_RAW_TOKEN);
+        lc.warm_reset();
+        let status = do_transition(&mut lc, TEST_UNLOCKED0, token_to_words(&TEST_RAW_TOKEN));
+        assert_ne!(status & STATUS_TRANSITION_SUCCESSFUL, 0);
+    }
+
+    #[test]
+    fn test_raw_unlock_override_does_not_replace_otp_tokens() {
+        let mut lc = make_lc_ctrl(PROD, 10, &TEST_RAW_TOKEN);
+        lc.set_raw_unlock_token([0; 16]);
+        let status = do_transition(&mut lc, RMA, token_to_words(&TEST_RAW_TOKEN));
+        assert_ne!(status & STATUS_TRANSITION_SUCCESSFUL, 0);
+
+        let mut lc = make_lc_ctrl(PROD, 10, &TEST_RAW_TOKEN);
+        lc.set_raw_unlock_token([0; 16]);
+        let status = do_transition(&mut lc, RMA, [0; 4]);
         assert_ne!(status & STATUS_TOKEN_ERROR, 0);
     }
 

@@ -86,6 +86,13 @@ fn parse_vendor_pqc_type(s: &str) -> Result<FwVerificationPqcKeyType, String> {
     }
 }
 
+fn parse_raw_unlock_token(s: &str) -> Result<[u8; 16], String> {
+    let mut token = [0; 16];
+    hex::decode_to_slice(s, &mut token)
+        .map_err(|_| "raw unlock token must be exactly 32 hexadecimal characters".to_string())?;
+    Ok(token)
+}
+
 /// Map an LC state index (0–20) to the Caliptra device lifecycle string per the HW spec.
 /// TestUnlocked* → "unprovisioned", Dev → "manufacturing", all others → "production".
 fn lc_state_to_device_lifecycle_str(lc_state_index: u32) -> &'static str {
@@ -155,6 +162,11 @@ pub struct EmulatorArgs {
 
     #[arg(long)]
     pub i3c_port: Option<u16>,
+
+    /// Override the unhashed raw unlock token (32 hex characters, in byte order
+    /// from the least-significant byte of TRANSITION_TOKEN_0). Defaults to the RTL token.
+    #[arg(long, value_parser = parse_raw_unlock_token)]
+    pub raw_unlock_token: Option<[u8; 16]>,
 
     /// Device lifecycle value (0=Unprovisioned, 1=Manufacturing, 2=Reserved, 3=Production).
     #[arg(long, value_parser = maybe_hex::<u32>, default_value_t = DeviceLifecycle::Production as u32)]
@@ -885,7 +897,10 @@ impl Emulator {
         // Map DeviceLifecycle to LC state index per the Caliptra SS HW spec
         // (caliptra-ss docs/CaliptraSSHardwareSpecification.md, LCC state table).
         // The lifecycle state was already resolved above from fuses or CLI arg.
-        let lc = LcCtrl::with_state(lc_state_index, lc_transition_cnt);
+        let mut lc = LcCtrl::with_state(lc_state_index, lc_transition_cnt);
+        if let Some(token) = cli.raw_unlock_token {
+            lc.set_raw_unlock_token(token);
+        }
 
         let otp = Otp::new(
             &clock.clone(),
@@ -907,7 +922,6 @@ impl Emulator {
         )?;
 
         // Share OTP partition data with the LC controller for transitions.
-        let mut lc = lc;
         lc.set_otp_partitions(otp.partitions_ref());
         let ext_mcu_mailbox0 = mcu_mailbox0.as_external(MciMailboxRequester::SocAgent(1));
         let soc_ifc = unsafe {
@@ -1412,4 +1426,58 @@ fn read_binary(path: &PathBuf, expect_load_addr: u32) -> io::Result<Vec<u8>> {
     }
 
     Ok(buffer)
+}
+
+#[cfg(test)]
+mod argument_tests {
+    use super::*;
+
+    fn parse_args(extra: &[&str]) -> Result<EmulatorArgs, clap::Error> {
+        let mut args = vec![
+            "emulator",
+            "--rom",
+            "rom.bin",
+            "--firmware",
+            "firmware.bin",
+            "--caliptra-rom",
+            "caliptra-rom.bin",
+            "--caliptra-firmware",
+            "caliptra-firmware.bin",
+            "--soc-manifest",
+            "manifest.bin",
+        ];
+        args.extend_from_slice(extra);
+        EmulatorArgs::try_parse_from(args)
+    }
+
+    #[test]
+    fn raw_unlock_token_is_optional() {
+        assert_eq!(parse_args(&[]).unwrap().raw_unlock_token, None);
+    }
+
+    #[test]
+    fn raw_unlock_token_parses_hex_in_byte_order() {
+        let args = parse_args(&["--raw-unlock-token", "00112233445566778899aAbBcCdDeEfF"]).unwrap();
+        assert_eq!(
+            args.raw_unlock_token,
+            Some([
+                0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77, 0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd,
+                0xee, 0xff,
+            ])
+        );
+    }
+
+    #[test]
+    fn raw_unlock_token_rejects_invalid_input() {
+        for token in [
+            "",
+            "00112233445566778899aabbccddeef",
+            "00112233445566778899aabbccddeeff00",
+            "00112233445566778899aabbccddeegg",
+            "0x00112233445566778899aabbccddeeff",
+        ] {
+            let error = parse_args(&["--raw-unlock-token", token]).unwrap_err();
+            assert_eq!(error.kind(), clap::error::ErrorKind::ValueValidation);
+        }
+    }
 }
