@@ -325,7 +325,7 @@ impl BaremetalNetIf {
             if len == 0 {
                 return None;
             }
-            let bytes = &(*dhcp6_ptr).boot_file_url[..len];
+            let bytes = &(&(*dhcp6_ptr).boot_file_url)[..len];
             Some(core::slice::from_raw_parts(
                 bytes.as_ptr() as *const u8,
                 len,

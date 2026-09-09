@@ -6,7 +6,7 @@ use crate::DefaultSyscalls;
 use caliptra_mcu_libtock_platform::allow_ro::AllowRo;
 use caliptra_mcu_libtock_platform::share;
 use caliptra_mcu_libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
-use core::{iter::repeat, marker::PhantomData};
+use core::marker::PhantomData;
 
 pub const VENDOR_PK_HASH_SIZE: usize =
     caliptra_mcu_registers_generated::fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_0.byte_size;
@@ -197,7 +197,10 @@ impl<S: Syscalls> Otp<S> {
             // Return early when the fuse already contains the hash
             return Ok(());
         }
-        if fuse_value.iter().ne(repeat(&0).take(fuse_value.len())) {
+        if fuse_value
+            .iter()
+            .ne(core::iter::repeat_n(&0, fuse_value.len()))
+        {
             // Error if the fuse is already containing something
             return Err(ErrorCode::Invalid);
         }
@@ -298,7 +301,7 @@ impl<S: Syscalls> Otp<S> {
 
         // Check if the slot is provisioned to not burn an empty slot
         let pk_hash = self.read_vendor_pk_hash(vendor_pk_hash_slot)?;
-        if pk_hash.iter().eq(repeat(&0).take(pk_hash.len())) {
+        if pk_hash.iter().eq(core::iter::repeat_n(&0, pk_hash.len())) {
             Err(ErrorCode::Invalid)?
         }
 

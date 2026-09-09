@@ -52,7 +52,7 @@ fn run() -> ! {
 
         // Read the received payload from the packet buffer
         let rx_word_base = (rx_buf * 16) as usize;
-        let num_words = ((rx_size as usize) + 3) / 4;
+        let num_words = (rx_size as usize).div_ceil(4);
         let resp_buf = next_response_buf;
         let resp_word_base = (resp_buf * 16) as usize;
 

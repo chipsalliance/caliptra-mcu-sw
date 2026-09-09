@@ -134,7 +134,7 @@ fn get_elf_bytes(target_dir: &Path, fwid: FwId<'_>) -> io::Result<Vec<u8>> {
 }
 
 fn other_err(e: impl Into<Box<dyn std::error::Error + Send + Sync>>) -> io::Error {
-    io::Error::new(io::ErrorKind::Other, e)
+    io::Error::other(e)
 }
 
 pub fn elf_stack_size(elf_bytes: &[u8]) -> io::Result<u64> {

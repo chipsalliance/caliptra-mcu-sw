@@ -69,7 +69,7 @@ fn sram_to_buf(
     buf: &mut [u8],
     byte_count: usize,
 ) {
-    let words = (byte_count + 3) / 4;
+    let words = byte_count.div_ceil(4);
     for i in 0..words.min(sram.len()).min(buf.len() / 4) {
         buf[i * 4..i * 4 + 4].copy_from_slice(&sram[i].get().to_le_bytes());
     }

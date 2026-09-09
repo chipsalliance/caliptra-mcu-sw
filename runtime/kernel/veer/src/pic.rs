@@ -82,7 +82,7 @@ impl Pic {
             unsafe {
                 write_volatile(
                     (meivt_base + irq * 4) as *mut u32,
-                    rv32i::_start_trap as usize as u32,
+                    rv32i::_start_trap as *const () as usize as u32,
                 );
             }
         }

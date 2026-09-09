@@ -61,7 +61,7 @@ fn storage_open(filename: &str) -> *mut c_void {
     match File::create(format!("{}/{}", output_dir, basename)) {
         Ok(file) => {
             *FILE_HANDLE.lock().unwrap() = Some(file);
-            1 as *mut c_void
+            std::ptr::dangling_mut::<c_void>()
         }
         Err(_) => std::ptr::null_mut(),
     }
@@ -225,7 +225,7 @@ fn run_app() -> Result<(), AppError> {
                 println!("[DHCP-TFTP] === Transfer Complete ===");
                 println!(
                     "[DHCP-TFTP] File saved to: /tmp/tftp_downloads/{}",
-                    boot_file.split('/').last().unwrap_or(&boot_file)
+                    boot_file.split('/').next_back().unwrap_or(&boot_file)
                 );
                 println!("[DHCP-TFTP] Total bytes: {}", bytes);
                 state = AppState::Exit;

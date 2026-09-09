@@ -42,7 +42,7 @@ fn run() -> ! {
             // the command-id prepended.
             0x1000_0000 => {
                 let len = dlen.get();
-                let len_words = usize::try_from((len + 3) / 4).unwrap();
+                let len_words = usize::try_from(len.div_ceil(4)).unwrap();
                 let mut buf = [0u32; 8];
                 for i in 0..len_words {
                     buf[i] = sram[i].get();
@@ -74,7 +74,7 @@ fn run() -> ! {
             // Store a buf to be returned by 0x3000_0001
             0x3000_0000 => {
                 let len = dlen.get();
-                let len_words = usize::try_from((len + 3) / 4).unwrap();
+                let len_words = usize::try_from(len.div_ceil(4)).unwrap();
                 for i in 0..usize::min(len_words, replay_buf.len()) {
                     replay_buf[i] = sram[i].get();
                 }
@@ -83,7 +83,7 @@ fn run() -> ! {
             }
             0x3000_0001 => {
                 dlen.set(replay_buf_len);
-                let dlen_words = usize::try_from((replay_buf_len + 3) / 4).unwrap();
+                let dlen_words = usize::try_from(replay_buf_len.div_ceil(4)).unwrap();
                 for i in 0..dlen_words {
                     sram[i].set(replay_buf[i]);
                 }

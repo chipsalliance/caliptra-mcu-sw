@@ -38,7 +38,7 @@ impl<'a> SliceFifoRegion<'a> {
         region_type: FifoCmsRegionType,
         max_transfer_4b: u32,
     ) -> Result<Self, OcpError> {
-        if buf.is_empty() || buf.len() % 4 != 0 {
+        if buf.is_empty() || !buf.len().is_multiple_of(4) {
             return Err(OcpError::InvalidCmsBufferSize);
         }
         Ok(Self {
@@ -90,7 +90,7 @@ impl<'a> SliceFifoRegion<'a> {
     /// Returns [`CmsError::FifoFull`] if there is not enough space for the
     /// (4-byte-rounded) data.
     pub fn push_data(&mut self, data: &[u8]) -> Result<(), CmsError> {
-        let data_4b = ((data.len() as u32) + 3) / 4;
+        let data_4b = (data.len() as u32).div_ceil(4);
         if data_4b > self.space_available_4b() {
             return Err(CmsError::FifoFull);
         }
@@ -119,7 +119,7 @@ impl<'a> SliceFifoRegion<'a> {
         let occupancy_4b = (self.write_idx + cap - self.read_idx) % cap;
         let available_bytes = occupancy_4b as usize * 4;
         let read_len = buf.len().min(available_bytes);
-        let consume_4b = ((read_len as u32) + 3) / 4;
+        let consume_4b = (read_len as u32).div_ceil(4);
 
         let buf_byte_len = cap as usize * 4;
         for (i, slot) in buf.iter_mut().enumerate().take(read_len) {

@@ -192,7 +192,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a> for McuMailbox<'a, A> {
             }
 
             // If dlen is not 4-byte aligned, mask the last dword
-            if dlen % 4 != 0 {
+            if !dlen.is_multiple_of(4) {
                 let mask = (1u32 << (dlen % 4 * 8)) - 1;
                 buf[dw_len - 1] &= mask;
             }

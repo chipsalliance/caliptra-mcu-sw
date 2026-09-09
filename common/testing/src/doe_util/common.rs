@@ -20,7 +20,7 @@ impl DoeUtil {
         object_type: DataObjectType,
         tx: &mut Sender<Vec<u8>>,
     ) -> Result<(), DoeUtilError> {
-        if data.is_empty() || data.len() % 4 != 0 {
+        if data.is_empty() || !data.len().is_multiple_of(4) {
             println!("DOE_UTIL: Data length must be non-zero and a multiple of 4 bytes.");
             return Err(DoeUtilError::InvalidDataLength);
         }
@@ -46,7 +46,7 @@ impl DoeUtil {
     }
 
     pub fn send_raw_data_object(data: &[u8], tx: &mut Sender<Vec<u8>>) -> Result<(), DoeUtilError> {
-        if data.is_empty() || data.len() % 4 != 0 {
+        if data.is_empty() || !data.len().is_multiple_of(4) {
             println!("DOE_UTIL: Data length must be non-zero and a multiple of 4 bytes.");
             return Err(DoeUtilError::InvalidDataLength);
         }

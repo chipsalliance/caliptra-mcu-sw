@@ -1459,15 +1459,15 @@ impl MciPeripheral for Mci {
 
             // Set the corresponding bit for the event if enabled
             match event {
-                crate::mcu_mbox0::IrqEventToMcu::Mbox0CmdAvailable => {
-                    if notif_en & Notif0IntrEnT::NotifMbox0CmdAvailEn::SET.value != 0 {
-                        notif_reg |= Notif0IntrT::NotifMbox0CmdAvailSts::SET.value;
-                    }
+                crate::mcu_mbox0::IrqEventToMcu::Mbox0CmdAvailable
+                    if notif_en & Notif0IntrEnT::NotifMbox0CmdAvailEn::SET.value != 0 =>
+                {
+                    notif_reg |= Notif0IntrT::NotifMbox0CmdAvailSts::SET.value;
                 }
-                crate::mcu_mbox0::IrqEventToMcu::Mbox0TargetDone => {
-                    if notif_en & Notif0IntrEnT::NotifMbox0TargetDoneEn::SET.value != 0 {
-                        notif_reg |= Notif0IntrT::NotifMbox0TargetDoneSts::SET.value;
-                    }
+                crate::mcu_mbox0::IrqEventToMcu::Mbox0TargetDone
+                    if notif_en & Notif0IntrEnT::NotifMbox0TargetDoneEn::SET.value != 0 =>
+                {
+                    notif_reg |= Notif0IntrT::NotifMbox0TargetDoneSts::SET.value;
                 }
                 // mbox1 events should never originate from mailbox0
                 _ => {}
@@ -1496,15 +1496,15 @@ impl MciPeripheral for Mci {
                 .intr_block_rf_notif0_intr_en_r;
 
             match event {
-                crate::mcu_mbox0::IrqEventToMcu::Mbox1CmdAvailable => {
-                    if notif_en & Notif0IntrEnT::NotifMbox1CmdAvailEn::SET.value != 0 {
-                        notif_reg |= Notif0IntrT::NotifMbox1CmdAvailSts::SET.value;
-                    }
+                crate::mcu_mbox0::IrqEventToMcu::Mbox1CmdAvailable
+                    if notif_en & Notif0IntrEnT::NotifMbox1CmdAvailEn::SET.value != 0 =>
+                {
+                    notif_reg |= Notif0IntrT::NotifMbox1CmdAvailSts::SET.value;
                 }
-                crate::mcu_mbox0::IrqEventToMcu::Mbox1TargetDone => {
-                    if notif_en & Notif0IntrEnT::NotifMbox1TargetDoneEn::SET.value != 0 {
-                        notif_reg |= Notif0IntrT::NotifMbox1TargetDoneSts::SET.value;
-                    }
+                crate::mcu_mbox0::IrqEventToMcu::Mbox1TargetDone
+                    if notif_en & Notif0IntrEnT::NotifMbox1TargetDoneEn::SET.value != 0 =>
+                {
+                    notif_reg |= Notif0IntrT::NotifMbox1TargetDoneSts::SET.value;
                 }
                 // mbox0 events should never originate from mailbox1
                 _ => {}

@@ -9,7 +9,7 @@ use std::process::Command;
 ///
 /// # Arguments
 /// * `feature` - Optional feature flag to pass to cargo build. If provided, the binary
-///               will be named `network-rom-feature-<feature_name>.bin`.
+///   will be named `network-rom-feature-<feature_name>.bin`.
 ///
 /// Returns the path to the built binary.
 pub fn network_rom_build(feature: Option<&str>) -> Result<String> {

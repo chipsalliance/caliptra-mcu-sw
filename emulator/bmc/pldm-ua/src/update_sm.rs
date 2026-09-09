@@ -816,8 +816,8 @@ pub trait StateMachineActions {
         &mut self,
         ctx: &mut InnerContext<impl PldmSocket + Send + 'static>,
     ) -> Result<(), ()> {
-        if ctx.activation_time.is_some() {
-            if Instant::now() < ctx.activation_time.unwrap() {
+        if let Some(activation_time) = ctx.activation_time {
+            if Instant::now() < activation_time {
                 // If the activation time is not yet reached, continue scheduling another get status request, this will be automatically cancelled
                 // when the expected status is received or a activation timeout occurs
                 ctx.timer.schedule(
@@ -1131,7 +1131,7 @@ fn packet_to_event<T: PldmCodec>(
 pub fn process_packet(packet: &RxPacket) -> Result<PldmEvents, ()> {
     debug!("Handling packet: {}", packet);
     let header = PldmMsgHeader::decode(&packet.payload.data[..packet.payload.len])
-        .map_err(|_| (error!("Error decoding packet!")))?;
+        .map_err(|_| error!("Error decoding packet!"))?;
     if !header.is_hdr_ver_valid() {
         error!("Invalid header version!");
         return Err(());

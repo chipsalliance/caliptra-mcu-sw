@@ -348,19 +348,16 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> TransportRxClient for MuxMCT
         let (mctp_header, msg_type, payload_offset) = self.interpret_packet(&rx_buffer[0..len]);
         if let Some(msg_type) = msg_type {
             match msg_type {
-                MessageType::MctpControl => {
+                MessageType::MctpControl
                     if mctp_header.tag_owner() == 1
                         && mctp_header.som() == 1
-                        && mctp_header.eom() == 1
-                    {
-                        let _ = self
-                            .process_mctp_control_msg(mctp_header, &rx_buffer[payload_offset..len]);
-                    } else {
-                        capsule_debug!(
-                            "MCTP-MUX",
-                            "Invalid MCTP Control message. Dropping packet."
-                        );
-                    }
+                        && mctp_header.eom() == 1 =>
+                {
+                    let _ =
+                        self.process_mctp_control_msg(mctp_header, &rx_buffer[payload_offset..len]);
+                }
+                MessageType::MctpControl => {
+                    capsule_debug!("MCTP-MUX", "Invalid MCTP Control message. Dropping packet.");
                 }
                 MessageType::Pldm
                 | MessageType::Spdm

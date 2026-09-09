@@ -151,7 +151,7 @@ impl ExamplarUsbDriver {
 
             self.wait_in_sent();
         }
-        if data.len() < expected && data.len() % MAX_PKT == 0 {
+        if data.len() < expected && data.len().is_multiple_of(MAX_PKT) {
             self.send_zlp_in()?;
         }
         Ok(())

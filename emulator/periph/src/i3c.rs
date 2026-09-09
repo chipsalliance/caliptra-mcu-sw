@@ -703,9 +703,8 @@ impl I3cPeripheral for I3c {
                 self.i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1
                     .reg
                     .set(
-                        ((address + std::mem::size_of::<caliptra_emu_types::RvData>())
-                            .next_multiple_of(std::mem::size_of::<u32>())
-                            / std::mem::size_of::<u32>()) as u32,
+                        (address + std::mem::size_of::<caliptra_emu_types::RvData>())
+                            .div_ceil(std::mem::size_of::<u32>()) as u32,
                     );
             } else {
                 println!("[I3C-Emulator] Unknown bypass configuration: {bypass_cfg}");

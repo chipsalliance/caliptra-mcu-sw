@@ -5916,15 +5916,11 @@ fn decode_inst_format(dec: &mut RvDecode) -> String {
             '\t' => {
                 buf += " ".repeat(TAB_SIZE.saturating_sub(buf.len())).as_str();
             }
-            'A' => {
-                if dec.aq != 0 {
-                    buf += ".aq";
-                }
+            'A' if dec.aq != 0 => {
+                buf += ".aq";
             }
-            'R' => {
-                if dec.rl != 0 {
-                    buf += ".rl";
-                }
+            'R' if dec.rl != 0 => {
+                buf += ".rl";
             }
             _ => {}
         }

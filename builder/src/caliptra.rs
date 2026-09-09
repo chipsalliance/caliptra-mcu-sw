@@ -585,6 +585,12 @@ fn main() -> Result<()> {
             ])
             .env_remove("CARGO_ENCODED_RUSTFLAGS")
             .env_remove("RUSTFLAGS")
+            // caliptra-builder denies warnings when it is compiled with
+            // GITHUB_ACTIONS set. A released ROM ref is pinned third-party
+            // source we cannot patch, so lints added by a newer toolchain would
+            // fail the build. Drop the variable so the helper builds without
+            // -Dwarnings; our own crates are still linted by the clippy job.
+            .env_remove("GITHUB_ACTIONS")
             .status()
             .context("Failed to run Caliptra ROM helper build")?;
         if !status.success() {

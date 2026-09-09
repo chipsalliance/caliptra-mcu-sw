@@ -396,7 +396,7 @@ impl<'a> LdGeneration<'a> {
 
         // If the tracker currently doeesn't match the alignment, consume the number of bytes
         // required to reach that alignment.
-        if tracker.offset % alignment != 0 {
+        if !tracker.offset.is_multiple_of(alignment) {
             tracker.consume(alignment - (tracker.offset % alignment))?;
         }
 

@@ -145,7 +145,7 @@ impl NetworkMboxDriver<'_> {
     fn write_sram_data(&self, data: impl Iterator<Item = u32>, dw_len: usize, dlen: usize) {
         for (i, dword) in data.take(dw_len).enumerate() {
             // If this is the last dword and dlen is not 4-byte aligned, mask it.
-            if i == dw_len - 1 && dlen % 4 != 0 {
+            if i == dw_len - 1 && !dlen.is_multiple_of(4) {
                 let mask = (1u32 << (dlen % 4 * 8)) - 1;
                 self.regs.network_mbox_sram[i].set(dword & mask);
             } else {
@@ -180,10 +180,8 @@ impl NetworkMboxDriver<'_> {
     /// Poll for incoming requests or target done events.
     fn poll_inner(&self) {
         match self.state.get() {
-            DriverState::RxWait => {
-                if self.is_execute_set() {
-                    self.handle_incoming_request();
-                }
+            DriverState::RxWait if self.is_execute_set() => {
+                self.handle_incoming_request();
             }
             DriverState::WaitingForTargetDone => {
                 let target_status = self.read_target_status();

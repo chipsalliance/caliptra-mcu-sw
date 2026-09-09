@@ -160,7 +160,7 @@ impl Otp {
     }
 
     fn read_data(&self, addr: usize, len: usize, data: &mut [u8]) -> McuResult<()> {
-        if data.len() < len || addr % 4 != 0 || len % 4 != 0 {
+        if data.len() < len || !addr.is_multiple_of(4) || !len.is_multiple_of(4) {
             return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);
         }
 
@@ -747,7 +747,7 @@ impl Otp {
     }
 
     pub fn write_data(&self, addr: usize, len: usize, data: &[u8]) -> McuResult<()> {
-        if addr % 4 != 0 || len % 4 != 0 {
+        if !addr.is_multiple_of(4) || !len.is_multiple_of(4) {
             return Err(McuError::ROM_OTP_INVALID_DATA_ERROR);
         }
 

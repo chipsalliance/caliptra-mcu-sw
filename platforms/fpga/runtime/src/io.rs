@@ -36,7 +36,6 @@ const FPGA_UART_OUTPUT: *mut u32 = 0xa401_1014 as *mut u32;
 /// # Safety
 /// Accesses memory-mapped registers.
 #[cfg(all(not(test), not(feature = "release")))]
-#[no_mangle]
 #[panic_handler]
 pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
     let writer = &mut *addr_of_mut!(WRITER);
@@ -56,7 +55,6 @@ pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
 /// # Safety
 /// Accesses memory-mapped registers.
 #[cfg(all(not(test), feature = "release"))]
-#[no_mangle]
 #[panic_handler]
 pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
     use core::fmt::Write as _;

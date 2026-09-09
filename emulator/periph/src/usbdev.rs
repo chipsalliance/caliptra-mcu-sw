@@ -114,7 +114,7 @@ impl UsbDevState {
 
     fn read_data_from_buffer(&mut self, buffer_id: u8, size: usize) -> Vec<u8> {
         let base = usize::from(buffer_id) * WORDS_PER_BUFFER;
-        let num_words = (size + 3) / 4;
+        let num_words = size.div_ceil(4);
         let mut data = Vec::with_capacity(num_words * 4);
         for i in 0..num_words {
             data.extend_from_slice(&self.generated.read_buffer(base + i).to_le_bytes());

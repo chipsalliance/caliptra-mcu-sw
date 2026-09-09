@@ -314,11 +314,7 @@ impl DhcpDiscovery {
 
         // Total frame size: header + options, padded so DHCP payload >= 300 bytes
         let dhcp_payload_len = core::mem::size_of::<DhcpFixedFields>() + 4 + offset; // fixed + cookie + options
-        let padding = if dhcp_payload_len < DHCP_MIN_PAYLOAD {
-            DHCP_MIN_PAYLOAD - dhcp_payload_len
-        } else {
-            0
-        };
+        let padding = DHCP_MIN_PAYLOAD.saturating_sub(dhcp_payload_len);
         let total_frame_len = header_size + offset + padding;
 
         // Fill in IP and UDP lengths

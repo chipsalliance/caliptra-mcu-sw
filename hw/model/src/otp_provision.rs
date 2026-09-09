@@ -59,7 +59,7 @@ pub(crate) use caliptra_mcu_emulator_periph::OTP_SCRAMBLE_KEYS;
 const LC_TOKENS_KEY_IDX: usize = 6;
 
 fn otp_scramble_data(data: &mut [u8], key_idx: usize) -> Result<()> {
-    if data.len() % 8 != 0 {
+    if !data.len().is_multiple_of(8) {
         bail!("Data length must be a multiple of 8 bytes for scrambling");
     }
     if key_idx >= OTP_SCRAMBLE_KEYS.len() {
@@ -75,7 +75,7 @@ fn otp_scramble_data(data: &mut [u8], key_idx: usize) -> Result<()> {
 
 #[allow(unused)]
 fn otp_unscramble_data(data: &mut [u8], key_idx: usize) -> Result<()> {
-    if data.len() % 8 != 0 {
+    if !data.len().is_multiple_of(8) {
         bail!("Data length must be a multiple of 8 bytes for scrambling");
     }
     if key_idx >= OTP_SCRAMBLE_KEYS.len() {
