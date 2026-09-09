@@ -648,6 +648,7 @@ fn caliptra_authorize_params(fw_id: u32, metadata: ImageMetadata) -> AuthorizeAn
         flags: AuthorizeAndStashFlags::SKIP_STASH,
         source: metadata.source,
         image_size: metadata.image_size,
+        accept_owner_only: false,
     }
 }
 

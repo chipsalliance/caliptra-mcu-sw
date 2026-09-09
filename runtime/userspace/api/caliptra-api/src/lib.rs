@@ -56,6 +56,8 @@ pub mod mailbox;
 #[cfg(feature = "mailbox-io")]
 mod mldsa;
 #[cfg(feature = "mailbox-io")]
+mod owner_auth_manifest;
+#[cfg(feature = "mailbox-io")]
 mod pcr;
 #[cfg(feature = "mailbox-io")]
 mod pcr_quote;
@@ -137,6 +139,8 @@ pub use import::{cm_delete, cm_import};
 pub use mldsa::{
     mldsa87_compute_mu, mldsa87_compute_tr, MLDSA87_CONTEXT_MAX_SIZE, MLDSA87_TR_SIZE,
 };
+#[cfg(feature = "mailbox-io")]
+pub use owner_auth_manifest::{set_owner_auth_manifest, OWNER_AUTH_MANIFEST_MAX_SIZE};
 #[cfg(feature = "mailbox-io")]
 pub use pcr::{extend_pcr31, PCR31_INDEX, PCR31_MEASUREMENT_SIZE};
 #[cfg(feature = "mailbox-io")]
