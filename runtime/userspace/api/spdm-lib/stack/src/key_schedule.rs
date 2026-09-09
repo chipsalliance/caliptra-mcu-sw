@@ -114,8 +114,8 @@ impl<K: Clone> KeySchedule<K> {
         }
     }
 
-    /// Store the DHE shared secret produced by [`SpdmPalSessionCrypto::ecdh_finish`].
-    pub fn set_dhe_secret(&mut self, secret: K) {
+    /// Store the shared secret produced by either ECDH or ML-KEM during KEY_EXCHANGE.
+    pub fn set_shared_secret(&mut self, secret: K) {
         self.master_ctx.dhe_secret = Some(secret);
     }
 
