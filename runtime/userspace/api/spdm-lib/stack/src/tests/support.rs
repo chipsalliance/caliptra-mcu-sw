@@ -629,6 +629,15 @@ impl SpdmPalSessionCrypto for TestPal {
         plaintext[..ciphertext.len()].copy_from_slice(ciphertext);
         Ok(ciphertext.len())
     }
+
+    async fn mlkem_encapsulate(
+        &self,
+        io: &impl SpdmPalIo,
+        encaps_key: &[u8],
+        ciphertext: &mut [u8],
+    ) -> McuResult<Self::Key> {
+        Ok(1)
+    }
 }
 
 impl caliptra_mcu_spdm_traits::SpdmPal for TestPal {
