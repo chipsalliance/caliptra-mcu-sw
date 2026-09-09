@@ -158,11 +158,12 @@ In the reference schema and map, `soc_image_min_svn_0` and `soc_image_min_svn_1`
 - If you are **not** using DOT, then `CPTRA_SS_OWNER_PK_HASH` is the sole
   source of the owner PK hash and must be provisioned or another integrator-
   specific mechanism must be used.
-- Reference platform ROMs also support a force-fuse-owner recovery policy:
-    asserting `mci_reg_generic_input_wires[1]` bit 28 sets
-    `OwnerPkHashPolicy::ForceFuse`, bypasses the DOT blob, and requires
-    `CPTRA_SS_OWNER_PK_HASH` to be provisioned. If the forced fuse owner path is
-    requested while the fuse is empty, ROM reports a fatal error.
+- Platforms can select a force-fuse-owner recovery policy by setting
+    `RomParameters::owner_pk_hash_policy` to `OwnerPkHashPolicy::ForceFuse`.
+    This bypasses the DOT blob and requires `CPTRA_SS_OWNER_PK_HASH` to be
+    provisioned. If the forced fuse owner path is requested while the fuse is
+    empty, ROM reports a fatal error. Reference `core_test` builds map generic
+    input wire 1 bit 28 to this parameter.
 
 ## SVN Anti-Rollback Integration
 
@@ -294,10 +295,10 @@ service or bridge that owns MCI access and enforces the deployment policy.
 
 ## Vendor Public Key Selection and Rotation
 
-Caliptra MCU supports a vendor public key selection and rotation scheme
-based on fuses and hardware strapping pins. This section describes how the ROM
-selects the active vendor public key slot and how integrators can manage
-rotation and revocation.
+Caliptra MCU supports a vendor public key selection and rotation scheme based
+on fuses and platform policy. This section describes how the ROM selects the
+active vendor public key slot and how integrators can manage rotation and
+revocation.
 
 ### Key Policy and Selection Process
 
@@ -321,24 +322,20 @@ available slots):
     be overridden by passing a different implementation of the `VendorKeyPolicy`
     into the ROM parameters.
 
-### Key Rotation via Strapping
+### Key Rotation Policy
 
-Integrators can force the ROM to rotate to the next available key by using a
-hardware strapping pin:
+Integrators can ask the default ROM policy to rotate to the next available key
+by setting `RomParameters::vendor_pk_hash_rotation`. The ROM then skips the
+first functional slot and selects the second functional slot. This allows a
+platform to switch to a new key without burning fuses, provided that a second
+valid and functional key is provisioned. If only one functional slot exists,
+the default policy falls back to that slot.
 
-- **Generic Input Wires**: `mci_reg_generic_input_wires[1]`
-- **Bit 1 (Rotation)**: If this bit is set to `1`, the ROM will **skip the
-  first functional slot** it finds and select the **second functional slot**.
-  This allows a platform to switch to a new key without burning fuses, simply
-  by changing a strapping register or GPIO state, provided that a second valid and
-  functional key is provisioned in the fuses. This enables rolling back to the
-  previous known-good firmware image should the new one have a fatal issue.
-
-If the rotation strap is asserted but only one functional slot exists, the
-default policy falls back to that one slot. Platforms that need arbitrary slot
-selection or more complex rollout policy should provide a custom
-`VendorKeyPolicy` in `RomParameters` instead of relying only on the reference
-strap behavior.
+Platforms that need arbitrary slot selection or more complex rollout policy
+should provide a custom `VendorKeyPolicy` in `RomParameters`. The reference
+`core_test` builds map generic input wire 1 bit 1 to
+`vendor_pk_hash_rotation`, but production common ROM code does not read that
+wire. See [Reference ROM Specification](./rom.md#reference-core_test-configuration).
 
 ### Vendor PK Hash Provisioning
 
@@ -477,24 +474,27 @@ This flow is used when an entire vendor PK hash slot must be replaced.
     and use `MC_PROVISION_VENDOR_PK_HASH` to write the hash; that command writes
     only the hash.
 2. With the default `VendorKeyPolicy`, ensure `S` is the second functional slot
-   in the slot 0-to-15 scan order. The rotation strap does not select an
+   in the slot 0-to-15 scan order. The rotation policy does not select an
    arbitrary slot or necessarily the numerically adjacent slot. Use a custom
    policy when a different selection rule is required.
 3. Stage a Caliptra FMC + RT bundle whose vendor key descriptors match slot `S`,
-   assert bit 1 of `mci_reg_generic_input_wires[1]`, and cold reboot.
+   enable `RomParameters::vendor_pk_hash_rotation`, and cold reboot. Reference
+   `core_test` builds map bit 1 of `mci_reg_generic_input_wires[1]` to this
+   parameter.
 4. MCU ROM selects the second functional slot and forwards its fuse values.
    Caliptra Core ROM authenticates the bundle against slot `S`.
 5. After MCU Runtime starts, obtain a new authorization challenge and submit
    `MC_FUSE_REVOKE_VENDOR_PK_HASH` for old slot `O`. MCU Runtime rejects the
    command if `O` contains the active hash, then marks `O` invalid.
-6. Deassert the rotation strap after revoking `O`. On the next cold boot, `S`
-   is selected as the first functional slot. Leaving the strap asserted when
-   additional functional slots exist could select a different slot.
+6. Clear `RomParameters::vendor_pk_hash_rotation` after revoking `O`. On the
+   next cold boot, `S` is selected as the first functional slot. Leaving the
+   rotation policy enabled when additional functional slots exist could select a
+   different slot.
 
 ```mermaid
 sequenceDiagram
     participant Requester
-    participant Strap as Rotation Strap
+    participant Platform as Platform Policy
     participant MCU_ROM as MCU ROM
     participant Core as Caliptra Core
     participant MCU_RT as MCU Runtime
@@ -506,9 +506,9 @@ sequenceDiagram
     Requester->>MCU_RT: Authorized provision hash for slot S, if needed
     MCU_RT->>Fuses: Write and verify hash in slot S
     Requester->>Requester: Stage Caliptra bundle matching slot S
-    Requester->>Strap: Assert rotation
+    Requester->>Platform: Enable rotation policy
     Requester->>MCU_ROM: Trigger cold reboot
-    MCU_ROM->>Strap: Read rotation enabled
+    MCU_ROM->>Platform: Receive vendor key policy in RomParameters
     MCU_ROM->>Fuses: Scan valid and functional slots
     MCU_ROM->>MCU_ROM: Select second functional slot S
     MCU_ROM->>Core: Populate slot S fuses and send RI_DOWNLOAD_FIRMWARE
@@ -522,7 +522,7 @@ sequenceDiagram
     Core-->>MCU_RT: Active hash from slot S
     MCU_RT->>Fuses: Mark old slot O invalid
     MCU_RT-->>Requester: Success
-    Requester->>Strap: Deassert rotation
+    Requester->>Platform: Clear rotation policy
 ```
 
 ## ROM Milestone Hooks
