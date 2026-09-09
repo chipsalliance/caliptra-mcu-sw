@@ -15,9 +15,9 @@
 //! itself is unaware of the phase.
 
 use caliptra_mcu_spdm_codec::{
-    encode_aad, AeadAlgos, AsymAlgos, CapFlags, DheAlgos, HashAlgos, KeyScheduleAlgos,
-    MeasHashAlgos, MeasSpec, OtherParamSupport, PqcAsymAlgos, ReqRespCode, SecuredMessageHeader,
-    SpdmMsgHdrPdu, SpdmVersion, AES_256_GCM_TAG_SIZE, SECURED_MSG_HDR_SIZE,
+    encode_aad, AeadAlgos, AsymAlgos, CapFlags, DheAlgos, HashAlgos, KemAlgos, KeyExSel,
+    KeyScheduleAlgos, MeasHashAlgos, MeasSpec, OtherParamSupport, PqcAsymAlgos, ReqRespCode,
+    SecuredMessageHeader, SpdmMsgHdrPdu, SpdmVersion, AES_256_GCM_TAG_SIZE, SECURED_MSG_HDR_SIZE,
 };
 use caliptra_mcu_spdm_traits::SpdmPalAlloc;
 use caliptra_mcu_spdm_traits::*;
@@ -110,6 +110,8 @@ pub struct ConnectionState<S, L> {
     pub pqc_asym_sel: PqcAsymAlgos,
     /// Diffie-Hellman group bitmap for `KEY_EXCHANGE`.
     pub dhe: DheAlgos,
+    /// ML-KEM group bitmap for `KEY_EXCHANGE`.
+    pub kem: KemAlgos,
     /// AEAD suite bitmap for secured-message protection.
     pub aead: AeadAlgos,
     /// Key-schedule bitmap (always `SPDM` for this responder).
@@ -139,6 +141,8 @@ pub struct ConnectionState<S, L> {
     pub negotiated_base_hash_sel: HashAlgos,
     /// Negotiated PqcAsymSel from NEGOTIATE_ALGORITHMS.
     pub negotiated_pqc_asym_sel: PqcAsymAlgos,
+    /// Negotiated key-exchange mechanism from NEGOTIATE_ALGORITHMS.
+    pub negotiated_key_ex_sel: KeyExSel,
     /// Transcript state (running VCA/M1/L1 hashes per SPDM).
     pub transcript: crate::transcript::Transcript<S>,
     /// Consolidated context managing large-payload request reassembly and response chunking.
@@ -187,6 +191,7 @@ impl<S, L> ConnectionState<S, L> {
             base_hash_sel: HashAlgos::SHA_384,
             pqc_asym_sel: PqcAsymAlgos::ML_DSA_87,
             dhe: DheAlgos::SECP_384_R1,
+            kem: KemAlgos::ML_KEM1024,
             aead: AeadAlgos::AES_256_GCM,
             key_schedule: KeyScheduleAlgos::SPDM,
 
@@ -200,6 +205,7 @@ impl<S, L> ConnectionState<S, L> {
             negotiated_base_asym_sel: AsymAlgos::EMPTY,
             negotiated_base_hash_sel: HashAlgos::EMPTY,
             negotiated_pqc_asym_sel: PqcAsymAlgos::EMPTY,
+            negotiated_key_ex_sel: KeyExSel::None,
             transcript: crate::transcript::Transcript::new(),
             large_msg_ctx: chunk::LargeMessageCtx::new(),
         }
