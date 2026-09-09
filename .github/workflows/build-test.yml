@@ -14,7 +14,7 @@ env:
   # Pin the Caliptra core ROM to a release tag; image/update crates continue
   # to use the Cargo.toml caliptra-sw rev. main-2.1 pins rom-2.1.2 instead.
   CALIPTRA_ROM_REF: rom-2.1.2
-  RUSTUP_TOOLCHAIN: "1.85-x86_64-unknown-linux-gnu"
+  RUSTUP_TOOLCHAIN: "1.95-x86_64-unknown-linux-gnu"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
@@ -39,7 +39,7 @@ jobs:
         run: |
           sudo apt-get update -qy && \
           sudo apt-get install -qy build-essential curl git libclang-dev llvm && \
-          rustup toolchain install 1.85-x86_64-unknown-linux-gnu -c clippy,rust-src,llvm-tools,llvm-tools-preview,rustfmt,rustc-dev -t riscv32imc-unknown-none-elf,aarch64-unknown-linux-gnu
+          rustup toolchain install 1.95-x86_64-unknown-linux-gnu -c clippy,rust-src,llvm-tools,llvm-tools-preview,rustfmt,rustc-dev -t riscv32imc-unknown-none-elf,aarch64-unknown-linux-gnu
 
       - name: Prebuild xtask
         run: |
@@ -76,7 +76,7 @@ jobs:
         run: |
           sudo apt-get update -qy && \
           sudo apt-get install -qy build-essential curl git libclang-dev llvm && \
-          rustup toolchain install 1.85-x86_64-unknown-linux-gnu -c clippy,rust-src,llvm-tools,llvm-tools-preview,rustfmt,rustc-dev -t riscv32imc-unknown-none-elf,aarch64-unknown-linux-gnu
+          rustup toolchain install 1.95-x86_64-unknown-linux-gnu -c clippy,rust-src,llvm-tools,llvm-tools-preview,rustfmt,rustc-dev -t riscv32imc-unknown-none-elf,aarch64-unknown-linux-gnu
 
       - name: Download xtask binary
         uses: actions/download-artifact@v4
@@ -119,7 +119,7 @@ jobs:
         run: |
           sudo apt-get update -qy && \
           sudo apt-get install -qy build-essential curl git libclang-dev llvm && \
-          rustup toolchain install 1.85-x86_64-unknown-linux-gnu -c clippy,rust-src,llvm-tools,llvm-tools-preview,rustfmt,rustc-dev -t riscv32imc-unknown-none-elf,aarch64-unknown-linux-gnu
+          rustup toolchain install 1.95-x86_64-unknown-linux-gnu -c clippy,rust-src,llvm-tools,llvm-tools-preview,rustfmt,rustc-dev -t riscv32imc-unknown-none-elf,aarch64-unknown-linux-gnu
 
       - name: Download xtask binary
         uses: actions/download-artifact@v8
@@ -218,7 +218,7 @@ jobs:
         run: |
           sudo apt-get update -qy && \
           sudo apt-get install -qy build-essential curl git libclang-dev llvm && \
-          rustup toolchain install 1.85-x86_64-unknown-linux-gnu -c clippy,rust-src,llvm-tools,llvm-tools-preview,rustfmt,rustc-dev -t riscv32imc-unknown-none-elf,aarch64-unknown-linux-gnu
+          rustup toolchain install 1.95-x86_64-unknown-linux-gnu -c clippy,rust-src,llvm-tools,llvm-tools-preview,rustfmt,rustc-dev -t riscv32imc-unknown-none-elf,aarch64-unknown-linux-gnu
 
       - name: Download xtask binary
         uses: actions/download-artifact@v8
@@ -264,7 +264,7 @@ jobs:
         run: |
           sudo apt-get update -qy && \
           sudo apt-get install -qy build-essential curl git libclang-dev llvm && \
-          rustup toolchain install 1.85-x86_64-unknown-linux-gnu -c clippy,rust-src,llvm-tools,llvm-tools-preview,rustfmt,rustc-dev -t riscv32imc-unknown-none-elf,aarch64-unknown-linux-gnu
+          rustup toolchain install 1.95-x86_64-unknown-linux-gnu -c clippy,rust-src,llvm-tools,llvm-tools-preview,rustfmt,rustc-dev -t riscv32imc-unknown-none-elf,aarch64-unknown-linux-gnu
 
       - name: Install cargo-nextest (prebuilt binary)
         run: |
@@ -315,7 +315,7 @@ jobs:
         run: |
           sudo apt-get update -qy && \
           sudo apt-get install -qy build-essential curl git libclang-dev llvm dnsmasq && \
-          rustup toolchain install 1.85-x86_64-unknown-linux-gnu -c clippy,rust-src,llvm-tools,llvm-tools-preview,rustfmt,rustc-dev -t riscv32imc-unknown-none-elf,aarch64-unknown-linux-gnu
+          rustup toolchain install 1.95-x86_64-unknown-linux-gnu -c clippy,rust-src,llvm-tools,llvm-tools-preview,rustfmt,rustc-dev -t riscv32imc-unknown-none-elf,aarch64-unknown-linux-gnu
 
       - name: Install cargo-nextest (prebuilt binary)
         run: |
@@ -448,7 +448,7 @@ jobs:
         run: |
           sudo apt-get update -qy && \
           sudo apt-get install -qy build-essential curl git libclang-dev llvm && \
-          rustup toolchain install 1.85-x86_64-unknown-linux-gnu -c clippy,rust-src,llvm-tools,llvm-tools-preview,rustfmt,rustc-dev -t riscv32imc-unknown-none-elf,aarch64-unknown-linux-gnu
+          rustup toolchain install 1.95-x86_64-unknown-linux-gnu -c clippy,rust-src,llvm-tools,llvm-tools-preview,rustfmt,rustc-dev -t riscv32imc-unknown-none-elf,aarch64-unknown-linux-gnu
 
       - name: Install cargo-nextest (prebuilt binary)
         run: |

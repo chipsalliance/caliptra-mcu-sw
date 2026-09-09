@@ -55,8 +55,8 @@ jobs:
       - name: Install sccache
         if: steps.sccache_bin_restore.outputs.cache-hit != 'true'
         run: |
-          rustup install 1.85
-          cargo +1.85 install sccache --version ${SCCACHE_VERSION} --no-default-features --features=gha --locked
+          rustup install 1.95
+          cargo +1.95 install sccache --version ${SCCACHE_VERSION} --no-default-features --features=gha --locked
 
       - name: Save sccache binary
         uses: actions/cache/save@v6
@@ -189,8 +189,8 @@ jobs:
       - name: Install sccache
         if: steps.sccache_bin_restore.outputs.cache-hit != 'true'
         run: |
-          rustup install 1.85
-          cargo +1.85 install sccache --version ${SCCACHE_VERSION} --no-default-features --features=gha --locked
+          rustup install 1.95
+          cargo +1.95 install sccache --version ${SCCACHE_VERSION} --no-default-features --features=gha --locked
 
       - name: Save sccache binary
         uses: actions/cache/save@v3

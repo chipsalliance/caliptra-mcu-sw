@@ -412,7 +412,7 @@ pub fn write_fuse_value<const N: usize, const M: usize>(
                 return Err(McuError::ROM_FUSE_LAYOUT_TOO_LARGE);
             }
             // ensure that we have the right number of words
-            if M % dupe.get() != 0 {
+            if !M.is_multiple_of(dupe.get()) {
                 return Err(McuError::ROM_FUSE_LAYOUT_TOO_LARGE);
             }
             for (i, &x) in value.iter().enumerate() {
@@ -466,7 +466,7 @@ pub fn write_fuse_value<const N: usize, const M: usize>(
             if total_bits > M * 32 {
                 return Err(McuError::ROM_FUSE_LAYOUT_TOO_LARGE);
             }
-            if M % dupe.get() != 0 {
+            if !M.is_multiple_of(dupe.get()) {
                 return Err(McuError::ROM_FUSE_LAYOUT_TOO_LARGE);
             }
             for (i, &x) in value.iter().enumerate() {
@@ -569,7 +569,7 @@ pub fn extract_fuse_value<const N: usize>(
                 return Err(McuError::ROM_FUSE_LAYOUT_TOO_LARGE);
             }
             // ensure that we have the right number of words
-            if raw_value.len() % dupe.get() != 0 {
+            if !raw_value.len().is_multiple_of(dupe.get()) {
                 return Err(McuError::ROM_FUSE_LAYOUT_TOO_LARGE);
             }
             for (i, chunk) in raw_value.chunks_exact(dupe.get()).enumerate() {
@@ -623,7 +623,7 @@ pub fn extract_fuse_value<const N: usize>(
             if N != bits.get() / 32 {
                 return Err(McuError::ROM_FUSE_LAYOUT_TOO_LARGE);
             }
-            if raw_value.len() % dupe.get() != 0 {
+            if !raw_value.len().is_multiple_of(dupe.get()) {
                 return Err(McuError::ROM_FUSE_LAYOUT_TOO_LARGE);
             }
             for (i, chunk) in raw_value.chunks_exact(dupe.get()).enumerate() {

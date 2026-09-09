@@ -444,7 +444,7 @@ impl<'a> SpdmVdmClient<'a> {
             .map_err(|e| anyhow::anyhow!("DOT_OVERRIDE failed: {:?}", e))
     }
 
-    fn create_session(&mut self) -> Result<CaliptraSession> {
+    fn create_session(&mut self) -> Result<CaliptraSession<'_>> {
         let mut session = CaliptraSession::new(1, &mut self.transport as &mut dyn Transport)
             .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
         session

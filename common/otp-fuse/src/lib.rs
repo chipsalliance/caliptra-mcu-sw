@@ -163,12 +163,12 @@ pub fn fuse_read_dai_params(
     }
 
     let entry_offset = entry as usize;
-    if entry_offset >= info.byte_size || entry_offset % 4 != 0 {
+    if entry_offset >= info.byte_size || !entry_offset.is_multiple_of(4) {
         return Err(McuError::ROM_OTP_FUSE_READ_ENTRY_OUT_OF_BOUNDS);
     }
 
     let remaining_bytes = info.byte_size - entry_offset;
-    let remaining_words = (remaining_bytes + 3) / 4;
+    let remaining_words = remaining_bytes.div_ceil(4);
     let words_to_read = remaining_words.min(max_words);
     let base_word_addr = (info.byte_offset + entry_offset) / 4;
     let valid_bits = (remaining_bytes.min(words_to_read * 4) * 8) as u32;

@@ -635,7 +635,10 @@ impl McuHwModel for ModelEmulated {
         }
         let events = self.events_from_caliptra.try_iter().collect::<Vec<_>>();
         self.collected_events_from_caliptra.extend(events);
-        if self.cycle_count() % caliptra_mcu_testing_common::TICK_NOTIFY_TICKS == 0 {
+        if self
+            .cycle_count()
+            .is_multiple_of(caliptra_mcu_testing_common::TICK_NOTIFY_TICKS)
+        {
             caliptra_mcu_testing_common::update_ticks(self.cycle_count());
             let milestones =
                 McuBootMilestones::from((self.mci_regs.borrow().flow_status >> 16) as u16);

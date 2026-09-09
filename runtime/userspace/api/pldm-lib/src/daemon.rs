@@ -201,7 +201,7 @@ pub async fn pldm_initiator(
             if session.is_some() {
                 // yield every so often still so that we handle cancelations
                 counter = counter.wrapping_add(1);
-                if counter % YIELD_EVERY_ITERATIONS == 0 {
+                if counter.is_multiple_of(YIELD_EVERY_ITERATIONS) {
                     let _ = AsyncAlarm::<DefaultSyscalls>::sleep_ticks(1).await;
                 }
             } else {

@@ -104,7 +104,7 @@ fn validate_transition(from: u32, to: u32) -> Option<TokenRequirement> {
     // TestUnlocked(N) states have odd indices 1,3,5,...,15
     // TestLocked(N) states have even indices 2,4,6,...,14
     let is_test_unlocked = |s: u32| (TEST_UNLOCKED0..=TEST_UNLOCKED7).contains(&s) && s % 2 == 1;
-    let is_test_locked = |s: u32| (TEST_LOCKED0..=14).contains(&s) && s % 2 == 0;
+    let is_test_locked = |s: u32| (TEST_LOCKED0..=14).contains(&s) && s.is_multiple_of(2);
 
     match (from, to) {
         // Raw -> TestUnlocked0: hardcoded raw unlock token

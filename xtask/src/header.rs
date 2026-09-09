@@ -4,7 +4,7 @@ use anyhow::{bail, Result};
 use caliptra_mcu_builder::PROJECT_ROOT;
 use std::{
     fs::File,
-    io::{BufRead, BufReader, Error, ErrorKind},
+    io::{BufRead, BufReader, Error},
     path::{Path, PathBuf},
 };
 use walkdir::DirEntry;
@@ -79,7 +79,7 @@ fn add_path_walkdir_error(path: &Path) -> impl Fn(walkdir::Error) -> Error + Cop
         let path = remove_root(path);
         match e.io_error() {
             Some(e) => Error::new(e.kind(), format!("{path:?}: {e}")),
-            None => Error::new(ErrorKind::Other, format!("{path:?}: {e}")),
+            None => Error::other(format!("{path:?}: {e}")),
         }
     }
 }
@@ -101,10 +101,9 @@ fn check_file_contents(path: &Path, contents: impl BufRead) -> Result<(), Error>
         }
     }
     let path = remove_root(path);
-    Err(Error::new(
-        ErrorKind::Other,
-        format!("File {path:?} doesn't contain {REQUIRED_TEXT:?} in the first {N} lines"),
-    ))
+    Err(Error::other(format!(
+        "File {path:?} doesn't contain {REQUIRED_TEXT:?} in the first {N} lines"
+    )))
 }
 
 fn check_file(path: &Path) -> Result<(), Error> {
@@ -120,10 +119,9 @@ fn fix_file(path: &Path) -> Result<(), Error> {
         Some("toml" | "sh" | "py" | "yaml" | "yml") => format!("# {REQUIRED_TEXT}\n"),
         Some("ld" | "s" | "S") => format!("/* {REQUIRED_TEXT} */\n"),
         other => {
-            return Err(std::io::Error::new(
-                ErrorKind::Other,
-                format!("Unknown extension {other:?}"),
-            ))
+            return Err(std::io::Error::other(format!(
+                "Unknown extension {other:?}"
+            )))
         }
     });
     let mut prev_contents = std::fs::read(path).map_err(wrap_err)?;
@@ -176,6 +174,7 @@ pub(crate) fn find_files(
 #[cfg(test)]
 mod test {
     use crate::header::*;
+    use std::io::ErrorKind;
 
     #[test]
     fn test_check_success() {

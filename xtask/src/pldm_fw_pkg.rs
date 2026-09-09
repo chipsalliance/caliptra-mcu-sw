@@ -11,11 +11,8 @@ pub(crate) fn create(manifest_path: &str, output_path: &str) -> Result<()> {
     let result = firmware_manifest
         .unwrap()
         .generate_firmware_package(&output_path.to_string());
-    if result.is_err() {
-        bail!(
-            "Failed to generate firmware package: {}",
-            result.unwrap_err()
-        );
+    if let Err(err) = result {
+        bail!("Failed to generate firmware package: {}", err);
     }
     println!("Encoded FirmwarePackage to binary file: {}", output_path);
     Ok(())

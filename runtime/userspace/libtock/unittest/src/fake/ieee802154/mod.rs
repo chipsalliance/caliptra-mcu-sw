@@ -165,7 +165,7 @@ impl Ieee802154Phy {
         // conditional check (due to unsigned integer
         // arithmetic).
         assert!(rbuf.len() > RING_BUF_METADATA_SIZE);
-        assert!((rbuf.len() - RING_BUF_METADATA_SIZE) % USER_FRAME_MAX_SIZE == 0);
+        assert!((rbuf.len() - RING_BUF_METADATA_SIZE).is_multiple_of(USER_FRAME_MAX_SIZE));
 
         let mut read_index = rbuf[0] as usize;
         let mut write_index = rbuf[1] as usize;

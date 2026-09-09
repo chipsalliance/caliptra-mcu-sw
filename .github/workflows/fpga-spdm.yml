@@ -51,8 +51,8 @@ jobs:
       - name: Install sccache
         if: steps.sccache_bin_restore.outputs.cache-hit != 'true'
         run: |
-          rustup install 1.85
-          cargo +1.85 install sccache --version ${SCCACHE_VERSION} --no-default-features --features=gha --locked
+          rustup install 1.95
+          cargo +1.95 install sccache --version ${SCCACHE_VERSION} --no-default-features --features=gha --locked
 
       # Save the sccache binary immediately so we can reuse it in future runs
       # even if the rest of the current run fails.

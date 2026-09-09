@@ -1075,7 +1075,7 @@ pub async fn default_copy_to_memory<const TRANSFER_SIZE: usize>(
             .await?;
 
         // Print progress every 10KB
-        if (current_offset - offset) % 10240 == 0 {
+        if (current_offset - offset).is_multiple_of(10240) {
             console_writeln!(
                 Console::<DefaultSyscalls>::writer(),
                 "[FW Upd] copy_to_memory progress: {}/{} bytes",
@@ -1151,7 +1151,7 @@ impl PayloadStream for MailboxPayloadStream {
             return Ok(0); // No more data to read
         }
 
-        if (self.cursor - self.offset) % 10240 == 0 {
+        if (self.cursor - self.offset).is_multiple_of(10240) {
             console_writeln!(
                 Console::<DefaultSyscalls>::writer(),
                 "[FW Upd] MailboxPayloadStream: read progress: {}/{} bytes",

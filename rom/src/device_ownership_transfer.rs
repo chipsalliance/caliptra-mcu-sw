@@ -1511,7 +1511,7 @@ pub fn process_fw_manifest_dot_commands(
     let has_lock = cmds
         .iter()
         .any(|&c| c == FW_MANIFEST_DOT_CMD_LOCK || c == FW_MANIFEST_DOT_CMD_DISABLE);
-    let has_unlock = cmds.iter().any(|&c| c == FW_MANIFEST_DOT_CMD_UNLOCK);
+    let has_unlock = cmds.contains(&FW_MANIFEST_DOT_CMD_UNLOCK);
     if has_lock && has_unlock {
         return Err(McuError::ROM_FW_MANIFEST_DOT_CONFLICTING_COMMANDS);
     }

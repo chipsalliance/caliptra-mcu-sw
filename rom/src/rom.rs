@@ -877,18 +877,13 @@ bitflags::bitflags! {
 }
 
 /// Policy controlling whether DOT backup-blob recovery is attempted.
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
 pub enum DotRecoveryPolicy {
     /// Attempt backup blob recovery (default).
+    #[default]
     BackupBlob,
     /// Do not attempt any recovery.
     None,
-}
-
-impl Default for DotRecoveryPolicy {
-    fn default() -> Self {
-        Self::BackupBlob
-    }
 }
 
 #[derive(Default)]

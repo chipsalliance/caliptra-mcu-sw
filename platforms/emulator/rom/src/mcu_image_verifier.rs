@@ -3,6 +3,9 @@
 use caliptra_mcu_rom_common::ImageVerifier;
 use caliptra_mcu_romtime::otp::Otp;
 
+// Constructed only in `mod riscv`, which is gated on `target_arch = "riscv32"`,
+// so host builds see no constructor.
+#[allow(dead_code)]
 pub struct McuImageVerifier;
 
 impl ImageVerifier for McuImageVerifier {

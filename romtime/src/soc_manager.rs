@@ -283,7 +283,7 @@ impl CaliptraSoC {
         &mut self,
         resp_min_size: usize,
         resp_size: usize,
-    ) -> core::result::Result<Option<CaliptraMailboxResponse>, CaliptraApiError> {
+    ) -> core::result::Result<Option<CaliptraMailboxResponse<'_>>, CaliptraApiError> {
         if resp_size < mem::size_of::<MailboxRespHeader>() {
             return Err(CaliptraApiError::MailboxRespTypeTooSmall);
         }

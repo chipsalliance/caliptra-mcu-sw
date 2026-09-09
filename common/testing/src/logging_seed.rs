@@ -20,7 +20,7 @@ pub fn encode_logging_partition(
     page_size: usize,
 ) -> Vec<u8> {
     assert!(
-        partition_size % page_size == 0,
+        partition_size.is_multiple_of(page_size),
         "partition_size ({}) must be a multiple of page_size ({})",
         partition_size,
         page_size,

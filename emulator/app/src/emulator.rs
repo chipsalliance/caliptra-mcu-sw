@@ -809,23 +809,23 @@ impl Emulator {
                 .unwrap()
             };
 
-        let primary_flash_initial_content = if cli.primary_flash_image.is_some() {
-            let flash_image_path = cli.primary_flash_image.as_ref().unwrap();
-            println!("Loading flash image from {}", flash_image_path.display());
-            const FLASH_SIZE: usize =
-                DummyFlashCtrl::PAGE_SIZE * DummyFlashCtrl::MAX_PAGES as usize;
-            let mut flash_image = vec![0; FLASH_SIZE];
-            let mut file = File::open(flash_image_path)?;
-            let bytes_read = file.read(&mut flash_image)?;
-            if bytes_read > FLASH_SIZE {
-                println!("Flash image size exceeds {} bytes", FLASH_SIZE);
-                exit(-1);
-            }
+        let primary_flash_initial_content =
+            if let Some(flash_image_path) = cli.primary_flash_image.as_ref() {
+                println!("Loading flash image from {}", flash_image_path.display());
+                const FLASH_SIZE: usize =
+                    DummyFlashCtrl::PAGE_SIZE * DummyFlashCtrl::MAX_PAGES as usize;
+                let mut flash_image = vec![0; FLASH_SIZE];
+                let mut file = File::open(flash_image_path)?;
+                let bytes_read = file.read(&mut flash_image)?;
+                if bytes_read > FLASH_SIZE {
+                    println!("Flash image size exceeds {} bytes", FLASH_SIZE);
+                    exit(-1);
+                }
 
-            Some(flash_image[..bytes_read].to_vec())
-        } else {
-            None
-        };
+                Some(flash_image[..bytes_read].to_vec())
+            } else {
+                None
+            };
 
         let primary_flash_controller = create_flash_controller(
             "primary_flash",
@@ -834,22 +834,22 @@ impl Emulator {
             primary_flash_initial_content.as_deref(),
         );
 
-        let secondary_flash_initial_content = if cli.secondary_flash_image.is_some() {
-            let flash_image_path = cli.secondary_flash_image.as_ref().unwrap();
-            const FLASH_SIZE: usize =
-                DummyFlashCtrl::PAGE_SIZE * DummyFlashCtrl::MAX_PAGES as usize;
-            let mut flash_image = vec![0; FLASH_SIZE];
-            let mut file = File::open(flash_image_path)?;
-            let bytes_read = file.read(&mut flash_image)?;
-            if bytes_read > FLASH_SIZE {
-                println!("Flash image size exceeds {} bytes", FLASH_SIZE);
-                exit(-1);
-            }
+        let secondary_flash_initial_content =
+            if let Some(flash_image_path) = cli.secondary_flash_image.as_ref() {
+                const FLASH_SIZE: usize =
+                    DummyFlashCtrl::PAGE_SIZE * DummyFlashCtrl::MAX_PAGES as usize;
+                let mut flash_image = vec![0; FLASH_SIZE];
+                let mut file = File::open(flash_image_path)?;
+                let bytes_read = file.read(&mut flash_image)?;
+                if bytes_read > FLASH_SIZE {
+                    println!("Flash image size exceeds {} bytes", FLASH_SIZE);
+                    exit(-1);
+                }
 
-            Some(flash_image[..bytes_read].to_vec())
-        } else {
-            None
-        };
+                Some(flash_image[..bytes_read].to_vec())
+            } else {
+                None
+            };
 
         let secondary_flash_controller = create_flash_controller(
             "secondary_flash",
@@ -1128,11 +1128,10 @@ impl Emulator {
             crate::tests::caliptra_util_host_validator::run_caliptra_util_host_validator();
         }
 
-        if cli.streaming_boot.is_some() {
+        if let Some(pldm_fw_pkg_path) = cli.streaming_boot.as_ref() {
             let _ = simple_logger::SimpleLogger::new()
                 .with_level(log::LevelFilter::Info)
                 .init();
-            let pldm_fw_pkg_path = cli.streaming_boot.as_ref().unwrap();
             println!(
                 "Starting streaming boot using PLDM package {}",
                 pldm_fw_pkg_path.display()
@@ -1332,7 +1331,7 @@ impl Emulator {
 
         let now = self.mcu_cpu.clock.now();
         self.state.ticks.store(now, Ordering::Relaxed);
-        if now % 1000 == 0 {
+        if now.is_multiple_of(1000) {
             self.state.tick_cond.notify_all();
             let milestones =
                 McuBootMilestones::from((self.mci_regs.borrow().flow_status >> 16) as u16);

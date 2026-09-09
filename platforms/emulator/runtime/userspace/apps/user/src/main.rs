@@ -24,6 +24,12 @@ pub(crate) use caliptra_mcu_userlog::{Bytes, Dbg, Hex32};
 pub use caliptra_mcu_libsyscall_caliptra::console_writeln;
 
 pub(crate) mod auth_keys;
+// Only the feature-gated command services below construct
+// `CaliptraCmdBackend`; without them the whole module is unused.
+#[cfg_attr(
+    not(any(feature = "mcu-mbox-service", feature = "mctp-vdm-service")),
+    allow(dead_code)
+)]
 mod caliptra_cmd_handler;
 // SPDM is the only current consumer; widen this gate when another protocol
 // integrates the boot-provisioned certificate chains.

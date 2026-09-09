@@ -27,7 +27,7 @@ impl<'a> SliceIndirectRegion<'a> {
     /// Returns [`OcpError::InvalidCmsBufferSize`] if `buf` is empty or its length
     /// is not a multiple of 4.
     pub fn new(buf: &'a mut [u8], region_type: CmsRegionType) -> Result<Self, OcpError> {
-        if buf.is_empty() || buf.len() % 4 != 0 {
+        if buf.is_empty() || !buf.len().is_multiple_of(4) {
             return Err(OcpError::InvalidCmsBufferSize);
         }
         Ok(Self {
