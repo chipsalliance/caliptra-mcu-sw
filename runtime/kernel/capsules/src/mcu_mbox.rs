@@ -6,7 +6,7 @@ use core::cell::Cell;
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant, GrantKernelData, UpcallCount};
 use kernel::processbuffer::{ReadableProcessBuffer, ReadableProcessSlice, WriteableProcessBuffer};
 use kernel::syscall::{CommandReturn, SyscallDriver};
-use kernel::utilities::cells::OptionalCell;
+use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::{ErrorCode, ProcessId};
 
 pub const MCU_MBOX0_DRIVER_NUM: usize = 0x8000_0010;
@@ -30,32 +30,24 @@ mod upcall {
     pub const COUNT: u8 = 2;
 }
 
-// Adjust as needed - must be large enough for CmMldsaVerifyReq (8740 bytes = 2185 dwords)
-// but small enough to fit in the Tock Grant per-process memory
-const MAX_DATA_SIZE_DWORDS: usize = 2304;
-struct BufferedMessage {
-    pub command: u32,
-    pub data: [u32; MAX_DATA_SIZE_DWORDS],
-    pub dlen: usize,
-    pub valid: bool,
-}
-
-impl Default for BufferedMessage {
-    fn default() -> Self {
-        BufferedMessage {
-            command: 0,
-            data: [0; MAX_DATA_SIZE_DWORDS],
-            dlen: 0,
-            valid: false,
-        }
-    }
+/// Metadata for a request whose payload is still sitting in the retained driver buffer.
+///
+/// The payload itself is NOT copied here. It stays in the `&'static mut [u32]` the
+/// low-level driver lent us, which this capsule holds in `held_rx` until the owning app
+/// collects it. Keeping the payload out of the grant is the entire point: it used to be a
+/// `[u32; 2304]` inside `App`, which made the per-process grant 9268 B and meant every
+/// process paid ~9 KiB of its RAM for a buffer that already existed once in the driver.
+#[derive(Copy, Clone)]
+struct HeldRequest {
+    command: u32,
+    dlen: usize,
 }
 
 #[derive(Default)]
 pub struct App {
     waiting_rx: Cell<bool>, // Indicates if a request is waiting to be received
     pending_tx: Cell<bool>, // Indicates if a response is pending to be sent
-    buffered_msg: BufferedMessage, // Buffered rx message when app is not waiting
+    has_pending: Cell<bool>, // A retained request is addressed to this app
 }
 
 pub struct McuMboxDriver<'a, T: hil::Mailbox<'a>> {
@@ -67,6 +59,10 @@ pub struct McuMboxDriver<'a, T: hil::Mailbox<'a>> {
         AllowRwCount<{ rw_allow::COUNT }>,
     >,
     current_app: OptionalCell<ProcessId>,
+    /// The driver's rx buffer, retained while a request awaits collection.
+    held_rx: TakeCell<'static, [u32]>,
+    /// Metadata for the request held in `held_rx`.
+    held: OptionalCell<HeldRequest>,
 }
 
 impl<'a, T: hil::Mailbox<'a>> McuMboxDriver<'a, T> {
@@ -83,7 +79,26 @@ impl<'a, T: hil::Mailbox<'a>> McuMboxDriver<'a, T> {
             driver,
             apps,
             current_app: OptionalCell::empty(),
+            held_rx: TakeCell::empty(),
+            held: OptionalCell::empty(),
         }
+    }
+
+    /// Hand the retained buffer back to the driver and forget the held request.
+    ///
+    /// MUST be called before the driver can return to `RxWait`. The low-level driver
+    /// `panic!`s if a request arrives while it is in `RxWait` with no rx buffer
+    /// (`handle_incoming_request`, "No data buffer available for incoming request"), and
+    /// `set_mbox_cmd_status` is what puts it back into `RxWait`. Retaining the buffer is
+    /// only safe because delivery leaves the driver in `RespFinishPending`, where
+    /// `handle_incoming_request` returns early -- so every path that can reach
+    /// `set_mbox_cmd_status` has to come through here first.
+    fn release_held(&self) {
+        if let Some(buf) = self.held_rx.take() {
+            self.driver.restore_rx_buffer(buf);
+        }
+        self.held.clear();
+        self.apps.each(|_, app, _| app.has_pending.set(false));
     }
 
     fn start_transmit(&self, app_buf: &ReadableProcessSlice) -> Result<(), ErrorCode> {
@@ -137,43 +152,15 @@ impl<'a, T: hil::Mailbox<'a>> McuMboxDriver<'a, T> {
         Ok(())
     }
 
-    fn buffer_message(&self, app: &mut App, command: u32, rx_buf: &[u32], dlen: usize) -> bool {
-        let dw_len = dlen.div_ceil(4);
-        if dw_len > app.buffered_msg.data.len() {
-            // Message too large to buffer
-            capsule_debug!(
-                "MCU_MBOX",
-                "Cannot buffer message, size {} exceeds buffer capacity {}",
-                dw_len,
-                app.buffered_msg.data.len()
-            );
-            return false;
-        }
-        // Print warning if replacing an old message
-        if app.buffered_msg.valid {
-            capsule_debug!(
-                "MCU_MBOX",
-                "Warning - replacing old buffered message with new one"
-            );
-        }
-        // Always replace the old message with the new one
-        app.buffered_msg.command = command;
-        app.buffered_msg.dlen = dlen;
-        app.buffered_msg.valid = true;
-        #[allow(clippy::manual_memcpy)]
-        for i in 0..dw_len {
-            app.buffered_msg.data[i] = rx_buf[i];
-        }
-
-        true
-    }
-
     fn deliver_message(
         &self,
         app: &mut App,
         kernel_data: &GrantKernelData<'_>,
     ) -> Result<(), ErrorCode> {
-        if !app.buffered_msg.valid {
+        let Some(request) = self.held.get() else {
+            return Err(ErrorCode::FAIL);
+        };
+        if !app.has_pending.get() {
             return Err(ErrorCode::FAIL);
         }
 
@@ -181,27 +168,32 @@ impl<'a, T: hil::Mailbox<'a>> McuMboxDriver<'a, T> {
             app.waiting_rx.set(false);
         }
 
-        let command = app.buffered_msg.command;
-        let dlen = app.buffered_msg.dlen;
+        let command = request.command;
+        let dlen = request.dlen;
         let dw_len = dlen.div_ceil(4);
 
-        let result = kernel_data
-            .get_readwrite_processbuffer(rw_allow::REQUEST)
-            .map_err(|_| ErrorCode::INVAL)
-            .and_then(|rw_buf| {
-                rw_buf
-                    .mut_enter(|buf| -> Result<usize, ErrorCode> {
-                        let copy_len_dw = core::cmp::min(buf.len() / 4, dw_len);
-                        for i in 0..copy_len_dw {
-                            let start = i * 4;
-                            let end = start + 4;
-                            let bytes = app.buffered_msg.data[i].to_le_bytes();
-                            buf[start..end].copy_from_slice(&bytes);
-                        }
-                        Ok(core::cmp::min(copy_len_dw * 4, dlen))
-                    })
-                    .map_err(|_| ErrorCode::FAIL)
-            });
+        // Copy straight out of the retained driver buffer. `map_or` rather than an
+        // unwrap: if the buffer is somehow gone the request cannot be served, and this
+        // capsule must not panic on a path the SoC can drive.
+        let result = self.held_rx.map_or(Err(ErrorCode::FAIL), |held_buf| {
+            kernel_data
+                .get_readwrite_processbuffer(rw_allow::REQUEST)
+                .map_err(|_| ErrorCode::INVAL)
+                .and_then(|rw_buf| {
+                    rw_buf
+                        .mut_enter(|buf| -> Result<usize, ErrorCode> {
+                            let copy_len_dw = core::cmp::min(buf.len() / 4, dw_len);
+                            for i in 0..copy_len_dw {
+                                let start = i * 4;
+                                let end = start + 4;
+                                let bytes = held_buf[i].to_le_bytes();
+                                buf[start..end].copy_from_slice(&bytes);
+                            }
+                            Ok(core::cmp::min(copy_len_dw * 4, dlen))
+                        })
+                        .map_err(|_| ErrorCode::FAIL)
+                })
+        });
 
         match result {
             Ok(Ok(len)) => {
@@ -234,10 +226,26 @@ impl<'a, T: hil::Mailbox<'a>> McuMboxDriver<'a, T> {
             }
         }
 
-        // Invalidate the buffered message after delivery
-        app.buffered_msg.valid = false;
+        // Delivered: this app no longer has a claim on the retained buffer. Give the
+        // buffer back as soon as nobody else does, so the driver is never left in
+        // `RxWait` without one.
+        app.has_pending.set(false);
+        if !self.any_pending() {
+            self.release_held();
+        }
 
         Ok(())
+    }
+
+    /// True while any app still has a claim on the retained request.
+    fn any_pending(&self) -> bool {
+        let mut pending = false;
+        self.apps.each(|_, app, _| {
+            if app.has_pending.get() {
+                pending = true;
+            }
+        });
+        pending
     }
 }
 
@@ -254,11 +262,19 @@ impl<'a, T: hil::Mailbox<'a>> hil::MailboxClient for McuMboxDriver<'a, T> {
             return;
         }
 
+        // A request that arrives while an app is not waiting used to be COPIED into that
+        // app's grant. Instead, mark the app and retain the driver's buffer; the payload
+        // is collected from it on the app's next RECEIVE. Retention is safe here because
+        // the driver moves to `RespFinishPending` immediately after this callback returns,
+        // and `handle_incoming_request` early-returns unless the state is `RxWait` -- so no
+        // further request can reach the "no data buffer" panic while we hold it.
+        let mut retain = false;
         self.apps.each(|_, app, kernel_data| {
             if app.waiting_rx.get() {
                 app.waiting_rx.set(false);
             } else {
-                let _ = self.buffer_message(app, command, rx_buf, dlen);
+                app.has_pending.set(true);
+                retain = true;
                 return;
             }
 
@@ -317,8 +333,14 @@ impl<'a, T: hil::Mailbox<'a>> hil::MailboxClient for McuMboxDriver<'a, T> {
                 }
             }
         });
-        // Restore driver rx buffer
-        self.driver.restore_rx_buffer(rx_buf);
+
+        if retain {
+            self.held.set(HeldRequest { command, dlen });
+            self.held_rx.replace(rx_buf);
+        } else {
+            // Delivered to every waiting app; the payload has been copied out.
+            self.driver.restore_rx_buffer(rx_buf);
+        }
     }
 
     fn response_received(
@@ -363,15 +385,20 @@ impl<'a, T: hil::Mailbox<'a>> SyscallDriver for McuMboxDriver<'a, T> {
                         return Err(ErrorCode::BUSY);
                     }
                     app.waiting_rx.set(true);
-                    // If there's a buffered message, deliver it immediately
-                    if app.buffered_msg.valid {
+                    // If a request is being held for this app, deliver it immediately
+                    if app.has_pending.get() {
                         self.deliver_message(app, kernel_data)?;
                     }
                     Ok(())
                 });
 
+                // Report the inner ErrorCode instead of collapsing it. `Ok(_)` swallowed
+                // `Ok(Err(BUSY))` and every `deliver_message` failure, reporting them to
+                // userspace as SUCCESS, so a grant-allocation failure was the only fault
+                // this syscall could express. Arm 3 below already does this correctly.
                 match res {
-                    Ok(_) => CommandReturn::success(),
+                    Ok(Ok(())) => CommandReturn::success(),
+                    Ok(Err(e)) => CommandReturn::failure(e),
                     Err(err) => CommandReturn::failure(err.into()),
                 }
             }
@@ -411,6 +438,14 @@ impl<'a, T: hil::Mailbox<'a>> SyscallDriver for McuMboxDriver<'a, T> {
                 };
 
                 self.current_app.set(process_id);
+
+                // MUST precede set_mbox_cmd_status, which returns the driver to `RxWait`.
+                // If we were still holding the rx buffer at that point, the next incoming
+                // request would hit `handle_incoming_request`'s "No data buffer available"
+                // panic. This is reachable in practice: the userspace responder calls
+                // finalize_response (this arm) on its receive-error path, without ever
+                // having collected the held request.
+                self.release_held();
 
                 let result = self
                     .apps
