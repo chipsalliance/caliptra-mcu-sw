@@ -20,6 +20,7 @@ use caliptra_mcu_spdm_codec::{
     OPAQUE_VERSION_SELECTION_SIZE, SHA384_HASH_SIZE, SPDM_PREFIX_LEN, SPDM_SIGNING_CONTEXT_LEN,
 };
 use caliptra_mcu_spdm_traits::*;
+use mcu_caliptra_api::MLKEM1024_CIPHERTEXT_SIZE;
 use zerocopy::FromBytes;
 
 use crate::build::{build_response, write_fixed};
@@ -188,7 +189,12 @@ async fn generate_key_exchange_secret<'a, Pal: SpdmPal>(
             Ok((our_exchange_data, dhe_secret))
         }
         KeyExSel::Kem => {
-            todo!()
+            let mut ciphertext = pal.alloc_bytes(io, MLKEM1024_CIPHERTEXT_SIZE)?;
+            let kem_secret = pal
+                .mlkem_encapsulate(io, peer_exchange_data, &mut ciphertext)
+                .await
+                .map_err(|_| SPDM_UNSPECIFIED)?;
+            Ok((ciphertext, kem_secret))
         }
     }
 }

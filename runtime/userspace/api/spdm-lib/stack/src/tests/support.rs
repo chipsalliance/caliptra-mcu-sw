@@ -672,6 +672,15 @@ impl SpdmPalSessionCrypto for TestPal {
         plaintext[..ciphertext.len()].copy_from_slice(ciphertext);
         Ok(ciphertext.len())
     }
+
+    async fn mlkem_encapsulate(
+        &self,
+        _io: &impl SpdmPalIo,
+        _encaps_key: &[u8],
+        _ciphertext: &mut [u8],
+    ) -> McuResult<Self::Key> {
+        Ok(1)
+    }
 }
 
 impl caliptra_mcu_spdm_traits::SpdmPal for TestPal {
@@ -806,7 +815,7 @@ pub fn handshake_session(
         .create_session(0x1234, SpdmVersion::V12, |info| pal.alloc_persistent(info))
         .unwrap();
     let session = sessions.find_mut(session_id).unwrap();
-    session.key_schedule.set_dhe_secret(1);
+    session.key_schedule.set_shared_secret(1);
     block_on(session.key_schedule.generate_handshake_keys(
         pal,
         &empty_io,
