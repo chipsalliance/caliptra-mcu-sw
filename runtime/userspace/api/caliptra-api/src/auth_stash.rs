@@ -20,6 +20,12 @@ pub const AUTHORIZE_AND_STASH_MEASUREMENT_SIZE: usize = 48;
 pub const AUTHORIZE_AND_STASH_CONTEXT_SIZE: usize = 48;
 
 const IMAGE_AUTHORIZED: u32 = 0xDEAD_C0DE;
+/// Caliptra returns this when the `fw_id` was authorized against the owner-only
+/// image-metadata collection installed by `SET_OWNER_AUTH_MANIFEST`, rather than
+/// the base vendor+owner collection.
+///
+/// Mirrored from `caliptra-runtime::IMAGE_AUTHORIZED_OWNER_ONLY`.
+const IMAGE_AUTHORIZED_OWNER_ONLY: u32 = 0xC0DE_DEAD;
 
 /// Source used by Caliptra authorization to obtain the image hash.
 ///
@@ -69,6 +75,12 @@ pub struct AuthorizeAndStashParams {
     pub source: ImageHashSource,
     /// Image size in bytes for load-address or staging-address hashing.
     pub image_size: u32,
+    /// Accept an owner-only authorization result as success.
+    ///
+    /// Set only for components expected to be authorized by an installed Owner
+    /// Authorization Manifest. Base components leave this `false` so an
+    /// unexpected owner-only result is still rejected.
+    pub accept_owner_only: bool,
 }
 
 #[repr(C)]
@@ -112,7 +124,7 @@ pub async fn authorize_and_stash<A: ApiAlloc>(
     let req = build_authorize_and_stash_req(alloc, params)?;
     let mut rsp = [0u8; AUTHORIZE_AND_STASH_RESP_LEN];
     let rsp_len = mbox_execute(CMD_AUTHORIZE_AND_STASH, &req, &mut rsp).await?;
-    validate_authorize_and_stash_response(&rsp, rsp_len)
+    validate_authorize_and_stash_response(&rsp, rsp_len, params.accept_owner_only)
 }
 
 fn build_authorize_and_stash_req<'a, A: ApiAlloc>(
@@ -140,7 +152,11 @@ fn build_authorize_and_stash_req<'a, A: ApiAlloc>(
     Ok(req)
 }
 
-fn validate_authorize_and_stash_response(rsp: &[u8], rsp_len: usize) -> McuResult<()> {
+fn validate_authorize_and_stash_response(
+    rsp: &[u8],
+    rsp_len: usize,
+    accept_owner_only: bool,
+) -> McuResult<()> {
     if rsp_len < AUTHORIZE_AND_STASH_RESP_LEN {
         return Err(INTERNAL_BUG);
     }
@@ -150,7 +166,10 @@ fn validate_authorize_and_stash_response(rsp: &[u8], rsp_len: usize) -> McuResul
         AUTHORIZE_AND_STASH_RESP_LEN,
     )?)
     .map_err(|_| INTERNAL_BUG)?;
-    if resp.auth_req_result.get() != IMAGE_AUTHORIZED {
+    let result = resp.auth_req_result.get();
+    let authorized =
+        result == IMAGE_AUTHORIZED || (accept_owner_only && result == IMAGE_AUTHORIZED_OWNER_ONLY);
+    if !authorized {
         return Err(INTERNAL_BUG);
     }
     Ok(())
@@ -197,6 +216,7 @@ mod tests {
             flags: AuthorizeAndStashFlags::SKIP_STASH,
             source: ImageHashSource::LoadAddress,
             image_size: 0x1000,
+            accept_owner_only: false,
         };
         let alloc = TestAlloc;
 
@@ -218,13 +238,56 @@ mod tests {
         rsp[8..12].copy_from_slice(&IMAGE_AUTHORIZED.to_le_bytes());
 
         assert_eq!(
-            validate_authorize_and_stash_response(&rsp, rsp.len()),
+            validate_authorize_and_stash_response(&rsp, rsp.len(), false),
             Ok(())
         );
 
         rsp[8..12].copy_from_slice(&0u32.to_le_bytes());
         assert_eq!(
-            validate_authorize_and_stash_response(&rsp, rsp.len()),
+            validate_authorize_and_stash_response(&rsp, rsp.len(), false),
+            Err(INTERNAL_BUG)
+        );
+    }
+
+    #[test]
+    fn owner_only_result_requires_opt_in() {
+        assert_eq!(IMAGE_AUTHORIZED_OWNER_ONLY, 0xC0DE_DEAD);
+
+        let mut rsp = [0u8; AUTHORIZE_AND_STASH_RESP_LEN];
+        rsp[8..12].copy_from_slice(&IMAGE_AUTHORIZED_OWNER_ONLY.to_le_bytes());
+
+        // Base components must still reject an owner-only authorization.
+        assert_eq!(
+            validate_authorize_and_stash_response(&rsp, rsp.len(), false),
+            Err(INTERNAL_BUG)
+        );
+        assert_eq!(
+            validate_authorize_and_stash_response(&rsp, rsp.len(), true),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn owner_opt_in_still_accepts_base_result_and_rejects_others() {
+        let mut rsp = [0u8; AUTHORIZE_AND_STASH_RESP_LEN];
+        rsp[8..12].copy_from_slice(&IMAGE_AUTHORIZED.to_le_bytes());
+        assert_eq!(
+            validate_authorize_and_stash_response(&rsp, rsp.len(), true),
+            Ok(())
+        );
+
+        rsp[8..12].copy_from_slice(&0xBAAD_F00Du32.to_le_bytes());
+        assert_eq!(
+            validate_authorize_and_stash_response(&rsp, rsp.len(), true),
+            Err(INTERNAL_BUG)
+        );
+    }
+
+    #[test]
+    fn truncated_response_is_rejected() {
+        let rsp = [0u8; AUTHORIZE_AND_STASH_RESP_LEN];
+        assert_eq!(
+            validate_authorize_and_stash_response(&rsp, rsp.len() - 1, true),
             Err(INTERNAL_BUG)
         );
     }
