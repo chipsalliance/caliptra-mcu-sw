@@ -153,6 +153,15 @@ pub struct EmulatorArgs {
     #[arg(long)]
     pub soc_manifest: PathBuf,
 
+    /// Leave recovery to an initiator outside the emulator.
+    ///
+    /// Selects the same recovery-interface wiring as a flash-based boot, but
+    /// without booting from flash: no internal recovery agent is created and no
+    /// images are queued, so `caliptra_firmware` and `soc_manifest` are not
+    /// read. The device is driven entirely over the I3C recovery interface.
+    #[arg(long)]
+    pub external_recovery_initiator: bool,
+
     #[arg(long)]
     pub i3c_port: Option<u16>,
 
@@ -355,6 +364,7 @@ impl Emulator {
 
         let test_feature = cli.test_feature.as_deref().unwrap_or("");
         let is_flash_based_boot = cli.flash_based_boot || test_feature == "test-flash-based-boot";
+        let external_recovery_initiator = cli.external_recovery_initiator;
 
         // Configure stub warnings based on CLI flag
         caliptra_mcu_emulator_registers_generated::stub_warnings::set_stub_warnings(
@@ -437,7 +447,7 @@ impl Emulator {
             None
         };
 
-        let use_mcu_recovery_interface = is_flash_based_boot;
+        let use_mcu_recovery_interface = is_flash_based_boot || external_recovery_initiator;
 
         let (mut caliptra_cpu, soc_to_caliptra, _, ext_mci) = start_caliptra(&StartCaliptraArgs {
             rom: BytesOrPath::Path(cli.caliptra_rom),
@@ -995,7 +1005,7 @@ impl Emulator {
         cpu.register_events();
 
         let mut bmc;
-        if is_flash_based_boot {
+        if use_mcu_recovery_interface {
             println!("Emulator is using MCU recovery interface");
             bmc = None;
             let (caliptra_event_sender, caliptra_event_receiver) = caliptra_cpu.register_events();
