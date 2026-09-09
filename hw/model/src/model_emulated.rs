@@ -331,6 +331,7 @@ impl McuHwModel for ModelEmulated {
 
         let (mut caliptra_cpu, soc_to_caliptra, soc_to_caliptra_bus, ext_mci) =
             start_caliptra(&StartCaliptraArgs {
+                ss_soc_dbg_unlock_level0: params.ss_soc_dbg_unlock_level0,
                 rom: BytesOrPath::Bytes(params.caliptra_rom.to_vec()),
                 device_lifecycle,
                 req_idevid_csr,
