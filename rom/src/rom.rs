@@ -951,6 +951,8 @@ pub struct RomParameters<'a> {
     pub otp_check_timeout_override: Option<u32>,
     /// Request recovery boot (AXI recovery bypass).
     pub request_recovery_boot: bool,
+    /// Request network boot through the Network Coprocessor.
+    pub request_network_boot: bool,
     /// By default, we will set recovery status as successful after loading MCU firmware.
     /// Set this to true if you want to leave recovery status as open for further firmware image loading.
     /// Note that in 2.0, Caliptra already sets recovery status as successful so there may be a race

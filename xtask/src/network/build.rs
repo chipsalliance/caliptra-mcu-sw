@@ -17,12 +17,16 @@ pub fn build(release: bool, lib_only: bool) -> Result<()> {
         println!("Building all network packages...");
 
         // Build lwip-rs library first
-        println!("\n[1/2] Building lwip-rs...");
+        println!("\n[1/3] Building lwip-rs...");
         build_package("caliptra-mcu-lwip-rs", release)?;
 
         // Build example application
-        println!("\n[2/2] Building example application...");
+        println!("\n[2/3] Building example application...");
         build_package("caliptra-mcu-lwip-rs-example", release)?;
+
+        // Build IPv6 example application
+        println!("\n[3/3] Building IPv6 example application...");
+        build_package("caliptra-mcu-lwip-rs-example-ipv6", release)?;
     }
 
     println!("\nBuild complete!");
@@ -40,10 +44,8 @@ pub fn run_example(package: &str, release: bool) -> Result<()> {
     println!("(Make sure TAP interface and server are running)\n");
 
     let mut cmd = Command::new("cargo");
-    cmd.arg("run")
-        .arg("-p")
-        .arg(package)
-        .env("PRECONFIGURED_TAPIF", "tap0");
+    cmd.arg("run").arg("-p").arg(package);
+    cmd.env("PRECONFIGURED_TAPIF", "tap0");
 
     if release {
         cmd.arg("--release");
@@ -74,10 +76,8 @@ pub fn run_example_with_timeout(
 
     // Spawn the process using cargo run
     let mut cmd = Command::new("cargo");
-    cmd.arg("run")
-        .arg("-p")
-        .arg(package)
-        .env("PRECONFIGURED_TAPIF", tap_interface)
+    cmd.arg("run").arg("-p").arg(package);
+    cmd.env("PRECONFIGURED_TAPIF", tap_interface)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
 

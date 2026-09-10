@@ -62,18 +62,28 @@ impl From<[u8; 4]> for Ipv4Addr {
 }
 
 /// IPv6 address wrapper
+#[cfg(feature = "ipv6")]
 #[derive(Clone, Copy, Default)]
 #[repr(transparent)]
 pub struct Ipv6Addr(pub(crate) ffi::ip6_addr_t);
 
+#[cfg(feature = "ipv6")]
 impl Ipv6Addr {
     pub fn new(segments: [u16; 8]) -> Self {
         let mut addr = ffi::ip6_addr_t::default();
-        addr.addr[0] = ((segments[1] as u32) << 16) | (segments[0] as u32);
-        addr.addr[1] = ((segments[3] as u32) << 16) | (segments[2] as u32);
-        addr.addr[2] = ((segments[5] as u32) << 16) | (segments[4] as u32);
-        addr.addr[3] = ((segments[7] as u32) << 16) | (segments[6] as u32);
+        // lwIP stores each u32 in network byte order. Build the host-order
+        // u32 from two 16-bit segments, then convert to big-endian (network).
+        addr.addr[0] = (((segments[0] as u32) << 16) | (segments[1] as u32)).to_be();
+        addr.addr[1] = (((segments[2] as u32) << 16) | (segments[3] as u32)).to_be();
+        addr.addr[2] = (((segments[4] as u32) << 16) | (segments[5] as u32)).to_be();
+        addr.addr[3] = (((segments[6] as u32) << 16) | (segments[7] as u32)).to_be();
         Ipv6Addr(addr)
+    }
+
+    /// Create an `Ipv6Addr` from raw `u32[4]` words in lwIP's internal format
+    /// (network byte order per word on little-endian targets).
+    pub const fn from_raw(addr: [u32; 4]) -> Self {
+        Ipv6Addr(ffi::ip6_addr_t { addr })
     }
 
     pub fn any() -> Self {
@@ -96,13 +106,16 @@ impl Ipv6Addr {
     pub fn segments(&self) -> [u16; 8] {
         let mut segments = [0u16; 8];
         for i in 0..4 {
-            segments[i * 2] = (self.0.addr[i] & 0xffff) as u16;
-            segments[i * 2 + 1] = ((self.0.addr[i] >> 16) & 0xffff) as u16;
+            // Convert from lwIP's network byte order back to host order
+            let w = u32::from_be(self.0.addr[i]);
+            segments[i * 2] = (w >> 16) as u16;
+            segments[i * 2 + 1] = (w & 0xffff) as u16;
         }
         segments
     }
 }
 
+#[cfg(feature = "ipv6")]
 impl fmt::Display for Ipv6Addr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let s = self.segments();
@@ -114,6 +127,7 @@ impl fmt::Display for Ipv6Addr {
     }
 }
 
+#[cfg(feature = "ipv6")]
 impl fmt::Debug for Ipv6Addr {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Ipv6Addr({})", self)

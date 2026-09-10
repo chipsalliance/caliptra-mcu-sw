@@ -54,6 +54,8 @@ pub mod image_loader;
 mod import;
 pub mod mailbox;
 #[cfg(feature = "mailbox-io")]
+mod mldsa;
+#[cfg(feature = "mailbox-io")]
 mod pcr;
 #[cfg(feature = "mailbox-io")]
 mod pcr_quote;
@@ -63,6 +65,8 @@ pub mod raw;
 mod rng;
 #[cfg(feature = "mailbox-io")]
 mod sha;
+#[cfg(feature = "mailbox-io")]
+mod shake;
 #[cfg(feature = "mailbox-io")]
 mod slice;
 #[cfg(feature = "mailbox-io")]
@@ -101,14 +105,17 @@ pub use debug_unlock::{
 };
 #[cfg(feature = "mailbox-io")]
 pub use dpe::{
-    dpe_certify_key, dpe_certify_key_cert_size, dpe_certify_key_cert_slice, dpe_certify_key_pubkey,
-    dpe_derive_context, dpe_derive_context_exported_cdi, dpe_get_cert_chain_chunk,
-    dpe_get_tagged_tci, dpe_rotate_context_default, dpe_sign_ecc_p384, dpe_tag_tci,
+    dpe_certify_key, dpe_certify_key_cert_size, dpe_certify_key_cert_slice,
+    dpe_certify_key_mldsa87_pubkey, dpe_certify_key_pubkey, dpe_derive_context,
+    dpe_derive_context_exported_cdi, dpe_get_cert_chain_chunk, dpe_get_tagged_tci,
+    dpe_rotate_context_default, dpe_sign, dpe_sign_ecc_p384, dpe_sign_mldsa87, dpe_tag_tci,
     dpe_update_context_measurement, walk_dpe_chain, DpeChainSink, DpeContextHandle,
     DpeDeriveContextExportedCdiResult, DpeDeriveContextFlags, DpeDeriveContextParams,
     DpeDeriveContextResult, DpeProfile, DpeTaggedTci, DpeUpdateContextMeasurementParams,
-    DpeUpdateContextMeasurementResult, DPE_CONTEXT_HANDLE_SIZE, DPE_LABEL_LEN, DPE_MAX_CHUNK_SIZE,
-    DPE_MAX_LEAF_CERT_SIZE, DPE_P384_SIGNATURE_SIZE, DPE_TCI_MEASUREMENT_SIZE, EXPORTED_CDI_SIZE,
+    DpeUpdateContextMeasurementResult, SigningInput, CERTIFY_KEY_MLDSA87_PUBKEY_SIZE,
+    DPE_CONTEXT_HANDLE_SIZE, DPE_LABEL_LEN, DPE_MAX_CHUNK_SIZE, DPE_MAX_LEAF_CERT_SIZE,
+    DPE_MLDSA87_MU_SIZE, DPE_MLDSA87_SIGNATURE_SIZE, DPE_P384_DIGEST_SIZE, DPE_P384_SIGNATURE_SIZE,
+    DPE_TCI_MEASUREMENT_SIZE, EXPORTED_CDI_SIZE,
 };
 #[cfg(feature = "mailbox-io")]
 pub use ecdh::{
@@ -127,6 +134,10 @@ pub use image_loader::{core_image_info, GetImageInfoResp};
 #[cfg(feature = "mailbox-io")]
 pub use import::{cm_delete, cm_import};
 #[cfg(feature = "mailbox-io")]
+pub use mldsa::{
+    mldsa87_compute_mu, mldsa87_compute_tr, MLDSA87_CONTEXT_MAX_SIZE, MLDSA87_TR_SIZE,
+};
+#[cfg(feature = "mailbox-io")]
 pub use pcr::{extend_pcr31, PCR31_INDEX, PCR31_MEASUREMENT_SIZE};
 #[cfg(feature = "mailbox-io")]
 pub use pcr_quote::{
@@ -139,6 +150,11 @@ pub use rng::rng_generate;
 pub use sha::{
     hash_all, sha_finish, sha_init, sha_update, HashAlgo, HashState, SHA_CHUNK_SIZE,
     SHA_CONTEXT_SIZE,
+};
+#[cfg(feature = "mailbox-io")]
+pub use shake::{
+    shake256_finish, shake256_hash, shake256_init, shake256_update, Shake256State,
+    SHAKE256_CHUNK_SIZE, SHAKE256_CONTEXT_SIZE, SHAKE256_OUTPUT_SIZE,
 };
 #[cfg(feature = "mailbox-io")]
 pub use stable_key::{derive_stable_key, StableKeyType, CM_STABLE_KEY_INFO_SIZE};

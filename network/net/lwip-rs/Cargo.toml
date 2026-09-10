@@ -11,18 +11,23 @@ name = "lwip_rs"
 path = "src/lib.rs"
 
 [dependencies]
-bitflags.workspace = true
-spin.workspace = true
+bitflags = { workspace = true, optional = true }
+spin = { workspace = true, optional = true }
 
 [build-dependencies]
 bindgen.workspace = true
 cc.workspace = true
 
 [features]
-default = ["alloc", "ipv4", "ipv6", "dhcp", "tftp"]
+default = ["alloc", "bitflags", "ipv4", "ipv6", "dhcp", "dhcp6", "tftp"]
 alloc = []
 ipv4 = []
 ipv6 = []
 dhcp = ["ipv4"]
 dhcp6 = ["ipv6"]
-tftp = ["alloc"]  # TFTP requires alloc for String/CString
+tftp = ["alloc", "spin"]  # TFTP requires alloc for String/CString
+baremetal = ["ipv4", "dhcp"]  # Bare-metal port (no OS, no TAP, no alloc required)
+baremetal-ipv6 = ["baremetal", "ipv6", "dhcp6"]  # Bare-metal with IPv6/SLAAC + stateless DHCPv6 support
+baremetal-tftp = ["baremetal"]  # Bare-metal with TFTP client (no alloc, no spin)
+baremetal-dhcp6-stateful = ["baremetal-ipv6"]  # Bare-metal with stateful DHCPv6 (Option 59 boot file URL)
+baremetal-tftpv6 = ["baremetal-ipv6", "baremetal-tftp"]  # Bare-metal TFTP over IPv6

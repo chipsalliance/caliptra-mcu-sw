@@ -7,6 +7,7 @@ use std::process::Command;
 
 /// IPv6 ULA prefix for the TAP network
 const IPV6_PREFIX: &str = "fd00:1234:5678::1/64";
+const IPV6_LINK_LOCAL: &str = "fe80::1/64";
 
 /// Setup TAP interface with IP addresses
 pub fn setup(interface: &str, ipv4: &str, enable_ipv6: bool) -> Result<()> {
@@ -57,6 +58,18 @@ pub fn setup(interface: &str, ipv4: &str, enable_ipv6: bool) -> Result<()> {
         let sysctl_path = format!("/proc/sys/net/ipv6/conf/{}/disable_ipv6", interface);
         run_sudo("sh", &["-c", &format!("echo 0 > {}", sysctl_path)]).ok();
 
+        // The TAP has no carrier until the emulated client opens it. Disable DAD
+        // so dnsmasq can bind the server address before that happens.
+        let accept_dad_path = format!("/proc/sys/net/ipv6/conf/{}/accept_dad", interface);
+        run_sudo("sh", &["-c", &format!("echo 0 > {}", accept_dad_path)])?;
+
+        let forwarding_path = format!("/proc/sys/net/ipv6/conf/{}/forwarding", interface);
+        run_sudo("sh", &["-c", &format!("echo 1 > {}", forwarding_path)])?;
+
+        run_sudo(
+            "ip",
+            &["-6", "addr", "add", IPV6_LINK_LOCAL, "dev", interface],
+        )?;
         run_sudo("ip", &["-6", "addr", "add", IPV6_PREFIX, "dev", interface])?;
     }
 

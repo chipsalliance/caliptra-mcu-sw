@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license.
 
-use caliptra_mcu_network_config::DEFAULT_NETWORK_MEMORY_MAP;
+use caliptra_mcu_network_config::{DEFAULT_NETWORK_MEMORY_MAP, NETWORK_BOOT_ROM_SIZE};
 use std::env;
 use std::fs;
 use std::path::PathBuf;
@@ -28,6 +28,11 @@ fn main() {
 fn generate_linker_script() -> String {
     let map = &DEFAULT_NETWORK_MEMORY_MAP;
     let mrac_value = map.compute_mrac();
+    let rom_size = if env::var_os("CARGO_FEATURE_NETWORK_BOOT").is_some() {
+        NETWORK_BOOT_ROM_SIZE
+    } else {
+        map.rom_size
+    };
 
     format!(
         r#"
@@ -101,7 +106,7 @@ MRAC_VALUE = 0x{mrac_value:08x};
 
 "#,
         rom_offset = map.rom_offset,
-        rom_size = map.rom_size,
+        rom_size = rom_size,
         iccm_offset = map.iccm_offset,
         iccm_size = map.iccm_size,
         dccm_offset = map.dccm_offset,

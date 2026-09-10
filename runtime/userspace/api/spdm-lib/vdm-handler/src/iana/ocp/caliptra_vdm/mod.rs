@@ -12,7 +12,7 @@ mod commands;
 
 use caliptra_mcu_common_commands::CaliptraCmdHandler;
 use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
-use caliptra_mcu_spdm_codec::StandardsBodyId;
+use caliptra_mcu_spdm_codec::{SpdmMsgHdrPdu, StandardsBodyId, VendorDefinedReqPdu};
 use caliptra_mcu_spdm_traits::{
     McuResult, SpdmPalAlloc, SpdmPalIo, SpdmVdmBackend, VdmRegistry, VdmResponse, VdmResponseBuffer,
 };
@@ -39,6 +39,19 @@ const MAX_LARGE_COMMAND_DATA_LEN: usize = 4 * 1024;
 /// Maximum complete Caliptra VDM large payload:
 /// `[command_version, command_code, completion, data_len, data...]`.
 const MAX_LARGE_VDM_PAYLOAD_LEN: usize = LARGE_PAYLOAD_HEADER_LEN + MAX_LARGE_COMMAND_DATA_LEN;
+
+/// SPDM and Caliptra VDM bytes preceding a command body:
+/// common header, VENDOR_DEFINED prefix, IANA vendor ID, request length, and
+/// Caliptra command header.
+pub const SPDM_REQUEST_FRAMING_LEN: usize = SpdmMsgHdrPdu::SIZE
+    + VendorDefinedReqPdu::SIZE
+    + core::mem::size_of::<u32>()
+    + core::mem::size_of::<u16>()
+    + VDM_HEADER_LEN;
+
+/// Largest complete logical SPDM request for an enabled `AuthorizedCommand`.
+pub const MAX_AUTHORIZED_COMMAND_SPDM_REQUEST_LEN: usize =
+    SPDM_REQUEST_FRAMING_LEN + commands::authorized_command::MAX_REQUEST_LEN;
 
 /// Platform hook for SPDM-specific Caliptra VDM stream state.
 pub trait CaliptraVdmStreamOps {
@@ -270,17 +283,6 @@ pub const fn large_response_capacity<H: CaliptraCmdHandler>() -> usize {
         MAX_LARGE_VDM_PAYLOAD_LEN
     }
 }
-
-/// Caliptra VDM framing an inbound streamed request carries on top of its
-/// mailbox payload.
-///
-/// Streamed requests (the debug unlock token, and anything else routed through
-/// [`CaliptraVdmStreamOps`]) never materialize in the SPDM scratch pool, so
-/// they cost no pool memory. They still bound `MaxSPDMmsgSize`, because the
-/// `CHUNK_SEND` admission check rejects any message larger than the advertised
-/// value *before* the streaming path is reached. Integrators add this to their
-/// largest streamed payload to size that declaration.
-pub const LARGE_REQUEST_FRAMING_LEN: usize = VDM_HEADER_LEN;
 
 impl<H, S, A> SpdmVdmBackend for CaliptraVdm<'_, H, S, A>
 where
@@ -652,7 +654,7 @@ mod tests {
             Ok(vec![0; len])
         }
 
-        fn large_capacity(&self) -> usize {
+        fn large_buffered_msg_capacity(&self) -> usize {
             4096
         }
 

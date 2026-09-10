@@ -14,6 +14,7 @@ pub mod i3c;
 pub mod lc_ctrl;
 pub mod mbox;
 pub mod mci;
+pub mod network_mbox;
 pub mod otp_ctrl;
 pub mod primary_flash_ctrl;
 pub mod secondary_flash_ctrl;

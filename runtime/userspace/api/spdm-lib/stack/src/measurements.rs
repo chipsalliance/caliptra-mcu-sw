@@ -230,7 +230,7 @@ async fn handle_measurements_response<'a, Pal: SpdmPal>(
     let raw_len = head.checked_add(spdm_len).ok_or(SPDM_UNSPECIFIED)?;
     let use_normal_response = spdm_len <= state.effective_data_transfer_size(pal);
     if !use_normal_response {
-        chunk::validate_buffered_large_response_with_capacity(state, pal, spdm_len, buf.len())?;
+        chunk::validate_buffered_large_response_with_capacity(state, spdm_len, buf.len())?;
     }
 
     if plan.signature_requested {
@@ -250,7 +250,13 @@ async fn handle_measurements_response<'a, Pal: SpdmPal>(
             .get_mut(signature_offset..signature_offset + ECC_P384_SIGNATURE_SIZE)
             .ok_or(SPDM_UNSPECIFIED)?;
         let sig_len = pal
-            .sign_hash(io, plan.slot_id, asym_algo, &hash, signature)
+            .sign(
+                io,
+                plan.slot_id,
+                asym_algo,
+                SigningInput::EccP384Digest(&hash),
+                signature,
+            )
             .await
             .map_err(|_| SPDM_UNSPECIFIED)?;
         if sig_len != ECC_P384_SIGNATURE_SIZE {

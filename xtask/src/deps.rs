@@ -7,10 +7,35 @@ use toml::Table;
 
 const IGNORE_DIRS: [&str; 1] = ["libtock"];
 
+/// Read the `[workspace] exclude` list from the root Cargo.toml.
+fn workspace_excludes(root: &Path) -> Vec<PathBuf> {
+    let Ok(data) = std::fs::read_to_string(root.join("Cargo.toml")) else {
+        return vec![];
+    };
+    let Ok(table) = data.parse::<Table>() else {
+        return vec![];
+    };
+    table
+        .get("workspace")
+        .and_then(|w| w.get("exclude"))
+        .and_then(|e| e.as_array())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str().map(|s| root.join(s)))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
 pub(crate) fn check() -> Result<()> {
     let cargo_tomls = find_cargo_tomls(&PROJECT_ROOT)?;
+    let excludes = workspace_excludes(&PROJECT_ROOT);
     let mut okay = true;
     for toml_path in cargo_tomls.iter() {
+        // Skip packages excluded from the workspace (they can't use workspace = true)
+        if excludes.iter().any(|ex| toml_path.starts_with(ex)) {
+            continue;
+        }
         let data = std::fs::read_to_string(toml_path)?;
         let value = data.parse::<Table>()?;
         if !value.contains_key("dependencies") {

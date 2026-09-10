@@ -397,6 +397,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "boot-source-protocol"
+version = "0.1.0"
+dependencies = [
+ "bitfield",
+ "zerocopy",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.19.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1843,6 +1851,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-lwip-rs-example-ipv6"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-lwip-rs",
+]
+
+[[package]]
 name = "caliptra-mcu-mailbox-client"
 version = "0.1.0"
 dependencies = [
@@ -1964,9 +1979,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-network-app-boot-source"
+version = "0.1.0"
+dependencies = [
+ "boot-source-protocol",
+ "caliptra-mcu-flash-image",
+ "caliptra-mcu-lwip-rs",
+ "caliptra-mcu-network-drivers",
+ "caliptra-mcu-network-hil",
+ "zerocopy",
+]
+
+[[package]]
 name = "caliptra-mcu-network-app-rom-test"
 version = "0.1.0"
 dependencies = [
+ "caliptra-mcu-lwip-rs",
  "caliptra-mcu-network-drivers",
  "caliptra-mcu-network-hil",
  "zerocopy",
@@ -1984,6 +2012,7 @@ dependencies = [
  "caliptra-mcu-network-hil",
  "caliptra-mcu-registers-generated",
  "caliptra-mcu-romtime",
+ "riscv-csr",
  "tock-registers",
 ]
 
@@ -1995,9 +2024,11 @@ version = "0.1.0"
 name = "caliptra-mcu-network-rom"
 version = "0.1.0"
 dependencies = [
+ "caliptra-mcu-network-app-boot-source",
  "caliptra-mcu-network-app-rom-test",
  "caliptra-mcu-network-config",
  "caliptra-mcu-network-drivers",
+ "caliptra-mcu-network-hil",
 ]
 
 [[package]]
@@ -2206,6 +2237,7 @@ version = "0.1.0"
 dependencies = [
  "bitfield",
  "bitflags 2.13.0",
+ "boot-source-protocol",
  "caliptra-api",
  "caliptra-api-types",
  "caliptra-cfi-derive 0.1.0 (git+https://github.com/chipsalliance/caliptra-cfi.git?rev=767d4ef59a106aea683b883c07bd65456fb3ba)",
@@ -2214,6 +2246,8 @@ dependencies = [
  "caliptra-mcu-config",
  "caliptra-mcu-error",
  "caliptra-mcu-flash-image",
+ "caliptra-mcu-network-drivers",
+ "caliptra-mcu-network-hil",
  "caliptra-mcu-ocp",
  "caliptra-mcu-otp-digest",
  "caliptra-mcu-otp-lifecycle",
@@ -2238,6 +2272,8 @@ dependencies = [
  "caliptra-mcu-config-emulator",
  "caliptra-mcu-error",
  "caliptra-mcu-image-header",
+ "caliptra-mcu-network-drivers",
+ "caliptra-mcu-network-hil",
  "caliptra-mcu-ocp",
  "caliptra-mcu-registers-generated",
  "caliptra-mcu-rom-common",
@@ -2685,6 +2721,7 @@ dependencies = [
  "sha2",
  "simple_logger",
  "tempfile",
+ "tock-registers",
  "uio",
  "uuid",
  "x509-parser",

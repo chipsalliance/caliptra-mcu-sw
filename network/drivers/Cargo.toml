@@ -11,6 +11,7 @@ caliptra-mcu-network-config.workspace = true
 caliptra-mcu-network-hil.workspace = true
 caliptra-mcu-registers-generated.workspace = true
 caliptra-mcu-romtime.workspace = true
+riscv-csr.workspace = true
 tock-registers.workspace = true
 
 [features]

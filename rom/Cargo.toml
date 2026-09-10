@@ -15,9 +15,12 @@ caliptra-cfi-lib.workspace = true
 caliptra-cfi-derive.workspace = true
 caliptra-drivers.workspace = true
 constant_time_eq.workspace = true
+caliptra-mcu-boot-source-protocol = { workspace = true, optional = true }
 caliptra-mcu-flash-image.workspace = true
 caliptra-mcu-config.workspace = true
 caliptra-mcu-error.workspace = true
+caliptra-mcu-network-drivers = { workspace = true, optional = true }
+caliptra-mcu-network-hil = { workspace = true, optional = true }
 caliptra-mcu-ocp.workspace = true
 caliptra-mcu-otp-digest.workspace = true
 caliptra-mcu-otp-lifecycle.workspace = true
@@ -36,6 +39,7 @@ rv32i.workspace = true
 default = ["hw-2-1"]              # default is 2.1
 cfi = []
 hw-2-1 = []
+network-boot = ["caliptra-mcu-boot-source-protocol", "caliptra-mcu-network-drivers", "caliptra-mcu-network-hil"]
 core_test = ["caliptra-mcu-romtime/core_test"]
 # Test-only: enables extra diagnostics in the I3C services / DOT recovery path.
 test-i3c-services = []

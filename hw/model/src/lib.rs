@@ -20,6 +20,7 @@ pub use caliptra_mcu_romtime::{LifecycleControllerState, LifecycleRawTokens, Lif
 use caliptra_registers::mcu_mbox0::enums::MboxStatusE;
 pub use mcu_mgr::McuManager;
 pub use model_emulated::ModelEmulated;
+pub use network_mgr::NetworkManager;
 use rand::{rngs::StdRng, SeedableRng};
 use sha2::Digest;
 use std::io::Write;
@@ -52,6 +53,7 @@ mod mcu_mgr;
 mod model_emulated;
 #[cfg(feature = "fpga_realtime")]
 mod model_fpga_realtime;
+mod network_mgr;
 pub mod otp_provision;
 pub mod usb_ctrl;
 mod vmem;
@@ -234,6 +236,9 @@ pub struct InitParams<'a> {
 
     pub flash_boot: bool,
 
+    /// Use the MCU recovery interface for network-provided firmware.
+    pub network_boot: bool,
+
     /// When true, the emulator pre-sets the `FC_FIPS_ZEROZATION_STS` register
     /// so that MCU ROM detects FIPS zeroization on cold boot.
     pub fips_zeroization: bool,
@@ -331,6 +336,7 @@ impl Default for InitParams<'_> {
             check_booted_to_runtime: true,
             rom_callback: None,
             flash_boot: false,
+            network_boot: false,
             fips_zeroization: false,
             caliptra_soc_axi_user: None,
             force_fuse_owner_pk_hash: false,
@@ -784,6 +790,8 @@ pub trait McuHwModel {
             .device_reset()
             .write(|w| w.reset_ctrl(reset_ctrl));
     }
+
+    fn network_manager(&mut self) -> impl NetworkManager;
 
     fn warm_reset(&mut self);
 

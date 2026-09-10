@@ -1,0 +1,14 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "caliptra-mcu-lwip-rs-example-ipv6"
+version.workspace = true
+edition.workspace = true
+description = "DHCPv6 (stateful) + TFTP over IPv6 boot example application using lwip-rs"
+
+[[bin]]
+name = "caliptra-mcu-lwip-rs-example-ipv6"
+path = "src/main.rs"
+
+[dependencies]
+caliptra-mcu-lwip-rs = { workspace = true, features = ["alloc", "bitflags", "ipv4", "ipv6", "dhcp", "dhcp6", "tftp"] }

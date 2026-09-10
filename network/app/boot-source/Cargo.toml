@@ -1,0 +1,21 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "caliptra-mcu-network-app-boot-source"
+version.workspace = true
+edition.workspace = true
+description = "Boot source provider application for the Network Coprocessor"
+
+[dependencies]
+caliptra-mcu-flash-image.workspace = true
+zerocopy.workspace = true
+
+[features]
+default = []
+ipv6-boot = ["caliptra-mcu-lwip-rs/baremetal-dhcp6-stateful"]
+
+[target.'cfg(target_arch = "riscv32")'.dependencies]
+caliptra-mcu-boot-source-protocol.workspace = true
+caliptra-mcu-lwip-rs = { workspace = true, default-features = false, features = ["baremetal-tftp", "baremetal-tftpv6"] }
+caliptra-mcu-network-drivers.workspace = true
+caliptra-mcu-network-hil.workspace = true

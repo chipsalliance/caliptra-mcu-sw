@@ -54,15 +54,13 @@ pub struct McuSpdmPal<M: MeasurementProvider> {
     /// Measurement data provider (monomorphized).
     pub(crate) meas_provider: M,
 
-    /// Largest single in-flight SPDM message (request or response) this
-    /// responder supports, as declared by the integrator.
+    /// Endpoint-wide logical request limit advertised as `MaxSPDMmsgSize`.
     ///
-    /// This is a contract, not a measurement: it is advertised verbatim as
-    /// `MaxSPDMmsgSize` in `CAPABILITIES` and used for buffered large
-    /// request/response admission checks. The scratch pool backing
-    /// [`Self::allocator`] must be sized to satisfy it; see the platform's
-    /// scratch budget assertion.
-    pub(crate) max_spdm_msg_size: usize,
+    /// This is the maximum across buffered and streamed request paths.
+    pub(crate) max_inbound_spdm_request_size: usize,
+
+    /// Scratch-backed capacity for a complete buffered request or response.
+    pub(crate) large_buffered_msg_capacity: usize,
 }
 
 impl<M: MeasurementProvider> McuSpdmPal<M> {
@@ -80,22 +78,24 @@ impl<M: MeasurementProvider> McuSpdmPal<M> {
     ///
     /// # Parameters
     ///
-    /// * `max_spdm_msg_size` — Largest single in-flight SPDM message this
-    ///   responder supports. Advertised as `MaxSPDMmsgSize`, so the caller
-    ///   must have sized the scratch region behind `allocator` to satisfy it.
+    /// * `max_inbound_spdm_request_size` — Advertised logical request limit across
+    ///   buffered and streamed receive paths.
+    /// * `large_buffered_msg_capacity` — Scratch-backed buffered-message limit.
     pub unsafe fn new(
         transport: Box<dyn SpdmPalTransport>,
         allocator: &'static BitmapAllocator,
         cert_store: &'static SharedCertStore,
         meas_provider: M,
-        max_spdm_msg_size: usize,
+        max_inbound_spdm_request_size: usize,
+        large_buffered_msg_capacity: usize,
     ) -> Self {
         Self {
             transport: UnsafeCell::new(transport),
             allocator,
             cert_store: TaskCertStore::new(cert_store),
             meas_provider,
-            max_spdm_msg_size,
+            max_inbound_spdm_request_size,
+            large_buffered_msg_capacity,
         }
     }
 
@@ -131,4 +131,8 @@ impl<M: MeasurementProvider> McuSpdmPal<M> {
     }
 }
 
-impl<M: MeasurementProvider> SpdmPal for McuSpdmPal<M> {}
+impl<M: MeasurementProvider> SpdmPal for McuSpdmPal<M> {
+    fn max_inbound_spdm_request_size(&self) -> usize {
+        self.max_inbound_spdm_request_size
+    }
+}

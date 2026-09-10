@@ -174,6 +174,11 @@ impl McuError {
             "DOT override vendor recovery PK hash mismatch"
         ),
         (
+            ROM_COLD_BOOT_NETWORK_INITIATE_ERROR,
+            0x1_0047,
+            "Cold boot failed to initiate network recovery"
+        ),
+        (
             ROM_COLD_BOOT_HEK_REPORT_ERROR,
             0x1_0016,
             "Failed to report HEK state"

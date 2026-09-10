@@ -15,6 +15,8 @@ use core::slice;
 use crate::error::{check_err, LwipError, Result};
 use crate::ffi;
 use crate::ip::Ipv4Addr;
+#[cfg(feature = "ipv6")]
+use crate::ip::Ipv6Addr;
 
 const TFTP_PORT: u16 = 69;
 const TFTP_MODE_OCTET: u32 = 0;
@@ -167,6 +169,46 @@ impl TftpClient {
         check_err(err)?;
 
         Ok(TftpClient { initialized: true })
+    }
+
+    /// Initiate a TFTP GET request over IPv6. Use is_complete() to check when done.
+    #[cfg(feature = "ipv6")]
+    pub fn get_v6(&mut self, server: Ipv6Addr, filename: &str) -> Result<()> {
+        {
+            let mut state = TFTP_STATE.lock();
+            if let Some(ref mut s) = *state {
+                s.handle = ptr::null_mut();
+                s.bytes_received = 0;
+                s.error = None;
+                s.complete = false;
+            }
+        }
+
+        let c_filename = CString::new(filename).map_err(|_| LwipError::IllegalArgument)?;
+        let c_mode = CString::new("octet").map_err(|_| LwipError::IllegalArgument)?;
+
+        let handle = tftp_open_callback(c_filename.as_ptr(), c_mode.as_ptr(), 1);
+        if handle.is_null() {
+            return Err(LwipError::OutOfMemory);
+        }
+
+        let mut server_addr: ffi::ip_addr_t = unsafe { core::mem::zeroed() };
+        server_addr.u_addr.ip6 = server.0;
+        server_addr.type_ = 6; // IPADDR_TYPE_V6
+
+        let err = unsafe {
+            ffi::tftp_get(
+                handle,
+                &server_addr,
+                TFTP_PORT,
+                c_filename.as_ptr(),
+                TFTP_MODE_OCTET,
+            )
+        };
+        if err != 0 {
+            tftp_close_callback(handle);
+        }
+        check_err(err)
     }
 
     /// Initiate a TFTP GET request. Use is_complete() to check when done.

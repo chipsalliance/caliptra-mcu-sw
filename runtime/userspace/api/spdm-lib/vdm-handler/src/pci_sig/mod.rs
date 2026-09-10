@@ -205,7 +205,7 @@ mod tests {
             Ok(vec![0; len])
         }
 
-        fn large_capacity(&self) -> usize {
+        fn large_buffered_msg_capacity(&self) -> usize {
             0
         }
 

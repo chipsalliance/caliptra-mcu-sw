@@ -1313,6 +1313,11 @@ fn run_kernel_tests(
         caliptra_mcu_romtime::println!("Executing test-exit-immediately");
         exit = Some(0);
     }
+    #[cfg(feature = "test-network-boot")]
+    {
+        caliptra_mcu_romtime::println!("Runtime booted from network");
+        exit = Some(0);
+    }
     #[cfg(feature = "test-i3c-simple")]
     {
         caliptra_mcu_romtime::println!("Executing test-i3c-simple");
