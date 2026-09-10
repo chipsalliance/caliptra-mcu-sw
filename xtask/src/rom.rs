@@ -2,7 +2,24 @@
 
 use anyhow::{Context, Result};
 use caliptra_mcu_builder::{CaliptraBuilder, PROJECT_ROOT};
-use std::process::Command;
+use std::{fs::File, io::Write, process::Command};
+use zerocopy::IntoBytes;
+
+// Bytecode to write a null-terminated string to the UART, then loop forever.
+// The bytecode assumes that the string immediately follows the instructions.
+static ROM_STUB_INSTRUCTIONS: [u32; 10] = [
+    u32::to_le(0x1000_12b7), // lui t0, 0x10001
+    u32::to_le(0x0412_8293), // addi t0, t0, 0x41
+    u32::to_le(0x0000_0317), // auipc t1, 0
+    u32::to_le(0x0203_0313), // addi t1, t1, 32 (offset from auipc to the string)
+    u32::to_le(0x0003_4383), // lbu t2, 0(t1)
+    u32::to_le(0x0003_8863), // beq t2, zero, 16
+    u32::to_le(0x0072_8023), // sb t2, 0(t0)
+    u32::to_le(0x0013_0313), // addi t1, t1, 1
+    u32::to_le(0xff1f_f06f), // jal zero, -16
+    u32::to_le(0x0000_006f), // jal zero, 0
+];
+static ROM_STUB_START_MESSAGE: [u8; 32] = *b"[mcu-runtime] ROM stub started\n\0";
 
 /// Build every ROM variant in the supplied list.
 ///
@@ -36,8 +53,13 @@ pub(crate) fn rom_run(trace: bool) -> Result<()> {
     let firmware_dir = PROJECT_ROOT.join("target");
     std::fs::create_dir_all(&firmware_dir)?;
     let firmware_path = firmware_dir.join("rom-stub-firmware.bin");
-    // RISC-V JAL x0, 0 — jump-to-self infinite loop
-    std::fs::write(&firmware_path, [0x6fu8, 0x00, 0x00, 0x00])?;
+    let mut firmware = File::create(&firmware_path)?;
+
+    // Write out the ROM stub, which prints a log string to the UART and then loops forever.
+    firmware.write_all(ROM_STUB_INSTRUCTIONS.as_bytes())?;
+
+    // Append the string to print
+    firmware.write_all(&ROM_STUB_START_MESSAGE)?;
 
     let mut caliptra_builder = CaliptraBuilder::new(&caliptra_mcu_builder::CaliptraBuildArgs {
         mcu_firmware: Some(firmware_path.clone()),
