@@ -26,9 +26,8 @@ use zerocopy::FromBytes;
 use crate::build::{alloc_padded, build_error_response, encode_error_response};
 use crate::error::{
     SpdmError, SpdmResult, CALIPTRA_EXTENDED_ERROR_SIZE, SPDM_DECRYPT_ERROR, SPDM_INVALID_REQUEST,
-    SPDM_REQUEST_RESYNCH,
-    SPDM_SESSION_REQUIRED, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED, SPDM_UNSUPPORTED_REQUEST,
-    SPDM_VERSION_MISMATCH,
+    SPDM_REQUEST_RESYNCH, SPDM_SESSION_REQUIRED, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED,
+    SPDM_UNSUPPORTED_REQUEST, SPDM_VERSION_MISMATCH,
 };
 use crate::key_schedule::SessionKeyType;
 use crate::session::{SessionInfo, SessionManager, SessionState};
