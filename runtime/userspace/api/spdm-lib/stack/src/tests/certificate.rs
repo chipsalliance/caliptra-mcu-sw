@@ -259,6 +259,18 @@ fn test_get_certificate_large_on_v13_returns_invalid_request() {
 }
 
 #[test]
+fn test_get_certificate_v14_large_without_large_resp_cap_returns_unsupported() {
+    let pal = TestPal::default();
+    let mut state = init_cert_test_state(SpdmVersion::V14, &pal);
+    // Responder did NOT advertise LARGE_RESP_CAP.
+    let mut sessions = SessionManager::new();
+
+    let req = large_cert_request(SpdmVersion::V14, 0, 0, 0, 1024);
+    let err = dispatch_cert_request(&mut state, &mut sessions, &pal, req).unwrap_err();
+    assert_eq!(err.spec_byte(), SPDM_UNSUPPORTED_REQUEST.spec_byte());
+}
+
+#[test]
 fn test_get_certificate_v14_large_invalid_slot_or_offset() {
     let pal = TestPal::default();
     let mut state = init_cert_test_state(SpdmVersion::V14, &pal);
