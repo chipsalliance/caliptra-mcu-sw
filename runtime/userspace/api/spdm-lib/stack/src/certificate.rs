@@ -11,7 +11,7 @@
 //! stack-allocated `[u8; N]` array for cert payload.
 
 use caliptra_mcu_spdm_codec::{
-    CertificateLargeRsp, CertificateLargeRspBody, CertificateRsp, CertificateRspBody,
+    CapFlags, CertificateLargeRsp, CertificateLargeRspBody, CertificateRsp, CertificateRspBody,
     GetCertificateParam1, GetCertificateReq, ReqRespCode, ResponseBody, SpdmMsgHdrPdu, SpdmVersion,
     WireWriter,
 };
@@ -24,7 +24,7 @@ use crate::build::{build_error_response, build_response};
 use crate::chunk::LargeResponse;
 use crate::error::{
     SpdmResult, SPDM_DATA_TOO_LARGE, SPDM_INVALID_REQUEST, SPDM_LARGE_RESPONSE,
-    SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED,
+    SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED, SPDM_UNSUPPORTED_REQUEST,
 };
 use crate::stack::{multi_key_conn_rsp, ConnectionState, Phase};
 
@@ -187,8 +187,17 @@ pub(crate) async fn handle_get_certificate_req<'a, Pal: SpdmPal>(
 
     let req = GetCertificateReq::parse(body).map_err(|_| SPDM_INVALID_REQUEST)?;
 
-    if req.is_large() && state.version < SpdmVersion::V14 {
-        return Err(SPDM_INVALID_REQUEST);
+    // A LargeCertChain GET_CERTIFICATE is only defined in SPDM 1.4+, and
+    // only when the responder advertised LARGE_RESP_CAP. Below 1.4 the
+    // param1 bit is reserved, so the request is malformed (InvalidRequest);
+    // at 1.4+ without the capability it is UnsupportedRequest (DSP0274).
+    if req.is_large() {
+        if state.version < SpdmVersion::V14 {
+            return Err(SPDM_INVALID_REQUEST);
+        }
+        if !state.advertised_cap_flags.contains(CapFlags::LARGE_RESP) {
+            return Err(SPDM_UNSUPPORTED_REQUEST);
+        }
     }
 
     let slot_id = req.slot_id();
