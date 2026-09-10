@@ -459,6 +459,12 @@ This setup emulates host transactions, device-controller registers, and the RISC
     <img src="images/usb_ip_emulation_path.svg" alt="USB/IP transport between the Recovery Agent computer and the Caliptra subsystem, with the controller models and USB/IP server enclosed in the emulator" width="100%">
 </p>
 
+#### Simplified Presentation View
+
+<p align="center">
+    <img src="images/usb_ip_emulation_path_presentation.svg" alt="Simplified USB/IP transport showing the Recovery Agent application, USB Host Controller, and USB/IP client communicating with the Caliptra subsystem emulator" width="100%">
+</p>
+
 Unlike network boot, USB Recovery does not need a third RISC-V coprocessor. The Linux recovery agent is the USB host and pushes images through `libusb`, the Linux virtual host controller, and USB/IP. Inside the emulator, the USB/IP adapter converts URBs into host transactions for the emulated USB device peripheral. MCU firmware sees only the `usbdev` MMIO programming model and therefore follows the same driver path intended for RTL.
 
 The host transaction engine converts each USB/IP control URB into SETUP, packetized data, and status stages. Existing in-process tests may continue using `UsbHostController` as test infrastructure, but they are not a proposed application-facing backend. The supported external architecture is USB/IP.
