@@ -3,8 +3,9 @@
 //! CHUNK_SEND large-request reassembly.
 
 use caliptra_mcu_spdm_codec::{
-    CapabilitiesBody, ChunkSendAckBody, ChunkSendReqBody, ReqRespCode, SpdmMsgHdrPdu, SpdmVersion,
-    VendorDefinedReqPdu, WireWriter, CHUNK_ACK_ATTR_EARLY_ERROR, CHUNK_ATTR_LAST_CHUNK,
+    CapFlags, CapabilitiesBody, ChunkSendAckBody, ChunkSendReqBody, ReqRespCode, SpdmMsgHdrPdu,
+    SpdmVersion, VendorDefinedReqPdu, WireWriter, CHUNK_ACK_ATTR_EARLY_ERROR,
+    CHUNK_ATTR_LAST_CHUNK,
 };
 use caliptra_mcu_spdm_traits::{
     PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalIoTransport, SpdmVdmBackend, VdmRegistry, VdmResponse,
@@ -493,7 +494,7 @@ async fn process_next_chunk<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
                     chunk_seq_num,
                 })?;
         }
-        Some(ActiveLargeRequest::AuthorizeDebugUnlockToken) => {
+        Some(ActiveLargeRequest::AuthorizeDebugUnlockToken { .. }) => {
             vdm.continue_authorize_debug_unlock_token_stream(chunk, pal, io)
                 .await
                 .map_err(|_| ChunkProcessError::Early {
@@ -590,7 +591,7 @@ pub(crate) async fn abort_active_streaming_request<Pal: SpdmPal, Vdm: SpdmVdmBac
         Some(ActiveLargeRequest::SetCertificate(stream)) => {
             set_certificate::abort_set_certificate_stream(state, pal, io, stream).await;
         }
-        Some(ActiveLargeRequest::AuthorizeDebugUnlockToken) => {
+        Some(ActiveLargeRequest::AuthorizeDebugUnlockToken { .. }) => {
             vdm.abort_authorize_debug_unlock_token_stream(pal, io).await;
         }
         _ => {}
@@ -639,22 +640,52 @@ async fn try_start_streaming_request<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
         ReqRespCode::VENDOR_DEFINED_REQUEST => {
             let (vdm_hdr, rest) =
                 VendorDefinedReqPdu::ref_from_prefix(body).map_err(|_| SPDM_INVALID_REQUEST)?;
+            let is_large = vdm_hdr.param1.large();
+            if is_large
+                && (state.version < SpdmVersion::V14
+                    || !state.advertised_cap_flags.contains(CapFlags::LARGE_RESP)
+                    || !state.peer_cap_flags.contains(CapFlags::LARGE_RESP))
+            {
+                return Err(SPDM_INVALID_REQUEST);
+            }
+            if vdm_hdr.param1.reserved() != 0 || vdm_hdr.param2 != 0 {
+                return Err(SPDM_INVALID_REQUEST);
+            }
             let vendor_id_len = vdm_hdr.vendor_id_len as usize;
             if vendor_id_len > 4 {
                 return Ok(false);
             }
             let vendor_id = rest.get(..vendor_id_len).ok_or(SPDM_INVALID_REQUEST)?;
             let req_len_offset = vendor_id_len;
-            let req_len_bytes = rest
-                .get(req_len_offset..req_len_offset + 2)
-                .ok_or(SPDM_INVALID_REQUEST)?;
-            let req_len = u16::from_le_bytes([req_len_bytes[0], req_len_bytes[1]]) as usize;
-            let payload_start = req_len_offset + 2;
+            let (req_len, payload_start) = if is_large {
+                let rsvd_bytes = rest
+                    .get(req_len_offset..req_len_offset + 2)
+                    .ok_or(SPDM_INVALID_REQUEST)?;
+                if u16::from_le_bytes([rsvd_bytes[0], rsvd_bytes[1]]) != 0 {
+                    return Err(SPDM_INVALID_REQUEST);
+                }
+                let req_len_bytes = rest
+                    .get(req_len_offset + 2..req_len_offset + 6)
+                    .ok_or(SPDM_INVALID_REQUEST)?;
+                let req_len = u32::from_le_bytes([
+                    req_len_bytes[0],
+                    req_len_bytes[1],
+                    req_len_bytes[2],
+                    req_len_bytes[3],
+                ]) as usize;
+                (req_len, req_len_offset + 6)
+            } else {
+                let req_len_bytes = rest
+                    .get(req_len_offset..req_len_offset + 2)
+                    .ok_or(SPDM_INVALID_REQUEST)?;
+                let req_len = u16::from_le_bytes([req_len_bytes[0], req_len_bytes[1]]) as usize;
+                (req_len, req_len_offset + 2)
+            };
             let payload = rest.get(payload_start..).ok_or(SPDM_INVALID_REQUEST)?;
             let expected = SpdmMsgHdrPdu::SIZE
                 .checked_add(VendorDefinedReqPdu::SIZE)
                 .and_then(|n| n.checked_add(vendor_id_len))
-                .and_then(|n| n.checked_add(2))
+                .and_then(|n| n.checked_add(if is_large { 6 } else { 2 }))
                 .and_then(|n| n.checked_add(req_len))
                 .ok_or(SPDM_INVALID_REQUEST)?;
             if expected != large_msg_size || payload.len() > req_len {
@@ -678,7 +709,7 @@ async fn try_start_streaming_request<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
                 handle,
                 large_msg_size,
                 first.len(),
-                ActiveLargeRequest::AuthorizeDebugUnlockToken,
+                ActiveLargeRequest::AuthorizeDebugUnlockToken { is_large },
                 session_id,
             )?;
             Ok(true)
@@ -760,9 +791,10 @@ async fn build_final_chunk_send_ack<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
                 }
             }
         }
-        Some(ActiveLargeRequest::AuthorizeDebugUnlockToken) => {
+        Some(ActiveLargeRequest::AuthorizeDebugUnlockToken { is_large }) => {
             let vendor_id = &DEBUG_UNLOCK_VENDOR_ID;
-            let envelope_len = SpdmMsgHdrPdu::SIZE + 2 + 2 + 1 + vendor_id.len() + 2;
+            let envelope_len =
+                SpdmMsgHdrPdu::SIZE + (if is_large { 11 } else { 7 }) + vendor_id.len();
             if envelope_len > response_to_large_request.len() {
                 (
                     encode_error_response(
@@ -791,6 +823,7 @@ async fn build_final_chunk_send_ack<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
                                 DEBUG_UNLOCK_STANDARD_ID,
                                 vendor_id,
                                 payload_len,
+                                is_large,
                                 &mut response_to_large_request[..envelope_len],
                             )
                             .is_err();
