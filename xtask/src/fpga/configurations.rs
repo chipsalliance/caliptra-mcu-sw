@@ -225,12 +225,16 @@ impl<'a> ActionHandler<'a> for Subsystem {
                 ..Default::default()
             }])
         });
+        let component_svn_validation = crate::auth_manifest::load_component_svn_config(
+            args.component_svn_config.as_deref(),
+        )?;
         let args = AllBuildArgs {
             output: Some("all-fw.zip"),
             platform: Some("fpga"),
             rom_features: args.rom_features.as_deref(),
             mcu_cfgs: mcu_cfgs,
             separate_runtimes: args.separate_runtimes,
+            component_svn_validation,
             ..Default::default()
         };
         caliptra_mcu_builder::all_build(args)?;
