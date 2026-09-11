@@ -28,6 +28,7 @@ mod dma_cmd {
     pub const SET_SRC_ADDR: u32 = 1;
     pub const SET_DEST_ADDR: u32 = 2;
     pub const XFER_AXI_TO_AXI: u32 = 3;
+    pub const TRANSLATE_LOCAL_TO_CPTRA_AXI: u32 = 5;
 }
 
 #[derive(Default)]
@@ -43,17 +44,26 @@ pub struct Dma<'a> {
     // Per-app state.
     apps: Grant<App, UpcallCount<1>, AllowRoCount<0>, AllowRwCount<0>>,
     current_app: OptionalCell<ProcessId>,
+    sram_local_base: u32,
+    sram_size: u32,
+    cptra_sram_axi_base: u32,
 }
 
 impl<'a> Dma<'a> {
     pub fn new(
         driver: &'a dyn DmaHal,
         grant: Grant<App, UpcallCount<1>, AllowRoCount<0>, AllowRwCount<0>>,
+        sram_local_base: u32,
+        sram_size: u32,
+        cptra_sram_axi_base: u32,
     ) -> Dma<'a> {
         Dma {
             driver,
             apps: grant,
             current_app: OptionalCell::empty(),
+            sram_local_base,
+            sram_size,
+            cptra_sram_axi_base,
         }
     }
 
@@ -183,6 +193,35 @@ impl SyscallDriver for Dma<'_> {
                     Ok(()) => CommandReturn::success(),
                     Err(e) => CommandReturn::failure(e),
                 }
+            }
+            dma_cmd::TRANSLATE_LOCAL_TO_CPTRA_AXI => {
+                let local_addr = match u32::try_from(r2) {
+                    Ok(a) => a,
+                    Err(_) => return CommandReturn::failure(ErrorCode::INVAL),
+                };
+                let len = match u32::try_from(r3) {
+                    Ok(l) => l,
+                    Err(_) => return CommandReturn::failure(ErrorCode::INVAL),
+                };
+
+                if len == 0 || (local_addr % 4 != 0) || (len % 4 != 0) {
+                    return CommandReturn::failure(ErrorCode::INVAL);
+                }
+
+                if local_addr < self.sram_local_base {
+                    return CommandReturn::failure(ErrorCode::INVAL);
+                }
+
+                let offset = local_addr - self.sram_local_base;
+                let Some(end) = offset.checked_add(len) else {
+                    return CommandReturn::failure(ErrorCode::SIZE);
+                };
+                if end > self.sram_size {
+                    return CommandReturn::failure(ErrorCode::SIZE);
+                }
+
+                let axi_addr = self.cptra_sram_axi_base.wrapping_add(offset);
+                CommandReturn::success_u32(axi_addr)
             }
 
             _ => CommandReturn::failure(ErrorCode::NOSUPPORT),

@@ -43,3 +43,6 @@ mailbox-io = [
     "dep:caliptra-mcu-libsyscall-caliptra",
     "dep:caliptra-mcu-libtock_platform",
 ]
+
+[dev-dependencies]
+caliptra-mcu-libtock_unittest = { workspace = true }

@@ -971,10 +971,14 @@ pub unsafe fn main() {
         true
     );
 
+    const CALIPTRA_SRAM_AXI_BASE: u32 = 0xA8C0_0000;
     let dma = caliptra_mcu_components::dma::DmaComponent::new(
         &emulator_peripherals.dma,
         board_kernel,
         caliptra_mcu_capsules_emulator::dma::DMA_CTRL_DRIVER_NUM,
+        MCU_MEMORY_MAP.sram_offset,
+        MCU_MEMORY_MAP.sram_size,
+        CALIPTRA_SRAM_AXI_BASE,
     )
     .finalize(kernel::static_buf!(
         caliptra_mcu_capsules_emulator::dma::Dma<'static>

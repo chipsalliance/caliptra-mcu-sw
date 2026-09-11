@@ -12,6 +12,9 @@ pub struct DmaComponent {
     driver: &'static dyn DmaHal,
     board_kernel: &'static kernel::Kernel,
     driver_num: usize,
+    sram_local_base: u32,
+    sram_size: u32,
+    cptra_sram_axi_base: u32,
 }
 
 impl DmaComponent {
@@ -19,11 +22,17 @@ impl DmaComponent {
         driver: &'static dyn DmaHal,
         board_kernel: &'static kernel::Kernel,
         driver_num: usize,
+        sram_local_base: u32,
+        sram_size: u32,
+        cptra_sram_axi_base: u32,
     ) -> Self {
         Self {
             driver,
             board_kernel,
             driver_num,
+            sram_local_base,
+            sram_size,
+            cptra_sram_axi_base,
         }
     }
 }
@@ -39,6 +48,9 @@ impl Component for DmaComponent {
             static_buffer.write(caliptra_mcu_capsules_emulator::dma::Dma::new(
                 self.driver,
                 self.board_kernel.create_grant(self.driver_num, &grant_cap),
+                self.sram_local_base,
+                self.sram_size,
+                self.cptra_sram_axi_base,
             ));
         self.driver.set_client(dma);
         dma
