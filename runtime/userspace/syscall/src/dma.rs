@@ -134,6 +134,23 @@ impl<S: Syscalls> DMA<S> {
 
         Ok(())
     }
+
+    /// Translates a local MCU SRAM buffer to its Caliptra Subsystem AXI bus address.
+    ///
+    /// The kernel validates non-zero length, word alignment, and bounds within MCU SRAM.
+    /// Returns `(axi_addr, length)` on success, or an `ErrorCode` on failure.
+    pub fn mcu_sram_to_cptra_axi(&self, buf: &[u8]) -> Result<(u32, u32), ErrorCode> {
+        let len = u32::try_from(buf.len()).map_err(|_| ErrorCode::Invalid)?;
+        let local_addr = (buf.as_ptr() as usize) as u32;
+        let axi_addr = S::command(
+            self.driver_num,
+            dma_cmd::TRANSLATE_LOCAL_TO_CPTRA_AXI,
+            local_addr,
+            len,
+        )
+        .to_result::<u32, ErrorCode>()?;
+        Ok((axi_addr, len))
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -150,6 +167,7 @@ mod dma_cmd {
     pub const SET_DEST_ADDR: u32 = 2;
     pub const XFER_AXI_TO_AXI: u32 = 3;
     pub const XFER_LOCAL_TO_AXI: u32 = 4;
+    pub const TRANSLATE_LOCAL_TO_CPTRA_AXI: u32 = 5;
 }
 
 /// Buffer IDs for DMA (read-only)
@@ -161,4 +179,49 @@ mod dma_ro_buffer {
 /// Subscription IDs for asynchronous notifications.
 mod dma_subscribe {
     pub const XFER_DONE: u32 = 0;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    extern crate std;
+    use caliptra_mcu_libtock_unittest::fake;
+    use std::rc::Rc;
+
+    #[test]
+    fn test_mcu_sram_to_cptra_axi_success() {
+        let kernel = fake::Kernel::new();
+        let driver = Rc::new(fake::FakeDMADriver::new());
+        kernel.add_driver(&driver);
+
+        let dma = DMA::<crate::DefaultSyscalls>::new();
+        let buf = [0u32; 8];
+        let slice = unsafe { core::slice::from_raw_parts(buf.as_ptr() as *const u8, 32) };
+        let (addr, len) = dma.mcu_sram_to_cptra_axi(slice).unwrap();
+        assert_eq!(len, 32);
+        assert_ne!(addr, 0);
+    }
+
+    #[test]
+    fn test_mcu_sram_to_cptra_axi_zero_length() {
+        let kernel = fake::Kernel::new();
+        let driver = Rc::new(fake::FakeDMADriver::new());
+        kernel.add_driver(&driver);
+
+        let dma = DMA::<crate::DefaultSyscalls>::new();
+        let empty: &[u8] = &[];
+        assert_eq!(dma.mcu_sram_to_cptra_axi(empty), Err(ErrorCode::Invalid));
+    }
+
+    #[test]
+    fn test_mcu_sram_to_cptra_axi_unaligned_length() {
+        let kernel = fake::Kernel::new();
+        let driver = Rc::new(fake::FakeDMADriver::new());
+        kernel.add_driver(&driver);
+
+        let dma = DMA::<crate::DefaultSyscalls>::new();
+        let buf = [0u32; 8];
+        let slice = unsafe { core::slice::from_raw_parts(buf.as_ptr() as *const u8, 7) };
+        assert_eq!(dma.mcu_sram_to_cptra_axi(slice), Err(ErrorCode::Invalid));
+    }
 }

@@ -106,6 +106,48 @@ impl SyscallDriver for FakeDMADriver {
                     .expect("Unable to schedule upcall");
                 crate::command_return::success()
             }
+            dma_cmd::TRANSLATE_LOCAL_TO_CPTRA_AXI => {
+                let local_addr = arg0;
+                let len = arg1;
+
+                if len == 0 || (local_addr % 4 != 0) || (len % 4 != 0) {
+                    return crate::command_return::failure(ErrorCode::Invalid);
+                }
+
+                const SRAM_LOCAL_BASE: u32 = 0x4000_0000;
+                const SRAM_SIZE: u32 = 1024 * 1024;
+                const CPTRA_SRAM_AXI_BASE: u32 = 0xA8C0_0000;
+
+                let axi_addr = if local_addr >= SRAM_LOCAL_BASE
+                    && local_addr < SRAM_LOCAL_BASE.wrapping_add(SRAM_SIZE)
+                {
+                    let offset = local_addr - SRAM_LOCAL_BASE;
+                    let Some(end) = offset.checked_add(len) else {
+                        return crate::command_return::failure(ErrorCode::Size);
+                    };
+                    if end > SRAM_SIZE {
+                        return crate::command_return::failure(ErrorCode::Size);
+                    }
+                    CPTRA_SRAM_AXI_BASE.wrapping_add(offset)
+                } else if local_addr >= CPTRA_SRAM_AXI_BASE
+                    && local_addr < CPTRA_SRAM_AXI_BASE.wrapping_add(512 * 1024)
+                {
+                    // FPGA layout simulation:
+                    let offset = local_addr - CPTRA_SRAM_AXI_BASE;
+                    let Some(end) = offset.checked_add(len) else {
+                        return crate::command_return::failure(ErrorCode::Size);
+                    };
+                    if end > 512 * 1024 {
+                        return crate::command_return::failure(ErrorCode::Size);
+                    }
+                    local_addr
+                } else {
+                    // For host unit tests where buffers are allocated on host stack/heap:
+                    CPTRA_SRAM_AXI_BASE.wrapping_add(local_addr & 0x000F_FFFF)
+                };
+
+                crate::command_return::success_u32(axi_addr)
+            }
             _ => crate::command_return::failure(ErrorCode::Invalid),
         }
     }
@@ -140,6 +182,7 @@ mod dma_cmd {
     pub const SET_DEST_ADDR: u32 = 2;
     pub const XFER_AXI_TO_AXI: u32 = 3;
     pub const XFER_LOCAL_TO_AXI: u32 = 4;
+    pub const TRANSLATE_LOCAL_TO_CPTRA_AXI: u32 = 5;
 }
 
 mod dma_ro_buffer {

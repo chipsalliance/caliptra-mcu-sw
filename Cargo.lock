@@ -5420,6 +5420,7 @@ dependencies = [
  "caliptra-mcu-libsyscall-caliptra",
  "caliptra-mcu-libtock_console",
  "caliptra-mcu-libtock_platform",
+ "caliptra-mcu-libtock_unittest",
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-pldm-common",
  "caliptra-mcu-pldm-lib",
