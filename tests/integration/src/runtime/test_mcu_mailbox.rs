@@ -123,8 +123,10 @@ fn test_device_capabilities_cmd() -> Result<()> {
 
     let resp = hw.mailbox_execute_req(DeviceCapsReq::default())?;
     assert_eq!(&resp.caps[..16], &core_caps);
-    let expected_rom =
-        (McuRomCapabilities::STREAMING_BOOT_I3C | McuRomCapabilities::FLASH_BOOT).bits();
+    let expected_rom = (McuRomCapabilities::STREAMING_BOOT_I3C
+        | McuRomCapabilities::FLASH_BOOT
+        | McuRomCapabilities::DOT_BOOT)
+        .bits();
     assert_eq!(
         u32::from_be_bytes(resp.caps[16..20].try_into().unwrap()),
         expected_rom
