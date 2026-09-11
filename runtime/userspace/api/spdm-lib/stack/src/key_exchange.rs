@@ -81,7 +81,7 @@ pub(crate) async fn handle_key_exchange<'a, Pal: SpdmPal, const N: usize>(
     let req_session_id = ke_req.req_session_id_u16();
 
     // Validate slot_id.
-    if slot_id >= MAX_SLOTS || (pal.provisioned_slots() & (1 << slot_id)) == 0 {
+    if slot_id >= MAX_SLOTS || (pal.provisioned_slots(state.asym_algo()) & (1 << slot_id)) == 0 {
         return Err(SPDM_INVALID_REQUEST);
     }
 

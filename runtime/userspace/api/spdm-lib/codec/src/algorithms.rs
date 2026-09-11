@@ -199,8 +199,12 @@ pub struct AlgorithmsRspBodyFixed {
     pub meas_hash_algo: MeasHashAlgos,
     pub base_asym_sel: AsymAlgos,
     pub base_hash_sel: HashAlgos,
-    /// Selected PQC asymmetric algorithm in V1.4. This classical-only
-    /// responder always returns zero.
+    /// Selected PQC asymmetric algorithm, valid from V1.4 onward and
+    /// zero on earlier versions.
+    ///
+    /// A 1.4 connection selects exactly one signing algorithm, so this
+    /// and `base_asym_sel` are mutually exclusive: when a PQC algorithm
+    /// is selected, `base_asym_sel` is empty, and vice versa.
     pub pqc_asym_sel: PqcAsymAlgos,
     pub reserved3: [u8; 7],
     pub mel_specification_sel: u8,
