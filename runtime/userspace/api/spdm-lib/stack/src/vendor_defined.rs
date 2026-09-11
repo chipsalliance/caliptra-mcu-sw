@@ -9,8 +9,8 @@
 //! how `GET_MEASUREMENTS` is handled.
 
 use caliptra_mcu_spdm_codec::{
-    decode_vendor_defined_req, ReqRespCode, ResponseBody, SpdmMsgHdrPdu, SpdmVersion,
-    VendorDefinedRspBody, WireWriter,
+    decode_vendor_defined_req, CapFlags, ReqRespCode, ResponseBody, SpdmMsgHdrPdu, SpdmVersion,
+    VendorDefinedParam1, VendorDefinedRspBody, WireWriter,
 };
 use caliptra_mcu_spdm_traits::{
     PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalIoTransport, SpdmVdmBackend, VdmRegistry, VdmResponse,
@@ -20,7 +20,10 @@ use zerocopy::FromBytes;
 
 use crate::build::build_response;
 use crate::chunk;
-use crate::error::{SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNSPECIFIED, SPDM_UNSUPPORTED_REQUEST};
+use crate::error::{
+    SpdmResult, SPDM_DATA_TOO_LARGE, SPDM_INVALID_REQUEST, SPDM_UNSPECIFIED,
+    SPDM_UNSUPPORTED_REQUEST,
+};
 use crate::stack::ConnectionState;
 
 /// Decodes a VENDOR_DEFINED request, dispatches it to `vdm`, and frames the
@@ -42,6 +45,14 @@ pub(crate) async fn handle_vendor_defined_request<'a, Pal: SpdmPal, V: SpdmVdmBa
     let version = SpdmVersion::from_u8(hdr.version).unwrap_or(state.version);
 
     let decoded = decode_vendor_defined_req(body).map_err(|_| SPDM_INVALID_REQUEST)?;
+
+    if decoded.is_large
+        && (state.version < SpdmVersion::V14
+            || !state.advertised_cap_flags.contains(CapFlags::LARGE_RESP))
+    {
+        return Err(SPDM_INVALID_REQUEST);
+    }
+
     let registry = VdmRegistry {
         standard_id: decoded.standard_id,
         vendor_id: decoded.vendor_id,
@@ -58,9 +69,9 @@ pub(crate) async fn handle_vendor_defined_request<'a, Pal: SpdmPal, V: SpdmVdmBa
 
     // Inline capacity: one SPDM frame minus the SPDM header + VENDOR_DEFINED
     // response envelope prefix (param1|param2|standard_id|vendor_id_len|vendor_id|
-    // resp_len).
+    // resp_len or reserved + large_resp_len).
     let frame = state.effective_data_transfer_size(pal);
-    let envelope = SpdmMsgHdrPdu::SIZE + 2 + 2 + 1 + decoded.vendor_id.len() + 2;
+    let envelope = SpdmMsgHdrPdu::SIZE + decoded.rsp_header_body_size();
     let inline_cap = frame.saturating_sub(envelope);
     let mut inline_buf = pal.alloc_bytes(io, inline_cap)?;
 
@@ -113,13 +124,14 @@ pub(crate) async fn handle_vendor_defined_request<'a, Pal: SpdmPal, V: SpdmVdmBa
         VdmResponse::Inline(n) => {
             // Drop large_guard here; its Drop impl auto-zeroizes!
             drop(large_guard);
-            if n > inline_buf.len() {
+            if n > inline_buf.len() || n > decoded.max_length_cap() {
                 return Err(SPDM_UNSPECIFIED);
             }
             let rsp_body = VendorDefinedRspBody {
                 standard_id: decoded.standard_id,
                 vendor_id: decoded.vendor_id,
                 payload: &inline_buf[..n],
+                is_large: decoded.is_large,
             };
             let spdm_len = rsp_body.encoded_size();
             let buf = build_response(pal, io, version, &rsp_body)?;
@@ -132,6 +144,15 @@ pub(crate) async fn handle_vendor_defined_request<'a, Pal: SpdmPal, V: SpdmVdmBa
             if n > large_cap {
                 return Err(SPDM_UNSPECIFIED);
             }
+            if n > u16::MAX as usize {
+                if state.version >= SpdmVersion::V14 && !decoded.is_large {
+                    let actual_size = u32::try_from(n).map_err(|_| SPDM_UNSPECIFIED)?;
+                    return Err(SPDM_DATA_TOO_LARGE.with_extended_data(actual_size.to_le_bytes()));
+                }
+                if !decoded.is_large {
+                    return Err(SPDM_UNSPECIFIED);
+                }
+            }
             let mut buf = guard.buf.take().ok_or(SPDM_UNSPECIFIED)?;
             // Backend has written its payload at static_buf[envelope..envelope+n].
             // Frame the VENDOR_DEFINED envelope in-place at offset 0.
@@ -140,6 +161,7 @@ pub(crate) async fn handle_vendor_defined_request<'a, Pal: SpdmPal, V: SpdmVdmBa
                 decoded.standard_id,
                 decoded.vendor_id,
                 n,
+                decoded.is_large,
                 &mut buf[..envelope],
             )?;
             let full_len = envelope + n;
@@ -178,6 +200,12 @@ pub(crate) async fn handle_large_vendor_defined_request<Pal: SpdmPal, V: SpdmVdm
     let version = SpdmVersion::from_u8(hdr.version).unwrap_or(state.version);
 
     let decoded = decode_vendor_defined_req(body).map_err(|_| SPDM_INVALID_REQUEST)?;
+    if decoded.is_large
+        && (state.version < SpdmVersion::V14
+            || !state.advertised_cap_flags.contains(CapFlags::LARGE_RESP))
+    {
+        return Err(SPDM_INVALID_REQUEST);
+    }
     let registry = VdmRegistry {
         standard_id: decoded.standard_id,
         vendor_id: decoded.vendor_id,
@@ -187,7 +215,7 @@ pub(crate) async fn handle_large_vendor_defined_request<Pal: SpdmPal, V: SpdmVdm
         return Err(SPDM_UNSUPPORTED_REQUEST.with_data(ReqRespCode::VENDOR_DEFINED_REQUEST.0));
     }
 
-    let envelope_len = SpdmMsgHdrPdu::SIZE + 2 + 2 + 1 + decoded.vendor_id.len() + 2;
+    let envelope_len = SpdmMsgHdrPdu::SIZE + decoded.rsp_header_body_size();
     if envelope_len > out.len() {
         return Err(SPDM_UNSPECIFIED);
     }
@@ -205,7 +233,7 @@ pub(crate) async fn handle_large_vendor_defined_request<Pal: SpdmPal, V: SpdmVdm
     let VdmResponse::Inline(payload_len) = outcome else {
         return Err(SPDM_UNSPECIFIED);
     };
-    if payload_len > inline_cap {
+    if payload_len > inline_cap || payload_len > decoded.max_length_cap() {
         return Err(SPDM_UNSPECIFIED);
     }
 
@@ -214,38 +242,49 @@ pub(crate) async fn handle_large_vendor_defined_request<Pal: SpdmPal, V: SpdmVdm
         decoded.standard_id,
         decoded.vendor_id,
         payload_len,
+        decoded.is_large,
         &mut out[..envelope_len],
     )?;
     Ok(envelope_len + payload_len)
 }
 
 /// Frames the VENDOR_DEFINED_RESPONSE envelope (SPDM header + param1/param2 +
-/// standard_id + vendor_id + resp_len) directly into `out` (which must be sized
-/// to the envelope). The backend's payload is expected to follow at the same
-/// buffer's offset `out.len()`.
+/// standard_id + vendor_id + resp_len / large_resp_len) directly into `out` (which
+/// must be sized to the envelope). The backend's payload is expected to follow at
+/// the same buffer's offset `out.len()`.
 pub(crate) fn write_vendor_defined_envelope(
     version: SpdmVersion,
     standard_id: u16,
     vendor_id: &[u8],
     payload_len: usize,
+    is_large: bool,
     out: &mut [u8],
 ) -> SpdmResult<()> {
-    let envelope_len = SpdmMsgHdrPdu::SIZE + 2 + 2 + 1 + vendor_id.len() + 2;
+    let envelope_len = SpdmMsgHdrPdu::SIZE + (if is_large { 11 } else { 7 }) + vendor_id.len();
     if out.len() != envelope_len {
         return Err(SPDM_UNSPECIFIED);
     }
-    let resp_len = u16::try_from(payload_len).map_err(|_| SPDM_UNSPECIFIED)?;
     let hdr = SpdmMsgHdrPdu::new(version, ReqRespCode::VENDOR_DEFINED_RESPONSE);
 
     let mut w = WireWriter::new(out);
     w.write(&hdr).map_err(|_| SPDM_UNSPECIFIED)?;
-    w.write_bytes(&[0u8, 0u8]).map_err(|_| SPDM_UNSPECIFIED)?; // param1, param2
+    let param1 = VendorDefinedParam1::new().with_large(is_large).into_bits();
+    w.write_bytes(&[param1, 0u8])
+        .map_err(|_| SPDM_UNSPECIFIED)?; // param1, param2
     w.write_bytes(&standard_id.to_le_bytes())
         .map_err(|_| SPDM_UNSPECIFIED)?;
     w.write_bytes(&[vendor_id.len() as u8])
         .map_err(|_| SPDM_UNSPECIFIED)?;
     w.write_bytes(vendor_id).map_err(|_| SPDM_UNSPECIFIED)?;
-    w.write_bytes(&resp_len.to_le_bytes())
-        .map_err(|_| SPDM_UNSPECIFIED)?;
+    if is_large {
+        let resp_len = u32::try_from(payload_len).map_err(|_| SPDM_UNSPECIFIED)?;
+        w.write_bytes(&[0u8, 0u8]).map_err(|_| SPDM_UNSPECIFIED)?; // reserved
+        w.write_bytes(&resp_len.to_le_bytes())
+            .map_err(|_| SPDM_UNSPECIFIED)?;
+    } else {
+        let resp_len = u16::try_from(payload_len).map_err(|_| SPDM_UNSPECIFIED)?;
+        w.write_bytes(&resp_len.to_le_bytes())
+            .map_err(|_| SPDM_UNSPECIFIED)?;
+    }
     Ok(())
 }

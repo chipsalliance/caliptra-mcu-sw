@@ -173,6 +173,7 @@ impl<S, L> ConnectionState<S, L> {
             | CapFlags::MAC
             | CapFlags::CHUNK
             | heartbeat_cap_flags()
+            | CapFlags::LARGE_RESP
             | set_certificate_cap_flags();
         let other_param_support =
             OtherParamSupport::OPAQUE_DATA_FMT1 | set_certificate_other_params();
@@ -1240,3 +1241,7 @@ mod capabilities_tests;
 #[cfg(test)]
 #[path = "tests/certificate.rs"]
 mod certificate_tests;
+
+#[cfg(test)]
+#[path = "tests/vendor_defined.rs"]
+mod vendor_defined_tests;
