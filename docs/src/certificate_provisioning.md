@@ -18,11 +18,13 @@ to managed Owner and Tenant slots.
 
 ## Implementation status
 
-The current source implements Vendor ECC P-384 certificate retrieval through
-SPDM. SPDM managed Owner and Tenant provisioning is test-only and does not
+The current source implements Vendor ECC P-384 and ML-DSA-87 certificate
+retrieval through SPDM. Managed Owner and Tenant slots store an independent
+chain per algorithm and serve whichever one matches the negotiated
+algorithm, but SPDM provisioning of those slots is test-only and does not
 provide production authorization. Production authorization and managed
-backing contracts are deferred. ML-DSA-87 certificate chains, MCI certificate
-commands, and configurable Tenant SlotIDs are planned.
+backing contracts are deferred. MCI certificate commands and configurable
+Tenant SlotIDs are planned.
 
 ## Trust bootstrap
 
