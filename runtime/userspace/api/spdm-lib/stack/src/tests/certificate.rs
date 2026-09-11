@@ -263,6 +263,9 @@ fn test_get_certificate_v14_large_without_large_resp_cap_returns_unsupported() {
     let pal = TestPal::default();
     let mut state = init_cert_test_state(SpdmVersion::V14, &pal);
     // Responder did NOT advertise LARGE_RESP_CAP.
+    state.advertised_cap_flags = CapFlags::from_bits(
+        state.advertised_cap_flags.into_bits() & !CapFlags::LARGE_RESP.into_bits(),
+    );
     let mut sessions = SessionManager::new();
 
     let req = large_cert_request(SpdmVersion::V14, 0, 0, 0, 1024);

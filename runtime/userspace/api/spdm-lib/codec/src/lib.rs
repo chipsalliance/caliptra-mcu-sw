@@ -73,8 +73,8 @@ pub use vendor_defined::pci_sig::ide_km::{
 };
 pub use vendor_defined::pci_sig::PciSigProtocolHdr;
 pub use vendor_defined::{
-    decode_vendor_defined_req, StandardsBodyId, VendorDefinedReq, VendorDefinedReqPdu,
-    VendorDefinedRspBody, VendorDefinedRspPdu,
+    decode_vendor_defined_req, StandardsBodyId, VendorDefinedParam1, VendorDefinedReq,
+    VendorDefinedReqPdu, VendorDefinedRspBody, VendorDefinedRspPdu,
 };
 pub use version::{SpdmVersion, VersionNumberEntry, VersionRsp, VersionRspBody};
 pub use wire::{WireError, WireReader, WireWriter};
