@@ -1140,10 +1140,7 @@ impl BootFlow for ColdBoot {
         // read-only.
         let fips_zeroization = mci.fips_zeroization_requested();
         if fips_zeroization {
-            caliptra_mcu_romtime::println!(
-                "[mcu-rom] FIPS zeroization PPD signal detected; \
-                 will execute zeroization after Caliptra boot"
-            );
+            caliptra_mcu_romtime::println!("[mcu-rom] FIPS zeroization requested");
             mci.set_flow_checkpoint(McuRomBootStatus::FipsZeroizationDetected.into());
             mci.set_fips_zeroization_mask(0xFFFF_FFFF);
             mci.set_flow_checkpoint(McuRomBootStatus::FipsZeroizationMaskSet.into());
@@ -1332,9 +1329,23 @@ impl BootFlow for ColdBoot {
         #[cfg(feature = "ocp-lock")]
         crate::call_hook(params.hooks, |h| h.post_set_ocp_lock_fuses());
 
+        let mut mcu_rom_capabilities =
+            caliptra_mcu_romtime::handoff::McuRomCapabilities::STREAMING_BOOT_I3C;
+        if cfg!(feature = "hw-2-1") {
+            if let Some(manager) = params.image_provider_manager.as_ref() {
+                mcu_rom_capabilities |= manager.capabilities();
+            }
+        }
+
         // Create handoff data
         caliptra_mcu_romtime::handoff::HandoffData::write(
             caliptra_mcu_romtime::handoff::HandoffArgs {
+                firmware_boot_type: if recovery_boot {
+                    caliptra_mcu_romtime::handoff::FirmwareBootType::Unknown
+                } else {
+                    caliptra_mcu_romtime::handoff::FirmwareBootType::Streaming
+                },
+                mcu_rom_capabilities,
                 #[cfg(feature = "ocp-lock")]
                 ocp_lock: _fuse_state.ocp_lock.clone().unwrap_or_default(),
             },
@@ -1681,8 +1692,11 @@ impl BootFlow for ColdBoot {
                     .soc_mgmt_if_rec_intf_cfg
                     .modify(RecIntfCfg::RecIntfBypass::SET);
 
-                crate::recovery::load_image_with_retry(i3c_base, manager)
+                let firmware_boot_type = crate::recovery::load_image_with_retry(i3c_base, manager)
                     .unwrap_or_else(|_| fatal_error(McuError::ROM_COLD_BOOT_LOAD_IMAGE_ERROR));
+                caliptra_mcu_romtime::handoff::HandoffData::write_firmware_boot_type(
+                    firmware_boot_type,
+                );
 
                 caliptra_mcu_romtime::println!("[mcu-rom] Recovery flow complete");
                 mci.set_flow_checkpoint(McuRomBootStatus::FlashRecoveryFlowComplete.into());

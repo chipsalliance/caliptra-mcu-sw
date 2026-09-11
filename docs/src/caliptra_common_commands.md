@@ -144,7 +144,17 @@ The authorized-subcommand assignments are stable capability indexes; they are no
 | 6   | `MCI_MAILBOX_SERVICE` | MCU Runtime includes the external MCI mailbox service |
 | 7   | `DOE`                 | MCU Runtime includes the DOE transport                |
 
-The `mcu_rom` field is reserved and responders currently set it to zero.
+The `mcu_rom` field is populated from the versioned ROM-to-Runtime handoff. A
+Runtime paired with an MCU ROM handoff version before 1.3 reports zero.
+
+**MCU ROM Capability Flags**:
+
+| Bit | Name                 | Description                              |
+| --- | -------------------- | ---------------------------------------- |
+| 0   | `STREAMING_BOOT_I3C` | MCU ROM supports streaming boot over I3C |
+| 1   | `FLASH_BOOT`         | MCU ROM supports flash boot              |
+| 2   | `NETWORK_BOOT`       | MCU ROM supports network boot            |
+| 3:31 | Reserved            | Responders report zero                    |
 
 ### Get Debug Log
 

@@ -78,6 +78,18 @@ impl HandOff<ReadWrite> {
 }
 
 impl<Access> HandOff<Access> {
+    /// Return the source used to boot the MCU firmware.
+    pub fn firmware_boot_type(&self) -> Option<caliptra_mcu_romtime::handoff::FirmwareBootType> {
+        self.deref().firmware_boot_type()
+    }
+
+    /// Return capabilities implemented by the MCU ROM image.
+    pub fn mcu_rom_capabilities(
+        &self,
+    ) -> Option<caliptra_mcu_romtime::handoff::McuRomCapabilities> {
+        self.deref().mcu_rom_capabilities()
+    }
+
     /// Return the stable owner CMK produced by ROM when this handoff version supports it.
     pub fn stable_owner_key(
         &self,

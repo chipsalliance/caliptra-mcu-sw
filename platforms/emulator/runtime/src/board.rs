@@ -1276,10 +1276,20 @@ fn run_kernel_tests(
             use caliptra_mcu_romtime::ocp_lock::HekSeedState;
 
             let ho_addr = ho.addr() as u32;
+            #[cfg(not(feature = "release"))]
+            let expected_addr = 0x5000_3800;
+            #[cfg(feature = "release")]
             let expected_addr = 0x5000_3C00;
             if ho.rom.ocp_lock.hek_state.active_slot == 2
                 && ho.rom.ocp_lock.hek_state.active_state == HekSeedState::Programmed
                 && ho.rom.ocp_lock.hek_state.total_slots == 8
+                && ho.firmware_boot_type()
+                    == Some(caliptra_mcu_romtime::handoff::FirmwareBootType::Streaming)
+                && ho.mcu_rom_capabilities().is_some_and(|capabilities| {
+                    capabilities.contains(
+                        caliptra_mcu_romtime::handoff::McuRomCapabilities::STREAMING_BOOT_I3C,
+                    )
+                })
                 && ho_addr == expected_addr
                 && ho.rom.fht_major_ver == caliptra_mcu_romtime::handoff::FHT_MAJOR_VERSION
                 && ho.rom.fht_minor_ver == caliptra_mcu_romtime::handoff::FHT_MINOR_VERSION
@@ -1291,8 +1301,10 @@ fn run_kernel_tests(
                 exit = Some(0);
             } else {
                 caliptra_mcu_romtime::println!(
-                    "[mcu-runtime] HandOff verification FAILED: state={:?}, addr=0x{:08x}, expected=0x{:08x}, ver={}.{}",
+                    "[mcu-runtime] HandOff verification FAILED: state={:?}, boot_type={:?}, rom_capabilities={:?}, addr=0x{:08x}, expected=0x{:08x}, ver={}.{}",
                     ho.rom.ocp_lock.hek_state,
+                    ho.firmware_boot_type(),
+                    ho.mcu_rom_capabilities(),
                     ho_addr,
                     expected_addr,
                     ho.rom.fht_major_ver,
