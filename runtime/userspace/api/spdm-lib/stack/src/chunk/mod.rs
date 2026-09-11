@@ -92,7 +92,9 @@ pub(crate) enum ActiveLargeRequest {
     Prefix(StreamPrefixState),
     #[cfg(feature = "set-certificate")]
     SetCertificate(crate::set_certificate::SetCertificateStreamState),
-    AuthorizeDebugUnlockToken,
+    AuthorizeDebugUnlockToken {
+        is_large: bool,
+    },
 }
 
 #[derive(Copy, Clone)]
