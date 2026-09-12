@@ -64,13 +64,15 @@ fn get_version_advertises_v14_and_resets_valid_connection() {
             0,
             0,
             0,
-            3,
+            4,
             0,
             SpdmVersion::V14.to_u8(),
             0,
             SpdmVersion::V13.to_u8(),
             0,
             SpdmVersion::V12.to_u8(),
+            0,
+            SpdmVersion::V11.to_u8(),
         ]
     );
     assert_eq!(state.phase, Phase::AfterVersion);
