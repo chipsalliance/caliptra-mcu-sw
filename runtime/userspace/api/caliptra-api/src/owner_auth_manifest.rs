@@ -8,7 +8,7 @@
 
 use caliptra_api::mailbox::{CommandId, SetOwnerAuthManifestReq};
 use core::mem::{offset_of, size_of};
-use mcu_error::codes::INVARIANT;
+use mcu_error::codes::{INTERNAL_BUG, INVARIANT};
 use mcu_error::McuResult;
 use zerocopy::{little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
 
@@ -82,13 +82,16 @@ pub async fn set_owner_auth_manifest<A: ApiAlloc>(alloc: &A, manifest: &[u8]) ->
     let header = set_owner_auth_manifest_header(manifest.len() as u32, bytesum);
 
     let mut rsp = alloc.alloc(MBOX_RESP_HEADER_SIZE)?;
-    let _rsp_len = crate::wire::mbox_execute_slice(
+    let rsp_len = crate::wire::mbox_execute_slice(
         CMD_SET_OWNER_AUTH_MANIFEST,
         Some(header.as_bytes()),
         manifest,
         &mut rsp,
     )
     .await?;
+    if rsp_len != MBOX_RESP_HEADER_SIZE {
+        return Err(INTERNAL_BUG);
+    }
 
     Ok(())
 }
