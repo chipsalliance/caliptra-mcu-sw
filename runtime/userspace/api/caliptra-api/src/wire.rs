@@ -154,6 +154,9 @@ pub(crate) const CMD_CM_AES_GCM_ENCRYPT_FINAL: u32 = 0x434D_4746; // "CMGF"
 pub(crate) const CMD_CM_AES_GCM_SPDM_DECRYPT_INIT: u32 = 0x434D_5344; // "CMSD"
 pub(crate) const CMD_CM_AES_GCM_DECRYPT_UPDATE: u32 = 0x434D_4455; // "CMDU"
 pub(crate) const CMD_CM_AES_GCM_DECRYPT_FINAL: u32 = 0x434D_4446; // "CMDF"
+pub(crate) const CMD_CM_MLKEM_KEY_GEN: u32 = 0x434D_4C4B; // "CMLK"
+pub(crate) const CMD_CM_MLKEM_ENCAPSULATE: u32 = 0x434D_4C45; // "CMLE"
+pub(crate) const CMD_CM_MLKEM_DECAPSULATE: u32 = 0x434D_4C44; // "CMLD"
 
 // ---- Hash algorithm discriminator -----------------------------------------
 
