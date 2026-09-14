@@ -174,6 +174,10 @@ fn authorized_subcommand_capabilities() -> AuthorizedSubcommandCapabilities {
             | AuthorizedSubcommandCapabilities::DOT_ROTATE
             | AuthorizedSubcommandCapabilities::GET_DOT_BACKUP_BLOB;
     }
+    if cfg!(feature = "spdm") && cfg!(feature = "ocp-lock") {
+        capabilities |= AuthorizedSubcommandCapabilities::OCP_LOCK_ROTATE_HEK
+            | AuthorizedSubcommandCapabilities::OCP_LOCK_SET_PERMA_HEK;
+    }
     capabilities
 }
 
@@ -536,6 +540,20 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
 
         Ok(len)
     }
+
+    #[cfg(feature = "ocp-lock")]
+    async fn ocp_lock_rotate_hek<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        slot: u32,
+    ) -> CaliptraCmdResult<()> {
+        device_ops::ocp_lock_rotate_hek(alloc, slot).await
+    }
+
+    #[cfg(feature = "ocp-lock")]
+    async fn ocp_lock_set_perma_hek(&self) -> CaliptraCmdResult<()> {
+        device_ops::ocp_lock_set_perma_hek()
+    }
 }
 
 #[cfg(test)]
@@ -592,6 +610,13 @@ mod tests {
                     | AuthorizedSubcommandCapabilities::GET_DOT_BACKUP_BLOB
             ),
             cfg!(feature = "dot-spdm-vdm")
+        );
+        assert_eq!(
+            authorized.contains(
+                AuthorizedSubcommandCapabilities::OCP_LOCK_ROTATE_HEK
+                    | AuthorizedSubcommandCapabilities::OCP_LOCK_SET_PERMA_HEK
+            ),
+            cfg!(feature = "spdm") && cfg!(feature = "ocp-lock")
         );
         assert_eq!(
             runtime.contains(McuRuntimeCapabilities::DOE),

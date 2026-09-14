@@ -28,6 +28,8 @@ pub use commands::authorized_command::{
     GET_DOT_BACKUP_BLOB_CMD_ID, INCREASE_CALIPTRA_MIN_SVN_CMD_ID, PROVISION_OWNER_PK_HASH_CMD_ID,
     PROVISION_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PUB_KEY_CMD_ID,
 };
+#[cfg(feature = "ocp-lock")]
+pub use commands::authorized_command::{OCP_LOCK_ROTATE_HEK_CMD_ID, OCP_LOCK_SET_PERMA_HEK_CMD_ID};
 
 /// Caliptra VDM message header length: `[command_version, command_code]`.
 const VDM_HEADER_LEN: usize = 2;
@@ -244,6 +246,33 @@ pub trait CaliptraVdmAuthorization {
         mldsa_pub: &[u8; 2592],
         scratch: &A,
         blob: &mut [u8; caliptra_mcu_mbox_common::messages::DOT_BLOB_SIZE],
+    ) -> CaliptraVdmResult<()>;
+
+    #[cfg(feature = "ocp-lock")]
+    #[allow(clippy::too_many_arguments)]
+    async fn ocp_lock_rotate_hek<A: SpdmPalAlloc>(
+        &self,
+        slot: u32,
+        payload: &[u8],
+        sig: &HybridSignature,
+        nonce: &[u8; AUTH_CMD_NONCE_LEN],
+        ecc_pub_x: &[u8; 48],
+        ecc_pub_y: &[u8; 48],
+        mldsa_pub: &[u8; 2592],
+        scratch: &A,
+    ) -> CaliptraVdmResult<()>;
+
+    #[cfg(feature = "ocp-lock")]
+    #[allow(clippy::too_many_arguments)]
+    async fn ocp_lock_set_perma_hek<A: SpdmPalAlloc>(
+        &self,
+        payload: &[u8],
+        sig: &HybridSignature,
+        nonce: &[u8; AUTH_CMD_NONCE_LEN],
+        ecc_pub_x: &[u8; 48],
+        ecc_pub_y: &[u8; 48],
+        mldsa_pub: &[u8; 2592],
+        scratch: &A,
     ) -> CaliptraVdmResult<()>;
 }
 
@@ -723,6 +752,12 @@ mod tests {
             cak: [u8; 48],
             lak_hash: [u8; 48],
         },
+        #[cfg(feature = "ocp-lock")]
+        OcpLockRotateHek {
+            slot: u32,
+        },
+        #[cfg(feature = "ocp-lock")]
+        OcpLockSetPermaHek,
     }
 
     struct TestCommands {
@@ -1247,6 +1282,37 @@ mod tests {
             self.dot_backup_calls.fetch_add(1, Ordering::Relaxed);
             blob.fill(0x5A);
             Ok(())
+        }
+
+        #[cfg(feature = "ocp-lock")]
+        async fn ocp_lock_rotate_hek<A: SpdmPalAlloc>(
+            &self,
+            slot: u32,
+            payload: &[u8],
+            sig: &HybridSignature,
+            _nonce: &[u8; AUTH_CMD_NONCE_LEN],
+            _ecc_pub_x: &[u8; 48],
+            _ecc_pub_y: &[u8; 48],
+            _mldsa_pub: &[u8; 2592],
+            _scratch: &A,
+        ) -> CaliptraVdmResult<()> {
+            self.verify_test_signature(OCP_LOCK_ROTATE_HEK_CMD_ID, payload, sig)?;
+            self.complete_authorized(AuthorizedOperation::OcpLockRotateHek { slot })
+        }
+
+        #[cfg(feature = "ocp-lock")]
+        async fn ocp_lock_set_perma_hek<A: SpdmPalAlloc>(
+            &self,
+            payload: &[u8],
+            sig: &HybridSignature,
+            _nonce: &[u8; AUTH_CMD_NONCE_LEN],
+            _ecc_pub_x: &[u8; 48],
+            _ecc_pub_y: &[u8; 48],
+            _mldsa_pub: &[u8; 2592],
+            _scratch: &A,
+        ) -> CaliptraVdmResult<()> {
+            self.verify_test_signature(OCP_LOCK_SET_PERMA_HEK_CMD_ID, payload, sig)?;
+            self.complete_authorized(AuthorizedOperation::OcpLockSetPermaHek)
         }
     }
 
@@ -2411,5 +2477,64 @@ mod tests {
         assert_inline(response, 3);
         assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
         assert_eq!(cmds.authorized_token.lock().unwrap().take(), Some(token));
+    }
+
+    #[cfg(feature = "ocp-lock")]
+    #[test]
+    fn ocp_lock_rotate_hek_dispatches_under_authorized_command() {
+        let cmds = TestCommands::new(0).with_authorization();
+        issue_test_challenge(&cmds);
+        let slot: u32 = 2;
+        let payload = slot.to_le_bytes();
+        let sig = test_signature(OCP_LOCK_ROTATE_HEK_CMD_ID, &payload, &TEST_AUTH_CHALLENGE);
+        let req = authorized_req_with_sig(OCP_LOCK_ROTATE_HEK_CMD_ID, &payload, &sig);
+
+        let (response, inline, _) = dispatch(&cmds, &req, 16, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+        assert_eq!(
+            cmds.authorized_operation.lock().unwrap().take(),
+            Some(AuthorizedOperation::OcpLockRotateHek { slot })
+        );
+    }
+
+    #[cfg(feature = "ocp-lock")]
+    #[test]
+    fn ocp_lock_set_perma_hek_dispatches_under_authorized_command() {
+        let cmds = TestCommands::new(0).with_authorization();
+        issue_test_challenge(&cmds);
+        let payload = [];
+        let sig = test_signature(
+            OCP_LOCK_SET_PERMA_HEK_CMD_ID,
+            &payload,
+            &TEST_AUTH_CHALLENGE,
+        );
+        let req = authorized_req_with_sig(OCP_LOCK_SET_PERMA_HEK_CMD_ID, &payload, &sig);
+
+        let (response, inline, _) = dispatch(&cmds, &req, 16, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+        assert_eq!(
+            cmds.authorized_operation.lock().unwrap().take(),
+            Some(AuthorizedOperation::OcpLockSetPermaHek)
+        );
+    }
+
+    #[cfg(feature = "ocp-lock")]
+    #[test]
+    fn ocp_lock_commands_reject_invalid_payload_sizes() {
+        let cmds = TestCommands::new(0);
+
+        // rotate_hek expects 4 bytes payload; give 3
+        let req = authorized_req(OCP_LOCK_ROTATE_HEK_CMD_ID, &[0u8; 3]);
+        let (response, inline, _) = dispatch(&cmds, &req, 16, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::InvalidPayloadSize as u8);
+
+        // set_perma_hek expects 0 bytes payload; give 1
+        let req = authorized_req(OCP_LOCK_SET_PERMA_HEK_CMD_ID, &[0u8; 1]);
+        let (response, inline, _) = dispatch(&cmds, &req, 16, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::InvalidPayloadSize as u8);
     }
 }

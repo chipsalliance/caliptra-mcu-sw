@@ -536,6 +536,23 @@ pub trait CaliptraCmdHandler {
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 
+    /// Rotate the active HEK to the specified slot.
+    #[cfg(feature = "ocp-lock")]
+    async fn ocp_lock_rotate_hek<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        slot: u32,
+    ) -> CaliptraCmdResult<()> {
+        let _ = (alloc, slot);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Set permanent HEK lock.
+    #[cfg(feature = "ocp-lock")]
+    async fn ocp_lock_set_perma_hek(&self) -> CaliptraCmdResult<()> {
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
     /// Lock an OTP partition against further writes.
     async fn fuse_lock_partition(&self, partition: u32) -> CaliptraCmdResult<()> {
         let _ = partition;

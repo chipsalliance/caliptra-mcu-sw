@@ -636,6 +636,16 @@ authorized_fuse_handler!(
     fuse::ProvisionOwnerPkHashRequest,
     fuse::MC_PROVISION_OWNER_PK_HASH_CANONICAL_CMD_ID
 );
+authorized_fuse_handler!(
+    handle_ocp_lock_rotate_hek,
+    fuse::OcpLockRotateHekRequest,
+    fuse::MC_OCP_LOCK_ROTATE_HEK_CANONICAL_CMD_ID
+);
+authorized_fuse_handler!(
+    handle_ocp_lock_set_perma_hek,
+    fuse::OcpLockSetPermaHekRequest,
+    fuse::MC_OCP_LOCK_SET_PERMA_HEK_CANONICAL_CMD_ID
+);
 
 // ---------------------------------------------------------------------------
 // RequestDebugUnlock (CaliptraCommandId::ProdDebugUnlockReq)

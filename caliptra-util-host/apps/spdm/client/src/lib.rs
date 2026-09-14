@@ -51,8 +51,9 @@ use caliptra_mcu_core_util_host_command_types::fuse::{
     FeProgResponse, FuseIncreaseCaliptraMinSvnRequest, FuseIncreaseCaliptraMinSvnResponse,
     FuseLockPartitionRequest, FuseLockPartitionResponse, FuseRevokeVendorPkHashRequest,
     FuseRevokeVendorPkHashResponse, FuseRevokeVendorPubKeyRequest, FuseRevokeVendorPubKeyResponse,
-    GetAuthCmdChallengeResponse, ProvisionOwnerPkHashRequest, ProvisionOwnerPkHashResponse,
-    ProvisionVendorPkHashRequest, ProvisionVendorPkHashResponse,
+    GetAuthCmdChallengeResponse, OcpLockRotateHekRequest, OcpLockRotateHekResponse,
+    OcpLockSetPermaHekRequest, OcpLockSetPermaHekResponse, ProvisionOwnerPkHashRequest,
+    ProvisionOwnerPkHashResponse, ProvisionVendorPkHashRequest, ProvisionVendorPkHashResponse,
 };
 use caliptra_mcu_core_util_host_transport::transports::spdm_vdm::transport::{
     SpdmVdmDriver, SpdmVdmError, SpdmVdmTransport,
@@ -76,6 +77,7 @@ use caliptra_util_host_commands::api::fuse::{
     caliptra_cmd_fe_prog, caliptra_cmd_fuse_increase_caliptra_min_svn,
     caliptra_cmd_fuse_lock_partition, caliptra_cmd_fuse_revoke_vendor_pk_hash,
     caliptra_cmd_fuse_revoke_vendor_pub_key, caliptra_cmd_get_auth_challenge,
+    caliptra_cmd_ocp_lock_rotate_hek, caliptra_cmd_ocp_lock_set_perma_hek,
     caliptra_cmd_provision_owner_pk_hash, caliptra_cmd_provision_vendor_pk_hash,
 };
 use caliptra_util_host_commands::api::{CaliptraApiError, CaliptraResult};
@@ -363,6 +365,42 @@ impl<'a> SpdmVdmClient<'a> {
             .create_session()
             .map_err(|_| CaliptraApiError::SessionError("Failed to create session"))?;
         caliptra_cmd_fuse_revoke_vendor_pk_hash(&mut session, &request)
+    }
+
+    pub fn ocp_lock_rotate_hek(
+        &mut self,
+        slot: u32,
+        auth: AuthorizedCommandData<'_>,
+    ) -> CaliptraResult<OcpLockRotateHekResponse> {
+        let request = OcpLockRotateHekRequest {
+            slot,
+            sig: auth.sig.clone(),
+            nonce: *auth.nonce,
+            ecc_pub_x: *auth.ecc_pub_x,
+            ecc_pub_y: *auth.ecc_pub_y,
+            mldsa_pub: *auth.mldsa_pub,
+        };
+        let mut session = self
+            .create_session()
+            .map_err(|_| CaliptraApiError::SessionError("Failed to create session"))?;
+        caliptra_cmd_ocp_lock_rotate_hek(&mut session, &request)
+    }
+
+    pub fn ocp_lock_set_perma_hek(
+        &mut self,
+        auth: AuthorizedCommandData<'_>,
+    ) -> CaliptraResult<OcpLockSetPermaHekResponse> {
+        let request = OcpLockSetPermaHekRequest {
+            sig: auth.sig.clone(),
+            nonce: *auth.nonce,
+            ecc_pub_x: *auth.ecc_pub_x,
+            ecc_pub_y: *auth.ecc_pub_y,
+            mldsa_pub: *auth.mldsa_pub,
+        };
+        let mut session = self
+            .create_session()
+            .map_err(|_| CaliptraApiError::SessionError("Failed to create session"))?;
+        caliptra_cmd_ocp_lock_set_perma_hek(&mut session, &request)
     }
 
     /// Send an unencoded Caliptra VDM payload for responder-negative validation.

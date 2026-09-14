@@ -18,7 +18,9 @@ use caliptra_mcu_core_util_host_command_types::fuse::{
     FuseIncreaseCaliptraMinSvnResponse, FuseLockPartitionRequest, FuseLockPartitionResponse,
     FuseRevokeVendorPkHashRequest, FuseRevokeVendorPkHashResponse, FuseRevokeVendorPubKeyRequest,
     FuseRevokeVendorPubKeyResponse, GetAuthCmdChallengeRequest, GetAuthCmdChallengeResponse,
-    ProvisionVendorPkHashRequest, ProvisionVendorPkHashResponse, AUTH_CMD_CHALLENGE_SIZE,
+    OcpLockRotateHekRequest, OcpLockRotateHekResponse, OcpLockSetPermaHekRequest,
+    OcpLockSetPermaHekResponse, ProvisionVendorPkHashRequest, ProvisionVendorPkHashResponse,
+    AUTH_CMD_CHALLENGE_SIZE,
 };
 use caliptra_mcu_core_util_host_command_types::CommonResponse;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
@@ -240,4 +242,20 @@ define_authorized_fuse_mailbox_command!(
     FuseLockPartitionResponse,
     ExtCmdFuseLockPartitionRequest,
     ExtCmdFuseLockPartitionResponse
+);
+define_authorized_fuse_mailbox_command!(
+    OcpLockRotateHekCmd,
+    0x4F4C_5248,
+    OcpLockRotateHekRequest,
+    OcpLockRotateHekResponse,
+    ExtCmdOcpLockRotateHekRequest,
+    ExtCmdOcpLockRotateHekResponse
+);
+define_authorized_fuse_mailbox_command!(
+    OcpLockSetPermaHekCmd,
+    0x4F4C_5350,
+    OcpLockSetPermaHekRequest,
+    OcpLockSetPermaHekResponse,
+    ExtCmdOcpLockSetPermaHekRequest,
+    ExtCmdOcpLockSetPermaHekResponse
 );

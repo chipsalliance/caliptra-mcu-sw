@@ -32,6 +32,10 @@ const DOT_DISABLE_PAYLOAD_LEN: usize = 4 + core::mem::size_of::<DotDisablePayloa
 const DOT_ROTATE_PAYLOAD_LEN: usize = 4 + core::mem::size_of::<DotRotatePayload>();
 #[cfg(feature = "device-ownership-transfer")]
 const DOT_BACKUP_PAYLOAD_LEN: usize = 4;
+#[cfg(feature = "ocp-lock")]
+const OCP_LOCK_ROTATE_HEK_PAYLOAD_LEN: usize = 4;
+#[cfg(feature = "ocp-lock")]
+const OCP_LOCK_SET_PERMA_HEK_PAYLOAD_LEN: usize = 0;
 
 const AUTHORIZATION_TRAILER_LEN: usize = AUTH_CMD_NONCE_LEN
     + 2 * ECC_P384_COORD_SIZE
@@ -73,6 +77,15 @@ const MAX_AUTHORIZED_PAYLOAD_LEN: usize = {
             max = DOT_BACKUP_PAYLOAD_LEN;
         }
     }
+    #[cfg(feature = "ocp-lock")]
+    {
+        if OCP_LOCK_ROTATE_HEK_PAYLOAD_LEN > max {
+            max = OCP_LOCK_ROTATE_HEK_PAYLOAD_LEN;
+        }
+        if OCP_LOCK_SET_PERMA_HEK_PAYLOAD_LEN > max {
+            max = OCP_LOCK_SET_PERMA_HEK_PAYLOAD_LEN;
+        }
+    }
     max
 };
 
@@ -106,6 +119,12 @@ pub const DOT_DISABLE_CMD_ID: u32 = CommandId::MC_DOT_DISABLE.0;
 pub const DOT_ROTATE_CMD_ID: u32 = CommandId::MC_DOT_ROTATE.0;
 /// GET_DOT_BACKUP_BLOB sub-command (`MDBB`).
 pub const GET_DOT_BACKUP_BLOB_CMD_ID: u32 = CommandId::MC_GET_DOT_BACKUP_BLOB.0;
+/// MC_OCP_LOCK_ROTATE_HEK sub-command (`OLRH`).
+#[cfg(feature = "ocp-lock")]
+pub const OCP_LOCK_ROTATE_HEK_CMD_ID: u32 = CommandId::MC_OCP_LOCK_ROTATE_HEK.0;
+/// MC_OCP_LOCK_SET_PERMA_HEK sub-command (`OLSP`).
+#[cfg(feature = "ocp-lock")]
+pub const OCP_LOCK_SET_PERMA_HEK_CMD_ID: u32 = CommandId::MC_OCP_LOCK_SET_PERMA_HEK.0;
 
 pub(crate) async fn handle<H, A>(
     cmds: &H,
@@ -149,6 +168,12 @@ where
         #[cfg(feature = "device-ownership-transfer")]
         DEVICE_OWNERSHIP_TRANSFER_CMD_ID => {
             handle_device_ownership_transfer(cmds, payload, scratch, out).await
+        }
+        #[cfg(feature = "ocp-lock")]
+        OCP_LOCK_ROTATE_HEK_CMD_ID => handle_ocp_lock_rotate_hek(cmds, payload, scratch, out).await,
+        #[cfg(feature = "ocp-lock")]
+        OCP_LOCK_SET_PERMA_HEK_CMD_ID => {
+            handle_ocp_lock_set_perma_hek(cmds, payload, scratch, out).await
         }
         _ => CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidParameter),
     }
@@ -584,6 +609,68 @@ where
     finish_authorized_command(
         cmds.fuse_lock_partition(
             partition,
+            parsed.payload,
+            parsed.sig,
+            parsed.nonce,
+            parsed.ecc_pub_x,
+            parsed.ecc_pub_y,
+            parsed.mldsa_pub,
+            scratch,
+        )
+        .await,
+        out,
+    )
+}
+
+#[cfg(feature = "ocp-lock")]
+async fn handle_ocp_lock_rotate_hek<H, A>(
+    cmds: &H,
+    req: &[u8],
+    scratch: &A,
+    out: &mut [u8],
+) -> CaliptraVdmCmdResult
+where
+    H: CaliptraVdmAuthorization,
+    A: SpdmPalAlloc,
+{
+    let parsed = match split_authorized_request(req, OCP_LOCK_ROTATE_HEK_PAYLOAD_LEN) {
+        Ok(parsed) => parsed,
+        Err(code) => return CaliptraVdmCmdResult::Error(code),
+    };
+    let slot = read_u32_le(parsed.payload);
+    finish_authorized_command(
+        cmds.ocp_lock_rotate_hek(
+            slot,
+            parsed.payload,
+            parsed.sig,
+            parsed.nonce,
+            parsed.ecc_pub_x,
+            parsed.ecc_pub_y,
+            parsed.mldsa_pub,
+            scratch,
+        )
+        .await,
+        out,
+    )
+}
+
+#[cfg(feature = "ocp-lock")]
+async fn handle_ocp_lock_set_perma_hek<H, A>(
+    cmds: &H,
+    req: &[u8],
+    scratch: &A,
+    out: &mut [u8],
+) -> CaliptraVdmCmdResult
+where
+    H: CaliptraVdmAuthorization,
+    A: SpdmPalAlloc,
+{
+    let parsed = match split_authorized_request(req, OCP_LOCK_SET_PERMA_HEK_PAYLOAD_LEN) {
+        Ok(parsed) => parsed,
+        Err(code) => return CaliptraVdmCmdResult::Error(code),
+    };
+    finish_authorized_command(
+        cmds.ocp_lock_set_perma_hek(
             parsed.payload,
             parsed.sig,
             parsed.nonce,

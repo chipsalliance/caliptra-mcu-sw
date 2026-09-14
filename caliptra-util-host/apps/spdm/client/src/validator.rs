@@ -27,7 +27,8 @@ use caliptra_mcu_core_util_host_command_types::device_ownership_transfer::{
 use caliptra_mcu_core_util_host_command_types::fuse::{
     MC_FE_PROG_CANONICAL_CMD_ID, MC_FUSE_INCREASE_CALIPTRA_MIN_SVN_CANONICAL_CMD_ID,
     MC_FUSE_LOCK_PARTITION_CANONICAL_CMD_ID, MC_FUSE_REVOKE_VENDOR_PK_HASH_CANONICAL_CMD_ID,
-    MC_FUSE_REVOKE_VENDOR_PUB_KEY_CANONICAL_CMD_ID, MC_PROVISION_OWNER_PK_HASH_CANONICAL_CMD_ID,
+    MC_FUSE_REVOKE_VENDOR_PUB_KEY_CANONICAL_CMD_ID, MC_OCP_LOCK_ROTATE_HEK_CANONICAL_CMD_ID,
+    MC_OCP_LOCK_SET_PERMA_HEK_CANONICAL_CMD_ID, MC_PROVISION_OWNER_PK_HASH_CANONICAL_CMD_ID,
     MC_PROVISION_VENDOR_PK_HASH_CANONICAL_CMD_ID,
 };
 use caliptra_mcu_core_util_host_transport::{CaliptraVdmCommand, CaliptraVdmCompletionCode};
@@ -1196,6 +1197,114 @@ fn signed_fuse_lock_partition(
         .map_err(AuthorizedCommandError::Command)
 }
 
+fn signed_fe_prog(
+    client: &mut SpdmVdmClient,
+    partition: u32,
+    authorizer: &dyn CommandAuthChallengeSigner,
+) -> Result<(), AuthorizedCommandError> {
+    let payload = partition.to_le_bytes();
+    let auth = authorize_command(
+        client,
+        MC_FE_PROG_CANONICAL_CMD_ID,
+        &payload,
+        Some(authorizer),
+    )
+    .map_err(AuthorizedCommandError::Preparation)?;
+    client
+        .fe_prog(
+            partition,
+            &auth.sig,
+            &auth.nonce,
+            &auth.ecc_pub_x,
+            &auth.ecc_pub_y,
+            &auth.mldsa_pub,
+        )
+        .map(|_| ())
+        .map_err(AuthorizedCommandError::Command)
+}
+
+fn send_raw_authorized_command(
+    client: &mut SpdmVdmClient,
+    cmd_id: u32,
+    payload: &[u8],
+    authorizer: &dyn CommandAuthChallengeSigner,
+) -> Result<(), AuthorizedCommandError> {
+    let auth = authorize_command(client, cmd_id, payload, Some(authorizer))
+        .map_err(AuthorizedCommandError::Preparation)?;
+    let mut request = vec![1, CaliptraVdmCommand::AuthorizedCommand as u8];
+    request.extend_from_slice(&cmd_id.to_le_bytes());
+    request.extend_from_slice(payload);
+    request.extend_from_slice(&auth.nonce);
+    request.extend_from_slice(&auth.ecc_pub_x);
+    request.extend_from_slice(&auth.ecc_pub_y);
+    request.extend_from_slice(&auth.mldsa_pub);
+    request.extend_from_slice(auth.sig.as_bytes());
+
+    let mut response = [0u8; 16];
+    match client.send_raw_vdm(&request, &mut response) {
+        Ok(len) if len >= 3 => {
+            let code = response[2];
+            if code == CaliptraVdmCompletionCode::Success as u8 {
+                Ok(())
+            } else {
+                Err(AuthorizedCommandError::Command(CaliptraApiError::DeviceError(code)))
+            }
+        }
+        Ok(_) => Err(AuthorizedCommandError::Preparation("response too short".into())),
+        Err(e) => Err(AuthorizedCommandError::Preparation(format!("transport error: {e:?}"))),
+    }
+}
+
+fn signed_ocp_lock_rotate_hek(
+    client: &mut SpdmVdmClient,
+    slot: u32,
+    authorizer: &dyn CommandAuthChallengeSigner,
+) -> Result<(), AuthorizedCommandError> {
+    let auth = authorize_command(
+        client,
+        MC_OCP_LOCK_ROTATE_HEK_CANONICAL_CMD_ID,
+        &slot.to_le_bytes(),
+        Some(authorizer),
+    )
+    .map_err(AuthorizedCommandError::Preparation)?;
+    client
+        .ocp_lock_rotate_hek(
+            slot,
+            AuthorizedCommandData {
+                sig: &auth.sig,
+                nonce: &auth.nonce,
+                ecc_pub_x: &auth.ecc_pub_x,
+                ecc_pub_y: &auth.ecc_pub_y,
+                mldsa_pub: &auth.mldsa_pub,
+            },
+        )
+        .map(|_| ())
+        .map_err(AuthorizedCommandError::Command)
+}
+
+fn signed_ocp_lock_set_perma_hek(
+    client: &mut SpdmVdmClient,
+    authorizer: &dyn CommandAuthChallengeSigner,
+) -> Result<(), AuthorizedCommandError> {
+    let auth = authorize_command(
+        client,
+        MC_OCP_LOCK_SET_PERMA_HEK_CANONICAL_CMD_ID,
+        &[],
+        Some(authorizer),
+    )
+    .map_err(AuthorizedCommandError::Preparation)?;
+    client
+        .ocp_lock_set_perma_hek(AuthorizedCommandData {
+            sig: &auth.sig,
+            nonce: &auth.nonce,
+            ecc_pub_x: &auth.ecc_pub_x,
+            ecc_pub_y: &auth.ecc_pub_y,
+            mldsa_pub: &auth.mldsa_pub,
+        })
+        .map(|_| ())
+        .map_err(AuthorizedCommandError::Command)
+}
+
 fn expect_success(test_name: &str, result: Result<(), AuthorizedCommandError>) -> ValidationResult {
     match result {
         Ok(()) => ValidationResult::pass(test_name, "accepted"),
@@ -1569,6 +1678,18 @@ fn run_fuse_suite(
                 signed_revoke_vendor_pk_hash(client, 0, 1, authorizer),
             ),
         ],
+        "program-field-entropy" => vec![expect_success(
+            "MCFP programs field entropy",
+            signed_fe_prog(client, 0, authorizer),
+        )],
+        "ocp-lock-rotate-hek" => vec![expect_success(
+            "OLRH rotates active HEK",
+            signed_ocp_lock_rotate_hek(client, 1, authorizer),
+        )],
+        "ocp-lock-set-perma-hek" => vec![expect_success(
+            "OLSP sets permanent HEK",
+            signed_ocp_lock_set_perma_hek(client, authorizer),
+        )],
         _ => vec![ValidationResult::fail(
             "Authorized fuse suite",
             format!("unknown suite {suite:?}"),

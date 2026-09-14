@@ -41,6 +41,8 @@ bitflags::bitflags! {
         const DOT_DISABLE = 1 << 9;
         const DOT_ROTATE = 1 << 10;
         const GET_DOT_BACKUP_BLOB = 1 << 11;
+        const OCP_LOCK_ROTATE_HEK = 1 << 12;
+        const OCP_LOCK_SET_PERMA_HEK = 1 << 13;
     }
 }
 
@@ -104,6 +106,14 @@ mod tests {
         assert_eq!(
             AuthorizedSubcommandCapabilities::GET_DOT_BACKUP_BLOB.bits(),
             1 << 11
+        );
+        assert_eq!(
+            AuthorizedSubcommandCapabilities::OCP_LOCK_ROTATE_HEK.bits(),
+            1 << 12
+        );
+        assert_eq!(
+            AuthorizedSubcommandCapabilities::OCP_LOCK_SET_PERMA_HEK.bits(),
+            1 << 13
         );
     }
 }

@@ -1162,6 +1162,29 @@ pub async fn program_field_entropy<A: ApiAlloc>(
     fe_prog(alloc, partition).await.map_err(map_mcu_err)
 }
 
+#[cfg(feature = "ocp-lock")]
+pub(crate) async fn ocp_lock_rotate_hek<Alloc: ApiAlloc>(
+    alloc: &Alloc,
+    slot: u32,
+) -> CaliptraCmdResult<()> {
+    let mut seed = [0u8; 32];
+    rng_generate(alloc, &mut seed).await.map_err(map_mcu_err)?;
+    let otp: Otp<DefaultSyscalls> = Otp::new();
+    match otp.rotate_hek(slot, &seed) {
+        Ok(_) => Ok(()),
+        Err(_) => Err(CaliptraCompletionCode::OperationFailed),
+    }
+}
+
+#[cfg(feature = "ocp-lock")]
+pub(crate) fn ocp_lock_set_perma_hek() -> CaliptraCmdResult<()> {
+    let otp: Otp<DefaultSyscalls> = Otp::new();
+    match otp.set_hek_perma() {
+        Ok(_) => Ok(()),
+        Err(_) => Err(CaliptraCompletionCode::OperationFailed),
+    }
+}
+
 pub(crate) fn map_mcu_err(e: McuErrorCode) -> CaliptraCompletionCode {
     use mcu_error::codes;
     if e == codes::MAILBOX_BUSY {

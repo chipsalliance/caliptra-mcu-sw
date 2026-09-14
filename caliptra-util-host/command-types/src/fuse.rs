@@ -51,6 +51,8 @@ pub const MC_FUSE_REVOKE_VENDOR_PUB_KEY_CANONICAL_CMD_ID: u32 = 0x4D52_564B;
 pub const MC_FUSE_REVOKE_VENDOR_PK_HASH_CANONICAL_CMD_ID: u32 = 0x5256_4B48;
 pub const MC_FUSE_LOCK_PARTITION_CANONICAL_CMD_ID: u32 = 0x4946_504B;
 pub const MC_PROVISION_OWNER_PK_HASH_CANONICAL_CMD_ID: u32 = 0x504F_504B;
+pub const MC_OCP_LOCK_ROTATE_HEK_CANONICAL_CMD_ID: u32 = 0x4F4C_5248;
+pub const MC_OCP_LOCK_SET_PERMA_HEK_CANONICAL_CMD_ID: u32 = 0x4F4C_5350;
 
 // ---- Get Authorization Command Challenge ----
 
@@ -180,11 +182,11 @@ impl CommandRequest for FeProgRequest {
 impl CommandResponse for FeProgResponse {}
 
 macro_rules! authorized_fuse_command {
-    ($request:ident, $response:ident, $command_id:ident, { $($field:ident: $ty:ty),+ $(,)? }) => {
+    ($request:ident, $response:ident, $command_id:ident, { $($field:ident: $ty:ty),* $(,)? }) => {
         #[repr(C)]
         #[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
         pub struct $request {
-            $(pub $field: $ty,)+
+            $(pub $field: $ty,)*
             pub nonce: [u8; AUTH_CMD_CHALLENGE_SIZE],
             pub ecc_pub_x: [u8; AUTH_PUB_ECC_COORD_SIZE],
             pub ecc_pub_y: [u8; AUTH_PUB_ECC_COORD_SIZE],
@@ -247,6 +249,18 @@ authorized_fuse_command!(
     ProvisionOwnerPkHashResponse,
     ProvisionOwnerPkHash,
     { hash: [u8; 48] }
+);
+authorized_fuse_command!(
+    OcpLockRotateHekRequest,
+    OcpLockRotateHekResponse,
+    OcpLockRotateHek,
+    { slot: u32 }
+);
+authorized_fuse_command!(
+    OcpLockSetPermaHekRequest,
+    OcpLockSetPermaHekResponse,
+    OcpLockSetPermaHek,
+    {}
 );
 
 // ---- Placeholder fuse commands ----

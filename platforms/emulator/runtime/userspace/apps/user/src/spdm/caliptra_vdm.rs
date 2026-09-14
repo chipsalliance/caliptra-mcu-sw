@@ -17,6 +17,10 @@ use caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::{
     FUSE_LOCK_PARTITION_CMD_ID, INCREASE_CALIPTRA_MIN_SVN_CMD_ID, PROVISION_OWNER_PK_HASH_CMD_ID,
     PROVISION_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PUB_KEY_CMD_ID,
 };
+#[cfg(feature = "ocp-lock")]
+use caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::{
+    OCP_LOCK_ROTATE_HEK_CMD_ID, OCP_LOCK_SET_PERMA_HEK_CMD_ID,
+};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
 use mcu_caliptra_api::{
@@ -607,6 +611,69 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
             .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
         CaliptraCmdBackend
             .dot_get_backup_blob(scratch, blob)
+            .await
+            .map_err(map_common_completion)
+    }
+
+    #[cfg(feature = "ocp-lock")]
+    async fn ocp_lock_rotate_hek<A: SpdmPalAlloc>(
+        &self,
+        slot: u32,
+        payload: &[u8],
+        sig: &HybridSignature,
+        nonce: &[u8; AUTH_CMD_NONCE_LEN],
+        ecc_pub_x: &[u8; 48],
+        ecc_pub_y: &[u8; 48],
+        mldsa_pub: &[u8; 2592],
+        scratch: &A,
+    ) -> CaliptraVdmResult<()> {
+        let mut authorizer = cmd_auth_mock::MockCommandAuthorizer;
+        authorizer
+            .verify_signatures(
+                scratch,
+                OCP_LOCK_ROTATE_HEK_CMD_ID,
+                payload,
+                nonce,
+                ecc_pub_x,
+                ecc_pub_y,
+                mldsa_pub,
+                sig,
+            )
+            .await
+            .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
+        CaliptraCmdBackend
+            .ocp_lock_rotate_hek(scratch, slot)
+            .await
+            .map_err(map_common_completion)
+    }
+
+    #[cfg(feature = "ocp-lock")]
+    async fn ocp_lock_set_perma_hek<A: SpdmPalAlloc>(
+        &self,
+        payload: &[u8],
+        sig: &HybridSignature,
+        nonce: &[u8; AUTH_CMD_NONCE_LEN],
+        ecc_pub_x: &[u8; 48],
+        ecc_pub_y: &[u8; 48],
+        mldsa_pub: &[u8; 2592],
+        scratch: &A,
+    ) -> CaliptraVdmResult<()> {
+        let mut authorizer = cmd_auth_mock::MockCommandAuthorizer;
+        authorizer
+            .verify_signatures(
+                scratch,
+                OCP_LOCK_SET_PERMA_HEK_CMD_ID,
+                payload,
+                nonce,
+                ecc_pub_x,
+                ecc_pub_y,
+                mldsa_pub,
+                sig,
+            )
+            .await
+            .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
+        CaliptraCmdBackend
+            .ocp_lock_set_perma_hek()
             .await
             .map_err(map_common_completion)
     }

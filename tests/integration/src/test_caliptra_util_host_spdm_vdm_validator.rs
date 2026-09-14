@@ -430,4 +430,16 @@ mod test {
         test_caliptra_util_host_spdm_vdm_validator_revoke_vendor_pk_hash,
         "revoke-vendor-pk-hash"
     );
+    isolated_fuse_suite_test!(
+        test_caliptra_util_host_spdm_vdm_validator_program_field_entropy,
+        "program-field-entropy"
+    );
+    isolated_fuse_suite_test!(
+        test_caliptra_util_host_spdm_vdm_validator_ocp_lock_rotate_hek,
+        "ocp-lock-rotate-hek"
+    );
+    isolated_fuse_suite_test!(
+        test_caliptra_util_host_spdm_vdm_validator_ocp_lock_set_perma_hek,
+        "ocp-lock-set-perma-hek"
+    );
 }

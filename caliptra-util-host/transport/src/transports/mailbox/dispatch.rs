@@ -28,7 +28,8 @@ use super::device_ownership_transfer::{
 };
 use super::fuse::{
     FeProgCmd, FuseIncreaseCaliptraMinSvnCmd, FuseLockPartitionCmd, FuseRevokeVendorPkHashCmd,
-    FuseRevokeVendorPubKeyCmd, GetAuthCmdChallengeCmd, ProvisionVendorPkHashCmd,
+    FuseRevokeVendorPubKeyCmd, GetAuthCmdChallengeCmd, OcpLockRotateHekCmd, OcpLockSetPermaHekCmd,
+    ProvisionVendorPkHashCmd,
 };
 use super::hmac::{HmacCmd, HmacKdfCounterCmd};
 use super::import::ImportCmd;
@@ -100,6 +101,8 @@ pub fn get_command_handler(command_id: u32) -> Option<CommandHandlerFn> {
         0x8014 => Some(process_command_with_metadata::<FuseRevokeVendorPubKeyCmd>),
         0x8015 => Some(process_command_with_metadata::<FuseRevokeVendorPkHashCmd>),
         0x8016 => Some(process_command_with_metadata::<FuseLockPartitionCmd>),
+        0x8018 => Some(process_command_with_metadata::<OcpLockRotateHekCmd>),
+        0x8019 => Some(process_command_with_metadata::<OcpLockSetPermaHekCmd>),
         // Device Ownership Transfer Commands (0x8020-0x8029)
         0x8020 => Some(process_command_with_metadata::<DotLockCmd>),
         0x8021 => Some(process_command_with_metadata::<DotDisableCmd>),
@@ -174,6 +177,8 @@ pub fn get_external_cmd_code(command_id: u32) -> Option<u32> {
         0x8014 => Some(0x4D52_564B), // FuseRevokeVendorPubKey -> MC_FUSE_REVOKE_VENDOR_PUB_KEY ("MRVK")
         0x8015 => Some(0x5256_4B48), // FuseRevokeVendorPkHash -> MC_FUSE_REVOKE_VENDOR_PK_HASH ("RVKH")
         0x8016 => Some(0x4946_504B), // FuseLockPartition -> MC_FUSE_LOCK_PARTITION ("IFPK")
+        0x8018 => Some(0x4F4C_5248), // OcpLockRotateHek -> MC_OCP_LOCK_ROTATE_HEK ("OLRH")
+        0x8019 => Some(0x4F4C_5350), // OcpLockSetPermaHek -> MC_OCP_LOCK_SET_PERMA_HEK ("OLSP")
         // Device Ownership Transfer Commands share the MCI DOT family ID.
         0x8020..=0x8029 => Some(0x0000_0011),
         _ => None,

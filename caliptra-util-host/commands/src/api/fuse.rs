@@ -17,8 +17,9 @@ use caliptra_mcu_core_util_host_command_types::fuse::{
     FuseIncreaseCaliptraMinSvnResponse, FuseLockPartitionRequest, FuseLockPartitionResponse,
     FuseRevokeVendorPkHashRequest, FuseRevokeVendorPkHashResponse, FuseRevokeVendorPubKeyRequest,
     FuseRevokeVendorPubKeyResponse, GetAuthCmdChallengeRequest, GetAuthCmdChallengeResponse,
-    ProvisionOwnerPkHashRequest, ProvisionOwnerPkHashResponse, ProvisionVendorPkHashRequest,
-    ProvisionVendorPkHashResponse,
+    OcpLockRotateHekRequest, OcpLockRotateHekResponse, OcpLockSetPermaHekRequest,
+    OcpLockSetPermaHekResponse, ProvisionOwnerPkHashRequest, ProvisionOwnerPkHashResponse,
+    ProvisionVendorPkHashRequest, ProvisionVendorPkHashResponse,
 };
 use caliptra_mcu_core_util_host_command_types::CaliptraCommandId;
 use caliptra_util_host_session::{CaliptraSession, SessionError};
@@ -131,4 +132,18 @@ authorized_fuse_api!(
     ProvisionOwnerPkHashResponse,
     ProvisionOwnerPkHash,
     "ProvisionOwnerPkHash command execution failed"
+);
+authorized_fuse_api!(
+    caliptra_cmd_ocp_lock_rotate_hek,
+    OcpLockRotateHekRequest,
+    OcpLockRotateHekResponse,
+    OcpLockRotateHek,
+    "OcpLockRotateHek command execution failed"
+);
+authorized_fuse_api!(
+    caliptra_cmd_ocp_lock_set_perma_hek,
+    OcpLockSetPermaHekRequest,
+    OcpLockSetPermaHekResponse,
+    OcpLockSetPermaHek,
+    "OcpLockSetPermaHek command execution failed"
 );

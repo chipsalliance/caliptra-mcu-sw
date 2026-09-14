@@ -103,6 +103,8 @@ The following subcommands are assigned to the SPDM VDM IANA authorization-gated 
 | `0x4D52_564B` (`MRVK`) | FuseRevokeVendorPubKey     | Supported     | Revoke vendor public key.                           |
 | `0x5256_4B48` (`RVKH`) | FuseRevokeVendorPkHash     | Supported     | Revoke vendor public key hash.                      |
 | `0x4946_504B` (`IFPK`) | FuseLockPartition          | Supported     | Lock fuse partition.                                |
+| `0x4F4C_5248` (`OLRH`) | OcpLockRotateHek           | Supported     | Rotate active HEK. Gated by `ocp-lock`.             |
+| `0x4F4C_5350` (`OLSP`) | OcpLockSetPermaHek         | Supported     | Set Permanent HEK state. Gated by `ocp-lock`.       |
 | `0x0000_0011`          | DeviceOwnershipTransfer    | Supported     | Carry authorization-gated DOT subcommands.          |
 
 ### Authorization Flow
@@ -183,6 +185,17 @@ Byte offsets below begin immediately after the four-byte `subcommand_id` and inc
 | | 100:147 | `ecc_pub_y` | u8[48] |
 | | 148:2739 | `mldsa_pub` | u8[2592] |
 | | 2740:7463 | `signature` | HybridSignature |
+| OLRH | 0:3 | `slot` | u32, little-endian |
+| | 4:51 | `nonce` | u8[48] |
+| | 52:99 | `ecc_pub_x` | u8[48] |
+| | 100:147 | `ecc_pub_y` | u8[48] |
+| | 148:2739 | `mldsa_pub` | u8[2592] |
+| | 2740:7463 | `signature` | HybridSignature |
+| OLSP | 0:47 | `nonce` | u8[48] |
+| | 48:95 | `ecc_pub_x` | u8[48] |
+| | 96:143 | `ecc_pub_y` | u8[48] |
+| | 144:2735 | `mldsa_pub` | u8[2592] |
+| | 2736:7459 | `signature` | HybridSignature |
 
 ## Device Ownership Transfer Commands
 
