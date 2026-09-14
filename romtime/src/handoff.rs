@@ -261,6 +261,16 @@ impl HandoffData {
         ))
     }
 
+    /// Return the handoff table when its marker and major version are valid.
+    pub fn get() -> Option<&'static Self> {
+        // SAFETY: Runtime treats ROM-owned handoff data as read-only.
+        let handoff = unsafe { &*core::ptr::addr_of!(HANDOFF) };
+        if handoff.rom.fht_marker != FHT_MARKER || handoff.rom.fht_major_ver != FHT_MAJOR_VERSION {
+            return None;
+        }
+        Some(handoff)
+    }
+
     /// Return the stable owner CMK when this handoff version supports it.
     pub fn stable_owner_key(&self) -> Option<&[u8; STABLE_OWNER_KEY_CMK_SIZE]> {
         if self.rom.fht_minor_ver < STABLE_OWNER_KEY_FHT_MINOR_VERSION {
@@ -352,22 +362,14 @@ pub static mut HANDOFF: HandoffData = HandoffData {
 
 /// Return the firmware boot type from a valid handoff table.
 pub fn get_firmware_boot_type() -> Result<FirmwareBootType, FirmwareBootTypeReadError> {
-    // SAFETY: Runtime treats ROM-owned handoff data as read-only.
-    let handoff = unsafe { &*core::ptr::addr_of!(HANDOFF) };
-    if handoff.rom.fht_marker != FHT_MARKER || handoff.rom.fht_major_ver != FHT_MAJOR_VERSION {
-        return Err(FirmwareBootTypeReadError::Unsupported);
-    }
-    handoff.read_firmware_boot_type()
+    HandoffData::get()
+        .ok_or(FirmwareBootTypeReadError::Unsupported)?
+        .read_firmware_boot_type()
 }
 
 /// Return MCU ROM capabilities from a valid handoff table that supports them.
 pub fn get_mcu_rom_capabilities() -> Option<McuRomCapabilities> {
-    // SAFETY: Runtime treats ROM-owned handoff data as read-only.
-    let handoff = unsafe { &*core::ptr::addr_of!(HANDOFF) };
-    if handoff.rom.fht_marker != FHT_MARKER || handoff.rom.fht_major_ver != FHT_MAJOR_VERSION {
-        return None;
-    }
-    handoff.mcu_rom_capabilities()
+    HandoffData::get()?.mcu_rom_capabilities()
 }
 
 /// Safe accessor for the entire OCP LOCK state in handoff table.
