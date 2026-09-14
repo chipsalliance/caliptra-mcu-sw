@@ -110,7 +110,7 @@ impl SyscallDriver for FakeDMADriver {
                 let local_addr = arg0;
                 let len = arg1;
 
-                if len == 0 || (local_addr % 4 != 0) || (len % 4 != 0) {
+                if len == 0 || !local_addr.is_multiple_of(4) || !len.is_multiple_of(4) {
                     return crate::command_return::failure(ErrorCode::Invalid);
                 }
 
