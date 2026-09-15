@@ -32,7 +32,9 @@ pub use algorithms::{
     NegotiateAlgorithmsReqBodyFixed, OtherParamSupport, PqcAsymAlgos, MAX_ALG_STRUCT_ENTRIES,
 };
 pub use builder::ResponseBody;
-pub use capabilities::{CapFlags, CapabilitiesBody, CapabilitiesRsp, ExtCapFlags};
+pub use capabilities::{
+    CapFlags, CapabilitiesBody, CapabilitiesBodyV11, CapabilitiesRsp, ExtCapFlags,
+};
 pub use certificate::{
     CertificateLargeRsp, CertificateLargeRspBody, CertificateRsp, CertificateRspBody,
     GetCertificateLargeReqBody, GetCertificateParam1, GetCertificateReq, GetCertificateReqBody,

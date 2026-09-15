@@ -118,10 +118,12 @@ pub(crate) async fn handle_get_measurements_req<'a, Pal: SpdmPal>(
     let (measurement_record_len, number_of_blocks) = measurement_record_shape(meas_info, meas_op)?;
 
     // If signature requested, append GET_MEASUREMENTS request to L1 transcript.
+    // VCA is prepended to L1/L2 only from V1.2 (DSP0274 1.1.1 §10.11).
     if signature_requested {
+        let include_vca = state.version >= SpdmVersion::V12;
         state
             .transcript
-            .append_l1(pal, io, &req[..spdm_req_len])
+            .append_l1(pal, io, include_vca, &req[..spdm_req_len])
             .await?;
     }
 
@@ -235,15 +237,23 @@ async fn handle_measurements_response<'a, Pal: SpdmPal>(
 
     if plan.signature_requested {
         let transcript_rsp = buf.get(head..signature_offset).ok_or(SPDM_UNSPECIFIED)?;
-        state.transcript.append_l1(pal, io, transcript_rsp).await?;
+        let include_vca = state.version >= SpdmVersion::V12;
+        state
+            .transcript
+            .append_l1(pal, io, include_vca, transcript_rsp)
+            .await?;
 
         let mut hash = [0u8; SHA384_HASH_SIZE];
         state.transcript.finalize_l1(pal, io, &mut hash).await?;
 
-        let signing_ctx = signing_context(state.version);
-        compute_tbs_hash(pal, io, signing_ctx, &mut hash)
-            .await
-            .map_err(|_| SPDM_UNSPECIFIED)?;
+        // The signing-context prefix is V1.2+; a V1.0/1.1 Responder signs the
+        // raw L1 hash with no prefix (DSP0274 1.1.1 section 10.11).
+        if state.version >= SpdmVersion::V12 {
+            let signing_ctx = signing_context(state.version);
+            compute_tbs_hash(pal, io, signing_ctx, &mut hash)
+                .await
+                .map_err(|_| SPDM_UNSPECIFIED)?;
+        }
 
         let asym_algo = state.asym_algo();
         let signature = buf
