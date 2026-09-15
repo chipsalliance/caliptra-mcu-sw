@@ -102,6 +102,47 @@ impl SharedCertStore {
         Ok(())
     }
 
+    /// Configure a DPE-only slot with no static endorsement certs.
+    ///
+    /// The SPDM certificate chain contains only the DPE device chain
+    /// (LDevID → FMC → RT) plus a CertifyKey leaf — no Root CA or IDevID
+    /// in the endorsement segment.
+    ///
+    /// The `*_first_dpe_cert` bytes (typically the LDevID cert) are used
+    /// **only** to compute the RootHash for each algorithm's SPDM
+    /// CertificateChain header; they are not stored in the endorsement
+    /// segment. Pass `mldsa_first_dpe_cert = None` on platforms that do not
+    /// serve an ML-DSA-87 chain for this slot.
+    pub async fn set_dpe_only_slot<A: ApiAlloc>(
+        &self,
+        alloc: &A,
+        idx: usize,
+        ecc_first_dpe_cert: &[u8],
+        mldsa_first_dpe_cert: Option<&[u8]>,
+        key_pair_id: u8,
+    ) -> McuResult<()> {
+        if idx >= NUM_CERT_SLOTS || ecc_first_dpe_cert.is_empty() {
+            return Err(mcu_error::codes::INVARIANT);
+        }
+        static EMPTY_CHAIN: &[&[u8]] = &[];
+
+        let ecc_hash = compute_root_hash(alloc, ecc_first_dpe_cert).await?;
+        let mut ro = ReadOnlyEndorsement::new(EMPTY_CHAIN, ecc_hash);
+
+        if let Some(cert) = mldsa_first_dpe_cert {
+            if !cert.is_empty() {
+                let mldsa_hash = compute_root_hash(alloc, cert).await?;
+                ro = ro.with_mldsa(EMPTY_CHAIN, mldsa_hash);
+            }
+        }
+
+        let slot = self.cert_slot_mut(idx).ok_or(mcu_error::codes::INVARIANT)?;
+        slot.endorsement = SlotEndorsement::ReadOnly(ro);
+        slot.key_pair_id = Some(key_pair_id);
+        slot.cert_info = Some(DEFAULT_CERT_INFO);
+        Ok(())
+    }
+
     /// Configure a flash-backed managed cert-chain slot and load any existing
     /// record from flash. Uninitialized flash leaves the slot supported but not
     /// provisioned, so SET_CERTIFICATE can install it later.
@@ -276,5 +317,76 @@ impl TaskCertStore {
                 (*self.caches.get())[idx].invalidate();
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dpe_only_endorsement_has_zero_size() {
+        let hash = [0xAB_u8; 48];
+        let endorsement = SlotEndorsement::ReadOnly(ReadOnlyEndorsement::new(&[], hash));
+
+        assert_eq!(endorsement.size(SpdmPalAsymAlgo::EccP384).unwrap(), 0);
+    }
+
+    #[test]
+    fn dpe_only_endorsement_returns_correct_root_hash() {
+        let mut hash = [0u8; 48];
+        hash[0] = 0xDE;
+        hash[47] = 0xAD;
+        let endorsement = SlotEndorsement::ReadOnly(ReadOnlyEndorsement::new(&[], hash));
+
+        let mut out = [0u8; 48];
+        endorsement
+            .root_cert_hash(SpdmPalAsymAlgo::EccP384, &mut out)
+            .unwrap();
+        assert_eq!(out, hash);
+    }
+
+    #[test]
+    fn dpe_only_endorsement_is_supported() {
+        let hash = [0x11_u8; 48];
+        let endorsement = SlotEndorsement::ReadOnly(ReadOnlyEndorsement::new(&[], hash));
+
+        assert!(endorsement.is_supported());
+        assert!(endorsement.is_provisioned());
+    }
+
+    #[test]
+    fn shared_store_slot_defaults_to_empty() {
+        let store = SharedCertStore::new();
+        let slot = &store.cert_slots()[0];
+        assert!(!slot.endorsement.is_supported());
+        assert!(slot.key_pair_id.is_none());
+    }
+
+    #[test]
+    fn dpe_only_without_mldsa_errors_on_mldsa_algo() {
+        let hash = [0x22_u8; 48];
+        let endorsement = SlotEndorsement::ReadOnly(ReadOnlyEndorsement::new(&[], hash));
+
+        assert_eq!(endorsement.size(SpdmPalAsymAlgo::EccP384).unwrap(), 0);
+        assert!(endorsement.size(SpdmPalAsymAlgo::MlDsa87).is_err());
+    }
+
+    #[test]
+    fn dpe_only_with_mldsa_has_zero_size_for_both_algos() {
+        let ecc_hash = [0x33_u8; 48];
+        let mldsa_hash = [0x44_u8; 48];
+        let endorsement = SlotEndorsement::ReadOnly(
+            ReadOnlyEndorsement::new(&[], ecc_hash).with_mldsa(&[], mldsa_hash),
+        );
+
+        assert_eq!(endorsement.size(SpdmPalAsymAlgo::EccP384).unwrap(), 0);
+        assert_eq!(endorsement.size(SpdmPalAsymAlgo::MlDsa87).unwrap(), 0);
+
+        let mut out = [0u8; 48];
+        endorsement
+            .root_cert_hash(SpdmPalAsymAlgo::MlDsa87, &mut out)
+            .unwrap();
+        assert_eq!(out, mldsa_hash);
     }
 }
