@@ -46,6 +46,8 @@ pub mod image_loader;
 mod import;
 pub mod mailbox;
 #[cfg(feature = "mailbox-io")]
+mod owner_auth_manifest;
+#[cfg(feature = "mailbox-io")]
 mod pcr;
 #[cfg(feature = "mailbox-io")]
 mod pcr_quote;
@@ -120,6 +122,8 @@ pub use hmac::{cm_hmac, cm_hmac_sha512, hkdf_expand, hkdf_extract, HkdfSalt, CMB
 pub use image_loader::{core_image_info, GetImageInfoResp};
 #[cfg(feature = "mailbox-io")]
 pub use import::{cm_delete, cm_import};
+#[cfg(feature = "mailbox-io")]
+pub use owner_auth_manifest::{set_owner_auth_manifest, OWNER_AUTH_MANIFEST_MAX_SIZE};
 #[cfg(feature = "mailbox-io")]
 pub use pcr::{extend_pcr31, PCR31_INDEX, PCR31_MEASUREMENT_SIZE};
 #[cfg(feature = "mailbox-io")]
