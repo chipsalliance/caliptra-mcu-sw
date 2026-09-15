@@ -1223,38 +1223,6 @@ fn signed_fe_prog(
         .map_err(AuthorizedCommandError::Command)
 }
 
-fn send_raw_authorized_command(
-    client: &mut SpdmVdmClient,
-    cmd_id: u32,
-    payload: &[u8],
-    authorizer: &dyn CommandAuthChallengeSigner,
-) -> Result<(), AuthorizedCommandError> {
-    let auth = authorize_command(client, cmd_id, payload, Some(authorizer))
-        .map_err(AuthorizedCommandError::Preparation)?;
-    let mut request = vec![1, CaliptraVdmCommand::AuthorizedCommand as u8];
-    request.extend_from_slice(&cmd_id.to_le_bytes());
-    request.extend_from_slice(payload);
-    request.extend_from_slice(&auth.nonce);
-    request.extend_from_slice(&auth.ecc_pub_x);
-    request.extend_from_slice(&auth.ecc_pub_y);
-    request.extend_from_slice(&auth.mldsa_pub);
-    request.extend_from_slice(auth.sig.as_bytes());
-
-    let mut response = [0u8; 16];
-    match client.send_raw_vdm(&request, &mut response) {
-        Ok(len) if len >= 3 => {
-            let code = response[2];
-            if code == CaliptraVdmCompletionCode::Success as u8 {
-                Ok(())
-            } else {
-                Err(AuthorizedCommandError::Command(CaliptraApiError::DeviceError(code)))
-            }
-        }
-        Ok(_) => Err(AuthorizedCommandError::Preparation("response too short".into())),
-        Err(e) => Err(AuthorizedCommandError::Preparation(format!("transport error: {e:?}"))),
-    }
-}
-
 fn signed_ocp_lock_rotate_hek(
     client: &mut SpdmVdmClient,
     slot: u32,
