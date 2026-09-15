@@ -238,6 +238,10 @@ impl<'a, A: Alarm<'a>> Mailbox<'a> for McuMailbox<'a, A> {
         self.data_buf.replace(rx_buf);
     }
 
+    fn map_rx_buffer<R>(&self, f: impl FnOnce(&[u32]) -> R) -> Option<R> {
+        self.data_buf.map(|buf| f(buf))
+    }
+
     fn enable(&self) {
         self.enable_interrupts();
     }

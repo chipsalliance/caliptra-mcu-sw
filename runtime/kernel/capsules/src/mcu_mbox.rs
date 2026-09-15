@@ -30,32 +30,20 @@ mod upcall {
     pub const COUNT: u8 = 2;
 }
 
-// Adjust as needed - must be large enough for CmMldsaVerifyReq (8740 bytes = 2185 dwords)
-// but small enough to fit in the Tock Grant per-process memory
-const MAX_DATA_SIZE_DWORDS: usize = 2304;
-struct BufferedMessage {
-    pub command: u32,
-    pub data: [u32; MAX_DATA_SIZE_DWORDS],
-    pub dlen: usize,
-    pub valid: bool,
-}
-
-impl Default for BufferedMessage {
-    fn default() -> Self {
-        BufferedMessage {
-            command: 0,
-            data: [0; MAX_DATA_SIZE_DWORDS],
-            dlen: 0,
-            valid: false,
-        }
-    }
+/// Metadata of a request that arrived while no application was listening.
+///
+/// The payload itself is left in mailbox SRAM, so only the notification needs
+/// to be retained here.
+#[derive(Copy, Clone)]
+struct StagedRequest {
+    command: u32,
+    dlen: usize,
 }
 
 #[derive(Default)]
 pub struct App {
     waiting_rx: Cell<bool>, // Indicates if a request is waiting to be received
     pending_tx: Cell<bool>, // Indicates if a response is pending to be sent
-    buffered_msg: BufferedMessage, // Buffered rx message when app is not waiting
 }
 
 pub struct McuMboxDriver<'a, T: hil::Mailbox<'a>> {
@@ -67,6 +55,7 @@ pub struct McuMboxDriver<'a, T: hil::Mailbox<'a>> {
         AllowRwCount<{ rw_allow::COUNT }>,
     >,
     current_app: OptionalCell<ProcessId>,
+    staged_request: OptionalCell<StagedRequest>,
 }
 
 impl<'a, T: hil::Mailbox<'a>> McuMboxDriver<'a, T> {
@@ -83,6 +72,7 @@ impl<'a, T: hil::Mailbox<'a>> McuMboxDriver<'a, T> {
             driver,
             apps,
             current_app: OptionalCell::empty(),
+            staged_request: OptionalCell::empty(),
         }
     }
 
@@ -137,35 +127,16 @@ impl<'a, T: hil::Mailbox<'a>> McuMboxDriver<'a, T> {
         Ok(())
     }
 
-    fn buffer_message(&self, app: &mut App, command: u32, rx_buf: &[u32], dlen: usize) -> bool {
-        let dw_len = dlen.div_ceil(4);
-        if dw_len > app.buffered_msg.data.len() {
-            // Message too large to buffer
+    fn stage_request(&self, command: u32, dlen: usize) {
+        // Print warning if replacing an old staged request
+        if self.staged_request.is_some() {
             capsule_debug!(
                 "MCU_MBOX",
-                "Cannot buffer message, size {} exceeds buffer capacity {}",
-                dw_len,
-                app.buffered_msg.data.len()
-            );
-            return false;
-        }
-        // Print warning if replacing an old message
-        if app.buffered_msg.valid {
-            capsule_debug!(
-                "MCU_MBOX",
-                "Warning - replacing old buffered message with new one"
+                "Warning - replacing old staged request with new one"
             );
         }
-        // Always replace the old message with the new one
-        app.buffered_msg.command = command;
-        app.buffered_msg.dlen = dlen;
-        app.buffered_msg.valid = true;
-        #[allow(clippy::manual_memcpy)]
-        for i in 0..dw_len {
-            app.buffered_msg.data[i] = rx_buf[i];
-        }
-
-        true
+        // Always replace the old staged request with the new one
+        self.staged_request.set(StagedRequest { command, dlen });
     }
 
     fn deliver_message(
@@ -173,35 +144,45 @@ impl<'a, T: hil::Mailbox<'a>> McuMboxDriver<'a, T> {
         app: &mut App,
         kernel_data: &GrantKernelData<'_>,
     ) -> Result<(), ErrorCode> {
-        if !app.buffered_msg.valid {
-            return Err(ErrorCode::FAIL);
-        }
+        let staged = match self.staged_request.take() {
+            Some(staged) => staged,
+            None => return Err(ErrorCode::FAIL),
+        };
 
         if app.waiting_rx.get() {
             app.waiting_rx.set(false);
         }
 
-        let command = app.buffered_msg.command;
-        let dlen = app.buffered_msg.dlen;
+        let command = staged.command;
+        let dlen = staged.dlen;
         let dw_len = dlen.div_ceil(4);
 
-        let result = kernel_data
-            .get_readwrite_processbuffer(rw_allow::REQUEST)
-            .map_err(|_| ErrorCode::INVAL)
-            .and_then(|rw_buf| {
-                rw_buf
-                    .mut_enter(|buf| -> Result<usize, ErrorCode> {
-                        let copy_len_dw = core::cmp::min(buf.len() / 4, dw_len);
-                        for i in 0..copy_len_dw {
-                            let start = i * 4;
-                            let end = start + 4;
-                            let bytes = app.buffered_msg.data[i].to_le_bytes();
-                            buf[start..end].copy_from_slice(&bytes);
-                        }
-                        Ok(core::cmp::min(copy_len_dw * 4, dlen))
+        // The payload was never copied out of mailbox SRAM, so read it back from there.
+        let result = self
+            .driver
+            .map_rx_buffer(|rx_buf| {
+                if dw_len > rx_buf.len() {
+                    return Err(ErrorCode::SIZE);
+                }
+                kernel_data
+                    .get_readwrite_processbuffer(rw_allow::REQUEST)
+                    .map_err(|_| ErrorCode::INVAL)
+                    .and_then(|rw_buf| {
+                        rw_buf
+                            .mut_enter(|buf| -> Result<usize, ErrorCode> {
+                                let copy_len_dw = core::cmp::min(buf.len() / 4, dw_len);
+                                for (i, &data) in rx_buf.iter().enumerate().take(copy_len_dw) {
+                                    let start = i * 4;
+                                    let end = start + 4;
+                                    let bytes = data.to_le_bytes();
+                                    buf[start..end].copy_from_slice(&bytes);
+                                }
+                                Ok(core::cmp::min(copy_len_dw * 4, dlen))
+                            })
+                            .map_err(|_| ErrorCode::FAIL)
                     })
-                    .map_err(|_| ErrorCode::FAIL)
-            });
+            })
+            .unwrap_or(Err(ErrorCode::BUSY));
 
         match result {
             Ok(Ok(len)) => {
@@ -213,6 +194,7 @@ impl<'a, T: hil::Mailbox<'a>> McuMboxDriver<'a, T> {
                         "deliver_message error scheduling upcall: {}",
                         _e as u32
                     );
+                    self.staged_request.set(staged);
                     return Err(ErrorCode::FAIL);
                 }
             }
@@ -222,6 +204,7 @@ impl<'a, T: hil::Mailbox<'a>> McuMboxDriver<'a, T> {
                     "deliver_message error copying data to app buffer: {}",
                     err as u32
                 );
+                self.staged_request.set(staged);
                 return Err(err);
             }
             Err(err) => {
@@ -230,12 +213,10 @@ impl<'a, T: hil::Mailbox<'a>> McuMboxDriver<'a, T> {
                     "deliver_message error while accessing app buffer: {}",
                     err as u32
                 );
+                self.staged_request.set(staged);
                 return Err(err);
             }
         }
-
-        // Invalidate the buffered message after delivery
-        app.buffered_msg.valid = false;
 
         Ok(())
     }
@@ -254,11 +235,12 @@ impl<'a, T: hil::Mailbox<'a>> hil::MailboxClient for McuMboxDriver<'a, T> {
             return;
         }
 
+        let mut delivered = false;
+
         self.apps.each(|_, app, kernel_data| {
             if app.waiting_rx.get() {
                 app.waiting_rx.set(false);
             } else {
-                let _ = self.buffer_message(app, command, rx_buf, dlen);
                 return;
             }
 
@@ -297,9 +279,12 @@ impl<'a, T: hil::Mailbox<'a>> hil::MailboxClient for McuMboxDriver<'a, T> {
 
             match process_result {
                 Ok(Ok(len)) => {
-                    kernel_data
+                    if kernel_data
                         .schedule_upcall(upcall::REQUEST_RECEIVED, (command as usize, len, 0))
-                        .ok();
+                        .is_ok()
+                    {
+                        delivered = true;
+                    }
                 }
                 Ok(Err(err)) => {
                     capsule_error!(
@@ -319,6 +304,13 @@ impl<'a, T: hil::Mailbox<'a>> hil::MailboxClient for McuMboxDriver<'a, T> {
         });
         // Restore driver rx buffer
         self.driver.restore_rx_buffer(rx_buf);
+
+        // No application consumed the request. The payload stays in mailbox SRAM and the
+        // sender stays blocked until the command status is set, so only record the
+        // notification.
+        if !delivered {
+            self.stage_request(command, dlen);
+        }
     }
 
     fn response_received(
@@ -363,8 +355,8 @@ impl<'a, T: hil::Mailbox<'a>> SyscallDriver for McuMboxDriver<'a, T> {
                         return Err(ErrorCode::BUSY);
                     }
                     app.waiting_rx.set(true);
-                    // If there's a buffered message, deliver it immediately
-                    if app.buffered_msg.valid {
+                    // If there's a staged request, deliver it immediately
+                    if self.staged_request.is_some() {
                         self.deliver_message(app, kernel_data)?;
                     }
                     Ok(())
@@ -378,6 +370,12 @@ impl<'a, T: hil::Mailbox<'a>> SyscallDriver for McuMboxDriver<'a, T> {
             // Send response message
             2 => {
                 if self.current_app.is_some() {
+                    return CommandReturn::failure(ErrorCode::BUSY);
+                }
+
+                // The staged request still occupies mailbox SRAM. Sending a response now
+                // would overwrite it before the application has read it.
+                if self.staged_request.is_some() {
                     return CommandReturn::failure(ErrorCode::BUSY);
                 }
 
@@ -411,6 +409,9 @@ impl<'a, T: hil::Mailbox<'a>> SyscallDriver for McuMboxDriver<'a, T> {
                 };
 
                 self.current_app.set(process_id);
+
+                // The transaction is over, so any request still staged is stale.
+                self.staged_request.clear();
 
                 let result = self
                     .apps
