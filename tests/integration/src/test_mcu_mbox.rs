@@ -50,6 +50,7 @@ pub mod test {
         MAX_CMB_DATA_SIZE,
     };
     use caliptra_mcu_registers_generated::mci;
+    use caliptra_mcu_romtime::handoff::McuRomCapabilities;
     use caliptra_mcu_testing_common::{
         emulator_ticks_elapsed, get_emulator_ticks, sleep_emulator_ticks, wait_for_runtime_start,
     };
@@ -518,6 +519,11 @@ pub mod test {
                 caps: {
                     let mut c = [0u8; DEVICE_CAPS_SIZE];
                     c[..16].copy_from_slice(&self.core_capabilities);
+                    c[16..20].copy_from_slice(
+                        &(McuRomCapabilities::STREAMING_BOOT_I3C | McuRomCapabilities::FLASH_BOOT)
+                            .bits()
+                            .to_be_bytes(),
+                    );
                     c[20..24].copy_from_slice(
                         &McuRuntimeCapabilities::MCI_MAILBOX_SERVICE
                             .bits()
