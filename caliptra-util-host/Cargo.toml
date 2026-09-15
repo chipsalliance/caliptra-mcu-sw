@@ -70,6 +70,7 @@ hmac = "0.12"
 caliptra-mcu-mctp-vdm-common = { path = "../common/mctp-vdm" }
 caliptra-mcu-testing-common = { path = "../common/testing" }
 p384 = "0.13.0"
+semver = "1.0"
 serde = { version = "1.0.209", features = ["alloc", "derive", "serde_derive"] }
 serde_json = { version = "1.0.127", features = ["alloc"] }
 sha2 = { version = "0.10", features = ["oid"] }
@@ -82,7 +83,7 @@ x509-cert = { version = "0.2.5", features = ["builder", "hazmat"] }
 
 [package]
 name = "caliptra-util-host"
-version.workspace = true
+version= "1.0.0"
 edition.workspace = true
 description = "Caliptra Utility Host Library - A flexible framework for communicating with Caliptra devices"
 
@@ -92,6 +93,7 @@ caliptra-util-host-session.workspace = true
 caliptra-mcu-core-util-host-transport.workspace = true
 caliptra-util-host-commands.workspace = true
 caliptra-mcu-core-util-host-command-types.workspace = true
+semver.workspace = true
 zerocopy.workspace = true
 
 [dev-dependencies]
