@@ -50,7 +50,7 @@ pub fn execute(cmd: Commands) -> Result<()> {
             build,
             target,
         } => {
-            let (manifest, build_definition) = ld_step(&common, &ld, &build)?;
+            let (manifest, build_definition) = ld_step(&common, &ld, &build, 0)?;
 
             match target {
                 Some(t) => {
@@ -65,7 +65,10 @@ pub fn execute(cmd: Commands) -> Result<()> {
             build,
             bundle,
         } => {
-            let (manifest, build_definition) = ld_step(&common, &ld, &build)?;
+            let component_svn_manifest_size =
+                bundle.component_svn_manifest.as_ref().map_or(0, Vec::len);
+            let (manifest, build_definition) =
+                ld_step(&common, &ld, &build, component_svn_manifest_size)?;
             let build_output = build::build(&manifest, &build_definition, &common, &build)?;
             bundle::bundle(&manifest, &build_output, &common, &bundle)?;
             Ok(())
@@ -74,11 +77,24 @@ pub fn execute(cmd: Commands) -> Result<()> {
 }
 
 /// A utility function to run the logic for a build step.
-fn ld_step(common: &Common, ld: &LdArgs, build: &BuildArgs) -> Result<(Manifest, BuildDefinition)> {
+fn ld_step(
+    common: &Common,
+    ld: &LdArgs,
+    build: &BuildArgs,
+    component_svn_manifest_size: usize,
+) -> Result<(Manifest, BuildDefinition)> {
     let mut manifest = common.manifest()?;
 
-    if common.svn.is_some() {
-        manifest.reserve_itcm(size_of::<McuImageHeader>().try_into()?)?;
+    let image_header_size = if common.svn.is_some() {
+        size_of::<McuImageHeader>()
+    } else {
+        0
+    };
+    let runtime_header_size = image_header_size
+        .checked_add(component_svn_manifest_size)
+        .ok_or_else(|| anyhow::anyhow!("runtime header size overflow"))?;
+    if runtime_header_size != 0 {
+        manifest.reserve_itcm(runtime_header_size.try_into()?)?;
     }
 
     if manifest.platform.dynamic_sizing() {

@@ -27,6 +27,7 @@ struct BuildArgs<'a> {
     runtime_features: &'a Option<String>,
     separate_runtimes: bool,
     component_svn_config: &'a Option<String>,
+    component_config: &'a Option<String>,
     mcu_cfgs: &'a Option<Vec<ImageCfg>>,
     shard_index: usize,
     total_shards: usize,
@@ -143,6 +144,14 @@ pub(crate) enum Fpga {
         /// JSON component SVN entries and explicit policy exceptions
         #[arg(long = "component-svn-config", value_name = "COMPONENT_SVN_CONFIG")]
         component_svn_config: Option<String>,
+
+        /// TOML source of truth for component metadata
+        #[arg(
+            long = "component-config",
+            visible_alias = "component_config",
+            value_name = "COMPONENT_CONFIG"
+        )]
+        component_config: Option<String>,
 
         /// Shard index for parallel build sharding (0-indexed)
         #[arg(long, default_value_t = 0)]
@@ -269,6 +278,7 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
             runtime_features,
             separate_runtimes,
             component_svn_config,
+            component_config,
             mcu_cfgs,
             shard_index,
             total_shards,
@@ -287,6 +297,7 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
                     runtime_features,
                     separate_runtimes: *separate_runtimes,
                     component_svn_config,
+                    component_config,
                     mcu_cfgs,
                     shard_index: *shard_index,
                     total_shards: *total_shards,

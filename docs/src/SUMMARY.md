@@ -34,6 +34,7 @@
     - [Logging](./logging.md)
     - [In-Field Fuse Programming](./fuses.md)
 - [Out of Tree Build](./firmware_bundler.md)
+- [Component Configuration](./component_config.md)
 - [Reference Provisioning Guide](./provisioning.md)
 - [Running with an FPGA](./fpga.md)
 - [Caliptra Utility Host Library](./caliptra_util_host_library.md)

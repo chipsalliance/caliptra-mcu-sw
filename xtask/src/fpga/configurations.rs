@@ -213,26 +213,37 @@ impl<'a> ActionHandler<'a> for Subsystem {
     fn build(&self, args: &'a BuildArgs<'a>) -> Result<()> {
         // TODO(clundin): Modify `caliptra_mcu_builder::all_build` to return the zip instead of writing it?
         // TODO(clundin): Place FPGA xtask artifacts in a specific folder?
-        let mcu_cfgs = args.mcu_cfgs.clone().or_else(|| {
-            Some(vec![ImageCfg {
-                path: "mcu".into(),
-                load_addr: 0x0,
-                staging_addr: 0xB00C0000,
-                image_id: 2,
-                exec_bit: 2,
-                component_id: 2,
-                feature: "test-fpga-flash-ctrl".to_string(),
-                ..Default::default()
-            }])
-        });
+        let component_config = args
+            .component_config
+            .as_deref()
+            .map(caliptra_mcu_builder::ComponentConfig::from_file)
+            .transpose()?;
+        let mcu_cfgs = if component_config.is_some() {
+            None
+        } else {
+            args.mcu_cfgs.clone().or_else(|| {
+                Some(vec![ImageCfg {
+                    path: "mcu".into(),
+                    load_addr: 0x0,
+                    staging_addr: 0xB00C0000,
+                    image_id: 2,
+                    exec_bit: 2,
+                    component_id: 2,
+                    feature: "test-fpga-flash-ctrl".to_string(),
+                    ..Default::default()
+                }])
+            })
+        };
         let output_name = if args.total_shards > 1 {
             format!("all-fw-shard-{}.zip", args.shard_index)
         } else {
             "all-fw.zip".to_string()
         };
-        let component_svn_validation = crate::auth_manifest::load_component_svn_config(
-            args.component_svn_config.as_deref(),
-        )?;
+        let component_svn_validation = if component_config.is_some() {
+            None
+        } else {
+            crate::auth_manifest::load_component_svn_config(args.component_svn_config.as_deref())?
+        };
         let args = AllBuildArgs {
             output: Some(&output_name),
             platform: Some("fpga"),
@@ -243,6 +254,7 @@ impl<'a> ActionHandler<'a> for Subsystem {
             shard_index: args.shard_index,
             total_shards: args.total_shards,
             component_svn_validation,
+            component_config,
             ..Default::default()
         };
         caliptra_mcu_builder::all_build(args)?;
