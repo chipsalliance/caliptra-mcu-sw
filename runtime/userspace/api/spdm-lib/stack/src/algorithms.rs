@@ -23,8 +23,8 @@
 //! accepted but ignored.
 
 use caliptra_mcu_spdm_codec::{
-    alg_type, AeadAlgos, AlgStructEntry, AlgorithmsRsp, AsymAlgos, CapFlags, DheAlgos,
-    KeyScheduleAlgos, NegotiateAlgorithmsReqBodyFixed, OtherParamSupport, PqcAsymAlgos,
+    alg_type, AeadAlgos, AlgStructEntry, AlgorithmsRsp, AsymAlgos, CapFlags, DheAlgos, KemAlgos,
+    KeyExSel, KeyScheduleAlgos, NegotiateAlgorithmsReqBodyFixed, OtherParamSupport, PqcAsymAlgos,
     ResponseBody, SpdmMsgHdrPdu, SpdmVersion,
 };
 use caliptra_mcu_spdm_traits::{PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalIo, SpdmPalIoTransport};
@@ -38,6 +38,7 @@ use crate::stack::{ConnectionState, Phase};
 /// actually consumes.
 struct PeerAlgs {
     dhe: DheAlgos,
+    kem: KemAlgos,
     aead: AeadAlgos,
     key_schedule: KeyScheduleAlgos,
 }
@@ -90,12 +91,14 @@ pub(crate) async fn handle_negotiate_algorithms<'a, Pal: SpdmPal>(
     let (resp, spdm_len) = {
         let alg_structs = locate_alg_structs(fixed, body)?;
         let peer = parse_peer_algs(alg_structs)?;
-        let rsp_body = build_response_body(state, fixed, &peer, pal.secure_message_supported());
+        let (rsp_body, key_ex_sel) =
+            build_response_body(state, fixed, &peer, pal.secure_message_supported());
         let spdm_len = rsp_body.encoded_size();
         state.other_param_sel = rsp_body.other_param_support;
         state.negotiated_base_asym_sel = rsp_body.base_asym_sel;
         state.negotiated_base_hash_sel = rsp_body.base_hash_sel;
         state.negotiated_pqc_asym_sel = rsp_body.pqc_asym_sel;
+        state.negotiated_key_ex_sel = key_ex_sel;
 
         let resp = build_response(pal, io, state.version, &rsp_body)?;
         (resp, spdm_len)
@@ -194,6 +197,7 @@ fn parse_peer_algs(slice: &[u8]) -> SpdmResult<PeerAlgs> {
         dhe: DheAlgos::EMPTY,
         aead: AeadAlgos::EMPTY,
         key_schedule: KeyScheduleAlgos::EMPTY,
+        kem: KemAlgos::EMPTY,
     };
     let mut prev_alg_type: u8 = 0;
 
@@ -216,7 +220,8 @@ fn parse_peer_algs(slice: &[u8]) -> SpdmResult<PeerAlgs> {
             alg_type::DHE => peer.dhe = DheAlgos::from_bits(bits),
             alg_type::AEAD => peer.aead = AeadAlgos::from_bits(bits),
             alg_type::KEY_SCHEDULE => peer.key_schedule = KeyScheduleAlgos::from_bits(bits),
-            // Other types (ReqBaseAsymAlg, ReqPqcAsymAlg, and KEM) are
+            alg_type::KEM_ALG => peer.kem = KemAlgos::from_bits(bits),
+            // Other types (ReqBaseAsymAlg, ReqPqcAsymAlg) are
             // accepted but unused by this responder.
             _ => {}
         }
@@ -249,16 +254,22 @@ fn build_response_body<S, L>(
     fixed: &NegotiateAlgorithmsReqBodyFixed,
     peer: &PeerAlgs,
     secure_message_supported: bool,
-) -> AlgorithmsRsp {
+) -> (AlgorithmsRsp, KeyExSel) {
     let mut other_param_support = state.other_param_support & fixed.other_param_support;
-    let (dhe, aead, key_schedule) = if secure_message_supported {
+    let (dhe, aead, key_schedule, kem) = if secure_message_supported {
         (
             state.dhe & peer.dhe,
             state.aead & peer.aead,
             state.key_schedule & peer.key_schedule,
+            state.kem & peer.kem,
         )
     } else {
-        (DheAlgos::EMPTY, AeadAlgos::EMPTY, KeyScheduleAlgos::EMPTY)
+        (
+            DheAlgos::EMPTY,
+            AeadAlgos::EMPTY,
+            KeyScheduleAlgos::EMPTY,
+            KemAlgos::EMPTY,
+        )
     };
     if state.version < SpdmVersion::V13
         || !multi_key_cap_allows_connection(state.advertised_cap_flags, state.peer_cap_flags)
@@ -279,22 +290,39 @@ fn build_response_body<S, L>(
         )
     };
 
-    AlgorithmsRsp {
-        measurement_spec_sel: state.measurement_spec & fixed.measurement_spec,
-        other_param_support,
-        // MeasurementHashAlgo has no peer bitmap to intersect — the
-        // requester relies on the responder's choice.
-        meas_hash_algo: state.meas_hash_algo,
-        base_asym_sel,
-        base_hash_sel: state.base_hash_sel & fixed.base_hash_algo,
-        pqc_asym_sel,
-        alg_structs: [
-            (!dhe.is_empty()).then(|| AlgStructEntry::dhe(dhe)),
-            (!aead.is_empty()).then(|| AlgStructEntry::aead(aead)),
-            (!key_schedule.is_empty()).then(|| AlgStructEntry::key_schedule(key_schedule)),
-            None,
-        ],
-    }
+    // Select ML-KEM if available, DHE otherwise.
+    let key_ex_sel = if !kem.is_empty() {
+        KeyExSel::Kem
+    } else if !dhe.is_empty() {
+        KeyExSel::Dhe
+    } else {
+        KeyExSel::None
+    };
+    let key_ex_struct = match key_ex_sel {
+        KeyExSel::None => None,
+        KeyExSel::Dhe => Some(AlgStructEntry::dhe(dhe)),
+        KeyExSel::Kem => Some(AlgStructEntry::kem(kem)),
+    };
+
+    (
+        AlgorithmsRsp {
+            measurement_spec_sel: state.measurement_spec & fixed.measurement_spec,
+            other_param_support,
+            // MeasurementHashAlgo has no peer bitmap to intersect — the
+            // requester relies on the responder's choice.
+            meas_hash_algo: state.meas_hash_algo,
+            base_asym_sel,
+            base_hash_sel: state.base_hash_sel & fixed.base_hash_algo,
+            pqc_asym_sel,
+            alg_structs: [
+                key_ex_struct,
+                (!aead.is_empty()).then(|| AlgStructEntry::aead(aead)),
+                (!key_schedule.is_empty()).then(|| AlgStructEntry::key_schedule(key_schedule)),
+                None,
+            ],
+        },
+        key_ex_sel,
+    )
 }
 
 fn multi_key_cap_allows_connection(local: CapFlags, peer: CapFlags) -> bool {
