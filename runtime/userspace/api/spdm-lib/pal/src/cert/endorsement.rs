@@ -47,30 +47,49 @@ pub const fn slot_index(slot_id: u8) -> Option<usize> {
     None
 }
 
+/// Number of asymmetric algorithms a slot can hold a chain for.
+pub const NUM_ASYM_ALGOS: usize = 2;
+
+/// Index into per-algorithm arrays.
+///
+/// Exactly one asymmetric algorithm is negotiated per SPDM connection,
+/// so every read and write path is already scoped to one of these.
+pub const fn algo_index(algo: SpdmPalAsymAlgo) -> usize {
+    match algo {
+        SpdmPalAsymAlgo::EccP384 => 0,
+        SpdmPalAsymAlgo::MlDsa87 => 1,
+    }
+}
+
 /// A single SPDM certificate slot.
 ///
 /// Slots store the endorsement/root portion. The PAL composes the full
 /// SPDM cert chain by appending the DPE device chain and DPE leaf cert.
+///
+/// A slot may hold an independent chain per asymmetric algorithm, so
+/// the metadata and the in-progress write lock are tracked per
+/// algorithm rather than per slot.
 pub struct CertSlot {
     /// Slot certificate-chain backing storage.
     pub endorsement: SlotEndorsement,
-    /// KeyPairID associated with this slot's signing key.
-    /// `None` for unprovisioned slots.
-    pub key_pair_id: Option<u8>,
-    /// CertificateInfo/CertModel associated with this slot.
-    /// `None` for unprovisioned slots.
-    pub cert_info: Option<u8>,
-    /// State lock high when an active async write (flash erase/write) is in progress on this slot.
-    pub write_in_progress: AtomicBool,
+    /// KeyPairID associated with this slot's signing key, per algorithm.
+    /// `None` where that algorithm is unprovisioned.
+    key_pair_id: [Option<u8>; NUM_ASYM_ALGOS],
+    /// CertificateInfo/CertModel for this slot, per algorithm.
+    /// `None` where that algorithm is unprovisioned.
+    cert_info: [Option<u8>; NUM_ASYM_ALGOS],
+    /// State lock held high while an async write (flash erase/write) is
+    /// in progress for the corresponding algorithm.
+    write_in_progress: [AtomicBool; NUM_ASYM_ALGOS],
 }
 
 impl CertSlot {
     pub const fn empty() -> Self {
         Self {
             endorsement: SlotEndorsement::Empty,
-            key_pair_id: None,
-            cert_info: None,
-            write_in_progress: AtomicBool::new(false),
+            key_pair_id: [None; NUM_ASYM_ALGOS],
+            cert_info: [None; NUM_ASYM_ALGOS],
+            write_in_progress: [AtomicBool::new(false), AtomicBool::new(false)],
         }
     }
 
@@ -82,13 +101,49 @@ impl CertSlot {
         self.endorsement.is_writable()
     }
 
-    pub fn is_provisioned(&self) -> bool {
-        !self.write_in_progress.load(Ordering::Relaxed) && self.endorsement.is_provisioned()
+    /// Whether this slot can serve a cert chain for `algo` right now.
+    pub fn is_provisioned(&self, algo: SpdmPalAsymAlgo) -> bool {
+        !self.write_in_progress(algo) && self.endorsement.is_provisioned(algo)
     }
 
-    pub fn clear_metadata(&mut self) {
-        self.key_pair_id = None;
-        self.cert_info = None;
+    pub fn write_in_progress(&self, algo: SpdmPalAsymAlgo) -> bool {
+        self.write_in_progress[algo_index(algo)].load(Ordering::Relaxed)
+    }
+
+    pub fn set_write_in_progress(&self, algo: SpdmPalAsymAlgo, value: bool) {
+        self.write_in_progress[algo_index(algo)].store(value, Ordering::Relaxed);
+    }
+
+    pub fn key_pair_id(&self, algo: SpdmPalAsymAlgo) -> Option<u8> {
+        self.key_pair_id[algo_index(algo)]
+    }
+
+    pub fn cert_info(&self, algo: SpdmPalAsymAlgo) -> Option<u8> {
+        self.cert_info[algo_index(algo)]
+    }
+
+    pub fn set_metadata(
+        &mut self,
+        algo: SpdmPalAsymAlgo,
+        key_pair_id: Option<u8>,
+        info: Option<u8>,
+    ) {
+        let i = algo_index(algo);
+        self.key_pair_id[i] = key_pair_id;
+        self.cert_info[i] = info;
+    }
+
+    /// Apply the same metadata to every algorithm.
+    ///
+    /// Read-only slots derive both chains from one provisioning event,
+    /// so they share a KeyPairID and CertificateInfo.
+    pub fn set_metadata_all(&mut self, key_pair_id: Option<u8>, info: Option<u8>) {
+        self.key_pair_id = [key_pair_id; NUM_ASYM_ALGOS];
+        self.cert_info = [info; NUM_ASYM_ALGOS];
+    }
+
+    pub fn clear_metadata(&mut self, algo: SpdmPalAsymAlgo) {
+        self.set_metadata(algo, None, None);
     }
 }
 
@@ -98,7 +153,8 @@ pub enum SlotEndorsement {
     Empty,
     /// Read-only endorsement backed by static root CA certs (slot 0).
     ReadOnly(ReadOnlyEndorsement),
-    /// Managed endorsement/root chain backed by flash (slots 1-2, SET_CERTIFICATE).
+    /// Managed endorsement/root chains backed by flash (slots 1-2,
+    /// SET_CERTIFICATE), one independent region per algorithm.
     #[cfg(feature = "set-certificate")]
     Managed(ManagedEndorsement),
 }
@@ -108,7 +164,7 @@ impl SlotEndorsement {
         match self {
             Self::ReadOnly(e) => e.root_cert_hash(algo, out),
             #[cfg(feature = "set-certificate")]
-            Self::Managed(e) => e.root_cert_hash(algo, out),
+            Self::Managed(m) => m.get_chain(algo)?.root_cert_hash(out),
             Self::Empty => Err(mcu_error::codes::INVARIANT),
         }
     }
@@ -117,7 +173,7 @@ impl SlotEndorsement {
         match self {
             Self::ReadOnly(e) => e.size(algo),
             #[cfg(feature = "set-certificate")]
-            Self::Managed(e) => e.size(algo),
+            Self::Managed(m) => m.get_chain(algo)?.size(),
             Self::Empty => Err(mcu_error::codes::INVARIANT),
         }
     }
@@ -126,7 +182,7 @@ impl SlotEndorsement {
         match self {
             Self::ReadOnly(e) => e.size(algo),
             #[cfg(feature = "set-certificate")]
-            Self::Managed(e) => e.capacity(algo),
+            Self::Managed(m) => Ok(m.get_chain(algo)?.der_capacity()),
             Self::Empty => Err(mcu_error::codes::INVARIANT),
         }
     }
@@ -140,7 +196,7 @@ impl SlotEndorsement {
         match self {
             Self::ReadOnly(e) => e.read(algo, offset, buf),
             #[cfg(feature = "set-certificate")]
-            Self::Managed(e) => e.read(algo, offset, buf).await,
+            Self::Managed(m) => m.get_chain(algo)?.read(offset, buf).await,
             Self::Empty => Err(mcu_error::codes::INVARIANT),
         }
     }
@@ -160,11 +216,14 @@ impl SlotEndorsement {
         }
     }
 
-    pub fn is_provisioned(&self) -> bool {
+    pub fn is_provisioned(&self, algo: SpdmPalAsymAlgo) -> bool {
         match self {
-            Self::ReadOnly(_) => true,
+            Self::ReadOnly(e) => e.get_chain(algo).is_some(),
             #[cfg(feature = "set-certificate")]
-            Self::Managed(e) => e.is_initialized(),
+            Self::Managed(m) => m
+                .get_chain(algo)
+                .map(|r| r.is_initialized())
+                .unwrap_or(false),
             Self::Empty => false,
         }
     }
@@ -267,14 +326,27 @@ const MANAGED_HEADER_SIZE: usize = 80;
 #[cfg(feature = "set-certificate")]
 const MANAGED_ALGO_ECC_P384: u8 = 1;
 #[cfg(feature = "set-certificate")]
+const MANAGED_ALGO_MLDSA_87: u8 = 2;
+
+#[cfg(feature = "set-certificate")]
+const fn managed_algo_code(algo: SpdmPalAsymAlgo) -> u8 {
+    match algo {
+        SpdmPalAsymAlgo::EccP384 => MANAGED_ALGO_ECC_P384,
+        SpdmPalAsymAlgo::MlDsa87 => MANAGED_ALGO_MLDSA_87,
+    }
+}
+#[cfg(feature = "set-certificate")]
 const MANAGED_ERASED_BYTE: u8 = 0xFF;
 #[cfg(feature = "set-certificate")]
 const MANAGED_KEY_USAGE_MASK: u16 = 0x0003;
 #[cfg(feature = "set-certificate")]
 const SPDM_CERT_CHAIN_HEADER_SIZE: usize = 4 + 48;
-/// This limit is tunable based on the integrator's requirements.
+/// Largest DER payload the SPDM cert-chain format can describe.
+///
+/// SPDM allows for large certificate chain indexing up to 32 bits, so in
+/// practice, this limit is the size of the managed flash region
 #[cfg(feature = "set-certificate")]
-const MANAGED_MAX_DER_LEN: usize = (u16::MAX as usize) - SPDM_CERT_CHAIN_HEADER_SIZE;
+const MANAGED_MAX_DER_LEN: usize = (u32::MAX as usize) - SPDM_CERT_CHAIN_HEADER_SIZE;
 
 /// Usable DER bytes in one managed endorsement region.
 #[cfg(feature = "set-certificate")]
@@ -290,10 +362,17 @@ pub const fn managed_endorsement_der_capacity(region_size: usize) -> usize {
 #[cfg(feature = "set-certificate")]
 type CertStoreFlash = SpiFlash<DefaultSyscalls>;
 
-/// Managed flash-backed endorsement/root chain installed by SET_CERTIFICATE.
+/// One managed flash-backed endorsement/root chain installed by
+/// SET_CERTIFICATE.
+///
+/// A region is dedicated to a single asymmetric algorithm for its
+/// lifetime, fixed when the platform wires it up. A slot that serves
+/// both ECC and ML-DSA therefore owns two disjoint regions — see
+/// [`ManagedEndorsement`]. Sharing one region would make installing one
+/// algorithm's chain silently destroy the other's.
 #[cfg(feature = "set-certificate")]
 #[derive(Clone, Copy)]
-pub struct ManagedEndorsement {
+pub struct SingleManagedChain {
     slot: u8,
     driver_num: u32,
     base: usize,
@@ -308,15 +387,21 @@ pub struct ManagedEndorsement {
 }
 
 #[cfg(feature = "set-certificate")]
-impl ManagedEndorsement {
-    pub const fn new(slot: u8, driver_num: u32, base: usize, capacity: usize) -> Self {
+impl SingleManagedChain {
+    pub const fn new(
+        slot: u8,
+        algo: SpdmPalAsymAlgo,
+        driver_num: u32,
+        base: usize,
+        capacity: usize,
+    ) -> Self {
         Self {
             slot,
             driver_num,
             base,
             capacity,
             initialized: false,
-            algo: SpdmPalAsymAlgo::EccP384,
+            algo,
             len: 0,
             root_hash: [0; 48],
             key_pair_id: 0,
@@ -350,7 +435,7 @@ impl ManagedEndorsement {
         if record.version != MANAGED_FORMAT_VERSION
             || record.header_size as usize != MANAGED_HEADER_SIZE
             || record.slot != self.slot
-            || record.algo != MANAGED_ALGO_ECC_P384
+            || record.algo != managed_algo_code(self.algo)
             || record.cert_len > self.der_capacity()
         {
             return Ok(());
@@ -359,7 +444,6 @@ impl ManagedEndorsement {
             return Ok(());
         }
         self.initialized = true;
-        self.algo = SpdmPalAsymAlgo::EccP384;
         self.len = record.cert_len;
         self.root_hash = record.root_hash;
         self.key_pair_id = record.key_pair_id;
@@ -370,6 +454,11 @@ impl ManagedEndorsement {
 
     pub fn is_initialized(&self) -> bool {
         self.initialized
+    }
+
+    /// The algorithm this region is dedicated to.
+    pub fn algo(&self) -> SpdmPalAsymAlgo {
+        self.algo
     }
 
     pub fn key_pair_id(&self) -> Option<u8> {
@@ -384,7 +473,7 @@ impl ManagedEndorsement {
         self.initialized.then_some(self.key_usage_mask)
     }
 
-    fn root_cert_hash(&self, _algo: SpdmPalAsymAlgo, out: &mut [u8]) -> McuResult<()> {
+    fn root_cert_hash(&self, out: &mut [u8]) -> McuResult<()> {
         if !self.initialized {
             return Err(mcu_error::codes::INVARIANT);
         }
@@ -393,7 +482,7 @@ impl ManagedEndorsement {
         Ok(())
     }
 
-    fn size(&self, _algo: SpdmPalAsymAlgo) -> McuResult<usize> {
+    fn size(&self) -> McuResult<usize> {
         if self.initialized {
             Ok(self.len)
         } else {
@@ -401,16 +490,7 @@ impl ManagedEndorsement {
         }
     }
 
-    fn capacity(&self, _algo: SpdmPalAsymAlgo) -> McuResult<usize> {
-        Ok(self.der_capacity())
-    }
-
-    async fn read(
-        &self,
-        _algo: SpdmPalAsymAlgo,
-        offset: usize,
-        buf: &mut [u8],
-    ) -> McuResult<usize> {
+    async fn read(&self, offset: usize, buf: &mut [u8]) -> McuResult<usize> {
         if !self.initialized {
             return Err(mcu_error::codes::INVARIANT);
         }
@@ -425,12 +505,8 @@ impl ManagedEndorsement {
         Ok(n)
     }
 
-    pub async fn begin_stream_update(
-        mut self,
-        algo: SpdmPalAsymAlgo,
-        data_len: usize,
-    ) -> McuResult<Self> {
-        if algo != SpdmPalAsymAlgo::EccP384 || data_len > self.der_capacity() {
+    pub async fn begin_stream_update(mut self, data_len: usize) -> McuResult<Self> {
+        if data_len > self.der_capacity() {
             return Err(mcu_error::codes::INVARIANT);
         }
         self.flash()
@@ -475,13 +551,12 @@ impl ManagedEndorsement {
 
     pub async fn finish_stream_update(
         mut self,
-        algo: SpdmPalAsymAlgo,
         key_pair_id: u8,
         cert_info: u8,
         root_hash: &[u8; 48],
         data_len: usize,
     ) -> McuResult<Self> {
-        if algo != SpdmPalAsymAlgo::EccP384 || data_len > self.der_capacity() {
+        if data_len > self.der_capacity() {
             return Err(mcu_error::codes::INVARIANT);
         }
         let data_checksum = self.stored_checksum(data_len).await?;
@@ -489,7 +564,7 @@ impl ManagedEndorsement {
             version: MANAGED_FORMAT_VERSION,
             header_size: MANAGED_HEADER_SIZE as u16,
             slot: self.slot,
-            algo: MANAGED_ALGO_ECC_P384,
+            algo: managed_algo_code(self.algo),
             key_pair_id,
             cert_info,
             key_usage_mask: MANAGED_KEY_USAGE_MASK,
@@ -504,7 +579,6 @@ impl ManagedEndorsement {
             .await
             .map_err(map_flash_error)?;
         self.initialized = true;
-        self.algo = algo;
         self.len = data_len;
         self.root_hash = *root_hash;
         self.key_pair_id = key_pair_id;
@@ -515,13 +589,12 @@ impl ManagedEndorsement {
 
     pub async fn write_updated(
         mut self,
-        algo: SpdmPalAsymAlgo,
         key_pair_id: u8,
         cert_info: u8,
         root_hash: &[u8; 48],
         data: &[u8],
     ) -> McuResult<Self> {
-        if algo != SpdmPalAsymAlgo::EccP384 || data.len() > self.der_capacity() {
+        if data.len() > self.der_capacity() {
             return Err(mcu_error::codes::INVARIANT);
         }
 
@@ -529,7 +602,7 @@ impl ManagedEndorsement {
             version: MANAGED_FORMAT_VERSION,
             header_size: MANAGED_HEADER_SIZE as u16,
             slot: self.slot,
-            algo: MANAGED_ALGO_ECC_P384,
+            algo: managed_algo_code(self.algo),
             key_pair_id,
             cert_info,
             key_usage_mask: MANAGED_KEY_USAGE_MASK,
@@ -558,7 +631,6 @@ impl ManagedEndorsement {
             .map_err(map_flash_error)?;
 
         self.initialized = true;
-        self.algo = algo;
         self.len = data.len();
         self.root_hash = *root_hash;
         self.key_pair_id = key_pair_id;
@@ -567,7 +639,7 @@ impl ManagedEndorsement {
         Ok(self)
     }
 
-    pub async fn erase_updated(mut self, _algo: SpdmPalAsymAlgo) -> McuResult<Self> {
+    pub async fn erase_updated(mut self) -> McuResult<Self> {
         self.flash()
             .erase(self.base, self.capacity)
             .await
@@ -610,6 +682,82 @@ impl ManagedEndorsement {
 
     fn der_capacity(&self) -> usize {
         managed_endorsement_der_capacity(self.capacity)
+    }
+
+    /// Whether this chain's flash region intersects `[base, end)` on
+    /// the flash device `driver_num`.
+    ///
+    /// Regions on different devices never collide. Within a device the
+    /// whole region is erased on update, so any intersection at all is
+    /// destructive.
+    pub fn region_overlaps(&self, driver_num: u32, base: usize, end: usize) -> bool {
+        if self.driver_num != driver_num {
+            return false;
+        }
+        let self_end = self.base.saturating_add(self.capacity);
+        self.base < end && base < self_end
+    }
+}
+
+/// The managed flash regions backing one SPDM slot.
+///
+/// ECC is mandatory — a managed slot always has somewhere to put the
+/// classical chain — while ML-DSA is optional so that a platform which
+/// has not allocated a PQC region still builds and runs. A slot with
+/// no ML-DSA region simply reports itself unprovisioned on an ML-DSA
+/// connection.
+#[cfg(feature = "set-certificate")]
+#[derive(Clone, Copy)]
+pub struct ManagedEndorsement {
+    ecc: SingleManagedChain,
+    mldsa: Option<SingleManagedChain>,
+}
+
+#[cfg(feature = "set-certificate")]
+impl ManagedEndorsement {
+    pub const fn new(ecc: SingleManagedChain) -> Self {
+        Self { ecc, mldsa: None }
+    }
+
+    pub const fn with_mldsa(mut self, mldsa: SingleManagedChain) -> Self {
+        self.mldsa = Some(mldsa);
+        self
+    }
+
+    /// The region serving `algo`, or `INVARIANT` if this slot has none.
+    pub fn get_chain(&self, algo: SpdmPalAsymAlgo) -> McuResult<&SingleManagedChain> {
+        match algo {
+            SpdmPalAsymAlgo::EccP384 => Ok(&self.ecc),
+            SpdmPalAsymAlgo::MlDsa87 => self.mldsa.as_ref().ok_or(mcu_error::codes::INVARIANT),
+        }
+    }
+
+    /// Install an updated region, which must belong to this slot's
+    /// algorithm for that position.
+    pub fn set_chain(&mut self, chain: SingleManagedChain) {
+        match chain.algo() {
+            SpdmPalAsymAlgo::EccP384 => self.ecc = chain,
+            SpdmPalAsymAlgo::MlDsa87 => self.mldsa = Some(chain),
+        }
+    }
+
+    /// Load every configured region's record from flash.
+    pub async fn load(&mut self) -> McuResult<()> {
+        self.ecc.load().await?;
+        if let Some(mldsa) = self.mldsa.as_mut() {
+            mldsa.load().await?;
+        }
+        Ok(())
+    }
+
+    /// Whether any of this slot's regions intersects `[base, end)` on
+    /// the flash device `driver_num`.
+    pub fn any_region_overlaps(&self, driver_num: u32, base: usize, end: usize) -> bool {
+        self.ecc.region_overlaps(driver_num, base, end)
+            || self
+                .mldsa
+                .as_ref()
+                .is_some_and(|m| m.region_overlaps(driver_num, base, end))
     }
 }
 
@@ -718,6 +866,152 @@ fn map_flash_error(err: ErrorCode) -> mcu_error::McuErrorCode {
 mod tests {
     use super::*;
 
+    const TEST_DRIVER: u32 = 0x7000_000A;
+    const TEST_REGION: usize = 4096;
+
+    fn chain(algo: SpdmPalAsymAlgo, base: usize) -> SingleManagedChain {
+        SingleManagedChain::new(2, algo, TEST_DRIVER, base, TEST_REGION)
+    }
+
+    /// A region update erases the whole region, so partial overlap is
+    /// just as destructive as exact aliasing. Adjacent regions are
+    /// fine, and regions on different flash devices never collide.
+    #[test]
+    fn region_overlap_detects_any_intersection() {
+        let ecc = chain(SpdmPalAsymAlgo::EccP384, TEST_REGION);
+        let span = |base: usize| (base, base + TEST_REGION);
+
+        // Exact aliasing.
+        let (b, e) = span(TEST_REGION);
+        assert!(ecc.region_overlaps(TEST_DRIVER, b, e));
+
+        // Partial overlap from either side.
+        let (b, e) = span(TEST_REGION / 2);
+        assert!(ecc.region_overlaps(TEST_DRIVER, b, e));
+        let (b, e) = span(TEST_REGION + TEST_REGION / 2);
+        assert!(ecc.region_overlaps(TEST_DRIVER, b, e));
+
+        // A region strictly containing this one.
+        assert!(ecc.region_overlaps(TEST_DRIVER, 0, TEST_REGION * 4));
+
+        // Abutting regions on either side are disjoint.
+        let (b, e) = span(0);
+        assert!(!ecc.region_overlaps(TEST_DRIVER, b, e));
+        let (b, e) = span(TEST_REGION * 2);
+        assert!(!ecc.region_overlaps(TEST_DRIVER, b, e));
+
+        // Same addresses on another flash device do not collide.
+        let (b, e) = span(TEST_REGION);
+        assert!(!ecc.region_overlaps(TEST_DRIVER + 1, b, e));
+    }
+
+    /// Cross-slot collisions must be caught against either of a slot's
+    /// regions, including the optional ML-DSA one.
+    #[test]
+    fn any_region_overlap_covers_both_algorithms() {
+        let slot = ManagedEndorsement::new(chain(SpdmPalAsymAlgo::EccP384, 0))
+            .with_mldsa(chain(SpdmPalAsymAlgo::MlDsa87, TEST_REGION));
+
+        assert!(slot.any_region_overlaps(TEST_DRIVER, 0, TEST_REGION));
+        assert!(slot.any_region_overlaps(TEST_DRIVER, TEST_REGION, TEST_REGION * 2));
+        assert!(!slot.any_region_overlaps(TEST_DRIVER, TEST_REGION * 2, TEST_REGION * 3));
+
+        // Without an ML-DSA region that address range is free.
+        let ecc_only = ManagedEndorsement::new(chain(SpdmPalAsymAlgo::EccP384, 0));
+        assert!(!ecc_only.any_region_overlaps(TEST_DRIVER, TEST_REGION, TEST_REGION * 2));
+    }
+
+    /// Each algorithm's region is provisioned independently: writing
+    /// one must not make the slot appear provisioned for the other.
+    /// Otherwise DIGESTS would advertise the slot and GET_CERTIFICATE
+    /// would serve bytes signed under the wrong algorithm.
+    #[test]
+    fn managed_regions_are_provisioned_independently() {
+        let mut ecc = chain(SpdmPalAsymAlgo::EccP384, 0);
+        let mldsa = chain(SpdmPalAsymAlgo::MlDsa87, TEST_REGION);
+
+        // Nothing written yet: provisioned for neither.
+        let slot = ManagedEndorsement::new(ecc).with_mldsa(mldsa);
+        assert!(!SlotEndorsement::Managed(slot).is_provisioned(SpdmPalAsymAlgo::EccP384));
+        assert!(!SlotEndorsement::Managed(slot).is_provisioned(SpdmPalAsymAlgo::MlDsa87));
+
+        // Simulate a committed ECC endorsement without touching flash.
+        ecc.initialized = true;
+        let slot = ManagedEndorsement::new(ecc).with_mldsa(mldsa);
+        let endorsement = SlotEndorsement::Managed(slot);
+        assert!(endorsement.is_provisioned(SpdmPalAsymAlgo::EccP384));
+        assert!(!endorsement.is_provisioned(SpdmPalAsymAlgo::MlDsa87));
+
+        // And now the ML-DSA side as well.
+        let mut mldsa = mldsa;
+        mldsa.initialized = true;
+        let endorsement = SlotEndorsement::Managed(ManagedEndorsement::new(ecc).with_mldsa(mldsa));
+        assert!(endorsement.is_provisioned(SpdmPalAsymAlgo::EccP384));
+        assert!(endorsement.is_provisioned(SpdmPalAsymAlgo::MlDsa87));
+    }
+
+    /// A slot with no ML-DSA region must fail closed rather than fall
+    /// back to serving its ECC chain.
+    #[test]
+    fn managed_slot_without_mldsa_region_fails_closed() {
+        let mut ecc = chain(SpdmPalAsymAlgo::EccP384, 0);
+        ecc.initialized = true;
+        ecc.len = 64;
+        let endorsement = SlotEndorsement::Managed(ManagedEndorsement::new(ecc));
+
+        assert!(endorsement.is_provisioned(SpdmPalAsymAlgo::EccP384));
+        assert!(!endorsement.is_provisioned(SpdmPalAsymAlgo::MlDsa87));
+
+        assert!(endorsement.size(SpdmPalAsymAlgo::EccP384).is_ok());
+        assert!(endorsement.size(SpdmPalAsymAlgo::MlDsa87).is_err());
+
+        let mut out = [0u8; 48];
+        assert!(endorsement
+            .root_cert_hash(SpdmPalAsymAlgo::EccP384, &mut out)
+            .is_ok());
+        assert!(endorsement
+            .root_cert_hash(SpdmPalAsymAlgo::MlDsa87, &mut out)
+            .is_err());
+    }
+
+    /// `set_chain` routes by the region's own algorithm, so committing
+    /// an ML-DSA write cannot overwrite the ECC region.
+    #[test]
+    fn set_chain_routes_by_algorithm() {
+        let ecc = chain(SpdmPalAsymAlgo::EccP384, 0);
+        let mldsa = chain(SpdmPalAsymAlgo::MlDsa87, TEST_REGION);
+        let mut slot = ManagedEndorsement::new(ecc).with_mldsa(mldsa);
+
+        let mut updated = mldsa;
+        updated.initialized = true;
+        updated.len = 128;
+        slot.set_chain(updated);
+
+        assert!(!slot
+            .get_chain(SpdmPalAsymAlgo::EccP384)
+            .unwrap()
+            .is_initialized());
+        assert_eq!(
+            slot.get_chain(SpdmPalAsymAlgo::MlDsa87).unwrap().size(),
+            Ok(128)
+        );
+    }
+
+    /// The ML-DSA code must be distinct so an ML-DSA region never
+    /// accepts a record written by the ECC region, and vice versa.
+    #[test]
+    fn managed_algo_codes_are_distinct() {
+        assert_eq!(
+            managed_algo_code(SpdmPalAsymAlgo::EccP384),
+            MANAGED_ALGO_ECC_P384
+        );
+        assert_eq!(
+            managed_algo_code(SpdmPalAsymAlgo::MlDsa87),
+            MANAGED_ALGO_MLDSA_87
+        );
+        assert_ne!(MANAGED_ALGO_ECC_P384, MANAGED_ALGO_MLDSA_87);
+    }
+
     #[test]
     fn managed_record_round_trips() {
         let record = ManagedRecord {
@@ -740,15 +1034,58 @@ mod tests {
 
     #[test]
     fn managed_capacity_excludes_header() {
-        let endorsement = ManagedEndorsement::new(2, 0x7000_000A, 0, 4096);
+        let endorsement = chain(SpdmPalAsymAlgo::EccP384, 0);
         assert_eq!(endorsement.der_capacity(), 4096 - MANAGED_HEADER_SIZE);
     }
 
     #[test]
-    fn managed_der_capacity_obeys_standard_cert_chain_limit() {
+    fn managed_der_capacity_obeys_cert_chain_format_limit() {
         assert_eq!(
             managed_endorsement_der_capacity(usize::MAX),
-            u16::MAX as usize - SPDM_CERT_CHAIN_HEADER_SIZE
+            u32::MAX as usize - SPDM_CERT_CHAIN_HEADER_SIZE
         );
+    }
+
+    #[test]
+    fn managed_der_capacity_is_region_bound_past_64kib() {
+        // ML-DSA chains routinely exceed the pre-1.4 64 KiB ceiling;
+        // only the flash region should limit them now.
+        let region = 128 * 1024;
+        assert_eq!(
+            managed_endorsement_der_capacity(region),
+            region - MANAGED_HEADER_SIZE
+        );
+        assert!(managed_endorsement_der_capacity(region) > u16::MAX as usize);
+    }
+}
+
+#[cfg(test)]
+mod algo_tests {
+    use super::*;
+
+    const ECC_CHAIN: &[&[u8]] = &[&[0x30, 0x01, 0x00]];
+    const MLDSA_CHAIN: &[&[u8]] = &[&[0x30, 0x02, 0x00, 0x00]];
+
+    #[test]
+    fn read_only_slot_is_unprovisioned_for_missing_algorithm() {
+        let ecc_only = SlotEndorsement::ReadOnly(ReadOnlyEndorsement::new(ECC_CHAIN, [0u8; 48]));
+        assert!(ecc_only.is_provisioned(SpdmPalAsymAlgo::EccP384));
+        // Without an ML-DSA chain the slot must not be advertised in an
+        // ML-DSA connection: otherwise GET_CERTIFICATE would serve the
+        // ECC chain against an ML-DSA negotiation.
+        assert!(!ecc_only.is_provisioned(SpdmPalAsymAlgo::MlDsa87));
+
+        let both = SlotEndorsement::ReadOnly(
+            ReadOnlyEndorsement::new(ECC_CHAIN, [0u8; 48]).with_mldsa(MLDSA_CHAIN, [1u8; 48]),
+        );
+        assert!(both.is_provisioned(SpdmPalAsymAlgo::EccP384));
+        assert!(both.is_provisioned(SpdmPalAsymAlgo::MlDsa87));
+    }
+
+    #[test]
+    fn empty_slot_is_never_provisioned() {
+        let empty = SlotEndorsement::Empty;
+        assert!(!empty.is_provisioned(SpdmPalAsymAlgo::EccP384));
+        assert!(!empty.is_provisioned(SpdmPalAsymAlgo::MlDsa87));
     }
 }

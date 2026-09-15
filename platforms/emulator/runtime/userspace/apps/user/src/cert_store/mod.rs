@@ -8,6 +8,10 @@
 //!   - Slot 1 (Owner):  Managed endorsement (flash-backed, initially empty)
 //!   - Slot 2 (Tenant): Managed endorsement (flash-backed, initially empty)
 //!
+//! Each managed slot is backed by two disjoint flash regions, one per
+//! asymmetric algorithm, so an ECC and an ML-DSA chain can coexist in
+//! the same SPDM slot and be served according to what was negotiated.
+//!
 //! Caliptra generates the IDevID *keypair* and a self-signed CSR, but never the
 //! IDevID *certificate* — that is issued externally and provisioned into OTP.
 //! Both the ECC-384 (partition 1) and ML-DSA-87 (partition 2) IDevID certs are
@@ -73,11 +77,22 @@ static CERT_STORE: SharedCertStore = SharedCertStore::new();
 const MANAGED_ENDORSEMENT_SLOTS: &[(usize, u8)] = &[(1, OWNER_SPDM_SLOT), (2, TENANT_SPDM_SLOT)];
 #[cfg(feature = "test-mctp-spdm-set-certificate")]
 const MANAGED_SLOT_COUNT: usize = MANAGED_ENDORSEMENT_SLOTS.len();
+/// Each managed slot needs one region per asymmetric algorithm: the
+/// ECC and ML-DSA chains must not share storage, or installing one
+/// would destroy the other.
+#[cfg(feature = "test-mctp-spdm-set-certificate")]
+const MANAGED_REGIONS_PER_SLOT: usize = 2;
+#[cfg(feature = "test-mctp-spdm-set-certificate")]
+const MANAGED_REGION_COUNT: usize = MANAGED_SLOT_COUNT * MANAGED_REGIONS_PER_SLOT;
+/// Region size. The partition is statically sized, so subdividing it
+/// four ways instead of two costs no additional flash. ML-DSA chains
+/// are roughly an order of magnitude larger than ECC ones, so the
+/// remaining room per region still far exceeds what either needs.
 #[cfg(feature = "test-mctp-spdm-set-certificate")]
 const MANAGED_SLOT_REGION_SIZE: usize = {
-    assert!(MANAGED_SLOT_COUNT != 0);
-    assert!(CERT_STORE_PARTITION.size % MANAGED_SLOT_COUNT == 0);
-    CERT_STORE_PARTITION.size / MANAGED_SLOT_COUNT
+    assert!(MANAGED_REGION_COUNT != 0);
+    assert!(CERT_STORE_PARTITION.size % MANAGED_REGION_COUNT == 0);
+    CERT_STORE_PARTITION.size / MANAGED_REGION_COUNT
 };
 
 /// Initialize Caliptra identity chains before any SPDM or MCU-mailbox task can
@@ -146,20 +161,23 @@ async fn setup_endorsements<A: ApiAlloc>(store: &SharedCertStore, alloc: &A) -> 
         )
         .await?;
 
-    // Slots 1-2 (Owner/Tenant): Managed endorsement, initially empty or loaded
-    // from the cert-store flash partition. This remains test-only until a
-    // production authorization/key-binding policy exists.
+    // Slots 1-2 (Owner/Tenant): Managed endorsements, initially empty or
+    // loaded from the cert-store flash partition. Each slot gets a pair of
+    // adjacent regions — ECC first, then ML-DSA. This remains test-only
+    // until a production authorization/key-binding policy exists.
     #[cfg(feature = "test-mctp-spdm-set-certificate")]
     {
-        for (region, (store_slot, spdm_slot)) in
+        for (slot_index, (store_slot, spdm_slot)) in
             MANAGED_ENDORSEMENT_SLOTS.iter().copied().enumerate()
         {
+            let ecc_base = slot_index * MANAGED_REGIONS_PER_SLOT * MANAGED_SLOT_REGION_SIZE;
             store
                 .set_managed_endorsement(
                     store_slot,
                     spdm_slot,
                     CERT_STORE_PARTITION.driver_num,
-                    region * MANAGED_SLOT_REGION_SIZE,
+                    ecc_base,
+                    Some(ecc_base + MANAGED_SLOT_REGION_SIZE),
                     MANAGED_SLOT_REGION_SIZE,
                 )
                 .await?;
