@@ -68,6 +68,23 @@ pub trait Mailbox<'a> {
     /// * `rx_buf` - The buffer to restore for receiving data.
     fn restore_rx_buffer(&self, rx_buf: &'static mut [u32]);
 
+    /// Provides read-only access to the mailbox receive buffer without taking ownership of it.
+    ///
+    /// The receive buffer maps mailbox SRAM directly, and the sender is held off until the
+    /// command status is set. A user-space client that cannot consume a request during `request_received`
+    /// can therefore return the buffer immediately and re-read the payload later through this
+    /// method, instead of buffering it elsewhere.
+    ///
+    /// # Arguments
+    ///
+    /// * `f` - Closure invoked with the contents of the receive buffer.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(R)` holding the closure result if the buffer is available.
+    /// * `None` if the buffer is currently checked out by a client.
+    fn map_rx_buffer<R>(&self, f: impl FnOnce(&[u32]) -> R) -> Option<R>;
+
     /// Enables the MCU mailbox driver instance.
     fn enable(&self);
 
