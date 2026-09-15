@@ -38,17 +38,11 @@ pub fn bundle(
     // Megabytes so this isn't too expensive and will save multiple disk operations.
     let mut runtime = Vec::new();
 
-    // Detect if the svn option is set.  If so populate the McuImageHeader and prepend it to the
-    // bundled binary.
-    if let Some(svn) = common.svn {
-        runtime.extend_from_slice(
-            McuImageHeader {
-                svn,
-                ..Default::default()
-            }
-            .as_bytes(),
-        );
-    }
+    append_runtime_headers(
+        &mut runtime,
+        common.svn,
+        bundle.component_svn_manifest.as_deref(),
+    );
     let header_len: u64 = runtime.len().try_into()?;
 
     match &output.runtime {
@@ -100,4 +94,42 @@ pub fn bundle(
     };
     let runtime_file = binary_dir.join(name);
     std::fs::write(runtime_file, runtime).map_err(|e| e.into())
+}
+
+fn append_runtime_headers(
+    runtime: &mut Vec<u8>,
+    svn: Option<u16>,
+    component_svn_manifest: Option<&[u8]>,
+) {
+    if let Some(svn) = svn {
+        runtime.extend_from_slice(
+            McuImageHeader {
+                svn,
+                ..Default::default()
+            }
+            .as_bytes(),
+        );
+    }
+    if let Some(manifest) = component_svn_manifest {
+        runtime.extend_from_slice(manifest);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn appends_component_svn_manifest_after_image_header() {
+        let manifest = [0x5a; 1024];
+        let mut runtime = Vec::new();
+
+        append_runtime_headers(&mut runtime, Some(7), Some(&manifest));
+
+        assert_eq!(runtime.len(), core::mem::size_of::<McuImageHeader>() + 1024);
+        assert_eq!(
+            &runtime[core::mem::size_of::<McuImageHeader>()..],
+            manifest.as_slice()
+        );
+    }
 }

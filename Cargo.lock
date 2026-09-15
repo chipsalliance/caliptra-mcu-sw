@@ -7815,6 +7815,7 @@ dependencies = [
  "caliptra-mcu-fusegen",
  "caliptra-mcu-fuses-generator",
  "caliptra-mcu-hw-model",
+ "caliptra-mcu-image-header",
  "caliptra-mcu-otp-lifecycle",
  "caliptra-mcu-pldm-fw-pkg",
  "caliptra-mcu-registers-generator",
