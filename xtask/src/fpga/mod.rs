@@ -25,6 +25,8 @@ struct BuildArgs<'a> {
     fw_id: &'a Option<String>,
     rom_features: &'a Option<String>,
     separate_runtimes: bool,
+    component_svn_config: &'a Option<String>,
+    component_config: &'a Option<String>,
     mcu_cfgs: &'a Option<Vec<ImageCfg>>,
 }
 
@@ -131,6 +133,18 @@ pub(crate) enum Fpga {
         /// Build a separate runtime for each feature flag
         #[arg(long)]
         separate_runtimes: bool,
+
+        /// JSON component SVN entries and explicit policy exceptions
+        #[arg(long = "component-svn-config", value_name = "COMPONENT_SVN_CONFIG")]
+        component_svn_config: Option<String>,
+
+        /// TOML source of truth for component metadata
+        #[arg(
+            long = "component-config",
+            visible_alias = "component_config",
+            value_name = "COMPONENT_CONFIG"
+        )]
+        component_config: Option<String>,
 
         // MCU configuration to include in the SoC manifest
         // format: mcu,<load_addr>,<staging_addr>,<image_id>,<exec_bit>,<component_id>,<feature>[,<is_tcb>[,<is_ak_target>[,<network_filename>]]]
@@ -247,6 +261,8 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
             fw_id,
             rom_features,
             separate_runtimes,
+            component_svn_config,
+            component_config,
             mcu_cfgs,
         } => {
             println!("Building FPGA firmware");
@@ -259,6 +275,8 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
                     fw_id,
                     rom_features,
                     separate_runtimes: *separate_runtimes,
+                    component_svn_config,
+                    component_config,
                     mcu_cfgs,
                 })?;
         }

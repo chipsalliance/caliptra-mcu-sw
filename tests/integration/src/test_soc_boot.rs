@@ -6,7 +6,10 @@ mod test {
         compile_runtime, get_rom_with_feature, has_prebuilt_binaries, run_runtime, TEST_LOCK,
     };
     use caliptra_image_types::ImageManifest;
-    use caliptra_mcu_builder::{CaliptraBuilder, FirmwareBinaries, ImageCfg};
+    use caliptra_mcu_builder::{
+        CaliptraBuilder, ComponentSvnEntry, ComponentSvnValidationConfig, FirmwareBinaries,
+        ImageCfg,
+    };
     use caliptra_mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
     use caliptra_mcu_config_emulator::flash::{
         PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
@@ -28,6 +31,25 @@ mod test {
     const MCI_BASE_AXI_ADDRESS: u64 = 0xA800_0000;
 
     const MCU_MBOX_SRAM1_OFFSET: u64 = 0x80_0000;
+
+    fn component_svn_validation() -> ComponentSvnValidationConfig {
+        ComponentSvnValidationConfig {
+            entries: vec![
+                ComponentSvnEntry {
+                    component_id: 0x1000,
+                    current_svn: 0,
+                    min_svn: 0,
+                },
+                ComponentSvnEntry {
+                    component_id: 0x1001,
+                    current_svn: 0,
+                    min_svn: 0,
+                },
+            ],
+            future_or_absent_component_ids: vec![0x1001],
+            ..Default::default()
+        }
+    }
 
     #[derive(Clone)]
     struct TestOptions {
@@ -287,12 +309,13 @@ mod test {
     // Test case: Image ID in the SOC manifest is different from the one being authorized in the firmware
     fn test_boot_invalid_image_id(opts: &TestOptions) {
         let mut new_options = opts.clone();
-        new_options.soc_images[0].image_id = 0xDEAD; // Change the image ID to an invalid one
+        let mut manifest_soc_images = new_options.soc_images.clone();
+        manifest_soc_images[0].image_id = 0xDEAD;
         let soc_manifest = new_options
             .builder
             .as_mut()
             .unwrap()
-            .replace_manifest_config(new_options.soc_images.clone(), None)
+            .replace_manifest_config(manifest_soc_images, None)
             .unwrap();
 
         // Update the SOC manifest in the flash image
@@ -306,7 +329,20 @@ mod test {
         );
 
         new_options.primary_flash_image_path = if opts.primary_flash_image_path.is_some() {
-            Some(flash_image_path)
+            Some(flash_image_path.clone())
+        } else {
+            None
+        };
+        new_options.secondary_flash_image_path = if opts.secondary_flash_image_path.is_some() {
+            Some(flash_image_path.clone())
+        } else {
+            None
+        };
+        new_options.pldm_fw_pkg_path = if opts.pldm_fw_pkg_path.is_some() {
+            let flash_image = std::fs::read(flash_image_path).expect("Failed to read flash image");
+            let pldm_manifest =
+                get_streaming_boot_pldm_fw_manifest(&get_device_uuid(), &flash_image);
+            Some(create_pldm_fw_package(&pldm_manifest))
         } else {
             None
         };
@@ -831,6 +867,7 @@ mod test {
             vendor_pk_hash: Some(vendor_pk_hash),
             mcu_firmware: Some(test_runtime.clone()),
             soc_images: Some(soc_images.clone()),
+            component_svn_validation: Some(component_svn_validation()),
             ..Default::default()
         });
 
@@ -957,6 +994,7 @@ mod test {
             caliptra_rom: prebuilt_caliptra_rom,
             caliptra_firmware: prebuilt_caliptra_fw,
             vendor_pk_hash: prebuilt_vendor_pk_hash,
+            component_svn_validation: Some(component_svn_validation()),
             ..Default::default()
         });
 

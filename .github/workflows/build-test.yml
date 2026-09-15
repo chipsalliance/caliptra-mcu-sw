@@ -101,13 +101,16 @@ jobs:
       - name: Build ROM and runtime binaries
         run: |
           # Build with parallel-build feature to enable Rayon and unique target directories
-          cargo run -p xtask --features parallel-build -- all-build --platform emulator --separate-runtimes
+          cargo run -p xtask --features parallel-build -- all-build \
+            --platform emulator --separate-runtimes \
+            --component-svn-config builder/ci-component-svn-policy
           sccache --show-stats
 
       - name: Build release ROM and runtime binaries
         run: |
           cargo run -p xtask --features parallel-build -- all-build \
             --platform emulator --separate-runtimes \
+            --component-svn-config builder/ci-component-svn-policy \
             --profile release
           sccache --show-stats
 

@@ -92,6 +92,7 @@ pub fn runtime_build_with_apps(args: &CaliptraBuildArgs) -> Result<PathBuf> {
         },
         bundle: BundleArgs {
             bundle_name: Some(output_name),
+            component_svn_manifest: args.component_svn_manifest.clone(),
         },
     };
 
@@ -125,6 +126,7 @@ pub fn bare_metal_build() -> Result<PathBuf> {
         build: BuildArgs::default(),
         bundle: BundleArgs {
             bundle_name: Some(output_name),
+            ..Default::default()
         },
     };
 

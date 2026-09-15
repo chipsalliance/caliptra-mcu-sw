@@ -156,6 +156,7 @@ jobs:
             --configuration subsystem \
             --rom-features "core_test" \
             --mcu_cfg mcu,0x0,0xB00C0000,2,2,2,test-fpga-flash-ctrl \
+            --component-svn-config builder/ci-component-svn-policy \
             --separate-runtimes
           sccache --show-stats
 
