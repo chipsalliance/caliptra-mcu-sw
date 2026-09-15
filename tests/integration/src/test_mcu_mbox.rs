@@ -520,7 +520,9 @@ pub mod test {
                     let mut c = [0u8; DEVICE_CAPS_SIZE];
                     c[..16].copy_from_slice(&self.core_capabilities);
                     c[16..20].copy_from_slice(
-                        &(McuRomCapabilities::STREAMING_BOOT_I3C | McuRomCapabilities::FLASH_BOOT)
+                        &(McuRomCapabilities::STREAMING_BOOT_I3C
+                            | McuRomCapabilities::FLASH_BOOT
+                            | McuRomCapabilities::DOT_BOOT)
                             .bits()
                             .to_be_bytes(),
                     );

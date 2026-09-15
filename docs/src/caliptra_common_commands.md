@@ -149,12 +149,19 @@ Runtime paired with an MCU ROM handoff version before 1.3 reports zero.
 
 **MCU ROM Capability Flags**:
 
-| Bit | Name                 | Description                              |
-| --- | -------------------- | ---------------------------------------- |
-| 0   | `STREAMING_BOOT_I3C` | MCU ROM supports streaming boot over I3C |
-| 1   | `FLASH_BOOT`         | MCU ROM supports flash boot              |
-| 2   | `NETWORK_BOOT`       | MCU ROM supports network boot            |
-| 3:31 | Reserved            | Responders report zero                    |
+| Bit  | Name                 | Description                                        |
+| ---- | -------------------- | -------------------------------------------------- |
+| 0    | `STREAMING_BOOT_I3C` | MCU ROM supports streaming boot over I3C           |
+| 1    | `FLASH_BOOT`         | MCU ROM supports flash boot                        |
+| 2    | `NETWORK_BOOT`       | MCU ROM supports network boot                      |
+| 3    | `OCP_LOCK`           | MCU ROM supports OCP LOCK key management           |
+| 4    | `FW_MANIFEST_DOT`    | MCU ROM supports Device Ownership Transfer manifests |
+| 5    | `COMPONENT_SVN_MANIFEST` | MCU ROM supports component SVN manifests       |
+| 6    | `STABLE_OWNER_KEY`   | MCU ROM derives and hands off a stable owner key    |
+| 7    | `DOT_BOOT`           | MCU ROM supports DOT blob authentication during boot |
+| 8    | `DOT_LOCKED_RECOVERY` | MCU ROM has a configured DOT locked-state recovery path |
+| 9    | `I3C_DOT_RECOVERY`   | MCU ROM supports DOT recovery over I3C              |
+| 10:31 | Reserved            | Responders report zero                              |
 
 ### Get Debug Log
 
