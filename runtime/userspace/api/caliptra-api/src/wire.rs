@@ -53,6 +53,10 @@ pub(crate) const CMD_AUTHORIZE_AND_STASH: u32 = 0x4154_5348; // "ATSH"
 /// Mirrored from `caliptra-api::CommandId::POPULATE_IDEV_MLDSA87_CERT`.
 pub(crate) const CMD_POPULATE_IDEV_MLDSA87_CERT: u32 = 0x4944_4D50; // "IDMP"
 
+/// Caliptra mailbox command ID for `SET_OWNER_AUTH_MANIFEST`.
+/// Mirrored from `caliptra-api::CommandId::SET_OWNER_AUTH_MANIFEST`.
+pub(crate) const CMD_SET_OWNER_AUTH_MANIFEST: u32 = 0x4F41_4D4E; // "OAMN"
+
 // ---- DPE (Caliptra `InvokeDpeCommand`) ------------------------------------
 
 /// Caliptra mailbox command ID for `INVOKE_DPE_ECC384`.
