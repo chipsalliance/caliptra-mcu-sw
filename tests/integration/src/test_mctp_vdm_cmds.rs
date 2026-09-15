@@ -32,6 +32,7 @@ pub mod test {
         GetDebugLogRequest, GetDebugLogResponse,
     };
     use caliptra_mcu_mctp_vdm_common::protocol::header::VdmCompletionCode;
+    use caliptra_mcu_romtime::handoff::McuRomCapabilities;
     use caliptra_mcu_testing_common::mctp_vdm_transport::{
         MctpVdmSocket, MctpVdmTransport, VdmClient, VdmTransportError,
     };
@@ -217,7 +218,9 @@ pub mod test {
                 &McuRuntimeCapabilities::MCTP_VDM_RESPONDER.bits(),
                 "MCU Runtime capabilities",
             )?;
-            Self::assert_eq(&rom, &0, "MCU ROM capabilities")?;
+            let expected_rom =
+                (McuRomCapabilities::STREAMING_BOOT_I3C | McuRomCapabilities::FLASH_BOOT).bits();
+            Self::assert_eq(&rom, &expected_rom, "MCU ROM capabilities")?;
             Self::assert_eq(
                 &authorized,
                 &AuthorizedSubcommandCapabilities::empty().bits(),
