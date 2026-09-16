@@ -695,8 +695,21 @@ impl BootFlow for ColdBoot {
         crate::call_hook(params.hooks, |h| h.pre_populate_fuses_to_caliptra());
         let pk_hash_idx = soc.populate_fuses(otp, mci, &params);
 
+        let mut mcu_rom_capabilities =
+            caliptra_mcu_romtime::handoff::McuRomCapabilities::STREAMING_BOOT_I3C;
+        if cfg!(feature = "hw-2-1") && params.flash_partition_driver.is_some() {
+            mcu_rom_capabilities |= caliptra_mcu_romtime::handoff::McuRomCapabilities::FLASH_BOOT;
+        }
+
         caliptra_mcu_romtime::handoff::HandoffData::write(
-            caliptra_mcu_romtime::handoff::HandoffArgs::default(),
+            caliptra_mcu_romtime::handoff::HandoffArgs {
+                firmware_boot_type: if flash_boot {
+                    caliptra_mcu_romtime::handoff::FirmwareBootType::Unknown
+                } else {
+                    caliptra_mcu_romtime::handoff::FirmwareBootType::Streaming
+                },
+                mcu_rom_capabilities,
+            },
         );
 
         mci.set_flow_checkpoint(McuRomBootStatus::FusesPopulatedToCaliptra.into());
@@ -979,6 +992,9 @@ impl BootFlow for ColdBoot {
 
                 crate::recovery::load_flash_image_to_recovery(i3c_base, flash_driver)
                     .unwrap_or_else(|_| fatal_error(McuError::ROM_COLD_BOOT_LOAD_IMAGE_ERROR));
+                caliptra_mcu_romtime::handoff::HandoffData::write_firmware_boot_type(
+                    caliptra_mcu_romtime::handoff::FirmwareBootType::Flash,
+                );
 
                 caliptra_mcu_romtime::println!("[mcu-rom] Flash Recovery flow complete");
                 mci.set_flow_checkpoint(McuRomBootStatus::FlashRecoveryFlowComplete.into());

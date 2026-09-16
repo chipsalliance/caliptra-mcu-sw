@@ -78,6 +78,18 @@ impl HandOff<ReadWrite> {
 }
 
 impl<Access> HandOff<Access> {
+    /// Return the source used to boot the MCU firmware.
+    pub fn firmware_boot_type(&self) -> Option<caliptra_mcu_romtime::handoff::FirmwareBootType> {
+        self.deref().firmware_boot_type()
+    }
+
+    /// Return capabilities implemented by the MCU ROM image.
+    pub fn mcu_rom_capabilities(
+        &self,
+    ) -> Option<caliptra_mcu_romtime::handoff::McuRomCapabilities> {
+        self.deref().mcu_rom_capabilities()
+    }
+
     /// Get the address of the handoff table.
     pub fn addr(&self) -> *const HandoffData {
         // Safety: Linker MUST place this static object in the `.handoff` section.
