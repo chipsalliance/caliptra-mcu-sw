@@ -22,12 +22,14 @@ The Payload contains the following fields:
 | Image Info (Caliptra FMC + RT) |
 | Image Info (SoC Manifest)      |
 | Image Info (MCU RT)            |
+| Image Info (Owner Auth Manifest) |
 | Image Info (SoC Image 1)       |
 | ...                            |
 | Image Info (SoC Image N)       |
 | Caliptra FMC + RT Package      |
 | SoC Manifest                   |
 | MCU RT                         |
+| Owner Auth Manifest            |
 | SoC Image 1                    |
 | ...                            |
 | SoC Image N                    |
@@ -35,6 +37,7 @@ The Payload contains the following fields:
 * Caliptra FMC and RT (refer to the [Caliptra Firmware Image Bundle Format](https://github.com/chipsalliance/caliptra-sw/blob/main/rom/dev/README.md#firmware-image-bundle))
 * SoC Manifest (refer to the description of the [SoC Manifest](https://github.com/chipsalliance/caliptra-sw/blob/main/auth-manifest/README.md))
 * MCU RT: This is the image binary of the MCU Runtime firmware
+* [Owner Authorization Manifest](https://github.com/chipsalliance/caliptra-sw/blob/main/auth-manifest/README.md#owner-authorization-manifest)
 * Other SoC images (if any)
 
 ## Header
@@ -57,7 +60,10 @@ The Image Information section is repeated for each image and provides detailed m
 | Identifier          | 4            | Vendor selected unique value to distinguish between images.                            |
 |                     |              | `0x00000000`: Caliptra FMC+RT                                                              |
 |                     |              | `0x00000001`: SoC Manifest                                                                |
-|                     |              | `0x00000002`: MCU RT<br />`0x00001000`-`0xFFFFFFFF` - Reserved for other Vendor-defined SoC images |
+|                     |              | `0x00000002`: MCU RT                                                                                                |
+|                     |              | `0x00000003`: Owner Auth Manifest                                                                                   |
+|                     |              | `0x00001000`-`0x0000FFFF` - Reserved for other Vendor-defined SoC images                                          |
+|                     |              | `0x00010000`-`0xFFFFFFFF` - Reserved for other Owner-only defined SoC images                                      |
 | ImageLocationOffset | 4            | Offset in bytes from byte 0 of the header to where the image content begins. Used in flash-based boot.
 | Size                | 4            | Size in bytes of the image. This is the actual size of the image without padding.      |
 |                     |              | The image itself as written to the flash should be 4-byte aligned and additional       |
