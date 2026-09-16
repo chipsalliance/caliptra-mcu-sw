@@ -114,6 +114,15 @@ def_flag_set_le! {
 }
 
 def_flag_set_le! {
+  /// KEMAlg.AlgSupported.
+    pub struct KemAlgos(U16: u16) {
+        ML_KEM512 = 1 << 0,
+        ML_KEM768 = 1 << 1,
+        ML_KEM1024 = 1 << 2,
+    }
+}
+
+def_flag_set_le! {
   /// AEAD.AlgSupported.
     pub struct AeadAlgos(U16: u16) {
         AES_128_GCM = 1 << 0,
@@ -140,6 +149,20 @@ pub mod alg_type {
     pub const KEY_SCHEDULE: u8 = 0x05;
     pub const REQ_PQC_ASYM_ALG: u8 = 0x06;
     pub const KEM_ALG: u8 = 0x07;
+}
+
+// ---- Helper Types ----------------------------------------------------------
+
+/// Key-Exchange mechanism selection
+///
+/// Indicates if DHE or ML-KEM was selected.
+pub enum KeyExSel {
+    /// No key-exchange algorithm was slected (yet).
+    None,
+    /// DHE.
+    Dhe,
+    /// ML-KEM.
+    Kem,
 }
 
 // ---- NEGOTIATE_ALGORITHMS request wire types -------------------------------
@@ -253,6 +276,14 @@ impl AlgStructEntry {
     pub fn key_schedule(algos: KeyScheduleAlgos) -> Self {
         Self {
             alg_type: alg_type::KEY_SCHEDULE,
+            alg_count_etc: Self::FIXED_ALG_COUNT_ETC,
+            alg_supported: U16::new(algos.into_bits()),
+        }
+    }
+    /// Helper for a ML-KEM selection.
+    pub fn kem(algos: KemAlgos) -> Self {
+        Self {
+            alg_type: alg_type::KEM_ALG,
             alg_count_etc: Self::FIXED_ALG_COUNT_ETC,
             alg_supported: U16::new(algos.into_bits()),
         }

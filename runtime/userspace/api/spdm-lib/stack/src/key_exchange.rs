@@ -14,12 +14,13 @@
 //! 8. Build final response with signature + verify_data
 
 use caliptra_mcu_spdm_codec::{
-    encode_version_selection, parse_supported_versions, select_version, KeyExchangeReqBody,
-    KeyExchangeRsp, ResponseBody, SpdmMsgHdrPdu, SpdmVersion, ECC_P384_SIGNATURE_SIZE,
-    ECDH_P384_EXCHANGE_DATA_SIZE, KEY_EXCHANGE_RANDOM_DATA_LEN, OPAQUE_VERSION_SELECTION_SIZE,
-    SHA384_HASH_SIZE, SPDM_PREFIX_LEN, SPDM_SIGNING_CONTEXT_LEN,
+    encode_version_selection, parse_supported_versions, select_version, KeyExSel,
+    KeyExchangeReqBody, KeyExchangeRsp, ResponseBody, SpdmMsgHdrPdu, SpdmVersion,
+    ECC_P384_SIGNATURE_SIZE, ECDH_P384_EXCHANGE_DATA_SIZE, KEY_EXCHANGE_RANDOM_DATA_LEN,
+    OPAQUE_VERSION_SELECTION_SIZE, SHA384_HASH_SIZE, SPDM_PREFIX_LEN, SPDM_SIGNING_CONTEXT_LEN,
 };
 use caliptra_mcu_spdm_traits::*;
+use mcu_caliptra_api::MLKEM1024_CIPHERTEXT_SIZE;
 use zerocopy::FromBytes;
 
 use crate::build::{build_response, write_fixed};
@@ -105,18 +106,9 @@ pub(crate) async fn handle_key_exchange<'a, Pal: SpdmPal, const N: usize>(
     let supported = parse_supported_versions(opaque_data).map_err(|_| SPDM_INVALID_REQUEST)?;
     let selected_version = select_version(&supported).map_err(|_| SPDM_INVALID_REQUEST)?;
 
-    // ── ECDH key generation ─────────────────────────────────────────
-    let mut ecdh_context = pal.alloc_bytes(io, ECDH_P384_ENCRYPTED_CONTEXT_SIZE)?;
-    let mut our_exchange_data = pal.alloc_bytes(io, ECDH_P384_EXCHANGE_DATA_SIZE)?;
-    pal.ecdh_generate(io, &mut ecdh_context, &mut our_exchange_data)
-        .await
-        .map_err(|_| SPDM_UNSPECIFIED)?;
-
-    // Complete ECDH with peer's exchange data → DHE shared secret.
-    let dhe_secret = pal
-        .ecdh_finish(io, &ecdh_context, &ke_req.exchange_data)
-        .await
-        .map_err(|_| SPDM_UNSPECIFIED)?;
+    // ── Key exchange (DHE/KEM) ──────────────────────────────────────
+    let (our_exchange_data, shared_secret) =
+        generate_key_exchange_secret(state, pal, io, &ke_req.exchange_data).await?;
 
     // ── Create session ──────────────────────────────────────────────
     let session_id = match sessions.create_session(req_session_id, state.version, |info| {
@@ -125,7 +117,7 @@ pub(crate) async fn handle_key_exchange<'a, Pal: SpdmPal, const N: usize>(
         Ok(id) => id,
         Err(e) => {
             let err = SpdmError::from(e);
-            drop(dhe_secret);
+            drop(shared_secret);
             return Err(err);
         }
     };
@@ -143,7 +135,7 @@ pub(crate) async fn handle_key_exchange<'a, Pal: SpdmPal, const N: usize>(
         meas_hash_type,
         session_id,
         rsp_session_id,
-        dhe_secret,
+        shared_secret,
         &our_exchange_data,
         &selected_version,
     )
@@ -154,6 +146,57 @@ pub(crate) async fn handle_key_exchange<'a, Pal: SpdmPal, const N: usize>(
     }
 
     result
+}
+
+/// Generate key exchange data and compute shared secret.
+///
+/// # Arguments
+/// * `state` - Connection state containing the negotiated key exchange selection
+/// * `pal` - Platform abstraction layer for cryptographic operations
+/// * `io` - I/O context for memory allocation
+/// * `peer_exchange_data` - The peer's public key exchange data from the request
+///
+/// # Returns
+/// A tuple containing:
+/// - Our public exchange data to send to the peer
+/// - The computed shared secret
+///
+/// # Errors
+/// Returns `SPDM_UNEXPECTED_REQUEST` if no key exchange algorithm was negotiated.
+/// Returns `SPDM_UNSPECIFIED` if cryptographic operations fail.
+async fn generate_key_exchange_secret<'a, Pal: SpdmPal>(
+    state: &ConnState<'_, Pal>,
+    pal: &'a Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    peer_exchange_data: &[u8],
+) -> SpdmResult<(PalBytes<'a, Pal>, <Pal as SpdmPalSessionCrypto>::Key)> {
+    match state.negotiated_key_ex_sel {
+        KeyExSel::None => Err(SPDM_UNEXPECTED_REQUEST),
+        KeyExSel::Dhe => {
+            // ECDH P-384 key generation
+            let mut ecdh_context = pal.alloc_bytes(io, ECDH_P384_ENCRYPTED_CONTEXT_SIZE)?;
+            let mut our_exchange_data = pal.alloc_bytes(io, ECDH_P384_EXCHANGE_DATA_SIZE)?;
+            pal.ecdh_generate(io, &mut ecdh_context, &mut our_exchange_data)
+                .await
+                .map_err(|_| SPDM_UNSPECIFIED)?;
+
+            // Complete ECDH with peer's exchange data → DHE shared secret.
+            let dhe_secret = pal
+                .ecdh_finish(io, &ecdh_context, peer_exchange_data)
+                .await
+                .map_err(|_| SPDM_UNSPECIFIED)?;
+
+            Ok((our_exchange_data, dhe_secret))
+        }
+        KeyExSel::Kem => {
+            let mut ciphertext = pal.alloc_bytes(io, MLKEM1024_CIPHERTEXT_SIZE)?;
+            let kem_secret = pal
+                .mlkem_encapsulate(io, peer_exchange_data, &mut ciphertext)
+                .await
+                .map_err(|_| SPDM_UNSPECIFIED)?;
+            Ok((ciphertext, kem_secret))
+        }
+    }
 }
 
 /// Inner implementation that can fail; caller handles session cleanup.
@@ -170,7 +213,7 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
     meas_hash_type: u8,
     session_id: u32,
     rsp_session_id: u16,
-    dhe_secret: <Pal as SpdmPalSessionCrypto>::Key,
+    shared_secret: <Pal as SpdmPalSessionCrypto>::Key,
     our_exchange_data: &[u8],
     selected_version: &[u8; 2],
 ) -> SpdmResult<PalBytes<'a, Pal>> {
@@ -210,7 +253,7 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
         verify_data.try_into().map_err(|_| SPDM_UNSPECIFIED)?;
     debug_assert!(rest.is_empty());
 
-    session.key_schedule.set_dhe_secret(dhe_secret);
+    session.key_schedule.set_shared_secret(shared_secret);
 
     // ── Init session TH by forking the VCA running hash ────────────
     // The VCA hash state already contains the raw VCA message bytes.
