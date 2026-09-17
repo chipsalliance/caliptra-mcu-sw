@@ -854,7 +854,12 @@ mod test {
 
         let primary_flash_image = if params.flash_boot || params.seed_primary_flash_image {
             let mut flash = flash_image.unwrap_or_else(|| {
-                build_flash_image_bytes(Some(&caliptra_fw), Some(&soc_manifest), Some(&mcu_runtime))
+                build_flash_image_bytes(
+                    Some(&caliptra_fw),
+                    Some(&soc_manifest),
+                    Some(&mcu_runtime),
+                    None,
+                )
             });
             if params.seed_primary_flash_image && !params.flash_boot {
                 write_valid_partition_table_for_runtime_flash_load(&mut flash);
@@ -1583,7 +1588,12 @@ mod test {
             )
             .unwrap();
             let mcu_runtime = std::fs::read(&test_runtime).unwrap();
-            build_flash_image_bytes(Some(&caliptra_fw), Some(&soc_manifest), Some(&mcu_runtime))
+            build_flash_image_bytes(
+                Some(&caliptra_fw),
+                Some(&soc_manifest),
+                Some(&mcu_runtime),
+                None,
+            )
         };
         write_valid_partition_table_for_runtime_flash_load(&mut flash);
 
