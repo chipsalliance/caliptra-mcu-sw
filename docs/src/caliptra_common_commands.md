@@ -46,6 +46,7 @@ The following subcommands are assigned to the SPDM VDM IANA authorization-gated 
 | Fuse Revoke Vendor Public Key  | SPDM VDM IANA, MCI Mailbox | Revoke vendor public key.                          |
 | Fuse Revoke Vendor PK Hash     | SPDM VDM IANA, MCI Mailbox | Revoke vendor public key hash.                     |
 | Fuse Lock Partition            | SPDM VDM IANA, MCI Mailbox | Lock fuse partition.                               |
+| Dot Enable                     | SPDM VDM IANA, MCI Mailbox | Program the one-time DOT initialization gate.      |
 | Dot Lock                       | SPDM VDM IANA, MCI Mailbox | Lock the DOT after ownership validation.          |
 | Dot Disable                    | SPDM VDM IANA, MCI Mailbox | Enter ODD state with no DOT-supplied CAK.          |
 | Dot Rotate                     | SPDM VDM IANA, MCI Mailbox | Replace DOT key digests and advance the epoch.     |
@@ -129,7 +130,8 @@ This table defines the bit assignment for every allocated command code. A respon
 | 11         | `GetDotBackupBlob`           | Implemented |
 | 12         | `OcpLockRotateHek`           | Implemented |
 | 13         | `OcpLockSetPermaHek`         | Implemented |
-| 14:31      | Reserved                     | —           |
+| 14         | `DotEnable`                  | Implemented |
+| 15:31      | Reserved                     | —           |
 
 The authorized-subcommand assignments are stable capability indexes; they are not transport command IDs. A responder sets a bit only when that subcommand is implemented under `AuthorizedCommand`. Authorization, lifecycle, or policy restrictions do not clear an implementation capability bit; execution can still return `AccessDenied`, `PolicyViolation`, or `InvalidState`.
 
@@ -474,13 +476,14 @@ Locks a fuse partition.
 
 The device-ownership-transfer family is carried under the top-level `DeviceOwnershipTransfer` command (`0x11`). This family uses the DOT FourCC namespace and is split between authorization-gated and native commands:
 
-- Authorization-gated: `MDLK` (`DotLock`), `MDDS` (`DotDisable`), `MDRT` (`DotRotate`), `MDBB` (`GetDotBackupBlob`)
+- Authorization-gated: `MDEN` (`DotEnable`), `MDLK` (`DotLock`), `MDDS` (`DotDisable`), `MDRT` (`DotRotate`), `MDBB` (`GetDotBackupBlob`)
 - Native: `MDUC` (`DotUnlockChallenge`), `MDUL` (`DotUnlock`), `MDST` (`DotStatus`), `MDRC` (`DotRecovery`), `DOTW` (`DotOverrideChallenge`), `DOTX` (`DotOverride`)
 
 The authorization-gated DOT commands are sent via the `AuthorizedCommand` wrapper and are rejected if delivered directly under `0x11`. The native DOT commands perform challenge-and-signature verification against the current ownership blob or the recovery-key hash, as appropriate for the command.
 
 | FourCC | Command | Path | Description |
 | ------ | ------- | ---- | ----------- |
+| `MDEN` (`0x4D44_454E`) | `DotEnable` | Authorized | Program the redundant `dot_initialized` fuse bits when DOT and its epoch counter are pristine. |
 | `MDLK` | `DotLock` | Authorized | Lock DOT with a nonzero CAK digest and LAK digest. |
 | `MDDS` | `DotDisable` | Authorized | Enter ODD state with a zero CAK digest and a nonzero LAK digest. |
 | `MDRT` | `DotRotate` | Authorized | Replace the CAK and LAK digests and advance the DOT epoch by two. |

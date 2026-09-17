@@ -23,8 +23,9 @@ use super::delete::DeleteCmd;
 use super::device_info::{GetDeviceCapabilitiesCmd, GetFirmwareVersionCmd};
 use super::device_log::{DebugClearLogCmd, DebugGetLogCmd};
 use super::device_ownership_transfer::{
-    DotDisableCmd, DotLockCmd, DotOverrideChallengeCmd, DotOverrideCmd, DotRecoveryCmd,
-    DotRotateCmd, DotStatusCmd, DotUnlockChallengeCmd, DotUnlockCmd, GetDotBackupBlobCmd,
+    DotDisableCmd, DotEnableCmd, DotLockCmd, DotOverrideChallengeCmd, DotOverrideCmd,
+    DotRecoveryCmd, DotRotateCmd, DotStatusCmd, DotUnlockChallengeCmd, DotUnlockCmd,
+    GetDotBackupBlobCmd,
 };
 use super::fuse::{
     FeProgCmd, FuseIncreaseCaliptraMinSvnCmd, FuseLockPartitionCmd, FuseRevokeVendorPkHashCmd,
@@ -103,7 +104,7 @@ pub fn get_command_handler(command_id: u32) -> Option<CommandHandlerFn> {
         0x8016 => Some(process_command_with_metadata::<FuseLockPartitionCmd>),
         0x8018 => Some(process_command_with_metadata::<OcpLockRotateHekCmd>),
         0x8019 => Some(process_command_with_metadata::<OcpLockSetPermaHekCmd>),
-        // Device Ownership Transfer Commands (0x8020-0x8029)
+        // Device Ownership Transfer Commands (0x8020-0x802A)
         0x8020 => Some(process_command_with_metadata::<DotLockCmd>),
         0x8021 => Some(process_command_with_metadata::<DotDisableCmd>),
         0x8022 => Some(process_command_with_metadata::<DotUnlockChallengeCmd>),
@@ -114,6 +115,7 @@ pub fn get_command_handler(command_id: u32) -> Option<CommandHandlerFn> {
         0x8027 => Some(process_command_with_metadata::<DotRecoveryCmd>),
         0x8028 => Some(process_command_with_metadata::<DotOverrideChallengeCmd>),
         0x8029 => Some(process_command_with_metadata::<DotOverrideCmd>),
+        0x802A => Some(process_command_with_metadata::<DotEnableCmd>),
         _ => None,
     }
 }
@@ -180,7 +182,7 @@ pub fn get_external_cmd_code(command_id: u32) -> Option<u32> {
         0x8018 => Some(0x4F4C_5248), // OcpLockRotateHek -> MC_OCP_LOCK_ROTATE_HEK ("OLRH")
         0x8019 => Some(0x4F4C_5350), // OcpLockSetPermaHek -> MC_OCP_LOCK_SET_PERMA_HEK ("OLSP")
         // Device Ownership Transfer Commands share the MCI DOT family ID.
-        0x8020..=0x8029 => Some(0x0000_0011),
+        0x8020..=0x802A => Some(0x0000_0011),
         _ => None,
     }
 }
@@ -194,6 +196,7 @@ mod tests {
     #[test]
     fn all_dot_commands_are_dispatched_to_the_family_command() {
         let commands = [
+            CaliptraCommandId::DotEnable,
             CaliptraCommandId::DotLock,
             CaliptraCommandId::DotDisable,
             CaliptraCommandId::DotUnlockChallenge,

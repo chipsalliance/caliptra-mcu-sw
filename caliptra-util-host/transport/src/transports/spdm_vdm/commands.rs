@@ -143,6 +143,18 @@ fn write_dot_transition_response(
 // DeviceOwnershipTransfer (CaliptraVdmCommand::DeviceOwnershipTransfer)
 // ---------------------------------------------------------------------------
 
+pub fn handle_dot_enable(
+    payload: &[u8],
+    driver: &mut dyn SpdmVdmDriver,
+    response_buffer: &mut [u8],
+) -> Result<usize, TransportError> {
+    let request =
+        DotEnableRequest::from_bytes(payload).map_err(|_| TransportError::InvalidMessage)?;
+    let data =
+        send_authorized_dot_request(MC_DOT_ENABLE_CANONICAL_CMD_ID, request.as_bytes(), driver)?;
+    write_dot_transition_response(&data, response_buffer)
+}
+
 pub fn handle_dot_lock(
     payload: &[u8],
     driver: &mut dyn SpdmVdmDriver,
@@ -1186,7 +1198,12 @@ mod tests {
 
     #[test]
     fn authorized_dot_commands_preserve_family_subcommand_and_payload() {
-        let cases: [(u32, Vec<u8>, VdmCommandHandlerFn); 3] = [
+        let cases: [(u32, Vec<u8>, VdmCommandHandlerFn); 4] = [
+            (
+                MC_DOT_ENABLE_CANONICAL_CMD_ID,
+                DotEnableRequest::default().as_bytes().to_vec(),
+                handle_dot_enable,
+            ),
             (
                 MC_DOT_LOCK_CANONICAL_CMD_ID,
                 DotLockRequest::default().as_bytes().to_vec(),
@@ -1281,6 +1298,7 @@ mod tests {
         const NATIVE_ENVELOPE: usize = 2 + 4;
 
         let largest_request = [
+            core::mem::size_of::<DotEnableRequest>() + AUTHORIZED_ENVELOPE,
             core::mem::size_of::<DotLockRequest>() + AUTHORIZED_ENVELOPE,
             core::mem::size_of::<DotDisableRequest>() + AUTHORIZED_ENVELOPE,
             core::mem::size_of::<DotRotateRequest>() + AUTHORIZED_ENVELOPE,

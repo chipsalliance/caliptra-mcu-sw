@@ -11,6 +11,7 @@ use caliptra_mcu_spdm_traits::SpdmPalAlloc;
 use zerocopy::{FromBytes, IntoBytes};
 
 pub const DOT_LOCK_CMD_ID: u32 = CommandId::MC_DOT_LOCK.0;
+pub const DOT_ENABLE_CMD_ID: u32 = CommandId::MC_DOT_ENABLE.0;
 pub const DOT_DISABLE_CMD_ID: u32 = CommandId::MC_DOT_DISABLE.0;
 pub const DOT_ROTATE_CMD_ID: u32 = CommandId::MC_DOT_ROTATE.0;
 pub const DOT_RECOVERY_CMD_ID: u32 = CommandId::MC_DOT_RECOVERY.0;
@@ -41,7 +42,11 @@ where
     // 0x11. Rejecting them on this native 0x11 path prevents authorization
     // bypass while keeping status, recovery, unlock, and override native.
     match subcommand {
-        DOT_LOCK_CMD_ID | DOT_DISABLE_CMD_ID | DOT_ROTATE_CMD_ID | GET_DOT_BACKUP_BLOB_CMD_ID => {
+        DOT_ENABLE_CMD_ID
+        | DOT_LOCK_CMD_ID
+        | DOT_DISABLE_CMD_ID
+        | DOT_ROTATE_CMD_ID
+        | GET_DOT_BACKUP_BLOB_CMD_ID => {
             CaliptraVdmCmdResult::Error(CaliptraCompletionCode::AccessDenied)
         }
         DOT_UNLOCK_CHALLENGE_CMD_ID => {

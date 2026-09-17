@@ -150,7 +150,8 @@ pub fn command_id_to_vdm(command_id: u32) -> Option<CaliptraVdmCommand> {
         x if x == CaliptraCommandId::GetAuthCmdChallenge as u32 => {
             Some(CaliptraVdmCommand::AuthorizedCommand)
         }
-        x if x == CaliptraCommandId::DotLock as u32
+        x if x == CaliptraCommandId::DotEnable as u32
+            || x == CaliptraCommandId::DotLock as u32
             || x == CaliptraCommandId::DotDisable as u32
             || x == CaliptraCommandId::DotRotate as u32
             || x == CaliptraCommandId::GetDotBackupBlob as u32 =>
@@ -217,6 +218,7 @@ mod tests {
             Some(CaliptraVdmCommand::RequestDebugUnlock)
         );
         for id in [
+            CaliptraCommandId::DotEnable,
             CaliptraCommandId::DotLock,
             CaliptraCommandId::DotDisable,
             CaliptraCommandId::DotRotate,
