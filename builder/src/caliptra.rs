@@ -290,10 +290,7 @@ impl CaliptraBuilder {
     fn validate_component_svns(&self) -> Result<()> {
         let images = self.soc_images.as_deref().unwrap_or(&[]);
         let Some(config) = &self.component_svn_validation else {
-            if images.is_empty() {
-                return Ok(());
-            }
-            bail!("component SVN validation policy is required for SoC images");
+            return Ok(());
         };
         crate::component_svn_validation::validate_component_svns(images, config)?;
         Ok(())
@@ -1294,8 +1291,8 @@ mod tests {
     }
 
     #[test]
-    fn signing_rejects_soc_images_without_component_svn_policy() {
-        let mut builder = CaliptraBuilder::new(&CaliptraBuildArgs {
+    fn soc_images_without_component_config_skip_svn_validation() {
+        let builder = CaliptraBuilder::new(&CaliptraBuildArgs {
             mcu_firmware: Some("unused-runtime.bin".into()),
             soc_images: Some(vec![ImageCfg {
                 component_id: 0x1000,
@@ -1304,11 +1301,7 @@ mod tests {
             ..Default::default()
         });
 
-        let error = builder
-            .get_unsigned_auth_manifest(None, None)
-            .unwrap_err()
-            .to_string();
-        assert!(error.contains("validation policy is required"));
+        builder.validate_component_svns().unwrap();
     }
 
     #[test]

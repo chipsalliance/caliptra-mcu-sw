@@ -1,6 +1,6 @@
 # Licensed under the Apache-2.0 license
 
-vendor = "Vender A"
+vendor = "Vendor A"
 model = "Model-XXXX"
 soc_manifest_svn = 5
 

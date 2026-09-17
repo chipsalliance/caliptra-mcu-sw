@@ -202,15 +202,12 @@ enum Commands {
         #[arg(long = "soc_image", value_name = "SOC_IMAGE", num_args = 1.., required = false)]
         soc_images: Option<Vec<ImageCfg>>,
 
-        /// JSON component SVN entries and explicit policy exceptions
-        #[arg(long = "component-svn-config", value_name = "COMPONENT_SVN_CONFIG")]
-        component_svn_config: Option<String>,
-
         /// TOML source of truth for component metadata
         #[arg(
             long = "component-config",
             visible_alias = "component_config",
-            value_name = "COMPONENT_CONFIG"
+            value_name = "COMPONENT_CONFIG",
+            conflicts_with_all = ["soc_images", "mcu_cfgs", "vendor", "model"]
         )]
         component_config: Option<String>,
 
@@ -655,7 +652,6 @@ fn main() {
             runtime_features,
             separate_runtimes,
             soc_images,
-            component_svn_config,
             component_config,
             mcu_cfgs,
             caliptra_firmware_network_filename,
@@ -666,12 +662,11 @@ fn main() {
             profile,
             shard_index,
             total_shards,
-        } => auth_manifest::load_component_svn_config(component_svn_config.as_deref()).and_then(
-            |component_svn_validation| {
-                let component_config = component_config
-                    .as_deref()
-                    .map(caliptra_mcu_builder::ComponentConfig::from_file)
-                    .transpose()?;
+        } => component_config
+            .as_deref()
+            .map(caliptra_mcu_builder::ComponentConfig::from_file)
+            .transpose()
+            .and_then(|component_config| {
                 caliptra_mcu_builder::all_build(caliptra_mcu_builder::AllBuildArgs {
                     output: output.as_deref(),
                     platform: platform.as_deref(),
@@ -679,7 +674,6 @@ fn main() {
                     runtime_features: runtime_features.as_deref(),
                     separate_runtimes: *separate_runtimes,
                     soc_images: soc_images.clone(),
-                    component_svn_validation,
                     component_config,
                     mcu_cfgs: mcu_cfgs.clone(),
                     caliptra_firmware_network_filename: caliptra_firmware_network_filename
@@ -692,8 +686,7 @@ fn main() {
                     shard_index: *shard_index,
                     total_shards: *total_shards,
                 })
-            },
-        ),
+            }),
         Commands::EmulatorBuild { output } => {
             caliptra_mcu_builder::emulator_build(caliptra_mcu_builder::EmulatorBuildArgs {
                 output: output.as_deref(),
@@ -707,75 +700,78 @@ fn main() {
             bare_metal,
             component_config,
             profile,
-        } => if let Some(bare_metal_pkg) = bare_metal {
-            caliptra_mcu_builder::bare_metal_build(platform.as_deref(), bare_metal_pkg).map(|_| ())
-        } else {
-            (|| -> anyhow::Result<()> {
-            // The opt-in `release` cargo profile auto-enables the `release` cargo
-            // feature, which strips the kernel `debug!()` macro, romtime
-            // `println!`, DebugWriter, Console, LowLevelDebug, and
-            // ProcessConsole.  The bundler also uses the default 512 KB SRAM
-            // platform manifest.  The default `devel` profile keeps all of
-            // those for live-debugging-friendly builds with the 1 MB SRAM
-            // layout.
-            let mut features: Vec<&str> = features.iter().map(|x| x.as_str()).collect();
-            if profile == "release" && !features.contains(&"release") {
-                features.push("release");
-            }
-            let features_str = features.join(",");
-            // When building with the `release` profile, suppress the crate's
-            // default features (currently `all-features`) so only the
-            // explicitly requested features (plus the auto-added `release`
-            // feature above) are compiled in.  Without this, `all-features`
-            // pulls in every service (SPDM, streaming-boot, …) and the binary
-            // overflows the constrained 512 KB FPGA SRAM budget.
-            let no_default_features = profile == "release";
-            let resolved_component_config = component_config
-                .as_deref()
-                .map(caliptra_mcu_builder::ComponentConfig::from_file)
-                .transpose()?
-                .map(|config| {
-                    config.resolve_for_features(
-                        features.iter().copied(),
-                        platform.as_deref() == Some("fpga"),
+        } => {
+            if let Some(bare_metal_pkg) = bare_metal {
+                caliptra_mcu_builder::bare_metal_build(platform.as_deref(), bare_metal_pkg)
+                    .map(|_| ())
+            } else {
+                (|| -> anyhow::Result<()> {
+                    // The opt-in `release` cargo profile auto-enables the `release` cargo
+                    // feature, which strips the kernel `debug!()` macro, romtime
+                    // `println!`, DebugWriter, Console, LowLevelDebug, and
+                    // ProcessConsole.  The bundler also uses the default 512 KB SRAM
+                    // platform manifest.  The default `devel` profile keeps all of
+                    // those for live-debugging-friendly builds with the 1 MB SRAM
+                    // layout.
+                    let mut features: Vec<&str> = features.iter().map(|x| x.as_str()).collect();
+                    if profile == "release" && !features.contains(&"release") {
+                        features.push("release");
+                    }
+                    let features_str = features.join(",");
+                    // When building with the `release` profile, suppress the crate's
+                    // default features (currently `all-features`) so only the
+                    // explicitly requested features (plus the auto-added `release`
+                    // feature above) are compiled in.  Without this, `all-features`
+                    // pulls in every service (SPDM, streaming-boot, …) and the binary
+                    // overflows the constrained 512 KB FPGA SRAM budget.
+                    let no_default_features = profile == "release";
+                    let resolved_component_config = component_config
+                        .as_deref()
+                        .map(caliptra_mcu_builder::ComponentConfig::from_file)
+                        .transpose()?
+                        .map(|config| {
+                            config.resolve_for_features(
+                                features.iter().copied(),
+                                platform.as_deref() == Some("fpga"),
+                            )
+                        })
+                        .transpose()?;
+                    if let Some(config) = &resolved_component_config {
+                        config.write_generated_configs(
+                            &caliptra_mcu_builder::target_dir(),
+                            "cargo xtask runtime-build --component-config",
+                        )?;
+                    }
+                    caliptra_mcu_builder::runtime_build_with_apps(
+                        &caliptra_mcu_builder::CaliptraBuildArgs {
+                            features: Some(&features_str),
+                            output_name: output.clone(),
+                            platform: platform.as_deref(),
+                            profile: Some(profile.as_str()),
+                            no_default_features,
+                            soc_images: resolved_component_config
+                                .as_ref()
+                                .map(|config| config.soc_images.clone()),
+                            component_svn_validation: resolved_component_config
+                                .as_ref()
+                                .map(|config| config.component_svn_validation.clone()),
+                            component_svn_manifest: resolved_component_config
+                                .as_ref()
+                                .map(|config| config.component_svn_manifest_bytes())
+                                .transpose()?,
+                            vendor: resolved_component_config
+                                .as_ref()
+                                .map(|config| config.vendor.clone()),
+                            model: resolved_component_config
+                                .as_ref()
+                                .map(|config| config.model.clone()),
+                            ..Default::default()
+                        },
                     )
-                })
-                .transpose()?;
-            if let Some(config) = &resolved_component_config {
-                config.write_generated_configs(
-                    &caliptra_mcu_builder::target_dir(),
-                    "cargo xtask runtime-build --component-config",
-                )?;
+                    .map(|_| ())
+                })()
             }
-            caliptra_mcu_builder::runtime_build_with_apps(
-                &caliptra_mcu_builder::CaliptraBuildArgs {
-                    features: Some(&features_str),
-                    output_name: output.clone(),
-                    platform: platform.as_deref(),
-                    profile: Some(profile.as_str()),
-                    no_default_features,
-                    soc_images: resolved_component_config
-                        .as_ref()
-                        .map(|config| config.soc_images.clone()),
-                    component_svn_validation: resolved_component_config
-                        .as_ref()
-                        .map(|config| config.component_svn_validation.clone()),
-                    component_svn_manifest: resolved_component_config
-                        .as_ref()
-                        .map(|config| config.component_svn_manifest_bytes())
-                        .transpose()?,
-                    vendor: resolved_component_config
-                        .as_ref()
-                        .map(|config| config.vendor.clone()),
-                    model: resolved_component_config
-                        .as_ref()
-                        .map(|config| config.model.clone()),
-                    ..Default::default()
-                },
-            )
-            .map(|_| ())
-            })()
-        },
+        }
         Commands::Rom { trace } => rom::rom_run(*trace),
         Commands::RomBuild { platform, features } => {
             caliptra_mcu_builder::rom_build(&CaliptraBuildArgs {
@@ -896,9 +892,9 @@ fn main() {
                 signing_request,
                 key_paths,
                 svn,
-                component_svn_config,
                 component_config,
                 feature,
+                platform,
             } => auth_manifest::create(auth_manifest::CreateOptions {
                 soc_images: images,
                 mcu_image: mcu_image.as_ref(),
@@ -906,15 +902,16 @@ fn main() {
                 signing_request_path: signing_request.as_deref(),
                 key_paths,
                 svn: *svn,
-                component_svn_config_path: component_svn_config.as_deref(),
                 component_config_path: component_config.as_deref(),
                 feature: feature.as_deref(),
+                platform,
             }),
             AuthManifestCommands::Verify {
                 manifest,
                 component_config,
                 feature,
-            } => auth_manifest::verify(manifest, component_config, feature.as_deref()),
+                platform,
+            } => auth_manifest::verify(manifest, component_config, feature.as_deref(), platform),
             AuthManifestCommands::AttachSignatures {
                 unsigned_manifest,
                 signatures,

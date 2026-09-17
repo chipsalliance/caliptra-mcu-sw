@@ -239,11 +239,6 @@ impl<'a> ActionHandler<'a> for Subsystem {
         } else {
             "all-fw.zip".to_string()
         };
-        let component_svn_validation = if component_config.is_some() {
-            None
-        } else {
-            crate::auth_manifest::load_component_svn_config(args.component_svn_config.as_deref())?
-        };
         let args = AllBuildArgs {
             output: Some(&output_name),
             platform: Some("fpga"),
@@ -253,7 +248,6 @@ impl<'a> ActionHandler<'a> for Subsystem {
             separate_runtimes: args.separate_runtimes,
             shard_index: args.shard_index,
             total_shards: args.total_shards,
-            component_svn_validation,
             component_config,
             ..Default::default()
         };
