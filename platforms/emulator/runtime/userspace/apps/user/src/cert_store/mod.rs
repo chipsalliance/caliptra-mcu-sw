@@ -60,13 +60,17 @@ const OTP_IDEVID_MLDSA_PARTITION: u32 = 0x02;
 /// Headroom for the mailbox response and bitmap allocator bookkeeping.
 const BOOT_SCRATCH_HEADROOM: usize = 1024;
 
-/// Scratch that [`boot_init`] needs for the ML-DSA certificate import. Boot
+/// Scratch that [`init`] needs for the ML-DSA certificate import. Boot
 /// borrows it from an idle task pool.
 pub(crate) const BOOT_SCRATCH_SIZE: usize =
     POPULATE_IDEV_MLDSA87_MAX_CERT_SIZE + BOOT_SCRATCH_HEADROOM;
 
 #[cfg(feature = "spdm")]
-static CERT_STORE: SharedCertStore = SharedCertStore::new();
+const PROVISIONING_POLICY: caliptra_mcu_cert_store::CertificateProvisioningPolicy =
+    caliptra_mcu_cert_store::CertificateProvisioningPolicy::DEFAULT;
+
+#[cfg(feature = "spdm")]
+static CERT_STORE: SharedCertStore = SharedCertStore::with_policy(PROVISIONING_POLICY);
 
 /// Each managed `(slot, algorithm)` gets its own flash region so that
 /// installing one algorithm's chain cannot erase the other's.
@@ -108,7 +112,7 @@ const MANAGED_SLOT_REGION_SIZE: usize = {
 /// contend for the mailbox, then configure SPDM endorsements when enabled.
 ///
 /// `scratch` must provide at least [`BOOT_SCRATCH_SIZE`] bytes.
-pub(crate) async fn boot_init(scratch: &BitmapAllocator) -> McuResult<()> {
+pub(crate) async fn init(scratch: &BitmapAllocator) -> McuResult<()> {
     populate_idev(scratch).await?;
     #[cfg(feature = "spdm")]
     setup_endorsements(&CERT_STORE, scratch).await?;
@@ -160,7 +164,7 @@ async fn setup_endorsements<A: ScratchAlloc>(store: &SharedCertStore, alloc: &A)
     // Slots 1-2 (Owner/Tenant): Managed endorsements, initially empty or
     // loaded from the cert-store flash partition. Each (slot, algorithm)
     // gets its own contiguous region. This remains test-only until a
-    // production authorization/key-binding policy exists.
+    // production requester authorization exists.
     #[cfg(feature = "test-mctp-spdm-set-certificate")]
     {
         for (region_index, &(store_slot, spdm_slot, algo)) in

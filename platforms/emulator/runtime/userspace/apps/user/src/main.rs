@@ -148,7 +148,7 @@ pub(crate) async fn async_main() {
         // SAFETY: the responder is not running, and ownership is moved into
         // `spawn_spdm_tasks` after certificate-store initialization.
         let scratch = unsafe { spdm::borrow_boot_scratch() };
-        match cert_store::boot_init(&scratch).await {
+        match cert_store::init(&scratch).await {
             Ok(()) => {
                 spdm::spawn_spdm_tasks(&EXECUTOR.get().spawner(), scratch);
             }

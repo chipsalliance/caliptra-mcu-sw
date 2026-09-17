@@ -26,6 +26,16 @@ provide production authorization. Production authorization and managed
 backing contracts are deferred. MCI certificate commands and configurable
 Tenant SlotIDs are planned.
 
+SPDM `SET_CERTIFICATE` passes `key_pair_id = 0` when `KeyPairID` is absent
+(SPDM 1.2, or SPDM 1.3+ with `MULTI_KEY_CONN_RSP = 0`) and passes the request's
+`KeyPairID` when `MULTI_KEY_CONN_RSP = 1`; MCI mailbox commands must always
+provide a nonzero `key_pair_id`. When a role has a configured key anchor point,
+`key_pair_id = 0` resolves to it and any nonzero `key_pair_id` must match it;
+when no key anchor point is configured, a nonzero `key_pair_id` for a supported
+key anchor point is required (`key_pair_id = 0` is rejected). In the default
+configuration, Owner is configured with the LDevID key anchor point
+(`key_pair_id = 1`) and Tenant has no fixed key anchor point.
+
 ## Trust bootstrap
 
 Before provisioning a new certificate slot, the requester SHALL authenticate
@@ -195,14 +205,14 @@ The certificate provisioning path validates that:
 - The requester is authorized for that endorsement role.
 - The selected device key, certificate algorithm, and certificate model are
   permitted for that endorsement role.
-- The endorsement is a well-formed DER certificate sequence.
-- The final endorsement certificate contains the public key of the selected
-  Caliptra device key.
 - The endorsement does not exceed the configured maximum stored endorsement
   size.
 
 The platform profile uses the SPDM AliasCert certificate model for managed
 Owner and Tenant endorsements.
+
+The integrator is responsible for validating certificate contents, required
+extensions, and public-key binding to the selected Caliptra device key.
 
 After provisioning, the operator should validate the complete chain against
 the expected PKI Root CA and perform an attestation with the provisioned
