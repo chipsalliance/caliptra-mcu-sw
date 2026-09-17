@@ -2,9 +2,7 @@
 
 use anyhow::{Context, Result};
 use caliptra_auth_man_types::AuthorizationManifest;
-use caliptra_mcu_builder::{
-    CaliptraBuilder, ComponentConfig, ComponentSvnValidationConfig, ImageCfg,
-};
+use caliptra_mcu_builder::{CaliptraBuilder, ComponentConfig, ImageCfg};
 use clap::{Args, Subcommand};
 use hex::ToHex;
 use std::path::{Path, PathBuf};
@@ -37,7 +35,6 @@ pub enum AuthManifestCommands {
     /// Create an Authentication Manifest
     Create {
         /// List of soc images with format: <path>,<load_addr>,<staging_addr>,<image_id>,<exec_bit>,<component_id>,<feature>[,<is_tcb>[,<is_ak_target>[,<network_filename>]]]
-        /// Example: --soc_image image1.bin,0x80000000,0x60000000,2,2
         #[arg(long = "soc_image", value_name = "SOC_IMAGE", num_args = 1..)]
         images: Vec<ImageCfg>,
 
@@ -61,21 +58,22 @@ pub enum AuthManifestCommands {
         #[arg(long = "svn", value_name = "SVN")]
         svn: Option<u32>,
 
-        /// JSON component SVN entries, fuse mapping, and explicit exceptions
-        #[arg(long = "component-svn-config", value_name = "COMPONENT_SVN_CONFIG")]
-        component_svn_config: Option<String>,
-
         /// TOML source of truth for component metadata
         #[arg(
             long = "component-config",
             visible_alias = "component_config",
-            value_name = "COMPONENT_CONFIG"
+            value_name = "COMPONENT_CONFIG",
+            conflicts_with_all = ["images", "mcu_image", "svn"]
         )]
         component_config: Option<String>,
 
         /// Feature-specific component config override to apply
         #[arg(long, value_name = "FEATURE")]
         feature: Option<String>,
+
+        /// Platform whose default component metadata should be used
+        #[arg(long, default_value = "emulator", value_parser = ["emulator", "fpga"])]
+        platform: String,
     },
     /// Verify an existing SoC authorization manifest against component metadata
     Verify {
@@ -92,6 +90,10 @@ pub enum AuthManifestCommands {
 
         #[arg(long, value_name = "FEATURE")]
         feature: Option<String>,
+
+        /// Platform whose default component metadata should be used
+        #[arg(long, default_value = "emulator", value_parser = ["emulator", "fpga"])]
+        platform: String,
     },
     /// Attach signatures to an unsigned auth manifest file and verify all signatures
     AttachSignatures {
@@ -127,18 +129,6 @@ pub enum AuthManifestCommands {
     },
 }
 
-pub(crate) fn load_component_svn_config(
-    path: Option<&str>,
-) -> Result<Option<ComponentSvnValidationConfig>> {
-    path.map(|path| {
-        let data = std::fs::read_to_string(path)
-            .with_context(|| format!("Failed to read component SVN config {path}"))?;
-        serde_json::from_str::<ComponentSvnValidationConfig>(&data)
-            .with_context(|| format!("Failed to parse component SVN config {path}"))
-    })
-    .transpose()
-}
-
 /// Creates a signed or unsigned authorization manifest from SoC and MCU image configurations.
 pub struct CreateOptions<'a> {
     pub soc_images: &'a [ImageCfg],
@@ -147,9 +137,9 @@ pub struct CreateOptions<'a> {
     pub signing_request_path: Option<&'a str>,
     pub key_paths: &'a AuthManifestKeyPaths,
     pub svn: Option<u32>,
-    pub component_svn_config_path: Option<&'a str>,
     pub component_config_path: Option<&'a str>,
     pub feature: Option<&'a str>,
+    pub platform: &'a str,
 }
 
 pub fn create(options: CreateOptions<'_>) -> Result<()> {
@@ -160,20 +150,33 @@ pub fn create(options: CreateOptions<'_>) -> Result<()> {
         signing_request_path,
         key_paths,
         svn,
-        component_svn_config_path,
         component_config_path,
         feature,
+        platform,
     } = options;
-    let mut resolved = component_config_path
-        .map(ComponentConfig::from_file)
-        .transpose()?
-        .map(|config| config.resolve(feature))
-        .transpose()?;
-    if let (Some(config), Some(cli_mcu_image)) = (&mut resolved, mcu_image) {
-        if let Some(config_mcu_image) = &mut config.mcu_image {
-            config_mcu_image.path = cli_mcu_image.path.clone();
+    if component_config_path.is_some() {
+        let mut conflicts = Vec::new();
+        if !soc_images.is_empty() {
+            conflicts.push("soc_images");
+        }
+        if mcu_image.is_some() {
+            conflicts.push("mcu_image");
+        }
+        if svn.is_some() {
+            conflicts.push("svn");
+        }
+        if !conflicts.is_empty() {
+            anyhow::bail!(
+                "component_config conflicts with legacy metadata inputs: {}",
+                conflicts.join(", ")
+            );
         }
     }
+    let resolved = component_config_path
+        .map(ComponentConfig::from_file)
+        .transpose()?
+        .map(|config| config.resolve_for_platform(feature, platform == "fpga"))
+        .transpose()?;
     if let Some(config) = &resolved {
         config.write_generated_configs(
             &caliptra_mcu_builder::target_dir(),
@@ -190,18 +193,25 @@ pub fn create(options: CreateOptions<'_>) -> Result<()> {
         .as_ref()
         .map(|config| config.soc_images.as_slice())
         .unwrap_or(soc_images);
-    let component_svn_validation = if let Some(config) = &resolved {
-        Some(config.component_svn_validation.clone())
-    } else {
-        load_component_svn_config(component_svn_config_path)?
-    };
+    let component_svn_validation = resolved
+        .as_ref()
+        .map(|config| config.component_svn_validation.clone());
     let soc_manifest_svn = resolved
         .as_ref()
         .map(|config| config.soc_manifest_svn)
         .or(svn);
+    let mcu_firmware = if let Some(config) = &resolved {
+        materialize_component_runtime(
+            &mcu_image.path,
+            &config.component_svn_manifest_bytes()?,
+            &caliptra_mcu_builder::target_dir().join("generated"),
+        )?
+    } else {
+        mcu_image.path.clone()
+    };
 
     let mut builder = CaliptraBuilder::new(&caliptra_mcu_builder::CaliptraBuildArgs {
-        mcu_firmware: Some(mcu_image.clone().path),
+        mcu_firmware: Some(mcu_firmware),
         soc_images: Some(soc_images.to_vec()),
         mcu_image_cfg: Some(mcu_image.clone()),
         soc_manifest_svn,
@@ -240,12 +250,40 @@ pub fn create(options: CreateOptions<'_>) -> Result<()> {
     Ok(())
 }
 
+fn materialize_component_runtime(
+    runtime_path: &Path,
+    component_manifest: &[u8],
+    output_dir: &Path,
+) -> Result<PathBuf> {
+    let runtime = std::fs::read(runtime_path)
+        .with_context(|| format!("failed to read MCU runtime {}", runtime_path.display()))?;
+    let image_header_size = core::mem::size_of::<caliptra_mcu_image_header::McuImageHeader>();
+    let already_prefixed = [0, image_header_size].into_iter().any(|offset| {
+        runtime.get(offset..offset.saturating_add(component_manifest.len()))
+            == Some(component_manifest)
+    });
+    if already_prefixed {
+        return Ok(runtime_path.to_path_buf());
+    }
+
+    std::fs::create_dir_all(output_dir)?;
+    let output = output_dir.join("mcu_runtime_with_component_svn.bin");
+    let mut prefixed = Vec::with_capacity(component_manifest.len() + runtime.len());
+    prefixed.extend_from_slice(component_manifest);
+    prefixed.extend_from_slice(&runtime);
+    std::fs::write(&output, prefixed)?;
+    println!("Generated prefixed MCU runtime at: {}", output.display());
+    Ok(output)
+}
+
 pub fn verify(
     manifest_path: &str,
     component_config_path: &str,
     feature: Option<&str>,
+    platform: &str,
 ) -> Result<()> {
-    let config = ComponentConfig::from_file(component_config_path)?.resolve(feature)?;
+    let config = ComponentConfig::from_file(component_config_path)?
+        .resolve_for_platform(feature, platform == "fpga")?;
     let data = std::fs::read(manifest_path)
         .with_context(|| format!("failed to read authorization manifest {manifest_path}"))?;
     let manifest = AuthorizationManifest::read_from_bytes(&data)
@@ -425,6 +463,22 @@ mod tests {
     }
 
     #[test]
+    fn materializes_component_runtime_without_double_prefixing() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let runtime = temp_dir.path().join("runtime.bin");
+        let manifest = [0x5a; 1024];
+        std::fs::write(&runtime, [0x13; 32]).unwrap();
+
+        let prefixed = materialize_component_runtime(&runtime, &manifest, temp_dir.path()).unwrap();
+        let bytes = std::fs::read(&prefixed).unwrap();
+        assert_eq!(&bytes[..manifest.len()], &manifest);
+
+        let unchanged =
+            materialize_component_runtime(&prefixed, &manifest, temp_dir.path()).unwrap();
+        assert_eq!(unchanged, prefixed);
+    }
+
+    #[test]
     fn test_auth_manifest_create_cli_parse() {
         let args = vec![
             "test",
@@ -443,8 +497,6 @@ mod tests {
             "owner.pem",
             "--svn",
             "5",
-            "--component-svn-config",
-            "component-svn.json",
         ];
 
         let cli = Cli::parse_from(args);
@@ -454,7 +506,6 @@ mod tests {
                 signing_request,
                 key_paths,
                 svn,
-                component_svn_config,
                 mcu_image,
                 ..
             } => {
@@ -463,7 +514,6 @@ mod tests {
                 assert_eq!(key_paths.vendor_man_pub_key, Some("vendor.pem".to_string()));
                 assert_eq!(key_paths.owner_man_pub_key, Some("owner.pem".to_string()));
                 assert_eq!(svn, Some(5));
-                assert_eq!(component_svn_config, Some("component-svn.json".to_string()));
                 assert!(mcu_image.is_some());
             }
             _ => panic!("Expected AuthManifestCommands::Create"),
@@ -487,13 +537,52 @@ mod tests {
                 manifest,
                 component_config,
                 feature,
+                platform,
             } => {
                 assert_eq!(manifest, "soc-manifest.bin");
                 assert_eq!(component_config, "components.toml");
                 assert_eq!(feature.as_deref(), Some("update"));
+                assert_eq!(platform, "emulator");
             }
             _ => panic!("Expected AuthManifestCommands::Verify"),
         }
+    }
+
+    #[test]
+    fn test_component_config_rejects_legacy_metadata() {
+        let result = Cli::try_parse_from([
+            "test",
+            "create",
+            "--component-config",
+            "components.toml",
+            "--soc_image",
+            "soc.bin,0x80000000,0x60000000,2,2,0,feature",
+            "--output",
+            "out.bin",
+        ]);
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn create_api_rejects_component_config_with_legacy_metadata() {
+        let image = ImageCfg::default();
+        let key_paths = AuthManifestKeyPaths::default();
+        let error = create(CreateOptions {
+            soc_images: &[image],
+            mcu_image: None,
+            output: "unused.bin",
+            signing_request_path: None,
+            key_paths: &key_paths,
+            svn: None,
+            component_config_path: Some("unused.toml"),
+            feature: None,
+            platform: "emulator",
+        })
+        .unwrap_err()
+        .to_string();
+
+        assert!(error.contains("component_config conflicts"));
     }
 
     #[test]

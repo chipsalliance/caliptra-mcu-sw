@@ -18,14 +18,22 @@ cargo xtask auth-manifest create --component-config component-config.toml --outp
 cargo xtask --features fpga_realtime -- fpga build --component-config component-config.toml
 ```
 
-When `--component-config` is present, its image and SVN metadata takes precedence
-over `--soc-image`, `--mcu-cfg`, `--mcu-image`, `--svn`, and
-`--component-svn-config`. The build writes these resolved files under
+When `--component-config` is present, it is authoritative. Commands reject
+overlapping legacy metadata such as `--soc-image`, `--mcu-cfg`, `--mcu-image`,
+`--svn`, `--vendor`, and `--model`. The build writes these resolved files under
 `target/generated` before compiling the runtime:
 
 - `attestation_manifest.toml`
 - `soc_image_descriptors.toml`
 - `component_svn_manifest.toml`
+- `component_svn_manifest.bin`
+
+`auth-manifest create` also writes `mcu_runtime_with_component_svn.bin` when the
+configured MCU runtime does not already contain the generated SVN manifest. The
+SoC authorization manifest authenticates this final prefixed runtime.
+
+Standalone `auth-manifest create` and `auth-manifest verify` default to the
+emulator component defaults. Pass `--platform fpga` to resolve FPGA defaults.
 
 Verify an authorization manifest against the same metadata with:
 

@@ -202,15 +202,12 @@ enum Commands {
         #[arg(long = "soc_image", value_name = "SOC_IMAGE", num_args = 1.., required = false)]
         soc_images: Option<Vec<ImageCfg>>,
 
-        /// JSON component SVN entries and explicit policy exceptions
-        #[arg(long = "component-svn-config", value_name = "COMPONENT_SVN_CONFIG")]
-        component_svn_config: Option<String>,
-
         /// TOML source of truth for component metadata
         #[arg(
             long = "component-config",
             visible_alias = "component_config",
-            value_name = "COMPONENT_CONFIG"
+            value_name = "COMPONENT_CONFIG",
+            conflicts_with_all = ["soc_images", "mcu_cfgs", "vendor", "model"]
         )]
         component_config: Option<String>,
 
@@ -655,7 +652,6 @@ fn main() {
             runtime_features,
             separate_runtimes,
             soc_images,
-            component_svn_config,
             component_config,
             mcu_cfgs,
             caliptra_firmware_network_filename,
@@ -666,12 +662,11 @@ fn main() {
             profile,
             shard_index,
             total_shards,
-        } => auth_manifest::load_component_svn_config(component_svn_config.as_deref()).and_then(
-            |component_svn_validation| {
-                let component_config = component_config
-                    .as_deref()
-                    .map(caliptra_mcu_builder::ComponentConfig::from_file)
-                    .transpose()?;
+        } => component_config
+            .as_deref()
+            .map(caliptra_mcu_builder::ComponentConfig::from_file)
+            .transpose()
+            .and_then(|component_config| {
                 caliptra_mcu_builder::all_build(caliptra_mcu_builder::AllBuildArgs {
                     output: output.as_deref(),
                     platform: platform.as_deref(),
@@ -679,7 +674,6 @@ fn main() {
                     runtime_features: runtime_features.as_deref(),
                     separate_runtimes: *separate_runtimes,
                     soc_images: soc_images.clone(),
-                    component_svn_validation,
                     component_config,
                     mcu_cfgs: mcu_cfgs.clone(),
                     caliptra_firmware_network_filename: caliptra_firmware_network_filename
@@ -692,8 +686,7 @@ fn main() {
                     shard_index: *shard_index,
                     total_shards: *total_shards,
                 })
-            },
-        ),
+            }),
         Commands::EmulatorBuild { output } => {
             caliptra_mcu_builder::emulator_build(caliptra_mcu_builder::EmulatorBuildArgs {
                 output: output.as_deref(),
@@ -899,9 +892,9 @@ fn main() {
                 signing_request,
                 key_paths,
                 svn,
-                component_svn_config,
                 component_config,
                 feature,
+                platform,
             } => auth_manifest::create(auth_manifest::CreateOptions {
                 soc_images: images,
                 mcu_image: mcu_image.as_ref(),
@@ -909,15 +902,16 @@ fn main() {
                 signing_request_path: signing_request.as_deref(),
                 key_paths,
                 svn: *svn,
-                component_svn_config_path: component_svn_config.as_deref(),
                 component_config_path: component_config.as_deref(),
                 feature: feature.as_deref(),
+                platform,
             }),
             AuthManifestCommands::Verify {
                 manifest,
                 component_config,
                 feature,
-            } => auth_manifest::verify(manifest, component_config, feature.as_deref()),
+                platform,
+            } => auth_manifest::verify(manifest, component_config, feature.as_deref(), platform),
             AuthManifestCommands::AttachSignatures {
                 unsigned_manifest,
                 signatures,
