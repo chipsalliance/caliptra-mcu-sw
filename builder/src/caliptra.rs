@@ -1214,7 +1214,7 @@ impl FromStr for ImageCfg {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::ComponentSvnEntry;
+    use crate::{CaliptraBuildArgs, ComponentSvnEntry};
 
     #[test]
     fn test_image_cfg_optional_network_filename() {
