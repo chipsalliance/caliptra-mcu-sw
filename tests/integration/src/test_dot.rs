@@ -1781,6 +1781,50 @@ mod test {
     }
 
     #[test]
+    fn test_runtime_dot_enable_commits_initialization_gate() {
+        use crate::runtime::execute_authorized_req;
+        use caliptra_mcu_mbox_common::messages::{DotEnableReq, DotStatusReq};
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            dot_enabled: false,
+            ..Default::default()
+        });
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        let status = hw.mailbox_execute_req(DotStatusReq::default()).unwrap();
+        assert_eq!(status.status.enabled, 0);
+        assert_eq!(status.status.locked, 0);
+        assert_eq!(status.status.burned, 0);
+
+        assert!(hw.mailbox_execute_req(DotEnableReq::default()).is_err());
+
+        let response = execute_authorized_req(&mut hw, DotEnableReq::default()).unwrap();
+        assert_eq!(response.reset_required, 1);
+
+        let status = hw.mailbox_execute_req(DotStatusReq::default()).unwrap();
+        assert_eq!(status.status.enabled, 1);
+        assert_eq!(status.status.locked, 0);
+        assert_eq!(status.status.burned, 0);
+        let otp = hw.read_otp_memory();
+        assert_eq!(
+            otp[caliptra_mcu_registers_generated::fuses::DOT_INITIALIZED.byte_offset] & 0x7,
+            0x7
+        );
+
+        assert!(execute_authorized_req(&mut hw, DotEnableReq::default()).is_err());
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
     fn test_runtime_dot_status() {
         use crate::runtime::execute_authorized_req;
         use caliptra_mcu_mbox_common::messages::{DotLockPayload, DotLockReq, DotStatusReq};
