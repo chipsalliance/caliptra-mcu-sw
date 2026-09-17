@@ -13,9 +13,9 @@ use mcu_caliptra_api::{sha_finish, sha_init, sha_update, ApiAlloc, HashAlgo, SHA
 use mcu_error::McuResult;
 
 #[cfg(feature = "set-certificate")]
-use super::endorsement::{ranges_overlap, ManagedEndorsement, SingleManagedChain};
+use super::endorsement::{ranges_overlap, ManagedEndorsementSlot, SingleManagedEndorsement};
 use super::endorsement::{
-    slot_index, CertSlot, ReadOnlyEndorsement, SlotEndorsement, NUM_CERT_SLOTS,
+    slot_index, CertSlot, ReadOnlyEndorsementSlot, SlotEndorsement, NUM_CERT_SLOTS,
 };
 
 const DEFAULT_CERT_INFO: u8 = 0x01;
@@ -86,7 +86,7 @@ impl SharedCertStore {
             return Err(mcu_error::codes::INVARIANT);
         }
         let ecc_hash = compute_root_hash(alloc, ecc_chain[0]).await?;
-        let mut ro = ReadOnlyEndorsement::new(ecc_chain, ecc_hash);
+        let mut ro = ReadOnlyEndorsementSlot::new(ecc_chain, ecc_hash);
 
         if let Some(mldsa) = mldsa_chain {
             if !mldsa.is_empty() {
@@ -207,7 +207,7 @@ impl SharedCertStore {
             }
         }
 
-        let mut managed = ManagedEndorsement::new(SingleManagedChain::new(
+        let mut managed = ManagedEndorsementSlot::new(SingleManagedEndorsement::new(
             spdm_slot,
             SpdmPalAsymAlgo::EccP384,
             driver_num,
@@ -215,7 +215,7 @@ impl SharedCertStore {
             capacity,
         ));
         if let Some(mldsa_base) = mldsa_base {
-            managed = managed.with_mldsa(SingleManagedChain::new(
+            managed = managed.with_mldsa(SingleManagedEndorsement::new(
                 spdm_slot,
                 SpdmPalAsymAlgo::MlDsa87,
                 driver_num,
@@ -227,9 +227,9 @@ impl SharedCertStore {
 
         let slot = self.cert_slot_mut(idx).ok_or(mcu_error::codes::INVARIANT)?;
         for algo in [SpdmPalAsymAlgo::EccP384, SpdmPalAsymAlgo::MlDsa87] {
-            let (key_pair_id, cert_info) = match managed.get_chain(algo) {
-                Ok(region) => (region.key_pair_id(), region.cert_info()),
-                Err(_) => (None, None),
+            let (key_pair_id, cert_info) = match managed.get_endorsement(algo) {
+                Some(region) => (region.key_pair_id(), region.cert_info()),
+                None => (None, None),
             };
             slot.set_metadata(algo, key_pair_id, cert_info);
         }

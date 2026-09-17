@@ -91,7 +91,7 @@ impl CertSlot {
             endorsement: SlotEndorsement::Empty,
             key_pair_id: [None; NUM_ASYM_ALGOS],
             cert_info: [None; NUM_ASYM_ALGOS],
-            write_in_progress: [AtomicBool::new(false), AtomicBool::new(false)],
+            write_in_progress: [const { AtomicBool::new(false) }; NUM_ASYM_ALGOS],
         }
     }
 
@@ -154,11 +154,11 @@ pub enum SlotEndorsement {
     /// Not provisioned and not exposed as a supported SPDM slot.
     Empty,
     /// Read-only endorsement backed by static root CA certs (slot 0).
-    ReadOnly(ReadOnlyEndorsement),
+    ReadOnly(ReadOnlyEndorsementSlot),
     /// Managed endorsement/root chains backed by flash (slots 1-2,
     /// SET_CERTIFICATE), one independent region per algorithm.
     #[cfg(feature = "set-certificate")]
-    Managed(ManagedEndorsement),
+    Managed(ManagedEndorsementSlot),
 }
 
 impl SlotEndorsement {
@@ -166,7 +166,10 @@ impl SlotEndorsement {
         match self {
             Self::ReadOnly(e) => e.root_cert_hash(algo, out),
             #[cfg(feature = "set-certificate")]
-            Self::Managed(m) => m.get_chain(algo)?.root_cert_hash(out),
+            Self::Managed(m) => m
+                .get_endorsement(algo)
+                .ok_or(mcu_error::codes::INVARIANT)?
+                .root_cert_hash(out),
             Self::Empty => Err(mcu_error::codes::INVARIANT),
         }
     }
@@ -175,7 +178,10 @@ impl SlotEndorsement {
         match self {
             Self::ReadOnly(e) => e.size(algo),
             #[cfg(feature = "set-certificate")]
-            Self::Managed(m) => m.get_chain(algo)?.size(),
+            Self::Managed(m) => m
+                .get_endorsement(algo)
+                .ok_or(mcu_error::codes::INVARIANT)?
+                .size(),
             Self::Empty => Err(mcu_error::codes::INVARIANT),
         }
     }
@@ -184,7 +190,10 @@ impl SlotEndorsement {
         match self {
             Self::ReadOnly(e) => e.size(algo),
             #[cfg(feature = "set-certificate")]
-            Self::Managed(m) => Ok(m.get_chain(algo)?.der_capacity()),
+            Self::Managed(m) => Ok(m
+                .get_endorsement(algo)
+                .ok_or(mcu_error::codes::INVARIANT)?
+                .der_capacity()),
             Self::Empty => Err(mcu_error::codes::INVARIANT),
         }
     }
@@ -198,7 +207,12 @@ impl SlotEndorsement {
         match self {
             Self::ReadOnly(e) => e.read(algo, offset, buf),
             #[cfg(feature = "set-certificate")]
-            Self::Managed(m) => m.get_chain(algo)?.read(offset, buf).await,
+            Self::Managed(m) => {
+                m.get_endorsement(algo)
+                    .ok_or(mcu_error::codes::INVARIANT)?
+                    .read(offset, buf)
+                    .await
+            }
             Self::Empty => Err(mcu_error::codes::INVARIANT),
         }
     }
@@ -220,12 +234,9 @@ impl SlotEndorsement {
 
     pub fn is_provisioned(&self, algo: SpdmPalAsymAlgo) -> bool {
         match self {
-            Self::ReadOnly(e) => e.get_chain(algo).is_some(),
+            Self::ReadOnly(e) => e.get_endorsement(algo).is_some(),
             #[cfg(feature = "set-certificate")]
-            Self::Managed(m) => m
-                .get_chain(algo)
-                .map(|r| r.is_initialized())
-                .unwrap_or(false),
+            Self::Managed(m) => m.get_endorsement(algo).is_some_and(|r| r.is_initialized()),
             Self::Empty => false,
         }
     }
@@ -250,12 +261,12 @@ impl SingleEndorsementChain {
 }
 
 /// Read-only endorsement — static root CA cert chain for ECC and optional ML-DSA.
-pub struct ReadOnlyEndorsement {
+pub struct ReadOnlyEndorsementSlot {
     ecc: SingleEndorsementChain,
     mldsa: Option<SingleEndorsementChain>,
 }
 
-impl ReadOnlyEndorsement {
+impl ReadOnlyEndorsementSlot {
     pub fn new(chain: &'static [&'static [u8]], root_cert_hash: [u8; 48]) -> Self {
         Self {
             ecc: SingleEndorsementChain::new(chain, root_cert_hash),
@@ -268,7 +279,7 @@ impl ReadOnlyEndorsement {
         self
     }
 
-    pub fn get_chain(&self, algo: SpdmPalAsymAlgo) -> Option<&SingleEndorsementChain> {
+    pub fn get_endorsement(&self, algo: SpdmPalAsymAlgo) -> Option<&SingleEndorsementChain> {
         match algo {
             SpdmPalAsymAlgo::EccP384 => Some(&self.ecc),
             SpdmPalAsymAlgo::MlDsa87 => self.mldsa.as_ref(),
@@ -276,7 +287,9 @@ impl ReadOnlyEndorsement {
     }
 
     fn root_cert_hash(&self, algo: SpdmPalAsymAlgo, out: &mut [u8]) -> McuResult<()> {
-        let chain = self.get_chain(algo).ok_or(mcu_error::codes::INVARIANT)?;
+        let chain = self
+            .get_endorsement(algo)
+            .ok_or(mcu_error::codes::INVARIANT)?;
         for (d, s) in out.iter_mut().zip(&chain.root_cert_hash) {
             *d = *s;
         }
@@ -284,12 +297,16 @@ impl ReadOnlyEndorsement {
     }
 
     fn size(&self, algo: SpdmPalAsymAlgo) -> McuResult<usize> {
-        let chain = self.get_chain(algo).ok_or(mcu_error::codes::INVARIANT)?;
+        let chain = self
+            .get_endorsement(algo)
+            .ok_or(mcu_error::codes::INVARIANT)?;
         Ok(chain.chain_len)
     }
 
     fn read(&self, algo: SpdmPalAsymAlgo, offset: usize, buf: &mut [u8]) -> McuResult<usize> {
-        let chain = self.get_chain(algo).ok_or(mcu_error::codes::INVARIANT)?;
+        let chain = self
+            .get_endorsement(algo)
+            .ok_or(mcu_error::codes::INVARIANT)?;
         let mut cert_offset = offset;
         let mut pos = 0;
         for cert in chain.chain.iter() {
@@ -369,7 +386,7 @@ pub const fn managed_endorsement_der_capacity(region_size: usize) -> usize {
 /// ranges are safe. Empty ranges never overlap anything.
 #[cfg(feature = "set-certificate")]
 pub fn ranges_overlap(a: &Range<usize>, b: &Range<usize>) -> bool {
-    a.start < b.end && b.start < a.end
+    !a.is_empty() && !b.is_empty() && a.start < b.end && b.start < a.end
 }
 
 #[cfg(feature = "set-certificate")]
@@ -385,7 +402,7 @@ type CertStoreFlash = SpiFlash<DefaultSyscalls>;
 /// algorithm's chain silently destroy the other's.
 #[cfg(feature = "set-certificate")]
 #[derive(Clone, Copy)]
-pub struct SingleManagedChain {
+pub struct SingleManagedEndorsement {
     slot: u8,
     driver_num: u32,
     base: usize,
@@ -400,7 +417,7 @@ pub struct SingleManagedChain {
 }
 
 #[cfg(feature = "set-certificate")]
-impl SingleManagedChain {
+impl SingleManagedEndorsement {
     pub const fn new(
         slot: u8,
         algo: SpdmPalAsymAlgo,
@@ -720,36 +737,36 @@ impl SingleManagedChain {
 /// connection.
 #[cfg(feature = "set-certificate")]
 #[derive(Clone, Copy)]
-pub struct ManagedEndorsement {
-    ecc: SingleManagedChain,
-    mldsa: Option<SingleManagedChain>,
+pub struct ManagedEndorsementSlot {
+    ecc: SingleManagedEndorsement,
+    mldsa: Option<SingleManagedEndorsement>,
 }
 
 #[cfg(feature = "set-certificate")]
-impl ManagedEndorsement {
-    pub const fn new(ecc: SingleManagedChain) -> Self {
+impl ManagedEndorsementSlot {
+    pub const fn new(ecc: SingleManagedEndorsement) -> Self {
         Self { ecc, mldsa: None }
     }
 
-    pub const fn with_mldsa(mut self, mldsa: SingleManagedChain) -> Self {
+    pub const fn with_mldsa(mut self, mldsa: SingleManagedEndorsement) -> Self {
         self.mldsa = Some(mldsa);
         self
     }
 
-    /// The region serving `algo`, or `INVARIANT` if this slot has none.
-    pub fn get_chain(&self, algo: SpdmPalAsymAlgo) -> McuResult<&SingleManagedChain> {
+    /// The endorsement region serving `algo`, or `None` if this slot has none.
+    pub fn get_endorsement(&self, algo: SpdmPalAsymAlgo) -> Option<&SingleManagedEndorsement> {
         match algo {
-            SpdmPalAsymAlgo::EccP384 => Ok(&self.ecc),
-            SpdmPalAsymAlgo::MlDsa87 => self.mldsa.as_ref().ok_or(mcu_error::codes::INVARIANT),
+            SpdmPalAsymAlgo::EccP384 => Some(&self.ecc),
+            SpdmPalAsymAlgo::MlDsa87 => self.mldsa.as_ref(),
         }
     }
 
-    /// Install an updated region, which must belong to this slot's
+    /// Install an updated endorsement region, which must belong to this slot's
     /// algorithm for that position.
-    pub fn set_chain(&mut self, chain: SingleManagedChain) {
-        match chain.algo() {
-            SpdmPalAsymAlgo::EccP384 => self.ecc = chain,
-            SpdmPalAsymAlgo::MlDsa87 => self.mldsa = Some(chain),
+    pub fn set_endorsement(&mut self, endorsement: SingleManagedEndorsement) {
+        match endorsement.algo() {
+            SpdmPalAsymAlgo::EccP384 => self.ecc = endorsement,
+            SpdmPalAsymAlgo::MlDsa87 => self.mldsa = Some(endorsement),
         }
     }
 
@@ -881,8 +898,8 @@ mod tests {
     const TEST_DRIVER: u32 = 0x7000_000A;
     const TEST_REGION: usize = 4096;
 
-    fn chain(algo: SpdmPalAsymAlgo, base: usize) -> SingleManagedChain {
-        SingleManagedChain::new(2, algo, TEST_DRIVER, base, TEST_REGION)
+    fn chain(algo: SpdmPalAsymAlgo, base: usize) -> SingleManagedEndorsement {
+        SingleManagedEndorsement::new(2, algo, TEST_DRIVER, base, TEST_REGION)
     }
 
     fn span(base: usize) -> Range<usize> {
@@ -916,11 +933,20 @@ mod tests {
         assert!(!ranges_overlap(&region, &span(0)));
         assert!(!ranges_overlap(&region, &span(TEST_REGION * 2)));
 
-        // Empty ranges never overlap anything, including themselves.
+        // Empty ranges never overlap anything, including themselves or
+        // when interior to a non-empty range.
         assert!(!ranges_overlap(&region, &(TEST_REGION..TEST_REGION)));
         assert!(!ranges_overlap(
             &(TEST_REGION..TEST_REGION),
             &(TEST_REGION..TEST_REGION)
+        ));
+        assert!(!ranges_overlap(
+            &(TEST_REGION + 5..TEST_REGION + 5),
+            &region
+        ));
+        assert!(!ranges_overlap(
+            &region,
+            &(TEST_REGION + 5..TEST_REGION + 5)
         ));
     }
 
@@ -940,7 +966,7 @@ mod tests {
     /// regions, including the optional ML-DSA one.
     #[test]
     fn any_region_overlap_covers_both_algorithms() {
-        let slot = ManagedEndorsement::new(chain(SpdmPalAsymAlgo::EccP384, 0))
+        let slot = ManagedEndorsementSlot::new(chain(SpdmPalAsymAlgo::EccP384, 0))
             .with_mldsa(chain(SpdmPalAsymAlgo::MlDsa87, TEST_REGION));
 
         assert!(slot.any_region_overlaps(TEST_DRIVER, &span(0)));
@@ -948,7 +974,7 @@ mod tests {
         assert!(!slot.any_region_overlaps(TEST_DRIVER, &span(TEST_REGION * 2)));
 
         // Without an ML-DSA region that address range is free.
-        let ecc_only = ManagedEndorsement::new(chain(SpdmPalAsymAlgo::EccP384, 0));
+        let ecc_only = ManagedEndorsementSlot::new(chain(SpdmPalAsymAlgo::EccP384, 0));
         assert!(!ecc_only.any_region_overlaps(TEST_DRIVER, &span(TEST_REGION)));
     }
 
@@ -962,13 +988,13 @@ mod tests {
         let mldsa = chain(SpdmPalAsymAlgo::MlDsa87, TEST_REGION);
 
         // Nothing written yet: provisioned for neither.
-        let slot = ManagedEndorsement::new(ecc).with_mldsa(mldsa);
+        let slot = ManagedEndorsementSlot::new(ecc).with_mldsa(mldsa);
         assert!(!SlotEndorsement::Managed(slot).is_provisioned(SpdmPalAsymAlgo::EccP384));
         assert!(!SlotEndorsement::Managed(slot).is_provisioned(SpdmPalAsymAlgo::MlDsa87));
 
         // Simulate a committed ECC endorsement without touching flash.
         ecc.initialized = true;
-        let slot = ManagedEndorsement::new(ecc).with_mldsa(mldsa);
+        let slot = ManagedEndorsementSlot::new(ecc).with_mldsa(mldsa);
         let endorsement = SlotEndorsement::Managed(slot);
         assert!(endorsement.is_provisioned(SpdmPalAsymAlgo::EccP384));
         assert!(!endorsement.is_provisioned(SpdmPalAsymAlgo::MlDsa87));
@@ -976,7 +1002,8 @@ mod tests {
         // And now the ML-DSA side as well.
         let mut mldsa = mldsa;
         mldsa.initialized = true;
-        let endorsement = SlotEndorsement::Managed(ManagedEndorsement::new(ecc).with_mldsa(mldsa));
+        let endorsement =
+            SlotEndorsement::Managed(ManagedEndorsementSlot::new(ecc).with_mldsa(mldsa));
         assert!(endorsement.is_provisioned(SpdmPalAsymAlgo::EccP384));
         assert!(endorsement.is_provisioned(SpdmPalAsymAlgo::MlDsa87));
     }
@@ -988,7 +1015,7 @@ mod tests {
         let mut ecc = chain(SpdmPalAsymAlgo::EccP384, 0);
         ecc.initialized = true;
         ecc.len = 64;
-        let endorsement = SlotEndorsement::Managed(ManagedEndorsement::new(ecc));
+        let endorsement = SlotEndorsement::Managed(ManagedEndorsementSlot::new(ecc));
 
         assert!(endorsement.is_provisioned(SpdmPalAsymAlgo::EccP384));
         assert!(!endorsement.is_provisioned(SpdmPalAsymAlgo::MlDsa87));
@@ -1005,25 +1032,27 @@ mod tests {
             .is_err());
     }
 
-    /// `set_chain` routes by the region's own algorithm, so committing
+    /// `set_endorsement` routes by the region's own algorithm, so committing
     /// an ML-DSA write cannot overwrite the ECC region.
     #[test]
-    fn set_chain_routes_by_algorithm() {
+    fn set_endorsement_routes_by_algorithm() {
         let ecc = chain(SpdmPalAsymAlgo::EccP384, 0);
         let mldsa = chain(SpdmPalAsymAlgo::MlDsa87, TEST_REGION);
-        let mut slot = ManagedEndorsement::new(ecc).with_mldsa(mldsa);
+        let mut slot = ManagedEndorsementSlot::new(ecc).with_mldsa(mldsa);
 
         let mut updated = mldsa;
         updated.initialized = true;
         updated.len = 128;
-        slot.set_chain(updated);
+        slot.set_endorsement(updated);
 
         assert!(!slot
-            .get_chain(SpdmPalAsymAlgo::EccP384)
+            .get_endorsement(SpdmPalAsymAlgo::EccP384)
             .unwrap()
             .is_initialized());
         assert_eq!(
-            slot.get_chain(SpdmPalAsymAlgo::MlDsa87).unwrap().size(),
+            slot.get_endorsement(SpdmPalAsymAlgo::MlDsa87)
+                .unwrap()
+                .size(),
             Ok(128)
         );
     }
@@ -1099,7 +1128,8 @@ mod algo_tests {
 
     #[test]
     fn read_only_slot_is_unprovisioned_for_missing_algorithm() {
-        let ecc_only = SlotEndorsement::ReadOnly(ReadOnlyEndorsement::new(ECC_CHAIN, [0u8; 48]));
+        let ecc_only =
+            SlotEndorsement::ReadOnly(ReadOnlyEndorsementSlot::new(ECC_CHAIN, [0u8; 48]));
         assert!(ecc_only.is_provisioned(SpdmPalAsymAlgo::EccP384));
         // Without an ML-DSA chain the slot must not be advertised in an
         // ML-DSA connection: otherwise GET_CERTIFICATE would serve the
@@ -1107,7 +1137,7 @@ mod algo_tests {
         assert!(!ecc_only.is_provisioned(SpdmPalAsymAlgo::MlDsa87));
 
         let both = SlotEndorsement::ReadOnly(
-            ReadOnlyEndorsement::new(ECC_CHAIN, [0u8; 48]).with_mldsa(MLDSA_CHAIN, [1u8; 48]),
+            ReadOnlyEndorsementSlot::new(ECC_CHAIN, [0u8; 48]).with_mldsa(MLDSA_CHAIN, [1u8; 48]),
         );
         assert!(both.is_provisioned(SpdmPalAsymAlgo::EccP384));
         assert!(both.is_provisioned(SpdmPalAsymAlgo::MlDsa87));

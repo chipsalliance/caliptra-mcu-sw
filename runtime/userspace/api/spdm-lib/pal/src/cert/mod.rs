@@ -48,13 +48,15 @@ const CERT_MODEL_ALIAS_CERT: u8 = 2;
 /// UnsupportedRequest; `INVARIANT` when the slot is empty or has no
 /// region for that algorithm.
 #[cfg(feature = "set-certificate")]
-fn managed_chain(
+fn managed_endorsement(
     store: &store::TaskCertStore,
     idx: usize,
     algo: SpdmPalAsymAlgo,
-) -> McuResult<endorsement::SingleManagedChain> {
+) -> McuResult<endorsement::SingleManagedEndorsement> {
     match &store.cert_slots()[idx].endorsement {
-        endorsement::SlotEndorsement::Managed(m) => m.get_chain(algo).copied(),
+        endorsement::SlotEndorsement::Managed(m) => {
+            m.get_endorsement(algo).copied().ok_or(INVARIANT)
+        }
         endorsement::SlotEndorsement::ReadOnly(_) => Err(mcu_error::codes::NOT_IMPLEMENTED),
         endorsement::SlotEndorsement::Empty => Err(INVARIANT),
     }
@@ -66,15 +68,15 @@ fn managed_chain(
 /// snapshot: the write lock is per algorithm, so a write to the other
 /// algorithm's region may have landed while we were awaiting flash.
 #[cfg(feature = "set-certificate")]
-fn commit_managed_chain(
+fn commit_managed_endorsement(
     store: &store::TaskCertStore,
     idx: usize,
-    chain: endorsement::SingleManagedChain,
+    chain: endorsement::SingleManagedEndorsement,
 ) -> McuResult<()> {
     let cert_slot = store.cert_slot_mut(idx).ok_or(INVARIANT)?;
     match &mut cert_slot.endorsement {
         endorsement::SlotEndorsement::Managed(m) => {
-            m.set_chain(chain);
+            m.set_endorsement(chain);
             Ok(())
         }
         _ => Err(INVARIANT),
@@ -234,7 +236,7 @@ async fn validate_root_hash<M: MeasurementProvider>(
 #[cfg(feature = "set-certificate")]
 async fn validate_streamed_root_hash<M: MeasurementProvider>(
     pal: &McuSpdmPal<M>,
-    managed: &endorsement::SingleManagedChain,
+    managed: &endorsement::SingleManagedEndorsement,
     root_hash: &[u8; 48],
     data_len: usize,
 ) -> McuResult<()> {
@@ -265,7 +267,7 @@ async fn validate_streamed_root_hash<M: MeasurementProvider>(
 
 #[cfg(feature = "set-certificate")]
 async fn streamed_first_der_len(
-    managed: &endorsement::SingleManagedChain,
+    managed: &endorsement::SingleManagedEndorsement,
     data_len: usize,
 ) -> McuResult<usize> {
     let mut header = [0u8; 6];
@@ -604,11 +606,11 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         // flash update. The other algorithm's chain stays serveable.
         self.cert_store.cert_slots()[idx].set_write_in_progress(algo, true);
         let result: McuResult<()> = async {
-            let chain = managed_chain(&self.cert_store, idx, algo)?;
+            let chain = managed_endorsement(&self.cert_store, idx, algo)?;
             let chain = chain
                 .write_updated(key_pair_id, cert_info, root_hash, data)
                 .await?;
-            commit_managed_chain(&self.cert_store, idx, chain)?;
+            commit_managed_endorsement(&self.cert_store, idx, chain)?;
             let cert_slot = self.cert_store.cert_slot_mut(idx).ok_or(INVARIANT)?;
             cert_slot.set_metadata(algo, Some(key_pair_id), Some(cert_info));
             Ok(())
@@ -638,9 +640,9 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
             let idx = slot_index(slot).ok_or(INVARIANT)?;
             self.cert_store.cert_slots()[idx].set_write_in_progress(algo, true);
             let result: McuResult<()> = async {
-                let chain = managed_chain(&self.cert_store, idx, algo)?;
+                let chain = managed_endorsement(&self.cert_store, idx, algo)?;
                 let chain = chain.begin_stream_update(data_len).await?;
-                commit_managed_chain(&self.cert_store, idx, chain)?;
+                commit_managed_endorsement(&self.cert_store, idx, chain)?;
                 let cert_slot = self.cert_store.cert_slot_mut(idx).ok_or(INVARIANT)?;
                 cert_slot.clear_metadata(algo);
                 Ok(())
@@ -669,7 +671,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         #[cfg(feature = "set-certificate")]
         {
             let idx = slot_index(slot).ok_or(INVARIANT)?;
-            managed_chain(&self.cert_store, idx, algo)?
+            managed_endorsement(&self.cert_store, idx, algo)?
                 .write_stream_chunk(offset, data)
                 .await
         }
@@ -694,12 +696,12 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         {
             let idx = slot_index(slot).ok_or(INVARIANT)?;
             let result: McuResult<()> = async {
-                let chain = managed_chain(&self.cert_store, idx, algo)?;
+                let chain = managed_endorsement(&self.cert_store, idx, algo)?;
                 validate_streamed_root_hash(self, &chain, root_hash, data_len).await?;
                 let chain = chain
                     .finish_stream_update(key_pair_id, cert_info, root_hash, data_len)
                     .await?;
-                commit_managed_chain(&self.cert_store, idx, chain)?;
+                commit_managed_endorsement(&self.cert_store, idx, chain)?;
                 let cert_slot = self.cert_store.cert_slot_mut(idx).ok_or(INVARIANT)?;
                 cert_slot.set_metadata(algo, Some(key_pair_id), Some(cert_info));
                 Ok(())
@@ -747,9 +749,9 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         let idx = slot_index(slot).ok_or(INVARIANT)?;
         self.cert_store.cert_slots()[idx].set_write_in_progress(algo, true);
         let result: McuResult<()> = async {
-            let chain = managed_chain(&self.cert_store, idx, algo)?;
+            let chain = managed_endorsement(&self.cert_store, idx, algo)?;
             let chain = chain.erase_updated().await?;
-            commit_managed_chain(&self.cert_store, idx, chain)?;
+            commit_managed_endorsement(&self.cert_store, idx, chain)?;
             let cert_slot = self.cert_store.cert_slot_mut(idx).ok_or(INVARIANT)?;
             cert_slot.clear_metadata(algo);
             Ok(())
@@ -785,7 +787,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         {
             match &cert_slot.endorsement {
                 endorsement::SlotEndorsement::Managed(m) => {
-                    m.get_chain(algo).ok()?.key_usage_mask()
+                    m.get_endorsement(algo)?.key_usage_mask()
                 }
                 _ => Some(DEFAULT_KEY_USAGE_MASK),
             }
