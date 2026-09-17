@@ -7,6 +7,7 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
+caliptra-mcu-cert-store = { workspace = true }
 caliptra-mcu-attestation-evidence = { workspace = true }
 caliptra-mcu-spdm-traits = { workspace = true }
 caliptra-mcu-spdm-codec = { workspace = true }
@@ -19,6 +20,10 @@ caliptra-mcu-libtock_platform = { workspace = true, optional = true }
 caliptra-mcu-libtock_alarm = { workspace = true, optional = true }
 caliptra-mcu-libtockasync = { workspace = true, optional = true }
 zerocopy = { workspace = true }
+
+[dev-dependencies]
+caliptra-mcu-libtock_unittest.workspace = true
+futures.workspace = true
 
 [features]
 default = []

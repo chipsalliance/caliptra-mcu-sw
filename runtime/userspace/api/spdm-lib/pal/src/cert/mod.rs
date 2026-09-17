@@ -17,6 +17,8 @@ pub mod store;
 
 use super::measurements::MeasurementProvider;
 use super::*;
+#[cfg(feature = "set-certificate")]
+use caliptra_mcu_cert_store::errors as cert_errors;
 use caliptra_mcu_spdm_traits::{SigningInput, SpdmPalAsymAlgo, SpdmPalCertStore, SpdmPalHashAlgo};
 use core::ops::Range;
 use endorsement::slot_index;
@@ -206,12 +208,21 @@ impl ChainLayout {
 }
 
 #[cfg(feature = "set-certificate")]
+fn map_set_cert_error(err: mcu_error::McuErrorCode) -> mcu_error::McuErrorCode {
+    if err.domain() == mcu_error::domain::CERT_STORE {
+        caliptra_mcu_spdm_codec::errors::SPDM_INVALID_REQUEST
+    } else {
+        err
+    }
+}
+
+#[cfg(feature = "set-certificate")]
 async fn validate_root_hash<M: MeasurementProvider>(
     pal: &McuSpdmPal<M>,
     root_hash: &[u8; 48],
     cert_chain: &[u8],
 ) -> McuResult<()> {
-    let root_cert_len = der_first_seq_len(cert_chain).ok_or(INVARIANT)?;
+    let root_cert_len = der_first_seq_len(cert_chain).ok_or(cert_errors::INVALID_ENDORSEMENT)?;
     let sha_buf =
         mcu_caliptra_api::ScratchAlloc::alloc(pal.allocator, mcu_caliptra_api::SHA_CONTEXT_SIZE)?;
     let mut state = mcu_caliptra_api::sha_init(
@@ -230,7 +241,7 @@ async fn validate_root_hash<M: MeasurementProvider>(
     let mut digest = [0u8; 48];
     mcu_caliptra_api::sha_finish(pal.allocator, &mut state, &mut digest).await?;
     if &digest != root_hash {
-        return Err(INVARIANT);
+        return Err(cert_errors::INVALID_ENDORSEMENT);
     }
     Ok(())
 }
@@ -272,7 +283,7 @@ async fn validate_streamed_root_hash<M: MeasurementProvider>(
     let mut digest = [0u8; 48];
     mcu_caliptra_api::sha_finish(pal.allocator, &mut state, &mut digest).await?;
     if &digest != root_hash {
-        return Err(INVARIANT);
+        return Err(cert_errors::INVALID_ENDORSEMENT);
     }
     Ok(())
 }
@@ -388,17 +399,23 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
     async fn validate_set_certificate_chain(
         &self,
         _io: &Self::Io<'_>,
-        _slot: u8,
-        _key_pair_id: u8,
+        slot: u8,
+        key_pair_id: u8,
         cert_model: u8,
         root_hash: &[u8; 48],
         cert_chain: &[u8],
     ) -> McuResult<()> {
-        if cert_model != CERT_MODEL_ALIAS_CERT {
-            return Err(INVARIANT);
+        async {
+            let idx = slot_index(slot).ok_or(INVARIANT)?;
+            self.cert_store.shared().validate_key(idx, key_pair_id)?;
+            if cert_model != CERT_MODEL_ALIAS_CERT {
+                return Err(cert_errors::INVALID_ENDORSEMENT);
+            }
+            validate_root_hash(self, root_hash, cert_chain).await?;
+            Ok(())
         }
-        validate_root_hash(self, root_hash, cert_chain).await?;
-        Ok(())
+        .await
+        .map_err(map_set_cert_error)
     }
 
     async fn cert_chain_len(
@@ -614,22 +631,31 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         data: &[u8],
     ) -> McuResult<()> {
         let idx = slot_index(slot).ok_or(INVARIANT)?;
+        let key = self
+            .cert_store
+            .shared()
+            .validate_key(idx, key_pair_id)
+            .map_err(map_set_cert_error)?;
+        if cert_info != CERT_MODEL_ALIAS_CERT {
+            return Err(caliptra_mcu_spdm_codec::errors::SPDM_INVALID_REQUEST);
+        }
+        if self.cert_store.cert_slots()[idx].write_in_progress(algo) {
+            return Err(caliptra_mcu_spdm_codec::errors::SPDM_BUSY);
+        }
         // Block transient readers of this algorithm's chain during the
         // flash update. The other algorithm's chain stays serveable.
         self.cert_store.cert_slots()[idx].set_write_in_progress(algo, true);
         let result: McuResult<()> = async {
             let chain = managed_endorsement(&self.cert_store, idx, algo)?;
             let chain = chain
-                .write_updated(key_pair_id, cert_info, root_hash, data)
+                .write_updated(key.key_pair_id(), cert_info, root_hash, data)
                 .await?;
             commit_managed_endorsement(&self.cert_store, idx, chain)?;
-            let cert_slot = self.cert_store.cert_slot_mut(idx).ok_or(INVARIANT)?;
-            cert_slot.set_metadata(algo, Some(key_pair_id), Some(cert_info));
             Ok(())
         }
         .await;
         self.cert_store.cert_slots()[idx].set_write_in_progress(algo, false);
-        result?;
+        result.map_err(map_set_cert_error)?;
         self.cert_store.invalidate_cert_caches(slot);
         Ok(())
     }
@@ -639,35 +665,43 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         _io: &Self::Io<'_>,
         slot: u8,
         algo: SpdmPalAsymAlgo,
-        _key_pair_id: u8,
+        key_pair_id: u8,
         cert_info: u8,
         _root_hash: &[u8; 48],
         data_len: usize,
     ) -> McuResult<()> {
         #[cfg(feature = "set-certificate")]
         {
-            if cert_info != CERT_MODEL_ALIAS_CERT {
-                return Err(INVARIANT);
-            }
             let idx = slot_index(slot).ok_or(INVARIANT)?;
+            let key = self
+                .cert_store
+                .shared()
+                .validate_key(idx, key_pair_id)
+                .map_err(map_set_cert_error)?;
+            if cert_info != CERT_MODEL_ALIAS_CERT {
+                return Err(caliptra_mcu_spdm_codec::errors::SPDM_INVALID_REQUEST);
+            }
+            if self.cert_store.cert_slots()[idx].write_in_progress(algo) {
+                return Err(caliptra_mcu_spdm_codec::errors::SPDM_BUSY);
+            }
             self.cert_store.cert_slots()[idx].set_write_in_progress(algo, true);
             let result: McuResult<()> = async {
                 let chain = managed_endorsement(&self.cert_store, idx, algo)?;
-                let chain = chain.begin_stream_update(data_len).await?;
+                let chain = chain
+                    .begin_stream_update(key.key_pair_id(), cert_info, data_len)
+                    .await?;
                 commit_managed_endorsement(&self.cert_store, idx, chain)?;
-                let cert_slot = self.cert_store.cert_slot_mut(idx).ok_or(INVARIANT)?;
-                cert_slot.clear_metadata(algo);
                 Ok(())
             }
             .await;
             if result.is_err() {
                 self.cert_store.cert_slots()[idx].set_write_in_progress(algo, false);
             }
-            result
+            result.map_err(map_set_cert_error)
         }
         #[cfg(not(feature = "set-certificate"))]
         {
-            let _ = (slot, algo, cert_info, data_len);
+            let _ = (slot, algo, key_pair_id, cert_info, _root_hash, data_len);
             Err(mcu_error::codes::NOT_IMPLEMENTED)
         }
     }
@@ -683,9 +717,13 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         #[cfg(feature = "set-certificate")]
         {
             let idx = slot_index(slot).ok_or(INVARIANT)?;
+            if !self.cert_store.cert_slots()[idx].write_in_progress(algo) {
+                return Err(caliptra_mcu_spdm_codec::errors::SPDM_INVALID_REQUEST);
+            }
             managed_endorsement(&self.cert_store, idx, algo)?
                 .write_stream_chunk(offset, data)
                 .await
+                .map_err(map_set_cert_error)
         }
         #[cfg(not(feature = "set-certificate"))]
         {
@@ -707,20 +745,28 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         #[cfg(feature = "set-certificate")]
         {
             let idx = slot_index(slot).ok_or(INVARIANT)?;
+            if !self.cert_store.cert_slots()[idx].write_in_progress(algo) {
+                return Err(caliptra_mcu_spdm_codec::errors::SPDM_INVALID_REQUEST);
+            }
             let result: McuResult<()> = async {
+                let key = self.cert_store.shared().validate_key(idx, key_pair_id)?;
+                if cert_info != CERT_MODEL_ALIAS_CERT {
+                    return Err(cert_errors::INVALID_ENDORSEMENT);
+                }
                 let chain = managed_endorsement(&self.cert_store, idx, algo)?;
                 validate_streamed_root_hash(self, &chain, root_hash, data_len).await?;
                 let chain = chain
-                    .finish_stream_update(key_pair_id, cert_info, root_hash, data_len)
+                    .finish_stream_update(key.key_pair_id(), cert_info, root_hash, data_len)
                     .await?;
                 commit_managed_endorsement(&self.cert_store, idx, chain)?;
-                let cert_slot = self.cert_store.cert_slot_mut(idx).ok_or(INVARIANT)?;
-                cert_slot.set_metadata(algo, Some(key_pair_id), Some(cert_info));
                 Ok(())
             }
             .await;
+            if let Err(err) = result {
+                self.abort_write_cert_chain_stream(_io, slot, algo).await?;
+                return Err(map_set_cert_error(err));
+            }
             self.cert_store.cert_slots()[idx].set_write_in_progress(algo, false);
-            result?;
             self.cert_store.invalidate_cert_caches(slot);
             Ok(())
         }
@@ -740,6 +786,11 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         #[cfg(feature = "set-certificate")]
         {
             let idx = slot_index(slot).ok_or(INVARIANT)?;
+            if self.cert_store.cert_slots()[idx].write_in_progress(algo) {
+                let mut chain = managed_endorsement(&self.cert_store, idx, algo)?;
+                chain.discard();
+                commit_managed_endorsement(&self.cert_store, idx, chain)?;
+            }
             self.cert_store.cert_slots()[idx].set_write_in_progress(algo, false);
             self.cert_store.invalidate_cert_caches(slot);
             Ok(())
@@ -759,18 +810,25 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         algo: SpdmPalAsymAlgo,
     ) -> McuResult<()> {
         let idx = slot_index(slot).ok_or(INVARIANT)?;
+        let role = endorsement::endorsement_role(idx).ok_or(INVARIANT)?;
+        self.cert_store
+            .shared()
+            .policy()
+            .validate_role(role)
+            .map_err(map_set_cert_error)?;
+        if self.cert_store.cert_slots()[idx].write_in_progress(algo) {
+            return Err(caliptra_mcu_spdm_codec::errors::SPDM_BUSY);
+        }
         self.cert_store.cert_slots()[idx].set_write_in_progress(algo, true);
         let result: McuResult<()> = async {
             let chain = managed_endorsement(&self.cert_store, idx, algo)?;
             let chain = chain.erase_updated().await?;
             commit_managed_endorsement(&self.cert_store, idx, chain)?;
-            let cert_slot = self.cert_store.cert_slot_mut(idx).ok_or(INVARIANT)?;
-            cert_slot.clear_metadata(algo);
             Ok(())
         }
         .await;
         self.cert_store.cert_slots()[idx].set_write_in_progress(algo, false);
-        result?;
+        result.map_err(map_set_cert_error)?;
         self.cert_store.invalidate_cert_caches(slot);
         Ok(())
     }
