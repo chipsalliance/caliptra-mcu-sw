@@ -385,7 +385,7 @@ pub const fn managed_endorsement_der_capacity(region_size: usize) -> usize {
 /// all — partial, exact or containing — is destructive; only abutting
 /// ranges are safe. Empty ranges never overlap anything.
 #[cfg(feature = "set-certificate")]
-pub fn ranges_overlap(a: &Range<usize>, b: &Range<usize>) -> bool {
+fn ranges_overlap(a: &Range<usize>, b: &Range<usize>) -> bool {
     !a.is_empty() && !b.is_empty() && a.start < b.end && b.start < a.end
 }
 
@@ -487,7 +487,7 @@ impl SingleManagedEndorsement {
     }
 
     /// The algorithm this region is dedicated to.
-    pub fn algo(&self) -> SpdmPalAsymAlgo {
+    pub const fn algo(&self) -> SpdmPalAsymAlgo {
         self.algo
     }
 
@@ -745,10 +745,12 @@ pub struct ManagedEndorsementSlot {
 #[cfg(feature = "set-certificate")]
 impl ManagedEndorsementSlot {
     pub const fn new(ecc: SingleManagedEndorsement) -> Self {
+        debug_assert!(matches!(ecc.algo(), SpdmPalAsymAlgo::EccP384));
         Self { ecc, mldsa: None }
     }
 
     pub const fn with_mldsa(mut self, mldsa: SingleManagedEndorsement) -> Self {
+        debug_assert!(matches!(mldsa.algo(), SpdmPalAsymAlgo::MlDsa87));
         self.mldsa = Some(mldsa);
         self
     }
@@ -768,15 +770,6 @@ impl ManagedEndorsementSlot {
             SpdmPalAsymAlgo::EccP384 => self.ecc = endorsement,
             SpdmPalAsymAlgo::MlDsa87 => self.mldsa = Some(endorsement),
         }
-    }
-
-    /// Load every configured region's record from flash.
-    pub async fn load(&mut self) -> McuResult<()> {
-        self.ecc.load().await?;
-        if let Some(mldsa) = self.mldsa.as_mut() {
-            mldsa.load().await?;
-        }
-        Ok(())
     }
 
     /// Whether any of this slot's regions intersects `range` on the
