@@ -1177,16 +1177,13 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                 .join("user-app");
             let user_app_elf = std::fs::read(&user_app_elf_path).ok();
 
-            let mcu_image_cfg =
-                resolved_feature_config
-                    .as_ref()
-                    .and_then(|config| config.mcu_image.clone())
-                    .or_else(|| {
-                        get_image_cfg_feature(&mcu_cfgs.clone().unwrap_or_default(), feature)
-                    })
-                    .or_else(|| {
-                        default_mcu_image_cfg_for_feature(feature, feature_runtime_file.path())
-                    });
+            let mcu_image_cfg = resolved_feature_config
+                .as_ref()
+                .and_then(|config| config.mcu_image.clone())
+                .or_else(|| get_image_cfg_feature(&mcu_cfgs.clone().unwrap_or_default(), feature))
+                .or_else(|| {
+                    default_mcu_image_cfg_for_feature(feature, feature_runtime_file.path())
+                });
 
             let mut caliptra_builder = crate::CaliptraBuilder::new(&CaliptraBuildArgs {
                 fpga: platform == "fpga",
