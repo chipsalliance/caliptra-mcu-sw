@@ -18,6 +18,7 @@ embassy-sync.workspace = true
 caliptra-image-types.workspace = true
 caliptra-mcu-attestation-evidence.workspace = true
 caliptra-mcu-common-commands.workspace = true
+caliptra-mcu-cert-store.workspace = true
 caliptra-mcu-flash-image.workspace = true
 caliptra-mcu-measurement-api.workspace = true
 caliptra-mcu-libapi-emulated-caliptra.workspace = true
