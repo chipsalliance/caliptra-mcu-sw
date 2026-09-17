@@ -1,0 +1,21 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "caliptra-mcu-cert-store"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+
+[dependencies]
+caliptra-mcu-common-commands.workspace = true
+der.workspace = true
+mcu-caliptra-api = { workspace = true, features = ["mailbox-io"] }
+mcu-error.workspace = true
+spki.workspace = true
+
+[dev-dependencies]
+caliptra-api.workspace = true
+caliptra-mcu-libtock_platform.workspace = true
+caliptra-mcu-libtock_unittest.workspace = true
+caliptra-mcu-libsyscall-caliptra.workspace = true
+futures.workspace = true

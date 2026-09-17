@@ -26,6 +26,17 @@ provide production authorization. Production authorization and managed
 backing contracts are deferred. MCI certificate commands and configurable
 Tenant SlotIDs are planned.
 
+The shared `CertificateProvisioningPolicy` binds Owner to LDevID (device key
+ID `1`) and disables Tenant by default. Both ECC and ML-DSA use the same
+configured device-key ID. Only LDevID provisioning anchors are currently
+supported; discovery of FMC Alias or RT Alias keys does not enable their use
+as provisioning anchors.
+
+For SPDM implicit-key modes, the adapter resolves wire `KeyPairID = 0` to the
+configured role binding after checking the request's wire attributes.
+Explicit selections must match that binding. The common policy and persisted
+records accept canonical IDs only; zero is never a wildcard.
+
 ## Trust bootstrap
 
 Before provisioning a new certificate slot, the requester SHALL authenticate
@@ -203,6 +214,24 @@ The certificate provisioning path validates that:
 
 The platform profile uses the SPDM AliasCert certificate model for managed
 Owner and Tenant endorsements.
+
+Current content validation checks DER framing, certificate/public-key
+algorithms, backing capacity, and the terminal endorsement's actual public
+key against Caliptra's `GET_LDEV_ECC384_CERT` or `GET_LDEV_MLDSA87_CERT`
+response. Ordinary writes are validated before flash mutation; streamed
+updates are validated before publishing their record. The key, model, root
+hash, and length selected at stream start cannot change at completion.
+SPDM RootHash validation remains in the SPDM adapter.
+
+Recovery applies the same key, model, and content checks before exposing a
+persisted chain. Rejected records are reported and left unprovisioned without
+erasing flash or rewriting IDs. This includes legacy zero-ID records and
+Tenant records when `tenant_key` is `None`. A disabled role cannot be
+provisioned or erased through runtime certificate commands.
+
+These checks do not authorize the requester or verify certificate signatures,
+CA constraints, key usage, or validity-time policy. Production authorization
+remains separate, and a verifier must still validate the complete trust path.
 
 After provisioning, the operator should validate the complete chain against
 the expected PKI Root CA and perform an attestation with the provisioned

@@ -11,7 +11,6 @@ use caliptra_mcu_spdm_codec::{
     AsymAlgos, CapFlags, HashAlgos, PqcAsymAlgos, ReqRespCode, SetCertificateReqBody,
     SetCertificateRsp, SpdmMsgHdrPdu, SpdmVersion,
 };
-use caliptra_mcu_spdm_errors::as_spdm_wire;
 use caliptra_mcu_spdm_traits::{
     PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalIo, SpdmPalIoTransport, MAX_SLOTS,
 };
@@ -89,6 +88,12 @@ pub(crate) async fn handle_set_certificate_request<Pal: SpdmPal>(
 
     validate_request_attributes(state, req_body)?;
     validate_negotiated_set_certificate_algorithms(state)?;
+    let key_pair_id = pal
+        .resolve_set_certificate_key(
+            slot_id,
+            multi_key_conn_rsp(state)?.then_some(req_body.key_pair_id),
+        )
+        .map_err(map_set_cert_validation_error)?;
 
     if erase {
         if !payload.is_empty() || req_body.cert_model() != 0 {
@@ -97,26 +102,20 @@ pub(crate) async fn handle_set_certificate_request<Pal: SpdmPal>(
         pal.erase_cert_chain(io, slot_id, state.asym_algo()).await?;
     } else {
         let (root_hash, der) = validate_spdm_cert_chain(state.version, payload)?;
-        pal.validate_set_certificate_chain(
+        pal.validate_set_certificate_chain(io, slot_id, key_pair_id, cert_model, root_hash, der)
+            .await
+            .map_err(map_set_cert_validation_error)?;
+        pal.write_cert_chain(
             io,
             slot_id,
-            req_body.key_pair_id,
+            state.asym_algo(),
+            key_pair_id,
             cert_model,
             root_hash,
             der,
         )
         .await
         .map_err(map_set_cert_validation_error)?;
-        pal.write_cert_chain(
-            io,
-            slot_id,
-            state.asym_algo(),
-            req_body.key_pair_id,
-            cert_model,
-            root_hash,
-            der,
-        )
-        .await?;
     }
 
     Ok(slot_id)
@@ -172,6 +171,12 @@ pub(crate) async fn start_set_certificate_stream<Pal: SpdmPal>(
     }
     validate_request_attributes(state, req_body)?;
     validate_negotiated_set_certificate_algorithms(state)?;
+    let key_pair_id = pal
+        .resolve_set_certificate_key(
+            slot_id,
+            multi_key_conn_rsp(state)?.then_some(req_body.key_pair_id),
+        )
+        .map_err(map_set_cert_validation_error)?;
 
     let payload_len = large_msg_size
         .checked_sub(SpdmMsgHdrPdu::SIZE + SetCertificateReqBody::SIZE)
@@ -204,16 +209,17 @@ pub(crate) async fn start_set_certificate_stream<Pal: SpdmPal>(
         io,
         slot_id,
         state.asym_algo(),
-        req_body.key_pair_id,
+        key_pair_id,
         cert_model,
         &root_hash,
         der_len,
     )
-    .await?;
+    .await
+    .map_err(map_set_cert_validation_error)?;
 
     let mut stream = SetCertificateStreamState {
         slot_id,
-        key_pair_id: req_body.key_pair_id,
+        key_pair_id,
         cert_model,
         root_hash,
         der_len,
@@ -524,9 +530,11 @@ fn der_sequence_len(input: &[u8]) -> Option<usize> {
 }
 
 fn map_set_cert_validation_error(err: McuErrorCode) -> SpdmError {
-    as_spdm_wire(err)
-        .map(SpdmError::new)
-        .unwrap_or(SPDM_INVALID_REQUEST)
+    if err.domain() == mcu_error::domain::CERT_STORE || err == mcu_error::codes::INVARIANT {
+        SPDM_INVALID_REQUEST
+    } else {
+        err.into()
+    }
 }
 
 #[cfg(test)]

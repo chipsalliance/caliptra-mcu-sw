@@ -6,6 +6,9 @@
 //! Interior mutability is safe because embassy tasks are cooperative
 //! on a single-core MCU — only one task runs at a time.
 
+use caliptra_mcu_cert_store::CertificateProvisioningPolicy;
+#[cfg(feature = "set-certificate")]
+use caliptra_mcu_cert_store::EndorsementRole;
 use caliptra_mcu_spdm_traits::SpdmPalAsymAlgo;
 use core::cell::UnsafeCell;
 
@@ -15,12 +18,11 @@ use mcu_caliptra_api::{
 use mcu_error::McuResult;
 
 use super::endorsement::{
-    slot_index, CertSlot, ReadOnlyEndorsementSlot, SlotEndorsement, NUM_CERT_SLOTS,
+    slot_index, CertSlot, ReadOnlyEndorsementSlot, SlotEndorsement, CERT_MODEL_ALIAS_CERT,
+    NUM_CERT_SLOTS,
 };
 #[cfg(feature = "set-certificate")]
 use super::endorsement::{ManagedEndorsementSlot, SingleManagedEndorsement};
-
-const DEFAULT_CERT_INFO: u8 = 0x01;
 
 async fn compute_root_hash<A: ScratchAlloc>(alloc: &A, root_cert: &[u8]) -> McuResult<[u8; 48]> {
     let sha_buf = alloc.alloc(SHA_CONTEXT_SIZE)?;
@@ -38,6 +40,7 @@ async fn compute_root_hash<A: ScratchAlloc>(alloc: &A, root_cert: &[u8]) -> McuR
 /// `&'static SharedCertStore`.
 pub struct SharedCertStore {
     cert_slots: UnsafeCell<[CertSlot; NUM_CERT_SLOTS]>,
+    policy: CertificateProvisioningPolicy,
 }
 
 // SAFETY: single-core cooperative scheduling — no concurrent access.
@@ -51,9 +54,38 @@ impl Default for SharedCertStore {
 
 impl SharedCertStore {
     pub const fn new() -> Self {
+        Self::with_policy(CertificateProvisioningPolicy::DEFAULT)
+    }
+
+    pub const fn with_policy(policy: CertificateProvisioningPolicy) -> Self {
         Self {
-            cert_slots: UnsafeCell::new([CertSlot::empty(), CertSlot::empty(), CertSlot::empty()]),
+            cert_slots: UnsafeCell::new([
+                CertSlot::empty(Some(0)),
+                CertSlot::empty(match policy.owner_key {
+                    Some(key) => Some(key.key_pair_id()),
+                    None => None,
+                }),
+                CertSlot::empty(match policy.tenant_key {
+                    Some(key) => Some(key.key_pair_id()),
+                    None => None,
+                }),
+            ]),
+            policy,
         }
+    }
+
+    pub const fn policy(&self) -> CertificateProvisioningPolicy {
+        self.policy
+    }
+
+    #[cfg(feature = "set-certificate")]
+    pub(crate) fn validate_key(
+        &self,
+        idx: usize,
+        key_pair_id: u8,
+    ) -> McuResult<caliptra_mcu_cert_store::DeviceKey> {
+        let role = super::endorsement::endorsement_role(idx).ok_or(mcu_error::codes::INVARIANT)?;
+        self.policy.validate_key(role, key_pair_id)
     }
 
     // ---------------------------------------------------------------
@@ -84,8 +116,12 @@ impl SharedCertStore {
         mldsa_chain: Option<&'static [&'static [u8]]>,
         key_pair_id: u8,
     ) -> McuResult<()> {
+        self.policy.validate()?;
         if idx >= NUM_CERT_SLOTS || ecc_chain.is_empty() {
             return Err(mcu_error::codes::INVARIANT);
+        }
+        if self.cert_slots()[idx].configured_key_pair_id() != Some(key_pair_id) {
+            return Err(caliptra_mcu_cert_store::errors::KEY_MISMATCH);
         }
         let ecc_hash = compute_root_hash(alloc, ecc_chain[0]).await?;
         let mut ro = ReadOnlyEndorsementSlot::new(ecc_chain, ecc_hash);
@@ -99,9 +135,8 @@ impl SharedCertStore {
 
         let slot = self.cert_slot_mut(idx).ok_or(mcu_error::codes::INVARIANT)?;
         slot.endorsement = SlotEndorsement::ReadOnly(ro);
-        // Both chains are provisioned together from the same key
-        // material, so they share KeyPairID and CertificateInfo.
-        slot.set_metadata_all(Some(key_pair_id), Some(DEFAULT_CERT_INFO));
+        // Both paths end in a generated DPE leaf, so both use AliasCert.
+        slot.set_metadata_all(Some(CERT_MODEL_ALIAS_CERT));
         Ok(())
     }
 
@@ -124,8 +159,12 @@ impl SharedCertStore {
         mldsa_first_dpe_cert: Option<&[u8]>,
         key_pair_id: u8,
     ) -> McuResult<()> {
+        self.policy.validate()?;
         if idx >= NUM_CERT_SLOTS || ecc_first_dpe_cert.is_empty() {
             return Err(mcu_error::codes::INVARIANT);
+        }
+        if self.cert_slots()[idx].configured_key_pair_id() != Some(key_pair_id) {
+            return Err(caliptra_mcu_cert_store::errors::KEY_MISMATCH);
         }
         static EMPTY_CHAIN: &[&[u8]] = &[];
 
@@ -141,7 +180,7 @@ impl SharedCertStore {
 
         let slot = self.cert_slot_mut(idx).ok_or(mcu_error::codes::INVARIANT)?;
         slot.endorsement = SlotEndorsement::ReadOnly(ro);
-        slot.set_metadata_all(Some(key_pair_id), Some(DEFAULT_CERT_INFO));
+        slot.set_metadata_all(Some(CERT_MODEL_ALIAS_CERT));
         Ok(())
     }
 
@@ -153,9 +192,13 @@ impl SharedCertStore {
     /// Returns `INVARIANT` if the requested region intersects any region
     /// already wired to any slot (including another algorithm in the same
     /// slot), since an update erases a whole region.
+    /// Rejected records leave the region wired but unprovisioned and return
+    /// an error for the caller to report. Flash contents are not modified.
     #[cfg(feature = "set-certificate")]
-    pub async fn set_managed_endorsement(
+    #[allow(clippy::too_many_arguments)]
+    pub async fn set_managed_endorsement<A: ScratchAlloc>(
         &self,
+        alloc: &A,
         idx: usize,
         spdm_slot: u8,
         algo: SpdmPalAsymAlgo,
@@ -163,8 +206,13 @@ impl SharedCertStore {
         base: usize,
         capacity: usize,
     ) -> McuResult<()> {
-        if idx >= NUM_CERT_SLOTS || capacity == 0 {
+        self.policy.validate()?;
+        if idx >= NUM_CERT_SLOTS || capacity == 0 || slot_index(spdm_slot) != Some(idx) {
             return Err(mcu_error::codes::INVARIANT);
+        }
+        let role = super::endorsement::endorsement_role(idx).ok_or(mcu_error::codes::INVARIANT)?;
+        if role == EndorsementRole::Vendor {
+            return Err(caliptra_mcu_cert_store::errors::PROVISIONING_DISABLED);
         }
 
         // Updating a chain erases its whole region, so regions must be
@@ -182,18 +230,47 @@ impl SharedCertStore {
             }
         }
 
-        let slot = self.cert_slot_mut(idx).ok_or(mcu_error::codes::INVARIANT)?;
-        match (&slot.endorsement, algo) {
+        match (&self.cert_slots()[idx].endorsement, algo) {
             (SlotEndorsement::Empty, SpdmPalAsymAlgo::EccP384) => {}
             (SlotEndorsement::Managed(m), SpdmPalAsymAlgo::MlDsa87)
                 if m.get_endorsement(SpdmPalAsymAlgo::MlDsa87).is_none() => {}
             _ => return Err(mcu_error::codes::INVARIANT),
         }
 
-        let mut region = SingleManagedEndorsement::new(spdm_slot, algo, driver_num, base, capacity);
-        region.load().await?;
-
-        slot.set_metadata(algo, region.key_pair_id(), region.cert_info());
+        let mut region = SingleManagedEndorsement::new(
+            spdm_slot,
+            algo,
+            driver_num,
+            base,
+            capacity,
+            self.policy.configured_key(role),
+        );
+        let recovery: McuResult<()> = async {
+            region.load().await?;
+            if region.is_initialized() {
+                let key = self.policy.key_for_role(role)?;
+                let len = region.size()?;
+                caliptra_mcu_cert_store::certificate::validate_endorsement(
+                    alloc,
+                    &region,
+                    len,
+                    region.der_capacity(),
+                    algo.into(),
+                    key,
+                )
+                .await?;
+                let mut root_hash = [0; 48];
+                region.root_cert_hash(&mut root_hash)?;
+                super::validate_streamed_root_hash(alloc, &region, &root_hash, len).await?;
+            }
+            Ok(())
+        }
+        .await;
+        if recovery.is_err() {
+            region.discard();
+        }
+        let slot = self.cert_slot_mut(idx).ok_or(mcu_error::codes::INVARIANT)?;
+        slot.set_metadata(algo, region.cert_info());
         match &mut slot.endorsement {
             SlotEndorsement::Empty => {
                 slot.endorsement = SlotEndorsement::Managed(ManagedEndorsementSlot::new(region));
@@ -203,7 +280,7 @@ impl SharedCertStore {
             }
             SlotEndorsement::ReadOnly(_) => return Err(mcu_error::codes::INVARIANT),
         }
-        Ok(())
+        recovery
     }
 }
 
@@ -428,5 +505,33 @@ mod tests {
             .root_cert_hash(SpdmPalAsymAlgo::MlDsa87, &mut out)
             .unwrap();
         assert_eq!(out, mldsa_hash);
+    }
+
+    #[test]
+    fn shared_cert_store_new_has_empty_slots_and_no_metadata() {
+        let store = SharedCertStore::new();
+        for slot in store.cert_slots() {
+            assert!(!slot.is_supported());
+            assert!(!slot.is_writable());
+            assert_eq!(slot.key_pair_id(SpdmPalAsymAlgo::EccP384), None);
+            assert_eq!(slot.key_pair_id(SpdmPalAsymAlgo::MlDsa87), None);
+            assert_eq!(slot.cert_info(SpdmPalAsymAlgo::EccP384), None);
+            assert_eq!(slot.cert_info(SpdmPalAsymAlgo::MlDsa87), None);
+        }
+    }
+
+    #[test]
+    fn task_cert_store_caches_and_invalidation() {
+        static SHARED: SharedCertStore = SharedCertStore::new();
+        let store = TaskCertStore::new(&SHARED);
+        assert_eq!(store.cached_chain_len(0, SpdmPalAsymAlgo::EccP384), None);
+        store.set_cached_chain_len(0, SpdmPalAsymAlgo::EccP384, 1024);
+        assert_eq!(
+            store.cached_chain_len(0, SpdmPalAsymAlgo::EccP384),
+            Some(1024)
+        );
+
+        store.invalidate_cert_caches(0);
+        assert_eq!(store.cached_chain_len(0, SpdmPalAsymAlgo::EccP384), None);
     }
 }

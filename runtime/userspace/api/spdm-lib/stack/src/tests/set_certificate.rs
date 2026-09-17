@@ -105,6 +105,84 @@ fn test_handle_set_certificate_v13_non_multi_key_uses_alias_cert() {
 }
 
 #[test]
+fn implicit_key_selection_is_resolved_before_writing() {
+    for version in [SpdmVersion::V12, SpdmVersion::V13, SpdmVersion::V14] {
+        let pal = TestPal {
+            implicit_key_pair_id: 1,
+            ..TestPal::default()
+        };
+        let mut state = state(version);
+        let der = der_chain();
+        let root_hash = test_digest(&der[..5]);
+        let payload = cert_payload(&der, root_hash);
+        let io = set_certificate_io(version, 2, 0, &payload);
+        block_on(handle_set_certificate(&mut state, &pal, &io)).unwrap();
+        assert!(matches!(
+            pal.op.take(),
+            Some(StoreOp::Write { key_pair_id: 1, .. })
+        ));
+    }
+}
+
+#[test]
+fn streaming_preserves_the_resolved_key() {
+    let pal = TestPal {
+        implicit_key_pair_id: 1,
+        ..TestPal::default()
+    };
+    let state = state(SpdmVersion::V14);
+    let der = der_chain();
+    let root_hash = test_digest(&der[..5]);
+    let payload = cert_payload(&der, root_hash);
+    let io = set_certificate_io(SpdmVersion::V14, 2, 0, &payload);
+    let stream = block_on(start_set_certificate_stream(
+        &state,
+        &pal,
+        &io,
+        io.request().len(),
+        io.request(),
+    ))
+    .unwrap();
+    assert_eq!(stream.key_pair_id, 1);
+    block_on(finish_set_certificate_stream(&state, &pal, &io, &stream)).unwrap();
+    assert!(matches!(
+        pal.op.take(),
+        Some(StoreOp::Write { key_pair_id: 1, .. })
+    ));
+}
+
+#[test]
+fn rejected_key_resolution_prevents_write_stream_start_and_erase() {
+    let pal = TestPal {
+        resolve_key_error: Some(mcu_error::codes::INVARIANT),
+        ..TestPal::default()
+    };
+    let mut state = state(SpdmVersion::V14);
+    let der = der_chain();
+    let payload = cert_payload(&der, test_digest(&der[..5]));
+    let io = set_certificate_io(SpdmVersion::V14, 2, 0, &payload);
+    assert_eq!(
+        block_on(handle_set_certificate(&mut state, &pal, &io)).err(),
+        Some(SPDM_INVALID_REQUEST)
+    );
+    assert!(block_on(start_set_certificate_stream(
+        &state,
+        &pal,
+        &io,
+        io.request().len(),
+        io.request(),
+    ))
+    .is_err());
+    assert!(pal.stream_cert.borrow().is_empty());
+    let io = set_certificate_io(SpdmVersion::V14, 2 | (1 << 7), 0, &[]);
+    assert_eq!(
+        block_on(handle_set_certificate(&mut state, &pal, &io)).err(),
+        Some(SPDM_INVALID_REQUEST)
+    );
+    assert_eq!(pal.op.take(), None);
+}
+
+#[test]
 fn test_handle_set_certificate_v13_rejects_multikey_when_not_advertised() {
     let pal = TestPal::default();
     let mut state = state_v13_multi_key();
@@ -481,6 +559,26 @@ fn test_handle_set_certificate_preserves_wire_write_error() {
 
     assert_eq!(err, SPDM_BUSY);
     assert_eq!(pal.op.take(), None);
+}
+
+#[test]
+fn set_certificate_resource_failures_remain_retryable() {
+    for during_validation in [false, true] {
+        let pal = TestPal {
+            validate_error: during_validation.then_some(mcu_error::codes::OUT_OF_MEMORY),
+            write_error: (!during_validation).then_some(mcu_error::codes::OUT_OF_MEMORY),
+            ..TestPal::default()
+        };
+        let mut state = state(SpdmVersion::V14);
+        let der = der_chain();
+        let payload = cert_payload(&der, test_digest(&der[..5]));
+        let io = set_certificate_io(SpdmVersion::V14, 2, 0, &payload);
+        assert_eq!(
+            block_on(handle_set_certificate(&mut state, &pal, &io)).err(),
+            Some(SPDM_BUSY),
+        );
+        assert_eq!(pal.op.take(), None);
+    }
 }
 
 #[test]

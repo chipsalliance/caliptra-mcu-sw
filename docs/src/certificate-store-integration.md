@@ -12,9 +12,9 @@ tree does not yet provide every interface or capability described below.
 
 | Status | Capability |
 | --- | --- |
-| Implemented | ECC P-384 Vendor certificate-chain retrieval through SPDM using the current `SharedCertStore` |
-| Test-only | SPDM managed Owner and Tenant slots enabled by `test-mctp-spdm-set-certificate`; this path does not provide production authorization |
-| Planned | Common certificate-store initialization, the Vendor IDevID certificate provider, ML-DSA-87 certificate chains, MCI certificate commands, and configurable Tenant SlotIDs |
+| Implemented | Application-owned boot initialization, ECC P-384 and ML-DSA-87 chains through SPDM, shared static provisioning policy, and endorsement public-key validation |
+| Test-only | Managed backing enabled by `test-mctp-spdm-set-certificate`; Owner defaults to LDevID, Tenant is disabled, and production authorization is not provided |
+| Planned | Remaining common-store ownership, the generic Vendor IDevID certificate provider, MCI certificate commands, and configurable Tenant SlotIDs |
 | Deferred | Production managed-slot authorization and backing contracts |
 
 Names identified as proposed in this guide describe intended interfaces. They
@@ -77,11 +77,10 @@ fixed for the lifetime of the initialized store.
 
 ### Select the certificate algorithm profile
 
-ML-DSA-87 certificate-chain support is planned. The certificate algorithm
-profile remains independent of the configured SPDM protocol version. Enabling
-SPDM 1.4 does not automatically enable ML-DSA-87. Once implemented, SPDM will
-expose ML-DSA-87 only when the classical-plus-PQC profile is selected and the
-transport supports its negotiation.
+The certificate algorithm profile remains independent of the configured SPDM
+protocol version. Enabling SPDM 1.4 does not automatically enable ML-DSA-87.
+SPDM exposes ML-DSA-87 only when the platform enables it and negotiation selects
+that algorithm.
 
 The Vendor ECC P-384 chain must be provisioned for certificate-store
 initialization to succeed. When the classical-plus-PQC profile is selected,
@@ -103,6 +102,25 @@ services. Provisioning supplies certificates for the selected key; it does
 not select or replace the key. See [Supporting multiple PKI
 owners](./certificate_model.md#supporting-multiple-pki-owners) for the PKI
 anchor-point model.
+
+The current policy API is provided by `caliptra-mcu-cert-store`:
+
+```rust
+CertificateProvisioningPolicy {
+    owner_key: Some(DeviceKey::LDevId),
+    tenant_key: None,
+}
+```
+
+The application passes this immutable policy to `SharedCertStore::with_policy`.
+An explicit `Some(DeviceKey::LDevId)` enables Tenant's key binding but does not
+provide backing or requester authorization. FMC Alias and RT Alias bindings
+are rejected until their chain composition is supported.
+
+Setting a binding to `None` disables runtime provisioning/removal and prevents
+persisted chains for that role from being published. Incompatible records
+remain on flash and are reported during recovery; there is no automatic
+ID migration or destructive cleanup.
 
 ### Initialization and chain availability
 

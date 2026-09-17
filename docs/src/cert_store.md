@@ -16,18 +16,23 @@ Integration](./certificate-store-integration.md).
 
 ## Implementation status
 
-This document defines the target release behavior. The current source
-implements ECC P-384 Vendor certificate-chain retrieval through SPDM. Managed
-Owner and Tenant slots are test-only. Common certificate-store initialization,
-the Vendor IDevID certificate provider, ML-DSA-87 certificate chains, MCI
-certificate commands, and configurable Tenant SlotIDs are planned. Production
-authorization and managed-backing contracts are deferred.
+This document defines the target release behavior. The application initializes
+the shared SPDM store once before starting responders. ECC P-384 and ML-DSA-87
+backing and provisioning state are independent. Managed provisioning remains
+test-only, with Owner bound to LDevID and Tenant disabled by default.
+
+Static provisioning policy and endorsement content validation live in
+`caliptra-mcu-cert-store`, outside SPDM. Remaining shared-state/backing ownership
+still lives in the SPDM PAL. Moving it into the common core, MCI certificate
+commands, and configurable Tenant SlotIDs are planned. Atomic A/B publication,
+cross-task generation tracking, and production authorization are not yet
+implemented; their guarantees below describe the target, not current behavior.
 
 ## Certificate store overview
 
 The target architecture provides one protocol-neutral certificate store
 shared by all enabled SPDM and MCI mailbox responder tasks. The store supports
-ECC P-384 and planned ML-DSA-87 certificate chains in Vendor, Owner, and
+ECC P-384 and ML-DSA-87 certificate chains in Vendor, Owner, and
 Tenant certificate slots. A static platform profile determines which optional
 slots are enabled and whether the store uses the classical-only or
 classical-plus-PQC algorithm profile.
@@ -35,7 +40,7 @@ classical-plus-PQC algorithm profile.
 Supported certificate algorithms are:
 
 - ECC P-384, which is always enabled.
-- ML-DSA-87, which is planned and enabled explicitly by the platform profile.
+- ML-DSA-87, enabled explicitly by the platform profile.
 
 Supported certificate slots are:
 
@@ -43,7 +48,7 @@ Supported certificate slots are:
 - Owner.
 - Tenant.
 
-When planned ML-DSA-87 support is enabled, every enabled certificate slot is
+When ML-DSA-87 support is enabled, every enabled certificate slot is
 configured with both an ECC P-384 chain and an independent ML-DSA-87 chain.
 For example, Owner ECC P-384 and Owner ML-DSA-87 have separate certificate
 data, lifecycle state, and persistent backing.
@@ -56,10 +61,9 @@ the common store is accessed.
 
 ![Proposed certificate store runtime architecture](images/cert_store_design.svg)
 
-The diagram shows the target release architecture. The current implementation
-initializes `SharedCertStore` from the SPDM module. The common initialization,
-ML-DSA-87, MCI, and configurable Tenant elements shown in the diagram are
-planned.
+The diagram shows the target release architecture. The application currently
+initializes `SharedCertStore`, which remains defined in the SPDM PAL. The
+common-store ownership, MCI, and configurable Tenant elements are planned.
 
 The proposed initialization module is part of `CertStore` and exposes a
 one-time `cert_store::initialize(...)` API. The user application will call
@@ -113,6 +117,26 @@ The Vendor endorsement certificates are established during manufacturing and
 remain read-only for the device lifetime. They cannot be provisioned,
 replaced, or removed at runtime. Owner and Tenant provisioning requires
 authorization.
+
+### Static provisioning policy
+
+`CertificateProvisioningPolicy` is immutable for the lifetime of the shared
+store. It contains `owner_key` and `tenant_key` bindings, defaulting to
+`Some(DeviceKey::LDevId)` and `None`, respectively. Vendor mutation is always
+denied. `None` disables managed provisioning and removal and leaves existing
+records unprovisioned without erasing them.
+
+The configured key is shared by both algorithms and cannot be changed by a
+request, recovered record, removal, or reprovisioning. Metadata remains gated
+by each algorithm's provisioned/update state. Requester authorization is not
+part of this policy.
+
+Ordinary writes, streamed completion, and recovery use the same common
+endorsement validator. It checks certificate framing, algorithm and size, and
+compares the terminal public key with the corresponding Caliptra LDevID
+certificate. Recovery reports incompatible records without rewriting their
+IDs. Unsupported FMC/RT Alias anchor configurations are rejected rather than
+composed with an LDevID suffix.
 
 ## Certificate-chain composition
 
@@ -206,7 +230,7 @@ The ECC P-384 chain for each enabled endorsement role requires:
 - An ECC P-384 DPE leaf certificate.
 - Access to the corresponding ECC P-384 signing key.
 
-### ML-DSA-87 (planned)
+### ML-DSA-87
 
 The ML-DSA-87 chain for each enabled endorsement role requires:
 

@@ -36,7 +36,6 @@ use caliptra_mcu_spdm_pal::cert::store::SharedCertStore;
 use core::fmt::Write as _;
 use mcu_caliptra_api::{
     mldsa87_cert_der_len, populate_idev_ecc384_cert, populate_idev_mldsa87_cert, ScratchAlloc,
-    POPULATE_IDEV_MLDSA87_MAX_CERT_SIZE,
 };
 use mcu_error::McuResult;
 
@@ -60,13 +59,18 @@ const OTP_IDEVID_MLDSA_PARTITION: u32 = 0x02;
 /// Headroom for the mailbox response and bitmap allocator bookkeeping.
 const BOOT_SCRATCH_HEADROOM: usize = 1024;
 
-/// Scratch that [`boot_init`] needs for the ML-DSA certificate import. Boot
-/// borrows it from an idle task pool.
-pub(crate) const BOOT_SCRATCH_SIZE: usize =
-    POPULATE_IDEV_MLDSA87_MAX_CERT_SIZE + BOOT_SCRATCH_HEADROOM;
+/// Scratch for identity import and recovered-endorsement key validation.
+/// Boot borrows it from an idle task pool.
+pub(crate) const BOOT_SCRATCH_SIZE: usize = mcu_caliptra_api::LDEVID_CERT_RSP_BUF_SIZE
+    + caliptra_mcu_cert_store::certificate::MAX_DEVICE_PUBLIC_KEY_SIZE
+    + BOOT_SCRATCH_HEADROOM;
 
 #[cfg(feature = "spdm")]
-static CERT_STORE: SharedCertStore = SharedCertStore::new();
+const PROVISIONING_POLICY: caliptra_mcu_cert_store::CertificateProvisioningPolicy =
+    caliptra_mcu_cert_store::CertificateProvisioningPolicy::DEFAULT;
+
+#[cfg(feature = "spdm")]
+static CERT_STORE: SharedCertStore = SharedCertStore::with_policy(PROVISIONING_POLICY);
 
 /// Each managed `(slot, algorithm)` gets its own flash region so that
 /// installing one algorithm's chain cannot erase the other's.
@@ -160,14 +164,15 @@ async fn setup_endorsements<A: ScratchAlloc>(store: &SharedCertStore, alloc: &A)
     // Slots 1-2 (Owner/Tenant): Managed endorsements, initially empty or
     // loaded from the cert-store flash partition. Each (slot, algorithm)
     // gets its own contiguous region. This remains test-only until a
-    // production authorization/key-binding policy exists.
+    // production requester authorization exists.
     #[cfg(feature = "test-mctp-spdm-set-certificate")]
     {
         for (region_index, &(store_slot, spdm_slot, algo)) in
             MANAGED_ENDORSEMENT_REGIONS.iter().enumerate()
         {
-            store
+            if let Err(err) = store
                 .set_managed_endorsement(
+                    alloc,
                     store_slot,
                     spdm_slot,
                     algo,
@@ -175,7 +180,26 @@ async fn setup_endorsements<A: ScratchAlloc>(store: &SharedCertStore, alloc: &A)
                     region_index * MANAGED_SLOT_REGION_SIZE,
                     MANAGED_SLOT_REGION_SIZE,
                 )
-                .await?;
+                .await
+            {
+                if err.domain() != mcu_error::domain::CERT_STORE
+                    && err != mcu_error::codes::OUT_OF_MEMORY
+                {
+                    return Err(err);
+                }
+                let mut cw = Console::<DefaultSyscalls>::writer();
+                let algorithm = match algo {
+                    caliptra_mcu_spdm_traits::SpdmPalAsymAlgo::EccP384 => "ECC P-384",
+                    caliptra_mcu_spdm_traits::SpdmPalAsymAlgo::MlDsa87 => "ML-DSA-87",
+                };
+                crate::log_warn!(
+                    cw,
+                    "CERT_STORE: slot {} {} record rejected, flash preserved: 0x{}",
+                    spdm_slot,
+                    algorithm,
+                    crate::Hex32(u32::from(err))
+                );
+            }
         }
     }
 

@@ -1110,6 +1110,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-cert-store"
+version = "0.1.0"
+dependencies = [
+ "caliptra-api",
+ "caliptra-mcu-common-commands",
+ "caliptra-mcu-libsyscall-caliptra",
+ "caliptra-mcu-libtock_platform",
+ "caliptra-mcu-libtock_unittest",
+ "caliptra-mcu-runtime-userspace-error",
+ "der 0.7.10",
+ "futures",
+ "mcu-caliptra-api",
+ "spki 0.7.3",
+]
+
+[[package]]
 name = "caliptra-mcu-command-auth-challenge-signer"
 version = "0.1.0"
 dependencies = [
@@ -2418,13 +2434,16 @@ name = "caliptra-mcu-spdm-pal"
 version = "0.1.0"
 dependencies = [
  "caliptra-mcu-attestation-evidence",
+ "caliptra-mcu-cert-store",
  "caliptra-mcu-libsyscall-caliptra",
  "caliptra-mcu-libtock_platform",
+ "caliptra-mcu-libtock_unittest",
  "caliptra-mcu-measurement-api",
  "caliptra-mcu-runtime-userspace-error",
  "caliptra-mcu-scratch-alloc",
  "caliptra-mcu-spdm-codec",
  "caliptra-mcu-spdm-traits",
+ "futures",
  "mcu-caliptra-api",
  "zerocopy",
 ]
@@ -7931,6 +7950,7 @@ dependencies = [
  "caliptra-auth-man-types",
  "caliptra-image-types",
  "caliptra-mcu-attestation-evidence",
+ "caliptra-mcu-cert-store",
  "caliptra-mcu-common-commands",
  "caliptra-mcu-config",
  "caliptra-mcu-config-emulator",

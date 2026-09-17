@@ -39,11 +39,23 @@ Store](./cert_store.md).
 
 ## Implementation status
 
-This document defines the target certificate model. The current certificate
-store implements ECC P-384 Vendor certificate-chain retrieval through SPDM.
-ML-DSA-87 certificate chains are planned. Managed Owner and Tenant
-provisioning is test-only until production authorization and backing contracts
-are implemented.
+This document defines the target certificate model. The current store serves
+ECC P-384 and ML-DSA-87 certificate chains through SPDM. Managed provisioning
+remains test-only until production authorization and backing contracts are
+implemented. The static provisioning policy defaults Owner to LDevID and
+disables Tenant; LDevID is the only supported managed provisioning anchor.
+
+A configured device-key ID is shared by the ECC and ML-DSA variants of an
+endorsement role, while certificate bytes and availability remain independent.
+The store validates the terminal endorsement public key against Caliptra's
+LDevID certificate for the selected algorithm. Managed chains append the
+generated FMC/RT Alias certificates and the matching DPE leaf. Read-only and
+managed SPDM chains both report AliasCert because they end in a generated
+DPE leaf; manufacturing Vendor key metadata is otherwise unchanged.
+
+The managed composer locates Caliptra's authoritative LDevID certificate in
+the generated chain and appends only the certificates below it. It does not
+assume an IDevID certificate is present or blindly skip two certificates.
 
 ## What certificate chains are used for
 

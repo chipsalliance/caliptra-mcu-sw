@@ -106,6 +106,8 @@ pub struct TestPal {
     pub supported_slots: u8,
     pub provisioned_slots: u8,
     pub authorized: bool,
+    pub implicit_key_pair_id: u8,
+    pub resolve_key_error: Option<McuErrorCode>,
     pub validate_error: Option<McuErrorCode>,
     pub write_error: Option<McuErrorCode>,
     pub erase_error: Option<McuErrorCode>,
@@ -148,6 +150,8 @@ impl Default for TestPal {
             supported_slots: u8::MAX,
             provisioned_slots: 1,
             authorized: true,
+            implicit_key_pair_id: 0,
+            resolve_key_error: None,
             validate_error: None,
             write_error: None,
             erase_error: None,
@@ -324,6 +328,14 @@ impl SpdmPalCertStore for TestPal {
         _erase: bool,
     ) -> bool {
         self.authorized
+    }
+
+    #[cfg(feature = "set-certificate")]
+    fn resolve_set_certificate_key(&self, _slot: u8, explicit_key: Option<u8>) -> McuResult<u8> {
+        if let Some(err) = self.resolve_key_error {
+            return Err(err);
+        }
+        Ok(explicit_key.unwrap_or(self.implicit_key_pair_id))
     }
 
     #[cfg(feature = "set-certificate")]

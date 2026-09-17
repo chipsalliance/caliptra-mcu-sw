@@ -124,6 +124,13 @@ pub trait SpdmPalCertStore: crate::SpdmPalIoTransport {
         erase: bool,
     ) -> bool;
 
+    /// Translate a validated explicit or implicit SPDM selection into the
+    /// backend's canonical device-key identity, independently of authorization.
+    #[cfg(feature = "set-certificate")]
+    fn resolve_set_certificate_key(&self, _slot: u8, _explicit_key: Option<u8>) -> McuResult<u8> {
+        Err(mcu_error::codes::NOT_IMPLEMENTED)
+    }
+
     /// Validate an incoming SET_CERTIFICATE chain before it is committed.
     ///
     /// The PAL implementation **must** verify that `SHA-384(first DER

@@ -224,11 +224,25 @@ const _: () = assert!(IDEV_MLDSA87_CSR_MAX_SIZE <= caliptra_api::mailbox::MAX_RE
 pub const IDEV_MLDSA87_CSR_RSP_BUF_SIZE: usize =
     VAR_SIZE_RSP_PREFIX_LEN + IDEV_MLDSA87_CSR_MAX_SIZE;
 
+pub const LDEVID_CERT_RSP_BUF_SIZE: usize =
+    core::mem::size_of::<caliptra_api::mailbox::GetLdevCertResp>();
+
+/// Read Caliptra's authoritative LDevID certificate into caller-owned scratch.
+pub async fn get_ldevid_cert(profile: crate::DpeProfile, cert_out: &mut [u8]) -> McuResult<usize> {
+    let command = match profile {
+        crate::DpeProfile::P384Sha384 => CommandId::GET_LDEV_ECC384_CERT,
+        crate::DpeProfile::Mldsa87 => CommandId::GET_LDEV_MLDSA87_CERT,
+    };
+    get_certificate_or_csr(command.0, cert_out)
+        .await?
+        .ok_or(INVARIANT)
+}
+
 /// Issue `GET_IDEV_ECC384_CSR` and write the returned CSR DER bytes into
 /// `csr_out`. Returns `Ok(None)` when the CSR is not provisioned.
 #[inline(never)]
 pub async fn get_idev_csr_ecc384(csr_out: &mut [u8]) -> McuResult<Option<usize>> {
-    get_idev_csr_inner(CMD_GET_IDEV_ECC384_CSR, csr_out).await
+    get_certificate_or_csr(CMD_GET_IDEV_ECC384_CSR, csr_out).await
 }
 
 /// Issue `GET_IDEV_MLDSA87_CSR` and write the returned CSR DER bytes into
@@ -240,14 +254,14 @@ pub async fn get_idev_csr_ecc384(csr_out: &mut [u8]) -> McuResult<Option<usize>>
 /// see that constant for the required buffer size.
 #[inline(never)]
 pub async fn get_idev_csr_mldsa87(csr_out: &mut [u8]) -> McuResult<Option<usize>> {
-    get_idev_csr_inner(CMD_GET_IDEV_MLDSA87_CSR, csr_out).await
+    get_certificate_or_csr(CMD_GET_IDEV_MLDSA87_CSR, csr_out).await
 }
 
-/// Shared implementation of `GET_IDEV_*_CSR`.
+/// Shared implementation of header-only certificate and CSR reads.
 ///
 /// Both variants take an empty request (checksum only) and return a
 /// `VarSizeDataResp`, so the only difference is the command ID.
-async fn get_idev_csr_inner(cmd: u32, csr_out: &mut [u8]) -> McuResult<Option<usize>> {
+async fn get_certificate_or_csr(cmd: u32, csr_out: &mut [u8]) -> McuResult<Option<usize>> {
     if csr_out.len() <= VAR_SIZE_RSP_PREFIX_LEN {
         return Err(INVARIANT);
     }

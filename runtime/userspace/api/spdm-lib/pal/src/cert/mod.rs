@@ -17,6 +17,11 @@ pub mod store;
 
 use super::measurements::MeasurementProvider;
 use super::*;
+#[cfg(feature = "set-certificate")]
+use caliptra_mcu_cert_store::{
+    certificate::{certificate_len, validate_endorsement},
+    errors as cert_errors,
+};
 use caliptra_mcu_spdm_traits::{SigningInput, SpdmPalAsymAlgo, SpdmPalCertStore, SpdmPalHashAlgo};
 use core::ops::Range;
 use endorsement::slot_index;
@@ -36,8 +41,6 @@ pub const DPE_LEAF_LABEL: [u8; DPE_LABEL_LEN] = [
 
 /// Default KeyUsageMask for all Caliptra slots.
 const DEFAULT_KEY_USAGE_MASK: u16 = 0x0003;
-const DPE_IDEVID_AND_LDEVID_CERT_COUNT: usize = 2;
-
 /// SPDM CertModel AliasCert.
 #[cfg(feature = "set-certificate")]
 const CERT_MODEL_ALIAS_CERT: u8 = 2;
@@ -95,19 +98,26 @@ impl DpeChainSink for CountSink {
     }
 }
 
-/// Consumes complete DER certificates from the start of a streamed chain.
-struct DpePrefixScanner {
-    certs_left: usize,
+/// Locate the authoritative LDevID certificate without assuming that the
+/// optional manufacturing IDevID certificate was prepended to the DPE chain.
+struct DpeAnchorScanner<'a> {
+    anchor: &'a [u8],
+    found: bool,
+    matches: bool,
+    cert_len: usize,
     cert_bytes_left: usize,
     skip_len: usize,
     header: [u8; 6],
     header_len: usize,
 }
 
-impl DpePrefixScanner {
-    fn new(certs: usize) -> Self {
+impl<'a> DpeAnchorScanner<'a> {
+    fn new(anchor: &'a [u8]) -> Self {
         Self {
-            certs_left: certs,
+            anchor,
+            found: false,
+            matches: true,
+            cert_len: 0,
             cert_bytes_left: 0,
             skip_len: 0,
             header: [0; 6],
@@ -117,14 +127,20 @@ impl DpePrefixScanner {
 
     fn consume(&mut self, chunk: &[u8]) -> McuResult<()> {
         let mut pos = 0usize;
-        while self.certs_left > 0 && pos < chunk.len() {
+        while !self.found && pos < chunk.len() {
             if self.cert_bytes_left > 0 {
                 let take = self.cert_bytes_left.min(chunk.len() - pos);
+                let offset = self.cert_len - self.cert_bytes_left;
+                if self.matches {
+                    self.matches =
+                        self.anchor.get(offset..offset + take) == Some(&chunk[pos..pos + take]);
+                }
                 self.cert_bytes_left -= take;
                 self.skip_len = self.skip_len.checked_add(take).ok_or(INVARIANT)?;
                 pos += take;
                 if self.cert_bytes_left == 0 {
-                    self.certs_left -= 1;
+                    self.found = self.matches;
+                    self.matches = true;
                 }
                 continue;
             }
@@ -133,15 +149,19 @@ impl DpePrefixScanner {
                 return Err(INVARIANT);
             }
             self.header[self.header_len] = chunk[pos];
+            self.matches &= self.anchor.get(self.header_len) == Some(&chunk[pos]);
             self.header_len += 1;
             self.skip_len = self.skip_len.checked_add(1).ok_or(INVARIANT)?;
             pos += 1;
 
             if let Some(cert_len) = der_first_seq_len(&self.header[..self.header_len]) {
+                self.cert_len = cert_len;
+                self.matches &= cert_len == self.anchor.len();
                 self.cert_bytes_left = cert_len.checked_sub(self.header_len).ok_or(INVARIANT)?;
                 self.header_len = 0;
                 if self.cert_bytes_left == 0 {
-                    self.certs_left -= 1;
+                    self.found = self.matches;
+                    self.matches = true;
                 }
             }
         }
@@ -149,7 +169,7 @@ impl DpePrefixScanner {
     }
 }
 
-impl DpeChainSink for DpePrefixScanner {
+impl DpeChainSink for DpeAnchorScanner<'_> {
     async fn on_chunk(&mut self, chunk: &[u8]) -> McuResult<()> {
         self.consume(chunk)
     }
@@ -211,7 +231,10 @@ async fn validate_root_hash<M: MeasurementProvider>(
     root_hash: &[u8; 48],
     cert_chain: &[u8],
 ) -> McuResult<()> {
-    let root_cert_len = der_first_seq_len(cert_chain).ok_or(INVARIANT)?;
+    let root_cert_len = certificate_len(cert_chain)?;
+    let root_cert = cert_chain
+        .get(..root_cert_len)
+        .ok_or(cert_errors::INVALID_ENDORSEMENT)?;
     let sha_buf =
         mcu_caliptra_api::ScratchAlloc::alloc(pal.allocator, mcu_caliptra_api::SHA_CONTEXT_SIZE)?;
     let mut state = mcu_caliptra_api::sha_init(
@@ -221,16 +244,11 @@ async fn validate_root_hash<M: MeasurementProvider>(
         &[],
     )
     .await?;
-    mcu_caliptra_api::sha_update(
-        pal.allocator,
-        &mut state,
-        checked_slice(cert_chain, 0, root_cert_len)?,
-    )
-    .await?;
+    mcu_caliptra_api::sha_update(pal.allocator, &mut state, root_cert).await?;
     let mut digest = [0u8; 48];
     mcu_caliptra_api::sha_finish(pal.allocator, &mut state, &mut digest).await?;
     if &digest != root_hash {
-        return Err(INVARIANT);
+        return Err(cert_errors::INVALID_ENDORSEMENT);
     }
     Ok(())
 }
@@ -240,22 +258,16 @@ async fn validate_root_hash<M: MeasurementProvider>(
 // ---------------------------------------------------------------------------
 
 #[cfg(feature = "set-certificate")]
-async fn validate_streamed_root_hash<M: MeasurementProvider>(
-    pal: &McuSpdmPal<M>,
+async fn validate_streamed_root_hash<A: mcu_caliptra_api::ScratchAlloc>(
+    alloc: &A,
     managed: &endorsement::SingleManagedEndorsement,
     root_hash: &[u8; 48],
     data_len: usize,
 ) -> McuResult<()> {
     let first_cert_len = streamed_first_der_len(managed, data_len).await?;
-    let sha_buf =
-        mcu_caliptra_api::ScratchAlloc::alloc(pal.allocator, mcu_caliptra_api::SHA_CONTEXT_SIZE)?;
-    let mut state = mcu_caliptra_api::sha_init(
-        pal.allocator,
-        sha_buf,
-        mcu_caliptra_api::HashAlgo::Sha384,
-        &[],
-    )
-    .await?;
+    let sha_buf = alloc.alloc(mcu_caliptra_api::SHA_CONTEXT_SIZE)?;
+    let mut state =
+        mcu_caliptra_api::sha_init(alloc, sha_buf, mcu_caliptra_api::HashAlgo::Sha384, &[]).await?;
     let mut offset = 0usize;
     let mut buf = [0u8; 256];
     while offset < first_cert_len {
@@ -264,15 +276,15 @@ async fn validate_streamed_root_hash<M: MeasurementProvider>(
             .read_stream_chunk(offset, checked_slice_mut(&mut buf, 0, n)?)
             .await?;
         if read != n {
-            return Err(INVARIANT);
+            return Err(cert_errors::INVALID_ENDORSEMENT);
         }
-        mcu_caliptra_api::sha_update(pal.allocator, &mut state, checked_slice(&buf, 0, n)?).await?;
+        mcu_caliptra_api::sha_update(alloc, &mut state, checked_slice(&buf, 0, n)?).await?;
         offset += n;
     }
     let mut digest = [0u8; 48];
-    mcu_caliptra_api::sha_finish(pal.allocator, &mut state, &mut digest).await?;
+    mcu_caliptra_api::sha_finish(alloc, &mut state, &mut digest).await?;
     if &digest != root_hash {
-        return Err(INVARIANT);
+        return Err(cert_errors::INVALID_ENDORSEMENT);
     }
     Ok(())
 }
@@ -283,42 +295,17 @@ async fn streamed_first_der_len(
     data_len: usize,
 ) -> McuResult<usize> {
     let mut header = [0u8; 6];
-    if data_len < 2
-        || managed
-            .read_stream_chunk(0, checked_slice_mut(&mut header, 0, 2)?)
-            .await?
-            != 2
+    let header_len = header.len().min(data_len);
+    if managed
+        .read_stream_chunk(0, &mut header[..header_len])
+        .await?
+        != header_len
     {
-        return Err(INVARIANT);
+        return Err(cert_errors::INVALID_ENDORSEMENT);
     }
-    if header[0] != 0x30 {
-        return Err(INVARIANT);
-    }
-    let len_byte = header[1];
-    let (header_len, content_len) = if len_byte & 0x80 == 0 {
-        (2usize, len_byte as usize)
-    } else {
-        let len_len = (len_byte & 0x7f) as usize;
-        if len_len == 0 || len_len > 4 || data_len < 2 + len_len {
-            return Err(INVARIANT);
-        }
-        let len_buf = checked_slice_mut(&mut header, 2, len_len)?;
-        if managed.read_stream_chunk(2, len_buf).await? != len_len {
-            return Err(INVARIANT);
-        }
-        let mut content_len = 0usize;
-        for &byte in checked_slice(&header, 2, len_len)? {
-            content_len = content_len.checked_shl(8).ok_or(INVARIANT)?;
-            content_len = content_len.checked_add(byte as usize).ok_or(INVARIANT)?;
-        }
-        (2 + len_len, content_len)
-    };
-    if content_len == 0 {
-        return Err(INVARIANT);
-    }
-    let cert_len = header_len.checked_add(content_len).ok_or(INVARIANT)?;
+    let cert_len = certificate_len(&header[..header_len])?;
     if cert_len > data_len {
-        return Err(INVARIANT);
+        return Err(cert_errors::INVALID_ENDORSEMENT);
     }
     Ok(cert_len)
 }
@@ -336,6 +323,17 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
             }
         }
         mask
+    }
+
+    #[cfg(feature = "set-certificate")]
+    fn resolve_set_certificate_key(&self, slot: u8, explicit_key: Option<u8>) -> McuResult<u8> {
+        let idx = slot_index(slot).ok_or(INVARIANT)?;
+        let role = endorsement::endorsement_role(idx).ok_or(INVARIANT)?;
+        let policy = self.cert_store.shared().policy();
+        let configured = policy.key_for_role(role)?;
+        let key_pair_id = explicit_key.unwrap_or(configured.key_pair_id());
+        policy.validate_key(role, key_pair_id)?;
+        Ok(key_pair_id)
     }
 
     fn provisioned_slots(&self, algo: SpdmPalAsymAlgo) -> u8 {
@@ -388,14 +386,16 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
     async fn validate_set_certificate_chain(
         &self,
         _io: &Self::Io<'_>,
-        _slot: u8,
-        _key_pair_id: u8,
+        slot: u8,
+        key_pair_id: u8,
         cert_model: u8,
         root_hash: &[u8; 48],
         cert_chain: &[u8],
     ) -> McuResult<()> {
+        let idx = slot_index(slot).ok_or(INVARIANT)?;
+        self.cert_store.shared().validate_key(idx, key_pair_id)?;
         if cert_model != CERT_MODEL_ALIAS_CERT {
-            return Err(INVARIANT);
+            return Err(cert_errors::INVALID_ENDORSEMENT);
         }
         validate_root_hash(self, root_hash, cert_chain).await?;
         Ok(())
@@ -423,11 +423,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
 
         let cert_slot = &self.cert_store.cert_slots()[idx];
         let slot_chain_len = cert_slot.endorsement.size(algo).map_err(|_| INVARIANT)?;
-        let dpe_skip = if cert_slot.is_writable() {
-            DPE_IDEVID_AND_LDEVID_CERT_COUNT
-        } else {
-            0
-        };
+        let dpe_skip = cert_slot.is_writable();
         let (dpe_len, dpe_skip_len) =
             dpe_chain_len_and_skip_prefix(self, DpeProfile::from(algo), dpe_skip).await?;
         let leaf_len = probe_leaf_len(self, DpeProfile::from(algo)).await?;
@@ -500,12 +496,8 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
             match self.cert_store.cached_dpe_skip_len(slot, algo) {
                 Some(n) => n as usize,
                 None => {
-                    let (_, skip) = dpe_chain_len_and_skip_prefix(
-                        self,
-                        DpeProfile::from(algo),
-                        DPE_IDEVID_AND_LDEVID_CERT_COUNT,
-                    )
-                    .await?;
+                    let (_, skip) =
+                        dpe_chain_len_and_skip_prefix(self, DpeProfile::from(algo), true).await?;
                     self.cert_store
                         .set_cached_dpe_skip_len(slot, algo, skip as u32);
                     skip
@@ -614,17 +606,34 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         data: &[u8],
     ) -> McuResult<()> {
         let idx = slot_index(slot).ok_or(INVARIANT)?;
+        let key = self.cert_store.shared().validate_key(idx, key_pair_id)?;
+        if cert_info != CERT_MODEL_ALIAS_CERT {
+            return Err(cert_errors::INVALID_ENDORSEMENT);
+        }
+        if self.cert_store.cert_slots()[idx].write_in_progress(algo) {
+            return Err(caliptra_mcu_spdm_codec::errors::SPDM_BUSY);
+        }
         // Block transient readers of this algorithm's chain during the
         // flash update. The other algorithm's chain stays serveable.
         self.cert_store.cert_slots()[idx].set_write_in_progress(algo, true);
         let result: McuResult<()> = async {
             let chain = managed_endorsement(&self.cert_store, idx, algo)?;
+            validate_endorsement(
+                self.allocator,
+                data,
+                data.len(),
+                chain.der_capacity(),
+                algo.into(),
+                key,
+            )
+            .await?;
+            validate_root_hash(self, root_hash, data).await?;
             let chain = chain
                 .write_updated(key_pair_id, cert_info, root_hash, data)
                 .await?;
             commit_managed_endorsement(&self.cert_store, idx, chain)?;
             let cert_slot = self.cert_store.cert_slot_mut(idx).ok_or(INVARIANT)?;
-            cert_slot.set_metadata(algo, Some(key_pair_id), Some(cert_info));
+            cert_slot.set_metadata(algo, Some(cert_info));
             Ok(())
         }
         .await;
@@ -639,21 +648,27 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         _io: &Self::Io<'_>,
         slot: u8,
         algo: SpdmPalAsymAlgo,
-        _key_pair_id: u8,
+        key_pair_id: u8,
         cert_info: u8,
-        _root_hash: &[u8; 48],
+        root_hash: &[u8; 48],
         data_len: usize,
     ) -> McuResult<()> {
         #[cfg(feature = "set-certificate")]
         {
-            if cert_info != CERT_MODEL_ALIAS_CERT {
-                return Err(INVARIANT);
-            }
             let idx = slot_index(slot).ok_or(INVARIANT)?;
+            self.cert_store.shared().validate_key(idx, key_pair_id)?;
+            if cert_info != CERT_MODEL_ALIAS_CERT {
+                return Err(cert_errors::INVALID_ENDORSEMENT);
+            }
+            if self.cert_store.cert_slots()[idx].write_in_progress(algo) {
+                return Err(caliptra_mcu_spdm_codec::errors::SPDM_BUSY);
+            }
             self.cert_store.cert_slots()[idx].set_write_in_progress(algo, true);
             let result: McuResult<()> = async {
                 let chain = managed_endorsement(&self.cert_store, idx, algo)?;
-                let chain = chain.begin_stream_update(data_len).await?;
+                let chain = chain
+                    .begin_stream_update(key_pair_id, cert_info, root_hash, data_len)
+                    .await?;
                 commit_managed_endorsement(&self.cert_store, idx, chain)?;
                 let cert_slot = self.cert_store.cert_slot_mut(idx).ok_or(INVARIANT)?;
                 cert_slot.clear_metadata(algo);
@@ -667,7 +682,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         }
         #[cfg(not(feature = "set-certificate"))]
         {
-            let _ = (slot, algo, cert_info, data_len);
+            let _ = (slot, algo, key_pair_id, cert_info, root_hash, data_len);
             Err(mcu_error::codes::NOT_IMPLEMENTED)
         }
     }
@@ -683,9 +698,13 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         #[cfg(feature = "set-certificate")]
         {
             let idx = slot_index(slot).ok_or(INVARIANT)?;
-            managed_endorsement(&self.cert_store, idx, algo)?
+            if !self.cert_store.cert_slots()[idx].write_in_progress(algo) {
+                return Err(cert_errors::INVALID_ENDORSEMENT);
+            }
+            let chain = managed_endorsement(&self.cert_store, idx, algo)?
                 .write_stream_chunk(offset, data)
-                .await
+                .await?;
+            commit_managed_endorsement(&self.cert_store, idx, chain)
         }
         #[cfg(not(feature = "set-certificate"))]
         {
@@ -707,20 +726,37 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         #[cfg(feature = "set-certificate")]
         {
             let idx = slot_index(slot).ok_or(INVARIANT)?;
+            if !self.cert_store.cert_slots()[idx].write_in_progress(algo) {
+                return Err(cert_errors::INVALID_ENDORSEMENT);
+            }
             let result: McuResult<()> = async {
+                let key = self.cert_store.shared().validate_key(idx, key_pair_id)?;
                 let chain = managed_endorsement(&self.cert_store, idx, algo)?;
-                validate_streamed_root_hash(self, &chain, root_hash, data_len).await?;
+                chain.validate_stream_metadata(key_pair_id, cert_info, root_hash, data_len)?;
+                validate_endorsement(
+                    self.allocator,
+                    &chain,
+                    data_len,
+                    chain.der_capacity(),
+                    algo.into(),
+                    key,
+                )
+                .await?;
+                validate_streamed_root_hash(self.allocator, &chain, root_hash, data_len).await?;
                 let chain = chain
                     .finish_stream_update(key_pair_id, cert_info, root_hash, data_len)
                     .await?;
                 commit_managed_endorsement(&self.cert_store, idx, chain)?;
                 let cert_slot = self.cert_store.cert_slot_mut(idx).ok_or(INVARIANT)?;
-                cert_slot.set_metadata(algo, Some(key_pair_id), Some(cert_info));
+                cert_slot.set_metadata(algo, Some(cert_info));
                 Ok(())
             }
             .await;
+            if let Err(err) = result {
+                self.abort_write_cert_chain_stream(_io, slot, algo).await?;
+                return Err(err);
+            }
             self.cert_store.cert_slots()[idx].set_write_in_progress(algo, false);
-            result?;
             self.cert_store.invalidate_cert_caches(slot);
             Ok(())
         }
@@ -740,6 +776,15 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         #[cfg(feature = "set-certificate")]
         {
             let idx = slot_index(slot).ok_or(INVARIANT)?;
+            if self.cert_store.cert_slots()[idx].write_in_progress(algo) {
+                let mut chain = managed_endorsement(&self.cert_store, idx, algo)?;
+                chain.discard();
+                commit_managed_endorsement(&self.cert_store, idx, chain)?;
+                self.cert_store
+                    .cert_slot_mut(idx)
+                    .ok_or(INVARIANT)?
+                    .clear_metadata(algo);
+            }
             self.cert_store.cert_slots()[idx].set_write_in_progress(algo, false);
             self.cert_store.invalidate_cert_caches(slot);
             Ok(())
@@ -759,6 +804,11 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         algo: SpdmPalAsymAlgo,
     ) -> McuResult<()> {
         let idx = slot_index(slot).ok_or(INVARIANT)?;
+        let role = endorsement::endorsement_role(idx).ok_or(INVARIANT)?;
+        self.cert_store.shared().policy().key_for_role(role)?;
+        if self.cert_store.cert_slots()[idx].write_in_progress(algo) {
+            return Err(caliptra_mcu_spdm_codec::errors::SPDM_BUSY);
+        }
         self.cert_store.cert_slots()[idx].set_write_in_progress(algo, true);
         let result: McuResult<()> = async {
             let chain = managed_endorsement(&self.cert_store, idx, algo)?;
@@ -867,18 +917,23 @@ fn checked_slice_mut(src: &mut [u8], offset: usize, len: usize) -> McuResult<&mu
 async fn dpe_chain_len_and_skip_prefix<M: MeasurementProvider>(
     pal: &McuSpdmPal<M>,
     profile: DpeProfile,
-    skip_certs: usize,
+    skip_to_ldevid: bool,
 ) -> McuResult<(usize, usize)> {
-    if skip_certs == 0 {
+    if !skip_to_ldevid {
         return Ok((
             walk_dpe_chain(pal.allocator, profile, &mut CountSink).await? as usize,
             0,
         ));
     }
 
-    let mut sink = DpePrefixScanner::new(skip_certs);
+    let mut anchor = mcu_caliptra_api::ScratchAlloc::alloc(
+        pal.allocator,
+        mcu_caliptra_api::LDEVID_CERT_RSP_BUF_SIZE,
+    )?;
+    let anchor_len = mcu_caliptra_api::get_ldevid_cert(profile, &mut anchor).await?;
+    let mut sink = DpeAnchorScanner::new(anchor.get(..anchor_len).ok_or(INVARIANT)?);
     let total = walk_dpe_chain(pal.allocator, profile, &mut sink).await? as usize;
-    if sink.certs_left != 0 || sink.skip_len > total {
+    if !sink.found || sink.skip_len > total {
         return Err(INVARIANT);
     }
     Ok((total, sink.skip_len))
@@ -916,7 +971,7 @@ fn der_first_seq_len(buf: &[u8]) -> Option<usize> {
 
 #[cfg(test)]
 mod tests {
-    use super::{der_first_seq_len, DpePrefixScanner};
+    use super::{der_first_seq_len, ChainLayout, DpeAnchorScanner};
 
     #[test]
     fn der_first_sequence_length() {
@@ -932,13 +987,47 @@ mod tests {
     }
 
     #[test]
-    fn dpe_prefix_scanner_handles_split_headers_and_bodies() {
-        let mut scanner = DpePrefixScanner::new(2);
-        scanner.consume(&[0x30]).unwrap();
-        scanner.consume(&[0x03, 1]).unwrap();
-        scanner.consume(&[2, 3, 0x30, 0x02, 4, 5, 9]).unwrap();
+    fn dpe_anchor_scanner_handles_split_headers_and_optional_idevid() {
+        let anchor = [0x30, 0x02, 4, 5];
+        let chain = [0x30, 0x03, 1, 2, 3, 0x30, 0x02, 4, 5, 0x30, 1, 6];
+        for (start, skip) in [(0, 9), (5, 4)] {
+            for chunk_len in 1..=chain.len() {
+                let mut scanner = DpeAnchorScanner::new(&anchor);
+                for chunk in chain[start..].chunks(chunk_len) {
+                    scanner.consume(chunk).unwrap();
+                }
+                assert!(scanner.found);
+                assert_eq!(scanner.skip_len, skip);
+                let layout = ChainLayout::new(20, chain.len() - start, skip, 10).unwrap();
+                assert_eq!(layout.dpe.end - layout.dpe.start, 3);
+                assert_eq!(layout.total_len(), 33);
+            }
+        }
+    }
 
-        assert_eq!(scanner.certs_left, 0);
-        assert_eq!(scanner.skip_len, 9);
+    #[test]
+    fn dpe_anchor_scanner_does_not_skip_an_unmatched_or_incomplete_certificate() {
+        let anchor = [0x30, 2, 4, 5];
+        for chain in [&[0x30, 2, 4, 6][..], &[0x30, 2, 4][..]] {
+            let mut scanner = DpeAnchorScanner::new(&anchor);
+            scanner.consume(chain).unwrap();
+            assert!(!scanner.found);
+        }
+    }
+
+    #[test]
+    fn dpe_anchor_scanner_handles_long_certificate_headers() {
+        let mut anchor = [7u8; 262];
+        anchor[..4].copy_from_slice(&[0x30, 0x82, 0x01, 0x02]);
+        for chunk_len in [1, 2, 3, 7, 64, 1024] {
+            let mut scanner = DpeAnchorScanner::new(&anchor);
+            scanner.consume(&[0x30, 1, 0]).unwrap();
+            for chunk in anchor.chunks(chunk_len) {
+                scanner.consume(chunk).unwrap();
+            }
+            scanner.consume(&[0x30, 1, 6]).unwrap();
+            assert!(scanner.found);
+            assert_eq!(scanner.skip_len, 3 + anchor.len());
+        }
     }
 }
