@@ -4,14 +4,13 @@
 
 use caliptra_mcu_spdm_codec::{
     DmtfMeasurementBlockHeader, GetMeasurementsReqBody, ReqRespCode, SpdmMsgHdrPdu, SpdmVersion,
-    ECC_P384_SIGNATURE_SIZE, MEAS_BLOCK_METADATA_SIZE, REQUESTER_CONTEXT_LEN, SHA384_HASH_SIZE,
-    SPDM_CONTEXT_LEN, SPDM_PREFIX_LEN, SPDM_SIGNING_CONTEXT_LEN,
+    MEAS_BLOCK_METADATA_SIZE, REQUESTER_CONTEXT_LEN, SHA384_HASH_SIZE,
 };
 use caliptra_mcu_spdm_traits::SpdmPalAlloc;
 use caliptra_mcu_spdm_traits::*;
 use zerocopy::{FromBytes, IntoBytes};
 
-use crate::build::{align_send_len, shift_left, zero_slice};
+use crate::build::{align_send_len, finish_buffered_response, sign_transcript};
 use crate::chunk;
 use crate::error::{SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED};
 use crate::stack::{ConnectionState, Phase};
@@ -138,7 +137,7 @@ pub(crate) async fn handle_get_measurements_req<'a, Pal: SpdmPal>(
         + OPAQUE_DATA_LEN_SIZE
         + requester_context_len;
     let signature_len = if signature_requested {
-        ECC_P384_SIGNATURE_SIZE
+        state.asym_algo().signature_size()
     } else {
         0
     };
@@ -220,8 +219,9 @@ async fn handle_measurements_response<'a, Pal: SpdmPal>(
 
     let signature_offset = offset;
     let spdm_len_without_sig = signature_offset.checked_sub(head).ok_or(SPDM_UNSPECIFIED)?;
+    let asym_algo = state.asym_algo();
     let signature_len = if plan.signature_requested {
-        ECC_P384_SIGNATURE_SIZE
+        asym_algo.signature_size()
     } else {
         0
     };
@@ -231,7 +231,11 @@ async fn handle_measurements_response<'a, Pal: SpdmPal>(
     let raw_len = head.checked_add(spdm_len).ok_or(SPDM_UNSPECIFIED)?;
     let use_normal_response = spdm_len <= state.effective_data_transfer_size(pal);
     if !use_normal_response {
-        chunk::validate_buffered_large_response_with_capacity(state, spdm_len, buf.len())?;
+        chunk::validate_buffered_large_response_with_capacity(
+            state,
+            spdm_len,
+            pal.large_buffered_msg_capacity(),
+        )?;
     }
 
     if plan.signature_requested {
@@ -241,51 +245,39 @@ async fn handle_measurements_response<'a, Pal: SpdmPal>(
         let mut hash = [0u8; SHA384_HASH_SIZE];
         state.transcript.finalize_l1(pal, io, &mut hash).await?;
 
-        let signing_ctx = signing_context(state.version);
-        compute_tbs_hash(pal, io, signing_ctx, &mut hash)
-            .await
-            .map_err(|_| SPDM_UNSPECIFIED)?;
-
-        let asym_algo = state.asym_algo();
         let signature = buf
-            .get_mut(signature_offset..signature_offset + ECC_P384_SIGNATURE_SIZE)
+            .get_mut(signature_offset..signature_offset + signature_len)
             .ok_or(SPDM_UNSPECIFIED)?;
-        let sig_len = pal
-            .sign(
-                io,
-                plan.slot_id,
-                asym_algo,
-                SigningInput::EccP384Digest(&hash),
-                signature,
-            )
-            .await
-            .map_err(|_| SPDM_UNSPECIFIED)?;
-        if sig_len != ECC_P384_SIGNATURE_SIZE {
-            return Err(SPDM_UNSPECIFIED);
-        }
+        sign_transcript(
+            pal,
+            io,
+            plan.slot_id,
+            asym_algo,
+            state.version,
+            MEASUREMENTS_SIGNING_CONTEXT,
+            &mut hash,
+            signature,
+            signature_len,
+        )
+        .await?;
     }
 
-    if use_normal_response {
-        let padded_len = align_send_len(pal, raw_len)?;
-        zero_slice(buf, raw_len, padded_len)?;
-        let final_buf = guard.buf.take().ok_or(SPDM_UNSPECIFIED)?;
-        let resp = pal
-            .large_buf_into_bytes(final_buf, padded_len)
-            .map_err(|_| SPDM_UNSPECIFIED)?;
-        return Ok((resp, spdm_len));
-    }
-
-    shift_left(buf, head, spdm_len)?;
-    let final_buf = guard.buf.take().ok_or(SPDM_UNSPECIFIED)?;
-    state.large_msg_ctx.set_buffer(final_buf);
-    let (resp, spdm_len) = match chunk::start_buffered_large_response(state, pal, io, spdm_len) {
-        Ok(res) => res,
-        Err(err) => {
-            state.large_msg_ctx.reset();
-            return Err(err);
-        }
+    let padded_len = if use_normal_response {
+        align_send_len(pal, raw_len)?
+    } else {
+        0
     };
-    Ok((resp, spdm_len))
+    finish_buffered_response(
+        state,
+        pal,
+        io,
+        guard,
+        head,
+        spdm_len,
+        raw_len,
+        padded_len,
+        use_normal_response,
+    )
 }
 
 fn measurement_record_shape(info: &[MeasurementInfo], meas_op: u8) -> SpdmResult<(usize, u8)> {
@@ -489,67 +481,14 @@ fn write_into_slice(out: &mut [u8], offset: usize, bytes: &[u8]) -> SpdmResult<u
     Ok(next)
 }
 
-/// Precomputed 100-byte SPDM signing contexts for "responder-measurements signing".
-/// Layout: 4 × "dmtf-spdm-v<x>.<y>.*" (prefix) || zero-pad || "responder-measurements signing".
-const SIGNING_CTX_V10: [u8; SPDM_SIGNING_CONTEXT_LEN] = build_signing_context_const(b"1.0.*");
-const SIGNING_CTX_V11: [u8; SPDM_SIGNING_CONTEXT_LEN] = build_signing_context_const(b"1.1.*");
-const SIGNING_CTX_V12: [u8; SPDM_SIGNING_CONTEXT_LEN] = build_signing_context_const(b"1.2.*");
-const SIGNING_CTX_V13: [u8; SPDM_SIGNING_CONTEXT_LEN] = build_signing_context_const(b"1.3.*");
-const SIGNING_CTX_V14: [u8; SPDM_SIGNING_CONTEXT_LEN] = build_signing_context_const(b"1.4.*");
+/// FIPS 204 signing context for MEASUREMENTS (DSP0274 1.4 Table 51).
+const MEASUREMENTS_SIGNING_CONTEXT: &[u8] = b"responder-measurements signing";
 
-const fn build_signing_context_const(ver: &[u8; 5]) -> [u8; SPDM_SIGNING_CONTEXT_LEN] {
-    let mut ctx = [0u8; SPDM_SIGNING_CONTEXT_LEN];
-    let base = b"dmtf-spdm-v";
-    let mut pos = 0;
-    let mut i = 0;
-    while i < 4 {
-        let mut j = 0;
-        while j < base.len() {
-            ctx[pos + j] = base[j];
-            j += 1;
-        }
-        pos += base.len();
-        let mut j = 0;
-        while j < ver.len() {
-            ctx[pos + j] = ver[j];
-            j += 1;
-        }
-        pos += ver.len();
-        i += 1;
-    }
-    let op = b"responder-measurements signing";
-    let pad = SPDM_CONTEXT_LEN - op.len();
-    let mut j = 0;
-    while j < op.len() {
-        ctx[SPDM_PREFIX_LEN + pad + j] = op[j];
-        j += 1;
-    }
-    ctx
-}
-
-/// Returns the 100-byte SPDM signing context for MEASUREMENTS, by version.
-fn signing_context(version: SpdmVersion) -> &'static [u8; SPDM_SIGNING_CONTEXT_LEN] {
-    match version {
-        SpdmVersion::V10 => &SIGNING_CTX_V10,
-        SpdmVersion::V11 => &SIGNING_CTX_V11,
-        SpdmVersion::V12 => &SIGNING_CTX_V12,
-        SpdmVersion::V13 => &SIGNING_CTX_V13,
-        SpdmVersion::V14 => &SIGNING_CTX_V14,
-    }
-}
-
-/// Hash(signing_context || L1_hash) → TBS digest for signing.
-async fn compute_tbs_hash<Pal: SpdmPal>(
-    pal: &Pal,
-    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
-    signing_ctx: &[u8; SPDM_SIGNING_CONTEXT_LEN],
-    hash: &mut [u8; SHA384_HASH_SIZE],
-) -> mcu_error::McuResult<()> {
-    let mut state = pal
-        .hash_init(io, SpdmPalHashAlgo::Sha384, signing_ctx)
-        .await?;
-    pal.hash_update(io, &mut state, hash).await?;
-    pal.hash_finish(io, &mut state, hash).await
+#[cfg(test)]
+fn signing_context(
+    version: SpdmVersion,
+) -> [u8; caliptra_mcu_spdm_codec::SPDM_SIGNING_CONTEXT_LEN] {
+    crate::build::spdm_signing_context(version, MEASUREMENTS_SIGNING_CONTEXT).unwrap()
 }
 
 #[cfg(test)]
@@ -561,6 +500,7 @@ mod tests {
     extern crate std;
 
     use super::*;
+    use crate::build::SPDM_SIGNING_CONTEXT_LEN;
     use caliptra_mcu_spdm_traits::SpdmPalIo;
     use futures::executor::block_on;
     use std::vec::Vec;
@@ -574,6 +514,201 @@ mod tests {
         is_tcb: true,
     }];
     static MEASUREMENT_VALUE: [u8; 4] = [0xDE, 0xAD, 0xBE, 0xEF];
+
+    /// Build a GET_MEASUREMENTS request. Bit 0 of `attributes` requests a
+    /// signature, which appends Nonce + SlotIDParam; V1.3+ then appends the
+    /// 8-byte RequesterContext.
+    fn get_measurements_request(version: SpdmVersion, signed: bool) -> Vec<u8> {
+        let mut req = Vec::new();
+        let hdr = SpdmMsgHdrPdu::new(version, ReqRespCode::GET_MEASUREMENTS);
+        let body = GetMeasurementsReqBody {
+            attributes: if signed { 1 } else { 0 },
+            measurement_operation: 0xFD,
+        };
+        req.extend_from_slice(hdr.as_bytes());
+        req.extend_from_slice(body.as_bytes());
+        if signed {
+            req.extend_from_slice(&[0xCD; SPDM_NONCE_LEN]);
+            req.push(0); // SlotIDParam
+        }
+        if version >= SpdmVersion::V13 {
+            req.extend_from_slice(&[0x22; REQUESTER_CONTEXT_LEN]);
+        }
+        req
+    }
+
+    /// SPDM 1.4 PQC negotiation: `BaseAsymSel` zeroed, `PqcAsymSel` = ML-DSA-87.
+    fn mldsa_state(version: SpdmVersion) -> ConnectionState<support::TestHashState, Vec<u8>> {
+        let mut state = support::negotiated_state(version);
+        state.negotiated_base_asym_sel = caliptra_mcu_spdm_codec::AsymAlgos::EMPTY;
+        state.negotiated_pqc_asym_sel = caliptra_mcu_spdm_codec::PqcAsymAlgos::ML_DSA_87;
+        state
+    }
+
+    #[test]
+    fn measurements_v14_ecdsa_emits_96_byte_signature() {
+        let pal = support::TestPal {
+            mtu: 8192,
+            large_buffered_msg_capacity: 8192,
+            measurement_info: &MEASUREMENT_INFO,
+            measurement_value: &MEASUREMENT_VALUE,
+            ..Default::default()
+        };
+        let mut state = support::negotiated_state(SpdmVersion::V14);
+
+        let io = support::TestIo::message(get_measurements_request(SpdmVersion::V14, true));
+        block_on(state.transcript.append_vca(&pal, &io, &[0xAA, 0xBB])).unwrap();
+        let (resp, spdm_len) = block_on(handle_get_measurements_req(
+            &mut state,
+            &pal,
+            &io,
+            io.request(),
+        ))
+        .unwrap();
+
+        assert_eq!(resp[1], ReqRespCode::MEASUREMENTS.0);
+
+        let ops = pal.sign_ops.borrow();
+        assert_eq!(ops.len(), 1);
+        assert_eq!(ops[0].algo, SpdmPalAsymAlgo::EccP384);
+        assert_eq!(ops[0].sig_len, 96);
+
+        // The 96-byte signature is the tail of the response.
+        let sig = &resp[spdm_len - 96..spdm_len];
+        assert!(sig.iter().all(|&b| b == 0x77));
+    }
+
+    #[test]
+    fn measurements_v14_mldsa87_emits_4627_byte_signature() {
+        let pal = support::TestPal {
+            mtu: 16384,
+            large_buffered_msg_capacity: 16384,
+            measurement_info: &MEASUREMENT_INFO,
+            measurement_value: &MEASUREMENT_VALUE,
+            ..Default::default()
+        };
+        let mut state = mldsa_state(SpdmVersion::V14);
+
+        let io = support::TestIo::message(get_measurements_request(SpdmVersion::V14, true));
+        block_on(state.transcript.append_vca(&pal, &io, &[0xAA, 0xBB])).unwrap();
+        let (resp, spdm_len) = block_on(handle_get_measurements_req(
+            &mut state,
+            &pal,
+            &io,
+            io.request(),
+        ))
+        .unwrap();
+
+        assert_eq!(resp[1], ReqRespCode::MEASUREMENTS.0);
+
+        let ops = pal.sign_ops.borrow();
+        assert_eq!(ops.len(), 1);
+        assert_eq!(ops[0].algo, SpdmPalAsymAlgo::MlDsa87);
+        assert_eq!(ops[0].sig_len, 4627);
+
+        let sig = &resp[spdm_len - 4627..spdm_len];
+        assert!(sig.iter().all(|&b| b == 0x77));
+    }
+
+    /// DSP0274 1.4 §15.5: `M = combined_spdm_prefix || L1_hash`, and the
+    /// FIPS 204 `ctx` is the unpadded `spdm_context` string.
+    #[test]
+    fn measurements_v14_mldsa87_signs_prefix_and_l1_hash_with_spdm_context() {
+        let pal = support::TestPal {
+            mtu: 16384,
+            large_buffered_msg_capacity: 16384,
+            measurement_info: &MEASUREMENT_INFO,
+            measurement_value: &MEASUREMENT_VALUE,
+            ..Default::default()
+        };
+        let mut state = mldsa_state(SpdmVersion::V14);
+
+        let io = support::TestIo::message(get_measurements_request(SpdmVersion::V14, true));
+        block_on(state.transcript.append_vca(&pal, &io, &[0xAA, 0xBB])).unwrap();
+        block_on(handle_get_measurements_req(
+            &mut state,
+            &pal,
+            &io,
+            io.request(),
+        ))
+        .unwrap();
+
+        let ops = pal.sign_ops.borrow();
+        let support::RecordedSigningInput::Mldsa87Message { context, message } = &ops[0].input
+        else {
+            panic!("expected ML-DSA message signing input");
+        };
+
+        assert_eq!(context.as_slice(), b"responder-measurements signing");
+        assert_eq!(message.len(), SPDM_SIGNING_CONTEXT_LEN + SHA384_HASH_SIZE);
+        assert_eq!(
+            &message[..SPDM_SIGNING_CONTEXT_LEN],
+            signing_context(SpdmVersion::V14).as_slice()
+        );
+        assert!(message.starts_with(b"dmtf-spdm-v1.4.*"));
+    }
+
+    #[test]
+    fn measurements_v14_mldsa87_response_is_chunked_when_over_data_transfer_size() {
+        let pal = support::TestPal {
+            mtu: 1024,
+            large_buffered_msg_capacity: 16384,
+            measurement_info: &MEASUREMENT_INFO,
+            measurement_value: &MEASUREMENT_VALUE,
+            ..Default::default()
+        };
+        let mut state = mldsa_state(SpdmVersion::V14);
+        state.peer_cap_flags = caliptra_mcu_spdm_codec::CapFlags::CHUNK;
+        state.peer_data_transfer_size = 1024;
+        state.peer_max_spdm_msg_size = 16384;
+
+        let io = support::TestIo::message(get_measurements_request(SpdmVersion::V14, true));
+        block_on(state.transcript.append_vca(&pal, &io, &[0xAA, 0xBB])).unwrap();
+        let (err_rsp, _) = block_on(handle_get_measurements_req(
+            &mut state,
+            &pal,
+            &io,
+            io.request(),
+        ))
+        .unwrap();
+
+        assert_eq!(err_rsp[1], ReqRespCode::ERROR.0);
+        let handle = err_rsp[4];
+
+        let drain_io = support::TestIo::message(Vec::new());
+        let msg = block_on(support::drain_chunked_response(
+            &mut state, &pal, &drain_io, handle,
+        ))
+        .unwrap();
+
+        assert_eq!(msg[1], ReqRespCode::MEASUREMENTS.0);
+        let sig = &msg[msg.len() - 4627..];
+        assert!(sig.iter().all(|&b| b == 0x77));
+    }
+
+    #[test]
+    fn measurements_without_signature_is_algorithm_independent() {
+        let pal = support::TestPal {
+            mtu: 8192,
+            large_buffered_msg_capacity: 8192,
+            measurement_info: &MEASUREMENT_INFO,
+            measurement_value: &MEASUREMENT_VALUE,
+            ..Default::default()
+        };
+        let mut state = mldsa_state(SpdmVersion::V14);
+
+        let io = support::TestIo::message(get_measurements_request(SpdmVersion::V14, false));
+        let (resp, _) = block_on(handle_get_measurements_req(
+            &mut state,
+            &pal,
+            &io,
+            io.request(),
+        ))
+        .unwrap();
+
+        assert_eq!(resp[1], ReqRespCode::MEASUREMENTS.0);
+        assert!(pal.sign_ops.borrow().is_empty());
+    }
 
     #[test]
     fn advertised_measurement_max_does_not_force_large_response_when_actual_fits() {
