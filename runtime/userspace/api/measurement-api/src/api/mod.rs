@@ -360,7 +360,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
             signature,
         )
         .await
-        .map_err(|_| MeasurementApiError::DpeCommandFailed)?;
+        .map_err(|_| self.enter_error_state(MeasurementApiError::DpeCommandFailed))?;
         self.write_attestation_target_handle(target, next_handle)?;
         Ok(signature_len)
     }
