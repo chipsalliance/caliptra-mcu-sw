@@ -161,7 +161,9 @@ pub fn run_doe_spdm_conformance_test(
     });
 
     match test_type {
-        SpdmTestType::SpdmResponderConformance => execute_spdm_responder_validator("PCI_DOE"),
+        SpdmTestType::SpdmResponderConformance => {
+            let _ = execute_spdm_responder_validator("PCI_DOE");
+        }
         SpdmTestType::SpdmTeeIoValidator => execute_spdm_tee_io_validator("PCI_DOE"),
         SpdmTestType::SpdmAttestation => execute_spdm_attestation("PCI_DOE"),
     }
