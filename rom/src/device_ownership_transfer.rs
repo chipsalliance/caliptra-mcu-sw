@@ -1623,6 +1623,11 @@ pub enum DotLockedRecoveryErrorPolicy {
 /// succeeds it should write the DOT blob to flash and return `Ok(())`;
 /// the caller will then trigger a warm reset.
 pub trait DotLockedRecoveryHandler {
+    /// Return whether this handler provides DOT recovery over I3C.
+    fn supports_i3c_dot_recovery(&self) -> bool {
+        false
+    }
+
     /// Attempt to recover from DOT locked state.
     fn attempt(&self, env: &mut RomEnv, ctx: &DotLockedRecoveryContext<'_>) -> McuResult<()>;
 }

@@ -213,14 +213,22 @@ fn mcu_rom_capabilities(
     if dot_boot_enabled {
         capabilities |= McuRomCapabilities::DOT_BOOT;
     }
-    if dot_boot_enabled && !params.dot_locked_recovery_handlers.is_empty() {
+    if dot_boot_enabled
+        && (params.dot_recovery_reset_flow || !params.dot_locked_recovery_handlers.is_empty())
+    {
         capabilities |= McuRomCapabilities::DOT_LOCKED_RECOVERY;
     }
-    if params.dot_flash.is_some()
+    let forced_i3c_dot_recovery = params.dot_flash.is_some()
+        && params.force_i3c_services
         && params
             .i3c_services
-            .is_some_and(|services| services.contains(I3cServicesModes::DOT_RECOVERY))
-    {
+            .is_some_and(|services| services.contains(I3cServicesModes::DOT_RECOVERY));
+    let locked_i3c_dot_recovery = dot_boot_enabled
+        && params
+            .dot_locked_recovery_handlers
+            .iter()
+            .any(|entry| entry.handler.supports_i3c_dot_recovery());
+    if forced_i3c_dot_recovery || locked_i3c_dot_recovery {
         capabilities |= McuRomCapabilities::I3C_DOT_RECOVERY;
     }
     capabilities
@@ -261,6 +269,18 @@ mod capability_tests {
     struct TestRecoveryHandler;
 
     impl DotLockedRecoveryHandler for TestRecoveryHandler {
+        fn attempt(&self, _env: &mut RomEnv, _ctx: &DotLockedRecoveryContext<'_>) -> McuResult<()> {
+            Ok(())
+        }
+    }
+
+    struct TestI3cRecoveryHandler;
+
+    impl DotLockedRecoveryHandler for TestI3cRecoveryHandler {
+        fn supports_i3c_dot_recovery(&self) -> bool {
+            true
+        }
+
         fn attempt(&self, _env: &mut RomEnv, _ctx: &DotLockedRecoveryContext<'_>) -> McuResult<()> {
             Ok(())
         }
@@ -328,17 +348,30 @@ mod capability_tests {
             ..Default::default()
         };
 
-        assert!(mcu_rom_capabilities(&params).contains(
-            McuRomCapabilities::DOT_BOOT
-                | McuRomCapabilities::DOT_LOCKED_RECOVERY
-                | McuRomCapabilities::I3C_DOT_RECOVERY
-        ));
+        assert!(mcu_rom_capabilities(&params)
+            .contains(McuRomCapabilities::DOT_BOOT | McuRomCapabilities::DOT_LOCKED_RECOVERY));
+        assert!(!mcu_rom_capabilities(&params).contains(McuRomCapabilities::I3C_DOT_RECOVERY));
+
+        params.dot_locked_recovery_handlers = &[];
+        params.dot_recovery_reset_flow = true;
+        assert!(mcu_rom_capabilities(&params).contains(McuRomCapabilities::DOT_LOCKED_RECOVERY));
+
+        let i3c_handler = TestI3cRecoveryHandler;
+        let i3c_handlers = [DotLockedRecoveryEntry {
+            handler: &i3c_handler,
+            policy: DotLockedRecoveryErrorPolicy::Continue,
+        }];
+        params.dot_locked_recovery_handlers = &i3c_handlers;
+        assert!(mcu_rom_capabilities(&params).contains(McuRomCapabilities::I3C_DOT_RECOVERY));
 
         params.owner_pk_hash_policy = OwnerPkHashPolicy::ForceFuse;
         let capabilities = mcu_rom_capabilities(&params);
         assert!(!capabilities.contains(McuRomCapabilities::DOT_BOOT));
         assert!(!capabilities.contains(McuRomCapabilities::DOT_LOCKED_RECOVERY));
-        assert!(capabilities.contains(McuRomCapabilities::I3C_DOT_RECOVERY));
+        assert!(!capabilities.contains(McuRomCapabilities::I3C_DOT_RECOVERY));
+
+        params.force_i3c_services = true;
+        assert!(mcu_rom_capabilities(&params).contains(McuRomCapabilities::I3C_DOT_RECOVERY));
     }
 
     #[test]
@@ -1161,6 +1194,10 @@ pub struct I3cDotLockedRecoveryHandler {
 }
 
 impl crate::device_ownership_transfer::DotLockedRecoveryHandler for I3cDotLockedRecoveryHandler {
+    fn supports_i3c_dot_recovery(&self) -> bool {
+        self.services.contains(I3cServicesModes::DOT_RECOVERY)
+    }
+
     fn attempt(
         &self,
         env: &mut RomEnv,
