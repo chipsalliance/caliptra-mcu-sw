@@ -26,7 +26,6 @@ pub(crate) mod test {
     use random_port::PortPicker;
     use std::io::Write;
     use std::net::{SocketAddr, TcpListener, TcpStream};
-    use std::process::exit;
     use std::sync::atomic::{AtomicBool, Ordering};
     use std::sync::{mpsc, Arc};
     use std::thread;
@@ -123,7 +122,7 @@ pub(crate) mod test {
         hw.step_until_output_contains(ATTESTATION_EVIDENCE_READY)
             .unwrap();
 
-        run_mctp_spdm_attestation_test(
+        let attestation_result = run_mctp_spdm_attestation_test(
             hw.i3c_port().unwrap(),
             hw.i3c_address().unwrap().into(),
             PortPicker::new().random(true).pick().unwrap(),
@@ -132,8 +131,12 @@ pub(crate) mod test {
         );
 
         let test = finish_runtime_hw_model(&mut hw);
+        let attestation_result = attestation_result
+            .recv_timeout(Duration::from_secs(10))
+            .expect("SPDM attestation worker did not report a result");
 
         assert_eq!(0, test);
+        attestation_result.expect("SPDM attestation failed");
         assert_spdm_attestation_artifacts();
 
         // force the compiler to keep the lock
@@ -183,7 +186,8 @@ pub(crate) mod test {
         );
         cold_done
             .recv_timeout(Duration::from_secs(9000))
-            .expect("cold-boot SPDM attestation did not complete");
+            .expect("cold-boot SPDM attestation did not complete")
+            .expect("cold-boot SPDM attestation failed");
 
         // Keep the cold-boot evidence instead of discarding it: the workflow
         // appraises it against the cold-boot reference values, and the second
@@ -218,7 +222,8 @@ pub(crate) mod test {
         );
         hitless_done
             .recv_timeout(Duration::from_secs(9000))
-            .expect("hitless SPDM attestation did not complete");
+            .expect("hitless SPDM attestation did not complete")
+            .expect("hitless SPDM attestation failed");
         runtime.stop().expect("failed to stop standalone emulator");
         assert_spdm_attestation_artifacts();
         assert_preserved_artifacts_differ(COLD_BOOT_EVIDENCE_DIR);
@@ -340,101 +345,96 @@ pub(crate) mod test {
         port: u16,
         target_addr: DynamicI3cAddress,
         spdm_port: u16,
-        test_timeout_seconds: Duration,
+        test_timeout: Duration,
         test_name: &'static str,
-    ) {
-        let _ = run_mctp_spdm_attestation_test_until_done(
+    ) -> mpsc::Receiver<Result<(), String>> {
+        run_mctp_spdm_attestation_test_until_done(
             port,
             target_addr,
             spdm_port,
-            test_timeout_seconds,
+            test_timeout,
             test_name,
             true,
             session_nonce("SPDM_NONCE_COLD_BOOT"),
-        );
+        )
     }
 
     fn run_mctp_spdm_attestation_test_until_done(
         port: u16,
         target_addr: DynamicI3cAddress,
         spdm_port: u16,
-        test_timeout_seconds: Duration,
+        test_timeout: Duration,
         test_name: &'static str,
-        exit_on_success: bool,
+        stop_on_success: bool,
         nonce: Option<String>,
-    ) -> mpsc::Receiver<()> {
-        let (done_tx, done_rx) = mpsc::channel();
+    ) -> mpsc::Receiver<Result<(), String>> {
+        let (result_tx, result_rx) = mpsc::channel();
+        let (timeout_cancel_tx, timeout_cancel_rx) = mpsc::channel();
         let addr = SocketAddr::from(([127, 0, 0, 1], port));
         let stream = TcpStream::connect(addr).unwrap();
         let transport = MctpTransport::new(BufferedStream::new(stream), target_addr.into(), 1);
         SERVER_LISTENING.store(false, Ordering::Relaxed);
 
+        let timeout_result_tx = result_tx.clone();
         caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
-            thread::sleep(test_timeout_seconds);
-            println!(
-                "[{}] TIMED OUT AFTER {:?} SECONDS",
-                test_name,
-                test_timeout_seconds.as_secs()
-            );
-            exit(-1);
+            if timeout_cancel_rx.recv_timeout(test_timeout).is_err() {
+                let message = format!(
+                    "{test_name} timed out after {} seconds",
+                    test_timeout.as_secs()
+                );
+                println!("[{test_name}] {message}");
+                let _ = timeout_result_tx.send(Err(message));
+                caliptra_mcu_testing_common::stop_emulator();
+            }
         });
 
         caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
             wait_for_runtime_start();
-
             if !caliptra_mcu_testing_common::is_emulator_running() {
-                exit(-1);
+                return;
             }
             wait_for_spdm_responder_ready(SpdmResponderTransport::Mctp);
             if !caliptra_mcu_testing_common::is_emulator_running() {
-                exit(-1);
+                return;
             }
-            let listener = TcpListener::bind(("127.0.0.1", spdm_port))
-                .expect("Could not bind to the SPDM listener port");
-            println!(
-                "[{}]: Spdm Server Listening on port {}",
-                test_name, spdm_port
-            );
-            SERVER_LISTENING.store(true, Ordering::Relaxed);
 
-            let requester = execute_spdm_attestation_with_port("MCTP", Some(spdm_port), nonce);
+            let result = (|| -> Result<(), String> {
+                let listener = TcpListener::bind(("127.0.0.1", spdm_port))
+                    .map_err(|err| format!("could not bind SPDM listener: {err}"))?;
+                println!("[{test_name}]: SPDM server listening on port {spdm_port}");
+                SERVER_LISTENING.store(true, Ordering::Relaxed);
 
-            if let Some(spdm_stream) = listener.incoming().next() {
-                let mut spdm_stream = spdm_stream.expect("Failed to accept connection");
+                let requester = execute_spdm_attestation_with_port("MCTP", Some(spdm_port), nonce);
+                let (mut spdm_stream, _) = listener
+                    .accept()
+                    .map_err(|err| format!("failed to accept SPDM connection: {err}"))?;
 
                 let mut test = SpdmValidatorRunner::new(Box::new(transport), test_name);
                 test.run_test(&mut spdm_stream);
                 if !test.is_passed() {
-                    println!("[{}]: Spdm Attestation Test Failed", test_name);
-                    exit(-1);
-                } else {
-                    match requester.join() {
-                        Ok(true) => {}
-                        Ok(false) => {
-                            println!("[{}]: spdm_requester_emu failed", test_name);
-                            exit(-1);
-                        }
-                        Err(_) => {
-                            println!("[{}]: spdm_requester_emu panicked", test_name);
-                            exit(-1);
-                        }
-                    }
-                    if let Err(err) = validate_spdm_attestation_artifacts() {
-                        println!(
-                            "[{}]: Spdm Attestation Artifact Check Failed: {err}",
-                            test_name
-                        );
-                        exit(-1);
-                    }
-                    println!("[{}]: Spdm Attestation Test Passed", test_name);
-                    let _ = done_tx.send(());
-                    if exit_on_success {
-                        exit(0);
-                    }
+                    return Err("SPDM transport bridge failed".to_string());
                 }
+
+                match requester.join() {
+                    Ok(true) => {}
+                    Ok(false) => return Err("spdm_requester_emu failed".to_string()),
+                    Err(_) => return Err("spdm_requester_emu panicked".to_string()),
+                }
+                validate_spdm_attestation_artifacts()
+                    .map_err(|err| format!("SPDM attestation artifact check failed: {err}"))?;
+
+                println!("[{test_name}]: SPDM attestation passed");
+                Ok(())
+            })();
+
+            let should_stop = stop_on_success || result.is_err();
+            let _ = timeout_cancel_tx.send(());
+            let _ = result_tx.send(result);
+            if should_stop {
+                caliptra_mcu_testing_common::stop_emulator();
             }
         });
-        done_rx
+        result_rx
     }
 
     /// Drives a full PLDM firmware update against the running device.
@@ -454,7 +454,7 @@ pub(crate) mod test {
         caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
             wait_for_runtime_start();
             if !caliptra_mcu_testing_common::is_emulator_running() {
-                exit(-1);
+                return;
             }
 
             let pldm_transport = PldmMctpTransport::new(port, target_addr);
