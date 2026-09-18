@@ -751,12 +751,13 @@ source = "git+https://github.com/chipsalliance/caliptra-sw?rev=98593675c6805c94e
 
 [[package]]
 name = "caliptra-util-host"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "caliptra-mcu-core-util-host-command-types",
  "caliptra-mcu-core-util-host-transport",
  "caliptra-util-host-commands",
  "caliptra-util-host-session",
+ "semver",
  "zerocopy",
 ]
 
