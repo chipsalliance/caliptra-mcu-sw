@@ -1,0 +1,431 @@
+// SPDX-License-Identifier: Apache-2.0
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// you may obtain a copy of the License at
+//
+// http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+//
+
+// Address documentation for the externally implemented usb_reg_if block.
+// Imported from chipsalliance/usb2 commit 53bdc64ba14d28848ea737a858f24043dff6fe46
+// and flattened to that branch's Caliptra configuration for local parser
+// compatibility. Register behavior follows the active VHDL implementation;
+// usbhsd.regs remains the original fixed NXP reference.
+addrmap usbhsd {
+    name = "USB Device Control and Status Registers";
+    desc = "Caliptra device-mode register map implemented by usb_reg_if and used by the compound USB device instance.";
+    default hw = na;
+
+    reg devcmdstat_t {
+        desc = "Controls device operation and reports connection, suspend, reset, speed, VBUS, and PHY-test status.";
+        field {
+            sw = rw; hw = rw; precedence = hw;
+            desc = "USB device address. Software writes update a pending address used during SET_ADDRESS processing; software reads return the committed address. Hardware commits the pending address when the SET_ADDRESS status stage completes.";
+        } DEV_ADDR[6:0] = 7'h0;
+        field {
+            sw = rw; hw = r;
+            desc = "USB device enable.";
+        } DEV_EN[7:7] = 1'h0;
+        field {
+            sw = rw; hw = rw; onwrite = woclr; precedence = hw;
+            desc = "SETUP token received.";
+        } SETUP[8:8] = 1'h0;
+        field {
+            sw = rw; hw = r;
+            desc = "Set to one to force the NEEDCLK indication active.";
+        } FORCE_NEEDCLK[9:9] = 1'h0;
+        field {
+            sw = rw; hw = r;
+            desc = "If this bit is set to 1, the VBUS voltage indicators from the PHY are overruled.";
+        } FORCE_VBUS[10:10] = 1'h0;
+        field {
+            sw = rw; hw = r;
+            desc = "Set to one to advertise and enable USB Link Power Management support.";
+        } LPM_SUP[11:11] = 1'h1;
+        field {
+            sw = rw; hw = r;
+            desc = "Set to one to generate an interrupt when an interrupt or bulk OUT endpoint returns NAK.";
+        } INTONNAK_AO[12:12] = 1'h0;
+        field {
+            sw = rw; hw = r;
+            desc = "Set to one to generate an interrupt when an interrupt or bulk IN endpoint returns NAK.";
+        } INTONNAK_AI[13:13] = 1'h0;
+        field {
+            sw = rw; hw = r;
+            desc = "Set to one to generate an interrupt when the control OUT endpoint returns NAK.";
+        } INTONNAK_CO[14:14] = 1'h0;
+        field {
+            sw = rw; hw = r;
+            desc = "Set to one to generate an interrupt when the control IN endpoint returns NAK.";
+        } INTONNAK_CI[15:15] = 1'h0;
+        field {
+            sw = rw; hw = r;
+            desc = "Device status - connect.";
+        } DCON[16:16] = 1'h0;
+        field {
+            sw = rw; hw = w;
+            desc = "Device status - suspend. Hardware supplies the status. While suspended, software writes zero to request remote wake-up; the write does not directly clear this field.";
+        } DSUS[17:17];
+        field {
+            sw = rw; hw = w;
+            desc = "Device status - LPM Suspend. Hardware supplies the status. While LPM-suspended with remote wake-up enabled, software writes zero to request LPM remote wake-up; the write does not directly clear this field.";
+        } LPM_SUS[19:19];
+        field {
+            sw = r; hw = w;
+            desc = "LPM Remote Wake-up Enabled by USB host.";
+        } LPM_REWP[20:20];
+        field {
+            sw = rw; hw = r;
+            desc = "Set to one to suppress high-speed chirp negotiation and force full-speed operation.";
+        } FORCE_FULLSPEED[21:21] = 1'h0;
+        field {
+            sw = r; hw = w;
+            desc = "This field indicates the speed at which the device operates: 00b: reserved 01b: full-speed 10b: high-speed 11b: super-speed (reserved for future use).";
+        } Speed[23:22];
+        field {
+            sw = rw; hw = rw; onwrite = woclr; precedence = hw;
+            desc = "Device status - connect change.";
+        } DCON_C[24:24] = 1'h0;
+        field {
+            sw = rw; hw = rw; onwrite = woclr; precedence = hw;
+            desc = "Device status - suspend change.";
+        } DSUS_C[25:25] = 1'h0;
+        field {
+            sw = rw; hw = rw; onwrite = woclr; precedence = hw;
+            desc = "Device status - reset change.";
+        } DRES_C[26:26] = 1'h0;
+        field {
+            sw = rw; hw = rw; onwrite = woclr; precedence = hw;
+            desc = "Hardware sets this field when AVALID or session-end status changes. Software writes one to clear it.";
+        } OTG_C[27:27] = 1'h0;
+        field {
+            sw = r; hw = w;
+            desc = "This bit indicates if VBUS is detected or not.";
+        } VBUS_DEBOUNCED[28:28];
+        field {
+            sw = rw; hw = r;
+            desc = "Selects the PHY test mode defined by the USB 2.0 specification.";
+        } PHY_TEST_MODE[31:29] = 3'h0;
+    };
+    devcmdstat_t DEVCMDSTAT @ 0x00;
+
+    reg info_t {
+        desc = "Reports the current USB frame number, most recent controller error, and controller revision.";
+        field {
+            sw = r; hw = w;
+            desc = "Frame number.";
+        } FRAME_NR[10:0];
+        field {
+            sw = rw; hw = w; precedence = hw;
+            desc = "Reports the most recent SIE error code; software may also write this field for diagnostics.";
+        } ERR_CODE[14:11] = 4'h0;
+        field {
+            sw = r; hw = na;
+            desc = "Minor revision.";
+        } Minrev[23:16] = 8'h0;
+        field {
+            sw = r; hw = na;
+            desc = "Major revision.";
+        } Majrev[31:24] = 8'h2;
+    };
+    info_t INFO @ 0x04;
+
+    reg epliststart_t {
+        desc = "Programs the base address of the endpoint command/status list.";
+        field {
+            sw = rw; hw = r;
+            desc = "Programmable portion of the USB EP Command/Status List address.";
+        } EP_LIST_PRG[31:8] = 0;
+    };
+    epliststart_t EPLISTSTART @ 0x08;
+
+    reg databufstart_t {
+        desc = "Programs the base address of the endpoint data-buffer area.";
+        field {
+            sw = rw; hw = r;
+            desc = "Programmable portion of the start address for the endpoint data-buffer area.";
+        } DA_BUF[31:17] = 0;
+    };
+    databufstart_t DATABUFSTART @ 0x0c;
+
+    reg lpm_t {
+        desc = "Controls Link Power Management response behavior and VBUS signaling, and reports OTG status.";
+        field {
+            sw = r; hw = w;
+            desc = "Host Initiated Resume Duration - HW.";
+        } HIRD_HW[3:0];
+        field {
+            sw = rw; hw = r;
+            desc = "Host Initiated Resume Duration - SW.";
+        } HIRD_SW[7:4] = 4'h0;
+        field {
+            sw = rw; hw = r;
+            desc = "As long as this bit is set to one and LPM supported bit is set to one, HW will return a NYET handshake on every LPM token it receives.";
+        } DATA_PENDING[8:8] = 1'h0;
+        field {
+            sw = rw; hw = r;
+            desc = "Set to one to disable the external VBUS comparator.";
+        } VBUSCOMP_OFF[16:16] = 1'h0;
+        field {
+            sw = rw; hw = r;
+            desc = "Controls the PHY VBUS-charge output.";
+        } CHRG_VBUS[17:17] = 1'h0;
+        field {
+            sw = rw; hw = r;
+            desc = "Controls the PHY VBUS-discharge output.";
+        } DISCHRG_VBUS[18:18] = 1'h0;
+        field {
+            sw = r; hw = w;
+            desc = "Reports the synchronized PHY AVALID indication.";
+        } AVALID[20:20];
+        field {
+            sw = r; hw = w;
+            desc = "Reports the synchronized PHY session-end indication.";
+        } SESSEND[21:21];
+    };
+    lpm_t LPM @ 0x10;
+
+    reg epskip_t {
+        desc = "Requests that selected physical endpoints stop using their assigned buffers.";
+        field {
+            sw = rw; hw = rw; precedence = hw;
+            desc = "Endpoint skip: Writing 1 to one of these bits, will indicate to HW that it must deactivate the buffer assigned to this endpoint and return control back to software.";
+        } SKIP[15:0] = 0;
+    };
+    epskip_t EPSKIP @ 0x14;
+
+    reg epinuse_t {
+        desc = "Selects or reports the active buffer for each physical endpoint when double buffering is supported.";
+        field {
+            sw = r; hw = na;
+            desc = "Reports the active buffers for EP0 OUT and EP0 IN.";
+        } EP0_BUF[1:0] = 2'h0;
+        field {
+            sw = rw;
+            hw = rw;
+            precedence = hw;
+            desc = "Buffer in use: This register has one bit per physical endpoint. Without double-buffer support these bits read zero and ignore writes.";
+        } BUF[15:2] = 0;
+    };
+    epinuse_t EPINUSE @ 0x18;
+
+    reg epbufcfg_t {
+        desc = "Selects single-buffer or double-buffer operation for physical endpoints above EP0.";
+        field {
+            sw = rw;
+            hw = r;
+            desc = "Buffer usage: This register has one bit per physical endpoint. It is writable only when both single- and double-buffer modes are supported; double-buffer-only implementations read one and other fixed-mode implementations read zero.";
+        } BUF_SB[15:2] = 0;
+    };
+    epbufcfg_t EPBUFCFG @ 0x1c;
+
+    reg intstat_t {
+        desc = "Reports endpoint, frame, and device-status interrupt conditions. Software writes one to clear selected status bits.";
+        field {
+            sw = rw; hw = rw; onwrite = woclr; precedence = hw;
+            desc = "Control EP0 OUT interrupt status. Write one through INTSTAT to clear or through INTSETSTAT to set.";
+        } EP0OUT[0:0] = 1'h0;
+        field {
+            sw = rw; hw = rw; onwrite = woclr; precedence = hw;
+            desc = "Control EP0 IN interrupt status. Write one through INTSTAT to clear or through INTSETSTAT to set.";
+        } EP0IN[1:1] = 1'h0;
+        field {
+            sw = rw; hw = rw; onwrite = woclr; precedence = hw;
+            desc = "EP1 OUT interrupt status. Write one through INTSTAT to clear or through INTSETSTAT to set.";
+        } EP1OUT[2:2] = 1'h0;
+        field {
+            sw = rw; hw = rw; onwrite = woclr; precedence = hw;
+            desc = "EP1 IN interrupt status. Write one through INTSTAT to clear or through INTSETSTAT to set.";
+        } EP1IN[3:3] = 1'h0;
+        field {
+            sw = rw; hw = rw; onwrite = woclr; precedence = hw;
+            desc = "EP2 OUT interrupt status. Write one through INTSTAT to clear or through INTSETSTAT to set.";
+        } EP2OUT[4:4] = 1'h0;
+        field {
+            sw = rw; hw = rw; onwrite = woclr; precedence = hw;
+            desc = "EP2 IN interrupt status. Write one through INTSTAT to clear or through INTSETSTAT to set.";
+        } EP2IN[5:5] = 1'h0;
+        field {
+            sw = rw; hw = rw; onwrite = woclr; precedence = hw;
+            desc = "EP3 OUT interrupt status. Write one through INTSTAT to clear or through INTSETSTAT to set.";
+        } EP3OUT[6:6] = 1'h0;
+        field {
+            sw = rw; hw = rw; onwrite = woclr; precedence = hw;
+            desc = "EP3 IN interrupt status. Write one through INTSTAT to clear or through INTSETSTAT to set.";
+        } EP3IN[7:7] = 1'h0;
+        field {
+            sw = rw; hw = rw; onwrite = woclr; precedence = hw;
+            desc = "EP4 OUT interrupt status. Write one through INTSTAT to clear or through INTSETSTAT to set.";
+        } EP4OUT[8:8] = 1'h0;
+        field {
+            sw = rw; hw = rw; onwrite = woclr; precedence = hw;
+            desc = "EP4 IN interrupt status. Write one through INTSTAT to clear or through INTSETSTAT to set.";
+        } EP4IN[9:9] = 1'h0;
+        field {
+            sw = rw; hw = rw; onwrite = woclr; precedence = hw;
+            desc = "EP5 OUT interrupt status. Write one through INTSTAT to clear or through INTSETSTAT to set.";
+        } EP5OUT[10:10] = 1'h0;
+        field {
+            sw = rw; hw = rw; onwrite = woclr; precedence = hw;
+            desc = "EP5 IN interrupt status. Write one through INTSTAT to clear or through INTSETSTAT to set.";
+        } EP5IN[11:11] = 1'h0;
+        field {
+            sw = rw; hw = rw; onwrite = woclr; precedence = hw;
+            desc = "Interrupt status for configured physical endpoints above EP5. Write one through INTSTAT to clear or through INTSETSTAT to set.";
+        } EP_UPPER[15:12] = 0;
+        field {
+            sw = rw; hw = rw; onwrite = woclr; precedence = hw;
+            desc = "Frame interrupt status. Write one through INTSTAT to clear or through INTSETSTAT to set.";
+        } FRAME_INT[30:30] = 1'h0;
+        field {
+            sw = rw; hw = rw; onwrite = woclr; precedence = hw;
+            desc = "Device interrupt status. Write one through INTSTAT to clear or through INTSETSTAT to set.";
+        } DEV_INT[31:31] = 1'h0;
+    };
+    intstat_t INTSTAT @ 0x20;
+
+    reg inten_t {
+        desc = "Enables endpoint, frame, and device-status interrupt sources.";
+        field {
+            sw = rw; hw = r;
+            desc = "If this bit is set and the corresponding USB interrupt status bit is set, a HW interrupt is generated on the interrupt line.";
+        } EP_INT_EN[15:0] = 0;
+        field {
+            sw = rw; hw = r;
+            desc = "If this bit is set and the corresponding USB interrupt status bit is set, a HW interrupt is generated on the interrupt line.";
+        } FRAME_INT_EN[30:30] = 1'h0;
+        field {
+            sw = rw; hw = r;
+            desc = "If this bit is set and the corresponding USB interrupt status bit is set, a HW interrupt is generated on the interrupt line.";
+        } DEV_INT_EN[31:31] = 1'h0;
+    };
+    inten_t INTEN @ 0x24;
+
+    reg intsetstat_t {
+        desc = "Sets endpoint, frame, and device-status interrupt conditions. Software writes one to set selected status bits.";
+        field {
+            sw = rw; hw = rw; onwrite = woset; precedence = hw;
+            desc = "Write one to set the corresponding endpoint interrupt status bit.";
+        } EP_SET_INT[15:0] = 0;
+        field {
+            sw = rw; hw = rw; onwrite = woset; precedence = hw;
+            desc = "Write one to set the frame interrupt status bit.";
+        } FRAME_SET_INT[30:30] = 1'h0;
+        field {
+            sw = rw; hw = rw; onwrite = woset; precedence = hw;
+            desc = "Write one to set the device-status interrupt status bit.";
+        } DEV_SET_INT[31:31] = 1'h0;
+    };
+    intsetstat_t INTSETSTAT @ 0x28;
+
+    reg introute_t {
+        desc = "Routes enabled endpoint, frame, and device-status interrupts to IRQ or FIQ.";
+        field {
+            sw = rw; hw = r;
+            desc = "Each clear bit routes the corresponding endpoint interrupt to IRQ; each set bit routes it to FIQ.";
+        } EP_INT_ROUTE[15:0] = 0;
+        field {
+            sw = rw; hw = r;
+            desc = "Clear to route the frame interrupt to IRQ; set to route it to FIQ.";
+        } FRAME_INT_ROUTE[30:30] = 1'h0;
+        field {
+            sw = rw; hw = r;
+            desc = "Clear to route the device-status interrupt to IRQ; set to route it to FIQ.";
+        } DEV_INT_ROUTE[31:31] = 1'h0;
+    };
+    introute_t INTROUTE @ 0x2c;
+
+    reg config_t {
+        desc = "Reports the synthesized endpoint, buffering, clocking, and PHY-interface capabilities.";
+        field {
+            sw = r; hw = na;
+            desc = "Reports the configured number of physical endpoints above the two EP0 directions.";
+        } NBPHYSEP[4:0] = 5'd14;
+        field {
+            sw = r; hw = na;
+            desc = "Reports whether single-buffer endpoint operation is implemented.";
+        } SINGLE_BUFFER[5:5] = 1'b1;
+        field {
+            sw = r; hw = na;
+            desc = "Reports whether double-buffer endpoint operation is implemented.";
+        } DOUBLE_BUFFER[6:6] = 1'b1;
+        field {
+            sw = r; hw = na;
+            desc = "Reports whether endpoint data-toggle state is readable through EPTOGGLE.";
+        } TOGGLE_READABLE[7:7] = 1'b1;
+        field {
+            sw = r; hw = na;
+            desc = "Reports whether the controller includes programmable PLL clock control.";
+        } PLL[8:8] = 1'b0;
+        field {
+            sw = r; hw = na;
+            desc = "Reports whether the UTMI+ PHY interface is implemented.";
+        } UTMI[9:9] = 1'b1;
+        field {
+            sw = r; hw = na;
+            desc = "Reports whether the ULPI PHY interface is implemented.";
+        } ULPI[10:10] = 1'b1;
+    };
+    config_t CONFIG @ 0x30;
+
+    reg eptoggle_t {
+        desc = "Reports the current USB data-toggle state for each physical endpoint.";
+        field {
+            sw = r; hw = rw;
+            desc = "Endpoint data toggle: This field indicates the current value of the data toggle for the corresponding endpoint.";
+        } TOGGLE[15:0] = 0;
+    };
+    eptoggle_t EPTOGGLE @ 0x34;
+
+    reg clkctrl_t {
+        desc = "Controls selection of the external USB clock when programmable PLL support is present.";
+        field {
+            sw = r; hw = r;
+            desc = "Set to one to select the external USB clock. When PLL support is absent, this field reads one and ignores writes.";
+        } EXT_CLK_ENABLE[0:0] = 1'b1;
+    };
+    clkctrl_t CLKCTRL @ 0x38;
+
+    reg ulpidebug_t {
+        desc = "Provides software access to UTMI+ vendor signals or ULPI PHY registers.";
+        field {
+            sw = rw; hw = r;
+            desc = "In ULPI mode, the low nibble of the PHY register address. In UTMI+ mode, drives VControl.";
+        } PHY_ADDR[3:0] = 4'h0;
+        field {
+            sw = rw;
+            hw = r;
+            desc = "Upper nibble of the ULPI PHY register address. Without ULPI support, reads zero and ignores writes.";
+        } PHY_ADDR_HIGH[7:4] = 4'h0;
+        field {
+            sw = rw;
+            hw = r;
+            desc = "Provides write data for a ULPI PHY-register transaction. Without ULPI support, reads zero and ignores writes.";
+        } PHY_WDATA[15:8] = 8'h0;
+        field {
+            sw = rw; hw = w; precedence = hw;
+            desc = "Reports ULPI PHY-register read data or the UTMI+ VStatus value.";
+        } PHY_RDATA[23:16] = 8'h0;
+        field {
+            sw = rw;
+            hw = r;
+            desc = "Selects a ULPI write when set and a ULPI read when clear. Without ULPI support, reads zero and ignores writes.";
+        } PHY_RW[24:24] = 1'h0;
+        field {
+            sw = rw; hw = rw; precedence = hw;
+            desc = "Software writes this bit to one to start a read or write operation. Hardware clears it when the PHY transaction completes.";
+        } PHY_ACCESS[25:25] = 1'h0;
+        field {
+            sw = rw; hw = r;
+            desc = "Selects the PHY interface when both UTMI+ and ULPI are supported. With only one interface, this field reports the fixed mode and ignores writes.";
+        } PHY_MODE[31:31] = 1'b0;
+    };
+    ulpidebug_t ULPIDEBUG @ 0x3c;
+};
