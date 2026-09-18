@@ -107,3 +107,28 @@ default-filter = """
 (package(caliptra-mcu-tests-integration) and test(test_mctp_spdm_attestation_pcr_quote)) |
 (package(caliptra-mcu-tests-integration) and test(test_mctp_spdm_responder_conformance))
 """
+
+[[profile.nightly-ci-spdm.overrides]]
+filter = "package(caliptra-mcu-tests-integration) and test(test_mctp_spdm_responder_conformance)"
+# With SPDM 1.4 ML-DSA-87 CHALLENGE and MEASUREMENTS coverage enabled in the
+# validator, generating pure ML-DSA signatures and chunked transfers over I3C
+# on FPGA hardware exceeds the default 30-minute slow-timeout.
+slow-timeout = { period = "5m", terminate-after = 12 }
+
+[profile.pr-emulator]
+inherits = "emulator"
+# Run only short tests (less than 3 mins)
+default-filter = """
+not (
+    test(test_firmware_update_flash_successful) |
+    test(test_streaming_boot_flash_write_back) |
+    test(test_firmware_update_benchmark_64k) |
+    test(test_firmware_update_flash_successful_fast) |
+    test(test_firmware_update_flash_invalid_soc_image) |
+    test(test_firmware_update_flash_invalid_mcu_image) |
+    test(test_firmware_update_flash_invalid_manifest) |
+    test(test_header_burns_caliptra_runtime_svn) |
+    test(test_mctp_user_loopback) |
+    test(test_defmt_logging_release)
+)
+"""
