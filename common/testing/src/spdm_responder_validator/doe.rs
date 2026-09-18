@@ -3,7 +3,7 @@
 use crate::doe_util::common::DoeUtil;
 use crate::spdm_responder_validator::common::{
     execute_spdm_attestation, execute_spdm_responder_validator, execute_spdm_tee_io_validator,
-    wait_for_spdm_responder_validator, SpdmValidatorRunner, SERVER_LISTENING,
+    SpdmValidatorRunner, SERVER_LISTENING,
 };
 use crate::spdm_responder_validator::transport::{Transport, SOCKET_TRANSPORT_TYPE_PCI_DOE};
 use crate::spdm_responder_validator::SpdmTestType;
@@ -116,7 +116,19 @@ pub fn run_doe_spdm_conformance_test(
     test_timeout_seconds: Duration,
 ) {
     let transport = DoeTransport::new(tx, rx, 1);
-    let check_responder_results = matches!(&test_type, SpdmTestType::SpdmResponderConformance);
+    let validator = match test_type {
+        SpdmTestType::SpdmResponderConformance => {
+            Some(execute_spdm_responder_validator("PCI_DOE"))
+        }
+        SpdmTestType::SpdmTeeIoValidator => {
+            execute_spdm_tee_io_validator("PCI_DOE");
+            None
+        }
+        SpdmTestType::SpdmAttestation => {
+            execute_spdm_attestation("PCI_DOE");
+            None
+        }
+    };
     // Spawn a thread to handle the timeout for the test
     crate::spawn_with_emulator_state(move || {
         std::thread::sleep(test_timeout_seconds);
@@ -150,7 +162,7 @@ pub fn run_doe_spdm_conformance_test(
             if !test.is_passed() {
                 println!("[{}]: Spdm Responder Conformance Test Failed", TEST_NAME);
                 exit(-1);
-            } else if !check_responder_results || wait_for_spdm_responder_validator() {
+            } else if validator.is_none_or(|validator| validator.join().unwrap_or(false)) {
                 println!("[{}]: Spdm Responder Conformance Test Passed", TEST_NAME);
                 exit(0);
             } else {
@@ -159,10 +171,4 @@ pub fn run_doe_spdm_conformance_test(
             }
         }
     });
-
-    match test_type {
-        SpdmTestType::SpdmResponderConformance => execute_spdm_responder_validator("PCI_DOE"),
-        SpdmTestType::SpdmTeeIoValidator => execute_spdm_tee_io_validator("PCI_DOE"),
-        SpdmTestType::SpdmAttestation => execute_spdm_attestation("PCI_DOE"),
-    }
 }
