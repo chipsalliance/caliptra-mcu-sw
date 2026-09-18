@@ -50,11 +50,11 @@ hash = "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5
 enabled = false
 hash = "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"
 
-[increase_caliptra_min_svn]
-# The integration test boots disposable Caliptra firmware with SVN 7.
+[increase_min_svn]
 enabled = false
 flags = 0
-svn = 7
+target = 1
+svn = 5
 
 [fe_prog]
 enabled = true

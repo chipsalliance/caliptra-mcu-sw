@@ -139,7 +139,7 @@ pub fn command_id_to_vdm(command_id: u32) -> Option<CaliptraVdmCommand> {
         }
         x if x == CaliptraCommandId::FeProg as u32
             || x == CaliptraCommandId::ProvisionVendorPkHash as u32
-            || x == CaliptraCommandId::FuseIncreaseCaliptraMinSvn as u32
+            || x == CaliptraCommandId::FuseIncreaseMinSvn as u32
             || x == CaliptraCommandId::FuseRevokeVendorPubKey as u32
             || x == CaliptraCommandId::FuseRevokeVendorPkHash as u32
             || x == CaliptraCommandId::FuseLockPartition as u32
@@ -246,7 +246,7 @@ mod tests {
             CaliptraCommandId::GetAuthCmdChallenge,
             CaliptraCommandId::FeProg,
             CaliptraCommandId::ProvisionVendorPkHash,
-            CaliptraCommandId::FuseIncreaseCaliptraMinSvn,
+            CaliptraCommandId::FuseIncreaseMinSvn,
             CaliptraCommandId::FuseRevokeVendorPubKey,
             CaliptraCommandId::FuseRevokeVendorPkHash,
             CaliptraCommandId::OcpLockRotateHek,

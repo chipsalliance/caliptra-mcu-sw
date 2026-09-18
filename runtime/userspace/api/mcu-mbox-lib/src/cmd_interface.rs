@@ -14,16 +14,16 @@ use caliptra_mcu_libsyscall_caliptra::{caliptra, otp};
 use caliptra_mcu_mbox_common::messages::{
     ClearLogReq, ClearLogResp, CommandId, DeviceCapsReq, DeviceCapsResp, DpeSignerContextCertReq,
     DpeSignerContextCertResp, EndorsementAlgorithm, ExportAttestedCsrReq, FirmwareVersionReq,
-    FirmwareVersionResp, FuseIncreaseCaliptraMinSvnReq, FuseIncreaseCaliptraMinSvnResp,
-    FuseLockPartitionReq, FuseLockPartitionResp, FuseReadReq, FuseReadResp,
-    FuseRevokeVendorPkHashReq, FuseRevokeVendorPkHashResp, FuseRevokeVendorPubKeyReq,
-    FuseRevokeVendorPubKeyResp, FuseWriteReq, FuseWriteResp, GetAttestationReq,
-    GetAuthCmdChallengeReq, GetAuthCmdChallengeResp, GetDpeCertChainReq, GetLogReq, LogType,
-    MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize, McuFeProgReq, McuMailboxReq,
-    McuMailboxResp, McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp,
-    McuProdDebugUnlockTokenReq, McuResponseVarSize, ProvisionOwnerPkHashReq,
-    ProvisionOwnerPkHashResp, ProvisionVendorPkHashReq, ProvisionVendorPkHashResp,
-    DEVICE_CAPS_SIZE, GET_ATTESTATION_RESP_PREFIX_LEN, MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN,
+    FirmwareVersionResp, FuseIncreaseMinSvnReq, FuseIncreaseMinSvnResp, FuseLockPartitionReq,
+    FuseLockPartitionResp, FuseReadReq, FuseReadResp, FuseRevokeVendorPkHashReq,
+    FuseRevokeVendorPkHashResp, FuseRevokeVendorPubKeyReq, FuseRevokeVendorPubKeyResp,
+    FuseWriteReq, FuseWriteResp, GetAttestationReq, GetAuthCmdChallengeReq,
+    GetAuthCmdChallengeResp, GetDpeCertChainReq, GetLogReq, LogType, MailboxReqHeader,
+    MailboxRespHeader, MailboxRespHeaderVarSize, McuFeProgReq, McuMailboxReq, McuMailboxResp,
+    McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq,
+    McuResponseVarSize, ProvisionOwnerPkHashReq, ProvisionOwnerPkHashResp,
+    ProvisionVendorPkHashReq, ProvisionVendorPkHashResp, SvnTarget, DEVICE_CAPS_SIZE,
+    GET_ATTESTATION_RESP_PREFIX_LEN, MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN,
     MAX_RESP_DATA_SIZE,
 };
 
@@ -239,7 +239,7 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
                 }
                 inner @ CommandId::MC_PROVISION_VENDOR_PK_HASH
                 | inner @ CommandId::MC_PROVISION_OWNER_PK_HASH
-                | inner @ CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN
+                | inner @ CommandId::MC_FUSE_INCREASE_MIN_SVN
                 | inner @ CommandId::MC_FE_PROG
                 | inner @ CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH
                 | inner @ CommandId::MC_FUSE_READ
@@ -1102,8 +1102,8 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
             CommandId::MC_PROVISION_OWNER_PK_HASH => {
                 self.handle_provision_owner_pk_hash(cmd, resp_buf).await
             }
-            CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN => {
-                self.handle_increase_caliptra_min_svn(cmd, resp_buf).await
+            CommandId::MC_FUSE_INCREASE_MIN_SVN => {
+                self.handle_increase_min_svn(cmd, resp_buf).await
             }
             CommandId::MC_FE_PROG => self.handle_fe_prog(cmd, resp_buf).await,
             CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY => {
@@ -1352,67 +1352,71 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         Ok((&mut resp_buf[..resp_bytes.len()], MbxCmdStatus::Complete))
     }
 
-    async fn handle_increase_caliptra_min_svn<'r>(
+    async fn handle_increase_min_svn<'r>(
         &self,
         req: &[u8],
         resp_buf: &'r mut [u8],
     ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
-        if resp_buf.len() < core::mem::size_of::<FuseIncreaseCaliptraMinSvnResp>() {
+        if resp_buf.len() < core::mem::size_of::<FuseIncreaseMinSvnResp>() {
             return Err(errors::INVALID_PARAMS);
         }
 
-        // Decode the request
-        let req = FuseIncreaseCaliptraMinSvnReq::ref_from_bytes(req)
-            .map_err(|_| errors::INVALID_PARAMS)?;
-
-        // Check the request has a valid SVN value
-        if req.svn == 0 {
-            return Err(errors::INVALID_PARAMS);
-        }
-        if req.svn > 128 {
+        let req = FuseIncreaseMinSvnReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        if req.flags != 0 {
             return Err(errors::INVALID_PARAMS);
         }
 
-        let caliptra_fw_info = self.get_caliptra_fw_info().await?;
+        match SvnTarget::try_from(req.target).map_err(|_| errors::INVALID_PARAMS)? {
+            SvnTarget::CaliptraRuntime => {
+                let caliptra_fw_info = self.get_caliptra_fw_info().await?;
+                Self::increase_min_svn_fuse(
+                    otp::reg::CALIPTRA_FW_SVN,
+                    req.svn,
+                    Some(caliptra_fw_info.fw_svn),
+                )?;
+            }
+            SvnTarget::SocManifest => {
+                let otp: otp::Otp<DefaultSyscalls> = otp::Otp::new();
+                let max_svn = otp
+                    .read(otp::reg::SOC_MANIFEST_MAX_SVN, 0)
+                    .map_err(|_| errors::MCU_MBOX_COMMON)?;
+                Self::increase_min_svn_fuse(otp::reg::SOC_MANIFEST_SVN, req.svn, Some(max_svn))?;
+            }
+            SvnTarget::OwnerSocManifest => return Err(errors::UNSUPPORTED_COMMAND),
+        }
 
-        // Ensure the requested SVN will allow current Caliptra firmware to run
-        if req.svn > caliptra_fw_info.fw_svn {
+        let resp = FuseIncreaseMinSvnResp::default();
+        let resp_bytes = resp.as_bytes();
+        resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
+        Ok((&mut resp_buf[..resp_bytes.len()], MbxCmdStatus::Complete))
+    }
+
+    fn increase_min_svn_fuse(otp_reg: u32, svn: u32, max_svn: Option<u32>) -> McuResult<()> {
+        if svn == 0 || svn > 128 || max_svn.is_some_and(|max| svn > max) {
             return Err(errors::INVALID_PARAMS);
         }
 
-        // Get the minimum SVN set in fuses
         let otp: otp::Otp<DefaultSyscalls> = otp::Otp::new();
         let mut current_fuses = [0u32; 4];
         for (i, fuse) in current_fuses.iter_mut().enumerate() {
             *fuse = otp
-                .read(otp::reg::CALIPTRA_FW_SVN, i as u32)
+                .read(otp_reg, i as u32)
                 .map_err(|_| errors::MCU_MBOX_COMMON)?;
         }
 
-        // Convert the fuses to the SVN value
-        let fused_min_svn = {
-            // Value is take as the most significant bit set in fuses
-            let fuse: u128 = u128::from_le_bytes(current_fuses.as_bytes().try_into().unwrap());
-            128 - fuse.leading_zeros()
-        };
-
-        // Ensure we are not trying to decrease the SVN
-        if req.svn < fused_min_svn {
+        let fuse: u128 = u128::from_le_bytes(current_fuses.as_bytes().try_into().unwrap());
+        let fused_min_svn = 128 - fuse.leading_zeros();
+        if svn < fused_min_svn {
             return Err(errors::INVALID_PARAMS);
         }
-
-        // We are done, if the fuses already match the requested SVN.
-        if fused_min_svn == req.svn {
-            let resp = FuseIncreaseCaliptraMinSvnResp::default();
-            let resp_bytes = resp.as_bytes();
-            resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
-            return Ok((&mut resp_buf[..resp_bytes.len()], MbxCmdStatus::Complete));
+        if svn == fused_min_svn {
+            return Ok(());
         }
 
-        let new_fuse_svn = if req.svn == 128 {
+        let new_fuse_svn = if svn == 128 {
             u128::MAX
         } else {
-            !(u128::MAX << req.svn)
+            !(u128::MAX << svn)
         };
 
         for (i, (current, new_bytes)) in current_fuses
@@ -1422,15 +1426,12 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         {
             let new_svn_word = u32::from_le_bytes(new_bytes.try_into().unwrap());
             if *current != new_svn_word {
-                otp.write(otp::reg::CALIPTRA_FW_SVN, i as u32, new_svn_word)
+                otp.write(otp_reg, i as u32, new_svn_word)
                     .map_err(|_| errors::INVALID_PARAMS)?;
             }
         }
 
-        let resp = FuseIncreaseCaliptraMinSvnResp::default();
-        let resp_bytes = resp.as_bytes();
-        resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
-        Ok((&mut resp_buf[..resp_bytes.len()], MbxCmdStatus::Complete))
+        Ok(())
     }
 
     async fn handle_fe_prog<'r>(
@@ -1728,9 +1729,7 @@ fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32) -> usize {
         }
         c if c == CommandId::MC_PROVISION_VENDOR_PK_HASH => size_of::<ProvisionVendorPkHashResp>(),
         c if c == CommandId::MC_PROVISION_OWNER_PK_HASH => size_of::<ProvisionOwnerPkHashResp>(),
-        c if c == CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN => {
-            size_of::<FuseIncreaseCaliptraMinSvnResp>()
-        }
+        c if c == CommandId::MC_FUSE_INCREASE_MIN_SVN => size_of::<FuseIncreaseMinSvnResp>(),
         c if c == CommandId::MC_FE_PROG || c == CommandId::MC_FUSE_WRITE => {
             size_of::<FuseWriteResp>()
         }
