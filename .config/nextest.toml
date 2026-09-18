@@ -122,6 +122,13 @@ default-filter = """
 (package(caliptra-mcu-tests-integration) and test(test_mctp_spdm_responder_conformance))
 """
 
+[[profile.nightly-ci-spdm.overrides]]
+filter = "package(caliptra-mcu-tests-integration) and test(test_mctp_spdm_responder_conformance)"
+# With SPDM 1.4 ML-DSA-87 CHALLENGE and MEASUREMENTS coverage enabled in the
+# validator, generating pure ML-DSA signatures and chunked transfers over I3C
+# on FPGA hardware exceeds the default 30-minute slow-timeout.
+slow-timeout = { period = "5m", terminate-after = 12 }
+
 [profile.pr-emulator]
 inherits = "emulator"
 # Run only short tests (less than 3 mins)
