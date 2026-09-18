@@ -12,11 +12,11 @@ use core::cell::UnsafeCell;
 use mcu_caliptra_api::{sha_finish, sha_init, sha_update, ApiAlloc, HashAlgo, SHA_CONTEXT_SIZE};
 use mcu_error::McuResult;
 
-#[cfg(feature = "set-certificate")]
-use super::endorsement::ManagedEndorsement;
 use super::endorsement::{
-    slot_index, CertSlot, ReadOnlyEndorsement, SlotEndorsement, NUM_CERT_SLOTS,
+    slot_index, CertSlot, ReadOnlyEndorsementSlot, SlotEndorsement, NUM_CERT_SLOTS,
 };
+#[cfg(feature = "set-certificate")]
+use super::endorsement::{ManagedEndorsementSlot, SingleManagedEndorsement};
 
 const DEFAULT_CERT_INFO: u8 = 0x01;
 
@@ -86,7 +86,7 @@ impl SharedCertStore {
             return Err(mcu_error::codes::INVARIANT);
         }
         let ecc_hash = compute_root_hash(alloc, ecc_chain[0]).await?;
-        let mut ro = ReadOnlyEndorsement::new(ecc_chain, ecc_hash);
+        let mut ro = ReadOnlyEndorsementSlot::new(ecc_chain, ecc_hash);
 
         if let Some(mldsa) = mldsa_chain {
             if !mldsa.is_empty() {
@@ -97,8 +97,9 @@ impl SharedCertStore {
 
         let slot = self.cert_slot_mut(idx).ok_or(mcu_error::codes::INVARIANT)?;
         slot.endorsement = SlotEndorsement::ReadOnly(ro);
-        slot.key_pair_id = Some(key_pair_id);
-        slot.cert_info = Some(DEFAULT_CERT_INFO);
+        // Both chains are provisioned together from the same key
+        // material, so they share KeyPairID and CertificateInfo.
+        slot.set_metadata_all(Some(key_pair_id), Some(DEFAULT_CERT_INFO));
         Ok(())
     }
 
@@ -127,7 +128,7 @@ impl SharedCertStore {
         static EMPTY_CHAIN: &[&[u8]] = &[];
 
         let ecc_hash = compute_root_hash(alloc, ecc_first_dpe_cert).await?;
-        let mut ro = ReadOnlyEndorsement::new(EMPTY_CHAIN, ecc_hash);
+        let mut ro = ReadOnlyEndorsementSlot::new(EMPTY_CHAIN, ecc_hash);
 
         if let Some(cert) = mldsa_first_dpe_cert {
             if !cert.is_empty() {
@@ -138,19 +139,24 @@ impl SharedCertStore {
 
         let slot = self.cert_slot_mut(idx).ok_or(mcu_error::codes::INVARIANT)?;
         slot.endorsement = SlotEndorsement::ReadOnly(ro);
-        slot.key_pair_id = Some(key_pair_id);
-        slot.cert_info = Some(DEFAULT_CERT_INFO);
+        slot.set_metadata_all(Some(key_pair_id), Some(DEFAULT_CERT_INFO));
         Ok(())
     }
 
-    /// Configure a flash-backed managed cert-chain slot and load any existing
-    /// record from flash. Uninitialized flash leaves the slot supported but not
-    /// provisioned, so SET_CERTIFICATE can install it later.
+    /// Configure a flash-backed managed cert-chain region for `(idx, algo)`
+    /// and load any existing record from flash. Uninitialized flash leaves
+    /// that `(slot, algo)` supported but not provisioned, so SET_CERTIFICATE
+    /// can install it later.
+    ///
+    /// Returns `INVARIANT` if the requested region intersects any region
+    /// already wired to any slot (including another algorithm in the same
+    /// slot), since an update erases a whole region.
     #[cfg(feature = "set-certificate")]
     pub async fn set_managed_endorsement(
         &self,
         idx: usize,
         spdm_slot: u8,
+        algo: SpdmPalAsymAlgo,
         driver_num: u32,
         base: usize,
         capacity: usize,
@@ -158,12 +164,43 @@ impl SharedCertStore {
         if idx >= NUM_CERT_SLOTS || capacity == 0 {
             return Err(mcu_error::codes::INVARIANT);
         }
-        let mut endorsement = ManagedEndorsement::new(spdm_slot, driver_num, base, capacity);
-        endorsement.load().await?;
+
+        // Updating a chain erases its whole region, so regions must be
+        // strictly disjoint — any intersection means installing one
+        // chain destroys another. Checking all slots (including `idx`
+        // itself) catches both intra-slot and cross-slot collisions.
+        let range = base..base
+            .checked_add(capacity)
+            .ok_or(mcu_error::codes::INVARIANT)?;
+        for slot in self.cert_slots() {
+            if let SlotEndorsement::Managed(existing) = &slot.endorsement {
+                if existing.any_region_overlaps(driver_num, &range) {
+                    return Err(mcu_error::codes::INVARIANT);
+                }
+            }
+        }
+
         let slot = self.cert_slot_mut(idx).ok_or(mcu_error::codes::INVARIANT)?;
-        slot.key_pair_id = endorsement.key_pair_id();
-        slot.cert_info = endorsement.cert_info();
-        slot.endorsement = SlotEndorsement::Managed(endorsement);
+        match (&slot.endorsement, algo) {
+            (SlotEndorsement::Empty, SpdmPalAsymAlgo::EccP384) => {}
+            (SlotEndorsement::Managed(m), SpdmPalAsymAlgo::MlDsa87)
+                if m.get_endorsement(SpdmPalAsymAlgo::MlDsa87).is_none() => {}
+            _ => return Err(mcu_error::codes::INVARIANT),
+        }
+
+        let mut region = SingleManagedEndorsement::new(spdm_slot, algo, driver_num, base, capacity);
+        region.load().await?;
+
+        slot.set_metadata(algo, region.key_pair_id(), region.cert_info());
+        match &mut slot.endorsement {
+            SlotEndorsement::Empty => {
+                slot.endorsement = SlotEndorsement::Managed(ManagedEndorsementSlot::new(region));
+            }
+            SlotEndorsement::Managed(m) => {
+                m.set_endorsement(region);
+            }
+            SlotEndorsement::ReadOnly(_) => return Err(mcu_error::codes::INVARIANT),
+        }
         Ok(())
     }
 }
@@ -327,7 +364,7 @@ mod tests {
     #[test]
     fn dpe_only_endorsement_has_zero_size() {
         let hash = [0xAB_u8; 48];
-        let endorsement = SlotEndorsement::ReadOnly(ReadOnlyEndorsement::new(&[], hash));
+        let endorsement = SlotEndorsement::ReadOnly(ReadOnlyEndorsementSlot::new(&[], hash));
 
         assert_eq!(endorsement.size(SpdmPalAsymAlgo::EccP384).unwrap(), 0);
     }
@@ -337,7 +374,7 @@ mod tests {
         let mut hash = [0u8; 48];
         hash[0] = 0xDE;
         hash[47] = 0xAD;
-        let endorsement = SlotEndorsement::ReadOnly(ReadOnlyEndorsement::new(&[], hash));
+        let endorsement = SlotEndorsement::ReadOnly(ReadOnlyEndorsementSlot::new(&[], hash));
 
         let mut out = [0u8; 48];
         endorsement
@@ -349,10 +386,11 @@ mod tests {
     #[test]
     fn dpe_only_endorsement_is_supported() {
         let hash = [0x11_u8; 48];
-        let endorsement = SlotEndorsement::ReadOnly(ReadOnlyEndorsement::new(&[], hash));
+        let endorsement = SlotEndorsement::ReadOnly(ReadOnlyEndorsementSlot::new(&[], hash));
 
         assert!(endorsement.is_supported());
-        assert!(endorsement.is_provisioned());
+        assert!(endorsement.is_provisioned(SpdmPalAsymAlgo::EccP384));
+        assert!(!endorsement.is_provisioned(SpdmPalAsymAlgo::MlDsa87));
     }
 
     #[test]
@@ -360,13 +398,13 @@ mod tests {
         let store = SharedCertStore::new();
         let slot = &store.cert_slots()[0];
         assert!(!slot.endorsement.is_supported());
-        assert!(slot.key_pair_id.is_none());
+        assert!(slot.key_pair_id(SpdmPalAsymAlgo::EccP384).is_none());
     }
 
     #[test]
     fn dpe_only_without_mldsa_errors_on_mldsa_algo() {
         let hash = [0x22_u8; 48];
-        let endorsement = SlotEndorsement::ReadOnly(ReadOnlyEndorsement::new(&[], hash));
+        let endorsement = SlotEndorsement::ReadOnly(ReadOnlyEndorsementSlot::new(&[], hash));
 
         assert_eq!(endorsement.size(SpdmPalAsymAlgo::EccP384).unwrap(), 0);
         assert!(endorsement.size(SpdmPalAsymAlgo::MlDsa87).is_err());
@@ -377,7 +415,7 @@ mod tests {
         let ecc_hash = [0x33_u8; 48];
         let mldsa_hash = [0x44_u8; 48];
         let endorsement = SlotEndorsement::ReadOnly(
-            ReadOnlyEndorsement::new(&[], ecc_hash).with_mldsa(&[], mldsa_hash),
+            ReadOnlyEndorsementSlot::new(&[], ecc_hash).with_mldsa(&[], mldsa_hash),
         );
 
         assert_eq!(endorsement.size(SpdmPalAsymAlgo::EccP384).unwrap(), 0);
