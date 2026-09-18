@@ -8,10 +8,12 @@ use crate::target_dir;
 use anyhow::{bail, Context, Result};
 use caliptra_auth_man_gen::{
     AuthManifestGenerator, AuthManifestGeneratorConfig, AuthManifestGeneratorKeyConfig,
+    OwnerAuthManifestGeneratorConfig,
 };
 use caliptra_auth_man_types::{
     Addr64, AuthManifestFlags, AuthManifestImageMetadata, AuthManifestPrivKeysConfig,
     AuthManifestPubKeysConfig, AuthorizationManifest, ImageMetadataFlags,
+    OwnerAuthorizationManifest,
 };
 use caliptra_image_crypto::RustCrypto as Crypto;
 use caliptra_image_fake_keys::*;
@@ -98,12 +100,15 @@ pub struct CaliptraBuilder {
     caliptra_rom: Option<PathBuf>,
     caliptra_firmware: Option<PathBuf>,
     soc_manifest: Option<PathBuf>,
+    owner_auth_manifest: Option<PathBuf>,
     vendor_pk_hash: Option<String>,
     owner_pk_hash: Option<String>,
     mcu_firmware: Option<PathBuf>,
     soc_images: Option<Vec<ImageCfg>>,
+    owner_soc_images: Option<Vec<ImageCfg>>,
     mcu_image_cfg: Option<ImageCfg>,
     soc_manifest_svn: Option<u32>,
+    owner_manifest_svn: Option<u32>,
     vendor: String,
     model: String,
     /// Optional custom owner configuration for re-signing FW bundles.
@@ -125,12 +130,15 @@ impl CaliptraBuilder {
             caliptra_rom: args.caliptra_rom.clone(),
             caliptra_firmware: args.caliptra_firmware.clone(),
             soc_manifest: args.soc_manifest.clone(),
+            owner_auth_manifest: args.owner_auth_manifest.clone(),
             vendor_pk_hash: args.vendor_pk_hash.clone(),
             owner_pk_hash: None,
             mcu_firmware: args.mcu_firmware.clone(),
             soc_images: args.soc_images.clone(),
+            owner_soc_images: args.owner_soc_images.clone(),
             mcu_image_cfg: args.mcu_image_cfg.clone(),
             soc_manifest_svn: args.soc_manifest_svn,
+            owner_manifest_svn: args.owner_manifest_svn,
             vendor: args
                 .vendor
                 .clone()
@@ -257,6 +265,16 @@ impl CaliptraBuilder {
         Ok(metadata)
     }
 
+    fn get_owner_soc_images_metadata(&self) -> Result<Vec<AuthManifestImageMetadata>> {
+        let mut metadata = Vec::new();
+        if let Some(owner_soc_images) = &self.owner_soc_images {
+            for owner_soc_image in owner_soc_images {
+                metadata.push(Self::get_soc_manifest_metadata(owner_soc_image)?);
+            }
+        }
+        Ok(metadata)
+    }
+
     pub fn get_soc_manifest(&mut self, name: Option<&str>) -> Result<PathBuf> {
         if self.soc_manifest.is_none() {
             let _ = self.get_caliptra_fw()?;
@@ -282,6 +300,27 @@ impl CaliptraBuilder {
             self.soc_manifest = Some(path);
         }
         Ok(self.soc_manifest.clone().unwrap())
+    }
+
+    /// Builds an Owner Authorization Manifest from `owner_soc_images`.
+    pub fn get_owner_auth_manifest(&mut self, name: Option<&str>) -> Result<PathBuf> {
+        if self.owner_auth_manifest.is_none() {
+            let metadata = self.get_owner_soc_images_metadata()?;
+            let manifest = Self::create_owner_auth_manifest_with_metadata_and_owner(
+                metadata,
+                self.owner_manifest_svn.unwrap_or(0),
+                self.auth_manifest_owner_config.as_ref(),
+            )?;
+            let path = name
+                .map(PathBuf::from)
+                .unwrap_or_else(|| target_dir().join("owner-auth-manifest"));
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(&path, manifest.as_bytes())?;
+            self.owner_auth_manifest = Some(path);
+        }
+        Ok(self.owner_auth_manifest.clone().unwrap())
     }
 
     pub fn replace_manifest_config(
@@ -947,6 +986,42 @@ fn main() -> Result<()> {
         gen.generate(&gen_config).unwrap()
     }
 
+    fn create_owner_auth_manifest_with_metadata_and_owner(
+        image_metadata_list: Vec<AuthManifestImageMetadata>,
+        svn: u32,
+        owner_config: Option<&AuthManifestOwnerConfig>,
+    ) -> Result<OwnerAuthorizationManifest> {
+        let owner_key_info = if let Some(config) = owner_config {
+            AuthManifestGeneratorKeyConfig {
+                pub_keys: config.pub_keys,
+                priv_keys: config.priv_keys,
+            }
+        } else {
+            AuthManifestGeneratorKeyConfig {
+                pub_keys: AuthManifestPubKeysConfig {
+                    ecc_pub_key: OWNER_ECC_KEY_PUBLIC,
+                    lms_pub_key: OWNER_LMS_KEY_PUBLIC,
+                    mldsa_pub_key: OWNER_MLDSA_KEY_PUBLIC,
+                },
+                priv_keys: Some(AuthManifestPrivKeysConfig {
+                    ecc_priv_key: OWNER_ECC_KEY_PRIVATE,
+                    lms_priv_key: OWNER_LMS_KEY_PRIVATE,
+                    mldsa_priv_key: OWNER_MLDSA_KEY_PRIVATE,
+                }),
+            }
+        };
+        let gen_config = OwnerAuthManifestGeneratorConfig {
+            version: 1,
+            svn,
+            pqc_key_type: FwVerificationPqcKeyType::LMS,
+            owner_fw_key_info: owner_key_info.clone(),
+            owner_man_key_info: owner_key_info,
+            image_metadata_list,
+        };
+
+        AuthManifestGenerator::new(Crypto::default()).generate_owner(&gen_config)
+    }
+
     /// Generates an unsigned authorization manifest and exports a `SigningRequestJson` for offline signing.
     pub fn get_unsigned_auth_manifest(
         &mut self,
@@ -1207,6 +1282,8 @@ impl FromStr for ImageCfg {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use caliptra_auth_man_types::OWNER_AUTH_MANIFEST_MARKER;
+    use tempfile::tempdir;
 
     #[test]
     fn test_image_cfg_optional_network_filename() {
@@ -1220,6 +1297,48 @@ mod tests {
             .parse()
             .unwrap();
         assert_eq!(config.network_filename, None);
+    }
+
+    #[test]
+    fn test_get_owner_auth_manifest_uses_owner_soc_images() {
+        let temp_dir = tempdir().unwrap();
+        let vendor_image_path = temp_dir.path().join("vendor-image.bin");
+        let owner_image_path = temp_dir.path().join("owner-image.bin");
+        let manifest_path = temp_dir.path().join("owner-auth-manifest.bin");
+        std::fs::write(&vendor_image_path, b"vendor image").unwrap();
+        std::fs::write(&owner_image_path, b"owner image").unwrap();
+
+        let mut builder = CaliptraBuilder::new(&crate::CaliptraBuildArgs {
+            soc_images: Some(vec![ImageCfg {
+                path: vendor_image_path,
+                image_id: 0x1000,
+                component_id: 0x1000,
+                ..Default::default()
+            }]),
+            owner_soc_images: Some(vec![ImageCfg {
+                path: owner_image_path,
+                image_id: 0x10000,
+                component_id: 0x10000,
+                ..Default::default()
+            }]),
+            soc_manifest_svn: Some(7),
+            owner_manifest_svn: Some(11),
+            ..Default::default()
+        });
+
+        let path = builder
+            .get_owner_auth_manifest(manifest_path.to_str())
+            .unwrap();
+        let bytes = std::fs::read(path).unwrap();
+        let manifest = OwnerAuthorizationManifest::read_from_bytes(&bytes).unwrap();
+
+        assert_eq!(manifest.preamble.marker, OWNER_AUTH_MANIFEST_MARKER);
+        assert_eq!(manifest.preamble.svn, 11);
+        assert_eq!(manifest.image_metadata_col.entry_count, 1);
+        assert_eq!(
+            manifest.image_metadata_col.image_metadata_list[0].fw_id,
+            0x10000
+        );
     }
 
     #[test]
