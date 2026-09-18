@@ -101,6 +101,7 @@ impl<T> DerefMut for TestBox<'_, T> {
 
 pub struct TestPal {
     pub mtu: usize,
+    pub secure_message_supported: bool,
     pub large_buffered_msg_capacity: usize,
     pub max_inbound_spdm_request_size: usize,
     pub supported_slots: u8,
@@ -119,6 +120,22 @@ pub struct TestPal {
     pub now_ms: RefCell<u64>,
     /// Algorithm the most recent cert-chain write was routed to.
     pub write_algo: Cell<Option<SpdmPalAsymAlgo>>,
+    pub sign_ops: RefCell<Vec<RecordedSign>>,
+}
+
+/// Signing input captured by [`TestPal::sign`], owned so tests can assert on it
+/// after the borrow ends.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RecordedSigningInput {
+    EccP384Digest(Vec<u8>),
+    Mldsa87RawMessage { context: Vec<u8>, message: Vec<u8> },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RecordedSign {
+    pub algo: SpdmPalAsymAlgo,
+    pub input: RecordedSigningInput,
+    pub sig_len: usize,
 }
 
 impl TestPal {
@@ -132,6 +149,7 @@ impl Default for TestPal {
     fn default() -> Self {
         Self {
             mtu: 1024,
+            secure_message_supported: true,
             large_buffered_msg_capacity: 1024,
             max_inbound_spdm_request_size: 1024,
             supported_slots: u8::MAX,
@@ -149,6 +167,7 @@ impl Default for TestPal {
             stream_aborts: Cell::new(0),
             now_ms: RefCell::new(0),
             write_algo: Cell::new(None),
+            sign_ops: RefCell::new(Vec::new()),
         }
     }
 }
@@ -229,7 +248,7 @@ impl SpdmPalIoTransport for TestPal {
         Self: 'a;
 
     fn secure_message_supported(&self) -> bool {
-        true
+        self.secure_message_supported
     }
 
     fn header_size(&self) -> usize {
@@ -387,10 +406,26 @@ impl SpdmPalCertStore for TestPal {
         &self,
         _io: &Self::Io<'_>,
         _slot: u8,
-        _algo: SpdmPalAsymAlgo,
-        _signing_input: SigningInput<'_>,
+        algo: SpdmPalAsymAlgo,
+        signing_input: SigningInput<'_>,
         signature: &mut [u8],
     ) -> McuResult<usize> {
+        let input = match signing_input {
+            SigningInput::EccP384Digest(digest) => {
+                RecordedSigningInput::EccP384Digest(digest.to_vec())
+            }
+            SigningInput::Mldsa87RawMessage { context, message } => {
+                RecordedSigningInput::Mldsa87RawMessage {
+                    context: context.to_vec(),
+                    message: message.to_vec(),
+                }
+            }
+        };
+        self.sign_ops.borrow_mut().push(RecordedSign {
+            algo,
+            input,
+            sig_len: signature.len(),
+        });
         signature.fill(0x77);
         Ok(signature.len())
     }

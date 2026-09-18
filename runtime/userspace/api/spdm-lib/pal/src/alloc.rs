@@ -108,28 +108,32 @@ mod tests {
         (alloc, buf)
     }
 
-    /// Validates the *shipping* emulator configuration: a 12 KiB pool must be
+    /// Validates the *shipping* emulator configuration: a 19 KiB pool must be
     /// able to hand out the declared 8 KiB buffered large-message allocation
-    /// while the session working set is live, after sustained request churn.
+    /// while the session working set is live, after sustained request churn,
+    /// and accommodate the concurrent ML-DSA-87 signing working set.
     ///
     /// This is the empirical counterpart to the platform's `required_scratch()`
     /// build assertion. The assertion proves the arithmetic; this proves the
     /// allocator can actually place the run.
     ///
     /// Mirrors `platforms/emulator/.../spdm/mod.rs`:
-    ///   * pool            = `SPDM_SCRATCH_SIZE`              = 12 KiB
+    ///   * pool            = `SPDM_SCRATCH_SIZE`              = 19 KiB
     ///   * large buffer    = `MAX_BUFFERED_SPDM_MSG_SIZE`      =  8 KiB
     ///   * session set     = `SESSION_WORKING_SET`            = ~2.3 KiB live throughout
     ///   * inline response = `MAX_TRANSPORT_MTU`              =  1 KiB, concurrent with
     ///     the large buffer
+    ///   * pqc signing     = `PQC_SIGNING_PEAK`               = ~5.7 KiB
     ///
     /// If this fails, either `SPDM_SCRATCH_SIZE` must grow or
     /// `MAX_BUFFERED_SPDM_MSG_SIZE` must shrink.
     #[test]
     fn buffered_large_message_capacity_is_allocatable_from_shipping_pool() {
-        const POOL: usize = 12 * 1024;
+        const POOL: usize = 19 * 1024;
         const MAX_BUFFERED_SPDM_MSG_SIZE: usize = 8 * 1024;
         const MAX_TRANSPORT_MTU: usize = 1024;
+        const RAW_MESSAGE: usize = mcu_caliptra_api::DPE_MLDSA87_RAW_MAX_SIZE;
+        const SIGN_RSP: usize = mcu_caliptra_api::DPE_MLDSA87_SIGN_SCRATCH_PEAK;
 
         let (alloc, _buf) = make_alloc(POOL);
 
@@ -178,8 +182,11 @@ mod tests {
         let largest_run_bytes = alloc.largest_free_run() * BITMAP_SLOT_SIZE;
         let large = alloc.alloc_bytes(MAX_BUFFERED_SPDM_MSG_SIZE);
 
-        match large {
-            Ok(buf) => assert_eq!(buf.len(), MAX_BUFFERED_SPDM_MSG_SIZE),
+        let _large = match large {
+            Ok(buf) => {
+                assert_eq!(buf.len(), MAX_BUFFERED_SPDM_MSG_SIZE);
+                buf
+            }
             Err(_) => panic!(
                 "buffered large-message allocation is not deliverable: {} B allocation failed \
                  from a {} B pool after 50 cycles. baseline_live={} slots, \
@@ -187,12 +194,25 @@ mod tests {
                  MAX_BUFFERED_SPDM_MSG_SIZE in the platform SPDM config.",
                 MAX_BUFFERED_SPDM_MSG_SIZE, POOL, baseline_live, largest_run_bytes
             ),
-        }
+        };
+
+        let run_before_sign = alloc.largest_free_run() * BITMAP_SLOT_SIZE;
+        let _raw_message = alloc
+            .alloc_bytes(RAW_MESSAGE)
+            .expect("raw signing message must fit during PQC signing");
+        assert!(
+            alloc.alloc_bytes(SIGN_RSP).is_ok(),
+            "DPE Sign response ({} B) is not placeable while a {} B large buffer is rented: \
+             largest_free_run={} bytes before signing. Raise SPDM_SCRATCH_SIZE.",
+            SIGN_RSP,
+            MAX_BUFFERED_SPDM_MSG_SIZE,
+            run_before_sign
+        );
     }
 
     #[test]
     fn ecdsa_key_exchange_fits_shipping_pool() {
-        const POOL: usize = 12 * 1024;
+        const POOL: usize = 19 * 1024;
         const MAX_TRANSPORT_MTU: usize = 1024;
         const MAX_KEY_EXCHANGE_REQ_LEN: usize = caliptra_mcu_spdm_codec::SpdmMsgHdrPdu::SIZE
             + core::mem::size_of::<caliptra_mcu_spdm_codec::KeyExchangeReqBodyFixed>()

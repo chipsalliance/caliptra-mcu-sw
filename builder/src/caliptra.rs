@@ -584,6 +584,9 @@ fn main() -> Result<()> {
         // build vendored OpenSSL leak it to cc as a bogus -D flag. Strip both
         // here so the helper build starts from a clean flag environment.
         let status = Command::new("cargo")
+            // Core strips firmware crate metadata, so ROM and runtime revisions
+            // must not share compiled dependency artifacts.
+            .env("CARGO_TARGET_DIR", build_dir.join("target"))
             .args([
                 "run",
                 "--quiet",

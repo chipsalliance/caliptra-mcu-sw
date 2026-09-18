@@ -77,13 +77,17 @@ pub const DPE_MAX_LEAF_CERT_SIZE: usize = 12 * 1024;
 /// few bitmap-allocator slots.
 pub const DPE_MAX_CHUNK_SIZE: usize = 1024;
 
-/// Maximum raw message width consumed by Caliptra 2.0 DPE ML-DSA-87 `Sign`.
+/// Maximum encoded raw-signing payload consumed by Caliptra 2.0 DPE ML-DSA-87 `Sign`.
 pub const DPE_MLDSA87_RAW_MAX_SIZE: usize = 1024;
+
+/// Maximum FIPS 204 context width accepted by ML-DSA.
+pub const DPE_MLDSA87_CONTEXT_MAX_SIZE: usize = u8::MAX as usize;
 
 /// ML-DSA-87 signature width returned by DPE `Sign`.
 pub const DPE_MLDSA87_SIGNATURE_SIZE: usize = 4627;
 
 const DPE_SIGN_FLAG_IS_RAW: u32 = 1 << 0;
+const DPE_SIGN_FLAG_HAS_CONTEXT: u32 = 1 << 1;
 
 /// SHA-384 digest width consumed by DPE P-384 `Sign`.
 pub const DPE_P384_DIGEST_SIZE: usize = 48;
@@ -96,11 +100,13 @@ pub const DPE_P384_DIGEST_SIZE: usize = 48;
 pub enum SigningInput<'a> {
     /// SHA-384 digest for ECDSA P-384.
     EccP384Digest(&'a [u8; DPE_P384_DIGEST_SIZE]),
-    /// Raw ML-DSA-87 message accepted by the Caliptra 2.0 DPE interface.
-    ///
-    /// The 2.0 form uses an implicit empty FIPS 204 context and limits the
-    /// message to 1024 bytes.
-    Mldsa87RawMessage(&'a [u8]),
+    /// Raw ML-DSA-87 message and FIPS 204 context accepted by Caliptra 2.0 DPE.
+    Mldsa87RawMessage {
+        /// FIPS 204 context, at most [`DPE_MLDSA87_CONTEXT_MAX_SIZE`] bytes.
+        context: &'a [u8],
+        /// Message signed under `context`.
+        message: &'a [u8],
+    },
 }
 
 impl SigningInput<'_> {
@@ -108,7 +114,7 @@ impl SigningInput<'_> {
     pub const fn profile(&self) -> DpeProfile {
         match self {
             Self::EccP384Digest(_) => DpeProfile::P384Sha384,
-            Self::Mldsa87RawMessage(_) => DpeProfile::Mldsa87,
+            Self::Mldsa87RawMessage { .. } => DpeProfile::Mldsa87,
         }
     }
 }
@@ -332,6 +338,8 @@ const SIGN_MLDSA87_DPE_PAYLOAD_LEN: u32 =
     (size_of::<DpeCommandHdr>() + size_of::<SignMldsa87RawCmd>()) as u32;
 const SIGN_MLDSA87_RESP_LEN: usize =
     size_of::<InvokeDpeRespPrefix>() + size_of::<SignMldsa87RespBody>();
+/// Peak scratch allocation during Caliptra 2.0 raw ML-DSA-87 signing.
+pub const DPE_MLDSA87_SIGN_SCRATCH_PEAK: usize = SIGN_MLDSA87_RESP_LEN;
 const DERIVE_CONTEXT_REQ_LEN: usize =
     size_of::<InvokeDpeReqPrefix>() + size_of::<DpeCommandHdr>() + size_of::<DeriveContextCmd>();
 const DERIVE_CONTEXT_DPE_PAYLOAD_LEN: u32 =
@@ -434,6 +442,7 @@ const _: () = assert!(GET_CERT_CHAIN_REQ_MLDSA87_LEN == 44);
 const _: () = assert!(SIGN_REQ_LEN == 8 + 12 + 116);
 const _: () = assert!(SIGN_MLDSA87_REQ_LEN == 24 + 12 + 1096);
 const _: () = assert!(SIGN_MLDSA87_RESP_LEN == 12 + 12 + 16 + 4627 + 1);
+const _: () = assert!(DPE_MLDSA87_SIGN_SCRATCH_PEAK == SIGN_MLDSA87_RESP_LEN);
 const _: () = assert!(SIGN_MLDSA87_RESP_LEN <= caliptra_api::mailbox::MAILBOX_SIZE);
 const _: () = assert!(DERIVE_CONTEXT_REQ_LEN == 8 + 12 + 80);
 const _: () = assert!(UPDATE_CONTEXT_MEASUREMENT_REQ_LEN == 8 + 12 + 76);
@@ -1099,8 +1108,8 @@ pub async fn dpe_sign<A: ScratchAlloc>(
         SigningInput::EccP384Digest(digest) => {
             dpe_sign_ecc_p384(alloc, handle, label, digest, signature).await
         }
-        SigningInput::Mldsa87RawMessage(message) => {
-            dpe_sign_mldsa87(alloc, handle, label, message, signature).await
+        SigningInput::Mldsa87RawMessage { context, message } => {
+            dpe_sign_mldsa87(alloc, handle, label, context, message, signature).await
         }
     }
 }
@@ -1179,17 +1188,19 @@ pub async fn dpe_sign_ecc_p384<A: ScratchAlloc>(
 /// Invoke Caliptra 2.0 DPE `Sign` for an ML-DSA-87 raw message.
 ///
 /// `signature` must provide at least [`DPE_MLDSA87_SIGNATURE_SIZE`] bytes.
-/// `message` must not exceed [`DPE_MLDSA87_RAW_MAX_SIZE`] bytes.
+/// The encoded `context` and `message` must fit in
+/// [`DPE_MLDSA87_RAW_MAX_SIZE`] bytes.
 /// Returns the rotated context handle and signature length.
 #[inline(never)]
 pub async fn dpe_sign_mldsa87<A: ScratchAlloc>(
     alloc: &A,
     handle: Option<&DpeContextHandle>,
     label: &[u8; DPE_LABEL_LEN],
+    context: &[u8],
     message: &[u8],
     signature: &mut [u8],
 ) -> McuResult<(DpeContextHandle, usize)> {
-    if signature.len() < DPE_MLDSA87_SIGNATURE_SIZE || message.len() > DPE_MLDSA87_RAW_MAX_SIZE {
+    if signature.len() < DPE_MLDSA87_SIGNATURE_SIZE {
         return Err(INVARIANT);
     }
 
@@ -1199,6 +1210,7 @@ pub async fn dpe_sign_mldsa87<A: ScratchAlloc>(
         &mut response[..SIGN_MLDSA87_REQ_LEN],
         handle,
         label,
+        context,
         message,
     )?;
     let response_len = mbox_execute_in_place(
@@ -1216,10 +1228,11 @@ fn build_sign_mldsa87_req<'a, A: ScratchAlloc>(
     alloc: &'a A,
     handle: &DpeContextHandle,
     label: &[u8; DPE_LABEL_LEN],
+    context: &[u8],
     message: &[u8],
 ) -> McuResult<A::Buf<'a>> {
     let mut request = alloc.alloc(SIGN_MLDSA87_REQ_LEN)?;
-    write_sign_mldsa87_req(&mut request, handle, label, message)?;
+    write_sign_mldsa87_req(&mut request, handle, label, context, message)?;
     Ok(request)
 }
 
@@ -1227,9 +1240,21 @@ fn write_sign_mldsa87_req(
     request: &mut [u8],
     handle: &DpeContextHandle,
     label: &[u8; DPE_LABEL_LEN],
+    context: &[u8],
     message: &[u8],
 ) -> McuResult<()> {
-    if message.len() > DPE_MLDSA87_RAW_MAX_SIZE {
+    if context.len() > DPE_MLDSA87_CONTEXT_MAX_SIZE {
+        return Err(INVARIANT);
+    }
+    let payload_len = if context.is_empty() {
+        message.len()
+    } else {
+        1usize
+            .checked_add(context.len())
+            .and_then(|len| len.checked_add(message.len()))
+            .ok_or(INVARIANT)?
+    };
+    if payload_len > DPE_MLDSA87_RAW_MAX_SIZE {
         return Err(INVARIANT);
     }
 
@@ -1249,12 +1274,32 @@ fn write_sign_mldsa87_req(
     .map_err(|_| INVARIANT)?;
     command.handle = *handle;
     command.label = *label;
-    command.flags = U32::new(DPE_SIGN_FLAG_IS_RAW);
-    command.size = U32::new(message.len() as u32);
-    copy_bytes(
-        command.raw_data.get_mut(..message.len()).ok_or(INVARIANT)?,
-        message,
-    )?;
+    command.flags = U32::new(if context.is_empty() {
+        DPE_SIGN_FLAG_IS_RAW
+    } else {
+        DPE_SIGN_FLAG_IS_RAW | DPE_SIGN_FLAG_HAS_CONTEXT
+    });
+    command.size = U32::new(payload_len as u32);
+    if context.is_empty() {
+        copy_bytes(
+            command.raw_data.get_mut(..message.len()).ok_or(INVARIANT)?,
+            message,
+        )?;
+    } else {
+        *command.raw_data.first_mut().ok_or(INVARIANT)? = context.len() as u8;
+        let context_end = 1usize.checked_add(context.len()).ok_or(INVARIANT)?;
+        copy_bytes(
+            command.raw_data.get_mut(1..context_end).ok_or(INVARIANT)?,
+            context,
+        )?;
+        copy_bytes(
+            command
+                .raw_data
+                .get_mut(context_end..payload_len)
+                .ok_or(INVARIANT)?,
+            message,
+        )?;
+    }
 
     let checksum = calc_checksum(CMD_INVOKE_DPE_MLDSA87, request);
     *request.first_chunk_mut::<4>().ok_or(INVARIANT)? = checksum.to_le_bytes();
@@ -1665,7 +1710,7 @@ mod tests {
         let handle = [0x11u8; DPE_CONTEXT_HANDLE_SIZE];
         let label = [0x22u8; DPE_LABEL_LEN];
         let message = [0x33u8; 17];
-        let request = build_sign_mldsa87_req(&alloc, &handle, &label, &message).unwrap();
+        let request = build_sign_mldsa87_req(&alloc, &handle, &label, &[], &message).unwrap();
 
         let prefix = InvokeDpeMldsa87ReqPrefix::ref_from_prefix(&request)
             .unwrap()
@@ -1706,6 +1751,59 @@ mod tests {
     }
 
     #[test]
+    fn sign_mldsa87_request_encodes_context() {
+        let alloc = TestAlloc;
+        let handle = [0x11u8; DPE_CONTEXT_HANDLE_SIZE];
+        let label = [0x22u8; DPE_LABEL_LEN];
+        let context = b"responder-challenge_auth signing";
+        let message = [0x33u8; 17];
+        let request = build_sign_mldsa87_req(&alloc, &handle, &label, context, &message).unwrap();
+        let command_offset = size_of::<InvokeDpeMldsa87ReqPrefix>() + size_of::<DpeCommandHdr>();
+        let command = SignMldsa87RawCmd::ref_from_prefix(&request[command_offset..])
+            .unwrap()
+            .0;
+
+        assert_eq!(
+            command.flags.get(),
+            DPE_SIGN_FLAG_IS_RAW | DPE_SIGN_FLAG_HAS_CONTEXT
+        );
+        assert_eq!(
+            command.size.get(),
+            (1 + context.len() + message.len()) as u32
+        );
+        assert_eq!(command.raw_data[0], context.len() as u8);
+        assert_eq!(&command.raw_data[1..1 + context.len()], context);
+        assert_eq!(
+            &command.raw_data[1 + context.len()..1 + context.len() + message.len()],
+            &message
+        );
+    }
+
+    #[test]
+    fn sign_mldsa87_request_accepts_maximum_context_and_payload() {
+        let alloc = TestAlloc;
+        let context = [0x55; DPE_MLDSA87_CONTEXT_MAX_SIZE];
+        let message = [0x66; DPE_MLDSA87_RAW_MAX_SIZE - 1 - DPE_MLDSA87_CONTEXT_MAX_SIZE];
+        let request = build_sign_mldsa87_req(
+            &alloc,
+            &DEFAULT_DPE_CONTEXT_HANDLE,
+            &[0u8; DPE_LABEL_LEN],
+            &context,
+            &message,
+        )
+        .unwrap();
+        let command_offset = size_of::<InvokeDpeMldsa87ReqPrefix>() + size_of::<DpeCommandHdr>();
+        let command = SignMldsa87RawCmd::ref_from_prefix(&request[command_offset..])
+            .unwrap()
+            .0;
+
+        assert_eq!(command.size.get() as usize, DPE_MLDSA87_RAW_MAX_SIZE);
+        assert_eq!(command.raw_data[0], u8::MAX);
+        assert_eq!(&command.raw_data[1..1 + context.len()], &context);
+        assert_eq!(&command.raw_data[1 + context.len()..], &message);
+    }
+
+    #[test]
     fn sign_mldsa87_request_rejects_oversized_message() {
         let alloc = TestAlloc;
         let message = [0u8; DPE_MLDSA87_RAW_MAX_SIZE + 1];
@@ -1714,6 +1812,38 @@ mod tests {
             &alloc,
             &DEFAULT_DPE_CONTEXT_HANDLE,
             &[0u8; DPE_LABEL_LEN],
+            &[],
+            &message,
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn sign_mldsa87_request_rejects_oversized_context() {
+        let alloc = TestAlloc;
+        let context = [0u8; DPE_MLDSA87_CONTEXT_MAX_SIZE + 1];
+
+        assert!(build_sign_mldsa87_req(
+            &alloc,
+            &DEFAULT_DPE_CONTEXT_HANDLE,
+            &[0u8; DPE_LABEL_LEN],
+            &context,
+            &[],
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn sign_mldsa87_request_rejects_oversized_context_and_message() {
+        let alloc = TestAlloc;
+        let context = [0u8; 32];
+        let message = [0u8; DPE_MLDSA87_RAW_MAX_SIZE - 32];
+
+        assert!(build_sign_mldsa87_req(
+            &alloc,
+            &DEFAULT_DPE_CONTEXT_HANDLE,
+            &[0u8; DPE_LABEL_LEN],
+            &context,
             &message,
         )
         .is_err());
@@ -1860,7 +1990,11 @@ mod tests {
             DpeProfile::P384Sha384
         );
         assert_eq!(
-            SigningInput::Mldsa87RawMessage(&message).profile(),
+            SigningInput::Mldsa87RawMessage {
+                context: &[],
+                message: &message,
+            }
+            .profile(),
             DpeProfile::Mldsa87
         );
     }
