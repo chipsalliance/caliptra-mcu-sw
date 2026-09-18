@@ -27,6 +27,16 @@ pub enum SpdmPalAsymAlgo {
     MlDsa87,
 }
 
+impl SpdmPalAsymAlgo {
+    /// `SigLen` for this algorithm, per DSP0274 1.4 Table 17.
+    pub const fn signature_size(self) -> usize {
+        match self {
+            Self::EccP384 => 96,
+            Self::MlDsa87 => 4627,
+        }
+    }
+}
+
 impl From<SpdmPalAsymAlgo> for mcu_caliptra_api::DpeProfile {
     fn from(algo: SpdmPalAsymAlgo) -> Self {
         match algo {

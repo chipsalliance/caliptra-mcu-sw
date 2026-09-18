@@ -3,18 +3,19 @@
 //! CHALLENGE / CHALLENGE_AUTH handler.
 
 use caliptra_mcu_spdm_codec::{
-    ChallengeAuthRsp, ChallengeReqBody, ResponseBody, SpdmMsgHdrPdu, SpdmVersion,
-    ECC_P384_SIGNATURE_SIZE, REQUESTER_CONTEXT_LEN, SHA384_HASH_SIZE, SPDM_CONTEXT_LEN,
-    SPDM_PREFIX_LEN, SPDM_SIGNING_CONTEXT_LEN,
+    ChallengeAuthRsp, ChallengeReqBody, ResponseBody, SpdmMsgHdrPdu, SpdmVersion, WireWriter,
+    REQUESTER_CONTEXT_LEN, SHA384_HASH_SIZE,
 };
 use caliptra_mcu_spdm_traits::SpdmPalAlloc;
 use caliptra_mcu_spdm_traits::*;
 use zerocopy::FromBytes;
 
-use crate::build::build_response;
+use crate::build::{align_send_len, finish_buffered_response, sign_transcript};
+use crate::chunk;
 use crate::error::{SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED};
 use crate::stack::{ConnectionState, Phase};
 
+#[inline(never)]
 pub(crate) async fn handle_challenge<'a, Pal: SpdmPal>(
     state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
     pal: &'a Pal,
@@ -106,36 +107,56 @@ pub(crate) async fn handle_challenge<'a, Pal: SpdmPal>(
         )
         .await?;
     }
-    // Build the full response with a zeroed signature placeholder, then sign
-    // into the trailing signature slot in place. This avoids a 96-byte stack
-    // buffer that would live across the sign `.await`, and avoids building the
-    // response twice.
-    const ZERO_SIG: [u8; ECC_P384_SIGNATURE_SIZE] = [0u8; ECC_P384_SIGNATURE_SIZE];
-    let (mut resp, no_sig_len) = {
+    let signature_len = asym_algo.signature_size();
+    let body = {
         let meas_hash_ref = if meas_hash_type != 0 {
             Some(&meas_summary_hash)
         } else {
             None
         };
-        let body = ChallengeAuthRsp {
+        ChallengeAuthRsp {
             slot_id,
             cert_chain_hash: &cert_chain_hash,
             nonce: &nonce,
             meas_summary_hash: meas_hash_ref,
             opaque_len: 0,
             requester_context: requester_context.as_ref(),
-            signature: &ZERO_SIG,
-        };
-
-        let resp = build_response(pal, io, state.version, &body).map_err(|_| SPDM_UNSPECIFIED)?;
-        let no_sig_len = body
-            .encoded_size()
-            .checked_sub(ECC_P384_SIGNATURE_SIZE)
-            .ok_or(SPDM_UNSPECIFIED)?;
-        (resp, no_sig_len)
+            // Sized separately below: an ML-DSA-87 signature is 4627 bytes, so
+            // the response is laid out in a large buffer and may need chunking.
+            signature: &[],
+        }
     };
+    let no_sig_len = body.encoded_size();
 
     let head = pal.header_size();
+    let spdm_len = no_sig_len
+        .checked_add(signature_len)
+        .ok_or(SPDM_UNSPECIFIED)?;
+    let raw_len = head.checked_add(spdm_len).ok_or(SPDM_UNSPECIFIED)?;
+    let padded_len = align_send_len(pal, raw_len)?;
+
+    // Reject an undeliverable response before signing. An ML-DSA-87 signature
+    // always pushes CHALLENGE_AUTH past the MTU, so a requester that negotiates
+    // PQC without CHUNK would otherwise force a full CertifyKey + Sign — and two
+    // DPE handle rotations — per request only to discard the result.
+    let use_normal_response = spdm_len <= state.effective_data_transfer_size(pal);
+    if !use_normal_response {
+        chunk::validate_buffered_large_response_with_capacity(
+            state,
+            spdm_len,
+            pal.large_buffered_msg_capacity(),
+        )?;
+    }
+
+    let mut guard = chunk::WipeOnDrop {
+        buf: Some(pal.alloc_large_buf(padded_len)?),
+    };
+    let resp = guard.buf.as_mut().ok_or(SPDM_UNSPECIFIED)?;
+    let body_slot = resp
+        .get_mut(head..head + no_sig_len)
+        .ok_or(SPDM_UNSPECIFIED)?;
+    body.encode_with_header(state.version, &mut WireWriter::new(body_slot))
+        .map_err(|_| SPDM_UNSPECIFIED)?;
 
     // Append CHALLENGE_AUTH response (without signature) to M1.
     // Only the SPDM message bytes, not transport padding.
@@ -146,97 +167,48 @@ pub(crate) async fn handle_challenge<'a, Pal: SpdmPal>(
     let mut m1_hash = [0u8; SHA384_HASH_SIZE];
     state.transcript.finalize_m1(pal, io, &mut m1_hash).await?;
 
-    // Compute TBS hash in-place over the M1 hash.
-    compute_tbs_hash(pal, io, signing_context(state.version), &mut m1_hash)
-        .await
-        .map_err(|_| SPDM_UNSPECIFIED)?;
-
-    // Sign the TBS hash directly into the response's signature slot.
+    // Sign directly into the response's signature slot.
     let sig_slot = resp
-        .get_mut(head + no_sig_len..head + no_sig_len + ECC_P384_SIGNATURE_SIZE)
+        .get_mut(head + no_sig_len..head + no_sig_len + signature_len)
         .ok_or(SPDM_UNSPECIFIED)?;
-    let sig_len = pal
-        .sign(
-            io,
-            slot_id,
-            asym_algo,
-            SigningInput::EccP384Digest(&m1_hash),
-            sig_slot,
-        )
-        .await
-        .map_err(|_| SPDM_UNSPECIFIED)?;
-    if sig_len != ECC_P384_SIGNATURE_SIZE {
-        return Err(SPDM_UNSPECIFIED);
-    }
+    sign_transcript(
+        pal,
+        io,
+        slot_id,
+        asym_algo,
+        state.version,
+        CHALLENGE_AUTH_SIGNING_CONTEXT,
+        &mut m1_hash,
+        sig_slot,
+        signature_len,
+    )
+    .await?;
 
-    // Transition to authenticated.
+    let (response, _) = finish_buffered_response(
+        state,
+        pal,
+        io,
+        guard,
+        head,
+        spdm_len,
+        raw_len,
+        padded_len,
+        use_normal_response,
+    )?;
     state.phase = Phase::AfterCertificate; // TODO: add Phase::Authenticated
-
-    Ok(resp)
+    Ok(response)
 }
 
-const SIGNING_CTX_V10: [u8; SPDM_SIGNING_CONTEXT_LEN] = build_signing_context(b"1.0.*");
-const SIGNING_CTX_V11: [u8; SPDM_SIGNING_CONTEXT_LEN] = build_signing_context(b"1.1.*");
-const SIGNING_CTX_V12: [u8; SPDM_SIGNING_CONTEXT_LEN] = build_signing_context(b"1.2.*");
-const SIGNING_CTX_V13: [u8; SPDM_SIGNING_CONTEXT_LEN] = build_signing_context(b"1.3.*");
-const SIGNING_CTX_V14: [u8; SPDM_SIGNING_CONTEXT_LEN] = build_signing_context(b"1.4.*");
+/// FIPS 204 signing context for CHALLENGE_AUTH (DSP0274 1.4 Table 51).
+const CHALLENGE_AUTH_SIGNING_CONTEXT: &[u8] = b"responder-challenge_auth signing";
 
-/// Build the SPDM signing context for CHALLENGE_AUTH.
-const fn build_signing_context(ver: &[u8; 5]) -> [u8; SPDM_SIGNING_CONTEXT_LEN] {
-    let mut ctx = [0u8; SPDM_SIGNING_CONTEXT_LEN];
-
-    // Prefix: "dmtf-spdm-v" + version + ".*" repeated 4× = 64 bytes.
-    let base = b"dmtf-spdm-v";
-    let mut repeat = 0;
-    let mut pos = 0;
-    while repeat < 4 {
-        let mut i = 0;
-        while i < base.len() {
-            ctx[pos + i] = base[i];
-            i += 1;
-        }
-        pos += base.len();
-        let mut j = 0;
-        while j < ver.len() {
-            ctx[pos + j] = ver[j];
-            j += 1;
-        }
-        pos += ver.len();
-        repeat += 1;
-    }
-
-    // Operation context: zero-padded on the left, string at the end.
-    let op = b"responder-challenge_auth signing";
-    let pad = SPDM_CONTEXT_LEN - op.len();
-    let mut k = 0;
-    while k < op.len() {
-        ctx[SPDM_PREFIX_LEN + pad + k] = op[k];
-        k += 1;
-    }
-
-    ctx
+#[cfg(test)]
+fn signing_context(
+    version: SpdmVersion,
+) -> [u8; caliptra_mcu_spdm_codec::SPDM_SIGNING_CONTEXT_LEN] {
+    crate::build::spdm_signing_context(version, CHALLENGE_AUTH_SIGNING_CONTEXT).unwrap()
 }
 
-fn signing_context(version: SpdmVersion) -> &'static [u8; SPDM_SIGNING_CONTEXT_LEN] {
-    match version {
-        SpdmVersion::V10 => &SIGNING_CTX_V10,
-        SpdmVersion::V11 => &SIGNING_CTX_V11,
-        SpdmVersion::V12 => &SIGNING_CTX_V12,
-        SpdmVersion::V13 => &SIGNING_CTX_V13,
-        SpdmVersion::V14 => &SIGNING_CTX_V14,
-    }
-}
-
-/// Hash(signing_context || M1_hash) → TBS digest for signing.
-async fn compute_tbs_hash<Pal: SpdmPal>(
-    pal: &Pal,
-    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
-    signing_ctx: &[u8; SPDM_SIGNING_CONTEXT_LEN],
-    m1_hash: &mut [u8; SHA384_HASH_SIZE],
-) -> mcu_error::McuResult<()> {
-    let mut state = pal
-        .hash_init(io, SpdmPalHashAlgo::Sha384, signing_ctx)
-        .await?;
-    pal.hash_update(io, &mut state, m1_hash).await?;
-    pal.hash_finish(io, &mut state, m1_hash).await
-}
+#[cfg(test)]
+#[path = "tests/challenge.rs"]
+mod tests;

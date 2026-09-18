@@ -11,6 +11,7 @@ use caliptra_mcu_spdm_traits::SpdmPalAlloc;
 use caliptra_mcu_spdm_traits::*;
 use zerocopy::{FromBytes, IntoBytes};
 
+use crate::build::{align_send_len, shift_left, zero_slice};
 use crate::chunk;
 use crate::error::{SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED};
 use crate::stack::{ConnectionState, Phase};
@@ -486,36 +487,6 @@ fn write_into_slice(out: &mut [u8], offset: usize, bytes: &[u8]) -> SpdmResult<u
         .ok_or(SPDM_UNSPECIFIED)?
         .copy_from_slice(bytes);
     Ok(next)
-}
-
-fn shift_left(buf: &mut [u8], src: usize, len: usize) -> SpdmResult<()> {
-    let end = src.checked_add(len).ok_or(SPDM_UNSPECIFIED)?;
-    if end > buf.len() || len > buf.len() {
-        return Err(SPDM_UNSPECIFIED);
-    }
-
-    // SAFETY: Bounds are checked above and `ptr::copy` handles overlapping
-    // ranges, which is required when removing transport headroom in-place.
-    unsafe {
-        core::ptr::copy(buf.as_ptr().add(src), buf.as_mut_ptr(), len);
-    }
-    Ok(())
-}
-
-fn zero_slice(buf: &mut [u8], start: usize, end: usize) -> SpdmResult<()> {
-    let dst = buf.get_mut(start..end).ok_or(SPDM_UNSPECIFIED)?;
-    dst.fill(0);
-    Ok(())
-}
-
-fn align_send_len<Pal: SpdmPal>(pal: &Pal, len: usize) -> SpdmResult<usize> {
-    let align = pal.send_len_alignment();
-    if align == 0 {
-        return Err(SPDM_UNSPECIFIED);
-    }
-    len.checked_add(align - 1)
-        .map(|n| (n / align) * align)
-        .ok_or(SPDM_UNSPECIFIED)
 }
 
 /// Precomputed 100-byte SPDM signing contexts for "responder-measurements signing".
