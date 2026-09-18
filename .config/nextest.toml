@@ -108,6 +108,13 @@ default-filter = """
 (package(caliptra-mcu-tests-integration) and test(test_mctp_spdm_attestation_pcr_quote)) |
 (package(caliptra-mcu-tests-integration) and test(test_mctp_spdm_responder_conformance))
 """
+
+[[profile.nightly-ci-spdm.overrides]]
+filter = "package(caliptra-mcu-tests-integration) and test(test_mctp_spdm_responder_conformance)"
+# ML-DSA-87 signatures and chunked transfers over I3C exceed the default
+# 30-minute FPGA conformance timeout.
+slow-timeout = { period = "5m", terminate-after = 12 }
+
 [profile.pr-emulator]
 inherits = "nightly-emulator"
 fail-fast = false
