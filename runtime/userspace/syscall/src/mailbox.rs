@@ -330,7 +330,27 @@ pub trait PayloadStream {
     /// Returns the size of the payload in bytes.
     fn size(&self) -> usize;
 
+    /// Rewinds the stream to the beginning of its payload.
+    fn reset(&mut self);
+
     async fn read(&mut self, buffer: &mut [u8]) -> Result<usize, ErrorCode>;
+
+    /// Returns the wrapping sum of all payload bytes and rewinds the stream.
+    async fn get_bytesum(&mut self) -> u32 {
+        self.reset();
+        let mut sum = 0u32;
+        let mut buffer = [0u8; PAYLOAD_CHUNK_SIZE];
+        while let Ok(bytes_read) = self.read(&mut buffer).await {
+            if bytes_read == 0 {
+                break;
+            }
+            for byte in &buffer[..bytes_read] {
+                sum = sum.wrapping_add(u32::from(*byte));
+            }
+        }
+        self.reset();
+        sum
+    }
 }
 
 // -----------------------------------------------------------------------------

@@ -274,6 +274,7 @@ async fn image_loading<D: DMAMapping>(
                 };
                 let pldm_image_loader =
                     PldmImageLoader::new(&fw_params, EXECUTOR.get().spawner(), dma_mapping);
+                pldm_image_loader.set_owner_auth_manifest().await?;
                 load_soc_images(&pldm_image_loader, soc_image_load_list, false)
                     .await
                     .inspect_err(|_e| {
@@ -347,6 +348,7 @@ async fn image_loading<D: DMAMapping>(
                     flash_image_loader.set_auth_manifest().await?;
                 }
 
+                flash_image_loader.set_owner_auth_manifest().await?;
                 load_soc_images(&flash_image_loader, soc_image_load_list, component_update).await?;
                 boot_config
                     .set_partition_status(load_partition.0, PartitionStatus::BootSuccessful)
