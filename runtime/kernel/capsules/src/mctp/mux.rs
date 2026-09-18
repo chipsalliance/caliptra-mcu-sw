@@ -234,12 +234,18 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, A, M> {
                     Err((err, buf)) => {
                         capsule_error!("MCTP-MUX", "Failed to transmit: 0x{:x}", err as u32);
                         self.tx_pkt_buffer.replace(buf);
+                        cur_sender.send_done(Err(err));
+                        self.sender_list.pop_head();
+                        self.deferred_call.set();
                     }
                 }
             }
             Err(err) => {
                 capsule_error!("MCTP-MUX", "Failed to start transmit: 0x{:x}", err as u32);
                 self.tx_pkt_buffer.replace(tx_pkt.take());
+                cur_sender.send_done(Err(err));
+                self.sender_list.pop_head();
+                self.deferred_call.set();
             }
         }
     }
