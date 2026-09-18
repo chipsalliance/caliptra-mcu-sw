@@ -332,6 +332,8 @@ const SIGN_MLDSA87_DPE_PAYLOAD_LEN: u32 =
     (size_of::<DpeCommandHdr>() + size_of::<SignMldsa87RawCmd>()) as u32;
 const SIGN_MLDSA87_RESP_LEN: usize =
     size_of::<InvokeDpeRespPrefix>() + size_of::<SignMldsa87RespBody>();
+/// Peak scratch allocation during Caliptra 2.0 raw ML-DSA-87 signing.
+pub const DPE_MLDSA87_SIGN_SCRATCH_PEAK: usize = SIGN_MLDSA87_REQ_LEN + SIGN_MLDSA87_RESP_LEN;
 const DERIVE_CONTEXT_REQ_LEN: usize =
     size_of::<InvokeDpeReqPrefix>() + size_of::<DpeCommandHdr>() + size_of::<DeriveContextCmd>();
 const DERIVE_CONTEXT_DPE_PAYLOAD_LEN: u32 =
@@ -434,6 +436,7 @@ const _: () = assert!(GET_CERT_CHAIN_REQ_MLDSA87_LEN == 44);
 const _: () = assert!(SIGN_REQ_LEN == 8 + 12 + 116);
 const _: () = assert!(SIGN_MLDSA87_REQ_LEN == 24 + 12 + 1096);
 const _: () = assert!(SIGN_MLDSA87_RESP_LEN == 12 + 12 + 16 + 4627 + 1);
+const _: () = assert!(DPE_MLDSA87_SIGN_SCRATCH_PEAK == 5800);
 const _: () = assert!(SIGN_MLDSA87_RESP_LEN <= caliptra_api::mailbox::MAILBOX_SIZE);
 const _: () = assert!(DERIVE_CONTEXT_REQ_LEN == 8 + 12 + 80);
 const _: () = assert!(UPDATE_CONTEXT_MEASUREMENT_REQ_LEN == 8 + 12 + 76);

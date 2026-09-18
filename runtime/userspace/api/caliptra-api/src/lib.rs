@@ -108,8 +108,8 @@ pub use dpe::{
     DpeDeriveContextResult, DpeProfile, DpeTaggedTci, DpeUpdateContextMeasurementParams,
     DpeUpdateContextMeasurementResult, SigningInput, DPE_CONTEXT_HANDLE_SIZE, DPE_LABEL_LEN,
     DPE_MAX_CHUNK_SIZE, DPE_MAX_LEAF_CERT_SIZE, DPE_MLDSA87_RAW_MAX_SIZE,
-    DPE_MLDSA87_SIGNATURE_SIZE, DPE_P384_DIGEST_SIZE, DPE_P384_SIGNATURE_SIZE,
-    DPE_TCI_MEASUREMENT_SIZE,
+    DPE_MLDSA87_SIGNATURE_SIZE, DPE_MLDSA87_SIGN_SCRATCH_PEAK, DPE_P384_DIGEST_SIZE,
+    DPE_P384_SIGNATURE_SIZE, DPE_TCI_MEASUREMENT_SIZE,
 };
 #[cfg(feature = "mailbox-io")]
 pub use ecdh::{
