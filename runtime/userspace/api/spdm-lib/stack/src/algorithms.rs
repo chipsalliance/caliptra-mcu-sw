@@ -73,8 +73,8 @@ pub(crate) async fn handle_negotiate_algorithms<'a, Pal: SpdmPal>(
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
     // A NEGOTIATE_ALGORITHMS that arrives before GET_CAPABILITIES has completed
-    // skips a prerequisite phase: that is out of order (SPDM-19 - RequestResynch,
-    // latch). A NEGOTIATE_ALGORITHMS that arrives after algorithms were already
+    // skips a prerequisite phase: that is out of order (RequestResynch, latch).
+    // A NEGOTIATE_ALGORITHMS that arrives after algorithms were already
     // negotiated is a non-identical retry, which DSP0274 1.4.0 section 17
     // (General ordering rules) answers with ERROR(UnexpectedRequest, 0x04),
     // not RequestResynch.

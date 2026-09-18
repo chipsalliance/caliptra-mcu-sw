@@ -61,7 +61,7 @@ pub(crate) async fn handle_get_capabilities<'a, Pal: SpdmPal>(
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
     // A GET_CAPABILITIES that arrives before GET_VERSION has completed skips a
-    // prerequisite phase: that is out of order (SPDM-19 - RequestResynch, latch).
+    // prerequisite phase: that is out of order (RequestResynch, latch).
     // A GET_CAPABILITIES that arrives after capabilities were already negotiated
     // is a non-identical retry, which DSP0274 1.4.0 section 17 (General ordering
     // rules) answers with ERROR(UnexpectedRequest, 0x04), not RequestResynch.

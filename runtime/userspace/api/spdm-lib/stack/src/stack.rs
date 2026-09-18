@@ -118,7 +118,7 @@ pub struct ConnectionState<S, L> {
     // ---- Connection-scoped negotiation -----------------------------------
     /// Current connection phase.
     pub phase: Phase,
-    /// Resynchronization latch (OCP 2.7 SPDM-19).
+    /// Resynchronization latch (DSP0274 1.4.0 section 17, General ordering rules).
     ///
     /// Set when an out-of-order request is detected. Once set, **every**
     /// subsequent request on this connection is answered with
@@ -261,8 +261,8 @@ impl<S, L> ConnectionState<S, L> {
 
     /// Records an out-of-order request and returns the error to send back.
     ///
-    /// Per OCP 2.7 SPDM-19, a request received out
-    /// of order is answered with `ERROR(RequestResynch, 0x43)` - and every
+    /// Per DSP0274 1.4.0 section 17 (General ordering rules), a request received
+    /// out of order is answered with `ERROR(RequestResynch, 0x43)` - and every
     /// subsequent request must get the same error until `GET_VERSION` resets
     /// the connection. This latches [`Self::resync_required`] so the dispatcher
     /// short-circuits all following requests; the handler simply
@@ -283,7 +283,7 @@ impl<S, L: core::ops::DerefMut<Target = [u8]>> ConnectionState<S, L> {
     /// Resets the connection-level large message context, securely wiping any buffered bytes.
     pub(crate) fn reset_negotiation(&mut self) {
         self.phase = Phase::Start;
-        // GET_VERSION is the only thing that clears the resync latch (SPDM-19).
+        // GET_VERSION is the only thing that clears the resync latch (section 17).
         self.resync_required = false;
         self.version = SpdmVersion::V12;
         self.peer_data_transfer_size = 0;
@@ -638,11 +638,10 @@ async fn dispatch<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_SESSIONS: usi
         sessions.remove_all_and_destroy();
         return version::handle_get_version(state, pal, io).await;
     }
-    // OCP 2.7 SPDM-19: once the resync latch is set, every request except
-    // GET_VERSION is answered with ERROR(RequestResynch) until a GET_VERSION
-    // resets the connection (which clears the latch). GET_VERSION is handled
-    // above and returns early, so any request reaching here is subject to the
-    // latch.
+    // Once the resync latch is set, every request except GET_VERSION is answered
+    // with ERROR(RequestResynch) until a GET_VERSION resets the connection (which
+    // clears the latch). GET_VERSION is handled above and returns early, so any
+    // request reaching here is subject to the latch.
     if state.resync_required {
         return Err(SPDM_REQUEST_RESYNCH);
     }

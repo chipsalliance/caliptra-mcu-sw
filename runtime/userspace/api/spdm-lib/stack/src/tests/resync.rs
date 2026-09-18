@@ -2,12 +2,12 @@
 
 //! Out-of-order -> `ERROR(RequestResynch, 0x43)` latch tests.
 //!
-//! OCP 2.7 SPDM-19: when a request is received out of
-//! order, the responder answers with `ERROR(RequestResynch, 0x43)` and must
-//! return the same error for **every** subsequent request until a `GET_VERSION`
-//! is received and processed (which resets the connection and clears the
-//! latch). The latch is per-connection, so a resync on one connection must not
-//! affect another.
+//! DSP0274 1.4.0 section 17 (General ordering rules): when a request is received
+//! out of order, the responder answers with `ERROR(RequestResynch, 0x43)` and
+//! must return the same error for **every** subsequent request until a
+//! `GET_VERSION` is received and processed (which resets the connection and
+//! clears the latch). The latch is per-connection, so a resync on one connection
+//! must not affect another.
 
 extern crate std;
 
@@ -46,8 +46,8 @@ fn dispatch_code(
     block_on(dispatch(state, sessions, pal, io, code, &NoVdmBackend))
 }
 
-// SPDM-19: a GET_CAPABILITIES received in Phase::Start (before GET_VERSION) is
-// out of order and must return ERROR(RequestResynch), not UnexpectedRequest,
+// Section 17: a GET_CAPABILITIES received in Phase::Start (before GET_VERSION)
+// is out of order and must return ERROR(RequestResynch), not UnexpectedRequest,
 // and must latch the connection into the resync-required state.
 #[test]
 fn out_of_order_request_returns_request_resynch_and_latches() {
@@ -75,7 +75,7 @@ fn out_of_order_request_returns_request_resynch_and_latches() {
     assert!(state.resync_required);
 }
 
-// SPDM-19: once latched, ALL subsequent requests (even ones that would
+// Section 17: once latched, ALL subsequent requests (even ones that would
 // otherwise be legal in the current phase) return ERROR(RequestResynch).
 #[test]
 fn latched_connection_rejects_all_subsequent_requests() {
@@ -104,8 +104,8 @@ fn latched_connection_rejects_all_subsequent_requests() {
     }
 }
 
-// SPDM-19: GET_VERSION is exempt from the latch and clears it; normal operation
-// resumes afterwards.
+// Section 17: GET_VERSION is exempt from the latch and clears it; normal
+// operation resumes afterwards.
 #[test]
 fn get_version_clears_the_latch() {
     let pal = TestPal::default();
@@ -131,10 +131,10 @@ fn get_version_clears_the_latch() {
     assert_ne!(rsp[1], ReqRespCode::ERROR.0);
 }
 
-// SPDM-19 isolation: latching resync on one connection must not affect another.
-// Each ConnectionState is per-connection (per MboxTransportId), so the latch is
-// physically independent - mutating one leaves the other untouched, and the
-// other can still be driven normally.
+// Section 17 isolation: latching resync on one connection must not affect
+// another. Each ConnectionState is per-connection (per MboxTransportId), so the
+// latch is physically independent - mutating one leaves the other untouched, and
+// the other can still be driven normally.
 #[test]
 fn resync_latch_is_isolated_per_connection() {
     let pal = TestPal::default();
