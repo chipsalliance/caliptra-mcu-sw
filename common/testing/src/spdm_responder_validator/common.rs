@@ -89,9 +89,9 @@ impl SpdmValidatorRunner {
         }
 
         println!(
-            "[{}]: Test : {}",
+            "[{}]: Transport bridge: {}",
             self.test_name,
-            if self.passed { "PASSED" } else { "FAILED" }
+            if self.passed { "COMPLETED" } else { "FAILED" }
         );
     }
 
@@ -326,7 +326,7 @@ pub fn execute_spdm_attestation_with_port(
     })
 }
 
-pub fn execute_spdm_responder_validator(transport: &'static str) {
+pub fn execute_spdm_responder_validator(transport: &'static str) -> std::thread::JoinHandle<bool> {
     crate::spawn_with_emulator_state(move || {
         println!(
             "Starting spdm_device_validator_sample process on transport: {}. Waiting for SPDM listener to start...",
@@ -345,26 +345,28 @@ pub fn execute_spdm_responder_validator(transport: &'static str) {
                                 "spdm_device_validator_sample exited with status: {:?}",
                                 status
                             );
-                            break;
+                            return status.success();
                         }
                         Ok(None) => {}
                         Err(e) => {
                             println!("Error: {:?}", e);
-                            std::process::exit(1);
+                            return false;
                         }
                     }
                     std::thread::sleep(std::time::Duration::from_millis(100));
                 }
                 let _ = child.kill();
+                false
             }
             Err(e) => {
                 println!(
                     "Error: {:?} Failed to spawn spdm_device_validator_sample!!",
                     e
                 );
+                false
             }
         }
-    });
+    })
 }
 
 pub fn start_spdm_responder_validator(transport: &'static str) -> io::Result<Child> {
