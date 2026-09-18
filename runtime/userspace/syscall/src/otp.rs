@@ -415,4 +415,6 @@ pub mod reg {
     pub const FUSE_READ: u32 = 30;
     pub const FUSE_WRITE: u32 = 31;
     pub const FUSE_LOCK_PARTITION: u32 = 32;
+    pub const SOC_MANIFEST_SVN: u32 = 34;
+    pub const SOC_MANIFEST_MAX_SVN: u32 = 35;
 }

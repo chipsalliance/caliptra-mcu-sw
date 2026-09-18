@@ -5,7 +5,7 @@
 
 use caliptra_mcu_mbox_common::messages::{
     CommandId, DotDisablePayload, DotLockPayload, DotOverrideChallengePayload, DotOverridePayload,
-    DotRotatePayload, DotStatus, DotUnlockPayload, HybridSignature, AUTH_CMD_NONCE_LEN,
+    DotRotatePayload, DotStatus, DotUnlockPayload, HybridSignature, SvnTarget, AUTH_CMD_NONCE_LEN,
     DOT_BLOB_SIZE,
 };
 use mcu_caliptra_api::ApiAlloc;
@@ -442,13 +442,14 @@ pub trait CaliptraCmdHandler {
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 
-    /// Increase the minimum allowed Caliptra firmware SVN.
-    async fn increase_caliptra_min_svn<Alloc: ApiAlloc>(
+    /// Increase the selected minimum SVN.
+    async fn increase_min_svn<Alloc: ApiAlloc>(
         &self,
         alloc: &Alloc,
+        target: SvnTarget,
         svn: u32,
     ) -> CaliptraCmdResult<()> {
-        let _ = (alloc, svn);
+        let _ = (alloc, target, svn);
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 

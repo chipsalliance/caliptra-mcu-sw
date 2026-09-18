@@ -118,7 +118,7 @@ impl CommandId {
     pub const MC_ECDSA384_SIG_VERIFY: Self = Self(0x4D45_4356); // "MECV"
     pub const MC_LMS_SIG_VERIFY: Self = Self(0x4D4C_4D56); // "MLMV"
 
-    // MLDSA CMK commands (MML prefix avoids collision with MC_FUSE_INCREASE_CALIPTRA_MIN_SVN "MCMS")
+    // MLDSA CMK commands (MML prefix avoids collision with MC_FUSE_INCREASE_MIN_SVN "MCMS")
     pub const MC_MLDSA_CMK_PUBLIC_KEY: Self = Self(0x4D4D_4C50); // "MMLP"
     pub const MC_MLDSA_CMK_SIGN: Self = Self(0x4D4D_4C53); // "MMLS"
     pub const MC_MLDSA_CMK_VERIFY: Self = Self(0x4D4D_4C56); // "MMLV"
@@ -136,7 +136,7 @@ impl CommandId {
     pub const MC_GET_AUTH_CMD_CHALLENGE: Self = Self(0x4D414343); // "MACC"
     pub const MC_PROVISION_VENDOR_PK_HASH: Self = Self(0x5056_504b); // "PVPK"
     pub const MC_PROVISION_OWNER_PK_HASH: Self = Self(0x504F_504B); // "POPK"
-    pub const MC_FUSE_INCREASE_CALIPTRA_MIN_SVN: Self = Self(0x4D43_4D53); // "MCMS"
+    pub const MC_FUSE_INCREASE_MIN_SVN: Self = Self(0x4D43_4D53); // "MCMS"
     pub const MC_FE_PROG: Self = Self(0x4D43_4650); // "MCFP"
     pub const MC_FUSE_REVOKE_VENDOR_PUB_KEY: Self = Self(0x4D52_564B); // "MRVK"
     pub const MC_FUSE_REVOKE_VENDOR_PK_HASH: Self = Self(0x5256_4b48); // "RVKH"
@@ -224,7 +224,7 @@ pub enum McuMailboxReq {
     FuseRead(FuseReadReq),
     FuseWrite(FuseWriteReq),
     FuseLockPartition(FuseLockPartitionReq),
-    FuseIncreaseCaliptraMinSvn(FuseIncreaseCaliptraMinSvnReq),
+    FuseIncreaseMinSvn(FuseIncreaseMinSvnReq),
     FeProg(McuFeProgReq),
     GetAuthCmdChallenge(GetAuthCmdChallengeReq),
     FuseRevokeVendorPubKey(FuseRevokeVendorPubKeyReq),
@@ -295,7 +295,7 @@ impl McuMailboxReq {
             McuMailboxReq::FuseRead(req) => Ok(req.as_bytes()),
             McuMailboxReq::FuseWrite(req) => Ok(req.as_bytes()),
             McuMailboxReq::FuseLockPartition(req) => Ok(req.as_bytes()),
-            McuMailboxReq::FuseIncreaseCaliptraMinSvn(req) => Ok(req.as_bytes()),
+            McuMailboxReq::FuseIncreaseMinSvn(req) => Ok(req.as_bytes()),
             McuMailboxReq::FeProg(req) => Ok(req.as_bytes()),
             McuMailboxReq::GetAuthCmdChallenge(req) => Ok(req.as_bytes()),
             McuMailboxReq::FuseRevokeVendorPubKey(req) => Ok(req.as_bytes()),
@@ -364,7 +364,7 @@ impl McuMailboxReq {
             McuMailboxReq::FuseRead(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FuseWrite(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FuseLockPartition(req) => Ok(req.as_mut_bytes()),
-            McuMailboxReq::FuseIncreaseCaliptraMinSvn(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::FuseIncreaseMinSvn(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FeProg(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::GetAuthCmdChallenge(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FuseRevokeVendorPubKey(req) => Ok(req.as_mut_bytes()),
@@ -433,9 +433,7 @@ impl McuMailboxReq {
             McuMailboxReq::FuseRead(_) => CommandId::MC_FUSE_READ,
             McuMailboxReq::FuseWrite(_) => CommandId::MC_FUSE_WRITE,
             McuMailboxReq::FuseLockPartition(_) => CommandId::MC_FUSE_LOCK_PARTITION,
-            McuMailboxReq::FuseIncreaseCaliptraMinSvn(_) => {
-                CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN
-            }
+            McuMailboxReq::FuseIncreaseMinSvn(_) => CommandId::MC_FUSE_INCREASE_MIN_SVN,
             McuMailboxReq::FeProg(_) => CommandId::MC_FE_PROG,
             McuMailboxReq::GetAuthCmdChallenge(_) => CommandId::MC_GET_AUTH_CMD_CHALLENGE,
             McuMailboxReq::FuseRevokeVendorPubKey(_) => CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY,
@@ -1596,26 +1594,48 @@ impl Default for GetAuthCmdChallengeResp {
 }
 impl Response for GetAuthCmdChallengeResp {}
 
-/// MC_FUSE_INCREASE_CALIPTRA_MIN_SVN request: Increases the Caliptra min bootable SVN
-#[repr(C)]
-#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
-pub struct FuseIncreaseCaliptraMinSvnReq {
-    pub hdr: MailboxReqHeader,
-    pub flags: u32,
-    pub svn: u32,
-}
-impl Request for FuseIncreaseCaliptraMinSvnReq {
-    const ID: CommandId = CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN;
-    type Resp = FuseIncreaseCaliptraMinSvnResp;
+#[repr(u32)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SvnTarget {
+    CaliptraRuntime = 0,
+    SocManifest = 1,
+    OwnerSocManifest = 2,
 }
 
-/// MC_FUSE_INCREASE_CALIPTRA_MIN_SVN response: Indicates success or failure.
+impl TryFrom<u32> for SvnTarget {
+    type Error = ();
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            value if value == Self::CaliptraRuntime as u32 => Ok(Self::CaliptraRuntime),
+            value if value == Self::SocManifest as u32 => Ok(Self::SocManifest),
+            value if value == Self::OwnerSocManifest as u32 => Ok(Self::OwnerSocManifest),
+            _ => Err(()),
+        }
+    }
+}
+
+/// MC_FUSE_INCREASE_MIN_SVN request: Increases the selected minimum SVN.
 #[repr(C)]
 #[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
-pub struct FuseIncreaseCaliptraMinSvnResp {
+pub struct FuseIncreaseMinSvnReq {
+    pub hdr: MailboxReqHeader,
+    pub flags: u32,
+    pub target: u32,
+    pub svn: u32,
+}
+impl Request for FuseIncreaseMinSvnReq {
+    const ID: CommandId = CommandId::MC_FUSE_INCREASE_MIN_SVN;
+    type Resp = FuseIncreaseMinSvnResp;
+}
+
+/// MC_FUSE_INCREASE_MIN_SVN response: Indicates success or failure.
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct FuseIncreaseMinSvnResp {
     pub hdr: MailboxRespHeader,
 }
-impl Response for FuseIncreaseCaliptraMinSvnResp {}
+impl Response for FuseIncreaseMinSvnResp {}
 
 /// MC_FE_PROG request: Program field entropy.
 #[repr(C)]

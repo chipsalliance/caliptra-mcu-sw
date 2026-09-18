@@ -2,7 +2,7 @@
 
 use caliptra_mcu_common_commands::{AuthorizationError, CommandAuthorizer};
 use caliptra_mcu_mbox_common::messages::{
-    CommandId, DotDisableReq, DotLockReq, DotRotateReq, FuseIncreaseCaliptraMinSvnReq,
+    CommandId, DotDisableReq, DotLockReq, DotRotateReq, FuseIncreaseMinSvnReq,
     FuseLockPartitionReq, FuseReadReq, FuseRevokeVendorPkHashReq, FuseRevokeVendorPubKeyReq,
     FuseWriteReq, GetDotBackupBlobReq, HybridSignature, MailboxReqHeader, McuFeProgReq,
     ProvisionOwnerPkHashReq, ProvisionVendorPkHashReq, AUTH_CMD_NONCE_LEN,
@@ -83,9 +83,7 @@ impl CommandAuthorizer for MockCommandAuthorizer {
         let cmd_len = match cmd_id {
             CommandId::MC_PROVISION_VENDOR_PK_HASH => size_of::<ProvisionVendorPkHashReq>(),
             CommandId::MC_PROVISION_OWNER_PK_HASH => size_of::<ProvisionOwnerPkHashReq>(),
-            CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN => {
-                size_of::<FuseIncreaseCaliptraMinSvnReq>()
-            }
+            CommandId::MC_FUSE_INCREASE_MIN_SVN => size_of::<FuseIncreaseMinSvnReq>(),
             CommandId::MC_FE_PROG => size_of::<McuFeProgReq>(),
             CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY => size_of::<FuseRevokeVendorPubKeyReq>(),
             CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH => size_of::<FuseRevokeVendorPkHashReq>(),

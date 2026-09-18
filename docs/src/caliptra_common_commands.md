@@ -40,7 +40,7 @@ The following subcommands are assigned to the SPDM VDM IANA authorization-gated 
 | ------------------------------ | -------------------------- | -------------------------------------------------- |
 | Get Auth Challenge             | SPDM VDM IANA, MCI Mailbox | Challenge acquisition for authorization-gated use. |
 | Provision Vendor PK Hash       | SPDM VDM IANA, MCI Mailbox | Provision vendor public key hash.                  |
-| Fuse Increase Caliptra Min SVN | SPDM VDM IANA, MCI Mailbox | Increase Caliptra minimum SVN.                     |
+| Fuse Increase Min SVN          | SPDM VDM IANA, MCI Mailbox | Increase a selected minimum SVN.                   |
 | Program Field Entropy          | SPDM VDM IANA, MCI Mailbox | Program field entropy.                             |
 | Fuse Revoke Vendor Public Key  | SPDM VDM IANA, MCI Mailbox | Revoke vendor public key.                          |
 | Fuse Revoke Vendor PK Hash     | SPDM VDM IANA, MCI Mailbox | Revoke vendor public key hash.                     |
@@ -116,7 +116,7 @@ This table defines the bit assignment for every allocated command code. A respon
 | ---------- | ---------------------------- | ----------- |
 | 0          | `GetAuthChallenge`           | Implemented |
 | 1          | `ProvisionVendorPkHash`      | Implemented |
-| 2          | `FuseIncreaseCaliptraMinSvn` | Implemented |
+| 2          | `FuseIncreaseMinSvn`         | Implemented |
 | 3          | `ProgramFieldEntropy`        | Implemented |
 | 4          | `FuseRevokeVendorPublicKey`  | Implemented |
 | 5          | `FuseRevokeVendorPkHash`     | Implemented |
@@ -385,11 +385,26 @@ Provisions the vendor public key hash.
 
 **Response Payload**: Empty
 
-### Fuse Increase Caliptra Min SVN
+### Fuse Increase Min SVN
 
-Increases the Caliptra minimum SVN.
+Increases a selected minimum SVN using command code `0x4D43_4D53` (`MCMS`).
+`flags` is reserved and must be zero.
 
-**Request Payload**: `flags:u32 | svn:u32 | HybridSignature`
+| Target | Name               | Status      | Fuse                               |
+| ------ | ------------------ | ----------- | ---------------------------------- |
+| `0`    | Caliptra Runtime   | Implemented | `CPTRA_CORE_RUNTIME_SVN`           |
+| `1`    | SoC Manifest       | Implemented | `CPTRA_CORE_SOC_MANIFEST_SVN`      |
+| `2`    | Owner SoC Manifest | Reserved    | Not implemented                    |
+
+Unknown targets are invalid. The reserved Owner SoC Manifest target returns
+`UnsupportedOperation`. The SVN must be between 1 and 128 and cannot decrease
+the current fuse floor. The Caliptra Runtime target is additionally bounded by
+the running SVN reported by `FW_INFO`. The SoC Manifest target is bounded by
+`CPTRA_CORE_SOC_MANIFEST_MAX_SVN`. No trusted running SoC Manifest SVN is
+currently exposed, so that target cannot verify the requested floor against the
+currently running image.
+
+**Request Payload**: `flags:u32 | target:u32 | svn:u32 | HybridSignature`
 
 **Response Payload**: Empty
 

@@ -25,7 +25,7 @@ pub use caliptra_mcu_spdm_codec::vendor_defined::iana::ocp::caliptra::{
 pub use commands::authorized_command::{
     DEVICE_OWNERSHIP_TRANSFER_CMD_ID, DOT_DISABLE_CMD_ID, DOT_LOCK_CMD_ID, DOT_ROTATE_CMD_ID,
     FE_PROG_CMD_ID, FUSE_LOCK_PARTITION_CMD_ID, GET_AUTH_CHALLENGE_CMD_ID,
-    GET_DOT_BACKUP_BLOB_CMD_ID, INCREASE_CALIPTRA_MIN_SVN_CMD_ID, PROVISION_OWNER_PK_HASH_CMD_ID,
+    GET_DOT_BACKUP_BLOB_CMD_ID, INCREASE_MIN_SVN_CMD_ID, PROVISION_OWNER_PK_HASH_CMD_ID,
     PROVISION_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PUB_KEY_CMD_ID,
 };
 
@@ -113,9 +113,10 @@ pub trait CaliptraVdmAuthorization {
     ) -> CaliptraVdmResult<()>;
 
     #[allow(clippy::too_many_arguments)]
-    async fn increase_caliptra_min_svn<A: SpdmPalAlloc>(
+    async fn increase_min_svn<A: SpdmPalAlloc>(
         &self,
         flags: u32,
+        target: u32,
         svn: u32,
         payload: &[u8],
         sig: &HybridSignature,
@@ -124,7 +125,12 @@ pub trait CaliptraVdmAuthorization {
         ecc_pub_y: &[u8; 48],
         mldsa_pub: &[u8; 2592],
         scratch: &A,
-    ) -> CaliptraVdmResult<()>;
+    ) -> CaliptraVdmResult<()> {
+        let _ = (
+            flags, target, svn, payload, sig, nonce, ecc_pub_x, ecc_pub_y, mldsa_pub, scratch,
+        );
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
 
     #[allow(clippy::too_many_arguments)]
     async fn program_field_entropy<A: SpdmPalAlloc>(
@@ -692,8 +698,9 @@ mod tests {
         ProvisionOwnerPkHash {
             hash: [u8; 48],
         },
-        IncreaseCaliptraMinSvn {
+        IncreaseMinSvn {
             flags: u32,
+            target: u32,
             svn: u32,
         },
         RevokeVendorPubKey {
@@ -1089,9 +1096,10 @@ mod tests {
             self.complete_authorized(AuthorizedOperation::ProvisionOwnerPkHash { hash: *hash })
         }
 
-        async fn increase_caliptra_min_svn<A: SpdmPalAlloc>(
+        async fn increase_min_svn<A: SpdmPalAlloc>(
             &self,
             flags: u32,
+            target: u32,
             svn: u32,
             payload: &[u8],
             sig: &HybridSignature,
@@ -1101,8 +1109,11 @@ mod tests {
             _mldsa_pub: &[u8; 2592],
             _scratch: &A,
         ) -> CaliptraVdmResult<()> {
-            self.verify_test_signature(INCREASE_CALIPTRA_MIN_SVN_CMD_ID, payload, sig)?;
-            self.complete_authorized(AuthorizedOperation::IncreaseCaliptraMinSvn { flags, svn })
+            self.verify_test_signature(INCREASE_MIN_SVN_CMD_ID, payload, sig)?;
+            if target == caliptra_mcu_mbox_common::messages::SvnTarget::OwnerSocManifest as u32 {
+                return Err(CaliptraCompletionCode::UnsupportedOperation);
+            }
+            self.complete_authorized(AuthorizedOperation::IncreaseMinSvn { flags, target, svn })
         }
 
         #[allow(clippy::too_many_arguments)]
@@ -2170,14 +2181,19 @@ mod tests {
                 AuthorizedOperation::ProvisionOwnerPkHash { hash: [0xC3; 48] },
             ),
             (
-                INCREASE_CALIPTRA_MIN_SVN_CMD_ID,
+                INCREASE_MIN_SVN_CMD_ID,
                 {
                     let mut payload = vec![];
                     payload.extend_from_slice(&0u32.to_le_bytes());
+                    payload.extend_from_slice(&1u32.to_le_bytes());
                     payload.extend_from_slice(&17u32.to_le_bytes());
                     payload
                 },
-                AuthorizedOperation::IncreaseCaliptraMinSvn { flags: 0, svn: 17 },
+                AuthorizedOperation::IncreaseMinSvn {
+                    flags: 0,
+                    target: 1,
+                    svn: 17,
+                },
             ),
             (
                 REVOKE_VENDOR_PUB_KEY_CMD_ID,
@@ -2246,7 +2262,7 @@ mod tests {
         let payloads = [
             (PROVISION_VENDOR_PK_HASH_CMD_ID, vec![0u8; 52]),
             (PROVISION_OWNER_PK_HASH_CMD_ID, vec![0u8; 48]),
-            (INCREASE_CALIPTRA_MIN_SVN_CMD_ID, vec![0u8; 8]),
+            (INCREASE_MIN_SVN_CMD_ID, vec![0u8; 12]),
             (REVOKE_VENDOR_PUB_KEY_CMD_ID, vec![0u8; 16]),
             (REVOKE_VENDOR_PK_HASH_CMD_ID, vec![0u8; 8]),
             (FUSE_LOCK_PARTITION_CMD_ID, vec![0u8; 4]),
@@ -2317,9 +2333,9 @@ mod tests {
     #[test]
     fn authorized_command_rejects_bad_signature_and_consumes_challenge() {
         let cmds = TestCommands::new(0).with_authorization();
-        let payload = [0u8; 8];
+        let payload = [0u8; 12];
         issue_test_challenge(&cmds);
-        let bad_req = authorized_req(INCREASE_CALIPTRA_MIN_SVN_CMD_ID, &payload);
+        let bad_req = authorized_req(INCREASE_MIN_SVN_CMD_ID, &payload);
 
         let (response, inline, _) = dispatch(&cmds, &bad_req, 16, 0);
         assert_inline(response, 3);
@@ -2327,12 +2343,8 @@ mod tests {
 
         // This signature is valid for the original challenge, but verification
         // must fail because the bad attempt already consumed that challenge.
-        let sig = test_signature(
-            INCREASE_CALIPTRA_MIN_SVN_CMD_ID,
-            &payload,
-            &TEST_AUTH_CHALLENGE,
-        );
-        let valid_req = authorized_req_with_sig(INCREASE_CALIPTRA_MIN_SVN_CMD_ID, &payload, &sig);
+        let sig = test_signature(INCREASE_MIN_SVN_CMD_ID, &payload, &TEST_AUTH_CHALLENGE);
+        let valid_req = authorized_req_with_sig(INCREASE_MIN_SVN_CMD_ID, &payload, &sig);
         let (response, inline, _) = dispatch(&cmds, &valid_req, 16, 0);
         assert_inline(response, 3);
         assert_eq!(inline[2], CaliptraCompletionCode::AccessDenied as u8);
@@ -2345,16 +2357,38 @@ mod tests {
     }
 
     #[test]
+    fn increase_min_svn_rejects_reserved_owner_target() {
+        let cmds = TestCommands::new(0).with_authorization();
+        issue_test_challenge(&cmds);
+        let mut payload = vec![];
+        payload.extend_from_slice(&0u32.to_le_bytes());
+        payload.extend_from_slice(
+            &(caliptra_mcu_mbox_common::messages::SvnTarget::OwnerSocManifest as u32).to_le_bytes(),
+        );
+        payload.extend_from_slice(&17u32.to_le_bytes());
+        let sig = test_signature(INCREASE_MIN_SVN_CMD_ID, &payload, &TEST_AUTH_CHALLENGE);
+        let req = authorized_req_with_sig(INCREASE_MIN_SVN_CMD_ID, &payload, &sig);
+
+        let (response, inline, _) = dispatch(&cmds, &req, 16, 0);
+        assert_inline(response, 3);
+        assert_eq!(
+            inline[2],
+            CaliptraCompletionCode::UnsupportedOperation as u8
+        );
+        assert_eq!(*cmds.authorized_operation.lock().unwrap(), None);
+    }
+
+    #[test]
     fn authorized_command_rejects_signature_for_wrong_command() {
         let cmds = TestCommands::new(0).with_authorization();
         issue_test_challenge(&cmds);
-        let payload = [0u8; 8];
+        let payload = [0u8; 12];
         let sig = test_signature(
             PROVISION_VENDOR_PK_HASH_CMD_ID,
             &payload,
             &TEST_AUTH_CHALLENGE,
         );
-        let req = authorized_req_with_sig(INCREASE_CALIPTRA_MIN_SVN_CMD_ID, &payload, &sig);
+        let req = authorized_req_with_sig(INCREASE_MIN_SVN_CMD_ID, &payload, &sig);
 
         let (response, inline, _) = dispatch(&cmds, &req, 16, 0);
         assert_inline(response, 3);
@@ -2364,22 +2398,18 @@ mod tests {
     #[test]
     fn authorized_command_rejects_signature_for_wrong_payload_or_challenge() {
         let cmds = TestCommands::new(0).with_authorization();
-        let payload = [0u8; 8];
+        let payload = [0u8; 12];
 
         issue_test_challenge(&cmds);
-        let sig = test_signature(
-            INCREASE_CALIPTRA_MIN_SVN_CMD_ID,
-            &[1u8; 8],
-            &TEST_AUTH_CHALLENGE,
-        );
-        let req = authorized_req_with_sig(INCREASE_CALIPTRA_MIN_SVN_CMD_ID, &payload, &sig);
+        let sig = test_signature(INCREASE_MIN_SVN_CMD_ID, &[1u8; 12], &TEST_AUTH_CHALLENGE);
+        let req = authorized_req_with_sig(INCREASE_MIN_SVN_CMD_ID, &payload, &sig);
         let (response, inline, _) = dispatch(&cmds, &req, 16, 0);
         assert_inline(response, 3);
         assert_eq!(inline[2], CaliptraCompletionCode::AccessDenied as u8);
 
         issue_test_challenge(&cmds);
-        let sig = test_signature(INCREASE_CALIPTRA_MIN_SVN_CMD_ID, &payload, &[0x5A; 48]);
-        let req = authorized_req_with_sig(INCREASE_CALIPTRA_MIN_SVN_CMD_ID, &payload, &sig);
+        let sig = test_signature(INCREASE_MIN_SVN_CMD_ID, &payload, &[0x5A; 48]);
+        let req = authorized_req_with_sig(INCREASE_MIN_SVN_CMD_ID, &payload, &sig);
         let (response, inline, _) = dispatch(&cmds, &req, 16, 0);
         assert_inline(response, 3);
         assert_eq!(inline[2], CaliptraCompletionCode::AccessDenied as u8);
@@ -2389,13 +2419,9 @@ mod tests {
     fn authorized_command_rejects_reused_challenge() {
         let cmds = TestCommands::new(0).with_authorization();
         issue_test_challenge(&cmds);
-        let payload = [0u8; 8];
-        let sig = test_signature(
-            INCREASE_CALIPTRA_MIN_SVN_CMD_ID,
-            &payload,
-            &TEST_AUTH_CHALLENGE,
-        );
-        let req = authorized_req_with_sig(INCREASE_CALIPTRA_MIN_SVN_CMD_ID, &payload, &sig);
+        let payload = [0u8; 12];
+        let sig = test_signature(INCREASE_MIN_SVN_CMD_ID, &payload, &TEST_AUTH_CHALLENGE);
+        let req = authorized_req_with_sig(INCREASE_MIN_SVN_CMD_ID, &payload, &sig);
 
         let (response, inline, _) = dispatch(&cmds, &req, 16, 0);
         assert_inline(response, 3);
@@ -2413,7 +2439,7 @@ mod tests {
             .lock()
             .unwrap()
             .replace(CaliptraCompletionCode::AccessDenied);
-        let req = authorized_req(INCREASE_CALIPTRA_MIN_SVN_CMD_ID, &[0u8; 8]);
+        let req = authorized_req(INCREASE_MIN_SVN_CMD_ID, &[0u8; 12]);
 
         let (response, inline, _) = dispatch(&cmds, &req, 16, 0);
         assert_inline(response, 3);

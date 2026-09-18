@@ -31,7 +31,7 @@ bitflags::bitflags! {
     pub struct AuthorizedSubcommandCapabilities: u32 {
         const GET_AUTH_CHALLENGE = 1 << 0;
         const PROVISION_VENDOR_PK_HASH = 1 << 1;
-        const FUSE_INCREASE_CALIPTRA_MIN_SVN = 1 << 2;
+        const FUSE_INCREASE_MIN_SVN = 1 << 2;
         const PROGRAM_FIELD_ENTROPY = 1 << 3;
         const FUSE_REVOKE_VENDOR_PUBLIC_KEY = 1 << 4;
         const FUSE_REVOKE_VENDOR_PK_HASH = 1 << 5;
@@ -104,6 +104,10 @@ mod tests {
         assert_eq!(
             AuthorizedSubcommandCapabilities::GET_DOT_BACKUP_BLOB.bits(),
             1 << 11
+        );
+        assert_eq!(
+            AuthorizedSubcommandCapabilities::FUSE_INCREASE_MIN_SVN.bits(),
+            1 << 2
         );
     }
 }
