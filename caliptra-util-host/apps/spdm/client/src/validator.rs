@@ -29,7 +29,7 @@ use caliptra_mcu_core_util_host_command_types::fuse::{
     MC_FUSE_LOCK_PARTITION_CANONICAL_CMD_ID, MC_FUSE_REVOKE_VENDOR_PK_HASH_CANONICAL_CMD_ID,
     MC_FUSE_REVOKE_VENDOR_PUB_KEY_CANONICAL_CMD_ID, MC_OCP_LOCK_ROTATE_HEK_CANONICAL_CMD_ID,
     MC_OCP_LOCK_SET_PERMA_HEK_CANONICAL_CMD_ID, MC_PROVISION_OWNER_PK_HASH_CANONICAL_CMD_ID,
-    MC_PROVISION_VENDOR_PK_HASH_CANONICAL_CMD_ID,
+    MC_PROVISION_VENDOR_PK_HASH_CANONICAL_CMD_ID, OCP_LOCK_FAMILY_ID,
 };
 use caliptra_mcu_core_util_host_command_types::ZeroCopyIntoBytes;
 use caliptra_mcu_core_util_host_transport::{CaliptraVdmCommand, CaliptraVdmCompletionCode};
@@ -1268,13 +1268,10 @@ fn signed_ocp_lock_rotate_hek(
     slot: u32,
     authorizer: &dyn CommandAuthChallengeSigner,
 ) -> Result<(), AuthorizedCommandError> {
-    let auth = authorize_command(
-        client,
-        MC_OCP_LOCK_ROTATE_HEK_CANONICAL_CMD_ID,
-        &slot.to_le_bytes(),
-        Some(authorizer),
-    )
-    .map_err(AuthorizedCommandError::Preparation)?;
+    let mut payload = MC_OCP_LOCK_ROTATE_HEK_CANONICAL_CMD_ID.to_le_bytes().to_vec();
+    payload.extend_from_slice(&slot.to_le_bytes());
+    let auth = authorize_command(client, OCP_LOCK_FAMILY_ID, &payload, Some(authorizer))
+        .map_err(AuthorizedCommandError::Preparation)?;
     client
         .ocp_lock_rotate_hek(
             slot,
@@ -1294,13 +1291,9 @@ fn signed_ocp_lock_set_perma_hek(
     client: &mut SpdmVdmClient,
     authorizer: &dyn CommandAuthChallengeSigner,
 ) -> Result<(), AuthorizedCommandError> {
-    let auth = authorize_command(
-        client,
-        MC_OCP_LOCK_SET_PERMA_HEK_CANONICAL_CMD_ID,
-        &[],
-        Some(authorizer),
-    )
-    .map_err(AuthorizedCommandError::Preparation)?;
+    let payload = MC_OCP_LOCK_SET_PERMA_HEK_CANONICAL_CMD_ID.to_le_bytes();
+    let auth = authorize_command(client, OCP_LOCK_FAMILY_ID, &payload, Some(authorizer))
+        .map_err(AuthorizedCommandError::Preparation)?;
     client
         .ocp_lock_set_perma_hek(AuthorizedCommandData {
             sig: &auth.sig,
@@ -1311,6 +1304,36 @@ fn signed_ocp_lock_set_perma_hek(
         })
         .map(|_| ())
         .map_err(AuthorizedCommandError::Command)
+}
+
+fn send_native_ocp_lock_command(
+    client: &mut SpdmVdmClient,
+    subcommand: u32,
+    payload: &[u8],
+) -> Result<(), AuthorizedCommandError> {
+    let mut request = vec![1, CaliptraVdmCommand::OcpLock as u8];
+    request.extend_from_slice(&subcommand.to_le_bytes());
+    request.extend_from_slice(payload);
+
+    let mut response = [0u8; 16];
+    match client.send_raw_vdm(&request, &mut response) {
+        Ok(len) if len >= 3 => {
+            let code = response[2];
+            if code == CaliptraVdmCompletionCode::Success as u8 {
+                Ok(())
+            } else {
+                Err(AuthorizedCommandError::Command(
+                    CaliptraApiError::DeviceError(code),
+                ))
+            }
+        }
+        Ok(_) => Err(AuthorizedCommandError::Preparation(
+            "response too short".into(),
+        )),
+        Err(e) => Err(AuthorizedCommandError::Preparation(format!(
+            "transport error: {e:?}"
+        ))),
+    }
 }
 
 fn expect_success(test_name: &str, result: Result<(), AuthorizedCommandError>) -> ValidationResult {
@@ -1690,14 +1713,32 @@ fn run_fuse_suite(
             "MCFP programs field entropy",
             signed_fe_prog(client, 0, authorizer),
         )],
-        "ocp-lock-rotate-hek" => vec![expect_success(
-            "OLRH rotates active HEK",
-            signed_ocp_lock_rotate_hek(client, 1, authorizer),
-        )],
-        "ocp-lock-set-perma-hek" => vec![expect_success(
-            "OLSP sets permanent HEK",
-            signed_ocp_lock_set_perma_hek(client, authorizer),
-        )],
+        "ocp-lock-rotate-hek" => vec![
+            expect_completion(
+                "OLRH rejects native 0x13 access",
+                send_native_ocp_lock_command(
+                    client,
+                    MC_OCP_LOCK_ROTATE_HEK_CANONICAL_CMD_ID,
+                    &1u32.to_le_bytes(),
+                ),
+                CaliptraVdmCompletionCode::AccessDenied,
+            ),
+            expect_success(
+                "OLRH rotates active HEK",
+                signed_ocp_lock_rotate_hek(client, 1, authorizer),
+            ),
+        ],
+        "ocp-lock-set-perma-hek" => vec![
+            expect_completion(
+                "OLSP rejects native 0x13 access",
+                send_native_ocp_lock_command(client, MC_OCP_LOCK_SET_PERMA_HEK_CANONICAL_CMD_ID, &[]),
+                CaliptraVdmCompletionCode::AccessDenied,
+            ),
+            expect_success(
+                "OLSP sets permanent HEK",
+                signed_ocp_lock_set_perma_hek(client, authorizer),
+            ),
+        ],
         _ => vec![ValidationResult::fail(
             "Authorized fuse suite",
             format!("unknown suite {suite:?}"),

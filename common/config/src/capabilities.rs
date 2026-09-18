@@ -25,6 +25,7 @@ bitflags::bitflags! {
         const EXPORT_ATTESTED_CSR = command_capability(0x08);
         const DEVICE_OWNERSHIP_TRANSFER = command_capability(0x11);
         const AUTHORIZED_COMMAND = command_capability(0x12);
+        const OCP_LOCK = command_capability(0x13);
     }
 
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -115,5 +116,6 @@ mod tests {
             AuthorizedSubcommandCapabilities::OCP_LOCK_SET_PERMA_HEK.bits(),
             1 << 13
         );
+        assert_eq!(ExternalCommandCapabilities::OCP_LOCK.bits(), 1 << 18);
     }
 }

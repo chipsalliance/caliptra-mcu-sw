@@ -11,6 +11,8 @@ pub(crate) mod debug_unlock;
 pub(crate) mod device_ownership_transfer;
 pub(crate) mod export_attested_csr;
 pub(crate) mod get_attestation;
+#[cfg(feature = "ocp-lock")]
+pub(crate) mod ocp_lock;
 
 pub(crate) fn require_empty(req: &[u8]) -> Result<(), CaliptraCompletionCode> {
     if req.is_empty() {

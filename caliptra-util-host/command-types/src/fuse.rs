@@ -51,6 +51,7 @@ pub const MC_FUSE_REVOKE_VENDOR_PUB_KEY_CANONICAL_CMD_ID: u32 = 0x4D52_564B;
 pub const MC_FUSE_REVOKE_VENDOR_PK_HASH_CANONICAL_CMD_ID: u32 = 0x5256_4B48;
 pub const MC_FUSE_LOCK_PARTITION_CANONICAL_CMD_ID: u32 = 0x4946_504B;
 pub const MC_PROVISION_OWNER_PK_HASH_CANONICAL_CMD_ID: u32 = 0x504F_504B;
+pub const OCP_LOCK_FAMILY_ID: u32 = 0x0000_0013;
 pub const MC_OCP_LOCK_ROTATE_HEK_CANONICAL_CMD_ID: u32 = 0x4F4C_5248;
 pub const MC_OCP_LOCK_SET_PERMA_HEK_CANONICAL_CMD_ID: u32 = 0x4F4C_5350;
 
@@ -192,6 +193,12 @@ macro_rules! authorized_fuse_command {
             pub ecc_pub_y: [u8; AUTH_PUB_ECC_COORD_SIZE],
             pub mldsa_pub: [u8; AUTH_PUB_MLDSA_SIZE],
             pub sig: HybridSignature,
+        }
+
+        impl Default for $request {
+            fn default() -> Self {
+                zerocopy::FromZeros::new_zeroed()
+            }
         }
 
         #[repr(C)]

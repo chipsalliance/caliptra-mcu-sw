@@ -90,6 +90,9 @@ fn external_command_capabilities() -> ExternalCommandCapabilities {
     if cfg!(feature = "dot-spdm-vdm") {
         capabilities |= ExternalCommandCapabilities::DEVICE_OWNERSHIP_TRANSFER;
     }
+    if cfg!(feature = "spdm") && cfg!(feature = "ocp-lock") {
+        capabilities |= ExternalCommandCapabilities::OCP_LOCK;
+    }
     capabilities
 }
 
@@ -619,6 +622,10 @@ mod tests {
                 AuthorizedSubcommandCapabilities::OCP_LOCK_ROTATE_HEK
                     | AuthorizedSubcommandCapabilities::OCP_LOCK_SET_PERMA_HEK
             ),
+            cfg!(feature = "spdm") && cfg!(feature = "ocp-lock")
+        );
+        assert_eq!(
+            commands.contains(ExternalCommandCapabilities::OCP_LOCK),
             cfg!(feature = "spdm") && cfg!(feature = "ocp-lock")
         );
         assert_eq!(

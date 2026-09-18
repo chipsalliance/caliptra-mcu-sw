@@ -177,8 +177,8 @@ pub fn get_external_cmd_code(command_id: u32) -> Option<u32> {
         0x8014 => Some(0x4D52_564B), // FuseRevokeVendorPubKey -> MC_FUSE_REVOKE_VENDOR_PUB_KEY ("MRVK")
         0x8015 => Some(0x5256_4B48), // FuseRevokeVendorPkHash -> MC_FUSE_REVOKE_VENDOR_PK_HASH ("RVKH")
         0x8016 => Some(0x4946_504B), // FuseLockPartition -> MC_FUSE_LOCK_PARTITION ("IFPK")
-        0x8018 => Some(0x4F4C_5248), // OcpLockRotateHek -> MC_OCP_LOCK_ROTATE_HEK ("OLRH")
-        0x8019 => Some(0x4F4C_5350), // OcpLockSetPermaHek -> MC_OCP_LOCK_SET_PERMA_HEK ("OLSP")
+        // OCP Lock Commands share the MCI OCP LOCK family ID.
+        0x8018..=0x8019 => Some(0x0000_0013),
         // Device Ownership Transfer Commands share the MCI DOT family ID.
         0x8020..=0x8029 => Some(0x0000_0011),
         _ => None,
@@ -189,6 +189,7 @@ pub fn get_external_cmd_code(command_id: u32) -> Option<u32> {
 mod tests {
     use super::*;
     use caliptra_mcu_core_util_host_command_types::device_ownership_transfer::DOT_FAMILY_ID;
+    use caliptra_mcu_core_util_host_command_types::fuse::OCP_LOCK_FAMILY_ID;
     use caliptra_mcu_core_util_host_command_types::CaliptraCommandId;
 
     #[test]
@@ -209,6 +210,22 @@ mod tests {
         for command in commands {
             assert!(get_command_handler(command as u32).is_some());
             assert_eq!(get_external_cmd_code(command as u32), Some(DOT_FAMILY_ID));
+        }
+    }
+
+    #[test]
+    fn all_ocp_lock_commands_are_dispatched_to_the_family_command() {
+        let commands = [
+            CaliptraCommandId::OcpLockRotateHek,
+            CaliptraCommandId::OcpLockSetPermaHek,
+        ];
+
+        for command in commands {
+            assert!(get_command_handler(command as u32).is_some());
+            assert_eq!(
+                get_external_cmd_code(command as u32),
+                Some(OCP_LOCK_FAMILY_ID)
+            );
         }
     }
 }

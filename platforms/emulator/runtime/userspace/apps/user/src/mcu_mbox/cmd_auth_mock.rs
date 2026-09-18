@@ -93,8 +93,20 @@ impl CommandAuthorizer for MockCommandAuthorizer {
             CommandId::MC_FUSE_READ => size_of::<FuseReadReq>(),
             CommandId::MC_FUSE_WRITE => size_of::<FuseWriteReq>(),
             CommandId::MC_FUSE_LOCK_PARTITION => size_of::<FuseLockPartitionReq>(),
-            CommandId::MC_OCP_LOCK_ROTATE_HEK => size_of::<OcpLockRotateHekReq>(),
-            CommandId::MC_OCP_LOCK_SET_PERMA_HEK => size_of::<OcpLockSetPermaHekReq>(),
+            CommandId::MC_OCP_LOCK => {
+                let subcommand = req
+                    .get(size_of::<MailboxReqHeader>()..size_of::<MailboxReqHeader>() + 4)
+                    .ok_or(AuthorizationError)?;
+                match u32::from_le_bytes(subcommand.try_into().map_err(|_| AuthorizationError)?) {
+                    value if value == CommandId::MC_OCP_LOCK_ROTATE_HEK.0 => {
+                        size_of::<OcpLockRotateHekReq>()
+                    }
+                    value if value == CommandId::MC_OCP_LOCK_SET_PERMA_HEK.0 => {
+                        size_of::<OcpLockSetPermaHekReq>()
+                    }
+                    _ => return Err(AuthorizationError),
+                }
+            }
             CommandId::MC_DEVICE_OWNERSHIP_TRANSFER => {
                 let subcommand = req
                     .get(size_of::<MailboxReqHeader>()..size_of::<MailboxReqHeader>() + 4)

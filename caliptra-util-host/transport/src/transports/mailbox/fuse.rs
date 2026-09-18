@@ -20,7 +20,8 @@ use caliptra_mcu_core_util_host_command_types::fuse::{
     FuseRevokeVendorPubKeyResponse, GetAuthCmdChallengeRequest, GetAuthCmdChallengeResponse,
     OcpLockRotateHekRequest, OcpLockRotateHekResponse, OcpLockSetPermaHekRequest,
     OcpLockSetPermaHekResponse, ProvisionVendorPkHashRequest, ProvisionVendorPkHashResponse,
-    AUTH_CMD_CHALLENGE_SIZE,
+    AUTH_CMD_CHALLENGE_SIZE, MC_OCP_LOCK_ROTATE_HEK_CANONICAL_CMD_ID,
+    MC_OCP_LOCK_SET_PERMA_HEK_CANONICAL_CMD_ID,
 };
 use caliptra_mcu_core_util_host_command_types::CommonResponse;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
@@ -243,17 +244,70 @@ define_authorized_fuse_mailbox_command!(
     ExtCmdFuseLockPartitionRequest,
     ExtCmdFuseLockPartitionResponse
 );
-define_authorized_fuse_mailbox_command!(
+macro_rules! define_ocp_lock_mailbox_command {
+    ($cmd:ident, $subcommand:expr, $request:ty, $response:ident, $ext_request:ident, $ext_response:ident) => {
+        #[repr(C)]
+        #[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+        pub struct $ext_request {
+            pub chksum: u32,
+            pub subcommand: u32,
+            pub internal: $request,
+        }
+
+        #[repr(C)]
+        #[derive(Debug, Clone, Default, IntoBytes, FromBytes, Immutable)]
+        pub struct $ext_response {
+            pub chksum: u32,
+            pub fips_status: u32,
+        }
+
+        impl FromInternalRequest<$request> for $ext_request {
+            fn from_internal(internal: &$request, command_code: u32) -> Self {
+                let mut external = Self {
+                    chksum: 0,
+                    subcommand: $subcommand,
+                    internal: internal.clone(),
+                };
+                external.chksum = calc_checksum(command_code, &external.as_bytes()[4..]);
+                external
+            }
+        }
+
+        impl ToInternalResponse<$response> for $ext_response {
+            fn to_internal(&self) -> $response {
+                $response {
+                    common: CommonResponse {
+                        fips_status: self.fips_status,
+                    },
+                }
+            }
+        }
+
+        impl VariableSizeBytes for $ext_request {}
+        impl VariableSizeBytes for $ext_response {}
+
+        define_command!(
+            $cmd,
+            0x0000_0013,
+            $request,
+            $response,
+            $ext_request,
+            $ext_response
+        );
+    };
+}
+
+define_ocp_lock_mailbox_command!(
     OcpLockRotateHekCmd,
-    0x4F4C_5248,
+    MC_OCP_LOCK_ROTATE_HEK_CANONICAL_CMD_ID,
     OcpLockRotateHekRequest,
     OcpLockRotateHekResponse,
     ExtCmdOcpLockRotateHekRequest,
     ExtCmdOcpLockRotateHekResponse
 );
-define_authorized_fuse_mailbox_command!(
+define_ocp_lock_mailbox_command!(
     OcpLockSetPermaHekCmd,
-    0x4F4C_5350,
+    MC_OCP_LOCK_SET_PERMA_HEK_CANONICAL_CMD_ID,
     OcpLockSetPermaHekRequest,
     OcpLockSetPermaHekResponse,
     ExtCmdOcpLockSetPermaHekRequest,

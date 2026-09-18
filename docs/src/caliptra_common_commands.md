@@ -108,6 +108,7 @@ Versions use `major.minor.patch` ASCII format. Index `02h` returns `UnsupportedO
 | 7          | `08h`        | `ExportAttestedCsr`         | SPDM VDM              |
 | 16         | `11h`        | `DeviceOwnershipTransfer`   | SPDM VDM              |
 | 17         | `12h`        | `AuthorizedCommand`         | SPDM VDM              |
+| 18         | `13h`        | `OcpLock`                   | SPDM VDM              |
 
 This table defines the bit assignment for every allocated command code. A responder sets a bit only when the corresponding command is implemented. `GetAttestation` is set when a responder that carries it is built and the device can produce at least one evidence format. `AuthorizedCommand` is set when its wrapper and at least one authorized subcommand are implemented.
 
