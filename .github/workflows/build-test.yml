@@ -22,7 +22,7 @@ concurrency:
 
 jobs:
   build-xtask:
-    runs-on: e2-standard-4
+    runs-on: e2-standard-2
     timeout-minutes: 30
 
     env:
@@ -54,7 +54,7 @@ jobs:
           retention-days: 1
 
   precheckin:
-    runs-on: e2-standard-8
+    runs-on: e2-standard-2
     needs: [build-xtask]
     timeout-minutes: 45
 
@@ -95,7 +95,7 @@ jobs:
         run: /tmp/xtask precheckin
 
   build-firmware:
-    runs-on: e2-standard-16-big-disk
+    runs-on: e2-standard-8-big-disk
     needs: [build-xtask]
     # Changes to shared userspace code invalidate every feature-specific runtime;
     # a cold rebuild can exceed one hour before the release bundle is packaged.
@@ -200,7 +200,7 @@ jobs:
           retention-days: 1
 
   build-emulator:
-    runs-on: e2-standard-16
+    runs-on: e2-standard-2
     needs: [build-xtask]
     timeout-minutes: 60
 
@@ -242,7 +242,7 @@ jobs:
           retention-days: 1
 
   build-tests:
-    runs-on: e2-standard-8
+    runs-on: e2-standard-4
     needs: [build-xtask]
     timeout-minutes: 60
 
@@ -292,7 +292,7 @@ jobs:
           retention-days: 1
 
   test_emulator:
-    runs-on: e2-standard-4
+    runs-on: e2-standard-2
     needs: [precheckin, merge-firmware-bundles, build-emulator, build-tests, build-xtask]
     timeout-minutes: 120
     strategy:
