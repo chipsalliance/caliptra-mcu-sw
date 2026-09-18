@@ -43,7 +43,8 @@ use embassy_executor::Spawner;
 /// `MaxSPDMmsgSize` only when buffered large requests are enabled. Raising it
 /// requires larger scratch pools; the assertion below enforces that.
 ///
-/// Attested CSR support raises the limit to cover the largest response.
+/// Attested CSR support raises the limit to cover the largest response; the
+/// baseline remains sized for ML-DSA-87 attestation evidence.
 #[cfg(feature = "attested-csr")]
 const MAX_BUFFERED_SPDM_MSG_SIZE: usize = {
     let declared = 14 * 1024;
@@ -165,12 +166,25 @@ const SESSION_WORKING_SET: usize = 2560;
 const TRANSIENT_MAILBOX_PEAK: usize = 2560;
 
 /// Peak concurrent allocation while building a chunked large response: the
-/// rented large buffer plus the inline response buffer allocated alongside it.
+/// rented large buffer, the inline response buffer allocated alongside it, and
+/// the PQC signing working set.
 ///
 /// The receive buffer is not counted: it is shrunk to the actual frame length
 /// immediately after receive, and the request that triggers a large response
 /// is always a single small frame.
-const LARGE_MSG_PATH_PEAK: usize = MAX_BUFFERED_SPDM_MSG_SIZE + MAX_TRANSPORT_MTU;
+///
+/// ML-DSA-87 signatures (4627 bytes) exceed the MTU, so the response is
+/// built in a rented large buffer that is active while signing.
+const LARGE_MSG_PATH_PEAK: usize =
+    MAX_BUFFERED_SPDM_MSG_SIZE + MAX_TRANSPORT_MTU + PQC_SIGNING_PEAK;
+
+/// Peak DPE working set during ML-DSA-87 signing, including bitmap slot rounding.
+///
+/// OCP EAT signing also retains the raw COSE Sig_structure while DPE builds
+/// the raw-sign request and response.
+const PQC_SIGNING_PEAK: usize = mcu_caliptra_api::DPE_MLDSA87_SIGN_SCRATCH_PEAK
+    + mcu_caliptra_api::DPE_MLDSA87_RAW_MAX_SIZE
+    + 2 * 64;
 
 /// Peak concurrent allocation on the certificate / secure-session path: the
 /// mailbox working set plus the secured-message plaintext and ciphertext
@@ -300,7 +314,7 @@ const MCTP_SPDM_SCRATCH_SIZE: usize = {
 
 #[cfg(not(feature = "attested-csr"))]
 const MCTP_SPDM_SCRATCH_SIZE: usize = {
-    let declared = 12 * 1024;
+    let declared = 19 * 1024;
     assert!(
         declared >= required_scratch(),
         "MCTP SPDM scratch pool is too small for MAX_BUFFERED_SPDM_MSG_SIZE"
@@ -320,7 +334,7 @@ const DOE_SPDM_SCRATCH_SIZE: usize = {
 
 #[cfg(not(feature = "attested-csr"))]
 const DOE_SPDM_SCRATCH_SIZE: usize = {
-    let declared = 12 * 1024;
+    let declared = 19 * 1024;
     assert!(
         declared >= required_session_scratch(),
         "DOE SPDM scratch pool is too small for required_session_scratch()"

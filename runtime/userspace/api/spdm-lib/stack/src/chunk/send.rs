@@ -1225,7 +1225,7 @@ mod tests {
             _reserved: 0,
             random_data: [0x5a; KEY_EXCHANGE_RANDOM_DATA_LEN],
         };
-        let mut request = vec![SpdmVersion::V14.to_u8(), ReqRespCode::KEY_EXCHANGE.0];
+        let mut request = vec![SpdmVersion::V13.to_u8(), ReqRespCode::KEY_EXCHANGE.0];
         request.extend_from_slice(fixed.as_bytes());
         request.resize(request.len() + exchange_data_size, 0x3c);
         request.extend_from_slice(&0u16.to_le_bytes());
@@ -1258,7 +1258,7 @@ mod tests {
         };
         let io = TestIo::message(Vec::new());
         let mut state = chunking_state();
-        state.version = SpdmVersion::V14;
+        state.version = SpdmVersion::V13;
         block_on(state.transcript.append_vca(&pal, &io, &[0xaa])).unwrap();
         let request = key_exchange_request(ECDH_P384_EXCHANGE_DATA_SIZE);
         init_buffered_key_exchange(&mut state, &request, 7);
@@ -1277,7 +1277,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(response[1], ReqRespCode::CHUNK_SEND_ACK.0);
-        let key_exchange_rsp_start = SpdmMsgHdrPdu::SIZE + ChunkSendAckBodyV14::SIZE;
+        let key_exchange_rsp_start = SpdmMsgHdrPdu::SIZE + ChunkSendAckBodyV13::SIZE;
         assert_eq!(
             response[key_exchange_rsp_start + 1],
             ReqRespCode::KEY_EXCHANGE_RSP.0
@@ -1300,7 +1300,7 @@ mod tests {
         };
         let io = TestIo::message(Vec::new());
         let mut state = chunking_state();
-        state.version = SpdmVersion::V14;
+        state.version = SpdmVersion::V13;
         state.peer_data_transfer_size = (SpdmMsgHdrPdu::SIZE
             + KEY_EXCHANGE_RSP_FIXED_BODY_SIZE
             + ECDH_P384_EXCHANGE_DATA_SIZE
@@ -1328,6 +1328,40 @@ mod tests {
         assert_eq!(response[1], ReqRespCode::ERROR.0);
         assert_eq!(response[2], SPDM_LARGE_RESPONSE.spec_byte());
         assert!(state.large_msg_ctx.response_in_progress());
+    }
+
+    #[test]
+    fn v14_buffered_key_exchange_returns_unsupported_in_ack() {
+        let pal = TestPal::default();
+        let io = TestIo::message(Vec::new());
+        let mut state = chunking_state();
+        state.version = SpdmVersion::V14;
+        let mut request = key_exchange_request(ECDH_P384_EXCHANGE_DATA_SIZE);
+        request[0] = SpdmVersion::V14.to_u8();
+        init_buffered_key_exchange(&mut state, &request, 7);
+        let mut sessions = test_sessions();
+        let vdm = CaptureVdmBackend::new();
+
+        let response = block_on(build_final_chunk_send_ack(
+            &mut state,
+            &mut sessions,
+            &pal,
+            &io,
+            &vdm,
+            7,
+            0,
+        ))
+        .unwrap();
+
+        assert_eq!(response[1], ReqRespCode::CHUNK_SEND_ACK.0);
+        let error_start = SpdmMsgHdrPdu::SIZE + ChunkSendAckBodyV14::SIZE;
+        assert_eq!(response[error_start + 1], ReqRespCode::ERROR.0);
+        assert_eq!(
+            response[error_start + 2],
+            SPDM_UNSUPPORTED_REQUEST.spec_byte()
+        );
+        assert!(!state.large_msg_ctx.response_in_progress());
+        assert!(!sessions.has_handshake_in_progress());
     }
 
     struct CaptureVdmBackend {

@@ -204,3 +204,77 @@ fn v13_capabilities_masks_v14_responder_flags() {
     assert!(!advertised.contains(CapFlags::SET_KEY_PAIR_RESET));
     assert!(!advertised.contains(CapFlags::LARGE_RESP));
 }
+
+#[test]
+fn v14_capabilities_excludes_sessions_and_preserves_attestation() {
+    let pal = TestPal::default();
+    let session_caps = CapFlags::KEY_EX
+        | CapFlags::ENCRYPT
+        | CapFlags::MAC
+        | CapFlags::PSK
+        | CapFlags::PSK_WITH_CTX
+        | CapFlags::HBEAT
+        | CapFlags::KEY_UPD
+        | CapFlags::HANDSHAKE_IN_THE_CLEAR;
+    let attestation_caps = CapFlags::CERT
+        | CapFlags::CHAL
+        | CapFlags::MEAS_SIG
+        | CapFlags::CHUNK
+        | CapFlags::LARGE_RESP;
+    let mut state = ConnectionState::default();
+    state.phase = Phase::AfterVersion;
+    state.cap_flags |= session_caps;
+    let mut sessions = SessionManager::new();
+
+    let rsp = dispatch_request(
+        &mut state,
+        &mut sessions,
+        &pal,
+        capabilities_request(SpdmVersion::V14, 0, 0, CapFlags::CHUNK, 1024, 1024),
+    )
+    .unwrap();
+    let advertised = CapFlags::from_bits(u32::from_le_bytes(rsp[8..12].try_into().unwrap()));
+
+    assert_eq!(advertised.into_bits() & session_caps.into_bits(), 0);
+    assert!(advertised.contains(attestation_caps));
+}
+
+#[test]
+fn earlier_versions_preserve_supported_session_capabilities() {
+    for version in [SpdmVersion::V12, SpdmVersion::V13] {
+        for secure_message_supported in [false, true] {
+            let pal = TestPal {
+                secure_message_supported,
+                ..TestPal::default()
+            };
+            let session_caps = CapFlags::KEY_EX
+                | CapFlags::ENCRYPT
+                | CapFlags::MAC
+                | CapFlags::HBEAT
+                | CapFlags::KEY_UPD;
+            let mut state = ConnectionState::default();
+            state.phase = Phase::AfterVersion;
+            state.cap_flags |= session_caps;
+            let mut sessions = SessionManager::new();
+
+            let rsp = dispatch_request(
+                &mut state,
+                &mut sessions,
+                &pal,
+                capabilities_request(version, 0, 0, CapFlags::CHUNK, 1024, 1024),
+            )
+            .unwrap();
+            let advertised =
+                CapFlags::from_bits(u32::from_le_bytes(rsp[8..12].try_into().unwrap()));
+
+            assert_eq!(
+                advertised.into_bits() & session_caps.into_bits(),
+                if secure_message_supported {
+                    session_caps.into_bits()
+                } else {
+                    0
+                }
+            );
+        }
+    }
+}

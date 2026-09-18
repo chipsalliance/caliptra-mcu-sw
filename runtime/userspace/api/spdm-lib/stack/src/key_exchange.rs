@@ -14,8 +14,8 @@
 
 use caliptra_mcu_spdm_codec::{
     encode_version_selection, parse_supported_versions, select_version, HeartBeatPeriod,
-    KeyExchangeReq, KeyExchangeRsp, ResponseBody, SmVersion, SpdmMsgHdrPdu, SpdmVersion,
-    WireWriter, ECC_P384_SIGNATURE_SIZE, ECDH_P384_EXCHANGE_DATA_SIZE,
+    KeyExchangeReq, KeyExchangeRsp, ReqRespCode, ResponseBody, SmVersion, SpdmMsgHdrPdu,
+    SpdmVersion, WireWriter, ECC_P384_SIGNATURE_SIZE, ECDH_P384_EXCHANGE_DATA_SIZE,
     KEY_EXCHANGE_RANDOM_DATA_LEN, KEY_EXCHANGE_RSP_FIXED_BODY_SIZE, OPAQUE_VERSION_SELECTION_SIZE,
     SHA384_HASH_SIZE, SPDM_PREFIX_LEN, SPDM_SIGNING_CONTEXT_LEN,
 };
@@ -26,6 +26,7 @@ use crate::build::{align_send_len, write_fixed};
 use crate::chunk::{self, WipeOnDrop};
 use crate::error::{
     SpdmError, SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED,
+    SPDM_UNSUPPORTED_REQUEST,
 };
 use crate::key_schedule::SessionKeyType;
 use crate::stack::{ConnState, Phase, Sessions};
@@ -138,6 +139,10 @@ async fn handle_key_exchange_request<'a, Pal: SpdmPal, const N: usize>(
 ) -> SpdmResult<(PalBytes<'a, Pal>, usize)> {
     if (state.phase as u8) < (Phase::AfterAlgorithms as u8) {
         return Err(SPDM_UNEXPECTED_REQUEST);
+    }
+
+    if state.version == SpdmVersion::V14 {
+        return Err(SPDM_UNSUPPORTED_REQUEST.with_data(ReqRespCode::KEY_EXCHANGE.0));
     }
 
     if sessions.has_handshake_in_progress() {

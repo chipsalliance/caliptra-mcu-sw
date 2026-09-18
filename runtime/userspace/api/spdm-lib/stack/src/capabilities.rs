@@ -80,8 +80,16 @@ pub(crate) async fn handle_get_capabilities<'a, Pal: SpdmPal>(
 
     let mtu = pal.mtu();
     let mut flags = CapFlags::from_bits(state.cap_flags.into_bits() & responder_cap_mask(version));
-    if !pal.secure_message_supported() {
-        let secure_session_caps = CapFlags::KEY_EX | CapFlags::ENCRYPT | CapFlags::MAC;
+    // Caliptra 2.0 supports SPDM 1.4 attestation, but not secure sessions.
+    if version == SpdmVersion::V14 || !pal.secure_message_supported() {
+        let secure_session_caps = CapFlags::KEY_EX
+            | CapFlags::ENCRYPT
+            | CapFlags::MAC
+            | CapFlags::PSK
+            | CapFlags::PSK_WITH_CTX
+            | CapFlags::HBEAT
+            | CapFlags::KEY_UPD
+            | CapFlags::HANDSHAKE_IN_THE_CLEAR;
         flags = CapFlags::from_bits(flags.into_bits() & !secure_session_caps.into_bits());
     }
     state.advertised_cap_flags = flags;
