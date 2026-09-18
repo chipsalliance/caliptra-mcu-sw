@@ -76,6 +76,7 @@ mod test {
             soc_manifest_path,
             mcu_runtime_path,
             None,
+            None,
             partition_table,
             flash_offset,
             soc_images_paths,
@@ -87,6 +88,7 @@ mod test {
         soc_manifest_path: Option<PathBuf>,
         mcu_runtime_path: Option<PathBuf>,
         owner_auth_manifest_path: Option<PathBuf>,
+        soc_images: Option<Vec<ImageCfg>>,
         partition_table: Option<PartitionTable>,
         flash_offset: usize,
         soc_images_paths: Vec<PathBuf>,
@@ -101,6 +103,7 @@ mod test {
             soc_manifest: soc_manifest_path,
             mcu_firmware: mcu_runtime_path,
             owner_auth_manifest: owner_auth_manifest_path,
+            soc_images,
             soc_image_paths: Some(
                 soc_images_paths
                     .iter()
@@ -942,8 +945,10 @@ mod test {
             ..Default::default()
         }];
 
+        let soc_image_load_list = soc_images.clone();
+
         CaliptraBuilder::new(&CaliptraBuildArgs::default())
-            .write_attestation_manifest_config(&soc_images)
+            .write_attestation_manifest_config(&soc_image_load_list)
             .expect("Failed to write attestation manifest config");
 
         // Get runtime after writing descriptors so user-app embeds this load list.
@@ -1018,11 +1023,12 @@ mod test {
             .get_active_partition()
             .1
             .map_or(0, |p| p.offset);
-        let (soc_images_paths, flash_image_path) = create_flash_image_with_owner_manifest(
+        let (_, flash_image_path) = create_flash_image_with_owner_manifest(
             Some(caliptra_fw.clone()),
             Some(soc_manifest.clone()),
             Some(test_runtime.clone()),
             Some(owner_auth_manifest.clone()),
+            Some(soc_image_load_list.clone()),
             Some(partition_table.clone()),
             flash_offset,
             soc_images_paths.clone(),
@@ -1038,6 +1044,7 @@ mod test {
                 Some(soc_manifest.clone()),
                 Some(test_runtime.clone()),
                 Some(owner_auth_manifest.clone()),
+                Some(soc_image_load_list),
                 None,
                 0,
                 soc_images_paths.clone(),
