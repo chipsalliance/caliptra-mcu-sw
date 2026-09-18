@@ -7,15 +7,16 @@ use caliptra_mcu_common_commands::{
 };
 use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
-use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
+use caliptra_mcu_mbox_common::messages::{HybridSignature, SvnTarget, AUTH_CMD_NONCE_LEN};
 use caliptra_mcu_spdm_traits::{
     McuResult, SpdmPalAlloc, SpdmPalIo, SpdmVdmBackend, VdmRegistry, VdmResponse, VdmResponseBuffer,
 };
 use caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::{
     CaliptraCompletionCode, CaliptraVdm, CaliptraVdmAuthorization, CaliptraVdmResult,
     CaliptraVdmStreamOps, DEVICE_OWNERSHIP_TRANSFER_CMD_ID, FE_PROG_CMD_ID,
-    FUSE_LOCK_PARTITION_CMD_ID, INCREASE_CALIPTRA_MIN_SVN_CMD_ID, PROVISION_OWNER_PK_HASH_CMD_ID,
-    PROVISION_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PUB_KEY_CMD_ID,
+    FUSE_LOCK_PARTITION_CMD_ID, INCREASE_CALIPTRA_MIN_SVN_CMD_ID, INCREASE_MIN_SVN_CMD_ID,
+    PROVISION_OWNER_PK_HASH_CMD_ID, PROVISION_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PK_HASH_CMD_ID,
+    REVOKE_VENDOR_PUB_KEY_CMD_ID,
 };
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::{
@@ -353,6 +354,44 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
         }
         CaliptraCmdBackend
             .increase_caliptra_min_svn(scratch, svn)
+            .await
+            .map_err(map_common_completion)
+    }
+
+    async fn increase_min_svn<A: SpdmPalAlloc>(
+        &self,
+        flags: u32,
+        target: u32,
+        svn: u32,
+        payload: &[u8],
+        sig: &HybridSignature,
+        nonce: &[u8; AUTH_CMD_NONCE_LEN],
+        ecc_pub_x: &[u8; 48],
+        ecc_pub_y: &[u8; 48],
+        mldsa_pub: &[u8; 2592],
+        scratch: &A,
+    ) -> CaliptraVdmResult<()> {
+        let mut authorizer = cmd_auth_mock::MockCommandAuthorizer;
+        authorizer
+            .verify_signatures(
+                scratch,
+                INCREASE_MIN_SVN_CMD_ID,
+                payload,
+                nonce,
+                ecc_pub_x,
+                ecc_pub_y,
+                mldsa_pub,
+                sig,
+            )
+            .await
+            .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
+        if flags != 0 {
+            return Err(CaliptraCompletionCode::InvalidParameter);
+        }
+        let target =
+            SvnTarget::try_from(target).map_err(|_| CaliptraCompletionCode::InvalidParameter)?;
+        CaliptraCmdBackend
+            .increase_min_svn(scratch, target, svn)
             .await
             .map_err(map_common_completion)
     }

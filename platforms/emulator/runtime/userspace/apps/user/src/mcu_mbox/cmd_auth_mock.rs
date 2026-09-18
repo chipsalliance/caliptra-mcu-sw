@@ -3,10 +3,10 @@
 use caliptra_mcu_common_commands::{AuthorizationError, CommandAuthorizer};
 use caliptra_mcu_mbox_common::messages::{
     CommandId, DotDisableReq, DotLockReq, DotRotateReq, FuseIncreaseCaliptraMinSvnReq,
-    FuseLockPartitionReq, FuseReadReq, FuseRevokeVendorPkHashReq, FuseRevokeVendorPubKeyReq,
-    FuseWriteReq, GetDotBackupBlobReq, HybridSignature, MailboxReqHeader, McuFeProgReq,
-    OcpLockRotateHekReq, OcpLockSetPermaHekReq, ProvisionOwnerPkHashReq, ProvisionVendorPkHashReq,
-    AUTH_CMD_NONCE_LEN,
+    FuseIncreaseMinSvnReq, FuseLockPartitionReq, FuseReadReq, FuseRevokeVendorPkHashReq,
+    FuseRevokeVendorPubKeyReq, FuseWriteReq, GetDotBackupBlobReq, HybridSignature,
+    MailboxReqHeader, McuFeProgReq, OcpLockRotateHekReq, OcpLockSetPermaHekReq,
+    ProvisionOwnerPkHashReq, ProvisionVendorPkHashReq, AUTH_CMD_NONCE_LEN,
 };
 use core::cell::RefCell;
 use core::mem::{offset_of, size_of};
@@ -87,6 +87,7 @@ impl CommandAuthorizer for MockCommandAuthorizer {
             CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN => {
                 size_of::<FuseIncreaseCaliptraMinSvnReq>()
             }
+            CommandId::MC_FUSE_INCREASE_MIN_SVN => size_of::<FuseIncreaseMinSvnReq>(),
             CommandId::MC_FE_PROG => size_of::<McuFeProgReq>(),
             CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY => size_of::<FuseRevokeVendorPubKeyReq>(),
             CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH => size_of::<FuseRevokeVendorPkHashReq>(),

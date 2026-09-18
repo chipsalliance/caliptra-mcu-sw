@@ -162,6 +162,7 @@ fn authorized_subcommand_capabilities() -> AuthorizedSubcommandCapabilities {
         capabilities |= AuthorizedSubcommandCapabilities::GET_AUTH_CHALLENGE
             | AuthorizedSubcommandCapabilities::PROVISION_VENDOR_PK_HASH
             | AuthorizedSubcommandCapabilities::FUSE_INCREASE_CALIPTRA_MIN_SVN
+            | AuthorizedSubcommandCapabilities::FUSE_INCREASE_MIN_SVN
             | AuthorizedSubcommandCapabilities::PROGRAM_FIELD_ENTROPY
             | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PUBLIC_KEY
             | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PK_HASH
@@ -343,6 +344,15 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         svn: u32,
     ) -> CaliptraCmdResult<()> {
         device_ops::increase_caliptra_min_svn(alloc, svn).await
+    }
+
+    async fn increase_min_svn<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        target: caliptra_mcu_mbox_common::messages::SvnTarget,
+        svn: u32,
+    ) -> CaliptraCmdResult<()> {
+        device_ops::increase_min_svn(alloc, target, svn).await
     }
 
     async fn revoke_vendor_pub_key<Alloc: ApiAlloc>(
@@ -599,6 +609,7 @@ mod tests {
                 AuthorizedSubcommandCapabilities::GET_AUTH_CHALLENGE
                     | AuthorizedSubcommandCapabilities::PROVISION_VENDOR_PK_HASH
                     | AuthorizedSubcommandCapabilities::FUSE_INCREASE_CALIPTRA_MIN_SVN
+                    | AuthorizedSubcommandCapabilities::FUSE_INCREASE_MIN_SVN
                     | AuthorizedSubcommandCapabilities::PROGRAM_FIELD_ENTROPY
                     | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PUBLIC_KEY
                     | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PK_HASH

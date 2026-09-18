@@ -617,6 +617,11 @@ authorized_fuse_handler!(
     fuse::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN_CANONICAL_CMD_ID
 );
 authorized_fuse_handler!(
+    handle_fuse_increase_min_svn,
+    fuse::FuseIncreaseMinSvnRequest,
+    fuse::MC_FUSE_INCREASE_MIN_SVN_CANONICAL_CMD_ID
+);
+authorized_fuse_handler!(
     handle_fuse_revoke_vendor_pub_key,
     fuse::FuseRevokeVendorPubKeyRequest,
     fuse::MC_FUSE_REVOKE_VENDOR_PUB_KEY_CANONICAL_CMD_ID

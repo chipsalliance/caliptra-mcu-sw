@@ -17,6 +17,7 @@
 
 use crate::{CaliptraCommandId, CommandRequest, CommandResponse, CommonResponse};
 use caliptra_mcu_mbox_common::messages::HybridSignature;
+pub use caliptra_mcu_mbox_common::messages::SvnTarget;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 /// Size of the authorization challenge nonce in bytes.
@@ -47,6 +48,7 @@ pub const MC_FE_PROG_CANONICAL_CMD_ID: u32 = 0x4D43_4650;
 /// Canonical FOURCC command identifiers used for authorized fuse operations.
 pub const MC_PROVISION_VENDOR_PK_HASH_CANONICAL_CMD_ID: u32 = 0x5056_504B;
 pub const MC_FUSE_INCREASE_CALIPTRA_MIN_SVN_CANONICAL_CMD_ID: u32 = 0x4D43_4D53;
+pub const MC_FUSE_INCREASE_MIN_SVN_CANONICAL_CMD_ID: u32 = 0x4D49_4D53;
 pub const MC_FUSE_REVOKE_VENDOR_PUB_KEY_CANONICAL_CMD_ID: u32 = 0x4D52_564B;
 pub const MC_FUSE_REVOKE_VENDOR_PK_HASH_CANONICAL_CMD_ID: u32 = 0x5256_4B48;
 pub const MC_FUSE_LOCK_PARTITION_CANONICAL_CMD_ID: u32 = 0x4946_504B;
@@ -220,6 +222,12 @@ authorized_fuse_command!(
     FuseIncreaseCaliptraMinSvnResponse,
     FuseIncreaseCaliptraMinSvn,
     { flags: u32, svn: u32 }
+);
+authorized_fuse_command!(
+    FuseIncreaseMinSvnRequest,
+    FuseIncreaseMinSvnResponse,
+    FuseIncreaseMinSvn,
+    { flags: u32, target: u32, svn: u32 }
 );
 authorized_fuse_command!(
     FuseRevokeVendorPubKeyRequest,

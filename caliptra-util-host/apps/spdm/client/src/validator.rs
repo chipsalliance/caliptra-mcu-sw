@@ -26,10 +26,10 @@ use caliptra_mcu_core_util_host_command_types::device_ownership_transfer::{
 };
 use caliptra_mcu_core_util_host_command_types::fuse::{
     MC_FE_PROG_CANONICAL_CMD_ID, MC_FUSE_INCREASE_CALIPTRA_MIN_SVN_CANONICAL_CMD_ID,
-    MC_FUSE_LOCK_PARTITION_CANONICAL_CMD_ID, MC_FUSE_REVOKE_VENDOR_PK_HASH_CANONICAL_CMD_ID,
-    MC_FUSE_REVOKE_VENDOR_PUB_KEY_CANONICAL_CMD_ID, MC_OCP_LOCK_ROTATE_HEK_CANONICAL_CMD_ID,
-    MC_OCP_LOCK_SET_PERMA_HEK_CANONICAL_CMD_ID, MC_PROVISION_OWNER_PK_HASH_CANONICAL_CMD_ID,
-    MC_PROVISION_VENDOR_PK_HASH_CANONICAL_CMD_ID,
+    MC_FUSE_INCREASE_MIN_SVN_CANONICAL_CMD_ID, MC_FUSE_LOCK_PARTITION_CANONICAL_CMD_ID,
+    MC_FUSE_REVOKE_VENDOR_PK_HASH_CANONICAL_CMD_ID, MC_FUSE_REVOKE_VENDOR_PUB_KEY_CANONICAL_CMD_ID,
+    MC_OCP_LOCK_ROTATE_HEK_CANONICAL_CMD_ID, MC_OCP_LOCK_SET_PERMA_HEK_CANONICAL_CMD_ID,
+    MC_PROVISION_OWNER_PK_HASH_CANONICAL_CMD_ID, MC_PROVISION_VENDOR_PK_HASH_CANONICAL_CMD_ID,
 };
 use caliptra_mcu_core_util_host_command_types::ZeroCopyIntoBytes;
 use caliptra_mcu_core_util_host_transport::{CaliptraVdmCommand, CaliptraVdmCompletionCode};
@@ -213,6 +213,16 @@ pub fn run_all(
             client,
             config.increase_caliptra_min_svn.flags,
             config.increase_caliptra_min_svn.svn,
+            command_authorizer,
+            verbose,
+        ));
+    }
+    if config.increase_min_svn.enabled {
+        results.push(run_increase_min_svn(
+            client,
+            config.increase_min_svn.flags,
+            config.increase_min_svn.target,
+            config.increase_min_svn.svn,
             command_authorizer,
             verbose,
         ));
@@ -985,6 +995,34 @@ pub fn run_increase_caliptra_min_svn(
     match client.fuse_increase_caliptra_min_svn(flags, svn, auth.as_command_data()) {
         Ok(_) => ValidationResult::pass(test_name, "minimum SVN updated"),
         Err(e) => ValidationResult::fail(test_name, e.to_string()),
+    }
+}
+
+pub fn run_increase_min_svn(
+    client: &mut SpdmVdmClient,
+    flags: u32,
+    target: u32,
+    svn: u32,
+    authorizer: Option<&dyn CommandAuthChallengeSigner>,
+    _verbose: bool,
+) -> ValidationResult {
+    let test_name = format!("FuseIncreaseMinSvn(target={target},svn={svn})");
+    let mut payload = Vec::with_capacity(12);
+    payload.extend_from_slice(&flags.to_le_bytes());
+    payload.extend_from_slice(&target.to_le_bytes());
+    payload.extend_from_slice(&svn.to_le_bytes());
+    let auth = match authorize_command(
+        client,
+        MC_FUSE_INCREASE_MIN_SVN_CANONICAL_CMD_ID,
+        &payload,
+        authorizer,
+    ) {
+        Ok(auth) => auth,
+        Err(error) => return ValidationResult::fail(test_name, error),
+    };
+    match client.fuse_increase_min_svn(flags, target, svn, auth.as_command_data()) {
+        Ok(_) => ValidationResult::pass(test_name, "minimum SVN updated"),
+        Err(error) => ValidationResult::fail(test_name, error.to_string()),
     }
 }
 

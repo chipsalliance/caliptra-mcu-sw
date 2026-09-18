@@ -25,8 +25,9 @@ pub use caliptra_mcu_spdm_codec::vendor_defined::iana::ocp::caliptra::{
 pub use commands::authorized_command::{
     DEVICE_OWNERSHIP_TRANSFER_CMD_ID, DOT_DISABLE_CMD_ID, DOT_LOCK_CMD_ID, DOT_ROTATE_CMD_ID,
     FE_PROG_CMD_ID, FUSE_LOCK_PARTITION_CMD_ID, GET_AUTH_CHALLENGE_CMD_ID,
-    GET_DOT_BACKUP_BLOB_CMD_ID, INCREASE_CALIPTRA_MIN_SVN_CMD_ID, PROVISION_OWNER_PK_HASH_CMD_ID,
-    PROVISION_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PUB_KEY_CMD_ID,
+    GET_DOT_BACKUP_BLOB_CMD_ID, INCREASE_CALIPTRA_MIN_SVN_CMD_ID, INCREASE_MIN_SVN_CMD_ID,
+    PROVISION_OWNER_PK_HASH_CMD_ID, PROVISION_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PK_HASH_CMD_ID,
+    REVOKE_VENDOR_PUB_KEY_CMD_ID,
 };
 #[cfg(feature = "ocp-lock")]
 pub use commands::authorized_command::{OCP_LOCK_ROTATE_HEK_CMD_ID, OCP_LOCK_SET_PERMA_HEK_CMD_ID};
@@ -140,6 +141,26 @@ pub trait CaliptraVdmAuthorization {
         mldsa_pub: &[u8; 2592],
         scratch: &A,
     ) -> CaliptraVdmResult<()>;
+
+    #[allow(clippy::too_many_arguments)]
+    async fn increase_min_svn<A: SpdmPalAlloc>(
+        &self,
+        flags: u32,
+        target: u32,
+        svn: u32,
+        payload: &[u8],
+        sig: &HybridSignature,
+        nonce: &[u8; AUTH_CMD_NONCE_LEN],
+        ecc_pub_x: &[u8; 48],
+        ecc_pub_y: &[u8; 48],
+        mldsa_pub: &[u8; 2592],
+        scratch: &A,
+    ) -> CaliptraVdmResult<()> {
+        let _ = (
+            flags, target, svn, payload, sig, nonce, ecc_pub_x, ecc_pub_y, mldsa_pub, scratch,
+        );
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
 
     #[allow(clippy::too_many_arguments)]
     async fn program_field_entropy<A: SpdmPalAlloc>(
@@ -727,6 +748,11 @@ mod tests {
             flags: u32,
             svn: u32,
         },
+        IncreaseMinSvn {
+            flags: u32,
+            target: u32,
+            svn: u32,
+        },
         RevokeVendorPubKey {
             reserved: u32,
             slot: u32,
@@ -1140,6 +1166,26 @@ mod tests {
         ) -> CaliptraVdmResult<()> {
             self.verify_test_signature(INCREASE_CALIPTRA_MIN_SVN_CMD_ID, payload, sig)?;
             self.complete_authorized(AuthorizedOperation::IncreaseCaliptraMinSvn { flags, svn })
+        }
+
+        async fn increase_min_svn<A: SpdmPalAlloc>(
+            &self,
+            flags: u32,
+            target: u32,
+            svn: u32,
+            payload: &[u8],
+            sig: &HybridSignature,
+            _nonce: &[u8; AUTH_CMD_NONCE_LEN],
+            _ecc_pub_x: &[u8; 48],
+            _ecc_pub_y: &[u8; 48],
+            _mldsa_pub: &[u8; 2592],
+            _scratch: &A,
+        ) -> CaliptraVdmResult<()> {
+            self.verify_test_signature(INCREASE_MIN_SVN_CMD_ID, payload, sig)?;
+            if target == caliptra_mcu_mbox_common::messages::SvnTarget::OwnerSocManifest as u32 {
+                return Err(CaliptraCompletionCode::UnsupportedOperation);
+            }
+            self.complete_authorized(AuthorizedOperation::IncreaseMinSvn { flags, target, svn })
         }
 
         #[allow(clippy::too_many_arguments)]
@@ -2207,6 +2253,21 @@ mod tests {
                 AuthorizedOperation::IncreaseCaliptraMinSvn { flags: 0, svn: 17 },
             ),
             (
+                INCREASE_MIN_SVN_CMD_ID,
+                {
+                    let mut payload = vec![];
+                    payload.extend_from_slice(&0u32.to_le_bytes());
+                    payload.extend_from_slice(&1u32.to_le_bytes());
+                    payload.extend_from_slice(&17u32.to_le_bytes());
+                    payload
+                },
+                AuthorizedOperation::IncreaseMinSvn {
+                    flags: 0,
+                    target: 1,
+                    svn: 17,
+                },
+            ),
+            (
                 REVOKE_VENDOR_PUB_KEY_CMD_ID,
                 {
                     let mut payload = vec![];
@@ -2274,6 +2335,7 @@ mod tests {
             (PROVISION_VENDOR_PK_HASH_CMD_ID, vec![0u8; 52]),
             (PROVISION_OWNER_PK_HASH_CMD_ID, vec![0u8; 48]),
             (INCREASE_CALIPTRA_MIN_SVN_CMD_ID, vec![0u8; 8]),
+            (INCREASE_MIN_SVN_CMD_ID, vec![0u8; 12]),
             (REVOKE_VENDOR_PUB_KEY_CMD_ID, vec![0u8; 16]),
             (REVOKE_VENDOR_PK_HASH_CMD_ID, vec![0u8; 8]),
             (FUSE_LOCK_PARTITION_CMD_ID, vec![0u8; 4]),
@@ -2369,6 +2431,28 @@ mod tests {
         let (response, inline, _) = dispatch(&cmds, &valid_req, 16, 0);
         assert_inline(response, 3);
         assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+    }
+
+    #[test]
+    fn increase_min_svn_rejects_reserved_owner_target() {
+        let cmds = TestCommands::new(0).with_authorization();
+        issue_test_challenge(&cmds);
+        let mut payload = vec![];
+        payload.extend_from_slice(&0u32.to_le_bytes());
+        payload.extend_from_slice(
+            &(caliptra_mcu_mbox_common::messages::SvnTarget::OwnerSocManifest as u32).to_le_bytes(),
+        );
+        payload.extend_from_slice(&17u32.to_le_bytes());
+        let sig = test_signature(INCREASE_MIN_SVN_CMD_ID, &payload, &TEST_AUTH_CHALLENGE);
+        let req = authorized_req_with_sig(INCREASE_MIN_SVN_CMD_ID, &payload, &sig);
+
+        let (response, inline, _) = dispatch(&cmds, &req, 16, 0);
+        assert_inline(response, 3);
+        assert_eq!(
+            inline[2],
+            CaliptraCompletionCode::UnsupportedOperation as u8
+        );
+        assert_eq!(*cmds.authorized_operation.lock().unwrap(), None);
     }
 
     #[test]

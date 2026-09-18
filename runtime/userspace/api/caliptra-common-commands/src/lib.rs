@@ -7,7 +7,7 @@
 use caliptra_api::mailbox::{HpkeHandle, OcpLockEnumerateHpkeHandlesResp};
 use caliptra_mcu_mbox_common::messages::{
     CommandId, DotDisablePayload, DotLockPayload, DotOverrideChallengePayload, DotOverridePayload,
-    DotRotatePayload, DotStatus, DotUnlockPayload, HybridSignature, AUTH_CMD_NONCE_LEN,
+    DotRotatePayload, DotStatus, DotUnlockPayload, HybridSignature, SvnTarget, AUTH_CMD_NONCE_LEN,
     DOT_BLOB_SIZE,
 };
 #[cfg(feature = "ocp-lock")]
@@ -460,6 +460,17 @@ pub trait CaliptraCmdHandler {
         svn: u32,
     ) -> CaliptraCmdResult<()> {
         let _ = (alloc, svn);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Increase the selected minimum SVN.
+    async fn increase_min_svn<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        target: SvnTarget,
+        svn: u32,
+    ) -> CaliptraCmdResult<()> {
+        let _ = (alloc, target, svn);
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 

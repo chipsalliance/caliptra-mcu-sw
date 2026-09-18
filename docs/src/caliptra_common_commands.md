@@ -42,6 +42,7 @@ The following subcommands are assigned to the SPDM VDM IANA authorization-gated 
 | Get Auth Challenge             | SPDM VDM IANA, MCI Mailbox | Challenge acquisition for authorization-gated use. |
 | Provision Vendor PK Hash       | SPDM VDM IANA, MCI Mailbox | Provision vendor public key hash.                  |
 | Fuse Increase Caliptra Min SVN | SPDM VDM IANA, MCI Mailbox | Increase Caliptra minimum SVN.                     |
+| Fuse Increase Min SVN          | SPDM VDM IANA, MCI Mailbox | Increase a selected minimum SVN.                   |
 | Program Field Entropy          | SPDM VDM IANA, MCI Mailbox | Program field entropy.                             |
 | Fuse Revoke Vendor Public Key  | SPDM VDM IANA, MCI Mailbox | Revoke vendor public key.                          |
 | Fuse Revoke Vendor PK Hash     | SPDM VDM IANA, MCI Mailbox | Revoke vendor public key hash.                     |
@@ -129,7 +130,8 @@ This table defines the bit assignment for every allocated command code. A respon
 | 11         | `GetDotBackupBlob`           | Implemented |
 | 12         | `OcpLockRotateHek`           | Implemented |
 | 13         | `OcpLockSetPermaHek`         | Implemented |
-| 14:31      | Reserved                     | —           |
+| 14         | `FuseIncreaseMinSvn`         | Implemented |
+| 15:31      | Reserved                     | —           |
 
 The authorized-subcommand assignments are stable capability indexes; they are not transport command IDs. A responder sets a bit only when that subcommand is implemented under `AuthorizedCommand`. Authorization, lifecycle, or policy restrictions do not clear an implementation capability bit; execution can still return `AccessDenied`, `PolicyViolation`, or `InvalidState`.
 
@@ -432,9 +434,31 @@ Provisions the vendor public key hash.
 
 ### Fuse Increase Caliptra Min SVN
 
-Increases the Caliptra minimum SVN.
+Legacy command that increases the Caliptra Runtime minimum SVN.
 
 **Request Payload**: `flags:u32 | svn:u32 | HybridSignature`
+
+**Response Payload**: Empty
+
+### Fuse Increase Min SVN
+
+Increases a selected minimum SVN. `flags` is reserved and must be zero.
+
+| Target | Name               | Status      | Fuse                               |
+| ------ | ------------------ | ----------- | ---------------------------------- |
+| `0`    | Caliptra Runtime   | Implemented | `CPTRA_CORE_RUNTIME_SVN`           |
+| `1`    | SoC Manifest       | Implemented | `CPTRA_CORE_SOC_MANIFEST_SVN`      |
+| `2`    | Owner SoC Manifest | Reserved    | Not implemented                    |
+
+Unknown targets are invalid. The reserved Owner SoC Manifest target returns
+`UnsupportedOperation`. The SVN must be between 1 and 128 and cannot decrease
+the current fuse floor. The Caliptra Runtime target is additionally bounded by
+the running SVN reported by `FW_INFO`. The SoC Manifest target is bounded by
+`CPTRA_CORE_SOC_MANIFEST_MAX_SVN`. No trusted running SoC Manifest SVN is
+currently exposed, so that target cannot verify the requested floor against the
+currently running image.
+
+**Request Payload**: `flags:u32 | target:u32 | svn:u32 | HybridSignature`
 
 **Response Payload**: Empty
 

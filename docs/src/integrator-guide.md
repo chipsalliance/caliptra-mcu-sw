@@ -276,6 +276,14 @@ the runtime authorization flow. It rejects requests that are zero, above 128,
 lower than the current fuse floor, or higher than the currently running
 Caliptra firmware SVN reported by `FW_INFO`.
 
+The target-aware `MC_FUSE_INCREASE_MIN_SVN` command supports both that Caliptra
+Runtime floor and `CPTRA_CORE_SOC_MANIFEST_SVN`. The Owner SoC Manifest target
+is reserved but not implemented. Because `FW_INFO` does not expose the running
+SoC Manifest SVN, the SoC Manifest target can enforce range, monotonicity, and
+the `CPTRA_CORE_SOC_MANIFEST_MAX_SVN` ceiling, but cannot reject a requested
+floor above the currently running image. Platforms should prefer the
+authenticated SVN-header workflow when that assurance is required.
+
 ## Management Command Transport Expectations
 
 The runtime command set has two different management paths that should not be
@@ -283,8 +291,8 @@ treated as interchangeable:
 
 | Path | Who can use it | Privileged commands in that path |
 |---|---|---|
-| MCI mailbox runtime interface | A SoC-side agent with MCI mailbox access, or an explicit platform proxy to that agent | Runtime handlers exist for `MC_PROVISION_VENDOR_PK_HASH`, `MC_FUSE_REVOKE_VENDOR_PUB_KEY`, `MC_FUSE_REVOKE_VENDOR_PK_HASH`, `MC_FUSE_INCREASE_CALIPTRA_MIN_SVN`, `MC_FE_PROG`, and generic fuse read/write/lock commands. |
-| OOB SPDM VDM over MCTP/I3C | External BMC/OOB requester speaking the Caliptra SPDM VDM protocol | `Get Auth Challenge`, `Provision Vendor PK Hash`, `Fuse Increase Caliptra Min SVN`, `Program Field Entropy`, `Fuse Revoke Vendor Public Key`, and `Fuse Revoke Vendor PK Hash` under SPDM `AuthorizedCommand`. |
+| MCI mailbox runtime interface | A SoC-side agent with MCI mailbox access, or an explicit platform proxy to that agent | Runtime handlers exist for `MC_PROVISION_VENDOR_PK_HASH`, `MC_FUSE_REVOKE_VENDOR_PUB_KEY`, `MC_FUSE_REVOKE_VENDOR_PK_HASH`, `MC_FUSE_INCREASE_CALIPTRA_MIN_SVN`, `MC_FUSE_INCREASE_MIN_SVN`, `MC_FE_PROG`, and generic fuse read/write/lock commands. |
+| OOB SPDM VDM over MCTP/I3C | External BMC/OOB requester speaking the Caliptra SPDM VDM protocol | `Get Auth Challenge`, `Provision Vendor PK Hash`, `Fuse Increase Caliptra Min SVN`, `Fuse Increase Min SVN`, `Program Field Entropy`, `Fuse Revoke Vendor Public Key`, and `Fuse Revoke Vendor PK Hash` under SPDM `AuthorizedCommand`. |
 
 The `caliptra-util-host` mailbox transport is a software abstraction that
 formats supported MCU mailbox commands through a platform-provided

@@ -21,6 +21,7 @@ const FE_PROG_PAYLOAD_LEN: usize = 4;
 const PROVISION_VENDOR_PK_HASH_PAYLOAD_LEN: usize = 4 + 48;
 const PROVISION_OWNER_PK_HASH_PAYLOAD_LEN: usize = 48;
 const INCREASE_CALIPTRA_MIN_SVN_PAYLOAD_LEN: usize = 4 + 4;
+const INCREASE_MIN_SVN_PAYLOAD_LEN: usize = 4 + 4 + 4;
 const REVOKE_VENDOR_PUB_KEY_PAYLOAD_LEN: usize = 4 + 4 + 4 + 4;
 const REVOKE_VENDOR_PK_HASH_PAYLOAD_LEN: usize = 4 + 4;
 const FUSE_LOCK_PARTITION_PAYLOAD_LEN: usize = 4;
@@ -52,6 +53,9 @@ const MAX_AUTHORIZED_PAYLOAD_LEN: usize = {
     }
     if INCREASE_CALIPTRA_MIN_SVN_PAYLOAD_LEN > max {
         max = INCREASE_CALIPTRA_MIN_SVN_PAYLOAD_LEN;
+    }
+    if INCREASE_MIN_SVN_PAYLOAD_LEN > max {
+        max = INCREASE_MIN_SVN_PAYLOAD_LEN;
     }
     if REVOKE_VENDOR_PUB_KEY_PAYLOAD_LEN > max {
         max = REVOKE_VENDOR_PUB_KEY_PAYLOAD_LEN;
@@ -101,6 +105,8 @@ pub const PROVISION_VENDOR_PK_HASH_CMD_ID: u32 = 0x5056_504B;
 pub const PROVISION_OWNER_PK_HASH_CMD_ID: u32 = CommandId::MC_PROVISION_OWNER_PK_HASH.0;
 /// MC_FUSE_INCREASE_CALIPTRA_MIN_SVN sub-command (`MCMS`).
 pub const INCREASE_CALIPTRA_MIN_SVN_CMD_ID: u32 = 0x4D43_4D53;
+/// MC_FUSE_INCREASE_MIN_SVN sub-command (`MIMS`).
+pub const INCREASE_MIN_SVN_CMD_ID: u32 = CommandId::MC_FUSE_INCREASE_MIN_SVN.0;
 /// MC_FE_PROG sub-command (`MCFP`).
 pub const FE_PROG_CMD_ID: u32 = 0x4D43_4650;
 /// MC_FUSE_REVOKE_VENDOR_PUB_KEY sub-command (`MRVK`).
@@ -157,6 +163,7 @@ where
         INCREASE_CALIPTRA_MIN_SVN_CMD_ID => {
             handle_increase_caliptra_min_svn(cmds, payload, scratch, out).await
         }
+        INCREASE_MIN_SVN_CMD_ID => handle_increase_min_svn(cmds, payload, scratch, out).await,
         FE_PROG_CMD_ID => handle_fe_prog(cmds, payload, scratch, out).await,
         REVOKE_VENDOR_PUB_KEY_CMD_ID => {
             handle_revoke_vendor_pub_key(cmds, payload, scratch, out).await
@@ -472,6 +479,41 @@ where
     finish_authorized_command(
         cmds.increase_caliptra_min_svn(
             flags,
+            svn,
+            parsed.payload,
+            parsed.sig,
+            parsed.nonce,
+            parsed.ecc_pub_x,
+            parsed.ecc_pub_y,
+            parsed.mldsa_pub,
+            scratch,
+        )
+        .await,
+        out,
+    )
+}
+
+async fn handle_increase_min_svn<H, A>(
+    cmds: &H,
+    req: &[u8],
+    scratch: &A,
+    out: &mut [u8],
+) -> CaliptraVdmCmdResult
+where
+    H: CaliptraVdmAuthorization,
+    A: SpdmPalAlloc,
+{
+    let parsed = match split_authorized_request(req, INCREASE_MIN_SVN_PAYLOAD_LEN) {
+        Ok(parsed) => parsed,
+        Err(code) => return CaliptraVdmCmdResult::Error(code),
+    };
+    let flags = read_u32_le(&parsed.payload[..4]);
+    let target = read_u32_le(&parsed.payload[4..8]);
+    let svn = read_u32_le(&parsed.payload[8..12]);
+    finish_authorized_command(
+        cmds.increase_min_svn(
+            flags,
+            target,
             svn,
             parsed.payload,
             parsed.sig,

@@ -16,12 +16,12 @@ use caliptra_mcu_core_util_host_command_types::device_ownership_transfer::{
     MC_GET_DOT_BACKUP_BLOB_CANONICAL_CMD_ID,
 };
 use caliptra_mcu_core_util_host_command_types::fuse::{
-    FuseIncreaseCaliptraMinSvnRequest, FuseLockPartitionRequest, FuseRevokeVendorPkHashRequest,
-    FuseRevokeVendorPubKeyRequest, ProvisionVendorPkHashRequest, AUTH_CMD_CHALLENGE_SIZE,
-    AUTH_PUB_ECC_COORD_SIZE, AUTH_PUB_MLDSA_SIZE,
-    MC_FUSE_INCREASE_CALIPTRA_MIN_SVN_CANONICAL_CMD_ID, MC_FUSE_LOCK_PARTITION_CANONICAL_CMD_ID,
-    MC_FUSE_REVOKE_VENDOR_PK_HASH_CANONICAL_CMD_ID, MC_FUSE_REVOKE_VENDOR_PUB_KEY_CANONICAL_CMD_ID,
-    MC_PROVISION_VENDOR_PK_HASH_CANONICAL_CMD_ID,
+    FuseIncreaseCaliptraMinSvnRequest, FuseIncreaseMinSvnRequest, FuseLockPartitionRequest,
+    FuseRevokeVendorPkHashRequest, FuseRevokeVendorPubKeyRequest, ProvisionVendorPkHashRequest,
+    AUTH_CMD_CHALLENGE_SIZE, AUTH_PUB_ECC_COORD_SIZE, AUTH_PUB_MLDSA_SIZE,
+    MC_FUSE_INCREASE_CALIPTRA_MIN_SVN_CANONICAL_CMD_ID, MC_FUSE_INCREASE_MIN_SVN_CANONICAL_CMD_ID,
+    MC_FUSE_LOCK_PARTITION_CANONICAL_CMD_ID, MC_FUSE_REVOKE_VENDOR_PK_HASH_CANONICAL_CMD_ID,
+    MC_FUSE_REVOKE_VENDOR_PUB_KEY_CANONICAL_CMD_ID, MC_PROVISION_VENDOR_PK_HASH_CANONICAL_CMD_ID,
 };
 use caliptra_mcu_debug_unlock_signer::{DebugUnlockSigner, ProdDebugUnlockChallenge};
 use caliptra_mcu_mbox_common::messages::HybridSignature;
@@ -205,6 +205,14 @@ impl Validator {
                     &mut client,
                     config.increase_caliptra_min_svn.flags,
                     config.increase_caliptra_min_svn.svn,
+                ));
+            }
+            if config.increase_min_svn.enabled {
+                results.push(self.validate_increase_min_svn(
+                    &mut client,
+                    config.increase_min_svn.flags,
+                    config.increase_min_svn.target,
+                    config.increase_min_svn.svn,
                 ));
             }
             if config.revoke_vendor_pub_key.enabled {
@@ -645,6 +653,40 @@ impl Validator {
                 sig: auth.sig,
             },
             |client, request| client.fuse_increase_caliptra_min_svn(request).map(|_| ()),
+        )
+    }
+
+    fn validate_increase_min_svn(
+        &self,
+        client: &mut MailboxClient,
+        flags: u32,
+        target: u32,
+        svn: u32,
+    ) -> ValidationResult {
+        if self.verbose {
+            println!("\n=== Validating Fuse Increase Min SVN Command ===");
+        }
+
+        let mut payload = Vec::with_capacity(12);
+        payload.extend_from_slice(&flags.to_le_bytes());
+        payload.extend_from_slice(&target.to_le_bytes());
+        payload.extend_from_slice(&svn.to_le_bytes());
+        self.validate_authorized_command(
+            client,
+            &format!("FuseIncreaseMinSvn(target={target},svn={svn})"),
+            MC_FUSE_INCREASE_MIN_SVN_CANONICAL_CMD_ID,
+            &payload,
+            |auth| FuseIncreaseMinSvnRequest {
+                flags,
+                target,
+                svn,
+                nonce: auth.nonce,
+                ecc_pub_x: auth.ecc_pub_x,
+                ecc_pub_y: auth.ecc_pub_y,
+                mldsa_pub: auth.mldsa_pub,
+                sig: auth.sig,
+            },
+            |client, request| client.fuse_increase_min_svn(request).map(|_| ()),
         )
     }
 
