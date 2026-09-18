@@ -1177,9 +1177,16 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             });
             let feature_soc_manifest_file = tempfile::NamedTempFile::new().unwrap();
             caliptra_builder.get_soc_manifest(feature_soc_manifest_file.path().to_str())?;
-            let feature_owner_auth_manifest_file = tempfile::NamedTempFile::new().unwrap();
-            caliptra_builder
-                .get_owner_auth_manifest(feature_owner_auth_manifest_file.path().to_str())?;
+            let feature_owner_auth_manifest_file = if feature_owner_soc_images.is_some() {
+                let file = tempfile::NamedTempFile::new().unwrap();
+                caliptra_builder.get_owner_auth_manifest(file.path().to_str())?;
+                Some(file)
+            } else {
+                None
+            };
+            let feature_owner_auth_manifest_path = feature_owner_auth_manifest_file
+                .as_ref()
+                .map(|file| file.path().to_path_buf());
 
             // Flash-based boot features require partition table at offset 0
             let is_flash_based_boot = FEATURES_REQUIRING_FLASH_BOOT.contains(feature);
@@ -1191,9 +1198,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             let feature_flash_image = create_flash_image(FlashImageBuildArgs {
                 caliptra_fw_path: Some(caliptra_fw.clone()),
                 soc_manifest_path: Some(feature_soc_manifest_file.path().to_path_buf()),
-                owner_auth_manifest_path: Some(
-                    feature_owner_auth_manifest_file.path().to_path_buf(),
-                ),
+                owner_auth_manifest_path: feature_owner_auth_manifest_path.clone(),
                 mcu_runtime_path: Some(feature_runtime_file.path().to_path_buf()),
                 mcu_image_cfg: mcu_image_cfg.clone(),
                 caliptra_firmware_network_filename,
@@ -1259,9 +1264,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                     let update_flash = create_flash_image(FlashImageBuildArgs {
                         caliptra_fw_path: Some(caliptra_fw.clone()),
                         soc_manifest_path: Some(update_soc_manifest_file.path().to_path_buf()),
-                        owner_auth_manifest_path: Some(
-                            feature_owner_auth_manifest_file.path().to_path_buf(),
-                        ),
+                        owner_auth_manifest_path: feature_owner_auth_manifest_path.clone(),
                         mcu_runtime_path: Some(update_runtime_file.path().to_path_buf()),
                         mcu_image_cfg: mcu_image_cfg.clone(),
                         caliptra_firmware_network_filename,
@@ -1278,9 +1281,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                     Some(create_flash_image(FlashImageBuildArgs {
                         caliptra_fw_path: Some(caliptra_fw.clone()),
                         soc_manifest_path: Some(feature_soc_manifest_file.path().to_path_buf()),
-                        owner_auth_manifest_path: Some(
-                            feature_owner_auth_manifest_file.path().to_path_buf(),
-                        ),
+                        owner_auth_manifest_path: feature_owner_auth_manifest_path.clone(),
                         mcu_runtime_path: Some(feature_runtime_file.path().to_path_buf()),
                         mcu_image_cfg: mcu_image_cfg.clone(),
                         caliptra_firmware_network_filename,
