@@ -4,7 +4,7 @@ use caliptra_emu_bus::BusError;
 use caliptra_emu_bus::{Bus, Clock, Ram, ReadOnlyRegister, ReadWriteRegister, Timer};
 use caliptra_emu_types::{RvAddr, RvSize};
 use caliptra_mcu_emulator_consts::MCU_MAILBOX0_SRAM_SIZE;
-use caliptra_mcu_registers_generated::mci::bits::MboxExecute;
+use caliptra_mcu_registers_generated::mci::bits::{MboxExecute, MboxTargetStatus};
 use std::sync::{Arc, Mutex};
 use tock_registers::interfaces::{Readable, Writeable};
 
@@ -478,12 +478,11 @@ impl MciMailboxImpl {
         let prev = self.target_status.reg.get();
         let new_val = val.reg.get();
         self.target_status.reg.set(new_val);
-        // If the DONE bit is set (rising edge), trigger TARGET_DONE event
-        let prev_done =
-            prev & caliptra_mcu_registers_generated::mci::bits::MboxTargetStatus::Done::SET.value;
-        let new_done = new_val
-            & caliptra_mcu_registers_generated::mci::bits::MboxTargetStatus::Done::SET.value;
-        if prev_done == 0 && new_done != 0 {
+        let prev_status = prev & 0xf;
+        let new_status = new_val & 0xf;
+        if prev_status == MboxTargetStatus::Status::CmdBusy.value
+            && new_status != MboxTargetStatus::Status::CmdBusy.value
+        {
             self.irq = true;
             self.last_irq_event = Some(if self.mbox_index == 1 {
                 IrqEventToMcu::Mbox1TargetDone
@@ -579,7 +578,11 @@ mod tests {
             None,
             None,
             None,
+            None,
+            None,
             Some(Box::new(mci)),
+            None,
+            None,
             None,
             None,
             None,
@@ -970,8 +973,7 @@ mod tests {
         let test_cmd = 0xAA;
         let test_dlen = 0x10;
         let test_data: [u32; 4] = [0x11112222, 0x33334444, 0x55556666, 0x77778888];
-        let response_status =
-            MboxTargetStatus::Status::CmdComplete.value | MboxTargetStatus::Done::SET.value;
+        let response_status = MboxTargetStatus::Status::CmdComplete.value;
 
         for (i, word) in test_data.iter().enumerate() {
             bus.write(RvSize::Word, sram_base + (i as u32) * 4, *word)
@@ -1063,12 +1065,6 @@ mod tests {
             MboxTargetStatus::Status::CmdComplete.value,
             "MCU should read correct TARGET_STATUS"
         );
-        assert_eq!(
-            target_status_val.reg.get() & MboxTargetStatus::Done::SET.value,
-            MboxTargetStatus::Done::SET.value,
-            "MCU should read DONE bit set in TARGET_STATUS"
-        );
-
         // MCU writes 0 to EXECUTE to release the mailbox (simulate via internal API)
         bus.write(
             RvSize::Word,

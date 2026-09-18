@@ -32,6 +32,7 @@ pub use caliptra_mcu_otp_digest::{
 mod reset_reason;
 mod root_bus;
 mod uart;
+mod usb;
 mod usbdev;
 
 pub use axicdma::AxiCDMA;
@@ -53,6 +54,7 @@ pub use otp::{Otp, OtpArgs};
 pub use reset_reason::ResetReasonEmulator;
 pub use root_bus::{McuRootBus, McuRootBusArgs, McuRootBusOffsets};
 pub use uart::Uart;
+pub use usb::{UsbCombo, UsbDev0Mem, UsbDev1, UsbDev1Mem};
 pub use usbdev::{UsbDevPeriph, UsbHostController, UsbTransactionError};
 
 /// Stub I3C1 peripheral backed by generated register defaults so that
