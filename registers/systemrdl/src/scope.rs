@@ -672,6 +672,10 @@ fn parse_parameter_map<'a>(i: &mut TokenIter<'a>) -> Result<'a, HashMap<String, 
                 i.next();
                 Value::Bits(n)
             }
+            Token::Number(n) => {
+                i.next();
+                Value::U64(n)
+            }
             Token::Identifier(_) => {
                 let reference = Reference::parse(i)?;
                 Value::Reference(reference)
@@ -777,6 +781,18 @@ impl Instance {
             result.reset = match i.next() {
                 Token::Bits(bits) => Some(bits),
                 Token::Number(num) => Some(Bits::new(result.dimension_sizes.iter().product(), num)),
+                Token::Identifier(name) => match lookup_parameter(parameters, name)? {
+                    Value::Bits(bits) => Some(*bits),
+                    Value::U64(num) => {
+                        Some(Bits::new(result.dimension_sizes.iter().product(), *num))
+                    }
+                    unexpected => {
+                        return Err(RdlError::UnexpectedPropertyType {
+                            expected_type: PropertyType::Bits,
+                            value: unexpected.clone(),
+                        })
+                    }
+                },
                 unexpected => return Err(RdlError::UnexpectedToken(unexpected)),
             }
         }
@@ -948,6 +964,32 @@ mod tests {
                 ..Default::default()
             },
             root_scope
+        );
+    }
+
+    #[test]
+    fn test_numeric_parameter_override_and_reset() {
+        let fs = MemFileSource::from_entries(&[(
+            "main.rdl".into(),
+            r#"
+            addrmap child #(longint unsigned REV = 2) {
+                reg {
+                    field {} REVISION[7:0] = REV;
+                } INFO;
+            };
+            addrmap top {
+                child #(.REV(3)) child0;
+            };
+        "#
+            .into(),
+        )]);
+
+        let root_scope = Scope::parse_root_internal(&fs, &["main.rdl".into()]).unwrap();
+        let child = &root_scope.types["top"].instances[0];
+        assert_eq!(child.parameters["REV"], Value::U64(3));
+        assert_eq!(
+            root_scope.types["child"].instances[0].scope.instances[0].reset,
+            Some(Bits::new(8, 2))
         );
     }
 

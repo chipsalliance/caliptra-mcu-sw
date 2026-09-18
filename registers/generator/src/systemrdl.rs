@@ -495,10 +495,11 @@ fn translate_block(iref: InstanceRef) -> Result<Option<RegisterBlock>, Error> {
 
     // special cases: this is a single memory or register instance
     if iref.instance.scope.ty == ComponentType::Mem.into() {
-        let start_offset = iref.instance.offset.unwrap_or(0);
-        block.registers.push(Rc::new(
-            translate_mem(iref, start_offset).map_err(wrap_err)?,
-        ));
+        let mut mem = translate_mem(iref, 0).map_err(wrap_err)?;
+        if inst.offset.is_some() {
+            mem.offset = 0; // the offset will be built into the block
+        }
+        block.registers.push(Rc::new(mem));
         return Ok(Some(block));
     } else if iref.instance.scope.ty == ComponentType::Reg.into() {
         let child = iref;

@@ -80,7 +80,9 @@ pub(crate) fn autogen(
         rdl_files.push(temp_rdl.path().to_path_buf());
     }
 
-    // eliminate duplicate type names
+    let usb2_rdl_dir = PROJECT_ROOT.join("hw/caliptra-ss/third_party/usb2/systemrdl");
+
+    // Adapt third-party RDL constructs that the local parser does not support.
     let patches = [
         (
             PROJECT_ROOT.join("hw/caliptra-ss/src/mci/rtl/mci_top.rdl"),
@@ -137,6 +139,240 @@ pub(crate) fn autogen(
             PROJECT_ROOT.join("hw/caliptra-ss/src/fuse_ctrl/rtl/otp_ctrl.rdl"),
             "STATUS",
             "OTP_STATUS",
+        ),
+        // The USB2 RDL is parameterized, while Caliptra uses one fixed elaboration.
+        (
+            usb2_rdl_dir.join("usbhsd.rdl"),
+            r#"field {
+sw = rw; hw = r;
+desc = "Programmable portion of the USB EP Command/Status List address.";
+ispresent = EPUB > 8;
+} EP_LIST_PRG[(EPUB > 8 ? EPUB - 1 : 8):8] = 0;
+field {
+sw = r; hw = r;
+desc = "Fixed page portion of the USB EP Command/Status List address.";
+ispresent = EPUB < 32;
+} EP_LIST_PAGE[31:(EPUB < 32 ? EPUB : 31)] = EPFIFO_PAGE >> EPUB;"#,
+            r#"field {
+sw = rw; hw = r;
+desc = "Programmable portion of the USB EP Command/Status List address.";
+} EP_LIST_PRG[31:8] = 0;"#,
+        ),
+        (
+            usb2_rdl_dir.join("usbhsd.rdl"),
+            r#"field {
+sw = rw; hw = r;
+desc = "Programmable portion of the start address for the endpoint data-buffer area.";
+ispresent = DAUB > DALB;
+} DA_BUF[(DAUB > DALB ? DAUB - 1 : DALB):DALB] = 0;
+field {
+sw = r; hw = r;
+desc = "Fixed page portion of the endpoint data-buffer start address.";
+ispresent = DAUB < 32;
+} DA_BUF_PAGE[31:(DAUB < 32 ? DAUB : 31)] = DATAFIFO_PAGE >> DAUB;"#,
+            r#"field {
+sw = rw; hw = r;
+desc = "Programmable portion of the start address for the endpoint data-buffer area.";
+} DA_BUF[31:17] = 0;"#,
+        ),
+        (usb2_rdl_dir.join("usbhsd.rdl"), "NBPHYSEP+1", "15"),
+        (
+            usb2_rdl_dir.join("usbhsd.rdl"),
+            "sw = DOUBLE_BUFFER_SUPPORTED ? rw : r;",
+            "sw = rw;",
+        ),
+        (
+            usb2_rdl_dir.join("usbhsd.rdl"),
+            "hw = DOUBLE_BUFFER_SUPPORTED ? rw : na;",
+            "hw = rw;",
+        ),
+        (
+            usb2_rdl_dir.join("usbhsd.rdl"),
+            "ispresent = NBPHYSEP > 0;",
+            "",
+        ),
+        (
+            usb2_rdl_dir.join("usbhsd.rdl"),
+            "BUF[(NBPHYSEP > 0 ? NBPHYSEP + 1 : 2):2]",
+            "BUF[15:2]",
+        ),
+        (
+            usb2_rdl_dir.join("usbhsd.rdl"),
+            r#"field {
+sw = r; hw = na;
+desc = "Read-only zero placeholder when no physical endpoints above EP0 are configured.";
+ispresent = NBPHYSEP == 0;
+} NO_PHYSICAL_EP[0:0] = 0;"#,
+            "",
+        ),
+        (
+            usb2_rdl_dir.join("usbhsd.rdl"),
+            "sw = (SINGLE_BUFFER_SUPPORTED && DOUBLE_BUFFER_SUPPORTED) ? rw : r;",
+            "sw = rw;",
+        ),
+        (
+            usb2_rdl_dir.join("usbhsd.rdl"),
+            "hw = (SINGLE_BUFFER_SUPPORTED && DOUBLE_BUFFER_SUPPORTED) ? r : na;",
+            "hw = r;",
+        ),
+        (
+            usb2_rdl_dir.join("usbhsd.rdl"),
+            r#"BUF_SB[(NBPHYSEP > 0 ? NBPHYSEP + 1 : 2):2] = (DOUBLE_BUFFER_SUPPORTED && !SINGLE_BUFFER_SUPPORTED) ?
+((1 << NBPHYSEP) - 1) : 0;"#,
+            "BUF_SB[15:2] = 0;",
+        ),
+        (
+            usb2_rdl_dir.join("usbhsd.rdl"),
+            "ispresent = NBPHYSEP >= 1;",
+            "",
+        ),
+        (
+            usb2_rdl_dir.join("usbhsd.rdl"),
+            "ispresent = NBPHYSEP >= 2;",
+            "",
+        ),
+        (
+            usb2_rdl_dir.join("usbhsd.rdl"),
+            "ispresent = NBPHYSEP >= 3;",
+            "",
+        ),
+        (
+            usb2_rdl_dir.join("usbhsd.rdl"),
+            "ispresent = NBPHYSEP >= 4;",
+            "",
+        ),
+        (
+            usb2_rdl_dir.join("usbhsd.rdl"),
+            "ispresent = NBPHYSEP >= 5;",
+            "",
+        ),
+        (
+            usb2_rdl_dir.join("usbhsd.rdl"),
+            "ispresent = NBPHYSEP >= 6;",
+            "",
+        ),
+        (
+            usb2_rdl_dir.join("usbhsd.rdl"),
+            "ispresent = NBPHYSEP >= 7;",
+            "",
+        ),
+        (
+            usb2_rdl_dir.join("usbhsd.rdl"),
+            "ispresent = NBPHYSEP >= 8;",
+            "",
+        ),
+        (
+            usb2_rdl_dir.join("usbhsd.rdl"),
+            "ispresent = NBPHYSEP >= 9;",
+            "",
+        ),
+        (
+            usb2_rdl_dir.join("usbhsd.rdl"),
+            "ispresent = NBPHYSEP >= 10;",
+            "",
+        ),
+        (
+            usb2_rdl_dir.join("usbhsd.rdl"),
+            "ispresent = NBPHYSEP > 10;",
+            "",
+        ),
+        (
+            usb2_rdl_dir.join("usbhsd.rdl"),
+            "EP_UPPER[(NBPHYSEP > 10 ? NBPHYSEP + 1 : 12):12]",
+            "EP_UPPER[15:12]",
+        ),
+        (
+            usb2_rdl_dir.join("usbhsd.rdl"),
+            "ispresent = TOGGLE_REG_READABLE;",
+            "",
+        ),
+        (
+            usb2_rdl_dir.join("usbhsd.rdl"),
+            r#"field {
+sw = r; hw = na;
+desc = "Read-only zero software view used when endpoint data-toggle readback is disabled. Hardware maintains and consumes the actual toggle state outside this software-visible view.";
+ispresent = !TOGGLE_REG_READABLE;
+} TOGGLE_HIDDEN[15:0] = 0;"#,
+            "",
+        ),
+        (
+            usb2_rdl_dir.join("usbhsd.rdl"),
+            "sw = PLL_ENABLE ? rw : r; hw = r;",
+            "sw = r; hw = r;",
+        ),
+        (
+            usb2_rdl_dir.join("usbhsd.rdl"),
+            "EXT_CLK_ENABLE[0:0] = PLL_ENABLE ? 0 : 1;",
+            "EXT_CLK_ENABLE[0:0] = 1;",
+        ),
+        (
+            usb2_rdl_dir.join("usbhsd.rdl"),
+            "sw = ULPI_SUPPORT ? rw : r;",
+            "sw = rw;",
+        ),
+        (
+            usb2_rdl_dir.join("usbhsd.rdl"),
+            "hw = ULPI_SUPPORT ? r : na;",
+            "hw = r;",
+        ),
+        (
+            usb2_rdl_dir.join("usbhsd.rdl"),
+            "sw = (ULPI_SUPPORT && UTMI_SUPPORT) ? rw : r; hw = r;",
+            "sw = rw; hw = r;",
+        ),
+        (
+            usb2_rdl_dir.join("usbhsd.rdl"),
+            "PHY_MODE[31:31] = (ULPI_SUPPORT && !UTMI_SUPPORT) ? 1 : 0;",
+            "PHY_MODE[31:31] = 0;",
+        ),
+        (
+            usb2_rdl_dir.join("usbhsd.rdl"),
+            r#"alias INTSTAT intstat_t INTSETSTAT @ 0x28;
+INTSETSTAT->desc = "Alias of INTSTAT that allows software to set endpoint, frame, and device-status interrupt conditions. Reads return the shared INTSTAT state; writes of one set the selected status bits.";
+INTSETSTAT.EP0OUT->onwrite = woset;
+INTSETSTAT.EP0IN->onwrite = woset;
+INTSETSTAT.EP1OUT->onwrite = woset;
+INTSETSTAT.EP1IN->onwrite = woset;
+INTSETSTAT.EP2OUT->onwrite = woset;
+INTSETSTAT.EP2IN->onwrite = woset;
+INTSETSTAT.EP3OUT->onwrite = woset;
+INTSETSTAT.EP3IN->onwrite = woset;
+INTSETSTAT.EP4OUT->onwrite = woset;
+INTSETSTAT.EP4IN->onwrite = woset;
+INTSETSTAT.EP5OUT->onwrite = woset;
+INTSETSTAT.EP5IN->onwrite = woset;
+INTSETSTAT.EP_UPPER->onwrite = woset;
+INTSETSTAT.FRAME_INT->onwrite = woset;
+INTSETSTAT.DEV_INT->onwrite = woset;"#,
+            r#"reg {
+field { sw = rw; hw = rw; onwrite = woset; precedence = hw; } EP_SET_INT[15:0] = 0;
+field { sw = rw; hw = rw; onwrite = woset; precedence = hw; } FRAME_SET_INT[30:30] = 0;
+field { sw = rw; hw = rw; onwrite = woset; precedence = hw; } DEV_SET_INT[31:31] = 0;
+} INTSETSTAT @ 0x28;"#,
+        ),
+        (
+            usb2_rdl_dir.join("usb_hub.rdl"),
+            "mementries = FIFO_WORDS - 16;",
+            "mementries = 156;",
+        ),
+        (
+            usb2_rdl_dir.join("usb_device_memory.rdl"),
+            "mementries = MEMORY_ENTRIES;",
+            "mementries = 512;",
+        ),
+        (
+            PROJECT_ROOT.join("hw/caliptra-ss/src/integration/rtl/soc_address_map.rdl"),
+            r#"external usb_device_memory #(
+.MEMORY_ENTRIES(512)
+) usb_dev0_mem @ 0x3000_0000;"#,
+            "usb_device_memory usb_dev0_mem @ 0x3000_0000;",
+        ),
+        (
+            PROJECT_ROOT.join("hw/caliptra-ss/src/integration/rtl/soc_address_map.rdl"),
+            r#"external usb_device_memory #(
+.MEMORY_ENTRIES(512)
+) usb_dev1_mem @ 0x3000_1000;"#,
+            "usb_device_memory usb_dev1_mem @ 0x3000_1000;",
         ),
     ];
 
