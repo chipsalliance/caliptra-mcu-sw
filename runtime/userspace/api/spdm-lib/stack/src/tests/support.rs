@@ -118,6 +118,22 @@ pub struct TestPal {
     pub stream_aborts: Cell<usize>,
     /// Algorithm the most recent cert-chain write was routed to.
     pub write_algo: Cell<Option<SpdmPalAsymAlgo>>,
+    pub sign_ops: RefCell<Vec<RecordedSign>>,
+}
+
+/// Signing input captured by [`TestPal::sign`], owned so tests can assert on it
+/// after the borrow ends.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RecordedSigningInput {
+    EccP384Digest(Vec<u8>),
+    Mldsa87Message { context: Vec<u8>, message: Vec<u8> },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RecordedSign {
+    pub algo: SpdmPalAsymAlgo,
+    pub input: RecordedSigningInput,
+    pub sig_len: usize,
 }
 
 impl Default for TestPal {
@@ -140,6 +156,7 @@ impl Default for TestPal {
             stream_cert: RefCell::new(Vec::new()),
             stream_aborts: Cell::new(0),
             write_algo: Cell::new(None),
+            sign_ops: RefCell::new(Vec::new()),
         }
     }
 }
@@ -370,10 +387,32 @@ impl SpdmPalCertStore for TestPal {
         &self,
         _io: &Self::Io<'_>,
         _slot: u8,
-        _algo: SpdmPalAsymAlgo,
-        _signing_input: SigningInput<'_>,
+        algo: SpdmPalAsymAlgo,
+        signing_input: SigningInput<'_>,
         signature: &mut [u8],
     ) -> McuResult<usize> {
+        let input = match signing_input {
+            SigningInput::EccP384Digest(digest) => {
+                RecordedSigningInput::EccP384Digest(digest.to_vec())
+            }
+            SigningInput::Mldsa87Message {
+                context,
+                prefix,
+                hash,
+            } => {
+                let mut message = prefix.to_vec();
+                message.extend_from_slice(hash);
+                RecordedSigningInput::Mldsa87Message {
+                    context: context.to_vec(),
+                    message,
+                }
+            }
+        };
+        self.sign_ops.borrow_mut().push(RecordedSign {
+            algo,
+            input,
+            sig_len: signature.len(),
+        });
         signature.fill(0x77);
         Ok(signature.len())
     }
