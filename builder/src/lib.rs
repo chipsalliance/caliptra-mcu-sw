@@ -3,6 +3,8 @@
 mod all;
 mod attestation_manifest;
 mod caliptra;
+mod component_config;
+mod component_svn_validation;
 pub mod features;
 pub mod firmware;
 pub mod flash_image;
@@ -16,6 +18,8 @@ pub use all::{
     all_build, emulator_build, AllBuildArgs, EmulatorBinaries, EmulatorBuildArgs, FirmwareBinaries,
 };
 pub use caliptra::{AuthManifestOwnerConfig, AuthManifestPubKeysPaths, CaliptraBuilder, ImageCfg};
+pub use component_config::{ComponentConfig, ComponentSvnManifestConfig, ResolvedComponentConfig};
+pub use component_svn_validation::{ComponentSvnEntry, ComponentSvnValidationConfig};
 pub use network_rom::network_rom_build;
 pub use offline_signing::*;
 pub use rom::{append_rom_digest, rom_build, rom_size_for_platform, test_rom_build};
@@ -49,6 +53,8 @@ pub struct CaliptraBuildArgs<'a> {
     pub soc_images: Option<Vec<ImageCfg>>,
     pub mcu_image_cfg: Option<ImageCfg>,
     pub soc_manifest_svn: Option<u32>,
+    pub component_svn_validation: Option<ComponentSvnValidationConfig>,
+    pub component_svn_manifest: Option<Vec<u8>>,
     pub vendor: Option<String>,
     pub model: Option<String>,
     pub offset: usize,

@@ -40,6 +40,7 @@ caliptra-mcu-builder.workspace = true
 caliptra-mcu-config-emulator.workspace = true
 caliptra-mcu-config-fpga.workspace = true
 caliptra-mcu-firmware-bundler.workspace = true
+caliptra-mcu-image-header.workspace = true
 caliptra-mcu-fusegen.workspace = true
 caliptra-mcu-rom-common = { workspace = true, optional = true }
 caliptra-mcu-hw-model = { workspace = true, optional = true }
