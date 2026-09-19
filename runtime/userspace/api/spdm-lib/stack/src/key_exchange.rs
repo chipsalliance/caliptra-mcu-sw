@@ -15,7 +15,7 @@
 
 use caliptra_mcu_spdm_codec::{
     encode_version_selection, parse_supported_versions, select_version, KeyExchangeReqBody,
-    KeyExchangeRsp, ResponseBody, SpdmMsgHdrPdu, SpdmVersion, ECC_P384_SIGNATURE_SIZE,
+    KeyExchangeRsp, ResponseBody, SmVersion, SpdmMsgHdrPdu, SpdmVersion, ECC_P384_SIGNATURE_SIZE,
     ECDH_P384_EXCHANGE_DATA_SIZE, KEY_EXCHANGE_RANDOM_DATA_LEN, OPAQUE_VERSION_SELECTION_SIZE,
     SHA384_HASH_SIZE, SPDM_PREFIX_LEN, SPDM_SIGNING_CONTEXT_LEN,
 };
@@ -101,9 +101,15 @@ pub(crate) async fn handle_key_exchange<'a, Pal: SpdmPal, const N: usize>(
     }
     let opaque_data = &after[2..2 + opaque_len];
 
-    // Select secured-message version from requester's list.
-    let supported = parse_supported_versions(opaque_data).map_err(|_| SPDM_INVALID_REQUEST)?;
-    let selected_version = select_version(&supported).map_err(|_| SPDM_INVALID_REQUEST)?;
+    // Select secured-message version from requester's list. OpaqueData is
+    // optional: OpaqueDataLength = 0 offers no version list, so there is
+    // nothing to select and the response omits OpaqueData as well.
+    let selected_version = if opaque_data.is_empty() {
+        None
+    } else {
+        let supported = parse_supported_versions(opaque_data).map_err(|_| SPDM_INVALID_REQUEST)?;
+        Some(select_version(&supported).map_err(|_| SPDM_INVALID_REQUEST)?)
+    };
 
     // ── ECDH key generation ─────────────────────────────────────────
     let mut ecdh_context = pal.alloc_bytes(io, ECDH_P384_ENCRYPTED_CONTEXT_SIZE)?;
@@ -145,7 +151,7 @@ pub(crate) async fn handle_key_exchange<'a, Pal: SpdmPal, const N: usize>(
         rsp_session_id,
         dhe_secret,
         &our_exchange_data,
-        &selected_version,
+        selected_version,
     )
     .await;
 
@@ -172,7 +178,7 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
     rsp_session_id: u16,
     dhe_secret: <Pal as SpdmPalSessionCrypto>::Key,
     our_exchange_data: &[u8],
-    selected_version: &[u8; 2],
+    selected_version: Option<SmVersion>,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
     let session = sessions.find_mut(session_id).ok_or(SPDM_UNSPECIFIED)?;
     let mut workspace = pal.alloc_bytes(io, KEY_EXCHANGE_WORKSPACE_SIZE)?;
@@ -268,7 +274,14 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
     };
 
     // ── Encode opaque version selection ─────────────────────────────
-    encode_version_selection(*selected_version, opaque_buf).map_err(|_| SPDM_UNSPECIFIED)?;
+    // No OpaqueData in, none out.
+    let opaque_out: &[u8] = match selected_version {
+        Some(version) => {
+            encode_version_selection(version, opaque_buf).map_err(|_| SPDM_UNSPECIFIED)?;
+            opaque_buf
+        }
+        None => &[],
+    };
 
     // ── Build partial response (no signature, no verify_data) ───────
     let partial_body = KeyExchangeRsp {
@@ -276,7 +289,7 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
         random_data: nonce,
         exchange_data: our_exchange_data.try_into().map_err(|_| SPDM_UNSPECIFIED)?,
         meas_summary_hash: meas_hash_ref,
-        opaque_data: opaque_buf,
+        opaque_data: opaque_out,
         signature: &[],
         responder_verify_data: None,
     };
@@ -360,7 +373,7 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
         random_data: nonce,
         exchange_data: our_exchange_data.try_into().map_err(|_| SPDM_UNSPECIFIED)?,
         meas_summary_hash: meas_hash_ref,
-        opaque_data: opaque_buf,
+        opaque_data: opaque_out,
         signature,
         responder_verify_data: Some(verify_data),
     };
@@ -405,3 +418,7 @@ async fn compute_tbs_hash<Pal: SpdmPal>(
         .await?;
     Ok(())
 }
+
+#[cfg(test)]
+#[path = "tests/key_exchange.rs"]
+mod tests;
