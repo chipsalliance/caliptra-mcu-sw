@@ -43,6 +43,7 @@ bitflags::bitflags! {
         const GET_DOT_BACKUP_BLOB = 1 << 11;
         const OCP_LOCK_ROTATE_HEK = 1 << 12;
         const OCP_LOCK_SET_PERMA_HEK = 1 << 13;
+        const FUSE_INCREASE_MIN_SVN = 1 << 14;
     }
 }
 
@@ -114,6 +115,10 @@ mod tests {
         assert_eq!(
             AuthorizedSubcommandCapabilities::OCP_LOCK_SET_PERMA_HEK.bits(),
             1 << 13
+        );
+        assert_eq!(
+            AuthorizedSubcommandCapabilities::FUSE_INCREASE_MIN_SVN.bits(),
+            1 << 14
         );
     }
 }

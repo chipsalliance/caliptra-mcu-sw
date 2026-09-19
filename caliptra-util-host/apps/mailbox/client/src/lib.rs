@@ -54,11 +54,12 @@ use caliptra_mcu_core_util_host_command_types::device_ownership_transfer::{
 };
 use caliptra_mcu_core_util_host_command_types::fuse::{
     FeProgRequest, FeProgResponse, FuseIncreaseCaliptraMinSvnRequest,
-    FuseIncreaseCaliptraMinSvnResponse, FuseLockPartitionRequest, FuseLockPartitionResponse,
-    FuseRevokeVendorPkHashRequest, FuseRevokeVendorPkHashResponse, FuseRevokeVendorPubKeyRequest,
-    FuseRevokeVendorPubKeyResponse, GetAuthCmdChallengeResponse, OcpLockRotateHekRequest,
-    OcpLockRotateHekResponse, OcpLockSetPermaHekRequest, OcpLockSetPermaHekResponse,
-    ProvisionVendorPkHashRequest, ProvisionVendorPkHashResponse,
+    FuseIncreaseCaliptraMinSvnResponse, FuseIncreaseMinSvnRequest, FuseIncreaseMinSvnResponse,
+    FuseLockPartitionRequest, FuseLockPartitionResponse, FuseRevokeVendorPkHashRequest,
+    FuseRevokeVendorPkHashResponse, FuseRevokeVendorPubKeyRequest, FuseRevokeVendorPubKeyResponse,
+    GetAuthCmdChallengeResponse, OcpLockRotateHekRequest, OcpLockRotateHekResponse,
+    OcpLockSetPermaHekRequest, OcpLockSetPermaHekResponse, ProvisionVendorPkHashRequest,
+    ProvisionVendorPkHashResponse,
 };
 use caliptra_mcu_core_util_host_command_types::{
     GetDeviceCapabilitiesResponse, GetFirmwareVersionResponse,
@@ -97,10 +98,10 @@ use caliptra_util_host_commands::api::device_ownership_transfer::{
 };
 use caliptra_util_host_commands::api::fuse::{
     caliptra_cmd_fe_prog, caliptra_cmd_fuse_increase_caliptra_min_svn,
-    caliptra_cmd_fuse_lock_partition, caliptra_cmd_fuse_revoke_vendor_pk_hash,
-    caliptra_cmd_fuse_revoke_vendor_pub_key, caliptra_cmd_get_auth_challenge,
-    caliptra_cmd_ocp_lock_rotate_hek, caliptra_cmd_ocp_lock_set_perma_hek,
-    caliptra_cmd_provision_vendor_pk_hash,
+    caliptra_cmd_fuse_increase_min_svn, caliptra_cmd_fuse_lock_partition,
+    caliptra_cmd_fuse_revoke_vendor_pk_hash, caliptra_cmd_fuse_revoke_vendor_pub_key,
+    caliptra_cmd_get_auth_challenge, caliptra_cmd_ocp_lock_rotate_hek,
+    caliptra_cmd_ocp_lock_set_perma_hek, caliptra_cmd_provision_vendor_pk_hash,
 };
 use caliptra_util_host_session::CaliptraSession;
 
@@ -1158,6 +1159,23 @@ impl<'a> MailboxClient<'a> {
             .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
         caliptra_cmd_fuse_increase_caliptra_min_svn(&mut session, request)
             .map_err(|e| anyhow::anyhow!("FuseIncreaseCaliptraMinSvn command failed: {:?}", e))
+    }
+
+    /// Increase the selected minimum SVN (authorized command).
+    pub fn fuse_increase_min_svn(
+        &mut self,
+        request: &FuseIncreaseMinSvnRequest,
+    ) -> Result<FuseIncreaseMinSvnResponse> {
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+        caliptra_cmd_fuse_increase_min_svn(&mut session, request)
+            .map_err(|e| anyhow::anyhow!("FuseIncreaseMinSvn command failed: {:?}", e))
     }
 
     /// Revoke a vendor public key (authorized command).

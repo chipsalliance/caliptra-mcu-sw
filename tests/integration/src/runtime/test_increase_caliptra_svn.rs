@@ -8,10 +8,23 @@ use anyhow::Result;
 use caliptra_api::{calc_checksum, error::CaliptraError, mailbox::FwInfoResp, SocManager};
 use caliptra_mcu_builder::{CaliptraBuildArgs, CaliptraBuilder, FirmwareBinaries};
 use caliptra_mcu_hw_model::{LifecycleControllerState, McuHwModel};
-use caliptra_mcu_mbox_common::messages::FuseIncreaseCaliptraMinSvnReq;
+use caliptra_mcu_mbox_common::messages::{
+    FuseIncreaseCaliptraMinSvnReq, FuseIncreaseMinSvnReq, FuseWriteReq, SvnTarget,
+};
+use caliptra_mcu_registers_generated::fuses::{
+    FuseEntryInfo, OTP_CPTRA_CORE_RUNTIME_SVN, OTP_CPTRA_CORE_SOC_MANIFEST_MAX_SVN,
+    OTP_CPTRA_CORE_SOC_MANIFEST_SVN,
+};
 use caliptra_mcu_romtime::McuBootMilestones;
 use std::sync::atomic::Ordering;
 use zerocopy::{FromBytes, IntoBytes};
+
+fn linear_or_svn_from_otp(otp: &[u8], entry: &FuseEntryInfo) -> u32 {
+    let bytes: [u8; 16] = otp[entry.byte_offset..entry.byte_offset + 16]
+        .try_into()
+        .unwrap();
+    128 - u128::from_le_bytes(bytes).leading_zeros()
+}
 
 #[test]
 fn test_increase_caliptra_svn() -> Result<()> {
@@ -94,6 +107,14 @@ fn test_increase_caliptra_svn() -> Result<()> {
 
     // Send a command to increase the Caliptra minimum SVN fuses to 7.
     let cmd = FuseIncreaseCaliptraMinSvnReq {
+        svn: 7,
+        ..Default::default()
+    };
+    let _resp = execute_authorized_req(&mut hw, cmd)?;
+
+    // The target-aware command remains compatible with the legacy runtime SVN path.
+    let cmd = FuseIncreaseMinSvnReq {
+        target: SvnTarget::CaliptraRuntime as u32,
         svn: 7,
         ..Default::default()
     };
@@ -311,6 +332,85 @@ fn test_increase_caliptra_svn_max() -> Result<()> {
     assert_eq!(caliptra_fw_info.min_fw_svn, 128);
 
     // force the compiler to keep the lock
+    lock.fetch_add(1, Ordering::Relaxed);
+    Ok(())
+}
+
+#[test]
+fn test_increase_soc_manifest_svn() -> Result<()> {
+    let lock = TEST_LOCK.lock().unwrap();
+    lock.fetch_add(1, Ordering::Relaxed);
+
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-mcu-mbox-cmds"),
+        lifecycle_controller_state: Some(LifecycleControllerState::Prod),
+        ..Default::default()
+    });
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    let max_svn = FuseWriteReq {
+        word_addr: (OTP_CPTRA_CORE_SOC_MANIFEST_MAX_SVN.byte_offset / 4) as u32,
+        data: 6,
+        mask: u32::MAX,
+        ..Default::default()
+    };
+    let _resp = execute_authorized_req(&mut hw, max_svn)?;
+
+    let cmd = FuseIncreaseMinSvnReq {
+        target: SvnTarget::SocManifest as u32,
+        svn: 5,
+        ..Default::default()
+    };
+    let _resp = execute_authorized_req(&mut hw, cmd)?;
+
+    let otp = hw.read_otp_memory();
+    assert_eq!(
+        linear_or_svn_from_otp(&otp, OTP_CPTRA_CORE_SOC_MANIFEST_SVN),
+        5
+    );
+    assert_eq!(linear_or_svn_from_otp(&otp, OTP_CPTRA_CORE_RUNTIME_SVN), 0);
+
+    for cmd in [
+        FuseIncreaseMinSvnReq {
+            target: SvnTarget::SocManifest as u32,
+            svn: 4,
+            ..Default::default()
+        },
+        FuseIncreaseMinSvnReq {
+            target: SvnTarget::OwnerSocManifest as u32,
+            svn: 5,
+            ..Default::default()
+        },
+        FuseIncreaseMinSvnReq {
+            target: u32::MAX,
+            svn: 5,
+            ..Default::default()
+        },
+        FuseIncreaseMinSvnReq {
+            flags: 1,
+            target: SvnTarget::SocManifest as u32,
+            svn: 6,
+            ..Default::default()
+        },
+        FuseIncreaseMinSvnReq {
+            target: SvnTarget::SocManifest as u32,
+            svn: 7,
+            ..Default::default()
+        },
+    ] {
+        assert!(execute_authorized_req(&mut hw, cmd).is_err());
+    }
+
+    let otp = hw.read_otp_memory();
+    assert_eq!(
+        linear_or_svn_from_otp(&otp, OTP_CPTRA_CORE_SOC_MANIFEST_SVN),
+        5
+    );
+    assert_eq!(linear_or_svn_from_otp(&otp, OTP_CPTRA_CORE_RUNTIME_SVN), 0);
+
     lock.fetch_add(1, Ordering::Relaxed);
     Ok(())
 }

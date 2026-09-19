@@ -15,12 +15,12 @@ use super::command_traits::{
 use alloc::vec::Vec;
 use caliptra_mcu_core_util_host_command_types::fuse::{
     FeProgRequest, FeProgResponse, FuseIncreaseCaliptraMinSvnRequest,
-    FuseIncreaseCaliptraMinSvnResponse, FuseLockPartitionRequest, FuseLockPartitionResponse,
-    FuseRevokeVendorPkHashRequest, FuseRevokeVendorPkHashResponse, FuseRevokeVendorPubKeyRequest,
-    FuseRevokeVendorPubKeyResponse, GetAuthCmdChallengeRequest, GetAuthCmdChallengeResponse,
-    OcpLockRotateHekRequest, OcpLockRotateHekResponse, OcpLockSetPermaHekRequest,
-    OcpLockSetPermaHekResponse, ProvisionVendorPkHashRequest, ProvisionVendorPkHashResponse,
-    AUTH_CMD_CHALLENGE_SIZE,
+    FuseIncreaseCaliptraMinSvnResponse, FuseIncreaseMinSvnRequest, FuseIncreaseMinSvnResponse,
+    FuseLockPartitionRequest, FuseLockPartitionResponse, FuseRevokeVendorPkHashRequest,
+    FuseRevokeVendorPkHashResponse, FuseRevokeVendorPubKeyRequest, FuseRevokeVendorPubKeyResponse,
+    GetAuthCmdChallengeRequest, GetAuthCmdChallengeResponse, OcpLockRotateHekRequest,
+    OcpLockRotateHekResponse, OcpLockSetPermaHekRequest, OcpLockSetPermaHekResponse,
+    ProvisionVendorPkHashRequest, ProvisionVendorPkHashResponse, AUTH_CMD_CHALLENGE_SIZE,
 };
 use caliptra_mcu_core_util_host_command_types::CommonResponse;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
@@ -218,6 +218,14 @@ define_authorized_fuse_mailbox_command!(
     FuseIncreaseCaliptraMinSvnResponse,
     ExtCmdFuseIncreaseCaliptraMinSvnRequest,
     ExtCmdFuseIncreaseCaliptraMinSvnResponse
+);
+define_authorized_fuse_mailbox_command!(
+    FuseIncreaseMinSvnCmd,
+    0x4D49_4D53,
+    FuseIncreaseMinSvnRequest,
+    FuseIncreaseMinSvnResponse,
+    ExtCmdFuseIncreaseMinSvnRequest,
+    ExtCmdFuseIncreaseMinSvnResponse
 );
 define_authorized_fuse_mailbox_command!(
     FuseRevokeVendorPubKeyCmd,

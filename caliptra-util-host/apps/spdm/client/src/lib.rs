@@ -49,11 +49,12 @@ use caliptra_mcu_core_util_host_command_types::device_ownership_transfer::{
 };
 use caliptra_mcu_core_util_host_command_types::fuse::{
     FeProgResponse, FuseIncreaseCaliptraMinSvnRequest, FuseIncreaseCaliptraMinSvnResponse,
-    FuseLockPartitionRequest, FuseLockPartitionResponse, FuseRevokeVendorPkHashRequest,
-    FuseRevokeVendorPkHashResponse, FuseRevokeVendorPubKeyRequest, FuseRevokeVendorPubKeyResponse,
-    GetAuthCmdChallengeResponse, OcpLockRotateHekRequest, OcpLockRotateHekResponse,
-    OcpLockSetPermaHekRequest, OcpLockSetPermaHekResponse, ProvisionOwnerPkHashRequest,
-    ProvisionOwnerPkHashResponse, ProvisionVendorPkHashRequest, ProvisionVendorPkHashResponse,
+    FuseIncreaseMinSvnRequest, FuseIncreaseMinSvnResponse, FuseLockPartitionRequest,
+    FuseLockPartitionResponse, FuseRevokeVendorPkHashRequest, FuseRevokeVendorPkHashResponse,
+    FuseRevokeVendorPubKeyRequest, FuseRevokeVendorPubKeyResponse, GetAuthCmdChallengeResponse,
+    OcpLockRotateHekRequest, OcpLockRotateHekResponse, OcpLockSetPermaHekRequest,
+    OcpLockSetPermaHekResponse, ProvisionOwnerPkHashRequest, ProvisionOwnerPkHashResponse,
+    ProvisionVendorPkHashRequest, ProvisionVendorPkHashResponse,
 };
 use caliptra_mcu_core_util_host_transport::transports::spdm_vdm::transport::{
     SpdmVdmDriver, SpdmVdmError, SpdmVdmTransport,
@@ -75,10 +76,11 @@ use caliptra_util_host_commands::api::device_ownership_transfer::{
 };
 use caliptra_util_host_commands::api::fuse::{
     caliptra_cmd_fe_prog, caliptra_cmd_fuse_increase_caliptra_min_svn,
-    caliptra_cmd_fuse_lock_partition, caliptra_cmd_fuse_revoke_vendor_pk_hash,
-    caliptra_cmd_fuse_revoke_vendor_pub_key, caliptra_cmd_get_auth_challenge,
-    caliptra_cmd_ocp_lock_rotate_hek, caliptra_cmd_ocp_lock_set_perma_hek,
-    caliptra_cmd_provision_owner_pk_hash, caliptra_cmd_provision_vendor_pk_hash,
+    caliptra_cmd_fuse_increase_min_svn, caliptra_cmd_fuse_lock_partition,
+    caliptra_cmd_fuse_revoke_vendor_pk_hash, caliptra_cmd_fuse_revoke_vendor_pub_key,
+    caliptra_cmd_get_auth_challenge, caliptra_cmd_ocp_lock_rotate_hek,
+    caliptra_cmd_ocp_lock_set_perma_hek, caliptra_cmd_provision_owner_pk_hash,
+    caliptra_cmd_provision_vendor_pk_hash,
 };
 use caliptra_util_host_commands::api::{CaliptraApiError, CaliptraResult};
 use caliptra_util_host_session::CaliptraSession;
@@ -319,6 +321,29 @@ impl<'a> SpdmVdmClient<'a> {
             .create_session()
             .map_err(|_| CaliptraApiError::SessionError("Failed to create session"))?;
         caliptra_cmd_fuse_increase_caliptra_min_svn(&mut session, &request)
+    }
+
+    pub fn fuse_increase_min_svn(
+        &mut self,
+        flags: u32,
+        target: u32,
+        svn: u32,
+        auth: AuthorizedCommandData<'_>,
+    ) -> CaliptraResult<FuseIncreaseMinSvnResponse> {
+        let request = FuseIncreaseMinSvnRequest {
+            flags,
+            target,
+            svn,
+            sig: auth.sig.clone(),
+            nonce: *auth.nonce,
+            ecc_pub_x: *auth.ecc_pub_x,
+            ecc_pub_y: *auth.ecc_pub_y,
+            mldsa_pub: *auth.mldsa_pub,
+        };
+        let mut session = self
+            .create_session()
+            .map_err(|_| CaliptraApiError::SessionError("Failed to create session"))?;
+        caliptra_cmd_fuse_increase_min_svn(&mut session, &request)
     }
 
     pub fn fuse_revoke_vendor_pub_key(

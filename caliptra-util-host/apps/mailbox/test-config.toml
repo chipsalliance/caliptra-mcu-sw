@@ -57,6 +57,12 @@ enabled = false
 flags = 0
 svn = 7
 
+[increase_min_svn]
+enabled = false
+flags = 0
+target = 1
+svn = 5
+
 [revoke_vendor_pub_key]
 enabled = false
 reserved = 0

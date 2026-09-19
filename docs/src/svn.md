@@ -428,12 +428,10 @@ Caliptra-enforced SoC manifest SVN applies.
 
 ## SVN Fuse Burning
 
-`min_svn` fuses are **only burned by MCU ROM**. Runtime never burns SVN fuses,
-ensuring fuse programming runs in the most trusted execution context before
-mutable firmware has control. This applies to both MCU-owned fuses
-(`MCU_COMPONENT_SVN_MANIFEST_MIN_SVN`, `SOC_IMAGE_MIN_SVN[*]`) and
-Caliptra-owned fuses like `CPTRA_CORE_SOC_MANIFEST_SVN` —
-all OTP writes in the subsystem go through MCU.
+The authenticated firmware-header workflow burns `min_svn` fuses in MCU ROM,
+before mutable firmware has control. Authorized runtime commands may also burn
+the Caliptra Runtime and SoC Manifest floors. MCU-owned component floors
+(`MCU_COMPONENT_SVN_MANIFEST_MIN_SVN`, `SOC_IMAGE_MIN_SVN[*]`) remain ROM-only.
 
 Burns are triggered exclusively by authenticated firmware images. The
 MCU runtime SVN header carries every requested floor: `min_svn` for the
@@ -448,7 +446,12 @@ and requires `caliptra_runtime_min_svn ≤ FW_INFO.fw_svn` before burning
 `FW_INFO`, so `soc_manifest_min_svn` is burned on trust from the
 authenticated header. A deployer can also advance the Caliptra runtime
 floor independently of any header via the runtime
-`FuseIncreaseCaliptraMinSvn` mailbox command.
+`FuseIncreaseCaliptraMinSvn` legacy command or the target-aware
+`FuseIncreaseMinSvn` command. The latter can also advance the SoC Manifest
+floor. Because `FW_INFO` does not expose the running SoC Manifest SVN, that
+target checks `CPTRA_CORE_SOC_MANIFEST_MAX_SVN` but has no running-image
+upper-bound check; the authenticated-header flow remains preferred when such
+assurance is required.
 
 **Validate before burn.** Because OTP burns are irreversible, MCU ROM
 runs *all* fatal-able checks across every floor (manifest-self,
@@ -466,6 +469,7 @@ re-attempted (and complete) on the next boot.
 | Caliptra Core RT | MCU ROM | header `caliptra_runtime_min_svn` | cold boot and hitless update |
 | Caliptra Core RT | MCU Runtime → OTP syscall | running `FW_INFO.fw_svn` | `FuseIncreaseCaliptraMinSvn` mailbox command (deployer-driven) |
 | SoC manifest / MCU Runtime | MCU ROM | header `soc_manifest_min_svn` | cold boot and hitless update |
+| SoC manifest / MCU Runtime | MCU Runtime → OTP syscall | authorized command request | `FuseIncreaseMinSvn` command, target `SocManifest` |
 | MCU Component SVN Manifest | MCU ROM | header `min_svn` | cold boot and hitless update |
 | SoC images (optional) | MCU ROM | MCU Component SVN Manifest entry | cold boot and hitless update |
 

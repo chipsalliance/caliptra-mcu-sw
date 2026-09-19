@@ -39,6 +39,9 @@ pub fn get_command_handler(command_id: u32) -> Option<VdmCommandHandlerFn> {
         x if x == CaliptraCommandId::FuseIncreaseCaliptraMinSvn as u32 => {
             Some(commands::handle_fuse_increase_caliptra_min_svn)
         }
+        x if x == CaliptraCommandId::FuseIncreaseMinSvn as u32 => {
+            Some(commands::handle_fuse_increase_min_svn)
+        }
         x if x == CaliptraCommandId::FuseRevokeVendorPubKey as u32 => {
             Some(commands::handle_fuse_revoke_vendor_pub_key)
         }
@@ -96,6 +99,7 @@ mod tests {
             CaliptraCommandId::FeProg,
             CaliptraCommandId::ProvisionVendorPkHash,
             CaliptraCommandId::FuseIncreaseCaliptraMinSvn,
+            CaliptraCommandId::FuseIncreaseMinSvn,
             CaliptraCommandId::FuseRevokeVendorPubKey,
             CaliptraCommandId::FuseRevokeVendorPkHash,
             CaliptraCommandId::FuseLockPartition,
