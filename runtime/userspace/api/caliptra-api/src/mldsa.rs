@@ -6,9 +6,7 @@ use mcu_error::codes::INVARIANT;
 use mcu_error::McuResult;
 
 use crate::dpe::{CERTIFY_KEY_MLDSA87_PUBKEY_SIZE, DPE_MLDSA87_MU_SIZE};
-use crate::{
-    shake256_finish, shake256_hash, shake256_init, shake256_update, ApiAlloc, SHAKE256_CONTEXT_SIZE,
-};
+use crate::{shake256_hash, ApiAlloc};
 
 /// Width of the ML-DSA public-key hash `tr`.
 pub const MLDSA87_TR_SIZE: usize = 64;
@@ -44,14 +42,30 @@ pub async fn mldsa87_compute_mu<A: ApiAlloc>(
     mu: &mut [u8; DPE_MLDSA87_MU_SIZE],
 ) -> McuResult<()> {
     let domain = mldsa87_domain(context.len())?;
-    let state_buffer = alloc.alloc(SHAKE256_CONTEXT_SIZE)?;
-    let mut state = shake256_init(alloc, state_buffer, tr).await?;
-    shake256_update(alloc, &mut state, &domain).await?;
-    shake256_update(alloc, &mut state, context).await?;
+    let mut total_len = MLDSA87_TR_SIZE
+        .checked_add(domain.len())
+        .ok_or(INVARIANT)?
+        .checked_add(context.len())
+        .ok_or(INVARIANT)?;
     for part in message_parts {
-        shake256_update(alloc, &mut state, part).await?;
+        total_len = total_len.checked_add(part.len()).ok_or(INVARIANT)?;
     }
-    shake256_finish(alloc, &mut state, mu).await
+
+    let mut buf = alloc.alloc(total_len)?;
+    let slice = buf.as_mut();
+    let mut pos = 0;
+    slice[pos..pos + MLDSA87_TR_SIZE].copy_from_slice(tr);
+    pos += MLDSA87_TR_SIZE;
+    slice[pos..pos + domain.len()].copy_from_slice(&domain);
+    pos += domain.len();
+    slice[pos..pos + context.len()].copy_from_slice(context);
+    pos += context.len();
+    for part in message_parts {
+        slice[pos..pos + part.len()].copy_from_slice(part);
+        pos += part.len();
+    }
+
+    shake256_hash(alloc, slice, mu).await
 }
 
 fn mldsa87_domain(context_len: usize) -> McuResult<[u8; 2]> {

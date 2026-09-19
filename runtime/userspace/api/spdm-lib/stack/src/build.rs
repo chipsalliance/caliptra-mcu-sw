@@ -12,10 +12,17 @@
 //! never touch the PAL allocator directly, and never forget to
 //! reserve the transport-framing header.
 
-use caliptra_mcu_spdm_codec::{ReqRespCode, ResponseBody, SpdmMsgHdrPdu, SpdmVersion, WireWriter};
-use caliptra_mcu_spdm_traits::{PalBytes, SpdmPal};
+use caliptra_mcu_spdm_codec::{
+    ReqRespCode, ResponseBody, SpdmMsgHdrPdu, SpdmVersion, WireWriter, SHA384_HASH_SIZE,
+};
+use caliptra_mcu_spdm_traits::{
+    PalBytes, SigningInput, SpdmPal, SpdmPalAlloc, SpdmPalAsymAlgo, SpdmPalHashAlgo,
+    SpdmPalIoTransport,
+};
 
-use crate::error::{SpdmError, SpdmResult};
+use crate::chunk;
+use crate::error::{SpdmError, SpdmResult, SPDM_UNSPECIFIED};
+use crate::stack::ConnectionState;
 
 /// Copy a fixed-size array `src` into `buf` at `pos`, returning the advanced
 /// cursor.
@@ -47,6 +54,40 @@ pub(crate) fn alloc_padded<'a, Pal: SpdmPal>(
         *b = 0;
     }
     Ok(buf)
+}
+
+/// Round `len` up to the transport's
+/// [`send_len_alignment`](caliptra_mcu_spdm_traits::SpdmPalIoTransport::send_len_alignment).
+pub(crate) fn align_send_len<Pal: SpdmPal>(pal: &Pal, len: usize) -> SpdmResult<usize> {
+    let align = pal.send_len_alignment();
+    if align == 0 {
+        return Err(SPDM_UNSPECIFIED);
+    }
+    len.checked_add(align - 1)
+        .map(|n| (n / align) * align)
+        .ok_or(SPDM_UNSPECIFIED)
+}
+
+/// Zero `buf[start..end]`.
+pub(crate) fn zero_slice(buf: &mut [u8], start: usize, end: usize) -> SpdmResult<()> {
+    let dst = buf.get_mut(start..end).ok_or(SPDM_UNSPECIFIED)?;
+    dst.fill(0);
+    Ok(())
+}
+
+/// Move `buf[src..src + len]` down to offset 0, dropping transport headroom.
+pub(crate) fn shift_left(buf: &mut [u8], src: usize, len: usize) -> SpdmResult<()> {
+    let end = src.checked_add(len).ok_or(SPDM_UNSPECIFIED)?;
+    if end > buf.len() || len > buf.len() {
+        return Err(SPDM_UNSPECIFIED);
+    }
+
+    // SAFETY: Bounds are checked above and `ptr::copy` handles overlapping
+    // ranges, which is required when removing transport headroom in-place.
+    unsafe {
+        core::ptr::copy(buf.as_ptr().add(src), buf.as_mut_ptr(), len);
+    }
+    Ok(())
 }
 
 /// Allocates and encodes an SPDM response.
@@ -137,4 +178,142 @@ pub(crate) fn build_error_response<'a, Pal: SpdmPal>(
     let mut buf = alloc_padded(pal, io, raw_len)?;
     encode_error_response(&mut buf[head..], version, error)?;
     Ok(buf)
+}
+
+pub(crate) const SPDM_PREFIX_LEN: usize = 64;
+pub(crate) const SPDM_CONTEXT_LEN: usize = 36;
+pub(crate) const SPDM_SIGNING_CONTEXT_LEN: usize = SPDM_PREFIX_LEN + SPDM_CONTEXT_LEN;
+
+/// Construct the 100-byte SPDM signing context into `out`.
+///
+/// Layout: 4 × "dmtf-spdm-v<x>.<y>.*" (prefix, 64 B) || zero-pad || op (36 B).
+pub(crate) fn build_spdm_signing_context(
+    version: SpdmVersion,
+    op: &[u8],
+    out: &mut [u8; SPDM_SIGNING_CONTEXT_LEN],
+) -> SpdmResult<()> {
+    if op.len() > SPDM_CONTEXT_LEN {
+        return Err(SPDM_UNSPECIFIED);
+    }
+    out.fill(0);
+    let ver_str: &[u8; 5] = match version {
+        SpdmVersion::V10 => b"1.0.*",
+        SpdmVersion::V11 => b"1.1.*",
+        SpdmVersion::V12 => b"1.2.*",
+        SpdmVersion::V13 => b"1.3.*",
+        SpdmVersion::V14 => b"1.4.*",
+    };
+    let base = b"dmtf-spdm-v";
+    let mut pos = 0;
+    for _ in 0..4 {
+        out[pos..pos + base.len()].copy_from_slice(base);
+        pos += base.len();
+        out[pos..pos + ver_str.len()].copy_from_slice(ver_str);
+        pos += ver_str.len();
+    }
+    let pad = SPDM_CONTEXT_LEN - op.len();
+    out[SPDM_PREFIX_LEN + pad..].copy_from_slice(op);
+    Ok(())
+}
+
+#[cfg(test)]
+pub(crate) fn spdm_signing_context(
+    version: SpdmVersion,
+    op: &[u8],
+) -> SpdmResult<[u8; SPDM_SIGNING_CONTEXT_LEN]> {
+    let mut ctx = [0u8; SPDM_SIGNING_CONTEXT_LEN];
+    build_spdm_signing_context(version, op, &mut ctx)?;
+    Ok(ctx)
+}
+
+async fn compute_tbs_hash<Pal: SpdmPal>(
+    pal: &Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    signing_ctx: &[u8; SPDM_SIGNING_CONTEXT_LEN],
+    transcript_hash: &mut [u8; SHA384_HASH_SIZE],
+) -> mcu_error::McuResult<()> {
+    let mut state = pal
+        .hash_init(io, SpdmPalHashAlgo::Sha384, signing_ctx)
+        .await?;
+    pal.hash_update(io, &mut state, transcript_hash).await?;
+    pal.hash_finish(io, &mut state, transcript_hash).await
+}
+
+/// Sign a transcript hash with either ECDSA P-384 or ML-DSA-87.
+///
+/// Computes TBS hash for ECDSA or delegates pure message + context to ML-DSA.
+#[inline(never)]
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn sign_transcript<Pal: SpdmPal>(
+    pal: &Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    slot_id: u8,
+    asym_algo: SpdmPalAsymAlgo,
+    version: SpdmVersion,
+    context: &'static [u8],
+    transcript_hash: &mut [u8; SHA384_HASH_SIZE],
+    sig_slot: &mut [u8],
+    expected_sig_len: usize,
+) -> SpdmResult<()> {
+    let mut signing_ctx = [0u8; SPDM_SIGNING_CONTEXT_LEN];
+    build_spdm_signing_context(version, context, &mut signing_ctx)?;
+    let signing_input = match asym_algo {
+        SpdmPalAsymAlgo::EccP384 => {
+            compute_tbs_hash(pal, io, &signing_ctx, transcript_hash)
+                .await
+                .map_err(|_| SPDM_UNSPECIFIED)?;
+            SigningInput::EccP384Digest(transcript_hash)
+        }
+        SpdmPalAsymAlgo::MlDsa87 => SigningInput::Mldsa87Message {
+            context,
+            prefix: &signing_ctx,
+            hash: transcript_hash,
+        },
+    };
+    let sig_len = pal
+        .sign(io, slot_id, asym_algo, signing_input, sig_slot)
+        .await
+        .map_err(|_| SPDM_UNSPECIFIED)?;
+    if sig_len != expected_sig_len {
+        return Err(SPDM_UNSPECIFIED);
+    }
+    Ok(())
+}
+
+/// Finish a response allocated in a large buffer: either convert to standard
+/// response if within transfer size, or start chunking.
+#[inline(never)]
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn finish_buffered_response<'a, Pal: SpdmPal>(
+    state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
+    pal: &'a Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    mut guard: chunk::WipeOnDrop<<Pal as SpdmPalAlloc>::LargeBuf>,
+    head: usize,
+    spdm_len: usize,
+    raw_len: usize,
+    padded_len: usize,
+    use_normal_response: bool,
+) -> SpdmResult<(PalBytes<'a, Pal>, usize)> {
+    let buf = guard.buf.as_mut().ok_or(SPDM_UNSPECIFIED)?;
+    if use_normal_response {
+        zero_slice(buf, raw_len, padded_len)?;
+        let final_buf = guard.buf.take().ok_or(SPDM_UNSPECIFIED)?;
+        let resp = pal
+            .large_buf_into_bytes(final_buf, padded_len)
+            .map_err(|_| SPDM_UNSPECIFIED)?;
+        return Ok((resp, spdm_len));
+    }
+
+    shift_left(buf, head, spdm_len)?;
+    let final_buf = guard.buf.take().ok_or(SPDM_UNSPECIFIED)?;
+    state.large_msg_ctx.set_buffer(final_buf);
+    let (resp, spdm_len) = match chunk::start_buffered_large_response(state, pal, io, spdm_len) {
+        Ok(res) => res,
+        Err(err) => {
+            state.large_msg_ctx.reset();
+            return Err(err);
+        }
+    };
+    Ok((resp, spdm_len))
 }

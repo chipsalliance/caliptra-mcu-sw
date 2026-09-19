@@ -95,7 +95,7 @@ jobs:
           repository: chipsalliance/caliptra-spdm-emu
           # TODO: Update this pull-request ref to the corresponding unmerged
           # caliptra-spdm-emu PR for each SPDM change.
-          ref: ${{ github.event_name == 'pull_request' && 'refs/pull/5/head' || 'caliptra-main-14' }}
+          ref: ${{ github.event_name == 'pull_request' && 'refs/pull/8/head' || 'caliptra-main-14' }}
           path: spdm-emu
           submodules: recursive
 

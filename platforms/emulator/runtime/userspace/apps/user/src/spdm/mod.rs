@@ -142,12 +142,20 @@ const SESSION_WORKING_SET: usize = 2560;
 const TRANSIENT_MAILBOX_PEAK: usize = 2560;
 
 /// Peak concurrent allocation while building a chunked large response: the
-/// rented large buffer plus the inline response buffer allocated alongside it.
+/// rented large buffer, the inline response buffer allocated alongside it, and
+/// the PQC signing working set.
 ///
 /// The receive buffer is not counted: it is shrunk to the actual frame length
 /// immediately after receive, and the request that triggers a large response
 /// is always a single small frame.
-const LARGE_MSG_PATH_PEAK: usize = MAX_BUFFERED_SPDM_MSG_SIZE + MAX_TRANSPORT_MTU;
+///
+/// ML-DSA-87 signatures (4627 bytes) exceed the MTU, so the response is
+/// built in a rented large buffer that is active while signing.
+const LARGE_MSG_PATH_PEAK: usize =
+    MAX_BUFFERED_SPDM_MSG_SIZE + MAX_TRANSPORT_MTU + PQC_SIGNING_PEAK;
+
+/// Peak DPE working set during ML-DSA-87 signing, including bitmap slot rounding.
+const PQC_SIGNING_PEAK: usize = mcu_caliptra_api::DPE_MLDSA87_SIGN_SCRATCH_PEAK + 4 * 64;
 
 /// Peak concurrent allocation on the certificate / secure-session path: the
 /// mailbox working set plus the secured-message plaintext and ciphertext
@@ -176,7 +184,7 @@ const fn required_scratch() -> usize {
 /// MCTP hosts Caliptra VDM and must hold a buffered large request while its
 /// handler uses transient DPE/SHA mailbox workspaces.
 const MCTP_SPDM_SCRATCH_SIZE: usize = {
-    let declared = 12 * 1024;
+    let declared = 18 * 1024;
     assert!(
         declared >= required_scratch(),
         "MCTP SPDM scratch pool is too small for MAX_BUFFERED_SPDM_MSG_SIZE"
@@ -185,7 +193,7 @@ const MCTP_SPDM_SCRATCH_SIZE: usize = {
 };
 /// DOE needs room for measurement records and secure-session crypto workspaces.
 const DOE_SPDM_SCRATCH_SIZE: usize = {
-    let declared = 12 * 1024;
+    let declared = 18 * 1024;
     assert!(
         declared >= required_scratch(),
         "DOE SPDM scratch pool is too small for MAX_BUFFERED_SPDM_MSG_SIZE"
