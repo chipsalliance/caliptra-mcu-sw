@@ -7,14 +7,14 @@ use super::command_traits::{
     ExternalCommandMetadata, FromInternalRequest, ToInternalResponse, VariableSizeBytes,
 };
 use caliptra_mcu_core_util_host_command_types::device_ownership_transfer::{
-    DotChallengeResponse, DotDisableRequest, DotLockRequest, DotOverrideChallengeRequest,
-    DotOverrideRequest, DotRecoveryRequest, DotRotateRequest, DotStatus, DotStatusRequest,
-    DotStatusResponse, DotTransitionResponse, DotUnlockChallengeRequest, DotUnlockRequest,
-    GetDotBackupBlobRequest, GetDotBackupBlobResponse, AUTH_CMD_NONCE_LEN, DOT_BLOB_SIZE,
-    MC_DOT_DISABLE_CANONICAL_CMD_ID, MC_DOT_LOCK_CANONICAL_CMD_ID,
-    MC_DOT_OVERRIDE_CANONICAL_CMD_ID, MC_DOT_OVERRIDE_CHALLENGE_CANONICAL_CMD_ID,
-    MC_DOT_RECOVERY_CANONICAL_CMD_ID, MC_DOT_ROTATE_CANONICAL_CMD_ID,
-    MC_DOT_STATUS_CANONICAL_CMD_ID, MC_DOT_UNLOCK_CANONICAL_CMD_ID,
+    DotChallengeResponse, DotDisableRequest, DotEnableRequest, DotLockRequest,
+    DotOverrideChallengeRequest, DotOverrideRequest, DotRecoveryRequest, DotRotateRequest,
+    DotStatus, DotStatusRequest, DotStatusResponse, DotTransitionResponse,
+    DotUnlockChallengeRequest, DotUnlockRequest, GetDotBackupBlobRequest, GetDotBackupBlobResponse,
+    AUTH_CMD_NONCE_LEN, DOT_BLOB_SIZE, MC_DOT_DISABLE_CANONICAL_CMD_ID,
+    MC_DOT_ENABLE_CANONICAL_CMD_ID, MC_DOT_LOCK_CANONICAL_CMD_ID, MC_DOT_OVERRIDE_CANONICAL_CMD_ID,
+    MC_DOT_OVERRIDE_CHALLENGE_CANONICAL_CMD_ID, MC_DOT_RECOVERY_CANONICAL_CMD_ID,
+    MC_DOT_ROTATE_CANONICAL_CMD_ID, MC_DOT_STATUS_CANONICAL_CMD_ID, MC_DOT_UNLOCK_CANONICAL_CMD_ID,
     MC_DOT_UNLOCK_CHALLENGE_CANONICAL_CMD_ID, MC_GET_DOT_BACKUP_BLOB_CANONICAL_CMD_ID,
 };
 use caliptra_mcu_core_util_host_command_types::CommonResponse;
@@ -46,6 +46,11 @@ macro_rules! define_dot_request {
     };
 }
 
+define_dot_request!(
+    ExtCmdDotEnableRequest,
+    DotEnableRequest,
+    MC_DOT_ENABLE_CANONICAL_CMD_ID
+);
 define_dot_request!(
     ExtCmdDotLockRequest,
     DotLockRequest,
@@ -202,6 +207,14 @@ impl ToInternalResponse<GetDotBackupBlobResponse> for ExtCmdGetDotBackupBlobResp
 impl VariableSizeBytes for ExtCmdGetDotBackupBlobResponse {}
 
 define_command!(
+    DotEnableCmd,
+    0x0000_0011,
+    DotEnableRequest,
+    DotTransitionResponse,
+    ExtCmdDotEnableRequest,
+    ExtCmdDotTransitionResponse
+);
+define_command!(
     DotLockCmd,
     0x0000_0011,
     DotLockRequest,
@@ -342,6 +355,10 @@ mod tests {
 
     #[test]
     fn all_requests_use_the_dot_family_envelope() {
+        assert_request_wire::<_, ExtCmdDotEnableRequest>(
+            &DotEnableRequest::default(),
+            MC_DOT_ENABLE_CANONICAL_CMD_ID,
+        );
         let mut lock = DotLockRequest::default();
         lock.cak.fill(0x11);
         lock.lak_hash.fill(0x22);
