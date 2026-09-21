@@ -514,7 +514,10 @@ pub mod test {
                     let mut c = [0u8; DEVICE_CAPS_SIZE];
                     c[..16].copy_from_slice(&self.core_capabilities);
                     c[16..20].copy_from_slice(
-                        &McuRomCapabilities::STREAMING_BOOT_I3C.bits().to_be_bytes(),
+                        &(McuRomCapabilities::STREAMING_BOOT_I3C
+                            | McuRomCapabilities::DOT_BOOT)
+                            .bits()
+                            .to_be_bytes(),
                     );
                     c[20..24].copy_from_slice(
                         &McuRuntimeCapabilities::MCI_MAILBOX_SERVICE
