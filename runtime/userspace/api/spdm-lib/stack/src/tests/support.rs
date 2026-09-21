@@ -38,6 +38,10 @@ pub struct TestHashState {
 pub struct TestIo {
     pub request: Vec<u8>,
     kind: SpdmPalIoKind,
+    /// Interface tag, as a multiplexing transport would report. `None` (the
+    /// default for `message` / `secured`) models MCTP and DOE, which serve a
+    /// single interface each.
+    transport_id: Option<u8>,
 }
 
 impl TestIo {
@@ -45,6 +49,7 @@ impl TestIo {
         Self {
             request,
             kind: SpdmPalIoKind::Message,
+            transport_id: None,
         }
     }
 
@@ -52,7 +57,14 @@ impl TestIo {
         Self {
             request,
             kind: SpdmPalIoKind::SecuredMessage,
+            transport_id: None,
         }
+    }
+
+    /// Tags this IO with an interface id, as a multiplexing transport does.
+    pub fn from_transport(mut self, transport_id: u8) -> Self {
+        self.transport_id = Some(transport_id);
+        self
     }
 }
 
@@ -63,6 +75,10 @@ impl SpdmPalIo for TestIo {
 
     fn request(&self) -> &[u8] {
         &self.request
+    }
+
+    fn transport_id(&self) -> Option<u8> {
+        self.transport_id
     }
 }
 
@@ -121,6 +137,10 @@ pub struct TestPal {
     /// Algorithm passed to the most recent measurement value retrieval.
     pub meas_algo: Cell<Option<SpdmPalAsymAlgo>>,
     pub sign_ops: RefCell<Vec<RecordedSign>>,
+    /// Frames handed to `send_response`, captured so tests can assert on the
+    /// bytes actually put on the wire (e.g. `ERROR` PDUs built by
+    /// `SpdmStack::send_error_pdu`).
+    pub sent: RefCell<Vec<Vec<u8>>>,
 }
 
 /// Signing input captured by [`TestPal::sign`], owned so tests can assert on it
@@ -161,6 +181,7 @@ impl Default for TestPal {
             write_algo: Cell::new(None),
             meas_algo: Cell::new(None),
             sign_ops: RefCell::new(Vec::new()),
+            sent: RefCell::new(Vec::new()),
         }
     }
 }
@@ -260,9 +281,10 @@ impl SpdmPalIoTransport for TestPal {
         &self,
         _io: &Self::Io<'_>,
         _kind: SpdmPalIoKind,
-        _msg: &mut [u8],
+        msg: &mut [u8],
     ) -> McuResult<()> {
-        Err(mcu_error::codes::NOT_IMPLEMENTED)
+        self.sent.borrow_mut().push(msg.to_vec());
+        Ok(())
     }
 }
 
