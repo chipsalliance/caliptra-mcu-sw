@@ -20,4 +20,6 @@ pub mod emulator;
 pub mod gdb;
 pub mod tests;
 
-pub use emulator::{Emulator, EmulatorArgs, ExternalReadCallback, ExternalWriteCallback};
+pub use emulator::{
+    Emulator, EmulatorArgs, ExternalReadCallback, ExternalWriteCallback, RecoveryInterface,
+};

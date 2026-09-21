@@ -23,6 +23,7 @@ caliptra-mcu-config.workspace = true
 caliptra-mcu-config-emulator.workspace = true
 caliptra-mcu-testing-common.workspace = true
 caliptra-mcu-network-config.workspace = true
+caliptra-mcu-ocp.workspace = true
 num_enum.workspace = true
 caliptra-mcu-otp-digest.workspace = true
 caliptra-mcu-otp-lifecycle = { workspace = true, features = ["sha3", "std"] }

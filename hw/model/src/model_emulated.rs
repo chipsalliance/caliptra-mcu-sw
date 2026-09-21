@@ -96,6 +96,7 @@ pub struct ModelEmulated {
     // with the CPU step that advances the clock.
     step_lock: Arc<Mutex<()>>,
     pub usb_host_controller: caliptra_mcu_emulator_periph::UsbHostController,
+    pub usb_recovery_host: caliptra_mcu_emulator_periph::UsbRecoveryHost,
     /// Per-instance emulator coordination state. Kept alive for as long as
     /// this model exists so that worker threads that hold an Arc clone
     /// (via spawn_with_emulator_state) observe writes from step()/boot().
@@ -398,6 +399,8 @@ impl McuHwModel for ModelEmulated {
 
         let usb_periph = caliptra_mcu_emulator_periph::UsbDevPeriph::new();
         let usb_host_controller = usb_periph.host_controller();
+        let usb_combo = caliptra_mcu_emulator_periph::UsbCombo::new();
+        let usb_recovery_host = usb_combo.host_controller();
 
         let delegates: Vec<Box<dyn caliptra_emu_bus::Bus>> =
             vec![Box::new(mcu_root_bus), Box::new(soc_to_caliptra)];
@@ -406,12 +409,16 @@ impl McuHwModel for ModelEmulated {
             delegates,
             None,
             Some(Box::new(usb_periph)),
+            Some(Box::new(usb_combo)),
+            Some(Box::new(caliptra_mcu_emulator_periph::UsbDev1::new())),
             Some(Box::new(i3c)),
             Some(Box::new(caliptra_mcu_emulator_periph::StubI3c1::new())),
             Some(Box::new(primary_flash_controller)),
             Some(Box::new(secondary_flash_controller)),
             Some(Box::new(mci)),
             None,
+            Some(Box::new(caliptra_mcu_emulator_periph::UsbDev0Mem::new())),
+            Some(Box::new(caliptra_mcu_emulator_periph::UsbDev1Mem::new())),
             None,
             Some(Box::new(otp)),
             Some(Box::new(lc)),
@@ -547,6 +554,7 @@ impl McuHwModel for ModelEmulated {
             check_booted_to_runtime: params.check_booted_to_runtime,
             step_lock,
             usb_host_controller,
+            usb_recovery_host,
             state,
         };
         // Turn tracing on if the trace path was set

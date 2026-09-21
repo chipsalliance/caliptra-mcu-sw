@@ -264,6 +264,10 @@ mod tests {
             ..Default::default()
         });
         let host = hw.usb_host_controller.clone();
+        #[cfg(not(feature = "fpga_realtime"))]
+        let recovery_host = Some(hw.usb_recovery_host.clone());
+        #[cfg(feature = "fpga_realtime")]
+        let recovery_host = None;
 
         for _ in 0..50_000_000 {
             hw.step();
@@ -278,7 +282,8 @@ mod tests {
             TcpListener::bind(("127.0.0.1", 3240)).expect("USB/IP TCP port 3240 must be available");
         let config = UsbIpServerConfig::new("1-2", 1, 2, 0x1209, 0x0001);
         let server_thread = std::thread::spawn(move || {
-            UsbIpServer::new(listener, config, HwModelUsbDevice::new(host)).serve_until_disconnect()
+            UsbIpServer::new(listener, config, HwModelUsbDevice::new(host, recovery_host))
+                .serve_until_disconnect()
         });
 
         let agent_thread = std::thread::spawn(|| {

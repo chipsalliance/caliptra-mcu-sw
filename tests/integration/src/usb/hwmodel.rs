@@ -3,7 +3,10 @@
 //! Adapter between USB/IP control URBs and the emulated USB peripheral.
 
 use super::usbip::{UsbControlRequest, UsbIpDevice};
-use caliptra_mcu_emulator_periph::{UsbHostController, UsbTransactionError};
+use caliptra_mcu_emulator_periph::{
+    UsbControlTransferResult, UsbHostController, UsbRecoveryError, UsbRecoveryHost,
+    UsbTransactionError,
+};
 use std::io;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -14,11 +17,15 @@ const TRANSACTION_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub struct HwModelUsbDevice {
     host: UsbHostController,
+    recovery_host: Option<UsbRecoveryHost>,
 }
 
 impl HwModelUsbDevice {
-    pub fn new(host: UsbHostController) -> Self {
-        Self { host }
+    pub fn new(host: UsbHostController, recovery_host: Option<UsbRecoveryHost>) -> Self {
+        Self {
+            host,
+            recovery_host,
+        }
     }
 
     fn setup(&self, setup: &[u8; 8]) -> io::Result<()> {
@@ -65,6 +72,25 @@ impl HwModelUsbDevice {
 
 impl UsbIpDevice for HwModelUsbDevice {
     fn control(&mut self, request: UsbControlRequest<'_>) -> io::Result<Vec<u8>> {
+        if let Some(recovery_host) = &self.recovery_host {
+            match recovery_host.control(request.setup, request.data) {
+                Ok(UsbControlTransferResult::Complete(response)) => return Ok(response),
+                Ok(UsbControlTransferResult::NotClaimed) => {}
+                Err(UsbRecoveryError::Stall | UsbRecoveryError::UnsupportedDataPath) => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::Unsupported,
+                        "OCP recovery request stalled",
+                    ));
+                }
+                Err(UsbRecoveryError::Disconnected) => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::BrokenPipe,
+                        "USB recovery peripheral disconnected",
+                    ));
+                }
+            }
+        }
+
         let device_to_host = request.setup[0] & 0x80 != 0;
         let requested_length = u16::from_le_bytes([request.setup[6], request.setup[7]]) as usize;
 

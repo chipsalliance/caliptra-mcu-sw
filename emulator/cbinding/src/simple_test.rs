@@ -31,6 +31,7 @@ fn test_can_import_emulator() {
 #[test]
 fn test_emulator_args_creation() {
     // Test that we can create EmulatorArgs
+    use caliptra_mcu_emulator::RecoveryInterface;
     use std::path::PathBuf;
 
     let _args = EmulatorArgs {
@@ -96,6 +97,7 @@ fn test_emulator_args_creation() {
         network_rom: None,
         stub_warnings: false,
         active_i3c1: false,
+        recovery_interface: RecoveryInterface::I3c,
     };
 
     println!("EmulatorArgs created successfully");

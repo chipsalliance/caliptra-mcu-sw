@@ -18,7 +18,7 @@ use caliptra_emu_cpu::StepAction;
 use caliptra_emu_types::{RvAddr, RvSize};
 use caliptra_mcu_emulator::{
     gdb::{self, ControlledGdbServer},
-    Emulator, EmulatorArgs, ExternalReadCallback, ExternalWriteCallback,
+    Emulator, EmulatorArgs, ExternalReadCallback, ExternalWriteCallback, RecoveryInterface,
 };
 use caliptra_mcu_testing_common::EmulatorState;
 use std::ffi::CStr;
@@ -394,6 +394,7 @@ pub unsafe extern "C" fn emulator_init(
         network_rom: None,
         stub_warnings: config.stub_warnings != 0,
         active_i3c1: config.active_i3c1 != 0,
+        recovery_interface: RecoveryInterface::I3c,
     };
 
     // Convert C callbacks to Rust callbacks if provided

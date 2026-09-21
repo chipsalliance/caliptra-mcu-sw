@@ -1394,6 +1394,7 @@ dependencies = [
  "caliptra-mcu-emulator-consts",
  "caliptra-mcu-emulator-registers-generated",
  "caliptra-mcu-network-config",
+ "caliptra-mcu-ocp",
  "caliptra-mcu-otp-digest",
  "caliptra-mcu-otp-lifecycle",
  "caliptra-mcu-registers-generated",

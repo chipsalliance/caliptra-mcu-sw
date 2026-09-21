@@ -47,7 +47,7 @@ use caliptra_mcu_testing_common::mctp_transport::MctpTransport;
 use caliptra_mcu_testing_common::mctp_util::base_protocol::LOCAL_TEST_ENDPOINT_EID;
 use caliptra_mcu_testing_common::spdm_responder_validator::SpdmTestType;
 use caliptra_mcu_testing_common::{EmulatorState, SpdmResponderTransport};
-use clap::{ArgAction, Parser};
+use clap::{ArgAction, Parser, ValueEnum};
 use clap_num::maybe_hex;
 use crossterm::event::{Event, KeyCode, KeyEvent};
 use std::cell::Cell;
@@ -98,6 +98,13 @@ fn lc_state_to_device_lifecycle_str(lc_state_index: u32) -> &'static str {
         // Raw, TestLocked*, Prod, ProdEnd, Rma, Scrap, PostTransition → production
         _ => "production",
     }
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, ValueEnum)]
+pub enum RecoveryInterface {
+    #[default]
+    I3c,
+    Usb,
 }
 
 #[derive(Parser, Debug, Clone)]
@@ -308,6 +315,10 @@ pub struct EmulatorArgs {
     /// Selects which I3C core is used for MCTP transport.
     #[arg(long, default_value_t = false)]
     pub active_i3c1: bool,
+
+    /// Selects the peripheral that handles Caliptra Recovery I/F accesses.
+    #[arg(long, value_enum, default_value_t = RecoveryInterface::I3c)]
+    pub recovery_interface: RecoveryInterface,
 }
 
 pub struct Emulator {
@@ -338,6 +349,7 @@ pub struct Emulator {
     pub step_lock: Arc<Mutex<()>>,
     #[allow(dead_code)]
     pub usb_host_controller: caliptra_mcu_emulator_periph::UsbHostController,
+    pub usb_recovery_host: caliptra_mcu_emulator_periph::UsbRecoveryHost,
     /// Caliptra CPU is held until MCU ROM writes CPTRA_BOOT_GO
     pub cptra_boot_go: Rc<Cell<bool>>,
     mci_regs: Rc<RefCell<caliptra_emu_periph::mci::MciRegs>>,
@@ -953,12 +965,14 @@ impl Emulator {
         let usb_irq = pic.register_irq(McuRootBus::USB_IRQ);
         let usb_periph = caliptra_mcu_emulator_periph::UsbDevPeriph::new_with_irq(usb_irq);
         let usb_host_controller = usb_periph.host_controller();
+        let usb_combo = caliptra_mcu_emulator_periph::UsbCombo::new();
+        let usb_recovery_host = usb_combo.host_controller();
 
         let mut auto_root_bus = AutoRootBus::new(
             delegates,
             Some(auto_root_bus_offsets),
             Some(Box::new(usb_periph)),
-            Some(Box::new(caliptra_mcu_emulator_periph::UsbCombo::new())),
+            Some(Box::new(usb_combo)),
             Some(Box::new(caliptra_mcu_emulator_periph::UsbDev1::new())),
             Some(Box::new(i3c)),
             Some(Box::new(caliptra_mcu_emulator_periph::StubI3c1::new())),
@@ -1081,17 +1095,32 @@ impl Emulator {
             bmc = None;
             let (caliptra_event_sender, caliptra_event_receiver) = caliptra_cpu.register_events();
             let (mcu_event_sender, mcu_event_receiver) = cpu.register_events();
-            cpu.bus
-                .i3c_periph
-                .as_mut()
-                .unwrap()
-                .periph
-                .register_event_channels(
-                    caliptra_event_sender,
-                    caliptra_event_receiver,
-                    mcu_event_sender,
-                    mcu_event_receiver,
-                );
+            match cli.recovery_interface {
+                RecoveryInterface::I3c => cpu
+                    .bus
+                    .i3c_periph
+                    .as_mut()
+                    .unwrap()
+                    .periph
+                    .register_event_channels(
+                        caliptra_event_sender,
+                        caliptra_event_receiver,
+                        mcu_event_sender,
+                        mcu_event_receiver,
+                    ),
+                RecoveryInterface::Usb => cpu
+                    .bus
+                    .usb_combo_periph
+                    .as_mut()
+                    .unwrap()
+                    .periph
+                    .register_event_channels(
+                        caliptra_event_sender,
+                        caliptra_event_receiver,
+                        mcu_event_sender,
+                        mcu_event_receiver,
+                    ),
+            }
         } else {
             let (caliptra_event_sender, caliptra_event_receiver) = caliptra_cpu.register_events();
             let (mcu_event_sender, mcu_event_reciever) = cpu.register_events();
@@ -1245,6 +1274,7 @@ impl Emulator {
             i3c_controller_join_handle,
             step_lock,
             usb_host_controller,
+            usb_recovery_host,
             cptra_boot_go,
             mci_regs,
             state,
@@ -1269,6 +1299,7 @@ impl Emulator {
         i3c_controller_join_handle: Option<JoinHandle<()>>,
         step_lock: Arc<Mutex<()>>,
         usb_host_controller: caliptra_mcu_emulator_periph::UsbHostController,
+        usb_recovery_host: caliptra_mcu_emulator_periph::UsbRecoveryHost,
         cptra_boot_go: Rc<Cell<bool>>,
         mci_regs: Rc<RefCell<caliptra_emu_periph::mci::MciRegs>>,
         state: Arc<EmulatorState>,
@@ -1307,6 +1338,7 @@ impl Emulator {
             i3c_controller_join_handle,
             step_lock,
             usb_host_controller,
+            usb_recovery_host,
             cptra_boot_go,
             mci_regs,
             state,
