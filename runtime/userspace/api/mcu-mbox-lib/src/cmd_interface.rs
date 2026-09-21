@@ -21,11 +21,13 @@ use caliptra_mcu_mbox_common::messages::{
     GetAuthCmdChallengeReq, GetAuthCmdChallengeResp, GetDpeCertChainReq, GetLogReq, LogType,
     MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize, McuFeProgReq, McuMailboxReq,
     McuMailboxResp, McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp,
-    McuProdDebugUnlockTokenReq, McuResponseVarSize, ProvisionOwnerPkHashReq,
+    McuProdDebugUnlockTokenReq, McuResponseVarSize, OcpLockProgramHekResp, ProvisionOwnerPkHashReq,
     ProvisionOwnerPkHashResp, ProvisionVendorPkHashReq, ProvisionVendorPkHashResp,
     DEVICE_CAPS_SIZE, GET_ATTESTATION_RESP_PREFIX_LEN, MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN,
     MAX_RESP_DATA_SIZE,
 };
+#[cfg(feature = "ocp-lock")]
+use caliptra_mcu_mbox_common::messages::{HekSeedSlot, OcpLockProgramHekReq};
 
 use caliptra_mcu_libtock_console::Console;
 #[cfg(feature = "device-ownership-transfer")]
@@ -246,6 +248,10 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
                 | inner @ CommandId::MC_FUSE_WRITE
                 | inner @ CommandId::MC_FUSE_LOCK_PARTITION
                 | inner @ CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY => {
+                    self.handle_authorized_command(inner, req, resp_buf).await
+                }
+                #[cfg(feature = "ocp-lock")]
+                inner @ CommandId::MC_OCP_LOCK_PROGRAM_HEK => {
                     self.handle_authorized_command(inner, req, resp_buf).await
                 }
                 #[cfg(feature = "ocp-lock")]
@@ -1140,6 +1146,10 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
                 self.handle_fuse_lock_partition(cmd, resp_buf).await
             }
             #[cfg(feature = "ocp-lock")]
+            CommandId::MC_OCP_LOCK_PROGRAM_HEK => {
+                self.handle_ocp_lock_program_hek(cmd, resp_buf).await
+            }
+            #[cfg(feature = "ocp-lock")]
             CommandId::MC_OCP_LOCK => {
                 let subcommand = cmd
                     .get(size_of::<MailboxReqHeader>()..size_of::<MailboxReqHeader>() + 4)
@@ -1588,6 +1598,29 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
     }
 
     #[cfg(feature = "ocp-lock")]
+    async fn handle_ocp_lock_program_hek<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req = OcpLockProgramHekReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        HekSeedSlot::try_from(req.hek_slot).map_err(|_| errors::INVALID_PARAMS)?;
+        let (resp, _) =
+            OcpLockProgramHekResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = OcpLockProgramHekResp::default();
+
+        let status = match self
+            .non_crypto_cmds_handler
+            .ocp_lock_program_hek(self.scratch, req.hek_slot)
+            .await
+        {
+            Ok(()) => MbxCmdStatus::Complete,
+            Err(_) => MbxCmdStatus::Failure,
+        };
+        Ok((&mut resp_buf[..size_of::<OcpLockProgramHekResp>()], status))
+    }
+
+    #[cfg(feature = "ocp-lock")]
     async fn handle_ocp_lock_rotate_hek<'r>(
         &self,
         req: &[u8],
@@ -1728,6 +1761,7 @@ fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32) -> usize {
         }
         c if c == CommandId::MC_PROVISION_VENDOR_PK_HASH => size_of::<ProvisionVendorPkHashResp>(),
         c if c == CommandId::MC_PROVISION_OWNER_PK_HASH => size_of::<ProvisionOwnerPkHashResp>(),
+        c if c == CommandId::MC_OCP_LOCK_PROGRAM_HEK => size_of::<OcpLockProgramHekResp>(),
         c if c == CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN => {
             size_of::<FuseIncreaseCaliptraMinSvnResp>()
         }

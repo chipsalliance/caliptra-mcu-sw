@@ -46,6 +46,7 @@ pub mod cmd {
     pub const OTP_LOCK_PARTITION: u32 = 6;
     pub const OTP_GET_HEK_METADATA: u32 = 8; // Returns (total_slots, active_slot)
     pub const OTP_ROTATE_HEK: u32 = 9;
+    pub const OTP_PROGRAM_HEK: u32 = 10;
 }
 
 pub mod reg {
@@ -578,6 +579,8 @@ impl SyscallDriver for Otp {
             cmd::OTP_GET_HEK_METADATA => self.get_hek_metadata(),
             #[cfg(feature = "ocp-lock")]
             cmd::OTP_ROTATE_HEK => self.rotate_hek(arg1, processid),
+            #[cfg(feature = "ocp-lock")]
+            cmd::OTP_PROGRAM_HEK => self.program_hek(arg1, processid),
             _ => CommandReturn::failure(ErrorCode::NOSUPPORT),
         }
     }
@@ -589,6 +592,59 @@ impl SyscallDriver for Otp {
 
 #[cfg(feature = "ocp-lock")]
 impl Otp {
+    fn program_hek(&self, slot: usize, processid: ProcessId) -> CommandReturn {
+        let ocp_lock_ctx = match self.ocp_lock_ctx.as_ref() {
+            Some(ctrl) => ctrl,
+            None => return CommandReturn::failure(ErrorCode::NOSUPPORT),
+        };
+        if slot >= ocp_lock_ctx.state.total_slots as usize {
+            return CommandReturn::failure(ErrorCode::INVAL);
+        }
+        if self.is_perma_hek_locked().unwrap_or(true) {
+            return CommandReturn::failure(ErrorCode::INVAL);
+        }
+
+        let offset = match ocp_lock_ctx.platform.get_hek_slot_offset(slot) {
+            Ok(offset) => offset,
+            Err(_) => return CommandReturn::failure(ErrorCode::INVAL),
+        };
+        for word in 0..(caliptra_mcu_romtime::HEK_PARTITION_SIZE / 4) {
+            match self.driver.read_word(offset / 4 + word) {
+                Ok(0) => {}
+                Ok(_) => return CommandReturn::failure(ErrorCode::ALREADY),
+                Err(_) => return CommandReturn::failure(ErrorCode::FAIL),
+            }
+        }
+
+        let res = self.apps.enter(processid, |_, kernel_data| {
+            let seed_buf = kernel_data
+                .get_readonly_processbuffer(ro_allow::SEED)
+                .map_err(|_| ErrorCode::INVAL)?;
+            let mut seed = [0u8; 32];
+            seed_buf
+                .enter(|buf| {
+                    if buf.len() != seed.len() {
+                        return Err(ErrorCode::INVAL);
+                    }
+                    buf.copy_to_slice(&mut seed);
+                    Ok(())
+                })
+                .map_err(|_| ErrorCode::FAIL)??;
+
+            let digest = caliptra_mcu_otp_digest(&seed, OTP_DIGEST_IV, OTP_DIGEST_CONST);
+            ocp_lock_ctx
+                .platform
+                .program_hek_slot(self.driver, slot, &seed, digest)
+                .map_err(|_| ErrorCode::FAIL)
+        });
+
+        match res {
+            Ok(Ok(())) => CommandReturn::success(),
+            Ok(Err(error)) => CommandReturn::failure(error),
+            Err(error) => CommandReturn::failure(error.into()),
+        }
+    }
+
     fn is_perma_hek_locked(&self) -> Result<bool, ErrorCode> {
         let ocp_lock_ctx = self.ocp_lock_ctx.as_ref().ok_or(ErrorCode::NOSUPPORT)?;
         ocp_lock_ctx

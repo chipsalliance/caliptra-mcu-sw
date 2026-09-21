@@ -13,6 +13,8 @@ use caliptra_mcu_spdm_traits::{
 };
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::OCP_LOCK_CMD_ID;
+#[cfg(feature = "ocp-lock")]
+use caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::OCP_LOCK_PROGRAM_HEK_CMD_ID;
 use caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::{
     CaliptraCompletionCode, CaliptraVdm, CaliptraVdmAuthorization, CaliptraVdmResult,
     CaliptraVdmStreamOps, DEVICE_OWNERSHIP_TRANSFER_CMD_ID, FE_PROG_CMD_ID,
@@ -609,6 +611,38 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
             .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
         CaliptraCmdBackend
             .dot_get_backup_blob(scratch, blob)
+            .await
+            .map_err(map_common_completion)
+    }
+
+    #[cfg(feature = "ocp-lock")]
+    async fn ocp_lock_program_hek<A: SpdmPalAlloc>(
+        &self,
+        slot: u32,
+        payload: &[u8],
+        sig: &HybridSignature,
+        nonce: &[u8; AUTH_CMD_NONCE_LEN],
+        ecc_pub_x: &[u8; 48],
+        ecc_pub_y: &[u8; 48],
+        mldsa_pub: &[u8; 2592],
+        scratch: &A,
+    ) -> CaliptraVdmResult<()> {
+        let mut authorizer = cmd_auth_mock::MockCommandAuthorizer;
+        authorizer
+            .verify_signatures(
+                scratch,
+                OCP_LOCK_PROGRAM_HEK_CMD_ID,
+                payload,
+                nonce,
+                ecc_pub_x,
+                ecc_pub_y,
+                mldsa_pub,
+                sig,
+            )
+            .await
+            .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
+        CaliptraCmdBackend
+            .ocp_lock_program_hek(scratch, slot)
             .await
             .map_err(map_common_completion)
     }

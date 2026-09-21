@@ -5,6 +5,8 @@
 use caliptra_mcu_spdm_traits::SpdmPalAlloc;
 
 use crate::iana::ocp::caliptra_vdm::CaliptraVdmAuthorization;
+#[cfg(feature = "ocp-lock")]
+use caliptra_mcu_mbox_common::messages::HekSeedSlot;
 use caliptra_mcu_mbox_common::messages::{CommandId, HybridSignature, AUTH_CMD_NONCE_LEN};
 #[cfg(feature = "device-ownership-transfer")]
 use caliptra_mcu_mbox_common::messages::{DotDisablePayload, DotLockPayload, DotRotatePayload};
@@ -24,6 +26,8 @@ const INCREASE_CALIPTRA_MIN_SVN_PAYLOAD_LEN: usize = 4 + 4;
 const REVOKE_VENDOR_PUB_KEY_PAYLOAD_LEN: usize = 4 + 4 + 4 + 4;
 const REVOKE_VENDOR_PK_HASH_PAYLOAD_LEN: usize = 4 + 4;
 const FUSE_LOCK_PARTITION_PAYLOAD_LEN: usize = 4;
+#[cfg(feature = "ocp-lock")]
+const OCP_LOCK_PROGRAM_HEK_PAYLOAD_LEN: usize = 4;
 #[cfg(feature = "device-ownership-transfer")]
 const DOT_LOCK_PAYLOAD_LEN: usize = 4 + core::mem::size_of::<DotLockPayload>();
 #[cfg(feature = "device-ownership-transfer")]
@@ -61,6 +65,10 @@ const MAX_AUTHORIZED_PAYLOAD_LEN: usize = {
     }
     if FUSE_LOCK_PARTITION_PAYLOAD_LEN > max {
         max = FUSE_LOCK_PARTITION_PAYLOAD_LEN;
+    }
+    #[cfg(feature = "ocp-lock")]
+    if OCP_LOCK_PROGRAM_HEK_PAYLOAD_LEN > max {
+        max = OCP_LOCK_PROGRAM_HEK_PAYLOAD_LEN;
     }
     #[cfg(feature = "device-ownership-transfer")]
     {
@@ -109,6 +117,9 @@ pub const REVOKE_VENDOR_PUB_KEY_CMD_ID: u32 = 0x4D52_564B;
 pub const REVOKE_VENDOR_PK_HASH_CMD_ID: u32 = 0x5256_4B48;
 /// MC_FUSE_LOCK_PARTITION sub-command (`IFPK`).
 pub const FUSE_LOCK_PARTITION_CMD_ID: u32 = CommandId::MC_FUSE_LOCK_PARTITION.0;
+/// MC_OCP_LOCK_PROGRAM_HEK sub-command (`OLPH`).
+#[cfg(feature = "ocp-lock")]
+pub const OCP_LOCK_PROGRAM_HEK_CMD_ID: u32 = CommandId::MC_OCP_LOCK_PROGRAM_HEK.0;
 /// Device Ownership Transfer command family (`0x11`).
 pub const DEVICE_OWNERSHIP_TRANSFER_CMD_ID: u32 = CommandId::MC_DEVICE_OWNERSHIP_TRANSFER.0;
 /// DOT_LOCK sub-command (`MDLK`).
@@ -168,6 +179,10 @@ where
             handle_revoke_vendor_pk_hash(cmds, payload, scratch, out).await
         }
         FUSE_LOCK_PARTITION_CMD_ID => handle_fuse_lock_partition(cmds, payload, scratch, out).await,
+        #[cfg(feature = "ocp-lock")]
+        OCP_LOCK_PROGRAM_HEK_CMD_ID => {
+            handle_ocp_lock_program_hek(cmds, payload, scratch, out).await
+        }
         #[cfg(feature = "device-ownership-transfer")]
         DEVICE_OWNERSHIP_TRANSFER_CMD_ID => {
             handle_device_ownership_transfer(cmds, payload, scratch, out).await
@@ -645,6 +660,41 @@ where
         }
         _ => CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidParameter),
     }
+}
+
+#[cfg(feature = "ocp-lock")]
+async fn handle_ocp_lock_program_hek<H, A>(
+    cmds: &H,
+    req: &[u8],
+    scratch: &A,
+    out: &mut [u8],
+) -> CaliptraVdmCmdResult
+where
+    H: CaliptraVdmAuthorization,
+    A: SpdmPalAlloc,
+{
+    let parsed = match split_authorized_request(req, OCP_LOCK_PROGRAM_HEK_PAYLOAD_LEN) {
+        Ok(parsed) => parsed,
+        Err(code) => return CaliptraVdmCmdResult::Error(code),
+    };
+    let slot = read_u32_le(parsed.payload);
+    if HekSeedSlot::try_from(slot).is_err() {
+        return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidParameter);
+    }
+    finish_authorized_command(
+        cmds.ocp_lock_program_hek(
+            slot,
+            parsed.payload,
+            parsed.sig,
+            parsed.nonce,
+            parsed.ecc_pub_x,
+            parsed.ecc_pub_y,
+            parsed.mldsa_pub,
+            scratch,
+        )
+        .await,
+        out,
+    )
 }
 
 #[cfg(feature = "ocp-lock")]

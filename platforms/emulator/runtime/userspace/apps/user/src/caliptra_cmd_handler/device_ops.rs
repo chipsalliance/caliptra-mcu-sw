@@ -1163,6 +1163,18 @@ pub async fn program_field_entropy<A: ApiAlloc>(
 }
 
 #[cfg(feature = "ocp-lock")]
+pub(crate) async fn ocp_lock_program_hek<Alloc: ApiAlloc>(
+    alloc: &Alloc,
+    slot: u32,
+) -> CaliptraCmdResult<()> {
+    let mut seed = [0u8; 32];
+    rng_generate(alloc, &mut seed).await.map_err(map_mcu_err)?;
+    Otp::<DefaultSyscalls>::new()
+        .program_hek(slot, &seed)
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)
+}
+
+#[cfg(feature = "ocp-lock")]
 pub(crate) async fn ocp_lock_rotate_hek<Alloc: ApiAlloc>(
     alloc: &Alloc,
     slot: u32,
