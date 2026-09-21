@@ -22,6 +22,7 @@ embassy-sync = { workspace = true, optional = true }
 mcu-error = { workspace = true, optional = true }
 caliptra-mcu-libsyscall-caliptra = { workspace = true, optional = true }
 caliptra-mcu-libtock_platform = { workspace = true, optional = true }
+dpe = { workspace = true, optional = true }
 zerocopy = { workspace = true }
 
 [features]
@@ -37,6 +38,7 @@ mailbox-io = [
     "dep:caliptra-mcu-pldm-common",
     "dep:caliptra-mcu-pldm-lib",
     "dep:caliptra-mcu-userlog",
+    "dep:dpe",
     "dep:embassy-executor",
     "dep:embassy-sync",
     "dep:mcu-error",

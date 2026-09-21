@@ -399,7 +399,7 @@ caliptra-ocp-eat = { git = "https://github.com/chipsalliance/caliptra-sw", rev =
 caliptra-ureg = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "98593675c6805c94ead32708c24f5d477d9b8fbc" }
 
 # caliptra-dpe dependencies; keep git revs in sync with version pulled into caliptra-sw
-dpe = { git = "https://github.com/chipsalliance/caliptra-dpe", rev = "337f7e4151f60add8e97445f71fc1393afc661a8", default-features = false, features = ["p384"] }
+dpe = { package = "caliptra-dpe", git = "https://github.com/chipsalliance/caliptra-dpe", rev = "3b036b495f2f2e1e995602b4d299a18363a07ba5", default-features = false, features = ["hybrid"] }
 
 # caliptra-infra dependencies; keep git revs in sync
 caliptra-bitstream-downloader = { git = "https://github.com/chipsalliance/caliptra-infra", rev = "e061f229d5d284ce39387eb104f3022053c6c772" }

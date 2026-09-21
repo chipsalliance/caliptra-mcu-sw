@@ -459,6 +459,9 @@ impl CertContext {
             Command::RotateCtx(cmd) => (Command::ROTATE_CONTEXT_HANDLE, cmd.as_bytes()),
             Command::DestroyCtx(cmd) => (Command::DESTROY_CONTEXT, cmd.as_bytes()),
             Command::GetCertificateChain(cmd) => (Command::GET_CERTIFICATE_CHAIN, cmd.as_bytes()),
+            Command::UpdateContextMeasurement(cmd) => {
+                (Command::UPDATE_CONTEXT_MEASUREMENT, cmd.as_bytes())
+            }
         }
     }
 }

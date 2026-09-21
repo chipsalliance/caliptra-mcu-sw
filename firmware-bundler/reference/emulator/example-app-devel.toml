@@ -40,6 +40,6 @@ stack = 0x0_7000
 
 [[app]]
 name = "caliptra-mcu-example-app"
-stack = 0xC000
+stack = 0x10000
 grant_space = 0x4000
 
