@@ -61,6 +61,27 @@ pub trait SpdmPalTransport {
         1
     }
 
+    /// Opaque transport identity of the most recently received request.
+    ///
+    /// Only meaningful for transports that multiplex several physical
+    /// interfaces onto a single channel — a mailbox transport can carry SPDM
+    /// for several physical links over one mailbox pair and tag each request
+    /// with the originating interface.
+    ///
+    /// Returns `None` for single-interface transports (MCTP, PCIe DOE), which
+    /// each own a dedicated stack instance. Callers must treat `None` as
+    /// "identity not applicable" and skip identity checks — never as a
+    /// distinct identity that can be compared for equality.
+    ///
+    /// The value is opaque to the SPDM stack: it is only ever compared for
+    /// equality against a previously recorded value, never decoded.
+    ///
+    /// Valid only between a successful [`Self::recv_request`] and the matching
+    /// [`Self::send_response`].
+    fn last_transport_id(&self) -> Option<u8> {
+        None
+    }
+
     /// Receives the next SPDM message into `buf`.
     ///
     /// On success, `buf[0..len]` contains the raw transport frame:

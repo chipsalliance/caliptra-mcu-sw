@@ -38,6 +38,10 @@ pub struct TestHashState {
 pub struct TestIo {
     pub request: Vec<u8>,
     kind: SpdmPalIoKind,
+    /// Interface tag, as a multiplexing transport would report. `None` (the
+    /// default for `message` / `secured`) models MCTP and DOE, which serve a
+    /// single interface each.
+    transport_id: Option<u8>,
 }
 
 impl TestIo {
@@ -45,6 +49,7 @@ impl TestIo {
         Self {
             request,
             kind: SpdmPalIoKind::Message,
+            transport_id: None,
         }
     }
 
@@ -52,7 +57,14 @@ impl TestIo {
         Self {
             request,
             kind: SpdmPalIoKind::SecuredMessage,
+            transport_id: None,
         }
+    }
+
+    /// Tags this IO with an interface id, as a multiplexing transport does.
+    pub fn from_transport(mut self, transport_id: u8) -> Self {
+        self.transport_id = Some(transport_id);
+        self
     }
 }
 
@@ -63,6 +75,10 @@ impl SpdmPalIo for TestIo {
 
     fn request(&self) -> &[u8] {
         &self.request
+    }
+
+    fn transport_id(&self) -> Option<u8> {
+        self.transport_id
     }
 }
 
@@ -118,6 +134,10 @@ pub struct TestPal {
     pub stream_aborts: Cell<usize>,
     /// Algorithm the most recent cert-chain write was routed to.
     pub write_algo: Cell<Option<SpdmPalAsymAlgo>>,
+    /// Frames handed to `send_response`, captured so tests can assert on the
+    /// bytes actually put on the wire (e.g. `ERROR` PDUs built by
+    /// `SpdmStack::send_error_pdu`).
+    pub sent: RefCell<Vec<Vec<u8>>>,
 }
 
 impl Default for TestPal {
@@ -140,6 +160,7 @@ impl Default for TestPal {
             stream_cert: RefCell::new(Vec::new()),
             stream_aborts: Cell::new(0),
             write_algo: Cell::new(None),
+            sent: RefCell::new(Vec::new()),
         }
     }
 }
@@ -239,9 +260,10 @@ impl SpdmPalIoTransport for TestPal {
         &self,
         _io: &Self::Io<'_>,
         _kind: SpdmPalIoKind,
-        _msg: &mut [u8],
+        msg: &mut [u8],
     ) -> McuResult<()> {
-        Err(mcu_error::codes::NOT_IMPLEMENTED)
+        self.sent.borrow_mut().push(msg.to_vec());
+        Ok(())
     }
 }
 
