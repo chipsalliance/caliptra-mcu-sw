@@ -43,8 +43,9 @@ use super::*;
 /// occupy the first `header_size` bytes of `frame`;
 /// [`SpdmPalIo::request`] returns the SPDM-only suffix.
 ///
-/// Sized to be small (`BitmapBytes` + `u8` + `SpdmPalIoKind`) so it
-/// can live cheaply across `.await` points in the stack's run loop.
+/// Sized to be small (`BitmapBytes` + `u8` + `SpdmPalIoKind` +
+/// `Option<u8>`) so it can live cheaply across `.await` points in the
+/// stack's run loop.
 pub struct McuSpdmIo<'a> {
     /// RAII handle to the received frame. Borrows from the
     /// allocator on [`McuSpdmPal`]; the underlying slots are
@@ -57,6 +58,10 @@ pub struct McuSpdmIo<'a> {
     /// Whether the frame is plain SPDM or an SPDM Secured Message,
     /// as reported by the transport.
     kind: SpdmPalIoKind,
+    /// Originating interface tag for multiplexing transports (a mailbox
+    /// transport serving several links), captured at receive time. `None` for
+    /// single-interface transports (MCTP, DOE).
+    transport_id: Option<u8>,
 }
 
 impl SpdmPalIo for McuSpdmIo<'_> {
@@ -78,6 +83,16 @@ impl SpdmPalIo for McuSpdmIo<'_> {
     /// be decoded by the stack.
     fn request(&self) -> &[u8] {
         &self.frame[self.header_size as usize..]
+    }
+
+    /// Returns the interface tag the request arrived on.
+    ///
+    /// # Returns
+    ///
+    /// `Some(id)` for a multiplexing transport, `None` for a
+    /// single-interface transport (MCTP, DOE).
+    fn transport_id(&self) -> Option<u8> {
+        self.transport_id
     }
 }
 
@@ -157,12 +172,16 @@ impl<M: MeasurementProvider> SpdmPalIoTransport for McuSpdmPal<M> {
         // SAFETY: single-task responder; no other `&mut` borrow exists.
         let transport = unsafe { self.transport_mut() };
         let (kind, len) = transport.recv_request(buf.as_mut_slice()).await?;
+        // Must be read while the request is still in flight — the transport
+        // clears it on `send_response`.
+        let transport_id = transport.last_transport_id();
         buf.shrink(len)?;
 
         Ok(McuSpdmIo {
             frame: buf,
             header_size: header as u8,
             kind,
+            transport_id,
         })
     }
 
