@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! GET_VERSION → VERSION handler (DSP0274 §10.2).
+//! GET_VERSION -> VERSION handler (DSP0274 section 10.2).
 //!
 //! Per spec the VERSION response's SPDMVersion field is **always
 //! V1.0** — version negotiation happens later, in GET_CAPABILITIES.
@@ -18,10 +18,14 @@ use crate::stack::{ConnectionState, Phase};
 
 /// Versions advertised by the responder, in descending order of preference.
 ///
-/// V1.2 is the floor because our CAPABILITIES / ALGORITHMS request
-/// bodies only support the V1.2+ wire shape.
-pub(crate) const SUPPORTED_VERSIONS: &[SpdmVersion] =
-    &[SpdmVersion::V14, SpdmVersion::V13, SpdmVersion::V12];
+/// V1.1 is advertised for OCP 2.7 SPDM-1 backward-compatibility; the
+/// CAPABILITIES / ALGORITHMS handlers gate 1.2+ caps off for a V1.1 peer.
+pub(crate) const SUPPORTED_VERSIONS: &[SpdmVersion] = &[
+    SpdmVersion::V14,
+    SpdmVersion::V13,
+    SpdmVersion::V12,
+    SpdmVersion::V11,
+];
 
 /// Validate a GET_VERSION request without mutating connection or session state.
 ///
@@ -58,7 +62,7 @@ pub(crate) fn validate_get_version(req: &[u8]) -> SpdmResult<()> {
 ///
 /// * `Ok(PalBytes)` — The fully-encoded `VERSION` response (transport
 ///   header + SPDM common header + body). Always carries
-///   [`SpdmVersion::V10`] per DSP0274 §10.2.
+///   [`SpdmVersion::V10`] per DSP0274 section 10.2.
 ///
 /// # Errors
 ///
@@ -76,7 +80,7 @@ pub(crate) async fn handle_get_version<'a, Pal: SpdmPal>(
     let spdm_len = body.encoded_size();
     let resp = build_response(pal, io, SpdmVersion::V10, &body)?;
 
-    // DSP0274 §10.4.1: GET_VERSION + VERSION contribute to VCA.
+    // DSP0274 section 10.4.1: GET_VERSION + VERSION contribute to VCA.
     // Use spdm_len to exclude any transport-layer padding (e.g. DOE DWORD alignment).
     let head = pal.header_size();
     state.transcript.append_vca(pal, io, io.request()).await?;
@@ -87,4 +91,25 @@ pub(crate) async fn handle_get_version<'a, Pal: SpdmPal>(
 
     state.phase = Phase::AfterVersion;
     Ok(resp)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn advertises_v11_through_v14_in_preference_order() {
+        // V1.1 must be advertised for backward compatibility, in descending
+        // preference, without dropping the V1.2..=V1.4 the responder already
+        // supports.
+        assert_eq!(
+            SUPPORTED_VERSIONS,
+            &[
+                SpdmVersion::V14,
+                SpdmVersion::V13,
+                SpdmVersion::V12,
+                SpdmVersion::V11
+            ]
+        );
+    }
 }
