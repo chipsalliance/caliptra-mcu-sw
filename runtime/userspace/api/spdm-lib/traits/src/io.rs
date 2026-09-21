@@ -36,6 +36,21 @@ pub trait SpdmPalIo {
     ///
     /// A byte slice containing the request data.
     fn request(&self) -> &[u8];
+
+    /// Returns the opaque transport identity this request arrived on, for
+    /// transports that multiplex several physical interfaces onto one channel.
+    ///
+    /// # Returns
+    ///
+    /// * `Some(id)` — the originating interface tag, as reported by
+    ///   [`SpdmPalTransport::last_transport_id`](crate::SpdmPalTransport::last_transport_id).
+    ///   Opaque to the stack; only compared for equality.
+    /// * `None` — the transport serves a single interface (MCTP, DOE), so
+    ///   identity is not applicable. Consumers must skip identity checks
+    ///   rather than treating `None` as a distinct identity.
+    fn transport_id(&self) -> Option<u8> {
+        None
+    }
 }
 
 /// Transport-layer abstraction for SPDM request/response exchange.
