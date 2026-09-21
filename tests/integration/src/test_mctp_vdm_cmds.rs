@@ -218,7 +218,9 @@ pub mod test {
                 &McuRuntimeCapabilities::MCTP_VDM_RESPONDER.bits(),
                 "MCU Runtime capabilities",
             )?;
-            let expected_rom = McuRomCapabilities::STREAMING_BOOT_I3C.bits();
+            let expected_rom = (McuRomCapabilities::STREAMING_BOOT_I3C
+                | McuRomCapabilities::DOT_BOOT)
+                .bits();
             Self::assert_eq(&rom, &expected_rom, "MCU ROM capabilities")?;
             Self::assert_eq(
                 &authorized,

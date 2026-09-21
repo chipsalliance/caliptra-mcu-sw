@@ -79,7 +79,14 @@ Handoff version 1.3 defines `mcu_rom_capabilities` as follows:
 |---:|---|---|
 | 0 | `STREAMING_BOOT_I3C` | MCU ROM supports streaming boot over I3C |
 | 1 | `FLASH_BOOT` | MCU ROM supports flash boot |
-| 2:31 | Reserved | ROM writes zero; consumers ignore these bits |
+| 2:3 | Reserved | ROM writes zero; consumers ignore these bits |
+| 4 | `FW_MANIFEST_DOT` | MCU ROM supports Device Ownership Transfer manifests |
+| 5 | `COMPONENT_SVN_MANIFEST` | MCU ROM supports component SVN manifests |
+| 6 | Reserved | ROM writes zero; consumers ignore this bit |
+| 7 | `DOT_BOOT` | MCU ROM supports DOT blob authentication during boot |
+| 8 | `DOT_LOCKED_RECOVERY` | MCU ROM has a configured DOT locked-state recovery path |
+| 9 | `I3C_DOT_RECOVERY` | MCU ROM supports DOT recovery over I3C |
+| 10:31 | Reserved | ROM writes zero; consumers ignore these bits |
 
 The bitmap describes capabilities implemented by the ROM image, independent of
 the source selected for the current boot. Runtime reports zero when paired with

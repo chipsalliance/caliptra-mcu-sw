@@ -26,6 +26,16 @@ bitflags::bitflags! {
         const STREAMING_BOOT_I3C = 1 << 0;
         /// MCU ROM supports flash boot.
         const FLASH_BOOT = 1 << 1;
+        /// MCU ROM supports Device Ownership Transfer firmware manifests.
+        const FW_MANIFEST_DOT = 1 << 4;
+        /// MCU ROM supports component SVN manifests.
+        const COMPONENT_SVN_MANIFEST = 1 << 5;
+        /// MCU ROM supports DOT blob authentication during boot.
+        const DOT_BOOT = 1 << 7;
+        /// MCU ROM has a configured DOT locked-state recovery path.
+        const DOT_LOCKED_RECOVERY = 1 << 8;
+        /// MCU ROM supports DOT recovery over I3C.
+        const I3C_DOT_RECOVERY = 1 << 9;
     }
 }
 
@@ -318,5 +328,16 @@ mod tests {
 
         handoff.rom.fht_minor_ver = MCU_ROM_CAPABILITIES_FHT_MINOR_VERSION - 1;
         assert_eq!(handoff.mcu_rom_capabilities(), None);
+    }
+
+    #[test]
+    fn mcu_rom_capability_assignments_are_stable() {
+        assert_eq!(McuRomCapabilities::STREAMING_BOOT_I3C.bits(), 1 << 0);
+        assert_eq!(McuRomCapabilities::FLASH_BOOT.bits(), 1 << 1);
+        assert_eq!(McuRomCapabilities::FW_MANIFEST_DOT.bits(), 1 << 4);
+        assert_eq!(McuRomCapabilities::COMPONENT_SVN_MANIFEST.bits(), 1 << 5);
+        assert_eq!(McuRomCapabilities::DOT_BOOT.bits(), 1 << 7);
+        assert_eq!(McuRomCapabilities::DOT_LOCKED_RECOVERY.bits(), 1 << 8);
+        assert_eq!(McuRomCapabilities::I3C_DOT_RECOVERY.bits(), 1 << 9);
     }
 }

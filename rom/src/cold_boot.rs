@@ -41,6 +41,166 @@ use zerocopy::{transmute, IntoBytes};
 
 pub struct ColdBoot {}
 
+fn mcu_rom_capabilities(
+    params: &RomParameters,
+) -> caliptra_mcu_romtime::handoff::McuRomCapabilities {
+    use caliptra_mcu_romtime::handoff::McuRomCapabilities;
+
+    let mut capabilities = McuRomCapabilities::STREAMING_BOOT_I3C;
+    if cfg!(feature = "hw-2-1") && params.flash_partition_driver.is_some() {
+        capabilities |= McuRomCapabilities::FLASH_BOOT;
+    }
+    if cfg!(feature = "fw-manifest-dot") && params.fw_manifest_dot_enabled {
+        capabilities |= McuRomCapabilities::FW_MANIFEST_DOT;
+    }
+    if cfg!(feature = "svn-manifest") && params.svn_manifest_enabled {
+        capabilities |= McuRomCapabilities::COMPONENT_SVN_MANIFEST;
+    }
+    let dot_boot_enabled = params.dot_flash.is_some()
+        && params.owner_pk_hash_policy
+            == crate::device_ownership_transfer::OwnerPkHashPolicy::DotThenFuse;
+    if dot_boot_enabled {
+        capabilities |= McuRomCapabilities::DOT_BOOT;
+    }
+    if dot_boot_enabled
+        && (params.dot_recovery_reset_flow || !params.dot_locked_recovery_handlers.is_empty())
+    {
+        capabilities |= McuRomCapabilities::DOT_LOCKED_RECOVERY;
+    }
+    let forced_i3c_dot_recovery = params.dot_flash.is_some()
+        && params.force_i3c_services
+        && params
+            .i3c_services
+            .is_some_and(|services| services.contains(I3cServicesModes::DOT_RECOVERY));
+    let locked_i3c_dot_recovery = dot_boot_enabled
+        && params
+            .dot_locked_recovery_handlers
+            .iter()
+            .any(|entry| entry.handler.supports_i3c_dot_recovery());
+    if forced_i3c_dot_recovery || locked_i3c_dot_recovery {
+        capabilities |= McuRomCapabilities::I3C_DOT_RECOVERY;
+    }
+    capabilities
+}
+
+#[cfg(test)]
+mod capability_tests {
+    use super::*;
+    use crate::device_ownership_transfer::{
+        DotLockedRecoveryContext, DotLockedRecoveryEntry, DotLockedRecoveryErrorPolicy,
+        DotLockedRecoveryHandler, OwnerPkHashPolicy,
+    };
+    use crate::hil::{FlashDrvError, FlashStorage};
+    use caliptra_mcu_error::McuResult;
+    use caliptra_mcu_romtime::handoff::McuRomCapabilities;
+
+    struct TestFlash;
+
+    impl FlashStorage for TestFlash {
+        fn read(&self, _buffer: &mut [u8], _address: usize) -> Result<(), FlashDrvError> {
+            Ok(())
+        }
+
+        fn write(&self, _buffer: &[u8], _address: usize) -> Result<(), FlashDrvError> {
+            Ok(())
+        }
+
+        fn erase(&self, _address: usize, _length: usize) -> Result<(), FlashDrvError> {
+            Ok(())
+        }
+
+        fn capacity(&self) -> usize {
+            0
+        }
+    }
+
+    struct TestRecoveryHandler;
+
+    impl DotLockedRecoveryHandler for TestRecoveryHandler {
+        fn attempt(&self, _env: &mut RomEnv, _ctx: &DotLockedRecoveryContext<'_>) -> McuResult<()> {
+            Ok(())
+        }
+    }
+
+    struct TestI3cRecoveryHandler;
+
+    impl DotLockedRecoveryHandler for TestI3cRecoveryHandler {
+        fn supports_i3c_dot_recovery(&self) -> bool {
+            true
+        }
+
+        fn attempt(&self, _env: &mut RomEnv, _ctx: &DotLockedRecoveryContext<'_>) -> McuResult<()> {
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn capabilities_follow_compiled_and_platform_enabled_features() {
+        let mut params = RomParameters {
+            fw_manifest_dot_enabled: true,
+            svn_manifest_enabled: true,
+            ..Default::default()
+        };
+        let mut expected = McuRomCapabilities::STREAMING_BOOT_I3C;
+
+        if cfg!(feature = "fw-manifest-dot") {
+            expected |= McuRomCapabilities::FW_MANIFEST_DOT;
+        }
+        if cfg!(feature = "svn-manifest") {
+            expected |= McuRomCapabilities::COMPONENT_SVN_MANIFEST;
+        }
+        assert_eq!(mcu_rom_capabilities(&params), expected);
+
+        params.fw_manifest_dot_enabled = false;
+        params.svn_manifest_enabled = false;
+        expected.remove(
+            McuRomCapabilities::FW_MANIFEST_DOT | McuRomCapabilities::COMPONENT_SVN_MANIFEST,
+        );
+        assert_eq!(mcu_rom_capabilities(&params), expected);
+    }
+
+    #[test]
+    fn dot_capabilities_follow_configured_paths() {
+        let flash = TestFlash;
+        let handler = TestRecoveryHandler;
+        let handlers = [DotLockedRecoveryEntry {
+            handler: &handler,
+            policy: DotLockedRecoveryErrorPolicy::Continue,
+        }];
+        let mut params = RomParameters {
+            dot_flash: Some(&flash),
+            dot_locked_recovery_handlers: &handlers,
+            i3c_services: Some(I3cServicesModes::DOT_RECOVERY),
+            ..Default::default()
+        };
+
+        assert!(mcu_rom_capabilities(&params)
+            .contains(McuRomCapabilities::DOT_BOOT | McuRomCapabilities::DOT_LOCKED_RECOVERY));
+        assert!(!mcu_rom_capabilities(&params).contains(McuRomCapabilities::I3C_DOT_RECOVERY));
+
+        params.dot_locked_recovery_handlers = &[];
+        params.dot_recovery_reset_flow = true;
+        assert!(mcu_rom_capabilities(&params).contains(McuRomCapabilities::DOT_LOCKED_RECOVERY));
+
+        let i3c_handler = TestI3cRecoveryHandler;
+        let i3c_handlers = [DotLockedRecoveryEntry {
+            handler: &i3c_handler,
+            policy: DotLockedRecoveryErrorPolicy::Continue,
+        }];
+        params.dot_locked_recovery_handlers = &i3c_handlers;
+        assert!(mcu_rom_capabilities(&params).contains(McuRomCapabilities::I3C_DOT_RECOVERY));
+
+        params.owner_pk_hash_policy = OwnerPkHashPolicy::ForceFuse;
+        let capabilities = mcu_rom_capabilities(&params);
+        assert!(!capabilities.contains(McuRomCapabilities::DOT_BOOT));
+        assert!(!capabilities.contains(McuRomCapabilities::DOT_LOCKED_RECOVERY));
+        assert!(!capabilities.contains(McuRomCapabilities::I3C_DOT_RECOVERY));
+
+        params.force_i3c_services = true;
+        assert!(mcu_rom_capabilities(&params).contains(McuRomCapabilities::I3C_DOT_RECOVERY));
+    }
+}
+
 type I3cRegs = caliptra_mcu_romtime::StaticRef<caliptra_mcu_registers_generated::i3c::regs::I3c>;
 
 /// Returns true when the subsystem debug-intent strap is asserted.
@@ -358,6 +518,10 @@ pub struct I3cDotLockedRecoveryHandler {
 }
 
 impl crate::device_ownership_transfer::DotLockedRecoveryHandler for I3cDotLockedRecoveryHandler {
+    fn supports_i3c_dot_recovery(&self) -> bool {
+        self.services.contains(I3cServicesModes::DOT_RECOVERY)
+    }
+
     fn attempt(
         &self,
         env: &mut RomEnv,
@@ -695,11 +859,7 @@ impl BootFlow for ColdBoot {
         crate::call_hook(params.hooks, |h| h.pre_populate_fuses_to_caliptra());
         let pk_hash_idx = soc.populate_fuses(otp, mci, &params);
 
-        let mut mcu_rom_capabilities =
-            caliptra_mcu_romtime::handoff::McuRomCapabilities::STREAMING_BOOT_I3C;
-        if cfg!(feature = "hw-2-1") && params.flash_partition_driver.is_some() {
-            mcu_rom_capabilities |= caliptra_mcu_romtime::handoff::McuRomCapabilities::FLASH_BOOT;
-        }
+        let mcu_rom_capabilities = mcu_rom_capabilities(&params);
 
         caliptra_mcu_romtime::handoff::HandoffData::write(
             caliptra_mcu_romtime::handoff::HandoffArgs {
