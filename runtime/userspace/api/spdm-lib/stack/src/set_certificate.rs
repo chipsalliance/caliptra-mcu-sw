@@ -8,8 +8,8 @@
 //! certificate-sized allocation.
 
 use caliptra_mcu_spdm_codec::{
-    AsymAlgos, CapFlags, HashAlgos, ReqRespCode, SetCertificateReqBody, SetCertificateRsp,
-    SpdmMsgHdrPdu, SpdmVersion,
+    AsymAlgos, CapFlags, HashAlgos, PqcAsymAlgos, ReqRespCode, SetCertificateReqBody,
+    SetCertificateRsp, SpdmMsgHdrPdu, SpdmVersion,
 };
 use caliptra_mcu_spdm_errors::as_spdm_wire;
 use caliptra_mcu_spdm_traits::{
@@ -96,7 +96,7 @@ pub(crate) async fn handle_set_certificate_request<Pal: SpdmPal>(
         }
         pal.erase_cert_chain(io, slot_id, state.asym_algo()).await?;
     } else {
-        let (root_hash, der) = validate_spdm_cert_chain(payload)?;
+        let (root_hash, der) = validate_spdm_cert_chain(state.version, payload)?;
         pal.validate_set_certificate_chain(
             io,
             slot_id,
@@ -176,7 +176,9 @@ pub(crate) async fn start_set_certificate_stream<Pal: SpdmPal>(
     let payload_len = large_msg_size
         .checked_sub(SpdmMsgHdrPdu::SIZE + SetCertificateReqBody::SIZE)
         .ok_or(SPDM_INVALID_REQUEST)?;
-    if payload_len < SPDM_CERT_CHAIN_HDR_LEN || payload_len > u16::MAX as usize {
+    if payload_len < SPDM_CERT_CHAIN_HDR_LEN
+        || payload_len > crate::certificate::max_cert_chain_len(state.version)
+    {
         return Err(SPDM_INVALID_REQUEST);
     }
     let payload = body
@@ -185,9 +187,8 @@ pub(crate) async fn start_set_certificate_stream<Pal: SpdmPal>(
     if payload.len() < SPDM_CERT_CHAIN_HDR_LEN {
         return Err(SPDM_INVALID_REQUEST);
     }
-    let length = u16::from_le_bytes([payload[0], payload[1]]) as usize;
-    let reserved = u16::from_le_bytes([payload[2], payload[3]]);
-    if reserved != 0 || length != payload_len || length < SPDM_CERT_CHAIN_HDR_LEN {
+    let length = parse_cert_chain_length(state.version, payload)?;
+    if length != payload_len || length < SPDM_CERT_CHAIN_HDR_LEN {
         return Err(SPDM_INVALID_REQUEST);
     }
     let root_hash: [u8; SHA384_DIGEST_SIZE] = payload
@@ -443,20 +444,49 @@ fn validate_negotiated_set_certificate_algorithms<S, L>(
     if state.negotiated_base_hash_sel != HashAlgos::SHA_384 {
         return Err(SPDM_UNSPECIFIED);
     }
-    if state.negotiated_base_asym_sel != AsymAlgos::ECDSA_ECC_NIST_P384 {
+    // Exactly one signing algorithm is selected per connection: in 1.4
+    // a PQC selection clears `base_asym_sel`. Managed slots back each
+    // algorithm with its own flash region, so either is installable.
+    let ecc = state.negotiated_base_asym_sel == AsymAlgos::ECDSA_ECC_NIST_P384;
+    let mldsa = state
+        .negotiated_pqc_asym_sel
+        .contains(PqcAsymAlgos::ML_DSA_87);
+    if !ecc && !mldsa {
         return Err(SPDM_INVALID_REQUEST);
     }
     Ok(())
 }
 
-fn validate_spdm_cert_chain(payload: &[u8]) -> SpdmResult<(&[u8; SHA384_DIGEST_SIZE], &[u8])> {
+/// Parse the leading `Length` field of an inbound SPDM cert chain.
+///
+/// Through SPDM 1.3 the field is `Length(2) | Reserved(2)` with
+/// `Reserved` required to be zero; 1.4 reinterprets the pair as a
+/// little-endian `u32`. The pre-1.4 rule is a strict subset, so a 1.4
+/// chain under 64 KiB parses identically under either reading.
+fn parse_cert_chain_length(version: SpdmVersion, payload: &[u8]) -> SpdmResult<usize> {
+    let head: [u8; 4] = payload
+        .get(..4)
+        .and_then(|s| s.try_into().ok())
+        .ok_or(SPDM_INVALID_REQUEST)?;
+    if version >= SpdmVersion::V14 {
+        return Ok(u32::from_le_bytes(head) as usize);
+    }
+    if u16::from_le_bytes([head[2], head[3]]) != 0 {
+        return Err(SPDM_INVALID_REQUEST);
+    }
+    Ok(u16::from_le_bytes([head[0], head[1]]) as usize)
+}
+
+fn validate_spdm_cert_chain(
+    version: SpdmVersion,
+    payload: &[u8],
+) -> SpdmResult<(&[u8; SHA384_DIGEST_SIZE], &[u8])> {
     if payload.len() < SPDM_CERT_CHAIN_HDR_LEN {
         return Err(SPDM_INVALID_REQUEST);
     }
 
-    let length = u16::from_le_bytes([payload[0], payload[1]]) as usize;
-    let reserved = u16::from_le_bytes([payload[2], payload[3]]);
-    if reserved != 0 || length != payload.len() || length < SPDM_CERT_CHAIN_HDR_LEN {
+    let length = parse_cert_chain_length(version, payload)?;
+    if length != payload.len() || length < SPDM_CERT_CHAIN_HDR_LEN {
         return Err(SPDM_INVALID_REQUEST);
     }
 

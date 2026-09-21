@@ -86,10 +86,14 @@ pub trait SpdmPalCertStore: crate::SpdmPalIoTransport {
     /// Bitmask of supported slots, bits 0..=7.
     fn supported_slots(&self) -> u8;
 
-    /// Bitmask of provisioned slots, bits 0..=7. Drives DIGESTS's
-    /// `SupportedSlotMask` / `ProvisionedSlotMask` (DSP0274 §10.5
-    /// Table 25).
-    fn provisioned_slots(&self) -> u8;
+    /// Bitmask of slots provisioned with a cert chain for `algo`, bits
+    /// 0..=7. Drives DIGESTS's `ProvisionedSlotMask` (DSP0274 §10.5
+    /// Table 25) and gates every slot-addressed read path.
+    ///
+    /// A connection negotiates exactly one asymmetric algorithm, so a
+    /// slot holding no chain for `algo` reports as unprovisioned: the
+    /// responder has nothing it can serve for that slot.
+    fn provisioned_slots(&self, algo: SpdmPalAsymAlgo) -> u8;
 
     /// Raw DER capacity/size for a slot-size query.
     async fn cert_chain_slot_size(
@@ -250,17 +254,20 @@ pub trait SpdmPalCertStore: crate::SpdmPalIoTransport {
         algo: SpdmPalAsymAlgo,
     ) -> McuResult<()>;
 
-    /// KeyPairID associated with the slot.
-    /// Returns `None` for unprovisioned slots.
-    fn key_pair_id(&self, slot: u8) -> Option<u8>;
+    /// KeyPairID associated with the slot's `algo` chain.
+    ///
+    /// A slot may be provisioned for one algorithm and not another, so
+    /// this is scoped to the connection's negotiated algorithm.
+    /// Returns `None` where that chain is unprovisioned.
+    fn key_pair_id(&self, slot: u8, algo: SpdmPalAsymAlgo) -> Option<u8>;
 
-    /// CertificateInfo for the slot.
-    /// Returns `None` for unprovisioned slots.
-    fn cert_info(&self, slot: u8) -> Option<u8>;
+    /// CertificateInfo for the slot's `algo` chain.
+    /// Returns `None` where that chain is unprovisioned.
+    fn cert_info(&self, slot: u8, algo: SpdmPalAsymAlgo) -> Option<u8>;
 
-    /// KeyUsageMask for the slot.
-    /// Returns `None` for unprovisioned slots.
-    fn key_usage_mask(&self, slot: u8) -> Option<u16>;
+    /// KeyUsageMask for the slot's `algo` chain.
+    /// Returns `None` where that chain is unprovisioned.
+    fn key_usage_mask(&self, slot: u8, algo: SpdmPalAsymAlgo) -> Option<u16>;
 
     /// Optional cache hook: return a previously stored full
     /// SPDM-cert-chain digest for `(slot, asym_algo, hash_algo)`, or `None` to

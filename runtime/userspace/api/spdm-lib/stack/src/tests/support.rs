@@ -117,6 +117,8 @@ pub struct TestPal {
     pub stream_cert: RefCell<Vec<u8>>,
     pub stream_aborts: Cell<usize>,
     pub now_ms: RefCell<u64>,
+    /// Algorithm the most recent cert-chain write was routed to.
+    pub write_algo: Cell<Option<SpdmPalAsymAlgo>>,
 }
 
 impl TestPal {
@@ -146,6 +148,7 @@ impl Default for TestPal {
             stream_cert: RefCell::new(Vec::new()),
             stream_aborts: Cell::new(0),
             now_ms: RefCell::new(0),
+            write_algo: Cell::new(None),
         }
     }
 }
@@ -299,7 +302,7 @@ impl SpdmPalHash for TestPal {
 }
 
 impl SpdmPalCertStore for TestPal {
-    fn provisioned_slots(&self) -> u8 {
+    fn provisioned_slots(&self, _algo: SpdmPalAsymAlgo) -> u8 {
         self.provisioned_slots
     }
 
@@ -397,7 +400,7 @@ impl SpdmPalCertStore for TestPal {
         &self,
         _io: &Self::Io<'_>,
         slot: u8,
-        _algo: SpdmPalAsymAlgo,
+        algo: SpdmPalAsymAlgo,
         key_pair_id: u8,
         cert_model: u8,
         root_hash: &[u8; SHA384_DIGEST_SIZE],
@@ -406,6 +409,7 @@ impl SpdmPalCertStore for TestPal {
         if let Some(err) = self.write_error {
             return Err(err);
         }
+        self.write_algo.set(Some(algo));
         self.op.replace(Some(StoreOp::Write {
             slot,
             key_pair_id,
@@ -509,15 +513,15 @@ impl SpdmPalCertStore for TestPal {
         Ok(())
     }
 
-    fn key_pair_id(&self, _slot: u8) -> Option<u8> {
+    fn key_pair_id(&self, _slot: u8, _algo: SpdmPalAsymAlgo) -> Option<u8> {
         None
     }
 
-    fn cert_info(&self, _slot: u8) -> Option<u8> {
+    fn cert_info(&self, _slot: u8, _algo: SpdmPalAsymAlgo) -> Option<u8> {
         None
     }
 
-    fn key_usage_mask(&self, _slot: u8) -> Option<u16> {
+    fn key_usage_mask(&self, _slot: u8, _algo: SpdmPalAsymAlgo) -> Option<u16> {
         None
     }
 

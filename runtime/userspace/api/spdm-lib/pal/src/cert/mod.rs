@@ -10,7 +10,7 @@
 //! Managed AliasCert slots store the Owner endorsement chain installed by
 //! SET_CERTIFICATE and expose it followed by the FMC/RT alias and DPE leaf tail.
 //! [`SlotEndorsement`] dispatches to `ReadOnlyEndorsement` (slot 0) or
-//! `ManagedEndorsement` (slots 1-2) without dynamic dispatch.
+//! `SingleManagedChain` (slots 1-2) without dynamic dispatch.
 
 pub mod endorsement;
 pub mod store;
@@ -19,7 +19,6 @@ use super::measurements::MeasurementProvider;
 use super::*;
 use caliptra_mcu_spdm_traits::{SigningInput, SpdmPalAsymAlgo, SpdmPalCertStore, SpdmPalHashAlgo};
 use core::ops::Range;
-use core::sync::atomic::Ordering;
 use endorsement::slot_index;
 use mcu_caliptra_api::{
     dpe_get_cert_chain_chunk, walk_dpe_chain, DpeChainSink, DpeProfile, DPE_LABEL_LEN,
@@ -42,6 +41,47 @@ const DPE_IDEVID_AND_LDEVID_CERT_COUNT: usize = 2;
 /// SPDM CertModel AliasCert.
 #[cfg(feature = "set-certificate")]
 const CERT_MODEL_ALIAS_CERT: u8 = 2;
+
+/// Snapshot the managed flash region serving `algo` in slot `idx`.
+///
+/// `NOT_IMPLEMENTED` for a read-only slot so the stack can report
+/// UnsupportedRequest; `INVARIANT` when the slot is empty or has no
+/// region for that algorithm.
+#[cfg(feature = "set-certificate")]
+fn managed_endorsement(
+    store: &store::TaskCertStore,
+    idx: usize,
+    algo: SpdmPalAsymAlgo,
+) -> McuResult<endorsement::SingleManagedEndorsement> {
+    match &store.cert_slots()[idx].endorsement {
+        endorsement::SlotEndorsement::Managed(m) => {
+            m.get_endorsement(algo).copied().ok_or(INVARIANT)
+        }
+        endorsement::SlotEndorsement::ReadOnly(_) => Err(mcu_error::codes::NOT_IMPLEMENTED),
+        endorsement::SlotEndorsement::Empty => Err(INVARIANT),
+    }
+}
+
+/// Write an updated region back into its slot.
+///
+/// Deliberately re-reads the slot rather than writing back a whole
+/// snapshot: the write lock is per algorithm, so a write to the other
+/// algorithm's region may have landed while we were awaiting flash.
+#[cfg(feature = "set-certificate")]
+fn commit_managed_endorsement(
+    store: &store::TaskCertStore,
+    idx: usize,
+    chain: endorsement::SingleManagedEndorsement,
+) -> McuResult<()> {
+    let cert_slot = store.cert_slot_mut(idx).ok_or(INVARIANT)?;
+    match &mut cert_slot.endorsement {
+        endorsement::SlotEndorsement::Managed(m) => {
+            m.set_endorsement(chain);
+            Ok(())
+        }
+        _ => Err(INVARIANT),
+    }
+}
 
 // ---------------------------------------------------------------------------
 // Sinks for `walk_dpe_chain`
@@ -196,7 +236,7 @@ async fn validate_root_hash<M: MeasurementProvider>(
 #[cfg(feature = "set-certificate")]
 async fn validate_streamed_root_hash<M: MeasurementProvider>(
     pal: &McuSpdmPal<M>,
-    managed: &endorsement::ManagedEndorsement,
+    managed: &endorsement::SingleManagedEndorsement,
     root_hash: &[u8; 48],
     data_len: usize,
 ) -> McuResult<()> {
@@ -227,7 +267,7 @@ async fn validate_streamed_root_hash<M: MeasurementProvider>(
 
 #[cfg(feature = "set-certificate")]
 async fn streamed_first_der_len(
-    managed: &endorsement::ManagedEndorsement,
+    managed: &endorsement::SingleManagedEndorsement,
     data_len: usize,
 ) -> McuResult<usize> {
     let mut header = [0u8; 6];
@@ -286,10 +326,10 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         mask
     }
 
-    fn provisioned_slots(&self) -> u8 {
+    fn provisioned_slots(&self, algo: SpdmPalAsymAlgo) -> u8 {
         let mut mask = 0u8;
         for (i, slot) in self.cert_store.cert_slots().iter().enumerate() {
-            if slot.is_provisioned() {
+            if slot.is_provisioned(algo) {
                 mask |= 1 << endorsement::DEFAULT_SLOT_MAP[i];
             }
         }
@@ -304,10 +344,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
     ) -> McuResult<usize> {
         let idx = slot_index(slot).ok_or(INVARIANT)?;
 
-        if self.cert_store.cert_slots()[idx]
-            .write_in_progress
-            .load(Ordering::Relaxed)
-        {
+        if self.cert_store.cert_slots()[idx].write_in_progress(algo) {
             return Err(INVARIANT);
         }
 
@@ -361,10 +398,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         let idx = slot_index(slot).ok_or(INVARIANT)?;
 
         // 1. PRE-CHECK: Ensure Slot is provisioned and not undergoing updates before starting
-        if self.cert_store.cert_slots()[idx]
-            .write_in_progress
-            .load(Ordering::Relaxed)
-        {
+        if self.cert_store.cert_slots()[idx].write_in_progress(algo) {
             return Err(INVARIANT);
         }
 
@@ -392,10 +426,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         let total = ChainLayout::new(slot_chain_len, dpe_len, dpe_skip_len, leaf_len)?.total_len();
 
         // 2. POST-CHECK: Verify Slot remained unlocked during the intermediate async .await points
-        if self.cert_store.cert_slots()[idx]
-            .write_in_progress
-            .load(Ordering::Relaxed)
-        {
+        if self.cert_store.cert_slots()[idx].write_in_progress(algo) {
             return Err(INVARIANT);
         }
 
@@ -571,31 +602,21 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         data: &[u8],
     ) -> McuResult<()> {
         let idx = slot_index(slot).ok_or(INVARIANT)?;
-        // Set write_in_progress to block transient readers during flash updates
-        self.cert_store.cert_slots()[idx]
-            .write_in_progress
-            .store(true, Ordering::Relaxed);
-        let result = async {
-            let managed = match &self.cert_store.cert_slots()[idx].endorsement {
-                endorsement::SlotEndorsement::Managed(e) => *e,
-                endorsement::SlotEndorsement::ReadOnly(_) => {
-                    return Err(mcu_error::codes::NOT_IMPLEMENTED);
-                }
-                endorsement::SlotEndorsement::Empty => return Err(INVARIANT),
-            };
-            let managed = managed
-                .write_updated(algo, key_pair_id, cert_info, root_hash, data)
+        // Block transient readers of this algorithm's chain during the
+        // flash update. The other algorithm's chain stays serveable.
+        self.cert_store.cert_slots()[idx].set_write_in_progress(algo, true);
+        let result: McuResult<()> = async {
+            let chain = managed_endorsement(&self.cert_store, idx, algo)?;
+            let chain = chain
+                .write_updated(key_pair_id, cert_info, root_hash, data)
                 .await?;
+            commit_managed_endorsement(&self.cert_store, idx, chain)?;
             let cert_slot = self.cert_store.cert_slot_mut(idx).ok_or(INVARIANT)?;
-            cert_slot.endorsement = endorsement::SlotEndorsement::Managed(managed);
-            cert_slot.key_pair_id = Some(key_pair_id);
-            cert_slot.cert_info = Some(cert_info);
+            cert_slot.set_metadata(algo, Some(key_pair_id), Some(cert_info));
             Ok(())
         }
         .await;
-        self.cert_store.cert_slots()[idx]
-            .write_in_progress
-            .store(false, Ordering::Relaxed);
+        self.cert_store.cert_slots()[idx].set_write_in_progress(algo, false);
         result?;
         self.cert_store.invalidate_cert_caches(slot);
         Ok(())
@@ -617,28 +638,18 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
                 return Err(INVARIANT);
             }
             let idx = slot_index(slot).ok_or(INVARIANT)?;
-            self.cert_store.cert_slots()[idx]
-                .write_in_progress
-                .store(true, Ordering::Relaxed);
-            let result = async {
-                let managed = match &self.cert_store.cert_slots()[idx].endorsement {
-                    endorsement::SlotEndorsement::Managed(e) => *e,
-                    endorsement::SlotEndorsement::ReadOnly(_) => {
-                        return Err(mcu_error::codes::NOT_IMPLEMENTED);
-                    }
-                    endorsement::SlotEndorsement::Empty => return Err(INVARIANT),
-                };
-                let managed = managed.begin_stream_update(algo, data_len).await?;
+            self.cert_store.cert_slots()[idx].set_write_in_progress(algo, true);
+            let result: McuResult<()> = async {
+                let chain = managed_endorsement(&self.cert_store, idx, algo)?;
+                let chain = chain.begin_stream_update(data_len).await?;
+                commit_managed_endorsement(&self.cert_store, idx, chain)?;
                 let cert_slot = self.cert_store.cert_slot_mut(idx).ok_or(INVARIANT)?;
-                cert_slot.endorsement = endorsement::SlotEndorsement::Managed(managed);
-                cert_slot.clear_metadata();
+                cert_slot.clear_metadata(algo);
                 Ok(())
             }
             .await;
             if result.is_err() {
-                self.cert_store.cert_slots()[idx]
-                    .write_in_progress
-                    .store(false, Ordering::Relaxed);
+                self.cert_store.cert_slots()[idx].set_write_in_progress(algo, false);
             }
             result
         }
@@ -660,17 +671,9 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         #[cfg(feature = "set-certificate")]
         {
             let idx = slot_index(slot).ok_or(INVARIANT)?;
-            let managed = match &self.cert_store.cert_slots()[idx].endorsement {
-                endorsement::SlotEndorsement::Managed(e) => *e,
-                endorsement::SlotEndorsement::ReadOnly(_) => {
-                    return Err(mcu_error::codes::NOT_IMPLEMENTED);
-                }
-                endorsement::SlotEndorsement::Empty => return Err(INVARIANT),
-            };
-            if algo != SpdmPalAsymAlgo::EccP384 {
-                return Err(INVARIANT);
-            }
-            managed.write_stream_chunk(offset, data).await
+            managed_endorsement(&self.cert_store, idx, algo)?
+                .write_stream_chunk(offset, data)
+                .await
         }
         #[cfg(not(feature = "set-certificate"))]
         {
@@ -692,28 +695,19 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         #[cfg(feature = "set-certificate")]
         {
             let idx = slot_index(slot).ok_or(INVARIANT)?;
-            let result = async {
-                let managed = match &self.cert_store.cert_slots()[idx].endorsement {
-                    endorsement::SlotEndorsement::Managed(e) => *e,
-                    endorsement::SlotEndorsement::ReadOnly(_) => {
-                        return Err(mcu_error::codes::NOT_IMPLEMENTED);
-                    }
-                    endorsement::SlotEndorsement::Empty => return Err(INVARIANT),
-                };
-                validate_streamed_root_hash(self, &managed, root_hash, data_len).await?;
-                let managed = managed
-                    .finish_stream_update(algo, key_pair_id, cert_info, root_hash, data_len)
+            let result: McuResult<()> = async {
+                let chain = managed_endorsement(&self.cert_store, idx, algo)?;
+                validate_streamed_root_hash(self, &chain, root_hash, data_len).await?;
+                let chain = chain
+                    .finish_stream_update(key_pair_id, cert_info, root_hash, data_len)
                     .await?;
+                commit_managed_endorsement(&self.cert_store, idx, chain)?;
                 let cert_slot = self.cert_store.cert_slot_mut(idx).ok_or(INVARIANT)?;
-                cert_slot.endorsement = endorsement::SlotEndorsement::Managed(managed);
-                cert_slot.key_pair_id = Some(key_pair_id);
-                cert_slot.cert_info = Some(cert_info);
+                cert_slot.set_metadata(algo, Some(key_pair_id), Some(cert_info));
                 Ok(())
             }
             .await;
-            self.cert_store.cert_slots()[idx]
-                .write_in_progress
-                .store(false, Ordering::Relaxed);
+            self.cert_store.cert_slots()[idx].set_write_in_progress(algo, false);
             result?;
             self.cert_store.invalidate_cert_caches(slot);
             Ok(())
@@ -729,20 +723,18 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         &self,
         _io: &Self::Io<'_>,
         slot: u8,
-        _algo: SpdmPalAsymAlgo,
+        algo: SpdmPalAsymAlgo,
     ) -> McuResult<()> {
         #[cfg(feature = "set-certificate")]
         {
             let idx = slot_index(slot).ok_or(INVARIANT)?;
-            self.cert_store.cert_slots()[idx]
-                .write_in_progress
-                .store(false, Ordering::Relaxed);
+            self.cert_store.cert_slots()[idx].set_write_in_progress(algo, false);
             self.cert_store.invalidate_cert_caches(slot);
             Ok(())
         }
         #[cfg(not(feature = "set-certificate"))]
         {
-            let _ = slot;
+            let _ = (slot, algo);
             Ok(())
         }
     }
@@ -755,55 +747,48 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         algo: SpdmPalAsymAlgo,
     ) -> McuResult<()> {
         let idx = slot_index(slot).ok_or(INVARIANT)?;
-        self.cert_store.cert_slots()[idx]
-            .write_in_progress
-            .store(true, Ordering::Relaxed);
-        let result = async {
-            let managed = match &self.cert_store.cert_slots()[idx].endorsement {
-                endorsement::SlotEndorsement::Managed(e) => *e,
-                endorsement::SlotEndorsement::ReadOnly(_) => {
-                    return Err(mcu_error::codes::NOT_IMPLEMENTED);
-                }
-                endorsement::SlotEndorsement::Empty => return Err(INVARIANT),
-            };
-            let managed = managed.erase_updated(algo).await?;
+        self.cert_store.cert_slots()[idx].set_write_in_progress(algo, true);
+        let result: McuResult<()> = async {
+            let chain = managed_endorsement(&self.cert_store, idx, algo)?;
+            let chain = chain.erase_updated().await?;
+            commit_managed_endorsement(&self.cert_store, idx, chain)?;
             let cert_slot = self.cert_store.cert_slot_mut(idx).ok_or(INVARIANT)?;
-            cert_slot.endorsement = endorsement::SlotEndorsement::Managed(managed);
-            cert_slot.clear_metadata();
+            cert_slot.clear_metadata(algo);
             Ok(())
         }
         .await;
-        self.cert_store.cert_slots()[idx]
-            .write_in_progress
-            .store(false, Ordering::Relaxed);
+        self.cert_store.cert_slots()[idx].set_write_in_progress(algo, false);
         result?;
         self.cert_store.invalidate_cert_caches(slot);
         Ok(())
     }
 
-    fn key_pair_id(&self, slot: u8) -> Option<u8> {
+    fn key_pair_id(&self, slot: u8, algo: SpdmPalAsymAlgo) -> Option<u8> {
         let idx = slot_index(slot)?;
-        self.cert_store.cert_slots()[idx].key_pair_id
+        self.cert_store.cert_slots()[idx].key_pair_id(algo)
     }
 
-    fn cert_info(&self, slot: u8) -> Option<u8> {
-        let idx = slot_index(slot)?;
-        if !self.cert_store.cert_slots()[idx].is_provisioned() {
-            return None;
-        }
-        self.cert_store.cert_slots()[idx].cert_info
-    }
-
-    fn key_usage_mask(&self, slot: u8) -> Option<u16> {
+    fn cert_info(&self, slot: u8, algo: SpdmPalAsymAlgo) -> Option<u8> {
         let idx = slot_index(slot)?;
         let cert_slot = &self.cert_store.cert_slots()[idx];
-        if !cert_slot.is_provisioned() {
+        if !cert_slot.is_provisioned(algo) {
+            return None;
+        }
+        cert_slot.cert_info(algo)
+    }
+
+    fn key_usage_mask(&self, slot: u8, algo: SpdmPalAsymAlgo) -> Option<u16> {
+        let idx = slot_index(slot)?;
+        let cert_slot = &self.cert_store.cert_slots()[idx];
+        if !cert_slot.is_provisioned(algo) {
             return None;
         }
         #[cfg(feature = "set-certificate")]
         {
             match &cert_slot.endorsement {
-                endorsement::SlotEndorsement::Managed(e) => e.key_usage_mask(),
+                endorsement::SlotEndorsement::Managed(m) => {
+                    m.get_endorsement(algo)?.key_usage_mask()
+                }
                 _ => Some(DEFAULT_KEY_USAGE_MASK),
             }
         }
