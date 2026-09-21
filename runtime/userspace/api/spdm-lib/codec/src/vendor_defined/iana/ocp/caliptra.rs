@@ -23,6 +23,7 @@ pub enum CaliptraVdmCommand {
     DeviceOwnershipTransfer = 0x11,
     /// Single entry point for authorization-related sub-commands.
     AuthorizedCommand = 0x12,
+    OcpLock = 0x13,
 }
 
 impl TryFrom<u8> for CaliptraVdmCommand {
@@ -36,6 +37,7 @@ impl TryFrom<u8> for CaliptraVdmCommand {
             0x08 => Self::ExportAttestedCsr,
             0x11 => Self::DeviceOwnershipTransfer,
             0x12 => Self::AuthorizedCommand,
+            0x13 => Self::OcpLock,
             _ => return Err(()),
         })
     }

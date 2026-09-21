@@ -29,7 +29,9 @@ pub use commands::authorized_command::{
     PROVISION_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PUB_KEY_CMD_ID,
 };
 #[cfg(feature = "ocp-lock")]
-pub use commands::authorized_command::{OCP_LOCK_ROTATE_HEK_CMD_ID, OCP_LOCK_SET_PERMA_HEK_CMD_ID};
+pub use commands::authorized_command::{
+    OCP_LOCK_CMD_ID, OCP_LOCK_ROTATE_HEK_CMD_ID, OCP_LOCK_SET_PERMA_HEK_CMD_ID,
+};
 
 /// Caliptra VDM message header length: `[command_version, command_code]`.
 const VDM_HEADER_LEN: usize = 2;
@@ -364,7 +366,8 @@ where
             CaliptraVdmCommand::RequestDebugUnlock
             | CaliptraVdmCommand::AuthorizeDebugUnlockToken
             | CaliptraVdmCommand::DeviceOwnershipTransfer
-            | CaliptraVdmCommand::AuthorizedCommand => 0,
+            | CaliptraVdmCommand::AuthorizedCommand
+            | CaliptraVdmCommand::OcpLock => 0,
         }
     }
 
@@ -559,6 +562,8 @@ where
                 commands::authorized_command::handle(self.authorization, cmd_req, scratch, payload)
                     .await
             }
+            #[cfg(feature = "ocp-lock")]
+            Ok(CaliptraVdmCommand::OcpLock) => commands::ocp_lock::handle(cmd_req),
             // Recognized-but-unimplemented and unknown command codes both map to
             // an UnsupportedOperation completion.
             _ => CaliptraVdmCmdResult::Error(CaliptraCompletionCode::UnsupportedOperation),
@@ -1296,7 +1301,7 @@ mod tests {
             _mldsa_pub: &[u8; 2592],
             _scratch: &A,
         ) -> CaliptraVdmResult<()> {
-            self.verify_test_signature(OCP_LOCK_ROTATE_HEK_CMD_ID, payload, sig)?;
+            self.verify_test_signature(OCP_LOCK_CMD_ID, payload, sig)?;
             self.complete_authorized(AuthorizedOperation::OcpLockRotateHek { slot })
         }
 
@@ -1311,7 +1316,7 @@ mod tests {
             _mldsa_pub: &[u8; 2592],
             _scratch: &A,
         ) -> CaliptraVdmResult<()> {
-            self.verify_test_signature(OCP_LOCK_SET_PERMA_HEK_CMD_ID, payload, sig)?;
+            self.verify_test_signature(OCP_LOCK_CMD_ID, payload, sig)?;
             self.complete_authorized(AuthorizedOperation::OcpLockSetPermaHek)
         }
     }
@@ -2485,9 +2490,11 @@ mod tests {
         let cmds = TestCommands::new(0).with_authorization();
         issue_test_challenge(&cmds);
         let slot: u32 = 2;
-        let payload = slot.to_le_bytes();
-        let sig = test_signature(OCP_LOCK_ROTATE_HEK_CMD_ID, &payload, &TEST_AUTH_CHALLENGE);
-        let req = authorized_req_with_sig(OCP_LOCK_ROTATE_HEK_CMD_ID, &payload, &sig);
+        let mut payload = Vec::new();
+        payload.extend_from_slice(&OCP_LOCK_ROTATE_HEK_CMD_ID.to_le_bytes());
+        payload.extend_from_slice(&slot.to_le_bytes());
+        let sig = test_signature(OCP_LOCK_CMD_ID, &payload, &TEST_AUTH_CHALLENGE);
+        let req = authorized_req_with_sig(OCP_LOCK_CMD_ID, &payload, &sig);
 
         let (response, inline, _) = dispatch(&cmds, &req, 16, 0);
         assert_inline(response, 3);
@@ -2503,13 +2510,9 @@ mod tests {
     fn ocp_lock_set_perma_hek_dispatches_under_authorized_command() {
         let cmds = TestCommands::new(0).with_authorization();
         issue_test_challenge(&cmds);
-        let payload = [];
-        let sig = test_signature(
-            OCP_LOCK_SET_PERMA_HEK_CMD_ID,
-            &payload,
-            &TEST_AUTH_CHALLENGE,
-        );
-        let req = authorized_req_with_sig(OCP_LOCK_SET_PERMA_HEK_CMD_ID, &payload, &sig);
+        let payload = OCP_LOCK_SET_PERMA_HEK_CMD_ID.to_le_bytes();
+        let sig = test_signature(OCP_LOCK_CMD_ID, &payload, &TEST_AUTH_CHALLENGE);
+        let req = authorized_req_with_sig(OCP_LOCK_CMD_ID, &payload, &sig);
 
         let (response, inline, _) = dispatch(&cmds, &req, 16, 0);
         assert_inline(response, 3);
@@ -2525,16 +2528,41 @@ mod tests {
     fn ocp_lock_commands_reject_invalid_payload_sizes() {
         let cmds = TestCommands::new(0);
 
-        // rotate_hek expects 4 bytes payload; give 3
-        let req = authorized_req(OCP_LOCK_ROTATE_HEK_CMD_ID, &[0u8; 3]);
+        // rotate_hek expects 8 bytes payload (4 FourCC + 4 slot); give 7
+        let mut bad_rotate = Vec::new();
+        bad_rotate.extend_from_slice(&OCP_LOCK_ROTATE_HEK_CMD_ID.to_le_bytes());
+        bad_rotate.extend_from_slice(&[0u8; 3]);
+        let req = authorized_req(OCP_LOCK_CMD_ID, &bad_rotate);
         let (response, inline, _) = dispatch(&cmds, &req, 16, 0);
         assert_inline(response, 3);
         assert_eq!(inline[2], CaliptraCompletionCode::InvalidPayloadSize as u8);
 
-        // set_perma_hek expects 0 bytes payload; give 1
-        let req = authorized_req(OCP_LOCK_SET_PERMA_HEK_CMD_ID, &[0u8; 1]);
+        // set_perma_hek expects 4 bytes payload (4 FourCC); give 5
+        let mut bad_perma = Vec::new();
+        bad_perma.extend_from_slice(&OCP_LOCK_SET_PERMA_HEK_CMD_ID.to_le_bytes());
+        bad_perma.push(0);
+        let req = authorized_req(OCP_LOCK_CMD_ID, &bad_perma);
         let (response, inline, _) = dispatch(&cmds, &req, 16, 0);
         assert_inline(response, 3);
         assert_eq!(inline[2], CaliptraCompletionCode::InvalidPayloadSize as u8);
+    }
+
+    #[cfg(feature = "ocp-lock")]
+    #[test]
+    fn ocp_lock_commands_reject_native_0x13_access_denied() {
+        let cmds = TestCommands::new(0);
+
+        let mut rotate_req = vec![1, CaliptraVdmCommand::OcpLock as u8];
+        rotate_req.extend_from_slice(&OCP_LOCK_ROTATE_HEK_CMD_ID.to_le_bytes());
+        rotate_req.extend_from_slice(&1u32.to_le_bytes());
+        let (response, inline, _) = dispatch(&cmds, &rotate_req, 16, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::AccessDenied as u8);
+
+        let mut perma_req = vec![1, CaliptraVdmCommand::OcpLock as u8];
+        perma_req.extend_from_slice(&OCP_LOCK_SET_PERMA_HEK_CMD_ID.to_le_bytes());
+        let (response, inline, _) = dispatch(&cmds, &perma_req, 16, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::AccessDenied as u8);
     }
 }

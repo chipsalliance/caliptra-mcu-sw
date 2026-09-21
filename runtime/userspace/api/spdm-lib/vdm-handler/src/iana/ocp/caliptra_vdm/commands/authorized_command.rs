@@ -33,9 +33,9 @@ const DOT_ROTATE_PAYLOAD_LEN: usize = 4 + core::mem::size_of::<DotRotatePayload>
 #[cfg(feature = "device-ownership-transfer")]
 const DOT_BACKUP_PAYLOAD_LEN: usize = 4;
 #[cfg(feature = "ocp-lock")]
-const OCP_LOCK_ROTATE_HEK_PAYLOAD_LEN: usize = 4;
+const OCP_LOCK_ROTATE_HEK_PAYLOAD_LEN: usize = 4 + 4;
 #[cfg(feature = "ocp-lock")]
-const OCP_LOCK_SET_PERMA_HEK_PAYLOAD_LEN: usize = 0;
+const OCP_LOCK_SET_PERMA_HEK_PAYLOAD_LEN: usize = 4;
 
 const AUTHORIZATION_TRAILER_LEN: usize = AUTH_CMD_NONCE_LEN
     + 2 * ECC_P384_COORD_SIZE
@@ -119,6 +119,9 @@ pub const DOT_DISABLE_CMD_ID: u32 = CommandId::MC_DOT_DISABLE.0;
 pub const DOT_ROTATE_CMD_ID: u32 = CommandId::MC_DOT_ROTATE.0;
 /// GET_DOT_BACKUP_BLOB sub-command (`MDBB`).
 pub const GET_DOT_BACKUP_BLOB_CMD_ID: u32 = CommandId::MC_GET_DOT_BACKUP_BLOB.0;
+/// OCP Lock command family (`0x13`).
+#[cfg(feature = "ocp-lock")]
+pub const OCP_LOCK_CMD_ID: u32 = CommandId::MC_OCP_LOCK.0;
 /// MC_OCP_LOCK_ROTATE_HEK sub-command (`OLRH`).
 #[cfg(feature = "ocp-lock")]
 pub const OCP_LOCK_ROTATE_HEK_CMD_ID: u32 = CommandId::MC_OCP_LOCK_ROTATE_HEK.0;
@@ -170,11 +173,7 @@ where
             handle_device_ownership_transfer(cmds, payload, scratch, out).await
         }
         #[cfg(feature = "ocp-lock")]
-        OCP_LOCK_ROTATE_HEK_CMD_ID => handle_ocp_lock_rotate_hek(cmds, payload, scratch, out).await,
-        #[cfg(feature = "ocp-lock")]
-        OCP_LOCK_SET_PERMA_HEK_CMD_ID => {
-            handle_ocp_lock_set_perma_hek(cmds, payload, scratch, out).await
-        }
+        OCP_LOCK_CMD_ID => handle_ocp_lock(cmds, payload, scratch, out).await,
         _ => CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidParameter),
     }
 }
@@ -623,6 +622,32 @@ where
 }
 
 #[cfg(feature = "ocp-lock")]
+async fn handle_ocp_lock<H, A>(
+    cmds: &H,
+    req: &[u8],
+    scratch: &A,
+    out: &mut [u8],
+) -> CaliptraVdmCmdResult
+where
+    H: CaliptraVdmAuthorization,
+    A: SpdmPalAlloc,
+{
+    // `req` starts with the little-endian OCP LOCK FourCC and remains byte-exact
+    // through authorization. The platform therefore verifies the common
+    // transcript `family 0x13 (BE) || req || nonce` without re-encoding fields.
+    let Some(subcommand) = req.get(..4) else {
+        return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidPayloadSize);
+    };
+    match read_u32_le(subcommand) {
+        OCP_LOCK_ROTATE_HEK_CMD_ID => handle_ocp_lock_rotate_hek(cmds, req, scratch, out).await,
+        OCP_LOCK_SET_PERMA_HEK_CMD_ID => {
+            handle_ocp_lock_set_perma_hek(cmds, req, scratch, out).await
+        }
+        _ => CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidParameter),
+    }
+}
+
+#[cfg(feature = "ocp-lock")]
 async fn handle_ocp_lock_rotate_hek<H, A>(
     cmds: &H,
     req: &[u8],
@@ -637,7 +662,7 @@ where
         Ok(parsed) => parsed,
         Err(code) => return CaliptraVdmCmdResult::Error(code),
     };
-    let slot = read_u32_le(parsed.payload);
+    let slot = read_u32_le(&parsed.payload[4..8]);
     finish_authorized_command(
         cmds.ocp_lock_rotate_hek(
             slot,

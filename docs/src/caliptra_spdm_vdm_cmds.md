@@ -84,6 +84,7 @@ These command codes are assigned from the Caliptra range reserved in the [OCP co
 | `0x08`       | ExportAttestedCsr         | O   | Discover device identity keys or export an attested CSR.                   |
 | `0x11`       | DeviceOwnershipTransfer   | O   | Carry DOT commands with native authentication.                             |
 | `0x12`       | AuthorizedCommand         | O   | Carry challenge-authorized provisioning and fuse subcommands.              |
+| `0x13`       | OcpLock                   | O   | Carry OCP LOCK commands.                                                   |
 
 R = Required, O = Optional
 
@@ -103,9 +104,8 @@ The following subcommands are assigned to the SPDM VDM IANA authorization-gated 
 | `0x4D52_564B` (`MRVK`) | FuseRevokeVendorPubKey     | Supported     | Revoke vendor public key.                           |
 | `0x5256_4B48` (`RVKH`) | FuseRevokeVendorPkHash     | Supported     | Revoke vendor public key hash.                      |
 | `0x4946_504B` (`IFPK`) | FuseLockPartition          | Supported     | Lock fuse partition.                                |
-| `0x4F4C_5248` (`OLRH`) | OcpLockRotateHek           | Supported     | Rotate active HEK. Gated by `ocp-lock`.             |
-| `0x4F4C_5350` (`OLSP`) | OcpLockSetPermaHek         | Supported     | Set Permanent HEK state. Gated by `ocp-lock`.       |
 | `0x0000_0011`          | DeviceOwnershipTransfer    | Supported     | Carry authorization-gated DOT subcommands.          |
+| `0x0000_0013`          | OcpLock                    | Supported     | Carry authorization-gated OCP LOCK subcommands.     |
 
 ### Authorization Flow
 
@@ -115,12 +115,13 @@ The following subcommands are assigned to the SPDM VDM IANA authorization-gated 
 4. Append the common authorization trailer and submit the complete request under `AuthorizedCommand`.
 
 For ordinary authorized subcommands, `subcommand_id` is the FourCC shown in the
-table. For DOT, `subcommand_id` is the family ID `0x00000011`; the signed payload
-is `DOT_FourCC(LE) || DOT_payload`. Thus both MCI and SPDM verify the same
-preimage:
+table. For family commands (`DeviceOwnershipTransfer` `0x00000011` and `OcpLock`
+`0x00000013`), `subcommand_id` is the outer family ID; the signed payload is
+`FourCC(LE) || subcommand_payload`. For example:
 
 ```text
 0x00000011(BE) || DOT_FourCC(LE) || DOT_payload || challenge
+0x00000013(BE) || OCP_LOCK_FourCC(LE) || OCP_LOCK_payload || challenge
 ```
 
 The common authorization trailer is:
@@ -185,17 +186,6 @@ Byte offsets below begin immediately after the four-byte `subcommand_id` and inc
 | | 100:147 | `ecc_pub_y` | u8[48] |
 | | 148:2739 | `mldsa_pub` | u8[2592] |
 | | 2740:7463 | `signature` | HybridSignature |
-| OLRH | 0:3 | `slot` | u32, little-endian |
-| | 4:51 | `nonce` | u8[48] |
-| | 52:99 | `ecc_pub_x` | u8[48] |
-| | 100:147 | `ecc_pub_y` | u8[48] |
-| | 148:2739 | `mldsa_pub` | u8[2592] |
-| | 2740:7463 | `signature` | HybridSignature |
-| OLSP | 0:47 | `nonce` | u8[48] |
-| | 48:95 | `ecc_pub_x` | u8[48] |
-| | 96:143 | `ecc_pub_y` | u8[48] |
-| | 144:2735 | `mldsa_pub` | u8[2592] |
-| | 2736:7459 | `signature` | HybridSignature |
 
 ## Device Ownership Transfer Commands
 
@@ -234,3 +224,24 @@ gated by a ROM recovery-mode signal; their native cryptographic and state checks
 are always enforced.
 
 **For detailed command flows, state transitions, security properties, and use cases**, see [Device Ownership Transfer (DOT)](dot.md#runtime-commands).
+
+## OCP LOCK Commands
+
+Runtime OCP LOCK commands over SPDM VDM use a common four-byte subcommand
+namespace under family ID `0x13` (gated by the `ocp-lock` feature flag).
+Multi-byte fields are little-endian.
+
+Authorization-gated OCP LOCK request:
+
+```text
+[version=1][command=0x12][family=0x13:u32][OCP LOCK FourCC:u32]
+[OCP LOCK payload][authorization trailer]
+```
+
+| FourCC | Command | Path | OCP LOCK payload | Description |
+| ------ | ------- | ---- | ---------------- | ----------- |
+| `OLRH` | Rotate HEK | Authorized | `slot:u32` | Sanitize active HEK and program next slot |
+| `OLSP` | Set Perma HEK | Authorized | Empty | Program permanent HEK lock fuse (`PERMA_HEK_EN`) |
+
+`OLRH` and `OLSP` are rejected with `AccessDenied` when sent directly under
+top-level command `0x13`.

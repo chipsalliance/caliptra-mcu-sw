@@ -11,15 +11,13 @@ use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
 use caliptra_mcu_spdm_traits::{
     McuResult, SpdmPalAlloc, SpdmPalIo, SpdmVdmBackend, VdmRegistry, VdmResponse, VdmResponseBuffer,
 };
+#[cfg(feature = "ocp-lock")]
+use caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::OCP_LOCK_CMD_ID;
 use caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::{
     CaliptraCompletionCode, CaliptraVdm, CaliptraVdmAuthorization, CaliptraVdmResult,
     CaliptraVdmStreamOps, DEVICE_OWNERSHIP_TRANSFER_CMD_ID, FE_PROG_CMD_ID,
     FUSE_LOCK_PARTITION_CMD_ID, INCREASE_CALIPTRA_MIN_SVN_CMD_ID, PROVISION_OWNER_PK_HASH_CMD_ID,
     PROVISION_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PUB_KEY_CMD_ID,
-};
-#[cfg(feature = "ocp-lock")]
-use caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::{
-    OCP_LOCK_ROTATE_HEK_CMD_ID, OCP_LOCK_SET_PERMA_HEK_CMD_ID,
 };
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::mutex::Mutex;
@@ -631,7 +629,7 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
         authorizer
             .verify_signatures(
                 scratch,
-                OCP_LOCK_ROTATE_HEK_CMD_ID,
+                OCP_LOCK_CMD_ID,
                 payload,
                 nonce,
                 ecc_pub_x,
@@ -662,7 +660,7 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
         authorizer
             .verify_signatures(
                 scratch,
-                OCP_LOCK_SET_PERMA_HEK_CMD_ID,
+                OCP_LOCK_CMD_ID,
                 payload,
                 nonce,
                 ecc_pub_x,
