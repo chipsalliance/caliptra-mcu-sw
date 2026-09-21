@@ -41,7 +41,7 @@ pub(crate) async fn handle_challenge<'a, Pal: SpdmPal>(
     let meas_hash_type = challenge_req.meas_summary_hash_type;
 
     // Validate slot_id.
-    if slot_id >= MAX_SLOTS || (pal.provisioned_slots() & (1 << slot_id)) == 0 {
+    if slot_id >= MAX_SLOTS || (pal.provisioned_slots(state.asym_algo()) & (1 << slot_id)) == 0 {
         return Err(SPDM_INVALID_REQUEST);
     }
 

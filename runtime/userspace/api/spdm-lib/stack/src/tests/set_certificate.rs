@@ -4,7 +4,8 @@ extern crate std;
 
 use super::*;
 use crate::error::{SPDM_BUSY, SPDM_OPERATION_FAILED, SPDM_RESET_REQUIRED, SPDM_UNSPECIFIED};
-use caliptra_mcu_spdm_codec::{errors as wire_errors, OtherParamSupport};
+use caliptra_mcu_spdm_codec::{errors as wire_errors, OtherParamSupport, PqcAsymAlgos};
+use caliptra_mcu_spdm_traits::SpdmPalAsymAlgo;
 use futures::executor::block_on;
 use std::vec::Vec;
 
@@ -293,6 +294,54 @@ fn test_handle_set_certificate_rejects_unnegotiated_base_asym_algo() {
     let der = der_chain();
     let payload = cert_payload(&der, test_digest(&der[..5]));
     let io = set_certificate_io(SpdmVersion::V12, 1, 0, &payload);
+
+    let err = block_on(handle_set_certificate(&mut state, &pal, &io)).unwrap_err();
+
+    assert_eq!(err, SPDM_INVALID_REQUEST);
+    assert_eq!(pal.op.take(), None);
+}
+
+/// In SPDM 1.4 a PQC selection clears `base_asym_sel`, so the only
+/// evidence of a usable signing algorithm is `pqc_asym_sel`. Managed
+/// slots now have per-algorithm storage, so this must be accepted and
+/// the write routed to the ML-DSA region rather than the ECC one.
+#[test]
+fn test_handle_set_certificate_accepts_mldsa_negotiation() {
+    let pal = TestPal::default();
+    let mut state = state(SpdmVersion::V14);
+    state.negotiated_base_asym_sel = AsymAlgos::EMPTY;
+    state.negotiated_pqc_asym_sel = PqcAsymAlgos::ML_DSA_87;
+    let der = der_chain();
+    let root_hash = test_digest(&der[..5]);
+    let payload = cert_payload(&der, root_hash);
+    let io = set_certificate_io(SpdmVersion::V14, 1, 0, &payload);
+
+    block_on(handle_set_certificate(&mut state, &pal, &io)).unwrap();
+
+    assert_eq!(pal.write_algo.get(), Some(SpdmPalAsymAlgo::MlDsa87));
+    assert_eq!(
+        pal.op.take(),
+        Some(StoreOp::Write {
+            slot: 1,
+            key_pair_id: 0,
+            cert_model: CERT_MODEL_ALIAS_CERT,
+            root_hash,
+            cert_chain: der,
+        })
+    );
+}
+
+/// A 1.4 connection with neither an ECC nor a PQC selection still has
+/// no signing algorithm, and must be rejected.
+#[test]
+fn test_handle_set_certificate_rejects_v14_with_no_asym_selection() {
+    let pal = TestPal::default();
+    let mut state = state(SpdmVersion::V14);
+    state.negotiated_base_asym_sel = AsymAlgos::EMPTY;
+    state.negotiated_pqc_asym_sel = PqcAsymAlgos::EMPTY;
+    let der = der_chain();
+    let payload = cert_payload(&der, test_digest(&der[..5]));
+    let io = set_certificate_io(SpdmVersion::V14, 1, 0, &payload);
 
     let err = block_on(handle_set_certificate(&mut state, &pal, &io)).unwrap_err();
 

@@ -29,12 +29,62 @@ use crate::error::{
 use crate::stack::{multi_key_conn_rsp, ConnectionState, Phase};
 
 /// Size of the currently supported SPDM cert-chain wire header:
-/// `Length(2) | Reserved(2) | RootHash(48)`.
+/// `Length(4) | RootHash(48)`.
+///
+/// Through SPDM 1.3 the leading field is `Length(2) | Reserved(2)`
+/// with `Reserved` required to be zero. SPDM 1.4 absorbs `Reserved`
+/// into `Length`, making it a 32-bit little-endian value. The two
+/// encodings are byte-identical for chains under 64 KiB, so the
+/// header is always emitted as a little-endian `u32`.
 const SPDM_CERT_CHAIN_HDR_LEN: usize = 4 + 48;
 const SHA384_DIGEST_SIZE: usize = 48;
 const CERTIFICATE_RESPONSE_HEADER_SIZE: usize = SpdmMsgHdrPdu::SIZE + CertificateRspBody::SIZE;
 const CERTIFICATE_LARGE_RESPONSE_HEADER_SIZE: usize =
     SpdmMsgHdrPdu::SIZE + CertificateLargeRspBody::SIZE;
+
+/// Largest total cert-chain length the chain format can express.
+///
+/// The chain-format `Length` field is 16 bits through SPDM 1.3 and 32
+/// bits from 1.4 onward. This is independent of whether the requester
+/// used the `LargeCertChain` request form, which bounds the offset and
+/// portion fields — see `GetCertificateReq::max_length_cap`.
+pub(crate) fn max_cert_chain_len(version: SpdmVersion) -> usize {
+    if version >= SpdmVersion::V14 {
+        u32::MAX as usize
+    } else {
+        u16::MAX as usize
+    }
+}
+
+/// Encode the leading `Length` field of the SPDM cert-chain header.
+///
+/// Always a little-endian `u32`; for pre-1.4 chains the upper two
+/// bytes are zero, which is exactly the required `Reserved` encoding.
+///
+/// Every producer of the chain header must use this so that the bytes
+/// served by GET_CERTIFICATE and the bytes hashed for GET_DIGESTS,
+/// CHALLENGE_AUTH and KEY_EXCHANGE_RSP agree.
+///
+/// # Why this takes no `SpdmVersion`
+///
+/// Deliberately version-independent. The encoding is a property of the
+/// stored chain, not of the connection it is served over, because this
+/// header feeds the cert-chain hash that goes into the CHALLENGE_AUTH
+/// and KEY_EXCHANGE_RSP transcripts. A requester verifies those
+/// signatures against the chain as it holds it, so the same chain must
+/// hash identically no matter which version is negotiated; encoding it
+/// per-version would break verification for a requester using a chain
+/// cached from an earlier session.
+///
+/// This costs nothing below 64 KiB, where the 1.4 `u32` and the pre-1.4
+/// `Length(2) | Reserved(2) = 0` encodings are byte-identical. The
+/// version-dependent *bound* belongs at the serving path instead — see
+/// [`max_cert_chain_len`] — since that is where 16-bit offset and
+/// portion addressing actually constrains what can be transferred.
+pub(crate) fn cert_chain_length_field(total_len: usize) -> mcu_error::McuResult<[u8; 4]> {
+    let length = u32::try_from(total_len).map_err(|_| mcu_error::codes::INVARIANT)?;
+    Ok(length.to_le_bytes())
+}
 
 #[derive(Copy, Clone)]
 pub(crate) struct CertificateLargeResponse {
@@ -205,13 +255,13 @@ pub(crate) async fn handle_get_certificate_req<'a, Pal: SpdmPal>(
         return Err(SPDM_INVALID_REQUEST);
     }
     let slot_size_only = state.version >= SpdmVersion::V13 && req.is_slot_size_requested();
-    let provisioned = pal.provisioned_slots();
+    let asym_algo = state.asym_algo();
+    let provisioned = pal.provisioned_slots(asym_algo);
     if provisioned & (1 << slot_id) == 0 && !slot_size_only {
         return Err(SPDM_INVALID_REQUEST);
     }
 
     // Total SPDM cert chain length = 52-byte header + raw DER chain.
-    let asym_algo = state.asym_algo();
     let der_len = if slot_size_only {
         pal.cert_chain_slot_size(io, slot_id, asym_algo).await
     } else {
@@ -222,8 +272,9 @@ pub(crate) async fn handle_get_certificate_req<'a, Pal: SpdmPal>(
         .checked_add(der_len)
         .ok_or(SPDM_UNSPECIFIED)?;
 
-    if total_len_usize > u16::MAX as usize {
-        if state.version >= SpdmVersion::V14 && !req.is_large() {
+    let max_chain_len = max_cert_chain_len(state.version).min(req.max_length_cap());
+    if total_len_usize > max_chain_len {
+        if state.version >= SpdmVersion::V14 {
             let actual_size = u32::try_from(total_len_usize).map_err(|_| SPDM_UNSPECIFIED)?;
             return Err(SPDM_DATA_TOO_LARGE.with_extended_data(actual_size.to_le_bytes()));
         }
@@ -259,7 +310,7 @@ pub(crate) async fn handle_get_certificate_req<'a, Pal: SpdmPal>(
     };
 
     let cert_info = if multi_key_conn_rsp(state)? {
-        pal.cert_info(slot_id).unwrap_or_default()
+        pal.cert_info(slot_id, asym_algo).unwrap_or_default()
     } else {
         0
     };
@@ -370,8 +421,7 @@ pub(crate) async fn fill_cert_chain_portion<Pal: SpdmPal>(
     let mut written = 0;
     if offset < SPDM_CERT_CHAIN_HDR_LEN {
         let mut hdr = [0u8; SPDM_CERT_CHAIN_HDR_LEN];
-        let length = u16::try_from(total_len).map_err(|_| mcu_error::codes::INVARIANT)?;
-        hdr[..2].copy_from_slice(&length.to_le_bytes());
+        hdr[..4].copy_from_slice(&cert_chain_length_field(total_len)?);
         let root_hash = hdr
             .get_mut(4..4 + SHA384_DIGEST_SIZE)
             .ok_or(mcu_error::codes::INVARIANT)?;
