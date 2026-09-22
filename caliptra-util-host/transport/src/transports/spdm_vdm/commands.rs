@@ -612,9 +612,9 @@ authorized_fuse_handler!(
     fuse::MC_PROVISION_VENDOR_PK_HASH_CANONICAL_CMD_ID
 );
 authorized_fuse_handler!(
-    handle_fuse_increase_caliptra_min_svn,
-    fuse::FuseIncreaseCaliptraMinSvnRequest,
-    fuse::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN_CANONICAL_CMD_ID
+    handle_fuse_increase_min_svn,
+    fuse::FuseIncreaseMinSvnRequest,
+    fuse::MC_FUSE_INCREASE_MIN_SVN_CANONICAL_CMD_ID
 );
 authorized_fuse_handler!(
     handle_fuse_revoke_vendor_pub_key,
@@ -1006,8 +1006,9 @@ mod tests {
             ecc_pub_y: [0; fuse::AUTH_PUB_ECC_COORD_SIZE],
             mldsa_pub: [0; fuse::AUTH_PUB_MLDSA_SIZE],
         };
-        let mcms = fuse::FuseIncreaseCaliptraMinSvnRequest {
+        let mcms = fuse::FuseIncreaseMinSvnRequest {
             flags: 0x1122_3344,
+            target: 0x99AA_BBCC,
             svn: 0x5566_7788,
             sig: sig.clone(),
             nonce: [0; fuse::AUTH_CMD_CHALLENGE_SIZE],
@@ -1076,6 +1077,7 @@ mod tests {
         let mut pvpk_fields = 0x0102_0304u32.to_le_bytes().to_vec();
         pvpk_fields.extend_from_slice(&[0xA5; 48]);
         let mut mcms_fields = 0x1122_3344u32.to_le_bytes().to_vec();
+        mcms_fields.extend_from_slice(&0x99AA_BBCCu32.to_le_bytes());
         mcms_fields.extend_from_slice(&0x5566_7788u32.to_le_bytes());
         let mut mrvk_fields = Vec::new();
         for field in [0x0102_0304u32, 0x1112_1314, 0x2122_2324, 0x3132_3334] {
@@ -1098,10 +1100,10 @@ mod tests {
             (
                 mcms.as_bytes(),
                 make_golden(
-                    fuse::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN_CANONICAL_CMD_ID,
+                    fuse::MC_FUSE_INCREASE_MIN_SVN_CANONICAL_CMD_ID,
                     &mcms_fields,
                 ),
-                handle_fuse_increase_caliptra_min_svn,
+                handle_fuse_increase_min_svn,
             ),
             (
                 mrvk.as_bytes(),
@@ -1160,8 +1162,9 @@ mod tests {
 
     #[test]
     fn authorized_command_rejects_trailing_response_and_small_output_buffer() {
-        let req = fuse::FuseIncreaseCaliptraMinSvnRequest {
+        let req = fuse::FuseIncreaseMinSvnRequest {
             flags: 0,
+            target: 0,
             svn: 1,
             sig: Default::default(),
             nonce: [0; fuse::AUTH_CMD_CHALLENGE_SIZE],
@@ -1175,13 +1178,13 @@ mod tests {
         };
         let mut response = [0u8; core::mem::size_of::<CommonResponse>()];
         assert!(matches!(
-            handle_fuse_increase_caliptra_min_svn(req.as_bytes(), &mut driver, &mut response),
+            handle_fuse_increase_min_svn(req.as_bytes(), &mut driver, &mut response),
             Err(TransportError::InvalidMessage)
         ));
 
         driver.response = success_response(CaliptraVdmCommand::AuthorizedCommand, &[]);
         assert!(matches!(
-            handle_fuse_increase_caliptra_min_svn(req.as_bytes(), &mut driver, &mut []),
+            handle_fuse_increase_min_svn(req.as_bytes(), &mut driver, &mut []),
             Err(TransportError::BufferError(_))
         ));
     }

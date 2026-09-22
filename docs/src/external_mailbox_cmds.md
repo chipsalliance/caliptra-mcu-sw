@@ -82,7 +82,7 @@ These commands support common Caliptra management functions, including querying 
 | MC_PROD_DEBUG_UNLOCK_REQ      | 0x4D50_5552 ("MPUR") | Requests debug unlock in a production environment.                                    |
 | MC_PROD_DEBUG_UNLOCK_TOKEN    | 0x4D50_5554 ("MPUT") | Sends the debug unlock token.                                                         |
 | MC_GET_AUTH_CMD_CHALLENGE     | 0x4D41_4343 ("MACC") | Requests a challenge for security-sensitive commands.                                 |
-| MC_FUSE_INCREASE_CALIPTRA_MIN_SVN | 0x4D43_4D53 ("MCMS") | Increases the minimum bootable Caliptra firmware SVN.                             |
+| MC_FUSE_INCREASE_MIN_SVN      | 0x4D43_4D53 ("MCMS") | Increases the selected minimum SVN.                                                    |
 | MC_FUSE_READ                  | 0x4946_5052 ("IFPR") | See [fuses spec](fuses.md) for details                                                |
 | MC_FUSE_WRITE                 | 0x4946_5057 ("IFPW") | See [fuses spec](fuses.md) for details                                                |
 | MC_FUSE_LOCK_PARTITION        | 0x4946_504B ("IFPK") | See [fuses spec](fuses.md) for details                                                |
@@ -325,13 +325,13 @@ The MCI request appends `flags:u32` and `reserved:u32` after the mailbox checksu
 fields are reserved and must be zero. The MCI response inserts a zero `reserved:u32` between the
 mailbox response header and the common 48-byte challenge payload.
 
-### MC_FUSE_INCREASE_CALIPTRA_MIN_SVN
+### MC_FUSE_INCREASE_MIN_SVN
 
-Increases the minimum bootable Caliptra firmware SVN.
+Increases the selected minimum SVN.
 
 Command Code: `0x4D43_4D53` ("MCMS")
 
-Payload semantics are defined by [Fuse Increase Caliptra Min SVN](caliptra_common_commands.md#fuse-increase-caliptra-min-svn).
+Payload semantics and target assignments are defined by [Fuse Increase Min SVN](caliptra_common_commands.md#fuse-increase-min-svn).
 
 ### MC_FE_PROG
 
