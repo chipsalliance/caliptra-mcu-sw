@@ -759,6 +759,15 @@ this design, HTG-940 remains the target board; the existing FPGA flow below is
 only the behavioral baseline that the HTG-940 environment must replace or
 preserve.
 
+The following diagram separates normal runtime interfaces from the host-only
+provisioning memories used by the integration-test environment. The solid blue
+path is ordinary AXI/UIO access into the FPGA fabric, orange blocks identify
+ROM or OTP backing memories written while the subsystem is held in reset.
+
+<p align="center">
+    <img src="images/fpga_subsystem_backdoor_architecture.svg" alt="ARM Linux integration-test host accessing the Caliptra Subsystem through normal AXI interfaces and dedicated Caliptra ROM, MCU ROM, and OTP provisioning backdoors" width="100%">
+</p>
+
 ### A.2 Operations performed once per FPGA configuration
 
 The `cargo xtask-fpga fpga bootstrap` path performs host and bitstream setup:
