@@ -9,7 +9,7 @@ use caliptra_mcu_core_util_host_transport::{MailboxDriver, MailboxError};
 
 // Buffer length constants
 const RESPONSE_BUFFER_SIZE: usize = 1024; // Increased for SHA context (200 bytes) + overhead
-const CAPABILITIES_ARRAY_SIZE: usize = 36;
+const CAPABILITIES_ARRAY_SIZE: usize = 64;
 const SHA_CONTEXT_SIZE: usize = 200; // Matches CMB_SHA_CONTEXT_SIZE from caliptra-api
 const MAX_HASH_SIZE: usize = 64;
 
@@ -62,7 +62,7 @@ impl MockMailbox {
         match external_cmd {
             0x4D43_4150 => {
                 // MC_DEVICE_CAPABILITIES ("MCAP")
-                // Mock capabilities response with proper external structure (36-byte caps array)
+                // Mock capabilities response with proper external structure (64-byte caps array)
                 let mut payload = Vec::new();
                 payload.extend_from_slice(&0x00000001u32.to_le_bytes()); // fips_status
 
