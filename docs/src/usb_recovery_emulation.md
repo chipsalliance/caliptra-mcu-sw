@@ -734,3 +734,281 @@ The emulation design is ready for application development when:
 - all emulator-only assumptions are listed in the FPGA parity checklist.
 
 The FPGA integration is behaviorally compatible when the same RA suite passes unchanged over USB/IP and physical USB and descriptor/register parity tests show no unexplained difference.
+
+## Appendix A: Current FPGA provisioning and test setup
+
+This appendix records the existing repository FPGA integration flow as a
+reference for the HTG-940 USB recovery design. It describes the software path
+currently identified as the VCK190/Versal platform in `hw/fpga`. These physical
+addresses and processing-system assumptions are not requirements for HTG-940;
+the HTG-940 integration must either provide equivalent host-visible windows or
+adapt the hardware model to its actual host interface.
+
+### A.1 Platform naming and host assumption
+
+The current FPGA guide and implementation assume that Linux runs on an ARM
+processing system with direct AXI access to the FPGA fabric. The ARM executes
+the Rust integration tests and acts as the external SoC manager. It accesses
+the Caliptra Subsystem through `/dev/uio0` and `/dev/uio1`.
+
+This conflicts with the reported distinction that the current VCK190 target
+has no ARM CPU while the HTG-940 environment runs Debian or PetaLinux on ARM.
+The board names and deployed architectures must therefore be confirmed with
+the hardware team before reusing the existing bootstrap or address map. For
+this design, HTG-940 remains the target board; the existing FPGA flow below is
+only the behavioral baseline that the HTG-940 environment must replace or
+preserve.
+
+### A.2 Operations performed once per FPGA configuration
+
+The `cargo xtask-fpga fpga bootstrap` path performs host and bitstream setup:
+
+1. Connect to the target Linux host, normally over SSH.
+2. Check required host tools and access.
+3. Disable deep CPU idle on the two processing-system CPUs to avoid timing and
+    AXI-access instability.
+4. Build `hw/fpga/kernel-modules/io_module.ko` when it is not already supplied
+    by the FPGA image.
+5. Insert `io_module.ko` and make `/dev/uio0` and `/dev/uio1` accessible to the
+    test process.
+6. Load the segmented FPGA bitstream when supported by the target image.
+7. Store the selected FPGA configuration in `/dev/shm/fpga-config`; the cache
+    must be recreated after a power cycle.
+
+The kernel-module Makefile also builds standalone Caliptra and MCU ROM
+backdoor character-device modules. The current bootstrap path does not insert
+or use those modules. ROM provisioning by the integration model uses UIO
+memory mappings from `io_module.ko`.
+
+Firmware and tests are staged separately. `cargo xtask-fpga fpga build`
+creates the firmware bundle, `cargo xtask-fpga fpga build-test` cross-compiles
+and archives tests with the `fpga_realtime` feature, and
+`cargo xtask-fpga fpga test` runs the archive on the target Linux system.
+
+### A.3 Host-visible UIO mappings
+
+`hw/fpga/kernel-modules/io_module.c` registers the following physical windows:
+
+| UIO mapping | Physical address | Size | Current use |
+| --- | ---: | ---: | --- |
+| `uio0/map0` | `0xA401_0000` | 64 KiB | FPGA wrapper, reset, straps, log FIFOs, and test controls |
+| `uio0/map1` | `0xA410_0000` | 256 KiB | Caliptra MMIO |
+| `uio0/map2` | `0xB000_0000` | 96 KiB | Caliptra ROM BRAM backdoor |
+| `uio0/map3` | `0xA408_0000` | 64 KiB | External I3C controller |
+| `uio0/map4` | `0xB008_0000` | 512 KiB | OTP backing-memory window |
+| `uio1/map0` | `0xA404_0000` | 8 KiB | Lifecycle controller |
+| `uio1/map1` | `0xB002_0000` | 128 KiB | MCU ROM BRAM backdoor |
+| `uio1/map2` | `0xA403_0000` | 64 KiB | Caliptra Subsystem I3C target |
+| `uio1/map3` | `0xA800_0000` | 16 MiB | MCI and MCU-visible subsystem space |
+| `uio1/map4` | `0xA406_0000` | 8 KiB | OTP controller registers |
+
+There are two important address-map qualifications:
+
+- `uio0/map4` is named `mcu_sram` in `io_module.c`, but the FPGA Tcl and the
+  resolved `caliptra-hw-model` implementation use this window as the OTP
+  backing RAM. The label is stale and must not be used as evidence that the
+  host directly preloads MCU execution SRAM.
+- `0xB002_0000` is the host-accessible MCU ROM BRAM backdoor. The MCU's normal,
+  reset-sensitive ROM AXI window is at `0xB004_0000`. Integration tests write
+  the former before releasing the subsystem.
+
+#### A.3.1 FPGA wrapper (`uio0/map0`)
+
+Linux exposes `uio0/map0` as a 64 KiB mapping beginning at `0xA401_0000`.
+Vivado assigns only the first 16 KiB (`0xA401_0000` through `0xA401_3FFF`) to
+`S_AXI_WRAPPER`. The remaining 48 KiB is outside the FPGA wrapper's AXI address
+segment even though it is inside the UIO mapping. Software must not access
+offsets `0x4000` through `0xFFFF`; the interconnect can report an AXI error or
+stall for an unassigned address.
+
+The implemented portion contains four blocks on 4 KiB boundaries:
+
+| Map offset | Physical address | Block | Implemented contents |
+| ---: | ---: | --- | --- |
+| `0x0000` | `0xA401_0000` | Wrapper interface | Control, status, straps, test keys, and OCP LOCK staging through offset `0x280` |
+| `0x1000` | `0xA401_1000` | FIFO interface | Caliptra log, debug, message, and ITRNG FIFOs through offset `0x1024` |
+| `0x2000` | `0xA401_2000` | Primary flash controller | Control registers and a 256-byte page buffer |
+| `0x3000` | `0xA401_3000` | Secondary flash controller | Control registers and a separate 256-byte page buffer |
+
+##### Wrapper interface registers
+
+| Offset | Register or range | Access | Purpose |
+| ---: | --- | --- | --- |
+| `0x000` | `fpga_magic` | RO | ASCII `CPTR` (`0x52545043`) image-valid marker |
+| `0x004` | `fpga_version` | RO | Git revision used to build the FPGA image |
+| `0x008` | `control` | RW | Power-good, subsystem reset, boot-FSM breakpoint, scan mode, debug intent, I3C AXI filtering, OCP lock, RMA/scrap policy, FIPS zeroization, and AXI reset |
+| `0x00C` | `status` | RO | Fatal/nonfatal error, ready-for-fuses, mailbox readiness, runtime readiness, mailbox state, and MCU halt status |
+| `0x010` | `arm_user` | RW | AXI USER value applied to processing-system transactions |
+| `0x014` | `itrng_divisor` | RW | Internal-TRNG request throttling divisor |
+| `0x018` | `cycle_count` | RO | Free-running FPGA cycle counter |
+| `0x030`-`0x037` | `generic_input_wires[2]` | RW | Caliptra generic input straps |
+| `0x038`-`0x03F` | `generic_output_wires[2]` | RO | Caliptra generic output-wire observation |
+| `0x040`-`0x05F` | `cptra_obf_key[8]` | RW | Test obfuscation key straps |
+| `0x060`-`0x09F` | `cptra_csr_hmac_key[16]` | RW | Test CSR HMAC key straps |
+| `0x0A0`-`0x0DF` | `cptra_obf_uds_seed[16]` | RW | Test UDS seed straps |
+| `0x0E0`-`0x0FF` | `cptra_obf_field_entropy[8]` | RW | Test field-entropy straps |
+| `0x100`-`0x110` | AXI USER straps | RW | LSU, IFU, DMA, SoC-configuration, and SRAM-configuration AXI identities |
+| `0x114` | `mcu_reset_vector` | RW | MCU reset PC, normally `0xB004_0000` |
+| `0x118` | `ss_all_error` | RO | Aggregated subsystem fatal and nonfatal errors |
+| `0x11C` | `mcu_config` | RW | MCU no-ROM, boot breakpoint, lifecycle, and scan-reset controls |
+| `0x120` | `uds_seed_base_addr` | RW | Test UDS seed location |
+| `0x124`-`0x128` | Production debug-unlock configuration | RW | Public-key-hash register-bank offset and number of hashes |
+| `0x12C`-`0x133` | `mci_generic_input_wires[2]` | RW | MCU ROM boot handshakes and boot-mode straps |
+| `0x134`-`0x13B` | `mci_generic_output_wires[2]` | RO | MCU-generated status wires |
+| `0x13C`-`0x144` | Key-release and staging outputs | RO | Key-release base/size and external staging-area base |
+| `0x148` | `cptra_ss_mcu_ext_int` | RW | Host-driven MCU external interrupt bits |
+| `0x14C`-`0x158` | `cptra_ss_raw_unlock_token_hash[4]` | RW | Raw lifecycle unlock-token hash |
+| `0x15C` | `spare_i3c_control_sts` | RW/RO | Spare-I3C and external-host selection plus interrupt/recovery status |
+| `0x1F0`-`0x1FC` | `ss_strap_generic[4]` | RW | Generic subsystem straps |
+| `0x200`-`0x23C` | `ocp_lock_key_release_reg[16]` | RW | OCP LOCK media-encryption-key staging |
+| `0x240`-`0x250` | `ocp_lock_metadata_reg[5]` | RW | OCP LOCK metadata staging |
+| `0x260`-`0x27C` | `ocp_lock_auxiliary_data_reg[8]` | RW | OCP LOCK auxiliary-data staging |
+| `0x280` | `ocp_lock_control_reg` | RW/RO | OCP LOCK control and processed-key ready indication |
+
+These writable key and secret inputs are FPGA test/provisioning facilities;
+they do not define the production secret-storage architecture.
+
+##### FIFO interface registers
+
+| Offset | Register | Direction | Purpose |
+| ---: | --- | --- | --- |
+| `0x1000` | `log_fifo_data` | FPGA to host | Reading pops the next Caliptra log byte and reports whether it is valid |
+| `0x1004` | `log_fifo_status` | FPGA to host | Caliptra log FIFO empty/full status |
+| `0x1008` | `itrng_fifo_data` | Host to FPGA | Writes one 32-bit word containing eight 4-bit entropy samples |
+| `0x100C` | `itrng_fifo_status` | Bidirectional | Empty/full status and software FIFO reset |
+| `0x1010` | `dbg_fifo_pop` | FIFO to host | Pops one 32-bit debug word |
+| `0x1014` | `dbg_fifo_push` | Host to FIFO | Pushes one 32-bit debug word |
+| `0x1018` | `dbg_fifo_status` | FPGA to host | Debug FIFO empty/full status |
+| `0x101C` | `msg_fifo_pop` | FIFO to host | Pops one 32-bit message word |
+| `0x1020` | `msg_fifo_push` | Host to FIFO | Pushes one 32-bit message word |
+| `0x1024` | `msg_fifo_status` | FPGA to host | Message FIFO empty/full status |
+
+The host-side entropy feeder writes `itrng_fifo_data` while the FPGA consumes
+4-bit samples from the width-converting FIFO. This is a test entropy source,
+not a production physical-noise source.
+
+##### Primary and secondary flash-controller registers
+
+The primary block uses map offsets `0x2000` through `0x21FF`; the secondary
+block repeats the same relative layout at `0x3000` through `0x31FF`.
+
+| Relative offset | Register | Purpose |
+| ---: | --- | --- |
+| `0x00` | `FL_INTERRUPT_STATE` | Error and completion-event interrupt state |
+| `0x04` | `FL_INTERRUPT_ENABLE` | Error and completion-event interrupt enables |
+| `0x08` | `PAGE_SIZE` | Page size, normally 256 bytes |
+| `0x0C` | `PAGE_NUM` | Selected physical page |
+| `0x10` | `PAGE_ADDR` | Driver-provided page-buffer address field |
+| `0x14` | `FL_CONTROL` | Start and operation selection; the active model uses 1=read, 2=write, and 3=erase |
+| `0x18` | `OP_STATUS` | Completion and operation-error status |
+| `0x1C` | `CTRL_REGWEN` | Control-register write enable |
+| `0x20` | `FLASH_SIZE` | Advertised capacity, normally 16 MiB |
+| `0x100`-`0x1FF` | `FLASH_BUF[64]` | 256-byte page-transfer buffer |
+
+Only the controller registers and page buffers reside in `uio0/map0`. The
+actual primary and secondary flash arrays are host-memory buffers maintained by
+the FPGA hardware-model process. The process observes `FL_CONTROL`, copies data
+between the selected host flash page and `FLASH_BUF`, and updates status and
+interrupt state.
+
+### A.4 Per-test image and fuse preparation
+
+Each integration test normally calls `start_runtime_hw_model()`. The test
+harness uses prebuilt artifacts when possible and otherwise builds:
+
+- the Caliptra ROM;
+- the MCU ROM;
+- Caliptra firmware;
+- the SoC manifest;
+- MCU runtime firmware;
+- optional primary-flash contents; and
+- optional test-specific OTP contents.
+
+The harness derives the vendor public-key hash from the selected firmware. It
+may also construct an OTP overlay for DOT state or production debug-unlock key
+hashes. Flash boot packages the mutable images into the primary-flash image;
+recovery boot retains them as separate images.
+
+### A.5 Per-test backdoor initialization sequence
+
+Creating `ModelFpgaRealtime` performs the following ordered setup:
+
+1. Convert the requested lifecycle into the Caliptra security state and build
+    the Caliptra Subsystem initialization parameters.
+2. Open `/dev/uio0` and `/dev/uio1` and map the wrapper, ROM backdoors, OTP
+    backing RAM, Caliptra, MCI, lifecycle, OTP, and I3C regions.
+3. Reset the FPGA AXI interface before using reset-sensitive subsystem MMIO.
+4. Start the host entropy feeder after AXI reset.
+5. Zero-pad and copy the Caliptra ROM into the `0xB000_0000` BRAM backdoor.
+6. Zero-pad and copy the MCU ROM into the `0xB002_0000` BRAM backdoor.
+7. Program wrapper inputs, deterministic test keys and secrets, entropy
+    controls, AXI users, debug policy, OCP lock policy, and the MCU reset vector.
+8. Assert subsystem reset and power-good low before changing OTP contents.
+9. Clear the OTP backing RAM and construct the requested lifecycle and OTP
+    partitions. Depending on the requested provisioning stage, this can include
+    lifecycle transition tokens, manufacturing data, UDS test slots, field
+    entropy, vendor and owner hashes, revocations, SVN values, and HEK seed.
+10. Clear stale MCU and Caliptra log FIFOs.
+11. Set the MCU reset vector to the normal MCU ROM address `0xB004_0000`.
+12. Deassert subsystem reset and power-good, allowing MCU ROM execution.
+
+If a test provides an additional `otp_memory` image, the MCU hardware model
+then asserts reset again, copies the OTP backing RAM into a host buffer, clears
+the overlay range, applies the test bytes, copies the complete buffer back, and
+deasserts reset. Whole-buffer copies are required because byte writes to this
+FPGA BRAM mapping can generate `SIGBUS` or corrupt words.
+
+The host does not directly populate all Caliptra fuse registers. The backdoor
+initializes OTP storage; MCU ROM subsequently reads OTP and forwards the
+appropriate fuse values to Caliptra.
+
+### A.6 Boot release and mutable image delivery
+
+After unbooted initialization, the model programs MCI generic input wires used
+as MCU ROM handshakes:
+
+- bit 30 tells MCU ROM that it may load fuse registers and continue boot;
+- bit 29 selects flash boot; and
+- bit 28 selects encrypted boot when requested.
+
+Mutable firmware then follows one of two paths:
+
+**Recovery boot:** The host model sends Caliptra firmware, the SoC manifest,
+and MCU runtime through the I3C recovery interface. MCU ROM and the recovery
+logic place and authenticate the images; the host does not backdoor-copy MCU
+runtime into MCU SRAM.
+
+**Flash boot:** The integration model exposes a host-memory-backed primary
+flash service. MCU ROM reads the packaged images and sends them through the
+recovery interface using the subsystem's AXI bypass path.
+
+The test constructor waits until MCI reports
+`FIRMWARE_BOOT_FLOW_COMPLETE` unless the test requested ROM-only operation.
+Only after this milestone does the integration test begin its test-specific
+commands and assertions.
+
+### A.7 Teardown
+
+When the FPGA model is dropped, it stops the entropy worker, disables the I3C
+controller, asserts subsystem reset, resets the AXI interface, and unmaps all
+UIO regions. This makes provisioning a per-model-instance operation even when
+the FPGA bitstream and Linux host remain active across many tests.
+
+### A.8 HTG-940 integration requirements
+
+The HTG-940 port must identify how its Linux environment provides each
+function currently supplied by the VCK190/Versal processing-system path:
+
+1. A host-accessible transport to wrapper and reset controls.
+2. Writable Caliptra and MCU ROM memories while the subsystem is held in reset.
+3. Writable OTP backing storage, or an equivalent provisioning mechanism.
+4. Access to lifecycle, OTP, Caliptra, MCI, and I3C register windows.
+5. A way to service or replace the host-modeled flash controller.
+6. A physical USB device connection from the LPCIP3511 controller and PHY to
+    the external recovery-agent host.
+7. A replacement for UIO mappings if HTG-940 exposes the FPGA through PCIe or
+    another host bridge rather than a processing-system AXI interconnect.
+
+The HTG-940 address map must be treated as a new platform contract. Existing
+physical addresses, UIO indices, reset semantics, and cache-coherency behavior
+must be validated rather than copied from this appendix.
