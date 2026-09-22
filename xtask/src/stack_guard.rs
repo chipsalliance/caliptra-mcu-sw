@@ -1,26 +1,17 @@
 // Licensed under the Apache-2.0 license
 
-//! `cargo xtask stack-guard` — fail CI if any single user-app stack frame grows
-//! past `MAX_SINGLE_FRAME`.
+//! `cargo xtask stack-guard` — fail CI if any single user-app stack frame
+//! exceeds `MAX_SINGLE_FRAME`.
 //!
-//! The existing size check (`ci.rs::elf_stack_size`) reads the `.stack`
-//! *section* size, which is just the budget carved out by the linker — it
-//! reports the budget no matter how much stack the code actually uses, so it
-//! cannot catch frame growth. This guard builds the app with
-//! `-Z emit-stack-sizes` and checks the exact LLVM-emitted per-function frames.
+//! `ci.rs::elf_stack_size` reads the `.stack` *section* size, i.e. the budget
+//! the linker carved out, so it cannot see frame growth. This builds the app
+//! with `-Z emit-stack-sizes` and checks the per-function frames instead.
 //!
-//! Deliberately budget-independent: a multi-KB stack frame is a bug regardless
-//! of how much `[[app]].stack` happens to be available, and tying the threshold
-//! to the budget would mean raising the budget silently weakens the detector.
-//!
-//! This does **not** check "will the app fit in SRAM" — the bundler already
-//! fails the build for that (`firmware-bundler/src/manifest.rs`: "Bytes N would
-//! exceed remaining memory space M"), and `ci.rs`'s size report surfaces the
-//! overflow magnitude. A stack *peak* estimate would be the least reliable of
-//! the three: the executor dispatches task polls through indirect/`dyn` edges a
-//! static call graph cannot follow, and `.stack_sizes` omits asm frames.
-//! Largest-single-frame is cheap and exact to parse, and it is the signal that
-//! nothing else provides.
+//! The threshold is deliberately budget-independent: a multi-KB frame is a bug
+//! whatever `[[app]].stack` happens to be, and deriving it from the budget would
+//! mean raising the budget weakens the check. Whether the app *fits* is already
+//! gated by the bundler ("Bytes N would exceed remaining memory space M") and
+//! reported by `ci.rs`, so this does not duplicate that.
 
 use anyhow::{anyhow, bail, Context, Result};
 use caliptra_mcu_builder::{runtime_build_with_apps, CaliptraBuildArgs, PROJECT_ROOT, TARGET};
@@ -30,12 +21,9 @@ use std::path::PathBuf;
 
 /// Maximum bytes any one function's stack frame may occupy.
 ///
-/// The largest frame on `main` today is 4,320 B (`spdm_mctp_responder` task
-/// poll), so this leaves ~1.9x headroom for legitimate growth while still
-/// tripping on the class of regression this guard exists for: the 11,324 B
-/// `MldsaVerifyReq` that originally landed in an async frame, and the 36,848 B
-/// frame it produced. Raise it only with a deliberate review — a frame this
-/// large is normally a buffer that belongs in a static or the heap.
+/// Largest frame on `main` is 4,320 B, so this leaves ~1.9x headroom while still
+/// catching the regression class this exists for (an 11 KB `MldsaVerifyReq` in
+/// an async frame). Raise it only deliberately.
 const MAX_SINGLE_FRAME: u64 = 8 * 1024;
 
 /// Feature set that reproduces the deepest observed stack path (the SPDM
@@ -43,47 +31,22 @@ const MAX_SINGLE_FRAME: u64 = 8 * 1024;
 /// profile / constrained SRAM layout.
 const GUARD_FEATURES: &str = "test-mctp-spdm-attestation,release";
 
-/// Build the full firmware bundle with `-Z emit-stack-sizes` and return the
-/// path to the fully-linked user-app ELF.
+/// Build the firmware bundle with `-Z emit-stack-sizes`; returns the user-app ELF.
 ///
-/// The build MUST go through the bundler (`runtime_build_with_apps`), not a
-/// bare `cargo rustc -p user-app`: the app is `no_main` on riscv32 and only the
-/// Tock TBF linker script the bundler supplies retains the entry root, so a
-/// bare build dead-code-eliminates the whole app down to a stub with none of
-/// the frames we need to measure.
-///
-/// `-Z emit-stack-sizes` is injected via `RUSTFLAGS` (appended to the workspace
-/// flags from `.cargo/config.toml`, which env `RUSTFLAGS` overrides, so they
-/// are re-listed here) and gated on stable via `RUSTC_BOOTSTRAP=1`. It only
-/// adds a non-alloc section (objcopy strips it from the shipped `.bin`), so
-/// codegen and behavior are unchanged.
+/// Must go through the bundler: the app is `no_main` on riscv32 and only the TBF
+/// linker script retains the entry root, so a bare `cargo rustc -p user-app`
+/// dead-code-eliminates it to a stub. `-Z emit-stack-sizes` adds a non-alloc
+/// section (objcopy strips it), so codegen is unchanged.
 fn build_instrumented_user_app() -> Result<PathBuf> {
     let target_dir = PROJECT_ROOT.join("target").join("stack-guard");
 
-    // Mirror .cargo/config.toml [target.riscv32imc].rustflags verbatim (env
-    // RUSTFLAGS replaces, not extends, the config value), then append the
-    // instrumentation. `force-frame-pointers=no` MUST be mirrored: it changes
-    // the prologue slot layout `.stack_sizes` records, so omitting it would
-    // measure frames a few bytes off from the shipping build. `-icf` and the
-    // `--remap-path-prefix` lines are omitted only where they cannot affect
-    // `.stack_sizes` (code folding / .rodata path strings).
-    let rustflags = concat!(
-        "-Cpanic=abort ",
-        "-Ctarget-feature=+relax,+zba,+zbb,+zbc,+zbs ",
-        "-Cforce-frame-pointers=no ",
-        "-Crelocation-model=static ",
-        "-Csymbol-mangling-version=v0 ",
-        "-Clinker=rust-lld ",
-        "-Clinker-flavor=ld.lld ",
-        "-Clink-arg=-nmagic ",
-        "-Clink-arg=-icf=all ",
-        "-Zemit-stack-sizes",
-    );
+    // Derived, not copied: env RUSTFLAGS replaces the config value, so drift here
+    // would silently measure different codegen than ships.
+    let mut rustflags = target_rustflags()?;
+    rustflags.push_str(" -Zemit-stack-sizes");
 
-    // Set the instrumentation env for this build, then clear it. Cleanup runs on
-    // the error path (before `?`); a panic inside the build would leak it, which
-    // is acceptable because this is the last build in the process. If this is
-    // ever chained ahead of other builds, replace with an RAII guard.
+    // Cleared after the build; a panic mid-build would leak it, which is fine as
+    // this is the last build in the process.
     std::env::set_var("RUSTFLAGS", rustflags);
     std::env::set_var("RUSTC_BOOTSTRAP", "1");
     let result = runtime_build_with_apps(&CaliptraBuildArgs {
@@ -102,6 +65,40 @@ fn build_instrumented_user_app() -> Result<PathBuf> {
         bail!("instrumented user-app ELF not found at {}", elf.display());
     }
     Ok(elf)
+}
+
+/// Workspace `rustflags` for the firmware target, read from `.cargo/config.toml`
+/// so the instrumented build cannot drift from the shipping one. The array stores
+/// `-C` and its value separately, so adjacent pairs are rejoined.
+fn target_rustflags() -> Result<String> {
+    let path = PROJECT_ROOT.join(".cargo/config.toml");
+    let text =
+        std::fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
+    let cfg: toml::Value = toml::from_str(&text).context("parsing .cargo/config.toml")?;
+    let flags = cfg
+        .get("target")
+        .and_then(|t| t.get(TARGET))
+        .and_then(|t| t.get("rustflags"))
+        .and_then(|f| f.as_array())
+        .ok_or_else(|| anyhow!("[target.{TARGET}].rustflags missing in {}", path.display()))?;
+
+    let mut out: Vec<String> = Vec::new();
+    let mut it = flags.iter().filter_map(|v| v.as_str()).peekable();
+    while let Some(flag) = it.next() {
+        // "-C" carries its value in the next entry; other flags are self-contained.
+        if flag == "-C" {
+            let val = it
+                .next()
+                .ok_or_else(|| anyhow!("dangling -C at end of rustflags"))?;
+            out.push(format!("-C{val}"));
+        } else {
+            out.push(flag.to_string());
+        }
+    }
+    if out.is_empty() {
+        bail!("[target.{TARGET}].rustflags is empty");
+    }
+    Ok(out.join(" "))
 }
 
 /// Largest per-function frame from `.stack_sizes` and its function name.
