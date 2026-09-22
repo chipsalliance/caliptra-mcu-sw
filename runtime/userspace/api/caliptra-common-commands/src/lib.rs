@@ -220,7 +220,8 @@ pub struct DeviceCapabilities {
     pub mcu_rt: [u8; 4],                 // Bytes [20:23], big-endian
     pub external_commands: [u8; 4],      // Bytes [24:27], big-endian
     pub authorized_subcommands: [u8; 4], // Bytes [28:31], big-endian
-    pub reserved: [u8; 4],               // Bytes [32:35], zero
+    pub reserved: [u8; 16],              // Bytes [32:47], zero
+    pub vendor: [u8; 16],                // Bytes [48:63], vendor-defined
 }
 
 /// Debug unlock challenge response returned by `request_debug_unlock`.

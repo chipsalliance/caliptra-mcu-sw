@@ -138,7 +138,8 @@ fn test_device_capabilities_cmd() -> Result<()> {
         ExternalCommandCapabilities::GET_ATTESTATION.bits()
     );
     assert_eq!(u32::from_be_bytes(resp.caps[28..32].try_into().unwrap()), 0);
-    assert_eq!(&resp.caps[32..], &[0; 4]);
+    assert_eq!(&resp.caps[32..48], &[0; 16]);
+    assert_eq!(&resp.caps[48..64], &[0; 16]);
     Ok(())
 }
 

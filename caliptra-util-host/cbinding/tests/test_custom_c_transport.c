@@ -72,7 +72,7 @@ static enum CaliptraError mock_disconnect(void *ctx) {
 // Mock hardcoded GetDeviceCapabilities response.
 static const uint8_t MOCK_DEVICE_CAPABILITIES_RESPONSE[] = {
     0x01, 0x00, 0x00, 0x00,  // fips_status (little-endian host field)
-    // caps[36] (component capability fields are big-endian)
+    // caps[64] (component capability fields are big-endian)
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, // Caliptra RT
     0x00, 0x00, 0x00, 0x00,                         // Caliptra FMC
     0x00, 0x00, 0x00, 0x01,                         // Caliptra ROM
@@ -80,7 +80,12 @@ static const uint8_t MOCK_DEVICE_CAPABILITIES_RESPONSE[] = {
     0x00, 0x00, 0x00, 0xFF,                         // MCU RT
     0x00, 0x02, 0x00, 0xEF,                         // External commands
     0x00, 0x00, 0x00, 0x09,                         // Authorized subcommands
-    0x00, 0x00, 0x00, 0x00                          // Reserved
+    // Reserved
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    // Vendor-defined
+    0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7,
+    0xA8, 0xA9, 0xAA, 0xAB, 0xAC, 0xAD, 0xAE, 0xAF
 };
 
 static const uint8_t MOCK_FIRMWARE_VERSION_RESPONSE[] = {
@@ -235,6 +240,9 @@ int test_custom_c_transport_device_capabilities(void) {
     TEST_ASSERT(capabilities_response.caps[19] == 0x00, "MCU ROM capabilities should be unavailable");
     TEST_ASSERT(capabilities_response.caps[27] == 0xEF, "External commands should match expected mock value");
     TEST_ASSERT(capabilities_response.caps[31] == 0x09, "Authorized subcommands should match expected mock value");
+    TEST_ASSERT(capabilities_response.caps[47] == 0x00, "Reserved capabilities should be zero");
+    TEST_ASSERT(capabilities_response.caps[48] == 0xA0, "First vendor capability byte should match");
+    TEST_ASSERT(capabilities_response.caps[63] == 0xAF, "Last vendor capability byte should match");
 
     printf("✓ Successfully executed get_device_capabilities through custom transport\n");
     printf("  Retrieved MCU Runtime capabilities: 0x%02X\n", capabilities_response.caps[23]);

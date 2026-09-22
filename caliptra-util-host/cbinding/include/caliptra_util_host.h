@@ -2,6 +2,8 @@
 
 /* Auto-generated from Rust caliptra-util-host library */
 
+#define DEVICE_CAPABILITIES_SIZE 64
+
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -51,7 +53,7 @@ typedef struct CommonResponse {
  */
 typedef struct GetDeviceCapabilitiesResponse {
   struct CommonResponse common;
-  uint8_t caps[36];
+  uint8_t caps[DEVICE_CAPABILITIES_SIZE];
 } GetDeviceCapabilitiesResponse;
 
 /**

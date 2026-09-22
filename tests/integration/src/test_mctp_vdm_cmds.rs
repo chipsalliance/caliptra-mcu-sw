@@ -226,7 +226,8 @@ pub mod test {
                 &AuthorizedSubcommandCapabilities::empty().bits(),
                 "Authorized subcommands",
             )?;
-            Self::assert_eq(&response.caps[32..], &[0; 4], "Reserved capabilities")?;
+            Self::assert_eq(&response.caps[32..48], &[0; 16], "Reserved capabilities")?;
+            Self::assert_eq(&response.caps[48..64], &[0; 16], "Vendor capabilities")?;
             info!("  Capabilities: {:?} (matches expected)", response.caps);
 
             Ok(())
