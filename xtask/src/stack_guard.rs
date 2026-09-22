@@ -1,22 +1,26 @@
 // Licensed under the Apache-2.0 license
 
-//! `cargo xtask stack-guard` — fail CI if the user-app's largest stack frame
-//! approaches its budget.
+//! `cargo xtask stack-guard` — fail CI if any single user-app stack frame grows
+//! past `MAX_SINGLE_FRAME`.
 //!
 //! The existing size check (`ci.rs::elf_stack_size`) reads the `.stack`
 //! *section* size, which is just the budget carved out by the linker — it
 //! reports the budget no matter how much stack the code actually uses, so it
-//! cannot catch frame growth. This guard instead builds the app with
-//! `-Z emit-stack-sizes`, reads the exact LLVM-emitted per-function frames, and
-//! fails if the largest frame exceeds `[[app]].stack` budget − `STACK_RESERVE`.
+//! cannot catch frame growth. This guard builds the app with
+//! `-Z emit-stack-sizes` and checks the exact LLVM-emitted per-function frames.
 //!
-//! Why the largest single frame + a fixed reserve (not a full call-graph sum):
-//! a precise additive walk is unreliable here — the executor dispatches task
-//! polls through indirect/`dyn` edges a static call graph cannot follow, and
-//! `.stack_sizes` omits asm/intrinsic frames. So the guard tracks the largest
-//! single frame (cheap and exact to parse) and adds `STACK_RESERVE` to bound
-//! the handler/entry frames stacked above it plus a cushion for the undercount;
-//! see its definition for the measured derivation.
+//! Deliberately budget-independent: a multi-KB stack frame is a bug regardless
+//! of how much `[[app]].stack` happens to be available, and tying the threshold
+//! to the budget would mean raising the budget silently weakens the detector.
+//!
+//! This does **not** check "will the app fit in SRAM" — the bundler already
+//! fails the build for that (`firmware-bundler/src/manifest.rs`: "Bytes N would
+//! exceed remaining memory space M"), and `ci.rs`'s size report surfaces the
+//! overflow magnitude. A stack *peak* estimate would be the least reliable of
+//! the three: the executor dispatches task polls through indirect/`dyn` edges a
+//! static call graph cannot follow, and `.stack_sizes` omits asm frames.
+//! Largest-single-frame is cheap and exact to parse, and it is the signal that
+//! nothing else provides.
 
 use anyhow::{anyhow, bail, Context, Result};
 use caliptra_mcu_builder::{runtime_build_with_apps, CaliptraBuildArgs, PROJECT_ROOT, TARGET};
@@ -24,20 +28,15 @@ use elf::endian::LittleEndian;
 use elf::ElfBytes;
 use std::path::PathBuf;
 
-/// Bytes reserved above the largest single frame to cover the other frames
-/// stacked on top of it. Measured on current main (post-#1859): the deepest
-/// additive stack chain is 13,520 B while the largest single frame is 6,960 B
-/// (`spdm_mctp_responder::poll`), so ~6,560 B of the peak comes from handlers
-/// stacked above it (`handle_key_exchange` 3,376, `get_measurement_value`
-/// 1,888, SHA/mailbox glue). This reserve is that gap plus a ~3,680 B cushion
-/// for the `.stack_sizes` undercount (asm/intrinsic frames and indirect/`dyn`
-/// dispatch edges the static analysis cannot follow). The guard fails if the
-/// largest single frame exceeds `budget - RESERVE`; with the current 0x5000
-/// (20,480 B) budget that limit is 10,240 B, giving the implied worst-case
-/// ceiling (largest frame + reserve = 17,200 B) comfortable margin over the
-/// measured 13,520 B peak while still tripping on any newly-introduced
-/// multi-KB on-stack buffer.
-const STACK_RESERVE: u64 = 0x2800; // 10,240 B
+/// Maximum bytes any one function's stack frame may occupy.
+///
+/// The largest frame on `main` today is 4,320 B (`spdm_mctp_responder` task
+/// poll), so this leaves ~1.9x headroom for legitimate growth while still
+/// tripping on the class of regression this guard exists for: the 11,324 B
+/// `MldsaVerifyReq` that originally landed in an async frame, and the 36,848 B
+/// frame it produced. Raise it only with a deliberate review — a frame this
+/// large is normally a buffer that belongs in a static or the heap.
+const MAX_SINGLE_FRAME: u64 = 8 * 1024;
 
 /// Feature set that reproduces the deepest observed stack path (the SPDM
 /// attestation + command-auth responder). `release` matches the shipping
@@ -172,45 +171,6 @@ fn uleb128(b: &[u8]) -> Result<(u64, usize)> {
     Ok((result, i))
 }
 
-/// Read `[[app]].stack` from a bundler manifest.
-fn read_app_stack(manifest: &std::path::Path) -> Result<u64> {
-    let text = std::fs::read_to_string(manifest)
-        .with_context(|| format!("reading {}", manifest.display()))?;
-    let parsed: toml::Value =
-        toml::from_str(&text).with_context(|| format!("parsing {}", manifest.display()))?;
-    let stack = parsed
-        .get("app")
-        .and_then(|a| a.as_array())
-        .and_then(|a| a.first())
-        .and_then(|a| a.get("stack"))
-        .and_then(|s| s.as_integer())
-        .ok_or_else(|| {
-            anyhow!(
-                "[[app]].stack missing or not an integer in {}",
-                manifest.display()
-            )
-        })?;
-    Ok(stack as u64)
-}
-
-/// The app stack budget to guard against. The instrumented build uses the
-/// emulator manifest, so guard against its budget — but require the fpga
-/// manifest to match, since the deep SPDM/auth frames are platform-independent
-/// and a divergence would leave the fpga app silently unguarded.
-fn app_stack_budget() -> Result<u64> {
-    let emu = PROJECT_ROOT.join("firmware-bundler/reference/emulator/user-app.toml");
-    let fpga = PROJECT_ROOT.join("firmware-bundler/reference/fpga/user-app.toml");
-    let emu_stack = read_app_stack(&emu)?;
-    let fpga_stack = read_app_stack(&fpga)?;
-    if emu_stack != fpga_stack {
-        bail!(
-            "emulator [[app]].stack ({emu_stack:#x}) != fpga [[app]].stack ({fpga_stack:#x}); \
-             the guard measures one build — align them or extend the guard to both platforms."
-        );
-    }
-    Ok(emu_stack)
-}
-
 /// Shorten a mangled task/function symbol for display.
 fn short(sym: &str) -> &str {
     for tag in [
@@ -226,37 +186,28 @@ fn short(sym: &str) -> &str {
     sym
 }
 
-/// The gate limit for a given budget: how large the biggest single frame may be
-/// before the reserve for the frames stacked above it is exhausted.
-fn frame_limit(budget: u64) -> u64 {
-    budget.saturating_sub(STACK_RESERVE)
-}
-
 pub(crate) fn run() -> Result<()> {
-    let budget = app_stack_budget()?;
-    let limit = frame_limit(budget);
-    println!("user-app stack budget = {budget} B; largest-frame limit = {limit} B (budget − {STACK_RESERVE} B reserve)");
-
+    println!("max single frame allowed = {MAX_SINGLE_FRAME} B");
     println!("Building instrumented user-app ({GUARD_FEATURES})...");
     let elf_path = build_instrumented_user_app()?;
     let elf_bytes =
         std::fs::read(&elf_path).with_context(|| format!("reading {}", elf_path.display()))?;
 
     let (max_frame, offender) = largest_frame(&elf_bytes)?;
-    let margin = limit as i64 - max_frame as i64;
+    let margin = MAX_SINGLE_FRAME as i64 - max_frame as i64;
     println!("  largest frame  {max_frame:>7} B  ({})", short(&offender));
-    println!("  limit          {limit:>7} B");
+    println!("  limit          {MAX_SINGLE_FRAME:>7} B");
     println!("  margin         {margin:>7} B");
 
-    if max_frame > limit {
+    if max_frame > MAX_SINGLE_FRAME {
         bail!(
-            "STACK GUARD FAILED: largest frame {max_frame} B in {} exceeds the {limit} B limit \
-             (budget {budget} B − {STACK_RESERVE} B reserve for the handler/entry frames stacked \
-             above it). Reduce stack usage or raise [[app]].stack.",
+            "STACK GUARD FAILED: frame {max_frame} B in {} exceeds the {MAX_SINGLE_FRAME} B \
+             per-frame limit. Move the large local into a static or the heap; raise \
+             MAX_SINGLE_FRAME only if the frame is genuinely justified.",
             short(&offender),
         );
     }
-    println!("STACK GUARD OK: largest frame {max_frame} B is within the {limit} B limit ({margin} B margin).");
+    println!("STACK GUARD OK: largest frame {max_frame} B is within {MAX_SINGLE_FRAME} B ({margin} B margin).");
     Ok(())
 }
 
@@ -287,9 +238,10 @@ mod tests {
     }
 
     #[test]
-    fn frame_limit_subtracts_reserve() {
-        assert_eq!(frame_limit(0x5000), 0x5000 - STACK_RESERVE); // 20,480 - 10,240 = 10,240
-        assert_eq!(frame_limit(0), 0); // saturating, no underflow
+    fn limit_is_budget_independent() {
+        // The threshold must not be derived from [[app]].stack: raising the
+        // budget must not weaken frame-regression detection.
+        assert_eq!(MAX_SINGLE_FRAME, 8 * 1024);
     }
 
     // At the current 0x5000 (20,480 B) budget, the gate must PASS the measured
@@ -298,11 +250,13 @@ mod tests {
     // buffer like the pre-#1859 11 KB MldsaVerifyReq.
     #[test]
     fn gate_passes_current_frame_rejects_regression() {
-        let limit = frame_limit(0x5000);
-        assert_eq!(limit, 10_240);
-        assert!(6_960 <= limit, "current largest frame 6,960 B must pass");
+        // Largest frame on main today; must pass with headroom.
+        const CURRENT_MAX_FRAME: u64 = 4_320;
+        // The MldsaVerifyReq that originally landed in an async frame.
+        const REGRESSION: u64 = 11_324;
+        assert!(CURRENT_MAX_FRAME <= MAX_SINGLE_FRAME);
         assert!(
-            6_960 + 11_324 > limit,
+            CURRENT_MAX_FRAME + REGRESSION > MAX_SINGLE_FRAME,
             "re-adding an 11 KB on-stack buffer must trip the guard"
         );
     }
