@@ -1366,72 +1366,19 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
             return Err(errors::INVALID_PARAMS);
         }
 
-        match SvnTarget::try_from(req.target).map_err(|_| errors::INVALID_PARAMS)? {
-            SvnTarget::CaliptraRuntime => {
-                let caliptra_fw_info = self.get_caliptra_fw_info().await?;
-                Self::increase_min_svn_fuse(
-                    otp::reg::CALIPTRA_FW_SVN,
-                    req.svn,
-                    Some(caliptra_fw_info.fw_svn),
-                )?;
-            }
-            SvnTarget::SocManifest => {
-                let otp: otp::Otp<DefaultSyscalls> = otp::Otp::new();
-                let max_svn = otp
-                    .read(otp::reg::SOC_MANIFEST_MAX_SVN, 0)
-                    .map_err(|_| errors::MCU_MBOX_COMMON)?;
-                Self::increase_min_svn_fuse(otp::reg::SOC_MANIFEST_SVN, req.svn, Some(max_svn))?;
-            }
-            SvnTarget::OwnerSocManifest => return Err(errors::UNSUPPORTED_COMMAND),
-        }
+        let target = SvnTarget::try_from(req.target).map_err(|_| errors::INVALID_PARAMS)?;
+        self.non_crypto_cmds_handler
+            .increase_min_svn(self.scratch, target, req.svn)
+            .await
+            .map_err(|error| match error {
+                CaliptraCompletionCode::UnsupportedOperation => errors::UNSUPPORTED_COMMAND,
+                error => map_common_cmd_error(error),
+            })?;
 
         let resp = FuseIncreaseMinSvnResp::default();
         let resp_bytes = resp.as_bytes();
         resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
         Ok((&mut resp_buf[..resp_bytes.len()], MbxCmdStatus::Complete))
-    }
-
-    fn increase_min_svn_fuse(otp_reg: u32, svn: u32, max_svn: Option<u32>) -> McuResult<()> {
-        if svn == 0 || svn > 128 || max_svn.is_some_and(|max| svn > max) {
-            return Err(errors::INVALID_PARAMS);
-        }
-
-        let otp: otp::Otp<DefaultSyscalls> = otp::Otp::new();
-        let mut current_fuses = [0u32; 4];
-        for (i, fuse) in current_fuses.iter_mut().enumerate() {
-            *fuse = otp
-                .read(otp_reg, i as u32)
-                .map_err(|_| errors::MCU_MBOX_COMMON)?;
-        }
-
-        let fuse: u128 = u128::from_le_bytes(current_fuses.as_bytes().try_into().unwrap());
-        let fused_min_svn = 128 - fuse.leading_zeros();
-        if svn < fused_min_svn {
-            return Err(errors::INVALID_PARAMS);
-        }
-        if svn == fused_min_svn {
-            return Ok(());
-        }
-
-        let new_fuse_svn = if svn == 128 {
-            u128::MAX
-        } else {
-            !(u128::MAX << svn)
-        };
-
-        for (i, (current, new_bytes)) in current_fuses
-            .iter()
-            .zip(new_fuse_svn.as_bytes().chunks_exact(4))
-            .enumerate()
-        {
-            let new_svn_word = u32::from_le_bytes(new_bytes.try_into().unwrap());
-            if *current != new_svn_word {
-                otp.write(otp_reg, i as u32, new_svn_word)
-                    .map_err(|_| errors::INVALID_PARAMS)?;
-            }
-        }
-
-        Ok(())
     }
 
     async fn handle_fe_prog<'r>(
