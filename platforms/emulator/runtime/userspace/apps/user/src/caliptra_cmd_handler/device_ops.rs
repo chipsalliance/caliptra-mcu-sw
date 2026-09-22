@@ -1175,6 +1175,16 @@ pub(crate) async fn ocp_lock_program_hek<Alloc: ApiAlloc>(
 }
 
 #[cfg(feature = "ocp-lock")]
+pub(crate) async fn ocp_lock_zero_hek<Alloc: ApiAlloc>(
+    _alloc: &Alloc,
+    slot: u32,
+) -> CaliptraCmdResult<()> {
+    Otp::<DefaultSyscalls>::new()
+        .zero_hek(slot)
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)
+}
+
+#[cfg(feature = "ocp-lock")]
 pub(crate) async fn ocp_lock_rotate_hek<Alloc: ApiAlloc>(
     alloc: &Alloc,
     slot: u32,

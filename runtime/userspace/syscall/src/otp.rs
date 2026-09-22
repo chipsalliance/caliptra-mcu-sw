@@ -342,6 +342,10 @@ impl<S: Syscalls> Otp<S> {
         })
     }
 
+    pub fn zero_hek(&self, slot: u32) -> Result<(), ErrorCode> {
+        S::command(self.driver_num, cmd::OTP_ZERO_HEK, slot, 0).to_result::<(), ErrorCode>()
+    }
+
     pub fn is_hek_perma_set(&self) -> Result<bool, ErrorCode> {
         self.read(reg::PERMA_HEK_EN, 0).map(|val| val != 0)
     }
@@ -368,6 +372,7 @@ pub mod cmd {
     pub const OTP_GET_HEK_METADATA: u32 = 8; // Returns (total_slots, active_slot)
     pub const OTP_ROTATE_HEK: u32 = 9;
     pub const OTP_PROGRAM_HEK: u32 = 10;
+    pub const OTP_ZERO_HEK: u32 = 11;
 }
 
 mod ro_allow {

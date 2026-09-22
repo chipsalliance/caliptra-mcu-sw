@@ -47,6 +47,7 @@ pub mod cmd {
     pub const OTP_GET_HEK_METADATA: u32 = 8; // Returns (total_slots, active_slot)
     pub const OTP_ROTATE_HEK: u32 = 9;
     pub const OTP_PROGRAM_HEK: u32 = 10;
+    pub const OTP_ZERO_HEK: u32 = 11;
 }
 
 pub mod reg {
@@ -581,6 +582,8 @@ impl SyscallDriver for Otp {
             cmd::OTP_ROTATE_HEK => self.rotate_hek(arg1, processid),
             #[cfg(feature = "ocp-lock")]
             cmd::OTP_PROGRAM_HEK => self.program_hek(arg1, processid),
+            #[cfg(feature = "ocp-lock")]
+            cmd::OTP_ZERO_HEK => self.zero_hek(arg1, processid),
             _ => CommandReturn::failure(ErrorCode::NOSUPPORT),
         }
     }
@@ -642,6 +645,38 @@ impl Otp {
             Ok(Ok(())) => CommandReturn::success(),
             Ok(Err(error)) => CommandReturn::failure(error),
             Err(error) => CommandReturn::failure(error.into()),
+        }
+    }
+
+    fn zero_hek(&self, slot: usize, _processid: ProcessId) -> CommandReturn {
+        let ocp_lock_ctx = match self.ocp_lock_ctx.as_ref() {
+            Some(ctrl) => ctrl,
+            None => return CommandReturn::failure(ErrorCode::NOSUPPORT),
+        };
+
+        if slot >= ocp_lock_ctx.state.total_slots as usize {
+            return CommandReturn::failure(ErrorCode::INVAL);
+        }
+        if self.is_perma_hek_locked().unwrap_or(true) {
+            return CommandReturn::failure(ErrorCode::INVAL);
+        }
+
+        let offset = match ocp_lock_ctx.platform.get_hek_slot_offset(slot) {
+            Ok(offset) => offset,
+            Err(_) => return CommandReturn::failure(ErrorCode::INVAL),
+        };
+
+        for word in 0..(caliptra_mcu_romtime::HEK_PARTITION_SIZE / 4) {
+            match self.driver.read_word(offset / 4 + word) {
+                Ok(0) => {}
+                Ok(_) => return CommandReturn::failure(ErrorCode::ALREADY),
+                Err(_) => return CommandReturn::failure(ErrorCode::FAIL),
+            }
+        }
+
+        match ocp_lock_ctx.platform.sanitize_hek_slot(self.driver, slot) {
+            Ok(()) => CommandReturn::success(),
+            Err(_) => CommandReturn::failure(ErrorCode::FAIL),
         }
     }
 

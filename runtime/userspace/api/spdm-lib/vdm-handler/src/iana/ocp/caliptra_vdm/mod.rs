@@ -31,7 +31,7 @@ pub use commands::authorized_command::{
 #[cfg(feature = "ocp-lock")]
 pub use commands::authorized_command::{
     OCP_LOCK_CMD_ID, OCP_LOCK_PROGRAM_HEK_CMD_ID, OCP_LOCK_ROTATE_HEK_CMD_ID,
-    OCP_LOCK_SET_PERMA_HEK_CMD_ID,
+    OCP_LOCK_SET_PERMA_HEK_CMD_ID, OCP_LOCK_ZERO_HEK_CMD_ID,
 };
 
 /// Caliptra VDM message header length: `[command_version, command_code]`.
@@ -254,6 +254,20 @@ pub trait CaliptraVdmAuthorization {
     #[cfg(feature = "ocp-lock")]
     #[allow(clippy::too_many_arguments)]
     async fn ocp_lock_program_hek<A: SpdmPalAlloc>(
+        &self,
+        slot: u32,
+        payload: &[u8],
+        sig: &HybridSignature,
+        nonce: &[u8; AUTH_CMD_NONCE_LEN],
+        ecc_pub_x: &[u8; 48],
+        ecc_pub_y: &[u8; 48],
+        mldsa_pub: &[u8; 2592],
+        scratch: &A,
+    ) -> CaliptraVdmResult<()>;
+
+    #[cfg(feature = "ocp-lock")]
+    #[allow(clippy::too_many_arguments)]
+    async fn ocp_lock_zero_hek<A: SpdmPalAlloc>(
         &self,
         slot: u32,
         payload: &[u8],
@@ -774,6 +788,10 @@ mod tests {
         },
         #[cfg(feature = "ocp-lock")]
         OcpLockProgramHek {
+            slot: u32,
+        },
+        #[cfg(feature = "ocp-lock")]
+        OcpLockZeroHek {
             slot: u32,
         },
         #[cfg(feature = "ocp-lock")]
@@ -1322,6 +1340,22 @@ mod tests {
         ) -> CaliptraVdmResult<()> {
             self.verify_test_signature(OCP_LOCK_PROGRAM_HEK_CMD_ID, payload, sig)?;
             self.complete_authorized(AuthorizedOperation::OcpLockProgramHek { slot })
+        }
+
+        #[cfg(feature = "ocp-lock")]
+        async fn ocp_lock_zero_hek<A: SpdmPalAlloc>(
+            &self,
+            slot: u32,
+            payload: &[u8],
+            sig: &HybridSignature,
+            _nonce: &[u8; AUTH_CMD_NONCE_LEN],
+            _ecc_pub_x: &[u8; 48],
+            _ecc_pub_y: &[u8; 48],
+            _mldsa_pub: &[u8; 2592],
+            _scratch: &A,
+        ) -> CaliptraVdmResult<()> {
+            self.verify_test_signature(OCP_LOCK_ZERO_HEK_CMD_ID, payload, sig)?;
+            self.complete_authorized(AuthorizedOperation::OcpLockZeroHek { slot })
         }
 
         #[cfg(feature = "ocp-lock")]
@@ -2540,12 +2574,46 @@ mod tests {
 
     #[cfg(feature = "ocp-lock")]
     #[test]
+    fn ocp_lock_zero_hek_dispatches_under_authorized_command() {
+        let cmds = TestCommands::new(0).with_authorization();
+        issue_test_challenge(&cmds);
+        let slot: u32 = 3;
+        let payload = slot.to_le_bytes();
+        let sig = test_signature(OCP_LOCK_ZERO_HEK_CMD_ID, &payload, &TEST_AUTH_CHALLENGE);
+        let req = authorized_req_with_sig(OCP_LOCK_ZERO_HEK_CMD_ID, &payload, &sig);
+
+        let (response, inline, _) = dispatch(&cmds, &req, 16, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+        assert_eq!(
+            cmds.authorized_operation.lock().unwrap().take(),
+            Some(AuthorizedOperation::OcpLockZeroHek { slot })
+        );
+    }
+
+    #[cfg(feature = "ocp-lock")]
+    #[test]
     fn ocp_lock_program_hek_rejects_invalid_slot() {
         let cmds = TestCommands::new(0).with_authorization();
         issue_test_challenge(&cmds);
         let payload = 8u32.to_le_bytes();
         let sig = test_signature(OCP_LOCK_PROGRAM_HEK_CMD_ID, &payload, &TEST_AUTH_CHALLENGE);
         let req = authorized_req_with_sig(OCP_LOCK_PROGRAM_HEK_CMD_ID, &payload, &sig);
+
+        let (response, inline, _) = dispatch(&cmds, &req, 16, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::InvalidParameter as u8);
+        assert_eq!(cmds.authorized_operation.lock().unwrap().take(), None);
+    }
+
+    #[cfg(feature = "ocp-lock")]
+    #[test]
+    fn ocp_lock_zero_hek_rejects_invalid_slot() {
+        let cmds = TestCommands::new(0).with_authorization();
+        issue_test_challenge(&cmds);
+        let payload = 8u32.to_le_bytes();
+        let sig = test_signature(OCP_LOCK_ZERO_HEK_CMD_ID, &payload, &TEST_AUTH_CHALLENGE);
+        let req = authorized_req_with_sig(OCP_LOCK_ZERO_HEK_CMD_ID, &payload, &sig);
 
         let (response, inline, _) = dispatch(&cmds, &req, 16, 0);
         assert_inline(response, 3);
@@ -2611,6 +2679,22 @@ mod tests {
         bad_perma.extend_from_slice(&OCP_LOCK_SET_PERMA_HEK_CMD_ID.to_le_bytes());
         bad_perma.push(0);
         let req = authorized_req(OCP_LOCK_CMD_ID, &bad_perma);
+        let (response, inline, _) = dispatch(&cmds, &req, 16, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::InvalidPayloadSize as u8);
+
+        // program_hek expects a 4-byte slot; give 5 bytes
+        let mut bad_program = 3u32.to_le_bytes().to_vec();
+        bad_program.push(0);
+        let req = authorized_req(OCP_LOCK_PROGRAM_HEK_CMD_ID, &bad_program);
+        let (response, inline, _) = dispatch(&cmds, &req, 16, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::InvalidPayloadSize as u8);
+
+        // zero_hek expects a 4-byte slot; give 5 bytes
+        let mut bad_zero = 3u32.to_le_bytes().to_vec();
+        bad_zero.push(0);
+        let req = authorized_req(OCP_LOCK_ZERO_HEK_CMD_ID, &bad_zero);
         let (response, inline, _) = dispatch(&cmds, &req, 16, 0);
         assert_inline(response, 3);
         assert_eq!(inline[2], CaliptraCompletionCode::InvalidPayloadSize as u8);
