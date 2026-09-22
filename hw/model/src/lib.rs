@@ -234,6 +234,10 @@ pub struct InitParams<'a> {
 
     pub flash_boot: bool,
 
+    /// Route Caliptra recovery-interface events through the USB peripheral.
+    /// When false, flash boot uses the I3C recovery peripheral.
+    pub usb_recovery: bool,
+
     /// When true, the emulator pre-sets the `FC_FIPS_ZEROZATION_STS` register
     /// so that MCU ROM detects FIPS zeroization on cold boot.
     pub fips_zeroization: bool,
@@ -331,6 +335,7 @@ impl Default for InitParams<'_> {
             check_booted_to_runtime: true,
             rom_callback: None,
             flash_boot: false,
+            usb_recovery: false,
             fips_zeroization: false,
             caliptra_soc_axi_user: None,
             force_fuse_owner_pk_hash: false,

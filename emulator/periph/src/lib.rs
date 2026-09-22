@@ -55,8 +55,8 @@ pub use reset_reason::ResetReasonEmulator;
 pub use root_bus::{McuRootBus, McuRootBusArgs, McuRootBusOffsets};
 pub use uart::Uart;
 pub use usb::{
-    UsbCombo, UsbControlTransferResult, UsbDev0Mem, UsbDev1, UsbDev1Mem, UsbRecoveryError,
-    UsbRecoveryHost,
+    LpcipUsbHostController, UsbCombo, UsbControlTransferResult, UsbDev0Mem, UsbDev1, UsbDev1Mem,
+    UsbRecoveryError, UsbRecoveryHost,
 };
 pub use usbdev::{UsbDevPeriph, UsbHostController, UsbTransactionError};
 

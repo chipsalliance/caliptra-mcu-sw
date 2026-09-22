@@ -2727,6 +2727,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "caliptra-mcu-usb-recovery"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "caliptra-mcu-ocp",
+ "clap 4.5.51",
+ "rusb",
+]
+
+[[package]]
 name = "caliptra-mcu-userlog"
 version = "0.1.0"
 dependencies = [

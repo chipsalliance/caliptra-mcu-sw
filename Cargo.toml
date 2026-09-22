@@ -21,6 +21,7 @@ members = [
     "emulator/app/mcu-mbox",
     "emulator/bmc/pldm-fw-pkg",
     "emulator/bmc/pldm-ua",
+    "emulator/bmc/usb-recovery",
     "emulator/caliptra",
     "emulator/cbinding",
     "emulator/compliance-test",

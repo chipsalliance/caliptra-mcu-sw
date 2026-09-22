@@ -60,6 +60,45 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
 const BOOT_CYCLES: u64 = 100_000_000;
+const SOC_IFC_ITRNG_CONFIG_0: u32 = 0x3003_0180;
+const SOC_IFC_ITRNG_CONFIG_1: u32 = 0x3003_0184;
+const SOC_IFC_ITRNG_CONFIG_2: u32 = 0x3003_0188;
+
+#[derive(Default)]
+struct ItrngConfigBus {
+    registers: [u32; 3],
+}
+
+impl ItrngConfigBus {
+    fn register_index(addr: RvAddr) -> Option<usize> {
+        match addr {
+            SOC_IFC_ITRNG_CONFIG_0 => Some(0),
+            SOC_IFC_ITRNG_CONFIG_1 => Some(1),
+            SOC_IFC_ITRNG_CONFIG_2 => Some(2),
+            _ => None,
+        }
+    }
+}
+
+impl Bus for ItrngConfigBus {
+    fn read(&mut self, size: RvSize, addr: RvAddr) -> Result<RvData, BusError> {
+        if size != RvSize::Word {
+            return Err(BusError::LoadAccessFault);
+        }
+        Self::register_index(addr)
+            .map(|index| self.registers[index])
+            .ok_or(BusError::LoadAccessFault)
+    }
+
+    fn write(&mut self, size: RvSize, addr: RvAddr, value: RvData) -> Result<(), BusError> {
+        if size != RvSize::Word {
+            return Err(BusError::StoreAccessFault);
+        }
+        let index = Self::register_index(addr).ok_or(BusError::StoreAccessFault)?;
+        self.registers[index] = value;
+        Ok(())
+    }
+}
 
 /// Emulated model
 pub struct ModelEmulated {
@@ -96,6 +135,7 @@ pub struct ModelEmulated {
     // with the CPU step that advances the clock.
     step_lock: Arc<Mutex<()>>,
     pub usb_host_controller: caliptra_mcu_emulator_periph::UsbHostController,
+    pub lpcip_usb_host_controller: caliptra_mcu_emulator_periph::LpcipUsbHostController,
     pub usb_recovery_host: caliptra_mcu_emulator_periph::UsbRecoveryHost,
     /// Per-instance emulator coordination state. Kept alive for as long as
     /// this model exists so that worker threads that hold an Arc clone
@@ -400,10 +440,15 @@ impl McuHwModel for ModelEmulated {
         let usb_periph = caliptra_mcu_emulator_periph::UsbDevPeriph::new();
         let usb_host_controller = usb_periph.host_controller();
         let usb_combo = caliptra_mcu_emulator_periph::UsbCombo::new();
+        let lpcip_usb_host_controller = usb_combo.lpcip_host_controller();
+        let usb_dev0_memory = usb_combo.device0_memory();
         let usb_recovery_host = usb_combo.host_controller();
 
-        let delegates: Vec<Box<dyn caliptra_emu_bus::Bus>> =
-            vec![Box::new(mcu_root_bus), Box::new(soc_to_caliptra)];
+        let delegates: Vec<Box<dyn caliptra_emu_bus::Bus>> = vec![
+            Box::new(mcu_root_bus),
+            Box::<ItrngConfigBus>::default(),
+            Box::new(soc_to_caliptra),
+        ];
 
         let auto_root_bus = AutoRootBus::new(
             delegates,
@@ -417,7 +462,7 @@ impl McuHwModel for ModelEmulated {
             Some(Box::new(secondary_flash_controller)),
             Some(Box::new(mci)),
             None,
-            Some(Box::new(caliptra_mcu_emulator_periph::UsbDev0Mem::new())),
+            Some(Box::new(usb_dev0_memory)),
             Some(Box::new(caliptra_mcu_emulator_periph::UsbDev1Mem::new())),
             None,
             Some(Box::new(otp)),
@@ -457,19 +502,55 @@ impl McuHwModel for ModelEmulated {
         // otherwise use BMC recovery interface
         let use_flash_based_boot = params.flash_boot;
         let bmc = if use_flash_based_boot {
-            // Connect event channels to I3C peripheral for MCU recovery interface
-            cpu.bus
-                .bus
-                .i3c_periph
-                .as_mut()
-                .unwrap()
-                .periph
-                .register_event_channels(
-                    caliptra_event_sender,
-                    caliptra_event_receiver,
-                    mcu_event_sender,
-                    mcu_event_receiver,
-                );
+            if params.usb_recovery {
+                let (mirrored_caliptra_events, i3c_caliptra_event_receiver) = mpsc::channel();
+                let (i3c_events_to_mcu, _i3c_mcu_event_receiver) = mpsc::channel();
+                let (_i3c_mcu_events, i3c_events_from_mcu) = mpsc::channel();
+                cpu.bus
+                    .bus
+                    .usb_combo_periph
+                    .as_mut()
+                    .unwrap()
+                    .periph
+                    .set_caliptra_event_mirror(mirrored_caliptra_events);
+                cpu.bus
+                    .bus
+                    .usb_combo_periph
+                    .as_mut()
+                    .unwrap()
+                    .periph
+                    .register_event_channels(
+                        caliptra_event_sender.clone(),
+                        caliptra_event_receiver,
+                        mcu_event_sender,
+                        mcu_event_receiver,
+                    );
+                cpu.bus
+                    .bus
+                    .i3c_periph
+                    .as_mut()
+                    .unwrap()
+                    .periph
+                    .register_event_channels(
+                        caliptra_event_sender,
+                        i3c_caliptra_event_receiver,
+                        i3c_events_to_mcu,
+                        i3c_events_from_mcu,
+                    );
+            } else {
+                cpu.bus
+                    .bus
+                    .i3c_periph
+                    .as_mut()
+                    .unwrap()
+                    .periph
+                    .register_event_channels(
+                        caliptra_event_sender,
+                        caliptra_event_receiver,
+                        mcu_event_sender,
+                        mcu_event_receiver,
+                    );
+            }
             None
         } else {
             // Use BMC recovery interface emulator
@@ -554,6 +635,7 @@ impl McuHwModel for ModelEmulated {
             check_booted_to_runtime: params.check_booted_to_runtime,
             step_lock,
             usb_host_controller,
+            lpcip_usb_host_controller,
             usb_recovery_host,
             state,
         };
@@ -870,6 +952,28 @@ mod test {
     use super::*;
     use crate::{InitParams, McuHwModel, ModelEmulated};
     use caliptra_mcu_builder::{CaliptraBuildArgs, CaliptraBuilder};
+
+    #[test]
+    fn itrng_config_bus_handles_only_config_registers() {
+        let mut bus = ItrngConfigBus::default();
+
+        for (address, value) in [
+            (SOC_IFC_ITRNG_CONFIG_0, 0x1234_5678),
+            (SOC_IFC_ITRNG_CONFIG_1, 0x9abc_def0),
+            (SOC_IFC_ITRNG_CONFIG_2, 0x55aa_00ff),
+        ] {
+            bus.write(RvSize::Word, address, value).unwrap();
+            assert_eq!(bus.read(RvSize::Word, address), Ok(value));
+        }
+        assert_eq!(
+            bus.write(RvSize::Word, 0x3003_05a8, 0),
+            Err(BusError::StoreAccessFault)
+        );
+        assert_eq!(
+            bus.read(RvSize::Byte, SOC_IFC_ITRNG_CONFIG_0),
+            Err(BusError::LoadAccessFault)
+        );
+    }
 
     #[test]
     fn test_new_unbooted() {

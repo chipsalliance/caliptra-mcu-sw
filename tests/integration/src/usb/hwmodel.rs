@@ -4,8 +4,8 @@
 
 use super::usbip::{UsbControlRequest, UsbIpDevice};
 use caliptra_mcu_emulator_periph::{
-    UsbControlTransferResult, UsbHostController, UsbRecoveryError, UsbRecoveryHost,
-    UsbTransactionError,
+    LpcipUsbHostController, UsbControlTransferResult, UsbHostController, UsbRecoveryError,
+    UsbRecoveryHost, UsbTransactionError,
 };
 use std::io;
 use std::thread;
@@ -16,14 +16,26 @@ const EP0_MAX_PACKET_SIZE: usize = 64;
 const TRANSACTION_TIMEOUT: Duration = Duration::from_secs(10);
 
 pub struct HwModelUsbDevice {
-    host: UsbHostController,
+    host: StandardUsbHost,
     recovery_host: Option<UsbRecoveryHost>,
+}
+
+enum StandardUsbHost {
+    OpenTitan(UsbHostController),
+    Lpcip(LpcipUsbHostController),
 }
 
 impl HwModelUsbDevice {
     pub fn new(host: UsbHostController, recovery_host: Option<UsbRecoveryHost>) -> Self {
         Self {
-            host,
+            host: StandardUsbHost::OpenTitan(host),
+            recovery_host,
+        }
+    }
+
+    pub fn new_lpcip(host: LpcipUsbHostController, recovery_host: Option<UsbRecoveryHost>) -> Self {
+        Self {
+            host: StandardUsbHost::Lpcip(host),
             recovery_host,
         }
     }
@@ -31,7 +43,11 @@ impl HwModelUsbDevice {
     fn setup(&self, setup: &[u8; 8]) -> io::Result<()> {
         let deadline = Instant::now() + TRANSACTION_TIMEOUT;
         loop {
-            match self.host.host_setup(EP0, setup) {
+            let result = match &self.host {
+                StandardUsbHost::OpenTitan(host) => host.host_setup(EP0, setup),
+                StandardUsbHost::Lpcip(host) => host.host_setup(setup),
+            };
+            match result {
                 Ok(()) => return Ok(()),
                 Err(UsbTransactionError::NoBuffer | UsbTransactionError::FifoFull)
                     if Instant::now() < deadline =>
@@ -46,7 +62,11 @@ impl HwModelUsbDevice {
     fn input(&self) -> io::Result<Vec<u8>> {
         let deadline = Instant::now() + TRANSACTION_TIMEOUT;
         loop {
-            match self.host.host_in(EP0) {
+            let result = match &self.host {
+                StandardUsbHost::OpenTitan(host) => host.host_in(EP0),
+                StandardUsbHost::Lpcip(host) => host.host_in(),
+            };
+            match result {
                 Ok(data) => return Ok(data),
                 Err(UsbTransactionError::Nak) if Instant::now() < deadline => {
                     thread::yield_now();
@@ -59,7 +79,11 @@ impl HwModelUsbDevice {
     fn output(&self, data: &[u8]) -> io::Result<()> {
         let deadline = Instant::now() + TRANSACTION_TIMEOUT;
         loop {
-            match self.host.host_out(EP0, data) {
+            let result = match &self.host {
+                StandardUsbHost::OpenTitan(host) => host.host_out(EP0, data),
+                StandardUsbHost::Lpcip(host) => host.host_out(data),
+            };
+            match result {
                 Ok(()) => return Ok(()),
                 Err(UsbTransactionError::Nak) if Instant::now() < deadline => {
                     thread::yield_now();

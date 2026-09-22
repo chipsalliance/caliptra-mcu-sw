@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! Examplar `usbdev` implementation of [`UsbDeviceDriver`] for OCP Recovery.
+//! ROM USB support for the exemplar `usbdev` and NXP LPCIP3511 controllers.
 
 #![cfg_attr(target_arch = "riscv32", no_std)]
 
@@ -15,6 +15,10 @@ use caliptra_mcu_romtime::StaticRef;
 use tock_registers::interfaces::{Readable, Writeable};
 use tock_registers::LocalRegisterCopy;
 use zerocopy::IntoBytes;
+
+mod lpcip;
+
+pub use lpcip::{LpcipUsbDriver, LpcipUsbError};
 
 type RxEntry = LocalRegisterCopy<u32, Rxfifo::Register>;
 

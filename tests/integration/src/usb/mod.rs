@@ -15,7 +15,7 @@ mod tests {
     use super::hwmodel::HwModelUsbDevice;
     use super::usbip::{UsbControlRequest, UsbIpDevice, UsbIpServer, UsbIpServerConfig};
     #[cfg(target_os = "linux")]
-    use crate::test::{start_runtime_hw_model, TestParams, TEST_LOCK};
+    use crate::test::{build_test_binaries, start_runtime_hw_model, TestParams, TEST_LOCK};
     #[cfg(target_os = "linux")]
     use caliptra_mcu_hw_model::McuHwModel;
     #[cfg(target_os = "linux")]
@@ -25,6 +25,8 @@ mod tests {
     #[cfg(target_os = "linux")]
     use caliptra_mcu_ocp::protocol::RecoveryCommand;
     #[cfg(target_os = "linux")]
+    use caliptra_mcu_romtime::McuBootMilestones;
+    #[cfg(target_os = "linux")]
     use caliptra_mcu_xtask::network::tap;
     #[cfg(target_os = "linux")]
     use random_port::PortPicker;
@@ -32,6 +34,8 @@ mod tests {
     use rusb::UsbContext;
     use std::io::{Read, Write};
     use std::net::{TcpListener, TcpStream};
+    #[cfg(target_os = "linux")]
+    use std::path::PathBuf;
     #[cfg(target_os = "linux")]
     use std::process::Command;
     #[cfg(target_os = "linux")]
@@ -163,6 +167,183 @@ mod tests {
         server.join().unwrap();
     }
 
+    #[cfg(all(target_os = "linux", not(feature = "fpga_realtime")))]
+    #[test]
+    fn usbip_lpcip_routes_enumeration_and_recovery_fifo() {
+        let lock = TEST_LOCK.lock().unwrap();
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            rom_feature: Some("test-lpcip-usb-ocp-recovery"),
+            i3c_port: Some(PortPicker::new().pick().unwrap()),
+            flash_boot: true,
+            rom_only: true,
+            ..Default::default()
+        });
+        let lpcip_host = hw.lpcip_usb_host_controller.clone();
+        let recovery_host = Some(hw.usb_recovery_host.clone());
+
+        for _ in 0..50_000_000 {
+            hw.step();
+            if lpcip_host.device_enabled() {
+                break;
+            }
+        }
+        assert!(
+            lpcip_host.device_enabled(),
+            "firmware did not enable LPCIP USB device"
+        );
+        lpcip_host.bus_reset();
+
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let server_address = listener.local_addr().unwrap();
+        let config = UsbIpServerConfig::new("1-2", 1, 2, 0x1209, 0x0001);
+        let server_thread = std::thread::spawn(move || {
+            let result = UsbIpServer::new(
+                listener,
+                config,
+                HwModelUsbDevice::new_lpcip(lpcip_host, recovery_host),
+            )
+            .serve_one_connection(8);
+            if let Err(error) = &result {
+                eprintln!("LPCIP USB/IP server failed: {error}");
+            }
+            result
+        });
+
+        let agent_thread = std::thread::spawn(move || {
+            let mut host = TcpStream::connect(server_address).unwrap();
+            host.set_read_timeout(Some(Duration::from_secs(10)))
+                .unwrap();
+            host.set_write_timeout(Some(Duration::from_secs(10)))
+                .unwrap();
+            import_device(&mut host, "1-2");
+
+            let device_descriptor = submit_control(
+                &mut host,
+                1,
+                USBIP_DIR_IN,
+                [0x80, 6, 0, 1, 0, 0, 18, 0],
+                &[],
+                18,
+            );
+            assert_eq!(&device_descriptor[8..12], &[0x09, 0x12, 0x01, 0x00]);
+            submit_control(
+                &mut host,
+                2,
+                USBIP_DIR_OUT,
+                [0x00, 5, 7, 0, 0, 0, 0, 0],
+                &[],
+                0,
+            );
+            let configuration = submit_control(
+                &mut host,
+                3,
+                USBIP_DIR_IN,
+                [0x80, 6, 0, 2, 0, 0, 64, 0],
+                &[],
+                64,
+            );
+            assert_eq!(&configuration[..2], &[9, 2]);
+            submit_control(
+                &mut host,
+                4,
+                USBIP_DIR_OUT,
+                [0x00, 9, 1, 0, 0, 0, 0, 0],
+                &[],
+                0,
+            );
+
+            let prot_cap = submit_control(
+                &mut host,
+                5,
+                USBIP_DIR_IN,
+                [0xa1, 0, RecoveryCommand::ProtCap as u8, 0, 0, 0, 15, 0],
+                &[],
+                15,
+            );
+            assert_eq!(prot_cap.len(), 15);
+
+            submit_control(
+                &mut host,
+                6,
+                USBIP_DIR_OUT,
+                [
+                    0x21,
+                    0,
+                    RecoveryCommand::IndirectFifoCtrl as u8,
+                    0,
+                    0,
+                    0,
+                    6,
+                    0,
+                ],
+                &[0, 0, 2, 0, 0, 0],
+                0,
+            );
+            submit_control(
+                &mut host,
+                7,
+                USBIP_DIR_OUT,
+                [
+                    0x21,
+                    0,
+                    RecoveryCommand::IndirectFifoData as u8,
+                    0,
+                    0,
+                    0,
+                    8,
+                    0,
+                ],
+                &[0xde, 0xad, 0xbe, 0xef, 1, 2, 3, 4],
+                0,
+            );
+            let fifo_status = submit_control(
+                &mut host,
+                8,
+                USBIP_DIR_IN,
+                [
+                    0xa1,
+                    0,
+                    RecoveryCommand::IndirectFifoStatus as u8,
+                    0,
+                    0,
+                    0,
+                    20,
+                    0,
+                ],
+                &[],
+                20,
+            );
+            assert_eq!(fifo_status.len(), 20);
+            assert_eq!(u32::from_le_bytes(fifo_status[4..8].try_into().unwrap()), 2);
+            assert_eq!(
+                u32::from_le_bytes(fifo_status[12..16].try_into().unwrap()),
+                64
+            );
+            assert_eq!(
+                u32::from_le_bytes(fifo_status[16..20].try_into().unwrap()),
+                64
+            );
+        });
+
+        for step in 0..50_000_000 {
+            if agent_thread.is_finished() {
+                break;
+            }
+            hw.step();
+            if step % 1_000 == 0 {
+                std::thread::yield_now();
+            }
+        }
+        assert!(
+            agent_thread.is_finished(),
+            "USB/IP recovery agent timed out"
+        );
+        agent_thread.join().unwrap();
+        server_thread.join().unwrap().unwrap();
+        lock.fetch_add(1, Ordering::Relaxed);
+    }
+
     /// End-to-end test through Linux's virtual USB host controller.
     ///
     /// The test skips itself when `usbip`, `vhci_hcd`, or passwordless sudo is
@@ -175,15 +356,10 @@ mod tests {
             eprintln!("SKIP: No passwordless sudo access");
             return;
         }
-        if !Command::new("usbip")
-            .arg("version")
-            .output()
-            .map(|output| output.status.success())
-            .unwrap_or(false)
-        {
+        let Some(usbip) = find_usbip() else {
             eprintln!("SKIP: usbip userspace utility is not installed");
             return;
-        }
+        };
         let modprobe = Command::new("sudo")
             .args(["-n", "modprobe", "vhci_hcd"])
             .output()
@@ -211,7 +387,9 @@ mod tests {
         });
 
         let attach = Command::new("sudo")
-            .args(["-n", "usbip", "attach", "-r", "127.0.0.1", "-b", "1-2"])
+            .arg("-n")
+            .arg(&usbip)
+            .args(["attach", "-r", "127.0.0.1", "-b", "1-2"])
             .output()
             .expect("failed to execute usbip attach");
         assert!(
@@ -230,7 +408,9 @@ mod tests {
         }
 
         let detach = Command::new("sudo")
-            .args(["-n", "usbip", "detach", "-p", "0"])
+            .arg("-n")
+            .arg(&usbip)
+            .args(["detach", "-p", "0"])
             .output()
             .expect("failed to execute usbip detach");
         assert!(
@@ -329,18 +509,243 @@ mod tests {
         lock.fetch_add(1, Ordering::Relaxed);
     }
 
+    /// Enumerate the LPCIP controller through MCU ROM, then route OCP class
+    /// requests to the dedicated recovery hardware over Linux USB/IP.
+    #[cfg(all(target_os = "linux", not(feature = "fpga_realtime")))]
+    #[test]
+    fn usbip_linux_libusb_reads_ocp_recovery_status_from_lpcip() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let _usbip_lock = USBIP_TEST_LOCK.lock().unwrap();
+
+        if !linux_usbip_prerequisites_available() {
+            return;
+        }
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            rom_feature: Some("test-lpcip-usb-ocp-recovery"),
+            i3c_port: Some(PortPicker::new().pick().unwrap()),
+            flash_boot: true,
+            rom_only: true,
+            ..Default::default()
+        });
+        let host = hw.lpcip_usb_host_controller.clone();
+        let recovery_host = Some(hw.usb_recovery_host.clone());
+
+        for _ in 0..50_000_000 {
+            hw.step();
+            if host.device_enabled() {
+                break;
+            }
+        }
+        assert!(
+            host.device_enabled(),
+            "firmware did not enable LPCIP USB device"
+        );
+        host.bus_reset();
+
+        let listener =
+            TcpListener::bind(("127.0.0.1", 3240)).expect("USB/IP TCP port 3240 must be available");
+        let config = UsbIpServerConfig::new("1-2", 1, 2, 0x1209, 0x0001);
+        let server_thread = std::thread::spawn(move || {
+            UsbIpServer::new(
+                listener,
+                config,
+                HwModelUsbDevice::new_lpcip(host, recovery_host),
+            )
+            .serve_until_disconnect()
+        });
+
+        let agent_thread = std::thread::spawn(|| {
+            let attach = Command::new("sudo")
+                .args(["-n", "usbip", "attach", "-r", "127.0.0.1", "-b", "1-2"])
+                .output()
+                .map_err(|error| format!("failed to execute usbip attach: {error}"))?;
+            if !attach.status.success() {
+                return Err(format!(
+                    "usbip attach failed: {}",
+                    String::from_utf8_lossy(&attach.stderr)
+                ));
+            }
+
+            let test_result = run_libusb_ocp_recovery_agent();
+            let detach = Command::new("sudo")
+                .args(["-n", "usbip", "detach", "-p", "0"])
+                .output()
+                .map_err(|error| format!("failed to execute usbip detach: {error}"))?;
+            if !detach.status.success() {
+                return Err(format!(
+                    "usbip detach failed: {}",
+                    String::from_utf8_lossy(&detach.stderr)
+                ));
+            }
+            test_result
+        });
+
+        let mut steps = 0_u64;
+        while !agent_thread.is_finished() {
+            hw.step();
+            steps += 1;
+            if steps % 1_000 == 0 {
+                std::thread::yield_now();
+            }
+        }
+
+        let test_result = agent_thread.join().unwrap();
+        let server_result = server_thread.join().unwrap();
+
+        test_result.unwrap_or_else(|error| panic!("libusb recovery agent failed: {error}"));
+        server_result.unwrap();
+        lock.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// Run the Linux recovery-agent application against LPCIP over USB/IP and
+    /// boot Caliptra and the MCU from the three streamed recovery artifacts.
+    #[cfg(all(target_os = "linux", not(feature = "fpga_realtime")))]
+    #[test]
+    fn usbip_linux_libusb_lpcip_completes_recovery_boot() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let _usbip_lock = USBIP_TEST_LOCK.lock().unwrap();
+
+        if !linux_usbip_prerequisites_available() {
+            return;
+        }
+
+        let params = TestParams {
+            rom_feature: Some("test-lpcip-usb-ocp-recovery"),
+            i3c_port: Some(PortPicker::new().pick().unwrap()),
+            flash_boot: true,
+            usb_recovery: true,
+            rom_only: true,
+            ..Default::default()
+        };
+        let bins = build_test_binaries(&params);
+        let image_dir = tempfile::tempdir().expect("failed to create recovery image directory");
+        let caliptra_fmc_rt = image_dir.path().join("caliptra-fmc-rt.bin");
+        let soc_manifest = image_dir.path().join("soc-manifest.bin");
+        let mcu_runtime = image_dir.path().join("mcu-runtime.bin");
+        std::fs::write(&caliptra_fmc_rt, &bins.caliptra_fw)
+            .expect("failed to write Caliptra recovery image");
+        std::fs::write(&soc_manifest, &bins.soc_manifest)
+            .expect("failed to write SoC manifest recovery image");
+        std::fs::write(&mcu_runtime, &bins.mcu_runtime)
+            .expect("failed to write MCU runtime recovery image");
+        let recovery_agent = build_usb_recovery_agent();
+        let mut hw = start_runtime_hw_model(TestParams {
+            custom_mcu_rom: Some(bins.mcu_rom),
+            ..params
+        });
+        let host = hw.lpcip_usb_host_controller.clone();
+        let recovery_host = Some(hw.usb_recovery_host.clone());
+
+        for _ in 0..50_000_000 {
+            hw.step();
+            if host.device_enabled() {
+                break;
+            }
+        }
+        assert!(
+            host.device_enabled(),
+            "firmware did not enable LPCIP USB device"
+        );
+        host.bus_reset();
+
+        let listener =
+            TcpListener::bind(("127.0.0.1", 3240)).expect("USB/IP TCP port 3240 must be available");
+        let config = UsbIpServerConfig::new("1-2", 1, 2, 0x1209, 0x0001);
+        let server_thread = std::thread::spawn(move || {
+            UsbIpServer::new(
+                listener,
+                config,
+                HwModelUsbDevice::new_lpcip(host, recovery_host),
+            )
+            .serve_until_disconnect()
+        });
+
+        let agent_thread = std::thread::spawn(move || {
+            let _image_dir = image_dir;
+            attach_usbip_device()?;
+            (|| -> Result<(), String> {
+                grant_libusb_access(0x1209, 0x0001).map_err(|error| error.to_string())?;
+                let output = Command::new(recovery_agent)
+                    .arg("--caliptra-fmc-rt")
+                    .arg(caliptra_fmc_rt)
+                    .arg("--soc-manifest")
+                    .arg(soc_manifest)
+                    .arg("--mcu-runtime")
+                    .arg(mcu_runtime)
+                    .output()
+                    .map_err(|error| format!("failed to launch USB recovery agent: {error}"))?;
+                if !output.status.success() {
+                    return Err(format!(
+                        "USB recovery agent exited with {}\nstdout:\n{}\nstderr:\n{}",
+                        output.status,
+                        String::from_utf8_lossy(&output.stdout),
+                        String::from_utf8_lossy(&output.stderr)
+                    ));
+                }
+                Ok(())
+            })()
+        });
+
+        for step in 0..250_000_000 {
+            if agent_thread.is_finished() {
+                break;
+            }
+            hw.step();
+            if step % 1_000 == 0 {
+                std::thread::yield_now();
+            }
+        }
+        assert!(
+            agent_thread.is_finished(),
+            "USB recovery agent did not finish within the emulation cycle budget"
+        );
+
+        let agent_result = agent_thread.join().unwrap();
+        if let Err(error) = agent_result {
+            let _ = detach_usbip_device();
+            let _ = server_thread.join();
+            panic!("USB recovery agent failed: {error}");
+        }
+        hw.step_until(|model| {
+            model
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
+        });
+        detach_usbip_device().unwrap();
+        server_thread.join().unwrap().unwrap();
+        lock.fetch_add(1, Ordering::Relaxed);
+    }
+
+    #[cfg(target_os = "linux")]
+    fn build_usb_recovery_agent() -> PathBuf {
+        let workspace = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+        let output = Command::new(env!("CARGO"))
+            .current_dir(workspace)
+            .args(["build", "-p", "caliptra-mcu-usb-recovery"])
+            .output()
+            .expect("failed to execute cargo build for USB recovery agent");
+        assert!(
+            output.status.success(),
+            "failed to build USB recovery agent:\n{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+
+        let test_executable = std::env::current_exe().expect("failed to locate test executable");
+        let profile_dir = test_executable
+            .parent()
+            .and_then(|deps| deps.parent())
+            .expect("test executable is not under a Cargo profile directory");
+        profile_dir.join("caliptra-mcu-usb-recovery")
+    }
+
     #[cfg(target_os = "linux")]
     fn linux_usbip_prerequisites_available() -> bool {
         if !tap::has_sudo_access() {
             eprintln!("SKIP: No passwordless sudo access");
             return false;
         }
-        if !Command::new("usbip")
-            .arg("version")
-            .output()
-            .map(|output| output.status.success())
-            .unwrap_or(false)
-        {
+        if find_usbip().is_none() {
             eprintln!("SKIP: usbip userspace utility is not installed");
             return false;
         }
@@ -356,6 +761,98 @@ mod tests {
             return false;
         }
         true
+    }
+
+    #[cfg(target_os = "linux")]
+    fn find_usbip() -> Option<PathBuf> {
+        let mut candidates = std::env::var_os("USBIP")
+            .map(PathBuf::from)
+            .into_iter()
+            .chain([PathBuf::from("usbip")])
+            .collect::<Vec<_>>();
+        if let Ok(entries) = std::fs::read_dir("/usr/lib/linux-tools") {
+            candidates.extend(
+                entries
+                    .flatten()
+                    .map(|entry| entry.path().join("usbip"))
+                    .filter(|path| path.is_file()),
+            );
+        }
+        candidates.into_iter().find(|candidate| {
+            Command::new(candidate)
+                .arg("version")
+                .output()
+                .is_ok_and(|output| output.status.success())
+        })
+    }
+
+    #[cfg(target_os = "linux")]
+    fn attach_usbip_device() -> Result<(), String> {
+        let usbip = find_usbip().ok_or_else(|| "usbip is unavailable".to_owned())?;
+        let attach = Command::new("sudo")
+            .arg("-n")
+            .arg(usbip)
+            .args(["attach", "-r", "127.0.0.1", "-b", "1-2"])
+            .output()
+            .map_err(|error| format!("failed to execute usbip attach: {error}"))?;
+        if !attach.status.success() {
+            return Err(format!(
+                "usbip attach failed: {}",
+                String::from_utf8_lossy(&attach.stderr)
+            ));
+        }
+        Ok(())
+    }
+
+    #[cfg(target_os = "linux")]
+    fn detach_usbip_device() -> Result<(), String> {
+        let usbip = find_usbip().ok_or_else(|| "usbip is unavailable".to_owned())?;
+        let detach = Command::new("sudo")
+            .arg("-n")
+            .arg(usbip)
+            .args(["detach", "-p", "0"])
+            .output()
+            .map_err(|error| format!("failed to execute usbip detach: {error}"))?;
+        if !detach.status.success() {
+            return Err(format!(
+                "usbip detach failed: {}",
+                String::from_utf8_lossy(&detach.stderr)
+            ));
+        }
+        Ok(())
+    }
+
+    #[cfg(target_os = "linux")]
+    fn grant_libusb_access(vendor: u16, product: u16) -> anyhow::Result<()> {
+        let context = rusb::Context::new()?;
+        let device = (0..100)
+            .find_map(|_| {
+                let devices = context.devices().ok()?;
+                let device = devices.iter().find(|device| {
+                    device.device_descriptor().is_ok_and(|descriptor| {
+                        descriptor.vendor_id() == vendor && descriptor.product_id() == product
+                    })
+                });
+                if device.is_none() {
+                    std::thread::sleep(Duration::from_millis(20));
+                }
+                device
+            })
+            .ok_or_else(|| anyhow::anyhow!("Linux did not enumerate the USB recovery device"))?;
+        let device_node = format!(
+            "/dev/bus/usb/{:03}/{:03}",
+            device.bus_number(),
+            device.address()
+        );
+        let chmod = Command::new("sudo")
+            .args(["-n", "chmod", "0666", &device_node])
+            .output()?;
+        anyhow::ensure!(
+            chmod.status.success(),
+            "could not grant access to {device_node}: {}",
+            String::from_utf8_lossy(&chmod.stderr)
+        );
+        Ok(())
     }
 
     #[cfg(target_os = "linux")]
@@ -540,7 +1037,9 @@ mod tests {
         stream.write_all(&command).unwrap();
 
         let mut reply = [0_u8; 48];
-        stream.read_exact(&mut reply).unwrap();
+        stream
+            .read_exact(&mut reply)
+            .unwrap_or_else(|error| panic!("USB/IP submit {seqnum} reply failed: {error}"));
         assert_eq!(
             u32::from_be_bytes(reply[0..4].try_into().unwrap()),
             USBIP_RET_SUBMIT

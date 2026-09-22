@@ -15,6 +15,11 @@ pub trait UsbComboPeripheral {
         _events_from_mcu: std::sync::mpsc::Receiver<caliptra_emu_bus::Event>,
     ) {
     }
+    fn set_caliptra_event_mirror(
+        &mut self,
+        _sender: std::sync::mpsc::Sender<caliptra_emu_bus::Event>,
+    ) {
+    }
     fn poll(&mut self) {}
     fn warm_reset(&mut self) {}
     fn update_reset(&mut self) {}

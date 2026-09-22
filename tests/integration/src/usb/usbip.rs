@@ -169,13 +169,18 @@ impl<D: UsbIpDevice> UsbIpServer<D> {
         } else {
             response.truncate(transfer_length);
         }
+        let actual_length = if status == 0 && direction == USBIP_DIR_OUT {
+            transfer_length
+        } else {
+            response.len()
+        };
 
         let mut reply = Vec::with_capacity(48 + response.len());
         for value in [USBIP_RET_SUBMIT, seqnum, devid, direction, endpoint] {
             push_u32(&mut reply, value);
         }
         reply.extend_from_slice(&status.to_be_bytes());
-        push_u32(&mut reply, response.len() as u32);
+        push_u32(&mut reply, actual_length as u32);
         push_u32(&mut reply, 0); // start frame
         push_u32(&mut reply, 0); // packet count
         push_u32(&mut reply, 0); // error count

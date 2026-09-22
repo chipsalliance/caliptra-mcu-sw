@@ -349,6 +349,7 @@ pub struct Emulator {
     pub step_lock: Arc<Mutex<()>>,
     #[allow(dead_code)]
     pub usb_host_controller: caliptra_mcu_emulator_periph::UsbHostController,
+    pub lpcip_usb_host_controller: caliptra_mcu_emulator_periph::LpcipUsbHostController,
     pub usb_recovery_host: caliptra_mcu_emulator_periph::UsbRecoveryHost,
     /// Caliptra CPU is held until MCU ROM writes CPTRA_BOOT_GO
     pub cptra_boot_go: Rc<Cell<bool>>,
@@ -966,6 +967,8 @@ impl Emulator {
         let usb_periph = caliptra_mcu_emulator_periph::UsbDevPeriph::new_with_irq(usb_irq);
         let usb_host_controller = usb_periph.host_controller();
         let usb_combo = caliptra_mcu_emulator_periph::UsbCombo::new();
+        let lpcip_usb_host_controller = usb_combo.lpcip_host_controller();
+        let usb_dev0_memory = usb_combo.device0_memory();
         let usb_recovery_host = usb_combo.host_controller();
 
         let mut auto_root_bus = AutoRootBus::new(
@@ -980,7 +983,7 @@ impl Emulator {
             Some(Box::new(secondary_flash_controller)),
             Some(Box::new(mci)),
             Some(Box::new(doe_mbox)),
-            Some(Box::new(caliptra_mcu_emulator_periph::UsbDev0Mem::new())),
+            Some(Box::new(usb_dev0_memory)),
             Some(Box::new(caliptra_mcu_emulator_periph::UsbDev1Mem::new())),
             None,
             Some(Box::new(otp)),
@@ -1274,6 +1277,7 @@ impl Emulator {
             i3c_controller_join_handle,
             step_lock,
             usb_host_controller,
+            lpcip_usb_host_controller,
             usb_recovery_host,
             cptra_boot_go,
             mci_regs,
@@ -1299,6 +1303,7 @@ impl Emulator {
         i3c_controller_join_handle: Option<JoinHandle<()>>,
         step_lock: Arc<Mutex<()>>,
         usb_host_controller: caliptra_mcu_emulator_periph::UsbHostController,
+        lpcip_usb_host_controller: caliptra_mcu_emulator_periph::LpcipUsbHostController,
         usb_recovery_host: caliptra_mcu_emulator_periph::UsbRecoveryHost,
         cptra_boot_go: Rc<Cell<bool>>,
         mci_regs: Rc<RefCell<caliptra_emu_periph::mci::MciRegs>>,
@@ -1338,6 +1343,7 @@ impl Emulator {
             i3c_controller_join_handle,
             step_lock,
             usb_host_controller,
+            lpcip_usb_host_controller,
             usb_recovery_host,
             cptra_boot_go,
             mci_regs,

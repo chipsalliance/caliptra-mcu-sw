@@ -199,7 +199,17 @@ pub static MCU_MEMORY_MAP: McuMemoryMap = caliptra_mcu_config_emulator::EMULATOR
 
 #[no_mangle]
 #[used]
-pub static MCU_STRAPS: McuStraps = caliptra_mcu_config_emulator::EMULATOR_MCU_STRAPS;
+pub static MCU_STRAPS: McuStraps = if cfg!(feature = "test-lpcip-usb-ocp-recovery") {
+    McuStraps {
+        cptra_wdt_cfg0: u32::MAX,
+        cptra_wdt_cfg1: u32::MAX,
+        mcu_wdt_cfg0_debug: u32::MAX,
+        mcu_wdt_cfg1_debug: 1,
+        ..caliptra_mcu_config_emulator::EMULATOR_MCU_STRAPS
+    }
+} else {
+    caliptra_mcu_config_emulator::EMULATOR_MCU_STRAPS
+};
 
 pub extern "C" fn rom_entry() -> ! {
     unsafe {
@@ -349,6 +359,38 @@ pub extern "C" fn rom_entry() -> ! {
         platform: Some(&mut ocp_platform),
         ..Default::default()
     };
+
+    #[cfg(feature = "test-lpcip-usb-ocp-recovery")]
+    {
+        use caliptra_mcu_registers_generated::{usb_combo, usb_dev0_mem};
+        use caliptra_mcu_romtime::{Mci, McuResetReason};
+        use caliptra_mcu_usb_emulator::LpcipUsbDriver;
+
+        let mci_regs = unsafe {
+            caliptra_mcu_romtime::StaticRef::new(
+                MCU_MEMORY_MAP.mci_offset
+                    as *const caliptra_mcu_registers_generated::mci::regs::Mci,
+            )
+        };
+        if Mci::new(mci_regs).reset_reason_enum() == McuResetReason::ColdBoot {
+            let usb_regs = unsafe {
+                caliptra_mcu_romtime::StaticRef::new(
+                    usb_combo::USB_COMBO_ADDR as *const usb_combo::regs::UsbCombo,
+                )
+            };
+            let usb_memory = unsafe {
+                caliptra_mcu_romtime::StaticRef::new(
+                    usb_dev0_mem::USB_DEV0_MEM_ADDR as *const usb_dev0_mem::regs::UsbDev0Mem,
+                )
+            };
+            let mut usb_driver = LpcipUsbDriver::new(usb_regs, usb_memory);
+            if usb_driver.init_and_enumerate().is_err() {
+                fatal_error(
+                    caliptra_mcu_error::McuError::ROM_COLD_BOOT_RECOVERY_NOT_CONFIGURED_ERROR,
+                );
+            }
+        }
+    }
 
     if cfg!(feature = "use-flash-partition-table") {
         // Initialize the flash controller for testing purposes

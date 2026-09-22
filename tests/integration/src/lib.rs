@@ -106,6 +106,7 @@ mod test {
         pub rom_only: bool,
         pub include_network_rom: bool,
         pub flash_boot: bool,
+        pub usb_recovery: bool,
         /// Seed primary flash for a runtime flash loader while ROM boots via recovery.
         pub seed_primary_flash_image: bool,
         pub network_tap_device: Option<Arc<Mutex<Box<dyn TapDevice>>>>,
@@ -163,6 +164,7 @@ mod test {
                 rom_only: false,
                 include_network_rom: false,
                 flash_boot: false,
+                usb_recovery: false,
                 seed_primary_flash_image: false,
                 network_tap_device: None,
                 dot_enabled: false,
@@ -908,6 +910,7 @@ mod test {
             otp_memory: otp_memory.as_deref(),
             primary_flash_initial_contents,
             flash_boot: params.flash_boot,
+            usb_recovery: params.usb_recovery,
             ocp_lock_en: params.ocp_lock_en,
             fips_zeroization: params.fips_zeroization,
             force_fuse_owner_pk_hash: params.force_fuse_owner_pk_hash,
