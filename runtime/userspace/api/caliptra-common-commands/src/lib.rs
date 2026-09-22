@@ -538,6 +538,17 @@ pub trait CaliptraCmdHandler {
 
     /// Rotate the active HEK to the specified slot.
     #[cfg(feature = "ocp-lock")]
+    async fn ocp_lock_program_hek<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        slot: u32,
+    ) -> CaliptraCmdResult<()> {
+        let _ = (alloc, slot);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Rotate the active HEK to the specified slot.
+    #[cfg(feature = "ocp-lock")]
     async fn ocp_lock_rotate_hek<Alloc: ApiAlloc>(
         &self,
         alloc: &Alloc,

@@ -178,7 +178,8 @@ fn authorized_subcommand_capabilities() -> AuthorizedSubcommandCapabilities {
             | AuthorizedSubcommandCapabilities::GET_DOT_BACKUP_BLOB;
     }
     if cfg!(feature = "spdm") && cfg!(feature = "ocp-lock") {
-        capabilities |= AuthorizedSubcommandCapabilities::OCP_LOCK_ROTATE_HEK
+        capabilities |= AuthorizedSubcommandCapabilities::OCP_LOCK_PROGRAM_HEK
+            | AuthorizedSubcommandCapabilities::OCP_LOCK_ROTATE_HEK
             | AuthorizedSubcommandCapabilities::OCP_LOCK_SET_PERMA_HEK;
     }
     capabilities
@@ -548,6 +549,15 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
     }
 
     #[cfg(feature = "ocp-lock")]
+    async fn ocp_lock_program_hek<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        slot: u32,
+    ) -> CaliptraCmdResult<()> {
+        device_ops::ocp_lock_program_hek(alloc, slot).await
+    }
+
+    #[cfg(feature = "ocp-lock")]
     async fn ocp_lock_rotate_hek<Alloc: ApiAlloc>(
         &self,
         alloc: &Alloc,
@@ -619,7 +629,8 @@ mod tests {
         );
         assert_eq!(
             authorized.contains(
-                AuthorizedSubcommandCapabilities::OCP_LOCK_ROTATE_HEK
+                AuthorizedSubcommandCapabilities::OCP_LOCK_PROGRAM_HEK
+                    | AuthorizedSubcommandCapabilities::OCP_LOCK_ROTATE_HEK
                     | AuthorizedSubcommandCapabilities::OCP_LOCK_SET_PERMA_HEK
             ),
             cfg!(feature = "spdm") && cfg!(feature = "ocp-lock")

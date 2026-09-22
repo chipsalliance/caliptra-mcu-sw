@@ -1,6 +1,8 @@
 // Licensed under the Apache-2.0 license
 
-pub use caliptra_api::mailbox::{HpkeHandle, OcpLockEnumerateHpkeHandlesResp};
+pub use caliptra_api::mailbox::{
+    HpkeHandle, OcpLockEnumerateHpkeHandlesReq, OcpLockEnumerateHpkeHandlesResp,
+};
 use caliptra_image_types::{ECC384_SCALAR_BYTE_SIZE, MLDSA87_SIGNATURE_BYTE_SIZE};
 use caliptra_mcu_registers_generated::fuses::{
     OTP_CPTRA_CORE_VENDOR_PK_HASH_0, OTP_CPTRA_SS_OWNER_PK_HASH,
@@ -148,9 +150,9 @@ impl CommandId {
     pub const MC_DPE_SIGNER_CONTEXT_CERT: Self = Self(0x4D44_5343); // "MDSC"
     pub const MC_GET_DPE_CERTIFICATE_CHAIN: Self = Self(0x4D44_4343); // "MDCC"
 
-    // The outer family ID is used as the MCI command and authorization domain.
-    // The FourCC values below are little-endian u32 subcommands in its payload.
+    // OCP Lock commands
     pub const MC_OCP_LOCK: Self = Self(0x0000_0013);
+    pub const MC_OCP_LOCK_PROGRAM_HEK: Self = Self(0x4F4C_5048); // "OLPH"
     pub const MC_OCP_LOCK_ROTATE_HEK: Self = Self(0x4F4C_5248); // "OLRH"
     pub const MC_OCP_LOCK_SET_PERMA_HEK: Self = Self(0x4F4C_5350); // "OLSP"
     pub const MC_GET_OCP_LOCK_ENDORSEMENT_CERT: Self = Self(0x4F4C_4543); // "OLEC"
@@ -251,6 +253,7 @@ pub enum McuMailboxReq {
     GetAttestation(GetAttestationReq),
 
     // OCP Lock
+    OcpLockProgramHek(OcpLockProgramHekReq),
     OcpLockSetPermaHek(OcpLockSetPermaHekReq),
     OcpLockRotateHek(OcpLockRotateHekReq),
     GetOcpLockEndorsementCert(GetOcpLockEndorsementCertReq),
@@ -329,6 +332,7 @@ impl McuMailboxReq {
             McuMailboxReq::GetDpeCertChain(req) => Ok(req.as_bytes()),
             McuMailboxReq::GetAttestation(req) => Ok(req.as_bytes()),
 
+            McuMailboxReq::OcpLockProgramHek(req) => Ok(req.as_bytes()),
             McuMailboxReq::OcpLockSetPermaHek(req) => Ok(req.as_bytes()),
             McuMailboxReq::OcpLockRotateHek(req) => Ok(req.as_bytes()),
             McuMailboxReq::GetOcpLockEndorsementCert(req) => Ok(req.as_bytes()),
@@ -406,6 +410,7 @@ impl McuMailboxReq {
             McuMailboxReq::GetDpeCertChain(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::GetAttestation(req) => Ok(req.as_mut_bytes()),
 
+            McuMailboxReq::OcpLockProgramHek(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::OcpLockSetPermaHek(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::OcpLockRotateHek(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::GetOcpLockEndorsementCert(req) => Ok(req.as_mut_bytes()),
@@ -485,11 +490,18 @@ impl McuMailboxReq {
             McuMailboxReq::GetDpeCertChain(_) => CommandId::MC_GET_DPE_CERTIFICATE_CHAIN,
             McuMailboxReq::GetAttestation(_) => CommandId::MC_GET_ATTESTATION,
 
-            McuMailboxReq::OcpLockSetPermaHek(_) => CommandId::MC_OCP_LOCK,
-            McuMailboxReq::OcpLockRotateHek(_) => CommandId::MC_OCP_LOCK,
-            McuMailboxReq::GetOcpLockEndorsementCert(_) => CommandId::MC_OCP_LOCK,
-            McuMailboxReq::OcpLockEnumerateHpkeHandles(_) => CommandId::MC_OCP_LOCK,
-            McuMailboxReq::GetOcpLockEpochKeyReport(_) => CommandId::MC_OCP_LOCK,
+            McuMailboxReq::OcpLockProgramHek(_) => CommandId::MC_OCP_LOCK_PROGRAM_HEK,
+            McuMailboxReq::OcpLockSetPermaHek(_) => CommandId::MC_OCP_LOCK_SET_PERMA_HEK,
+            McuMailboxReq::OcpLockRotateHek(_) => CommandId::MC_OCP_LOCK_ROTATE_HEK,
+            McuMailboxReq::GetOcpLockEndorsementCert(_) => {
+                CommandId::MC_GET_OCP_LOCK_ENDORSEMENT_CERT
+            }
+            McuMailboxReq::OcpLockEnumerateHpkeHandles(_) => {
+                CommandId::MC_OCP_LOCK_ENUMERATE_HPKE_HANDLES
+            }
+            McuMailboxReq::GetOcpLockEpochKeyReport(_) => {
+                CommandId::MC_GET_OCP_LOCK_EPOCH_KEY_REPORT
+            }
             McuMailboxReq::DotLock(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
             McuMailboxReq::DotDisable(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
             McuMailboxReq::DotRotate(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
@@ -586,6 +598,7 @@ pub enum McuMailboxResp {
     GetDpeCertChain(GetDpeCertChainResp),
 
     // OCP Lock
+    OcpLockProgramHek(OcpLockProgramHekResp),
     OcpLockSetPermaHek(OcpLockSetPermaHekResp),
     OcpLockRotateHek(OcpLockRotateHekResp),
     GetOcpLockEndorsementCert(GetOcpLockEndorsementCertResp),
@@ -722,6 +735,7 @@ impl McuMailboxResp {
             McuMailboxResp::DpeSignerContextCert(resp) => resp.as_bytes_partial(),
             McuMailboxResp::GetDpeCertChain(resp) => resp.as_bytes_partial(),
 
+            McuMailboxResp::OcpLockProgramHek(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::OcpLockSetPermaHek(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::OcpLockRotateHek(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::GetOcpLockEndorsementCert(resp) => resp.as_bytes_partial(),
@@ -797,6 +811,7 @@ impl McuMailboxResp {
             McuMailboxResp::DpeSignerContextCert(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::GetDpeCertChain(resp) => resp.as_bytes_partial_mut(),
 
+            McuMailboxResp::OcpLockProgramHek(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::OcpLockSetPermaHek(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::OcpLockRotateHek(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::GetOcpLockEndorsementCert(resp) => resp.as_bytes_partial_mut(),
@@ -1982,23 +1997,13 @@ impl Response for ProvisionVendorPkHashResp {}
 
 /// MC_OCP_LOCK_SET_PERMA_HEK request: Set the Permanent HEK state.
 #[repr(C)]
-#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
 pub struct OcpLockSetPermaHekReq {
     pub hdr: MailboxReqHeader,
-    pub subcommand: u32,
-}
-
-impl Default for OcpLockSetPermaHekReq {
-    fn default() -> Self {
-        Self {
-            hdr: MailboxReqHeader::default(),
-            subcommand: CommandId::MC_OCP_LOCK_SET_PERMA_HEK.0,
-        }
-    }
 }
 
 impl Request for OcpLockSetPermaHekReq {
-    const ID: CommandId = CommandId::MC_OCP_LOCK;
+    const ID: CommandId = CommandId::MC_OCP_LOCK_SET_PERMA_HEK;
     type Resp = OcpLockSetPermaHekResp;
 }
 
@@ -2010,27 +2015,76 @@ pub struct OcpLockSetPermaHekResp {
 }
 
 impl Response for OcpLockSetPermaHekResp {}
-/// MC_OCP_LOCK_ROTATE_HEK request: Rotate the active HEK.
-#[repr(C)]
-#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
-pub struct OcpLockRotateHekReq {
-    pub hdr: MailboxReqHeader,
-    pub subcommand: u32,
-    pub hek_slot: u32,
+
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum HekSeedSlot {
+    LockHekProd0 = 0,
+    LockHekProd1 = 1,
+    LockHekProd2 = 2,
+    LockHekProd3 = 3,
+    LockHekProd4 = 4,
+    LockHekProd5 = 5,
+    LockHekProd6 = 6,
+    LockHekProd7 = 7,
 }
 
-impl Default for OcpLockRotateHekReq {
-    fn default() -> Self {
-        Self {
-            hdr: MailboxReqHeader::default(),
-            subcommand: CommandId::MC_OCP_LOCK_ROTATE_HEK.0,
-            hek_slot: 0,
+impl TryFrom<u32> for HekSeedSlot {
+    type Error = ();
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::LockHekProd0),
+            1 => Ok(Self::LockHekProd1),
+            2 => Ok(Self::LockHekProd2),
+            3 => Ok(Self::LockHekProd3),
+            4 => Ok(Self::LockHekProd4),
+            5 => Ok(Self::LockHekProd5),
+            6 => Ok(Self::LockHekProd6),
+            7 => Ok(Self::LockHekProd7),
+            _ => Err(()),
         }
     }
 }
 
+impl From<HekSeedSlot> for u32 {
+    fn from(value: HekSeedSlot) -> Self {
+        value as u32
+    }
+}
+
+/// MC_OCP_LOCK_PROGRAM_HEK request: Program one unused HEK slot.
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct OcpLockProgramHekReq {
+    pub hdr: MailboxReqHeader,
+    /// One of [`HekSeedSlot::LockHekProd0`] through [`HekSeedSlot::LockHekProd7`].
+    pub hek_slot: u32,
+}
+
+impl Request for OcpLockProgramHekReq {
+    const ID: CommandId = CommandId::MC_OCP_LOCK_PROGRAM_HEK;
+    type Resp = OcpLockProgramHekResp;
+}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct OcpLockProgramHekResp {
+    pub hdr: MailboxRespHeader,
+}
+
+impl Response for OcpLockProgramHekResp {}
+
+/// MC_OCP_LOCK_ROTATE_HEK request: Rotate the active HEK.
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct OcpLockRotateHekReq {
+    pub hdr: MailboxReqHeader,
+    pub hek_slot: u32,
+}
+
 impl Request for OcpLockRotateHekReq {
-    const ID: CommandId = CommandId::MC_OCP_LOCK;
+    const ID: CommandId = CommandId::MC_OCP_LOCK_ROTATE_HEK;
     type Resp = OcpLockRotateHekResp;
 }
 
@@ -2044,25 +2098,14 @@ pub struct OcpLockRotateHekResp {
 impl Response for OcpLockRotateHekResp {}
 /// MC_GET_OCP_LOCK_ENDORSEMENT_CERT request
 #[repr(C)]
-#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq, Default)]
 pub struct GetOcpLockEndorsementCertReq {
     pub hdr: MailboxReqHeader,
-    pub subcommand: u32,
     pub hpke_handle: HpkeHandle,
     pub algorithm: EndorsementAlgorithm,
 }
-impl Default for GetOcpLockEndorsementCertReq {
-    fn default() -> Self {
-        Self {
-            hdr: MailboxReqHeader::default(),
-            subcommand: CommandId::MC_GET_OCP_LOCK_ENDORSEMENT_CERT.0,
-            hpke_handle: HpkeHandle::default(),
-            algorithm: EndorsementAlgorithm::default(),
-        }
-    }
-}
 impl Request for GetOcpLockEndorsementCertReq {
-    const ID: CommandId = CommandId::MC_OCP_LOCK;
+    const ID: CommandId = CommandId::MC_GET_OCP_LOCK_ENDORSEMENT_CERT;
     type Resp = GetOcpLockEndorsementCertResp;
 }
 
@@ -2085,23 +2128,8 @@ impl Default for GetOcpLockEndorsementCertResp {
 }
 impl McuResponseVarSize for GetOcpLockEndorsementCertResp {}
 
-/// MC_OCP_LOCK_ENUMERATE_HPKE_HANDLES request
-#[repr(C)]
-#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
-pub struct OcpLockEnumerateHpkeHandlesReq {
-    pub hdr: MailboxReqHeader,
-    pub subcommand: u32,
-}
-impl Default for OcpLockEnumerateHpkeHandlesReq {
-    fn default() -> Self {
-        Self {
-            hdr: MailboxReqHeader::default(),
-            subcommand: CommandId::MC_OCP_LOCK_ENUMERATE_HPKE_HANDLES.0,
-        }
-    }
-}
 impl Request for OcpLockEnumerateHpkeHandlesReq {
-    const ID: CommandId = CommandId::MC_OCP_LOCK;
+    const ID: CommandId = CommandId::MC_OCP_LOCK_ENUMERATE_HPKE_HANDLES;
     type Resp = OcpLockEnumerateHpkeHandlesResp;
 }
 impl Response for OcpLockEnumerateHpkeHandlesResp {}
@@ -2169,10 +2197,9 @@ impl TryFrom<u16> for SekState {
 }
 
 #[repr(C)]
-#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq, Default)]
 pub struct GetOcpLockEpochKeyReportReq {
     pub hdr: MailboxReqHeader,
-    pub subcommand: u32,
     /// 32-byte nonce for freshness
     pub nonce: [u8; 32],
     /// SEK state (0=Unused, 1=Programmed, 2=Sanitized)
@@ -2180,20 +2207,8 @@ pub struct GetOcpLockEpochKeyReportReq {
     pub reserved: u16,
     pub algorithm: EndorsementAlgorithm,
 }
-impl Default for GetOcpLockEpochKeyReportReq {
-    fn default() -> Self {
-        Self {
-            hdr: MailboxReqHeader::default(),
-            subcommand: CommandId::MC_GET_OCP_LOCK_EPOCH_KEY_REPORT.0,
-            nonce: [0u8; 32],
-            sek_state: 0,
-            reserved: 0,
-            algorithm: EndorsementAlgorithm::default(),
-        }
-    }
-}
 impl Request for GetOcpLockEpochKeyReportReq {
-    const ID: CommandId = CommandId::MC_OCP_LOCK;
+    const ID: CommandId = CommandId::MC_GET_OCP_LOCK_EPOCH_KEY_REPORT;
     type Resp = GetOcpLockEpochKeyReportResp;
 }
 
@@ -2736,37 +2751,12 @@ mod tests {
 
     #[test]
     fn test_ocp_lock_command_ids() {
-        assert_eq!(CommandId::MC_OCP_LOCK.0, 0x13);
+        assert_eq!(CommandId::MC_OCP_LOCK_PROGRAM_HEK.0, 0x4F4C_5048); // "OLPH"
         assert_eq!(CommandId::MC_OCP_LOCK_ROTATE_HEK.0, 0x4F4C_5248); // "OLRH"
         assert_eq!(CommandId::MC_OCP_LOCK_SET_PERMA_HEK.0, 0x4F4C_5350); // "OLSP"
-        assert_eq!(CommandId::MC_GET_OCP_LOCK_ENDORSEMENT_CERT.0, 0x4F4C_4543); // "OLEC"
-        assert_eq!(CommandId::MC_OCP_LOCK_ENUMERATE_HPKE_HANDLES.0, 0x4F4C_4548); // "OLEH"
-        assert_eq!(CommandId::MC_GET_OCP_LOCK_EPOCH_KEY_REPORT.0, 0x4F4C_4552); // "OLER"
-        assert_eq!(OcpLockRotateHekReq::ID, CommandId::MC_OCP_LOCK);
-        assert_eq!(OcpLockSetPermaHekReq::ID, CommandId::MC_OCP_LOCK);
-        assert_eq!(GetOcpLockEndorsementCertReq::ID, CommandId::MC_OCP_LOCK);
-        assert_eq!(OcpLockEnumerateHpkeHandlesReq::ID, CommandId::MC_OCP_LOCK);
-        assert_eq!(GetOcpLockEpochKeyReportReq::ID, CommandId::MC_OCP_LOCK);
-        assert_eq!(
-            OcpLockRotateHekReq::default().subcommand,
-            CommandId::MC_OCP_LOCK_ROTATE_HEK.0
-        );
-        assert_eq!(
-            OcpLockSetPermaHekReq::default().subcommand,
-            CommandId::MC_OCP_LOCK_SET_PERMA_HEK.0
-        );
-        assert_eq!(
-            GetOcpLockEndorsementCertReq::default().subcommand,
-            CommandId::MC_GET_OCP_LOCK_ENDORSEMENT_CERT.0
-        );
-        assert_eq!(
-            OcpLockEnumerateHpkeHandlesReq::default().subcommand,
-            CommandId::MC_OCP_LOCK_ENUMERATE_HPKE_HANDLES.0
-        );
-        assert_eq!(
-            GetOcpLockEpochKeyReportReq::default().subcommand,
-            CommandId::MC_GET_OCP_LOCK_EPOCH_KEY_REPORT.0
-        );
+        assert_eq!(u32::from(HekSeedSlot::LockHekProd0), 0);
+        assert_eq!(u32::from(HekSeedSlot::LockHekProd7), 7);
+        assert!(HekSeedSlot::try_from(8).is_err());
     }
 
     #[test]
@@ -3112,7 +3102,6 @@ mod tests {
             hdr: MailboxReqHeader { chksum: 0xABCD },
             hpke_handle: HpkeHandle::default(),
             algorithm: EndorsementAlgorithm::MLDSA_87,
-            ..Default::default()
         };
 
         let bytes = req.as_bytes();
@@ -3123,10 +3112,6 @@ mod tests {
 
         let parsed = GetOcpLockEndorsementCertReq::read_from_bytes(bytes).unwrap();
         assert_eq!(parsed.hdr.chksum, 0xABCD);
-        assert_eq!(
-            parsed.subcommand,
-            CommandId::MC_GET_OCP_LOCK_ENDORSEMENT_CERT.0
-        );
         assert_eq!(parsed.algorithm, EndorsementAlgorithm::MLDSA_87);
     }
 
