@@ -118,29 +118,18 @@ pub struct InitiateBootRequest {
     pub message_type: u8,
     pub reserved: [u8; 3],
     pub protocol_version: u32,
-    pub flags: BootFlags,
 }
 
 impl InitiateBootRequest {
     pub const SIZE: usize = core::mem::size_of::<Self>();
 
-    pub fn new(protocol_version: u32, flags: BootFlags) -> Self {
+    pub fn new(protocol_version: u32) -> Self {
         Self {
             message_type: MessageType::InitiateBootRequest.as_u8(),
             reserved: [0u8; 3],
             protocol_version,
-            flags,
         }
     }
-}
-
-bitfield! {
-    #[repr(C)]
-    #[derive(Copy, Clone, FromBytes, IntoBytes, Immutable, KnownLayout, Default)]
-    pub struct BootFlags(u32);
-    impl Debug;
-    pub flash_writeback, set_flash_writeback: 0;
-    pub flash_commit_policy, set_flash_commit_policy: 1;
 }
 
 #[repr(C)]
@@ -525,22 +514,6 @@ mod tests {
     // -----------------------------------------------------------------------
 
     #[test]
-    fn boot_flags_bitfield() {
-        let mut flags = BootFlags(0);
-        assert!(!flags.flash_writeback());
-        assert!(!flags.flash_commit_policy());
-
-        flags.set_flash_writeback(true);
-        assert!(flags.flash_writeback());
-        assert!(!flags.flash_commit_policy());
-
-        flags.set_flash_commit_policy(true);
-        assert!(flags.flash_writeback());
-        assert!(flags.flash_commit_policy());
-        assert_eq!(flags.0, 0b11);
-    }
-
-    #[test]
     fn chunk_ack_flags_bitfield() {
         let mut flags = ChunkAckFlags(0);
         assert!(!flags.ready_for_next());
@@ -574,7 +547,7 @@ mod tests {
 
     #[test]
     fn packet_sizes() {
-        assert_eq!(InitiateBootRequest::SIZE, 12);
+        assert_eq!(InitiateBootRequest::SIZE, 8);
         assert_eq!(InitiateBootResponse::SIZE, 4);
         assert_eq!(ImageMetadataRequest::SIZE, 4);
         assert_eq!(ImageMetadataResponse::SIZE, 52);
@@ -591,20 +564,15 @@ mod tests {
 
     #[test]
     fn initiate_boot_request_serialization() {
-        let mut flags = BootFlags(0);
-        flags.set_flash_writeback(true);
-        let pkt = InitiateBootRequest::new(1, flags);
+        let pkt = InitiateBootRequest::new(1);
 
         assert_eq!(pkt.message_type, MessageType::InitiateBootRequest.as_u8());
         assert_eq!(pkt.protocol_version, 1);
-        assert!(pkt.flags.flash_writeback());
-        assert!(!pkt.flags.flash_commit_policy());
 
         let bytes = pkt.as_bytes();
         assert_eq!(bytes[0], 0x01); // message type
         assert_eq!(bytes[1..4], [0, 0, 0]); // reserved
         assert_eq!(u32::from_le_bytes(bytes[4..8].try_into().unwrap()), 1); // version
-        assert_eq!(bytes[8], 0x01); // flags bit 0 set
     }
 
     #[test]
@@ -856,7 +824,7 @@ mod tests {
 
     #[test]
     fn peek_message_type_works() {
-        let pkt = InitiateBootRequest::new(1, BootFlags(0));
+        let pkt = InitiateBootRequest::new(1);
         let bytes = pkt.as_bytes();
         assert_eq!(peek_message_type(bytes), Some(0x01));
     }
@@ -892,11 +860,9 @@ mod tests {
     #[test]
     fn zerocopy_round_trip_all_packets() {
         // InitiateBootRequest
-        let orig = InitiateBootRequest::new(42, BootFlags(0b11));
+        let orig = InitiateBootRequest::new(42);
         let parsed = InitiateBootRequest::ref_from_bytes(orig.as_bytes()).unwrap();
         assert_eq!(parsed.protocol_version, 42);
-        assert!(parsed.flags.flash_writeback());
-        assert!(parsed.flags.flash_commit_policy());
 
         // InitiateBootResponse
         let orig = InitiateBootResponse::new(Status::InProgress);

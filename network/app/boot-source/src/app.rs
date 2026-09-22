@@ -51,7 +51,6 @@ pub struct BootSourceApp<'a, M: NetworkMailbox<'a>> {
     mbox: &'a M,
     state: Cell<AppState>,
     toc: UnsafeCell<Toc>,
-    boot_flags: Cell<BootFlags>,
     /// Active TFTP transfer state: firmware ID being downloaded.
     active_firmware_id: Cell<u8>,
     /// Sequence number for the current image transfer.
@@ -73,7 +72,6 @@ impl<'a, M: NetworkMailbox<'a>> BootSourceApp<'a, M> {
             mbox,
             state: Cell::new(AppState::Idle),
             toc: UnsafeCell::new(Toc::new()),
-            boot_flags: Cell::new(BootFlags(0)),
             active_firmware_id: Cell::new(0),
             sequence_number: Cell::new(0),
             transfer_offset: Cell::new(0),
@@ -343,7 +341,7 @@ impl<'a, M: NetworkMailbox<'a>> BootSourceApp<'a, M> {
 
         match (self.state.get(), msg_type) {
             (AppState::Idle, MessageType::InitiateBootRequest) => {
-                handler::handle_initiate_boot_start(data, &self.boot_flags, self.ip_version)?;
+                handler::handle_initiate_boot_start(data, self.ip_version)?;
                 self.state.set(AppState::DhcpInProgress);
                 Ok(())
             }
