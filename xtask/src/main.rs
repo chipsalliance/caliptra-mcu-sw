@@ -21,6 +21,7 @@ mod format;
 mod fpga;
 mod fuses;
 mod header;
+mod owner_manifest;
 mod pldm_fw_pkg;
 mod precheckin;
 mod registers;
@@ -36,6 +37,7 @@ mod vertex_ai;
 use fpga::Fpga;
 
 use auth_manifest::AuthManifestCommands;
+use owner_manifest::OwnerManifestCommands;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -403,6 +405,11 @@ enum Commands {
         #[command(subcommand)]
         subcommand: AuthManifestCommands,
     },
+    /// Owner Authorization Manifest generation and parsing
+    OwnerManifest {
+        #[command(subcommand)]
+        subcommand: OwnerManifestCommands,
+    },
     /// Commands related to firmware bundling.
     FirmwareBundler {
         #[command(subcommand)]
@@ -453,6 +460,10 @@ enum FlashImageCommands {
         /// Path to the MCU runtime file
         #[arg(long, value_name = "MCU_RUNTIME", required = true)]
         mcu_runtime: Option<String>,
+
+        /// Path to the optional Owner Authorization Manifest file
+        #[arg(long, value_name = "OWNER_AUTH_MANIFEST")]
+        owner_auth_manifest: Option<String>,
 
         /// List of SoC images
         /// Example: --soc-images /tmp/a.bin --soc-images /tmp/b.bin
@@ -702,6 +713,7 @@ fn main() {
                 caliptra_fw,
                 soc_manifest,
                 mcu_runtime,
+                owner_auth_manifest,
                 soc_images,
                 output,
             } => caliptra_mcu_builder::flash_image::flash_image_create(
@@ -709,6 +721,7 @@ fn main() {
                     caliptra_firmware: caliptra_fw.clone().map(PathBuf::from),
                     soc_manifest: soc_manifest.clone().map(PathBuf::from),
                     mcu_firmware: mcu_runtime.clone().map(PathBuf::from),
+                    owner_auth_manifest: owner_auth_manifest.clone().map(PathBuf::from),
                     soc_image_paths: soc_images.clone(),
                     offset: 0,
                     output_path: Some(output.clone()),
@@ -818,6 +831,14 @@ fn main() {
                 output,
             ),
             AuthManifestCommands::Parse { file } => auth_manifest::parse(file),
+        },
+        Commands::OwnerManifest { subcommand } => match subcommand {
+            OwnerManifestCommands::Create {
+                images,
+                output,
+                svn,
+            } => owner_manifest::create(images, output, *svn),
+            OwnerManifestCommands::Parse { file } => owner_manifest::parse(file),
         },
         Commands::Corim { subcommand } => match subcommand {
             CorimCommands::GenRefval {
