@@ -76,6 +76,12 @@ impl<S: Syscalls> Otp<S> {
             .to_result::<u32, ErrorCode>()
     }
 
+    pub fn anti_rollback_disabled(&self) -> Result<bool, ErrorCode> {
+        let entry = caliptra_mcu_registers_generated::fuses::OTP_CPTRA_CORE_ANTI_ROLLBACK_DISABLE;
+        self.read_raw((entry.byte_offset / 4) as u32, 0)
+            .map(|value| value != 0)
+    }
+
     pub fn write(&self, reg_offset: u32, index: u32, value: u32) -> Result<(), ErrorCode> {
         S::command(self.driver_num, cmd::OTP_SET_REGISTER, reg_offset, index)
             .to_result::<(), ErrorCode>()?;

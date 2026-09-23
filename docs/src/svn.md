@@ -356,20 +356,25 @@ attempt never makes it to the hitless reset.
 
 For each component in the bundle:
 
-1. **MCU Runtime image** — obtain the bundle's SoC manifest SVN
-   (`soc_manifest_svn`) from the new SoC manifest. Reject if
-   `soc_manifest_svn < fuse_min_svn (CPTRA_CORE_SOC_MANIFEST_SVN)`. The
-   floor itself is owned by Caliptra Core; MCU Runtime only consults it
-   here as a fast-fail before the bundle is handed to Caliptra Core for
-   authentication.
-2. **MCU Component SVN Manifest** — if the new MCU runtime image contains
+1. **Caliptra Core firmware** — obtain the bundle's signed-header `fw_svn`.
+   When anti-rollback is enabled, reject if
+   `fw_svn < fuse_min_svn (CPTRA_CORE_RUNTIME_SVN)`. This is a fast-fail
+   against the physical OTP floor; the bundle must still pass `FIRMWARE_VERIFY`
+   for cryptographic authentication.
+2. **MCU Runtime image** — obtain the bundle's SoC manifest SVN
+   (`soc_manifest_svn`) from the new SoC manifest. When anti-rollback is
+   enabled, reject if
+   `soc_manifest_svn < fuse_min_svn (CPTRA_CORE_SOC_MANIFEST_SVN)`. The floor
+   itself is owned by Caliptra Core; MCU Runtime only consults it here as a
+   fast-fail before the bundle is handed to Caliptra Core for authentication.
+3. **MCU Component SVN Manifest** — if the new MCU runtime image contains
    the manifest header (identified by magic), validate Magic / Format
    Version and the header constraints (see [Format](#format)). Reject if
    `manifest.current_svn < fuse_min_svn
    (MCU_COMPONENT_SVN_MANIFEST_MIN_SVN)` or if any per-entry constraint
    is violated. If no manifest header is present, skip per-component SVN
    verification for this bundle.
-3. **SoC component images** — for each component whose `component_id` is in
+4. **SoC component images** — for each component whose `component_id` is in
    both the MCU Component SVN Manifest and `SVN_FUSE_MAP`:
    - Use the platform's `SocComponentSvn` trait (below) to extract the SVN
      directly from the component bytes.
@@ -384,6 +389,11 @@ manifest-vs-image cross-check (a logged warning) but still get the
 `current_svn < fuse_min_svn` check using the manifest's value. This allows
 opaque or pre-existing component formats to participate in fuse-level
 rollback protection without forcing the integrator to parse them.
+
+The Caliptra firmware and SoC manifest physical-floor checks are repeated
+immediately before `FIRMWARE_LOAD` and `SET_AUTH_MANIFEST`, respectively, so
+an OTP floor increase between Verify Component and activation cannot admit a
+candidate below the new floor.
 
 After PLDM verification succeeds, the bundle is applied and activated. The
 hitless update reset then triggers MCU ROM, which performs the actual
