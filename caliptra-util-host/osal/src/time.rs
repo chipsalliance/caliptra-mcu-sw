@@ -235,7 +235,7 @@ pub fn init(_resolution_us: u64) -> OsalResult<()> {
             next_handle: core::sync::atomic::AtomicU32::new(1),
         };
         unsafe {
-            TIMER = Some(&STD_TIMER as &(dyn Timer));
+            TIMER = Some(&STD_TIMER as &dyn Timer);
         }
     }
 

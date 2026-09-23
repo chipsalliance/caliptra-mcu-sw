@@ -447,7 +447,7 @@ fn constraint_value(i: &mut Tokens<'_>) -> Result<ConstraintValue> {
     ))
     .parse_next(i)?
     {
-        return Ok(ConstraintValue::Range(a, b));
+        Ok(ConstraintValue::Range(a, b))
     } else {
         fail.parse_next(i)
     }

@@ -61,7 +61,7 @@ impl RequestFirmwareDataResponse<'_> {
         instance_id: InstanceId,
         completion_code: u8,
         data: &[u8],
-    ) -> RequestFirmwareDataResponse {
+    ) -> RequestFirmwareDataResponse<'_> {
         let fixed = RequestFirmwareDataResponseFixed {
             hdr: PldmMsgHeader::new(
                 instance_id,

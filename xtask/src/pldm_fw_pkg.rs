@@ -4,18 +4,10 @@ use anyhow::{bail, Result};
 use caliptra_mcu_pldm_fw_pkg::manifest::*;
 
 pub(crate) fn create(manifest_path: &str, output_path: &str) -> Result<()> {
-    let firmware_manifest = FirmwareManifest::parse_manifest_file(&manifest_path.to_string());
-    if firmware_manifest.is_err() {
-        bail!("Failed to parse manifest file: {}", manifest_path);
-    }
-    let result = firmware_manifest
-        .unwrap()
-        .generate_firmware_package(&output_path.to_string());
-    if result.is_err() {
-        bail!(
-            "Failed to generate firmware package: {}",
-            result.unwrap_err()
-        );
+    let firmware_manifest = FirmwareManifest::parse_manifest_file(&manifest_path.to_string())
+        .map_err(|_| anyhow::anyhow!("Failed to parse manifest file: {}", manifest_path))?;
+    if let Err(err) = firmware_manifest.generate_firmware_package(&output_path.to_string()) {
+        bail!("Failed to generate firmware package: {}", err);
     }
     println!("Encoded FirmwarePackage to binary file: {}", output_path);
     Ok(())

@@ -77,10 +77,10 @@ pub fn bundle(
                     elf,
                     app.binary.binary.clone(),
                 )?;
-                runtime.extend(header_bytes.into_iter());
+                runtime.extend(header_bytes);
 
                 let app_bin = std::fs::read(&app.binary.binary)?;
-                runtime.extend(app_bin.into_iter());
+                runtime.extend(app_bin);
             }
         }
         RuntimeVariant::BareMetal((bare_metal, _)) => {

@@ -49,12 +49,7 @@ pub async fn drain(dst: &mut [u8]) -> Result<GetLogResult, CaliptraCompletionCod
     let mut written = 0usize;
     let mut more_data = false;
 
-    loop {
-        let Some(remaining) = dst.get_mut(written..) else {
-            // `written > dst.len()` is impossible by construction, but the
-            // get_mut keeps this loop panic-free.
-            break;
-        };
+    while let Some(remaining) = dst.get_mut(written..) {
         if remaining.is_empty() {
             // dst is full; if there is more in the log we'd see SIZE on next
             // call. Signal more_data so the caller polls again.
