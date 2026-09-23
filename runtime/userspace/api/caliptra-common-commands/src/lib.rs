@@ -18,6 +18,12 @@ use zerocopy::{Immutable, IntoBytes};
 pub use caliptra_api::mailbox::MAX_ATTESTED_CSR_RESP_DATA_SIZE as MAX_ATTESTED_CSR_DATA_LEN;
 pub const MAX_FW_VERSION_LEN: usize = 32;
 
+/// Device key identifiers used by `export_attested_csr`.
+pub const DEVICE_KEY_ID_DISCOVERY: u32 = 0x0000;
+pub const DEVICE_KEY_ID_LDEV_ID: u32 = 0x0001;
+pub const DEVICE_KEY_ID_FMC_ALIAS: u32 = 0x0002;
+pub const DEVICE_KEY_ID_RT_ALIAS: u32 = 0x0003;
+
 /// Size of the unique device identifier in bytes.
 pub const DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE: usize = 32;
 /// Size of the debug unlock challenge in bytes.
@@ -270,10 +276,10 @@ pub trait CaliptraCmdHandler {
         capabilities: &mut DeviceCapabilities,
     ) -> CaliptraCmdResult<()>;
 
-    /// Exports an attested CSR for the specified device key.
+    /// Exports an attested CSR or performs keypair discovery.
     ///
     /// # Arguments
-    /// * `device_key_id` - The device key identifier (0x0001=LDevID, 0x0002=FMC Alias, 0x0003=RT Alias).
+    /// * `device_key_id` - The device key identifier (0x0000=Discovery / KeyPairInventory, 0x0001=LDevID, 0x0002=FMC Alias, 0x0003=RT Alias).
     /// * `algorithm` - The asymmetric algorithm (0x0001=ECC384, 0x0002=MLDSA87).
     /// * `nonce` - A 32-byte nonce provided by the requester for freshness.
     /// * `csr_buf` - Mutable buffer to write the CSR DER data into directly.

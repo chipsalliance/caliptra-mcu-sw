@@ -84,19 +84,30 @@ impl CommandResponse for SetCertificateResponse {}
 // ExportAttestedCsr Command
 // ============================================================================
 
-/// Maximum CSR data size (matches MAX_RESP_DATA_SIZE on MCU side)
-pub const MAX_CSR_DATA_SIZE: usize = 4 * 1024;
+/// Maximum CSR data size (matches MAX_ATTESTED_CSR_RESP_DATA_SIZE on MCU side)
+pub const MAX_CSR_DATA_SIZE: usize =
+    caliptra_mcu_mbox_common::messages::MAX_ATTESTED_CSR_RESP_DATA_SIZE;
 
 /// Export Attested CSR request
 #[repr(C)]
 #[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
 pub struct ExportAttestedCsrRequest {
-    /// Device key identifier (0x0001=LDevID, 0x0002=FMC Alias, 0x0003=RT Alias)
+    /// Device key identifier (0x0000=Discovery / KeyPairInventory, 0x0001=LDevID, 0x0002=FMC Alias, 0x0003=RT Alias)
     pub device_key_id: u32,
     /// Asymmetric algorithm (0x0001=ECC384, 0x0002=MLDSA87)
     pub algorithm: u32,
     /// 32-byte nonce for freshness
     pub nonce: [u8; 32],
+}
+
+impl ExportAttestedCsrRequest {
+    pub const KEY_ID_DISCOVERY: u32 = 0x0000;
+    pub const KEY_ID_LDEV_ID: u32 = 0x0001;
+    pub const KEY_ID_FMC_ALIAS: u32 = 0x0002;
+    pub const KEY_ID_RT_ALIAS: u32 = 0x0003;
+
+    pub const ALGO_ECC384: u32 = 0x0001;
+    pub const ALGO_MLDSA87: u32 = 0x0002;
 }
 
 /// Export Attested CSR response
@@ -193,5 +204,32 @@ impl ExportIdevidCsrResponse {
             return Err(AttestedCsrValidationError::TooLarge(len));
         }
         Ok(len)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_export_attested_csr_request_constants() {
+        assert_eq!(ExportAttestedCsrRequest::KEY_ID_DISCOVERY, 0x0000);
+        assert_eq!(ExportAttestedCsrRequest::KEY_ID_LDEV_ID, 0x0001);
+        assert_eq!(ExportAttestedCsrRequest::KEY_ID_FMC_ALIAS, 0x0002);
+        assert_eq!(ExportAttestedCsrRequest::KEY_ID_RT_ALIAS, 0x0003);
+        assert_eq!(ExportAttestedCsrRequest::ALGO_ECC384, 0x0001);
+        assert_eq!(ExportAttestedCsrRequest::ALGO_MLDSA87, 0x0002);
+
+        let req = ExportAttestedCsrRequest {
+            device_key_id: ExportAttestedCsrRequest::KEY_ID_DISCOVERY,
+            algorithm: ExportAttestedCsrRequest::ALGO_ECC384,
+            nonce: [0x5A; 32],
+        };
+        assert_eq!(core::mem::size_of::<ExportAttestedCsrRequest>(), 40);
+        let bytes = req.as_bytes();
+        let parsed = ExportAttestedCsrRequest::read_from_bytes(bytes).unwrap();
+        assert_eq!(parsed.device_key_id, 0);
+        assert_eq!(parsed.algorithm, 1);
+        assert_eq!(parsed.nonce, [0x5A; 32]);
     }
 }

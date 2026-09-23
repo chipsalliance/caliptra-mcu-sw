@@ -13,18 +13,18 @@ use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libsyscall_caliptra::{caliptra, otp};
 use caliptra_mcu_mbox_common::messages::{
     ClearLogReq, ClearLogResp, CommandId, DeviceCapsReq, DeviceCapsResp, DpeSignerContextCertReq,
-    DpeSignerContextCertResp, EndorsementAlgorithm, ExportAttestedCsrReq, FirmwareVersionReq,
-    FirmwareVersionResp, FuseIncreaseMinSvnReq, FuseIncreaseMinSvnResp, FuseLockPartitionReq,
-    FuseLockPartitionResp, FuseReadReq, FuseReadResp, FuseRevokeVendorPkHashReq,
-    FuseRevokeVendorPkHashResp, FuseRevokeVendorPubKeyReq, FuseRevokeVendorPubKeyResp,
-    FuseWriteReq, FuseWriteResp, GetAttestationReq, GetAuthCmdChallengeReq,
-    GetAuthCmdChallengeResp, GetDpeCertChainReq, GetLogReq, LogType, MailboxReqHeader,
-    MailboxRespHeader, MailboxRespHeaderVarSize, McuFeProgReq, McuMailboxReq, McuMailboxResp,
-    McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq,
-    McuResponseVarSize, ProvisionOwnerPkHashReq, ProvisionOwnerPkHashResp,
-    ProvisionVendorPkHashReq, ProvisionVendorPkHashResp, SvnTarget, DEVICE_CAPS_SIZE,
-    GET_ATTESTATION_RESP_PREFIX_LEN, MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN,
-    MAX_RESP_DATA_SIZE,
+    DpeSignerContextCertResp, EndorsementAlgorithm, ExportAttestedCsrReq, ExportAttestedCsrResp,
+    FirmwareVersionReq, FirmwareVersionResp, FuseIncreaseMinSvnReq, FuseIncreaseMinSvnResp,
+    FuseLockPartitionReq, FuseLockPartitionResp, FuseReadReq, FuseReadResp,
+    FuseRevokeVendorPkHashReq, FuseRevokeVendorPkHashResp, FuseRevokeVendorPubKeyReq,
+    FuseRevokeVendorPubKeyResp, FuseWriteReq, FuseWriteResp, GetAttestationReq,
+    GetAuthCmdChallengeReq, GetAuthCmdChallengeResp, GetDpeCertChainReq, GetLogReq, LogType,
+    MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize, McuFeProgReq, McuMailboxReq,
+    McuMailboxResp, McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp,
+    McuProdDebugUnlockTokenReq, McuResponseVarSize, ProvisionOwnerPkHashReq,
+    ProvisionOwnerPkHashResp, ProvisionVendorPkHashReq, ProvisionVendorPkHashResp, SvnTarget,
+    DEVICE_CAPS_SIZE, GET_ATTESTATION_RESP_PREFIX_LEN, MAX_ATTESTED_CSR_RESP_DATA_SIZE,
+    MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
 };
 
 use caliptra_mcu_libtock_console::Console;
@@ -704,24 +704,11 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         let (hdr_bytes, data) = resp_buf
             .split_at_mut_checked(size_of::<MailboxRespHeaderVarSize>())
             .ok_or(errors::INVALID_PARAMS)?;
-        let data = data
-            .get_mut(..MAX_RESP_DATA_SIZE)
-            .ok_or(errors::INVALID_PARAMS)?;
-        let ret = self
-            .non_crypto_cmds_handler
-            .export_attested_csr(
-                self.scratch,
-                req.device_key_id,
-                req.algorithm,
-                &req.nonce,
-                data,
-            )
-            .await;
-
-        let (mbox_cmd_status, data_len) = match ret {
-            Ok(len) if len <= MAX_RESP_DATA_SIZE => (MbxCmdStatus::Complete, len),
-            _ => (MbxCmdStatus::Failure, 0),
-        };
+        let (mbox_cmd_status, data_len) =
+            match stage_attested_csr(self.non_crypto_cmds_handler, self.scratch, req, data).await {
+                Ok(len) => (MbxCmdStatus::Complete, len),
+                Err(_) => (MbxCmdStatus::Failure, 0),
+            };
 
         let resp_len = if mbox_cmd_status == MbxCmdStatus::Complete {
             let hdr = MailboxRespHeaderVarSize {
@@ -1698,6 +1685,7 @@ fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32) -> usize {
         c if c == CommandId::MC_GET_DPE_CERTIFICATE_CHAIN => {
             size_of::<MailboxRespHeaderVarSize>() + 1024
         }
+        c if c == CommandId::MC_EXPORT_ATTESTED_CSR => size_of::<ExportAttestedCsrResp>(),
         c if c == CommandId::MC_GET_ATTESTATION => size_of::<McuMailboxResp>().max(
             size_of::<MailboxRespHeaderVarSize>()
                 + GET_ATTESTATION_RESP_PREFIX_LEN
@@ -1706,6 +1694,29 @@ fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32) -> usize {
         #[cfg(feature = "device-ownership-transfer")]
         CommandId::MC_DEVICE_OWNERSHIP_TRANSFER => size_of::<GetDotBackupBlobResp>(),
         _ => size_of::<McuMailboxResp>(),
+    }
+}
+
+/// Writes the `MC_EXPORT_ATTESTED_CSR` response body into `body` and returns its
+/// length.
+///
+/// A free function rather than a `CmdInterface` method so it can be tested
+/// without standing up a transport.
+async fn stage_attested_csr<H: CaliptraCmdHandler, Alloc: mcu_caliptra_api::ApiAlloc>(
+    handler: &H,
+    alloc: &Alloc,
+    req: &ExportAttestedCsrReq,
+    body: &mut [u8],
+) -> McuResult<usize> {
+    let data = body
+        .get_mut(..MAX_ATTESTED_CSR_RESP_DATA_SIZE)
+        .ok_or(errors::INVALID_PARAMS)?;
+    let ret = handler
+        .export_attested_csr(alloc, req.device_key_id, req.algorithm, &req.nonce, data)
+        .await;
+    match ret {
+        Ok(len) if len <= MAX_ATTESTED_CSR_RESP_DATA_SIZE => Ok(len),
+        _ => Err(errors::INVALID_PARAMS),
     }
 }
 
@@ -1980,6 +1991,142 @@ mod tests {
         assert_eq!(
             block_on(stage_attestation(&TestHandler, &TestAlloc, &req, &mut body)),
             Err(errors::BUFFER_TOO_SMALL)
+        );
+    }
+
+    #[test]
+    fn response_buffer_size_for_export_attested_csr_matches_export_attested_csr_resp() {
+        let sized = response_buffer_size::<TestHandler>(CommandId::MC_EXPORT_ATTESTED_CSR.0);
+        assert_eq!(sized, size_of::<ExportAttestedCsrResp>());
+        assert!(sized >= size_of::<MailboxRespHeaderVarSize>() + MAX_ATTESTED_CSR_RESP_DATA_SIZE);
+        assert!(sized > 4096);
+    }
+
+    struct CsrTestHandler {
+        resp_len: usize,
+    }
+
+    impl CaliptraCmdHandler for CsrTestHandler {
+        async fn get_firmware_version(
+            &self,
+            _index: u32,
+            _version: &mut FirmwareVersion,
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            unimplemented!()
+        }
+
+        async fn get_device_capabilities(
+            &self,
+            _capabilities: &mut DeviceCapabilities,
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            unimplemented!()
+        }
+
+        async fn export_attested_csr<Alloc: ApiAlloc>(
+            &self,
+            _alloc: &Alloc,
+            _device_key_id: u32,
+            _algorithm: u32,
+            _nonce: &[u8; 32],
+            csr_buf: &mut [u8],
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<usize> {
+            if csr_buf.len() < self.resp_len {
+                return Err(
+                    caliptra_mcu_common_commands::CaliptraCompletionCode::InsufficientResources,
+                );
+            }
+            csr_buf[..self.resp_len].fill(0xEE);
+            Ok(self.resp_len)
+        }
+
+        async fn request_debug_unlock<Alloc: ApiAlloc>(
+            &self,
+            _alloc: &Alloc,
+            _unlock_level: u8,
+            _challenge: &mut DebugUnlockChallenge,
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            unimplemented!()
+        }
+
+        async fn authorize_debug_unlock_token<Alloc: ApiAlloc>(
+            &self,
+            _alloc: &Alloc,
+            _token_data: &[u8],
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            unimplemented!()
+        }
+
+        const SUPPORTED_EVIDENCE_FORMATS: u32 = 0;
+        const MAX_ATTESTATION_EVIDENCE_LEN: usize = 0;
+
+        fn attestation_evidence_len(_format: EvidenceFormat, _algorithm: AsymAlgo) -> usize {
+            0
+        }
+
+        async fn get_attestation<Alloc: ApiAlloc>(
+            &self,
+            _alloc: &Alloc,
+            _format: EvidenceFormat,
+            _algorithm: AsymAlgo,
+            _entity: PkiEntitySlot,
+            _nonce: &[u8; 32],
+            _out: &mut [u8],
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<usize> {
+            unimplemented!()
+        }
+    }
+
+    #[test]
+    fn export_attested_csr_accepts_large_mldsa_discovery_response() {
+        const REALISTIC_MLDSA_DISCOVERY_LEN: usize = 4800;
+        let handler = CsrTestHandler {
+            resp_len: REALISTIC_MLDSA_DISCOVERY_LEN,
+        };
+        let req = ExportAttestedCsrReq {
+            hdr: MailboxReqHeader { chksum: 0 },
+            device_key_id: 0,
+            algorithm: 2,
+            nonce: [0x77; 32],
+        };
+        let mut body = vec![0u8; MAX_ATTESTED_CSR_RESP_DATA_SIZE];
+        let len = block_on(stage_attested_csr(&handler, &TestAlloc, &req, &mut body)).unwrap();
+        assert_eq!(len, REALISTIC_MLDSA_DISCOVERY_LEN);
+        assert_eq!(&body[..4], &[0xEE; 4]);
+    }
+
+    #[test]
+    fn export_attested_csr_accepts_large_mldsa_csr_response() {
+        const REALISTIC_MLDSA_CSR_LEN: usize = 12_200;
+        let handler = CsrTestHandler {
+            resp_len: REALISTIC_MLDSA_CSR_LEN,
+        };
+        let req = ExportAttestedCsrReq {
+            hdr: MailboxReqHeader { chksum: 0 },
+            device_key_id: 1,
+            algorithm: 2,
+            nonce: [0x88; 32],
+        };
+        let mut body = vec![0u8; MAX_ATTESTED_CSR_RESP_DATA_SIZE];
+        let len = block_on(stage_attested_csr(&handler, &TestAlloc, &req, &mut body)).unwrap();
+        assert_eq!(len, REALISTIC_MLDSA_CSR_LEN);
+        assert_eq!(&body[..4], &[0xEE; 4]);
+    }
+
+    #[test]
+    fn export_attested_csr_rejects_oversized_response() {
+        let handler = CsrTestHandler {
+            resp_len: MAX_ATTESTED_CSR_RESP_DATA_SIZE + 1,
+        };
+        let req = ExportAttestedCsrReq {
+            hdr: MailboxReqHeader { chksum: 0 },
+            device_key_id: 0,
+            algorithm: 2,
+            nonce: [0x77; 32],
+        };
+        let mut body = vec![0u8; MAX_ATTESTED_CSR_RESP_DATA_SIZE];
+        assert_eq!(
+            block_on(stage_attested_csr(&handler, &TestAlloc, &req, &mut body)),
+            Err(errors::INVALID_PARAMS)
         );
     }
 }

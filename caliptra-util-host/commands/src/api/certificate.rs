@@ -14,12 +14,12 @@ use caliptra_mcu_core_util_host_command_types::{
 };
 use caliptra_util_host_session::CaliptraSession;
 
-/// Export an attested CSR from the device
+/// Export an attested CSR or perform keypair discovery from the device
 ///
 /// # Parameters
 ///
 /// - `session`: Mutable reference to CaliptraSession
-/// - `device_key_id`: Device key identifier (0x0001=LDevID, 0x0002=FMC Alias, 0x0003=RT Alias)
+/// - `device_key_id`: Device key identifier (0x0000=Discovery / KeyPairInventory, 0x0001=LDevID, 0x0002=FMC Alias, 0x0003=RT Alias)
 /// - `algorithm`: Asymmetric algorithm (0x0001=ECC384, 0x0002=MLDSA87)
 /// - `nonce`: 32-byte nonce for freshness
 ///
