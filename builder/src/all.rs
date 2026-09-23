@@ -687,6 +687,7 @@ pub struct AllBuildArgs<'a> {
     pub runtime_features: Option<&'a str>,
     pub separate_runtimes: bool,
     pub soc_images: Option<Vec<ImageCfg>>,
+    pub component_config: Option<crate::ComponentConfig>,
     pub mcu_cfgs: Option<Vec<ImageCfg>>,
     pub caliptra_firmware_network_filename: Option<&'a str>,
     pub soc_manifest_network_filename: Option<&'a str>,
@@ -707,6 +708,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         runtime_features,
         separate_runtimes,
         soc_images,
+        component_config,
         mcu_cfgs,
         caliptra_firmware_network_filename,
         soc_manifest_network_filename,
@@ -717,6 +719,28 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         shard_index,
         total_shards,
     } = args;
+
+    if component_config.is_some() {
+        let mut conflicts = Vec::new();
+        if soc_images.is_some() {
+            conflicts.push("soc_images");
+        }
+        if mcu_cfgs.is_some() {
+            conflicts.push("mcu_cfgs");
+        }
+        if vendor.is_some() {
+            conflicts.push("vendor");
+        }
+        if model.is_some() {
+            conflicts.push("model");
+        }
+        if !conflicts.is_empty() {
+            bail!(
+                "component_config conflicts with legacy metadata inputs: {}",
+                conflicts.join(", ")
+            );
+        }
+    }
 
     // TODO: use temp files
     let platform = platform.unwrap_or("emulator");
@@ -823,10 +847,19 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         base_runtime_features.push("release");
     }
 
+    let resolved_component_config = component_config
+        .as_ref()
+        .map(|config| {
+            config.resolve_for_features(base_runtime_features.iter().copied(), platform == "fpga")
+        })
+        .transpose()?;
+
     // Determine effective SoC images for base runtime features.
     // When the caller didn't supply --soc_image args, auto-create them for
     // features that need SoC images (e.g. attestation).
-    let effective_soc_images = if soc_images.is_none() {
+    let effective_soc_images = if let Some(config) = &resolved_component_config {
+        Some(config.soc_images.clone())
+    } else if soc_images.is_none() {
         let needs_soc = base_runtime_features
             .iter()
             .any(|f| FEATURES_REQUIRING_SOC_IMAGES.contains(f));
@@ -851,15 +884,25 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         soc_images.clone()
     };
 
-    let effective_vendor = vendor.unwrap_or("ChipsAlliance");
-    let effective_model = model.unwrap_or("Caliptra-SS");
-    pre_generate_attestation_manifest_config(
-        effective_vendor,
-        effective_model,
-        effective_soc_images.as_deref().unwrap_or(&[]),
-    )?;
-    let base_user_app_config_fingerprint =
-        generated_user_app_config_fingerprint(&crate::target_dir())?;
+    let effective_vendor = resolved_component_config
+        .as_ref()
+        .map(|config| config.vendor.as_str())
+        .or(vendor)
+        .unwrap_or("ChipsAlliance");
+    let effective_model = resolved_component_config
+        .as_ref()
+        .map(|config| config.model.as_str())
+        .or(model)
+        .unwrap_or("Caliptra-SS");
+    if let Some(config) = &resolved_component_config {
+        config.write_generated_configs(&crate::target_dir(), "all_build")?;
+    } else {
+        pre_generate_attestation_manifest_config(
+            effective_vendor,
+            effective_model,
+            effective_soc_images.as_deref().unwrap_or(&[]),
+        )?;
+    }
 
     let base_runtime_file = tempfile::NamedTempFile::new().unwrap();
     let base_runtime_path = base_runtime_file.path().to_str().unwrap();
@@ -896,7 +939,10 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         platform: Some(platform),
         profile,
         no_default_features: base_no_default,
-        user_app_config_fingerprint: Some(base_user_app_config_fingerprint),
+        component_svn_manifest: resolved_component_config
+            .as_ref()
+            .map(|config| config.component_svn_manifest_bytes())
+            .transpose()?,
         ..Default::default()
     })?;
     let user_app_profile = profile.unwrap_or("devel");
@@ -912,14 +958,23 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         bare_metal_paths.push((package.to_string(), path));
     }
 
-    let mcu_image_cfg = get_image_cfg_feature(&mcu_cfgs.clone().unwrap_or_default(), "none");
+    let mcu_image_cfg = resolved_component_config
+        .as_ref()
+        .and_then(|config| config.mcu_image.clone())
+        .or_else(|| get_image_cfg_feature(&mcu_cfgs.clone().unwrap_or_default(), "none"));
     let mut caliptra_builder = crate::CaliptraBuilder::new(&CaliptraBuildArgs {
         fpga: platform == "fpga",
         mcu_firmware: Some(mcu_runtime.into()),
         soc_images: effective_soc_images.clone(),
+        component_svn_validation: resolved_component_config
+            .as_ref()
+            .map(|config| config.component_svn_validation.clone()),
         mcu_image_cfg: mcu_image_cfg.clone(),
-        vendor: vendor.map(|s| s.to_string()),
-        model: model.map(|s| s.to_string()),
+        soc_manifest_svn: resolved_component_config
+            .as_ref()
+            .map(|config| config.soc_manifest_svn),
+        vendor: Some(effective_vendor.to_string()),
+        model: Some(effective_model.to_string()),
         ..Default::default()
     });
     let caliptra_rom = caliptra_builder.get_caliptra_rom()?;
@@ -1043,6 +1098,10 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
 
     let test_runtimes: Result<Vec<FeatureTestResource>> = maybe_par_iter(&separate_features)
         .map(|feature| {
+            let resolved_feature_config = component_config
+                .as_ref()
+                .map(|config| config.resolve_for_platform(Some(feature), platform == "fpga"))
+                .transpose()?;
             let target_dir = if cfg!(feature = "parallel-build")
                 || FEATURES_REQUIRING_SOC_IMAGES.contains(feature)
             {
@@ -1058,7 +1117,16 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             // user-app build.rs embeds the same SoC image IDs that will be put
             // in the feature-specific SoC manifest below.
             let (feature_soc_images, feature_soc_images_paths) =
-                if FEATURES_REQUIRING_SOC_IMAGES.contains(feature) && soc_images.is_none() {
+                if let Some(config) = &resolved_feature_config {
+                    (
+                        Some(config.soc_images.clone()),
+                        config
+                            .soc_images
+                            .iter()
+                            .map(|image| image.path.clone())
+                            .collect(),
+                    )
+                } else if FEATURES_REQUIRING_SOC_IMAGES.contains(feature) && soc_images.is_none() {
                     let (images, paths) = if feature.starts_with("test-mctp-spdm-attestation") {
                         create_attestation_soc_images(Some(feature))
                     } else {
@@ -1077,14 +1145,16 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                     )
                 };
             let generated_target_dir = target_dir.clone().unwrap_or_else(crate::target_dir);
-            pre_generate_attestation_manifest_config_to_target_dir(
-                &generated_target_dir,
-                effective_vendor,
-                effective_model,
-                feature_soc_images.as_deref().unwrap_or(&[]),
-            )?;
-            let user_app_config_fingerprint =
-                generated_user_app_config_fingerprint(&generated_target_dir)?;
+            if let Some(config) = &resolved_feature_config {
+                config.write_generated_configs(&generated_target_dir, "all_build feature")?;
+            } else {
+                pre_generate_attestation_manifest_config_to_target_dir(
+                    &generated_target_dir,
+                    effective_vendor,
+                    effective_model,
+                    feature_soc_images.as_deref().unwrap_or(&[]),
+                )?;
+            }
 
             // When the matching ROM feature enables hw-2-1, combine it with
             // the separate runtime feature so the staging SRAM path is enabled.
@@ -1107,7 +1177,10 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                 profile,
                 target_dir: target_dir.clone(),
                 no_default_features: true,
-                user_app_config_fingerprint: Some(user_app_config_fingerprint),
+                component_svn_manifest: resolved_feature_config
+                    .as_ref()
+                    .map(|config| config.component_svn_manifest_bytes())
+                    .transpose()?,
                 ..Default::default()
             })?;
 
@@ -1123,10 +1196,13 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                 .join("user-app");
             let user_app_elf = std::fs::read(&user_app_elf_path).ok();
 
-            let mcu_image_cfg =
-                get_image_cfg_feature(&mcu_cfgs.clone().unwrap_or_default(), feature).or_else(
-                    || default_mcu_image_cfg_for_feature(feature, feature_runtime_file.path()),
-                );
+            let mcu_image_cfg = resolved_feature_config
+                .as_ref()
+                .and_then(|config| config.mcu_image.clone())
+                .or_else(|| get_image_cfg_feature(&mcu_cfgs.clone().unwrap_or_default(), feature))
+                .or_else(|| {
+                    default_mcu_image_cfg_for_feature(feature, feature_runtime_file.path())
+                });
 
             let mut caliptra_builder = crate::CaliptraBuilder::new(&CaliptraBuildArgs {
                 fpga: platform == "fpga",
@@ -1135,9 +1211,27 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                 vendor_pk_hash: Some(vendor_pk_hash.clone()),
                 mcu_firmware: Some(feature_runtime_file.path().to_path_buf()),
                 soc_images: feature_soc_images.clone(),
+                component_svn_validation: resolved_feature_config
+                    .as_ref()
+                    .map(|config| config.component_svn_validation.clone()),
                 mcu_image_cfg: mcu_image_cfg.clone(),
-                vendor: vendor.map(|s| s.to_string()),
-                model: model.map(|s| s.to_string()),
+                soc_manifest_svn: resolved_feature_config
+                    .as_ref()
+                    .map(|config| config.soc_manifest_svn),
+                vendor: Some(
+                    resolved_feature_config
+                        .as_ref()
+                        .map(|config| config.vendor.as_str())
+                        .unwrap_or(effective_vendor)
+                        .to_string(),
+                ),
+                model: Some(
+                    resolved_feature_config
+                        .as_ref()
+                        .map(|config| config.model.as_str())
+                        .unwrap_or(effective_model)
+                        .to_string(),
+                ),
                 ..Default::default()
             });
             let feature_soc_manifest_file = tempfile::NamedTempFile::new().unwrap();
@@ -1179,16 +1273,37 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                     let update_runtime_path =
                         update_runtime_file.path().to_str().unwrap().to_string();
                     let update_features = format!("{update_feature},hw-2-1");
-                    // Ship a different SoC payload in the update package so the
-                    // post-update evidence carries different component digests.
+                    let resolved_update_config = component_config
+                        .as_ref()
+                        .map(|config| {
+                            config.resolve_for_platform(Some(update_feature), platform == "fpga")
+                        })
+                        .transpose()?;
                     let (update_soc_images, update_soc_images_paths) =
-                        create_attestation_soc_images_variant(Some(feature), true);
-                    pre_generate_attestation_manifest_config_to_target_dir(
-                        &update_target_dir,
-                        effective_vendor,
-                        effective_model,
-                        &update_soc_images,
-                    )?;
+                        if let Some(config) = &resolved_update_config {
+                            (
+                                config.soc_images.clone(),
+                                config
+                                    .soc_images
+                                    .iter()
+                                    .map(|image| image.path.clone())
+                                    .collect(),
+                            )
+                        } else {
+                            // Ship a different test payload so post-update evidence
+                            // has distinct component digests.
+                            create_attestation_soc_images_variant(Some(feature), true)
+                        };
+                    if let Some(config) = &resolved_update_config {
+                        config.write_generated_configs(&update_target_dir, "all_build update")?;
+                    } else {
+                        pre_generate_attestation_manifest_config_to_target_dir(
+                            &update_target_dir,
+                            effective_vendor,
+                            effective_model,
+                            &update_soc_images,
+                        )?;
+                    }
                     crate::runtime_build_with_apps(&CaliptraBuildArgs {
                         features: Some(&update_features),
                         output_name: Some(update_runtime_path),
@@ -1197,8 +1312,17 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                         profile,
                         target_dir: Some(update_target_dir),
                         no_default_features: true,
+                        component_svn_manifest: resolved_update_config
+                            .as_ref()
+                            .map(|config| config.component_svn_manifest_bytes())
+                            .transpose()?,
                         ..Default::default()
                     })?;
+
+                    let update_mcu_image_cfg = resolved_update_config
+                        .as_ref()
+                        .and_then(|config| config.mcu_image.clone())
+                        .or_else(|| mcu_image_cfg.clone());
 
                     let mut update_builder = crate::CaliptraBuilder::new(&CaliptraBuildArgs {
                         fpga: platform == "fpga",
@@ -1207,9 +1331,27 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                         vendor_pk_hash: Some(vendor_pk_hash.clone()),
                         mcu_firmware: Some(update_runtime_file.path().to_path_buf()),
                         soc_images: Some(update_soc_images.clone()),
-                        mcu_image_cfg: mcu_image_cfg.clone(),
-                        vendor: vendor.map(|s| s.to_string()),
-                        model: model.map(|s| s.to_string()),
+                        component_svn_validation: resolved_update_config
+                            .as_ref()
+                            .map(|config| config.component_svn_validation.clone()),
+                        mcu_image_cfg: update_mcu_image_cfg.clone(),
+                        soc_manifest_svn: resolved_update_config
+                            .as_ref()
+                            .map(|config| config.soc_manifest_svn),
+                        vendor: Some(
+                            resolved_update_config
+                                .as_ref()
+                                .map(|config| config.vendor.as_str())
+                                .unwrap_or(effective_vendor)
+                                .to_string(),
+                        ),
+                        model: Some(
+                            resolved_update_config
+                                .as_ref()
+                                .map(|config| config.model.as_str())
+                                .unwrap_or(effective_model)
+                                .to_string(),
+                        ),
                         ..Default::default()
                     });
                     let update_soc_manifest_file = tempfile::NamedTempFile::new().unwrap();
@@ -1218,7 +1360,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                         caliptra_fw_path: Some(caliptra_fw.clone()),
                         soc_manifest_path: Some(update_soc_manifest_file.path().to_path_buf()),
                         mcu_runtime_path: Some(update_runtime_file.path().to_path_buf()),
-                        mcu_image_cfg: mcu_image_cfg.clone(),
+                        mcu_image_cfg: update_mcu_image_cfg,
                         caliptra_firmware_network_filename,
                         soc_manifest_network_filename,
                         soc_images_paths: update_soc_images_paths,

@@ -26,6 +26,7 @@ struct BuildArgs<'a> {
     rom_features: &'a Option<String>,
     runtime_features: &'a Option<String>,
     separate_runtimes: bool,
+    component_config: &'a Option<String>,
     mcu_cfgs: &'a Option<Vec<ImageCfg>>,
     shard_index: usize,
     total_shards: usize,
@@ -138,6 +139,15 @@ pub(crate) enum Fpga {
         /// Build a separate runtime for each feature flag
         #[arg(long)]
         separate_runtimes: bool,
+
+        /// TOML source of truth for component metadata
+        #[arg(
+            long = "component-config",
+            visible_alias = "component_config",
+            value_name = "COMPONENT_CONFIG",
+            conflicts_with = "mcu_cfgs"
+        )]
+        component_config: Option<String>,
 
         /// Shard index for parallel build sharding (0-indexed)
         #[arg(long, default_value_t = 0)]
@@ -263,6 +273,7 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
             rom_features,
             runtime_features,
             separate_runtimes,
+            component_config,
             mcu_cfgs,
             shard_index,
             total_shards,
@@ -280,6 +291,7 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
                     rom_features,
                     runtime_features,
                     separate_runtimes: *separate_runtimes,
+                    component_config,
                     mcu_cfgs,
                     shard_index: *shard_index,
                     total_shards: *total_shards,

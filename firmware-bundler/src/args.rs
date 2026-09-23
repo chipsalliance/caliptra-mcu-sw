@@ -151,6 +151,10 @@ pub struct BundleArgs {
     /// given name will be placed in the `<workspace>/target/<target-tuple>/release` directory.
     #[arg(long)]
     pub bundle_name: Option<String>,
+
+    /// Serialized MCU Component SVN Manifest to prepend to the runtime image.
+    #[arg(skip)]
+    pub component_svn_manifest: Option<Vec<u8>>,
 }
 
 #[derive(Subcommand, Debug, Clone)]

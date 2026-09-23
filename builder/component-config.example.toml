@@ -1,0 +1,72 @@
+# Licensed under the Apache-2.0 license
+
+vendor = "Vendor A"
+model = "Model-XXXX"
+soc_manifest_svn = 5
+
+[component_svn_manifest]
+current_svn = 3
+min_svn = 2
+caliptra_runtime_min_svn = 7
+soc_manifest_min_svn = 5
+
+[mcu_image]
+path = "firmware/mcu-runtime.bin"
+fw_id = 0x0000_0001
+component_id = 0x0000_0001
+load_address = 0xA8C0_0000
+staging_address = 0x8000_0000
+exec_bit = 2
+current_svn = 4
+min_svn = 2
+is_tcb = true
+is_ak_target = false
+network_filename = "mcu-runtime.bin"
+
+[[soc_images]]
+path = "firmware/soc-image-a.bin"
+fw_id = 0x0000_1000
+component_id = 0x0000_1000
+load_address = 0xB000_0000
+staging_address = 0x8000_0000
+exec_bit = 5
+current_svn = 4
+min_svn = 2
+is_tcb = true
+is_ak_target = false
+network_filename = "soc-image-a.bin"
+
+[[soc_images]]
+path = "firmware/soc-image-b.bin"
+fw_id = 0x0000_1001
+component_id = 0x0000_1001
+load_address = 0xB010_0000
+staging_address = 0x8010_0000
+exec_bit = 6
+current_svn = 3
+min_svn = 1
+is_tcb = true
+is_ak_target = false
+
+[features."test-firmware-update-flash"]
+soc_manifest_svn = 6
+
+[features."test-firmware-update-flash".mcu_image]
+staging_address = 0x6008_0000
+current_svn = 6
+min_svn = 4
+
+[features."test-mctp-spdm-attestation"]
+soc_manifest_svn = 7
+
+[[features."test-mctp-spdm-attestation".soc_images]]
+path = "firmware/attestation-image.bin"
+fw_id = 0x0000_2000
+component_id = 0x0000_2000
+load_address = 0xB020_0000
+staging_address = 0x8020_0000
+exec_bit = 7
+current_svn = 2
+min_svn = 1
+is_tcb = true
+is_ak_target = false
