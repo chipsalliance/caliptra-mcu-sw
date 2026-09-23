@@ -512,8 +512,10 @@ impl CaliptraBuilder {
 name = "caliptra-rom-build"
 version = "0.1.0"
 edition = "2021"
+rust-version = "1.85"
 
 [workspace]
+resolver = "3"
 
 [dependencies]
 anyhow = "1"
