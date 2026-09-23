@@ -136,6 +136,9 @@ pub struct Mailbox<'a, A: Alarm<'a>> {
     current_request_offset: Cell<usize>,
     use_external_mailbox: Cell<bool>,
     current_cmd: Cell<u32>,
+    direct_sram: Option<(usize, usize)>,
+    direct_request: Cell<Option<(usize, usize)>>,
+    direct_response: Cell<Option<(usize, usize)>>,
     // DMA peripheral for data transfers
     dma_driver: &'static dyn Dma,
 }
@@ -151,6 +154,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
         >,
         driver: &'static mut CaliptraSoC,
         staging_sram_axi_addr: Option<u64>,
+        direct_sram: Option<(usize, usize)>,
         dma_driver: &'static dyn Dma,
         timeout_ticks: Option<u32>,
     ) -> Mailbox<'a, A> {
@@ -169,6 +173,9 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
             current_request_offset: Cell::new(0),
             use_external_mailbox: Cell::new(false),
             current_cmd: Cell::new(0),
+            direct_sram,
+            direct_request: Cell::new(None),
+            direct_response: Cell::new(None),
             dma_driver,
         }
     }
@@ -176,6 +183,68 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
     fn staging_addr_for_request(&self, request_len: usize) -> Option<u64> {
         self.staging_sram_axi_addr
             .filter(|_| request_len > CALIPTRA_SUBSYSTEM_MAILBOX_SIZE)
+    }
+
+    fn direct_range_valid(&self, addr: usize, len: usize) -> bool {
+        let Some((base, size)) = self.direct_sram else {
+            return false;
+        };
+        let Some(end) = addr.checked_add(len) else {
+            return false;
+        };
+        addr >= base && end <= base + size
+    }
+
+    fn enqueue_direct_command(&self, command: u32, processid: ProcessId) -> Result<(), ErrorCode> {
+        if self.state.get() != MailboxState::Idle {
+            return Err(ErrorCode::BUSY);
+        }
+        if let Some((response_addr, response_len)) = self.direct_response.get() {
+            if !self.direct_range_valid(response_addr, response_len) {
+                return Err(ErrorCode::INVAL);
+            }
+        }
+
+        if let Some((request_addr, request_len)) = self.direct_request.take() {
+            if !self.direct_range_valid(request_addr, request_len)
+                || request_len > CALIPTRA_SUBSYSTEM_MAILBOX_SIZE
+            {
+                return Err(ErrorCode::INVAL);
+            }
+            self.current_app.set(processid);
+            self.current_cmd.set(command);
+            self.use_external_mailbox.set(false);
+            let (sram_base, sram_size) = self.direct_sram.ok_or(ErrorCode::INVAL)?;
+            self.driver
+                .map(|driver| {
+                    driver
+                        .start_mailbox_req_from_sram(
+                            command,
+                            request_addr,
+                            request_len,
+                            sram_base,
+                            sram_size,
+                        )
+                        .map_err(|_| ErrorCode::FAIL)?;
+                    self.clear_pending();
+                    self.state.set(MailboxState::Executing);
+                    self.schedule_alarm();
+                    Ok(())
+                })
+                .ok_or(ErrorCode::RESERVE)?
+        } else {
+            self.apps.enter(processid, |_, kernel_data| {
+                kernel_data
+                    .get_readonly_processbuffer(ro_allow::REQUEST)
+                    .map_err(|_| ErrorCode::INVAL)?
+                    .enter(|request| {
+                        self.driver
+                            .map(|driver| self.start_request(processid, driver, command, request))
+                            .ok_or(ErrorCode::RESERVE)?
+                    })
+                    .map_err(|_| ErrorCode::FAIL)?
+            })?
+        }
     }
 
     // Check if any command is pending. If not, this command is executed.
@@ -462,6 +531,8 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
         self.current_app.take();
         self.current_request_offset.set(0);
         self.use_external_mailbox.set(false);
+        self.direct_request.set(None);
+        self.direct_response.set(None);
     }
 
     fn abort_and_reset(&self, driver: &mut CaliptraSoC) {
@@ -575,6 +646,28 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
     fn try_complete_request(&self, driver: &mut CaliptraSoC) {
         // response is ready, do the dance to pass it to the app
         if let Some(process_id) = self.current_app.take() {
+            if let Some((response_addr, response_len)) = self.direct_response.take() {
+                self.resp_size.set(response_len);
+                self.resp_min_size.set(response_len);
+                let (sram_base, sram_size) = self.direct_sram.unwrap();
+                let result = driver.finish_mailbox_resp_to_sram(
+                    response_addr,
+                    response_len,
+                    sram_base,
+                    sram_size,
+                );
+                let (bytes, error_code) = match result {
+                    Ok(bytes) => (bytes, 0),
+                    Err(CaliptraApiError::MailboxCmdFailed(error)) => (0, error),
+                    Err(_) => (0, 0xffff_fffe),
+                };
+                let _ = self.apps.enter(process_id, |_, kernel_data| {
+                    kernel_data
+                        .schedule_upcall(upcall::COMMAND_DONE, (bytes, error_code as usize, 0))
+                        .ok();
+                });
+                return;
+            }
             let enter_result = self.apps.enter(process_id, |_app, kernel_data| {
                 if let Ok(rw_buffer) = kernel_data.get_readwrite_processbuffer(rw_allow::RESPONSE) {
                     match rw_buffer.mut_enter(|app_buffer| {
@@ -734,6 +827,27 @@ impl<'a, A: Alarm<'a>> SyscallDriver for Mailbox<'a, A> {
                     Err(e) => CommandReturn::failure(e),
                 }
             }
+
+            6 => {
+                if self.direct_range_valid(command, payload_size) {
+                    self.direct_request.set(Some((command, payload_size)));
+                    CommandReturn::success()
+                } else {
+                    CommandReturn::failure(ErrorCode::INVAL)
+                }
+            }
+            7 => {
+                if self.direct_range_valid(command, payload_size) {
+                    self.direct_response.set(Some((command, payload_size)));
+                    CommandReturn::success()
+                } else {
+                    CommandReturn::failure(ErrorCode::INVAL)
+                }
+            }
+            8 => match self.enqueue_direct_command(command as u32, processid) {
+                Ok(()) => CommandReturn::success(),
+                Err(error) => CommandReturn::failure(error),
+            },
 
             _ => CommandReturn::failure(ErrorCode::NOSUPPORT),
         }

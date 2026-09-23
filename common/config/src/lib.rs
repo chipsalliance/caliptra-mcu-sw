@@ -71,6 +71,8 @@ pub struct McuMemoryMap {
     pub staging_sram_size: u32,
 }
 
+pub const MCU_MBOX0_SRAM_OFFSET: u32 = 0x40_0000;
+pub const MCU_MBOX0_SRAM_SIZE: u32 = 16 * 1024;
 impl Default for McuMemoryMap {
     fn default() -> Self {
         McuMemoryMap {

@@ -197,6 +197,44 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         Ok(())
     }
 
+    pub async fn handle_responder_msg_direct(&mut self) -> McuResult<()> {
+        let (cmd_id, req_buf) = match self.transport.receive_request_direct().await {
+            Ok(request) => request,
+            Err(_) => {
+                let _ = self.transport.finalize_response(MbxCmdStatus::Failure);
+                return Err(errors::TRANSPORT_ERROR);
+            }
+        };
+        let req_len = req_buf.len();
+        let mut resp_buf = self.scratch.alloc(response_buffer_size::<H>(cmd_id))?;
+        let status = match self
+            .process_request(req_buf, req_len, cmd_id, &mut resp_buf)
+            .await
+        {
+            Ok((resp, status)) => {
+                if status == MbxCmdStatus::Complete {
+                    if resp.len() < size_of::<MailboxRespHeader>() {
+                        let _ = self.transport.finalize_response(MbxCmdStatus::Failure);
+                        return Err(errors::MCU_MBOX_COMMON);
+                    }
+                    populate_response_checksum(resp)?;
+                    self.transport
+                        .send_response_direct(resp)
+                        .await
+                        .map_err(|_| {
+                            let _ = self.transport.finalize_response(MbxCmdStatus::Failure);
+                            errors::TRANSPORT_ERROR
+                        })?;
+                }
+                status
+            }
+            Err(_) => MbxCmdStatus::Failure,
+        };
+        self.transport
+            .finalize_response(status)
+            .map_err(|_| errors::TRANSPORT_ERROR)
+    }
+
     async fn process_request<'r>(
         &mut self,
         req_buf: &mut [u8],

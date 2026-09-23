@@ -117,6 +117,31 @@ impl<S: Syscalls> McuMbox<S> {
         Ok((command, recv_len as usize))
     }
 
+    pub async fn receive_command_direct(
+        &self,
+        on_listening_cb: Option<impl FnOnce()>,
+    ) -> Result<(CmdCode, &'static mut [u8]), ErrorCode> {
+        let mutex = MCU_MBOX_MUTEX.lock().await;
+        let mut rx_fut =
+            TockSubscribe::subscribe::<S>(self.driver_num, subscribe::REQUEST_RECEIVED);
+
+        if let Err(error) = S::command(self.driver_num, command::RECEIVE_REQUEST_DIRECT, 0, 0)
+            .to_result::<(), ErrorCode>()
+        {
+            rx_fut.cancel();
+            return Err(error);
+        }
+        if let Some(on_listening_cb) = on_listening_cb {
+            on_listening_cb();
+        }
+
+        let (command, recv_len, sram_base) = rx_fut.await?;
+        black_box(*mutex);
+        let data =
+            unsafe { core::slice::from_raw_parts_mut(sram_base as *mut u8, recv_len as usize) };
+        Ok((command, data))
+    }
+
     /// Sends a response to the MCU mailbox sender asynchronously (receiver mode).
     ///
     /// # Arguments
@@ -157,6 +182,29 @@ impl<S: Syscalls> McuMbox<S> {
         Ok(())
     }
 
+    pub async fn send_response_direct(&self, len: usize) -> Result<(), ErrorCode> {
+        let mutex = MCU_MBOX_MUTEX.lock().await;
+        let mut tx_fut = TockSubscribe::subscribe::<S>(self.driver_num, subscribe::RESPONSE_SENT);
+        if let Err(error) = S::command(
+            self.driver_num,
+            command::SEND_RESPONSE_DIRECT,
+            len as u32,
+            0,
+        )
+        .to_result::<(), ErrorCode>()
+        {
+            tx_fut.cancel();
+            return Err(error);
+        }
+        tx_fut.await?;
+        black_box(*mutex);
+        Ok(())
+    }
+
+    pub fn sram_base(&self) -> Result<u32, ErrorCode> {
+        S::command(self.driver_num, command::SRAM_BASE, 0, 0).to_result::<u32, ErrorCode>()
+    }
+
     /// Finalizes the response by setting the mailbox command status (receiver mode).
     ///
     /// # Arguments
@@ -187,6 +235,9 @@ mod command {
     pub const RECEIVE_REQUEST: u32 = 1;
     pub const SEND_RESPONSE: u32 = 2;
     pub const FINISH_RESP: u32 = 3;
+    pub const RECEIVE_REQUEST_DIRECT: u32 = 4;
+    pub const SEND_RESPONSE_DIRECT: u32 = 5;
+    pub const SRAM_BASE: u32 = 6;
 }
 
 // Read-only buffer to read the response from.

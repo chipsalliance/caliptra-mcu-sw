@@ -86,6 +86,13 @@ impl<S: Syscalls> Mailbox<S> {
     ) -> Result<usize, MailboxError> {
         let result = {
             // lock the global mailbox mutex to ensure exclusive access
+            if let Some(result) = self
+                .execute_direct(command, input_data, response_buffer)
+                .await?
+            {
+                return Ok(result);
+            }
+
             let mutex = MAILBOX_MUTEX.lock().await;
 
             // Subscribe to the asynchronous notification for when the command is processed
@@ -129,6 +136,103 @@ impl<S: Syscalls> Mailbox<S> {
                 }
             }
             Err(err) => Err(MailboxError::ErrorCode(err)),
+        }
+    }
+
+    async fn execute_direct(
+        &self,
+        command: u32,
+        input_data: &[u8],
+        response_buffer: &mut [u8],
+    ) -> Result<Option<usize>, MailboxError> {
+        let mutex = MAILBOX_MUTEX.lock().await;
+        let request_direct = match S::command(
+            self.driver_num,
+            mailbox_cmd::SET_DIRECT_REQUEST,
+            input_data.as_ptr() as u32,
+            input_data.len() as u32,
+        )
+        .to_result::<(), ErrorCode>()
+        {
+            Ok(()) => true,
+            Err(ErrorCode::Invalid) => false,
+            Err(error) => return Err(MailboxError::ErrorCode(error)),
+        };
+        let response_direct = match S::command(
+            self.driver_num,
+            mailbox_cmd::SET_DIRECT_RESPONSE,
+            response_buffer.as_mut_ptr() as u32,
+            response_buffer.len() as u32,
+        )
+        .to_result::<(), ErrorCode>()
+        {
+            Ok(()) => true,
+            Err(ErrorCode::Invalid) => false,
+            Err(error) => return Err(MailboxError::ErrorCode(error)),
+        };
+        if !request_direct && !response_direct {
+            black_box(*mutex);
+            return Ok(None);
+        }
+
+        let result = if request_direct && response_direct {
+            let mut sub =
+                TockSubscribe::subscribe::<S>(self.driver_num, mailbox_subscribe::COMMAND_DONE);
+            if let Err(error) = S::command(self.driver_num, mailbox_cmd::EXECUTE_DIRECT, command, 0)
+                .to_result::<(), ErrorCode>()
+            {
+                sub.cancel();
+                return Err(MailboxError::ErrorCode(error));
+            }
+            sub.await
+        } else if request_direct {
+            share::scope::<(), _, _>(|_handle| {
+                let mut sub = TockSubscribe::subscribe_allow_rw::<S, DefaultConfig>(
+                    self.driver_num,
+                    mailbox_subscribe::COMMAND_DONE,
+                    mailbox_rw_buffer::RESPONSE,
+                    response_buffer,
+                );
+                if let Err(error) =
+                    S::command(self.driver_num, mailbox_cmd::EXECUTE_DIRECT, command, 0)
+                        .to_result::<(), ErrorCode>()
+                {
+                    S::unallow_rw(self.driver_num, mailbox_rw_buffer::RESPONSE);
+                    sub.cancel();
+                    return Err(error);
+                }
+                Ok(TockSubscribe::subscribe_finish(sub))
+            })
+            .map_err(MailboxError::ErrorCode)?
+            .await
+        } else {
+            share::scope::<(), _, _>(|_handle| {
+                let mut sub = TockSubscribe::subscribe_allow_ro::<S, DefaultConfig>(
+                    self.driver_num,
+                    mailbox_subscribe::COMMAND_DONE,
+                    mailbox_ro_buffer::INPUT,
+                    input_data,
+                );
+                if let Err(error) =
+                    S::command(self.driver_num, mailbox_cmd::EXECUTE_DIRECT, command, 0)
+                        .to_result::<(), ErrorCode>()
+                {
+                    S::unallow_ro(self.driver_num, mailbox_ro_buffer::INPUT);
+                    sub.cancel();
+                    return Err(error);
+                }
+                Ok(TockSubscribe::subscribe_finish(sub))
+            })
+            .map_err(MailboxError::ErrorCode)?
+            .await
+        };
+
+        let (bytes, error_code, _) = result.map_err(MailboxError::ErrorCode)?;
+        black_box(*mutex);
+        if error_code == 0 {
+            Ok(Some(bytes as usize))
+        } else {
+            Err(MailboxError::MailboxError(error_code))
         }
     }
 
@@ -349,6 +453,9 @@ mod mailbox_cmd {
     pub const NEXT_PAYLOAD_CHUNK: u32 = 3;
     pub const EXECUTE_CHUNKED_REQUEST: u32 = 4;
     pub const ABORT_CHUNKED_REQUEST: u32 = 5;
+    pub const SET_DIRECT_REQUEST: u32 = 6;
+    pub const SET_DIRECT_RESPONSE: u32 = 7;
+    pub const EXECUTE_DIRECT: u32 = 8;
 }
 
 /// Buffer IDs for mailbox read operations.

@@ -43,6 +43,7 @@ struct StagedRequest {
 #[derive(Default)]
 pub struct App {
     waiting_rx: Cell<bool>, // Indicates if a request is waiting to be received
+    direct_rx: Cell<bool>,
     pending_tx: Cell<bool>, // Indicates if a response is pending to be sent
 }
 
@@ -155,6 +156,17 @@ impl<'a, T: hil::Mailbox<'a>> McuMboxDriver<'a, T> {
 
         let command = staged.command;
         let dlen = staged.dlen;
+
+        if app.direct_rx.replace(false) {
+            kernel_data
+                .schedule_upcall(
+                    upcall::REQUEST_RECEIVED,
+                    (command as usize, dlen, self.driver.sram_base() as usize),
+                )
+                .map_err(|_| ErrorCode::FAIL)?;
+            return Ok(());
+        }
+
         let dw_len = dlen.div_ceil(4);
 
         // The payload was never copied out of mailbox SRAM, so read it back from there.
@@ -241,6 +253,19 @@ impl<'a, T: hil::Mailbox<'a>> hil::MailboxClient for McuMboxDriver<'a, T> {
             if app.waiting_rx.get() {
                 app.waiting_rx.set(false);
             } else {
+                return;
+            }
+
+            if app.direct_rx.replace(false) {
+                if kernel_data
+                    .schedule_upcall(
+                        upcall::REQUEST_RECEIVED,
+                        (command as usize, dlen, self.driver.sram_base() as usize),
+                    )
+                    .is_ok()
+                {
+                    delivered = true;
+                }
                 return;
             }
 
@@ -425,6 +450,49 @@ impl<'a, T: hil::Mailbox<'a>> SyscallDriver for McuMboxDriver<'a, T> {
                     Ok(Err(e)) | Err(e) => CommandReturn::failure(e),
                 }
             }
+            4 => {
+                let res = self.apps.enter(process_id, |app, kernel_data| {
+                    if app.waiting_rx.get() {
+                        return Err(ErrorCode::BUSY);
+                    }
+                    app.direct_rx.set(true);
+                    app.waiting_rx.set(true);
+                    if self.staged_request.is_some() {
+                        self.deliver_message(app, kernel_data)?;
+                    }
+                    Ok(())
+                });
+                match res {
+                    Ok(_) => CommandReturn::success(),
+                    Err(err) => CommandReturn::failure(err.into()),
+                }
+            }
+            5 => {
+                if self.current_app.is_some() || self.staged_request.is_some() {
+                    return CommandReturn::failure(ErrorCode::BUSY);
+                }
+                let result = self.apps.enter(process_id, |app, _| {
+                    if app.pending_tx.get() {
+                        return Err(ErrorCode::BUSY);
+                    }
+                    self.current_app.set(process_id);
+                    self.driver.send_response_from_sram(arg1)?;
+                    app.pending_tx.set(true);
+                    Ok(())
+                });
+                match result {
+                    Ok(Ok(())) => CommandReturn::success(),
+                    Ok(Err(err)) => {
+                        self.current_app.take();
+                        CommandReturn::failure(err)
+                    }
+                    Err(err) => {
+                        self.current_app.take();
+                        CommandReturn::failure(err.into())
+                    }
+                }
+            }
+            6 => CommandReturn::success_u32(self.driver.sram_base()),
             _ => CommandReturn::failure(ErrorCode::NOSUPPORT),
         }
     }
