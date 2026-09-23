@@ -28,12 +28,15 @@ use caliptra_mcu_flash_image::MCU_RT_IDENTIFIER;
 use cargo_metadata::MetadataCommand;
 use hex::ToHex;
 use std::{
+    collections::HashSet,
     num::ParseIntError,
     path::{Path, PathBuf},
     process::Command,
     str::FromStr,
 };
 use zerocopy::{transmute, FromBytes, IntoBytes};
+
+const DEFAULT_PQC_KEY_TYPE: FwVerificationPqcKeyType = FwVerificationPqcKeyType::LMS;
 
 /// A wrapper for raw firmware bytes that implements ImageGeneratorExecutable.
 /// Used to re-sign existing FW bundles without recompiling.
@@ -118,6 +121,7 @@ pub struct CaliptraBuilder {
     /// If provided, the auth manifest will be signed with these owner keys.
     auth_manifest_owner_config: Option<AuthManifestOwnerConfig>,
     svn: Option<u16>,
+    pqc_key_type: FwVerificationPqcKeyType,
     use_second_key: bool,
 }
 
@@ -150,6 +154,7 @@ impl CaliptraBuilder {
             owner_config: None,
             auth_manifest_owner_config: None,
             svn: args.svn,
+            pqc_key_type: args.pqc_key_type.unwrap_or(DEFAULT_PQC_KEY_TYPE),
             use_second_key: args.use_second_key,
         }
     }
@@ -203,6 +208,7 @@ impl CaliptraBuilder {
                 self.fpga,
                 self.ocp_lock,
                 self.svn,
+                self.pqc_key_type,
                 self.use_second_key,
             )?;
             self.vendor_pk_hash = Some(vendor_pk_hash);
@@ -210,11 +216,19 @@ impl CaliptraBuilder {
             path
         };
 
+        if self.owner_config.is_none() {
+            Self::validate_fw_pqc_key_type(&std::fs::read(&base_bundle_path)?, self.pqc_key_type)?;
+        }
+
         // If we have a custom owner_config, re-sign the bundle
         if let Some(owner_config) = self.owner_config.take() {
             let existing_bundle = std::fs::read(&base_bundle_path)?;
-            let (new_bundle, vendor_hash, owner_hash) =
-                Self::resign_fw_bundle(&existing_bundle, owner_config, self.fpga)?;
+            let (new_bundle, vendor_hash, owner_hash) = Self::resign_fw_bundle(
+                &existing_bundle,
+                owner_config,
+                self.pqc_key_type,
+                self.fpga,
+            )?;
 
             // Write the re-signed bundle to a new path
             let path = target_dir().join("caliptra-fw-bundle-resigned.bin");
@@ -251,6 +265,25 @@ impl CaliptraBuilder {
         Ok(base_bundle_path)
     }
 
+    fn validate_fw_pqc_key_type(bundle: &[u8], expected: FwVerificationPqcKeyType) -> Result<()> {
+        let (manifest, _) = ImageManifest::ref_from_prefix(bundle)
+            .map_err(|_| anyhow::anyhow!("Failed to parse Caliptra firmware manifest"))?;
+        let actual = FwVerificationPqcKeyType::from_u8(manifest.pqc_key_type).ok_or_else(|| {
+            anyhow::anyhow!(
+                "Unsupported Caliptra firmware PQC key type {}",
+                manifest.pqc_key_type
+            )
+        })?;
+        if actual != expected {
+            bail!(
+                "Caliptra firmware PQC key type {:?} does not match configured {:?}",
+                actual,
+                expected
+            );
+        }
+        Ok(())
+    }
+
     fn get_soc_images_metadata(&self) -> Result<Vec<AuthManifestImageMetadata>> {
         if self.soc_images.is_none() {
             return Ok(vec![]);
@@ -268,11 +301,32 @@ impl CaliptraBuilder {
     fn get_owner_soc_images_metadata(&self) -> Result<Vec<AuthManifestImageMetadata>> {
         let mut metadata = Vec::new();
         if let Some(owner_soc_images) = &self.owner_soc_images {
+            Self::validate_owner_soc_images(owner_soc_images)?;
             for owner_soc_image in owner_soc_images {
                 metadata.push(Self::get_soc_manifest_metadata(owner_soc_image)?);
             }
         }
         Ok(metadata)
+    }
+
+    fn validate_owner_soc_images(owner_soc_images: &[ImageCfg]) -> Result<()> {
+        const OWNER_FW_ID_MIN: u32 = 0x0001_0000;
+
+        let mut fw_ids = HashSet::new();
+        for image in owner_soc_images {
+            if image.image_id < OWNER_FW_ID_MIN {
+                bail!(
+                    "Owner firmware ID {:#010x} is outside the owner-only range {:#010x}..={:#010x}",
+                    image.image_id,
+                    OWNER_FW_ID_MIN,
+                    u32::MAX
+                );
+            }
+            if !fw_ids.insert(image.image_id) {
+                bail!("Duplicate owner firmware ID {:#010x}", image.image_id);
+            }
+        }
+        Ok(())
     }
 
     pub fn get_soc_manifest(&mut self, name: Option<&str>) -> Result<PathBuf> {
@@ -295,6 +349,7 @@ impl CaliptraBuilder {
                 self.soc_manifest_svn.unwrap_or(0),
                 name,
                 self.auth_manifest_owner_config.as_ref(),
+                self.pqc_key_type,
             )?;
             self.write_attestation_manifest_config(self.soc_images.as_deref().unwrap_or(&[]))?;
             self.soc_manifest = Some(path);
@@ -310,6 +365,7 @@ impl CaliptraBuilder {
                 metadata,
                 self.owner_manifest_svn.unwrap_or(0),
                 self.auth_manifest_owner_config.as_ref(),
+                self.pqc_key_type,
             )?;
             let path = name
                 .map(PathBuf::from)
@@ -447,9 +503,14 @@ impl CaliptraBuilder {
         svn: u32,
         name: Option<&str>,
         owner_config: Option<&AuthManifestOwnerConfig>,
+        pqc_key_type: FwVerificationPqcKeyType,
     ) -> Result<PathBuf> {
-        let manifest =
-            Self::create_auth_manifest_with_metadata_and_owner(metadata, svn, owner_config);
+        let manifest = Self::create_auth_manifest_with_metadata_and_owner(
+            metadata,
+            svn,
+            owner_config,
+            pqc_key_type,
+        );
 
         let path = name
             .map(PathBuf::from)
@@ -642,6 +703,7 @@ fn main() -> Result<()> {
         fpga: bool,
         ocp_lock: bool,
         svn: Option<u16>,
+        pqc_key_type: FwVerificationPqcKeyType,
         use_second_key: bool,
     ) -> Result<(PathBuf, String)> {
         let platform = if fpga { "fpga" } else { "emulator" };
@@ -649,9 +711,13 @@ fn main() -> Result<()> {
         if let Some(version) = Self::caliptra_version() {
             let svn_or_default = svn.unwrap_or_default();
             let key_str = if use_second_key { "key2" } else { "key1" };
+            let pqc_key_str = match pqc_key_type {
+                FwVerificationPqcKeyType::LMS => "lms",
+                FwVerificationPqcKeyType::MLDSA => "mldsa",
+            };
             let path = target_dir().join(format!(
-                "caliptra-fw-bundle-{}-{}{}-{}-{}.bin",
-                version, platform, ocp_lock_suffix, svn_or_default, key_str
+                "caliptra-fw-bundle-{}-{}{}-{}-{}-{}.bin",
+                version, platform, ocp_lock_suffix, svn_or_default, key_str, pqc_key_str
             ));
             if path.exists() {
                 println!("Using cached Caliptra FW bundle at {:?}", path);
@@ -661,8 +727,14 @@ fn main() -> Result<()> {
                 "Caliptra FW bundle version {} not found in cache, compiling...",
                 version
             );
-            let compiled_fw_bundle =
-                Self::compile_caliptra_fw_uncached(fpga, ocp_lock, svn, use_second_key)?.0;
+            let compiled_fw_bundle = Self::compile_caliptra_fw_uncached(
+                fpga,
+                ocp_lock,
+                svn,
+                pqc_key_type,
+                use_second_key,
+            )?
+            .0;
             // std::fs::copy truncates the file to 0 bytes if both paths are the same
             if compiled_fw_bundle != path {
                 std::fs::copy(compiled_fw_bundle, &path)?;
@@ -670,7 +742,7 @@ fn main() -> Result<()> {
             Self::parse_fw_bundle(path)
         } else {
             println!("Caliptra version not found so cannot use cached FW bundle");
-            Self::compile_caliptra_fw_uncached(fpga, ocp_lock, svn, use_second_key)
+            Self::compile_caliptra_fw_uncached(fpga, ocp_lock, svn, pqc_key_type, use_second_key)
         }
     }
 
@@ -722,6 +794,7 @@ fn main() -> Result<()> {
     fn resign_fw_bundle(
         existing_bundle: &[u8],
         owner_config: ImageGeneratorOwnerConfig,
+        pqc_key_type: FwVerificationPqcKeyType,
         _fpga: bool,
     ) -> Result<(ImageBundle, String, String)> {
         // Parse the existing manifest
@@ -777,7 +850,7 @@ fn main() -> Result<()> {
             fw_svn: manifest.header.svn,
             vendor_config: caliptra_image_fake_keys::VENDOR_CONFIG_KEY_0,
             owner_config: Some(owner_config),
-            pqc_key_type: FwVerificationPqcKeyType::LMS,
+            pqc_key_type,
         })?;
 
         let vendor_hash = Self::vendor_pk_hash_str(new_bundle.manifest)?;
@@ -790,10 +863,11 @@ fn main() -> Result<()> {
         fpga: bool,
         ocp_lock: bool,
         svn: Option<u16>,
+        pqc_key_type: FwVerificationPqcKeyType,
         use_second_key: bool,
     ) -> Result<(PathBuf, String)> {
         let opts = caliptra_builder::ImageOptions {
-            pqc_key_type: FwVerificationPqcKeyType::LMS,
+            pqc_key_type,
             fw_svn: svn.unwrap_or(0) as u32,
             vendor_config: if use_second_key {
                 caliptra_image_fake_keys::VENDOR_CONFIG_KEY_1
@@ -832,9 +906,13 @@ fn main() -> Result<()> {
         let version = Self::caliptra_version().unwrap_or("no_version".to_string());
         let svn_or_default = svn.unwrap_or_default();
         let key_str = if use_second_key { "key2" } else { "key1" };
+        let pqc_key_str = match pqc_key_type {
+            FwVerificationPqcKeyType::LMS => "lms",
+            FwVerificationPqcKeyType::MLDSA => "mldsa",
+        };
         let path = target_dir().join(format!(
-            "caliptra-fw-bundle-{}-{}{}-{}-{}.bin",
-            version, platform, ocp_lock_suffix, svn_or_default, key_str
+            "caliptra-fw-bundle-{}-{}{}-{}-{}-{}.bin",
+            version, platform, ocp_lock_suffix, svn_or_default, key_str, pqc_key_str
         ));
         std::fs::write(&path, fw_bytes)?;
         Ok((path, Self::vendor_pk_hash_str(bundle.manifest)?))
@@ -906,7 +984,7 @@ fn main() -> Result<()> {
             image_metadata_list,
             version: 1,
             flags: AuthManifestFlags::VENDOR_SIGNATURE_REQUIRED,
-            pqc_key_type: FwVerificationPqcKeyType::LMS,
+            pqc_key_type: DEFAULT_PQC_KEY_TYPE,
             svn,
         };
 
@@ -920,6 +998,7 @@ fn main() -> Result<()> {
         image_metadata_list: Vec<AuthManifestImageMetadata>,
         svn: u32,
         owner_config: Option<&AuthManifestOwnerConfig>,
+        pqc_key_type: FwVerificationPqcKeyType,
     ) -> AuthorizationManifest {
         let vendor_fw_key_info: AuthManifestGeneratorKeyConfig = AuthManifestGeneratorKeyConfig {
             pub_keys: AuthManifestPubKeysConfig {
@@ -978,7 +1057,7 @@ fn main() -> Result<()> {
             image_metadata_list,
             version: 1,
             flags: AuthManifestFlags::VENDOR_SIGNATURE_REQUIRED,
-            pqc_key_type: FwVerificationPqcKeyType::LMS,
+            pqc_key_type,
             svn,
         };
 
@@ -990,6 +1069,7 @@ fn main() -> Result<()> {
         image_metadata_list: Vec<AuthManifestImageMetadata>,
         svn: u32,
         owner_config: Option<&AuthManifestOwnerConfig>,
+        pqc_key_type: FwVerificationPqcKeyType,
     ) -> Result<OwnerAuthorizationManifest> {
         let owner_key_info = if let Some(config) = owner_config {
             AuthManifestGeneratorKeyConfig {
@@ -1013,7 +1093,7 @@ fn main() -> Result<()> {
         let gen_config = OwnerAuthManifestGeneratorConfig {
             version: 1,
             svn,
-            pqc_key_type: FwVerificationPqcKeyType::LMS,
+            pqc_key_type,
             owner_fw_key_info: owner_key_info.clone(),
             owner_man_key_info: owner_key_info,
             image_metadata_list,
@@ -1189,7 +1269,7 @@ fn main() -> Result<()> {
             image_metadata_list,
             version: 1,
             flags: AuthManifestFlags::VENDOR_SIGNATURE_REQUIRED,
-            pqc_key_type: keys.pqc_key_type.unwrap_or(FwVerificationPqcKeyType::LMS),
+            pqc_key_type: keys.pqc_key_type.unwrap_or(DEFAULT_PQC_KEY_TYPE),
             svn,
         };
 
@@ -1338,6 +1418,70 @@ mod tests {
         assert_eq!(
             manifest.image_metadata_col.image_metadata_list[0].fw_id,
             0x10000
+        );
+    }
+
+    #[test]
+    fn test_validate_owner_soc_image_fw_ids() {
+        let image = |image_id| ImageCfg {
+            image_id,
+            ..Default::default()
+        };
+
+        CaliptraBuilder::validate_owner_soc_images(&[image(0x0001_0000), image(u32::MAX)]).unwrap();
+
+        let err = CaliptraBuilder::validate_owner_soc_images(&[image(0x0000_ffff)]).unwrap_err();
+        assert!(err.to_string().contains("outside the owner-only range"));
+
+        let err =
+            CaliptraBuilder::validate_owner_soc_images(&[image(0x0001_0000), image(0x0001_0000)])
+                .unwrap_err();
+        assert!(err.to_string().contains("Duplicate owner firmware ID"));
+    }
+
+    #[test]
+    fn test_validate_firmware_pqc_key_type() {
+        let mut manifest = vec![0u8; IMAGE_MANIFEST_BYTE_SIZE];
+        manifest[8] = FwVerificationPqcKeyType::MLDSA.into();
+
+        CaliptraBuilder::validate_fw_pqc_key_type(&manifest, FwVerificationPqcKeyType::MLDSA)
+            .unwrap();
+        let err =
+            CaliptraBuilder::validate_fw_pqc_key_type(&manifest, FwVerificationPqcKeyType::LMS)
+                .unwrap_err();
+        assert!(err.to_string().contains("does not match configured"));
+    }
+
+    #[test]
+    fn test_mldsa_key_type_is_shared_by_authorization_manifests() {
+        let base_manifest = CaliptraBuilder::create_auth_manifest_with_metadata_and_owner(
+            vec![AuthManifestImageMetadata {
+                fw_id: 0x1000,
+                ..Default::default()
+            }],
+            0,
+            None,
+            FwVerificationPqcKeyType::MLDSA,
+        );
+        let owner_manifest = CaliptraBuilder::create_owner_auth_manifest_with_metadata_and_owner(
+            vec![AuthManifestImageMetadata {
+                fw_id: 0x0001_0000,
+                ..Default::default()
+            }],
+            0,
+            None,
+            FwVerificationPqcKeyType::MLDSA,
+        )
+        .unwrap();
+        let expected_key = OWNER_MLDSA_KEY_PUBLIC.0.as_bytes();
+
+        assert_eq!(
+            &base_manifest.preamble.owner_pub_keys.pqc_pub_key.0[..expected_key.len()],
+            expected_key
+        );
+        assert_eq!(
+            &owner_manifest.preamble.owner_pub_keys.pqc_pub_key.0[..expected_key.len()],
+            expected_key
         );
     }
 

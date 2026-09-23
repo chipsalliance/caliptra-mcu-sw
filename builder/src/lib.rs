@@ -32,6 +32,9 @@ pub struct CaliptraBuildArgs<'a> {
     pub output_name: Option<String>,
     pub example_app: bool,
     pub svn: Option<u16>,
+    /// PQC key type shared by the Caliptra firmware and authorization manifests.
+    /// Defaults to LMS when not specified.
+    pub pqc_key_type: Option<caliptra_image_types::FwVerificationPqcKeyType>,
     /// Cargo profile name to build with (e.g. `"release"` or `"devel"`).
     /// When `None`, builds use `release`.  Drives both the `cargo --profile
     /// <name>` invocation and the bundler manifest selection (`devel` swaps to
