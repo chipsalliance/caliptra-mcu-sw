@@ -184,6 +184,9 @@ const MCU_MBOX_SRAM1_OFFSET: u64 = 0x80_0000;
 /// MCU SRAM offset from MCI base.
 const MCU_SRAM_OFFSET: u64 = 0xC0_0000;
 
+const ATTESTATION_SOC_FW_ID: u32 = 0x2000;
+const ATTESTATION_SOC_FW_ID_2: u32 = 0x2001;
+
 /// Creates default SoC images for tests that require them.
 /// Returns (soc_images_config, soc_images_paths).
 fn create_default_soc_images() -> (Vec<ImageCfg>, Vec<PathBuf>) {
@@ -269,13 +272,14 @@ fn create_attestation_soc_images_variant(
     // components; dedicated features opt in to TCB-only or mixed coverage.
     let specs: &[(u8, u32, bool)] = match feature {
         Some("test-mctp-spdm-attestation-tcb") | Some("test-mctp-spdm-attestation-hitless-tcb") => {
-            &[(0xde, 0x0003, true)]
+            &[(0xde, ATTESTATION_SOC_FW_ID, true)]
         }
         Some("test-mctp-spdm-attestation-mixed")
-        | Some("test-mctp-spdm-attestation-hitless-mixed") => {
-            &[(0xde, 0x0003, true), (0xad, 0x0004, false)]
-        }
-        _ => &[(0xde, 0x0003, false)],
+        | Some("test-mctp-spdm-attestation-hitless-mixed") => &[
+            (0xde, ATTESTATION_SOC_FW_ID, true),
+            (0xad, ATTESTATION_SOC_FW_ID_2, false),
+        ],
+        _ => &[(0xde, ATTESTATION_SOC_FW_ID, false)],
     };
 
     let mut soc_images = Vec::with_capacity(specs.len());
@@ -938,10 +942,13 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     }
 
     let mcu_image_cfg = get_image_cfg_feature(&mcu_cfgs.clone().unwrap_or_default(), "none");
+    let owner_soc_images =
+        create_default_owner_soc_images(effective_soc_images.as_deref().unwrap_or(&[]));
     let mut caliptra_builder = crate::CaliptraBuilder::new(&CaliptraBuildArgs {
         fpga: platform == "fpga",
         mcu_firmware: Some(mcu_runtime.into()),
         soc_images: effective_soc_images.clone(),
+        owner_soc_images: Some(owner_soc_images),
         mcu_image_cfg: mcu_image_cfg.clone(),
         vendor: vendor.map(|s| s.to_string()),
         model: model.map(|s| s.to_string()),
@@ -952,6 +959,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     let vendor_pk_hash = caliptra_builder.get_vendor_pk_hash()?.to_string();
     println!("Vendor PK hash: {:x?}", vendor_pk_hash);
     let soc_manifest = caliptra_builder.get_soc_manifest(None)?;
+    let owner_auth_manifest = caliptra_builder.get_owner_auth_manifest(None)?;
 
     let mut builder_svn7 = crate::CaliptraBuilder::new(&CaliptraBuildArgs {
         fpga: platform == "fpga",
@@ -982,7 +990,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     let flash_image = create_flash_image(FlashImageBuildArgs {
         caliptra_fw_path: Some(caliptra_fw.clone()),
         soc_manifest_path: Some(soc_manifest.clone()),
-        owner_auth_manifest_path: None,
+        owner_auth_manifest_path: Some(owner_auth_manifest),
         mcu_runtime_path: Some(mcu_runtime.into()),
         mcu_image_cfg: mcu_image_cfg.clone(),
         caliptra_firmware_network_filename,
@@ -1750,6 +1758,36 @@ fn get_default_pldm_fw_manifest(dev_uuid: &[u8], image: &[u8]) -> FirmwareManife
             image_data: Some(image.to_vec()),
             ..Default::default()
         }],
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn attestation_soc_image_ids_use_distinct_vendor_namespace() {
+        let (base_images, _) = create_default_soc_images();
+        let (attestation_images, _) =
+            create_attestation_soc_images(Some("test-mctp-spdm-attestation-mixed"));
+        let owner_images = create_default_owner_soc_images(&attestation_images);
+
+        let mut image_ids = base_images
+            .iter()
+            .chain(attestation_images.iter())
+            .map(|image| image.image_id)
+            .collect::<Vec<_>>();
+        image_ids.sort_unstable();
+        image_ids.dedup();
+
+        assert_eq!(
+            image_ids.len(),
+            base_images.len() + attestation_images.len()
+        );
+        assert!(attestation_images
+            .iter()
+            .all(|image| (0x1000..0x1_0000).contains(&image.image_id)));
+        assert!(owner_images.iter().all(|image| image.image_id >= 0x1_0000));
     }
 }
 
