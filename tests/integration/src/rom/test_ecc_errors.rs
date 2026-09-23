@@ -39,8 +39,12 @@ fn test_rom_hw_error(inject_val: u32, expected_error: u32, expected_message: &st
         };
 
     // Build flash image from firmware binaries
-    let flash_image =
-        build_flash_image_bytes(Some(&caliptra_fw), Some(&soc_manifest), Some(&mcu_runtime));
+    let flash_image = build_flash_image_bytes(
+        Some(&caliptra_fw),
+        Some(&soc_manifest),
+        Some(&mcu_runtime),
+        None,
+    );
 
     // Instantiate the hw model.
     let mut hw = new(InitParams {

@@ -967,6 +967,7 @@ mod tests {
             Some(&binaries.caliptra_fw),
             Some(&binaries.soc_manifest),
             Some(&binaries.mcu_runtime),
+            None,
         );
 
         let mut hw = new(InitParams {
