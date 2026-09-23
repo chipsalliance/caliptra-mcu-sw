@@ -26,6 +26,7 @@ const INCREASE_CALIPTRA_MIN_SVN_PAYLOAD_LEN: usize = 4 + 4;
 const REVOKE_VENDOR_PUB_KEY_PAYLOAD_LEN: usize = 4 + 4 + 4 + 4;
 const REVOKE_VENDOR_PK_HASH_PAYLOAD_LEN: usize = 4 + 4;
 const FUSE_LOCK_PARTITION_PAYLOAD_LEN: usize = 4;
+const ZEROIZE_UDS_FE_AND_ENTER_RMA_PAYLOAD_LEN: usize = 16;
 #[cfg(feature = "ocp-lock")]
 const OCP_LOCK_PROGRAM_HEK_PAYLOAD_LEN: usize = 4;
 #[cfg(feature = "ocp-lock")]
@@ -67,6 +68,9 @@ const MAX_AUTHORIZED_PAYLOAD_LEN: usize = {
     }
     if FUSE_LOCK_PARTITION_PAYLOAD_LEN > max {
         max = FUSE_LOCK_PARTITION_PAYLOAD_LEN;
+    }
+    if ZEROIZE_UDS_FE_AND_ENTER_RMA_PAYLOAD_LEN > max {
+        max = ZEROIZE_UDS_FE_AND_ENTER_RMA_PAYLOAD_LEN;
     }
     #[cfg(feature = "ocp-lock")]
     if OCP_LOCK_PROGRAM_HEK_PAYLOAD_LEN > max {
@@ -123,6 +127,8 @@ pub const REVOKE_VENDOR_PUB_KEY_CMD_ID: u32 = 0x4D52_564B;
 pub const REVOKE_VENDOR_PK_HASH_CMD_ID: u32 = 0x5256_4B48;
 /// MC_FUSE_LOCK_PARTITION sub-command (`IFPK`).
 pub const FUSE_LOCK_PARTITION_CMD_ID: u32 = CommandId::MC_FUSE_LOCK_PARTITION.0;
+/// MC_ZEROIZE_UDS_FE_AND_ENTER_RMA sub-command (`MZRM`).
+pub const ZEROIZE_UDS_FE_AND_ENTER_RMA_CMD_ID: u32 = CommandId::MC_ZEROIZE_UDS_FE_AND_ENTER_RMA.0;
 /// MC_OCP_LOCK_PROGRAM_HEK sub-command (`OLPH`).
 #[cfg(feature = "ocp-lock")]
 pub const OCP_LOCK_PROGRAM_HEK_CMD_ID: u32 = CommandId::MC_OCP_LOCK_PROGRAM_HEK.0;
@@ -188,6 +194,9 @@ where
             handle_revoke_vendor_pk_hash(cmds, payload, scratch, out).await
         }
         FUSE_LOCK_PARTITION_CMD_ID => handle_fuse_lock_partition(cmds, payload, scratch, out).await,
+        ZEROIZE_UDS_FE_AND_ENTER_RMA_CMD_ID => {
+            handle_zeroize_uds_fe_and_enter_rma(cmds, payload, scratch, out).await
+        }
         #[cfg(feature = "ocp-lock")]
         OCP_LOCK_PROGRAM_HEK_CMD_ID => {
             handle_ocp_lock_program_hek(cmds, payload, scratch, out).await
@@ -406,6 +415,40 @@ where
         Ok(n) => CaliptraVdmCmdResult::Response(1 + n),
         Err(code) => CaliptraVdmCmdResult::Error(code),
     }
+}
+
+async fn handle_zeroize_uds_fe_and_enter_rma<H, A>(
+    cmds: &H,
+    req: &[u8],
+    scratch: &A,
+    out: &mut [u8],
+) -> CaliptraVdmCmdResult
+where
+    H: CaliptraVdmAuthorization,
+    A: SpdmPalAlloc,
+{
+    let parsed = match split_authorized_request(req, ZEROIZE_UDS_FE_AND_ENTER_RMA_PAYLOAD_LEN) {
+        Ok(parsed) => parsed,
+        Err(code) => return CaliptraVdmCmdResult::Error(code),
+    };
+    let token = match <&[u8; 16]>::try_from(parsed.payload) {
+        Ok(token) => token,
+        Err(_) => return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidParameter),
+    };
+    finish_authorized_command(
+        cmds.zeroize_uds_fe_and_enter_rma(
+            token,
+            parsed.payload,
+            parsed.sig,
+            parsed.nonce,
+            parsed.ecc_pub_x,
+            parsed.ecc_pub_y,
+            parsed.mldsa_pub,
+            scratch,
+        )
+        .await,
+        out,
+    )
 }
 
 async fn handle_provision_vendor_pk_hash<H, A>(

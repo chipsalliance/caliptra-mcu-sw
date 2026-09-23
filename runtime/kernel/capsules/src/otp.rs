@@ -22,7 +22,7 @@ use kernel::{ErrorCode, ProcessId};
 
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_romtime::ocp_lock::KernelConfig;
-use caliptra_mcu_romtime::{fuse_lock_partition_dai, fuse_write_dai};
+use caliptra_mcu_romtime::{fuse_lock_partition_dai, fuse_write_dai, otp::FieldEntropySlot};
 
 #[cfg(feature = "ocp-lock")]
 mod ro_allow {
@@ -48,6 +48,7 @@ pub mod cmd {
     pub const OTP_ROTATE_HEK: u32 = 9;
     pub const OTP_PROGRAM_HEK: u32 = 10;
     pub const OTP_ZERO_HEK: u32 = 11;
+    pub const OTP_MARK_FIELD_ENTROPY_ZEROIZED: u32 = 12;
 }
 
 pub mod reg {
@@ -584,12 +585,29 @@ impl SyscallDriver for Otp {
             cmd::OTP_PROGRAM_HEK => self.program_hek(arg1, processid),
             #[cfg(feature = "ocp-lock")]
             cmd::OTP_ZERO_HEK => self.zero_hek(arg1, processid),
+            cmd::OTP_MARK_FIELD_ENTROPY_ZEROIZED => self.mark_field_entropy_zeroized(),
             _ => CommandReturn::failure(ErrorCode::NOSUPPORT),
         }
     }
 
     fn allocate_grant(&self, processid: ProcessId) -> Result<(), kernel::process::Error> {
         self.apps.enter(processid, |_, _| {})
+    }
+}
+
+impl Otp {
+    fn mark_field_entropy_zeroized(&self) -> CommandReturn {
+        for slot in [
+            FieldEntropySlot::Slot0,
+            FieldEntropySlot::Slot1,
+            FieldEntropySlot::Slot2,
+            FieldEntropySlot::Slot3,
+        ] {
+            if self.driver.mark_field_entropy_zeroized(slot).is_err() {
+                return CommandReturn::failure(ErrorCode::FAIL);
+            }
+        }
+        CommandReturn::success()
     }
 }
 

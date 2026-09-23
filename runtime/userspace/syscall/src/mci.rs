@@ -3,7 +3,9 @@
 //! # MCI: An Interface for accessing the Manufacturer Controller Interface (MCI)
 
 use crate::DefaultSyscalls;
-use caliptra_mcu_libtock_platform::{ErrorCode, Syscalls};
+use caliptra_mcu_libtock_platform::allow_ro::AllowRo;
+use caliptra_mcu_libtock_platform::share;
+use caliptra_mcu_libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
 use core::marker::PhantomData;
 
 pub struct Mci<S: Syscalls = DefaultSyscalls> {
@@ -61,6 +63,13 @@ impl<S: Syscalls> Mci<S> {
         S::command(self.driver_num, cmd::MCI_SET_SPDM_DOE_RESPONDER_READY, 0, 0)
             .to_result::<(), ErrorCode>()
     }
+
+    pub fn enter_rma(&self, token: &[u8; 16]) -> Result<(), ErrorCode> {
+        share::scope::<AllowRo<S, MCI_DRIVER_NUM, { ro_allow::RMA_TOKEN }>, _, _>(|allow_ro| {
+            S::allow_ro::<DefaultConfig, MCI_DRIVER_NUM, { ro_allow::RMA_TOKEN }>(allow_ro, token)?;
+            S::command(self.driver_num, cmd::MCI_ENTER_RMA, 0, 0).to_result::<(), ErrorCode>()
+        })
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -78,6 +87,11 @@ pub mod cmd {
     pub const MCI_SET_MAILBOX_READY: u32 = 5;
     pub const MCI_SET_SPDM_MCTP_RESPONDER_READY: u32 = 6;
     pub const MCI_SET_SPDM_DOE_RESPONDER_READY: u32 = 7;
+    pub const MCI_ENTER_RMA: u32 = 8;
+}
+
+mod ro_allow {
+    pub const RMA_TOKEN: u32 = 0;
 }
 
 pub mod mci_reg {

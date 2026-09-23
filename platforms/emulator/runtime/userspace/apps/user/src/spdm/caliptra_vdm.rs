@@ -18,6 +18,7 @@ use caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::{
     CaliptraVdmStreamOps, DEVICE_OWNERSHIP_TRANSFER_CMD_ID, FE_PROG_CMD_ID,
     FUSE_LOCK_PARTITION_CMD_ID, INCREASE_CALIPTRA_MIN_SVN_CMD_ID, PROVISION_OWNER_PK_HASH_CMD_ID,
     PROVISION_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PUB_KEY_CMD_ID,
+    ZEROIZE_UDS_FE_AND_ENTER_RMA_CMD_ID,
 };
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::{
@@ -489,6 +490,37 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
             .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
         CaliptraCmdBackend
             .fuse_lock_partition(partition)
+            .await
+            .map_err(map_common_completion)
+    }
+
+    async fn zeroize_uds_fe_and_enter_rma<A: SpdmPalAlloc>(
+        &self,
+        rma_token: &[u8; 16],
+        payload: &[u8],
+        sig: &HybridSignature,
+        nonce: &[u8; AUTH_CMD_NONCE_LEN],
+        ecc_pub_x: &[u8; 48],
+        ecc_pub_y: &[u8; 48],
+        mldsa_pub: &[u8; 2592],
+        scratch: &A,
+    ) -> CaliptraVdmResult<()> {
+        let mut authorizer = cmd_auth_mock::MockCommandAuthorizer;
+        authorizer
+            .verify_signatures(
+                scratch,
+                ZEROIZE_UDS_FE_AND_ENTER_RMA_CMD_ID,
+                payload,
+                nonce,
+                ecc_pub_x,
+                ecc_pub_y,
+                mldsa_pub,
+                sig,
+            )
+            .await
+            .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
+        CaliptraCmdBackend
+            .zeroize_uds_fe_and_enter_rma(rma_token)
             .await
             .map_err(map_common_completion)
     }

@@ -23,8 +23,9 @@ use caliptra_mcu_mbox_common::messages::{
     McuMailboxResp, McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp,
     McuProdDebugUnlockTokenReq, McuResponseVarSize, OcpLockProgramHekResp, OcpLockZeroHekResp,
     ProvisionOwnerPkHashReq, ProvisionOwnerPkHashResp, ProvisionVendorPkHashReq,
-    ProvisionVendorPkHashResp, DEVICE_CAPS_SIZE, GET_ATTESTATION_RESP_PREFIX_LEN,
-    MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
+    ProvisionVendorPkHashResp, ZeroizeUdsFeAndEnterRmaReq, ZeroizeUdsFeAndEnterRmaResp,
+    DEVICE_CAPS_SIZE, GET_ATTESTATION_RESP_PREFIX_LEN, MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN,
+    MAX_RESP_DATA_SIZE,
 };
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_mbox_common::messages::{HekSeedSlot, OcpLockProgramHekReq, OcpLockZeroHekReq};
@@ -247,6 +248,7 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
                 | inner @ CommandId::MC_FUSE_READ
                 | inner @ CommandId::MC_FUSE_WRITE
                 | inner @ CommandId::MC_FUSE_LOCK_PARTITION
+                | inner @ CommandId::MC_ZEROIZE_UDS_FE_AND_ENTER_RMA
                 | inner @ CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY => {
                     self.handle_authorized_command(inner, req, resp_buf).await
                 }
@@ -1149,6 +1151,10 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
             CommandId::MC_FUSE_LOCK_PARTITION => {
                 self.handle_fuse_lock_partition(cmd, resp_buf).await
             }
+            CommandId::MC_ZEROIZE_UDS_FE_AND_ENTER_RMA => {
+                self.handle_zeroize_uds_fe_and_enter_rma(cmd, resp_buf)
+                    .await
+            }
             #[cfg(feature = "ocp-lock")]
             CommandId::MC_OCP_LOCK_PROGRAM_HEK => {
                 self.handle_ocp_lock_program_hek(cmd, resp_buf).await
@@ -1286,6 +1292,25 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
 
         resp.length_bits = params.valid_bits;
 
+        Ok((resp.as_mut_bytes(), MbxCmdStatus::Complete))
+    }
+
+    async fn handle_zeroize_uds_fe_and_enter_rma<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req =
+            ZeroizeUdsFeAndEnterRmaReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        let (resp, _) = ZeroizeUdsFeAndEnterRmaResp::mut_from_prefix(resp_buf)
+            .map_err(|_| errors::INVALID_PARAMS)?;
+
+        self.non_crypto_cmds_handler
+            .zeroize_uds_fe_and_enter_rma(&req.rma_token)
+            .await
+            .map_err(map_common_cmd_error)?;
+
+        *resp = ZeroizeUdsFeAndEnterRmaResp::default();
         Ok((resp.as_mut_bytes(), MbxCmdStatus::Complete))
     }
 
@@ -1806,6 +1831,9 @@ fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32) -> usize {
         }
         c if c == CommandId::MC_FUSE_READ => size_of::<FuseReadResp>(),
         c if c == CommandId::MC_FUSE_LOCK_PARTITION => size_of::<FuseLockPartitionResp>(),
+        c if c == CommandId::MC_ZEROIZE_UDS_FE_AND_ENTER_RMA => {
+            size_of::<ZeroizeUdsFeAndEnterRmaResp>()
+        }
         #[cfg(feature = "ocp-lock")]
         c if c == CommandId::MC_OCP_LOCK => size_of::<OcpLockRotateHekResp>()
             .max(size_of::<OcpLockSetPermaHekResp>())

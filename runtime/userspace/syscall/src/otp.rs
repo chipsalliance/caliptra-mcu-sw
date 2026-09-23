@@ -102,6 +102,12 @@ impl<S: Syscalls> Otp<S> {
         S::command(self.driver_num, cmd::OTP_WRITE_RAW, data, mask).to_result::<(), ErrorCode>()
     }
 
+    /// Mark all four field-entropy slots as zeroized.
+    pub fn mark_field_entropy_zeroized(&self) -> Result<(), ErrorCode> {
+        S::command(self.driver_num, cmd::OTP_MARK_FIELD_ENTROPY_ZEROIZED, 0, 0)
+            .to_result::<(), ErrorCode>()
+    }
+
     /// Check whether a given vendor pk hash slot is marked valid (has not been marked invalid).
     ///
     /// Also returns `false` if the slot ID is invalid or reading of the mask fails.
@@ -373,6 +379,7 @@ pub mod cmd {
     pub const OTP_ROTATE_HEK: u32 = 9;
     pub const OTP_PROGRAM_HEK: u32 = 10;
     pub const OTP_ZERO_HEK: u32 = 11;
+    pub const OTP_MARK_FIELD_ENTROPY_ZEROIZED: u32 = 12;
 }
 
 mod ro_allow {

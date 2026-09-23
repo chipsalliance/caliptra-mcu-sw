@@ -6,7 +6,8 @@ use caliptra_mcu_mbox_common::messages::{
     FuseLockPartitionReq, FuseReadReq, FuseRevokeVendorPkHashReq, FuseRevokeVendorPubKeyReq,
     FuseWriteReq, GetDotBackupBlobReq, HybridSignature, MailboxReqHeader, McuFeProgReq,
     OcpLockProgramHekReq, OcpLockRotateHekReq, OcpLockSetPermaHekReq, OcpLockZeroHekReq,
-    ProvisionOwnerPkHashReq, ProvisionVendorPkHashReq, AUTH_CMD_NONCE_LEN,
+    ProvisionOwnerPkHashReq, ProvisionVendorPkHashReq, ZeroizeUdsFeAndEnterRmaReq,
+    AUTH_CMD_NONCE_LEN,
 };
 use core::cell::RefCell;
 use core::mem::{offset_of, size_of};
@@ -93,6 +94,7 @@ impl CommandAuthorizer for MockCommandAuthorizer {
             CommandId::MC_FUSE_READ => size_of::<FuseReadReq>(),
             CommandId::MC_FUSE_WRITE => size_of::<FuseWriteReq>(),
             CommandId::MC_FUSE_LOCK_PARTITION => size_of::<FuseLockPartitionReq>(),
+            CommandId::MC_ZEROIZE_UDS_FE_AND_ENTER_RMA => size_of::<ZeroizeUdsFeAndEnterRmaReq>(),
             CommandId::MC_OCP_LOCK_PROGRAM_HEK => size_of::<OcpLockProgramHekReq>(),
             CommandId::MC_OCP_LOCK_ZERO_HEK => size_of::<OcpLockZeroHekReq>(),
             CommandId::MC_OCP_LOCK => {

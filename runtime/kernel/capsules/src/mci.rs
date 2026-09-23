@@ -3,6 +3,7 @@
 //! This provides the MCI capsule that calls the underlying MCI driver
 
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant, UpcallCount};
+use kernel::processbuffer::ReadableProcessBuffer;
 use kernel::syscall::{CommandReturn, SyscallDriver};
 use kernel::{ErrorCode, ProcessId};
 
@@ -17,6 +18,12 @@ mod cmd {
     pub const MCI_SET_MAILBOX_READY: u32 = 5;
     pub const MCI_SET_SPDM_MCTP_RESPONDER_READY: u32 = 6;
     pub const MCI_SET_SPDM_DOE_RESPONDER_READY: u32 = 7;
+    pub const MCI_ENTER_RMA: u32 = 8;
+}
+
+mod ro_allow {
+    pub const RMA_TOKEN: usize = 0;
+    pub const COUNT: u8 = 1;
 }
 
 mod mci_reg {
@@ -34,17 +41,20 @@ pub struct App {
 
 pub struct Mci {
     driver: &'static caliptra_mcu_romtime::Mci,
+    lifecycle: &'static caliptra_mcu_romtime::Lifecycle,
     // Per-app state.
-    apps: Grant<App, UpcallCount<0>, AllowRoCount<0>, AllowRwCount<0>>,
+    apps: Grant<App, UpcallCount<0>, AllowRoCount<{ ro_allow::COUNT }>, AllowRwCount<0>>,
 }
 
 impl Mci {
     pub fn new(
         driver: &'static caliptra_mcu_romtime::Mci,
-        grant: Grant<App, UpcallCount<0>, AllowRoCount<0>, AllowRwCount<0>>,
+        lifecycle: &'static caliptra_mcu_romtime::Lifecycle,
+        grant: Grant<App, UpcallCount<0>, AllowRoCount<{ ro_allow::COUNT }>, AllowRwCount<0>>,
     ) -> Mci {
         Mci {
             driver,
+            lifecycle,
             apps: grant,
         }
     }
@@ -94,6 +104,37 @@ impl Mci {
         }
         CommandReturn::success()
     }
+
+    fn enter_rma(&self, processid: ProcessId) -> CommandReturn {
+        let result = self.apps.enter(processid, |_, kernel_data| {
+            let token_buffer = kernel_data
+                .get_readonly_processbuffer(ro_allow::RMA_TOKEN)
+                .map_err(|_| ErrorCode::INVAL)?;
+            let mut token = [0u8; 16];
+            token_buffer
+                .enter(|buffer| {
+                    if buffer.len() != token.len() {
+                        return Err(ErrorCode::INVAL);
+                    }
+                    buffer.copy_to_slice(&mut token);
+                    Ok(())
+                })
+                .map_err(|_| ErrorCode::FAIL)??;
+
+            self.lifecycle
+                .transition(
+                    caliptra_mcu_romtime::LifecycleControllerState::Rma,
+                    &caliptra_mcu_romtime::LifecycleToken(token),
+                )
+                .map_err(|_| ErrorCode::FAIL)
+        });
+
+        match result {
+            Ok(Ok(())) => CommandReturn::success(),
+            Ok(Err(error)) => CommandReturn::failure(error),
+            Err(error) => CommandReturn::failure(error.into()),
+        }
+    }
 }
 
 /// Provide an interface for userland.
@@ -131,6 +172,7 @@ impl SyscallDriver for Mci {
                 );
                 CommandReturn::success()
             }
+            cmd::MCI_ENTER_RMA => self.enter_rma(processid),
             _ => CommandReturn::failure(ErrorCode::NOSUPPORT),
         }
     }

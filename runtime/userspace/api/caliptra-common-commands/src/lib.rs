@@ -581,6 +581,12 @@ pub trait CaliptraCmdHandler {
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 
+    /// Zeroize UDS and field entropy, then transition the device to RMA.
+    async fn zeroize_uds_fe_and_enter_rma(&self, rma_token: &[u8; 16]) -> CaliptraCmdResult<()> {
+        let _ = rma_token;
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
     /// Verify and commit a persistent DOT lock transition.
     async fn dot_lock<Alloc: ApiAlloc>(
         &self,

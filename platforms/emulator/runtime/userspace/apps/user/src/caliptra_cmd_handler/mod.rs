@@ -169,7 +169,8 @@ fn authorized_subcommand_capabilities() -> AuthorizedSubcommandCapabilities {
             | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PUBLIC_KEY
             | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PK_HASH
             | AuthorizedSubcommandCapabilities::FUSE_LOCK_PARTITION
-            | AuthorizedSubcommandCapabilities::PROVISION_OWNER_PK_HASH;
+            | AuthorizedSubcommandCapabilities::PROVISION_OWNER_PK_HASH
+            | AuthorizedSubcommandCapabilities::ZEROIZE_UDS_FE_AND_ENTER_RMA;
     }
     if cfg!(feature = "dot-spdm-vdm") {
         capabilities |= AuthorizedSubcommandCapabilities::DOT_LOCK
@@ -340,6 +341,10 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
 
     async fn fuse_lock_partition(&self, partition: u32) -> CaliptraCmdResult<()> {
         device_ops::fuse_lock_partition(partition)
+    }
+
+    async fn zeroize_uds_fe_and_enter_rma(&self, rma_token: &[u8; 16]) -> CaliptraCmdResult<()> {
+        device_ops::zeroize_uds_fe_and_enter_rma(rma_token).await
     }
 
     async fn increase_caliptra_min_svn<Alloc: ApiAlloc>(
@@ -625,6 +630,7 @@ mod tests {
                     | AuthorizedSubcommandCapabilities::PROGRAM_FIELD_ENTROPY
                     | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PUBLIC_KEY
                     | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PK_HASH
+                    | AuthorizedSubcommandCapabilities::ZEROIZE_UDS_FE_AND_ENTER_RMA
             ),
             cfg!(feature = "spdm")
         );
