@@ -229,10 +229,11 @@ jobs:
           cargo test --package caliptra-mcu-tests-integration --lib -- test_caliptra_util_host_spdm_vdm_validator::test::test_caliptra_util_host_spdm_vdm_validator --nocapture --include-ignored
           sccache --show-stats
 
-      - name: Run OCP Device Identity provisioning test
+      - name: Run OCP Device Identity provisioning tests
         env:
           CPTRA_FIRMWARE_BUNDLE: ${{ github.workspace }}/target/all-fw.zip
         run: |
+          cargo test --package caliptra-mcu-tests-integration --lib -- test_ocp_dev_identity_provision_tool::test::test_mctp_spdm_dip_export_csr_with_ocp_provision_tool --exact --nocapture --include-ignored
           cargo test --package caliptra-mcu-tests-integration --lib -- test_ocp_dev_identity_provision_tool::test::test_mctp_spdm_set_certificate_with_ocp_provision_tool --exact --nocapture --include-ignored
           sccache --show-stats
 
