@@ -42,21 +42,21 @@ impl winnow::stream::ContainsToken<&'_ Token<'_>> for TokenKind<'_> {
 impl winnow::stream::ContainsToken<&'_ Token<'_>> for &'_ [TokenKind<'_>] {
     #[inline]
     fn contains_token(&self, token: &'_ Token<'_>) -> bool {
-        self.iter().any(|t| *t == token.kind)
+        self.contains(&token.kind)
     }
 }
 
 impl<const LEN: usize> winnow::stream::ContainsToken<&'_ Token<'_>> for &'_ [TokenKind<'_>; LEN] {
     #[inline]
     fn contains_token(&self, token: &'_ Token<'_>) -> bool {
-        self.iter().any(|t| *t == token.kind)
+        self.contains(&token.kind)
     }
 }
 
 impl<const LEN: usize> winnow::stream::ContainsToken<&'_ Token<'_>> for [TokenKind<'_>; LEN] {
     #[inline]
     fn contains_token(&self, token: &'_ Token<'_>) -> bool {
-        self.iter().any(|t| *t == token.kind)
+        self.contains(&token.kind)
     }
 }
 

@@ -330,7 +330,7 @@ fn packet_to_event<T: PldmCodec>(
 pub fn process_packet(packet: &RxPacket) -> Result<PldmEvents, ()> {
     debug!("Handling packet: {}", packet);
     let header = PldmMsgHeader::decode(&packet.payload.data[..packet.payload.len])
-        .map_err(|_| (error!("Error decoding packet!")))?;
+        .map_err(|_| error!("Error decoding packet!"))?;
     if !header.is_hdr_ver_valid() {
         error!("Invalid header version!");
         return Err(());

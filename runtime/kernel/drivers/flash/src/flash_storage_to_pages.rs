@@ -139,7 +139,7 @@ impl<'a, F: hil::flash::Flash> crate::hil::FlashStorage<'a> for FlashStorageToPa
         self.state.set(State::Write);
         self.length.set(length);
 
-        if address % page_size == 0 && length >= page_size {
+        if address.is_multiple_of(page_size) && length >= page_size {
             // This write is aligned to a page and we are writing an entire page.
             // Copy data into page buffer.
             page_buffer.as_mut()[..page_size].copy_from_slice(&buffer[..page_size]);
@@ -185,7 +185,7 @@ impl<'a, F: hil::flash::Flash> crate::hil::FlashStorage<'a> for FlashStorageToPa
         let erase_size = self.erase_size;
 
         // Validate that the erase address is aligned to the erase size.
-        if address % erase_size != 0 {
+        if !address.is_multiple_of(erase_size) {
             return Err(ErrorCode::INVAL);
         }
 

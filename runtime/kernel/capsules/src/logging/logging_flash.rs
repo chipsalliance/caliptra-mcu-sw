@@ -449,7 +449,7 @@ impl<'a, F: Flash + 'static> Log<'a, F> {
 
                 // Initialise the writable pagebuffer.
                 if let Some(pagebuffer) = self.pagebuffer.take() {
-                    let copy_pagebuffer = last_page_len % self.page_size != 0;
+                    let copy_pagebuffer = !last_page_len.is_multiple_of(self.page_size);
                     if copy_pagebuffer {
                         // Mirror the newest page into the writable buffer
                         // so further appends extend it.
@@ -537,7 +537,7 @@ impl<'a, F: Flash + 'static> Log<'a, F> {
             }
 
             // Skip the page header at the very start of a page.
-            if entry_id % self.page_size == 0 {
+            if entry_id.is_multiple_of(self.page_size) {
                 self.read_entry_id.set(entry_id + PAGE_HEADER_SIZE);
                 continue;
             }
@@ -728,7 +728,7 @@ impl<'a, F: Flash + 'static> Log<'a, F> {
         self.length.set(length);
 
         let append_entry_id = self.append_entry_id.get();
-        let flush_prev_page = append_entry_id % self.page_size == 0;
+        let flush_prev_page = append_entry_id.is_multiple_of(self.page_size);
         let space_remaining = self.page_size - append_entry_id % self.page_size;
 
         if !flush_prev_page && entry_size <= space_remaining {
@@ -791,7 +791,7 @@ impl<'a, F: Flash + 'static> Log<'a, F> {
         // Pad end of page.
         let mut pad_ptr = self.append_entry_id.get();
         let page = pagebuffer.as_mut();
-        while pad_ptr % self.page_size != 0 {
+        while !pad_ptr.is_multiple_of(self.page_size) {
             page[pad_ptr % self.page_size] = PAD_BYTE;
             pad_ptr += 1;
         }
@@ -845,7 +845,7 @@ impl<'a, F: Flash + 'static> Log<'a, F> {
             return false;
         }
 
-        if append_entry_id % self.page_size != 0 {
+        if !append_entry_id.is_multiple_of(self.page_size) {
             append_entry_id += self.page_size - append_entry_id % self.page_size;
         }
 
@@ -1102,7 +1102,7 @@ impl<F: Flash + 'static> flash::Client<F> for Log<'_, F> {
                     return;
                 }
                 // If the synced page was full, prepare the next page.
-                if self.append_entry_id.get() % self.page_size == 0 {
+                if self.append_entry_id.get().is_multiple_of(self.page_size) {
                     let _ = self.reset_pagebuffer(pagebuffer);
                 }
                 self.pagebuffer.replace(pagebuffer);

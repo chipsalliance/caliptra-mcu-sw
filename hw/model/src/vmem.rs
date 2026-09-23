@@ -45,7 +45,7 @@ pub fn read_otp_vmem_data(vmem_data: &[u8]) -> Result<Vec<u8>> {
 #[allow(unused)]
 pub(crate) fn write_otp_vmem_data(bytes: &[u8]) -> Result<String> {
     let mut output = String::new();
-    if bytes.len() % 2 != 0 {
+    if !bytes.len().is_multiple_of(2) {
         bail!("OTP memory data length must be even, got {}", bytes.len());
     }
 
