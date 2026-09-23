@@ -22,6 +22,7 @@ module caliptra_package_axi_top (
     output wire[31:0] ARM_USER,
     output wire xilinx_i3c_aresetn,
     output wire axi_reset,
+    output wire fabric_resetn,
 
     // I3C connections to external I3C daughter card
     output EXT_SDA_UP,
@@ -565,6 +566,7 @@ caliptra_wrapper_top cptra_wrapper (
     .ARM_USER(ARM_USER),
     .xilinx_i3c_aresetn(xilinx_i3c_aresetn),
     .axi_reset(axi_reset),
+    .fabric_resetn(fabric_resetn),
 
     .EXT_SDA_UP(EXT_SDA_UP),
     .EXT_SDA_IN(EXT_SDA_IN),

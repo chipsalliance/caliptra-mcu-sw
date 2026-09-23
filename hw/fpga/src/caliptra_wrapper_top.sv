@@ -27,6 +27,7 @@ module caliptra_wrapper_top (
     output wire[31:0] ARM_USER,
     output wire xilinx_i3c_aresetn,
     (* syn_keep = "true", mark_debug = "true" *) output reg axi_reset,
+    output wire fabric_resetn,
 
     // I3C signals to driver board
     (* syn_keep = "true", mark_debug = "true" *) output reg EXT_SDA_UP,
@@ -638,6 +639,25 @@ module caliptra_wrapper_top (
             axi_reset <= 1;
         end
     end
+
+    // When sw sets trigger_fabric_reset, reset only the AXI fabric (see
+    // proc_sys_reset_1 in fpga_configuration.tcl), not this register block.
+    // Wait ~32 cycles first so the write response for the trigger itself can
+    // leave the interconnect, then assert for 16 cycles (requirement is 4).
+    // trigger_axi_reset resets the fabric too.
+    (* syn_keep = "true", mark_debug = "true" *) reg [5:0] fabric_reset_counter = 6'd0;
+    (* syn_keep = "true", mark_debug = "true" *) reg fabric_reset_triggered = 1'b0;
+    (* syn_keep = "true", mark_debug = "true" *) reg fabric_reset_pulse_n = 1'b1;
+    always@(posedge core_clk) begin
+        fabric_reset_triggered <= hwif_out.interface_regs.control.trigger_fabric_reset.value;
+        if (hwif_out.interface_regs.control.trigger_fabric_reset.value && ~fabric_reset_triggered) begin
+            fabric_reset_counter <= 6'd47;
+        end else if (fabric_reset_counter > 6'd0) begin
+            fabric_reset_counter <= fabric_reset_counter - 1;
+        end
+        fabric_reset_pulse_n <= ~((fabric_reset_counter > 6'd0) && (fabric_reset_counter <= 6'd16));
+    end
+    assign fabric_resetn = axi_reset & fabric_reset_pulse_n;
 
     logic mbox_sram_cs;
     logic mbox_sram_we;
