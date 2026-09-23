@@ -112,6 +112,10 @@ struct ImageLoadMeasurementScratchSlot([u8; BITMAP_SLOT_SIZE]);
 #[embassy_executor::task]
 #[allow(unused_variables)]
 pub async fn image_loading_task(soc_image_load_list: &'static [u32]) {
+    if cfg!(feature = "test-xtask-runtime") {
+        System::exit(0);
+    }
+
     let mbox_sram = caliptra_mcu_libsyscall_caliptra::mbox_sram::MboxSram::<DefaultSyscalls>::new(
         caliptra_mcu_libsyscall_caliptra::mbox_sram::DRIVER_NUM_MCU_MBOX1_SRAM,
     );
@@ -288,10 +292,6 @@ async fn image_loading<D: DMAMapping>(
                 pldm_image_loader.wait_for_service_stopped().await;
                 // Activate the SoC Images (set FW_EXEC_CTRL bit of the corresponding SoC)
                 activate_soc_images(soc_image_load_list).await?;
-                #[cfg(feature = "test-xtask-runtime")]
-                {
-                    System::exit(0);
-                }
             }
             #[cfg(not(feature = "streaming-boot"))]
             return Err(ErrorCode::NoSupport);
