@@ -114,7 +114,7 @@ pub use dma::{mcu_sram_to_axi_dma, AxiDmaTarget};
 #[cfg(feature = "mailbox-io")]
 pub use dpe::{
     dpe_certify_key, dpe_certify_key_cert_size, dpe_certify_key_cert_slice,
-    dpe_certify_key_mldsa87_pubkey, dpe_certify_key_pubkey, dpe_derive_context,
+    dpe_certify_key_mldsa87_tr, dpe_certify_key_pubkey, dpe_derive_context,
     dpe_derive_context_exported_cdi, dpe_get_cert_chain_chunk, dpe_get_tagged_tci,
     dpe_rotate_context_default, dpe_sign, dpe_sign_ecc_p384, dpe_sign_mldsa87, dpe_tag_tci,
     dpe_update_context_measurement, walk_dpe_chain, DpeChainSink, DpeContextHandle,

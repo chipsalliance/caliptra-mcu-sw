@@ -105,9 +105,7 @@ fn external_command_capabilities() -> ExternalCommandCapabilities {
 /// number.
 const fn evidence_len(format: EvidenceFormat, algorithm: AsymAlgo) -> usize {
     match (format, algorithm) {
-        // The EAT signer emits only ES384 today, so there is no ML-DSA EAT
-        // length to report yet.
-        (EvidenceFormat::OcpEat, AsymAlgo::EccP384) => SIGNED_OCP_EAT_MAX_SIZE,
+        (EvidenceFormat::OcpEat, AsymAlgo::EccP384 | AsymAlgo::Mldsa87) => SIGNED_OCP_EAT_MAX_SIZE,
         #[cfg(feature = "pcr-quote")]
         (EvidenceFormat::PcrQuote, AsymAlgo::EccP384) => PCR_QUOTE_ECC384_BUF_LEN,
         #[cfg(feature = "pcr-quote")]

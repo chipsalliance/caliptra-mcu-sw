@@ -118,6 +118,8 @@ pub struct TestPal {
     pub stream_aborts: Cell<usize>,
     /// Algorithm the most recent cert-chain write was routed to.
     pub write_algo: Cell<Option<SpdmPalAsymAlgo>>,
+    /// Algorithm passed to the most recent measurement value retrieval.
+    pub meas_algo: Cell<Option<SpdmPalAsymAlgo>>,
     pub sign_ops: RefCell<Vec<RecordedSign>>,
 }
 
@@ -127,6 +129,7 @@ pub struct TestPal {
 pub enum RecordedSigningInput {
     EccP384Digest(Vec<u8>),
     Mldsa87Message { context: Vec<u8>, message: Vec<u8> },
+    Mldsa87Mu(Vec<u8>),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -156,6 +159,7 @@ impl Default for TestPal {
             stream_cert: RefCell::new(Vec::new()),
             stream_aborts: Cell::new(0),
             write_algo: Cell::new(None),
+            meas_algo: Cell::new(None),
             sign_ops: RefCell::new(Vec::new()),
         }
     }
@@ -407,6 +411,7 @@ impl SpdmPalCertStore for TestPal {
                     message,
                 }
             }
+            SigningInput::Mldsa87Mu(mu) => RecordedSigningInput::Mldsa87Mu(mu.to_vec()),
         };
         self.sign_ops.borrow_mut().push(RecordedSign {
             algo,
@@ -563,8 +568,10 @@ impl SpdmPalMeasurements for TestPal {
         _io: &Self::Io<'_>,
         index: u8,
         _nonce: Option<&[u8; SPDM_NONCE_LEN]>,
+        asym_algo: SpdmPalAsymAlgo,
         out: &mut [u8],
     ) -> McuResult<usize> {
+        self.meas_algo.set(Some(asym_algo));
         if !self.measurement_info.iter().any(|info| info.index == index)
             || self.measurement_value.len() > out.len()
         {

@@ -26,12 +26,12 @@ use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_platform::Syscalls;
 use core::marker::PhantomData;
 use mcu_caliptra_api::{
-    dpe_certify_key_cert_size, dpe_certify_key_cert_slice, dpe_certify_key_pubkey,
-    dpe_derive_context_exported_cdi, dpe_rotate_context_default, dpe_sign, dpe_tag_tci, sha_finish,
-    sha_init, sha_update, ApiAlloc, AuthorizeAndStashFlags, AuthorizeAndStashParams,
-    DpeContextHandle, DpeDeriveContextFlags, DpeDeriveContextParams, DpeProfile, HashAlgo,
-    SigningInput, DPE_CONTEXT_HANDLE_SIZE, DPE_LABEL_LEN, DPE_TCI_MEASUREMENT_SIZE,
-    SHA_CONTEXT_SIZE,
+    dpe_certify_key_cert_size, dpe_certify_key_cert_slice, dpe_certify_key_mldsa87_tr,
+    dpe_certify_key_pubkey, dpe_derive_context_exported_cdi, dpe_rotate_context_default, dpe_sign,
+    dpe_tag_tci, sha_finish, sha_init, sha_update, ApiAlloc, AuthorizeAndStashFlags,
+    AuthorizeAndStashParams, DpeContextHandle, DpeDeriveContextFlags, DpeDeriveContextParams,
+    DpeProfile, HashAlgo, SigningInput, DPE_CONTEXT_HANDLE_SIZE, DPE_LABEL_LEN,
+    DPE_TCI_MEASUREMENT_SIZE, MLDSA87_TR_SIZE, SHA_CONTEXT_SIZE,
 };
 
 use crate::attestation_manifest::{parse_and_validate, AttestationManifest, MCU_RT_FW_ID};
@@ -340,6 +340,32 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
         sha_finish(alloc, &mut state, kid)
             .await
             .map_err(|_| MeasurementApiError::DigestFailed)
+    }
+
+    /// Compute the COSE `kid` and ML-DSA-87 public-key hash `tr` for the
+    /// configured attestation target and persist the rotated target handle
+    /// returned by DPE.
+    pub async fn leaf_kid_and_tr<A: ApiAlloc>(
+        &mut self,
+        alloc: &A,
+        key_label: &[u8; DPE_LABEL_LEN],
+        kid: &mut [u8; crate::ATTESTATION_KID_SIZE],
+        tr: &mut [u8; MLDSA87_TR_SIZE],
+    ) -> MeasurementApiResult {
+        let target = self.read_attestation_target_record()?;
+        let next_handle =
+            dpe_certify_key_mldsa87_tr(alloc, Some(&target.context_handle), key_label, tr)
+                .await
+                .map_err(|_| MeasurementApiError::DpeCommandFailed)?;
+
+        let kid_bytes = tr
+            .get(..crate::ATTESTATION_KID_SIZE)
+            .ok_or(MeasurementApiError::DigestFailed)?;
+        if kid.len() != kid_bytes.len() {
+            return Err(MeasurementApiError::DigestFailed);
+        }
+        kid.copy_from_slice(kid_bytes);
+        self.write_attestation_target_handle(target, next_handle)
     }
 
     /// Sign a typed input with the configured attestation target and persist

@@ -162,7 +162,7 @@ fn build_signed_cose(
 ) -> Vec<u8> {
     let cose = CoseSign1Builder::new()
         .payload(payload.to_vec())
-        .protected(HeaderBuilder::new().algorithm(Algorithm::ES384).build())
+        .protected(HeaderBuilder::new().algorithm(Algorithm::ESP384).build())
         .unprotected(
             HeaderBuilder::new()
                 .value(33, Value::Array(vec![Value::Bytes(cert_der.to_vec())]))
@@ -529,6 +529,52 @@ mod eat_claims_tests {
         assert!(
             Evidence::decode(&encoded, &ta).is_err(),
             "measurements with wrong type should fail"
+        );
+    }
+
+    #[test]
+    fn accept_ecc_mldsa_eat_profile_oid() {
+        let ecc_mldsa_oid = Value::Bytes(b"1.3.6.1.4.1.42623.1.4".to_vec());
+        let (pkey, cert_der) = generate_key_and_cert("ecc-mldsa-oid");
+        let ta = ta_store_for(&cert_der);
+        let payload = build_cwt_payload_with(None, None, Some(ecc_mldsa_oid), None);
+        let encoded = build_signed_cose(&payload, &pkey, &cert_der);
+
+        let ev = Evidence::decode(&encoded, &ta).expect("1.3.6.1.4.1.42623.1.4 should be accepted");
+        assert_eq!(ev.claims().eat_profile, "1.3.6.1.4.1.42623.1.4");
+    }
+
+    #[test]
+    fn accept_cose_algorithms() {
+        use coset::iana::Algorithm;
+        use coset::RegisteredLabelWithPrivate;
+        use ocptoken::cose_verify::SigningAlgorithm;
+
+        assert_eq!(
+            SigningAlgorithm::from_cose_algorithm(&RegisteredLabelWithPrivate::Assigned(
+                Algorithm::ES384
+            ))
+            .unwrap(),
+            SigningAlgorithm::ES384
+        );
+        assert_eq!(
+            SigningAlgorithm::from_cose_algorithm(&RegisteredLabelWithPrivate::Assigned(
+                Algorithm::ESP384
+            ))
+            .unwrap(),
+            SigningAlgorithm::ESP384
+        );
+        assert_eq!(
+            SigningAlgorithm::from_cose_algorithm(&RegisteredLabelWithPrivate::Assigned(
+                Algorithm::ML_DSA_87
+            ))
+            .unwrap(),
+            SigningAlgorithm::MLDSA87
+        );
+        // Private use is rejected
+        assert!(
+            SigningAlgorithm::from_cose_algorithm(&RegisteredLabelWithPrivate::PrivateUse(-50))
+                .is_err()
         );
     }
 }

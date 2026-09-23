@@ -89,9 +89,8 @@ pub(crate) fn extract_signing_leaf(
     // Fall back to kid + external cert chain
     let has_kid = !decoded.unprotected_header().key_id.is_empty();
     if has_kid {
-        let chain = cert_chain_blob.ok_or(
-            "Token uses kid (no x5chain); --cert-chain is required",
-        )?;
+        let chain =
+            cert_chain_blob.ok_or("Token uses kid (no x5chain); --cert-chain is required")?;
         if chain.is_empty() {
             return Err("Token uses kid but cert chain is empty".into());
         }
@@ -116,25 +115,20 @@ fn try_extract_x5chain_leaf(header: &coset::Header) -> Option<Vec<u8>> {
     use coset::cbor::value::Value;
     use coset::Label;
 
-    let value = header
-        .rest
-        .iter()
-        .find_map(|(l, v)| {
-            if *l == Label::Int(COSE_HDR_PARAM_X5CHAIN) {
-                Some(v)
-            } else {
-                None
-            }
-        })?;
+    let value = header.rest.iter().find_map(|(l, v)| {
+        if *l == Label::Int(COSE_HDR_PARAM_X5CHAIN) {
+            Some(v)
+        } else {
+            None
+        }
+    })?;
 
     match value {
         Value::Bytes(bytes) => Some(bytes.clone()),
-        Value::Array(arr) => arr
-            .first()
-            .and_then(|v| match v {
-                Value::Bytes(b) => Some(b.clone()),
-                _ => None,
-            }),
+        Value::Array(arr) => arr.first().and_then(|v| match v {
+            Value::Bytes(b) => Some(b.clone()),
+            _ => None,
+        }),
         _ => None,
     }
 }
