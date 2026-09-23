@@ -99,7 +99,7 @@ impl Mbox0Helpers {
         for b in cmd.to_le_bytes() {
             sum = sum.wrapping_add(b as u32);
         }
-        let payload_len = if dlen > 4 { dlen - 4 } else { 0 };
+        let payload_len = dlen.saturating_sub(4);
         let payload_words = payload_len.div_ceil(4).min(sram.len().saturating_sub(1));
         for i in 0..payload_words {
             if let Some(&word) = sram.get(i + 1) {

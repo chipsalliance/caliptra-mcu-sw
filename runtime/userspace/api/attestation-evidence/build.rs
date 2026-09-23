@@ -336,7 +336,7 @@ fn decode_optional_hex(value: &Option<String>, name: &str) -> Option<Vec<u8>> {
 
 fn decode_hex(value: &str, name: &str) -> Vec<u8> {
     let value = value.strip_prefix("0x").unwrap_or(value);
-    if value.len() % 2 != 0 {
+    if !value.len().is_multiple_of(2) {
         panic!("{name} must have an even number of hex digits");
     }
     let mut out = Vec::with_capacity(value.len() / 2);

@@ -640,10 +640,9 @@ impl FirmwareManifest {
             let mut image_data = vec![0u8; size];
             // Read the image data from the reader
             reader.read_exact(&mut image_data)?;
-            if output_dir_path.is_some() {
+            if let Some(output_dir_path) = output_dir_path {
                 // Write the image data to a file, the filename has a prefix of img_xx where xx is the component identifier
-                let file_path =
-                    format!("{}/img_{:02}.bin", output_dir_path.unwrap(), component_idx);
+                let file_path = format!("{}/img_{:02}.bin", output_dir_path, component_idx);
                 let mut file = File::create(&file_path)?;
                 file.write_all(&image_data)?;
                 // Update the image location of the component to the filename

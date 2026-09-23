@@ -79,7 +79,7 @@ impl<'a, T: DoeTransport<'a>> DoeDriver<'a, T> {
     fn start_transmit(&self, app_buf: &ReadableProcessSlice) -> Result<(), ErrorCode> {
         // Ensure the buffer is large enough
         let data_len_bytes = app_buf.len();
-        if data_len_bytes % 4 != 0 {
+        if !data_len_bytes.is_multiple_of(4) {
             return Err(ErrorCode::INVAL);
         }
 

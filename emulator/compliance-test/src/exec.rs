@@ -16,7 +16,7 @@ Abstract:
 use crate::fs::annotate_error;
 use std::ffi::OsString;
 use std::fmt;
-use std::io::{self, ErrorKind, Write};
+use std::io::{self, Write};
 
 /// Executes a command (subprocess).
 ///
@@ -56,7 +56,7 @@ pub struct ExecError {
 }
 impl ExecError {
     fn into_io_error(self) -> io::Error {
-        io::Error::new(ErrorKind::Other, self)
+        io::Error::other(self)
     }
 }
 impl std::error::Error for ExecError {}
@@ -104,7 +104,7 @@ mod tests {
         ));
         assert!(result.is_err());
         let err = result.err().unwrap();
-        assert_eq!(err.kind(), ErrorKind::NotFound);
+        assert_eq!(err.kind(), io::ErrorKind::NotFound);
         assert!(err
             .to_string()
             .contains("while running command [\"/tmp/pvoruxpa5dbnjv5sj5t15omn\"]"));
@@ -116,7 +116,7 @@ mod tests {
         let result = exec(std::process::Command::new("cat").arg("/tmp/pvoruxpa5dbnjv5sj5t15omn"));
         assert!(result.is_err());
         let err = result.err().unwrap();
-        assert_eq!(err.kind(), ErrorKind::Other);
+        assert_eq!(err.kind(), io::ErrorKind::Other);
         let err = err.into_inner().unwrap().downcast::<ExecError>().unwrap();
         assert_eq!(err.code, Some(1));
         assert_eq!(

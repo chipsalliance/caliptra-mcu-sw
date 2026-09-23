@@ -283,8 +283,7 @@ async fn image_loading<D: DMAMapping>(
 
         let pending = {
             let pending_partition_id = boot_config.get_pending_partition().await;
-            if pending_partition_id.is_ok() {
-                let pending_partition_id = pending_partition_id.unwrap();
+            if let Ok(pending_partition_id) = pending_partition_id {
                 let pending_partition = boot_config
                     .get_partition_from_id(pending_partition_id)
                     .map_err(|_| ErrorCode::Fail)?;
