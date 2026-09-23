@@ -277,7 +277,7 @@ impl<'a, D: DMAMapping, A: ApiAlloc> FirmwareUpdater<'a, D, A> {
             MailboxPayloadStream::new(self.staging_memory, manifest_offset, manifest_len);
 
         // Calculate the mailbox checksum
-        let mut checksum = payload_stream.get_bytesum().await;
+        let mut checksum = payload_stream.get_bytesum().await?;
         for b in CommandId::SET_AUTH_MANIFEST.0.to_le_bytes().iter() {
             checksum = checksum.wrapping_add(u32::from(*b));
         }
@@ -771,7 +771,7 @@ impl<'a, D: DMAMapping, A: ApiAlloc> FirmwareUpdater<'a, D, A> {
         let mut payload_stream = MailboxPayloadStream::new(self.staging_memory, offset, len);
 
         // Calculate the mailbox checksum
-        let mut checksum = payload_stream.get_bytesum().await;
+        let mut checksum = payload_stream.get_bytesum().await?;
         for b in CommandId::VERIFY_AUTH_MANIFEST.0.to_le_bytes().iter() {
             checksum = checksum.wrapping_add(u32::from(*b));
         }

@@ -942,6 +942,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     }
 
     let mcu_image_cfg = get_image_cfg_feature(&mcu_cfgs.clone().unwrap_or_default(), "none");
+    // Caliptra currently rejects owner manifests with an empty metadata collection.
     let owner_soc_images =
         create_default_owner_soc_images(effective_soc_images.as_deref().unwrap_or(&[]));
     let mut caliptra_builder = crate::CaliptraBuilder::new(&CaliptraBuildArgs {

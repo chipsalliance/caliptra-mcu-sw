@@ -128,7 +128,7 @@ impl<T: DmaTransfer> ImageLoader for FlashImageLoader<'_, T> {
             manifest_size: size,
         };
 
-        let mut checksum = stream.get_bytesum().await;
+        let mut checksum = stream.get_bytesum().await?;
         for byte in CommandId::SET_OWNER_AUTH_MANIFEST.0.to_le_bytes() {
             checksum = checksum.wrapping_add(u32::from(byte));
         }
@@ -139,6 +139,7 @@ impl<T: DmaTransfer> ImageLoader for FlashImageLoader<'_, T> {
 
         let response_buffer = &mut [0u8; core::mem::size_of::<MailboxRespHeader>()];
         loop {
+            stream.reset();
             match self
                 .mailbox
                 .execute_with_payload_stream(
@@ -174,7 +175,7 @@ impl<T: DmaTransfer> FlashImageLoader<'_, T> {
         };
 
         // Calculate the mailbox checksum
-        let mut checksum = stream.get_bytesum().await;
+        let mut checksum = stream.get_bytesum().await?;
         for b in CommandId::VERIFY_AUTH_MANIFEST.0.to_le_bytes().iter() {
             checksum = checksum.wrapping_add(u32::from(*b));
         }
@@ -272,17 +273,7 @@ impl<D: DMAMapping + 'static> ImageLoader for PldmImageLoader<'_, D> {
         }
 
         let mut stream = PldmMailboxPayloadStream::new(offset as usize, size as usize);
-        let mut checksum = 0u32;
-        let mut buffer = [0u8; pldm_context::PLDM_PAYLOAD_CHUNK_SIZE];
-        loop {
-            let bytes_read = stream.read(&mut buffer).await?;
-            if bytes_read == 0 {
-                break;
-            }
-            for byte in &buffer[..bytes_read] {
-                checksum = checksum.wrapping_add(u32::from(*byte));
-            }
-        }
+        let mut checksum = stream.get_bytesum().await?;
 
         let mut req = AuthManifestReqHeader {
             chksum: 0,

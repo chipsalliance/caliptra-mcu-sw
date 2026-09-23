@@ -432,7 +432,13 @@ mod test {
         let checksum_calculator = StandAloneChecksumCalculator::new();
         new_partition_table.populate_checksum(&checksum_calculator);
         let secondary_flash_image_path = if opts.secondary_flash_image_path.is_some() {
-            let (_, secondary_flash_image_path) = create_flash_image(
+            let owner_auth_manifest = new_options
+                .builder
+                .as_mut()
+                .unwrap()
+                .get_owner_auth_manifest(None)
+                .expect("Failed to build Owner Authorization Manifest");
+            let (_, secondary_flash_image_path) = create_flash_image_with_owner_manifest(
                 new_options.builder.as_mut().unwrap().get_caliptra_fw().ok(),
                 new_options
                     .builder
@@ -441,6 +447,8 @@ mod test {
                     .get_soc_manifest(None)
                     .ok(),
                 Some(opts.runtime.clone()),
+                Some(owner_auth_manifest),
+                None,
                 None,
                 0,
                 soc_images_paths.clone(),
@@ -658,12 +666,20 @@ mod test {
             .unwrap()
             .get_soc_manifest(None)
             .ok();
+        let owner_auth_manifest = new_options
+            .builder
+            .as_mut()
+            .unwrap()
+            .get_owner_auth_manifest(None)
+            .expect("Failed to build Owner Authorization Manifest");
 
         // Create a flash image with the updated SOC manifest
-        let (_, flash_image_path) = create_flash_image(
+        let (_, flash_image_path) = create_flash_image_with_owner_manifest(
             new_options.builder.as_mut().unwrap().get_caliptra_fw().ok(),
             new_soc_manifest.clone(),
             Some(opts.runtime.clone()),
+            Some(owner_auth_manifest.clone()),
+            None,
             opts.partition_table.clone(),
             flash_offset,
             soc_images_paths.clone(),
@@ -674,10 +690,12 @@ mod test {
             None
         };
         new_options.pldm_fw_pkg_path = if opts.pldm_fw_pkg_path.is_some() {
-            let (_, flash_image_path) = create_flash_image(
+            let (_, flash_image_path) = create_flash_image_with_owner_manifest(
                 new_options.builder.as_mut().unwrap().get_caliptra_fw().ok(),
                 new_soc_manifest.clone(),
                 Some(opts.runtime.clone()),
+                Some(owner_auth_manifest),
+                None,
                 None,
                 0,
                 soc_images_paths.clone(),
@@ -826,6 +844,18 @@ mod test {
                 ..Default::default()
             },
         ];
+        let owner_soc_images_paths = create_soc_images(vec![vec![0xCC; 128]]);
+        let owner_soc_images = vec![ImageCfg {
+            path: owner_soc_images_paths[0].clone(),
+            load_addr: MCI_BASE_AXI_ADDRESS
+                + MCU_MBOX_SRAM1_OFFSET
+                + soc_image_fw_1.len() as u64
+                + soc_image_fw_2.len() as u64,
+            image_id: 0x10000,
+            component_id: 0x10000,
+            exec_bit: 7,
+            ..Default::default()
+        }];
 
         // Compute vendor_pk_hash from the prebuilt caliptra firmware
         let manifest: ImageManifest = {
@@ -847,6 +877,7 @@ mod test {
             vendor_pk_hash: Some(vendor_pk_hash),
             mcu_firmware: Some(test_runtime.clone()),
             soc_images: Some(soc_images.clone()),
+            owner_soc_images: Some(owner_soc_images),
             ..Default::default()
         });
 
