@@ -52,10 +52,11 @@ enabled = false
 slot = 1
 hash = "a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5a5"
 
-[increase_caliptra_min_svn]
+[increase_min_svn]
 enabled = false
 flags = 0
-svn = 7
+target = 1
+svn = 5
 
 [revoke_vendor_pub_key]
 enabled = false

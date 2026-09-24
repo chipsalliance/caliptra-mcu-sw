@@ -24,7 +24,7 @@ pub struct TestConfig {
     #[serde(default)]
     pub provision_vendor_pk_hash: ProvisionVendorPkHashConfig,
     #[serde(default)]
-    pub increase_caliptra_min_svn: IncreaseCaliptraMinSvnConfig,
+    pub increase_min_svn: IncreaseMinSvnConfig,
     #[serde(default)]
     pub revoke_vendor_pub_key: RevokeVendorPubKeyConfig,
     #[serde(default)]
@@ -61,11 +61,13 @@ pub struct ProvisionVendorPkHashConfig {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct IncreaseCaliptraMinSvnConfig {
+pub struct IncreaseMinSvnConfig {
     #[serde(default)]
     pub enabled: bool,
     #[serde(default)]
     pub flags: u32,
+    #[serde(default)]
+    pub target: u32,
     #[serde(default)]
     pub svn: u32,
 }
@@ -269,7 +271,7 @@ impl Default for TestConfig {
             }),
             fe_prog: FeProgConfig::default(),
             provision_vendor_pk_hash: ProvisionVendorPkHashConfig::default(),
-            increase_caliptra_min_svn: IncreaseCaliptraMinSvnConfig::default(),
+            increase_min_svn: IncreaseMinSvnConfig::default(),
             revoke_vendor_pub_key: RevokeVendorPubKeyConfig::default(),
             revoke_vendor_pk_hash: RevokeVendorPkHashConfig::default(),
             fuse_lock_partition: FuseLockPartitionConfig::default(),

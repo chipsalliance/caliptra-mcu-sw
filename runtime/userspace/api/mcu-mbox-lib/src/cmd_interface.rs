@@ -11,15 +11,15 @@ use caliptra_mcu_libsyscall_caliptra::mcu_mbox::MbxCmdStatus;
 use caliptra_mcu_libsyscall_caliptra::{otp, DefaultSyscalls};
 use caliptra_mcu_mbox_common::messages::{
     ClearLogReq, ClearLogResp, CommandId, DeviceCapsReq, DeviceCapsResp, ExportAttestedCsrReq,
-    FirmwareVersionReq, FirmwareVersionResp, FuseIncreaseCaliptraMinSvnReq,
-    FuseIncreaseCaliptraMinSvnResp, FuseLockPartitionReq, FuseLockPartitionResp, FuseReadReq,
-    FuseReadResp, FuseRevokeVendorPkHashReq, FuseRevokeVendorPkHashResp, FuseRevokeVendorPubKeyReq,
+    FirmwareVersionReq, FirmwareVersionResp, FuseIncreaseMinSvnReq, FuseIncreaseMinSvnResp,
+    FuseLockPartitionReq, FuseLockPartitionResp, FuseReadReq, FuseReadResp,
+    FuseRevokeVendorPkHashReq, FuseRevokeVendorPkHashResp, FuseRevokeVendorPubKeyReq,
     FuseRevokeVendorPubKeyResp, FuseWriteReq, FuseWriteResp, GetAttestationReq,
     GetAuthCmdChallengeReq, GetAuthCmdChallengeResp, GetLogReq, LogType, MailboxReqHeader,
     MailboxRespHeader, MailboxRespHeaderVarSize, McuFeProgReq, McuMailboxReq, McuMailboxResp,
     McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq,
     McuResponseVarSize, ProvisionOwnerPkHashReq, ProvisionOwnerPkHashResp,
-    ProvisionVendorPkHashReq, ProvisionVendorPkHashResp, DEVICE_CAPS_SIZE,
+    ProvisionVendorPkHashReq, ProvisionVendorPkHashResp, SvnTarget, DEVICE_CAPS_SIZE,
     GET_ATTESTATION_RESP_PREFIX_LEN, MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN,
     MAX_RESP_DATA_SIZE,
 };
@@ -219,7 +219,7 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
                 }
                 inner @ CommandId::MC_PROVISION_VENDOR_PK_HASH
                 | inner @ CommandId::MC_PROVISION_OWNER_PK_HASH
-                | inner @ CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN
+                | inner @ CommandId::MC_FUSE_INCREASE_MIN_SVN
                 | inner @ CommandId::MC_FE_PROG
                 | inner @ CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH
                 | inner @ CommandId::MC_FUSE_READ
@@ -867,8 +867,8 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
             CommandId::MC_PROVISION_OWNER_PK_HASH => {
                 self.handle_provision_owner_pk_hash(cmd, resp_buf).await
             }
-            CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN => {
-                self.handle_increase_caliptra_min_svn(cmd, resp_buf).await
+            CommandId::MC_FUSE_INCREASE_MIN_SVN => {
+                self.handle_increase_min_svn(cmd, resp_buf).await
             }
             CommandId::MC_FE_PROG => self.handle_fe_prog(cmd, resp_buf).await,
             CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY => {
@@ -1071,25 +1071,30 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         Ok((&mut resp_buf[..resp_bytes.len()], MbxCmdStatus::Complete))
     }
 
-    async fn handle_increase_caliptra_min_svn<'r>(
+    async fn handle_increase_min_svn<'r>(
         &self,
         req: &[u8],
         resp_buf: &'r mut [u8],
     ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
-        if resp_buf.len() < core::mem::size_of::<FuseIncreaseCaliptraMinSvnResp>() {
+        if resp_buf.len() < core::mem::size_of::<FuseIncreaseMinSvnResp>() {
             return Err(errors::INVALID_PARAMS);
         }
 
-        // Decode the request
-        let req = FuseIncreaseCaliptraMinSvnReq::ref_from_bytes(req)
-            .map_err(|_| errors::INVALID_PARAMS)?;
+        let req = FuseIncreaseMinSvnReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        if req.flags != 0 {
+            return Err(errors::INVALID_PARAMS);
+        }
 
+        let target = SvnTarget::try_from(req.target).map_err(|_| errors::INVALID_PARAMS)?;
         self.non_crypto_cmds_handler
-            .increase_caliptra_min_svn(self.scratch, req.svn)
+            .increase_min_svn(self.scratch, target, req.svn)
             .await
-            .map_err(map_common_cmd_error)?;
+            .map_err(|error| match error {
+                CaliptraCompletionCode::UnsupportedOperation => errors::UNSUPPORTED_COMMAND,
+                error => map_common_cmd_error(error),
+            })?;
 
-        let resp = FuseIncreaseCaliptraMinSvnResp::default();
+        let resp = FuseIncreaseMinSvnResp::default();
         let resp_bytes = resp.as_bytes();
         resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
         Ok((&mut resp_buf[..resp_bytes.len()], MbxCmdStatus::Complete))

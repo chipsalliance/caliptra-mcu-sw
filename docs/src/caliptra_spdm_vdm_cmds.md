@@ -98,7 +98,7 @@ The following subcommands are assigned to the SPDM VDM IANA authorization-gated 
 | `0x4D41_4343` (`MACC`) | GetAuthChallenge           | Supported     | Acquire a one-use 48-byte authorization challenge.  |
 | `0x5056_504B` (`PVPK`) | ProvisionVendorPkHash      | Supported     | Provision vendor public key hash.                   |
 | `0x504F_504B` (`POPK`) | ProvisionOwnerPkHash       | Supported     | Provision owner public key hash.                    |
-| `0x4D43_4D53` (`MCMS`) | FuseIncreaseCaliptraMinSvn | Supported     | Increase Caliptra minimum SVN.                      |
+| `0x4D43_4D53` (`MCMS`) | FuseIncreaseMinSvn         | Supported     | Increase the Caliptra Runtime or SoC Manifest minimum SVN. |
 | `0x4D43_4650` (`MCFP`) | ProgramFieldEntropy        | Supported     | Program field entropy.                              |
 | `0x4D52_564B` (`MRVK`) | FuseRevokeVendorPubKey     | Supported     | Revoke vendor public key.                           |
 | `0x5256_4B48` (`RVKH`) | FuseRevokeVendorPkHash     | Supported     | Revoke vendor public key hash.                      |

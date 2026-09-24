@@ -13,12 +13,11 @@
 
 use crate::api::{CaliptraApiError, CaliptraResult};
 use caliptra_mcu_core_util_host_command_types::fuse::{
-    FeProgRequest, FeProgResponse, FuseIncreaseCaliptraMinSvnRequest,
-    FuseIncreaseCaliptraMinSvnResponse, FuseLockPartitionRequest, FuseLockPartitionResponse,
-    FuseRevokeVendorPkHashRequest, FuseRevokeVendorPkHashResponse, FuseRevokeVendorPubKeyRequest,
-    FuseRevokeVendorPubKeyResponse, GetAuthCmdChallengeRequest, GetAuthCmdChallengeResponse,
-    ProvisionOwnerPkHashRequest, ProvisionOwnerPkHashResponse, ProvisionVendorPkHashRequest,
-    ProvisionVendorPkHashResponse,
+    FeProgRequest, FeProgResponse, FuseIncreaseMinSvnRequest, FuseIncreaseMinSvnResponse,
+    FuseLockPartitionRequest, FuseLockPartitionResponse, FuseRevokeVendorPkHashRequest,
+    FuseRevokeVendorPkHashResponse, FuseRevokeVendorPubKeyRequest, FuseRevokeVendorPubKeyResponse,
+    GetAuthCmdChallengeRequest, GetAuthCmdChallengeResponse, ProvisionOwnerPkHashRequest,
+    ProvisionOwnerPkHashResponse, ProvisionVendorPkHashRequest, ProvisionVendorPkHashResponse,
 };
 use caliptra_mcu_core_util_host_command_types::CaliptraCommandId;
 use caliptra_util_host_session::{CaliptraSession, SessionError};
@@ -98,11 +97,11 @@ authorized_fuse_api!(
     "ProvisionVendorPkHash command execution failed"
 );
 authorized_fuse_api!(
-    caliptra_cmd_fuse_increase_caliptra_min_svn,
-    FuseIncreaseCaliptraMinSvnRequest,
-    FuseIncreaseCaliptraMinSvnResponse,
-    FuseIncreaseCaliptraMinSvn,
-    "FuseIncreaseCaliptraMinSvn command execution failed"
+    caliptra_cmd_fuse_increase_min_svn,
+    FuseIncreaseMinSvnRequest,
+    FuseIncreaseMinSvnResponse,
+    FuseIncreaseMinSvn,
+    "FuseIncreaseMinSvn command execution failed"
 );
 authorized_fuse_api!(
     caliptra_cmd_fuse_revoke_vendor_pub_key,

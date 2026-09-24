@@ -14,11 +14,11 @@ use super::command_traits::{
 };
 use alloc::vec::Vec;
 use caliptra_mcu_core_util_host_command_types::fuse::{
-    FeProgRequest, FeProgResponse, FuseIncreaseCaliptraMinSvnRequest,
-    FuseIncreaseCaliptraMinSvnResponse, FuseLockPartitionRequest, FuseLockPartitionResponse,
-    FuseRevokeVendorPkHashRequest, FuseRevokeVendorPkHashResponse, FuseRevokeVendorPubKeyRequest,
-    FuseRevokeVendorPubKeyResponse, GetAuthCmdChallengeRequest, GetAuthCmdChallengeResponse,
-    ProvisionVendorPkHashRequest, ProvisionVendorPkHashResponse, AUTH_CMD_CHALLENGE_SIZE,
+    FeProgRequest, FeProgResponse, FuseIncreaseMinSvnRequest, FuseIncreaseMinSvnResponse,
+    FuseLockPartitionRequest, FuseLockPartitionResponse, FuseRevokeVendorPkHashRequest,
+    FuseRevokeVendorPkHashResponse, FuseRevokeVendorPubKeyRequest, FuseRevokeVendorPubKeyResponse,
+    GetAuthCmdChallengeRequest, GetAuthCmdChallengeResponse, ProvisionVendorPkHashRequest,
+    ProvisionVendorPkHashResponse, AUTH_CMD_CHALLENGE_SIZE,
 };
 use caliptra_mcu_core_util_host_command_types::CommonResponse;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
@@ -210,12 +210,12 @@ define_authorized_fuse_mailbox_command!(
     ExtCmdProvisionVendorPkHashResponse
 );
 define_authorized_fuse_mailbox_command!(
-    FuseIncreaseCaliptraMinSvnCmd,
+    FuseIncreaseMinSvnCmd,
     0x4D43_4D53,
-    FuseIncreaseCaliptraMinSvnRequest,
-    FuseIncreaseCaliptraMinSvnResponse,
-    ExtCmdFuseIncreaseCaliptraMinSvnRequest,
-    ExtCmdFuseIncreaseCaliptraMinSvnResponse
+    FuseIncreaseMinSvnRequest,
+    FuseIncreaseMinSvnResponse,
+    ExtCmdFuseIncreaseMinSvnRequest,
+    ExtCmdFuseIncreaseMinSvnResponse
 );
 define_authorized_fuse_mailbox_command!(
     FuseRevokeVendorPubKeyCmd,

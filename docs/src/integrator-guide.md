@@ -268,12 +268,17 @@ the firmware-boot reset path, or in the hitless-update reset path, after
 Caliptra Core has loaded the runtime image into MCU SRAM.
 
 There is also an authorized runtime mailbox command,
-`MC_FUSE_INCREASE_CALIPTRA_MIN_SVN`, that advances the Caliptra firmware minimum
-SVN directly in the `CALIPTRA_FW_SVN` fuse. The reference runtime exposes this
-command through both the in-band MCI mailbox and OOB SPDM VDM paths and requires
-the runtime authorization flow. It rejects requests that are zero, above 128,
-lower than the current fuse floor, or higher than the currently running
-Caliptra firmware SVN reported by `FW_INFO`.
+`MC_FUSE_INCREASE_MIN_SVN`, that advances either the Caliptra Runtime floor or
+`CPTRA_CORE_SOC_MANIFEST_SVN`. The reference runtime exposes this command
+through both the in-band MCI mailbox and OOB SPDM VDM paths and requires the
+runtime authorization flow. The Owner SoC Manifest target is reserved but not
+implemented. Caliptra Runtime requests that are zero, above 128, lower than the
+current fuse floor, or higher than the currently running Caliptra firmware SVN
+reported by `FW_INFO` are rejected. Because `FW_INFO` does not expose the running
+SoC Manifest SVN, the SoC Manifest target can enforce range, monotonicity, and
+the `CPTRA_CORE_SOC_MANIFEST_MAX_SVN` ceiling, but cannot reject a requested
+floor above the currently running image. Platforms should prefer the
+authenticated SVN-header workflow when that assurance is required.
 
 ## Management Command Transport Expectations
 
@@ -282,8 +287,8 @@ treated as interchangeable:
 
 | Path | Who can use it | Privileged commands in that path |
 |---|---|---|
-| MCI mailbox runtime interface | A SoC-side agent with MCI mailbox access, or an explicit platform proxy to that agent | Runtime handlers exist for `MC_PROVISION_VENDOR_PK_HASH`, `MC_FUSE_REVOKE_VENDOR_PUB_KEY`, `MC_FUSE_REVOKE_VENDOR_PK_HASH`, `MC_FUSE_INCREASE_CALIPTRA_MIN_SVN`, `MC_FE_PROG`, and generic fuse read/write/lock commands. |
-| OOB SPDM VDM over MCTP/I3C | External BMC/OOB requester speaking the Caliptra SPDM VDM protocol | `Get Auth Challenge`, `Provision Vendor PK Hash`, `Fuse Increase Caliptra Min SVN`, `Program Field Entropy`, `Fuse Revoke Vendor Public Key`, and `Fuse Revoke Vendor PK Hash` under SPDM `AuthorizedCommand`. |
+| MCI mailbox runtime interface | A SoC-side agent with MCI mailbox access, or an explicit platform proxy to that agent | Runtime handlers exist for `MC_PROVISION_VENDOR_PK_HASH`, `MC_FUSE_REVOKE_VENDOR_PUB_KEY`, `MC_FUSE_REVOKE_VENDOR_PK_HASH`, `MC_FUSE_INCREASE_MIN_SVN`, `MC_FE_PROG`, and generic fuse read/write/lock commands. |
+| OOB SPDM VDM over MCTP/I3C | External BMC/OOB requester speaking the Caliptra SPDM VDM protocol | `Get Auth Challenge`, `Provision Vendor PK Hash`, `Fuse Increase Min SVN`, `Program Field Entropy`, `Fuse Revoke Vendor Public Key`, and `Fuse Revoke Vendor PK Hash` under SPDM `AuthorizedCommand`. |
 
 The `caliptra-util-host` mailbox transport is a software abstraction that
 formats supported MCU mailbox commands through a platform-provided
@@ -387,8 +392,8 @@ authorizer trait (`CommandAuthorizer` for mailbox or `CaliptraVdmAuthorization` 
 SPDM VDM) and provisioning the corresponding verification public keys in OTP
 fuses, secure platform storage, or embedded in firmware directly.
 
-The `caliptra-spdm-validator` host tool supports the four authorized fuse VDMs
-through the `[provision_vendor_pk_hash]`, `[increase_caliptra_min_svn]`,
+The `caliptra-spdm-validator` host tool supports the authorized fuse VDMs
+through the `[provision_vendor_pk_hash]`, `[increase_min_svn]`,
 `[revoke_vendor_pub_key]`, and `[revoke_vendor_pk_hash]` configuration sections.
 All integer fields below are little-endian, and the signature covers exactly the
 bytes before `HybridSignature`:
@@ -396,7 +401,7 @@ bytes before `HybridSignature`:
 | Subcommand | Canonical ID | Authorized payload |
 |---|---:|---|
 | Provision Vendor PK Hash | `0x5056504b` (`PVPK`) | `slot:u32 \| hash:[u8;48] \| HybridSignature` |
-| Increase Caliptra Min SVN | `0x4d434d53` (`MCMS`) | `flags:u32 \| svn:u32 \| HybridSignature` |
+| Increase Min SVN | `0x4d434d53` (`MCMS`) | `flags:u32 \| target:u32 \| svn:u32 \| HybridSignature` |
 | Revoke Vendor Public Key | `0x4d52564b` (`MRVK`) | `reserved:u32 \| slot:u32 \| key_type:u32 \| key_index:u32 \| HybridSignature` |
 | Revoke Vendor PK Hash | `0x52564b48` (`RVKH`) | `reserved:u32 \| slot:u32 \| HybridSignature` |
 
