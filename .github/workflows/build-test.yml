@@ -55,7 +55,7 @@ jobs:
 
   precheckin:
     runs-on: e2-standard-8
-    needs: [build-xtask]
+    needs: [build-xtask, caliptra-util-host-precheckin]
     timeout-minutes: 45
 
     env:
@@ -93,6 +93,11 @@ jobs:
 
       - name: Run precheckin
         run: /tmp/xtask precheckin
+
+  caliptra-util-host-precheckin:
+    uses: ./.github/workflows/caliptra-util-host-validator.yml
+    with:
+      run-validator-tests: false
 
   build-firmware:
     runs-on: e2-standard-16-big-disk
