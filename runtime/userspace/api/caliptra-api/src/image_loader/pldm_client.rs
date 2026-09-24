@@ -161,6 +161,38 @@ pub async fn pldm_download_image(
     Ok(())
 }
 
+pub async fn pldm_download_payload_chunk(
+    offset: usize,
+    buffer: &mut [u8],
+) -> Result<(), ErrorCode> {
+    if buffer.is_empty() || buffer.len() > super::pldm_context::PLDM_PAYLOAD_CHUNK_SIZE {
+        return Err(ErrorCode::Size);
+    }
+
+    PLDM_STATE.lock(|state| {
+        let mut state = state.borrow_mut();
+        *state = State::DownloadingPayload;
+    });
+    DOWNLOAD_CTX.lock(|ctx| {
+        let mut ctx = ctx.borrow_mut();
+        ctx.total_length = buffer.len();
+        ctx.initial_offset = offset;
+        ctx.current_offset = offset;
+        ctx.total_downloaded = 0;
+    });
+
+    PLDM_TASK_YIELD.signal(());
+    IMAGE_LOADING_TASK_YIELD.wait().await;
+    let state = PLDM_STATE.lock(|state| *state.borrow());
+    if state != State::PayloadDownloadComplete {
+        return Err(ErrorCode::Fail);
+    }
+    DOWNLOAD_CTX.lock(|ctx| {
+        buffer.copy_from_slice(&ctx.borrow().payload[..buffer.len()]);
+    });
+    Ok(())
+}
+
 pub async fn initialize_pldm<'a, D: DMAMapping + 'static>(
     spawner: Spawner,
     descriptors: &'a [Descriptor],

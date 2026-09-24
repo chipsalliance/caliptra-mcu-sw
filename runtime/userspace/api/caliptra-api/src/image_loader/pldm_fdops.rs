@@ -70,17 +70,24 @@ impl<'a, D: DMAMapping> StreamingFdOps<'a, D> {
         let state = PLDM_STATE.lock(|state| *state.borrow());
         let dma_params = DOWNLOAD_CTX.lock(|ctx| {
             let mut ctx = ctx.borrow_mut();
-            ctx.total_downloaded += data.len();
             let start = ctx.current_offset - ctx.initial_offset;
 
             if state == State::DownloadingHeader {
+                ctx.total_downloaded += data.len();
                 let end = (start + data.len()).min(ctx.header.len());
                 ctx.header[start..end].copy_from_slice(&data[..end - start]);
             } else if state == State::DownloadingToc {
+                ctx.total_downloaded += data.len();
                 let end = (start + data.len()).min(ctx.image_info.len());
                 ctx.image_info[start..end].copy_from_slice(&data[..end - start]);
             } else if state == State::DownloadingImage {
+                ctx.total_downloaded += data.len();
                 return Some((ctx.load_address, start));
+            } else if state == State::DownloadingPayload {
+                let bytes_to_copy = data.len().min(ctx.total_length - ctx.total_downloaded);
+                let end = start + bytes_to_copy;
+                ctx.payload[start..end].copy_from_slice(&data[..bytes_to_copy]);
+                ctx.total_downloaded += bytes_to_copy;
             }
 
             None
@@ -195,6 +202,9 @@ impl<D: DMAMapping> FdOps for StreamingFdOps<'_, D> {
                         return true;
                     } else if *state == State::DownloadingImage {
                         *state = State::ImageDownloadComplete;
+                        return true;
+                    } else if *state == State::DownloadingPayload {
+                        *state = State::PayloadDownloadComplete;
                         return true;
                     }
                     false
