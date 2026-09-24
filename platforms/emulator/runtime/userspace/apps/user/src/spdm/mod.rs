@@ -40,6 +40,21 @@ use embassy_executor::Spawner;
 ///
 /// It contributes to `MaxSPDMmsgSize` only when buffered large requests are
 /// enabled. Raising it requires larger scratch pools.
+#[cfg(feature = "cert-provisioning")]
+const MAX_BUFFERED_SPDM_MSG_SIZE: usize = {
+    let declared = 14 * 1024;
+    assert!(
+        declared
+            >= caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::large_response_capacity::<
+                crate::caliptra_cmd_handler::CaliptraCmdBackend,
+            >(),
+        "SPDM scratch capacity is smaller than the largest buffered VDM response; raise \
+         MAX_BUFFERED_SPDM_MSG_SIZE and both responder scratch pools"
+    );
+    declared
+};
+
+#[cfg(not(feature = "cert-provisioning"))]
 const MAX_BUFFERED_SPDM_MSG_SIZE: usize = {
     let declared = 8 * 1024;
     assert!(
@@ -183,6 +198,17 @@ const fn required_scratch() -> usize {
 ///
 /// MCTP hosts Caliptra VDM and must hold a buffered large request while its
 /// handler uses transient DPE/SHA mailbox workspaces.
+#[cfg(feature = "cert-provisioning")]
+const MCTP_SPDM_SCRATCH_SIZE: usize = {
+    let declared = 24 * 1024;
+    assert!(
+        declared >= required_scratch(),
+        "MCTP SPDM scratch pool is too small for MAX_BUFFERED_SPDM_MSG_SIZE"
+    );
+    declared
+};
+
+#[cfg(not(feature = "cert-provisioning"))]
 const MCTP_SPDM_SCRATCH_SIZE: usize = {
     let declared = 18 * 1024;
     assert!(
@@ -191,7 +217,19 @@ const MCTP_SPDM_SCRATCH_SIZE: usize = {
     );
     declared
 };
+
 /// DOE needs room for measurement records and secure-session crypto workspaces.
+#[cfg(feature = "cert-provisioning")]
+const DOE_SPDM_SCRATCH_SIZE: usize = {
+    let declared = 24 * 1024;
+    assert!(
+        declared >= required_scratch(),
+        "DOE SPDM scratch pool is too small for MAX_BUFFERED_SPDM_MSG_SIZE"
+    );
+    declared
+};
+
+#[cfg(not(feature = "cert-provisioning"))]
 const DOE_SPDM_SCRATCH_SIZE: usize = {
     let declared = 18 * 1024;
     assert!(

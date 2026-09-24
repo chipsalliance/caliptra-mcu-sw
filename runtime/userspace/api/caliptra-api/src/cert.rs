@@ -281,8 +281,9 @@ async fn get_idev_csr_inner(cmd: u32, csr_out: &mut [u8]) -> McuResult<Option<us
 /// `chksum(4) | key_id(4) | nonce(32)` = 40 B.
 const ATTESTED_CSR_REQ_LEN: usize = 40;
 
-/// Issue `GET_ATTESTED_ECC384_CSR` and write the returned CSR DER bytes into
-/// `csr_out`, returning the number of bytes written.
+/// Issue `GET_ATTESTED_ECC384_CSR` and write the returned CSR DER or
+/// KeyPairInventory discovery bytes (when `key_id == 0`) into `csr_out`,
+/// returning the number of bytes written.
 ///
 /// `csr_out` is also used as the mailbox response buffer for the duration of
 /// the call; on return, only the CSR data occupies its prefix. The caller must
@@ -297,8 +298,9 @@ pub async fn get_attested_csr_ecc384(
     get_attested_csr_inner(CMD_GET_ATTESTED_ECC384_CSR, key_id, nonce, csr_out).await
 }
 
-/// Issue `GET_ATTESTED_MLDSA87_CSR` and write the returned CSR DER bytes into
-/// `csr_out`. See [`get_attested_csr_ecc384`] for buffer semantics.
+/// Issue `GET_ATTESTED_MLDSA87_CSR` and write the returned CSR DER or
+/// KeyPairInventory discovery bytes (when `key_id == 0`) into `csr_out`.
+/// See [`get_attested_csr_ecc384`] for buffer semantics.
 #[inline(never)]
 pub async fn get_attested_csr_mldsa87(
     key_id: u32,
@@ -438,5 +440,20 @@ mod tests {
         // Past Caliptra's cap even when the partition would allow it.
         let huge = u32::from_le_bytes([0x30, 0x82, 0xff, 0xff]); // 65535 + 4
         assert_eq!(mldsa87_cert_der_len(huge, 65536), None);
+    }
+
+    #[test]
+    fn get_attested_csr_req_wire_layout_key_id_zero() {
+        let key_id = 0u32;
+        let nonce = [0x5au8; 32];
+        let mut req = [0u8; ATTESTED_CSR_REQ_LEN];
+        req[4..8].copy_from_slice(&key_id.to_le_bytes());
+        req[8..ATTESTED_CSR_REQ_LEN].copy_from_slice(&nonce);
+        let checksum = calc_checksum(CMD_GET_ATTESTED_ECC384_CSR, &req[4..]);
+        req[..4].copy_from_slice(&checksum.to_le_bytes());
+
+        assert_eq!(req.len(), 40);
+        assert_eq!(&req[4..8], &[0, 0, 0, 0]);
+        assert_eq!(&req[8..40], &[0x5a; 32]);
     }
 }
