@@ -71,6 +71,28 @@ mod test {
         flash_offset: usize,
         soc_images_paths: Vec<PathBuf>,
     ) -> (Vec<PathBuf>, PathBuf) {
+        create_flash_image_with_owner_manifest(
+            caliptra_fw_path,
+            soc_manifest_path,
+            mcu_runtime_path,
+            None,
+            None,
+            partition_table,
+            flash_offset,
+            soc_images_paths,
+        )
+    }
+
+    fn create_flash_image_with_owner_manifest(
+        caliptra_fw_path: Option<PathBuf>,
+        soc_manifest_path: Option<PathBuf>,
+        mcu_runtime_path: Option<PathBuf>,
+        owner_auth_manifest_path: Option<PathBuf>,
+        soc_images: Option<Vec<ImageCfg>>,
+        partition_table: Option<PartitionTable>,
+        flash_offset: usize,
+        soc_images_paths: Vec<PathBuf>,
+    ) -> (Vec<PathBuf>, PathBuf) {
         let flash_image_path = tempfile::NamedTempFile::new()
             .expect("Failed to create flash image file")
             .path()
@@ -81,6 +103,8 @@ mod test {
                 caliptra_firmware: caliptra_fw_path,
                 soc_manifest: soc_manifest_path,
                 mcu_firmware: mcu_runtime_path,
+                owner_auth_manifest: owner_auth_manifest_path,
+                soc_images,
                 soc_image_paths: Some(
                     soc_images_paths
                         .iter()
@@ -416,7 +440,13 @@ mod test {
         let checksum_calculator = StandAloneChecksumCalculator::new();
         new_partition_table.populate_checksum(&checksum_calculator);
         let secondary_flash_image_path = if opts.secondary_flash_image_path.is_some() {
-            let (_, secondary_flash_image_path) = create_flash_image(
+            let owner_auth_manifest = new_options
+                .builder
+                .as_mut()
+                .unwrap()
+                .get_owner_auth_manifest(None)
+                .expect("Failed to build Owner Authorization Manifest");
+            let (_, secondary_flash_image_path) = create_flash_image_with_owner_manifest(
                 new_options.builder.as_mut().unwrap().get_caliptra_fw().ok(),
                 new_options
                     .builder
@@ -425,6 +455,8 @@ mod test {
                     .get_soc_manifest(None)
                     .ok(),
                 Some(opts.runtime.clone()),
+                Some(owner_auth_manifest),
+                None,
                 None,
                 0,
                 soc_images_paths.clone(),
@@ -642,12 +674,20 @@ mod test {
             .unwrap()
             .get_soc_manifest(None)
             .ok();
+        let owner_auth_manifest = new_options
+            .builder
+            .as_mut()
+            .unwrap()
+            .get_owner_auth_manifest(None)
+            .expect("Failed to build Owner Authorization Manifest");
 
         // Create a flash image with the updated SOC manifest
-        let (_, flash_image_path) = create_flash_image(
+        let (_, flash_image_path) = create_flash_image_with_owner_manifest(
             new_options.builder.as_mut().unwrap().get_caliptra_fw().ok(),
             new_soc_manifest.clone(),
             Some(opts.runtime.clone()),
+            Some(owner_auth_manifest.clone()),
+            None,
             opts.partition_table.clone(),
             flash_offset,
             soc_images_paths.clone(),
@@ -658,10 +698,12 @@ mod test {
             None
         };
         new_options.pldm_fw_pkg_path = if opts.pldm_fw_pkg_path.is_some() {
-            let (_, flash_image_path) = create_flash_image(
+            let (_, flash_image_path) = create_flash_image_with_owner_manifest(
                 new_options.builder.as_mut().unwrap().get_caliptra_fw().ok(),
                 new_soc_manifest.clone(),
                 Some(opts.runtime.clone()),
+                Some(owner_auth_manifest),
+                None,
                 None,
                 0,
                 soc_images_paths.clone(),
@@ -811,6 +853,19 @@ mod test {
             },
         ];
 
+        let owner_soc_images_paths = create_soc_images(vec![vec![0xCC; 128]]);
+        let owner_soc_images = vec![ImageCfg {
+            path: owner_soc_images_paths[0].clone(),
+            load_addr: MCI_BASE_AXI_ADDRESS
+                + MCU_MBOX_SRAM1_OFFSET
+                + soc_image_fw_1.len() as u64
+                + soc_image_fw_2.len() as u64,
+            image_id: 0x10000,
+            component_id: 0x10000,
+            exec_bit: 7,
+            ..Default::default()
+        }];
+
         // Compute vendor_pk_hash from the prebuilt caliptra firmware
         let manifest: ImageManifest = {
             let bundle: [u8; core::mem::size_of::<ImageManifest>()] = binaries.caliptra_fw
@@ -831,6 +886,7 @@ mod test {
             vendor_pk_hash: Some(vendor_pk_hash),
             mcu_firmware: Some(test_runtime.clone()),
             soc_images: Some(soc_images.clone()),
+            owner_soc_images: Some(owner_soc_images),
             ..Default::default()
         });
 
@@ -892,18 +948,6 @@ mod test {
             ([0x55u8; 512].to_vec(), [0xAAu8; 256].to_vec())
         };
 
-        // Get runtime: prefer prebuilt, fall back to compilation
-        let test_runtime = if let Ok(binaries) = FirmwareBinaries::from_env() {
-            let runtime_data = binaries
-                .test_runtime(feature)
-                .expect("Prebuilt runtime not found");
-            let path = std::env::temp_dir().join(format!("soc-boot-build-runtime-{}.bin", feature));
-            std::fs::write(&path, runtime_data).expect("Failed to write runtime");
-            path
-        } else {
-            compile_runtime(Some(feature), false)
-        };
-
         let soc_images_paths =
             create_soc_images(vec![soc_image_fw_1.clone(), soc_image_fw_2.clone()]);
 
@@ -928,6 +972,35 @@ mod test {
                 ..Default::default()
             },
         ];
+
+        let owner_soc_images_paths = create_soc_images(vec![vec![0xCC; 128]]);
+        let owner_soc_images = vec![ImageCfg {
+            path: owner_soc_images_paths[0].clone(),
+            load_addr: MCI_BASE_AXI_ADDRESS
+                + MCU_MBOX_SRAM1_OFFSET
+                + soc_image_fw_1.len() as u64
+                + soc_image_fw_2.len() as u64,
+            image_id: 0x10000,
+            component_id: 0x10000,
+            exec_bit: 7,
+            ..Default::default()
+        }];
+
+        CaliptraBuilder::new(&caliptra_mcu_builder::CaliptraBuildArgs::default())
+            .write_attestation_manifest_config(&soc_images)
+            .expect("Failed to write attestation manifest config");
+
+        // Get runtime after writing descriptors so user-app embeds this load list.
+        let test_runtime = if let Ok(binaries) = FirmwareBinaries::from_env() {
+            let runtime_data = binaries
+                .test_runtime(feature)
+                .expect("Prebuilt runtime not found");
+            let path = std::env::temp_dir().join(format!("soc-boot-build-runtime-{}.bin", feature));
+            std::fs::write(&path, runtime_data).expect("Failed to write runtime");
+            path
+        } else {
+            compile_runtime(Some(feature), false)
+        };
 
         // When prebuilt binaries are available, pass the Caliptra ROM/FW paths
         // to the builder so it doesn't try to compile them from scratch.
@@ -954,6 +1027,7 @@ mod test {
         let mut builder = CaliptraBuilder::new(&caliptra_mcu_builder::CaliptraBuildArgs {
             mcu_firmware: Some(test_runtime.clone()),
             soc_images: Some(soc_images.clone()),
+            owner_soc_images: Some(owner_soc_images),
             caliptra_rom: prebuilt_caliptra_rom,
             caliptra_firmware: prebuilt_caliptra_fw,
             vendor_pk_hash: prebuilt_vendor_pk_hash,
@@ -968,6 +1042,9 @@ mod test {
         let soc_manifest = builder
             .get_soc_manifest(None)
             .expect("Failed to build SOC manifest");
+        let owner_auth_manifest = builder
+            .get_owner_auth_manifest(None)
+            .expect("Failed to build Owner Authorization Manifest");
 
         // Generate a valid flash image file
         let mut partition_table = PartitionTable {
@@ -984,10 +1061,12 @@ mod test {
             .get_active_partition()
             .1
             .map_or(0, |p| p.offset);
-        let (soc_images_paths, flash_image_path) = create_flash_image(
+        let (_, flash_image_path) = create_flash_image_with_owner_manifest(
             Some(caliptra_fw.clone()),
             Some(soc_manifest.clone()),
             Some(test_runtime.clone()),
+            Some(owner_auth_manifest.clone()),
+            Some(soc_images.clone()),
             Some(partition_table.clone()),
             flash_offset,
             soc_images_paths.clone(),
@@ -998,10 +1077,12 @@ mod test {
             None
         } else {
             let device_uuid = get_device_uuid();
-            let (_, flash_image_path) = create_flash_image(
+            let (_, flash_image_path) = create_flash_image_with_owner_manifest(
                 Some(caliptra_fw.clone()),
                 Some(soc_manifest.clone()),
                 Some(test_runtime.clone()),
+                Some(owner_auth_manifest),
+                Some(soc_images.clone()),
                 None,
                 0,
                 soc_images_paths.clone(),
@@ -1048,6 +1129,25 @@ mod test {
         let lock = TEST_LOCK.lock().unwrap();
         let opts = create_soc_boot_options(true);
         test_successful_boot(&opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_flash_soc_boot_missing_owner_manifest() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let mut opts = create_soc_boot_options(true);
+        let builder = opts.builder.as_mut().unwrap();
+        let (_, flash_image_path) = create_flash_image(
+            builder.get_caliptra_fw().ok(),
+            builder.get_soc_manifest(None).ok(),
+            Some(opts.runtime.clone()),
+            opts.partition_table.clone(),
+            opts.flash_offset,
+            opts.soc_images_paths.clone(),
+        );
+        opts.primary_flash_image_path = Some(flash_image_path);
+
+        assert_ne!(0, run_runtime_with_options(&opts));
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
