@@ -18,6 +18,7 @@ pub const MAX_CM_SHA_INPUT_SIZE: usize = MAILBOX_SIZE - 12;
 pub const MAX_CMB_AES_GCM_OUTPUT_SIZE: usize = MAX_CMB_DATA_SIZE + 16;
 pub const CMB_SHA_CONTEXT_SIZE: usize = 200;
 pub const MAX_RESP_DATA_SIZE: usize = 9216;
+pub const MAX_ATTESTED_CSR_RESP_DATA_SIZE: usize = 12800;
 pub const _CMB_AES_CONTEXT_SIZE: usize = 128;
 pub const CMB_AES_ENCRYPTED_CONTEXT_SIZE: usize = 156;
 const _: () = assert!(_CMB_AES_CONTEXT_SIZE + 12 + 16 == CMB_AES_ENCRYPTED_CONTEXT_SIZE);
