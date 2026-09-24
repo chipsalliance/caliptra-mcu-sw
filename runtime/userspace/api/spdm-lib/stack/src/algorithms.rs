@@ -319,7 +319,13 @@ fn build_response_body<S, L>(
             // to perserve ordering requirements (`AlgType` has to be monotonically rising).
             // A more sophisicated approach might be necessary if the space is needed otherwise.
             alg_structs: [
-                (key_ex_sel == KeyExSel::Dhe).then(|| AlgStructEntry::dhe(dhe)),
+                (key_ex_sel == KeyExSel::Dhe)
+                    .then(|| AlgStructEntry::dhe(dhe))
+                    .or_else(|| {
+                        // Spec-compliant workaround to comply with libspdm.
+                        (key_ex_sel == KeyExSel::Kem)
+                            .then_some(AlgStructEntry::dhe(DheAlgos::EMPTY))
+                    }),
                 (!aead.is_empty()).then(|| AlgStructEntry::aead(aead)),
                 (!key_schedule.is_empty()).then(|| AlgStructEntry::key_schedule(key_schedule)),
                 (key_ex_sel == KeyExSel::Kem).then(|| AlgStructEntry::kem(kem)),
