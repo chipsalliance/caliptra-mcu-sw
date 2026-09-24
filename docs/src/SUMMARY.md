@@ -30,6 +30,7 @@
         - [SPDM VDM Commands](./caliptra_spdm_vdm_cmds.md)
         - [Unified Command Handling](./unified_caliptra_command_handling.md)
     - [External Mailbox Commands](./external_mailbox_cmds.md)
+    - [MCU Mailbox Buffer Optimization](./mcu_mailbox_buffer_optimization.md)
     - [External MCTP VDM Commands](./external_mctp_vdm_cmds.md)
     - [Logging](./logging.md)
     - [In-Field Fuse Programming](./fuses.md)
