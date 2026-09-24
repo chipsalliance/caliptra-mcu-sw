@@ -781,11 +781,20 @@ mod test {
             .collect();
         let vendor_pk_hash: [u32; 12] = vendor_pk_hash.as_slice().try_into().unwrap();
 
-        // Only include network ROM if requested
-        let network_rom = match caliptra_mcu_builder::network_rom_build(params.network_rom_feature)
-        {
-            Ok(path) => std::fs::read(path).unwrap_or_default(),
-            Err(_) => Vec::new(),
+        // Only include network ROM if requested. Prefer the prebuilt variant to
+        // avoid concurrent tests rebuilding feature variants to a shared path.
+        let network_rom = if params.include_network_rom {
+            FirmwareBinaries::from_env()
+                .ok()
+                .and_then(|binaries| binaries.network_rom(params.network_rom_feature).ok())
+                .unwrap_or_else(|| {
+                    caliptra_mcu_builder::network_rom_build(params.network_rom_feature)
+                        .ok()
+                        .and_then(|path| std::fs::read(path).ok())
+                        .unwrap_or_default()
+                })
+        } else {
+            Vec::new()
         };
         let network_rom_slice: &[u8] = if params.include_network_rom {
             &network_rom

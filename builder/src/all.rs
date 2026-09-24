@@ -350,6 +350,7 @@ pub struct FirmwareBinaries {
     pub mcu_runtime: Vec<u8>,
     pub soc_manifest: Vec<u8>,
     pub test_roms: Vec<(String, Vec<u8>)>,
+    pub network_roms: Vec<(String, Vec<u8>)>,
     pub caliptra_test_roms: Vec<(String, Vec<u8>)>,
     pub test_soc_manifests: Vec<(String, Vec<u8>)>,
     pub test_runtimes: Vec<(String, Vec<u8>)>,
@@ -428,6 +429,9 @@ impl FirmwareBinaries {
                 }
                 name if name.contains("mcu-test-rom") => {
                     binaries.test_roms.push((name.to_string(), data));
+                }
+                name if name == "network-rom.bin" || name.starts_with("network-rom-feature-") => {
+                    binaries.network_roms.push((name.to_string(), data));
                 }
                 name if name.contains("cptra-test-rom") => {
                     binaries.caliptra_test_roms.push((name.to_string(), data));
@@ -608,6 +612,18 @@ impl FirmwareBinaries {
             .any(|(name, _)| name == &expected_name)
     }
 
+    pub fn network_rom(&self, feature: Option<&str>) -> Result<Vec<u8>> {
+        let expected_name = match feature {
+            Some(feature) => format!("network-rom-feature-{feature}.bin"),
+            None => "network-rom.bin".to_string(),
+        };
+        self.network_roms
+            .iter()
+            .find(|(name, _)| name == &expected_name)
+            .map(|(_, data)| data.clone())
+            .ok_or_else(|| anyhow::anyhow!("Network ROM not found. File name: {expected_name}"))
+    }
+
     /// Get the user-app ELF for a specific test feature, if archived in the
     /// firmware bundle. The ELF carries the `.defmt` table needed to decode
     /// frames retrieved from the device via the debug-log command.
@@ -684,6 +700,7 @@ pub struct AllBuildArgs<'a> {
     pub output: Option<&'a str>,
     pub platform: Option<&'a str>,
     pub rom_features: Option<&'a str>,
+    pub network_rom_features: Option<&'a str>,
     pub runtime_features: Option<&'a str>,
     pub separate_runtimes: bool,
     pub soc_images: Option<Vec<ImageCfg>>,
@@ -704,6 +721,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         output,
         platform,
         rom_features,
+        network_rom_features,
         runtime_features,
         separate_runtimes,
         soc_images,
@@ -1288,6 +1306,20 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         .collect();
     let test_runtimes = test_runtimes?;
 
+    let network_roms: Result<Vec<(PathBuf, String)>> = network_rom_features
+        .unwrap_or_default()
+        .split(',')
+        .filter(|feature| !feature.is_empty())
+        .enumerate()
+        .filter(|(idx, _)| idx % total_shards == shard_index)
+        .map(|(_, feature)| {
+            let path = PathBuf::from(crate::network_rom_build(Some(feature))?);
+            let name = format!("network-rom-feature-{feature}.bin");
+            Ok((path, name))
+        })
+        .collect();
+    let network_roms = network_roms?;
+
     let default_name = match (is_release, total_shards > 1) {
         (true, true) => format!("all-fw-release-shard-{}.zip", shard_index),
         (true, false) => "all-fw-release.zip".to_string(),
@@ -1377,6 +1409,10 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     )?;
     for (test_rom, name) in test_roms {
         add_to_zip(&test_rom, &name, &mut zip, options)?;
+    }
+
+    for (network_rom, name) in network_roms {
+        add_to_zip(&network_rom, &name, &mut zip, options)?;
     }
 
     for FeatureTestResource {
@@ -1708,4 +1744,40 @@ fn get_device_uuid() -> [u8; 16] {
         0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
         0x10,
     ]
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reads_network_roms_from_bundle() {
+        let bundle = tempfile::NamedTempFile::new().unwrap();
+        let file = std::fs::File::create(bundle.path()).unwrap();
+        let mut zip = ZipWriter::new(file);
+        let options = SimpleFileOptions::default();
+        zip.start_file("network-rom.bin", options).unwrap();
+        zip.write_all(&[1, 2, 3]).unwrap();
+        zip.start_file("network-rom-feature-test-network-boot-ipv6.bin", options)
+            .unwrap();
+        zip.write_all(&[4, 5, 6]).unwrap();
+        zip.finish().unwrap();
+
+        let binaries = FirmwareBinaries::read_from_zip(&bundle.path().to_path_buf()).unwrap();
+
+        assert_eq!(binaries.network_rom(None).unwrap(), [1, 2, 3]);
+        assert_eq!(
+            binaries
+                .network_rom(Some("test-network-boot-ipv6"))
+                .unwrap(),
+            [4, 5, 6]
+        );
+    }
+
+    #[test]
+    fn reports_missing_network_rom_variant() {
+        let binaries = FirmwareBinaries::default();
+
+        assert!(binaries.network_rom(Some("missing")).is_err());
+    }
 }
