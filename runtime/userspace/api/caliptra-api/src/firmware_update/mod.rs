@@ -277,7 +277,7 @@ impl<'a, D: DMAMapping, A: ApiAlloc> FirmwareUpdater<'a, D, A> {
             MailboxPayloadStream::new(self.staging_memory, manifest_offset, manifest_len);
 
         // Calculate the mailbox checksum
-        let mut checksum = payload_stream.get_bytesum().await;
+        let mut checksum = payload_stream.get_bytesum().await?;
         for b in CommandId::SET_AUTH_MANIFEST.0.to_le_bytes().iter() {
             checksum = checksum.wrapping_add(u32::from(*b));
         }
@@ -771,7 +771,7 @@ impl<'a, D: DMAMapping, A: ApiAlloc> FirmwareUpdater<'a, D, A> {
         let mut payload_stream = MailboxPayloadStream::new(self.staging_memory, offset, len);
 
         // Calculate the mailbox checksum
-        let mut checksum = payload_stream.get_bytesum().await;
+        let mut checksum = payload_stream.get_bytesum().await?;
         for b in CommandId::VERIFY_AUTH_MANIFEST.0.to_le_bytes().iter() {
             checksum = checksum.wrapping_add(u32::from(*b));
         }
@@ -1119,31 +1119,16 @@ impl MailboxPayloadStream {
             len,
         }
     }
-    pub fn reset(&mut self) {
-        // Reset the cursor to the starting offset
-        self.cursor = self.offset;
-    }
-    pub async fn get_bytesum(&mut self) -> u32 {
-        self.reset();
-        let mut sum = 0u32;
-        let mut buffer = [0u8; 256];
-        while let Ok(bytes_read) = self.read(&mut buffer).await {
-            if bytes_read == 0 {
-                break; // No more data to read
-            }
-            for byte in &buffer[..bytes_read] {
-                sum = sum.wrapping_add(u32::from(*byte));
-            }
-        }
-        self.reset();
-        sum
-    }
 }
 
 #[async_trait(?Send)]
 impl PayloadStream for MailboxPayloadStream {
     fn size(&self) -> usize {
         self.len
+    }
+
+    fn reset(&mut self) {
+        self.cursor = self.offset;
     }
 
     async fn read(&mut self, buffer: &mut [u8]) -> Result<usize, ErrorCode> {

@@ -155,6 +155,11 @@ impl<const N: usize> PayloadStream for SegmentedPayloadStream<'_, N> {
         self.segments.iter().map(|segment| segment.len()).sum()
     }
 
+    fn reset(&mut self) {
+        self.segment = 0;
+        self.offset = 0;
+    }
+
     async fn read(&mut self, buffer: &mut [u8]) -> Result<usize, ErrorCode> {
         Ok(self.read_into(buffer))
     }

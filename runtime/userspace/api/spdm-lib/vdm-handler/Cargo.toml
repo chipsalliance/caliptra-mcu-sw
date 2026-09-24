@@ -10,6 +10,8 @@ edition.workspace = true
 default = []
 device-ownership-transfer = []
 ocp-lock = ["caliptra-mcu-common-commands/ocp-lock"]
+cert-provisioning = []
+set-certificate = ["cert-provisioning"]
 
 [dependencies]
 caliptra-mcu-common-commands = { workspace = true }

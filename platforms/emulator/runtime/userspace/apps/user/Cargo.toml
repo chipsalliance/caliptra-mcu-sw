@@ -219,13 +219,17 @@ test-mctp-spdm-attestation-hitless-tcb = ["spdm", "flash-boot", "firmware-update
 test-mctp-spdm-attestation-hitless-mixed = ["spdm", "flash-boot", "firmware-update"]
 test-mctp-spdm-attestation-pcr-quote = ["spdm", "pcr-quote"]
 test-mctp-spdm-responder-conformance = ["spdm"]
-# Test-only SPDM SET_CERTIFICATE path. Enables flash-backed certificate
-# installation without production authorization/key-binding.
-test-mctp-spdm-set-certificate = [
+# Test-only SPDM certificate provisioning path. Enables flash-backed certificate
+# installation without production authorization/key-binding and sizes SPDM
+# scratch and VDM response buffers for large ML-DSA-87 CSRs and certificates.
+cert-provisioning = [
   "spdm",
   "caliptra-mcu-spdm-pal/set-certificate",
   "caliptra-mcu-spdm-stack/set-certificate",
+  "caliptra-mcu-spdm-vdm-handler/cert-provisioning",
 ]
+set-certificate = ["cert-provisioning"]
+test-mctp-spdm-set-certificate = ["cert-provisioning"]
 test-doe-spdm-responder-conformance = ["spdm", "doe"]
 test-doe-spdm-tdisp-ide-validator = ["spdm", "doe"]
 # --- Test features: pass-through (no cfg in source, host-side only) ---

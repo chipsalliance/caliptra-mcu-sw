@@ -1,6 +1,8 @@
 // Licensed under the Apache-2.0 license
 
-pub use caliptra_api::mailbox::{HpkeHandle, OcpLockEnumerateHpkeHandlesResp};
+pub use caliptra_api::mailbox::{
+    HpkeHandle, OcpLockEnumerateHpkeHandlesResp, MAX_ATTESTED_CSR_RESP_DATA_SIZE,
+};
 use caliptra_image_types::{ECC384_SCALAR_BYTE_SIZE, MLDSA87_SIGNATURE_BYTE_SIZE};
 use caliptra_mcu_registers_generated::fuses::{
     OTP_CPTRA_CORE_VENDOR_PK_HASH_0, OTP_CPTRA_SS_OWNER_PK_HASH,
@@ -1797,12 +1799,21 @@ impl Response for FuseRevokeVendorPkHashResp {}
 #[derive(Debug, Default, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
 pub struct ExportAttestedCsrReq {
     pub hdr: MailboxReqHeader,
-    /// Device key identifier (0x0001=LDevID, 0x0002=FMC Alias, 0x0003=RT Alias)
+    /// Device key identifier (0x0000=Discovery / KeyPairInventory, 0x0001=LDevID, 0x0002=FMC Alias, 0x0003=RT Alias)
     pub device_key_id: u32,
     /// Asymmetric algorithm (0x0001=ECC384, 0x0002=MLDSA87)
     pub algorithm: u32,
     /// 32-byte nonce for freshness
     pub nonce: [u8; 32],
+}
+impl ExportAttestedCsrReq {
+    pub const KEY_ID_DISCOVERY: u32 = 0x0000;
+    pub const KEY_ID_LDEV_ID: u32 = 0x0001;
+    pub const KEY_ID_FMC_ALIAS: u32 = 0x0002;
+    pub const KEY_ID_RT_ALIAS: u32 = 0x0003;
+
+    pub const ALGO_ECC384: u32 = 0x0001;
+    pub const ALGO_MLDSA87: u32 = 0x0002;
 }
 impl Request for ExportAttestedCsrReq {
     const ID: CommandId = CommandId::MC_EXPORT_ATTESTED_CSR;
@@ -1813,13 +1824,13 @@ impl Request for ExportAttestedCsrReq {
 #[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
 pub struct ExportAttestedCsrResp {
     pub hdr: MailboxRespHeaderVarSize,
-    pub data: [u8; MAX_RESP_DATA_SIZE],
+    pub data: [u8; MAX_ATTESTED_CSR_RESP_DATA_SIZE],
 }
 impl Default for ExportAttestedCsrResp {
     fn default() -> Self {
         Self {
             hdr: MailboxRespHeaderVarSize::default(),
-            data: [0u8; MAX_RESP_DATA_SIZE],
+            data: [0u8; MAX_ATTESTED_CSR_RESP_DATA_SIZE],
         }
     }
 }
@@ -3166,5 +3177,28 @@ mod tests {
                 ..core::mem::size_of::<MailboxRespHeaderVarSize>() + 4],
             &[0x30, 0x82, 0x01, 0x00]
         );
+    }
+
+    #[test]
+    fn test_export_attested_csr_req_constants_and_layout() {
+        assert_eq!(CommandId::MC_EXPORT_ATTESTED_CSR.0, 0x4D45_4143); // "MEAC"
+        assert_eq!(ExportAttestedCsrReq::KEY_ID_DISCOVERY, 0x0000);
+        assert_eq!(ExportAttestedCsrReq::KEY_ID_LDEV_ID, 0x0001);
+        assert_eq!(ExportAttestedCsrReq::KEY_ID_FMC_ALIAS, 0x0002);
+        assert_eq!(ExportAttestedCsrReq::KEY_ID_RT_ALIAS, 0x0003);
+        assert_eq!(ExportAttestedCsrReq::ALGO_ECC384, 0x0001);
+        assert_eq!(ExportAttestedCsrReq::ALGO_MLDSA87, 0x0002);
+
+        let req = ExportAttestedCsrReq {
+            hdr: MailboxReqHeader { chksum: 0 },
+            device_key_id: ExportAttestedCsrReq::KEY_ID_DISCOVERY,
+            algorithm: ExportAttestedCsrReq::ALGO_ECC384,
+            nonce: [0x5A; 32],
+        };
+        assert_eq!(core::mem::size_of::<ExportAttestedCsrReq>(), 44);
+        let parsed = ExportAttestedCsrReq::read_from_bytes(req.as_bytes()).unwrap();
+        assert_eq!(parsed.device_key_id, 0);
+        assert_eq!(parsed.algorithm, 1);
+        assert_eq!(parsed.nonce, [0x5A; 32]);
     }
 }
