@@ -18,9 +18,10 @@ use zerocopy::{little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout,
 use crate::slice::{checked_slice_mut, copy_bytes, internal_slice};
 use crate::wire::{
     calc_checksum, mbox_execute, populate_checksum, CMD_CERTIFY_KEY_CHUNKS, CMD_DPE_GET_TAGGED_TCI,
-    CMD_DPE_TAG_TCI, CMD_INVOKE_DPE, DPE_CMD_DERIVE_CONTEXT, DPE_CMD_GET_CERTIFICATE_CHAIN,
-    DPE_CMD_ROTATE_CONTEXT_HANDLE, DPE_CMD_SIGN, DPE_CMD_UPDATE_CONTEXT_MEASUREMENT,
-    DPE_COMMAND_MAGIC, DPE_PROFILE_P384_SHA384, DPE_RESPONSE_MAGIC, MBOX_RESP_HEADER_SIZE,
+    CMD_DPE_TAG_TCI, CMD_INVOKE_DPE, CMD_INVOKE_DPE_MLDSA87, DPE_CMD_DERIVE_CONTEXT,
+    DPE_CMD_GET_CERTIFICATE_CHAIN, DPE_CMD_ROTATE_CONTEXT_HANDLE, DPE_CMD_SIGN,
+    DPE_CMD_UPDATE_CONTEXT_MEASUREMENT, DPE_COMMAND_MAGIC, DPE_PROFILE_MLDSA87,
+    DPE_PROFILE_P384_SHA384, DPE_RESPONSE_MAGIC, MBOX_RESP_HEADER_SIZE,
 };
 use crate::ApiAlloc;
 
@@ -43,8 +44,8 @@ pub const DPE_TCI_MEASUREMENT_SIZE: usize = 48;
 const DEFAULT_DPE_CONTEXT_HANDLE: DpeContextHandle = [0u8; DPE_CONTEXT_HANDLE_SIZE];
 
 /// Upper bound on the X.509 leaf certificate Caliptra's DPE can
-/// emit — mirrored from `dpe::MAX_CERT_SIZE` (2 KB).
-pub const DPE_MAX_LEAF_CERT_SIZE: usize = 2048;
+/// emit — fits both ECC-384 and ML-DSA-87 leaf certificates.
+pub const DPE_MAX_LEAF_CERT_SIZE: usize = 12 * 1024;
 
 /// Maximum bytes that may be fetched in a single
 /// [`dpe_get_cert_chain_chunk`] call. Bounded well below the
@@ -67,6 +68,20 @@ const CERTIFY_KEY_CHUNKS_CERTIFY_KEY_REQ_SIZE: usize = 72;
 #[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned)]
 struct InvokeDpeReqPrefix {
     chksum: U32,
+    data_size: U32,
+}
+
+/// Caliptra `InvokeDpeMldsa87Req` prefix: `MailboxReqHeader { chksum }` +
+/// `flags(4)` + `axi_response(12)` + `data_size(4)`. The DPE-level payload
+/// follows immediately.
+#[repr(C)]
+#[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned)]
+struct InvokeDpeMldsa87ReqPrefix {
+    chksum: U32,
+    flags: U32,
+    axi_addr_lo: U32,
+    axi_addr_hi: U32,
+    axi_max_size: U32,
     data_size: U32,
 }
 
@@ -244,8 +259,6 @@ const CERTIFY_KEY_P384_RESP_PREFIX_LEN: usize = 12 + DPE_CONTEXT_HANDLE_SIZE + 4
 const CERTIFY_KEY_CHUNKS_REQ_LEN: usize =
     4 + 4 + 4 + 4 + 4 + CERTIFY_KEY_CHUNKS_CERTIFY_KEY_REQ_SIZE;
 const CERTIFY_KEY_CHUNKS_RESP_INFO_LEN: usize = 4 + 4 + DPE_CONTEXT_HANDLE_SIZE + 4 + 4;
-const CERTIFY_KEY_CHUNKS_RESP_BUF_LEN: usize =
-    CERTIFY_KEY_CHUNKS_RESP_INFO_LEN + CERTIFY_KEY_P384_RESP_PREFIX_LEN + DPE_MAX_LEAF_CERT_SIZE;
 const CERTIFY_KEY_RESP_PUBKEY_X_OFF: usize = 12 + DPE_CONTEXT_HANDLE_SIZE;
 const CERTIFY_KEY_RESP_PUBKEY_Y_OFF: usize = CERTIFY_KEY_RESP_PUBKEY_X_OFF + 48;
 const CERTIFY_KEY_RESP_CERT_SIZE_OFF: usize = CERTIFY_KEY_RESP_PUBKEY_Y_OFF + 48;
@@ -265,6 +278,9 @@ const ROTATE_CTX_DPE_PAYLOAD_LEN: u32 =
     (size_of::<DpeCommandHdr>() + size_of::<RotateCtxCmd>()) as u32;
 
 const _: () = assert!(size_of::<InvokeDpeReqPrefix>() == 8);
+const _: () = assert!(size_of::<InvokeDpeMldsa87ReqPrefix>() == 24);
+const _: () =
+    assert!(CMD_INVOKE_DPE_MLDSA87 == caliptra_api::mailbox::CommandId::INVOKE_DPE_MLDSA87.0);
 const _: () = assert!(size_of::<DpeCommandHdr>() == 12);
 const _: () = assert!(size_of::<GetCertChainCmd>() == 8);
 const _: () = assert!(size_of::<SignP384Cmd>() == DPE_CONTEXT_HANDLE_SIZE + 48 + 4 + 48);
@@ -735,7 +751,7 @@ where
     }
 
     let req = build_certify_key_chunks_req(alloc, label, handle, dpe_resp_offset, max_size)?;
-    let mut rsp = alloc.alloc(CERTIFY_KEY_CHUNKS_RESP_BUF_LEN)?;
+    let mut rsp = alloc.alloc(CERTIFY_KEY_CHUNKS_RESP_INFO_LEN + max_size)?;
     let rsp_len = crate::wire::mbox_execute(CMD_CERTIFY_KEY_CHUNKS, &req, &mut rsp).await?;
     if rsp_len < CERTIFY_KEY_CHUNKS_RESP_INFO_LEN {
         return Err(INTERNAL_BUG);
@@ -787,7 +803,29 @@ fn build_certify_key_chunks_req<'a, A: ApiAlloc>(
 }
 
 fn build_invoke_dpe_header(req: &mut [u8], dpe_payload_len: u32, cmd_id: u32) -> McuResult<usize> {
-    {
+    build_invoke_dpe_header_profile(req, dpe_payload_len, cmd_id, DPE_PROFILE_P384_SHA384)
+}
+
+fn build_invoke_dpe_header_profile(
+    req: &mut [u8],
+    dpe_payload_len: u32,
+    cmd_id: u32,
+    profile: u32,
+) -> McuResult<usize> {
+    let cur = if profile == DPE_PROFILE_MLDSA87 {
+        let prefix = InvokeDpeMldsa87ReqPrefix::mut_from_bytes(checked_slice_mut(
+            req,
+            0,
+            size_of::<InvokeDpeMldsa87ReqPrefix>(),
+        )?)
+        .map_err(|_| INVARIANT)?;
+        prefix.flags = U32::new(0);
+        prefix.axi_addr_lo = U32::new(0);
+        prefix.axi_addr_hi = U32::new(0);
+        prefix.axi_max_size = U32::new(0);
+        prefix.data_size = U32::new(dpe_payload_len);
+        size_of::<InvokeDpeMldsa87ReqPrefix>()
+    } else {
         let prefix = InvokeDpeReqPrefix::mut_from_bytes(checked_slice_mut(
             req,
             0,
@@ -795,16 +833,16 @@ fn build_invoke_dpe_header(req: &mut [u8], dpe_payload_len: u32, cmd_id: u32) ->
         )?)
         .map_err(|_| INVARIANT)?;
         prefix.data_size = U32::new(dpe_payload_len);
-    }
+        size_of::<InvokeDpeReqPrefix>()
+    };
 
-    let cur = size_of::<InvokeDpeReqPrefix>();
     {
         let hdr =
             DpeCommandHdr::mut_from_bytes(checked_slice_mut(req, cur, size_of::<DpeCommandHdr>())?)
                 .map_err(|_| INVARIANT)?;
         hdr.magic = U32::new(DPE_COMMAND_MAGIC);
         hdr.cmd_id = U32::new(cmd_id);
-        hdr.profile = U32::new(DPE_PROFILE_P384_SHA384);
+        hdr.profile = U32::new(profile);
     }
 
     Ok(cur + size_of::<DpeCommandHdr>())
@@ -1220,6 +1258,33 @@ mod tests {
         assert_eq!(cmd.tci_type.get(), params.tci_type);
         assert_eq!(cmd.target_locality.get(), params.target_locality);
         assert_eq!(cmd.svn.get(), params.svn);
+    }
+
+    #[test]
+    fn mldsa87_header_uses_inline_mailbox_response() {
+        let mut req = [0u8; size_of::<InvokeDpeMldsa87ReqPrefix>() + size_of::<DpeCommandHdr>()];
+        let command_offset = build_invoke_dpe_header_profile(
+            &mut req,
+            GET_CERT_CHAIN_DPE_PAYLOAD_LEN,
+            DPE_CMD_GET_CERTIFICATE_CHAIN,
+            DPE_PROFILE_MLDSA87,
+        )
+        .unwrap();
+        let prefix = InvokeDpeMldsa87ReqPrefix::ref_from_bytes(
+            &req[..size_of::<InvokeDpeMldsa87ReqPrefix>()],
+        )
+        .unwrap();
+        assert_eq!(prefix.flags.get(), 0);
+        assert_eq!(prefix.axi_addr_lo.get(), 0);
+        assert_eq!(prefix.axi_addr_hi.get(), 0);
+        assert_eq!(prefix.axi_max_size.get(), 0);
+        assert_eq!(prefix.data_size.get(), GET_CERT_CHAIN_DPE_PAYLOAD_LEN);
+
+        let header_offset = command_offset - size_of::<DpeCommandHdr>();
+        let header = DpeCommandHdr::ref_from_bytes(&req[header_offset..command_offset]).unwrap();
+        assert_eq!(header.magic.get(), DPE_COMMAND_MAGIC);
+        assert_eq!(header.cmd_id.get(), DPE_CMD_GET_CERTIFICATE_CHAIN);
+        assert_eq!(header.profile.get(), DPE_PROFILE_MLDSA87);
     }
 
     #[test]
