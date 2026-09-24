@@ -42,8 +42,23 @@ use embassy_executor::Spawner;
 /// `MaxSPDMmsgSize` only when buffered large requests are enabled. Raising it
 /// requires larger scratch pools; the assertion below enforces that.
 ///
-/// Sized to cover the largest evidence this build can emit (an ML-DSA-87 PCR
-/// quote is 6388 bytes) plus SPDM and vendor-defined framing.
+/// Certificate provisioning raises the limit to cover the largest attested CSR
+/// response; the baseline remains sized for ML-DSA-87 attestation evidence.
+#[cfg(feature = "cert-provisioning")]
+const MAX_BUFFERED_SPDM_MSG_SIZE: usize = {
+    let declared = 14 * 1024;
+    assert!(
+        declared
+            >= caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::large_response_capacity::<
+                crate::caliptra_cmd_handler::CaliptraCmdBackend,
+            >(),
+        "SPDM scratch capacity is smaller than the largest buffered VDM response; raise \
+         MAX_BUFFERED_SPDM_MSG_SIZE and both responder scratch pools"
+    );
+    declared
+};
+
+#[cfg(not(feature = "cert-provisioning"))]
 const MAX_BUFFERED_SPDM_MSG_SIZE: usize = {
     let declared = 8 * 1024;
     assert!(
@@ -180,6 +195,17 @@ const fn required_scratch() -> usize {
 /// Declared explicitly rather than derived, so the pool size stays a
 /// deliberate integrator choice; the embedded assertion fails the build if a
 /// configuration change outgrows it.
+#[cfg(feature = "cert-provisioning")]
+const MCTP_SPDM_SCRATCH_SIZE: usize = {
+    let declared = 24 * 1024;
+    assert!(
+        declared >= required_scratch(),
+        "MCTP SPDM scratch pool is too small for MAX_BUFFERED_SPDM_MSG_SIZE"
+    );
+    declared
+};
+
+#[cfg(not(feature = "cert-provisioning"))]
 const MCTP_SPDM_SCRATCH_SIZE: usize = {
     let declared = 12 * 1024;
     assert!(
@@ -188,6 +214,18 @@ const MCTP_SPDM_SCRATCH_SIZE: usize = {
     );
     declared
 };
+
+#[cfg(feature = "cert-provisioning")]
+const DOE_SPDM_SCRATCH_SIZE: usize = {
+    let declared = 24 * 1024;
+    assert!(
+        declared >= required_scratch(),
+        "DOE SPDM scratch pool is too small for MAX_BUFFERED_SPDM_MSG_SIZE"
+    );
+    declared
+};
+
+#[cfg(not(feature = "cert-provisioning"))]
 const DOE_SPDM_SCRATCH_SIZE: usize = {
     let declared = 12 * 1024;
     assert!(
