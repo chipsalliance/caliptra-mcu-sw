@@ -55,7 +55,7 @@ jobs:
 
   precheckin:
     runs-on: e2-standard-8
-    needs: [build-xtask, caliptra-util-host-precheckin]
+    needs: [build-xtask]
     timeout-minutes: 45
 
     env:
