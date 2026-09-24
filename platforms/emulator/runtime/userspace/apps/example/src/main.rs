@@ -187,6 +187,7 @@ pub(crate) async fn async_main<S: Syscalls>() {
         test_caliptra_crypto::test_caliptra_sha(alloc).await;
         test_caliptra_crypto::test_caliptra_rng(alloc).await;
         test_caliptra_crypto::test_caliptra_ecdh(alloc).await;
+        test_caliptra_crypto::test_caliptra_mlkem(alloc).await;
         test_caliptra_crypto::test_caliptra_hmac(alloc).await;
         test_caliptra_crypto::test_caliptra_aes_gcm_cipher(alloc).await;
         test_caliptra_crypto::test_caliptra_ecdsa(alloc).await;
