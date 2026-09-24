@@ -150,6 +150,15 @@ The backing may require additional space for implementation metadata and
 atomic updates. ECC P-384 and ML-DSA-87 endorsements SHALL NOT share the same
 managed certificate region.
 
+ML-DSA-87 chains are roughly an order of magnitude larger than ECC P-384
+ones, so a composed ML-DSA-87 chain can exceed the 64 KiB addressable by the
+pre-1.4 `GET_CERTIFICATE` form. SPDM 1.4 widens the certificate-chain
+`Length` field to 32 bits by absorbing the adjacent `Reserved` field, so
+oversized chains are served to a 1.4 requester that uses `LargeCertChain`. A
+1.4 requester that asks for an oversized chain without `LargeCertChain`
+receives `CertChainTooLarge` carrying the actual size and can retry; below
+1.4 the chain is not retrievable at all.
+
 The certificate store provides these externally visible guarantees:
 
 - A replacement endorsement does not become active until it is completely

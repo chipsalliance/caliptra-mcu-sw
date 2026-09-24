@@ -244,9 +244,9 @@ fn test_get_ocp_lock_endorsement_cert_cmd() -> Result<()> {
     for handle in handles {
         // 2. Get OCP LOCK Endorsement Certificate (ECDSA P-384) from MCU Mailbox
         let cmd = caliptra_mcu_mbox_common::messages::GetOcpLockEndorsementCertReq {
-            hdr: caliptra_mcu_mbox_common::messages::MailboxReqHeader::default(),
             hpke_handle: handle.clone(),
             algorithm: EndorsementAlgorithm::ECDSA_384,
+            ..Default::default()
         };
 
         let resp = hw.mailbox_execute_req(cmd)?;
@@ -499,9 +499,9 @@ fn test_get_ocp_lock_endorsement_cert_mldsa_cmd() -> Result<()> {
     for handle in handles {
         // 2. Get OCP LOCK Endorsement Certificate (ML-DSA-87) from MCU Mailbox
         let mldsa_cmd = caliptra_mcu_mbox_common::messages::GetOcpLockEndorsementCertReq {
-            hdr: caliptra_mcu_mbox_common::messages::MailboxReqHeader::default(),
             hpke_handle: handle.clone(),
             algorithm: EndorsementAlgorithm::MLDSA_87,
+            ..Default::default()
         };
 
         let mldsa_resp = hw.mailbox_execute_req(mldsa_cmd)?;

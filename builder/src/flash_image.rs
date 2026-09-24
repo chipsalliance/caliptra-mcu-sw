@@ -6,7 +6,8 @@ use caliptra_mcu_config_emulator::flash::{
 };
 use caliptra_mcu_flash_image::{
     FlashHeader, ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, HEADER_VERSION, MAX_FILENAME_LEN,
-    MCU_RT_IDENTIFIER, SOC_IMAGES_BASE_IDENTIFIER, SOC_MANIFEST_IDENTIFIER,
+    MCU_RT_IDENTIFIER, OWNER_AUTH_MANIFEST_IDENTIFIER, SOC_IMAGES_BASE_IDENTIFIER,
+    SOC_MANIFEST_IDENTIFIER,
 };
 use std::fs::{File, OpenOptions};
 use std::io::{self, Error, ErrorKind, Read, Seek, Write};
@@ -219,6 +220,7 @@ pub fn flash_image_create(args: &CaliptraBuildArgs) -> Result<()> {
     let caliptra_fw_path = &args.caliptra_firmware;
     let soc_manifest_path = &args.soc_manifest;
     let mcu_runtime_path = &args.mcu_firmware;
+    let owner_auth_manifest_path = &args.owner_auth_manifest;
     let soc_image_paths = &args.soc_image_paths;
     let offset = args.offset;
     let output_path = args
@@ -261,6 +263,16 @@ pub fn flash_image_create(args: &CaliptraBuildArgs) -> Result<()> {
             .and_then(|config| config.network_filename.as_deref())
             .map(str::as_bytes);
         images.push(FirmwareImage::new(MCU_RT_IDENTIFIER, &content, filename)?);
+    }
+
+    let content;
+    if let Some(owner_auth_manifest_path) = owner_auth_manifest_path {
+        content = load_file(&owner_auth_manifest_path.to_string_lossy())?;
+        images.push(FirmwareImage::new(
+            OWNER_AUTH_MANIFEST_IDENTIFIER,
+            &content,
+            Some(b"owner-auth-manifest.bin"),
+        )?);
     }
 
     // Load SOC images into a buffer
@@ -328,6 +340,7 @@ pub fn build_flash_image_bytes(
     caliptra_fw: Option<&[u8]>,
     soc_manifest: Option<&[u8]>,
     mcu_runtime: Option<&[u8]>,
+    owner_auth_manifest: Option<&[u8]>,
 ) -> Vec<u8> {
     fn pad_to_256_bytes(data: &[u8]) -> Vec<u8> {
         let padding = data.len().next_multiple_of(256) - data.len();
@@ -340,6 +353,7 @@ pub fn build_flash_image_bytes(
     let caliptra_fw_padded = caliptra_fw.map(pad_to_256_bytes);
     let soc_manifest_padded = soc_manifest.map(pad_to_256_bytes);
     let mcu_runtime_padded = mcu_runtime.map(pad_to_256_bytes);
+    let owner_auth_manifest_padded = owner_auth_manifest.map(pad_to_256_bytes);
 
     let mut images: Vec<FirmwareImage> = Vec::new();
 
@@ -362,6 +376,14 @@ pub fn build_flash_image_bytes(
     if let Some(ref data) = mcu_runtime_padded {
         images.push(FirmwareImage {
             identifier: MCU_RT_IDENTIFIER,
+            data,
+            filename: [0u8; MAX_FILENAME_LEN],
+        });
+    }
+
+    if let Some(ref data) = owner_auth_manifest_padded {
+        images.push(FirmwareImage {
+            identifier: OWNER_AUTH_MANIFEST_IDENTIFIER,
             data,
             filename: [0u8; MAX_FILENAME_LEN],
         });
@@ -454,6 +476,7 @@ mod tests {
         let caliptra_fw_content = b"Caliptra Firmware Data - ABCDEFGH";
         let soc_manifest_content = b"Soc Manifest Data - 123456789";
         let mcu_runtime_content = b"MCU Runtime Data - QWERTYUI";
+        let owner_auth_manifest_content = b"Owner Auth Manifest Data - ASDFGHJK";
         let soc_image1_content = b"Soc Image 1 Data - ZXCVBNMLKJ";
         let soc_image2_content = b"Soc Image 2 Data - POIUYTREWQ";
 
@@ -464,6 +487,8 @@ mod tests {
             create_temp_file(soc_manifest_content).expect("Failed to create soc_manifest");
         let mcu_runtime =
             create_temp_file(mcu_runtime_content).expect("Failed to create mcu_runtime");
+        let owner_auth_manifest = create_temp_file(owner_auth_manifest_content)
+            .expect("Failed to create owner_auth_manifest");
         let soc_image1 = create_temp_file(soc_image1_content).expect("Failed to create soc_image1");
         let soc_image2 = create_temp_file(soc_image2_content).expect("Failed to create soc_image2");
 
@@ -488,6 +513,7 @@ mod tests {
                 network_filename: Some("mcu-runtime.bin".into()),
                 ..Default::default()
             }),
+            owner_auth_manifest: Some(owner_auth_manifest.path().to_path_buf()),
             soc_image_paths,
             soc_images: Some(vec![
                 ImageCfg {
@@ -519,7 +545,7 @@ mod tests {
             .expect("Failed to parse flash header");
 
         assert_eq!(header.version, HEADER_VERSION);
-        assert_eq!(header.image_count, 5); // 3 main images + 2 SoC images
+        assert_eq!(header.image_count, 6); // 4 main images + 2 SoC images
 
         // Verify checksums
         let calculated_header_checksum =
@@ -530,6 +556,7 @@ mod tests {
             (CALIPTRA_FMC_RT_IDENTIFIER, caliptra_fw_content),
             (SOC_MANIFEST_IDENTIFIER, soc_manifest_content),
             (MCU_RT_IDENTIFIER, mcu_runtime_content),
+            (OWNER_AUTH_MANIFEST_IDENTIFIER, owner_auth_manifest_content),
             (SOC_IMAGES_BASE_IDENTIFIER, soc_image1_content),
             (SOC_IMAGES_BASE_IDENTIFIER + 1, soc_image2_content),
         ];
@@ -537,6 +564,7 @@ mod tests {
             b"caliptra.bin".as_slice(),
             b"soc-manifest.bin".as_slice(),
             b"mcu-runtime.bin".as_slice(),
+            b"owner-auth-manifest.bin".as_slice(),
             b"soc-image-1.bin".as_slice(),
             b"soc-image-2.bin".as_slice(),
         ];
@@ -578,6 +606,46 @@ mod tests {
                 expected_images[i].1
             );
         }
+    }
+
+    #[test]
+    fn test_build_flash_image_bytes_with_owner_auth_manifest() {
+        let image = build_flash_image_bytes(
+            Some(b"caliptra"),
+            Some(b"soc-manifest"),
+            Some(b"mcu-runtime"),
+            Some(b"owner-auth-manifest"),
+        );
+
+        let header = FlashHeader::read_from_bytes(&image[..HEADER_SIZE]).unwrap();
+        assert_eq!(header.image_count, 4);
+
+        let expected_identifiers = [
+            CALIPTRA_FMC_RT_IDENTIFIER,
+            SOC_MANIFEST_IDENTIFIER,
+            MCU_RT_IDENTIFIER,
+            OWNER_AUTH_MANIFEST_IDENTIFIER,
+        ];
+        let mut image_headers = Vec::new();
+        for (index, expected_identifier) in expected_identifiers.iter().enumerate() {
+            let offset = header.image_headers_offset as usize + IMAGE_INFO_SIZE * index;
+            let image_header =
+                ImageHeader::read_from_bytes(&image[offset..offset + IMAGE_INFO_SIZE]).unwrap();
+            assert_eq!(image_header.identifier, *expected_identifier);
+            assert_eq!(image_header.size, 256);
+            image_headers.push(image_header);
+        }
+
+        let owner_auth_header = image_headers.last().unwrap();
+        let owner_auth_data = &image[owner_auth_header.offset as usize
+            ..(owner_auth_header.offset + owner_auth_header.size) as usize];
+        assert_eq!(
+            &owner_auth_data[..b"owner-auth-manifest".len()],
+            b"owner-auth-manifest"
+        );
+        assert!(owner_auth_data[b"owner-auth-manifest".len()..]
+            .iter()
+            .all(|byte| *byte == 0));
     }
 
     #[test]

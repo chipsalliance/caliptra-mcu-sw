@@ -82,7 +82,7 @@ These commands support common Caliptra management functions, including querying 
 | MC_PROD_DEBUG_UNLOCK_REQ      | 0x4D50_5552 ("MPUR") | Requests debug unlock in a production environment.                                    |
 | MC_PROD_DEBUG_UNLOCK_TOKEN    | 0x4D50_5554 ("MPUT") | Sends the debug unlock token.                                                         |
 | MC_GET_AUTH_CMD_CHALLENGE     | 0x4D41_4343 ("MACC") | Requests a challenge for security-sensitive commands.                                 |
-| MC_FUSE_INCREASE_CALIPTRA_MIN_SVN | 0x4D43_4D53 ("MCMS") | Increases the minimum bootable Caliptra firmware SVN.                             |
+| MC_FUSE_INCREASE_MIN_SVN      | 0x4D43_4D53 ("MCMS") | Increases the selected minimum SVN.                                                    |
 | MC_FUSE_READ                  | 0x4946_5052 ("IFPR") | See [fuses spec](fuses.md) for details                                                |
 | MC_FUSE_WRITE                 | 0x4946_5057 ("IFPW") | See [fuses spec](fuses.md) for details                                                |
 | MC_FUSE_LOCK_PARTITION        | 0x4946_504B ("IFPK") | See [fuses spec](fuses.md) for details                                                |
@@ -92,6 +92,7 @@ These commands support common Caliptra management functions, including querying 
 | MC_FUSE_REVOKE_VENDOR_PUB_KEY | 0x4D52_564B ("MRVK") | See [fuses spec](fuses.md) for details                                                |
 | MC_FUSE_REVOKE_VENDOR_PK_HASH | 0x5256_4b48 ("RVKH") | See [fuses spec](fuses.md) for details                                                |
 | MC_DEVICE_OWNERSHIP_TRANSFER  | 0x0000_0011          | Device Ownership Transfer family; subcommand is carried in mailbox SRAM                |
+| MC_OCP_LOCK                   | 0x0000_0013          | OCP LOCK family; subcommand is carried in mailbox SRAM                                 |
 
 ## Command Format
 
@@ -130,6 +131,30 @@ For authorized DOT commands the signed preimage is
 Payload semantics match [Caliptra SPDM VDM DOT commands](caliptra_spdm_vdm_cmds.md#device-ownership-transfer-commands).
 
 **For detailed command flows, state transitions, security properties, and use cases**, see [Device Ownership Transfer (DOT)](dot.md#runtime-commands)
+
+### MC_OCP_LOCK
+
+All MCU Runtime OCP LOCK requests use MCI command register value `0x00000013`.
+Mailbox SRAM begins with the normal checksum followed by a little-endian OCP LOCK
+FourCC, its payload, and (for authorized operations) the authorization trailer.
+
+```text
+Authorized: checksum || OCP_LOCK_FourCC || OCP_LOCK_payload || authorization_trailer
+Native:     checksum || OCP_LOCK_FourCC || OCP_LOCK_payload
+```
+
+For authorized OCP LOCK commands the signed preimage is
+`0x00000013(BE) || OCP_LOCK_FourCC(LE) || OCP_LOCK_payload || nonce`.
+
+| FourCC | Command | Classification |
+| ------ | ------- | -------------- |
+| `OLRH` | Rotate HEK | Authorized |
+| `OLSP` | Set Perma HEK | Authorized |
+| `OLEC` | Get Endorsement Cert | Native/read-only |
+| `OLEH` | Enumerate HPKE Handles | Native/read-only |
+| `OLER` | Get Epoch Key Report | Native/read-only |
+
+Payload semantics match [Caliptra SPDM VDM OCP LOCK commands](caliptra_spdm_vdm_cmds.md#ocp-lock-commands).
 
 ### MC_FIRMWARE_VERSION
 
@@ -301,13 +326,13 @@ The MCI request appends `flags:u32` and `reserved:u32` after the mailbox checksu
 fields are reserved and must be zero. The MCI response inserts a zero `reserved:u32` between the
 mailbox response header and the common 48-byte challenge payload.
 
-### MC_FUSE_INCREASE_CALIPTRA_MIN_SVN
+### MC_FUSE_INCREASE_MIN_SVN
 
-Increases the minimum bootable Caliptra firmware SVN.
+Increases the selected minimum SVN.
 
 Command Code: `0x4D43_4D53` ("MCMS")
 
-Payload semantics are defined by [Fuse Increase Caliptra Min SVN](caliptra_common_commands.md#fuse-increase-caliptra-min-svn).
+Payload semantics and target assignments are defined by [Fuse Increase Min SVN](caliptra_common_commands.md#fuse-increase-min-svn).
 
 ### MC_FE_PROG
 

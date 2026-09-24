@@ -51,8 +51,8 @@ jobs:
       - name: Install sccache
         if: steps.sccache_bin_restore.outputs.cache-hit != 'true'
         run: |
-          rustup install 1.95
-          cargo +1.95 install sccache --version ${SCCACHE_VERSION} --no-default-features --features=gha --locked
+          rustup install 1.96.1
+          cargo +1.96.1 install sccache --version ${SCCACHE_VERSION} --no-default-features --features=gha --locked
 
       # Save the sccache binary immediately so we can reuse it in future runs
       # even if the rest of the current run fails.
@@ -176,11 +176,14 @@ jobs:
 
       - name: Build spdm-emu for aarch64
         run: |
-          git clone --recursive --branch caliptra-main https://github.com/chipsalliance/caliptra-spdm-emu.git /tmp/spdm-emu
+          git clone --recursive --branch caliptra-main-14 https://github.com/chipsalliance/caliptra-spdm-emu.git /tmp/spdm-emu
           pushd /tmp/spdm-emu
+          find . -path '*/openssllib/CMakeLists.txt' -exec sed -i \
+            -e 's/set(OPENSSL_SHARED_OPTION "shared")/set(OPENSSL_SHARED_OPTION "no-shared")/' \
+            -e 's/set(OPENSSL_LIBRARY_TYPE "SHARED")/set(OPENSSL_LIBRARY_TYPE "STATIC")/' {} +
           mkdir build
           pushd build
-          cmake -DARCH=aarch64 -DTOOLCHAIN=AARCH64_GCC -DTARGET=Debug -DCRYPTO=openssl -DCMAKE_C_FLAGS="-DLIBSPDM_MAX_CERT_CHAIN_SIZE=0x2000" ..
+          cmake -DARCH=aarch64 -DTOOLCHAIN=AARCH64_GCC -DTARGET=Debug -DCRYPTO=openssl -DCMAKE_C_FLAGS="-DLIBSPDM_MAX_CERT_CHAIN_SIZE=0x10000" ..
           make copy_sample_key
           make -j$(nproc)
           popd

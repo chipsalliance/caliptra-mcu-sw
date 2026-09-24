@@ -624,9 +624,9 @@ authorized_fuse_handler!(
     fuse::MC_PROVISION_VENDOR_PK_HASH_CANONICAL_CMD_ID
 );
 authorized_fuse_handler!(
-    handle_fuse_increase_caliptra_min_svn,
-    fuse::FuseIncreaseCaliptraMinSvnRequest,
-    fuse::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN_CANONICAL_CMD_ID
+    handle_fuse_increase_min_svn,
+    fuse::FuseIncreaseMinSvnRequest,
+    fuse::MC_FUSE_INCREASE_MIN_SVN_CANONICAL_CMD_ID
 );
 authorized_fuse_handler!(
     handle_fuse_revoke_vendor_pub_key,
@@ -648,16 +648,63 @@ authorized_fuse_handler!(
     fuse::ProvisionOwnerPkHashRequest,
     fuse::MC_PROVISION_OWNER_PK_HASH_CANONICAL_CMD_ID
 );
-authorized_fuse_handler!(
-    handle_ocp_lock_rotate_hek,
-    fuse::OcpLockRotateHekRequest,
-    fuse::MC_OCP_LOCK_ROTATE_HEK_CANONICAL_CMD_ID
-);
-authorized_fuse_handler!(
-    handle_ocp_lock_set_perma_hek,
-    fuse::OcpLockSetPermaHekRequest,
-    fuse::MC_OCP_LOCK_SET_PERMA_HEK_CANONICAL_CMD_ID
-);
+fn handle_authorized_ocp_lock_command(
+    subcommand: u32,
+    request: &[u8],
+    driver: &mut dyn SpdmVdmDriver,
+    response_buffer: &mut [u8],
+) -> Result<usize, TransportError> {
+    let mut vdm_payload = Vec::with_capacity(8 + request.len());
+    vdm_payload.extend_from_slice(&fuse::OCP_LOCK_FAMILY_ID.to_le_bytes());
+    vdm_payload.extend_from_slice(&subcommand.to_le_bytes());
+    vdm_payload.extend_from_slice(request);
+    let mut resp_buf = [0u8; MAX_VDM_RESPONSE_SIZE];
+    let resp_len = send_vdm_request(
+        CaliptraVdmCommand::AuthorizedCommand,
+        &vdm_payload,
+        driver,
+        &mut resp_buf,
+    )?;
+    if resp_len != VDM_RESPONSE_HEADER_SIZE {
+        return Err(TransportError::InvalidMessage);
+    }
+    let response = CommonResponse { fips_status: 0 };
+    if response_buffer.len() < response.as_bytes().len() {
+        return Err(TransportError::BufferError("Response buffer too small"));
+    }
+    response_buffer[..response.as_bytes().len()].copy_from_slice(response.as_bytes());
+    Ok(response.as_bytes().len())
+}
+
+pub fn handle_ocp_lock_rotate_hek(
+    payload: &[u8],
+    driver: &mut dyn SpdmVdmDriver,
+    response_buffer: &mut [u8],
+) -> Result<usize, TransportError> {
+    let req = fuse::OcpLockRotateHekRequest::from_bytes(payload)
+        .map_err(|_| TransportError::InvalidMessage)?;
+    handle_authorized_ocp_lock_command(
+        fuse::MC_OCP_LOCK_ROTATE_HEK_CANONICAL_CMD_ID,
+        req.as_bytes(),
+        driver,
+        response_buffer,
+    )
+}
+
+pub fn handle_ocp_lock_set_perma_hek(
+    payload: &[u8],
+    driver: &mut dyn SpdmVdmDriver,
+    response_buffer: &mut [u8],
+) -> Result<usize, TransportError> {
+    let req = fuse::OcpLockSetPermaHekRequest::from_bytes(payload)
+        .map_err(|_| TransportError::InvalidMessage)?;
+    handle_authorized_ocp_lock_command(
+        fuse::MC_OCP_LOCK_SET_PERMA_HEK_CANONICAL_CMD_ID,
+        req.as_bytes(),
+        driver,
+        response_buffer,
+    )
+}
 
 // ---------------------------------------------------------------------------
 // RequestDebugUnlock (CaliptraCommandId::ProdDebugUnlockReq)
@@ -971,8 +1018,9 @@ mod tests {
             ecc_pub_y: [0; fuse::AUTH_PUB_ECC_COORD_SIZE],
             mldsa_pub: [0; fuse::AUTH_PUB_MLDSA_SIZE],
         };
-        let mcms = fuse::FuseIncreaseCaliptraMinSvnRequest {
+        let mcms = fuse::FuseIncreaseMinSvnRequest {
             flags: 0x1122_3344,
+            target: 0x99AA_BBCC,
             svn: 0x5566_7788,
             sig: sig.clone(),
             nonce: [0; fuse::AUTH_CMD_CHALLENGE_SIZE],
@@ -1041,6 +1089,7 @@ mod tests {
         let mut pvpk_fields = 0x0102_0304u32.to_le_bytes().to_vec();
         pvpk_fields.extend_from_slice(&[0xA5; 48]);
         let mut mcms_fields = 0x1122_3344u32.to_le_bytes().to_vec();
+        mcms_fields.extend_from_slice(&0x99AA_BBCCu32.to_le_bytes());
         mcms_fields.extend_from_slice(&0x5566_7788u32.to_le_bytes());
         let mut mrvk_fields = Vec::new();
         for field in [0x0102_0304u32, 0x1112_1314, 0x2122_2324, 0x3132_3334] {
@@ -1063,10 +1112,10 @@ mod tests {
             (
                 mcms.as_bytes(),
                 make_golden(
-                    fuse::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN_CANONICAL_CMD_ID,
+                    fuse::MC_FUSE_INCREASE_MIN_SVN_CANONICAL_CMD_ID,
                     &mcms_fields,
                 ),
-                handle_fuse_increase_caliptra_min_svn,
+                handle_fuse_increase_min_svn,
             ),
             (
                 mrvk.as_bytes(),
@@ -1125,8 +1174,9 @@ mod tests {
 
     #[test]
     fn authorized_command_rejects_trailing_response_and_small_output_buffer() {
-        let req = fuse::FuseIncreaseCaliptraMinSvnRequest {
+        let req = fuse::FuseIncreaseMinSvnRequest {
             flags: 0,
+            target: 0,
             svn: 1,
             sig: Default::default(),
             nonce: [0; fuse::AUTH_CMD_CHALLENGE_SIZE],
@@ -1140,13 +1190,13 @@ mod tests {
         };
         let mut response = [0u8; core::mem::size_of::<CommonResponse>()];
         assert!(matches!(
-            handle_fuse_increase_caliptra_min_svn(req.as_bytes(), &mut driver, &mut response),
+            handle_fuse_increase_min_svn(req.as_bytes(), &mut driver, &mut response),
             Err(TransportError::InvalidMessage)
         ));
 
         driver.response = success_response(CaliptraVdmCommand::AuthorizedCommand, &[]);
         assert!(matches!(
-            handle_fuse_increase_caliptra_min_svn(req.as_bytes(), &mut driver, &mut []),
+            handle_fuse_increase_min_svn(req.as_bytes(), &mut driver, &mut []),
             Err(TransportError::BufferError(_))
         ));
     }
@@ -1243,6 +1293,49 @@ mod tests {
             assert_eq!(&driver.last_request[10..], payload);
             let response = DotTransitionResponse::read_from_bytes(&response_buffer).unwrap();
             assert_eq!(response.reset_required, 1);
+        }
+    }
+
+    #[test]
+    fn authorized_ocp_lock_commands_preserve_family_subcommand_and_payload() {
+        let cases: [(u32, Vec<u8>, VdmCommandHandlerFn); 2] = [
+            (
+                fuse::MC_OCP_LOCK_ROTATE_HEK_CANONICAL_CMD_ID,
+                fuse::OcpLockRotateHekRequest::default().as_bytes().to_vec(),
+                handle_ocp_lock_rotate_hek,
+            ),
+            (
+                fuse::MC_OCP_LOCK_SET_PERMA_HEK_CANONICAL_CMD_ID,
+                fuse::OcpLockSetPermaHekRequest::default()
+                    .as_bytes()
+                    .to_vec(),
+                handle_ocp_lock_set_perma_hek,
+            ),
+        ];
+
+        for (subcommand, payload, handler) in cases {
+            let mut driver = FakeDriver {
+                response: success_response(CaliptraVdmCommand::AuthorizedCommand, &[]),
+                last_request: Vec::new(),
+            };
+            let mut response_buffer = [0u8; core::mem::size_of::<CommonResponse>()];
+
+            handler(&payload, &mut driver, &mut response_buffer)
+                .expect("authorized OCP LOCK command should be accepted");
+
+            assert_eq!(
+                &driver.last_request[..2],
+                &[
+                    CALIPTRA_VDM_COMMAND_VERSION,
+                    CaliptraVdmCommand::AuthorizedCommand as u8,
+                ]
+            );
+            assert_eq!(
+                &driver.last_request[2..6],
+                &fuse::OCP_LOCK_FAMILY_ID.to_le_bytes()
+            );
+            assert_eq!(&driver.last_request[6..10], &subcommand.to_le_bytes());
+            assert_eq!(&driver.last_request[10..], payload);
         }
     }
 

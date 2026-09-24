@@ -41,7 +41,7 @@ The following subcommands are assigned to the SPDM VDM IANA authorization-gated 
 | ------------------------------ | -------------------------- | -------------------------------------------------- |
 | Get Auth Challenge             | SPDM VDM IANA, MCI Mailbox | Challenge acquisition for authorization-gated use. |
 | Provision Vendor PK Hash       | SPDM VDM IANA, MCI Mailbox | Provision vendor public key hash.                  |
-| Fuse Increase Caliptra Min SVN | SPDM VDM IANA, MCI Mailbox | Increase Caliptra minimum SVN.                     |
+| Fuse Increase Min SVN          | SPDM VDM IANA, MCI Mailbox | Increase a selected minimum SVN.                   |
 | Program Field Entropy          | SPDM VDM IANA, MCI Mailbox | Program field entropy.                             |
 | Fuse Revoke Vendor Public Key  | SPDM VDM IANA, MCI Mailbox | Revoke vendor public key.                          |
 | Fuse Revoke Vendor PK Hash     | SPDM VDM IANA, MCI Mailbox | Revoke vendor public key hash.                     |
@@ -109,6 +109,7 @@ Versions use `major.minor.patch` ASCII format. Index `02h` returns `UnsupportedO
 | 7          | `08h`        | `ExportAttestedCsr`         | SPDM VDM              |
 | 16         | `11h`        | `DeviceOwnershipTransfer`   | SPDM VDM              |
 | 17         | `12h`        | `AuthorizedCommand`         | SPDM VDM              |
+| 18         | `13h`        | `OcpLock`                   | SPDM VDM              |
 
 This table defines the bit assignment for every allocated command code. A responder sets a bit only when the corresponding command is implemented. `GetAttestation` is set when a responder that carries it is built and the device can produce at least one evidence format. `AuthorizedCommand` is set when its wrapper and at least one authorized subcommand are implemented.
 
@@ -118,7 +119,7 @@ This table defines the bit assignment for every allocated command code. A respon
 | ---------- | ---------------------------- | ----------- |
 | 0          | `GetAuthChallenge`           | Implemented |
 | 1          | `ProvisionVendorPkHash`      | Implemented |
-| 2          | `FuseIncreaseCaliptraMinSvn` | Implemented |
+| 2          | `FuseIncreaseMinSvn`         | Implemented |
 | 3          | `ProgramFieldEntropy`        | Implemented |
 | 4          | `FuseRevokeVendorPublicKey`  | Implemented |
 | 5          | `FuseRevokeVendorPkHash`     | Implemented |
@@ -153,12 +154,19 @@ Runtime paired with an MCU ROM handoff version before 1.3 reports zero.
 
 **MCU ROM Capability Flags**:
 
-| Bit | Name                 | Description                              |
-| --- | -------------------- | ---------------------------------------- |
-| 0   | `STREAMING_BOOT_I3C` | MCU ROM supports streaming boot over I3C |
-| 1   | `FLASH_BOOT`         | MCU ROM supports flash boot              |
-| 2   | `NETWORK_BOOT`       | MCU ROM supports network boot            |
-| 3:31 | Reserved            | Responders report zero                    |
+| Bit  | Name                 | Description                                        |
+| ---- | -------------------- | -------------------------------------------------- |
+| 0    | `STREAMING_BOOT_I3C` | MCU ROM supports streaming boot over I3C           |
+| 1    | `FLASH_BOOT`         | MCU ROM supports flash boot                        |
+| 2    | `NETWORK_BOOT`       | MCU ROM supports network boot                      |
+| 3    | `OCP_LOCK`           | MCU ROM supports OCP LOCK key management           |
+| 4    | `FW_MANIFEST_DOT`    | MCU ROM supports Device Ownership Transfer manifests |
+| 5    | `COMPONENT_SVN_MANIFEST` | MCU ROM supports component SVN manifests       |
+| 6    | `STABLE_OWNER_KEY`   | MCU ROM derives and hands off a stable owner key    |
+| 7    | `DOT_BOOT`           | MCU ROM supports DOT blob authentication during boot |
+| 8    | `DOT_LOCKED_RECOVERY` | MCU ROM has a configured DOT locked-state recovery path |
+| 9    | `I3C_DOT_RECOVERY`   | MCU ROM supports DOT recovery over I3C              |
+| 10:31 | Reserved            | Responders report zero                              |
 
 ### Get Debug Log
 
@@ -432,11 +440,26 @@ Provisions the vendor public key hash.
 
 **Response Payload**: Empty
 
-### Fuse Increase Caliptra Min SVN
+### Fuse Increase Min SVN
 
-Increases the Caliptra minimum SVN.
+Increases a selected minimum SVN using command code `0x4D43_4D53` (`MCMS`).
+`flags` is reserved and must be zero.
 
-**Request Payload**: `flags:u32 | svn:u32 | HybridSignature`
+| Target | Name               | Status      | Fuse                               |
+| ------ | ------------------ | ----------- | ---------------------------------- |
+| `0`    | Caliptra Runtime   | Implemented | `CPTRA_CORE_RUNTIME_SVN`           |
+| `1`    | SoC Manifest       | Implemented | `CPTRA_CORE_SOC_MANIFEST_SVN`      |
+| `2`    | Owner SoC Manifest | Reserved    | Not implemented                    |
+
+Unknown targets are invalid. The reserved Owner SoC Manifest target returns
+`UnsupportedOperation`. The SVN must be between 1 and 128 and cannot decrease
+the current fuse floor. The Caliptra Runtime target is additionally bounded by
+the running SVN reported by `FW_INFO`. The SoC Manifest target is bounded by
+`CPTRA_CORE_SOC_MANIFEST_MAX_SVN`. No trusted running SoC Manifest SVN is
+currently exposed, so that target cannot verify the requested floor against the
+currently running image.
+
+**Request Payload**: `flags:u32 | target:u32 | svn:u32 | HybridSignature`
 
 **Response Payload**: Empty
 

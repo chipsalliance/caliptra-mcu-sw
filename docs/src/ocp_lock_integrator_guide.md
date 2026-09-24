@@ -404,13 +404,13 @@ The CBOR evidence is wrapped in a standard COSE `Sig_Structure`, signed with SHA
 
 The MCU exposes the following external mailbox and common commands to the host and external management agents (MCI Mailbox, MCTP VDM, SPDM VDM):
 
-| Command Name | Command ID (FourCC) | Auth Required | Description |
+| Command Name | Command ID / Subcommand | Auth Required | Description |
 |---|---|---|---|
-| `MC_OCP_LOCK_ROTATE_HEK` | `0x4F4C_5248` ("OLRH") | Yes | Requests in-field rotation to the next HEK slot. Generates a 32-byte RNG seed from Caliptra Core, sanitizes the current slot, and programs the target slot. |
-| `MC_OCP_LOCK_SET_PERMA_HEK` | `0x4F4C_5350` ("OLSP") | Yes | Sets the permanent lock fuse (`PERMA_HEK_EN`). Validates that all other slots are sanitized before blowing the fuse. |
-| `MC_GET_OCP_LOCK_ENDORSEMENT_CERT` | `0x4F4C_4543` ("OLEC") | No | Returns the DER-encoded X.509 endorsement certificate for a specified `HpkeHandle`. |
-| `MC_OCP_LOCK_ENUMERATE_HPKE_HANDLES`| `0x4F4C_4548` ("OLEH") | No | Queries Caliptra Core and returns all active HPKE handles. |
-| `MC_GET_OCP_LOCK_EPOCH_KEY_REPORT` | `0x4F4C_4552` ("OLER") | No | Generates and returns a signed `COSE_Sign1` Epoch Key Report with freshness nonce. |
+| `MC_OCP_LOCK_ROTATE_HEK` | `MC_OCP_LOCK` (`0x0000_0013`) + `0x4F4C_5248` ("OLRH") | Yes | Requests in-field rotation to the next HEK slot. Generates a 32-byte RNG seed from Caliptra Core, sanitizes the current slot, and programs the target slot. |
+| `MC_OCP_LOCK_SET_PERMA_HEK` | `MC_OCP_LOCK` (`0x0000_0013`) + `0x4F4C_5350` ("OLSP") | Yes | Sets the permanent lock fuse (`PERMA_HEK_EN`). Validates that all other slots are sanitized before blowing the fuse. |
+| `MC_GET_OCP_LOCK_ENDORSEMENT_CERT` | `MC_OCP_LOCK` (`0x0000_0013`) + `0x4F4C_4543` ("OLEC") | No | Returns the DER-encoded X.509 endorsement certificate for a specified `HpkeHandle`. |
+| `MC_OCP_LOCK_ENUMERATE_HPKE_HANDLES`| `MC_OCP_LOCK` (`0x0000_0013`) + `0x4F4C_4548` ("OLEH") | No | Queries Caliptra Core and returns all active HPKE handles. |
+| `MC_GET_OCP_LOCK_EPOCH_KEY_REPORT` | `MC_OCP_LOCK` (`0x0000_0013`) + `0x4F4C_4552` ("OLER") | No | Generates and returns a signed `COSE_Sign1` Epoch Key Report with freshness nonce. |
 | `MC_DPE_SIGNER_CONTEXT_CERT` | `0x4D44_5343` ("MDSC") | No | Retrieves the DPE signer context leaf certificate that acts as the signing issuer for endorsement certs and EKP reports. |
 
 ---

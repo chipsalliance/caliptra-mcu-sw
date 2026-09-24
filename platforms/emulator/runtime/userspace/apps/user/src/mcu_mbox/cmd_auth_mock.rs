@@ -2,11 +2,11 @@
 
 use caliptra_mcu_common_commands::{AuthorizationError, CommandAuthorizer};
 use caliptra_mcu_mbox_common::messages::{
-    CommandId, DotDisableReq, DotEnableReq, DotLockReq, DotRotateReq,
-    FuseIncreaseCaliptraMinSvnReq, FuseLockPartitionReq, FuseReadReq, FuseRevokeVendorPkHashReq,
-    FuseRevokeVendorPubKeyReq, FuseWriteReq, GetDotBackupBlobReq, HybridSignature,
-    MailboxReqHeader, McuFeProgReq, OcpLockRotateHekReq, OcpLockSetPermaHekReq,
-    ProvisionOwnerPkHashReq, ProvisionVendorPkHashReq, AUTH_CMD_NONCE_LEN,
+    CommandId, DotDisableReq, DotEnableReq, DotLockReq, DotRotateReq, FuseIncreaseMinSvnReq,
+    FuseLockPartitionReq, FuseReadReq, FuseRevokeVendorPkHashReq, FuseRevokeVendorPubKeyReq,
+    FuseWriteReq, GetDotBackupBlobReq, HybridSignature, MailboxReqHeader, McuFeProgReq,
+    OcpLockRotateHekReq, OcpLockSetPermaHekReq, ProvisionOwnerPkHashReq, ProvisionVendorPkHashReq,
+    AUTH_CMD_NONCE_LEN,
 };
 use core::cell::RefCell;
 use core::mem::{offset_of, size_of};
@@ -84,17 +84,27 @@ impl CommandAuthorizer for MockCommandAuthorizer {
         let cmd_len = match cmd_id {
             CommandId::MC_PROVISION_VENDOR_PK_HASH => size_of::<ProvisionVendorPkHashReq>(),
             CommandId::MC_PROVISION_OWNER_PK_HASH => size_of::<ProvisionOwnerPkHashReq>(),
-            CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN => {
-                size_of::<FuseIncreaseCaliptraMinSvnReq>()
-            }
+            CommandId::MC_FUSE_INCREASE_MIN_SVN => size_of::<FuseIncreaseMinSvnReq>(),
             CommandId::MC_FE_PROG => size_of::<McuFeProgReq>(),
             CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY => size_of::<FuseRevokeVendorPubKeyReq>(),
             CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH => size_of::<FuseRevokeVendorPkHashReq>(),
             CommandId::MC_FUSE_READ => size_of::<FuseReadReq>(),
             CommandId::MC_FUSE_WRITE => size_of::<FuseWriteReq>(),
             CommandId::MC_FUSE_LOCK_PARTITION => size_of::<FuseLockPartitionReq>(),
-            CommandId::MC_OCP_LOCK_ROTATE_HEK => size_of::<OcpLockRotateHekReq>(),
-            CommandId::MC_OCP_LOCK_SET_PERMA_HEK => size_of::<OcpLockSetPermaHekReq>(),
+            CommandId::MC_OCP_LOCK => {
+                let subcommand = req
+                    .get(size_of::<MailboxReqHeader>()..size_of::<MailboxReqHeader>() + 4)
+                    .ok_or(AuthorizationError)?;
+                match u32::from_le_bytes(subcommand.try_into().map_err(|_| AuthorizationError)?) {
+                    value if value == CommandId::MC_OCP_LOCK_ROTATE_HEK.0 => {
+                        size_of::<OcpLockRotateHekReq>()
+                    }
+                    value if value == CommandId::MC_OCP_LOCK_SET_PERMA_HEK.0 => {
+                        size_of::<OcpLockSetPermaHekReq>()
+                    }
+                    _ => return Err(AuthorizationError),
+                }
+            }
             CommandId::MC_DEVICE_OWNERSHIP_TRANSFER => {
                 let subcommand = req
                     .get(size_of::<MailboxReqHeader>()..size_of::<MailboxReqHeader>() + 4)

@@ -90,6 +90,9 @@ fn external_command_capabilities() -> ExternalCommandCapabilities {
     if cfg!(feature = "dot-spdm-vdm") {
         capabilities |= ExternalCommandCapabilities::DEVICE_OWNERSHIP_TRANSFER;
     }
+    if cfg!(feature = "spdm") && cfg!(feature = "ocp-lock") {
+        capabilities |= ExternalCommandCapabilities::OCP_LOCK;
+    }
     capabilities
 }
 
@@ -161,7 +164,7 @@ fn authorized_subcommand_capabilities() -> AuthorizedSubcommandCapabilities {
     if cfg!(feature = "spdm") {
         capabilities |= AuthorizedSubcommandCapabilities::GET_AUTH_CHALLENGE
             | AuthorizedSubcommandCapabilities::PROVISION_VENDOR_PK_HASH
-            | AuthorizedSubcommandCapabilities::FUSE_INCREASE_CALIPTRA_MIN_SVN
+            | AuthorizedSubcommandCapabilities::FUSE_INCREASE_MIN_SVN
             | AuthorizedSubcommandCapabilities::PROGRAM_FIELD_ENTROPY
             | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PUBLIC_KEY
             | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PK_HASH
@@ -338,12 +341,13 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         device_ops::fuse_lock_partition(partition)
     }
 
-    async fn increase_caliptra_min_svn<Alloc: ApiAlloc>(
+    async fn increase_min_svn<Alloc: ApiAlloc>(
         &self,
         alloc: &Alloc,
+        target: caliptra_mcu_mbox_common::messages::SvnTarget,
         svn: u32,
     ) -> CaliptraCmdResult<()> {
-        device_ops::increase_caliptra_min_svn(alloc, svn).await
+        device_ops::increase_min_svn(alloc, target, svn).await
     }
 
     async fn revoke_vendor_pub_key<Alloc: ApiAlloc>(
@@ -603,7 +607,7 @@ mod tests {
             authorized.contains(
                 AuthorizedSubcommandCapabilities::GET_AUTH_CHALLENGE
                     | AuthorizedSubcommandCapabilities::PROVISION_VENDOR_PK_HASH
-                    | AuthorizedSubcommandCapabilities::FUSE_INCREASE_CALIPTRA_MIN_SVN
+                    | AuthorizedSubcommandCapabilities::FUSE_INCREASE_MIN_SVN
                     | AuthorizedSubcommandCapabilities::PROGRAM_FIELD_ENTROPY
                     | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PUBLIC_KEY
                     | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PK_HASH
@@ -625,6 +629,10 @@ mod tests {
                 AuthorizedSubcommandCapabilities::OCP_LOCK_ROTATE_HEK
                     | AuthorizedSubcommandCapabilities::OCP_LOCK_SET_PERMA_HEK
             ),
+            cfg!(feature = "spdm") && cfg!(feature = "ocp-lock")
+        );
+        assert_eq!(
+            commands.contains(ExternalCommandCapabilities::OCP_LOCK),
             cfg!(feature = "spdm") && cfg!(feature = "ocp-lock")
         );
         assert_eq!(

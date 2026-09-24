@@ -93,9 +93,7 @@ jobs:
         uses: actions/checkout@v7
         with:
           repository: chipsalliance/caliptra-spdm-emu
-          # TODO: Update this pull-request ref to the corresponding unmerged
-          # caliptra-spdm-emu PR for each SPDM change.
-          ref: ${{ github.event_name == 'pull_request' && 'refs/pull/5/head' || 'caliptra-main-14' }}
+          ref: caliptra-main-14
           path: spdm-emu
           submodules: recursive
 
@@ -107,6 +105,9 @@ jobs:
         run: |
           pushd spdm-emu
           git submodule update --init --recursive
+          find . -path '*/openssllib/CMakeLists.txt' -exec sed -i \
+            -e 's/set(OPENSSL_SHARED_OPTION "shared")/set(OPENSSL_SHARED_OPTION "no-shared")/' \
+            -e 's/set(OPENSSL_LIBRARY_TYPE "SHARED")/set(OPENSSL_LIBRARY_TYPE "STATIC")/' {} +
           mkdir build
           pushd build
           cmake -DARCH=x64 -DTOOLCHAIN=GCC -DTARGET=Debug -DCRYPTO=openssl -DCMAKE_C_FLAGS="-DLIBSPDM_MAX_CERT_CHAIN_SIZE=0x10000" ..

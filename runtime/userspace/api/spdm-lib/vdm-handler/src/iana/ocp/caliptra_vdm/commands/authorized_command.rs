@@ -20,7 +20,7 @@ const MLDSA87_PUB_KEY_SIZE: usize = 2592;
 const FE_PROG_PAYLOAD_LEN: usize = 4;
 const PROVISION_VENDOR_PK_HASH_PAYLOAD_LEN: usize = 4 + 48;
 const PROVISION_OWNER_PK_HASH_PAYLOAD_LEN: usize = 48;
-const INCREASE_CALIPTRA_MIN_SVN_PAYLOAD_LEN: usize = 4 + 4;
+const INCREASE_MIN_SVN_PAYLOAD_LEN: usize = 4 + 4 + 4;
 const REVOKE_VENDOR_PUB_KEY_PAYLOAD_LEN: usize = 4 + 4 + 4 + 4;
 const REVOKE_VENDOR_PK_HASH_PAYLOAD_LEN: usize = 4 + 4;
 const FUSE_LOCK_PARTITION_PAYLOAD_LEN: usize = 4;
@@ -35,9 +35,9 @@ const DOT_ROTATE_PAYLOAD_LEN: usize = 4 + core::mem::size_of::<DotRotatePayload>
 #[cfg(feature = "device-ownership-transfer")]
 const DOT_BACKUP_PAYLOAD_LEN: usize = 4;
 #[cfg(feature = "ocp-lock")]
-const OCP_LOCK_ROTATE_HEK_PAYLOAD_LEN: usize = 4;
+const OCP_LOCK_ROTATE_HEK_PAYLOAD_LEN: usize = 4 + 4;
 #[cfg(feature = "ocp-lock")]
-const OCP_LOCK_SET_PERMA_HEK_PAYLOAD_LEN: usize = 0;
+const OCP_LOCK_SET_PERMA_HEK_PAYLOAD_LEN: usize = 4;
 
 const AUTHORIZATION_TRAILER_LEN: usize = AUTH_CMD_NONCE_LEN
     + 2 * ECC_P384_COORD_SIZE
@@ -52,8 +52,8 @@ const MAX_AUTHORIZED_PAYLOAD_LEN: usize = {
     if PROVISION_OWNER_PK_HASH_PAYLOAD_LEN > max {
         max = PROVISION_OWNER_PK_HASH_PAYLOAD_LEN;
     }
-    if INCREASE_CALIPTRA_MIN_SVN_PAYLOAD_LEN > max {
-        max = INCREASE_CALIPTRA_MIN_SVN_PAYLOAD_LEN;
+    if INCREASE_MIN_SVN_PAYLOAD_LEN > max {
+        max = INCREASE_MIN_SVN_PAYLOAD_LEN;
     }
     if REVOKE_VENDOR_PUB_KEY_PAYLOAD_LEN > max {
         max = REVOKE_VENDOR_PUB_KEY_PAYLOAD_LEN;
@@ -104,8 +104,8 @@ pub const GET_AUTH_CHALLENGE_CMD_ID: u32 = 0x4D41_4343;
 pub const PROVISION_VENDOR_PK_HASH_CMD_ID: u32 = 0x5056_504B;
 /// MC_PROVISION_OWNER_PK_HASH sub-command (`POPK`).
 pub const PROVISION_OWNER_PK_HASH_CMD_ID: u32 = CommandId::MC_PROVISION_OWNER_PK_HASH.0;
-/// MC_FUSE_INCREASE_CALIPTRA_MIN_SVN sub-command (`MCMS`).
-pub const INCREASE_CALIPTRA_MIN_SVN_CMD_ID: u32 = 0x4D43_4D53;
+/// MC_FUSE_INCREASE_MIN_SVN sub-command (`MCMS`).
+pub const INCREASE_MIN_SVN_CMD_ID: u32 = CommandId::MC_FUSE_INCREASE_MIN_SVN.0;
 /// MC_FE_PROG sub-command (`MCFP`).
 pub const FE_PROG_CMD_ID: u32 = 0x4D43_4650;
 /// MC_FUSE_REVOKE_VENDOR_PUB_KEY sub-command (`MRVK`).
@@ -126,6 +126,9 @@ pub const DOT_DISABLE_CMD_ID: u32 = CommandId::MC_DOT_DISABLE.0;
 pub const DOT_ROTATE_CMD_ID: u32 = CommandId::MC_DOT_ROTATE.0;
 /// GET_DOT_BACKUP_BLOB sub-command (`MDBB`).
 pub const GET_DOT_BACKUP_BLOB_CMD_ID: u32 = CommandId::MC_GET_DOT_BACKUP_BLOB.0;
+/// OCP Lock command family (`0x13`).
+#[cfg(feature = "ocp-lock")]
+pub const OCP_LOCK_CMD_ID: u32 = CommandId::MC_OCP_LOCK.0;
 /// MC_OCP_LOCK_ROTATE_HEK sub-command (`OLRH`).
 #[cfg(feature = "ocp-lock")]
 pub const OCP_LOCK_ROTATE_HEK_CMD_ID: u32 = CommandId::MC_OCP_LOCK_ROTATE_HEK.0;
@@ -161,9 +164,7 @@ where
         PROVISION_OWNER_PK_HASH_CMD_ID => {
             handle_provision_owner_pk_hash(cmds, payload, scratch, out).await
         }
-        INCREASE_CALIPTRA_MIN_SVN_CMD_ID => {
-            handle_increase_caliptra_min_svn(cmds, payload, scratch, out).await
-        }
+        INCREASE_MIN_SVN_CMD_ID => handle_increase_min_svn(cmds, payload, scratch, out).await,
         FE_PROG_CMD_ID => handle_fe_prog(cmds, payload, scratch, out).await,
         REVOKE_VENDOR_PUB_KEY_CMD_ID => {
             handle_revoke_vendor_pub_key(cmds, payload, scratch, out).await
@@ -177,11 +178,7 @@ where
             handle_device_ownership_transfer(cmds, payload, scratch, out).await
         }
         #[cfg(feature = "ocp-lock")]
-        OCP_LOCK_ROTATE_HEK_CMD_ID => handle_ocp_lock_rotate_hek(cmds, payload, scratch, out).await,
-        #[cfg(feature = "ocp-lock")]
-        OCP_LOCK_SET_PERMA_HEK_CMD_ID => {
-            handle_ocp_lock_set_perma_hek(cmds, payload, scratch, out).await
-        }
+        OCP_LOCK_CMD_ID => handle_ocp_lock(cmds, payload, scratch, out).await,
         _ => CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidParameter),
     }
 }
@@ -491,7 +488,7 @@ where
     )
 }
 
-async fn handle_increase_caliptra_min_svn<H, A>(
+async fn handle_increase_min_svn<H, A>(
     cmds: &H,
     req: &[u8],
     scratch: &A,
@@ -501,15 +498,17 @@ where
     H: CaliptraVdmAuthorization,
     A: SpdmPalAlloc,
 {
-    let parsed = match split_authorized_request(req, INCREASE_CALIPTRA_MIN_SVN_PAYLOAD_LEN) {
+    let parsed = match split_authorized_request(req, INCREASE_MIN_SVN_PAYLOAD_LEN) {
         Ok(parsed) => parsed,
         Err(code) => return CaliptraVdmCmdResult::Error(code),
     };
     let flags = read_u32_le(&parsed.payload[..4]);
-    let svn = read_u32_le(&parsed.payload[4..8]);
+    let target = read_u32_le(&parsed.payload[4..8]);
+    let svn = read_u32_le(&parsed.payload[8..12]);
     finish_authorized_command(
-        cmds.increase_caliptra_min_svn(
+        cmds.increase_min_svn(
             flags,
+            target,
             svn,
             parsed.payload,
             parsed.sig,
@@ -661,6 +660,32 @@ where
 }
 
 #[cfg(feature = "ocp-lock")]
+async fn handle_ocp_lock<H, A>(
+    cmds: &H,
+    req: &[u8],
+    scratch: &A,
+    out: &mut [u8],
+) -> CaliptraVdmCmdResult
+where
+    H: CaliptraVdmAuthorization,
+    A: SpdmPalAlloc,
+{
+    // `req` starts with the little-endian OCP LOCK FourCC and remains byte-exact
+    // through authorization. The platform therefore verifies the common
+    // transcript `family 0x13 (BE) || req || nonce` without re-encoding fields.
+    let Some(subcommand) = req.get(..4) else {
+        return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidPayloadSize);
+    };
+    match read_u32_le(subcommand) {
+        OCP_LOCK_ROTATE_HEK_CMD_ID => handle_ocp_lock_rotate_hek(cmds, req, scratch, out).await,
+        OCP_LOCK_SET_PERMA_HEK_CMD_ID => {
+            handle_ocp_lock_set_perma_hek(cmds, req, scratch, out).await
+        }
+        _ => CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidParameter),
+    }
+}
+
+#[cfg(feature = "ocp-lock")]
 async fn handle_ocp_lock_rotate_hek<H, A>(
     cmds: &H,
     req: &[u8],
@@ -675,7 +700,7 @@ where
         Ok(parsed) => parsed,
         Err(code) => return CaliptraVdmCmdResult::Error(code),
     };
-    let slot = read_u32_le(parsed.payload);
+    let slot = read_u32_le(&parsed.payload[4..8]);
     finish_authorized_command(
         cmds.ocp_lock_rotate_hek(
             slot,

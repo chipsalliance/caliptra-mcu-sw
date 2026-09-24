@@ -65,9 +65,10 @@ pub mod test {
                 config.provision_vendor_pk_hash.hash = "a5".repeat(48);
             }
             Some("increase-min-svn") => {
-                config.increase_caliptra_min_svn.enabled = true;
-                config.increase_caliptra_min_svn.flags = 0;
-                config.increase_caliptra_min_svn.svn = 7;
+                config.increase_min_svn.enabled = true;
+                config.increase_min_svn.flags = 0;
+                config.increase_min_svn.target = 0;
+                config.increase_min_svn.svn = 7;
             }
             Some("revoke-vendor-pub-key") => {
                 config.provision_vendor_pk_hash.enabled = true;

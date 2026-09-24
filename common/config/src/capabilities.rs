@@ -25,13 +25,14 @@ bitflags::bitflags! {
         const EXPORT_ATTESTED_CSR = command_capability(0x08);
         const DEVICE_OWNERSHIP_TRANSFER = command_capability(0x11);
         const AUTHORIZED_COMMAND = command_capability(0x12);
+        const OCP_LOCK = command_capability(0x13);
     }
 
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
     pub struct AuthorizedSubcommandCapabilities: u32 {
         const GET_AUTH_CHALLENGE = 1 << 0;
         const PROVISION_VENDOR_PK_HASH = 1 << 1;
-        const FUSE_INCREASE_CALIPTRA_MIN_SVN = 1 << 2;
+        const FUSE_INCREASE_MIN_SVN = 1 << 2;
         const PROGRAM_FIELD_ENTROPY = 1 << 3;
         const FUSE_REVOKE_VENDOR_PUBLIC_KEY = 1 << 4;
         const FUSE_REVOKE_VENDOR_PK_HASH = 1 << 5;
@@ -117,5 +118,10 @@ mod tests {
             1 << 13
         );
         assert_eq!(AuthorizedSubcommandCapabilities::DOT_ENABLE.bits(), 1 << 14);
+        assert_eq!(ExternalCommandCapabilities::OCP_LOCK.bits(), 1 << 18);
+        assert_eq!(
+            AuthorizedSubcommandCapabilities::FUSE_INCREASE_MIN_SVN.bits(),
+            1 << 2
+        );
     }
 }

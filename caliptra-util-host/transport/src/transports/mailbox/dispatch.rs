@@ -28,7 +28,7 @@ use super::device_ownership_transfer::{
     GetDotBackupBlobCmd,
 };
 use super::fuse::{
-    FeProgCmd, FuseIncreaseCaliptraMinSvnCmd, FuseLockPartitionCmd, FuseRevokeVendorPkHashCmd,
+    FeProgCmd, FuseIncreaseMinSvnCmd, FuseLockPartitionCmd, FuseRevokeVendorPkHashCmd,
     FuseRevokeVendorPubKeyCmd, GetAuthCmdChallengeCmd, OcpLockRotateHekCmd, OcpLockSetPermaHekCmd,
     ProvisionVendorPkHashCmd,
 };
@@ -98,7 +98,7 @@ pub fn get_command_handler(command_id: u32) -> Option<CommandHandlerFn> {
         0x8010 => Some(process_command_with_metadata::<GetAuthCmdChallengeCmd>), // GetAuthCmdChallenge
         0x8011 => Some(process_command_with_metadata::<FeProgCmd>),              // FeProg
         0x8012 => Some(process_command_with_metadata::<ProvisionVendorPkHashCmd>),
-        0x8013 => Some(process_command_with_metadata::<FuseIncreaseCaliptraMinSvnCmd>),
+        0x8013 => Some(process_command_with_metadata::<FuseIncreaseMinSvnCmd>),
         0x8014 => Some(process_command_with_metadata::<FuseRevokeVendorPubKeyCmd>),
         0x8015 => Some(process_command_with_metadata::<FuseRevokeVendorPkHashCmd>),
         0x8016 => Some(process_command_with_metadata::<FuseLockPartitionCmd>),
@@ -175,12 +175,12 @@ pub fn get_external_cmd_code(command_id: u32) -> Option<u32> {
         0x8010 => Some(0x4D41_4343), // GetAuthCmdChallenge -> MC_GET_AUTH_CMD_CHALLENGE ("MACC")
         0x8011 => Some(0x4D43_4650), // FeProg -> MC_FE_PROG ("MCFP")
         0x8012 => Some(0x5056_504B), // ProvisionVendorPkHash -> MC_PROVISION_VENDOR_PK_HASH ("PVPK")
-        0x8013 => Some(0x4D43_4D53), // FuseIncreaseCaliptraMinSvn -> MC_FUSE_INCREASE_CALIPTRA_MIN_SVN ("MCMS")
+        0x8013 => Some(0x4D43_4D53), // FuseIncreaseMinSvn -> MC_FUSE_INCREASE_MIN_SVN ("MCMS")
         0x8014 => Some(0x4D52_564B), // FuseRevokeVendorPubKey -> MC_FUSE_REVOKE_VENDOR_PUB_KEY ("MRVK")
         0x8015 => Some(0x5256_4B48), // FuseRevokeVendorPkHash -> MC_FUSE_REVOKE_VENDOR_PK_HASH ("RVKH")
         0x8016 => Some(0x4946_504B), // FuseLockPartition -> MC_FUSE_LOCK_PARTITION ("IFPK")
-        0x8018 => Some(0x4F4C_5248), // OcpLockRotateHek -> MC_OCP_LOCK_ROTATE_HEK ("OLRH")
-        0x8019 => Some(0x4F4C_5350), // OcpLockSetPermaHek -> MC_OCP_LOCK_SET_PERMA_HEK ("OLSP")
+        // OCP Lock Commands share the MCI OCP LOCK family ID.
+        0x8018..=0x8019 => Some(0x0000_0013),
         // Device Ownership Transfer Commands share the MCI DOT family ID.
         0x8020..=0x802A => Some(0x0000_0011),
         _ => None,
@@ -191,6 +191,7 @@ pub fn get_external_cmd_code(command_id: u32) -> Option<u32> {
 mod tests {
     use super::*;
     use caliptra_mcu_core_util_host_command_types::device_ownership_transfer::DOT_FAMILY_ID;
+    use caliptra_mcu_core_util_host_command_types::fuse::OCP_LOCK_FAMILY_ID;
     use caliptra_mcu_core_util_host_command_types::CaliptraCommandId;
 
     #[test]
@@ -212,6 +213,22 @@ mod tests {
         for command in commands {
             assert!(get_command_handler(command as u32).is_some());
             assert_eq!(get_external_cmd_code(command as u32), Some(DOT_FAMILY_ID));
+        }
+    }
+
+    #[test]
+    fn all_ocp_lock_commands_are_dispatched_to_the_family_command() {
+        let commands = [
+            CaliptraCommandId::OcpLockRotateHek,
+            CaliptraCommandId::OcpLockSetPermaHek,
+        ];
+
+        for command in commands {
+            assert!(get_command_handler(command as u32).is_some());
+            assert_eq!(
+                get_external_cmd_code(command as u32),
+                Some(OCP_LOCK_FAMILY_ID)
+            );
         }
     }
 }

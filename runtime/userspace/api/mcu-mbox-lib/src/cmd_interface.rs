@@ -14,16 +14,16 @@ use caliptra_mcu_libsyscall_caliptra::{caliptra, otp};
 use caliptra_mcu_mbox_common::messages::{
     ClearLogReq, ClearLogResp, CommandId, DeviceCapsReq, DeviceCapsResp, DpeSignerContextCertReq,
     DpeSignerContextCertResp, EndorsementAlgorithm, ExportAttestedCsrReq, FirmwareVersionReq,
-    FirmwareVersionResp, FuseIncreaseCaliptraMinSvnReq, FuseIncreaseCaliptraMinSvnResp,
-    FuseLockPartitionReq, FuseLockPartitionResp, FuseReadReq, FuseReadResp,
-    FuseRevokeVendorPkHashReq, FuseRevokeVendorPkHashResp, FuseRevokeVendorPubKeyReq,
-    FuseRevokeVendorPubKeyResp, FuseWriteReq, FuseWriteResp, GetAttestationReq,
-    GetAuthCmdChallengeReq, GetAuthCmdChallengeResp, GetDpeCertChainReq, GetLogReq, LogType,
-    MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize, McuFeProgReq, McuMailboxReq,
-    McuMailboxResp, McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp,
-    McuProdDebugUnlockTokenReq, McuResponseVarSize, ProvisionOwnerPkHashReq,
-    ProvisionOwnerPkHashResp, ProvisionVendorPkHashReq, ProvisionVendorPkHashResp,
-    DEVICE_CAPS_SIZE, GET_ATTESTATION_RESP_PREFIX_LEN, MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN,
+    FirmwareVersionResp, FuseIncreaseMinSvnReq, FuseIncreaseMinSvnResp, FuseLockPartitionReq,
+    FuseLockPartitionResp, FuseReadReq, FuseReadResp, FuseRevokeVendorPkHashReq,
+    FuseRevokeVendorPkHashResp, FuseRevokeVendorPubKeyReq, FuseRevokeVendorPubKeyResp,
+    FuseWriteReq, FuseWriteResp, GetAttestationReq, GetAuthCmdChallengeReq,
+    GetAuthCmdChallengeResp, GetDpeCertChainReq, GetLogReq, LogType, MailboxReqHeader,
+    MailboxRespHeader, MailboxRespHeaderVarSize, McuFeProgReq, McuMailboxReq, McuMailboxResp,
+    McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq,
+    McuResponseVarSize, ProvisionOwnerPkHashReq, ProvisionOwnerPkHashResp,
+    ProvisionVendorPkHashReq, ProvisionVendorPkHashResp, SvnTarget, DEVICE_CAPS_SIZE,
+    GET_ATTESTATION_RESP_PREFIX_LEN, MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN,
     MAX_RESP_DATA_SIZE,
 };
 
@@ -39,8 +39,8 @@ use caliptra_mcu_mbox_common::messages::{
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_mbox_common::messages::{
     GetOcpLockEndorsementCertReq, GetOcpLockEndorsementCertResp, GetOcpLockEpochKeyReportReq,
-    GetOcpLockEpochKeyReportResp, OcpLockEnumerateHpkeHandlesResp, OcpLockRotateHekReq,
-    OcpLockRotateHekResp, OcpLockSetPermaHekReq, OcpLockSetPermaHekResp,
+    GetOcpLockEpochKeyReportResp, OcpLockEnumerateHpkeHandlesReq, OcpLockEnumerateHpkeHandlesResp,
+    OcpLockRotateHekReq, OcpLockRotateHekResp, OcpLockSetPermaHekReq, OcpLockSetPermaHekResp,
 };
 #[cfg(feature = "periodic-fips-self-test")]
 use caliptra_mcu_mbox_common::messages::{
@@ -240,7 +240,7 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
                 }
                 inner @ CommandId::MC_PROVISION_VENDOR_PK_HASH
                 | inner @ CommandId::MC_PROVISION_OWNER_PK_HASH
-                | inner @ CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN
+                | inner @ CommandId::MC_FUSE_INCREASE_MIN_SVN
                 | inner @ CommandId::MC_FE_PROG
                 | inner @ CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH
                 | inner @ CommandId::MC_FUSE_READ
@@ -250,31 +250,13 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
                     self.handle_authorized_command(inner, req, resp_buf).await
                 }
                 #[cfg(feature = "ocp-lock")]
-                inner @ CommandId::MC_OCP_LOCK_ROTATE_HEK
-                | inner @ CommandId::MC_OCP_LOCK_SET_PERMA_HEK => {
-                    self.handle_authorized_command(inner, req, resp_buf).await
-                }
+                CommandId::MC_OCP_LOCK => self.handle_ocp_lock_command(req, resp_buf).await,
                 #[cfg(feature = "device-ownership-transfer")]
                 CommandId::MC_DEVICE_OWNERSHIP_TRANSFER => {
                     self.handle_dot_command(req, resp_buf).await
                 }
                 CommandId::MC_EXPORT_ATTESTED_CSR => {
                     self.handle_export_attested_csr(req, resp_buf).await
-                }
-                #[cfg(feature = "ocp-lock")]
-                CommandId::MC_GET_OCP_LOCK_ENDORSEMENT_CERT => {
-                    self.handle_get_ocp_lock_endorsement_cert(req, resp_buf)
-                        .await
-                }
-                #[cfg(feature = "ocp-lock")]
-                CommandId::MC_OCP_LOCK_ENUMERATE_HPKE_HANDLES => {
-                    self.handle_ocp_lock_enumerate_hpke_handles(req, resp_buf)
-                        .await
-                }
-                #[cfg(feature = "ocp-lock")]
-                CommandId::MC_GET_OCP_LOCK_EPOCH_KEY_REPORT => {
-                    self.handle_get_ocp_lock_epoch_key_report(req, resp_buf)
-                        .await
                 }
                 CommandId::MC_GET_ATTESTATION => self.handle_get_attestation(req, resp_buf).await,
                 CommandId::MC_PROD_DEBUG_UNLOCK_REQ => {
@@ -820,9 +802,11 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
     #[cfg(feature = "ocp-lock")]
     async fn handle_ocp_lock_enumerate_hpke_handles<'r>(
         &self,
-        _req: &[u8],
+        req: &[u8],
         resp_buf: &'r mut [u8],
     ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let _req = OcpLockEnumerateHpkeHandlesReq::ref_from_bytes(req)
+            .map_err(|_| errors::INVALID_PARAMS)?;
         let resp_size = size_of::<OcpLockEnumerateHpkeHandlesResp>();
         if resp_buf.len() < resp_size {
             return Err(errors::INVALID_PARAMS);
@@ -1144,8 +1128,8 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
             CommandId::MC_PROVISION_OWNER_PK_HASH => {
                 self.handle_provision_owner_pk_hash(cmd, resp_buf).await
             }
-            CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN => {
-                self.handle_increase_caliptra_min_svn(cmd, resp_buf).await
+            CommandId::MC_FUSE_INCREASE_MIN_SVN => {
+                self.handle_increase_min_svn(cmd, resp_buf).await
             }
             CommandId::MC_FE_PROG => self.handle_fe_prog(cmd, resp_buf).await,
             CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY => {
@@ -1185,12 +1169,53 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
                 self.handle_fuse_lock_partition(cmd, resp_buf).await
             }
             #[cfg(feature = "ocp-lock")]
-            CommandId::MC_OCP_LOCK_ROTATE_HEK => {
-                self.handle_ocp_lock_rotate_hek(cmd, resp_buf).await
+            CommandId::MC_OCP_LOCK => {
+                let subcommand = cmd
+                    .get(size_of::<MailboxReqHeader>()..size_of::<MailboxReqHeader>() + 4)
+                    .ok_or(errors::INVALID_PARAMS)?;
+                match u32::from_le_bytes(subcommand.try_into().map_err(|_| errors::INVALID_PARAMS)?)
+                {
+                    value if value == CommandId::MC_OCP_LOCK_ROTATE_HEK.0 => {
+                        self.handle_ocp_lock_rotate_hek(cmd, resp_buf).await
+                    }
+                    value if value == CommandId::MC_OCP_LOCK_SET_PERMA_HEK.0 => {
+                        self.handle_ocp_lock_set_perma_hek(cmd, resp_buf).await
+                    }
+                    _ => Err(errors::UNSUPPORTED_COMMAND),
+                }
             }
-            #[cfg(feature = "ocp-lock")]
-            CommandId::MC_OCP_LOCK_SET_PERMA_HEK => {
-                self.handle_ocp_lock_set_perma_hek(cmd, resp_buf).await
+            _ => Err(errors::UNSUPPORTED_COMMAND),
+        }
+    }
+
+    #[cfg(feature = "ocp-lock")]
+    async fn handle_ocp_lock_command<'r>(
+        &mut self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let subcommand = req
+            .get(size_of::<MailboxReqHeader>()..size_of::<MailboxReqHeader>() + 4)
+            .ok_or(errors::INVALID_PARAMS)?;
+        match u32::from_le_bytes(subcommand.try_into().map_err(|_| errors::INVALID_PARAMS)?) {
+            value
+                if value == CommandId::MC_OCP_LOCK_ROTATE_HEK.0
+                    || value == CommandId::MC_OCP_LOCK_SET_PERMA_HEK.0 =>
+            {
+                self.handle_authorized_command(CommandId::MC_OCP_LOCK, req, resp_buf)
+                    .await
+            }
+            value if value == CommandId::MC_GET_OCP_LOCK_ENDORSEMENT_CERT.0 => {
+                self.handle_get_ocp_lock_endorsement_cert(req, resp_buf)
+                    .await
+            }
+            value if value == CommandId::MC_OCP_LOCK_ENUMERATE_HPKE_HANDLES.0 => {
+                self.handle_ocp_lock_enumerate_hpke_handles(req, resp_buf)
+                    .await
+            }
+            value if value == CommandId::MC_GET_OCP_LOCK_EPOCH_KEY_REPORT.0 => {
+                self.handle_get_ocp_lock_epoch_key_report(req, resp_buf)
+                    .await
             }
             _ => Err(errors::UNSUPPORTED_COMMAND),
         }
@@ -1357,82 +1382,30 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         Ok((&mut resp_buf[..resp_bytes.len()], MbxCmdStatus::Complete))
     }
 
-    async fn handle_increase_caliptra_min_svn<'r>(
+    async fn handle_increase_min_svn<'r>(
         &self,
         req: &[u8],
         resp_buf: &'r mut [u8],
     ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
-        if resp_buf.len() < core::mem::size_of::<FuseIncreaseCaliptraMinSvnResp>() {
+        if resp_buf.len() < core::mem::size_of::<FuseIncreaseMinSvnResp>() {
             return Err(errors::INVALID_PARAMS);
         }
 
-        // Decode the request
-        let req = FuseIncreaseCaliptraMinSvnReq::ref_from_bytes(req)
-            .map_err(|_| errors::INVALID_PARAMS)?;
-
-        // Check the request has a valid SVN value
-        if req.svn == 0 {
-            return Err(errors::INVALID_PARAMS);
-        }
-        if req.svn > 128 {
+        let req = FuseIncreaseMinSvnReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        if req.flags != 0 {
             return Err(errors::INVALID_PARAMS);
         }
 
-        let caliptra_fw_info = self.get_caliptra_fw_info().await?;
+        let target = SvnTarget::try_from(req.target).map_err(|_| errors::INVALID_PARAMS)?;
+        self.non_crypto_cmds_handler
+            .increase_min_svn(self.scratch, target, req.svn)
+            .await
+            .map_err(|error| match error {
+                CaliptraCompletionCode::UnsupportedOperation => errors::UNSUPPORTED_COMMAND,
+                error => map_common_cmd_error(error),
+            })?;
 
-        // Ensure the requested SVN will allow current Caliptra firmware to run
-        if req.svn > caliptra_fw_info.fw_svn {
-            return Err(errors::INVALID_PARAMS);
-        }
-
-        // Get the minimum SVN set in fuses
-        let otp: otp::Otp<DefaultSyscalls> = otp::Otp::new();
-        let mut current_fuses = [0u32; 4];
-        for (i, fuse) in current_fuses.iter_mut().enumerate() {
-            *fuse = otp
-                .read(otp::reg::CALIPTRA_FW_SVN, i as u32)
-                .map_err(|_| errors::MCU_MBOX_COMMON)?;
-        }
-
-        // Convert the fuses to the SVN value
-        let fused_min_svn = {
-            // Value is take as the most significant bit set in fuses
-            let fuse: u128 = u128::from_le_bytes(current_fuses.as_bytes().try_into().unwrap());
-            128 - fuse.leading_zeros()
-        };
-
-        // Ensure we are not trying to decrease the SVN
-        if req.svn < fused_min_svn {
-            return Err(errors::INVALID_PARAMS);
-        }
-
-        // We are done, if the fuses already match the requested SVN.
-        if fused_min_svn == req.svn {
-            let resp = FuseIncreaseCaliptraMinSvnResp::default();
-            let resp_bytes = resp.as_bytes();
-            resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
-            return Ok((&mut resp_buf[..resp_bytes.len()], MbxCmdStatus::Complete));
-        }
-
-        let new_fuse_svn = if req.svn == 128 {
-            u128::MAX
-        } else {
-            !(u128::MAX << req.svn)
-        };
-
-        for (i, (current, new_bytes)) in current_fuses
-            .iter()
-            .zip(new_fuse_svn.as_bytes().chunks_exact(4))
-            .enumerate()
-        {
-            let new_svn_word = u32::from_le_bytes(new_bytes.try_into().unwrap());
-            if *current != new_svn_word {
-                otp.write(otp::reg::CALIPTRA_FW_SVN, i as u32, new_svn_word)
-                    .map_err(|_| errors::INVALID_PARAMS)?;
-            }
-        }
-
-        let resp = FuseIncreaseCaliptraMinSvnResp::default();
+        let resp = FuseIncreaseMinSvnResp::default();
         let resp_bytes = resp.as_bytes();
         resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
         Ok((&mut resp_buf[..resp_bytes.len()], MbxCmdStatus::Complete))
@@ -1733,9 +1706,7 @@ fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32) -> usize {
         }
         c if c == CommandId::MC_PROVISION_VENDOR_PK_HASH => size_of::<ProvisionVendorPkHashResp>(),
         c if c == CommandId::MC_PROVISION_OWNER_PK_HASH => size_of::<ProvisionOwnerPkHashResp>(),
-        c if c == CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN => {
-            size_of::<FuseIncreaseCaliptraMinSvnResp>()
-        }
+        c if c == CommandId::MC_FUSE_INCREASE_MIN_SVN => size_of::<FuseIncreaseMinSvnResp>(),
         c if c == CommandId::MC_FE_PROG || c == CommandId::MC_FUSE_WRITE => {
             size_of::<FuseWriteResp>()
         }
@@ -1748,21 +1719,11 @@ fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32) -> usize {
         c if c == CommandId::MC_FUSE_READ => size_of::<FuseReadResp>(),
         c if c == CommandId::MC_FUSE_LOCK_PARTITION => size_of::<FuseLockPartitionResp>(),
         #[cfg(feature = "ocp-lock")]
-        c if c == CommandId::MC_OCP_LOCK_ROTATE_HEK => size_of::<OcpLockRotateHekResp>(),
-        #[cfg(feature = "ocp-lock")]
-        c if c == CommandId::MC_OCP_LOCK_SET_PERMA_HEK => size_of::<OcpLockSetPermaHekResp>(),
-        #[cfg(feature = "ocp-lock")]
-        c if c == CommandId::MC_GET_OCP_LOCK_ENDORSEMENT_CERT => {
-            size_of::<GetOcpLockEndorsementCertResp>()
-        }
-        #[cfg(feature = "ocp-lock")]
-        c if c == CommandId::MC_OCP_LOCK_ENUMERATE_HPKE_HANDLES => {
-            size_of::<OcpLockEnumerateHpkeHandlesResp>()
-        }
-        #[cfg(feature = "ocp-lock")]
-        c if c == CommandId::MC_GET_OCP_LOCK_EPOCH_KEY_REPORT => {
-            size_of::<GetOcpLockEpochKeyReportResp>()
-        }
+        c if c == CommandId::MC_OCP_LOCK => size_of::<OcpLockRotateHekResp>()
+            .max(size_of::<OcpLockSetPermaHekResp>())
+            .max(size_of::<GetOcpLockEndorsementCertResp>())
+            .max(size_of::<OcpLockEnumerateHpkeHandlesResp>())
+            .max(size_of::<GetOcpLockEpochKeyReportResp>()),
         c if c == CommandId::MC_DPE_SIGNER_CONTEXT_CERT => size_of::<DpeSignerContextCertResp>(),
         c if c == CommandId::MC_GET_DPE_CERTIFICATE_CHAIN => {
             size_of::<MailboxRespHeaderVarSize>() + 1024

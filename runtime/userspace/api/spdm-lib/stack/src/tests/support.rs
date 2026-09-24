@@ -116,6 +116,24 @@ pub struct TestPal {
     pub op: RefCell<Option<StoreOp>>,
     pub stream_cert: RefCell<Vec<u8>>,
     pub stream_aborts: Cell<usize>,
+    /// Algorithm the most recent cert-chain write was routed to.
+    pub write_algo: Cell<Option<SpdmPalAsymAlgo>>,
+    pub sign_ops: RefCell<Vec<RecordedSign>>,
+}
+
+/// Signing input captured by [`TestPal::sign`], owned so tests can assert on it
+/// after the borrow ends.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RecordedSigningInput {
+    EccP384Digest(Vec<u8>),
+    Mldsa87Message { context: Vec<u8>, message: Vec<u8> },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RecordedSign {
+    pub algo: SpdmPalAsymAlgo,
+    pub input: RecordedSigningInput,
+    pub sig_len: usize,
 }
 
 impl Default for TestPal {
@@ -137,6 +155,8 @@ impl Default for TestPal {
             op: RefCell::new(None),
             stream_cert: RefCell::new(Vec::new()),
             stream_aborts: Cell::new(0),
+            write_algo: Cell::new(None),
+            sign_ops: RefCell::new(Vec::new()),
         }
     }
 }
@@ -282,7 +302,7 @@ impl SpdmPalHash for TestPal {
 }
 
 impl SpdmPalCertStore for TestPal {
-    fn provisioned_slots(&self) -> u8 {
+    fn provisioned_slots(&self, _algo: SpdmPalAsymAlgo) -> u8 {
         self.provisioned_slots
     }
 
@@ -367,10 +387,32 @@ impl SpdmPalCertStore for TestPal {
         &self,
         _io: &Self::Io<'_>,
         _slot: u8,
-        _algo: SpdmPalAsymAlgo,
-        _signing_input: SigningInput<'_>,
+        algo: SpdmPalAsymAlgo,
+        signing_input: SigningInput<'_>,
         signature: &mut [u8],
     ) -> McuResult<usize> {
+        let input = match signing_input {
+            SigningInput::EccP384Digest(digest) => {
+                RecordedSigningInput::EccP384Digest(digest.to_vec())
+            }
+            SigningInput::Mldsa87Message {
+                context,
+                prefix,
+                hash,
+            } => {
+                let mut message = prefix.to_vec();
+                message.extend_from_slice(hash);
+                RecordedSigningInput::Mldsa87Message {
+                    context: context.to_vec(),
+                    message,
+                }
+            }
+        };
+        self.sign_ops.borrow_mut().push(RecordedSign {
+            algo,
+            input,
+            sig_len: signature.len(),
+        });
         signature.fill(0x77);
         Ok(signature.len())
     }
@@ -380,7 +422,7 @@ impl SpdmPalCertStore for TestPal {
         &self,
         _io: &Self::Io<'_>,
         slot: u8,
-        _algo: SpdmPalAsymAlgo,
+        algo: SpdmPalAsymAlgo,
         key_pair_id: u8,
         cert_model: u8,
         root_hash: &[u8; SHA384_DIGEST_SIZE],
@@ -389,6 +431,7 @@ impl SpdmPalCertStore for TestPal {
         if let Some(err) = self.write_error {
             return Err(err);
         }
+        self.write_algo.set(Some(algo));
         self.op.replace(Some(StoreOp::Write {
             slot,
             key_pair_id,
@@ -492,15 +535,15 @@ impl SpdmPalCertStore for TestPal {
         Ok(())
     }
 
-    fn key_pair_id(&self, _slot: u8) -> Option<u8> {
+    fn key_pair_id(&self, _slot: u8, _algo: SpdmPalAsymAlgo) -> Option<u8> {
         None
     }
 
-    fn cert_info(&self, _slot: u8) -> Option<u8> {
+    fn cert_info(&self, _slot: u8, _algo: SpdmPalAsymAlgo) -> Option<u8> {
         None
     }
 
-    fn key_usage_mask(&self, _slot: u8) -> Option<u16> {
+    fn key_usage_mask(&self, _slot: u8, _algo: SpdmPalAsymAlgo) -> Option<u16> {
         None
     }
 

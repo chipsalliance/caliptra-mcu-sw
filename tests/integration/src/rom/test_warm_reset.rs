@@ -18,6 +18,7 @@ fn test_warm_reset_success() -> Result<()> {
         Some(&binaries.caliptra_fw),
         Some(&binaries.soc_manifest),
         Some(&binaries.mcu_runtime),
+        None,
     );
 
     let mut hw = new(InitParams {
