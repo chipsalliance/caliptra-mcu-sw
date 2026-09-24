@@ -1859,7 +1859,7 @@ fn get_device_uuid() -> [u8; 16] {
 }
 
 #[cfg(test)]
-mod tests {
+mod network_rom_tests {
     use super::*;
 
     #[test]
