@@ -467,4 +467,5 @@ pub mod reg {
     pub const FUSE_WRITE: u32 = 31;
     pub const FUSE_LOCK_PARTITION: u32 = 32;
     pub const PERMA_HEK_EN: u32 = 33;
+    pub const FIELD_ENTROPY_STATE: u32 = 34;
 }

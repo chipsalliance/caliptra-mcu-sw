@@ -377,6 +377,10 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         device_ops::program_field_entropy(alloc, partition).await
     }
 
+    async fn field_entropy_already_provisioned(&self) -> CaliptraCmdResult<bool> {
+        device_ops::field_entropy_already_provisioned()
+    }
+
     async fn dot_lock<Alloc: ApiAlloc>(
         &self,
         alloc: &Alloc,

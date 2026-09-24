@@ -501,6 +501,11 @@ pub trait CaliptraCmdHandler {
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 
+    /// Reports whether all field entropy partitions have been provisioned.
+    async fn field_entropy_already_provisioned(&self) -> CaliptraCmdResult<bool> {
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
     /// Retrieves the OCP Lock endorsement certificate.
     #[cfg(feature = "ocp-lock")]
     async fn get_ocp_lock_endorsement_cert(

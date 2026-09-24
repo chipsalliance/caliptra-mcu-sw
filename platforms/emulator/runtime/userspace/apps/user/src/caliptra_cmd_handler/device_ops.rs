@@ -203,6 +203,14 @@ mod tests {
             caliptra_api::calc_checksum(command, &request)
         );
     }
+
+    #[test]
+    fn field_entropy_is_provisioned_only_when_every_slot_is_finished() {
+        assert!(!is_field_entropy_provisioned(0));
+        assert!(!is_field_entropy_provisioned(0x036d));
+        assert!(is_field_entropy_provisioned(0x06db));
+        assert!(!is_field_entropy_provisioned(0x0fff));
+    }
 }
 
 pub async fn get_debug_log(log_type: u32, data: &mut [u8]) -> CaliptraCmdResult<GetLogResult> {
@@ -1163,6 +1171,20 @@ pub async fn program_field_entropy<A: ApiAlloc>(
     partition: u32,
 ) -> CaliptraCmdResult<()> {
     fe_prog(alloc, partition).await.map_err(map_mcu_err)
+}
+
+fn is_field_entropy_provisioned(state: u32) -> bool {
+    const FINISHED_MASK: u32 = 0x06db;
+    const ZEROIZED_MASK: u32 = 0x0924;
+
+    state & FINISHED_MASK == FINISHED_MASK && state & ZEROIZED_MASK == 0
+}
+
+pub fn field_entropy_already_provisioned() -> CaliptraCmdResult<bool> {
+    let state = Otp::<DefaultSyscalls>::new()
+        .read(otp::reg::FIELD_ENTROPY_STATE, 0)
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+    Ok(is_field_entropy_provisioned(state))
 }
 
 pub(crate) async fn zeroize_uds_fe() -> CaliptraCmdResult<()> {

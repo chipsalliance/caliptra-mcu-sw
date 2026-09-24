@@ -19,13 +19,13 @@ use caliptra_mcu_mbox_common::messages::{
     FuseRevokeVendorPkHashReq, FuseRevokeVendorPkHashResp, FuseRevokeVendorPubKeyReq,
     FuseRevokeVendorPubKeyResp, FuseWriteReq, FuseWriteResp, GetAttestationReq,
     GetAuthCmdChallengeReq, GetAuthCmdChallengeResp, GetDpeCertChainReq, GetLogReq, LogType,
-    MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize, McuFeProgReq, McuMailboxReq,
-    McuMailboxResp, McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp,
-    McuProdDebugUnlockTokenReq, McuResponseVarSize, OcpLockProgramHekResp, OcpLockZeroHekResp,
-    ProvisionOwnerPkHashReq, ProvisionOwnerPkHashResp, ProvisionVendorPkHashReq,
-    ProvisionVendorPkHashResp, ZeroizeUdsFeAndEnterRmaReq, ZeroizeUdsFeAndEnterRmaResp,
-    DEVICE_CAPS_SIZE, GET_ATTESTATION_RESP_PREFIX_LEN, MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN,
-    MAX_RESP_DATA_SIZE,
+    MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize, McuFeProgReq, McuFeStatusReq,
+    McuFeStatusResp, McuMailboxReq, McuMailboxResp, McuProdDebugUnlockReqReq,
+    McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq, McuResponseVarSize,
+    OcpLockProgramHekResp, OcpLockZeroHekResp, ProvisionOwnerPkHashReq, ProvisionOwnerPkHashResp,
+    ProvisionVendorPkHashReq, ProvisionVendorPkHashResp, ZeroizeUdsFeAndEnterRmaReq,
+    ZeroizeUdsFeAndEnterRmaResp, DEVICE_CAPS_SIZE, GET_ATTESTATION_RESP_PREFIX_LEN,
+    MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
 };
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_mbox_common::messages::{HekSeedSlot, OcpLockProgramHekReq, OcpLockZeroHekReq};
@@ -240,6 +240,7 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
                 CommandId::MC_GET_AUTH_CMD_CHALLENGE => {
                     self.handle_get_auth_cmd_challenge(req, resp_buf).await
                 }
+                CommandId::MC_FE_STATUS => self.handle_fe_status(req, resp_buf).await,
                 inner @ CommandId::MC_PROVISION_VENDOR_PK_HASH
                 | inner @ CommandId::MC_PROVISION_OWNER_PK_HASH
                 | inner @ CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN
@@ -1494,6 +1495,26 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         Ok((&mut resp_buf[..resp_len], MbxCmdStatus::Complete))
     }
 
+    async fn handle_fe_status<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        McuFeStatusReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        let (resp, _) =
+            McuFeStatusResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
+
+        resp.already_provisioned = self
+            .non_crypto_cmds_handler
+            .field_entropy_already_provisioned()
+            .await
+            .map_err(|_| errors::MCU_MBOX_COMMON)?
+            .into();
+
+        let resp_len = resp.as_bytes().len();
+        Ok((&mut resp_buf[..resp_len], MbxCmdStatus::Complete))
+    }
+
     async fn handle_revoke_vendor_pub_key<'r>(
         &self,
         req: &[u8],
@@ -1823,6 +1844,7 @@ fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32) -> usize {
         c if c == CommandId::MC_FE_PROG || c == CommandId::MC_FUSE_WRITE => {
             size_of::<FuseWriteResp>()
         }
+        c if c == CommandId::MC_FE_STATUS => size_of::<McuFeStatusResp>(),
         c if c == CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY => {
             size_of::<FuseRevokeVendorPubKeyResp>()
         }

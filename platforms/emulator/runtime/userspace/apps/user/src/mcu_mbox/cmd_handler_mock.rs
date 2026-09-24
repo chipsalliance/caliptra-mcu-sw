@@ -154,4 +154,8 @@ impl CaliptraCmdHandler for NonCryptoCmdHandlerMock {
             .program_field_entropy(alloc, partition)
             .await
     }
+
+    async fn field_entropy_already_provisioned(&self) -> CaliptraCmdResult<bool> {
+        self.0.field_entropy_already_provisioned().await
+    }
 }

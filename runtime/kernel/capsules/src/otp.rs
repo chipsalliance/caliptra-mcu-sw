@@ -52,6 +52,7 @@ pub mod cmd {
 }
 
 pub mod reg {
+    pub(super) use caliptra_mcu_registers_generated::fuses::FIELD_ENTROPY_STATE as OTP_FIELD_ENTROPY_STATE;
     use caliptra_mcu_registers_generated::fuses::{
         FuseEntryInfo, OTP_CPTRA_CORE_VENDOR_PK_HASH_0, OTP_CPTRA_CORE_VENDOR_PK_HASH_1,
         OTP_CPTRA_CORE_VENDOR_PK_HASH_10, OTP_CPTRA_CORE_VENDOR_PK_HASH_11,
@@ -130,6 +131,7 @@ pub mod reg {
     pub const VENDOR_LMS_REVOCATION: u32 = 28;
     pub const VENDOR_MLDSA_REVOCATION: u32 = 29;
     pub const PERMA_HEK_EN: u32 = 33;
+    pub const FIELD_ENTROPY_STATE: u32 = 34;
 }
 
 #[derive(Default)]
@@ -307,6 +309,12 @@ impl Otp {
                 {
                     Ok(val) => CommandReturn::success_u32(val),
                     Err(_) => CommandReturn::failure(ErrorCode::INVAL),
+                }
+            }
+            reg::FIELD_ENTROPY_STATE => {
+                match self.driver.read_entry(reg::OTP_FIELD_ENTROPY_STATE) {
+                    Ok(value) => CommandReturn::success_u32(value),
+                    Err(_) => CommandReturn::failure(ErrorCode::FAIL),
                 }
             }
             #[cfg(feature = "ocp-lock")]

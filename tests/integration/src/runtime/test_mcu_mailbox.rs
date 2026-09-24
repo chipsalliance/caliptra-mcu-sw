@@ -10,10 +10,10 @@ use caliptra_api::{
 use caliptra_mcu_config::capabilities::{ExternalCommandCapabilities, McuRuntimeCapabilities};
 use caliptra_mcu_hw_model::{LifecycleControllerState, McuHwModel};
 use caliptra_mcu_mbox_common::messages::{
-    DeviceCapsReq, DpeSignerContextCertReq, EcdsaVerifyReq, FirmwareVersionReq,
-    GetAuthCmdChallengeReq, GetDpeCertChainReq, LmsVerifyReq,
+    CommandId as McuCommandId, DeviceCapsReq, DpeSignerContextCertReq, EcdsaVerifyReq,
+    FirmwareVersionReq, GetAuthCmdChallengeReq, GetDpeCertChainReq, LmsVerifyReq,
     MailboxReqHeader as McuMailboxReqHeader, MailboxRespHeader, McuEcdsa384SigVerifyReq,
-    McuFeProgReq, McuLmsSigVerifyReq,
+    McuFeProgReq, McuFeStatusReq, McuLmsSigVerifyReq,
 };
 use caliptra_mcu_romtime::{handoff::McuRomCapabilities, McuBootMilestones};
 use zerocopy::{FromBytes, IntoBytes};
@@ -173,6 +173,37 @@ fn test_get_auth_cmd_challenge_cmd() -> Result<()> {
             != 0,
         "Challenge should not be all-zeros"
     );
+    Ok(())
+}
+
+#[test]
+fn test_fe_status_cmd_does_not_require_authorization() -> Result<()> {
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-mcu-mbox-cmds"),
+        ..Default::default()
+    });
+
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    let resp = hw.mailbox_execute_req(McuFeStatusReq::default())?;
+    assert_eq!(resp.already_provisioned, 0);
+
+    let cmd = McuCommandId::MC_FE_STATUS.into();
+
+    let truncated = [0u8; 3];
+    assert!(hw.mailbox_execute(cmd, &truncated).is_err());
+
+    let mut oversized = [0u8; 8];
+    oversized[4..].copy_from_slice(&0x1234_5678u32.to_le_bytes());
+    let oversized_checksum = calc_checksum(cmd, &oversized[4..]);
+    oversized[..4].copy_from_slice(&oversized_checksum.to_le_bytes());
+    assert!(hw.mailbox_execute(cmd, &oversized).is_err());
+
+    let invalid_checksum = [0u8; 4];
+    assert!(hw.mailbox_execute(cmd, &invalid_checksum).is_err());
     Ok(())
 }
 
