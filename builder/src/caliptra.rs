@@ -520,6 +520,9 @@ resolver = "3"
 [dependencies]
 anyhow = "1"
 caliptra-builder = {{ git = "https://github.com/chipsalliance/caliptra-sw", {ref_key} = "{rom_ref}" }}
+# Keep the dynamically resolved dependencies compatible with the main branch's
+# Rust toolchain. This matches the version in rom-2.0.3-1's Cargo.lock.
+textwrap = "=0.16.2"
 
 # Required, not a nicety: caliptra-image-crypto in these ROM releases uses the
 # ML-DSA bindings (openssl::pkey_ml_dsa / signature / *_message_init) that only
