@@ -570,105 +570,39 @@ sequenceDiagram
     Requester->>Strap: Deassert rotation
 ```
 
-## ROM Milestone Hooks
+## MCU ROM Extensibility Points
 
-The common ROM exposes a lightweight callback trait, `RomHooks`, that lets
-integrators observe the boot flow at major milestones without forking the
-common ROM code. Typical uses include:
+The common ROM exposes a small set of explicit integration surfaces. The
+platform supplies implementations or values when generic ROM behavior cannot
+represent the product:
 
-- Structured logging / tracing (e.g. printing to a UART at each milestone)
-- Latency measurements between phases
-- Integration tests that need to assert the ROM reached a particular state
-
-### Attaching hooks
-
-Provide an implementation of `caliptra_mcu_rom_common::RomHooks` and pass a
-reference to it via `RomParameters::hooks`:
-
-```rust
-use caliptra_mcu_rom_common::{RomHooks, RomParameters};
-
-struct LoggingRomHooks;
-
-impl RomHooks for LoggingRomHooks {
-    fn pre_cold_boot(&self) {
-        caliptra_mcu_romtime::println!("[rom-hook] pre_cold_boot");
-    }
-    fn post_cold_boot(&self) {
-        caliptra_mcu_romtime::println!("[rom-hook] post_cold_boot");
-    }
-    // ...override as few or as many methods as you need; all have no-op defaults.
-}
-
-let hooks = LoggingRomHooks;
-caliptra_mcu_rom_common::rom_start(RomParameters {
-    hooks: Some(&hooks),
-    ..Default::default()
-});
-```
-
-All `RomHooks` methods have empty default implementations, so integrators
-only override the hooks they care about. The field defaults to `None`, so
-platforms that do not need hooks are unaffected.
-
-Hook methods take `&self`. The common ROM is single-threaded, but
-`RomParameters` is passed by value through the boot flows and we do not
-want hooks to mutate it, so hook state that must change across calls should
-use an interior-mutability primitive such as `core::cell::Cell` or
-`core::cell::RefCell`.
-
-### Available hooks
-
-Pre/post pairs are invoked around each of the following milestones:
-
-| Milestone | Pre hook | Post hook |
+| Category | Extension points | Typical responsibility |
 |---|---|---|
-| Cold-boot flow | `pre_cold_boot` | `post_cold_boot` |
-| Warm-boot flow | `pre_warm_boot` | `post_warm_boot` |
-| Firmware-boot flow | `pre_fw_boot` | `post_fw_boot` |
-| Firmware hitless update | `pre_fw_hitless_update` | `post_fw_hitless_update` |
-| Caliptra core boot-go / `BOOT_DONE` | `pre_caliptra_boot` | `post_caliptra_boot` |
-| Populating fuses to Caliptra | `pre_populate_fuses_to_caliptra` | `post_populate_fuses_to_caliptra` |
-| Loading MCU firmware into SRAM | `pre_load_firmware` | `post_load_firmware` |
-| OCP LOCK HEK fuse setup | `pre_set_ocp_lock_fuses` | `post_set_ocp_lock_fuses` |
-| Stable owner key derivation | `pre_stable_owner_key_derivation` | `post_stable_owner_key_derivation` |
-| Encrypted MCU firmware decrypt | `pre_encrypted_firmware_decrypt` | `post_encrypted_firmware_decrypt` |
+| Observation | `RomHooks` | Bounded milestone logging, timing, and test traces |
+| Image policy | `ImageVerifier` | Parse an integrator image header and enforce its fuse or rollback policy |
+| Recovery and DOT | `ImageProvider`, `FlashStorage`, `RecoveryTransport`, `DotRecoveryHandler`, `DotLockedRecoveryHandler` | Connect platform storage and transports while preserving common-ROM authentication |
+| Security policy | `VendorKeyPolicy`, `CfiEntropySource`, `ocp_lock::Platform` | Select vendor keys, seed CFI, and interpret platform HEK state |
+| Platform runtime | `FatalErrorHandler`, diagnostic writer, and controlled-exit backend | Connect fatal reporting, console output, and simulation/test termination |
+| Static bindings | `MCU_MEMORY_MAP`, `MCU_STRAPS`, linker layout, and startup code | Bind the common ROM to product memory and hardware topology |
+| Declarative policy | `RomParameters`, including AXI users, I3C settings, feature policy, and `svn_fuse_map` | Select and configure common-ROM behavior without a callback |
 
-### Reachability caveats
+Implementations are selected at build time and statically linked into the ROM
+image; the ROM does not load extensions at run time.
 
-The `post_*` hooks for the outer boot flows (`post_cold_boot`,
-`post_warm_boot`, `post_fw_boot`, `post_fw_hitless_update`) are **best
-effort**: the common ROM invokes them as the last action before the
-terminating warm reset or jump to mutable firmware, but a fatal error
-partway through a flow can prevent the post hook from being reached. Do
-not rely on them for liveness guarantees — use them for optional telemetry
-only.
-
-Note also that on a single power-on the ROM typically exercises the
-cold-boot flow followed by the firmware-boot flow; the warm-boot and
-hitless-update hooks only fire on their corresponding reset paths.
-
-### Example in the reference platforms
-
-The emulator and FPGA reference platform ROMs include a `LoggingRomHooks`
-example that prints `[mcu-rom-hook] <name>` at every hook. It is gated
-behind the `test-rom-hooks` Cargo feature so normal production builds are
-unaffected:
-
-```sh
-cargo xtask rom-build --platform emulator --features test-rom-hooks
-```
-
-The integration test `test_rom_hooks_fire_in_order` builds this ROM and
-asserts that each expected hook marker appears exactly once in the
-expected order.
+See [MCU ROM Extensibility](./rom-extensibility.md) for the authoritative
+interface catalog, injection points, provided behavior, availability,
+milestone-hook timing, and feature gates.
 
 ## MCU SRAM Partitioning
 
 The MCU's SRAM is divided into several regions by the firmware-bundler at
-build time.  One of those regions — at the **top** of SRAM — is the
-**persistent storage area**, reserved for attestation data that must
-survive across hitless firmware updates and warm resets.
+build time. One region at the top of the data-memory allocation is reserved as
+**reset-retained storage** for attestation data that must survive supported
+hitless firmware updates and warm resets. All MCU SRAM is physically retained
+while `powergood` remains asserted; this reservation is special because
+software excludes it from firmware loading, runtime initialization, and normal
+allocation. The storage is still volatile: its contents are lost on a power
+cycle or when SRAM is explicitly cleared.
 
 ### Layout overview
 
@@ -687,16 +621,20 @@ the address space as follows:
 │  · Application heap + grant space                           │
 │                                                             │
 ├─────────────────────────────────────────────────────────────┤  ← _sstorage
-│  Persistent storage  (storage_size)                         │
+│  Reset-retained storage  (storage_size)                    │
 │  · DPE Handle Store  (first DPE_STORE_SIZE bytes)           │
 │  · Software PCR Store (remainder)                           │
 └─────────────────────────────────────────────────────────────┘  ← _estorage
 ```
 
-The linker symbols `_sstorage` and `_estorage` mark the boundaries of
-the persistent storage region and are generated automatically by the
-firmware-bundler.  The kernel reads them at boot to initialise the DPE
-Handle Store and Software PCR Store capsules.
+The linker symbols `_sstorage` and `_estorage` mark the boundaries of the
+reset-retained storage region and are generated automatically by the
+firmware-bundler. Its linker section is `NOLOAD`, so a newly loaded runtime
+does not initialize or overwrite it. The kernel maps the region separately
+from application RAM and gives its bytes to the DPE Handle Store and Software
+PCR Store capsules. Other SRAM bytes may retain their electrical contents too,
+but firmware loading, `.data` relocation, `.bss` clearing, stacks, heaps, and
+application allocation are free to overwrite them.
 
 The ITCM / DTCM split point is calculated by the firmware-bundler
 (roughly half of total SRAM) and varies by build profile.
@@ -718,7 +656,7 @@ Open the manifest for your target and adjust `storage_size`:
 [platform]
 # ...
 
-# storage_size: reserve space at the top of SRAM for persistent
+# storage_size: reserve space at the top of SRAM for reset-retained
 # attestation data (DPE Handle Store + Software PCR Store).
 # Must be a multiple of 4 KiB;
 ```
@@ -730,7 +668,7 @@ Open the manifest for your target and adjust `storage_size`:
 
 ### PMP protection
 
-The persistent storage region is mapped as a kernel-only read/write PMP
+The reset-retained storage region is mapped as a kernel-only read/write PMP
 region, separate from the application RAM region.  Userspace processes
 cannot access it directly; they interact with the stored data only
 through the kernel capsule syscall interfaces
