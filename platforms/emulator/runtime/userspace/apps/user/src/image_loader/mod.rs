@@ -112,6 +112,10 @@ struct ImageLoadMeasurementScratchSlot([u8; BITMAP_SLOT_SIZE]);
 #[embassy_executor::task]
 #[allow(unused_variables)]
 pub async fn image_loading_task(soc_image_load_list: &'static [u32]) {
+    if cfg!(feature = "test-xtask-runtime") {
+        System::exit(0);
+    }
+
     let mbox_sram = caliptra_mcu_libsyscall_caliptra::mbox_sram::MboxSram::<DefaultSyscalls>::new(
         caliptra_mcu_libsyscall_caliptra::mbox_sram::DRIVER_NUM_MCU_MBOX1_SRAM,
     );
@@ -274,23 +278,26 @@ async fn image_loading<D: DMAMapping>(
                 };
                 let pldm_image_loader =
                     PldmImageLoader::new(&fw_params, EXECUTOR.get().spawner(), dma_mapping);
-                load_soc_images(&pldm_image_loader, soc_image_load_list, false)
-                    .await
-                    .inspect_err(|_e| {
-                        // Report load/authorization failure to the PLDM Update Agent
-                        let _ =
-                            pldm_image_loader.finalize(VerifyResult::VerifyFailedFdSecurityChecks);
-                    })?;
+                let load_result = match pldm_image_loader.set_owner_auth_manifest().await {
+                    Ok(()) => load_soc_images(&pldm_image_loader, soc_image_load_list, false).await,
+                    Err(error) => Err(error),
+                };
+                if let Err(error) = load_result {
+                    // Report load/authorization failure to the PLDM Update Agent
+                    if pldm_image_loader
+                        .finalize(VerifyResult::VerifyFailedFdSecurityChecks)
+                        .is_ok()
+                    {
+                        pldm_image_loader.wait_for_service_stopped().await;
+                    }
+                    return Err(error);
+                }
                 // Close the PLDM session on success
                 pldm_image_loader.finalize(VerifyResult::VerifySuccess)?;
                 // Wait for the PLDM service to fully complete the protocol before proceeding
                 pldm_image_loader.wait_for_service_stopped().await;
                 // Activate the SoC Images (set FW_EXEC_CTRL bit of the corresponding SoC)
                 activate_soc_images(soc_image_load_list).await?;
-                #[cfg(feature = "test-xtask-runtime")]
-                {
-                    System::exit(0);
-                }
             }
             #[cfg(not(feature = "streaming-boot"))]
             return Err(ErrorCode::NoSupport);
@@ -347,6 +354,7 @@ async fn image_loading<D: DMAMapping>(
                     flash_image_loader.set_auth_manifest().await?;
                 }
 
+                flash_image_loader.set_owner_auth_manifest().await?;
                 load_soc_images(&flash_image_loader, soc_image_load_list, component_update).await?;
                 boot_config
                     .set_partition_status(load_partition.0, PartitionStatus::BootSuccessful)

@@ -1725,6 +1725,7 @@ dependencies = [
  "caliptra-mcu-libtockasync",
  "caliptra-mcu-registers-generated",
  "embassy-sync",
+ "futures",
  "zerocopy",
 ]
 
