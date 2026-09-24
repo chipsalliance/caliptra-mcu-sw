@@ -9,6 +9,8 @@ edition.workspace = true
 [features]
 default = []
 device-ownership-transfer = []
+cert-provisioning = []
+set-certificate = ["cert-provisioning"]
 
 [dependencies]
 caliptra-mcu-common-commands = { workspace = true }
