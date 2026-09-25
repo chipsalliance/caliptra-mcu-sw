@@ -151,9 +151,14 @@ fn coalesce_regions_in_place(
             && current_region.write == next_region.write
             && current_region.execute == next_region.execute;
 
-        if regions_adjacent && same_properties {
-            // Extend current region to include next region
-            current_region.size += next_region.size;
+        let mut merged_region = current_region;
+        merged_region.size += next_region.size;
+        let merge_is_representable = !merged_region.is_mmio
+            || try_convert_to_napot(merged_region)
+                .is_ok_and(|napot| napot.size == merged_region.size);
+
+        if regions_adjacent && same_properties && merge_is_representable {
+            current_region = merged_region;
         } else {
             // Write current region and start new one
             regions[write_pos] = Some(current_region);
@@ -443,11 +448,21 @@ pub fn create_pmp_regions(config: PlatformPMPConfig<'_>) -> Result<PMPRegionList
         memory_map.i3c_size,
         memory_map.i3c_properties,
     ); // MMIO - will be added
-    add_region(
-        memory_map.mci_offset,
-        memory_map.mci_size,
-        memory_map.mci_properties,
-    ); // MMIO - will be added
+    let mbox0_sram_start = memory_map.mci_offset + caliptra_mcu_config::MCU_MBOX0_SRAM_OFFSET;
+    let mbox0_sram_end = mbox0_sram_start + caliptra_mcu_config::MCU_MBOX0_SRAM_SIZE;
+    let mci_end = memory_map.mci_offset + memory_map.mci_size;
+    let mut add_mci_range = |mut start: u32, end: u32| {
+        while start < end {
+            let remaining = end - start;
+            let alignment_size = 1u32 << start.trailing_zeros().min(31);
+            let remaining_size = 1u32 << (31 - remaining.leading_zeros());
+            let size = alignment_size.min(remaining_size);
+            add_region(start, size, memory_map.mci_properties);
+            start += size;
+        }
+    };
+    add_mci_range(memory_map.mci_offset, mbox0_sram_start);
+    add_mci_range(mbox0_sram_end, mci_end);
     add_region(
         memory_map.mbox_offset,
         memory_map.mbox_size,
@@ -468,6 +483,17 @@ pub fn create_pmp_regions(config: PlatformPMPConfig<'_>) -> Result<PMPRegionList
         memory_map.lc_size,
         memory_map.lc_properties,
     ); // MMIO - will be added
+
+    all_regions[region_count] = Some(PlatformRegion {
+        start_addr: mbox0_sram_start as *const u8,
+        size: caliptra_mcu_config::MCU_MBOX0_SRAM_SIZE as usize,
+        is_mmio: true,
+        user_accessible: true,
+        read: true,
+        write: true,
+        execute: false,
+    });
+    region_count += 1;
 
     // Assert MCU memory map didn't exceed expected region count
     // MCU memory map has at most 7 MMIO regions, so this should never fail

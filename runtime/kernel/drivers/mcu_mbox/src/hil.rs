@@ -48,6 +48,10 @@ pub trait Mailbox<'a> {
         dlen: usize,
     ) -> Result<(), ErrorCode>;
 
+    fn send_response_from_sram(&self, dlen: usize) -> Result<(), ErrorCode>;
+
+    fn sram_base(&self) -> u32;
+
     /// Sets the command status of the MCU mailbox (Receiver mode).
     ///
     /// # Arguments

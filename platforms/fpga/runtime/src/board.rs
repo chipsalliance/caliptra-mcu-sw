@@ -627,6 +627,10 @@ pub unsafe fn main() {
         mux_alarm,
         mbox_dma_driver,
         Some(200_000_000), // 10 seconds timeout for mailbox commands, in ticks of the 20MHz timer
+        Some((
+            (MCU_MEMORY_MAP.mci_offset + caliptra_mcu_config::MCU_MBOX0_SRAM_OFFSET) as usize,
+            caliptra_mcu_config::MCU_MBOX0_SRAM_SIZE as usize,
+        )),
     )
     .finalize(caliptra_mcu_components::mailbox_component_static!(
         InternalTimers<'static>,
