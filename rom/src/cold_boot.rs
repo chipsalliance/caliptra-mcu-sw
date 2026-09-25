@@ -195,6 +195,9 @@ fn mcu_rom_capabilities(
             }
         }
     }
+    if params.dot_flash.is_some() {
+        capabilities |= McuRomCapabilities::DOT;
+    }
     if cfg!(feature = "ocp-lock") {
         capabilities |= McuRomCapabilities::OCP_LOCK;
     }
@@ -348,8 +351,11 @@ mod capability_tests {
             ..Default::default()
         };
 
-        assert!(mcu_rom_capabilities(&params)
-            .contains(McuRomCapabilities::DOT_BOOT | McuRomCapabilities::DOT_LOCKED_RECOVERY));
+        assert!(mcu_rom_capabilities(&params).contains(
+            McuRomCapabilities::DOT
+                | McuRomCapabilities::DOT_BOOT
+                | McuRomCapabilities::DOT_LOCKED_RECOVERY
+        ));
         assert!(!mcu_rom_capabilities(&params).contains(McuRomCapabilities::I3C_DOT_RECOVERY));
 
         params.dot_locked_recovery_handlers = &[];
@@ -366,12 +372,21 @@ mod capability_tests {
 
         params.owner_pk_hash_policy = OwnerPkHashPolicy::ForceFuse;
         let capabilities = mcu_rom_capabilities(&params);
+        assert!(capabilities.contains(McuRomCapabilities::DOT));
         assert!(!capabilities.contains(McuRomCapabilities::DOT_BOOT));
         assert!(!capabilities.contains(McuRomCapabilities::DOT_LOCKED_RECOVERY));
         assert!(!capabilities.contains(McuRomCapabilities::I3C_DOT_RECOVERY));
 
         params.force_i3c_services = true;
         assert!(mcu_rom_capabilities(&params).contains(McuRomCapabilities::I3C_DOT_RECOVERY));
+
+        params.dot_flash = None;
+        assert!(!mcu_rom_capabilities(&params).intersects(
+            McuRomCapabilities::DOT
+                | McuRomCapabilities::DOT_BOOT
+                | McuRomCapabilities::DOT_LOCKED_RECOVERY
+                | McuRomCapabilities::I3C_DOT_RECOVERY
+        ));
     }
 
     #[test]

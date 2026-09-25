@@ -125,6 +125,7 @@ fn test_device_capabilities_cmd() -> Result<()> {
     assert_eq!(&resp.caps[..16], &core_caps);
     let expected_rom = (McuRomCapabilities::STREAMING_BOOT_I3C
         | McuRomCapabilities::FLASH_BOOT
+        | McuRomCapabilities::DOT
         | McuRomCapabilities::DOT_BOOT)
         .bits();
     assert_eq!(

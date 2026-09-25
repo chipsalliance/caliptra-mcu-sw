@@ -220,6 +220,7 @@ pub mod test {
             )?;
             let expected_rom = (McuRomCapabilities::STREAMING_BOOT_I3C
                 | McuRomCapabilities::FLASH_BOOT
+                | McuRomCapabilities::DOT
                 | McuRomCapabilities::DOT_BOOT)
                 .bits();
             Self::assert_eq(&rom, &expected_rom, "MCU ROM capabilities")?;

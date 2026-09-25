@@ -522,6 +522,7 @@ pub mod test {
                     c[16..20].copy_from_slice(
                         &(McuRomCapabilities::STREAMING_BOOT_I3C
                             | McuRomCapabilities::FLASH_BOOT
+                            | McuRomCapabilities::DOT
                             | McuRomCapabilities::DOT_BOOT)
                             .bits()
                             .to_be_bytes(),
