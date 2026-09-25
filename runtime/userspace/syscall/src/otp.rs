@@ -357,6 +357,28 @@ impl<S: Syscalls> Otp<S> {
             .to_result::<(u32, u32), ErrorCode>()
     }
 
+    pub fn hek_status(&self) -> Result<(u32, u32), ErrorCode> {
+        let (total_slots, _) = self.get_hek_metadata()?;
+        if total_slots as usize > reg::LOCK_HEK_PROD_ALL.len() {
+            return Err(ErrorCode::Invalid);
+        }
+
+        let mut used_slots = 0;
+        for (slot, reg) in reg::LOCK_HEK_PROD_ALL[..total_slots as usize]
+            .iter()
+            .enumerate()
+        {
+            for word in 0..12 {
+                if self.read(*reg, word)? != 0 {
+                    used_slots |= 1 << slot;
+                    break;
+                }
+            }
+        }
+
+        Ok((used_slots, total_slots))
+    }
+
     pub fn rotate_hek(&self, slot: u32, seed: &[u8; 32]) -> Result<(), ErrorCode> {
         share::scope::<AllowRo<S, OTP_DRIVER_NUM, { ro_allow::SEED }>, _, _>(|allow_ro| {
             S::allow_ro::<DefaultConfig, OTP_DRIVER_NUM, { ro_allow::SEED }>(allow_ro, seed)?;

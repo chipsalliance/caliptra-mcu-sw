@@ -1193,6 +1193,12 @@ pub fn vendor_pk_hash_status() -> CaliptraCmdResult<(u32, [u8; 16])> {
         .map_err(|_| CaliptraCompletionCode::OperationFailed)
 }
 
+pub fn hek_status() -> CaliptraCmdResult<(u32, u32)> {
+    Otp::<DefaultSyscalls>::new()
+        .hek_status()
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)
+}
+
 pub(crate) async fn zeroize_uds_fe() -> CaliptraCmdResult<()> {
     let mut req = ZeroizeUdsFeReq {
         flags: ZEROIZE_UDS_FLAG

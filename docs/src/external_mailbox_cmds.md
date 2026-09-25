@@ -91,6 +91,7 @@ These commands support common Caliptra management functions, including querying 
 | MC_FE_PROG                    | 0x4D43_4650 ("MCFP") | See [fuses spec](fuses.md) for details                                                |
 | MC_FE_STATUS                  | 0x4D43_4653 ("MCFS") | Reports whether all field entropy partitions are provisioned.                         |
 | MC_VENDOR_PK_HASH_STATUS      | 0x4D56_5053 ("MVPS") | Reports occupied vendor PK hash slots and their PQC key types.                         |
+| MC_HEK_STATUS                 | 0x4D48_4B53 ("MHKS") | Reports used HEK slots and the total number of configured HEK slots.                   |
 | MC_FUSE_REVOKE_VENDOR_PUB_KEY | 0x4D52_564B ("MRVK") | See [fuses spec](fuses.md) for details                                                |
 | MC_FUSE_REVOKE_VENDOR_PK_HASH | 0x5256_4b48 ("RVKH") | See [fuses spec](fuses.md) for details                                                |
 | MC_ZEROIZE_UDS_FE_AND_ENTER_RMA | 0x4D5A_524D ("MZRM") | Zeroizes UDS and field entropy, then requests entry into RMA.                       |
@@ -364,6 +365,15 @@ type associated with each slot. This command does not require authorization.
 Command Code: `0x4D56_5053` ("MVPS")
 
 Payload semantics are defined by [Vendor PK Hash Status](caliptra_common_commands.md#vendor-pk-hash-status).
+
+### MC_HEK_STATUS
+
+Reports which HEK slots have been programmed or sanitized and the total number
+of configured HEK slots. This command does not require authorization.
+
+Command Code: `0x4D48_4B53` ("MHKS")
+
+Payload semantics are defined by [HEK Status](caliptra_common_commands.md#hek-status).
 
 ### MC_ZEROIZE_UDS_FE_AND_ENTER_RMA
 

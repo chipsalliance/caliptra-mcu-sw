@@ -11,7 +11,7 @@ use caliptra_mcu_config::capabilities::{ExternalCommandCapabilities, McuRuntimeC
 use caliptra_mcu_hw_model::{LifecycleControllerState, McuHwModel};
 use caliptra_mcu_mbox_common::messages::{
     CommandId as McuCommandId, DeviceCapsReq, DpeSignerContextCertReq, EcdsaVerifyReq,
-    FirmwareVersionReq, GetAuthCmdChallengeReq, GetDpeCertChainReq, LmsVerifyReq,
+    FirmwareVersionReq, GetAuthCmdChallengeReq, GetDpeCertChainReq, HekStatusReq, LmsVerifyReq,
     MailboxReqHeader as McuMailboxReqHeader, MailboxRespHeader, McuEcdsa384SigVerifyReq,
     McuFeProgReq, McuFeStatusReq, McuLmsSigVerifyReq, VendorPkHashStatusReq,
     VENDOR_PQC_KEY_TYPE_LMS,
@@ -241,6 +241,45 @@ fn test_vendor_pk_hash_status_cmd_does_not_require_authorization() -> Result<()>
     Ok(())
 }
 
+#[test]
+fn test_hek_status_cmd_does_not_require_authorization() -> Result<()> {
+    let _lock = crate::test::TEST_LOCK.lock().unwrap();
+    let mut otp = vec![0u8; 4096];
+    crate::test_hek::test::setup_otp_hek(&mut otp, 0, false, false);
+
+    let mut hw = start_runtime_hw_model(TestParams {
+        otp_memory: Some(otp),
+        ocp_lock_en: true,
+        feature: Some("test-ekp"),
+        rom_feature: Some("ocp-lock"),
+        ..Default::default()
+    });
+
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    let resp = hw.mailbox_execute_req(HekStatusReq::default())?;
+    assert_eq!(resp.used_slots, 1);
+    assert_eq!(resp.total_slots, 8);
+
+    let cmd = McuCommandId::MC_HEK_STATUS.into();
+
+    let truncated = [0u8; 3];
+    assert!(hw.mailbox_execute(cmd, &truncated).is_err());
+
+    let mut oversized = [0u8; 8];
+    oversized[4..].copy_from_slice(&0x1234_5678u32.to_le_bytes());
+    let oversized_checksum = calc_checksum(cmd, &oversized[4..]);
+    oversized[..4].copy_from_slice(&oversized_checksum.to_le_bytes());
+    assert!(hw.mailbox_execute(cmd, &oversized).is_err());
+
+    let invalid_checksum = [0u8; 4];
+    assert!(hw.mailbox_execute(cmd, &invalid_checksum).is_err());
+    Ok(())
+}
+#[test]
 #[test]
 fn test_mcu_mbox_ecdsa384_sig_verify() -> Result<()> {
     use caliptra_image_crypto::RustCrypto;

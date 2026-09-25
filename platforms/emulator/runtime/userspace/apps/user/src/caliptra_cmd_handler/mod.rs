@@ -385,6 +385,10 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         device_ops::vendor_pk_hash_status()
     }
 
+    async fn hek_status(&self) -> CaliptraCmdResult<(u32, u32)> {
+        device_ops::hek_status()
+    }
+
     async fn dot_lock<Alloc: ApiAlloc>(
         &self,
         alloc: &Alloc,

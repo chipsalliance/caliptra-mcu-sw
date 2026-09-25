@@ -162,4 +162,8 @@ impl CaliptraCmdHandler for NonCryptoCmdHandlerMock {
     async fn vendor_pk_hash_status(&self) -> CaliptraCmdResult<(u32, [u8; 16])> {
         self.0.vendor_pk_hash_status().await
     }
+
+    async fn hek_status(&self) -> CaliptraCmdResult<(u32, u32)> {
+        self.0.hek_status().await
+    }
 }

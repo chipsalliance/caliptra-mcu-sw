@@ -33,6 +33,7 @@ The following table describes the commands defined under this specification. The
 | Device Ownership Transfer       | O   | SPDM VDM, MCI Mailbox | Query and change the implemented DOT state.                                                                                          |
 | Field Entropy Status            | O   | MCI Mailbox           | Report whether all field entropy partitions are provisioned.                                                                        |
 | Vendor PK Hash Status           | O   | MCI Mailbox           | Report occupied vendor PK hash slots and each slot's PQC key type.                                                                   |
+| HEK Status                      | O   | MCI Mailbox           | Report used HEK slots and the total number of configured HEK slots.                                                                  |
 | Authorization-Gated Subcommands | O   | SPDM VDM, MCI Mailbox | Security-sensitive provisioning and fuse subcommands using a one-use challenge and hybrid signature.                                |
 
 ### Authorization-Gated Subcommands
@@ -487,6 +488,21 @@ This command does not require authorization.
 | ------- | ---------- | ------ | ----------------------------------------------------------------------------------------------- |
 | 0:3     | used_slots | u32    | Bitmap of occupied slots; bits 0 through 15 correspond to vendor PK hash slots 0 through 15     |
 | 4:19    | key_types  | u8[16] | Per-slot PQC key type: `0` = unused, `1` = LMS, `3` = ML-DSA                                    |
+
+### HEK Status
+
+Reports used HEK slots and the total number of configured HEK slots. A
+programmed or sanitized slot is used because OTP storage cannot be reused.
+This command does not require authorization.
+
+**Request Payload**: Empty
+
+**Response Payload**:
+
+| Byte(s) | Name        | Type | Description                                                                    |
+| ------- | ----------- | ---- | ------------------------------------------------------------------------------ |
+| 0:3     | used_slots  | u32  | Bitmap of used slots; bits 0 through 7 correspond to HEK slots 0 through 7    |
+| 4:7     | total_slots | u32  | Number of configured HEK slots                                                 |
 
 ### Fuse Revoke Vendor Public Key
 

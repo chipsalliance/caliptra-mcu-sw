@@ -144,6 +144,7 @@ impl CommandId {
     pub const MC_FE_PROG: Self = Self(0x4D43_4650); // "MCFP"
     pub const MC_FE_STATUS: Self = Self(0x4D43_4653); // "MCFS"
     pub const MC_VENDOR_PK_HASH_STATUS: Self = Self(0x4D56_5053); // "MVPS"
+    pub const MC_HEK_STATUS: Self = Self(0x4D48_4B53); // "MHKS"
     pub const MC_FUSE_REVOKE_VENDOR_PUB_KEY: Self = Self(0x4D52_564B); // "MRVK"
     pub const MC_FUSE_REVOKE_VENDOR_PK_HASH: Self = Self(0x5256_4b48); // "RVKH"
     pub const MC_ZEROIZE_UDS_FE_AND_ENTER_RMA: Self = Self(0x4D5A_524D); // "MZRM"
@@ -247,6 +248,7 @@ pub enum McuMailboxReq {
     FeProg(McuFeProgReq),
     FeStatus(McuFeStatusReq),
     VendorPkHashStatus(VendorPkHashStatusReq),
+    HekStatus(HekStatusReq),
     GetAuthCmdChallenge(GetAuthCmdChallengeReq),
     FuseRevokeVendorPubKey(FuseRevokeVendorPubKeyReq),
     ProvisionVendorPkHash(ProvisionVendorPkHashReq),
@@ -332,6 +334,7 @@ impl McuMailboxReq {
             McuMailboxReq::FeProg(req) => Ok(req.as_bytes()),
             McuMailboxReq::FeStatus(req) => Ok(req.as_bytes()),
             McuMailboxReq::VendorPkHashStatus(req) => Ok(req.as_bytes()),
+            McuMailboxReq::HekStatus(req) => Ok(req.as_bytes()),
             McuMailboxReq::GetAuthCmdChallenge(req) => Ok(req.as_bytes()),
             McuMailboxReq::FuseRevokeVendorPubKey(req) => Ok(req.as_bytes()),
             McuMailboxReq::ProvisionVendorPkHash(req) => Ok(req.as_bytes()),
@@ -414,6 +417,7 @@ impl McuMailboxReq {
             McuMailboxReq::FeProg(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FeStatus(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::VendorPkHashStatus(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::HekStatus(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::GetAuthCmdChallenge(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FuseRevokeVendorPubKey(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::ProvisionVendorPkHash(req) => Ok(req.as_mut_bytes()),
@@ -498,6 +502,7 @@ impl McuMailboxReq {
             McuMailboxReq::FeProg(_) => CommandId::MC_FE_PROG,
             McuMailboxReq::FeStatus(_) => CommandId::MC_FE_STATUS,
             McuMailboxReq::VendorPkHashStatus(_) => CommandId::MC_VENDOR_PK_HASH_STATUS,
+            McuMailboxReq::HekStatus(_) => CommandId::MC_HEK_STATUS,
             McuMailboxReq::GetAuthCmdChallenge(_) => CommandId::MC_GET_AUTH_CMD_CHALLENGE,
             McuMailboxReq::FuseRevokeVendorPubKey(_) => CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY,
             McuMailboxReq::ProvisionVendorPkHash(_) => CommandId::MC_PROVISION_VENDOR_PK_HASH,
@@ -609,6 +614,7 @@ pub enum McuMailboxResp {
     FuseLockPartition(FuseLockPartitionResp),
     FeStatus(McuFeStatusResp),
     VendorPkHashStatus(VendorPkHashStatusResp),
+    HekStatus(HekStatusResp),
     GetAuthCmdChallenge(GetAuthCmdChallengeResp),
     FuseRevokeVendorPubKey(FuseRevokeVendorPubKeyResp),
     ProvisionVendorPkHash(ProvisionVendorPkHashResp),
@@ -751,6 +757,7 @@ impl McuMailboxResp {
             McuMailboxResp::FuseLockPartition(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FeStatus(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::VendorPkHashStatus(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::HekStatus(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::GetAuthCmdChallenge(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FuseRevokeVendorPubKey(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::ProvisionVendorPkHash(resp) => Ok(resp.as_bytes()),
@@ -830,6 +837,7 @@ impl McuMailboxResp {
             McuMailboxResp::FuseLockPartition(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FeStatus(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::VendorPkHashStatus(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::HekStatus(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::GetAuthCmdChallenge(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FuseRevokeVendorPubKey(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::ProvisionVendorPkHash(resp) => Ok(resp.as_mut_bytes()),
@@ -1785,6 +1793,27 @@ pub struct VendorPkHashStatusResp {
     pub key_types: [u8; VENDOR_PK_HASH_SLOT_COUNT],
 }
 impl Response for VendorPkHashStatusResp {}
+
+/// MC_HEK_STATUS request.
+#[repr(transparent)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct HekStatusReq(pub MailboxReqHeader);
+impl Request for HekStatusReq {
+    const ID: CommandId = CommandId::MC_HEK_STATUS;
+    type Resp = HekStatusResp;
+}
+
+/// MC_HEK_STATUS response.
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct HekStatusResp {
+    pub hdr: MailboxRespHeader,
+    /// Bit N is set when HEK slot N is no longer reusable.
+    pub used_slots: u32,
+    /// Number of configured HEK slots.
+    pub total_slots: u32,
+}
+impl Response for HekStatusResp {}
 
 /// MC_FUSE_REVOKE_VENDOR_PUB_KEY request: Revoke a vendor firmware verification key.
 #[repr(C)]
@@ -2880,6 +2909,15 @@ mod tests {
             core::mem::size_of::<MailboxRespHeader>()
                 + core::mem::size_of::<u32>()
                 + VENDOR_PK_HASH_SLOT_COUNT
+        );
+        assert_eq!(CommandId::MC_HEK_STATUS.0, 0x4D48_4B53); // "MHKS"
+        assert_eq!(
+            core::mem::size_of::<HekStatusReq>(),
+            core::mem::size_of::<MailboxReqHeader>()
+        );
+        assert_eq!(
+            core::mem::size_of::<HekStatusResp>(),
+            core::mem::size_of::<MailboxRespHeader>() + 2 * core::mem::size_of::<u32>()
         );
         assert_eq!(CommandId::MC_PROVISION_OWNER_PK_HASH.0, 0x504F_504B); // "POPK"
         assert_eq!(CommandId::MC_ZEROIZE_UDS_FE_AND_ENTER_RMA.0, 0x4D5A_524D); // "MZRM"

@@ -511,6 +511,11 @@ pub trait CaliptraCmdHandler {
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 
+    /// Reports used HEK slots and the total number of configured HEK slots.
+    async fn hek_status(&self) -> CaliptraCmdResult<(u32, u32)> {
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
     /// Retrieves the OCP Lock endorsement certificate.
     #[cfg(feature = "ocp-lock")]
     async fn get_ocp_lock_endorsement_cert(
