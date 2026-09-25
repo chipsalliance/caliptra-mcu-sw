@@ -161,9 +161,17 @@ mod tests {
         let manifest = OwnerAuthorizationManifest::read_from_bytes(&bytes).unwrap();
         assert_eq!(manifest.preamble.marker, OWNER_AUTH_MANIFEST_MARKER);
         assert_eq!(manifest.preamble.svn, 11);
-        assert_eq!(manifest.image_metadata_col.entry_count, 1);
+        assert_eq!(manifest.image_metadata_col.entry_count, 3);
         assert_eq!(
             manifest.image_metadata_col.image_metadata_list[0].fw_id,
+            0x0000_0005
+        );
+        assert_eq!(
+            manifest.image_metadata_col.image_metadata_list[1].fw_id,
+            0x0000_0006
+        );
+        assert_eq!(
+            manifest.image_metadata_col.image_metadata_list[2].fw_id,
             0x10000
         );
         parse(output_path.to_str().unwrap()).unwrap();
