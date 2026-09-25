@@ -22,7 +22,7 @@ use caliptra_image_gen::{
 use caliptra_image_types::{
     FwVerificationPqcKeyType, ImageBundle, ImageManifest, ImageRevision, IMAGE_MANIFEST_BYTE_SIZE,
 };
-use caliptra_mcu_flash_image::MCU_RT_IDENTIFIER;
+use caliptra_mcu_flash_image::{MCU_RT_IDENTIFIER, V_AUTH_KEY_ID};
 use cargo_metadata::MetadataCommand;
 use hex::ToHex;
 use std::{
@@ -32,6 +32,14 @@ use std::{
     str::FromStr,
 };
 use zerocopy::{transmute, FromBytes, IntoBytes};
+
+/// SHA-384 anchor of the test vendor authorization keys derived from
+/// label "caliptra-mcu-test-vendor-authorization-keys".
+pub const VENDOR_AUTH_KEY_ANCHOR: [u8; 48] = [
+    0xa2, 0x68, 0x7c, 0xf2, 0x45, 0x99, 0xb8, 0xf0, 0xf8, 0x26, 0x81, 0xd9, 0xbf, 0x6d, 0x77, 0xac,
+    0x22, 0x47, 0x09, 0x4d, 0x1e, 0x9a, 0x2d, 0x81, 0x41, 0x55, 0x5f, 0xc6, 0x0d, 0x05, 0xc3, 0x0a,
+    0x9f, 0xbd, 0x23, 0x46, 0x18, 0x09, 0xbf, 0xa5, 0x7d, 0xc7, 0x28, 0xd7, 0xbc, 0xc1, 0x7d, 0xea,
+];
 
 /// A wrapper for raw firmware bytes that implements ImageGeneratorExecutable.
 /// Used to re-sign existing FW bundles without recompiling.
@@ -248,6 +256,16 @@ impl CaliptraBuilder {
         Ok(metadata)
     }
 
+    pub fn get_vendor_auth_key_metadata() -> AuthManifestImageMetadata {
+        AuthManifestImageMetadata {
+            fw_id: V_AUTH_KEY_ID,
+            flags: 0,
+            component_id: V_AUTH_KEY_ID,
+            digest: VENDOR_AUTH_KEY_ANCHOR,
+            ..Default::default()
+        }
+    }
+
     pub fn get_soc_manifest(&mut self, name: Option<&str>) -> Result<PathBuf> {
         if self.soc_manifest.is_none() {
             let _ = self.get_caliptra_fw()?;
@@ -260,7 +278,7 @@ impl CaliptraBuilder {
             let mcu_fw_metadata =
                 self.get_mcu_manifest_metadata(self.mcu_firmware.as_ref().unwrap())?;
             let soc_images_metadata = self.get_soc_images_metadata()?;
-            let mut metadata = vec![mcu_fw_metadata];
+            let mut metadata = vec![mcu_fw_metadata, Self::get_vendor_auth_key_metadata()];
             metadata.extend(soc_images_metadata);
 
             let path = Self::write_soc_manifest(
@@ -934,7 +952,7 @@ fn main() -> Result<()> {
         let mcu_fw_metadata =
             self.get_mcu_manifest_metadata(self.mcu_firmware.as_ref().unwrap())?;
         let soc_images_metadata = self.get_soc_images_metadata()?;
-        let mut metadata = vec![mcu_fw_metadata];
+        let mut metadata = vec![mcu_fw_metadata, Self::get_vendor_auth_key_metadata()];
         metadata.extend(soc_images_metadata);
 
         let manifest = Self::create_unsigned_auth_manifest_with_metadata(
@@ -1206,6 +1224,14 @@ impl FromStr for ImageCfg {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn vendor_auth_key_metadata_uses_reserved_identifier_and_anchor() {
+        let metadata = CaliptraBuilder::get_vendor_auth_key_metadata();
+        assert_eq!(metadata.fw_id, V_AUTH_KEY_ID);
+        assert_eq!(metadata.component_id, V_AUTH_KEY_ID);
+        assert_eq!(metadata.digest, VENDOR_AUTH_KEY_ANCHOR);
+    }
 
     #[test]
     fn test_image_cfg_optional_network_filename() {
