@@ -38,7 +38,7 @@ use zerocopy::{FromBytes, FromZeros, Immutable, IntoBytes, KnownLayout, TryFromB
 pub const MAX_RESP_DATA_SIZE: usize = 4 * 1024;
 pub const MAX_ENDORSEMENT_CERT_SIZE: usize = 12 * 1024;
 pub const MAX_FW_VERSION_STR_LEN: usize = 32;
-pub const DEVICE_CAPS_SIZE: usize = 36;
+pub const DEVICE_CAPS_SIZE: usize = 64;
 pub const DOT_BLOB_SIZE: usize = 168;
 pub const MAX_UUID_SIZE: usize = 32;
 pub const MAX_FUSE_DATA_BYTES: usize = 512;

@@ -8,7 +8,7 @@ use crate::protocol::{VdmCommand, VdmMsgHeader};
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 /// Size of device capabilities data.
-pub const DEVICE_CAPS_SIZE: usize = 36;
+pub const DEVICE_CAPS_SIZE: usize = 64;
 
 /// Device Capabilities Request.
 ///
@@ -39,7 +39,7 @@ impl Default for DeviceCapabilitiesRequest {
 ///
 /// Response Payload:
 /// - Bytes 0:3 - completion_code (u32): Command completion status
-/// - Bytes 4:39 - caps (u8[36]): Device Capabilities
+/// - Bytes 4:67 - caps (u8[64]): Device Capabilities
 ///   - Bytes [0:7]: Reserved for Caliptra RT
 ///   - Bytes [8:11]: Reserved for Caliptra FMC
 ///   - Bytes [12:15]: Reserved for Caliptra ROM
@@ -47,7 +47,8 @@ impl Default for DeviceCapabilitiesRequest {
 ///   - Bytes [20:23]: MCU RT feature capabilities
 ///   - Bytes [24:27]: External Caliptra common-command bitmap
 ///   - Bytes [28:31]: Authorized-subcommand bitmap
-///   - Bytes [32:35]: Reserved, zero
+///   - Bytes [32:47]: Reserved, zero
+///   - Bytes [48:63]: Vendor-defined
 #[derive(Debug, Clone, Copy, PartialEq, FromBytes, IntoBytes, Immutable)]
 #[repr(C, packed)]
 pub struct DeviceCapabilitiesResponse {
@@ -55,7 +56,7 @@ pub struct DeviceCapabilitiesResponse {
     pub hdr: VdmMsgHeader,
     /// Command completion status.
     pub completion_code: u32,
-    /// Device capabilities (36 bytes).
+    /// Device capabilities (64 bytes).
     pub caps: [u8; DEVICE_CAPS_SIZE],
 }
 
@@ -106,6 +107,9 @@ mod tests {
         let mut caps = [0u8; DEVICE_CAPS_SIZE];
         caps[0] = 0x01;
         caps[16] = 0x02;
+        caps[47] = 0x03;
+        caps[48] = 0x04;
+        caps[63] = 0x05;
 
         let resp = DeviceCapabilitiesResponse::new(VdmCompletionCode::Success as u32, &caps);
         assert!(resp.hdr.is_response());
@@ -114,8 +118,11 @@ mod tests {
         let resp_caps = resp.caps;
         assert_eq!(resp_caps[0], 0x01);
         assert_eq!(resp_caps[16], 0x02);
+        assert_eq!(resp_caps[47], 0x03);
+        assert_eq!(resp_caps[48], 0x04);
+        assert_eq!(resp_caps[63], 0x05);
 
-        let mut buffer = [0u8; 64];
+        let mut buffer = [0u8; VDM_MSG_HEADER_LEN + 4 + DEVICE_CAPS_SIZE];
         let size = resp.encode(&mut buffer).unwrap();
         assert_eq!(size, VDM_MSG_HEADER_LEN + 4 + DEVICE_CAPS_SIZE);
 

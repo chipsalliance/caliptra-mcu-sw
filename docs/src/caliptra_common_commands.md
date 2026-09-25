@@ -90,7 +90,8 @@ Versions use `major.minor.patch` ASCII format. Index `02h` returns `UnsupportedO
 | 20:23   | mcu_rt                 | u32   | MCU Runtime feature capabilities, big-endian                |
 | 24:27   | external_commands      | u32   | Supported top-level common commands, big-endian             |
 | 28:31   | authorized_subcommands | u32   | Supported subcommands under `AuthorizedCommand`, big-endian |
-| 32:35   | reserved               | u8[4] | Reserved; responders set to zero                            |
+| 32:47   | reserved               | u8[16] | Reserved; responders set to zero                           |
+| 48:63   | vendor                 | u8[16] | Vendor-defined capabilities                                 |
 
 `external_commands` covers the OCP command codes `01h` through `20h`. Command code `N` maps to bitmap bit `N - 1`, allowing all 32 top-level codes to fit in this field. This is Caliptra common-command discovery carried by `DeviceCapabilities`; it is not MCTP Control Protocol command discovery.
 

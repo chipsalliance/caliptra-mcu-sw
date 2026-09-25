@@ -397,6 +397,7 @@ mod tests {
             capabilities: &mut DeviceCapabilities,
         ) -> CaliptraCmdResult<()> {
             capabilities.mcu_rt = *b"test";
+            capabilities.vendor = [0xA5; 16];
             Ok(())
         }
 
@@ -500,6 +501,19 @@ mod tests {
         assert_eq!(response.hdr.command_code, command);
         let actual_completion_code = response.completion_code;
         assert_eq!(actual_completion_code, completion_code as u32);
+    }
+
+    #[test]
+    fn encodes_complete_device_capability_layout() {
+        let handler = TestHandler::default();
+        let (mut buffer, request_len) = encode_request(&DeviceCapabilitiesRequest::new());
+        let response_len = process(&handler, &mut buffer, request_len);
+        let vdm_msg = extract_vdm_msg(&mut buffer[..response_len]).unwrap();
+        let response = DeviceCapabilitiesResponse::decode(vdm_msg).unwrap();
+
+        assert_eq!(&response.caps[20..24], b"test");
+        assert_eq!(&response.caps[32..48], &[0; 16]);
+        assert_eq!(&response.caps[48..64], &[0xA5; 16]);
     }
 
     #[test]
