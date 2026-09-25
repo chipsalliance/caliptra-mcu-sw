@@ -56,6 +56,9 @@ pub const ATTESTATION_FLAGS_SUPPORTED: u32 =
 /// MCU Runtime firmware identifier used as the default attestation target.
 pub const MCU_RT_FW_ID: u32 = 0x0000_0002;
 
+/// Reserved component identifier for the Owner SoC Manifest (OWSM preamble).
+pub const OWSM_FW_ID: u32 = 0x0000_0003;
+
 /// Reserved component identifier for the Vendor Authorization Key digest entry in Base SoC Manifest.
 pub const V_AUTH_KEY_ID: u32 = 0x0000_0004;
 

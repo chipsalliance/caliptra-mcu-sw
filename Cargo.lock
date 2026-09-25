@@ -7933,6 +7933,7 @@ dependencies = [
  "arrayvec",
  "async-trait",
  "caliptra-api",
+ "caliptra-auth-man-types",
  "caliptra-image-types",
  "caliptra-mcu-attestation-evidence",
  "caliptra-mcu-common-commands",

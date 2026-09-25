@@ -16,7 +16,10 @@ use mcu_caliptra_api::{
 };
 
 use super::{caliptra_authorize_params, MeasurementApi};
-use crate::attestation_manifest::{AttestationManifestEntry, MCU_RT_FW_ID, V_AUTH_KEY_ID};
+use crate::attestation_manifest::{
+    AttestationManifestEntry, MCU_RT_FW_ID, OWNER_MEASUREMENT_POLICY_IDENTIFIER, OWSM_FW_ID,
+    O_AUTH_KEY_ID, V_AUTH_KEY_ID,
+};
 use crate::errors::{MeasurementApiError, MeasurementApiResult};
 use crate::ImageMetadata;
 
@@ -93,6 +96,63 @@ pub(super) async fn measure_vendor_auth_key<S: Syscalls, A: ApiAlloc>(
     .await
 }
 
+pub(super) async fn measure_owsm<S: Syscalls, A: ApiAlloc>(
+    api: &mut MeasurementApi<'_, S>,
+    alloc: &A,
+    preamble_digest: &[u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE],
+    svn: u32,
+) -> MeasurementApiResult {
+    let dpe_store = DpeHandleStore::<S>::new(DPE_HANDLE_STORE_DRIVER_NUM);
+    let mut check_record = DpeHandleRecord::default();
+    dpe_store
+        .read_record(V_AUTH_KEY_ID, &mut check_record)
+        .map_err(|_| MeasurementApiError::InvalidDpeHandleStoreState)?;
+    if check_record.fw_id != V_AUTH_KEY_ID {
+        return Err(MeasurementApiError::InvalidDpeHandleStoreState);
+    }
+    derive_and_record_soc_tcb_component(api, alloc, V_AUTH_KEY_ID, OWSM_FW_ID, preamble_digest, svn)
+        .await
+}
+
+pub(super) async fn measure_owner_measurement_policy<S: Syscalls, A: ApiAlloc>(
+    api: &mut MeasurementApi<'_, S>,
+    alloc: &A,
+    policy_digest: &[u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE],
+) -> MeasurementApiResult {
+    let dpe_store = DpeHandleStore::<S>::new(DPE_HANDLE_STORE_DRIVER_NUM);
+    let mut check_record = DpeHandleRecord::default();
+    dpe_store
+        .read_record(OWSM_FW_ID, &mut check_record)
+        .map_err(|_| MeasurementApiError::InvalidDpeHandleStoreState)?;
+    if check_record.fw_id != OWSM_FW_ID {
+        return Err(MeasurementApiError::InvalidDpeHandleStoreState);
+    }
+    derive_and_record_soc_tcb_component(
+        api,
+        alloc,
+        OWSM_FW_ID,
+        OWNER_MEASUREMENT_POLICY_IDENTIFIER,
+        policy_digest,
+        0,
+    )
+    .await
+}
+
+pub(super) async fn measure_owner_auth_key<S: Syscalls, A: ApiAlloc>(
+    api: &mut MeasurementApi<'_, S>,
+    alloc: &A,
+    owner_auth_key_digest: &[u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE],
+) -> MeasurementApiResult {
+    derive_and_record_soc_tcb_component(
+        api,
+        alloc,
+        OWNER_MEASUREMENT_POLICY_IDENTIFIER,
+        O_AUTH_KEY_ID,
+        owner_auth_key_digest,
+        0,
+    )
+    .await
+}
 pub(super) async fn authorize_and_stash<S: Syscalls, A: ApiAlloc>(
     api: &mut MeasurementApi<'_, S>,
     alloc: &A,
@@ -101,8 +161,7 @@ pub(super) async fn authorize_and_stash<S: Syscalls, A: ApiAlloc>(
 ) -> MeasurementApiResult {
     api.initial_load_measurement_state_ready()?;
     let entry = api
-        .manifest
-        .lookup(fw_id)
+        .manifest_lookup(fw_id)
         .map_err(|_| MeasurementApiError::UnknownFwId)?;
 
     let params = caliptra_authorize_params(fw_id, metadata);
@@ -305,6 +364,43 @@ mod tests {
         assert_eq!(child.parent_fw_id, Some(MCU_RT_FW_ID));
         assert_eq!(child.tci_tag, V_AUTH_KEY_ID);
         assert_eq!(child.context_handle, [0x55; 16]);
+    }
+
+    #[test]
+    fn tcb_child_record_for_owsm_uses_vendor_key_parent() {
+        let child = tcb_child_record(OWSM_FW_ID, V_AUTH_KEY_ID, [0x33; 16]);
+
+        assert_eq!(child.fw_id, OWSM_FW_ID);
+        assert_eq!(child.parent_fw_id, Some(V_AUTH_KEY_ID));
+        assert_eq!(child.tci_tag, OWSM_FW_ID);
+        assert_eq!(child.context_handle, [0x33; 16]);
+    }
+
+    #[test]
+    fn tcb_child_record_for_owner_policy_uses_owsm_parent() {
+        let child = tcb_child_record(OWNER_MEASUREMENT_POLICY_IDENTIFIER, OWSM_FW_ID, [0x55; 16]);
+
+        assert_eq!(child.fw_id, OWNER_MEASUREMENT_POLICY_IDENTIFIER);
+        assert_eq!(child.parent_fw_id, Some(OWSM_FW_ID));
+        assert_eq!(child.tci_tag, OWNER_MEASUREMENT_POLICY_IDENTIFIER);
+        assert_eq!(child.context_handle, [0x55; 16]);
+    }
+
+    #[test]
+    fn tcb_child_record_for_owner_auth_key_uses_owner_policy_parent() {
+        let child = tcb_child_record(
+            O_AUTH_KEY_ID,
+            OWNER_MEASUREMENT_POLICY_IDENTIFIER,
+            [0x66; 16],
+        );
+
+        assert_eq!(child.fw_id, O_AUTH_KEY_ID);
+        assert_eq!(
+            child.parent_fw_id,
+            Some(OWNER_MEASUREMENT_POLICY_IDENTIFIER)
+        );
+        assert_eq!(child.tci_tag, O_AUTH_KEY_ID);
+        assert_eq!(child.context_handle, [0x66; 16]);
     }
 
     #[test]

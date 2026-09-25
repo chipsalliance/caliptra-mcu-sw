@@ -136,7 +136,7 @@ fn log_boot_init_error(error: BootInitLog) {
 }
 
 /// Classify the current reset as cold boot or MCU hitless update.
-fn reset_boot_kind() -> Result<BootKind, ErrorCode> {
+pub(crate) fn reset_boot_kind() -> Result<BootKind, ErrorCode> {
     let mci = MciSyscall::<DefaultSyscalls>::new();
     let reason = mci.read(RESET_REASON, 0)?;
     decode_reset_reason(reason).ok_or(ErrorCode::Invalid)

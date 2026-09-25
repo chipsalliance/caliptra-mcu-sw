@@ -51,8 +51,23 @@ pub trait ImageLoader {
     /// - `Err(ErrorCode)`: Indication of the failure to load the image.
     async fn load(&self, image_id: u32) -> Result<LoadedImage, ErrorCode>;
 
-    /// Installs the Owner Authorization Manifest in Caliptra persistent memory.
-    async fn set_owner_auth_manifest(&self) -> Result<(), ErrorCode>;
+    /// Installs the Owner Authorization Manifest in Caliptra persistent memory,
+    /// capturing up to `retained_preamble.len()` bytes of the accepted stream.
+    async fn set_owner_auth_manifest(
+        &self,
+        retained_preamble: &mut [u8],
+    ) -> Result<usize, ErrorCode>;
+
+    /// Returns the total size of a component in storage.
+    async fn component_size(&self, identifier: u32) -> Result<usize, ErrorCode>;
+
+    /// Read raw component bytes directly from storage.
+    async fn read_raw_component(
+        &self,
+        identifier: u32,
+        offset_within: usize,
+        dst: &mut [u8],
+    ) -> Result<usize, ErrorCode>;
 }
 
 pub struct FlashImageLoader<'a, T: DmaTransfer> {
@@ -111,7 +126,10 @@ impl<T: DmaTransfer> ImageLoader for FlashImageLoader<'_, T> {
         })
     }
 
-    async fn set_owner_auth_manifest(&self) -> Result<(), ErrorCode> {
+    async fn set_owner_auth_manifest(
+        &self,
+        retained_preamble: &mut [u8],
+    ) -> Result<usize, ErrorCode> {
         let mut header = [0u8; core::mem::size_of::<FlashHeader>()];
         flash_client::flash_read_header(&self.flash, &mut header).await?;
         let (offset, size) =
@@ -137,24 +155,56 @@ impl<T: DmaTransfer> ImageLoader for FlashImageLoader<'_, T> {
         }
         req.chksum = 0u32.wrapping_sub(checksum);
 
+        let mut retaining_stream = RetainingPayloadStream::new(stream, retained_preamble);
         let response_buffer = &mut [0u8; core::mem::size_of::<MailboxRespHeader>()];
         loop {
-            stream.reset();
+            retaining_stream.reset();
             match self
                 .mailbox
                 .execute_with_payload_stream(
                     CommandId::SET_OWNER_AUTH_MANIFEST.into(),
                     Some(req.as_bytes()),
-                    &mut stream,
+                    &mut retaining_stream,
                     response_buffer,
                 )
                 .await
             {
-                Ok(_) => return Ok(()),
+                Ok(_) => return Ok(retaining_stream.bytes_retained()),
                 Err(MailboxError::ErrorCode(ErrorCode::Busy)) => continue,
                 Err(_) => return Err(ErrorCode::Fail),
             }
         }
+    }
+
+    async fn component_size(&self, identifier: u32) -> Result<usize, ErrorCode> {
+        let mut header = [0u8; core::mem::size_of::<FlashHeader>()];
+        flash_client::flash_read_header(&self.flash, &mut header).await?;
+        let (_offset, size) =
+            flash_client::flash_read_toc(&self.flash, &header, identifier).await?;
+        Ok(size as usize)
+    }
+
+    async fn read_raw_component(
+        &self,
+        identifier: u32,
+        offset_within: usize,
+        dst: &mut [u8],
+    ) -> Result<usize, ErrorCode> {
+        let mut header = [0u8; core::mem::size_of::<FlashHeader>()];
+        flash_client::flash_read_header(&self.flash, &mut header).await?;
+        let (offset, size) = flash_client::flash_read_toc(&self.flash, &header, identifier).await?;
+        if offset_within >= size as usize {
+            return Ok(0);
+        }
+        let to_read = (size as usize - offset_within).min(dst.len());
+        self.flash
+            .read(
+                offset as usize + offset_within,
+                to_read,
+                &mut dst[..to_read],
+            )
+            .await?;
+        Ok(to_read)
     }
 }
 
@@ -259,7 +309,10 @@ impl<D: DMAMapping + 'static> ImageLoader for PldmImageLoader<'_, D> {
         }
     }
 
-    async fn set_owner_auth_manifest(&self) -> Result<(), ErrorCode> {
+    async fn set_owner_auth_manifest(
+        &self,
+        retained_preamble: &mut [u8],
+    ) -> Result<usize, ErrorCode> {
         pldm_client::initialize_pldm(
             self.spawner,
             self.params.descriptors,
@@ -287,24 +340,68 @@ impl<D: DMAMapping + 'static> ImageLoader for PldmImageLoader<'_, D> {
         }
         req.chksum = 0u32.wrapping_sub(checksum);
 
+        let mut retaining_stream = RetainingPayloadStream::new(stream, retained_preamble);
         let response_buffer = &mut [0u8; core::mem::size_of::<MailboxRespHeader>()];
         loop {
-            stream.reset();
+            retaining_stream.reset();
             match self
                 .mailbox
                 .execute_with_payload_stream(
                     CommandId::SET_OWNER_AUTH_MANIFEST.into(),
                     Some(req.as_bytes()),
-                    &mut stream,
+                    &mut retaining_stream,
                     response_buffer,
                 )
                 .await
             {
-                Ok(_) => return Ok(()),
+                Ok(_) => return Ok(retaining_stream.bytes_retained()),
                 Err(MailboxError::ErrorCode(ErrorCode::Busy)) => continue,
                 Err(_) => return Err(ErrorCode::Fail),
             }
         }
+    }
+
+    async fn component_size(&self, identifier: u32) -> Result<usize, ErrorCode> {
+        pldm_client::initialize_pldm(
+            self.spawner,
+            self.params.descriptors,
+            self.params.fw_params,
+            self.dma_mapping,
+        )
+        .await?;
+        let (_offset, size) = pldm_client::pldm_download_toc(identifier).await?;
+        Ok(size as usize)
+    }
+
+    async fn read_raw_component(
+        &self,
+        identifier: u32,
+        offset_within: usize,
+        dst: &mut [u8],
+    ) -> Result<usize, ErrorCode> {
+        pldm_client::initialize_pldm(
+            self.spawner,
+            self.params.descriptors,
+            self.params.fw_params,
+            self.dma_mapping,
+        )
+        .await?;
+        let (offset, size) = pldm_client::pldm_download_toc(identifier).await?;
+        if offset_within >= size as usize {
+            return Ok(0);
+        }
+        let to_read = (size as usize - offset_within).min(dst.len());
+        let mut bytes_read = 0;
+        while bytes_read < to_read {
+            let chunk_len = (to_read - bytes_read).min(pldm_context::PLDM_PAYLOAD_CHUNK_SIZE);
+            pldm_client::pldm_download_payload_chunk(
+                offset as usize + offset_within + bytes_read,
+                &mut dst[bytes_read..bytes_read + chunk_len],
+            )
+            .await?;
+            bytes_read += chunk_len;
+        }
+        Ok(to_read)
     }
 }
 
@@ -434,6 +531,53 @@ impl PayloadStream for FlashMailboxPayloadStream<'_> {
     }
 }
 
+pub struct RetainingPayloadStream<'a, S: PayloadStream> {
+    inner: S,
+    retained: &'a mut [u8],
+    bytes_retained: usize,
+}
+
+impl<'a, S: PayloadStream> RetainingPayloadStream<'a, S> {
+    pub fn new(inner: S, retained: &'a mut [u8]) -> Self {
+        Self {
+            inner,
+            retained,
+            bytes_retained: 0,
+        }
+    }
+
+    pub fn bytes_retained(&self) -> usize {
+        self.bytes_retained
+    }
+
+    pub fn retained(&self) -> &[u8] {
+        self.retained
+    }
+}
+
+#[async_trait(?Send)]
+impl<S: PayloadStream> PayloadStream for RetainingPayloadStream<'_, S> {
+    fn size(&self) -> usize {
+        self.inner.size()
+    }
+
+    fn reset(&mut self) {
+        self.inner.reset();
+        self.bytes_retained = 0;
+    }
+
+    async fn read(&mut self, buffer: &mut [u8]) -> Result<usize, ErrorCode> {
+        let read_len = self.inner.read(buffer).await?;
+        if read_len > 0 && self.bytes_retained < self.retained.len() {
+            let to_copy = read_len.min(self.retained.len() - self.bytes_retained);
+            self.retained[self.bytes_retained..self.bytes_retained + to_copy]
+                .copy_from_slice(&buffer[..to_copy]);
+            self.bytes_retained += to_copy;
+        }
+        Ok(read_len)
+    }
+}
+
 #[repr(C)]
 #[derive(Debug, FromBytes, IntoBytes, Clone, Copy, Immutable, KnownLayout)]
 pub struct AuthManifestReqHeader {
@@ -470,5 +614,71 @@ mod tests {
         let truncated = &response.as_bytes()[..size_of::<GetImageInfoResp>() - 1];
 
         assert_eq!(parse_image_info_response(truncated), Err(ErrorCode::Fail));
+    }
+
+    struct MockPayloadStream {
+        data: alloc::vec::Vec<u8>,
+        cursor: usize,
+    }
+
+    #[async_trait(?Send)]
+    impl PayloadStream for MockPayloadStream {
+        fn size(&self) -> usize {
+            self.data.len()
+        }
+
+        fn reset(&mut self) {
+            self.cursor = 0;
+        }
+
+        async fn read(&mut self, buffer: &mut [u8]) -> Result<usize, ErrorCode> {
+            if self.cursor >= self.data.len() {
+                return Ok(0);
+            }
+            let to_read = (self.data.len() - self.cursor).min(buffer.len());
+            buffer[..to_read].copy_from_slice(&self.data[self.cursor..self.cursor + to_read]);
+            self.cursor += to_read;
+            Ok(to_read)
+        }
+    }
+
+    #[test]
+    fn retaining_payload_stream_captures_prefix_and_resets() {
+        let mock_data: alloc::vec::Vec<u8> = (0..100).map(|i| i as u8).collect();
+        let inner = MockPayloadStream {
+            data: mock_data.clone(),
+            cursor: 0,
+        };
+        let mut retained = [0u8; 30];
+        let mut stream = RetainingPayloadStream::new(inner, &mut retained);
+
+        let mut read_buf = [0u8; 16];
+        let waker = core::task::Waker::noop();
+        let mut cx = core::task::Context::from_waker(&waker);
+
+        {
+            let mut f1 = stream.read(&mut read_buf);
+            let n1 = match f1.as_mut().poll(&mut cx) {
+                core::task::Poll::Ready(Ok(n)) => n,
+                _ => panic!("unexpected poll"),
+            };
+            assert_eq!(n1, 16);
+        }
+
+        {
+            let mut f2 = stream.read(&mut read_buf);
+            let n2 = match f2.as_mut().poll(&mut cx) {
+                core::task::Poll::Ready(Ok(n)) => n,
+                _ => panic!("unexpected poll"),
+            };
+            assert_eq!(n2, 16);
+        }
+
+        assert_eq!(stream.bytes_retained(), 30);
+        assert_eq!(&stream.retained()[..30], &mock_data[..30]);
+
+        // Verify reset clears bytes_retained
+        stream.reset();
+        assert_eq!(stream.bytes_retained(), 0);
     }
 }
