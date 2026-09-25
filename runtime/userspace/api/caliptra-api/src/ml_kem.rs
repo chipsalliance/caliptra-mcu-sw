@@ -43,6 +43,14 @@ const DECAPSULATE_REQ_SIZE: usize = size_of::<CmMlkemDecapsulateReq>();
 
 const DECAPSULATE_RSP_SIZE: usize = size_of::<CmMlkemDecapsulateResp>();
 
+/// Peak scratch allocation during ML-KEM-1024 encapsulation.
+///
+/// The mailbox request and response buffers are alive at the same time, and the
+/// caller additionally holds the ciphertext output buffer across the call.
+/// Callers that budget a fixed scratch pool must account for all three.
+pub const MLKEM_ENCAPSULATE_SCRATCH_PEAK: usize =
+    ENCAPSULATE_REQ_SIZE + ENCAPSULATE_RSP_SIZE + MLKEM1024_CIPHERTEXT_SIZE;
+
 // ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------

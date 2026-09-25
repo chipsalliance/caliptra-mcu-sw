@@ -177,20 +177,86 @@ const PQC_SIGNING_PEAK: usize = mcu_caliptra_api::DPE_MLDSA87_SIGN_SCRATCH_PEAK 
 /// staging buffers.
 const CRYPTO_PATH_PEAK: usize = TRANSIENT_MAILBOX_PEAK + 2 * MAX_TRANSPORT_MTU;
 
+/// Allowance for the requester's `OpaqueData` in a KEY_EXCHANGE request.
+///
+/// Carries the secured-message `SupportedVersions` list, which is a short
+/// header plus two bytes per offered version.
+const MAX_KEY_EXCHANGE_OPAQUE_LEN: usize = 64;
+
+/// Logical size of an ML-KEM-1024 KEY_EXCHANGE request.
+///
+/// At 1568 bytes of `ExchangeData` this always exceeds the transport MTU, so the
+/// request arrives via `CHUNK_SEND` and is reassembled into a rented buffer.
+const MAX_KEY_EXCHANGE_REQ_LEN: usize = caliptra_mcu_spdm_codec::SpdmMsgHdrPdu::SIZE
+    + core::mem::size_of::<caliptra_mcu_spdm_codec::KeyExchangeReqBodyFixed>()
+    + caliptra_mcu_spdm_codec::MAX_EXCHANGE_DATA_SIZE
+    + 2 // OpaqueDataLength
+    + MAX_KEY_EXCHANGE_OPAQUE_LEN;
+
+/// Logical size of an ML-KEM-1024 KEY_EXCHANGE_RSP signed with ECDSA P-384.
+///
+/// Fixed body (6) + RandomData + ExchangeData + MeasurementSummaryHash +
+/// OpaqueDataLength + OpaqueData + Signature + ResponderVerifyData.
+const MAX_KEY_EXCHANGE_RSP_LEN: usize = caliptra_mcu_spdm_codec::SpdmMsgHdrPdu::SIZE
+    + 6
+    + caliptra_mcu_spdm_codec::KEY_EXCHANGE_RANDOM_DATA_LEN
+    + caliptra_mcu_spdm_codec::MAX_EXCHANGE_DATA_SIZE
+    + caliptra_mcu_spdm_codec::SHA384_HASH_SIZE
+    + 2
+    + caliptra_mcu_spdm_codec::OPAQUE_VERSION_SELECTION_SIZE
+    + caliptra_mcu_spdm_codec::ECC_P384_SIGNATURE_SIZE
+    + caliptra_mcu_spdm_codec::SHA384_HASH_SIZE;
+
+/// Peak concurrent allocation while handling a chunked ML-KEM KEY_EXCHANGE.
+///
+/// This is the one path where the stack holds *two* large buffers at once: the
+/// reassembled request stays live (the handler borrows `ExchangeData` and the
+/// raw bytes it feeds to the transcript) while the response buffer is
+/// allocated. On top of those sit the `CHUNK_SEND_ACK` inline response area,
+/// the receive frame holding the final chunk, and the ML-KEM encapsulation
+/// mailbox round trip.
+///
+/// The encapsulation and signing phases are sequential, so this takes the ML-KEM
+/// term alone — ECDSA P-384 signing is far smaller than
+/// [`MLKEM_ENCAPSULATE_SCRATCH_PEAK`](mcu_caliptra_api::MLKEM_ENCAPSULATE_SCRATCH_PEAK).
+///
+/// Currently 9872 bytes, which sits below [`LARGE_MSG_PATH_PEAK`] (14812), so
+/// it does not raise [`required_scratch`] today. It is tracked explicitly so a
+/// future change to either path is caught by the pool assertions.
+const KEY_EXCHANGE_CHUNKED_PEAK: usize = MAX_KEY_EXCHANGE_REQ_LEN
+    + MAX_KEY_EXCHANGE_RSP_LEN
+    + caliptra_mcu_spdm_stack::CHUNK_SEND_ACK_INLINE_RESPONSE_SIZE
+    + MAX_TRANSPORT_MTU
+    + mcu_caliptra_api::MLKEM_ENCAPSULATE_SCRATCH_PEAK;
+
 /// Minimum scratch pool that can satisfy [`MAX_BUFFERED_SPDM_MSG_SIZE`].
 ///
-/// The two request paths are mutually exclusive: a single request either
-/// builds a large chunked response or runs the certificate/crypto path, never
-/// both. Likewise the stack rents exactly one large buffer, for a `CHUNK_SEND`
-/// reassembly or a `CHUNK_GET` response but not both. So the transient term is
-/// a max, not a sum, laid on top of the session state that persists across
-/// requests.
+/// The request paths are mutually exclusive — a single request builds a large
+/// chunked response, runs the certificate/crypto path, or completes a chunked
+/// KEY_EXCHANGE — so the transient term is a max, not a sum, laid on top of the
+/// session state that persists across requests.
+///
+/// Most paths rent exactly one large buffer, for a `CHUNK_SEND` reassembly or a
+/// `CHUNK_GET` response but not both. Chunked KEY_EXCHANGE is the exception and
+/// holds both at once; [`KEY_EXCHANGE_CHUNKED_PEAK`] accounts for that.
+///
+/// Not covered: a KEY_EXCHANGE_RSP signed with ML-DSA-87 instead of ECDSA
+/// P-384. Its 4627-byte signature grows the response from 1814 to 6345 bytes,
+/// taking this path to 17711 bytes against the 18432-byte default pool. The
+/// 721-byte margin is nominally sufficient but this linear model does not
+/// capture fragmentation, and the response needs a *contiguous* ~100-slot run
+/// placed while the reassembled request is still held. If a requester
+/// negotiates ML-DSA-87 together with ML-KEM-1024 the response allocation
+/// fails and the responder returns an SPDM error rather than corrupting
+/// session state. Covering it properly means growing both pools.
 const fn required_scratch() -> usize {
-    let transient_peak = if LARGE_MSG_PATH_PEAK > CRYPTO_PATH_PEAK {
-        LARGE_MSG_PATH_PEAK
-    } else {
-        CRYPTO_PATH_PEAK
-    };
+    let mut transient_peak = CRYPTO_PATH_PEAK;
+    if LARGE_MSG_PATH_PEAK > transient_peak {
+        transient_peak = LARGE_MSG_PATH_PEAK;
+    }
+    if KEY_EXCHANGE_CHUNKED_PEAK > transient_peak {
+        transient_peak = KEY_EXCHANGE_CHUNKED_PEAK;
+    }
     SESSION_WORKING_SET + transient_peak
 }
 
