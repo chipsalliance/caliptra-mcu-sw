@@ -20,6 +20,62 @@ use crate::attestation_manifest::AttestationManifestEntry;
 use crate::errors::{MeasurementApiError, MeasurementApiResult};
 use crate::ImageMetadata;
 
+#[inline(never)]
+pub(super) async fn create_dpe_context<S: Syscalls, A: ApiAlloc>(
+    api: &mut MeasurementApi<'_, S>,
+    alloc: &A,
+    fw_id: u32,
+    measurement: &[u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE],
+    svn: u32,
+    is_ak_target: bool,
+) -> MeasurementApiResult {
+    api.initial_load_measurement_state_ready()?;
+    let dpe_store = DpeHandleStore::<S>::new(DPE_HANDLE_STORE_DRIVER_NUM);
+    reject_existing_tcb_record(&dpe_store, fw_id)?;
+
+    let mut parent = DpeHandleRecord::default();
+    dpe_store
+        .read_leaf_record(&mut parent)
+        .map_err(|_| MeasurementApiError::InvalidDpeHandleStoreState)?;
+
+    let derived = dpe_derive_context(
+        alloc,
+        &DpeDeriveContextParams {
+            parent_handle: parent.context_handle,
+            measurement: *measurement,
+            flags: DpeDeriveContextFlags::RETAIN_PARENT_CONTEXT
+                | DpeDeriveContextFlags::ALLOW_NEW_CONTEXT_TO_EXPORT
+                | DpeDeriveContextFlags::INPUT_ALLOW_X509,
+            tci_type: fw_id,
+            target_locality: 0,
+            svn,
+        },
+    )
+    .await
+    .map_err(|_| MeasurementApiError::DpeCommandFailed)?;
+
+    parent.context_handle = derived.parent_handle;
+    dpe_store
+        .write_record(parent.fw_id, &parent)
+        .map_err(|_| api.enter_error_state(MeasurementApiError::StoreFailed))?;
+
+    let child = tcb_child_record(fw_id, parent.fw_id, derived.child_handle);
+    dpe_store
+        .write_record(fw_id, &child)
+        .map_err(|_| api.enter_error_state(MeasurementApiError::StoreFailed))?;
+    dpe_tag_tci(alloc, &child.context_handle, fw_id)
+        .await
+        .map_err(|_| api.enter_error_state(MeasurementApiError::DpeCommandFailed))?;
+    if is_ak_target {
+        dpe_store
+            .mark_attestation_target(fw_id)
+            .map_err(|_| api.enter_error_state(MeasurementApiError::StoreFailed))?;
+    }
+    extend_pcr31(measurement)
+        .await
+        .map_err(|_| api.enter_error_state(MeasurementApiError::PcrExtendFailed))
+}
+
 pub(super) async fn authorize_and_stash<S: Syscalls, A: ApiAlloc>(
     api: &mut MeasurementApi<'_, S>,
     alloc: &A,
@@ -38,67 +94,21 @@ pub(super) async fn authorize_and_stash<S: Syscalls, A: ApiAlloc>(
         .map_err(|_| MeasurementApiError::ImageAuthorizationFailed)?;
 
     if entry.is_tcb() {
-        create_dpe_context(api, alloc, entry, metadata).await?;
+        create_dpe_context(
+            api,
+            alloc,
+            entry.fw_id,
+            &metadata.measurement,
+            metadata.svn,
+            entry.is_ak_target(),
+        )
+        .await
     } else {
         create_software_pcr_record(api, alloc, entry, metadata).await?;
+        extend_pcr31(&metadata.measurement)
+            .await
+            .map_err(|_| api.enter_error_state(MeasurementApiError::PcrExtendFailed))
     }
-    // DPE and Software PCR stores are persistent state with no safe rollback
-    // primitive after a successful mutation. If the final PCR31 extend fails,
-    // fail closed so later measurement/evidence operations are blocked until
-    // cold boot reinitializes measurement state.
-    extend_pcr31(&metadata.measurement)
-        .await
-        .map_err(|_| api.enter_error_state(MeasurementApiError::PcrExtendFailed))
-}
-
-async fn create_dpe_context<S: Syscalls, A: ApiAlloc>(
-    api: &mut MeasurementApi<'_, S>,
-    alloc: &A,
-    entry: AttestationManifestEntry,
-    metadata: ImageMetadata,
-) -> MeasurementApiResult {
-    let dpe_store = DpeHandleStore::<S>::new(DPE_HANDLE_STORE_DRIVER_NUM);
-    reject_existing_tcb_record(&dpe_store, entry.fw_id)?;
-
-    let mut parent = DpeHandleRecord::default();
-    dpe_store
-        .read_leaf_record(&mut parent)
-        .map_err(|_| MeasurementApiError::InvalidDpeHandleStoreState)?;
-
-    let derived = dpe_derive_context(
-        alloc,
-        &DpeDeriveContextParams {
-            parent_handle: parent.context_handle,
-            measurement: metadata.measurement,
-            flags: DpeDeriveContextFlags::RETAIN_PARENT_CONTEXT
-                | DpeDeriveContextFlags::ALLOW_NEW_CONTEXT_TO_EXPORT
-                | DpeDeriveContextFlags::INPUT_ALLOW_X509,
-            tci_type: entry.fw_id,
-            target_locality: 0,
-            svn: metadata.svn,
-        },
-    )
-    .await
-    .map_err(|_| MeasurementApiError::DpeCommandFailed)?;
-
-    parent.context_handle = derived.parent_handle;
-    dpe_store
-        .write_record(parent.fw_id, &parent)
-        .map_err(|_| api.enter_error_state(MeasurementApiError::StoreFailed))?;
-
-    let child = tcb_child_record(entry.fw_id, parent.fw_id, derived.child_handle);
-    dpe_store
-        .write_record(entry.fw_id, &child)
-        .map_err(|_| api.enter_error_state(MeasurementApiError::StoreFailed))?;
-    dpe_tag_tci(alloc, &child.context_handle, entry.fw_id)
-        .await
-        .map_err(|_| api.enter_error_state(MeasurementApiError::DpeCommandFailed))?;
-    if entry.is_ak_target() {
-        dpe_store
-            .mark_attestation_target(entry.fw_id)
-            .map_err(|_| api.enter_error_state(MeasurementApiError::StoreFailed))?;
-    }
-    Ok(())
 }
 
 async fn create_software_pcr_record<S: Syscalls, A: ApiAlloc>(
@@ -196,7 +206,7 @@ mod tests {
     extern crate std;
 
     use super::*;
-    use crate::attestation_manifest::MCU_RT_FW_ID;
+    use crate::attestation_manifest::{MCU_RT_FW_ID, V_AUTH_KEY_ID};
     use mcu_caliptra_api::AuthorizeAndStashFlags;
 
     #[test]
@@ -222,6 +232,16 @@ mod tests {
         assert_eq!(child.parent_fw_id, Some(MCU_RT_FW_ID));
         assert_eq!(child.tci_tag, child.fw_id);
         assert_eq!(child.context_handle, [0xa5; 16]);
+    }
+
+    #[test]
+    fn tcb_child_record_for_vendor_auth_key_uses_mcu_rt_parent() {
+        let child = tcb_child_record(V_AUTH_KEY_ID, MCU_RT_FW_ID, [0x55; 16]);
+
+        assert_eq!(child.fw_id, V_AUTH_KEY_ID);
+        assert_eq!(child.parent_fw_id, Some(MCU_RT_FW_ID));
+        assert_eq!(child.tci_tag, V_AUTH_KEY_ID);
+        assert_eq!(child.context_handle, [0x55; 16]);
     }
 
     #[test]
