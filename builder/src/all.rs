@@ -1376,7 +1376,13 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             Ok((path, name))
         })
         .collect();
-    let network_roms = network_roms?;
+    let mut network_roms = network_roms?;
+    if network_rom_features.is_some() && shard_index == 0 {
+        network_roms.push((
+            PathBuf::from(crate::network_rom_build(None)?),
+            "network-rom.bin".to_string(),
+        ));
+    }
 
     let default_name = match (is_release, total_shards > 1) {
         (true, true) => format!("all-fw-release-shard-{}.zip", shard_index),

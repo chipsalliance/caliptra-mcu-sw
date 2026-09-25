@@ -182,7 +182,7 @@ enum Commands {
         #[arg(long)]
         test_rom_features: Option<String>,
 
-        /// Comma-separated list of feature flags to build Network ROMs with
+        /// Comma-separated list of feature flags to build Network ROMs with; also packages the default Network ROM
         #[arg(long)]
         network_rom_features: Option<String>,
 
