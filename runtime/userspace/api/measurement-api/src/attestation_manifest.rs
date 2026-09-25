@@ -40,6 +40,9 @@ pub const ATTESTATION_FLAGS_SUPPORTED: u32 =
 /// MCU Runtime firmware identifier used as the default attestation target.
 pub const MCU_RT_FW_ID: u32 = 0x0000_0002;
 
+/// Reserved component identifier for the Vendor Authorization Key digest.
+pub const V_AUTH_KEY_ID: u32 = 0x0000_0004;
+
 const HEADER_MARKER_OFFSET: usize = 0;
 const HEADER_SIZE_OFFSET: usize = 4;
 const HEADER_VERSION_OFFSET: usize = 8;
