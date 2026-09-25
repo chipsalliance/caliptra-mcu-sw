@@ -6,8 +6,8 @@ use caliptra_mcu_config_emulator::flash::{
 };
 use caliptra_mcu_flash_image::{
     FlashHeader, ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, HEADER_VERSION, MAX_FILENAME_LEN,
-    MCU_RT_IDENTIFIER, OWNER_AUTH_MANIFEST_IDENTIFIER, SOC_IMAGES_BASE_IDENTIFIER,
-    SOC_MANIFEST_IDENTIFIER,
+    MCU_RT_IDENTIFIER, OWNER_AUTH_MANIFEST_IDENTIFIER, OWNER_MEASUREMENT_POLICY_IDENTIFIER,
+    SOC_IMAGES_BASE_IDENTIFIER, SOC_MANIFEST_IDENTIFIER,
 };
 use std::fs::{File, OpenOptions};
 use std::io::{self, Error, ErrorKind, Read, Seek, Write};
@@ -272,6 +272,16 @@ pub fn flash_image_create(args: &CaliptraBuildArgs) -> Result<()> {
             OWNER_AUTH_MANIFEST_IDENTIFIER,
             &content,
             Some(b"owner-auth-manifest.bin"),
+        )?);
+    }
+
+    let content;
+    if let Some(owner_measurement_policy_path) = &args.owner_measurement_policy {
+        content = load_file(&owner_measurement_policy_path.to_string_lossy())?;
+        images.push(FirmwareImage::new(
+            OWNER_MEASUREMENT_POLICY_IDENTIFIER,
+            &content,
+            Some(b"owner-measurement-policy.bin"),
         )?);
     }
 
@@ -646,6 +656,48 @@ mod tests {
         assert!(owner_auth_data[b"owner-auth-manifest".len()..]
             .iter()
             .all(|byte| *byte == 0));
+    }
+
+    #[test]
+    fn test_flash_image_build_with_owner_measurement_policy() {
+        let caliptra_fw = create_temp_file(b"caliptra").unwrap();
+        let soc_manifest = create_temp_file(b"soc-manifest").unwrap();
+        let mcu_runtime = create_temp_file(b"mcu-runtime").unwrap();
+        let owner_auth_manifest = create_temp_file(b"owner-auth-manifest").unwrap();
+        let owner_policy = create_temp_file(b"owner-measurement-policy").unwrap();
+
+        let output_file = NamedTempFile::new().unwrap();
+        let output_path = output_file.path().to_str().unwrap();
+
+        flash_image_create(&CaliptraBuildArgs {
+            caliptra_firmware: Some(caliptra_fw.path().to_path_buf()),
+            soc_manifest: Some(soc_manifest.path().to_path_buf()),
+            mcu_firmware: Some(mcu_runtime.path().to_path_buf()),
+            owner_auth_manifest: Some(owner_auth_manifest.path().to_path_buf()),
+            owner_measurement_policy: Some(owner_policy.path().to_path_buf()),
+            output_path: Some(output_path.to_string()),
+            ..Default::default()
+        })
+        .unwrap();
+
+        let data = std::fs::read(output_path).unwrap();
+        let header = FlashHeader::read_from_bytes(&data[..HEADER_SIZE]).unwrap();
+        assert_eq!(header.image_count, 5);
+
+        let expected_identifiers = [
+            CALIPTRA_FMC_RT_IDENTIFIER,
+            SOC_MANIFEST_IDENTIFIER,
+            MCU_RT_IDENTIFIER,
+            OWNER_AUTH_MANIFEST_IDENTIFIER,
+            OWNER_MEASUREMENT_POLICY_IDENTIFIER,
+        ];
+
+        for (i, expected_id) in expected_identifiers.iter().enumerate() {
+            let offset = header.image_headers_offset as usize + (IMAGE_INFO_SIZE * i);
+            let info =
+                ImageHeader::read_from_bytes(&data[offset..offset + IMAGE_INFO_SIZE]).unwrap();
+            assert_eq!(info.identifier, *expected_id);
+        }
     }
 
     #[test]

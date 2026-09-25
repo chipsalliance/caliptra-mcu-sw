@@ -8,6 +8,12 @@ pub mod attestation_manifest;
 pub mod errors;
 pub mod image_metadata;
 
+pub use attestation_manifest::{
+    parse_and_validate_owner, parse_and_validate_owner_fw_load_list,
+    parse_and_validate_owner_measurement_policy, OwnerFwLoadList, OwnerMeasurementPolicy,
+    OWNER_MEASUREMENT_POLICY_IDENTIFIER, O_AUTH_KEY_ID, V_AUTH_KEY_ID,
+};
+
 use api::MeasurementApi;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
