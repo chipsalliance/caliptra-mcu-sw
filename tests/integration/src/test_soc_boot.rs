@@ -1032,11 +1032,21 @@ mod test {
             .get_caliptra_fw()
             .expect("Failed to build Caliptra firmware");
 
+        let soc_manifest_path = tempfile::NamedTempFile::new()
+            .expect("Failed to create SoC manifest temp file")
+            .into_temp_path()
+            .keep()
+            .expect("Failed to persist SoC manifest temp file");
         let soc_manifest = builder
-            .get_soc_manifest(None)
+            .get_soc_manifest(soc_manifest_path.to_str())
             .expect("Failed to build SOC manifest");
+        let owner_auth_manifest_path = tempfile::NamedTempFile::new()
+            .expect("Failed to create Owner Authorization Manifest temp file")
+            .into_temp_path()
+            .keep()
+            .expect("Failed to persist Owner Authorization Manifest temp file");
         let owner_auth_manifest = builder
-            .get_owner_auth_manifest(None)
+            .get_owner_auth_manifest(owner_auth_manifest_path.to_str())
             .expect("Failed to build Owner Authorization Manifest");
 
         // Generate a valid flash image file
