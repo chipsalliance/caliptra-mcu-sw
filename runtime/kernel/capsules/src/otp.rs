@@ -22,7 +22,10 @@ use kernel::{ErrorCode, ProcessId};
 
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_romtime::ocp_lock::KernelConfig;
-use caliptra_mcu_romtime::{fuse_lock_partition_dai, fuse_write_dai, otp::FieldEntropySlot};
+use caliptra_mcu_romtime::{
+    fuse_lock_partition_dai, fuse_write_dai,
+    otp::{FieldEntropySlot, PqcKeyType},
+};
 
 #[cfg(feature = "ocp-lock")]
 mod ro_allow {
@@ -132,6 +135,7 @@ pub mod reg {
     pub const VENDOR_MLDSA_REVOCATION: u32 = 29;
     pub const PERMA_HEK_EN: u32 = 33;
     pub const FIELD_ENTROPY_STATE: u32 = 34;
+    pub const VENDOR_PQC_KEY_TYPE: u32 = 35;
 }
 
 #[derive(Default)]
@@ -315,6 +319,13 @@ impl Otp {
                 match self.driver.read_entry(reg::OTP_FIELD_ENTROPY_STATE) {
                     Ok(value) => CommandReturn::success_u32(value),
                     Err(_) => CommandReturn::failure(ErrorCode::FAIL),
+                }
+            }
+            reg::VENDOR_PQC_KEY_TYPE => {
+                match self.driver.read_pqc_key_type(app.reg_index as usize) {
+                    Ok(PqcKeyType::LMS) => CommandReturn::success_u32(1),
+                    Ok(PqcKeyType::MLDSA) => CommandReturn::success_u32(3),
+                    Err(_) => CommandReturn::failure(ErrorCode::INVAL),
                 }
             }
             #[cfg(feature = "ocp-lock")]

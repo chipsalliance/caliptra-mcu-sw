@@ -506,6 +506,11 @@ pub trait CaliptraCmdHandler {
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 
+    /// Reports occupied vendor public-key hash slots and their PQC key types.
+    async fn vendor_pk_hash_status(&self) -> CaliptraCmdResult<(u32, [u8; 16])> {
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
     /// Retrieves the OCP Lock endorsement certificate.
     #[cfg(feature = "ocp-lock")]
     async fn get_ocp_lock_endorsement_cert(

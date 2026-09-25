@@ -31,6 +31,8 @@ The following table describes the commands defined under this specification. The
 | Authorize Debug Unlock Token    | O   | SPDM VDM, MCI Mailbox | Send debug unlock token to device for authorization.                                                                                 |
 | Export Attested CSR             | O   | SPDM VDM, MCI Mailbox | Discover Caliptra identity keys or export an attested CSR for LDevID, FMC Alias, or RT Alias.                                        |
 | Device Ownership Transfer       | O   | SPDM VDM, MCI Mailbox | Query and change the implemented DOT state.                                                                                          |
+| Field Entropy Status            | O   | MCI Mailbox           | Report whether all field entropy partitions are provisioned.                                                                        |
+| Vendor PK Hash Status           | O   | MCI Mailbox           | Report occupied vendor PK hash slots and each slot's PQC key type.                                                                   |
 | Authorization-Gated Subcommands | O   | SPDM VDM, MCI Mailbox | Security-sensitive provisioning and fuse subcommands using a one-use challenge and hybrid signature.                                |
 
 ### Authorization-Gated Subcommands
@@ -46,6 +48,9 @@ The following subcommands are assigned to the SPDM VDM IANA authorization-gated 
 | Fuse Revoke Vendor Public Key  | SPDM VDM IANA, MCI Mailbox | Revoke vendor public key.                          |
 | Fuse Revoke Vendor PK Hash     | SPDM VDM IANA, MCI Mailbox | Revoke vendor public key hash.                     |
 | Fuse Lock Partition            | SPDM VDM IANA, MCI Mailbox | Lock fuse partition.                               |
+| Zeroize UDS/FE and Enter RMA   | SPDM VDM IANA, MCI Mailbox | Zeroize UDS and field entropy, then enter RMA.     |
+| OCP LOCK Program HEK           | SPDM VDM IANA, MCI Mailbox | Program an unused HEK slot.                        |
+| OCP LOCK Zero HEK              | SPDM VDM IANA, MCI Mailbox | Permanently sanitize an unused HEK slot.           |
 | Dot Lock                       | SPDM VDM IANA, MCI Mailbox | Lock the DOT after ownership validation.          |
 | Dot Disable                    | SPDM VDM IANA, MCI Mailbox | Enter ODD state with no DOT-supplied CAK.          |
 | Dot Rotate                     | SPDM VDM IANA, MCI Mailbox | Replace DOT key digests and advance the epoch.     |
@@ -454,6 +459,35 @@ Programs field entropy.
 
 **Response Payload**: Empty
 
+### Field Entropy Status
+
+Reports whether all four field entropy partitions are in the finished state.
+Zeroized field entropy is not reported as provisioned. This command does not
+require authorization.
+
+**Request Payload**: Empty
+
+**Response Payload**:
+
+| Byte(s) | Name                | Type | Description                                             |
+| ------- | ------------------- | ---- | ------------------------------------------------------- |
+| 0:3     | already_provisioned | u32  | `1` if all four partitions are provisioned; otherwise 0 |
+
+### Vendor PK Hash Status
+
+Reports occupied vendor public-key hash slots and their PQC key types. A slot
+remains occupied after revocation because OTP hash storage cannot be reused.
+This command does not require authorization.
+
+**Request Payload**: Empty
+
+**Response Payload**:
+
+| Byte(s) | Name       | Type   | Description                                                                                     |
+| ------- | ---------- | ------ | ----------------------------------------------------------------------------------------------- |
+| 0:3     | used_slots | u32    | Bitmap of occupied slots; bits 0 through 15 correspond to vendor PK hash slots 0 through 15     |
+| 4:19    | key_types  | u8[16] | Per-slot PQC key type: `0` = unused, `1` = LMS, `3` = ML-DSA                                    |
+
 ### Fuse Revoke Vendor Public Key
 
 Revokes a vendor public key.
@@ -475,6 +509,44 @@ Revokes a vendor public key hash.
 Locks a fuse partition.
 
 **Request Payload**: `partition:u32 | HybridSignature`
+
+**Response Payload**: Empty
+
+### Zeroize UDS, Field Entropy, and Enter RMA
+
+Zeroizes the UDS and all four field-entropy partitions, records the
+field-entropy partitions as zeroized, and then requests entry into RMA.
+Zeroization occurs before the RMA transition is requested and is not rolled
+back if that transition fails.
+
+**Request Payload**: `rma_token:u8[16] | HybridSignature`
+
+**Response Payload**: Empty
+
+### OCP LOCK Program HEK
+
+Programs an unused HEK slot with an internally generated 256-bit random seed
+and its OTP digest. The slot must be within the implementation's configured HEK
+slot count, contain only erased values, and not be protected by the permanent
+HEK lock.
+
+**Request Payload**: `hek_slot:u32 | HybridSignature`
+
+`hek_slot` selects HEK slot 0 through 7. Implementations may provide fewer than
+eight slots and reject an index beyond the configured slot count.
+
+**Response Payload**: Empty
+
+### OCP LOCK Zero HEK
+
+Permanently sanitizes an unused HEK slot. The slot must be within the
+implementation's configured HEK slot count, contain only erased values, and
+not be protected by the permanent HEK lock.
+
+**Request Payload**: `hek_slot:u32 | HybridSignature`
+
+`hek_slot` selects HEK slot 0 through 7. Implementations may provide fewer than
+eight slots and reject an index beyond the configured slot count.
 
 **Response Payload**: Empty
 

@@ -1187,6 +1187,12 @@ pub fn field_entropy_already_provisioned() -> CaliptraCmdResult<bool> {
     Ok(is_field_entropy_provisioned(state))
 }
 
+pub fn vendor_pk_hash_status() -> CaliptraCmdResult<(u32, [u8; 16])> {
+    Otp::<DefaultSyscalls>::new()
+        .vendor_pk_hash_status()
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)
+}
+
 pub(crate) async fn zeroize_uds_fe() -> CaliptraCmdResult<()> {
     let mut req = ZeroizeUdsFeReq {
         flags: ZEROIZE_UDS_FLAG
