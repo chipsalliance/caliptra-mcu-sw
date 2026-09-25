@@ -15,7 +15,7 @@ Abstract:
 use caliptra_mcu_measurement_api::attestation_manifest::{
     ATTESTATION_FLAG_AK_TARGET, ATTESTATION_FLAG_SOC_TCB_DPE, ATTESTATION_MANIFEST_ENTRY_SIZE,
     ATTESTATION_MANIFEST_FIXED_HEADER_SIZE, ATTESTATION_MANIFEST_MARKER,
-    ATTESTATION_MANIFEST_PLATFORM_INFO_MAX_LEN, ATTESTATION_MANIFEST_VERSION,
+    ATTESTATION_MANIFEST_PLATFORM_INFO_MAX_LEN, ATTESTATION_MANIFEST_VERSION, V_AUTH_KEY_ID,
 };
 use serde::Deserialize;
 use std::{
@@ -299,6 +299,7 @@ fn validate_soc_image_descriptors_match_attestation_manifest(
         .components
         .iter()
         .map(|component| component.fw_id)
+        .filter(|&fw_id| fw_id != V_AUTH_KEY_ID)
         .collect();
     let descriptor_fw_ids: BTreeSet<_> = descriptor_config
         .images
