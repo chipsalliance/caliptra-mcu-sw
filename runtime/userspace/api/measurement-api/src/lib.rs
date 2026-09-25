@@ -8,6 +8,8 @@ pub mod attestation_manifest;
 pub mod errors;
 pub mod image_metadata;
 
+pub use attestation_manifest::V_AUTH_KEY_ID;
+
 use api::MeasurementApi;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;

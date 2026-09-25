@@ -322,6 +322,20 @@ mod tests {
         println!("];");
     }
 
+    #[test]
+    fn vendor_anchor_matches_known_answer() {
+        let mldsa_seed = sha2::Sha256::digest(b"caliptra-mcu-test-vendor-authorization-keys");
+        let ecc_key = sha2::Sha384::digest(b"caliptra-mcu-test-vendor-authorization-keys\x00");
+        let signer = AsymmetricCommandAuthorizer::new(&ecc_key, &mldsa_seed).unwrap();
+        let expected_vendor_anchor: [u8; 48] = [
+            0xa2, 0x68, 0x7c, 0xf2, 0x45, 0x99, 0xb8, 0xf0, 0xf8, 0x26, 0x81, 0xd9, 0xbf, 0x6d,
+            0x77, 0xac, 0x22, 0x47, 0x09, 0x4d, 0x1e, 0x9a, 0x2d, 0x81, 0x41, 0x55, 0x5f, 0xc6,
+            0x0d, 0x05, 0xc3, 0x0a, 0x9f, 0xbd, 0x23, 0x46, 0x18, 0x09, 0xbf, 0xa5, 0x7d, 0xc7,
+            0x28, 0xd7, 0xbc, 0xc1, 0x7d, 0xea,
+        ];
+        assert_eq!(signer.anchor().unwrap(), expected_vendor_anchor);
+    }
+
     /// Any payload size authorizes and yields the fixed-size signature struct
     /// (proves the pre-image did not blow an internal cap).
     #[test]
