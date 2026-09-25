@@ -84,7 +84,10 @@ impl<'a> KeyExchangeReq<'a> {
         let mut r = WireReader::new(body);
         let fixed = r.read::<KeyExchangeReqBodyFixed>()?;
         let exchange_data = r.take(exchange_data_size)?;
-        let opaque_len = u16::from_le_bytes([*r.take(1)?.first().ok_or(WireError)?, *r.take(1)?.first().ok_or(WireError)?]);
+        let opaque_len = u16::from_le_bytes([
+            *r.take(1)?.first().ok_or(WireError)?,
+            *r.take(1)?.first().ok_or(WireError)?,
+        ]);
         let opaque_data = r.take(opaque_len as usize)?;
         Ok(Self {
             fixed,
