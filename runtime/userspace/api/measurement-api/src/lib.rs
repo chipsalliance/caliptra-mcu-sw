@@ -138,6 +138,20 @@ pub async fn leaf_cert_size<A: ApiAlloc>(
     api.leaf_cert_size(alloc, profile, key_label).await
 }
 
+/// Measure or sync the Vendor Authorization Key (`0x0000_0004`) under the `MCU_RT` DPE context.
+pub async fn measure_vendor_auth_key<A: ApiAlloc>(
+    alloc: &A,
+    vendor_auth_key_digest: &[u8; IMAGE_MEASUREMENT_DIGEST_SIZE],
+    boot: BootKind,
+) -> MeasurementApiResult {
+    let mut guard = MEASUREMENT_API.lock().await;
+    let api = guard
+        .as_mut()
+        .ok_or(MeasurementApiError::AttestationDisabled)?;
+    api.measure_vendor_auth_key(alloc, vendor_auth_key_digest, boot)
+        .await
+}
+
 /// Authorize one MCU-managed initial-load component.
 pub async fn authorize_and_stash<A: ApiAlloc>(
     alloc: &A,

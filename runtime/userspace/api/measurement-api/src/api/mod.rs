@@ -249,6 +249,33 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
         }
     }
 
+    /// Measure or sync the Vendor Authorization Key (`0x0000_0004`) under the `MCU_RT` DPE context.
+    ///
+    /// On cold boot, derives and tags a new DPE context and extends PCR31.
+    /// On hitless update, checks if the key matches the preserved DPE measurement;
+    /// if unchanged, retains the context without re-extending PCR31; if changed, updates
+    /// the context measurement and extends PCR31 once.
+    pub async fn measure_vendor_auth_key<A: ApiAlloc>(
+        &mut self,
+        alloc: &A,
+        vendor_auth_key_digest: &[u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE],
+        boot: BootKind,
+    ) -> MeasurementApiResult {
+        match boot {
+            BootKind::ColdBoot => {
+                initial_load::measure_vendor_auth_key(self, alloc, vendor_auth_key_digest).await
+            }
+            BootKind::HitlessUpdate => {
+                component_update::hitless_update_vendor_auth_key(
+                    self,
+                    alloc,
+                    vendor_auth_key_digest,
+                )
+                .await
+            }
+        }
+    }
+
     /// Return the DPE leaf certificate length for the configured attestation
     /// target and persist the rotated target handle returned by DPE.
     pub async fn leaf_cert_size<A: ApiAlloc>(
