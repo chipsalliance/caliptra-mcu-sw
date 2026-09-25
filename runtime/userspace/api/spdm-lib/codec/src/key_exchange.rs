@@ -4,25 +4,36 @@
 
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
 
-use crate::{ReqRespCode, ResponseBody, WireError, WireWriter, SHA384_HASH_SIZE};
+use crate::{ReqRespCode, ResponseBody, WireError, WireReader, WireWriter, SHA384_HASH_SIZE};
 
 // ---- Constants -------------------------------------------------------------
 
 /// ECDH P-384 exchange data size (x || y, 48 × 2).
 pub const ECDH_P384_EXCHANGE_DATA_SIZE: usize = 96;
 
+/// ML-KEM-1024 encapsulation key / ciphertext size (FIPS 203).
+///
+/// Both the encapsulation key (request) and ciphertext (response) are 1568 bytes.
+pub const ML_KEM_1024_EXCHANGE_DATA_SIZE: usize = 1568;
+
+/// Largest ExchangeData field this responder can negotiate.
+///
+/// Currently ML-KEM-1024 at 1568 bytes.
+pub const MAX_EXCHANGE_DATA_SIZE: usize = ML_KEM_1024_EXCHANGE_DATA_SIZE;
+
 /// Random data length in KEY_EXCHANGE req/rsp.
 pub const KEY_EXCHANGE_RANDOM_DATA_LEN: usize = 32;
 
 // ---- Request ---------------------------------------------------------------
 
-/// KEY_EXCHANGE request fixed body (after SPDM header).
+/// KEY_EXCHANGE request fixed prefix (after SPDM header, before variable fields).
 ///
 /// After this struct the request carries:
-/// `OpaqueDataLength(2) + OpaqueData(variable)`.
+/// - `ExchangeData(96 for DHE | 1568 for ML-KEM)`
+/// - `OpaqueDataLength(2) + OpaqueData(variable)`
 #[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned, Copy, Clone, Debug)]
 #[repr(C)]
-pub struct KeyExchangeReqBody {
+pub struct KeyExchangeReqBodyFixed {
     /// Measurement summary hash type (0=none, 0xFF=all).
     pub meas_summary_hash_type: u8,
     /// Slot number (0..7).
@@ -34,17 +45,63 @@ pub struct KeyExchangeReqBody {
     pub _reserved: u8,
     /// Requester random (32 bytes).
     pub random_data: [u8; KEY_EXCHANGE_RANDOM_DATA_LEN],
-    /// Requester ECDH public key (96 bytes for P-384).
-    pub exchange_data: [u8; ECDH_P384_EXCHANGE_DATA_SIZE],
 }
 
-const _: () = assert!(core::mem::size_of::<KeyExchangeReqBody>() == 134);
+const _: () = assert!(core::mem::size_of::<KeyExchangeReqBodyFixed>() == 38);
 
-impl KeyExchangeReqBody {
+impl KeyExchangeReqBodyFixed {
     /// Requester session ID as u16 (little-endian).
     #[inline]
     pub fn req_session_id_u16(&self) -> u16 {
         u16::from_le_bytes(self.req_session_id)
+    }
+}
+
+/// Parsed KEY_EXCHANGE request body.
+///
+/// Provides a view over the complete request body that follows the SPDM header,
+/// including the variable-length exchange data and opaque data fields.
+pub struct KeyExchangeReq<'a> {
+    /// Fixed prefix fields.
+    pub fixed: &'a KeyExchangeReqBodyFixed,
+    /// Requester's key exchange data (96 bytes for DHE P-384, 1568 bytes for ML-KEM-1024).
+    pub exchange_data: &'a [u8],
+    /// Opaque data (typically secured-message version selection).
+    pub opaque_data: &'a [u8],
+}
+
+impl<'a> KeyExchangeReq<'a> {
+    /// Parse a KEY_EXCHANGE request body.
+    ///
+    /// # Arguments
+    /// - `body` — the request body starting immediately after the SPDM message header
+    /// - `exchange_data_size` — expected size of the ExchangeData field, determined
+    ///   from the negotiated `KeyExSel` (96 for DHE P-384, 1568 for ML-KEM-1024)
+    ///
+    /// # Returns
+    /// A parsed view over the request, or `WireError` if the body is malformed.
+    pub fn parse(body: &'a [u8], exchange_data_size: usize) -> Result<Self, WireError> {
+        let mut r = WireReader::new(body);
+        let fixed = r.read::<KeyExchangeReqBodyFixed>()?;
+        let exchange_data = r.take(exchange_data_size)?;
+        let opaque_len = u16::from_le_bytes([*r.take(1)?.first().ok_or(WireError)?, *r.take(1)?.first().ok_or(WireError)?]);
+        let opaque_data = r.take(opaque_len as usize)?;
+        Ok(Self {
+            fixed,
+            exchange_data,
+            opaque_data,
+        })
+    }
+
+    /// Total encoded length of the request body (used for transcript hashing).
+    ///
+    /// Equals `size_of::<KeyExchangeReqBodyFixed>() + exchange_data.len() + 2 + opaque_data.len()`.
+    #[inline]
+    pub fn encoded_len(&self) -> usize {
+        core::mem::size_of::<KeyExchangeReqBodyFixed>()
+            + self.exchange_data.len()
+            + 2
+            + self.opaque_data.len()
     }
 }
 
@@ -56,14 +113,15 @@ impl KeyExchangeReqBody {
 /// ```text
 /// [ heartbeat_period(1) | reserved(1) | rsp_session_id(2) |
 ///   mut_auth_requested(1) | req_slot_id_param(1) | random(32) |
-///   exchange_data(96) | meas_summary_hash(0|48) |
+///   exchange_data(96|1568) | meas_summary_hash(0|48) |
 ///   opaque_len(2) | opaque_data(var) |
 ///   signature(96) | responder_verify_data(0|48) ]
 /// ```
 pub struct KeyExchangeRsp<'a> {
     pub rsp_session_id: u16,
     pub random_data: &'a [u8; KEY_EXCHANGE_RANDOM_DATA_LEN],
-    pub exchange_data: &'a [u8; ECDH_P384_EXCHANGE_DATA_SIZE],
+    /// Responder's key exchange data (96 bytes for DHE P-384, 1568 bytes for ML-KEM-1024).
+    pub exchange_data: &'a [u8],
     pub meas_summary_hash: Option<&'a [u8; SHA384_HASH_SIZE]>,
     pub opaque_data: &'a [u8],
     pub signature: &'a [u8],
@@ -80,7 +138,7 @@ impl ResponseBody for KeyExchangeRsp<'_> {
             + 1
             + 1
             + KEY_EXCHANGE_RANDOM_DATA_LEN
-            + ECDH_P384_EXCHANGE_DATA_SIZE
+            + self.exchange_data.len()
             + self.meas_hash_len()
             + 2
             + self.opaque_data.len()

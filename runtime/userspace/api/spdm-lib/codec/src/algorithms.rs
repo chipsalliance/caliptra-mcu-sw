@@ -166,6 +166,22 @@ pub enum KeyExSel {
     Kem,
 }
 
+impl KeyExSel {
+    /// Size of the ExchangeData field in KEY_EXCHANGE request/response, or `None` if
+    /// no key exchange algorithm was negotiated.
+    ///
+    /// Valid because this responder only advertises SECP_384_R1 (96 bytes) for DHE
+    /// and ML-KEM-1024 (1568 bytes) for KEM. If additional curves or KEM parameter
+    /// sets are added, this will need to account for that.
+    pub fn exchange_data_size(self) -> Option<usize> {
+        match self {
+            KeyExSel::None => None,
+            KeyExSel::Dhe => Some(crate::ECDH_P384_EXCHANGE_DATA_SIZE),
+            KeyExSel::Kem => Some(crate::ML_KEM_1024_EXCHANGE_DATA_SIZE),
+        }
+    }
+}
+
 // ---- NEGOTIATE_ALGORITHMS request wire types -------------------------------
 
 /// Fixed 30-byte prefix of the NEGOTIATE_ALGORITHMS request body

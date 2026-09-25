@@ -14,14 +14,18 @@
 //! 8. Build final response with signature + verify_data
 
 use caliptra_mcu_spdm_codec::{
-    encode_version_selection, parse_supported_versions, select_version, KeyExSel,
-    KeyExchangeReqBody, KeyExchangeRsp, ResponseBody, SpdmMsgHdrPdu, SpdmVersion,
-    ECC_P384_SIGNATURE_SIZE, ECDH_P384_EXCHANGE_DATA_SIZE, KEY_EXCHANGE_RANDOM_DATA_LEN,
+    encode_version_selection, parse_supported_versions, select_version, KeyExSel, KeyExchangeReq,
+    KeyExchangeRsp, ResponseBody, SpdmMsgHdrPdu, SpdmVersion, ECC_P384_SIGNATURE_SIZE,
+    ECDH_P384_EXCHANGE_DATA_SIZE, KEY_EXCHANGE_RANDOM_DATA_LEN, ML_KEM_1024_EXCHANGE_DATA_SIZE,
     OPAQUE_VERSION_SELECTION_SIZE, SHA384_HASH_SIZE, SPDM_PREFIX_LEN, SPDM_SIGNING_CONTEXT_LEN,
 };
 use caliptra_mcu_spdm_traits::*;
-use mcu_caliptra_api::MLKEM1024_CIPHERTEXT_SIZE;
+use mcu_caliptra_api::{MLKEM1024_CIPHERTEXT_SIZE, MLKEM1024_ENCAPS_KEY_SIZE};
 use zerocopy::FromBytes;
+
+// Cross-check wire-format constants against the mailbox API.
+const _: () = assert!(ML_KEM_1024_EXCHANGE_DATA_SIZE == MLKEM1024_ENCAPS_KEY_SIZE);
+const _: () = assert!(ML_KEM_1024_EXCHANGE_DATA_SIZE == MLKEM1024_CIPHERTEXT_SIZE);
 
 use crate::build::{build_response, write_fixed};
 use crate::error::{
@@ -74,12 +78,17 @@ pub(crate) async fn handle_key_exchange<'a, Pal: SpdmPal, const N: usize>(
         return Err(crate::error::SPDM_VERSION_MISMATCH);
     }
 
-    let (ke_req, after) =
-        KeyExchangeReqBody::ref_from_prefix(rest).map_err(|_| SPDM_INVALID_REQUEST)?;
+    // Resolve the expected exchange data size from the negotiated key exchange selection.
+    let exchange_data_size = state
+        .negotiated_key_ex_sel
+        .exchange_data_size()
+        .ok_or(SPDM_UNEXPECTED_REQUEST)?;
 
-    let slot_id = ke_req.slot_id & 0x0F;
-    let meas_hash_type = ke_req.meas_summary_hash_type;
-    let req_session_id = ke_req.req_session_id_u16();
+    let ke_req = KeyExchangeReq::parse(rest, exchange_data_size).map_err(|_| SPDM_INVALID_REQUEST)?;
+
+    let slot_id = ke_req.fixed.slot_id & 0x0F;
+    let meas_hash_type = ke_req.fixed.meas_summary_hash_type;
+    let req_session_id = ke_req.fixed.req_session_id_u16();
 
     // Validate slot_id.
     if slot_id >= MAX_SLOTS || (pal.provisioned_slots(state.asym_algo()) & (1 << slot_id)) == 0 {
@@ -92,23 +101,13 @@ pub(crate) async fn handle_key_exchange<'a, Pal: SpdmPal, const N: usize>(
         return Err(SPDM_INVALID_REQUEST);
     }
 
-    // ── Parse opaque data ───────────────────────────────────────────
-    if after.len() < 2 {
-        return Err(SPDM_INVALID_REQUEST);
-    }
-    let opaque_len = u16::from_le_bytes([after[0], after[1]]) as usize;
-    if after.len() < 2 + opaque_len {
-        return Err(SPDM_INVALID_REQUEST);
-    }
-    let opaque_data = &after[2..2 + opaque_len];
-
     // Select secured-message version from requester's list.
-    let supported = parse_supported_versions(opaque_data).map_err(|_| SPDM_INVALID_REQUEST)?;
+    let supported = parse_supported_versions(ke_req.opaque_data).map_err(|_| SPDM_INVALID_REQUEST)?;
     let selected_version = select_version(&supported).map_err(|_| SPDM_INVALID_REQUEST)?;
 
     // ── Key exchange (DHE/KEM) ──────────────────────────────────────
     let (our_exchange_data, shared_secret) =
-        generate_key_exchange_secret(state, pal, io, &ke_req.exchange_data).await?;
+        generate_key_exchange_secret(state, pal, io, ke_req.exchange_data).await?;
 
     // ── Create session ──────────────────────────────────────────────
     let session_id = match sessions.create_session(req_session_id, state.version, |info| {
@@ -130,7 +129,7 @@ pub(crate) async fn handle_key_exchange<'a, Pal: SpdmPal, const N: usize>(
         pal,
         io,
         req,
-        ke_req,
+        &ke_req,
         slot_id,
         meas_hash_type,
         session_id,
@@ -173,6 +172,11 @@ async fn generate_key_exchange_secret<'a, Pal: SpdmPal>(
     match state.negotiated_key_ex_sel {
         KeyExSel::None => Err(SPDM_UNEXPECTED_REQUEST),
         KeyExSel::Dhe => {
+            // Validate peer exchange data length before ECDH operations.
+            if peer_exchange_data.len() != ECDH_P384_EXCHANGE_DATA_SIZE {
+                return Err(SPDM_INVALID_REQUEST);
+            }
+
             // ECDH P-384 key generation
             let mut ecdh_context = pal.alloc_bytes(io, ECDH_P384_ENCRYPTED_CONTEXT_SIZE)?;
             let mut our_exchange_data = pal.alloc_bytes(io, ECDH_P384_EXCHANGE_DATA_SIZE)?;
@@ -189,6 +193,11 @@ async fn generate_key_exchange_secret<'a, Pal: SpdmPal>(
             Ok((our_exchange_data, dhe_secret))
         }
         KeyExSel::Kem => {
+            // Validate peer encapsulation key length before ML-KEM operations.
+            if peer_exchange_data.len() != MLKEM1024_ENCAPS_KEY_SIZE {
+                return Err(SPDM_INVALID_REQUEST);
+            }
+
             let mut ciphertext = pal.alloc_bytes(io, MLKEM1024_CIPHERTEXT_SIZE)?;
             let kem_secret = pal
                 .mlkem_encapsulate(io, peer_exchange_data, &mut ciphertext)
@@ -208,7 +217,7 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     req: &[u8],
-    _ke_req: &KeyExchangeReqBody,
+    ke_req: &KeyExchangeReq<'_>,
     slot_id: u8,
     meas_hash_type: u8,
     session_id: u32,
@@ -285,15 +294,7 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
 
     // ── Feed TH: full KEY_EXCHANGE request ──────────────────────────
     // Use only the actual SPDM bytes (not transport padding).
-    let opaque_len_offset = SpdmMsgHdrPdu::SIZE + core::mem::size_of::<KeyExchangeReqBody>();
-    let opaque_len_bytes: &[u8; 2] = req
-        .get(opaque_len_offset..opaque_len_offset + 2)
-        .and_then(|s| s.try_into().ok())
-        .ok_or(SPDM_INVALID_REQUEST)?;
-    let spdm_req_len = SpdmMsgHdrPdu::SIZE
-        + core::mem::size_of::<KeyExchangeReqBody>()
-        + 2 // opaque_len field
-        + u16::from_le_bytes(*opaque_len_bytes) as usize;
+    let spdm_req_len = SpdmMsgHdrPdu::SIZE + ke_req.encoded_len();
     let spdm_req = req.get(..spdm_req_len).ok_or(SPDM_INVALID_REQUEST)?;
     session.transcript.append(pal, io, spdm_req).await?;
 
@@ -317,7 +318,7 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
     let partial_body = KeyExchangeRsp {
         rsp_session_id,
         random_data: nonce,
-        exchange_data: our_exchange_data.try_into().map_err(|_| SPDM_UNSPECIFIED)?,
+        exchange_data: our_exchange_data,
         meas_summary_hash: meas_hash_ref,
         opaque_data: opaque_buf,
         signature: &[],
@@ -401,7 +402,7 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
     let full_body = KeyExchangeRsp {
         rsp_session_id,
         random_data: nonce,
-        exchange_data: our_exchange_data.try_into().map_err(|_| SPDM_UNSPECIFIED)?,
+        exchange_data: our_exchange_data,
         meas_summary_hash: meas_hash_ref,
         opaque_data: opaque_buf,
         signature,
