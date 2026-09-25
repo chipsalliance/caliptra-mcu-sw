@@ -8,6 +8,7 @@ mod send;
 pub(crate) use get::handle_chunk_get;
 pub(crate) use send::abort_active_streaming_request;
 pub(crate) use send::handle_chunk_send;
+pub(crate) use send::LARGE_REQUEST_RESPONSE_BUF_SIZE;
 
 use caliptra_mcu_spdm_traits::{PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalIoTransport};
 
