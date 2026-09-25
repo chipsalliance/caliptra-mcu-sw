@@ -34,7 +34,9 @@ use mcu_caliptra_api::{
     DPE_TCI_MEASUREMENT_SIZE, MLDSA87_TR_SIZE, SHA_CONTEXT_SIZE,
 };
 
-use crate::attestation_manifest::{parse_and_validate, AttestationManifest, MCU_RT_FW_ID};
+use crate::attestation_manifest::{
+    parse_and_validate, AttestationManifest, MCU_RT_FW_ID, V_AUTH_KEY_ID,
+};
 use crate::errors::{MeasurementApiError, MeasurementApiResult};
 use crate::{
     AttestationState, BootKind, EvidenceReadinessPolicy, ImageMetadata, MeasurementOperation,
@@ -245,6 +247,33 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
             }
             MeasurementOperation::ComponentUpdate => {
                 component_update::authorize_and_stash(self, alloc, fw_id, metadata).await
+            }
+        }
+    }
+
+    /// Measure or sync the Vendor Authorization Key (`0x0000_0004`) under the `MCU_RT` DPE context.
+    ///
+    /// On cold boot, derives and tags a new DPE context and extends PCR31.
+    /// On hitless update, checks if the key matches the preserved DPE measurement;
+    /// if unchanged, retains the context without re-extending PCR31; if changed, updates
+    /// the context measurement and extends PCR31 once.
+    pub async fn measure_vendor_auth_key<A: ApiAlloc>(
+        &mut self,
+        alloc: &A,
+        vendor_auth_key_digest: &[u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE],
+        boot: BootKind,
+    ) -> MeasurementApiResult {
+        match boot {
+            BootKind::ColdBoot => {
+                initial_load::measure_vendor_auth_key(self, alloc, vendor_auth_key_digest).await
+            }
+            BootKind::HitlessUpdate => {
+                component_update::hitless_update_vendor_auth_key(
+                    self,
+                    alloc,
+                    vendor_auth_key_digest,
+                )
+                .await
             }
         }
     }
@@ -645,11 +674,18 @@ fn validate_soc_image_load_fw_ids(
     manifest: &AttestationManifest<'_>,
     soc_image_load_fw_ids: &[u32],
 ) -> MeasurementApiResult {
-    if soc_image_load_fw_ids.len() != manifest.entries().count() {
+    let expected_count = manifest
+        .entries()
+        .filter(|entry| entry.fw_id != V_AUTH_KEY_ID)
+        .count();
+    if soc_image_load_fw_ids.len() != expected_count {
         return Err(MeasurementApiError::InvalidSocImageLoadList);
     }
 
     for (index, fw_id) in soc_image_load_fw_ids.iter().copied().enumerate() {
+        if fw_id == V_AUTH_KEY_ID {
+            return Err(MeasurementApiError::InvalidSocImageLoadList);
+        }
         if soc_image_load_fw_ids
             .iter()
             .take(index)
