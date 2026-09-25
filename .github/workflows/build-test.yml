@@ -94,6 +94,11 @@ jobs:
       - name: Run precheckin
         run: /tmp/xtask precheckin
 
+  caliptra-util-host-precheckin:
+    uses: ./.github/workflows/caliptra-util-host-validator.yml
+    with:
+      run-validator-tests: false
+
   build-firmware:
     runs-on: e2-standard-16-big-disk
     needs: [build-xtask]
