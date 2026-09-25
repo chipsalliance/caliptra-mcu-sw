@@ -50,8 +50,9 @@ pub struct ExtCmdGetDeviceCapabilitiesResponse {
     /// - Bytes [20:23]: MCU RT feature capabilities
     /// - Bytes [24:27]: External Caliptra common-command bitmap
     /// - Bytes [28:31]: Authorized-subcommand bitmap
-    /// - Bytes [32:35]: Reserved, zero
-    pub caps: [u8; 36],
+    /// - Bytes [32:47]: Reserved, zero
+    /// - Bytes [48:63]: Vendor-defined
+    pub caps: [u8; DEVICE_CAPABILITIES_SIZE],
 }
 
 impl FromInternalRequest<GetDeviceCapabilitiesRequest> for ExtCmdGetDeviceCapabilitiesRequest {
