@@ -139,7 +139,10 @@ fn build_chunk_send_ack<'a, Pal: SpdmPal>(
 }
 
 /// Maximum bytes carried as `ResponseToLargeRequest` inside CHUNK_SEND_ACK.
-const LARGE_REQUEST_RESPONSE_BUF_SIZE: usize = 512;
+///
+/// Re-exported as [`crate::CHUNK_SEND_ACK_INLINE_RESPONSE_SIZE`] so integrators
+/// can account for it when sizing their scratch pool.
+pub(crate) const LARGE_REQUEST_RESPONSE_BUF_SIZE: usize = 512;
 const DEBUG_UNLOCK_STANDARD_ID: u16 = 0x0004;
 const DEBUG_UNLOCK_VENDOR_ID: [u8; 4] =
     caliptra_mcu_spdm_codec::vendor_defined::iana::ocp::caliptra::CALIPTRA_VENDOR_ID.to_le_bytes();

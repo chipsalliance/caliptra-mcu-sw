@@ -56,3 +56,10 @@ mod version;
 pub use error::*;
 pub use stack::*;
 pub use transcript::*;
+
+/// Bytes reserved for `ResponseToLargeRequest` inside a `CHUNK_SEND_ACK`.
+///
+/// A reassembled large request is answered inline within this budget. It is
+/// allocated alongside the reassembled request, so integrators sizing a scratch
+/// pool must count both.
+pub const CHUNK_SEND_ACK_INLINE_RESPONSE_SIZE: usize = chunk::LARGE_REQUEST_RESPONSE_BUF_SIZE;
