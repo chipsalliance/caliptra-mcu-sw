@@ -17,3 +17,5 @@ jobs:
   spdm_validator_tests:
     uses: ./.github/workflows/spdm-validator.yml
 
+  fpga_spdm_tests:
+    uses: ./.github/workflows/fpga-spdm.yml
