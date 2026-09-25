@@ -33,8 +33,14 @@ pub(crate) static mut WRITER: Writer = Writer {};
 /// # Safety
 /// Accesses memory-mapped registers.
 #[cfg(all(not(test), not(feature = "release")))]
-#[no_mangle]
 #[panic_handler]
+unsafe fn panic_handler(pi: &PanicInfo) -> ! {
+    panic_fmt(pi)
+}
+
+#[cfg(all(not(test), not(feature = "release")))]
+#[no_mangle]
+#[inline(never)]
 pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
     let writer = &mut *addr_of_mut!(WRITER);
     debug::panic_print(
@@ -53,8 +59,14 @@ pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
 /// # Safety
 /// Accesses memory-mapped registers.
 #[cfg(all(not(test), feature = "release"))]
-#[no_mangle]
 #[panic_handler]
+unsafe fn panic_handler(pi: &PanicInfo) -> ! {
+    panic_fmt(pi)
+}
+
+#[cfg(all(not(test), feature = "release"))]
+#[no_mangle]
+#[inline(never)]
 pub unsafe fn panic_fmt(pi: &PanicInfo) -> ! {
     use core::fmt::Write as _;
     let writer = &mut *addr_of_mut!(WRITER);

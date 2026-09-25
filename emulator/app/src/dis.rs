@@ -5921,10 +5921,8 @@ fn decode_inst_format(dec: &mut RvDecode) -> String {
                     buf += ".aq";
                 }
             }
-            'R' => {
-                if dec.rl != 0 {
-                    buf += ".rl";
-                }
+            'R' if dec.rl != 0 => {
+                buf += ".rl";
             }
             _ => {}
         }

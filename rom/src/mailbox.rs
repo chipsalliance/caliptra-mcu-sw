@@ -127,7 +127,7 @@ fn cm_sha_init(soc_manager: &mut CaliptraSoC, chunk: &[u32]) -> [u8; CMB_SHA_CON
         .chain(core::iter::once(hash_algorithm))
         .chain(core::iter::once(input_size))
         .chain(chunk.iter().copied())
-        .chain(core::iter::repeat(0u32).take(padding));
+        .chain(core::iter::repeat_n(0u32, padding));
 
     if let Err(err) = soc_manager.start_mailbox_req(cmd, total_bytes, iter) {
         caliptra_mcu_romtime::println!(
@@ -178,7 +178,7 @@ fn cm_sha_update(
         .chain(ctx.iter().copied())
         .chain(core::iter::once(input_size))
         .chain(chunk.iter().copied())
-        .chain(core::iter::repeat(0u32).take(padding));
+        .chain(core::iter::repeat_n(0u32, padding));
 
     if let Err(err) = soc_manager.start_mailbox_req(cmd, total_bytes, iter) {
         caliptra_mcu_romtime::println!(
@@ -227,7 +227,7 @@ fn cm_sha_final(
         .chain(ctx.iter().copied())
         .chain(core::iter::once(input_size))
         .chain(remaining.iter().copied())
-        .chain(core::iter::repeat(0u32).take(padding));
+        .chain(core::iter::repeat_n(0u32, padding));
 
     if let Err(err) = soc_manager.start_mailbox_req(cmd, total_bytes, iter) {
         caliptra_mcu_romtime::println!(

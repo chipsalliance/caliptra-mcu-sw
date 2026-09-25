@@ -79,8 +79,9 @@ mod tests {
     fn push_fixed_platform_info(out: &mut Vec<u8>, value: &[u8]) {
         assert!(value.len() <= ATTESTATION_MANIFEST_PLATFORM_INFO_MAX_LEN);
         out.extend_from_slice(value);
-        out.extend(
-            std::iter::repeat(0).take(ATTESTATION_MANIFEST_PLATFORM_INFO_MAX_LEN - value.len()),
-        );
+        out.extend(std::iter::repeat_n(
+            0,
+            ATTESTATION_MANIFEST_PLATFORM_INFO_MAX_LEN - value.len(),
+        ));
     }
 }

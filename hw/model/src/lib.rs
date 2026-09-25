@@ -23,8 +23,8 @@ pub use mcu_mgr::McuManager;
 pub use model_emulated::ModelEmulated;
 use rand::{rngs::StdRng, SeedableRng};
 use sha2::Digest;
+use std::io::stdout;
 use std::io::Write;
-use std::io::{stdout, ErrorKind};
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::mpsc;
@@ -432,19 +432,16 @@ pub trait McuHwModel {
             match self.output().exit_status().or(self.exit_status()) {
                 Some(ExitStatus::Passed) => return Ok(()),
                 Some(ExitStatus::Failed) => {
-                    return Err(std::io::Error::new(
-                        ErrorKind::Other,
-                        "firmware exited with failure",
-                    ))
+                    return Err(std::io::Error::other("firmware exited with failure"))
                 }
                 None => {}
             }
             // Check for fatal error in MCI register
             if let Some(fatal_error) = self.mci_fw_fatal_error() {
-                return Err(std::io::Error::new(
-                    ErrorKind::Other,
-                    format!("firmware fatal error: 0x{:08x}", fatal_error),
-                ));
+                return Err(std::io::Error::other(format!(
+                    "firmware fatal error: 0x{:08x}",
+                    fatal_error
+                )));
             }
             self.step();
         }

@@ -23,6 +23,7 @@ mod riscv;
 #[cfg(target_arch = "riscv32")]
 mod flash;
 
+#[cfg(target_arch = "riscv32")]
 mod mcu_image_verifier;
 
 #[cfg(target_arch = "riscv32")]
