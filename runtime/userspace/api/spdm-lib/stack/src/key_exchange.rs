@@ -15,9 +15,9 @@
 
 use caliptra_mcu_spdm_codec::{
     encode_version_selection, parse_supported_versions, select_version, KeyExSel, KeyExchangeReq,
-    KeyExchangeRsp, ResponseBody, SpdmMsgHdrPdu, SpdmVersion, WireWriter,
-    ECDH_P384_EXCHANGE_DATA_SIZE, KEY_EXCHANGE_RANDOM_DATA_LEN, ML_KEM_1024_EXCHANGE_DATA_SIZE,
-    OPAQUE_VERSION_SELECTION_SIZE, SHA384_HASH_SIZE,
+    KeyExchangeRsp, ResponseBody, SpdmMsgHdrPdu, WireWriter, ECDH_P384_EXCHANGE_DATA_SIZE,
+    KEY_EXCHANGE_RANDOM_DATA_LEN, ML_KEM_1024_EXCHANGE_DATA_SIZE, OPAQUE_VERSION_SELECTION_SIZE,
+    SHA384_HASH_SIZE,
 };
 use caliptra_mcu_spdm_traits::*;
 use mcu_caliptra_api::{MLKEM1024_CIPHERTEXT_SIZE, MLKEM1024_ENCAPS_KEY_SIZE};
@@ -93,7 +93,8 @@ pub(crate) async fn handle_key_exchange_req<'a, Pal: SpdmPal, const N: usize>(
         .exchange_data_size()
         .ok_or(SPDM_UNEXPECTED_REQUEST)?;
 
-    let ke_req = KeyExchangeReq::parse(rest, exchange_data_size).map_err(|_| SPDM_INVALID_REQUEST)?;
+    let ke_req =
+        KeyExchangeReq::parse(rest, exchange_data_size).map_err(|_| SPDM_INVALID_REQUEST)?;
 
     let slot_id = ke_req.fixed.slot_id & 0x0F;
     let meas_hash_type = ke_req.fixed.meas_summary_hash_type;
@@ -111,7 +112,8 @@ pub(crate) async fn handle_key_exchange_req<'a, Pal: SpdmPal, const N: usize>(
     }
 
     // Select secured-message version from requester's list.
-    let supported = parse_supported_versions(ke_req.opaque_data).map_err(|_| SPDM_INVALID_REQUEST)?;
+    let supported =
+        parse_supported_versions(ke_req.opaque_data).map_err(|_| SPDM_INVALID_REQUEST)?;
     let selected_version = select_version(&supported).map_err(|_| SPDM_INVALID_REQUEST)?;
 
     // ── Key exchange (DHE/KEM) ──────────────────────────────────────
@@ -412,9 +414,7 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
             io,
             SessionKeyType::ResponseFinishedKey,
             th1_prime,
-            vd_slot
-                .try_into()
-                .map_err(|_| SPDM_UNSPECIFIED)?,
+            vd_slot,
         )
         .await?;
     if vd_len != SHA384_HASH_SIZE {
@@ -428,5 +428,3 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
     let (resp, returned_len) = guard.finish_response(state, pal, io, head, spdm_len)?;
     Ok((resp, returned_len))
 }
-
-

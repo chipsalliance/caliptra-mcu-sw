@@ -20,9 +20,11 @@ use super::StreamPrefixState;
 use super::WipeOnDrop;
 use crate::build::{alloc_padded, encode_error_response};
 use crate::error::*;
+#[cfg(any(test, feature = "generic-large-request"))]
+use crate::key_exchange;
 #[cfg(feature = "set-certificate")]
 use crate::set_certificate;
-use crate::stack::{ConnectionState, Phase};
+use crate::stack::{ConnectionState, Phase, Sessions};
 use crate::vendor_defined;
 
 struct ChunkInfo {
@@ -31,8 +33,15 @@ struct ChunkInfo {
     complete: bool,
 }
 
-pub(crate) async fn handle_chunk_send<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn handle_chunk_send<
+    'a,
+    Pal: SpdmPal,
+    Vdm: SpdmVdmBackend,
+    const MAX_SESSIONS: usize,
+>(
     state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
+    sessions: &mut Sessions<Pal, MAX_SESSIONS>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     vdm: &Vdm,
@@ -55,6 +64,7 @@ pub(crate) async fn handle_chunk_send<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
             if info.complete {
                 let rsp = build_final_chunk_send_ack(
                     state,
+                    sessions,
                     pal,
                     io,
                     vdm,
@@ -734,8 +744,20 @@ impl From<SpdmError> for LargeRequestError {
     }
 }
 
-async fn build_final_chunk_send_ack<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
+// `sessions` is consumed only by the buffered large-request dispatch, which is
+// compiled out when neither `test` nor `generic-large-request` is enabled.
+#[cfg_attr(
+    not(any(test, feature = "generic-large-request")),
+    allow(unused_variables)
+)]
+async fn build_final_chunk_send_ack<
+    'a,
+    Pal: SpdmPal,
+    Vdm: SpdmVdmBackend,
+    const MAX_SESSIONS: usize,
+>(
     state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
+    sessions: &mut Sessions<Pal, MAX_SESSIONS>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     vdm: &Vdm,
@@ -862,6 +884,7 @@ async fn build_final_chunk_send_ack<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
         #[cfg(any(test, feature = "generic-large-request"))]
         _ => match dispatch_large_request(
             state,
+            sessions,
             pal,
             io,
             vdm,
@@ -911,8 +934,10 @@ async fn build_final_chunk_send_ack<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
 }
 
 #[cfg(any(test, feature = "generic-large-request"))]
-async fn dispatch_large_request<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
+#[allow(clippy::too_many_arguments)]
+async fn dispatch_large_request<Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_SESSIONS: usize>(
     state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
+    sessions: &mut Sessions<Pal, MAX_SESSIONS>,
     pal: &Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     vdm: &Vdm,
@@ -965,6 +990,44 @@ async fn dispatch_large_request<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
         )
         .await
         .map_err(Into::into),
+        ReqRespCode::KEY_EXCHANGE => {
+            // KEY_EXCHANGE establishes a session and is never valid inside one.
+            if secure_session {
+                return Err(SPDM_UNEXPECTED_REQUEST.into());
+            }
+
+            // The reassembled request buffer is already detached into `guard`, but the
+            // context still reports `Request(Buffered)`. Clear it so the handler can
+            // register a large response: `start_response` requires an idle context and
+            // `validate_buffered_large_response` rejects while a request is in progress.
+            state.large_msg_ctx.reset();
+
+            let (resp, spdm_len) =
+                key_exchange::handle_key_exchange_req(state, sessions, pal, io, large_req).await?;
+
+            // A KEY_EXCHANGE_RSP that exceeds the transfer size has been registered for
+            // CHUNK_GET by `finish_response`. Re-encode ERROR(LargeResponse, handle)
+            // here rather than copying what it returned: `build_error_response` pads to
+            // the transport send alignment, and those trailing bytes would be parsed as
+            // extra ExtendedErrorData inside ResponseToLargeRequest.
+            let large_handle = state.large_msg_ctx.response().map(|active| active.handle);
+            if let Some(handle) = large_handle {
+                drop(resp);
+                let len = encode_error_response(
+                    out,
+                    state.version,
+                    SPDM_LARGE_RESPONSE.with_extended_data([handle]),
+                )?;
+                return Ok(len);
+            }
+
+            let head = pal.header_size();
+            let spdm = resp.get(head..head + spdm_len).ok_or(SPDM_UNSPECIFIED)?;
+            out.get_mut(..spdm.len())
+                .ok_or(SPDM_UNSPECIFIED)?
+                .copy_from_slice(spdm);
+            Ok(spdm.len())
+        }
         _ => Err(SPDM_UNSUPPORTED_REQUEST.into()),
     }
 }
@@ -995,6 +1058,11 @@ mod tests {
     use super::support::{chunk_send_request, chunking_state, TestIo, TestPal};
 
     const CALIPTRA_VENDOR_ID_BYTES: [u8; 4] = CALIPTRA_VENDOR_ID.to_le_bytes();
+
+    /// Empty session manager for tests that exercise non-KEY_EXCHANGE chunked requests.
+    fn test_sessions() -> Sessions<TestPal, 1> {
+        crate::session::SessionManager::new()
+    }
 
     struct CaptureVdmBackend {
         captured_token_payload: RefCell<Option<Vec<u8>>>,
@@ -1173,6 +1241,7 @@ mod tests {
             ..TestPal::default()
         };
         let mut state = chunking_state();
+        let mut sessions = test_sessions();
         let vdm = CaptureVdmBackend::new();
 
         // Host SPDM-VDM transport sends AuthorizeDebugUnlockToken as Caliptra RT
@@ -1191,6 +1260,7 @@ mod tests {
         let first_io = TestIo::message(first_chunk.clone());
         let rsp = block_on(handle_chunk_send(
             &mut state,
+            &mut sessions,
             &pal,
             &first_io,
             &vdm,
@@ -1216,6 +1286,7 @@ mod tests {
         let second_io = TestIo::message(second_chunk.clone());
         let rsp = block_on(handle_chunk_send(
             &mut state,
+            &mut sessions,
             &pal,
             &second_io,
             &vdm,
@@ -1267,6 +1338,7 @@ mod tests {
             ..TestPal::default()
         };
         let mut state = chunking_state();
+        let mut sessions = test_sessions();
         let vdm = CaptureVdmBackend::new();
         let large_req = vendor_defined_authorize_debug_unlock_request(&[0x5a; 96]);
         let (first, second) = large_req.split_at(64);
@@ -1276,6 +1348,7 @@ mod tests {
         let first_io = TestIo::message(first_chunk.clone());
         block_on(handle_chunk_send(
             &mut state,
+            &mut sessions,
             &pal,
             &first_io,
             &vdm,
@@ -1289,6 +1362,7 @@ mod tests {
         let second_io = TestIo::message(second_chunk.clone());
         let rsp = block_on(handle_chunk_send(
             &mut state,
+            &mut sessions,
             &pal,
             &second_io,
             &vdm,
@@ -1324,6 +1398,7 @@ mod tests {
             ..TestPal::default()
         };
         let mut state = chunking_state();
+        let mut sessions = test_sessions();
         state.peer_data_transfer_size = CapabilitiesBody::MIN_DATA_TRANSFER_SIZE;
         let vdm = CaptureVdmBackend::new();
 
@@ -1338,6 +1413,7 @@ mod tests {
         let first_io = TestIo::message(first_chunk.clone());
         let rsp = block_on(handle_chunk_send(
             &mut state,
+            &mut sessions,
             &pal,
             &first_io,
             &vdm,
@@ -1360,6 +1436,7 @@ mod tests {
             ..TestPal::default()
         };
         let mut state = chunking_state();
+        let mut sessions = test_sessions();
         let vdm = CaptureVdmBackend::new();
         let host_mailbox_payload = vec![0x5au8; 4 + 96];
         let large_req = vendor_defined_authorize_debug_unlock_request(&host_mailbox_payload);
@@ -1369,6 +1446,7 @@ mod tests {
         let first_io = TestIo::message(first_chunk.clone());
         let err = block_on(handle_chunk_send(
             &mut state,
+            &mut sessions,
             &pal,
             &first_io,
             &vdm,
@@ -1390,6 +1468,7 @@ mod tests {
             ..TestPal::default()
         };
         let mut state = chunking_state();
+        let mut sessions = test_sessions();
         let vdm = CaptureVdmBackend::new();
         let host_mailbox_payload = vec![0x5au8; 4 + 96];
         let large_req = vendor_defined_authorize_debug_unlock_request(&host_mailbox_payload);
@@ -1399,6 +1478,7 @@ mod tests {
         let first_io = TestIo::message(first_chunk.clone());
         let rsp = block_on(handle_chunk_send(
             &mut state,
+            &mut sessions,
             &pal,
             &first_io,
             &vdm,
@@ -1421,6 +1501,7 @@ mod tests {
             ..TestPal::default()
         };
         let mut state = chunking_state();
+        let mut sessions = test_sessions();
         let vdm = CaptureVdmBackend::new();
         let host_mailbox_payload = vec![0x5au8; 4 + 96];
         let large_req = vendor_defined_authorize_debug_unlock_request(&host_mailbox_payload);
@@ -1430,6 +1511,7 @@ mod tests {
         let first_io = TestIo::message(first_chunk.clone());
         let rsp = block_on(handle_chunk_send(
             &mut state,
+            &mut sessions,
             &pal,
             &first_io,
             &vdm,
@@ -1452,6 +1534,7 @@ mod tests {
             ..TestPal::default()
         };
         let mut state = chunking_state();
+        let mut sessions = test_sessions();
         let vdm = BufferedOnlyVdmBackend::new();
 
         let host_mailbox_payload = vec![0x5au8; 4 + 96];
@@ -1463,6 +1546,7 @@ mod tests {
         let first_io = TestIo::message(first_chunk.clone());
         let rsp = block_on(handle_chunk_send(
             &mut state,
+            &mut sessions,
             &pal,
             &first_io,
             &vdm,
@@ -1488,6 +1572,7 @@ mod tests {
         let second_io = TestIo::message(second_chunk.clone());
         let rsp = block_on(handle_chunk_send(
             &mut state,
+            &mut sessions,
             &pal,
             &second_io,
             &vdm,
