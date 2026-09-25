@@ -43,9 +43,10 @@ use caliptra_mcu_core_util_host_command_types::debug_unlock::{
     ProdDebugUnlockReqResponse, ProdDebugUnlockTokenRequest, ProdDebugUnlockTokenResponse,
 };
 use caliptra_mcu_core_util_host_command_types::device_ownership_transfer::{
-    DotChallengeResponse, DotDisableRequest, DotLockRequest, DotOverrideChallengeRequest,
-    DotOverrideRequest, DotRecoveryRequest, DotRotateRequest, DotStatusResponse,
-    DotTransitionResponse, DotUnlockRequest, GetDotBackupBlobRequest, GetDotBackupBlobResponse,
+    DotChallengeResponse, DotDisableRequest, DotEnableRequest, DotLockRequest,
+    DotOverrideChallengeRequest, DotOverrideRequest, DotRecoveryRequest, DotRotateRequest,
+    DotStatusResponse, DotTransitionResponse, DotUnlockRequest, GetDotBackupBlobRequest,
+    GetDotBackupBlobResponse,
 };
 use caliptra_mcu_core_util_host_command_types::fuse::{
     FeProgResponse, FuseIncreaseMinSvnRequest, FuseIncreaseMinSvnResponse,
@@ -68,10 +69,10 @@ use caliptra_util_host_commands::api::debug_unlock::{
     caliptra_cmd_prod_debug_unlock_req, caliptra_cmd_prod_debug_unlock_token,
 };
 use caliptra_util_host_commands::api::device_ownership_transfer::{
-    caliptra_cmd_dot_disable, caliptra_cmd_dot_lock, caliptra_cmd_dot_override,
-    caliptra_cmd_dot_override_challenge, caliptra_cmd_dot_recovery, caliptra_cmd_dot_rotate,
-    caliptra_cmd_dot_status, caliptra_cmd_dot_unlock, caliptra_cmd_dot_unlock_challenge,
-    caliptra_cmd_get_dot_backup_blob,
+    caliptra_cmd_dot_disable, caliptra_cmd_dot_enable, caliptra_cmd_dot_lock,
+    caliptra_cmd_dot_override, caliptra_cmd_dot_override_challenge, caliptra_cmd_dot_recovery,
+    caliptra_cmd_dot_rotate, caliptra_cmd_dot_status, caliptra_cmd_dot_unlock,
+    caliptra_cmd_dot_unlock_challenge, caliptra_cmd_get_dot_backup_blob,
 };
 use caliptra_util_host_commands::api::fuse::{
     caliptra_cmd_fe_prog, caliptra_cmd_fuse_increase_min_svn, caliptra_cmd_fuse_lock_partition,
@@ -412,6 +413,13 @@ impl<'a> SpdmVdmClient<'a> {
         response: &mut [u8],
     ) -> Result<usize, SpdmVdmError> {
         self.transport.send_raw_vdm(request, response)
+    }
+
+    /// Enable device ownership using generic command authorization.
+    pub fn dot_enable(&mut self, request: &DotEnableRequest) -> Result<DotTransitionResponse> {
+        let mut session = self.create_session()?;
+        caliptra_cmd_dot_enable(&mut session, request)
+            .map_err(|e| anyhow::anyhow!("DOT_ENABLE failed: {:?}", e))
     }
 
     /// Lock device ownership using generic command authorization.

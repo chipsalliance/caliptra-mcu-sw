@@ -549,6 +549,28 @@ pub fn dot_status() -> CaliptraCmdResult<DotStatus> {
     })
 }
 
+pub fn dot_enable() -> CaliptraCmdResult<()> {
+    const DOT_INITIALIZED_MASK: u32 = 0x7;
+
+    let _guard = DotTransactionGuard::acquire()?;
+    let status = dot_status()?;
+    if status.enabled != 0 || status.burned != 0 {
+        return Err(CaliptraCompletionCode::InvalidState);
+    }
+
+    let otp = Otp::<DefaultSyscalls>::new();
+    let word_addr = (fuses::DOT_INITIALIZED.byte_offset / 4) as u32;
+    otp.write_raw(word_addr, DOT_INITIALIZED_MASK, DOT_INITIALIZED_MASK)
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+    let initialized = otp
+        .read_raw(word_addr, 0)
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+    if initialized & DOT_INITIALIZED_MASK != DOT_INITIALIZED_MASK {
+        return Err(CaliptraCompletionCode::OperationFailed);
+    }
+    Ok(())
+}
+
 pub async fn dot_recovery<A: ApiAlloc>(
     alloc: &A,
     blob: &[u8; DOT_BLOB_SIZE],

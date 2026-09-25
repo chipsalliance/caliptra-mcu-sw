@@ -30,10 +30,11 @@ use caliptra_mcu_mbox_common::messages::{
 use caliptra_mcu_libtock_console::Console;
 #[cfg(feature = "device-ownership-transfer")]
 use caliptra_mcu_mbox_common::messages::{
-    DotDisableReq, DotDisableResp, DotLockReq, DotLockResp, DotOverrideChallengeReq,
-    DotOverrideChallengeResp, DotOverrideReq, DotOverrideResp, DotRecoveryReq, DotRecoveryResp,
-    DotRotateReq, DotRotateResp, DotStatus, DotStatusReq, DotStatusResp, DotUnlockChallengeReq,
-    DotUnlockChallengeResp, DotUnlockReq, DotUnlockResp, GetDotBackupBlobReq, GetDotBackupBlobResp,
+    DotDisableReq, DotDisableResp, DotEnableReq, DotEnableResp, DotLockReq, DotLockResp,
+    DotOverrideChallengeReq, DotOverrideChallengeResp, DotOverrideReq, DotOverrideResp,
+    DotRecoveryReq, DotRecoveryResp, DotRotateReq, DotRotateResp, DotStatus, DotStatusReq,
+    DotStatusResp, DotUnlockChallengeReq, DotUnlockChallengeResp, DotUnlockReq, DotUnlockResp,
+    GetDotBackupBlobReq, GetDotBackupBlobResp,
 };
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_mbox_common::messages::{
@@ -321,6 +322,31 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
 
         Ok((&mut resp_buf[..resp_bytes.len()], mbox_cmd_status))
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    async fn handle_dot_enable<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req = DotEnableReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        if req.subcommand != CommandId::MC_DOT_ENABLE.0 {
+            return Err(errors::UNSUPPORTED_COMMAND);
+        }
+        self.non_crypto_cmds_handler
+            .dot_enable()
+            .await
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+
+        let (resp, _) =
+            DotEnableResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = DotEnableResp {
+            reset_required: 1,
+            ..Default::default()
+        };
+        let response_len = resp.as_bytes().len();
+        Ok((&mut resp_buf[..response_len], MbxCmdStatus::Complete))
     }
 
     #[cfg(feature = "device-ownership-transfer")]
@@ -1106,6 +1132,9 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
                     .ok_or(errors::INVALID_PARAMS)?;
                 match u32::from_le_bytes(subcommand.try_into().map_err(|_| errors::INVALID_PARAMS)?)
                 {
+                    value if value == CommandId::MC_DOT_ENABLE.0 => {
+                        self.handle_dot_enable(cmd, resp_buf).await
+                    }
                     value if value == CommandId::MC_DOT_LOCK.0 => {
                         self.handle_dot_lock(cmd, resp_buf).await
                     }
@@ -1193,7 +1222,8 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
             .ok_or(errors::INVALID_PARAMS)?;
         match u32::from_le_bytes(subcommand.try_into().map_err(|_| errors::INVALID_PARAMS)?) {
             value
-                if value == CommandId::MC_DOT_LOCK.0
+                if value == CommandId::MC_DOT_ENABLE.0
+                    || value == CommandId::MC_DOT_LOCK.0
                     || value == CommandId::MC_DOT_DISABLE.0
                     || value == CommandId::MC_DOT_ROTATE.0
                     || value == CommandId::MC_GET_DOT_BACKUP_BLOB.0 =>

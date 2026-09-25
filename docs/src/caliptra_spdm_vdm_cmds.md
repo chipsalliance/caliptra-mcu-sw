@@ -207,6 +207,7 @@ Native-authenticated/read-only DOT request:
 
 | FourCC | Command | Path | DOT payload | Validation |
 | ------ | ------- | ---- | ----------- | ---------- |
+| `MDEN` (`0x4D44_454E`) | Enable | Authorized | Empty | Initialization gate clear and zero epoch bits; programs all three redundant gate bits |
 | `MDLK` | Lock | Authorized | `cak_digest[48] || lak_digest[48]` | Nonzero digests; EVEN state |
 | `MDDS` | Disable | Authorized | `lak_digest[48]` | Nonzero LAK digest; EVEN state |
 | `MDRT` | Rotate | Authorized | `min_fuse_count:u32 || cak_digest[48] || lak_digest[48]` | Runs when burned count is below the minimum |
@@ -218,7 +219,7 @@ Native-authenticated/read-only DOT request:
 | `DOTW` | Override challenge | Native | Recovery ECC key and ML-DSA key | Keys match fused recovery-key hash |
 | `DOTX` | Override | Native | Recovery keys and hybrid signature | Fused key hash and challenge signatures |
 
-`MDLK`, `MDDS`, `MDRT`, and `MDBB` are rejected with `AccessDenied` when sent
+`MDEN`, `MDLK`, `MDDS`, `MDRT`, and `MDBB` are rejected with `AccessDenied` when sent
 directly under top-level command `0x11`. `MDRC`, `DOTW`, and `DOTX` are not
 gated by a ROM recovery-mode signal; their native cryptographic and state checks
 are always enforced.

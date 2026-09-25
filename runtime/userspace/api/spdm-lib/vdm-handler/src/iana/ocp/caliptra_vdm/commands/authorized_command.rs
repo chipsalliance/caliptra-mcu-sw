@@ -25,6 +25,8 @@ const REVOKE_VENDOR_PUB_KEY_PAYLOAD_LEN: usize = 4 + 4 + 4 + 4;
 const REVOKE_VENDOR_PK_HASH_PAYLOAD_LEN: usize = 4 + 4;
 const FUSE_LOCK_PARTITION_PAYLOAD_LEN: usize = 4;
 #[cfg(feature = "device-ownership-transfer")]
+const DOT_ENABLE_PAYLOAD_LEN: usize = 4;
+#[cfg(feature = "device-ownership-transfer")]
 const DOT_LOCK_PAYLOAD_LEN: usize = 4 + core::mem::size_of::<DotLockPayload>();
 #[cfg(feature = "device-ownership-transfer")]
 const DOT_DISABLE_PAYLOAD_LEN: usize = 4 + core::mem::size_of::<DotDisablePayload>();
@@ -64,6 +66,9 @@ const MAX_AUTHORIZED_PAYLOAD_LEN: usize = {
     }
     #[cfg(feature = "device-ownership-transfer")]
     {
+        if DOT_ENABLE_PAYLOAD_LEN > max {
+            max = DOT_ENABLE_PAYLOAD_LEN;
+        }
         if DOT_LOCK_PAYLOAD_LEN > max {
             max = DOT_LOCK_PAYLOAD_LEN;
         }
@@ -111,6 +116,8 @@ pub const REVOKE_VENDOR_PK_HASH_CMD_ID: u32 = 0x5256_4B48;
 pub const FUSE_LOCK_PARTITION_CMD_ID: u32 = CommandId::MC_FUSE_LOCK_PARTITION.0;
 /// Device Ownership Transfer command family (`0x11`).
 pub const DEVICE_OWNERSHIP_TRANSFER_CMD_ID: u32 = CommandId::MC_DEVICE_OWNERSHIP_TRANSFER.0;
+/// DOT_ENABLE sub-command (`MDEN`).
+pub const DOT_ENABLE_CMD_ID: u32 = CommandId::MC_DOT_ENABLE.0;
 /// DOT_LOCK sub-command (`MDLK`).
 pub const DOT_LOCK_CMD_ID: u32 = CommandId::MC_DOT_LOCK.0;
 /// DOT_DISABLE sub-command (`MDDS`).
@@ -194,12 +201,43 @@ where
         return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidPayloadSize);
     };
     match read_u32_le(subcommand) {
+        DOT_ENABLE_CMD_ID => handle_dot_enable(cmds, req, scratch, out).await,
         DOT_LOCK_CMD_ID => handle_dot_lock(cmds, req, scratch, out).await,
         DOT_DISABLE_CMD_ID => handle_dot_disable(cmds, req, scratch, out).await,
         DOT_ROTATE_CMD_ID => handle_dot_rotate(cmds, req, scratch, out).await,
         GET_DOT_BACKUP_BLOB_CMD_ID => handle_dot_get_backup_blob(cmds, req, scratch, out).await,
         _ => CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidParameter),
     }
+}
+
+#[cfg(feature = "device-ownership-transfer")]
+async fn handle_dot_enable<H, A>(
+    cmds: &H,
+    req: &[u8],
+    scratch: &A,
+    out: &mut [u8],
+) -> CaliptraVdmCmdResult
+where
+    H: CaliptraVdmAuthorization,
+    A: SpdmPalAlloc,
+{
+    let parsed = match split_authorized_request(req, DOT_ENABLE_PAYLOAD_LEN) {
+        Ok(parsed) => parsed,
+        Err(code) => return CaliptraVdmCmdResult::Error(code),
+    };
+    finish_authorized_command(
+        cmds.dot_enable(
+            parsed.payload,
+            parsed.sig,
+            parsed.nonce,
+            parsed.ecc_pub_x,
+            parsed.ecc_pub_y,
+            parsed.mldsa_pub,
+            scratch,
+        )
+        .await,
+        out,
+    )
 }
 
 #[cfg(feature = "device-ownership-transfer")]

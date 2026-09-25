@@ -567,6 +567,11 @@ pub trait CaliptraCmdHandler {
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 
+    /// Enable DOT by programming its one-time initialization gate.
+    async fn dot_enable(&self) -> CaliptraCmdResult<()> {
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
     /// Verify and commit a persistent DOT lock transition.
     async fn dot_lock<Alloc: ApiAlloc>(
         &self,

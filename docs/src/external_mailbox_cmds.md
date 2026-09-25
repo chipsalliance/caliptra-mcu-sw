@@ -116,6 +116,7 @@ For authorized DOT commands the signed preimage is
 
 | FourCC | Command | Classification |
 | ------ | ------- | -------------- |
+| `MDEN` (`0x4D44_454E`) | Enable | Authorized |
 | `MDLK` | Lock | Authorized |
 | `MDDS` | Disable | Authorized |
 | `MDRT` | Rotate | Authorized |
