@@ -83,6 +83,12 @@ fn config_source(
 ) -> Result<String> {
     let mut seen_fw_ids = HashSet::new();
     let mut components = Vec::new();
+    components.push(AttestationManifestComponentToml {
+        fw_id: caliptra_mcu_flash_image::V_AUTH_KEY_ID,
+        is_tcb: true,
+        is_ak_target: false,
+    });
+    seen_fw_ids.insert(caliptra_mcu_flash_image::V_AUTH_KEY_ID);
     for image in soc_images {
         if !seen_fw_ids.insert(image.image_id) {
             bail!(
