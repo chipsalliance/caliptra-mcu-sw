@@ -883,6 +883,37 @@ pub async fn dpe_certify_key_pubkey<A: ApiAlloc>(
     Ok(chunk.next_handle)
 }
 
+/// Return the raw ML-DSA-87 public key emitted by DPE `CertifyKey`, along
+/// with the rotated context handle.
+#[inline(never)]
+pub async fn dpe_certify_key_mldsa87_pubkey<A: ApiAlloc>(
+    alloc: &A,
+    handle: Option<&DpeContextHandle>,
+    label: &[u8; DPE_LABEL_LEN],
+    public_key: &mut [u8; CERTIFY_KEY_MLDSA87_PUBKEY_SIZE],
+) -> McuResult<DpeContextHandle> {
+    let chunk = certify_key_chunks_response(
+        alloc,
+        DpeProfile::Mldsa87,
+        label,
+        dpe_handle_or_default(handle),
+        0,
+        CERTIFY_KEY_MLDSA87_RESP_PREFIX_LEN,
+    )
+    .await?;
+    let response = chunk.chunk()?;
+    validate_certify_key_prefix(response, DpeProfile::Mldsa87)?;
+    copy_bytes(
+        public_key,
+        internal_slice(
+            response,
+            CERTIFY_KEY_RESP_PUBKEY_X_OFF,
+            CERTIFY_KEY_MLDSA87_PUBKEY_SIZE,
+        )?,
+    )?;
+    Ok(chunk.next_handle)
+}
+
 struct CertifyKeyChunk<B> {
     next_handle: DpeContextHandle,
     rsp: B,

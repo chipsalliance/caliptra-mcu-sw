@@ -25,10 +25,15 @@ use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_platform::Syscalls;
 use core::marker::PhantomData;
 use mcu_caliptra_api::{
-    dpe_certify_key_cert_size, dpe_certify_key_cert_slice, dpe_certify_key_pubkey,
-    dpe_rotate_context_default, dpe_sign, dpe_tag_tci, sha_finish, sha_init, sha_update, ApiAlloc,
-    AuthorizeAndStashFlags, AuthorizeAndStashParams, DpeContextHandle, DpeProfile, HashAlgo,
-    SigningInput, DPE_CONTEXT_HANDLE_SIZE, DPE_LABEL_LEN, SHA_CONTEXT_SIZE,
+    dpe_certify_key_cert_size, dpe_certify_key_cert_slice, dpe_certify_key_mldsa87_pubkey,
+    dpe_certify_key_pubkey, dpe_rotate_context_default, dpe_sign, dpe_tag_tci, sha_finish,
+    sha_init, sha_update, ApiAlloc, AuthorizeAndStashFlags, AuthorizeAndStashParams,
+    DpeContextHandle, DpeProfile, HashAlgo, SigningInput, CERTIFY_KEY_MLDSA87_PUBKEY_SIZE,
+    DPE_CONTEXT_HANDLE_SIZE, DPE_LABEL_LEN, SHA_CONTEXT_SIZE,
+};
+use sha3::{
+    digest::{ExtendableOutput, XofReader},
+    Shake256,
 };
 
 use crate::attestation_manifest::{parse_and_validate, AttestationManifest, MCU_RT_FW_ID};
@@ -337,6 +342,39 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
         sha_finish(alloc, &mut state, kid)
             .await
             .map_err(|_| MeasurementApiError::DigestFailed)
+    }
+
+    /// Compute the ML-DSA-87 COSE `kid` from the DPE leaf public key and
+    /// persist the rotated target handle returned by DPE.
+    pub async fn leaf_mldsa87_kid<A: ApiAlloc>(
+        &mut self,
+        alloc: &A,
+        key_label: &[u8; DPE_LABEL_LEN],
+        kid: &mut [u8; crate::ATTESTATION_KID_SIZE],
+    ) -> MeasurementApiResult {
+        let mut public_key_buf = alloc
+            .alloc(CERTIFY_KEY_MLDSA87_PUBKEY_SIZE)
+            .map_err(|_| MeasurementApiError::DpeCommandFailed)?;
+        let public_key = public_key_buf
+            .get_mut(..CERTIFY_KEY_MLDSA87_PUBKEY_SIZE)
+            .and_then(|buf| buf.first_chunk_mut::<CERTIFY_KEY_MLDSA87_PUBKEY_SIZE>())
+            .ok_or(MeasurementApiError::DpeCommandFailed)?;
+        let target = self.read_attestation_target_record()?;
+        let next_handle = dpe_certify_key_mldsa87_pubkey(
+            alloc,
+            Some(&target.context_handle),
+            key_label,
+            public_key,
+        )
+        .await
+        .map_err(|_| MeasurementApiError::DpeCommandFailed)?;
+
+        let mut hasher = Shake256::default();
+        sha3::digest::Update::update(&mut hasher, public_key);
+        let mut reader = hasher.finalize_xof();
+        reader.read(kid);
+        drop(public_key_buf);
+        self.write_attestation_target_handle(target, next_handle)
     }
 
     /// Sign a typed input with the configured attestation target and persist

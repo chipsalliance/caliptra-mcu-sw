@@ -102,6 +102,7 @@ pub(crate) async fn handle_challenge<'a, Pal: SpdmPal>(
         crate::measurements::measurement_summary_hash(
             pal,
             io,
+            asym_algo,
             meas_hash_type,
             &mut meas_summary_hash,
         )

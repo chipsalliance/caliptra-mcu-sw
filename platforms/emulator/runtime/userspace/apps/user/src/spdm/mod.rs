@@ -174,7 +174,12 @@ const LARGE_MSG_PATH_PEAK: usize =
     MAX_BUFFERED_SPDM_MSG_SIZE + MAX_TRANSPORT_MTU + PQC_SIGNING_PEAK;
 
 /// Peak DPE working set during ML-DSA-87 signing, including bitmap slot rounding.
-const PQC_SIGNING_PEAK: usize = mcu_caliptra_api::DPE_MLDSA87_SIGN_SCRATCH_PEAK + 2 * 64;
+///
+/// OCP EAT signing also retains the raw COSE Sig_structure while DPE builds
+/// the raw-sign request and response.
+const PQC_SIGNING_PEAK: usize = mcu_caliptra_api::DPE_MLDSA87_SIGN_SCRATCH_PEAK
+    + mcu_caliptra_api::DPE_MLDSA87_RAW_MAX_SIZE
+    + 2 * 64;
 
 /// Peak concurrent allocation on the certificate / secure-session path: the
 /// mailbox working set plus the secured-message plaintext and ciphertext
@@ -205,7 +210,7 @@ const fn required_scratch() -> usize {
 /// configuration change outgrows it.
 #[cfg(feature = "cert-provisioning")]
 const MCTP_SPDM_SCRATCH_SIZE: usize = {
-    let declared = 24 * 1024;
+    let declared = 26 * 1024;
     assert!(
         declared >= required_scratch(),
         "MCTP SPDM scratch pool is too small for MAX_BUFFERED_SPDM_MSG_SIZE"
@@ -215,7 +220,7 @@ const MCTP_SPDM_SCRATCH_SIZE: usize = {
 
 #[cfg(not(feature = "cert-provisioning"))]
 const MCTP_SPDM_SCRATCH_SIZE: usize = {
-    let declared = 18 * 1024;
+    let declared = 20 * 1024;
     assert!(
         declared >= required_scratch(),
         "MCTP SPDM scratch pool is too small for MAX_BUFFERED_SPDM_MSG_SIZE"
@@ -225,7 +230,7 @@ const MCTP_SPDM_SCRATCH_SIZE: usize = {
 
 #[cfg(feature = "cert-provisioning")]
 const DOE_SPDM_SCRATCH_SIZE: usize = {
-    let declared = 24 * 1024;
+    let declared = 26 * 1024;
     assert!(
         declared >= required_scratch(),
         "DOE SPDM scratch pool is too small for MAX_BUFFERED_SPDM_MSG_SIZE"
@@ -235,7 +240,7 @@ const DOE_SPDM_SCRATCH_SIZE: usize = {
 
 #[cfg(not(feature = "cert-provisioning"))]
 const DOE_SPDM_SCRATCH_SIZE: usize = {
-    let declared = 18 * 1024;
+    let declared = 20 * 1024;
     assert!(
         declared >= required_scratch(),
         "DOE SPDM scratch pool is too small for MAX_BUFFERED_SPDM_MSG_SIZE"

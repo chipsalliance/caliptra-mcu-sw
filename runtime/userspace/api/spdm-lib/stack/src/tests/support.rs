@@ -119,6 +119,8 @@ pub struct TestPal {
     pub now_ms: RefCell<u64>,
     /// Algorithm the most recent cert-chain write was routed to.
     pub write_algo: Cell<Option<SpdmPalAsymAlgo>>,
+    /// Algorithm passed to the most recent measurement value retrieval.
+    pub meas_algo: Cell<Option<SpdmPalAsymAlgo>>,
     pub sign_ops: RefCell<Vec<RecordedSign>>,
 }
 
@@ -165,6 +167,7 @@ impl Default for TestPal {
             stream_aborts: Cell::new(0),
             now_ms: RefCell::new(0),
             write_algo: Cell::new(None),
+            meas_algo: Cell::new(None),
             sign_ops: RefCell::new(Vec::new()),
         }
     }
@@ -571,8 +574,10 @@ impl SpdmPalMeasurements for TestPal {
         _io: &Self::Io<'_>,
         index: u8,
         _nonce: Option<&[u8; SPDM_NONCE_LEN]>,
+        asym_algo: SpdmPalAsymAlgo,
         out: &mut [u8],
     ) -> McuResult<usize> {
+        self.meas_algo.set(Some(asym_algo));
         if !self.measurement_info.iter().any(|info| info.index == index)
             || self.measurement_value.len() > out.len()
         {

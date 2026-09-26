@@ -1792,6 +1792,7 @@ dependencies = [
  "embassy-sync",
  "mcu-caliptra-api",
  "sha2",
+ "sha3",
 ]
 
 [[package]]
