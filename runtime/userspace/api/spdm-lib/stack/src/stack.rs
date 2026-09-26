@@ -282,15 +282,46 @@ pub(crate) fn multi_key_conn_rsp<S, L>(state: &ConnectionState<S, L>) -> SpdmRes
     let selected = state
         .other_param_sel
         .contains(OtherParamSupport::MULTI_KEY_CONN);
-    if state.version < SpdmVersion::V13 {
-        return if selected {
+    multi_key_conn_value(state.version, state.advertised_cap_flags, selected)
+}
+
+/// Resolves `MULTI_KEY_CONN_RSP` from a `ResponderMultiKeyConn` bit and
+/// the responder's own `MULTI_KEY_CAP`.
+///
+/// This is the DSP0274 1.3.0 Table 32 (MULTI_KEY_CONN_RSP value
+/// calculation) truth table. Two of the six rows are **invalid**
+/// rather than false: `MULTI_KEY_CAP = 00b` (not supported) with the
+/// bit set, and `01b` (multi-key only) with the bit clear. `10b`
+/// leaves the choice to the Requester, so either value is legal.
+///
+/// # Parameters
+///
+/// * `version` — Negotiated (or, at NEGOTIATE_ALGORITHMS time,
+///   selected) SPDM version. `MultiKeyConn` is a V1.3 addition, so
+///   earlier versions must not carry the bit at all.
+/// * `advertised_cap_flags` — The responder's own CAPABILITIES flags,
+///   whose `MULTI_KEY_CAP` field drives the table.
+/// * `multi_key_conn` — The `ResponderMultiKeyConn` bit: as requested
+///   in NEGOTIATE_ALGORITHMS, or as negotiated afterwards.
+///
+/// # Errors
+///
+/// * [`SPDM_INVALID_REQUEST`] — the combination is one the table marks
+///   invalid, or `MULTI_KEY_CAP` holds the reserved value `11b`.
+pub(crate) fn multi_key_conn_value(
+    version: SpdmVersion,
+    advertised_cap_flags: CapFlags,
+    multi_key_conn: bool,
+) -> SpdmResult<bool> {
+    if version < SpdmVersion::V13 {
+        return if multi_key_conn {
             Err(SPDM_INVALID_REQUEST)
         } else {
             Ok(false)
         };
     }
 
-    match (state.advertised_cap_flags.multi_key_field(), selected) {
+    match (advertised_cap_flags.multi_key_field(), multi_key_conn) {
         (0b00, false) => Ok(false),
         (0b00, true) => Err(SPDM_INVALID_REQUEST),
         (0b01, false) => Err(SPDM_INVALID_REQUEST),
