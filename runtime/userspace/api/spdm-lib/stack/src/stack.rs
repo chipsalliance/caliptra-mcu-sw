@@ -835,9 +835,9 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_S
         SessionState::Established => SessionKeyType::RequestDataKey,
     };
 
-    // ── Build AAD ───────────────────────────────────────────────────
-    let mut aad = pal.alloc_bytes(io, SECURED_MSG_HDR_SIZE)?;
-    encode_aad(session_id, length as u16, &mut aad).map_err(|_| SPDM_UNSPECIFIED)?;
+    let aad = req
+        .get(..SECURED_MSG_HDR_SIZE)
+        .ok_or(SPDM_INVALID_REQUEST)?;
 
     // ── Decrypt ─────────────────────────────────────────────────────
     let mut plaintext = pal.alloc_bytes(io, ct_len)?;
@@ -850,7 +850,7 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_S
                 io,
                 decrypt_key_type,
                 version.to_u8(),
-                &aad,
+                aad,
                 ciphertext,
                 tag,
                 &mut plaintext[..ct_len],
@@ -889,7 +889,8 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_S
         state.large_msg_ctx.reset();
     }
 
-    let result = match spdm_hdr.code {
+    let head = pal.header_size();
+    let (response, spdm_len) = match spdm_hdr.code {
         ReqRespCode::FINISH => {
             let session = sessions.find_mut(session_id).ok_or(SPDM_UNSPECIFIED)?;
             let (finish_rsp, finish_rsp_len) =
@@ -910,7 +911,7 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_S
             // (DSP0274 1.3.0 section 10.20). No-op when the negotiated period
             // is zero (heartbeat disabled / feature off).
             session.arm_heartbeat(pal.now().0);
-            Ok(rsp)
+            return Ok(rsp);
         }
         ReqRespCode::END_SESSION => {
             let session = sessions.find_mut(session_id).ok_or(SPDM_UNSPECIFIED)?;
@@ -926,12 +927,12 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_S
             )
             .await?;
             sessions.remove_and_destroy(session_id);
-            Ok(rsp)
+            return Ok(rsp);
         }
         ReqRespCode::HEARTBEAT => {
             let heartbeat_ack = heartbeat::handle_heartbeat(version, spdm_msg)?;
             let session = sessions.find_mut(session_id).ok_or(SPDM_UNSPECIFIED)?;
-            encrypt_secured_spdm_response(
+            let rsp = encrypt_secured_spdm_response(
                 pal,
                 io,
                 session,
@@ -940,92 +941,27 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_S
                 response_key_type,
                 &heartbeat_ack,
             )
-            .await
+            .await?;
+            session.touch_heartbeat(pal.now().0);
+            return Ok(rsp);
         }
         ReqRespCode::GET_DIGESTS => {
-            let (digests_rsp, spdm_len) =
-                digests::handle_get_digests_req(state, pal, io, spdm_msg).await?;
-            let head = pal.header_size();
-            let spdm_rsp = &digests_rsp[head..head + spdm_len];
-            let session = sessions.find_mut(session_id).ok_or(SPDM_UNSPECIFIED)?;
-            encrypt_secured_spdm_response(
-                pal,
-                io,
-                session,
-                session_id,
-                version,
-                response_key_type,
-                spdm_rsp,
-            )
-            .await
+            digests::handle_get_digests_req(state, pal, io, spdm_msg).await?
         }
         ReqRespCode::GET_CERTIFICATE => {
-            let (certificate_rsp, spdm_len) =
-                certificate::handle_get_certificate_req(state, pal, io, spdm_msg).await?;
-            let head = pal.header_size();
-            let spdm_rsp = &certificate_rsp[head..head + spdm_len];
-            let session = sessions.find_mut(session_id).ok_or(SPDM_UNSPECIFIED)?;
-            encrypt_secured_spdm_response(
-                pal,
-                io,
-                session,
-                session_id,
-                version,
-                response_key_type,
-                spdm_rsp,
-            )
-            .await
+            certificate::handle_get_certificate_req(state, pal, io, spdm_msg).await?
         }
         ReqRespCode::GET_MEASUREMENTS => {
-            let (measurements_rsp, spdm_len) =
-                measurements::handle_get_measurements_req(state, pal, io, spdm_msg).await?;
-            let head = pal.header_size();
-            let spdm_rsp = &measurements_rsp[head..head + spdm_len];
-            let session = sessions.find_mut(session_id).ok_or(SPDM_UNSPECIFIED)?;
-            encrypt_secured_spdm_response(
-                pal,
-                io,
-                session,
-                session_id,
-                version,
-                response_key_type,
-                spdm_rsp,
-            )
-            .await
+            measurements::handle_get_measurements_req(state, pal, io, spdm_msg).await?
         }
         ReqRespCode::VENDOR_DEFINED_REQUEST => {
-            let (rsp, spdm_len) =
-                vendor_defined::handle_vendor_defined_request(vdm, state, pal, io, spdm_msg, true)
-                    .await?;
-            let head = pal.header_size();
-            let spdm_rsp = &rsp[head..head + spdm_len];
-            let session = sessions.find_mut(session_id).ok_or(SPDM_UNSPECIFIED)?;
-            encrypt_secured_spdm_response(
-                pal,
-                io,
-                session,
-                session_id,
-                version,
-                response_key_type,
-                spdm_rsp,
-            )
-            .await
+            vendor_defined::handle_vendor_defined_request(vdm, state, pal, io, spdm_msg, true)
+                .await?
         }
         ReqRespCode::CHUNK_GET => {
             let chunk_rsp = chunk::handle_chunk_get(state, pal, io, spdm_msg).await?;
-            let head = pal.header_size();
-            let spdm_rsp = &chunk_rsp[head..];
-            let session = sessions.find_mut(session_id).ok_or(SPDM_UNSPECIFIED)?;
-            encrypt_secured_spdm_response(
-                pal,
-                io,
-                session,
-                session_id,
-                version,
-                response_key_type,
-                spdm_rsp,
-            )
-            .await
+            let spdm_len = chunk_rsp.len().checked_sub(head).ok_or(SPDM_UNSPECIFIED)?;
+            (chunk_rsp, spdm_len)
         }
         ReqRespCode::CHUNK_SEND => {
             let chunk_send_ack = chunk::handle_chunk_send(
@@ -1038,34 +974,30 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_S
                 session_state == SessionState::Established,
             )
             .await?;
-            let head = pal.header_size();
-            let spdm_rsp = &chunk_send_ack[head..];
-            let session = sessions.find_mut(session_id).ok_or(SPDM_UNSPECIFIED)?;
-            encrypt_secured_spdm_response(
-                pal,
-                io,
-                session,
-                session_id,
-                version,
-                response_key_type,
-                spdm_rsp,
-            )
-            .await
+            let spdm_len = chunk_send_ack
+                .len()
+                .checked_sub(head)
+                .ok_or(SPDM_UNSPECIFIED)?;
+            (chunk_send_ack, spdm_len)
         }
-        _ => Err(SPDM_UNSUPPORTED_REQUEST.with_data(spdm_hdr.code.0)),
+        _ => return Err(SPDM_UNSUPPORTED_REQUEST.with_data(spdm_hdr.code.0)),
     };
 
-    // Keep-alive: any successfully handled secured command restarts the
-    // liveness watchdog (DSP0274 1.3.0 section 10.20 "session traffic"). FINISH
-    // arms it above and END_SESSION removes the session, so both are skipped
-    // here; touch is a no-op on a session whose watchdog is unarmed.
-    if result.is_ok() && code != ReqRespCode::FINISH && code != ReqRespCode::END_SESSION {
-        if let Some(session) = sessions.find_mut(session_id) {
-            session.touch_heartbeat(pal.now().0);
-        }
-    }
-
-    result
+    let end = head.checked_add(spdm_len).ok_or(SPDM_UNSPECIFIED)?;
+    let spdm_rsp = response.get(head..end).ok_or(SPDM_UNSPECIFIED)?;
+    let session = sessions.find_mut(session_id).ok_or(SPDM_UNSPECIFIED)?;
+    let rsp = encrypt_secured_spdm_response(
+        pal,
+        io,
+        session,
+        session_id,
+        version,
+        response_key_type,
+        spdm_rsp,
+    )
+    .await?;
+    session.touch_heartbeat(pal.now().0);
+    Ok(rsp)
 }
 
 fn validate_message_allowed_phase(
@@ -1137,10 +1069,17 @@ async fn encrypt_secured_spdm_response<'a, Pal: SpdmPal>(
     copy_exact(body, spdm_response).map_err(|_| SPDM_UNSPECIFIED)?;
 
     let rsp_length = rsp_length_len as u16;
-    let mut rsp_aad = pal.alloc_bytes(io, SECURED_MSG_HDR_SIZE)?;
-    encode_aad(session_id, rsp_length, &mut rsp_aad).map_err(|_| SPDM_UNSPECIFIED)?;
+    let wire_body_len = SECURED_MSG_HDR_SIZE + rsp_length_len;
+    let raw_len = pal.header_size() + wire_body_len;
+    let mut buf = alloc_padded(pal, io, raw_len).map_err(|_| SPDM_UNSPECIFIED)?;
+    let hdr_off = pal.header_size();
+    let wire = buf.get_mut(hdr_off..raw_len).ok_or(SPDM_UNSPECIFIED)?;
+    let (rsp_aad, body) = wire
+        .split_first_chunk_mut::<SECURED_MSG_HDR_SIZE>()
+        .ok_or(SPDM_UNSPECIFIED)?;
+    encode_aad(session_id, rsp_length, rsp_aad).map_err(|_| SPDM_UNSPECIFIED)?;
+    let (rsp_ct, tag_out) = body.split_at_mut(rsp_ct_len);
 
-    let mut rsp_ct = pal.alloc_bytes(io, rsp_ct_len)?;
     let (rsp_written, rsp_tag) = session
         .key_schedule
         .encrypt(
@@ -1148,45 +1087,18 @@ async fn encrypt_secured_spdm_response<'a, Pal: SpdmPal>(
             io,
             key_type,
             version.to_u8(),
-            &rsp_aad,
+            rsp_aad,
             &rsp_plaintext,
-            &mut rsp_ct,
+            rsp_ct,
         )
         .await
         .map_err(|_| SPDM_UNSPECIFIED)?;
     if rsp_written != rsp_ct_len {
         return Err(SPDM_UNSPECIFIED);
     }
-
-    build_secured_response_wire(pal, io, session_id, rsp_length, &rsp_ct, &rsp_tag)
-}
-
-#[inline(never)]
-fn build_secured_response_wire<'a, Pal: SpdmPal>(
-    pal: &'a Pal,
-    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
-    session_id: u32,
-    rsp_length: u16,
-    ciphertext: &[u8],
-    tag: &[u8; AES_256_GCM_TAG_SIZE],
-) -> SpdmResult<PalBytes<'a, Pal>> {
-    let wire_body_len = SECURED_MSG_HDR_SIZE + ciphertext.len() + AES_256_GCM_TAG_SIZE;
-    let raw_len = pal.header_size() + wire_body_len;
-    let mut buf = alloc_padded(pal, io, raw_len).map_err(|_| SPDM_UNSPECIFIED)?;
-    let hdr_off = pal.header_size();
-    let wire = buf.get_mut(hdr_off..raw_len).ok_or(SPDM_UNSPECIFIED)?;
-    let (hdr, body) = wire
-        .split_first_chunk_mut::<SECURED_MSG_HDR_SIZE>()
-        .ok_or(SPDM_UNSPECIFIED)?;
-    let (session, rest) = hdr.split_first_chunk_mut::<4>().ok_or(SPDM_UNSPECIFIED)?;
-    *session = session_id.to_le_bytes();
-    let (len, _) = rest.split_first_chunk_mut::<2>().ok_or(SPDM_UNSPECIFIED)?;
-    *len = rsp_length.to_le_bytes();
-    let (ct_out, tag_out) = body.split_at_mut(ciphertext.len());
-    copy_exact(ct_out, ciphertext).map_err(|_| SPDM_UNSPECIFIED)?;
     *tag_out
         .first_chunk_mut::<AES_256_GCM_TAG_SIZE>()
-        .ok_or(SPDM_UNSPECIFIED)? = *tag;
+        .ok_or(SPDM_UNSPECIFIED)? = rsp_tag;
 
     Ok(buf)
 }
