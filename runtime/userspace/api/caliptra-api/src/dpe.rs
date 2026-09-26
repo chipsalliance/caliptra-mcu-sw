@@ -19,9 +19,8 @@ use mcu_error::McuResult;
 use zerocopy::{little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
 
 use crate::dma::mcu_sram_to_axi_dma;
-use crate::mldsa::{
-    mldsa87_compute_mu, mldsa87_compute_tr, MLDSA87_CONTEXT_MAX_SIZE, MLDSA87_TR_SIZE,
-};
+use crate::mldsa::{mldsa87_compute_mu, MLDSA87_CONTEXT_MAX_SIZE, MLDSA87_TR_SIZE};
+use crate::shake::shake256_hash;
 use crate::slice::{checked_slice, checked_slice_mut, copy_bytes, internal_slice};
 use crate::wire::{
     calc_checksum, mbox_execute, populate_checksum, CMD_CERTIFY_KEY_CHUNKS, CMD_DPE_GET_TAGGED_TCI,
@@ -107,6 +106,8 @@ pub enum SigningInput<'a> {
         /// Transcript hash bound by the signature.
         hash: &'a [u8],
     },
+    /// Precomputed external `mu` for ML-DSA-87.
+    Mldsa87Mu(&'a [u8; DPE_MLDSA87_MU_SIZE]),
 }
 
 impl SigningInput<'_> {
@@ -114,7 +115,7 @@ impl SigningInput<'_> {
     pub const fn profile(&self) -> DpeProfile {
         match self {
             Self::EccP384Digest(_) => DpeProfile::P384Sha384,
-            Self::Mldsa87Message { .. } => DpeProfile::Mldsa87,
+            Self::Mldsa87Message { .. } | Self::Mldsa87Mu(_) => DpeProfile::Mldsa87,
         }
     }
 }
@@ -373,10 +374,10 @@ const CERTIFY_KEY_CHUNKS_RESP_INFO_LEN: usize =
     size_of::<caliptra_api::mailbox::CertifyKeyChunksRespInfo>();
 /// Peak scratch allocation during ML-DSA-87 signing: max of CertifyKey phase and Sign phase.
 pub const DPE_MLDSA87_SIGN_SCRATCH_PEAK: usize = {
-    let certify_key_phase = CERTIFY_KEY_MLDSA87_PUBKEY_SIZE
-        + CERTIFY_KEY_CHUNKS_REQ_LEN
+    let certify_key_phase = CERTIFY_KEY_CHUNKS_REQ_LEN
         + CERTIFY_KEY_CHUNKS_RESP_INFO_LEN
-        + CERTIFY_KEY_MLDSA87_RESP_PREFIX_LEN;
+        + CERTIFY_KEY_MLDSA87_RESP_PREFIX_LEN
+        + crate::shake::SHAKE256_CONTEXT_SIZE;
     let sign_phase = SIGN_MLDSA87_REQ_LEN + SIGN_MLDSA87_RESP_LEN;
     if certify_key_phase > sign_phase {
         certify_key_phase
@@ -480,7 +481,8 @@ const _: () = assert!(CERTIFY_KEY_MLDSA87_PUBKEY_SIZE == 2592);
 const _: () = assert!(CERTIFY_KEY_MLDSA87_RESP_PREFIX_LEN == 2624);
 const _: () = assert!(CERTIFY_KEY_CHUNKS_REQ_LEN == 92);
 const _: () = assert!(CERTIFY_KEY_CHUNKS_RESP_INFO_LEN == 32);
-const _: () = assert!(DPE_MLDSA87_SIGN_SCRATCH_PEAK == 2592 + 92 + 32 + 2624);
+const _: () =
+    assert!(DPE_MLDSA87_SIGN_SCRATCH_PEAK == SIGN_MLDSA87_REQ_LEN + SIGN_MLDSA87_RESP_LEN);
 const _: () = assert!(size_of::<RotateCtxCmd>() == DPE_CONTEXT_HANDLE_SIZE + 4);
 const _: () = assert!(size_of::<NewHandleRespBody>() == 12 + DPE_CONTEXT_HANDLE_SIZE);
 const _: () = assert!(ROTATE_CTX_REQ_LEN == 8 + 12 + 20);
@@ -1044,14 +1046,23 @@ pub async fn dpe_certify_key_pubkey<A: ApiAlloc>(
     Ok(chunk.next_handle)
 }
 
-/// Return the raw 2,592-byte ML-DSA-87 public key emitted by DPE
-/// `CertifyKey`, along with the rotated context handle.
+fn extract_certify_key_mldsa87_pubkey(response: &[u8]) -> McuResult<&[u8]> {
+    validate_certify_key_prefix(response, DpeProfile::Mldsa87)?;
+    internal_slice(
+        response,
+        CERTIFY_KEY_RESP_PUBKEY_X_OFF,
+        CERTIFY_KEY_MLDSA87_PUBKEY_SIZE,
+    )
+}
+
+/// Return the ML-DSA-87 public-key hash `tr` emitted by DPE `CertifyKey`,
+/// along with the rotated context handle.
 #[inline(never)]
-pub async fn dpe_certify_key_mldsa87_pubkey<A: ApiAlloc>(
+pub async fn dpe_certify_key_mldsa87_tr<A: ApiAlloc>(
     alloc: &A,
     handle: Option<&DpeContextHandle>,
     label: &[u8; DPE_LABEL_LEN],
-    public_key: &mut [u8; CERTIFY_KEY_MLDSA87_PUBKEY_SIZE],
+    tr: &mut [u8; MLDSA87_TR_SIZE],
 ) -> McuResult<DpeContextHandle> {
     let chunk = certify_key_chunks_response(
         alloc,
@@ -1062,23 +1073,10 @@ pub async fn dpe_certify_key_mldsa87_pubkey<A: ApiAlloc>(
         CERTIFY_KEY_MLDSA87_RESP_PREFIX_LEN,
     )
     .await?;
-    parse_certify_key_mldsa87_pubkey(chunk.chunk()?, public_key)?;
+    let response = chunk.chunk()?;
+    let pubkey = extract_certify_key_mldsa87_pubkey(response)?;
+    shake256_hash(alloc, pubkey, tr).await?;
     Ok(chunk.next_handle)
-}
-
-fn parse_certify_key_mldsa87_pubkey(
-    response: &[u8],
-    public_key: &mut [u8; CERTIFY_KEY_MLDSA87_PUBKEY_SIZE],
-) -> McuResult<()> {
-    validate_certify_key_prefix(response, DpeProfile::Mldsa87)?;
-    copy_bytes(
-        public_key,
-        internal_slice(
-            response,
-            CERTIFY_KEY_RESP_PUBKEY_X_OFF,
-            CERTIFY_KEY_MLDSA87_PUBKEY_SIZE,
-        )?,
-    )
 }
 
 struct CertifyKeyChunk<B> {
@@ -1315,6 +1313,7 @@ pub async fn dpe_sign<A: ApiAlloc>(
             prefix,
             hash,
         } => dpe_sign_mldsa87_message(alloc, handle, label, context, prefix, hash, signature).await,
+        SigningInput::Mldsa87Mu(mu) => dpe_sign_mldsa87(alloc, handle, label, mu, signature).await,
     }
 }
 
@@ -1337,17 +1336,8 @@ async fn dpe_sign_mldsa87_message<A: ApiAlloc>(
     drop(alloc.alloc(SIGN_MLDSA87_RESP_LEN)?);
 
     let (next_handle, mu) = {
-        let mut public_key_buf = alloc.alloc(CERTIFY_KEY_MLDSA87_PUBKEY_SIZE)?;
-        let public_key: &mut [u8; CERTIFY_KEY_MLDSA87_PUBKEY_SIZE] = public_key_buf
-            .as_mut()
-            .try_into()
-            .map_err(|_| INTERNAL_BUG)?;
-        let next_handle = dpe_certify_key_mldsa87_pubkey(alloc, handle, label, public_key).await?;
-
         let mut tr = [0u8; MLDSA87_TR_SIZE];
-        mldsa87_compute_tr(alloc, public_key, &mut tr).await?;
-
-        drop(public_key_buf);
+        let next_handle = dpe_certify_key_mldsa87_tr(alloc, handle, label, &mut tr).await?;
 
         let mut mu = [0u8; DPE_MLDSA87_MU_SIZE];
         mldsa87_compute_mu(alloc, &tr, context, &[prefix, hash], &mut mu).await?;
@@ -1887,7 +1877,7 @@ mod tests {
     }
 
     #[test]
-    fn certify_key_mldsa87_pubkey_parser_copies_raw_key() {
+    fn certify_key_mldsa87_pubkey_extractor() {
         let expected_key = [0x5au8; CERTIFY_KEY_MLDSA87_PUBKEY_SIZE];
         let mut response = std::vec![0u8; CERTIFY_KEY_MLDSA87_RESP_PREFIX_LEN];
         response[..4].copy_from_slice(&DPE_RESPONSE_MAGIC.to_le_bytes());
@@ -1896,10 +1886,8 @@ mod tests {
             ..CERTIFY_KEY_RESP_PUBKEY_X_OFF + CERTIFY_KEY_MLDSA87_PUBKEY_SIZE]
             .copy_from_slice(&expected_key);
 
-        let mut public_key = [0u8; CERTIFY_KEY_MLDSA87_PUBKEY_SIZE];
-        parse_certify_key_mldsa87_pubkey(&response, &mut public_key).unwrap();
-
-        assert_eq!(public_key, expected_key);
+        let pubkey = extract_certify_key_mldsa87_pubkey(&response).unwrap();
+        assert_eq!(pubkey, expected_key.as_slice());
     }
 
     #[test]
@@ -2124,6 +2112,7 @@ mod tests {
     #[test]
     fn signing_input_selects_dpe_profile() {
         let digest = [0u8; DPE_P384_DIGEST_SIZE];
+        let mu = [0u8; DPE_MLDSA87_MU_SIZE];
 
         assert_eq!(
             SigningInput::EccP384Digest(&digest).profile(),
@@ -2138,6 +2127,7 @@ mod tests {
             .profile(),
             DpeProfile::Mldsa87
         );
+        assert_eq!(SigningInput::Mldsa87Mu(&mu).profile(), DpeProfile::Mldsa87);
     }
 
     #[test]

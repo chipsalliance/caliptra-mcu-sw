@@ -192,16 +192,9 @@ async fn handle_measurements_response<'a, Pal: SpdmPal>(
     offset = write_into_slice(buf, offset, &fixed)?;
 
     let record_start = offset;
-    let (next_offset, written_blocks) = write_measurement_record_into_slice(
-        pal,
-        io,
-        plan.meas_info,
-        plan.meas_op,
-        plan.meas_nonce,
-        buf,
-        offset,
-    )
-    .await?;
+    let asym_algo = state.asym_algo();
+    let (next_offset, written_blocks) =
+        write_measurement_record_into_slice(pal, io, plan, asym_algo, buf, offset).await?;
     if written_blocks != plan.number_of_blocks {
         return Err(SPDM_UNSPECIFIED);
     }
@@ -220,7 +213,6 @@ async fn handle_measurements_response<'a, Pal: SpdmPal>(
 
     let signature_offset = offset;
     let spdm_len_without_sig = signature_offset.checked_sub(head).ok_or(SPDM_UNSPECIFIED)?;
-    let asym_algo = state.asym_algo();
     let signature_len = if plan.signature_requested {
         asym_algo.signature_size()
     } else {
@@ -231,11 +223,7 @@ async fn handle_measurements_response<'a, Pal: SpdmPal>(
         .ok_or(SPDM_UNSPECIFIED)?;
     let use_normal_response = spdm_len <= state.effective_data_transfer_size(pal);
     if !use_normal_response {
-        chunk::validate_buffered_large_response_with_capacity(
-            state,
-            spdm_len,
-            pal.large_buffered_msg_capacity(),
-        )?;
+        chunk::validate_buffered_large_response_with_capacity(state, spdm_len, buf.len())?;
     }
 
     if plan.signature_requested {
@@ -308,6 +296,7 @@ fn total_measurement_count(info: &[MeasurementInfo]) -> SpdmResult<u8> {
 pub(crate) async fn measurement_summary_hash<Pal: SpdmPal>(
     pal: &Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    asym_algo: SpdmPalAsymAlgo,
     measurement_summary_hash_type: u8,
     out: &mut [u8; SHA384_HASH_SIZE],
 ) -> SpdmResult<()> {
@@ -327,7 +316,7 @@ pub(crate) async fn measurement_summary_hash<Pal: SpdmPal>(
         let mut block = pal
             .alloc_bytes(io, block_len)
             .map_err(|_| SPDM_UNSPECIFIED)?;
-        let written = write_measurement_block(pal, io, entry, None, &mut block).await?;
+        let written = write_measurement_block(pal, io, entry, None, asym_algo, &mut block).await?;
         let block = block.get(..written).ok_or(SPDM_UNSPECIFIED)?;
 
         match hash_state.as_mut() {
@@ -346,30 +335,45 @@ pub(crate) async fn measurement_summary_hash<Pal: SpdmPal>(
 async fn write_measurement_record_into_slice<Pal: SpdmPal>(
     pal: &Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
-    info: &[MeasurementInfo],
-    meas_op: u8,
-    nonce: Option<&[u8; SPDM_NONCE_LEN]>,
+    plan: &MeasurementsResponseCtx<'_>,
+    asym_algo: SpdmPalAsymAlgo,
     out: &mut [u8],
     mut offset: usize,
 ) -> SpdmResult<(usize, u8)> {
     let mut blocks = 0u8;
-    match meas_op {
+    match plan.meas_op {
         0x00 => {}
         0xFF => {
-            for entry in info {
-                offset =
-                    write_measurement_record_block_into_slice(pal, io, entry, nonce, out, offset)
-                        .await?;
+            for entry in plan.meas_info {
+                offset = write_measurement_record_block_into_slice(
+                    pal,
+                    io,
+                    entry,
+                    plan.meas_nonce,
+                    asym_algo,
+                    out,
+                    offset,
+                )
+                .await?;
                 blocks = blocks.checked_add(1).ok_or(SPDM_UNSPECIFIED)?;
             }
         }
         idx => {
-            let entry = info
+            let entry = plan
+                .meas_info
                 .iter()
                 .find(|m| m.index == idx)
                 .ok_or(SPDM_INVALID_REQUEST)?;
-            offset = write_measurement_record_block_into_slice(pal, io, entry, nonce, out, offset)
-                .await?;
+            offset = write_measurement_record_block_into_slice(
+                pal,
+                io,
+                entry,
+                plan.meas_nonce,
+                asym_algo,
+                out,
+                offset,
+            )
+            .await?;
             blocks = 1;
         }
     }
@@ -381,6 +385,7 @@ async fn write_measurement_record_block_into_slice<Pal: SpdmPal>(
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     info: &MeasurementInfo,
     nonce: Option<&[u8; SPDM_NONCE_LEN]>,
+    asym_algo: SpdmPalAsymAlgo,
     out: &mut [u8],
     mut offset: usize,
 ) -> SpdmResult<usize> {
@@ -396,7 +401,7 @@ async fn write_measurement_record_block_into_slice<Pal: SpdmPal>(
         let value = out
             .get_mut(value_start..value_end)
             .ok_or(SPDM_UNSPECIFIED)?;
-        pal.get_measurement_value(io, info.index, nonce, value)
+        pal.get_measurement_value(io, info.index, nonce, asym_algo, value)
             .await
             .map_err(|_| SPDM_UNSPECIFIED)?
     };
@@ -418,6 +423,7 @@ async fn write_measurement_block<Pal: SpdmPal>(
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     info: &MeasurementInfo,
     nonce: Option<&[u8; SPDM_NONCE_LEN]>,
+    asym_algo: SpdmPalAsymAlgo,
     out: &mut [u8],
 ) -> SpdmResult<usize> {
     let value_size = info.value_size as usize;
@@ -428,7 +434,7 @@ async fn write_measurement_block<Pal: SpdmPal>(
     // Write measurement value after the header.
     let value_buf = &mut out[MEAS_BLOCK_METADATA_SIZE..MEAS_BLOCK_METADATA_SIZE + value_size];
     let value_len = pal
-        .get_measurement_value(io, info.index, nonce, value_buf)
+        .get_measurement_value(io, info.index, nonce, asym_algo, value_buf)
         .await
         .map_err(|_| SPDM_UNSPECIFIED)?;
     if value_len > value_size {
@@ -552,6 +558,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(resp[1], ReqRespCode::MEASUREMENTS.0);
+        assert_eq!(pal.meas_algo.get(), Some(SpdmPalAsymAlgo::EccP384));
 
         let ops = pal.sign_ops.borrow();
         assert_eq!(ops.len(), 1);
@@ -585,6 +592,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(resp[1], ReqRespCode::MEASUREMENTS.0);
+        assert_eq!(pal.meas_algo.get(), Some(SpdmPalAsymAlgo::MlDsa87));
 
         let ops = pal.sign_ops.borrow();
         assert_eq!(ops.len(), 1);
@@ -672,6 +680,45 @@ mod tests {
     }
 
     #[test]
+    fn measurements_v14_mldsa87_response_exceeding_pal_buffered_capacity_succeeds_when_allocated_buffer_fits(
+    ) {
+        let pal = support::TestPal {
+            mtu: 1024,
+            large_buffered_msg_capacity: 2048,
+            measurement_info: &MEASUREMENT_INFO,
+            measurement_value: &MEASUREMENT_VALUE,
+            ..Default::default()
+        };
+        let mut state = mldsa_state(SpdmVersion::V14);
+        state.peer_cap_flags = caliptra_mcu_spdm_codec::CapFlags::CHUNK;
+        state.peer_data_transfer_size = 1024;
+        state.peer_max_spdm_msg_size = 16384;
+
+        let io = support::TestIo::message(get_measurements_request(SpdmVersion::V14, true));
+        block_on(state.transcript.append_vca(&pal, &io, &[0xAA, 0xBB])).unwrap();
+        let (err_rsp, _) = block_on(handle_get_measurements_req(
+            &mut state,
+            &pal,
+            &io,
+            io.request(),
+        ))
+        .unwrap();
+
+        assert_eq!(err_rsp[1], ReqRespCode::ERROR.0);
+        let handle = err_rsp[4];
+
+        let drain_io = support::TestIo::message(Vec::new());
+        let msg = block_on(support::drain_chunked_response(
+            &mut state, &pal, &drain_io, handle,
+        ))
+        .unwrap();
+
+        assert_eq!(msg[1], ReqRespCode::MEASUREMENTS.0);
+        let sig = &msg[msg.len() - 4627..];
+        assert!(sig.iter().all(|&b| b == 0x77));
+    }
+
+    #[test]
     fn measurements_without_signature_is_algorithm_independent() {
         let pal = support::TestPal {
             mtu: 8192,
@@ -692,6 +739,7 @@ mod tests {
         .unwrap();
 
         assert_eq!(resp[1], ReqRespCode::MEASUREMENTS.0);
+        assert_eq!(pal.meas_algo.get(), Some(SpdmPalAsymAlgo::MlDsa87));
         assert!(pal.sign_ops.borrow().is_empty());
     }
 

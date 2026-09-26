@@ -8,9 +8,9 @@ use alloc::boxed::Box;
 use arrayvec::ArrayVec;
 use async_trait::async_trait;
 use caliptra_api::mailbox::{EcdsaVerifyReq, MailboxReqHeader, MailboxRespHeader};
-use caliptra_mcu_attestation_evidence::encode_signed_ocp_eat;
 #[cfg(feature = "pcr-quote")]
 use caliptra_mcu_attestation_evidence::pcr_quote::{encode_pcr_quote, PcrQuoteAlgorithm};
+use caliptra_mcu_attestation_evidence::{encode_signed_ocp_eat, OcpEatAlgorithm};
 use caliptra_mcu_common_commands::{
     AsymAlgo, CaliptraCmdResult, CaliptraCompletionCode, EvidenceFormat, GetLogResult, LogType,
     PkiEntitySlot, ATTESTATION_NONCE_LEN, DEBUG_UNLOCK_CHALLENGE_SIZE,
@@ -297,12 +297,12 @@ pub async fn get_attestation<A: ApiAlloc>(
         return Err(CaliptraCompletionCode::UnsupportedOperation);
     }
     match (format, algorithm) {
-        // The EAT signer emits only ES384 today, so there is no ML-DSA EAT to
-        // dispatch to yet.
-        // TODO: add an (OcpEat, Mldsa87) arm when the EAT signer supports
-        // ML-DSA-87, and a matching bound in `evidence_len`.
-        (EvidenceFormat::OcpEat, AsymAlgo::EccP384) => {
-            encode_signed_ocp_eat(alloc, &DPE_LEAF_LABEL, entity as u8, nonce, out)
+        (EvidenceFormat::OcpEat, algo) => {
+            let eat_algo = match algo {
+                AsymAlgo::EccP384 => OcpEatAlgorithm::Esp384,
+                AsymAlgo::Mldsa87 => OcpEatAlgorithm::Mldsa87,
+            };
+            encode_signed_ocp_eat(alloc, eat_algo, &DPE_LEAF_LABEL, entity as u8, nonce, out)
                 .await
                 .map_err(map_mcu_err)
         }

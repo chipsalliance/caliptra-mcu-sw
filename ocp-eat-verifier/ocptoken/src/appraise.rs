@@ -67,7 +67,11 @@ pub(crate) fn run(
     };
 
     for triple_result in &report.results {
-        let mark = if triple_result.passed() { "PASS" } else { "FAIL" };
+        let mark = if triple_result.passed() {
+            "PASS"
+        } else {
+            "FAIL"
+        };
         println!("  [{}] {}", mark, triple_result.env_label);
         if !triple_result.env_matched {
             println!("         No matching evidence environment found");

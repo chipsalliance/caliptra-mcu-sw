@@ -32,16 +32,35 @@ pub const CLAIM_KEY_CORIM_LOCATORS: i64 = -70001;
 /// OCP EAT profile OID in dotted notation: 1.3.6.1.4.1.42623.1.3
 pub const OCP_EAT_PROFILE_OID_STR: &str = "1.3.6.1.4.1.42623.1.3";
 
+/// Provisional OCP EAT combined ECC/ML-DSA profile OID in dotted notation: 1.3.6.1.4.1.42623.1.4
+///
+/// NOTE: This is a provisional OID (see https://github.com/opencomputeproject/Security/pull/97).
+/// It will be updated once the OCP Security WG finalizes and assigns the combined ECC/ML-DSA profile OID.
+pub const OCP_EAT_PROFILE_ECC_MLDSA_OID_STR: &str = "1.3.6.1.4.1.42623.1.4";
+
 /// OCP EAT profile OID as ASN.1 DER TLV bytes.
 pub const OCP_EAT_PROFILE_OID: &[u8] = &[
     0x06, 0x0a, 0x2b, 0x06, 0x01, 0x04, 0x01, 0x82, 0x4d, 0x1f, 0x01, 0x03,
 ];
 
+/// Provisional OCP EAT combined ECC/ML-DSA profile OID as ASN.1 DER TLV bytes.
+///
+/// NOTE: Provisional OID; will be updated once finalized by OCP.
+pub const OCP_EAT_PROFILE_ECC_MLDSA_OID: &[u8] = &[
+    0x06, 0x0a, 0x2b, 0x06, 0x01, 0x04, 0x01, 0x82, 0x4d, 0x1f, 0x01, 0x04,
+];
+
 /// OCP EAT profile OID as raw content bytes (without ASN.1 tag+length),
 /// matching the CBOR `~oid` (tag 111) encoding.
-pub const OCP_EAT_PROFILE_OID_RAW: &[u8] = &[
-    0x2b, 0x06, 0x01, 0x04, 0x01, 0x82, 0x4d, 0x1f, 0x01, 0x03,
-];
+pub const OCP_EAT_PROFILE_OID_RAW: &[u8] =
+    &[0x2b, 0x06, 0x01, 0x04, 0x01, 0x82, 0x4d, 0x1f, 0x01, 0x03];
+
+/// Provisional OCP EAT combined ECC/ML-DSA profile OID as raw content bytes (without ASN.1 tag+length),
+/// matching the CBOR `~oid` (tag 111) encoding.
+///
+/// NOTE: Provisional OID; will be updated once finalized by OCP.
+pub const OCP_EAT_PROFILE_ECC_MLDSA_OID_RAW: &[u8] =
+    &[0x2b, 0x06, 0x01, 0x04, 0x01, 0x82, 0x4d, 0x1f, 0x01, 0x04];
 
 // ── OCP EAT Claims ────────────────────────────────────────────────
 
@@ -159,8 +178,9 @@ impl OcpEatClaims {
                     CLAIM_KEY_EAT_PROFILE => {
                         let oid_bytes = value_to_oid(value, "eat_profile")?;
                         // Try UTF-8 text first, then dotted notation is already text
-                        let oid_str = String::from_utf8(oid_bytes)
-                            .map_err(|_| OcpEatError::InvalidToken("eat_profile is not valid UTF-8 or OID"))?;
+                        let oid_str = String::from_utf8(oid_bytes).map_err(|_| {
+                            OcpEatError::InvalidToken("eat_profile is not valid UTF-8 or OID")
+                        })?;
                         eat_profile = Some(oid_str);
                     }
                     CLAIM_KEY_MEASUREMENTS => {
@@ -185,21 +205,28 @@ impl OcpEatClaims {
         }
 
         // ── Validate mandatory claims ──
-        let nonce = nonce.ok_or(OcpEatError::InvalidToken("Missing mandatory claim: nonce (10)"))?;
-        let debug_status = debug_status
-            .ok_or(OcpEatError::InvalidToken("Missing mandatory claim: dbgstat (263)"))?;
-        let eat_profile = eat_profile
-            .ok_or(OcpEatError::InvalidToken("Missing mandatory claim: eat_profile (265)"))?;
+        let nonce = nonce.ok_or(OcpEatError::InvalidToken(
+            "Missing mandatory claim: nonce (10)",
+        ))?;
+        let debug_status = debug_status.ok_or(OcpEatError::InvalidToken(
+            "Missing mandatory claim: dbgstat (263)",
+        ))?;
+        let eat_profile = eat_profile.ok_or(OcpEatError::InvalidToken(
+            "Missing mandatory claim: eat_profile (265)",
+        ))?;
 
-        // Validate that eat_profile matches the OCP EAT profile OID.
-        if eat_profile != OCP_EAT_PROFILE_OID_STR {
+        // Validate that eat_profile matches one of the supported OCP EAT profile OIDs.
+        if eat_profile != OCP_EAT_PROFILE_OID_STR
+            && eat_profile != OCP_EAT_PROFILE_ECC_MLDSA_OID_STR
+        {
             return Err(OcpEatError::InvalidToken(
-                "eat_profile does not match OCP EAT profile OID (1.3.6.1.4.1.42623.1.3)",
+                "eat_profile does not match supported OCP EAT profile OID (1.3.6.1.4.1.42623.1.3 or 1.3.6.1.4.1.42623.1.4)",
             ));
         }
 
-        let measurements = measurements
-            .ok_or(OcpEatError::InvalidToken("Missing mandatory claim: measurements (273)"))?;
+        let measurements = measurements.ok_or(OcpEatError::InvalidToken(
+            "Missing mandatory claim: measurements (273)",
+        ))?;
 
         Ok(OcpEatClaims {
             nonce,
@@ -278,10 +305,9 @@ impl OcpEatClaims {
                 }
             };
 
-            let evidence =
-                TaggedConciseEvidence::from_cbor(content_bytes).map_err(|e| {
-                    OcpEatError::MeasurementsDecode(format!("entry[{}] decode: {}", i, e))
-                })?;
+            let evidence = TaggedConciseEvidence::from_cbor(content_bytes).map_err(|e| {
+                OcpEatError::MeasurementsDecode(format!("entry[{}] decode: {}", i, e))
+            })?;
 
             result.push(DecodedMeasurement {
                 content_type,
@@ -349,10 +375,13 @@ fn value_to_measurements(value: Value) -> OcpEatResult<Vec<u8>> {
         Value::Bytes(b) => Ok(b),
         Value::Array(_) => {
             let mut buf = Vec::new();
-            ciborium::into_writer(&value, &mut buf)
-                .map_err(|_| OcpEatError::InvalidToken("measurements: failed to re-encode CBOR array"))?;
+            ciborium::into_writer(&value, &mut buf).map_err(|_| {
+                OcpEatError::InvalidToken("measurements: failed to re-encode CBOR array")
+            })?;
             Ok(buf)
         }
-        _ => Err(OcpEatError::InvalidToken("measurements must be bstr or array")),
+        _ => Err(OcpEatError::InvalidToken(
+            "measurements must be bstr or array",
+        )),
     }
 }
