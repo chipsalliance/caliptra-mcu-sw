@@ -13,4 +13,5 @@ pub use claims::{
     encode_claims_payload, CONCISE_EVIDENCE_MAX_SIZE, CONCISE_EVIDENCE_MEASUREMENT_COUNT,
     EAT_PAYLOAD_MAX_SIZE, NONCE_LEN,
 };
+pub use sign::OcpEatAlgorithm;
 pub(crate) use sign::{cose_sign1_len, SignedEat};

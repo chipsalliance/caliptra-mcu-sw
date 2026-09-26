@@ -235,8 +235,14 @@ async fn handle_key_exchange_request<'a, Pal: SpdmPal, const N: usize>(
             let mut hash = pal.alloc_bytes(io, SHA384_HASH_SIZE)?;
             let hash_out: &mut [u8; SHA384_HASH_SIZE] =
                 (&mut *hash).try_into().map_err(|_| SPDM_UNSPECIFIED)?;
-            crate::measurements::measurement_summary_hash(pal, io, meas_hash_type, hash_out)
-                .await?;
+            crate::measurements::measurement_summary_hash(
+                pal,
+                io,
+                state.asym_algo(),
+                meas_hash_type,
+                hash_out,
+            )
+            .await?;
             Some(hash)
         } else {
             None

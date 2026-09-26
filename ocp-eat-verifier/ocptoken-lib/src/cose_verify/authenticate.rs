@@ -106,8 +106,8 @@ pub fn authenticate_signer(
                 if !external_chain.is_empty() {
                     // Kid with external cert chain (e.g. SPDM GET_CERTIFICATE):
                     // authenticate the full chain and return the leaf cert.
-                    let mut chain_certs =
-                        split_der_certs(external_chain).map_err(CoseSign1Error::CertificateError)?;
+                    let mut chain_certs = split_der_certs(external_chain)
+                        .map_err(CoseSign1Error::CertificateError)?;
                     chain_certs.reverse(); // root-first → leaf-first
                     return Ok(ta_store.authenticate_chain(&chain_certs)?);
                 } else {

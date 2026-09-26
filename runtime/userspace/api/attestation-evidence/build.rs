@@ -4,16 +4,19 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use caliptra_ocp_eat::cbor_tags;
+use caliptra_ocp_eat::cose::{header_params, CoseAlgorithm, CoseHeaderPair, CoseSign1};
 use caliptra_ocp_eat::ocp_profile::{
     ClassIdTypeChoice, ClassMap, ConciseEvidence, ConciseEvidenceMap, DebugStatus, DigestEntry,
     EnvironmentMap, EvTriplesMap, EvidenceTripleRecord, IntegrityRegisterEntry,
     IntegrityRegisterIdChoice, MeasurementFormat, MeasurementMap, MeasurementValue, OcpEatClaims,
-    PrivateClaim, TaggedConciseEvidence,
+    OcpEatProfile, PrivateClaim, TaggedConciseEvidence,
 };
 use caliptra_ocp_eat::{CborEncodable, CborEncoder, TaggedBytes};
 use serde::Deserialize;
 
 const NONCE_LEN: usize = 32;
+const KID_LEN: usize = 48;
 const DEFAULT_CONCISE_EVIDENCE_MEASUREMENT_COUNT: usize = 8;
 const CONCISE_EVIDENCE_MEASUREMENT_COUNT_ENV: &str = "CALIPTRA_CONCISE_EVIDENCE_MEASUREMENT_COUNT";
 const EAT_CLAIMS_CONFIG_ENV: &str = "CALIPTRA_EAT_CLAIMS_CONFIG";
@@ -65,6 +68,7 @@ fn main() {
     println!("cargo:rerun-if-env-changed={EAT_CLAIMS_CONFIG_ENV}");
     println!("cargo:rerun-if-env-changed={CONCISE_EVIDENCE_MEASUREMENT_COUNT_ENV}");
     write_eat_claims_template();
+    write_eat_cose_template();
 }
 
 fn write_eat_claims_template() {
@@ -83,7 +87,7 @@ fn write_eat_claims_template() {
     let claims = OcpEatClaims {
         nonce: &nonce_marker,
         dbgstat: DebugStatus::Disabled,
-        eat_profile: OcpEatClaims::DEFAULT_PROFILE_OID,
+        eat_profile: OcpEatProfile::EccMldsaX5ChainOrKid.oid(),
         measurements: &measurement_format,
         issuer: claim_values.issuer.as_deref(),
         cti: claim_values.cti.as_deref(),
@@ -148,6 +152,144 @@ fn write_eat_claims_template() {
     let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR is set by Cargo"));
     fs::write(out_dir.join("eat_claims_template.rs"), generated)
         .expect("write generated EAT claims template");
+}
+
+struct CoseTemplate {
+    cose_preamble: Vec<u8>,
+    sig_preamble: Vec<u8>,
+    sig_bstr_header: Vec<u8>,
+    signature_size: usize,
+}
+
+fn generate_cose_template(algorithm: CoseAlgorithm) -> CoseTemplate {
+    let protected = algorithm.protected_header();
+    let kid_marker = marker::<KID_LEN>(0x50);
+    let unprotected = [CoseHeaderPair {
+        key: header_params::KID,
+        value: &kid_marker,
+    }];
+    let payload_marker = marker::<32>(0x60);
+    let sig_marker = vec![0x70u8; algorithm.signature_size()];
+
+    let mut ctx_buf = vec![0u8; 1024];
+    let mut cose_buf = vec![0u8; 8192];
+
+    let cose = CoseSign1::new(&mut cose_buf)
+        .protected_header(&protected)
+        .unprotected_headers(&unprotected)
+        .payload(&payload_marker)
+        .signature(&sig_marker);
+
+    let sig_ctx_len = cose
+        .get_signature_context(&mut ctx_buf)
+        .expect("encode signature context");
+    let sig_ctx = &ctx_buf[..sig_ctx_len];
+
+    let cose_len = cose
+        .encode(Some(&[cbor_tags::SELF_DESCRIBED_CBOR, cbor_tags::CWT]))
+        .expect("encode COSE_Sign1");
+    let cose_bytes = &cose_buf[..cose_len];
+
+    let kid_pos = find_subslice(cose_bytes, &kid_marker).expect("kid marker not found");
+    let cose_preamble = &cose_bytes[..kid_pos];
+
+    let payload_bstr = encode_bytes(&payload_marker);
+    let payload_bstr_pos = find_subslice_from(cose_bytes, &payload_bstr, kid_pos + KID_LEN)
+        .expect("payload bstr not found");
+    assert_eq!(payload_bstr_pos, kid_pos + KID_LEN);
+
+    let sig_pos = find_subslice_from(
+        cose_bytes,
+        &sig_marker,
+        payload_bstr_pos + payload_bstr.len(),
+    )
+    .expect("signature marker not found");
+    let sig_bstr_header = &cose_bytes[payload_bstr_pos + payload_bstr.len()..sig_pos];
+    assert_eq!(sig_pos + algorithm.signature_size(), cose_len);
+
+    let sig_payload_pos =
+        find_subslice(sig_ctx, &payload_bstr).expect("sig payload bstr not found");
+    let sig_preamble = &sig_ctx[..sig_payload_pos];
+    assert_eq!(sig_payload_pos + payload_bstr.len(), sig_ctx_len);
+
+    CoseTemplate {
+        cose_preamble: cose_preamble.to_vec(),
+        sig_preamble: sig_preamble.to_vec(),
+        sig_bstr_header: sig_bstr_header.to_vec(),
+        signature_size: algorithm.signature_size(),
+    }
+}
+
+fn write_eat_cose_template() {
+    let esp384 = generate_cose_template(CoseAlgorithm::Esp384);
+    let mldsa87 = generate_cose_template(CoseAlgorithm::Mldsa87);
+
+    assert_eq!(
+        esp384.cose_preamble.len(),
+        mldsa87.cose_preamble.len(),
+        "COSE preamble length must match across algorithms"
+    );
+    assert_eq!(
+        esp384.sig_preamble.len(),
+        mldsa87.sig_preamble.len(),
+        "SIG preamble length must match across algorithms"
+    );
+
+    let mut generated = String::new();
+    generated.push_str("// Licensed under the Apache-2.0 license\n");
+    generated.push_str("// AUTO-GENERATED FILE. DO NOT EDIT.\n");
+    generated.push_str("// Generated by attestation-evidence build.rs from caliptra-ocp-eat\n\n");
+
+    generated.push_str(&format!(
+        "pub const COSE_PREAMBLE_LEN: usize = {};\n",
+        esp384.cose_preamble.len()
+    ));
+    generated.push_str(&format!(
+        "#[allow(dead_code)]\npub const SIG_PREAMBLE_LEN: usize = {};\n",
+        esp384.sig_preamble.len()
+    ));
+    generated.push_str(&format!("pub const KID_LEN: usize = {KID_LEN};\n"));
+    generated.push_str("pub const PAYLOAD_BSTR_HEADER_LEN: usize = 3;\n");
+    generated.push_str(&format!(
+        "pub const ESP384_SIGNATURE_SIZE: usize = {};\n",
+        esp384.signature_size
+    ));
+    generated.push_str(&format!(
+        "pub const MLDSA87_SIGNATURE_SIZE: usize = {};\n\n",
+        mldsa87.signature_size
+    ));
+
+    write_bytes_const(
+        &mut generated,
+        "ESP384_COSE_PREAMBLE",
+        &esp384.cose_preamble,
+    );
+    write_bytes_const(&mut generated, "ESP384_SIG_PREAMBLE", &esp384.sig_preamble);
+    write_bytes_const(
+        &mut generated,
+        "ESP384_SIG_BSTR_HEADER",
+        &esp384.sig_bstr_header,
+    );
+
+    write_bytes_const(
+        &mut generated,
+        "MLDSA87_COSE_PREAMBLE",
+        &mldsa87.cose_preamble,
+    );
+    write_bytes_const(
+        &mut generated,
+        "MLDSA87_SIG_PREAMBLE",
+        &mldsa87.sig_preamble,
+    );
+    write_bytes_const(
+        &mut generated,
+        "MLDSA87_SIG_BSTR_HEADER",
+        &mldsa87.sig_bstr_header,
+    );
+
+    let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR is set by Cargo"));
+    fs::write(out_dir.join("eat_cose_template.rs"), generated)
+        .expect("write generated EAT COSE template");
 }
 
 fn read_config() -> AttestationEvidenceConfig {
@@ -544,5 +686,71 @@ measurement_count = 4
             concise_evidence_max_size(claims_count),
             concise_evidence_max_size(mandatory_count)
         );
+    }
+
+    #[test]
+    fn cose_templates_match_rfc9052_structure() {
+        let esp384 = generate_cose_template(CoseAlgorithm::Esp384);
+        let mldsa87 = generate_cose_template(CoseAlgorithm::Mldsa87);
+
+        assert_eq!(esp384.cose_preamble.len(), 20);
+        assert_eq!(mldsa87.cose_preamble.len(), 20);
+        assert_eq!(esp384.sig_preamble.len(), 22);
+        assert_eq!(mldsa87.sig_preamble.len(), 22);
+
+        assert_eq!(esp384.sig_bstr_header, &[0x58, 0x60]);
+        assert_eq!(esp384.signature_size, 96);
+
+        assert_eq!(mldsa87.sig_bstr_header, &[0x59, 0x12, 0x13]);
+        assert_eq!(mldsa87.signature_size, 4627);
+
+        // Preambles start with tags 55799, 61, 18, and array(4)
+        assert_eq!(
+            &esp384.cose_preamble[..7],
+            &[0xd9, 0xd9, 0xf7, 0xd8, 0x3d, 0xd2, 0x84]
+        );
+        assert_eq!(
+            &mldsa87.cose_preamble[..7],
+            &[0xd9, 0xd9, 0xf7, 0xd8, 0x3d, 0xd2, 0x84]
+        );
+
+        // Sig preambles start with array(4), "Signature1"
+        assert_eq!(
+            &esp384.sig_preamble[..12],
+            &[0x84, 0x6a, 0x53, 0x69, 0x67, 0x6e, 0x61, 0x74, 0x75, 0x72, 0x65, 0x31]
+        );
+        assert_eq!(
+            &mldsa87.sig_preamble[..12],
+            &[0x84, 0x6a, 0x53, 0x69, 0x67, 0x6e, 0x61, 0x74, 0x75, 0x72, 0x65, 0x31]
+        );
+    }
+
+    #[test]
+    fn eat_claims_template_uses_ecc_mldsa_profile_oid() {
+        let nonce_marker = marker::<NONCE_LEN>(0xa0);
+        let concise_evidence = template_concise_evidence();
+        let measurement_format = [MeasurementFormat::new(&concise_evidence)];
+        let claims = OcpEatClaims {
+            nonce: &nonce_marker,
+            dbgstat: DebugStatus::Disabled,
+            eat_profile: OcpEatProfile::EccMldsaX5ChainOrKid.oid(),
+            measurements: &measurement_format,
+            issuer: None,
+            cti: None,
+            ueid: None,
+            sueid: None,
+            oemid: None,
+            hwmodel: None,
+            uptime: None,
+            bootcount: None,
+            bootseed: None,
+            dloas: None,
+            rim_locators: None,
+            private_claims: &[],
+        };
+        let mut scratch = [0u8; 512];
+        let encoded = encode_claims_to_vec(&claims, &mut scratch);
+        let oid_bytes = OcpEatProfile::EccMldsaX5ChainOrKid.oid().as_bytes();
+        assert!(find_subslice(&encoded, oid_bytes).is_some());
     }
 }
