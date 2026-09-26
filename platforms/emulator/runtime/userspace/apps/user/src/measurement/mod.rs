@@ -5,6 +5,7 @@ mod integrator_manifest;
 mod boot;
 
 pub(crate) use boot::boot_init;
+pub(crate) use boot::reset_boot_kind;
 
 #[allow(dead_code)]
 pub(crate) fn attestation_manifest_bytes() -> &'static [u8] {

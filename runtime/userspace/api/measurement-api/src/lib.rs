@@ -8,6 +8,13 @@ pub mod attestation_manifest;
 pub mod errors;
 pub mod image_metadata;
 
+pub use attestation_manifest::{
+    parse_and_validate_owner, parse_and_validate_owner_fw_load_list,
+    parse_and_validate_owner_measurement_policy, AttestationManifest, OwnerFwLoadList,
+    OwnerMeasurementPolicy, OWNER_MEASUREMENT_POLICY_IDENTIFIER, OWSM_FW_ID, O_AUTH_KEY_ID,
+    V_AUTH_KEY_ID,
+};
+
 use api::MeasurementApi;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -148,6 +155,73 @@ pub async fn leaf_cert_size<A: ApiAlloc>(
         .as_mut()
         .ok_or(MeasurementApiError::AttestationDisabled)?;
     api.leaf_cert_size(alloc, profile, key_label).await
+}
+
+/// Measure or sync the Vendor Authorization Key (`0x0000_0004`) under the `MCU_RT` DPE context.
+pub async fn measure_vendor_auth_key<A: ApiAlloc>(
+    alloc: &A,
+    vendor_auth_key_digest: &[u8; IMAGE_MEASUREMENT_DIGEST_SIZE],
+    boot: BootKind,
+) -> MeasurementApiResult {
+    let mut guard = MEASUREMENT_API.lock().await;
+    let api = guard
+        .as_mut()
+        .ok_or(MeasurementApiError::AttestationDisabled)?;
+    api.measure_vendor_auth_key(alloc, vendor_auth_key_digest, boot)
+        .await
+}
+
+/// Measure or sync the Owner Authorization Manifest preamble (`0x0000_0003`) under the Vendor Auth Key DPE context.
+pub async fn measure_owsm<A: ApiAlloc>(
+    alloc: &A,
+    preamble_digest: &[u8; IMAGE_MEASUREMENT_DIGEST_SIZE],
+    svn: u32,
+    boot: BootKind,
+) -> MeasurementApiResult {
+    let mut guard = MEASUREMENT_API.lock().await;
+    let api = guard
+        .as_mut()
+        .ok_or(MeasurementApiError::AttestationDisabled)?;
+    api.measure_owsm(alloc, preamble_digest, svn, boot).await
+}
+
+/// Measure or sync the Owner Measurement Policy (`0x0000_0005`) under the OWSM DPE context.
+pub async fn measure_owner_measurement_policy<A: ApiAlloc>(
+    alloc: &A,
+    policy_digest: &[u8; IMAGE_MEASUREMENT_DIGEST_SIZE],
+    boot: BootKind,
+) -> MeasurementApiResult {
+    let mut guard = MEASUREMENT_API.lock().await;
+    let api = guard
+        .as_mut()
+        .ok_or(MeasurementApiError::AttestationDisabled)?;
+    api.measure_owner_measurement_policy(alloc, policy_digest, boot)
+        .await
+}
+
+/// Measure or sync the Owner Authorization Key (`0x0000_0006`) under the Owner Policy DPE context.
+pub async fn measure_owner_auth_key<A: ApiAlloc>(
+    alloc: &A,
+    owner_auth_key_digest: &[u8; IMAGE_MEASUREMENT_DIGEST_SIZE],
+    boot: BootKind,
+) -> MeasurementApiResult {
+    let mut guard = MEASUREMENT_API.lock().await;
+    let api = guard
+        .as_mut()
+        .ok_or(MeasurementApiError::AttestationDisabled)?;
+    api.measure_owner_auth_key(alloc, owner_auth_key_digest, boot)
+        .await
+}
+
+/// Validate and set authenticated Owner Measurement Policy (Component 0x0000_0005) bytes.
+pub async fn validate_and_set_owner_policy(
+    owner_policy_bytes: &'static [u8],
+) -> MeasurementApiResult {
+    let mut guard = MEASUREMENT_API.lock().await;
+    let api = guard
+        .as_mut()
+        .ok_or(MeasurementApiError::AttestationDisabled)?;
+    api.validate_and_set_owner_policy(owner_policy_bytes)
 }
 
 /// Authorize one MCU-managed initial-load component.

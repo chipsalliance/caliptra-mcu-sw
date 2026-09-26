@@ -10,6 +10,7 @@ edition.workspace = true
 arrayvec.workspace = true
 async-trait.workspace = true
 caliptra-api.workspace = true
+caliptra-auth-man-types.workspace = true
 constant_time_eq.workspace = true
 critical-section.workspace = true
 embassy-executor.workspace = true

@@ -34,7 +34,10 @@ use mcu_caliptra_api::{
     DPE_TCI_MEASUREMENT_SIZE, MLDSA87_TR_SIZE, SHA_CONTEXT_SIZE,
 };
 
-use crate::attestation_manifest::{parse_and_validate, AttestationManifest, MCU_RT_FW_ID};
+use crate::attestation_manifest::{
+    parse_and_validate, parse_and_validate_owner_measurement_policy, AttestationManifest,
+    AttestationManifestEntry, OwnerMeasurementPolicy, MCU_RT_FW_ID, V_AUTH_KEY_ID,
+};
 use crate::errors::{MeasurementApiError, MeasurementApiResult};
 use crate::{
     AttestationState, BootKind, EvidenceReadinessPolicy, ImageMetadata, MeasurementOperation,
@@ -50,6 +53,7 @@ use crate::{
 pub(crate) struct MeasurementApi<'a, S: Syscalls = DefaultSyscalls> {
     manifest: AttestationManifest<'a>,
     soc_image_load_fw_ids: &'a [u32],
+    owner_policy: Option<OwnerMeasurementPolicy<'a>>,
     state: AttestationState,
     _syscalls: PhantomData<S>,
 }
@@ -69,9 +73,43 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
         Ok(Self {
             manifest,
             soc_image_load_fw_ids,
+            owner_policy: None,
             state: AttestationState::Uninitialized,
             _syscalls: PhantomData,
         })
+    }
+
+    /// Validate and set authenticated Owner Measurement Policy (Component 0x0000_0005).
+    pub fn validate_and_set_owner_policy(
+        &mut self,
+        owner_policy_bytes: &'a [u8],
+    ) -> MeasurementApiResult {
+        let policy = parse_and_validate_owner_measurement_policy(owner_policy_bytes)
+            .map_err(|_| MeasurementApiError::InvalidManifest)?;
+        self.owner_policy = Some(policy);
+        Ok(())
+    }
+
+    /// Return the currently attached Owner Measurement Policy, if any.
+    #[allow(dead_code)]
+    pub fn owner_policy(&self) -> Option<&OwnerMeasurementPolicy<'a>> {
+        self.owner_policy.as_ref()
+    }
+
+    /// Lookup a component across the Base Attestation Manifest and Owner Attestation Manifest.
+    pub(crate) fn manifest_lookup(
+        &self,
+        fw_id: u32,
+    ) -> Result<AttestationManifestEntry, MeasurementApiError> {
+        if let Ok(entry) = self.manifest.lookup(fw_id) {
+            return Ok(entry);
+        }
+        if let Some(owner) = &self.owner_policy {
+            if let Ok(entry) = owner.manifest().lookup(fw_id) {
+                return Ok(entry);
+            }
+        }
+        Err(MeasurementApiError::UnknownFwId)
     }
 
     /// Compute `measurement_policy_digest = SHA384(canonical manifest bytes ||
@@ -245,6 +283,91 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
             }
             MeasurementOperation::ComponentUpdate => {
                 component_update::authorize_and_stash(self, alloc, fw_id, metadata).await
+            }
+        }
+    }
+
+    /// Measure or sync the Vendor Authorization Key (`0x0000_0004`) under the `MCU_RT` DPE context.
+    ///
+    /// On cold boot, derives and tags a new DPE context and extends PCR31.
+    /// On hitless update, checks if the key matches the preserved DPE measurement;
+    /// if unchanged, retains the context without re-extending PCR31; if changed, updates
+    /// the context measurement and extends PCR31 once.
+    pub async fn measure_vendor_auth_key<A: ApiAlloc>(
+        &mut self,
+        alloc: &A,
+        vendor_auth_key_digest: &[u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE],
+        boot: BootKind,
+    ) -> MeasurementApiResult {
+        match boot {
+            BootKind::ColdBoot => {
+                initial_load::measure_vendor_auth_key(self, alloc, vendor_auth_key_digest).await
+            }
+            BootKind::HitlessUpdate => {
+                component_update::hitless_update_vendor_auth_key(
+                    self,
+                    alloc,
+                    vendor_auth_key_digest,
+                )
+                .await
+            }
+        }
+    }
+
+    /// Measure or sync the Owner Authorization Manifest preamble (`0x0000_0003`) under the Vendor Auth Key DPE context.
+    pub async fn measure_owsm<A: ApiAlloc>(
+        &mut self,
+        alloc: &A,
+        preamble_digest: &[u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE],
+        svn: u32,
+        boot: BootKind,
+    ) -> MeasurementApiResult {
+        match boot {
+            BootKind::ColdBoot => {
+                initial_load::measure_owsm(self, alloc, preamble_digest, svn).await
+            }
+            BootKind::HitlessUpdate => {
+                component_update::hitless_update_owsm(self, alloc, preamble_digest).await
+            }
+        }
+    }
+
+    /// Measure or sync the Owner Measurement Policy (`0x0000_0005`) under the OWSM DPE context.
+    pub async fn measure_owner_measurement_policy<A: ApiAlloc>(
+        &mut self,
+        alloc: &A,
+        policy_digest: &[u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE],
+        boot: BootKind,
+    ) -> MeasurementApiResult {
+        match boot {
+            BootKind::ColdBoot => {
+                initial_load::measure_owner_measurement_policy(self, alloc, policy_digest).await
+            }
+            BootKind::HitlessUpdate => {
+                component_update::hitless_update_owner_measurement_policy(
+                    self,
+                    alloc,
+                    policy_digest,
+                )
+                .await
+            }
+        }
+    }
+
+    /// Measure or sync the Owner Authorization Key (`0x0000_0006`) under the Owner Policy DPE context.
+    pub async fn measure_owner_auth_key<A: ApiAlloc>(
+        &mut self,
+        alloc: &A,
+        owner_auth_key_digest: &[u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE],
+        boot: BootKind,
+    ) -> MeasurementApiResult {
+        match boot {
+            BootKind::ColdBoot => {
+                initial_load::measure_owner_auth_key(self, alloc, owner_auth_key_digest).await
+            }
+            BootKind::HitlessUpdate => {
+                component_update::hitless_update_owner_auth_key(self, alloc, owner_auth_key_digest)
+                    .await
             }
         }
     }
@@ -645,11 +768,18 @@ fn validate_soc_image_load_fw_ids(
     manifest: &AttestationManifest<'_>,
     soc_image_load_fw_ids: &[u32],
 ) -> MeasurementApiResult {
-    if soc_image_load_fw_ids.len() != manifest.entries().count() {
+    let expected_count = manifest
+        .entries()
+        .filter(|entry| entry.fw_id != V_AUTH_KEY_ID)
+        .count();
+    if soc_image_load_fw_ids.len() != expected_count {
         return Err(MeasurementApiError::InvalidSocImageLoadList);
     }
 
     for (index, fw_id) in soc_image_load_fw_ids.iter().copied().enumerate() {
+        if fw_id == V_AUTH_KEY_ID {
+            return Err(MeasurementApiError::InvalidSocImageLoadList);
+        }
         if soc_image_load_fw_ids
             .iter()
             .take(index)
@@ -885,5 +1015,74 @@ mod tests {
             api.read_exported_cdi(&mut cdi),
             Err(MeasurementApiError::AttestationDisabled)
         );
+    }
+
+    #[test]
+    fn attach_owner_policy_enables_dual_manifest_lookup() {
+        use crate::attestation_manifest::{
+            OWNER_ATTESTATION_MANIFEST_FIXED_HEADER_SIZE, OWNER_ATTESTATION_MANIFEST_MARKER,
+            OWNER_FW_LOAD_LIST_FIXED_HEADER_SIZE, OWNER_FW_LOAD_LIST_MARKER,
+            OWNER_FW_LOAD_LIST_VERSION, OWNER_MEASUREMENT_POLICY_IDENTIFIER, O_AUTH_KEY_ID,
+        };
+
+        let base_bytes = valid_manifest_with_entries(&[(0x1000, ATTESTATION_FLAG_SOC_TCB_DPE)]);
+        let mut api = MeasurementApi::<DefaultSyscalls>::new(&base_bytes, &[0x1000]).unwrap();
+
+        assert!(api.owner_policy().is_none());
+        assert_eq!(api.manifest_lookup(0x1000).unwrap().fw_id, 0x1000);
+        assert!(api.manifest_lookup(0x10000).is_err());
+
+        // Construct valid Owner Measurement Policy container
+        let mut policy_bytes = Vec::new();
+        let header_size = OWNER_ATTESTATION_MANIFEST_FIXED_HEADER_SIZE;
+        let entries = [
+            (
+                OWNER_MEASUREMENT_POLICY_IDENTIFIER,
+                ATTESTATION_FLAG_SOC_TCB_DPE,
+            ),
+            (O_AUTH_KEY_ID, ATTESTATION_FLAG_SOC_TCB_DPE),
+            (0x10000, ATTESTATION_FLAG_SOC_TCB_DPE),
+        ];
+        let size = header_size + entries.len() * ATTESTATION_MANIFEST_ENTRY_SIZE;
+        policy_bytes.extend_from_slice(&OWNER_ATTESTATION_MANIFEST_MARKER.to_le_bytes());
+        policy_bytes.extend_from_slice(&(size as u32).to_le_bytes());
+        policy_bytes.extend_from_slice(&ATTESTATION_MANIFEST_VERSION.to_le_bytes());
+        policy_bytes.extend_from_slice(&(header_size as u32).to_le_bytes());
+        policy_bytes.extend_from_slice(&(entries.len() as u32).to_le_bytes());
+        policy_bytes.extend_from_slice(&3u32.to_le_bytes()); // 3 TCB entries
+        policy_bytes.extend_from_slice(&0u16.to_le_bytes());
+        policy_bytes.extend_from_slice(&0u16.to_le_bytes());
+        for (fw_id, flags) in entries {
+            policy_bytes.extend_from_slice(&fw_id.to_le_bytes());
+            policy_bytes.extend_from_slice(&flags.to_le_bytes());
+        }
+
+        let load_list_header_size = OWNER_FW_LOAD_LIST_FIXED_HEADER_SIZE;
+        let load_list_size = load_list_header_size + 4;
+        policy_bytes.extend_from_slice(&OWNER_FW_LOAD_LIST_MARKER.to_le_bytes());
+        policy_bytes.extend_from_slice(&(load_list_size as u32).to_le_bytes());
+        policy_bytes.extend_from_slice(&OWNER_FW_LOAD_LIST_VERSION.to_le_bytes());
+        policy_bytes.extend_from_slice(&1u32.to_le_bytes()); // 1 load list entry
+        policy_bytes.extend_from_slice(&0x10000u32.to_le_bytes());
+
+        api.validate_and_set_owner_policy(&policy_bytes).unwrap();
+        assert!(api.owner_policy().is_some());
+
+        // Base component lookup succeeds
+        assert_eq!(api.manifest_lookup(0x1000).unwrap().fw_id, 0x1000);
+        // Owner components lookup succeeds
+        assert_eq!(
+            api.manifest_lookup(OWNER_MEASUREMENT_POLICY_IDENTIFIER)
+                .unwrap()
+                .fw_id,
+            OWNER_MEASUREMENT_POLICY_IDENTIFIER
+        );
+        assert_eq!(
+            api.manifest_lookup(O_AUTH_KEY_ID).unwrap().fw_id,
+            O_AUTH_KEY_ID
+        );
+        assert_eq!(api.manifest_lookup(0x10000).unwrap().fw_id, 0x10000);
+        // Unknown component fails
+        assert!(api.manifest_lookup(0x9999).is_err());
     }
 }

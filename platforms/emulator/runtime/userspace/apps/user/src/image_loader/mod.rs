@@ -33,11 +33,11 @@ use caliptra_mcu_libsyscall_caliptra::dma::{AXIAddr, DMAMapping};
 #[allow(unused)]
 use caliptra_mcu_libsyscall_caliptra::flash::SpiFlash;
 use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
-use caliptra_mcu_libsyscall_caliptra::mci::{mci_reg::RESET_REASON, Mci as MciSyscall};
 #[allow(unused)]
 use caliptra_mcu_libsyscall_caliptra::system::{FirmwareBootType, System};
 use caliptra_mcu_libtock_console::Console;
 use caliptra_mcu_libtock_platform::ErrorCode;
+use caliptra_mcu_measurement_api::BootKind;
 #[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
 use caliptra_mcu_measurement_api::{ImageHashSource, ImageMetadata};
 #[allow(unused)]
@@ -94,7 +94,7 @@ use mcu_caliptra_api::image_loader::{
     PldmImageLoader,
 };
 #[allow(unused)]
-use zerocopy::{FromBytes, IntoBytes};
+use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 #[allow(dead_code)]
 const RESET_REASON_FW_HITLESS_UPD_RESET_MASK: u32 = 0x1;
@@ -119,10 +119,8 @@ pub async fn image_loading_task(soc_image_load_list: &'static [u32]) {
     let mbox_sram = caliptra_mcu_libsyscall_caliptra::mbox_sram::MboxSram::<DefaultSyscalls>::new(
         caliptra_mcu_libsyscall_caliptra::mbox_sram::DRIVER_NUM_MCU_MBOX1_SRAM,
     );
-    let mci = MciSyscall::<DefaultSyscalls>::new();
-    let reset_reason = mci.read(RESET_REASON, 0).unwrap();
-    let mcu_fw_hitless_update_reset = reset_reason & RESET_REASON_FW_HITLESS_UPD_RESET_MASK
-        == RESET_REASON_FW_HITLESS_UPD_RESET_MASK;
+    let boot_kind = crate::measurement::reset_boot_kind().unwrap_or(BootKind::ColdBoot);
+    let mcu_fw_hitless_update_reset = boot_kind == BootKind::HitlessUpdate;
     if mcu_fw_hitless_update_reset {
         // Device rebooted due to firmware update
         // MCU SRAM lock is acquired prior to rebooting the device
@@ -152,6 +150,7 @@ pub async fn image_loading_task(soc_image_load_list: &'static [u32]) {
             &EMULATED_DMA_MAPPING,
             soc_image_load_list,
             mcu_fw_hitless_update_reset,
+            boot_kind,
         )
         .await
         {
@@ -244,9 +243,29 @@ async fn image_loading<D: DMAMapping>(
     dma_mapping: &'static D,
     soc_image_load_list: &'static [u32],
     mcu_fw_hitless_update_reset: bool,
+    boot_kind: BootKind,
 ) -> Result<(), ErrorCode> {
     let mut console_writer = Console::<DefaultSyscalls>::writer();
     crate::log_info!(console_writer, "IMAGE_LOADER_APP: Hello async world!");
+    #[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
+    let mut scratch = Vec::new();
+    #[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
+    scratch
+        .try_reserve_exact(IMAGE_LOAD_MEASUREMENT_SCRATCH_SLOTS)
+        .map_err(|_| ErrorCode::Fail)?;
+    #[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
+    scratch.resize(
+        IMAGE_LOAD_MEASUREMENT_SCRATCH_SLOTS,
+        ImageLoadMeasurementScratchSlot([0; BITMAP_SLOT_SIZE]),
+    );
+    #[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
+    let Some(scratch_ptr) = NonNull::new(scratch.as_mut_ptr().cast::<u8>()) else {
+        return Err(ErrorCode::Fail);
+    };
+    #[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
+    let allocator =
+        unsafe { BitmapAllocator::new(scratch_ptr, IMAGE_LOAD_MEASUREMENT_SCRATCH_SIZE) };
+
     #[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
     let firmware_boot_type = {
         #[cfg(all(feature = "streaming-boot", feature = "flash-boot"))]
@@ -278,9 +297,39 @@ async fn image_loading<D: DMAMapping>(
                 };
                 let pldm_image_loader =
                     PldmImageLoader::new(&fw_params, EXECUTOR.get().spawner(), dma_mapping);
-                let load_result = match pldm_image_loader.set_owner_auth_manifest().await {
-                    Ok(()) => load_soc_images(&pldm_image_loader, soc_image_load_list, false).await,
-                    Err(error) => Err(error),
+                let mut preamble_buf = allocator
+                    .alloc_bytes(OWNER_PREAMBLE_RETAINED_SIZE)
+                    .map_err(|_| ErrorCode::Fail)?;
+                let set_result = pldm_image_loader
+                    .set_owner_auth_manifest(preamble_buf.as_mut_slice())
+                    .await;
+                let load_result = match set_result {
+                    Ok(retained_len) => {
+                        let measure_res = measure_owner_artifacts(
+                            &pldm_image_loader,
+                            &allocator,
+                            boot_kind,
+                            &preamble_buf[..retained_len],
+                        )
+                        .await;
+                        drop(preamble_buf);
+                        match measure_res {
+                            Ok(()) => {
+                                load_soc_images(
+                                    &pldm_image_loader,
+                                    soc_image_load_list,
+                                    false,
+                                    &allocator,
+                                )
+                                .await
+                            }
+                            Err(error) => Err(error),
+                        }
+                    }
+                    Err(error) => {
+                        drop(preamble_buf);
+                        Err(error)
+                    }
                 };
                 if let Err(error) = load_result {
                     // Report load/authorization failure to the PLDM Update Agent
@@ -354,8 +403,28 @@ async fn image_loading<D: DMAMapping>(
                     flash_image_loader.set_auth_manifest().await?;
                 }
 
-                flash_image_loader.set_owner_auth_manifest().await?;
-                load_soc_images(&flash_image_loader, soc_image_load_list, component_update).await?;
+                let mut preamble_buf = allocator
+                    .alloc_bytes(OWNER_PREAMBLE_RETAINED_SIZE)
+                    .map_err(|_| ErrorCode::Fail)?;
+                let retained_len = flash_image_loader
+                    .set_owner_auth_manifest(preamble_buf.as_mut_slice())
+                    .await?;
+                let measure_res = measure_owner_artifacts(
+                    &flash_image_loader,
+                    &allocator,
+                    boot_kind,
+                    &preamble_buf[..retained_len],
+                )
+                .await;
+                drop(preamble_buf);
+                measure_res?;
+                load_soc_images(
+                    &flash_image_loader,
+                    soc_image_load_list,
+                    component_update,
+                    &allocator,
+                )
+                .await?;
                 boot_config
                     .set_partition_status(load_partition.0, PartitionStatus::BootSuccessful)
                     .await
@@ -408,28 +477,197 @@ async fn image_loading<D: DMAMapping>(
 }
 
 #[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
-async fn load_soc_images(
+const OWNER_PREAMBLE_RETAINED_SIZE: usize = 2708;
+
+#[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
+#[repr(C)]
+#[derive(IntoBytes, FromBytes, Immutable, KnownLayout, Clone, Copy, Debug, Default)]
+struct OwnerPreambleHeader {
+    marker: u32,
+    size: u32,
+    version: u32,
+    svn: u32,
+    flags: u32,
+}
+
+#[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
+async fn measure_owner_soc_manifest_preamble<A: mcu_caliptra_api::ApiAlloc>(
+    preamble_bytes: &[u8],
+    allocator: &A,
+    boot_kind: caliptra_mcu_measurement_api::BootKind,
+) -> Result<(), ErrorCode> {
+    use caliptra_auth_man_types::{OwnerAuthManifestPreamble, OWNER_AUTH_MANIFEST_MARKER};
+    use caliptra_mcu_measurement_api::{measure_owsm, IMAGE_MEASUREMENT_DIGEST_SIZE};
+    use mcu_caliptra_api::{hash_all, HashAlgo};
+
+    let signed_range = OwnerAuthManifestPreamble::owner_signed_data_range();
+    let signed_start = signed_range.start as usize;
+    let signed_end = signed_range.end as usize;
+
+    if preamble_bytes.len() < signed_end {
+        return Err(ErrorCode::Fail);
+    }
+
+    let header = OwnerPreambleHeader::read_from_bytes(
+        preamble_bytes
+            .get(..core::mem::size_of::<OwnerPreambleHeader>())
+            .ok_or(ErrorCode::Fail)?,
+    )
+    .map_err(|_| ErrorCode::Fail)?;
+    if header.marker != OWNER_AUTH_MANIFEST_MARKER {
+        return Err(ErrorCode::Fail);
+    }
+    let svn = header.svn;
+
+    let signed_bytes = preamble_bytes
+        .get(signed_start..signed_end)
+        .ok_or(ErrorCode::Fail)?;
+
+    let mut preamble_digest = [0u8; IMAGE_MEASUREMENT_DIGEST_SIZE];
+    hash_all(
+        allocator,
+        HashAlgo::Sha384,
+        signed_bytes,
+        &mut preamble_digest,
+    )
+    .await
+    .map_err(|_| ErrorCode::Fail)?;
+
+    measure_owsm(allocator, &preamble_digest, svn, boot_kind)
+        .await
+        .map_err(|_| ErrorCode::Fail)?;
+
+    Ok(())
+}
+
+#[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
+static mut OWNER_POLICY_BUFFER: [u8;
+    crate::soc_image_descriptors::OWNER_MEASUREMENT_POLICY_MAX_SIZE] =
+    [0u8; crate::soc_image_descriptors::OWNER_MEASUREMENT_POLICY_MAX_SIZE];
+
+#[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
+async fn read_owner_measurement_policy(
+    loader: &impl ImageLoader,
+) -> Result<&'static [u8], ErrorCode> {
+    use caliptra_mcu_measurement_api::OWNER_MEASUREMENT_POLICY_IDENTIFIER;
+
+    let policy_size = loader
+        .component_size(OWNER_MEASUREMENT_POLICY_IDENTIFIER)
+        .await?;
+    if policy_size == 0
+        || policy_size > crate::soc_image_descriptors::OWNER_MEASUREMENT_POLICY_MAX_SIZE
+    {
+        return Err(ErrorCode::Fail);
+    }
+
+    // Safety: single-threaded Tock user app during sequential boot image loading.
+    // OWNER_POLICY_BUFFER is populated once from the loader and retained for the lifetime of the app.
+    unsafe {
+        #[allow(static_mut_refs)]
+        let buf = &mut OWNER_POLICY_BUFFER[..policy_size];
+        let read_len = loader
+            .read_raw_component(OWNER_MEASUREMENT_POLICY_IDENTIFIER, 0, buf)
+            .await?;
+        if read_len != policy_size {
+            return Err(ErrorCode::Fail);
+        }
+        #[allow(static_mut_refs)]
+        Ok(&OWNER_POLICY_BUFFER[..policy_size])
+    }
+}
+
+#[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
+async fn authenticate_and_measure_owner_artifacts<A: mcu_caliptra_api::ApiAlloc>(
+    static_policy_bytes: &'static [u8],
+    allocator: &A,
+    boot_kind: caliptra_mcu_measurement_api::BootKind,
+    retained_preamble: &[u8],
+) -> Result<(), ErrorCode> {
+    use caliptra_mcu_measurement_api::{
+        measure_owner_measurement_policy, validate_and_set_owner_policy, BootKind,
+        IMAGE_MEASUREMENT_DIGEST_SIZE, OWNER_MEASUREMENT_POLICY_IDENTIFIER,
+    };
+    use mcu_caliptra_api::{core_image_info, hash_all, HashAlgo};
+
+    let mut policy_digest = [0u8; IMAGE_MEASUREMENT_DIGEST_SIZE];
+    hash_all(
+        allocator,
+        HashAlgo::Sha384,
+        static_policy_bytes,
+        &mut policy_digest,
+    )
+    .await
+    .map_err(|_| ErrorCode::Fail)?;
+
+    let policy_image_info = core_image_info(OWNER_MEASUREMENT_POLICY_IDENTIFIER)
+        .await
+        .map_err(|_| ErrorCode::Fail)?;
+    if policy_digest != policy_image_info.digest {
+        return Err(ErrorCode::Fail);
+    }
+
+    validate_and_set_owner_policy(static_policy_bytes)
+        .await
+        .map_err(|_| ErrorCode::Fail)?;
+
+    if boot_kind == BootKind::HitlessUpdate {
+        measure_owner_measurement_policy(allocator, &policy_digest, boot_kind)
+            .await
+            .map_err(|_| ErrorCode::Fail)?;
+    }
+
+    measure_owner_soc_manifest_preamble(retained_preamble, allocator, boot_kind).await?;
+    if boot_kind == BootKind::ColdBoot {
+        measure_owner_measurement_policy(allocator, &policy_digest, boot_kind)
+            .await
+            .map_err(|_| ErrorCode::Fail)?;
+    }
+    measure_owner_auth_key_component(allocator, boot_kind).await?;
+    Ok(())
+}
+
+#[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
+async fn measure_owner_auth_key_component<A: mcu_caliptra_api::ApiAlloc>(
+    allocator: &A,
+    boot_kind: caliptra_mcu_measurement_api::BootKind,
+) -> Result<(), ErrorCode> {
+    use caliptra_mcu_measurement_api::{measure_owner_auth_key, O_AUTH_KEY_ID};
+    use mcu_caliptra_api::core_image_info;
+
+    let owner_key_info = core_image_info(O_AUTH_KEY_ID)
+        .await
+        .map_err(|_| ErrorCode::Fail)?;
+    measure_owner_auth_key(allocator, &owner_key_info.digest, boot_kind)
+        .await
+        .map_err(|_| ErrorCode::Fail)?;
+
+    Ok(())
+}
+
+#[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
+async fn measure_owner_artifacts<A: mcu_caliptra_api::ApiAlloc>(
+    loader: &impl ImageLoader,
+    allocator: &A,
+    boot_kind: caliptra_mcu_measurement_api::BootKind,
+    retained_preamble: &[u8],
+) -> Result<(), ErrorCode> {
+    let static_policy_bytes = read_owner_measurement_policy(loader).await?;
+    authenticate_and_measure_owner_artifacts(
+        static_policy_bytes,
+        allocator,
+        boot_kind,
+        retained_preamble,
+    )
+    .await
+}
+
+#[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
+async fn load_soc_images<A: mcu_caliptra_api::ApiAlloc>(
     loader: &impl ImageLoader,
     soc_image_load_list: &'static [u32],
     component_update: bool,
+    allocator: &A,
 ) -> Result<(), ErrorCode> {
-    let mut scratch = Vec::new();
-    scratch
-        .try_reserve_exact(IMAGE_LOAD_MEASUREMENT_SCRATCH_SLOTS)
-        .map_err(|_| ErrorCode::Fail)?;
-    scratch.resize(
-        IMAGE_LOAD_MEASUREMENT_SCRATCH_SLOTS,
-        ImageLoadMeasurementScratchSlot([0; BITMAP_SLOT_SIZE]),
-    );
-    let Some(scratch_ptr) = NonNull::new(scratch.as_mut_ptr().cast::<u8>()) else {
-        return Err(ErrorCode::Fail);
-    };
-    // SAFETY: `scratch_ptr` points at aligned heap memory owned by `scratch`.
-    // `scratch` stays alive for all Measurement API calls below, and allocator
-    // buffers do not escape those calls.
-    let allocator =
-        unsafe { BitmapAllocator::new(scratch_ptr, IMAGE_LOAD_MEASUREMENT_SCRATCH_SIZE) };
-
     for fw_id in soc_image_load_list {
         let loaded = loader.load(*fw_id).await?;
         let metadata = if component_update {
@@ -443,7 +681,7 @@ async fn load_soc_images(
         } else {
             ImageMetadata::initial_load_from_load_address(loaded.image_size, loaded.measurement)
         };
-        caliptra_mcu_measurement_api::authorize_and_stash(&allocator, *fw_id, metadata)
+        caliptra_mcu_measurement_api::authorize_and_stash(allocator, *fw_id, metadata)
             .await
             .inspect_err(|_| {
                 let mut console_writer = Console::<DefaultSyscalls>::writer();
@@ -494,6 +732,7 @@ fn emit_attestation_evidence_ready() {
 #[allow(dead_code)]
 fn emit_attestation_evidence_ready() {}
 
+#[allow(dead_code)]
 #[cfg(any(
     feature = "test-mctp-spdm-attestation-hitless",
     feature = "test-mctp-spdm-attestation-hitless-tcb",
@@ -503,6 +742,7 @@ fn hitless_attestation_test_enabled() -> bool {
     true
 }
 
+#[allow(dead_code)]
 #[cfg(not(any(
     feature = "test-mctp-spdm-attestation-hitless",
     feature = "test-mctp-spdm-attestation-hitless-tcb",

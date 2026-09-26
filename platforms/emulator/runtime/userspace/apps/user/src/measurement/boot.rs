@@ -86,6 +86,22 @@ pub(crate) async fn boot_init(
     .is_err()
     {
         log_boot_init_error(BootInitLog::Init);
+        return;
+    }
+
+    if let Ok(image_info) =
+        mcu_caliptra_api::core_image_info(caliptra_mcu_measurement_api::V_AUTH_KEY_ID).await
+    {
+        if caliptra_mcu_measurement_api::measure_vendor_auth_key(
+            &allocator,
+            &image_info.digest,
+            boot_kind,
+        )
+        .await
+        .is_err()
+        {
+            log_boot_init_error(BootInitLog::Init);
+        }
     }
 
     fn evidence_readiness_policy() -> EvidenceReadinessPolicy {
@@ -120,7 +136,7 @@ fn log_boot_init_error(error: BootInitLog) {
 }
 
 /// Classify the current reset as cold boot or MCU hitless update.
-fn reset_boot_kind() -> Result<BootKind, ErrorCode> {
+pub(crate) fn reset_boot_kind() -> Result<BootKind, ErrorCode> {
     let mci = MciSyscall::<DefaultSyscalls>::new();
     let reason = mci.read(RESET_REASON, 0)?;
     decode_reset_reason(reason).ok_or(ErrorCode::Invalid)

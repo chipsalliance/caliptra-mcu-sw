@@ -49,7 +49,7 @@ mod firmware_update;
 mod image_loader;
 mod mcu_mbox;
 mod measurement;
-mod soc_image_descriptors {
+pub(crate) mod soc_image_descriptors {
     include!(concat!(env!("OUT_DIR"), "/soc_image_descriptors.rs"));
 }
 #[cfg(target_arch = "riscv32")]
