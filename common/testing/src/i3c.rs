@@ -119,9 +119,9 @@ bitfield! {
     pub struct ReguDataTransferCommand(u64);
     impl Debug;
     u8, cmd_attr, set_cmd_attr: 2, 0;
-    u8, tid, set_tid: 6, 3;
-    u8, cmd, set_cmd: 14, 7;
-    u8, cp, set_cp: 15, 15;
+    pub u8, tid, set_tid: 6, 3;
+    pub u8, cmd, set_cmd: 14, 7;
+    pub u8, cp, set_cp: 15, 15;
     u8, dev_index, set_dev_index: 20, 16;
     u8, short_read_err, set_short_read_err: 24, 24;
     u8, dbp, set_dbp: 25, 25;
@@ -159,7 +159,7 @@ bitfield! {
     impl Debug;
 
     pub u16, data_length, set_data_length: 15, 0;
-    u8, tid, set_tid: 27, 24;
+    pub u8, tid, set_tid: 27, 24;
     u8, err_status, set_err_status: 31, 28;
 }
 
