@@ -316,7 +316,8 @@ pub(crate) async fn measurement_summary_hash<Pal: SpdmPal>(
         let mut block = pal
             .alloc_bytes(io, block_len)
             .map_err(|_| SPDM_UNSPECIFIED)?;
-        let written = write_measurement_block(pal, io, entry, None, asym_algo, &mut block).await?;
+        let written =
+            write_measurement_record_block(pal, io, entry, None, asym_algo, &mut block, 0).await?;
         let block = block.get(..written).ok_or(SPDM_UNSPECIFIED)?;
 
         match hash_state.as_mut() {
@@ -345,7 +346,7 @@ async fn write_measurement_record_into_slice<Pal: SpdmPal>(
         0x00 => {}
         0xFF => {
             for entry in plan.meas_info {
-                offset = write_measurement_record_block_into_slice(
+                offset = write_measurement_record_block(
                     pal,
                     io,
                     entry,
@@ -364,7 +365,7 @@ async fn write_measurement_record_into_slice<Pal: SpdmPal>(
                 .iter()
                 .find(|m| m.index == idx)
                 .ok_or(SPDM_INVALID_REQUEST)?;
-            offset = write_measurement_record_block_into_slice(
+            offset = write_measurement_record_block(
                 pal,
                 io,
                 entry,
@@ -380,7 +381,7 @@ async fn write_measurement_record_into_slice<Pal: SpdmPal>(
     Ok((offset, blocks))
 }
 
-async fn write_measurement_record_block_into_slice<Pal: SpdmPal>(
+async fn write_measurement_record_block<Pal: SpdmPal>(
     pal: &Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     info: &MeasurementInfo,
@@ -414,42 +415,6 @@ async fn write_measurement_record_block_into_slice<Pal: SpdmPal>(
         DmtfMeasurementBlockHeader::new(info.index, info.is_raw, info.value_type, value_len_u16);
     offset = write_into_slice(out, header_start, block_hdr.as_bytes())?;
     offset.checked_add(value_len).ok_or(SPDM_UNSPECIFIED)
-}
-
-/// Write a single DMTF measurement block (header + value) into `out`.
-/// Returns total bytes written.
-async fn write_measurement_block<Pal: SpdmPal>(
-    pal: &Pal,
-    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
-    info: &MeasurementInfo,
-    nonce: Option<&[u8; SPDM_NONCE_LEN]>,
-    asym_algo: SpdmPalAsymAlgo,
-    out: &mut [u8],
-) -> SpdmResult<usize> {
-    let value_size = info.value_size as usize;
-    if out.len() < MEAS_BLOCK_METADATA_SIZE + value_size {
-        return Err(SPDM_UNSPECIFIED);
-    }
-
-    // Write measurement value after the header.
-    let value_buf = &mut out[MEAS_BLOCK_METADATA_SIZE..MEAS_BLOCK_METADATA_SIZE + value_size];
-    let value_len = pal
-        .get_measurement_value(io, info.index, nonce, asym_algo, value_buf)
-        .await
-        .map_err(|_| SPDM_UNSPECIFIED)?;
-    if value_len > value_size {
-        return Err(SPDM_UNSPECIFIED);
-    }
-    let value_len_u16 = u16::try_from(value_len).map_err(|_| SPDM_UNSPECIFIED)?;
-
-    // Build and write the block header.
-    let block_hdr =
-        DmtfMeasurementBlockHeader::new(info.index, info.is_raw, info.value_type, value_len_u16);
-    for (d, s) in out.iter_mut().zip(block_hdr.as_bytes()) {
-        *d = *s;
-    }
-
-    Ok(MEAS_BLOCK_METADATA_SIZE + value_len)
 }
 
 fn u24_le(len: usize) -> SpdmResult<[u8; 3]> {
