@@ -39,6 +39,7 @@
 - [Caliptra Utility Host Library](./caliptra_util_host_library.md)
 - [Network Boot Recovery](./network_boot.md)
 - [Integrator's Guide](./integrator-guide.md)
+    - [MCU ROM Extensibility](./rom-extensibility.md)
     - [Certificate Store Integration](./certificate-store-integration.md)
     - [OCP LOCK Integrator Guide](./ocp_lock_integrator_guide.md)
     - [OCP Recovery Integration Guide](./ocp_recovery_integrator_guide.md)
