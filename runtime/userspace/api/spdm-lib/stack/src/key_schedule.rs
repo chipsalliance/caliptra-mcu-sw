@@ -306,9 +306,10 @@ impl<K: Clone> KeySchedule<K> {
     ) -> McuResult<(usize, [u8; 16])> {
         let (key, seq) = self.aead_key_and_seq(key_type)?;
         let result = pal
-            .aead_encrypt(io, key, spdm_version, seq, aad, plaintext, ciphertext)
+            .aead_encrypt(io, key, spdm_version, *seq, aad, plaintext, ciphertext)
             .await?;
-        self.increment_seq(key_type);
+        // Increment the seq number after successful encryption.
+        *seq += 1;
         Ok(result)
     }
 
@@ -327,9 +328,10 @@ impl<K: Clone> KeySchedule<K> {
     ) -> McuResult<usize> {
         let (key, seq) = self.aead_key_and_seq(key_type)?;
         let result = pal
-            .aead_decrypt(io, key, spdm_version, seq, aad, ciphertext, tag, plaintext)
+            .aead_decrypt(io, key, spdm_version, *seq, aad, ciphertext, tag, plaintext)
             .await?;
-        self.increment_seq(key_type);
+        // Increment the seq number after successful authentication and decryption.
+        *seq += 1;
         Ok(result)
     }
 
@@ -372,47 +374,37 @@ impl<K: Clone> KeySchedule<K> {
         }
     }
 
-    fn aead_key_and_seq(&self, key_type: SessionKeyType) -> McuResult<(&K, u64)> {
+    fn aead_key_and_seq(&mut self, key_type: SessionKeyType) -> McuResult<(&K, &mut u64)> {
         match key_type {
             SessionKeyType::RequestHandshakeKey => Ok((
                 self.handshake_ctx
                     .request_handshake_secret
                     .as_ref()
                     .ok_or(mcu_error::codes::INVARIANT)?,
-                self.handshake_ctx.request_seq,
+                &mut self.handshake_ctx.request_seq,
             )),
             SessionKeyType::ResponseHandshakeKey => Ok((
                 self.handshake_ctx
                     .response_handshake_secret
                     .as_ref()
                     .ok_or(mcu_error::codes::INVARIANT)?,
-                self.handshake_ctx.response_seq,
+                &mut self.handshake_ctx.response_seq,
             )),
             SessionKeyType::RequestDataKey => Ok((
                 self.data_ctx
                     .request_data_secret
                     .as_ref()
                     .ok_or(mcu_error::codes::INVARIANT)?,
-                self.data_ctx.request_seq,
+                &mut self.data_ctx.request_seq,
             )),
             SessionKeyType::ResponseDataKey => Ok((
                 self.data_ctx
                     .response_data_secret
                     .as_ref()
                     .ok_or(mcu_error::codes::INVARIANT)?,
-                self.data_ctx.response_seq,
+                &mut self.data_ctx.response_seq,
             )),
             _ => Err(mcu_error::codes::INVARIANT),
-        }
-    }
-
-    fn increment_seq(&mut self, key_type: SessionKeyType) {
-        match key_type {
-            SessionKeyType::RequestHandshakeKey => self.handshake_ctx.request_seq += 1,
-            SessionKeyType::ResponseHandshakeKey => self.handshake_ctx.response_seq += 1,
-            SessionKeyType::RequestDataKey => self.data_ctx.request_seq += 1,
-            SessionKeyType::ResponseDataKey => self.data_ctx.response_seq += 1,
-            _ => {}
         }
     }
 }
