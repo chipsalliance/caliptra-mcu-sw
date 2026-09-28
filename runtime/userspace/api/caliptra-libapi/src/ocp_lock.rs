@@ -221,8 +221,8 @@ pub struct Certificate<'a> {
     pub signature: BitStringRef<'a>,
 }
 
-#[async_trait]
-pub trait OcpLockSigner: Send + Sync {
+#[allow(async_fn_in_trait)]
+pub trait OcpLockSigner {
     async fn sign(&self, label: &[u8], data: &[u8], signature: &mut [u8]) -> CaliptraApiResult<()>;
     fn signature_size(&self) -> usize;
     fn algorithm(&self) -> EndorsementAlgorithm;
@@ -380,13 +380,13 @@ impl<'a> OcpLock<'a> {
         Ok(())
     }
 
-    /// TODO(clundin): Support ML-DSA endorsement
-    /// Wraps `hpke_handle` with an x509 certificate The certificate is signed by the MCU FW DPE context.
-    pub async fn get_hpke_public_key_x509(
+    /// Wraps `hpke_handle` with an X.509 certificate signed by the MCU FW DPE
+    /// context using the signer's negotiated endorsement algorithm.
+    pub async fn get_hpke_public_key_x509<S: OcpLockSigner>(
         &self,
         handle: &HpkeHandle,
         cert_buf: &mut [u8],
-        signer: &dyn OcpLockSigner,
+        signer: &S,
     ) -> CaliptraApiResult<usize> {
         let mut req = OcpLockGetHpkePubKeyReq {
             hpke_handle: handle.handle,

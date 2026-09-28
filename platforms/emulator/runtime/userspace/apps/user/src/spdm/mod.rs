@@ -14,6 +14,7 @@ mod pci_sig_vdm;
 
 #[cfg(feature = "test-doe-spdm-tdisp-ide-validator")]
 use self::pci_sig_vdm::{emulated_ide_km::EmulatedIdeDriver, emulated_tdisp::EmulatedTdispDriver};
+use crate::boot_scratch::BootScratch;
 #[cfg(feature = "doe")]
 use caliptra_mcu_libsyscall_caliptra::doe;
 use caliptra_mcu_libsyscall_caliptra::mci::Mci;
@@ -258,9 +259,41 @@ fn measurement_provider(
     )
 }
 
-/// Spawn SPDM responder tasks after [`crate::cert_store::boot_init`] succeeds.
-pub(crate) fn spawn_spdm_tasks(spawner: &Spawner) {
+#[repr(C, align(64))]
+struct MctpScratch([u8; MCTP_SPDM_SCRATCH_SIZE]);
+
+/// MCTP responder pool, borrowed during boot initialization before the responder starts.
+static mut MCTP_SCRATCH: MctpScratch = MctpScratch([0u8; MCTP_SPDM_SCRATCH_SIZE]);
+
+const _: () = assert!(
+    MCTP_SPDM_SCRATCH_SIZE >= crate::cert_store::BOOT_SCRATCH_SIZE,
+    "MCTP SPDM scratch pool is too small for certificate-store boot"
+);
+
+/// Borrows the idle MCTP task pool for boot initialization.
+///
+/// # Safety
+///
+/// Call only before the MCTP responder starts, and move the returned owner into
+/// [`spawn_spdm_tasks`] after boot initialization. Do not create another owner
+/// while the returned value is alive.
+pub(crate) unsafe fn borrow_boot_scratch() -> BootScratch {
+    // SAFETY: the pool is 64-byte aligned, and the caller keeps the responder
+    // from starting until ownership is moved into it.
+    BootScratch::new(
+        NonNull::new_unchecked(core::ptr::addr_of_mut!(MCTP_SCRATCH).cast::<u8>()),
+        MCTP_SPDM_SCRATCH_SIZE,
+    )
+}
+
+/// Spawn SPDM responder tasks after [`crate::cert_store::boot_init`] succeeds,
+/// consuming the boot owner before the MCTP responder starts.
+pub(crate) fn spawn_spdm_tasks(spawner: &Spawner, boot_owner: BootScratch) {
     let mut cw = Console::<DefaultSyscalls>::writer();
+
+    // Dropping `BootScratch` zeroizes the borrowed static pool before the
+    // responder reuses it.
+    drop(boot_owner);
 
     if spawner.spawn(spdm_mctp_responder()).is_err() {
         crate::log_error!(cw, "SPDM: Failed to spawn MCTP responder");
@@ -277,10 +310,8 @@ pub(crate) fn spawn_spdm_tasks(spawner: &Spawner) {
 async fn spdm_mctp_responder() {
     let mut cw = Console::<DefaultSyscalls>::writer();
 
-    #[repr(C, align(64))]
-    struct ScratchBuf([u8; MCTP_SPDM_SCRATCH_SIZE]);
-    static mut MCTP_SCRATCH: ScratchBuf = ScratchBuf([0u8; MCTP_SPDM_SCRATCH_SIZE]);
-    // SAFETY: this task is the sole owner of `MCTP_SCRATCH`.
+    // SAFETY: `spawn_spdm_tasks` dropped the sole boot owner before scheduling
+    // this task, so the responder is now the sole owner of `MCTP_SCRATCH`.
     let scratch_ptr: NonNull<u8> = unsafe { NonNull::new_unchecked(MCTP_SCRATCH.0.as_mut_ptr()) };
     debug_assert_eq!(scratch_ptr.as_ptr() as usize % BITMAP_SLOT_SIZE, 0);
 

@@ -509,15 +509,17 @@ pub trait CaliptraCmdHandler {
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 
-    /// Retrieves the OCP Lock endorsement certificate.
+    /// Retrieves the OCP Lock endorsement certificate using task-local scratch
+    /// for the signing request and response.
     #[cfg(feature = "ocp-lock")]
-    async fn get_ocp_lock_endorsement_cert(
+    async fn get_ocp_lock_endorsement_cert<Alloc: ApiAlloc>(
         &self,
+        alloc: &Alloc,
         hpke_handle: &HpkeHandle,
         algorithm: EndorsementAlgorithm,
         cert_buf: &mut [u8],
     ) -> CaliptraCmdResult<usize> {
-        let _ = (hpke_handle, algorithm, cert_buf);
+        let _ = (alloc, hpke_handle, algorithm, cert_buf);
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 
@@ -531,16 +533,18 @@ pub trait CaliptraCmdHandler {
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 
-    /// Retrieves the OCP Lock Epoch Key Report.
+    /// Retrieves the OCP Lock Epoch Key Report using task-local scratch for the
+    /// signing request and response.
     #[cfg(feature = "ocp-lock")]
-    async fn get_ocp_lock_epoch_key_report(
+    async fn get_ocp_lock_epoch_key_report<Alloc: ApiAlloc>(
         &self,
+        alloc: &Alloc,
         nonce: &[u8; 32],
         sek_state: SekState,
         algorithm: EndorsementAlgorithm,
         report_buf: &mut [u8],
     ) -> CaliptraCmdResult<usize> {
-        let _ = (nonce, sek_state, algorithm, report_buf);
+        let _ = (alloc, nonce, sek_state, algorithm, report_buf);
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 
