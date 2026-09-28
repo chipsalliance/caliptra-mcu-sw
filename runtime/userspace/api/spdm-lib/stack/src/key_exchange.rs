@@ -41,7 +41,7 @@ const ECDH_P384_ENCRYPTED_CONTEXT_SIZE: usize = 76;
 ///
 /// Covers: hash scratch, nonce, measurement summary hash, opaque data, verify_data.
 /// The signature is allocated directly into the response buffer's signature slot.
-const KEY_EXCHANGE_WORKSPACE_SIZE: usize = SHA384_HASH_SIZE
+pub(crate) const KEY_EXCHANGE_WORKSPACE_SIZE: usize = SHA384_HASH_SIZE
     + KEY_EXCHANGE_RANDOM_DATA_LEN
     + SHA384_HASH_SIZE
     + OPAQUE_VERSION_SELECTION_SIZE
