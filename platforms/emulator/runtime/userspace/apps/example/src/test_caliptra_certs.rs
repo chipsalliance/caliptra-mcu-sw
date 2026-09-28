@@ -283,7 +283,7 @@ const TEST_NONCE: [u8; 32] = [
 ];
 
 pub async fn test_get_attested_csr() {
-    for key_id in [0x0001, 0x0002, 0x0003] {
+    for key_id in [0x0000, 0x0001, 0x0002, 0x0003] {
         let csr = unsafe { &mut ATTESTED_CSR_BUFFER };
         let ecc_size = get_attested_csr_ecc384(key_id, &TEST_NONCE, csr)
             .await

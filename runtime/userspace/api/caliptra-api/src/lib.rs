@@ -56,6 +56,8 @@ pub mod image_loader;
 mod import;
 pub mod mailbox;
 #[cfg(feature = "mailbox-io")]
+mod ml_kem;
+#[cfg(feature = "mailbox-io")]
 mod mldsa;
 #[cfg(feature = "mailbox-io")]
 mod owner_auth_manifest;
@@ -112,7 +114,7 @@ pub use dma::{mcu_sram_to_axi_dma, AxiDmaTarget};
 #[cfg(feature = "mailbox-io")]
 pub use dpe::{
     dpe_certify_key, dpe_certify_key_cert_size, dpe_certify_key_cert_slice,
-    dpe_certify_key_mldsa87_pubkey, dpe_certify_key_pubkey, dpe_derive_context,
+    dpe_certify_key_mldsa87_tr, dpe_certify_key_pubkey, dpe_derive_context,
     dpe_derive_context_exported_cdi, dpe_get_cert_chain_chunk, dpe_get_tagged_tci,
     dpe_rotate_context_default, dpe_sign, dpe_sign_ecc_p384, dpe_sign_mldsa87, dpe_tag_tci,
     dpe_update_context_measurement, walk_dpe_chain, DpeChainSink, DpeContextHandle,
@@ -120,8 +122,8 @@ pub use dpe::{
     DpeDeriveContextResult, DpeProfile, DpeTaggedTci, DpeUpdateContextMeasurementParams,
     DpeUpdateContextMeasurementResult, SigningInput, CERTIFY_KEY_MLDSA87_PUBKEY_SIZE,
     DPE_CONTEXT_HANDLE_SIZE, DPE_LABEL_LEN, DPE_MAX_CHUNK_SIZE, DPE_MAX_LEAF_CERT_SIZE,
-    DPE_MLDSA87_MU_SIZE, DPE_MLDSA87_SIGNATURE_SIZE, DPE_P384_DIGEST_SIZE, DPE_P384_SIGNATURE_SIZE,
-    DPE_TCI_MEASUREMENT_SIZE, EXPORTED_CDI_SIZE,
+    DPE_MLDSA87_MU_SIZE, DPE_MLDSA87_SIGNATURE_SIZE, DPE_MLDSA87_SIGN_SCRATCH_PEAK,
+    DPE_P384_DIGEST_SIZE, DPE_P384_SIGNATURE_SIZE, DPE_TCI_MEASUREMENT_SIZE, EXPORTED_CDI_SIZE,
 };
 #[cfg(feature = "mailbox-io")]
 pub use ecdh::{
@@ -139,6 +141,11 @@ pub use hmac::{cm_hmac, cm_hmac_sha512, hkdf_expand, hkdf_extract, HkdfSalt, CMB
 pub use image_loader::{core_image_info, GetImageInfoResp};
 #[cfg(feature = "mailbox-io")]
 pub use import::{cm_delete, cm_import};
+#[cfg(feature = "mailbox-io")]
+pub use ml_kem::{
+    mlkem_decapsulate, mlkem_encapsulate, mlkem_key_gen, MLKEM1024_CIPHERTEXT_SIZE,
+    MLKEM1024_ENCAPS_KEY_SIZE,
+};
 #[cfg(feature = "mailbox-io")]
 pub use mldsa::{
     mldsa87_compute_mu, mldsa87_compute_tr, MLDSA87_CONTEXT_MAX_SIZE, MLDSA87_TR_SIZE,

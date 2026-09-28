@@ -105,9 +105,7 @@ fn external_command_capabilities() -> ExternalCommandCapabilities {
 /// number.
 const fn evidence_len(format: EvidenceFormat, algorithm: AsymAlgo) -> usize {
     match (format, algorithm) {
-        // The EAT signer emits only ES384 today, so there is no ML-DSA EAT
-        // length to report yet.
-        (EvidenceFormat::OcpEat, AsymAlgo::EccP384) => SIGNED_OCP_EAT_MAX_SIZE,
+        (EvidenceFormat::OcpEat, AsymAlgo::EccP384 | AsymAlgo::Mldsa87) => SIGNED_OCP_EAT_MAX_SIZE,
         #[cfg(feature = "pcr-quote")]
         (EvidenceFormat::PcrQuote, AsymAlgo::EccP384) => PCR_QUOTE_ECC384_BUF_LEN,
         #[cfg(feature = "pcr-quote")]
@@ -164,7 +162,7 @@ fn authorized_subcommand_capabilities() -> AuthorizedSubcommandCapabilities {
     if cfg!(feature = "spdm") {
         capabilities |= AuthorizedSubcommandCapabilities::GET_AUTH_CHALLENGE
             | AuthorizedSubcommandCapabilities::PROVISION_VENDOR_PK_HASH
-            | AuthorizedSubcommandCapabilities::FUSE_INCREASE_CALIPTRA_MIN_SVN
+            | AuthorizedSubcommandCapabilities::FUSE_INCREASE_MIN_SVN
             | AuthorizedSubcommandCapabilities::PROGRAM_FIELD_ENTROPY
             | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PUBLIC_KEY
             | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PK_HASH
@@ -274,6 +272,7 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         capabilities.authorized_subcommands =
             encode_capabilities(authorized_subcommand_capabilities().bits());
         capabilities.reserved.fill(0);
+        capabilities.vendor.fill(0);
         Ok(())
     }
 
@@ -350,9 +349,10 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
     async fn increase_caliptra_min_svn<Alloc: ApiAlloc>(
         &self,
         alloc: &Alloc,
+        target: caliptra_mcu_mbox_common::messages::SvnTarget,
         svn: u32,
     ) -> CaliptraCmdResult<()> {
-        device_ops::increase_caliptra_min_svn(alloc, svn).await
+        device_ops::increase_min_svn(alloc, target, svn).await
     }
 
     async fn revoke_vendor_pub_key<Alloc: ApiAlloc>(
@@ -638,7 +638,7 @@ mod tests {
             authorized.contains(
                 AuthorizedSubcommandCapabilities::GET_AUTH_CHALLENGE
                     | AuthorizedSubcommandCapabilities::PROVISION_VENDOR_PK_HASH
-                    | AuthorizedSubcommandCapabilities::FUSE_INCREASE_CALIPTRA_MIN_SVN
+                    | AuthorizedSubcommandCapabilities::FUSE_INCREASE_MIN_SVN
                     | AuthorizedSubcommandCapabilities::PROGRAM_FIELD_ENTROPY
                     | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PUBLIC_KEY
                     | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PK_HASH

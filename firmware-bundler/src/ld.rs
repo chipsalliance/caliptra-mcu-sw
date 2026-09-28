@@ -91,8 +91,8 @@ pub fn generate_maximal_link_scripts(
 
 fn split_sram_for_sizing(mut memory: Memory) -> Result<(Memory, Memory)> {
     // Initialized data is also stored in the instruction image, so reserve
-    // 9/16 of SRAM for instructions while retaining 7/16 for runtime data.
-    let split = (memory.offset + memory.size / 2 + memory.size / 16)
+    // 10/16 of SRAM for instructions while retaining 6/16 for runtime data.
+    let split = (memory.offset + memory.size / 2 + memory.size / 8)
         .next_multiple_of(TOCK_ALIGNMENT)
         - memory.offset;
     let instructions = memory.consume(split)?;
@@ -197,6 +197,17 @@ impl<'a> LdGeneration<'a> {
             });
         }
 
+        // When apps exist, provide a non-zero application memory region so that
+        // linker symbols like _sapps and _eapps resolve to full 32-bit addresses
+        // during sizing. Otherwise, they resolve to 0 in Pass 1, emitting 4-byte
+        // `li` instructions instead of 8-byte `lui + mv` pairs, which causes the
+        // kernel's .text section to expand by 16 bytes in Pass 2.
+        let first_app_instructions = if self.manifest.apps.is_empty() {
+            None
+        } else {
+            Some(itcm.clone())
+        };
+
         let runtime_binary = self.manifest.runtime.inner();
         let content = if self.manifest.runtime.is_bare_metal() {
             let mut combined = itcm.clone();
@@ -205,7 +216,7 @@ impl<'a> LdGeneration<'a> {
         } else {
             self.kernel_linker_content(
                 itcm.clone(),
-                None,
+                first_app_instructions,
                 dtcm.clone(),
                 itcm.clone(),
                 dtcm.clone(),
@@ -762,9 +773,9 @@ mod tests {
         let (instructions, data) = split_sram_for_sizing(memory).unwrap();
 
         assert_eq!(instructions.offset, 0xa8c0_0000);
-        assert_eq!(instructions.size, 0x4_8000);
-        assert_eq!(data.offset, 0xa8c4_8000);
-        assert_eq!(data.size, 0x3_8000);
+        assert_eq!(instructions.size, 0x5_0000);
+        assert_eq!(data.offset, 0xa8c5_0000);
+        assert_eq!(data.size, 0x3_0000);
     }
 
     #[test]

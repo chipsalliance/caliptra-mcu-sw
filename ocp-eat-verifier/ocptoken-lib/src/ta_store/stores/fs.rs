@@ -261,14 +261,15 @@ mod tests {
             Path::new(env!("CARGO_MANIFEST_DIR")).join("../ocptoken/test-data/ta-store");
         let store = FsTrustAnchorStore::load(&store_path).unwrap();
 
-        assert_eq!(store.roots.len(), 1);
-        let root = X509::from_der(&store.roots[0]).unwrap();
-        assert!(store.is_trusted_root(&root).unwrap());
-
-        let root_der = store.roots[0].to_vec();
-        assert_eq!(
-            store.authenticate_chain(&[root_der.clone()]).unwrap(),
-            root_der
-        );
+        assert_eq!(store.roots.len(), 2);
+        for root_der in &store.roots {
+            let root = X509::from_der(root_der).unwrap();
+            assert!(store.is_trusted_root(&root).unwrap());
+            // Authenticate each root cert chain against the trust anchor store
+            assert_eq!(
+                store.authenticate_chain(&[root_der.to_vec()]).unwrap(),
+                root_der.to_vec()
+            );
+        }
     }
 }

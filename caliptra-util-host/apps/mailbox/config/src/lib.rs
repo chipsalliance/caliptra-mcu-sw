@@ -4,10 +4,18 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
-pub const DEFAULT_DEVICE_CAPABILITIES: [u8; 36] = [
-    0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0, 2, 0, 0xEF, 0, 0,
-    0, 9, 0, 0, 0, 0,
-];
+const DEVICE_CAPABILITIES_SIZE: usize = 64;
+
+pub const DEFAULT_DEVICE_CAPABILITIES: [u8; DEVICE_CAPABILITIES_SIZE] = {
+    let mut capabilities = [0; DEVICE_CAPABILITIES_SIZE];
+    capabilities[7] = 1;
+    capabilities[15] = 1;
+    capabilities[23] = 0xFF;
+    capabilities[25] = 2;
+    capabilities[27] = 0xEF;
+    capabilities[31] = 9;
+    capabilities
+};
 
 /// Shared configuration for caliptra-util-host tests
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,7 +32,7 @@ pub struct TestConfig {
     #[serde(default)]
     pub provision_vendor_pk_hash: ProvisionVendorPkHashConfig,
     #[serde(default)]
-    pub increase_caliptra_min_svn: IncreaseCaliptraMinSvnConfig,
+    pub increase_min_svn: IncreaseMinSvnConfig,
     #[serde(default)]
     pub revoke_vendor_pub_key: RevokeVendorPubKeyConfig,
     #[serde(default)]
@@ -61,11 +69,13 @@ pub struct ProvisionVendorPkHashConfig {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct IncreaseCaliptraMinSvnConfig {
+pub struct IncreaseMinSvnConfig {
     #[serde(default)]
     pub enabled: bool,
     #[serde(default)]
     pub flags: u32,
+    #[serde(default)]
+    pub target: u32,
     #[serde(default)]
     pub svn: u32,
 }
@@ -131,29 +141,35 @@ pub struct ServerConfig {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DeviceCapabilitiesConfig {
     #[serde(with = "capabilities_serde")]
-    pub capabilities: [u8; 36],
+    pub capabilities: [u8; DEVICE_CAPABILITIES_SIZE],
     pub fips_status: u32,
 }
 
 mod capabilities_serde {
+    use super::DEVICE_CAPABILITIES_SIZE;
     use serde::{de::Error, Deserialize, Deserializer, Serialize, Serializer};
 
-    pub fn serialize<S>(capabilities: &[u8; 36], serializer: S) -> Result<S::Ok, S::Error>
+    pub fn serialize<S>(
+        capabilities: &[u8; DEVICE_CAPABILITIES_SIZE],
+        serializer: S,
+    ) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
     {
         capabilities.as_slice().serialize(serializer)
     }
 
-    pub fn deserialize<'de, D>(deserializer: D) -> Result<[u8; 36], D::Error>
+    pub fn deserialize<'de, D>(deserializer: D) -> Result<[u8; DEVICE_CAPABILITIES_SIZE], D::Error>
     where
         D: Deserializer<'de>,
     {
         let capabilities = Vec::<u8>::deserialize(deserializer)?;
         let len = capabilities.len();
-        capabilities
-            .try_into()
-            .map_err(|_| D::Error::custom(format!("expected 36 capability bytes, got {len}")))
+        capabilities.try_into().map_err(|_| {
+            D::Error::custom(format!(
+                "expected {DEVICE_CAPABILITIES_SIZE} capability bytes, got {len}"
+            ))
+        })
     }
 }
 
@@ -269,7 +285,7 @@ impl Default for TestConfig {
             }),
             fe_prog: FeProgConfig::default(),
             provision_vendor_pk_hash: ProvisionVendorPkHashConfig::default(),
-            increase_caliptra_min_svn: IncreaseCaliptraMinSvnConfig::default(),
+            increase_min_svn: IncreaseMinSvnConfig::default(),
             revoke_vendor_pub_key: RevokeVendorPubKeyConfig::default(),
             revoke_vendor_pk_hash: RevokeVendorPkHashConfig::default(),
             fuse_lock_partition: FuseLockPartitionConfig::default(),
@@ -286,9 +302,11 @@ mod tests {
         let config: TestConfig = toml::from_str(include_str!("../../test-config.toml")).unwrap();
         let capabilities = config.device_capabilities.unwrap().capabilities;
 
-        assert_eq!(capabilities.len(), 36);
+        assert_eq!(capabilities.len(), DEVICE_CAPABILITIES_SIZE);
         assert_eq!(&capabilities[20..24], &0x0000_00FFu32.to_be_bytes());
         assert_eq!(&capabilities[24..28], &0x0002_00EFu32.to_be_bytes());
         assert_eq!(&capabilities[28..32], &0x0000_0009u32.to_be_bytes());
+        assert_eq!(&capabilities[32..48], &[0; 16]);
+        assert_eq!(&capabilities[48..64], &[0; 16]);
     }
 }

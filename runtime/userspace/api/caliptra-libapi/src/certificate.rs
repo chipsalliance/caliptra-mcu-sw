@@ -163,6 +163,8 @@ impl CertContext {
         self.get_ecc384_cert::<GetRtAliasEcc384CertReq>(cert).await
     }
 
+    /// Issues `GET_ATTESTED_*_CSR` to discover supported identity keys (`key_id == 0`)
+    /// or export an attested CSR for a specific key (`key_id > 0`).
     pub async fn get_attested_csr(
         &mut self,
         algo: AsymAlgo,

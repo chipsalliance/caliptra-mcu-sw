@@ -25,9 +25,18 @@ static MEASUREMENT_API: Mutex<
     Option<MeasurementApi<'static, DefaultSyscalls>>,
 > = Mutex::new(None);
 
-pub const ATTESTATION_P384_DIGEST_SIZE: usize = 48;
+pub const ATTESTATION_KID_SIZE: usize = 48;
+pub const ATTESTATION_P384_DIGEST_SIZE: usize = ATTESTATION_KID_SIZE;
 pub const ATTESTATION_P384_SIGNATURE_SIZE: usize = 96;
+pub const ATTESTATION_MLDSA87_SIGNATURE_SIZE: usize = mcu_caliptra_api::DPE_MLDSA87_SIGNATURE_SIZE;
 pub const EXPORTED_CDI_SIZE: usize = 32;
+
+/// Target algorithm for measurement evidence signing.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum MeasurementSigningAlgo {
+    EccP384,
+    MlDsa87,
+}
 
 /// Builds evidence token buffers and the to-be-signed digest while Measurement
 /// API keeps measurement state locked.
@@ -36,27 +45,36 @@ pub const EXPORTED_CDI_SIZE: usize = 32;
 /// [`measure_and_sign_evidence`] holds the global Measurement API lock while
 /// invoking this hook.
 pub trait EvidenceBuilder<A: ApiAlloc> {
+    /// Return the target signing algorithm.
+    fn signing_algo(&self) -> MeasurementSigningAlgo {
+        MeasurementSigningAlgo::EccP384
+    }
+
     /// Return the final token `kid` slot.
-    fn kid_buffer_mut(&mut self) -> McuResult<&mut [u8; ATTESTATION_P384_DIGEST_SIZE]>;
+    fn kid_buffer_mut(&mut self) -> McuResult<&mut [u8; ATTESTATION_KID_SIZE]>;
+
+    /// Pass the ML-DSA-87 public-key hash `tr` to the builder.
+    /// Only called when `signing_algo() == MeasurementSigningAlgo::MlDsa87`.
+    fn set_mldsa87_tr(&mut self, _tr: &[u8; mcu_caliptra_api::MLDSA87_TR_SIZE]) -> McuResult<()> {
+        Ok(())
+    }
 
     /// Return the final concise-evidence slot.
     fn concise_evidence_buffer_mut(&mut self) -> McuResult<&mut [u8]>;
 
-    /// Build the evidence payload from the concise evidence already written,
-    /// write the signature digest into `digest`, and return the payload length.
-    async fn digest_for_signature(
+    /// Build the evidence payload and signature digest/mu from concise evidence.
+    /// Writes the SHA-384 digest (48 bytes) for EccP384 or the external `mu`
+    /// (64 bytes) for MlDsa87 into `signing_input`.
+    async fn prepare_signing_input(
         &mut self,
         alloc: &A,
         concise_evidence_len: usize,
-        digest: &mut [u8; ATTESTATION_P384_DIGEST_SIZE],
+        signing_input: &mut [u8],
     ) -> McuResult<usize>;
 
     /// Finalize the evidence layout for `payload_len` and return the final
     /// token length plus the final signature slot.
-    fn signature_buffer_mut(
-        &mut self,
-        payload_len: usize,
-    ) -> McuResult<(usize, &mut [u8; ATTESTATION_P384_SIGNATURE_SIZE])>;
+    fn signature_buffer_mut(&mut self, payload_len: usize) -> McuResult<(usize, &mut [u8])>;
 }
 
 /// Reset classification passed to `measurement_boot_init`.
@@ -208,6 +226,7 @@ pub async fn sign<A: ApiAlloc>(
 /// `pki_entity_slot` selects the endorsement hierarchy for the signing key.
 /// TODO: it is unused while every slot signs with the same DPE leaf key; pass
 /// it to the cert store once signing is slot-aware.
+#[inline(never)]
 pub async fn measure_and_sign_evidence<A, B>(
     alloc: &A,
     key_label: &[u8; DPE_LABEL_LEN],
@@ -223,9 +242,18 @@ where
         .as_mut()
         .ok_or(MeasurementApiError::AttestationDisabled)?;
 
-    {
-        let kid = evidence_builder.kid_buffer_mut()?;
-        api.leaf_kid(alloc, key_label, kid).await?;
+    let algo = evidence_builder.signing_algo();
+    match algo {
+        MeasurementSigningAlgo::EccP384 => {
+            let kid = evidence_builder.kid_buffer_mut()?;
+            api.leaf_kid(alloc, key_label, kid).await?;
+        }
+        MeasurementSigningAlgo::MlDsa87 => {
+            let kid = evidence_builder.kid_buffer_mut()?;
+            let mut tr = [0u8; mcu_caliptra_api::MLDSA87_TR_SIZE];
+            api.leaf_kid_and_tr(alloc, key_label, kid, &mut tr).await?;
+            evidence_builder.set_mldsa87_tr(&tr)?;
+        }
     }
     let concise_evidence_len = {
         let concise_evidence = evidence_builder.concise_evidence_buffer_mut()?;
@@ -233,24 +261,31 @@ where
             .await?
     };
 
-    let mut sig_digest_buf = alloc.alloc(ATTESTATION_P384_DIGEST_SIZE)?;
-    let sig_digest = sig_digest_buf
-        .get_mut(..ATTESTATION_P384_DIGEST_SIZE)
-        .and_then(|buf| buf.first_chunk_mut::<ATTESTATION_P384_DIGEST_SIZE>())
-        .ok_or(mcu_error::codes::INTERNAL_BUG)?;
+    let mut sig_buf = [0u8; mcu_caliptra_api::DPE_MLDSA87_MU_SIZE];
     let payload_len = evidence_builder
-        .digest_for_signature(alloc, concise_evidence_len, sig_digest)
+        .prepare_signing_input(alloc, concise_evidence_len, &mut sig_buf)
         .await?;
     let (evidence_len, signature) = evidence_builder.signature_buffer_mut(payload_len)?;
-    let sig_len = api
-        .sign(
-            alloc,
-            key_label,
-            SigningInput::EccP384Digest(sig_digest),
-            signature,
-        )
-        .await?;
-    if sig_len != signature.len() {
+
+    let (signing_input, expected_sig_len) = match algo {
+        MeasurementSigningAlgo::EccP384 => {
+            let digest = sig_buf
+                .get(..ATTESTATION_P384_DIGEST_SIZE)
+                .and_then(|s| s.first_chunk::<ATTESTATION_P384_DIGEST_SIZE>())
+                .ok_or(mcu_error::codes::INTERNAL_BUG)?;
+            (
+                SigningInput::EccP384Digest(digest),
+                ATTESTATION_P384_SIGNATURE_SIZE,
+            )
+        }
+        MeasurementSigningAlgo::MlDsa87 => (
+            SigningInput::Mldsa87Mu(&sig_buf),
+            ATTESTATION_MLDSA87_SIGNATURE_SIZE,
+        ),
+    };
+
+    let sig_len = api.sign(alloc, key_label, signing_input, signature).await?;
+    if sig_len != expected_sig_len {
         return Err(mcu_error::codes::INTERNAL_BUG);
     }
     Ok(evidence_len)

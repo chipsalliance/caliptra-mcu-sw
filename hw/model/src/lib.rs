@@ -954,6 +954,7 @@ fn reg_access_test() {
         Some(&binaries.caliptra_fw),
         Some(&binaries.soc_manifest),
         Some(&binaries.mcu_runtime),
+        None,
     );
 
     let mut hw = new(InitParams {

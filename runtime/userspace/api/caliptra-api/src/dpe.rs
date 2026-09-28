@@ -14,11 +14,13 @@ use core::{
     mem::{offset_of, size_of},
     ops::Deref,
 };
-use mcu_error::codes::{INTERNAL_BUG, INVARIANT, NOT_IMPLEMENTED};
+use mcu_error::codes::{INTERNAL_BUG, INVARIANT};
 use mcu_error::McuResult;
 use zerocopy::{little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
 
 use crate::dma::mcu_sram_to_axi_dma;
+use crate::mldsa::{mldsa87_compute_mu, MLDSA87_CONTEXT_MAX_SIZE, MLDSA87_TR_SIZE};
+use crate::shake::shake256_hash;
 use crate::slice::{checked_slice, checked_slice_mut, copy_bytes, internal_slice};
 use crate::wire::{
     calc_checksum, mbox_execute, populate_checksum, CMD_CERTIFY_KEY_CHUNKS, CMD_DPE_GET_TAGGED_TCI,
@@ -91,21 +93,21 @@ pub const DPE_MLDSA87_SIGNATURE_SIZE: usize = 4627;
 pub const DPE_P384_DIGEST_SIZE: usize = 48;
 
 /// Typed input to DPE-backed attestation signing.
-///
-/// Caliptra 2.0 accepts a raw ML-DSA message, while Caliptra 2.1 accepts an
-/// externally computed `mu`. These forms are intentionally distinct because
-/// they do not have identical context or message-size semantics.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub enum SigningInput<'a> {
     /// SHA-384 digest for ECDSA P-384.
     EccP384Digest(&'a [u8; DPE_P384_DIGEST_SIZE]),
-    /// Raw ML-DSA-87 message accepted by the Caliptra 2.0 DPE interface.
-    ///
-    /// The 2.0 form uses an implicit empty FIPS 204 context and limits the
-    /// message to 1024 bytes.
-    Mldsa87RawMessage(&'a [u8]),
-    /// External ML-DSA-87 `mu` accepted by the Caliptra 2.1 DPE interface.
-    Mldsa87ExternalMu(&'a [u8; DPE_MLDSA87_MU_SIZE]),
+    /// Pure ML-DSA-87 message with an explicit FIPS 204 signing context.
+    Mldsa87Message {
+        /// FIPS 204 `ctx`, at most [`MLDSA87_CONTEXT_MAX_SIZE`] bytes.
+        context: &'a [u8],
+        /// SPDM prefix bound by the signature.
+        prefix: &'a [u8],
+        /// Transcript hash bound by the signature.
+        hash: &'a [u8],
+    },
+    /// Precomputed external `mu` for ML-DSA-87.
+    Mldsa87Mu(&'a [u8; DPE_MLDSA87_MU_SIZE]),
 }
 
 impl SigningInput<'_> {
@@ -113,10 +115,11 @@ impl SigningInput<'_> {
     pub const fn profile(&self) -> DpeProfile {
         match self {
             Self::EccP384Digest(_) => DpeProfile::P384Sha384,
-            Self::Mldsa87RawMessage(_) | Self::Mldsa87ExternalMu(_) => DpeProfile::Mldsa87,
+            Self::Mldsa87Message { .. } | Self::Mldsa87Mu(_) => DpeProfile::Mldsa87,
         }
     }
 }
+
 // ---------------------------------------------------------------------------
 // Slim wire types
 // ---------------------------------------------------------------------------
@@ -369,6 +372,20 @@ pub const CERTIFY_KEY_FLAG_USE_MLDSA: u32 =
 const CERTIFY_KEY_CHUNKS_REQ_LEN: usize = size_of::<caliptra_api::mailbox::CertifyKeyChunksReq>();
 const CERTIFY_KEY_CHUNKS_RESP_INFO_LEN: usize =
     size_of::<caliptra_api::mailbox::CertifyKeyChunksRespInfo>();
+/// Peak scratch allocation during ML-DSA-87 signing: max of CertifyKey phase and Sign phase.
+pub const DPE_MLDSA87_SIGN_SCRATCH_PEAK: usize = {
+    let certify_key_phase = CERTIFY_KEY_CHUNKS_REQ_LEN
+        + CERTIFY_KEY_CHUNKS_RESP_INFO_LEN
+        + CERTIFY_KEY_MLDSA87_RESP_PREFIX_LEN
+        + crate::shake::SHAKE256_CONTEXT_SIZE;
+    let sign_phase = SIGN_MLDSA87_REQ_LEN + SIGN_MLDSA87_RESP_LEN;
+    if certify_key_phase > sign_phase {
+        certify_key_phase
+    } else {
+        sign_phase
+    }
+};
+
 const CERTIFY_KEY_CHUNKS_MAX_REQ_SIZE: usize =
     if CERTIFY_KEY_MLDSA87_RESP_PREFIX_LEN > DPE_MAX_CHUNK_SIZE {
         CERTIFY_KEY_MLDSA87_RESP_PREFIX_LEN
@@ -464,6 +481,8 @@ const _: () = assert!(CERTIFY_KEY_MLDSA87_PUBKEY_SIZE == 2592);
 const _: () = assert!(CERTIFY_KEY_MLDSA87_RESP_PREFIX_LEN == 2624);
 const _: () = assert!(CERTIFY_KEY_CHUNKS_REQ_LEN == 92);
 const _: () = assert!(CERTIFY_KEY_CHUNKS_RESP_INFO_LEN == 32);
+const _: () =
+    assert!(DPE_MLDSA87_SIGN_SCRATCH_PEAK == SIGN_MLDSA87_REQ_LEN + SIGN_MLDSA87_RESP_LEN);
 const _: () = assert!(size_of::<RotateCtxCmd>() == DPE_CONTEXT_HANDLE_SIZE + 4);
 const _: () = assert!(size_of::<NewHandleRespBody>() == 12 + DPE_CONTEXT_HANDLE_SIZE);
 const _: () = assert!(ROTATE_CTX_REQ_LEN == 8 + 12 + 20);
@@ -1027,14 +1046,23 @@ pub async fn dpe_certify_key_pubkey<A: ApiAlloc>(
     Ok(chunk.next_handle)
 }
 
-/// Return the raw 2,592-byte ML-DSA-87 public key emitted by DPE
-/// `CertifyKey`, along with the rotated context handle.
+fn extract_certify_key_mldsa87_pubkey(response: &[u8]) -> McuResult<&[u8]> {
+    validate_certify_key_prefix(response, DpeProfile::Mldsa87)?;
+    internal_slice(
+        response,
+        CERTIFY_KEY_RESP_PUBKEY_X_OFF,
+        CERTIFY_KEY_MLDSA87_PUBKEY_SIZE,
+    )
+}
+
+/// Return the ML-DSA-87 public-key hash `tr` emitted by DPE `CertifyKey`,
+/// along with the rotated context handle.
 #[inline(never)]
-pub async fn dpe_certify_key_mldsa87_pubkey<A: ApiAlloc>(
+pub async fn dpe_certify_key_mldsa87_tr<A: ApiAlloc>(
     alloc: &A,
     handle: Option<&DpeContextHandle>,
     label: &[u8; DPE_LABEL_LEN],
-    public_key: &mut [u8; CERTIFY_KEY_MLDSA87_PUBKEY_SIZE],
+    tr: &mut [u8; MLDSA87_TR_SIZE],
 ) -> McuResult<DpeContextHandle> {
     let chunk = certify_key_chunks_response(
         alloc,
@@ -1045,23 +1073,10 @@ pub async fn dpe_certify_key_mldsa87_pubkey<A: ApiAlloc>(
         CERTIFY_KEY_MLDSA87_RESP_PREFIX_LEN,
     )
     .await?;
-    parse_certify_key_mldsa87_pubkey(chunk.chunk()?, public_key)?;
+    let response = chunk.chunk()?;
+    let pubkey = extract_certify_key_mldsa87_pubkey(response)?;
+    shake256_hash(alloc, pubkey, tr).await?;
     Ok(chunk.next_handle)
-}
-
-fn parse_certify_key_mldsa87_pubkey(
-    response: &[u8],
-    public_key: &mut [u8; CERTIFY_KEY_MLDSA87_PUBKEY_SIZE],
-) -> McuResult<()> {
-    validate_certify_key_prefix(response, DpeProfile::Mldsa87)?;
-    copy_bytes(
-        public_key,
-        internal_slice(
-            response,
-            CERTIFY_KEY_RESP_PUBKEY_X_OFF,
-            CERTIFY_KEY_MLDSA87_PUBKEY_SIZE,
-        )?,
-    )
 }
 
 struct CertifyKeyChunk<B> {
@@ -1280,9 +1295,7 @@ pub async fn walk_dpe_chain<A: ApiAlloc, S: DpeChainSink>(
 
 /// Invoke DPE `Sign` for a typed signing input.
 ///
-/// This Caliptra 2.1 implementation supports P-384 digests and ML-DSA-87
-/// external `mu`. Raw ML-DSA-87 messages are represented for API compatibility
-/// with Caliptra 2.0 and return [`NOT_IMPLEMENTED`] here.
+/// Supports P-384 digests and pure ML-DSA-87 messages with context.
 #[inline(never)]
 pub async fn dpe_sign<A: ApiAlloc>(
     alloc: &A,
@@ -1295,11 +1308,44 @@ pub async fn dpe_sign<A: ApiAlloc>(
         SigningInput::EccP384Digest(digest) => {
             dpe_sign_ecc_p384(alloc, handle, label, digest, signature).await
         }
-        SigningInput::Mldsa87RawMessage(_) => Err(NOT_IMPLEMENTED),
-        SigningInput::Mldsa87ExternalMu(mu) => {
-            dpe_sign_mldsa87(alloc, handle, label, mu, signature).await
-        }
+        SigningInput::Mldsa87Message {
+            context,
+            prefix,
+            hash,
+        } => dpe_sign_mldsa87_message(alloc, handle, label, context, prefix, hash, signature).await,
+        SigningInput::Mldsa87Mu(mu) => dpe_sign_mldsa87(alloc, handle, label, mu, signature).await,
     }
+}
+
+/// Sign pure ML-DSA-87 under FIPS 204 `context` over `prefix || hash`.
+#[inline(never)]
+async fn dpe_sign_mldsa87_message<A: ApiAlloc>(
+    alloc: &A,
+    handle: Option<&DpeContextHandle>,
+    label: &[u8; DPE_LABEL_LEN],
+    context: &[u8],
+    prefix: &[u8],
+    hash: &[u8],
+    signature: &mut [u8],
+) -> McuResult<(DpeContextHandle, usize)> {
+    if signature.len() < DPE_MLDSA87_SIGNATURE_SIZE || context.len() > MLDSA87_CONTEXT_MAX_SIZE {
+        return Err(INVARIANT);
+    }
+
+    // Verify scratch pool can hold the Sign response before CertifyKey rotates the handle.
+    drop(alloc.alloc(SIGN_MLDSA87_RESP_LEN)?);
+
+    let (next_handle, mu) = {
+        let mut tr = [0u8; MLDSA87_TR_SIZE];
+        let next_handle = dpe_certify_key_mldsa87_tr(alloc, handle, label, &mut tr).await?;
+
+        let mut mu = [0u8; DPE_MLDSA87_MU_SIZE];
+        mldsa87_compute_mu(alloc, &tr, context, &[prefix, hash], &mut mu).await?;
+
+        (next_handle, mu)
+    };
+
+    dpe_sign_mldsa87(alloc, Some(&next_handle), label, &mu, signature).await
 }
 
 /// Invoke DPE `Sign` (P-384 / SHA-384) for the default context handle
@@ -1831,7 +1877,7 @@ mod tests {
     }
 
     #[test]
-    fn certify_key_mldsa87_pubkey_parser_copies_raw_key() {
+    fn certify_key_mldsa87_pubkey_extractor() {
         let expected_key = [0x5au8; CERTIFY_KEY_MLDSA87_PUBKEY_SIZE];
         let mut response = std::vec![0u8; CERTIFY_KEY_MLDSA87_RESP_PREFIX_LEN];
         response[..4].copy_from_slice(&DPE_RESPONSE_MAGIC.to_le_bytes());
@@ -1840,10 +1886,8 @@ mod tests {
             ..CERTIFY_KEY_RESP_PUBKEY_X_OFF + CERTIFY_KEY_MLDSA87_PUBKEY_SIZE]
             .copy_from_slice(&expected_key);
 
-        let mut public_key = [0u8; CERTIFY_KEY_MLDSA87_PUBKEY_SIZE];
-        parse_certify_key_mldsa87_pubkey(&response, &mut public_key).unwrap();
-
-        assert_eq!(public_key, expected_key);
+        let pubkey = extract_certify_key_mldsa87_pubkey(&response).unwrap();
+        assert_eq!(pubkey, expected_key.as_slice());
     }
 
     #[test]
@@ -2068,7 +2112,6 @@ mod tests {
     #[test]
     fn signing_input_selects_dpe_profile() {
         let digest = [0u8; DPE_P384_DIGEST_SIZE];
-        let message = [0u8; 1];
         let mu = [0u8; DPE_MLDSA87_MU_SIZE];
 
         assert_eq!(
@@ -2076,13 +2119,15 @@ mod tests {
             DpeProfile::P384Sha384
         );
         assert_eq!(
-            SigningInput::Mldsa87RawMessage(&message).profile(),
+            SigningInput::Mldsa87Message {
+                context: b"ctx",
+                prefix: b"prefix",
+                hash: &digest,
+            }
+            .profile(),
             DpeProfile::Mldsa87
         );
-        assert_eq!(
-            SigningInput::Mldsa87ExternalMu(&mu).profile(),
-            DpeProfile::Mldsa87
-        );
+        assert_eq!(SigningInput::Mldsa87Mu(&mu).profile(), DpeProfile::Mldsa87);
     }
 
     #[test]

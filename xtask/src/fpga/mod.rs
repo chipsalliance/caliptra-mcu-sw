@@ -457,6 +457,7 @@ pub(crate) fn fpga_run(args: crate::Commands) -> Result<()> {
         Some(binaries.caliptra_fw.as_slice()),
         Some(binaries.soc_manifest.as_slice()),
         Some(binaries.mcu_runtime.as_slice()),
+        None,
     );
 
     let mut model = ModelFpgaRealtime::new_unbooted(InitParams {

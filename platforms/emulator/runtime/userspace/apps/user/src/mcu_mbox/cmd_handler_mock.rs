@@ -117,16 +117,6 @@ impl CaliptraCmdHandler for NonCryptoCmdHandlerMock {
         CaliptraCmdBackend.fuse_lock_partition(partition).await
     }
 
-    async fn increase_caliptra_min_svn<Alloc: ApiAlloc>(
-        &self,
-        alloc: &Alloc,
-        svn: u32,
-    ) -> CaliptraCmdResult<()> {
-        CaliptraCmdBackend
-            .increase_caliptra_min_svn(alloc, svn)
-            .await
-    }
-
     async fn revoke_vendor_pub_key<Alloc: ApiAlloc>(
         &self,
         alloc: &Alloc,

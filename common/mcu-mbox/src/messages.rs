@@ -2,6 +2,7 @@
 
 pub use caliptra_api::mailbox::{
     HpkeHandle, OcpLockEnumerateHpkeHandlesReq, OcpLockEnumerateHpkeHandlesResp,
+    HpkeHandle, OcpLockEnumerateHpkeHandlesResp, MAX_ATTESTED_CSR_RESP_DATA_SIZE,
 };
 use caliptra_image_types::{ECC384_SCALAR_BYTE_SIZE, MLDSA87_SIGNATURE_BYTE_SIZE};
 use caliptra_mcu_registers_generated::fuses::{
@@ -38,7 +39,7 @@ use zerocopy::{FromBytes, FromZeros, Immutable, IntoBytes, KnownLayout, TryFromB
 pub const MAX_RESP_DATA_SIZE: usize = 4 * 1024;
 pub const MAX_ENDORSEMENT_CERT_SIZE: usize = 12 * 1024;
 pub const MAX_FW_VERSION_STR_LEN: usize = 32;
-pub const DEVICE_CAPS_SIZE: usize = 36;
+pub const DEVICE_CAPS_SIZE: usize = 64;
 pub const DOT_BLOB_SIZE: usize = 168;
 pub const MAX_UUID_SIZE: usize = 32;
 pub const MAX_FUSE_DATA_BYTES: usize = 512;
@@ -122,7 +123,7 @@ impl CommandId {
     pub const MC_ECDSA384_SIG_VERIFY: Self = Self(0x4D45_4356); // "MECV"
     pub const MC_LMS_SIG_VERIFY: Self = Self(0x4D4C_4D56); // "MLMV"
 
-    // MLDSA CMK commands (MML prefix avoids collision with MC_FUSE_INCREASE_CALIPTRA_MIN_SVN "MCMS")
+    // MLDSA CMK commands (MML prefix avoids collision with MC_FUSE_INCREASE_MIN_SVN "MCMS")
     pub const MC_MLDSA_CMK_PUBLIC_KEY: Self = Self(0x4D4D_4C50); // "MMLP"
     pub const MC_MLDSA_CMK_SIGN: Self = Self(0x4D4D_4C53); // "MMLS"
     pub const MC_MLDSA_CMK_VERIFY: Self = Self(0x4D4D_4C56); // "MMLV"
@@ -140,7 +141,7 @@ impl CommandId {
     pub const MC_GET_AUTH_CMD_CHALLENGE: Self = Self(0x4D414343); // "MACC"
     pub const MC_PROVISION_VENDOR_PK_HASH: Self = Self(0x5056_504b); // "PVPK"
     pub const MC_PROVISION_OWNER_PK_HASH: Self = Self(0x504F_504B); // "POPK"
-    pub const MC_FUSE_INCREASE_CALIPTRA_MIN_SVN: Self = Self(0x4D43_4D53); // "MCMS"
+    pub const MC_FUSE_INCREASE_MIN_SVN: Self = Self(0x4D43_4D53); // "MCMS"
     pub const MC_FE_PROG: Self = Self(0x4D43_4650); // "MCFP"
     pub const MC_FE_STATUS: Self = Self(0x4D43_4653); // "MCFS"
     pub const MC_VENDOR_PK_HASH_STATUS: Self = Self(0x4D56_5053); // "MVPS"
@@ -244,7 +245,7 @@ pub enum McuMailboxReq {
     FuseRead(FuseReadReq),
     FuseWrite(FuseWriteReq),
     FuseLockPartition(FuseLockPartitionReq),
-    FuseIncreaseCaliptraMinSvn(FuseIncreaseCaliptraMinSvnReq),
+    FuseIncreaseMinSvn(FuseIncreaseMinSvnReq),
     FeProg(McuFeProgReq),
     FeStatus(McuFeStatusReq),
     VendorPkHashStatus(VendorPkHashStatusReq),
@@ -330,7 +331,7 @@ impl McuMailboxReq {
             McuMailboxReq::FuseRead(req) => Ok(req.as_bytes()),
             McuMailboxReq::FuseWrite(req) => Ok(req.as_bytes()),
             McuMailboxReq::FuseLockPartition(req) => Ok(req.as_bytes()),
-            McuMailboxReq::FuseIncreaseCaliptraMinSvn(req) => Ok(req.as_bytes()),
+            McuMailboxReq::FuseIncreaseMinSvn(req) => Ok(req.as_bytes()),
             McuMailboxReq::FeProg(req) => Ok(req.as_bytes()),
             McuMailboxReq::FeStatus(req) => Ok(req.as_bytes()),
             McuMailboxReq::VendorPkHashStatus(req) => Ok(req.as_bytes()),
@@ -413,7 +414,7 @@ impl McuMailboxReq {
             McuMailboxReq::FuseRead(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FuseWrite(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FuseLockPartition(req) => Ok(req.as_mut_bytes()),
-            McuMailboxReq::FuseIncreaseCaliptraMinSvn(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::FuseIncreaseMinSvn(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FeProg(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FeStatus(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::VendorPkHashStatus(req) => Ok(req.as_mut_bytes()),
@@ -496,9 +497,7 @@ impl McuMailboxReq {
             McuMailboxReq::FuseRead(_) => CommandId::MC_FUSE_READ,
             McuMailboxReq::FuseWrite(_) => CommandId::MC_FUSE_WRITE,
             McuMailboxReq::FuseLockPartition(_) => CommandId::MC_FUSE_LOCK_PARTITION,
-            McuMailboxReq::FuseIncreaseCaliptraMinSvn(_) => {
-                CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN
-            }
+            McuMailboxReq::FuseIncreaseMinSvn(_) => CommandId::MC_FUSE_INCREASE_MIN_SVN,
             McuMailboxReq::FeProg(_) => CommandId::MC_FE_PROG,
             McuMailboxReq::FeStatus(_) => CommandId::MC_FE_STATUS,
             McuMailboxReq::VendorPkHashStatus(_) => CommandId::MC_VENDOR_PK_HASH_STATUS,
@@ -1718,26 +1717,48 @@ impl Default for GetAuthCmdChallengeResp {
 }
 impl Response for GetAuthCmdChallengeResp {}
 
-/// MC_FUSE_INCREASE_CALIPTRA_MIN_SVN request: Increases the Caliptra min bootable SVN
-#[repr(C)]
-#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
-pub struct FuseIncreaseCaliptraMinSvnReq {
-    pub hdr: MailboxReqHeader,
-    pub flags: u32,
-    pub svn: u32,
-}
-impl Request for FuseIncreaseCaliptraMinSvnReq {
-    const ID: CommandId = CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN;
-    type Resp = FuseIncreaseCaliptraMinSvnResp;
+#[repr(u32)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SvnTarget {
+    CaliptraRuntime = 0,
+    SocManifest = 1,
+    OwnerSocManifest = 2,
 }
 
-/// MC_FUSE_INCREASE_CALIPTRA_MIN_SVN response: Indicates success or failure.
+impl TryFrom<u32> for SvnTarget {
+    type Error = ();
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            value if value == Self::CaliptraRuntime as u32 => Ok(Self::CaliptraRuntime),
+            value if value == Self::SocManifest as u32 => Ok(Self::SocManifest),
+            value if value == Self::OwnerSocManifest as u32 => Ok(Self::OwnerSocManifest),
+            _ => Err(()),
+        }
+    }
+}
+
+/// MC_FUSE_INCREASE_MIN_SVN request: Increases the selected minimum SVN.
 #[repr(C)]
 #[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
-pub struct FuseIncreaseCaliptraMinSvnResp {
+pub struct FuseIncreaseMinSvnReq {
+    pub hdr: MailboxReqHeader,
+    pub flags: u32,
+    pub target: u32,
+    pub svn: u32,
+}
+impl Request for FuseIncreaseMinSvnReq {
+    const ID: CommandId = CommandId::MC_FUSE_INCREASE_MIN_SVN;
+    type Resp = FuseIncreaseMinSvnResp;
+}
+
+/// MC_FUSE_INCREASE_MIN_SVN response: Indicates success or failure.
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct FuseIncreaseMinSvnResp {
     pub hdr: MailboxRespHeader,
 }
-impl Response for FuseIncreaseCaliptraMinSvnResp {}
+impl Response for FuseIncreaseMinSvnResp {}
 
 /// MC_FE_PROG request: Program field entropy.
 #[repr(C)]
@@ -1893,12 +1914,21 @@ impl Response for FuseRevokeVendorPkHashResp {}
 #[derive(Debug, Default, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
 pub struct ExportAttestedCsrReq {
     pub hdr: MailboxReqHeader,
-    /// Device key identifier (0x0001=LDevID, 0x0002=FMC Alias, 0x0003=RT Alias)
+    /// Device key identifier (0x0000=Discovery / KeyPairInventory, 0x0001=LDevID, 0x0002=FMC Alias, 0x0003=RT Alias)
     pub device_key_id: u32,
     /// Asymmetric algorithm (0x0001=ECC384, 0x0002=MLDSA87)
     pub algorithm: u32,
     /// 32-byte nonce for freshness
     pub nonce: [u8; 32],
+}
+impl ExportAttestedCsrReq {
+    pub const KEY_ID_DISCOVERY: u32 = 0x0000;
+    pub const KEY_ID_LDEV_ID: u32 = 0x0001;
+    pub const KEY_ID_FMC_ALIAS: u32 = 0x0002;
+    pub const KEY_ID_RT_ALIAS: u32 = 0x0003;
+
+    pub const ALGO_ECC384: u32 = 0x0001;
+    pub const ALGO_MLDSA87: u32 = 0x0002;
 }
 impl Request for ExportAttestedCsrReq {
     const ID: CommandId = CommandId::MC_EXPORT_ATTESTED_CSR;
@@ -1909,13 +1939,13 @@ impl Request for ExportAttestedCsrReq {
 #[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
 pub struct ExportAttestedCsrResp {
     pub hdr: MailboxRespHeaderVarSize,
-    pub data: [u8; MAX_RESP_DATA_SIZE],
+    pub data: [u8; MAX_ATTESTED_CSR_RESP_DATA_SIZE],
 }
 impl Default for ExportAttestedCsrResp {
     fn default() -> Self {
         Self {
             hdr: MailboxRespHeaderVarSize::default(),
-            data: [0u8; MAX_RESP_DATA_SIZE],
+            data: [0u8; MAX_ATTESTED_CSR_RESP_DATA_SIZE],
         }
     }
 }
@@ -3310,5 +3340,28 @@ mod tests {
                 ..core::mem::size_of::<MailboxRespHeaderVarSize>() + 4],
             &[0x30, 0x82, 0x01, 0x00]
         );
+    }
+
+    #[test]
+    fn test_export_attested_csr_req_constants_and_layout() {
+        assert_eq!(CommandId::MC_EXPORT_ATTESTED_CSR.0, 0x4D45_4143); // "MEAC"
+        assert_eq!(ExportAttestedCsrReq::KEY_ID_DISCOVERY, 0x0000);
+        assert_eq!(ExportAttestedCsrReq::KEY_ID_LDEV_ID, 0x0001);
+        assert_eq!(ExportAttestedCsrReq::KEY_ID_FMC_ALIAS, 0x0002);
+        assert_eq!(ExportAttestedCsrReq::KEY_ID_RT_ALIAS, 0x0003);
+        assert_eq!(ExportAttestedCsrReq::ALGO_ECC384, 0x0001);
+        assert_eq!(ExportAttestedCsrReq::ALGO_MLDSA87, 0x0002);
+
+        let req = ExportAttestedCsrReq {
+            hdr: MailboxReqHeader { chksum: 0 },
+            device_key_id: ExportAttestedCsrReq::KEY_ID_DISCOVERY,
+            algorithm: ExportAttestedCsrReq::ALGO_ECC384,
+            nonce: [0x5A; 32],
+        };
+        assert_eq!(core::mem::size_of::<ExportAttestedCsrReq>(), 44);
+        let parsed = ExportAttestedCsrReq::read_from_bytes(req.as_bytes()).unwrap();
+        assert_eq!(parsed.device_key_id, 0);
+        assert_eq!(parsed.algorithm, 1);
+        assert_eq!(parsed.nonce, [0x5A; 32]);
     }
 }

@@ -516,4 +516,6 @@ pub mod reg {
     pub const PERMA_HEK_EN: u32 = 33;
     pub const FIELD_ENTROPY_STATE: u32 = 34;
     pub const VENDOR_PQC_KEY_TYPE: u32 = 35;
+    pub const SOC_MANIFEST_SVN: u32 = 36;
+    pub const SOC_MANIFEST_MAX_SVN: u32 = 37;
 }

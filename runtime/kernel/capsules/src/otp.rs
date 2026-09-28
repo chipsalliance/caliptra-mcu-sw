@@ -8,7 +8,8 @@ use caliptra_mcu_otp_digest::{caliptra_mcu_otp_digest, OTP_DIGEST_CONST, OTP_DIG
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_registers_generated::fuses;
 use caliptra_mcu_registers_generated::fuses::{
-    OTP_CPTRA_CORE_RUNTIME_SVN, OTP_CPTRA_CORE_VENDOR_PK_HASH_0,
+    OTP_CPTRA_CORE_RUNTIME_SVN, OTP_CPTRA_CORE_SOC_MANIFEST_MAX_SVN,
+    OTP_CPTRA_CORE_SOC_MANIFEST_SVN, OTP_CPTRA_CORE_VENDOR_PK_HASH_0,
     OTP_CPTRA_CORE_VENDOR_PK_HASH_VALID,
 };
 use caliptra_mcu_romtime::println;
@@ -136,6 +137,8 @@ pub mod reg {
     pub const PERMA_HEK_EN: u32 = 33;
     pub const FIELD_ENTROPY_STATE: u32 = 34;
     pub const VENDOR_PQC_KEY_TYPE: u32 = 35;
+    pub const SOC_MANIFEST_SVN: u32 = 36;
+    pub const SOC_MANIFEST_MAX_SVN: u32 = 37;
 }
 
 #[derive(Default)]
@@ -246,6 +249,34 @@ impl Otp {
                 CommandReturn::success_u32(u32::from_le_bytes(
                     svn[offset..offset + 4].try_into().unwrap(),
                 ))
+            }
+            reg::SOC_MANIFEST_SVN => {
+                let svn_fuses = OTP_CPTRA_CORE_SOC_MANIFEST_SVN;
+                let svn_num_words = svn_fuses.byte_size / 4;
+                if app.reg_index >= svn_num_words as u32 {
+                    return CommandReturn::failure(ErrorCode::INVAL);
+                }
+
+                let svn = match self.driver.read_cptra_core_soc_manifest_svn() {
+                    Ok(svn) => svn,
+                    Err(_) => return CommandReturn::failure(ErrorCode::FAIL),
+                };
+                let offset = app.reg_index as usize * 4;
+                CommandReturn::success_u32(u32::from_le_bytes(
+                    svn[offset..offset + 4].try_into().unwrap(),
+                ))
+            }
+            reg::SOC_MANIFEST_MAX_SVN => {
+                if app.reg_index != 0 {
+                    return CommandReturn::failure(ErrorCode::INVAL);
+                }
+                match self
+                    .driver
+                    .read_word(OTP_CPTRA_CORE_SOC_MANIFEST_MAX_SVN.byte_offset / 4)
+                {
+                    Ok(value) => CommandReturn::success_u32(value),
+                    Err(_) => CommandReturn::failure(ErrorCode::FAIL),
+                }
             }
             reg::VENDOR_PK_HASH_VALID => match self.driver.read_vendor_pk_hash_valid() {
                 Ok(valid) => CommandReturn::success_u32(valid),
@@ -368,6 +399,19 @@ impl Otp {
             }
             reg::CALIPTRA_FW_SVN => {
                 let svn_fuses = OTP_CPTRA_CORE_RUNTIME_SVN;
+                let svn_num_words = svn_fuses.byte_size / 4;
+                if app.reg_index >= svn_num_words as u32 {
+                    return CommandReturn::failure(ErrorCode::INVAL);
+                }
+
+                let word_addr = svn_fuses.byte_offset / 4 + app.reg_index as usize;
+                match self.driver.write_word(word_addr, value) {
+                    Ok(_) => CommandReturn::success(),
+                    Err(_) => CommandReturn::failure(ErrorCode::FAIL),
+                }
+            }
+            reg::SOC_MANIFEST_SVN => {
+                let svn_fuses = OTP_CPTRA_CORE_SOC_MANIFEST_SVN;
                 let svn_num_words = svn_fuses.byte_size / 4;
                 if app.reg_index >= svn_num_words as u32 {
                     return CommandReturn::failure(ErrorCode::INVAL);

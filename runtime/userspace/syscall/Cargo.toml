@@ -19,6 +19,9 @@ zerocopy.workspace = true
 [target.'cfg(not(target_arch = "riscv32"))'.dependencies]
 caliptra-mcu-libtock_unittest.workspace = true
 
+[dev-dependencies]
+futures.workspace = true
+
 [features]
 default = []
 # Strip `console_writeln!` macro bodies from this crate's transitive consumers

@@ -112,6 +112,9 @@ pub const REQUESTER_CONTEXT_LEN: usize = 8;
 /// ECC P-384 signature size (r || s, 96 bytes).
 pub const ECC_P384_SIGNATURE_SIZE: usize = 96;
 
+/// ML-DSA-87 signature size.
+pub const MLDSA87_SIGNATURE_SIZE: usize = 4627;
+
 /// SPDM signing context prefix length (4 × 16 bytes).
 pub const SPDM_PREFIX_LEN: usize = 64;
 

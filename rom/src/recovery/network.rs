@@ -8,7 +8,7 @@
 use core::cell::Cell;
 
 use caliptra_mcu_boot_source_protocol::messages::{
-    BootFlags, ChunkAck, ChunkAckFlags, FinalizeRequest, ImageChunkHeader, ImageDownloadRequest,
+    ChunkAck, ChunkAckFlags, FinalizeRequest, ImageChunkHeader, ImageDownloadRequest,
     ImageMetadataRequest, ImageMetadataResponse, InitiateBootRequest, InitiateBootResponse, Status,
     FIRMWARE_ID_CALIPTRA_FMC_RT, FIRMWARE_ID_MCU_RT, FIRMWARE_ID_SOC_MANIFEST,
 };
@@ -145,7 +145,7 @@ impl<'a, M: NetworkMailbox<'a>> NetworkImageProvider<'a, M> {
         if self.initiated.get() {
             return Ok(());
         }
-        let pkt = InitiateBootRequest::new(1, BootFlags(0));
+        let pkt = InitiateBootRequest::new(1);
         self.phase.set(Phase::WaitInitiateBootResponse);
         match self.send_with_retry(&pkt) {
             Ok(()) => {}

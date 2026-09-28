@@ -330,7 +330,34 @@ pub trait PayloadStream {
     /// Returns the size of the payload in bytes.
     fn size(&self) -> usize;
 
+    /// Rewinds the stream to the beginning of its payload.
+    fn reset(&mut self);
+
     async fn read(&mut self, buffer: &mut [u8]) -> Result<usize, ErrorCode>;
+
+    /// Returns the wrapping sum of all payload bytes and rewinds the stream.
+    async fn get_bytesum(&mut self) -> Result<u32, ErrorCode> {
+        self.reset();
+        let mut sum = 0u32;
+        let mut buffer = [0u8; PAYLOAD_CHUNK_SIZE];
+        loop {
+            let bytes_read = match self.read(&mut buffer).await {
+                Ok(bytes_read) => bytes_read,
+                Err(error) => {
+                    self.reset();
+                    return Err(error);
+                }
+            };
+            if bytes_read == 0 {
+                break;
+            }
+            for byte in &buffer[..bytes_read] {
+                sum = sum.wrapping_add(u32::from(*byte));
+            }
+        }
+        self.reset();
+        Ok(sum)
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -378,6 +405,26 @@ pub enum MailboxError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures::executor::block_on;
+
+    struct FailingPayloadStream {
+        reset_count: usize,
+    }
+
+    #[async_trait(?Send)]
+    impl PayloadStream for FailingPayloadStream {
+        fn size(&self) -> usize {
+            1
+        }
+
+        fn reset(&mut self) {
+            self.reset_count += 1;
+        }
+
+        async fn read(&mut self, _buffer: &mut [u8]) -> Result<usize, ErrorCode> {
+            Err(ErrorCode::Fail)
+        }
+    }
 
     #[test]
     fn checksum_matches_caliptra_api_vector() {
@@ -407,5 +454,13 @@ mod tests {
             populate_checksum(0xe8dc3994, &mut data),
             Err(ErrorCode::Invalid)
         );
+    }
+
+    #[test]
+    fn payload_bytesum_propagates_read_error_and_rewinds() {
+        let mut stream = FailingPayloadStream { reset_count: 0 };
+
+        assert_eq!(block_on(stream.get_bytesum()), Err(ErrorCode::Fail));
+        assert_eq!(stream.reset_count, 2);
     }
 }

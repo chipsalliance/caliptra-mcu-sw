@@ -260,8 +260,14 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
         .map_err(|_| SPDM_UNSPECIFIED)?;
 
     let meas_hash_ref: Option<&[u8; SHA384_HASH_SIZE]> = if meas_hash_type != 0 {
-        crate::measurements::measurement_summary_hash(pal, io, meas_hash_type, meas_summary_hash)
-            .await?;
+        crate::measurements::measurement_summary_hash(
+            pal,
+            io,
+            asym_algo,
+            meas_hash_type,
+            meas_summary_hash,
+        )
+        .await?;
         Some(&*meas_summary_hash)
     } else {
         None

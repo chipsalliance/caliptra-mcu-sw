@@ -25,7 +25,7 @@ use caliptra_mcu_core_util_host_command_types::device_ownership_transfer::{
     MC_GET_DOT_BACKUP_BLOB_CANONICAL_CMD_ID,
 };
 use caliptra_mcu_core_util_host_command_types::fuse::{
-    MC_FE_PROG_CANONICAL_CMD_ID, MC_FUSE_INCREASE_CALIPTRA_MIN_SVN_CANONICAL_CMD_ID,
+    MC_FE_PROG_CANONICAL_CMD_ID, MC_FUSE_INCREASE_MIN_SVN_CANONICAL_CMD_ID,
     MC_FUSE_LOCK_PARTITION_CANONICAL_CMD_ID, MC_FUSE_REVOKE_VENDOR_PK_HASH_CANONICAL_CMD_ID,
     MC_FUSE_REVOKE_VENDOR_PUB_KEY_CANONICAL_CMD_ID, MC_OCP_LOCK_ROTATE_HEK_CANONICAL_CMD_ID,
     MC_OCP_LOCK_SET_PERMA_HEK_CANONICAL_CMD_ID, MC_PROVISION_OWNER_PK_HASH_CANONICAL_CMD_ID,
@@ -207,11 +207,12 @@ pub fn run_all(
             verbose,
         ));
     }
-    if config.increase_caliptra_min_svn.enabled {
-        results.push(run_increase_caliptra_min_svn(
+    if config.increase_min_svn.enabled {
+        results.push(run_increase_min_svn(
             client,
-            config.increase_caliptra_min_svn.flags,
-            config.increase_caliptra_min_svn.svn,
+            config.increase_min_svn.flags,
+            config.increase_min_svn.target,
+            config.increase_min_svn.svn,
             command_authorizer,
             verbose,
         ));
@@ -961,29 +962,31 @@ pub fn run_provision_owner_pk_hash(
     }
 }
 
-pub fn run_increase_caliptra_min_svn(
+pub fn run_increase_min_svn(
     client: &mut SpdmVdmClient,
     flags: u32,
+    target: u32,
     svn: u32,
     authorizer: Option<&dyn CommandAuthChallengeSigner>,
     _verbose: bool,
 ) -> ValidationResult {
-    let test_name = format!("FuseIncreaseCaliptraMinSvn(svn={svn})");
-    let mut payload = Vec::with_capacity(8);
+    let test_name = format!("FuseIncreaseMinSvn(target={target},svn={svn})");
+    let mut payload = Vec::with_capacity(12);
     payload.extend_from_slice(&flags.to_le_bytes());
+    payload.extend_from_slice(&target.to_le_bytes());
     payload.extend_from_slice(&svn.to_le_bytes());
     let auth = match authorize_command(
         client,
-        MC_FUSE_INCREASE_CALIPTRA_MIN_SVN_CANONICAL_CMD_ID,
+        MC_FUSE_INCREASE_MIN_SVN_CANONICAL_CMD_ID,
         &payload,
         authorizer,
     ) {
         Ok(auth) => auth,
-        Err(e) => return ValidationResult::fail(test_name, e),
+        Err(error) => return ValidationResult::fail(test_name, error),
     };
-    match client.fuse_increase_caliptra_min_svn(flags, svn, auth.as_command_data()) {
+    match client.fuse_increase_min_svn(flags, target, svn, auth.as_command_data()) {
         Ok(_) => ValidationResult::pass(test_name, "minimum SVN updated"),
-        Err(e) => ValidationResult::fail(test_name, e.to_string()),
+        Err(error) => ValidationResult::fail(test_name, error.to_string()),
     }
 }
 
@@ -1102,24 +1105,26 @@ fn signed_provision_owner_pk_hash(
         .map_err(AuthorizedCommandError::Command)
 }
 
-fn signed_increase_caliptra_min_svn(
+fn signed_increase_min_svn(
     client: &mut SpdmVdmClient,
     flags: u32,
+    target: u32,
     svn: u32,
     authorizer: &dyn CommandAuthChallengeSigner,
 ) -> Result<(), AuthorizedCommandError> {
-    let mut payload = Vec::with_capacity(8);
+    let mut payload = Vec::with_capacity(12);
     payload.extend_from_slice(&flags.to_le_bytes());
+    payload.extend_from_slice(&target.to_le_bytes());
     payload.extend_from_slice(&svn.to_le_bytes());
     let auth = authorize_command(
         client,
-        MC_FUSE_INCREASE_CALIPTRA_MIN_SVN_CANONICAL_CMD_ID,
+        MC_FUSE_INCREASE_MIN_SVN_CANONICAL_CMD_ID,
         &payload,
         Some(authorizer),
     )
     .map_err(AuthorizedCommandError::Preparation)?;
     client
-        .fuse_increase_caliptra_min_svn(flags, svn, auth.as_command_data())
+        .fuse_increase_min_svn(flags, target, svn, auth.as_command_data())
         .map(|_| ())
         .map_err(AuthorizedCommandError::Command)
 }
@@ -1228,7 +1233,9 @@ fn signed_ocp_lock_rotate_hek(
     slot: u32,
     authorizer: &dyn CommandAuthChallengeSigner,
 ) -> Result<(), AuthorizedCommandError> {
-    let mut payload = MC_OCP_LOCK_ROTATE_HEK_CANONICAL_CMD_ID.to_le_bytes().to_vec();
+    let mut payload = MC_OCP_LOCK_ROTATE_HEK_CANONICAL_CMD_ID
+        .to_le_bytes()
+        .to_vec();
     payload.extend_from_slice(&slot.to_le_bytes());
     let auth = authorize_command(client, OCP_LOCK_FAMILY_ID, &payload, Some(authorizer))
         .map_err(AuthorizedCommandError::Preparation)?;
@@ -1449,13 +1456,13 @@ pub fn run_fuse_policy_rejection_tests(
             CaliptraVdmCompletionCode::OperationFailed,
         ),
         expect_completion(
-            "FuseIncreaseCaliptraMinSvn rejects nonzero reserved flags",
-            signed_increase_caliptra_min_svn(client, 1, 1, authorizer),
+            "FuseIncreaseMinSvn rejects nonzero reserved flags",
+            signed_increase_min_svn(client, 1, 0, 1, authorizer),
             CaliptraVdmCompletionCode::InvalidParameter,
         ),
         expect_completion(
-            "FuseIncreaseCaliptraMinSvn rejects zero SVN",
-            signed_increase_caliptra_min_svn(client, 0, 0, authorizer),
+            "FuseIncreaseMinSvn rejects zero SVN",
+            signed_increase_min_svn(client, 0, 0, 0, authorizer),
             CaliptraVdmCompletionCode::InvalidParameter,
         ),
         expect_completion(
@@ -1553,35 +1560,35 @@ fn run_fuse_suite(
         "increase-min-svn" => vec![
             expect_completion(
                 "MCMS rejects nonzero reserved flags",
-                signed_increase_caliptra_min_svn(client, 1, 5, authorizer),
+                signed_increase_min_svn(client, 1, 0, 5, authorizer),
                 CaliptraVdmCompletionCode::InvalidParameter,
             ),
             expect_completion(
                 "MCMS rejects zero SVN",
-                signed_increase_caliptra_min_svn(client, 0, 0, authorizer),
+                signed_increase_min_svn(client, 0, 0, 0, authorizer),
                 CaliptraVdmCompletionCode::InvalidParameter,
             ),
             expect_completion(
                 "MCMS rejects SVN above encoding bound",
-                signed_increase_caliptra_min_svn(client, 0, 129, authorizer),
+                signed_increase_min_svn(client, 0, 0, 129, authorizer),
                 CaliptraVdmCompletionCode::InvalidParameter,
             ),
             expect_completion(
                 "MCMS rejects SVN above running firmware",
-                signed_increase_caliptra_min_svn(client, 0, 8, authorizer),
+                signed_increase_min_svn(client, 0, 0, 8, authorizer),
                 CaliptraVdmCompletionCode::InvalidParameter,
             ),
             expect_success(
                 "MCMS increases minimum SVN",
-                signed_increase_caliptra_min_svn(client, 0, 5, authorizer),
+                signed_increase_min_svn(client, 0, 0, 5, authorizer),
             ),
             expect_success(
                 "MCMS equal SVN is idempotent",
-                signed_increase_caliptra_min_svn(client, 0, 5, authorizer),
+                signed_increase_min_svn(client, 0, 0, 5, authorizer),
             ),
             expect_completion(
                 "MCMS rejects decrease",
-                signed_increase_caliptra_min_svn(client, 0, 4, authorizer),
+                signed_increase_min_svn(client, 0, 0, 4, authorizer),
                 CaliptraVdmCompletionCode::InvalidParameter,
             ),
         ],
@@ -1691,7 +1698,11 @@ fn run_fuse_suite(
         "ocp-lock-set-perma-hek" => vec![
             expect_completion(
                 "OLSP rejects native 0x13 access",
-                send_native_ocp_lock_command(client, MC_OCP_LOCK_SET_PERMA_HEK_CANONICAL_CMD_ID, &[]),
+                send_native_ocp_lock_command(
+                    client,
+                    MC_OCP_LOCK_SET_PERMA_HEK_CANONICAL_CMD_ID,
+                    &[],
+                ),
                 CaliptraVdmCompletionCode::AccessDenied,
             ),
             expect_success(

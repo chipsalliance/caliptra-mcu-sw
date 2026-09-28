@@ -9,6 +9,8 @@ use caliptra_mcu_pldm_common::message::firmware_update::verify_complete::VerifyR
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::blocking_mutex::Mutex;
 
+pub const PLDM_PAYLOAD_CHUNK_SIZE: usize = 256;
+
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum State {
     NotRunning,
@@ -21,6 +23,8 @@ pub enum State {
     ImageDownloadReady,
     DownloadingImage,
     ImageDownloadComplete,
+    DownloadingPayload,
+    PayloadDownloadComplete,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -34,6 +38,7 @@ pub struct DownloadCtx {
     pub verify_result: VerifyResult,
     pub header: [u8; core::mem::size_of::<FlashHeader>()],
     pub image_info: [u8; core::mem::size_of::<ImageHeader>()],
+    pub payload: [u8; PLDM_PAYLOAD_CHUNK_SIZE],
     pub load_address: AXIAddr,
 }
 
@@ -47,6 +52,7 @@ pub static DOWNLOAD_CTX: Mutex<CriticalSectionRawMutex, RefCell<DownloadCtx>> =
         verify_result: VerifyResult::VerifySuccess,
         header: [0; core::mem::size_of::<FlashHeader>()],
         image_info: [0; core::mem::size_of::<ImageHeader>()],
+        payload: [0; PLDM_PAYLOAD_CHUNK_SIZE],
         load_address: 0,
         last_requested_length: 0,
     }));

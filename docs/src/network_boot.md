@@ -52,7 +52,7 @@ sequenceDiagram
     participant NET as Network ROM<br>(BootSourceProvider)
     participant IMG as Image Server
 
-    MCU->>NET: Initiate boot request (flags: FlashWriteBack)
+    MCU->>NET: Initiate boot request
     NET->>IMG: Network Configuration Request (DHCPv4/DHCPv6 Discovery)
     IMG-->>NET: Network Configuration Response (DHCPv4/DHCPv6 Offer)
     NET->>IMG: TFTP GET config file (TOC)
@@ -60,7 +60,7 @@ sequenceDiagram
     NET->>NET: Store FW ID to filename mappings
     NET-->>MCU: Network boot available
 
-    opt FlashWriteBack enabled
+    opt MCU flash write-back policy enabled
         MCU->>STG: Initialize staging memory
         MCU->>STG: Write flash header and image headers to staging
     end
@@ -94,7 +94,7 @@ sequenceDiagram
             IMG-->>NET: Image chunk
             NET-->>MCU: Forward image chunk (ImageStream::read_chunk)
             MCU->>CRIF: Write chunk to recovery I/F
-            opt FlashWriteBack enabled
+            opt MCU flash write-back policy enabled
                 MCU->>STG: Write chunk to staging
             end
             MCU-->>NET: Chunk ACK
@@ -117,7 +117,7 @@ sequenceDiagram
     participant NET as Network ROM<br>(BootSourceProvider)
     participant IMG as Image Server
 
-    MCURT->>NET: Initiate boot request (flags: FlashWriteBack, FlashCommitPolicy)
+    MCURT->>NET: Initiate boot request
     opt If TOC not already cached
         NET->>IMG: TFTP GET config file (TOC)
         IMG-->>NET: TOC (FW ID mappings)
@@ -125,7 +125,7 @@ sequenceDiagram
     end
     NET-->>MCURT: Network boot available
 
-    opt FlashWriteBack enabled AND staging not yet initialized
+    opt MCU flash write-back policy enabled AND staging not yet initialized
         MCURT->>STG: Initialize staging memory
     end
 ```
@@ -155,7 +155,7 @@ sequenceDiagram
             NET-->>MCURT: Image chunk
 
             MCURT->>MCURT: Write chunk to load_address
-            opt FlashWriteBack enabled
+            opt MCU flash write-back policy enabled
                 MCURT->>STG: Write chunk to staging
             end
             MCURT-->>NET: Chunk ACK
@@ -167,7 +167,7 @@ sequenceDiagram
 
     MCURT->>NET: Finalize network boot
 
-    opt FlashWriteBack enabled (per FlashCommitPolicy)
+    opt MCU flash write-back policy enabled (per MCU commit policy)
         MCURT->>MCURT: Integrity check staging memory
         MCURT->>PARTA: Commit staging to Active Flash Partition
     end
@@ -179,15 +179,9 @@ Flash write-back is an optional feature for flash-based systems (e.g., BMC) that
 
 #### Configuration
 
-Flash write-back is controlled by two fields in the Initiate Boot Request `Flags` (offset 8):
+Flash write-back and commit timing are internal MCU policies. They are not sent to the Network ROM in the Initiate Boot Request. The MCU determines whether to stage downloaded images and when to commit them to the active flash partition based on platform configuration.
 
-| Bits | Field | Description |
-|------|-------|-------------|
-| 0 | FlashWriteBack | 0=Disabled (default), 1=Enabled |
-| 1 | FlashCommitPolicy | When to commit staging memory → active flash partition |
-| 2-31 | Reserved | Must be 0 |
-
-**FlashCommitPolicy values:**
+**Commit policy options:**
 
 | Value | Name | When Commit Occurs |
 |-------|------|-------------------|
@@ -198,7 +192,7 @@ The commit policy is a **vendor policy decision**:
 - **PostAuthorization** (recommended default) — all images have been cryptographically verified by Caliptra. In Stage 1, early firmware (FMC+RT, SoC Manifest, MCU RT) is verified during the Caliptra recovery boot process. In Stage 2, each SoC image is explicitly authorized by Caliptra RT. The commit to flash occurs after the last authorization succeeds, at which point the flash image is complete and fully authenticated. This aligns with the existing firmware update verification and commit flow.
 - **PostBootSuccess** is more conservative — the entire system has successfully booted from the recovered images before the flash is updated. This provides the strongest guarantee that the committed image set is fully functional, but widens the window for power-loss before commit and couples flash commit to runtime behavior beyond image integrity.
 
-Flash write-back can also be controlled as a build-time feature flag (`flash-writeback`) to compile out the staging code path entirely on platforms without writable flash.
+Flash write-back can be controlled as a build-time feature flag (`flash-writeback`) to compile out the staging code path entirely on platforms without writable flash.
 
 #### Error Handling
 
@@ -265,8 +259,6 @@ Initiates the boot source discovery process.
 | 0 | 1 | Message Type | 0x01 - InitiateBoot |
 | 1 | 3 | Reserved | Must be 0 |
 | 4 | 4 | Protocol Version | Version of the messaging protocol |
-| 8 | 4 | Flags | Bit 0: FlashWriteBack (dual-write streamed images to staging memory), Bit 1: FlashCommitPolicy (0=PostAuthorization, 1=PostBootSuccess), Bits 2-31: Reserved |
-| 12 | N | Source Specific | Source-specific initialization parameters |
 
 **Response Packet:**
 
@@ -419,25 +411,6 @@ Boot source providers implement the following core operations:
 ### Boot Source Provider Interface
 
 ```rust
-/// Boot configuration flags passed to initiate_boot
-#[derive(Debug, Clone, Copy, Default)]
-pub struct BootFlags {
-    /// When true, streamed image chunks are also dual-written to staging memory
-    pub flash_writeback: bool,
-    /// Controls when staging memory is committed to active flash partition
-    pub flash_commit_policy: FlashCommitPolicy,
-}
-
-/// Defines when staging memory is committed to the active flash partition (vendor policy)
-#[derive(Debug, Clone, Copy, Default)]
-pub enum FlashCommitPolicy {
-    /// Commit after all images are cryptographically verified/authorized (recommended)
-    #[default]
-    PostAuthorization = 0,
-    /// Commit after the platform signals full boot success
-    PostBootSuccess = 1,
-}
-
 /// Generic boot source provider interface for the MCU ROM
 /// This interface abstracts different boot sources (network, flash, etc.)
 pub trait BootSourceProvider {
@@ -445,8 +418,7 @@ pub trait BootSourceProvider {
 
     /// Initialize the boot source
     /// This performs source-specific initialization (e.g., DHCP for network, etc.)
-    /// `flags` controls optional behaviors like flash write-back
-    fn initiate_boot(&mut self, flags: BootFlags) -> Result<BootSourceStatus, Self::Error>;
+    fn initiate_boot(&mut self) -> Result<BootSourceStatus, Self::Error>;
 
     /// Get information about a firmware image
     fn get_image_metadata(&self, firmware_id: FirmwareId) -> Result<ImageInfo, Self::Error>;
@@ -526,7 +498,7 @@ pub struct NetworkBootSource {
 impl BootSourceProvider for NetworkBootSource {
     type Error = NetworkBootError;
 
-    fn initiate_boot(&mut self, _flags: BootFlags) -> Result<BootSourceStatus, Self::Error> {
+    fn initiate_boot(&mut self) -> Result<BootSourceStatus, Self::Error> {
         // 1. Perform DHCP discovery
         self.dhcp_client.discover()?;
 

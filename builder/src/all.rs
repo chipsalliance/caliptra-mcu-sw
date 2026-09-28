@@ -184,6 +184,9 @@ const MCU_MBOX_SRAM1_OFFSET: u64 = 0x80_0000;
 /// MCU SRAM offset from MCI base.
 const MCU_SRAM_OFFSET: u64 = 0xC0_0000;
 
+const ATTESTATION_SOC_FW_ID: u32 = 0x2000;
+const ATTESTATION_SOC_FW_ID_2: u32 = 0x2001;
+
 /// Creates default SoC images for tests that require them.
 /// Returns (soc_images_config, soc_images_paths).
 fn create_default_soc_images() -> (Vec<ImageCfg>, Vec<PathBuf>) {
@@ -220,6 +223,31 @@ fn create_default_soc_images() -> (Vec<ImageCfg>, Vec<PathBuf>) {
     (soc_images, soc_images_paths)
 }
 
+fn create_default_owner_soc_images(soc_images: &[ImageCfg]) -> Vec<ImageCfg> {
+    let owner_soc_image_path = std::env::temp_dir().join("default-owner-soc-image.bin");
+    std::fs::write(&owner_soc_image_path, vec![0xCCu8; 128])
+        .expect("Failed to write owner SoC image");
+    let load_addr = soc_images
+        .iter()
+        .map(|image| {
+            image.load_addr
+                + std::fs::metadata(&image.path)
+                    .expect("Failed to read SoC image metadata")
+                    .len()
+        })
+        .max()
+        .unwrap_or(MCI_BASE_AXI_ADDRESS + MCU_MBOX_SRAM1_OFFSET);
+
+    vec![ImageCfg {
+        path: owner_soc_image_path.clone(),
+        load_addr,
+        image_id: 0x10000,
+        component_id: 0x10000,
+        exec_bit: 7,
+        ..Default::default()
+    }]
+}
+
 /// Creates dummy SoC images for attestation integration tests.
 ///
 /// The test features intentionally leave `is_ak_target = false` so MCU Runtime
@@ -244,13 +272,14 @@ fn create_attestation_soc_images_variant(
     // components; dedicated features opt in to TCB-only or mixed coverage.
     let specs: &[(u8, u32, bool)] = match feature {
         Some("test-mctp-spdm-attestation-tcb") | Some("test-mctp-spdm-attestation-hitless-tcb") => {
-            &[(0xde, 0x0003, true)]
+            &[(0xde, ATTESTATION_SOC_FW_ID, true)]
         }
         Some("test-mctp-spdm-attestation-mixed")
-        | Some("test-mctp-spdm-attestation-hitless-mixed") => {
-            &[(0xde, 0x0003, true), (0xad, 0x0004, false)]
-        }
-        _ => &[(0xde, 0x0003, false)],
+        | Some("test-mctp-spdm-attestation-hitless-mixed") => &[
+            (0xde, ATTESTATION_SOC_FW_ID, true),
+            (0xad, ATTESTATION_SOC_FW_ID_2, false),
+        ],
+        _ => &[(0xde, ATTESTATION_SOC_FW_ID, false)],
     };
 
     let mut soc_images = Vec::with_capacity(specs.len());
@@ -913,10 +942,14 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     }
 
     let mcu_image_cfg = get_image_cfg_feature(&mcu_cfgs.clone().unwrap_or_default(), "none");
+    // Caliptra currently rejects owner manifests with an empty metadata collection.
+    let owner_soc_images =
+        create_default_owner_soc_images(effective_soc_images.as_deref().unwrap_or(&[]));
     let mut caliptra_builder = crate::CaliptraBuilder::new(&CaliptraBuildArgs {
         fpga: platform == "fpga",
         mcu_firmware: Some(mcu_runtime.into()),
         soc_images: effective_soc_images.clone(),
+        owner_soc_images: Some(owner_soc_images),
         mcu_image_cfg: mcu_image_cfg.clone(),
         vendor: vendor.map(|s| s.to_string()),
         model: model.map(|s| s.to_string()),
@@ -927,6 +960,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     let vendor_pk_hash = caliptra_builder.get_vendor_pk_hash()?.to_string();
     println!("Vendor PK hash: {:x?}", vendor_pk_hash);
     let soc_manifest = caliptra_builder.get_soc_manifest(None)?;
+    let owner_auth_manifest = caliptra_builder.get_owner_auth_manifest(None)?;
 
     let mut builder_svn7 = crate::CaliptraBuilder::new(&CaliptraBuildArgs {
         fpga: platform == "fpga",
@@ -957,6 +991,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     let flash_image = create_flash_image(FlashImageBuildArgs {
         caliptra_fw_path: Some(caliptra_fw.clone()),
         soc_manifest_path: Some(soc_manifest.clone()),
+        owner_auth_manifest_path: Some(owner_auth_manifest),
         mcu_runtime_path: Some(mcu_runtime.into()),
         mcu_image_cfg: mcu_image_cfg.clone(),
         caliptra_firmware_network_filename,
@@ -1076,12 +1111,20 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                             .collect(),
                     )
                 };
+            let feature_owner_soc_images = if FEATURES_REQUIRING_SOC_IMAGES.contains(feature) {
+                Some(create_default_owner_soc_images(
+                    feature_soc_images.as_deref().unwrap_or(&[]),
+                ))
+            } else {
+                None
+            };
+            let feature_image_load_list = feature_soc_images.clone().unwrap_or_default();
             let generated_target_dir = target_dir.clone().unwrap_or_else(crate::target_dir);
             pre_generate_attestation_manifest_config_to_target_dir(
                 &generated_target_dir,
                 effective_vendor,
                 effective_model,
-                feature_soc_images.as_deref().unwrap_or(&[]),
+                &feature_image_load_list,
             )?;
             let user_app_config_fingerprint =
                 generated_user_app_config_fingerprint(&generated_target_dir)?;
@@ -1135,6 +1178,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                 vendor_pk_hash: Some(vendor_pk_hash.clone()),
                 mcu_firmware: Some(feature_runtime_file.path().to_path_buf()),
                 soc_images: feature_soc_images.clone(),
+                owner_soc_images: feature_owner_soc_images.clone(),
                 mcu_image_cfg: mcu_image_cfg.clone(),
                 vendor: vendor.map(|s| s.to_string()),
                 model: model.map(|s| s.to_string()),
@@ -1142,22 +1186,34 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             });
             let feature_soc_manifest_file = tempfile::NamedTempFile::new().unwrap();
             caliptra_builder.get_soc_manifest(feature_soc_manifest_file.path().to_str())?;
+            let feature_owner_auth_manifest_file = if feature_owner_soc_images.is_some() {
+                let file = tempfile::NamedTempFile::new().unwrap();
+                caliptra_builder.get_owner_auth_manifest(file.path().to_str())?;
+                Some(file)
+            } else {
+                None
+            };
+            let feature_owner_auth_manifest_path = feature_owner_auth_manifest_file
+                .as_ref()
+                .map(|file| file.path().to_path_buf());
 
             // Flash-based boot features require partition table at offset 0
             let is_flash_based_boot = FEATURES_REQUIRING_FLASH_BOOT.contains(feature);
 
             // Clone paths for potential second use
-            let feature_soc_images_paths_clone = feature_soc_images_paths.clone();
+            let feature_image_paths = feature_soc_images_paths;
+            let feature_image_paths_clone = feature_image_paths.clone();
 
             let feature_flash_image = create_flash_image(FlashImageBuildArgs {
                 caliptra_fw_path: Some(caliptra_fw.clone()),
                 soc_manifest_path: Some(feature_soc_manifest_file.path().to_path_buf()),
+                owner_auth_manifest_path: feature_owner_auth_manifest_path.clone(),
                 mcu_runtime_path: Some(feature_runtime_file.path().to_path_buf()),
                 mcu_image_cfg: mcu_image_cfg.clone(),
                 caliptra_firmware_network_filename,
                 soc_manifest_network_filename,
-                soc_images_paths: feature_soc_images_paths,
-                soc_images: feature_soc_images.clone(),
+                soc_images_paths: feature_image_paths,
+                soc_images: Some(feature_image_load_list.clone()),
                 is_flash_based_boot,
             })?;
 
@@ -1217,6 +1273,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                     let update_flash = create_flash_image(FlashImageBuildArgs {
                         caliptra_fw_path: Some(caliptra_fw.clone()),
                         soc_manifest_path: Some(update_soc_manifest_file.path().to_path_buf()),
+                        owner_auth_manifest_path: feature_owner_auth_manifest_path.clone(),
                         mcu_runtime_path: Some(update_runtime_file.path().to_path_buf()),
                         mcu_image_cfg: mcu_image_cfg.clone(),
                         caliptra_firmware_network_filename,
@@ -1233,12 +1290,13 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                     Some(create_flash_image(FlashImageBuildArgs {
                         caliptra_fw_path: Some(caliptra_fw.clone()),
                         soc_manifest_path: Some(feature_soc_manifest_file.path().to_path_buf()),
+                        owner_auth_manifest_path: feature_owner_auth_manifest_path.clone(),
                         mcu_runtime_path: Some(feature_runtime_file.path().to_path_buf()),
                         mcu_image_cfg: mcu_image_cfg.clone(),
                         caliptra_firmware_network_filename,
                         soc_manifest_network_filename,
-                        soc_images_paths: feature_soc_images_paths_clone,
-                        soc_images: feature_soc_images.clone(),
+                        soc_images_paths: feature_image_paths_clone,
+                        soc_images: Some(feature_image_load_list.clone()),
                         is_flash_based_boot: false, // No partition table for update image
                     })?)
                 }
@@ -1576,6 +1634,7 @@ fn add_bytes_to_zip(
 struct FlashImageBuildArgs<'a> {
     caliptra_fw_path: Option<PathBuf>,
     soc_manifest_path: Option<PathBuf>,
+    owner_auth_manifest_path: Option<PathBuf>,
     mcu_runtime_path: Option<PathBuf>,
     mcu_image_cfg: Option<ImageCfg>,
     caliptra_firmware_network_filename: Option<&'a str>,
@@ -1589,6 +1648,7 @@ fn create_flash_image(args: FlashImageBuildArgs<'_>) -> Result<PathBuf> {
     let FlashImageBuildArgs {
         caliptra_fw_path,
         soc_manifest_path,
+        owner_auth_manifest_path,
         mcu_runtime_path,
         mcu_image_cfg,
         caliptra_firmware_network_filename,
@@ -1617,6 +1677,7 @@ fn create_flash_image(args: FlashImageBuildArgs<'_>) -> Result<PathBuf> {
         caliptra_firmware_network_filename: caliptra_firmware_network_filename.map(str::to_string),
         soc_manifest: soc_manifest_path,
         soc_manifest_network_filename: soc_manifest_network_filename.map(str::to_string),
+        owner_auth_manifest: owner_auth_manifest_path,
         mcu_firmware: mcu_runtime_path,
         mcu_image_cfg,
         soc_image_paths: Some(
@@ -1698,6 +1759,36 @@ fn get_default_pldm_fw_manifest(dev_uuid: &[u8], image: &[u8]) -> FirmwareManife
             image_data: Some(image.to_vec()),
             ..Default::default()
         }],
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn attestation_soc_image_ids_use_distinct_vendor_namespace() {
+        let (base_images, _) = create_default_soc_images();
+        let (attestation_images, _) =
+            create_attestation_soc_images(Some("test-mctp-spdm-attestation-mixed"));
+        let owner_images = create_default_owner_soc_images(&attestation_images);
+
+        let mut image_ids = base_images
+            .iter()
+            .chain(attestation_images.iter())
+            .map(|image| image.image_id)
+            .collect::<Vec<_>>();
+        image_ids.sort_unstable();
+        image_ids.dedup();
+
+        assert_eq!(
+            image_ids.len(),
+            base_images.len() + attestation_images.len()
+        );
+        assert!(attestation_images
+            .iter()
+            .all(|image| (0x1000..0x1_0000).contains(&image.image_id)));
+        assert!(owner_images.iter().all(|image| image.image_id >= 0x1_0000));
     }
 }
 

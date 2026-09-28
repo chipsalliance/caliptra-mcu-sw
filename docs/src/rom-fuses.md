@@ -53,7 +53,7 @@ and written to Caliptra's `FUSE_*` registers or `SS_STRAP_GENERIC[*]` /
 | `cptra_itrng_health_test_window_size` | 16 bits | Written to `SS_STRAP_GENERIC[2]` bits\[15:0\] |
 | `cptra_itrng_entropy_config_0` | 32 bits | Written to `CPTRA_I_TRNG_ENTROPY_CONFIG_0` |
 | `cptra_itrng_entropy_config_1` | 32 bits | Written to `CPTRA_I_TRNG_ENTROPY_CONFIG_1` |
-| `CPTRA_CORE_OWNER_MANIFEST_MIN_SVN` | 8 bits | Owner manifest min SVN floor (upcoming Caliptra requirement). Written to `SS_STRAP_GENERIC[3]` bits\[7:0\]. **Upcoming:** the existing PK-hash skip-lock and PK-hash rotation straps on `SS_STRAP_GENERIC[3]` bits\[1:0\] are moving to MCI generic input wires (`mci_reg_generic_input_wires[*]`), so the full low byte will be available for this fuse value once that change lands. |
+| `CPTRA_CORE_OWNER_MANIFEST_MIN_SVN` | 8 bits | Owner manifest min SVN floor (upcoming Caliptra requirement). Planned for `SS_STRAP_GENERIC[3]` bits\[7:0\]; the reference MCU ROM does not yet forward it. PK-hash skip-lock and rotation are already read from `mci_reg_generic_input_wires[1]` bits\[0\] and \[1\], respectively. |
 
 ### Optional fuses
 
@@ -162,18 +162,16 @@ transformation from raw OTP bytes to written value. ✓ = Caliptra core fuse reg
 - **`cptra_itrng_entropy_config_1`** ✓ →
   `CPTRA_I_TRNG_ENTROPY_CONFIG_1`: `Single{bits:32}` raw u32.
 
-- **`CPTRA_CORE_OWNER_MANIFEST_MIN_SVN`** ✓ → `SS_STRAP_GENERIC[3]` bits\[7:0\].
+- **`CPTRA_CORE_OWNER_MANIFEST_MIN_SVN`** (planned) ✓ → `SS_STRAP_GENERIC[3]` bits\[7:0\].
   `Single{bits:8}` raw u8 (recommended `LinearOr{bits:8, dupe:3}` since this is
   a monotonically increasing anti-rollback value — see encoding table below).
   Required by an upcoming Caliptra ROM change that reads the owner manifest min
-  SVN floor from this strap during owner manifest verification. **Upcoming:**
-  bits\[1:0\] of `SS_STRAP_GENERIC[3]` are currently used as platform hardware
-  straps (PK-hash skip-lock and PK-hash rotation); both are moving to MCI
-  generic input wires (`mci_reg_generic_input_wires[*]`) so the full low byte
-  of `SS_STRAP_GENERIC[3]` will be available for this fuse value. MCU ROM
-  consumers of the PK-hash straps (see `PK_HASH_SKIP_LOCK_STRAPPING_MASK` and
-  `PK_HASH_ROTATION_STRAPPING_MASK` in `rom/src/rom.rs`) will need to be
-  retargeted to the new MCI input-wire bits when that change lands.
+  SVN floor from this strap during owner manifest verification. The reference
+  MCU ROM does not yet read this OTP field or forward it. PK-hash skip-lock and
+  rotation no longer occupy this strap: MCU ROM reads
+  `mci_reg_generic_input_wires[1]` bits\[0\] and \[1\], respectively. Builds
+  with `stable-owner-key` currently set `SS_STRAP_GENERIC[3]` bit\[0\], so the
+  owner manifest min SVN implementation must preserve or reconcile that use.
 
 - **OTP status register offset** — hard-coded in MCU ROM (not from OTP).
   Written to `SS_STRAP_GENERIC[0]` bits\[15:0\]; Caliptra ROM reads this strap

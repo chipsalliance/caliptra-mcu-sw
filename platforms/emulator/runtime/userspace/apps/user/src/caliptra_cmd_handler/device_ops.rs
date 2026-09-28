@@ -12,8 +12,10 @@ use caliptra_api::mailbox::{
     ZEROIZE_FE1_FLAG, ZEROIZE_FE2_FLAG, ZEROIZE_FE3_FLAG, ZEROIZE_UDS_FLAG,
 };
 use caliptra_mcu_attestation_evidence::encode_signed_ocp_eat;
+use caliptra_api::mailbox::{EcdsaVerifyReq, MailboxReqHeader, MailboxRespHeader};
 #[cfg(feature = "pcr-quote")]
 use caliptra_mcu_attestation_evidence::pcr_quote::{encode_pcr_quote, PcrQuoteAlgorithm};
+use caliptra_mcu_attestation_evidence::{encode_signed_ocp_eat, OcpEatAlgorithm};
 use caliptra_mcu_common_commands::{
     AsymAlgo, CaliptraCmdResult, CaliptraCompletionCode, EvidenceFormat, GetLogResult, LogType,
     PkiEntitySlot, ATTESTATION_NONCE_LEN, DEBUG_UNLOCK_CHALLENGE_SIZE,
@@ -29,7 +31,7 @@ use caliptra_mcu_libtock_platform::ErrorCode;
 // leaf cert in the device's chain is the one that verifies it.
 use caliptra_mcu_mbox_common::messages::{
     CommandId, DotDisablePayload, DotLockPayload, DotOverrideChallengePayload, DotOverridePayload,
-    DotRotatePayload, DotStatus, DotUnlockPayload, HybridSignature, AUTH_CMD_NONCE_LEN,
+    DotRotatePayload, DotStatus, DotUnlockPayload, HybridSignature, SvnTarget, AUTH_CMD_NONCE_LEN,
     DOT_BLOB_SIZE, DOT_KEY_HASH_SIZE, DOT_MLDSA_PUBLIC_KEY_SIZE,
 };
 use caliptra_mcu_registers_generated::fuses;
@@ -156,6 +158,11 @@ impl<'a, const N: usize> SegmentedPayloadStream<'a, N> {
 impl<const N: usize> PayloadStream for SegmentedPayloadStream<'_, N> {
     fn size(&self) -> usize {
         self.segments.iter().map(|segment| segment.len()).sum()
+    }
+
+    fn reset(&mut self) {
+        self.segment = 0;
+        self.offset = 0;
     }
 
     async fn read(&mut self, buffer: &mut [u8]) -> Result<usize, ErrorCode> {
@@ -303,12 +310,12 @@ pub async fn get_attestation<A: ApiAlloc>(
         return Err(CaliptraCompletionCode::UnsupportedOperation);
     }
     match (format, algorithm) {
-        // The EAT signer emits only ES384 today, so there is no ML-DSA EAT to
-        // dispatch to yet.
-        // TODO: add an (OcpEat, Mldsa87) arm when the EAT signer supports
-        // ML-DSA-87, and a matching bound in `evidence_len`.
-        (EvidenceFormat::OcpEat, AsymAlgo::EccP384) => {
-            encode_signed_ocp_eat(alloc, &DPE_LEAF_LABEL, entity as u8, nonce, out)
+        (EvidenceFormat::OcpEat, algo) => {
+            let eat_algo = match algo {
+                AsymAlgo::EccP384 => OcpEatAlgorithm::Esp384,
+                AsymAlgo::Mldsa87 => OcpEatAlgorithm::Mldsa87,
+            };
+            encode_signed_ocp_eat(alloc, eat_algo, &DPE_LEAF_LABEL, entity as u8, nonce, out)
                 .await
                 .map_err(map_mcu_err)
         }
@@ -776,23 +783,42 @@ pub fn fuse_lock_partition(partition: u32) -> CaliptraCmdResult<()> {
         })
 }
 
-pub async fn increase_caliptra_min_svn<A: ApiAlloc>(alloc: &A, svn: u32) -> CaliptraCmdResult<()> {
+pub async fn increase_min_svn<A: ApiAlloc>(
+    alloc: &A,
+    target: SvnTarget,
+    svn: u32,
+) -> CaliptraCmdResult<()> {
     if svn == 0 || svn > 128 {
         return Err(CaliptraCompletionCode::InvalidParameter);
     }
 
-    let caliptra_fw_info = fw_info(alloc)
-        .await
-        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
-    if svn > caliptra_fw_info.fw_svn {
-        return Err(CaliptraCompletionCode::InvalidParameter);
-    }
+    let otp_reg = match target {
+        SvnTarget::CaliptraRuntime => {
+            let caliptra_fw_info = fw_info(alloc)
+                .await
+                .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+            if svn > caliptra_fw_info.fw_svn {
+                return Err(CaliptraCompletionCode::InvalidParameter);
+            }
+            otp::reg::CALIPTRA_FW_SVN
+        }
+        SvnTarget::SocManifest => {
+            let max_svn = Otp::<DefaultSyscalls>::new()
+                .read(otp::reg::SOC_MANIFEST_MAX_SVN, 0)
+                .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+            if svn > max_svn {
+                return Err(CaliptraCompletionCode::InvalidParameter);
+            }
+            otp::reg::SOC_MANIFEST_SVN
+        }
+        SvnTarget::OwnerSocManifest => return Err(CaliptraCompletionCode::UnsupportedOperation),
+    };
 
     let otp = Otp::<DefaultSyscalls>::new();
     let mut current_fuses = [0u32; 4];
     for (i, fuse) in current_fuses.iter_mut().enumerate() {
         *fuse = otp
-            .read(otp::reg::CALIPTRA_FW_SVN, i as u32)
+            .read(otp_reg, i as u32)
             .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
     }
 
@@ -817,7 +843,7 @@ pub async fn increase_caliptra_min_svn<A: ApiAlloc>(alloc: &A, svn: u32) -> Cali
     {
         let new_svn_word = u32::from_le_bytes(new_bytes.try_into().unwrap());
         if *current != new_svn_word {
-            otp.write(otp::reg::CALIPTRA_FW_SVN, i as u32, new_svn_word)
+            otp.write(otp_reg, i as u32, new_svn_word)
                 .map_err(|_| CaliptraCompletionCode::InvalidParameter)?;
         }
     }

@@ -89,22 +89,17 @@ pub fn send_error<'a, M: NetworkMailbox<'a>>(
 // Handlers
 // ---------------------------------------------------------------------------
 
-/// Parse the InitiateBootRequest, save boot flags, and start DHCP.
+/// Parse the InitiateBootRequest and start DHCP.
 ///
 /// The actual DHCP polling and TFTP TOC download happen incrementally in
 /// the main loop. This avoids blocking inside a mailbox callback where
 /// the emulator cannot process ethernet RX.
-pub fn handle_initiate_boot_start(
-    data: &[u8],
-    boot_flags: &core::cell::Cell<BootFlags>,
-    ip_version: IpVersion,
-) -> Result<()> {
-    let req: &InitiateBootRequest = match parse_fixed(data) {
-        Some(r) => r,
+pub fn handle_initiate_boot_start(data: &[u8], ip_version: IpVersion) -> Result<()> {
+    let _req: &InitiateBootRequest = match parse_fixed(data) {
+        Some(req) => req,
         None => return Err(NetworkMboxError::InvalidArgument),
     };
 
-    boot_flags.set(req.flags);
     match ip_version {
         IpVersion::V4 => network::start_dhcp().map_err(|_| NetworkMboxError::Failed)?,
         #[cfg(feature = "ipv6-boot")]
@@ -122,12 +117,11 @@ pub fn handle_initiate_boot_start(
 pub fn handle_initiate_boot<'a, M: NetworkMailbox<'a>>(
     mbox: &M,
     data: &[u8],
-    boot_flags: &core::cell::Cell<BootFlags>,
     toc: &mut Toc,
     dhcp_result: &mut Option<network::DhcpResult>,
 ) -> Result<()> {
-    let req: &InitiateBootRequest = match parse_fixed(data) {
-        Some(r) => r,
+    let _req: &InitiateBootRequest = match parse_fixed(data) {
+        Some(req) => req,
         None => {
             return send_error(
                 mbox,
@@ -136,8 +130,6 @@ pub fn handle_initiate_boot<'a, M: NetworkMailbox<'a>>(
             )
         }
     };
-
-    boot_flags.set(req.flags);
 
     // Run DHCP to obtain network configuration.
     let result = network::run_dhcp(DHCP_TIMEOUT_MS, V6_FALLBACK_SERVER, V6_FALLBACK_BOOT_FILE)
