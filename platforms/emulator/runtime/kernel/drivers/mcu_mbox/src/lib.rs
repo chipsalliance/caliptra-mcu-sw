@@ -242,6 +242,65 @@ impl<'a, A: Alarm<'a>> Mailbox<'a> for McuMailbox<'a, A> {
         self.data_buf.map(|buf| f(buf))
     }
 
+    fn copy_request(
+        &self,
+        len: usize,
+        mut write_byte: impl FnMut(usize, u8),
+    ) -> Result<(), ErrorCode> {
+        let request_len = self.registers.mcu_mbox0_csr_mbox_dlen.get() as usize;
+        if len != request_len {
+            return Err(ErrorCode::SIZE);
+        }
+
+        self.data_buf
+            .map(|buf| {
+                for index in 0..len {
+                    let byte = (buf[index / 4] >> ((index % 4) * 8)) as u8;
+                    write_byte(index, byte);
+                }
+            })
+            .ok_or(ErrorCode::BUSY)
+    }
+
+    fn write_response_chunk(
+        &self,
+        offset: usize,
+        src: impl Iterator<Item = u8>,
+        len: usize,
+    ) -> Result<(), ErrorCode> {
+        let sram_len = self.data_buf_len * 4;
+        let end = offset.checked_add(len).ok_or(ErrorCode::SIZE)?;
+        if end > sram_len {
+            return Err(ErrorCode::SIZE);
+        }
+
+        self.data_buf
+            .map(|buf| {
+                for (index, byte) in src.take(len).enumerate() {
+                    let byte_offset = offset + index;
+                    let shift = (byte_offset % 4) * 8;
+                    let mask = !(0xff << shift);
+                    let word = &mut buf[byte_offset / 4];
+                    *word = (*word & mask) | ((byte as u32) << shift);
+                }
+            })
+            .ok_or(ErrorCode::BUSY)
+    }
+
+    fn publish_response(&self, dlen: usize) -> Result<(), ErrorCode> {
+        if dlen > self.data_buf_len * 4 {
+            return Err(ErrorCode::SIZE);
+        }
+        if self.state.get() != McuMboxState::RespFinishPending {
+            return Err(ErrorCode::BUSY);
+        }
+
+        self.state.set(McuMboxState::TxInProgress);
+        self.registers.mcu_mbox0_csr_mbox_dlen.set(dlen as u32);
+        self.schedule_send_done();
+        Ok(())
+    }
+
     fn enable(&self) {
         self.enable_interrupts();
     }

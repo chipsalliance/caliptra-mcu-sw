@@ -64,6 +64,38 @@ impl McuMboxTransport {
         Ok((cmd_opcode, &buf[..req_len]))
     }
 
+    pub async fn wait_for_request(&mut self) -> McuResult<(CmdCode, usize)> {
+        let on_listening_cb = if !self.ready_signaled {
+            self.ready_signaled = true;
+            Some(|| {
+                let mci = Mci::<DefaultSyscalls>::new();
+                mci.set_mailbox_ready().unwrap();
+            })
+        } else {
+            None
+        };
+        self.mbox
+            .receive_command_metadata(on_listening_cb)
+            .await
+            .map_err(|_| errors::DRIVER_RX_ERROR)
+    }
+
+    pub async fn read_request(&self, cmd_opcode: CmdCode, buf: &mut [u8]) -> McuResult<()> {
+        if buf.len() < size_of::<MailboxReqHeader>() {
+            return Err(errors::BUFFER_TOO_SMALL);
+        }
+        self.mbox
+            .copy_request(buf)
+            .await
+            .map_err(|_| errors::DRIVER_RX_ERROR)?;
+        let hdr = MailboxReqHeader::ref_from_bytes(&buf[..size_of::<MailboxReqHeader>()])
+            .map_err(|_| errors::INVALID_REQUEST)?;
+        if !verify_checksum(hdr.chksum, cmd_opcode, &buf[size_of::<u32>()..]) {
+            return Err(errors::CHKSUM_MISMATCH);
+        }
+        Ok(())
+    }
+
     pub async fn send_response(&mut self, resp: &[u8]) -> McuResult<()> {
         if resp.len() < size_of::<MailboxRespHeader>() {
             return Err(errors::BUFFER_TOO_SMALL);
@@ -82,6 +114,20 @@ impl McuMboxTransport {
             .map_err(|_| errors::DRIVER_TX_ERROR)?;
 
         Ok(())
+    }
+
+    pub async fn write_response_chunk(&self, offset: usize, data: &[u8]) -> McuResult<()> {
+        self.mbox
+            .write_response_chunk(offset, data)
+            .await
+            .map_err(|_| errors::DRIVER_TX_ERROR)
+    }
+
+    pub async fn publish_response(&self, response_len: usize) -> McuResult<()> {
+        self.mbox
+            .publish_response(response_len)
+            .await
+            .map_err(|_| errors::DRIVER_TX_ERROR)
     }
 
     pub fn finalize_response(&self, status: MbxCmdStatus) -> McuResult<()> {

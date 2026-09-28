@@ -27,9 +27,10 @@ use caliptra_mcu_libtock_platform::Syscalls;
 use core::marker::PhantomData;
 use mcu_caliptra_api::{
     dpe_certify_key_cert_size, dpe_certify_key_cert_slice, dpe_certify_key_mldsa87_tr,
-    dpe_certify_key_pubkey, dpe_derive_context_exported_cdi, dpe_rotate_context_default, dpe_sign,
-    dpe_tag_tci, sha_finish, sha_init, sha_update, ApiAlloc, AuthorizeAndStashFlags,
-    AuthorizeAndStashParams, DpeContextHandle, DpeDeriveContextFlags, DpeDeriveContextParams,
+    dpe_certify_key_pubkey, dpe_derive_context_exported_cdi,
+    dpe_derive_context_exported_cdi_to_sink, dpe_rotate_context_default, dpe_sign, dpe_tag_tci,
+    sha_finish, sha_init, sha_update, ApiAlloc, AuthorizeAndStashFlags, AuthorizeAndStashParams,
+    DpeCertificateSink, DpeContextHandle, DpeDeriveContextFlags, DpeDeriveContextParams,
     DpeProfile, HashAlgo, SigningInput, DPE_CONTEXT_HANDLE_SIZE, DPE_LABEL_LEN,
     DPE_TCI_MEASUREMENT_SIZE, MLDSA87_TR_SIZE, SHA_CONTEXT_SIZE,
 };
@@ -429,6 +430,44 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
             .write_exported_cdi(&derived.exported_cdi)
             .map_err(|_| self.enter_error_state(MeasurementApiError::StoreFailed))?;
 
+        self.write_attestation_target_handle(target, derived.parent_handle)?;
+        Ok(derived.cert_size)
+    }
+
+    pub async fn export_cdi_and_stash_to_sink<A: ApiAlloc, W: DpeCertificateSink>(
+        &mut self,
+        alloc: &A,
+        profile: DpeProfile,
+        sink: &mut W,
+    ) -> MeasurementApiResult<usize> {
+        self.attestation_state_active()?;
+
+        let dpe_store = DpeHandleStore::<S>::new(DPE_HANDLE_STORE_DRIVER_NUM);
+        let mut existing_cdi = [0u8; EXPORTED_CDI_SIZE];
+        if dpe_store.read_exported_cdi(&mut existing_cdi).is_ok()
+            && existing_cdi != [0u8; EXPORTED_CDI_SIZE]
+        {
+            return Err(MeasurementApiError::ExportedCdiAlreadyDerived);
+        }
+
+        let target = self.read_attestation_target_record()?;
+        let params = DpeDeriveContextParams {
+            parent_handle: target.context_handle,
+            measurement: [0u8; DPE_TCI_MEASUREMENT_SIZE],
+            flags: DpeDeriveContextFlags::EXPORT_CDI
+                | DpeDeriveContextFlags::CREATE_CERTIFICATE
+                | DpeDeriveContextFlags::RETAIN_PARENT_CONTEXT,
+            tci_type: 0,
+            target_locality: 0,
+            svn: 0,
+        };
+        let derived = dpe_derive_context_exported_cdi_to_sink(alloc, &params, profile, sink)
+            .await
+            .map_err(|_| MeasurementApiError::DpeCommandFailed)?;
+
+        dpe_store
+            .write_exported_cdi(&derived.exported_cdi)
+            .map_err(|_| self.enter_error_state(MeasurementApiError::StoreFailed))?;
         self.write_attestation_target_handle(target, derived.parent_handle)?;
         Ok(derived.cert_size)
     }

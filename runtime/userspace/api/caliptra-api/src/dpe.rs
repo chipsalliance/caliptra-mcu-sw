@@ -562,6 +562,10 @@ pub struct DpeDeriveContextExportedCdiResult {
     pub cert_size: usize,
 }
 
+pub trait DpeCertificateSink {
+    async fn write_certificate(&mut self, certificate: &[u8]) -> McuResult<()>;
+}
+
 /// Parameters for one DPE `UpdateContextMeasurement` command.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 pub struct DpeUpdateContextMeasurementParams {
@@ -705,11 +709,60 @@ pub async fn dpe_derive_context_exported_cdi<A: ApiAlloc>(
     parse_derive_context_exported_cdi_response(&rsp, effective_rsp_len, cert_dst)
 }
 
+pub async fn dpe_derive_context_exported_cdi_to_sink<A: ApiAlloc, W: DpeCertificateSink>(
+    alloc: &A,
+    params: &DpeDeriveContextParams,
+    profile: DpeProfile,
+    sink: &mut W,
+) -> McuResult<DpeDeriveContextExportedCdiResult> {
+    let max_resp_len = match profile {
+        DpeProfile::Mldsa87 => 24 * 1024,
+        DpeProfile::P384Sha384 => {
+            size_of::<InvokeDpeRespPrefix>()
+                + size_of::<DeriveContextExportedCdiRespPrefix>()
+                + DPE_MAX_LEAF_CERT_SIZE
+        }
+    };
+    let mut rsp = alloc.alloc(max_resp_len)?;
+    let axi_response = match profile {
+        DpeProfile::Mldsa87 => Some(mcu_sram_to_axi_dma(&rsp)?),
+        DpeProfile::P384Sha384 => None,
+    };
+    let (req, mbox_cmd) = build_derive_context_req(alloc, params, profile, axi_response)?;
+    let rsp_len = mbox_execute(mbox_cmd, &req, &mut rsp).await?;
+    let effective_rsp_len = match profile {
+        DpeProfile::Mldsa87 => {
+            let prefix = InvokeDpeRespPrefix::ref_from_bytes(checked_slice(
+                &rsp,
+                0,
+                size_of::<InvokeDpeRespPrefix>(),
+            )?)
+            .map_err(|_| INVARIANT)?;
+            size_of::<InvokeDpeRespPrefix>() + prefix.data_size.get() as usize
+        }
+        DpeProfile::P384Sha384 => rsp_len,
+    };
+    let (result, certificate) =
+        parse_derive_context_exported_cdi_response_parts(&rsp, effective_rsp_len)?;
+    sink.write_certificate(certificate).await?;
+    Ok(result)
+}
+
 fn parse_derive_context_exported_cdi_response(
     rsp: &[u8],
     rsp_len: usize,
     cert_dst: &mut [u8],
 ) -> McuResult<DpeDeriveContextExportedCdiResult> {
+    let (result, cert) = parse_derive_context_exported_cdi_response_parts(rsp, rsp_len)?;
+    let out = cert_dst.get_mut(..cert.len()).ok_or(INTERNAL_BUG)?;
+    copy_bytes(out, cert)?;
+    Ok(result)
+}
+
+fn parse_derive_context_exported_cdi_response_parts(
+    rsp: &[u8],
+    rsp_len: usize,
+) -> McuResult<(DpeDeriveContextExportedCdiResult, &[u8])> {
     let resp_body_off = size_of::<InvokeDpeRespPrefix>();
     let prefix_len = size_of::<DeriveContextExportedCdiRespPrefix>();
     if rsp_len < resp_body_off + size_of::<DpeResponseHdr>() {
@@ -736,19 +789,19 @@ fn parse_derive_context_exported_cdi_response(
 
     let cert_size = prefix.cert_size.get() as usize;
     let cert_off = resp_body_off + prefix_len;
-    if cert_off + cert_size > rsp_len || cert_size > cert_dst.len() {
+    if cert_off + cert_size > rsp_len {
         return Err(INTERNAL_BUG);
     }
     let cert = internal_slice(rsp, cert_off, cert_size)?;
-    let out = cert_dst.get_mut(..cert_size).ok_or(INTERNAL_BUG)?;
-    copy_bytes(out, cert)?;
-
-    Ok(DpeDeriveContextExportedCdiResult {
-        child_handle: prefix.handle,
-        parent_handle: prefix.parent_handle,
-        exported_cdi: prefix.exported_cdi,
-        cert_size,
-    })
+    Ok((
+        DpeDeriveContextExportedCdiResult {
+            child_handle: prefix.handle,
+            parent_handle: prefix.parent_handle,
+            exported_cdi: prefix.exported_cdi,
+            cert_size,
+        },
+        cert,
+    ))
 }
 
 /// Invoke DPE `UpdateContextMeasurement`, returning the rotated component and parent handles.

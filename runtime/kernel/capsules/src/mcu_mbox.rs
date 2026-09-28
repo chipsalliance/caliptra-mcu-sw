@@ -27,7 +27,8 @@ mod rw_allow {
 mod upcall {
     pub const REQUEST_RECEIVED: usize = 0;
     pub const RESPONSE_SENT: usize = 1;
-    pub const COUNT: u8 = 2;
+    pub const CHUNK_DONE: usize = 2;
+    pub const COUNT: u8 = 3;
 }
 
 /// Metadata of a request that arrived while no application was listening.
@@ -43,6 +44,7 @@ struct StagedRequest {
 #[derive(Default)]
 pub struct App {
     waiting_rx: Cell<bool>, // Indicates if a request is waiting to be received
+    chunked_rx: Cell<bool>,
     pending_tx: Cell<bool>, // Indicates if a response is pending to be sent
 }
 
@@ -55,6 +57,7 @@ pub struct McuMboxDriver<'a, T: hil::Mailbox<'a>> {
         AllowRwCount<{ rw_allow::COUNT }>,
     >,
     current_app: OptionalCell<ProcessId>,
+    request_owner: OptionalCell<ProcessId>,
     staged_request: OptionalCell<StagedRequest>,
 }
 
@@ -72,8 +75,30 @@ impl<'a, T: hil::Mailbox<'a>> McuMboxDriver<'a, T> {
             driver,
             apps,
             current_app: OptionalCell::empty(),
+            request_owner: OptionalCell::empty(),
             staged_request: OptionalCell::empty(),
         }
+    }
+
+    fn owns_request(&self, process_id: ProcessId) -> bool {
+        self.request_owner
+            .map(|owner| owner == process_id)
+            .unwrap_or(false)
+    }
+
+    fn notify_chunk_done(
+        &self,
+        process_id: ProcessId,
+        kernel_data: &GrantKernelData<'_>,
+    ) -> Result<(), ErrorCode> {
+        kernel_data
+            .schedule_upcall(upcall::CHUNK_DONE, (0, 0, 0))
+            .map_err(|_| {
+                self.request_owner.clear();
+                ErrorCode::FAIL
+            })?;
+        self.request_owner.set(process_id);
+        Ok(())
     }
 
     fn start_transmit(&self, app_buf: &ReadableProcessSlice) -> Result<(), ErrorCode> {
@@ -141,6 +166,7 @@ impl<'a, T: hil::Mailbox<'a>> McuMboxDriver<'a, T> {
 
     fn deliver_message(
         &self,
+        process_id: ProcessId,
         app: &mut App,
         kernel_data: &GrantKernelData<'_>,
     ) -> Result<(), ErrorCode> {
@@ -155,6 +181,18 @@ impl<'a, T: hil::Mailbox<'a>> McuMboxDriver<'a, T> {
 
         let command = staged.command;
         let dlen = staged.dlen;
+
+        if app.chunked_rx.replace(false) {
+            kernel_data
+                .schedule_upcall(upcall::REQUEST_RECEIVED, (command as usize, dlen, 0))
+                .map_err(|_| {
+                    self.staged_request.set(staged);
+                    ErrorCode::FAIL
+                })?;
+            self.request_owner.set(process_id);
+            return Ok(());
+        }
+
         let dw_len = dlen.div_ceil(4);
 
         // The payload was never copied out of mailbox SRAM, so read it back from there.
@@ -197,6 +235,7 @@ impl<'a, T: hil::Mailbox<'a>> McuMboxDriver<'a, T> {
                     self.staged_request.set(staged);
                     return Err(ErrorCode::FAIL);
                 }
+                self.request_owner.set(process_id);
             }
             Ok(Err(err)) => {
                 capsule_debug!(
@@ -237,10 +276,21 @@ impl<'a, T: hil::Mailbox<'a>> hil::MailboxClient for McuMboxDriver<'a, T> {
 
         let mut delivered = false;
 
-        self.apps.each(|_, app, kernel_data| {
+        self.apps.each(|process_id, app, kernel_data| {
             if app.waiting_rx.get() {
                 app.waiting_rx.set(false);
             } else {
+                return;
+            }
+
+            if app.chunked_rx.replace(false) {
+                if kernel_data
+                    .schedule_upcall(upcall::REQUEST_RECEIVED, (command as usize, dlen, 0))
+                    .is_ok()
+                {
+                    self.request_owner.set(process_id);
+                    delivered = true;
+                }
                 return;
             }
 
@@ -283,6 +333,7 @@ impl<'a, T: hil::Mailbox<'a>> hil::MailboxClient for McuMboxDriver<'a, T> {
                         .schedule_upcall(upcall::REQUEST_RECEIVED, (command as usize, len, 0))
                         .is_ok()
                     {
+                        self.request_owner.set(process_id);
                         delivered = true;
                     }
                 }
@@ -355,9 +406,10 @@ impl<'a, T: hil::Mailbox<'a>> SyscallDriver for McuMboxDriver<'a, T> {
                         return Err(ErrorCode::BUSY);
                     }
                     app.waiting_rx.set(true);
+                    app.chunked_rx.set(false);
                     // If there's a staged request, deliver it immediately
                     if self.staged_request.is_some() {
-                        self.deliver_message(app, kernel_data)?;
+                        self.deliver_message(process_id, app, kernel_data)?;
                     }
                     Ok(())
                 });
@@ -419,10 +471,101 @@ impl<'a, T: hil::Mailbox<'a>> SyscallDriver for McuMboxDriver<'a, T> {
                     .map_err(|err| err.into());
 
                 self.current_app.take();
+                self.request_owner.clear();
 
                 match result {
                     Ok(Ok(())) => CommandReturn::success(),
                     Ok(Err(e)) | Err(e) => CommandReturn::failure(e),
+                }
+            }
+            // Wait for request metadata without copying the payload.
+            4 => {
+                let res = self.apps.enter(process_id, |app, kernel_data| {
+                    if app.waiting_rx.get() {
+                        return Err(ErrorCode::BUSY);
+                    }
+                    app.waiting_rx.set(true);
+                    app.chunked_rx.set(true);
+                    if self.staged_request.is_some() {
+                        self.deliver_message(process_id, app, kernel_data)?;
+                    }
+                    Ok(())
+                });
+
+                match res {
+                    Ok(_) => CommandReturn::success(),
+                    Err(err) => CommandReturn::failure(err.into()),
+                }
+            }
+            // Copy the complete request into the exact-sized read-write allow buffer.
+            5 => {
+                if !self.owns_request(process_id) {
+                    return CommandReturn::failure(ErrorCode::RESERVE);
+                }
+                let result = self.apps.enter(process_id, |_, kernel_data| {
+                    kernel_data
+                        .get_readwrite_processbuffer(rw_allow::REQUEST)
+                        .map_err(|_| ErrorCode::INVAL)?
+                        .mut_enter(|buf| {
+                            self.driver.copy_request(buf.len(), |index, byte| {
+                                buf[index].set(byte);
+                            })
+                        })
+                        .map_err(|_| ErrorCode::FAIL)??;
+                    self.notify_chunk_done(process_id, kernel_data)
+                });
+                match result {
+                    Ok(Ok(())) => CommandReturn::success(),
+                    Ok(Err(err)) => CommandReturn::failure(err),
+                    Err(err) => CommandReturn::failure(err.into()),
+                }
+            }
+            // Write a response chunk from the read-only allow buffer.
+            6 => {
+                if !self.owns_request(process_id) {
+                    return CommandReturn::failure(ErrorCode::RESERVE);
+                }
+                let result = self.apps.enter(process_id, |_, kernel_data| {
+                    kernel_data
+                        .get_readonly_processbuffer(ro_allow::RESPONSE)
+                        .map_err(|_| ErrorCode::INVAL)?
+                        .enter(|buf| {
+                            self.driver.write_response_chunk(
+                                arg1,
+                                (0..buf.len()).map(|index| buf[index].get()),
+                                buf.len(),
+                            )
+                        })
+                        .map_err(|_| ErrorCode::FAIL)??;
+                    self.notify_chunk_done(process_id, kernel_data)
+                });
+                match result {
+                    Ok(Ok(())) => CommandReturn::success(),
+                    Ok(Err(err)) => CommandReturn::failure(err),
+                    Err(err) => CommandReturn::failure(err.into()),
+                }
+            }
+            // Publish the response length after every chunk has been written.
+            7 => {
+                if self.current_app.is_some() {
+                    return CommandReturn::failure(ErrorCode::BUSY);
+                }
+                if !self.owns_request(process_id) {
+                    return CommandReturn::failure(ErrorCode::RESERVE);
+                }
+                let result = self.apps.enter(process_id, |app, _| {
+                    if app.pending_tx.get() {
+                        return Err(ErrorCode::BUSY);
+                    }
+                    self.driver.publish_response(arg1)?;
+                    self.current_app.set(process_id);
+                    app.pending_tx.set(true);
+                    Ok(())
+                });
+                match result {
+                    Ok(Ok(())) => CommandReturn::success(),
+                    Ok(Err(err)) => CommandReturn::failure(err),
+                    Err(err) => CommandReturn::failure(err.into()),
                 }
             }
             _ => CommandReturn::failure(ErrorCode::NOSUPPORT),

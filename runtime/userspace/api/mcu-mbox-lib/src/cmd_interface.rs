@@ -76,6 +76,27 @@ pub struct CmdInterface<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: 
     busy: AtomicBool,
 }
 
+struct McuMboxCertificateSink<'a> {
+    transport: &'a McuMboxTransport,
+    checksum: u32,
+}
+
+impl mcu_caliptra_api::DpeCertificateSink for McuMboxCertificateSink<'_> {
+    async fn write_certificate(&mut self, certificate: &[u8]) -> McuResult<()> {
+        const HEADER_LEN: usize = size_of::<MailboxRespHeaderVarSize>();
+        const CHUNK_SIZE: usize = 1024;
+
+        self.checksum = raw::mailbox_checksum(0, certificate);
+        for offset in (0..certificate.len()).step_by(CHUNK_SIZE) {
+            let end = (offset + CHUNK_SIZE).min(certificate.len());
+            self.transport
+                .write_response_chunk(HEADER_LEN + offset, &certificate[offset..end])
+                .await?;
+        }
+        Ok(())
+    }
+}
+
 impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
     CmdInterface<'a, H, A, Alloc>
 {
@@ -195,6 +216,101 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
             .map_err(|_| errors::TRANSPORT_ERROR)?;
 
         Ok(())
+    }
+
+    pub async fn handle_responder_msg_chunked(&mut self) -> McuResult<()> {
+        let (cmd_id, req_len) = match self.transport.wait_for_request().await {
+            Ok(request) => request,
+            Err(_) => {
+                let _ = self.transport.finalize_response(MbxCmdStatus::Failure);
+                return Err(errors::TRANSPORT_ERROR);
+            }
+        };
+        let mut req_buf = self.scratch.alloc(req_len)?;
+        if self
+            .transport
+            .read_request(cmd_id, &mut req_buf)
+            .await
+            .is_err()
+        {
+            let _ = self.transport.finalize_response(MbxCmdStatus::Failure);
+            return Err(errors::TRANSPORT_ERROR);
+        }
+
+        if CommandId::from(cmd_id) == CommandId::MC_DPE_SIGNER_CONTEXT_CERT {
+            let status = match self.handle_dpe_signer_context_cert_chunked(&req_buf).await {
+                Ok(()) => MbxCmdStatus::Complete,
+                Err(_) => MbxCmdStatus::Failure,
+            };
+            self.transport
+                .finalize_response(status)
+                .map_err(|_| errors::TRANSPORT_ERROR)?;
+            return Ok(());
+        }
+
+        let mut resp_buf = self.scratch.alloc(response_buffer_size::<H>(cmd_id))?;
+        let status = match self
+            .process_request(&mut req_buf, req_len, cmd_id, &mut resp_buf)
+            .await
+        {
+            Ok((resp, status)) => {
+                if status == MbxCmdStatus::Complete {
+                    if resp.len() < size_of::<MailboxRespHeader>() {
+                        let _ = self.transport.finalize_response(MbxCmdStatus::Failure);
+                        return Err(errors::MCU_MBOX_COMMON);
+                    }
+                    populate_response_checksum(resp)?;
+                    self.transport.send_response(resp).await.map_err(|_| {
+                        let _ = self.transport.finalize_response(MbxCmdStatus::Failure);
+                        errors::TRANSPORT_ERROR
+                    })?;
+                }
+                status
+            }
+            Err(_) => MbxCmdStatus::Failure,
+        };
+
+        self.transport
+            .finalize_response(status)
+            .map_err(|_| errors::TRANSPORT_ERROR)
+    }
+
+    async fn handle_dpe_signer_context_cert_chunked(&mut self, req: &[u8]) -> McuResult<()> {
+        let req =
+            DpeSignerContextCertReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        let profile = match req.algorithm {
+            EndorsementAlgorithm::ECDSA_384 => mcu_caliptra_api::DpeProfile::P384Sha384,
+            EndorsementAlgorithm::MLDSA_87 => mcu_caliptra_api::DpeProfile::Mldsa87,
+            _ => return Err(errors::INVALID_PARAMS),
+        };
+        let mut sink = McuMboxCertificateSink {
+            transport: self.transport,
+            checksum: 0,
+        };
+        let cert_len = caliptra_mcu_measurement_api::export_cdi_and_stash_to_sink(
+            self.scratch,
+            profile,
+            &mut sink,
+        )
+        .await
+        .map_err(|_| errors::MCU_MBOX_COMMON)?;
+
+        let mut header = MailboxRespHeaderVarSize {
+            hdr: MailboxRespHeader {
+                chksum: 0,
+                fips_status: 0,
+            },
+            data_len: cert_len as u32,
+        };
+        let header_bytes = header.as_mut_bytes();
+        let header_checksum = raw::mailbox_checksum(0, &header_bytes[size_of::<u32>()..]);
+        header.hdr.chksum = header_checksum.wrapping_add(sink.checksum);
+        self.transport
+            .write_response_chunk(0, header.as_bytes())
+            .await?;
+        self.transport
+            .publish_response(size_of::<MailboxRespHeaderVarSize>() + cert_len)
+            .await
     }
 
     async fn process_request<'r>(
