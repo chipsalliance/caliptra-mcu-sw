@@ -334,29 +334,36 @@ pub trait PayloadStream {
     fn reset(&mut self);
 
     async fn read(&mut self, buffer: &mut [u8]) -> Result<usize, ErrorCode>;
+}
 
-    /// Returns the wrapping sum of all payload bytes and rewinds the stream.
-    async fn get_bytesum(&mut self) -> Result<u32, ErrorCode> {
-        self.reset();
-        let mut sum = 0u32;
-        let mut buffer = [0u8; PAYLOAD_CHUNK_SIZE];
-        loop {
-            let bytes_read = match self.read(&mut buffer).await {
-                Ok(bytes_read) => bytes_read,
-                Err(error) => {
-                    self.reset();
-                    return Err(error);
-                }
-            };
-            if bytes_read == 0 {
-                break;
+/// Returns the wrapping sum of all payload bytes and rewinds the stream.
+pub async fn payload_stream_bytesum(stream: &mut dyn PayloadStream) -> Result<u32, ErrorCode> {
+    stream.reset();
+    let mut sum = 0u32;
+    let mut buffer = [0u8; PAYLOAD_CHUNK_SIZE];
+    loop {
+        let bytes_read = match stream.read(&mut buffer).await {
+            Ok(bytes_read) => bytes_read,
+            Err(error) => {
+                stream.reset();
+                return Err(error);
             }
-            for byte in &buffer[..bytes_read] {
-                sum = sum.wrapping_add(u32::from(*byte));
-            }
+        };
+        if bytes_read == 0 {
+            break;
         }
-        self.reset();
-        Ok(sum)
+        for byte in &buffer[..bytes_read] {
+            sum = sum.wrapping_add(u32::from(*byte));
+        }
+    }
+    stream.reset();
+    Ok(sum)
+}
+
+impl dyn PayloadStream + '_ {
+    /// Returns the wrapping sum of all payload bytes and rewinds the stream.
+    pub async fn get_bytesum(&mut self) -> Result<u32, ErrorCode> {
+        payload_stream_bytesum(self).await
     }
 }
 
@@ -460,7 +467,10 @@ mod tests {
     fn payload_bytesum_propagates_read_error_and_rewinds() {
         let mut stream = FailingPayloadStream { reset_count: 0 };
 
-        assert_eq!(block_on(stream.get_bytesum()), Err(ErrorCode::Fail));
+        assert_eq!(
+            block_on((&mut stream as &mut dyn PayloadStream).get_bytesum()),
+            Err(ErrorCode::Fail)
+        );
         assert_eq!(stream.reset_count, 2);
     }
 }

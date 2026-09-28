@@ -10,12 +10,11 @@ use caliptra_mcu_libsyscall_caliptra::soft_pcr_store::{
 };
 use caliptra_mcu_libtock_platform::Syscalls;
 use mcu_caliptra_api::{
-    authorize_and_stash as caliptra_authorize, dpe_derive_context, dpe_tag_tci, extend_pcr31,
-    sha_finish, sha_init, sha_update, ApiAlloc, DpeContextHandle, DpeDeriveContextFlags,
-    DpeDeriveContextParams, HashAlgo, SHA_CONTEXT_SIZE,
+    dpe_derive_context, dpe_tag_tci, extend_pcr31, ApiAlloc, DpeContextHandle,
+    DpeDeriveContextFlags, DpeDeriveContextParams,
 };
 
-use super::{caliptra_authorize_params, MeasurementApi};
+use super::MeasurementApi;
 use crate::attestation_manifest::AttestationManifestEntry;
 use crate::errors::{MeasurementApiError, MeasurementApiResult};
 use crate::ImageMetadata;
@@ -76,23 +75,12 @@ pub(super) async fn create_dpe_context<S: Syscalls, A: ApiAlloc>(
         .map_err(|_| api.enter_error_state(MeasurementApiError::PcrExtendFailed))
 }
 
-pub(super) async fn authorize_and_stash<S: Syscalls, A: ApiAlloc>(
+pub(super) async fn record_authorized_image<S: Syscalls, A: ApiAlloc>(
     api: &mut MeasurementApi<'_, S>,
     alloc: &A,
-    fw_id: u32,
+    entry: AttestationManifestEntry,
     metadata: ImageMetadata,
 ) -> MeasurementApiResult {
-    api.initial_load_measurement_state_ready()?;
-    let entry = api
-        .manifest
-        .lookup(fw_id)
-        .map_err(|_| MeasurementApiError::UnknownFwId)?;
-
-    let params = caliptra_authorize_params(fw_id, metadata);
-    caliptra_authorize(alloc, &params)
-        .await
-        .map_err(|_| MeasurementApiError::ImageAuthorizationFailed)?;
-
     if entry.is_tcb() {
         create_dpe_context(
             api,
@@ -121,7 +109,13 @@ async fn create_software_pcr_record<S: Syscalls, A: ApiAlloc>(
     reject_existing_measurement_record(&pcr_store, entry.fw_id)?;
 
     let mut journey_digest = [0u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE];
-    initial_software_pcr_journey_digest(alloc, &metadata.measurement, &mut journey_digest).await?;
+    super::software_pcr_extend_digest(
+        alloc,
+        &[0u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE],
+        &metadata.measurement,
+        &mut journey_digest,
+    )
+    .await?;
     let record = software_pcr_initial_load_record(entry.fw_id, journey_digest, metadata);
     pcr_store
         .create_measurement(entry.fw_id, &record)
@@ -150,26 +144,6 @@ fn reject_existing_measurement_record<S: Syscalls>(
         return Err(MeasurementApiError::DuplicateMeasurementRecord);
     }
     Ok(())
-}
-
-async fn initial_software_pcr_journey_digest<A: ApiAlloc>(
-    alloc: &A,
-    measurement: &[u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE],
-    journey_digest: &mut [u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE],
-) -> MeasurementApiResult {
-    let zero_digest = [0u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE];
-    let ctx = alloc
-        .alloc(SHA_CONTEXT_SIZE)
-        .map_err(|_| MeasurementApiError::DigestFailed)?;
-    let mut state = sha_init(alloc, ctx, HashAlgo::Sha384, &zero_digest)
-        .await
-        .map_err(|_| MeasurementApiError::DigestFailed)?;
-    sha_update(alloc, &mut state, measurement)
-        .await
-        .map_err(|_| MeasurementApiError::DigestFailed)?;
-    sha_finish(alloc, &mut state, journey_digest)
-        .await
-        .map_err(|_| MeasurementApiError::DigestFailed)
 }
 
 fn software_pcr_initial_load_record(
@@ -205,8 +179,11 @@ fn tcb_child_record(
 mod tests {
     extern crate std;
 
+    use super::super::caliptra_authorize_params;
     use super::*;
-    use crate::attestation_manifest::{MCU_RT_FW_ID, V_AUTH_KEY_ID};
+    use crate::attestation_manifest::{
+        MCU_RT_FW_ID, OWNER_MEASUREMENT_POLICY_IDENTIFIER, OWSM_FW_ID, O_AUTH_KEY_ID, V_AUTH_KEY_ID,
+    };
     use mcu_caliptra_api::AuthorizeAndStashFlags;
 
     #[test]
@@ -242,6 +219,43 @@ mod tests {
         assert_eq!(child.parent_fw_id, Some(MCU_RT_FW_ID));
         assert_eq!(child.tci_tag, V_AUTH_KEY_ID);
         assert_eq!(child.context_handle, [0x55; 16]);
+    }
+
+    #[test]
+    fn tcb_child_record_for_owsm_uses_vendor_key_parent() {
+        let child = tcb_child_record(OWSM_FW_ID, V_AUTH_KEY_ID, [0x33; 16]);
+
+        assert_eq!(child.fw_id, OWSM_FW_ID);
+        assert_eq!(child.parent_fw_id, Some(V_AUTH_KEY_ID));
+        assert_eq!(child.tci_tag, OWSM_FW_ID);
+        assert_eq!(child.context_handle, [0x33; 16]);
+    }
+
+    #[test]
+    fn tcb_child_record_for_owner_policy_uses_owsm_parent() {
+        let child = tcb_child_record(OWNER_MEASUREMENT_POLICY_IDENTIFIER, OWSM_FW_ID, [0x55; 16]);
+
+        assert_eq!(child.fw_id, OWNER_MEASUREMENT_POLICY_IDENTIFIER);
+        assert_eq!(child.parent_fw_id, Some(OWSM_FW_ID));
+        assert_eq!(child.tci_tag, OWNER_MEASUREMENT_POLICY_IDENTIFIER);
+        assert_eq!(child.context_handle, [0x55; 16]);
+    }
+
+    #[test]
+    fn tcb_child_record_for_owner_auth_key_uses_owner_policy_parent() {
+        let child = tcb_child_record(
+            O_AUTH_KEY_ID,
+            OWNER_MEASUREMENT_POLICY_IDENTIFIER,
+            [0x66; 16],
+        );
+
+        assert_eq!(child.fw_id, O_AUTH_KEY_ID);
+        assert_eq!(
+            child.parent_fw_id,
+            Some(OWNER_MEASUREMENT_POLICY_IDENTIFIER)
+        );
+        assert_eq!(child.tci_tag, O_AUTH_KEY_ID);
+        assert_eq!(child.context_handle, [0x66; 16]);
     }
 
     #[test]

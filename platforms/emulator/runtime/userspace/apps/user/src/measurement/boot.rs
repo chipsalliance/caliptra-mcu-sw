@@ -48,34 +48,25 @@ struct BootScratchSlot([u8; BITMAP_SLOT_SIZE]);
 pub(crate) async fn boot_init(
     attestation_manifest: &'static [u8],
     soc_image_load_fw_ids: &'static [u32],
-) {
-    let boot_kind = match reset_boot_kind() {
-        Ok(kind) => kind,
-        Err(_) => {
-            log_boot_init_error(BootInitLog::Reset);
-            return;
-        }
-    };
+) -> Result<(), BootInitError> {
+    let boot_kind = reset_boot_kind().map_err(|_| BootInitError::Reset)?;
 
     let mut scratch = Vec::new();
-    if scratch.try_reserve_exact(BOOT_INIT_SCRATCH_SLOTS).is_err() {
-        log_boot_init_error(BootInitLog::Scratch);
-        return;
-    }
+    scratch
+        .try_reserve_exact(BOOT_INIT_SCRATCH_SLOTS)
+        .map_err(|_| BootInitError::Scratch)?;
     scratch.resize(
         BOOT_INIT_SCRATCH_SLOTS,
         BootScratchSlot([0; BITMAP_SLOT_SIZE]),
     );
-    let Some(scratch_ptr) = NonNull::new(scratch.as_mut_ptr().cast::<u8>()) else {
-        log_boot_init_error(BootInitLog::Scratch);
-        return;
-    };
+    let scratch_ptr =
+        NonNull::new(scratch.as_mut_ptr().cast::<u8>()).ok_or(BootInitError::Scratch)?;
     // SAFETY: `scratch_ptr` points at aligned heap memory owned by `scratch`.
     // `scratch` is kept alive until `init` returns and no allocator buffers
     // escape that call.
     let allocator = unsafe { BitmapAllocator::new(scratch_ptr, BOOT_INIT_SCRATCH_SIZE) };
 
-    if caliptra_mcu_measurement_api::init(
+    caliptra_mcu_measurement_api::init(
         attestation_manifest,
         soc_image_load_fw_ids,
         boot_kind,
@@ -83,60 +74,60 @@ pub(crate) async fn boot_init(
         &allocator,
     )
     .await
-    .is_err()
+    .map_err(|_| BootInitError::Init)?;
+
+    if caliptra_mcu_measurement_api::policy_contains_component(
+        caliptra_mcu_measurement_api::V_AUTH_KEY_ID,
+    )
+    .await
     {
-        log_boot_init_error(BootInitLog::Init);
-        return;
+        let digest = mcu_caliptra_api::core_image_info(caliptra_mcu_measurement_api::V_AUTH_KEY_ID)
+            .await
+            .map_err(|_| BootInitError::VendorKey)?
+            .digest;
+        caliptra_mcu_measurement_api::measure_vendor_auth_key(&allocator, &digest, boot_kind)
+            .await
+            .map_err(|_| BootInitError::VendorKey)?;
     }
 
-    if let Ok(image_info) =
-        mcu_caliptra_api::core_image_info(caliptra_mcu_measurement_api::V_AUTH_KEY_ID).await
-    {
-        if caliptra_mcu_measurement_api::measure_vendor_auth_key(
-            &allocator,
-            &image_info.digest,
-            boot_kind,
-        )
-        .await
-        .is_err()
-        {
-            log_boot_init_error(BootInitLog::Init);
-        }
-    }
+    Ok(())
+}
 
-    fn evidence_readiness_policy() -> EvidenceReadinessPolicy {
-        if cfg!(any(
-            feature = "test-mctp-spdm-attestation",
-            feature = "test-mctp-spdm-attestation-tcb",
-            feature = "test-mctp-spdm-attestation-mixed",
-            feature = "test-mctp-spdm-attestation-hitless",
-            feature = "test-mctp-spdm-attestation-hitless-tcb",
-            feature = "test-mctp-spdm-attestation-hitless-mixed"
-        )) {
-            EvidenceReadinessPolicy::RequireInitialSocLoadComplete
-        } else {
-            EvidenceReadinessPolicy::ReadyAfterBootInit
-        }
+fn evidence_readiness_policy() -> EvidenceReadinessPolicy {
+    if cfg!(any(
+        feature = "test-mctp-spdm-attestation",
+        feature = "test-mctp-spdm-attestation-tcb",
+        feature = "test-mctp-spdm-attestation-mixed",
+        feature = "test-mctp-spdm-attestation-hitless",
+        feature = "test-mctp-spdm-attestation-hitless-tcb",
+        feature = "test-mctp-spdm-attestation-hitless-mixed"
+    )) {
+        EvidenceReadinessPolicy::RequireInitialSocLoadComplete
+    } else {
+        EvidenceReadinessPolicy::ReadyAfterBootInit
     }
 }
 
-enum BootInitLog {
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum BootInitError {
     Reset,
     Scratch,
     Init,
+    VendorKey,
 }
 
-fn log_boot_init_error(error: BootInitLog) {
+pub(crate) fn log_boot_init_error(error: BootInitError) {
     let mut cw = Console::<DefaultSyscalls>::writer();
     match error {
-        BootInitLog::Reset => crate::log_error!(cw, "[meas] reset"),
-        BootInitLog::Scratch => crate::log_error!(cw, "[meas] scratch"),
-        BootInitLog::Init => crate::log_error!(cw, "[meas] init"),
+        BootInitError::Reset => crate::log_error!(cw, "[meas] reset"),
+        BootInitError::Scratch => crate::log_error!(cw, "[meas] scratch"),
+        BootInitError::Init => crate::log_error!(cw, "[meas] init"),
+        BootInitError::VendorKey => crate::log_error!(cw, "[meas] vendor key"),
     }
 }
 
 /// Classify the current reset as cold boot or MCU hitless update.
-fn reset_boot_kind() -> Result<BootKind, ErrorCode> {
+pub(crate) fn reset_boot_kind() -> Result<BootKind, ErrorCode> {
     let mci = MciSyscall::<DefaultSyscalls>::new();
     let reason = mci.read(RESET_REASON, 0)?;
     decode_reset_reason(reason).ok_or(ErrorCode::Invalid)
