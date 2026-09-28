@@ -33,6 +33,26 @@ struct ChunkInfo {
     complete: bool,
 }
 
+/// Whether the bytes a transport delivered past the SPDM message are only framing.
+///
+/// A `CHUNK_SEND` frame carries `chunk_size` bytes of SPDM payload, but the
+/// transport may hand up a longer buffer because its data units are coarser than
+/// a byte. DOE objects are DWORD-granular, so a 634-byte message arrives as 636
+/// bytes; requiring an exact match rejects every chunk whose length is not
+/// already aligned.
+///
+/// `delivered` must be `>= payload`; callers establish that by slicing first.
+fn trailing_slack_is_transport_padding<Pal: SpdmPal>(
+    pal: &Pal,
+    delivered: usize,
+    payload: usize,
+) -> bool {
+    // TODO `send_len_alignment` is currently named for the outbound path,
+    // but it describes the transport's frame granularity in both directions.
+    // This applies to both the `SpdmPalIoTransport` and `SpdmPalTransport`.
+    delivered - payload < pal.send_len_alignment()
+}
+
 #[allow(clippy::too_many_arguments)]
 pub(crate) async fn handle_chunk_send<
     'a,
@@ -260,19 +280,21 @@ async fn process_first_chunk<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     let large_msg_size = u32::from_le_bytes(*size_bytes) as usize;
     let chunk_data = &rest[4..];
 
-    // Require exact chunk body length match inside rest payload (no trailing junk bytes).
-    if chunk_data.len() != chunk_size {
-        return Err(ChunkProcessError::Early {
-            handle,
-            chunk_seq_num,
-        });
-    }
+    // `chunk_size` is authoritative for the SPDM message length; anything past it
+    // is transport framing, not SPDM. Taking the slice first also proves
+    // `chunk_data.len() >= chunk_size`, so the slack below cannot underflow.
     let Some(chunk) = chunk_data.get(..chunk_size) else {
         return Err(ChunkProcessError::Early {
             handle,
             chunk_seq_num,
         });
     };
+    if !trailing_slack_is_transport_padding(pal, chunk_data.len(), chunk_size) {
+        return Err(ChunkProcessError::Early {
+            handle,
+            chunk_seq_num,
+        });
+    }
     let min_chunk_size = CapabilitiesBody::MIN_DATA_TRANSFER_SIZE as usize
         - SpdmMsgHdrPdu::SIZE
         - ChunkSendReqBody::SIZE
@@ -401,19 +423,20 @@ async fn process_next_chunk<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     let large_msg_size = state.large_msg_ctx.state.large_msg_size as usize;
     let end = bytes_received.saturating_add(chunk_size);
 
-    // Require exact chunk body length match inside rest payload (no trailing junk bytes).
-    if rest.len() != chunk_size {
-        return Err(ChunkProcessError::Early {
-            handle,
-            chunk_seq_num,
-        });
-    }
+    // See `process_first_chunk`: `chunk_size` bounds the SPDM message, and the
+    // slice proves `rest.len() >= chunk_size` before the slack is computed.
     let Some(chunk) = rest.get(..chunk_size) else {
         return Err(ChunkProcessError::Early {
             handle,
             chunk_seq_num,
         });
     };
+    if !trailing_slack_is_transport_padding(pal, rest.len(), chunk_size) {
+        return Err(ChunkProcessError::Early {
+            handle,
+            chunk_seq_num,
+        });
+    }
     let min_chunk_size = CapabilitiesBody::MIN_DATA_TRANSFER_SIZE as usize
         - SpdmMsgHdrPdu::SIZE
         - ChunkSendReqBody::SIZE;
