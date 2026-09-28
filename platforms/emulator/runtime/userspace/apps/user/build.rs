@@ -80,6 +80,57 @@ fn main() {
     write_soc_image_descriptors(&out_dir, &config);
 }
 
+fn target_root_dir() -> PathBuf {
+    println!("cargo:rerun-if-env-changed=CARGO_TARGET_DIR");
+    if let Ok(target_dir) = env::var("CARGO_TARGET_DIR") {
+        return PathBuf::from(target_dir);
+    }
+
+    if let Some(target_dir) = target_dir_from_out_dir() {
+        return target_dir;
+    }
+
+    let manifest_dir = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap());
+    let workspace_root = find_workspace_root(&manifest_dir)
+        .expect("Unable to determine workspace root from user-app path");
+    workspace_root.join("target")
+}
+
+fn determine_owner_measurement_policy_max_size() -> usize {
+    println!("cargo:rerun-if-env-changed=MCU_OWNER_MEASUREMENT_POLICY_MAX_SIZE");
+    if let Ok(val) = env::var("MCU_OWNER_MEASUREMENT_POLICY_MAX_SIZE") {
+        if let Ok(size) = val.parse::<usize>() {
+            return size;
+        }
+    }
+
+    let target_dir = target_root_dir();
+    let candidates = [
+        target_dir.join("owner-measurement-policy.bin"),
+        target_dir
+            .join("generated")
+            .join("owner-measurement-policy.bin"),
+        target_dir
+            .join("generated")
+            .join("owner_measurement_policy.bin"),
+    ];
+
+    for path in &candidates {
+        if path.exists() {
+            println!("cargo:rerun-if-changed={}", path.display());
+            if let Ok(meta) = fs::metadata(path) {
+                let len = meta.len() as usize;
+                if len > 0 {
+                    return len;
+                }
+            }
+        }
+    }
+
+    // Default to the architectural maximum (420 B) if no artifact or override is present.
+    420
+}
+
 fn attestation_manifest_config_path() -> PathBuf {
     generated_config_path("attestation_manifest.toml")
 }
@@ -188,7 +239,13 @@ fn write_soc_image_descriptors(out_dir: &Path, attestation_config: &AttestationM
     for image in &config.images {
         out.push_str(&format!("    {},\n", image.fw_id));
     }
-    out.push_str("];\n");
+    out.push_str("];\n\n");
+
+    let policy_max_size = determine_owner_measurement_policy_max_size();
+    out.push_str("#[allow(dead_code)]\n");
+    out.push_str(&format!(
+        "pub const OWNER_MEASUREMENT_POLICY_MAX_SIZE: usize = {policy_max_size};\n"
+    ));
 
     fs::write(out_dir.join("soc_image_descriptors.rs"), out)
         .expect("Failed to write generated soc_image_descriptors.rs");

@@ -227,10 +227,22 @@ mod test {
                     format!("mcu_rom_prebuilt_{}.bin", safe_name)
                 };
                 let output = target_binary(&filename);
-                if let Some(parent) = output.parent() {
-                    std::fs::create_dir_all(parent).ok();
+                if !output.exists() {
+                    if let Some(parent) = output.parent() {
+                        std::fs::create_dir_all(parent).ok();
+                    }
+                    let temp_output = output.with_extension(format!(
+                        "tmp.{}.{}",
+                        std::process::id(),
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_nanos()
+                    ));
+                    if std::fs::write(&temp_output, &rom_data).is_ok() {
+                        let _ = std::fs::rename(&temp_output, &output);
+                    }
                 }
-                std::fs::write(&output, &rom_data).expect("Failed to write prebuilt ROM to file");
                 return output;
             }
         }
@@ -1663,19 +1675,29 @@ mod test {
     /// Uses the CPTRA_EMULATOR_BUNDLE environment variable.
     fn get_prebuilt_emulator(feature: &str) -> Option<PathBuf> {
         let binaries = EmulatorBinaries::from_env().ok()?;
-        let emulator_bytes = binaries.emulator().ok()?;
-
-        // Write prebuilt emulator to target directory
         let output = target_binary("emulator");
-        if let Some(parent) = output.parent() {
-            std::fs::create_dir_all(parent).ok()?;
-        }
-        std::fs::write(&output, emulator_bytes).ok()?;
-        // Make executable
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&output, std::fs::Permissions::from_mode(0o755)).ok()?;
+
+        if !output.exists() {
+            let emulator_bytes = binaries.emulator().ok()?;
+            if let Some(parent) = output.parent() {
+                std::fs::create_dir_all(parent).ok()?;
+            }
+            let temp_output = output.with_extension(format!(
+                "tmp.{}.{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos()
+            ));
+            std::fs::write(&temp_output, emulator_bytes).ok()?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&temp_output, std::fs::Permissions::from_mode(0o755))
+                    .ok()?;
+            }
+            let _ = std::fs::rename(&temp_output, &output);
         }
         println!("Using prebuilt emulator for feature {}", feature);
         Some(output)
@@ -1689,11 +1711,22 @@ mod test {
             if let Ok(runtime_bytes) = binaries.test_runtime(feature) {
                 // Write prebuilt runtime to target directory
                 let output = target_binary(&format!("runtime-{}-emulator.bin", feature));
-                if let Some(parent) = output.parent() {
-                    std::fs::create_dir_all(parent).ok();
+                if !output.exists() {
+                    if let Some(parent) = output.parent() {
+                        std::fs::create_dir_all(parent).ok();
+                    }
+                    let temp_output = output.with_extension(format!(
+                        "tmp.{}.{}",
+                        std::process::id(),
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_nanos()
+                    ));
+                    if std::fs::write(&temp_output, runtime_bytes).is_ok() {
+                        let _ = std::fs::rename(&temp_output, &output);
+                    }
                 }
-                std::fs::write(&output, runtime_bytes)
-                    .expect("Failed to write prebuilt runtime to file");
                 println!("Using prebuilt test firmware {}", feature);
                 return output;
             }

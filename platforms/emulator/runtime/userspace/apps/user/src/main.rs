@@ -49,7 +49,7 @@ mod firmware_update;
 mod image_loader;
 mod mcu_mbox;
 mod measurement;
-mod soc_image_descriptors {
+pub(crate) mod soc_image_descriptors {
     include!(concat!(env!("OUT_DIR"), "/soc_image_descriptors.rs"));
 }
 #[cfg(target_arch = "riscv32")]
@@ -122,11 +122,22 @@ pub(crate) async fn async_main() {
     // Initialize measurement state before spawning any task that could consume
     // it (image loading, firmware update, SPDM/evidence, MCU mailbox).
     let soc_image_load_list = soc_image_descriptors::SOC_IMAGE_LOAD_LIST;
-    measurement::boot_init(
+    if let Err(err) = measurement::boot_init(
         measurement::attestation_manifest_bytes(),
         soc_image_load_list,
     )
-    .await;
+    .await
+    {
+        measurement::log_boot_init_error(err);
+        caliptra_mcu_measurement_api::disable_attestation().await;
+    }
+
+    EXECUTOR
+        .get()
+        .spawner()
+        .spawn(image_loader::image_loading_task(soc_image_load_list))
+        .map_err(|_| log_spawn_error())
+        .ok();
 
     #[cfg(feature = "spdm")]
     match cert_store::boot_init().await {
@@ -144,13 +155,6 @@ pub(crate) async fn async_main() {
             );
         }
     }
-
-    EXECUTOR
-        .get()
-        .spawner()
-        .spawn(image_loader::image_loading_task(soc_image_load_list))
-        .map_err(|_| log_spawn_error())
-        .ok();
 
     EXECUTOR
         .get()

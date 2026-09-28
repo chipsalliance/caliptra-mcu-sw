@@ -29,6 +29,7 @@ struct SocImageDescriptorToml {
     fw_id: u32,
 }
 
+#[allow(dead_code)]
 pub(crate) fn write_config(
     vendor: &str,
     model: &str,

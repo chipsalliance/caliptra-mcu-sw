@@ -56,6 +56,9 @@ pub const ATTESTATION_FLAGS_SUPPORTED: u32 =
 /// MCU Runtime firmware identifier used as the default attestation target.
 pub const MCU_RT_FW_ID: u32 = 0x0000_0002;
 
+/// Reserved component identifier for the Owner SoC Manifest (OWSM preamble).
+pub const OWSM_FW_ID: u32 = 0x0000_0003;
+
 /// Reserved component identifier for the Vendor Authorization Key digest entry in Base SoC Manifest.
 pub const V_AUTH_KEY_ID: u32 = 0x0000_0004;
 
@@ -504,7 +507,6 @@ pub struct OwnerFwLoadListHeader {
 pub struct OwnerFwLoadList<'a> {
     bytes: &'a [u8],
     header: OwnerFwLoadListHeader,
-    entries: &'a [u8],
 }
 
 impl<'a> OwnerFwLoadList<'a> {
@@ -525,10 +527,11 @@ impl<'a> OwnerFwLoadList<'a> {
     }
 
     pub fn entries(&self) -> OwnerFwLoadListIter<'a> {
-        OwnerFwLoadListIter {
-            entries: self.entries,
-            offset: 0,
-        }
+        let entries = self
+            .bytes
+            .get(OWNER_FW_LOAD_LIST_FIXED_HEADER_SIZE..)
+            .unwrap_or(&[]);
+        OwnerFwLoadListIter { entries, offset: 0 }
     }
 
     pub fn contains(&self, fw_id: u32) -> bool {
@@ -604,19 +607,14 @@ pub fn parse_and_validate_owner_fw_load_list(
         entry_count,
     };
 
-    Ok(OwnerFwLoadList {
-        bytes,
-        header,
-        entries,
-    })
+    Ok(OwnerFwLoadList { bytes, header })
 }
 
 /// Parsed view of the complete Owner Measurement Policy container (Component 0x5).
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct OwnerMeasurementPolicy<'a> {
     raw_bytes: &'a [u8],
-    manifest: AttestationManifest<'a>,
-    load_list: OwnerFwLoadList<'a>,
+    manifest_size: usize,
 }
 
 impl<'a> OwnerMeasurementPolicy<'a> {
@@ -624,12 +622,27 @@ impl<'a> OwnerMeasurementPolicy<'a> {
         self.raw_bytes
     }
 
-    pub const fn manifest(&self) -> &AttestationManifest<'a> {
-        &self.manifest
+    pub fn manifest(&self) -> AttestationManifest<'a> {
+        let manifest_bytes = self.raw_bytes.get(..self.manifest_size).unwrap_or(&[]);
+        parse_and_validate_owner(manifest_bytes).expect("validated during construction")
     }
 
-    pub const fn load_list(&self) -> &OwnerFwLoadList<'a> {
-        &self.load_list
+    pub fn load_list(&self) -> OwnerFwLoadList<'a> {
+        let load_list_bytes = self.raw_bytes.get(self.manifest_size..).unwrap_or(&[]);
+        let entry_count = if load_list_bytes.len() >= OWNER_FW_LOAD_LIST_FIXED_HEADER_SIZE {
+            read_u32(load_list_bytes, 12).unwrap_or(0)
+        } else {
+            0
+        };
+        OwnerFwLoadList {
+            bytes: load_list_bytes,
+            header: OwnerFwLoadListHeader {
+                marker: OWNER_FW_LOAD_LIST_MARKER,
+                size: load_list_bytes.len() as u32,
+                version: OWNER_FW_LOAD_LIST_VERSION,
+                entry_count,
+            },
+        }
     }
 }
 
@@ -667,8 +680,7 @@ pub fn parse_and_validate_owner_measurement_policy(
 
     Ok(OwnerMeasurementPolicy {
         raw_bytes: bytes,
-        manifest,
-        load_list,
+        manifest_size,
     })
 }
 
