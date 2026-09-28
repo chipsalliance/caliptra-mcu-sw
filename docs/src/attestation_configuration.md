@@ -225,3 +225,4 @@ On a hitless-update reset:
    the update. Do not overwrite the baseline or silently initialize
    fresh state. An unchanged policy reuses its preserved measurement
    without another PCR31 extension.
+4. Non-loadable authorization keys (e.g., Vendor Authorization Key `0x0000_0004` and Owner Authorization Key `0x0000_0006`): on hitless update, the runtime queries the preserved DPE context measurement (`dpe_get_tagged_tci`). If the accepted key digest is unchanged, existing contexts and PCR31 are retained without re-extension. If the key changed, the existing context is updated via `dpe_update_context_measurement` and PCR31 is extended once.
