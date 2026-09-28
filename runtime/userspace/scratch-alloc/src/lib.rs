@@ -11,11 +11,11 @@
 //! It hands out two kinds of RAII owners:
 //!
 //! * [`ScratchBox<T>`] — owns a `T` in a contiguous run of slots; drops the
-//!   value in place and releases the slots on `Drop`.
+//!   value in place, zeroes its slots, and releases them on `Drop`.
 //! * [`BitmapBytes`] — owns a `[u8]` view over one or more slots; can be
-//!   shrunk in place via [`BitmapBytes::shrink`] to release trailing slots
-//!   (used by receive paths that allocate an MTU and trim to the real
-//!   message length).
+//!   shrunk in place via [`BitmapBytes::shrink`] to zero and release trailing
+//!   slots (used by receive paths that allocate an MTU and trim to the real
+//!   message length). Remaining slots are zeroed on `Drop`.
 //!
 //! # Ownership model
 //!
@@ -106,10 +106,9 @@ impl BitmapAllocator {
     ///
     /// # Returns
     ///
-    /// A new `BitmapAllocator` with an empty (zeroed) bitmap. If
-    /// `capacity` is too small to fit even one slot plus its bitmap byte,
-    /// `num_slots` is 0 and every allocation will fail with
-    /// `OUT_OF_MEMORY`.
+    /// A new `BitmapAllocator` with an empty bitmap and zeroed managed slots.
+    /// If `capacity` is too small to fit even one slot plus its bitmap byte,
+    /// `num_slots` is 0 and every allocation will fail with `OUT_OF_MEMORY`.
     ///
     /// # Safety
     ///
@@ -139,8 +138,9 @@ impl BitmapAllocator {
         let bm_bytes = num_slots.div_ceil(8);
         let bm_aligned = (bm_bytes + BITMAP_SLOT_SIZE - 1) & !(BITMAP_SLOT_SIZE - 1);
 
-        // Zero the bitmap; the data region is left uninitialized.
-        core::ptr::write_bytes(ptr.as_ptr(), 0, bm_bytes);
+        // Start with an empty bitmap and cleared slots so the first allocation
+        // cannot observe data left by a previous owner of the backing region.
+        core::ptr::write_bytes(ptr.as_ptr(), 0, bm_aligned + num_slots * BITMAP_SLOT_SIZE);
 
         let data = NonNull::new_unchecked(ptr.as_ptr().add(bm_aligned));
         Self {
@@ -209,15 +209,13 @@ impl BitmapAllocator {
         best
     }
 
-    /// Resets the allocator by clearing every bit in the occupancy bitmap.
+    /// Resets the allocator by zeroing every managed slot and clearing the
+    /// occupancy bitmap.
     ///
     /// Currently has no callers. Allocation lifetime is managed entirely by
     /// RAII: [`BitmapBytes`] and [`ScratchBox`] release their slots on drop,
     /// so nothing scopes allocations to a single request/exchange. Retained
     /// as a teardown/recovery primitive.
-    ///
-    /// After reset, the slot region's bytes are *not* zeroed — they remain
-    /// whatever the previous owner left there.
     ///
     /// # Safety
     ///
@@ -228,12 +226,13 @@ impl BitmapAllocator {
     pub unsafe fn reset(&self) {
         let bm_bytes = self.num_slots.div_ceil(8);
         core::ptr::write_bytes(self.base.as_ptr(), 0, bm_bytes);
+        core::ptr::write_bytes(self.data.as_ptr(), 0, self.num_slots * BITMAP_SLOT_SIZE);
         self.live_count.set(0);
     }
 
     /// Allocates a byte buffer of `len` bytes from the pool.
     ///
-    /// Internally the allocation is rounded up to whole slots; the
+    /// Internally the allocation is rounded up to whole zeroed slots; the
     /// returned [`BitmapBytes`] can be shrunk via
     /// [`BitmapBytes::shrink`] to release trailing slots back to the
     /// pool — useful for receive paths that allocate the transport MTU
@@ -398,15 +397,23 @@ impl BitmapAllocator {
         None
     }
 
-    /// Releases a previously-reserved run of slots back to the pool by clearing
-    /// their occupancy bits. The slot bytes are left as-is; per-request `reset`
-    /// plus the write-before-read discipline scope their reuse.
+    /// Zeroes a previously-reserved run of slots, then releases it back to the
+    /// pool by clearing its occupancy bits.
     ///
     /// # Parameters
     ///
     /// * `start` — First slot index of the run.
     /// * `n` — Number of slots to free.
     fn free_run(&self, start: usize, n: usize) {
+        // Wipe while the slots are still marked occupied so no future
+        // allocation can observe data from the previous owner.
+        unsafe {
+            core::ptr::write_bytes(
+                self.data.as_ptr().add(start * BITMAP_SLOT_SIZE),
+                0,
+                n * BITMAP_SLOT_SIZE,
+            );
+        }
         for j in start..start + n {
             self.set_bit(j, false);
         }
@@ -462,18 +469,9 @@ impl<T> ScratchBox<'_, T> {
 }
 
 impl<T> Drop for ScratchBox<'_, T> {
-    /// Drops the owned value in place, securely zero-wipes the memory slot, then releases the underlying
-    /// slots back to the allocator's bitmap.
+    /// Drops the owned value in place, then zeroes and releases its slots.
     fn drop(&mut self) {
         unsafe { core::ptr::drop_in_place(self.ptr().as_ptr()) };
-        // Securely zero-wipe the underlying memory slots to prevent information leaks of stateful data.
-        unsafe {
-            core::ptr::write_bytes(
-                self.ptr().as_ptr() as *mut u8,
-                0,
-                self.num_slots as usize * BITMAP_SLOT_SIZE,
-            );
-        }
         self.alloc
             .free_run(self.start_slot as usize, self.num_slots as usize);
     }
@@ -638,8 +636,8 @@ impl BitmapBytes<'_> {
     ///
     /// # Returns
     ///
-    /// Slice of length [`Self::capacity`]. Bytes outside `0..len()`
-    /// are uninitialized and must be written before being read.
+    /// Slice of length [`Self::capacity`]. Bytes outside `0..len()` are not
+    /// part of the logical buffer and must be initialized before being read.
     #[inline]
     pub fn as_mut_capacity(&mut self) -> &mut [u8] {
         let cap = self.capacity();
@@ -663,8 +661,8 @@ impl BitmapBytes<'_> {
     /// trailing slots that are no longer needed back to the pool.
     ///
     /// Used by receive paths that allocate the transport MTU and then
-    /// trim down to the actual message length, returning the unused
-    /// tail slots so the responder can immediately reuse them.
+    /// trim down to the actual message length, zeroing and returning the
+    /// unused tail slots so the responder can immediately reuse them.
     ///
     /// # Parameters
     ///
@@ -697,9 +695,8 @@ impl BitmapBytes<'_> {
 }
 
 impl Drop for BitmapBytes<'_> {
-    /// Releases every slot reserved by this buffer back to the
-    /// allocator's bitmap. Plain `[u8]` has no drop glue, so no
-    /// per-element teardown is needed.
+    /// Zeroes every slot reserved by this buffer, then releases it back to the
+    /// allocator's bitmap.
     fn drop(&mut self) {
         self.alloc
             .free_run(self.start_slot as usize, self.num_slots() as usize);
@@ -827,16 +824,69 @@ mod tests {
 
     /// Construct a fresh allocator over a heap-backed buffer for tests.
     fn make_alloc(capacity: usize) -> (BitmapAllocator, alloc::vec::Vec<u8>) {
+        make_alloc_filled(capacity, 0)
+    }
+
+    /// Construct an allocator over a buffer pre-filled with `value`.
+    fn make_alloc_filled(capacity: usize, value: u8) -> (BitmapAllocator, alloc::vec::Vec<u8>) {
         // Heap-backed buffer keeps the test target-independent. The Vec is
         // returned alongside so the caller can keep it alive for the
         // allocator's borrow.
-        let mut buf = vec![0u8; capacity + BITMAP_SLOT_SIZE];
+        let mut buf = vec![value; capacity + BITMAP_SLOT_SIZE];
         // Round the base up to BITMAP_SLOT_SIZE alignment.
         let raw = buf.as_mut_ptr();
         let off = (raw as usize).wrapping_neg() & (BITMAP_SLOT_SIZE - 1);
         let ptr = unsafe { NonNull::new_unchecked(raw.add(off)) };
         let alloc = unsafe { BitmapAllocator::new(ptr, capacity) };
         (alloc, buf)
+    }
+
+    #[test]
+    fn new_zeroes_managed_slots() {
+        let (alloc, _buf) = make_alloc_filled(4 * 1024, 0xa5);
+        let bytes = alloc.alloc_bytes(2 * BITMAP_SLOT_SIZE).unwrap();
+        assert!(bytes.iter().all(|byte| *byte == 0));
+    }
+
+    #[test]
+    fn drop_zeroes_released_slots() {
+        let (alloc, _buf) = make_alloc(4 * 1024);
+        let mut bytes = alloc.alloc_bytes(2 * BITMAP_SLOT_SIZE).unwrap();
+        bytes.as_mut_capacity().fill(0xa5);
+        let start_slot = bytes.start_slot;
+        drop(bytes);
+
+        let bytes = alloc.alloc_bytes(2 * BITMAP_SLOT_SIZE).unwrap();
+        assert_eq!(bytes.start_slot, start_slot);
+        assert!(bytes.iter().all(|byte| *byte == 0));
+    }
+
+    #[test]
+    fn shrink_zeroes_released_slots() {
+        let (alloc, _buf) = make_alloc(4 * 1024);
+        let mut bytes = alloc.alloc_bytes(3 * BITMAP_SLOT_SIZE).unwrap();
+        bytes.as_mut_capacity().fill(0xa5);
+        bytes.shrink(BITMAP_SLOT_SIZE).unwrap();
+
+        let released = alloc.alloc_bytes(2 * BITMAP_SLOT_SIZE).unwrap();
+        assert_eq!(released.start_slot as usize, bytes.start_slot as usize + 1);
+        assert!(released.iter().all(|byte| *byte == 0));
+    }
+
+    #[test]
+    fn reset_zeroes_managed_slots() {
+        let (alloc, _buf) = make_alloc(4 * 1024);
+        unsafe {
+            core::ptr::write_bytes(
+                alloc.data.as_ptr(),
+                0xa5,
+                alloc.num_slots * BITMAP_SLOT_SIZE,
+            );
+            alloc.reset();
+        }
+
+        let bytes = alloc.alloc_bytes(2 * BITMAP_SLOT_SIZE).unwrap();
+        assert!(bytes.iter().all(|byte| *byte == 0));
     }
 
     #[test]
