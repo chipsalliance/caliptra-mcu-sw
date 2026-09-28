@@ -2,7 +2,7 @@
 
 pub use caliptra_api::mailbox::{
     HpkeHandle, OcpLockEnumerateHpkeHandlesReq, OcpLockEnumerateHpkeHandlesResp,
-    HpkeHandle, OcpLockEnumerateHpkeHandlesResp, MAX_ATTESTED_CSR_RESP_DATA_SIZE,
+    MAX_ATTESTED_CSR_RESP_DATA_SIZE,
 };
 use caliptra_image_types::{ECC384_SCALAR_BYTE_SIZE, MLDSA87_SIGNATURE_BYTE_SIZE};
 use caliptra_mcu_registers_generated::fuses::{

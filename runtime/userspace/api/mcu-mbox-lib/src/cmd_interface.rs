@@ -23,16 +23,11 @@ use caliptra_mcu_mbox_common::messages::{
     McuFeProgReq, McuFeStatusReq, McuFeStatusResp, McuMailboxReq, McuMailboxResp,
     McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq,
     McuResponseVarSize, OcpLockProgramHekResp, OcpLockZeroHekResp, ProvisionOwnerPkHashReq,
-    ProvisionOwnerPkHashResp, ProvisionVendorPkHashReq, ProvisionVendorPkHashResp,
+    ProvisionOwnerPkHashResp, ProvisionVendorPkHashReq, ProvisionVendorPkHashResp, SvnTarget,
     VendorPkHashStatusReq, VendorPkHashStatusResp, ZeroizeUdsFeAndEnterRmaReq,
     ZeroizeUdsFeAndEnterRmaResp, DEVICE_CAPS_SIZE, GET_ATTESTATION_RESP_PREFIX_LEN,
-    GetAuthCmdChallengeReq, GetAuthCmdChallengeResp, GetDpeCertChainReq, GetLogReq, LogType,
-    MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize, McuFeProgReq, McuMailboxReq,
-    McuMailboxResp, McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp,
-    McuProdDebugUnlockTokenReq, McuResponseVarSize, ProvisionOwnerPkHashReq,
-    ProvisionOwnerPkHashResp, ProvisionVendorPkHashReq, ProvisionVendorPkHashResp, SvnTarget,
-    DEVICE_CAPS_SIZE, GET_ATTESTATION_RESP_PREFIX_LEN, MAX_ATTESTED_CSR_RESP_DATA_SIZE,
-    MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
+    MAX_ATTESTED_CSR_RESP_DATA_SIZE, MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN,
+    MAX_RESP_DATA_SIZE,
 };
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_mbox_common::messages::{HekSeedSlot, OcpLockProgramHekReq, OcpLockZeroHekReq};
@@ -1824,9 +1819,6 @@ fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32) -> usize {
         c if c == CommandId::MC_PROVISION_OWNER_PK_HASH => size_of::<ProvisionOwnerPkHashResp>(),
         c if c == CommandId::MC_OCP_LOCK_PROGRAM_HEK => size_of::<OcpLockProgramHekResp>(),
         c if c == CommandId::MC_OCP_LOCK_ZERO_HEK => size_of::<OcpLockZeroHekResp>(),
-        c if c == CommandId::MC_FUSE_INCREASE_CALIPTRA_MIN_SVN => {
-            size_of::<FuseIncreaseCaliptraMinSvnResp>()
-        }
         c if c == CommandId::MC_FUSE_INCREASE_MIN_SVN => size_of::<FuseIncreaseMinSvnResp>(),
         c if c == CommandId::MC_FE_PROG || c == CommandId::MC_FUSE_WRITE => {
             size_of::<FuseWriteResp>()
