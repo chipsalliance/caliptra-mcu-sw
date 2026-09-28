@@ -1693,6 +1693,7 @@ dependencies = [
  "embassy-sync",
  "embedded-alloc",
  "futures",
+ "mcu-caliptra-api",
  "sha2",
  "spki 0.7.3",
  "zerocopy",

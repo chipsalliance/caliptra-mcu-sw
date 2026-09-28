@@ -10,8 +10,30 @@ use caliptra_mcu_libapi_caliptra::signer::CaliptraDpeSigner;
 use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
 use caliptra_mcu_libsyscall_caliptra::system::System;
 use caliptra_mcu_romtime::println;
+use caliptra_mcu_scratch_alloc::{BitmapAllocator, StaticBitmapAllocatorCell, BITMAP_SLOT_SIZE};
 use core::mem::size_of;
+use core::ptr::NonNull;
 use zerocopy::{FromBytes, FromZeros, IntoBytes, TryFromBytes};
+
+const OCP_LOCK_SIGNER_SCRATCH_SIZE: usize = 9 * 1024;
+const OCP_LOCK_SIGNER_SCRATCH_SLOTS: usize = OCP_LOCK_SIGNER_SCRATCH_SIZE / BITMAP_SLOT_SIZE;
+
+#[repr(C, align(64))]
+#[derive(Clone, Copy)]
+struct OcpLockSignerScratchSlot([u8; BITMAP_SLOT_SIZE]);
+
+static OCP_LOCK_SIGNER_ALLOCATOR: StaticBitmapAllocatorCell = StaticBitmapAllocatorCell::new();
+static mut OCP_LOCK_SIGNER_SCRATCH: [OcpLockSignerScratchSlot; OCP_LOCK_SIGNER_SCRATCH_SLOTS] =
+    [OcpLockSignerScratchSlot([0; BITMAP_SLOT_SIZE]); OCP_LOCK_SIGNER_SCRATCH_SLOTS];
+
+fn init_ocp_lock_signer_allocator() -> &'static BitmapAllocator {
+    let scratch_ptr = unsafe {
+        NonNull::new_unchecked(core::ptr::addr_of_mut!(OCP_LOCK_SIGNER_SCRATCH).cast::<u8>())
+    };
+    // SAFETY: this test initializes the allocator once and owns its static
+    // backing storage for the task's lifetime.
+    unsafe { OCP_LOCK_SIGNER_ALLOCATOR.init_once(scratch_ptr, OCP_LOCK_SIGNER_SCRATCH_SIZE) }
+}
 
 pub(crate) async fn test_get_algorithms() {
     println!("Starting OCP LOCK get algorithms test");
@@ -140,7 +162,8 @@ pub(crate) async fn test_get_hpke_public_key_x509() {
     dpe_store.write_exported_cdi(&resp.exported_cdi).unwrap();
 
     let ocp_lock = OcpLock::new(&mailbox, &crate::ocp_lock_config::EXAMPLE_RUNTIME_CONFIG);
-    let signer = CaliptraDpeSigner::new(&mailbox);
+    let signer_scratch = init_ocp_lock_signer_allocator();
+    let signer = CaliptraDpeSigner::new(&mailbox, signer_scratch);
 
     println!("Enumerate HPKE handles...");
     let mut handles_resp = OcpLockEnumerateHpkeHandlesResp::default();

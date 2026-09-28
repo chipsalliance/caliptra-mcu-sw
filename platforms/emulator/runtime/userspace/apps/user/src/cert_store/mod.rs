@@ -18,8 +18,6 @@
 //! read here and prepended to their respective Caliptra cert chains via the
 //! `POPULATE_IDEV_*_CERT` mailbox commands.
 
-extern crate alloc;
-
 #[cfg(feature = "spdm")]
 mod slot0_endorsements;
 
@@ -28,7 +26,7 @@ use caliptra_mcu_config_emulator::flash::CERT_STORE_PARTITION;
 use caliptra_mcu_libsyscall_caliptra::external_otp::ExternalOtp;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_console::Console;
-use caliptra_mcu_scratch_alloc::{BitmapAllocator, BITMAP_SLOT_SIZE};
+use caliptra_mcu_scratch_alloc::BitmapAllocator;
 #[cfg(feature = "spdm")]
 use caliptra_mcu_spdm_pal::cert::store::SharedCertStore;
 // `log_warn!` writes through the console writer, so the trait must be in scope;
@@ -36,9 +34,9 @@ use caliptra_mcu_spdm_pal::cert::store::SharedCertStore;
 // look unused.
 #[allow(unused_imports)]
 use core::fmt::Write as _;
-use core::ptr::NonNull;
 use mcu_caliptra_api::{
     mldsa87_cert_der_len, populate_idev_ecc384_cert, populate_idev_mldsa87_cert, ApiAlloc,
+    POPULATE_IDEV_MLDSA87_MAX_CERT_SIZE,
 };
 use mcu_error::McuResult;
 
@@ -59,16 +57,13 @@ const OTP_IDEVID_ECC_PARTITION: u32 = 0x01;
 /// OTP partition ID for the IDevID ML-DSA-87 certificate.
 const OTP_IDEVID_MLDSA_PARTITION: u32 = 0x02;
 
-/// Temporary boot pool for the ML-DSA certificate plus mailbox response.
-///
-/// This reuses the global heap after measurement boot releases its temporary
-/// allocation, and is released before any service task is spawned.
-const CERT_STORE_BOOT_SCRATCH_SIZE: usize = 9 * 1024;
-const CERT_STORE_BOOT_SCRATCH_SLOTS: usize = CERT_STORE_BOOT_SCRATCH_SIZE / BITMAP_SLOT_SIZE;
+/// Headroom for the mailbox response and bitmap allocator bookkeeping.
+const BOOT_SCRATCH_HEADROOM: usize = 1024;
 
-#[repr(C, align(64))]
-#[derive(Clone, Copy)]
-struct CertStoreBootScratchSlot([u8; BITMAP_SLOT_SIZE]);
+/// Scratch that [`boot_init`] needs for the ML-DSA certificate import. Boot
+/// borrows it from an idle task pool.
+pub(crate) const BOOT_SCRATCH_SIZE: usize =
+    POPULATE_IDEV_MLDSA87_MAX_CERT_SIZE + BOOT_SCRATCH_HEADROOM;
 
 #[cfg(feature = "spdm")]
 static CERT_STORE: SharedCertStore = SharedCertStore::new();
@@ -111,25 +106,12 @@ const MANAGED_SLOT_REGION_SIZE: usize = {
 
 /// Initialize Caliptra identity chains before any SPDM or MCU-mailbox task can
 /// contend for the mailbox, then configure SPDM endorsements when enabled.
-pub(crate) async fn boot_init() -> McuResult<()> {
-    let mut scratch = alloc::vec::Vec::new();
-    scratch
-        .try_reserve_exact(CERT_STORE_BOOT_SCRATCH_SLOTS)
-        .map_err(|_| mcu_error::codes::OUT_OF_MEMORY)?;
-    scratch.resize(
-        CERT_STORE_BOOT_SCRATCH_SLOTS,
-        CertStoreBootScratchSlot([0; BITMAP_SLOT_SIZE]),
-    );
-    let scratch_ptr =
-        NonNull::new(scratch.as_mut_ptr().cast::<u8>()).ok_or(mcu_error::codes::OUT_OF_MEMORY)?;
-
-    // SAFETY: `scratch_ptr` points at aligned heap memory owned by `scratch`.
-    // The vector outlives every allocation, and no allocation escapes.
-    let allocator = unsafe { BitmapAllocator::new(scratch_ptr, CERT_STORE_BOOT_SCRATCH_SIZE) };
-
-    populate_idev(&allocator).await?;
+///
+/// `scratch` must provide at least [`BOOT_SCRATCH_SIZE`] bytes.
+pub(crate) async fn boot_init(scratch: &BitmapAllocator) -> McuResult<()> {
+    populate_idev(scratch).await?;
     #[cfg(feature = "spdm")]
-    setup_endorsements(&CERT_STORE, &allocator).await?;
+    setup_endorsements(&CERT_STORE, scratch).await?;
     Ok(())
 }
 
