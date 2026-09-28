@@ -130,6 +130,7 @@ pub struct CaliptraBuilder {
     mcu_image_cfg: Option<ImageCfg>,
     soc_manifest_svn: Option<u32>,
     owner_manifest_svn: Option<u32>,
+    target_dir: Option<PathBuf>,
     vendor: String,
     model: String,
     /// Optional custom owner configuration for re-signing FW bundles.
@@ -162,6 +163,7 @@ impl CaliptraBuilder {
             mcu_image_cfg: args.mcu_image_cfg.clone(),
             soc_manifest_svn: args.soc_manifest_svn,
             owner_manifest_svn: args.owner_manifest_svn,
+            target_dir: args.target_dir.clone(),
             vendor: args
                 .vendor
                 .clone()
@@ -176,6 +178,19 @@ impl CaliptraBuilder {
             pqc_key_type: args.pqc_key_type.unwrap_or(DEFAULT_PQC_KEY_TYPE),
             use_second_key: args.use_second_key,
         }
+    }
+
+    pub fn from_args(args: &crate::CaliptraBuildArgs) -> Self {
+        Self::new(args)
+    }
+
+    pub fn with_target_dir(mut self, target_dir: impl Into<PathBuf>) -> Self {
+        self.target_dir = Some(target_dir.into());
+        self
+    }
+
+    fn target_dir(&self) -> PathBuf {
+        self.target_dir.clone().unwrap_or_else(crate::target_dir)
     }
 
     /// Sets a custom owner configuration for re-signing the FW bundle.
@@ -245,7 +260,7 @@ impl CaliptraBuilder {
             )?;
 
             // Write the re-signed bundle to a new path
-            let path = target_dir().join("caliptra-fw-bundle-resigned.bin");
+            let path = self.target_dir().join("caliptra-fw-bundle-resigned.bin");
             let fw_bytes = new_bundle.to_bytes()?;
             if let Some(parent) = path.parent() {
                 std::fs::create_dir_all(parent)?;
@@ -409,7 +424,7 @@ impl CaliptraBuilder {
             )?;
             let path = name
                 .map(PathBuf::from)
-                .unwrap_or_else(|| target_dir().join("owner-measurement-policy.bin"));
+                .unwrap_or_else(|| self.target_dir().join("owner-measurement-policy.bin"));
             if let Some(parent) = path.parent() {
                 std::fs::create_dir_all(parent)?;
             }
@@ -553,7 +568,7 @@ impl CaliptraBuilder {
             let mut metadata = vec![mcu_fw_metadata, Self::get_vendor_auth_key_metadata()];
             metadata.extend(soc_images_metadata);
 
-            let path = Self::write_soc_manifest(
+            let path = self.write_soc_manifest(
                 metadata,
                 self.soc_manifest_svn.unwrap_or(0),
                 name,
@@ -562,6 +577,17 @@ impl CaliptraBuilder {
             )?;
             self.write_attestation_manifest_config(self.soc_images.as_deref().unwrap_or(&[]))?;
             self.soc_manifest = Some(path);
+        } else if let Some(target) = name {
+            let target_path = PathBuf::from(target);
+            if let Some(ref cached) = self.soc_manifest {
+                if target_path != *cached {
+                    if let Some(parent) = target_path.parent() {
+                        std::fs::create_dir_all(parent)?;
+                    }
+                    std::fs::copy(cached, &target_path)?;
+                    return Ok(target_path);
+                }
+            }
         }
         Ok(self.soc_manifest.clone().unwrap())
     }
@@ -578,7 +604,7 @@ impl CaliptraBuilder {
             )?;
             let path = name
                 .map(PathBuf::from)
-                .unwrap_or_else(|| target_dir().join("owner-auth-manifest"));
+                .unwrap_or_else(|| self.target_dir().join("owner-auth-manifest"));
             if let Some(parent) = path.parent() {
                 std::fs::create_dir_all(parent)?;
             }
@@ -609,11 +635,11 @@ impl CaliptraBuilder {
         self.soc_images = Some(metadata);
         self.soc_manifest_svn = svn;
 
-        self.soc_manifest = None; // Clear the cached manifest
+        let previous_path = self.soc_manifest.take();
 
         // Rebuild the SoC manifest
         println!("Rebuilding SoC manifest with new metadata");
-        self.get_soc_manifest(None)
+        self.get_soc_manifest(previous_path.as_deref().and_then(|p| p.to_str()))
     }
 
     pub fn get_vendor_pk_hash(&mut self) -> Result<&str> {
@@ -719,6 +745,7 @@ impl CaliptraBuilder {
     }
 
     fn write_soc_manifest(
+        &self,
         metadata: Vec<AuthManifestImageMetadata>,
         svn: u32,
         name: Option<&str>,
@@ -734,7 +761,7 @@ impl CaliptraBuilder {
 
         let path = name
             .map(PathBuf::from)
-            .unwrap_or(target_dir().join("soc-manifest"));
+            .unwrap_or_else(|| self.target_dir().join("soc-manifest"));
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -743,7 +770,8 @@ impl CaliptraBuilder {
     }
 
     pub fn write_attestation_manifest_config(&self, soc_images: &[ImageCfg]) -> Result<()> {
-        crate::attestation_manifest::write_config(
+        crate::attestation_manifest::write_config_to_target_dir(
+            &self.target_dir(),
             &self.vendor,
             &self.model,
             soc_images,
@@ -1331,7 +1359,7 @@ fn main() -> Result<()> {
 
         let path = name
             .map(PathBuf::from)
-            .unwrap_or_else(|| target_dir().join("soc-manifest"));
+            .unwrap_or_else(|| self.target_dir().join("soc-manifest"));
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
