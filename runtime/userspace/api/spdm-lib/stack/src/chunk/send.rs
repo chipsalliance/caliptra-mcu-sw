@@ -3,15 +3,18 @@
 //! CHUNK_SEND large-request reassembly.
 
 use caliptra_mcu_spdm_codec::{
-    CapFlags, CapabilitiesBody, ChunkSendAckBody, ChunkSendReqBody, ReqRespCode, SpdmMsgHdrPdu,
-    SpdmVersion, VendorDefinedReqPdu, WireWriter, CHUNK_ACK_ATTR_EARLY_ERROR,
-    CHUNK_ATTR_LAST_CHUNK,
+    CapFlags, CapabilitiesBody, ChunkSendAckBodyV13, ChunkSendAckBodyV14, ChunkSendReqBody,
+    ReqRespCode, SpdmMsgHdrPdu, SpdmVersion, VendorDefinedReqPdu, WireWriter,
+    CHUNK_ACK_ATTR_EARLY_ERROR, CHUNK_ATTR_LAST_CHUNK,
 };
 use caliptra_mcu_spdm_traits::{
     PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalIoTransport, SpdmVdmBackend, VdmRegistry, VdmResponse,
     VdmResponseBuffer,
 };
-use zerocopy::{little_endian::U16, FromBytes};
+use zerocopy::{
+    little_endian::{U16, U32},
+    FromBytes,
+};
 
 use super::ActiveLargeRequest;
 #[cfg(feature = "set-certificate")]
@@ -140,20 +143,35 @@ fn build_chunk_send_ack<'a, Pal: SpdmPal>(
     response_to_large_request: &[u8],
 ) -> SpdmResult<PalBytes<'a, Pal>> {
     let head = pal.header_size();
-    let raw_len =
-        head + SpdmMsgHdrPdu::SIZE + ChunkSendAckBody::SIZE + response_to_large_request.len();
+    let raw_len = if version <= SpdmVersion::V13 {
+        head + SpdmMsgHdrPdu::SIZE + ChunkSendAckBodyV13::SIZE + response_to_large_request.len()
+    } else {
+        head + SpdmMsgHdrPdu::SIZE + ChunkSendAckBodyV14::SIZE + response_to_large_request.len()
+    };
     let mut rsp = alloc_padded(pal, io, raw_len)?;
     let mut w = WireWriter::new(&mut rsp[head..]);
     w.write(&SpdmMsgHdrPdu::new(version, ReqRespCode::CHUNK_SEND_ACK))?;
-    w.write(&ChunkSendAckBody {
-        chunk_receiver_attr: if early_error {
-            CHUNK_ACK_ATTR_EARLY_ERROR
-        } else {
-            0
-        },
-        handle,
-        chunk_seq_num: U16::new(chunk_seq_num),
-    })?;
+    if version <= SpdmVersion::V13 {
+        w.write(&ChunkSendAckBodyV13 {
+            chunk_receiver_attr: if early_error {
+                CHUNK_ACK_ATTR_EARLY_ERROR
+            } else {
+                0
+            },
+            handle,
+            chunk_seq_num: U16::new(chunk_seq_num),
+        })?;
+    } else {
+        w.write(&ChunkSendAckBodyV14 {
+            chunk_receiver_attr: if early_error {
+                CHUNK_ACK_ATTR_EARLY_ERROR
+            } else {
+                0
+            },
+            handle,
+            chunk_seq_num: U32::new(chunk_seq_num as u32),
+        })?;
+    }
     w.write_bytes(response_to_large_request)?;
     Ok(rsp)
 }
@@ -937,9 +955,14 @@ async fn build_final_chunk_send_ack<
         ),
     };
 
+    let ack_body_size = if state.version <= SpdmVersion::V13 {
+        ChunkSendAckBodyV13::SIZE
+    } else {
+        ChunkSendAckBodyV14::SIZE
+    };
     let max_response_len = state
         .effective_data_transfer_size(pal)
-        .saturating_sub(SpdmMsgHdrPdu::SIZE + ChunkSendAckBody::SIZE);
+        .saturating_sub(SpdmMsgHdrPdu::SIZE + ack_body_size);
     if response_len > max_response_len {
         response_len = encode_error_response(
             &mut response_to_large_request[..],
