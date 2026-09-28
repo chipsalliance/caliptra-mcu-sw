@@ -117,6 +117,95 @@ impl<S: Syscalls> McuMbox<S> {
         Ok((command, recv_len as usize))
     }
 
+    /// Waits for a request without copying its payload out of mailbox SRAM.
+    pub async fn receive_command_metadata(
+        &self,
+        on_listening_cb: Option<impl FnOnce()>,
+    ) -> Result<(CmdCode, usize), ErrorCode> {
+        let mutex = MCU_MBOX_MUTEX.lock().await;
+        let mut sub = TockSubscribe::subscribe::<S>(self.driver_num, subscribe::REQUEST_RECEIVED);
+
+        if let Err(error) = S::command(self.driver_num, command::WAIT_FOR_REQUEST, 0, 0)
+            .to_result::<(), ErrorCode>()
+        {
+            sub.cancel();
+            return Err(error);
+        }
+        if let Some(on_listening_cb) = on_listening_cb {
+            on_listening_cb();
+        }
+
+        let (command, request_len, _) = TockSubscribe::subscribe_finish(sub).await?;
+        black_box(*mutex);
+        Ok((command, request_len as usize))
+    }
+
+    /// Copies the complete active request from mailbox SRAM.
+    pub async fn copy_request(&self, data: &mut [u8]) -> Result<(), ErrorCode> {
+        let result = share::scope::<(), _, _>(|_handle| {
+            let mut sub = TockSubscribe::subscribe_allow_rw::<S, DefaultConfig>(
+                self.driver_num,
+                subscribe::CHUNK_DONE,
+                rw_allow::REQUEST,
+                data,
+            );
+            if let Err(error) = S::command(self.driver_num, command::COPY_REQUEST, 0, 0)
+                .to_result::<(), ErrorCode>()
+            {
+                S::unallow_rw(self.driver_num, rw_allow::REQUEST);
+                sub.cancel();
+                return Err(error);
+            }
+            Ok(TockSubscribe::subscribe_finish(sub))
+        })?
+        .await;
+        result.map(|_| ())
+    }
+
+    /// Copies one response range from userspace into mailbox SRAM.
+    pub async fn write_response_chunk(&self, offset: usize, data: &[u8]) -> Result<(), ErrorCode> {
+        let result = share::scope::<(), _, _>(|_handle| {
+            let mut sub = TockSubscribe::subscribe_allow_ro::<S, DefaultConfig>(
+                self.driver_num,
+                subscribe::CHUNK_DONE,
+                ro_allow::RESPONSE,
+                data,
+            );
+            if let Err(error) = S::command(
+                self.driver_num,
+                command::WRITE_RESPONSE_CHUNK,
+                offset as u32,
+                0,
+            )
+            .to_result::<(), ErrorCode>()
+            {
+                S::unallow_ro(self.driver_num, ro_allow::RESPONSE);
+                sub.cancel();
+                return Err(error);
+            }
+            Ok(TockSubscribe::subscribe_finish(sub))
+        })?
+        .await;
+        result.map(|_| ())
+    }
+
+    /// Publishes the completed response length after all chunks are written.
+    pub async fn publish_response(&self, response_len: usize) -> Result<(), ErrorCode> {
+        let mut sub = TockSubscribe::subscribe::<S>(self.driver_num, subscribe::RESPONSE_SENT);
+        if let Err(error) = S::command(
+            self.driver_num,
+            command::PUBLISH_RESPONSE,
+            response_len as u32,
+            0,
+        )
+        .to_result::<(), ErrorCode>()
+        {
+            sub.cancel();
+            return Err(error);
+        }
+        TockSubscribe::subscribe_finish(sub).await.map(|_| ())
+    }
+
     /// Sends a response to the MCU mailbox sender asynchronously (receiver mode).
     ///
     /// # Arguments
@@ -187,6 +276,10 @@ mod command {
     pub const RECEIVE_REQUEST: u32 = 1;
     pub const SEND_RESPONSE: u32 = 2;
     pub const FINISH_RESP: u32 = 3;
+    pub const WAIT_FOR_REQUEST: u32 = 4;
+    pub const COPY_REQUEST: u32 = 5;
+    pub const WRITE_RESPONSE_CHUNK: u32 = 6;
+    pub const PUBLISH_RESPONSE: u32 = 7;
 }
 
 // Read-only buffer to read the response from.
@@ -203,4 +296,5 @@ mod rw_allow {
 mod subscribe {
     pub const REQUEST_RECEIVED: u32 = 0;
     pub const RESPONSE_SENT: u32 = 1;
+    pub const CHUNK_DONE: u32 = 2;
 }

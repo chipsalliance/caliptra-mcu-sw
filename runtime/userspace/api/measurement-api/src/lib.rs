@@ -318,6 +318,18 @@ pub async fn export_cdi_and_stash<A: ApiAlloc>(
     api.export_cdi_and_stash(alloc, profile, cert_out).await
 }
 
+pub async fn export_cdi_and_stash_to_sink<A: ApiAlloc, W: mcu_caliptra_api::DpeCertificateSink>(
+    alloc: &A,
+    profile: DpeProfile,
+    sink: &mut W,
+) -> MeasurementApiResult<usize> {
+    let mut guard = MEASUREMENT_API.lock().await;
+    let api = guard
+        .as_mut()
+        .ok_or(MeasurementApiError::AttestationDisabled)?;
+    api.export_cdi_and_stash_to_sink(alloc, profile, sink).await
+}
+
 /// Retrieve the stashed 32-byte exported CDI handle via an outparam.
 pub async fn read_exported_cdi(cdi_out: &mut [u8; EXPORTED_CDI_SIZE]) -> MeasurementApiResult {
     let guard = MEASUREMENT_API.lock().await;

@@ -85,6 +85,20 @@ pub trait Mailbox<'a> {
     /// * `None` if the buffer is currently checked out by a client.
     fn map_rx_buffer<R>(&self, f: impl FnOnce(&[u32]) -> R) -> Option<R>;
 
+    /// Copies the complete active request from mailbox SRAM.
+    fn copy_request(&self, len: usize, write_byte: impl FnMut(usize, u8)) -> Result<(), ErrorCode>;
+
+    /// Writes bytes into the response under construction in mailbox SRAM.
+    fn write_response_chunk(
+        &self,
+        offset: usize,
+        src: impl Iterator<Item = u8>,
+        len: usize,
+    ) -> Result<(), ErrorCode>;
+
+    /// Publishes the completed response length and starts response completion.
+    fn publish_response(&self, dlen: usize) -> Result<(), ErrorCode>;
+
     /// Enables the MCU mailbox driver instance.
     fn enable(&self);
 
