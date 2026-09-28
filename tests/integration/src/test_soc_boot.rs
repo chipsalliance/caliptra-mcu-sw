@@ -278,6 +278,17 @@ mod test {
         new_options.device_security_state = Some(DeviceLifecycle::Manufacturing);
 
         let builder = new_options.builder.as_mut().unwrap();
+        let new_soc_manifest = Some(
+            builder
+                .get_soc_manifest(None)
+                .expect("Failed to get SoC manifest"),
+        );
+        let owner_auth_manifest = Some(
+            builder
+                .get_owner_auth_manifest(None)
+                .expect("Failed to get Owner Authorization Manifest"),
+        );
+
         if opts.primary_flash_image_path.is_some() {
             let flash_offset = opts
                 .partition_table
@@ -290,17 +301,9 @@ mod test {
                         .get_caliptra_fw()
                         .expect("Failed to get Caliptra firmware"),
                 ),
-                Some(
-                    builder
-                        .get_soc_manifest(None)
-                        .expect("Failed to get SoC manifest"),
-                ),
+                new_soc_manifest.clone(),
                 Some(opts.runtime.clone()),
-                Some(
-                    builder
-                        .get_owner_auth_manifest(None)
-                        .expect("Failed to get Owner Authorization Manifest"),
-                ),
+                owner_auth_manifest.clone(),
                 Some(new_options.soc_images.clone()),
                 opts.partition_table.clone(),
                 flash_offset,
@@ -310,37 +313,26 @@ mod test {
             new_options.secondary_flash_image_path = Some(flash_image_path);
         }
 
-        let (_, flash_image_path) = create_flash_image_with_owner_manifest(
-            Some(
-                builder
-                    .get_caliptra_fw()
-                    .expect("Failed to get Caliptra firmware"),
-            ),
-            Some(
-                builder
-                    .get_soc_manifest(None)
-                    .expect("Failed to get SoC manifest"),
-            ),
-            Some(opts.runtime.clone()),
-            Some(
-                builder
-                    .get_owner_auth_manifest(None)
-                    .expect("Failed to get Owner Authorization Manifest"),
-            ),
-            Some(new_options.soc_images.clone()),
-            None,
-            0,
-            new_options.soc_images_paths.clone(),
-        );
-        new_options.pldm_fw_pkg_path = if opts.pldm_fw_pkg_path.is_some() {
-            let device_uuid = get_device_uuid();
-            let flash_image =
-                std::fs::read(flash_image_path.clone()).expect("Failed to read flash image");
-            let pldm_manifest = get_streaming_boot_pldm_fw_manifest(&device_uuid, &flash_image);
-            Some(create_pldm_fw_package(&pldm_manifest))
-        } else {
-            None
-        };
+        if opts.pldm_fw_pkg_path.is_some() {
+            let (_, flash_image_path) = create_flash_image_with_owner_manifest(
+                Some(
+                    builder
+                        .get_caliptra_fw()
+                        .expect("Failed to get Caliptra firmware"),
+                ),
+                new_soc_manifest,
+                Some(opts.runtime.clone()),
+                owner_auth_manifest,
+                Some(new_options.soc_images.clone()),
+                None,
+                0,
+                new_options.soc_images_paths.clone(),
+            );
+            let flash_image = std::fs::read(flash_image_path).expect("Failed to read flash image");
+            let pldm_manifest =
+                get_streaming_boot_pldm_fw_manifest(&get_device_uuid(), &flash_image);
+            new_options.pldm_fw_pkg_path = Some(create_pldm_fw_package(&pldm_manifest));
+        }
 
         let test = run_runtime_with_options(&new_options);
         assert_eq!(0, test);
