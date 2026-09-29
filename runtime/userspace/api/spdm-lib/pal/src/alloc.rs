@@ -129,7 +129,7 @@ mod tests {
     /// `MAX_BUFFERED_SPDM_MSG_SIZE` must shrink.
     #[test]
     fn buffered_large_message_capacity_is_allocatable_from_shipping_pool() {
-        const POOL: usize = 18 * 1024;
+        const POOL: usize = 17 * 1024;
         const MAX_BUFFERED_SPDM_MSG_SIZE: usize = 8 * 1024;
         const MAX_TRANSPORT_MTU: usize = 1024;
 

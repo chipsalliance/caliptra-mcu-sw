@@ -305,7 +305,7 @@ const MCTP_SPDM_SCRATCH_SIZE: usize = {
 
 #[cfg(not(feature = "cert-provisioning"))]
 const MCTP_SPDM_SCRATCH_SIZE: usize = {
-    let declared = 18 * 1024;
+    let declared = 17 * 1024;
     assert!(
         declared >= required_scratch(),
         "MCTP SPDM scratch pool is too small for required_scratch()"
