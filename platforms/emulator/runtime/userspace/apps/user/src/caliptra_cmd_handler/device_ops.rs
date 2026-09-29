@@ -7,12 +7,10 @@ extern crate alloc;
 use alloc::boxed::Box;
 use arrayvec::ArrayVec;
 use async_trait::async_trait;
-use caliptra_api::mailbox::{EcdsaVerifyReq, MailboxReqHeader, MailboxRespHeader};
 use caliptra_api::mailbox::{
     EcdsaVerifyReq, MailboxReqHeader, MailboxRespHeader, ZeroizeUdsFeReq, ZEROIZE_FE0_FLAG,
     ZEROIZE_FE1_FLAG, ZEROIZE_FE2_FLAG, ZEROIZE_FE3_FLAG, ZEROIZE_UDS_FLAG,
 };
-use caliptra_mcu_attestation_evidence::encode_signed_ocp_eat;
 #[cfg(feature = "pcr-quote")]
 use caliptra_mcu_attestation_evidence::pcr_quote::{encode_pcr_quote, PcrQuoteAlgorithm};
 use caliptra_mcu_attestation_evidence::{encode_signed_ocp_eat, OcpEatAlgorithm};

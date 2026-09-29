@@ -346,7 +346,7 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         device_ops::zeroize_uds_fe_and_enter_rma(rma_token).await
     }
 
-    async fn increase_caliptra_min_svn<Alloc: ApiAlloc>(
+    async fn increase_min_svn<Alloc: ApiAlloc>(
         &self,
         alloc: &Alloc,
         target: caliptra_mcu_mbox_common::messages::SvnTarget,
