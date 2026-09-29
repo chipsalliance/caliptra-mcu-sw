@@ -17,7 +17,8 @@ use caliptra_auth_man_types::{
 use caliptra_image_types::ImageManifest;
 use caliptra_mcu_flash_image::{
     FlashHeader, ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, MCU_RT_IDENTIFIER,
-    SOC_MANIFEST_IDENTIFIER,
+    OWNER_AUTH_MANIFEST_IDENTIFIER, OWNER_MEASUREMENT_POLICY_IDENTIFIER, SOC_MANIFEST_IDENTIFIER,
+    V_AUTH_KEY_ID,
 };
 use caliptra_mcu_libsyscall_caliptra::console_writeln;
 use caliptra_mcu_libsyscall_caliptra::dma::AXIAddr;
@@ -359,18 +360,8 @@ impl<'a, D: DMAMapping, A: ApiAlloc> FirmwareUpdater<'a, D, A> {
                 )
                 .await?;
 
-            match image_header.identifier {
-                CALIPTRA_FMC_RT_IDENTIFIER => {
-                    // Skip Caliptra image verification
-                    continue;
-                }
-                SOC_MANIFEST_IDENTIFIER => {
-                    // Skip SOC Manifest verification
-                    continue;
-                }
-                _ => {
-                    // Verify MCU or SOC images
-                }
+            if !listed_in_soc_manifest(image_header.identifier) {
+                continue;
             }
 
             let metadata = self
@@ -485,9 +476,8 @@ impl<'a, D: DMAMapping, A: ApiAlloc> FirmwareUpdater<'a, D, A> {
                 )
                 .await?;
 
-            match image_header.identifier {
-                CALIPTRA_FMC_RT_IDENTIFIER | SOC_MANIFEST_IDENTIFIER => continue,
-                _ => {}
+            if !listed_in_soc_manifest(image_header.identifier) {
+                continue;
             }
 
             // Compute SHA-384 of the downloaded image
@@ -617,7 +607,9 @@ impl<'a, D: DMAMapping, A: ApiAlloc> FirmwareUpdater<'a, D, A> {
             let metadata = self
                 .get_image_metadata_by_index(manifest_staging_mem_offset, manifest_size, i)
                 .await?;
-            if metadata.fw_id != MCU_RT_IDENTIFIER {
+            // The Vendor Authorization Key entry anchors a key digest; it is
+            // not a loadable SoC image.
+            if metadata.fw_id != MCU_RT_IDENTIFIER && metadata.fw_id != V_AUTH_KEY_ID {
                 manifest_soc_fw_id_count = manifest_soc_fw_id_count
                     .checked_add(1)
                     .ok_or(ErrorCode::Fail)?;
@@ -1102,6 +1094,23 @@ impl PayloadStream for MailboxPayloadStream {
 }
 
 pub use crate::image_loader::AuthManifestReqHeader;
+
+/// Whether a flash image's digest is carried by the SoC authorization manifest.
+///
+/// The Caliptra bundle is checked by FIRMWARE_VERIFY and the SoC manifest by
+/// VERIFY_AUTH_MANIFEST. The owner authorization manifest is authenticated by
+/// Caliptra when it is installed with SET_OWNER_AUTH_MANIFEST at boot, and the
+/// owner measurement policy digest is checked against that manifest; neither has
+/// an entry in the SoC manifest.
+fn listed_in_soc_manifest(identifier: u32) -> bool {
+    !matches!(
+        identifier,
+        CALIPTRA_FMC_RT_IDENTIFIER
+            | SOC_MANIFEST_IDENTIFIER
+            | OWNER_AUTH_MANIFEST_IDENTIFIER
+            | OWNER_MEASUREMENT_POLICY_IDENTIFIER
+    )
+}
 
 #[cfg(test)]
 mod tests {
