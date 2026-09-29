@@ -759,7 +759,12 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
 
         let ret = self
             .non_crypto_cmds_handler
-            .get_ocp_lock_endorsement_cert(&req.hpke_handle, req.algorithm, &mut resp.data)
+            .get_ocp_lock_endorsement_cert(
+                self.scratch,
+                &req.hpke_handle,
+                req.algorithm,
+                &mut resp.data,
+            )
             .await;
         let (mbox_cmd_status, data_len) = match ret {
             Ok(len) => (MbxCmdStatus::Complete, len.min(resp.data.len())),
@@ -1028,7 +1033,13 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
 
         let ret = self
             .non_crypto_cmds_handler
-            .get_ocp_lock_epoch_key_report(&req.nonce, sek_state, req.algorithm, &mut resp.data)
+            .get_ocp_lock_epoch_key_report(
+                self.scratch,
+                &req.nonce,
+                sek_state,
+                req.algorithm,
+                &mut resp.data,
+            )
             .await;
 
         let (mbox_cmd_status, data_len) = match ret {

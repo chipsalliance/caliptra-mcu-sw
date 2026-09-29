@@ -57,13 +57,17 @@ The Image Information section is repeated for each image and provides detailed m
 
 | Field               | Size (bytes) | Descr                                                                                  |
 | ------------------- | ------------ | -------------------------------------------------------------------------------------- |
-| Identifier          | 4            | Vendor selected unique value to distinguish between images.                            |
-|                     |              | `0x00000000`: Caliptra FMC+RT                                                              |
-|                     |              | `0x00000001`: SoC Manifest                                                                |
-|                     |              | `0x00000002`: MCU RT                                                                                                |
-|                     |              | `0x00000003`: Owner Auth Manifest                                                                                   |
-|                     |              | `0x00001000`-`0x0000FFFF` - Reserved for other Vendor-defined SoC images                                          |
-|                     |              | `0x00010000`-`0xFFFFFFFF` - Reserved for other Owner-only defined SoC images                                      |
+| Identifier          | 4            | Unique value to distinguish between images.                                            |
+|                     |              | `0x00000000`: Caliptra FMC+RT                                                          |
+|                     |              | `0x00000001`: SoC Manifest                                                            |
+|                     |              | `0x00000002`: MCU RT                                                                  |
+|                     |              | `0x00000003`: Owner Auth Manifest                                                     |
+|                     |              | `0x00000004`: Vendor Authorization Key (`V_AUTH_KEY_ID`)                               |
+|                     |              | `0x00000005`: Owner Measurement Policy (`OWNER_MEASUREMENT_POLICY_IDENTIFIER`)        |
+|                     |              | `0x00000006`: Owner Authorization Key (`O_AUTH_KEY_ID`)                                |
+|                     |              | `0x00000007`-`0x00000FFF`: Reserved for subsystem control identifiers                 |
+|                     |              | `0x00001000`-`0x0000FFFF`: Reserved for other Vendor-defined SoC images                |
+|                     |              | `0x00010000`-`0xFFFFFFFF`: Reserved for other Owner-only defined SoC images            |
 | ImageLocationOffset | 4            | Offset in bytes from byte 0 of the header to where the image content begins. Used in flash-based boot.
 | Size                | 4            | Size in bytes of the image. This is the actual size of the image without padding.      |
 |                     |              | The image itself as written to the flash should be 4-byte aligned and additional       |

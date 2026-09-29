@@ -16,33 +16,45 @@ use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use core::mem::size_of;
 use dpe::commands::Command;
-use zerocopy::{FromBytes, IntoBytes};
+use mcu_caliptra_api::ApiAlloc;
+use zerocopy::FromBytes;
 
 #[async_trait]
 pub trait DpeTransport: Send + Sync {
     async fn invoke(&self, cmd: &Command, resp_buf: &mut [u8]) -> CaliptraApiResult<usize>;
 }
 
-pub struct CaliptraDpeSigner<'a> {
+/// DPE-backed OCP LOCK signer using the caller task's scratch allocator for
+/// mailbox request and response buffers.
+pub struct CaliptraDpeSigner<'a, A: ApiAlloc> {
     mailbox: &'a Mailbox,
     algorithm: EndorsementAlgorithm,
+    scratch: &'a A,
 }
 
-impl<'a> CaliptraDpeSigner<'a> {
-    pub fn new(mailbox: &'a Mailbox) -> Self {
+impl<'a, A: ApiAlloc> CaliptraDpeSigner<'a, A> {
+    pub fn new(mailbox: &'a Mailbox, scratch: &'a A) -> Self {
         Self {
             mailbox,
             algorithm: EndorsementAlgorithm::EcdsaP384Sha384,
+            scratch,
         }
     }
 
-    pub fn with_algorithm(mailbox: &'a Mailbox, algorithm: EndorsementAlgorithm) -> Self {
-        Self { mailbox, algorithm }
+    pub fn with_algorithm(
+        mailbox: &'a Mailbox,
+        algorithm: EndorsementAlgorithm,
+        scratch: &'a A,
+    ) -> Self {
+        Self {
+            mailbox,
+            algorithm,
+            scratch,
+        }
     }
 }
 
-#[async_trait]
-impl OcpLockSigner for CaliptraDpeSigner<'_> {
+impl<A: ApiAlloc> OcpLockSigner for CaliptraDpeSigner<'_, A> {
     fn algorithm(&self) -> EndorsementAlgorithm {
         self.algorithm
     }
@@ -81,17 +93,26 @@ impl OcpLockSigner for CaliptraDpeSigner<'_> {
                     .try_into()
                     .map_err(|_| CaliptraApiError::InvalidArgDigestSize)?;
 
-                let mut req = SignWithExportedEcdsaReq {
-                    hdr: MailboxReqHeader::default(),
-                    exported_cdi_handle: exported_cdi,
-                    tbs: digest,
-                };
+                let mut req_bytes = self
+                    .scratch
+                    .alloc(size_of::<SignWithExportedEcdsaReq>())
+                    .map_err(|_| CaliptraApiError::BufferTooSmall)?;
+                req_bytes.fill(0);
+                let req = SignWithExportedEcdsaReq::mut_from_bytes(&mut req_bytes)
+                    .map_err(|_| CaliptraApiError::InvalidResponse)?;
+                req.hdr = MailboxReqHeader::default();
+                req.exported_cdi_handle = exported_cdi;
+                req.tbs = digest;
 
-                let mut resp_bytes = [0u8; size_of::<SignWithExportedEcdsaResp>()];
+                let mut resp_bytes = self
+                    .scratch
+                    .alloc(size_of::<SignWithExportedEcdsaResp>())
+                    .map_err(|_| CaliptraApiError::BufferTooSmall)?;
+                resp_bytes.fill(0);
                 execute_mailbox_cmd(
                     self.mailbox,
                     CommandId::SIGN_WITH_EXPORTED_ECDSA.into(),
-                    req.as_mut_bytes(),
+                    &mut req_bytes,
                     &mut resp_bytes,
                 )
                 .await?;
@@ -109,20 +130,28 @@ impl OcpLockSigner for CaliptraDpeSigner<'_> {
                     return Err(CaliptraApiError::InvalidArgDigestSize);
                 }
 
-                let mut req = Box::new(SignWithExportedMldsaReq {
-                    hdr: MailboxReqHeader::default(),
-                    exported_cdi_handle: exported_cdi,
-                    sign_type: MldsaSignType::Raw as u32,
-                    tbs_size: data.len() as u32,
-                    tbs: [0u8; SignWithExportedMldsaReq::MAX_TBS_SIZE],
-                });
+                let mut req_bytes = self
+                    .scratch
+                    .alloc(size_of::<SignWithExportedMldsaReq>())
+                    .map_err(|_| CaliptraApiError::BufferTooSmall)?;
+                req_bytes.fill(0);
+                let req = SignWithExportedMldsaReq::mut_from_bytes(&mut req_bytes)
+                    .map_err(|_| CaliptraApiError::InvalidResponse)?;
+                req.hdr = MailboxReqHeader::default();
+                req.exported_cdi_handle = exported_cdi;
+                req.sign_type = MldsaSignType::Raw as u32;
+                req.tbs_size = data.len() as u32;
                 req.tbs[..data.len()].copy_from_slice(data);
 
-                let mut resp_bytes = alloc::vec![0u8; size_of::<SignWithExportedMldsaResp>()];
+                let mut resp_bytes = self
+                    .scratch
+                    .alloc(size_of::<SignWithExportedMldsaResp>())
+                    .map_err(|_| CaliptraApiError::BufferTooSmall)?;
+                resp_bytes.fill(0);
                 execute_mailbox_cmd(
                     self.mailbox,
                     CommandId::SIGN_WITH_EXPORTED_MLDSA.into(),
-                    req.as_mut_bytes(),
+                    &mut req_bytes,
                     &mut resp_bytes,
                 )
                 .await?;

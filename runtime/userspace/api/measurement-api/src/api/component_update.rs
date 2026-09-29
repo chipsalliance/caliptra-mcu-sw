@@ -10,63 +10,94 @@ use caliptra_mcu_libsyscall_caliptra::soft_pcr_store::{
 };
 use caliptra_mcu_libtock_platform::Syscalls;
 use mcu_caliptra_api::{
-    authorize_and_stash as caliptra_authorize, dpe_update_context_measurement, extend_pcr31,
-    sha_finish, sha_init, sha_update, ApiAlloc, DpeUpdateContextMeasurementParams,
-    DpeUpdateContextMeasurementResult, HashAlgo, SHA_CONTEXT_SIZE,
+    dpe_get_tagged_tci, dpe_update_context_measurement, extend_pcr31, ApiAlloc,
+    DpeUpdateContextMeasurementParams, DpeUpdateContextMeasurementResult,
 };
 
-use super::{caliptra_authorize_params, MeasurementApi};
+use super::MeasurementApi;
 use crate::attestation_manifest::AttestationManifestEntry;
 use crate::errors::{MeasurementApiError, MeasurementApiResult};
 use crate::ImageMetadata;
 
-pub(super) async fn authorize_and_stash<S: Syscalls, A: ApiAlloc>(
-    api: &mut MeasurementApi<'_, S>,
-    alloc: &A,
-    fw_id: u32,
-    metadata: ImageMetadata,
-) -> MeasurementApiResult {
-    api.attestation_state_active()?;
-    let entry = api
-        .manifest
-        .lookup(fw_id)
-        .map_err(|_| MeasurementApiError::UnknownFwId)?;
-
-    let params = caliptra_authorize_params(fw_id, metadata);
-    caliptra_authorize(alloc, &params)
-        .await
-        .map_err(|_| MeasurementApiError::ImageAuthorizationFailed)?;
-
-    if entry.is_tcb() {
-        update_tcb_context(api, alloc, entry, metadata).await?;
-    } else {
-        update_software_pcr(api, alloc, entry, metadata).await?;
-    }
-
-    extend_pcr31(&metadata.measurement)
-        .await
-        .map_err(|_| api.enter_error_state(MeasurementApiError::PcrExtendFailed))
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(super) enum DpeUpdateMode {
+    AlwaysRecord,
+    UpdateIfChanged,
+    VerifyUnchanged,
 }
 
-async fn update_tcb_context<S: Syscalls, A: ApiAlloc>(
+pub(super) async fn record_authorized_image<S: Syscalls, A: ApiAlloc>(
     api: &mut MeasurementApi<'_, S>,
     alloc: &A,
     entry: AttestationManifestEntry,
     metadata: ImageMetadata,
 ) -> MeasurementApiResult {
+    if entry.is_tcb() {
+        update_dpe_context(
+            api,
+            alloc,
+            entry.fw_id,
+            &metadata.measurement,
+            DpeUpdateMode::AlwaysRecord,
+        )
+        .await
+    } else {
+        update_software_pcr(api, alloc, entry, metadata).await?;
+        extend_pcr31(&metadata.measurement)
+            .await
+            .map_err(|_| api.enter_error_state(MeasurementApiError::PcrExtendFailed))
+    }
+}
+
+pub(super) async fn update_dpe_context<S: Syscalls, A: ApiAlloc>(
+    api: &mut MeasurementApi<'_, S>,
+    alloc: &A,
+    fw_id: u32,
+    measurement: &[u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE],
+    mode: DpeUpdateMode,
+) -> MeasurementApiResult {
+    api.initial_load_measurement_state_ready()?;
     let dpe_store = DpeHandleStore::<S>::new(DPE_HANDLE_STORE_DRIVER_NUM);
 
     let mut component = DpeHandleRecord::default();
     dpe_store
-        .read_record(entry.fw_id, &mut component)
+        .read_record(fw_id, &mut component)
         .map_err(|_| MeasurementApiError::InvalidDpeHandleStoreState)?;
-    let parent_fw_id = component
-        .parent_fw_id
-        .ok_or(MeasurementApiError::InvalidDpeHandleStoreState)?;
-    if component.fw_id != entry.fw_id {
+    if component.fw_id != fw_id {
         return Err(MeasurementApiError::InvalidDpeHandleStoreState);
     }
 
+    if mode != DpeUpdateMode::AlwaysRecord {
+        let tagged_tci = dpe_get_tagged_tci(alloc, component.tci_tag)
+            .await
+            .map_err(|_| MeasurementApiError::DpeCommandFailed)?;
+
+        if &tagged_tci.tci_current == measurement {
+            return Ok(());
+        }
+
+        if mode == DpeUpdateMode::VerifyUnchanged {
+            return Err(MeasurementApiError::InvalidDpeHandleStoreState);
+        }
+    }
+
+    dpe_update_context_and_persist(api, alloc, &dpe_store, component, measurement).await?;
+
+    extend_pcr31(measurement)
+        .await
+        .map_err(|_| api.enter_error_state(MeasurementApiError::PcrExtendFailed))
+}
+
+async fn dpe_update_context_and_persist<S: Syscalls, A: ApiAlloc>(
+    api: &mut MeasurementApi<'_, S>,
+    alloc: &A,
+    dpe_store: &DpeHandleStore<S>,
+    component: DpeHandleRecord,
+    measurement: &[u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE],
+) -> MeasurementApiResult {
+    let parent_fw_id = component
+        .parent_fw_id
+        .ok_or(MeasurementApiError::InvalidDpeHandleStoreState)?;
     let mut parent = DpeHandleRecord::default();
     dpe_store
         .read_record(parent_fw_id, &mut parent)
@@ -79,8 +110,8 @@ async fn update_tcb_context<S: Syscalls, A: ApiAlloc>(
         alloc,
         &DpeUpdateContextMeasurementParams {
             parent_handle: parent.context_handle,
-            measurement: metadata.measurement,
-            tci_type: entry.fw_id,
+            measurement: *measurement,
+            tci_type: component.fw_id,
         },
     )
     .await
@@ -115,7 +146,7 @@ async fn update_software_pcr<S: Syscalls, A: ApiAlloc>(
     };
 
     let mut journey_digest = [0u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE];
-    software_pcr_extend_digest(
+    super::software_pcr_extend_digest(
         alloc,
         &previous_journey_digest,
         &metadata.measurement,
@@ -145,26 +176,6 @@ fn tcb_records_with_updated_handles(
     (parent, component)
 }
 
-async fn software_pcr_extend_digest<A: ApiAlloc>(
-    alloc: &A,
-    previous_digest: &[u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE],
-    measurement: &[u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE],
-    digest: &mut [u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE],
-) -> MeasurementApiResult {
-    let ctx = alloc
-        .alloc(SHA_CONTEXT_SIZE)
-        .map_err(|_| MeasurementApiError::DigestFailed)?;
-    let mut state = sha_init(alloc, ctx, HashAlgo::Sha384, previous_digest)
-        .await
-        .map_err(|_| MeasurementApiError::DigestFailed)?;
-    sha_update(alloc, &mut state, measurement)
-        .await
-        .map_err(|_| MeasurementApiError::DigestFailed)?;
-    sha_finish(alloc, &mut state, digest)
-        .await
-        .map_err(|_| MeasurementApiError::DigestFailed)
-}
-
 fn software_pcr_update_record(
     fw_id: u32,
     reserved: [u8; 4],
@@ -185,6 +196,9 @@ fn software_pcr_update_record(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::attestation_manifest::{
+        MCU_RT_FW_ID, OWNER_MEASUREMENT_POLICY_IDENTIFIER, OWSM_FW_ID, O_AUTH_KEY_ID, V_AUTH_KEY_ID,
+    };
 
     #[test]
     fn tcb_update_records_preserve_topology_and_replace_only_handles() {
@@ -261,5 +275,104 @@ mod tests {
         assert_eq!(updated.svn, metadata.svn);
         assert_eq!(updated.version, metadata.version);
         assert_eq!(updated.reserved, record.reserved);
+    }
+
+    #[test]
+    fn tcb_records_with_updated_handles_for_vendor_auth_key() {
+        let parent = DpeHandleRecord {
+            fw_id: MCU_RT_FW_ID,
+            parent_fw_id: None,
+            context_handle: [0x11; 16],
+            tci_tag: MCU_RT_FW_ID,
+            flags: 0,
+        };
+        let component = DpeHandleRecord {
+            fw_id: V_AUTH_KEY_ID,
+            parent_fw_id: Some(MCU_RT_FW_ID),
+            context_handle: [0x22; 16],
+            tci_tag: V_AUTH_KEY_ID,
+            flags: 0,
+        };
+        let updated = DpeUpdateContextMeasurementResult {
+            component_handle: [0x33; 16],
+            parent_handle: [0x44; 16],
+        };
+
+        let (updated_parent, updated_component) =
+            tcb_records_with_updated_handles(parent, component, updated);
+
+        assert_eq!(updated_parent.context_handle, [0x44; 16]);
+        assert_eq!(updated_component.context_handle, [0x33; 16]);
+        assert_eq!(updated_parent.fw_id, MCU_RT_FW_ID);
+        assert_eq!(updated_component.fw_id, V_AUTH_KEY_ID);
+        assert_eq!(updated_component.parent_fw_id, Some(MCU_RT_FW_ID));
+        assert_eq!(updated_component.tci_tag, V_AUTH_KEY_ID);
+    }
+
+    #[test]
+    fn tcb_records_with_updated_handles_for_owsm() {
+        let parent = DpeHandleRecord {
+            fw_id: V_AUTH_KEY_ID,
+            parent_fw_id: Some(MCU_RT_FW_ID),
+            context_handle: [0x11; 16],
+            tci_tag: V_AUTH_KEY_ID,
+            flags: 0,
+        };
+        let component = DpeHandleRecord {
+            fw_id: OWSM_FW_ID,
+            parent_fw_id: Some(V_AUTH_KEY_ID),
+            context_handle: [0x22; 16],
+            tci_tag: OWSM_FW_ID,
+            flags: 0,
+        };
+        let updated = DpeUpdateContextMeasurementResult {
+            component_handle: [0x55; 16],
+            parent_handle: [0x66; 16],
+        };
+
+        let (updated_parent, updated_component) =
+            tcb_records_with_updated_handles(parent, component, updated);
+
+        assert_eq!(updated_parent.context_handle, [0x66; 16]);
+        assert_eq!(updated_component.context_handle, [0x55; 16]);
+        assert_eq!(updated_parent.fw_id, V_AUTH_KEY_ID);
+        assert_eq!(updated_component.fw_id, OWSM_FW_ID);
+        assert_eq!(updated_component.parent_fw_id, Some(V_AUTH_KEY_ID));
+        assert_eq!(updated_component.tci_tag, OWSM_FW_ID);
+    }
+
+    #[test]
+    fn tcb_records_with_updated_handles_for_owner_auth_key() {
+        let parent = DpeHandleRecord {
+            fw_id: OWNER_MEASUREMENT_POLICY_IDENTIFIER,
+            parent_fw_id: Some(OWSM_FW_ID),
+            context_handle: [0x33; 16],
+            tci_tag: OWNER_MEASUREMENT_POLICY_IDENTIFIER,
+            flags: 0,
+        };
+        let component = DpeHandleRecord {
+            fw_id: O_AUTH_KEY_ID,
+            parent_fw_id: Some(OWNER_MEASUREMENT_POLICY_IDENTIFIER),
+            context_handle: [0x44; 16],
+            tci_tag: O_AUTH_KEY_ID,
+            flags: 0,
+        };
+        let updated = DpeUpdateContextMeasurementResult {
+            component_handle: [0x77; 16],
+            parent_handle: [0x88; 16],
+        };
+
+        let (updated_parent, updated_component) =
+            tcb_records_with_updated_handles(parent, component, updated);
+
+        assert_eq!(updated_parent.context_handle, [0x88; 16]);
+        assert_eq!(updated_component.context_handle, [0x77; 16]);
+        assert_eq!(updated_parent.fw_id, OWNER_MEASUREMENT_POLICY_IDENTIFIER);
+        assert_eq!(updated_component.fw_id, O_AUTH_KEY_ID);
+        assert_eq!(
+            updated_component.parent_fw_id,
+            Some(OWNER_MEASUREMENT_POLICY_IDENTIFIER)
+        );
+        assert_eq!(updated_component.tci_tag, O_AUTH_KEY_ID);
     }
 }
