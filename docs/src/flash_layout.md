@@ -57,7 +57,12 @@ The Image Information section is repeated for each image and provides detailed m
 | Identifier          | 4            | Vendor selected unique value to distinguish between images.                            |
 |                     |              | `0x00000000`: Caliptra FMC+RT                                                              |
 |                     |              | `0x00000001`: SoC Manifest                                                                |
-|                     |              | `0x00000002`: MCU RT<br />`0x00001000`-`0xFFFFFFFF` - Reserved for other Vendor-defined SoC images |
+|                     |              | `0x00000002`: MCU RT                                                                      |
+|                     |              | `0x00000003`: Reserved for subsystem control identifiers                                  |
+|                     |              | `0x00000004`: Vendor Authorization Key (`V_AUTH_KEY_ID`)                                   |
+|                     |              | `0x00000005`-`0x00000FFE`: Reserved for subsystem control identifiers                     |
+|                     |              | `0x00000FFF`: Reserved for the optional device UEID entry in the SoC Authorization Manifest (not a flash image identifier) |
+|                     |              | `0x00001000`-`0xFFFFFFFF`: Reserved for other Vendor-defined SoC images                    |
 | ImageLocationOffset | 4            | Offset in bytes from byte 0 of the header to where the image content begins. Used in flash-based boot. |
 | Size                | 4            | Size in bytes of the image. This is the actual size of the image without padding.      |
 |                     |              | The image itself as written to the flash should be 4-byte aligned and additional       |
