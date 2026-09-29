@@ -11,6 +11,8 @@ use zerocopy::{transmute, FromBytes, Immutable, IntoBytes};
 
 const RECEIVER_BUFFER_SIZE: usize = 4160;
 const ATTESTATION_REQUESTER_CAPABILITIES: &str = "CERT,CHAL,CHUNK,LARGE_RESP";
+const RESPONDER_VALIDATOR_TEST_GROUPS: &str =
+    "VERSION,CAPABILITIES,ALGORITHMS,DIGESTS,CERTIFICATE,CHALLENGE_AUTH,MEASUREMENTS,HEARTBEAT_ACK,KEY_UPDATE_ACK,END_SESSION_ACK";
 pub const SOCKET_SPDM_COMMAND_NORMAL: u32 = 0x0001;
 pub const SOCKET_SPDM_COMMAND_STOP: u32 = 0xFFFE;
 pub const SOCKET_SPDM_COMMAND_TEST: u32 = 0xDEAD;
@@ -391,6 +393,8 @@ pub fn start_spdm_responder_validator(transport: &'static str) -> io::Result<Chi
             );
             cmd.arg("--trans")
                 .arg(transport)
+                .arg("--test-groups")
+                .arg(RESPONDER_VALIDATOR_TEST_GROUPS)
                 .arg("--pcap")
                 .arg("caliptra_spdm_validator.pcap");
         },
