@@ -65,7 +65,8 @@ The Image Information section is repeated for each image and provides detailed m
 |                     |              | `0x00000004`: Vendor Authorization Key (`V_AUTH_KEY_ID`)                               |
 |                     |              | `0x00000005`: Owner Measurement Policy (`OWNER_MEASUREMENT_POLICY_IDENTIFIER`)        |
 |                     |              | `0x00000006`: Owner Authorization Key (`O_AUTH_KEY_ID`)                                |
-|                     |              | `0x00000007`-`0x00000FFF`: Reserved for subsystem control identifiers                 |
+|                     |              | `0x00000007`-`0x00000FFE`: Reserved for subsystem control identifiers                 |
+|                     |              | `0x00000FFF`: Reserved for the optional device UEID entry in the SoC Authorization Manifest (not a flash image identifier) |
 |                     |              | `0x00001000`-`0x0000FFFF`: Reserved for other Vendor-defined SoC images                |
 |                     |              | `0x00010000`-`0xFFFFFFFF`: Reserved for other Owner-only defined SoC images            |
 | ImageLocationOffset | 4            | Offset in bytes from byte 0 of the header to where the image content begins. Used in flash-based boot.
