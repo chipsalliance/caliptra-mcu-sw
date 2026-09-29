@@ -1444,6 +1444,7 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         McuFeStatusReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
         let (resp, _) =
             McuFeStatusResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = McuFeStatusResp::default();
 
         resp.already_provisioned = self
             .non_crypto_cmds_handler
@@ -1464,6 +1465,7 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         VendorPkHashStatusReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
         let (resp, _) = VendorPkHashStatusResp::mut_from_prefix(resp_buf)
             .map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = VendorPkHashStatusResp::default();
 
         let (used_slots, key_types) = self
             .non_crypto_cmds_handler
@@ -1485,6 +1487,7 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         HekStatusReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
         let (resp, _) =
             HekStatusResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = HekStatusResp::default();
 
         (resp.used_slots, resp.total_slots) = self
             .non_crypto_cmds_handler

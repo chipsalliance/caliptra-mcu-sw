@@ -523,9 +523,7 @@ impl McuMailboxReq {
             McuMailboxReq::OcpLockEnumerateHpkeHandles(_) => {
                 CommandId::MC_OCP_LOCK_ENUMERATE_HPKE_HANDLES
             }
-            McuMailboxReq::GetOcpLockEpochKeyReport(_) => {
-                CommandId::MC_GET_OCP_LOCK_EPOCH_KEY_REPORT
-            }
+            McuMailboxReq::GetOcpLockEpochKeyReport(_) => CommandId::MC_OCP_LOCK,
             McuMailboxReq::DotLock(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
             McuMailboxReq::DotDisable(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
             McuMailboxReq::DotRotate(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
@@ -627,6 +625,7 @@ pub enum McuMailboxResp {
 
     // OCP Lock
     OcpLockProgramHek(OcpLockProgramHekResp),
+    OcpLockZeroHek(OcpLockZeroHekResp),
     OcpLockSetPermaHek(OcpLockSetPermaHekResp),
     OcpLockRotateHek(OcpLockRotateHekResp),
     GetOcpLockEndorsementCert(GetOcpLockEndorsementCertResp),
@@ -768,6 +767,7 @@ impl McuMailboxResp {
             McuMailboxResp::GetDpeCertChain(resp) => resp.as_bytes_partial(),
 
             McuMailboxResp::OcpLockProgramHek(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::OcpLockZeroHek(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::OcpLockSetPermaHek(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::OcpLockRotateHek(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::GetOcpLockEndorsementCert(resp) => resp.as_bytes_partial(),
@@ -848,6 +848,7 @@ impl McuMailboxResp {
             McuMailboxResp::GetDpeCertChain(resp) => resp.as_bytes_partial_mut(),
 
             McuMailboxResp::OcpLockProgramHek(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::OcpLockZeroHek(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::OcpLockSetPermaHek(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::OcpLockRotateHek(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::GetOcpLockEndorsementCert(resp) => resp.as_bytes_partial_mut(),
@@ -2371,9 +2372,10 @@ impl TryFrom<u16> for SekState {
 }
 
 #[repr(C)]
-#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq, Default)]
+#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
 pub struct GetOcpLockEpochKeyReportReq {
     pub hdr: MailboxReqHeader,
+    pub subcommand: u32,
     /// 32-byte nonce for freshness
     pub nonce: [u8; 32],
     /// SEK state (0=Unused, 1=Programmed, 2=Sanitized)
@@ -2381,8 +2383,20 @@ pub struct GetOcpLockEpochKeyReportReq {
     pub reserved: u16,
     pub algorithm: EndorsementAlgorithm,
 }
+impl Default for GetOcpLockEpochKeyReportReq {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxReqHeader::default(),
+            subcommand: CommandId::MC_GET_OCP_LOCK_EPOCH_KEY_REPORT.0,
+            nonce: [0u8; 32],
+            sek_state: 0,
+            reserved: 0,
+            algorithm: EndorsementAlgorithm::default(),
+        }
+    }
+}
 impl Request for GetOcpLockEpochKeyReportReq {
-    const ID: CommandId = CommandId::MC_GET_OCP_LOCK_EPOCH_KEY_REPORT;
+    const ID: CommandId = CommandId::MC_OCP_LOCK;
     type Resp = GetOcpLockEpochKeyReportResp;
 }
 
@@ -2959,10 +2973,16 @@ mod tests {
 
     #[test]
     fn test_ocp_lock_command_ids() {
+        assert_eq!(CommandId::MC_OCP_LOCK.0, 0x13);
         assert_eq!(CommandId::MC_OCP_LOCK_PROGRAM_HEK.0, 0x4F4C_5048); // "OLPH"
         assert_eq!(CommandId::MC_OCP_LOCK_ZERO_HEK.0, 0x4F4C_5A48); // "OLZH"
         assert_eq!(CommandId::MC_OCP_LOCK_ROTATE_HEK.0, 0x4F4C_5248); // "OLRH"
         assert_eq!(CommandId::MC_OCP_LOCK_SET_PERMA_HEK.0, 0x4F4C_5350); // "OLSP"
+        assert_eq!(GetOcpLockEpochKeyReportReq::ID, CommandId::MC_OCP_LOCK);
+        assert_eq!(
+            GetOcpLockEpochKeyReportReq::default().subcommand,
+            CommandId::MC_GET_OCP_LOCK_EPOCH_KEY_REPORT.0
+        );
         assert_eq!(u32::from(HekSeedSlot::LockHekProd0), 0);
         assert_eq!(u32::from(HekSeedSlot::LockHekProd7), 7);
         assert!(HekSeedSlot::try_from(8).is_err());

@@ -139,7 +139,9 @@ Payload semantics match [Caliptra SPDM VDM DOT commands](caliptra_spdm_vdm_cmds.
 
 ### MC_OCP_LOCK
 
-All MCU Runtime OCP LOCK requests use MCI command register value `0x00000013`.
+The OCP LOCK family requests listed below use MCI command register value
+`0x00000013`. `MC_OCP_LOCK_PROGRAM_HEK` and `MC_OCP_LOCK_ZERO_HEK` are separate
+top-level authorization-gated commands that use their FourCC command codes.
 Mailbox SRAM begins with the normal checksum followed by a little-endian OCP LOCK
 FourCC, its payload, and (for authorized operations) the authorization trailer.
 

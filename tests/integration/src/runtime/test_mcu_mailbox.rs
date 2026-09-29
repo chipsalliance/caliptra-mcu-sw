@@ -280,7 +280,7 @@ fn test_hek_status_cmd_does_not_require_authorization() -> Result<()> {
     assert!(hw.mailbox_execute(cmd, &invalid_checksum).is_err());
     Ok(())
 }
-#[test]
+
 #[test]
 fn test_mcu_mbox_ecdsa384_sig_verify() -> Result<()> {
     use caliptra_image_crypto::RustCrypto;
