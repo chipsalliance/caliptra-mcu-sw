@@ -1780,6 +1780,7 @@ dependencies = [
  "caliptra-mcu-mbox-common",
  "caliptra-mcu-otp-fuse",
  "caliptra-mcu-runtime-userspace-error",
+ "caliptra-mcu-scratch-alloc",
  "caliptra-mcu-userlog",
  "defmt",
  "embassy-executor",
