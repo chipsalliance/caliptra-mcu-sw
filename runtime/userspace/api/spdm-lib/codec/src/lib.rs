@@ -53,7 +53,8 @@ pub use header::{
     SPDM_PREFIX_LEN, SPDM_SIGNING_CONTEXT_LEN,
 };
 pub use key_exchange::{
-    KeyExchangeReqBody, KeyExchangeRsp, ECDH_P384_EXCHANGE_DATA_SIZE, KEY_EXCHANGE_RANDOM_DATA_LEN,
+    HeartBeatPeriod, KeyExchangeReqBody, KeyExchangeRsp, ECDH_P384_EXCHANGE_DATA_SIZE,
+    KEY_EXCHANGE_RANDOM_DATA_LEN,
 };
 pub use measurements::{
     DmtfMeasurementBlockHeader, GetMeasurementsReqBody, MeasurementsRsp, MEAS_BLOCK_METADATA_SIZE,

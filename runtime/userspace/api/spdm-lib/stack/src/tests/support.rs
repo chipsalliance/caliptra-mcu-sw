@@ -10,9 +10,9 @@ use caliptra_mcu_spdm_codec::{
     LARGE_RESPONSE_SIZE_FIELD_SIZE, SECURED_MSG_HDR_SIZE,
 };
 use caliptra_mcu_spdm_traits::{
-    MeasurementInfo, SigningInput, SpdmPalAlloc, SpdmPalAsymAlgo, SpdmPalCertStore, SpdmPalHash,
-    SpdmPalHashAlgo, SpdmPalIo, SpdmPalIoKind, SpdmPalIoTransport, SpdmPalMeasurements,
-    SpdmPalSessionCrypto, SPDM_NONCE_LEN,
+    MeasurementInfo, Milliseconds, SigningInput, SpdmPalAlloc, SpdmPalAsymAlgo, SpdmPalCertStore,
+    SpdmPalHash, SpdmPalHashAlgo, SpdmPalIo, SpdmPalIoKind, SpdmPalIoTransport,
+    SpdmPalMeasurements, SpdmPalSessionCrypto, SPDM_NONCE_LEN,
 };
 use core::marker::PhantomData;
 use core::ops::{Deref, DerefMut};
@@ -121,6 +121,14 @@ pub struct TestPal {
     /// Algorithm passed to the most recent measurement value retrieval.
     pub meas_algo: Cell<Option<SpdmPalAsymAlgo>>,
     pub sign_ops: RefCell<Vec<RecordedSign>>,
+    pub now_ms: RefCell<u64>,
+}
+
+impl TestPal {
+    /// Advance / set the fake monotonic clock used by `now_ms()`.
+    pub fn set_now_ms(&self, ms: u64) {
+        *self.now_ms.borrow_mut() = ms;
+    }
 }
 
 /// Signing input captured by [`TestPal::sign`], owned so tests can assert on it
@@ -161,6 +169,7 @@ impl Default for TestPal {
             write_algo: Cell::new(None),
             meas_algo: Cell::new(None),
             sign_ops: RefCell::new(Vec::new()),
+            now_ms: RefCell::new(0),
         }
     }
 }
@@ -263,6 +272,14 @@ impl SpdmPalIoTransport for TestPal {
         _msg: &mut [u8],
     ) -> McuResult<()> {
         Err(mcu_error::codes::NOT_IMPLEMENTED)
+    }
+
+    fn now(&self) -> Milliseconds {
+        Milliseconds(*self.now_ms.borrow())
+    }
+
+    async fn sleep(&self, _dur: Milliseconds) {
+        // Tests drive the clock explicitly via `set_now_ms`; never block.
     }
 }
 

@@ -14,6 +14,32 @@ pub const ECDH_P384_EXCHANGE_DATA_SIZE: usize = 96;
 /// Random data length in KEY_EXCHANGE req/rsp.
 pub const KEY_EXCHANGE_RANDOM_DATA_LEN: usize = 32;
 
+/// KEY_EXCHANGE_RSP HeartbeatPeriod (Param1 of the response, DSP0274): a count
+/// of **seconds**. Zero is a distinguished value — heartbeat is supported but
+/// not desired on this session, so no liveness watchdog runs. Wrapping the raw
+/// byte keeps the unit and that semantics in the type instead of passing bare
+/// `u8`s around.
+#[repr(transparent)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
+pub struct HeartBeatPeriod(pub u8);
+
+impl HeartBeatPeriod {
+    /// Heartbeat supported but not desired: no watchdog on this session.
+    pub const DISABLED: HeartBeatPeriod = HeartBeatPeriod(0);
+
+    /// Whole seconds carried by this period.
+    #[inline]
+    pub fn secs(self) -> u8 {
+        self.0
+    }
+
+    /// True when a non-zero period was negotiated (liveness watchdog active).
+    #[inline]
+    pub fn is_enabled(self) -> bool {
+        self.0 != 0
+    }
+}
+
 // ---- Request ---------------------------------------------------------------
 
 /// KEY_EXCHANGE request fixed body (after SPDM header).
@@ -61,6 +87,7 @@ impl KeyExchangeReqBody {
 ///   signature(96) | responder_verify_data(0|48) ]
 /// ```
 pub struct KeyExchangeRsp<'a> {
+    pub heartbeat_period: HeartBeatPeriod,
     pub rsp_session_id: u16,
     pub random_data: &'a [u8; KEY_EXCHANGE_RANDOM_DATA_LEN],
     pub exchange_data: &'a [u8; ECDH_P384_EXCHANGE_DATA_SIZE],
@@ -89,8 +116,8 @@ impl ResponseBody for KeyExchangeRsp<'_> {
     }
 
     fn encode_body(&self, w: &mut WireWriter<'_>) -> Result<(), WireError> {
-        // heartbeat_period = 0 (no heartbeat)
-        w.write_bytes(&[0u8])?;
+        // heartbeat_period (0 = no heartbeat on this session)
+        w.write_bytes(&[self.heartbeat_period.0])?;
         // reserved
         w.write_bytes(&[0u8])?;
         // rsp_session_id (LE)
@@ -140,5 +167,48 @@ impl KeyExchangeRsp<'_> {
         } else {
             0
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{ResponseBody, SpdmMsgHdrPdu, SpdmVersion, WireWriter};
+
+    fn encode(period: u8) -> ([u8; 256], usize) {
+        let random = [0u8; KEY_EXCHANGE_RANDOM_DATA_LEN];
+        let exchange = [0u8; ECDH_P384_EXCHANGE_DATA_SIZE];
+        let body = KeyExchangeRsp {
+            heartbeat_period: HeartBeatPeriod(period),
+            rsp_session_id: 0xABCD,
+            random_data: &random,
+            exchange_data: &exchange,
+            meas_summary_hash: None,
+            opaque_data: &[],
+            signature: &[],
+            responder_verify_data: None,
+        };
+        let mut buf = [0u8; 256];
+        let mut w = WireWriter::new(&mut buf);
+        body.encode_with_header(SpdmVersion::V13, &mut w).unwrap();
+        let len = w.position();
+        (buf, len)
+    }
+
+    // The HeartbeatPeriod is the first body byte (immediately after the 2-byte
+    // common header) and must carry exactly the negotiated value.
+    #[test]
+    fn heartbeat_period_is_first_body_byte() {
+        let (buf, _) = encode(3);
+        assert_eq!(buf[SpdmMsgHdrPdu::SIZE], 3);
+        // reserved byte stays zero.
+        assert_eq!(buf[SpdmMsgHdrPdu::SIZE + 1], 0);
+    }
+
+    // A zero period (heartbeat not desired / not supported) encodes as zero.
+    #[test]
+    fn heartbeat_period_zero_encodes_zero() {
+        let (buf, _) = encode(0);
+        assert_eq!(buf[SpdmMsgHdrPdu::SIZE], 0);
     }
 }
