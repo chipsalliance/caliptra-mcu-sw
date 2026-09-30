@@ -363,6 +363,14 @@ async fn run_optimized_download(
     let rsp_fixed =
         RequestFirmwareDataResponseFixed::decode(resp_payload).map_err(|_| errors::CODEC_ERROR)?;
 
+    // Reject a stale response to an earlier request rather than writing its
+    // data at the current offset.
+    if rsp_fixed.hdr.instance_id() != instance_id
+        || rsp_fixed.hdr.cmd_code() != FwUpdateCmd::RequestFirmwareData as u8
+    {
+        return Err(errors::UNEXPECTED_MESSAGE_TYPE);
+    }
+
     // Update T1 timestamp on response
     session.update_t1_timestamp(cmd_interface.now());
 
