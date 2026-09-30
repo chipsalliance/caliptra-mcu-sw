@@ -29,7 +29,7 @@ use caliptra_api::mailbox::CmStableKeyType;
 use caliptra_cfi_derive::{cfi_impl_fn, cfi_mod_fn};
 use caliptra_cfi_lib::{cfi_assert_eq, cfi_launder, CfiCounter, CfiError};
 use caliptra_drivers::AxiAddr;
-use caliptra_mcu_error::McuError;
+use caliptra_mcu_error::{McuError, McuResult};
 use caliptra_mcu_registers_generated::fuses;
 use caliptra_mcu_registers_generated::mci;
 use caliptra_mcu_registers_generated::mci::bits::SecurityState::DeviceLifecycle;
@@ -52,6 +52,37 @@ const LMS_CALIPTRA_VALUE: u8 = 3;
 const OTP_DAI_IDLE_BIT_OFFSET: u32 = 30;
 const OTP_STATUS_REG_OFFSET: u32 = 0x10;
 const OTP_DIRECT_ACCESS_CMD_REG_OFFSET: u32 = 0x80;
+
+fn owner_manifest_svn_strap(current: u32, svn: u32) -> McuResult<u32> {
+    let svn = u8::try_from(svn).map_err(|_| McuError::ROM_FUSE_VALUE_TOO_LARGE)?;
+    Ok((current & !(0xff << 8)) | (u32::from(svn) << 8))
+}
+
+#[cfg(test)]
+mod owner_svn_tests {
+    use super::*;
+
+    #[test]
+    fn preserves_other_strap_bits_and_replaces_the_floor() {
+        for current in [0, u32::MAX, 0x8000_1203] {
+            for svn in [0, 1, 32, 64, 255] {
+                let updated = owner_manifest_svn_strap(current, svn).unwrap();
+                assert_eq!((updated >> 8) & 0xff, svn);
+                assert_eq!(updated & !(0xff << 8), current & !(0xff << 8));
+            }
+        }
+    }
+
+    #[test]
+    fn rejects_values_outside_the_strap_field() {
+        for svn in [256, u32::MAX] {
+            assert_eq!(
+                owner_manifest_svn_strap(0, svn),
+                Err(McuError::ROM_FUSE_VALUE_TOO_LARGE)
+            );
+        }
+    }
+}
 
 pub const MCU_SRAM_DEFAULT_PROTECTED_REGION_BLOCKS: u32 = 8; // 32 kB / 4 kB chunks
 
@@ -334,6 +365,13 @@ impl Soc {
             .read_u32_at(fuses::OTP_CPTRA_CORE_SOC_MANIFEST_MAX_SVN.byte_offset)
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
         self.registers.fuse_soc_manifest_max_svn.set(word);
+
+        let owner_svn = otp
+            .read_owner_soc_manifest_min_svn()
+            .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
+        let strap = owner_manifest_svn_strap(self.registers.ss_strap_generic[3].get(), owner_svn)
+            .unwrap_or_else(|_| fatal_error(McuError::ROM_FUSE_VALUE_TOO_LARGE));
+        self.registers.ss_strap_generic[3].set(strap);
 
         // Manuf Debug Unlock Token.
         for i in 0..self.registers.fuse_manuf_dbg_unlock_token.len() {

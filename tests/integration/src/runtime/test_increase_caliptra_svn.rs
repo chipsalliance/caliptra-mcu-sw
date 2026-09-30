@@ -24,6 +24,202 @@ fn linear_or_svn_from_otp(otp: &[u8], entry: &FuseEntryInfo) -> u32 {
     128 - u128::from_le_bytes(bytes).leading_zeros()
 }
 
+// The direct Core requester override used for PL0 installation is emulator-only.
+#[cfg(not(feature = "fpga_realtime"))]
+mod owner {
+    use super::*;
+    use anyhow::{anyhow, bail};
+    use caliptra_api::mailbox::{CommandId, MailboxReqHeader, SetOwnerAuthManifestReq};
+    use caliptra_image_types::FwVerificationPqcKeyType;
+    use caliptra_mcu_registers_generated::fuses::OWNER_SOC_MANIFEST_MIN_SVN;
+
+    fn core_request(hw: &mut impl McuHwModel, cmd: CommandId, request: &[u8]) -> Result<Vec<u8>> {
+        let cmd = u32::from(cmd);
+        for _ in 0..10 {
+            match hw.caliptra_mailbox_execute(cmd, request) {
+                Ok(Some(response)) => return Ok(response),
+                Ok(None) => bail!("Core command {cmd:#010x} did not return a response"),
+                Err(caliptra_hw_model::ModelError::UnableToLockMailbox) => {
+                    for _ in 0..1_000_000 {
+                        hw.step();
+                    }
+                }
+                Err(error) => return Err(error.into()),
+            }
+        }
+        bail!("Core mailbox remained busy for {cmd:#010x}")
+    }
+
+    fn read_fw_info(hw: &mut impl McuHwModel) -> Result<FwInfoResp> {
+        let request = MailboxReqHeader {
+            chksum: calc_checksum(CommandId::FW_INFO.into(), &[]),
+        };
+        let response = core_request(hw, CommandId::FW_INFO, request.as_bytes())?;
+        FwInfoResp::read_from_bytes(&response).map_err(|_| anyhow!("Invalid FW_INFO response"))
+    }
+
+    fn install_owner_manifest(
+        hw: &mut impl McuHwModel,
+        pqc_key_type: FwVerificationPqcKeyType,
+        svn: u32,
+    ) -> Result<()> {
+        let dir = tempfile::tempdir()?;
+        let mut builder = CaliptraBuilder::new(&CaliptraBuildArgs {
+            owner_manifest_svn: Some(svn),
+            pqc_key_type: Some(pqc_key_type),
+            target_dir: Some(dir.path().to_path_buf()),
+            ..Default::default()
+        });
+        let manifest = std::fs::read(builder.get_owner_auth_manifest(None)?)?;
+        let mut request = SetOwnerAuthManifestReq {
+            manifest_size: u32::try_from(manifest.len())?,
+            ..Default::default()
+        };
+        request
+            .manifest
+            .get_mut(..manifest.len())
+            .ok_or_else(|| anyhow!("Owner SoC Manifest exceeds mailbox capacity"))?
+            .copy_from_slice(&manifest);
+        let request = request
+            .as_bytes_partial_mut()
+            .map_err(|error| anyhow!("Invalid Owner SoC Manifest request size: {error:?}"))?;
+        let checksum = calc_checksum(
+            CommandId::SET_OWNER_AUTH_MANIFEST.into(),
+            &request[core::mem::size_of::<MailboxReqHeader>()..],
+        );
+        request[..core::mem::size_of::<MailboxReqHeader>()]
+            .copy_from_slice(&checksum.to_le_bytes());
+        core_request(hw, CommandId::SET_OWNER_AUTH_MANIFEST, request)?;
+        Ok(())
+    }
+
+    #[test]
+    fn test_increase_owner_soc_manifest_svn() -> Result<()> {
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, Ordering::Relaxed);
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            lifecycle_controller_state: Some(LifecycleControllerState::Prod),
+            caliptra_soc_axi_user: Some(1),
+            ..Default::default()
+        });
+        hw.step_until(|hw| {
+            hw.mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        let info = read_fw_info(&mut hw)?;
+        assert_eq!(info.pl0_pauser, 1);
+        assert_eq!(info.owner_auth_manifest_current_svn, 0);
+        assert_eq!(info.owner_auth_manifest_min_svn, 0);
+        let pqc_key_type =
+            FwVerificationPqcKeyType::from_u8(u8::try_from(info.image_manifest_pqc_type)?)
+                .ok_or_else(|| anyhow!("Invalid firmware PQC key type"))?;
+        let request = |svn| FuseIncreaseMinSvnReq {
+            target: SvnTarget::OwnerSocManifest as u32,
+            svn,
+            ..Default::default()
+        };
+        let before = hw.read_otp_memory();
+        for svn in [0, 1, 65] {
+            assert!(execute_authorized_req(&mut hw, request(svn)).is_err());
+        }
+        assert_eq!(hw.read_otp_memory(), before);
+
+        install_owner_manifest(&mut hw, pqc_key_type, 7)?;
+        assert_eq!(read_fw_info(&mut hw)?.owner_auth_manifest_current_svn, 7);
+        assert!(hw.mailbox_execute_req(request(1)).is_err());
+        assert!(execute_authorized_req(&mut hw, request(8)).is_err());
+        assert_eq!(hw.read_otp_memory(), before);
+
+        // Resume from a partial counter with noncontiguous bits in both words.
+        let start = OWNER_SOC_MANIFEST_MIN_SVN.byte_offset;
+        let end = start + OWNER_SOC_MANIFEST_MIN_SVN.byte_size;
+        let partial_bits = (1u64 << 63) | 0b1010;
+        for (index, data) in [0b1010, 1 << 31].into_iter().enumerate() {
+            execute_authorized_req(
+                &mut hw,
+                FuseWriteReq {
+                    word_addr: (start / 4 + index) as u32,
+                    data,
+                    mask: u32::MAX,
+                    ..Default::default()
+                },
+            )?;
+        }
+        execute_authorized_req(&mut hw, request(7))?;
+        let otp = hw.read_otp_memory();
+        let raw = u64::from_le_bytes(otp[start..end].try_into().unwrap());
+        assert_eq!(raw.count_ones(), 7);
+        assert_eq!(raw & partial_bits, partial_bits);
+        execute_authorized_req(&mut hw, request(7))?;
+        assert!(execute_authorized_req(&mut hw, request(6)).is_err());
+
+        install_owner_manifest(&mut hw, pqc_key_type, 64)?;
+        for svn in [31, 32, 33, 64] {
+            execute_authorized_req(&mut hw, request(svn))?;
+            let otp = hw.read_otp_memory();
+            let raw = u64::from_le_bytes(otp[start..end].try_into().unwrap());
+            assert_eq!(raw.count_ones(), svn);
+            assert_eq!(raw & partial_bits, partial_bits);
+            assert_eq!(&otp[..start], &before[..start]);
+            assert_eq!(&otp[end..], &before[end..]);
+        }
+        execute_authorized_req(&mut hw, request(64))?;
+        let persisted = hw.read_otp_memory();
+        for svn in [0, 63, 65] {
+            assert!(execute_authorized_req(&mut hw, request(svn)).is_err());
+        }
+        assert_eq!(hw.read_otp_memory(), persisted);
+
+        // Programming OTP must not claim to update the already-locked Core strap.
+        assert_eq!(read_fw_info(&mut hw)?.owner_auth_manifest_min_svn, 0);
+        let original_strap = hw
+            .caliptra_soc_manager()
+            .soc_ifc()
+            .ss_strap_generic()
+            .at(3)
+            .read();
+        drop(hw);
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            lifecycle_controller_state: Some(LifecycleControllerState::Prod),
+            caliptra_soc_axi_user: Some(1),
+            otp_memory: Some(persisted),
+            ..Default::default()
+        });
+        hw.step_until(|hw| {
+            hw.mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+        assert_eq!(read_fw_info(&mut hw)?.owner_auth_manifest_min_svn, 64);
+        let strap = hw
+            .caliptra_soc_manager()
+            .soc_ifc()
+            .ss_strap_generic()
+            .at(3)
+            .read();
+        assert_eq!((strap >> 8) & 0xff, 64);
+        assert_eq!(strap & !(0xff << 8), original_strap & !(0xff << 8));
+
+        assert!(install_owner_manifest(&mut hw, pqc_key_type, 63).is_err());
+        assert_eq!(
+            hw.caliptra_soc_manager()
+                .soc_ifc()
+                .cptra_fw_error_non_fatal()
+                .read(),
+            u32::from(CaliptraError::RUNTIME_OWNER_AUTH_MANIFEST_SVN_LESS_THAN_MIN)
+        );
+        install_owner_manifest(&mut hw, pqc_key_type, 64)?;
+        assert_eq!(read_fw_info(&mut hw)?.owner_auth_manifest_current_svn, 64);
+
+        lock.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+    }
+}
+
 #[test]
 fn test_increase_caliptra_svn() -> Result<()> {
     let lock = TEST_LOCK.lock().unwrap();
