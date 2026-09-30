@@ -249,6 +249,7 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         capabilities.authorized_subcommands =
             encode_capabilities(authorized_subcommand_capabilities().bits());
         capabilities.reserved.fill(0);
+        capabilities.vendor.fill(0);
         Ok(())
     }
 
