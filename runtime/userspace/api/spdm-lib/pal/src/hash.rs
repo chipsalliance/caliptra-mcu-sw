@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! [`SpdmPalHash`] + [`ApiAlloc`] implementations on [`McuSpdmPal`].
+//! [`SpdmPalHash`] implementation on [`McuSpdmPal`].
 //!
 //! Hash state buffers are allocated from the per-task bitmap pool via
 //! `alloc_bytes(SHA_CONTEXT_SIZE)`, making them deterministic and
@@ -11,20 +11,8 @@ use super::measurements::MeasurementProvider;
 use super::*;
 use caliptra_mcu_spdm_traits::{SpdmPalHash, SpdmPalHashAlgo, SpdmPalIo};
 use mcu_caliptra_api::{
-    sha_finish, sha_init, sha_update, ApiAlloc, ApiAllocPool, HashAlgo, HashState, SHA_CONTEXT_SIZE,
+    sha_finish, sha_init, sha_update, ApiAllocPool, HashAlgo, HashState, SHA_CONTEXT_SIZE,
 };
-
-impl<M: MeasurementProvider> ApiAlloc for McuSpdmPal<M> {
-    type Buf<'a>
-        = BitmapBytes<'a>
-    where
-        Self: 'a;
-
-    #[inline]
-    fn alloc(&self, len: usize) -> McuResult<Self::Buf<'_>> {
-        self.allocator.alloc_bytes(len)
-    }
-}
 
 impl<M: MeasurementProvider> ApiAllocPool for McuSpdmPal<M> {
     type Pool = BitmapAllocator;

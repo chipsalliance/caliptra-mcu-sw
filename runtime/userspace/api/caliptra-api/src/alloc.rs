@@ -24,20 +24,19 @@ pub trait ApiAlloc {
     fn alloc(&self, len: usize) -> McuResult<Self::Buf<'_>>;
 }
 
-/// The canonical pool behind an [`ApiAlloc`] wrapper.
+/// The canonical [`ApiAlloc`] behind an allocator owner or wrapper.
 ///
 /// [`ApiAlloc`] carries a GAT, so it is not object-safe and every
 /// `<A: ApiAlloc>` API is monomorphised once per implementor. Several
-/// implementors are thin wrappers that delegate to the *same* underlying
-/// pool, which makes those instantiations byte-identical and pure waste —
-/// a multi-kilobyte command handler reachable from two transports is
-/// emitted twice.
+/// task owners delegate to the *same* underlying pool type. Making those
+/// owners implement [`ApiAlloc`] would emit duplicate instantiations of
+/// multi-kilobyte command handlers.
 ///
-/// Implementors expose that shared pool here. Callers about to hand the
-/// allocator to a large generic API pass [`Self::pool`] instead of `self`,
-/// so every transport instantiates it over one type. Leaf pools implement
+/// Owners expose their allocator here without becoming allocators themselves.
+/// Callers hand [`Self::pool`] to generic APIs so every production task
+/// instantiates them over the same concrete pool type. Leaf pools implement
 /// this as the identity (`Pool = Self`).
-pub trait ApiAllocPool: ApiAlloc {
+pub trait ApiAllocPool {
     /// Allocator that actually owns the memory. Wrappers name their inner
     /// pool; a pool names itself.
     type Pool: ApiAlloc;

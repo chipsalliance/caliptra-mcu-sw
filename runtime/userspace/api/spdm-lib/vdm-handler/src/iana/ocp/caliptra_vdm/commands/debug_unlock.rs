@@ -35,7 +35,7 @@ where
 
     let mut challenge = DebugUnlockChallenge::default();
     match cmds
-        .request_debug_unlock(scratch, unlock_level, &mut challenge)
+        .request_debug_unlock(scratch.pool(), unlock_level, &mut challenge)
         .await
     {
         Ok(()) => {
@@ -58,7 +58,7 @@ where
     H: CaliptraCmdHandler,
     A: SpdmPalAlloc,
 {
-    match cmds.authorize_debug_unlock_token(scratch, req).await {
+    match cmds.authorize_debug_unlock_token(scratch.pool(), req).await {
         Ok(()) => match super::write_success(out) {
             Ok(_) => CaliptraVdmCmdResult::Response(1),
             Err(code) => CaliptraVdmCmdResult::Error(code),
