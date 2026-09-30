@@ -141,7 +141,7 @@ impl<S: Syscalls> Otp<S> {
     }
 
     pub fn vendor_pk_hash_status(&self) -> Result<(u32, [u8; MAX_NUM_VENDOR_PK_HASH]), ErrorCode> {
-        let mut used_slots = 0u32;
+        let mut used_slots_bitmap = 0u32;
         let mut key_types = [0u8; MAX_NUM_VENDOR_PK_HASH];
 
         for (slot, key_type) in key_types.iter_mut().enumerate() {
@@ -154,7 +154,7 @@ impl<S: Syscalls> Otp<S> {
                 }
             }
             if used {
-                used_slots |= 1 << slot;
+                used_slots_bitmap |= 1 << slot;
                 *key_type = self
                     .read(reg::VENDOR_PQC_KEY_TYPE, slot as u32)?
                     .try_into()
@@ -162,7 +162,7 @@ impl<S: Syscalls> Otp<S> {
             }
         }
 
-        Ok((used_slots, key_types))
+        Ok((used_slots_bitmap, key_types))
     }
 
     /// Revoke an individual key within a PK hash slot
@@ -363,20 +363,20 @@ impl<S: Syscalls> Otp<S> {
             return Err(ErrorCode::Invalid);
         }
 
-        let mut used_slots = 0;
+        let mut used_slots_bitmap = 0;
         for (slot, reg) in reg::LOCK_HEK_PROD_ALL[..total_slots as usize]
             .iter()
             .enumerate()
         {
             for word in 0..12 {
                 if self.read(*reg, word)? != 0 {
-                    used_slots |= 1 << slot;
+                    used_slots_bitmap |= 1 << slot;
                     break;
                 }
             }
         }
 
-        Ok((used_slots, total_slots))
+        Ok((used_slots_bitmap, total_slots))
     }
 
     pub fn rotate_hek(&self, slot: u32, seed: &[u8; 32]) -> Result<(), ErrorCode> {

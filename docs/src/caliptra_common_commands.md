@@ -500,10 +500,10 @@ This command does not require authorization.
 
 **Response Payload**:
 
-| Byte(s) | Name       | Type   | Description                                                                                     |
-| ------- | ---------- | ------ | ----------------------------------------------------------------------------------------------- |
-| 0:3     | used_slots | u32    | Bitmap of occupied slots; bits 0 through 15 correspond to vendor PK hash slots 0 through 15     |
-| 4:19    | key_types  | u8[16] | Per-slot PQC key type: `0` = unused, `1` = LMS, `3` = ML-DSA                                    |
+| Byte(s) | Name              | Type   | Description                                                                                                       |
+| ------- | ----------------- | ------ | ----------------------------------------------------------------------------------------------------------------- |
+| 0:3     | used_slots_bitmap | u32    | Bitmap of occupied slots; bits 0 through 15 correspond to vendor PK hash slots 0 through 15. |
+| 4:19    | key_types         | u8[16] | Per-slot PQC key type: `0` = unused, `1` = LMS, `3` = ML-DSA                                                      |
 
 ### HEK Status
 
@@ -515,10 +515,10 @@ This command does not require authorization.
 
 **Response Payload**:
 
-| Byte(s) | Name        | Type | Description                                                                    |
-| ------- | ----------- | ---- | ------------------------------------------------------------------------------ |
-| 0:3     | used_slots  | u32  | Bitmap of used slots; bits 0 through 7 correspond to HEK slots 0 through 7    |
-| 4:7     | total_slots | u32  | Number of configured HEK slots                                                 |
+| Byte(s) | Name              | Type | Description                                                                                       |
+| ------- | ----------------- | ---- | ------------------------------------------------------------------------------------------------- |
+| 0:3     | used_slots_bitmap | u32  | Bitmap of used slots; bits 0 through 7 correspond to HEK slots 0 through 7. |
+| 4:7     | total_slots       | u32  | Number of configured HEK slots                                                                    |
 
 ### Fuse Revoke Vendor Public Key
 

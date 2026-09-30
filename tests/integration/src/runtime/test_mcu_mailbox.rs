@@ -222,7 +222,7 @@ fn test_vendor_pk_hash_status_cmd_does_not_require_authorization() -> Result<()>
     });
 
     let resp = hw.mailbox_execute_req(VendorPkHashStatusReq::default())?;
-    assert_eq!(resp.used_slots, 1);
+    assert_eq!(resp.used_slots_bitmap, 1 << 0);
     assert_eq!(resp.key_types[0], VENDOR_PQC_KEY_TYPE_LMS);
     assert_eq!(&resp.key_types[1..], &[0; 15]);
 
@@ -247,6 +247,7 @@ fn test_hek_status_cmd_does_not_require_authorization() -> Result<()> {
     let _lock = crate::test::TEST_LOCK.lock().unwrap();
     let mut otp = vec![0u8; 4096];
     crate::test_hek::test::setup_otp_hek(&mut otp, 0, false, false);
+    crate::test_hek::test::setup_otp_hek(&mut otp, 2, true, false);
 
     let mut hw = start_runtime_hw_model(TestParams {
         otp_memory: Some(otp),
@@ -262,7 +263,8 @@ fn test_hek_status_cmd_does_not_require_authorization() -> Result<()> {
     });
 
     let resp = hw.mailbox_execute_req(HekStatusReq::default())?;
-    assert_eq!(resp.used_slots, 1);
+    assert_eq!(resp.used_slots_bitmap, (1 << 0) | (1 << 2));
+    assert_eq!(resp.used_slots_bitmap.count_ones(), 2);
     assert_eq!(resp.total_slots, 8);
 
     let cmd = McuCommandId::MC_HEK_STATUS.into();

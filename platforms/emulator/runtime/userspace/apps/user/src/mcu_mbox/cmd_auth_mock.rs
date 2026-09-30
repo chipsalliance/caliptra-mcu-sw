@@ -93,13 +93,17 @@ impl CommandAuthorizer for MockCommandAuthorizer {
             CommandId::MC_FUSE_WRITE => size_of::<FuseWriteReq>(),
             CommandId::MC_FUSE_LOCK_PARTITION => size_of::<FuseLockPartitionReq>(),
             CommandId::MC_ZEROIZE_UDS_FE_AND_ENTER_RMA => size_of::<ZeroizeUdsFeAndEnterRmaReq>(),
-            CommandId::MC_OCP_LOCK_PROGRAM_HEK => size_of::<OcpLockProgramHekReq>(),
-            CommandId::MC_OCP_LOCK_ZERO_HEK => size_of::<OcpLockZeroHekReq>(),
             CommandId::MC_OCP_LOCK => {
                 let subcommand = req
                     .get(size_of::<MailboxReqHeader>()..size_of::<MailboxReqHeader>() + 4)
                     .ok_or(AuthorizationError)?;
                 match u32::from_le_bytes(subcommand.try_into().map_err(|_| AuthorizationError)?) {
+                    value if value == CommandId::MC_OCP_LOCK_PROGRAM_HEK.0 => {
+                        size_of::<OcpLockProgramHekReq>()
+                    }
+                    value if value == CommandId::MC_OCP_LOCK_ZERO_HEK.0 => {
+                        size_of::<OcpLockZeroHekReq>()
+                    }
                     value if value == CommandId::MC_OCP_LOCK_ROTATE_HEK.0 => {
                         size_of::<OcpLockRotateHekReq>()
                     }
