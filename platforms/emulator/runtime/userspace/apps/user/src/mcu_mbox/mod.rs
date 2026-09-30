@@ -8,11 +8,7 @@ use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_console::Console;
 use caliptra_mcu_libtock_platform::ErrorCode;
 #[cfg(feature = "mcu-mbox-service")]
-use caliptra_mcu_mbox_lib::cmd_interface::McuMboxScratch;
-#[cfg(feature = "mcu-mbox-service")]
-use caliptra_mcu_scratch_alloc::{
-    BitmapAllocator, BitmapBytes, StaticBitmapAllocatorCell, BITMAP_SLOT_SIZE,
-};
+use caliptra_mcu_scratch_alloc::{BitmapAllocator, StaticBitmapAllocatorCell, BITMAP_SLOT_SIZE};
 #[allow(unused_imports)]
 use core::fmt::Write;
 #[cfg(feature = "mcu-mbox-service")]
@@ -144,37 +140,6 @@ const MCU_MBOX_SCRATCH_SIZE: usize = {
     declared
 };
 
-#[cfg(feature = "mcu-mbox-service")]
-struct McuMboxScratchAlloc(&'static BitmapAllocator);
-
-#[cfg(feature = "mcu-mbox-service")]
-impl mcu_caliptra_api::ApiAlloc for McuMboxScratchAlloc {
-    type Buf<'a>
-        = BitmapBytes<'a>
-    where
-        Self: 'a;
-
-    fn alloc(&self, len: usize) -> mcu_error::McuResult<Self::Buf<'_>> {
-        self.0.alloc_bytes(len)
-    }
-}
-
-#[cfg(feature = "mcu-mbox-service")]
-impl mcu_caliptra_api::ApiAllocPool for McuMboxScratchAlloc {
-    type Pool = BitmapAllocator;
-
-    fn pool(&self) -> &Self::Pool {
-        self.0
-    }
-}
-
-#[cfg(feature = "mcu-mbox-service")]
-impl McuMboxScratch for McuMboxScratchAlloc {
-    fn shrink(buf: &mut BitmapBytes<'_>, new_len: usize) -> mcu_error::McuResult<()> {
-        buf.shrink(new_len)
-    }
-}
-
 #[embassy_executor::task]
 pub async fn mcu_mbox_task() {
     match start_mcu_mbox_service().await {
@@ -204,7 +169,6 @@ async fn start_mcu_mbox_service() -> Result<(), ErrorCode> {
         static MCU_MBOX_ALLOC_CELL: StaticBitmapAllocatorCell = StaticBitmapAllocatorCell::new();
         let scratch_allocator: &'static BitmapAllocator =
             unsafe { MCU_MBOX_ALLOC_CELL.init_once(scratch_ptr, MCU_MBOX_SCRATCH_SIZE) };
-        let scratch = McuMboxScratchAlloc(scratch_allocator);
 
         // Command handler shared with the MCTP and SPDM VDM backends.
         let handler = crate::caliptra_cmd_handler::CaliptraCmdBackend;
@@ -219,7 +183,7 @@ async fn start_mcu_mbox_service() -> Result<(), ErrorCode> {
             &handler,
             &mut cmd_authorizer,
             &mut transport,
-            &scratch,
+            scratch_allocator,
         );
         crate::log_info!(
             console_writer,

@@ -1956,6 +1956,7 @@ dependencies = [
  "caliptra-mcu-measurement-api",
  "caliptra-mcu-otp-fuse",
  "caliptra-mcu-runtime-userspace-error",
+ "caliptra-mcu-scratch-alloc",
  "caliptra-mcu-userlog",
  "defmt",
  "dpe",

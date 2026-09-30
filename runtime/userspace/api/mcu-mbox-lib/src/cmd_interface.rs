@@ -51,18 +51,15 @@ use caliptra_mcu_mbox_common::messages::{
     McuFipsPeriodicStatusResp,
 };
 use caliptra_mcu_otp_fuse::fuse_read_dai_params;
+use caliptra_mcu_scratch_alloc::BitmapAllocator;
 use caliptra_mcu_userlog::{log_info, Hex32};
 
 #[allow(unused_imports)]
 use core::fmt::Write;
 use core::sync::atomic::{AtomicBool, Ordering};
-use mcu_caliptra_api::{raw, ApiAlloc, ApiAllocPool, FwInfo};
+use mcu_caliptra_api::{raw, ApiAlloc, FwInfo};
 use mcu_error::{McuErrorCode, McuResult};
 use zerocopy::{FromBytes, IntoBytes};
-
-pub trait McuMboxScratch: ApiAlloc + ApiAllocPool {
-    fn shrink(buf: &mut Self::Buf<'_>, new_len: usize) -> McuResult<()>;
-}
 
 fn map_common_cmd_error(error: CaliptraCompletionCode) -> McuErrorCode {
     match error {
@@ -72,22 +69,20 @@ fn map_common_cmd_error(error: CaliptraCompletionCode) -> McuErrorCode {
 }
 
 /// Command interface for handling MCU mailbox commands.
-pub struct CmdInterface<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch> {
+pub struct CmdInterface<'a, H: CaliptraCmdHandler, A: CommandAuthorizer> {
     transport: &'a mut McuMboxTransport,
     non_crypto_cmds_handler: &'a H,
     cmd_authorizer: &'a mut A,
-    scratch: &'a Alloc,
+    scratch: &'a BitmapAllocator,
     busy: AtomicBool,
 }
 
-impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
-    CmdInterface<'a, H, A, Alloc>
-{
+impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer> CmdInterface<'a, H, A> {
     pub fn new(
         transport: &'a mut McuMboxTransport,
         non_crypto_cmds_handler: &'a H,
         cmd_authorizer: &'a mut A,
-        scratch: &'a Alloc,
+        scratch: &'a BitmapAllocator,
     ) -> Self {
         Self {
             transport,
@@ -160,7 +155,7 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
     }
 
     pub async fn handle_responder_msg_from_scratch(&mut self) -> McuResult<()> {
-        let mut req_buf = self.scratch.alloc(size_of::<McuMailboxReq>())?;
+        let mut req_buf = self.scratch.alloc_bytes(size_of::<McuMailboxReq>())?;
         let (cmd_id, req_len) = match self.transport.receive_request(&mut req_buf).await {
             Ok((c, slice)) => (c, slice.len()),
             Err(_) => {
@@ -168,14 +163,14 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
                 return Err(errors::TRANSPORT_ERROR);
             }
         };
-        if let Err(err) = Alloc::shrink(&mut req_buf, req_len) {
+        if let Err(err) = req_buf.shrink(req_len) {
             let _ = self.transport.finalize_response(MbxCmdStatus::Failure);
             return Err(err);
         }
 
         let mut resp_buf = match self
             .scratch
-            .alloc(response_buffer_size::<H>(cmd_id, &req_buf[..req_len]))
+            .alloc_bytes(response_buffer_size::<H>(cmd_id, &req_buf[..req_len]))
         {
             Ok(buf) => buf,
             Err(err) => {
@@ -1844,7 +1839,7 @@ async fn stage_attested_csr<H: CaliptraCmdHandler, Alloc: mcu_caliptra_api::ApiA
 ///
 /// A free function rather than a `CmdInterface` method so it can be tested
 /// without standing up a transport.
-async fn stage_attestation<H: CaliptraCmdHandler, Alloc: ApiAllocPool>(
+async fn stage_attestation<H: CaliptraCmdHandler, Alloc: ApiAlloc>(
     handler: &H,
     alloc: &Alloc,
     req: &GetAttestationReq,
@@ -1880,12 +1875,10 @@ async fn stage_attestation<H: CaliptraCmdHandler, Alloc: ApiAllocPool>(
     // than emit a `Complete` response with partial evidence.
     let out = rest.get_mut(..max_len).ok_or(errors::BUFFER_TOO_SMALL)?;
 
-    // Hand the handler the underlying pool rather than this wrapper: the SPDM
-    // VDM transport reaches the same handler through a different `ApiAlloc`
-    // wrapper, and instantiating it over the shared pool type keeps one copy of
-    // the evidence-generation code in the image instead of one per transport.
+    // Callers pass the canonical pool into this helper so every transport
+    // instantiates evidence generation over the same allocator type.
     let evidence_len = handler
-        .get_attestation(alloc.pool(), format, algorithm, entity, &req.nonce, out)
+        .get_attestation(alloc, format, algorithm, entity, &req.nonce, out)
         .await
         .map_err(|_| errors::MCU_MBOX_COMMON)?;
 
@@ -1924,14 +1917,6 @@ mod tests {
 
         fn alloc(&self, len: usize) -> McuResult<Self::Buf<'_>> {
             Ok(vec![0; len])
-        }
-    }
-
-    impl ApiAllocPool for TestAlloc {
-        type Pool = Self;
-
-        fn pool(&self) -> &Self::Pool {
-            self
         }
     }
 

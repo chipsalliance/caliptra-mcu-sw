@@ -79,7 +79,7 @@ where
     if output.is_empty() {
         return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InsufficientResources);
     }
-    match commands.dot_override(scratch, request).await {
+    match commands.dot_override(scratch.pool(), request).await {
         Ok(()) => {
             output[0] = CaliptraCompletionCode::Success as u8;
             CaliptraVdmCmdResult::Response(1)
@@ -109,7 +109,10 @@ where
     else {
         return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InsufficientResources);
     };
-    match commands.dot_override_challenge(scratch, request).await {
+    match commands
+        .dot_override_challenge(scratch.pool(), request)
+        .await
+    {
         Ok(challenge) => {
             *completion = CaliptraCompletionCode::Success as u8;
             challenge_out.copy_from_slice(&challenge);
@@ -136,7 +139,7 @@ where
     if output.is_empty() {
         return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InsufficientResources);
     }
-    match commands.dot_recovery(scratch, blob).await {
+    match commands.dot_recovery(scratch.pool(), blob).await {
         Ok(()) => {
             output[0] = CaliptraCompletionCode::Success as u8;
             CaliptraVdmCmdResult::Response(1)
@@ -190,7 +193,7 @@ where
         return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InsufficientResources);
     }
 
-    match commands.dot_unlock(scratch, request).await {
+    match commands.dot_unlock(scratch.pool(), request).await {
         Ok(()) => {
             output[0] = CaliptraCompletionCode::Success as u8;
             CaliptraVdmCmdResult::Response(1)
@@ -219,7 +222,7 @@ where
         return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InsufficientResources);
     }
 
-    match commands.dot_unlock_challenge(scratch).await {
+    match commands.dot_unlock_challenge(scratch.pool()).await {
         Ok(challenge) => {
             *completion = CaliptraCompletionCode::Success as u8;
             challenge_out[..challenge.len()].copy_from_slice(&challenge);
