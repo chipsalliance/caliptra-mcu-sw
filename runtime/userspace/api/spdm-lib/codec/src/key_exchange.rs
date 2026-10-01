@@ -4,21 +4,25 @@
 
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
 
-use crate::{ReqRespCode, ResponseBody, WireError, WireWriter, SHA384_HASH_SIZE};
+use crate::{ReqRespCode, ResponseBody, WireError, WireReader, WireWriter, SHA384_HASH_SIZE};
 
 // ---- Constants -------------------------------------------------------------
 
-/// ECDH P-384 exchange data size (x || y, 48 × 2).
+/// ECDH P-384 exchange data size (x || y, 48 x 2).
 pub const ECDH_P384_EXCHANGE_DATA_SIZE: usize = 96;
+
+/// Largest ExchangeData field this responder can negotiate.
+pub const MAX_EXCHANGE_DATA_SIZE: usize = ECDH_P384_EXCHANGE_DATA_SIZE;
 
 /// Random data length in KEY_EXCHANGE req/rsp.
 pub const KEY_EXCHANGE_RANDOM_DATA_LEN: usize = 32;
 
+/// Fixed KEY_EXCHANGE_RSP body bytes before `ExchangeData`.
+pub const KEY_EXCHANGE_RSP_FIXED_BODY_SIZE: usize = 6 + KEY_EXCHANGE_RANDOM_DATA_LEN;
+
 /// KEY_EXCHANGE_RSP HeartbeatPeriod (Param1 of the response, DSP0274): a count
-/// of **seconds**. Zero is a distinguished value — heartbeat is supported but
-/// not desired on this session, so no liveness watchdog runs. Wrapping the raw
-/// byte keeps the unit and that semantics in the type instead of passing bare
-/// `u8`s around.
+/// of seconds. Zero means heartbeat is supported but not desired on this
+/// session, so no liveness watchdog runs.
 #[repr(transparent)]
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Default)]
 pub struct HeartBeatPeriod(pub u8);
@@ -33,7 +37,7 @@ impl HeartBeatPeriod {
         self.0
     }
 
-    /// True when a non-zero period was negotiated (liveness watchdog active).
+    /// True when a non-zero period was negotiated.
     #[inline]
     pub fn is_enabled(self) -> bool {
         self.0 != 0
@@ -42,13 +46,14 @@ impl HeartBeatPeriod {
 
 // ---- Request ---------------------------------------------------------------
 
-/// KEY_EXCHANGE request fixed body (after SPDM header).
+/// KEY_EXCHANGE request fixed prefix (after SPDM header, before variable fields).
 ///
 /// After this struct the request carries:
-/// `OpaqueDataLength(2) + OpaqueData(variable)`.
+/// - `ExchangeData(96 for ECDH P-384)`
+/// - `OpaqueDataLength(2) + SupportedVersionList(variable)`
 #[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned, Copy, Clone, Debug)]
 #[repr(C)]
-pub struct KeyExchangeReqBody {
+pub struct KeyExchangeReqBodyFixed {
     /// Measurement summary hash type (0=none, 0xFF=all).
     pub meas_summary_hash_type: u8,
     /// Slot number (0..7).
@@ -60,17 +65,56 @@ pub struct KeyExchangeReqBody {
     pub _reserved: u8,
     /// Requester random (32 bytes).
     pub random_data: [u8; KEY_EXCHANGE_RANDOM_DATA_LEN],
-    /// Requester ECDH public key (96 bytes for P-384).
-    pub exchange_data: [u8; ECDH_P384_EXCHANGE_DATA_SIZE],
 }
 
-const _: () = assert!(core::mem::size_of::<KeyExchangeReqBody>() == 134);
+const _: () = assert!(core::mem::size_of::<KeyExchangeReqBodyFixed>() == 38);
 
-impl KeyExchangeReqBody {
+impl KeyExchangeReqBodyFixed {
     /// Requester session ID as u16 (little-endian).
     #[inline]
     pub fn req_session_id_u16(&self) -> u16 {
         u16::from_le_bytes(self.req_session_id)
+    }
+}
+
+/// Parsed KEY_EXCHANGE request body.
+///
+/// Provides a view over the complete request body that follows the SPDM header,
+/// including the variable-length exchange data and opaque data fields.
+pub struct KeyExchangeReq<'a> {
+    /// Fixed prefix fields.
+    pub fixed: &'a KeyExchangeReqBodyFixed,
+    /// Requester's ECDH P-384 public key.
+    pub exchange_data: &'a [u8],
+    /// Opaque data (typically secured-message version selection).
+    pub opaque_data: &'a [u8],
+}
+
+impl<'a> KeyExchangeReq<'a> {
+    /// Parse a KEY_EXCHANGE request body.
+    pub fn parse(body: &'a [u8], exchange_data_size: usize) -> Result<Self, WireError> {
+        let mut r = WireReader::new(body);
+        let fixed = r.read::<KeyExchangeReqBodyFixed>()?;
+        let exchange_data = r.take(exchange_data_size)?;
+        let opaque_len = u16::from_le_bytes([
+            *r.take(1)?.first().ok_or(WireError)?,
+            *r.take(1)?.first().ok_or(WireError)?,
+        ]);
+        let opaque_data = r.take(opaque_len as usize)?;
+        Ok(Self {
+            fixed,
+            exchange_data,
+            opaque_data,
+        })
+    }
+
+    /// Total encoded length of the request body (used for transcript hashing).
+    #[inline]
+    pub fn encoded_len(&self) -> usize {
+        core::mem::size_of::<KeyExchangeReqBodyFixed>()
+            + self.exchange_data.len()
+            + 2
+            + self.opaque_data.len()
     }
 }
 
@@ -84,13 +128,14 @@ impl KeyExchangeReqBody {
 ///   mut_auth_requested(1) | req_slot_id_param(1) | random(32) |
 ///   exchange_data(96) | meas_summary_hash(0|48) |
 ///   opaque_len(2) | opaque_data(var) |
-///   signature(96) | responder_verify_data(0|48) ]
+///   signature(96|4627) | responder_verify_data(0|48) ]
 /// ```
 pub struct KeyExchangeRsp<'a> {
     pub heartbeat_period: HeartBeatPeriod,
     pub rsp_session_id: u16,
     pub random_data: &'a [u8; KEY_EXCHANGE_RANDOM_DATA_LEN],
-    pub exchange_data: &'a [u8; ECDH_P384_EXCHANGE_DATA_SIZE],
+    /// Length of responder exchange data already populated in the response buffer.
+    pub exchange_data_len: usize,
     pub meas_summary_hash: Option<&'a [u8; SHA384_HASH_SIZE]>,
     pub opaque_data: &'a [u8],
     pub signature: &'a [u8],
@@ -102,12 +147,8 @@ impl ResponseBody for KeyExchangeRsp<'_> {
     const RESPONSE_CODE: ReqRespCode = ReqRespCode::KEY_EXCHANGE_RSP;
 
     fn body_size(&self) -> usize {
-        1 + 1
-            + 2
-            + 1
-            + 1
-            + KEY_EXCHANGE_RANDOM_DATA_LEN
-            + ECDH_P384_EXCHANGE_DATA_SIZE
+        KEY_EXCHANGE_RSP_FIXED_BODY_SIZE
+            + self.exchange_data_len
             + self.meas_hash_len()
             + 2
             + self.opaque_data.len()
@@ -116,35 +157,24 @@ impl ResponseBody for KeyExchangeRsp<'_> {
     }
 
     fn encode_body(&self, w: &mut WireWriter<'_>) -> Result<(), WireError> {
-        // heartbeat_period (0 = no heartbeat on this session)
         w.write_bytes(&[self.heartbeat_period.0])?;
-        // reserved
         w.write_bytes(&[0u8])?;
-        // rsp_session_id (LE)
         w.write_bytes(&self.rsp_session_id.to_le_bytes())?;
-        // mut_auth_requested = 0 (no mutual auth)
         w.write_bytes(&[0u8])?;
-        // req_slot_id_param = 0 (no mutual auth)
         w.write_bytes(&[0u8])?;
-        // random_data
         w.write_bytes(self.random_data)?;
-        // exchange_data
-        w.write_bytes(self.exchange_data)?;
-        // optional meas_summary_hash
+        w.reserve(self.exchange_data_len)?;
         if let Some(mh) = self.meas_summary_hash {
             w.write_bytes(mh)?;
         }
-        // opaque_len (LE u16) + opaque_data
         let opaque_len = self.opaque_data.len() as u16;
         w.write_bytes(&opaque_len.to_le_bytes())?;
         if !self.opaque_data.is_empty() {
             w.write_bytes(self.opaque_data)?;
         }
-        // signature (variable — empty for partial builds)
         if !self.signature.is_empty() {
             w.write_bytes(self.signature)?;
         }
-        // optional responder_verify_data
         if let Some(vd) = self.responder_verify_data {
             w.write_bytes(vd)?;
         }
@@ -173,16 +203,15 @@ impl KeyExchangeRsp<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{ResponseBody, SpdmMsgHdrPdu, SpdmVersion, WireWriter};
+    use crate::{SpdmMsgHdrPdu, SpdmVersion};
 
     fn encode(period: u8) -> ([u8; 256], usize) {
         let random = [0u8; KEY_EXCHANGE_RANDOM_DATA_LEN];
-        let exchange = [0u8; ECDH_P384_EXCHANGE_DATA_SIZE];
         let body = KeyExchangeRsp {
             heartbeat_period: HeartBeatPeriod(period),
             rsp_session_id: 0xABCD,
             random_data: &random,
-            exchange_data: &exchange,
+            exchange_data_len: ECDH_P384_EXCHANGE_DATA_SIZE,
             meas_summary_hash: None,
             opaque_data: &[],
             signature: &[],
@@ -195,20 +224,42 @@ mod tests {
         (buf, len)
     }
 
-    // The HeartbeatPeriod is the first body byte (immediately after the 2-byte
-    // common header) and must carry exactly the negotiated value.
     #[test]
     fn heartbeat_period_is_first_body_byte() {
         let (buf, _) = encode(3);
         assert_eq!(buf[SpdmMsgHdrPdu::SIZE], 3);
-        // reserved byte stays zero.
         assert_eq!(buf[SpdmMsgHdrPdu::SIZE + 1], 0);
     }
 
-    // A zero period (heartbeat not desired / not supported) encodes as zero.
     #[test]
     fn heartbeat_period_zero_encodes_zero() {
         let (buf, _) = encode(0);
         assert_eq!(buf[SpdmMsgHdrPdu::SIZE], 0);
+    }
+
+    #[test]
+    fn in_place_exchange_data_is_preserved() {
+        let random_data = [0u8; KEY_EXCHANGE_RANDOM_DATA_LEN];
+        let response = KeyExchangeRsp {
+            heartbeat_period: HeartBeatPeriod::DISABLED,
+            rsp_session_id: 1,
+            random_data: &random_data,
+            exchange_data_len: 4,
+            meas_summary_hash: None,
+            opaque_data: &[],
+            signature: &[],
+            responder_verify_data: None,
+        };
+        let mut encoded = [0xa5; 64];
+
+        response
+            .encode_with_header(SpdmVersion::V14, &mut WireWriter::new(&mut encoded))
+            .unwrap();
+
+        let exchange_data_start = SpdmMsgHdrPdu::SIZE + KEY_EXCHANGE_RSP_FIXED_BODY_SIZE;
+        assert_eq!(
+            &encoded[exchange_data_start..exchange_data_start + 4],
+            &[0xa5; 4]
+        );
     }
 }

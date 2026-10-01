@@ -148,6 +148,10 @@ const MAX_STREAMED_SET_CERTIFICATE_REQUEST_LEN: usize = caliptra_mcu_spdm_codec:
 /// transport property, so the budget uses a declared ceiling instead.
 const MAX_TRANSPORT_MTU: usize = 1024;
 
+const fn scratch_alloc_size(size: usize) -> usize {
+    size.div_ceil(BITMAP_SLOT_SIZE) * BITMAP_SLOT_SIZE
+}
+
 /// Pool-resident state that survives across requests once a secure session is
 /// established: the `SessionInfo` box (key schedule holds up to nine 128-byte
 /// CMKs) plus the VCA / M1 / L1 / TH hash contexts (200 bytes each, one slot
@@ -174,14 +178,86 @@ const LARGE_MSG_PATH_PEAK: usize = MAX_BUFFERED_SPDM_MSG_SIZE + MAX_TRANSPORT_MT
 /// staging buffers.
 const CRYPTO_PATH_PEAK: usize = TRANSIENT_MAILBOX_PEAK + 2 * MAX_TRANSPORT_MTU;
 
-/// Minimum scratch pool that can satisfy [`MAX_BUFFERED_SPDM_MSG_SIZE`].
+/// Logical size of an ECDH P-384 KEY_EXCHANGE request.
+const MAX_KEY_EXCHANGE_REQ_LEN: usize = caliptra_mcu_spdm_codec::SpdmMsgHdrPdu::SIZE
+    + core::mem::size_of::<caliptra_mcu_spdm_codec::KeyExchangeReqBodyFixed>()
+    + caliptra_mcu_spdm_codec::MAX_EXCHANGE_DATA_SIZE
+    + 2 // OpaqueDataLength
+    + caliptra_mcu_spdm_codec::MAX_SUPPORTED_VERSION_LIST_OPAQUE_SIZE;
+
+/// Logical size of the largest ECDH KEY_EXCHANGE_RSP, signed with ML-DSA-87.
+const MAX_KEY_EXCHANGE_RSP_LEN: usize = caliptra_mcu_spdm_codec::SpdmMsgHdrPdu::SIZE
+    + caliptra_mcu_spdm_codec::KEY_EXCHANGE_RSP_FIXED_BODY_SIZE
+    + caliptra_mcu_spdm_codec::MAX_EXCHANGE_DATA_SIZE
+    + caliptra_mcu_spdm_codec::SHA384_HASH_SIZE
+    + 2
+    + caliptra_mcu_spdm_codec::OPAQUE_VERSION_SELECTION_SIZE
+    + caliptra_mcu_spdm_codec::MLDSA87_SIGNATURE_SIZE
+    + caliptra_mcu_spdm_codec::SHA384_HASH_SIZE;
+
+/// Maximum temporary DMTF measurement block used to compute the KEY_EXCHANGE
+/// measurement summary hash.
+const MAX_MEASUREMENT_SUMMARY_BLOCK_LEN: usize = caliptra_mcu_spdm_codec::MEAS_BLOCK_METADATA_SIZE
+    + caliptra_mcu_attestation_evidence::SIGNED_OCP_EAT_MAX_SIZE;
+
+/// Transient peak while generating a KEY_EXCHANGE measurement summary.
 ///
-/// The two request paths are mutually exclusive: a single request either
-/// builds a large chunked response or runs the certificate/crypto path, never
-/// both. Likewise the stack rents exactly one large buffer, for a `CHUNK_SEND`
-/// reassembly or a `CHUNK_GET` response but not both. So the transient term is
-/// a max, not a sum, laid on top of the session state that persists across
-/// requests.
+/// The large response has not been rented yet. The reassembled request, final
+/// receive frame, summary output, signed OCP EAT block, and the provider's DPE
+/// signing working set coexist.
+const KEY_EXCHANGE_MEASUREMENT_PHASE: usize = scratch_alloc_size(MAX_KEY_EXCHANGE_REQ_LEN)
+    + scratch_alloc_size(MAX_TRANSPORT_MTU)
+    + scratch_alloc_size(caliptra_mcu_spdm_codec::SHA384_HASH_SIZE)
+    + scratch_alloc_size(MAX_MEASUREMENT_SUMMARY_BLOCK_LEN)
+    + PQC_SIGNING_PEAK;
+
+/// Transient peak while deriving the ECDH secret for a chunked KEY_EXCHANGE.
+///
+/// The response owns the public key destination. The already-computed summary
+/// hash remains live, and the mailbox request and response are additional
+/// allocations during ECDH.
+const KEY_EXCHANGE_DHE_PHASE: usize = scratch_alloc_size(MAX_KEY_EXCHANGE_REQ_LEN)
+    + scratch_alloc_size(MAX_KEY_EXCHANGE_RSP_LEN)
+    + scratch_alloc_size(MAX_TRANSPORT_MTU)
+    + scratch_alloc_size(caliptra_mcu_spdm_codec::SHA384_HASH_SIZE)
+    + scratch_alloc_size(mcu_caliptra_api::CMB_ECDH_ENCRYPTED_CONTEXT_SIZE);
+
+/// Transient peak while signing.
+///
+/// The reassembled request is released after it is added to the transcript and
+/// the KEY_EXCHANGE path does not allocate the generic `CHUNK_SEND_ACK` staging
+/// buffer. Only the receive frame, response, handler workspace, and signing
+/// working set remain.
+const KEY_EXCHANGE_SIGNING_PHASE: usize = scratch_alloc_size(MAX_TRANSPORT_MTU)
+    + scratch_alloc_size(MAX_KEY_EXCHANGE_RSP_LEN)
+    + scratch_alloc_size(caliptra_mcu_spdm_stack::KEY_EXCHANGE_WORKSPACE_SIZE)
+    + PQC_SIGNING_PEAK;
+
+/// Peak concurrent allocation while handling KEY_EXCHANGE.
+///
+/// Measurement generation, ECDH, and signing are sequential, so the
+/// transient term is the largest phase.
+const KEY_EXCHANGE_CRYPTO_PHASE: usize = if KEY_EXCHANGE_SIGNING_PHASE > KEY_EXCHANGE_DHE_PHASE {
+    KEY_EXCHANGE_SIGNING_PHASE
+} else {
+    KEY_EXCHANGE_DHE_PHASE
+};
+const KEY_EXCHANGE_CHUNKED_PEAK: usize =
+    if KEY_EXCHANGE_MEASUREMENT_PHASE > KEY_EXCHANGE_CRYPTO_PHASE {
+        KEY_EXCHANGE_MEASUREMENT_PHASE
+    } else {
+        KEY_EXCHANGE_CRYPTO_PHASE
+    };
+
+/// Minimum scratch pool for a responder task, independent of transport.
+///
+/// The request paths are mutually exclusive: a single request either builds a
+/// large chunked response or runs the certificate/crypto path, never both. So
+/// the transient term is a max, not a sum, laid on top of the session state
+/// that persists across requests.
+///
+/// This excludes KEY_EXCHANGE, which only a transport with secured-message
+/// support can reach; see [`required_session_scratch`].
 const fn required_scratch() -> usize {
     let transient_peak = if LARGE_MSG_PATH_PEAK > CRYPTO_PATH_PEAK {
         LARGE_MSG_PATH_PEAK
@@ -189,6 +265,24 @@ const fn required_scratch() -> usize {
         CRYPTO_PATH_PEAK
     };
     SESSION_WORKING_SET + transient_peak
+}
+
+/// Minimum scratch pool for a responder task whose transport carries secured
+/// messages, and can therefore negotiate a key exchange.
+///
+/// Adds [`KEY_EXCHANGE_CHUNKED_PEAK`] to the paths in [`required_scratch`].
+/// Chunked KEY_EXCHANGE releases its reassembled request before signing its
+/// buffered response.
+///
+/// MCTP does not need this: its transport has no secured messages, so
+/// NEGOTIATE_ALGORITHMS does not select DHE.
+const fn required_session_scratch() -> usize {
+    let key_exchange = SESSION_WORKING_SET + KEY_EXCHANGE_CHUNKED_PEAK;
+    if key_exchange > required_scratch() {
+        key_exchange
+    } else {
+        required_scratch()
+    }
 }
 
 /// Bitmap allocator pool size per responder task.
@@ -220,8 +314,8 @@ const MCTP_SPDM_SCRATCH_SIZE: usize = {
 const DOE_SPDM_SCRATCH_SIZE: usize = {
     let declared = 24 * 1024;
     assert!(
-        declared >= required_scratch(),
-        "DOE SPDM scratch pool is too small for MAX_BUFFERED_SPDM_MSG_SIZE"
+        declared >= required_session_scratch(),
+        "DOE SPDM scratch pool is too small for required_session_scratch()"
     );
     declared
 };
@@ -230,8 +324,8 @@ const DOE_SPDM_SCRATCH_SIZE: usize = {
 const DOE_SPDM_SCRATCH_SIZE: usize = {
     let declared = 12 * 1024;
     assert!(
-        declared >= required_scratch(),
-        "DOE SPDM scratch pool is too small for MAX_BUFFERED_SPDM_MSG_SIZE"
+        declared >= required_session_scratch(),
+        "DOE SPDM scratch pool is too small for required_session_scratch()"
     );
     declared
 };

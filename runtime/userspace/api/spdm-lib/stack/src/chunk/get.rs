@@ -3,8 +3,9 @@
 //! CHUNK_GET large-response transfer.
 
 use caliptra_mcu_spdm_codec::{
-    ChunkGetReqBody, ChunkResponseBody, ReqRespCode, SpdmMsgHdrPdu, WireWriter,
-    CHUNK_ATTR_LAST_CHUNK, CHUNK_RESPONSE_FIXED_BODY_SIZE, LARGE_RESPONSE_SIZE_FIELD_SIZE,
+    ChunkGetReqBody, ChunkGetReqBodyV13, ChunkGetReqBodyV14, ChunkResponseBody, ReqRespCode,
+    SpdmMsgHdrPdu, SpdmVersion, WireWriter, CHUNK_ATTR_LAST_CHUNK, CHUNK_RESPONSE_FIXED_BODY_SIZE,
+    LARGE_RESPONSE_SIZE_FIELD_SIZE,
 };
 use caliptra_mcu_spdm_traits::{PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalIoTransport};
 use zerocopy::{little_endian::U16, little_endian::U32, FromBytes};
@@ -36,9 +37,16 @@ pub(crate) async fn handle_chunk_get<'a, Pal: SpdmPal>(
         return Err(SPDM_VERSION_MISMATCH);
     }
 
-    let (chunk_req, _) =
-        ChunkGetReqBody::ref_from_prefix(body).map_err(|_| SPDM_INVALID_REQUEST)?;
-    if chunk_req.param1 != 0 {
+    let chunk_req = if state.version <= SpdmVersion::V13 {
+        let (req, _) =
+            ChunkGetReqBodyV13::ref_from_prefix(body).map_err(|_| SPDM_INVALID_REQUEST)?;
+        req as &dyn ChunkGetReqBody
+    } else {
+        let (req, _) =
+            ChunkGetReqBodyV14::ref_from_prefix(body).map_err(|_| SPDM_INVALID_REQUEST)?;
+        req as &dyn ChunkGetReqBody
+    };
+    if chunk_req.get_param1() != 0 {
         return Err(SPDM_INVALID_REQUEST);
     }
 
@@ -46,11 +54,12 @@ pub(crate) async fn handle_chunk_get<'a, Pal: SpdmPal>(
         return Err(SPDM_UNEXPECTED_REQUEST);
     };
 
-    let handle = chunk_req.handle;
-    let seq_num = chunk_req.chunk_seq_num.get();
-    if handle != active_rsp.handle || seq_num != active_rsp.next_seq_num {
+    let handle = chunk_req.get_handle();
+    let seq_num = chunk_req.get_chunk_seq_num();
+    if handle != active_rsp.handle || seq_num != u32::from(active_rsp.next_seq_num) {
         return Err(SPDM_INVALID_REQUEST);
     }
+    let seq_num = active_rsp.next_seq_num;
 
     let large_response_size = active_rsp.response_size;
     let extra = if seq_num == 0 {
@@ -118,4 +127,54 @@ pub(crate) async fn handle_chunk_get<'a, Pal: SpdmPal>(
 
     state.large_msg_ctx.chunk_sent(chunk_size);
     Ok(rsp)
+}
+
+#[cfg(test)]
+#[path = "../tests/support.rs"]
+mod support;
+
+#[cfg(test)]
+mod tests {
+    extern crate std;
+
+    use caliptra_mcu_spdm_codec::{ChunkGetReqBodyV14, WireWriter};
+    use futures::executor::block_on;
+    use zerocopy::little_endian::U32;
+
+    use super::support::{chunking_state, TestIo, TestPal};
+    use super::*;
+
+    #[test]
+    fn out_of_range_sequence_returns_invalid_request() {
+        let pal = TestPal::default();
+        let mut state = chunking_state();
+        state.version = SpdmVersion::V14;
+        state
+            .large_msg_ctx
+            .start_response(LargeResponse::Buffered, 1, Some(std::vec![0x5a]))
+            .unwrap();
+        let handle = state.large_msg_ctx.response().unwrap().handle;
+
+        let mut req = [0u8; SpdmMsgHdrPdu::SIZE + ChunkGetReqBodyV14::SIZE];
+        let mut writer = WireWriter::new(&mut req);
+        writer
+            .write(&SpdmMsgHdrPdu::new(
+                SpdmVersion::V14,
+                ReqRespCode::CHUNK_GET,
+            ))
+            .unwrap();
+        writer
+            .write(&ChunkGetReqBodyV14 {
+                param1: 0,
+                handle,
+                chunk_seq_num: U32::new(u32::from(u16::MAX) + 1),
+            })
+            .unwrap();
+
+        let io = TestIo::message(req.to_vec());
+        let err = block_on(handle_chunk_get(&mut state, &pal, &io, &req)).unwrap_err();
+
+        assert_eq!(err, SPDM_INVALID_REQUEST);
+        assert!(state.large_msg_ctx.response_in_progress());
+    }
 }
