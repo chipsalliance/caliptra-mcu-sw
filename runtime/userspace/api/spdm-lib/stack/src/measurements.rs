@@ -20,6 +20,7 @@ const OPAQUE_DATA_LEN_SIZE: usize = 2;
 const SIGNATURE_REQUEST_FIELDS_SIZE: usize = SPDM_NONCE_LEN + 1; // Nonce + SlotIDParam
 
 struct MeasurementsResponseCtx<'a> {
+    spdm_req: &'a [u8],
     meas_info: &'a [MeasurementInfo],
     meas_op: u8,
     meas_nonce: Option<&'a [u8; SPDM_NONCE_LEN]>,
@@ -118,14 +119,6 @@ pub(crate) async fn handle_get_measurements_req<'a, Pal: SpdmPal>(
     // Nonce for measurement providers (Some when signature requested).
     let (measurement_record_len, number_of_blocks) = measurement_record_shape(meas_info, meas_op)?;
 
-    // If signature requested, append GET_MEASUREMENTS request to L1 transcript.
-    if signature_requested {
-        state
-            .transcript
-            .append_l1(pal, io, &req[..spdm_req_len])
-            .await?;
-    }
-
     // Content changed: 2 = no change detected (when signature requested).
     let content_changed = if signature_requested { 2u8 } else { 0u8 };
 
@@ -148,6 +141,7 @@ pub(crate) async fn handle_get_measurements_req<'a, Pal: SpdmPal>(
         .await
         .map_err(|_| SPDM_UNSPECIFIED)?;
     let plan = MeasurementsResponseCtx {
+        spdm_req: &req[..spdm_req_len],
         meas_info,
         meas_op,
         meas_nonce: requester_nonce,
@@ -227,6 +221,7 @@ async fn handle_measurements_response<'a, Pal: SpdmPal>(
     }
 
     if plan.signature_requested {
+        state.transcript.append_l1(pal, io, plan.spdm_req).await?;
         let transcript_rsp = buf.get(head..signature_offset).ok_or(SPDM_UNSPECIFIED)?;
         state.transcript.append_l1(pal, io, transcript_rsp).await?;
 

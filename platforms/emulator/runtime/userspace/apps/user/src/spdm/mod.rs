@@ -211,7 +211,7 @@ const fn required_scratch() -> usize {
 /// configuration change outgrows it.
 #[cfg(feature = "cert-provisioning")]
 const MCTP_SPDM_SCRATCH_SIZE: usize = {
-    let declared = 26 * 1024;
+    let declared = 25 * 1024;
     assert!(
         declared >= required_scratch(),
         "MCTP SPDM scratch pool is too small for MAX_BUFFERED_SPDM_MSG_SIZE"
@@ -221,7 +221,7 @@ const MCTP_SPDM_SCRATCH_SIZE: usize = {
 
 #[cfg(not(feature = "cert-provisioning"))]
 const MCTP_SPDM_SCRATCH_SIZE: usize = {
-    let declared = 20 * 1024;
+    let declared = 19 * 1024;
     assert!(
         declared >= required_scratch(),
         "MCTP SPDM scratch pool is too small for MAX_BUFFERED_SPDM_MSG_SIZE"
@@ -231,7 +231,7 @@ const MCTP_SPDM_SCRATCH_SIZE: usize = {
 
 #[cfg(feature = "cert-provisioning")]
 const DOE_SPDM_SCRATCH_SIZE: usize = {
-    let declared = 26 * 1024;
+    let declared = 25 * 1024;
     assert!(
         declared >= required_scratch(),
         "DOE SPDM scratch pool is too small for MAX_BUFFERED_SPDM_MSG_SIZE"
@@ -241,7 +241,7 @@ const DOE_SPDM_SCRATCH_SIZE: usize = {
 
 #[cfg(not(feature = "cert-provisioning"))]
 const DOE_SPDM_SCRATCH_SIZE: usize = {
-    let declared = 20 * 1024;
+    let declared = 19 * 1024;
     assert!(
         declared >= required_scratch(),
         "DOE SPDM scratch pool is too small for MAX_BUFFERED_SPDM_MSG_SIZE"

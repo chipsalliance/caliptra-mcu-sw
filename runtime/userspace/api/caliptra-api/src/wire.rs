@@ -207,6 +207,21 @@ pub(crate) async fn mbox_execute(
     mbox.execute(cmd, req, rsp).await.map_err(map_mbox_err)
 }
 
+/// Execute a Caliptra mailbox command using a single buffer for both request and response.
+pub(crate) async fn mbox_execute_in_place(
+    cmd: u32,
+    req_len: usize,
+    rsp_len: usize,
+    buf: &mut [u8],
+) -> mcu_error::McuResult<usize> {
+    let mbox = caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox::<
+        caliptra_mcu_libsyscall_caliptra::DefaultSyscalls,
+    >::new();
+    mbox.execute_in_place(cmd, req_len, rsp_len, buf)
+        .await
+        .map_err(map_mbox_err)
+}
+
 /// Execute a mailbox command whose request is a header followed by a separate
 /// contiguous payload, without concatenating the two into one buffer.
 ///

@@ -556,7 +556,6 @@ pub enum McuMailboxResp {
     ProvisionOwnerPkHash(ProvisionOwnerPkHashResp),
     FuseRevokeVendorPkHash(FuseRevokeVendorPkHashResp),
     // Certificate commands
-    ExportAttestedCsr(ExportAttestedCsrResp),
     // Device Ownership Transfer commands
     DotLock(DotLockResp),
     DotDisable(DotDisableResp),
@@ -684,7 +683,6 @@ impl McuMailboxResp {
             McuMailboxResp::ProvisionVendorPkHash(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::ProvisionOwnerPkHash(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FuseRevokeVendorPkHash(resp) => Ok(resp.as_bytes()),
-            McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial(),
             McuMailboxResp::DotLock(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::DotDisable(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::DotRotate(resp) => Ok(resp.as_bytes()),
@@ -751,7 +749,6 @@ impl McuMailboxResp {
             McuMailboxResp::ProvisionVendorPkHash(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::ProvisionOwnerPkHash(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FuseRevokeVendorPkHash(resp) => Ok(resp.as_mut_bytes()),
-            McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::DotLock(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::DotDisable(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::DotRotate(resp) => Ok(resp.as_mut_bytes()),

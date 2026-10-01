@@ -149,9 +149,18 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
                 return Err(errors::TRANSPORT_ERROR);
             }
         };
-        Alloc::shrink(&mut req_buf, req_len)?;
+        if let Err(err) = Alloc::shrink(&mut req_buf, req_len) {
+            let _ = self.transport.finalize_response(MbxCmdStatus::Failure);
+            return Err(err);
+        }
 
-        let mut resp_buf = self.scratch.alloc(response_buffer_size::<H>(cmd_id))?;
+        let mut resp_buf = match self.scratch.alloc(response_buffer_size::<H>(cmd_id)) {
+            Ok(buf) => buf,
+            Err(err) => {
+                let _ = self.transport.finalize_response(MbxCmdStatus::Failure);
+                return Err(err);
+            }
+        };
         let status = match self
             .process_request(&mut req_buf, req_len, cmd_id, &mut resp_buf)
             .await
@@ -1264,9 +1273,28 @@ fn caliptra_passthrough_cmd(cmd: CommandId) -> Option<u32> {
 /// inflate all of them.
 fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32) -> usize {
     match CommandId::from(cmd) {
-        c if c == CommandId::MC_MLDSA_CMK_VERIFY || c == CommandId::MC_PROD_DEBUG_UNLOCK_TOKEN => {
+        c if c == CommandId::MC_MLDSA_CMK_VERIFY
+            || c == CommandId::MC_ECDSA_CMK_VERIFY
+            || c == CommandId::MC_ECDSA384_SIG_VERIFY
+            || c == CommandId::MC_LMS_SIG_VERIFY
+            || c == CommandId::MC_PROD_DEBUG_UNLOCK_TOKEN =>
+        {
             size_of::<MailboxRespHeader>()
         }
+        c if c == CommandId::MC_PROVISION_VENDOR_PK_HASH => size_of::<ProvisionVendorPkHashResp>(),
+        c if c == CommandId::MC_PROVISION_OWNER_PK_HASH => size_of::<ProvisionOwnerPkHashResp>(),
+        c if c == CommandId::MC_FUSE_INCREASE_MIN_SVN => size_of::<FuseIncreaseMinSvnResp>(),
+        c if c == CommandId::MC_FE_PROG || c == CommandId::MC_FUSE_WRITE => {
+            size_of::<FuseWriteResp>()
+        }
+        c if c == CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY => {
+            size_of::<FuseRevokeVendorPubKeyResp>()
+        }
+        c if c == CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH => {
+            size_of::<FuseRevokeVendorPkHashResp>()
+        }
+        c if c == CommandId::MC_FUSE_READ => size_of::<FuseReadResp>(),
+        c if c == CommandId::MC_FUSE_LOCK_PARTITION => size_of::<FuseLockPartitionResp>(),
         c if c == CommandId::MC_EXPORT_ATTESTED_CSR => size_of::<ExportAttestedCsrResp>(),
         c if c == CommandId::MC_GET_ATTESTATION => size_of::<McuMailboxResp>().max(
             size_of::<MailboxRespHeaderVarSize>()
