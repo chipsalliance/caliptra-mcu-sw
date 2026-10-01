@@ -5,7 +5,7 @@
 //! Two traits with distinct jobs:
 //!
 //! * [`ScratchAlloc`] — *allocates*. Implemented by the type that owns backing
-//!   storage. `caliptra_mcu_scratch_alloc::BitmapAllocator` is the production
+//!   storage. [`BitmapAllocator`](crate::BitmapAllocator) is the production
 //!   implementation.
 //! * [`ScratchAllocProvider`] — *points at* an allocator. Implemented by the
 //!   types that hold one, and by allocators themselves as the identity.
