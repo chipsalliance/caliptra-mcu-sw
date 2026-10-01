@@ -4,7 +4,7 @@
 //!
 //! Implements the SPDM secure-session key derivation chain:
 //! ```text
-//! DHE_Secret ──HKDF-Extract(Salt_0)──▸ handshake_secret
+//! Shared_Secret ──HKDF-Extract(Salt_0)──▸ handshake_secret
 //!   ├─ HKDF-Expand(bin_str1, TH1') ──▸ request_handshake_secret
 //!   ├─ HKDF-Expand(bin_str2, TH1') ──▸ response_handshake_secret
 //!   │  ├─ HKDF-Expand(bin_str7)  ──▸ request_finished_key
@@ -66,7 +66,7 @@ pub struct KeySchedule<K: Clone> {
 }
 
 struct MasterSecretCtx<K: Clone> {
-    dhe_secret: Option<K>,
+    shared_secret: Option<K>,
     handshake_secret: Option<K>,
     master_secret: Option<K>,
 }
@@ -93,7 +93,7 @@ impl<K: Clone> KeySchedule<K> {
         Self {
             version_str,
             master_ctx: MasterSecretCtx {
-                dhe_secret: None,
+                shared_secret: None,
                 handshake_secret: None,
                 master_secret: None,
             },
@@ -114,20 +114,20 @@ impl<K: Clone> KeySchedule<K> {
         }
     }
 
-    /// Store the DHE shared secret produced by [`SpdmPalSessionCrypto::ecdh_finish`].
-    pub fn set_dhe_secret(&mut self, secret: K) {
-        self.master_ctx.dhe_secret = Some(secret);
+    /// Store the shared secret produced by either ECDH or ML-KEM during KEY_EXCHANGE.
+    pub fn set_shared_secret(&mut self, secret: K) {
+        self.master_ctx.shared_secret = Some(secret);
     }
 
     // ── Handshake keys ──────────────────────────────────────────────
 
-    /// Derive handshake keys from the DHE secret and TH1' hash.
+    /// Derive handshake keys from the shared secret and TH1' hash.
     ///
     /// Produces:
     /// - request / response handshake secrets (AEAD major secrets)
     /// - request / response finished keys (HMAC keys for verify_data)
     ///
-    /// Destroys the DHE secret handle on success.
+    /// Destroys the shared secret handle on success.
     #[inline(never)]
     pub async fn generate_handshake_keys<P: SpdmPalAlloc + SpdmPalSessionCrypto<Key = K>>(
         &mut self,
@@ -135,15 +135,15 @@ impl<K: Clone> KeySchedule<K> {
         io: &impl SpdmPalIo,
         th1_hash: &[u8],
     ) -> McuResult<()> {
-        // handshake_secret = HKDF-Extract(Salt_0 = zeros, DHE_Secret)
-        let dhe = self
+        // handshake_secret = HKDF-Extract(Salt_0 = zeros, shared_secret)
+        let shared_secret = self
             .master_ctx
-            .dhe_secret
+            .shared_secret
             .take()
             .ok_or(mcu_error::codes::INVARIANT)?;
         let mut salt_0 = pal.alloc_bytes(io, SHA384_HASH_SIZE)?;
         salt_0.fill(0);
-        let hs = pal.hkdf_extract_bytes(io, &salt_0, &dhe).await?;
+        let hs = pal.hkdf_extract_bytes(io, &salt_0, &shared_secret).await?;
         self.master_ctx.handshake_secret = Some(hs);
 
         let hs_ref = self
@@ -352,7 +352,7 @@ impl<K: Clone> KeySchedule<K> {
     /// Clear all key blobs.
     pub fn destroy_all(&mut self) {
         self.destroy_handshake_secrets();
-        self.master_ctx.dhe_secret = None;
+        self.master_ctx.shared_secret = None;
         self.master_ctx.master_secret = None;
         self.data_ctx.request_data_secret = None;
         self.data_ctx.response_data_secret = None;
