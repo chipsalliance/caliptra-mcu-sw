@@ -23,10 +23,10 @@ use crate::mldsa::{mldsa87_compute_mu, MLDSA87_CONTEXT_MAX_SIZE, MLDSA87_TR_SIZE
 use crate::shake::shake256_hash;
 use crate::slice::{checked_slice, checked_slice_mut, copy_bytes, internal_slice};
 use crate::wire::{
-    calc_checksum, mbox_execute, populate_checksum, CMD_CERTIFY_KEY_CHUNKS, CMD_DPE_GET_TAGGED_TCI,
-    CMD_DPE_TAG_TCI, CMD_INVOKE_DPE, CMD_INVOKE_DPE_MLDSA87, DPE_CMD_DERIVE_CONTEXT,
-    DPE_CMD_GET_CERTIFICATE_CHAIN, DPE_CMD_ROTATE_CONTEXT_HANDLE, DPE_CMD_SIGN,
-    DPE_CMD_UPDATE_CONTEXT_MEASUREMENT, DPE_COMMAND_MAGIC, DPE_PROFILE_MLDSA87,
+    calc_checksum, mbox_execute, mbox_execute_in_place, populate_checksum, CMD_CERTIFY_KEY_CHUNKS,
+    CMD_DPE_GET_TAGGED_TCI, CMD_DPE_TAG_TCI, CMD_INVOKE_DPE, CMD_INVOKE_DPE_MLDSA87,
+    DPE_CMD_DERIVE_CONTEXT, DPE_CMD_GET_CERTIFICATE_CHAIN, DPE_CMD_ROTATE_CONTEXT_HANDLE,
+    DPE_CMD_SIGN, DPE_CMD_UPDATE_CONTEXT_MEASUREMENT, DPE_COMMAND_MAGIC, DPE_PROFILE_MLDSA87,
     DPE_PROFILE_P384_SHA384, DPE_RESPONSE_MAGIC, MBOX_RESP_HEADER_SIZE,
 };
 use crate::ApiAlloc;
@@ -75,7 +75,7 @@ const DEFAULT_DPE_CONTEXT_HANDLE: DpeContextHandle = [0u8; DPE_CONTEXT_HANDLE_SI
 
 /// Upper bound on the X.509 leaf certificate Caliptra's DPE can
 /// emit — fits both ECC-384 and ML-DSA-87 leaf certificates.
-pub const DPE_MAX_LEAF_CERT_SIZE: usize = 12 * 1024;
+pub const DPE_MAX_LEAF_CERT_SIZE: usize = 10 * 1024;
 
 /// Maximum bytes that may be fetched in a single
 /// [`dpe_get_cert_chain_chunk`] call. Bounded well below the
@@ -378,7 +378,7 @@ pub const DPE_MLDSA87_SIGN_SCRATCH_PEAK: usize = {
         + CERTIFY_KEY_CHUNKS_RESP_INFO_LEN
         + CERTIFY_KEY_MLDSA87_RESP_PREFIX_LEN
         + crate::shake::SHAKE256_CONTEXT_SIZE;
-    let sign_phase = SIGN_MLDSA87_REQ_LEN + SIGN_MLDSA87_RESP_LEN;
+    let sign_phase = SIGN_MLDSA87_RESP_LEN;
     if certify_key_phase > sign_phase {
         certify_key_phase
     } else {
@@ -481,8 +481,7 @@ const _: () = assert!(CERTIFY_KEY_MLDSA87_PUBKEY_SIZE == 2592);
 const _: () = assert!(CERTIFY_KEY_MLDSA87_RESP_PREFIX_LEN == 2624);
 const _: () = assert!(CERTIFY_KEY_CHUNKS_REQ_LEN == 92);
 const _: () = assert!(CERTIFY_KEY_CHUNKS_RESP_INFO_LEN == 32);
-const _: () =
-    assert!(DPE_MLDSA87_SIGN_SCRATCH_PEAK == SIGN_MLDSA87_REQ_LEN + SIGN_MLDSA87_RESP_LEN);
+const _: () = assert!(DPE_MLDSA87_SIGN_SCRATCH_PEAK == SIGN_MLDSA87_RESP_LEN);
 const _: () = assert!(size_of::<RotateCtxCmd>() == DPE_CONTEXT_HANDLE_SIZE + 4);
 const _: () = assert!(size_of::<NewHandleRespBody>() == 12 + DPE_CONTEXT_HANDLE_SIZE);
 const _: () = assert!(ROTATE_CTX_REQ_LEN == 8 + 12 + 20);
@@ -666,8 +665,18 @@ fn parse_derive_context_response(rsp: &[u8], rsp_len: usize) -> McuResult<DpeDer
     })
 }
 
+/// Minimum size and alignment required for `cert_dst` in [`dpe_derive_context_exported_cdi`],
+/// which stages `InvokeDpeRespPrefix` (12 B) + `DeriveContextExportedCdiRespPrefix` (80 B)
+/// ahead of the leaf certificate in-place before shifting the certificate to offset 0.
+pub const DERIVE_CONTEXT_EXPORTED_CDI_RESP_PREFIX_LEN: usize =
+    size_of::<InvokeDpeRespPrefix>() + size_of::<DeriveContextExportedCdiRespPrefix>();
+
 /// Invoke DPE `DeriveContext` with `EXPORT_CDI`, returning the child handle, rotated parent handle,
-/// 32-byte exported CDI handle, and copying the emitted leaf certificate into `cert_dst`.
+/// 32-byte exported CDI handle, and writing the emitted leaf certificate into `cert_dst`.
+///
+/// `cert_dst` must be 4-byte aligned and at least
+/// `DERIVE_CONTEXT_EXPORTED_CDI_RESP_PREFIX_LEN + DPE_MAX_LEAF_CERT_SIZE` (`10,332`) bytes long so
+/// the response can be staged in-place without a secondary scratch allocation.
 #[inline(never)]
 pub async fn dpe_derive_context_exported_cdi<A: ApiAlloc>(
     alloc: &A,
@@ -675,25 +684,31 @@ pub async fn dpe_derive_context_exported_cdi<A: ApiAlloc>(
     profile: DpeProfile,
     cert_dst: &mut [u8],
 ) -> McuResult<DpeDeriveContextExportedCdiResult> {
-    let max_resp_len = match profile {
-        DpeProfile::Mldsa87 => 24 * 1024,
-        DpeProfile::P384Sha384 => {
-            size_of::<InvokeDpeRespPrefix>()
-                + size_of::<DeriveContextExportedCdiRespPrefix>()
-                + cert_dst.len().min(DPE_MAX_LEAF_CERT_SIZE)
-        }
-    };
-    let mut rsp = alloc.alloc(max_resp_len)?;
+    let in_place_len = DERIVE_CONTEXT_EXPORTED_CDI_RESP_PREFIX_LEN + DPE_MAX_LEAF_CERT_SIZE;
+    if cert_dst.len() < in_place_len
+        || !(cert_dst.as_ptr() as usize).is_multiple_of(core::mem::align_of::<u32>())
+    {
+        return Err(INVARIANT);
+    }
+
+    let rsp = &mut cert_dst[..in_place_len];
     let axi_response = match profile {
-        DpeProfile::Mldsa87 => Some(mcu_sram_to_axi_dma(&rsp)?),
+        DpeProfile::Mldsa87 => {
+            let (axi_addr, _) = mcu_sram_to_axi_dma(rsp)?;
+            // Bound Caliptra's DMA write to the in-place buffer.
+            Some((
+                axi_addr,
+                u32::try_from(in_place_len).map_err(|_| INVARIANT)?,
+            ))
+        }
         DpeProfile::P384Sha384 => None,
     };
     let (req, mbox_cmd) = build_derive_context_req(alloc, params, profile, axi_response)?;
-    let rsp_len = mbox_execute(mbox_cmd, &req, &mut rsp).await?;
+    let rsp_len = mbox_execute(mbox_cmd, &req, rsp).await?;
     let effective_rsp_len = match profile {
         DpeProfile::Mldsa87 => {
             let prefix = InvokeDpeRespPrefix::ref_from_bytes(checked_slice(
-                &rsp,
+                rsp,
                 0,
                 size_of::<InvokeDpeRespPrefix>(),
             )?)
@@ -702,13 +717,12 @@ pub async fn dpe_derive_context_exported_cdi<A: ApiAlloc>(
         }
         DpeProfile::P384Sha384 => rsp_len,
     };
-    parse_derive_context_exported_cdi_response(&rsp, effective_rsp_len, cert_dst)
+    parse_derive_context_exported_cdi_response_in_place(rsp, effective_rsp_len)
 }
 
-fn parse_derive_context_exported_cdi_response(
+fn parse_derive_context_exported_cdi_header(
     rsp: &[u8],
     rsp_len: usize,
-    cert_dst: &mut [u8],
 ) -> McuResult<DpeDeriveContextExportedCdiResult> {
     let resp_body_off = size_of::<InvokeDpeRespPrefix>();
     let prefix_len = size_of::<DeriveContextExportedCdiRespPrefix>();
@@ -736,19 +750,28 @@ fn parse_derive_context_exported_cdi_response(
 
     let cert_size = prefix.cert_size.get() as usize;
     let cert_off = resp_body_off + prefix_len;
-    if cert_off + cert_size > rsp_len || cert_size > cert_dst.len() {
+    if cert_off + cert_size > rsp_len || cert_size > rsp.len() {
         return Err(INTERNAL_BUG);
     }
-    let cert = internal_slice(rsp, cert_off, cert_size)?;
-    let out = cert_dst.get_mut(..cert_size).ok_or(INTERNAL_BUG)?;
-    copy_bytes(out, cert)?;
-
     Ok(DpeDeriveContextExportedCdiResult {
         child_handle: prefix.handle,
         parent_handle: prefix.parent_handle,
         exported_cdi: prefix.exported_cdi,
         cert_size,
     })
+}
+
+fn parse_derive_context_exported_cdi_response_in_place(
+    rsp: &mut [u8],
+    rsp_len: usize,
+) -> McuResult<DpeDeriveContextExportedCdiResult> {
+    let result = parse_derive_context_exported_cdi_header(rsp, rsp_len)?;
+    let cert_off = DERIVE_CONTEXT_EXPORTED_CDI_RESP_PREFIX_LEN;
+    if result.cert_size > rsp.len() - cert_off {
+        return Err(INTERNAL_BUG);
+    }
+    rsp.copy_within(cert_off..cert_off + result.cert_size, 0);
+    Ok(result)
 }
 
 /// Invoke DPE `UpdateContextMeasurement`, returning the rotated component and parent handles.
@@ -1435,12 +1458,20 @@ pub async fn dpe_sign_mldsa87<A: ApiAlloc>(
         return Err(INVARIANT);
     }
 
-    let request = build_sign_mldsa87_req(alloc, dpe_handle_or_default(handle), label, mu)?;
+    let handle = dpe_handle_or_default(handle);
     let mut response = alloc.alloc(SIGN_MLDSA87_RESP_LEN)?;
-    let response_len = mbox_execute(CMD_INVOKE_DPE_MLDSA87, &request, &mut response).await?;
+    write_sign_mldsa87_req(&mut response[..SIGN_MLDSA87_REQ_LEN], handle, label, mu)?;
+    let response_len = mbox_execute_in_place(
+        CMD_INVOKE_DPE_MLDSA87,
+        SIGN_MLDSA87_REQ_LEN,
+        SIGN_MLDSA87_RESP_LEN,
+        &mut response,
+    )
+    .await?;
     parse_sign_mldsa87_response(&response, response_len, signature)
 }
 
+#[cfg(test)]
 fn build_sign_mldsa87_req<'a, A: ApiAlloc>(
     alloc: &'a A,
     handle: &DpeContextHandle,
@@ -1448,16 +1479,27 @@ fn build_sign_mldsa87_req<'a, A: ApiAlloc>(
     mu: &[u8; DPE_MLDSA87_MU_SIZE],
 ) -> McuResult<A::Buf<'a>> {
     let mut request = alloc.alloc(SIGN_MLDSA87_REQ_LEN)?;
+    write_sign_mldsa87_req(&mut request, handle, label, mu)?;
+    Ok(request)
+}
+
+fn write_sign_mldsa87_req(
+    request: &mut [u8],
+    handle: &DpeContextHandle,
+    label: &[u8; DPE_LABEL_LEN],
+    mu: &[u8; DPE_MLDSA87_MU_SIZE],
+) -> McuResult<()> {
+    let request = checked_slice_mut(request, 0, SIGN_MLDSA87_REQ_LEN)?;
     request.fill(0);
     let command_offset = build_invoke_dpe_header_profile(
-        &mut request,
+        request,
         SIGN_MLDSA87_DPE_PAYLOAD_LEN,
         DPE_CMD_SIGN,
         DpeProfile::Mldsa87,
         None,
     )?;
     let command = SignMldsa87Cmd::mut_from_bytes(checked_slice_mut(
-        &mut request,
+        request,
         command_offset,
         size_of::<SignMldsa87Cmd>(),
     )?)
@@ -1467,9 +1509,9 @@ fn build_sign_mldsa87_req<'a, A: ApiAlloc>(
     command.flags = U32::new(0);
     command.mu = *mu;
 
-    let checksum = calc_checksum(CMD_INVOKE_DPE_MLDSA87, &request);
+    let checksum = calc_checksum(CMD_INVOKE_DPE_MLDSA87, request);
     *request.first_chunk_mut::<4>().ok_or(INVARIANT)? = checksum.to_le_bytes();
-    Ok(request)
+    Ok(())
 }
 
 fn parse_sign_mldsa87_response(
@@ -1480,7 +1522,6 @@ fn parse_sign_mldsa87_response(
     if signature.len() < DPE_MLDSA87_SIGNATURE_SIZE {
         return Err(INVARIANT);
     }
-
     let body_offset = size_of::<InvokeDpeRespPrefix>();
     if response_len < body_offset + size_of::<DpeResponseHdr>() {
         return Err(INTERNAL_BUG);
@@ -2082,15 +2123,15 @@ mod tests {
             .copy_from_slice(&(cert_data.len() as u32).to_le_bytes());
         rsp[resp_body_off + prefix_len..].copy_from_slice(&cert_data);
 
-        let mut cert_dst = [0u8; 128];
+        let rsp_len = rsp.len();
         let result =
-            parse_derive_context_exported_cdi_response(&rsp, rsp.len(), &mut cert_dst).unwrap();
+            parse_derive_context_exported_cdi_response_in_place(&mut rsp, rsp_len).unwrap();
 
         assert_eq!(result.child_handle, child_handle);
         assert_eq!(result.parent_handle, parent_handle);
         assert_eq!(result.exported_cdi, exported_cdi);
         assert_eq!(result.cert_size, cert_data.len());
-        assert_eq!(&cert_dst[..cert_data.len()], &cert_data);
+        assert_eq!(&rsp[..cert_data.len()], &cert_data);
     }
 
     #[test]
