@@ -13,20 +13,20 @@ use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libsyscall_caliptra::{caliptra, otp};
 use caliptra_mcu_mbox_common::messages::{
     ClearLogReq, ClearLogResp, CommandId, DeviceCapsReq, DeviceCapsResp, DpeSignerContextCertReq,
-    DpeSignerContextCertResp, EndorsementAlgorithm, ExportAttestedCsrReq, ExportAttestedCsrResp,
-    FirmwareVersionReq, FirmwareVersionResp, FuseIncreaseMinSvnReq, FuseIncreaseMinSvnResp,
-    FuseLockPartitionReq, FuseLockPartitionResp, FuseReadReq, FuseReadResp,
-    FuseRevokeVendorPkHashReq, FuseRevokeVendorPkHashResp, FuseRevokeVendorPubKeyReq,
-    FuseRevokeVendorPubKeyResp, FuseWriteReq, FuseWriteResp, GetAttestationReq,
-    GetAuthCmdChallengeReq, GetAuthCmdChallengeResp, GetDpeCertChainReq, GetLogReq, HekStatusReq,
-    HekStatusResp, LogType, MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize,
-    McuFeProgReq, McuFeStatusReq, McuFeStatusResp, McuMailboxReq, McuMailboxResp,
-    McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq,
-    McuResponseVarSize, ProvisionOwnerPkHashReq, ProvisionOwnerPkHashResp,
-    ProvisionVendorPkHashReq, ProvisionVendorPkHashResp, SvnTarget, VendorPkHashStatusReq,
-    VendorPkHashStatusResp, ZeroizeUdsFeAndEnterRmaReq, ZeroizeUdsFeAndEnterRmaResp,
-    DEVICE_CAPS_SIZE, GET_ATTESTATION_RESP_PREFIX_LEN, MAX_ATTESTED_CSR_RESP_DATA_SIZE,
-    MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
+    EndorsementAlgorithm, ExportAttestedCsrReq, ExportAttestedCsrResp, FirmwareVersionReq,
+    FirmwareVersionResp, FuseIncreaseMinSvnReq, FuseIncreaseMinSvnResp, FuseLockPartitionReq,
+    FuseLockPartitionResp, FuseReadReq, FuseReadResp, FuseRevokeVendorPkHashReq,
+    FuseRevokeVendorPkHashResp, FuseRevokeVendorPubKeyReq, FuseRevokeVendorPubKeyResp,
+    FuseWriteReq, FuseWriteResp, GetAttestationReq, GetAuthCmdChallengeReq,
+    GetAuthCmdChallengeResp, GetDpeCertChainReq, GetLogReq, HekStatusReq, HekStatusResp, LogType,
+    MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize, McuFeProgReq, McuFeStatusReq,
+    McuFeStatusResp, McuMailboxReq, McuMailboxResp, McuProdDebugUnlockReqReq,
+    McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq, McuResponseVarSize,
+    ProvisionOwnerPkHashReq, ProvisionOwnerPkHashResp, ProvisionVendorPkHashReq,
+    ProvisionVendorPkHashResp, SvnTarget, VendorPkHashStatusReq, VendorPkHashStatusResp,
+    ZeroizeUdsFeAndEnterRmaReq, ZeroizeUdsFeAndEnterRmaResp, DEVICE_CAPS_SIZE,
+    GET_ATTESTATION_RESP_PREFIX_LEN, MAX_ATTESTED_CSR_RESP_DATA_SIZE, MAX_FUSE_DATA_SIZE,
+    MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
 };
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_mbox_common::messages::{
@@ -1882,13 +1882,38 @@ fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32, req: &[u8]) -> usize {
             size_of::<ZeroizeUdsFeAndEnterRmaResp>()
         }
         #[cfg(feature = "ocp-lock")]
-        c if c == CommandId::MC_OCP_LOCK => size_of::<OcpLockRotateHekResp>()
-            .max(size_of::<OcpLockProgramHekResp>())
-            .max(size_of::<OcpLockZeroHekResp>())
-            .max(size_of::<OcpLockSetPermaHekResp>())
-            .max(size_of::<GetOcpLockEndorsementCertResp>())
-            .max(size_of::<OcpLockEnumerateHpkeHandlesResp>())
-            .max(size_of::<GetOcpLockEpochKeyReportResp>()),
+        c if c == CommandId::MC_OCP_LOCK => {
+            let subcommand = req
+                .get(
+                    size_of::<MailboxReqHeader>()..size_of::<MailboxReqHeader>() + size_of::<u32>(),
+                )
+                .and_then(|s| s.first_chunk::<{ size_of::<u32>() }>())
+                .map(|b| u32::from_le_bytes(*b));
+            match subcommand {
+                Some(sub)
+                    if sub == CommandId::MC_GET_OCP_LOCK_ENDORSEMENT_CERT.0
+                        || sub == CommandId::MC_GET_OCP_LOCK_EPOCH_KEY_REPORT.0 =>
+                {
+                    size_of::<MailboxRespHeaderVarSize>() + OCP_LOCK_IN_PLACE_SIGN_RESP_DATA_SIZE
+                }
+                Some(sub) if sub == CommandId::MC_OCP_LOCK_ENUMERATE_HPKE_HANDLES.0 => {
+                    size_of::<OcpLockEnumerateHpkeHandlesResp>()
+                }
+                Some(sub) if sub == CommandId::MC_OCP_LOCK_PROGRAM_HEK.0 => {
+                    size_of::<OcpLockProgramHekResp>()
+                }
+                Some(sub) if sub == CommandId::MC_OCP_LOCK_ZERO_HEK.0 => {
+                    size_of::<OcpLockZeroHekResp>()
+                }
+                Some(sub) if sub == CommandId::MC_OCP_LOCK_ROTATE_HEK.0 => {
+                    size_of::<OcpLockRotateHekResp>()
+                }
+                Some(sub) if sub == CommandId::MC_OCP_LOCK_SET_PERMA_HEK.0 => {
+                    size_of::<OcpLockSetPermaHekResp>()
+                }
+                _ => size_of::<MailboxRespHeader>(),
+            }
+        }
         c if c == CommandId::MC_DPE_SIGNER_CONTEXT_CERT => {
             size_of::<MailboxRespHeaderVarSize>()
                 + mcu_caliptra_api::DPE_MAX_LEAF_CERT_SIZE

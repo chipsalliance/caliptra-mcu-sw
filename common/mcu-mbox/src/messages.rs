@@ -753,8 +753,6 @@ impl McuMailboxResp {
             McuMailboxResp::ProvisionOwnerPkHash(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FuseRevokeVendorPkHash(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::ZeroizeUdsFeAndEnterRma(resp) => Ok(resp.as_bytes()),
-            McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial(),
-            McuMailboxResp::DpeSignerContextCert(resp) => resp.as_bytes_partial(),
             McuMailboxResp::GetDpeCertChain(resp) => resp.as_bytes_partial(),
 
             McuMailboxResp::OcpLockProgramHek(resp) => Ok(resp.as_bytes()),
@@ -832,8 +830,6 @@ impl McuMailboxResp {
             McuMailboxResp::ProvisionOwnerPkHash(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FuseRevokeVendorPkHash(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::ZeroizeUdsFeAndEnterRma(resp) => Ok(resp.as_mut_bytes()),
-            McuMailboxResp::ExportAttestedCsr(resp) => resp.as_bytes_partial_mut(),
-            McuMailboxResp::DpeSignerContextCert(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::GetDpeCertChain(resp) => resp.as_bytes_partial_mut(),
 
             McuMailboxResp::OcpLockProgramHek(resp) => Ok(resp.as_mut_bytes()),
