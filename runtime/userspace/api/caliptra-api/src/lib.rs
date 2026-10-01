@@ -9,7 +9,7 @@
 //!
 //! Two abstractions:
 //!
-//! * [`ApiAlloc`] — per-call scratch-allocator the caller
+//! * [`ScratchAlloc`] — per-call scratch-allocator the caller
 //!   implements. Large mailbox request / response buffers come from
 //!   here so large `[u8; N]` arrays do not sit on the stack across an
 //!   `.await`.
@@ -17,7 +17,7 @@
 //!   driving Caliptra's `CM_SHA_*` mailbox commands.
 //!
 //! Future modules (`cert`, `dpe`, `ecdsa`) will follow the same
-//! pattern: free `async` functions taking `&impl ApiAlloc`.
+//! pattern: free `async` functions taking `&impl ScratchAlloc`.
 
 #![no_std]
 #![allow(async_fn_in_trait)]
@@ -90,7 +90,7 @@ pub use aes_gcm::{
     spdm_aes_gcm_encrypt_init, spdm_aes_gcm_encrypt_update, Aes256GcmTag, AesGcmCtx,
 };
 #[cfg(feature = "mailbox-io")]
-pub use alloc::{ApiAlloc, ApiAllocPool};
+pub use alloc::{ScratchAlloc, ScratchAllocProvider};
 #[cfg(feature = "mailbox-io")]
 pub use auth_stash::{
     authorize_and_stash, AuthorizeAndStashFlags, AuthorizeAndStashParams, ImageHashSource,

@@ -213,7 +213,7 @@ async fn validate_root_hash<M: MeasurementProvider>(
 ) -> McuResult<()> {
     let root_cert_len = der_first_seq_len(cert_chain).ok_or(INVARIANT)?;
     let sha_buf =
-        mcu_caliptra_api::ApiAlloc::alloc(pal.allocator, mcu_caliptra_api::SHA_CONTEXT_SIZE)?;
+        mcu_caliptra_api::ScratchAlloc::alloc(pal.allocator, mcu_caliptra_api::SHA_CONTEXT_SIZE)?;
     let mut state = mcu_caliptra_api::sha_init(
         pal.allocator,
         sha_buf,
@@ -248,7 +248,7 @@ async fn validate_streamed_root_hash<M: MeasurementProvider>(
 ) -> McuResult<()> {
     let first_cert_len = streamed_first_der_len(managed, data_len).await?;
     let sha_buf =
-        mcu_caliptra_api::ApiAlloc::alloc(pal.allocator, mcu_caliptra_api::SHA_CONTEXT_SIZE)?;
+        mcu_caliptra_api::ScratchAlloc::alloc(pal.allocator, mcu_caliptra_api::SHA_CONTEXT_SIZE)?;
     let mut state = mcu_caliptra_api::sha_init(
         pal.allocator,
         sha_buf,

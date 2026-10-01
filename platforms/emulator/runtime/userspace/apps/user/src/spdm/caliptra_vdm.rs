@@ -244,7 +244,7 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
         out: &mut [u8],
     ) -> CaliptraVdmResult<usize> {
         let mut challenge = [0u8; AUTH_CMD_NONCE_LEN];
-        rng_generate(scratch.pool(), &mut challenge)
+        rng_generate(scratch.allocator(), &mut challenge)
             .await
             .map_err(crate::caliptra_cmd_handler::device_ops::map_mcu_err)
             .map_err(map_common_completion)?;
@@ -272,7 +272,7 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
         let mut authorizer = cmd_auth_mock::MockCommandAuthorizer;
         authorizer
             .verify_signatures(
-                scratch.pool(),
+                scratch.allocator(),
                 PROVISION_VENDOR_PK_HASH_CMD_ID,
                 payload,
                 nonce,
@@ -303,7 +303,7 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
         let mut authorizer = cmd_auth_mock::MockCommandAuthorizer;
         authorizer
             .verify_signatures(
-                scratch.pool(),
+                scratch.allocator(),
                 PROVISION_OWNER_PK_HASH_CMD_ID,
                 payload,
                 nonce,
@@ -336,7 +336,7 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
         let mut authorizer = cmd_auth_mock::MockCommandAuthorizer;
         authorizer
             .verify_signatures(
-                scratch.pool(),
+                scratch.allocator(),
                 INCREASE_MIN_SVN_CMD_ID,
                 payload,
                 nonce,
@@ -353,7 +353,7 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
         let target =
             SvnTarget::try_from(target).map_err(|_| CaliptraCompletionCode::InvalidParameter)?;
         CaliptraCmdBackend
-            .increase_min_svn(scratch.pool(), target, svn)
+            .increase_min_svn(scratch.allocator(), target, svn)
             .await
             .map_err(map_common_completion)
     }
@@ -371,7 +371,7 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
         let mut authorizer = cmd_auth_mock::MockCommandAuthorizer;
         authorizer
             .verify_signatures(
-                scratch.pool(),
+                scratch.allocator(),
                 FE_PROG_CMD_ID,
                 &partition.to_le_bytes(),
                 nonce,
@@ -383,7 +383,7 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
             .await
             .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
         CaliptraCmdBackend
-            .program_field_entropy(scratch.pool(), partition)
+            .program_field_entropy(scratch.allocator(), partition)
             .await
             .map_err(map_common_completion)
     }
@@ -406,7 +406,7 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
         let mut authorizer = cmd_auth_mock::MockCommandAuthorizer;
         authorizer
             .verify_signatures(
-                scratch.pool(),
+                scratch.allocator(),
                 REVOKE_VENDOR_PUB_KEY_CMD_ID,
                 payload,
                 nonce,
@@ -421,7 +421,7 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
             return Err(CaliptraCompletionCode::InvalidParameter);
         }
         CaliptraCmdBackend
-            .revoke_vendor_pub_key(scratch.pool(), slot, key_type, key_index)
+            .revoke_vendor_pub_key(scratch.allocator(), slot, key_type, key_index)
             .await
             .map_err(map_common_completion)
     }
@@ -441,7 +441,7 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
         let mut authorizer = cmd_auth_mock::MockCommandAuthorizer;
         authorizer
             .verify_signatures(
-                scratch.pool(),
+                scratch.allocator(),
                 REVOKE_VENDOR_PK_HASH_CMD_ID,
                 payload,
                 nonce,
@@ -475,7 +475,7 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
         let mut authorizer = cmd_auth_mock::MockCommandAuthorizer;
         authorizer
             .verify_signatures(
-                scratch.pool(),
+                scratch.allocator(),
                 FUSE_LOCK_PARTITION_CMD_ID,
                 payload,
                 nonce,
@@ -506,7 +506,7 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
         let mut authorizer = cmd_auth_mock::MockCommandAuthorizer;
         authorizer
             .verify_signatures(
-                scratch.pool(),
+                scratch.allocator(),
                 DEVICE_OWNERSHIP_TRANSFER_CMD_ID,
                 payload,
                 nonce,
@@ -518,7 +518,7 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
             .await
             .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
         CaliptraCmdBackend
-            .dot_lock(scratch.pool(), request)
+            .dot_lock(scratch.allocator(), request)
             .await
             .map_err(map_common_completion)
     }
@@ -537,7 +537,7 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
         let mut authorizer = cmd_auth_mock::MockCommandAuthorizer;
         authorizer
             .verify_signatures(
-                scratch.pool(),
+                scratch.allocator(),
                 DEVICE_OWNERSHIP_TRANSFER_CMD_ID,
                 payload,
                 nonce,
@@ -549,7 +549,7 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
             .await
             .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
         CaliptraCmdBackend
-            .dot_disable(scratch.pool(), request)
+            .dot_disable(scratch.allocator(), request)
             .await
             .map_err(map_common_completion)
     }
@@ -568,7 +568,7 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
         let mut authorizer = cmd_auth_mock::MockCommandAuthorizer;
         authorizer
             .verify_signatures(
-                scratch.pool(),
+                scratch.allocator(),
                 DEVICE_OWNERSHIP_TRANSFER_CMD_ID,
                 payload,
                 nonce,
@@ -580,7 +580,7 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
             .await
             .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
         CaliptraCmdBackend
-            .dot_rotate(scratch.pool(), request)
+            .dot_rotate(scratch.allocator(), request)
             .await
             .map_err(map_common_completion)
     }
@@ -599,7 +599,7 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
         let mut authorizer = cmd_auth_mock::MockCommandAuthorizer;
         authorizer
             .verify_signatures(
-                scratch.pool(),
+                scratch.allocator(),
                 DEVICE_OWNERSHIP_TRANSFER_CMD_ID,
                 payload,
                 nonce,
@@ -611,7 +611,7 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
             .await
             .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
         CaliptraCmdBackend
-            .dot_get_backup_blob(scratch.pool(), blob)
+            .dot_get_backup_blob(scratch.allocator(), blob)
             .await
             .map_err(map_common_completion)
     }
@@ -631,7 +631,7 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
         let mut authorizer = cmd_auth_mock::MockCommandAuthorizer;
         authorizer
             .verify_signatures(
-                scratch.pool(),
+                scratch.allocator(),
                 OCP_LOCK_CMD_ID,
                 payload,
                 nonce,
@@ -643,7 +643,7 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
             .await
             .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
         CaliptraCmdBackend
-            .ocp_lock_rotate_hek(scratch.pool(), slot)
+            .ocp_lock_rotate_hek(scratch.allocator(), slot)
             .await
             .map_err(map_common_completion)
     }
@@ -662,7 +662,7 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
         let mut authorizer = cmd_auth_mock::MockCommandAuthorizer;
         authorizer
             .verify_signatures(
-                scratch.pool(),
+                scratch.allocator(),
                 OCP_LOCK_CMD_ID,
                 payload,
                 nonce,

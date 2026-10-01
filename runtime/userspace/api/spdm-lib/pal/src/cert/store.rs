@@ -9,7 +9,9 @@
 use caliptra_mcu_spdm_traits::SpdmPalAsymAlgo;
 use core::cell::UnsafeCell;
 
-use mcu_caliptra_api::{sha_finish, sha_init, sha_update, ApiAlloc, HashAlgo, SHA_CONTEXT_SIZE};
+use mcu_caliptra_api::{
+    sha_finish, sha_init, sha_update, HashAlgo, ScratchAlloc, SHA_CONTEXT_SIZE,
+};
 use mcu_error::McuResult;
 
 use super::endorsement::{
@@ -20,7 +22,7 @@ use super::endorsement::{ManagedEndorsementSlot, SingleManagedEndorsement};
 
 const DEFAULT_CERT_INFO: u8 = 0x01;
 
-async fn compute_root_hash<A: ApiAlloc>(alloc: &A, root_cert: &[u8]) -> McuResult<[u8; 48]> {
+async fn compute_root_hash<A: ScratchAlloc>(alloc: &A, root_cert: &[u8]) -> McuResult<[u8; 48]> {
     let sha_buf = alloc.alloc(SHA_CONTEXT_SIZE)?;
     let mut state = sha_init(alloc, sha_buf, HashAlgo::Sha384, &[]).await?;
     sha_update(alloc, &mut state, root_cert).await?;
@@ -74,7 +76,7 @@ impl SharedCertStore {
     // ---------------------------------------------------------------
 
     /// Configure a read-only endorsement chain with both ECC and optional ML-DSA roots.
-    pub async fn set_endorsement_chains<A: ApiAlloc>(
+    pub async fn set_endorsement_chains<A: ScratchAlloc>(
         &self,
         alloc: &A,
         idx: usize,
@@ -114,7 +116,7 @@ impl SharedCertStore {
     /// CertificateChain header; they are not stored in the endorsement
     /// segment. Pass `mldsa_first_dpe_cert = None` on platforms that do not
     /// serve an ML-DSA-87 chain for this slot.
-    pub async fn set_dpe_only_slot<A: ApiAlloc>(
+    pub async fn set_dpe_only_slot<A: ScratchAlloc>(
         &self,
         alloc: &A,
         idx: usize,

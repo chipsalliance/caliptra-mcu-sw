@@ -29,8 +29,8 @@ use mcu_caliptra_api::{
     authorize_and_stash as caliptra_authorize, dpe_certify_key_cert_size,
     dpe_certify_key_cert_slice, dpe_certify_key_mldsa87_tr, dpe_certify_key_pubkey,
     dpe_derive_context_exported_cdi, dpe_rotate_context_default, dpe_sign, dpe_tag_tci, sha_finish,
-    sha_init, sha_update, ApiAlloc, AuthorizeAndStashFlags, AuthorizeAndStashParams,
-    DpeContextHandle, DpeDeriveContextFlags, DpeDeriveContextParams, DpeProfile, HashAlgo,
+    sha_init, sha_update, AuthorizeAndStashFlags, AuthorizeAndStashParams, DpeContextHandle,
+    DpeDeriveContextFlags, DpeDeriveContextParams, DpeProfile, HashAlgo, ScratchAlloc,
     SigningInput, DPE_CONTEXT_HANDLE_SIZE, DPE_LABEL_LEN, DPE_TCI_MEASUREMENT_SIZE,
     MLDSA87_TR_SIZE, SHA_CONTEXT_SIZE,
 };
@@ -120,7 +120,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
     /// The digest binds the authenticated integrator static attestation
     /// configuration and the cold-boot SoC load topology. Any mailbox failure
     /// is reported as [`MeasurementApiError::DigestFailed`].
-    async fn measurement_policy_digest<A: ApiAlloc>(
+    async fn measurement_policy_digest<A: ScratchAlloc>(
         &self,
         alloc: &A,
         digest_out: &mut [u8; POLICY_DIGEST_SIZE],
@@ -150,7 +150,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
     /// On any failure the API is left in [`AttestationState::Error`] so later
     /// measurement flows fail closed; on success it becomes
     /// [`AttestationState::Active`].
-    pub async fn measurement_boot_init<A: ApiAlloc>(
+    pub async fn measurement_boot_init<A: ScratchAlloc>(
         &mut self,
         boot: BootKind,
         readiness_policy: EvidenceReadinessPolicy,
@@ -176,7 +176,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
     /// Cold-boot sequence: compute the policy digest, initialize both stores,
     /// rotate and tag the MCU Runtime DPE context, write the MCU Runtime root
     /// record, and mark it as the initial attestation target.
-    async fn cold_boot_init<A: ApiAlloc>(&self, alloc: &A) -> MeasurementApiResult {
+    async fn cold_boot_init<A: ScratchAlloc>(&self, alloc: &A) -> MeasurementApiResult {
         let dpe_store = DpeHandleStore::<S>::new(DPE_HANDLE_STORE_DRIVER_NUM);
         let pcr_store = SoftwarePcrStore::<S>::new(SOFT_PCR_STORE_DRIVER_NUM);
 
@@ -221,7 +221,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
     /// mismatch, a missing required record, or invalid root-record semantics
     /// fails closed so measurement state is not silently reinitialized under a
     /// new lineage.
-    async fn hitless_update_init<A: ApiAlloc>(&self, alloc: &A) -> MeasurementApiResult {
+    async fn hitless_update_init<A: ScratchAlloc>(&self, alloc: &A) -> MeasurementApiResult {
         let dpe_store = DpeHandleStore::<S>::new(DPE_HANDLE_STORE_DRIVER_NUM);
         let pcr_store = SoftwarePcrStore::<S>::new(SOFT_PCR_STORE_DRIVER_NUM);
 
@@ -273,7 +273,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
     /// then uses public `AUTHORIZE_AND_STASH` with `SKIP_STASH=true` for
     /// authorization only. Initial-load and component-update callers then
     /// dispatch to operation-specific Measurement API state updates.
-    pub async fn authorize_and_stash<A: ApiAlloc>(
+    pub async fn authorize_and_stash<A: ScratchAlloc>(
         &mut self,
         alloc: &A,
         fw_id: u32,
@@ -305,7 +305,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
     /// On hitless update, checks if the key matches the preserved DPE measurement;
     /// if unchanged, retains the context without re-extending PCR31; if changed, updates
     /// the context measurement and extends PCR31 once.
-    pub async fn measure_vendor_auth_key<A: ApiAlloc>(
+    pub async fn measure_vendor_auth_key<A: ScratchAlloc>(
         &mut self,
         alloc: &A,
         vendor_auth_key_digest: &[u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE],
@@ -340,7 +340,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
     }
 
     /// Measure or sync the Owner Authorization Manifest preamble (`0x0000_0003`) under the Vendor Auth Key DPE context.
-    pub async fn measure_owsm<A: ApiAlloc>(
+    pub async fn measure_owsm<A: ScratchAlloc>(
         &mut self,
         alloc: &A,
         preamble_digest: &[u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE],
@@ -373,7 +373,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
     }
 
     /// Measure or sync the Owner Measurement Policy (`0x0000_0005`) under the OWSM DPE context.
-    pub async fn measure_owner_measurement_policy<A: ApiAlloc>(
+    pub async fn measure_owner_measurement_policy<A: ScratchAlloc>(
         &mut self,
         alloc: &A,
         policy_digest: &[u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE],
@@ -405,7 +405,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
     }
 
     /// Measure or sync the Owner Authorization Key (`0x0000_0006`) under the Owner Policy DPE context.
-    pub async fn measure_owner_auth_key<A: ApiAlloc>(
+    pub async fn measure_owner_auth_key<A: ScratchAlloc>(
         &mut self,
         alloc: &A,
         owner_auth_key_digest: &[u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE],
@@ -438,7 +438,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
 
     /// Return the DPE leaf certificate length for the configured attestation
     /// target and persist the rotated target handle returned by DPE.
-    pub async fn leaf_cert_size<A: ApiAlloc>(
+    pub async fn leaf_cert_size<A: ScratchAlloc>(
         &mut self,
         alloc: &A,
         profile: DpeProfile,
@@ -455,7 +455,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
 
     /// Fetch a DPE leaf certificate slice for the configured attestation target
     /// and persist the rotated target handle returned by DPE.
-    pub async fn leaf_cert_slice<A: ApiAlloc>(
+    pub async fn leaf_cert_slice<A: ScratchAlloc>(
         &mut self,
         alloc: &A,
         profile: DpeProfile,
@@ -478,7 +478,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
         Ok(bytes_written)
     }
 
-    async fn leaf_pubkey<A: ApiAlloc>(
+    async fn leaf_pubkey<A: ScratchAlloc>(
         &mut self,
         alloc: &A,
         key_label: &[u8; DPE_LABEL_LEN],
@@ -500,7 +500,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
 
     /// Compute the COSE `kid` for the configured attestation target and
     /// persist the rotated target handle returned by DPE.
-    pub async fn leaf_kid<A: ApiAlloc>(
+    pub async fn leaf_kid<A: ScratchAlloc>(
         &mut self,
         alloc: &A,
         key_label: &[u8; DPE_LABEL_LEN],
@@ -532,7 +532,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
     /// Compute the COSE `kid` and ML-DSA-87 public-key hash `tr` for the
     /// configured attestation target and persist the rotated target handle
     /// returned by DPE.
-    pub async fn leaf_kid_and_tr<A: ApiAlloc>(
+    pub async fn leaf_kid_and_tr<A: ScratchAlloc>(
         &mut self,
         alloc: &A,
         key_label: &[u8; DPE_LABEL_LEN],
@@ -557,7 +557,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
 
     /// Sign a typed input with the configured attestation target and persist
     /// the rotated target handle returned by DPE.
-    pub async fn sign<A: ApiAlloc>(
+    pub async fn sign<A: ScratchAlloc>(
         &mut self,
         alloc: &A,
         key_label: &[u8; DPE_LABEL_LEN],
@@ -581,7 +581,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
     /// Derive an exported CDI context from the active attestation target, persist the
     /// 32-byte exported CDI handle in DPE handle storage, persist the rotated target handle
     /// returned by DPE, and write the emitted leaf certificate into `cert_out`.
-    pub async fn export_cdi_and_stash<A: ApiAlloc>(
+    pub async fn export_cdi_and_stash<A: ScratchAlloc>(
         &mut self,
         alloc: &A,
         profile: DpeProfile,
@@ -638,7 +638,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
     /// This is an internal Measurement API primitive for evidence generation and
     /// diagnostics. Transport code should not iterate policy or call it directly.
     #[allow(dead_code)]
-    pub(crate) async fn read_measurement<A: ApiAlloc>(
+    pub(crate) async fn read_measurement<A: ScratchAlloc>(
         &self,
         alloc: &A,
         fw_id: u32,
@@ -663,7 +663,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
     /// the complete encoded evidence size. A too-small buffer returns
     /// [`MeasurementApiError::EvidenceBufferTooSmall`] without returning a
     /// partial length.
-    pub async fn encode_measurement_evidence<A: ApiAlloc>(
+    pub async fn encode_measurement_evidence<A: ScratchAlloc>(
         &self,
         alloc: &A,
         buffer: &mut [u8],
@@ -877,7 +877,7 @@ fn caliptra_authorize_params(fw_id: u32, metadata: ImageMetadata) -> AuthorizeAn
     }
 }
 
-pub(super) async fn software_pcr_extend_digest<A: ApiAlloc>(
+pub(super) async fn software_pcr_extend_digest<A: ScratchAlloc>(
     alloc: &A,
     previous_digest: &[u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE],
     measurement: &[u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE],

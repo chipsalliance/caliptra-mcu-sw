@@ -36,7 +36,7 @@ use core::marker::PhantomData;
 use core::mem::{align_of, size_of, MaybeUninit};
 use core::ptr::NonNull;
 
-use mcu_caliptra_api::{ApiAlloc, ApiAllocPool};
+use mcu_caliptra_api::{ScratchAlloc, ScratchAllocProvider};
 use mcu_error::codes::{BAD_ALIGNMENT as ERR_BAD_ALIGNMENT, OUT_OF_MEMORY as ERR_OUT_OF_MEMORY};
 use mcu_error::McuResult;
 
@@ -795,7 +795,7 @@ impl Default for StaticBitmapAllocatorCell {
     }
 }
 
-impl ApiAlloc for BitmapAllocator {
+impl ScratchAlloc for BitmapAllocator {
     type Buf<'a>
         = BitmapBytes<'a>
     where
@@ -807,11 +807,11 @@ impl ApiAlloc for BitmapAllocator {
     }
 }
 
-impl ApiAllocPool for BitmapAllocator {
-    type Pool = Self;
+impl ScratchAllocProvider for BitmapAllocator {
+    type Alloc = Self;
 
     #[inline]
-    fn pool(&self) -> &Self::Pool {
+    fn allocator(&self) -> &Self::Alloc {
         self
     }
 }

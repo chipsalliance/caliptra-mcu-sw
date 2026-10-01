@@ -165,7 +165,7 @@ impl Default for TestPal {
     }
 }
 
-impl mcu_caliptra_api::ApiAlloc for TestPal {
+impl mcu_caliptra_api::ScratchAlloc for TestPal {
     type Buf<'a>
         = Vec<u8>
     where
@@ -176,10 +176,10 @@ impl mcu_caliptra_api::ApiAlloc for TestPal {
     }
 }
 
-impl mcu_caliptra_api::ApiAllocPool for TestPal {
-    type Pool = Self;
+impl mcu_caliptra_api::ScratchAllocProvider for TestPal {
+    type Alloc = Self;
 
-    fn pool(&self) -> &Self::Pool {
+    fn allocator(&self) -> &Self::Alloc {
         self
     }
 }

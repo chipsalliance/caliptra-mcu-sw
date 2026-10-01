@@ -18,19 +18,29 @@
 use self::super::*;
 use core::ops::DerefMut;
 
-/// Factory trait for platform-managed SPDM-Lite allocations.
-///
-/// Implementors expose a single allocation slot (or pool) that can be
-/// rented to the SPDM-Lite stack for the duration of a single
-/// [`SpdmPalIo`] exchange. The returned [`Self::Box`] borrows from
-/// `self`, so only one outstanding allocation per `SpdmPalAlloc`
-/// instance is permitted at a time.
-/// Type alias for the byte-buffer guard handed out by a PAL's
-/// [`SpdmPalAlloc::alloc_bytes`]. Handlers use this to return their
-/// fully-encoded response buffer up to the dispatcher.
+/// Byte-buffer guard handed out by [`SpdmPalAlloc::alloc_bytes`]. Handlers
+/// return their fully-encoded response in one of these.
 pub type PalBytes<'a, Pal> = <Pal as SpdmPalAlloc>::Bytes<'a>;
 
-pub trait SpdmPalAlloc: mcu_caliptra_api::ApiAllocPool {
+/// Platform-managed allocation for the SPDM stack.
+///
+/// The stack takes scratch buffers and protocol state from a platform-owned
+/// pool rather than the global heap, so SPDM memory use is bounded and
+/// independent of other tasks.
+///
+/// # Contract
+///
+/// - Every guard type releases its storage back to the pool on `Drop`.
+/// - Scratch allocations ([`alloc`](Self::alloc), [`alloc_bytes`](Self::alloc_bytes))
+///   borrow `self` and are scoped to one [`SpdmPalIo`] exchange.
+/// - Large-message and persistent allocations deliberately outlive an
+///   exchange; see their sections below for who is expected to hold them.
+/// - The [`ScratchAllocProvider`](mcu_caliptra_api::ScratchAllocProvider) supertrait is
+///   what lets a PAL reach the Caliptra mailbox APIs: a PAL exposes the
+///   allocator it borrows instead of implementing
+///   [`ScratchAlloc`](mcu_caliptra_api::ScratchAlloc) itself, so those APIs compile
+///   once over the concrete allocator no matter how many PALs exist.
+pub trait SpdmPalAlloc: mcu_caliptra_api::ScratchAllocProvider {
     /// RAII guard type returned by [`Self::alloc`].
     ///
     /// Implementors return any owning handle that derefs to `T` (e.g.,

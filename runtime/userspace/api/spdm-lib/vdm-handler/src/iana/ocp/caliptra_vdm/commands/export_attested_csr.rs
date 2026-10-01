@@ -79,7 +79,7 @@ where
     if large.len() > CSR_PAYLOAD_HEADER_LEN {
         let data_len = match cmds
             .export_attested_csr(
-                scratch.pool(),
+                scratch.allocator(),
                 device_key_id,
                 algorithm,
                 nonce,
@@ -99,7 +99,7 @@ where
         }
         let data_len = match cmds
             .export_attested_csr(
-                scratch.pool(),
+                scratch.allocator(),
                 device_key_id,
                 algorithm,
                 nonce,
