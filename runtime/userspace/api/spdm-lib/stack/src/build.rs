@@ -87,24 +87,24 @@ pub(crate) fn alloc_padded<'a, Pal: SpdmPal>(
 ///   Allocates and encodes an SPDM response.
 ///
 /// Marked `#[inline(never)]` to keep handler-level code out of the
-/// dispatcher's async state machine. Each `B` still produces its own
-/// monomorphisation, but they're emitted as separate functions rather
-/// than inlined four times into one giant `poll`.
+/// dispatcher's async state machine. Dynamic body dispatch keeps the
+/// allocation and common-header path in one shared implementation.
 #[inline(never)]
-pub(crate) fn build_response<'a, Pal, B>(
+pub(crate) fn build_response<'a, Pal>(
     pal: &'a Pal,
     io: &Pal::Io<'_>,
     version: SpdmVersion,
-    body: &B,
+    body: &dyn ResponseBody,
 ) -> SpdmResult<PalBytes<'a, Pal>>
 where
     Pal: SpdmPal,
-    B: ResponseBody,
 {
     let head = pal.header_size();
-    let raw_len = head + body.encoded_size();
+    let raw_len = head + SpdmMsgHdrPdu::SIZE + body.body_size();
     let mut buf = alloc_padded(pal, io, raw_len)?;
-    body.encode_with_header(version, &mut WireWriter::new(&mut buf[head..]))?;
+    let mut writer = WireWriter::new(&mut buf[head..]);
+    writer.write(&SpdmMsgHdrPdu::new(version, body.response_code()))?;
+    body.encode_body(&mut writer)?;
     Ok(buf)
 }
 

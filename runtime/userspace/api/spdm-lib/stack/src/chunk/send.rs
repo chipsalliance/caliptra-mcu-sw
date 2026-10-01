@@ -269,7 +269,11 @@ async fn process_chunk_send<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
             session_id,
             set_certificate_allowed,
         )
-        .await?;
+        .await
+        .map_err(|_| ChunkProcessError::Early {
+            handle,
+            chunk_seq_num,
+        })?;
     } else {
         process_next_chunk(
             state,
@@ -282,7 +286,11 @@ async fn process_chunk_send<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
             last_chunk,
             rest,
         )
-        .await?;
+        .await
+        .map_err(|_| ChunkProcessError::Early {
+            handle,
+            chunk_seq_num,
+        })?;
     }
 
     Ok(ChunkInfo {
@@ -306,12 +314,9 @@ async fn process_first_chunk<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     rest: &[u8],
     session_id: Option<u32>,
     set_certificate_allowed: bool,
-) -> Result<(), ChunkProcessError> {
+) -> Result<(), ()> {
     let Some(size_bytes) = rest.first_chunk::<4>() else {
-        return Err(ChunkProcessError::Early {
-            handle,
-            chunk_seq_num,
-        });
+        return Err(());
     };
     let large_msg_size = u32::from_le_bytes(*size_bytes) as usize;
     let chunk_data = &rest[4..];
@@ -320,16 +325,10 @@ async fn process_first_chunk<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     // is transport framing, not SPDM. Taking the slice first also proves
     // `chunk_data.len() >= chunk_size`, so the slack below cannot underflow.
     let Some(chunk) = chunk_data.get(..chunk_size) else {
-        return Err(ChunkProcessError::Early {
-            handle,
-            chunk_seq_num,
-        });
+        return Err(());
     };
     if !trailing_slack_is_transport_padding(pal, chunk_data.len(), chunk_size) {
-        return Err(ChunkProcessError::Early {
-            handle,
-            chunk_seq_num,
-        });
+        return Err(());
     }
     let min_chunk_size = CapabilitiesBody::MIN_DATA_TRANSFER_SIZE as usize
         - SpdmMsgHdrPdu::SIZE
@@ -345,19 +344,13 @@ async fn process_first_chunk<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
         || large_msg_size <= pal.mtu()
         || large_msg_size > pal.max_inbound_spdm_request_size();
     if invalid {
-        return Err(ChunkProcessError::Early {
-            handle,
-            chunk_seq_num,
-        });
+        return Err(());
     }
     #[cfg(feature = "set-certificate")]
     {
         if let Some(required_len) = required_stream_prefix_len(chunk) {
             if !set_certificate_allowed {
-                return Err(ChunkProcessError::Early {
-                    handle,
-                    chunk_seq_num,
-                });
+                return Err(());
             }
             let mut prefix = StreamPrefixState {
                 data: [0; super::STREAM_PREFIX_CAPACITY],
@@ -365,10 +358,7 @@ async fn process_first_chunk<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
             };
             prefix.data[..chunk.len()].copy_from_slice(chunk);
             if required_len > prefix.data.len() {
-                return Err(ChunkProcessError::Early {
-                    handle,
-                    chunk_seq_num,
-                });
+                return Err(());
             }
             state
                 .large_msg_ctx
@@ -379,10 +369,7 @@ async fn process_first_chunk<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
                     ActiveLargeRequest::Prefix(prefix),
                     session_id,
                 )
-                .map_err(|_| ChunkProcessError::Early {
-                    handle,
-                    chunk_seq_num,
-                })?;
+                .map_err(|_| ())?;
             return Ok(());
         }
     }
@@ -398,48 +385,32 @@ async fn process_first_chunk<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
         set_certificate_allowed,
     )
     .await
-    .map_err(|_| ChunkProcessError::Early {
-        handle,
-        chunk_seq_num,
-    })? {
+    .map_err(|_| ())?
+    {
         return Ok(());
     }
     #[cfg(any(test, feature = "generic-large-request"))]
     {
         // Only non-streamed requests consume the persistent scratch buffer.
         if large_msg_size > pal.large_buffered_msg_capacity() {
-            return Err(ChunkProcessError::Early {
-                handle,
-                chunk_seq_num,
-            });
+            return Err(());
         }
         let rent_buf = match pal.alloc_large_buf(large_msg_size) {
             Ok(buf) => buf,
-            Err(_) => {
-                return Err(ChunkProcessError::Early {
-                    handle,
-                    chunk_seq_num,
-                })
-            }
+            Err(_) => return Err(()),
         };
         if state
             .large_msg_ctx
             .init_request(handle, large_msg_size, chunk, rent_buf, session_id)
             .is_err()
         {
-            return Err(ChunkProcessError::Early {
-                handle,
-                chunk_seq_num,
-            });
+            return Err(());
         }
         Ok(())
     }
     #[cfg(not(any(test, feature = "generic-large-request")))]
     {
-        Err(ChunkProcessError::Early {
-            handle,
-            chunk_seq_num,
-        })
+        Err(())
     }
 }
 
@@ -454,7 +425,7 @@ async fn process_next_chunk<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     chunk_size: usize,
     last_chunk: bool,
     rest: &[u8],
-) -> Result<(), ChunkProcessError> {
+) -> Result<(), ()> {
     let bytes_received = state.large_msg_ctx.state.bytes_received as usize;
     let large_msg_size = state.large_msg_ctx.state.large_msg_size as usize;
     let end = bytes_received.saturating_add(chunk_size);
@@ -462,16 +433,10 @@ async fn process_next_chunk<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     // See `process_first_chunk`: `chunk_size` bounds the SPDM message, and the
     // slice proves `rest.len() >= chunk_size` before the slack is computed.
     let Some(chunk) = rest.get(..chunk_size) else {
-        return Err(ChunkProcessError::Early {
-            handle,
-            chunk_seq_num,
-        });
+        return Err(());
     };
     if !trailing_slack_is_transport_padding(pal, rest.len(), chunk_size) {
-        return Err(ChunkProcessError::Early {
-            handle,
-            chunk_seq_num,
-        });
+        return Err(());
     }
     let min_chunk_size = CapabilitiesBody::MIN_DATA_TRANSFER_SIZE as usize
         - SpdmMsgHdrPdu::SIZE
@@ -483,10 +448,7 @@ async fn process_next_chunk<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
         || (last_chunk && end != large_msg_size)
         || (!last_chunk && (end >= large_msg_size || chunk_size < min_chunk_size));
     if invalid {
-        return Err(ChunkProcessError::Early {
-            handle,
-            chunk_seq_num,
-        });
+        return Err(());
     }
     #[cfg(feature = "set-certificate")]
     let algo = state.asym_algo();
@@ -498,30 +460,17 @@ async fn process_next_chunk<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
                 .append_request(handle, chunk_seq_num, chunk)
                 .is_err()
             {
-                return Err(ChunkProcessError::Early {
-                    handle,
-                    chunk_seq_num,
-                });
+                return Err(());
             }
         }
         #[cfg(feature = "set-certificate")]
         Some(ActiveLargeRequest::Prefix(_)) => {
             let consumed = continue_setcert_prefix(state, pal, io, handle, chunk)
                 .await
-                .map_err(|_| ChunkProcessError::Early {
-                    handle,
-                    chunk_seq_num,
-                })?;
+                .map_err(|_| ())?;
             let remaining = &chunk[consumed..];
             if !remaining.is_empty() {
-                let active =
-                    state
-                        .large_msg_ctx
-                        .active_request_mut()
-                        .ok_or(ChunkProcessError::Early {
-                            handle,
-                            chunk_seq_num,
-                        })?;
+                let active = state.large_msg_ctx.active_request_mut().ok_or(())?;
                 match active {
                     #[cfg(feature = "set-certificate")]
                     ActiveLargeRequest::SetCertificate(stream) => {
@@ -529,64 +478,36 @@ async fn process_next_chunk<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
                             pal, io, algo, stream, remaining,
                         )
                         .await
-                        .map_err(|_| ChunkProcessError::Early {
-                            handle,
-                            chunk_seq_num,
-                        })?;
+                        .map_err(|_| ())?;
                     }
-                    _ => {
-                        return Err(ChunkProcessError::Early {
-                            handle,
-                            chunk_seq_num,
-                        })
-                    }
+                    _ => return Err(()),
                 }
             }
             state
                 .large_msg_ctx
                 .append_streaming_request(handle, chunk_seq_num, chunk.len())
-                .map_err(|_| ChunkProcessError::Early {
-                    handle,
-                    chunk_seq_num,
-                })?;
+                .map_err(|_| ())?;
         }
         #[cfg(feature = "set-certificate")]
         Some(ActiveLargeRequest::SetCertificate(stream)) => {
             set_certificate::continue_set_certificate_stream(pal, io, algo, stream, chunk)
                 .await
-                .map_err(|_| ChunkProcessError::Early {
-                    handle,
-                    chunk_seq_num,
-                })?;
+                .map_err(|_| ())?;
             state
                 .large_msg_ctx
                 .append_streaming_request(handle, chunk_seq_num, chunk.len())
-                .map_err(|_| ChunkProcessError::Early {
-                    handle,
-                    chunk_seq_num,
-                })?;
+                .map_err(|_| ())?;
         }
         Some(ActiveLargeRequest::AuthorizeDebugUnlockToken { .. }) => {
             vdm.continue_authorize_debug_unlock_token_stream(chunk, pal, io)
                 .await
-                .map_err(|_| ChunkProcessError::Early {
-                    handle,
-                    chunk_seq_num,
-                })?;
+                .map_err(|_| ())?;
             state
                 .large_msg_ctx
                 .append_streaming_request(handle, chunk_seq_num, chunk.len())
-                .map_err(|_| ChunkProcessError::Early {
-                    handle,
-                    chunk_seq_num,
-                })?;
+                .map_err(|_| ())?;
         }
-        None => {
-            return Err(ChunkProcessError::Early {
-                handle,
-                chunk_seq_num,
-            })
-        }
+        None => return Err(()),
     }
 
     Ok(())

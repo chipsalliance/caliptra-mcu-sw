@@ -682,8 +682,15 @@ async fn dispatch<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_SESSIONS: usi
         ReqRespCode::NEGOTIATE_ALGORITHMS => {
             algorithms::handle_negotiate_algorithms(state, pal, io).await
         }
-        ReqRespCode::GET_DIGESTS => digests::handle_get_digests(state, pal, io).await,
-        ReqRespCode::GET_CERTIFICATE => certificate::handle_get_certificate(state, pal, io).await,
+        ReqRespCode::GET_DIGESTS => {
+            let (resp, _) = digests::handle_get_digests(state, pal, io, io.request()).await?;
+            Ok(resp)
+        }
+        ReqRespCode::GET_CERTIFICATE => {
+            let (resp, _) =
+                certificate::handle_get_certificate(state, pal, io, io.request()).await?;
+            Ok(resp)
+        }
         ReqRespCode::CHALLENGE => challenge::handle_challenge(state, pal, io).await,
         ReqRespCode::CHUNK_SEND => {
             chunk::handle_chunk_send(state, sessions, pal, io, vdm, io.request(), None, true).await
@@ -945,11 +952,9 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_S
             session.touch_heartbeat(pal.now().0);
             return Ok(rsp);
         }
-        ReqRespCode::GET_DIGESTS => {
-            digests::handle_get_digests_req(state, pal, io, spdm_msg).await?
-        }
+        ReqRespCode::GET_DIGESTS => digests::handle_get_digests(state, pal, io, spdm_msg).await?,
         ReqRespCode::GET_CERTIFICATE => {
-            certificate::handle_get_certificate_req(state, pal, io, spdm_msg).await?
+            certificate::handle_get_certificate(state, pal, io, spdm_msg).await?
         }
         ReqRespCode::GET_MEASUREMENTS => {
             measurements::handle_get_measurements_req(state, pal, io, spdm_msg).await?

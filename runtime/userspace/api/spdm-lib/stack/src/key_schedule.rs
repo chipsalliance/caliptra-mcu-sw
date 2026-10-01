@@ -25,6 +25,10 @@ use caliptra_mcu_spdm_traits::{McuResult, SpdmPalAlloc, SpdmPalIo, SpdmPalSessio
 /// SHA-384 digest size in bytes.
 pub const SHA384_HASH_SIZE: usize = 48;
 
+/// All-zero input reused as `Salt_0` for Handshake-Secret extraction and
+/// `zero_filled` for Master-Secret extraction.
+static ZERO_HASH: [u8; SHA384_HASH_SIZE] = [0; SHA384_HASH_SIZE];
+
 /// Maximum length of the HKDF info field built by [`bin_concat`].
 const MAX_BIN_STR_LABEL_LEN: usize = 12;
 const MAX_BIN_STR_LEN: usize = 2 + 8 + MAX_BIN_STR_LABEL_LEN + SHA384_HASH_SIZE;
@@ -141,9 +145,7 @@ impl<K: Clone> KeySchedule<K> {
             .dhe_secret
             .take()
             .ok_or(mcu_error::codes::INVARIANT)?;
-        let mut salt_0 = pal.alloc_bytes(io, SHA384_HASH_SIZE)?;
-        salt_0.fill(0);
-        let hs = pal.hkdf_extract_bytes(io, &salt_0, &dhe).await?;
+        let hs = pal.hkdf_extract_bytes(io, &ZERO_HASH, &dhe).await?;
         self.master_ctx.handshake_secret = Some(hs);
 
         let hs_ref = self
@@ -237,9 +239,7 @@ impl<K: Clone> KeySchedule<K> {
             hkdf_expand_bin_str(pal, io, self.version_str, hs_ref, BinStr::Str0, None).await?;
 
         // Master-Secret = HKDF-Extract(Salt_1, zero_filled)
-        let mut zero_filled = pal.alloc_bytes(io, SHA384_HASH_SIZE)?;
-        zero_filled.fill(0);
-        let zero_cmk = pal.import_key(io, &zero_filled).await?;
+        let zero_cmk = pal.import_key(io, &ZERO_HASH).await?;
         self.master_ctx.master_secret = Some(pal.hkdf_extract_key(io, &salt_1, &zero_cmk).await?);
 
         let ms_ref = self
@@ -280,16 +280,16 @@ impl<K: Clone> KeySchedule<K> {
     // ── Crypto operations ───────────────────────────────────────────
 
     /// Compute HMAC with the specified finished key.
-    pub async fn hmac_finished<P: SpdmPalSessionCrypto<Key = K>>(
-        &self,
-        pal: &P,
-        io: &impl SpdmPalIo,
+    pub fn hmac_finished<'a, P: SpdmPalSessionCrypto<Key = K>>(
+        &'a self,
+        pal: &'a P,
+        io: &'a impl SpdmPalIo,
         key_type: SessionKeyType,
-        data: &[u8],
-        out: &mut [u8],
-    ) -> McuResult<usize> {
+        data: &'a [u8],
+        out: &'a mut [u8],
+    ) -> McuResult<impl core::future::Future<Output = McuResult<usize>> + 'a> {
         let key = self.finished_key(key_type)?;
-        pal.hmac(io, key, data, out).await
+        Ok(pal.hmac(io, key, data, out))
     }
 
     /// Encrypt with the appropriate session key.
