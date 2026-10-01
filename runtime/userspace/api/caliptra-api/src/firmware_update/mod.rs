@@ -45,10 +45,10 @@ use core::fmt::Write;
 use core::mem::offset_of;
 
 use crate::{
-    sha_finish, sha_init, sha_update, ApiAlloc, HashAlgo, SHA_CHUNK_SIZE, SHA_CONTEXT_SIZE,
+    sha_finish, sha_init, sha_update, HashAlgo, ScratchAlloc, SHA_CHUNK_SIZE, SHA_CONTEXT_SIZE,
 };
 
-pub struct FirmwareUpdater<'a, D: DMAMapping, A: ApiAlloc> {
+pub struct FirmwareUpdater<'a, D: DMAMapping, A: ScratchAlloc> {
     staging_memory: &'static dyn StagingMemory,
     alloc: &'a A,
     mailbox: Mailbox,
@@ -73,7 +73,7 @@ pub enum CaliptraFwAction {
     Load = 2,
 }
 
-impl<'a, D: DMAMapping, A: ApiAlloc> FirmwareUpdater<'a, D, A> {
+impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
     pub fn new(
         staging_memory: &'static dyn StagingMemory,
         alloc: &'a A,
