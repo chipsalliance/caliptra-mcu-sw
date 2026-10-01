@@ -96,6 +96,7 @@ slow-timeout = { period = "5m", terminate-after = 9 }
 
 [profile.nightly-release]
 inherits = "nightly-emulator"
+fail-fast = false
 default-filter = """
 (package(caliptra-mcu-tests-integration) and test(test_flash_soc_boot_successful)) |
 (package(caliptra-mcu-tests-integration) and test(test_defmt_logging_release))
@@ -106,4 +107,22 @@ inherits = "nightly"
 default-filter = """
 (package(caliptra-mcu-tests-integration) and test(test_mctp_spdm_attestation_pcr_quote)) |
 (package(caliptra-mcu-tests-integration) and test(test_mctp_spdm_responder_conformance))
+"""
+[profile.pr-emulator]
+inherits = "emulator"
+fail-fast = false
+# Run only short tests (less than 3 mins)
+default-filter = """
+not (
+    test(test_firmware_update_flash_successful) |
+    test(test_streaming_boot_flash_write_back) |
+    test(test_firmware_update_benchmark_64k) |
+    test(test_firmware_update_flash_successful_fast) |
+    test(test_firmware_update_flash_invalid_soc_image) |
+    test(test_firmware_update_flash_invalid_mcu_image) |
+    test(test_firmware_update_flash_invalid_manifest) |
+    test(test_header_burns_caliptra_runtime_svn) |
+    test(test_mctp_user_loopback) |
+    test(test_defmt_logging_release)
+)
 """
