@@ -64,6 +64,32 @@ impl McuMboxTransport {
         Ok((cmd_opcode, &buf[..req_len]))
     }
 
+    pub async fn receive_request_direct(&mut self) -> McuResult<(CmdCode, &'static mut [u8])> {
+        let on_listening_cb = if !self.ready_signaled {
+            self.ready_signaled = true;
+            Some(|| {
+                let mci = Mci::<DefaultSyscalls>::new();
+                mci.set_mailbox_ready().unwrap();
+            })
+        } else {
+            None
+        };
+        let (cmd_opcode, req) = self
+            .mbox
+            .receive_command_direct(on_listening_cb)
+            .await
+            .map_err(|_| errors::DRIVER_RX_ERROR)?;
+        if req.len() < size_of::<MailboxReqHeader>() {
+            return Err(errors::INVALID_REQUEST);
+        }
+        let hdr = MailboxReqHeader::ref_from_bytes(&req[..size_of::<MailboxReqHeader>()])
+            .map_err(|_| errors::INVALID_REQUEST)?;
+        if !verify_checksum(hdr.chksum, cmd_opcode, &req[size_of::<u32>()..]) {
+            return Err(errors::CHKSUM_MISMATCH);
+        }
+        Ok((cmd_opcode, req))
+    }
+
     pub async fn send_response(&mut self, resp: &[u8]) -> McuResult<()> {
         if resp.len() < size_of::<MailboxRespHeader>() {
             return Err(errors::BUFFER_TOO_SMALL);
@@ -82,6 +108,24 @@ impl McuMboxTransport {
             .map_err(|_| errors::DRIVER_TX_ERROR)?;
 
         Ok(())
+    }
+
+    pub async fn send_response_direct(&mut self, resp: &[u8]) -> McuResult<()> {
+        if resp.len() < size_of::<MailboxRespHeader>() {
+            return Err(errors::BUFFER_TOO_SMALL);
+        }
+        let hdr = MailboxRespHeader::ref_from_bytes(&resp[..size_of::<MailboxRespHeader>()])
+            .map_err(|_| errors::INVALID_RESPONSE)?;
+        if !verify_checksum(hdr.chksum, 0, &resp[size_of::<u32>()..]) {
+            return Err(errors::CHKSUM_MISMATCH);
+        }
+
+        let base = self.mbox.sram_base().map_err(|_| errors::DRIVER_TX_ERROR)? as *mut u8;
+        unsafe { core::ptr::copy(resp.as_ptr(), base, resp.len()) };
+        self.mbox
+            .send_response_direct(resp.len())
+            .await
+            .map_err(|_| errors::DRIVER_TX_ERROR)
     }
 
     pub fn finalize_response(&self, status: MbxCmdStatus) -> McuResult<()> {

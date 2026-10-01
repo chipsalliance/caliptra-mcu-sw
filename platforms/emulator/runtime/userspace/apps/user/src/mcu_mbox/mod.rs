@@ -23,7 +23,7 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
 
 #[cfg(feature = "mcu-mbox-service")]
-const MCU_MBOX_SCRATCH_SIZE: usize = 44 * 1024;
+const MCU_MBOX_SCRATCH_SIZE: usize = 32 * 1024;
 
 #[cfg(feature = "mcu-mbox-service")]
 struct McuMboxScratchAlloc(&'static BitmapAllocator);
@@ -75,13 +75,9 @@ async fn start_mcu_mbox_service() -> Result<(), ErrorCode> {
         #[repr(C, align(64))]
         struct ScratchBuf([u8; MCU_MBOX_SCRATCH_SIZE]);
         static mut MCU_MBOX_SCRATCH: ScratchBuf = ScratchBuf([0u8; MCU_MBOX_SCRATCH_SIZE]);
-        // SAFETY: this task is the sole owner of `MCU_MBOX_SCRATCH`.
-        let scratch_ptr: NonNull<u8> =
-            unsafe { NonNull::new_unchecked(MCU_MBOX_SCRATCH.0.as_mut_ptr()) };
+        let scratch_ptr = unsafe { NonNull::new_unchecked(MCU_MBOX_SCRATCH.0.as_mut_ptr()) };
         debug_assert_eq!(scratch_ptr.as_ptr() as usize % BITMAP_SLOT_SIZE, 0);
 
-        // SAFETY: `init_once` is called once per task lifetime; backing memory
-        // (`MCU_MBOX_SCRATCH`) is `'static` and exclusive to this task.
         static MCU_MBOX_ALLOC_CELL: StaticBitmapAllocatorCell = StaticBitmapAllocatorCell::new();
         let scratch_allocator: &'static BitmapAllocator =
             unsafe { MCU_MBOX_ALLOC_CELL.init_once(scratch_ptr, MCU_MBOX_SCRATCH_SIZE) };

@@ -12343,6 +12343,28 @@ impl caliptra_emu_bus::Bus for MciBus {
         size: caliptra_emu_types::RvSize,
         addr: caliptra_emu_types::RvAddr,
     ) -> Result<caliptra_emu_types::RvData, caliptra_emu_bus::BusError> {
+        if matches!(addr, 0x40_0000..0x60_0000 | 0x80_0000..0xa0_0000)
+            && size != caliptra_emu_types::RvSize::Word
+        {
+            let aligned_addr = addr & !0x3;
+            let word = match aligned_addr {
+                0x40_0000..0x60_0000 => self
+                    .periph
+                    .read_mcu_mbox0_csr_mbox_sram((aligned_addr as usize - 0x40_0000) / 4),
+                0x80_0000..0xa0_0000 => self
+                    .periph
+                    .read_mcu_mbox1_csr_mbox_sram((aligned_addr as usize - 0x80_0000) / 4),
+                _ => unreachable!(),
+            };
+            let shift = (addr & 0x3) * 8;
+            return match size {
+                caliptra_emu_types::RvSize::Byte => Ok((word >> shift) & 0xff),
+                caliptra_emu_types::RvSize::HalfWord if addr & 0x1 == 0 => {
+                    Ok((word >> shift) & 0xffff)
+                }
+                _ => Err(caliptra_emu_bus::BusError::LoadAddrMisaligned),
+            };
+        }
         if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
             return Err(caliptra_emu_bus::BusError::LoadAddrMisaligned);
         }
@@ -13455,6 +13477,42 @@ impl caliptra_emu_bus::Bus for MciBus {
         addr: caliptra_emu_types::RvAddr,
         val: caliptra_emu_types::RvData,
     ) -> Result<(), caliptra_emu_bus::BusError> {
+        if matches!(addr, 0x40_0000..0x60_0000 | 0x80_0000..0xa0_0000)
+            && size != caliptra_emu_types::RvSize::Word
+        {
+            let aligned_addr = addr & !0x3;
+            let (word, mask) = match size {
+                caliptra_emu_types::RvSize::Byte => {
+                    let shift = (addr & 0x3) * 8;
+                    (val << shift, 0xff << shift)
+                }
+                caliptra_emu_types::RvSize::HalfWord if addr & 0x1 == 0 => {
+                    let shift = (addr & 0x2) * 8;
+                    (val << shift, 0xffff << shift)
+                }
+                _ => return Err(caliptra_emu_bus::BusError::StoreAddrMisaligned),
+            };
+            let current = match aligned_addr {
+                0x40_0000..0x60_0000 => self
+                    .periph
+                    .read_mcu_mbox0_csr_mbox_sram((aligned_addr as usize - 0x40_0000) / 4),
+                0x80_0000..0xa0_0000 => self
+                    .periph
+                    .read_mcu_mbox1_csr_mbox_sram((aligned_addr as usize - 0x80_0000) / 4),
+                _ => unreachable!(),
+            };
+            let merged = (current & !mask) | (word & mask);
+            match aligned_addr {
+                0x40_0000..0x60_0000 => self
+                    .periph
+                    .write_mcu_mbox0_csr_mbox_sram(merged, (aligned_addr as usize - 0x40_0000) / 4),
+                0x80_0000..0xa0_0000 => self
+                    .periph
+                    .write_mcu_mbox1_csr_mbox_sram(merged, (aligned_addr as usize - 0x80_0000) / 4),
+                _ => unreachable!(),
+            }
+            return Ok(());
+        }
         if addr & 0x3 != 0 || size != caliptra_emu_types::RvSize::Word {
             return Err(caliptra_emu_bus::BusError::StoreAddrMisaligned);
         }

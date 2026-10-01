@@ -81,7 +81,7 @@ pub async fn mcu_mbox_responder<H, A, Alloc>(
     Alloc: McuMboxScratch,
 {
     while running.load(Ordering::SeqCst) {
-        if let Err(e) = cmd_interface.handle_responder_msg_from_scratch().await {
+        if let Err(e) = cmd_interface.handle_responder_msg_direct().await {
             log_error!(
                 Console::<DefaultSyscalls>::writer(),
                 "mcu_mbox_responder error={}",

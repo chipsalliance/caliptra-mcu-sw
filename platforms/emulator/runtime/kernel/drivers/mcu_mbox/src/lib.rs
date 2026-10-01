@@ -15,6 +15,7 @@ use kernel::{debug, ErrorCode};
 
 pub const MCU_MBOX0_SRAM_OFFSET: u32 = 0x40_0000;
 pub const MCU_MBOX1_SRAM_OFFSET: u32 = 0x80_0000;
+const MCU_MBOX0_SRAM_SIZE: usize = 16 * 1024;
 
 #[derive(Copy, Clone, Debug, PartialEq)]
 enum McuMboxState {
@@ -33,6 +34,7 @@ enum TimerMode {
 pub struct McuMailbox<'a, A: Alarm<'a>> {
     pub registers: StaticRef<mci::regs::Mci>,
     data_buf: TakeCell<'static, [u32]>,
+    sram_base: u32,
     data_buf_len: usize,
     state: Cell<McuMboxState>,
     timer_mode: Cell<TimerMode>,
@@ -52,10 +54,11 @@ impl<'a, A: Alarm<'a>> McuMailbox<'a, A> {
         sram_base: u32,
         alarm: &'a MuxAlarm<'a, A>,
     ) -> Self {
-        let dw_len = registers.mcu_mbox0_csr_mbox_sram.len();
+        let dw_len = MCU_MBOX0_SRAM_SIZE / size_of::<u32>();
         McuMailbox {
             registers,
             data_buf: TakeCell::new(mcu_mbox0_sram_static_ref(sram_base, dw_len)),
+            sram_base,
             data_buf_len: dw_len,
             state: Cell::new(McuMboxState::Idle),
             timer_mode: Cell::new(TimerMode::NoTimer),
@@ -72,7 +75,7 @@ impl<'a, A: Alarm<'a>> McuMailbox<'a, A> {
     }
 
     fn reset_before_use(&self) {
-        let mbox_sram_size = (self.registers.mcu_mbox0_csr_mbox_sram.len() * 4) as u32;
+        let mbox_sram_size = MCU_MBOX0_SRAM_SIZE as u32;
         // MCU acquires the lock to allow SRAM clearing.
         self.registers.mcu_mbox0_csr_mbox_lock.get();
         self.registers.mcu_mbox0_csr_mbox_dlen.set(mbox_sram_size);
@@ -208,6 +211,21 @@ impl<'a, A: Alarm<'a>> Mailbox<'a> for McuMailbox<'a, A> {
             debug!("MCU_MBOX_DRIVER: No data buffer available for sending response.");
             Err(ErrorCode::FAIL)
         }
+    }
+
+    fn send_response_from_sram(&self, dlen: usize) -> Result<(), ErrorCode> {
+        if dlen.div_ceil(4) > self.data_buf_len {
+            return Err(ErrorCode::INVAL);
+        }
+
+        self.state.set(McuMboxState::TxInProgress);
+        self.registers.mcu_mbox0_csr_mbox_dlen.set(dlen as u32);
+        self.schedule_send_done();
+        Ok(())
+    }
+
+    fn sram_base(&self) -> u32 {
+        self.sram_base
     }
 
     fn set_mbox_cmd_status(&self, status: MailboxStatus) -> Result<(), ErrorCode> {

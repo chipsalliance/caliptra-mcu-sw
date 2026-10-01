@@ -644,6 +644,10 @@ pub unsafe fn main() {
         Some(100_000),
         #[cfg(not(feature = "test-caliptra-mailbox"))]
         Some(5_000_000),
+        Some((
+            (MCU_MEMORY_MAP.mci_offset + caliptra_mcu_config::MCU_MBOX0_SRAM_OFFSET) as usize,
+            caliptra_mcu_config::MCU_MBOX0_SRAM_SIZE as usize,
+        )),
     )
     .finalize(mailbox_component_static!(
         InternalTimers<'static>,

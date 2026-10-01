@@ -153,6 +153,24 @@ impl CaliptraSoC {
         )
     }
 
+    pub fn start_mailbox_req_from_sram(
+        &mut self,
+        cmd: u32,
+        addr: usize,
+        len: usize,
+        sram_base: usize,
+        sram_size: usize,
+    ) -> core::result::Result<(), CaliptraApiError> {
+        let end = addr
+            .checked_add(len)
+            .ok_or(CaliptraApiError::BufferTooLargeForMailbox)?;
+        if addr < sram_base || end > sram_base + sram_size {
+            return Err(CaliptraApiError::BufferTooLargeForMailbox);
+        }
+        let req = unsafe { core::slice::from_raw_parts(addr as *const u8, len) };
+        self.start_mailbox_req_bytes(cmd, req)
+    }
+
     pub fn execute_ext_mailbox_req(
         &mut self,
         cmd: u32,
@@ -305,6 +323,23 @@ impl CaliptraSoC {
             checksum: 0,
             expected_checksum,
         }))
+    }
+
+    pub fn finish_mailbox_resp_to_sram(
+        &mut self,
+        addr: usize,
+        capacity: usize,
+        sram_base: usize,
+        sram_size: usize,
+    ) -> core::result::Result<usize, CaliptraApiError> {
+        let end = addr
+            .checked_add(capacity)
+            .ok_or(CaliptraApiError::MailboxRespTypeTooSmall)?;
+        if addr < sram_base || end > sram_base + sram_size {
+            return Err(CaliptraApiError::MailboxRespTypeTooSmall);
+        }
+        let resp = unsafe { core::slice::from_raw_parts_mut(addr as *mut u8, capacity) };
+        self.finish_mailbox_resp_bytes(resp)
     }
 
     /// Executes a mailbox request assembled from a mutable header and
