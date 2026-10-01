@@ -13,18 +13,21 @@ use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libsyscall_caliptra::{caliptra, otp};
 use caliptra_mcu_mbox_common::messages::{
     ClearLogReq, ClearLogResp, CommandId, DeviceCapsReq, DeviceCapsResp, DpeSignerContextCertReq,
-    EndorsementAlgorithm, ExportAttestedCsrReq, ExportAttestedCsrResp, FirmwareVersionReq,
-    FirmwareVersionResp, FuseIncreaseMinSvnReq, FuseIncreaseMinSvnResp, FuseLockPartitionReq,
-    FuseLockPartitionResp, FuseReadReq, FuseReadResp, FuseRevokeVendorPkHashReq,
-    FuseRevokeVendorPkHashResp, FuseRevokeVendorPubKeyReq, FuseRevokeVendorPubKeyResp,
-    FuseWriteReq, FuseWriteResp, GetAttestationReq, GetAuthCmdChallengeReq,
-    GetAuthCmdChallengeResp, GetDpeCertChainReq, GetLogReq, LogType, MailboxReqHeader,
-    MailboxRespHeader, MailboxRespHeaderVarSize, McuFeProgReq, McuMailboxReq, McuMailboxResp,
-    McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq,
-    McuResponseVarSize, ProvisionOwnerPkHashReq, ProvisionOwnerPkHashResp,
-    ProvisionVendorPkHashReq, ProvisionVendorPkHashResp, SvnTarget, DEVICE_CAPS_SIZE,
-    GET_ATTESTATION_RESP_PREFIX_LEN, MAX_ATTESTED_CSR_RESP_DATA_SIZE, MAX_FUSE_DATA_SIZE,
-    MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
+    EndorsementAlgorithm, FirmwareVersionReq, FirmwareVersionResp, FuseIncreaseMinSvnReq,
+    FuseIncreaseMinSvnResp, FuseLockPartitionReq, FuseLockPartitionResp, FuseReadReq, FuseReadResp,
+    FuseRevokeVendorPkHashReq, FuseRevokeVendorPkHashResp, FuseRevokeVendorPubKeyReq,
+    FuseRevokeVendorPubKeyResp, FuseWriteReq, FuseWriteResp, GetAttestationReq,
+    GetAuthCmdChallengeReq, GetAuthCmdChallengeResp, GetDpeCertChainReq, GetLogReq, LogType,
+    MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize, McuFeProgReq, McuMailboxReq,
+    McuMailboxResp, McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp,
+    McuProdDebugUnlockTokenReq, McuResponseVarSize, ProvisionOwnerPkHashReq,
+    ProvisionOwnerPkHashResp, ProvisionVendorPkHashReq, ProvisionVendorPkHashResp, SvnTarget,
+    DEVICE_CAPS_SIZE, GET_ATTESTATION_RESP_PREFIX_LEN, MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN,
+    MAX_RESP_DATA_SIZE,
+};
+#[cfg(feature = "attested-csr")]
+use caliptra_mcu_mbox_common::messages::{
+    ExportAttestedCsrReq, ExportAttestedCsrResp, MAX_ATTESTED_CSR_RESP_DATA_SIZE,
 };
 
 use caliptra_mcu_libtock_console::Console;
@@ -266,6 +269,7 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
                 CommandId::MC_DEVICE_OWNERSHIP_TRANSFER => {
                     self.handle_dot_command(req, resp_buf).await
                 }
+                #[cfg(feature = "attested-csr")]
                 CommandId::MC_EXPORT_ATTESTED_CSR => {
                     self.handle_export_attested_csr(req, resp_buf).await
                 }
@@ -706,6 +710,7 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         Ok((&mut resp_buf[..resp_bytes.len()], mbox_cmd_status))
     }
 
+    #[cfg(feature = "attested-csr")]
     async fn handle_export_attested_csr<'r>(
         &self,
         req: &[u8],
@@ -1694,8 +1699,11 @@ const DPE_EXPORTED_CDI_IN_PLACE_PREFIX_LEN: usize = 92;
 /// ML-DSA-87 signature (`sig_buf`, 4,627 B) side-by-side after
 /// `CaliptraDpeSigner::sign` stages `SignWithExportedMldsaResp` (7,228 B)
 /// in-place.
+///
+/// Public so integrators can size their MCU mailbox scratch pool against
+/// this path.
 #[cfg(feature = "ocp-lock")]
-const OCP_LOCK_IN_PLACE_SIGN_RESP_DATA_SIZE: usize = 11_828;
+pub const OCP_LOCK_IN_PLACE_SIGN_RESP_DATA_SIZE: usize = 11_828;
 
 fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32, req: &[u8]) -> usize {
     #[cfg(not(feature = "ocp-lock"))]
@@ -1759,6 +1767,7 @@ fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32, req: &[u8]) -> usize {
         c if c == CommandId::MC_GET_DPE_CERTIFICATE_CHAIN => {
             size_of::<MailboxRespHeaderVarSize>() + 1024
         }
+        #[cfg(feature = "attested-csr")]
         c if c == CommandId::MC_EXPORT_ATTESTED_CSR => size_of::<ExportAttestedCsrResp>(),
         c if c == CommandId::MC_GET_ATTESTATION => size_of::<McuMailboxResp>().max(
             size_of::<MailboxRespHeaderVarSize>()
@@ -1776,6 +1785,7 @@ fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32, req: &[u8]) -> usize {
 ///
 /// A free function rather than a `CmdInterface` method so it can be tested
 /// without standing up a transport.
+#[cfg(feature = "attested-csr")]
 async fn stage_attested_csr<H: CaliptraCmdHandler, Alloc: mcu_caliptra_api::ApiAlloc>(
     handler: &H,
     alloc: &Alloc,
@@ -2068,6 +2078,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "attested-csr")]
     #[test]
     fn response_buffer_size_for_export_attested_csr_matches_export_attested_csr_resp() {
         let sized = response_buffer_size::<TestHandler>(CommandId::MC_EXPORT_ATTESTED_CSR.0, &[]);
@@ -2076,10 +2087,21 @@ mod tests {
         assert!(sized > 4096);
     }
 
+    #[cfg(not(feature = "attested-csr"))]
+    #[test]
+    fn export_attested_csr_reserves_no_large_buffer_without_feature() {
+        assert_eq!(
+            response_buffer_size::<TestHandler>(CommandId::MC_EXPORT_ATTESTED_CSR.0, &[]),
+            size_of::<McuMailboxResp>()
+        );
+    }
+
+    #[cfg(feature = "attested-csr")]
     struct CsrTestHandler {
         resp_len: usize,
     }
 
+    #[cfg(feature = "attested-csr")]
     impl CaliptraCmdHandler for CsrTestHandler {
         async fn get_firmware_version(
             &self,
@@ -2150,6 +2172,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "attested-csr")]
     #[test]
     fn export_attested_csr_accepts_large_mldsa_discovery_response() {
         const REALISTIC_MLDSA_DISCOVERY_LEN: usize = 4800;
@@ -2168,6 +2191,7 @@ mod tests {
         assert_eq!(&body[..4], &[0xEE; 4]);
     }
 
+    #[cfg(feature = "attested-csr")]
     #[test]
     fn export_attested_csr_accepts_large_mldsa_csr_response() {
         const REALISTIC_MLDSA_CSR_LEN: usize = 12_200;
@@ -2186,6 +2210,7 @@ mod tests {
         assert_eq!(&body[..4], &[0xEE; 4]);
     }
 
+    #[cfg(feature = "attested-csr")]
     #[test]
     fn export_attested_csr_rejects_oversized_response() {
         let handler = CsrTestHandler {

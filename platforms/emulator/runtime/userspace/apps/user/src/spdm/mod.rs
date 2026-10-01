@@ -41,7 +41,7 @@ use embassy_executor::Spawner;
 ///
 /// It contributes to `MaxSPDMmsgSize` only when buffered large requests are
 /// enabled. Raising it requires larger scratch pools.
-#[cfg(feature = "cert-provisioning")]
+#[cfg(feature = "attested-csr")]
 const MAX_BUFFERED_SPDM_MSG_SIZE: usize = {
     let declared = 14 * 1024;
     assert!(
@@ -55,7 +55,7 @@ const MAX_BUFFERED_SPDM_MSG_SIZE: usize = {
     declared
 };
 
-#[cfg(not(feature = "cert-provisioning"))]
+#[cfg(not(feature = "attested-csr"))]
 const MAX_BUFFERED_SPDM_MSG_SIZE: usize = {
     let declared = 8 * 1024;
     assert!(
@@ -293,7 +293,7 @@ const fn required_session_scratch() -> usize {
 ///
 /// MCTP hosts Caliptra VDM and must hold a buffered large request while its
 /// handler uses transient DPE/SHA mailbox workspaces.
-#[cfg(feature = "cert-provisioning")]
+#[cfg(feature = "attested-csr")]
 const MCTP_SPDM_SCRATCH_SIZE: usize = {
     let declared = 24 * 1024;
     assert!(
@@ -303,7 +303,7 @@ const MCTP_SPDM_SCRATCH_SIZE: usize = {
     declared
 };
 
-#[cfg(not(feature = "cert-provisioning"))]
+#[cfg(not(feature = "attested-csr"))]
 const MCTP_SPDM_SCRATCH_SIZE: usize = {
     let declared = 17 * 1024;
     assert!(
@@ -315,17 +315,7 @@ const MCTP_SPDM_SCRATCH_SIZE: usize = {
 
 /// DOE needs room for measurement records and secure-session crypto workspaces,
 /// including the chunked ML-KEM / ML-DSA-87 KEY_EXCHANGE path.
-#[cfg(feature = "cert-provisioning")]
-const DOE_SPDM_SCRATCH_SIZE: usize = {
-    let declared = 24 * 1024;
-    assert!(
-        declared >= required_session_scratch(),
-        "DOE SPDM scratch pool is too small for required_session_scratch()"
-    );
-    declared
-};
-
-#[cfg(not(feature = "cert-provisioning"))]
+#[cfg(feature = "attested-csr")]
 const DOE_SPDM_SCRATCH_SIZE: usize = {
     let declared = 24 * 1024;
     assert!(
