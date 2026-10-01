@@ -3,7 +3,9 @@
 //! `caliptra-mcu-scratch-alloc` — single-task bitmap scratch pool for MCU
 //! userspace tasks.
 //!
-//! A `Box`-like allocator over a caller-supplied buffer, used wherever a task
+//! Defines the [`ScratchAlloc`] / [`ScratchAllocProvider`] contract and
+//! provides [`BitmapAllocator`], its sole production implementation: a
+//! `Box`-like allocator over a caller-supplied buffer, used wherever a task
 //! needs deterministic transient storage without a global heap: SPDM message
 //! buffers, mailbox request/response staging, image-load and boot measurement
 //! scratch, and hash contexts.
@@ -36,9 +38,11 @@ use core::marker::PhantomData;
 use core::mem::{align_of, size_of, MaybeUninit};
 use core::ptr::NonNull;
 
-use mcu_caliptra_api::{ScratchAlloc, ScratchAllocProvider};
 use mcu_error::codes::{BAD_ALIGNMENT as ERR_BAD_ALIGNMENT, OUT_OF_MEMORY as ERR_OUT_OF_MEMORY};
 use mcu_error::McuResult;
+
+mod alloc;
+pub use alloc::{ScratchAlloc, ScratchAllocProvider};
 
 // Layout of the buffer pointed to by `ptr`:
 //

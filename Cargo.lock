@@ -2436,7 +2436,6 @@ name = "caliptra-mcu-scratch-alloc"
 version = "0.1.0"
 dependencies = [
  "caliptra-mcu-runtime-userspace-error",
- "mcu-caliptra-api",
 ]
 
 [[package]]
@@ -5496,6 +5495,7 @@ dependencies = [
  "caliptra-mcu-pldm-common",
  "caliptra-mcu-pldm-lib",
  "caliptra-mcu-runtime-userspace-error",
+ "caliptra-mcu-scratch-alloc",
  "caliptra-mcu-userlog",
  "embassy-executor",
  "embassy-sync",
