@@ -167,7 +167,7 @@ where
     if large.len() > LARGE_PREFIX_LEN {
         let data_len = match cmds
             .get_attestation(
-                scratch.pool(),
+                scratch.allocator(),
                 format,
                 algorithm,
                 entity,
@@ -186,7 +186,7 @@ where
         }
         let data_len = match cmds
             .get_attestation(
-                scratch.pool(),
+                scratch.allocator(),
                 format,
                 algorithm,
                 entity,

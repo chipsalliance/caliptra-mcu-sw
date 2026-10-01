@@ -18,7 +18,7 @@ use errors::{MeasurementApiError, MeasurementApiResult};
 pub use image_metadata::{
     ImageMetadata, ImageMetadataFlags, MeasurementOperation, IMAGE_MEASUREMENT_DIGEST_SIZE,
 };
-use mcu_caliptra_api::{ApiAlloc, DPE_LABEL_LEN};
+use mcu_caliptra_api::{ScratchAlloc, DPE_LABEL_LEN};
 pub use mcu_caliptra_api::{DpeProfile, ImageHashSource, SigningInput};
 use mcu_error::McuResult;
 
@@ -36,7 +36,7 @@ pub const ATTESTATION_P384_SIGNATURE_SIZE: usize = 96;
 /// Implementations must not call back into Measurement API, because
 /// [`measure_and_sign_evidence`] holds the global Measurement API lock while
 /// invoking this hook.
-pub trait EvidenceBuilder<A: ApiAlloc> {
+pub trait EvidenceBuilder<A: ScratchAlloc> {
     /// Return the final token `kid` slot.
     fn kid_buffer_mut(&mut self) -> McuResult<&mut [u8; ATTESTATION_P384_DIGEST_SIZE]>;
 
@@ -104,7 +104,7 @@ pub enum AttestationState {
 /// reset classification. After this succeeds, cert/sign/evidence paths use the
 /// global Measurement API surface below so DPE Handle Storage updates remain
 /// serialized.
-pub async fn init<A: ApiAlloc>(
+pub async fn init<A: ScratchAlloc>(
     manifest_bytes: &'static [u8],
     soc_image_load_fw_ids: &'static [u32],
     boot_kind: BootKind,
@@ -121,7 +121,7 @@ pub async fn init<A: ApiAlloc>(
 }
 
 /// Return the DPE leaf certificate length for the configured attestation target.
-pub async fn leaf_cert_size<A: ApiAlloc>(
+pub async fn leaf_cert_size<A: ScratchAlloc>(
     alloc: &A,
     profile: DpeProfile,
     key_label: &[u8; DPE_LABEL_LEN],
@@ -134,7 +134,7 @@ pub async fn leaf_cert_size<A: ApiAlloc>(
 }
 
 /// Measure or sync the Vendor Authorization Key (`0x0000_0004`) under the `MCU_RT` DPE context.
-pub async fn measure_vendor_auth_key<A: ApiAlloc>(
+pub async fn measure_vendor_auth_key<A: ScratchAlloc>(
     alloc: &A,
     vendor_auth_key_digest: &[u8; IMAGE_MEASUREMENT_DIGEST_SIZE],
     boot: BootKind,
@@ -148,7 +148,7 @@ pub async fn measure_vendor_auth_key<A: ApiAlloc>(
 }
 
 /// Authorize one MCU-managed initial-load component.
-pub async fn authorize_and_stash<A: ApiAlloc>(
+pub async fn authorize_and_stash<A: ScratchAlloc>(
     alloc: &A,
     fw_id: u32,
     metadata: ImageMetadata,
@@ -170,7 +170,7 @@ pub async fn mark_initial_soc_load_complete() -> MeasurementApiResult {
 }
 
 /// Fetch a DPE leaf certificate slice for the configured attestation target.
-pub async fn leaf_cert_slice<A: ApiAlloc>(
+pub async fn leaf_cert_slice<A: ScratchAlloc>(
     alloc: &A,
     profile: DpeProfile,
     key_label: &[u8; DPE_LABEL_LEN],
@@ -186,7 +186,7 @@ pub async fn leaf_cert_slice<A: ApiAlloc>(
 }
 
 /// Compute the COSE `kid` for the configured attestation target.
-pub async fn leaf_kid<A: ApiAlloc>(
+pub async fn leaf_kid<A: ScratchAlloc>(
     alloc: &A,
     key_label: &[u8; DPE_LABEL_LEN],
     kid: &mut [u8; ATTESTATION_P384_DIGEST_SIZE],
@@ -199,7 +199,7 @@ pub async fn leaf_kid<A: ApiAlloc>(
 }
 
 /// Sign a typed input with the configured attestation target.
-pub async fn sign<A: ApiAlloc>(
+pub async fn sign<A: ScratchAlloc>(
     alloc: &A,
     key_label: &[u8; DPE_LABEL_LEN],
     signing_input: SigningInput<'_>,
@@ -230,7 +230,7 @@ pub async fn measure_and_sign_evidence<A, B>(
     evidence_builder: &mut B,
 ) -> McuResult<usize>
 where
-    A: ApiAlloc,
+    A: ScratchAlloc,
     B: EvidenceBuilder<A>,
 {
     let mut guard = MEASUREMENT_API.lock().await;
@@ -272,7 +272,7 @@ where
 }
 
 /// Encode concise measurement evidence for all eligible manifest entries.
-pub async fn encode_measurement_evidence<A: ApiAlloc>(
+pub async fn encode_measurement_evidence<A: ScratchAlloc>(
     alloc: &A,
     buffer: &mut [u8],
 ) -> MeasurementApiResult<usize> {

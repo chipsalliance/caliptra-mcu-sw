@@ -43,7 +43,7 @@ use caliptra_mcu_mbox_common::messages::{
 use caliptra_mcu_otp_fuse::fuse_read_dai_params;
 use caliptra_mcu_scratch_alloc::BitmapAllocator;
 use core::sync::atomic::{AtomicBool, Ordering};
-use mcu_caliptra_api::{raw, ApiAlloc};
+use mcu_caliptra_api::{raw, ScratchAlloc};
 use mcu_error::{McuErrorCode, McuResult};
 use zerocopy::{FromBytes, IntoBytes};
 
@@ -1348,7 +1348,7 @@ fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32) -> usize {
 /// A free function rather than a `CmdInterface` method so it can be tested
 /// without standing up a transport.
 #[cfg(feature = "attested-csr")]
-async fn stage_attested_csr<H: CaliptraCmdHandler, Alloc: mcu_caliptra_api::ApiAlloc>(
+async fn stage_attested_csr<H: CaliptraCmdHandler, Alloc: mcu_caliptra_api::ScratchAlloc>(
     handler: &H,
     alloc: &Alloc,
     req: &ExportAttestedCsrReq,
@@ -1371,7 +1371,7 @@ async fn stage_attested_csr<H: CaliptraCmdHandler, Alloc: mcu_caliptra_api::ApiA
 ///
 /// A free function rather than a `CmdInterface` method so it can be tested
 /// without standing up a transport.
-async fn stage_attestation<H: CaliptraCmdHandler, Alloc: ApiAlloc>(
+async fn stage_attestation<H: CaliptraCmdHandler, Alloc: ScratchAlloc>(
     handler: &H,
     alloc: &Alloc,
     req: &GetAttestationReq,
@@ -1441,7 +1441,7 @@ mod tests {
 
     struct TestAlloc;
 
-    impl ApiAlloc for TestAlloc {
+    impl ScratchAlloc for TestAlloc {
         type Buf<'a>
             = Vec<u8>
         where
@@ -1472,7 +1472,7 @@ mod tests {
             unimplemented!("not exercised by the attestation tests")
         }
 
-        async fn export_attested_csr<Alloc: ApiAlloc>(
+        async fn export_attested_csr<Alloc: ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             _device_key_id: u32,
@@ -1483,7 +1483,7 @@ mod tests {
             unimplemented!("not exercised by the attestation tests")
         }
 
-        async fn request_debug_unlock<Alloc: ApiAlloc>(
+        async fn request_debug_unlock<Alloc: ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             _unlock_level: u8,
@@ -1492,7 +1492,7 @@ mod tests {
             unimplemented!("not exercised by the attestation tests")
         }
 
-        async fn authorize_debug_unlock_token<Alloc: ApiAlloc>(
+        async fn authorize_debug_unlock_token<Alloc: ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             _token_data: &[u8],
@@ -1513,7 +1513,7 @@ mod tests {
             }
         }
 
-        async fn get_attestation<Alloc: ApiAlloc>(
+        async fn get_attestation<Alloc: ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             format: EvidenceFormat,
@@ -1670,7 +1670,7 @@ mod tests {
             unimplemented!()
         }
 
-        async fn export_attested_csr<Alloc: ApiAlloc>(
+        async fn export_attested_csr<Alloc: ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             _device_key_id: u32,
@@ -1687,7 +1687,7 @@ mod tests {
             Ok(self.resp_len)
         }
 
-        async fn request_debug_unlock<Alloc: ApiAlloc>(
+        async fn request_debug_unlock<Alloc: ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             _unlock_level: u8,
@@ -1696,7 +1696,7 @@ mod tests {
             unimplemented!()
         }
 
-        async fn authorize_debug_unlock_token<Alloc: ApiAlloc>(
+        async fn authorize_debug_unlock_token<Alloc: ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             _token_data: &[u8],
@@ -1711,7 +1711,7 @@ mod tests {
             0
         }
 
-        async fn get_attestation<Alloc: ApiAlloc>(
+        async fn get_attestation<Alloc: ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             _format: EvidenceFormat,

@@ -12,7 +12,7 @@
 //! hard dependency of the `mailbox-io` feature, used by
 //! [`crate::firmware_update`] and [`crate::image_loader`] — but `caliptra-api`'s
 //! large fixed-size request/response **values**, which would put multi-kilobyte
-//! `[u8; N]` arrays on the stack of every consumer of [`crate::ApiAlloc`].
+//! `[u8; N]` arrays on the stack of every consumer of [`crate::ScratchAlloc`].
 //! Mirroring the constants and building slim wire prefixes here keeps those
 //! types out of the code paths, while `const _: () = assert!(...)` cross-checks
 //! against `caliptra-api`'s `size_of` / `offset_of` (see [`crate::cert`]) keep

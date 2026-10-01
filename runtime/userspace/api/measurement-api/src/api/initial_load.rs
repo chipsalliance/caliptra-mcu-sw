@@ -11,7 +11,7 @@ use caliptra_mcu_libsyscall_caliptra::soft_pcr_store::{
 use caliptra_mcu_libtock_platform::Syscalls;
 use mcu_caliptra_api::{
     authorize_and_stash as caliptra_authorize, dpe_derive_context, dpe_tag_tci, extend_pcr31,
-    sha_finish, sha_init, sha_update, ApiAlloc, DpeContextHandle, DpeDeriveContextFlags,
+    sha_finish, sha_init, sha_update, ScratchAlloc, DpeContextHandle, DpeDeriveContextFlags,
     DpeDeriveContextParams, HashAlgo, SHA_CONTEXT_SIZE,
 };
 
@@ -21,7 +21,7 @@ use crate::errors::{MeasurementApiError, MeasurementApiResult};
 use crate::ImageMetadata;
 
 #[inline(never)]
-pub(super) async fn create_dpe_context<S: Syscalls, A: ApiAlloc>(
+pub(super) async fn create_dpe_context<S: Syscalls, A: ScratchAlloc>(
     api: &mut MeasurementApi<'_, S>,
     alloc: &A,
     fw_id: u32,
@@ -74,7 +74,7 @@ pub(super) async fn create_dpe_context<S: Syscalls, A: ApiAlloc>(
         .map_err(|_| api.enter_error_state(MeasurementApiError::PcrExtendFailed))
 }
 
-pub(super) async fn authorize_and_stash<S: Syscalls, A: ApiAlloc>(
+pub(super) async fn authorize_and_stash<S: Syscalls, A: ScratchAlloc>(
     api: &mut MeasurementApi<'_, S>,
     alloc: &A,
     fw_id: u32,
@@ -109,7 +109,7 @@ pub(super) async fn authorize_and_stash<S: Syscalls, A: ApiAlloc>(
     }
 }
 
-async fn create_software_pcr_record<S: Syscalls, A: ApiAlloc>(
+async fn create_software_pcr_record<S: Syscalls, A: ScratchAlloc>(
     api: &mut MeasurementApi<'_, S>,
     alloc: &A,
     entry: AttestationManifestEntry,
@@ -150,7 +150,7 @@ fn reject_existing_measurement_record<S: Syscalls>(
     Ok(())
 }
 
-async fn initial_software_pcr_journey_digest<A: ApiAlloc>(
+async fn initial_software_pcr_journey_digest<A: ScratchAlloc>(
     alloc: &A,
     measurement: &[u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE],
     journey_digest: &mut [u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE],
