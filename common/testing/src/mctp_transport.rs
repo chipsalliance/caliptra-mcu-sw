@@ -19,6 +19,11 @@ use std::sync::{Arc, Condvar, Mutex};
 
 pub const MCTP_TAG_MASK: u8 = 0x07;
 
+/// Maximum emulator ticks to wait for the firmware's `FIRMWARE_PLDM_READY`
+/// milestone before sending the first PLDM request anyway. Matches the fixed
+/// boot delay that was previously applied unconditionally.
+const PLDM_READY_TIMEOUT_TICKS: u64 = 50_000_000;
+
 #[derive(Debug, PartialEq, Clone)]
 enum MctpPldmSocketState {
     Idle,
@@ -62,7 +67,13 @@ impl PldmSocket for MctpPldmSocket {
              * so we wait for a response for the first message.
              * Read through the shared rx_stream so any packets fill_buffer drains
              * past the first response stay buffered for the rx_loop to consume.
+             *
+             * Instead of sleeping a fixed number of ticks, wait for the
+             * firmware's FIRMWARE_PLDM_READY milestone. The old fixed delay is
+             * kept as an upper bound for firmware that never publishes it.
              */
+            crate::wait_for_pldm_ready(PLDM_READY_TIMEOUT_TICKS);
+            mctp_util.set_boot_delay_ticks(0);
             let mut rx = self.rx_stream.lock().unwrap();
             mctp_util.new_req(self.msg_tag);
             let response = mctp_util.wait_for_responder(
