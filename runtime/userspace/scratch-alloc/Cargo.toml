@@ -7,6 +7,4 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
-# `ScratchAlloc` / `ScratchAllocProvider` live behind the API crate's `mailbox-io` feature.
-mcu-caliptra-api = { workspace = true, features = ["mailbox-io"] }
 mcu-error = { workspace = true }
