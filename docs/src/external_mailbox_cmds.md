@@ -93,6 +93,21 @@ These commands support common Caliptra management functions, including querying 
 | MC_FUSE_REVOKE_VENDOR_PK_HASH | 0x5256_4b48 ("RVKH") | See [fuses spec](fuses.md) for details                                                |
 | MC_DEVICE_OWNERSHIP_TRANSFER  | 0x0000_0011          | Device Ownership Transfer family; subcommand is carried in mailbox SRAM                |
 | MC_OCP_LOCK                   | 0x0000_0013          | OCP LOCK family; subcommand is carried in mailbox SRAM                                 |
+| VENDOR_UNIQUE_COMMANDS        | "VU00"-"VUFF"        | Reserved for vendor-unique innermost commands; unsupported by the reference MCU.       |
+
+### Vendor-Unique Command IDs
+
+`VU00` through `VUFF` reserve exactly 256 four-byte command IDs for
+vendor-unique use. The first two bytes are the ASCII characters `VU`; each
+suffix byte is one uppercase ASCII hexadecimal digit (`0`-`9` or `A`-`F`).
+Consequently, the numeric values between `0x5655_3030` (`VU00`) and
+`0x5655_4646` (`VUFF`) are not one contiguous allocation.
+
+These are innermost command IDs. MCI places the ID directly in the mailbox
+command register. SPDM carries the same ID as the `sub_cmd_id` inside
+`AuthorizedCommand`; it is not an SPDM VDM top-level command code. The reference
+MCU does not implement vendor-specific behavior and fails direct MCI requests
+as unsupported commands.
 
 ## Command Format
 
