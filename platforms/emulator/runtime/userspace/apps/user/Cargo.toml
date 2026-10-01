@@ -81,6 +81,11 @@ all-features = [
   "userspace-log",
   "mctp-vdm-service",
 ]
+# Enables EXPORT_ATTESTED_CSR in MCU mailbox and SPDM VDM
+attested-csr = [
+  "caliptra-mcu-mbox-lib/attested-csr",
+  "caliptra-mcu-spdm-vdm-handler/attested-csr",
+]
 spdm = [
   "mcu-mbox-service",
   "caliptra-mcu-spdm-stack/generic-large-request",
@@ -188,7 +193,7 @@ test-mctp-vdm-cmds = ["mctp-vdm-service"]
 # Exercise the production CaliptraCmdBackend rather than the VDM test mock.
 test-mctp-vdm-production = ["mctp-vdm-service"]
 test-caliptra-util-host-mctp-vdm-validator = ["mctp-vdm-service", "userspace-log"]
-test-caliptra-util-host-validator = ["mcu-mbox-test-handlers", "dot-mci-mailbox"]
+test-caliptra-util-host-validator = ["mcu-mbox-test-handlers", "dot-mci-mailbox", "attested-csr"]
 test-mcu-mbox-cmds = ["mcu-mbox-test-handlers", "dot-mci-mailbox"]
 test-mcu-mbox-fips-self-test = ["mcu-mbox-test-handlers"]
 test-pldm-discovery = []
@@ -201,6 +206,7 @@ test-pldm-streaming-boot = ["streaming-boot"]
 # the code-size and build-time cost.
 test-caliptra-util-host-spdm-vdm-validator = [
   "dot-spdm-vdm",
+  "attested-csr",
 ]
 test-mctp-spdm-attestation = ["spdm", "flash-boot"]
 test-mctp-spdm-attestation-tcb = ["spdm", "flash-boot"]
@@ -211,10 +217,12 @@ test-mctp-spdm-attestation-hitless-mixed = ["spdm", "flash-boot", "firmware-upda
 test-mctp-spdm-attestation-pcr-quote = ["spdm", "pcr-quote"]
 test-mctp-spdm-responder-conformance = ["spdm"]
 # Test-only SPDM certificate provisioning path. Enables flash-backed certificate
-# installation without production authorization/key-binding and sizes SPDM
-# scratch and VDM response buffers for large ML-DSA-87 CSRs and certificates.
+# installation without production authorization/key-binding. Implies
+# `attested-csr`, which sizes SPDM scratch and VDM response buffers for large
+# ML-DSA-87 CSRs.
 cert-provisioning = [
   "spdm",
+  "attested-csr",
   "caliptra-mcu-spdm-pal/set-certificate",
   "caliptra-mcu-spdm-stack/set-certificate",
   "caliptra-mcu-spdm-vdm-handler/cert-provisioning",

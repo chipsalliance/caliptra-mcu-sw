@@ -10,18 +10,18 @@ use caliptra_mcu_common_commands::{
 use caliptra_mcu_libsyscall_caliptra::mcu_mbox::MbxCmdStatus;
 use caliptra_mcu_libsyscall_caliptra::{otp, DefaultSyscalls};
 use caliptra_mcu_mbox_common::messages::{
-    ClearLogReq, ClearLogResp, CommandId, DeviceCapsReq, DeviceCapsResp, ExportAttestedCsrReq,
-    ExportAttestedCsrResp, FirmwareVersionReq, FirmwareVersionResp, FuseIncreaseMinSvnReq,
-    FuseIncreaseMinSvnResp, FuseLockPartitionReq, FuseLockPartitionResp, FuseReadReq, FuseReadResp,
-    FuseRevokeVendorPkHashReq, FuseRevokeVendorPkHashResp, FuseRevokeVendorPubKeyReq,
-    FuseRevokeVendorPubKeyResp, FuseWriteReq, FuseWriteResp, GetAttestationReq,
-    GetAuthCmdChallengeReq, GetAuthCmdChallengeResp, GetLogReq, LogType, MailboxReqHeader,
-    MailboxRespHeader, MailboxRespHeaderVarSize, McuFeProgReq, McuMailboxReq, McuMailboxResp,
+    ClearLogReq, ClearLogResp, CommandId, DeviceCapsReq, DeviceCapsResp, FirmwareVersionReq,
+    FirmwareVersionResp, FuseIncreaseMinSvnReq, FuseIncreaseMinSvnResp, FuseLockPartitionReq,
+    FuseLockPartitionResp, FuseReadReq, FuseReadResp, FuseRevokeVendorPkHashReq,
+    FuseRevokeVendorPkHashResp, FuseRevokeVendorPubKeyReq, FuseRevokeVendorPubKeyResp,
+    FuseWriteReq, FuseWriteResp, GetAttestationReq, GetAuthCmdChallengeReq,
+    GetAuthCmdChallengeResp, GetLogReq, LogType, MailboxReqHeader, MailboxRespHeader,
+    MailboxRespHeaderVarSize, McuFeProgReq, McuMailboxReq, McuMailboxResp,
     McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq,
     McuResponseVarSize, ProvisionOwnerPkHashReq, ProvisionOwnerPkHashResp,
     ProvisionVendorPkHashReq, ProvisionVendorPkHashResp, SvnTarget, DEVICE_CAPS_SIZE,
-    GET_ATTESTATION_RESP_PREFIX_LEN, MAX_ATTESTED_CSR_RESP_DATA_SIZE, MAX_FUSE_DATA_SIZE,
-    MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
+    GET_ATTESTATION_RESP_PREFIX_LEN, MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN,
+    MAX_RESP_DATA_SIZE,
 };
 #[cfg(feature = "device-ownership-transfer")]
 use caliptra_mcu_mbox_common::messages::{
@@ -30,6 +30,10 @@ use caliptra_mcu_mbox_common::messages::{
     DotRecoveryReq, DotRecoveryResp, DotRotateReq, DotRotateResp, DotStatus, DotStatusReq,
     DotStatusResp, DotUnlockChallengeReq, DotUnlockChallengeResp, DotUnlockReq, DotUnlockResp,
     GetDotBackupBlobReq, GetDotBackupBlobResp,
+};
+#[cfg(feature = "attested-csr")]
+use caliptra_mcu_mbox_common::messages::{
+    ExportAttestedCsrReq, ExportAttestedCsrResp, MAX_ATTESTED_CSR_RESP_DATA_SIZE,
 };
 #[cfg(feature = "periodic-fips-self-test")]
 use caliptra_mcu_mbox_common::messages::{
@@ -244,6 +248,7 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
                 CommandId::MC_DEVICE_OWNERSHIP_TRANSFER => {
                     self.handle_dot_command(req, resp_buf).await
                 }
+                #[cfg(feature = "attested-csr")]
                 CommandId::MC_EXPORT_ATTESTED_CSR => {
                     self.handle_export_attested_csr(req, resp_buf).await
                 }
@@ -703,6 +708,7 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         Ok((&mut resp_buf[..resp_bytes.len()], mbox_cmd_status))
     }
 
+    #[cfg(feature = "attested-csr")]
     async fn handle_export_attested_csr<'r>(
         &self,
         req: &[u8],
@@ -1325,6 +1331,7 @@ fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32) -> usize {
         }
         c if c == CommandId::MC_FUSE_READ => size_of::<FuseReadResp>(),
         c if c == CommandId::MC_FUSE_LOCK_PARTITION => size_of::<FuseLockPartitionResp>(),
+        #[cfg(feature = "attested-csr")]
         c if c == CommandId::MC_EXPORT_ATTESTED_CSR => size_of::<ExportAttestedCsrResp>(),
         c if c == CommandId::MC_GET_ATTESTATION => size_of::<McuMailboxResp>().max(
             size_of::<MailboxRespHeaderVarSize>()
@@ -1342,6 +1349,7 @@ fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32) -> usize {
 ///
 /// A free function rather than a `CmdInterface` method so it can be tested
 /// without standing up a transport.
+#[cfg(feature = "attested-csr")]
 async fn stage_attested_csr<H: CaliptraCmdHandler, Alloc: mcu_caliptra_api::ApiAlloc>(
     handler: &H,
     alloc: &Alloc,
@@ -1634,6 +1642,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "attested-csr")]
     #[test]
     fn response_buffer_size_for_export_attested_csr_matches_export_attested_csr_resp() {
         let sized = response_buffer_size::<TestHandler>(CommandId::MC_EXPORT_ATTESTED_CSR.0);
@@ -1642,10 +1651,21 @@ mod tests {
         assert!(sized > 4096);
     }
 
+    #[cfg(not(feature = "attested-csr"))]
+    #[test]
+    fn export_attested_csr_reserves_no_large_buffer_without_feature() {
+        assert_eq!(
+            response_buffer_size::<TestHandler>(CommandId::MC_EXPORT_ATTESTED_CSR.0),
+            size_of::<McuMailboxResp>()
+        );
+    }
+
+    #[cfg(feature = "attested-csr")]
     struct CsrTestHandler {
         resp_len: usize,
     }
 
+    #[cfg(feature = "attested-csr")]
     impl CaliptraCmdHandler for CsrTestHandler {
         async fn get_firmware_version(
             &self,
@@ -1716,6 +1736,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "attested-csr")]
     #[test]
     fn export_attested_csr_accepts_large_mldsa_discovery_response() {
         const REALISTIC_MLDSA_DISCOVERY_LEN: usize = 4800;
@@ -1734,6 +1755,7 @@ mod tests {
         assert_eq!(&body[..4], &[0xEE; 4]);
     }
 
+    #[cfg(feature = "attested-csr")]
     #[test]
     fn export_attested_csr_accepts_large_mldsa_csr_response() {
         const REALISTIC_MLDSA_CSR_LEN: usize = 12_200;
@@ -1752,6 +1774,7 @@ mod tests {
         assert_eq!(&body[..4], &[0xEE; 4]);
     }
 
+    #[cfg(feature = "attested-csr")]
     #[test]
     fn export_attested_csr_rejects_oversized_response() {
         let handler = CsrTestHandler {

@@ -9,7 +9,10 @@ edition.workspace = true
 [features]
 default = []
 device-ownership-transfer = []
-cert-provisioning = []
+# Enables EXPORT_ATTESTED_CSR and sizes the large-response buffer for a
+# full ML-DSA-87 attested CSR.
+attested-csr = []
+cert-provisioning = ["attested-csr"]
 set-certificate = ["cert-provisioning"]
 
 [dependencies]
