@@ -110,6 +110,7 @@ slow-timeout = { period = "5m", terminate-after = 9 }
 
 [profile.nightly-release]
 inherits = "emulator"
+fail-fast = false
 default-filter = """
 (package(caliptra-mcu-tests-integration) and test(test_flash_soc_boot_successful)) |
 (package(caliptra-mcu-tests-integration) and test(test_defmt_logging_release))
@@ -131,6 +132,7 @@ slow-timeout = { period = "5m", terminate-after = 12 }
 
 [profile.pr-emulator]
 inherits = "emulator"
+fail-fast = false
 # Run only short tests (less than 3 mins)
 default-filter = """
 not (

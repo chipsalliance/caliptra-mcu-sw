@@ -178,14 +178,88 @@ const PQC_SIGNING_PEAK: usize = mcu_caliptra_api::DPE_MLDSA87_SIGN_SCRATCH_PEAK 
 /// staging buffers.
 const CRYPTO_PATH_PEAK: usize = TRANSIENT_MAILBOX_PEAK + 2 * MAX_TRANSPORT_MTU;
 
-/// Minimum scratch pool that can satisfy [`MAX_BUFFERED_SPDM_MSG_SIZE`].
+/// Allowance for the requester's `OpaqueData` in a KEY_EXCHANGE request.
 ///
-/// The two request paths are mutually exclusive: a single request either
-/// builds a large chunked response or runs the certificate/crypto path, never
-/// both. Likewise the stack rents exactly one large buffer, for a `CHUNK_SEND`
-/// reassembly or a `CHUNK_GET` response but not both. So the transient term is
-/// a max, not a sum, laid on top of the session state that persists across
-/// requests.
+/// Carries the secured-message `SupportedVersions` list, which is a short
+/// header plus two bytes per offered version.
+const MAX_KEY_EXCHANGE_OPAQUE_LEN: usize = 64;
+
+/// Logical size of an ML-KEM-1024 KEY_EXCHANGE request.
+///
+/// At 1568 bytes of `ExchangeData` this always exceeds the transport MTU, so the
+/// request arrives via `CHUNK_SEND` and is reassembled into a rented buffer.
+const MAX_KEY_EXCHANGE_REQ_LEN: usize = caliptra_mcu_spdm_codec::SpdmMsgHdrPdu::SIZE
+    + core::mem::size_of::<caliptra_mcu_spdm_codec::KeyExchangeReqBodyFixed>()
+    + caliptra_mcu_spdm_codec::MAX_EXCHANGE_DATA_SIZE
+    + 2 // OpaqueDataLength
+    + MAX_KEY_EXCHANGE_OPAQUE_LEN;
+
+/// Logical size of the largest KEY_EXCHANGE_RSP: ML-KEM-1024 exchange data
+/// signed with ML-DSA-87.
+///
+/// Fixed body (6) + RandomData + ExchangeData + MeasurementSummaryHash +
+/// OpaqueDataLength + OpaqueData + Signature + ResponderVerifyData. At 6345
+/// bytes it always exceeds the MTU and is built in a rented large buffer, then
+/// served through `CHUNK_GET`.
+const MAX_KEY_EXCHANGE_RSP_LEN: usize = caliptra_mcu_spdm_codec::SpdmMsgHdrPdu::SIZE
+    + 6
+    + caliptra_mcu_spdm_codec::KEY_EXCHANGE_RANDOM_DATA_LEN
+    + caliptra_mcu_spdm_codec::MAX_EXCHANGE_DATA_SIZE
+    + caliptra_mcu_spdm_codec::SHA384_HASH_SIZE
+    + 2
+    + caliptra_mcu_spdm_codec::OPAQUE_VERSION_SELECTION_SIZE
+    + caliptra_mcu_spdm_codec::MLDSA87_SIGNATURE_SIZE
+    + caliptra_mcu_spdm_codec::SHA384_HASH_SIZE;
+
+/// Allocations held for the whole of a chunked KEY_EXCHANGE: the reassembled
+/// request, the `CHUNK_SEND_ACK` inline response area, and the receive frame
+/// carrying the final chunk.
+///
+/// The request stays allocated until the handler returns, because the handler
+/// borrows `ExchangeData` and the raw bytes it feeds to the transcript.
+const KEY_EXCHANGE_COMMON: usize = MAX_KEY_EXCHANGE_REQ_LEN
+    + caliptra_mcu_spdm_stack::CHUNK_SEND_ACK_INLINE_RESPONSE_SIZE
+    + MAX_TRANSPORT_MTU;
+
+/// Transient peak while encapsulating: the ML-KEM mailbox round trip plus the
+/// ciphertext output buffer.
+const KEY_EXCHANGE_ENCAPS_PHASE: usize = mcu_caliptra_api::MLKEM_ENCAPSULATE_SCRATCH_PEAK;
+
+/// Transient peak while signing: the response buffer, the ML-KEM ciphertext
+/// (not released until the handler returns, after it has been copied into the
+/// response), the handler workspace, and the ML-DSA-87 signing working set.
+const KEY_EXCHANGE_SIGNING_PHASE: usize = MAX_KEY_EXCHANGE_RSP_LEN
+    + mcu_caliptra_api::MLKEM1024_CIPHERTEXT_SIZE
+    + caliptra_mcu_spdm_stack::KEY_EXCHANGE_WORKSPACE_SIZE
+    + PQC_SIGNING_PEAK;
+
+/// Peak concurrent allocation while handling a chunked ML-KEM KEY_EXCHANGE.
+///
+/// This is the one path where the stack holds *two* large buffers at once: the
+/// reassembled request and the response buffer. Encapsulation and signing are
+/// sequential, so the transient term is the larger of the two phases.
+///
+/// Signing dominates: with ML-DSA-87 this path needs 16907 bytes. A follow-up
+/// refactor could save about 3.8 KB by encapsulating directly into the
+/// response buffer's `ExchangeData` slot, releasing the reassembled request
+/// after its transcript append, and allocating the `CHUNK_SEND_ACK` buffer only
+/// after dispatch.
+const KEY_EXCHANGE_CHUNKED_PEAK: usize = KEY_EXCHANGE_COMMON
+    + if KEY_EXCHANGE_SIGNING_PHASE > KEY_EXCHANGE_ENCAPS_PHASE {
+        KEY_EXCHANGE_SIGNING_PHASE
+    } else {
+        KEY_EXCHANGE_ENCAPS_PHASE
+    };
+
+/// Minimum scratch pool for a responder task, independent of transport.
+///
+/// The request paths are mutually exclusive: a single request either builds a
+/// large chunked response or runs the certificate/crypto path, never both. So
+/// the transient term is a max, not a sum, laid on top of the session state
+/// that persists across requests.
+///
+/// This excludes KEY_EXCHANGE, which only a transport with secured-message
+/// support can reach; see [`required_session_scratch`].
 const fn required_scratch() -> usize {
     let transient_peak = if LARGE_MSG_PATH_PEAK > CRYPTO_PATH_PEAK {
         LARGE_MSG_PATH_PEAK
@@ -193,6 +267,26 @@ const fn required_scratch() -> usize {
         CRYPTO_PATH_PEAK
     };
     SESSION_WORKING_SET + transient_peak
+}
+
+/// Minimum scratch pool for a responder task whose transport carries secured
+/// messages, and can therefore negotiate a key exchange.
+///
+/// Adds [`KEY_EXCHANGE_CHUNKED_PEAK`] to the paths in [`required_scratch`].
+/// Most paths rent exactly one large buffer, for a `CHUNK_SEND` reassembly or a
+/// `CHUNK_GET` response; chunked KEY_EXCHANGE holds both at once.
+///
+/// MCTP does not need this: its transport has no secured messages, so
+/// NEGOTIATE_ALGORITHMS selects neither DHE nor KEM, and the KEY_EXCHANGE
+/// handler rejects the request before allocating anything beyond the
+/// reassembled request.
+const fn required_session_scratch() -> usize {
+    let key_exchange = SESSION_WORKING_SET + KEY_EXCHANGE_CHUNKED_PEAK;
+    if key_exchange > required_scratch() {
+        key_exchange
+    } else {
+        required_scratch()
+    }
 }
 
 /// Bitmap allocator pool size per responder task.
@@ -204,38 +298,39 @@ const MCTP_SPDM_SCRATCH_SIZE: usize = {
     let declared = 24 * 1024;
     assert!(
         declared >= required_scratch(),
-        "MCTP SPDM scratch pool is too small for MAX_BUFFERED_SPDM_MSG_SIZE"
+        "MCTP SPDM scratch pool is too small for required_scratch()"
     );
     declared
 };
 
 #[cfg(not(feature = "cert-provisioning"))]
 const MCTP_SPDM_SCRATCH_SIZE: usize = {
-    let declared = 18 * 1024;
+    let declared = 17 * 1024;
     assert!(
         declared >= required_scratch(),
-        "MCTP SPDM scratch pool is too small for MAX_BUFFERED_SPDM_MSG_SIZE"
+        "MCTP SPDM scratch pool is too small for required_scratch()"
     );
     declared
 };
 
-/// DOE needs room for measurement records and secure-session crypto workspaces.
+/// DOE needs room for measurement records and secure-session crypto workspaces,
+/// including the chunked ML-KEM / ML-DSA-87 KEY_EXCHANGE path.
 #[cfg(feature = "cert-provisioning")]
 const DOE_SPDM_SCRATCH_SIZE: usize = {
     let declared = 24 * 1024;
     assert!(
-        declared >= required_scratch(),
-        "DOE SPDM scratch pool is too small for MAX_BUFFERED_SPDM_MSG_SIZE"
+        declared >= required_session_scratch(),
+        "DOE SPDM scratch pool is too small for required_session_scratch()"
     );
     declared
 };
 
 #[cfg(not(feature = "cert-provisioning"))]
 const DOE_SPDM_SCRATCH_SIZE: usize = {
-    let declared = 18 * 1024;
+    let declared = 24 * 1024;
     assert!(
-        declared >= required_scratch(),
-        "DOE SPDM scratch pool is too small for MAX_BUFFERED_SPDM_MSG_SIZE"
+        declared >= required_session_scratch(),
+        "DOE SPDM scratch pool is too small for required_session_scratch()"
     );
     declared
 };

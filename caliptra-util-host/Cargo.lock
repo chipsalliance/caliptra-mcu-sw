@@ -738,6 +738,7 @@ dependencies = [
  "log",
  "p384",
  "serde",
+ "serde_json",
  "sha2",
  "simple_logger",
  "toml 0.8.23",

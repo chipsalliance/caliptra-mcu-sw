@@ -10,8 +10,8 @@ use super::*;
 use caliptra_mcu_spdm_traits::{McuResult, SpdmPalIo, SpdmPalSessionCrypto};
 use mcu_caliptra_api::{
     cm_hmac, cm_import, ecdh_finish as api_ecdh_finish, ecdh_generate as api_ecdh_generate,
-    hkdf_expand, hkdf_extract, spdm_aes_gcm_decrypt, spdm_aes_gcm_encrypt, CmKeyUsage, Cmk,
-    HkdfSalt,
+    hkdf_expand, hkdf_extract, mlkem_encapsulate, spdm_aes_gcm_decrypt, spdm_aes_gcm_encrypt,
+    CmKeyUsage, Cmk, HkdfSalt,
 };
 
 impl<M: MeasurementProvider> SpdmPalSessionCrypto for McuSpdmPal<M> {
@@ -123,5 +123,14 @@ impl<M: MeasurementProvider> SpdmPalSessionCrypto for McuSpdmPal<M> {
             plaintext,
         )
         .await
+    }
+
+    async fn mlkem_encapsulate(
+        &self,
+        _io: &impl SpdmPalIo,
+        encaps_key: &[u8],
+        ciphertext: &mut [u8],
+    ) -> McuResult<Self::Key> {
+        mlkem_encapsulate(self, CmKeyUsage::Hmac, encaps_key, ciphertext).await
     }
 }

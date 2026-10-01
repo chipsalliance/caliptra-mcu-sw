@@ -65,7 +65,13 @@ fn cargo_test(
     let profile = nextest_profile.unwrap_or("emulator");
     let profile_arg = format!("--profile={}", profile);
     println!("Running: cargo nextest run (profile={})", profile);
-    let mut args = vec!["nextest", "run", "--test-threads=1", &profile_arg];
+    let mut args = vec![
+        "nextest",
+        "run",
+        "--test-threads=1",
+        "--no-fail-fast",
+        &profile_arg,
+    ];
 
     if let Some(archive_path) = archive {
         args.push("--archive-file");

@@ -28,7 +28,7 @@ mod wire;
 
 pub use algorithms::{
     alg_type, AeadAlgos, AlgStructEntry, AlgorithmsRsp, AlgorithmsRspBodyFixed, AsymAlgos,
-    DheAlgos, HashAlgos, KeyScheduleAlgos, MeasHashAlgos, MeasSpec,
+    DheAlgos, HashAlgos, KemAlgos, KeyExSel, KeyScheduleAlgos, MeasHashAlgos, MeasSpec,
     NegotiateAlgorithmsReqBodyFixed, OtherParamSupport, PqcAsymAlgos, MAX_ALG_STRUCT_ENTRIES,
 };
 pub use builder::ResponseBody;
@@ -40,9 +40,9 @@ pub use certificate::{
 };
 pub use challenge::{ChallengeAuthRsp, ChallengeReqBody};
 pub use chunk::{
-    ChunkGetReqBody, ChunkResponseBody, ChunkSendAckBody, ChunkSendReqBody,
-    CHUNK_ACK_ATTR_EARLY_ERROR, CHUNK_ATTR_LAST_CHUNK, CHUNK_RESPONSE_FIXED_BODY_SIZE,
-    LARGE_RESPONSE_SIZE_FIELD_SIZE,
+    ChunkGetReqBody, ChunkGetReqBodyV13, ChunkGetReqBodyV14, ChunkResponseBody,
+    ChunkSendAckBodyV13, ChunkSendAckBodyV14, ChunkSendReqBody, CHUNK_ACK_ATTR_EARLY_ERROR,
+    CHUNK_ATTR_LAST_CHUNK, CHUNK_RESPONSE_FIXED_BODY_SIZE, LARGE_RESPONSE_SIZE_FIELD_SIZE,
 };
 pub use digests::{DigestsRsp, DigestsRspBody};
 pub use end_session::{EndSessionAck, EndSessionReqBody};
@@ -53,7 +53,8 @@ pub use header::{
     SPDM_PREFIX_LEN, SPDM_SIGNING_CONTEXT_LEN,
 };
 pub use key_exchange::{
-    KeyExchangeReqBody, KeyExchangeRsp, ECDH_P384_EXCHANGE_DATA_SIZE, KEY_EXCHANGE_RANDOM_DATA_LEN,
+    KeyExchangeReq, KeyExchangeReqBodyFixed, KeyExchangeRsp, ECDH_P384_EXCHANGE_DATA_SIZE,
+    KEY_EXCHANGE_RANDOM_DATA_LEN, MAX_EXCHANGE_DATA_SIZE, ML_KEM_1024_EXCHANGE_DATA_SIZE,
 };
 pub use measurements::{
     DmtfMeasurementBlockHeader, GetMeasurementsReqBody, MeasurementsRsp, MEAS_BLOCK_METADATA_SIZE,
