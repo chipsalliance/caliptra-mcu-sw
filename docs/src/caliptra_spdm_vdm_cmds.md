@@ -104,6 +104,14 @@ The following subcommands are assigned to the SPDM VDM IANA authorization-gated 
 | `0x5256_4B48` (`RVKH`) | FuseRevokeVendorPkHash     | Supported     | Revoke vendor public key hash.                      |
 | `0x4946_504B` (`IFPK`) | FuseLockPartition          | Supported     | Lock fuse partition.                                |
 | `0x0000_0011`          | DeviceOwnershipTransfer    | Supported     | Carry authorization-gated DOT subcommands.          |
+| `VU00`-`VUFF`           | VendorUnique               | Reserved      | Vendor-unique innermost commands; unsupported by the reference MCU. |
+
+`VU00` through `VUFF` represent exactly 256 IDs of the form `VUxy`, where both
+suffix characters are uppercase ASCII hexadecimal digits. They are encoded in
+the little-endian `sub_cmd_id` field like the other FourCC subcommands. Numeric
+values in the ASCII gaps between `9` and `A` are not reserved. The reference
+implementation returns `UnsupportedOperation` for these recognized but
+unimplemented IDs.
 
 ### Authorization Flow
 

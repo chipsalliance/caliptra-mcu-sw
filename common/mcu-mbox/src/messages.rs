@@ -80,6 +80,28 @@ where
 pub struct CommandId(pub u32);
 
 impl CommandId {
+    /// First command ID in the vendor-unique `VUxy` namespace.
+    pub const VENDOR_UNIQUE_COMMAND_START: Self = Self(0x5655_3030); // "VU00"
+    /// Last command ID in the vendor-unique `VUxy` namespace.
+    pub const VENDOR_UNIQUE_COMMAND_END: Self = Self(0x5655_4646); // "VUFF"
+
+    /// Returns whether this is one of the 256 vendor-unique `VUxy` command IDs.
+    ///
+    /// Both suffix characters must be uppercase ASCII hexadecimal digits. The
+    /// numeric values between `VU00` and `VUFF` are not all vendor-unique IDs
+    /// because the ASCII ranges between `9` and `A` are excluded.
+    pub const fn is_vendor_unique(self) -> bool {
+        const fn is_upper_hex_digit(byte: u8) -> bool {
+            matches!(byte, b'0'..=b'9' | b'A'..=b'F')
+        }
+
+        let bytes = self.0.to_be_bytes();
+        bytes[0] == b'V'
+            && bytes[1] == b'U'
+            && is_upper_hex_digit(bytes[2])
+            && is_upper_hex_digit(bytes[3])
+    }
+
     pub const MC_FIRMWARE_VERSION: Self = Self(0x4D46_5756); // "MFWV"
     pub const MC_DEVICE_CAPABILITIES: Self = Self(0x4D43_4150); // "MCAP"
     pub const MC_GET_LOG: Self = Self(0x4D47_4C47); // "MGLG"
@@ -2712,5 +2734,31 @@ mod tests {
         // Verify checksum can be validated using verify_checksum
         let payload = &bytes[core::mem::size_of::<u32>()..];
         assert!(verify_checksum(hdr.chksum, 0, payload));
+    }
+    #[test]
+    fn vendor_unique_command_ids_require_uppercase_hex_suffixes() {
+        const HEX_DIGITS: &[u8; 16] = b"0123456789ABCDEF";
+
+        let mut count = 0;
+        for high in HEX_DIGITS {
+            for low in HEX_DIGITS {
+                let command = CommandId(u32::from_be_bytes([b'V', b'U', *high, *low]));
+                assert!(command.is_vendor_unique());
+                count += 1;
+            }
+        }
+        assert_eq!(count, 256);
+        assert_eq!(
+            CommandId::VENDOR_UNIQUE_COMMAND_START.0,
+            u32::from_be_bytes(*b"VU00")
+        );
+        assert_eq!(
+            CommandId::VENDOR_UNIQUE_COMMAND_END.0,
+            u32::from_be_bytes(*b"VUFF")
+        );
+
+        for command in [*b"VU0G", *b"VU0a", *b"VU/0", *b"VT00", *b"VV00"] {
+            assert!(!CommandId(u32::from_be_bytes(command)).is_vendor_unique());
+        }
     }
 }
