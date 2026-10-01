@@ -593,8 +593,9 @@ impl SpdmPalSessionCrypto for TestPal {
         &self,
         _io: &impl SpdmPalIo,
         _context: &mut [u8],
-        _exchange_data: &mut [u8],
+        exchange_data: &mut [u8],
     ) -> McuResult<()> {
+        exchange_data.fill(0x4d);
         Ok(())
     }
 
@@ -684,8 +685,9 @@ impl SpdmPalSessionCrypto for TestPal {
         &self,
         _io: &impl SpdmPalIo,
         _encaps_key: &[u8],
-        _ciphertext: &mut [u8],
+        ciphertext: &mut [u8],
     ) -> McuResult<Self::Key> {
+        ciphertext.fill(0x6b);
         Ok(1)
     }
 }

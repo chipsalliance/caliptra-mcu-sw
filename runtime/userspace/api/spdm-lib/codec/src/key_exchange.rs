@@ -24,13 +24,16 @@ pub const MAX_EXCHANGE_DATA_SIZE: usize = ML_KEM_1024_EXCHANGE_DATA_SIZE;
 /// Random data length in KEY_EXCHANGE req/rsp.
 pub const KEY_EXCHANGE_RANDOM_DATA_LEN: usize = 32;
 
+/// Fixed KEY_EXCHANGE_RSP body bytes before `ExchangeData`.
+pub const KEY_EXCHANGE_RSP_FIXED_BODY_SIZE: usize = 6 + KEY_EXCHANGE_RANDOM_DATA_LEN;
+
 // ---- Request ---------------------------------------------------------------
 
 /// KEY_EXCHANGE request fixed prefix (after SPDM header, before variable fields).
 ///
 /// After this struct the request carries:
 /// - `ExchangeData(96 for DHE | 1568 for ML-KEM)`
-/// - `OpaqueDataLength(2) + OpaqueData(variable)`
+/// - `OpaqueDataLength(2) + SupportedVersionList(variable)`
 #[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned, Copy, Clone, Debug)]
 #[repr(C)]
 pub struct KeyExchangeReqBodyFixed {
@@ -118,13 +121,13 @@ impl<'a> KeyExchangeReq<'a> {
 ///   mut_auth_requested(1) | req_slot_id_param(1) | random(32) |
 ///   exchange_data(96|1568) | meas_summary_hash(0|48) |
 ///   opaque_len(2) | opaque_data(var) |
-///   signature(96) | responder_verify_data(0|48) ]
+///   signature(96|4627) | responder_verify_data(0|48) ]
 /// ```
 pub struct KeyExchangeRsp<'a> {
     pub rsp_session_id: u16,
     pub random_data: &'a [u8; KEY_EXCHANGE_RANDOM_DATA_LEN],
-    /// Responder's key exchange data (96 bytes for DHE P-384, 1568 bytes for ML-KEM-1024).
-    pub exchange_data: &'a [u8],
+    /// Length of responder exchange data already populated in the response buffer.
+    pub exchange_data_len: usize,
     pub meas_summary_hash: Option<&'a [u8; SHA384_HASH_SIZE]>,
     pub opaque_data: &'a [u8],
     pub signature: &'a [u8],
@@ -136,12 +139,8 @@ impl ResponseBody for KeyExchangeRsp<'_> {
     const RESPONSE_CODE: ReqRespCode = ReqRespCode::KEY_EXCHANGE_RSP;
 
     fn body_size(&self) -> usize {
-        1 + 1
-            + 2
-            + 1
-            + 1
-            + KEY_EXCHANGE_RANDOM_DATA_LEN
-            + self.exchange_data.len()
+        KEY_EXCHANGE_RSP_FIXED_BODY_SIZE
+            + self.exchange_data_len
             + self.meas_hash_len()
             + 2
             + self.opaque_data.len()
@@ -163,7 +162,7 @@ impl ResponseBody for KeyExchangeRsp<'_> {
         // random_data
         w.write_bytes(self.random_data)?;
         // exchange_data
-        w.write_bytes(self.exchange_data)?;
+        w.reserve(self.exchange_data_len)?;
         // optional meas_summary_hash
         if let Some(mh) = self.meas_summary_hash {
             w.write_bytes(mh)?;
@@ -201,5 +200,36 @@ impl KeyExchangeRsp<'_> {
         } else {
             0
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{SpdmMsgHdrPdu, SpdmVersion};
+
+    #[test]
+    fn in_place_exchange_data_is_preserved() {
+        let random_data = [0u8; KEY_EXCHANGE_RANDOM_DATA_LEN];
+        let response = KeyExchangeRsp {
+            rsp_session_id: 1,
+            random_data: &random_data,
+            exchange_data_len: 4,
+            meas_summary_hash: None,
+            opaque_data: &[],
+            signature: &[],
+            responder_verify_data: None,
+        };
+        let mut encoded = [0xa5; 64];
+
+        response
+            .encode_with_header(SpdmVersion::V14, &mut WireWriter::new(&mut encoded))
+            .unwrap();
+
+        let exchange_data_start = SpdmMsgHdrPdu::SIZE + KEY_EXCHANGE_RSP_FIXED_BODY_SIZE;
+        assert_eq!(
+            &encoded[exchange_data_start..exchange_data_start + 4],
+            &[0xa5; 4]
+        );
     }
 }

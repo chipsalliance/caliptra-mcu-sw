@@ -35,21 +35,23 @@ const KEY_GEN_REQ_SIZE: usize = size_of::<CmMlkemKeyGenReq>();
 
 const KEY_GEN_RSP_SIZE: usize = MBOX_RESP_HEADER_SIZE + MLKEM1024_ENCAPS_KEY_SIZE;
 
-const ENCAPSULATE_REQ_SIZE: usize = size_of::<CmMlkemEncapsulateReq>();
+/// Mailbox request allocation used by ML-KEM-1024 encapsulation.
+pub const MLKEM_ENCAPSULATE_REQ_SIZE: usize = size_of::<CmMlkemEncapsulateReq>();
 
-const ENCAPSULATE_RSP_SIZE: usize = size_of::<CmMlkemEncapsulateResp>();
+/// Mailbox response allocation used by ML-KEM-1024 encapsulation.
+pub const MLKEM_ENCAPSULATE_RSP_SIZE: usize = size_of::<CmMlkemEncapsulateResp>();
 
 const DECAPSULATE_REQ_SIZE: usize = size_of::<CmMlkemDecapsulateReq>();
 
 const DECAPSULATE_RSP_SIZE: usize = size_of::<CmMlkemDecapsulateResp>();
 
-/// Peak scratch allocation during ML-KEM-1024 encapsulation.
+/// Peak allocator usage internal to ML-KEM-1024 encapsulation.
 ///
-/// The mailbox request and response buffers are alive at the same time, and the
-/// caller additionally holds the ciphertext output buffer across the call.
-/// Callers that budget a fixed scratch pool must account for all three.
+/// The mailbox request and response buffers are alive at the same time. The
+/// caller-provided ciphertext destination is owned and accounted for by the
+/// caller.
 pub const MLKEM_ENCAPSULATE_SCRATCH_PEAK: usize =
-    ENCAPSULATE_REQ_SIZE + ENCAPSULATE_RSP_SIZE + MLKEM1024_CIPHERTEXT_SIZE;
+    MLKEM_ENCAPSULATE_REQ_SIZE + MLKEM_ENCAPSULATE_RSP_SIZE;
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -115,7 +117,7 @@ pub async fn mlkem_encapsulate<A: ApiAlloc>(
         return Err(INVARIANT);
     }
 
-    let mut req_buf = alloc.alloc(ENCAPSULATE_REQ_SIZE)?;
+    let mut req_buf = alloc.alloc(MLKEM_ENCAPSULATE_REQ_SIZE)?;
     req_buf.fill(0);
     let req = CmMlkemEncapsulateReq::mut_from_bytes(&mut req_buf).map_err(|_| INVARIANT)?;
     req.key_usage = key_usage as u32;
@@ -125,9 +127,9 @@ pub async fn mlkem_encapsulate<A: ApiAlloc>(
     req.encaps_key.copy_from_slice(encaps_key);
     populate_checksum(CMD_CM_MLKEM_ENCAPSULATE, &mut req_buf)?;
 
-    let mut rsp_buf = alloc.alloc(ENCAPSULATE_RSP_SIZE)?;
+    let mut rsp_buf = alloc.alloc(MLKEM_ENCAPSULATE_RSP_SIZE)?;
     let rsp_len = mbox_execute(CMD_CM_MLKEM_ENCAPSULATE, &req_buf, &mut rsp_buf).await?;
-    if rsp_len < ENCAPSULATE_RSP_SIZE {
+    if rsp_len < MLKEM_ENCAPSULATE_RSP_SIZE {
         return Err(INTERNAL_BUG);
     }
     let rsp = CmMlkemEncapsulateResp::mut_from_bytes(&mut rsp_buf).map_err(|_| INTERNAL_BUG)?;
