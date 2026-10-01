@@ -234,6 +234,38 @@ impl<S: Syscalls> Mailbox<S> {
         }
     }
 
+    /// Executes a mailbox command using a single buffer for both request and response.
+    ///
+    /// Streams `buffer[..req_len]` into the mailbox via the chunked request flow,
+    /// then zeroes and receives the response (up to `resp_len` bytes) into `buffer[..resp_len]`.
+    pub async fn execute_in_place(
+        &self,
+        command: u32,
+        req_len: usize,
+        resp_len: usize,
+        buffer: &mut [u8],
+    ) -> Result<usize, MailboxError> {
+        if buffer.len() < req_len || buffer.len() < resp_len {
+            return Err(MailboxError::ErrorCode(ErrorCode::Invalid));
+        }
+        let mutex = MAILBOX_MUTEX.lock().await;
+        self.start_chunked_request(command, req_len).await?;
+        for chunk in buffer[..req_len].chunks(PAYLOAD_CHUNK_SIZE) {
+            if !chunk.is_empty() {
+                if let Err(err) = self.send_chunk(chunk).await {
+                    let _ = self.abort_chunked_request().await;
+                    return Err(err);
+                }
+            }
+        }
+        buffer[..resp_len].fill(0);
+        let result = self
+            .execute_chunked_request(command, &mut buffer[..resp_len])
+            .await;
+        black_box(*mutex);
+        result
+    }
+
     /// Executes a chunked mailbox command from a caller-owned payload slice.
     ///
     /// This helper holds the global mailbox mutex for the full

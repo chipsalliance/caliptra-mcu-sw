@@ -20,10 +20,10 @@ use zerocopy::{little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout,
 
 use crate::slice::{checked_slice_mut, copy_bytes, internal_slice};
 use crate::wire::{
-    calc_checksum, mbox_execute, populate_checksum, CMD_CERTIFY_KEY_CHUNKS, CMD_DPE_GET_TAGGED_TCI,
-    CMD_DPE_TAG_TCI, CMD_INVOKE_DPE, CMD_INVOKE_DPE_MLDSA87, DPE_CMD_DERIVE_CONTEXT,
-    DPE_CMD_GET_CERTIFICATE_CHAIN, DPE_CMD_ROTATE_CONTEXT_HANDLE, DPE_CMD_SIGN,
-    DPE_CMD_UPDATE_CONTEXT_MEASUREMENT, DPE_COMMAND_MAGIC, DPE_PROFILE_MLDSA87,
+    calc_checksum, mbox_execute, mbox_execute_in_place, populate_checksum, CMD_CERTIFY_KEY_CHUNKS,
+    CMD_DPE_GET_TAGGED_TCI, CMD_DPE_TAG_TCI, CMD_INVOKE_DPE, CMD_INVOKE_DPE_MLDSA87,
+    DPE_CMD_DERIVE_CONTEXT, DPE_CMD_GET_CERTIFICATE_CHAIN, DPE_CMD_ROTATE_CONTEXT_HANDLE,
+    DPE_CMD_SIGN, DPE_CMD_UPDATE_CONTEXT_MEASUREMENT, DPE_COMMAND_MAGIC, DPE_PROFILE_MLDSA87,
     DPE_PROFILE_P384_SHA384, DPE_RESPONSE_MAGIC, MBOX_RESP_HEADER_SIZE,
 };
 use crate::ApiAlloc;
@@ -332,6 +332,8 @@ const SIGN_MLDSA87_DPE_PAYLOAD_LEN: u32 =
     (size_of::<DpeCommandHdr>() + size_of::<SignMldsa87RawCmd>()) as u32;
 const SIGN_MLDSA87_RESP_LEN: usize =
     size_of::<InvokeDpeRespPrefix>() + size_of::<SignMldsa87RespBody>();
+/// Peak scratch allocation during Caliptra 2.0 raw ML-DSA-87 signing.
+pub const DPE_MLDSA87_SIGN_SCRATCH_PEAK: usize = SIGN_MLDSA87_RESP_LEN;
 const DERIVE_CONTEXT_REQ_LEN: usize =
     size_of::<InvokeDpeReqPrefix>() + size_of::<DpeCommandHdr>() + size_of::<DeriveContextCmd>();
 const DERIVE_CONTEXT_DPE_PAYLOAD_LEN: u32 =
@@ -434,6 +436,7 @@ const _: () = assert!(GET_CERT_CHAIN_REQ_MLDSA87_LEN == 44);
 const _: () = assert!(SIGN_REQ_LEN == 8 + 12 + 116);
 const _: () = assert!(SIGN_MLDSA87_REQ_LEN == 24 + 12 + 1096);
 const _: () = assert!(SIGN_MLDSA87_RESP_LEN == 12 + 12 + 16 + 4627 + 1);
+const _: () = assert!(DPE_MLDSA87_SIGN_SCRATCH_PEAK == SIGN_MLDSA87_RESP_LEN);
 const _: () = assert!(SIGN_MLDSA87_RESP_LEN <= caliptra_api::mailbox::MAILBOX_SIZE);
 const _: () = assert!(DERIVE_CONTEXT_REQ_LEN == 8 + 12 + 80);
 const _: () = assert!(UPDATE_CONTEXT_MEASUREMENT_REQ_LEN == 8 + 12 + 76);
@@ -1193,32 +1196,56 @@ pub async fn dpe_sign_mldsa87<A: ApiAlloc>(
         return Err(INVARIANT);
     }
 
-    let request = build_sign_mldsa87_req(alloc, dpe_handle_or_default(handle), label, message)?;
+    let handle = dpe_handle_or_default(handle);
     let mut response = alloc.alloc(SIGN_MLDSA87_RESP_LEN)?;
-    let response_len = mbox_execute(CMD_INVOKE_DPE_MLDSA87, &request, &mut response).await?;
+    write_sign_mldsa87_req(
+        &mut response[..SIGN_MLDSA87_REQ_LEN],
+        handle,
+        label,
+        message,
+    )?;
+    let response_len = mbox_execute_in_place(
+        CMD_INVOKE_DPE_MLDSA87,
+        SIGN_MLDSA87_REQ_LEN,
+        SIGN_MLDSA87_RESP_LEN,
+        &mut response,
+    )
+    .await?;
     parse_sign_mldsa87_response(&response, response_len, signature)
 }
 
+#[cfg(test)]
 fn build_sign_mldsa87_req<'a, A: ApiAlloc>(
     alloc: &'a A,
     handle: &DpeContextHandle,
     label: &[u8; DPE_LABEL_LEN],
     message: &[u8],
 ) -> McuResult<A::Buf<'a>> {
+    let mut request = alloc.alloc(SIGN_MLDSA87_REQ_LEN)?;
+    write_sign_mldsa87_req(&mut request, handle, label, message)?;
+    Ok(request)
+}
+
+fn write_sign_mldsa87_req(
+    request: &mut [u8],
+    handle: &DpeContextHandle,
+    label: &[u8; DPE_LABEL_LEN],
+    message: &[u8],
+) -> McuResult<()> {
     if message.len() > DPE_MLDSA87_RAW_MAX_SIZE {
         return Err(INVARIANT);
     }
 
-    let mut request = alloc.alloc(SIGN_MLDSA87_REQ_LEN)?;
+    let request = checked_slice_mut(request, 0, SIGN_MLDSA87_REQ_LEN)?;
     request.fill(0);
     let command_offset = build_invoke_dpe_header_profile(
-        &mut request,
+        request,
         SIGN_MLDSA87_DPE_PAYLOAD_LEN,
         DPE_CMD_SIGN,
         DpeProfile::Mldsa87,
     )?;
     let command = SignMldsa87RawCmd::mut_from_bytes(checked_slice_mut(
-        &mut request,
+        request,
         command_offset,
         size_of::<SignMldsa87RawCmd>(),
     )?)
@@ -1232,9 +1259,9 @@ fn build_sign_mldsa87_req<'a, A: ApiAlloc>(
         message,
     )?;
 
-    let checksum = calc_checksum(CMD_INVOKE_DPE_MLDSA87, &request);
+    let checksum = calc_checksum(CMD_INVOKE_DPE_MLDSA87, request);
     *request.first_chunk_mut::<4>().ok_or(INVARIANT)? = checksum.to_le_bytes();
-    Ok(request)
+    Ok(())
 }
 
 fn parse_sign_mldsa87_response(

@@ -22,13 +22,24 @@ use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 #[allow(unused)]
 use embassy_sync::signal::Signal;
 
-// Authorized commands carry the vendor public keys on the wire (ECC X/Y + ML-DSA
-// pub, ~2.7 KiB) on top of the hybrid signature, so a decoded request is ~7.5 KiB.
-// The dispatcher holds that request buffer and the response buffer for the whole
-// handler, and the SVN/revoke handlers then allocate again for a nested Caliptra
-// FW_INFO call. 16 KiB fits that concurrent peak with headroom.
+/// `MC_EXPORT_ATTESTED_CSR` stages up to 12.8 KiB of CSR in one response, so
+/// the pool must hold the bitmap slot, the shrunk request, and that response.
 #[cfg(feature = "mcu-mbox-service")]
-const MCU_MBOX_SCRATCH_SIZE: usize = 16 * 1024;
+const MCU_MBOX_SCRATCH_SIZE: usize = {
+    use caliptra_mcu_mbox_common::messages::{ExportAttestedCsrReq, ExportAttestedCsrResp};
+    const fn slot_bytes(len: usize) -> usize {
+        len.div_ceil(BITMAP_SLOT_SIZE) * BITMAP_SLOT_SIZE
+    }
+    let declared = 13 * 1024;
+    let required = BITMAP_SLOT_SIZE
+        + slot_bytes(core::mem::size_of::<ExportAttestedCsrReq>())
+        + slot_bytes(core::mem::size_of::<ExportAttestedCsrResp>());
+    assert!(
+        declared >= required,
+        "MCU_MBOX_SCRATCH_SIZE cannot hold an MC_EXPORT_ATTESTED_CSR request and response"
+    );
+    declared
+};
 
 #[cfg(feature = "mcu-mbox-service")]
 struct McuMboxScratchAlloc(&'static BitmapAllocator);
