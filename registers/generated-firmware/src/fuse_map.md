@@ -274,6 +274,7 @@
 | mcu_component_svn_manifest_min_svn | 10 | VENDOR_TEST_PARTITION | VENDOR_TEST | OneHotLinearOr(3x) | MCU Component SVN Manifest min SVN (bit-count counter, used by MCU ROM for manifest-format anti-rollback). |
 | soc_image_min_svn_0 | 10 | VENDOR_TEST_PARTITION | VENDOR_TEST | OneHotLinearOr(3x) | SoC component min SVN for fuse slot 0 (bit-count counter, optional per-component rollback floor mapped via SVN_FUSE_MAP). |
 | soc_image_min_svn_1 | 10 | VENDOR_TEST_PARTITION | VENDOR_TEST | OneHotLinearOr(3x) | SoC component min SVN for fuse slot 1 (bit-count counter, optional per-component rollback floor mapped via SVN_FUSE_MAP). |
+| owner_soc_manifest_min_svn | 64 | VENDOR_TEST_PARTITION | VENDOR_TEST | OneHot | Owner SoC Manifest minimum SVN (0-64 bit-count counter, forwarded by MCU ROM to SS_STRAP_GENERIC[3][15:8]). |
 | vendor_pk_hash_valid | 16 | VENDOR_HASHES_PROD_PARTITION | CPTRA_CORE_VENDOR_PK_HASH_VALID | LinearOr(3x) | Bitmask indicating vendor PK hash validity. Unburnt bits (0) are valid; burnt bits (1) are revoked/invalid. |
 | vendor_ecc_revocation_0 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_ECC_REVOCATION_0 | LinearOr(3x) | Revocation bits for ECC keys in slot 0. |
 | vendor_mldsa_revocation_0 | 4 | VENDOR_REVOCATIONS_PROD_PARTITION | CPTRA_CORE_MLDSA_REVOCATION_0 | LinearOr(3x) | Revocation bits for MLDSA keys in slot 0. |
