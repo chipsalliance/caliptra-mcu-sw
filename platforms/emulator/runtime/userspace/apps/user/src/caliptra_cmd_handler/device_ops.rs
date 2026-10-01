@@ -34,12 +34,13 @@ use caliptra_mcu_spdm_pal::cert::DPE_LEAF_LABEL;
 use core::cell::RefCell;
 use embassy_sync::blocking_mutex::{raw::CriticalSectionRawMutex, Mutex as BlockingMutex};
 use mcu_caliptra_api::{
-    cm_hmac_sha512, derive_stable_key, fe_prog, fw_info, get_attested_csr_ecc384,
-    get_attested_csr_mldsa87, get_idev_csr_ecc384, hash_all, request_debug_unlock_challenge,
-    rng_generate, sha_finish, sha_init, sha_update, ApiAlloc, HashAlgo, McuErrorCode,
-    StableKeyType, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD,
+    cm_hmac_sha512, derive_stable_key, fe_prog, fw_info, get_idev_csr_ecc384, hash_all,
+    request_debug_unlock_challenge, rng_generate, sha_finish, sha_init, sha_update, ApiAlloc,
+    HashAlgo, McuErrorCode, StableKeyType, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD,
     PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_RSP_LEN, SHA_CONTEXT_SIZE,
 };
+#[cfg(feature = "attested-csr")]
+use mcu_caliptra_api::{get_attested_csr_ecc384, get_attested_csr_mldsa87};
 use portable_atomic::{AtomicBool, Ordering};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
@@ -457,6 +458,7 @@ pub async fn authorize_debug_unlock_token<A: ApiAlloc>(
     Ok(())
 }
 
+#[cfg(feature = "attested-csr")]
 pub async fn export_attested_csr(
     device_key_id: u32,
     algorithm: u32,

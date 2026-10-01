@@ -76,8 +76,10 @@ fn external_command_capabilities() -> ExternalCommandCapabilities {
     if cfg!(feature = "spdm") {
         capabilities |= ExternalCommandCapabilities::REQUEST_DEBUG_UNLOCK
             | ExternalCommandCapabilities::AUTHORIZE_DEBUG_UNLOCK_TOKEN
-            | ExternalCommandCapabilities::EXPORT_ATTESTED_CSR
             | ExternalCommandCapabilities::AUTHORIZED_COMMAND;
+    }
+    if cfg!(feature = "spdm") && cfg!(feature = "attested-csr") {
+        capabilities |= ExternalCommandCapabilities::EXPORT_ATTESTED_CSR;
     }
     // GET_ATTESTATION is transport-agnostic: it is reachable over the SPDM VDM
     // transport and the MCU mailbox, so advertise it whenever either responder
@@ -274,6 +276,7 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         Ok(())
     }
 
+    #[cfg(feature = "attested-csr")]
     async fn export_attested_csr<Alloc: ApiAlloc>(
         &self,
         _alloc: &Alloc,
@@ -584,7 +587,6 @@ mod tests {
             | ExternalCommandCapabilities::CLEAR_DEBUG_LOG;
         let spdm_commands = ExternalCommandCapabilities::REQUEST_DEBUG_UNLOCK
             | ExternalCommandCapabilities::AUTHORIZE_DEBUG_UNLOCK_TOKEN
-            | ExternalCommandCapabilities::EXPORT_ATTESTED_CSR
             | ExternalCommandCapabilities::AUTHORIZED_COMMAND;
 
         assert_eq!(
@@ -600,6 +602,10 @@ mod tests {
             cfg!(feature = "spdm")
         );
         assert_eq!(commands.contains(spdm_commands), cfg!(feature = "spdm"));
+        assert_eq!(
+            commands.contains(ExternalCommandCapabilities::EXPORT_ATTESTED_CSR),
+            cfg!(feature = "spdm") && cfg!(feature = "attested-csr")
+        );
         assert_eq!(
             commands.contains(ExternalCommandCapabilities::DEVICE_OWNERSHIP_TRANSFER),
             cfg!(feature = "dot-spdm-vdm")
