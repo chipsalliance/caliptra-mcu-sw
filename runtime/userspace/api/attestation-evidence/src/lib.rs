@@ -11,7 +11,7 @@ pub mod pcr_quote;
 use caliptra_mcu_measurement_api::{
     EvidenceBuilder, ATTESTATION_P384_DIGEST_SIZE, ATTESTATION_P384_SIGNATURE_SIZE,
 };
-use mcu_caliptra_api::{ApiAlloc, DPE_LABEL_LEN};
+use mcu_caliptra_api::{ScratchAlloc, DPE_LABEL_LEN};
 use mcu_error::McuResult;
 use ocp_eat::{cose_sign1_len, ClaimsPayloadLayout, SignedEat};
 
@@ -39,7 +39,7 @@ impl<'a> SignedOcpEatBuilder<'a> {
     }
 }
 
-impl<A: ApiAlloc> EvidenceBuilder<A> for SignedOcpEatBuilder<'_> {
+impl<A: ScratchAlloc> EvidenceBuilder<A> for SignedOcpEatBuilder<'_> {
     fn kid_buffer_mut(&mut self) -> McuResult<&mut [u8; ATTESTATION_P384_DIGEST_SIZE]> {
         self.signed_eat.prepare_in_place(self.eat_buffer)
     }
@@ -90,7 +90,7 @@ impl<A: ApiAlloc> EvidenceBuilder<A> for SignedOcpEatBuilder<'_> {
 ///
 /// The encoded evidence, payload, key identifier, and signature are written
 /// directly into `out`; transient mailbox/SHA buffers come from `alloc`.
-pub async fn encode_signed_ocp_eat<A: ApiAlloc>(
+pub async fn encode_signed_ocp_eat<A: ScratchAlloc>(
     alloc: &A,
     key_label: &[u8; DPE_LABEL_LEN],
     pki_entity_slot: u8,

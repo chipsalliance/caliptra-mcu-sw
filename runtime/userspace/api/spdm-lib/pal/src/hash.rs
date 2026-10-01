@@ -11,14 +11,14 @@ use super::measurements::MeasurementProvider;
 use super::*;
 use caliptra_mcu_spdm_traits::{SpdmPalHash, SpdmPalHashAlgo, SpdmPalIo};
 use mcu_caliptra_api::{
-    sha_finish, sha_init, sha_update, ApiAllocPool, HashAlgo, HashState, SHA_CONTEXT_SIZE,
+    sha_finish, sha_init, sha_update, HashAlgo, HashState, ScratchAllocProvider, SHA_CONTEXT_SIZE,
 };
 
-impl<M: MeasurementProvider> ApiAllocPool for McuSpdmPal<M> {
-    type Pool = BitmapAllocator;
+impl<M: MeasurementProvider> ScratchAllocProvider for McuSpdmPal<M> {
+    type Alloc = BitmapAllocator;
 
     #[inline]
-    fn pool(&self) -> &Self::Pool {
+    fn allocator(&self) -> &Self::Alloc {
         self.allocator
     }
 }
