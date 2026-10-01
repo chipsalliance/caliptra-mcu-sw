@@ -115,6 +115,8 @@ impl ModelFpgaRealtime {
             SpdmResponderTransport::Doe,
             milestones.contains(McuBootMilestones::FIRMWARE_SPDM_DOE_READY),
         );
+        self.state
+            .set_pldm_ready(milestones.contains(McuBootMilestones::FIRMWARE_PLDM_READY));
     }
 
     pub fn set_subsystem_reset(&mut self, reset: bool) {
