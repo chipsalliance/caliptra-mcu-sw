@@ -214,13 +214,12 @@ const KEY_EXCHANGE_MEASUREMENT_PHASE: usize = scratch_alloc_size(MAX_KEY_EXCHANG
 /// Transient peak while deriving the ECDH secret for a chunked KEY_EXCHANGE.
 ///
 /// The response owns the public key destination. The already-computed summary
-/// hash remains live, and the mailbox request and response are additional
-/// allocations during ECDH.
+/// hash remains live. The encrypted ECDH context reuses unwritten response
+/// storage.
 const KEY_EXCHANGE_DHE_PHASE: usize = scratch_alloc_size(MAX_KEY_EXCHANGE_REQ_LEN)
     + scratch_alloc_size(MAX_KEY_EXCHANGE_RSP_LEN)
     + scratch_alloc_size(MAX_TRANSPORT_MTU)
-    + scratch_alloc_size(caliptra_mcu_spdm_codec::SHA384_HASH_SIZE)
-    + scratch_alloc_size(mcu_caliptra_api::CMB_ECDH_ENCRYPTED_CONTEXT_SIZE);
+    + scratch_alloc_size(caliptra_mcu_spdm_codec::SHA384_HASH_SIZE);
 
 /// Transient peak while signing.
 ///

@@ -144,7 +144,9 @@ pub struct KeyExchangeRsp<'a> {
 }
 
 impl ResponseBody for KeyExchangeRsp<'_> {
-    const RESPONSE_CODE: ReqRespCode = ReqRespCode::KEY_EXCHANGE_RSP;
+    fn response_code(&self) -> ReqRespCode {
+        ReqRespCode::KEY_EXCHANGE_RSP
+    }
 
     fn body_size(&self) -> usize {
         KEY_EXCHANGE_RSP_FIXED_BODY_SIZE

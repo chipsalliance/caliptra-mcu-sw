@@ -235,13 +235,28 @@ async fn handle_key_exchange_request<'a, Pal: SpdmPal, const N: usize>(
         let exchange_data_end = exchange_data_start
             .checked_add(exchange_data_size)
             .ok_or(SPDM_UNSPECIFIED)?;
-        let response_exchange_data = response_guard
-            .as_mut()?
+        let workspace_end = exchange_data_end
+            .checked_add(ECDH_P384_ENCRYPTED_CONTEXT_SIZE)
+            .ok_or(SPDM_UNSPECIFIED)?;
+        let response = response_guard.as_mut()?;
+        if response.len() < workspace_end {
+            return Err(SPDM_UNSPECIFIED);
+        }
+        let (response_prefix, response_tail) = response.split_at_mut(exchange_data_end);
+        let response_exchange_data = response_prefix
             .get_mut(exchange_data_start..exchange_data_end)
             .ok_or(SPDM_UNSPECIFIED)?;
-        let shared_secret =
-            generate_key_exchange_secret(pal, io, ke_req.exchange_data, response_exchange_data)
-                .await?;
+        let key_exchange_workspace = response_tail
+            .get_mut(..ECDH_P384_ENCRYPTED_CONTEXT_SIZE)
+            .ok_or(SPDM_UNSPECIFIED)?;
+        let shared_secret = generate_key_exchange_secret(
+            pal,
+            io,
+            ke_req.exchange_data,
+            response_exchange_data,
+            key_exchange_workspace,
+        )
+        .await?;
 
         (
             slot_id,
@@ -297,11 +312,28 @@ async fn handle_key_exchange_request<'a, Pal: SpdmPal, const N: usize>(
     result
 }
 
+/// Generate key exchange data and compute shared secret.
+///
+/// # Arguments
+/// * `pal` - Platform abstraction layer for cryptographic operations
+/// * `io` - I/O context for memory allocation
+/// * `peer_exchange_data` - The peer's public key exchange data from the request
+/// * `response_exchange_data` - The final response's exchange-data slot
+/// * `key_exchange_workspace` - Unwritten response space used for the ECDH context
+///
+/// # Returns
+/// The computed shared secret. The responder's exchange data is written
+/// directly into `response_exchange_data`.
+///
+/// # Errors
+/// Returns `SPDM_INVALID_REQUEST` if the peer exchange data has the wrong size.
+/// Returns `SPDM_UNSPECIFIED` if cryptographic operations fail.
 async fn generate_key_exchange_secret<Pal: SpdmPal>(
     pal: &Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     peer_exchange_data: &[u8],
     response_exchange_data: &mut [u8],
+    key_exchange_workspace: &mut [u8],
 ) -> SpdmResult<<Pal as SpdmPalSessionCrypto>::Key> {
     if peer_exchange_data.len() != ECDH_P384_EXCHANGE_DATA_SIZE {
         return Err(SPDM_INVALID_REQUEST);
@@ -310,11 +342,13 @@ async fn generate_key_exchange_secret<Pal: SpdmPal>(
         return Err(SPDM_UNSPECIFIED);
     }
 
-    let mut ecdh_context = pal.alloc_bytes(io, ECDH_P384_ENCRYPTED_CONTEXT_SIZE)?;
-    pal.ecdh_generate(io, &mut ecdh_context, response_exchange_data)
+    let ecdh_context = key_exchange_workspace
+        .get_mut(..ECDH_P384_ENCRYPTED_CONTEXT_SIZE)
+        .ok_or(SPDM_UNSPECIFIED)?;
+    pal.ecdh_generate(io, ecdh_context, response_exchange_data)
         .await
         .map_err(|_| SPDM_UNSPECIFIED)?;
-    pal.ecdh_finish(io, &ecdh_context, peer_exchange_data)
+    pal.ecdh_finish(io, ecdh_context, peer_exchange_data)
         .await
         .map_err(|_| SPDM_UNSPECIFIED)
 }
@@ -479,7 +513,7 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
             SessionKeyType::ResponseFinishedKey,
             th1_prime,
             vd_slot,
-        )
+        )?
         .await?;
     if vd_len != SHA384_HASH_SIZE {
         return Err(SPDM_UNSPECIFIED);

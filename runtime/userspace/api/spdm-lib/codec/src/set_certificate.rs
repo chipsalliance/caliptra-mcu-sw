@@ -59,7 +59,9 @@ pub struct SetCertificateRsp {
 }
 
 impl ResponseBody for SetCertificateRsp {
-    const RESPONSE_CODE: ReqRespCode = ReqRespCode::SET_CERTIFICATE_RSP;
+    fn response_code(&self) -> ReqRespCode {
+        ReqRespCode::SET_CERTIFICATE_RSP
+    }
 
     fn body_size(&self) -> usize {
         SetCertificateRspBody::SIZE
