@@ -81,7 +81,25 @@ pub fn build(
     common: &Common,
     build: &BuildArgs,
 ) -> Result<BuildOutput> {
-    BuildPass::new(manifest, build_definition, common, build)?.run()
+    BuildPass::new(manifest, common, build)?.run(build_definition)
+}
+
+/// Execute the `rustc` compiler against the ROM with the given linker script.  If successful the
+/// elf file and binary will exist in the `<workspace>/target/<tuple>/release` directory on the hard
+/// drive.
+///
+/// This could fail if the ROM is unable to compile for any reason, including exceeding the memory
+/// restrictions placed on the binary by the generated ld file.  It could also fail if a hard drive
+/// operation errors.
+pub fn build_rom(
+    manifest: &Manifest,
+    rom: &LinkerScript,
+    common: &Common,
+    build: &BuildArgs,
+) -> Result<()> {
+    BuildPass::new(manifest, common, build)?
+        .build_binary(rom, &build.rom_features, ROM_OBJCOPY_FLAGS)
+        .map(|_| ())
 }
 
 /// Execute the `rustc` compiler against the specified target package within the manifest.  If
@@ -129,7 +147,7 @@ pub fn build_single_target(
         .find(|(b, _, _)| b.name == target)
         .ok_or_else(|| anyhow!("Binary target {target} not found in manifest file."))?;
 
-    let pass = BuildPass::new(manifest, build_definition, common, build)?;
+    let pass = BuildPass::new(manifest, common, build)?;
     pass.build_binary(&target_to_build, features, objcopy_flags)
         .map(|_| ())
 }
@@ -137,7 +155,6 @@ pub fn build_single_target(
 /// A helper struct containing the context required to do a build run.
 struct BuildPass<'a> {
     manifest: &'a Manifest,
-    build_definition: &'a BuildDefinition,
     build_args: &'a BuildArgs,
     binary_dir: PathBuf,
     target_dir: PathBuf,
@@ -147,12 +164,7 @@ struct BuildPass<'a> {
 
 impl<'a> BuildPass<'a> {
     /// Create a new `BuildPass`.
-    fn new(
-        manifest: &'a Manifest,
-        build_definition: &'a BuildDefinition,
-        common: &Common,
-        build_args: &'a BuildArgs,
-    ) -> Result<Self> {
+    fn new(manifest: &'a Manifest, common: &Common, build_args: &'a BuildArgs) -> Result<Self> {
         // Determine the release directory which elf files will be placed by `rustc` and where we
         // wish to place binaries.
         let binary_dir = common.release_dir()?;
@@ -166,7 +178,6 @@ impl<'a> BuildPass<'a> {
 
         Ok(Self {
             manifest,
-            build_definition,
             build_args,
             binary_dir,
             target_dir,
@@ -177,21 +188,21 @@ impl<'a> BuildPass<'a> {
 
     /// Execute a BuildPass run.  This will include both building the elf with the specified linker
     /// file via `rustc` and then using `objcopy` to produce a binary file from that elf.
-    fn run(&self) -> Result<BuildOutput> {
-        let rom = if let Some(r) = &self.build_definition.rom {
-            Some(self.build_binary(r, &self.build_args.rom_features, ROM_OBJCOPY_FLAGS)?)
-        } else {
-            None
+    fn run(&self, build_definition: &BuildDefinition) -> Result<BuildOutput> {
+        let rom = match &build_definition.rom {
+            Some(r) if !self.build_args.skip_rom => {
+                Some(self.build_binary(r, &self.build_args.rom_features, ROM_OBJCOPY_FLAGS)?)
+            }
+            _ => None,
         };
 
-        let runtime_objcopy_flags = if self.build_definition.runtime.is_bare_metal() {
+        let runtime_objcopy_flags = if build_definition.runtime.is_bare_metal() {
             RUNTIME_OBJCOPY_FLAGS
         } else {
             KERNEL_OBJCOPY_FLAGS
         };
 
-        let runtime: RuntimeVariant<Result<(BuiltBinary, Memory)>> = self
-            .build_definition
+        let runtime: RuntimeVariant<Result<(BuiltBinary, Memory)>> = build_definition
             .runtime
             .clone()
             .map(|(linker, instructions)| {
@@ -211,8 +222,7 @@ impl<'a> BuildPass<'a> {
             RuntimeVariant::BareMetal(r) => RuntimeVariant::BareMetal(r?),
         };
 
-        let apps = self
-            .build_definition
+        let apps = build_definition
             .apps
             .iter()
             .map(|a| {

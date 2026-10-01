@@ -138,6 +138,10 @@ pub struct BuildArgs {
     /// If set, pass `--no-default-features` to cargo when building runtime binaries.
     #[arg(long)]
     pub no_default_features: bool,
+
+    /// If set, don't build the ROM, even if the manifest specifies one.
+    #[arg(long)]
+    pub skip_rom: bool,
 }
 
 /// Arguments required for commands which execute the bundle step of the bundle process.
