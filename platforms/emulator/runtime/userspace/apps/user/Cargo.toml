@@ -79,7 +79,6 @@ all-features = [
   "streaming-boot",
   "flash-boot",
   "firmware-update",
-  "doe",
   "userspace-log",
   "mctp-vdm-service",
 ]
