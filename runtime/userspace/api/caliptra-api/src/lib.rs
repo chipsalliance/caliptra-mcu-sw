@@ -144,7 +144,8 @@ pub use import::{cm_delete, cm_import};
 #[cfg(feature = "mailbox-io")]
 pub use ml_kem::{
     mlkem_decapsulate, mlkem_encapsulate, mlkem_key_gen, MLKEM1024_CIPHERTEXT_SIZE,
-    MLKEM1024_ENCAPS_KEY_SIZE, MLKEM_ENCAPSULATE_SCRATCH_PEAK,
+    MLKEM1024_ENCAPS_KEY_SIZE, MLKEM_ENCAPSULATE_REQ_SIZE, MLKEM_ENCAPSULATE_RSP_SIZE,
+    MLKEM_ENCAPSULATE_SCRATCH_PEAK,
 };
 #[cfg(feature = "mailbox-io")]
 pub use mldsa::{

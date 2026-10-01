@@ -10,7 +10,7 @@
 
 use caliptra_mcu_spdm_codec::{
     decode_vendor_defined_req, CapFlags, ReqRespCode, ResponseBody, SpdmMsgHdrPdu, SpdmVersion,
-    VendorDefinedParam1, VendorDefinedRspBody, WireWriter,
+    VendorDefinedParam1, VendorDefinedRspBody, VendorDefinedRspPdu, WireWriter,
 };
 use caliptra_mcu_spdm_traits::{
     PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalIoTransport, SpdmVdmBackend, VdmRegistry, VdmResponse,
@@ -260,7 +260,16 @@ pub(crate) fn write_vendor_defined_envelope(
     is_large: bool,
     out: &mut [u8],
 ) -> SpdmResult<()> {
-    let envelope_len = SpdmMsgHdrPdu::SIZE + (if is_large { 11 } else { 7 }) + vendor_id.len();
+    const RSP_ENVELOPE_OVERHEAD: usize = VendorDefinedRspPdu::SIZE + core::mem::size_of::<u16>();
+    const LARGE_RSP_ENVELOPE_OVERHEAD: usize =
+        VendorDefinedRspPdu::SIZE + core::mem::size_of::<u16>() + core::mem::size_of::<u32>();
+
+    let envelope_overhead = if is_large {
+        LARGE_RSP_ENVELOPE_OVERHEAD
+    } else {
+        RSP_ENVELOPE_OVERHEAD
+    };
+    let envelope_len = SpdmMsgHdrPdu::SIZE + envelope_overhead + vendor_id.len();
     if out.len() != envelope_len {
         return Err(SPDM_UNSPECIFIED);
     }
