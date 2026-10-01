@@ -149,6 +149,10 @@ where
         sub_cmd_bytes[3],
     ]);
     let payload = &req[4..];
+    if CommandId::from(sub_cmd).is_vendor_unique() {
+        return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::UnsupportedOperation);
+    }
+
     match sub_cmd {
         GET_AUTH_CHALLENGE_CMD_ID => handle_get_auth_challenge(cmds, payload, scratch, out).await,
         PROVISION_VENDOR_PK_HASH_CMD_ID => {
