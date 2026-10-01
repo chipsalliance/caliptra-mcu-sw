@@ -59,3 +59,9 @@ mod version;
 pub use error::*;
 pub use stack::*;
 pub use transcript::*;
+
+/// Scratch workspace the KEY_EXCHANGE handler holds while building its response.
+///
+/// It stays allocated through signing, alongside the response buffer, so
+/// integrators sizing a scratch pool must count it in the signing-phase peak.
+pub const KEY_EXCHANGE_WORKSPACE_SIZE: usize = key_exchange::KEY_EXCHANGE_WORKSPACE_SIZE;
