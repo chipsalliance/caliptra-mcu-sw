@@ -143,6 +143,7 @@ bitflags! {
         const FIRMWARE_MAILBOX_READY        = 0b1 << 9;
         const FIRMWARE_SPDM_MCTP_READY      = 0b1 << 10;
         const FIRMWARE_SPDM_DOE_READY       = 0b1 << 11;
+        const FIRMWARE_PLDM_READY           = 0b1 << 12;
     }
 }
 

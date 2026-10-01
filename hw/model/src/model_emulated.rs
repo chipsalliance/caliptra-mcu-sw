@@ -586,6 +586,8 @@ impl McuHwModel for ModelEmulated {
                 SpdmResponderTransport::Doe,
                 milestones.contains(McuBootMilestones::FIRMWARE_SPDM_DOE_READY),
             );
+            self.state
+                .set_pldm_ready(milestones.contains(McuBootMilestones::FIRMWARE_PLDM_READY));
         }
     }
 
