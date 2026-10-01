@@ -21,6 +21,96 @@ fn linear_or_svn_from_otp(otp: &[u8], entry: &FuseEntryInfo) -> u32 {
     128 - u128::from_le_bytes(bytes).leading_zeros()
 }
 
+// The direct Core requester override used for PL0 installation is emulator-only.
+#[cfg(not(feature = "fpga_realtime"))]
+mod owner {
+    use super::*;
+    use crate::test::TEST_LOCK;
+    use anyhow::{anyhow, bail};
+    use caliptra_api::mailbox::{CommandId, MailboxReqHeader};
+    use caliptra_mcu_registers_generated::fuses::OWNER_SOC_MANIFEST_MIN_SVN;
+    use std::sync::atomic::Ordering;
+
+    fn core_request(hw: &mut impl McuHwModel, cmd: CommandId, request: &[u8]) -> Result<Vec<u8>> {
+        let cmd = u32::from(cmd);
+        for _ in 0..10 {
+            match hw.caliptra_mailbox_execute(cmd, request) {
+                Ok(Some(response)) => return Ok(response),
+                Ok(None) => bail!("Core command {cmd:#010x} did not return a response"),
+                Err(caliptra_hw_model::ModelError::UnableToLockMailbox) => {
+                    for _ in 0..1_000_000 {
+                        hw.step();
+                    }
+                }
+                Err(error) => return Err(error.into()),
+            }
+        }
+        bail!("Core mailbox remained busy for {cmd:#010x}")
+    }
+
+    fn read_fw_info(hw: &mut impl McuHwModel) -> Result<FwInfoResp> {
+        let request = MailboxReqHeader {
+            chksum: calc_checksum(CommandId::FW_INFO.into(), &[]),
+        };
+        let response = core_request(hw, CommandId::FW_INFO, request.as_bytes())?;
+        FwInfoResp::read_from_bytes(&response).map_err(|_| anyhow!("Invalid FW_INFO response"))
+    }
+
+    #[test]
+    fn test_owner_soc_manifest_svn_is_forwarded_on_cold_boot() -> Result<()> {
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, Ordering::Relaxed);
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            lifecycle_controller_state: Some(LifecycleControllerState::Prod),
+            ..Default::default()
+        });
+        hw.step_until(|hw| {
+            hw.mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        let original_strap = hw
+            .caliptra_soc_manager()
+            .soc_ifc()
+            .ss_strap_generic()
+            .at(3)
+            .read();
+        let mut otp = hw.read_otp_memory();
+        drop(hw);
+
+        let start = OWNER_SOC_MANIFEST_MIN_SVN.byte_offset;
+        let end = start + OWNER_SOC_MANIFEST_MIN_SVN.byte_size;
+        let encoded = (1u64 << 63) | 0b11_1111;
+        assert_eq!(encoded.count_ones(), 7);
+        otp[start..end].copy_from_slice(&encoded.to_le_bytes());
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            lifecycle_controller_state: Some(LifecycleControllerState::Prod),
+            otp_memory: Some(otp),
+            ..Default::default()
+        });
+        hw.step_until(|hw| {
+            hw.mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+        assert_eq!(read_fw_info(&mut hw)?.owner_auth_manifest_min_svn, 7);
+        let strap = hw
+            .caliptra_soc_manager()
+            .soc_ifc()
+            .ss_strap_generic()
+            .at(3)
+            .read();
+        assert_eq!((strap >> 8) & 0xff, 7);
+        assert_eq!(strap & !(0xff << 8), original_strap & !(0xff << 8));
+
+        lock.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+    }
+}
+
 #[test]
 fn test_increase_caliptra_svn() -> Result<()> {
     // Step 1: Compile runtime with specific features and build initial Caliptra
