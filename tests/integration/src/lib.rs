@@ -131,6 +131,8 @@ mod test {
         #[allow(dead_code)]
         pub active_i3c1: bool,
         pub lifecycle_controller_state: Option<caliptra_mcu_romtime::LifecycleControllerState>,
+        /// Override the emulator host's requester ID for direct Core commands.
+        pub caliptra_soc_axi_user: Option<u32>,
         pub vendor_pqc_type: Option<caliptra_image_types::FwVerificationPqcKeyType>,
         /// Assert the debug intent strap.
         pub debug_intent: bool,
@@ -178,6 +180,7 @@ mod test {
                 fw_manifest_dot_hitless: false,
                 active_i3c1: false,
                 lifecycle_controller_state: None,
+                caliptra_soc_axi_user: None,
                 vendor_pqc_type: Some(caliptra_image_types::FwVerificationPqcKeyType::LMS),
                 debug_intent: false,
                 prod_dbg_unlock_keypairs: Vec::new(),
@@ -925,6 +928,7 @@ mod test {
             enable_mcu_uart_log: true,
             dot_flash_initial_contents: params.dot_flash_initial_contents,
             lifecycle_controller_state: params.lifecycle_controller_state,
+            caliptra_soc_axi_user: params.caliptra_soc_axi_user,
             check_booted_to_runtime: !params.rom_only,
             otp_memory: otp_memory.as_deref(),
             primary_flash_initial_contents,
