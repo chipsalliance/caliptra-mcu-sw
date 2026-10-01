@@ -417,4 +417,6 @@ pub mod reg {
     pub const FUSE_LOCK_PARTITION: u32 = 32;
     pub const SOC_MANIFEST_SVN: u32 = 34;
     pub const SOC_MANIFEST_MAX_SVN: u32 = 35;
+    /// Owner SoC Manifest SVN words; index must be 0 or 1.
+    pub const OWNER_SOC_MANIFEST_MIN_SVN: u32 = 36;
 }

@@ -269,17 +269,19 @@ the firmware-boot reset path, or in the hitless-update reset path, after
 Caliptra Core has loaded the runtime image into MCU SRAM.
 
 There is also an authorized runtime mailbox command,
-`MC_FUSE_INCREASE_MIN_SVN`, that advances either the Caliptra Runtime floor or
-`CPTRA_CORE_SOC_MANIFEST_SVN`. The reference runtime exposes this command
-through both the in-band MCI mailbox and OOB SPDM VDM paths and requires the
-runtime authorization flow. The Owner SoC Manifest target is reserved but not
-implemented. Caliptra Runtime requests that are zero, above 128, lower than the
+`MC_FUSE_INCREASE_MIN_SVN`, that advances the Caliptra Runtime, Base SoC Manifest,
+or Owner SoC Manifest floor. The reference runtime exposes this command through
+both the in-band MCI mailbox and OOB SPDM VDM paths and requires the runtime
+authorization flow. Caliptra Runtime requests that are zero, above 128, lower than the
 current fuse floor, or higher than the currently running Caliptra firmware SVN
 reported by `FW_INFO` are rejected. Because `FW_INFO` does not expose the running
 SoC Manifest SVN, the SoC Manifest target can enforce range, monotonicity, and
 the `CPTRA_CORE_SOC_MANIFEST_MAX_SVN` ceiling, but cannot reject a requested
 floor above the currently running image. Platforms should prefer the
 authenticated SVN-header workflow when that assurance is required.
+
+For Owner SoC Manifest storage, customization, and activation, see
+[Owner SoC Manifest SVN](svn.md#owner-soc-manifest-svn).
 
 ## Management Command Transport Expectations
 

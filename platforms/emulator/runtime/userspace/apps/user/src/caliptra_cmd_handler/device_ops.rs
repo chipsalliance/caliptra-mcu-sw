@@ -174,7 +174,204 @@ mod tests {
     extern crate std;
 
     use super::*;
+    use caliptra_api::mailbox::FwInfoResp;
+    use caliptra_mcu_libsyscall_caliptra::mailbox::MAILBOX_DRIVER_NUM;
+    use caliptra_mcu_libtock_platform::{CommandReturn, Syscalls};
+    use caliptra_mcu_libtock_unittest::{command_return, fake, DriverInfo};
+    use caliptra_mcu_scratch_alloc::BitmapAllocator;
+    use core::cell::Cell;
+    use core::ptr::NonNull;
+    use std::rc::Rc;
     use std::vec::Vec;
+    use zerocopy::FromZeros;
+
+    #[derive(Default)]
+    struct OwnerSvnOtp {
+        words: Cell<[u32; 2]>,
+        index: Cell<usize>,
+        reads: Cell<usize>,
+        writes: RefCell<Vec<(usize, u32)>>,
+        fail_read: Cell<Option<usize>>,
+        fail_write: Cell<Option<usize>>,
+        readback_xor: Cell<u32>,
+    }
+
+    impl fake::SyscallDriver for OwnerSvnOtp {
+        fn info(&self) -> DriverInfo {
+            DriverInfo::new(otp::OTP_DRIVER_NUM)
+        }
+
+        fn command(&self, command: u32, arg0: u32, arg1: u32) -> CommandReturn {
+            match command {
+                otp::cmd::OTP_SET_REGISTER => {
+                    assert_eq!(arg0, otp::reg::OWNER_SOC_MANIFEST_MIN_SVN);
+                    assert!(arg1 < 2, "Access outside the Owner SoC Manifest counter");
+                    self.index.set(arg1 as usize);
+                    command_return::success()
+                }
+                otp::cmd::OTP_READ => {
+                    assert_eq!(arg0, otp::reg::OWNER_SOC_MANIFEST_MIN_SVN);
+                    assert_eq!(arg1 as usize, self.index.get());
+                    let read = self.reads.get();
+                    self.reads.set(read + 1);
+                    if self.fail_read.get() == Some(read) {
+                        return command_return::failure(ErrorCode::Fail);
+                    }
+                    let mut value = self.words.get()[self.index.get()];
+                    if read >= 2 && self.index.get() == 0 {
+                        value ^= self.readback_xor.get();
+                    }
+                    command_return::success_u32(value)
+                }
+                otp::cmd::OTP_WRITE => {
+                    let index = self.index.get();
+                    self.writes.borrow_mut().push((index, arg0));
+                    if self.fail_write.get() == Some(index) {
+                        return command_return::failure(ErrorCode::Fail);
+                    }
+                    let mut words = self.words.get();
+                    assert_eq!(arg0 & words[index], words[index]);
+                    words[index] = arg0;
+                    self.words.set(words);
+                    command_return::success()
+                }
+                _ => panic!("Unexpected OTP command {command}"),
+            }
+        }
+    }
+
+    #[test]
+    fn owner_svn_runtime_word_updates() {
+        let kernel = crate::kernel();
+        let mailbox = Rc::new(fake::FakeMailboxDriver::new());
+        let otp = Rc::new(OwnerSvnOtp::default());
+        kernel.add_driver(&mailbox);
+        kernel.add_driver(&otp);
+
+        #[repr(align(64))]
+        struct Scratch([u8; 1024]);
+        let mut scratch = Scratch([0; 1024]);
+        // SAFETY: The aligned storage is exclusive to the pool and outlives every request.
+        let pool = unsafe {
+            BitmapAllocator::new(
+                NonNull::new(scratch.0.as_mut_ptr()).unwrap(),
+                scratch.0.len(),
+            )
+        };
+        let advance = |svn, accepted_svn| {
+            let mut response = FwInfoResp {
+                owner_auth_manifest_current_svn: accepted_svn,
+                ..FwInfoResp::new_zeroed()
+            };
+            response.hdr.chksum = caliptra_api::calc_checksum(0, &response.as_bytes()[4..]);
+            mailbox.add_ready_response(
+                caliptra_api::mailbox::CommandId::FW_INFO.into(),
+                response.as_bytes(),
+            );
+            otp.reads.set(0);
+            let result = fake::wait_for_future_ready(Box::pin(increase_min_svn(
+                &pool,
+                SvnTarget::OwnerSocManifest,
+                svn,
+            )));
+            // The fake mailbox retains its allowed buffers after completion.
+            DefaultSyscalls::unallow_ro(MAILBOX_DRIVER_NUM, 0);
+            DefaultSyscalls::unallow_rw(MAILBOX_DRIVER_NUM, 0);
+            result
+        };
+
+        for svn in [0, 65, u32::MAX] {
+            assert_eq!(
+                fake::wait_for_future_ready(Box::pin(increase_min_svn(
+                    &pool,
+                    SvnTarget::OwnerSocManifest,
+                    svn,
+                ))),
+                Err(CaliptraCompletionCode::InvalidParameter)
+            );
+        }
+        assert_eq!(mailbox.get_last_command(), None);
+        assert_eq!(advance(1, 0), Err(CaliptraCompletionCode::InvalidParameter));
+        assert_eq!(advance(8, 7), Err(CaliptraCompletionCode::InvalidParameter));
+        assert_eq!(otp.reads.get(), 0);
+        assert!(otp.writes.borrow().is_empty());
+
+        for svn in 1..=64 {
+            assert_eq!(advance(svn, 64), Ok(()), "SVN {svn}");
+            let words = otp.words.get();
+            assert_eq!(words[0].count_ones() + words[1].count_ones(), svn);
+            let writes = otp.writes.borrow().len();
+            assert_eq!(advance(svn, 64), Ok(()));
+            if svn > 1 {
+                assert_eq!(
+                    advance(svn - 1, 64),
+                    Err(CaliptraCompletionCode::InvalidParameter)
+                );
+            }
+            assert_eq!(otp.writes.borrow().len(), writes);
+            assert_eq!(otp.words.get(), words);
+        }
+        assert_eq!(otp.words.get(), [u32::MAX; 2]);
+
+        let partial = [0b1010, 1 << 31];
+        otp.words.set(partial);
+        assert_eq!(advance(7, 64), Ok(()));
+        let words = otp.words.get();
+        assert_eq!(words[0].count_ones() + words[1].count_ones(), 7);
+        assert_eq!(words[0] & partial[0], partial[0]);
+        assert_eq!(words[1] & partial[1], partial[1]);
+
+        otp.words.set([0; 2]);
+        otp.writes.borrow_mut().clear();
+        otp.fail_write.set(Some(1));
+        assert_eq!(
+            advance(64, 64),
+            Err(CaliptraCompletionCode::OperationFailed)
+        );
+        assert_eq!(otp.words.get(), [u32::MAX, 0]);
+        assert_eq!(*otp.writes.borrow(), [(0, u32::MAX), (1, u32::MAX)]);
+        otp.fail_write.set(None);
+        otp.writes.borrow_mut().clear();
+        assert_eq!(advance(64, 64), Ok(()));
+        assert_eq!(otp.words.get(), [u32::MAX; 2]);
+        assert_eq!(*otp.writes.borrow(), [(1, u32::MAX)]);
+
+        otp.words.set([0; 2]);
+        otp.fail_write.set(Some(0));
+        assert_eq!(
+            advance(33, 64),
+            Err(CaliptraCompletionCode::OperationFailed)
+        );
+        assert_eq!(otp.words.get(), [0; 2]);
+        otp.fail_write.set(None);
+
+        for read in 0..4 {
+            otp.words.set([0; 2]);
+            otp.writes.borrow_mut().clear();
+            otp.fail_read.set(Some(read));
+            assert_eq!(
+                advance(33, 64),
+                Err(CaliptraCompletionCode::OperationFailed),
+                "read {read}"
+            );
+            if read < 2 {
+                assert!(otp.writes.borrow().is_empty());
+                assert_eq!(otp.words.get(), [0; 2]);
+            } else {
+                assert_eq!(otp.words.get(), [u32::MAX, 1]);
+            }
+        }
+        otp.fail_read.set(None);
+
+        // The readback has the right bit count but not the intended bit pattern.
+        otp.words.set([0; 2]);
+        otp.readback_xor.set(0b11);
+        assert_eq!(advance(1, 64), Err(CaliptraCompletionCode::OperationFailed));
+        assert_eq!(otp.words.get(), [1, 0]);
+        otp.readback_xor.set(0);
+        assert_eq!(advance(1, 64), Ok(()));
+        assert_eq!(pool.live_slots(), 0);
+    }
 
     #[test]
     fn segmented_payload_preserves_wire_order_and_checksum() {
@@ -785,7 +982,13 @@ pub async fn increase_min_svn<A: ApiAlloc>(
     target: SvnTarget,
     svn: u32,
 ) -> CaliptraCmdResult<()> {
-    if svn == 0 || svn > 128 {
+    let is_owner_soc_manifest = target == SvnTarget::OwnerSocManifest;
+    let max_svn = if is_owner_soc_manifest {
+        u64::BITS
+    } else {
+        u128::BITS
+    };
+    if svn == 0 || svn > max_svn {
         return Err(CaliptraCompletionCode::InvalidParameter);
     }
 
@@ -808,19 +1011,32 @@ pub async fn increase_min_svn<A: ApiAlloc>(
             }
             otp::reg::SOC_MANIFEST_SVN
         }
-        SvnTarget::OwnerSocManifest => return Err(CaliptraCompletionCode::UnsupportedOperation),
+        SvnTarget::OwnerSocManifest => {
+            let caliptra_fw_info = fw_info(alloc)
+                .await
+                .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+            if svn > caliptra_fw_info.owner_auth_manifest_current_svn {
+                return Err(CaliptraCompletionCode::InvalidParameter);
+            }
+            otp::reg::OWNER_SOC_MANIFEST_MIN_SVN
+        }
     };
 
     let otp = Otp::<DefaultSyscalls>::new();
+    let svn_num_words = (max_svn / u32::BITS) as usize;
     let mut current_fuses = [0u32; 4];
-    for (i, fuse) in current_fuses.iter_mut().enumerate() {
+    for (i, fuse) in current_fuses.iter_mut().take(svn_num_words).enumerate() {
         *fuse = otp
             .read(otp_reg, i as u32)
             .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
     }
 
     let fuse = u128::from_le_bytes(current_fuses.as_bytes().try_into().unwrap());
-    let fused_min_svn = 128 - fuse.leading_zeros();
+    let fused_min_svn = if is_owner_soc_manifest {
+        fuse.count_ones()
+    } else {
+        128 - fuse.leading_zeros()
+    };
     if svn < fused_min_svn {
         return Err(CaliptraCompletionCode::InvalidParameter);
     }
@@ -828,7 +1044,13 @@ pub async fn increase_min_svn<A: ApiAlloc>(
         return Ok(());
     }
 
-    let new_fuse_svn = if svn == 128 {
+    let new_fuse_svn = if is_owner_soc_manifest {
+        let mut updated = fuse;
+        for _ in fused_min_svn..svn {
+            updated |= 1u128 << updated.trailing_ones();
+        }
+        updated
+    } else if svn == 128 {
         u128::MAX
     } else {
         !(u128::MAX << svn)
@@ -836,13 +1058,27 @@ pub async fn increase_min_svn<A: ApiAlloc>(
     for (i, (current, new_bytes)) in current_fuses
         .iter()
         .zip(new_fuse_svn.as_bytes().chunks_exact(4))
+        .take(svn_num_words)
         .enumerate()
     {
         let new_svn_word = u32::from_le_bytes(new_bytes.try_into().unwrap());
         if *current != new_svn_word {
-            otp.write(otp_reg, i as u32, new_svn_word)
-                .map_err(|_| CaliptraCompletionCode::InvalidParameter)?;
+            otp.write(otp_reg, i as u32, new_svn_word).map_err(|_| {
+                if is_owner_soc_manifest {
+                    CaliptraCompletionCode::OperationFailed
+                } else {
+                    CaliptraCompletionCode::InvalidParameter
+                }
+            })?;
         }
+    }
+    for (i, fuse) in current_fuses.iter_mut().take(svn_num_words).enumerate() {
+        *fuse = otp
+            .read(otp_reg, i as u32)
+            .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+    }
+    if current_fuses.as_bytes() != new_fuse_svn.to_le_bytes().as_slice() {
+        return Err(CaliptraCompletionCode::OperationFailed);
     }
     Ok(())
 }
