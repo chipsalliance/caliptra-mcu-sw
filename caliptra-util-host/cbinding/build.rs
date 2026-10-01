@@ -3,6 +3,8 @@
 use std::env;
 use std::path::PathBuf;
 
+use caliptra_mcu_core_util_host_command_types::DEVICE_CAPABILITIES_SIZE;
+
 fn main() {
     let crate_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
 
@@ -28,7 +30,9 @@ fn main() {
         std::fs::read_to_string(&temp_path).expect("Unable to read generated header");
 
     // Prepend license header to the generated content
-    let license_header = "// Licensed under the Apache-2.0 license\n\n/* Auto-generated from Rust caliptra-util-host library */\n\n";
+    let license_header = format!(
+        "// Licensed under the Apache-2.0 license\n\n/* Auto-generated from Rust caliptra-util-host library */\n\n#define DEVICE_CAPABILITIES_SIZE {DEVICE_CAPABILITIES_SIZE}\n\n"
+    );
     let final_content = format!("{}{}", license_header, header_content);
 
     println!("Adding license header to generated file");
@@ -49,7 +53,7 @@ fn main() {
 
     println!("cargo:rerun-if-changed=src/");
     println!("cargo:rerun-if-changed=cbindgen.toml");
-    println!("cargo:rerun-if-changed=../caliptra-command-types/src/");
+    println!("cargo:rerun-if-changed=../command-types/src/");
     println!("cargo:rerun-if-changed=tests/caliptra_test_utils.c");
     println!("cargo:rerun-if-changed=tests/caliptra_test_utils.h");
 }

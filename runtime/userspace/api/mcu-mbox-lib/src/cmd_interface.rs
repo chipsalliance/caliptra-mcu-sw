@@ -13,7 +13,7 @@ use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libsyscall_caliptra::{caliptra, otp};
 use caliptra_mcu_mbox_common::messages::{
     ClearLogReq, ClearLogResp, CommandId, DeviceCapsReq, DeviceCapsResp, DpeSignerContextCertReq,
-    DpeSignerContextCertResp, EndorsementAlgorithm, ExportAttestedCsrReq, FirmwareVersionReq,
+    EndorsementAlgorithm, ExportAttestedCsrReq, ExportAttestedCsrResp, FirmwareVersionReq,
     FirmwareVersionResp, FuseIncreaseMinSvnReq, FuseIncreaseMinSvnResp, FuseLockPartitionReq,
     FuseLockPartitionResp, FuseReadReq, FuseReadResp, FuseRevokeVendorPkHashReq,
     FuseRevokeVendorPkHashResp, FuseRevokeVendorPubKeyReq, FuseRevokeVendorPubKeyResp,
@@ -23,8 +23,8 @@ use caliptra_mcu_mbox_common::messages::{
     McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq,
     McuResponseVarSize, ProvisionOwnerPkHashReq, ProvisionOwnerPkHashResp,
     ProvisionVendorPkHashReq, ProvisionVendorPkHashResp, SvnTarget, DEVICE_CAPS_SIZE,
-    GET_ATTESTATION_RESP_PREFIX_LEN, MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN,
-    MAX_RESP_DATA_SIZE,
+    GET_ATTESTATION_RESP_PREFIX_LEN, MAX_ATTESTED_CSR_RESP_DATA_SIZE, MAX_FUSE_DATA_SIZE,
+    MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
 };
 
 use caliptra_mcu_libtock_console::Console;
@@ -38,9 +38,9 @@ use caliptra_mcu_mbox_common::messages::{
 };
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_mbox_common::messages::{
-    GetOcpLockEndorsementCertReq, GetOcpLockEndorsementCertResp, GetOcpLockEpochKeyReportReq,
-    GetOcpLockEpochKeyReportResp, OcpLockEnumerateHpkeHandlesReq, OcpLockEnumerateHpkeHandlesResp,
-    OcpLockRotateHekReq, OcpLockRotateHekResp, OcpLockSetPermaHekReq, OcpLockSetPermaHekResp,
+    GetOcpLockEndorsementCertReq, GetOcpLockEpochKeyReportReq, OcpLockEnumerateHpkeHandlesReq,
+    OcpLockEnumerateHpkeHandlesResp, OcpLockRotateHekReq, OcpLockRotateHekResp,
+    OcpLockSetPermaHekReq, OcpLockSetPermaHekResp,
 };
 #[cfg(feature = "periodic-fips-self-test")]
 use caliptra_mcu_mbox_common::messages::{
@@ -165,9 +165,21 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
                 return Err(errors::TRANSPORT_ERROR);
             }
         };
-        Alloc::shrink(&mut req_buf, req_len)?;
+        if let Err(err) = Alloc::shrink(&mut req_buf, req_len) {
+            let _ = self.transport.finalize_response(MbxCmdStatus::Failure);
+            return Err(err);
+        }
 
-        let mut resp_buf = self.scratch.alloc(response_buffer_size::<H>(cmd_id))?;
+        let mut resp_buf = match self
+            .scratch
+            .alloc(response_buffer_size::<H>(cmd_id, &req_buf[..req_len]))
+        {
+            Ok(buf) => buf,
+            Err(err) => {
+                let _ = self.transport.finalize_response(MbxCmdStatus::Failure);
+                return Err(err);
+            }
+        };
         let status = match self
             .process_request(&mut req_buf, req_len, cmd_id, &mut resp_buf)
             .await
@@ -730,24 +742,11 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         let (hdr_bytes, data) = resp_buf
             .split_at_mut_checked(size_of::<MailboxRespHeaderVarSize>())
             .ok_or(errors::INVALID_PARAMS)?;
-        let data = data
-            .get_mut(..MAX_RESP_DATA_SIZE)
-            .ok_or(errors::INVALID_PARAMS)?;
-        let ret = self
-            .non_crypto_cmds_handler
-            .export_attested_csr(
-                self.scratch,
-                req.device_key_id,
-                req.algorithm,
-                &req.nonce,
-                data,
-            )
-            .await;
-
-        let (mbox_cmd_status, data_len) = match ret {
-            Ok(len) if len <= MAX_RESP_DATA_SIZE => (MbxCmdStatus::Complete, len),
-            _ => (MbxCmdStatus::Failure, 0),
-        };
+        let (mbox_cmd_status, data_len) =
+            match stage_attested_csr(self.non_crypto_cmds_handler, self.scratch, req, data).await {
+                Ok(len) => (MbxCmdStatus::Complete, len),
+                Err(_) => (MbxCmdStatus::Failure, 0),
+            };
 
         let resp_len = if mbox_cmd_status == MbxCmdStatus::Complete {
             let hdr = MailboxRespHeaderVarSize {
@@ -773,29 +772,33 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
     ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
         let req = GetOcpLockEndorsementCertReq::ref_from_bytes(req)
             .map_err(|_| errors::INVALID_PARAMS)?;
-        let (resp, _) = GetOcpLockEndorsementCertResp::mut_from_prefix(resp_buf)
-            .map_err(|_| errors::INVALID_PARAMS)?;
-        *resp = GetOcpLockEndorsementCertResp::default();
+        if resp_buf.len() < size_of::<MailboxRespHeaderVarSize>() {
+            return Err(errors::INVALID_PARAMS);
+        }
+        let (hdr_bytes, data_buf) = resp_buf.split_at_mut(size_of::<MailboxRespHeaderVarSize>());
+        data_buf.fill(0);
 
         let ret = self
             .non_crypto_cmds_handler
-            .get_ocp_lock_endorsement_cert(&req.hpke_handle, req.algorithm, &mut resp.data)
+            .get_ocp_lock_endorsement_cert(self.scratch, &req.hpke_handle, req.algorithm, data_buf)
             .await;
         let (mbox_cmd_status, data_len) = match ret {
-            Ok(len) => (MbxCmdStatus::Complete, len.min(resp.data.len())),
+            Ok(len) => (MbxCmdStatus::Complete, len.min(data_buf.len())),
             Err(_) => (MbxCmdStatus::Failure, 0),
         };
 
-        if mbox_cmd_status == MbxCmdStatus::Complete {
-            resp.hdr = MailboxRespHeaderVarSize {
+        let hdr = if mbox_cmd_status == MbxCmdStatus::Complete {
+            MailboxRespHeaderVarSize {
                 data_len: data_len as u32,
                 ..Default::default()
-            };
+            }
         } else {
-            *resp = GetOcpLockEndorsementCertResp::default();
-        }
+            data_buf.fill(0);
+            MailboxRespHeaderVarSize::default()
+        };
+        hdr_bytes.copy_from_slice(hdr.as_bytes());
 
-        let partial_len = resp.partial_len().map_err(|_| errors::MCU_MBOX_COMMON)?;
+        let partial_len = size_of::<MailboxRespHeaderVarSize>() + data_len;
         Ok((&mut resp_buf[..partial_len], mbox_cmd_status))
     }
 
@@ -1042,30 +1045,40 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         let sek_state = caliptra_mcu_mbox_common::messages::SekState::try_from(req.sek_state)
             .map_err(|_| errors::INVALID_PARAMS)?;
 
-        let (resp, _) = GetOcpLockEpochKeyReportResp::mut_from_prefix(resp_buf)
-            .map_err(|_| errors::INVALID_PARAMS)?;
-        *resp = GetOcpLockEpochKeyReportResp::default();
+        if resp_buf.len() < size_of::<MailboxRespHeaderVarSize>() {
+            return Err(errors::INVALID_PARAMS);
+        }
+        let (hdr_bytes, data_buf) = resp_buf.split_at_mut(size_of::<MailboxRespHeaderVarSize>());
+        data_buf.fill(0);
 
         let ret = self
             .non_crypto_cmds_handler
-            .get_ocp_lock_epoch_key_report(&req.nonce, sek_state, req.algorithm, &mut resp.data)
+            .get_ocp_lock_epoch_key_report(
+                self.scratch,
+                &req.nonce,
+                sek_state,
+                req.algorithm,
+                data_buf,
+            )
             .await;
 
         let (mbox_cmd_status, data_len) = match ret {
-            Ok(len) => (MbxCmdStatus::Complete, len.min(resp.data.len())),
+            Ok(len) => (MbxCmdStatus::Complete, len.min(data_buf.len())),
             _ => (MbxCmdStatus::Failure, 0),
         };
 
-        if mbox_cmd_status == MbxCmdStatus::Complete {
-            resp.hdr = MailboxRespHeaderVarSize {
+        let hdr = if mbox_cmd_status == MbxCmdStatus::Complete {
+            MailboxRespHeaderVarSize {
                 data_len: data_len as u32,
                 ..Default::default()
-            };
+            }
         } else {
-            *resp = GetOcpLockEpochKeyReportResp::default();
-        }
+            data_buf.fill(0);
+            MailboxRespHeaderVarSize::default()
+        };
+        hdr_bytes.copy_from_slice(hdr.as_bytes());
 
-        let partial_len = resp.partial_len().map_err(|_| errors::MCU_MBOX_COMMON)?;
+        let partial_len = size_of::<MailboxRespHeaderVarSize>() + data_len;
         Ok((&mut resp_buf[..partial_len], mbox_cmd_status))
     }
 
@@ -1699,9 +1712,31 @@ fn caliptra_passthrough_cmd(cmd: CommandId) -> Option<u32> {
 /// It is deliberately not a [`McuMailboxResp`] variant: that enum sizes *every*
 /// command's allocation by its largest variant, so folding attestation in would
 /// inflate all of them.
-fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32) -> usize {
+/// The `InvokeDpeRespPrefix` (12 B) + `DeriveContextExportedCdiRespPrefix` (80 B)
+/// staged ahead of the leaf certificate when `dpe_derive_context_exported_cdi`
+/// receives the response in-place in `resp_buf`.
+const DPE_EXPORTED_CDI_IN_PLACE_PREFIX_LEN: usize = 92;
+
+/// Response payload buffer size for `MC_GET_OCP_LOCK_ENDORSEMENT_CERT` and
+/// `MC_GET_OCP_LOCK_EPOCH_KEY_REPORT`.
+///
+/// Must fit both the encoded output (`out_buf`, up to 7,201 B) and the shifted
+/// ML-DSA-87 signature (`sig_buf`, 4,627 B) side-by-side after
+/// `CaliptraDpeSigner::sign` stages `SignWithExportedMldsaResp` (7,228 B)
+/// in-place.
+#[cfg(feature = "ocp-lock")]
+const OCP_LOCK_IN_PLACE_SIGN_RESP_DATA_SIZE: usize = 11_828;
+
+fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32, req: &[u8]) -> usize {
+    #[cfg(not(feature = "ocp-lock"))]
+    let _ = req;
     match CommandId::from(cmd) {
-        c if c == CommandId::MC_MLDSA_CMK_VERIFY || c == CommandId::MC_PROD_DEBUG_UNLOCK_TOKEN => {
+        c if c == CommandId::MC_MLDSA_CMK_VERIFY
+            || c == CommandId::MC_ECDSA_CMK_VERIFY
+            || c == CommandId::MC_ECDSA384_SIG_VERIFY
+            || c == CommandId::MC_LMS_SIG_VERIFY
+            || c == CommandId::MC_PROD_DEBUG_UNLOCK_TOKEN =>
+        {
             size_of::<MailboxRespHeader>()
         }
         c if c == CommandId::MC_PROVISION_VENDOR_PK_HASH => size_of::<ProvisionVendorPkHashResp>(),
@@ -1719,15 +1754,42 @@ fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32) -> usize {
         c if c == CommandId::MC_FUSE_READ => size_of::<FuseReadResp>(),
         c if c == CommandId::MC_FUSE_LOCK_PARTITION => size_of::<FuseLockPartitionResp>(),
         #[cfg(feature = "ocp-lock")]
-        c if c == CommandId::MC_OCP_LOCK => size_of::<OcpLockRotateHekResp>()
-            .max(size_of::<OcpLockSetPermaHekResp>())
-            .max(size_of::<GetOcpLockEndorsementCertResp>())
-            .max(size_of::<OcpLockEnumerateHpkeHandlesResp>())
-            .max(size_of::<GetOcpLockEpochKeyReportResp>()),
-        c if c == CommandId::MC_DPE_SIGNER_CONTEXT_CERT => size_of::<DpeSignerContextCertResp>(),
+        c if c == CommandId::MC_OCP_LOCK => {
+            let subcommand = req
+                .get(
+                    size_of::<MailboxReqHeader>()..size_of::<MailboxReqHeader>() + size_of::<u32>(),
+                )
+                .and_then(|s| s.first_chunk::<{ size_of::<u32>() }>())
+                .map(|b| u32::from_le_bytes(*b));
+            match subcommand {
+                Some(sub)
+                    if sub == CommandId::MC_GET_OCP_LOCK_ENDORSEMENT_CERT.0
+                        || sub == CommandId::MC_GET_OCP_LOCK_EPOCH_KEY_REPORT.0 =>
+                {
+                    size_of::<MailboxRespHeaderVarSize>() + OCP_LOCK_IN_PLACE_SIGN_RESP_DATA_SIZE
+                }
+                Some(sub) if sub == CommandId::MC_OCP_LOCK_ENUMERATE_HPKE_HANDLES.0 => {
+                    size_of::<OcpLockEnumerateHpkeHandlesResp>()
+                }
+                Some(sub) if sub == CommandId::MC_OCP_LOCK_ROTATE_HEK.0 => {
+                    size_of::<OcpLockRotateHekResp>()
+                }
+                Some(sub) if sub == CommandId::MC_OCP_LOCK_SET_PERMA_HEK.0 => {
+                    size_of::<OcpLockSetPermaHekResp>()
+                }
+                // Unknown or missing subcommands are rejected by `handle_ocp_lock_command`.
+                _ => size_of::<MailboxRespHeader>(),
+            }
+        }
+        c if c == CommandId::MC_DPE_SIGNER_CONTEXT_CERT => {
+            size_of::<MailboxRespHeaderVarSize>()
+                + mcu_caliptra_api::DPE_MAX_LEAF_CERT_SIZE
+                + DPE_EXPORTED_CDI_IN_PLACE_PREFIX_LEN
+        }
         c if c == CommandId::MC_GET_DPE_CERTIFICATE_CHAIN => {
             size_of::<MailboxRespHeaderVarSize>() + 1024
         }
+        c if c == CommandId::MC_EXPORT_ATTESTED_CSR => size_of::<ExportAttestedCsrResp>(),
         c if c == CommandId::MC_GET_ATTESTATION => size_of::<McuMailboxResp>().max(
             size_of::<MailboxRespHeaderVarSize>()
                 + GET_ATTESTATION_RESP_PREFIX_LEN
@@ -1736,6 +1798,29 @@ fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32) -> usize {
         #[cfg(feature = "device-ownership-transfer")]
         CommandId::MC_DEVICE_OWNERSHIP_TRANSFER => size_of::<GetDotBackupBlobResp>(),
         _ => size_of::<McuMailboxResp>(),
+    }
+}
+
+/// Writes the `MC_EXPORT_ATTESTED_CSR` response body into `body` and returns its
+/// length.
+///
+/// A free function rather than a `CmdInterface` method so it can be tested
+/// without standing up a transport.
+async fn stage_attested_csr<H: CaliptraCmdHandler, Alloc: mcu_caliptra_api::ApiAlloc>(
+    handler: &H,
+    alloc: &Alloc,
+    req: &ExportAttestedCsrReq,
+    body: &mut [u8],
+) -> McuResult<usize> {
+    let data = body
+        .get_mut(..MAX_ATTESTED_CSR_RESP_DATA_SIZE)
+        .ok_or(errors::INVALID_PARAMS)?;
+    let ret = handler
+        .export_attested_csr(alloc, req.device_key_id, req.algorithm, &req.nonce, data)
+        .await;
+    match ret {
+        Ok(len) if len <= MAX_ATTESTED_CSR_RESP_DATA_SIZE => Ok(len),
+        _ => Err(errors::INVALID_PARAMS),
     }
 }
 
@@ -1928,7 +2013,7 @@ mod tests {
 
     #[test]
     fn response_buffer_is_sized_from_the_handler_not_a_fixed_variant() {
-        let sized = response_buffer_size::<TestHandler>(CommandId::MC_GET_ATTESTATION.0);
+        let sized = response_buffer_size::<TestHandler>(CommandId::MC_GET_ATTESTATION.0, &[]);
         assert!(
             sized
                 >= size_of::<MailboxRespHeaderVarSize>()
@@ -1937,7 +2022,7 @@ mod tests {
         );
         // Other commands must not grow because attestation needs a big buffer.
         assert_eq!(
-            response_buffer_size::<TestHandler>(CommandId::MC_FIRMWARE_VERSION.0),
+            response_buffer_size::<TestHandler>(CommandId::MC_FIRMWARE_VERSION.0, &[]),
             size_of::<McuMailboxResp>()
         );
     }
@@ -2010,6 +2095,142 @@ mod tests {
         assert_eq!(
             block_on(stage_attestation(&TestHandler, &TestAlloc, &req, &mut body)),
             Err(errors::BUFFER_TOO_SMALL)
+        );
+    }
+
+    #[test]
+    fn response_buffer_size_for_export_attested_csr_matches_export_attested_csr_resp() {
+        let sized = response_buffer_size::<TestHandler>(CommandId::MC_EXPORT_ATTESTED_CSR.0, &[]);
+        assert_eq!(sized, size_of::<ExportAttestedCsrResp>());
+        assert!(sized >= size_of::<MailboxRespHeaderVarSize>() + MAX_ATTESTED_CSR_RESP_DATA_SIZE);
+        assert!(sized > 4096);
+    }
+
+    struct CsrTestHandler {
+        resp_len: usize,
+    }
+
+    impl CaliptraCmdHandler for CsrTestHandler {
+        async fn get_firmware_version(
+            &self,
+            _index: u32,
+            _version: &mut FirmwareVersion,
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            unimplemented!()
+        }
+
+        async fn get_device_capabilities(
+            &self,
+            _capabilities: &mut DeviceCapabilities,
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            unimplemented!()
+        }
+
+        async fn export_attested_csr<Alloc: ApiAlloc>(
+            &self,
+            _alloc: &Alloc,
+            _device_key_id: u32,
+            _algorithm: u32,
+            _nonce: &[u8; 32],
+            csr_buf: &mut [u8],
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<usize> {
+            if csr_buf.len() < self.resp_len {
+                return Err(
+                    caliptra_mcu_common_commands::CaliptraCompletionCode::InsufficientResources,
+                );
+            }
+            csr_buf[..self.resp_len].fill(0xEE);
+            Ok(self.resp_len)
+        }
+
+        async fn request_debug_unlock<Alloc: ApiAlloc>(
+            &self,
+            _alloc: &Alloc,
+            _unlock_level: u8,
+            _challenge: &mut DebugUnlockChallenge,
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            unimplemented!()
+        }
+
+        async fn authorize_debug_unlock_token<Alloc: ApiAlloc>(
+            &self,
+            _alloc: &Alloc,
+            _token_data: &[u8],
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            unimplemented!()
+        }
+
+        const SUPPORTED_EVIDENCE_FORMATS: u32 = 0;
+        const MAX_ATTESTATION_EVIDENCE_LEN: usize = 0;
+
+        fn attestation_evidence_len(_format: EvidenceFormat, _algorithm: AsymAlgo) -> usize {
+            0
+        }
+
+        async fn get_attestation<Alloc: ApiAlloc>(
+            &self,
+            _alloc: &Alloc,
+            _format: EvidenceFormat,
+            _algorithm: AsymAlgo,
+            _entity: PkiEntitySlot,
+            _nonce: &[u8; 32],
+            _out: &mut [u8],
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<usize> {
+            unimplemented!()
+        }
+    }
+
+    #[test]
+    fn export_attested_csr_accepts_large_mldsa_discovery_response() {
+        const REALISTIC_MLDSA_DISCOVERY_LEN: usize = 4800;
+        let handler = CsrTestHandler {
+            resp_len: REALISTIC_MLDSA_DISCOVERY_LEN,
+        };
+        let req = ExportAttestedCsrReq {
+            hdr: MailboxReqHeader { chksum: 0 },
+            device_key_id: 0,
+            algorithm: 2,
+            nonce: [0x77; 32],
+        };
+        let mut body = vec![0u8; MAX_ATTESTED_CSR_RESP_DATA_SIZE];
+        let len = block_on(stage_attested_csr(&handler, &TestAlloc, &req, &mut body)).unwrap();
+        assert_eq!(len, REALISTIC_MLDSA_DISCOVERY_LEN);
+        assert_eq!(&body[..4], &[0xEE; 4]);
+    }
+
+    #[test]
+    fn export_attested_csr_accepts_large_mldsa_csr_response() {
+        const REALISTIC_MLDSA_CSR_LEN: usize = 12_200;
+        let handler = CsrTestHandler {
+            resp_len: REALISTIC_MLDSA_CSR_LEN,
+        };
+        let req = ExportAttestedCsrReq {
+            hdr: MailboxReqHeader { chksum: 0 },
+            device_key_id: 1,
+            algorithm: 2,
+            nonce: [0x88; 32],
+        };
+        let mut body = vec![0u8; MAX_ATTESTED_CSR_RESP_DATA_SIZE];
+        let len = block_on(stage_attested_csr(&handler, &TestAlloc, &req, &mut body)).unwrap();
+        assert_eq!(len, REALISTIC_MLDSA_CSR_LEN);
+        assert_eq!(&body[..4], &[0xEE; 4]);
+    }
+
+    #[test]
+    fn export_attested_csr_rejects_oversized_response() {
+        let handler = CsrTestHandler {
+            resp_len: MAX_ATTESTED_CSR_RESP_DATA_SIZE + 1,
+        };
+        let req = ExportAttestedCsrReq {
+            hdr: MailboxReqHeader { chksum: 0 },
+            device_key_id: 0,
+            algorithm: 2,
+            nonce: [0x77; 32],
+        };
+        let mut body = vec![0u8; MAX_ATTESTED_CSR_RESP_DATA_SIZE];
+        assert_eq!(
+            block_on(stage_attested_csr(&handler, &TestAlloc, &req, &mut body)),
+            Err(errors::INVALID_PARAMS)
         );
     }
 }

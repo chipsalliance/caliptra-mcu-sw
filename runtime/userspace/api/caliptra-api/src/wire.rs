@@ -158,6 +158,9 @@ pub(crate) const CMD_CM_AES_GCM_ENCRYPT_FINAL: u32 = 0x434D_4746; // "CMGF"
 pub(crate) const CMD_CM_AES_GCM_SPDM_DECRYPT_INIT: u32 = 0x434D_5344; // "CMSD"
 pub(crate) const CMD_CM_AES_GCM_DECRYPT_UPDATE: u32 = 0x434D_4455; // "CMDU"
 pub(crate) const CMD_CM_AES_GCM_DECRYPT_FINAL: u32 = 0x434D_4446; // "CMDF"
+pub(crate) const CMD_CM_MLKEM_KEY_GEN: u32 = 0x434D_4C4B; // "CMLK"
+pub(crate) const CMD_CM_MLKEM_ENCAPSULATE: u32 = 0x434D_4C45; // "CMLE"
+pub(crate) const CMD_CM_MLKEM_DECAPSULATE: u32 = 0x434D_4C44; // "CMLD"
 
 // ---- Hash algorithm discriminator -----------------------------------------
 
@@ -209,6 +212,21 @@ pub(crate) async fn mbox_execute(
         caliptra_mcu_libsyscall_caliptra::DefaultSyscalls,
     >::new();
     mbox.execute(cmd, req, rsp).await.map_err(map_mbox_err)
+}
+
+/// Execute a Caliptra mailbox command using a single buffer for both request and response.
+pub(crate) async fn mbox_execute_in_place(
+    cmd: u32,
+    req_len: usize,
+    rsp_len: usize,
+    buf: &mut [u8],
+) -> mcu_error::McuResult<usize> {
+    let mbox = caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox::<
+        caliptra_mcu_libsyscall_caliptra::DefaultSyscalls,
+    >::new();
+    mbox.execute_in_place(cmd, req_len, rsp_len, buf)
+        .await
+        .map_err(map_mbox_err)
 }
 
 /// Execute a mailbox command whose request is a header followed by a separate

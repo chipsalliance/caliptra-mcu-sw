@@ -48,6 +48,7 @@ pub struct CaliptraBuildArgs<'a> {
     pub soc_manifest: Option<PathBuf>,
     pub soc_manifest_network_filename: Option<String>,
     pub owner_auth_manifest: Option<PathBuf>,
+    pub owner_measurement_policy: Option<PathBuf>,
     pub vendor_pk_hash: Option<String>,
     pub mcu_firmware: Option<PathBuf>,
     pub soc_images: Option<Vec<ImageCfg>>,

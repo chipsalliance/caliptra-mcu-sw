@@ -24,6 +24,9 @@ pub(crate) use caliptra_mcu_userlog::{Bytes, Dbg, Hex32};
 pub use caliptra_mcu_libsyscall_caliptra::console_writeln;
 
 pub(crate) mod auth_keys;
+// Certificate-store boot is the only borrower, so this shares its gate.
+#[cfg(feature = "spdm")]
+mod boot_scratch;
 // Only the feature-gated command services below construct
 // `CaliptraCmdBackend`; without them the whole module is unused.
 #[cfg_attr(
@@ -49,7 +52,7 @@ mod firmware_update;
 mod image_loader;
 mod mcu_mbox;
 mod measurement;
-mod soc_image_descriptors {
+pub(crate) mod soc_image_descriptors {
     include!(concat!(env!("OUT_DIR"), "/soc_image_descriptors.rs"));
 }
 #[cfg(target_arch = "riscv32")]
@@ -122,27 +125,14 @@ pub(crate) async fn async_main() {
     // Initialize measurement state before spawning any task that could consume
     // it (image loading, firmware update, SPDM/evidence, MCU mailbox).
     let soc_image_load_list = soc_image_descriptors::SOC_IMAGE_LOAD_LIST;
-    measurement::boot_init(
+    if let Err(err) = measurement::boot_init(
         measurement::attestation_manifest_bytes(),
         soc_image_load_list,
     )
-    .await;
-
-    #[cfg(feature = "spdm")]
-    match cert_store::boot_init().await {
-        Ok(()) => {
-            spdm::spawn_spdm_tasks(&EXECUTOR.get().spawner());
-        }
-        Err(e) => {
-            let mut cw = caliptra_mcu_libtock_console::Console::<
-                caliptra_mcu_libsyscall_caliptra::DefaultSyscalls,
-            >::writer();
-            crate::log_error!(
-                cw,
-                "CERT_STORE: boot initialization failed: 0x{}",
-                crate::Hex32(u32::from(e))
-            );
-        }
+    .await
+    {
+        measurement::log_boot_init_error(err);
+        caliptra_mcu_measurement_api::disable_attestation().await;
     }
 
     EXECUTOR
@@ -151,6 +141,29 @@ pub(crate) async fn async_main() {
         .spawn(image_loader::image_loading_task(soc_image_load_list))
         .map_err(|_| log_spawn_error())
         .ok();
+
+    #[cfg(feature = "spdm")]
+    {
+        // SPDM's MCTP task pool is idle until its responder starts.
+        // SAFETY: the responder is not running, and ownership is moved into
+        // `spawn_spdm_tasks` after certificate-store initialization.
+        let scratch = unsafe { spdm::borrow_boot_scratch() };
+        match cert_store::boot_init(&scratch).await {
+            Ok(()) => {
+                spdm::spawn_spdm_tasks(&EXECUTOR.get().spawner(), scratch);
+            }
+            Err(e) => {
+                let mut cw = caliptra_mcu_libtock_console::Console::<
+                    caliptra_mcu_libsyscall_caliptra::DefaultSyscalls,
+                >::writer();
+                crate::log_error!(
+                    cw,
+                    "CERT_STORE: boot initialization failed: 0x{}",
+                    crate::Hex32(u32::from(e))
+                );
+            }
+        }
+    }
 
     EXECUTOR
         .get()

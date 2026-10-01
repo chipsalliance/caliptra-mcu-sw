@@ -6,7 +6,9 @@
 //! [`MeasurementProvider`] type parameter on [`McuSpdmPal`].
 
 use caliptra_mcu_scratch_alloc::BitmapAllocator;
-use caliptra_mcu_spdm_traits::{MeasurementInfo, SpdmPalMeasurements, SPDM_NONCE_LEN};
+use caliptra_mcu_spdm_traits::{
+    MeasurementInfo, SpdmPalAsymAlgo, SpdmPalMeasurements, SPDM_NONCE_LEN,
+};
 use mcu_error::McuResult;
 
 use crate::pal::McuSpdmPal;
@@ -34,6 +36,7 @@ pub trait MeasurementProvider: Sync + 'static {
     /// Retrieve measurement value for `index` into `out`.
     /// `nonce` is the SPDM requester nonce (32 bytes) when signature
     /// was requested, or `None` for unsigned requests.
+    /// `asym_algo` is the negotiated asymmetric algorithm for the session.
     /// `scratch` is a caller-provided working buffer of at least
     /// [`Self::SCRATCH_SIZE`] bytes (empty slice when `SCRATCH_SIZE == 0`).
     /// `alloc` is the bitmap allocator for transient DPE/SHA mailbox
@@ -44,6 +47,7 @@ pub trait MeasurementProvider: Sync + 'static {
         &self,
         index: u8,
         nonce: Option<&[u8; SPDM_NONCE_LEN]>,
+        asym_algo: SpdmPalAsymAlgo,
         out: &mut [u8],
         scratch: &mut [u8],
         alloc: &BitmapAllocator,
@@ -60,6 +64,7 @@ impl<M: MeasurementProvider> SpdmPalMeasurements for McuSpdmPal<M> {
         _io: &Self::Io<'_>,
         index: u8,
         nonce: Option<&[u8; SPDM_NONCE_LEN]>,
+        asym_algo: SpdmPalAsymAlgo,
         out: &mut [u8],
     ) -> McuResult<usize> {
         if M::SCRATCH_SIZE > 0 {
@@ -69,11 +74,11 @@ impl<M: MeasurementProvider> SpdmPalMeasurements for McuSpdmPal<M> {
                 .map_err(|_| mcu_error::codes::INTERNAL_BUG)?;
             scratch.fill(0);
             self.meas_provider
-                .get_measurement_value(index, nonce, out, &mut scratch, self.allocator)
+                .get_measurement_value(index, nonce, asym_algo, out, &mut scratch, self.allocator)
                 .await
         } else {
             self.meas_provider
-                .get_measurement_value(index, nonce, out, &mut [], self.allocator)
+                .get_measurement_value(index, nonce, asym_algo, out, &mut [], self.allocator)
                 .await
         }
     }

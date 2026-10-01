@@ -6,10 +6,11 @@ use core::ptr::NonNull;
 use mcu_caliptra_api::{
     cm_hmac, cm_import, dpe_certify_key_pubkey, dpe_sign_ecc_p384, ecdh_finish, ecdh_generate,
     ecdsa_verify, hash_all, hkdf_expand, hkdf_extract, mldsa87_compute_mu, mldsa87_compute_tr,
-    rng_generate, sha_finish, sha_init, sha_update, spdm_aes_gcm_decrypt, spdm_aes_gcm_encrypt,
-    CmKeyUsage, HashAlgo, HkdfSalt, CERTIFY_KEY_MLDSA87_PUBKEY_SIZE,
-    CMB_ECDH_ENCRYPTED_CONTEXT_SIZE, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, DPE_LABEL_LEN,
-    DPE_MLDSA87_MU_SIZE, DPE_P384_SIGNATURE_SIZE, MLDSA87_TR_SIZE, SHA_CONTEXT_SIZE,
+    mlkem_decapsulate, mlkem_encapsulate, mlkem_key_gen, rng_generate, sha_finish, sha_init,
+    sha_update, spdm_aes_gcm_decrypt, spdm_aes_gcm_encrypt, CmKeyUsage, HashAlgo, HkdfSalt,
+    CERTIFY_KEY_MLDSA87_PUBKEY_SIZE, CMB_ECDH_ENCRYPTED_CONTEXT_SIZE,
+    CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, DPE_LABEL_LEN, DPE_MLDSA87_MU_SIZE, DPE_P384_SIGNATURE_SIZE,
+    MLDSA87_TR_SIZE, MLKEM1024_CIPHERTEXT_SIZE, MLKEM1024_ENCAPS_KEY_SIZE, SHA_CONTEXT_SIZE,
 };
 
 const CRYPTO_SCRATCH_SIZE: usize = 16 * 1024;
@@ -144,6 +145,42 @@ pub async fn test_caliptra_ecdh(alloc: &BitmapAllocator) {
         .await
         .unwrap_or_else(|_| test_exit(1));
     println!("ECDH/HMAC test completed successfully: {}", HexBytes(&mac));
+}
+
+pub async fn test_caliptra_mlkem(alloc: &BitmapAllocator) {
+    // Generate a seed CMK for ML-KEM (64 bytes: seed_d || seed_z)
+    let seed = [0x42; 64];
+    let seed_cmk = cm_import(alloc, CmKeyUsage::MlKem, &seed)
+        .await
+        .unwrap_or_else(|_| test_exit(1));
+
+    // Responder: Generate ML-KEM-1024 encapsulation key from seed
+    let mut encaps_key = [0u8; MLKEM1024_ENCAPS_KEY_SIZE];
+    mlkem_key_gen(alloc, &seed_cmk, &mut encaps_key)
+        .await
+        .unwrap_or_else(|_| {
+            println!("ML-KEM key-gen failed!");
+            test_exit(1)
+        });
+
+    // Initiator: Encapsulate to produce ciphertext and shared secret
+    let mut ciphertext = [0u8; MLKEM1024_CIPHERTEXT_SIZE];
+    let initiator_secret = mlkem_encapsulate(alloc, CmKeyUsage::Hmac, &encaps_key, &mut ciphertext)
+        .await
+        .unwrap_or_else(|_| {
+            println!("ML-KEM encapsulate failed!");
+            test_exit(1)
+        });
+
+    // Responder: Decapsulate to recover shared secret
+    let responder_secret = mlkem_decapsulate(alloc, CmKeyUsage::Hmac, &seed_cmk, &ciphertext)
+        .await
+        .unwrap_or_else(|_| {
+            println!("ML-KEM decapsulate failed!");
+            test_exit(1)
+        });
+
+    println!("ML-KEM/AES test completed successfully");
 }
 
 pub async fn test_caliptra_hmac(alloc: &BitmapAllocator) {

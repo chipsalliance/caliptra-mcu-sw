@@ -17,7 +17,7 @@ use openssl::{
 /// Algorithm-agnostic: detects key type from the certificate and
 /// dispatches to the appropriate verification path.
 ///
-/// - ECDSA (ES384): converts COSE raw r||s signature to DER, then
+/// - ECDSA (ESP384): converts COSE raw r||s signature to DER, then
 ///   verifies via EVP.
 /// - ML-DSA-87: passes the signature directly to EVP (no conversion
 ///   needed).
@@ -88,13 +88,21 @@ impl CryptoBackend for OpenSslBackend {
         }
         .map_err(|e| CoseSign1Error::CryptoError(format!("Verifier init failed: {}", e)))?;
 
-        verifier
-            .update(to_be_signed)
-            .map_err(|e| CoseSign1Error::CryptoError(e.to_string()))?;
-
-        let valid = verifier
-            .verify(&der_sig)
-            .map_err(|e| CoseSign1Error::CryptoError(e.to_string()))?;
+        // Algorithms without digest (e.g. ML-DSA) do not support streaming
+        // EVP_DigestVerifyUpdate and must use one-shot EVP_DigestVerify.
+        let valid = match digest {
+            Some(_) => {
+                verifier
+                    .update(to_be_signed)
+                    .map_err(|e| CoseSign1Error::CryptoError(e.to_string()))?;
+                verifier
+                    .verify(&der_sig)
+                    .map_err(|e| CoseSign1Error::CryptoError(e.to_string()))?
+            }
+            None => verifier
+                .verify_oneshot(&der_sig, to_be_signed)
+                .map_err(|e| CoseSign1Error::CryptoError(e.to_string()))?,
+        };
 
         if valid {
             Ok(())

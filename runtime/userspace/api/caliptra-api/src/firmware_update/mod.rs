@@ -9,7 +9,7 @@ use alloc::boxed::Box;
 use async_trait::async_trait;
 use caliptra_api::mailbox::{
     ActivateFirmwareReq, ActivateFirmwareResp, CommandId, FirmwareVerifyResp, FirmwareVerifyResult,
-    FwInfoResp, GetImageInfoReq, GetImageInfoResp, MailboxReqHeader, MailboxRespHeader, Request,
+    FwInfoResp, GetImageInfoReq, GetImageInfoResp, MailboxReqHeader, Request,
 };
 use caliptra_auth_man_types::{
     AuthManifestImageMetadata, AuthManifestImageMetadataCollection, AuthorizationManifest,
@@ -37,7 +37,7 @@ use caliptra_mcu_pldm_lib::daemon::PldmService;
 use embassy_executor::Spawner;
 use pldm_client::pldm_total_component_size;
 use pldm_context::State;
-use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
+use zerocopy::{FromBytes, IntoBytes};
 
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_console::Console;
@@ -268,42 +268,15 @@ impl<'a, D: DMAMapping, A: ApiAlloc> FirmwareUpdater<'a, D, A> {
         self.validate_auth_manifest_soc_fw_id_set(manifest_offset, manifest_len)
             .await?;
 
-        let mut req = AuthManifestReqHeader {
-            chksum: 0,
-            manifest_size: manifest_len as u32,
-        };
-
         let mut payload_stream =
             MailboxPayloadStream::new(self.staging_memory, manifest_offset, manifest_len);
-
-        // Calculate the mailbox checksum
-        let mut checksum = payload_stream.get_bytesum().await;
-        for b in CommandId::SET_AUTH_MANIFEST.0.to_le_bytes().iter() {
-            checksum = checksum.wrapping_add(u32::from(*b));
-        }
-        for b in req.as_mut_bytes().iter() {
-            checksum = checksum.wrapping_add(u32::from(*b));
-        }
-        req.chksum = 0u32.wrapping_sub(checksum);
-
-        let response_buffer = &mut [0u8; core::mem::size_of::<MailboxRespHeader>()];
-        let header = req.as_mut_bytes();
-        loop {
-            let result = self
-                .mailbox
-                .execute_with_payload_stream(
-                    CommandId::SET_AUTH_MANIFEST.into(),
-                    Some(header),
-                    &mut payload_stream,
-                    response_buffer,
-                )
-                .await;
-            match result {
-                Ok(_) => return Ok(()),
-                Err(MailboxError::ErrorCode(ErrorCode::Busy)) => continue,
-                Err(_) => return Err(ErrorCode::Fail),
-            }
-        }
+        crate::image_loader::execute_auth_manifest_command(
+            &self.mailbox,
+            CommandId::SET_AUTH_MANIFEST,
+            &mut payload_stream,
+            manifest_len as u32,
+        )
+        .await
     }
 
     async fn verify(&mut self) -> Result<FlashHeader, ErrorCode> {
@@ -763,41 +736,14 @@ impl<'a, D: DMAMapping, A: ApiAlloc> FirmwareUpdater<'a, D, A> {
     }
 
     async fn verify_manifest(&mut self, offset: usize, len: usize) -> Result<(), ErrorCode> {
-        let mut req = AuthManifestReqHeader {
-            chksum: 0,
-            manifest_size: len as u32,
-        };
-
         let mut payload_stream = MailboxPayloadStream::new(self.staging_memory, offset, len);
-
-        // Calculate the mailbox checksum
-        let mut checksum = payload_stream.get_bytesum().await;
-        for b in CommandId::VERIFY_AUTH_MANIFEST.0.to_le_bytes().iter() {
-            checksum = checksum.wrapping_add(u32::from(*b));
-        }
-        for b in req.as_mut_bytes().iter() {
-            checksum = checksum.wrapping_add(u32::from(*b));
-        }
-        req.chksum = 0u32.wrapping_sub(checksum);
-
-        let response_buffer = &mut [0u8; core::mem::size_of::<MailboxRespHeader>()];
-        let header = req.as_mut_bytes();
-        loop {
-            let result = self
-                .mailbox
-                .execute_with_payload_stream(
-                    CommandId::VERIFY_AUTH_MANIFEST.into(),
-                    Some(header),
-                    &mut payload_stream,
-                    response_buffer,
-                )
-                .await;
-            match result {
-                Ok(_) => return Ok(()),
-                Err(MailboxError::ErrorCode(ErrorCode::Busy)) => continue,
-                Err(_) => return Err(ErrorCode::Fail),
-            }
-        }
+        crate::image_loader::execute_auth_manifest_command(
+            &self.mailbox,
+            CommandId::VERIFY_AUTH_MANIFEST,
+            &mut payload_stream,
+            len as u32,
+        )
+        .await
     }
 
     async fn get_dma_image_staging_address(&self, image_id: u32) -> Result<AXIAddr, ErrorCode> {
@@ -1119,31 +1065,16 @@ impl MailboxPayloadStream {
             len,
         }
     }
-    pub fn reset(&mut self) {
-        // Reset the cursor to the starting offset
-        self.cursor = self.offset;
-    }
-    pub async fn get_bytesum(&mut self) -> u32 {
-        self.reset();
-        let mut sum = 0u32;
-        let mut buffer = [0u8; 256];
-        while let Ok(bytes_read) = self.read(&mut buffer).await {
-            if bytes_read == 0 {
-                break; // No more data to read
-            }
-            for byte in &buffer[..bytes_read] {
-                sum = sum.wrapping_add(u32::from(*byte));
-            }
-        }
-        self.reset();
-        sum
-    }
 }
 
 #[async_trait(?Send)]
 impl PayloadStream for MailboxPayloadStream {
     fn size(&self) -> usize {
         self.len
+    }
+
+    fn reset(&mut self) {
+        self.cursor = self.offset;
     }
 
     async fn read(&mut self, buffer: &mut [u8]) -> Result<usize, ErrorCode> {
@@ -1170,12 +1101,7 @@ impl PayloadStream for MailboxPayloadStream {
     }
 }
 
-#[repr(C)]
-#[derive(Debug, FromBytes, IntoBytes, Clone, Copy, Immutable, KnownLayout)]
-pub struct AuthManifestReqHeader {
-    pub chksum: u32,
-    pub manifest_size: u32,
-}
+pub use crate::image_loader::AuthManifestReqHeader;
 
 #[cfg(test)]
 mod tests {

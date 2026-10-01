@@ -221,8 +221,8 @@ pub struct Certificate<'a> {
     pub signature: BitStringRef<'a>,
 }
 
-#[async_trait]
-pub trait OcpLockSigner: Send + Sync {
+#[allow(async_fn_in_trait)]
+pub trait OcpLockSigner {
     async fn sign(&self, label: &[u8], data: &[u8], signature: &mut [u8]) -> CaliptraApiResult<()>;
     fn signature_size(&self) -> usize;
     fn algorithm(&self) -> EndorsementAlgorithm;
@@ -380,13 +380,13 @@ impl<'a> OcpLock<'a> {
         Ok(())
     }
 
-    /// TODO(clundin): Support ML-DSA endorsement
-    /// Wraps `hpke_handle` with an x509 certificate The certificate is signed by the MCU FW DPE context.
-    pub async fn get_hpke_public_key_x509(
+    /// Wraps `hpke_handle` with an X.509 certificate signed by the MCU FW DPE
+    /// context using the signer's negotiated endorsement algorithm.
+    pub async fn get_hpke_public_key_x509<S: OcpLockSigner>(
         &self,
         handle: &HpkeHandle,
         cert_buf: &mut [u8],
-        signer: &dyn OcpLockSigner,
+        signer: &S,
     ) -> CaliptraApiResult<usize> {
         let mut req = OcpLockGetHpkePubKeyReq {
             hpke_handle: handle.handle,
@@ -515,9 +515,15 @@ impl<'a> OcpLock<'a> {
         if cert_buf.len() < sig_len {
             return Err(CaliptraApiError::InvalidArgBufferTooSmall);
         }
-        let (out_buf, sig_buf) = cert_buf.split_at_mut(cert_buf.len() - sig_len);
-
-        signer.sign(Self::DPE_LABEL, &digest, sig_buf).await?;
+        // Pass the full 4-byte-aligned `cert_buf` into `signer.sign` first so
+        // ML-DSA-87 can stage `SignWithExportedMldsaResp` (7,228 B) in-place
+        // without allocating from the scratch pool, then move the 4,627-byte
+        // signature to the tail so `out_buf` at the front can hold the encoded
+        // cert.
+        signer.sign(Self::DPE_LABEL, &digest, cert_buf).await?;
+        let split = cert_buf.len() - sig_len;
+        cert_buf.copy_within(0..sig_len, split);
+        let (out_buf, sig_buf) = cert_buf.split_at_mut(split);
 
         let mut sig_der = [0u8; Self::SIGNATURE_DER_BUF_SIZE];
         let cert = match signer.algorithm() {
@@ -560,6 +566,7 @@ impl<'a> OcpLock<'a> {
         writer.encode(&cert)?;
 
         let cert_len: usize = cert.encoded_len()?.try_into()?;
+        cert_buf[cert_len..].fill(0);
         Ok(cert_len)
     }
 
@@ -726,9 +733,17 @@ impl<'a> OcpLock<'a> {
         if report_buf.len() < sig_len {
             return Err(CaliptraApiError::InvalidArgBufferTooSmall);
         }
-        let (out_buf, sig_buf) = report_buf.split_at_mut(report_buf.len() - sig_len);
-
-        signer.sign(Self::EKP_DPE_LABEL, &digest, sig_buf).await?;
+        // Pass the full 4-byte-aligned `report_buf` into `signer.sign` first so
+        // ML-DSA-87 can stage `SignWithExportedMldsaResp` (7,228 B) in-place
+        // without allocating from the scratch pool, then move the 4,627-byte
+        // signature to the tail so `out_buf` at the front can hold the
+        // COSE_Sign1 report.
+        signer
+            .sign(Self::EKP_DPE_LABEL, &digest, report_buf)
+            .await?;
+        let split = report_buf.len() - sig_len;
+        report_buf.copy_within(0..sig_len, split);
+        let (out_buf, sig_buf) = report_buf.split_at_mut(split);
 
         let mut report_encoder = CborEncoder::new(out_buf);
         EkpEvidence::assemble_cose_sign1(
@@ -736,8 +751,10 @@ impl<'a> OcpLock<'a> {
             sig_buf,
             &mut report_encoder,
         )?;
+        let report_len = report_encoder.len();
+        report_buf[report_len..].fill(0);
 
-        Ok(report_encoder.len())
+        Ok(report_len)
     }
 }
 #[async_trait]

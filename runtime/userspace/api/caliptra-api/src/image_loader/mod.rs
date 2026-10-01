@@ -13,7 +13,10 @@ pub use caliptra_api::mailbox::GetImageInfoResp;
 use caliptra_api::mailbox::{
     CommandId, GetImageInfoReq, MailboxReqHeader, MailboxRespHeader, Request,
 };
-use caliptra_mcu_flash_image::{FlashHeader, SOC_MANIFEST_IDENTIFIER};
+use caliptra_mcu_flash_image::{
+    FlashHeader, OWNER_AUTH_MANIFEST_IDENTIFIER, OWNER_MEASUREMENT_POLICY_IDENTIFIER,
+    SOC_MANIFEST_IDENTIFIER,
+};
 use caliptra_mcu_libsyscall_caliptra::dma::DMAMapping;
 use caliptra_mcu_libsyscall_caliptra::flash::SpiFlash as FlashSyscall;
 use caliptra_mcu_libsyscall_caliptra::mailbox::{MailboxError, PayloadStream};
@@ -26,6 +29,8 @@ use caliptra_mcu_pldm_common::protocol::firmware_update::Descriptor;
 use dma_transfer::DmaTransfer;
 use embassy_executor::Spawner;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
+
+use crate::OWNER_AUTH_MANIFEST_MAX_SIZE;
 
 pub const IMAGE_MEASUREMENT_DIGEST_SIZE: usize = 48;
 
@@ -46,6 +51,19 @@ pub trait ImageLoader {
     /// - `Ok(LoadedImage)`: Image has been loaded and metadata preserved.
     /// - `Err(ErrorCode)`: Indication of the failure to load the image.
     async fn load(&self, image_id: u32) -> Result<LoadedImage, ErrorCode>;
+
+    /// Installs the Owner Authorization Manifest in Caliptra persistent memory,
+    /// capturing up to `retained_preamble.len()` bytes of the accepted stream.
+    async fn set_owner_auth_manifest(
+        &self,
+        retained_preamble: &mut [u8],
+    ) -> Result<usize, ErrorCode>;
+
+    /// Reads the Owner Measurement Policy component directly from storage into `dst`.
+    ///
+    /// Returns the number of bytes read on success. Fails if the component is empty,
+    /// larger than `dst.len()`, or if storage read fails.
+    async fn read_owner_measurement_policy(&self, dst: &mut [u8]) -> Result<usize, ErrorCode>;
 }
 
 pub struct FlashImageLoader<'a, T: DmaTransfer> {
@@ -80,17 +98,21 @@ impl<'a, T: DmaTransfer> FlashImageLoader<'a, T> {
 #[async_trait(?Send)]
 impl<T: DmaTransfer> ImageLoader for FlashImageLoader<'_, T> {
     async fn load(&self, image_id: u32) -> Result<LoadedImage, ErrorCode> {
-        let image_info = get_image_info(&self.mailbox, image_id).await?;
-        let load_address = convert_dma_cptra_addr_to_mcu_addr(
-            self.dma_transfer,
-            ((image_info.image_load_address_high as u64) << 32)
-                | (image_info.image_load_address_low as u64),
-        )?;
+        let (load_address, component_id, measurement) = {
+            let image_info = get_image_info(&self.mailbox, image_id).await?;
+            let load_address = convert_dma_cptra_addr_to_mcu_addr(
+                self.dma_transfer,
+                ((image_info.image_load_address_high as u64) << 32)
+                    | (image_info.image_load_address_low as u64),
+            )?;
+            (load_address, image_info.component_id, image_info.digest)
+        };
+
         let mut header: [u8; core::mem::size_of::<FlashHeader>()] =
             [0; core::mem::size_of::<FlashHeader>()];
         flash_client::flash_read_header(&self.flash, &mut header).await?;
         let (offset, size) =
-            flash_client::flash_read_toc(&self.flash, &header, image_info.component_id).await?;
+            flash_client::flash_read_toc(&self.flash, &header, component_id).await?;
         flash_client::flash_load_image(
             self.dma_transfer,
             load_address,
@@ -100,8 +122,53 @@ impl<T: DmaTransfer> ImageLoader for FlashImageLoader<'_, T> {
         .await?;
         Ok(LoadedImage {
             image_size: size,
-            measurement: image_info.digest,
+            measurement,
         })
+    }
+
+    async fn set_owner_auth_manifest(
+        &self,
+        retained_preamble: &mut [u8],
+    ) -> Result<usize, ErrorCode> {
+        let mut header = [0u8; core::mem::size_of::<FlashHeader>()];
+        flash_client::flash_read_header(&self.flash, &mut header).await?;
+        let (offset, size) =
+            flash_client::flash_read_toc(&self.flash, &header, OWNER_AUTH_MANIFEST_IDENTIFIER)
+                .await?;
+        if size == 0 || size as usize > OWNER_AUTH_MANIFEST_MAX_SIZE {
+            return Err(ErrorCode::Fail);
+        }
+
+        let mut stream = FlashMailboxPayloadStream::with_capture(
+            &self.flash,
+            offset as usize,
+            size as usize,
+            retained_preamble,
+        );
+        execute_auth_manifest_command(
+            &self.mailbox,
+            CommandId::SET_OWNER_AUTH_MANIFEST,
+            &mut stream,
+            size,
+        )
+        .await?;
+        Ok(stream.capture.map_or(0, |c| c.captured_len()))
+    }
+
+    async fn read_owner_measurement_policy(&self, dst: &mut [u8]) -> Result<usize, ErrorCode> {
+        let mut header = [0u8; core::mem::size_of::<FlashHeader>()];
+        flash_client::flash_read_header(&self.flash, &mut header).await?;
+        let (offset, size) =
+            flash_client::flash_read_toc(&self.flash, &header, OWNER_MEASUREMENT_POLICY_IDENTIFIER)
+                .await?;
+        let size = size as usize;
+        if size == 0 || size > dst.len() {
+            return Err(ErrorCode::Fail);
+        }
+        self.flash
+            .read(offset as usize, size, &mut dst[..size])
+            .await?;
+        Ok(size)
     }
 }
 
@@ -115,40 +182,13 @@ impl<T: DmaTransfer> FlashImageLoader<'_, T> {
 
         let mut stream =
             FlashMailboxPayloadStream::new(&self.flash, offset as usize, size as usize);
-
-        let mut req = AuthManifestReqHeader {
-            chksum: 0,
-            manifest_size: size,
-        };
-
-        // Calculate the mailbox checksum
-        let mut checksum = stream.get_bytesum().await;
-        for b in CommandId::VERIFY_AUTH_MANIFEST.0.to_le_bytes().iter() {
-            checksum = checksum.wrapping_add(u32::from(*b));
-        }
-        for b in req.as_mut_bytes().iter() {
-            checksum = checksum.wrapping_add(u32::from(*b));
-        }
-        req.chksum = 0u32.wrapping_sub(checksum);
-
-        let response_buffer = &mut [0u8; core::mem::size_of::<MailboxRespHeader>()];
-        let header = req.as_mut_bytes();
-        loop {
-            let result = self
-                .mailbox
-                .execute_with_payload_stream(
-                    CommandId::VERIFY_AUTH_MANIFEST.into(),
-                    Some(header),
-                    &mut stream,
-                    response_buffer,
-                )
-                .await;
-            match result {
-                Ok(_) => return Ok(()),
-                Err(MailboxError::ErrorCode(ErrorCode::Busy)) => continue,
-                Err(_) => return Err(ErrorCode::Fail),
-            }
-        }
+        execute_auth_manifest_command(
+            &self.mailbox,
+            CommandId::VERIFY_AUTH_MANIFEST,
+            &mut stream,
+            size,
+        )
+        .await
     }
 }
 
@@ -178,12 +218,15 @@ impl<'a, D: DMAMapping + 'static> PldmImageLoader<'a, D> {
 #[async_trait(?Send)]
 impl<D: DMAMapping + 'static> ImageLoader for PldmImageLoader<'_, D> {
     async fn load(&self, image_id: u32) -> Result<LoadedImage, ErrorCode> {
-        let image_info = get_image_info(&self.mailbox, image_id).await?;
-        let load_address = convert_dma_cptra_addr_to_mcu_addr(
-            self.dma_mapping,
-            ((image_info.image_load_address_high as u64) << 32)
-                | (image_info.image_load_address_low as u64),
-        )?;
+        let (load_address, component_id, measurement) = {
+            let image_info = get_image_info(&self.mailbox, image_id).await?;
+            let load_address = convert_dma_cptra_addr_to_mcu_addr(
+                self.dma_mapping,
+                ((image_info.image_load_address_high as u64) << 32)
+                    | (image_info.image_load_address_low as u64),
+            )?;
+            (load_address, image_info.component_id, image_info.digest)
+        };
 
         let result: Result<LoadedImage, ErrorCode> = {
             pldm_client::initialize_pldm(
@@ -193,17 +236,117 @@ impl<D: DMAMapping + 'static> ImageLoader for PldmImageLoader<'_, D> {
                 self.dma_mapping,
             )
             .await?;
-            let (offset, size) = pldm_client::pldm_download_toc(image_info.component_id).await?;
+            let (offset, size) = pldm_client::pldm_download_toc(component_id).await?;
             pldm_client::pldm_download_image(load_address, offset, size).await?;
             Ok(LoadedImage {
                 image_size: size,
-                measurement: image_info.digest,
+                measurement,
             })
         };
         match result {
             Ok(loaded) => Ok(loaded),
             Err(_) => Err(ErrorCode::Fail),
         }
+    }
+
+    async fn set_owner_auth_manifest(
+        &self,
+        retained_preamble: &mut [u8],
+    ) -> Result<usize, ErrorCode> {
+        pldm_client::initialize_pldm(
+            self.spawner,
+            self.params.descriptors,
+            self.params.fw_params,
+            self.dma_mapping,
+        )
+        .await?;
+        let (offset, size) = pldm_client::pldm_download_toc(OWNER_AUTH_MANIFEST_IDENTIFIER).await?;
+        if size == 0 || size as usize > OWNER_AUTH_MANIFEST_MAX_SIZE {
+            return Err(ErrorCode::Fail);
+        }
+
+        let mut stream =
+            PldmMailboxPayloadStream::new(offset as usize, size as usize, retained_preamble);
+        execute_auth_manifest_command(
+            &self.mailbox,
+            CommandId::SET_OWNER_AUTH_MANIFEST,
+            &mut stream,
+            size,
+        )
+        .await?;
+        Ok(stream.capture.captured_len())
+    }
+
+    async fn read_owner_measurement_policy(&self, dst: &mut [u8]) -> Result<usize, ErrorCode> {
+        pldm_client::initialize_pldm(
+            self.spawner,
+            self.params.descriptors,
+            self.params.fw_params,
+            self.dma_mapping,
+        )
+        .await?;
+        let (offset, size) =
+            pldm_client::pldm_download_toc(OWNER_MEASUREMENT_POLICY_IDENTIFIER).await?;
+        let size = size as usize;
+        if size == 0 || size > dst.len() {
+            return Err(ErrorCode::Fail);
+        }
+        let mut bytes_read = 0;
+        while bytes_read < size {
+            let chunk_len = (size - bytes_read).min(pldm_context::PLDM_PAYLOAD_CHUNK_SIZE);
+            pldm_client::pldm_download_payload_chunk(
+                offset as usize + bytes_read,
+                &mut dst[bytes_read..bytes_read + chunk_len],
+            )
+            .await?;
+            bytes_read += chunk_len;
+        }
+        Ok(size)
+    }
+}
+
+struct PldmMailboxPayloadStream<'a> {
+    offset: usize,
+    cursor: usize,
+    len: usize,
+    capture: StreamCapture<'a>,
+}
+
+impl<'a> PldmMailboxPayloadStream<'a> {
+    fn new(offset: usize, len: usize, retained: &'a mut [u8]) -> Self {
+        Self {
+            offset,
+            cursor: 0,
+            len,
+            capture: StreamCapture::new(retained),
+        }
+    }
+}
+
+#[async_trait(?Send)]
+impl PayloadStream for PldmMailboxPayloadStream<'_> {
+    fn size(&self) -> usize {
+        self.len
+    }
+
+    fn reset(&mut self) {
+        self.cursor = 0;
+        self.capture.reset();
+    }
+
+    async fn read(&mut self, buffer: &mut [u8]) -> Result<usize, ErrorCode> {
+        let bytes_to_read = (self.len - self.cursor).min(buffer.len());
+        if bytes_to_read == 0 {
+            return Ok(0);
+        }
+        pldm_client::pldm_download_payload_chunk(
+            self.offset + self.cursor,
+            &mut buffer[..bytes_to_read],
+        )
+        .await?;
+        self.capture.record(&buffer[..bytes_to_read]);
+        self.cursor += bytes_to_read;
+        Ok(bytes_to_read)
     }
 }
 
@@ -255,6 +398,7 @@ pub struct FlashMailboxPayloadStream<'a> {
     pub offset: usize,
     pub cursor: usize,
     pub len: usize,
+    pub capture: Option<StreamCapture<'a>>,
 }
 
 impl<'a> FlashMailboxPayloadStream<'a> {
@@ -264,26 +408,23 @@ impl<'a> FlashMailboxPayloadStream<'a> {
             offset: starting_offset,
             cursor: starting_offset,
             len,
+            capture: None,
         }
     }
-    pub fn reset(&mut self) {
-        // Reset the cursor to the starting offset
-        self.cursor = self.offset;
-    }
-    pub async fn get_bytesum(&mut self) -> u32 {
-        self.reset();
-        let mut sum = 0u32;
-        let mut buffer = [0u8; 256];
-        while let Ok(bytes_read) = self.read(&mut buffer).await {
-            if bytes_read == 0 {
-                break; // No more data to read
-            }
-            for byte in &buffer[..bytes_read] {
-                sum = sum.wrapping_add(u32::from(*byte));
-            }
+
+    pub fn with_capture(
+        flash: &'a FlashSyscall,
+        starting_offset: usize,
+        len: usize,
+        retained: &'a mut [u8],
+    ) -> Self {
+        Self {
+            flash,
+            offset: starting_offset,
+            cursor: starting_offset,
+            len,
+            capture: Some(StreamCapture::new(retained)),
         }
-        self.reset();
-        sum
     }
 }
 
@@ -291,6 +432,13 @@ impl<'a> FlashMailboxPayloadStream<'a> {
 impl PayloadStream for FlashMailboxPayloadStream<'_> {
     fn size(&self) -> usize {
         self.len
+    }
+
+    fn reset(&mut self) {
+        self.cursor = self.offset;
+        if let Some(capture) = &mut self.capture {
+            capture.reset();
+        }
     }
 
     async fn read(&mut self, buffer: &mut [u8]) -> Result<usize, ErrorCode> {
@@ -302,8 +450,80 @@ impl PayloadStream for FlashMailboxPayloadStream<'_> {
         self.flash
             .read(self.cursor, bytes_to_read, &mut buffer[..bytes_to_read])
             .await?;
+        if let Some(capture) = &mut self.capture {
+            capture.record(&buffer[..bytes_to_read]);
+        }
         self.cursor += bytes_to_read;
         Ok(bytes_to_read)
+    }
+}
+
+pub async fn execute_auth_manifest_command(
+    mailbox: &Mailbox,
+    cmd: CommandId,
+    stream: &mut dyn PayloadStream,
+    manifest_size: u32,
+) -> Result<(), ErrorCode> {
+    let mut req = AuthManifestReqHeader {
+        chksum: 0,
+        manifest_size,
+    };
+
+    let mut checksum = stream.get_bytesum().await?;
+    for byte in cmd.0.to_le_bytes() {
+        checksum = checksum.wrapping_add(u32::from(byte));
+    }
+    for byte in req.as_bytes() {
+        checksum = checksum.wrapping_add(u32::from(*byte));
+    }
+    req.chksum = 0u32.wrapping_sub(checksum);
+
+    let response_buffer = &mut [0u8; core::mem::size_of::<MailboxRespHeader>()];
+    loop {
+        stream.reset();
+        match mailbox
+            .execute_with_payload_stream(cmd.0, Some(req.as_bytes()), stream, response_buffer)
+            .await
+        {
+            Ok(_) => return Ok(()),
+            Err(MailboxError::ErrorCode(ErrorCode::Busy)) => continue,
+            Err(_) => return Err(ErrorCode::Fail),
+        }
+    }
+}
+
+pub struct StreamCapture<'a> {
+    buffer: &'a mut [u8],
+    captured_len: usize,
+}
+
+impl<'a> StreamCapture<'a> {
+    pub fn new(buffer: &'a mut [u8]) -> Self {
+        Self {
+            buffer,
+            captured_len: 0,
+        }
+    }
+
+    pub fn reset(&mut self) {
+        self.captured_len = 0;
+    }
+
+    pub fn record(&mut self, chunk: &[u8]) {
+        if self.captured_len < self.buffer.len() {
+            let to_copy = chunk.len().min(self.buffer.len() - self.captured_len);
+            self.buffer[self.captured_len..self.captured_len + to_copy]
+                .copy_from_slice(&chunk[..to_copy]);
+            self.captured_len += to_copy;
+        }
+    }
+
+    pub fn captured_len(&self) -> usize {
+        self.captured_len
+    }
+
+    pub fn captured(&self) -> &[u8] {
+        &self.buffer[..self.captured_len]
     }
 }
 
@@ -343,5 +563,21 @@ mod tests {
         let truncated = &response.as_bytes()[..size_of::<GetImageInfoResp>() - 1];
 
         assert_eq!(parse_image_info_response(truncated), Err(ErrorCode::Fail));
+    }
+
+    #[test]
+    fn stream_capture_records_prefix_and_resets() {
+        let mut retained = [0u8; 30];
+        let mut capture = StreamCapture::new(&mut retained);
+
+        capture.record(&[1u8; 16]);
+        assert_eq!(capture.captured_len(), 16);
+        capture.record(&[2u8; 16]);
+        assert_eq!(capture.captured_len(), 30);
+        assert_eq!(&capture.captured()[..16], &[1u8; 16]);
+        assert_eq!(&capture.captured()[16..30], &[2u8; 14]);
+
+        capture.reset();
+        assert_eq!(capture.captured_len(), 0);
     }
 }

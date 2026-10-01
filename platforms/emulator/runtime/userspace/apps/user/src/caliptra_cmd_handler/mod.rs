@@ -105,9 +105,7 @@ fn external_command_capabilities() -> ExternalCommandCapabilities {
 /// number.
 const fn evidence_len(format: EvidenceFormat, algorithm: AsymAlgo) -> usize {
     match (format, algorithm) {
-        // The EAT signer emits only ES384 today, so there is no ML-DSA EAT
-        // length to report yet.
-        (EvidenceFormat::OcpEat, AsymAlgo::EccP384) => SIGNED_OCP_EAT_MAX_SIZE,
+        (EvidenceFormat::OcpEat, AsymAlgo::EccP384 | AsymAlgo::Mldsa87) => SIGNED_OCP_EAT_MAX_SIZE,
         #[cfg(feature = "pcr-quote")]
         (EvidenceFormat::PcrQuote, AsymAlgo::EccP384) => PCR_QUOTE_ECC384_BUF_LEN,
         #[cfg(feature = "pcr-quote")]
@@ -272,6 +270,7 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         capabilities.authorized_subcommands =
             encode_capabilities(authorized_subcommand_capabilities().bits());
         capabilities.reserved.fill(0);
+        capabilities.vendor.fill(0);
         Ok(())
     }
 
@@ -484,8 +483,9 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
     }
 
     #[cfg(feature = "ocp-lock")]
-    async fn get_ocp_lock_endorsement_cert(
+    async fn get_ocp_lock_endorsement_cert<Alloc: ApiAlloc>(
         &self,
+        alloc: &Alloc,
         hpke_handle: &HpkeHandle,
         algorithm: MboxEndorsementAlgorithm,
         cert_buf: &mut [u8],
@@ -495,7 +495,7 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
             .map_err(|_| CaliptraCompletionCode::InvalidParameter)?;
         let mailbox = caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox::new();
         let ocp_lock = OcpLock::new(&mailbox, &crate::ocp_lock_config::APP_RUNTIME_CONFIG);
-        let signer = CaliptraDpeSigner::with_algorithm(&mailbox, algo);
+        let signer = CaliptraDpeSigner::with_algorithm(&mailbox, algo, alloc);
 
         ocp_lock
             .get_hpke_public_key_x509(hpke_handle, cert_buf, &signer)
@@ -525,8 +525,9 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
     }
 
     #[cfg(feature = "ocp-lock")]
-    async fn get_ocp_lock_epoch_key_report(
+    async fn get_ocp_lock_epoch_key_report<Alloc: ApiAlloc>(
         &self,
+        alloc: &Alloc,
         nonce: &[u8; 32],
         sek_state: caliptra_mcu_mbox_common::messages::SekState,
         algorithm: MboxEndorsementAlgorithm,
@@ -537,7 +538,7 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
             .map_err(|_| CaliptraCompletionCode::InvalidParameter)?;
         let mailbox = Mailbox::new();
         let ocp_lock = OcpLock::new(&mailbox, &crate::ocp_lock_config::APP_RUNTIME_CONFIG);
-        let signer = CaliptraDpeSigner::with_algorithm(&mailbox, algo);
+        let signer = CaliptraDpeSigner::with_algorithm(&mailbox, algo, alloc);
 
         let len = ocp_lock
             .get_ocp_lock_epoch_key_report(nonce, sek_state, &signer, report_buf)

@@ -3,26 +3,31 @@
 //! CHUNK_SEND large-request reassembly.
 
 use caliptra_mcu_spdm_codec::{
-    CapFlags, CapabilitiesBody, ChunkSendAckBody, ChunkSendReqBody, ReqRespCode, SpdmMsgHdrPdu,
-    SpdmVersion, VendorDefinedReqPdu, WireWriter, CHUNK_ACK_ATTR_EARLY_ERROR,
-    CHUNK_ATTR_LAST_CHUNK,
+    CapFlags, CapabilitiesBody, ChunkSendAckBodyV13, ChunkSendAckBodyV14, ChunkSendReqBody,
+    ReqRespCode, SpdmMsgHdrPdu, SpdmVersion, VendorDefinedReqPdu, WireWriter,
+    CHUNK_ACK_ATTR_EARLY_ERROR, CHUNK_ATTR_LAST_CHUNK,
 };
 use caliptra_mcu_spdm_traits::{
     PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalIoTransport, SpdmVdmBackend, VdmRegistry, VdmResponse,
     VdmResponseBuffer,
 };
-use zerocopy::{little_endian::U16, FromBytes};
+use zerocopy::{
+    little_endian::{U16, U32},
+    FromBytes,
+};
 
 use super::ActiveLargeRequest;
 #[cfg(feature = "set-certificate")]
 use super::StreamPrefixState;
 #[cfg(any(test, feature = "generic-large-request"))]
 use super::WipeOnDrop;
-use crate::build::{alloc_padded, encode_error_response};
+use crate::build::{alloc_padded, build_error_response, encode_error_response};
 use crate::error::*;
+#[cfg(any(test, feature = "generic-large-request"))]
+use crate::key_exchange;
 #[cfg(feature = "set-certificate")]
 use crate::set_certificate;
-use crate::stack::{ConnectionState, Phase};
+use crate::stack::{ConnectionState, Phase, Sessions};
 use crate::vendor_defined;
 
 struct ChunkInfo {
@@ -31,8 +36,35 @@ struct ChunkInfo {
     complete: bool,
 }
 
-pub(crate) async fn handle_chunk_send<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
+/// Whether the bytes a transport delivered past the SPDM message are only framing.
+///
+/// A `CHUNK_SEND` frame carries `chunk_size` bytes of SPDM payload, but the
+/// transport may hand up a longer buffer because its data units are coarser than
+/// a byte. DOE objects are DWORD-granular, so a 634-byte message arrives as 636
+/// bytes; requiring an exact match rejects every chunk whose length is not
+/// already aligned.
+///
+/// `delivered` must be `>= payload`; callers establish that by slicing first.
+fn trailing_slack_is_transport_padding<Pal: SpdmPal>(
+    pal: &Pal,
+    delivered: usize,
+    payload: usize,
+) -> bool {
+    // TODO `send_len_alignment` is currently named for the outbound path,
+    // but it describes the transport's frame granularity in both directions.
+    // This applies to both the `SpdmPalIoTransport` and `SpdmPalTransport`.
+    delivered - payload < pal.send_len_alignment()
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) async fn handle_chunk_send<
+    'a,
+    Pal: SpdmPal,
+    Vdm: SpdmVdmBackend,
+    const MAX_SESSIONS: usize,
+>(
     state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
+    sessions: &mut Sessions<Pal, MAX_SESSIONS>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     vdm: &Vdm,
@@ -55,6 +87,7 @@ pub(crate) async fn handle_chunk_send<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
             if info.complete {
                 let rsp = build_final_chunk_send_ack(
                     state,
+                    sessions,
                     pal,
                     io,
                     vdm,
@@ -110,26 +143,44 @@ fn build_chunk_send_ack<'a, Pal: SpdmPal>(
     response_to_large_request: &[u8],
 ) -> SpdmResult<PalBytes<'a, Pal>> {
     let head = pal.header_size();
-    let raw_len =
-        head + SpdmMsgHdrPdu::SIZE + ChunkSendAckBody::SIZE + response_to_large_request.len();
+    let raw_len = if version <= SpdmVersion::V13 {
+        head + SpdmMsgHdrPdu::SIZE + ChunkSendAckBodyV13::SIZE + response_to_large_request.len()
+    } else {
+        head + SpdmMsgHdrPdu::SIZE + ChunkSendAckBodyV14::SIZE + response_to_large_request.len()
+    };
     let mut rsp = alloc_padded(pal, io, raw_len)?;
     let mut w = WireWriter::new(&mut rsp[head..]);
     w.write(&SpdmMsgHdrPdu::new(version, ReqRespCode::CHUNK_SEND_ACK))?;
-    w.write(&ChunkSendAckBody {
-        chunk_receiver_attr: if early_error {
-            CHUNK_ACK_ATTR_EARLY_ERROR
-        } else {
-            0
-        },
-        handle,
-        chunk_seq_num: U16::new(chunk_seq_num),
-    })?;
+    if version <= SpdmVersion::V13 {
+        w.write(&ChunkSendAckBodyV13 {
+            chunk_receiver_attr: if early_error {
+                CHUNK_ACK_ATTR_EARLY_ERROR
+            } else {
+                0
+            },
+            handle,
+            chunk_seq_num: U16::new(chunk_seq_num),
+        })?;
+    } else {
+        w.write(&ChunkSendAckBodyV14 {
+            chunk_receiver_attr: if early_error {
+                CHUNK_ACK_ATTR_EARLY_ERROR
+            } else {
+                0
+            },
+            handle,
+            chunk_seq_num: U32::new(chunk_seq_num as u32),
+        })?;
+    }
     w.write_bytes(response_to_large_request)?;
     Ok(rsp)
 }
 
 /// Maximum bytes carried as `ResponseToLargeRequest` inside CHUNK_SEND_ACK.
-const LARGE_REQUEST_RESPONSE_BUF_SIZE: usize = 512;
+///
+/// Re-exported as [`crate::CHUNK_SEND_ACK_INLINE_RESPONSE_SIZE`] so integrators
+/// can account for it when sizing their scratch pool.
+pub(crate) const LARGE_REQUEST_RESPONSE_BUF_SIZE: usize = 512;
 const DEBUG_UNLOCK_STANDARD_ID: u16 = 0x0004;
 const DEBUG_UNLOCK_VENDOR_ID: [u8; 4] =
     caliptra_mcu_spdm_codec::vendor_defined::iana::ocp::caliptra::CALIPTRA_VENDOR_ID.to_le_bytes();
@@ -247,19 +298,21 @@ async fn process_first_chunk<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     let large_msg_size = u32::from_le_bytes(*size_bytes) as usize;
     let chunk_data = &rest[4..];
 
-    // Require exact chunk body length match inside rest payload (no trailing junk bytes).
-    if chunk_data.len() != chunk_size {
-        return Err(ChunkProcessError::Early {
-            handle,
-            chunk_seq_num,
-        });
-    }
+    // `chunk_size` is authoritative for the SPDM message length; anything past it
+    // is transport framing, not SPDM. Taking the slice first also proves
+    // `chunk_data.len() >= chunk_size`, so the slack below cannot underflow.
     let Some(chunk) = chunk_data.get(..chunk_size) else {
         return Err(ChunkProcessError::Early {
             handle,
             chunk_seq_num,
         });
     };
+    if !trailing_slack_is_transport_padding(pal, chunk_data.len(), chunk_size) {
+        return Err(ChunkProcessError::Early {
+            handle,
+            chunk_seq_num,
+        });
+    }
     let min_chunk_size = CapabilitiesBody::MIN_DATA_TRANSFER_SIZE as usize
         - SpdmMsgHdrPdu::SIZE
         - ChunkSendReqBody::SIZE
@@ -388,19 +441,20 @@ async fn process_next_chunk<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     let large_msg_size = state.large_msg_ctx.state.large_msg_size as usize;
     let end = bytes_received.saturating_add(chunk_size);
 
-    // Require exact chunk body length match inside rest payload (no trailing junk bytes).
-    if rest.len() != chunk_size {
-        return Err(ChunkProcessError::Early {
-            handle,
-            chunk_seq_num,
-        });
-    }
+    // See `process_first_chunk`: `chunk_size` bounds the SPDM message, and the
+    // slice proves `rest.len() >= chunk_size` before the slack is computed.
     let Some(chunk) = rest.get(..chunk_size) else {
         return Err(ChunkProcessError::Early {
             handle,
             chunk_seq_num,
         });
     };
+    if !trailing_slack_is_transport_padding(pal, rest.len(), chunk_size) {
+        return Err(ChunkProcessError::Early {
+            handle,
+            chunk_seq_num,
+        });
+    }
     let min_chunk_size = CapabilitiesBody::MIN_DATA_TRANSFER_SIZE as usize
         - SpdmMsgHdrPdu::SIZE
         - ChunkSendReqBody::SIZE;
@@ -734,8 +788,20 @@ impl From<SpdmError> for LargeRequestError {
     }
 }
 
-async fn build_final_chunk_send_ack<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
+// `sessions` is consumed only by the buffered large-request dispatch, which is
+// compiled out when neither `test` nor `generic-large-request` is enabled.
+#[cfg_attr(
+    not(any(test, feature = "generic-large-request")),
+    allow(unused_variables)
+)]
+async fn build_final_chunk_send_ack<
+    'a,
+    Pal: SpdmPal,
+    Vdm: SpdmVdmBackend,
+    const MAX_SESSIONS: usize,
+>(
     state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
+    sessions: &mut Sessions<Pal, MAX_SESSIONS>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     vdm: &Vdm,
@@ -862,6 +928,7 @@ async fn build_final_chunk_send_ack<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
         #[cfg(any(test, feature = "generic-large-request"))]
         _ => match dispatch_large_request(
             state,
+            sessions,
             pal,
             io,
             vdm,
@@ -888,15 +955,36 @@ async fn build_final_chunk_send_ack<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
         ),
     };
 
+    let ack_body_size = if state.version <= SpdmVersion::V13 {
+        ChunkSendAckBodyV13::SIZE
+    } else {
+        ChunkSendAckBodyV14::SIZE
+    };
     let max_response_len = state
         .effective_data_transfer_size(pal)
-        .saturating_sub(SpdmMsgHdrPdu::SIZE + ChunkSendAckBody::SIZE);
+        .saturating_sub(SpdmMsgHdrPdu::SIZE + ack_body_size);
     if response_len > max_response_len {
         response_len = encode_error_response(
             &mut response_to_large_request[..],
             state.version,
             SPDM_LARGE_RESPONSE,
         )?;
+    }
+
+    // In case we have to chunk the response, return a SPDM_LARGE_RESPONSE error directly
+    // ("[...] the receiving end point shall, instead, respond to CHUNK_SEND
+    // with an ERROR message of ErrorCode=LargeResponse .
+    // An ERROR message of ErrorCode=LargeResponse shall not be allowed
+    // in ResponseToLargeRequest .")
+    if let Some(handle) = state.large_msg_ctx.response().map(|a| a.handle) {
+        // Just rebuild the complete response here to include the headers we might not get from
+        // `dispatch_large_request`.
+        return build_error_response(
+            pal,
+            io,
+            state.version,
+            SPDM_LARGE_RESPONSE.with_extended_data([handle]),
+        );
     }
 
     build_chunk_send_ack(
@@ -911,8 +999,10 @@ async fn build_final_chunk_send_ack<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend>(
 }
 
 #[cfg(any(test, feature = "generic-large-request"))]
-async fn dispatch_large_request<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
+#[allow(clippy::too_many_arguments)]
+async fn dispatch_large_request<Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_SESSIONS: usize>(
     state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
+    sessions: &mut Sessions<Pal, MAX_SESSIONS>,
     pal: &Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     vdm: &Vdm,
@@ -965,6 +1055,25 @@ async fn dispatch_large_request<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
         )
         .await
         .map_err(Into::into),
+        ReqRespCode::KEY_EXCHANGE => {
+            // KEY_EXCHANGE establishes a session and is never valid inside one.
+            if secure_session {
+                return Err(SPDM_UNEXPECTED_REQUEST.into());
+            }
+
+            // `guard` holds the request bytes, so reset the context for KEY_EXCHANGE chunked response.
+            state.large_msg_ctx.reset();
+
+            let (resp, spdm_len) =
+                key_exchange::handle_key_exchange_req(state, sessions, pal, io, large_req).await?;
+
+            let head = pal.header_size();
+            let spdm = resp.get(head..head + spdm_len).ok_or(SPDM_UNSPECIFIED)?;
+            out.get_mut(..spdm.len())
+                .ok_or(SPDM_UNSPECIFIED)?
+                .copy_from_slice(spdm);
+            Ok(spdm.len())
+        }
         _ => Err(SPDM_UNSUPPORTED_REQUEST.into()),
     }
 }
@@ -995,6 +1104,11 @@ mod tests {
     use super::support::{chunk_send_request, chunking_state, TestIo, TestPal};
 
     const CALIPTRA_VENDOR_ID_BYTES: [u8; 4] = CALIPTRA_VENDOR_ID.to_le_bytes();
+
+    /// Empty session manager for tests that exercise non-KEY_EXCHANGE chunked requests.
+    fn test_sessions() -> Sessions<TestPal, 1> {
+        crate::session::SessionManager::new()
+    }
 
     struct CaptureVdmBackend {
         captured_token_payload: RefCell<Option<Vec<u8>>>,
@@ -1173,6 +1287,7 @@ mod tests {
             ..TestPal::default()
         };
         let mut state = chunking_state();
+        let mut sessions = test_sessions();
         let vdm = CaptureVdmBackend::new();
 
         // Host SPDM-VDM transport sends AuthorizeDebugUnlockToken as Caliptra RT
@@ -1191,6 +1306,7 @@ mod tests {
         let first_io = TestIo::message(first_chunk.clone());
         let rsp = block_on(handle_chunk_send(
             &mut state,
+            &mut sessions,
             &pal,
             &first_io,
             &vdm,
@@ -1216,6 +1332,7 @@ mod tests {
         let second_io = TestIo::message(second_chunk.clone());
         let rsp = block_on(handle_chunk_send(
             &mut state,
+            &mut sessions,
             &pal,
             &second_io,
             &vdm,
@@ -1267,6 +1384,7 @@ mod tests {
             ..TestPal::default()
         };
         let mut state = chunking_state();
+        let mut sessions = test_sessions();
         let vdm = CaptureVdmBackend::new();
         let large_req = vendor_defined_authorize_debug_unlock_request(&[0x5a; 96]);
         let (first, second) = large_req.split_at(64);
@@ -1276,6 +1394,7 @@ mod tests {
         let first_io = TestIo::message(first_chunk.clone());
         block_on(handle_chunk_send(
             &mut state,
+            &mut sessions,
             &pal,
             &first_io,
             &vdm,
@@ -1289,6 +1408,7 @@ mod tests {
         let second_io = TestIo::message(second_chunk.clone());
         let rsp = block_on(handle_chunk_send(
             &mut state,
+            &mut sessions,
             &pal,
             &second_io,
             &vdm,
@@ -1324,6 +1444,7 @@ mod tests {
             ..TestPal::default()
         };
         let mut state = chunking_state();
+        let mut sessions = test_sessions();
         state.peer_data_transfer_size = CapabilitiesBody::MIN_DATA_TRANSFER_SIZE;
         let vdm = CaptureVdmBackend::new();
 
@@ -1338,6 +1459,7 @@ mod tests {
         let first_io = TestIo::message(first_chunk.clone());
         let rsp = block_on(handle_chunk_send(
             &mut state,
+            &mut sessions,
             &pal,
             &first_io,
             &vdm,
@@ -1360,6 +1482,7 @@ mod tests {
             ..TestPal::default()
         };
         let mut state = chunking_state();
+        let mut sessions = test_sessions();
         let vdm = CaptureVdmBackend::new();
         let host_mailbox_payload = vec![0x5au8; 4 + 96];
         let large_req = vendor_defined_authorize_debug_unlock_request(&host_mailbox_payload);
@@ -1369,6 +1492,7 @@ mod tests {
         let first_io = TestIo::message(first_chunk.clone());
         let err = block_on(handle_chunk_send(
             &mut state,
+            &mut sessions,
             &pal,
             &first_io,
             &vdm,
@@ -1390,6 +1514,7 @@ mod tests {
             ..TestPal::default()
         };
         let mut state = chunking_state();
+        let mut sessions = test_sessions();
         let vdm = CaptureVdmBackend::new();
         let host_mailbox_payload = vec![0x5au8; 4 + 96];
         let large_req = vendor_defined_authorize_debug_unlock_request(&host_mailbox_payload);
@@ -1399,6 +1524,7 @@ mod tests {
         let first_io = TestIo::message(first_chunk.clone());
         let rsp = block_on(handle_chunk_send(
             &mut state,
+            &mut sessions,
             &pal,
             &first_io,
             &vdm,
@@ -1421,6 +1547,7 @@ mod tests {
             ..TestPal::default()
         };
         let mut state = chunking_state();
+        let mut sessions = test_sessions();
         let vdm = CaptureVdmBackend::new();
         let host_mailbox_payload = vec![0x5au8; 4 + 96];
         let large_req = vendor_defined_authorize_debug_unlock_request(&host_mailbox_payload);
@@ -1430,6 +1557,7 @@ mod tests {
         let first_io = TestIo::message(first_chunk.clone());
         let rsp = block_on(handle_chunk_send(
             &mut state,
+            &mut sessions,
             &pal,
             &first_io,
             &vdm,
@@ -1452,6 +1580,7 @@ mod tests {
             ..TestPal::default()
         };
         let mut state = chunking_state();
+        let mut sessions = test_sessions();
         let vdm = BufferedOnlyVdmBackend::new();
 
         let host_mailbox_payload = vec![0x5au8; 4 + 96];
@@ -1463,6 +1592,7 @@ mod tests {
         let first_io = TestIo::message(first_chunk.clone());
         let rsp = block_on(handle_chunk_send(
             &mut state,
+            &mut sessions,
             &pal,
             &first_io,
             &vdm,
@@ -1488,6 +1618,7 @@ mod tests {
         let second_io = TestIo::message(second_chunk.clone());
         let rsp = block_on(handle_chunk_send(
             &mut state,
+            &mut sessions,
             &pal,
             &second_io,
             &vdm,

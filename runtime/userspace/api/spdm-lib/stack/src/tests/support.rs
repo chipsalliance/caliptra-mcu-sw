@@ -5,9 +5,9 @@
 extern crate std;
 
 use caliptra_mcu_spdm_codec::{
-    AsymAlgos, CapFlags, ChunkGetReqBody, ChunkResponseBody, HashAlgos, ReqRespCode, SpdmMsgHdrPdu,
-    SpdmVersion, WireWriter, AES_256_GCM_TAG_SIZE, CHUNK_ATTR_LAST_CHUNK,
-    LARGE_RESPONSE_SIZE_FIELD_SIZE, SECURED_MSG_HDR_SIZE,
+    AsymAlgos, CapFlags, ChunkGetReqBodyV13, ChunkGetReqBodyV14, ChunkResponseBody, HashAlgos,
+    ReqRespCode, SpdmMsgHdrPdu, SpdmVersion, WireWriter, AES_256_GCM_TAG_SIZE,
+    CHUNK_ATTR_LAST_CHUNK, LARGE_RESPONSE_SIZE_FIELD_SIZE, SECURED_MSG_HDR_SIZE,
 };
 use caliptra_mcu_spdm_traits::{
     MeasurementInfo, SigningInput, SpdmPalAlloc, SpdmPalAsymAlgo, SpdmPalCertStore, SpdmPalHash,
@@ -118,6 +118,8 @@ pub struct TestPal {
     pub stream_aborts: Cell<usize>,
     /// Algorithm the most recent cert-chain write was routed to.
     pub write_algo: Cell<Option<SpdmPalAsymAlgo>>,
+    /// Algorithm passed to the most recent measurement value retrieval.
+    pub meas_algo: Cell<Option<SpdmPalAsymAlgo>>,
     pub sign_ops: RefCell<Vec<RecordedSign>>,
 }
 
@@ -127,6 +129,7 @@ pub struct TestPal {
 pub enum RecordedSigningInput {
     EccP384Digest(Vec<u8>),
     Mldsa87Message { context: Vec<u8>, message: Vec<u8> },
+    Mldsa87Mu(Vec<u8>),
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -156,6 +159,7 @@ impl Default for TestPal {
             stream_cert: RefCell::new(Vec::new()),
             stream_aborts: Cell::new(0),
             write_algo: Cell::new(None),
+            meas_algo: Cell::new(None),
             sign_ops: RefCell::new(Vec::new()),
         }
     }
@@ -407,6 +411,7 @@ impl SpdmPalCertStore for TestPal {
                     message,
                 }
             }
+            SigningInput::Mldsa87Mu(mu) => RecordedSigningInput::Mldsa87Mu(mu.to_vec()),
         };
         self.sign_ops.borrow_mut().push(RecordedSign {
             algo,
@@ -563,8 +568,10 @@ impl SpdmPalMeasurements for TestPal {
         _io: &Self::Io<'_>,
         index: u8,
         _nonce: Option<&[u8; SPDM_NONCE_LEN]>,
+        asym_algo: SpdmPalAsymAlgo,
         out: &mut [u8],
     ) -> McuResult<usize> {
+        self.meas_algo.set(Some(asym_algo));
         if !self.measurement_info.iter().any(|info| info.index == index)
             || self.measurement_value.len() > out.len()
         {
@@ -671,6 +678,15 @@ impl SpdmPalSessionCrypto for TestPal {
     ) -> McuResult<usize> {
         plaintext[..ciphertext.len()].copy_from_slice(ciphertext);
         Ok(ciphertext.len())
+    }
+
+    async fn mlkem_encapsulate(
+        &self,
+        _io: &impl SpdmPalIo,
+        _encaps_key: &[u8],
+        _ciphertext: &mut [u8],
+    ) -> McuResult<Self::Key> {
+        Ok(1)
     }
 }
 
@@ -806,7 +822,7 @@ pub fn handshake_session(
         .create_session(0x1234, SpdmVersion::V12, |info| pal.alloc_persistent(info))
         .unwrap();
     let session = sessions.find_mut(session_id).unwrap();
-    session.key_schedule.set_dhe_secret(1);
+    session.key_schedule.set_shared_secret(1);
     block_on(session.key_schedule.generate_handshake_keys(
         pal,
         &empty_io,
@@ -848,18 +864,29 @@ pub async fn drain_chunked_response(
     let mut reassembled = Vec::new();
 
     loop {
-        let mut chunk_get_buf = [0u8; SpdmMsgHdrPdu::SIZE + ChunkGetReqBody::SIZE];
+        let mut chunk_get_buf = [0u8; SpdmMsgHdrPdu::SIZE + ChunkGetReqBodyV14::SIZE];
         let mut writer = WireWriter::new(&mut chunk_get_buf);
         writer
             .write(&SpdmMsgHdrPdu::new(state.version, ReqRespCode::CHUNK_GET))
             .map_err(|_| crate::error::SPDM_INVALID_REQUEST)?;
-        writer
-            .write(&ChunkGetReqBody {
-                param1: 0,
-                handle,
-                chunk_seq_num: zerocopy::little_endian::U16::new(chunk_seq_num),
-            })
-            .map_err(|_| crate::error::SPDM_INVALID_REQUEST)?;
+
+        if state.version <= SpdmVersion::V13 {
+            writer
+                .write(&ChunkGetReqBodyV13 {
+                    param1: 0,
+                    handle,
+                    chunk_seq_num: zerocopy::little_endian::U16::new(chunk_seq_num),
+                })
+                .map_err(|_| crate::error::SPDM_INVALID_REQUEST)?;
+        } else {
+            writer
+                .write(&ChunkGetReqBodyV14 {
+                    param1: 0,
+                    handle,
+                    chunk_seq_num: zerocopy::little_endian::U32::new(chunk_seq_num as u32),
+                })
+                .map_err(|_| crate::error::SPDM_INVALID_REQUEST)?;
+        }
 
         let chunk_rsp = crate::chunk::handle_chunk_get(state, pal, io, &chunk_get_buf).await?;
         let head = pal.header_size();

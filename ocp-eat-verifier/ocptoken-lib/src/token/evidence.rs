@@ -132,6 +132,8 @@ fn verify_eat_protected_header(protected: &coset::Header) -> OcpEatResult<()> {
             Algorithm::ES384
         )) | Some(coset::RegisteredLabelWithPrivate::Assigned(
             Algorithm::ESP384
+        )) | Some(coset::RegisteredLabelWithPrivate::Assigned(
+            Algorithm::ML_DSA_87
         ))
     );
     if !alg_ok {

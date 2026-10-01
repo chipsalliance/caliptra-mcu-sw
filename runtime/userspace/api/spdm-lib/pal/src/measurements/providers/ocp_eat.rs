@@ -8,10 +8,10 @@
 
 use crate::measurements::MeasurementProvider;
 use caliptra_mcu_attestation_evidence::{
-    encode_signed_ocp_eat, ocp_eat::NONCE_LEN, SIGNED_OCP_EAT_MAX_SIZE,
+    encode_signed_ocp_eat, ocp_eat::NONCE_LEN, OcpEatAlgorithm, SIGNED_OCP_EAT_MAX_SIZE,
 };
 use caliptra_mcu_scratch_alloc::BitmapAllocator;
-use caliptra_mcu_spdm_traits::{MeasurementInfo, SPDM_NONCE_LEN};
+use caliptra_mcu_spdm_traits::{MeasurementInfo, SpdmPalAsymAlgo, SPDM_NONCE_LEN};
 use mcu_caliptra_api::DPE_LABEL_LEN;
 use mcu_error::McuResult;
 
@@ -54,6 +54,7 @@ impl MeasurementProvider for OcpEatMeasurementProvider {
         &self,
         index: u8,
         nonce: Option<&[u8; SPDM_NONCE_LEN]>,
+        asym_algo: SpdmPalAsymAlgo,
         out: &mut [u8],
         _scratch: &mut [u8],
         alloc: &BitmapAllocator,
@@ -62,12 +63,18 @@ impl MeasurementProvider for OcpEatMeasurementProvider {
             return Err(mcu_error::codes::INTERNAL_BUG);
         }
 
+        let eat_algo = match asym_algo {
+            SpdmPalAsymAlgo::EccP384 => OcpEatAlgorithm::Esp384,
+            SpdmPalAsymAlgo::MlDsa87 => OcpEatAlgorithm::Mldsa87,
+        };
+
         // The EAT token is always signed. When SPDM did not provide a requester
         // nonce, bind a zero nonce in the EAT payload and omit the outer SPDM
         // measurement-response signature.
         let eat_nonce = nonce.unwrap_or(&ZERO_NONCE);
         encode_signed_ocp_eat(
             alloc,
+            eat_algo,
             &self.key_label,
             VENDOR_PKI_ENTITY_SLOT,
             eat_nonce,
