@@ -7,8 +7,15 @@
 use super::dispatch::{get_command_handler, get_external_cmd_code};
 use crate::{Transport, TransportError, TransportResult};
 
-/// Maximum mailbox response buffer size in bytes.
-pub const MAX_MBOX_RESP_BUF: usize = 8 * 1024;
+/// Maximum mailbox response buffer size in bytes. Must hold the largest typed
+/// response, currently an ML-DSA-87 attested CSR.
+pub const MAX_MBOX_RESP_BUF: usize = 16 * 1024;
+
+const _: () = assert!(
+    core::mem::size_of::<
+        caliptra_mcu_core_util_host_command_types::certificate::ExportAttestedCsrResponse,
+    >() <= MAX_MBOX_RESP_BUF
+);
 
 /// Trait for hardware mailbox communication
 pub trait MailboxDriver: Send + Sync {
