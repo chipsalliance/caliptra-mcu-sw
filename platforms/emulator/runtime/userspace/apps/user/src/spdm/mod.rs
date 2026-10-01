@@ -43,9 +43,9 @@ use embassy_executor::Spawner;
 /// `MaxSPDMmsgSize` only when buffered large requests are enabled. Raising it
 /// requires larger scratch pools; the assertion below enforces that.
 ///
-/// Certificate provisioning raises the limit to cover the largest attested CSR
-/// response; the baseline remains sized for ML-DSA-87 attestation evidence.
-#[cfg(feature = "cert-provisioning")]
+/// Attested CSR support raises the limit to cover the largest response; the
+/// baseline remains sized for ML-DSA-87 attestation evidence.
+#[cfg(feature = "attested-csr")]
 const MAX_BUFFERED_SPDM_MSG_SIZE: usize = {
     let declared = 14 * 1024;
     assert!(
@@ -59,7 +59,7 @@ const MAX_BUFFERED_SPDM_MSG_SIZE: usize = {
     declared
 };
 
-#[cfg(not(feature = "cert-provisioning"))]
+#[cfg(not(feature = "attested-csr"))]
 const MAX_BUFFERED_SPDM_MSG_SIZE: usize = {
     let declared = 8 * 1024;
     assert!(
@@ -289,7 +289,7 @@ const fn required_session_scratch() -> usize {
 /// Declared explicitly rather than derived, so the pool size stays a
 /// deliberate integrator choice; the embedded assertion fails the build if a
 /// configuration change outgrows it.
-#[cfg(feature = "cert-provisioning")]
+#[cfg(feature = "attested-csr")]
 const MCTP_SPDM_SCRATCH_SIZE: usize = {
     let declared = 24 * 1024;
     assert!(
@@ -299,7 +299,7 @@ const MCTP_SPDM_SCRATCH_SIZE: usize = {
     declared
 };
 
-#[cfg(not(feature = "cert-provisioning"))]
+#[cfg(not(feature = "attested-csr"))]
 const MCTP_SPDM_SCRATCH_SIZE: usize = {
     let declared = 12 * 1024;
     assert!(
@@ -309,7 +309,7 @@ const MCTP_SPDM_SCRATCH_SIZE: usize = {
     declared
 };
 
-#[cfg(feature = "cert-provisioning")]
+#[cfg(feature = "attested-csr")]
 const DOE_SPDM_SCRATCH_SIZE: usize = {
     let declared = 24 * 1024;
     assert!(
@@ -319,7 +319,7 @@ const DOE_SPDM_SCRATCH_SIZE: usize = {
     declared
 };
 
-#[cfg(not(feature = "cert-provisioning"))]
+#[cfg(not(feature = "attested-csr"))]
 const DOE_SPDM_SCRATCH_SIZE: usize = {
     let declared = 12 * 1024;
     assert!(

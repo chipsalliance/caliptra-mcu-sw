@@ -32,6 +32,7 @@ default = []
 disable-lms-sig-verify = []
 device-ownership-transfer = []
 periodic-fips-self-test = []
+attested-csr = []
 release = [
 	"dep:defmt",
 	"caliptra-mcu-userlog/defmt-transport",
