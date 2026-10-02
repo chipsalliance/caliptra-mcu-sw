@@ -15,7 +15,11 @@ sram = { offset = 0xa8c0_0000, size = 0x8_0000 }
 
 [platform.dccm]
 offset = 0x5000_0000
-size = 0x4000
+size = 0x3C00
+
+[platform.handoff]
+offset = 0x5000_3C00
+size = 1024
 
 [rom]
 name = "{{ROM_NAME}}"
