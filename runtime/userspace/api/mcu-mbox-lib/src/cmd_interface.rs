@@ -18,13 +18,19 @@ use caliptra_mcu_mbox_common::messages::{
     FuseLockPartitionResp, FuseReadReq, FuseReadResp, FuseRevokeVendorPkHashReq,
     FuseRevokeVendorPkHashResp, FuseRevokeVendorPubKeyReq, FuseRevokeVendorPubKeyResp,
     FuseWriteReq, FuseWriteResp, GetAttestationReq, GetAuthCmdChallengeReq,
-    GetAuthCmdChallengeResp, GetDpeCertChainReq, GetLogReq, LogType, MailboxReqHeader,
-    MailboxRespHeader, MailboxRespHeaderVarSize, McuFeProgReq, McuMailboxReq, McuMailboxResp,
-    McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq,
-    McuResponseVarSize, ProvisionOwnerPkHashReq, ProvisionOwnerPkHashResp,
-    ProvisionVendorPkHashReq, ProvisionVendorPkHashResp, SvnTarget, DEVICE_CAPS_SIZE,
+    GetAuthCmdChallengeResp, GetDpeCertChainReq, GetLogReq, HekStatusReq, HekStatusResp, LogType,
+    MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize, McuFeProgReq, McuFeStatusReq,
+    McuFeStatusResp, McuMailboxReq, McuMailboxResp, McuProdDebugUnlockReqReq,
+    McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq, McuResponseVarSize,
+    ProvisionOwnerPkHashReq, ProvisionOwnerPkHashResp, ProvisionVendorPkHashReq,
+    ProvisionVendorPkHashResp, SvnTarget, VendorPkHashStatusReq, VendorPkHashStatusResp,
+    ZeroizeUdsFeAndEnterRmaReq, ZeroizeUdsFeAndEnterRmaResp, DEVICE_CAPS_SIZE,
     GET_ATTESTATION_RESP_PREFIX_LEN, MAX_ATTESTED_CSR_RESP_DATA_SIZE, MAX_FUSE_DATA_SIZE,
     MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
+};
+#[cfg(feature = "ocp-lock")]
+use caliptra_mcu_mbox_common::messages::{
+    HekSeedSlot, OcpLockProgramHekReq, OcpLockProgramHekResp, OcpLockZeroHekReq, OcpLockZeroHekResp,
 };
 
 use caliptra_mcu_libtock_console::Console;
@@ -251,6 +257,11 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
                 CommandId::MC_GET_AUTH_CMD_CHALLENGE => {
                     self.handle_get_auth_cmd_challenge(req, resp_buf).await
                 }
+                CommandId::MC_FE_STATUS => self.handle_fe_status(req, resp_buf).await,
+                CommandId::MC_VENDOR_PK_HASH_STATUS => {
+                    self.handle_vendor_pk_hash_status(req, resp_buf).await
+                }
+                CommandId::MC_HEK_STATUS => self.handle_hek_status(req, resp_buf).await,
                 inner @ CommandId::MC_PROVISION_VENDOR_PK_HASH
                 | inner @ CommandId::MC_PROVISION_OWNER_PK_HASH
                 | inner @ CommandId::MC_FUSE_INCREASE_MIN_SVN
@@ -259,6 +270,7 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
                 | inner @ CommandId::MC_FUSE_READ
                 | inner @ CommandId::MC_FUSE_WRITE
                 | inner @ CommandId::MC_FUSE_LOCK_PARTITION
+                | inner @ CommandId::MC_ZEROIZE_UDS_FE_AND_ENTER_RMA
                 | inner @ CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY => {
                     self.handle_authorized_command(inner, req, resp_buf).await
                 }
@@ -1154,6 +1166,10 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
             CommandId::MC_FUSE_LOCK_PARTITION => {
                 self.handle_fuse_lock_partition(cmd, resp_buf).await
             }
+            CommandId::MC_ZEROIZE_UDS_FE_AND_ENTER_RMA => {
+                self.handle_zeroize_uds_fe_and_enter_rma(cmd, resp_buf)
+                    .await
+            }
             #[cfg(feature = "ocp-lock")]
             CommandId::MC_OCP_LOCK => {
                 let subcommand = cmd
@@ -1161,6 +1177,12 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
                     .ok_or(errors::INVALID_PARAMS)?;
                 match u32::from_le_bytes(subcommand.try_into().map_err(|_| errors::INVALID_PARAMS)?)
                 {
+                    value if value == CommandId::MC_OCP_LOCK_PROGRAM_HEK.0 => {
+                        self.handle_ocp_lock_program_hek(cmd, resp_buf).await
+                    }
+                    value if value == CommandId::MC_OCP_LOCK_ZERO_HEK.0 => {
+                        self.handle_ocp_lock_zero_hek(cmd, resp_buf).await
+                    }
                     value if value == CommandId::MC_OCP_LOCK_ROTATE_HEK.0 => {
                         self.handle_ocp_lock_rotate_hek(cmd, resp_buf).await
                     }
@@ -1185,7 +1207,9 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
             .ok_or(errors::INVALID_PARAMS)?;
         match u32::from_le_bytes(subcommand.try_into().map_err(|_| errors::INVALID_PARAMS)?) {
             value
-                if value == CommandId::MC_OCP_LOCK_ROTATE_HEK.0
+                if value == CommandId::MC_OCP_LOCK_PROGRAM_HEK.0
+                    || value == CommandId::MC_OCP_LOCK_ZERO_HEK.0
+                    || value == CommandId::MC_OCP_LOCK_ROTATE_HEK.0
                     || value == CommandId::MC_OCP_LOCK_SET_PERMA_HEK.0 =>
             {
                 self.handle_authorized_command(CommandId::MC_OCP_LOCK, req, resp_buf)
@@ -1285,6 +1309,25 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
 
         resp.length_bits = params.valid_bits;
 
+        Ok((resp.as_mut_bytes(), MbxCmdStatus::Complete))
+    }
+
+    async fn handle_zeroize_uds_fe_and_enter_rma<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req =
+            ZeroizeUdsFeAndEnterRmaReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        let (resp, _) = ZeroizeUdsFeAndEnterRmaResp::mut_from_prefix(resp_buf)
+            .map_err(|_| errors::INVALID_PARAMS)?;
+
+        self.non_crypto_cmds_handler
+            .zeroize_uds_fe_and_enter_rma(&req.rma_token)
+            .await
+            .map_err(map_common_cmd_error)?;
+
+        *resp = ZeroizeUdsFeAndEnterRmaResp::default();
         Ok((resp.as_mut_bytes(), MbxCmdStatus::Complete))
     }
 
@@ -1412,6 +1455,69 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
             .map_err(|_| errors::MCU_MBOX_COMMON)?;
 
         *resp = FuseWriteResp::default();
+        let resp_len = resp.as_bytes().len();
+        Ok((&mut resp_buf[..resp_len], MbxCmdStatus::Complete))
+    }
+
+    async fn handle_fe_status<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        McuFeStatusReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        let (resp, _) =
+            McuFeStatusResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = McuFeStatusResp::default();
+
+        resp.already_provisioned = self
+            .non_crypto_cmds_handler
+            .field_entropy_already_provisioned()
+            .await
+            .map_err(|_| errors::MCU_MBOX_COMMON)?
+            .into();
+
+        let resp_len = resp.as_bytes().len();
+        Ok((&mut resp_buf[..resp_len], MbxCmdStatus::Complete))
+    }
+
+    async fn handle_vendor_pk_hash_status<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        VendorPkHashStatusReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        let (resp, _) = VendorPkHashStatusResp::mut_from_prefix(resp_buf)
+            .map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = VendorPkHashStatusResp::default();
+
+        let (used_slots_bitmap, key_types) = self
+            .non_crypto_cmds_handler
+            .vendor_pk_hash_status()
+            .await
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+        resp.used_slots_bitmap = used_slots_bitmap;
+        resp.key_types = key_types;
+
+        let resp_len = resp.as_bytes().len();
+        Ok((&mut resp_buf[..resp_len], MbxCmdStatus::Complete))
+    }
+
+    async fn handle_hek_status<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        HekStatusReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        let (resp, _) =
+            HekStatusResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = HekStatusResp::default();
+
+        (resp.used_slots_bitmap, resp.total_slots) = self
+            .non_crypto_cmds_handler
+            .hek_status()
+            .await
+            .map_err(|_| errors::MCU_MBOX_COMMON)?;
+
         let resp_len = resp.as_bytes().len();
         Ok((&mut resp_buf[..resp_len], MbxCmdStatus::Complete))
     }
@@ -1548,6 +1654,52 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         let resp = resp.as_bytes();
         resp_buf[..resp.len()].copy_from_slice(resp);
         Ok((&mut resp_buf[..resp.len()], status))
+    }
+
+    #[cfg(feature = "ocp-lock")]
+    async fn handle_ocp_lock_program_hek<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req = OcpLockProgramHekReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        HekSeedSlot::try_from(req.hek_slot).map_err(|_| errors::INVALID_PARAMS)?;
+        let (resp, _) =
+            OcpLockProgramHekResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = OcpLockProgramHekResp::default();
+
+        let status = match self
+            .non_crypto_cmds_handler
+            .ocp_lock_program_hek(self.scratch, req.hek_slot)
+            .await
+        {
+            Ok(()) => MbxCmdStatus::Complete,
+            Err(_) => MbxCmdStatus::Failure,
+        };
+        Ok((&mut resp_buf[..size_of::<OcpLockProgramHekResp>()], status))
+    }
+
+    #[cfg(feature = "ocp-lock")]
+    async fn handle_ocp_lock_zero_hek<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let req = OcpLockZeroHekReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        HekSeedSlot::try_from(req.hek_slot).map_err(|_| errors::INVALID_PARAMS)?;
+        let (resp, _) =
+            OcpLockZeroHekResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
+        *resp = OcpLockZeroHekResp::default();
+
+        let status = match self
+            .non_crypto_cmds_handler
+            .ocp_lock_zero_hek(self.scratch, req.hek_slot)
+            .await
+        {
+            Ok(()) => MbxCmdStatus::Complete,
+            Err(_) => MbxCmdStatus::Failure,
+        };
+        Ok((&mut resp_buf[..size_of::<OcpLockZeroHekResp>()], status))
     }
 
     #[cfg(feature = "ocp-lock")]
@@ -1717,6 +1869,9 @@ fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32, req: &[u8]) -> usize {
         c if c == CommandId::MC_FE_PROG || c == CommandId::MC_FUSE_WRITE => {
             size_of::<FuseWriteResp>()
         }
+        c if c == CommandId::MC_FE_STATUS => size_of::<McuFeStatusResp>(),
+        c if c == CommandId::MC_VENDOR_PK_HASH_STATUS => size_of::<VendorPkHashStatusResp>(),
+        c if c == CommandId::MC_HEK_STATUS => size_of::<HekStatusResp>(),
         c if c == CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY => {
             size_of::<FuseRevokeVendorPubKeyResp>()
         }
@@ -1725,6 +1880,9 @@ fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32, req: &[u8]) -> usize {
         }
         c if c == CommandId::MC_FUSE_READ => size_of::<FuseReadResp>(),
         c if c == CommandId::MC_FUSE_LOCK_PARTITION => size_of::<FuseLockPartitionResp>(),
+        c if c == CommandId::MC_ZEROIZE_UDS_FE_AND_ENTER_RMA => {
+            size_of::<ZeroizeUdsFeAndEnterRmaResp>()
+        }
         #[cfg(feature = "ocp-lock")]
         c if c == CommandId::MC_OCP_LOCK => {
             let subcommand = req
@@ -1743,13 +1901,18 @@ fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32, req: &[u8]) -> usize {
                 Some(sub) if sub == CommandId::MC_OCP_LOCK_ENUMERATE_HPKE_HANDLES.0 => {
                     size_of::<OcpLockEnumerateHpkeHandlesResp>()
                 }
+                Some(sub) if sub == CommandId::MC_OCP_LOCK_PROGRAM_HEK.0 => {
+                    size_of::<OcpLockProgramHekResp>()
+                }
+                Some(sub) if sub == CommandId::MC_OCP_LOCK_ZERO_HEK.0 => {
+                    size_of::<OcpLockZeroHekResp>()
+                }
                 Some(sub) if sub == CommandId::MC_OCP_LOCK_ROTATE_HEK.0 => {
                     size_of::<OcpLockRotateHekResp>()
                 }
                 Some(sub) if sub == CommandId::MC_OCP_LOCK_SET_PERMA_HEK.0 => {
                     size_of::<OcpLockSetPermaHekResp>()
                 }
-                // Unknown or missing subcommands are rejected by `handle_ocp_lock_command`.
                 _ => size_of::<MailboxRespHeader>(),
             }
         }

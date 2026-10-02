@@ -509,6 +509,21 @@ pub trait CaliptraCmdHandler {
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 
+    /// Reports whether all field entropy partitions have been provisioned.
+    async fn field_entropy_already_provisioned(&self) -> CaliptraCmdResult<bool> {
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Reports occupied vendor public-key hash slots and their PQC key types.
+    async fn vendor_pk_hash_status(&self) -> CaliptraCmdResult<(u32, [u8; 16])> {
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Reports used HEK slots and the total number of configured HEK slots.
+    async fn hek_status(&self) -> CaliptraCmdResult<(u32, u32)> {
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
     /// Retrieves the OCP Lock endorsement certificate using task-local scratch
     /// for the signing request and response.
     #[cfg(feature = "ocp-lock")]
@@ -550,6 +565,28 @@ pub trait CaliptraCmdHandler {
 
     /// Rotate the active HEK to the specified slot.
     #[cfg(feature = "ocp-lock")]
+    async fn ocp_lock_program_hek<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        slot: u32,
+    ) -> CaliptraCmdResult<()> {
+        let _ = (alloc, slot);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Zero the specified HEK slot.
+    #[cfg(feature = "ocp-lock")]
+    async fn ocp_lock_zero_hek<Alloc: ApiAlloc>(
+        &self,
+        alloc: &Alloc,
+        slot: u32,
+    ) -> CaliptraCmdResult<()> {
+        let _ = (alloc, slot);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Rotate the active HEK to the specified slot.
+    #[cfg(feature = "ocp-lock")]
     async fn ocp_lock_rotate_hek<Alloc: ApiAlloc>(
         &self,
         alloc: &Alloc,
@@ -568,6 +605,12 @@ pub trait CaliptraCmdHandler {
     /// Lock an OTP partition against further writes.
     async fn fuse_lock_partition(&self, partition: u32) -> CaliptraCmdResult<()> {
         let _ = partition;
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Zeroize UDS and field entropy, then transition the device to RMA.
+    async fn zeroize_uds_fe_and_enter_rma(&self, rma_token: &[u8; 16]) -> CaliptraCmdResult<()> {
+        let _ = rma_token;
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 

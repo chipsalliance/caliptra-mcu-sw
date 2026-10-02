@@ -709,6 +709,7 @@ pub unsafe fn main() {
         board_kernel,
         caliptra_mcu_capsules_runtime::mci::DRIVER_NUM,
         &peripherals.mci,
+        &peripherals.lifecycle,
     )
     .finalize(kernel::static_buf!(caliptra_mcu_capsules_runtime::mci::Mci));
 

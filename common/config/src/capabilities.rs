@@ -44,6 +44,9 @@ bitflags::bitflags! {
         const GET_DOT_BACKUP_BLOB = 1 << 11;
         const OCP_LOCK_ROTATE_HEK = 1 << 12;
         const OCP_LOCK_SET_PERMA_HEK = 1 << 13;
+        const OCP_LOCK_PROGRAM_HEK = 1 << 14;
+        const OCP_LOCK_ZERO_HEK = 1 << 15;
+        const ZEROIZE_UDS_FE_AND_ENTER_RMA = 1 << 16;
     }
 }
 
@@ -115,6 +118,18 @@ mod tests {
         assert_eq!(
             AuthorizedSubcommandCapabilities::OCP_LOCK_SET_PERMA_HEK.bits(),
             1 << 13
+        );
+        assert_eq!(
+            AuthorizedSubcommandCapabilities::OCP_LOCK_PROGRAM_HEK.bits(),
+            1 << 14
+        );
+        assert_eq!(
+            AuthorizedSubcommandCapabilities::OCP_LOCK_ZERO_HEK.bits(),
+            1 << 15
+        );
+        assert_eq!(
+            AuthorizedSubcommandCapabilities::ZEROIZE_UDS_FE_AND_ENTER_RMA.bits(),
+            1 << 16
         );
         assert_eq!(ExternalCommandCapabilities::OCP_LOCK.bits(), 1 << 18);
         assert_eq!(
