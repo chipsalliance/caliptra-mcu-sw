@@ -90,9 +90,9 @@ impl SpdmValidatorRunner {
         }
 
         println!(
-            "[{}]: Test : {}",
+            "[{}]: Transport bridge: {}",
             self.test_name,
-            if self.passed { "PASSED" } else { "FAILED" }
+            if self.passed { "COMPLETED" } else { "FAILED" }
         );
     }
 
@@ -334,7 +334,7 @@ pub fn wait_for_spdm_responder_validator() -> bool {
     SPDM_RESPONDER_VALIDATOR_DONE.load(Ordering::Acquire)
 }
 
-pub fn execute_spdm_responder_validator(transport: &'static str) {
+pub fn execute_spdm_responder_validator(transport: &'static str) -> std::thread::JoinHandle<bool> {
     SPDM_RESPONDER_VALIDATOR_DONE.store(false, Ordering::Release);
     crate::spawn_with_emulator_state(move || {
         println!(
@@ -354,30 +354,30 @@ pub fn execute_spdm_responder_validator(transport: &'static str) {
                                 "spdm_device_validator_sample exited with status: {:?}",
                                 status
                             );
-                            if !status.success() {
-                                std::process::exit(1);
-                            }
-                            SPDM_RESPONDER_VALIDATOR_DONE.store(true, Ordering::Release);
-                            break;
+                            let success = status.success();
+                            SPDM_RESPONDER_VALIDATOR_DONE.store(success, Ordering::Release);
+                            return success;
                         }
                         Ok(None) => {}
                         Err(e) => {
                             println!("Error: {:?}", e);
-                            std::process::exit(1);
+                            return false;
                         }
                     }
                     std::thread::sleep(std::time::Duration::from_millis(100));
                 }
                 let _ = child.kill();
+                false
             }
             Err(e) => {
                 println!(
                     "Error: {:?} Failed to spawn spdm_device_validator_sample!!",
                     e
                 );
+                false
             }
         }
-    });
+    })
 }
 
 pub fn start_spdm_responder_validator(transport: &'static str) -> io::Result<Child> {
