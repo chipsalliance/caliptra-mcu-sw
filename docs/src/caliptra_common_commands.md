@@ -338,6 +338,13 @@ Authorizes the debug unlock token. The request body is identical for MCI mailbox
 Discovers supported Caliptra identity keys or exports an attested Certificate
 Signing Request (CSR) for a specified device key.
 
+This command is optional and compiled in only with the `attested-csr` cargo
+feature (`caliptra-mcu-mbox-lib/attested-csr` for the MCI mailbox,
+`caliptra-mcu-spdm-vdm-handler/attested-csr` for SPDM VDM); without it, the
+command is rejected as unsupported (SPDM VDM completion `UnsupportedOperation`;
+MCI mailbox command failure) and the `EXPORT_ATTESTED_CSR` capability bit is
+clear.
+
 **Request Payload**:
 
 | Byte(s) | Name          | Type   | Description                                                                                         |

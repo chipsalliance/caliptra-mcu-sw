@@ -52,6 +52,7 @@ impl AppVdmBackend {
         Self(Some(CaliptraVdm::new(commands, stream, authorization)))
     }
 
+    #[cfg(all(feature = "doe", not(feature = "test-doe-spdm-tdisp-ide-validator")))]
     pub const fn disabled() -> Self {
         Self(None)
     }

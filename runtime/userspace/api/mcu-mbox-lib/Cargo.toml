@@ -34,6 +34,7 @@ default = []
 disable-lms-sig-verify = []
 device-ownership-transfer = []
 periodic-fips-self-test = []
+attested-csr = []
 ocp-lock = ["caliptra-mcu-common-commands/ocp-lock"]
 release = [
 	"dep:defmt",
