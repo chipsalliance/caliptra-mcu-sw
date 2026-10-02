@@ -624,8 +624,10 @@ mod tests {
             | ExternalCommandCapabilities::CLEAR_DEBUG_LOG;
         let spdm_commands = ExternalCommandCapabilities::REQUEST_DEBUG_UNLOCK
             | ExternalCommandCapabilities::AUTHORIZE_DEBUG_UNLOCK_TOKEN
-            | ExternalCommandCapabilities::EXPORT_ATTESTED_CSR
-            | ExternalCommandCapabilities::AUTHORIZED_COMMAND;
+            | ExternalCommandCapabilities::EXPORT_ATTESTED_CSR;
+        let authorized_transport = cfg!(feature = "spdm") || cfg!(feature = "mcu-mbox-service");
+        let dot_transport = cfg!(feature = "dot-spdm-vdm") || cfg!(feature = "dot-mci-mailbox");
+        let ocp_lock_transport = cfg!(feature = "ocp-lock") && authorized_transport;
 
         assert_eq!(
             runtime.contains(McuRuntimeCapabilities::MCTP_VDM_RESPONDER),
@@ -641,8 +643,12 @@ mod tests {
         );
         assert_eq!(commands.contains(spdm_commands), cfg!(feature = "spdm"));
         assert_eq!(
+            commands.contains(ExternalCommandCapabilities::AUTHORIZED_COMMAND),
+            authorized_transport
+        );
+        assert_eq!(
             commands.contains(ExternalCommandCapabilities::DEVICE_OWNERSHIP_TRANSFER),
-            cfg!(feature = "dot-spdm-vdm")
+            dot_transport
         );
         assert_eq!(
             authorized.contains(
@@ -652,8 +658,10 @@ mod tests {
                     | AuthorizedSubcommandCapabilities::PROGRAM_FIELD_ENTROPY
                     | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PUBLIC_KEY
                     | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PK_HASH
+                    | AuthorizedSubcommandCapabilities::FUSE_LOCK_PARTITION
+                    | AuthorizedSubcommandCapabilities::PROVISION_OWNER_PK_HASH
             ),
-            cfg!(feature = "spdm")
+            authorized_transport
         );
         assert_eq!(
             authorized.contains(
@@ -662,18 +670,18 @@ mod tests {
                     | AuthorizedSubcommandCapabilities::DOT_ROTATE
                     | AuthorizedSubcommandCapabilities::GET_DOT_BACKUP_BLOB
             ),
-            cfg!(feature = "dot-spdm-vdm")
+            dot_transport
         );
         assert_eq!(
             authorized.contains(
                 AuthorizedSubcommandCapabilities::OCP_LOCK_ROTATE_HEK
                     | AuthorizedSubcommandCapabilities::OCP_LOCK_SET_PERMA_HEK
             ),
-            cfg!(feature = "spdm") && cfg!(feature = "ocp-lock")
+            ocp_lock_transport
         );
         assert_eq!(
             commands.contains(ExternalCommandCapabilities::OCP_LOCK),
-            cfg!(feature = "spdm") && cfg!(feature = "ocp-lock")
+            ocp_lock_transport
         );
         assert_eq!(
             runtime.contains(McuRuntimeCapabilities::DOE),

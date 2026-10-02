@@ -15,7 +15,8 @@ use caliptra_mcu_core_util_host_command_types::fuse::{
     FuseRevokeVendorPkHashResponse, FuseRevokeVendorPubKeyRequest, FuseRevokeVendorPubKeyResponse,
     GetAuthCmdChallengeRequest, GetAuthCmdChallengeResponse, OcpLockRotateHekRequest,
     OcpLockRotateHekResponse, OcpLockSetPermaHekRequest, OcpLockSetPermaHekResponse,
-    ProvisionVendorPkHashRequest, ProvisionVendorPkHashResponse, AUTH_CMD_CHALLENGE_SIZE,
+    ProvisionOwnerPkHashRequest, ProvisionOwnerPkHashResponse, ProvisionVendorPkHashRequest,
+    ProvisionVendorPkHashResponse, AUTH_CMD_CHALLENGE_SIZE,
     MC_OCP_LOCK_ROTATE_HEK_CANONICAL_CMD_ID, MC_OCP_LOCK_SET_PERMA_HEK_CANONICAL_CMD_ID,
 };
 use caliptra_mcu_core_util_host_command_types::CommonResponse;
@@ -208,6 +209,14 @@ define_authorized_fuse_mailbox_command!(
     ExtCmdProvisionVendorPkHashResponse
 );
 define_authorized_fuse_mailbox_command!(
+    ProvisionOwnerPkHashCmd,
+    0x504F_504B,
+    ProvisionOwnerPkHashRequest,
+    ProvisionOwnerPkHashResponse,
+    ExtCmdProvisionOwnerPkHashRequest,
+    ExtCmdProvisionOwnerPkHashResponse
+);
+define_authorized_fuse_mailbox_command!(
     FuseIncreaseMinSvnCmd,
     0x4D43_4D53,
     FuseIncreaseMinSvnRequest,
@@ -315,7 +324,8 @@ define_ocp_lock_mailbox_command!(
 mod tests {
     use super::*;
     use caliptra_mcu_core_util_host_command_types::fuse::{
-        MC_FE_PROG_CANONICAL_CMD_ID, MC_GET_AUTH_CMD_CHALLENGE_CANONICAL_CMD_ID, OCP_LOCK_FAMILY_ID,
+        MC_FE_PROG_CANONICAL_CMD_ID, MC_GET_AUTH_CMD_CHALLENGE_CANONICAL_CMD_ID,
+        MC_PROVISION_OWNER_PK_HASH_CANONICAL_CMD_ID, OCP_LOCK_FAMILY_ID,
     };
 
     fn assert_checksum(bytes: &[u8]) {
@@ -339,6 +349,16 @@ mod tests {
             &MC_FE_PROG_CANONICAL_CMD_ID.to_le_bytes()
         );
         assert_checksum(fe_prog.as_bytes());
+
+        let owner = ExtCmdProvisionOwnerPkHashRequest::from_internal(
+            &ProvisionOwnerPkHashRequest::default(),
+            0x12,
+        );
+        assert_eq!(
+            &owner.as_bytes()[4..8],
+            &MC_PROVISION_OWNER_PK_HASH_CANONICAL_CMD_ID.to_le_bytes()
+        );
+        assert_checksum(owner.as_bytes());
     }
 
     #[test]

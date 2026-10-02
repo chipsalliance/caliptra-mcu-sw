@@ -29,7 +29,7 @@ use super::device_ownership_transfer::{
 use super::fuse::{
     FeProgCmd, FuseIncreaseMinSvnCmd, FuseLockPartitionCmd, FuseRevokeVendorPkHashCmd,
     FuseRevokeVendorPubKeyCmd, GetAuthCmdChallengeCmd, OcpLockRotateHekCmd, OcpLockSetPermaHekCmd,
-    ProvisionVendorPkHashCmd,
+    ProvisionOwnerPkHashCmd, ProvisionVendorPkHashCmd,
 };
 use super::hmac::{HmacCmd, HmacKdfCounterCmd};
 use super::import::ImportCmd;
@@ -101,6 +101,7 @@ pub fn get_command_handler(command_id: u32) -> Option<CommandHandlerFn> {
         0x8014 => Some(process_command_with_metadata::<FuseRevokeVendorPubKeyCmd>),
         0x8015 => Some(process_command_with_metadata::<FuseRevokeVendorPkHashCmd>),
         0x8016 => Some(process_command_with_metadata::<FuseLockPartitionCmd>),
+        0x8017 => Some(process_command_with_metadata::<ProvisionOwnerPkHashCmd>),
         0x8018 => Some(process_command_with_metadata::<OcpLockRotateHekCmd>),
         0x8019 => Some(process_command_with_metadata::<OcpLockSetPermaHekCmd>),
         // Device Ownership Transfer Commands (0x8020-0x8029)
@@ -170,7 +171,7 @@ pub fn get_external_cmd_code(command_id: u32) -> Option<u32> {
         0x1005 => Some(0x4D45_4143), // ExportAttestedCsr -> MC_EXPORT_ATTESTED_CSR ("MEAC")
         0x1007 => Some(0x4D47_4154), // GetAttestation -> MC_GET_ATTESTATION ("MGAT")
         // Authorized / Fuse Commands
-        0x8010..=0x8016 => Some(0x0000_0012),
+        0x8010..=0x8017 => Some(0x0000_0012),
         0x8018..=0x8019 => Some(0x0000_0012),
         0x8020 | 0x8021 | 0x8024 | 0x8025 => Some(0x0000_0012),
         0x8022 | 0x8023 | 0x8026..=0x8029 => Some(0x0000_0011),
@@ -222,5 +223,12 @@ mod tests {
             assert!(get_command_handler(command as u32).is_some());
             assert_eq!(get_external_cmd_code(command as u32), Some(0x12));
         }
+    }
+
+    #[test]
+    fn owner_hash_provisioning_uses_authorized_envelope() {
+        let command = CaliptraCommandId::ProvisionOwnerPkHash;
+        assert!(get_command_handler(command as u32).is_some());
+        assert_eq!(get_external_cmd_code(command as u32), Some(0x12));
     }
 }
