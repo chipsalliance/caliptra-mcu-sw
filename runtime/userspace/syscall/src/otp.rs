@@ -518,4 +518,6 @@ pub mod reg {
     pub const VENDOR_PQC_KEY_TYPE: u32 = 35;
     pub const SOC_MANIFEST_SVN: u32 = 36;
     pub const SOC_MANIFEST_MAX_SVN: u32 = 37;
+    /// Owner SoC Manifest SVN words; index must be 0 or 1.
+    pub const OWNER_SOC_MANIFEST_MIN_SVN: u32 = 38;
 }

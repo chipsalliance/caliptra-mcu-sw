@@ -234,7 +234,9 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
             "MCU mailbox command called: 0x{}",
             Hex32(cmd)
         );
-        let result = if let Some(caliptra_cmd) = caliptra_passthrough_cmd(cmd_id) {
+        let result = if cmd_id.is_vendor_unique() {
+            Err(errors::UNSUPPORTED_COMMAND)
+        } else if let Some(caliptra_cmd) = caliptra_passthrough_cmd(cmd_id) {
             self.handle_crypto_passthrough(req_buf, req_len, caliptra_cmd, resp_buf)
                 .await
         } else {

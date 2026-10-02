@@ -10,7 +10,7 @@ use caliptra_mcu_registers_generated::fuses;
 use caliptra_mcu_registers_generated::fuses::{
     OTP_CPTRA_CORE_RUNTIME_SVN, OTP_CPTRA_CORE_SOC_MANIFEST_MAX_SVN,
     OTP_CPTRA_CORE_SOC_MANIFEST_SVN, OTP_CPTRA_CORE_VENDOR_PK_HASH_0,
-    OTP_CPTRA_CORE_VENDOR_PK_HASH_VALID,
+    OTP_CPTRA_CORE_VENDOR_PK_HASH_VALID, OWNER_SOC_MANIFEST_MIN_SVN,
 };
 use caliptra_mcu_romtime::println;
 #[cfg(feature = "ocp-lock")]
@@ -139,6 +139,8 @@ pub mod reg {
     pub const VENDOR_PQC_KEY_TYPE: u32 = 35;
     pub const SOC_MANIFEST_SVN: u32 = 36;
     pub const SOC_MANIFEST_MAX_SVN: u32 = 37;
+    /// Owner SoC Manifest SVN words; index must be 0 or 1.
+    pub const OWNER_SOC_MANIFEST_MIN_SVN: u32 = 38;
 }
 
 #[derive(Default)]
@@ -276,6 +278,22 @@ impl Otp {
                 {
                     Ok(value) => CommandReturn::success_u32(value),
                     Err(_) => CommandReturn::failure(ErrorCode::FAIL),
+                }
+            }
+            reg::OWNER_SOC_MANIFEST_MIN_SVN => {
+                let svn_fuses = OWNER_SOC_MANIFEST_MIN_SVN;
+                let svn_num_words = svn_fuses.byte_size / 4;
+                if app.reg_index >= svn_num_words as u32 {
+                    return CommandReturn::failure(ErrorCode::INVAL);
+                }
+
+                let word_addr = svn_fuses.byte_offset / 4 + app.reg_index as usize;
+                match self.driver.read_word(word_addr) {
+                    Ok(value) => CommandReturn::success_u32(value),
+                    Err(error) => {
+                        capsule_error!("OTP", "Error reading Owner SoC Manifest SVN: {:?}", error);
+                        CommandReturn::failure(ErrorCode::FAIL)
+                    }
                 }
             }
             reg::VENDOR_PK_HASH_VALID => match self.driver.read_vendor_pk_hash_valid() {
@@ -421,6 +439,22 @@ impl Otp {
                 match self.driver.write_word(word_addr, value) {
                     Ok(_) => CommandReturn::success(),
                     Err(_) => CommandReturn::failure(ErrorCode::FAIL),
+                }
+            }
+            reg::OWNER_SOC_MANIFEST_MIN_SVN => {
+                let svn_fuses = OWNER_SOC_MANIFEST_MIN_SVN;
+                let svn_num_words = svn_fuses.byte_size / 4;
+                if app.reg_index >= svn_num_words as u32 {
+                    return CommandReturn::failure(ErrorCode::INVAL);
+                }
+
+                let word_addr = svn_fuses.byte_offset / 4 + app.reg_index as usize;
+                match self.driver.write_word(word_addr, value) {
+                    Ok(_) => CommandReturn::success(),
+                    Err(error) => {
+                        capsule_error!("OTP", "Error writing Owner SoC Manifest SVN: {:?}", error);
+                        CommandReturn::failure(ErrorCode::FAIL)
+                    }
                 }
             }
             reg::VENDOR_PK_HASH_VALID => {

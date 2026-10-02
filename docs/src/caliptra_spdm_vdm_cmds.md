@@ -99,7 +99,7 @@ The following subcommands are assigned to the SPDM VDM IANA authorization-gated 
 | `0x4D41_4343` (`MACC`) | GetAuthChallenge           | Supported     | Acquire a one-use 48-byte authorization challenge.  |
 | `0x5056_504B` (`PVPK`) | ProvisionVendorPkHash      | Supported     | Provision vendor public key hash.                   |
 | `0x504F_504B` (`POPK`) | ProvisionOwnerPkHash       | Supported     | Provision owner public key hash.                    |
-| `0x4D43_4D53` (`MCMS`) | FuseIncreaseMinSvn         | Supported     | Increase the Caliptra Runtime or SoC Manifest minimum SVN. |
+| `0x4D43_4D53` (`MCMS`) | FuseIncreaseMinSvn         | Supported     | Increase the Caliptra Runtime, SoC Manifest, or Owner SoC Manifest minimum SVN. |
 | `0x4D43_4650` (`MCFP`) | ProgramFieldEntropy        | Supported     | Program field entropy.                              |
 | `0x4D52_564B` (`MRVK`) | FuseRevokeVendorPubKey     | Supported     | Revoke vendor public key.                           |
 | `0x5256_4B48` (`RVKH`) | FuseRevokeVendorPkHash     | Supported     | Revoke vendor public key hash.                      |
@@ -109,6 +109,14 @@ The following subcommands are assigned to the SPDM VDM IANA authorization-gated 
 | `0x4F4C_5A48` (`OLZH`) | OcpLockZeroHek             | Supported     | Permanently sanitize an unused HEK slot.            |
 | `0x0000_0011`          | DeviceOwnershipTransfer    | Supported     | Carry authorization-gated DOT subcommands.          |
 | `0x0000_0013`          | OcpLock                    | Supported     | Carry authorization-gated OCP LOCK subcommands.     |
+| `VU00`-`VUFF`           | VendorUnique               | Reserved      | Vendor-unique innermost commands; unsupported by the reference MCU. |
+
+`VU00` through `VUFF` represent exactly 256 IDs of the form `VUxy`, where both
+suffix characters are uppercase ASCII hexadecimal digits. They are encoded in
+the little-endian `sub_cmd_id` field like the other FourCC subcommands. Numeric
+values in the ASCII gaps between `9` and `A` are not reserved. The reference
+implementation returns `UnsupportedOperation` for these recognized but
+unimplemented IDs.
 
 ### Authorization Flow
 

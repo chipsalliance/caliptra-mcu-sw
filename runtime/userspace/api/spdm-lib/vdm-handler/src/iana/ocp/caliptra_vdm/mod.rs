@@ -2750,6 +2750,31 @@ mod tests {
     }
 
     #[test]
+    fn vendor_unique_authorized_commands_are_reserved_but_unsupported() {
+        use caliptra_mcu_mbox_common::messages::CommandId;
+
+        for sub_cmd in [
+            CommandId::VENDOR_UNIQUE_COMMAND_START.0,
+            u32::from_be_bytes(*b"VU9A"),
+            CommandId::VENDOR_UNIQUE_COMMAND_END.0,
+        ] {
+            let cmds = TestCommands::new(0);
+            let mut req = vec![
+                CALIPTRA_VDM_COMMAND_VERSION,
+                CaliptraVdmCommand::AuthorizedCommand as u8,
+            ];
+            req.extend_from_slice(&sub_cmd.to_le_bytes());
+
+            let (response, inline, _) = dispatch(&cmds, &req, 16, 0);
+            assert_inline(response, 3);
+            assert_eq!(
+                inline[2],
+                CaliptraCompletionCode::UnsupportedOperation as u8
+            );
+        }
+    }
+
+    #[test]
     fn authorize_debug_unlock_token_accepts_large_request_payload() {
         let cmds = TestCommands::new(0);
         let token = vec![0xA5; 1024];

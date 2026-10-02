@@ -425,6 +425,19 @@ The subcommands covered by this wrapper are listed in [Authorization-Gated Subco
 
 Subcommand-specific payloads are defined by the corresponding command specifications and contain no mailbox request header.
 
+#### Vendor-Unique Command IDs
+
+The innermost command-ID namespace reserves `VU00` through `VUFF` for
+vendor-unique commands. This is exactly 256 FourCC values: `VUxy`, where `x`
+and `y` are uppercase ASCII hexadecimal digits. On MCI, `VUxy` is the mailbox
+command ID. On SPDM, it is the `sub_cmd_id` carried inside `AuthorizedCommand`;
+it does not consume a top-level SPDM VDM command code.
+
+The reference MCU assigns no behavior to this namespace. Direct MCI requests
+fail as unsupported commands, and SPDM `AuthorizedCommand` requests return
+`UnsupportedOperation`. Vendor implementations may define payloads and behavior
+within this reserved namespace without colliding with Caliptra-defined FourCCs.
+
 ### Get Auth Challenge
 
 Requests a one-use challenge for authorization-gated commands.
@@ -450,19 +463,28 @@ Provisions the vendor public key hash.
 Increases a selected minimum SVN using command code `0x4D43_4D53` (`MCMS`).
 `flags` is reserved and must be zero.
 
-| Target | Name               | Status      | Fuse                               |
-| ------ | ------------------ | ----------- | ---------------------------------- |
-| `0`    | Caliptra Runtime   | Implemented | `CPTRA_CORE_RUNTIME_SVN`           |
-| `1`    | SoC Manifest       | Implemented | `CPTRA_CORE_SOC_MANIFEST_SVN`      |
-| `2`    | Owner SoC Manifest | Reserved    | Not implemented                    |
+| Target | Name               | Requested SVN      | Fuse                         |
+| ------ | ------------------ | ------------------ | ---------------------------- |
+| `0`    | Caliptra Runtime   | 1-128              | `CPTRA_CORE_RUNTIME_SVN`     |
+| `1`    | SoC Manifest       | 1-128              | `CPTRA_CORE_SOC_MANIFEST_SVN` |
+| `2`    | Owner SoC Manifest | 1-64 (SDK default) | `OWNER_SOC_MANIFEST_MIN_SVN`  |
 
-Unknown targets are invalid. The reserved Owner SoC Manifest target returns
-`UnsupportedOperation`. The SVN must be between 1 and 128 and cannot decrease
-the current fuse floor. The Caliptra Runtime target is additionally bounded by
-the running SVN reported by `FW_INFO`. The SoC Manifest target is bounded by
-`CPTRA_CORE_SOC_MANIFEST_MAX_SVN`. No trusted running SoC Manifest SVN is
+Unknown targets, zero, values outside the target's range, and decreases below
+the current fuse floor are invalid. The Caliptra Runtime target is additionally
+bounded by the running SVN reported by `FW_INFO`. The SoC Manifest target is
+bounded by `CPTRA_CORE_SOC_MANIFEST_MAX_SVN`. No trusted running SoC Manifest SVN is
 currently exposed, so that target cannot verify the requested floor against the
 currently running image.
+
+The Owner SoC Manifest target is additionally bounded by
+`FW_INFO.owner_auth_manifest_current_svn`, the SVN accepted by Core.
+
+After programming any target, the command verifies the full SVN field by
+readback. A read failure or a mismatch returns `OperationFailed`.
+
+The command does not reset the device. For Owner SoC Manifest storage and
+activation, see
+[Owner SoC Manifest SVN](svn.md#owner-soc-manifest-svn).
 
 **Request Payload**: `flags:u32 | target:u32 | svn:u32 | HybridSignature`
 
