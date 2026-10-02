@@ -53,7 +53,7 @@ and written to Caliptra's `FUSE_*` registers or `SS_STRAP_GENERIC[*]` /
 | `cptra_itrng_health_test_window_size` | 16 bits | Written to `SS_STRAP_GENERIC[2]` bits\[15:0\] |
 | `cptra_itrng_entropy_config_0` | 32 bits | Written to `CPTRA_I_TRNG_ENTROPY_CONFIG_0` |
 | `cptra_itrng_entropy_config_1` | 32 bits | Written to `CPTRA_I_TRNG_ENTROPY_CONFIG_1` |
-| `CPTRA_CORE_OWNER_MANIFEST_MIN_SVN` | 8 bits | Owner manifest min SVN floor (upcoming Caliptra requirement). Planned for `SS_STRAP_GENERIC[3]` bits\[7:0\]; the reference MCU ROM does not yet forward it. PK-hash skip-lock and rotation are already read from `mci_reg_generic_input_wires[1]` bits\[0\] and \[1\], respectively. |
+| `owner_soc_manifest_min_svn` | 64 bits | Monotonic bit-count counter decoded to the Owner SoC Manifest minimum SVN and written to `SS_STRAP_GENERIC[3]` bits\[15:8\]. |
 
 ### Optional fuses
 
@@ -162,16 +162,10 @@ transformation from raw OTP bytes to written value. ✓ = Caliptra core fuse reg
 - **`cptra_itrng_entropy_config_1`** ✓ →
   `CPTRA_I_TRNG_ENTROPY_CONFIG_1`: `Single{bits:32}` raw u32.
 
-- **`CPTRA_CORE_OWNER_MANIFEST_MIN_SVN`** (planned) ✓ → `SS_STRAP_GENERIC[3]` bits\[7:0\].
-  `Single{bits:8}` raw u8 (recommended `LinearOr{bits:8, dupe:3}` since this is
-  a monotonically increasing anti-rollback value — see encoding table below).
-  Required by an upcoming Caliptra ROM change that reads the owner manifest min
-  SVN floor from this strap during owner manifest verification. The reference
-  MCU ROM does not yet read this OTP field or forward it. PK-hash skip-lock and
-  rotation no longer occupy this strap: MCU ROM reads
-  `mci_reg_generic_input_wires[1]` bits\[0\] and \[1\], respectively. Builds
-  with `stable-owner-key` currently set `SS_STRAP_GENERIC[3]` bit\[0\], so the
-  owner manifest min SVN implementation must preserve or reconcile that use.
+- **`owner_soc_manifest_min_svn`** ✓ → `SS_STRAP_GENERIC[3]` bits\[15:8\].
+  `OneHot{bits:64}` monotonic bit-count counter in the non-ECC
+  `VENDOR_TEST_PARTITION`. MCU ROM counts the programmed bits to decode the
+  logical range 0-64 and preserves all other strap bits.
 
 - **OTP status register offset** — hard-coded in MCU ROM (not from OTP).
   Written to `SS_STRAP_GENERIC[0]` bits\[15:0\]; Caliptra ROM reads this strap
@@ -274,7 +268,7 @@ fault tolerance without causing ECC integrity issues.
 | `cptra_itrng_health_test_window_size` | ✅ | `Single{bits:16}` |
 | `cptra_itrng_entropy_config_0` | ✅ | `Single{bits:32}` |
 | `cptra_itrng_entropy_config_1` | ✅ | `Single{bits:32}` |
-| `CPTRA_CORE_OWNER_MANIFEST_MIN_SVN` | ❌ | `LinearOr{bits:8, dupe:3}` |
+| `owner_soc_manifest_min_svn` | ❌ | `OneHot{bits:64}` |
 | `perma_hek_en` (2.1 only) | ✅ | `Single{bits:1}` or if no ECC, `LinearOr{bits:1, dupe:3}` |
 | `CPTRA_SS_LOCK_HEK_PROD_{0..7}` (2.1 only) | ✅ | `Single{bits:256}` each (per-slot `CPTRA_SS_LOCK_HEK_PROD_N_RATCHET_SEED`) |
 | `vendor_recovery_pk_hash` | ✅ | `Single{bits:384}` |
@@ -283,7 +277,7 @@ fault tolerance without causing ECC integrity issues.
 | `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN` | ❌ | `OneHotLinearOr{bits:N, dupe:3}` (N up to 32) |
 | `SOC_IMAGE_MIN_SVN_{0..M}` | ❌ | `OneHotLinearOr{bits:N, dupe:3}` (N up to 32) each |
 
-*Note: Fields with `OneHot` or `OneHotLinearOr` monotonic bit-count layouts (`dot_fuse_array`, `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN`, `SOC_IMAGE_MIN_SVN_{0..M}`) must reside in a non-ECC protected partition (e.g., `VENDOR_TEST_PARTITION` in the reference map) because ECC calculation forbids subsequent write operations once a partition has been programmed.*
+*Note: Fields with `OneHot` or `OneHotLinearOr` monotonic bit-count layouts (`dot_fuse_array`, `owner_soc_manifest_min_svn`, `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN`, `SOC_IMAGE_MIN_SVN_{0..M}`) must reside in a non-ECC protected partition (e.g., `VENDOR_TEST_PARTITION` in the reference map) because ECC calculation forbids subsequent write operations once a partition has been programmed.*
 
 TODO: there are only 32 LMS revocation bits specificed in the reference fuse map, but with redundant encoding, we would get 16 or fewer bits, unless  they are backed with HW redundancy.
 
