@@ -7,13 +7,14 @@ use caliptra_api::{
     mailbox::{CapabilitiesResp, CommandId, MailboxReqHeader},
     SocManager,
 };
-use caliptra_mcu_config::capabilities::{ExternalCommandCapabilities, McuRuntimeCapabilities};
+use caliptra_mcu_config::capabilities::{
+    AuthorizedSubcommandCapabilities, ExternalCommandCapabilities, McuRuntimeCapabilities,
+};
 use caliptra_mcu_hw_model::{LifecycleControllerState, McuHwModel};
 use caliptra_mcu_mbox_common::messages::{
     CommandId as McuCommandId, DeviceCapsReq, DpeSignerContextCertReq, EcdsaVerifyReq,
-    FirmwareVersionReq, GetAuthCmdChallengeReq, GetDpeCertChainReq, LmsVerifyReq,
-    MailboxReqHeader as McuMailboxReqHeader, MailboxRespHeader, McuEcdsa384SigVerifyReq,
-    McuFeProgReq, McuLmsSigVerifyReq,
+    FirmwareVersionReq, GetDpeCertChainReq, LmsVerifyReq, MailboxReqHeader as McuMailboxReqHeader,
+    MailboxRespHeader, McuEcdsa384SigVerifyReq, McuFeProgReq, McuLmsSigVerifyReq,
 };
 use caliptra_mcu_romtime::{handoff::McuRomCapabilities, McuBootMilestones};
 use zerocopy::{FromBytes, IntoBytes};
@@ -156,9 +157,27 @@ fn test_device_capabilities_cmd() -> Result<()> {
     );
     assert_eq!(
         u32::from_be_bytes(resp.caps[24..28].try_into().unwrap()),
-        ExternalCommandCapabilities::GET_ATTESTATION.bits()
+        (ExternalCommandCapabilities::GET_ATTESTATION
+            | ExternalCommandCapabilities::AUTHORIZED_COMMAND
+            | ExternalCommandCapabilities::DEVICE_OWNERSHIP_TRANSFER)
+            .bits()
     );
-    assert_eq!(u32::from_be_bytes(resp.caps[28..32].try_into().unwrap()), 0);
+    assert_eq!(
+        u32::from_be_bytes(resp.caps[28..32].try_into().unwrap()),
+        (AuthorizedSubcommandCapabilities::GET_AUTH_CHALLENGE
+            | AuthorizedSubcommandCapabilities::PROVISION_VENDOR_PK_HASH
+            | AuthorizedSubcommandCapabilities::FUSE_INCREASE_MIN_SVN
+            | AuthorizedSubcommandCapabilities::PROGRAM_FIELD_ENTROPY
+            | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PUBLIC_KEY
+            | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PK_HASH
+            | AuthorizedSubcommandCapabilities::FUSE_LOCK_PARTITION
+            | AuthorizedSubcommandCapabilities::PROVISION_OWNER_PK_HASH
+            | AuthorizedSubcommandCapabilities::DOT_LOCK
+            | AuthorizedSubcommandCapabilities::DOT_DISABLE
+            | AuthorizedSubcommandCapabilities::DOT_ROTATE
+            | AuthorizedSubcommandCapabilities::GET_DOT_BACKUP_BLOB)
+            .bits()
+    );
     assert_eq!(&resp.caps[32..48], &[0; 16]);
     assert_eq!(&resp.caps[48..64], &[0; 16]);
     Ok(())
@@ -177,20 +196,14 @@ fn test_get_auth_cmd_challenge_cmd() -> Result<()> {
             .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
     });
 
-    let cmd = GetAuthCmdChallengeReq::default();
-    let resp = hw.mailbox_execute_req(cmd)?;
+    let challenge = super::get_auth_cmd_challenge(&mut hw)?;
 
     assert_eq!(
-        resp.challenge.len(),
+        challenge.len(),
         caliptra_mcu_command_auth_challenge_signer::AUTH_CMD_NONCE_LEN
     );
     assert!(
-        resp.challenge
-            .iter()
-            .copied()
-            .reduce(|a, b| (a | b))
-            .unwrap()
-            != 0,
+        challenge.iter().copied().reduce(|a, b| a | b).unwrap() != 0,
         "Challenge should not be all-zeros"
     );
     Ok(())
