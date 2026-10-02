@@ -10,8 +10,8 @@ use caliptra_api::{
 use caliptra_mcu_config::capabilities::{ExternalCommandCapabilities, McuRuntimeCapabilities};
 use caliptra_mcu_hw_model::{LifecycleControllerState, McuHwModel};
 use caliptra_mcu_mbox_common::messages::{
-    DeviceCapsReq, DpeSignerContextCertReq, EcdsaVerifyReq, FirmwareVersionReq,
-    GetAuthCmdChallengeReq, GetDpeCertChainReq, LmsVerifyReq,
+    CommandId as McuCommandId, DeviceCapsReq, DpeSignerContextCertReq, EcdsaVerifyReq,
+    FirmwareVersionReq, GetAuthCmdChallengeReq, GetDpeCertChainReq, LmsVerifyReq,
     MailboxReqHeader as McuMailboxReqHeader, MailboxRespHeader, McuEcdsa384SigVerifyReq,
     McuFeProgReq, McuLmsSigVerifyReq,
 };
@@ -49,6 +49,25 @@ fn test_invalid_mailbox_cmd() -> Result<()> {
         !err_msg.contains("timed out"),
         "Mailbox command should fail with error, not time out. Got: {err_msg}"
     );
+    Ok(())
+}
+
+#[test]
+fn test_legacy_direct_authorized_command_is_rejected() -> Result<()> {
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-mcu-mbox-cmds"),
+        ..Default::default()
+    });
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    let command = McuCommandId::MC_GET_AUTH_CMD_CHALLENGE.0;
+    let mut request = [0u8; 12];
+    let checksum = caliptra_mcu_mbox_common::messages::calc_checksum(command, &request[4..]);
+    request[..4].copy_from_slice(&checksum.to_le_bytes());
+    assert!(hw.mailbox_execute(command, &request).is_err());
     Ok(())
 }
 
