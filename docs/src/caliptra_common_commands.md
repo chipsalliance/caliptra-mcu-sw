@@ -402,6 +402,19 @@ The subcommands covered by this wrapper are listed in [Authorization-Gated Subco
 
 Subcommand-specific payloads are defined by the corresponding command specifications and contain no mailbox request header.
 
+#### Vendor-Unique Command IDs
+
+The innermost command-ID namespace reserves `VU00` through `VUFF` for
+vendor-unique commands. This is exactly 256 FourCC values: `VUxy`, where `x`
+and `y` are uppercase ASCII hexadecimal digits. On MCI, `VUxy` is the mailbox
+command ID. On SPDM, it is the `sub_cmd_id` carried inside `AuthorizedCommand`;
+it does not consume a top-level SPDM VDM command code.
+
+The reference MCU assigns no behavior to this namespace. Direct MCI requests
+fail as unsupported commands, and SPDM `AuthorizedCommand` requests return
+`UnsupportedOperation`. Vendor implementations may define payloads and behavior
+within this reserved namespace without colliding with Caliptra-defined FourCCs.
+
 ### Get Auth Challenge
 
 Requests a one-use challenge for authorization-gated commands.
