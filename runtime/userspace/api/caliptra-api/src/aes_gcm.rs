@@ -27,7 +27,7 @@ use crate::wire::{
     CMD_CM_AES_GCM_SPDM_DECRYPT_INIT, CMD_CM_AES_GCM_SPDM_ENCRYPT_INIT, MAX_CMB_DATA_SIZE,
     MBOX_RESP_HEADER_SIZE,
 };
-use crate::ApiAlloc;
+use crate::ScratchAlloc;
 
 // ---------------------------------------------------------------------------
 // Public constants / types
@@ -39,7 +39,7 @@ pub type Aes256GcmTag = [u8; 16];
 pub const AES_GCM_CTX_SIZE: usize = 128;
 
 /// Opaque AES-GCM context returned by SPDM encrypt/decrypt init.
-pub type AesGcmCtx<'a, A> = <A as ApiAlloc>::Buf<'a>;
+pub type AesGcmCtx<'a, A> = <A as ScratchAlloc>::Buf<'a>;
 
 /// Maximum output bytes per update/final (plaintext or ciphertext +
 /// possible 16-byte expansion).
@@ -143,7 +143,7 @@ const DECRYPT_FINAL_RSP_MAX: usize = DECRYPT_FINAL_RSP_HDR + MAX_OUTPUT_SIZE;
 /// Execute SPDM AES-GCM init (encrypt or decrypt variant).
 ///
 /// Returns the 128-byte encrypted context on success.
-async fn spdm_init<'a, A: ApiAlloc>(
+async fn spdm_init<'a, A: ScratchAlloc>(
     alloc: &'a A,
     cmd: u32,
     cmk: &Cmk,
@@ -182,7 +182,7 @@ async fn spdm_init<'a, A: ApiAlloc>(
 }
 
 /// Start SPDM AES-256-GCM encryption for one secured message fragment.
-pub async fn spdm_aes_gcm_encrypt_init<'a, A: ApiAlloc>(
+pub async fn spdm_aes_gcm_encrypt_init<'a, A: ScratchAlloc>(
     alloc: &'a A,
     cmk: &Cmk,
     spdm_version: u8,
@@ -201,7 +201,7 @@ pub async fn spdm_aes_gcm_encrypt_init<'a, A: ApiAlloc>(
 }
 
 /// Start SPDM AES-256-GCM decryption for one secured message fragment.
-pub async fn spdm_aes_gcm_decrypt_init<'a, A: ApiAlloc>(
+pub async fn spdm_aes_gcm_decrypt_init<'a, A: ScratchAlloc>(
     alloc: &'a A,
     cmk: &Cmk,
     spdm_version: u8,
@@ -221,7 +221,7 @@ pub async fn spdm_aes_gcm_decrypt_init<'a, A: ApiAlloc>(
 
 /// Encrypt one chunk (update, not final). Returns bytes written to
 /// `out` and the updated context.
-pub async fn spdm_aes_gcm_encrypt_update<'a, A: ApiAlloc>(
+pub async fn spdm_aes_gcm_encrypt_update<'a, A: ScratchAlloc>(
     alloc: &'a A,
     ctx: &[u8],
     chunk: &[u8],
@@ -271,7 +271,7 @@ pub async fn spdm_aes_gcm_encrypt_update<'a, A: ApiAlloc>(
 }
 
 /// Encrypt the final chunk. Returns bytes written and the 16-byte tag.
-pub async fn spdm_aes_gcm_encrypt_final<A: ApiAlloc>(
+pub async fn spdm_aes_gcm_encrypt_final<A: ScratchAlloc>(
     alloc: &A,
     ctx: &[u8],
     chunk: &[u8],
@@ -328,7 +328,7 @@ pub async fn spdm_aes_gcm_encrypt_final<A: ApiAlloc>(
 
 /// Decrypt one chunk (update, not final). Returns bytes written to
 /// `out` and the updated context.
-pub async fn spdm_aes_gcm_decrypt_update<'a, A: ApiAlloc>(
+pub async fn spdm_aes_gcm_decrypt_update<'a, A: ScratchAlloc>(
     alloc: &'a A,
     ctx: &[u8],
     chunk: &[u8],
@@ -379,7 +379,7 @@ pub async fn spdm_aes_gcm_decrypt_update<'a, A: ApiAlloc>(
 
 /// Decrypt the final chunk with tag verification. Returns bytes
 /// written to `out`.
-pub async fn spdm_aes_gcm_decrypt_final<A: ApiAlloc>(
+pub async fn spdm_aes_gcm_decrypt_final<A: ScratchAlloc>(
     alloc: &A,
     ctx: &[u8],
     tag: &Aes256GcmTag,
@@ -448,7 +448,7 @@ pub async fn spdm_aes_gcm_decrypt_final<A: ApiAlloc>(
 /// Returns `(bytes_written_to_ciphertext, tag)`.
 #[allow(clippy::too_many_arguments)]
 #[inline(never)]
-pub async fn spdm_aes_gcm_encrypt<A: ApiAlloc>(
+pub async fn spdm_aes_gcm_encrypt<A: ScratchAlloc>(
     alloc: &A,
     cmk: &Cmk,
     spdm_version: u8,
@@ -474,7 +474,7 @@ pub async fn spdm_aes_gcm_encrypt<A: ApiAlloc>(
 /// Returns the number of plaintext bytes written.
 #[allow(clippy::too_many_arguments)]
 #[inline(never)]
-pub async fn spdm_aes_gcm_decrypt<A: ApiAlloc>(
+pub async fn spdm_aes_gcm_decrypt<A: ScratchAlloc>(
     alloc: &A,
     cmk: &Cmk,
     spdm_version: u8,

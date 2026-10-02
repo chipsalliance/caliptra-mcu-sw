@@ -336,7 +336,9 @@ impl AlgorithmsRsp {
 }
 
 impl ResponseBody for AlgorithmsRsp {
-    const RESPONSE_CODE: ReqRespCode = ReqRespCode::ALGORITHMS;
+    fn response_code(&self) -> ReqRespCode {
+        ReqRespCode::ALGORITHMS
+    }
 
     fn body_size(&self) -> usize {
         AlgorithmsRspBodyFixed::SIZE + (self.num_alg_struct() as usize) * AlgStructEntry::SIZE
