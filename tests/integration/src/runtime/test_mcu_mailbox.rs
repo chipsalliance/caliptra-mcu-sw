@@ -10,12 +10,13 @@ use caliptra_api::{
 use caliptra_mcu_config::capabilities::{ExternalCommandCapabilities, McuRuntimeCapabilities};
 use caliptra_mcu_hw_model::{LifecycleControllerState, McuHwModel};
 use caliptra_mcu_mbox_common::messages::{
-    DeviceCapsReq, DpeSignerContextCertReq, EcdsaVerifyReq, FirmwareVersionReq,
-    GetAuthCmdChallengeReq, GetDpeCertChainReq, LmsVerifyReq,
+    CommandId as McuCommandId, DeviceCapsReq, DeviceCapsResp, DpeSignerContextCertReq,
+    EcdsaVerifyReq, FirmwareVersionReq, GetAuthCmdChallengeReq, GetDpeCertChainReq, LmsVerifyReq,
     MailboxReqHeader as McuMailboxReqHeader, MailboxRespHeader, McuEcdsa384SigVerifyReq,
     McuFeProgReq, McuLmsSigVerifyReq,
 };
 use caliptra_mcu_romtime::{handoff::McuRomCapabilities, McuBootMilestones};
+use std::mem::size_of;
 use zerocopy::{FromBytes, IntoBytes};
 
 fn semantic_version(packed_version: u32) -> String {
@@ -48,6 +49,189 @@ fn test_invalid_mailbox_cmd() -> Result<()> {
     assert!(
         !err_msg.contains("timed out"),
         "Mailbox command should fail with error, not time out. Got: {err_msg}"
+    );
+    Ok(())
+}
+
+#[test]
+fn test_invalid_mailbox_cmd_with_valid_checksum() -> Result<()> {
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-mcu-mbox-cmds"),
+        ..Default::default()
+    });
+
+    // wait another little bit for the mailbox to come up after the runtime
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    // Send an unknown command (0x0) with an valid checksum.
+    // The firmware should reject it with a mailbox failure.
+    let cmd = 0;
+    let request = calc_checksum(cmd, &[]).to_le_bytes();
+    let err_msg = hw.mailbox_execute(cmd, &request).unwrap_err().to_string();
+    assert!(
+        !err_msg.contains("timed out"),
+        "Mailbox command should fail with error, not time out. Got: {err_msg}"
+    );
+    Ok(())
+}
+
+#[test]
+fn test_valid_mailbox_cmd_with_invalid_checksum() -> Result<()> {
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-mcu-mbox-cmds"),
+        ..Default::default()
+    });
+
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    // Send an known command ("MFWV") with an invalid checksum.
+    // The firmware should reject it with a mailbox failure.
+    let cmd = McuCommandId::MC_FIRMWARE_VERSION.0;
+    let err_msg = hw
+        .mailbox_execute(cmd, &[0; size_of::<FirmwareVersionReq>()])
+        .unwrap_err()
+        .to_string();
+    assert!(
+        !err_msg.contains("timed out"),
+        "Mailbox command should fail with error, not time out. Got: {err_msg}"
+    );
+    Ok(())
+}
+
+#[test]
+fn test_mailbox_transport_rejects_request_shorter_than_header() -> Result<()> {
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-mcu-mbox-cmds"),
+        ..Default::default()
+    });
+
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    // Send an known command ("MFWV") but with a request shorter than the header.
+    // The firmware should reject it with a mailbox failure.
+    let cmd = McuCommandId::MC_FIRMWARE_VERSION.0;
+    let err_msg = hw
+        .mailbox_execute(cmd, &[0; size_of::<McuMailboxReqHeader>() - 1])
+        .unwrap_err()
+        .to_string();
+    assert!(
+        !err_msg.contains("timed out"),
+        "Mailbox command should fail with error, not time out. Got: {err_msg}"
+    );
+    Ok(())
+}
+
+#[test]
+fn test_rejects_missing_dot_subcommands() -> Result<()> {
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-mcu-mbox-cmds"),
+        ..Default::default()
+    });
+
+    // wait another little bit for the mailbox to come up after the runtime
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    // Send the device ownership transfer command without any subcommands.
+    // The firmware should reject it with a mailbox failure.
+    let cmd = McuCommandId::MC_DEVICE_OWNERSHIP_TRANSFER.0;
+    let request = calc_checksum(cmd, &[]).to_le_bytes();
+    let err_msg = hw.mailbox_execute(cmd, &request).unwrap_err().to_string();
+    assert!(
+        !err_msg.contains("timed out"),
+        "Mailbox command should fail with error, not time out. Got: {err_msg}"
+    );
+    Ok(())
+}
+
+#[test]
+fn test_rejects_unknown_dot_subcommands() -> Result<()> {
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-mcu-mbox-cmds"),
+        ..Default::default()
+    });
+
+    // wait another little bit for the mailbox to come up after the runtime
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    // Send the device ownership transfer command with an unknown subcommand.
+    // The firmware should reject it with a mailbox failure.
+    let cmd = McuCommandId::MC_DEVICE_OWNERSHIP_TRANSFER.0;
+    let subcommand = 0xDEAD_BEEFu32.to_le_bytes();
+    let mut request = calc_checksum(cmd, &subcommand).to_le_bytes().to_vec();
+    request.extend_from_slice(&subcommand);
+    let err_msg = hw.mailbox_execute(cmd, &request).unwrap_err().to_string();
+    assert!(
+        !err_msg.contains("timed out"),
+        "Mailbox command should fail with error, not time out. Got: {err_msg}"
+    );
+    Ok(())
+}
+
+#[test]
+fn test_feature_gated_command_is_rejected_when_disabled() -> Result<()> {
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-mcu-mbox-cmds"),
+        ..Default::default()
+    });
+
+    // wait another little bit for the mailbox to come up after the runtime
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    // Send the FIPS periodic status command while the feature is disabled.
+    // The firmware should reject it with a mailbox failure.
+    let cmd = McuCommandId::MC_FIPS_PERIODIC_STATUS.0;
+    let request = calc_checksum(cmd, &[]).to_le_bytes();
+    let err_msg = hw.mailbox_execute(cmd, &request).unwrap_err().to_string();
+    assert!(
+        !err_msg.contains("timed out"),
+        "Mailbox command should fail with error, not time out. Got: {err_msg}"
+    );
+    Ok(())
+}
+
+#[test]
+fn test_succesful_response_checksum() -> Result<()> {
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-mcu-mbox-cmds"),
+        ..Default::default()
+    });
+
+    // wait another little bit for the mailbox to come up after the runtime
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    // Send a valid device capabilities command
+    let cmd = McuCommandId::MC_DEVICE_CAPABILITIES.0;
+    let request = calc_checksum(cmd, &[]).to_le_bytes();
+    let response = hw
+        .mailbox_execute(cmd, &request)?
+        .expect("MC_DEVICE_CAPABILITIES returned no response");
+
+    // Make sure it's the right checksum, and response length
+    assert_eq!(response.len(), size_of::<DeviceCapsResp>());
+    assert_eq!(
+        u32::from_le_bytes(response[..size_of::<u32>()].try_into().unwrap()),
+        calc_checksum(0, &response[size_of::<u32>()..])
     );
     Ok(())
 }
