@@ -22,7 +22,11 @@ sram = { offset = 0x4000_0000, size = 0x10_0000 }
 
 [platform.dccm]
 offset = 0x5000_0000
-size = 0x4000
+size = 0x3C00
+
+[platform.handoff]
+offset = 0x5000_3C00
+size = 1024
 
 # This section is optional.
 [rom]
