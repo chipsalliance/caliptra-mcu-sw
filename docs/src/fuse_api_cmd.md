@@ -1,13 +1,31 @@
+The identifiers in this section are MCU Runtime `AuthorizedCommand` target
+IDs, not top-level Runtime mailbox command-register values. Runtime requests
+use:
+
+```text
+MBOX_CMD = 0x00000012
+SRAM = checksum || target_id(LE) || operation_payload
+       || nonce[48] || ecc_pub_x[48] || ecc_pub_y[48]
+       || mldsa_pub[2592] || HybridSignature
+```
+
+The request tables below describe `operation_payload`; the common checksum,
+target ID, and authorization trailer are shown once above.
+
+MCU ROM has a separate boot-time direct fuse API for `IFPR`, `IFPW`, and
+`IFPK`. ROM places that identifier directly in the mailbox command register
+and uses `checksum || operation_payload` without the Runtime target field or
+authorization trailer.
+
 ### MC_FUSE_READ
 
 Reads fuse values.
 
-Command Code: `0x4946_5052` ("IFPR")
+Runtime target ID / ROM direct command code: `0x4946_5052` ("IFPR")
 
-*Table: `MC_FUSE_READ` input arguments*
+*Table: `MC_FUSE_READ` operation payload*
 | **Name**   | **Type**       | **Description**               |
 | ---------- | -------------- | ----------------------------- |
-| chksum     |  u32           |                               |
 | partition  |  u32           | Partition number to read from |
 | entry      |  u32           | Entry to read                 |
 
@@ -23,12 +41,11 @@ Command Code: `0x4946_5052` ("IFPR")
 
 Write fuse values.
 
-Command Code: `0x4946_5057` ("IFPW")
+Runtime target ID / ROM direct command code: `0x4946_5057` ("IFPW")
 
-*Table: `MC_FUSE_WRITE` input arguments*
+*Table: `MC_FUSE_WRITE` operation payload*
 | **Name**   | **Type**       | **Description**                       |
 | ---------- | -------------- | ------------------------------------- |
-| chksum     |  u32           |                                       |
 | word_addr  |  u32           | Entry to write (word offset)          |
 | data       |  u32           | Word to write                         |
 | mask       |  u32           | Bit-Mask to only write specified bits |
@@ -51,12 +68,11 @@ Caveats:
 
 Lock a partition.
 
-Command Code: `0x4946_504B` ("IFPK")
+Runtime target ID / ROM direct command code: `0x4946_504B` ("IFPK")
 
-*Table: `MC_FUSE_LOCK_PARTITION` input arguments*
+*Table: `MC_FUSE_LOCK_PARTITION` operation payload*
 | **Name**   | **Type**       | **Description**               |
 | ---------- | -------------- | ----------------------------- |
-| chksum     |  u32           |                               |
 | partition  |  u32           | Partition number to lock      |
 
 
@@ -75,12 +91,11 @@ Caveats:
 
 Provision a new vendor PK hash.
 
-Command Code: `0x5056_504b` ("PVPK")
+Runtime authorized target ID: `0x5056_504b` ("PVPK")
 
-*Table: `MC_PROVISION_VENDOR_PK_HASH` input arguments*
+*Table: `MC_PROVISION_VENDOR_PK_HASH` operation payload*
 | **Name**   | **Type**       | **Description**                |
 | ---------- | -------------- | ------------------------------ |
-| chksum     |  u32           |                                |
 | slot       |  u32           | The vendor PK hash slot to use |
 | hash       |  \[u8; 48\]    | New vendor PK hash             |
 
@@ -99,12 +114,11 @@ Caveats:
 Provision `CPTRA_SS_OWNER_PK_HASH` using its 48-byte dword-reversed OTP
 representation.
 
-Command Code: `0x504F_504B` ("POPK")
+Runtime authorized target ID: `0x504F_504B` ("POPK")
 
-*Table: `MC_PROVISION_OWNER_PK_HASH` input arguments*
+*Table: `MC_PROVISION_OWNER_PK_HASH` operation payload*
 | **Name** | **Type**    | **Description**              |
 | -------- | ----------- | ---------------------------- |
-| chksum   | u32         |                              |
 | hash     | \[u8; 48\] | New owner public-key hash    |
 
 *Table: `MC_PROVISION_OWNER_PK_HASH` output arguments*
@@ -125,12 +139,11 @@ Caveats:
 
 Revoke one vendor firmware verification key within a vendor PK hash slot.
 
-Command Code: `0x4D52_564B` ("MRVK")
+Runtime authorized target ID: `0x4D52_564B` ("MRVK")
 
-*Table: `MC_FUSE_REVOKE_VENDOR_PUB_KEY` input arguments*
+*Table: `MC_FUSE_REVOKE_VENDOR_PUB_KEY` operation payload*
 | **Name**             | **Type**       | **Description**                                      |
 | -------------------- | -------------- | ---------------------------------------------------- |
-| chksum               |  u32           |                                                      |
 | reserved             |  u32           | Reserved; must be zero                               |
 | vendor_pk_hash_slot  |  u32           | Vendor PK hash slot containing the key to revoke     |
 | key_type             |  u32           | `0` = ECDSA P-384, `1` = LMS, `2` = MLDSA-87         |
@@ -154,12 +167,12 @@ Caveats:
 Revoke a vendor PK hash.
 Marks a vendor PK hash as invalid, revoking all of the associated keys.
 
-Command Code: `0x5256_4b48` ("RVKH")
+Runtime authorized target ID: `0x5256_4b48` ("RVKH")
 
-*Table: `MC_FUSE_REVOKE_VENDOR_PK_HASH` input arguments*
+*Table: `MC_FUSE_REVOKE_VENDOR_PK_HASH` operation payload*
 | **Name**             | **Type**       | **Description**               |
 | -------------------- | -------------- | ----------------------------- |
-| chksum               |  u32           |                               |
+| reserved             |  u32           | Reserved; must be zero        |
 | vendor_pk_hash_slot  |  u32           | Vendor PK hash slot to revoke |
 
 

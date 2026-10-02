@@ -35,7 +35,7 @@ pub const AUTH_PUB_MLDSA_SIZE: usize = 2592;
 /// Canonical command identifier for the GET_AUTH_CMD_CHALLENGE command used in sub-command dispatch.
 ///
 /// This is the MCU mailbox FOURCC for `MC_GET_AUTH_CMD_CHALLENGE` (`0x4D41_4343` = "MACC").
-/// Used as the `sub_cmd_id` in the SPDM VDM AuthorizedCommand (`0x12`) dispatch.
+/// Used as the target ID in the MCI and SPDM VDM AuthorizedCommand (`0x12`) dispatch.
 pub const MC_GET_AUTH_CMD_CHALLENGE_CANONICAL_CMD_ID: u32 = 0x4D41_4343;
 
 /// Canonical command identifier for the FE_PROG command used in challenge signing.
@@ -64,10 +64,7 @@ pub const MC_OCP_LOCK_SET_PERMA_HEK_CANONICAL_CMD_ID: u32 = 0x4F4C_5350;
 /// (`cmd_id(BE) || cmd_body || nonce`) for the subsequent authorized command.
 #[repr(C)]
 #[derive(Debug, Clone, Default, IntoBytes, FromBytes, Immutable)]
-pub struct GetAuthCmdChallengeRequest {
-    pub flags: u32,
-    pub reserved: u32,
-}
+pub struct GetAuthCmdChallengeRequest;
 
 /// Response containing the challenge nonce.
 #[repr(C)]

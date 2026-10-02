@@ -11,7 +11,7 @@ use caliptra_mcu_core_util_host_command_types::device_ownership_transfer::{
     DotOverrideRequest, DotRecoveryRequest, DotRotateRequest, DotStatus, DotStatusRequest,
     DotStatusResponse, DotTransitionResponse, DotUnlockChallengeRequest, DotUnlockRequest,
     GetDotBackupBlobRequest, GetDotBackupBlobResponse, AUTH_CMD_NONCE_LEN, DOT_BLOB_SIZE,
-    MC_DOT_DISABLE_CANONICAL_CMD_ID, MC_DOT_LOCK_CANONICAL_CMD_ID,
+    DOT_FAMILY_ID, MC_DOT_DISABLE_CANONICAL_CMD_ID, MC_DOT_LOCK_CANONICAL_CMD_ID,
     MC_DOT_OVERRIDE_CANONICAL_CMD_ID, MC_DOT_OVERRIDE_CHALLENGE_CANONICAL_CMD_ID,
     MC_DOT_RECOVERY_CANONICAL_CMD_ID, MC_DOT_ROTATE_CANONICAL_CMD_ID,
     MC_DOT_STATUS_CANONICAL_CMD_ID, MC_DOT_UNLOCK_CANONICAL_CMD_ID,
@@ -46,17 +46,43 @@ macro_rules! define_dot_request {
     };
 }
 
-define_dot_request!(
+macro_rules! define_authorized_dot_request {
+    ($external:ident, $internal:ty, $subcommand:expr) => {
+        #[repr(C)]
+        #[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+        pub struct $external {
+            pub chksum: u32,
+            pub family: u32,
+            pub subcommand: u32,
+            pub request: $internal,
+        }
+
+        impl FromInternalRequest<$internal> for $external {
+            fn from_internal(internal: &$internal, command_code: u32) -> Self {
+                let mut external = Self {
+                    chksum: 0,
+                    family: DOT_FAMILY_ID,
+                    subcommand: $subcommand,
+                    request: internal.clone(),
+                };
+                external.chksum = calc_checksum(command_code, &external.as_bytes()[4..]);
+                external
+            }
+        }
+    };
+}
+
+define_authorized_dot_request!(
     ExtCmdDotLockRequest,
     DotLockRequest,
     MC_DOT_LOCK_CANONICAL_CMD_ID
 );
-define_dot_request!(
+define_authorized_dot_request!(
     ExtCmdDotDisableRequest,
     DotDisableRequest,
     MC_DOT_DISABLE_CANONICAL_CMD_ID
 );
-define_dot_request!(
+define_authorized_dot_request!(
     ExtCmdDotRotateRequest,
     DotRotateRequest,
     MC_DOT_ROTATE_CANONICAL_CMD_ID
@@ -71,7 +97,7 @@ define_dot_request!(
     DotUnlockRequest,
     MC_DOT_UNLOCK_CANONICAL_CMD_ID
 );
-define_dot_request!(
+define_authorized_dot_request!(
     ExtCmdGetDotBackupBlobRequest,
     GetDotBackupBlobRequest,
     MC_GET_DOT_BACKUP_BLOB_CANONICAL_CMD_ID
@@ -203,7 +229,7 @@ impl VariableSizeBytes for ExtCmdGetDotBackupBlobResponse {}
 
 define_command!(
     DotLockCmd,
-    0x0000_0011,
+    0x0000_0012,
     DotLockRequest,
     DotTransitionResponse,
     ExtCmdDotLockRequest,
@@ -211,7 +237,7 @@ define_command!(
 );
 define_command!(
     DotDisableCmd,
-    0x0000_0011,
+    0x0000_0012,
     DotDisableRequest,
     DotTransitionResponse,
     ExtCmdDotDisableRequest,
@@ -219,7 +245,7 @@ define_command!(
 );
 define_command!(
     DotRotateCmd,
-    0x0000_0011,
+    0x0000_0012,
     DotRotateRequest,
     DotTransitionResponse,
     ExtCmdDotRotateRequest,
@@ -243,7 +269,7 @@ define_command!(
 );
 define_command!(
     GetDotBackupBlobCmd,
-    0x0000_0011,
+    0x0000_0012,
     GetDotBackupBlobRequest,
     GetDotBackupBlobResponse,
     ExtCmdGetDotBackupBlobRequest,
@@ -324,7 +350,7 @@ mod tests {
         }
     }
 
-    fn assert_request_wire<Internal, External>(internal: &Internal, subcommand: u32)
+    fn assert_native_request_wire<Internal, External>(internal: &Internal, subcommand: u32)
     where
         Internal: IntoBytes + Immutable,
         External: FromInternalRequest<Internal> + IntoBytes + Immutable,
@@ -340,8 +366,25 @@ mod tests {
         assert_eq!(checksum, calc_checksum(DOT_FAMILY_ID, &bytes[4..]));
     }
 
+    fn assert_authorized_request_wire<Internal, External>(internal: &Internal, subcommand: u32)
+    where
+        Internal: IntoBytes + Immutable,
+        External: FromInternalRequest<Internal> + IntoBytes + Immutable,
+    {
+        let external = External::from_internal(internal, 0x12);
+        let bytes = external.as_bytes();
+
+        assert_eq!(bytes.len(), 12 + internal.as_bytes().len());
+        assert_eq!(&bytes[4..8], &DOT_FAMILY_ID.to_le_bytes());
+        assert_eq!(&bytes[8..12], &subcommand.to_le_bytes());
+        assert_eq!(&bytes[12..], internal.as_bytes());
+
+        let checksum = u32::from_le_bytes(bytes[..4].try_into().unwrap());
+        assert_eq!(checksum, calc_checksum(0x12, &bytes[4..]));
+    }
+
     #[test]
-    fn all_requests_use_the_dot_family_envelope() {
+    fn requests_use_authorized_or_native_dot_envelopes() {
         let mut lock = DotLockRequest::default();
         lock.cak.fill(0x11);
         lock.lak_hash.fill(0x22);
@@ -353,40 +396,43 @@ mod tests {
         lock.authorization.signature.ecc_sig_s.fill(0x88);
         lock.authorization.signature.mldsa_sig.fill(0x99);
 
-        assert_request_wire::<_, ExtCmdDotLockRequest>(&lock, MC_DOT_LOCK_CANONICAL_CMD_ID);
-        assert_request_wire::<_, ExtCmdDotDisableRequest>(
+        assert_authorized_request_wire::<_, ExtCmdDotLockRequest>(
+            &lock,
+            MC_DOT_LOCK_CANONICAL_CMD_ID,
+        );
+        assert_authorized_request_wire::<_, ExtCmdDotDisableRequest>(
             &DotDisableRequest::default(),
             MC_DOT_DISABLE_CANONICAL_CMD_ID,
         );
-        assert_request_wire::<_, ExtCmdDotRotateRequest>(
+        assert_authorized_request_wire::<_, ExtCmdDotRotateRequest>(
             &DotRotateRequest::default(),
             MC_DOT_ROTATE_CANONICAL_CMD_ID,
         );
-        assert_request_wire::<_, ExtCmdDotUnlockChallengeRequest>(
+        assert_native_request_wire::<_, ExtCmdDotUnlockChallengeRequest>(
             &DotUnlockChallengeRequest,
             MC_DOT_UNLOCK_CHALLENGE_CANONICAL_CMD_ID,
         );
-        assert_request_wire::<_, ExtCmdDotUnlockRequest>(
+        assert_native_request_wire::<_, ExtCmdDotUnlockRequest>(
             &DotUnlockRequest::default(),
             MC_DOT_UNLOCK_CANONICAL_CMD_ID,
         );
-        assert_request_wire::<_, ExtCmdGetDotBackupBlobRequest>(
+        assert_authorized_request_wire::<_, ExtCmdGetDotBackupBlobRequest>(
             &GetDotBackupBlobRequest::default(),
             MC_GET_DOT_BACKUP_BLOB_CANONICAL_CMD_ID,
         );
-        assert_request_wire::<_, ExtCmdDotStatusRequest>(
+        assert_native_request_wire::<_, ExtCmdDotStatusRequest>(
             &DotStatusRequest,
             MC_DOT_STATUS_CANONICAL_CMD_ID,
         );
-        assert_request_wire::<_, ExtCmdDotRecoveryRequest>(
+        assert_native_request_wire::<_, ExtCmdDotRecoveryRequest>(
             &DotRecoveryRequest::default(),
             MC_DOT_RECOVERY_CANONICAL_CMD_ID,
         );
-        assert_request_wire::<_, ExtCmdDotOverrideChallengeRequest>(
+        assert_native_request_wire::<_, ExtCmdDotOverrideChallengeRequest>(
             &DotOverrideChallengeRequest::default(),
             MC_DOT_OVERRIDE_CHALLENGE_CANONICAL_CMD_ID,
         );
-        assert_request_wire::<_, ExtCmdDotOverrideRequest>(
+        assert_native_request_wire::<_, ExtCmdDotOverrideRequest>(
             &DotOverrideRequest::default(),
             MC_DOT_OVERRIDE_CANONICAL_CMD_ID,
         );
@@ -463,15 +509,16 @@ mod tests {
         let mut response_buffer = [0u8; core::mem::size_of::<DotTransitionResponse>()];
         let response_len = handler(request.as_bytes(), &mut mailbox, &mut response_buffer).unwrap();
 
-        assert_eq!(mailbox.external_cmd, DOT_FAMILY_ID);
+        assert_eq!(mailbox.external_cmd, 0x12);
+        assert_eq!(&mailbox.request[4..8], &DOT_FAMILY_ID.to_le_bytes());
         assert_eq!(
-            &mailbox.request[4..8],
+            &mailbox.request[8..12],
             &MC_DOT_LOCK_CANONICAL_CMD_ID.to_le_bytes()
         );
-        assert_eq!(&mailbox.request[8..], request.as_bytes());
+        assert_eq!(&mailbox.request[12..], request.as_bytes());
         assert_eq!(
             u32::from_le_bytes(mailbox.request[..4].try_into().unwrap()),
-            calc_checksum(DOT_FAMILY_ID, &mailbox.request[4..])
+            calc_checksum(0x12, &mailbox.request[4..])
         );
 
         let internal_response =
