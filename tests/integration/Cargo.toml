@@ -72,4 +72,5 @@ tempfile.workspace = true
 serde_json.workspace = true
 uio = { workspace = true, optional = true }
 uuid.workspace = true
+x509-parser.workspace = true
 zerocopy.workspace = true
