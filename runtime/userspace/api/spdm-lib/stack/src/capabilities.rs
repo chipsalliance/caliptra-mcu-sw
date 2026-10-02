@@ -128,8 +128,9 @@ pub(crate) async fn handle_get_capabilities<'a, Pal: SpdmPal>(
 /// # Errors
 ///
 /// * [`SPDM_INVALID_REQUEST`] — `ct_exponent` exceeds the protocol maximum,
-///   transfer sizes are invalid, or the Supported Algorithms request is made
-///   without requester CHUNK support.
+///   transfer sizes are invalid, the Supported Algorithms request is made
+///   without requester CHUNK support, or a secure-session capability is
+///   advertised with no key-establishment method.
 fn validate_capabilities_body(body: &CapabilitiesBody) -> SpdmResult<(u32, u32)> {
     if body.ct_exponent > CapabilitiesBody::MAX_CT_EXPONENT {
         return Err(SPDM_INVALID_REQUEST);
@@ -141,6 +142,16 @@ fn validate_capabilities_body(body: &CapabilitiesBody) -> SpdmResult<(u32, u32)>
     // optional block, so Param1 remains zero in the response even when this
     // valid request bit is set.
     if body.param1 & 0x01 != 0 && !flags.contains(CapFlags::CHUNK) {
+        return Err(SPDM_INVALID_REQUEST);
+    }
+
+    // ENCRYPT_CAP and MAC_CAP only have meaning inside a secure session, and a
+    // secure session can only be established through KEY_EX_CAP or PSK_CAP.
+    // Advertising either without a key-establishment method is an illegal
+    // combination, so the request is refused rather than silently negotiated.
+    let secure_session = flags.contains(CapFlags::ENCRYPT) || flags.contains(CapFlags::MAC);
+    let key_establishment = flags.contains(CapFlags::KEY_EX) || flags.psk_field() != 0;
+    if secure_session && !key_establishment {
         return Err(SPDM_INVALID_REQUEST);
     }
 

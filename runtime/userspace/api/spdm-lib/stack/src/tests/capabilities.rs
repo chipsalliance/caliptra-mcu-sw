@@ -204,3 +204,67 @@ fn v13_capabilities_masks_v14_responder_flags() {
     assert!(!advertised.contains(CapFlags::SET_KEY_PAIR_RESET));
     assert!(!advertised.contains(CapFlags::LARGE_RESP));
 }
+
+#[test]
+fn encrypt_without_key_establishment_is_invalid_request() {
+    let pal = TestPal::default();
+    let mut state = ConnectionState::default();
+    state.phase = Phase::AfterVersion;
+    let mut sessions = SessionManager::new();
+    // ENCRYPT_CAP with neither KEY_EX_CAP nor PSK_CAP: there is no way to
+    // establish the session the flag claims to protect.
+    let peer_flags = CapFlags::CERT | CapFlags::ENCRYPT;
+
+    let err = dispatch_request(
+        &mut state,
+        &mut sessions,
+        &pal,
+        capabilities_request(SpdmVersion::V12, 0, 0, peer_flags, 1024, 1024),
+    )
+    .unwrap_err();
+
+    assert_eq!(err.spec_byte(), SPDM_INVALID_REQUEST.spec_byte());
+    assert_eq!(state.phase, Phase::AfterVersion);
+}
+
+#[test]
+fn mac_without_key_establishment_is_invalid_request() {
+    let pal = TestPal::default();
+    let mut state = ConnectionState::default();
+    state.phase = Phase::AfterVersion;
+    let mut sessions = SessionManager::new();
+    let peer_flags = CapFlags::CERT | CapFlags::MAC;
+
+    let err = dispatch_request(
+        &mut state,
+        &mut sessions,
+        &pal,
+        capabilities_request(SpdmVersion::V12, 0, 0, peer_flags, 1024, 1024),
+    )
+    .unwrap_err();
+
+    assert_eq!(err.spec_byte(), SPDM_INVALID_REQUEST.spec_byte());
+    assert_eq!(state.phase, Phase::AfterVersion);
+}
+
+#[test]
+fn encrypt_with_psk_only_is_accepted() {
+    let pal = TestPal::default();
+    let mut state = ConnectionState::default();
+    state.phase = Phase::AfterVersion;
+    let mut sessions = SessionManager::new();
+    // PSK_CAP is a key-establishment method in its own right, so ENCRYPT_CAP
+    // without KEY_EX_CAP is legal here.
+    let peer_flags = CapFlags::CERT | CapFlags::ENCRYPT | CapFlags::PSK;
+
+    dispatch_request(
+        &mut state,
+        &mut sessions,
+        &pal,
+        capabilities_request(SpdmVersion::V12, 0, 0, peer_flags, 1024, 1024),
+    )
+    .unwrap();
+
+    assert_eq!(state.phase, Phase::AfterCapabilities);
+    assert_eq!(state.peer_cap_flags.psk_field(), 1);
+}
