@@ -13,14 +13,18 @@ Abstract:
 --*/
 
 use caliptra_api_types::{DeviceLifecycle, SecurityState};
-use caliptra_emu_bus::{BusMmio, Clock};
+use caliptra_emu_bus::{Bus, BusMmio, Clock};
 use caliptra_emu_cpu::{Cpu, CpuArgs, Pic};
+use caliptra_emu_periph::dma::axi_root_bus::SubsystemAddresses;
 use caliptra_emu_periph::soc_reg::DebugManufService;
 use caliptra_emu_periph::{
     CaliptraRootBus, CaliptraRootBusArgs, DownloadIdevidCsrCb, MailboxInternal, MailboxRequester,
     Mci, ReadyForFwCb, SocToCaliptraBus, TbServicesCb, UploadUpdateFwCb,
 };
+use caliptra_emu_types::RvSize;
 use caliptra_hw_model_types::DEFAULT_UDS_SEED;
+#[cfg(test)]
+use std::cell::Cell;
 use std::io::{self, ErrorKind, Write};
 use std::path::PathBuf;
 use std::process::exit;
@@ -65,11 +69,17 @@ pub struct StartCaliptraArgs<'a> {
     pub rom: BytesOrPath,
     pub req_idevid_csr: Option<bool>,
     pub device_lifecycle: Option<String>,
+    pub cptra_hw_config: Option<u32>,
+    pub prod_dbg_unlock_pk_hashes_offset: Option<u32>,
+    pub num_prod_dbg_unlock_pk_hashes: Option<u32>,
+    pub ss_strap_generic_0: Option<u32>,
+    pub ss_strap_generic_1: Option<u32>,
     pub use_mcu_recovery_interface: bool,
     pub extra_soc_bus: Option<u32>,
     pub debug_intent: bool,
     pub prod_dbg_unlock_keypairs: Vec<(&'a [u8; 96], &'a [u8; 2592])>,
     pub cptra_obf_key: [u32; 8],
+    pub ss_caliptra_dma_axi_user: Option<u32>,
 }
 
 register_bitfields! [
@@ -188,6 +198,14 @@ pub fn start_caliptra(
         ),
         subsystem_mode: true,
         use_mcu_recovery_interface: args_use_mcu_recovery_interface,
+        enable_external_soc_dma: args.extra_soc_bus.is_some(),
+        subsystem_addresses: Some(SubsystemAddresses {
+            caliptra: 0x3000_0000,
+            mci: 0xA800_0000,
+            recovery: 0x0006_0100,
+            otp_fc: 0x0005_0000,
+            uds_seed: 0x0000_0048,
+        }),
         debug_intent: args.debug_intent,
         prod_dbg_unlock_keypairs: args.prod_dbg_unlock_keypairs.clone(),
         cptra_obf_key: args.cptra_obf_key,
@@ -195,9 +213,36 @@ pub fn start_caliptra(
     };
 
     let mut root_bus = CaliptraRootBus::new(bus_args);
+    if let Some(hw_config) = args.cptra_hw_config {
+        root_bus.soc_reg.set_hw_config(hw_config.into());
+    }
+    if let (Some(hash_offset), Some(hash_count)) = (
+        args.prod_dbg_unlock_pk_hashes_offset,
+        args.num_prod_dbg_unlock_pk_hashes,
+    ) {
+        root_bus
+            .soc_reg
+            .set_prod_debug_unlock_config(hash_offset, hash_count);
+    }
+    if args.ss_strap_generic_0.is_some() || args.ss_strap_generic_1.is_some() {
+        root_bus.soc_reg.set_strap_generic(&[
+            args.ss_strap_generic_0.unwrap_or_default(),
+            args.ss_strap_generic_1.unwrap_or_default(),
+            0,
+            0,
+        ]);
+    }
     // Set UDS seed directly — matches the caliptra-sw standalone emulator
     // behavior where fuse_uds_seed = DEFAULT_UDS_SEED (via SocRegistersImpl::UDS default).
     root_bus.soc_reg.set_uds_seed(&DEFAULT_UDS_SEED);
+    if let Some(val) = args.ss_caliptra_dma_axi_user {
+        if val != 0 {
+            root_bus
+                .soc_reg
+                .write(RvSize::Word, 0x534, val)
+                .expect("SS_CALIPTRA_DMA_AXI_USER register must be writable");
+        }
+    }
     let soc_ifc = unsafe {
         caliptra_registers::soc_ifc::RegisterBlock::new_with_mmio(
             0x3003_0000 as *mut u32,
@@ -289,4 +334,146 @@ fn download_idev_id_csr(
 
     // Clear the Idevid CSR requested bit.
     cptra_dbg_manuf_service_reg.modify(DebugManufService::REQ_IDEVID_CSR::CLEAR);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use caliptra_emu_bus::BusError;
+    use caliptra_emu_types::{RvAddr, RvData};
+    use caliptra_mcu_emulator_periph::CaliptraToExtBus;
+    use caliptra_mcu_emulator_registers_generated::root_bus::{AutoRootBus, AutoRootBusOffsets};
+
+    struct UnclaimedBus;
+
+    impl Bus for UnclaimedBus {
+        fn read(&mut self, _size: RvSize, _addr: RvAddr) -> Result<RvData, BusError> {
+            Err(BusError::LoadAccessFault)
+        }
+
+        fn write(&mut self, _size: RvSize, _addr: RvAddr, _value: RvData) -> Result<(), BusError> {
+            Err(BusError::StoreAccessFault)
+        }
+    }
+
+    #[test]
+    fn subsystem_soc_register_values_match_rtl() {
+        let (_, mut soc, _, _) = start_caliptra(&StartCaliptraArgs {
+            debug_intent: true,
+            cptra_hw_config: Some(0x31),
+            prod_dbg_unlock_pk_hashes_offset: Some(0x000d_0120),
+            num_prod_dbg_unlock_pk_hashes: Some(1),
+            ss_strap_generic_0: Some(0x0015_0010),
+            ss_strap_generic_1: Some(0x0005_005c),
+            ss_caliptra_dma_axi_user: Some(0x10),
+            ..Default::default()
+        })
+        .unwrap();
+
+        let expected = [
+            (0x3003_0044, 0x0000_0003),
+            (0x3003_0070, 0xffff_ffff),
+            (0x3003_00d4, 0x0000_0302),
+            (0x3003_00e0, 0x31),
+            (0x3003_0500, 0x3000_0000),
+            (0x3003_0504, 0),
+            (0x3003_0508, 0xA800_0000),
+            (0x3003_050c, 0),
+            (0x3003_0510, 0x0006_0100),
+            (0x3003_0514, 0),
+            (0x3003_0518, 0x0005_0000),
+            (0x3003_051c, 0),
+            (0x3003_0520, 0x0000_0048),
+            (0x3003_0524, 0),
+            (0x3003_0528, 0x000d_0120),
+            (0x3003_052c, 1),
+            (0x3003_0530, 1),
+            (0x3003_0534, 0x10),
+            (0x3003_05a0, 0x0015_0010),
+            (0x3003_05a4, 0x0005_005c),
+        ];
+        for (address, value) in expected {
+            assert_eq!(soc.read(RvSize::Word, address), Ok(value), "{address:#x}");
+        }
+
+        let reserved_ranges = [
+            (0x3003_0134, 3),
+            (0x3003_0174, 35),
+            (0x3003_0294, 8),
+            (0x3003_033c, 1),
+            (0x3003_03a4, 87),
+            (0x3003_0538, 26),
+            (0x3003_05b0, 4),
+        ];
+        for (start, word_count) in reserved_ranges {
+            for address in (start..start + word_count * 4).step_by(4) {
+                assert_eq!(soc.read(RvSize::Word, address), Ok(0), "{address:#x}");
+                assert_eq!(
+                    soc.write(RvSize::Word, address, u32::MAX),
+                    Ok(()),
+                    "{address:#x}"
+                );
+                assert_eq!(soc.read(RvSize::Word, address), Ok(0), "{address:#x}");
+            }
+        }
+    }
+
+    #[test]
+    fn subsystem_straps_can_be_configured_independently() {
+        for (strap_0, strap_1, expected_0, expected_1) in [
+            (Some(0x0015_0010), None, 0x0015_0010, 0),
+            (None, Some(0x0005_005c), 0, 0x0005_005c),
+        ] {
+            let (_, mut soc, _, _) = start_caliptra(&StartCaliptraArgs {
+                ss_strap_generic_0: strap_0,
+                ss_strap_generic_1: strap_1,
+                ..Default::default()
+            })
+            .unwrap();
+
+            assert_eq!(soc.read(RvSize::Word, 0x3003_05a0), Ok(expected_0));
+            assert_eq!(soc.read(RvSize::Word, 0x3003_05a4), Ok(expected_1));
+        }
+    }
+
+    #[test]
+    fn soc_reserved_read_does_not_reach_external_bus() {
+        let (_, soc_to_caliptra, _, _) = start_caliptra(&StartCaliptraArgs::default()).unwrap();
+        let external_read_called = Rc::new(Cell::new(false));
+        let callback_flag = external_read_called.clone();
+        let mut caliptra_to_ext = CaliptraToExtBus::new();
+        caliptra_to_ext.set_read_callback(move |_, _, _| {
+            callback_flag.set(true);
+            false
+        });
+
+        let delegates: Vec<Box<dyn Bus>> = vec![
+            Box::new(UnclaimedBus),
+            Box::new(soc_to_caliptra),
+            Box::new(caliptra_to_ext),
+        ];
+        let mut offsets = AutoRootBusOffsets::default();
+        offsets.soc_offset = 0x3002_0000;
+        offsets.soc_size = 0x2_0000;
+        let mut root_bus = AutoRootBus::new(
+            delegates,
+            Some(offsets),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+
+        assert_eq!(root_bus.read(RvSize::Word, 0x3003_033c), Ok(0));
+        assert!(!external_read_called.get());
+    }
 }
