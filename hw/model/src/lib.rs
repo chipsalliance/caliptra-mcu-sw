@@ -111,6 +111,10 @@ pub fn new(init_params: InitParams) -> Result<DefaultHwModel> {
 }
 
 pub struct InitParams<'a> {
+    /// Models the SoC strap `SS_SOC_DBG_UNLOCK_LEVEL[0]` at reset deassertion.
+    /// Combined with `debug_intent` to decide whether the Caliptra security state
+    /// is latched as Production or honours the requested device lifecycle.
+    pub ss_soc_dbg_unlock_level0: bool,
     /// Fuse settings
     pub fuses: Fuses,
     /// The contents of the Caliptra ROM
@@ -264,6 +268,7 @@ impl Default for InitParams<'_> {
                 Box::new(RandomEtrngResponses::new_from_stdrng())
             };
         Self {
+            ss_soc_dbg_unlock_level0: false,
             fuses: Default::default(),
             caliptra_rom: Default::default(),
             caliptra_firmware: Default::default(),
