@@ -26,6 +26,7 @@ Reference: [OCP Device Ownership Transfer specification](https://opencomputeproj
 * [ROM Startup and DOT State Initialization](#dot-1-init)
 * [Locked-State Recovery](#dot-2-recovery)
 * [State Management](#dot-3-state)
+* [Runtime Command: DOT_ENABLE](#dot-command-enable)
 * [Runtime Commands: DOT_LOCK / DOT_DISABLE](#dot-5-command-lock)
 * [Runtime Commands: DOT_UNLOCK_CHALLENGE / DOT_UNLOCK](#dot-6-command-unlock)
 * [Lifecycle: Uninitialized → Locked](#dot-7-install-lock)
@@ -108,7 +109,7 @@ this value.
 - CAK is locked and bound to silicon via cryptographic binding
 - Uses DOT_FUSE_ARRAY to create cryptographic binding (1 bit per state change)
 - Ownership persists across power cycles
-- Uses generic command authorization for lock, disable, and rotate; unlock uses LAK authentication
+- Uses generic command authorization for enable, lock, disable, and rotate; unlock uses LAK authentication
 - DOT_BLOB stored in external storage (flash)
 - State transitions require fuse burning
 - Supports both Locked (with CAK) and Disabled (without CAK) states
@@ -407,6 +408,7 @@ commands as `AuthorizedCommand (0x12) -> family 0x11 -> DOT FourCC`.
 
 | Command | FourCC | Classification | Core validation |
 | ------- | ------ | -------------- | --------------- |
+| `DOT_ENABLE` | `MDEN` (`0x4D44_454E`) | Generic-authorized | Initialization gate clear and zero burned epoch bits |
 | `DOT_LOCK` | `MDLK` | Generic-authorized | Nonzero CAK digest and LAK digest, EVEN state |
 | `DOT_DISABLE` | `MDDS` | Generic-authorized | Nonzero LAK digest, EVEN state |
 | `DOT_ROTATE` | `MDRT` | Generic-authorized | Current burned count below requested minimum |
@@ -420,14 +422,14 @@ commands as `AuthorizedCommand (0x12) -> family 0x11 -> DOT FourCC`.
 
 Generic authorization uses the shared `MACC` challenge and signs
 `0x00000011(BE) || DOT_FourCC(LE) || DOT_payload || nonce`. Direct `0x11`
-requests for `MDLK`, `MDDS`, `MDRT`, or `MDBB` are rejected. Runtime commits
+requests for `MDEN`, `MDLK`, `MDDS`, `MDRT`, or `MDBB` are rejected. Runtime commits
 blob and fuse changes directly and read-back verifies them before returning.
 The response's `reset_required` field tells the caller that the new ownership
 state becomes active on a subsequent reset.
 
 ### Host Utility Support
 
-The `caliptra-util-host` Rust API exposes all ten commands in the table above
+The `caliptra-util-host` Rust API exposes all eleven commands in the table above
 through the same transport-neutral command functions. Both its MCU mailbox and
 SPDM VDM transports implement every command. The mailbox transport emits the
 outer family command `0x00000011`, little-endian DOT FourCC, payload, and, for
@@ -493,6 +495,31 @@ refers to the same persistent DOT blob storage consumed by ROM.
 Runtime `MDRC`, `DOTW`, and `DOTX` are not gated by a ROM recovery-mode signal.
 Their native blob-HMAC, recovery-key, challenge, and fuse-state checks are
 always enforced.
+
+### DOT_ENABLE
+
+<a id="dot-command-enable"></a>
+
+**Purpose:** Permanently opt the device into the DOT boot flow without changing
+the DOT epoch or installing an owner.
+
+**Preconditions:**
+- `dot_initialized` is clear
+- No `DOT_FUSE_ARRAY` bits are burned
+- The request is authorized with the generic `MACC` command-authority flow
+
+**Flow:**
+1. BMC obtains `MACC` and signs `0x00000011(BE) || MDEN(LE) || nonce`.
+2. MCU RT verifies authorization and confirms the initialization gate and epoch
+    counter are pristine.
+3. MCU RT programs and read-back verifies all three redundant
+    `dot_initialized` bits (`0x7`).
+4. MCU RT returns success with `reset_required = 1`.
+5. On the subsequent boot, ROM observes DOT enabled in the initial EVEN state.
+
+The command has no DOT-specific payload. It does not write `DOT_BLOB` and does
+not consume a `DOT_FUSE_ARRAY` epoch bit. Reissuing it after any initialization
+or epoch transition returns `InvalidState`.
 
 ### 1. DOT_LOCK
 
@@ -1610,14 +1637,14 @@ OTP fuses before verifying signatures. The ECDSA signature is over
    - Each lock operation requires new DOT_BLOB
 
 4. **Authenticity**
-    - DOT_LOCK, DOT_DISABLE, DOT_ROTATE, and GET_DOT_BACKUP_BLOB require generic command authorization
+    - DOT_ENABLE, DOT_LOCK, DOT_DISABLE, DOT_ROTATE, and GET_DOT_BACKUP_BLOB require generic command authorization
     - DOT_UNLOCK requires both LAK signatures and public keys matching the stored LAK digest
     - DOT_RECOVERY requires a current-epoch DOT_BLOB HMAC
     - DOT_OVERRIDE requires recovery-key signatures anchored in fused PK hash
     - All commands that touch fuse state are cryptographically authenticated
 
 5. **Ownership Protection**
-    - Generic authorization protects lock, disable, and rotate operations
+    - Generic authorization protects enable, lock, disable, and rotate operations
     - In Disabled state, the LAK holder can authorize unlock while DOT supplies no CAK
     - In Uninitialized state, DOT supplies no owner; a lock or disable still requires generic authorization
 
@@ -1662,6 +1689,7 @@ lock/unlock cycle.
 
 | Command | State Requirement | Authentication | Fuse Impact | Purpose |
 |---------|------------------|----------------|-------------|---------|
+| DOT_ENABLE | Gate clear; zero epoch bits | Generic authorization | `dot_initialized` only | Permanently enable the DOT boot flow |
 | DOT_LOCK | EVEN | Generic authorization | Yes (n→n+1) | Lock ownership to silicon |
 | DOT_DISABLE | EVEN | Generic authorization | Yes (n→n+1) | Disable DOT in locked state |
 | DOT_ROTATE | DOT enabled; below threshold | Generic authorization | Yes (n→n+2) | Replace CAK/LAK digests while preserving parity |
@@ -1677,6 +1705,7 @@ lock/unlock cycle.
 
 | From State | Command | To State | Fuse Change | Storage Change |
 |------------|---------|----------|-------------|----------------|
+| DOT gate clear | DOT_ENABLE | Uninitialized (EVEN) | Set redundant initialization gate; epoch remains 0 | None |
 | Unlocked (EVEN) | DOT_LOCK | Locked (ODD) | EVEN→ODD | Create DOT_BLOB |
 | Unlocked (EVEN) | DOT_DISABLE | Disabled (ODD) | EVEN→ODD | Create DOT_BLOB (no CAK) |
 | Locked (ODD) | DOT_UNLOCK | Uninitialized (EVEN) | ODD→EVEN | Seal blob with zero CAK digest, retaining LAK digest |
