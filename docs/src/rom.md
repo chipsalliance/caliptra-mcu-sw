@@ -10,6 +10,30 @@ The ROM's main responsibilities to the overall Caliptra subsystem are to:
 
 It can also handle any other custom SoC-specific initialization that needs to happen early.
 
+## Reference `core_test` configuration
+
+The `core_test` Cargo feature is only for reference-platform and integration-test
+builds. It lets the emulator or FPGA test harness control selected ROM behavior
+through MCI `mci_reg_generic_input_wires[1]`. Production ROM builds do not read
+generic input wires: platform integrations select the same behavior explicitly
+through `RomParameters` (or through the platform callbacks stored there).
+
+The reference platforms assign the wires as follows:
+
+| Bit | `core_test` behavior | Production/platform configuration |
+| --- | --- | --- |
+| 0 | Skip the volatile lock on the selected vendor PK hash slot for provisioning tests. | `RomParameters::skip_vendor_pk_hash_volatile_lock` |
+| 1 | Rotate default vendor PK hash selection to the next functional slot. | `RomParameters::vendor_pk_hash_rotation`, or a custom `vendor_key_policy` |
+| 28 | Force the owner PK hash to come from the fuse instead of the DOT blob. | `RomParameters::owner_pk_hash_policy` |
+| 29 | Request flash boot (AXI recovery bypass). | `RomParameters::request_flash_boot` |
+| 30 | Resume after Caliptra boot-go is asserted. | `RomParameters::post_caliptra_boot_go` callback |
+| 31 | Resume after Caliptra fuse writes complete. | `RomParameters::post_caliptra_fuses_written` callback |
+
+Bits not listed above have no MCU ROM meaning. The input-wire reads and wait
+loops live in the reference platform ROMs under `platforms/` and are compiled
+only when `core_test` is enabled; the common ROM receives only the resulting
+parameters and callbacks.
+
 ## Boot Flows
 
 There are three main boot flows that needs to execute for its role in the Caliptra subsystem:
@@ -50,7 +74,7 @@ These are selected based on the MCI `RESET_REASON` register that is set by hardw
     * [`SS_STRAP_GENERIC[0]`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.SS_STRAP_GENERIC): OTP DAI idle bit offset (bits\[31:16\]) and OTP status register offset (bits\[15:0\]). The status-register offset is the OTP controller status-register byte offset that Caliptra ROM polls for DAI idle during UDS/FE programming; it is hard-coded in MCU ROM (not provisioned via a fuse) from the integrator's OTP map. See [caliptra-sw#3723](https://github.com/chipsalliance/caliptra-sw/pull/3723).
     * [`SS_STRAP_GENERIC[1]`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.SS_STRAP_GENERIC): OTP direct access command register offset
     * [`SS_STRAP_GENERIC[2]`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.SS_STRAP_GENERIC): iTRNG health test window size from OTP (bits\[15:0\]) and bypass mode flag (bit\[31\], from ROM parameters)
-    * [`SS_STRAP_GENERIC[3]`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.SS_STRAP_GENERIC): Owner manifest min SVN (bits\[7:0\], from the `CPTRA_CORE_OWNER_MANIFEST_MIN_SVN` OTP fuse — upcoming Caliptra requirement). Today bit\[0\] and bit\[1\] of this register are also consumed as platform hardware straps (PK-hash skip-lock and PK-hash rotation, respectively). **Upcoming:** the two PK-hash strap bits will move from `SS_STRAP_GENERIC[3]` to MCI generic input wires (`mci_reg_generic_input_wires[*]`), freeing `SS_STRAP_GENERIC[3]` bits\[7:0\] for the owner manifest min SVN value. The exact MCI input-wire bit assignments will be defined when the change lands; until then the bit layout of `SS_STRAP_GENERIC[3]` is in flux.
+    * [`SS_STRAP_GENERIC[3]`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.SS_STRAP_GENERIC): Owner manifest min SVN (bits\[7:0\], from the `CPTRA_CORE_OWNER_MANIFEST_MIN_SVN` OTP fuse — upcoming Caliptra requirement). Vendor PK hash locking and rotation are platform policies configured through `RomParameters`; reference `core_test` builds derive those parameters from MCI generic input wires 1 bits 0 and 1.
     * [`CPTRA_I_TRNG_ENTROPY_CONFIG_0`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.CPTRA_I_TRNG_ENTROPY_CONFIG_0): iTRNG entropy configuration word 0, from OTP `cptra_itrng_entropy_config_0`
     * [`CPTRA_I_TRNG_ENTROPY_CONFIG_1`](https://chipsalliance.github.io/caliptra-rtl/main/internal-regs/?p=clp.soc_ifc_reg.CPTRA_I_TRNG_ENTROPY_CONFIG_1): iTRNG entropy configuration word 1, from OTP `cptra_itrng_entropy_config_1`
     * [MCI] [`PROD_DEBUG_UNLOCK_PK_HASH_REG`](https://chipsalliance.github.io/caliptra-ss/main/regs/?p=soc.mci_top.mci_reg.PROD_DEBUG_UNLOCK_PK_HASH_REG%5B0%5D%5B0%5D) Production debug unlock public key hashes (384 bytes total for 8 key hashes)
@@ -167,7 +191,6 @@ sequenceDiagram
     end
 ```
 
-
 ### Hitless Firmware Update Flow
 
 Hitless Update Flow is triggered when MCU runtime FW requests an update of the MCU firmware by sending the `ACTIVATE_FIRMWARE` mailbox command to Caliptra. Upon receiving the mailbox command, Caliptra initiates the MCU reset sequence, which copies the new firmware image into MCU SRAM and causes the MCU to reboot into ROM with `RESET_REASON` set to `FirmwareHitlessUpdate`.
@@ -191,7 +214,6 @@ sequenceDiagram
     end
     note right of mcu: jump to runtime firmware
 ```
-
 
 ### Warm Reset Flow
 
@@ -285,6 +307,7 @@ The `PROD_DEBUG_UNLOCK_PK_HASH_REG` registers in MCI store the public key hashes
 **Security Requirement**: MCU ROM must verify that the PK hash values written to MCI match the expected values from the fuse controller after both `SS_CONFIG_DONE_STICKY` and `SS_CONFIG_DONE` are set. If verification fails, the ROM must trigger a fatal error and halt.
 
 The verification process:
+
 1. MCU ROM writes PK hash values from fuses to `PROD_DEBUG_UNLOCK_PK_HASH_REG` registers
 1. MCU ROM sets `SS_CONFIG_DONE_STICKY` and `SS_CONFIG_DONE` to lock the registers
 1. MCU ROM reads back the PK hash register values and compares them against the original fuse values
@@ -297,6 +320,7 @@ The `MBOX0_VALID_AXI_USER` and `MBOX1_VALID_AXI_USER` registers control which AX
 **Security Requirement**: MCU ROM must configure the MCU mailbox AXI users, lock them using the LOCK registers, and verify that both the AXI user values and the lock register values match the expected configuration. If verification fails, the ROM must trigger a fatal error and halt. The verification is performed after `SS_CONFIG_DONE_STICKY` and `SS_CONFIG_DONE` are set to consolidate all MCI register verification in one place.
 
 The verification process:
+
 1. MCU ROM configures `MBOX[0,1]_VALID_AXI_USER` registers with the expected AXI user values
 2. MCU ROM sets `MBOX[0,1]_AXI_USER_LOCK` to lock each configured slot (this makes the AXI user registers read-only)
 3. MCU ROM sets `SS_CONFIG_DONE_STICKY` and `SS_CONFIG_DONE`
@@ -309,13 +333,18 @@ The verification process:
 
 The MCU ROM supports locking the selected vendor public key hash slot (and all higher order slots) to prevent post-ROM manipulation. This is controlled by writing to the `VENDOR_PK_HASH_VOLATILE_LOCK` register.
 
-**Strapping Override**:
-The locking behavior is gated by bit 0 of the MCI generic input wires (`mci_reg_generic_input_wires[1]`).
-*   **Production Mode** (Bit 0 is `0`): The ROM automatically applies the volatile lock to the selected key slot index (locking that slot and all higher slots).
-*   **Provisioning Mode** (Bit 0 is `1`): The ROM skips applying the lock, allowing potential post-ROM code to provision higher order hash slots.
+The locking behavior is selected with
+`RomParameters::skip_vendor_pk_hash_volatile_lock`:
+
+* **Production Mode** (`false`): The ROM applies the volatile lock to the
+  selected key slot index, locking that slot and all higher slots.
+* **Provisioning Mode** (`true`): The ROM skips the lock, allowing trusted
+  post-ROM code to provision higher-order hash slots.
+
+Reference `core_test` builds map generic input wire 1 bit 0 to this parameter;
+production common ROM code does not read that wire.
 
 > **Note:** In the current version, the lock register remains mutable past the ROM; therefore, the runtime firmware must be trusted to not overwrite the lock and corrupt the hashes.
-
 
 ### Warm Reset Considerations
 

@@ -25,7 +25,8 @@ riscv-csr.workspace = true
 rv32i.workspace = true
 
 [features]
-core_test = ["caliptra-mcu-rom-common/core_test"]
+# Test-only: map MCI generic input wires to reference ROM parameters and waits.
+core_test = []
 hw-2-1 = ["caliptra-mcu-rom-common/hw-2-1"]
 test-i3c-services = ["caliptra-mcu-rom-common/test-i3c-services"]
 test-dot-recovery-reset-flow = ["caliptra-mcu-rom-common/test-dot-recovery-reset-flow"]

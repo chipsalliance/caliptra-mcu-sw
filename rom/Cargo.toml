@@ -32,7 +32,6 @@ rv32i.workspace = true
 [features]
 default = []   # default is 2.0
 hw-2-1 = []
-core_test = ["caliptra-mcu-romtime/core_test"]
 # Test-only: enables extra diagnostics in the I3C services / DOT recovery path.
 test-i3c-services = []
 # Test-only: enables DOT recovery reset coordination for ROM integration tests.

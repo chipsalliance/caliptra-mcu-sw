@@ -44,9 +44,9 @@ pub enum OwnerPkHashPolicy {
     ForceFuse,
 }
 
-/// MCI `generic_input_wires[1]` bit reserved for the force-fuse-owner strap.
-/// Platform ROMs that support it read this bit and set
-/// [`crate::RomParameters::owner_pk_hash_policy`] to [`OwnerPkHashPolicy::ForceFuse`].
+/// MCI `generic_input_wires[1]` bit used by reference `core_test` platforms
+/// for the force-fuse-owner test control. Production platforms configure
+/// [`crate::RomParameters::owner_pk_hash_policy`] directly.
 pub const FORCE_FUSE_OWNER_PK_HASH_WIRE_BIT: u32 = 1 << 28;
 
 #[derive(Clone, FromBytes, IntoBytes, Immutable, KnownLayout)]

@@ -728,8 +728,10 @@ mod test {
             otp_memory: Some(otp),
             rom_only: true,
             force_fuse_owner_pk_hash: true,
+            rom_feature: Some("core_test"),
             ..Default::default()
         });
+        hw.set_mcu_generic_input_wires(&[0, 0xd000_0000]);
 
         // Run until firmware boot completes, a fatal error occurs, or we time out.
         hw.step_until(|m| {
@@ -772,8 +774,10 @@ mod test {
             rom_only: true,
             dot_enabled: true,
             force_fuse_owner_pk_hash: true,
+            rom_feature: Some("core_test"),
             ..Default::default()
         });
+        hw.set_mcu_generic_input_wires(&[0, 0xd000_0000]);
 
         hw.step_until(|m| m.mci_fw_fatal_error().is_some() || m.cycle_count() > 20_000_000);
 
