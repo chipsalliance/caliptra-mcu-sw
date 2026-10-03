@@ -174,9 +174,6 @@ fn handle_i3c_socket_connection(
         match bus_response_rx.try_recv() {
             Ok(response) => {
                 let data_len = response.resp.resp.data_length() as usize;
-                if data_len > 255 {
-                    panic!("Cannot write more than 255 bytes to socket");
-                }
                 let outgoing_header = OutgoingHeader {
                     ibi: response.ibi.unwrap_or_default(),
                     from_addr: response.addr.into(),
