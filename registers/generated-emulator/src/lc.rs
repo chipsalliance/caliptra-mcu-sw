@@ -580,8 +580,8 @@ impl Default for LcGenerated {
         Self {
             alert_test: 0 as caliptra_emu_types::RvData,
             status: 0 as caliptra_emu_types::RvData,
-            claim_transition_if_regwen: 0 as caliptra_emu_types::RvData,
-            claim_transition_if: 0 as caliptra_emu_types::RvData,
+            claim_transition_if_regwen: 1 as caliptra_emu_types::RvData,
+            claim_transition_if: 0x69 as caliptra_emu_types::RvData,
             transition_regwen: 0 as caliptra_emu_types::RvData,
             transition_cmd: 0 as caliptra_emu_types::RvData,
             transition_ctrl: 0 as caliptra_emu_types::RvData,
