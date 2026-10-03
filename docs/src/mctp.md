@@ -6,7 +6,25 @@ Additionally, it offers a syscall interface to userspace, enabling the sending a
 Caliptra MCTP endpoint has only one EID and supports dynamic assignment by the MCTP bus owner.
 
 MCTP Packets are delivered over physical I3C medium using I3C transfers. Caliptra MCTP endpoint always plays the role of I3C Target and is
-managed by an external I3C controller. Minimum transmission size is based on the MCTP baseline MTU (for I3C it is 69 bytes: 64 bytes MCTP payload + 4 bytes MCTP header + 1 byte PEC). Larger than the baseline transfer may be possible after discovery and negotiation with the I3C controller. The negotiated MTU size will be queried from the I3C Target peripheral driver by MCTP capsule.
+managed by an external I3C controller. Minimum transmission size is based on the MCTP baseline MTU (for I3C it is 69 bytes: 64 bytes MCTP payload + 4 bytes MCTP header + 1 byte PEC). Larger than the baseline transfer may be possible after discovery and negotiation with the I3C controller. The integrator-selected packet size is checked against the I3C Target peripheral limit by the MCTP capsule.
+
+The I3C target driver allocates buffers for the 256-byte FIFO and defaults its
+maximum read and write lengths to 256 bytes. Integrators can select values from
+69 through 256 bytes before initializing the MCTP component:
+
+```rust
+active_i3c_core.set_max_read_len(max_read_len);
+active_i3c_core.set_max_write_len(max_write_len);
+
+let mux_mctp = MCTPMuxComponent::new(i3c_target, mux_alarm)
+    .finalize(mctp_mux_component_static!(InternalTimers, MCTPI3CBinding));
+```
+
+The configured read and write lengths include the 4-byte MCTP header and 1-byte
+PEC. Therefore, a 256-byte packet carries up to 251 bytes of MCTP payload. A
+value larger than the 69-byte baseline must only be selected when the
+controller uses the same negotiated MRL or MWL. The MCTP mux remains
+transport-independent and obtains its transmit MTU from the transport binding.
 
 ## MCTP Control Messages
 

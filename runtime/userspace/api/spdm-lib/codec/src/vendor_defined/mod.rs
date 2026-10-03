@@ -221,7 +221,9 @@ pub struct VendorDefinedRspBody<'a> {
 }
 
 impl ResponseBody for VendorDefinedRspBody<'_> {
-    const RESPONSE_CODE: ReqRespCode = ReqRespCode::VENDOR_DEFINED_RESPONSE;
+    fn response_code(&self) -> ReqRespCode {
+        ReqRespCode::VENDOR_DEFINED_RESPONSE
+    }
 
     fn body_size(&self) -> usize {
         let hdr_body_size = if self.is_large { 11 } else { 7 };

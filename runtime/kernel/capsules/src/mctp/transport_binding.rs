@@ -1,17 +1,21 @@
 // Licensed under the Apache-2.0 license
 
 use crate::mctp::base_protocol::{MCTP_BASELINE_TRANSMISSION_UNIT, MCTP_HDR_SIZE};
-use caliptra_mcu_i3c_driver::hil::{I3CTarget, RxClient, TxClient};
+use caliptra_mcu_i3c_driver::{
+    core::MAX_READ_WRITE_SIZE,
+    hil::{I3CTarget, RxClient, TxClient},
+};
 use core::cell::Cell;
 use kernel::utilities::cells::OptionalCell;
 use kernel::utilities::cells::TakeCell;
 use kernel::ErrorCode;
 
-pub const MCTP_I3C_MAXBUF: usize = MCTP_HDR_SIZE + MCTP_BASELINE_TRANSMISSION_UNIT + 1;
+pub const MCTP_I3C_MAXBUF: usize = MAX_READ_WRITE_SIZE;
 
 // Max MTU excludes the PEC byte appended by the transport binding layer.
 pub const MCTP_I3C_MAXMTU: usize = MCTP_I3C_MAXBUF - 1;
 pub const MCTP_I3C_MINMTU: usize = MCTP_HDR_SIZE + MCTP_BASELINE_TRANSMISSION_UNIT;
+pub const MCTP_I3C_MIN_PACKET_SIZE: usize = MCTP_I3C_MINMTU + 1;
 
 /// This trait contains the interface definition
 /// for sending the MCTP packet through MCTP transport binding layer.
@@ -86,6 +90,8 @@ impl<'a> MCTPI3CBinding<'a> {
 
     pub fn setup_mctp_i3c(&self) {
         let device_info = self.i3c_target.get_device_info();
+        assert!((MCTP_I3C_MIN_PACKET_SIZE..=MCTP_I3C_MAXBUF).contains(&device_info.max_read_len));
+        assert!((MCTP_I3C_MIN_PACKET_SIZE..=MCTP_I3C_MAXBUF).contains(&device_info.max_write_len));
         self.max_read_len.set(device_info.max_read_len);
         self.max_write_len.set(device_info.max_write_len);
         self.device_address.set(
@@ -129,11 +135,11 @@ impl<'a> MCTPTransportBinding<'a> for MCTPI3CBinding<'a> {
         self.tx_buffer.replace(tx_buffer);
 
         // Make sure there's enough space for the PEC byte
-        if len == 0 || len > self.max_write_len.get() - 1 {
+        if len == 0 || len > self.max_read_len.get() - 1 {
             capsule_debug!(
                 "MCTP",
                 "Invalid length. Expected: {}",
-                self.max_write_len.get() - 1
+                self.max_read_len.get() - 1
             );
             Err((ErrorCode::SIZE, self.tx_buffer.take().unwrap()))?;
         }
@@ -173,7 +179,7 @@ impl<'a> MCTPTransportBinding<'a> for MCTPI3CBinding<'a> {
     }
 
     fn get_mtu_size(&self) -> usize {
-        MCTP_I3C_MAXMTU
+        self.max_read_len.get() - 1
     }
 
     fn get_hdr_size(&self) -> usize {
@@ -251,6 +257,13 @@ mod tests {
     #[test]
     fn test_crc8() {
         assert_eq!(0xf4, calculate_crc8(b"123456789"));
+    }
+
+    #[test]
+    fn test_mctp_i3c_packet_size_limits() {
+        assert_eq!(MCTP_I3C_MIN_PACKET_SIZE, 69);
+        assert_eq!(MCTP_I3C_MAXBUF, 256);
+        assert_eq!(MCTP_I3C_MAXMTU, 255);
     }
 
     #[test]
