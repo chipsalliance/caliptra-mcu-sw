@@ -51,6 +51,7 @@ pub struct EmulatorState {
     pub tick_lock: Mutex<()>,
     pub tick_cond: Condvar,
     spdm_responder_ready: AtomicU8,
+    pldm_ready: AtomicBool,
 }
 
 impl EmulatorState {
@@ -62,6 +63,7 @@ impl EmulatorState {
             tick_lock: Mutex::new(()),
             tick_cond: Condvar::new(),
             spdm_responder_ready: AtomicU8::new(0),
+            pldm_ready: AtomicBool::new(false),
         }
     }
 
@@ -84,6 +86,17 @@ impl EmulatorState {
 
     pub fn is_spdm_responder_ready(&self, transport: SpdmResponderTransport) -> bool {
         self.spdm_responder_ready.load(Ordering::Acquire) & transport.ready_mask() != 0
+    }
+
+    /// Mirror of the firmware's `FIRMWARE_PLDM_READY` boot milestone.
+    pub fn set_pldm_ready(&self, ready: bool) {
+        if self.pldm_ready.swap(ready, Ordering::Release) != ready {
+            self.tick_cond.notify_all();
+        }
+    }
+
+    pub fn is_pldm_ready(&self) -> bool {
+        self.pldm_ready.load(Ordering::Acquire)
     }
 }
 
@@ -181,6 +194,29 @@ pub fn wait_for_spdm_responder_ready(transport: SpdmResponderTransport) {
     });
 }
 
+/// Wait until the firmware reports the `FIRMWARE_PLDM_READY` milestone, the
+/// emulator stops, or `max_ticks` emulator ticks elapse.
+///
+/// Returns `true` only if the PLDM responder reported ready. The timeout
+/// keeps callers working against firmware that never sets the milestone.
+pub fn wait_for_pldm_ready(max_ticks: u64) -> bool {
+    with_state(|state| {
+        let start = state.ticks.load(Ordering::Relaxed);
+        while state.running.load(Ordering::Relaxed) {
+            if state.is_pldm_ready() {
+                return true;
+            }
+            let now = state.ticks.load(Ordering::Relaxed);
+            if now.saturating_sub(start) >= max_ticks {
+                return false;
+            }
+            let lock = state.tick_lock.lock().unwrap();
+            let _ = state.tick_cond.wait_timeout(lock, Duration::from_secs(1));
+        }
+        false
+    })
+}
+
 /// Sleep for the specified number of emulator ticks.
 /// This is deterministic and exact if ticks is a multiple of 1,000, unless
 /// the emulator is very slow (<1,000 ticks per second), in which case
@@ -275,5 +311,53 @@ mod tests {
         state.set_spdm_responder_ready(SpdmResponderTransport::Mctp, false);
         assert!(!state.is_spdm_responder_ready(SpdmResponderTransport::Mctp));
         assert!(state.is_spdm_responder_ready(SpdmResponderTransport::Doe));
+    }
+
+    #[test]
+    fn pldm_ready_flag_round_trips() {
+        let state = EmulatorState::new();
+        assert!(!state.is_pldm_ready());
+        state.set_pldm_ready(true);
+        assert!(state.is_pldm_ready());
+        state.set_pldm_ready(false);
+        assert!(!state.is_pldm_ready());
+    }
+
+    #[test]
+    fn wait_for_pldm_ready_returns_true_when_ready() {
+        let state = EmulatorState::new_arc();
+        init_emulator_state(state.clone());
+        state.set_pldm_ready(true);
+        assert!(wait_for_pldm_ready(1_000_000));
+    }
+
+    #[test]
+    fn wait_for_pldm_ready_times_out_on_ticks() {
+        let state = EmulatorState::new_arc();
+        init_emulator_state(state.clone());
+        let producer = state.clone();
+        let handle = std::thread::spawn(move || {
+            // Advance emulated time past the budget without ever going ready.
+            for t in (0..=10_000u64).step_by(TICK_NOTIFY_TICKS as usize) {
+                producer.ticks.store(t, Ordering::Relaxed);
+                producer.tick_cond.notify_all();
+                std::thread::sleep(Duration::from_millis(1));
+            }
+        });
+        assert!(!wait_for_pldm_ready(5_000));
+        handle.join().unwrap();
+    }
+
+    #[test]
+    fn wait_for_pldm_ready_wakes_when_set() {
+        let state = EmulatorState::new_arc();
+        init_emulator_state(state.clone());
+        let producer = state.clone();
+        let handle = std::thread::spawn(move || {
+            std::thread::sleep(Duration::from_millis(20));
+            producer.set_pldm_ready(true);
+        });
+        assert!(wait_for_pldm_ready(u64::MAX));
+        handle.join().unwrap();
     }
 }
