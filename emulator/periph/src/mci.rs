@@ -49,6 +49,9 @@ pub struct Mci {
     ext_mci_regs: caliptra_emu_periph::mci::Mci,
     generated: MciGenerated,
 
+    /// Value reported by the read-only MCU LSU AXI USER strap.
+    mcu_lsu_axi_user: u32,
+
     timer: Timer,
     op_wdt_timer1_expired_action: Option<ActionHandle>,
     op_wdt_timer2_expired_action: Option<ActionHandle>,
@@ -107,6 +110,7 @@ impl Mci {
         Self {
             ext_mci_regs,
             generated,
+            mcu_lsu_axi_user: 0,
 
             timer: Timer::new(clock),
             op_wdt_timer1_expired_action: None,
@@ -186,9 +190,20 @@ impl Mci {
     }
 }
 
+impl Mci {
+    /// Set the value reported by the read-only MCU LSU AXI USER strap.
+    pub fn set_mcu_lsu_axi_user(&mut self, value: u32) {
+        self.mcu_lsu_axi_user = value;
+    }
+}
+
 impl MciPeripheral for Mci {
     fn generated(&mut self) -> Option<&mut MciGenerated> {
         Some(&mut self.generated)
+    }
+
+    fn read_mci_reg_mcu_lsu_axi_user(&mut self) -> caliptra_emu_types::RvData {
+        self.mcu_lsu_axi_user
     }
 
     fn write_mci_reg_cptra_boot_go(
