@@ -62,6 +62,8 @@ pub struct I3c {
     tti_tx_desc_queue_raw: VecDeque<u32>,
     /// TX DATA in u8
     tti_tx_data_raw: VecDeque<Vec<u8>>,
+    /// Whether a TX descriptor is awaiting controller consumption.
+    tx_desc_in_flight: bool,
     /// IBI buffer
     tti_ibi_buffer: Vec<u8>,
     /// interrupt
@@ -146,6 +148,7 @@ impl I3c {
             tti_rx_current: VecDeque::new(),
             tti_tx_desc_queue_raw: VecDeque::new(),
             tti_tx_data_raw: VecDeque::new(),
+            tx_desc_in_flight: false,
             tti_ibi_buffer: vec![],
             irq,
             hw_revision,
@@ -195,6 +198,7 @@ impl I3c {
                         data: self.tti_tx_data_raw.pop_front().unwrap(),
                     };
                     self.i3c_target.set_response(resp);
+                    self.tx_desc_in_flight = true;
                 }
             }
         }
@@ -222,6 +226,13 @@ impl I3c {
     fn check_interrupts(&mut self) {
         // TODO: implement the timeout interrupts
 
+        if self.tx_desc_in_flight && !self.i3c_target.has_pending_response() {
+            self.tx_desc_in_flight = false;
+            self.interrupt_status
+                .reg
+                .modify(InterruptStatus::TxDescComplete::SET);
+        }
+
         self.interrupt_status
             .reg
             .modify(if self.ibi_status.is_some() {
@@ -248,6 +259,7 @@ impl I3c {
                 + InterruptStatus::TxDescStat::SET
                 + InterruptStatus::RxDescTimeout::SET
                 + InterruptStatus::TxDescTimeout::SET
+                + InterruptStatus::TxDescComplete::SET
                 + InterruptStatus::IbiDone::SET,
         ));
     }
@@ -1192,6 +1204,49 @@ mod tests {
             )
             .unwrap(),
             4
+        );
+    }
+
+    #[test]
+    fn tx_desc_complete_after_response_consumed() {
+        let clock = Clock::new();
+        let pic = Pic::new();
+        let irq = pic.register_irq(2);
+        let mut i3c_controller = I3cController::default();
+        let step_lock = Arc::new(Mutex::new(()));
+        let mut i3c = I3c::new(
+            &clock,
+            &mut i3c_controller,
+            irq,
+            Version::new(2, 0, 0),
+            step_lock,
+        );
+        let target_addr = DynamicI3cAddress::new(8).unwrap();
+        i3c.i3c_target.set_address(target_addr);
+
+        i3c.write_i3c_ec_tti_tx_desc_queue_port(4);
+        i3c.write_i3c_ec_tti_tx_data_port(u32::from_le_bytes([1, 2, 3, 4]));
+
+        assert!(i3c.tx_desc_in_flight);
+        assert!(i3c.i3c_target.has_pending_response());
+        assert_eq!(
+            i3c.interrupt_status
+                .reg
+                .read(InterruptStatus::TxDescComplete),
+            0
+        );
+
+        let response = i3c_controller.tcri_receive(target_addr).unwrap();
+        assert_eq!(response.data, [1, 2, 3, 4]);
+
+        i3c.check_interrupts();
+
+        assert!(!i3c.tx_desc_in_flight);
+        assert_eq!(
+            i3c.interrupt_status
+                .reg
+                .read(InterruptStatus::TxDescComplete),
+            1
         );
     }
 }
