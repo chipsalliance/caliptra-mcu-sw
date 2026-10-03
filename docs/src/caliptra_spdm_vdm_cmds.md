@@ -212,6 +212,7 @@ Native-authenticated/read-only DOT request:
 
 | FourCC | Command | Path | DOT payload | Validation |
 | ------ | ------- | ---- | ----------- | ---------- |
+| `MDEN` (`0x4D44_454E`) | Enable | Authorized | Empty | Initialization gate clear and zero epoch bits; programs all three redundant gate bits |
 | `MDLK` | Lock | Authorized | `cak[48] || lak_hash[48]` | Nonzero keys; EVEN state |
 | `MDDS` | Disable | Authorized | `lak_hash[48]` | Nonzero LAK hash; EVEN state |
 | `MDRT` | Rotate | Authorized | `min_fuse_count:u32 || cak[48] || lak_hash[48]` | Runs when burned count is below the minimum |
@@ -223,7 +224,7 @@ Native-authenticated/read-only DOT request:
 | `DOTW` | Override challenge | Native | Recovery ECC key and ML-DSA key | Keys match fused recovery-key hash |
 | `DOTX` | Override | Native | Recovery keys and hybrid signature | Fused key hash and challenge signatures |
 
-`MDLK`, `MDDS`, `MDRT`, and `MDBB` are rejected with `AccessDenied` when sent
+`MDEN`, `MDLK`, `MDDS`, `MDRT`, and `MDBB` are rejected with `AccessDenied` when sent
 directly under top-level command `0x11`. Recovery-mode gating for `MDRC`,
 `DOTW`, and `DOTX` is deferred; their native cryptographic and state checks are
 always enforced.

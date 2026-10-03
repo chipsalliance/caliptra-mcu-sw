@@ -157,7 +157,8 @@ fn authorized_subcommand_capabilities() -> AuthorizedSubcommandCapabilities {
             | AuthorizedSubcommandCapabilities::PROVISION_OWNER_PK_HASH;
     }
     if cfg!(feature = "dot-spdm-vdm") {
-        capabilities |= AuthorizedSubcommandCapabilities::DOT_LOCK
+        capabilities |= AuthorizedSubcommandCapabilities::DOT_ENABLE
+            | AuthorizedSubcommandCapabilities::DOT_LOCK
             | AuthorizedSubcommandCapabilities::DOT_DISABLE
             | AuthorizedSubcommandCapabilities::DOT_ROTATE
             | AuthorizedSubcommandCapabilities::GET_DOT_BACKUP_BLOB;
@@ -350,6 +351,10 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         device_ops::program_field_entropy(alloc, partition).await
     }
 
+    async fn dot_enable(&self) -> CaliptraCmdResult<()> {
+        device_ops::dot_enable()
+    }
+
     async fn dot_lock<Alloc: ApiAlloc>(
         &self,
         alloc: &Alloc,
@@ -506,7 +511,8 @@ mod tests {
         );
         assert_eq!(
             authorized.contains(
-                AuthorizedSubcommandCapabilities::DOT_LOCK
+                AuthorizedSubcommandCapabilities::DOT_ENABLE
+                    | AuthorizedSubcommandCapabilities::DOT_LOCK
                     | AuthorizedSubcommandCapabilities::DOT_DISABLE
                     | AuthorizedSubcommandCapabilities::DOT_ROTATE
                     | AuthorizedSubcommandCapabilities::GET_DOT_BACKUP_BLOB

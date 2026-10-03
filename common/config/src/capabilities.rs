@@ -41,6 +41,7 @@ bitflags::bitflags! {
         const DOT_DISABLE = 1 << 9;
         const DOT_ROTATE = 1 << 10;
         const GET_DOT_BACKUP_BLOB = 1 << 11;
+        const DOT_ENABLE = 1 << 14;
     }
 }
 
@@ -109,5 +110,6 @@ mod tests {
             AuthorizedSubcommandCapabilities::FUSE_INCREASE_MIN_SVN.bits(),
             1 << 2
         );
+        assert_eq!(AuthorizedSubcommandCapabilities::DOT_ENABLE.bits(), 1 << 14);
     }
 }
