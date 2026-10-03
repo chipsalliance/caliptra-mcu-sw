@@ -333,6 +333,7 @@ pub unsafe extern "C" fn emulator_init(
         device_security_state: DeviceLifecycle::try_from(config.device_security_state)
             .unwrap_or(DeviceLifecycle::Production) as u32,
         test_feature: None,
+        raw_unlock_token: None,
         vendor_pk_hash: convert_optional_c_string(config.vendor_pk_hash),
         vendor_pqc_type: caliptra_image_types::FwVerificationPqcKeyType::from_u8(
             config.vendor_pqc_type,
