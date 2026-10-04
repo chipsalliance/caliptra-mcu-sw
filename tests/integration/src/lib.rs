@@ -145,7 +145,8 @@ mod test {
         pub seeded_log_entries: Option<&'static [&'static [u8]]>,
         /// If true, include the example app in the runtime build instead of the user app.
         pub example_app: bool,
-        /// Cargo profile to use for a from-source runtime build.
+        /// Cargo profile for a from-source runtime build; `release` also selects
+        /// the MCU ROM built with the matching release manifest.
         pub profile: Option<&'a str>,
         /// Override the Caliptra firmware SVN. Forces a from-source
         /// Caliptra FW + SoC manifest build (ignoring any prebuilt
@@ -206,7 +207,7 @@ mod test {
     }
 
     // Get ROM from prebuilt or compile
-    fn get_or_compile_rom(feature: &str) -> PathBuf {
+    fn get_or_compile_rom(feature: &str, profile: Option<&str>) -> PathBuf {
         if let Ok(binaries) = FirmwareBinaries::from_env() {
             // Empty feature → use the generic prebuilt ROM.
             // Otherwise, only use the prebuilt ROM if it was actually built
@@ -230,7 +231,8 @@ mod test {
                     format!("mcu_rom_prebuilt_{}.bin", safe_name)
                 };
                 let output = target_binary(&filename);
-                if !output.exists() {
+                // Devel and release bundles share this path, so rewrite it when it differs.
+                if std::fs::read(&output).ok().as_deref() != Some(rom_data.as_slice()) {
                     if let Some(parent) = output.parent() {
                         std::fs::create_dir_all(parent).ok();
                     }
@@ -250,15 +252,15 @@ mod test {
             }
         }
         // Fall back to compilation
-        compile_rom(feature)
+        compile_rom(feature, profile)
     }
 
     // only build the default ROM once
-    pub static ROM: LazyLock<PathBuf> = LazyLock::new(|| get_or_compile_rom(""));
+    pub static ROM: LazyLock<PathBuf> = LazyLock::new(|| get_or_compile_rom("", None));
     pub static ROM_FW_MANIFEST_DOT: LazyLock<Vec<u8>> =
-        LazyLock::new(|| std::fs::read(get_or_compile_rom("test-fw-manifest-dot")).unwrap());
+        LazyLock::new(|| std::fs::read(get_or_compile_rom("test-fw-manifest-dot", None)).unwrap());
     pub static ROM_FW_MANIFEST_DOT_HITLESS: LazyLock<Vec<u8>> = LazyLock::new(|| {
-        std::fs::read(get_or_compile_rom("test-fw-manifest-dot-hitless")).unwrap()
+        std::fs::read(get_or_compile_rom("test-fw-manifest-dot-hitless", None)).unwrap()
     });
 
     pub static TEST_LOCK: LazyLock<Mutex<AtomicU32>> =
@@ -266,7 +268,7 @@ mod test {
 
     // Compile the ROM for a given feature flag (empty string for default ROM).
     pub fn get_rom_with_feature(feature: &str) -> PathBuf {
-        get_or_compile_rom(feature)
+        get_or_compile_rom(feature, None)
     }
 
     fn platform() -> &'static str {
@@ -277,7 +279,7 @@ mod test {
         }
     }
 
-    fn compile_rom(feature: &str) -> PathBuf {
+    fn compile_rom(feature: &str, profile: Option<&str>) -> PathBuf {
         let requested_feature = feature;
         let feature = if TEST_HW_REVISION == "2.1.0" {
             if feature.is_empty() {
@@ -295,12 +297,21 @@ mod test {
         let output: PathBuf = caliptra_mcu_builder::rom_build(&CaliptraBuildArgs {
             platform: Some(platform()),
             features: Some(&feature),
+            profile,
             ..Default::default()
         })
         .expect("ROM build failed");
         assert!(output.exists());
         if requested_feature.is_empty() {
-            let stable_output = target_binary(&format!("mcu_rom_default_{}.bin", platform()));
+            let profile_suffix = if matches!(profile, Some("release")) {
+                "_release"
+            } else {
+                ""
+            };
+            let stable_output = target_binary(&format!(
+                "mcu_rom_default_{}{profile_suffix}.bin",
+                platform()
+            ));
             std::fs::copy(&output, &stable_output).expect("Failed to copy default MCU ROM");
             stable_output
         } else {
@@ -715,9 +726,12 @@ mod test {
                 ROM_FW_MANIFEST_DOT.clone()
             }
         } else if let Some(f) = params.rom_feature {
-            std::fs::read(compile_rom(f)).unwrap()
+            std::fs::read(compile_rom(f, params.profile)).unwrap()
         } else if params.rom_only && params.feature.is_some() {
-            std::fs::read(compile_rom(params.feature.unwrap())).unwrap()
+            std::fs::read(compile_rom(params.feature.unwrap(), params.profile)).unwrap()
+        } else if matches!(params.profile, Some("release")) {
+            // A release runtime reads the handoff table at the release manifest's address.
+            std::fs::read(get_or_compile_rom("", params.profile)).unwrap()
         } else {
             std::fs::read(ROM.to_path_buf()).unwrap()
         };
@@ -1838,7 +1852,7 @@ mod test {
         let mcu_rom_path = if rom_feature.is_empty() {
             ROM.to_path_buf()
         } else {
-            get_or_compile_rom(rom_feature)
+            get_or_compile_rom(rom_feature, None)
         };
         let device_lifecycle = if feature == "test-get-caliptra-idev-csr" {
             DeviceLifecycle::Manufacturing

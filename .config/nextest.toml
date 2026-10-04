@@ -16,8 +16,9 @@ failure-output = "immediate-final"
 fail-fast = false
 slow-timeout = { period = "60s", terminate-after = 30 }
 # TODO: Failing tests tracked in https://github.com/chipsalliance/caliptra-mcu-sw/issues/1335.
+# The release-bundle-only tests below run in nightly-release.
 default-filter = """
-all() - test(test_defmt_logging_release)
+all() - test(test_defmt_logging_release) - test(test_handoff_release_rom_caps)
 """
 
 [profile.emulator.junit]
@@ -113,7 +114,8 @@ inherits = "emulator"
 fail-fast = false
 default-filter = """
 (package(caliptra-mcu-tests-integration) and test(test_flash_soc_boot_successful)) |
-(package(caliptra-mcu-tests-integration) and test(test_defmt_logging_release))
+(package(caliptra-mcu-tests-integration) and test(test_defmt_logging_release)) |
+(package(caliptra-mcu-tests-integration) and test(test_handoff_release_rom_caps))
 """
 
 [profile.nightly-ci-spdm]
@@ -145,6 +147,7 @@ not (
     test(test_firmware_update_flash_invalid_manifest) |
     test(test_header_burns_caliptra_runtime_svn) |
     test(test_mctp_user_loopback) |
-    test(test_defmt_logging_release)
+    test(test_defmt_logging_release) |
+    test(test_handoff_release_rom_caps)
 )
 """
