@@ -528,7 +528,6 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
             .map_err(map_common_completion)
     }
 
-
     async fn dot_enable<A: SpdmPalAlloc>(
         &self,
         payload: &[u8],

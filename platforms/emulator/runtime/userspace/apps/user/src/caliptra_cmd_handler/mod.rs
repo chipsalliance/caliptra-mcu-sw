@@ -390,7 +390,7 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         device_ops::hek_status()
     }
 
-  async fn dot_enable(&self) -> CaliptraCmdResult<()> {
+    async fn dot_enable(&self) -> CaliptraCmdResult<()> {
         device_ops::dot_enable()
     }
 

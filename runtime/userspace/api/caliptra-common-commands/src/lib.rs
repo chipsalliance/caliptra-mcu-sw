@@ -614,7 +614,7 @@ pub trait CaliptraCmdHandler {
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 
-  /// Enable DOT by programming its one-time initialization gate.
+    /// Enable DOT by programming its one-time initialization gate.
     async fn dot_enable(&self) -> CaliptraCmdResult<()> {
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
