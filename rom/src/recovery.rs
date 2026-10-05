@@ -371,6 +371,10 @@ pub(crate) fn load_image_to_recovery(
 
     let mut next_print_checkpoint = 0;
     let mut start_cycle = None;
+    // Bytes pushed into the recovery FIFO for the current image. Tracked here
+    // rather than read from INDIRECT_FIFO_STATUS_1: that is a FIFO write
+    // pointer which wraps at the FIFO depth on hardware.
+    let mut bytes_written = 0;
 
     while *state_machine.state() != States::Done {
         match *state_machine.state() {
@@ -394,6 +398,7 @@ pub(crate) fn load_image_to_recovery(
                 let res = state_machine.process_event(Events::RecoveryStatus(recovery_status));
                 if res.is_ok() {
                     next_print_checkpoint = 0;
+                    bytes_written = 0;
                     let recovery_image_index = recovery_status.rec_img_index();
                     caliptra_mcu_romtime::println!(
                         "[mcu-rom] Starting recovery with image index {}",
@@ -416,19 +421,16 @@ pub(crate) fn load_image_to_recovery(
                     start_cycle = Some(caliptra_mcu_romtime::mcycle());
                 }
 
-                let fifo_bytes_written =
-                    i3c_periph.sec_fw_recovery_if_indirect_fifo_status_1.get() as usize * 4;
-                if fifo_bytes_written >= next_print_checkpoint {
+                if bytes_written >= next_print_checkpoint {
                     caliptra_mcu_romtime::println!(
                         "[mcu-rom] Transferring image data at offset {} out of {}",
-                        fifo_bytes_written,
+                        bytes_written,
                         state_machine.context().image_size
                     );
-                    next_print_checkpoint =
-                        fifo_bytes_written + state_machine.context().image_size / 10;
+                    next_print_checkpoint = bytes_written + state_machine.context().image_size / 10;
                 }
 
-                if fifo_bytes_written >= state_machine.context().image_size {
+                if bytes_written >= state_machine.context().image_size {
                     // Set REC_INTF_CFG.REC_PAYLOAD_DONE bit to indicate transfer complete
                     i3c_periph
                         .soc_mgmt_if_rec_intf_cfg
@@ -460,6 +462,7 @@ pub(crate) fn load_image_to_recovery(
                         for dword in buf.iter().take(dwords_loaded) {
                             i3c_periph.tti_tx_data_port.set(*dword);
                         }
+                        bytes_written += dwords_loaded * 4;
                     }
                 }
             }

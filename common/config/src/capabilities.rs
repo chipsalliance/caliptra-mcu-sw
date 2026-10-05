@@ -47,6 +47,7 @@ bitflags::bitflags! {
         const OCP_LOCK_PROGRAM_HEK = 1 << 14;
         const OCP_LOCK_ZERO_HEK = 1 << 15;
         const ZEROIZE_UDS_FE_AND_ENTER_RMA = 1 << 16;
+        const DOT_ENABLE = 1 << 17;
     }
 }
 
@@ -131,6 +132,7 @@ mod tests {
             AuthorizedSubcommandCapabilities::ZEROIZE_UDS_FE_AND_ENTER_RMA.bits(),
             1 << 16
         );
+        assert_eq!(AuthorizedSubcommandCapabilities::DOT_ENABLE.bits(), 1 << 17);
         assert_eq!(ExternalCommandCapabilities::OCP_LOCK.bits(), 1 << 18);
         assert_eq!(
             AuthorizedSubcommandCapabilities::FUSE_INCREASE_MIN_SVN.bits(),

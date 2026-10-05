@@ -171,7 +171,8 @@ fn authorized_subcommand_capabilities() -> AuthorizedSubcommandCapabilities {
             | AuthorizedSubcommandCapabilities::ZEROIZE_UDS_FE_AND_ENTER_RMA;
     }
     if cfg!(feature = "dot-spdm-vdm") {
-        capabilities |= AuthorizedSubcommandCapabilities::DOT_LOCK
+        capabilities |= AuthorizedSubcommandCapabilities::DOT_ENABLE
+            | AuthorizedSubcommandCapabilities::DOT_LOCK
             | AuthorizedSubcommandCapabilities::DOT_DISABLE
             | AuthorizedSubcommandCapabilities::DOT_ROTATE
             | AuthorizedSubcommandCapabilities::GET_DOT_BACKUP_BLOB;
@@ -387,6 +388,10 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
 
     async fn hek_status(&self) -> CaliptraCmdResult<(u32, u32)> {
         device_ops::hek_status()
+    }
+
+  async fn dot_enable(&self) -> CaliptraCmdResult<()> {
+        device_ops::dot_enable()
     }
 
     async fn dot_lock<Alloc: ApiAlloc>(
@@ -650,7 +655,8 @@ mod tests {
         );
         assert_eq!(
             authorized.contains(
-                AuthorizedSubcommandCapabilities::DOT_LOCK
+                AuthorizedSubcommandCapabilities::DOT_ENABLE
+                    | AuthorizedSubcommandCapabilities::DOT_LOCK
                     | AuthorizedSubcommandCapabilities::DOT_DISABLE
                     | AuthorizedSubcommandCapabilities::DOT_ROTATE
                     | AuthorizedSubcommandCapabilities::GET_DOT_BACKUP_BLOB

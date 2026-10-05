@@ -215,8 +215,10 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
                 self.registers.tti_tx_data_port.set(word);
             }
         }
-        // we're done; call send_done in a deferred callback so that the
-        // IBI is sent before we try to send another read
+        // Keep the buffer until the IBI completes. Returning it earlier lets
+        // the client start another private read while this packet's IBI is
+        // still pending, which races into BUSY and can wedge the transmit
+        // queue.
 
         // add a small delay to ensure that the write is finished buffering
         for _ in 0..WRITE_DELAY_CYCLES {
@@ -224,7 +226,6 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         }
 
         self.tx_buffer.put(Some(buf));
-        self.deferred_call.set();
         // TODO: if no tx_client then we just drop the buffer?
     }
 
@@ -257,6 +258,10 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         if let Some((mdb, len)) = self.pending_ibi.take() {
             // check if IBI was successful
             if ibi_status == 0 {
+                // The client may start the next transfer from send_done(), so
+                // only return the buffer after the previous IBI is no longer
+                // pending.
+                self.deferred_call.set();
                 // schedule a callback to handle any pending private reads
                 self.set_alarm(Self::RETRY_WAIT_TICKS);
             } else {
