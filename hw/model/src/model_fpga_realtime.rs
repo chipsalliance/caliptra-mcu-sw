@@ -122,6 +122,8 @@ impl ModelFpgaRealtime {
             SpdmResponderTransport::Doe,
             milestones.contains(McuBootMilestones::FIRMWARE_SPDM_DOE_READY),
         );
+        self.state
+            .set_pldm_ready(milestones.contains(McuBootMilestones::FIRMWARE_PLDM_READY));
     }
 
     /// Set or clear the FIPS zeroization PPD signal in the FPGA wrapper
