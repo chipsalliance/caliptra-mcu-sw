@@ -12,9 +12,10 @@ use caliptra_mcu_mbox_common::messages::{
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_mbox_common::messages::{EndorsementAlgorithm, HpkeHandle, SekState};
 use mcu_caliptra_api::ApiAlloc;
-use zerocopy::FromBytes;
+use zerocopy::byteorder::little_endian::{U16, U32};
 #[cfg(feature = "device-ownership-transfer")]
 use zerocopy::IntoBytes;
+use zerocopy::{FromBytes, Immutable, KnownLayout};
 
 const U32_LEN: usize = core::mem::size_of::<u32>();
 const ECC_P384_COORD_LEN: usize = 48;
@@ -32,6 +33,98 @@ const MAX_AUTHORIZED_PAYLOAD_LEN: usize = U32_LEN + 48;
 /// Largest canonical AuthorizedCommand body, including its target ID.
 pub const MAX_AUTHORIZED_REQUEST_LEN: usize =
     U32_LEN + MAX_AUTHORIZED_PAYLOAD_LEN + AUTHORIZATION_TRAILER_LEN;
+
+#[repr(C)]
+#[derive(FromBytes, Immutable, KnownLayout)]
+struct WireCommandId {
+    value: U32,
+}
+
+#[repr(C)]
+#[derive(FromBytes, Immutable, KnownLayout)]
+struct ProvisionVendorPkHashPayload {
+    slot: U32,
+    hash: [u8; 48],
+}
+
+#[repr(C)]
+#[derive(FromBytes, Immutable, KnownLayout)]
+struct ProvisionOwnerPkHashPayload {
+    hash: [u8; 48],
+}
+
+#[repr(C)]
+#[derive(FromBytes, Immutable, KnownLayout)]
+struct IncreaseMinSvnPayload {
+    flags: U32,
+    target: U32,
+    svn: U32,
+}
+
+#[repr(C)]
+#[derive(FromBytes, Immutable, KnownLayout)]
+struct FieldEntropyPayload {
+    partition: U32,
+}
+
+#[repr(C)]
+#[derive(FromBytes, Immutable, KnownLayout)]
+struct RevokeVendorPubKeyPayload {
+    reserved: U32,
+    slot: U32,
+    key_type: U32,
+    key_index: U32,
+}
+
+#[repr(C)]
+#[derive(FromBytes, Immutable, KnownLayout)]
+struct RevokeVendorPkHashPayload {
+    reserved: U32,
+    slot: U32,
+}
+
+#[repr(C)]
+#[derive(FromBytes, Immutable, KnownLayout)]
+struct FuseLockPartitionPayload {
+    partition: U32,
+}
+
+#[repr(C)]
+#[derive(FromBytes, Immutable, KnownLayout)]
+struct FuseReadPayload {
+    partition: U32,
+    entry: U32,
+}
+
+#[repr(C)]
+#[derive(FromBytes, Immutable, KnownLayout)]
+struct FuseWritePayload {
+    word_addr: U32,
+    data: U32,
+    mask: U32,
+}
+
+#[cfg(feature = "ocp-lock")]
+#[repr(C)]
+#[derive(FromBytes, Immutable, KnownLayout)]
+struct OcpLockEpochKeyReportPayload {
+    nonce: [u8; 32],
+    sek_state: U16,
+    _reserved: U16,
+    algorithm: U32,
+}
+
+#[repr(C)]
+#[derive(FromBytes, Immutable, KnownLayout)]
+struct AuthorizationBlock {
+    nonce: [u8; AUTH_CMD_NONCE_LEN],
+    ecc_pub_x: [u8; ECC_P384_COORD_LEN],
+    ecc_pub_y: [u8; ECC_P384_COORD_LEN],
+    mldsa_pub: [u8; MLDSA87_PUB_KEY_LEN],
+    signature: HybridSignature,
+}
+
+const _: () = assert!(core::mem::size_of::<AuthorizationBlock>() == AUTHORIZATION_TRAILER_LEN);
 
 /// Result data produced by a transport-independent command executor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -68,11 +161,7 @@ impl CommandPolicy {
 
 struct AuthorizedRequest<'a> {
     payload: &'a [u8],
-    nonce: &'a [u8; AUTH_CMD_NONCE_LEN],
-    ecc_pub_x: &'a [u8; ECC_P384_COORD_LEN],
-    ecc_pub_y: &'a [u8; ECC_P384_COORD_LEN],
-    mldsa_pub: &'a [u8; MLDSA87_PUB_KEY_LEN],
-    signature: &'a HybridSignature,
+    authorization: &'a AuthorizationBlock,
 }
 
 /// Executes a canonical AuthorizedCommand body.
@@ -139,72 +228,81 @@ where
             alloc,
             target_id,
             parsed.payload,
-            parsed.nonce,
-            parsed.ecc_pub_x,
-            parsed.ecc_pub_y,
-            parsed.mldsa_pub,
-            parsed.signature,
+            &parsed.authorization.nonce,
+            &parsed.authorization.ecc_pub_x,
+            &parsed.authorization.ecc_pub_y,
+            &parsed.authorization.mldsa_pub,
+            &parsed.authorization.signature,
         )
         .await
         .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
 
     match target_id {
         value if value == CommandId::MC_PROVISION_VENDOR_PK_HASH.0 => {
-            let slot = read_u32_le(&parsed.payload[..4]);
-            let hash = <&[u8; 48]>::try_from(&parsed.payload[4..])
+            let payload = ProvisionVendorPkHashPayload::ref_from_bytes(parsed.payload)
                 .map_err(|_| CaliptraCompletionCode::InvalidPayloadSize)?;
-            commands.provision_vendor_pk_hash(slot, hash).await?;
+            commands
+                .provision_vendor_pk_hash(payload.slot.get(), &payload.hash)
+                .await?;
             Ok(CommandResponse::Empty)
         }
         value if value == CommandId::MC_PROVISION_OWNER_PK_HASH.0 => {
-            let hash = <&[u8; 48]>::try_from(parsed.payload)
+            let payload = ProvisionOwnerPkHashPayload::ref_from_bytes(parsed.payload)
                 .map_err(|_| CaliptraCompletionCode::InvalidPayloadSize)?;
-            commands.provision_owner_pk_hash(hash).await?;
+            commands.provision_owner_pk_hash(&payload.hash).await?;
             Ok(CommandResponse::Empty)
         }
         value if value == CommandId::MC_FUSE_INCREASE_MIN_SVN.0 => {
-            let flags = read_u32_le(&parsed.payload[..4]);
-            if flags != 0 {
+            let payload = IncreaseMinSvnPayload::ref_from_bytes(parsed.payload)
+                .map_err(|_| CaliptraCompletionCode::InvalidPayloadSize)?;
+            if payload.flags.get() != 0 {
                 return Err(CaliptraCompletionCode::InvalidParameter);
             }
-            let target = SvnTarget::try_from(read_u32_le(&parsed.payload[4..8]))
+            let target = SvnTarget::try_from(payload.target.get())
                 .map_err(|_| CaliptraCompletionCode::InvalidParameter)?;
-            let svn = read_u32_le(&parsed.payload[8..12]);
-            commands.increase_min_svn(alloc, target, svn).await?;
+            commands
+                .increase_min_svn(alloc, target, payload.svn.get())
+                .await?;
             Ok(CommandResponse::Empty)
         }
         value if value == CommandId::MC_FE_PROG.0 => {
+            let payload = FieldEntropyPayload::ref_from_bytes(parsed.payload)
+                .map_err(|_| CaliptraCompletionCode::InvalidPayloadSize)?;
             commands
-                .program_field_entropy(alloc, read_u32_le(parsed.payload))
+                .program_field_entropy(alloc, payload.partition.get())
                 .await?;
             Ok(CommandResponse::Empty)
         }
         value if value == CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY.0 => {
-            if read_u32_le(&parsed.payload[..4]) != 0 {
+            let payload = RevokeVendorPubKeyPayload::ref_from_bytes(parsed.payload)
+                .map_err(|_| CaliptraCompletionCode::InvalidPayloadSize)?;
+            if payload.reserved.get() != 0 {
                 return Err(CaliptraCompletionCode::InvalidParameter);
             }
             commands
                 .revoke_vendor_pub_key(
                     alloc,
-                    read_u32_le(&parsed.payload[4..8]),
-                    read_u32_le(&parsed.payload[8..12]),
-                    read_u32_le(&parsed.payload[12..16]),
+                    payload.slot.get(),
+                    payload.key_type.get(),
+                    payload.key_index.get(),
                 )
                 .await?;
             Ok(CommandResponse::Empty)
         }
         value if value == CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH.0 => {
-            if read_u32_le(&parsed.payload[..4]) != 0 {
+            let payload = RevokeVendorPkHashPayload::ref_from_bytes(parsed.payload)
+                .map_err(|_| CaliptraCompletionCode::InvalidPayloadSize)?;
+            if payload.reserved.get() != 0 {
                 return Err(CaliptraCompletionCode::InvalidParameter);
             }
-            commands
-                .revoke_vendor_pk_hash(read_u32_le(&parsed.payload[4..8]))
-                .await?;
+            commands.revoke_vendor_pk_hash(payload.slot.get()).await?;
             Ok(CommandResponse::Empty)
         }
         value if value == CommandId::MC_FUSE_LOCK_PARTITION.0 => {
+            let payload = FuseLockPartitionPayload::ref_from_bytes(parsed.payload)
+                .map_err(|_| CaliptraCompletionCode::InvalidPayloadSize)?;
             commands
-                .fuse_lock_partition(read_u32_le(parsed.payload))
+                .fuse_lock_partition(payload.partition.get())
                 .await?;
             Ok(CommandResponse::Empty)
         }
@@ -212,11 +310,13 @@ where
             execute_fuse_read(commands, parsed.payload, output).await
         }
         value if value == CommandId::MC_FUSE_WRITE.0 => {
+            let payload = FuseWritePayload::ref_from_bytes(parsed.payload)
+                .map_err(|_| CaliptraCompletionCode::InvalidPayloadSize)?;
             commands
                 .fuse_write(
-                    read_u32_le(&parsed.payload[..4]),
-                    read_u32_le(&parsed.payload[4..8]),
-                    read_u32_le(&parsed.payload[8..12]),
+                    payload.word_addr.get(),
+                    payload.data.get(),
+                    payload.mask.get(),
                 )
                 .await?;
             Ok(CommandResponse::Empty)
@@ -318,10 +418,15 @@ where
         value if value == CommandId::MC_GET_OCP_LOCK_ENDORSEMENT_CERT.0 => {
             let (handle, payload) = HpkeHandle::read_from_prefix(payload)
                 .map_err(|_| CaliptraCompletionCode::InvalidPayloadSize)?;
-            let algorithm = EndorsementAlgorithm::read_from_bytes(payload)
+            let algorithm = U32::read_from_bytes(payload)
                 .map_err(|_| CaliptraCompletionCode::InvalidPayloadSize)?;
             let len = commands
-                .get_ocp_lock_endorsement_cert(alloc, &handle, algorithm, output)
+                .get_ocp_lock_endorsement_cert(
+                    alloc,
+                    &handle,
+                    EndorsementAlgorithm(algorithm.get()),
+                    output,
+                )
                 .await?;
             Ok(CommandResponse::Data(len))
         }
@@ -331,17 +436,13 @@ where
             Ok(CommandResponse::Data(len))
         }
         value if value == CommandId::MC_GET_OCP_LOCK_EPOCH_KEY_REPORT.0 => {
-            if payload.len() != 40 {
-                return Err(CaliptraCompletionCode::InvalidPayloadSize);
-            }
-            let nonce = <&[u8; 32]>::try_from(&payload[..32])
+            let payload = OcpLockEpochKeyReportPayload::ref_from_bytes(payload)
                 .map_err(|_| CaliptraCompletionCode::InvalidPayloadSize)?;
-            let sek_state = SekState::try_from(u16::from_le_bytes([payload[32], payload[33]]))
+            let sek_state = SekState::try_from(payload.sek_state.get())
                 .map_err(|_| CaliptraCompletionCode::InvalidParameter)?;
-            let algorithm = EndorsementAlgorithm::read_from_bytes(&payload[36..])
-                .map_err(|_| CaliptraCompletionCode::InvalidPayloadSize)?;
+            let algorithm = EndorsementAlgorithm(payload.algorithm.get());
             let len = commands
-                .get_ocp_lock_epoch_key_report(alloc, nonce, sek_state, algorithm, output)
+                .get_ocp_lock_epoch_key_report(alloc, &payload.nonce, sek_state, algorithm, output)
                 .await?;
             Ok(CommandResponse::Data(len))
         }
@@ -351,15 +452,31 @@ where
 
 fn authorized_payload_len(target_id: u32, request: &[u8]) -> CaliptraCmdResult<usize> {
     match target_id {
-        value if value == CommandId::MC_PROVISION_VENDOR_PK_HASH.0 => Ok(4 + 48),
-        value if value == CommandId::MC_PROVISION_OWNER_PK_HASH.0 => Ok(48),
-        value if value == CommandId::MC_FUSE_INCREASE_MIN_SVN.0 => Ok(12),
-        value if value == CommandId::MC_FE_PROG.0 => Ok(4),
-        value if value == CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY.0 => Ok(16),
-        value if value == CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH.0 => Ok(8),
-        value if value == CommandId::MC_FUSE_LOCK_PARTITION.0 => Ok(4),
-        value if value == CommandId::MC_FUSE_READ.0 => Ok(8),
-        value if value == CommandId::MC_FUSE_WRITE.0 => Ok(12),
+        value if value == CommandId::MC_PROVISION_VENDOR_PK_HASH.0 => {
+            Ok(core::mem::size_of::<ProvisionVendorPkHashPayload>())
+        }
+        value if value == CommandId::MC_PROVISION_OWNER_PK_HASH.0 => {
+            Ok(core::mem::size_of::<ProvisionOwnerPkHashPayload>())
+        }
+        value if value == CommandId::MC_FUSE_INCREASE_MIN_SVN.0 => {
+            Ok(core::mem::size_of::<IncreaseMinSvnPayload>())
+        }
+        value if value == CommandId::MC_FE_PROG.0 => {
+            Ok(core::mem::size_of::<FieldEntropyPayload>())
+        }
+        value if value == CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY.0 => {
+            Ok(core::mem::size_of::<RevokeVendorPubKeyPayload>())
+        }
+        value if value == CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH.0 => {
+            Ok(core::mem::size_of::<RevokeVendorPkHashPayload>())
+        }
+        value if value == CommandId::MC_FUSE_LOCK_PARTITION.0 => {
+            Ok(core::mem::size_of::<FuseLockPartitionPayload>())
+        }
+        value if value == CommandId::MC_FUSE_READ.0 => Ok(core::mem::size_of::<FuseReadPayload>()),
+        value if value == CommandId::MC_FUSE_WRITE.0 => {
+            Ok(core::mem::size_of::<FuseWritePayload>())
+        }
         value if value == CommandId::MC_DEVICE_OWNERSHIP_TRANSFER.0 => {
             authorized_dot_payload_len(request)
         }
@@ -403,12 +520,10 @@ async fn execute_fuse_read<H: CaliptraCmdHandler>(
     let data = output
         .get_mut(U32_LEN..U32_LEN + MAX_FUSE_DATA_SIZE)
         .ok_or(CaliptraCompletionCode::InsufficientResources)?;
+    let payload = FuseReadPayload::ref_from_bytes(payload)
+        .map_err(|_| CaliptraCompletionCode::InvalidPayloadSize)?;
     let valid_bits = commands
-        .fuse_read(
-            read_u32_le(&payload[..4]),
-            read_u32_le(&payload[4..8]),
-            data,
-        )
+        .fuse_read(payload.partition.get(), payload.entry.get(), data)
         .await?;
     let data_len = (valid_bits as usize).div_ceil(8);
     if data_len > data.len() {
@@ -495,8 +610,10 @@ where
     let (subcommand, payload) = split_id(payload)?;
     match subcommand {
         value if value == CommandId::MC_OCP_LOCK_ROTATE_HEK.0 => {
+            let payload = WireCommandId::ref_from_bytes(payload)
+                .map_err(|_| CaliptraCompletionCode::InvalidPayloadSize)?;
             commands
-                .ocp_lock_rotate_hek(alloc, read_u32_le(payload))
+                .ocp_lock_rotate_hek(alloc, payload.value.get())
                 .await?;
             Ok(CommandResponse::Empty)
         }
@@ -533,39 +650,19 @@ fn split_authorized_request(
         return Err(CaliptraCompletionCode::InvalidPayloadSize);
     }
 
-    let (payload, auth) = request.split_at(payload_len);
-    let (nonce, auth) = auth.split_at(AUTH_CMD_NONCE_LEN);
-    let (ecc_pub_x, auth) = auth.split_at(ECC_P384_COORD_LEN);
-    let (ecc_pub_y, auth) = auth.split_at(ECC_P384_COORD_LEN);
-    let (mldsa_pub, signature) = auth.split_at(MLDSA87_PUB_KEY_LEN);
+    let (payload, authorization) = request.split_at(payload_len);
+    let authorization = AuthorizationBlock::ref_from_bytes(authorization)
+        .map_err(|_| CaliptraCompletionCode::InvalidParameter)?;
     Ok(AuthorizedRequest {
         payload,
-        nonce: nonce
-            .try_into()
-            .map_err(|_| CaliptraCompletionCode::InvalidParameter)?,
-        ecc_pub_x: ecc_pub_x
-            .try_into()
-            .map_err(|_| CaliptraCompletionCode::InvalidParameter)?,
-        ecc_pub_y: ecc_pub_y
-            .try_into()
-            .map_err(|_| CaliptraCompletionCode::InvalidParameter)?,
-        mldsa_pub: mldsa_pub
-            .try_into()
-            .map_err(|_| CaliptraCompletionCode::InvalidParameter)?,
-        signature: HybridSignature::ref_from_bytes(signature)
-            .map_err(|_| CaliptraCompletionCode::InvalidParameter)?,
+        authorization,
     })
 }
 
 fn split_id(request: &[u8]) -> CaliptraCmdResult<(u32, &[u8])> {
-    let id = request
-        .get(..U32_LEN)
-        .ok_or(CaliptraCompletionCode::InvalidPayloadSize)?;
-    Ok((read_u32_le(id), &request[U32_LEN..]))
-}
-
-fn read_u32_le(bytes: &[u8]) -> u32 {
-    u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]])
+    let (id, request) = WireCommandId::ref_from_prefix(request)
+        .map_err(|_| CaliptraCompletionCode::InvalidPayloadSize)?;
+    Ok((id.value.get(), request))
 }
 
 #[cfg(any(feature = "device-ownership-transfer", feature = "ocp-lock"))]
