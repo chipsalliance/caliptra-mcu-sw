@@ -54,12 +54,12 @@ mod cmd {
     pub const MCI_SET_SPDM_MCTP_RESPONDER_READY: u32 = 6;
     pub const MCI_SET_SPDM_DOE_RESPONDER_READY: u32 = 7;
     pub const MCI_ENTER_RMA: u32 = 8;
+    pub const MCI_SET_PLDM_READY: u32 = 9;
 }
 
 mod ro_allow {
     pub const RMA_TOKEN: usize = 0;
     pub const COUNT: u8 = 1;
-    pub const MCI_SET_PLDM_READY: u32 = 8;
 }
 
 mod mci_reg {
