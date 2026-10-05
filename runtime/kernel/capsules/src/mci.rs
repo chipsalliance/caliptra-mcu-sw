@@ -59,6 +59,7 @@ mod cmd {
 mod ro_allow {
     pub const RMA_TOKEN: usize = 0;
     pub const COUNT: u8 = 1;
+    pub const MCI_SET_PLDM_READY: u32 = 8;
 }
 
 mod mci_reg {
@@ -222,6 +223,12 @@ impl SyscallDriver for Mci {
                 CommandReturn::success()
             }
             cmd::MCI_ENTER_RMA => self.enter_rma(processid),
+            cmd::MCI_SET_PLDM_READY => {
+                self.driver.set_flow_milestone(
+                    caliptra_mcu_romtime::McuBootMilestones::FIRMWARE_PLDM_READY.into(),
+                );
+                CommandReturn::success()
+            }
             _ => CommandReturn::failure(ErrorCode::NOSUPPORT),
         }
     }

@@ -70,6 +70,12 @@ impl<S: Syscalls> Mci<S> {
             S::command(self.driver_num, cmd::MCI_ENTER_RMA, 0, 0).to_result::<(), ErrorCode>()
         })
     }
+
+    /// Signal (via the `FIRMWARE_PLDM_READY` boot milestone) that the PLDM
+    /// responder is about to start servicing requests.
+    pub fn set_pldm_ready(&self) -> Result<(), ErrorCode> {
+        S::command(self.driver_num, cmd::MCI_SET_PLDM_READY, 0, 0).to_result::<(), ErrorCode>()
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -92,6 +98,7 @@ pub mod cmd {
 
 mod ro_allow {
     pub const RMA_TOKEN: u32 = 0;
+    pub const MCI_SET_PLDM_READY: u32 = 8;
 }
 
 pub mod mci_reg {

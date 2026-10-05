@@ -228,4 +228,115 @@ mod tests {
             run_before_sign
         );
     }
+
+    #[test]
+    fn chunked_key_exchange_fits_shipping_pool() {
+        const POOL: usize = 18 * 1024;
+        const MAX_TRANSPORT_MTU: usize = 1024;
+        const MAX_KEY_EXCHANGE_REQ_LEN: usize = caliptra_mcu_spdm_codec::SpdmMsgHdrPdu::SIZE
+            + core::mem::size_of::<caliptra_mcu_spdm_codec::KeyExchangeReqBodyFixed>()
+            + caliptra_mcu_spdm_codec::MAX_EXCHANGE_DATA_SIZE
+            + 2
+            + caliptra_mcu_spdm_codec::MAX_SUPPORTED_VERSION_LIST_OPAQUE_SIZE;
+        const MAX_KEY_EXCHANGE_RSP_LEN: usize = caliptra_mcu_spdm_codec::SpdmMsgHdrPdu::SIZE
+            + caliptra_mcu_spdm_codec::KEY_EXCHANGE_RSP_FIXED_BODY_SIZE
+            + caliptra_mcu_spdm_codec::MAX_EXCHANGE_DATA_SIZE
+            + caliptra_mcu_spdm_codec::SHA384_HASH_SIZE
+            + 2
+            + caliptra_mcu_spdm_codec::OPAQUE_VERSION_SELECTION_SIZE
+            + caliptra_mcu_spdm_codec::MLDSA87_SIGNATURE_SIZE
+            + caliptra_mcu_spdm_codec::SHA384_HASH_SIZE;
+        const KEY_EXCHANGE_WORKSPACE_SIZE: usize = caliptra_mcu_spdm_codec::SHA384_HASH_SIZE
+            + caliptra_mcu_spdm_codec::KEY_EXCHANGE_RANDOM_DATA_LEN
+            + caliptra_mcu_spdm_codec::OPAQUE_VERSION_SELECTION_SIZE;
+        const MEASUREMENT_BLOCK_SIZE: usize = caliptra_mcu_spdm_codec::MEAS_BLOCK_METADATA_SIZE
+            + caliptra_mcu_attestation_evidence::SIGNED_OCP_EAT_MAX_SIZE;
+        const CERTIFY_KEY_REQ: usize = 92;
+        const CERTIFY_KEY_RSP: usize = 32 + 2624;
+        const SIGN_REQ: usize = 168;
+        const SIGN_RSP: usize = 4668;
+        const SHA_INIT_REQ: usize = 12 + 512;
+        const SHA_CTX_RSP: usize = 4 + 4 + mcu_caliptra_api::SHA_CONTEXT_SIZE;
+
+        let (alloc, _buf) = make_alloc(POOL);
+
+        let _session_info = alloc.alloc_bytes(1312).expect("session info alloc");
+        let _vca = alloc.alloc_bytes(200).expect("vca alloc");
+        let _m1 = alloc.alloc_bytes(200).expect("m1 alloc");
+        let _l1 = alloc.alloc_bytes(200).expect("l1 alloc");
+        let _th = alloc.alloc_bytes(200).expect("th alloc");
+
+        let request = alloc
+            .alloc_bytes(MAX_KEY_EXCHANGE_REQ_LEN)
+            .expect("chunked KEY_EXCHANGE request alloc");
+        let _recv = alloc
+            .alloc_bytes(MAX_TRANSPORT_MTU)
+            .expect("final receive frame alloc");
+
+        let measurement_summary = alloc
+            .alloc_bytes(caliptra_mcu_spdm_codec::SHA384_HASH_SIZE)
+            .expect("measurement summary hash alloc");
+        {
+            let _block = alloc
+                .alloc_bytes(MEASUREMENT_BLOCK_SIZE)
+                .expect("signed OCP EAT measurement block alloc");
+
+            {
+                let _sign_req = alloc
+                    .alloc_bytes(SIGN_REQ)
+                    .expect("OCP EAT DPE Sign request alloc");
+                let _sign_rsp = alloc
+                    .alloc_bytes(SIGN_RSP)
+                    .expect("OCP EAT DPE Sign response alloc");
+            }
+
+            {
+                let _hash_state = alloc
+                    .alloc_bytes(mcu_caliptra_api::SHA_CONTEXT_SIZE)
+                    .expect("measurement summary hash state alloc");
+                let _hash_req = alloc
+                    .alloc_bytes(SHA_INIT_REQ)
+                    .expect("measurement summary SHA request alloc");
+                let _hash_rsp = alloc
+                    .alloc_bytes(SHA_CTX_RSP)
+                    .expect("measurement summary SHA response alloc");
+            }
+        }
+
+        let _response = alloc
+            .alloc_bytes(MAX_KEY_EXCHANGE_RSP_LEN)
+            .expect("KEY_EXCHANGE response alloc");
+
+        {
+            let _mlkem_req = alloc
+                .alloc_bytes(mcu_caliptra_api::MLKEM_ENCAPSULATE_REQ_SIZE)
+                .expect("ML-KEM request alloc");
+            let _mlkem_rsp = alloc
+                .alloc_bytes(mcu_caliptra_api::MLKEM_ENCAPSULATE_RSP_SIZE)
+                .expect("ML-KEM response alloc");
+        }
+
+        let _workspace = alloc
+            .alloc_bytes(KEY_EXCHANGE_WORKSPACE_SIZE)
+            .expect("KEY_EXCHANGE workspace alloc");
+        drop(request);
+        drop(measurement_summary);
+
+        {
+            let _pubkey = alloc
+                .alloc_bytes(mcu_caliptra_api::CERTIFY_KEY_MLDSA87_PUBKEY_SIZE)
+                .expect("ML-DSA public key alloc");
+            let _ck_req = alloc
+                .alloc_bytes(CERTIFY_KEY_REQ)
+                .expect("CertifyKey request alloc");
+            let _ck_rsp = alloc
+                .alloc_bytes(CERTIFY_KEY_RSP)
+                .expect("CertifyKey response alloc");
+        }
+
+        let _sign_req = alloc.alloc_bytes(SIGN_REQ).expect("DPE Sign request alloc");
+        let _sign_rsp = alloc
+            .alloc_bytes(SIGN_RSP)
+            .expect("DPE Sign response must fit after releasing the chunked request");
+    }
 }
