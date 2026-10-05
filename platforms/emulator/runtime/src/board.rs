@@ -1344,6 +1344,10 @@ fn run_kernel_tests(
         caliptra_mcu_romtime::println!("Executing test-i3c-constant-writes");
         exit = crate::tests::i3c_target_test::run_test_i3c_constant_writes();
     }
+    #[cfg(feature = "test-i3c-echo")]
+    {
+        exit = crate::tests::i3c_target_test::run_test_i3c_echo();
+    }
     #[cfg(feature = "test-flash-ctrl-init")]
     {
         caliptra_mcu_romtime::println!("Executing test-flash-ctrl-init");

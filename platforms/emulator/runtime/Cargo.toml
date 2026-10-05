@@ -114,6 +114,7 @@ test-caliptra-util-host-mctp-vdm-validator = ["mctp-vdm-service", "userspace-log
 test-caliptra-util-host-spdm-vdm-validator = ["spdm", "dot-spdm-vdm"]
 test-i3c-simple = []
 test-i3c-constant-writes = []
+test-i3c-echo = []
 test-flash-based-boot = ["flash-boot"]
 test-flash-ctrl-init = []
 test-flash-ctrl-read-write-page = []

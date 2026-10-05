@@ -316,18 +316,22 @@ impl BufferedStream {
         self.write_private_cmd(&pvt_read_cmd);
     }
 
-    pub fn receive_ibi(&mut self, target_addr: u8) -> bool {
+    /// Retrieve a full IBI without issuing an automatic read. The payload
+    /// excludes the MDB and may contain the pending-read length.
+    pub fn receive_ibi_packet(&mut self, target_addr: u8) -> Option<(u8, Vec<u8>)> {
         self.fill_buffer();
-        let mut i = 0;
-        while i < self.read_buffer.len() {
-            if self.read_buffer[i].header.from_addr == target_addr
-                && self.read_buffer[i].header.ibi != 0
-            {
-                self.read_buffer.remove(i);
-                let pvt_read_cmd = prepare_private_read_cmd(target_addr);
-                return self.write_private_cmd(&pvt_read_cmd);
-            }
-            i += 1;
+        let index = self
+            .read_buffer
+            .iter()
+            .position(|packet| packet.header.from_addr == target_addr && packet.header.ibi != 0)?;
+        let packet = self.read_buffer.remove(index).unwrap();
+        Some((packet.header.ibi, packet.data))
+    }
+
+    pub fn receive_ibi(&mut self, target_addr: u8) -> bool {
+        if self.receive_ibi_packet(target_addr).is_some() {
+            let pvt_read_cmd = prepare_private_read_cmd(target_addr);
+            return self.write_private_cmd(&pvt_read_cmd);
         }
         false
     }
