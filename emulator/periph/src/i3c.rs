@@ -31,6 +31,9 @@ use zerocopy::FromBytes;
 
 const I3C_REC_INT_BYPASS_I3C_CORE: u32 = 0x0;
 const I3C_REC_INT_BYPASS_AXI_DIRECT: u32 = 0x1;
+/// Depth of the recovery indirect FIFO in dwords (i3c-core `IndirectFifoDepth`).
+/// The FIFO write and read indices wrap at this value, as on hardware.
+const INDIRECT_FIFO_DEPTH: u32 = 64;
 struct PollScheduler {
     pending: Arc<AtomicBool>,
     // Held while scheduling to prevent the clock from advancing mid-operation.
@@ -80,8 +83,10 @@ pub struct I3c {
         u32,
         caliptra_mcu_registers_generated::i3c::bits::IndirectFifoStatus0::Register,
     >,
-    i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1: ReadWriteRegister<u32>,
-    i3c_ec_sec_fw_recovery_if_indirect_fifo_status_2: ReadWriteRegister<u32>,
+    /// Dwords written into / read out of the indirect FIFO for the current
+    /// image. INDIRECT_FIFO_STATUS_1/2 expose these modulo the FIFO depth.
+    indirect_fifo_words_written: u32,
+    indirect_fifo_words_read: u32,
     i3c_ec_sec_fw_recovery_if_recovery_ctrl:
         ReadWriteRegister<u32, caliptra_mcu_registers_generated::i3c::bits::RecoveryCtrl::Register>,
     i3c_ec_soc_mgmt_if_rec_intf_cfg:
@@ -153,8 +158,8 @@ impl I3c {
             i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0: ReadWriteRegister::new(
                 1 << IndirectFifoStatus0::Empty.shift,
             ),
-            i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1: ReadWriteRegister::new(0),
-            i3c_ec_sec_fw_recovery_if_indirect_fifo_status_2: ReadWriteRegister::new(0),
+            indirect_fifo_words_written: 0,
+            indirect_fifo_words_read: 0,
             i3c_ec_sec_fw_recovery_if_recovery_ctrl: ReadWriteRegister::new(0),
             i3c_ec_soc_mgmt_if_rec_intf_cfg: ReadWriteRegister::new(0),
             i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access: ReadWriteRegister::new(0),
@@ -245,6 +250,17 @@ impl I3c {
                 + InterruptStatus::TxDescTimeout::SET
                 + InterruptStatus::IbiDone::SET,
         ));
+    }
+
+    /// Empty the recovery indirect FIFO and rewind its indices for a new image.
+    fn reset_indirect_fifo(&mut self) {
+        self.indirect_fifo_data.clear();
+        self.indirect_fifo_words_written = 0;
+        self.indirect_fifo_words_read = 0;
+        // Set Empty bit (bit 0) to indicate FIFO can receive data
+        self.i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0
+            .reg
+            .write(IndirectFifoStatus0::Empty::SET);
     }
 
     // check if there area valid IBI descriptors and messages
@@ -687,25 +703,11 @@ impl I3cPeripheral for I3c {
                     return;
                 }
 
-                let write_index = self
-                    .i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1
-                    .reg
-                    .get();
-                let address = (write_index * 4) as usize;
-                self.indirect_fifo_data.resize(
-                    address + std::mem::size_of::<caliptra_emu_types::RvData>(),
-                    0,
-                );
+                // The whole image is kept so Caliptra can read it once uploaded;
+                // only the software-visible indices behave like a 64-dword ring.
                 self.indirect_fifo_data
-                    [address..address + std::mem::size_of::<caliptra_emu_types::RvData>()]
-                    .copy_from_slice(val.to_le_bytes().as_ref());
-                // head pointer must be aligned to 4 bytes at the end
-                self.i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1
-                    .reg
-                    .set(
-                        (address + std::mem::size_of::<caliptra_emu_types::RvData>())
-                            .div_ceil(std::mem::size_of::<u32>()) as u32,
-                    );
+                    .extend_from_slice(&val.to_le_bytes());
+                self.indirect_fifo_words_written += 1;
             } else {
                 println!("[I3C-Emulator] Unknown bypass configuration: {bypass_cfg}");
             }
@@ -759,20 +761,10 @@ impl I3cPeripheral for I3c {
         // DevStatus is 0x3 when the device is ready for a new image
         if val.reg.read(DeviceStatus0::DevStatus) == 0x3 && current_status != 0x3 {
             // Reset the device status, when the device is ready for a new image
-            self.indirect_fifo_data.clear();
             self.i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0
                 .reg
                 .set(0);
-            // Set Empty bit (bit 0) to indicate FIFO can receive data
-            self.i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0
-                .reg
-                .write(IndirectFifoStatus0::Empty::SET);
-            self.i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1
-                .reg
-                .set(0);
-            self.i3c_ec_sec_fw_recovery_if_indirect_fifo_status_2
-                .reg
-                .set(0);
+            self.reset_indirect_fifo();
         }
         self.i3c_ec_sec_fw_recovery_if_device_status_0
             .reg
@@ -839,16 +831,7 @@ impl I3cPeripheral for I3c {
         &mut self,
         val: caliptra_emu_types::RvData,
     ) {
-        self.indirect_fifo_data.clear();
-        self.i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0
-            .reg
-            .write(IndirectFifoStatus0::Empty::SET);
-        self.i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1
-            .reg
-            .set(0);
-        self.i3c_ec_sec_fw_recovery_if_indirect_fifo_status_2
-            .reg
-            .set(0);
+        self.reset_indirect_fifo();
         self.i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1
             .reg
             .set(val);
@@ -864,11 +847,7 @@ impl I3cPeripheral for I3c {
             return 0xffff_ffff;
         }
 
-        let read_index = self
-            .i3c_ec_sec_fw_recovery_if_indirect_fifo_status_2
-            .reg
-            .get();
-        let address = read_index * std::mem::size_of::<u32>() as u32;
+        let address = self.indirect_fifo_words_read * std::mem::size_of::<u32>() as u32;
         let image_len = self
             .i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1
             .reg
@@ -886,9 +865,7 @@ impl I3cPeripheral for I3c {
         let address: usize = address.try_into().unwrap();
         let range = address..(address + 4);
         let data = &self.indirect_fifo_data.clone()[range];
-        self.i3c_ec_sec_fw_recovery_if_indirect_fifo_status_2
-            .reg
-            .set(read_index + 1);
+        self.indirect_fifo_words_read += 1;
 
         u32::from_le_bytes(data.try_into().unwrap())
     }
@@ -909,21 +886,19 @@ impl I3cPeripheral for I3c {
     fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1(
         &mut self,
     ) -> caliptra_emu_types::RvData {
-        caliptra_emu_types::RvData::from(
-            self.i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1
-                .reg
-                .get(),
-        )
+        self.indirect_fifo_words_written % INDIRECT_FIFO_DEPTH
     }
 
     fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_2(
         &mut self,
     ) -> caliptra_emu_types::RvData {
-        caliptra_emu_types::RvData::from(
-            self.i3c_ec_sec_fw_recovery_if_indirect_fifo_status_2
-                .reg
-                .get(),
-        )
+        self.indirect_fifo_words_read % INDIRECT_FIFO_DEPTH
+    }
+
+    fn read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_3(
+        &mut self,
+    ) -> caliptra_emu_types::RvData {
+        INDIRECT_FIFO_DEPTH
     }
 
     fn read_i3c_ec_sec_fw_recovery_if_recovery_ctrl(
@@ -1100,6 +1075,64 @@ mod tests {
     };
 
     const TTI_RX_DESC_QUEUE_PORT: RvAddr = 0x270;
+
+    /// The indirect FIFO indices must wrap at the FIFO depth like hardware,
+    /// so firmware cannot use them to track how much of an image was sent.
+    #[test]
+    fn recovery_fifo_indices_wrap_at_fifo_depth() {
+        let clock = Clock::new();
+        let pic = Pic::new();
+        let mut i3c_controller = I3cController::default();
+        let mut i3c = I3c::new(
+            &clock,
+            &mut i3c_controller,
+            pic.register_irq(2),
+            Version::new(2, 1, 0),
+            Arc::new(Mutex::new(())),
+        );
+        i3c.write_i3c_ec_soc_mgmt_if_rec_intf_cfg(ReadWriteRegister::new(
+            I3C_REC_INT_BYPASS_AXI_DIRECT,
+        ));
+
+        // More than one FIFO's worth of data, ending mid-FIFO.
+        let image: Vec<u32> = (0..INDIRECT_FIFO_DEPTH * 2 + 5).collect();
+        i3c.write_i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1(image.len() as u32);
+        assert_eq!(
+            i3c.read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_3(),
+            INDIRECT_FIFO_DEPTH
+        );
+
+        let write_indices: Vec<u32> = image
+            .iter()
+            .map(|&word| {
+                i3c.write_i3c_ec_tti_tx_data_port(word);
+                i3c.read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1()
+            })
+            .collect();
+        let read_back: Vec<(u32, u32)> = image
+            .iter()
+            .map(|_| {
+                let word = i3c.read_i3c_ec_sec_fw_recovery_if_indirect_fifo_data();
+                (
+                    word,
+                    i3c.read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_2(),
+                )
+            })
+            .collect();
+
+        let expected_indices: Vec<u32> = (1..=image.len() as u32)
+            .map(|n| n % INDIRECT_FIFO_DEPTH)
+            .collect();
+        assert_eq!(write_indices, expected_indices);
+        assert_eq!(
+            read_back.iter().map(|&(_, idx)| idx).collect::<Vec<_>>(),
+            expected_indices
+        );
+        assert_eq!(
+            read_back.iter().map(|&(word, _)| word).collect::<Vec<_>>(),
+            image
+        );
+    }
 
     #[test]
     fn receive_i3c_cmd() {
