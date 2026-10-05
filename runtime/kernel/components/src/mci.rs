@@ -12,6 +12,7 @@ pub struct MciComponent {
     driver_num: usize,
     driver: &'static caliptra_mcu_romtime::Mci,
     lifecycle: &'static caliptra_mcu_romtime::Lifecycle,
+    otp: &'static caliptra_mcu_romtime::Otp,
 }
 
 impl MciComponent {
@@ -20,12 +21,14 @@ impl MciComponent {
         driver_num: usize,
         driver: &'static caliptra_mcu_romtime::Mci,
         lifecycle: &'static caliptra_mcu_romtime::Lifecycle,
+        otp: &'static caliptra_mcu_romtime::Otp,
     ) -> Self {
         Self {
             board_kernel,
             driver_num,
             driver,
             lifecycle,
+            otp,
         }
     }
 }
@@ -41,6 +44,7 @@ impl Component for MciComponent {
             static_buffer.write(caliptra_mcu_capsules_runtime::mci::Mci::new(
                 self.driver,
                 self.lifecycle,
+                self.otp,
                 self.board_kernel.create_grant(self.driver_num, &grant_cap),
             ));
         mci

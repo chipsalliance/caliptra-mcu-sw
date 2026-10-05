@@ -143,6 +143,12 @@ nonce[48] || ecc_pub_x[48] || ecc_pub_y[48] || mldsa_pub[2592] || HybridSignatur
 
 `nonce` echoes the challenge. `HybridSignature` is `ecc_sig_r[48] || ecc_sig_s[48] || mldsa_sig[4628]`. The challenge is consumed by the verification attempt and cannot be reused. Requests must have the exact documented size; missing, truncated, and oversized trailers are rejected with `InvalidPayloadSize`, while failed authorization returns `AccessDenied`.
 
+`ZeroizeUdsFeAndEnterRma` reports `ZeroizeFailed` if the zeroization command
+fails or the kernel cannot confirm by OTP readback that UDS and all field
+entropy partitions are zeroized. In that case, RMA is not attempted. It reports
+`RmaTransitionFailed` if zeroization is confirmed but the lifecycle-controller
+transition to RMA fails.
+
 ### Implemented Subcommand Payloads
 
 Byte offsets below begin immediately after the four-byte `subcommand_id` and include the complete authorization trailer.

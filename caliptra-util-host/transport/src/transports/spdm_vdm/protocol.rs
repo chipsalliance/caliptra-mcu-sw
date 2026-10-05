@@ -82,6 +82,8 @@ pub enum CaliptraVdmCompletionCode {
     // Caliptra project-specific codes (0xC0-0xFF)
     CaliptraMailboxBusy = 0xC0,
     CaliptraBufferTooSmall = 0xC1,
+    ZeroizeFailed = 0xC2,
+    RmaTransitionFailed = 0xC3,
 }
 
 impl TryFrom<u8> for CaliptraVdmCompletionCode {
@@ -107,6 +109,8 @@ impl TryFrom<u8> for CaliptraVdmCompletionCode {
             0x0F => Ok(Self::InvalidState),
             0xC0 => Ok(Self::CaliptraMailboxBusy),
             0xC1 => Ok(Self::CaliptraBufferTooSmall),
+            0xC2 => Ok(Self::ZeroizeFailed),
+            0xC3 => Ok(Self::RmaTransitionFailed),
             _ => Err(SpdmVdmProtocolError::UnknownCompletionCode(value)),
         }
     }
@@ -204,6 +208,14 @@ mod tests {
         assert_eq!(
             CaliptraVdmCompletionCode::try_from(0xC1).unwrap(),
             CaliptraVdmCompletionCode::CaliptraBufferTooSmall
+        );
+        assert_eq!(
+            CaliptraVdmCompletionCode::try_from(0xC2).unwrap(),
+            CaliptraVdmCompletionCode::ZeroizeFailed
+        );
+        assert_eq!(
+            CaliptraVdmCompletionCode::try_from(0xC3).unwrap(),
+            CaliptraVdmCompletionCode::RmaTransitionFailed
         );
         assert!(CaliptraVdmCompletionCode::try_from(0x10).is_err());
     }

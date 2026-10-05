@@ -662,3 +662,5 @@ Command responses include a completion code indicating the result of the operati
 | ------ | ------------------------- | ----------------------------- |
 | `0xC0` | Caliptra Mailbox Busy     | Caliptra mailbox is not ready |
 | `0xC1` | Caliptra Buffer Too Small | Response buffer too small     |
+| `0xC2` | Zeroize Failed            | UDS or field entropy zeroization failed; RMA was not attempted |
+| `0xC3` | RMA Transition Failed     | UDS and field entropy were zeroized, but the lifecycle transition to RMA failed |

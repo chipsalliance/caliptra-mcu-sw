@@ -1497,17 +1497,20 @@ pub(crate) async fn zeroize_uds_fe() -> CaliptraCmdResult<()> {
         resp.as_mut_bytes(),
     )
     .await
-    .map_err(map_mcu_err)?;
+    .map_err(|_| CaliptraCompletionCode::ZeroizeFailed)?;
 
     Otp::<DefaultSyscalls>::new()
         .mark_field_entropy_zeroized()
-        .map_err(|_| CaliptraCompletionCode::OperationFailed)
+        .map_err(|_| CaliptraCompletionCode::ZeroizeFailed)
 }
 
 pub(crate) fn enter_rma(rma_token: &[u8; 16]) -> CaliptraCmdResult<()> {
     mci::Mci::<DefaultSyscalls>::new()
         .enter_rma(rma_token)
-        .map_err(|_| CaliptraCompletionCode::OperationFailed)
+        .map_err(|error| match error {
+            ErrorCode::Invalid => CaliptraCompletionCode::ZeroizeFailed,
+            _ => CaliptraCompletionCode::RmaTransitionFailed,
+        })
 }
 
 pub(crate) async fn zeroize_uds_fe_and_enter_rma(rma_token: &[u8; 16]) -> CaliptraCmdResult<()> {

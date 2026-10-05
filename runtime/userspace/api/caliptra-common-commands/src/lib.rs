@@ -57,6 +57,8 @@ pub enum CaliptraCompletionCode {
     // Caliptra project-specific codes (0xC0-0xFF)
     CaliptraMailboxBusy = 0xC0,
     CaliptraBufferTooSmall = 0xC1,
+    ZeroizeFailed = 0xC2,
+    RmaTransitionFailed = 0xC3,
 }
 
 /// Result type for Caliptra command handlers.
