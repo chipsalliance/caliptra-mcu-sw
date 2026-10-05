@@ -23,8 +23,9 @@ use super::delete::DeleteCmd;
 use super::device_info::{GetDeviceCapabilitiesCmd, GetFirmwareVersionCmd};
 use super::device_log::{DebugClearLogCmd, DebugGetLogCmd};
 use super::device_ownership_transfer::{
-    DotDisableCmd, DotLockCmd, DotOverrideChallengeCmd, DotOverrideCmd, DotRecoveryCmd,
-    DotRotateCmd, DotStatusCmd, DotUnlockChallengeCmd, DotUnlockCmd, GetDotBackupBlobCmd,
+    DotDisableCmd, DotEnableCmd, DotLockCmd, DotOverrideChallengeCmd, DotOverrideCmd,
+    DotRecoveryCmd, DotRotateCmd, DotStatusCmd, DotUnlockChallengeCmd, DotUnlockCmd,
+    GetDotBackupBlobCmd,
 };
 use super::fuse::{
     FeProgCmd, FuseIncreaseMinSvnCmd, FuseLockPartitionCmd, FuseRevokeVendorPkHashCmd,
@@ -104,7 +105,7 @@ pub fn get_command_handler(command_id: u32) -> Option<CommandHandlerFn> {
         0x8017 => Some(process_command_with_metadata::<ProvisionOwnerPkHashCmd>),
         0x8018 => Some(process_command_with_metadata::<OcpLockRotateHekCmd>),
         0x8019 => Some(process_command_with_metadata::<OcpLockSetPermaHekCmd>),
-        // Device Ownership Transfer Commands (0x8020-0x8029)
+        // Device Ownership Transfer Commands (0x8020-0x802A)
         0x8020 => Some(process_command_with_metadata::<DotLockCmd>),
         0x8021 => Some(process_command_with_metadata::<DotDisableCmd>),
         0x8022 => Some(process_command_with_metadata::<DotUnlockChallengeCmd>),
@@ -115,6 +116,7 @@ pub fn get_command_handler(command_id: u32) -> Option<CommandHandlerFn> {
         0x8027 => Some(process_command_with_metadata::<DotRecoveryCmd>),
         0x8028 => Some(process_command_with_metadata::<DotOverrideChallengeCmd>),
         0x8029 => Some(process_command_with_metadata::<DotOverrideCmd>),
+        0x802A => Some(process_command_with_metadata::<DotEnableCmd>),
         _ => None,
     }
 }
@@ -173,7 +175,7 @@ pub fn get_external_cmd_code(command_id: u32) -> Option<u32> {
         // Authorized / Fuse Commands
         0x8010..=0x8017 => Some(0x0000_0012),
         0x8018..=0x8019 => Some(0x0000_0012),
-        0x8020 | 0x8021 | 0x8024 | 0x8025 => Some(0x0000_0012),
+        0x8020 | 0x8021 | 0x8024 | 0x8025 | 0x802A => Some(0x0000_0012),
         0x8022 | 0x8023 | 0x8026..=0x8029 => Some(0x0000_0011),
         _ => None,
     }
@@ -188,6 +190,7 @@ mod tests {
     #[test]
     fn dot_commands_use_authorized_or_native_envelopes() {
         let authorized = [
+            CaliptraCommandId::DotEnable,
             CaliptraCommandId::DotLock,
             CaliptraCommandId::DotDisable,
             CaliptraCommandId::DotRotate,

@@ -172,6 +172,7 @@ fn test_device_capabilities_cmd() -> Result<()> {
             | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PK_HASH
             | AuthorizedSubcommandCapabilities::FUSE_LOCK_PARTITION
             | AuthorizedSubcommandCapabilities::PROVISION_OWNER_PK_HASH
+            | AuthorizedSubcommandCapabilities::DOT_ENABLE
             | AuthorizedSubcommandCapabilities::DOT_LOCK
             | AuthorizedSubcommandCapabilities::DOT_DISABLE
             | AuthorizedSubcommandCapabilities::DOT_ROTATE

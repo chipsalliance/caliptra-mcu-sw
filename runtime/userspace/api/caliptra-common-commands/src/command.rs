@@ -246,7 +246,8 @@ where
     let (subcommand, payload) = split_id(request)?;
     match subcommand {
         value
-            if value == CommandId::MC_DOT_LOCK.0
+            if value == CommandId::MC_DOT_ENABLE.0
+                || value == CommandId::MC_DOT_LOCK.0
                 || value == CommandId::MC_DOT_DISABLE.0
                 || value == CommandId::MC_DOT_ROTATE.0
                 || value == CommandId::MC_GET_DOT_BACKUP_BLOB.0 =>
@@ -370,6 +371,7 @@ fn authorized_payload_len(target_id: u32, request: &[u8]) -> CaliptraCmdResult<u
 fn authorized_dot_payload_len(request: &[u8]) -> CaliptraCmdResult<usize> {
     let (subcommand, _) = split_id(request)?;
     match subcommand {
+        value if value == CommandId::MC_DOT_ENABLE.0 => Ok(U32_LEN),
         value if value == CommandId::MC_DOT_LOCK.0 => {
             Ok(U32_LEN + core::mem::size_of::<DotLockPayload>())
         }
@@ -429,6 +431,11 @@ where
 {
     let (subcommand, payload) = split_id(payload)?;
     match subcommand {
+        value if value == CommandId::MC_DOT_ENABLE.0 => {
+            require_empty(payload)?;
+            commands.dot_enable().await?;
+            Ok(CommandResponse::ResetRequired)
+        }
         value if value == CommandId::MC_DOT_LOCK.0 => {
             let request = DotLockPayload::ref_from_bytes(payload)
                 .map_err(|_| CaliptraCompletionCode::InvalidPayloadSize)?;
