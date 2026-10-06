@@ -78,7 +78,11 @@ fn external_command_capabilities() -> ExternalCommandCapabilities {
             | ExternalCommandCapabilities::AUTHORIZE_DEBUG_UNLOCK_TOKEN
             | ExternalCommandCapabilities::AUTHORIZED_COMMAND;
     }
-    if cfg!(feature = "spdm") && cfg!(feature = "attested-csr") {
+    // EXPORT_ATTESTED_CSR is reachable over the SPDM VDM transport and the MCU
+    // mailbox, so advertise it whenever either responder is built.
+    if cfg!(feature = "attested-csr")
+        && (cfg!(feature = "spdm") || cfg!(feature = "mcu-mbox-service"))
+    {
         capabilities |= ExternalCommandCapabilities::EXPORT_ATTESTED_CSR;
     }
     // GET_ATTESTATION is transport-agnostic: it is reachable over the SPDM VDM
