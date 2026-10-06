@@ -365,16 +365,19 @@ impl Soc {
         }
         // Set the debug enablement masks for: DFT, HW Debug, Prod Debug.
         //
-        // Note: this enables all 8 debug levels (supported by the 8 prod debug
-        // unlock public key hash slots in the reference fuse map) to unlock
-        // DFT, HW debug, and prod debug access. Integrators should change this
-        // based on their integration.
-        mci.registers.mci_reg_soc_dft_en[0].set(0x000000FF);
-        mci.registers.mci_reg_soc_dft_en[1].set(0x00000000);
-        mci.registers.mci_reg_soc_hw_debug_en[0].set(0x000000FF);
-        mci.registers.mci_reg_soc_hw_debug_en[1].set(0x00000000);
-        mci.registers.mci_reg_soc_prod_debug_state[0].set(0x000000FF);
-        mci.registers.mci_reg_soc_prod_debug_state[1].set(0x00000000);
+        // Unless the integrator supplies `RomParameters::debug_enablement_masks`,
+        // this enables all 8 debug levels (supported by the 8 prod debug unlock
+        // public key hash slots in the reference fuse map) to unlock DFT, HW
+        // debug, and prod debug access. See `DebugEnablementMasks`.
+        let masks = params
+            .debug_enablement_masks
+            .unwrap_or(DebugEnablementMasks::REFERENCE);
+        mci.registers.mci_reg_soc_dft_en[0].set(masks.soc_dft_en[0]);
+        mci.registers.mci_reg_soc_dft_en[1].set(masks.soc_dft_en[1]);
+        mci.registers.mci_reg_soc_hw_debug_en[0].set(masks.soc_hw_debug_en[0]);
+        mci.registers.mci_reg_soc_hw_debug_en[1].set(masks.soc_hw_debug_en[1]);
+        mci.registers.mci_reg_soc_prod_debug_state[0].set(masks.soc_prod_debug_state[0]);
+        mci.registers.mci_reg_soc_prod_debug_state[1].set(masks.soc_prod_debug_state[1]);
 
         // Tell Caliptra where to find the prod debug unlock PK hashes and how
         // many are valid. The offset is the address of
@@ -707,6 +710,42 @@ pub enum DotRecoveryPolicy {
     None,
 }
 
+/// Debug enablement masks the ROM programs into MCI during fuse population.
+///
+/// MCI ANDs each 64-bit mask with Caliptra's one-hot `SS_SOC_DBG_UNLOCK_LEVEL`:
+/// bit `N - 1` of word 0 corresponds to production debug unlock level `N`
+/// (word 1 covers levels 33 to 64), and manufacturing debug unlock uses bit 0
+/// only. A set bit lets that unlock level assert `SOC_DFT_EN`, assert
+/// `SOC_HW_DEBUG_EN`, or move the security state to production debug mode.
+/// Like `FC_FIPS_ZEROZATION`, the registers are writable only until
+/// `SS_CONFIG_DONE_STICKY` is set, so the ROM programs them before it locks
+/// MCI configuration.
+///
+/// `Default` is all zeros, which leaves SoC DFT, hardware debug and production
+/// debug mode closed to every unlock level. [`DebugEnablementMasks::REFERENCE`]
+/// is what the ROM programs when `RomParameters::debug_enablement_masks` is
+/// `None`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct DebugEnablementMasks {
+    /// Written to `MCI_REG_SOC_DFT_EN[0..2]`.
+    pub soc_dft_en: [u32; 2],
+    /// Written to `MCI_REG_SOC_HW_DEBUG_EN[0..2]`.
+    pub soc_hw_debug_en: [u32; 2],
+    /// Written to `MCI_REG_SOC_PROD_DEBUG_STATE[0..2]`.
+    pub soc_prod_debug_state: [u32; 2],
+}
+
+impl DebugEnablementMasks {
+    /// The reference platforms' value: each of the eight debug unlock levels
+    /// backed by the reference fuse map's eight prod debug unlock public key
+    /// hash slots enables DFT, hardware debug and production debug mode.
+    pub const REFERENCE: Self = Self {
+        soc_dft_en: [0x0000_00FF, 0x0000_0000],
+        soc_hw_debug_en: [0x0000_00FF, 0x0000_0000],
+        soc_prod_debug_state: [0x0000_00FF, 0x0000_0000],
+    };
+}
+
 #[derive(Default)]
 pub struct RomParameters<'a> {
     pub lifecycle_transition: Option<(LifecycleControllerState, LifecycleToken)>,
@@ -820,6 +859,13 @@ pub struct RomParameters<'a> {
     /// ROM uses the reference fuse map count (number of entries in
     /// `PROD_DEBUG_UNLOCK_PK_ENTRIES`).
     pub prod_debug_unlock_auth_pk_hash_count: Option<u32>,
+    /// Debug enablement masks programmed into the MCI `SOC_DFT_EN`,
+    /// `SOC_HW_DEBUG_EN` and `SOC_PROD_DEBUG_STATE` registers during fuse
+    /// population, before MCI configuration locks. When `None`, the ROM
+    /// programs [`DebugEnablementMasks::REFERENCE`], which enables all eight
+    /// debug unlock levels of the reference fuse map. Integrators should set
+    /// this to the levels their security model allows.
+    pub debug_enablement_masks: Option<DebugEnablementMasks>,
     /// Optional I3C bus timing parameters for the primary controller (i3c),
     /// written to its timing registers during I3C initialization. When `None`,
     /// [`I3cTimings::default`] is used (recommended settings for high-speed
