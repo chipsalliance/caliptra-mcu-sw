@@ -578,6 +578,7 @@ fn test_prod_debug_unlock_complete_responses() -> Result<()> {
 
     let mut hw = start_runtime_hw_model(TestParams {
         feature: Some("test-mcu-mbox-cmds"),
+        i3c_port: Some(random_port::PortPicker::new().random(true).pick().unwrap()),
         lifecycle_controller_state: Some(LifecycleControllerState::Prod),
         debug_intent: true,
         prod_dbg_unlock_keypairs,
