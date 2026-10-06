@@ -12,7 +12,9 @@ use caliptra_mcu_mbox_common::messages::{
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_mbox_common::messages::{EndorsementAlgorithm, HpkeHandle, SekState};
 use mcu_caliptra_api::ApiAlloc;
-use zerocopy::byteorder::little_endian::{U16, U32};
+#[cfg(feature = "ocp-lock")]
+use zerocopy::byteorder::little_endian::U16;
+use zerocopy::byteorder::little_endian::U32;
 #[cfg(feature = "device-ownership-transfer")]
 use zerocopy::IntoBytes;
 use zerocopy::{FromBytes, Immutable, KnownLayout};
