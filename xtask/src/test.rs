@@ -147,6 +147,44 @@ fn cargo_test_archive(archive_file: &str) -> Result<()> {
     Ok(())
 }
 
+/// A `cargo nextest run` pass over `packages` with `features` enabled.
+struct FeatureVariantTest {
+    packages: &'static [&'static str],
+    features: &'static str,
+}
+
+/// Host unit tests gated behind non-default crate features. The main
+/// `--workspace` nextest run/archive passes no `--features`, so these tests
+/// would otherwise never be compiled in CI. Each entry runs as its own
+/// `cargo nextest run` pass.
+const FEATURE_VARIANT_TESTS: &[FeatureVariantTest] = &[FeatureVariantTest {
+    packages: &["caliptra-mcu-mbox-lib", "caliptra-mcu-spdm-vdm-handler"],
+    features: "caliptra-mcu-mbox-lib/attested-csr,caliptra-mcu-spdm-vdm-handler/attested-csr",
+}];
+
+pub(crate) fn feature_variant_tests() -> Result<()> {
+    for FeatureVariantTest { packages, features } in FEATURE_VARIANT_TESTS {
+        println!("Running: cargo nextest run --features {features}");
+        let mut args = vec!["nextest", "run", "--no-fail-fast"];
+        for package in *packages {
+            args.push("-p");
+            args.push(package);
+        }
+        args.push("--features");
+        args.push(features);
+
+        let status = Command::new("cargo")
+            .current_dir(&*PROJECT_ROOT)
+            .args(&args)
+            .status()?;
+
+        if !status.success() {
+            bail!("Feature-variant tests failed (features: {features})");
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn e2e_tests() -> Result<()> {
     println!("Running: e2e tests");
 
