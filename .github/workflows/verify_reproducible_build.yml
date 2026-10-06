@@ -29,7 +29,9 @@ jobs:
           rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
 
       - name: Build
-        run: cargo xtask rom-build
+        run: |
+          cargo xtask rom-build
+          cargo xtask runtime-build --profile release
 
       - name: Calculate ROM and runtime digests
         run: |
@@ -40,7 +42,9 @@ jobs:
         run: cargo clean
 
       - name: Build again
-        run: cargo xtask rom-build
+        run: |
+          cargo xtask rom-build
+          cargo xtask runtime-build --profile release
 
       - name: Calculate digests again and ensure it hasn't changed
         run: |
