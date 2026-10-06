@@ -5,6 +5,7 @@
 
 use crate::offline_signing::{create_signing_request, SigningRequestJson};
 use crate::target_dir;
+use crate::utils::write_if_changed;
 use anyhow::{bail, Context, Result};
 use caliptra_auth_man_gen::{
     AuthManifestGenerator, AuthManifestGeneratorConfig, AuthManifestGeneratorKeyConfig,
@@ -440,7 +441,9 @@ impl CaliptraBuilder {
             if let Some(parent) = path.parent() {
                 std::fs::create_dir_all(parent)?;
             }
-            std::fs::write(&path, &policy_bytes)?;
+            // user-app's build script tracks this file by mtime; don't touch
+            // it unless the policy changed.
+            write_if_changed(&path, &policy_bytes)?;
             self.owner_measurement_policy = Some(path);
         } else if let Some(target) = name {
             let target_path = PathBuf::from(target);
