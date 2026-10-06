@@ -336,27 +336,22 @@ impl BufferedStream {
         false
     }
 
-    pub fn receive_private_read(&mut self, target_addr: u8) -> Option<Vec<u8>> {
+    /// Retrieve a private-read packet without validating or removing its PEC.
+    /// Empty and malformed packets remain observable to protocol tests.
+    pub fn receive_private_read_raw(&mut self, target_addr: u8) -> Option<Vec<u8>> {
         self.fill_buffer();
-        let mut i = 0;
-        while i < self.read_buffer.len() {
-            if self.read_buffer[i].header.from_addr == target_addr
-                && self.read_buffer[i].header.ibi == 0
-            {
-                let packet = self.read_buffer.remove(i).unwrap();
-                let data = packet.data;
-                if data.is_empty() {
-                    return None;
-                }
-                let pec = calculate_crc8((target_addr << 1) | 1, &data[..data.len() - 1]);
-                if pec != data[data.len() - 1] {
-                    return None;
-                }
-                return Some(data[..data.len() - 1].to_vec());
-            }
-            i += 1;
-        }
-        None
+        let index = self
+            .read_buffer
+            .iter()
+            .position(|packet| packet.header.from_addr == target_addr && packet.header.ibi == 0)?;
+        Some(self.read_buffer.remove(index).unwrap().data)
+    }
+
+    pub fn receive_private_read(&mut self, target_addr: u8) -> Option<Vec<u8>> {
+        let data = self.receive_private_read_raw(target_addr)?;
+        let (&received_pec, payload) = data.split_last()?;
+        let pec = calculate_crc8((target_addr << 1) | 1, payload);
+        (pec == received_pec).then(|| payload.to_vec())
     }
 
     /// Send a private read request to the model without waiting for an IBI.
@@ -449,6 +444,30 @@ mod tests {
         // to_addr = 0x10, cmd_desc = [0x00000000, 0x00200000]
         let cmd = prepare_private_write_cmd(0x10, 0x20);
         assert_eq!("100000000000002000", hex::encode(cmd));
+    }
+
+    #[test]
+    fn raw_private_read_preserves_empty_and_bad_pec_packets() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let mut peer = TcpStream::connect(listener.local_addr().unwrap()).unwrap();
+        let (socket, _) = listener.accept().unwrap();
+        let mut stream = BufferedStream::new(socket);
+        let addr = 0x10;
+        let bad_pec = vec![0x12, calculate_crc8((addr << 1) | 1, &[0x12]) ^ 1];
+        for data in [&[][..], &bad_pec] {
+            let mut response_descriptor = ResponseDescriptor(0);
+            response_descriptor.set_data_length(data.len() as u16);
+            let header: [u8; 6] = transmute!(OutgoingHeader {
+                ibi: 0,
+                from_addr: addr,
+                response_descriptor,
+            });
+            peer.write_all(&header).unwrap();
+            peer.write_all(data).unwrap();
+        }
+        assert_eq!(stream.receive_private_read_raw(addr), Some(vec![]));
+        assert_eq!(stream.receive_private_read_raw(addr), Some(bad_pec));
+        assert_eq!(stream.receive_private_read_raw(addr), None);
     }
 
     #[test]

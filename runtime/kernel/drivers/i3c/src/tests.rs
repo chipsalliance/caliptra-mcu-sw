@@ -409,8 +409,8 @@ fn spurious_ibi_does_not_complete_twice() {
 #[test]
 fn rx_exact_length_and_padding_leave_unused_buffer_unchanged() {
     let h = Harness::new();
-    for len in [1, 3, 4, 5, 249, 250] {
-        let buf = buffer(250);
+    for len in [1, 3, 4, 5, 249, 250, 255, 256] {
+        let buf = buffer(256);
         let ptr = buf.as_ptr();
         h.driver.set_rx_buffer(buf);
         h.receive(len, 0);
@@ -428,7 +428,7 @@ fn rx_exact_length_and_padding_leave_unused_buffer_unchanged() {
 #[test]
 fn rx_rejects_error_and_overflow_then_accepts_next_packet() {
     let h = Harness::new();
-    let buf = buffer(256);
+    let buf = buffer(250);
     let ptr = buf.as_ptr();
     h.driver.set_rx_buffer(buf);
     for (len, error) in [(5, 1), (251, 0), (257, 0)] {

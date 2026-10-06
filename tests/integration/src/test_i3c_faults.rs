@@ -39,7 +39,7 @@ mod test {
     fn assert_silent(stream: &mut BufferedStream, addr: u8) {
         sleep_emulator_ticks(200_000);
         assert!(stream.receive_ibi_packet(addr).is_none());
-        assert!(stream.receive_private_read(addr).is_none());
+        assert!(stream.receive_private_read_raw(addr).is_none());
     }
 
     fn echo(stream: &mut BufferedStream, addr: u8, payload: Vec<u8>) {
@@ -97,6 +97,7 @@ mod test {
             resume_unwind(panic);
         }
         assert!(!timed_out, "I3C fault test timeout");
+        assert_eq!(hw.mci_fw_fatal_error(), None, "I3C firmware fatal error");
         assert!(hw.step_until_exit_success().is_ok());
         lock.fetch_add(1, Ordering::Relaxed);
     }

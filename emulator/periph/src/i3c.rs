@@ -230,7 +230,10 @@ impl I3c {
                 ],
                 _ => xfer.data,
             };
-            self.tti_rx_data_raw.push_back(data);
+            // Empty writes have a descriptor but no data words in the FIFO.
+            if !data.is_empty() {
+                self.tti_rx_data_raw.push_back(data);
+            }
         }
     }
 

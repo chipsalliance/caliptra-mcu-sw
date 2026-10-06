@@ -196,6 +196,18 @@ fn delayed_and_missing_ibi_do_not_signal_early_completion() {
 }
 
 #[test]
+fn empty_write_does_not_shift_following_packet_data() {
+    let mut f = Fixture::new();
+    f.command(false, 0, vec![]);
+    f.command(false, 5, vec![1, 2, 3, 4, 5]);
+    assert_eq!(f.i3c.read_i3c_ec_tti_rx_desc_queue_port(), 0);
+    assert_eq!(f.i3c.read_i3c_ec_tti_rx_desc_queue_port(), 5);
+    assert_eq!(f.i3c.read_i3c_ec_tti_rx_data_port(), 0x04030201);
+    assert_eq!(f.i3c.read_i3c_ec_tti_rx_data_port(), 5);
+    assert!(f.i3c.tti_rx_data_raw.is_empty());
+}
+
+#[test]
 fn rx_descriptor_pop_does_not_flush_unread_data() {
     let mut f = Fixture::new();
     f.command(false, 5, vec![1, 2, 3, 4, 5]);
