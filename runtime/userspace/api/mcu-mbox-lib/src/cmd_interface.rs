@@ -1724,6 +1724,13 @@ fn caliptra_passthrough_cmd(cmd: CommandId) -> Option<u32> {
 /// receives the response in-place in `resp_buf`.
 const DPE_EXPORTED_CDI_IN_PLACE_PREFIX_LEN: usize = 92;
 
+/// Response buffer size for `MC_DPE_SIGNER_CONTEXT_CERT`: the var-size header
+/// plus room for `dpe_derive_context_exported_cdi` to stage its response
+/// in-place ahead of a `DPE_MAX_LEAF_CERT_SIZE` leaf certificate.
+pub const DPE_SIGNER_CONTEXT_CERT_RESP_SIZE: usize = size_of::<MailboxRespHeaderVarSize>()
+    + mcu_caliptra_api::DPE_MAX_LEAF_CERT_SIZE
+    + DPE_EXPORTED_CDI_IN_PLACE_PREFIX_LEN;
+
 /// Response payload buffer size for `MC_GET_OCP_LOCK_ENDORSEMENT_CERT` and
 /// `MC_GET_OCP_LOCK_EPOCH_KEY_REPORT`.
 ///
@@ -1791,11 +1798,7 @@ fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32, req: &[u8]) -> usize {
                 _ => size_of::<MailboxRespHeader>(),
             }
         }
-        c if c == CommandId::MC_DPE_SIGNER_CONTEXT_CERT => {
-            size_of::<MailboxRespHeaderVarSize>()
-                + mcu_caliptra_api::DPE_MAX_LEAF_CERT_SIZE
-                + DPE_EXPORTED_CDI_IN_PLACE_PREFIX_LEN
-        }
+        c if c == CommandId::MC_DPE_SIGNER_CONTEXT_CERT => DPE_SIGNER_CONTEXT_CERT_RESP_SIZE,
         c if c == CommandId::MC_GET_DPE_CERTIFICATE_CHAIN => {
             size_of::<MailboxRespHeaderVarSize>() + 1024
         }
