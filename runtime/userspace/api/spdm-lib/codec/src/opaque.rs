@@ -49,6 +49,75 @@ pub const OPAQUE_VERSION_SELECTION_SIZE: usize = 12;
 /// update[7:4] | alpha[3:0].
 pub type SmVersion = [u8; 2];
 
+/// Reader to read general opaque data elements.
+struct OpaqueDataReader<'a> {
+    /// Total number of elements declared in the header.
+    total_elements: u8,
+    /// Counter to track parsed elements.
+    parsed_elements: u8,
+    opaque_list: WireReader<'a>,
+}
+
+impl<'a> OpaqueDataReader<'a> {
+    /// Create a new reader from opaque data
+    ///
+    /// `opaque_data` has to be in the _general opaque data_ format.
+    fn new(opaque_data: &'a [u8]) -> Result<OpaqueDataReader<'a>, WireError> {
+        let mut r = WireReader::new(opaque_data);
+
+        // GeneralOpaqueDataHdr
+        let total_elements = r.take(1)?[0];
+        let reserved = r.take(3)?;
+        if reserved.iter().any(|&byte| byte != 0) {
+            return Err(WireError);
+        }
+        Ok(OpaqueDataReader {
+            total_elements,
+            parsed_elements: 0,
+            opaque_list: r,
+        })
+    }
+    /// Parse the next [OpaqueElement] from the list
+    ///
+    /// ## Returns
+    /// - `Ok(Some(element))`: parsing is successful
+    /// - `Ok(None)`: no element is left
+    /// - `Err(WireError)`: invalid data
+    fn next(&mut self) -> Result<Option<OpaqueElement<'a>>, WireError> {
+        if self.parsed_elements >= self.total_elements {
+            return Ok(None);
+        }
+
+        let id = self.opaque_list.take(1)?[0];
+        let vendor_id_len = self.opaque_list.take(1)?[0];
+        let vendor_id = self.opaque_list.take(vendor_id_len as usize)?;
+        let data_len_bytes = self.opaque_list.take(2)?;
+        let data_len = u16::from_le_bytes([data_len_bytes[0], data_len_bytes[1]]) as usize;
+        let opaque_element_data = self.opaque_list.take(data_len)?;
+        // Padding for 4 byte alignment (4 byte fixed fields + variable data + padding).
+        let padding_len = (4 - ((vendor_id_len as usize + data_len) & 3)) & 3;
+        let padding = self.opaque_list.take(padding_len)?;
+
+        // Padding shall be all zeros according to spec.
+        if padding.iter().any(|&byte| byte != 0) {
+            return Err(WireError);
+        }
+
+        self.parsed_elements += 1;
+        Ok(Some(OpaqueElement {
+            id,
+            vendor_id,
+            opaque_element_data,
+        }))
+    }
+}
+
+struct OpaqueElement<'a> {
+    id: u8,
+    vendor_id: &'a [u8],
+    opaque_element_data: &'a [u8],
+}
+
 // ---- Encoding (response) ---------------------------------------------------
 
 /// Build the version-selection opaque data into `out`.
@@ -252,5 +321,27 @@ mod tests {
 
         assert_eq!(opaque.len(), MAX_SUPPORTED_VERSION_LIST_OPAQUE_SIZE);
         assert_eq!(parse_supported_versions(&opaque).unwrap().count, 4);
+    }
+
+    #[test]
+    fn test_opaque_data_reader() {
+        // Opaque data with two elements
+        let data = [
+            0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0b, 0x00, 0x01, 0x01, 0x04, 0x00, 0x10, 0x00,
+            0x11, 0x00, 0x12, 0x00, 0x13, 0x00, 0x00, 0x00, 0x03, 0x00, 0x01, 0x02, 0x40, 0x00,
+        ];
+
+        let mut reader = OpaqueDataReader::new(&data).unwrap();
+
+        assert_eq!(reader.total_elements, 2, "total_elements should be 2");
+        assert_eq!(reader.parsed_elements, 0);
+
+        let element1 = reader.next().unwrap().expect("expected first element");
+        let _ = reader.next().unwrap().expect("expected second element");
+        assert!(reader.next().unwrap().is_none());
+        assert!(reader.opaque_list.is_empty());
+
+        assert_eq!(element1.id, OPAQUE_STANDARD_DMTF);
+        assert_eq!(element1.opaque_element_data.len(), 0x0b);
     }
 }
