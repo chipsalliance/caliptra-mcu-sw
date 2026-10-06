@@ -451,6 +451,18 @@ pub extern "C" fn rom_entry() -> ! {
             } else {
                 None
             },
+            debug_enablement_masks: if cfg!(feature = "test-debug-enablement-masks") {
+                // Distinct from `DebugEnablementMasks::REFERENCE` so the integration
+                // test can tell the parameter took effect. Keep in sync with
+                // tests/integration/src/rom/test_debug_enablement_masks.rs.
+                Some(caliptra_mcu_rom_common::DebugEnablementMasks {
+                    soc_dft_en: [0x0000_0001, 0x0000_0000],
+                    soc_hw_debug_en: [0x0000_0003, 0x0000_0000],
+                    soc_prod_debug_state: [0x0000_0007, 0x0000_0001],
+                })
+            } else {
+                None
+            },
             dot_locked_recovery_handlers: if cfg!(feature = "test-dot-recovery") {
                 static mut BLOB_HANDLER: core::mem::MaybeUninit<
                     caliptra_mcu_rom_common::BackupBlobRecoveryHandler<'static>,
