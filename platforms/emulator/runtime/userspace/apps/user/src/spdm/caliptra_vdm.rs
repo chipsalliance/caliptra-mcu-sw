@@ -506,7 +506,7 @@ impl CaliptraVdmAuthorization for CaliptraVdmAuthorizationHook {
         let mut authorizer = cmd_auth_mock::MockCommandAuthorizer;
         authorizer
             .verify_signatures(
-                scratch,
+                scratch.allocator(),
                 DEVICE_OWNERSHIP_TRANSFER_CMD_ID,
                 payload,
                 nonce,
