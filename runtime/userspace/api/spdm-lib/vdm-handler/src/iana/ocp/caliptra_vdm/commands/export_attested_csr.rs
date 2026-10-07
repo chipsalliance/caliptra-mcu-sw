@@ -76,42 +76,28 @@ where
         Err(_) => return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidPayloadSize),
     };
 
-    if large.len() > CSR_PAYLOAD_HEADER_LEN {
-        let data_len = match cmds
-            .export_attested_csr(
-                scratch.allocator(),
-                device_key_id,
-                algorithm,
-                nonce,
-                &mut large[CSR_PAYLOAD_HEADER_LEN..],
-            )
-            .await
-        {
-            Ok(n) => n,
-            Err(code) => {
-                return CaliptraVdmCmdResult::Error(super::map_common_completion(code));
-            }
-        };
-        finish_staged_csr_response(command_code, inline_payload, large, data_len)
+    let stage_in_large = large.len() > CSR_PAYLOAD_HEADER_LEN;
+    let csr = if stage_in_large {
+        &mut large[CSR_PAYLOAD_HEADER_LEN..]
     } else {
         if inline_payload.len() < INLINE_PREFIX_LEN {
             return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InsufficientResources);
         }
-        let data_len = match cmds
-            .export_attested_csr(
-                scratch.allocator(),
-                device_key_id,
-                algorithm,
-                nonce,
-                &mut inline_payload[INLINE_PREFIX_LEN..],
-            )
-            .await
-        {
-            Ok(n) => n,
-            Err(code) => {
-                return CaliptraVdmCmdResult::Error(super::map_common_completion(code));
-            }
-        };
+        &mut inline_payload[INLINE_PREFIX_LEN..]
+    };
+    let data_len = match cmds
+        .export_attested_csr(scratch.allocator(), device_key_id, algorithm, nonce, csr)
+        .await
+    {
+        Ok(n) => n,
+        Err(code) => {
+            return CaliptraVdmCmdResult::Error(super::map_common_completion(code));
+        }
+    };
+
+    if stage_in_large {
+        finish_staged_csr_response(command_code, inline_payload, large, data_len)
+    } else {
         finish_inline_csr_response(inline_payload, data_len)
     }
 }
