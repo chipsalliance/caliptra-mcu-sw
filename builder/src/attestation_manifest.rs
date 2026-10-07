@@ -1,5 +1,6 @@
 // Licensed under the Apache-2.0 license
 
+use crate::utils::write_if_changed;
 use crate::ImageCfg;
 use anyhow::{bail, Result};
 use serde::Serialize;
@@ -59,7 +60,9 @@ pub(crate) fn write_config_to_target_dir(
     let generated_dir = target_dir.join("generated");
     std::fs::create_dir_all(&generated_dir)?;
     let path = generated_dir.join("attestation_manifest.toml");
-    std::fs::write(&path, config_file)?;
+    // user-app's build script tracks these files by mtime, so only rewrite
+    // them when the content changes.
+    write_if_changed(&path, config_file)?;
     println!(
         "{} Attestation Manifest config at: {}",
         log_prefix,
@@ -67,7 +70,7 @@ pub(crate) fn write_config_to_target_dir(
     );
     let descriptor_config_file = soc_image_descriptors_config_source(soc_images)?;
     let descriptor_path = generated_dir.join("soc_image_descriptors.toml");
-    std::fs::write(&descriptor_path, descriptor_config_file)?;
+    write_if_changed(&descriptor_path, descriptor_config_file)?;
     println!(
         "{} SoC image descriptor config at: {}",
         log_prefix,
