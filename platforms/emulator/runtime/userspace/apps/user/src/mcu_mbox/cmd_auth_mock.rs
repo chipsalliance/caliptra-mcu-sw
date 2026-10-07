@@ -12,7 +12,7 @@ use caliptra_mcu_mbox_common::messages::{
 use core::cell::RefCell;
 use core::mem::{offset_of, size_of};
 use embassy_sync::blocking_mutex::{raw::CriticalSectionRawMutex, Mutex};
-use mcu_caliptra_api::ApiAlloc;
+use mcu_caliptra_api::ScratchAlloc;
 use zerocopy::{FromBytes, Immutable, KnownLayout};
 
 extern crate alloc;
@@ -76,7 +76,7 @@ fn set_challenge(challenge: [u8; AUTH_CMD_NONCE_LEN]) {
 }
 
 impl CommandAuthorizer for MockCommandAuthorizer {
-    async fn is_authorized<'a, Alloc: ApiAlloc>(
+    async fn is_authorized<'a, Alloc: ScratchAlloc>(
         &mut self,
         alloc: &Alloc,
         cmd_id: CommandId,
@@ -169,7 +169,7 @@ impl CommandAuthorizer for MockCommandAuthorizer {
     /// one-time challenge, compare it to the wire nonce (absent/mismatch ->
     /// denied), then verify via `device_ops`.
     #[allow(clippy::too_many_arguments)]
-    async fn verify_signatures<Alloc: ApiAlloc>(
+    async fn verify_signatures<Alloc: ScratchAlloc>(
         &mut self,
         alloc: &Alloc,
         cmd_id: u32,

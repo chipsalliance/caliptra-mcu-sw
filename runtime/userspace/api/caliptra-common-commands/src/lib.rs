@@ -12,7 +12,7 @@ use caliptra_mcu_mbox_common::messages::{
 };
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_mbox_common::messages::{EndorsementAlgorithm, SekState};
-use mcu_caliptra_api::ApiAlloc;
+use mcu_caliptra_api::ScratchAlloc;
 use zerocopy::{Immutable, IntoBytes};
 
 pub use caliptra_api::mailbox::MAX_ATTESTED_CSR_RESP_DATA_SIZE as MAX_ATTESTED_CSR_DATA_LEN;
@@ -292,7 +292,7 @@ pub trait CaliptraCmdHandler {
     ///
     /// The default implementation returns `UnsupportedOperation`, for
     /// integrations that do not export attested CSRs.
-    async fn export_attested_csr<Alloc: ApiAlloc>(
+    async fn export_attested_csr<Alloc: ScratchAlloc>(
         &self,
         _alloc: &Alloc,
         _device_key_id: u32,
@@ -312,7 +312,7 @@ pub trait CaliptraCmdHandler {
     ///
     /// # Returns
     /// * `CaliptraCmdResult<usize>` - Number of bytes written on success, or an error.
-    async fn export_idevid_csr<Alloc: ApiAlloc>(
+    async fn export_idevid_csr<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         algorithm: u32,
@@ -373,7 +373,7 @@ pub trait CaliptraCmdHandler {
     ///   build.
     /// * `Err(CaliptraCompletionCode::InsufficientResources)` - `out` is too
     ///   small for the generated evidence.
-    async fn get_attestation<Alloc: ApiAlloc>(
+    async fn get_attestation<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         format: EvidenceFormat,
@@ -394,7 +394,7 @@ pub trait CaliptraCmdHandler {
     ///
     /// # Returns
     /// * `CaliptraCmdResult<()>` - Ok on success, or an error.
-    async fn request_debug_unlock<Alloc: ApiAlloc>(
+    async fn request_debug_unlock<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         unlock_level: u8,
@@ -411,7 +411,7 @@ pub trait CaliptraCmdHandler {
     ///
     /// # Returns
     /// * `CaliptraCmdResult<()>` - Ok on success, or an error.
-    async fn authorize_debug_unlock_token<Alloc: ApiAlloc>(
+    async fn authorize_debug_unlock_token<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         token_data: &[u8],
@@ -468,7 +468,7 @@ pub trait CaliptraCmdHandler {
     }
 
     /// Increase the selected minimum SVN.
-    async fn increase_min_svn<Alloc: ApiAlloc>(
+    async fn increase_min_svn<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         target: SvnTarget,
@@ -479,7 +479,7 @@ pub trait CaliptraCmdHandler {
     }
 
     /// Revoke one vendor public key in a provisioned public-key-hash slot.
-    async fn revoke_vendor_pub_key<Alloc: ApiAlloc>(
+    async fn revoke_vendor_pub_key<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         vendor_pk_hash_slot: u32,
@@ -507,7 +507,7 @@ pub trait CaliptraCmdHandler {
     ///
     /// # Returns
     /// * `CaliptraCmdResult<()>` - Ok on success, or an error.
-    async fn program_field_entropy<Alloc: ApiAlloc>(
+    async fn program_field_entropy<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         partition: u32,
@@ -534,7 +534,7 @@ pub trait CaliptraCmdHandler {
     /// Retrieves the OCP Lock endorsement certificate using task-local scratch
     /// for the signing request and response.
     #[cfg(feature = "ocp-lock")]
-    async fn get_ocp_lock_endorsement_cert<Alloc: ApiAlloc>(
+    async fn get_ocp_lock_endorsement_cert<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         hpke_handle: &HpkeHandle,
@@ -558,7 +558,7 @@ pub trait CaliptraCmdHandler {
     /// Retrieves the OCP Lock Epoch Key Report using task-local scratch for the
     /// signing request and response.
     #[cfg(feature = "ocp-lock")]
-    async fn get_ocp_lock_epoch_key_report<Alloc: ApiAlloc>(
+    async fn get_ocp_lock_epoch_key_report<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         nonce: &[u8; 32],
@@ -572,7 +572,7 @@ pub trait CaliptraCmdHandler {
 
     /// Rotate the active HEK to the specified slot.
     #[cfg(feature = "ocp-lock")]
-    async fn ocp_lock_program_hek<Alloc: ApiAlloc>(
+    async fn ocp_lock_program_hek<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         slot: u32,
@@ -583,7 +583,7 @@ pub trait CaliptraCmdHandler {
 
     /// Zero the specified HEK slot.
     #[cfg(feature = "ocp-lock")]
-    async fn ocp_lock_zero_hek<Alloc: ApiAlloc>(
+    async fn ocp_lock_zero_hek<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         slot: u32,
@@ -594,7 +594,7 @@ pub trait CaliptraCmdHandler {
 
     /// Rotate the active HEK to the specified slot.
     #[cfg(feature = "ocp-lock")]
-    async fn ocp_lock_rotate_hek<Alloc: ApiAlloc>(
+    async fn ocp_lock_rotate_hek<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         slot: u32,
@@ -627,7 +627,7 @@ pub trait CaliptraCmdHandler {
     }
 
     /// Verify and commit a persistent DOT lock transition.
-    async fn dot_lock<Alloc: ApiAlloc>(
+    async fn dot_lock<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         request: &DotLockPayload,
@@ -637,7 +637,7 @@ pub trait CaliptraCmdHandler {
     }
 
     /// Verify and commit a persistent DOT disabled-state transition.
-    async fn dot_disable<Alloc: ApiAlloc>(
+    async fn dot_disable<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         request: &DotDisablePayload,
@@ -647,7 +647,7 @@ pub trait CaliptraCmdHandler {
     }
 
     /// Rotate the DOT epoch by two fuse bits and reseal ownership state.
-    async fn dot_rotate<Alloc: ApiAlloc>(
+    async fn dot_rotate<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         request: &DotRotatePayload,
@@ -663,7 +663,7 @@ pub trait CaliptraCmdHandler {
     }
 
     /// Authenticate and restore a DOT blob for the current locked fuse epoch.
-    async fn dot_recovery<Alloc: ApiAlloc>(
+    async fn dot_recovery<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         blob: &[u8; DOT_BLOB_SIZE],
@@ -673,7 +673,7 @@ pub trait CaliptraCmdHandler {
     }
 
     /// Validate recovery public keys and generate an override challenge.
-    async fn dot_override_challenge<Alloc: ApiAlloc>(
+    async fn dot_override_challenge<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         request: &DotOverrideChallengePayload,
@@ -683,7 +683,7 @@ pub trait CaliptraCmdHandler {
     }
 
     /// Verify recovery-key signatures and apply a DOT override transition.
-    async fn dot_override<Alloc: ApiAlloc>(
+    async fn dot_override<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         request: &DotOverridePayload,
@@ -693,7 +693,7 @@ pub trait CaliptraCmdHandler {
     }
 
     /// Authenticate the current DOT blob and generate a one-time unlock challenge.
-    async fn dot_unlock_challenge<Alloc: ApiAlloc>(
+    async fn dot_unlock_challenge<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
     ) -> CaliptraCmdResult<[u8; AUTH_CMD_NONCE_LEN]> {
@@ -702,7 +702,7 @@ pub trait CaliptraCmdHandler {
     }
 
     /// Verify and commit an ODD-to-EVEN DOT unlock transition.
-    async fn dot_unlock<Alloc: ApiAlloc>(
+    async fn dot_unlock<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         request: &DotUnlockPayload,
@@ -717,7 +717,7 @@ pub trait CaliptraCmdHandler {
     /// hashes and an HMAC, not secret key material. Transport access remains a
     /// platform policy decision, and implementations must verify the HMAC
     /// before returning bytes.
-    async fn dot_get_backup_blob<Alloc: ApiAlloc>(
+    async fn dot_get_backup_blob<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         blob: &mut [u8; DOT_BLOB_SIZE],
@@ -744,7 +744,7 @@ pub trait CommandAuthorizer {
     ///
     /// # Returns
     /// * `Result<&[u8], CommandError>` - Unpacked command or Error
-    async fn is_authorized<'a, Alloc: ApiAlloc>(
+    async fn is_authorized<'a, Alloc: ScratchAlloc>(
         &mut self,
         alloc: &Alloc,
         cmd_id: CommandId,
@@ -753,7 +753,7 @@ pub trait CommandAuthorizer {
 
     /// Verify signatures over a command using the stored challenge and wire keys.
     #[allow(clippy::too_many_arguments)]
-    async fn verify_signatures<Alloc: ApiAlloc>(
+    async fn verify_signatures<Alloc: ScratchAlloc>(
         &mut self,
         alloc: &Alloc,
         cmd_id: u32,

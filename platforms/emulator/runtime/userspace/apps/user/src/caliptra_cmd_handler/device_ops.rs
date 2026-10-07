@@ -38,8 +38,8 @@ use core::cell::RefCell;
 use embassy_sync::blocking_mutex::{raw::CriticalSectionRawMutex, Mutex as BlockingMutex};
 use mcu_caliptra_api::{
     cm_hmac_sha512, derive_stable_key, fe_prog, fw_info, get_idev_csr_ecc384, hash_all,
-    request_debug_unlock_challenge, rng_generate, sha_finish, sha_init, sha_update, ApiAlloc,
-    HashAlgo, McuErrorCode, StableKeyType, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD,
+    request_debug_unlock_challenge, rng_generate, sha_finish, sha_init, sha_update, HashAlgo,
+    McuErrorCode, ScratchAlloc, StableKeyType, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD,
     PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_RSP_LEN, SHA_CONTEXT_SIZE,
 };
 #[cfg(feature = "attested-csr")]
@@ -426,7 +426,7 @@ pub async fn clear_debug_log(log_type: u32) -> CaliptraCmdResult<()> {
     super::debug_log::clear().await
 }
 
-pub async fn request_debug_unlock<A: ApiAlloc>(
+pub async fn request_debug_unlock<A: ScratchAlloc>(
     alloc: &A,
     unlock_level: u8,
     out: &mut [u8],
@@ -450,7 +450,7 @@ pub async fn request_debug_unlock<A: ApiAlloc>(
 /// SPDM VDM) relay it as a pure pass-through — firmware never synthesizes a
 /// header. This differs from other Caliptra commands, whose checksum the lite
 /// API builds from in-firmware parameters.
-pub async fn authorize_debug_unlock_token<A: ApiAlloc>(
+pub async fn authorize_debug_unlock_token<A: ScratchAlloc>(
     _alloc: &A,
     token_request: &[u8],
 ) -> CaliptraCmdResult<()> {
@@ -495,7 +495,7 @@ pub async fn export_attested_csr(
 /// would return evidence claiming an owner endorsement that was never
 /// selected or provisioned. It is refused until slot-aware key and
 /// certificate selection exists.
-pub async fn get_attestation<A: ApiAlloc>(
+pub async fn get_attestation<A: ScratchAlloc>(
     alloc: &A,
     format: EvidenceFormat,
     algorithm: AsymAlgo,
@@ -541,7 +541,7 @@ pub async fn export_idevid_csr(algorithm: u32, out: &mut [u8]) -> CaliptraCmdRes
     }
 }
 
-pub async fn generate_auth_challenge<A: ApiAlloc>(
+pub async fn generate_auth_challenge<A: ScratchAlloc>(
     alloc: &A,
 ) -> CaliptraCmdResult<[u8; AUTH_CMD_NONCE_LEN]> {
     let mut challenge = [0u8; AUTH_CMD_NONCE_LEN];
@@ -552,7 +552,7 @@ pub async fn generate_auth_challenge<A: ApiAlloc>(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub async fn verify_authorized_signatures<A: ApiAlloc>(
+pub async fn verify_authorized_signatures<A: ScratchAlloc>(
     alloc: &A,
     cmd_id: u32,
     payload: &[u8],
@@ -618,7 +618,7 @@ pub async fn verify_authorized_signatures<A: ApiAlloc>(
     .await
 }
 
-async fn verify_hybrid_message_parts<A: ApiAlloc>(
+async fn verify_hybrid_message_parts<A: ScratchAlloc>(
     alloc: &A,
     ecc_message: &[u8],
     mldsa_message: &[u8],
@@ -678,7 +678,7 @@ async fn verify_hybrid_message_parts<A: ApiAlloc>(
     Ok(())
 }
 
-async fn verify_hybrid_message<A: ApiAlloc>(
+async fn verify_hybrid_message<A: ScratchAlloc>(
     alloc: &A,
     message: &[u8],
     ecc_pub_x: &[u8; 48],
@@ -692,7 +692,7 @@ async fn verify_hybrid_message<A: ApiAlloc>(
     .await
 }
 
-async fn dot_lak_hash<A: ApiAlloc>(
+async fn dot_lak_hash<A: ScratchAlloc>(
     alloc: &A,
     ecc_pub_x: &[u8; 48],
     ecc_pub_y: &[u8; 48],
@@ -781,7 +781,7 @@ pub fn dot_enable() -> CaliptraCmdResult<()> {
     Ok(())
 }
 
-pub async fn dot_recovery<A: ApiAlloc>(
+pub async fn dot_recovery<A: ScratchAlloc>(
     alloc: &A,
     blob: &[u8; DOT_BLOB_SIZE],
 ) -> CaliptraCmdResult<()> {
@@ -814,7 +814,7 @@ fn read_recovery_pk_hash() -> CaliptraCmdResult<[u8; DOT_KEY_HASH_SIZE]> {
     Ok(hash)
 }
 
-pub async fn dot_override_challenge<A: ApiAlloc>(
+pub async fn dot_override_challenge<A: ScratchAlloc>(
     alloc: &A,
     request: &DotOverrideChallengePayload,
 ) -> CaliptraCmdResult<[u8; AUTH_CMD_NONCE_LEN]> {
@@ -852,7 +852,7 @@ pub async fn dot_override_challenge<A: ApiAlloc>(
     Ok(challenge)
 }
 
-pub async fn dot_override<A: ApiAlloc>(
+pub async fn dot_override<A: ScratchAlloc>(
     alloc: &A,
     request: &DotOverridePayload,
 ) -> CaliptraCmdResult<()> {
@@ -925,7 +925,7 @@ fn dot_effective_key_derivation_value(fuse_count: u32) -> CaliptraCmdResult<u32>
     }
 }
 
-async fn seal_dot_blob<A: ApiAlloc>(
+async fn seal_dot_blob<A: ScratchAlloc>(
     alloc: &A,
     fuse_count: u32,
     cak: [u8; DOT_KEY_HASH_SIZE],
@@ -1002,7 +1002,7 @@ pub fn fuse_lock_partition(partition: u32) -> CaliptraCmdResult<()> {
         })
 }
 
-pub async fn increase_min_svn<A: ApiAlloc>(
+pub async fn increase_min_svn<A: ScratchAlloc>(
     alloc: &A,
     target: SvnTarget,
     svn: u32,
@@ -1108,7 +1108,7 @@ pub async fn increase_min_svn<A: ApiAlloc>(
     Ok(())
 }
 
-async fn read_and_verify_dot_blob<A: ApiAlloc>(
+async fn read_and_verify_dot_blob<A: ScratchAlloc>(
     alloc: &A,
     derivation_value: u32,
 ) -> CaliptraCmdResult<RuntimeDotBlob> {
@@ -1127,7 +1127,7 @@ async fn read_and_verify_dot_blob<A: ApiAlloc>(
     Ok(blob)
 }
 
-async fn verify_dot_blob<A: ApiAlloc>(
+async fn verify_dot_blob<A: ScratchAlloc>(
     alloc: &A,
     derivation_value: u32,
     blob: &RuntimeDotBlob,
@@ -1170,7 +1170,7 @@ fn burn_next_dot_fuse(current_fuse_count: u32) -> CaliptraCmdResult<()> {
     Ok(())
 }
 
-async fn commit_dot_transition<A: ApiAlloc>(
+async fn commit_dot_transition<A: ScratchAlloc>(
     alloc: &A,
     current_fuse_count: u32,
     target_fuse_count: u32,
@@ -1195,12 +1195,18 @@ async fn commit_dot_transition<A: ApiAlloc>(
     })
 }
 
-pub async fn dot_lock<A: ApiAlloc>(alloc: &A, request: &DotLockPayload) -> CaliptraCmdResult<()> {
+pub async fn dot_lock<A: ScratchAlloc>(
+    alloc: &A,
+    request: &DotLockPayload,
+) -> CaliptraCmdResult<()> {
     let _guard = DotTransactionGuard::acquire()?;
     dot_lock_impl(alloc, request).await
 }
 
-async fn dot_lock_impl<A: ApiAlloc>(alloc: &A, request: &DotLockPayload) -> CaliptraCmdResult<()> {
+async fn dot_lock_impl<A: ScratchAlloc>(
+    alloc: &A,
+    request: &DotLockPayload,
+) -> CaliptraCmdResult<()> {
     if request.cak.iter().all(|byte| *byte == 0) {
         return Err(CaliptraCompletionCode::InvalidParameter);
     }
@@ -1224,7 +1230,7 @@ async fn dot_lock_impl<A: ApiAlloc>(alloc: &A, request: &DotLockPayload) -> Cali
     .await
 }
 
-pub async fn dot_disable<A: ApiAlloc>(
+pub async fn dot_disable<A: ScratchAlloc>(
     alloc: &A,
     request: &DotDisablePayload,
 ) -> CaliptraCmdResult<()> {
@@ -1248,7 +1254,7 @@ pub async fn dot_disable<A: ApiAlloc>(
     .await
 }
 
-pub async fn dot_rotate<A: ApiAlloc>(
+pub async fn dot_rotate<A: ScratchAlloc>(
     alloc: &A,
     request: &DotRotatePayload,
 ) -> CaliptraCmdResult<()> {
@@ -1279,7 +1285,7 @@ pub async fn dot_rotate<A: ApiAlloc>(
     write_and_verify_dot_blob(&blob).await
 }
 
-pub async fn dot_unlock_challenge<A: ApiAlloc>(
+pub async fn dot_unlock_challenge<A: ScratchAlloc>(
     alloc: &A,
 ) -> CaliptraCmdResult<[u8; AUTH_CMD_NONCE_LEN]> {
     let _guard = DotTransactionGuard::acquire()?;
@@ -1309,7 +1315,7 @@ pub async fn dot_unlock_challenge<A: ApiAlloc>(
     Ok(challenge)
 }
 
-pub async fn dot_unlock<A: ApiAlloc>(
+pub async fn dot_unlock<A: ScratchAlloc>(
     alloc: &A,
     request: &DotUnlockPayload,
 ) -> CaliptraCmdResult<()> {
@@ -1360,7 +1366,7 @@ pub async fn dot_unlock<A: ApiAlloc>(
     Ok(())
 }
 
-pub async fn dot_get_backup_blob<A: ApiAlloc>(
+pub async fn dot_get_backup_blob<A: ScratchAlloc>(
     alloc: &A,
     output: &mut [u8; DOT_BLOB_SIZE],
 ) -> CaliptraCmdResult<()> {
@@ -1375,7 +1381,7 @@ pub async fn dot_get_backup_blob<A: ApiAlloc>(
     Ok(())
 }
 
-pub async fn revoke_vendor_pub_key<A: ApiAlloc>(
+pub async fn revoke_vendor_pub_key<A: ScratchAlloc>(
     alloc: &A,
     vendor_pk_hash_slot: u32,
     key_type: u32,
@@ -1450,7 +1456,7 @@ pub fn revoke_vendor_pk_hash(vendor_pk_hash_slot: u32) -> CaliptraCmdResult<()> 
         .map_err(|_| CaliptraCompletionCode::OperationFailed)
 }
 
-pub async fn program_field_entropy<A: ApiAlloc>(
+pub async fn program_field_entropy<A: ScratchAlloc>(
     alloc: &A,
     partition: u32,
 ) -> CaliptraCmdResult<()> {
@@ -1521,7 +1527,7 @@ pub(crate) async fn zeroize_uds_fe_and_enter_rma(rma_token: &[u8; 16]) -> Calipt
 }
 
 #[cfg(feature = "ocp-lock")]
-pub(crate) async fn ocp_lock_program_hek<Alloc: ApiAlloc>(
+pub(crate) async fn ocp_lock_program_hek<Alloc: ScratchAlloc>(
     alloc: &Alloc,
     slot: u32,
 ) -> CaliptraCmdResult<()> {
@@ -1533,7 +1539,7 @@ pub(crate) async fn ocp_lock_program_hek<Alloc: ApiAlloc>(
 }
 
 #[cfg(feature = "ocp-lock")]
-pub(crate) async fn ocp_lock_zero_hek<Alloc: ApiAlloc>(
+pub(crate) async fn ocp_lock_zero_hek<Alloc: ScratchAlloc>(
     _alloc: &Alloc,
     slot: u32,
 ) -> CaliptraCmdResult<()> {
@@ -1543,7 +1549,7 @@ pub(crate) async fn ocp_lock_zero_hek<Alloc: ApiAlloc>(
 }
 
 #[cfg(feature = "ocp-lock")]
-pub(crate) async fn ocp_lock_rotate_hek<Alloc: ApiAlloc>(
+pub(crate) async fn ocp_lock_rotate_hek<Alloc: ScratchAlloc>(
     alloc: &Alloc,
     slot: u32,
 ) -> CaliptraCmdResult<()> {

@@ -5,7 +5,7 @@ use caliptra_mcu_common_commands::{
     DeviceCapabilities, FirmwareVersion, GetLogResult, MAX_FW_VERSION_LEN,
 };
 use caliptra_mcu_mbox_common::config;
-use mcu_caliptra_api::ApiAlloc;
+use mcu_caliptra_api::ScratchAlloc;
 
 use crate::caliptra_cmd_handler::CaliptraCmdBackend;
 
@@ -55,7 +55,7 @@ impl CaliptraCmdHandler for NonCryptoCmdHandlerMock {
         Ok(())
     }
 
-    async fn export_attested_csr<Alloc: ApiAlloc>(
+    async fn export_attested_csr<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         device_key_id: u32,
@@ -70,7 +70,7 @@ impl CaliptraCmdHandler for NonCryptoCmdHandlerMock {
             .await
     }
 
-    async fn request_debug_unlock<Alloc: ApiAlloc>(
+    async fn request_debug_unlock<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         unlock_level: u8,
@@ -82,7 +82,7 @@ impl CaliptraCmdHandler for NonCryptoCmdHandlerMock {
             .await
     }
 
-    async fn authorize_debug_unlock_token<Alloc: ApiAlloc>(
+    async fn authorize_debug_unlock_token<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         token_request: &[u8],
@@ -117,7 +117,7 @@ impl CaliptraCmdHandler for NonCryptoCmdHandlerMock {
         CaliptraCmdBackend.fuse_lock_partition(partition).await
     }
 
-    async fn revoke_vendor_pub_key<Alloc: ApiAlloc>(
+    async fn revoke_vendor_pub_key<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         vendor_pk_hash_slot: u32,
@@ -135,7 +135,7 @@ impl CaliptraCmdHandler for NonCryptoCmdHandlerMock {
             .await
     }
 
-    async fn program_field_entropy<Alloc: ApiAlloc>(
+    async fn program_field_entropy<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         partition: u32,

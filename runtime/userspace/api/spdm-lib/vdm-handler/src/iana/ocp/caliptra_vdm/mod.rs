@@ -720,7 +720,7 @@ mod tests {
 
     struct TestAlloc;
 
-    impl mcu_caliptra_api::ApiAlloc for TestAlloc {
+    impl mcu_caliptra_api::ScratchAlloc for TestAlloc {
         type Buf<'a>
             = Vec<u8>
         where
@@ -731,10 +731,10 @@ mod tests {
         }
     }
 
-    impl mcu_caliptra_api::ApiAllocPool for TestAlloc {
-        type Pool = Self;
+    impl mcu_caliptra_api::ScratchAllocProvider for TestAlloc {
+        type Alloc = Self;
 
-        fn pool(&self) -> &Self::Pool {
+        fn allocator(&self) -> &Self::Alloc {
             self
         }
     }
@@ -1027,7 +1027,7 @@ mod tests {
             }
         }
 
-        async fn get_attestation<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn get_attestation<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             _format: EvidenceFormat,
@@ -1047,7 +1047,7 @@ mod tests {
             Ok(self.evidence_len)
         }
 
-        async fn export_attested_csr<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn export_attested_csr<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             device_key_id: u32,
@@ -1063,7 +1063,7 @@ mod tests {
             self.write_csr(out)
         }
 
-        async fn request_debug_unlock<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn request_debug_unlock<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             unlock_level: u8,
@@ -1077,7 +1077,7 @@ mod tests {
             Ok(())
         }
 
-        async fn authorize_debug_unlock_token<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn authorize_debug_unlock_token<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             token_data: &[u8],
@@ -1094,7 +1094,7 @@ mod tests {
             Ok(())
         }
 
-        async fn dot_lock<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn dot_lock<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             _request: &caliptra_mcu_mbox_common::messages::DotLockPayload,
@@ -1102,7 +1102,7 @@ mod tests {
             self.dot_lock_calls.fetch_add(1, Ordering::Relaxed);
             Ok(())
         }
-        async fn dot_disable<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn dot_disable<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             _request: &caliptra_mcu_mbox_common::messages::DotDisablePayload,
@@ -1111,7 +1111,7 @@ mod tests {
             Ok(())
         }
 
-        async fn dot_rotate<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn dot_rotate<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             _request: &caliptra_mcu_mbox_common::messages::DotRotatePayload,
@@ -1133,7 +1133,7 @@ mod tests {
             Ok(())
         }
 
-        async fn dot_recovery<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn dot_recovery<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             _blob: &[u8; caliptra_mcu_mbox_common::messages::DOT_BLOB_SIZE],
@@ -1142,7 +1142,7 @@ mod tests {
             Ok(())
         }
 
-        async fn dot_override_challenge<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn dot_override_challenge<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             _request: &caliptra_mcu_mbox_common::messages::DotOverrideChallengePayload,
@@ -1154,7 +1154,7 @@ mod tests {
             Ok([0xC3; caliptra_mcu_mbox_common::messages::AUTH_CMD_NONCE_LEN])
         }
 
-        async fn dot_override<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn dot_override<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             _request: &caliptra_mcu_mbox_common::messages::DotOverridePayload,
@@ -1163,7 +1163,7 @@ mod tests {
             Ok(())
         }
 
-        async fn dot_unlock_challenge<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn dot_unlock_challenge<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
         ) -> caliptra_mcu_common_commands::CaliptraCmdResult<
@@ -1172,7 +1172,7 @@ mod tests {
             self.dot_challenge_calls.fetch_add(1, Ordering::Relaxed);
             Ok([0xA5; caliptra_mcu_mbox_common::messages::AUTH_CMD_NONCE_LEN])
         }
-        async fn dot_unlock<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn dot_unlock<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             _request: &caliptra_mcu_mbox_common::messages::DotUnlockPayload,
@@ -1180,7 +1180,7 @@ mod tests {
             self.dot_unlock_calls.fetch_add(1, Ordering::Relaxed);
             Ok(())
         }
-        async fn dot_get_backup_blob<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn dot_get_backup_blob<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             blob: &mut [u8; caliptra_mcu_mbox_common::messages::DOT_BLOB_SIZE],

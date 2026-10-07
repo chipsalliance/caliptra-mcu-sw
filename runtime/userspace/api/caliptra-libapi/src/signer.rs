@@ -16,7 +16,7 @@ use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_platform::ErrorCode;
 use core::mem::size_of;
 use dpe::commands::Command;
-use mcu_caliptra_api::ApiAlloc;
+use mcu_caliptra_api::ScratchAlloc;
 use zerocopy::FromBytes;
 
 #[async_trait]
@@ -26,13 +26,13 @@ pub trait DpeTransport: Send + Sync {
 
 /// DPE-backed OCP LOCK signer using the caller task's scratch allocator for
 /// mailbox request and response buffers.
-pub struct CaliptraDpeSigner<'a, A: ApiAlloc> {
+pub struct CaliptraDpeSigner<'a, A: ScratchAlloc> {
     mailbox: &'a Mailbox,
     algorithm: EndorsementAlgorithm,
     scratch: &'a A,
 }
 
-impl<'a, A: ApiAlloc> CaliptraDpeSigner<'a, A> {
+impl<'a, A: ScratchAlloc> CaliptraDpeSigner<'a, A> {
     pub fn new(mailbox: &'a Mailbox, scratch: &'a A) -> Self {
         Self {
             mailbox,
@@ -54,7 +54,7 @@ impl<'a, A: ApiAlloc> CaliptraDpeSigner<'a, A> {
     }
 }
 
-impl<A: ApiAlloc> OcpLockSigner for CaliptraDpeSigner<'_, A> {
+impl<A: ScratchAlloc> OcpLockSigner for CaliptraDpeSigner<'_, A> {
     fn algorithm(&self) -> EndorsementAlgorithm {
         self.algorithm
     }

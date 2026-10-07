@@ -7,7 +7,7 @@
 //! `caliptra-dpe/dpe::commands` (request) and
 //! `caliptra-dpe/dpe::response` (response) using slim
 //! [`zerocopy::Unaligned`] structs so request / response buffers are
-//! allocated from the caller's [`ApiAlloc`] — never the stack —
+//! allocated from the caller's [`ScratchAlloc`] — never the stack —
 //! keeping async futures small.
 
 use core::{
@@ -29,7 +29,7 @@ use crate::wire::{
     DPE_CMD_SIGN, DPE_CMD_UPDATE_CONTEXT_MEASUREMENT, DPE_COMMAND_MAGIC, DPE_PROFILE_MLDSA87,
     DPE_PROFILE_P384_SHA384, DPE_RESPONSE_MAGIC, MBOX_RESP_HEADER_SIZE,
 };
-use crate::ApiAlloc;
+use crate::ScratchAlloc;
 
 /// DPE profile identifier used for DPE command dispatch.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -596,7 +596,7 @@ pub struct DpeTaggedTci {
 
 /// Invoke DPE `DeriveContext`, returning the child handle and rotated parent handle.
 #[inline(never)]
-pub async fn dpe_derive_context<A: ApiAlloc>(
+pub async fn dpe_derive_context<A: ScratchAlloc>(
     alloc: &A,
     params: &DpeDeriveContextParams,
 ) -> McuResult<DpeDeriveContextResult> {
@@ -607,7 +607,7 @@ pub async fn dpe_derive_context<A: ApiAlloc>(
     parse_derive_context_response(&rsp, rsp_len)
 }
 
-fn build_derive_context_req<'a, A: ApiAlloc>(
+fn build_derive_context_req<'a, A: ScratchAlloc>(
     alloc: &'a A,
     params: &DpeDeriveContextParams,
     profile: DpeProfile,
@@ -685,7 +685,7 @@ pub const DERIVE_CONTEXT_EXPORTED_CDI_RESP_PREFIX_LEN: usize =
 /// `DERIVE_CONTEXT_EXPORTED_CDI_RESP_PREFIX_LEN + DPE_MAX_LEAF_CERT_SIZE` (`10,332`) bytes long so
 /// the response can be staged in-place without a secondary scratch allocation.
 #[inline(never)]
-pub async fn dpe_derive_context_exported_cdi<A: ApiAlloc>(
+pub async fn dpe_derive_context_exported_cdi<A: ScratchAlloc>(
     alloc: &A,
     params: &DpeDeriveContextParams,
     profile: DpeProfile,
@@ -783,7 +783,7 @@ fn parse_derive_context_exported_cdi_response_in_place(
 
 /// Invoke DPE `UpdateContextMeasurement`, returning the rotated component and parent handles.
 #[inline(never)]
-pub async fn dpe_update_context_measurement<A: ApiAlloc>(
+pub async fn dpe_update_context_measurement<A: ScratchAlloc>(
     alloc: &A,
     params: &DpeUpdateContextMeasurementParams,
 ) -> McuResult<DpeUpdateContextMeasurementResult> {
@@ -794,7 +794,7 @@ pub async fn dpe_update_context_measurement<A: ApiAlloc>(
     parse_update_context_measurement_response(&rsp, rsp_len)
 }
 
-fn build_update_context_measurement_req<'a, A: ApiAlloc>(
+fn build_update_context_measurement_req<'a, A: ScratchAlloc>(
     alloc: &'a A,
     params: &DpeUpdateContextMeasurementParams,
 ) -> McuResult<A::Buf<'a>> {
@@ -858,7 +858,7 @@ fn parse_update_context_measurement_response(
 /// actually wrote. A short read (`returned < dst.len()`) signals
 /// end-of-chain; callers should stop probing.
 #[inline(never)]
-pub async fn dpe_get_cert_chain_chunk<A: ApiAlloc>(
+pub async fn dpe_get_cert_chain_chunk<A: ScratchAlloc>(
     alloc: &A,
     profile: DpeProfile,
     offset: u32,
@@ -942,7 +942,7 @@ pub async fn dpe_get_cert_chain_chunk<A: ApiAlloc>(
 /// This composes the bounded size and slice commands so callers with smaller
 /// certificate buffers do not need to implement chunking themselves.
 #[inline(never)]
-pub async fn dpe_certify_key<A: ApiAlloc>(
+pub async fn dpe_certify_key<A: ScratchAlloc>(
     alloc: &A,
     profile: DpeProfile,
     handle: Option<&DpeContextHandle>,
@@ -980,7 +980,7 @@ pub async fn dpe_certify_key<A: ApiAlloc>(
 /// Return the DER leaf certificate length emitted by DPE `CertifyKey`
 /// without fetching the certificate body, along with the rotated context handle.
 #[inline(never)]
-pub async fn dpe_certify_key_cert_size<A: ApiAlloc>(
+pub async fn dpe_certify_key_cert_size<A: ScratchAlloc>(
     alloc: &A,
     profile: DpeProfile,
     handle: Option<&DpeContextHandle>,
@@ -1010,7 +1010,7 @@ pub async fn dpe_certify_key_cert_size<A: ApiAlloc>(
 /// enclosing `CertifyKey` response. Returns the rotated context handle plus
 /// the number of bytes copied into `dst`.
 #[inline(never)]
-pub async fn dpe_certify_key_cert_slice<A: ApiAlloc>(
+pub async fn dpe_certify_key_cert_slice<A: ScratchAlloc>(
     alloc: &A,
     profile: DpeProfile,
     handle: Option<&DpeContextHandle>,
@@ -1051,7 +1051,7 @@ pub async fn dpe_certify_key_cert_slice<A: ApiAlloc>(
 /// is needed (e.g. to compute an attestation kid). Returns the rotated
 /// context handle.
 #[inline(never)]
-pub async fn dpe_certify_key_pubkey<A: ApiAlloc>(
+pub async fn dpe_certify_key_pubkey<A: ScratchAlloc>(
     alloc: &A,
     handle: Option<&DpeContextHandle>,
     label: &[u8; DPE_LABEL_LEN],
@@ -1088,7 +1088,7 @@ fn extract_certify_key_mldsa87_pubkey(response: &[u8]) -> McuResult<&[u8]> {
 /// Return the ML-DSA-87 public-key hash `tr` emitted by DPE `CertifyKey`,
 /// along with the rotated context handle.
 #[inline(never)]
-pub async fn dpe_certify_key_mldsa87_tr<A: ApiAlloc>(
+pub async fn dpe_certify_key_mldsa87_tr<A: ScratchAlloc>(
     alloc: &A,
     handle: Option<&DpeContextHandle>,
     label: &[u8; DPE_LABEL_LEN],
@@ -1130,7 +1130,7 @@ async fn certify_key_chunks_response<'a, A>(
     max_size: usize,
 ) -> McuResult<CertifyKeyChunk<A::Buf<'a>>>
 where
-    A: ApiAlloc,
+    A: ScratchAlloc,
 {
     if max_size == 0 || max_size > CERTIFY_KEY_CHUNKS_MAX_REQ_SIZE {
         return Err(INVARIANT);
@@ -1157,7 +1157,7 @@ where
     })
 }
 
-fn build_certify_key_chunks_req<'a, A: ApiAlloc>(
+fn build_certify_key_chunks_req<'a, A: ScratchAlloc>(
     alloc: &'a A,
     profile: DpeProfile,
     label: &[u8; DPE_LABEL_LEN],
@@ -1300,7 +1300,7 @@ pub trait DpeChainSink {
 /// [`DPE_MAX_CHUNK_SIZE`]-byte chunks, feeding each chunk to `sink`.
 /// Returns the total number of bytes walked. A short read
 /// (`returned < DPE_MAX_CHUNK_SIZE`) ends the walk.
-pub async fn walk_dpe_chain<A: ApiAlloc, S: DpeChainSink>(
+pub async fn walk_dpe_chain<A: ScratchAlloc, S: DpeChainSink>(
     alloc: &A,
     profile: DpeProfile,
     sink: &mut S,
@@ -1327,7 +1327,7 @@ pub async fn walk_dpe_chain<A: ApiAlloc, S: DpeChainSink>(
 ///
 /// Supports P-384 digests and pure ML-DSA-87 messages with context.
 #[inline(never)]
-pub async fn dpe_sign<A: ApiAlloc>(
+pub async fn dpe_sign<A: ScratchAlloc>(
     alloc: &A,
     handle: Option<&DpeContextHandle>,
     label: &[u8; DPE_LABEL_LEN],
@@ -1349,7 +1349,7 @@ pub async fn dpe_sign<A: ApiAlloc>(
 
 /// Sign pure ML-DSA-87 under FIPS 204 `context` over `prefix || hash`.
 #[inline(never)]
-async fn dpe_sign_mldsa87_message<A: ApiAlloc>(
+async fn dpe_sign_mldsa87_message<A: ScratchAlloc>(
     alloc: &A,
     handle: Option<&DpeContextHandle>,
     label: &[u8; DPE_LABEL_LEN],
@@ -1385,7 +1385,7 @@ async fn dpe_sign_mldsa87_message<A: ApiAlloc>(
 /// `signature` must be at least [`DPE_P384_SIGNATURE_SIZE`] (96) bytes. Returns
 /// the rotated context handle plus the signature length.
 #[inline(never)]
-pub async fn dpe_sign_ecc_p384<A: ApiAlloc>(
+pub async fn dpe_sign_ecc_p384<A: ScratchAlloc>(
     alloc: &A,
     handle: Option<&DpeContextHandle>,
     label: &[u8; DPE_LABEL_LEN],
@@ -1454,7 +1454,7 @@ pub async fn dpe_sign_ecc_p384<A: ApiAlloc>(
 /// `signature` must provide at least [`DPE_MLDSA87_SIGNATURE_SIZE`] bytes.
 /// Returns the rotated context handle and signature length.
 #[inline(never)]
-pub async fn dpe_sign_mldsa87<A: ApiAlloc>(
+pub async fn dpe_sign_mldsa87<A: ScratchAlloc>(
     alloc: &A,
     handle: Option<&DpeContextHandle>,
     label: &[u8; DPE_LABEL_LEN],
@@ -1479,7 +1479,7 @@ pub async fn dpe_sign_mldsa87<A: ApiAlloc>(
 }
 
 #[cfg(test)]
-fn build_sign_mldsa87_req<'a, A: ApiAlloc>(
+fn build_sign_mldsa87_req<'a, A: ScratchAlloc>(
     alloc: &'a A,
     handle: &DpeContextHandle,
     label: &[u8; DPE_LABEL_LEN],
@@ -1576,7 +1576,7 @@ fn parse_sign_mldsa87_response(
 /// initialization uses this to obtain a stable MCU-held handle for the
 /// MCU Runtime context.
 #[inline(never)]
-pub async fn dpe_rotate_context_default<A: ApiAlloc>(
+pub async fn dpe_rotate_context_default<A: ScratchAlloc>(
     alloc: &A,
 ) -> McuResult<[u8; DPE_CONTEXT_HANDLE_SIZE]> {
     // Build request: prefix + DPE command header + RotateCtx body.
@@ -1635,7 +1635,7 @@ pub async fn dpe_rotate_context_default<A: ApiAlloc>(
 /// MCU Runtime boot initialization tags the rotated MCU Runtime
 /// context so its TCI can later be read back by tag.
 #[inline(never)]
-pub async fn dpe_tag_tci<A: ApiAlloc>(
+pub async fn dpe_tag_tci<A: ScratchAlloc>(
     alloc: &A,
     handle: &[u8; DPE_CONTEXT_HANDLE_SIZE],
     tag: u32,
@@ -1660,14 +1660,14 @@ pub async fn dpe_tag_tci<A: ApiAlloc>(
 
 /// Read cumulative and current TCI values for the DPE context associated with `tag`.
 #[inline(never)]
-pub async fn dpe_get_tagged_tci<A: ApiAlloc>(alloc: &A, tag: u32) -> McuResult<DpeTaggedTci> {
+pub async fn dpe_get_tagged_tci<A: ScratchAlloc>(alloc: &A, tag: u32) -> McuResult<DpeTaggedTci> {
     let req = build_get_tagged_tci_req(alloc, tag)?;
     let mut rsp = alloc.alloc(GET_TAGGED_TCI_RESP_LEN)?;
     let rsp_len = mbox_execute(CMD_DPE_GET_TAGGED_TCI, &req, &mut rsp).await?;
     parse_get_tagged_tci_response(&rsp, rsp_len)
 }
 
-fn build_get_tagged_tci_req<A: ApiAlloc>(alloc: &A, tag: u32) -> McuResult<A::Buf<'_>> {
+fn build_get_tagged_tci_req<A: ScratchAlloc>(alloc: &A, tag: u32) -> McuResult<A::Buf<'_>> {
     let mut req = alloc.alloc(GET_TAGGED_TCI_REQ_LEN)?;
     req.fill(0);
     {
@@ -1709,7 +1709,7 @@ mod tests {
 
     struct TestAlloc;
 
-    impl ApiAlloc for TestAlloc {
+    impl ScratchAlloc for TestAlloc {
         type Buf<'a>
             = Vec<u8>
         where
