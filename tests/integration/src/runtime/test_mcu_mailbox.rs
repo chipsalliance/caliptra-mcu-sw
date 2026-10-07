@@ -543,9 +543,19 @@ fn test_prod_debug_unlock_complete_responses() -> Result<()> {
         VENDOR_MLDSA_KEY_0_PUBLIC,
     };
     use caliptra_image_types::{ECC384_SCALAR_BYTE_SIZE, ECC384_SCALAR_WORD_SIZE};
+    use caliptra_mcu_builder::{CaliptraBuildArgs, CaliptraBuilder, FirmwareBinaries};
     use caliptra_mcu_debug_unlock_signer::{
         DebugUnlockKeys, DebugUnlockSigner, LocalDebugUnlockSigner, ProdDebugUnlockChallenge,
     };
+    use caliptra_mcu_registers_generated::fuses::{
+        OTP_CPTRA_CORE_PQC_KEY_TYPE_0, OTP_CPTRA_CORE_VENDOR_PK_HASH_0,
+        OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_0, OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_1,
+        OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_2, OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_3,
+        OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_4, OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_5,
+        OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_6, OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_7,
+        VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET,
+    };
+    use sha2::{Digest, Sha384};
 
     let mut ecc_public_key_words = [0u32; ECC384_SCALAR_WORD_SIZE * 2];
     ecc_public_key_words[..ECC384_SCALAR_WORD_SIZE].copy_from_slice(&VENDOR_ECC_KEY_0_PUBLIC.x);
@@ -563,6 +573,45 @@ fn test_prod_debug_unlock_complete_responses() -> Result<()> {
     let unlock_level = 1u8;
     let mut prod_dbg_unlock_keypairs = vec![([0u8; 96], [0u8; 2592]); 8];
     prod_dbg_unlock_keypairs[usize::from(unlock_level - 1)] = (ecc_public_key, mldsa_public_key);
+
+    let mut otp_memory = vec![0u8; VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET + 256];
+    let mut vendor_pk_hash = if let Ok(binaries) = FirmwareBinaries::from_env() {
+        binaries.vendor_pk_hash().unwrap().to_vec()
+    } else {
+        let mut builder = CaliptraBuilder::new(&CaliptraBuildArgs::default());
+        hex::decode(builder.get_vendor_pk_hash()?)?
+    };
+    for word in vendor_pk_hash.chunks_exact_mut(4) {
+        word.reverse();
+    }
+    let offset = OTP_CPTRA_CORE_VENDOR_PK_HASH_0.byte_offset;
+    otp_memory[offset..offset + vendor_pk_hash.len()].copy_from_slice(&vendor_pk_hash);
+    let offset = OTP_CPTRA_CORE_PQC_KEY_TYPE_0.byte_offset;
+    otp_memory[offset..offset + 4].copy_from_slice(&0x3fu32.to_le_bytes());
+
+    for (entry, (ecc, mldsa)) in [
+        OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_0,
+        OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_1,
+        OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_2,
+        OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_3,
+        OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_4,
+        OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_5,
+        OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_6,
+        OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_7,
+    ]
+    .into_iter()
+    .zip(&prod_dbg_unlock_keypairs)
+    {
+        let hash = Sha384::new()
+            .chain_update(ecc)
+            .chain_update(mldsa)
+            .finalize();
+        for (index, chunk) in hash.chunks_exact(4).enumerate() {
+            let word = u32::from_be_bytes(chunk.try_into().unwrap());
+            let offset = entry.byte_offset + index * 4;
+            otp_memory[offset..offset + 4].copy_from_slice(&word.to_le_bytes());
+        }
+    }
 
     let mut ecc_private_key_bytes = [0u8; ECC384_SCALAR_BYTE_SIZE];
     for (index, word) in VENDOR_ECC_KEY_0_PRIVATE.iter().enumerate() {
@@ -582,6 +631,7 @@ fn test_prod_debug_unlock_complete_responses() -> Result<()> {
         lifecycle_controller_state: Some(LifecycleControllerState::Prod),
         debug_intent: true,
         prod_dbg_unlock_keypairs,
+        otp_memory: Some(otp_memory),
         ..Default::default()
     });
 
