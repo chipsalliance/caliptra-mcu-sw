@@ -63,6 +63,11 @@ impl<'a> OpaqueDataReader<'a> {
     ///
     /// `opaque_data` has to be in the _general opaque data_ format.
     fn new(opaque_data: &'a [u8]) -> Result<OpaqueDataReader<'a>, WireError> {
+        // Reject wrong alignment
+        if opaque_data.len() & 0x3 != 0 {
+            return Err(WireError);
+        }
+
         let mut r = WireReader::new(opaque_data);
 
         // GeneralOpaqueDataHdr
@@ -163,67 +168,64 @@ pub struct SupportedVersions {
 /// Parse the supported-version-list opaque element from a
 /// KEY_EXCHANGE request.
 ///
-/// Validates the GeneralOpaqueDataHdr, OpaqueElementHdr, and
-/// SmOpaqueElementDataHdr, then extracts the version list.
+/// Iterates over the opaque element list and extracts the
+/// supported versions list.
 pub fn parse_supported_versions(opaque: &[u8]) -> Result<SupportedVersions, WireError> {
-    if opaque.len() > MAX_SUPPORTED_VERSION_LIST_OPAQUE_SIZE || opaque.len() & 0x3 != 0 {
+    let mut opaque_elements = OpaqueDataReader::new(opaque)?;
+    let mut supported_versions = Err(WireError);
+    while let Some(element) = opaque_elements.next()? {
+        // Only process DMTF standards body elements
+        if element.id != OPAQUE_STANDARD_DMTF {
+            continue;
+        }
+        // DSP0277 Table 7 requires DMTF Secured Message elements to
+        // have VendorLen = 0 and contain SMDataVersion + SMDataID.
+        if !element.vendor_id.is_empty() || element.opaque_element_data.len() < 2 {
+            return Err(WireError);
+        }
+
+        let mut r = WireReader::new(element.opaque_element_data);
+
+        // SmOpaqueElementDataHdr
+        let sm_data_version = r.take(1)?[0];
+        let sm_data_id = r.take(1)?[0];
+        if sm_data_version != SM_DATA_VERSION || sm_data_id != DATA_ID_SUPPORTED_VERSION_LIST {
+            continue;
+        }
+
+        // Version count
+        let version_count = r.take(1)?[0];
+        if version_count == 0 || version_count as usize > MAX_SM_VERSION_COUNT {
+            return Err(WireError);
+        }
+
+        let mut versions = [[0u8; 2]; MAX_SM_VERSION_COUNT];
+        for v in versions.iter_mut().take(version_count as usize) {
+            let vb = r.take(2)?;
+            v.copy_from_slice(vb);
+        }
+
+        if !r.is_empty() {
+            return Err(WireError);
+        }
+
+        // Check that only one versions list in the opaque elements exists
+        if supported_versions.is_ok() {
+            return Err(WireError);
+        }
+
+        supported_versions = Ok(SupportedVersions {
+            count: version_count,
+            versions,
+        });
+    }
+
+    // Check for trailing garbage in opaque list
+    if !opaque_elements.opaque_list.is_empty() {
         return Err(WireError);
     }
 
-    let mut r = WireReader::new(opaque);
-
-    // GeneralOpaqueDataHdr
-    let total_elements = r.take(1)?[0];
-    let reserved = r.take(3)?;
-    if total_elements != 1 || reserved.iter().any(|&byte| byte != 0) {
-        return Err(WireError);
-    }
-
-    // OpaqueElementHdr
-    let standards_body_id = r.take(1)?[0];
-    let vendor_id_len = r.take(1)?[0];
-    if standards_body_id != OPAQUE_STANDARD_DMTF || vendor_id_len != 0 {
-        return Err(WireError);
-    }
-    let data_len_bytes = r.take(2)?;
-    let data_len = u16::from_le_bytes([data_len_bytes[0], data_len_bytes[1]]) as usize;
-
-    // SmOpaqueElementDataHdr
-    let sm_data_version = r.take(1)?[0];
-    let sm_data_id = r.take(1)?[0];
-    if sm_data_version != SM_DATA_VERSION || sm_data_id != DATA_ID_SUPPORTED_VERSION_LIST {
-        return Err(WireError);
-    }
-
-    // Version count
-    let version_count = r.take(1)?[0];
-    if version_count == 0 || version_count as usize > MAX_SM_VERSION_COUNT {
-        return Err(WireError);
-    }
-
-    // Each version is 2 bytes
-    let versions_len = version_count as usize * 2;
-    if data_len != SUPPORTED_VERSION_FIXED_SIZE + versions_len {
-        return Err(WireError);
-    }
-
-    let mut versions = [[0u8; 2]; MAX_SM_VERSION_COUNT];
-    for v in versions.iter_mut().take(version_count as usize) {
-        let vb = r.take(2)?;
-        v.copy_from_slice(vb);
-    }
-
-    let element_len = ELEMENT_HEADER_SIZE + data_len;
-    let padding_len = (4 - (element_len & 3)) & 3;
-    let padding = r.take(padding_len)?;
-    if padding.iter().any(|&byte| byte != 0) || !r.is_empty() {
-        return Err(WireError);
-    }
-
-    Ok(SupportedVersions {
-        count: version_count,
-        versions,
-    })
+    supported_versions
 }
 
 /// Select the best matching version from the requester's list.
@@ -247,6 +249,11 @@ pub fn select_version(offered: &SupportedVersions) -> Result<SmVersion, WireErro
 #[cfg(test)]
 mod tests {
     use super::*;
+    // Opaque data with two elements
+    const OPAQUE_DATA: &[u8] = &[
+        0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0b, 0x00, 0x01, 0x01, 0x04, 0x00, 0x10, 0x00, 0x11,
+        0x00, 0x12, 0x00, 0x13, 0x00, 0x00, 0x00, 0x03, 0x00, 0x01, 0x02, 0x40, 0x00,
+    ];
 
     const VERSION_LIST: [u8; 16] = [
         1, 0, 0, 0, // General header.
@@ -294,14 +301,6 @@ mod tests {
     }
 
     #[test]
-    fn rejects_trailing_bytes() {
-        let mut opaque = [0u8; 20];
-        opaque[..VERSION_LIST.len()].copy_from_slice(&VERSION_LIST);
-
-        assert!(parse_supported_versions(&opaque).is_err());
-    }
-
-    #[test]
     fn rejects_version_count_length_mismatch() {
         let mut opaque = VERSION_LIST;
         opaque[10] = 2;
@@ -325,13 +324,7 @@ mod tests {
 
     #[test]
     fn test_opaque_data_reader() {
-        // Opaque data with two elements
-        let data = [
-            0x02, 0x00, 0x00, 0x00, 0x00, 0x00, 0x0b, 0x00, 0x01, 0x01, 0x04, 0x00, 0x10, 0x00,
-            0x11, 0x00, 0x12, 0x00, 0x13, 0x00, 0x00, 0x00, 0x03, 0x00, 0x01, 0x02, 0x40, 0x00,
-        ];
-
-        let mut reader = OpaqueDataReader::new(&data).unwrap();
+        let mut reader = OpaqueDataReader::new(OPAQUE_DATA).unwrap();
 
         assert_eq!(reader.total_elements, 2, "total_elements should be 2");
         assert_eq!(reader.parsed_elements, 0);
@@ -343,5 +336,15 @@ mod tests {
 
         assert_eq!(element1.id, OPAQUE_STANDARD_DMTF);
         assert_eq!(element1.opaque_element_data.len(), 0x0b);
+    }
+
+    #[test]
+    fn parses_version_list_from_multiple_opaque_data_elements() {
+        let versions = parse_supported_versions(OPAQUE_DATA).unwrap();
+        assert_eq!(versions.count, 4);
+        assert_eq!(versions.versions[0], [0x00, 0x10]);
+        assert_eq!(versions.versions[1], [0x00, 0x11]);
+        assert_eq!(versions.versions[2], [0x00, 0x12]);
+        assert_eq!(versions.versions[3], [0x00, 0x13]);
     }
 }
