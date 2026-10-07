@@ -287,14 +287,19 @@ pub trait CaliptraCmdHandler {
     ///
     /// # Returns
     /// * `CaliptraCmdResult<usize>` - Number of bytes written on success, or an error.
+    ///
+    /// The default implementation returns `UnsupportedOperation`, for
+    /// integrations that do not export attested CSRs.
     async fn export_attested_csr<Alloc: ApiAlloc>(
         &self,
-        alloc: &Alloc,
-        device_key_id: u32,
-        algorithm: u32,
-        nonce: &[u8; 32],
-        csr_buf: &mut [u8],
-    ) -> CaliptraCmdResult<usize>;
+        _alloc: &Alloc,
+        _device_key_id: u32,
+        _algorithm: u32,
+        _nonce: &[u8; 32],
+        _csr_buf: &mut [u8],
+    ) -> CaliptraCmdResult<usize> {
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
 
     /// Exports an IDevID CSR (manufacturing mode only).
     ///

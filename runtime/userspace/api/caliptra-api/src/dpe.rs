@@ -385,6 +385,13 @@ pub const DPE_MLDSA87_SIGN_SCRATCH_PEAK: usize = {
         sign_phase
     }
 };
+/// Peak scratch allocation during `dpe_derive_context_exported_cdi`
+pub const DPE_DERIVE_CONTEXT_EXPORTED_CDI_SCRATCH_PEAK: usize =
+    if DERIVE_CONTEXT_MLDSA87_REQ_LEN > DERIVE_CONTEXT_REQ_LEN {
+        DERIVE_CONTEXT_MLDSA87_REQ_LEN
+    } else {
+        DERIVE_CONTEXT_REQ_LEN
+    };
 
 const CERTIFY_KEY_CHUNKS_MAX_REQ_SIZE: usize =
     if CERTIFY_KEY_MLDSA87_RESP_PREFIX_LEN > DPE_MAX_CHUNK_SIZE {
