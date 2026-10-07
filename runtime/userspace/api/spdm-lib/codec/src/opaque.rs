@@ -508,6 +508,60 @@ mod tests {
         assert!(parse_supported_versions(&[0, 0, 0, 0]).is_err());
     }
 
+    // Supported-version-list preceded by elements that must be skipped.
+    const VERSION_LIST_NOT_FIRST: [u8; 44] = [
+        4, 0, 0, 0, // General header, four elements.
+        // Element 1: non-DMTF standards body with vendor ID.
+        0x01, 0x02, 0xAA, 0xBB, // Standards body 1, vendor ID length 2.
+        0x01, 0x00, 0x42, // One data byte.
+        0x00, // Alignment padding.
+        // Element 2: DMTF version selection (wrong data ID).
+        0, 0, 4, 0, // DMTF element, four data bytes.
+        1, 0, 0, 0x11, // Version-selection header, version 1.1.
+        // Element 3: DMTF supported-version-list with unknown data version.
+        0, 0, 5, 0, // DMTF element, five data bytes.
+        2, 1, 1, // sm_data_version 2, supported-version-list, one version.
+        0, 0x12, // Secured-message version 1.2.
+        0, 0, 0, // Alignment padding.
+        // Element 4: the supported-version-list.
+        0, 0, 7, 0, // DMTF element, seven data bytes.
+        1, 1, 2, // Supported-version-list header, two versions.
+        0, 0x10, 0, 0x11, // Secured-message versions 1.0 and 1.1.
+        0,    // Alignment padding.
+    ];
+
+    #[test]
+    fn parses_version_list_that_is_not_first_element() {
+        let versions = parse_supported_versions(&VERSION_LIST_NOT_FIRST).unwrap();
+
+        assert_eq!(versions.count, 2);
+        assert_eq!(versions.versions[0], [0x00, 0x10]);
+        assert_eq!(versions.versions[1], [0x00, 0x11]);
+    }
+
+    #[test]
+    fn rejects_list_with_only_skipped_elements() {
+        // Same data without the trailing supported-version-list element.
+        let mut opaque = [0u8; 32];
+        opaque.copy_from_slice(&VERSION_LIST_NOT_FIRST[..32]);
+        opaque[0] = 3;
+
+        assert!(parse_supported_versions(&opaque).is_err());
+    }
+
+    #[test]
+    fn rejects_duplicate_version_list() {
+        // VERSION_LIST's element appears twice. Each copy is valid by itself.
+        let element = &VERSION_LIST[4..];
+        let mut opaque = [0u8; 4 + 2 * 12];
+        opaque[0] = 2; // General header, two elements.
+        opaque[4..16].copy_from_slice(element);
+        opaque[16..].copy_from_slice(element);
+
+        assert!(parse_supported_versions(&VERSION_LIST).is_ok());
+        assert!(parse_supported_versions(&opaque).is_err());
+    }
+
     #[test]
     fn parses_version_list_from_multiple_opaque_data_elements() {
         let versions = parse_supported_versions(OPAQUE_DATA).unwrap();
