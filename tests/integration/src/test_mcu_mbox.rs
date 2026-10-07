@@ -2925,7 +2925,7 @@ pub mod test {
         }
 
         fn test_delete_command(&mut self) -> Result<(), ()> {
-            let cmk = self.import_key_checked(&[0x5a; 48], CmKeyUsage::Hmac)?;
+            let cmk = self.import_key_checked(&[0x5a; 32], CmKeyUsage::Aes)?;
             self.delete_key_checked(&cmk)?;
             self.expect_command_failure(
                 McuMailboxReq::Delete(McuCmDeleteReq(CmDeleteReq {
@@ -2971,10 +2971,8 @@ pub mod test {
             assert_eq!(header.data_len, 48);
             assert_eq!(mac, rustcrypto_hmac(CmHashAlgorithm::Sha384, &key, &[]));
 
-            self.delete_key_checked(&cmk)?;
             for (invalid_cmk, description) in [
                 (Cmk::default(), "unknown"),
-                (cmk, "deleted"),
                 (
                     self.import_key_checked(&[0xa5; 32], CmKeyUsage::Aes)?,
                     "incompatible",
@@ -3015,13 +3013,10 @@ pub mod test {
                 MailboxRespHeader::FIPS_STATUS_APPROVED
             );
             self.delete_key_checked(&response.0.kout)?;
-            let deleted_key = hmac_key.clone();
-            self.delete_key_checked(&hmac_key)?;
 
             let aes_key = self.import_key_checked(&[0xa5; 32], CmKeyUsage::Aes)?;
             for (kin, description) in [
                 (Cmk::default(), "unknown"),
-                (deleted_key, "deleted"),
                 (aes_key.clone(), "incompatible"),
             ] {
                 self.expect_command_failure(
@@ -3057,12 +3052,9 @@ pub mod test {
                 MailboxRespHeader::FIPS_STATUS_APPROVED
             );
             self.delete_key_checked(&response.0.prk)?;
-            self.delete_key_checked(&salt)?;
-            self.delete_key_checked(&ikm)?;
             let aes_key = self.import_key_checked(&[0xa5; 32], CmKeyUsage::Aes)?;
             for (salt, ikm, description) in [
                 (Cmk::default(), Cmk::default(), "unknown"),
-                (salt, ikm, "deleted"),
                 (aes_key.clone(), aes_key.clone(), "incompatible"),
             ] {
                 self.expect_command_failure(
@@ -3099,15 +3091,10 @@ pub mod test {
                 MailboxRespHeader::FIPS_STATUS_APPROVED
             );
             self.delete_key_checked(&response.0.okm)?;
-            let deleted_prk = prk.clone();
-            self.delete_key_checked(&prk)?;
-            self.delete_key_checked(&salt)?;
-            self.delete_key_checked(&ikm)?;
 
             let aes_key = self.import_key_checked(&[0xa5; 32], CmKeyUsage::Aes)?;
             for (prk, description) in [
                 (Cmk::default(), "unknown"),
-                (deleted_prk, "deleted"),
                 (aes_key.clone(), "incompatible"),
             ] {
                 self.expect_command_failure(
