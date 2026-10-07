@@ -575,10 +575,10 @@ fn test_prod_debug_unlock_complete_responses() -> Result<()> {
         mldsa_private_key_bytes,
         mldsa_public_key: mldsa_public_key_words.try_into().unwrap(),
     });
-
     let mut hw = start_runtime_hw_model(TestParams {
         feature: Some("test-mcu-mbox-cmds"),
         i3c_port: Some(random_port::PortPicker::new().random(true).pick().unwrap()),
+        use_strap_secrets: true,
         lifecycle_controller_state: Some(LifecycleControllerState::Prod),
         debug_intent: true,
         prod_dbg_unlock_keypairs,
