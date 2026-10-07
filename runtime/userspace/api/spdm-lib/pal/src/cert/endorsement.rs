@@ -456,20 +456,14 @@ impl SingleManagedEndorsement {
             .read(self.base, MANAGED_HEADER_SIZE, &mut header)
             .await
             .map_err(map_flash_error)?;
-        if header.iter().all(|&b| b == MANAGED_ERASED_BYTE) || header[0..4] != MANAGED_MAGIC {
-            return Ok(());
-        }
-        let Some(record) = ManagedRecord::decode(&header) else {
+        let Some(record) = ManagedRecord::decode(
+            &header,
+            self.slot,
+            managed_algo_code(self.algo),
+            self.der_capacity(),
+        ) else {
             return Ok(());
         };
-        if record.version != MANAGED_FORMAT_VERSION
-            || record.header_size as usize != MANAGED_HEADER_SIZE
-            || record.slot != self.slot
-            || record.algo != managed_algo_code(self.algo)
-            || record.cert_len > self.der_capacity()
-        {
-            return Ok(());
-        }
         if self.stored_checksum(record.cert_len).await? != record.data_checksum {
             return Ok(());
         }
@@ -591,10 +585,6 @@ impl SingleManagedEndorsement {
         }
         let data_checksum = self.stored_checksum(data_len).await?;
         let record = ManagedRecord {
-            version: MANAGED_FORMAT_VERSION,
-            header_size: MANAGED_HEADER_SIZE as u16,
-            slot: self.slot,
-            algo: managed_algo_code(self.algo),
             key_pair_id,
             cert_info,
             key_usage_mask: MANAGED_KEY_USAGE_MASK,
@@ -603,7 +593,7 @@ impl SingleManagedEndorsement {
             root_hash: *root_hash,
         };
         let mut header = [MANAGED_ERASED_BYTE; MANAGED_HEADER_SIZE];
-        record.encode(&mut header);
+        record.encode(self.slot, managed_algo_code(self.algo), &mut header);
         self.flash()
             .write(self.base, MANAGED_HEADER_SIZE, &header)
             .await
@@ -629,10 +619,6 @@ impl SingleManagedEndorsement {
         }
 
         let record = ManagedRecord {
-            version: MANAGED_FORMAT_VERSION,
-            header_size: MANAGED_HEADER_SIZE as u16,
-            slot: self.slot,
-            algo: managed_algo_code(self.algo),
             key_pair_id,
             cert_info,
             key_usage_mask: MANAGED_KEY_USAGE_MASK,
@@ -641,7 +627,7 @@ impl SingleManagedEndorsement {
             root_hash: *root_hash,
         };
         let mut header = [MANAGED_ERASED_BYTE; MANAGED_HEADER_SIZE];
-        record.encode(&mut header);
+        record.encode(self.slot, managed_algo_code(self.algo), &mut header);
 
         let flash = self.flash();
         flash
@@ -786,10 +772,6 @@ impl ManagedEndorsementSlot {
 #[cfg(feature = "set-certificate")]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct ManagedRecord {
-    version: u16,
-    header_size: u16,
-    slot: u8,
-    algo: u8,
     key_pair_id: u8,
     cert_info: u8,
     key_usage_mask: u16,
@@ -800,7 +782,7 @@ struct ManagedRecord {
 
 #[cfg(feature = "set-certificate")]
 impl ManagedRecord {
-    fn encode(&self, out: &mut [u8; MANAGED_HEADER_SIZE]) {
+    fn encode(&self, slot: u8, algo: u8, out: &mut [u8; MANAGED_HEADER_SIZE]) {
         // Layout (matches decode below):
         //   [0..4]   magic
         //   [4..6]   version (LE)
@@ -818,11 +800,11 @@ impl ManagedRecord {
         let (magic, rest) = out.split_first_chunk_mut::<4>().unwrap();
         *magic = MANAGED_MAGIC;
         let (version, rest) = rest.split_first_chunk_mut::<2>().unwrap();
-        *version = self.version.to_le_bytes();
+        *version = MANAGED_FORMAT_VERSION.to_le_bytes();
         let (hdr_size, rest) = rest.split_first_chunk_mut::<2>().unwrap();
-        *hdr_size = self.header_size.to_le_bytes();
-        rest[0] = self.slot;
-        rest[1] = self.algo;
+        *hdr_size = (MANAGED_HEADER_SIZE as u16).to_le_bytes();
+        rest[0] = slot;
+        rest[1] = algo;
         rest[2] = self.key_pair_id;
         rest[3] = self.cert_info;
         let rest = &mut rest[4..];
@@ -838,8 +820,16 @@ impl ManagedRecord {
         *rh = self.root_hash;
     }
 
-    fn decode(input: &[u8; MANAGED_HEADER_SIZE]) -> Option<Self> {
+    fn decode(
+        input: &[u8; MANAGED_HEADER_SIZE],
+        expected_slot: u8,
+        expected_algo: u8,
+        der_capacity: usize,
+    ) -> Option<Self> {
         let (magic, rest) = input.split_first_chunk::<4>()?;
+        if *magic != MANAGED_MAGIC {
+            return None;
+        }
         let (version, rest) = rest.split_first_chunk::<2>()?;
         let (header_size, rest) = rest.split_first_chunk::<2>()?;
         let (slot, rest) = rest.split_first()?;
@@ -851,17 +841,20 @@ impl ManagedRecord {
         let (cert_len, rest) = rest.split_first_chunk::<4>()?;
         let (data_checksum, rest) = rest.split_first_chunk::<4>()?;
         let (root_hash, _) = rest.split_first_chunk::<48>()?;
-        // magic is not parsed here; caller checks it before invoking decode.
-        let _ = magic;
+        let cert_len = u32::from_le_bytes(*cert_len) as usize;
+        if u16::from_le_bytes(*version) != MANAGED_FORMAT_VERSION
+            || u16::from_le_bytes(*header_size) as usize != MANAGED_HEADER_SIZE
+            || *slot != expected_slot
+            || *algo != expected_algo
+            || cert_len > der_capacity
+        {
+            return None;
+        }
         Some(Self {
-            version: u16::from_le_bytes(*version),
-            header_size: u16::from_le_bytes(*header_size),
-            slot: *slot,
-            algo: *algo,
             key_pair_id: *key_pair_id,
             cert_info: *cert_info,
             key_usage_mask: u16::from_le_bytes(*kum),
-            cert_len: u32::from_le_bytes(*cert_len) as usize,
+            cert_len,
             data_checksum: u32::from_le_bytes(*data_checksum),
             root_hash: *root_hash,
         })
@@ -1068,10 +1061,6 @@ mod tests {
     #[test]
     fn managed_record_round_trips() {
         let record = ManagedRecord {
-            version: MANAGED_FORMAT_VERSION,
-            header_size: MANAGED_HEADER_SIZE as u16,
-            slot: 2,
-            algo: MANAGED_ALGO_ECC_P384,
             key_pair_id: 7,
             cert_info: 3,
             key_usage_mask: 0x0003,
@@ -1080,9 +1069,12 @@ mod tests {
             root_hash: [0x5a; 48],
         };
         let mut buf = [MANAGED_ERASED_BYTE; MANAGED_HEADER_SIZE];
-        record.encode(&mut buf);
+        record.encode(2, MANAGED_ALGO_ECC_P384, &mut buf);
         assert_eq!(&buf[0..4], &MANAGED_MAGIC);
-        assert_eq!(ManagedRecord::decode(&buf), Some(record));
+        assert_eq!(
+            ManagedRecord::decode(&buf, 2, MANAGED_ALGO_ECC_P384, TEST_REGION),
+            Some(record)
+        );
     }
 
     #[test]
