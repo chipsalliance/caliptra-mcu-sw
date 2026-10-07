@@ -338,6 +338,176 @@ mod tests {
         assert_eq!(element1.opaque_element_data.len(), 0x0b);
     }
 
+    // Single element with a 2-byte vendor ID and 1 data byte, which requires
+    // one byte of padding (4 + 2 + 1 = 7).
+    const VENDOR_ELEMENT: [u8; 12] = [
+        1, 0, 0, 0, // General header, one element.
+        0x01, 0x02, // Non-DMTF standards body, vendor ID length 2.
+        0xAA, 0xBB, // Vendor ID.
+        0x01, 0x00, // One data byte.
+        0x42, // Data.
+        0x00, // Alignment padding.
+    ];
+
+    #[test]
+    fn opaque_reader_parses_vendor_id_and_padding() {
+        let mut reader = OpaqueDataReader::new(&VENDOR_ELEMENT).unwrap();
+
+        let element = reader.next().unwrap().expect("expected element");
+        assert_eq!(element.id, 0x01);
+        assert_eq!(element.vendor_id, &[0xAA, 0xBB]);
+        assert_eq!(element.opaque_element_data, &[0x42]);
+        assert!(reader.next().unwrap().is_none());
+        assert!(reader.opaque_list.is_empty());
+    }
+
+    #[test]
+    fn opaque_reader_rejects_empty_input() {
+        assert!(OpaqueDataReader::new(&[]).is_err());
+    }
+
+    #[test]
+    fn opaque_reader_rejects_misaligned_input() {
+        for len in [1, 2, 3, 5, 6, 7] {
+            let data = [0u8; 8];
+            assert!(
+                OpaqueDataReader::new(&data[..len]).is_err(),
+                "length {len} should be rejected"
+            );
+        }
+        // Valid data with one trailing byte must also be rejected.
+        let mut data = [0u8; 13];
+        data[..12].copy_from_slice(&VENDOR_ELEMENT);
+        assert!(OpaqueDataReader::new(&data).is_err());
+    }
+
+    #[test]
+    fn opaque_reader_rejects_nonzero_reserved_bytes() {
+        for idx in 1..4 {
+            let mut data = VENDOR_ELEMENT;
+            data[idx] = 0x80;
+            assert!(
+                OpaqueDataReader::new(&data).is_err(),
+                "reserved byte {idx} set should be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn opaque_reader_zero_elements_yields_none() {
+        let mut reader = OpaqueDataReader::new(&[0, 0, 0, 0]).unwrap();
+        assert!(reader.next().unwrap().is_none());
+        // Repeated calls stay at `None`.
+        assert!(reader.next().unwrap().is_none());
+    }
+
+    #[test]
+    fn opaque_reader_rejects_missing_element() {
+        // Header declares one element but no element data follows.
+        let mut reader = OpaqueDataReader::new(&[1, 0, 0, 0]).unwrap();
+        assert!(reader.next().is_err());
+    }
+
+    #[test]
+    fn opaque_reader_rejects_more_declared_elements_than_present() {
+        let mut data = [0u8; OPAQUE_DATA.len()];
+        data.copy_from_slice(OPAQUE_DATA);
+        data[0] = 3;
+
+        let mut reader = OpaqueDataReader::new(&data).unwrap();
+        assert!(reader.next().unwrap().is_some());
+        assert!(reader.next().unwrap().is_some());
+        assert!(reader.next().is_err());
+    }
+
+    #[test]
+    fn opaque_reader_rejects_max_declared_elements() {
+        let mut data = VENDOR_ELEMENT;
+        data[0] = u8::MAX;
+
+        let mut reader = OpaqueDataReader::new(&data).unwrap();
+        assert!(reader.next().unwrap().is_some());
+        assert!(reader.next().is_err());
+    }
+
+    #[test]
+    fn opaque_reader_rejects_vendor_id_len_exceeding_data() {
+        // Vendor ID length 4, but only the 2-byte data length field follows.
+        let data = [1, 0, 0, 0, 0x01, 0x04, 0x00, 0x00];
+        let mut reader = OpaqueDataReader::new(&data).unwrap();
+        assert!(reader.next().is_err());
+
+        let mut data = VENDOR_ELEMENT;
+        data[5] = u8::MAX;
+        let mut reader = OpaqueDataReader::new(&data).unwrap();
+        assert!(reader.next().is_err());
+    }
+
+    #[test]
+    fn opaque_reader_rejects_data_len_exceeding_data() {
+        // Data length 1, but no data byte follows.
+        let data = [1, 0, 0, 0, 0x00, 0x00, 0x01, 0x00];
+        let mut reader = OpaqueDataReader::new(&data).unwrap();
+        assert!(reader.next().is_err());
+
+        // Maximum data length.
+        let data = [1, 0, 0, 0, 0x00, 0x00, 0xFF, 0xFF];
+        let mut reader = OpaqueDataReader::new(&data).unwrap();
+        assert!(reader.next().is_err());
+    }
+
+    #[test]
+    fn opaque_reader_rejects_nonzero_padding_with_vendor_id() {
+        let mut data = VENDOR_ELEMENT;
+        data[11] = 0x01;
+
+        let mut reader = OpaqueDataReader::new(&data).unwrap();
+        assert!(reader.next().is_err());
+    }
+
+    #[test]
+    fn opaque_reader_rejects_missing_padding_between_elements() {
+        // Two 6-byte elements without their 2-byte padding. The total length
+        // is still 4-byte aligned, but the reader consumes the start of the
+        // second element as padding of the first, which is non-zero.
+        let data = [
+            2, 0, 0, 0, // General header, two elements.
+            0x00, 0x00, 0x02, 0x00, 0x11, 0x22, // Element 1, padding missing.
+            0x01, 0x00, 0x02, 0x00, 0x33, 0x44, // Element 2, padding missing.
+        ];
+        let mut reader = OpaqueDataReader::new(&data).unwrap();
+        assert!(reader.next().is_err());
+    }
+
+    #[test]
+    fn opaque_reader_rejects_truncated_second_element() {
+        let mut data = [0u8; OPAQUE_DATA.len()];
+        data.copy_from_slice(OPAQUE_DATA);
+        // Second element declares 5 data bytes, only 4 remain.
+        data[22] = 5;
+
+        let mut reader = OpaqueDataReader::new(&data).unwrap();
+        assert!(reader.next().unwrap().is_some());
+        assert!(reader.next().is_err());
+    }
+
+    #[test]
+    fn opaque_reader_rejects_nonzero_padding_in_second_element() {
+        let mut data = [0u8; OPAQUE_DATA.len()];
+        data.copy_from_slice(OPAQUE_DATA);
+        data[27] = 0x01;
+
+        let mut reader = OpaqueDataReader::new(&data).unwrap();
+        assert!(reader.next().unwrap().is_some());
+        assert!(reader.next().is_err());
+    }
+
+    #[test]
+    fn parse_rejects_list_without_dmtf_element() {
+        assert!(parse_supported_versions(&VENDOR_ELEMENT).is_err());
+        assert!(parse_supported_versions(&[0, 0, 0, 0]).is_err());
+    }
+
     #[test]
     fn parses_version_list_from_multiple_opaque_data_elements() {
         let versions = parse_supported_versions(OPAQUE_DATA).unwrap();
