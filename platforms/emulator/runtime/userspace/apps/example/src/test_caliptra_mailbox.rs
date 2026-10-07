@@ -2,9 +2,39 @@
 
 use caliptra_api::mailbox::{MailboxReqHeader, QuotePcrsEcc384Req, QuotePcrsEcc384Resp, Request};
 use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
+use caliptra_mcu_libsyscall_caliptra::system::System;
+use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
+use caliptra_mcu_libtock_console::Console;
 use caliptra_mcu_libtock_platform::ErrorCode;
 use caliptra_mcu_romtime::{println, test_exit};
+use core::fmt::Write;
 use zerocopy::{FromBytes, IntoBytes};
+
+#[allow(unused)]
+pub(crate) async fn test_caliptra_mailbox_mbox1_staging() {
+    let mut console = Console::<DefaultSyscalls>::writer();
+    writeln!(
+        console,
+        "Starting GET_IMAGE_INFO with MCU MBOX1 staging test"
+    )
+    .unwrap();
+
+    match mcu_caliptra_api::core_image_info(0x02).await {
+        Ok(image_info) => {
+            writeln!(console, "GET_IMAGE_INFO succeeded: {:?}", image_info).unwrap();
+            writeln!(console, "MCU MBOX1 staging test passed").unwrap();
+        }
+        Err(err) => {
+            writeln!(
+                console,
+                "GET_IMAGE_INFO with MCU MBOX1 staging failed: {:?}",
+                err
+            )
+            .unwrap();
+            System::exit(1);
+        }
+    }
+}
 
 #[allow(unused)]
 pub(crate) async fn test_caliptra_mailbox() {

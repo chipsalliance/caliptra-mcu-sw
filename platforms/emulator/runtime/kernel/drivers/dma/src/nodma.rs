@@ -44,6 +44,27 @@ impl<'a, A: Alarm<'a>> NoDMA<'a, A> {
         let dt = A::Ticks::from(10000);
         self.alarm.set_alarm(now, dt);
     }
+
+    fn perform_transfer(&self) {
+        let byte_count = *self.btt.borrow() as usize;
+        let src_addr = *self.src_addr.borrow();
+        let dest_addr = *self.dest_addr.borrow();
+
+        for offset in (0..byte_count).step_by(4) {
+            let mut bytes = [0u8; 4];
+            let valid = core::cmp::min(4, byte_count - offset);
+            for (index, byte) in bytes.iter_mut().take(valid).enumerate() {
+                let src_ptr = src_addr.wrapping_add((offset + index) as u32) as *const u8;
+                unsafe {
+                    *byte = core::ptr::read_volatile(src_ptr);
+                }
+            }
+            let dst_ptr = dest_addr.wrapping_add(offset as u32) as *mut u32;
+            unsafe {
+                core::ptr::write_volatile(dst_ptr, u32::from_le_bytes(bytes));
+            }
+        }
+    }
 }
 
 impl<'a, A: Alarm<'a>> Dma for NoDMA<'a, A> {
@@ -61,6 +82,9 @@ impl<'a, A: Alarm<'a>> Dma for NoDMA<'a, A> {
 
         // Check if the addresses are valid
         if src_addr.is_none() || dest_addr.is_none() {
+            return Err(ErrorCode::INVAL);
+        }
+        if dest_addr.unwrap() % 4 != 0 {
             return Err(ErrorCode::INVAL);
         }
         if *self.busy.borrow() {
@@ -107,14 +131,7 @@ impl<'a, A: Alarm<'a>> Dma for NoDMA<'a, A> {
         }
         // Perform the transfer synchronously (direct memory access).
         // The alarm will fire later but is a no-op once busy is cleared.
-        for offset in 0..(*self.btt.borrow()) {
-            let src_ptr = self.src_addr.borrow().wrapping_add(offset) as *const u8;
-            let dst_ptr = self.dest_addr.borrow().wrapping_add(offset) as *mut u8;
-            unsafe {
-                let value = core::ptr::read_volatile(src_ptr);
-                core::ptr::write_volatile(dst_ptr, value);
-            }
-        }
+        self.perform_transfer();
         *self.busy.borrow_mut() = false;
         Ok(DmaStatus::TxnDone)
     }
@@ -139,15 +156,7 @@ impl<'a, A: Alarm<'a>> AlarmClient for NoDMA<'a, A> {
             return;
         }
 
-        // Transfer in bytes since src or dest may not be word aligned
-        for offset in 0..(*self.btt.borrow()) {
-            let src_ptr = self.src_addr.borrow().wrapping_add(offset) as *const u8;
-            let dst_ptr = self.dest_addr.borrow().wrapping_add(offset) as *mut u8;
-            unsafe {
-                let value = core::ptr::read_volatile(src_ptr);
-                core::ptr::write_volatile(dst_ptr, value);
-            }
-        }
+        self.perform_transfer();
 
         *self.busy.borrow_mut() = false;
         self.dma_client.map(move |client| {

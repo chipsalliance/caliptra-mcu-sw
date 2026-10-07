@@ -13,6 +13,8 @@ mod rom;
 mod runtime;
 mod test_active_i3c;
 mod test_caliptra_runtime_svn_burn;
+#[cfg(feature = "fpga_realtime")]
+mod test_caliptra_mailbox_mbox1_staging;
 mod test_caliptra_util_host_mcu_mailbox_validator;
 mod test_caliptra_util_host_spdm_vdm_validator;
 mod test_defmt_logging_mailbox;
