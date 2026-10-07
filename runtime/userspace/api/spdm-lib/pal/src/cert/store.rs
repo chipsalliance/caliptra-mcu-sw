@@ -285,52 +285,55 @@ impl TaskCertStore {
         self.shared.cert_slot_mut(idx)
     }
 
-    pub(crate) fn cached_chain_len(&self, slot: u8, algo: SpdmPalAsymAlgo) -> Option<u32> {
+    #[inline(never)]
+    fn slot_cache(&self, slot: u8) -> Option<&SlotCache> {
         let idx = slot_index(slot)?;
-        unsafe { (*self.caches.get())[idx].algo_cache(algo).chain_len }
+        unsafe { Some(&(*self.caches.get())[idx]) }
+    }
+
+    #[inline(never)]
+    #[allow(clippy::mut_from_ref)]
+    fn slot_cache_mut(&self, slot: u8) -> Option<&mut SlotCache> {
+        let idx = slot_index(slot)?;
+        unsafe { Some(&mut (*self.caches.get())[idx]) }
+    }
+
+    pub(crate) fn cached_chain_len(&self, slot: u8, algo: SpdmPalAsymAlgo) -> Option<u32> {
+        self.slot_cache(slot)?.algo_cache(algo).chain_len
     }
 
     pub(crate) fn set_cached_chain_len(&self, slot: u8, algo: SpdmPalAsymAlgo, len: u32) {
-        if let Some(idx) = slot_index(slot) {
-            unsafe {
-                (*self.caches.get())[idx].algo_cache_mut(algo).chain_len = Some(len);
-            }
+        if let Some(cache) = self.slot_cache_mut(slot) {
+            cache.algo_cache_mut(algo).chain_len = Some(len);
         }
     }
 
     pub(crate) fn cached_leaf_len(&self, slot: u8, algo: SpdmPalAsymAlgo) -> Option<u32> {
-        let idx = slot_index(slot)?;
-        unsafe { (*self.caches.get())[idx].algo_cache(algo).leaf_len }
+        self.slot_cache(slot)?.algo_cache(algo).leaf_len
     }
 
     pub(crate) fn set_cached_leaf_len(&self, slot: u8, algo: SpdmPalAsymAlgo, len: u32) {
-        if let Some(idx) = slot_index(slot) {
-            unsafe {
-                (*self.caches.get())[idx].algo_cache_mut(algo).leaf_len = Some(len);
-            }
+        if let Some(cache) = self.slot_cache_mut(slot) {
+            cache.algo_cache_mut(algo).leaf_len = Some(len);
         }
     }
 
     pub(crate) fn cached_dpe_skip_len(&self, slot: u8, algo: SpdmPalAsymAlgo) -> Option<u32> {
-        let idx = slot_index(slot)?;
-        unsafe { (*self.caches.get())[idx].algo_cache(algo).dpe_skip_len }
+        self.slot_cache(slot)?.algo_cache(algo).dpe_skip_len
     }
 
     pub(crate) fn set_cached_dpe_skip_len(&self, slot: u8, algo: SpdmPalAsymAlgo, len: u32) {
-        if let Some(idx) = slot_index(slot) {
-            unsafe {
-                (*self.caches.get())[idx].algo_cache_mut(algo).dpe_skip_len = Some(len);
-            }
+        if let Some(cache) = self.slot_cache_mut(slot) {
+            cache.algo_cache_mut(algo).dpe_skip_len = Some(len);
         }
     }
 
     pub(crate) fn cached_chain_digest(&self, slot: u8, algo: SpdmPalAsymAlgo) -> Option<[u8; 48]> {
-        let idx = slot_index(slot)?;
-        unsafe { (*self.caches.get())[idx].algo_cache(algo).chain_digest }
+        self.slot_cache(slot)?.algo_cache(algo).chain_digest
     }
 
     pub(crate) fn cache_chain_digest(&self, slot: u8, algo: SpdmPalAsymAlgo, digest: &[u8]) {
-        if let Some(idx) = slot_index(slot) {
+        if let Some(cache) = self.slot_cache_mut(slot) {
             if digest.len() > 48 {
                 return;
             }
@@ -338,18 +341,14 @@ impl TaskCertStore {
             for (d, s) in entry.iter_mut().zip(digest) {
                 *d = *s;
             }
-            unsafe {
-                (*self.caches.get())[idx].algo_cache_mut(algo).chain_digest = Some(entry);
-            }
+            cache.algo_cache_mut(algo).chain_digest = Some(entry);
         }
     }
 
     #[allow(dead_code)]
     pub(crate) fn invalidate_cert_caches(&self, slot: u8) {
-        if let Some(idx) = slot_index(slot) {
-            unsafe {
-                (*self.caches.get())[idx].invalidate();
-            }
+        if let Some(cache) = self.slot_cache_mut(slot) {
+            cache.invalidate();
         }
     }
 }
