@@ -4,7 +4,7 @@ use caliptra_mcu_common_commands::{AuthorizationError, CommandAuthorizer};
 use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
 use core::cell::RefCell;
 use embassy_sync::blocking_mutex::{raw::CriticalSectionRawMutex, Mutex};
-use mcu_caliptra_api::ApiAlloc;
+use mcu_caliptra_api::ScratchAlloc;
 
 static CHALLENGE: Mutex<CriticalSectionRawMutex, RefCell<Option<[u8; AUTH_CMD_NONCE_LEN]>>> =
     Mutex::new(RefCell::new(None));
@@ -14,7 +14,7 @@ pub struct MockCommandAuthorizer;
 
 impl CommandAuthorizer for MockCommandAuthorizer {
     #[allow(clippy::too_many_arguments)]
-    async fn verify_signatures<Alloc: ApiAlloc>(
+    async fn verify_signatures<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         cmd_id: u32,

@@ -22,6 +22,7 @@ caliptra-mcu-libtock_platform.workspace = true
 caliptra-mcu-libtock_runtime.workspace = true
 caliptra-mcu-libtockasync.workspace = true
 caliptra-mcu-mbox-common.workspace = true
+caliptra-mcu-scratch-alloc.workspace = true
 caliptra-mcu-userlog.workspace = true
 zerocopy.workspace = true
 
@@ -33,6 +34,7 @@ default = []
 disable-lms-sig-verify = []
 device-ownership-transfer = ["caliptra-mcu-common-commands/device-ownership-transfer"]
 periodic-fips-self-test = []
+attested-csr = []
 ocp-lock = ["caliptra-mcu-common-commands/ocp-lock"]
 release = [
 	"dep:defmt",

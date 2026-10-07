@@ -54,7 +54,7 @@ where
     match execute_authorized(
         commands,
         authorizer,
-        scratch,
+        scratch.allocator(),
         request,
         response,
         CommandPolicy::SPDM,

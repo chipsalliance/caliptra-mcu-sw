@@ -20,7 +20,15 @@ where
     let Some((completion, response)) = output.split_first_mut() else {
         return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InsufficientResources);
     };
-    match execute_ocp_lock(commands, scratch, request, response, CommandPolicy::SPDM).await {
+    match execute_ocp_lock(
+        commands,
+        scratch.allocator(),
+        request,
+        response,
+        CommandPolicy::SPDM,
+    )
+    .await
+    {
         Ok(CommandResponse::Data(len)) => {
             *completion = CaliptraCompletionCode::Success as u8;
             CaliptraVdmCmdResult::Response(1 + len)

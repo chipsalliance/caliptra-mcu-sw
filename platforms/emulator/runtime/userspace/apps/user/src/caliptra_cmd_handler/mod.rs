@@ -33,7 +33,7 @@ use caliptra_mcu_mbox_common::messages::{
     DotRotatePayload, DotStatus, DotUnlockPayload, AUTH_CMD_NONCE_LEN, DOT_BLOB_SIZE,
 };
 use caliptra_mcu_otp_fuse::fuse_read_dai_params;
-use mcu_caliptra_api::{core_capabilities, core_firmware_version, ApiAlloc};
+use mcu_caliptra_api::{core_capabilities, core_firmware_version, ScratchAlloc};
 #[cfg(feature = "pcr-quote")]
 use mcu_caliptra_api::{PCR_QUOTE_ECC384_BUF_LEN, PCR_QUOTE_MLDSA87_BUF_LEN};
 #[cfg(feature = "ocp-lock")]
@@ -80,11 +80,17 @@ fn external_command_capabilities() -> ExternalCommandCapabilities {
     }
     if cfg!(feature = "spdm") {
         capabilities |= ExternalCommandCapabilities::REQUEST_DEBUG_UNLOCK
-            | ExternalCommandCapabilities::AUTHORIZE_DEBUG_UNLOCK_TOKEN
-            | ExternalCommandCapabilities::EXPORT_ATTESTED_CSR;
+            | ExternalCommandCapabilities::AUTHORIZE_DEBUG_UNLOCK_TOKEN;
     }
     if cfg!(feature = "spdm") || cfg!(feature = "mcu-mbox-service") {
         capabilities |= ExternalCommandCapabilities::AUTHORIZED_COMMAND;
+    }
+    // EXPORT_ATTESTED_CSR is reachable over the SPDM VDM transport and the MCU
+    // mailbox, so advertise it whenever either responder is built.
+    if cfg!(feature = "attested-csr")
+        && (cfg!(feature = "spdm") || cfg!(feature = "mcu-mbox-service"))
+    {
+        capabilities |= ExternalCommandCapabilities::EXPORT_ATTESTED_CSR;
     }
     // GET_ATTESTATION is transport-agnostic: it is reachable over the SPDM VDM
     // transport and the MCU mailbox, so advertise it whenever either responder
@@ -283,7 +289,8 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         Ok(())
     }
 
-    async fn export_attested_csr<Alloc: ApiAlloc>(
+    #[cfg(feature = "attested-csr")]
+    async fn export_attested_csr<Alloc: ScratchAlloc>(
         &self,
         _alloc: &Alloc,
         device_key_id: u32,
@@ -294,7 +301,7 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         device_ops::export_attested_csr(device_key_id, algorithm, nonce, csr_buf).await
     }
 
-    async fn export_idevid_csr<Alloc: ApiAlloc>(
+    async fn export_idevid_csr<Alloc: ScratchAlloc>(
         &self,
         _alloc: &Alloc,
         algorithm: u32,
@@ -310,7 +317,7 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         evidence_len(format, algorithm)
     }
 
-    async fn get_attestation<Alloc: ApiAlloc>(
+    async fn get_attestation<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         format: EvidenceFormat,
@@ -382,7 +389,7 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
             })
     }
 
-    async fn increase_min_svn<Alloc: ApiAlloc>(
+    async fn increase_min_svn<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         target: caliptra_mcu_mbox_common::messages::SvnTarget,
@@ -391,7 +398,7 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         device_ops::increase_min_svn(alloc, target, svn).await
     }
 
-    async fn revoke_vendor_pub_key<Alloc: ApiAlloc>(
+    async fn revoke_vendor_pub_key<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         vendor_pk_hash_slot: u32,
@@ -405,7 +412,7 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         device_ops::revoke_vendor_pk_hash(vendor_pk_hash_slot)
     }
 
-    async fn program_field_entropy<Alloc: ApiAlloc>(
+    async fn program_field_entropy<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         partition: u32,
@@ -417,7 +424,7 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         device_ops::dot_enable()
     }
 
-    async fn dot_lock<Alloc: ApiAlloc>(
+    async fn dot_lock<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         request: &DotLockPayload,
@@ -425,7 +432,7 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         device_ops::dot_lock(alloc, request).await
     }
 
-    async fn dot_disable<Alloc: ApiAlloc>(
+    async fn dot_disable<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         request: &DotDisablePayload,
@@ -433,7 +440,7 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         device_ops::dot_disable(alloc, request).await
     }
 
-    async fn dot_rotate<Alloc: ApiAlloc>(
+    async fn dot_rotate<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         request: &DotRotatePayload,
@@ -446,7 +453,7 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         Ok(())
     }
 
-    async fn dot_recovery<Alloc: ApiAlloc>(
+    async fn dot_recovery<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         blob: &[u8; DOT_BLOB_SIZE],
@@ -454,7 +461,7 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         device_ops::dot_recovery(alloc, blob).await
     }
 
-    async fn dot_override_challenge<Alloc: ApiAlloc>(
+    async fn dot_override_challenge<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         request: &DotOverrideChallengePayload,
@@ -462,7 +469,7 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         device_ops::dot_override_challenge(alloc, request).await
     }
 
-    async fn dot_override<Alloc: ApiAlloc>(
+    async fn dot_override<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         request: &DotOverridePayload,
@@ -470,14 +477,14 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         device_ops::dot_override(alloc, request).await
     }
 
-    async fn dot_unlock_challenge<Alloc: ApiAlloc>(
+    async fn dot_unlock_challenge<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
     ) -> CaliptraCmdResult<[u8; caliptra_mcu_mbox_common::messages::AUTH_CMD_NONCE_LEN]> {
         device_ops::dot_unlock_challenge(alloc).await
     }
 
-    async fn dot_unlock<Alloc: ApiAlloc>(
+    async fn dot_unlock<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         request: &DotUnlockPayload,
@@ -485,7 +492,7 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         device_ops::dot_unlock(alloc, request).await
     }
 
-    async fn dot_get_backup_blob<Alloc: ApiAlloc>(
+    async fn dot_get_backup_blob<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         blob: &mut [u8; DOT_BLOB_SIZE],
@@ -493,7 +500,7 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         device_ops::dot_get_backup_blob(alloc, blob).await
     }
 
-    async fn request_debug_unlock<Alloc: ApiAlloc>(
+    async fn request_debug_unlock<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         unlock_level: u8,
@@ -514,7 +521,7 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         Ok(())
     }
 
-    async fn authorize_debug_unlock_token<Alloc: ApiAlloc>(
+    async fn authorize_debug_unlock_token<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         token_request: &[u8],
@@ -525,7 +532,7 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
     }
 
     #[cfg(feature = "ocp-lock")]
-    async fn get_ocp_lock_endorsement_cert<Alloc: ApiAlloc>(
+    async fn get_ocp_lock_endorsement_cert<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         hpke_handle: &HpkeHandle,
@@ -570,7 +577,7 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
     }
 
     #[cfg(feature = "ocp-lock")]
-    async fn get_ocp_lock_epoch_key_report<Alloc: ApiAlloc>(
+    async fn get_ocp_lock_epoch_key_report<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         nonce: &[u8; 32],
@@ -600,7 +607,7 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
     }
 
     #[cfg(feature = "ocp-lock")]
-    async fn ocp_lock_rotate_hek<Alloc: ApiAlloc>(
+    async fn ocp_lock_rotate_hek<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         slot: u32,
@@ -628,8 +635,7 @@ mod tests {
             | ExternalCommandCapabilities::GET_DEBUG_LOG
             | ExternalCommandCapabilities::CLEAR_DEBUG_LOG;
         let spdm_commands = ExternalCommandCapabilities::REQUEST_DEBUG_UNLOCK
-            | ExternalCommandCapabilities::AUTHORIZE_DEBUG_UNLOCK_TOKEN
-            | ExternalCommandCapabilities::EXPORT_ATTESTED_CSR;
+            | ExternalCommandCapabilities::AUTHORIZE_DEBUG_UNLOCK_TOKEN;
         let authorized_transport = cfg!(feature = "spdm") || cfg!(feature = "mcu-mbox-service");
         let dot_transport = cfg!(feature = "dot-spdm-vdm") || cfg!(feature = "dot-mci-mailbox");
         let ocp_lock_transport = cfg!(feature = "ocp-lock") && authorized_transport;
@@ -650,6 +656,10 @@ mod tests {
         assert_eq!(
             commands.contains(ExternalCommandCapabilities::AUTHORIZED_COMMAND),
             authorized_transport
+        );
+        assert_eq!(
+            commands.contains(ExternalCommandCapabilities::EXPORT_ATTESTED_CSR),
+            authorized_transport && cfg!(feature = "attested-csr")
         );
         assert_eq!(
             commands.contains(ExternalCommandCapabilities::DEVICE_OWNERSHIP_TRANSFER),

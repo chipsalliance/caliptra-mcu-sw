@@ -72,64 +72,64 @@ impl<S> Transcript<S> {
         self.l1 = None;
     }
 
-    pub async fn append_vca<H>(
-        &mut self,
-        hash: &H,
-        io: &impl SpdmPalIo,
-        bytes: &[u8],
-    ) -> McuResult<()>
+    pub fn append_vca<'a, H>(
+        &'a mut self,
+        hash: &'a H,
+        io: &'a impl SpdmPalIo,
+        bytes: &'a [u8],
+    ) -> impl core::future::Future<Output = McuResult<()>> + 'a
     where
-        H: SpdmPalHash<State = S>,
+        H: SpdmPalHash<State = S> + 'a,
     {
-        self.append(Slot::Vca, hash, io, bytes).await
+        self.append(Slot::Vca, hash, io, bytes)
     }
 
-    pub async fn append_m1<H>(
-        &mut self,
-        hash: &H,
-        io: &impl SpdmPalIo,
-        bytes: &[u8],
-    ) -> McuResult<()>
+    pub fn append_m1<'a, H>(
+        &'a mut self,
+        hash: &'a H,
+        io: &'a impl SpdmPalIo,
+        bytes: &'a [u8],
+    ) -> impl core::future::Future<Output = McuResult<()>> + 'a
     where
-        H: SpdmPalHash<State = S>,
+        H: SpdmPalHash<State = S> + 'a,
     {
-        self.append(Slot::M1, hash, io, bytes).await
+        self.append(Slot::M1, hash, io, bytes)
     }
 
-    pub async fn append_l1<H>(
-        &mut self,
-        hash: &H,
-        io: &impl SpdmPalIo,
-        bytes: &[u8],
-    ) -> McuResult<()>
+    pub fn append_l1<'a, H>(
+        &'a mut self,
+        hash: &'a H,
+        io: &'a impl SpdmPalIo,
+        bytes: &'a [u8],
+    ) -> impl core::future::Future<Output = McuResult<()>> + 'a
     where
-        H: SpdmPalHash<State = S>,
+        H: SpdmPalHash<State = S> + 'a,
     {
-        self.append(Slot::L1, hash, io, bytes).await
+        self.append(Slot::L1, hash, io, bytes)
     }
 
-    pub async fn finalize_m1<H>(
-        &mut self,
-        hash: &H,
-        io: &impl SpdmPalIo,
-        out: &mut [u8],
-    ) -> McuResult<()>
+    pub fn finalize_m1<'a, H>(
+        &'a mut self,
+        hash: &'a H,
+        io: &'a impl SpdmPalIo,
+        out: &'a mut [u8],
+    ) -> impl core::future::Future<Output = McuResult<()>> + 'a
     where
-        H: SpdmPalHash<State = S>,
+        H: SpdmPalHash<State = S> + 'a,
     {
-        self.finalize(Slot::M1, hash, io, out).await
+        self.finalize(Slot::M1, hash, io, out)
     }
 
-    pub async fn finalize_l1<H>(
-        &mut self,
-        hash: &H,
-        io: &impl SpdmPalIo,
-        out: &mut [u8],
-    ) -> McuResult<()>
+    pub fn finalize_l1<'a, H>(
+        &'a mut self,
+        hash: &'a H,
+        io: &'a impl SpdmPalIo,
+        out: &'a mut [u8],
+    ) -> impl core::future::Future<Output = McuResult<()>> + 'a
     where
-        H: SpdmPalHash<State = S>,
+        H: SpdmPalHash<State = S> + 'a,
     {
-        self.finalize(Slot::L1, hash, io, out).await
+        self.finalize(Slot::L1, hash, io, out)
     }
 
     // ---- Workhorses (the only `#[inline(never)]` symbols) ---------------

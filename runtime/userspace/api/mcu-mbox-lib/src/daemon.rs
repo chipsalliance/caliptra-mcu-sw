@@ -1,10 +1,11 @@
 // Licensed under the Apache-2.0 license
 
-use crate::cmd_interface::{CmdInterface, McuMboxScratch};
+use crate::cmd_interface::CmdInterface;
 use crate::transport::McuMboxTransport;
 use caliptra_mcu_common_commands::{CaliptraCmdHandler, CommandAuthorizer};
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_console::Console;
+use caliptra_mcu_scratch_alloc::BitmapAllocator;
 use caliptra_mcu_userlog::{log_error, Hex32};
 #[allow(unused_imports)]
 use core::fmt::Write;
@@ -23,27 +24,21 @@ pub enum McuMboxServiceError {
 /// Fields:
 /// - `cmd_interface`: Handles mailbox commands.
 /// - `running`: Indicates if the service is active.
-pub struct McuMboxService<
-    'a,
-    H: CaliptraCmdHandler + 'static,
-    A: CommandAuthorizer + 'static,
-    Alloc: McuMboxScratch + 'static,
-> {
-    cmd_interface: CmdInterface<'a, H, A, Alloc>,
+pub struct McuMboxService<'a, H: CaliptraCmdHandler + 'static, A: CommandAuthorizer + 'static> {
+    cmd_interface: CmdInterface<'a, H, A>,
     running: &'static AtomicBool,
 }
 
-impl<'a, H, A, Alloc> McuMboxService<'a, H, A, Alloc>
+impl<'a, H, A> McuMboxService<'a, H, A>
 where
     H: CaliptraCmdHandler + 'static,
     A: CommandAuthorizer + 'static,
-    Alloc: McuMboxScratch + 'static,
 {
     pub fn init(
         non_crypto_cmd_handler: &'a H,
         cmd_authorizer: &'a mut A,
         transport: &'a mut McuMboxTransport,
-        scratch: &'a Alloc,
+        scratch: &'a BitmapAllocator,
     ) -> Self {
         let cmd_interface =
             CmdInterface::new(transport, non_crypto_cmd_handler, cmd_authorizer, scratch);
@@ -72,13 +67,12 @@ where
     }
 }
 
-pub async fn mcu_mbox_responder<H, A, Alloc>(
-    cmd_interface: &mut CmdInterface<'_, H, A, Alloc>,
+pub async fn mcu_mbox_responder<H, A>(
+    cmd_interface: &mut CmdInterface<'_, H, A>,
     running: &'static AtomicBool,
 ) where
     H: CaliptraCmdHandler,
     A: CommandAuthorizer,
-    Alloc: McuMboxScratch,
 {
     while running.load(Ordering::SeqCst) {
         if let Err(e) = cmd_interface.handle_responder_msg_from_scratch().await {

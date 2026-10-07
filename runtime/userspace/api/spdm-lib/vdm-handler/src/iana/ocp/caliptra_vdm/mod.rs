@@ -38,13 +38,13 @@ const VDM_HEADER_LEN: usize = 2;
 /// `[command_version, command_code, completion, data_len]`.
 const LARGE_PAYLOAD_HEADER_LEN: usize = VDM_HEADER_LEN + 1 + 4;
 /// Maximum CSR/log payload staged in one Caliptra VDM response.
-/// When `cert-provisioning` is enabled, matches
+/// When `attested-csr` is enabled, matches
 /// `caliptra_mcu_mbox_common::messages::MAX_ATTESTED_CSR_RESP_DATA_SIZE` (12.8 KiB).
 /// Otherwise defaults to 4 KiB to avoid inflating the baseline SPDM scratch pool.
-#[cfg(feature = "cert-provisioning")]
+#[cfg(feature = "attested-csr")]
 const MAX_LARGE_COMMAND_DATA_LEN: usize =
     caliptra_mcu_mbox_common::messages::MAX_ATTESTED_CSR_RESP_DATA_SIZE;
-#[cfg(not(feature = "cert-provisioning"))]
+#[cfg(not(feature = "attested-csr"))]
 const MAX_LARGE_COMMAND_DATA_LEN: usize = 4096;
 /// Maximum complete Caliptra VDM large payload:
 /// `[command_version, command_code, completion, data_len, data...]`.
@@ -165,9 +165,13 @@ where
         };
 
         match command {
+            #[cfg(feature = "attested-csr")]
             CaliptraVdmCommand::ExportAttestedCsr => {
                 LARGE_PAYLOAD_HEADER_LEN + MAX_LARGE_COMMAND_DATA_LEN
             }
+            // Not compiled in: answered inline with UnsupportedOperation.
+            #[cfg(not(feature = "attested-csr"))]
+            CaliptraVdmCommand::ExportAttestedCsr => 0,
             // Evidence size depends on the requested format and algorithm, so
             // reserve only what this specific pair needs: an ECC PCR quote must
             // not rent an ML-DSA-sized buffer. Malformed requests, discovery
@@ -348,6 +352,7 @@ where
                 )
                 .await
             }
+            #[cfg(feature = "attested-csr")]
             Ok(CaliptraVdmCommand::ExportAttestedCsr) => {
                 commands::export_attested_csr::handle(
                     self.commands,
@@ -478,7 +483,7 @@ mod tests {
 
     struct TestAlloc;
 
-    impl mcu_caliptra_api::ApiAlloc for TestAlloc {
+    impl mcu_caliptra_api::ScratchAlloc for TestAlloc {
         type Buf<'a>
             = Vec<u8>
         where
@@ -489,10 +494,10 @@ mod tests {
         }
     }
 
-    impl mcu_caliptra_api::ApiAllocPool for TestAlloc {
-        type Pool = Self;
+    impl mcu_caliptra_api::ScratchAllocProvider for TestAlloc {
+        type Alloc = Self;
 
-        fn pool(&self) -> &Self::Pool {
+        fn allocator(&self) -> &Self::Alloc {
             self
         }
     }
@@ -747,7 +752,7 @@ mod tests {
             }
         }
 
-        async fn get_attestation<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn get_attestation<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             _format: EvidenceFormat,
@@ -767,7 +772,7 @@ mod tests {
             Ok(self.evidence_len)
         }
 
-        async fn export_attested_csr<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn export_attested_csr<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             device_key_id: u32,
@@ -783,7 +788,7 @@ mod tests {
             self.write_csr(out)
         }
 
-        async fn request_debug_unlock<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn request_debug_unlock<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             unlock_level: u8,
@@ -797,7 +802,7 @@ mod tests {
             Ok(())
         }
 
-        async fn authorize_debug_unlock_token<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn authorize_debug_unlock_token<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             token_data: &[u8],
@@ -832,7 +837,7 @@ mod tests {
             self.complete_authorized(AuthorizedOperation::ProvisionOwnerPkHash { hash: *hash })
         }
 
-        async fn increase_min_svn<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn increase_min_svn<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             target: caliptra_mcu_mbox_common::messages::SvnTarget,
@@ -848,7 +853,7 @@ mod tests {
             })
         }
 
-        async fn program_field_entropy<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn program_field_entropy<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             _partition: u32,
@@ -856,7 +861,7 @@ mod tests {
             Ok(())
         }
 
-        async fn revoke_vendor_pub_key<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn revoke_vendor_pub_key<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             slot: u32,
@@ -885,7 +890,7 @@ mod tests {
             self.complete_authorized(AuthorizedOperation::FuseLockPartition { partition })
         }
 
-        async fn dot_lock<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn dot_lock<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             request: &caliptra_mcu_mbox_common::messages::DotLockPayload,
@@ -896,7 +901,7 @@ mod tests {
                 lak_hash: request.lak_hash,
             })
         }
-        async fn dot_disable<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn dot_disable<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             request: &caliptra_mcu_mbox_common::messages::DotDisablePayload,
@@ -907,7 +912,7 @@ mod tests {
             })
         }
 
-        async fn dot_rotate<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn dot_rotate<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             request: &caliptra_mcu_mbox_common::messages::DotRotatePayload,
@@ -933,7 +938,7 @@ mod tests {
             Ok(())
         }
 
-        async fn dot_recovery<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn dot_recovery<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             _blob: &[u8; caliptra_mcu_mbox_common::messages::DOT_BLOB_SIZE],
@@ -942,7 +947,7 @@ mod tests {
             Ok(())
         }
 
-        async fn dot_override_challenge<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn dot_override_challenge<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             _request: &caliptra_mcu_mbox_common::messages::DotOverrideChallengePayload,
@@ -954,7 +959,7 @@ mod tests {
             Ok([0xC3; caliptra_mcu_mbox_common::messages::AUTH_CMD_NONCE_LEN])
         }
 
-        async fn dot_override<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn dot_override<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             _request: &caliptra_mcu_mbox_common::messages::DotOverridePayload,
@@ -963,7 +968,7 @@ mod tests {
             Ok(())
         }
 
-        async fn dot_unlock_challenge<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn dot_unlock_challenge<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
         ) -> caliptra_mcu_common_commands::CaliptraCmdResult<
@@ -972,7 +977,7 @@ mod tests {
             self.dot_challenge_calls.fetch_add(1, Ordering::Relaxed);
             Ok([0xA5; caliptra_mcu_mbox_common::messages::AUTH_CMD_NONCE_LEN])
         }
-        async fn dot_unlock<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn dot_unlock<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             _request: &caliptra_mcu_mbox_common::messages::DotUnlockPayload,
@@ -980,7 +985,7 @@ mod tests {
             self.dot_unlock_calls.fetch_add(1, Ordering::Relaxed);
             Ok(())
         }
-        async fn dot_get_backup_blob<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn dot_get_backup_blob<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             blob: &mut [u8; caliptra_mcu_mbox_common::messages::DOT_BLOB_SIZE],
@@ -991,7 +996,7 @@ mod tests {
         }
 
         #[cfg(feature = "ocp-lock")]
-        async fn ocp_lock_rotate_hek<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn ocp_lock_rotate_hek<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             slot: u32,
@@ -1010,7 +1015,7 @@ mod tests {
     impl CaliptraVdmStreamOps for TestCommands {}
 
     impl CommandAuthorizer for TestCommands {
-        async fn generate_challenge<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn generate_challenge<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
         ) -> Result<[u8; AUTH_CMD_NONCE_LEN], AuthorizationError> {
@@ -1018,7 +1023,7 @@ mod tests {
             Ok(TEST_AUTH_CHALLENGE)
         }
 
-        async fn verify_signatures<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn verify_signatures<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             cmd_id: u32,
@@ -1167,10 +1172,12 @@ mod tests {
         assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
     }
 
+    #[cfg(feature = "attested-csr")]
     fn export_attested_csr_req() -> Vec<u8> {
         export_attested_csr_req_with(7, 1, &[0x5A; 32])
     }
 
+    #[cfg(feature = "attested-csr")]
     fn export_attested_csr_req_with(
         device_key_id: u32,
         algorithm: u32,
@@ -1191,6 +1198,7 @@ mod tests {
         CaliptraVdm::new(&cmds, &cmds, &cmds).large_response_capacity(req)
     }
 
+    #[cfg(feature = "attested-csr")]
     #[test]
     fn large_capacity_reserved_only_for_export_attested_csr() {
         assert_eq!(
@@ -1382,6 +1390,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "attested-csr")]
     #[test]
     fn invalid_payload_length_returns_vdm_completion() {
         let cmds = TestCommands::new(0);
@@ -1863,6 +1872,7 @@ mod tests {
         assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
     }
 
+    #[cfg(feature = "attested-csr")]
     #[test]
     fn export_attested_csr_uses_inline_response_when_it_fits() {
         let cmds = TestCommands::new(12);
@@ -1877,6 +1887,7 @@ mod tests {
         assert_eq!(&inline[7..19], &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
     }
 
+    #[cfg(feature = "attested-csr")]
     #[test]
     fn export_attested_csr_allows_empty_inline_csr() {
         let cmds = TestCommands::new(0);
@@ -1888,6 +1899,7 @@ mod tests {
         assert_eq!(u32::from_le_bytes(inline[3..7].try_into().unwrap()), 0);
     }
 
+    #[cfg(feature = "attested-csr")]
     #[test]
     fn export_attested_csr_uses_large_response_when_inline_is_too_small() {
         let cmds = TestCommands::new(12);
@@ -1902,6 +1914,7 @@ mod tests {
         assert_eq!(&large[7..19], &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
     }
 
+    #[cfg(feature = "attested-csr")]
     #[test]
     fn export_attested_csr_discovery_key_id_zero_ecc384() {
         let cmds = TestCommands::new(16);
@@ -1922,7 +1935,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "cert-provisioning")]
+    #[cfg(feature = "attested-csr")]
     fn export_attested_csr_discovery_key_id_zero_mldsa87() {
         // A realistic ML-DSA-87 discovery response produces a 4,627-byte signature
         // alone, which with COSE headers and inventory claims totals ~4,800 bytes.
@@ -1953,7 +1966,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "cert-provisioning")]
+    #[cfg(feature = "attested-csr")]
     fn export_attested_csr_mldsa87_large_csr() {
         const REALISTIC_MLDSA_CSR_LEN: usize = 12_200;
         let cmds = TestCommands::new(REALISTIC_MLDSA_CSR_LEN);
@@ -1982,26 +1995,27 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(feature = "cert-provisioning"))]
-    fn export_attested_csr_mldsa87_insufficient_resources_without_feature() {
-        const REALISTIC_MLDSA_DISCOVERY_LEN: usize = 4800;
-        let cmds = TestCommands::new(REALISTIC_MLDSA_DISCOVERY_LEN);
-        let nonce = [0x77u8; 32];
-        let req = export_attested_csr_req_with(0, 2, &nonce);
-        let (response, inline, _) = dispatch(
-            &cmds,
-            &req,
-            64,
-            LARGE_PAYLOAD_HEADER_LEN + MAX_LARGE_COMMAND_DATA_LEN,
-        );
+    #[cfg(not(feature = "attested-csr"))]
+    fn export_attested_csr_unsupported_without_feature() {
+        let cmds = TestCommands::new(16);
+        let mut req = vec![
+            CALIPTRA_VDM_COMMAND_VERSION,
+            CaliptraVdmCommand::ExportAttestedCsr as u8,
+        ];
+        req.extend_from_slice(&1u32.to_le_bytes());
+        req.extend_from_slice(&1u32.to_le_bytes());
+        req.extend_from_slice(&[0x5A; 32]);
 
+        assert_eq!(backend_capacity(&req), 0);
+
+        let (response, inline, _) = dispatch(&cmds, &req, 64, 0);
         assert_inline(response, 3);
-        assert_eq!(inline[0], CALIPTRA_VDM_COMMAND_VERSION);
         assert_eq!(inline[1], CaliptraVdmCommand::ExportAttestedCsr as u8);
         assert_eq!(
             inline[2],
-            CaliptraCompletionCode::InsufficientResources as u8
+            CaliptraCompletionCode::UnsupportedOperation as u8
         );
+        assert!(cmds.last_attested_csr_args.lock().unwrap().is_none());
     }
 
     #[test]

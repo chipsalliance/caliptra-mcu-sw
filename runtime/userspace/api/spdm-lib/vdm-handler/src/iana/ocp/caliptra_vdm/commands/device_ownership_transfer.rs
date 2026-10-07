@@ -20,7 +20,7 @@ where
     let Some((completion, response)) = output.split_first_mut() else {
         return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InsufficientResources);
     };
-    match execute_dot(commands, scratch, request, response).await {
+    match execute_dot(commands, scratch.allocator(), request, response).await {
         Ok(CommandResponse::Data(len)) => {
             *completion = CaliptraCompletionCode::Success as u8;
             CaliptraVdmCmdResult::Response(1 + len)

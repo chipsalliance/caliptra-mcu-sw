@@ -10,8 +10,8 @@ use caliptra_mcu_libsyscall_caliptra::soft_pcr_store::{
 };
 use caliptra_mcu_libtock_platform::Syscalls;
 use mcu_caliptra_api::{
-    dpe_derive_context, dpe_tag_tci, extend_pcr31, ApiAlloc, DpeContextHandle,
-    DpeDeriveContextFlags, DpeDeriveContextParams,
+    dpe_derive_context, dpe_tag_tci, extend_pcr31, DpeContextHandle, DpeDeriveContextFlags,
+    DpeDeriveContextParams, ScratchAlloc,
 };
 
 use super::MeasurementApi;
@@ -20,7 +20,7 @@ use crate::errors::{MeasurementApiError, MeasurementApiResult};
 use crate::ImageMetadata;
 
 #[inline(never)]
-pub(super) async fn create_dpe_context<S: Syscalls, A: ApiAlloc>(
+pub(super) async fn create_dpe_context<S: Syscalls, A: ScratchAlloc>(
     api: &mut MeasurementApi<'_, S>,
     alloc: &A,
     fw_id: u32,
@@ -75,7 +75,7 @@ pub(super) async fn create_dpe_context<S: Syscalls, A: ApiAlloc>(
         .map_err(|_| api.enter_error_state(MeasurementApiError::PcrExtendFailed))
 }
 
-pub(super) async fn record_authorized_image<S: Syscalls, A: ApiAlloc>(
+pub(super) async fn record_authorized_image<S: Syscalls, A: ScratchAlloc>(
     api: &mut MeasurementApi<'_, S>,
     alloc: &A,
     entry: AttestationManifestEntry,
@@ -99,7 +99,7 @@ pub(super) async fn record_authorized_image<S: Syscalls, A: ApiAlloc>(
     }
 }
 
-async fn create_software_pcr_record<S: Syscalls, A: ApiAlloc>(
+async fn create_software_pcr_record<S: Syscalls, A: ScratchAlloc>(
     api: &mut MeasurementApi<'_, S>,
     alloc: &A,
     entry: AttestationManifestEntry,

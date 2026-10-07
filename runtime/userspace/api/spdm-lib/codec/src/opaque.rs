@@ -24,6 +24,14 @@ const DATA_ID_SUPPORTED_VERSION_LIST: u8 = 1;
 /// Maximum supported version entries we'll parse.
 const MAX_SM_VERSION_COUNT: usize = 4;
 
+const GENERAL_HEADER_SIZE: usize = 4;
+const ELEMENT_HEADER_SIZE: usize = 4;
+const SUPPORTED_VERSION_FIXED_SIZE: usize = 3;
+
+/// Maximum encoded supported-version-list accepted by this responder.
+pub const MAX_SUPPORTED_VERSION_LIST_OPAQUE_SIZE: usize = GENERAL_HEADER_SIZE
+    + ((ELEMENT_HEADER_SIZE + SUPPORTED_VERSION_FIXED_SIZE + 2 * MAX_SM_VERSION_COUNT + 3) & !3);
+
 /// Size of the version-selection opaque blob (always 12 bytes).
 ///
 /// Layout:
@@ -89,8 +97,7 @@ pub struct SupportedVersions {
 /// Validates the GeneralOpaqueDataHdr, OpaqueElementHdr, and
 /// SmOpaqueElementDataHdr, then extracts the version list.
 pub fn parse_supported_versions(opaque: &[u8]) -> Result<SupportedVersions, WireError> {
-    // Must be 4-byte aligned
-    if opaque.len() & 0x3 != 0 {
+    if opaque.len() > MAX_SUPPORTED_VERSION_LIST_OPAQUE_SIZE || opaque.len() & 0x3 != 0 {
         return Err(WireError);
     }
 
@@ -98,8 +105,8 @@ pub fn parse_supported_versions(opaque: &[u8]) -> Result<SupportedVersions, Wire
 
     // GeneralOpaqueDataHdr
     let total_elements = r.take(1)?[0];
-    r.skip(3)?; // reserved
-    if total_elements != 1 {
+    let reserved = r.take(3)?;
+    if total_elements != 1 || reserved.iter().any(|&byte| byte != 0) {
         return Err(WireError);
     }
 
@@ -113,9 +120,6 @@ pub fn parse_supported_versions(opaque: &[u8]) -> Result<SupportedVersions, Wire
     let data_len = u16::from_le_bytes([data_len_bytes[0], data_len_bytes[1]]) as usize;
 
     // SmOpaqueElementDataHdr
-    if data_len < 4 {
-        return Err(WireError);
-    }
     let sm_data_version = r.take(1)?[0];
     let sm_data_id = r.take(1)?[0];
     if sm_data_version != SM_DATA_VERSION || sm_data_id != DATA_ID_SUPPORTED_VERSION_LIST {
@@ -130,7 +134,7 @@ pub fn parse_supported_versions(opaque: &[u8]) -> Result<SupportedVersions, Wire
 
     // Each version is 2 bytes
     let versions_len = version_count as usize * 2;
-    if versions_len > data_len - 3 {
+    if data_len != SUPPORTED_VERSION_FIXED_SIZE + versions_len {
         return Err(WireError);
     }
 
@@ -138,6 +142,13 @@ pub fn parse_supported_versions(opaque: &[u8]) -> Result<SupportedVersions, Wire
     for v in versions.iter_mut().take(version_count as usize) {
         let vb = r.take(2)?;
         v.copy_from_slice(vb);
+    }
+
+    let element_len = ELEMENT_HEADER_SIZE + data_len;
+    let padding_len = (4 - (element_len & 3)) & 3;
+    let padding = r.take(padding_len)?;
+    if padding.iter().any(|&byte| byte != 0) || !r.is_empty() {
+        return Err(WireError);
     }
 
     Ok(SupportedVersions {
@@ -162,4 +173,84 @@ pub fn select_version(offered: &SupportedVersions) -> Result<SmVersion, WireErro
         }
     }
     Err(WireError)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const VERSION_LIST: [u8; 16] = [
+        1, 0, 0, 0, // General header.
+        0, 0, 5, 0, // DMTF element, five data bytes.
+        1, 1, 1, // Supported-version-list header, one version.
+        0, 0x11, // Secured-message version 1.1.
+        0, 0, 0, // Alignment padding.
+    ];
+
+    #[test]
+    fn parses_exact_supported_version_list() {
+        let parsed = parse_supported_versions(&VERSION_LIST).unwrap();
+
+        assert_eq!(parsed.count, 1);
+        assert_eq!(parsed.versions[0], [0, 0x11]);
+    }
+
+    #[test]
+    fn rejects_mismatched_element_length() {
+        let mut opaque = VERSION_LIST;
+        opaque[6] = 6;
+
+        assert!(parse_supported_versions(&opaque).is_err());
+    }
+
+    #[test]
+    fn rejects_nonzero_general_header_reserved() {
+        let mut opaque = VERSION_LIST;
+        opaque[1] = 1;
+
+        assert!(parse_supported_versions(&opaque).is_err());
+    }
+
+    #[test]
+    fn rejects_nonzero_padding() {
+        let mut opaque = VERSION_LIST;
+        opaque[15] = 1;
+
+        assert!(parse_supported_versions(&opaque).is_err());
+    }
+
+    #[test]
+    fn rejects_missing_padding() {
+        assert!(parse_supported_versions(&VERSION_LIST[..13]).is_err());
+    }
+
+    #[test]
+    fn rejects_trailing_bytes() {
+        let mut opaque = [0u8; 20];
+        opaque[..VERSION_LIST.len()].copy_from_slice(&VERSION_LIST);
+
+        assert!(parse_supported_versions(&opaque).is_err());
+    }
+
+    #[test]
+    fn rejects_version_count_length_mismatch() {
+        let mut opaque = VERSION_LIST;
+        opaque[10] = 2;
+
+        assert!(parse_supported_versions(&opaque).is_err());
+    }
+
+    #[test]
+    fn maximum_supported_version_list_matches_bound() {
+        let opaque = [
+            1, 0, 0, 0, // General header.
+            0, 0, 11, 0, // DMTF element, eleven data bytes.
+            1, 1, 4, // Supported-version-list header, four versions.
+            0, 0x10, 0, 0x11, 0, 0x12, 0, 0x13, // Versions.
+            0,    // Alignment padding.
+        ];
+
+        assert_eq!(opaque.len(), MAX_SUPPORTED_VERSION_LIST_OPAQUE_SIZE);
+        assert_eq!(parse_supported_versions(&opaque).unwrap().count, 4);
+    }
 }

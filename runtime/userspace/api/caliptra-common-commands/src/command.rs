@@ -11,7 +11,7 @@ use caliptra_mcu_mbox_common::messages::{
 };
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_mbox_common::messages::{EndorsementAlgorithm, HpkeHandle, SekState};
-use mcu_caliptra_api::ApiAlloc;
+use mcu_caliptra_api::ScratchAlloc;
 #[cfg(feature = "ocp-lock")]
 use zerocopy::byteorder::little_endian::U16;
 use zerocopy::byteorder::little_endian::U32;
@@ -182,7 +182,7 @@ pub async fn execute_authorized<H, Auth, Alloc>(
 where
     H: CaliptraCmdHandler,
     Auth: CommandAuthorizer,
-    Alloc: ApiAlloc,
+    Alloc: ScratchAlloc,
 {
     let (target_id, request) = split_id(request)?;
     if CommandId::from(target_id).is_vendor_unique() {
@@ -343,7 +343,7 @@ pub async fn execute_dot<H, Alloc>(
 ) -> CaliptraCmdResult<CommandResponse>
 where
     H: CaliptraCmdHandler,
-    Alloc: ApiAlloc,
+    Alloc: ScratchAlloc,
 {
     let (subcommand, payload) = split_id(request)?;
     match subcommand {
@@ -406,7 +406,7 @@ pub async fn execute_ocp_lock<H, Alloc>(
 ) -> CaliptraCmdResult<CommandResponse>
 where
     H: CaliptraCmdHandler,
-    Alloc: ApiAlloc,
+    Alloc: ScratchAlloc,
 {
     let (subcommand, payload) = split_id(request)?;
     match subcommand {
@@ -544,7 +544,7 @@ async fn execute_authorized_dot<H, Alloc>(
 ) -> CaliptraCmdResult<CommandResponse>
 where
     H: CaliptraCmdHandler,
-    Alloc: ApiAlloc,
+    Alloc: ScratchAlloc,
 {
     let (subcommand, payload) = split_id(payload)?;
     match subcommand {
@@ -594,7 +594,7 @@ async fn execute_authorized_dot<H, Alloc>(
 ) -> CaliptraCmdResult<CommandResponse>
 where
     H: CaliptraCmdHandler,
-    Alloc: ApiAlloc,
+    Alloc: ScratchAlloc,
 {
     Err(CaliptraCompletionCode::UnsupportedOperation)
 }
@@ -607,7 +607,7 @@ async fn execute_authorized_ocp_lock<H, Alloc>(
 ) -> CaliptraCmdResult<CommandResponse>
 where
     H: CaliptraCmdHandler,
-    Alloc: ApiAlloc,
+    Alloc: ScratchAlloc,
 {
     let (subcommand, payload) = split_id(payload)?;
     match subcommand {
@@ -636,7 +636,7 @@ async fn execute_authorized_ocp_lock<H, Alloc>(
 ) -> CaliptraCmdResult<CommandResponse>
 where
     H: CaliptraCmdHandler,
-    Alloc: ApiAlloc,
+    Alloc: ScratchAlloc,
 {
     Err(CaliptraCompletionCode::UnsupportedOperation)
 }

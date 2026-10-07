@@ -16,13 +16,16 @@ use caliptra_mcu_libsyscall_caliptra::mcu_mbox::MbxCmdStatus;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_mbox_common::messages::{
     ClearLogReq, ClearLogResp, CommandId, DeviceCapsReq, DeviceCapsResp, DpeSignerContextCertReq,
-    EndorsementAlgorithm, ExportAttestedCsrReq, ExportAttestedCsrResp, FirmwareVersionReq,
-    FirmwareVersionResp, FuseReadResp, GetAttestationReq, GetAuthCmdChallengeResp,
-    GetDpeCertChainReq, GetLogReq, LogType, MailboxReqHeader, MailboxRespHeader,
-    MailboxRespHeaderVarSize, McuMailboxReq, McuMailboxResp, McuProdDebugUnlockReqReq,
-    McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq, McuResponseVarSize, DEVICE_CAPS_SIZE,
-    GET_ATTESTATION_RESP_PREFIX_LEN, MAX_ATTESTED_CSR_RESP_DATA_SIZE, MAX_FW_VERSION_STR_LEN,
+    EndorsementAlgorithm, FirmwareVersionReq, FirmwareVersionResp, FuseReadResp, GetAttestationReq,
+    GetAuthCmdChallengeResp, GetDpeCertChainReq, GetLogReq, LogType, MailboxReqHeader,
+    MailboxRespHeader, MailboxRespHeaderVarSize, McuMailboxReq, McuMailboxResp,
+    McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq,
+    McuResponseVarSize, DEVICE_CAPS_SIZE, GET_ATTESTATION_RESP_PREFIX_LEN, MAX_FW_VERSION_STR_LEN,
     MAX_RESP_DATA_SIZE,
+};
+#[cfg(feature = "attested-csr")]
+use caliptra_mcu_mbox_common::messages::{
+    ExportAttestedCsrReq, ExportAttestedCsrResp, MAX_ATTESTED_CSR_RESP_DATA_SIZE,
 };
 
 use caliptra_mcu_libtock_console::Console;
@@ -35,18 +38,15 @@ use caliptra_mcu_mbox_common::messages::{
     McuFipsPeriodicEnableReq, McuFipsPeriodicEnableResp, McuFipsPeriodicStatusReq,
     McuFipsPeriodicStatusResp,
 };
+use caliptra_mcu_scratch_alloc::BitmapAllocator;
 use caliptra_mcu_userlog::{log_info, Hex32};
 
 #[allow(unused_imports)]
 use core::fmt::Write;
 use core::sync::atomic::{AtomicBool, Ordering};
-use mcu_caliptra_api::{raw, ApiAlloc, ApiAllocPool};
+use mcu_caliptra_api::{raw, ScratchAlloc};
 use mcu_error::{McuErrorCode, McuResult};
 use zerocopy::{FromBytes, IntoBytes};
-
-pub trait McuMboxScratch: ApiAlloc + ApiAllocPool {
-    fn shrink(buf: &mut Self::Buf<'_>, new_len: usize) -> McuResult<()>;
-}
 
 fn map_common_cmd_error(error: CaliptraCompletionCode) -> McuErrorCode {
     match error {
@@ -97,22 +97,20 @@ fn authorized_response_frame(request: &[u8]) -> McuResult<CommonResponseFrame> {
 }
 
 /// Command interface for handling MCU mailbox commands.
-pub struct CmdInterface<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch> {
+pub struct CmdInterface<'a, H: CaliptraCmdHandler, A: CommandAuthorizer> {
     transport: &'a mut McuMboxTransport,
     non_crypto_cmds_handler: &'a H,
     cmd_authorizer: &'a mut A,
-    scratch: &'a Alloc,
+    scratch: &'a BitmapAllocator,
     busy: AtomicBool,
 }
 
-impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
-    CmdInterface<'a, H, A, Alloc>
-{
+impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer> CmdInterface<'a, H, A> {
     pub fn new(
         transport: &'a mut McuMboxTransport,
         non_crypto_cmds_handler: &'a H,
         cmd_authorizer: &'a mut A,
-        scratch: &'a Alloc,
+        scratch: &'a BitmapAllocator,
     ) -> Self {
         Self {
             transport,
@@ -185,7 +183,7 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
     }
 
     pub async fn handle_responder_msg_from_scratch(&mut self) -> McuResult<()> {
-        let mut req_buf = self.scratch.alloc(size_of::<McuMailboxReq>())?;
+        let mut req_buf = self.scratch.alloc_bytes(size_of::<McuMailboxReq>())?;
         let (cmd_id, req_len) = match self.transport.receive_request(&mut req_buf).await {
             Ok((c, slice)) => (c, slice.len()),
             Err(_) => {
@@ -193,14 +191,14 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
                 return Err(errors::TRANSPORT_ERROR);
             }
         };
-        if let Err(err) = Alloc::shrink(&mut req_buf, req_len) {
+        if let Err(err) = req_buf.shrink(req_len) {
             let _ = self.transport.finalize_response(MbxCmdStatus::Failure);
             return Err(err);
         }
 
         let mut resp_buf = match self
             .scratch
-            .alloc(response_buffer_size::<H>(cmd_id, &req_buf[..req_len]))
+            .alloc_bytes(response_buffer_size::<H>(cmd_id, &req_buf[..req_len]))
         {
             Ok(buf) => buf,
             Err(err) => {
@@ -286,6 +284,7 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
                 CommandId::MC_DEVICE_OWNERSHIP_TRANSFER => {
                     self.handle_dot_command(req, resp_buf).await
                 }
+                #[cfg(feature = "attested-csr")]
                 CommandId::MC_EXPORT_ATTESTED_CSR => {
                     self.handle_export_attested_csr(req, resp_buf).await
                 }
@@ -474,6 +473,7 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer, Alloc: McuMboxScratch>
         Ok((&mut resp_buf[..resp_bytes.len()], mbox_cmd_status))
     }
 
+    #[cfg(feature = "attested-csr")]
     async fn handle_export_attested_csr<'r>(
         &self,
         req: &[u8],
@@ -1014,6 +1014,13 @@ fn caliptra_passthrough_cmd(cmd: CommandId) -> Option<u32> {
 /// receives the response in-place in `resp_buf`.
 const DPE_EXPORTED_CDI_IN_PLACE_PREFIX_LEN: usize = 92;
 
+/// Response buffer size for `MC_DPE_SIGNER_CONTEXT_CERT`: the var-size header
+/// plus room for `dpe_derive_context_exported_cdi` to stage its response
+/// in-place ahead of a `DPE_MAX_LEAF_CERT_SIZE` leaf certificate.
+pub const DPE_SIGNER_CONTEXT_CERT_RESP_SIZE: usize = size_of::<MailboxRespHeaderVarSize>()
+    + mcu_caliptra_api::DPE_MAX_LEAF_CERT_SIZE
+    + DPE_EXPORTED_CDI_IN_PLACE_PREFIX_LEN;
+
 /// Response payload buffer size for `MC_GET_OCP_LOCK_ENDORSEMENT_CERT` and
 /// `MC_GET_OCP_LOCK_EPOCH_KEY_REPORT`.
 ///
@@ -1021,8 +1028,11 @@ const DPE_EXPORTED_CDI_IN_PLACE_PREFIX_LEN: usize = 92;
 /// ML-DSA-87 signature (`sig_buf`, 4,627 B) side-by-side after
 /// `CaliptraDpeSigner::sign` stages `SignWithExportedMldsaResp` (7,228 B)
 /// in-place.
+///
+/// Public so integrators can size their MCU mailbox scratch pool against
+/// this path.
 #[cfg(feature = "ocp-lock")]
-const OCP_LOCK_IN_PLACE_SIGN_RESP_DATA_SIZE: usize = 11_828;
+pub const OCP_LOCK_IN_PLACE_SIGN_RESP_DATA_SIZE: usize = 11_828;
 
 fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32, req: &[u8]) -> usize {
     #[cfg(not(feature = "ocp-lock"))]
@@ -1074,14 +1084,11 @@ fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32, req: &[u8]) -> usize {
                 _ => size_of::<MailboxRespHeader>(),
             }
         }
-        c if c == CommandId::MC_DPE_SIGNER_CONTEXT_CERT => {
-            size_of::<MailboxRespHeaderVarSize>()
-                + mcu_caliptra_api::DPE_MAX_LEAF_CERT_SIZE
-                + DPE_EXPORTED_CDI_IN_PLACE_PREFIX_LEN
-        }
+        c if c == CommandId::MC_DPE_SIGNER_CONTEXT_CERT => DPE_SIGNER_CONTEXT_CERT_RESP_SIZE,
         c if c == CommandId::MC_GET_DPE_CERTIFICATE_CHAIN => {
             size_of::<MailboxRespHeaderVarSize>() + 1024
         }
+        #[cfg(feature = "attested-csr")]
         c if c == CommandId::MC_EXPORT_ATTESTED_CSR => size_of::<ExportAttestedCsrResp>(),
         c if c == CommandId::MC_GET_ATTESTATION => size_of::<McuMailboxResp>().max(
             size_of::<MailboxRespHeaderVarSize>()
@@ -1099,7 +1106,8 @@ fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32, req: &[u8]) -> usize {
 ///
 /// A free function rather than a `CmdInterface` method so it can be tested
 /// without standing up a transport.
-async fn stage_attested_csr<H: CaliptraCmdHandler, Alloc: mcu_caliptra_api::ApiAlloc>(
+#[cfg(feature = "attested-csr")]
+async fn stage_attested_csr<H: CaliptraCmdHandler, Alloc: mcu_caliptra_api::ScratchAlloc>(
     handler: &H,
     alloc: &Alloc,
     req: &ExportAttestedCsrReq,
@@ -1122,7 +1130,7 @@ async fn stage_attested_csr<H: CaliptraCmdHandler, Alloc: mcu_caliptra_api::ApiA
 ///
 /// A free function rather than a `CmdInterface` method so it can be tested
 /// without standing up a transport.
-async fn stage_attestation<H: CaliptraCmdHandler, Alloc: ApiAllocPool>(
+async fn stage_attestation<H: CaliptraCmdHandler, Alloc: ScratchAlloc>(
     handler: &H,
     alloc: &Alloc,
     req: &GetAttestationReq,
@@ -1158,12 +1166,10 @@ async fn stage_attestation<H: CaliptraCmdHandler, Alloc: ApiAllocPool>(
     // than emit a `Complete` response with partial evidence.
     let out = rest.get_mut(..max_len).ok_or(errors::BUFFER_TOO_SMALL)?;
 
-    // Hand the handler the underlying pool rather than this wrapper: the SPDM
-    // VDM transport reaches the same handler through a different `ApiAlloc`
-    // wrapper, and instantiating it over the shared pool type keeps one copy of
-    // the evidence-generation code in the image instead of one per transport.
+    // Callers pass the canonical pool into this helper so every transport
+    // instantiates evidence generation over the same allocator type.
     let evidence_len = handler
-        .get_attestation(alloc.pool(), format, algorithm, entity, &req.nonce, out)
+        .get_attestation(alloc, format, algorithm, entity, &req.nonce, out)
         .await
         .map_err(|_| errors::MCU_MBOX_COMMON)?;
 
@@ -1203,7 +1209,7 @@ mod tests {
 
     struct TestAlloc;
 
-    impl ApiAlloc for TestAlloc {
+    impl ScratchAlloc for TestAlloc {
         type Buf<'a>
             = Vec<u8>
         where
@@ -1211,14 +1217,6 @@ mod tests {
 
         fn alloc(&self, len: usize) -> McuResult<Self::Buf<'_>> {
             Ok(vec![0; len])
-        }
-    }
-
-    impl ApiAllocPool for TestAlloc {
-        type Pool = Self;
-
-        fn pool(&self) -> &Self::Pool {
-            self
         }
     }
 
@@ -1242,7 +1240,7 @@ mod tests {
             unimplemented!("not exercised by the attestation tests")
         }
 
-        async fn export_attested_csr<Alloc: ApiAlloc>(
+        async fn export_attested_csr<Alloc: ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             _device_key_id: u32,
@@ -1253,7 +1251,7 @@ mod tests {
             unimplemented!("not exercised by the attestation tests")
         }
 
-        async fn request_debug_unlock<Alloc: ApiAlloc>(
+        async fn request_debug_unlock<Alloc: ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             _unlock_level: u8,
@@ -1262,7 +1260,7 @@ mod tests {
             unimplemented!("not exercised by the attestation tests")
         }
 
-        async fn authorize_debug_unlock_token<Alloc: ApiAlloc>(
+        async fn authorize_debug_unlock_token<Alloc: ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             _token_data: &[u8],
@@ -1283,7 +1281,7 @@ mod tests {
             }
         }
 
-        async fn get_attestation<Alloc: ApiAlloc>(
+        async fn get_attestation<Alloc: ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             format: EvidenceFormat,
@@ -1400,6 +1398,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "attested-csr")]
     #[test]
     fn response_buffer_size_for_export_attested_csr_matches_export_attested_csr_resp() {
         let sized = response_buffer_size::<TestHandler>(CommandId::MC_EXPORT_ATTESTED_CSR.0, &[]);
@@ -1408,10 +1407,21 @@ mod tests {
         assert!(sized > 4096);
     }
 
+    #[cfg(not(feature = "attested-csr"))]
+    #[test]
+    fn export_attested_csr_reserves_no_large_buffer_without_feature() {
+        assert_eq!(
+            response_buffer_size::<TestHandler>(CommandId::MC_EXPORT_ATTESTED_CSR.0, &[]),
+            size_of::<McuMailboxResp>()
+        );
+    }
+
+    #[cfg(feature = "attested-csr")]
     struct CsrTestHandler {
         resp_len: usize,
     }
 
+    #[cfg(feature = "attested-csr")]
     impl CaliptraCmdHandler for CsrTestHandler {
         async fn get_firmware_version(
             &self,
@@ -1428,7 +1438,7 @@ mod tests {
             unimplemented!()
         }
 
-        async fn export_attested_csr<Alloc: ApiAlloc>(
+        async fn export_attested_csr<Alloc: ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             _device_key_id: u32,
@@ -1445,7 +1455,7 @@ mod tests {
             Ok(self.resp_len)
         }
 
-        async fn request_debug_unlock<Alloc: ApiAlloc>(
+        async fn request_debug_unlock<Alloc: ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             _unlock_level: u8,
@@ -1454,7 +1464,7 @@ mod tests {
             unimplemented!()
         }
 
-        async fn authorize_debug_unlock_token<Alloc: ApiAlloc>(
+        async fn authorize_debug_unlock_token<Alloc: ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             _token_data: &[u8],
@@ -1469,7 +1479,7 @@ mod tests {
             0
         }
 
-        async fn get_attestation<Alloc: ApiAlloc>(
+        async fn get_attestation<Alloc: ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             _format: EvidenceFormat,
@@ -1482,6 +1492,7 @@ mod tests {
         }
     }
 
+    #[cfg(feature = "attested-csr")]
     #[test]
     fn export_attested_csr_accepts_large_mldsa_discovery_response() {
         const REALISTIC_MLDSA_DISCOVERY_LEN: usize = 4800;
@@ -1500,6 +1511,7 @@ mod tests {
         assert_eq!(&body[..4], &[0xEE; 4]);
     }
 
+    #[cfg(feature = "attested-csr")]
     #[test]
     fn export_attested_csr_accepts_large_mldsa_csr_response() {
         const REALISTIC_MLDSA_CSR_LEN: usize = 12_200;
@@ -1518,6 +1530,7 @@ mod tests {
         assert_eq!(&body[..4], &[0xEE; 4]);
     }
 
+    #[cfg(feature = "attested-csr")]
     #[test]
     fn export_attested_csr_rejects_oversized_response() {
         let handler = CsrTestHandler {

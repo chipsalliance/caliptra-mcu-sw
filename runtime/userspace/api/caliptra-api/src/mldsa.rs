@@ -7,7 +7,8 @@ use mcu_error::McuResult;
 
 use crate::dpe::{CERTIFY_KEY_MLDSA87_PUBKEY_SIZE, DPE_MLDSA87_MU_SIZE};
 use crate::{
-    shake256_finish, shake256_hash, shake256_init, shake256_update, ApiAlloc, SHAKE256_CONTEXT_SIZE,
+    shake256_finish, shake256_hash, shake256_init, shake256_update, ScratchAlloc,
+    SHAKE256_CONTEXT_SIZE,
 };
 
 /// Width of the ML-DSA public-key hash `tr`.
@@ -23,7 +24,7 @@ const PURE_MLDSA_DOMAIN_SEPARATOR: u8 = 0;
 /// `raw_public_key` is the 2,592-byte ML-DSA-87 key returned by DPE
 /// `CertifyKey`, not its DER SubjectPublicKeyInfo encoding.
 #[inline(never)]
-pub async fn mldsa87_compute_tr<A: ApiAlloc>(
+pub async fn mldsa87_compute_tr<A: ScratchAlloc>(
     alloc: &A,
     raw_public_key: &[u8; CERTIFY_KEY_MLDSA87_PUBKEY_SIZE],
     tr: &mut [u8; MLDSA87_TR_SIZE],
@@ -36,7 +37,7 @@ pub async fn mldsa87_compute_tr<A: ApiAlloc>(
 /// For pure ML-DSA this computes:
 /// `SHAKE256(tr || 0x00 || len(context) || context || message_parts..., 64)`.
 #[inline(never)]
-pub async fn mldsa87_compute_mu<A: ApiAlloc>(
+pub async fn mldsa87_compute_mu<A: ScratchAlloc>(
     alloc: &A,
     tr: &[u8; MLDSA87_TR_SIZE],
     context: &[u8],
