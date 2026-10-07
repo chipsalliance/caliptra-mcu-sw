@@ -50,6 +50,54 @@ pub(crate) async fn handle_set_certificate_request<Pal: SpdmPal>(
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     req: &[u8],
 ) -> SpdmResult<u8> {
+    let request = validate_set_certificate_request(state, pal, io, req, true)?;
+
+    if request.erase {
+        pal.erase_cert_chain(io, request.slot_id, state.asym_algo())
+            .await?;
+    } else {
+        let (root_hash, der) = validate_spdm_cert_chain(state.version, request.payload)?;
+        pal.validate_set_certificate_chain(
+            io,
+            request.slot_id,
+            request.key_pair_id,
+            request.cert_model,
+            root_hash,
+            der,
+        )
+        .await
+        .map_err(map_set_cert_validation_error)?;
+        pal.write_cert_chain(
+            io,
+            request.slot_id,
+            state.asym_algo(),
+            request.key_pair_id,
+            request.cert_model,
+            root_hash,
+            der,
+        )
+        .await?;
+    }
+
+    Ok(request.slot_id)
+}
+
+struct ValidatedSetCertificateRequest<'a> {
+    slot_id: u8,
+    key_pair_id: u8,
+    cert_model: u8,
+    erase: bool,
+    payload: &'a [u8],
+}
+
+#[inline(never)]
+fn validate_set_certificate_request<'a, Pal: SpdmPal>(
+    state: &ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
+    pal: &Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    req: &'a [u8],
+    allow_erase: bool,
+) -> SpdmResult<ValidatedSetCertificateRequest<'a>> {
     if (state.phase as u8) < (Phase::AfterAlgorithms as u8) {
         return Err(SPDM_UNEXPECTED_REQUEST);
     }
@@ -73,11 +121,13 @@ pub(crate) async fn handle_set_certificate_request<Pal: SpdmPal>(
     let payload = body
         .get(SetCertificateReqBody::SIZE..)
         .ok_or(SPDM_INVALID_REQUEST)?;
+    let erase = req_body.erase();
+    if erase && !allow_erase {
+        return Err(SPDM_INVALID_REQUEST);
+    }
 
     let slot_id = req_body.slot_id();
     validate_request_slot(slot_id, pal.supported_slots())?;
-
-    let erase = req_body.erase();
     let cert_model = if erase {
         0
     } else {
@@ -89,37 +139,17 @@ pub(crate) async fn handle_set_certificate_request<Pal: SpdmPal>(
 
     validate_request_attributes(state, req_body)?;
     validate_negotiated_set_certificate_algorithms(state)?;
-
-    if erase {
-        if !payload.is_empty() || req_body.cert_model() != 0 {
-            return Err(SPDM_INVALID_REQUEST);
-        }
-        pal.erase_cert_chain(io, slot_id, state.asym_algo()).await?;
-    } else {
-        let (root_hash, der) = validate_spdm_cert_chain(state.version, payload)?;
-        pal.validate_set_certificate_chain(
-            io,
-            slot_id,
-            req_body.key_pair_id,
-            cert_model,
-            root_hash,
-            der,
-        )
-        .await
-        .map_err(map_set_cert_validation_error)?;
-        pal.write_cert_chain(
-            io,
-            slot_id,
-            state.asym_algo(),
-            req_body.key_pair_id,
-            cert_model,
-            root_hash,
-            der,
-        )
-        .await?;
+    if erase && (!payload.is_empty() || req_body.cert_model() != 0) {
+        return Err(SPDM_INVALID_REQUEST);
     }
 
-    Ok(slot_id)
+    Ok(ValidatedSetCertificateRequest {
+        slot_id,
+        key_pair_id: req_body.key_pair_id,
+        cert_model,
+        erase,
+        payload,
+    })
 }
 
 #[derive(Copy, Clone)]
@@ -143,35 +173,7 @@ pub(crate) async fn start_set_certificate_stream<Pal: SpdmPal>(
     large_msg_size: usize,
     first: &[u8],
 ) -> SpdmResult<SetCertificateStreamState> {
-    if (state.phase as u8) < (Phase::AfterAlgorithms as u8) {
-        return Err(SPDM_UNEXPECTED_REQUEST);
-    }
-    if !state.advertised_cap_flags.contains(CapFlags::SET_CERT) {
-        return Err(unsupported_set_certificate());
-    }
-    let (hdr, body) = SpdmMsgHdrPdu::ref_from_prefix(first).map_err(|_| SPDM_INVALID_REQUEST)?;
-    if hdr.version != state.version.to_u8() {
-        return Err(SPDM_VERSION_MISMATCH);
-    }
-    if state.version < SpdmVersion::V12 {
-        return Err(unsupported_set_certificate());
-    }
-    let req_body = SetCertificateReqBody::ref_from_bytes(
-        body.get(..SetCertificateReqBody::SIZE)
-            .ok_or(SPDM_INVALID_REQUEST)?,
-    )
-    .map_err(|_| SPDM_INVALID_REQUEST)?;
-    if req_body.erase() {
-        return Err(SPDM_INVALID_REQUEST);
-    }
-    let slot_id = req_body.slot_id();
-    validate_request_slot(slot_id, pal.supported_slots())?;
-    let cert_model = effective_cert_model(state, req_body)?;
-    if !pal.set_certificate_authorized(io, slot_id, req_body.key_pair_id, cert_model, false) {
-        return Err(SPDM_SESSION_REQUIRED);
-    }
-    validate_request_attributes(state, req_body)?;
-    validate_negotiated_set_certificate_algorithms(state)?;
+    let request = validate_set_certificate_request(state, pal, io, first, false)?;
 
     let payload_len = large_msg_size
         .checked_sub(SpdmMsgHdrPdu::SIZE + SetCertificateReqBody::SIZE)
@@ -181,9 +183,7 @@ pub(crate) async fn start_set_certificate_stream<Pal: SpdmPal>(
     {
         return Err(SPDM_INVALID_REQUEST);
     }
-    let payload = body
-        .get(SetCertificateReqBody::SIZE..)
-        .ok_or(SPDM_INVALID_REQUEST)?;
+    let payload = request.payload;
     if payload.len() < SPDM_CERT_CHAIN_HDR_LEN {
         return Err(SPDM_INVALID_REQUEST);
     }
@@ -202,19 +202,19 @@ pub(crate) async fn start_set_certificate_stream<Pal: SpdmPal>(
 
     pal.begin_write_cert_chain_stream(
         io,
-        slot_id,
+        request.slot_id,
         state.asym_algo(),
-        req_body.key_pair_id,
-        cert_model,
+        request.key_pair_id,
+        request.cert_model,
         &root_hash,
         der_len,
     )
     .await?;
 
     let mut stream = SetCertificateStreamState {
-        slot_id,
-        key_pair_id: req_body.key_pair_id,
-        cert_model,
+        slot_id: request.slot_id,
+        key_pair_id: request.key_pair_id,
+        cert_model: request.cert_model,
         root_hash,
         der_len,
         der_received: 0,
