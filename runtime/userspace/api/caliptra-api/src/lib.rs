@@ -16,6 +16,9 @@
 #![no_std]
 #![allow(async_fn_in_trait)]
 
+#[cfg(feature = "ocp-lock")]
+extern crate alloc;
+
 #[cfg(feature = "mailbox-io")]
 mod aes_gcm;
 #[cfg(feature = "mailbox-io")]
@@ -34,6 +37,8 @@ mod dpe;
 mod ecdh;
 #[cfg(feature = "mailbox-io")]
 mod ecdsa;
+#[cfg(feature = "ocp-lock")]
+pub mod error;
 #[cfg(feature = "mailbox-io")]
 mod fe_prog;
 #[cfg(feature = "mailbox-io")]
@@ -51,6 +56,8 @@ pub mod mailbox;
 mod ml_kem;
 #[cfg(feature = "mailbox-io")]
 mod mldsa;
+#[cfg(feature = "ocp-lock")]
+pub mod ocp_lock;
 #[cfg(feature = "mailbox-io")]
 mod owner_auth_manifest;
 #[cfg(feature = "mailbox-io")]
@@ -65,6 +72,8 @@ mod rng;
 mod sha;
 #[cfg(feature = "mailbox-io")]
 mod shake;
+#[cfg(feature = "ocp-lock")]
+pub mod signer;
 #[cfg(feature = "mailbox-io")]
 mod slice;
 #[cfg(feature = "mailbox-io")]

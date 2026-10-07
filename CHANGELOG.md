@@ -98,8 +98,8 @@ adapt to their SoC-specific hardware and security policies.
     handle in reserved SRAM.
   - Supports authorized HEK rotation and permanent-HEK state operations.
 - **Runtime APIs and platform support**:
-  - Adds the consolidated `caliptra-libapi` for certificate, cryptographic,
-    evidence, signing, and OCP LOCK operations.
+  - Adds the consolidated `mcu-caliptra-api` for Caliptra mailbox,
+    cryptographic, signing, and OCP LOCK operations.
   - Adds a reusable DMA capsule HIL for integration with platform-specific DMA
     engines.
   - Adds a manufacturing fuse-provisioning firmware image.
