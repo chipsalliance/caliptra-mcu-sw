@@ -9,9 +9,7 @@
 use caliptra_mcu_spdm_traits::SpdmPalAsymAlgo;
 use core::cell::UnsafeCell;
 
-use mcu_caliptra_api::{
-    sha_finish, sha_init, sha_update, HashAlgo, ScratchAlloc, SHA_CONTEXT_SIZE,
-};
+use mcu_caliptra_api::{hash_all, HashAlgo, ScratchAlloc};
 use mcu_error::McuResult;
 
 use super::endorsement::{
@@ -23,11 +21,8 @@ use super::endorsement::{ManagedEndorsementSlot, SingleManagedEndorsement};
 const DEFAULT_CERT_INFO: u8 = 0x01;
 
 async fn compute_root_hash<A: ScratchAlloc>(alloc: &A, root_cert: &[u8]) -> McuResult<[u8; 48]> {
-    let sha_buf = alloc.alloc(SHA_CONTEXT_SIZE)?;
-    let mut state = sha_init(alloc, sha_buf, HashAlgo::Sha384, &[]).await?;
-    sha_update(alloc, &mut state, root_cert).await?;
     let mut hash = [0u8; 48];
-    sha_finish(alloc, &mut state, &mut hash).await?;
+    hash_all(alloc, HashAlgo::Sha384, root_cert, &mut hash).await?;
     Ok(hash)
 }
 

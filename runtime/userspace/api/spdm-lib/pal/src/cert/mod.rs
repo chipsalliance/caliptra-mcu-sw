@@ -212,23 +212,14 @@ async fn validate_root_hash<M: MeasurementProvider>(
     cert_chain: &[u8],
 ) -> McuResult<()> {
     let root_cert_len = der_first_seq_len(cert_chain).ok_or(INVARIANT)?;
-    let sha_buf =
-        mcu_caliptra_api::ScratchAlloc::alloc(pal.allocator, mcu_caliptra_api::SHA_CONTEXT_SIZE)?;
-    let mut state = mcu_caliptra_api::sha_init(
-        pal.allocator,
-        sha_buf,
-        mcu_caliptra_api::HashAlgo::Sha384,
-        &[],
-    )
-    .await?;
-    mcu_caliptra_api::sha_update(
-        pal.allocator,
-        &mut state,
-        checked_slice(cert_chain, 0, root_cert_len)?,
-    )
-    .await?;
     let mut digest = [0u8; 48];
-    mcu_caliptra_api::sha_finish(pal.allocator, &mut state, &mut digest).await?;
+    mcu_caliptra_api::hash_all(
+        pal.allocator,
+        mcu_caliptra_api::HashAlgo::Sha384,
+        checked_slice(cert_chain, 0, root_cert_len)?,
+        &mut digest,
+    )
+    .await?;
     if &digest != root_hash {
         return Err(INVARIANT);
     }
