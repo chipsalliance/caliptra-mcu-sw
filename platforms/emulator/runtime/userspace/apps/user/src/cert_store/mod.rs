@@ -35,7 +35,7 @@ use caliptra_mcu_spdm_pal::cert::store::SharedCertStore;
 #[allow(unused_imports)]
 use core::fmt::Write as _;
 use mcu_caliptra_api::{
-    mldsa87_cert_der_len, populate_idev_ecc384_cert, populate_idev_mldsa87_cert, ApiAlloc,
+    mldsa87_cert_der_len, populate_idev_ecc384_cert, populate_idev_mldsa87_cert, ScratchAlloc,
     POPULATE_IDEV_MLDSA87_MAX_CERT_SIZE,
 };
 use mcu_error::McuResult;
@@ -126,7 +126,7 @@ pub(crate) fn shared() -> &'static SharedCertStore {
 /// the installs cannot contend with an SPDM responder or the MCU mailbox
 /// service. ECC-384 is required; ML-DSA-87 remains best-effort until SPDM can
 /// negotiate that algorithm.
-async fn populate_idev<A: ApiAlloc>(alloc: &A) -> McuResult<()> {
+async fn populate_idev<A: ScratchAlloc>(alloc: &A) -> McuResult<()> {
     populate_idev_cert_from_otp_ecc(alloc).await?;
     if let Err(e) = populate_idev_cert_from_otp_mldsa(alloc).await {
         let mut cw = Console::<DefaultSyscalls>::writer();
@@ -145,7 +145,7 @@ async fn populate_idev<A: ApiAlloc>(alloc: &A) -> McuResult<()> {
 /// failure is fatal. Slots 1-2 stay unprovisioned if flash is empty (they'll be
 /// provisioned via SET_CERTIFICATE).
 #[cfg(feature = "spdm")]
-async fn setup_endorsements<A: ApiAlloc>(store: &SharedCertStore, alloc: &A) -> McuResult<()> {
+async fn setup_endorsements<A: ScratchAlloc>(store: &SharedCertStore, alloc: &A) -> McuResult<()> {
     // Slot 0 (Vendor): ReadOnly endorsement with static Root CA (ECC & ML-DSA).
     store
         .set_endorsement_chains(
@@ -183,7 +183,7 @@ async fn setup_endorsements<A: ApiAlloc>(store: &SharedCertStore, alloc: &A) -> 
 }
 
 /// Read the IDevID ECC-384 cert from OTP and install it into Caliptra.
-async fn populate_idev_cert_from_otp_ecc<A: ApiAlloc>(alloc: &A) -> McuResult<()> {
+async fn populate_idev_cert_from_otp_ecc<A: ScratchAlloc>(alloc: &A) -> McuResult<()> {
     let mut cert_buf = [0u8; ECC_DEVID_CERT_SIZE];
     let otp = ExternalOtp::<DefaultSyscalls>::new();
 
@@ -204,7 +204,7 @@ async fn populate_idev_cert_from_otp_ecc<A: ApiAlloc>(alloc: &A) -> McuResult<()
 /// mailbox mutex *before* pulling from the stream, so streaming would hold the
 /// Caliptra mailbox with EXECUTE asserted across ~1,900 sequential 4-byte OTP
 /// syscalls. Staging keeps the mailbox held only for the transfer itself.
-async fn populate_idev_cert_from_otp_mldsa<A: ApiAlloc>(alloc: &A) -> McuResult<()> {
+async fn populate_idev_cert_from_otp_mldsa<A: ScratchAlloc>(alloc: &A) -> McuResult<()> {
     let otp = ExternalOtp::<DefaultSyscalls>::new();
 
     // Submit the cert's own DER length, not the whole partition: a production

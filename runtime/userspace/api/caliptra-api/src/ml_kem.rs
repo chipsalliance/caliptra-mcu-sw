@@ -25,7 +25,7 @@ use crate::wire::{
     mbox_execute, populate_checksum, CMD_CM_MLKEM_DECAPSULATE, CMD_CM_MLKEM_ENCAPSULATE,
     CMD_CM_MLKEM_KEY_GEN, MBOX_RESP_HEADER_SIZE,
 };
-use crate::ApiAlloc;
+use crate::ScratchAlloc;
 
 // ---------------------------------------------------------------------------
 // Public constants
@@ -64,7 +64,7 @@ pub const MLKEM_ENCAPSULATE_SCRATCH_PEAK: usize =
 /// * `seed_cmk` — CMK containing ML-KEM seed (seed_d || seed_z, 64 bytes).
 /// * `encaps_key` — Output buffer for the 1568-byte encapsulation key.
 #[inline(never)]
-pub async fn mlkem_key_gen<A: ApiAlloc>(
+pub async fn mlkem_key_gen<A: ScratchAlloc>(
     alloc: &A,
     seed_cmk: &Cmk,
     encaps_key: &mut [u8],
@@ -105,7 +105,7 @@ pub async fn mlkem_key_gen<A: ApiAlloc>(
 ///
 /// Returns a CMK handle to the shared secret.
 #[inline(never)]
-pub async fn mlkem_encapsulate<A: ApiAlloc>(
+pub async fn mlkem_encapsulate<A: ScratchAlloc>(
     alloc: &A,
     key_usage: CmKeyUsage,
     encaps_key: &[u8],
@@ -151,7 +151,7 @@ pub async fn mlkem_encapsulate<A: ApiAlloc>(
 ///
 /// Returns a CMK handle to the shared secret.
 #[inline(never)]
-pub async fn mlkem_decapsulate<A: ApiAlloc>(
+pub async fn mlkem_decapsulate<A: ScratchAlloc>(
     alloc: &A,
     key_usage: CmKeyUsage,
     seed_cmk: &Cmk,
