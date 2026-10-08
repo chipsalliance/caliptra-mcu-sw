@@ -45,4 +45,8 @@ rustflags = [
     "--remap-path-prefix=/root/caliptra-mcu-sw=.",
     "--remap-path-prefix=/root/.cargo/registry=registry",
     "--remap-path-prefix=/root/.cargo/git=git",
+    "--remap-path-prefix=platforms/emulator/runtime/userspace/apps/user/src=user-app",
+    "--remap-path-prefix=runtime/userspace/api=api",
+    "--remap-path-prefix=runtime/userspace/libtockasync=libtockasync",
+    "--remap-path-prefix=runtime/userspace/syscall=syscall",
 ]
