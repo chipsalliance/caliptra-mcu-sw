@@ -252,18 +252,6 @@ impl Default for RomConfig<'_> {
     }
 }
 
-/// Platform specific OCP LOCK configuration
-pub trait RuntimeConfig: Send + Sync {
-    /// Get the endorsement certificate serial number
-    /// NOTE: Do not include leading 0s in the serial number
-    fn endorsement_cert_serial_number(&self) -> &[u8; 20];
-
-    /// Check whether EKP mode is active on this platform.
-    fn ekp_mode_active(&self) -> bool {
-        false
-    }
-}
-
 /// Platform specific OCP LOCK behavior for runtime key rotation
 pub trait KernelConfig: Send + Sync {
     /// Sanitize a HEK slot

@@ -455,7 +455,7 @@ mod test {
 pub mod ocp_lock_config {
     pub struct ExampleRuntimeConfig;
 
-    impl caliptra_mcu_romtime::ocp_lock::RuntimeConfig for ExampleRuntimeConfig {
+    impl mcu_caliptra_api::ocp_lock::RuntimeConfig for ExampleRuntimeConfig {
         fn endorsement_cert_serial_number(&self) -> &[u8; 20] {
             &[0x7F; 20]
         }

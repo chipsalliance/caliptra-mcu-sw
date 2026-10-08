@@ -2,6 +2,7 @@
 
 use crate::error::{CaliptraApiError, CaliptraApiResult};
 use crate::ocp_lock::{EndorsementAlgorithm, OcpLockSigner};
+use crate::ScratchAlloc;
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use caliptra_api::mailbox::{
@@ -16,7 +17,6 @@ use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_platform::ErrorCode;
 use core::mem::size_of;
 use dpe::commands::Command;
-use mcu_caliptra_api::ScratchAlloc;
 use zerocopy::FromBytes;
 
 #[async_trait]

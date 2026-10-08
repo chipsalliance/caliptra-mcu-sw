@@ -17,7 +17,6 @@ aes-gcm.workspace = true
 anyhow.workspace = true
 caliptra-api.workspace = true
 caliptra-api-types.workspace = true
-caliptra-mcu-libapi-caliptra.workspace = true
 dpe.workspace = true
 caliptra-auth-man-types.workspace = true
 caliptra-builder.workspace = true

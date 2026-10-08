@@ -18,11 +18,17 @@ caliptra-mcu-pldm-common = { workspace = true, optional = true }
 caliptra-mcu-pldm-lib = { workspace = true, optional = true }
 caliptra-mcu-scratch-alloc = { workspace = true, optional = true }
 caliptra-mcu-userlog = { workspace = true, optional = true }
+caliptra-ocp-eat = { workspace = true, optional = true }
+const-oid = { workspace = true, optional = true }
+der = { workspace = true, optional = true }
+dpe = { workspace = true, optional = true }
 embassy-executor = { workspace = true, optional = true }
 embassy-sync = { workspace = true, optional = true }
 mcu-error = { workspace = true, optional = true }
 caliptra-mcu-libsyscall-caliptra = { workspace = true, optional = true }
 caliptra-mcu-libtock_platform = { workspace = true, optional = true }
+sha2 = { workspace = true, optional = true }
+spki = { workspace = true, optional = true }
 zerocopy = { workspace = true }
 
 [features]
@@ -44,6 +50,15 @@ mailbox-io = [
     "dep:mcu-error",
     "dep:caliptra-mcu-libsyscall-caliptra",
     "dep:caliptra-mcu-libtock_platform",
+]
+ocp-lock = [
+    "mailbox-io",
+    "dep:caliptra-ocp-eat",
+    "dep:const-oid",
+    "dep:der",
+    "dep:dpe",
+    "dep:sha2",
+    "dep:spki",
 ]
 
 [dev-dependencies]

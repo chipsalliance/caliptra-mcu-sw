@@ -80,7 +80,7 @@ flowchart TD
 |---|---|
 | **MCU ROM** (`romtime::ocp_lock`) | • Reads HEK seed fuses from OTP during cold boot.<br>• Determines slot states and selects the active HEK slot using the `Platform` trait.<br>• Programs encryption engine registers (MEK size, key release target address).<br>• Dispatches `REPORT_HEK_METADATA` mailbox command to Caliptra Core.<br>• Writes `HekState` into DCCM `HandoffData` for the runtime kernel. |
 | **MCU Kernel** (`capsules::otp`) | • Provides kernel-level OTP access control and syscall drivers.<br>• Validates slot transition policies (sequential rotation, slot bounds).<br>• Enforces the single-rotation-per-boot lifecycle constraint (`has_rotated`).<br>• Performs atomic HEK sanitization (0xFF write) and new seed + digest programming via `KernelConfig`.<br>• Enforces permanent lock policy (`PERMA_HEK_EN`). |
-| **MCU Runtime Userspace** (`caliptra-libapi`) | • Exposes async `OcpLock` client for KMB operations (MEK/MPK generation, derivation, rotation).<br>• Constructs and signs X.509 v3 endorsement certificates for KMB HPKE public keys.<br>• Formats and signs TCG EKP Epoch Key Reports wrapped in standard `COSE_Sign1` structures.<br>• Integrates with DPE context signing (`CaliptraDpeSigner`). |
+| **MCU Runtime Userspace** (`mcu-caliptra-api`) | • Exposes async `OcpLock` client for KMB operations (MEK/MPK generation, derivation, rotation).<br>• Constructs and signs X.509 v3 endorsement certificates for KMB HPKE public keys.<br>• Formats and signs TCG EKP Epoch Key Reports wrapped in standard `COSE_Sign1` structures.<br>• Integrates with DPE context signing (`CaliptraDpeSigner`). |
 | **Host Mailbox Interface** (`mcu-mbox-lib`) | • Dispatches authorized host commands (`MC_OCP_LOCK_PROGRAM_HEK`, `MC_OCP_LOCK_ZERO_HEK`, `MC_OCP_LOCK_ROTATE_HEK`, `MC_OCP_LOCK_SET_PERMA_HEK`).<br>• Dispatches unauthenticated status and public key queries and attestation requests (`MC_HEK_STATUS`, `MC_GET_OCP_LOCK_ENDORSEMENT_CERT`, `MC_OCP_LOCK_ENUMERATE_HPKE_HANDLES`, `MC_GET_OCP_LOCK_EPOCH_KEY_REPORT`, `MC_DPE_SIGNER_CONTEXT_CERT`). |
 
 ---
@@ -274,9 +274,9 @@ The OTP driver capsule exposes the following commands to userspace:
 
 ---
 
-## 3. MCU Runtime Userspace Integration (`caliptra-libapi`)
+## 3. MCU Runtime Userspace Integration (`mcu-caliptra-api`)
 
-Userspace applications use the `OcpLock` struct defined in `caliptra_mcu_libapi_caliptra::ocp_lock` for KMB operations, certificate generation, and attestation reporting.
+Userspace applications use the `OcpLock` struct defined in `mcu_caliptra_api::ocp_lock` for KMB operations, certificate generation, and attestation reporting.
 
 ### Integrator Configuration: `RuntimeConfig`
 
