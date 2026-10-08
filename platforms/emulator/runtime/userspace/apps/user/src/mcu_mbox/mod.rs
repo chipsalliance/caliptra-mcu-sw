@@ -34,6 +34,7 @@ const fn slot_bytes(len: usize) -> usize {
 /// * `MC_GET_ATTESTATION` (OCP EAT, ML-DSA-87): the request, an evidence-sized
 ///   response, and the DPE ML-DSA-87 sign response. This is the largest
 ///   path when `attested-csr` is off (12,416 B).
+///
 /// All remaining commands peak below these.
 #[cfg(feature = "mcu-mbox-service")]
 const BASE_MCU_MBOX_SCRATCH_REQUIRED: usize = {
@@ -61,9 +62,8 @@ const BASE_MCU_MBOX_SCRATCH_REQUIRED: usize = {
                 + <crate::caliptra_cmd_handler::CaliptraCmdBackend as CaliptraCmdHandler>::MAX_ATTESTATION_EVIDENCE_LEN,
         ))
         + slot_bytes(mcu_caliptra_api::DPE_MLDSA87_SIGN_SCRATCH_PEAK);
-    let required = max_usize(initial_req, get_attestation);
 
-    required
+    max_usize(initial_req, get_attestation)
 };
 
 /// `MC_EXPORT_ATTESTED_CSR` stages up to 12.8 KiB of CSR in one response, so
