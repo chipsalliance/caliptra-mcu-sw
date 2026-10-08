@@ -621,7 +621,7 @@ async fn dispatch<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_SESSIONS: usi
         state.large_msg_ctx.reset();
     }
     match code {
-        ReqRespCode::GET_VERSION => unreachable!(),
+        ReqRespCode::GET_VERSION => panic!("dispatch"),
         ReqRespCode::GET_CAPABILITIES => {
             capabilities::handle_get_capabilities(state, pal, io).await
         }
