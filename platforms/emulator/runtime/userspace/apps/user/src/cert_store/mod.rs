@@ -241,7 +241,7 @@ async fn mldsa_cert_der_len(otp: &ExternalOtp<DefaultSyscalls>) -> McuResult<Opt
     let partition_size = otp
         .partition_size(OTP_IDEVID_MLDSA_PARTITION)
         .map_err(|_| mcu_error::codes::INTERNAL_BUG)? as usize;
-    // Length policy lives in api-lite so it is covered by host unit tests;
+    // Length policy lives in mcu-caliptra-api so it is covered by host unit tests;
     // user-app itself is excluded from `cargo test` (xtask/src/test.rs).
     Ok(mldsa87_cert_der_len(word, partition_size))
 }

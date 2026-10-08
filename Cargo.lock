@@ -1477,7 +1477,6 @@ dependencies = [
  "caliptra-mcu-attestation-evidence",
  "caliptra-mcu-config-emulator",
  "caliptra-mcu-config-fpga",
- "caliptra-mcu-libapi-caliptra",
  "caliptra-mcu-libsyscall-caliptra",
  "caliptra-mcu-libtock",
  "caliptra-mcu-libtock_alarm",
@@ -1491,15 +1490,12 @@ dependencies = [
  "caliptra-mcu-romtime",
  "caliptra-mcu-scratch-alloc",
  "caliptra-mcu-spdm-pal",
- "const-oid 0.9.6",
  "critical-section",
- "der 0.7.10",
  "dpe",
  "embassy-executor",
  "embedded-alloc",
  "mcu-caliptra-api",
  "portable-atomic",
- "spki 0.7.3",
  "zerocopy",
 ]
 
@@ -1693,50 +1689,12 @@ dependencies = [
 ]
 
 [[package]]
-name = "caliptra-mcu-libapi-caliptra"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "caliptra-api",
- "caliptra-auth-man-types",
- "caliptra-error",
- "caliptra-image-types",
- "caliptra-mcu-flash-image",
- "caliptra-mcu-libsyscall-caliptra",
- "caliptra-mcu-libtock_console",
- "caliptra-mcu-libtock_platform",
- "caliptra-mcu-libtock_runtime",
- "caliptra-mcu-libtock_unittest",
- "caliptra-mcu-libtockasync",
- "caliptra-mcu-mbox-common",
- "caliptra-mcu-pldm-common",
- "caliptra-mcu-pldm-lib",
- "caliptra-mcu-romtime",
- "caliptra-mcu-runtime-userspace-error",
- "caliptra-mcu-userlog",
- "caliptra-ocp-eat",
- "const-oid 0.9.6",
- "defmt",
- "der 0.7.10",
- "dpe",
- "embassy-executor",
- "embassy-sync",
- "embedded-alloc",
- "futures",
- "mcu-caliptra-api",
- "sha2",
- "spki 0.7.3",
- "zerocopy",
-]
-
-[[package]]
 name = "caliptra-mcu-libapi-emulated-caliptra"
 version = "0.1.0"
 dependencies = [
  "async-trait",
  "caliptra-mcu-config",
  "caliptra-mcu-config-emulator",
- "caliptra-mcu-libapi-caliptra",
  "caliptra-mcu-libsyscall-caliptra",
  "caliptra-mcu-libtock_platform",
  "embassy-executor",
@@ -2715,7 +2673,6 @@ dependencies = [
  "caliptra-mcu-fw-signer",
  "caliptra-mcu-hw-model",
  "caliptra-mcu-image-header",
- "caliptra-mcu-libapi-caliptra",
  "caliptra-mcu-mailbox-client",
  "caliptra-mcu-mbox-common",
  "caliptra-mcu-mctp-vdm-common",
@@ -5496,8 +5453,14 @@ dependencies = [
  "caliptra-mcu-runtime-userspace-error",
  "caliptra-mcu-scratch-alloc",
  "caliptra-mcu-userlog",
+ "caliptra-ocp-eat",
+ "const-oid 0.9.6",
+ "der 0.7.10",
+ "dpe",
  "embassy-executor",
  "embassy-sync",
+ "sha2",
+ "spki 0.7.3",
  "zerocopy",
 ]
 
@@ -7973,7 +7936,6 @@ dependencies = [
  "caliptra-mcu-config-emulator",
  "caliptra-mcu-config-fpga",
  "caliptra-mcu-flash-image",
- "caliptra-mcu-libapi-caliptra",
  "caliptra-mcu-libapi-emulated-caliptra",
  "caliptra-mcu-libsyscall-caliptra",
  "caliptra-mcu-libtock",
