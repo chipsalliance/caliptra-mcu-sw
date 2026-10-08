@@ -129,7 +129,7 @@ mod tests {
     /// `MAX_BUFFERED_SPDM_MSG_SIZE` must shrink.
     #[test]
     fn buffered_large_message_capacity_is_allocatable_from_shipping_pool() {
-        const POOL: usize = 17 * 1024;
+        const POOL: usize = 18 * 1024;
         const MAX_BUFFERED_SPDM_MSG_SIZE: usize = 8 * 1024;
         const MAX_TRANSPORT_MTU: usize = 1024;
 
@@ -338,5 +338,125 @@ mod tests {
         let _sign_rsp = alloc
             .alloc_bytes(SIGN_RSP)
             .expect("DPE Sign response must fit after releasing the chunked request");
+    }
+
+    /// Validates a signed OCP EAT GET_MEASUREMENTS over MCTP on the shipping
+    /// 18 KiB pool, following a chunked CHALLENGE_AUTH.
+    ///
+    /// MCTP carries no secured messages, and CHALLENGE has released M1, so
+    /// only the VCA hash context persists. The receive frame is allocated
+    /// before dispatch releases the retained CHALLENGE_AUTH response, so the
+    /// shrunken frame splits the pool. The rented MEASUREMENTS response then
+    /// stays live while the provider signs the OCP EAT and the responder signs
+    /// the L1 transcript.
+    ///
+    /// This is the empirical counterpart to the platform's
+    /// `MCTP_SIGNED_MEASUREMENTS_PEAK` build assertion.
+    #[test]
+    fn signed_measurements_fit_mctp_shipping_pool() {
+        const POOL: usize = 18 * 1024;
+        const MAX_TRANSPORT_MTU: usize = 1024;
+        const MCTP_HEADER: usize = 1;
+        const GET_MEASUREMENTS_REQ_LEN: usize = caliptra_mcu_spdm_codec::SpdmMsgHdrPdu::SIZE
+            + 2
+            + caliptra_mcu_spdm_traits::SPDM_NONCE_LEN
+            + 1
+            + caliptra_mcu_spdm_codec::REQUESTER_CONTEXT_LEN;
+        const CHALLENGE_AUTH_RSP_LEN: usize = caliptra_mcu_spdm_codec::SpdmMsgHdrPdu::SIZE
+            + 2
+            + caliptra_mcu_spdm_codec::SHA384_HASH_SIZE
+            + caliptra_mcu_spdm_traits::SPDM_NONCE_LEN
+            + caliptra_mcu_spdm_codec::SHA384_HASH_SIZE
+            + 2
+            + caliptra_mcu_spdm_codec::REQUESTER_CONTEXT_LEN
+            + caliptra_mcu_spdm_codec::MLDSA87_SIGNATURE_SIZE;
+        const MAX_MEASUREMENTS_RSP_LEN: usize = caliptra_mcu_spdm_codec::SpdmMsgHdrPdu::SIZE
+            + 6
+            + caliptra_mcu_spdm_codec::MEAS_BLOCK_METADATA_SIZE
+            + caliptra_mcu_attestation_evidence::SIGNED_OCP_EAT_MAX_SIZE
+            + caliptra_mcu_spdm_traits::SPDM_NONCE_LEN
+            + 2
+            + caliptra_mcu_spdm_codec::REQUESTER_CONTEXT_LEN
+            + caliptra_mcu_spdm_codec::MLDSA87_SIGNATURE_SIZE;
+        const CERTIFY_KEY_REQ: usize = 92;
+        const CERTIFY_KEY_RSP: usize = 32 + 2624;
+        const SIGN_RSP: usize = 4668;
+        const SHA_UPDATE_REQ: usize = 4 + mcu_caliptra_api::SHA_CONTEXT_SIZE + 4 + 512;
+        const SHA_CTX_RSP: usize = 4 + 4 + mcu_caliptra_api::SHA_CONTEXT_SIZE;
+
+        let (alloc, _buf) = make_alloc(POOL);
+
+        let _vca = alloc
+            .alloc_bytes(mcu_caliptra_api::SHA_CONTEXT_SIZE)
+            .expect("vca alloc");
+        let challenge_auth = alloc
+            .alloc_bytes(MCTP_HEADER + CHALLENGE_AUTH_RSP_LEN)
+            .expect("retained CHALLENGE_AUTH response alloc");
+        let mut recv = alloc
+            .alloc_bytes(MCTP_HEADER + MAX_TRANSPORT_MTU)
+            .expect("receive frame alloc");
+        recv.shrink(MCTP_HEADER + GET_MEASUREMENTS_REQ_LEN)
+            .expect("receive frame shrink");
+        drop(challenge_auth);
+
+        let largest_run_bytes = alloc.largest_free_run() * BITMAP_SLOT_SIZE;
+        let _response = alloc
+            .alloc_bytes(MCTP_HEADER + MAX_MEASUREMENTS_RSP_LEN)
+            .unwrap_or_else(|_| {
+                panic!(
+                    "MEASUREMENTS response ({} B) is not placeable beside the receive frame: \
+                     largest_free_run={} bytes. Raise MCTP_SPDM_SCRATCH_SIZE.",
+                    MCTP_HEADER + MAX_MEASUREMENTS_RSP_LEN,
+                    largest_run_bytes
+                )
+            });
+
+        // The provider signs the OCP EAT in place in the response.
+        {
+            let _ck_req = alloc
+                .alloc_bytes(CERTIFY_KEY_REQ)
+                .expect("OCP EAT CertifyKey request alloc");
+            let _ck_rsp = alloc
+                .alloc_bytes(CERTIFY_KEY_RSP)
+                .expect("OCP EAT CertifyKey response alloc");
+            let _shake = alloc
+                .alloc_bytes(mcu_caliptra_api::SHAKE256_CONTEXT_SIZE)
+                .expect("OCP EAT SHAKE256 context alloc");
+        }
+        let run_before_sign = alloc.largest_free_run() * BITMAP_SLOT_SIZE;
+        assert!(
+            alloc.alloc_bytes(SIGN_RSP).is_ok(),
+            "OCP EAT DPE Sign ({} B) is not placeable while the MEASUREMENTS response is \
+             rented: largest_free_run={} bytes. Raise MCTP_SPDM_SCRATCH_SIZE.",
+            SIGN_RSP,
+            run_before_sign
+        );
+
+        // The responder hashes the request and response into L1, then signs it.
+        {
+            let _l1 = alloc
+                .alloc_bytes(mcu_caliptra_api::SHA_CONTEXT_SIZE)
+                .expect("l1 alloc");
+            let _sha_req = alloc
+                .alloc_bytes(SHA_UPDATE_REQ)
+                .expect("L1 SHA update request alloc");
+            let _sha_rsp = alloc
+                .alloc_bytes(SHA_CTX_RSP)
+                .expect("L1 SHA update response alloc");
+        }
+        {
+            let _ck_req = alloc
+                .alloc_bytes(CERTIFY_KEY_REQ)
+                .expect("L1 CertifyKey request alloc");
+            let _ck_rsp = alloc
+                .alloc_bytes(CERTIFY_KEY_RSP)
+                .expect("L1 CertifyKey response alloc");
+            let _shake = alloc
+                .alloc_bytes(mcu_caliptra_api::SHAKE256_CONTEXT_SIZE)
+                .expect("L1 SHAKE256 context alloc");
+        }
+        let _sign_rsp = alloc
+            .alloc_bytes(SIGN_RSP)
+            .expect("L1 DPE Sign must fit while the MEASUREMENTS response is rented");
     }
 }
