@@ -74,6 +74,14 @@ pub mod test {
     type Hkdf384 = Hkdf<Sha384>;
     type Hkdf512 = Hkdf<Sha512>;
 
+    struct StopEmulatorOnDrop;
+
+    impl Drop for StopEmulatorOnDrop {
+        fn drop(&mut self) {
+            caliptra_mcu_testing_common::stop_emulator();
+        }
+    }
+
     /// Chunk size for splitting large AES-GCM payloads.
     /// Set to 2048 to ensure total request (headers ~140 bytes + data) fits within 4K SRAM.
     const AES_GCM_CHUNK_SIZE: usize = 2048;
@@ -169,7 +177,8 @@ pub mod test {
         let mci_ptr = hw.base.mmio.mci().unwrap().ptr as u64;
         let caliptra_mmio_ptr = hw.base.mmio.caliptra_mmio().unwrap() as u64;
 
-        caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
+        let test_thread = caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
+            let _stop_emulator = StopEmulatorOnDrop;
             wait_for_runtime_start();
             if !caliptra_mcu_testing_common::is_emulator_running() {
                 exit(-1);
@@ -199,10 +208,12 @@ pub mod test {
                 exit(-1);
             }
             println!("Passed");
-            caliptra_mcu_testing_common::stop_emulator();
         });
 
         let test = finish_runtime_hw_model(&mut hw);
+        test_thread
+            .join()
+            .expect("MCU mailbox test thread panicked");
         assert_eq!(0, test);
 
         lock.fetch_add(1, Ordering::Relaxed);
@@ -245,7 +256,8 @@ pub mod test {
             .expect("invalid Core CAPABILITIES response")
             .capabilities;
 
-        caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
+        let test_thread = caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
+            let _stop_emulator = StopEmulatorOnDrop;
             wait_for_runtime_start();
             if !caliptra_mcu_testing_common::is_emulator_running() {
                 exit(-1);
@@ -274,10 +286,12 @@ pub mod test {
                 println!("Sent {} test messages", test.test_messages.len());
                 println!("Passed");
             }
-            caliptra_mcu_testing_common::stop_emulator();
         });
 
         let test = finish_runtime_hw_model(&mut hw);
+        test_thread
+            .join()
+            .expect("MCU mailbox test thread panicked");
         assert_eq!(0, test);
 
         // force the compiler to keep the lock
@@ -2900,10 +2914,8 @@ pub mod test {
         }
 
         fn test_import_command(&mut self) -> Result<(), ()> {
-            for key_size in [16, 32] {
-                let cmk = self.import_key_checked(&vec![0x5a; key_size], CmKeyUsage::Aes)?;
-                self.delete_key_checked(&cmk)?;
-            }
+            let cmk = self.import_key_checked(&[0x5a; 32], CmKeyUsage::Aes)?;
+            self.delete_key_checked(&cmk)?;
             self.expect_command_failure(
                 McuMailboxReq::Import(McuCmImportReq(CmImportReq {
                     hdr: MailboxReqHeader::default(),
@@ -2917,7 +2929,7 @@ pub mod test {
                 McuMailboxReq::Import(McuCmImportReq(CmImportReq {
                     hdr: MailboxReqHeader::default(),
                     key_usage: CmKeyUsage::Aes.into(),
-                    input_size: 15,
+                    input_size: 16,
                     ..Default::default()
                 })),
                 "MC_IMPORT with an invalid AES key length",
