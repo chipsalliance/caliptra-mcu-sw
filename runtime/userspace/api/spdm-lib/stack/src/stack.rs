@@ -375,7 +375,7 @@ impl<Pal: SpdmPal, const MAX_SESSIONS: usize, Vdm: SpdmVdmBackend>
     pub fn with_vdm_backend(pal: Pal, vdm_backend: Vdm) -> Self {
         assert!(
             pal.max_inbound_spdm_request_size() >= pal.mtu(),
-            "MaxSPDMmsgSize must be at least DataTransferSize"
+            "SPDM size"
         );
         assert!(
             pal.max_inbound_spdm_request_size() <= u32::MAX as usize,

@@ -327,7 +327,7 @@ impl Future for TockSubscribe {
 impl Drop for TockSubscribe {
     fn drop(&mut self) {
         if self.result.get().is_none() && self.error.is_none() {
-            panic!("The TockSubscribe future was dropped before the upcall happened.");
+            panic!("subscribe dropped");
         }
     }
 }

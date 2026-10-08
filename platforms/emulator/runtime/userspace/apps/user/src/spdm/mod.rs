@@ -476,7 +476,7 @@ async fn spdm_mctp_responder() {
         .set_spdm_mctp_responder_ready()
         .is_err()
     {
-        panic!("failed to signal MCTP SPDM responder readiness");
+        panic!("SPDM ready");
     }
     #[cfg(not(feature = "cert-provisioning"))]
     Mci::<DefaultSyscalls>::new()
