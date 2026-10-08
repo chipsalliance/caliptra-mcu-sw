@@ -308,6 +308,30 @@ impl<'a> BuildPass<'a> {
                 if let Some(cargo_home) = cargo_home {
                     let registry_src = cargo_home.join("registry").join("src");
                     remap_flags.push(format!("--remap-path-prefix={}=c", registry_src.display()));
+                    let mut registry_dirs = match std::fs::read_dir(&registry_src) {
+                        Ok(entries) => entries
+                            .map(|entry| entry.map(|entry| entry.path()))
+                            .collect::<std::io::Result<Vec<_>>>()?,
+                        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Vec::new(),
+                        Err(error) => return Err(error.into()),
+                    };
+                    registry_dirs.retain(|path| path.is_dir());
+                    registry_dirs.sort();
+                    for (index, path) in registry_dirs.iter().enumerate() {
+                        remap_flags
+                            .push(format!("--remap-path-prefix={}=c{index}", path.display()));
+                        // Keep these in sync with Cargo.lock when the dependencies change.
+                        for (package, prefix) in [
+                            ("embedded-alloc-0.5.1", "ea"),
+                            ("embassy-sync-0.6.2", "es"),
+                            ("linked_list_allocator-0.10.5", "ll"),
+                        ] {
+                            remap_flags.push(format!(
+                                "--remap-path-prefix={}={prefix}",
+                                path.join(package).display()
+                            ));
+                        }
+                    }
                 }
 
                 let rustflags =
