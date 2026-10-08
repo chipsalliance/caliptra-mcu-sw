@@ -22,13 +22,16 @@ const DATA_ID_VERSION_SELECTION: u8 = 0;
 const DATA_ID_SUPPORTED_VERSION_LIST: u8 = 1;
 
 /// Maximum supported version entries we'll parse.
-const MAX_SM_VERSION_COUNT: usize = 4;
+const MAX_SM_VERSION_COUNT: usize = 8;
 
 const GENERAL_HEADER_SIZE: usize = 4;
 const ELEMENT_HEADER_SIZE: usize = 4;
 const SUPPORTED_VERSION_FIXED_SIZE: usize = 3;
 
 /// Maximum encoded supported-version-list accepted by this responder.
+///
+/// This only respects requests which only have a single supported-version-list element.
+/// It is not guaranteed, that a requester won't send additional elements.
 pub const MAX_SUPPORTED_VERSION_LIST_OPAQUE_SIZE: usize = GENERAL_HEADER_SIZE
     + ((ELEMENT_HEADER_SIZE + SUPPORTED_VERSION_FIXED_SIZE + 2 * MAX_SM_VERSION_COUNT + 3) & !3);
 
@@ -312,14 +315,18 @@ mod tests {
     fn maximum_supported_version_list_matches_bound() {
         let opaque = [
             1, 0, 0, 0, // General header.
-            0, 0, 11, 0, // DMTF element, eleven data bytes.
-            1, 1, 4, // Supported-version-list header, four versions.
+            0, 0, 19, 0, // DMTF element, eleven data bytes.
+            1, 1, 8, // Supported-version-list header, four versions.
             0, 0x10, 0, 0x11, 0, 0x12, 0, 0x13, // Versions.
+            0, 0x20, 0, 0x21, 0, 0x22, 0, 0x23, // Versions.
             0,    // Alignment padding.
         ];
 
         assert_eq!(opaque.len(), MAX_SUPPORTED_VERSION_LIST_OPAQUE_SIZE);
-        assert_eq!(parse_supported_versions(&opaque).unwrap().count, 4);
+        assert_eq!(
+            parse_supported_versions(&opaque).unwrap().count,
+            MAX_SM_VERSION_COUNT as u8
+        );
     }
 
     #[test]
