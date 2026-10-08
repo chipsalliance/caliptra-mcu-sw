@@ -624,7 +624,7 @@ impl<'a> OwnerMeasurementPolicy<'a> {
 
     pub fn manifest(&self) -> AttestationManifest<'a> {
         let manifest_bytes = self.raw_bytes.get(..self.manifest_size).unwrap_or(&[]);
-        parse_and_validate_owner(manifest_bytes).unwrap_or_else(|_| panic!("owner policy"))
+        parse_and_validate_owner(manifest_bytes).unwrap_or_else(|_| panic!("owner"))
     }
 
     pub fn load_list(&self) -> OwnerFwLoadList<'a> {

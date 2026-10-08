@@ -373,10 +373,7 @@ impl<Pal: SpdmPal, const MAX_SESSIONS: usize, Vdm: SpdmVdmBackend>
     /// If the PAL cannot hold at least one transport-sized large message,
     /// `CHUNK` is removed from the advertised capabilities.
     pub fn with_vdm_backend(pal: Pal, vdm_backend: Vdm) -> Self {
-        assert!(
-            pal.max_inbound_spdm_request_size() >= pal.mtu(),
-            "SPDM size"
-        );
+        assert!(pal.max_inbound_spdm_request_size() >= pal.mtu(), "size");
         assert!(
             pal.max_inbound_spdm_request_size() <= u32::MAX as usize,
             "MaxSPDMmsgSize exceeds the SPDM field width"
