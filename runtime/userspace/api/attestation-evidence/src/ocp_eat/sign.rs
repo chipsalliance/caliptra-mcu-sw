@@ -2,7 +2,9 @@
 
 //! Allocator-backed COSE_Sign1 EAT token generation via byte templates.
 
-use mcu_caliptra_api::{sha_finish, sha_init, sha_update, ScratchAlloc, HashAlgo, SHA_CONTEXT_SIZE};
+use mcu_caliptra_api::{
+    sha_finish, sha_init, sha_update, HashAlgo, ScratchAlloc, SHA_CONTEXT_SIZE,
+};
 use mcu_error::codes::INVARIANT;
 use mcu_error::McuResult;
 

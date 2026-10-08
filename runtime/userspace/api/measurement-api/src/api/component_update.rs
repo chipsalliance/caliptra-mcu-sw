@@ -11,8 +11,8 @@ use caliptra_mcu_libsyscall_caliptra::soft_pcr_store::{
 use caliptra_mcu_libtock_platform::Syscalls;
 use mcu_caliptra_api::{
     authorize_and_stash as caliptra_authorize, dpe_get_tagged_tci, dpe_update_context_measurement,
-    extend_pcr31, sha_finish, sha_init, sha_update, ScratchAlloc, DpeUpdateContextMeasurementParams,
-    DpeUpdateContextMeasurementResult, HashAlgo, SHA_CONTEXT_SIZE,
+    extend_pcr31, sha_finish, sha_init, sha_update, DpeUpdateContextMeasurementParams,
+    DpeUpdateContextMeasurementResult, HashAlgo, ScratchAlloc, SHA_CONTEXT_SIZE,
 };
 
 use super::{caliptra_authorize_params, MeasurementApi};
