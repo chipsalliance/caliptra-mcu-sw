@@ -6,11 +6,13 @@ mod test {
         compile_runtime, get_rom_with_feature, has_prebuilt_binaries, run_runtime, TEST_LOCK,
     };
     use caliptra_image_types::ImageManifest;
+    use caliptra_mcu_builder::flash_image::{generate_image_info, FirmwareImage, FlashImage};
     use caliptra_mcu_builder::{CaliptraBuilder, FirmwareBinaries, ImageCfg};
     use caliptra_mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
     use caliptra_mcu_config_emulator::flash::{
         PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
     };
+    use caliptra_mcu_flash_image::{FlashHeader, ImageHeader, OWNER_MEASUREMENT_POLICY_IDENTIFIER};
     use caliptra_mcu_pldm_fw_pkg::manifest::{
         ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
         PackageHeaderInformation, StringType,
@@ -22,7 +24,7 @@ mod test {
     use random_port::PortPicker;
     use std::env;
     use std::path::PathBuf;
-    use zerocopy::transmute;
+    use zerocopy::{transmute, FromBytes};
 
     // Set an arbitrary MCI base address
     const MCI_BASE_AXI_ADDRESS: u64 = 0xA800_0000;
@@ -1366,6 +1368,53 @@ mod test {
     fn test_streaming_boot_flash_write_back() {
         let lock = TEST_LOCK.lock().unwrap();
         let opts = create_streaming_boot_flash_write_back_options();
+        test_successful_boot(&opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_streaming_boot_flash_write_back_with_owner_policy_artifact() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let mut opts = create_streaming_boot_flash_write_back_options();
+        let package = FirmwareManifest::decode_firmware_package(
+            &opts
+                .pldm_fw_pkg_path
+                .as_ref()
+                .unwrap()
+                .to_string_lossy()
+                .into_owned(),
+            None,
+        )
+        .expect("Failed to decode PLDM package");
+        assert_eq!(package.component_image_information.len(), 1);
+        let image = package.component_image_information[0]
+            .image_data
+            .as_ref()
+            .expect("Missing flash image in PLDM package");
+        let header = FlashHeader::ref_from_prefix(image).unwrap().0;
+        assert!(header.verify());
+        let toc_offset = header.image_headers_offset as usize;
+        let toc_len = header.image_count as usize * size_of::<ImageHeader>();
+        let headers: Vec<ImageHeader> = image[toc_offset..toc_offset + toc_len]
+            .chunks_exact(size_of::<ImageHeader>())
+            .map(|bytes| ImageHeader::read_from_bytes(bytes).unwrap())
+            .collect();
+        let mut images: Vec<FirmwareImage> = headers
+            .iter()
+            .map(|header| FirmwareImage {
+                identifier: header.identifier,
+                data: &image[header.offset as usize..(header.offset + header.size) as usize],
+                filename: header.filename,
+            })
+            .collect();
+        // Exercise control-artifact classification, not the deferred policy authentication flow.
+        let policy = [0xa5; 256];
+        images
+            .push(FirmwareImage::new(OWNER_MEASUREMENT_POLICY_IDENTIFIER, &policy, None).unwrap());
+        let image_info = generate_image_info(images.clone());
+        let image = FlashImage::new(&images, &image_info).to_bytes();
+        let manifest = get_streaming_boot_pldm_fw_manifest(&get_device_uuid(), &image);
+        opts.pldm_fw_pkg_path = Some(create_pldm_fw_package(&manifest));
         test_successful_boot(&opts);
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
