@@ -154,10 +154,7 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer> CmdInterface<'a, H, A> {
             return Err(err);
         }
 
-        let mut resp_buf = match self
-            .scratch
-            .alloc_bytes(response_buffer_size::<H>(cmd_id))
-        {
+        let mut resp_buf = match self.scratch.alloc_bytes(response_buffer_size::<H>(cmd_id)) {
             Ok(buf) => buf,
             Err(err) => {
                 let _ = self.transport.finalize_response(MbxCmdStatus::Failure);

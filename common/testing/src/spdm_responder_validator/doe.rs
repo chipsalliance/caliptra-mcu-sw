@@ -117,9 +117,7 @@ pub fn run_doe_spdm_conformance_test(
 ) {
     let transport = DoeTransport::new(tx, rx, 1);
     let validator = match test_type {
-        SpdmTestType::SpdmResponderConformance => {
-            Some(execute_spdm_responder_validator("PCI_DOE"))
-        }
+        SpdmTestType::SpdmResponderConformance => Some(execute_spdm_responder_validator("PCI_DOE")),
         SpdmTestType::SpdmTeeIoValidator => {
             execute_spdm_tee_io_validator("PCI_DOE");
             None
