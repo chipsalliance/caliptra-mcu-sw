@@ -678,6 +678,7 @@ mod tests {
                 size: dccm_size,
             }),
             storage_size: None,
+            handoff: None,
         }
     }
 
