@@ -1148,18 +1148,14 @@ pub unsafe fn main() {
 
     #[cfg(feature = "test-handoff")]
     {
-        debug!("Executing test-handoff");
+        caliptra_mcu_romtime::println!("Executing test-handoff");
         // Safety: Test code, no other users of Handoff table so it's safe to take a mutable reference.
         if let Some(ho) = unsafe { HandOff::new_mut() } {
-            use caliptra_mcu_romtime::ocp_lock::HekSeedState;
-
             let ho_addr = ho.addr() as u32;
             let expected_addr = 0x5000_3C00;
-            if ho.rom.ocp_lock.hek_state.active_slot == 2
-                && ho.rom.ocp_lock.hek_state.active_state == HekSeedState::Programmed
-                && ho.rom.ocp_lock.hek_state.total_slots == 8
-                && ho.firmware_boot_type()
-                    == Some(caliptra_mcu_romtime::handoff::FirmwareBootType::Flash)
+            // The HEK state depends on each test's OTP setup, so the hook does not check it.
+            if ho.firmware_boot_type()
+                == Some(caliptra_mcu_romtime::handoff::FirmwareBootType::Flash)
                 && ho.mcu_rom_capabilities().is_some_and(|capabilities| {
                     capabilities.contains(
                         caliptra_mcu_romtime::handoff::McuRomCapabilities::STREAMING_BOOT_I3C,
@@ -1197,7 +1193,8 @@ pub unsafe fn main() {
     #[cfg(feature = "test-exit-immediately")]
     {
         caliptra_mcu_romtime::println!("Executing test-exit-immediately");
-        exit = Some(0);
+        // Keep the failure exit code set by test-handoff.
+        exit.get_or_insert(0);
     }
     #[cfg(feature = "test-get-alarm-expired")]
     {
