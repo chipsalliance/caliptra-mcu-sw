@@ -7,6 +7,9 @@ version.workspace = true
 authors.workspace = true
 edition.workspace = true
 
+[features]
+compact-panic = []
+
 [dependencies]
 critical-section.workspace = true
 embassy-executor.workspace = true

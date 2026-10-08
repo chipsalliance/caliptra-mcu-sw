@@ -232,6 +232,7 @@ test-mctp-spdm-responder-conformance = ["spdm"]
 cert-provisioning = [
   "spdm",
   "attested-csr",
+  "caliptra-mcu-libtockasync/compact-panic",
   "caliptra-mcu-spdm-pal/set-certificate",
   "caliptra-mcu-spdm-stack/set-certificate",
   "caliptra-mcu-spdm-vdm-handler/cert-provisioning",

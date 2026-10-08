@@ -30,9 +30,12 @@ unsafe impl critical_section::Impl for NullCriticalSection {
 }
 
 pub fn init<S>(spawner: Spawner, main: SpawnToken<S>) {
+    #[cfg(feature = "compact-panic")]
     if spawner.spawn(main).is_err() {
         panic!("spawn");
     }
+    #[cfg(not(feature = "compact-panic"))]
+    spawner.spawn(main).unwrap();
 }
 
 pub fn start_async<S>(main: SpawnToken<S>) -> ! {
