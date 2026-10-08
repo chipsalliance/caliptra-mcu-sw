@@ -214,6 +214,34 @@ const MAX_KEY_EXCHANGE_RSP_LEN: usize = caliptra_mcu_spdm_codec::SpdmMsgHdrPdu::
 const MAX_MEASUREMENT_SUMMARY_BLOCK_LEN: usize = caliptra_mcu_spdm_codec::MEAS_BLOCK_METADATA_SIZE
     + caliptra_mcu_attestation_evidence::SIGNED_OCP_EAT_MAX_SIZE;
 
+/// Logical size of the largest signed MEASUREMENTS response: one signed OCP EAT
+/// measurement block, the largest single provider block, signed with ML-DSA-87.
+///
+/// Fixed body (6) + MeasurementRecord + Nonce + OpaqueDataLength +
+/// RequesterContext + Signature. At about 12 KiB it always exceeds the MTU and
+/// is built in a rented large buffer, then served through `CHUNK_GET`.
+const MAX_MEASUREMENTS_RSP_LEN: usize = caliptra_mcu_spdm_codec::SpdmMsgHdrPdu::SIZE
+    + 6
+    + MAX_MEASUREMENT_SUMMARY_BLOCK_LEN
+    + caliptra_mcu_spdm_traits::SPDM_NONCE_LEN
+    + 2
+    + caliptra_mcu_spdm_codec::REQUESTER_CONTEXT_LEN
+    + caliptra_mcu_spdm_codec::MLDSA87_SIGNATURE_SIZE;
+
+/// Peak concurrent allocation while handling a signed GET_MEASUREMENTS over
+/// MCTP.
+///
+/// MCTP carries no secured messages, so no `SessionInfo` or TH context exists
+/// and only the VCA / M1 / L1 hash contexts can persist. The one-slot receive
+/// frame and the rented response, including its one-byte MCTP header, stay
+/// live while the provider signs the OCP EAT and the responder then signs the
+/// L1 transcript. The two ML-DSA-87 signing phases are sequential.
+const MCTP_SIGNED_MEASUREMENTS_PEAK: usize =
+    3 * scratch_alloc_size(mcu_caliptra_api::SHA_CONTEXT_SIZE)
+        + BITMAP_SLOT_SIZE
+        + scratch_alloc_size(1 + MAX_MEASUREMENTS_RSP_LEN)
+        + PQC_SIGNING_PEAK;
+
 /// Transient peak while generating a KEY_EXCHANGE measurement summary.
 ///
 /// The large response has not been rented yet. The reassembled request, final
@@ -305,7 +333,8 @@ const fn required_session_scratch() -> usize {
 /// Bitmap allocator pool size per responder task.
 ///
 /// MCTP hosts Caliptra VDM and must hold a buffered large request while its
-/// handler uses transient DPE/SHA mailbox workspaces.
+/// handler uses transient DPE/SHA mailbox workspaces. It must also hold a
+/// signed MEASUREMENTS response while ML-DSA-87 signing runs.
 #[cfg(feature = "attested-csr")]
 const MCTP_SPDM_SCRATCH_SIZE: usize = {
     let declared = 24 * 1024;
@@ -313,15 +342,23 @@ const MCTP_SPDM_SCRATCH_SIZE: usize = {
         declared >= required_scratch(),
         "MCTP SPDM scratch pool is too small for required_scratch()"
     );
+    assert!(
+        declared >= MCTP_SIGNED_MEASUREMENTS_PEAK,
+        "MCTP SPDM scratch pool is too small for MCTP_SIGNED_MEASUREMENTS_PEAK"
+    );
     declared
 };
 
 #[cfg(not(feature = "attested-csr"))]
 const MCTP_SPDM_SCRATCH_SIZE: usize = {
-    let declared = 17 * 1024;
+    let declared = 18 * 1024;
     assert!(
         declared >= required_scratch(),
         "MCTP SPDM scratch pool is too small for required_scratch()"
+    );
+    assert!(
+        declared >= MCTP_SIGNED_MEASUREMENTS_PEAK,
+        "MCTP SPDM scratch pool is too small for MCTP_SIGNED_MEASUREMENTS_PEAK"
     );
     declared
 };
