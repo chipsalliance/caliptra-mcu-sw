@@ -17,7 +17,7 @@ use caliptra_auth_man_types::{
 use caliptra_image_types::ImageManifest;
 use caliptra_mcu_flash_image::{
     FlashHeader, ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, MCU_RT_IDENTIFIER,
-    SOC_MANIFEST_IDENTIFIER,
+    SOC_MANIFEST_IDENTIFIER, V_AUTH_KEY_ID,
 };
 use caliptra_mcu_libsyscall_caliptra::console_writeln;
 use caliptra_mcu_libsyscall_caliptra::dma::AXIAddr;
@@ -644,7 +644,9 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
             let metadata = self
                 .get_image_metadata_by_index(manifest_staging_mem_offset, manifest_size, i)
                 .await?;
-            if metadata.fw_id != MCU_RT_IDENTIFIER {
+            // The Vendor Authorization Key entry anchors a key digest; it is
+            // not a loadable SoC image.
+            if metadata.fw_id != MCU_RT_IDENTIFIER && metadata.fw_id != V_AUTH_KEY_ID {
                 manifest_soc_fw_id_count = manifest_soc_fw_id_count
                     .checked_add(1)
                     .ok_or(ErrorCode::Fail)?;

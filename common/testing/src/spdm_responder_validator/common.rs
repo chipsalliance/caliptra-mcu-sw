@@ -11,7 +11,8 @@ use zerocopy::{transmute, FromBytes, Immutable, IntoBytes};
 
 const RECEIVER_BUFFER_SIZE: usize = 4160;
 const ATTESTATION_REQUESTER_CAPABILITIES: &str = "CERT,CHAL,CHUNK,LARGE_RESP";
-const RESPONDER_VALIDATOR_TEST_GROUPS: &str = "VERSION,CAPABILITIES,ALGORITHMS,DIGESTS,CERTIFICATE,CHALLENGE_AUTH,MEASUREMENTS,HEARTBEAT_ACK,KEY_UPDATE_ACK";
+const RESPONDER_VALIDATOR_TEST_GROUPS: &str =
+    "VERSION,CAPABILITIES,ALGORITHMS,DIGESTS,CERTIFICATE,CHALLENGE_AUTH,MEASUREMENTS,KEY_UPDATE_ACK";
 pub const SOCKET_SPDM_COMMAND_NORMAL: u32 = 0x0001;
 pub const SOCKET_SPDM_COMMAND_STOP: u32 = 0xFFFE;
 pub const SOCKET_SPDM_COMMAND_TEST: u32 = 0xDEAD;
@@ -413,8 +414,6 @@ fn configure_spdm_attestation_command(
     );
     cmd.arg("--trans")
         .arg(transport)
-        .arg("--ver")
-        .arg("1.3")
         // Endpoint information is not part of this attestation flow.
         .arg("--cap")
         .arg(ATTESTATION_REQUESTER_CAPABILITIES)
@@ -520,8 +519,6 @@ mod tests {
             [
                 "--trans",
                 "MCTP",
-                "--ver",
-                "1.3",
                 "--cap",
                 "CERT,CHAL,CHUNK,LARGE_RESP",
                 "--pcap",

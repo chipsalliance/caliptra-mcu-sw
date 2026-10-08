@@ -637,7 +637,7 @@ mod tests {
     }
 
     #[test]
-    fn test_algorithms_v14_negotiates_mldsa87_and_sets_asym_algo() {
+    fn test_algorithms_v14_uses_ecdsa_until_mldsa87_signing_is_supported() {
         let req = negotiate_request(
             SpdmVersion::V14,
             PqcAsymAlgos::ML_DSA_87,
@@ -656,15 +656,15 @@ mod tests {
 
         assert_eq!(
             state.negotiated_base_asym_sel.into_bits(),
-            AsymAlgos::EMPTY.into_bits()
+            AsymAlgos::ECDSA_ECC_NIST_P384.into_bits()
         );
         assert_eq!(
             state.negotiated_pqc_asym_sel.into_bits(),
-            PqcAsymAlgos::ML_DSA_87.into_bits()
+            PqcAsymAlgos::EMPTY.into_bits()
         );
         assert_eq!(
             state.asym_algo(),
-            caliptra_mcu_spdm_traits::SpdmPalAsymAlgo::MlDsa87
+            caliptra_mcu_spdm_traits::SpdmPalAsymAlgo::EccP384
         );
         assert_eq!(state.phase, Phase::AfterAlgorithms);
 
@@ -675,11 +675,11 @@ mod tests {
         .unwrap();
         assert_eq!(
             fixed.base_asym_sel.into_bits(),
-            AsymAlgos::EMPTY.into_bits()
+            AsymAlgos::ECDSA_ECC_NIST_P384.into_bits()
         );
         assert_eq!(
             fixed.pqc_asym_sel.into_bits(),
-            PqcAsymAlgos::ML_DSA_87.into_bits()
+            PqcAsymAlgos::EMPTY.into_bits()
         );
     }
 

@@ -109,7 +109,7 @@ default-filter = """
 (package(caliptra-mcu-tests-integration) and test(test_mctp_spdm_responder_conformance))
 """
 [profile.pr-emulator]
-inherits = "emulator"
+inherits = "nightly-emulator"
 fail-fast = false
 # Run only short tests (less than 3 mins)
 default-filter = """

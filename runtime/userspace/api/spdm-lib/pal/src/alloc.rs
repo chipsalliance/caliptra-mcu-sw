@@ -191,8 +191,8 @@ mod tests {
     }
 
     #[test]
-    fn chunked_key_exchange_fits_shipping_pool() {
-        const POOL: usize = 19 * 1024;
+    fn ecdsa_key_exchange_fits_shipping_pool() {
+        const POOL: usize = 12 * 1024;
         const MAX_TRANSPORT_MTU: usize = 1024;
         const MAX_KEY_EXCHANGE_REQ_LEN: usize = caliptra_mcu_spdm_codec::SpdmMsgHdrPdu::SIZE
             + core::mem::size_of::<caliptra_mcu_spdm_codec::KeyExchangeReqBodyFixed>()
@@ -205,16 +205,15 @@ mod tests {
             + caliptra_mcu_spdm_codec::SHA384_HASH_SIZE
             + 2
             + caliptra_mcu_spdm_codec::OPAQUE_VERSION_SELECTION_SIZE
-            + caliptra_mcu_spdm_codec::MLDSA87_SIGNATURE_SIZE
+            + caliptra_mcu_spdm_codec::ECC_P384_SIGNATURE_SIZE
             + caliptra_mcu_spdm_codec::SHA384_HASH_SIZE;
         const KEY_EXCHANGE_WORKSPACE_SIZE: usize = caliptra_mcu_spdm_codec::SHA384_HASH_SIZE
+            + caliptra_mcu_spdm_codec::SPDM_SIGNING_CONTEXT_LEN
             + caliptra_mcu_spdm_codec::KEY_EXCHANGE_RANDOM_DATA_LEN
             + caliptra_mcu_spdm_codec::OPAQUE_VERSION_SELECTION_SIZE;
         const MEASUREMENT_BLOCK_SIZE: usize = caliptra_mcu_spdm_codec::MEAS_BLOCK_METADATA_SIZE
             + caliptra_mcu_attestation_evidence::SIGNED_OCP_EAT_MAX_SIZE;
-        const CERTIFY_KEY_REQ: usize = 92;
-        const CERTIFY_KEY_RSP: usize = 32 + 2624;
-        const SIGN_RSP: usize = mcu_caliptra_api::DPE_MLDSA87_SIGN_SCRATCH_PEAK;
+        const TRANSIENT_MAILBOX_PEAK: usize = 2560;
         const SHA_INIT_REQ: usize = 12 + 512;
         const SHA_CTX_RSP: usize = 4 + 4 + mcu_caliptra_api::SHA_CONTEXT_SIZE;
 
@@ -241,11 +240,9 @@ mod tests {
                 .alloc_bytes(MEASUREMENT_BLOCK_SIZE)
                 .expect("signed OCP EAT measurement block alloc");
 
-            {
-                let _sign_rsp = alloc
-                    .alloc_bytes(SIGN_RSP)
-                    .expect("OCP EAT DPE Sign response alloc");
-            }
+            let _mailbox = alloc
+                .alloc_bytes(TRANSIENT_MAILBOX_PEAK)
+                .expect("OCP EAT mailbox working set alloc");
 
             {
                 let _hash_state = alloc
@@ -270,20 +267,8 @@ mod tests {
         drop(request);
         drop(measurement_summary);
 
-        {
-            let _pubkey = alloc
-                .alloc_bytes(mcu_caliptra_api::CERTIFY_KEY_MLDSA87_PUBKEY_SIZE)
-                .expect("ML-DSA public key alloc");
-            let _ck_req = alloc
-                .alloc_bytes(CERTIFY_KEY_REQ)
-                .expect("CertifyKey request alloc");
-            let _ck_rsp = alloc
-                .alloc_bytes(CERTIFY_KEY_RSP)
-                .expect("CertifyKey response alloc");
-        }
-
-        let _sign_rsp = alloc
-            .alloc_bytes(SIGN_RSP)
-            .expect("DPE Sign response must fit after releasing the chunked request");
+        let _mailbox = alloc
+            .alloc_bytes(TRANSIENT_MAILBOX_PEAK)
+            .expect("ECDSA signing mailbox working set must fit");
     }
 }

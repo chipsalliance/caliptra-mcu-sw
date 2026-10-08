@@ -18,8 +18,8 @@ use errors::{MeasurementApiError, MeasurementApiResult};
 pub use image_metadata::{
     ImageMetadata, ImageMetadataFlags, MeasurementOperation, IMAGE_MEASUREMENT_DIGEST_SIZE,
 };
-use mcu_caliptra_api::{ScratchAlloc, DPE_LABEL_LEN};
 pub use mcu_caliptra_api::{DpeProfile, ImageHashSource, SigningInput};
+use mcu_caliptra_api::{ScratchAlloc, DPE_LABEL_LEN};
 use mcu_error::McuResult;
 
 static MEASUREMENT_API: Mutex<

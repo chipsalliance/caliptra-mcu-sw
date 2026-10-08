@@ -26,9 +26,9 @@ use caliptra_mcu_libtock_platform::Syscalls;
 use core::marker::PhantomData;
 use mcu_caliptra_api::{
     dpe_certify_key_cert_size, dpe_certify_key_cert_slice, dpe_certify_key_pubkey,
-    dpe_rotate_context_default, dpe_sign, dpe_tag_tci, sha_finish, sha_init, sha_update, ScratchAlloc,
+    dpe_rotate_context_default, dpe_sign, dpe_tag_tci, sha_finish, sha_init, sha_update,
     AuthorizeAndStashFlags, AuthorizeAndStashParams, DpeContextHandle, DpeProfile, HashAlgo,
-    SigningInput, DPE_CONTEXT_HANDLE_SIZE, DPE_LABEL_LEN, SHA_CONTEXT_SIZE,
+    ScratchAlloc, SigningInput, DPE_CONTEXT_HANDLE_SIZE, DPE_LABEL_LEN, SHA_CONTEXT_SIZE,
 };
 
 use crate::attestation_manifest::{
@@ -325,7 +325,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
             dst,
         )
         .await
-        .map_err(|_| MeasurementApiError::DpeCommandFailed)?;
+        .map_err(|_| self.enter_error_state(MeasurementApiError::DpeCommandFailed))?;
         self.write_attestation_target_handle(target, next_handle)?;
         Ok(bytes_written)
     }

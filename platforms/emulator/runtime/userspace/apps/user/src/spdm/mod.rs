@@ -43,8 +43,7 @@ use embassy_executor::Spawner;
 /// `MaxSPDMmsgSize` only when buffered large requests are enabled. Raising it
 /// requires larger scratch pools; the assertion below enforces that.
 ///
-/// Attested CSR support raises the limit to cover the largest response; the
-/// baseline remains sized for ML-DSA-87 attestation evidence.
+/// Attested CSR support raises the limit to cover the largest response.
 #[cfg(feature = "attested-csr")]
 const MAX_BUFFERED_SPDM_MSG_SIZE: usize = {
     let declared = 14 * 1024;
@@ -185,14 +184,14 @@ const MAX_KEY_EXCHANGE_REQ_LEN: usize = caliptra_mcu_spdm_codec::SpdmMsgHdrPdu::
     + 2 // OpaqueDataLength
     + caliptra_mcu_spdm_codec::MAX_SUPPORTED_VERSION_LIST_OPAQUE_SIZE;
 
-/// Logical size of the largest ECDH KEY_EXCHANGE_RSP, signed with ML-DSA-87.
+/// Logical size of the largest ECDH KEY_EXCHANGE_RSP, signed with ECDSA P-384.
 const MAX_KEY_EXCHANGE_RSP_LEN: usize = caliptra_mcu_spdm_codec::SpdmMsgHdrPdu::SIZE
     + caliptra_mcu_spdm_codec::KEY_EXCHANGE_RSP_FIXED_BODY_SIZE
     + caliptra_mcu_spdm_codec::MAX_EXCHANGE_DATA_SIZE
     + caliptra_mcu_spdm_codec::SHA384_HASH_SIZE
     + 2
     + caliptra_mcu_spdm_codec::OPAQUE_VERSION_SELECTION_SIZE
-    + caliptra_mcu_spdm_codec::MLDSA87_SIGNATURE_SIZE
+    + caliptra_mcu_spdm_codec::ECC_P384_SIGNATURE_SIZE
     + caliptra_mcu_spdm_codec::SHA384_HASH_SIZE;
 
 /// Maximum temporary DMTF measurement block used to compute the KEY_EXCHANGE
@@ -209,7 +208,7 @@ const KEY_EXCHANGE_MEASUREMENT_PHASE: usize = scratch_alloc_size(MAX_KEY_EXCHANG
     + scratch_alloc_size(MAX_TRANSPORT_MTU)
     + scratch_alloc_size(caliptra_mcu_spdm_codec::SHA384_HASH_SIZE)
     + scratch_alloc_size(MAX_MEASUREMENT_SUMMARY_BLOCK_LEN)
-    + PQC_SIGNING_PEAK;
+    + TRANSIENT_MAILBOX_PEAK;
 
 /// Transient peak while deriving the ECDH secret for a chunked KEY_EXCHANGE.
 ///
@@ -230,7 +229,7 @@ const KEY_EXCHANGE_DHE_PHASE: usize = scratch_alloc_size(MAX_KEY_EXCHANGE_REQ_LE
 const KEY_EXCHANGE_SIGNING_PHASE: usize = scratch_alloc_size(MAX_TRANSPORT_MTU)
     + scratch_alloc_size(MAX_KEY_EXCHANGE_RSP_LEN)
     + scratch_alloc_size(caliptra_mcu_spdm_stack::KEY_EXCHANGE_WORKSPACE_SIZE)
-    + PQC_SIGNING_PEAK;
+    + TRANSIENT_MAILBOX_PEAK;
 
 /// Peak concurrent allocation while handling KEY_EXCHANGE.
 ///

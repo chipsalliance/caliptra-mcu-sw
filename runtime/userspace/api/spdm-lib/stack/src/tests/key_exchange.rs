@@ -4,18 +4,16 @@ extern crate std;
 
 use super::*;
 use caliptra_mcu_spdm_codec::{
-    AsymAlgos, CapFlags, KeyExchangeReqBodyFixed, PqcAsymAlgos, ReqRespCode, SpdmVersion,
-    ECDH_P384_EXCHANGE_DATA_SIZE, KEY_EXCHANGE_RSP_FIXED_BODY_SIZE, MLDSA87_SIGNATURE_SIZE,
-    SHA384_HASH_SIZE, SPDM_SIGNING_CONTEXT_LEN,
+    CapFlags, KeyExchangeReqBodyFixed, ReqRespCode, SpdmVersion, ECC_P384_SIGNATURE_SIZE,
+    ECDH_P384_EXCHANGE_DATA_SIZE, KEY_EXCHANGE_RSP_FIXED_BODY_SIZE,
 };
-use caliptra_mcu_spdm_traits::SpdmPalAsymAlgo;
 use futures::executor::block_on;
 use std::vec::Vec;
 use zerocopy::IntoBytes;
 
 #[path = "support.rs"]
 mod support;
-use support::{drain_chunked_response, negotiated_state, RecordedSigningInput, TestIo, TestPal};
+use support::{drain_chunked_response, negotiated_state, TestIo, TestPal};
 
 fn key_exchange_request(opaque_data: &[u8]) -> Vec<u8> {
     let fixed = KeyExchangeReqBodyFixed {
@@ -85,20 +83,18 @@ fn supported_version_list_produces_version_selection() {
 }
 
 #[test]
-fn mldsa_response_is_chunked_and_signs_raw_spdm_message() {
+fn ecdsa_response_can_be_chunked() {
     let pal = TestPal {
-        mtu: 1024,
-        large_buffered_msg_capacity: 8192,
+        mtu: 128,
+        large_buffered_msg_capacity: 1024,
         ..Default::default()
     };
     let request = key_exchange_request(&[]);
     let io = TestIo::message(request);
     let mut state = negotiated_state(SpdmVersion::V14);
-    state.negotiated_base_asym_sel = AsymAlgos::EMPTY;
-    state.negotiated_pqc_asym_sel = PqcAsymAlgos::ML_DSA_87;
     state.peer_cap_flags = CapFlags::CHUNK;
-    state.peer_data_transfer_size = 1024;
-    state.peer_max_spdm_msg_size = 8192;
+    state.peer_data_transfer_size = 128;
+    state.peer_max_spdm_msg_size = 1024;
     block_on(state.transcript.append_vca(&pal, &io, &[0xaa])).unwrap();
     let mut sessions: Sessions<TestPal, 1> = crate::session::SessionManager::new();
 
@@ -114,16 +110,6 @@ fn mldsa_response_is_chunked_and_signs_raw_spdm_message() {
 
     let signature_start =
         SpdmMsgHdrPdu::SIZE + KEY_EXCHANGE_RSP_FIXED_BODY_SIZE + ECDH_P384_EXCHANGE_DATA_SIZE + 2;
-    let signature = &response[signature_start..signature_start + MLDSA87_SIGNATURE_SIZE];
+    let signature = &response[signature_start..signature_start + ECC_P384_SIGNATURE_SIZE];
     assert!(signature.iter().all(|&byte| byte == 0x77));
-
-    let ops = pal.sign_ops.borrow();
-    assert_eq!(ops.len(), 1);
-    assert_eq!(ops[0].algo, SpdmPalAsymAlgo::MlDsa87);
-    let RecordedSigningInput::Mldsa87RawMessage { context, message } = &ops[0].input else {
-        panic!("expected raw ML-DSA message signing input");
-    };
-    assert_eq!(context, KEY_EXCHANGE_SIGNING_OP);
-    assert_eq!(message.len(), SPDM_SIGNING_CONTEXT_LEN + SHA384_HASH_SIZE);
-    assert!(message.starts_with(b"dmtf-spdm-v1.4.*"));
 }

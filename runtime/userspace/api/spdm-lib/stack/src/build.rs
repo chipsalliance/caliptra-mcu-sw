@@ -15,7 +15,7 @@
 use caliptra_mcu_spdm_codec::{ReqRespCode, ResponseBody, SpdmMsgHdrPdu, SpdmVersion, WireWriter};
 use caliptra_mcu_spdm_traits::{PalBytes, SpdmPal};
 
-use crate::error::{SpdmError, SpdmResult};
+use crate::error::{SpdmError, SpdmResult, SPDM_UNSPECIFIED};
 
 /// Copy a fixed-size array `src` into `buf` at `pos`, returning the advanced
 /// cursor.
@@ -47,6 +47,17 @@ pub(crate) fn alloc_padded<'a, Pal: SpdmPal>(
         *b = 0;
     }
     Ok(buf)
+}
+
+/// Round `len` up to the transport's send-length alignment.
+pub(crate) fn align_send_len<Pal: SpdmPal>(pal: &Pal, len: usize) -> SpdmResult<usize> {
+    let align = pal.send_len_alignment();
+    if align == 0 {
+        return Err(SPDM_UNSPECIFIED);
+    }
+    len.checked_add(align - 1)
+        .map(|n| (n / align) * align)
+        .ok_or(SPDM_UNSPECIFIED)
 }
 
 /// Allocates and encodes an SPDM response.
