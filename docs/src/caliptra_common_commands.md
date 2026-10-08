@@ -139,7 +139,10 @@ This table defines the bit assignment for every allocated command code. A respon
 | 12         | `OcpLockRotateHek`           | Implemented |
 | 13         | `OcpLockSetPermaHek`         | Implemented |
 | 14         | `DotEnable`                  | Implemented |
-| 15:31      | Reserved                     | —           |
+| 15         | `OcpLockProgramHek`          | Implemented |
+| 16         | `OcpLockZeroHek`             | Implemented |
+| 17         | `ZeroizeUdsFeAndEnterRma`     | Implemented |
+| 18:31      | Reserved                     | —           |
 
 The authorized-subcommand assignments are stable capability indexes; they are not transport command IDs. A responder sets a bit only when that subcommand is implemented under `AuthorizedCommand`. Authorization, lifecycle, or policy restrictions do not clear an implementation capability bit; execution can still return `AccessDenied`, `PolicyViolation`, or `InvalidState`.
 
