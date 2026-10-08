@@ -16,7 +16,7 @@ use crate::{
     args::{BuildArgs, Common},
     ld::{BuildDefinition, LinkerScript},
     manifest::{Manifest, Memory},
-    utils::objcopy,
+    utils::{find_sysroot, objcopy},
 };
 
 // The OBJCOPY flags to produce smaller binaries when translating to binary format.
@@ -280,6 +280,43 @@ impl<'a> BuildPass<'a> {
         }
 
         if app.name == "user-app" {
+            let cert_provisioning = features.as_deref().is_some_and(|features| {
+                features.split(',').any(|feature| {
+                    matches!(
+                        feature,
+                        "cert-provisioning" | "set-certificate" | "test-mctp-spdm-set-certificate"
+                    )
+                })
+            });
+            if cert_provisioning {
+                // Keep panic source paths compact without hard-coding a developer or CI home.
+                let core_src = find_sysroot()?
+                    .join("lib")
+                    .join("rustlib")
+                    .join("src")
+                    .join("rust")
+                    .join("library")
+                    .join("core")
+                    .join("src");
+                let mut remap_flags = vec![format!("--remap-path-prefix={}=r", core_src.display())];
+
+                let cargo_home = std::env::var_os("CARGO_HOME")
+                    .map(PathBuf::from)
+                    .or_else(|| {
+                        std::env::var_os("HOME").map(|home| PathBuf::from(home).join(".cargo"))
+                    });
+                if let Some(cargo_home) = cargo_home {
+                    let registry_src = cargo_home.join("registry").join("src");
+                    remap_flags.push(format!("--remap-path-prefix={}=c", registry_src.display()));
+                }
+
+                let rustflags =
+                    toml::Value::Array(remap_flags.into_iter().map(toml::Value::String).collect());
+                cmd.arg("--config").arg(format!(
+                    "target.{}.rustflags={rustflags}",
+                    self.manifest.platform.tuple
+                ));
+            }
             if let Some(level) = user_app_defmt_log_level(features) {
                 cmd.env("DEFMT_LOG", level);
             }
