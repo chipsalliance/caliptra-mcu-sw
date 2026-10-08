@@ -15,14 +15,6 @@ use caliptra_mcu_config::capabilities::{
 };
 use caliptra_mcu_config::version::get_mcu_runtime_version;
 #[cfg(feature = "ocp-lock")]
-use caliptra_mcu_libapi_caliptra::error::CaliptraApiError;
-#[cfg(feature = "ocp-lock")]
-use caliptra_mcu_libapi_caliptra::ocp_lock::{
-    HpkeHandle, OcpLock, OcpLockEnumerateHpkeHandlesResp,
-};
-#[cfg(feature = "ocp-lock")]
-use caliptra_mcu_libapi_caliptra::signer::CaliptraDpeSigner;
-#[cfg(feature = "ocp-lock")]
 use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_mbox_common::messages::EndorsementAlgorithm as MboxEndorsementAlgorithm;
@@ -30,6 +22,14 @@ use caliptra_mcu_mbox_common::messages::{
     DotDisablePayload, DotLockPayload, DotOverrideChallengePayload, DotOverridePayload,
     DotRotatePayload, DotStatus, DotUnlockPayload, AUTH_CMD_NONCE_LEN, DOT_BLOB_SIZE,
 };
+#[cfg(feature = "ocp-lock")]
+use mcu_caliptra_api::error::CaliptraApiError;
+#[cfg(feature = "ocp-lock")]
+use mcu_caliptra_api::ocp_lock::{
+    HpkeHandle, OcpLock, OcpLockEnumerateHpkeHandlesResp, SekState as OcpLockSekState,
+};
+#[cfg(feature = "ocp-lock")]
+use mcu_caliptra_api::signer::CaliptraDpeSigner;
 use mcu_caliptra_api::{core_capabilities, core_firmware_version, ScratchAlloc};
 #[cfg(feature = "pcr-quote")]
 use mcu_caliptra_api::{PCR_QUOTE_ECC384_BUF_LEN, PCR_QUOTE_MLDSA87_BUF_LEN};
@@ -498,6 +498,7 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         cert_buf: &mut [u8],
     ) -> CaliptraCmdResult<usize> {
         let algo = algorithm
+            .0
             .try_into()
             .map_err(|_| CaliptraCompletionCode::InvalidParameter)?;
         let mailbox = caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox::new();
@@ -541,7 +542,10 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         report_buf: &mut [u8],
     ) -> CaliptraCmdResult<usize> {
         let algo = algorithm
+            .0
             .try_into()
+            .map_err(|_| CaliptraCompletionCode::InvalidParameter)?;
+        let sek_state = OcpLockSekState::try_from(sek_state as u16)
             .map_err(|_| CaliptraCompletionCode::InvalidParameter)?;
         let mailbox = Mailbox::new();
         let ocp_lock = OcpLock::new(&mailbox, &crate::ocp_lock_config::APP_RUNTIME_CONFIG);

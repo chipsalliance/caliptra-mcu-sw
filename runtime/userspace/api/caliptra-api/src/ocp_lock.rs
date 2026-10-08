@@ -1,10 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-extern crate alloc;
-
-use crate::crypto::hash::{HashAlgoType, HashContext, SHA384_HASH_SIZE};
-use crate::error::{CaliptraApiError, CaliptraApiResult};
-use crate::mailbox_api::{execute_mailbox_cmd, DpeEcResp, DPE_PROFILE};
+use crate::error::{CaliptraApiError, CaliptraApiResult, OcpLockError};
 use crate::signer::DpeTransport;
 use alloc::boxed::Box;
 use async_trait::async_trait;
@@ -28,17 +24,14 @@ use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
 use caliptra_mcu_libsyscall_caliptra::mailbox::MailboxError;
 use caliptra_mcu_libsyscall_caliptra::otp::Otp;
 use caliptra_mcu_libtock_platform::ErrorCode;
-pub use caliptra_mcu_mbox_common::messages::SekState;
-use caliptra_mcu_romtime::ocp_lock::{
-    Error as OcpLockError, HekSeedState, RuntimeConfig, MAX_HEK_SLOTS, MIN_HEK_SLOTS,
-};
 use caliptra_ocp_eat::CborEncoder;
 use core::mem::size_of;
 use core::str::FromStr;
 use dpe::commands::{Command, CommandHdr};
 use dpe::response::ResponseHdr;
+use dpe::DpeProfile;
 
-use zerocopy::{IntoBytes, TryFromBytes};
+use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
 use const_oid::db::rfc5912::{ECDSA_WITH_SHA_384, ID_EC_PUBLIC_KEY, SECP_384_R_1};
 use der::{
@@ -47,6 +40,102 @@ use der::{
 };
 use sha2::{Digest, Sha384};
 use spki::{AlgorithmIdentifier, SubjectPublicKeyInfo};
+
+const SHA384_HASH_SIZE: usize = 48;
+const MAX_DPE_RESP_DATA_SIZE: usize = 4096;
+const DPE_PROFILE: DpeProfile = DpeProfile::P384Sha384;
+const MAX_HEK_SLOTS: usize = 8;
+const MIN_HEK_SLOTS: usize = 4;
+
+// Mirrors the HEK state values returned by the Caliptra userspace driver.
+#[derive(Debug, Clone, PartialEq, Eq, TryFromBytes, IntoBytes, KnownLayout, Immutable, Default)]
+#[repr(u16)]
+pub enum HekSeedState {
+    #[default]
+    Unused = 0x0,
+    Programmed = 0x1,
+    ProgrammedPendingReset = 0x2,
+    ProgrammedCorrupted = 0x3,
+    Permanent = 0x4,
+    Sanitized = 0x5,
+    SanitizedPendingReset = 0x6,
+    SanitizedCorrupted = 0x7,
+}
+
+impl TryFrom<u16> for HekSeedState {
+    type Error = ();
+
+    fn try_from(value: u16) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Unused),
+            1 => Ok(Self::Programmed),
+            2 => Ok(Self::ProgrammedPendingReset),
+            3 => Ok(Self::ProgrammedCorrupted),
+            4 => Ok(Self::Permanent),
+            5 => Ok(Self::Sanitized),
+            6 => Ok(Self::SanitizedPendingReset),
+            7 => Ok(Self::SanitizedCorrupted),
+            _ => Err(()),
+        }
+    }
+}
+
+impl HekSeedState {
+    fn from_seed_bytes(seed_bytes: &[u8; 48], active_state: &HekSeedState) -> Self {
+        if *active_state == HekSeedState::Permanent {
+            return HekSeedState::Permanent;
+        }
+        if seed_bytes.iter().all(|&b| b == 0x00) {
+            HekSeedState::Unused
+        } else if seed_bytes.iter().all(|&b| b == 0xFF) {
+            HekSeedState::Sanitized
+        } else {
+            HekSeedState::Programmed
+        }
+    }
+}
+
+pub trait RuntimeConfig: Send + Sync {
+    fn endorsement_cert_serial_number(&self) -> &[u8; 20];
+
+    fn ekp_mode_active(&self) -> bool {
+        false
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+struct DpeEcResp {
+    hdr: MailboxRespHeader,
+    data_size: u32,
+    data: [u8; MAX_DPE_RESP_DATA_SIZE],
+}
+
+impl Default for DpeEcResp {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxRespHeader::default(),
+            data_size: 0,
+            data: [0; MAX_DPE_RESP_DATA_SIZE],
+        }
+    }
+}
+
+async fn execute_mailbox_cmd(
+    mailbox: &Mailbox,
+    cmd: u32,
+    req_bytes: &mut [u8],
+    resp_bytes: &mut [u8],
+) -> CaliptraApiResult<usize> {
+    mailbox
+        .populate_checksum(cmd, req_bytes)
+        .map_err(CaliptraApiError::Syscall)?;
+    match mailbox.execute(cmd, req_bytes, resp_bytes).await {
+        Ok(size) => Ok(size),
+        Err(MailboxError::ErrorCode(ErrorCode::Busy)) => Err(CaliptraApiError::MailboxBusy),
+        Err(e) => Err(CaliptraApiError::Mailbox(e)),
+    }
+}
 
 const TCG_HPKE_IDENTIFIERS: ObjectIdentifier = ObjectIdentifier::new_unwrap("2.23.133.21.1.1");
 
@@ -70,27 +159,46 @@ impl EndorsementAlgorithm {
     }
 }
 
-impl TryFrom<caliptra_mcu_mbox_common::messages::EndorsementAlgorithm> for EndorsementAlgorithm {
+impl TryFrom<u32> for EndorsementAlgorithm {
     type Error = CaliptraApiError;
 
-    fn try_from(
-        algo: caliptra_mcu_mbox_common::messages::EndorsementAlgorithm,
-    ) -> Result<Self, Self::Error> {
+    fn try_from(algo: u32) -> Result<Self, Self::Error> {
+        // MCU mailbox EndorsementAlgorithm wire values.
         match algo {
-            caliptra_mcu_mbox_common::messages::EndorsementAlgorithm::ECDSA_384 => {
-                Ok(Self::EcdsaP384Sha384)
-            }
-            caliptra_mcu_mbox_common::messages::EndorsementAlgorithm::MLDSA_87 => Ok(Self::MlDsa87),
+            0x1 => Ok(Self::EcdsaP384Sha384),
+            0x2 => Ok(Self::MlDsa87),
             _ => Err(CaliptraApiError::AsymAlgoUnsupported),
         }
     }
 }
 
-impl From<EndorsementAlgorithm> for caliptra_mcu_mbox_common::messages::EndorsementAlgorithm {
+impl From<EndorsementAlgorithm> for u32 {
     fn from(algo: EndorsementAlgorithm) -> Self {
         match algo {
-            EndorsementAlgorithm::EcdsaP384Sha384 => Self::ECDSA_384,
-            EndorsementAlgorithm::MlDsa87 => Self::MLDSA_87,
+            EndorsementAlgorithm::EcdsaP384Sha384 => 0x1,
+            EndorsementAlgorithm::MlDsa87 => 0x2,
+        }
+    }
+}
+
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
+#[repr(u16)]
+pub enum SekState {
+    #[default]
+    Unused = 0x0,
+    Programmed = 0x1,
+    Sanitized = 0x2,
+}
+
+impl TryFrom<u16> for SekState {
+    type Error = CaliptraApiError;
+
+    fn try_from(value: u16) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Unused),
+            1 => Ok(Self::Programmed),
+            2 => Ok(Self::Sanitized),
+            _ => Err(CaliptraApiError::InvalidArgSize),
         }
     }
 }
@@ -722,12 +830,7 @@ impl<'a> OcpLock<'a> {
         let sig_struct_len = sig_struct_encoder.len();
 
         let mut digest = [0u8; SHA384_HASH_SIZE];
-        HashContext::hash_all(
-            HashAlgoType::SHA384,
-            &sig_struct_buf[..sig_struct_len],
-            &mut digest,
-        )
-        .await?;
+        digest.copy_from_slice(&Sha384::digest(&sig_struct_buf[..sig_struct_len]));
 
         let sig_len = signer.signature_size();
         if report_buf.len() < sig_len {
