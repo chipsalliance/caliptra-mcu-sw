@@ -17,7 +17,8 @@ use caliptra_auth_man_types::{
 use caliptra_image_types::ImageManifest;
 use caliptra_mcu_flash_image::{
     FlashHeader, ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, MCU_RT_IDENTIFIER,
-    SOC_MANIFEST_IDENTIFIER, V_AUTH_KEY_ID,
+    OWNER_AUTH_MANIFEST_IDENTIFIER, OWNER_MEASUREMENT_POLICY_IDENTIFIER, SOC_MANIFEST_IDENTIFIER,
+    V_AUTH_KEY_ID,
 };
 use caliptra_mcu_libsyscall_caliptra::console_writeln;
 use caliptra_mcu_libsyscall_caliptra::dma::AXIAddr;
@@ -386,18 +387,8 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
                 )
                 .await?;
 
-            match image_header.identifier {
-                CALIPTRA_FMC_RT_IDENTIFIER => {
-                    // Skip Caliptra image verification
-                    continue;
-                }
-                SOC_MANIFEST_IDENTIFIER => {
-                    // Skip SOC Manifest verification
-                    continue;
-                }
-                _ => {
-                    // Verify MCU or SOC images
-                }
+            if !listed_in_soc_manifest(image_header.identifier) {
+                continue;
             }
 
             let metadata = self
@@ -512,9 +503,8 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
                 )
                 .await?;
 
-            match image_header.identifier {
-                CALIPTRA_FMC_RT_IDENTIFIER | SOC_MANIFEST_IDENTIFIER => continue,
-                _ => {}
+            if !listed_in_soc_manifest(image_header.identifier) {
+                continue;
             }
 
             // Compute SHA-384 of the downloaded image
@@ -1161,6 +1151,17 @@ impl PayloadStream for MailboxPayloadStream {
 pub struct AuthManifestReqHeader {
     pub chksum: u32,
     pub manifest_size: u32,
+}
+
+/// Whether a flash image's digest is carried by the SoC authorization manifest.
+fn listed_in_soc_manifest(identifier: u32) -> bool {
+    !matches!(
+        identifier,
+        CALIPTRA_FMC_RT_IDENTIFIER
+            | SOC_MANIFEST_IDENTIFIER
+            | OWNER_AUTH_MANIFEST_IDENTIFIER
+            | OWNER_MEASUREMENT_POLICY_IDENTIFIER
+    )
 }
 
 #[cfg(test)]
