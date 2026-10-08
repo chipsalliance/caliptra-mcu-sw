@@ -166,6 +166,9 @@ pub fn build_emulator_with_feature(feature: &str) -> Result<Option<PathBuf>> {
 const MCU_MBOX_SRAM1_OFFSET: u64 = 0x80_0000;
 const MCU_SRAM_OFFSET: u64 = 0xc0_0000;
 
+const ATTESTATION_SOC_FW_ID: u32 = 0x2000;
+const ATTESTATION_SOC_FW_ID_2: u32 = 0x2001;
+
 /// Creates default SoC images for tests that require them.
 /// Returns (soc_images_config, soc_images_paths).
 fn create_default_soc_images() -> (Vec<ImageCfg>, Vec<PathBuf>) {
@@ -226,13 +229,14 @@ fn create_attestation_soc_images_variant(
     // components; dedicated features opt in to TCB-only or mixed coverage.
     let specs: &[(u8, u32, bool)] = match feature {
         Some("test-mctp-spdm-attestation-tcb") | Some("test-mctp-spdm-attestation-hitless-tcb") => {
-            &[(0xde, 0x0003, true)]
+            &[(0xde, ATTESTATION_SOC_FW_ID, true)]
         }
         Some("test-mctp-spdm-attestation-mixed")
-        | Some("test-mctp-spdm-attestation-hitless-mixed") => {
-            &[(0xde, 0x0003, true), (0xad, 0x0004, false)]
-        }
-        _ => &[(0xde, 0x0003, false)],
+        | Some("test-mctp-spdm-attestation-hitless-mixed") => &[
+            (0xde, ATTESTATION_SOC_FW_ID, true),
+            (0xad, ATTESTATION_SOC_FW_ID_2, false),
+        ],
+        _ => &[(0xde, ATTESTATION_SOC_FW_ID, false)],
     };
 
     let mut soc_images = Vec::with_capacity(specs.len());
@@ -1567,6 +1571,45 @@ fn get_default_pldm_fw_manifest(dev_uuid: &[u8], image: &[u8]) -> FirmwareManife
             image_data: Some(image.to_vec()),
             ..Default::default()
         }],
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn attestation_soc_image_ids_do_not_overlap_reserved_components() {
+        let (base_images, _) = create_default_soc_images();
+        let (attestation_images, _) =
+            create_attestation_soc_images(Some("test-mctp-spdm-attestation-mixed"));
+        let target_dir = tempfile::tempdir().unwrap();
+        crate::attestation_manifest::write_config_to_target_dir(
+            target_dir.path(),
+            "vendor",
+            "model",
+            &attestation_images,
+            "test",
+            "Generated",
+        )
+        .unwrap();
+
+        let mut image_ids = base_images
+            .iter()
+            .chain(attestation_images.iter())
+            .map(|image| image.image_id)
+            .collect::<Vec<_>>();
+        image_ids.push(caliptra_mcu_flash_image::V_AUTH_KEY_ID);
+        image_ids.sort_unstable();
+        image_ids.dedup();
+
+        assert_eq!(
+            image_ids.len(),
+            base_images.len() + attestation_images.len() + 1
+        );
+        assert!(attestation_images
+            .iter()
+            .all(|image| (0x1000..0x1_0000).contains(&image.image_id)));
     }
 }
 
