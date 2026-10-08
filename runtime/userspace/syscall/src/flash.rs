@@ -86,17 +86,7 @@ impl<S: Syscalls> SpiFlash<S> {
 
     /// Internal function to read a chunk of data from the flash memory.
     /// Don't use this function directly, use `read` instead.
-    async fn read_chunk(
-        &self,
-        address: usize,
-        len: usize,
-        buf: &mut [u8],
-    ) -> Result<(), ErrorCode> {
-        // Check if the buffer is large enough and the length is within the chunk size
-        if buf.len() < len || len > self.get_chunk_size()? {
-            return Err(ErrorCode::NoMem);
-        }
-
+    async fn read_chunk(&self, address: usize, buf: &mut [u8]) -> Result<(), ErrorCode> {
         let result = share::scope::<(), _, _>(|_handle| {
             let mut sub = TockSubscribe::subscribe_allow_rw::<S, DefaultConfig>(
                 self.driver_num,
@@ -109,7 +99,7 @@ impl<S: Syscalls> SpiFlash<S> {
                 self.driver_num,
                 flash_storage_cmd::READ,
                 address as u32,
-                len as u32,
+                buf.len() as u32,
             )
             .to_result::<(), ErrorCode>()
             {
@@ -149,7 +139,7 @@ impl<S: Syscalls> SpiFlash<S> {
         let mut offset = 0;
         while remaining > 0 {
             let len = core::cmp::min(remaining, chunk_size);
-            self.read_chunk(address + offset, len, &mut buf[offset..offset + len])
+            self.read_chunk(address + offset, &mut buf[offset..offset + len])
                 .await?;
             remaining -= len;
             offset += len;
@@ -160,12 +150,7 @@ impl<S: Syscalls> SpiFlash<S> {
 
     /// Internal helper function to write a chunk of data to the flash memory.
     /// Don't use this function directly, use `write` instead.
-    async fn write_chunk(&self, address: usize, len: usize, buf: &[u8]) -> Result<(), ErrorCode> {
-        // Check if the buffer is large enough and the length is within the chunk size
-        if buf.len() < len || len > self.get_chunk_size()? {
-            return Err(ErrorCode::NoMem);
-        }
-
+    async fn write_chunk(&self, address: usize, buf: &[u8]) -> Result<(), ErrorCode> {
         let result = share::scope::<(), _, _>(|_handle| {
             let mut sub = TockSubscribe::subscribe_allow_ro::<S, DefaultConfig>(
                 self.driver_num,
@@ -178,7 +163,7 @@ impl<S: Syscalls> SpiFlash<S> {
                 self.driver_num,
                 flash_storage_cmd::WRITE,
                 address as u32,
-                len as u32,
+                buf.len() as u32,
             )
             .to_result::<(), ErrorCode>()
             {
@@ -220,7 +205,7 @@ impl<S: Syscalls> SpiFlash<S> {
         let mut offset = 0;
         while remaining > 0 {
             let len = core::cmp::min(remaining, chunk_size);
-            self.write_chunk(address + offset, len, &buf[offset..offset + len])
+            self.write_chunk(address + offset, &buf[offset..offset + len])
                 .await?;
             remaining -= len;
             offset += len;
