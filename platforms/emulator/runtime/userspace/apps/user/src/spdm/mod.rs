@@ -429,13 +429,24 @@ async fn spdm_mctp_responder() {
     let allocator: &'static BitmapAllocator =
         unsafe { MCTP_ALLOC_CELL.init_once(scratch_ptr, MCTP_SPDM_SCRATCH_SIZE) };
 
-    let Ok(transport) = McuSpdmMctpTransport::new(
-        mctp::driver_num::MCTP_SPDM,
-        caliptra_mcu_spdm_transports::mctp::MCTP_MSG_TYPE_SPDM,
-    ) else {
-        panic!("invalid MCTP SPDM transport configuration");
+    #[cfg(feature = "cert-provisioning")]
+    let transport = {
+        let Ok(transport) = McuSpdmMctpTransport::new(
+            mctp::driver_num::MCTP_SPDM,
+            caliptra_mcu_spdm_transports::mctp::MCTP_MSG_TYPE_SPDM,
+        ) else {
+            panic!("invalid MCTP SPDM transport configuration");
+        };
+        alloc::boxed::Box::new(transport)
     };
-    let transport = alloc::boxed::Box::new(transport);
+    #[cfg(not(feature = "cert-provisioning"))]
+    let transport = alloc::boxed::Box::new(
+        McuSpdmMctpTransport::new(
+            mctp::driver_num::MCTP_SPDM,
+            caliptra_mcu_spdm_transports::mctp::MCTP_MSG_TYPE_SPDM,
+        )
+        .expect("MCTP_SPDM driver with MCTP_MSG_TYPE_SPDM is a valid pairing"),
+    );
 
     // SAFETY: `allocator` is the `&'static` handle obtained above and is
     // exclusive to this task.
@@ -460,12 +471,17 @@ async fn spdm_mctp_responder() {
     let mut stack = SpdmStack::<_, 1, _>::with_vdm_backend(pal, vdm);
 
     crate::log_info!(cw, "SPDM_MCTP: starting spdm-lib MCTP run loop");
+    #[cfg(feature = "cert-provisioning")]
     if Mci::<DefaultSyscalls>::new()
         .set_spdm_mctp_responder_ready()
         .is_err()
     {
         panic!("failed to signal MCTP SPDM responder readiness");
     }
+    #[cfg(not(feature = "cert-provisioning"))]
+    Mci::<DefaultSyscalls>::new()
+        .set_spdm_mctp_responder_ready()
+        .unwrap();
     if let Err(e) = stack.run().await {
         crate::log_error!(
             cw,
