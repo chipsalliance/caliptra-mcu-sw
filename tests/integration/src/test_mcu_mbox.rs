@@ -74,6 +74,14 @@ pub mod test {
     type Hkdf384 = Hkdf<Sha384>;
     type Hkdf512 = Hkdf<Sha512>;
 
+    struct StopEmulatorOnDrop;
+
+    impl Drop for StopEmulatorOnDrop {
+        fn drop(&mut self) {
+            caliptra_mcu_testing_common::stop_emulator();
+        }
+    }
+
     /// Chunk size for splitting large AES-GCM payloads.
     /// Set to 2048 to ensure total request (headers ~140 bytes + data) fits within 4K SRAM.
     const AES_GCM_CHUNK_SIZE: usize = 2048;
@@ -169,7 +177,8 @@ pub mod test {
         let mci_ptr = hw.base.mmio.mci().unwrap().ptr as u64;
         let caliptra_mmio_ptr = hw.base.mmio.caliptra_mmio().unwrap() as u64;
 
-        caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
+        let test_thread = caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
+            let _stop_emulator = StopEmulatorOnDrop;
             wait_for_runtime_start();
             if !caliptra_mcu_testing_common::is_emulator_running() {
                 exit(-1);
@@ -199,10 +208,12 @@ pub mod test {
                 exit(-1);
             }
             println!("Passed");
-            caliptra_mcu_testing_common::stop_emulator();
         });
 
         let test = finish_runtime_hw_model(&mut hw);
+        test_thread
+            .join()
+            .expect("MCU mailbox test thread panicked");
         assert_eq!(0, test);
 
         lock.fetch_add(1, Ordering::Relaxed);
@@ -245,7 +256,8 @@ pub mod test {
             .expect("invalid Core CAPABILITIES response")
             .capabilities;
 
-        caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
+        let test_thread = caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
+            let _stop_emulator = StopEmulatorOnDrop;
             wait_for_runtime_start();
             if !caliptra_mcu_testing_common::is_emulator_running() {
                 exit(-1);
@@ -274,10 +286,12 @@ pub mod test {
                 println!("Sent {} test messages", test.test_messages.len());
                 println!("Passed");
             }
-            caliptra_mcu_testing_common::stop_emulator();
         });
 
         let test = finish_runtime_hw_model(&mut hw);
+        test_thread
+            .join()
+            .expect("MCU mailbox test thread panicked");
         assert_eq!(0, test);
 
         // force the compiler to keep the lock
@@ -423,6 +437,85 @@ pub mod test {
             Ok(())
         }
 
+        fn assert_success_response(
+            response: &McuMailboxResponse,
+            expected_len: usize,
+            command: &str,
+        ) {
+            assert_eq!(
+                response.status_code,
+                MbxCmdStatus::Complete as u32,
+                "{command} should complete successfully"
+            );
+            assert_eq!(
+                response.data.len(),
+                expected_len,
+                "{command} response length mismatch"
+            );
+            assert!(
+                response.data.len() >= core::mem::size_of::<u32>(),
+                "{command} response is too short for a checksum"
+            );
+            assert_eq!(
+                u32::from_le_bytes(
+                    response.data[..core::mem::size_of::<u32>()]
+                        .try_into()
+                        .unwrap()
+                ),
+                calc_checksum(0, &response.data[core::mem::size_of::<u32>()..]),
+                "{command} response checksum mismatch"
+            );
+        }
+
+        fn assert_failure_response(response: &McuMailboxResponse, command: &str) {
+            assert_eq!(
+                response.status_code,
+                MbxCmdStatus::Failure as u32,
+                "{command} should fail"
+            );
+            assert!(
+                response.data.is_empty(),
+                "{command} failure response should not contain data"
+            );
+        }
+
+        fn expect_command_failure(
+            &mut self,
+            mut request: McuMailboxReq,
+            command: &str,
+        ) -> Result<(), ()> {
+            request.populate_chksum().map_err(|_| ())?;
+            let response = self
+                .process_message(request.cmd_code().0, request.as_bytes().map_err(|_| ())?)
+                .map_err(|_| ())?;
+            Self::assert_failure_response(&response, command);
+            Ok(())
+        }
+
+        fn execute_success(
+            &mut self,
+            mut request: McuMailboxReq,
+            expected_len: usize,
+            command: &str,
+        ) -> Result<McuMailboxResponse, ()> {
+            request.populate_chksum().map_err(|_| ())?;
+            let response = self
+                .process_message(request.cmd_code().0, request.as_bytes().map_err(|_| ())?)
+                .map_err(|_| ())?;
+            Self::assert_success_response(&response, expected_len, command);
+            Ok(response)
+        }
+
+        fn import_key_checked(&mut self, key: &[u8], key_usage: CmKeyUsage) -> Result<Cmk, ()> {
+            let cmk = self.import_key(key, key_usage)?;
+            assert_ne!(cmk, Cmk::default());
+            Ok(cmk)
+        }
+
+        fn delete_key_checked(&mut self, cmk: &Cmk) -> Result<(), ()> {
+            self.delete_key(cmk)
+        }
+
         fn direct_test_process_and_check(&mut self, feature: &str) -> Result<(), ()> {
             if feature == "test-mcu-mbox-cmds" {
                 self.add_import_delete_tests()?;
@@ -436,6 +529,16 @@ pub mod test {
                 self.add_hmac_tests()?;
                 self.add_hmac_kdf_counter_tests()?;
                 self.add_hkdf_tests()?;
+                self.test_sha_commands()?;
+                self.test_hmac_command()?;
+                self.test_hmac_kdf_counter_command()?;
+                self.test_hkdf_extract_command()?;
+                self.test_hkdf_expand_command()?;
+                self.test_random_stir_command()?;
+                self.test_random_generate_command()?;
+                self.test_import_command()?;
+                self.test_delete_command()?;
+                self.test_cm_status_command()?;
                 self.add_debug_unlock_tests()?;
                 // FPGA: flash I/O on mcu_mbox0 conflicts with host requests; re-enable
                 // when arbitrated.
@@ -844,26 +947,30 @@ pub mod test {
         }
 
         fn delete_key(&mut self, cmk: &Cmk) -> Result<(), ()> {
-            let mut delete_req = McuMailboxReq::Delete(McuCmDeleteReq(CmDeleteReq {
-                hdr: MailboxReqHeader::default(),
-                cmk: cmk.clone(),
-            }));
-            delete_req.populate_chksum().unwrap();
-            self.process_message(delete_req.cmd_code().0, delete_req.as_bytes().unwrap())
-                .map_err(|_| ())?;
+            let response = self.execute_success(
+                McuMailboxReq::Delete(McuCmDeleteReq(CmDeleteReq {
+                    hdr: MailboxReqHeader::default(),
+                    cmk: cmk.clone(),
+                })),
+                core::mem::size_of::<MailboxRespHeader>(),
+                "MC_DELETE",
+            )?;
+            let header = MailboxRespHeader::read_from_bytes(&response.data).map_err(|_| ())?;
+            assert_eq!(header.fips_status, MailboxRespHeader::FIPS_STATUS_APPROVED);
             Ok(())
         }
 
         fn check_cm_status(&mut self, expected_used: u32, expected_total: u32) -> Result<(), ()> {
-            let mut status_req = McuMailboxReq::CmStatus(McuCmStatusReq::default());
-            status_req.populate_chksum().unwrap();
-
-            let status_resp_bytes = self
-                .process_message(status_req.cmd_code().0, status_req.as_bytes().unwrap())
-                .map_err(|_| ())?
-                .data;
-            let status_resp =
-                McuCmStatusResp::ref_from_bytes(&status_resp_bytes).map_err(|_| ())?;
+            let response = self.execute_success(
+                McuMailboxReq::CmStatus(McuCmStatusReq::default()),
+                core::mem::size_of::<McuCmStatusResp>(),
+                "MC_CM_STATUS",
+            )?;
+            let status_resp = McuCmStatusResp::read_from_bytes(&response.data).map_err(|_| ())?;
+            assert_eq!(
+                status_resp.0.hdr.fips_status,
+                MailboxRespHeader::FIPS_STATUS_APPROVED
+            );
             assert_eq!(status_resp.0.used_usage_storage, expected_used);
             assert_eq!(status_resp.0.total_usage_storage, expected_total);
             Ok(())
@@ -873,23 +980,22 @@ pub mod test {
             let mut input = [0u8; 64];
             input[..key.len()].copy_from_slice(key);
 
-            let mut import_req = McuMailboxReq::Import(McuCmImportReq(CmImportReq {
-                hdr: MailboxReqHeader { chksum: 0 },
-                key_usage: key_usage.into(),
-                input_size: key.len() as u32,
-                input,
-            }));
-            import_req.populate_chksum().unwrap();
-
-            let resp = self
-                .process_message(import_req.cmd_code().0, import_req.as_bytes().unwrap())
-                .map_err(|_| ())?;
-            let import_resp = McuCmImportResp::ref_from_bytes(&resp.data).map_err(|_| ())?;
+            let response = self.execute_success(
+                McuMailboxReq::Import(McuCmImportReq(CmImportReq {
+                    hdr: MailboxReqHeader::default(),
+                    key_usage: key_usage.into(),
+                    input_size: key.len() as u32,
+                    input,
+                })),
+                core::mem::size_of::<McuCmImportResp>(),
+                "MC_IMPORT",
+            )?;
+            let import_resp = McuCmImportResp::read_from_bytes(&response.data).map_err(|_| ())?;
             assert_eq!(
                 import_resp.0.hdr.fips_status,
                 MailboxRespHeader::FIPS_STATUS_APPROVED
             );
-            Ok(import_resp.0.cmk.clone())
+            Ok(import_resp.0.cmk)
         }
 
         fn add_rng_generate_tests(&mut self) -> Result<(), ()> {
@@ -2669,6 +2775,352 @@ pub mod test {
             );
 
             Ok(expand_resp.0.okm)
+        }
+
+        fn test_sha_commands(&mut self) -> Result<(), ()> {
+            self.test_sha_init_command()?;
+            self.test_sha_update_command()?;
+            self.test_sha_final_command()
+        }
+
+        fn sha_init_checked(&mut self, input: &[u8]) -> Result<[u8; 200], ()> {
+            let mut request = CmShaInitReq {
+                hash_algorithm: CmHashAlgorithm::Sha384.into(),
+                input_size: input.len() as u32,
+                ..Default::default()
+            };
+            request.input[..input.len()].copy_from_slice(input);
+            let response = self.execute_success(
+                McuMailboxReq::ShaInit(McuShaInitReq(request)),
+                core::mem::size_of::<McuShaInitResp>(),
+                "MC_SHA_INIT",
+            )?;
+            let response = McuShaInitResp::read_from_bytes(&response.data).map_err(|_| ())?;
+            assert_eq!(
+                response.0.hdr.fips_status,
+                MailboxRespHeader::FIPS_STATUS_APPROVED
+            );
+            Ok(response.0.context)
+        }
+
+        fn test_sha_init_command(&mut self) -> Result<(), ()> {
+            self.sha_init_checked(b"a")?;
+            self.expect_command_failure(
+                McuMailboxReq::ShaInit(McuShaInitReq(CmShaInitReq {
+                    hash_algorithm: CmHashAlgorithm::Reserved.into(),
+                    ..Default::default()
+                })),
+                "MC_SHA_INIT with a reserved hash algorithm",
+            )
+        }
+
+        fn test_sha_update_command(&mut self) -> Result<(), ()> {
+            let context = self.sha_init_checked(b"a")?;
+            let mut request = CmShaUpdateReq {
+                context,
+                input_size: 1,
+                ..Default::default()
+            };
+            request.input[0] = b'b';
+            let response = self.execute_success(
+                McuMailboxReq::ShaUpdate(McuShaUpdateReq(request)),
+                core::mem::size_of::<McuShaInitResp>(),
+                "MC_SHA_UPDATE",
+            )?;
+            let response = McuShaInitResp::read_from_bytes(&response.data).map_err(|_| ())?;
+            assert_eq!(
+                response.0.hdr.fips_status,
+                MailboxRespHeader::FIPS_STATUS_APPROVED
+            );
+            self.expect_command_failure(
+                McuMailboxReq::ShaUpdate(McuShaUpdateReq(CmShaUpdateReq::default())),
+                "MC_SHA_UPDATE without an initialized context",
+            )
+        }
+
+        fn test_sha_final_command(&mut self) -> Result<(), ()> {
+            let context = self.sha_init_checked(b"ab")?;
+            let mut request = CmShaFinalReq {
+                context,
+                input_size: 1,
+                ..Default::default()
+            };
+            request.input[0] = b'c';
+            let response = self.execute_success(
+                McuMailboxReq::ShaFinal(McuShaFinalReq(request)),
+                core::mem::size_of::<MailboxRespHeaderVarSize>() + 48,
+                "MC_SHA_FINAL",
+            )?;
+            let (header, hash) =
+                MailboxRespHeaderVarSize::ref_from_prefix(&response.data).map_err(|_| ())?;
+            assert_eq!(
+                header.hdr.fips_status,
+                MailboxRespHeader::FIPS_STATUS_APPROVED
+            );
+            assert_eq!(header.data_len, 48);
+            assert_eq!(hash, &Sha384::digest(b"abc")[..]);
+            self.expect_command_failure(
+                McuMailboxReq::ShaFinal(McuShaFinalReq(CmShaFinalReq::default())),
+                "MC_SHA_FINAL without an initialized context",
+            )
+        }
+
+        fn test_random_stir_command(&mut self) -> Result<(), ()> {
+            for input_size in [0, MAX_CMB_DATA_SIZE / 2] {
+                let response = self.execute_success(
+                    McuMailboxReq::RandomStir(McuRandomStirReq(CmRandomStirReq {
+                        hdr: MailboxReqHeader::default(),
+                        input_size: input_size as u32,
+                        input: [0x5a; MAX_CMB_DATA_SIZE],
+                    })),
+                    core::mem::size_of::<MailboxRespHeader>(),
+                    "MC_RANDOM_STIR",
+                )?;
+                let header = MailboxRespHeader::read_from_bytes(&response.data).map_err(|_| ())?;
+                assert_eq!(header.fips_status, MailboxRespHeader::FIPS_STATUS_APPROVED);
+            }
+            Ok(())
+        }
+
+        fn test_random_generate_command(&mut self) -> Result<(), ()> {
+            for size in [0, 256, (MAX_CMB_DATA_SIZE / 2) as u32] {
+                let response = self.execute_success(
+                    McuMailboxReq::RandomGenerate(McuRandomGenerateReq(CmRandomGenerateReq {
+                        hdr: MailboxReqHeader::default(),
+                        size,
+                    })),
+                    core::mem::size_of::<MailboxRespHeaderVarSize>() + size as usize,
+                    "MC_RANDOM_GENERATE",
+                )?;
+                let (header, random) =
+                    MailboxRespHeaderVarSize::ref_from_prefix(&response.data).map_err(|_| ())?;
+                assert_eq!(
+                    header.hdr.fips_status,
+                    MailboxRespHeader::FIPS_STATUS_APPROVED
+                );
+                assert_eq!(header.data_len, size);
+                assert_eq!(random.len(), size as usize);
+                if size != 0 {
+                    assert!(random.iter().any(|byte| *byte != 0));
+                }
+            }
+            self.expect_command_failure(
+                McuMailboxReq::RandomGenerate(McuRandomGenerateReq(CmRandomGenerateReq {
+                    hdr: MailboxReqHeader::default(),
+                    size: (MAX_CMB_DATA_SIZE + 1) as u32,
+                })),
+                "MC_RANDOM_GENERATE above the maximum length",
+            )
+        }
+
+        fn test_import_command(&mut self) -> Result<(), ()> {
+            let cmk = self.import_key_checked(&[0x5a; 32], CmKeyUsage::Aes)?;
+            self.delete_key_checked(&cmk)?;
+            self.expect_command_failure(
+                McuMailboxReq::Import(McuCmImportReq(CmImportReq {
+                    hdr: MailboxReqHeader::default(),
+                    key_usage: CmKeyUsage::Reserved.into(),
+                    input_size: 1,
+                    ..Default::default()
+                })),
+                "MC_IMPORT with a reserved key usage",
+            )?;
+            self.expect_command_failure(
+                McuMailboxReq::Import(McuCmImportReq(CmImportReq {
+                    hdr: MailboxReqHeader::default(),
+                    key_usage: CmKeyUsage::Aes.into(),
+                    input_size: 16,
+                    ..Default::default()
+                })),
+                "MC_IMPORT with an invalid AES key length",
+            )
+        }
+
+        fn test_delete_command(&mut self) -> Result<(), ()> {
+            let cmk = self.import_key_checked(&[0x5a; 32], CmKeyUsage::Aes)?;
+            self.delete_key_checked(&cmk)?;
+            self.expect_command_failure(
+                McuMailboxReq::Delete(McuCmDeleteReq(CmDeleteReq {
+                    hdr: MailboxReqHeader::default(),
+                    cmk: Cmk::default(),
+                })),
+                "MC_DELETE with an unknown CMK",
+            )?;
+            self.expect_command_failure(
+                McuMailboxReq::Delete(McuCmDeleteReq(CmDeleteReq {
+                    hdr: MailboxReqHeader::default(),
+                    cmk,
+                })),
+                "MC_DELETE with a deleted CMK",
+            )
+        }
+
+        fn test_cm_status_command(&mut self) -> Result<(), ()> {
+            let cmk = self.import_key_checked(&[0x5a; 32], CmKeyUsage::Aes)?;
+            self.check_cm_status(1, 256)?;
+            self.delete_key_checked(&cmk)?;
+            self.check_cm_status(0, 256)
+        }
+
+        fn test_hmac_command(&mut self) -> Result<(), ()> {
+            let key = [0x11; 48];
+            let cmk = self.import_key_checked(&key, CmKeyUsage::Hmac)?;
+            let response = self.execute_success(
+                McuMailboxReq::Hmac(McuHmacReq(CmHmacReq {
+                    cmk: cmk.clone(),
+                    hash_algorithm: CmHashAlgorithm::Sha384.into(),
+                    ..Default::default()
+                })),
+                core::mem::size_of::<MailboxRespHeaderVarSize>() + 48,
+                "MC_HMAC",
+            )?;
+            let (header, mac) =
+                MailboxRespHeaderVarSize::ref_from_prefix(&response.data).map_err(|_| ())?;
+            assert_eq!(
+                header.hdr.fips_status,
+                MailboxRespHeader::FIPS_STATUS_APPROVED
+            );
+            assert_eq!(header.data_len, 48);
+            assert_eq!(mac, rustcrypto_hmac(CmHashAlgorithm::Sha384, &key, &[]));
+
+            for (invalid_cmk, description) in [
+                (Cmk::default(), "unknown"),
+                (
+                    self.import_key_checked(&[0xa5; 32], CmKeyUsage::Aes)?,
+                    "incompatible",
+                ),
+            ] {
+                self.expect_command_failure(
+                    McuMailboxReq::Hmac(McuHmacReq(CmHmacReq {
+                        cmk: invalid_cmk.clone(),
+                        hash_algorithm: CmHashAlgorithm::Sha384.into(),
+                        ..Default::default()
+                    })),
+                    &format!("MC_HMAC with an {description} CMK"),
+                )?;
+                if description == "incompatible" {
+                    self.delete_key_checked(&invalid_cmk)?;
+                }
+            }
+            Ok(())
+        }
+
+        fn test_hmac_kdf_counter_command(&mut self) -> Result<(), ()> {
+            let hmac_key = self.import_key_checked(&[0x11; 48], CmKeyUsage::Hmac)?;
+            let response = self.execute_success(
+                McuMailboxReq::HmacKdfCounter(McuHmacKdfCounterReq(CmHmacKdfCounterReq {
+                    kin: hmac_key.clone(),
+                    hash_algorithm: CmHashAlgorithm::Sha384.into(),
+                    key_usage: CmKeyUsage::Aes.into(),
+                    key_size: 32,
+                    ..Default::default()
+                })),
+                core::mem::size_of::<McuHmacKdfCounterResp>(),
+                "MC_HMAC_KDF_COUNTER",
+            )?;
+            let response =
+                McuHmacKdfCounterResp::read_from_bytes(&response.data).map_err(|_| ())?;
+            assert_eq!(
+                response.0.hdr.fips_status,
+                MailboxRespHeader::FIPS_STATUS_APPROVED
+            );
+            self.delete_key_checked(&response.0.kout)?;
+
+            let aes_key = self.import_key_checked(&[0xa5; 32], CmKeyUsage::Aes)?;
+            for (kin, description) in [
+                (Cmk::default(), "unknown"),
+                (aes_key.clone(), "incompatible"),
+            ] {
+                self.expect_command_failure(
+                    McuMailboxReq::HmacKdfCounter(McuHmacKdfCounterReq(CmHmacKdfCounterReq {
+                        kin,
+                        hash_algorithm: CmHashAlgorithm::Sha384.into(),
+                        key_usage: CmKeyUsage::Aes.into(),
+                        key_size: 32,
+                        ..Default::default()
+                    })),
+                    &format!("MC_HMAC_KDF_COUNTER with an {description} CMK"),
+                )?;
+            }
+            self.delete_key_checked(&aes_key)
+        }
+
+        fn test_hkdf_extract_command(&mut self) -> Result<(), ()> {
+            let ikm = self.import_key_checked(&[0x11; 48], CmKeyUsage::Hmac)?;
+            let salt = self.import_key_checked(&[0x22; 48], CmKeyUsage::Hmac)?;
+            let response = self.execute_success(
+                McuMailboxReq::HkdfExtract(McuHkdfExtractReq(CmHkdfExtractReq {
+                    hash_algorithm: CmHashAlgorithm::Sha384.into(),
+                    salt: salt.clone(),
+                    ikm: ikm.clone(),
+                    ..Default::default()
+                })),
+                core::mem::size_of::<McuHkdfExtractResp>(),
+                "MC_HKDF_EXTRACT",
+            )?;
+            let response = McuHkdfExtractResp::read_from_bytes(&response.data).map_err(|_| ())?;
+            assert_eq!(
+                response.0.hdr.fips_status,
+                MailboxRespHeader::FIPS_STATUS_APPROVED
+            );
+            self.delete_key_checked(&response.0.prk)?;
+            let aes_key = self.import_key_checked(&[0xa5; 32], CmKeyUsage::Aes)?;
+            for (salt, ikm, description) in [
+                (Cmk::default(), Cmk::default(), "unknown"),
+                (aes_key.clone(), aes_key.clone(), "incompatible"),
+            ] {
+                self.expect_command_failure(
+                    McuMailboxReq::HkdfExtract(McuHkdfExtractReq(CmHkdfExtractReq {
+                        hash_algorithm: CmHashAlgorithm::Sha384.into(),
+                        salt,
+                        ikm,
+                        ..Default::default()
+                    })),
+                    &format!("MC_HKDF_EXTRACT with {description} CMKs"),
+                )?;
+            }
+            self.delete_key_checked(&aes_key)
+        }
+
+        fn test_hkdf_expand_command(&mut self) -> Result<(), ()> {
+            let ikm = self.import_key_checked(&[0x11; 48], CmKeyUsage::Hmac)?;
+            let salt = self.import_key_checked(&[0x22; 48], CmKeyUsage::Hmac)?;
+            let prk = self.hkdf_extract(&ikm, &salt, CmHashAlgorithm::Sha384)?;
+            let response = self.execute_success(
+                McuMailboxReq::HkdfExpand(McuHkdfExpandReq(CmHkdfExpandReq {
+                    prk: prk.clone(),
+                    hash_algorithm: CmHashAlgorithm::Sha384.into(),
+                    key_usage: CmKeyUsage::Aes.into(),
+                    key_size: 32,
+                    ..Default::default()
+                })),
+                core::mem::size_of::<McuHkdfExpandResp>(),
+                "MC_HKDF_EXPAND",
+            )?;
+            let response = McuHkdfExpandResp::read_from_bytes(&response.data).map_err(|_| ())?;
+            assert_eq!(
+                response.0.hdr.fips_status,
+                MailboxRespHeader::FIPS_STATUS_APPROVED
+            );
+            self.delete_key_checked(&response.0.okm)?;
+
+            let aes_key = self.import_key_checked(&[0xa5; 32], CmKeyUsage::Aes)?;
+            for (prk, description) in [
+                (Cmk::default(), "unknown"),
+                (aes_key.clone(), "incompatible"),
+            ] {
+                self.expect_command_failure(
+                    McuMailboxReq::HkdfExpand(McuHkdfExpandReq(CmHkdfExpandReq {
+                        prk,
+                        hash_algorithm: CmHashAlgorithm::Sha384.into(),
+                        key_usage: CmKeyUsage::Aes.into(),
+                        key_size: 32,
+                        ..Default::default()
+                    })),
+                    &format!("MC_HKDF_EXPAND with an {description} CMK"),
+                )?;
+            }
+            self.delete_key_checked(&aes_key)
         }
 
         /// Test debug unlock passthrough commands.

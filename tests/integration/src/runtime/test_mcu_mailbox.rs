@@ -10,12 +10,16 @@ use caliptra_api::{
 use caliptra_mcu_config::capabilities::{ExternalCommandCapabilities, McuRuntimeCapabilities};
 use caliptra_mcu_hw_model::{LifecycleControllerState, McuHwModel};
 use caliptra_mcu_mbox_common::messages::{
-    DeviceCapsReq, DpeSignerContextCertReq, EcdsaVerifyReq, FirmwareVersionReq,
-    GetAuthCmdChallengeReq, GetDpeCertChainReq, LmsVerifyReq,
-    MailboxReqHeader as McuMailboxReqHeader, MailboxRespHeader, McuEcdsa384SigVerifyReq,
-    McuFeProgReq, McuLmsSigVerifyReq,
+    CommandId as McuCommandId, DeviceCapsReq, DeviceCapsResp, DpeSignerContextCertReq,
+    EcdsaVerifyReq, FirmwareVersionReq, GetAuthCmdChallengeReq, GetDpeCertChainReq, LmsVerifyReq,
+    MailboxReqHeader as McuMailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize,
+    McuEcdsa384SigVerifyReq, McuFeProgReq, McuFipsPeriodicEnableReq, McuFipsPeriodicEnableResp,
+    McuFipsPeriodicStatusResp, McuFipsSelfTestGetResultsResp, McuFipsSelfTestStartResp,
+    McuLmsSigVerifyReq, McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp,
+    McuProdDebugUnlockTokenReq, ProductionAuthDebugUnlockReq, ProductionAuthDebugUnlockToken,
 };
 use caliptra_mcu_romtime::{handoff::McuRomCapabilities, McuBootMilestones};
+use std::mem::size_of;
 use zerocopy::{FromBytes, IntoBytes};
 
 fn semantic_version(packed_version: u32) -> String {
@@ -25,6 +29,20 @@ fn semantic_version(packed_version: u32) -> String {
         (packed_version >> 16) & 0xff,
         packed_version & 0xffff
     )
+}
+
+fn assert_response_checksum(response: &[u8]) {
+    assert!(response.len() >= size_of::<u32>());
+    assert_eq!(
+        u32::from_le_bytes(response[..size_of::<u32>()].try_into().unwrap()),
+        calc_checksum(0, &response[size_of::<u32>()..])
+    );
+}
+
+fn raw_request(cmd: u32, payload: &[u8]) -> Vec<u8> {
+    let mut request = calc_checksum(cmd, payload).to_le_bytes().to_vec();
+    request.extend_from_slice(payload);
+    request
 }
 
 #[test]
@@ -48,6 +66,189 @@ fn test_invalid_mailbox_cmd() -> Result<()> {
     assert!(
         !err_msg.contains("timed out"),
         "Mailbox command should fail with error, not time out. Got: {err_msg}"
+    );
+    Ok(())
+}
+
+#[test]
+fn test_invalid_mailbox_cmd_with_valid_checksum() -> Result<()> {
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-mcu-mbox-cmds"),
+        ..Default::default()
+    });
+
+    // wait another little bit for the mailbox to come up after the runtime
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    // Send an unknown command (0x0) with an valid checksum.
+    // The firmware should reject it with a mailbox failure.
+    let cmd = 0;
+    let request = calc_checksum(cmd, &[]).to_le_bytes();
+    let err_msg = hw.mailbox_execute(cmd, &request).unwrap_err().to_string();
+    assert!(
+        !err_msg.contains("timed out"),
+        "Mailbox command should fail with error, not time out. Got: {err_msg}"
+    );
+    Ok(())
+}
+
+#[test]
+fn test_valid_mailbox_cmd_with_invalid_checksum() -> Result<()> {
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-mcu-mbox-cmds"),
+        ..Default::default()
+    });
+
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    // Send an known command ("MFWV") with an invalid checksum.
+    // The firmware should reject it with a mailbox failure.
+    let cmd = McuCommandId::MC_FIRMWARE_VERSION.0;
+    let err_msg = hw
+        .mailbox_execute(cmd, &[0; size_of::<FirmwareVersionReq>()])
+        .unwrap_err()
+        .to_string();
+    assert!(
+        !err_msg.contains("timed out"),
+        "Mailbox command should fail with error, not time out. Got: {err_msg}"
+    );
+    Ok(())
+}
+
+#[test]
+fn test_mailbox_transport_rejects_request_shorter_than_header() -> Result<()> {
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-mcu-mbox-cmds"),
+        ..Default::default()
+    });
+
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    // Send an known command ("MFWV") but with a request shorter than the header.
+    // The firmware should reject it with a mailbox failure.
+    let cmd = McuCommandId::MC_FIRMWARE_VERSION.0;
+    let err_msg = hw
+        .mailbox_execute(cmd, &[0; size_of::<McuMailboxReqHeader>() - 1])
+        .unwrap_err()
+        .to_string();
+    assert!(
+        !err_msg.contains("timed out"),
+        "Mailbox command should fail with error, not time out. Got: {err_msg}"
+    );
+    Ok(())
+}
+
+#[test]
+fn test_rejects_missing_dot_subcommands() -> Result<()> {
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-mcu-mbox-cmds"),
+        ..Default::default()
+    });
+
+    // wait another little bit for the mailbox to come up after the runtime
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    // Send the device ownership transfer command without any subcommands.
+    // The firmware should reject it with a mailbox failure.
+    let cmd = McuCommandId::MC_DEVICE_OWNERSHIP_TRANSFER.0;
+    let request = calc_checksum(cmd, &[]).to_le_bytes();
+    let err_msg = hw.mailbox_execute(cmd, &request).unwrap_err().to_string();
+    assert!(
+        !err_msg.contains("timed out"),
+        "Mailbox command should fail with error, not time out. Got: {err_msg}"
+    );
+    Ok(())
+}
+
+#[test]
+fn test_rejects_unknown_dot_subcommands() -> Result<()> {
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-mcu-mbox-cmds"),
+        ..Default::default()
+    });
+
+    // wait another little bit for the mailbox to come up after the runtime
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    // Send the device ownership transfer command with an unknown subcommand.
+    // The firmware should reject it with a mailbox failure.
+    let cmd = McuCommandId::MC_DEVICE_OWNERSHIP_TRANSFER.0;
+    let subcommand = 0xDEAD_BEEFu32.to_le_bytes();
+    let mut request = calc_checksum(cmd, &subcommand).to_le_bytes().to_vec();
+    request.extend_from_slice(&subcommand);
+    let err_msg = hw.mailbox_execute(cmd, &request).unwrap_err().to_string();
+    assert!(
+        !err_msg.contains("timed out"),
+        "Mailbox command should fail with error, not time out. Got: {err_msg}"
+    );
+    Ok(())
+}
+
+#[test]
+fn test_feature_gated_command_is_rejected_when_disabled() -> Result<()> {
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-mcu-mbox-cmds"),
+        ..Default::default()
+    });
+
+    // wait another little bit for the mailbox to come up after the runtime
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    // Send the FIPS periodic status command while the feature is disabled.
+    // The firmware should reject it with a mailbox failure.
+    let cmd = McuCommandId::MC_FIPS_PERIODIC_STATUS.0;
+    let request = calc_checksum(cmd, &[]).to_le_bytes();
+    let err_msg = hw.mailbox_execute(cmd, &request).unwrap_err().to_string();
+    assert!(
+        !err_msg.contains("timed out"),
+        "Mailbox command should fail with error, not time out. Got: {err_msg}"
+    );
+    Ok(())
+}
+
+#[test]
+fn test_succesful_response_checksum() -> Result<()> {
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-mcu-mbox-cmds"),
+        ..Default::default()
+    });
+
+    // wait another little bit for the mailbox to come up after the runtime
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    // Send a valid device capabilities command
+    let cmd = McuCommandId::MC_DEVICE_CAPABILITIES.0;
+    let request = calc_checksum(cmd, &[]).to_le_bytes();
+    let response = hw
+        .mailbox_execute(cmd, &request)?
+        .expect("MC_DEVICE_CAPABILITIES returned no response");
+
+    // Make sure it's the right checksum, and response length
+    assert_eq!(response.len(), size_of::<DeviceCapsResp>());
+    assert_eq!(
+        u32::from_le_bytes(response[..size_of::<u32>()].try_into().unwrap()),
+        calc_checksum(0, &response[size_of::<u32>()..])
     );
     Ok(())
 }
@@ -77,16 +278,27 @@ fn test_firmware_version_cmd() -> Result<()> {
     ];
 
     for (index, expected_version) in expected_versions.iter().enumerate() {
-        let cmd = FirmwareVersionReq {
-            index: index as u32,
-            ..Default::default()
-        };
-        let resp = hw.mailbox_execute_req(cmd)?;
-
-        assert_eq!(resp.hdr.data_len, expected_version.len() as u32);
-        let resp_version_str = std::str::from_utf8(&resp.version[..resp.hdr.data_len as usize])
-            .expect("Version string is not valid UTF-8");
-        assert_eq!(resp_version_str, expected_version);
+        let cmd = McuCommandId::MC_FIRMWARE_VERSION.0;
+        let response = hw
+            .mailbox_execute(cmd, &raw_request(cmd, &(index as u32).to_le_bytes()))?
+            .expect("MC_FIRMWARE_VERSION returned no response");
+        assert_response_checksum(&response);
+        let header = MailboxRespHeaderVarSize::read_from_prefix(&response)
+            .expect("invalid firmware-version response")
+            .0;
+        assert_eq!(
+            response.len(),
+            size_of::<MailboxRespHeaderVarSize>() + header.data_len as usize
+        );
+        assert_eq!(
+            header.hdr.fips_status,
+            MailboxRespHeader::FIPS_STATUS_APPROVED
+        );
+        assert_eq!(header.data_len as usize, expected_version.len());
+        assert_eq!(
+            &response[size_of::<MailboxRespHeaderVarSize>()..],
+            expected_version.as_bytes()
+        );
     }
 
     for index in [2, 99] {
@@ -142,6 +354,512 @@ fn test_device_capabilities_cmd() -> Result<()> {
     assert_eq!(u32::from_be_bytes(resp.caps[28..32].try_into().unwrap()), 0);
     assert_eq!(&resp.caps[32..48], &[0; 16]);
     assert_eq!(&resp.caps[48..64], &[0; 16]);
+    Ok(())
+}
+
+#[test]
+fn test_get_and_clear_log_cmds() -> Result<()> {
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-defmt-logging-release"),
+        seeded_log_entries: Some(caliptra_mcu_mbox_common::config::TEST_DEBUG_LOG_ENTRIES),
+        ..Default::default()
+    });
+
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    let get_log_cmd = McuCommandId::MC_GET_LOG.0;
+    let get_log_request = calc_checksum(get_log_cmd, &[]).to_le_bytes();
+    let expected_log: Vec<u8> = caliptra_mcu_mbox_common::config::TEST_DEBUG_LOG_ENTRIES
+        .iter()
+        .flat_map(|entry| entry.iter().copied())
+        .collect();
+
+    let response = hw
+        .mailbox_execute(get_log_cmd, &get_log_request)?
+        .expect("MC_GET_LOG returned no response");
+    assert_response_checksum(&response);
+    let header = MailboxRespHeaderVarSize::read_from_prefix(&response)
+        .expect("invalid log header")
+        .0;
+    assert_eq!(
+        response.len(),
+        size_of::<MailboxRespHeaderVarSize>() + header.data_len as usize
+    );
+    assert_eq!(
+        header.hdr.fips_status,
+        MailboxRespHeader::FIPS_STATUS_APPROVED
+    );
+    let payload = &response[size_of::<MailboxRespHeaderVarSize>()..];
+    assert_eq!(u32::from_le_bytes(payload[..4].try_into().unwrap()), 0);
+    assert!(
+        payload[4..]
+            .windows(expected_log.len())
+            .any(|window| window == expected_log),
+        "response did not contain the seeded log fixture"
+    );
+
+    let drained = hw
+        .mailbox_execute(get_log_cmd, &get_log_request)?
+        .expect("second MC_GET_LOG returned no response");
+    assert_response_checksum(&drained);
+    let drained_header = MailboxRespHeaderVarSize::read_from_prefix(&drained)
+        .expect("invalid log header")
+        .0;
+    assert_eq!(
+        drained.len(),
+        size_of::<MailboxRespHeaderVarSize>() + drained_header.data_len as usize
+    );
+    assert_eq!(
+        drained_header.hdr.fips_status,
+        MailboxRespHeader::FIPS_STATUS_APPROVED
+    );
+    assert_eq!(drained_header.data_len, size_of::<u32>() as u32);
+    let drained_payload = &drained[size_of::<MailboxRespHeaderVarSize>()..];
+    assert_eq!(drained_payload, 0u32.to_le_bytes());
+
+    let clear_log_cmd = McuCommandId::MC_CLEAR_LOG.0;
+    let clear_log_request = calc_checksum(clear_log_cmd, &[]).to_le_bytes();
+    for _ in 0..2 {
+        let cleared = hw
+            .mailbox_execute(clear_log_cmd, &clear_log_request)?
+            .expect("MC_CLEAR_LOG returned no response");
+        assert_eq!(cleared.len(), size_of::<MailboxRespHeader>());
+        assert_response_checksum(&cleared);
+        let header =
+            MailboxRespHeader::read_from_bytes(&cleared).expect("invalid clear-log response");
+        assert_eq!(header.fips_status, MailboxRespHeader::FIPS_STATUS_APPROVED);
+    }
+
+    let after_clear = hw
+        .mailbox_execute(get_log_cmd, &get_log_request)?
+        .expect("post-clear MC_GET_LOG returned no response");
+    assert_response_checksum(&after_clear);
+    let after_clear_header = MailboxRespHeaderVarSize::read_from_prefix(&after_clear)
+        .expect("invalid post-clear log header")
+        .0;
+    assert_eq!(
+        after_clear.len(),
+        size_of::<MailboxRespHeaderVarSize>() + after_clear_header.data_len as usize
+    );
+    assert_eq!(
+        after_clear_header.hdr.fips_status,
+        MailboxRespHeader::FIPS_STATUS_APPROVED
+    );
+    assert!(after_clear_header.data_len >= size_of::<u32>() as u32);
+    let after_clear_payload = &after_clear[size_of::<MailboxRespHeaderVarSize>()..];
+    assert!(u32::from_le_bytes(after_clear_payload[..4].try_into().unwrap()) <= 1);
+
+    Ok(())
+}
+
+#[test]
+fn test_core_log_and_debug_request_failures() -> Result<()> {
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-mcu-mbox-cmds"),
+        ..Default::default()
+    });
+
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    for cmd in [
+        McuCommandId::MC_DEVICE_CAPABILITIES.0,
+        McuCommandId::MC_GET_LOG.0,
+        McuCommandId::MC_CLEAR_LOG.0,
+    ] {
+        let request = raw_request(cmd, &0u32.to_le_bytes());
+        assert!(
+            hw.mailbox_execute(cmd, &request).is_err(),
+            "command {cmd:#010x} accepted an oversized request"
+        );
+    }
+
+    let firmware_cmd = McuCommandId::MC_FIRMWARE_VERSION.0;
+    let short_firmware_request = raw_request(firmware_cmd, &[]);
+    assert!(
+        hw.mailbox_execute(firmware_cmd, &short_firmware_request)
+            .is_err(),
+        "MC_FIRMWARE_VERSION accepted a request without an index"
+    );
+
+    let debug_req_cmd = McuCommandId::MC_PROD_DEBUG_UNLOCK_REQ.0;
+    let mut invalid_debug_req = McuProdDebugUnlockReqReq(ProductionAuthDebugUnlockReq {
+        hdr: McuMailboxReqHeader::default(),
+        length: 1,
+        unlock_level: 1,
+        reserved: [0; 3],
+    });
+    invalid_debug_req.0.hdr.chksum =
+        calc_checksum(debug_req_cmd, &invalid_debug_req.0.as_bytes()[4..]);
+    assert!(
+        hw.mailbox_execute(debug_req_cmd, invalid_debug_req.0.as_bytes())
+            .is_err(),
+        "MC_PROD_DEBUG_UNLOCK_REQ accepted an invalid length field"
+    );
+
+    let mut debug_req = McuProdDebugUnlockReqReq(ProductionAuthDebugUnlockReq {
+        hdr: McuMailboxReqHeader::default(),
+        length: 2,
+        unlock_level: 1,
+        reserved: [0; 3],
+    });
+    debug_req.0.hdr.chksum = calc_checksum(debug_req_cmd, &debug_req.0.as_bytes()[4..]);
+    assert!(
+        hw.mailbox_execute(debug_req_cmd, debug_req.0.as_bytes())
+            .is_err(),
+        "MC_PROD_DEBUG_UNLOCK_REQ should fail outside Production lifecycle"
+    );
+
+    let debug_token_cmd = McuCommandId::MC_PROD_DEBUG_UNLOCK_TOKEN.0;
+    assert!(
+        hw.mailbox_execute(debug_token_cmd, &raw_request(debug_token_cmd, &[]))
+            .is_err(),
+        "MC_PROD_DEBUG_UNLOCK_TOKEN accepted a truncated request"
+    );
+
+    let mut debug_token = McuProdDebugUnlockTokenReq::default();
+    debug_token
+        .populate_caliptra_chksum()
+        .expect("failed to populate inner debug-token checksum");
+    debug_token.hdr.chksum = calc_checksum(debug_token_cmd, &debug_token.as_bytes()[4..]);
+    assert!(
+        hw.mailbox_execute(debug_token_cmd, debug_token.as_bytes())
+            .is_err(),
+        "MC_PROD_DEBUG_UNLOCK_TOKEN should fail without a challenge"
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_prod_debug_unlock_complete_responses() -> Result<()> {
+    use caliptra_image_fake_keys::{
+        VENDOR_ECC_KEY_0_PRIVATE, VENDOR_ECC_KEY_0_PUBLIC, VENDOR_MLDSA_KEY_0_PRIVATE,
+        VENDOR_MLDSA_KEY_0_PUBLIC,
+    };
+    use caliptra_image_types::{ECC384_SCALAR_BYTE_SIZE, ECC384_SCALAR_WORD_SIZE};
+    use caliptra_mcu_builder::{CaliptraBuildArgs, CaliptraBuilder, FirmwareBinaries};
+    use caliptra_mcu_debug_unlock_signer::{
+        DebugUnlockKeys, DebugUnlockSigner, LocalDebugUnlockSigner, ProdDebugUnlockChallenge,
+    };
+    use caliptra_mcu_registers_generated::fuses::{
+        OTP_CPTRA_CORE_PQC_KEY_TYPE_0, OTP_CPTRA_CORE_VENDOR_PK_HASH_0,
+        OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_0, OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_1,
+        OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_2, OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_3,
+        OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_4, OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_5,
+        OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_6, OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_7,
+        VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET,
+    };
+    use sha2::{Digest, Sha384};
+
+    let mut ecc_public_key_words = [0u32; ECC384_SCALAR_WORD_SIZE * 2];
+    ecc_public_key_words[..ECC384_SCALAR_WORD_SIZE].copy_from_slice(&VENDOR_ECC_KEY_0_PUBLIC.x);
+    ecc_public_key_words[ECC384_SCALAR_WORD_SIZE..].copy_from_slice(&VENDOR_ECC_KEY_0_PUBLIC.y);
+    let ecc_public_key = ecc_public_key_words.as_bytes().try_into().unwrap();
+
+    let mldsa_public_key_words: Vec<u32> = VENDOR_MLDSA_KEY_0_PUBLIC
+        .0
+        .as_bytes()
+        .chunks_exact(4)
+        .map(|word| u32::from_le_bytes(word.try_into().unwrap()))
+        .collect();
+    let mldsa_public_key = mldsa_public_key_words.as_bytes().try_into().unwrap();
+
+    let unlock_level = 1u8;
+    let mut prod_dbg_unlock_keypairs = vec![([0u8; 96], [0u8; 2592]); 8];
+    prod_dbg_unlock_keypairs[usize::from(unlock_level - 1)] = (ecc_public_key, mldsa_public_key);
+
+    let mut otp_memory = vec![0u8; VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET + 256];
+    let mut vendor_pk_hash = if let Ok(binaries) = FirmwareBinaries::from_env() {
+        binaries.vendor_pk_hash().unwrap().to_vec()
+    } else {
+        let mut builder = CaliptraBuilder::new(&CaliptraBuildArgs::default());
+        hex::decode(builder.get_vendor_pk_hash()?)?
+    };
+    for word in vendor_pk_hash.chunks_exact_mut(4) {
+        word.reverse();
+    }
+    let offset = OTP_CPTRA_CORE_VENDOR_PK_HASH_0.byte_offset;
+    otp_memory[offset..offset + vendor_pk_hash.len()].copy_from_slice(&vendor_pk_hash);
+    let offset = OTP_CPTRA_CORE_PQC_KEY_TYPE_0.byte_offset;
+    otp_memory[offset..offset + 4].copy_from_slice(&0x3fu32.to_le_bytes());
+
+    for (entry, (ecc, mldsa)) in [
+        OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_0,
+        OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_1,
+        OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_2,
+        OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_3,
+        OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_4,
+        OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_5,
+        OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_6,
+        OTP_CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_7,
+    ]
+    .into_iter()
+    .zip(&prod_dbg_unlock_keypairs)
+    {
+        let hash = Sha384::new()
+            .chain_update(ecc)
+            .chain_update(mldsa)
+            .finalize();
+        for (index, chunk) in hash.chunks_exact(4).enumerate() {
+            let word = u32::from_be_bytes(chunk.try_into().unwrap());
+            let offset = entry.byte_offset + index * 4;
+            otp_memory[offset..offset + 4].copy_from_slice(&word.to_le_bytes());
+        }
+    }
+
+    let mut ecc_private_key_bytes = [0u8; ECC384_SCALAR_BYTE_SIZE];
+    for (index, word) in VENDOR_ECC_KEY_0_PRIVATE.iter().enumerate() {
+        ecc_private_key_bytes[index * 4..index * 4 + 4].copy_from_slice(&word.to_be_bytes());
+    }
+    let mldsa_private_key_bytes = VENDOR_MLDSA_KEY_0_PRIVATE.0.as_bytes().to_vec();
+    let signer = LocalDebugUnlockSigner::new(DebugUnlockKeys {
+        ecc_private_key_bytes,
+        ecc_public_key: ecc_public_key_words,
+        mldsa_private_key_bytes,
+        mldsa_public_key: mldsa_public_key_words.try_into().unwrap(),
+    });
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-mcu-mbox-cmds"),
+        i3c_port: Some(random_port::PortPicker::new().random(true).pick().unwrap()),
+        use_strap_secrets: true,
+        lifecycle_controller_state: Some(LifecycleControllerState::Prod),
+        debug_intent: true,
+        prod_dbg_unlock_keypairs,
+        otp_memory: Some(otp_memory),
+        ..Default::default()
+    });
+
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    let request_cmd = McuCommandId::MC_PROD_DEBUG_UNLOCK_REQ.0;
+    let request_payload = ProductionAuthDebugUnlockReq {
+        hdr: McuMailboxReqHeader::default(),
+        length: 2,
+        unlock_level,
+        reserved: [0; 3],
+    };
+    hw.caliptra_soc_manager()
+        .soc_ifc()
+        .ss_dbg_service_reg_req()
+        .write(|w| w.prod_dbg_unlock_req(true));
+    let challenge_response = hw
+        .mailbox_execute(
+            request_cmd,
+            &raw_request(request_cmd, &request_payload.as_bytes()[4..]),
+        )?
+        .expect("MC_PROD_DEBUG_UNLOCK_REQ returned no response");
+    assert_eq!(
+        challenge_response.len(),
+        size_of::<McuProdDebugUnlockReqResp>()
+    );
+    assert_response_checksum(&challenge_response);
+    let challenge = McuProdDebugUnlockReqResp::read_from_bytes(&challenge_response)
+        .expect("invalid debug-unlock challenge response");
+    assert_eq!(
+        challenge.0.hdr.fips_status,
+        MailboxRespHeader::FIPS_STATUS_APPROVED
+    );
+    assert_eq!(challenge.0.length, 21);
+
+    let signed_token = signer.sign_debug_unlock_token(
+        &ProdDebugUnlockChallenge {
+            unique_device_identifier: challenge.0.unique_device_identifier,
+            challenge: challenge.0.challenge,
+        },
+        unlock_level,
+    )?;
+    let mut token_request = McuProdDebugUnlockTokenReq {
+        hdr: McuMailboxReqHeader::default(),
+        token: ProductionAuthDebugUnlockToken {
+            hdr: McuMailboxReqHeader::default(),
+            length: signed_token.length,
+            unique_device_identifier: signed_token.unique_device_identifier,
+            unlock_level: signed_token.unlock_level,
+            reserved: signed_token.reserved,
+            challenge: signed_token.challenge,
+            ecc_public_key: signed_token.ecc_public_key,
+            mldsa_public_key: signed_token.mldsa_public_key,
+            ecc_signature: signed_token.ecc_signature,
+            mldsa_signature: signed_token.mldsa_signature,
+        },
+    };
+    token_request
+        .populate_caliptra_chksum()
+        .expect("failed to populate inner debug-token checksum");
+    let token_cmd = McuCommandId::MC_PROD_DEBUG_UNLOCK_TOKEN.0;
+    hw.caliptra_soc_manager()
+        .soc_ifc()
+        .ss_dbg_service_reg_req()
+        .write(|w| w.prod_dbg_unlock_req(true));
+    let token_response = hw
+        .mailbox_execute(
+            token_cmd,
+            &raw_request(token_cmd, &token_request.as_bytes()[4..]),
+        )?
+        .expect("MC_PROD_DEBUG_UNLOCK_TOKEN returned no response");
+    assert_eq!(token_response.len(), size_of::<MailboxRespHeader>());
+    assert_response_checksum(&token_response);
+    let token_response = MailboxRespHeader::read_from_bytes(&token_response)
+        .expect("invalid debug-unlock token response");
+    assert_eq!(
+        token_response.fips_status,
+        MailboxRespHeader::FIPS_STATUS_APPROVED
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_fips_self_test_start_complete_response() -> Result<()> {
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-mcu-mbox-fips-self-test"),
+        ..Default::default()
+    });
+
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    let results_cmd = McuCommandId::MC_FIPS_SELF_TEST_GET_RESULTS.0;
+    let request = raw_request(results_cmd, &[]);
+    assert!(
+        hw.mailbox_execute(results_cmd, &request).is_err(),
+        "self-test results should be unavailable before start"
+    );
+
+    let start_cmd = McuCommandId::MC_FIPS_SELF_TEST_START.0;
+    let request = raw_request(start_cmd, &[]);
+    let response = hw
+        .mailbox_execute(start_cmd, &request)?
+        .expect("MC_FIPS_SELF_TEST_START returned no response");
+    assert_eq!(response.len(), size_of::<McuFipsSelfTestStartResp>());
+    assert_response_checksum(&response);
+    let response = McuFipsSelfTestStartResp::read_from_bytes(&response)
+        .expect("invalid self-test start response");
+    assert_eq!(
+        response.0.fips_status,
+        MailboxRespHeader::FIPS_STATUS_APPROVED
+    );
+
+    let mut results = None;
+    for _ in 0..60 {
+        for _ in 0..500_000 {
+            hw.step();
+        }
+        if let Ok(Some(response)) = hw.mailbox_execute(results_cmd, &raw_request(results_cmd, &[]))
+        {
+            results = Some(response);
+            break;
+        }
+    }
+    let results = results.expect("MC_FIPS_SELF_TEST_GET_RESULTS did not complete");
+    assert_eq!(results.len(), size_of::<McuFipsSelfTestGetResultsResp>());
+    assert_response_checksum(&results);
+    let results = McuFipsSelfTestGetResultsResp::read_from_bytes(&results)
+        .expect("invalid self-test results response");
+    assert_eq!(
+        results.0.fips_status,
+        MailboxRespHeader::FIPS_STATUS_APPROVED
+    );
+
+    let repeated_start = hw
+        .mailbox_execute(start_cmd, &raw_request(start_cmd, &[]))?
+        .expect("repeated MC_FIPS_SELF_TEST_START returned no response");
+    assert_eq!(repeated_start.len(), size_of::<McuFipsSelfTestStartResp>());
+    assert_response_checksum(&repeated_start);
+    let repeated_start = McuFipsSelfTestStartResp::read_from_bytes(&repeated_start)
+        .expect("invalid repeated self-test start response");
+    assert_eq!(
+        repeated_start.0.fips_status,
+        MailboxRespHeader::FIPS_STATUS_APPROVED
+    );
+
+    Ok(())
+}
+
+#[test]
+fn test_fips_periodic_complete_responses_and_repeated_operations() -> Result<()> {
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-mcu-mbox-fips-periodic"),
+        ..Default::default()
+    });
+
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    let status_cmd = McuCommandId::MC_FIPS_PERIODIC_STATUS.0;
+    assert!(
+        hw.mailbox_execute(status_cmd, &raw_request(status_cmd, &[0; 4]))
+            .is_err(),
+        "MC_FIPS_PERIODIC_STATUS accepted an oversized request"
+    );
+    let status_request = raw_request(status_cmd, &[]);
+    let status = hw
+        .mailbox_execute(status_cmd, &status_request)?
+        .expect("MC_FIPS_PERIODIC_STATUS returned no response");
+    assert_eq!(status.len(), size_of::<McuFipsPeriodicStatusResp>());
+    assert_response_checksum(&status);
+    let status =
+        McuFipsPeriodicStatusResp::read_from_bytes(&status).expect("invalid periodic status");
+    assert_eq!(
+        status.header.fips_status,
+        MailboxRespHeader::FIPS_STATUS_APPROVED
+    );
+    assert_eq!(status.enabled, 0);
+    assert_eq!(status.iterations, 0);
+    assert_eq!(status.last_result, 0);
+
+    let enable_cmd = McuCommandId::MC_FIPS_PERIODIC_ENABLE.0;
+    for enable in [1, 1, 0, 0] {
+        let request = McuFipsPeriodicEnableReq {
+            header: McuMailboxReqHeader::default(),
+            enable,
+        };
+        let request = raw_request(enable_cmd, &request.as_bytes()[4..]);
+        let response = hw
+            .mailbox_execute(enable_cmd, &request)?
+            .expect("MC_FIPS_PERIODIC_ENABLE returned no response");
+        assert_eq!(response.len(), size_of::<McuFipsPeriodicEnableResp>());
+        assert_response_checksum(&response);
+        let response = McuFipsPeriodicEnableResp::read_from_bytes(&response)
+            .expect("invalid periodic enable response");
+        assert_eq!(
+            response.0.fips_status,
+            MailboxRespHeader::FIPS_STATUS_APPROVED
+        );
+
+        let status = hw
+            .mailbox_execute(status_cmd, &status_request)?
+            .expect("MC_FIPS_PERIODIC_STATUS returned no response");
+        assert_eq!(status.len(), size_of::<McuFipsPeriodicStatusResp>());
+        assert_response_checksum(&status);
+        let status =
+            McuFipsPeriodicStatusResp::read_from_bytes(&status).expect("invalid periodic status");
+        assert_eq!(
+            status.header.fips_status,
+            MailboxRespHeader::FIPS_STATUS_APPROVED
+        );
+        assert_eq!(status.enabled, enable);
+    }
+
+    let oversized_request = raw_request(enable_cmd, &[0; 8]);
+    assert!(
+        hw.mailbox_execute(enable_cmd, &oversized_request).is_err(),
+        "MC_FIPS_PERIODIC_ENABLE accepted an oversized request"
+    );
+
     Ok(())
 }
 
