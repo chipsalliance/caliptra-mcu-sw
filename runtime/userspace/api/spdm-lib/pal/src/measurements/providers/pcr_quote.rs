@@ -8,7 +8,7 @@
 
 use crate::measurements::MeasurementProvider;
 use caliptra_mcu_attestation_evidence::pcr_quote::{
-    encode_pcr_quote, PcrQuoteAlgorithm, PCR_QUOTE_MAX_SIZE,
+    encode_pcr_quote, PcrQuoteAlgorithm, PCR_QUOTE_ECC384_BUF_SIZE,
 };
 use caliptra_mcu_scratch_alloc::BitmapAllocator;
 use caliptra_mcu_spdm_traits::{MeasurementInfo, SPDM_NONCE_LEN};
@@ -16,7 +16,7 @@ use mcu_error::McuResult;
 
 const PCR_QUOTE_MEAS_INFO: [MeasurementInfo; 1] = [MeasurementInfo {
     index: 0xFD,
-    value_size: PCR_QUOTE_MAX_SIZE as u16,
+    value_size: PCR_QUOTE_ECC384_BUF_SIZE as u16,
     value_type: 4, // FreeformManifest
     is_raw: true,
     is_tcb: true,
@@ -66,7 +66,7 @@ mod tests {
 
         assert_eq!(info.len(), 1);
         assert_eq!(info[0].index, 0xFD);
-        assert_eq!(info[0].value_size, PCR_QUOTE_MAX_SIZE as u16);
+        assert_eq!(info[0].value_size, PCR_QUOTE_ECC384_BUF_SIZE as u16);
         assert_eq!(info[0].value_type, 4);
         assert!(info[0].is_raw);
         assert!(info[0].is_tcb);

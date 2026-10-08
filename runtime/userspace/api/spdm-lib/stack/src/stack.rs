@@ -187,7 +187,9 @@ impl<S, L> ConnectionState<S, L> {
             meas_hash_algo: MeasHashAlgos::SHA_384,
             base_asym_sel: AsymAlgos::ECDSA_ECC_NIST_P384,
             base_hash_sel: HashAlgos::SHA_384,
-            pqc_asym_sel: PqcAsymAlgos::ML_DSA_87,
+            // Re-enable ML-DSA-87 after the Caliptra 2.0 DPE/Core raw-signing
+            // path is available.
+            pqc_asym_sel: PqcAsymAlgos::EMPTY,
             dhe: DheAlgos::SECP_384_R1,
             aead: AeadAlgos::AES_256_GCM,
             key_schedule: KeyScheduleAlgos::SPDM,

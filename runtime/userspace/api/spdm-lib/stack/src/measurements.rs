@@ -11,6 +11,7 @@ use caliptra_mcu_spdm_traits::SpdmPalAlloc;
 use caliptra_mcu_spdm_traits::*;
 use zerocopy::{FromBytes, IntoBytes};
 
+use crate::build::align_send_len;
 use crate::chunk;
 use crate::error::{SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED};
 use crate::stack::{ConnectionState, Phase};
@@ -222,10 +223,13 @@ async fn handle_measurements_response<'a, Pal: SpdmPal>(
     let spdm_len = spdm_len_without_sig
         .checked_add(signature_len)
         .ok_or(SPDM_UNSPECIFIED)?;
-    let raw_len = head.checked_add(spdm_len).ok_or(SPDM_UNSPECIFIED)?;
     let use_normal_response = spdm_len <= state.effective_data_transfer_size(pal);
     if !use_normal_response {
-        chunk::validate_buffered_large_response_with_capacity(state, spdm_len, buf.len())?;
+        chunk::validate_buffered_large_response_with_capacity(
+            state,
+            spdm_len,
+            pal.large_buffered_msg_capacity(),
+        )?;
     }
 
     if plan.signature_requested {
@@ -260,27 +264,7 @@ async fn handle_measurements_response<'a, Pal: SpdmPal>(
         }
     }
 
-    if use_normal_response {
-        let padded_len = align_send_len(pal, raw_len)?;
-        zero_slice(buf, raw_len, padded_len)?;
-        let final_buf = guard.buf.take().ok_or(SPDM_UNSPECIFIED)?;
-        let resp = pal
-            .large_buf_into_bytes(final_buf, padded_len)
-            .map_err(|_| SPDM_UNSPECIFIED)?;
-        return Ok((resp, spdm_len));
-    }
-
-    shift_left(buf, head, spdm_len)?;
-    let final_buf = guard.buf.take().ok_or(SPDM_UNSPECIFIED)?;
-    state.large_msg_ctx.set_buffer(final_buf);
-    let (resp, spdm_len) = match chunk::start_buffered_large_response(state, pal, io, spdm_len) {
-        Ok(res) => res,
-        Err(err) => {
-            state.large_msg_ctx.reset();
-            return Err(err);
-        }
-    };
-    Ok((resp, spdm_len))
+    guard.finish_response(state, pal, io, head, spdm_len)
 }
 
 fn measurement_record_shape(info: &[MeasurementInfo], meas_op: u8) -> SpdmResult<(usize, u8)> {
@@ -345,8 +329,7 @@ pub(crate) async fn measurement_summary_hash<Pal: SpdmPal>(
         let mut block = pal
             .alloc_bytes(io, block_len)
             .map_err(|_| SPDM_UNSPECIFIED)?;
-        let written =
-            write_measurement_record_block(pal, io, entry, None, &mut block, 0).await?;
+        let written = write_measurement_record_block(pal, io, entry, None, &mut block, 0).await?;
         let block = block.get(..written).ok_or(SPDM_UNSPECIFIED)?;
 
         match hash_state.as_mut() {
@@ -376,10 +359,7 @@ async fn write_measurement_record_into_slice<Pal: SpdmPal>(
         0x00 => {}
         0xFF => {
             for entry in info {
-                offset = write_measurement_record_block(
-                    pal, io, entry, nonce, out, offset,
-                )
-                .await?;
+                offset = write_measurement_record_block(pal, io, entry, nonce, out, offset).await?;
                 blocks = blocks.checked_add(1).ok_or(SPDM_UNSPECIFIED)?;
             }
         }
@@ -388,10 +368,7 @@ async fn write_measurement_record_into_slice<Pal: SpdmPal>(
                 .iter()
                 .find(|m| m.index == idx)
                 .ok_or(SPDM_INVALID_REQUEST)?;
-            offset = write_measurement_record_block(
-                pal, io, entry, nonce, out, offset,
-            )
-            .await?;
+            offset = write_measurement_record_block(pal, io, entry, nonce, out, offset).await?;
             blocks = 1;
         }
     }
@@ -451,36 +428,6 @@ fn write_into_slice(out: &mut [u8], offset: usize, bytes: &[u8]) -> SpdmResult<u
         .ok_or(SPDM_UNSPECIFIED)?
         .copy_from_slice(bytes);
     Ok(next)
-}
-
-fn shift_left(buf: &mut [u8], src: usize, len: usize) -> SpdmResult<()> {
-    let end = src.checked_add(len).ok_or(SPDM_UNSPECIFIED)?;
-    if end > buf.len() || len > buf.len() {
-        return Err(SPDM_UNSPECIFIED);
-    }
-
-    // SAFETY: Bounds are checked above and `ptr::copy` handles overlapping
-    // ranges, which is required when removing transport headroom in-place.
-    unsafe {
-        core::ptr::copy(buf.as_ptr().add(src), buf.as_mut_ptr(), len);
-    }
-    Ok(())
-}
-
-fn zero_slice(buf: &mut [u8], start: usize, end: usize) -> SpdmResult<()> {
-    let dst = buf.get_mut(start..end).ok_or(SPDM_UNSPECIFIED)?;
-    dst.fill(0);
-    Ok(())
-}
-
-fn align_send_len<Pal: SpdmPal>(pal: &Pal, len: usize) -> SpdmResult<usize> {
-    let align = pal.send_len_alignment();
-    if align == 0 {
-        return Err(SPDM_UNSPECIFIED);
-    }
-    len.checked_add(align - 1)
-        .map(|n| (n / align) * align)
-        .ok_or(SPDM_UNSPECIFIED)
 }
 
 /// Precomputed 100-byte SPDM signing contexts for "responder-measurements signing".

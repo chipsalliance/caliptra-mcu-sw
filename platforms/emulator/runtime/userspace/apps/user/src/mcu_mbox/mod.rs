@@ -31,9 +31,8 @@ const fn slot_bytes(len: usize) -> usize {
 /// response and any nested handler allocations follow it.
 ///
 /// * The `McuMailboxReq` allocation made before the request is shrunk.
-/// * `MC_GET_ATTESTATION` (OCP EAT, ML-DSA-87): the request, an evidence-sized
-///   response, and the DPE ML-DSA-87 sign response. This is the largest
-///   path when `attested-csr` is off (12,416 B).
+/// * `MC_GET_ATTESTATION`: the request, an evidence-sized response, and the
+///   largest nested evidence-generator working set.
 ///
 /// All remaining commands peak below these.
 #[cfg(feature = "mcu-mbox-service")]
@@ -52,6 +51,8 @@ const BASE_MCU_MBOX_SCRATCH_REQUIRED: usize = {
         }
     }
 
+    const ATTESTATION_HANDLER_SCRATCH_PEAK: usize = 2560;
+
     let initial_req = BITMAP_SLOT_SIZE + slot_bytes(core::mem::size_of::<McuMailboxReq>());
     let get_attestation = BITMAP_SLOT_SIZE
         + slot_bytes(core::mem::size_of::<GetAttestationReq>())
@@ -61,7 +62,7 @@ const BASE_MCU_MBOX_SCRATCH_REQUIRED: usize = {
                 + GET_ATTESTATION_RESP_PREFIX_LEN
                 + <crate::caliptra_cmd_handler::CaliptraCmdBackend as CaliptraCmdHandler>::MAX_ATTESTATION_EVIDENCE_LEN,
         ))
-        + slot_bytes(mcu_caliptra_api::DPE_MLDSA87_SIGN_SCRATCH_PEAK);
+        + slot_bytes(ATTESTATION_HANDLER_SCRATCH_PEAK);
 
     max_usize(initial_req, get_attestation)
 };
@@ -86,9 +87,7 @@ const MCU_MBOX_SCRATCH_SIZE: usize = {
     declared
 };
 
-/// Without `attested-csr`, `MC_GET_ATTESTATION` with ML-DSA-87 signing is the
-/// peak (12,416 B with the default evidence configuration). 12.5 KiB leaves
-/// six spare slots.
+/// Without `attested-csr`, `MC_GET_ATTESTATION` is the peak.
 #[cfg(all(feature = "mcu-mbox-service", not(feature = "attested-csr")))]
 const MCU_MBOX_SCRATCH_SIZE: usize = {
     let declared = 12 * 1024 + 512;

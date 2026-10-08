@@ -41,6 +41,10 @@ jobs:
           sudo apt-get install -qy build-essential curl git && \
           rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
 
+      - name: Install cargo-nextest (prebuilt binary)
+        run: |
+          curl -LsSf https://get.nexte.st/0.9.118/linux | tar zxf - -C ~/.cargo/bin
+
       - name: Run precheckin
         run: cargo xtask precheckin
 
@@ -461,4 +465,3 @@ jobs:
           ' >> $GITHUB_STEP_SUMMARY
           echo '' >> $GITHUB_STEP_SUMMARY
           echo '_Full details in build log. Uncovered function list omitted from summary._' >> $GITHUB_STEP_SUMMARY
-

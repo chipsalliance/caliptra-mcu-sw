@@ -14,14 +14,15 @@
 
 use caliptra_mcu_spdm_codec::{
     encode_version_selection, parse_supported_versions, select_version, HeartBeatPeriod,
-    KeyExchangeReq, KeyExchangeRsp, ResponseBody, SmVersion, SpdmMsgHdrPdu, WireWriter,
-    ECDH_P384_EXCHANGE_DATA_SIZE, KEY_EXCHANGE_RANDOM_DATA_LEN, KEY_EXCHANGE_RSP_FIXED_BODY_SIZE,
-    OPAQUE_VERSION_SELECTION_SIZE, SHA384_HASH_SIZE,
+    KeyExchangeReq, KeyExchangeRsp, ResponseBody, SmVersion, SpdmMsgHdrPdu, SpdmVersion,
+    WireWriter, ECC_P384_SIGNATURE_SIZE, ECDH_P384_EXCHANGE_DATA_SIZE,
+    KEY_EXCHANGE_RANDOM_DATA_LEN, KEY_EXCHANGE_RSP_FIXED_BODY_SIZE, OPAQUE_VERSION_SELECTION_SIZE,
+    SHA384_HASH_SIZE, SPDM_PREFIX_LEN, SPDM_SIGNING_CONTEXT_LEN,
 };
 use caliptra_mcu_spdm_traits::*;
 use zerocopy::FromBytes;
 
-use crate::build::{align_send_len, sign_transcript};
+use crate::build::{align_send_len, write_fixed};
 use crate::chunk::{self, WipeOnDrop};
 use crate::error::{
     SpdmError, SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED,
@@ -33,13 +34,26 @@ const ECDH_P384_ENCRYPTED_CONTEXT_SIZE: usize = 76;
 
 /// Workspace allocation for KEY_EXCHANGE.
 ///
-/// Covers the transcript hash scratch, nonce, and opaque version selection.
+/// Covers the transcript hash scratch, ECDSA signing context, nonce, and
+/// opaque version selection.
 /// The measurement summary is generated before the large response is rented,
 /// and the signature is written directly into the response buffer.
-pub(crate) const KEY_EXCHANGE_WORKSPACE_SIZE: usize =
-    SHA384_HASH_SIZE + KEY_EXCHANGE_RANDOM_DATA_LEN + OPAQUE_VERSION_SELECTION_SIZE;
+pub(crate) const KEY_EXCHANGE_WORKSPACE_SIZE: usize = SHA384_HASH_SIZE
+    + SPDM_SIGNING_CONTEXT_LEN
+    + KEY_EXCHANGE_RANDOM_DATA_LEN
+    + OPAQUE_VERSION_SELECTION_SIZE;
 
-/// FIPS 204 signing context for KEY_EXCHANGE_RSP.
+const KEY_EXCHANGE_SIGNING_PREFIX_CHUNK_LEN: usize = 16;
+const KEY_EXCHANGE_SIGNING_PREFIX_V10: &[u8; KEY_EXCHANGE_SIGNING_PREFIX_CHUNK_LEN] =
+    b"dmtf-spdm-v1.0.*";
+const KEY_EXCHANGE_SIGNING_PREFIX_V11: &[u8; KEY_EXCHANGE_SIGNING_PREFIX_CHUNK_LEN] =
+    b"dmtf-spdm-v1.1.*";
+const KEY_EXCHANGE_SIGNING_PREFIX_V12: &[u8; KEY_EXCHANGE_SIGNING_PREFIX_CHUNK_LEN] =
+    b"dmtf-spdm-v1.2.*";
+const KEY_EXCHANGE_SIGNING_PREFIX_V13: &[u8; KEY_EXCHANGE_SIGNING_PREFIX_CHUNK_LEN] =
+    b"dmtf-spdm-v1.3.*";
+const KEY_EXCHANGE_SIGNING_PREFIX_V14: &[u8; KEY_EXCHANGE_SIGNING_PREFIX_CHUNK_LEN] =
+    b"dmtf-spdm-v1.4.*";
 const KEY_EXCHANGE_SIGNING_OP: &[u8; 34] = b"responder-key_exchange_rsp signing";
 
 enum KeyExchangeRequest<'req, L: core::ops::DerefMut<Target = [u8]>> {
@@ -130,6 +144,10 @@ async fn handle_key_exchange_request<'a, Pal: SpdmPal, const N: usize>(
         return Err(SPDM_UNEXPECTED_REQUEST);
     }
 
+    if state.asym_algo() != SpdmPalAsymAlgo::EccP384 {
+        return Err(SPDM_UNSPECIFIED);
+    }
+
     let (
         slot_id,
         req_session_id,
@@ -193,7 +211,7 @@ async fn handle_key_exchange_request<'a, Pal: SpdmPal, const N: usize>(
             .and_then(|n| n.checked_add(2 + opaque_data_len))
             .ok_or(SPDM_UNSPECIFIED)?;
         let spdm_len = no_sig_len
-            .checked_add(state.asym_algo().signature_size())
+            .checked_add(ECC_P384_SIGNATURE_SIZE)
             .and_then(|n| n.checked_add(SHA384_HASH_SIZE))
             .ok_or(SPDM_UNSPECIFIED)?;
         let head = pal.header_size();
@@ -212,14 +230,8 @@ async fn handle_key_exchange_request<'a, Pal: SpdmPal, const N: usize>(
             let mut hash = pal.alloc_bytes(io, SHA384_HASH_SIZE)?;
             let hash_out: &mut [u8; SHA384_HASH_SIZE] =
                 (&mut *hash).try_into().map_err(|_| SPDM_UNSPECIFIED)?;
-            crate::measurements::measurement_summary_hash(
-                pal,
-                io,
-                state.asym_algo(),
-                meas_hash_type,
-                hash_out,
-            )
-            .await?;
+            crate::measurements::measurement_summary_hash(pal, io, meas_hash_type, hash_out)
+                .await?;
             Some(hash)
         } else {
             None
@@ -387,6 +399,11 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
     let hash_scratch: &mut [u8; SHA384_HASH_SIZE] =
         hash_scratch.try_into().map_err(|_| SPDM_UNSPECIFIED)?;
 
+    let (signing_ctx, next) = rest.split_at_mut(SPDM_SIGNING_CONTEXT_LEN);
+    rest = next;
+    let signing_ctx: &mut [u8; SPDM_SIGNING_CONTEXT_LEN] =
+        signing_ctx.try_into().map_err(|_| SPDM_UNSPECIFIED)?;
+
     let (nonce, next) = rest.split_at_mut(KEY_EXCHANGE_RANDOM_DATA_LEN);
     rest = next;
     let nonce: &mut [u8; KEY_EXCHANGE_RANDOM_DATA_LEN] =
@@ -439,7 +456,7 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
         &[]
     };
 
-    let sig_len = asym_algo.signature_size();
+    let sig_len = ECC_P384_SIGNATURE_SIZE;
     let head = pal.header_size();
     let resp = guard.buf.as_mut().ok_or(SPDM_UNSPECIFIED)?;
 
@@ -478,18 +495,23 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
     let sig_slot = resp
         .get_mut(head + no_sig_len..head + no_sig_len + sig_len)
         .ok_or(SPDM_UNSPECIFIED)?;
-    sign_transcript(
-        pal,
-        io,
-        slot_id,
-        asym_algo,
-        state.version,
-        KEY_EXCHANGE_SIGNING_OP,
-        th1,
-        sig_slot,
-        sig_len,
-    )
-    .await?;
+    build_signing_context(state.version, signing_ctx);
+    compute_tbs_hash(pal, io, signing_ctx, th1)
+        .await
+        .map_err(|_| SPDM_UNSPECIFIED)?;
+    let written = pal
+        .sign(
+            io,
+            slot_id,
+            asym_algo,
+            SigningInput::EccP384Digest(th1),
+            sig_slot,
+        )
+        .await
+        .map_err(|_| SPDM_UNSPECIFIED)?;
+    if written != sig_len {
+        return Err(SPDM_UNSPECIFIED);
+    }
     session.transcript.append(pal, io, sig_slot).await?;
 
     let th1_prime = &mut *hash_scratch;
@@ -536,6 +558,36 @@ fn heartbeat_period_for<Pal: SpdmPal>(state: &ConnState<'_, Pal>) -> HeartBeatPe
     } else {
         HeartBeatPeriod::DISABLED
     }
+}
+
+fn build_signing_context(version: SpdmVersion, ctx: &mut [u8; SPDM_SIGNING_CONTEXT_LEN]) {
+    let prefix = match version {
+        SpdmVersion::V10 => KEY_EXCHANGE_SIGNING_PREFIX_V10,
+        SpdmVersion::V11 => KEY_EXCHANGE_SIGNING_PREFIX_V11,
+        SpdmVersion::V12 => KEY_EXCHANGE_SIGNING_PREFIX_V12,
+        SpdmVersion::V13 => KEY_EXCHANGE_SIGNING_PREFIX_V13,
+        SpdmVersion::V14 => KEY_EXCHANGE_SIGNING_PREFIX_V14,
+    };
+    let mut pos = 0;
+    for _ in 0..4 {
+        pos = write_fixed(ctx, pos, prefix);
+    }
+    ctx[SPDM_PREFIX_LEN] = 0;
+    ctx[SPDM_PREFIX_LEN + 1] = 0;
+    write_fixed(ctx, SPDM_PREFIX_LEN + 2, KEY_EXCHANGE_SIGNING_OP);
+}
+
+async fn compute_tbs_hash<Pal: SpdmPal>(
+    pal: &Pal,
+    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+    signing_ctx: &[u8; SPDM_SIGNING_CONTEXT_LEN],
+    transcript_hash: &mut [u8; SHA384_HASH_SIZE],
+) -> mcu_error::McuResult<()> {
+    let mut state = pal
+        .hash_init(io, SpdmPalHashAlgo::Sha384, signing_ctx)
+        .await?;
+    pal.hash_update(io, &mut state, transcript_hash).await?;
+    pal.hash_finish(io, &mut state, transcript_hash).await
 }
 
 #[cfg(test)]
