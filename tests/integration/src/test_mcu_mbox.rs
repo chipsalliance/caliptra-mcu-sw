@@ -12,7 +12,9 @@ pub mod test {
         },
         SocManager,
     };
-    use caliptra_mcu_config::capabilities::{ExternalCommandCapabilities, McuRuntimeCapabilities};
+    use caliptra_mcu_config::capabilities::{
+        AuthorizedSubcommandCapabilities, ExternalCommandCapabilities, McuRuntimeCapabilities,
+    };
     use caliptra_mcu_hw_model::mcu_mbox_transport::{
         McuMailboxError, McuMailboxResponse, McuMailboxTransport,
     };
@@ -532,7 +534,26 @@ pub mod test {
                             .to_be_bytes(),
                     );
                     c[24..28].copy_from_slice(
-                        &ExternalCommandCapabilities::GET_ATTESTATION
+                        &(ExternalCommandCapabilities::GET_ATTESTATION
+                            | ExternalCommandCapabilities::AUTHORIZED_COMMAND
+                            | ExternalCommandCapabilities::DEVICE_OWNERSHIP_TRANSFER)
+                            .bits()
+                            .to_be_bytes(),
+                    );
+                    c[28..32].copy_from_slice(
+                        &(AuthorizedSubcommandCapabilities::GET_AUTH_CHALLENGE
+                            | AuthorizedSubcommandCapabilities::PROVISION_VENDOR_PK_HASH
+                            | AuthorizedSubcommandCapabilities::FUSE_INCREASE_MIN_SVN
+                            | AuthorizedSubcommandCapabilities::PROGRAM_FIELD_ENTROPY
+                            | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PUBLIC_KEY
+                            | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PK_HASH
+                            | AuthorizedSubcommandCapabilities::FUSE_LOCK_PARTITION
+                            | AuthorizedSubcommandCapabilities::PROVISION_OWNER_PK_HASH
+                            | AuthorizedSubcommandCapabilities::DOT_ENABLE
+                            | AuthorizedSubcommandCapabilities::DOT_LOCK
+                            | AuthorizedSubcommandCapabilities::DOT_DISABLE
+                            | AuthorizedSubcommandCapabilities::DOT_ROTATE
+                            | AuthorizedSubcommandCapabilities::GET_DOT_BACKUP_BLOB)
                             .bits()
                             .to_be_bytes(),
                     );
