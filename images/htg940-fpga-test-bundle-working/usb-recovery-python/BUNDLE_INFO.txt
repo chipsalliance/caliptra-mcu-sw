@@ -1,0 +1,4 @@
+format_version=1
+created_utc=2026-10-05T20:04:54Z
+mcu_commit=2e3c047ae87bf7a9fbc248de85a9c0e2bb6a0a27
+caliptra_commit=a7f80d1fd52c41634285539b35baf958cadcc1ff
