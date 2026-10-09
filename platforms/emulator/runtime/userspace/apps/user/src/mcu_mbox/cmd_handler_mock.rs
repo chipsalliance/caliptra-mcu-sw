@@ -41,6 +41,19 @@ impl CaliptraCmdHandler for NonCryptoCmdHandlerMock {
         Ok(())
     }
 
+    async fn fuse_read(
+        &self,
+        partition: u32,
+        entry: u32,
+        data: &mut [u8],
+    ) -> CaliptraCmdResult<u32> {
+        CaliptraCmdBackend.fuse_read(partition, entry, data).await
+    }
+
+    async fn fuse_write(&self, word_addr: u32, data: u32, mask: u32) -> CaliptraCmdResult<()> {
+        CaliptraCmdBackend.fuse_write(word_addr, data, mask).await
+    }
+
     async fn get_device_capabilities(
         &self,
         capabilities: &mut DeviceCapabilities,
