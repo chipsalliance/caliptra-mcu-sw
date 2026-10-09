@@ -2,23 +2,20 @@
 
 //! Mailbox transport layer for authorized fuse commands
 //!
-//! External mailbox command codes:
-//! - MC_GET_AUTH_CMD_CHALLENGE = 0x4D41_4343 ("MACC")
-//! - MC_FE_PROG = 0x4D43_4650 ("MCFP")
-
-extern crate alloc;
+//! Every command in this module uses `MC_AUTHORIZED_COMMAND` (`0x12`) as the
+//! mailbox command and carries its canonical target ID in the payload.
 
 use super::checksum::calc_checksum;
 use super::command_traits::{
     ExternalCommandMetadata, FromInternalRequest, ToInternalResponse, VariableSizeBytes,
 };
-use alloc::vec::Vec;
 use caliptra_mcu_core_util_host_command_types::fuse::{
     FeProgRequest, FeProgResponse, FuseIncreaseMinSvnRequest, FuseIncreaseMinSvnResponse,
     FuseLockPartitionRequest, FuseLockPartitionResponse, FuseRevokeVendorPkHashRequest,
     FuseRevokeVendorPkHashResponse, FuseRevokeVendorPubKeyRequest, FuseRevokeVendorPubKeyResponse,
-    GetAuthCmdChallengeRequest, GetAuthCmdChallengeResponse, ProvisionVendorPkHashRequest,
-    ProvisionVendorPkHashResponse, AUTH_CMD_CHALLENGE_SIZE,
+    GetAuthCmdChallengeRequest, GetAuthCmdChallengeResponse, ProvisionOwnerPkHashRequest,
+    ProvisionOwnerPkHashResponse, ProvisionVendorPkHashRequest, ProvisionVendorPkHashResponse,
+    AUTH_CMD_CHALLENGE_SIZE,
 };
 use caliptra_mcu_core_util_host_command_types::CommonResponse;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
@@ -33,8 +30,7 @@ use crate::define_command;
 #[derive(Debug, Clone, Default, IntoBytes, FromBytes, Immutable)]
 pub struct ExtCmdGetAuthCmdChallengeRequest {
     pub chksum: u32,
-    pub flags: u32,
-    pub reserved: u32,
+    pub target: u32,
 }
 
 #[repr(C)]
@@ -58,17 +54,12 @@ impl Default for ExtCmdGetAuthCmdChallengeResponse {
 }
 
 impl FromInternalRequest<GetAuthCmdChallengeRequest> for ExtCmdGetAuthCmdChallengeRequest {
-    fn from_internal(internal: &GetAuthCmdChallengeRequest, command_code: u32) -> Self {
-        let mut payload = Vec::new();
-        payload.extend_from_slice(&internal.flags.to_le_bytes());
-        payload.extend_from_slice(&internal.reserved.to_le_bytes());
-
-        let chksum = calc_checksum(command_code, &payload);
-
+    fn from_internal(_internal: &GetAuthCmdChallengeRequest, command_code: u32) -> Self {
+        let target = caliptra_mcu_core_util_host_command_types::fuse::
+            MC_GET_AUTH_CMD_CHALLENGE_CANONICAL_CMD_ID;
         Self {
-            chksum,
-            flags: internal.flags,
-            reserved: internal.reserved,
+            chksum: calc_checksum(command_code, &target.to_le_bytes()),
+            target,
         }
     }
 }
@@ -96,6 +87,7 @@ impl VariableSizeBytes for ExtCmdGetAuthCmdChallengeResponse {}
 #[derive(Debug, Default, Clone, IntoBytes, FromBytes, Immutable)]
 pub struct ExtCmdFeProgRequest {
     pub chksum: u32,
+    pub target: u32,
     pub internal: FeProgRequest,
 }
 
@@ -108,12 +100,13 @@ pub struct ExtCmdFeProgResponse {
 
 impl FromInternalRequest<FeProgRequest> for ExtCmdFeProgRequest {
     fn from_internal(internal: &FeProgRequest, command_code: u32) -> Self {
-        let chksum = calc_checksum(command_code, internal.as_bytes());
-
-        Self {
-            chksum,
+        let mut request = Self {
+            chksum: 0,
+            target: caliptra_mcu_core_util_host_command_types::fuse::MC_FE_PROG_CANONICAL_CMD_ID,
             internal: internal.clone(),
-        }
+        };
+        request.chksum = calc_checksum(command_code, &request.as_bytes()[4..]);
+        request
     }
 }
 
@@ -136,7 +129,7 @@ impl VariableSizeBytes for ExtCmdFeProgResponse {}
 
 define_command!(
     GetAuthCmdChallengeCmd,
-    0x4D41_4343, // MC_GET_AUTH_CMD_CHALLENGE ("MACC")
+    0x0000_0012,
     GetAuthCmdChallengeRequest,
     GetAuthCmdChallengeResponse,
     ExtCmdGetAuthCmdChallengeRequest,
@@ -145,7 +138,7 @@ define_command!(
 
 define_command!(
     FeProgCmd,
-    0x4D43_4650, // MC_FE_PROG ("MCFP")
+    0x0000_0012,
     FeProgRequest,
     FeProgResponse,
     ExtCmdFeProgRequest,
@@ -158,6 +151,7 @@ macro_rules! define_authorized_fuse_mailbox_command {
         #[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
         pub struct $ext_request {
             pub chksum: u32,
+            pub target: u32,
             pub internal: $request,
         }
 
@@ -170,10 +164,13 @@ macro_rules! define_authorized_fuse_mailbox_command {
 
         impl FromInternalRequest<$request> for $ext_request {
             fn from_internal(internal: &$request, command_code: u32) -> Self {
-                Self {
-                    chksum: calc_checksum(command_code, internal.as_bytes()),
+                let mut request = Self {
+                    chksum: 0,
+                    target: $code,
                     internal: internal.clone(),
-                }
+                };
+                request.chksum = calc_checksum(command_code, &request.as_bytes()[4..]);
+                request
             }
         }
 
@@ -192,7 +189,7 @@ macro_rules! define_authorized_fuse_mailbox_command {
 
         define_command!(
             $cmd,
-            $code,
+            0x0000_0012,
             $request,
             $response,
             $ext_request,
@@ -208,6 +205,14 @@ define_authorized_fuse_mailbox_command!(
     ProvisionVendorPkHashResponse,
     ExtCmdProvisionVendorPkHashRequest,
     ExtCmdProvisionVendorPkHashResponse
+);
+define_authorized_fuse_mailbox_command!(
+    ProvisionOwnerPkHashCmd,
+    0x504F_504B,
+    ProvisionOwnerPkHashRequest,
+    ProvisionOwnerPkHashResponse,
+    ExtCmdProvisionOwnerPkHashRequest,
+    ExtCmdProvisionOwnerPkHashResponse
 );
 define_authorized_fuse_mailbox_command!(
     FuseIncreaseMinSvnCmd,
@@ -241,3 +246,46 @@ define_authorized_fuse_mailbox_command!(
     ExtCmdFuseLockPartitionRequest,
     ExtCmdFuseLockPartitionResponse
 );
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use caliptra_mcu_core_util_host_command_types::fuse::{
+        MC_FE_PROG_CANONICAL_CMD_ID, MC_GET_AUTH_CMD_CHALLENGE_CANONICAL_CMD_ID,
+        MC_PROVISION_OWNER_PK_HASH_CANONICAL_CMD_ID,
+    };
+    use zerocopy::FromZeros;
+
+    fn assert_checksum(bytes: &[u8]) {
+        let checksum = u32::from_le_bytes(bytes[..4].try_into().unwrap());
+        assert_eq!(checksum, calc_checksum(0x12, &bytes[4..]));
+    }
+
+    #[test]
+    fn authorized_requests_use_command_0x12_and_target_prefix() {
+        let challenge =
+            ExtCmdGetAuthCmdChallengeRequest::from_internal(&GetAuthCmdChallengeRequest, 0x12);
+        assert_eq!(
+            &challenge.as_bytes()[4..],
+            &MC_GET_AUTH_CMD_CHALLENGE_CANONICAL_CMD_ID.to_le_bytes()
+        );
+        assert_checksum(challenge.as_bytes());
+
+        let fe_prog = ExtCmdFeProgRequest::from_internal(&FeProgRequest::default(), 0x12);
+        assert_eq!(
+            &fe_prog.as_bytes()[4..8],
+            &MC_FE_PROG_CANONICAL_CMD_ID.to_le_bytes()
+        );
+        assert_checksum(fe_prog.as_bytes());
+
+        let owner = ExtCmdProvisionOwnerPkHashRequest::from_internal(
+            &ProvisionOwnerPkHashRequest::new_zeroed(),
+            0x12,
+        );
+        assert_eq!(
+            &owner.as_bytes()[4..8],
+            &MC_PROVISION_OWNER_PK_HASH_CANONICAL_CMD_ID.to_le_bytes()
+        );
+        assert_checksum(owner.as_bytes());
+    }
+}

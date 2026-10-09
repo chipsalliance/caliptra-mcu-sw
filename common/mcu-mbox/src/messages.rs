@@ -156,6 +156,7 @@ impl CommandId {
     pub const MC_FUSE_LOCK_PARTITION: Self = Self(0x4946_504B); // "IFPK"
 
     // Authorized commands
+    pub const MC_AUTHORIZED_COMMAND: Self = Self(0x0000_0012);
     pub const MC_GET_AUTH_CMD_CHALLENGE: Self = Self(0x4D414343); // "MACC"
     pub const MC_PROVISION_VENDOR_PK_HASH: Self = Self(0x5056_504b); // "PVPK"
     pub const MC_PROVISION_OWNER_PK_HASH: Self = Self(0x504F_504B); // "POPK"

@@ -26,6 +26,7 @@ mod test {
     use caliptra_mcu_testing_common::spdm_responder_validator::SpdmValidatorRunner;
     use caliptra_mcu_testing_common::{
         is_emulator_running, spawn_with_emulator_state, wait_for_runtime_start,
+        wait_for_spdm_responder_ready, SpdmResponderTransport,
     };
     use random_port::PortPicker;
     use std::net::{SocketAddr, TcpListener, TcpStream};
@@ -122,7 +123,7 @@ mod test {
                 bridge_completed.store(true, Ordering::Relaxed);
                 return;
             }
-            thread::sleep(Duration::from_secs(5));
+            wait_for_spdm_responder_ready(SpdmResponderTransport::Mctp);
             if !is_emulator_running() {
                 bridge_failed.store(true, Ordering::Relaxed);
                 bridge_completed.store(true, Ordering::Relaxed);

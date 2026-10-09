@@ -173,6 +173,11 @@ fn test_fuse_read_authorized_req_g1() -> Result<()> {
         result.is_ok(),
         "FUSE_READ authorized request failed: {result:?}"
     );
+    let response = result?;
+    assert_eq!(
+        response.hdr.data_len,
+        size_of::<u32>() as u32 + response.length_bits.div_ceil(8)
+    );
     Ok(())
 }
 
@@ -222,14 +227,14 @@ fn test_fe_prog_auth_negative_gates() -> Result<()> {
     let mut hw = boot_mcu_mbox_hw();
 
     // Byte offsets into the assembled authorized frame:
-    //   [ body | nonce(48) | ecc_x(48) | ecc_y(48) | mldsa_pub(2592) | sig(HybridSignature) ]
-    let body_len = size_of::<McuFeProgReq>();
+    //   [ checksum | target | body | nonce(48) | ecc_x(48) | ecc_y(48) | mldsa_pub(2592) | sig(HybridSignature) ]
+    let body_len = size_of::<McuFeProgReq>() + size_of::<u32>();
     let nonce_off = body_len;
     let ecc_pub_x_off = nonce_off + AUTH_CMD_NONCE_LEN;
     let sig_off = ecc_pub_x_off + 48 + 48 + 2592; // after ecc_x | ecc_y | mldsa_pub
     let ecc_r_off = sig_off; // first byte of the ECDSA signature (r||s)
     let mldsa_off = sig_off + 96; // first byte of the ML-DSA signature (after r||s)
-    let body_off = size_of::<MailboxReqHeader>(); // first signed body byte (partition)
+    let body_off = size_of::<MailboxReqHeader>() + size_of::<u32>(); // first signed body byte (partition)
 
     let cmd = || McuFeProgReq {
         partition: 0,
@@ -265,13 +270,13 @@ fn test_fuse_read_auth_negative_gates() -> Result<()> {
     // wrapper is enforced identically regardless of the command body shape.
     let mut hw = boot_mcu_mbox_hw();
 
-    let body_len = size_of::<FuseReadReq>();
+    let body_len = size_of::<FuseReadReq>() + size_of::<u32>();
     let nonce_off = body_len;
     let ecc_pub_x_off = nonce_off + AUTH_CMD_NONCE_LEN;
     let sig_off = ecc_pub_x_off + 48 + 48 + 2592; // after ecc_x | ecc_y | mldsa_pub
     let ecc_r_off = sig_off;
     let mldsa_off = sig_off + 96;
-    let body_off = size_of::<MailboxReqHeader>();
+    let body_off = size_of::<MailboxReqHeader>() + size_of::<u32>();
 
     let cmd = || FuseReadReq {
         partition: 0,
@@ -321,8 +326,8 @@ fn test_auth_wire_sizes_kat() {
         size_of::<u32>() + AUTH_CMD_NONCE_LEN + 48 + 48 + 2592 + size_of::<HybridSignature>();
     assert_eq!(fe_prog_authed_body, 7464);
 
-    // On the host mailbox path the body is preceded by the 4-byte MailboxReqHeader
-    // (chksum), i.e. McuFeProgReq is hdr(4) + partition(4).
+    // The canonical MCI envelope adds a target ID after the checksum. The
+    // command-specific request remains hdr(4) + partition(4).
     assert_eq!(size_of::<McuFeProgReq>(), 8);
 }
 
@@ -364,9 +369,11 @@ fn test_fe_prog_auth_key_substitution_rejected() -> Result<()> {
         &OTHER_MLDSA_SEED,
         &challenge,
         cmd_id,
-        req.as_mut_bytes(),
+        &req.as_mut_bytes()[size_of::<MailboxReqHeader>()..],
     )?;
-    let mut auth_cmd = req.as_mut_bytes().to_vec();
+    let mut auth_cmd = vec![0u8; size_of::<MailboxReqHeader>()];
+    auth_cmd.extend_from_slice(&cmd_id.to_le_bytes());
+    auth_cmd.extend_from_slice(&req.as_mut_bytes()[size_of::<MailboxReqHeader>()..]);
     auth_cmd.extend_from_slice(&tail);
 
     let r = send_authorized_bytes::<McuFeProgReq>(&mut hw, &mut auth_cmd);
@@ -391,8 +398,14 @@ fn test_fe_prog_auth_replay_rejected() -> Result<()> {
     };
     let cmd_id: u32 = <McuFeProgReq as caliptra_mcu_mbox_common::messages::Request>::ID.into();
     let challenge = get_auth_cmd_challenge(&mut hw)?;
-    let tail = sign_auth_cmd_challenge(&challenge, cmd_id, req.as_mut_bytes())?;
-    let mut auth_cmd = req.as_mut_bytes().to_vec();
+    let tail = sign_auth_cmd_challenge(
+        &challenge,
+        cmd_id,
+        &req.as_mut_bytes()[size_of::<MailboxReqHeader>()..],
+    )?;
+    let mut auth_cmd = vec![0u8; size_of::<MailboxReqHeader>()];
+    auth_cmd.extend_from_slice(&cmd_id.to_le_bytes());
+    auth_cmd.extend_from_slice(&req.as_mut_bytes()[size_of::<MailboxReqHeader>()..]);
     auth_cmd.extend_from_slice(&tail);
 
     // First send: valid, challenge consumed.

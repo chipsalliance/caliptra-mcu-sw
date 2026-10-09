@@ -3,8 +3,10 @@
 #![cfg_attr(target_arch = "riscv32", no_std)]
 #![allow(async_fn_in_trait)]
 
+pub mod command;
+
 use caliptra_mcu_mbox_common::messages::{
-    CommandId, DotDisablePayload, DotLockPayload, DotOverrideChallengePayload, DotOverridePayload,
+    DotDisablePayload, DotLockPayload, DotOverrideChallengePayload, DotOverridePayload,
     DotRotatePayload, DotStatus, DotUnlockPayload, HybridSignature, SvnTarget, AUTH_CMD_NONCE_LEN,
     DOT_BLOB_SIZE,
 };
@@ -508,6 +510,23 @@ pub trait CaliptraCmdHandler {
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 
+    /// Read one raw OTP entry for the MCI-only fuse command.
+    async fn fuse_read(
+        &self,
+        partition: u32,
+        entry: u32,
+        data: &mut [u8],
+    ) -> CaliptraCmdResult<u32> {
+        let _ = (partition, entry, data);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Write one raw OTP word for the MCI-only fuse command.
+    async fn fuse_write(&self, word_addr: u32, data: u32, mask: u32) -> CaliptraCmdResult<()> {
+        let _ = (word_addr, data, mask);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
     /// Lock an OTP partition against further writes.
     async fn fuse_lock_partition(&self, partition: u32) -> CaliptraCmdResult<()> {
         let _ = partition;
@@ -625,29 +644,22 @@ pub struct AuthorizationError;
 pub type AuthorizationResult<T> = Result<T, AuthorizationError>;
 
 pub trait CommandAuthorizer {
-    /// Validates if a message is authorized.
-    ///
-    /// The request can contain authorization data (e.g. a verification).
-    /// This method is responsible for unpacking the contained
-    /// request message and returning it as a slice.
-    ///
-    /// # Arguments
-    /// * `cmd_id` - Command identifier
-    /// * `req` - Message to be authorized
-    ///
-    /// # Returns
-    /// * `Result<&[u8], CommandError>` - Unpacked command or Error
-    async fn is_authorized<'a, Alloc: ScratchAlloc>(
-        &mut self,
+    /// Generate the one-use challenge returned by `MACC`.
+    async fn generate_challenge<Alloc: ScratchAlloc>(
+        &self,
         alloc: &Alloc,
-        cmd_id: CommandId,
-        req: &'a [u8],
-    ) -> Result<&'a [u8], AuthorizationError>;
+    ) -> Result<[u8; AUTH_CMD_NONCE_LEN], AuthorizationError> {
+        let mut challenge = [0u8; AUTH_CMD_NONCE_LEN];
+        mcu_caliptra_api::rng_generate(alloc, &mut challenge)
+            .await
+            .map_err(|_| AuthorizationError)?;
+        Ok(challenge)
+    }
 
     /// Verify signatures over a command using the stored challenge.
     ///
     /// This is transport-agnostic and is the SINGLE step-1 gate shared by the
-    /// mailbox (`is_authorized`) and SPDM VDM paths: the implementation consumes
+    /// mailbox and SPDM VDM paths: the implementation consumes
     /// the stored one-time challenge via `take()`, redundantly/constant-time
     /// compares it against the wire `nonce`, then verifies the hybrid signature
     /// with the wire-carried public keys (the device-side anchor check lives in
@@ -665,7 +677,7 @@ pub trait CommandAuthorizer {
     /// * `sig` - The hybrid signature received from the host
     #[allow(clippy::too_many_arguments)]
     async fn verify_signatures<Alloc: ScratchAlloc>(
-        &mut self,
+        &self,
         alloc: &Alloc,
         cmd_id: u32,
         payload: &[u8],
@@ -679,8 +691,8 @@ pub trait CommandAuthorizer {
     /// Get the challenge from the last call to `MC_GET_AUTH_CMD_CHALLENGE`.
     ///
     /// This consumes the challenge so it can only be used once.
-    fn take_challenge(&mut self) -> Option<[u8; AUTH_CMD_NONCE_LEN]>;
+    fn take_challenge(&self) -> Option<[u8; AUTH_CMD_NONCE_LEN]>;
 
     /// Set the challenge nonce to be used on the next authorized command.
-    fn set_challenge(&mut self, challenge: [u8; AUTH_CMD_NONCE_LEN]);
+    fn set_challenge(&self, challenge: [u8; AUTH_CMD_NONCE_LEN]);
 }
