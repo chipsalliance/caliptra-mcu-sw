@@ -181,7 +181,8 @@ fn authorized_subcommand_capabilities() -> AuthorizedSubcommandCapabilities {
             | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PUBLIC_KEY
             | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PK_HASH
             | AuthorizedSubcommandCapabilities::FUSE_LOCK_PARTITION
-            | AuthorizedSubcommandCapabilities::PROVISION_OWNER_PK_HASH;
+            | AuthorizedSubcommandCapabilities::PROVISION_OWNER_PK_HASH
+            | AuthorizedSubcommandCapabilities::ZEROIZE_UDS_FE_AND_ENTER_RMA;
     }
     if cfg!(feature = "dot-spdm-vdm") || cfg!(feature = "dot-mci-mailbox") {
         capabilities |= AuthorizedSubcommandCapabilities::DOT_ENABLE
@@ -192,7 +193,9 @@ fn authorized_subcommand_capabilities() -> AuthorizedSubcommandCapabilities {
     }
     if cfg!(feature = "ocp-lock") && (cfg!(feature = "spdm") || cfg!(feature = "mcu-mbox-service"))
     {
-        capabilities |= AuthorizedSubcommandCapabilities::OCP_LOCK_ROTATE_HEK
+        capabilities |= AuthorizedSubcommandCapabilities::OCP_LOCK_PROGRAM_HEK
+            | AuthorizedSubcommandCapabilities::OCP_LOCK_ZERO_HEK
+            | AuthorizedSubcommandCapabilities::OCP_LOCK_ROTATE_HEK
             | AuthorizedSubcommandCapabilities::OCP_LOCK_SET_PERMA_HEK;
     }
     capabilities
@@ -356,6 +359,10 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         device_ops::fuse_lock_partition(partition)
     }
 
+    async fn zeroize_uds_fe_and_enter_rma(&self, rma_token: &[u8; 16]) -> CaliptraCmdResult<()> {
+        device_ops::zeroize_uds_fe_and_enter_rma(rma_token).await
+    }
+
     async fn fuse_read(
         &self,
         partition: u32,
@@ -418,6 +425,18 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         partition: u32,
     ) -> CaliptraCmdResult<()> {
         device_ops::program_field_entropy(alloc, partition).await
+    }
+
+    async fn field_entropy_already_provisioned(&self) -> CaliptraCmdResult<bool> {
+        device_ops::field_entropy_already_provisioned()
+    }
+
+    async fn vendor_pk_hash_status(&self) -> CaliptraCmdResult<(u32, [u8; 16])> {
+        device_ops::vendor_pk_hash_status()
+    }
+
+    async fn hek_status(&self) -> CaliptraCmdResult<(u32, u32)> {
+        device_ops::hek_status()
     }
 
     async fn dot_enable(&self) -> CaliptraCmdResult<()> {
@@ -611,6 +630,24 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
     }
 
     #[cfg(feature = "ocp-lock")]
+    async fn ocp_lock_program_hek<Alloc: ScratchAlloc>(
+        &self,
+        alloc: &Alloc,
+        slot: u32,
+    ) -> CaliptraCmdResult<()> {
+        device_ops::ocp_lock_program_hek(alloc, slot).await
+    }
+
+    #[cfg(feature = "ocp-lock")]
+    async fn ocp_lock_zero_hek<Alloc: ScratchAlloc>(
+        &self,
+        alloc: &Alloc,
+        slot: u32,
+    ) -> CaliptraCmdResult<()> {
+        device_ops::ocp_lock_zero_hek(alloc, slot).await
+    }
+
+    #[cfg(feature = "ocp-lock")]
     async fn ocp_lock_rotate_hek<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
@@ -679,6 +716,7 @@ mod tests {
                     | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PK_HASH
                     | AuthorizedSubcommandCapabilities::FUSE_LOCK_PARTITION
                     | AuthorizedSubcommandCapabilities::PROVISION_OWNER_PK_HASH
+                    | AuthorizedSubcommandCapabilities::ZEROIZE_UDS_FE_AND_ENTER_RMA
             ),
             authorized_transport
         );
@@ -694,7 +732,9 @@ mod tests {
         );
         assert_eq!(
             authorized.contains(
-                AuthorizedSubcommandCapabilities::OCP_LOCK_ROTATE_HEK
+                AuthorizedSubcommandCapabilities::OCP_LOCK_PROGRAM_HEK
+                    | AuthorizedSubcommandCapabilities::OCP_LOCK_ZERO_HEK
+                    | AuthorizedSubcommandCapabilities::OCP_LOCK_ROTATE_HEK
                     | AuthorizedSubcommandCapabilities::OCP_LOCK_SET_PERMA_HEK
             ),
             ocp_lock_transport

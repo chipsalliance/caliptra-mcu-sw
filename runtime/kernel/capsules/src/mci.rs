@@ -3,8 +3,44 @@
 //! This provides the MCI capsule that calls the underlying MCI driver
 
 use kernel::grant::{AllowRoCount, AllowRwCount, Grant, UpcallCount};
+use kernel::processbuffer::ReadableProcessBuffer;
 use kernel::syscall::{CommandReturn, SyscallDriver};
 use kernel::{ErrorCode, ProcessId};
+
+use caliptra_mcu_registers_generated::fuses::{
+    OtpPartitionInfo, SECRET_MANUF_PARTITION, SECRET_PROD_PARTITION_0, SECRET_PROD_PARTITION_1,
+    SECRET_PROD_PARTITION_2, SECRET_PROD_PARTITION_3,
+};
+
+const RMA_SECRET_PARTITIONS: [&OtpPartitionInfo; 5] = [
+    SECRET_MANUF_PARTITION,
+    SECRET_PROD_PARTITION_0,
+    SECRET_PROD_PARTITION_1,
+    SECRET_PROD_PARTITION_2,
+    SECRET_PROD_PARTITION_3,
+];
+
+fn uds_and_field_entropy_are_zeroized(
+    mut read_dword: impl FnMut(usize) -> Result<u64, ErrorCode>,
+) -> Result<bool, ErrorCode> {
+    for partition in RMA_SECRET_PARTITIONS {
+        if !partition.zeroizable
+            || !partition.byte_offset.is_multiple_of(8)
+            || !partition.byte_size.is_multiple_of(8)
+        {
+            return Err(ErrorCode::FAIL);
+        }
+
+        let first_dword = partition.byte_offset / 8;
+        let dword_count = partition.byte_size / 8;
+        for dword in first_dword..first_dword + dword_count {
+            if read_dword(dword)? != u64::MAX {
+                return Ok(false);
+            }
+        }
+    }
+    Ok(true)
+}
 
 /// The driver number for Caliptra MCI commands.
 pub const DRIVER_NUM: usize = 0xB000_0000;
@@ -17,7 +53,13 @@ mod cmd {
     pub const MCI_SET_MAILBOX_READY: u32 = 5;
     pub const MCI_SET_SPDM_MCTP_RESPONDER_READY: u32 = 6;
     pub const MCI_SET_SPDM_DOE_RESPONDER_READY: u32 = 7;
-    pub const MCI_SET_PLDM_READY: u32 = 8;
+    pub const MCI_ENTER_RMA: u32 = 8;
+    pub const MCI_SET_PLDM_READY: u32 = 9;
+}
+
+mod ro_allow {
+    pub const RMA_TOKEN: usize = 0;
+    pub const COUNT: u8 = 1;
 }
 
 mod mci_reg {
@@ -35,19 +77,31 @@ pub struct App {
 
 pub struct Mci {
     driver: &'static caliptra_mcu_romtime::Mci,
+    lifecycle: &'static caliptra_mcu_romtime::Lifecycle,
+    otp: &'static caliptra_mcu_romtime::Otp,
     // Per-app state.
-    apps: Grant<App, UpcallCount<0>, AllowRoCount<0>, AllowRwCount<0>>,
+    apps: Grant<App, UpcallCount<0>, AllowRoCount<{ ro_allow::COUNT }>, AllowRwCount<0>>,
 }
 
 impl Mci {
     pub fn new(
         driver: &'static caliptra_mcu_romtime::Mci,
-        grant: Grant<App, UpcallCount<0>, AllowRoCount<0>, AllowRwCount<0>>,
+        lifecycle: &'static caliptra_mcu_romtime::Lifecycle,
+        otp: &'static caliptra_mcu_romtime::Otp,
+        grant: Grant<App, UpcallCount<0>, AllowRoCount<{ ro_allow::COUNT }>, AllowRwCount<0>>,
     ) -> Mci {
         Mci {
             driver,
+            lifecycle,
+            otp,
             apps: grant,
         }
+    }
+
+    fn uds_and_field_entropy_are_zeroized(&self) -> Result<bool, ErrorCode> {
+        uds_and_field_entropy_are_zeroized(|dword| {
+            self.otp.read_dword(dword).map_err(|_| ErrorCode::FAIL)
+        })
     }
 
     fn read_reg(&self, processid: ProcessId) -> CommandReturn {
@@ -95,6 +149,42 @@ impl Mci {
         }
         CommandReturn::success()
     }
+
+    fn enter_rma(&self, processid: ProcessId) -> CommandReturn {
+        let result = self.apps.enter(processid, |_, kernel_data| {
+            let token_buffer = kernel_data
+                .get_readonly_processbuffer(ro_allow::RMA_TOKEN)
+                .map_err(|_| ErrorCode::INVAL)?;
+            let mut token = [0u8; 16];
+            token_buffer
+                .enter(|buffer| {
+                    if buffer.len() != token.len() {
+                        return Err(ErrorCode::INVAL);
+                    }
+                    buffer.copy_to_slice(&mut token);
+                    Ok(())
+                })
+                .map_err(|_| ErrorCode::FAIL)??;
+
+            match self.uds_and_field_entropy_are_zeroized() {
+                Ok(true) => {}
+                Ok(false) | Err(_) => return Err(ErrorCode::INVAL),
+            }
+
+            self.lifecycle
+                .transition(
+                    caliptra_mcu_romtime::LifecycleControllerState::Rma,
+                    &caliptra_mcu_romtime::LifecycleToken(token),
+                )
+                .map_err(|_| ErrorCode::FAIL)
+        });
+
+        match result {
+            Ok(Ok(())) => CommandReturn::success(),
+            Ok(Err(error)) => CommandReturn::failure(error),
+            Err(error) => CommandReturn::failure(error.into()),
+        }
+    }
 }
 
 /// Provide an interface for userland.
@@ -132,6 +222,7 @@ impl SyscallDriver for Mci {
                 );
                 CommandReturn::success()
             }
+            cmd::MCI_ENTER_RMA => self.enter_rma(processid),
             cmd::MCI_SET_PLDM_READY => {
                 self.driver.set_flow_milestone(
                     caliptra_mcu_romtime::McuBootMilestones::FIRMWARE_PLDM_READY.into(),
@@ -144,5 +235,35 @@ impl SyscallDriver for Mci {
 
     fn allocate_grant(&self, processid: ProcessId) -> Result<(), kernel::process::Error> {
         self.apps.enter(processid, |_, _| {})
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rma_requires_every_uds_and_field_entropy_partition_to_be_zeroized() {
+        for nonzeroized_partition in RMA_SECRET_PARTITIONS {
+            let nonzeroized_dword = nonzeroized_partition.byte_offset / 8;
+            assert!(!uds_and_field_entropy_are_zeroized(|dword| {
+                Ok(if dword == nonzeroized_dword {
+                    0
+                } else {
+                    u64::MAX
+                })
+            })
+            .unwrap());
+        }
+    }
+
+    #[test]
+    fn rma_accepts_fully_zeroized_uds_and_field_entropy_partitions() {
+        assert!(uds_and_field_entropy_are_zeroized(|_| Ok(u64::MAX)).unwrap());
+    }
+
+    #[test]
+    fn rma_fails_closed_when_otp_cannot_be_read() {
+        assert!(uds_and_field_entropy_are_zeroized(|_| Err(ErrorCode::FAIL)).is_err());
     }
 }

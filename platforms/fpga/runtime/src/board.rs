@@ -827,6 +827,8 @@ pub unsafe fn main() {
         board_kernel,
         caliptra_mcu_capsules_runtime::mci::DRIVER_NUM,
         &peripherals.mci,
+        &peripherals.lifecycle,
+        &peripherals.otp,
     )
     .finalize(kernel::static_buf!(caliptra_mcu_capsules_runtime::mci::Mci));
     caliptra_mcu_romtime::println!("[mcu-runtime] MCI driver component initialized");

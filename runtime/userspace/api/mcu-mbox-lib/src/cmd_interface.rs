@@ -17,11 +17,11 @@ use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_mbox_common::messages::{
     ClearLogReq, ClearLogResp, CommandId, DeviceCapsReq, DeviceCapsResp, DpeSignerContextCertReq,
     EndorsementAlgorithm, FirmwareVersionReq, FirmwareVersionResp, FuseReadResp, GetAttestationReq,
-    GetAuthCmdChallengeResp, GetDpeCertChainReq, GetLogReq, LogType, MailboxReqHeader,
-    MailboxRespHeader, MailboxRespHeaderVarSize, McuMailboxReq, McuMailboxResp,
-    McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq,
-    McuResponseVarSize, DEVICE_CAPS_SIZE, GET_ATTESTATION_RESP_PREFIX_LEN, MAX_FW_VERSION_STR_LEN,
-    MAX_RESP_DATA_SIZE,
+    GetAuthCmdChallengeResp, GetDpeCertChainReq, GetLogReq, HekStatusReq, HekStatusResp, LogType,
+    MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize, McuFeStatusReq, McuFeStatusResp,
+    McuMailboxReq, McuMailboxResp, McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp,
+    McuProdDebugUnlockTokenReq, McuResponseVarSize, VendorPkHashStatusReq, VendorPkHashStatusResp,
+    DEVICE_CAPS_SIZE, GET_ATTESTATION_RESP_PREFIX_LEN, MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
 };
 #[cfg(feature = "attested-csr")]
 use caliptra_mcu_mbox_common::messages::{
@@ -278,6 +278,11 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer> CmdInterface<'a, H, A> {
                 CommandId::MC_AUTHORIZED_COMMAND => {
                     self.handle_authorized_command(req, resp_buf).await
                 }
+                CommandId::MC_FE_STATUS => self.handle_fe_status(req, resp_buf).await,
+                CommandId::MC_VENDOR_PK_HASH_STATUS => {
+                    self.handle_vendor_pk_hash_status(req, resp_buf).await
+                }
+                CommandId::MC_HEK_STATUS => self.handle_hek_status(req, resp_buf).await,
                 #[cfg(feature = "ocp-lock")]
                 CommandId::MC_OCP_LOCK => self.handle_ocp_lock_command(req, resp_buf).await,
                 #[cfg(feature = "device-ownership-transfer")]
@@ -471,6 +476,77 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer> CmdInterface<'a, H, A> {
         let resp_bytes = resp.as_bytes();
         resp_buf[..resp_bytes.len()].copy_from_slice(resp_bytes);
         Ok((&mut resp_buf[..resp_bytes.len()], mbox_cmd_status))
+    }
+
+    async fn handle_fe_status<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        McuFeStatusReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        let already_provisioned = self
+            .non_crypto_cmds_handler
+            .field_entropy_already_provisioned()
+            .await
+            .map_err(map_common_cmd_error)?;
+        let resp = McuFeStatusResp {
+            already_provisioned: already_provisioned.into(),
+            ..Default::default()
+        };
+        let resp = resp.as_bytes();
+        resp_buf
+            .get_mut(..resp.len())
+            .ok_or(errors::INVALID_PARAMS)?
+            .copy_from_slice(resp);
+        Ok((&mut resp_buf[..resp.len()], MbxCmdStatus::Complete))
+    }
+
+    async fn handle_vendor_pk_hash_status<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        VendorPkHashStatusReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        let (used_slots_bitmap, key_types) = self
+            .non_crypto_cmds_handler
+            .vendor_pk_hash_status()
+            .await
+            .map_err(map_common_cmd_error)?;
+        let resp = VendorPkHashStatusResp {
+            used_slots_bitmap,
+            key_types,
+            ..Default::default()
+        };
+        let resp = resp.as_bytes();
+        resp_buf
+            .get_mut(..resp.len())
+            .ok_or(errors::INVALID_PARAMS)?
+            .copy_from_slice(resp);
+        Ok((&mut resp_buf[..resp.len()], MbxCmdStatus::Complete))
+    }
+
+    async fn handle_hek_status<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        HekStatusReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        let (used_slots_bitmap, total_slots) = self
+            .non_crypto_cmds_handler
+            .hek_status()
+            .await
+            .map_err(map_common_cmd_error)?;
+        let resp = HekStatusResp {
+            used_slots_bitmap,
+            total_slots,
+            ..Default::default()
+        };
+        let resp = resp.as_bytes();
+        resp_buf
+            .get_mut(..resp.len())
+            .ok_or(errors::INVALID_PARAMS)?
+            .copy_from_slice(resp);
+        Ok((&mut resp_buf[..resp.len()], MbxCmdStatus::Complete))
     }
 
     #[cfg(feature = "attested-csr")]
@@ -1062,6 +1138,9 @@ fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32, req: &[u8]) -> usize {
                 _ => size_of::<MailboxRespHeader>() + size_of::<u32>(),
             }
         }
+        c if c == CommandId::MC_FE_STATUS => size_of::<McuFeStatusResp>(),
+        c if c == CommandId::MC_VENDOR_PK_HASH_STATUS => size_of::<VendorPkHashStatusResp>(),
+        c if c == CommandId::MC_HEK_STATUS => size_of::<HekStatusResp>(),
         #[cfg(feature = "ocp-lock")]
         c if c == CommandId::MC_OCP_LOCK => {
             let subcommand = req

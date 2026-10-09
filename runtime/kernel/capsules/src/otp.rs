@@ -23,7 +23,10 @@ use kernel::{ErrorCode, ProcessId};
 
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_romtime::ocp_lock::KernelConfig;
-use caliptra_mcu_romtime::{fuse_lock_partition_dai, fuse_write_dai};
+use caliptra_mcu_romtime::{
+    fuse_lock_partition_dai, fuse_write_dai,
+    otp::{FieldEntropySlot, PqcKeyType},
+};
 
 #[cfg(feature = "ocp-lock")]
 mod ro_allow {
@@ -47,9 +50,13 @@ pub mod cmd {
     pub const OTP_LOCK_PARTITION: u32 = 6;
     pub const OTP_GET_HEK_METADATA: u32 = 8; // Returns (total_slots, active_slot)
     pub const OTP_ROTATE_HEK: u32 = 9;
+    pub const OTP_PROGRAM_HEK: u32 = 10;
+    pub const OTP_ZERO_HEK: u32 = 11;
+    pub const OTP_MARK_FIELD_ENTROPY_ZEROIZED: u32 = 12;
 }
 
 pub mod reg {
+    pub(super) use caliptra_mcu_registers_generated::fuses::FIELD_ENTROPY_STATE as OTP_FIELD_ENTROPY_STATE;
     use caliptra_mcu_registers_generated::fuses::{
         FuseEntryInfo, OTP_CPTRA_CORE_VENDOR_PK_HASH_0, OTP_CPTRA_CORE_VENDOR_PK_HASH_1,
         OTP_CPTRA_CORE_VENDOR_PK_HASH_10, OTP_CPTRA_CORE_VENDOR_PK_HASH_11,
@@ -128,10 +135,12 @@ pub mod reg {
     pub const VENDOR_LMS_REVOCATION: u32 = 28;
     pub const VENDOR_MLDSA_REVOCATION: u32 = 29;
     pub const PERMA_HEK_EN: u32 = 33;
-    pub const SOC_MANIFEST_SVN: u32 = 34;
-    pub const SOC_MANIFEST_MAX_SVN: u32 = 35;
+    pub const FIELD_ENTROPY_STATE: u32 = 34;
+    pub const VENDOR_PQC_KEY_TYPE: u32 = 35;
+    pub const SOC_MANIFEST_SVN: u32 = 36;
+    pub const SOC_MANIFEST_MAX_SVN: u32 = 37;
     /// Owner SoC Manifest SVN words; index must be 0 or 1.
-    pub const OWNER_SOC_MANIFEST_MIN_SVN: u32 = 36;
+    pub const OWNER_SOC_MANIFEST_MIN_SVN: u32 = 38;
 }
 
 #[derive(Default)]
@@ -352,6 +361,19 @@ impl Otp {
                     .read_vendor_mldsa_revocation(app.reg_index as usize)
                 {
                     Ok(val) => CommandReturn::success_u32(val),
+                    Err(_) => CommandReturn::failure(ErrorCode::INVAL),
+                }
+            }
+            reg::FIELD_ENTROPY_STATE => {
+                match self.driver.read_entry(reg::OTP_FIELD_ENTROPY_STATE) {
+                    Ok(value) => CommandReturn::success_u32(value),
+                    Err(_) => CommandReturn::failure(ErrorCode::FAIL),
+                }
+            }
+            reg::VENDOR_PQC_KEY_TYPE => {
+                match self.driver.read_pqc_key_type(app.reg_index as usize) {
+                    Ok(PqcKeyType::LMS) => CommandReturn::success_u32(1),
+                    Ok(PqcKeyType::MLDSA) => CommandReturn::success_u32(3),
                     Err(_) => CommandReturn::failure(ErrorCode::INVAL),
                 }
             }
@@ -656,6 +678,11 @@ impl SyscallDriver for Otp {
             cmd::OTP_GET_HEK_METADATA => self.get_hek_metadata(),
             #[cfg(feature = "ocp-lock")]
             cmd::OTP_ROTATE_HEK => self.rotate_hek(arg1, processid),
+            #[cfg(feature = "ocp-lock")]
+            cmd::OTP_PROGRAM_HEK => self.program_hek(arg1, processid),
+            #[cfg(feature = "ocp-lock")]
+            cmd::OTP_ZERO_HEK => self.zero_hek(arg1, processid),
+            cmd::OTP_MARK_FIELD_ENTROPY_ZEROIZED => self.mark_field_entropy_zeroized(),
             _ => CommandReturn::failure(ErrorCode::NOSUPPORT),
         }
     }
@@ -665,8 +692,109 @@ impl SyscallDriver for Otp {
     }
 }
 
+impl Otp {
+    fn mark_field_entropy_zeroized(&self) -> CommandReturn {
+        for slot in [
+            FieldEntropySlot::Slot0,
+            FieldEntropySlot::Slot1,
+            FieldEntropySlot::Slot2,
+            FieldEntropySlot::Slot3,
+        ] {
+            if self.driver.mark_field_entropy_zeroized(slot).is_err() {
+                return CommandReturn::failure(ErrorCode::FAIL);
+            }
+        }
+        CommandReturn::success()
+    }
+}
+
 #[cfg(feature = "ocp-lock")]
 impl Otp {
+    fn program_hek(&self, slot: usize, processid: ProcessId) -> CommandReturn {
+        let ocp_lock_ctx = match self.ocp_lock_ctx.as_ref() {
+            Some(ctrl) => ctrl,
+            None => return CommandReturn::failure(ErrorCode::NOSUPPORT),
+        };
+        if slot >= ocp_lock_ctx.state.total_slots as usize {
+            return CommandReturn::failure(ErrorCode::INVAL);
+        }
+        if self.is_perma_hek_locked().unwrap_or(true) {
+            return CommandReturn::failure(ErrorCode::INVAL);
+        }
+
+        let offset = match ocp_lock_ctx.platform.get_hek_slot_offset(slot) {
+            Ok(offset) => offset,
+            Err(_) => return CommandReturn::failure(ErrorCode::INVAL),
+        };
+        for word in 0..(caliptra_mcu_romtime::HEK_PARTITION_SIZE / 4) {
+            match self.driver.read_word(offset / 4 + word) {
+                Ok(0) => {}
+                Ok(_) => return CommandReturn::failure(ErrorCode::ALREADY),
+                Err(_) => return CommandReturn::failure(ErrorCode::FAIL),
+            }
+        }
+
+        let res = self.apps.enter(processid, |_, kernel_data| {
+            let seed_buf = kernel_data
+                .get_readonly_processbuffer(ro_allow::SEED)
+                .map_err(|_| ErrorCode::INVAL)?;
+            let mut seed = [0u8; 32];
+            seed_buf
+                .enter(|buf| {
+                    if buf.len() != seed.len() {
+                        return Err(ErrorCode::INVAL);
+                    }
+                    buf.copy_to_slice(&mut seed);
+                    Ok(())
+                })
+                .map_err(|_| ErrorCode::FAIL)??;
+
+            let digest = caliptra_mcu_otp_digest(&seed, OTP_DIGEST_IV, OTP_DIGEST_CONST);
+            ocp_lock_ctx
+                .platform
+                .program_hek_slot(self.driver, slot, &seed, digest)
+                .map_err(|_| ErrorCode::FAIL)
+        });
+
+        match res {
+            Ok(Ok(())) => CommandReturn::success(),
+            Ok(Err(error)) => CommandReturn::failure(error),
+            Err(error) => CommandReturn::failure(error.into()),
+        }
+    }
+
+    fn zero_hek(&self, slot: usize, _processid: ProcessId) -> CommandReturn {
+        let ocp_lock_ctx = match self.ocp_lock_ctx.as_ref() {
+            Some(ctrl) => ctrl,
+            None => return CommandReturn::failure(ErrorCode::NOSUPPORT),
+        };
+
+        if slot >= ocp_lock_ctx.state.total_slots as usize {
+            return CommandReturn::failure(ErrorCode::INVAL);
+        }
+        if self.is_perma_hek_locked().unwrap_or(true) {
+            return CommandReturn::failure(ErrorCode::INVAL);
+        }
+
+        let offset = match ocp_lock_ctx.platform.get_hek_slot_offset(slot) {
+            Ok(offset) => offset,
+            Err(_) => return CommandReturn::failure(ErrorCode::INVAL),
+        };
+
+        for word in 0..(caliptra_mcu_romtime::HEK_PARTITION_SIZE / 4) {
+            match self.driver.read_word(offset / 4 + word) {
+                Ok(0) => {}
+                Ok(_) => return CommandReturn::failure(ErrorCode::ALREADY),
+                Err(_) => return CommandReturn::failure(ErrorCode::FAIL),
+            }
+        }
+
+        match ocp_lock_ctx.platform.sanitize_hek_slot(self.driver, slot) {
+            Ok(()) => CommandReturn::success(),
+            Err(_) => CommandReturn::failure(ErrorCode::FAIL),
+        }
+    }
+
     fn is_perma_hek_locked(&self) -> Result<bool, ErrorCode> {
         let ocp_lock_ctx = self.ocp_lock_ctx.as_ref().ok_or(ErrorCode::NOSUPPORT)?;
         ocp_lock_ctx

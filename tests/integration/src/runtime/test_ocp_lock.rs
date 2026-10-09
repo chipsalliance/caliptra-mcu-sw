@@ -4,8 +4,9 @@ use crate::test::{start_runtime_hw_model, TestParams};
 use anyhow::Result;
 use caliptra_mcu_hw_model::McuHwModel;
 use caliptra_mcu_mbox_common::messages::{
-    DpeSignerContextCertReq, EndorsementAlgorithm, OcpLockRotateHekReq, OcpLockRotateHekResp,
-    OcpLockSetPermaHekReq, OcpLockSetPermaHekResp,
+    DpeSignerContextCertReq, EndorsementAlgorithm, OcpLockProgramHekReq, OcpLockProgramHekResp,
+    OcpLockRotateHekReq, OcpLockRotateHekResp, OcpLockSetPermaHekReq, OcpLockSetPermaHekResp,
+    OcpLockZeroHekReq, OcpLockZeroHekResp,
 };
 use caliptra_mcu_registers_generated::fuses;
 use caliptra_mcu_romtime::McuBootMilestones;
@@ -91,6 +92,164 @@ fn test_otp_perma_hek_mailbox_not_zeroized_failure() -> Result<()> {
     // 3. Verify OTP memory has NOT been updated
     let otp_after = hw.read_otp_memory();
     assert_eq!(otp_after[fuses::PERMA_HEK_EN.byte_offset] & 0x7, 0);
+
+    Ok(())
+}
+
+#[test]
+#[cfg(not(feature = "fpga_realtime"))]
+fn test_otp_program_hek_mailbox() -> Result<()> {
+    let _lock = crate::test::TEST_LOCK.lock().unwrap();
+    let mut otp = vec![0u8; 4096];
+    crate::test_hek::test::setup_otp_hek(&mut otp, 0, false, false);
+
+    let mut hw = start_runtime_hw_model(TestParams {
+        otp_memory: Some(otp),
+        ocp_lock_en: true,
+        feature: Some("test-ocp-lock"),
+        rom_feature: Some("ocp-lock"),
+        ..Default::default()
+    });
+
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    let slot_offset = fuses::CPTRA_SS_LOCK_HEK_PROD_1_BYTE_OFFSET;
+    let otp_before = hw.read_otp_memory();
+    assert_eq!(&otp_before[slot_offset..slot_offset + 48], &[0; 48]);
+
+    let req = OcpLockProgramHekReq {
+        hek_slot: 1,
+        ..Default::default()
+    };
+    let _resp: OcpLockProgramHekResp = super::execute_authorized_req(&mut hw, req)?;
+
+    let otp_after = hw.read_otp_memory();
+    let seed = &otp_after[slot_offset..slot_offset + 32];
+    assert_ne!(seed, &[0; 32]);
+    let digest = u64::from_le_bytes(
+        otp_after[slot_offset + 32..slot_offset + 40]
+            .try_into()
+            .unwrap(),
+    );
+    assert_eq!(
+        digest,
+        caliptra_mcu_otp_digest::caliptra_mcu_otp_digest(
+            seed,
+            caliptra_mcu_otp_digest::OTP_DIGEST_IV,
+            caliptra_mcu_otp_digest::OTP_DIGEST_CONST,
+        )
+    );
+
+    Ok(())
+}
+
+#[test]
+#[cfg(not(feature = "fpga_realtime"))]
+fn test_otp_program_hek_mailbox_used_slot_failure() -> Result<()> {
+    let _lock = crate::test::TEST_LOCK.lock().unwrap();
+    let mut otp = vec![0u8; 4096];
+    crate::test_hek::test::setup_otp_hek(&mut otp, 0, false, false);
+
+    let mut hw = start_runtime_hw_model(TestParams {
+        otp_memory: Some(otp),
+        ocp_lock_en: true,
+        feature: Some("test-ocp-lock"),
+        rom_feature: Some("ocp-lock"),
+        ..Default::default()
+    });
+
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    let slot_offset = fuses::CPTRA_SS_LOCK_HEK_PROD_0_BYTE_OFFSET;
+    let otp_before = hw.read_otp_memory();
+    let req = OcpLockProgramHekReq {
+        hek_slot: 0,
+        ..Default::default()
+    };
+    assert!(super::execute_authorized_req(&mut hw, req).is_err());
+    assert_eq!(
+        &hw.read_otp_memory()[slot_offset..slot_offset + 48],
+        &otp_before[slot_offset..slot_offset + 48]
+    );
+
+    Ok(())
+}
+
+#[test]
+#[cfg(not(feature = "fpga_realtime"))]
+fn test_otp_zero_hek_mailbox() -> Result<()> {
+    let _lock = crate::test::TEST_LOCK.lock().unwrap();
+    let mut otp = vec![0u8; 4096];
+    crate::test_hek::test::setup_otp_hek(&mut otp, 0, false, false);
+
+    let mut hw = start_runtime_hw_model(TestParams {
+        otp_memory: Some(otp),
+        ocp_lock_en: true,
+        feature: Some("test-ocp-lock"),
+        rom_feature: Some("ocp-lock"),
+        ..Default::default()
+    });
+
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    let slot_offset = fuses::CPTRA_SS_LOCK_HEK_PROD_1_BYTE_OFFSET;
+    let otp_before = hw.read_otp_memory();
+    assert_eq!(&otp_before[slot_offset..slot_offset + 48], &[0; 48]);
+
+    let req = OcpLockZeroHekReq {
+        hek_slot: 1,
+        ..Default::default()
+    };
+    let _resp: OcpLockZeroHekResp = super::execute_authorized_req(&mut hw, req)?;
+
+    assert_eq!(
+        &hw.read_otp_memory()[slot_offset..slot_offset + 48],
+        &[0xFF; 48]
+    );
+
+    Ok(())
+}
+
+#[test]
+#[cfg(not(feature = "fpga_realtime"))]
+fn test_otp_zero_hek_mailbox_used_slot_failure() -> Result<()> {
+    let _lock = crate::test::TEST_LOCK.lock().unwrap();
+    let mut otp = vec![0u8; 4096];
+    crate::test_hek::test::setup_otp_hek(&mut otp, 0, false, false);
+
+    let mut hw = start_runtime_hw_model(TestParams {
+        otp_memory: Some(otp),
+        ocp_lock_en: true,
+        feature: Some("test-ocp-lock"),
+        rom_feature: Some("ocp-lock"),
+        ..Default::default()
+    });
+
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    let slot_offset = fuses::CPTRA_SS_LOCK_HEK_PROD_0_BYTE_OFFSET;
+    let otp_before = hw.read_otp_memory();
+    let req = OcpLockZeroHekReq {
+        hek_slot: 0,
+        ..Default::default()
+    };
+    assert!(super::execute_authorized_req(&mut hw, req).is_err());
+    assert_eq!(
+        &hw.read_otp_memory()[slot_offset..slot_offset + 48],
+        &otp_before[slot_offset..slot_offset + 48]
+    );
 
     Ok(())
 }
