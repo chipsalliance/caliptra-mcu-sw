@@ -401,10 +401,9 @@ if (OWNER_DIGEST != 0) {
 
 ## Runtime Commands
 
-MCU Runtime exposes one transport-neutral DOT family. MCI uses command register
-`0x00000011` and carries the DOT FourCC in mailbox SRAM. SPDM uses top-level
-`DeviceOwnershipTransfer` (`0x11`) for native commands and wraps protected
-commands as `AuthorizedCommand (0x12) -> family 0x11 -> DOT FourCC`.
+MCU Runtime exposes one transport-neutral DOT family. Both transports use
+top-level `DeviceOwnershipTransfer` (`0x11`) for native commands and wrap
+protected commands as `AuthorizedCommand (0x12) -> family 0x11 -> DOT FourCC`.
 
 | Command | FourCC | Classification | Core validation |
 | ------- | ------ | -------------- | --------------- |
@@ -431,10 +430,9 @@ state becomes active on a subsequent reset.
 
 The `caliptra-util-host` Rust API exposes all eleven commands in the table above
 through the same transport-neutral command functions. Both its MCU mailbox and
-SPDM VDM transports implement every command. The mailbox transport emits the
-outer family command `0x00000011`, little-endian DOT FourCC, payload, and, for
-generic-authorized commands, the authorization trailer. The SPDM VDM transport
-selects the native `0x11` envelope or the protected `0x12 -> 0x11` envelope.
+SPDM VDM transports implement every command. Both transports select the native `0x11` envelope or the protected
+`0x12 -> 0x11` envelope. MCI prepends its checksum; SPDM prepends its version
+and command bytes.
 
 The mailbox integration validator connects the Rust host API through a UDP
 bridge to a DOT-enabled emulator Runtime. It exercises `DOT_STATUS`, lock,

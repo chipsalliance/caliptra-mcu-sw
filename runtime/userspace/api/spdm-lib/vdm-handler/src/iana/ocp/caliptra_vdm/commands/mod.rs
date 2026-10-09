@@ -15,14 +15,6 @@ pub(crate) mod get_attestation;
 #[cfg(feature = "ocp-lock")]
 pub(crate) mod ocp_lock;
 
-pub(crate) fn require_empty(req: &[u8]) -> Result<(), CaliptraCompletionCode> {
-    if req.is_empty() {
-        Ok(())
-    } else {
-        Err(CaliptraCompletionCode::InvalidPayloadSize)
-    }
-}
-
 pub(crate) fn write_success(out: &mut [u8]) -> Result<&mut [u8], CaliptraCompletionCode> {
     let Some((completion, rest)) = out.split_first_mut() else {
         return Err(CaliptraCompletionCode::InsufficientResources);

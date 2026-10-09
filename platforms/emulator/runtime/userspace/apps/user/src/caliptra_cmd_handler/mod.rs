@@ -16,12 +16,15 @@ use caliptra_mcu_config::capabilities::{
 use caliptra_mcu_config::version::get_mcu_runtime_version;
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
+use caliptra_mcu_libsyscall_caliptra::otp::Otp;
+use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_mbox_common::messages::EndorsementAlgorithm as MboxEndorsementAlgorithm;
 use caliptra_mcu_mbox_common::messages::{
     DotDisablePayload, DotLockPayload, DotOverrideChallengePayload, DotOverridePayload,
     DotRotatePayload, DotStatus, DotUnlockPayload, AUTH_CMD_NONCE_LEN, DOT_BLOB_SIZE,
 };
+use caliptra_mcu_otp_fuse::fuse_read_dai_params;
 #[cfg(feature = "ocp-lock")]
 use mcu_caliptra_api::error::CaliptraApiError;
 #[cfg(feature = "ocp-lock")]
@@ -33,6 +36,8 @@ use mcu_caliptra_api::signer::CaliptraDpeSigner;
 use mcu_caliptra_api::{core_capabilities, core_firmware_version, ScratchAlloc};
 #[cfg(feature = "pcr-quote")]
 use mcu_caliptra_api::{PCR_QUOTE_ECC384_BUF_LEN, PCR_QUOTE_MLDSA87_BUF_LEN};
+#[cfg(feature = "ocp-lock")]
+use zerocopy::IntoBytes;
 
 pub struct CaliptraCmdBackend;
 
@@ -75,8 +80,10 @@ fn external_command_capabilities() -> ExternalCommandCapabilities {
     }
     if cfg!(feature = "spdm") {
         capabilities |= ExternalCommandCapabilities::REQUEST_DEBUG_UNLOCK
-            | ExternalCommandCapabilities::AUTHORIZE_DEBUG_UNLOCK_TOKEN
-            | ExternalCommandCapabilities::AUTHORIZED_COMMAND;
+            | ExternalCommandCapabilities::AUTHORIZE_DEBUG_UNLOCK_TOKEN;
+    }
+    if cfg!(feature = "spdm") || cfg!(feature = "mcu-mbox-service") {
+        capabilities |= ExternalCommandCapabilities::AUTHORIZED_COMMAND;
     }
     // EXPORT_ATTESTED_CSR is reachable over the SPDM VDM transport and the MCU
     // mailbox, so advertise it whenever either responder is built.
@@ -93,10 +100,11 @@ fn external_command_capabilities() -> ExternalCommandCapabilities {
     {
         capabilities |= ExternalCommandCapabilities::GET_ATTESTATION;
     }
-    if cfg!(feature = "dot-spdm-vdm") {
+    if cfg!(feature = "dot-spdm-vdm") || cfg!(feature = "dot-mci-mailbox") {
         capabilities |= ExternalCommandCapabilities::DEVICE_OWNERSHIP_TRANSFER;
     }
-    if cfg!(feature = "spdm") && cfg!(feature = "ocp-lock") {
+    if cfg!(feature = "ocp-lock") && (cfg!(feature = "spdm") || cfg!(feature = "mcu-mbox-service"))
+    {
         capabilities |= ExternalCommandCapabilities::OCP_LOCK;
     }
     capabilities
@@ -165,7 +173,7 @@ const MAX_ATTESTATION_EVIDENCE_LEN: usize = {
 
 fn authorized_subcommand_capabilities() -> AuthorizedSubcommandCapabilities {
     let mut capabilities = AuthorizedSubcommandCapabilities::empty();
-    if cfg!(feature = "spdm") {
+    if cfg!(feature = "spdm") || cfg!(feature = "mcu-mbox-service") {
         capabilities |= AuthorizedSubcommandCapabilities::GET_AUTH_CHALLENGE
             | AuthorizedSubcommandCapabilities::PROVISION_VENDOR_PK_HASH
             | AuthorizedSubcommandCapabilities::FUSE_INCREASE_MIN_SVN
@@ -176,14 +184,15 @@ fn authorized_subcommand_capabilities() -> AuthorizedSubcommandCapabilities {
             | AuthorizedSubcommandCapabilities::PROVISION_OWNER_PK_HASH
             | AuthorizedSubcommandCapabilities::ZEROIZE_UDS_FE_AND_ENTER_RMA;
     }
-    if cfg!(feature = "dot-spdm-vdm") {
+    if cfg!(feature = "dot-spdm-vdm") || cfg!(feature = "dot-mci-mailbox") {
         capabilities |= AuthorizedSubcommandCapabilities::DOT_ENABLE
             | AuthorizedSubcommandCapabilities::DOT_LOCK
             | AuthorizedSubcommandCapabilities::DOT_DISABLE
             | AuthorizedSubcommandCapabilities::DOT_ROTATE
             | AuthorizedSubcommandCapabilities::GET_DOT_BACKUP_BLOB;
     }
-    if cfg!(feature = "spdm") && cfg!(feature = "ocp-lock") {
+    if cfg!(feature = "ocp-lock") && (cfg!(feature = "spdm") || cfg!(feature = "mcu-mbox-service"))
+    {
         capabilities |= AuthorizedSubcommandCapabilities::OCP_LOCK_PROGRAM_HEK
             | AuthorizedSubcommandCapabilities::OCP_LOCK_ZERO_HEK
             | AuthorizedSubcommandCapabilities::OCP_LOCK_ROTATE_HEK
@@ -352,6 +361,39 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
 
     async fn zeroize_uds_fe_and_enter_rma(&self, rma_token: &[u8; 16]) -> CaliptraCmdResult<()> {
         device_ops::zeroize_uds_fe_and_enter_rma(rma_token).await
+    }
+
+    async fn fuse_read(
+        &self,
+        partition: u32,
+        entry: u32,
+        data: &mut [u8],
+    ) -> CaliptraCmdResult<u32> {
+        let params = fuse_read_dai_params(partition, entry, data.len() / 4)
+            .map_err(|_| CaliptraCompletionCode::InvalidParameter)?;
+        let otp = Otp::<DefaultSyscalls>::new();
+        for (index, word) in data
+            .chunks_exact_mut(4)
+            .take(params.words_to_read)
+            .enumerate()
+        {
+            let value = otp
+                .read_raw(params.base_word_addr as u32, index as u32)
+                .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+            word.copy_from_slice(&value.to_ne_bytes());
+        }
+        Ok(params.valid_bits)
+    }
+
+    async fn fuse_write(&self, word_addr: u32, data: u32, mask: u32) -> CaliptraCmdResult<()> {
+        Otp::<DefaultSyscalls>::new()
+            .write_raw(word_addr, data, mask)
+            .map_err(|error| match error {
+                caliptra_mcu_libtock_platform::ErrorCode::Invalid => {
+                    CaliptraCompletionCode::InvalidParameter
+                }
+                _ => CaliptraCompletionCode::OperationFailed,
+            })
     }
 
     async fn increase_min_svn<Alloc: ScratchAlloc>(
@@ -535,20 +577,23 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
     }
 
     #[cfg(feature = "ocp-lock")]
-    async fn ocp_lock_enumerate_hpke_handles(
-        &self,
-        resp: &mut OcpLockEnumerateHpkeHandlesResp,
-    ) -> CaliptraCmdResult<()> {
+    async fn ocp_lock_enumerate_hpke_handles(&self, data: &mut [u8]) -> CaliptraCmdResult<usize> {
         let mailbox = Mailbox::new();
         let ocp_lock = OcpLock::new(&mailbox, &crate::ocp_lock_config::APP_RUNTIME_CONFIG);
-
+        let mut resp = OcpLockEnumerateHpkeHandlesResp::default();
         ocp_lock
-            .enumerate_hpke_handles(resp)
+            .enumerate_hpke_handles(&mut resp)
             .await
             .map_err(|e| match e {
                 CaliptraApiError::MailboxBusy => CaliptraCompletionCode::CaliptraMailboxBusy,
                 _ => CaliptraCompletionCode::OperationFailed,
-            })
+            })?;
+        let body =
+            &resp.as_bytes()[core::mem::size_of::<caliptra_api::mailbox::MailboxRespHeader>()..];
+        data.get_mut(..body.len())
+            .ok_or(CaliptraCompletionCode::InsufficientResources)?
+            .copy_from_slice(body);
+        Ok(body.len())
     }
 
     #[cfg(feature = "ocp-lock")]
@@ -631,8 +676,10 @@ mod tests {
             | ExternalCommandCapabilities::GET_DEBUG_LOG
             | ExternalCommandCapabilities::CLEAR_DEBUG_LOG;
         let spdm_commands = ExternalCommandCapabilities::REQUEST_DEBUG_UNLOCK
-            | ExternalCommandCapabilities::AUTHORIZE_DEBUG_UNLOCK_TOKEN
-            | ExternalCommandCapabilities::AUTHORIZED_COMMAND;
+            | ExternalCommandCapabilities::AUTHORIZE_DEBUG_UNLOCK_TOKEN;
+        let authorized_transport = cfg!(feature = "spdm") || cfg!(feature = "mcu-mbox-service");
+        let dot_transport = cfg!(feature = "dot-spdm-vdm") || cfg!(feature = "dot-mci-mailbox");
+        let ocp_lock_transport = cfg!(feature = "ocp-lock") && authorized_transport;
 
         assert_eq!(
             runtime.contains(McuRuntimeCapabilities::MCTP_VDM_RESPONDER),
@@ -648,12 +695,16 @@ mod tests {
         );
         assert_eq!(commands.contains(spdm_commands), cfg!(feature = "spdm"));
         assert_eq!(
+            commands.contains(ExternalCommandCapabilities::AUTHORIZED_COMMAND),
+            authorized_transport
+        );
+        assert_eq!(
             commands.contains(ExternalCommandCapabilities::EXPORT_ATTESTED_CSR),
-            cfg!(feature = "spdm") && cfg!(feature = "attested-csr")
+            authorized_transport && cfg!(feature = "attested-csr")
         );
         assert_eq!(
             commands.contains(ExternalCommandCapabilities::DEVICE_OWNERSHIP_TRANSFER),
-            cfg!(feature = "dot-spdm-vdm")
+            dot_transport
         );
         assert_eq!(
             authorized.contains(
@@ -663,9 +714,11 @@ mod tests {
                     | AuthorizedSubcommandCapabilities::PROGRAM_FIELD_ENTROPY
                     | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PUBLIC_KEY
                     | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PK_HASH
+                    | AuthorizedSubcommandCapabilities::FUSE_LOCK_PARTITION
+                    | AuthorizedSubcommandCapabilities::PROVISION_OWNER_PK_HASH
                     | AuthorizedSubcommandCapabilities::ZEROIZE_UDS_FE_AND_ENTER_RMA
             ),
-            cfg!(feature = "spdm")
+            authorized_transport
         );
         assert_eq!(
             authorized.contains(
@@ -675,7 +728,7 @@ mod tests {
                     | AuthorizedSubcommandCapabilities::DOT_ROTATE
                     | AuthorizedSubcommandCapabilities::GET_DOT_BACKUP_BLOB
             ),
-            cfg!(feature = "dot-spdm-vdm")
+            dot_transport
         );
         assert_eq!(
             authorized.contains(
@@ -684,11 +737,11 @@ mod tests {
                     | AuthorizedSubcommandCapabilities::OCP_LOCK_ROTATE_HEK
                     | AuthorizedSubcommandCapabilities::OCP_LOCK_SET_PERMA_HEK
             ),
-            cfg!(feature = "spdm") && cfg!(feature = "ocp-lock")
+            ocp_lock_transport
         );
         assert_eq!(
             commands.contains(ExternalCommandCapabilities::OCP_LOCK),
-            cfg!(feature = "spdm") && cfg!(feature = "ocp-lock")
+            ocp_lock_transport
         );
         assert_eq!(
             runtime.contains(McuRuntimeCapabilities::DOE),

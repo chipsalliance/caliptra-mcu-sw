@@ -8,7 +8,7 @@ edition.workspace = true
 
 [features]
 default = []
-device-ownership-transfer = []
+device-ownership-transfer = ["caliptra-mcu-common-commands/device-ownership-transfer"]
 ocp-lock = ["caliptra-mcu-common-commands/ocp-lock"]
 # Enables EXPORT_ATTESTED_CSR and sizes the large-response buffer for a
 # full ML-DSA-87 attested CSR.
