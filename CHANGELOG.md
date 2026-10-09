@@ -1,3 +1,99 @@
+# rt-sdk-2.1.1
+
+## Caliptra MCU Runtime SDK 2.1.1 Release Notes
+
+Release notes for changes introduced since Runtime SDK 2.1.0.
+
+### Features
+
+- **SPDM**:
+  - Add SPDM 1.4 `VERSION`, `CAPABILITIES`, and `ALGORITHMS` support (#1857)
+  - Support SPDM 1.4 VDM and `LARGE_RESP`, including large VDM fields in the codec (#2094)
+  - Support large offset/length in `CERTIFICATE` responses (#2019)
+  - Support ML-DSA-87 asymmetric algorithm in spdm-lib; cache cert chain digests and DPE skip lengths (#2061)
+  - Add ML-DSA cert-store signing and separate streamed vs. buffered message limits (#2064)
+  - Support ML-DSA-87 signing for `CHALLENGE_AUTH` and `MEASUREMENTS` (#2113)
+  - Install the ML-DSA-87 IDevID certificate into Caliptra (#2009)
+  - Serve per-algorithm certificate chains from managed cert slots (#2100)
+  - Add `set_dpe_only_slot()` for DPE-only certificate chains (#2011)
+  - Support ML-KEM in SPDM 1.4 `KEY_EXCHANGE` (#2080)
+  - Allow multiple opaque data elements in `KEY_EXCHANGE` requests (#2207)
+- **Attestation & Certificates**:
+  - Support ML-DSA-87 signed OCP EAT tokens (#2139)
+  - Provision IDevID certificates during boot (#2016)
+  - Support attested CSR keypair inventory discovery and ML-DSA-87 buffer sizing (#2123)
+  - Gate attested CSR export behind an opt-in `attested-csr` feature (#2186)
+- **Ownership, Authorization & Manifests**:
+  - Add Owner Authorization Manifest support: mailbox commands (#2097), flash layout (#2107), builder (#2110), and installation during image loading (#2119)
+  - Add Owner Attestation Manifest and policy packaging; measure Owner artifacts and Vendor Authorization Key on cold boot and hitless update (#2160)
+  - Persist Owner SoC Manifest minimum SVN (#2175)
+  - Make minimum SVN command target-aware (#2124)
+  - Unify MCI and SPDM authorized command envelope (#2189)
+  - Add SPDM-VDM support for OCP LOCK authorized commands (#2101)
+  - Add DOT enable command support (#2109)
+- **OCP LOCK**:
+  - Support ML-DSA keys from DPE for endorsement certificates (#2005)
+  - Support and verify ML-DSA signatures from DPE for EKP reports (#2063)
+  - Nest OCP LOCK command codes (#2118)
+- **Caliptra API & Commands**:
+  - Add `DpeProfile` support to DPE commands (#2061)
+  - Add ML-DSA signing primitives (#2064) and ML-KEM (#2067)
+  - Add `AxiDmaTarget` abstraction and `mcu_sram_to_axi_dma` helper (#2065)
+  - Extend device capabilities to 64 bytes (#2127)
+  - Reserve `VUxx` vendor-unique command namespace (#2184)
+  - Consolidate Caliptra userspace API (#2210)
+- **ROM, Boot & Network Boot**:
+  - Backport network boot support: lwIP integration, MCU-to-Network CoP mailbox, boot-source protocol, TFTP TOC images, stateful DHCPv6, and MCU ROM network recovery path (#2036)
+  - Package prebuilt network ROM variants (#2150); remove boot flags from initiate request (#2131)
+  - Hand over firmware boot type and ROM capabilities to Runtime (#2021)
+  - Advertise additional MCU ROM capabilities (#2095)
+  - Update ROM start message (#2086)
+- **Host Tooling (`caliptra-util-host`)**:
+  - Add version API (#2104)
+  - Task changes (#2149)
+  - Add OCP DIP keypair discovery and attested CSR export (#2147)
+- **Memory & Code Size**:
+  - Reduce overall memory usage (#2174)
+  - Reduce SPDM attestation and secured-session footprint; reuse task scratch for transient buffers (#2164)
+  - Unify user app on a single scratch allocator (#2179)
+  - Stage `mcu_mbox` request metadata instead of copying the payload (#2105)
+  - Reduce user app grant reserve (#2142) and adjust SRAM sizing split to 10/16 (#2111)
+  - Reduce SPDM responder code size (#2185)
+- **Toolchain & Build**:
+  - Update Rust toolchain to 1.95 (#2087) and 1.96.1 with caliptra-sw dependency update (#2111)
+  - Update bindgen to support newer clang versions (#2040)
+  - Remove `no_default_features` flag (#2051)
+  - Stop forcing rebuilds of unchanged firmware (#2192); skip unused ROM work in firmware-bundler (#2194)
+  - Build ROM explicitly in `xtask size-history` (#2208)
+
+### Fixes
+
+- **SPDM, MCTP & I3C**:
+  - Fix SPDM 1.4 chunking and `KEY_EXCHANGE` handling (#2185)
+  - Reject `LargeCertChain` `GET_CERTIFICATE` without `LARGE_RESP_CAP` (#2089)
+  - Prevent stalled MCTP transfers and surface SPDM failures (#2115)
+  - Synchronize I3C private-read completion (#2185)
+- **Boot, Update & Kernel**:
+  - Fix recovery boot hanging on hardware (#2172)
+  - Fix hitless firmware update rejecting packages with owner artifacts (#2168)
+  - Wait for PLDM responder readiness instead of a fixed delay (#2193)
+  - Fix partial-word truncation in kernel mailbox response copying (#2050)
+- **CI & Infrastructure**:
+  - Add Mjolnir GitHub workflow and config (#2048)
+  - Gate `main` and `main-2.1` PRs on SPDM suites (#2009)
+  - Fix bitstream-build job (#2206)
+  - Fix `caliptra-util-host` validator precheckin failures (#2105)
+- **Documentation**:
+  - Define protocol-neutral certificate store design (#2008)
+  - Update OCP LOCK integrator guide (#2015)
+  - Align DOT documentation with implementation (#2023)
+  - Correct 2.1 key revocation flows (#2037)
+  - Fix Caliptra 2.1 PLDM package layout (#2022)
+  - Correct vendor PK hash strap documentation (#2129)
+  - Reserve firmware ID for device UEID (#2167)
+
+**Full Changelog**: https://github.com/chipsalliance/caliptra-mcu-sw/compare/rt-sdk-2.1.0...rt-sdk-2.1.1
+
 # rt-sdk-2.1.0
 
 ## Caliptra MCU Runtime SDK 2.1.0 Release Notes
