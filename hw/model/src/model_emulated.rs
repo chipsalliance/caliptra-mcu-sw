@@ -371,7 +371,7 @@ impl McuHwModel for ModelEmulated {
                 wire1 |= 1 << 29;
             }
             if params.force_fuse_owner_pk_hash {
-                wire1 |= 1 << 28;
+                wire1 |= caliptra_mcu_rom_common::FORCE_FUSE_OWNER_PK_HASH_WIRE_BIT;
             }
             [0, wire1]
         };

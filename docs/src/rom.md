@@ -10,6 +10,46 @@ The ROM's main responsibilities to the overall Caliptra subsystem are to:
 
 It can also handle any other custom SoC-specific initialization that needs to happen early.
 
+## Reference `core_test` configuration
+
+The `core_test` Cargo feature is only for reference-platform and integration-test
+builds. It lets the emulator or FPGA test harness control selected ROM behavior
+through MCI `mci_reg_generic_input_wires[1]`. Production ROM builds do not read
+generic input wires: platform integrations select the same behavior explicitly
+through `RomParameters` (or through the platform callbacks stored there).
+
+The reference platforms assign the wires as follows:
+
+| Bit | `core_test` behavior | Production/platform configuration |
+| --- | --- | --- |
+| 0 | Skip the volatile lock on the selected vendor PK hash slot for provisioning tests. | `RomParameters::skip_vendor_pk_hash_volatile_lock` |
+| 1 | Rotate default vendor PK hash selection to the next functional slot. | `RomParameters::vendor_pk_hash_rotation`, or a custom `vendor_key_policy` |
+| 27 | Force the owner PK hash to come from the fuse instead of the DOT blob. | `RomParameters::owner_pk_hash_policy` |
+| 28 | Request encrypted firmware boot, sampled before firmware download. | `RomParameters::encrypted_boot_requested` callback |
+| 29 | Request flash boot (AXI recovery bypass), sampled after OTP initialization. | `RomParameters::request_recovery_boot` or `recovery_boot_requested` callback |
+| 30 | Resume after Caliptra boot-go is asserted. | `RomParameters::post_caliptra_boot_go` callback |
+| 31 | Resume after Caliptra fuse writes complete. | `RomParameters::post_caliptra_fuses_written` callback |
+
+Bits not listed above have no MCU ROM meaning. The input-wire reads and wait
+loops live in the reference platform ROMs under `platforms/` and are compiled
+only when `core_test` is enabled; the common ROM receives only the resulting
+parameters and callbacks. Core-test builds also configure
+`populate_non_secret_test_seeds` and `skip_hek_metadata_report` to preserve the
+reference harness's test UDS/FE and HEK behavior. Production defaults leave both
+flags disabled.
+
+Bit 28 retains the Caliptra Core encrypted-boot harness assignment. The
+force-fuse-owner control uses bit 27 to avoid colliding with encrypted boot.
+Recovery and encryption callbacks sample the wires at their original boot
+checkpoints, after the harness has released the boot-go pause.
+
+In the emulator, `hw-2-1` selects the hardware revision, not the boot mode.
+`flash-boot` explicitly selects flash recovery; `streaming-boot` takes priority
+over simple flash boot. Partition-table builds explicitly select flash recovery.
+`core_test` retains a flash provider but leaves bit 29 to choose recovery versus
+streaming. FPGA `flash-boot` also explicitly requests flash recovery; FPGA core
+tests retain their flash provider and use bit 29.
+
 ## Boot Flows
 
 There are four main boot flows for its role in the Caliptra subsystem:
@@ -166,7 +206,6 @@ sequenceDiagram
     end
 ```
 
-
 ### Hitless Firmware Update Flow
 
 Hitless Update Flow is triggered when MCU runtime FW requests an update of the MCU firmware by sending the `ACTIVATE_FIRMWARE` mailbox command to Caliptra without the `INITIAL_ACTIVATE` flag. Upon receiving the mailbox command, Caliptra initiates the MCU reset sequence, which copies the new firmware image into MCU SRAM and causes the MCU to reboot into ROM with `RESET_REASON` set to `FirmwareHitlessUpdate`.
@@ -190,7 +229,6 @@ sequenceDiagram
     end
     note right of mcu: jump to runtime firmware
 ```
-
 
 ### Warm Reset Flow
 
@@ -284,6 +322,7 @@ The `PROD_DEBUG_UNLOCK_PK_HASH_REG` registers in MCI store the public key hashes
 **Security Requirement**: MCU ROM must verify that the PK hash values written to MCI match the expected values from the fuse controller after both `SS_CONFIG_DONE_STICKY` and `SS_CONFIG_DONE` are set. If verification fails, the ROM must trigger a fatal error and halt.
 
 The verification process:
+
 1. MCU ROM writes PK hash values from fuses to `PROD_DEBUG_UNLOCK_PK_HASH_REG` registers
 1. [2.1] MCU ROM writes the [FC_FIPS_ZEROZATION](https://chipsalliance.github.io/caliptra-ss/main/regs/?p=soc.mci_top.mci_reg.FC_FIPS_ZEROZATION) register
 1. MCU ROM sets `SS_CONFIG_DONE_STICKY` and `SS_CONFIG_DONE` to lock the registers
@@ -298,6 +337,7 @@ The `MBOX0_VALID_AXI_USER` and `MBOX1_VALID_AXI_USER` registers control which AX
 **Security Requirement**: MCU ROM must configure the MCU mailbox AXI users, lock them using the LOCK registers, and verify that both the AXI user values and the lock register values match the expected configuration. If verification fails, the ROM must trigger a fatal error and halt. The verification is performed after `SS_CONFIG_DONE_STICKY` and `SS_CONFIG_DONE` are set to consolidate all MCI register verification in one place.
 
 The verification process:
+
 1. MCU ROM configures `MBOX[0,1]_VALID_AXI_USER` registers with the expected AXI user values
 2. MCU ROM sets `MBOX[0,1]_AXI_USER_LOCK` to lock each configured slot (this makes the AXI user registers read-only)
 3. MCU ROM sets `SS_CONFIG_DONE_STICKY` and `SS_CONFIG_DONE`
@@ -310,13 +350,18 @@ The verification process:
 
 The MCU ROM supports locking the selected vendor public key hash slot (and all higher order slots) to prevent post-ROM manipulation. This is controlled by writing to the `VENDOR_PK_HASH_VOLATILE_LOCK` register.
 
-**Strapping Override**:
-The locking behavior is gated by bit 0 of the MCI generic input wires (`mci_reg_generic_input_wires[1]`).
-*   **Production Mode** (Bit 0 is `0`): The ROM automatically applies the volatile lock to the selected key slot index (locking that slot and all higher slots).
-*   **Provisioning Mode** (Bit 0 is `1`): The ROM skips applying the lock, allowing potential post-ROM code to provision higher order hash slots.
+The locking behavior is selected with
+`RomParameters::skip_vendor_pk_hash_volatile_lock`:
+
+* **Production Mode** (`false`): The ROM applies the volatile lock to the
+  selected key slot index, locking that slot and all higher slots.
+* **Provisioning Mode** (`true`): The ROM skips the lock, allowing trusted
+  post-ROM code to provision higher-order hash slots.
+
+Reference `core_test` builds map generic input wire 1 bit 0 to this parameter;
+production common ROM code does not read that wire.
 
 > **Note:** In the current version, the lock register remains mutable past the ROM; therefore, the runtime firmware must be trusted to not overwrite the lock and corrupt the hashes.
-
 
 ### Warm Reset Considerations
 

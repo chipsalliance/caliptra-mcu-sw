@@ -50,23 +50,21 @@ fn record_hook_bit(bit: u32) {
     }
 }
 
-/// Read the MCI generic-input-wire strap selecting the owner PK hash source.
-fn read_owner_pk_hash_policy() -> caliptra_mcu_rom_common::OwnerPkHashPolicy {
-    use tock_registers::interfaces::Readable;
-    // Safety: `MCU_MEMORY_MAP.mci_offset` is the linker-provided MCI register
-    // block base; the resulting reference is only used for typed reads.
-    let mci: caliptra_mcu_romtime::StaticRef<caliptra_mcu_registers_generated::mci::regs::Mci> = unsafe {
-        caliptra_mcu_romtime::StaticRef::new(
-            MCU_MEMORY_MAP.mci_offset as *const caliptra_mcu_registers_generated::mci::regs::Mci,
-        )
-    };
-    if mci.mci_reg_generic_input_wires[1].get()
-        & caliptra_mcu_rom_common::FORCE_FUSE_OWNER_PK_HASH_WIRE_BIT
-        != 0
+#[cfg(feature = "core_test")]
+#[path = "../../../common/rom_core_test.rs"]
+mod core_test;
+
+/// Build the reference platform configuration controlled by `core_test` input
+/// wires. Production builds do not read generic input wires and use explicit
+/// `RomParameters` instead.
+fn platform_rom_parameters<'a>() -> RomParameters<'a> {
+    #[cfg(feature = "core_test")]
     {
-        caliptra_mcu_rom_common::OwnerPkHashPolicy::ForceFuse
-    } else {
-        caliptra_mcu_rom_common::OwnerPkHashPolicy::DotThenFuse
+        core_test::rom_parameters()
+    }
+    #[cfg(not(feature = "core_test"))]
+    {
+        RomParameters::default()
     }
 }
 
@@ -164,7 +162,7 @@ pub static MCU_STRAPS: McuStraps = caliptra_mcu_config_fpga::FPGA_MCU_STRAPS;
 
 #[cfg_attr(not(feature = "test-i3c-services"), allow(dead_code))]
 unsafe fn init_static<T>(s: *mut core::mem::MaybeUninit<T>, value: T) -> &'static mut T {
-    (*s).write(value)
+    unsafe { (*s).write(value) }
 }
 
 pub extern "C" fn rom_entry() -> ! {
@@ -420,8 +418,8 @@ pub extern "C" fn rom_entry() -> ! {
         otp_enable_consistency_check: !cfg!(feature = "test-i3c-services"),
         image_provider_manager: Some(manager),
         dot_flash: Some(dot_flash),
+        request_recovery_boot: cfg!(feature = "flash-boot"),
         fw_manifest_dot_enabled: cfg!(feature = "test-fw-manifest-dot"),
-        owner_pk_hash_policy: read_owner_pk_hash_policy(),
         cptra_mbox_axi_users: mbox_axi_users,
         cptra_fuse_axi_user: axi_user0,
         cptra_trng_axi_user: axi_user0,
@@ -488,7 +486,7 @@ pub extern "C" fn rom_entry() -> ! {
                 - caliptra_mcu_rom_common::MCU_SRAM_DEFAULT_PROTECTED_REGION_BLOCKS
                 - 1,
         ),
-        ..Default::default()
+        ..platform_rom_parameters()
     });
 
     let addr = MCU_MEMORY_MAP.sram_offset;

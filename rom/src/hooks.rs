@@ -67,8 +67,8 @@ pub trait RomHooks {
 
     /// Immediately before decrypting MCU firmware with the
     /// `CM_AES_GCM_DECRYPT_DMA` Caliptra mailbox command. Only fires on
-    /// the encrypted-firmware boot path (cfg `core_test` + recovery
-    /// wire asserted).
+    /// the encrypted-firmware boot path selected by
+    /// `RomParameters::encrypted_boot_requested`.
     fn pre_encrypted_firmware_decrypt(&self) {}
     /// Immediately after a successful firmware decryption.
     fn post_encrypted_firmware_decrypt(&self) {}
