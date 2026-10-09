@@ -14,5 +14,7 @@ jobs:
     with:
       mcu-commit: ${{ github.event.pull_request.head.sha || github.sha }}
       branch: main
+      # Match main-2.1's CALIPTRA_ROM_REF pin while using the current test harness.
+      rom-version: "2.1.2"
       fpga-itrng: true
       extra-features: itrng,ocp-lock
