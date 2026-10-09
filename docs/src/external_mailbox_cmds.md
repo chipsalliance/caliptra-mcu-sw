@@ -4,6 +4,10 @@
 This document outlines the external mailbox commands that enable SoC agents to interact with the MCU via [MCI mailbox](https://github.com/chipsalliance/caliptra-ss/blob/main/docs/CaliptraSSHardwareSpecification.md#mcu-mailbox).
 These commands support common Caliptra management functions, including querying firmware information, retrieving debug and attestation logs, exporting attested CSRs, utilizing cryptographic services, secure debug unlock, and in-field fuse provisioning.
 
+The `MC_AUTHORIZED_COMMAND` envelope described here is an MCU Runtime protocol.
+MCU ROM's boot-time fuse mailbox retains its ROM-specific direct command
+framing and is not changed by this Runtime ABI.
+
 - **Device Identification and Capabilities**
     - Retrieve firmware versions and device capabilities to ensure compatibility and proper configuration.
 
@@ -81,18 +85,19 @@ These commands support common Caliptra management functions, including querying 
 | MC_LMS_SIG_VERIFY             | 0x4D4C_4D56 ("MLMV") | Verifies an LMS signature.                                                            |
 | MC_PROD_DEBUG_UNLOCK_REQ      | 0x4D50_5552 ("MPUR") | Requests debug unlock in a production environment.                                    |
 | MC_PROD_DEBUG_UNLOCK_TOKEN    | 0x4D50_5554 ("MPUT") | Sends the debug unlock token.                                                         |
-| MC_GET_AUTH_CMD_CHALLENGE     | 0x4D41_4343 ("MACC") | Requests a challenge for security-sensitive commands.                                 |
-| MC_FUSE_INCREASE_MIN_SVN      | 0x4D43_4D53 ("MCMS") | Increases the selected minimum SVN.                                                    |
-| MC_FUSE_READ                  | 0x4946_5052 ("IFPR") | See [fuses spec](fuses.md) for details                                                |
-| MC_FUSE_WRITE                 | 0x4946_5057 ("IFPW") | See [fuses spec](fuses.md) for details                                                |
-| MC_FUSE_LOCK_PARTITION        | 0x4946_504B ("IFPK") | See [fuses spec](fuses.md) for details                                                |
-| MC_PROVISION_VENDOR_PK_HASH   | 0x5056_504b ("PVPK") | See [fuses spec](fuses.md) for details                                                |
-| MC_PROVISION_OWNER_PK_HASH    | 0x504F_504B ("POPK") | See [fuses spec](fuses.md) for details                                                |
-| MC_FE_PROG                    | 0x4D43_4650 ("MCFP") | See [fuses spec](fuses.md) for details                                                |
-| MC_FUSE_REVOKE_VENDOR_PUB_KEY | 0x4D52_564B ("MRVK") | See [fuses spec](fuses.md) for details                                                |
-| MC_FUSE_REVOKE_VENDOR_PK_HASH | 0x5256_4b48 ("RVKH") | See [fuses spec](fuses.md) for details                                                |
-| MC_DEVICE_OWNERSHIP_TRANSFER  | 0x0000_0011          | Device Ownership Transfer family; subcommand is carried in mailbox SRAM                |
-| MC_OCP_LOCK                   | 0x0000_0013          | OCP LOCK family; subcommand is carried in mailbox SRAM                                 |
+| MC_AUTHORIZED_COMMAND         | 0x0000_0012          | Carries every authorization-related target ID, payload, and authorization trailer.     |
+| MC_GET_AUTH_CMD_CHALLENGE     | 0x4D41_4343 ("MACC") | Target ID under `MC_AUTHORIZED_COMMAND`; requests a one-use challenge.                  |
+| MC_FUSE_INCREASE_MIN_SVN      | 0x4D43_4D53 ("MCMS") | Target ID under `MC_AUTHORIZED_COMMAND`; increases the selected minimum SVN.            |
+| MC_FUSE_READ                  | 0x4946_5052 ("IFPR") | MCI-only target ID under `MC_AUTHORIZED_COMMAND`; see [fuses spec](fuses.md).            |
+| MC_FUSE_WRITE                 | 0x4946_5057 ("IFPW") | MCI-only target ID under `MC_AUTHORIZED_COMMAND`; see [fuses spec](fuses.md).            |
+| MC_FUSE_LOCK_PARTITION        | 0x4946_504B ("IFPK") | Target ID under `MC_AUTHORIZED_COMMAND`; see [fuses spec](fuses.md).                    |
+| MC_PROVISION_VENDOR_PK_HASH   | 0x5056_504b ("PVPK") | Target ID under `MC_AUTHORIZED_COMMAND`; see [fuses spec](fuses.md).                    |
+| MC_PROVISION_OWNER_PK_HASH    | 0x504F_504B ("POPK") | Target ID under `MC_AUTHORIZED_COMMAND`; see [fuses spec](fuses.md).                    |
+| MC_FE_PROG                    | 0x4D43_4650 ("MCFP") | Target ID under `MC_AUTHORIZED_COMMAND`; see [fuses spec](fuses.md).                    |
+| MC_FUSE_REVOKE_VENDOR_PUB_KEY | 0x4D52_564B ("MRVK") | Target ID under `MC_AUTHORIZED_COMMAND`; see [fuses spec](fuses.md).                    |
+| MC_FUSE_REVOKE_VENDOR_PK_HASH | 0x5256_4b48 ("RVKH") | Target ID under `MC_AUTHORIZED_COMMAND`; see [fuses spec](fuses.md).                    |
+| MC_DEVICE_OWNERSHIP_TRANSFER  | 0x0000_0011          | Native Device Ownership Transfer family; subcommand is carried in mailbox SRAM.         |
+| MC_OCP_LOCK                   | 0x0000_0013          | Native OCP LOCK family; subcommand is carried in mailbox SRAM.                          |
 | VENDOR_UNIQUE_COMMANDS        | "VU00"-"VUFF"        | Reserved for vendor-unique innermost commands; unsupported by the reference MCU.       |
 
 ### Vendor-Unique Command IDs
@@ -103,25 +108,43 @@ suffix byte is one uppercase ASCII hexadecimal digit (`0`-`9` or `A`-`F`).
 Consequently, the numeric values between `0x5655_3030` (`VU00`) and
 `0x5655_4646` (`VUFF`) are not one contiguous allocation.
 
-These are innermost command IDs. MCI places the ID directly in the mailbox
-command register. SPDM carries the same ID as the `sub_cmd_id` inside
-`AuthorizedCommand`; it is not an SPDM VDM top-level command code. The reference
-MCU does not implement vendor-specific behavior and fails direct MCI requests
-as unsupported commands.
+These are innermost command IDs. Both MCI and SPDM carry the ID inside
+`AuthorizedCommand`; it is not a top-level transport command code. The
+reference MCU does not implement vendor-specific behavior and returns an
+unsupported-command error.
 
 ## Command Format
 
 Common command payloads are defined in [Caliptra Common Commands](caliptra_common_commands.md#command-definitions). This section lists the MCI mailbox command code for each common command and keeps mailbox-only command definitions in this document. MCI mailbox checksum, `fips_status`, and variable-length `data_len` fields are transport-specific response framing and are not part of the common command payload tables.
 
+### MC_AUTHORIZED_COMMAND
+
+Every MCI authorization-related request uses command register value
+`0x00000012`. The first payload dword is always a little-endian target ID.
+Direct commands carry their operation payload next; family commands carry a
+second little-endian family subcommand.
+
+```text
+Direct: checksum || target_id:u32 || command_payload || authorization_trailer
+Family: checksum || family_id:u32 || family_subcommand:u32
+        || command_payload || authorization_trailer
+MACC:   checksum || 0x4D41_4343:u32
+```
+
+`MACC` has no command payload or authorization trailer. For signed requests,
+the preimage is `target_id(BE) || signed_payload || nonce`; for a family target,
+the signed payload begins with the family subcommand.
+
 ### MC_DEVICE_OWNERSHIP_TRANSFER
 
-All MCU Runtime DOT requests use MCI command register value `0x00000011`.
-Mailbox SRAM begins with the normal checksum followed by a little-endian DOT
-FourCC and its payload.
+Native MCU Runtime DOT requests use MCI command register value `0x00000011`.
+Authorized DOT requests use `MC_AUTHORIZED_COMMAND` with family target
+`0x00000011`.
 
 ```text
 Native:     checksum || DOT_FourCC || DOT_payload
-Authorized: checksum || DOT_FourCC || DOT_payload || authorization_trailer
+Authorized: checksum || 0x00000011 || DOT_FourCC
+            || DOT_payload || authorization_trailer
 ```
 
 The authorized trailer is
@@ -149,12 +172,13 @@ Payload semantics match [Caliptra SPDM VDM DOT commands](caliptra_spdm_vdm_cmds.
 
 ### MC_OCP_LOCK
 
-All MCU Runtime OCP LOCK requests use MCI command register value `0x00000013`.
-Mailbox SRAM begins with the normal checksum followed by a little-endian OCP LOCK
-FourCC, its payload, and (for authorized operations) the authorization trailer.
+Native MCU Runtime OCP LOCK requests use MCI command register value
+`0x00000013`. Authorized OCP LOCK requests use `MC_AUTHORIZED_COMMAND` with
+family target `0x00000013`.
 
 ```text
-Authorized: checksum || OCP_LOCK_FourCC || OCP_LOCK_payload || authorization_trailer
+Authorized: checksum || 0x00000013 || OCP_LOCK_FourCC
+            || OCP_LOCK_payload || authorization_trailer
 Native:     checksum || OCP_LOCK_FourCC || OCP_LOCK_payload
 ```
 
@@ -334,18 +358,18 @@ Payload semantics are defined by [Authorize Debug Unlock Token](caliptra_common_
 
 ### MC_GET_AUTH_CMD_CHALLENGE
 
-Command Code: `0x4D41_4343` ("MACC")
+Authorized target ID: `0x4D41_4343` ("MACC")
 
 Payload semantics are defined by [Get Auth Challenge](caliptra_common_commands.md#get-auth-challenge).
-The MCI request appends `flags:u32` and `reserved:u32` after the mailbox checksum header; both
-fields are reserved and must be zero. The MCI response inserts a zero `reserved:u32` between the
-mailbox response header and the common 48-byte challenge payload.
+The MCI request contains no fields after the target ID. The response inserts a
+zero `reserved:u32` between the mailbox response header and the common 48-byte
+challenge payload.
 
 ### MC_FUSE_INCREASE_MIN_SVN
 
 Increases the selected minimum SVN.
 
-Command Code: `0x4D43_4D53` ("MCMS")
+Authorized target ID: `0x4D43_4D53` ("MCMS")
 
 Payload semantics and target assignments are defined by [Fuse Increase Min SVN](caliptra_common_commands.md#fuse-increase-min-svn).
 
@@ -353,7 +377,7 @@ Payload semantics and target assignments are defined by [Fuse Increase Min SVN](
 
 Programs field entropy for the selected fuse partition.
 
-Command Code: `0x4D43_4650` ("MCFP")
+Authorized target ID: `0x4D43_4650` ("MCFP")
 
 Payload semantics are defined by [Program Field Entropy](caliptra_common_commands.md#program-field-entropy).
 

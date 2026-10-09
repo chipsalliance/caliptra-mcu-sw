@@ -491,8 +491,8 @@ async fn spdm_mctp_responder() {
     static COMMANDS: crate::caliptra_cmd_handler::CaliptraCmdBackend =
         crate::caliptra_cmd_handler::CaliptraCmdBackend;
     static STREAM: caliptra_vdm::CaliptraVdmStreamHook = caliptra_vdm::CaliptraVdmStreamHook;
-    static AUTHORIZATION: caliptra_vdm::CaliptraVdmAuthorizationHook =
-        caliptra_vdm::CaliptraVdmAuthorizationHook;
+    static AUTHORIZATION: crate::mcu_mbox::cmd_auth_mock::MockCommandAuthorizer =
+        crate::mcu_mbox::cmd_auth_mock::MockCommandAuthorizer;
     let vdm = caliptra_vdm::AppVdmBackend::enabled(&COMMANDS, &STREAM, &AUTHORIZATION);
     let mut stack = SpdmStack::<_, 1, _>::with_vdm_backend(pal, vdm);
 
