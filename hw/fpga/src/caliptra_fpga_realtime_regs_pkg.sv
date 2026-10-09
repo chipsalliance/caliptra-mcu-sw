@@ -325,6 +325,10 @@ package caliptra_fpga_realtime_regs_pkg;
 
     typedef struct {
         logic value;
+    } interface_regs__control__trigger_fabric_reset__out_t;
+
+    typedef struct {
+        logic value;
     } interface_regs__control__trigger_axi_reset__out_t;
 
     typedef struct {
@@ -341,6 +345,7 @@ package caliptra_fpga_realtime_regs_pkg;
         interface_regs__control__ocp_lock_en__out_t ocp_lock_en;
         interface_regs__control__lc_Allow_RMA_or_SCRAP_on_PPD__out_t lc_Allow_RMA_or_SCRAP_on_PPD;
         interface_regs__control__FIPS_ZEROIZATION_PPD__out_t FIPS_ZEROIZATION_PPD;
+        interface_regs__control__trigger_fabric_reset__out_t trigger_fabric_reset;
         interface_regs__control__trigger_axi_reset__out_t trigger_axi_reset;
     } interface_regs__control__out_t;
 

@@ -194,6 +194,7 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 | 18 |         ocp_lock_en        |  rw  | 0x1 |  — |
 | 19 |lc_Allow_RMA_or_SCRAP_on_PPD|  rw  | 0x0 |  — |
 | 20 |    FIPS_ZEROIZATION_PPD    |  rw  | 0x0 |  — |
+| 30 |    trigger_fabric_reset    |  rw  | 0x0 |  — |
 | 31 |      trigger_axi_reset     |  rw  | 0x0 |  — |
 
 #### cptra_obf_uds_seed_vld field
@@ -236,6 +237,10 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 
 <p>RSVD in core</p>
 
+#### trigger_fabric_reset field
+
+<p>RSVD in core. Reset the AXI interconnect and AXI infrastructure IP only. Unlike trigger_axi_reset this does not reset this register block, so pwrgood and the straps are retained. Use while cptra_ss_rst_b is low to discard transactions orphaned by a subsystem warm reset.</p>
+
 #### trigger_axi_reset field
 
 <p>RSVD in core</p>
@@ -256,6 +261,7 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 |  5 |    mailbox_data_avail    |   r  | 0x0 |  — |
 |  6 |     mailbox_flow_done    |   r  | 0x0 |  — |
 |  7 |cptra_ss_mcu_halt_status_o|   r  | 0x0 |  — |
+|  8 |  fabric_reset_supported  |   r  | 0x1 |  — |
 
 #### cptra_error_fatal field
 
@@ -288,6 +294,10 @@ Don't override. Generated from: caliptra_fpga_realtime_regs
 #### cptra_ss_mcu_halt_status_o field
 
 <p>RSVD in core</p>
+
+#### fabric_reset_supported field
+
+<p>RSVD in core. Constant 1: control.trigger_fabric_reset is implemented.</p>
 
 ### arm_user register
 
