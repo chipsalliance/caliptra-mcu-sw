@@ -89,7 +89,7 @@ use kernel::platform::{KernelResources, SyscallDriverLookup};
 use kernel::process;
 use kernel::scheduler::cooperative::CooperativeSched;
 use kernel::syscall;
-use kernel::utilities::registers::interfaces::ReadWriteable;
+use kernel::utilities::registers::interfaces::{ReadWriteable, Readable};
 use kernel::{create_capability, static_init};
 use rv32i::csr;
 
@@ -615,7 +615,12 @@ pub unsafe fn main() {
         caliptra_mcu_dma_driver::nodma::NoDMA<'static, InternalTimers<'static>>,
         caliptra_mcu_dma_driver::nodma::NoDMA::new(mux_alarm)
     );
-    let mbox_staging_addr = if cfg!(feature = "hw-2-1") {
+    let mci_regs = unsafe {
+        caliptra_mcu_romtime::StaticRef::new(MCU_MEMORY_MAP.mci_offset as *const mci::regs::Mci)
+    };
+    let mbox_staging_addr = if cfg!(feature = "test-caliptra-mailbox-mbox1-staging") {
+        Some((MCU_MEMORY_MAP.mci_offset + caliptra_mcu_mbox_driver::MCU_MBOX1_SRAM_OFFSET) as u64)
+    } else if cfg!(feature = "hw-2-1") {
         Some(MCU_MEMORY_MAP.staging_sram_offset as u64)
     } else {
         None
@@ -627,6 +632,7 @@ pub unsafe fn main() {
         mux_alarm,
         mbox_dma_driver,
         Some(200_000_000), // 10 seconds timeout for mailbox commands, in ticks of the 20MHz timer
+        cfg!(feature = "test-caliptra-mailbox-mbox1-staging"),
     )
     .finalize(caliptra_mcu_components::mailbox_component_static!(
         InternalTimers<'static>,
@@ -639,9 +645,6 @@ pub unsafe fn main() {
     mailbox.alarm.set_alarm_client(mailbox);
     caliptra_mcu_romtime::println!("[mcu-runtime] Mailbox initialized");
 
-    let mci_regs = unsafe {
-        caliptra_mcu_romtime::StaticRef::new(MCU_MEMORY_MAP.mci_offset as *const mci::regs::Mci)
-    };
     let fpga_peripherals = static_init!(FpgaPeripherals, FpgaPeripherals::new(mux_alarm, mci_regs));
     fpga_peripherals.init();
     let peripherals = static_init!(
@@ -843,6 +846,9 @@ pub unsafe fn main() {
         mux_alarm,
     )
     .finalize(mbox_sram_component_static!(InternalTimers<'static>));
+    if cfg!(feature = "test-caliptra-mailbox-mbox1-staging") {
+        while mci_regs.mcu_mbox1_csr_mbox_lock.get() != 0 {}
+    }
     caliptra_mcu_romtime::println!("[mcu-runtime] MCU Mbox1 SRAM component initialized");
 
     let mux_mcu_mbox_flash = components::flash::FlashMuxComponent::new(
