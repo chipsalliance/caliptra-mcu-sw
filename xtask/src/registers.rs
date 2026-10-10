@@ -844,6 +844,7 @@ fn emu_make_peripheral_bus_impl(block: RegisterBlock) -> Result<TokenStream> {
             ranges_with_writer.insert((start, end));
         }
     });
+    let mut emitted_read_ranges: HashSet<(u64, u64)> = HashSet::new();
     let mut emitted_write_ranges: HashSet<(u64, u64)> = HashSet::new();
     registers.iter().for_each(|(offset, base_name, r)| {
         // skip as this register is not defined yet
@@ -875,7 +876,7 @@ fn emu_make_peripheral_bus_impl(block: RegisterBlock) -> Result<TokenStream> {
         let b = hex_literal(end);
         assert_eq!(r.ty.width, RegisterWidth::_32);
         if has_single_32_bit_field(&r.ty) {
-            if r.ty.fields[0].ty.can_read() {
+            if r.ty.fields[0].ty.can_read() && emitted_read_ranges.insert((start, end)) {
                 if r.is_array() {
                     if start == 0 {
                         read_tokens.extend(quote! {
@@ -925,7 +926,7 @@ fn emu_make_peripheral_bus_impl(block: RegisterBlock) -> Result<TokenStream> {
                 });
             }
         } else {
-            if r.can_read() {
+            if r.can_read() && emitted_read_ranges.insert((start, end)) {
                 if r.is_array() {
                     if offset + r.offset == 0 {
                         read_tokens.extend(quote! {
