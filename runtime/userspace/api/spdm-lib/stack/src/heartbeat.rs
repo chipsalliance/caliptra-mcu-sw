@@ -9,6 +9,10 @@
 //! phase gate); this handler validates the request shape and builds the ACK,
 //! which the caller encrypts.
 
+// Without `spdm-set-heartbeat` the dispatcher rejects HEARTBEAT, so the ACK
+// builder is reached only from this module's tests.
+#![cfg_attr(not(feature = "spdm-set-heartbeat"), allow(dead_code))]
+
 use caliptra_mcu_spdm_codec::{ReqRespCode, SpdmMsgHdrPdu, SpdmVersion};
 use zerocopy::FromBytes;
 

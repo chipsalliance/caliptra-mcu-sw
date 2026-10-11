@@ -29,11 +29,13 @@ use crate::error::{
     SPDM_SESSION_REQUIRED, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED, SPDM_UNSUPPORTED_REQUEST,
     SPDM_VERSION_MISMATCH,
 };
+#[cfg(feature = "spdm-set-heartbeat")]
+use crate::heartbeat;
 use crate::key_schedule::SessionKeyType;
 use crate::session::{SessionInfo, SessionManager, SessionState};
 use crate::{
     algorithms, capabilities, certificate, challenge, chunk, digests, end_session, finish,
-    heartbeat, key_exchange, measurements, vendor_defined, version,
+    key_exchange, measurements, vendor_defined, version,
 };
 
 /// Type alias for the SessionManager with full PAL type resolution.
@@ -929,6 +931,11 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_S
             sessions.remove_and_destroy(session_id);
             return Ok(rsp);
         }
+        // Without the feature HBEAT_CAP is not advertised, so HEARTBEAT is an
+        // unsupported request rather than one to acknowledge.
+        #[cfg(not(feature = "spdm-set-heartbeat"))]
+        ReqRespCode::HEARTBEAT => return Err(SPDM_UNSUPPORTED_REQUEST.with_data(code.0)),
+        #[cfg(feature = "spdm-set-heartbeat")]
         ReqRespCode::HEARTBEAT => {
             let heartbeat_ack = heartbeat::handle_heartbeat(version, spdm_msg)?;
             let session = sessions.find_mut(session_id).ok_or(SPDM_UNSPECIFIED)?;

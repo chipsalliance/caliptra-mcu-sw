@@ -97,6 +97,7 @@ fn expire_due_clears_only_expired_sessions() {
 
 // Keep-alive through the secured dispatch path: a HEARTBEAT received after the
 // clock advances pushes the deadline forward rather than letting it expire.
+#[cfg(feature = "spdm-set-heartbeat")]
 #[test]
 fn secured_heartbeat_refreshes_deadline() {
     let pal = TestPal::default();
@@ -143,4 +144,36 @@ fn responder_hides_hbeat_cap_when_disabled() {
     use caliptra_mcu_spdm_codec::CapFlags;
     let state = ConnectionState::<TestHashState, Vec<u8>>::caliptra();
     assert!(!state.cap_flags.contains(CapFlags::HBEAT));
+}
+
+// With the feature disabled, a secured HEARTBEAT is answered with
+// ERROR(UnsupportedRequest), matching the cleared HBEAT_CAP, not HEARTBEAT_ACK.
+#[cfg(not(feature = "spdm-set-heartbeat"))]
+#[test]
+fn secured_heartbeat_unsupported_when_disabled() {
+    let pal = TestPal::default();
+    let (mut state, mut sessions, session_id) = established_session(&pal);
+
+    let inner = vec![state.version.to_u8(), ReqRespCode::HEARTBEAT.0, 0, 0];
+    let io = secured_io(session_id, &inner);
+    let rsp = block_on(handle_secured_request(
+        &mut state,
+        &mut sessions,
+        &pal,
+        &io,
+        &NoVdmBackend,
+    ))
+    .expect("secured handler must not fatally error")
+    .expect("an ERROR response must be produced");
+
+    assert_eq!(
+        secured_spdm_response(&rsp),
+        &[
+            state.version.to_u8(),
+            ReqRespCode::ERROR.0,
+            SPDM_UNSUPPORTED_REQUEST.spec_byte(),
+            ReqRespCode::HEARTBEAT.0,
+        ]
+    );
+    assert!(sessions.find(session_id).is_some());
 }
