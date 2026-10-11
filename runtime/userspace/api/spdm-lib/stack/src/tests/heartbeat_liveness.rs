@@ -177,3 +177,88 @@ fn secured_heartbeat_unsupported_when_disabled() {
     );
     assert!(sessions.find(session_id).is_some());
 }
+
+// Outside a session, HEARTBEAT is SessionRequired with the feature (the command
+// is supported, just not here) ...
+#[cfg(feature = "spdm-set-heartbeat")]
+#[test]
+fn plaintext_heartbeat_session_required_when_enabled() {
+    let pal = TestPal::default();
+    let mut state = negotiated_state(SpdmVersion::V12);
+    let mut sessions: Sessions<TestPal, 1> = crate::session::SessionManager::new();
+    let io = TestIo::message(vec![
+        SpdmVersion::V12.to_u8(),
+        ReqRespCode::HEARTBEAT.0,
+        0,
+        0,
+    ]);
+    let err = block_on(dispatch(
+        &mut state,
+        &mut sessions,
+        &pal,
+        &io,
+        ReqRespCode::HEARTBEAT,
+        &NoVdmBackend,
+    ))
+    .unwrap_err();
+    assert_eq!(err, SPDM_SESSION_REQUIRED);
+}
+
+// ... and UnsupportedRequest without it, since HBEAT_CAP is not advertised.
+#[cfg(not(feature = "spdm-set-heartbeat"))]
+#[test]
+fn plaintext_heartbeat_unsupported_when_disabled() {
+    let pal = TestPal::default();
+    let mut state = negotiated_state(SpdmVersion::V12);
+    let mut sessions: Sessions<TestPal, 1> = crate::session::SessionManager::new();
+    let io = TestIo::message(vec![
+        SpdmVersion::V12.to_u8(),
+        ReqRespCode::HEARTBEAT.0,
+        0,
+        0,
+    ]);
+    let err = block_on(dispatch(
+        &mut state,
+        &mut sessions,
+        &pal,
+        &io,
+        ReqRespCode::HEARTBEAT,
+        &NoVdmBackend,
+    ))
+    .unwrap_err();
+    assert_eq!(
+        err,
+        SPDM_UNSUPPORTED_REQUEST.with_data(ReqRespCode::HEARTBEAT.0)
+    );
+}
+
+// Without the feature, a HEARTBEAT during the handshake phase is also
+// UnsupportedRequest, not the phase gate's UnexpectedRequest.
+#[cfg(not(feature = "spdm-set-heartbeat"))]
+#[test]
+fn handshake_heartbeat_unsupported_when_disabled() {
+    let pal = TestPal::default();
+    let (mut state, mut sessions, session_id) = handshake_session(&pal);
+
+    let inner = vec![state.version.to_u8(), ReqRespCode::HEARTBEAT.0, 0, 0];
+    let io = secured_io(session_id, &inner);
+    let rsp = block_on(handle_secured_request(
+        &mut state,
+        &mut sessions,
+        &pal,
+        &io,
+        &NoVdmBackend,
+    ))
+    .expect("secured handler must not fatally error")
+    .expect("an ERROR response must be produced");
+
+    assert_eq!(
+        secured_spdm_response(&rsp),
+        &[
+            state.version.to_u8(),
+            ReqRespCode::ERROR.0,
+            SPDM_UNSUPPORTED_REQUEST.spec_byte(),
+            ReqRespCode::HEARTBEAT.0,
+        ]
+    );
+}

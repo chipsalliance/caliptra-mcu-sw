@@ -717,11 +717,14 @@ async fn dispatch<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_SESSIONS: usi
         ReqRespCode::KEY_EXCHANGE => {
             key_exchange::handle_key_exchange(state, sessions, pal, io).await
         }
-        // HEARTBEAT is advertised (HBEAT cap) but only valid inside a session,
-        // so an unsecured request gets SessionRequired, not UnsupportedRequest.
-        ReqRespCode::FINISH | ReqRespCode::END_SESSION | ReqRespCode::HEARTBEAT => {
-            Err(SPDM_SESSION_REQUIRED)
-        }
+        ReqRespCode::FINISH | ReqRespCode::END_SESSION => Err(SPDM_SESSION_REQUIRED),
+        // With the feature, HEARTBEAT is advertised (HBEAT cap) but only valid inside
+        // a session, so an unsecured request gets SessionRequired. Without it HBEAT_CAP
+        // is not advertised and HEARTBEAT is unsupported in every phase.
+        #[cfg(feature = "spdm-set-heartbeat")]
+        ReqRespCode::HEARTBEAT => Err(SPDM_SESSION_REQUIRED),
+        #[cfg(not(feature = "spdm-set-heartbeat"))]
+        ReqRespCode::HEARTBEAT => Err(SPDM_UNSUPPORTED_REQUEST.with_data(code.0)),
         ReqRespCode(0) => Err(SPDM_INVALID_REQUEST),
         _ => Err(SPDM_UNSUPPORTED_REQUEST.with_data(code.0)),
     }
@@ -1038,9 +1041,13 @@ fn validate_message_allowed_phase(
         ReqRespCode::GET_DIGESTS
         | ReqRespCode::GET_CERTIFICATE
         | ReqRespCode::GET_MEASUREMENTS
-        | ReqRespCode::END_SESSION
-        // HEARTBEAT is only valid in an established secure session.
-        | ReqRespCode::HEARTBEAT => application_key(),
+        | ReqRespCode::END_SESSION => application_key(),
+        // HEARTBEAT is only valid in an established secure session, and only
+        // supported with the feature (see dispatch).
+        #[cfg(feature = "spdm-set-heartbeat")]
+        ReqRespCode::HEARTBEAT => application_key(),
+        #[cfg(not(feature = "spdm-set-heartbeat"))]
+        ReqRespCode::HEARTBEAT => Err(SPDM_UNSUPPORTED_REQUEST.with_data(code.0)),
         ReqRespCode::SET_CERTIFICATE => Err(SPDM_UNSUPPORTED_REQUEST.with_data(code.0)),
         ReqRespCode::FINISH => {
             if session_state == SessionState::HandshakeInProgress {
