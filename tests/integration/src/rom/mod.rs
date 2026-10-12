@@ -1,5 +1,6 @@
 // Licensed under the Apache-2.0 license
 
+mod test_debug_enablement_masks;
 mod test_ecc_errors;
 mod test_hitless_update;
 mod test_i3c_services;

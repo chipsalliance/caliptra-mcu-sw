@@ -97,6 +97,7 @@ pub const ROM_ONLY_TEST_FEATURES: &[&str] = &[
     "test-dot-recovery",
     "test-dot-recovery-reset-flow",
     "test-rom-hooks",
+    "test-debug-enablement-masks",
     "test-force-hitless-update",
 ];
 
@@ -144,6 +145,7 @@ pub const ROM_VARIANTS: &[RomVariant] = &[
     RomVariant::new(None, Some("test-dot-recovery")),
     RomVariant::new(None, Some("test-dot-recovery-reset-flow")),
     RomVariant::new(None, Some("test-rom-hooks")),
+    RomVariant::new(None, Some("test-debug-enablement-masks")),
     // Explicit-feature ROMs tested by precheckin / all-build.
     RomVariant::new(None, Some("test-flash-based-boot")),
     // === fpga ===
