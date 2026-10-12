@@ -8,8 +8,8 @@ use alloc::boxed::Box;
 use arrayvec::ArrayVec;
 use async_trait::async_trait;
 use caliptra_api::mailbox::{
-    EcdsaVerifyReq, MailboxReqHeader, MailboxRespHeader, ZeroizeUdsFeReq, ZEROIZE_FE0_FLAG,
-    ZEROIZE_FE1_FLAG, ZEROIZE_FE2_FLAG, ZEROIZE_FE3_FLAG, ZEROIZE_UDS_FLAG,
+    EcdsaVerifyReq, MailboxReqHeader, MailboxRespHeader, ZeroizeUdsFeReq, ZeroizeUdsFeResp,
+    ZEROIZE_FE0_FLAG, ZEROIZE_FE1_FLAG, ZEROIZE_FE2_FLAG, ZEROIZE_FE3_FLAG, ZEROIZE_UDS_FLAG,
 };
 #[cfg(feature = "pcr-quote")]
 use caliptra_mcu_attestation_evidence::pcr_quote::{encode_pcr_quote, PcrQuoteAlgorithm};
@@ -1498,7 +1498,7 @@ pub(crate) async fn zeroize_uds_fe() -> CaliptraCmdResult<()> {
             | ZEROIZE_FE3_FLAG,
         ..Default::default()
     };
-    let mut resp = MailboxRespHeader::default();
+    let mut resp = ZeroizeUdsFeResp::default();
     mcu_caliptra_api::raw::raw_mailbox_execute(
         caliptra_api::mailbox::CommandId::ZEROIZE_UDS_FE.into(),
         req.as_mut_bytes(),
@@ -1506,6 +1506,10 @@ pub(crate) async fn zeroize_uds_fe() -> CaliptraCmdResult<()> {
     )
     .await
     .map_err(|_| CaliptraCompletionCode::ZeroizeFailed)?;
+
+    if resp.dpe_result != 0 {
+        return Err(CaliptraCompletionCode::ZeroizeFailed);
+    }
 
     Otp::<DefaultSyscalls>::new()
         .mark_field_entropy_zeroized()
