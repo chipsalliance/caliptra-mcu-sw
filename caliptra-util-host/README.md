@@ -15,6 +15,14 @@ The library is organized into several focused crates:
 - `apps/mailbox`: Mailbox client/server applications
 - `apps/spdm`: SPDM VDM client and requester library for Caliptra VDM over SPDM
 
+## Field Entropy, Vendor Key, and HEK Status Commands
+
+The Rust API supports field-entropy, vendor-PK-hash, and HEK status queries over
+the mailbox transport.
+
+The status-query validations are disabled by default so existing mailbox
+validator runs are unchanged.
+
 ## Device Ownership Transfer
 
 The Rust command API supports all ten Runtime Device Ownership Transfer (DOT)

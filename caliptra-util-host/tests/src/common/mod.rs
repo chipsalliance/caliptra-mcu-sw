@@ -107,6 +107,53 @@ impl MockMailbox {
                 self.response_buffer[0..response_len].copy_from_slice(&response);
                 Ok(&self.response_buffer[0..response_len])
             }
+            0x4D43_4653 => {
+                // MC_FE_STATUS ("MCFS")
+                let mut payload = Vec::new();
+                payload.extend_from_slice(&0x00000001u32.to_le_bytes()); // fips_status
+                payload.extend_from_slice(&1u32.to_le_bytes()); // already_provisioned
+
+                let chksum = calc_checksum(0, &payload);
+                let mut response = Vec::new();
+                response.extend_from_slice(&chksum.to_le_bytes());
+                response.extend_from_slice(&payload);
+
+                let response_len = response.len();
+                self.response_buffer[0..response_len].copy_from_slice(&response);
+                Ok(&self.response_buffer[0..response_len])
+            }
+            0x4D56_5053 => {
+                // MC_VENDOR_PK_HASH_STATUS ("MVPS")
+                let mut payload = Vec::new();
+                payload.extend_from_slice(&0x00000001u32.to_le_bytes()); // fips_status
+                payload.extend_from_slice(&5u32.to_le_bytes()); // used_slots_bitmap
+                payload.extend_from_slice(&[1, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+
+                let chksum = calc_checksum(0, &payload);
+                let mut response = Vec::new();
+                response.extend_from_slice(&chksum.to_le_bytes());
+                response.extend_from_slice(&payload);
+
+                let response_len = response.len();
+                self.response_buffer[0..response_len].copy_from_slice(&response);
+                Ok(&self.response_buffer[0..response_len])
+            }
+            0x4D48_4B53 => {
+                // MC_HEK_STATUS ("MHKS")
+                let mut payload = Vec::new();
+                payload.extend_from_slice(&0x00000001u32.to_le_bytes()); // fips_status
+                payload.extend_from_slice(&5u32.to_le_bytes()); // used_slots_bitmap
+                payload.extend_from_slice(&8u32.to_le_bytes()); // total_slots
+
+                let chksum = calc_checksum(0, &payload);
+                let mut response = Vec::new();
+                response.extend_from_slice(&chksum.to_le_bytes());
+                response.extend_from_slice(&payload);
+
+                let response_len = response.len();
+                self.response_buffer[0..response_len].copy_from_slice(&response);
+                Ok(&self.response_buffer[0..response_len])
+            }
             0x4D43_5349 => {
                 // MC_SHA_INIT ("MCSI")
                 // Mock SHA init response with context

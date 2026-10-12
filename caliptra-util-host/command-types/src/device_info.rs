@@ -108,6 +108,95 @@ impl CommandRequest for GetDeviceCapabilitiesRequest {
 
 impl CommandResponse for GetDeviceCapabilitiesResponse {}
 
+// ============================================================================
+// FIELD_ENTROPY_STATUS Command (0x0003)
+// ============================================================================
+
+/// Empty request for the field-entropy provisioning status.
+#[repr(C)]
+#[derive(Debug, Clone, Default, IntoBytes, FromBytes, Immutable)]
+pub struct FieldEntropyStatusRequest;
+
+/// Field-entropy provisioning status returned by the MCU.
+#[repr(C)]
+#[derive(Debug, Clone, Default, IntoBytes, FromBytes, Immutable)]
+pub struct FieldEntropyStatusResponse {
+    /// Common response metadata, including FIPS status.
+    pub common: CommonResponse,
+    /// One when every field-entropy partition is provisioned; otherwise zero.
+    pub already_provisioned: u32,
+}
+
+impl CommandRequest for FieldEntropyStatusRequest {
+    type Response = FieldEntropyStatusResponse;
+    const COMMAND_ID: CaliptraCommandId = CaliptraCommandId::FieldEntropyStatus;
+}
+
+impl CommandResponse for FieldEntropyStatusResponse {}
+
+// ============================================================================
+// VENDOR_PK_HASH_STATUS Command (0x0004)
+// ============================================================================
+
+/// Number of vendor public-key hash slots reported by the MCU.
+pub const VENDOR_PK_HASH_SLOT_COUNT: usize = 16;
+/// Key-type value for an LMS vendor public key.
+pub const VENDOR_PQC_KEY_TYPE_LMS: u8 = 1;
+/// Key-type value for an ML-DSA vendor public key.
+pub const VENDOR_PQC_KEY_TYPE_MLDSA: u8 = 3;
+
+/// Empty request for vendor public-key hash slot status.
+#[repr(C)]
+#[derive(Debug, Clone, Default, IntoBytes, FromBytes, Immutable)]
+pub struct VendorPkHashStatusRequest;
+
+/// Vendor public-key hash slot occupancy and key types.
+#[repr(C)]
+#[derive(Debug, Clone, Default, IntoBytes, FromBytes, Immutable)]
+pub struct VendorPkHashStatusResponse {
+    /// Common response metadata, including FIPS status.
+    pub common: CommonResponse,
+    /// Bit N is set when vendor public-key hash slot N is occupied.
+    pub used_slots_bitmap: u32,
+    /// Key type for each slot; zero for unused slots.
+    pub key_types: [u8; VENDOR_PK_HASH_SLOT_COUNT],
+}
+
+impl CommandRequest for VendorPkHashStatusRequest {
+    type Response = VendorPkHashStatusResponse;
+    const COMMAND_ID: CaliptraCommandId = CaliptraCommandId::VendorPkHashStatus;
+}
+
+impl CommandResponse for VendorPkHashStatusResponse {}
+
+// ============================================================================
+// HEK_STATUS Command (0x0005)
+// ============================================================================
+
+/// Empty request for hardware-exported key slot status.
+#[repr(C)]
+#[derive(Debug, Clone, Default, IntoBytes, FromBytes, Immutable)]
+pub struct HekStatusRequest;
+
+/// Hardware-exported key slot occupancy and configured slot count.
+#[repr(C)]
+#[derive(Debug, Clone, Default, IntoBytes, FromBytes, Immutable)]
+pub struct HekStatusResponse {
+    /// Common response metadata, including FIPS status.
+    pub common: CommonResponse,
+    /// Bit N is set when HEK slot N is no longer reusable.
+    pub used_slots_bitmap: u32,
+    /// Number of HEK slots configured by the device.
+    pub total_slots: u32,
+}
+
+impl CommandRequest for HekStatusRequest {
+    type Response = HekStatusResponse;
+    const COMMAND_ID: CaliptraCommandId = CaliptraCommandId::HekStatus;
+}
+
+impl CommandResponse for HekStatusResponse {}
+
 #[cfg(test)]
 mod tests {
     use super::*;

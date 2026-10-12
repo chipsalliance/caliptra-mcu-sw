@@ -9,6 +9,10 @@ use caliptra_mcu_core_util_host_command_types::attestation::{
 use caliptra_mcu_core_util_host_command_types::certificate::AttestedCsrValidationError;
 use caliptra_mcu_core_util_host_command_types::crypto_aes::AesMode;
 use caliptra_mcu_core_util_host_command_types::crypto_hmac::CmKeyUsage;
+use caliptra_mcu_core_util_host_command_types::device_info::{
+    VendorPkHashStatusResponse, VENDOR_PK_HASH_SLOT_COUNT, VENDOR_PQC_KEY_TYPE_LMS,
+    VENDOR_PQC_KEY_TYPE_MLDSA,
+};
 use caliptra_mcu_core_util_host_command_types::device_ownership_transfer::{
     DotAuthorizationTrailer, DotDisableRequest, DotLockRequest, DotRotateRequest, DotUnlockRequest,
     GetDotBackupBlobRequest, DOT_FAMILY_ID, MC_DOT_DISABLE_CANONICAL_CMD_ID,
@@ -41,6 +45,28 @@ struct AuthorizedCommandAuthorization {
     ecc_pub_x: [u8; AUTH_PUB_ECC_COORD_SIZE],
     ecc_pub_y: [u8; AUTH_PUB_ECC_COORD_SIZE],
     mldsa_pub: [u8; AUTH_PUB_MLDSA_SIZE],
+}
+
+fn vendor_pk_hash_status_is_valid(response: &VendorPkHashStatusResponse) -> bool {
+    let valid_slot_mask = (1u32 << VENDOR_PK_HASH_SLOT_COUNT) - 1;
+    if response.used_slots_bitmap & !valid_slot_mask != 0 {
+        return false;
+    }
+
+    response
+        .key_types
+        .iter()
+        .enumerate()
+        .all(|(slot, key_type)| {
+            if response.used_slots_bitmap & (1u32 << slot) == 0 {
+                *key_type == 0
+            } else {
+                matches!(
+                    *key_type,
+                    VENDOR_PQC_KEY_TYPE_LMS | VENDOR_PQC_KEY_TYPE_MLDSA
+                )
+            }
+        })
 }
 
 /// Caliptra Mailbox Validator
@@ -169,6 +195,25 @@ impl Validator {
         if !fuse_only {
             results.push(self.validate_get_device_capabilities(&mut client));
             results.push(self.validate_get_firmware_version(&mut client));
+            let config = self.config.as_ref();
+            if config
+                .map(|config| config.field_entropy_status.enabled)
+                .unwrap_or(false)
+            {
+                results.push(self.validate_field_entropy_status(&mut client));
+            }
+            if config
+                .map(|config| config.vendor_pk_hash_status.enabled)
+                .unwrap_or(false)
+            {
+                results.push(self.validate_vendor_pk_hash_status(&mut client));
+            }
+            if config
+                .map(|config| config.hek_status.enabled)
+                .unwrap_or(false)
+            {
+                results.push(self.validate_hek_status(&mut client));
+            }
             results.push(self.validate_sha384(&mut client));
             results.push(self.validate_sha512(&mut client));
             results.push(self.validate_hmac_sha384(&mut client));
@@ -742,6 +787,77 @@ impl Validator {
             },
             |client, request| client.fuse_lock_partition(request).map(|_| ()),
         )
+    }
+
+    fn validate_field_entropy_status(&self, client: &mut MailboxClient) -> ValidationResult {
+        Self::validate_status_response(
+            "FieldEntropyStatus",
+            client.field_entropy_status(),
+            |response| response.already_provisioned <= 1,
+            |response| {
+                format!(
+                    "invalid already_provisioned value {}",
+                    response.already_provisioned
+                )
+            },
+        )
+    }
+
+    fn validate_vendor_pk_hash_status(&self, client: &mut MailboxClient) -> ValidationResult {
+        Self::validate_status_response(
+            "VendorPkHashStatus",
+            client.vendor_pk_hash_status(),
+            vendor_pk_hash_status_is_valid,
+            |response| {
+                format!(
+                    "invalid vendor PK hash status bitmap={:#010x}, key_types={:?}",
+                    response.used_slots_bitmap, response.key_types
+                )
+            },
+        )
+    }
+
+    fn validate_hek_status(&self, client: &mut MailboxClient) -> ValidationResult {
+        Self::validate_status_response(
+            "HekStatus",
+            client.hek_status(),
+            |response| {
+                response.total_slots <= 32
+                    && (response.total_slots == 32
+                        || response.used_slots_bitmap >> response.total_slots == 0)
+            },
+            |response| {
+                format!(
+                    "invalid HEK status bitmap={:#010x}, total_slots={}",
+                    response.used_slots_bitmap, response.total_slots
+                )
+            },
+        )
+    }
+
+    fn validate_status_response<T>(
+        test_name: &str,
+        result: Result<T>,
+        is_valid: impl FnOnce(&T) -> bool,
+        invalid_message: impl FnOnce(&T) -> String,
+    ) -> ValidationResult {
+        match result {
+            Ok(response) if is_valid(&response) => ValidationResult {
+                test_name: test_name.to_string(),
+                passed: true,
+                error_message: None,
+            },
+            Ok(response) => ValidationResult {
+                test_name: test_name.to_string(),
+                passed: false,
+                error_message: Some(invalid_message(&response)),
+            },
+            Err(error) => ValidationResult {
+                test_name: test_name.to_string(),
+                passed: false,
+                error_message: Some(error.to_string()),
+            },
+        }
     }
 
     /// Validate GetDeviceCapabilities command
@@ -2467,4 +2583,58 @@ pub fn run_verbose_validation(server_addr: SocketAddr) -> Result<bool> {
     let validator = Validator::new(server_addr).set_verbose(true);
     let results = validator.start()?;
     Ok(results.iter().all(|r| r.passed))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use caliptra_mcu_core_util_host_command_types::CommonResponse;
+
+    fn vendor_status(
+        used_slots_bitmap: u32,
+        key_types: [u8; VENDOR_PK_HASH_SLOT_COUNT],
+    ) -> VendorPkHashStatusResponse {
+        VendorPkHashStatusResponse {
+            common: CommonResponse::default(),
+            used_slots_bitmap,
+            key_types,
+        }
+    }
+
+    #[test]
+    fn vendor_pk_hash_status_validation_checks_bitmap_and_key_types() {
+        let mut valid_key_types = [0; VENDOR_PK_HASH_SLOT_COUNT];
+        valid_key_types[0] = VENDOR_PQC_KEY_TYPE_LMS;
+        valid_key_types[2] = VENDOR_PQC_KEY_TYPE_MLDSA;
+        assert!(vendor_pk_hash_status_is_valid(&vendor_status(
+            0b0101,
+            valid_key_types
+        )));
+
+        let mut unused_slot_has_key_type = valid_key_types;
+        unused_slot_has_key_type[1] = VENDOR_PQC_KEY_TYPE_LMS;
+        assert!(!vendor_pk_hash_status_is_valid(&vendor_status(
+            0b0101,
+            unused_slot_has_key_type
+        )));
+
+        let mut occupied_slot_has_no_key_type = valid_key_types;
+        occupied_slot_has_no_key_type[2] = 0;
+        assert!(!vendor_pk_hash_status_is_valid(&vendor_status(
+            0b0101,
+            occupied_slot_has_no_key_type
+        )));
+
+        let mut unsupported_key_type = valid_key_types;
+        unsupported_key_type[2] = 2;
+        assert!(!vendor_pk_hash_status_is_valid(&vendor_status(
+            0b0101,
+            unsupported_key_type
+        )));
+
+        assert!(!vendor_pk_hash_status_is_valid(&vendor_status(
+            1 << VENDOR_PK_HASH_SLOT_COUNT,
+            [0; VENDOR_PK_HASH_SLOT_COUNT]
+        )));
+    }
 }
