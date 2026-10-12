@@ -175,6 +175,12 @@ pub struct CEmulatorConfig {
     pub hw_revision_major: c_uint,
     pub hw_revision_minor: c_uint,
     pub hw_revision_patch: c_uint,
+    pub cptra_hw_config: c_longlong,
+    pub prod_dbg_unlock_pk_hashes_offset: c_longlong,
+    pub num_prod_dbg_unlock_pk_hashes: c_longlong,
+    pub ss_strap_generic_0: c_longlong,
+    pub ss_strap_generic_1: c_longlong,
+    pub caliptra_dma_axi_user: c_uint,
     pub flash_based_boot: c_uchar,
     pub allow_sideloaded_rom: c_uchar,
     pub active_i3c1: c_uchar,
@@ -332,6 +338,16 @@ pub unsafe extern "C" fn emulator_init(
         },
         device_security_state: DeviceLifecycle::try_from(config.device_security_state)
             .unwrap_or(DeviceLifecycle::Production) as u32,
+        cptra_hw_config: convert_optional_offset_size(config.cptra_hw_config),
+        prod_dbg_unlock_pk_hashes_offset: convert_optional_offset_size(
+            config.prod_dbg_unlock_pk_hashes_offset,
+        ),
+        num_prod_dbg_unlock_pk_hashes: convert_optional_offset_size(
+            config.num_prod_dbg_unlock_pk_hashes,
+        ),
+        ss_strap_generic_0: convert_optional_offset_size(config.ss_strap_generic_0),
+        ss_strap_generic_1: convert_optional_offset_size(config.ss_strap_generic_1),
+        caliptra_dma_axi_user: config.caliptra_dma_axi_user,
         test_feature: None,
         vendor_pk_hash: convert_optional_c_string(config.vendor_pk_hash),
         vendor_pqc_type: caliptra_image_types::FwVerificationPqcKeyType::from_u8(

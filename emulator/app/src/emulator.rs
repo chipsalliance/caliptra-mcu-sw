@@ -160,6 +160,30 @@ pub struct EmulatorArgs {
     #[arg(long, value_parser = maybe_hex::<u32>, default_value_t = DeviceLifecycle::Production as u32)]
     pub device_security_state: u32,
 
+    /// Override CPTRA_HW_CONFIG.
+    #[arg(long, value_parser=maybe_hex::<u32>)]
+    pub cptra_hw_config: Option<u32>,
+
+    /// Override the production debug unlock public-key hash bank offset.
+    #[arg(long, value_parser=maybe_hex::<u32>)]
+    pub prod_dbg_unlock_pk_hashes_offset: Option<u32>,
+
+    /// Override the number of production debug unlock public-key hashes.
+    #[arg(long, value_parser=maybe_hex::<u32>)]
+    pub num_prod_dbg_unlock_pk_hashes: Option<u32>,
+
+    /// Override SS_STRAP_GENERIC[0].
+    #[arg(long, value_parser=maybe_hex::<u32>)]
+    pub ss_strap_generic_0: Option<u32>,
+
+    /// Override SS_STRAP_GENERIC[1].
+    #[arg(long, value_parser=maybe_hex::<u32>)]
+    pub ss_strap_generic_1: Option<u32>,
+
+    /// Initial value for SS_CALIPTRA_DMA_AXI_USER (default 0).
+    #[arg(long, value_parser=maybe_hex::<u32>, default_value_t = 0)]
+    pub caliptra_dma_axi_user: u32,
+
     #[arg(long)]
     pub vendor_pk_hash: Option<String>,
 
@@ -443,11 +467,17 @@ impl Emulator {
             rom: BytesOrPath::Path(cli.caliptra_rom),
             device_lifecycle: device_lifecycle_str,
             req_idevid_csr,
+            cptra_hw_config: cli.cptra_hw_config,
+            prod_dbg_unlock_pk_hashes_offset: cli.prod_dbg_unlock_pk_hashes_offset,
+            num_prod_dbg_unlock_pk_hashes: cli.num_prod_dbg_unlock_pk_hashes,
+            ss_strap_generic_0: cli.ss_strap_generic_0,
+            ss_strap_generic_1: cli.ss_strap_generic_1,
             use_mcu_recovery_interface,
             extra_soc_bus: None,
             debug_intent: true, // Emulator app defaults to debug intent enabled
             prod_dbg_unlock_keypairs: vec![],
             cptra_obf_key: DEFAULT_CPTRA_OBF_KEY,
+            ss_caliptra_dma_axi_user: Some(cli.caliptra_dma_axi_user),
         })
         .expect("Failed to start Caliptra CPU");
 

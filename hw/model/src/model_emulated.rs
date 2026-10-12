@@ -334,11 +334,17 @@ impl McuHwModel for ModelEmulated {
                 rom: BytesOrPath::Bytes(params.caliptra_rom.to_vec()),
                 device_lifecycle,
                 req_idevid_csr,
+                cptra_hw_config: None,
+                prod_dbg_unlock_pk_hashes_offset: None,
+                num_prod_dbg_unlock_pk_hashes: None,
+                ss_strap_generic_0: None,
+                ss_strap_generic_1: None,
                 use_mcu_recovery_interface,
                 extra_soc_bus: Some(params.caliptra_soc_axi_user.unwrap_or(0xdddd_dddd)),
                 debug_intent: params.debug_intent,
                 prod_dbg_unlock_keypairs: params.prod_dbg_unlock_keypairs.clone(),
                 cptra_obf_key: params.cptra_obf_key,
+                ss_caliptra_dma_axi_user: params.caliptra_soc_axi_user,
             })
             .expect("Failed to start Caliptra CPU");
         let soc_to_caliptra_bus = soc_to_caliptra_bus.unwrap();
