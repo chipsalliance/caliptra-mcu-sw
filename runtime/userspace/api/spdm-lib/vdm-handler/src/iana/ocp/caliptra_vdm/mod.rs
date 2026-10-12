@@ -10,8 +10,7 @@
 
 mod commands;
 
-use caliptra_mcu_common_commands::CaliptraCmdHandler;
-use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
+use caliptra_mcu_common_commands::{CaliptraCmdHandler, CommandAuthorizer};
 use caliptra_mcu_spdm_codec::{SpdmMsgHdrPdu, StandardsBodyId, VendorDefinedReqPdu};
 use caliptra_mcu_spdm_traits::{
     McuResult, SpdmPalAlloc, SpdmPalIo, SpdmVdmBackend, VdmRegistry, VdmResponse, VdmResponseBuffer,
@@ -23,8 +22,8 @@ pub use caliptra_mcu_spdm_codec::vendor_defined::iana::ocp::caliptra::{
     CALIPTRA_VDM_COMMAND_VERSION, CALIPTRA_VENDOR_ID,
 };
 pub use commands::authorized_command::{
-    DEVICE_OWNERSHIP_TRANSFER_CMD_ID, DOT_DISABLE_CMD_ID, DOT_LOCK_CMD_ID, DOT_ROTATE_CMD_ID,
-    FE_PROG_CMD_ID, FUSE_LOCK_PARTITION_CMD_ID, GET_AUTH_CHALLENGE_CMD_ID,
+    DEVICE_OWNERSHIP_TRANSFER_CMD_ID, DOT_DISABLE_CMD_ID, DOT_ENABLE_CMD_ID, DOT_LOCK_CMD_ID,
+    DOT_ROTATE_CMD_ID, FE_PROG_CMD_ID, FUSE_LOCK_PARTITION_CMD_ID, GET_AUTH_CHALLENGE_CMD_ID,
     GET_DOT_BACKUP_BLOB_CMD_ID, INCREASE_MIN_SVN_CMD_ID, PROVISION_OWNER_PK_HASH_CMD_ID,
     PROVISION_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PUB_KEY_CMD_ID,
 };
@@ -39,13 +38,13 @@ const VDM_HEADER_LEN: usize = 2;
 /// `[command_version, command_code, completion, data_len]`.
 const LARGE_PAYLOAD_HEADER_LEN: usize = VDM_HEADER_LEN + 1 + 4;
 /// Maximum CSR/log payload staged in one Caliptra VDM response.
-/// When `cert-provisioning` is enabled, matches
+/// When `attested-csr` is enabled, matches
 /// `caliptra_mcu_mbox_common::messages::MAX_ATTESTED_CSR_RESP_DATA_SIZE` (12.8 KiB).
 /// Otherwise defaults to 4 KiB to avoid inflating the baseline SPDM scratch pool.
-#[cfg(feature = "cert-provisioning")]
+#[cfg(feature = "attested-csr")]
 const MAX_LARGE_COMMAND_DATA_LEN: usize =
     caliptra_mcu_mbox_common::messages::MAX_ATTESTED_CSR_RESP_DATA_SIZE;
-#[cfg(not(feature = "cert-provisioning"))]
+#[cfg(not(feature = "attested-csr"))]
 const MAX_LARGE_COMMAND_DATA_LEN: usize = 4096;
 /// Maximum complete Caliptra VDM large payload:
 /// `[command_version, command_code, completion, data_len, data...]`.
@@ -97,199 +96,9 @@ pub trait CaliptraVdmStreamOps {
     async fn abort_authorize_debug_unlock_token_stream<A: SpdmPalAlloc>(&self, _scratch: &A) {}
 }
 
-/// Platform hook for the shared command-authorization service.
-///
-/// Each `payload` is the exact little-endian wire payload preceding `sig`.
-/// Implementations must verify `cmd_id(BE) || payload || challenge(48)` without
-/// re-encoding parsed fields.
-pub trait CaliptraVdmAuthorization {
-    async fn get_auth_challenge<A: SpdmPalAlloc>(
-        &self,
-        scratch: &A,
-        out: &mut [u8],
-    ) -> CaliptraVdmResult<usize>;
+pub trait CaliptraVdmAuthorization: CommandAuthorizer {}
 
-    #[allow(clippy::too_many_arguments)]
-    async fn provision_vendor_pk_hash<A: SpdmPalAlloc>(
-        &self,
-        slot: u32,
-        hash: &[u8; 48],
-        payload: &[u8],
-        sig: &HybridSignature,
-        nonce: &[u8; AUTH_CMD_NONCE_LEN],
-        ecc_pub_x: &[u8; 48],
-        ecc_pub_y: &[u8; 48],
-        mldsa_pub: &[u8; 2592],
-        scratch: &A,
-    ) -> CaliptraVdmResult<()>;
-
-    #[allow(clippy::too_many_arguments)]
-    async fn provision_owner_pk_hash<A: SpdmPalAlloc>(
-        &self,
-        hash: &[u8; 48],
-        payload: &[u8],
-        sig: &HybridSignature,
-        nonce: &[u8; AUTH_CMD_NONCE_LEN],
-        ecc_pub_x: &[u8; 48],
-        ecc_pub_y: &[u8; 48],
-        mldsa_pub: &[u8; 2592],
-        scratch: &A,
-    ) -> CaliptraVdmResult<()>;
-
-    #[allow(clippy::too_many_arguments)]
-    async fn increase_min_svn<A: SpdmPalAlloc>(
-        &self,
-        flags: u32,
-        target: u32,
-        svn: u32,
-        payload: &[u8],
-        sig: &HybridSignature,
-        nonce: &[u8; AUTH_CMD_NONCE_LEN],
-        ecc_pub_x: &[u8; 48],
-        ecc_pub_y: &[u8; 48],
-        mldsa_pub: &[u8; 2592],
-        scratch: &A,
-    ) -> CaliptraVdmResult<()> {
-        let _ = (
-            flags, target, svn, payload, sig, nonce, ecc_pub_x, ecc_pub_y, mldsa_pub, scratch,
-        );
-        Err(CaliptraCompletionCode::UnsupportedOperation)
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    async fn program_field_entropy<A: SpdmPalAlloc>(
-        &self,
-        partition: u32,
-        sig: &HybridSignature,
-        nonce: &[u8; AUTH_CMD_NONCE_LEN],
-        ecc_pub_x: &[u8; 48],
-        ecc_pub_y: &[u8; 48],
-        mldsa_pub: &[u8; 2592],
-        scratch: &A,
-    ) -> CaliptraVdmResult<()>;
-
-    #[allow(clippy::too_many_arguments)]
-    async fn revoke_vendor_pub_key<A: SpdmPalAlloc>(
-        &self,
-        reserved: u32,
-        slot: u32,
-        key_type: u32,
-        key_index: u32,
-        payload: &[u8],
-        sig: &HybridSignature,
-        nonce: &[u8; AUTH_CMD_NONCE_LEN],
-        ecc_pub_x: &[u8; 48],
-        ecc_pub_y: &[u8; 48],
-        mldsa_pub: &[u8; 2592],
-        scratch: &A,
-    ) -> CaliptraVdmResult<()>;
-
-    #[allow(clippy::too_many_arguments)]
-    async fn revoke_vendor_pk_hash<A: SpdmPalAlloc>(
-        &self,
-        reserved: u32,
-        slot: u32,
-        payload: &[u8],
-        sig: &HybridSignature,
-        nonce: &[u8; AUTH_CMD_NONCE_LEN],
-        ecc_pub_x: &[u8; 48],
-        ecc_pub_y: &[u8; 48],
-        mldsa_pub: &[u8; 2592],
-        scratch: &A,
-    ) -> CaliptraVdmResult<()>;
-
-    #[allow(clippy::too_many_arguments)]
-    async fn fuse_lock_partition<A: SpdmPalAlloc>(
-        &self,
-        partition: u32,
-        payload: &[u8],
-        sig: &HybridSignature,
-        nonce: &[u8; AUTH_CMD_NONCE_LEN],
-        ecc_pub_x: &[u8; 48],
-        ecc_pub_y: &[u8; 48],
-        mldsa_pub: &[u8; 2592],
-        scratch: &A,
-    ) -> CaliptraVdmResult<()>;
-
-    #[allow(clippy::too_many_arguments)]
-    async fn dot_lock<A: SpdmPalAlloc>(
-        &self,
-        request: &caliptra_mcu_mbox_common::messages::DotLockPayload,
-        payload: &[u8],
-        sig: &HybridSignature,
-        nonce: &[u8; AUTH_CMD_NONCE_LEN],
-        ecc_pub_x: &[u8; 48],
-        ecc_pub_y: &[u8; 48],
-        mldsa_pub: &[u8; 2592],
-        scratch: &A,
-    ) -> CaliptraVdmResult<()>;
-
-    #[allow(clippy::too_many_arguments)]
-    async fn dot_disable<A: SpdmPalAlloc>(
-        &self,
-        request: &caliptra_mcu_mbox_common::messages::DotDisablePayload,
-        payload: &[u8],
-        sig: &HybridSignature,
-        nonce: &[u8; AUTH_CMD_NONCE_LEN],
-        ecc_pub_x: &[u8; 48],
-        ecc_pub_y: &[u8; 48],
-        mldsa_pub: &[u8; 2592],
-        scratch: &A,
-    ) -> CaliptraVdmResult<()>;
-
-    #[allow(clippy::too_many_arguments)]
-    async fn dot_rotate<A: SpdmPalAlloc>(
-        &self,
-        request: &caliptra_mcu_mbox_common::messages::DotRotatePayload,
-        payload: &[u8],
-        sig: &HybridSignature,
-        nonce: &[u8; AUTH_CMD_NONCE_LEN],
-        ecc_pub_x: &[u8; 48],
-        ecc_pub_y: &[u8; 48],
-        mldsa_pub: &[u8; 2592],
-        scratch: &A,
-    ) -> CaliptraVdmResult<()>;
-
-    #[allow(clippy::too_many_arguments)]
-    async fn dot_get_backup_blob<A: SpdmPalAlloc>(
-        &self,
-        payload: &[u8],
-        sig: &HybridSignature,
-        nonce: &[u8; AUTH_CMD_NONCE_LEN],
-        ecc_pub_x: &[u8; 48],
-        ecc_pub_y: &[u8; 48],
-        mldsa_pub: &[u8; 2592],
-        scratch: &A,
-        blob: &mut [u8; caliptra_mcu_mbox_common::messages::DOT_BLOB_SIZE],
-    ) -> CaliptraVdmResult<()>;
-
-    #[cfg(feature = "ocp-lock")]
-    #[allow(clippy::too_many_arguments)]
-    async fn ocp_lock_rotate_hek<A: SpdmPalAlloc>(
-        &self,
-        slot: u32,
-        payload: &[u8],
-        sig: &HybridSignature,
-        nonce: &[u8; AUTH_CMD_NONCE_LEN],
-        ecc_pub_x: &[u8; 48],
-        ecc_pub_y: &[u8; 48],
-        mldsa_pub: &[u8; 2592],
-        scratch: &A,
-    ) -> CaliptraVdmResult<()>;
-
-    #[cfg(feature = "ocp-lock")]
-    #[allow(clippy::too_many_arguments)]
-    async fn ocp_lock_set_perma_hek<A: SpdmPalAlloc>(
-        &self,
-        payload: &[u8],
-        sig: &HybridSignature,
-        nonce: &[u8; AUTH_CMD_NONCE_LEN],
-        ecc_pub_x: &[u8; 48],
-        ecc_pub_y: &[u8; 48],
-        mldsa_pub: &[u8; 2592],
-        scratch: &A,
-    ) -> CaliptraVdmResult<()>;
-}
+impl<T: CommandAuthorizer> CaliptraVdmAuthorization for T {}
 
 /// Caliptra VDM backend with separate shared-command, stream, and authorization hooks.
 pub struct CaliptraVdm<'a, H, S, A> {
@@ -356,9 +165,13 @@ where
         };
 
         match command {
+            #[cfg(feature = "attested-csr")]
             CaliptraVdmCommand::ExportAttestedCsr => {
                 LARGE_PAYLOAD_HEADER_LEN + MAX_LARGE_COMMAND_DATA_LEN
             }
+            // Not compiled in: answered inline with UnsupportedOperation.
+            #[cfg(not(feature = "attested-csr"))]
+            CaliptraVdmCommand::ExportAttestedCsr => 0,
             // Evidence size depends on the requested format and algorithm, so
             // reserve only what this specific pair needs: an ECC PCR quote must
             // not rent an ML-DSA-sized buffer. Malformed requests, discovery
@@ -539,6 +352,7 @@ where
                 )
                 .await
             }
+            #[cfg(feature = "attested-csr")]
             Ok(CaliptraVdmCommand::ExportAttestedCsr) => {
                 commands::export_attested_csr::handle(
                     self.commands,
@@ -572,11 +386,19 @@ where
                 .await
             }
             Ok(CaliptraVdmCommand::AuthorizedCommand) => {
-                commands::authorized_command::handle(self.authorization, cmd_req, scratch, payload)
-                    .await
+                commands::authorized_command::handle(
+                    self.commands,
+                    self.authorization,
+                    cmd_req,
+                    scratch,
+                    payload,
+                )
+                .await
             }
             #[cfg(feature = "ocp-lock")]
-            Ok(CaliptraVdmCommand::OcpLock) => commands::ocp_lock::handle(cmd_req),
+            Ok(CaliptraVdmCommand::OcpLock) => {
+                commands::ocp_lock::handle(self.commands, cmd_req, scratch, payload).await
+            }
             // Recognized-but-unimplemented and unknown command codes both map to
             // an UnsupportedOperation completion.
             _ => CaliptraVdmCmdResult::Error(CaliptraCompletionCode::UnsupportedOperation),
@@ -605,8 +427,10 @@ mod tests {
     use core::task::{Context, Poll, RawWaker, RawWakerVTable, Waker};
 
     use caliptra_mcu_common_commands::{
-        AsymAlgo, DeviceCapabilities, EvidenceFormat, FirmwareVersion, PkiEntitySlot,
+        AsymAlgo, AuthorizationError, CaliptraCompletionCode as CommonCompletionCode,
+        CommandAuthorizer, DeviceCapabilities, EvidenceFormat, FirmwareVersion, PkiEntitySlot,
     };
+    use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
 
     /// Stand-in for an ECC PCR quote: small enough to prove the per-format
     /// reservation is narrower than the backend-wide maximum.
@@ -659,7 +483,7 @@ mod tests {
 
     struct TestAlloc;
 
-    impl mcu_caliptra_api::ApiAlloc for TestAlloc {
+    impl mcu_caliptra_api::ScratchAlloc for TestAlloc {
         type Buf<'a>
             = Vec<u8>
         where
@@ -670,10 +494,10 @@ mod tests {
         }
     }
 
-    impl mcu_caliptra_api::ApiAllocPool for TestAlloc {
-        type Pool = Self;
+    impl mcu_caliptra_api::ScratchAllocProvider for TestAlloc {
+        type Alloc = Self;
 
-        fn pool(&self) -> &Self::Pool {
+        fn allocator(&self) -> &Self::Alloc {
             self
         }
     }
@@ -759,6 +583,7 @@ mod tests {
         FuseLockPartition {
             partition: u32,
         },
+        DotEnable,
         DotLock {
             cak: [u8; 48],
             lak_hash: [u8; 48],
@@ -790,6 +615,7 @@ mod tests {
         csr_len: usize,
         evidence_len: usize,
         authorized_token: Mutex<Option<Vec<u8>>>,
+        dot_enable_calls: AtomicUsize,
         dot_lock_calls: AtomicUsize,
         dot_disable_calls: AtomicUsize,
         dot_rotate_calls: AtomicUsize,
@@ -801,7 +627,7 @@ mod tests {
         dot_unlock_calls: AtomicUsize,
         dot_backup_calls: AtomicUsize,
         authorized_operation: Mutex<Option<AuthorizedOperation>>,
-        authorization_error: Mutex<Option<CaliptraCompletionCode>>,
+        authorization_error: Mutex<Option<CommonCompletionCode>>,
         enforce_authorization: bool,
         challenge: Mutex<Option<[u8; 48]>>,
         last_attested_csr_args: Mutex<Option<AttestedCsrArgs>>,
@@ -813,6 +639,7 @@ mod tests {
                 csr_len,
                 evidence_len: 0,
                 authorized_token: Mutex::new(None),
+                dot_enable_calls: AtomicUsize::new(0),
                 dot_lock_calls: AtomicUsize::new(0),
                 dot_disable_calls: AtomicUsize::new(0),
                 dot_rotate_calls: AtomicUsize::new(0),
@@ -836,6 +663,7 @@ mod tests {
                 csr_len,
                 evidence_len,
                 authorized_token: Mutex::new(None),
+                dot_enable_calls: AtomicUsize::new(0),
                 dot_lock_calls: AtomicUsize::new(0),
                 dot_disable_calls: AtomicUsize::new(0),
                 dot_rotate_calls: AtomicUsize::new(0),
@@ -859,37 +687,10 @@ mod tests {
             self
         }
 
-        fn verify_test_signature(
+        fn complete_authorized(
             &self,
-            cmd_id: u32,
-            payload: &[u8],
-            sig: &HybridSignature,
-        ) -> CaliptraVdmResult<()> {
-            if !self.enforce_authorization {
-                return Ok(());
-            }
-            // Taking the challenge before verification matches the production
-            // one-use authorization path, including failed signature attempts.
-            let challenge = self
-                .challenge
-                .lock()
-                .unwrap()
-                .take()
-                .ok_or(CaliptraCompletionCode::AccessDenied)?;
-            let sig_bytes = sig.as_bytes();
-            let payload_end = 4 + payload.len();
-            let challenge_end = payload_end + challenge.len();
-            if sig_bytes[..4] != cmd_id.to_be_bytes()
-                || sig_bytes[4..payload_end] != *payload
-                || sig_bytes[payload_end..challenge_end] != challenge
-                || sig_bytes[challenge_end..].iter().any(|byte| *byte != 0x3C)
-            {
-                return Err(CaliptraCompletionCode::AccessDenied);
-            }
-            Ok(())
-        }
-
-        fn complete_authorized(&self, operation: AuthorizedOperation) -> CaliptraVdmResult<()> {
+            operation: AuthorizedOperation,
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
             if let Some(code) = self.authorization_error.lock().unwrap().take() {
                 return Err(code);
             }
@@ -951,7 +752,7 @@ mod tests {
             }
         }
 
-        async fn get_attestation<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn get_attestation<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             _format: EvidenceFormat,
@@ -971,7 +772,7 @@ mod tests {
             Ok(self.evidence_len)
         }
 
-        async fn export_attested_csr<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn export_attested_csr<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             device_key_id: u32,
@@ -987,7 +788,7 @@ mod tests {
             self.write_csr(out)
         }
 
-        async fn request_debug_unlock<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn request_debug_unlock<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             unlock_level: u8,
@@ -1001,7 +802,7 @@ mod tests {
             Ok(())
         }
 
-        async fn authorize_debug_unlock_token<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn authorize_debug_unlock_token<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             token_data: &[u8],
@@ -1013,30 +814,115 @@ mod tests {
             Ok(())
         }
 
-        async fn dot_lock<Alloc: mcu_caliptra_api::ApiAlloc>(
-            &self,
-            _alloc: &Alloc,
-            _request: &caliptra_mcu_mbox_common::messages::DotLockPayload,
-        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
-            self.dot_lock_calls.fetch_add(1, Ordering::Relaxed);
-            Ok(())
+        async fn dot_enable(&self) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            self.dot_enable_calls.fetch_add(1, Ordering::Relaxed);
+            self.complete_authorized(AuthorizedOperation::DotEnable)
         }
-        async fn dot_disable<Alloc: mcu_caliptra_api::ApiAlloc>(
+
+        async fn provision_vendor_pk_hash(
+            &self,
+            slot: u32,
+            hash: &[u8; 48],
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            self.complete_authorized(AuthorizedOperation::ProvisionVendorPkHash {
+                slot,
+                hash: *hash,
+            })
+        }
+
+        async fn provision_owner_pk_hash(
+            &self,
+            hash: &[u8; 48],
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            self.complete_authorized(AuthorizedOperation::ProvisionOwnerPkHash { hash: *hash })
+        }
+
+        async fn increase_min_svn<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
-            _request: &caliptra_mcu_mbox_common::messages::DotDisablePayload,
+            target: caliptra_mcu_mbox_common::messages::SvnTarget,
+            svn: u32,
         ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
-            self.dot_disable_calls.fetch_add(1, Ordering::Relaxed);
+            if target == caliptra_mcu_mbox_common::messages::SvnTarget::OwnerSocManifest {
+                return Err(CommonCompletionCode::UnsupportedOperation);
+            }
+            self.complete_authorized(AuthorizedOperation::IncreaseMinSvn {
+                flags: 0,
+                target: target as u32,
+                svn,
+            })
+        }
+
+        async fn program_field_entropy<Alloc: mcu_caliptra_api::ScratchAlloc>(
+            &self,
+            _alloc: &Alloc,
+            _partition: u32,
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
             Ok(())
         }
 
-        async fn dot_rotate<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn revoke_vendor_pub_key<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
-            _request: &caliptra_mcu_mbox_common::messages::DotRotatePayload,
+            slot: u32,
+            key_type: u32,
+            key_index: u32,
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            self.complete_authorized(AuthorizedOperation::RevokeVendorPubKey {
+                reserved: 0,
+                slot,
+                key_type,
+                key_index,
+            })
+        }
+
+        async fn revoke_vendor_pk_hash(
+            &self,
+            slot: u32,
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            self.complete_authorized(AuthorizedOperation::RevokeVendorPkHash { reserved: 0, slot })
+        }
+
+        async fn fuse_lock_partition(
+            &self,
+            partition: u32,
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            self.complete_authorized(AuthorizedOperation::FuseLockPartition { partition })
+        }
+
+        async fn dot_lock<Alloc: mcu_caliptra_api::ScratchAlloc>(
+            &self,
+            _alloc: &Alloc,
+            request: &caliptra_mcu_mbox_common::messages::DotLockPayload,
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            self.dot_lock_calls.fetch_add(1, Ordering::Relaxed);
+            self.complete_authorized(AuthorizedOperation::DotLock {
+                cak: request.cak,
+                lak_hash: request.lak_hash,
+            })
+        }
+        async fn dot_disable<Alloc: mcu_caliptra_api::ScratchAlloc>(
+            &self,
+            _alloc: &Alloc,
+            request: &caliptra_mcu_mbox_common::messages::DotDisablePayload,
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            self.dot_disable_calls.fetch_add(1, Ordering::Relaxed);
+            self.complete_authorized(AuthorizedOperation::DotDisable {
+                lak_hash: request.lak_hash,
+            })
+        }
+
+        async fn dot_rotate<Alloc: mcu_caliptra_api::ScratchAlloc>(
+            &self,
+            _alloc: &Alloc,
+            request: &caliptra_mcu_mbox_common::messages::DotRotatePayload,
         ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
             self.dot_rotate_calls.fetch_add(1, Ordering::Relaxed);
-            Ok(())
+            self.complete_authorized(AuthorizedOperation::DotRotate {
+                min_fuse_count: request.min_fuse_count,
+                cak: request.cak,
+                lak_hash: request.lak_hash,
+            })
         }
 
         async fn dot_status(
@@ -1052,7 +938,7 @@ mod tests {
             Ok(())
         }
 
-        async fn dot_recovery<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn dot_recovery<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             _blob: &[u8; caliptra_mcu_mbox_common::messages::DOT_BLOB_SIZE],
@@ -1061,7 +947,7 @@ mod tests {
             Ok(())
         }
 
-        async fn dot_override_challenge<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn dot_override_challenge<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             _request: &caliptra_mcu_mbox_common::messages::DotOverrideChallengePayload,
@@ -1073,7 +959,7 @@ mod tests {
             Ok([0xC3; caliptra_mcu_mbox_common::messages::AUTH_CMD_NONCE_LEN])
         }
 
-        async fn dot_override<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn dot_override<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             _request: &caliptra_mcu_mbox_common::messages::DotOverridePayload,
@@ -1082,7 +968,7 @@ mod tests {
             Ok(())
         }
 
-        async fn dot_unlock_challenge<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn dot_unlock_challenge<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
         ) -> caliptra_mcu_common_commands::CaliptraCmdResult<
@@ -1091,7 +977,7 @@ mod tests {
             self.dot_challenge_calls.fetch_add(1, Ordering::Relaxed);
             Ok([0xA5; caliptra_mcu_mbox_common::messages::AUTH_CMD_NONCE_LEN])
         }
-        async fn dot_unlock<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn dot_unlock<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             _request: &caliptra_mcu_mbox_common::messages::DotUnlockPayload,
@@ -1099,7 +985,7 @@ mod tests {
             self.dot_unlock_calls.fetch_add(1, Ordering::Relaxed);
             Ok(())
         }
-        async fn dot_get_backup_blob<Alloc: mcu_caliptra_api::ApiAlloc>(
+        async fn dot_get_backup_blob<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             blob: &mut [u8; caliptra_mcu_mbox_common::messages::DOT_BLOB_SIZE],
@@ -1108,249 +994,72 @@ mod tests {
             blob.fill(0x5A);
             Ok(())
         }
-    }
-
-    impl CaliptraVdmStreamOps for TestCommands {}
-
-    impl CaliptraVdmAuthorization for TestCommands {
-        async fn get_auth_challenge<A: SpdmPalAlloc>(
-            &self,
-            _scratch: &A,
-            out: &mut [u8],
-        ) -> CaliptraVdmResult<usize> {
-            if out.len() < 48 {
-                return Err(CaliptraCompletionCode::InsufficientResources);
-            }
-            out[..48].copy_from_slice(&TEST_AUTH_CHALLENGE);
-            *self.challenge.lock().unwrap() = Some(TEST_AUTH_CHALLENGE);
-            Ok(48)
-        }
-
-        async fn provision_vendor_pk_hash<A: SpdmPalAlloc>(
-            &self,
-            slot: u32,
-            hash: &[u8; 48],
-            payload: &[u8],
-            sig: &HybridSignature,
-            _nonce: &[u8; AUTH_CMD_NONCE_LEN],
-            _ecc_pub_x: &[u8; 48],
-            _ecc_pub_y: &[u8; 48],
-            _mldsa_pub: &[u8; 2592],
-            _scratch: &A,
-        ) -> CaliptraVdmResult<()> {
-            self.verify_test_signature(PROVISION_VENDOR_PK_HASH_CMD_ID, payload, sig)?;
-            self.complete_authorized(AuthorizedOperation::ProvisionVendorPkHash {
-                slot,
-                hash: *hash,
-            })
-        }
-
-        async fn provision_owner_pk_hash<A: SpdmPalAlloc>(
-            &self,
-            hash: &[u8; 48],
-            payload: &[u8],
-            sig: &HybridSignature,
-            _nonce: &[u8; AUTH_CMD_NONCE_LEN],
-            _ecc_pub_x: &[u8; 48],
-            _ecc_pub_y: &[u8; 48],
-            _mldsa_pub: &[u8; 2592],
-            _scratch: &A,
-        ) -> CaliptraVdmResult<()> {
-            self.verify_test_signature(PROVISION_OWNER_PK_HASH_CMD_ID, payload, sig)?;
-            self.complete_authorized(AuthorizedOperation::ProvisionOwnerPkHash { hash: *hash })
-        }
-
-        async fn increase_min_svn<A: SpdmPalAlloc>(
-            &self,
-            flags: u32,
-            target: u32,
-            svn: u32,
-            payload: &[u8],
-            sig: &HybridSignature,
-            _nonce: &[u8; AUTH_CMD_NONCE_LEN],
-            _ecc_pub_x: &[u8; 48],
-            _ecc_pub_y: &[u8; 48],
-            _mldsa_pub: &[u8; 2592],
-            _scratch: &A,
-        ) -> CaliptraVdmResult<()> {
-            self.verify_test_signature(INCREASE_MIN_SVN_CMD_ID, payload, sig)?;
-            if target == caliptra_mcu_mbox_common::messages::SvnTarget::OwnerSocManifest as u32 {
-                return Err(CaliptraCompletionCode::UnsupportedOperation);
-            }
-            self.complete_authorized(AuthorizedOperation::IncreaseMinSvn { flags, target, svn })
-        }
-
-        #[allow(clippy::too_many_arguments)]
-        async fn program_field_entropy<A: SpdmPalAlloc>(
-            &self,
-            _partition: u32,
-            _sig: &HybridSignature,
-            _nonce: &[u8; AUTH_CMD_NONCE_LEN],
-            _ecc_pub_x: &[u8; 48],
-            _ecc_pub_y: &[u8; 48],
-            _mldsa_pub: &[u8; 2592],
-            _scratch: &A,
-        ) -> CaliptraVdmResult<()> {
-            Ok(())
-        }
-
-        async fn revoke_vendor_pub_key<A: SpdmPalAlloc>(
-            &self,
-            reserved: u32,
-            slot: u32,
-            key_type: u32,
-            key_index: u32,
-            payload: &[u8],
-            sig: &HybridSignature,
-            _nonce: &[u8; AUTH_CMD_NONCE_LEN],
-            _ecc_pub_x: &[u8; 48],
-            _ecc_pub_y: &[u8; 48],
-            _mldsa_pub: &[u8; 2592],
-            _scratch: &A,
-        ) -> CaliptraVdmResult<()> {
-            self.verify_test_signature(REVOKE_VENDOR_PUB_KEY_CMD_ID, payload, sig)?;
-            self.complete_authorized(AuthorizedOperation::RevokeVendorPubKey {
-                reserved,
-                slot,
-                key_type,
-                key_index,
-            })
-        }
-
-        async fn revoke_vendor_pk_hash<A: SpdmPalAlloc>(
-            &self,
-            reserved: u32,
-            slot: u32,
-            payload: &[u8],
-            sig: &HybridSignature,
-            _nonce: &[u8; AUTH_CMD_NONCE_LEN],
-            _ecc_pub_x: &[u8; 48],
-            _ecc_pub_y: &[u8; 48],
-            _mldsa_pub: &[u8; 2592],
-            _scratch: &A,
-        ) -> CaliptraVdmResult<()> {
-            self.verify_test_signature(REVOKE_VENDOR_PK_HASH_CMD_ID, payload, sig)?;
-            self.complete_authorized(AuthorizedOperation::RevokeVendorPkHash { reserved, slot })
-        }
-
-        async fn fuse_lock_partition<A: SpdmPalAlloc>(
-            &self,
-            partition: u32,
-            payload: &[u8],
-            sig: &HybridSignature,
-            _nonce: &[u8; AUTH_CMD_NONCE_LEN],
-            _ecc_pub_x: &[u8; 48],
-            _ecc_pub_y: &[u8; 48],
-            _mldsa_pub: &[u8; 2592],
-            _scratch: &A,
-        ) -> CaliptraVdmResult<()> {
-            self.verify_test_signature(FUSE_LOCK_PARTITION_CMD_ID, payload, sig)?;
-            self.complete_authorized(AuthorizedOperation::FuseLockPartition { partition })
-        }
-
-        async fn dot_lock<A: SpdmPalAlloc>(
-            &self,
-            request: &caliptra_mcu_mbox_common::messages::DotLockPayload,
-            payload: &[u8],
-            sig: &HybridSignature,
-            _nonce: &[u8; AUTH_CMD_NONCE_LEN],
-            _ecc_pub_x: &[u8; 48],
-            _ecc_pub_y: &[u8; 48],
-            _mldsa_pub: &[u8; 2592],
-            _scratch: &A,
-        ) -> CaliptraVdmResult<()> {
-            self.verify_test_signature(DEVICE_OWNERSHIP_TRANSFER_CMD_ID, payload, sig)?;
-            self.dot_lock_calls.fetch_add(1, Ordering::Relaxed);
-            self.complete_authorized(AuthorizedOperation::DotLock {
-                cak: request.cak,
-                lak_hash: request.lak_hash,
-            })
-        }
-
-        async fn dot_disable<A: SpdmPalAlloc>(
-            &self,
-            request: &caliptra_mcu_mbox_common::messages::DotDisablePayload,
-            payload: &[u8],
-            sig: &HybridSignature,
-            _nonce: &[u8; AUTH_CMD_NONCE_LEN],
-            _ecc_pub_x: &[u8; 48],
-            _ecc_pub_y: &[u8; 48],
-            _mldsa_pub: &[u8; 2592],
-            _scratch: &A,
-        ) -> CaliptraVdmResult<()> {
-            self.verify_test_signature(DEVICE_OWNERSHIP_TRANSFER_CMD_ID, payload, sig)?;
-            self.dot_disable_calls.fetch_add(1, Ordering::Relaxed);
-            self.complete_authorized(AuthorizedOperation::DotDisable {
-                lak_hash: request.lak_hash,
-            })
-        }
-
-        async fn dot_rotate<A: SpdmPalAlloc>(
-            &self,
-            request: &caliptra_mcu_mbox_common::messages::DotRotatePayload,
-            payload: &[u8],
-            sig: &HybridSignature,
-            _nonce: &[u8; AUTH_CMD_NONCE_LEN],
-            _ecc_pub_x: &[u8; 48],
-            _ecc_pub_y: &[u8; 48],
-            _mldsa_pub: &[u8; 2592],
-            _scratch: &A,
-        ) -> CaliptraVdmResult<()> {
-            self.verify_test_signature(DEVICE_OWNERSHIP_TRANSFER_CMD_ID, payload, sig)?;
-            self.dot_rotate_calls.fetch_add(1, Ordering::Relaxed);
-            self.complete_authorized(AuthorizedOperation::DotRotate {
-                min_fuse_count: request.min_fuse_count,
-                cak: request.cak,
-                lak_hash: request.lak_hash,
-            })
-        }
-
-        async fn dot_get_backup_blob<A: SpdmPalAlloc>(
-            &self,
-            payload: &[u8],
-            sig: &HybridSignature,
-            _nonce: &[u8; AUTH_CMD_NONCE_LEN],
-            _ecc_pub_x: &[u8; 48],
-            _ecc_pub_y: &[u8; 48],
-            _mldsa_pub: &[u8; 2592],
-            _scratch: &A,
-            blob: &mut [u8; caliptra_mcu_mbox_common::messages::DOT_BLOB_SIZE],
-        ) -> CaliptraVdmResult<()> {
-            self.verify_test_signature(DEVICE_OWNERSHIP_TRANSFER_CMD_ID, payload, sig)?;
-            self.dot_backup_calls.fetch_add(1, Ordering::Relaxed);
-            blob.fill(0x5A);
-            Ok(())
-        }
 
         #[cfg(feature = "ocp-lock")]
-        async fn ocp_lock_rotate_hek<A: SpdmPalAlloc>(
+        async fn ocp_lock_rotate_hek<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
+            _alloc: &Alloc,
             slot: u32,
-            payload: &[u8],
-            sig: &HybridSignature,
-            _nonce: &[u8; AUTH_CMD_NONCE_LEN],
-            _ecc_pub_x: &[u8; 48],
-            _ecc_pub_y: &[u8; 48],
-            _mldsa_pub: &[u8; 2592],
-            _scratch: &A,
-        ) -> CaliptraVdmResult<()> {
-            self.verify_test_signature(OCP_LOCK_CMD_ID, payload, sig)?;
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
             self.complete_authorized(AuthorizedOperation::OcpLockRotateHek { slot })
         }
 
         #[cfg(feature = "ocp-lock")]
-        async fn ocp_lock_set_perma_hek<A: SpdmPalAlloc>(
+        async fn ocp_lock_set_perma_hek(
             &self,
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            self.complete_authorized(AuthorizedOperation::OcpLockSetPermaHek)
+        }
+    }
+
+    impl CaliptraVdmStreamOps for TestCommands {}
+
+    impl CommandAuthorizer for TestCommands {
+        async fn generate_challenge<Alloc: mcu_caliptra_api::ScratchAlloc>(
+            &self,
+            _alloc: &Alloc,
+        ) -> Result<[u8; AUTH_CMD_NONCE_LEN], AuthorizationError> {
+            *self.challenge.lock().unwrap() = Some(TEST_AUTH_CHALLENGE);
+            Ok(TEST_AUTH_CHALLENGE)
+        }
+
+        async fn verify_signatures<Alloc: mcu_caliptra_api::ScratchAlloc>(
+            &self,
+            _alloc: &Alloc,
+            cmd_id: u32,
             payload: &[u8],
-            sig: &HybridSignature,
-            _nonce: &[u8; AUTH_CMD_NONCE_LEN],
+            nonce: &[u8; AUTH_CMD_NONCE_LEN],
             _ecc_pub_x: &[u8; 48],
             _ecc_pub_y: &[u8; 48],
             _mldsa_pub: &[u8; 2592],
-            _scratch: &A,
-        ) -> CaliptraVdmResult<()> {
-            self.verify_test_signature(OCP_LOCK_CMD_ID, payload, sig)?;
-            self.complete_authorized(AuthorizedOperation::OcpLockSetPermaHek)
+            signature: &HybridSignature,
+        ) -> Result<(), AuthorizationError> {
+            if !self.enforce_authorization {
+                return Ok(());
+            }
+            let challenge = self.take_challenge().ok_or(AuthorizationError)?;
+            if *nonce != challenge {
+                return Err(AuthorizationError);
+            }
+            let signature = signature.as_bytes();
+            let payload_end = 4 + payload.len();
+            let challenge_end = payload_end + challenge.len();
+            if signature[..4] != cmd_id.to_be_bytes()
+                || signature[4..payload_end] != *payload
+                || signature[payload_end..challenge_end] != challenge
+                || signature[challenge_end..].iter().any(|byte| *byte != 0x3C)
+            {
+                return Err(AuthorizationError);
+            }
+            Ok(())
+        }
+
+        fn take_challenge(&self) -> Option<[u8; AUTH_CMD_NONCE_LEN]> {
+            self.challenge.lock().unwrap().take()
+        }
+
+        fn set_challenge(&self, challenge: [u8; AUTH_CMD_NONCE_LEN]) {
+            *self.challenge.lock().unwrap() = Some(challenge);
         }
     }
 
@@ -1426,7 +1135,7 @@ mod tests {
         ];
         req.extend_from_slice(&sub_cmd.to_le_bytes());
         req.extend_from_slice(payload);
-        req.extend_from_slice(&[0u8; AUTH_CMD_NONCE_LEN]);
+        req.extend_from_slice(&TEST_AUTH_CHALLENGE);
         req.extend_from_slice(&[0u8; 48]);
         req.extend_from_slice(&[0u8; 48]);
         req.extend_from_slice(&[0u8; 2592]);
@@ -1463,10 +1172,12 @@ mod tests {
         assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
     }
 
+    #[cfg(feature = "attested-csr")]
     fn export_attested_csr_req() -> Vec<u8> {
         export_attested_csr_req_with(7, 1, &[0x5A; 32])
     }
 
+    #[cfg(feature = "attested-csr")]
     fn export_attested_csr_req_with(
         device_key_id: u32,
         algorithm: u32,
@@ -1487,6 +1198,7 @@ mod tests {
         CaliptraVdm::new(&cmds, &cmds, &cmds).large_response_capacity(req)
     }
 
+    #[cfg(feature = "attested-csr")]
     #[test]
     fn large_capacity_reserved_only_for_export_attested_csr() {
         assert_eq!(
@@ -1678,6 +1390,7 @@ mod tests {
         );
     }
 
+    #[cfg(feature = "attested-csr")]
     #[test]
     fn invalid_payload_length_returns_vdm_completion() {
         let cmds = TestCommands::new(0);
@@ -1739,6 +1452,52 @@ mod tests {
         assert_eq!(
             inline[2],
             CaliptraCompletionCode::UnsupportedOperation as u8
+        );
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    #[test]
+    fn direct_dot_enable_is_rejected() {
+        use caliptra_mcu_mbox_common::messages::CommandId;
+
+        let cmds = TestCommands::new(0);
+        let mut request = vec![
+            CALIPTRA_VDM_COMMAND_VERSION,
+            CaliptraVdmCommand::DeviceOwnershipTransfer as u8,
+        ];
+        request.extend_from_slice(&CommandId::MC_DOT_ENABLE.0.to_le_bytes());
+
+        let (response, inline, _) = dispatch(&cmds, &request, 16, 0);
+
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::AccessDenied as u8);
+        assert_eq!(cmds.dot_enable_calls.load(Ordering::Relaxed), 0);
+    }
+
+    #[cfg(feature = "device-ownership-transfer")]
+    #[test]
+    fn authorized_dot_enable_dispatches_through_dot_family() {
+        use caliptra_mcu_mbox_common::messages::CommandId;
+
+        let cmds = TestCommands::new(0).with_authorization();
+        issue_test_challenge(&cmds);
+        let signed_payload = CommandId::MC_DOT_ENABLE.0.to_le_bytes();
+        let sig = test_signature(
+            DEVICE_OWNERSHIP_TRANSFER_CMD_ID,
+            &signed_payload,
+            &TEST_AUTH_CHALLENGE,
+        );
+        let request =
+            authorized_req_with_sig(DEVICE_OWNERSHIP_TRANSFER_CMD_ID, &signed_payload, &sig);
+
+        let (response, inline, _) = dispatch(&cmds, &request, 16, 0);
+
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+        assert_eq!(cmds.dot_enable_calls.load(Ordering::Relaxed), 1);
+        assert_eq!(
+            cmds.authorized_operation.lock().unwrap().take(),
+            Some(AuthorizedOperation::DotEnable)
         );
     }
 
@@ -2113,6 +1872,7 @@ mod tests {
         assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
     }
 
+    #[cfg(feature = "attested-csr")]
     #[test]
     fn export_attested_csr_uses_inline_response_when_it_fits() {
         let cmds = TestCommands::new(12);
@@ -2127,6 +1887,7 @@ mod tests {
         assert_eq!(&inline[7..19], &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
     }
 
+    #[cfg(feature = "attested-csr")]
     #[test]
     fn export_attested_csr_allows_empty_inline_csr() {
         let cmds = TestCommands::new(0);
@@ -2138,6 +1899,7 @@ mod tests {
         assert_eq!(u32::from_le_bytes(inline[3..7].try_into().unwrap()), 0);
     }
 
+    #[cfg(feature = "attested-csr")]
     #[test]
     fn export_attested_csr_uses_large_response_when_inline_is_too_small() {
         let cmds = TestCommands::new(12);
@@ -2152,6 +1914,7 @@ mod tests {
         assert_eq!(&large[7..19], &[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
     }
 
+    #[cfg(feature = "attested-csr")]
     #[test]
     fn export_attested_csr_discovery_key_id_zero_ecc384() {
         let cmds = TestCommands::new(16);
@@ -2172,7 +1935,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "cert-provisioning")]
+    #[cfg(feature = "attested-csr")]
     fn export_attested_csr_discovery_key_id_zero_mldsa87() {
         // A realistic ML-DSA-87 discovery response produces a 4,627-byte signature
         // alone, which with COSE headers and inventory claims totals ~4,800 bytes.
@@ -2203,7 +1966,7 @@ mod tests {
     }
 
     #[test]
-    #[cfg(feature = "cert-provisioning")]
+    #[cfg(feature = "attested-csr")]
     fn export_attested_csr_mldsa87_large_csr() {
         const REALISTIC_MLDSA_CSR_LEN: usize = 12_200;
         let cmds = TestCommands::new(REALISTIC_MLDSA_CSR_LEN);
@@ -2232,26 +1995,27 @@ mod tests {
     }
 
     #[test]
-    #[cfg(not(feature = "cert-provisioning"))]
-    fn export_attested_csr_mldsa87_insufficient_resources_without_feature() {
-        const REALISTIC_MLDSA_DISCOVERY_LEN: usize = 4800;
-        let cmds = TestCommands::new(REALISTIC_MLDSA_DISCOVERY_LEN);
-        let nonce = [0x77u8; 32];
-        let req = export_attested_csr_req_with(0, 2, &nonce);
-        let (response, inline, _) = dispatch(
-            &cmds,
-            &req,
-            64,
-            LARGE_PAYLOAD_HEADER_LEN + MAX_LARGE_COMMAND_DATA_LEN,
-        );
+    #[cfg(not(feature = "attested-csr"))]
+    fn export_attested_csr_unsupported_without_feature() {
+        let cmds = TestCommands::new(16);
+        let mut req = vec![
+            CALIPTRA_VDM_COMMAND_VERSION,
+            CaliptraVdmCommand::ExportAttestedCsr as u8,
+        ];
+        req.extend_from_slice(&1u32.to_le_bytes());
+        req.extend_from_slice(&1u32.to_le_bytes());
+        req.extend_from_slice(&[0x5A; 32]);
 
+        assert_eq!(backend_capacity(&req), 0);
+
+        let (response, inline, _) = dispatch(&cmds, &req, 64, 0);
         assert_inline(response, 3);
-        assert_eq!(inline[0], CALIPTRA_VDM_COMMAND_VERSION);
         assert_eq!(inline[1], CaliptraVdmCommand::ExportAttestedCsr as u8);
         assert_eq!(
             inline[2],
-            CaliptraCompletionCode::InsufficientResources as u8
+            CaliptraCompletionCode::UnsupportedOperation as u8
         );
+        assert!(cmds.last_attested_csr_args.lock().unwrap().is_none());
     }
 
     #[test]
@@ -2431,6 +2195,11 @@ mod tests {
             (REVOKE_VENDOR_PK_HASH_CMD_ID, vec![0u8; 8]),
             (FUSE_LOCK_PARTITION_CMD_ID, vec![0u8; 4]),
             #[cfg(feature = "device-ownership-transfer")]
+            (
+                DEVICE_OWNERSHIP_TRANSFER_CMD_ID,
+                DOT_ENABLE_CMD_ID.to_le_bytes().to_vec(),
+            ),
+            #[cfg(feature = "device-ownership-transfer")]
             (DEVICE_OWNERSHIP_TRANSFER_CMD_ID, {
                 let mut payload = DOT_LOCK_CMD_ID.to_le_bytes().to_vec();
                 payload.resize(
@@ -2602,7 +2371,7 @@ mod tests {
         cmds.authorization_error
             .lock()
             .unwrap()
-            .replace(CaliptraCompletionCode::AccessDenied);
+            .replace(CommonCompletionCode::AccessDenied);
         let req = authorized_req(INCREASE_MIN_SVN_CMD_ID, &[0u8; 12]);
 
         let (response, inline, _) = dispatch(&cmds, &req, 16, 0);

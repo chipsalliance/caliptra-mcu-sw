@@ -8,7 +8,7 @@ use mcu_error::McuResult;
 use zerocopy::{little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
 
 use crate::wire::{calc_checksum, CMD_CM_RANDOM_GENERATE, MBOX_RESP_HEADER_SIZE};
-use crate::ApiAlloc;
+use crate::ScratchAlloc;
 
 /// Maximum random bytes per call (Caliptra limit).
 const MAX_RANDOM_SIZE: usize = 48;
@@ -28,7 +28,7 @@ const RSP_HEADER_SIZE: usize = MBOX_RESP_HEADER_SIZE + 4; // +data_len field
 
 /// Generate `out.len()` random bytes from Caliptra RNG.
 #[inline(never)]
-pub async fn rng_generate<A: ApiAlloc>(_alloc: &A, out: &mut [u8]) -> McuResult<()> {
+pub async fn rng_generate<A: ScratchAlloc>(_alloc: &A, out: &mut [u8]) -> McuResult<()> {
     if out.is_empty() || out.len() > MAX_RANDOM_SIZE {
         return Err(INVARIANT);
     }

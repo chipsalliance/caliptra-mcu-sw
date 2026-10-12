@@ -8,7 +8,6 @@ mod send;
 pub(crate) use get::handle_chunk_get;
 pub(crate) use send::abort_active_streaming_request;
 pub(crate) use send::handle_chunk_send;
-pub(crate) use send::LARGE_REQUEST_RESPONSE_BUF_SIZE;
 
 use caliptra_mcu_spdm_traits::{PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalIoTransport};
 
@@ -35,6 +34,10 @@ impl<L: core::ops::DerefMut<Target = [u8]>> Drop for WipeOnDrop<L> {
 }
 
 impl<L: core::ops::DerefMut<Target = [u8]>> WipeOnDrop<L> {
+    pub(crate) fn as_ref(&self) -> SpdmResult<&[u8]> {
+        self.buf.as_deref().ok_or(SPDM_UNSPECIFIED)
+    }
+
     pub(crate) fn as_mut(&mut self) -> SpdmResult<&mut [u8]> {
         self.buf.as_deref_mut().ok_or(SPDM_UNSPECIFIED)
     }
@@ -61,9 +64,8 @@ impl<L: core::ops::DerefMut<Target = [u8]>> WipeOnDrop<L> {
 
     /// Finish a response allocated in this large buffer: either convert to standard
     /// response if within transfer size, or start chunking.
-    #[inline(never)]
     pub(crate) fn finish_response<'a, Pal>(
-        mut self,
+        self,
         state: &mut ConnectionState<Pal::State, L>,
         pal: &'a Pal,
         io: &<Pal as SpdmPalIoTransport>::Io<'_>,
@@ -73,8 +75,26 @@ impl<L: core::ops::DerefMut<Target = [u8]>> WipeOnDrop<L> {
     where
         Pal: SpdmPal<LargeBuf = L>,
     {
+        let inline_response_limit = state.effective_data_transfer_size(pal);
+        self.finish_response_with_limit(state, pal, io, head, spdm_len, inline_response_limit)
+    }
+
+    /// Finish a response against a caller-supplied inline payload limit.
+    #[inline(never)]
+    pub(crate) fn finish_response_with_limit<'a, Pal>(
+        mut self,
+        state: &mut ConnectionState<Pal::State, L>,
+        pal: &'a Pal,
+        io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+        head: usize,
+        spdm_len: usize,
+        inline_response_limit: usize,
+    ) -> SpdmResult<(PalBytes<'a, Pal>, usize)>
+    where
+        Pal: SpdmPal<LargeBuf = L>,
+    {
         let raw_len = head.checked_add(spdm_len).ok_or(SPDM_UNSPECIFIED)?;
-        let use_normal_response = spdm_len <= state.effective_data_transfer_size(pal);
+        let use_normal_response = spdm_len <= inline_response_limit;
 
         if use_normal_response {
             let padded_len = crate::build::align_send_len(pal, raw_len)?;

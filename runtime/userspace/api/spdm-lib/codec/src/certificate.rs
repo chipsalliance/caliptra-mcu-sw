@@ -301,7 +301,9 @@ pub struct CertificateRsp<'a> {
 }
 
 impl ResponseBody for CertificateRsp<'_> {
-    const RESPONSE_CODE: ReqRespCode = ReqRespCode::CERTIFICATE;
+    fn response_code(&self) -> ReqRespCode {
+        ReqRespCode::CERTIFICATE
+    }
 
     fn body_size(&self) -> usize {
         CertificateRspBody::SIZE + self.chain_portion.len()
@@ -330,7 +332,9 @@ pub struct CertificateLargeRsp<'a> {
 }
 
 impl ResponseBody for CertificateLargeRsp<'_> {
-    const RESPONSE_CODE: ReqRespCode = ReqRespCode::CERTIFICATE;
+    fn response_code(&self) -> ReqRespCode {
+        ReqRespCode::CERTIFICATE
+    }
 
     fn body_size(&self) -> usize {
         CertificateLargeRspBody::SIZE + self.chain_portion.len()

@@ -15,7 +15,7 @@ use zerocopy::{little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout,
 
 use crate::slice::{checked_slice, checked_slice_mut, copy_bytes};
 use crate::wire::{pad4, populate_checksum};
-use crate::ApiAlloc;
+use crate::ScratchAlloc;
 
 /// Maximum input bytes sent in one SHAKE256 mailbox request.
 pub const SHAKE256_CHUNK_SIZE: usize = 512;
@@ -91,7 +91,7 @@ const _: () =
 
 /// Begin a SHAKE256 operation using caller-owned context storage.
 #[inline(never)]
-pub async fn shake256_init<A: ApiAlloc, B: Deref<Target = [u8]> + DerefMut>(
+pub async fn shake256_init<A: ScratchAlloc, B: Deref<Target = [u8]> + DerefMut>(
     alloc: &A,
     mut buffer: B,
     seed: &[u8],
@@ -116,7 +116,7 @@ pub async fn shake256_init<A: ApiAlloc, B: Deref<Target = [u8]> + DerefMut>(
 
 /// Append data to a running SHAKE256 operation.
 #[inline(never)]
-pub async fn shake256_update<A: ApiAlloc, B: Deref<Target = [u8]> + DerefMut>(
+pub async fn shake256_update<A: ScratchAlloc, B: Deref<Target = [u8]> + DerefMut>(
     alloc: &A,
     state: &mut Shake256State<B>,
     data: &[u8],
@@ -129,7 +129,7 @@ pub async fn shake256_update<A: ApiAlloc, B: Deref<Target = [u8]> + DerefMut>(
 
 /// Finalize SHAKE256 and return its 64-byte output.
 #[inline(never)]
-pub async fn shake256_finish<A: ApiAlloc, B: Deref<Target = [u8]> + DerefMut>(
+pub async fn shake256_finish<A: ScratchAlloc, B: Deref<Target = [u8]> + DerefMut>(
     alloc: &A,
     state: &mut Shake256State<B>,
     output: &mut [u8; SHAKE256_OUTPUT_SIZE],
@@ -139,7 +139,7 @@ pub async fn shake256_finish<A: ApiAlloc, B: Deref<Target = [u8]> + DerefMut>(
 
 /// Compute a 64-byte SHAKE256 output over one contiguous input.
 #[inline(never)]
-pub async fn shake256_hash<A: ApiAlloc>(
+pub async fn shake256_hash<A: ScratchAlloc>(
     alloc: &A,
     data: &[u8],
     output: &mut [u8; SHAKE256_OUTPUT_SIZE],
@@ -149,7 +149,7 @@ pub async fn shake256_hash<A: ApiAlloc>(
     shake256_finish(alloc, &mut state, output).await
 }
 
-async fn shake256_call<A: ApiAlloc, B: Deref<Target = [u8]> + DerefMut>(
+async fn shake256_call<A: ScratchAlloc, B: Deref<Target = [u8]> + DerefMut>(
     alloc: &A,
     command: u32,
     data: &[u8],
@@ -192,7 +192,7 @@ async fn shake256_call<A: ApiAlloc, B: Deref<Target = [u8]> + DerefMut>(
     Ok(())
 }
 
-fn build_shake256_request<'a, A: ApiAlloc>(
+fn build_shake256_request<'a, A: ScratchAlloc>(
     alloc: &'a A,
     command: u32,
     context: Option<&[u8]>,
@@ -252,7 +252,7 @@ mod tests {
 
     struct TestAlloc;
 
-    impl ApiAlloc for TestAlloc {
+    impl ScratchAlloc for TestAlloc {
         type Buf<'a>
             = Vec<u8>
         where

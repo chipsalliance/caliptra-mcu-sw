@@ -46,6 +46,7 @@ The following subcommands are assigned to the SPDM VDM IANA authorization-gated 
 | Fuse Revoke Vendor Public Key  | SPDM VDM IANA, MCI Mailbox | Revoke vendor public key.                          |
 | Fuse Revoke Vendor PK Hash     | SPDM VDM IANA, MCI Mailbox | Revoke vendor public key hash.                     |
 | Fuse Lock Partition            | SPDM VDM IANA, MCI Mailbox | Lock fuse partition.                               |
+| Dot Enable                     | SPDM VDM IANA, MCI Mailbox | Program the one-time DOT initialization gate.      |
 | Dot Lock                       | SPDM VDM IANA, MCI Mailbox | Lock the DOT after ownership validation.          |
 | Dot Disable                    | SPDM VDM IANA, MCI Mailbox | Enter ODD state with no DOT-supplied CAK.          |
 | Dot Rotate                     | SPDM VDM IANA, MCI Mailbox | Replace DOT key digests and advance the epoch.     |
@@ -107,9 +108,9 @@ Versions use `major.minor.patch` ASCII format. Index `02h` returns `UnsupportedO
 | 5          | `06h`        | `RequestDebugUnlock`        | SPDM VDM              |
 | 6          | `07h`        | `AuthorizeDebugUnlockToken` | SPDM VDM              |
 | 7          | `08h`        | `ExportAttestedCsr`         | SPDM VDM              |
-| 16         | `11h`        | `DeviceOwnershipTransfer`   | SPDM VDM              |
-| 17         | `12h`        | `AuthorizedCommand`         | SPDM VDM              |
-| 18         | `13h`        | `OcpLock`                   | SPDM VDM              |
+| 16         | `11h`        | `DeviceOwnershipTransfer`   | SPDM VDM, MCI mailbox |
+| 17         | `12h`        | `AuthorizedCommand`         | SPDM VDM, MCI mailbox |
+| 18         | `13h`        | `OcpLock`                   | SPDM VDM, MCI mailbox |
 
 This table defines the bit assignment for every allocated command code. A responder sets a bit only when the corresponding command is implemented. `GetAttestation` is set when a responder that carries it is built and the device can produce at least one evidence format. `AuthorizedCommand` is set when its wrapper and at least one authorized subcommand are implemented.
 
@@ -131,7 +132,8 @@ This table defines the bit assignment for every allocated command code. A respon
 | 11         | `GetDotBackupBlob`           | Implemented |
 | 12         | `OcpLockRotateHek`           | Implemented |
 | 13         | `OcpLockSetPermaHek`         | Implemented |
-| 14:31      | Reserved                     | —           |
+| 14         | `DotEnable`                  | Implemented |
+| 15:31      | Reserved                     | —           |
 
 The authorized-subcommand assignments are stable capability indexes; they are not transport command IDs. A responder sets a bit only when that subcommand is implemented under `AuthorizedCommand`. Authorization, lifecycle, or policy restrictions do not clear an implementation capability bit; execution can still return `AccessDenied`, `PolicyViolation`, or `InvalidState`.
 
@@ -338,6 +340,13 @@ Authorizes the debug unlock token. The request body is identical for MCI mailbox
 Discovers supported Caliptra identity keys or exports an attested Certificate
 Signing Request (CSR) for a specified device key.
 
+This command is optional and compiled in only with the `attested-csr` cargo
+feature (`caliptra-mcu-mbox-lib/attested-csr` for the MCI mailbox,
+`caliptra-mcu-spdm-vdm-handler/attested-csr` for SPDM VDM); without it, the
+command is rejected as unsupported (SPDM VDM completion `UnsupportedOperation`;
+MCI mailbox command failure) and the `EXPORT_ATTESTED_CSR` capability bit is
+clear.
+
 **Request Payload**:
 
 | Byte(s) | Name          | Type   | Description                                                                                         |
@@ -392,10 +401,11 @@ claim `-70002`).
 
 Security-sensitive provisioning and fuse subcommands are assigned to the SPDM
 VDM IANA authorization-gated path and the MCI mailbox path. The SPDM VDM
-transport uses an `Authorized Command` wrapper, while MCI uses each operation's
-mailbox command ID directly. In both cases the requester first obtains a one-use
-48-byte challenge and appends the common public-key and hybrid-signature trailer
-over `command_id(BE) || command_payload || challenge`. See
+transport and MCI both use an `Authorized Command` (`0x12`) wrapper. In both
+cases the first four payload bytes are a little-endian target ID. The requester
+first obtains a one-use 48-byte challenge and appends the common public-key and
+hybrid-signature trailer over
+`target_id(BE) || command_payload || challenge`. See
 [Caliptra SPDM VDM Commands](caliptra_spdm_vdm_cmds.md#authorization-flow) for
 the byte-exact SPDM framing.
 
@@ -421,14 +431,13 @@ Subcommand-specific payloads are defined by the corresponding command specificat
 
 #### Vendor-Unique Command IDs
 
-The innermost command-ID namespace reserves `VU00` through `VUFF` for
+The innermost target-ID namespace reserves `VU00` through `VUFF` for
 vendor-unique commands. This is exactly 256 FourCC values: `VUxy`, where `x`
-and `y` are uppercase ASCII hexadecimal digits. On MCI, `VUxy` is the mailbox
-command ID. On SPDM, it is the `sub_cmd_id` carried inside `AuthorizedCommand`;
-it does not consume a top-level SPDM VDM command code.
+and `y` are uppercase ASCII hexadecimal digits. Both transports carry `VUxy`
+inside `AuthorizedCommand`; it does not consume a top-level transport command
+code.
 
-The reference MCU assigns no behavior to this namespace. Direct MCI requests
-fail as unsupported commands, and SPDM `AuthorizedCommand` requests return
+The reference MCU assigns no behavior to this namespace and returns
 `UnsupportedOperation`. Vendor implementations may define payloads and behavior
 within this reserved namespace without colliding with Caliptra-defined FourCCs.
 
@@ -520,13 +529,14 @@ Locks a fuse partition.
 
 The device-ownership-transfer family is carried under the top-level `DeviceOwnershipTransfer` command (`0x11`). This family uses the DOT FourCC namespace and is split between authorization-gated and native commands:
 
-- Authorization-gated: `MDLK` (`DotLock`), `MDDS` (`DotDisable`), `MDRT` (`DotRotate`), `MDBB` (`GetDotBackupBlob`)
+- Authorization-gated: `MDEN` (`DotEnable`), `MDLK` (`DotLock`), `MDDS` (`DotDisable`), `MDRT` (`DotRotate`), `MDBB` (`GetDotBackupBlob`)
 - Native: `MDUC` (`DotUnlockChallenge`), `MDUL` (`DotUnlock`), `MDST` (`DotStatus`), `MDRC` (`DotRecovery`), `DOTW` (`DotOverrideChallenge`), `DOTX` (`DotOverride`)
 
 The authorization-gated DOT commands are sent via the `AuthorizedCommand` wrapper and are rejected if delivered directly under `0x11`. The native DOT commands perform challenge-and-signature verification against the current ownership blob or the recovery-key hash, as appropriate for the command.
 
 | FourCC | Command | Path | Description |
 | ------ | ------- | ---- | ----------- |
+| `MDEN` (`0x4D44_454E`) | `DotEnable` | Authorized | Program the redundant `dot_initialized` fuse bits when DOT and its epoch counter are pristine. |
 | `MDLK` | `DotLock` | Authorized | Lock DOT with a nonzero CAK digest and LAK digest. |
 | `MDDS` | `DotDisable` | Authorized | Enter ODD state with a zero CAK digest and a nonzero LAK digest. |
 | `MDRT` | `DotRotate` | Authorized | Replace the CAK and LAK digests and advance the DOT epoch by two. |

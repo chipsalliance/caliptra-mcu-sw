@@ -54,7 +54,8 @@ pub use header::{
 };
 pub use key_exchange::{
     KeyExchangeReq, KeyExchangeReqBodyFixed, KeyExchangeRsp, ECDH_P384_EXCHANGE_DATA_SIZE,
-    KEY_EXCHANGE_RANDOM_DATA_LEN, MAX_EXCHANGE_DATA_SIZE, ML_KEM_1024_EXCHANGE_DATA_SIZE,
+    KEY_EXCHANGE_RANDOM_DATA_LEN, KEY_EXCHANGE_RSP_FIXED_BODY_SIZE, MAX_EXCHANGE_DATA_SIZE,
+    ML_KEM_1024_EXCHANGE_DATA_SIZE,
 };
 pub use measurements::{
     DmtfMeasurementBlockHeader, GetMeasurementsReqBody, MeasurementsRsp, MEAS_BLOCK_METADATA_SIZE,
@@ -83,7 +84,7 @@ pub use wire::{WireError, WireReader, WireWriter};
 
 pub use opaque::{
     encode_version_selection, parse_supported_versions, select_version, SmVersion,
-    SupportedVersions, OPAQUE_VERSION_SELECTION_SIZE,
+    SupportedVersions, MAX_SUPPORTED_VERSION_LIST_OPAQUE_SIZE, OPAQUE_VERSION_SELECTION_SIZE,
 };
 pub use secured_message::{
     encode_aad, SecuredMessageHeader, AES_256_GCM_TAG_SIZE, SECURED_MSG_HDR_SIZE,

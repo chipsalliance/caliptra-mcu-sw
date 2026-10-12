@@ -10,8 +10,8 @@ use caliptra_mcu_libsyscall_caliptra::soft_pcr_store::{
 };
 use caliptra_mcu_libtock_platform::Syscalls;
 use mcu_caliptra_api::{
-    dpe_get_tagged_tci, dpe_update_context_measurement, extend_pcr31, ApiAlloc,
-    DpeUpdateContextMeasurementParams, DpeUpdateContextMeasurementResult,
+    dpe_get_tagged_tci, dpe_update_context_measurement, extend_pcr31,
+    DpeUpdateContextMeasurementParams, DpeUpdateContextMeasurementResult, ScratchAlloc,
 };
 
 use super::MeasurementApi;
@@ -26,7 +26,7 @@ pub(super) enum DpeUpdateMode {
     VerifyUnchanged,
 }
 
-pub(super) async fn record_authorized_image<S: Syscalls, A: ApiAlloc>(
+pub(super) async fn record_authorized_image<S: Syscalls, A: ScratchAlloc>(
     api: &mut MeasurementApi<'_, S>,
     alloc: &A,
     entry: AttestationManifestEntry,
@@ -49,7 +49,7 @@ pub(super) async fn record_authorized_image<S: Syscalls, A: ApiAlloc>(
     }
 }
 
-pub(super) async fn update_dpe_context<S: Syscalls, A: ApiAlloc>(
+pub(super) async fn update_dpe_context<S: Syscalls, A: ScratchAlloc>(
     api: &mut MeasurementApi<'_, S>,
     alloc: &A,
     fw_id: u32,
@@ -88,7 +88,7 @@ pub(super) async fn update_dpe_context<S: Syscalls, A: ApiAlloc>(
         .map_err(|_| api.enter_error_state(MeasurementApiError::PcrExtendFailed))
 }
 
-async fn dpe_update_context_and_persist<S: Syscalls, A: ApiAlloc>(
+async fn dpe_update_context_and_persist<S: Syscalls, A: ScratchAlloc>(
     api: &mut MeasurementApi<'_, S>,
     alloc: &A,
     dpe_store: &DpeHandleStore<S>,
@@ -126,7 +126,7 @@ async fn dpe_update_context_and_persist<S: Syscalls, A: ApiAlloc>(
         .map_err(|_| api.enter_error_state(MeasurementApiError::StoreFailed))
 }
 
-async fn update_software_pcr<S: Syscalls, A: ApiAlloc>(
+async fn update_software_pcr<S: Syscalls, A: ScratchAlloc>(
     api: &mut MeasurementApi<'_, S>,
     alloc: &A,
     entry: AttestationManifestEntry,

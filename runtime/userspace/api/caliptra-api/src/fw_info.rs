@@ -3,7 +3,7 @@
 //! Minimal `FW_INFO` mailbox helper.
 
 use crate::raw::{raw_mailbox_execute, CMD_FW_INFO};
-use crate::ApiAlloc;
+use crate::ScratchAlloc;
 use caliptra_api::mailbox::FwInfoResp;
 use core::mem::{offset_of, size_of};
 use mcu_error::codes::INVARIANT;
@@ -27,7 +27,7 @@ pub struct FwInfo {
     pub owner_auth_manifest_current_svn: u32,
 }
 
-pub async fn fw_info<A: ApiAlloc>(alloc: &A) -> McuResult<FwInfo> {
+pub async fn fw_info<A: ScratchAlloc>(alloc: &A) -> McuResult<FwInfo> {
     let mut req = alloc.alloc(REQ_SIZE)?;
     req.fill(0);
     let mut rsp = alloc.alloc(RSP_SIZE)?;

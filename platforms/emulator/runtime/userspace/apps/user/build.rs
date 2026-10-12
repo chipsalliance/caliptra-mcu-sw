@@ -53,8 +53,10 @@ struct SocImageDescriptorConfig {
 }
 
 fn main() {
-    println!("cargo:rerun-if-changed=../app_layout.ld");
-    println!("cargo:rerun-if-changed=../user-app-layout.ld");
+    // Linker scripts come from the firmware bundler (content-hashed names passed
+    // via `-C link-arg=-T...`), so they're not tracked here. Never point
+    // rerun-if-changed at a file that doesn't exist: cargo treats a missing path
+    // as always stale and rebuilds this crate on every invocation.
 
     // With userspace logging the app links the userlog `#[global_logger]`, so the
     // device link needs defmt's linker script and `DEFMT_LOG` set to compile in

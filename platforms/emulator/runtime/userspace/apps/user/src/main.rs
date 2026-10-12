@@ -214,7 +214,7 @@ pub(crate) async fn async_main() {
 pub mod ocp_lock_config {
     pub struct AppRuntimeConfig;
 
-    impl caliptra_mcu_romtime::ocp_lock::RuntimeConfig for AppRuntimeConfig {
+    impl mcu_caliptra_api::ocp_lock::RuntimeConfig for AppRuntimeConfig {
         fn endorsement_cert_serial_number(&self) -> &[u8; 20] {
             &[0x7F; 20]
         }

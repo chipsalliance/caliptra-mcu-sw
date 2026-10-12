@@ -89,7 +89,7 @@ pub(crate) async fn handle_finish<Pal: SpdmPal>(
             SessionKeyType::RequestFinishedKey,
             &th_hash,
             &mut expected_vd,
-        )
+        )?
         .await?;
     if vd_len != SHA384_HASH_SIZE {
         return Err(SPDM_UNSPECIFIED);

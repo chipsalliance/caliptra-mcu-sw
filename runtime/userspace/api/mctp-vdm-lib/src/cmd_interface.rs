@@ -352,7 +352,7 @@ mod tests {
     use caliptra_mcu_common_commands::{CaliptraCmdResult, DebugUnlockChallenge};
     use caliptra_mcu_mctp_vdm_common::message::GetDebugLogResponse;
     use caliptra_mcu_mctp_vdm_common::protocol::VdmControlByte;
-    use mcu_caliptra_api::ApiAlloc;
+    use mcu_caliptra_api::ScratchAlloc;
     use std::boxed::Box;
     use std::future::Future;
     use std::pin::Pin;
@@ -401,7 +401,7 @@ mod tests {
             Ok(())
         }
 
-        async fn export_attested_csr<Alloc: ApiAlloc>(
+        async fn export_attested_csr<Alloc: ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             _device_key_id: u32,
@@ -412,7 +412,7 @@ mod tests {
             Err(CaliptraCompletionCode::UnsupportedOperation)
         }
 
-        async fn request_debug_unlock<Alloc: ApiAlloc>(
+        async fn request_debug_unlock<Alloc: ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             _unlock_level: u8,
@@ -421,7 +421,7 @@ mod tests {
             Err(CaliptraCompletionCode::UnsupportedOperation)
         }
 
-        async fn authorize_debug_unlock_token<Alloc: ApiAlloc>(
+        async fn authorize_debug_unlock_token<Alloc: ScratchAlloc>(
             &self,
             _alloc: &Alloc,
             _token_request: &[u8],

@@ -135,7 +135,7 @@ pub enum CaliptraCommandId {
     OcpLockRotateHek = 0x8018,
     OcpLockSetPermaHek = 0x8019,
 
-    // Device Ownership Transfer Commands (0x8020-0x8029)
+    // Device Ownership Transfer Commands (0x8020-0x802A)
     DotLock = 0x8020,
     DotDisable = 0x8021,
     DotUnlockChallenge = 0x8022,
@@ -146,6 +146,7 @@ pub enum CaliptraCommandId {
     DotRecovery = 0x8027,
     DotOverrideChallenge = 0x8028,
     DotOverride = 0x8029,
+    DotEnable = 0x802A,
 }
 
 /// Common response header for all commands

@@ -17,7 +17,7 @@ use crate::wire::{
     mbox_execute, pad4, populate_checksum, CMD_CM_HKDF_EXPAND, CMD_CM_HKDF_EXTRACT, CMD_CM_HMAC,
     CM_HASH_ALGO_SHA384, CM_HASH_ALGO_SHA512, MAX_CMB_DATA_SIZE, MBOX_RESP_HEADER_SIZE,
 };
-use crate::ApiAlloc;
+use crate::ScratchAlloc;
 
 // ---------------------------------------------------------------------------
 // Public constants
@@ -113,7 +113,7 @@ pub enum HkdfSalt<'a> {
 ///
 /// Returns up to 48 bytes of MAC in the prefix of `out`.
 #[inline(never)]
-pub async fn cm_hmac<A: ApiAlloc>(
+pub async fn cm_hmac<A: ScratchAlloc>(
     alloc: &A,
     cmk: &Cmk,
     data: &[u8],
@@ -124,7 +124,7 @@ pub async fn cm_hmac<A: ApiAlloc>(
 
 /// Compute HMAC-SHA512 over `data` using `cmk` as the key.
 #[inline(never)]
-pub async fn cm_hmac_sha512<A: ApiAlloc>(
+pub async fn cm_hmac_sha512<A: ScratchAlloc>(
     alloc: &A,
     cmk: &Cmk,
     data: &[u8],
@@ -137,7 +137,7 @@ pub async fn cm_hmac_sha512<A: ApiAlloc>(
     Ok(())
 }
 
-async fn cm_hmac_with_algorithm<A: ApiAlloc>(
+async fn cm_hmac_with_algorithm<A: ScratchAlloc>(
     alloc: &A,
     cmk: &Cmk,
     hash_algorithm: u32,
@@ -185,7 +185,11 @@ async fn cm_hmac_with_algorithm<A: ApiAlloc>(
 /// If `salt` is [`HkdfSalt::Data`], it is first imported into an
 /// encrypted CMK blob via `cm_import`.
 #[inline(never)]
-pub async fn hkdf_extract<A: ApiAlloc>(alloc: &A, salt: HkdfSalt<'_>, ikm: &Cmk) -> McuResult<Cmk> {
+pub async fn hkdf_extract<A: ScratchAlloc>(
+    alloc: &A,
+    salt: HkdfSalt<'_>,
+    ikm: &Cmk,
+) -> McuResult<Cmk> {
     let salt_cmk: Cmk = match salt {
         HkdfSalt::Cmk(c) => *c,
         HkdfSalt::Data(data) => cm_import(alloc, CmKeyUsage::Hmac, data).await?,
@@ -216,7 +220,7 @@ pub async fn hkdf_extract<A: ApiAlloc>(alloc: &A, salt: HkdfSalt<'_>, ikm: &Cmk)
 
 /// HKDF-Expand(prk, info) → OKM as a CMK handle.
 #[inline(never)]
-pub async fn hkdf_expand<A: ApiAlloc>(
+pub async fn hkdf_expand<A: ScratchAlloc>(
     alloc: &A,
     prk: &Cmk,
     key_usage: CmKeyUsage,

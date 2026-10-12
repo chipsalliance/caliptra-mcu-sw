@@ -119,7 +119,9 @@ pub struct VersionRsp<'a> {
 }
 
 impl ResponseBody for VersionRsp<'_> {
-    const RESPONSE_CODE: ReqRespCode = ReqRespCode::VERSION;
+    fn response_code(&self) -> ReqRespCode {
+        ReqRespCode::VERSION
+    }
 
     fn body_size(&self) -> usize {
         VersionRspBody::SIZE + self.versions.len() * VersionNumberEntry::SIZE

@@ -77,7 +77,9 @@ pub struct MeasurementsRsp<'a> {
 }
 
 impl ResponseBody for MeasurementsRsp<'_> {
-    const RESPONSE_CODE: ReqRespCode = ReqRespCode::MEASUREMENTS;
+    fn response_code(&self) -> ReqRespCode {
+        ReqRespCode::MEASUREMENTS
+    }
 
     fn body_size(&self) -> usize {
         // param1(1) + param2(1) + number_of_blocks(1) + meas_record_len(3)

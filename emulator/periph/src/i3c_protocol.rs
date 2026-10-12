@@ -243,6 +243,10 @@ impl I3cTarget {
         self.target.lock().unwrap().tx_buffer.pop_front()
     }
 
+    pub fn has_pending_response(&self) -> bool {
+        !self.target.lock().unwrap().tx_buffer.is_empty()
+    }
+
     pub fn read_command(&mut self) -> Option<I3cTcriCommandXfer> {
         self.target.lock().unwrap().rx_buffer.pop_front()
     }
