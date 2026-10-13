@@ -12,7 +12,7 @@ use caliptra_mcu_hw_model::{LifecycleControllerState, McuHwModel};
 use caliptra_mcu_mbox_common::messages::{
     DeviceCapsReq, EcdsaVerifyReq, FirmwareVersionReq, GetAuthCmdChallengeReq, LmsVerifyReq,
     MailboxReqHeader as McuMailboxReqHeader, MailboxRespHeader, McuEcdsa384SigVerifyReq,
-    McuFeProgReq, McuLmsSigVerifyReq,
+    McuFeProgReq, McuLmsSigVerifyReq, VendorPkHashStatusReq, VENDOR_PQC_KEY_TYPE_LMS,
 };
 use caliptra_mcu_romtime::{handoff::McuRomCapabilities, McuBootMilestones};
 use zerocopy::{FromBytes, IntoBytes};
@@ -171,6 +171,35 @@ fn test_get_auth_cmd_challenge_cmd() -> Result<()> {
             != 0,
         "Challenge should not be all-zeros"
     );
+    Ok(())
+}
+
+#[test]
+fn test_vendor_pk_hash_status_cmd_does_not_require_authorization() -> Result<()> {
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-mcu-mbox-cmds"),
+        ..Default::default()
+    });
+
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    let resp = hw.mailbox_execute_req(VendorPkHashStatusReq::default())?;
+    assert_eq!(resp.used_slots_bitmap, 1 << 0);
+    assert_eq!(resp.key_types[0], VENDOR_PQC_KEY_TYPE_LMS);
+    assert_eq!(&resp.key_types[1..], &[0; 15]);
+
+    let cmd = caliptra_mcu_mbox_common::messages::CommandId::MC_VENDOR_PK_HASH_STATUS.into();
+    assert!(hw.mailbox_execute(cmd, &[0u8; 3]).is_err());
+
+    let mut oversized = [0u8; 8];
+    oversized[4..].copy_from_slice(&0x1234_5678u32.to_le_bytes());
+    let checksum = calc_checksum(cmd, &oversized[4..]);
+    oversized[..4].copy_from_slice(&checksum.to_le_bytes());
+    assert!(hw.mailbox_execute(cmd, &oversized).is_err());
+    assert!(hw.mailbox_execute(cmd, &[0u8; 4]).is_err());
     Ok(())
 }
 

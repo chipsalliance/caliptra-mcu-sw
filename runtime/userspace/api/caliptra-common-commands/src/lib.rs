@@ -503,6 +503,11 @@ pub trait CaliptraCmdHandler {
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 
+    /// Reports occupied vendor public-key hash slots and their PQC key types.
+    async fn vendor_pk_hash_status(&self) -> CaliptraCmdResult<(u32, [u8; 16])> {
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
     /// Lock an OTP partition against further writes.
     async fn fuse_lock_partition(&self, partition: u32) -> CaliptraCmdResult<()> {
         let _ = partition;

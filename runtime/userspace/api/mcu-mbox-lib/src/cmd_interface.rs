@@ -19,9 +19,9 @@ use caliptra_mcu_mbox_common::messages::{
     MailboxRespHeaderVarSize, McuFeProgReq, McuMailboxReq, McuMailboxResp,
     McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq,
     McuResponseVarSize, ProvisionOwnerPkHashReq, ProvisionOwnerPkHashResp,
-    ProvisionVendorPkHashReq, ProvisionVendorPkHashResp, SvnTarget, DEVICE_CAPS_SIZE,
-    GET_ATTESTATION_RESP_PREFIX_LEN, MAX_FUSE_DATA_SIZE, MAX_FW_VERSION_STR_LEN,
-    MAX_RESP_DATA_SIZE,
+    ProvisionVendorPkHashReq, ProvisionVendorPkHashResp, SvnTarget, VendorPkHashStatusReq,
+    VendorPkHashStatusResp, DEVICE_CAPS_SIZE, GET_ATTESTATION_RESP_PREFIX_LEN, MAX_FUSE_DATA_SIZE,
+    MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
 };
 #[cfg(feature = "device-ownership-transfer")]
 use caliptra_mcu_mbox_common::messages::{
@@ -215,6 +215,9 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer> CmdInterface<'a, H, A> {
             match cmd_id {
                 CommandId::MC_FIRMWARE_VERSION => self.handle_fw_version(req, resp_buf).await,
                 CommandId::MC_DEVICE_CAPABILITIES => self.handle_device_caps(req, resp_buf).await,
+                CommandId::MC_VENDOR_PK_HASH_STATUS => {
+                    self.handle_vendor_pk_hash_status(req, resp_buf).await
+                }
                 CommandId::MC_GET_LOG => self.handle_get_log(req, resp_buf).await,
                 CommandId::MC_CLEAR_LOG => self.handle_clear_log(req, resp_buf).await,
                 #[cfg(feature = "periodic-fips-self-test")]
@@ -260,6 +263,30 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer> CmdInterface<'a, H, A> {
 
         self.busy.store(false, Ordering::SeqCst);
         result
+    }
+
+    async fn handle_vendor_pk_hash_status<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        VendorPkHashStatusReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+        let (used_slots_bitmap, key_types) = self
+            .non_crypto_cmds_handler
+            .vendor_pk_hash_status()
+            .await
+            .map_err(map_common_cmd_error)?;
+        let resp = VendorPkHashStatusResp {
+            used_slots_bitmap,
+            key_types,
+            ..Default::default()
+        };
+        let resp = resp.as_bytes();
+        resp_buf
+            .get_mut(..resp.len())
+            .ok_or(errors::INVALID_PARAMS)?
+            .copy_from_slice(resp);
+        Ok((&mut resp_buf[..resp.len()], MbxCmdStatus::Complete))
     }
 
     async fn handle_fw_version<'r>(
@@ -1326,6 +1353,7 @@ fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32) -> usize {
         }
         c if c == CommandId::MC_FUSE_READ => size_of::<FuseReadResp>(),
         c if c == CommandId::MC_FUSE_LOCK_PARTITION => size_of::<FuseLockPartitionResp>(),
+        c if c == CommandId::MC_VENDOR_PK_HASH_STATUS => size_of::<VendorPkHashStatusResp>(),
         #[cfg(feature = "attested-csr")]
         c if c == CommandId::MC_EXPORT_ATTESTED_CSR => size_of::<ExportAttestedCsrResp>(),
         c if c == CommandId::MC_GET_ATTESTATION => size_of::<McuMailboxResp>().max(

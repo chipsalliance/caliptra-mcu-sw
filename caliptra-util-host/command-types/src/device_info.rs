@@ -108,6 +108,33 @@ impl CommandRequest for GetDeviceCapabilitiesRequest {
 
 impl CommandResponse for GetDeviceCapabilitiesResponse {}
 
+pub const VENDOR_PK_HASH_SLOT_COUNT: usize = 16;
+pub const VENDOR_PQC_KEY_TYPE_LMS: u8 = 1;
+pub const VENDOR_PQC_KEY_TYPE_MLDSA: u8 = 3;
+
+/// Empty request for vendor public-key hash slot status.
+#[repr(C)]
+#[derive(Debug, Clone, Default, IntoBytes, FromBytes, Immutable)]
+pub struct VendorPkHashStatusRequest;
+
+/// Vendor public-key hash slot occupancy and key types.
+#[repr(C)]
+#[derive(Debug, Clone, Default, IntoBytes, FromBytes, Immutable)]
+pub struct VendorPkHashStatusResponse {
+    pub common: CommonResponse,
+    /// Bit N is set when vendor public-key hash slot N is occupied.
+    pub used_slots_bitmap: u32,
+    /// Key type for each slot; zero for unused slots.
+    pub key_types: [u8; VENDOR_PK_HASH_SLOT_COUNT],
+}
+
+impl CommandRequest for VendorPkHashStatusRequest {
+    type Response = VendorPkHashStatusResponse;
+    const COMMAND_ID: CaliptraCommandId = CaliptraCommandId::VendorPkHashStatus;
+}
+
+impl CommandResponse for VendorPkHashStatusResponse {}
+
 #[cfg(test)]
 mod tests {
     use super::*;

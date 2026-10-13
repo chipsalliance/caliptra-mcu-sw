@@ -74,6 +74,41 @@ impl ToInternalResponse<GetDeviceCapabilitiesResponse> for ExtCmdGetDeviceCapabi
     }
 }
 
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+pub struct ExtCmdVendorPkHashStatusRequest {
+    pub chksum: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+pub struct ExtCmdVendorPkHashStatusResponse {
+    pub chksum: u32,
+    pub fips_status: u32,
+    pub used_slots_bitmap: u32,
+    pub key_types: [u8; VENDOR_PK_HASH_SLOT_COUNT],
+}
+
+impl FromInternalRequest<VendorPkHashStatusRequest> for ExtCmdVendorPkHashStatusRequest {
+    fn from_internal(_internal: &VendorPkHashStatusRequest, command_code: u32) -> Self {
+        Self {
+            chksum: calc_checksum(command_code, &[]),
+        }
+    }
+}
+
+impl ToInternalResponse<VendorPkHashStatusResponse> for ExtCmdVendorPkHashStatusResponse {
+    fn to_internal(&self) -> VendorPkHashStatusResponse {
+        VendorPkHashStatusResponse {
+            common: CommonResponse {
+                fips_status: self.fips_status,
+            },
+            used_slots_bitmap: self.used_slots_bitmap,
+            key_types: self.key_types,
+        }
+    }
+}
+
 impl FromInternalRequest<GetFirmwareVersionRequest> for ExtCmdGetFirmwareVersionRequest {
     fn from_internal(internal: &GetFirmwareVersionRequest, command_code: u32) -> Self {
         // Calculate checksum using zerocopy as_bytes() for the entire payload
@@ -228,9 +263,11 @@ impl VariableSizeBytes for ExtCmdGetFirmwareVersionResponse {
 // Implement VariableSizeBytes for all request types (they are all fixed-size)
 impl VariableSizeBytes for ExtCmdGetDeviceCapabilitiesRequest {}
 impl VariableSizeBytes for ExtCmdGetFirmwareVersionRequest {}
+impl VariableSizeBytes for ExtCmdVendorPkHashStatusRequest {}
 
 // Fixed-size response types
 impl VariableSizeBytes for ExtCmdGetDeviceCapabilitiesResponse {}
+impl VariableSizeBytes for ExtCmdVendorPkHashStatusResponse {}
 
 // ============================================================================
 // Command Metadata Definitions
@@ -256,6 +293,15 @@ define_command!(
     ExtCmdGetFirmwareVersionResponse
 );
 
+define_command!(
+    VendorPkHashStatusCmd,
+    0x4D56_5053,
+    VendorPkHashStatusRequest,
+    VendorPkHashStatusResponse,
+    ExtCmdVendorPkHashStatusRequest,
+    ExtCmdVendorPkHashStatusResponse
+);
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -268,5 +314,29 @@ mod tests {
 
         assert_eq!(internal.version, [2, 0, 0, 0]);
         assert_eq!(internal.commit_id, [0; 20]);
+    }
+
+    #[test]
+    fn vendor_pk_hash_status_uses_empty_payload_checksum_and_decodes_response() {
+        let request =
+            ExtCmdVendorPkHashStatusRequest::from_internal(&VendorPkHashStatusRequest, 0x4D56_5053);
+        assert_eq!(
+            request.as_bytes(),
+            &calc_checksum(0x4D56_5053, &[]).to_le_bytes()
+        );
+
+        let mut key_types = [0; VENDOR_PK_HASH_SLOT_COUNT];
+        key_types[0] = VENDOR_PQC_KEY_TYPE_LMS;
+        key_types[2] = VENDOR_PQC_KEY_TYPE_MLDSA;
+        let response = ExtCmdVendorPkHashStatusResponse {
+            chksum: 0,
+            fips_status: 1,
+            used_slots_bitmap: 5,
+            key_types,
+        }
+        .to_internal();
+        assert_eq!(response.common.fips_status, 1);
+        assert_eq!(response.used_slots_bitmap, 5);
+        assert_eq!(response.key_types, key_types);
     }
 }

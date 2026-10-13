@@ -13,7 +13,7 @@ use kernel::grant::{AllowRoCount, AllowRwCount, Grant, UpcallCount};
 use kernel::syscall::{CommandReturn, SyscallDriver};
 use kernel::{ErrorCode, ProcessId};
 
-use caliptra_mcu_romtime::{fuse_lock_partition_dai, fuse_write_dai};
+use caliptra_mcu_romtime::{fuse_lock_partition_dai, fuse_write_dai, PqcKeyType};
 
 /// The driver number for Caliptra OTP commands.
 pub const DRIVER_NUM: usize = 0xD000_0000;
@@ -110,6 +110,7 @@ pub mod reg {
     pub const SOC_MANIFEST_MAX_SVN: u32 = 35;
     /// Owner SoC Manifest SVN words; index must be 0 or 1.
     pub const OWNER_SOC_MANIFEST_MIN_SVN: u32 = 36;
+    pub const VENDOR_PQC_KEY_TYPE: u32 = 37;
 }
 
 #[derive(Default)]
@@ -277,6 +278,13 @@ impl Otp {
                     .read_vendor_mldsa_revocation(app.reg_index as usize)
                 {
                     Ok(val) => CommandReturn::success_u32(val),
+                    Err(_) => CommandReturn::failure(ErrorCode::INVAL),
+                }
+            }
+            reg::VENDOR_PQC_KEY_TYPE => {
+                match self.driver.read_pqc_key_type(app.reg_index as usize) {
+                    Ok(PqcKeyType::LMS) => CommandReturn::success_u32(1),
+                    Ok(PqcKeyType::MLDSA) => CommandReturn::success_u32(3),
                     Err(_) => CommandReturn::failure(ErrorCode::INVAL),
                 }
             }
