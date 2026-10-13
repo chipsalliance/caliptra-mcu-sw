@@ -268,3 +268,25 @@ fn encrypt_with_psk_only_is_accepted() {
     assert_eq!(state.phase, Phase::AfterCapabilities);
     assert_eq!(state.peer_cap_flags.psk_field(), 1);
 }
+
+#[test]
+fn encrypt_with_reserved_requester_psk_value_is_invalid_request() {
+    let pal = TestPal::default();
+    let mut state = ConnectionState::default();
+    state.phase = Phase::AfterVersion;
+    let mut sessions = SessionManager::new();
+    // For a Requester, PSK_CAP 10b is Reserved (PSK_WITH_CTX is Responder-only),
+    // so it is not a key-establishment method and ENCRYPT_CAP is illegal.
+    let peer_flags = CapFlags::CERT | CapFlags::ENCRYPT | CapFlags::PSK_WITH_CTX;
+
+    let err = dispatch_request(
+        &mut state,
+        &mut sessions,
+        &pal,
+        capabilities_request(SpdmVersion::V12, 0, 0, peer_flags, 1024, 1024),
+    )
+    .unwrap_err();
+
+    assert_eq!(err.spec_byte(), SPDM_INVALID_REQUEST.spec_byte());
+    assert_eq!(state.phase, Phase::AfterVersion);
+}

@@ -149,8 +149,10 @@ fn validate_capabilities_body(body: &CapabilitiesBody) -> SpdmResult<(u32, u32)>
     // secure session can only be established through KEY_EX_CAP or PSK_CAP.
     // Advertising either without a key-establishment method is an illegal
     // combination, so the request is refused rather than silently negotiated.
+    // For a Requester only PSK_CAP 01b counts: 10b and 11b are Reserved
+    // (PSK_WITH_CTX is a Responder-only value).
     let secure_session = flags.contains(CapFlags::ENCRYPT) || flags.contains(CapFlags::MAC);
-    let key_establishment = flags.contains(CapFlags::KEY_EX) || flags.psk_field() != 0;
+    let key_establishment = flags.contains(CapFlags::KEY_EX) || flags.psk_field() == 0b01;
     if secure_session && !key_establishment {
         return Err(SPDM_INVALID_REQUEST);
     }
