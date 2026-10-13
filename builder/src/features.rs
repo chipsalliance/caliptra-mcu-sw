@@ -116,6 +116,23 @@ pub const BARE_METAL_BINARIES: &[&str] = &[
     "caliptra-mcu-provisioning-manuf-fw",
 ];
 
+/// Network ROM feature variants packaged in emulator CI firmware bundles.
+///
+/// `all-build` includes these whenever `--network-rom-features` is supplied.
+pub const NETWORK_ROM_TEST_FEATURES: &[&str] = &[
+    "network-boot",
+    "test-network-boot-ipv6",
+    "test-network-boot-timeouts",
+    "test-network-boot-ipv6-dhcp-timeout",
+    "test-network-boot-ipv6-tftp-timeouts",
+    "test-network-mbox-comm",
+    "test-network-rom-dhcp-discover",
+    "test-network-rom-lwip-dhcp",
+    "test-network-rom-lwip-dhcp6",
+    "test-network-rom-lwip-tftp",
+    "test-network-rom-lwip-tftpv6",
+];
+
 /// A single ROM build target (platform + feature combo). Shared between
 /// `cargo xtask sizes` (size reporting), `test_panic_missing` (panic-free
 /// audit), and any other per-variant build check.

@@ -160,6 +160,17 @@ impl BaremetalTftpClient {
         Ok(())
     }
 
+    /// Abort the active transfer and release the lwIP TFTP client.
+    pub fn abort(&mut self) {
+        if self.initialized {
+            unsafe {
+                ffi::tftp_cleanup();
+                STATE = None;
+            }
+            self.initialized = false;
+        }
+    }
+
     /// Initiate a TFTP GET over IPv4.
     ///
     /// `filename` must be null-terminated. Poll lwIP until `is_complete()`.

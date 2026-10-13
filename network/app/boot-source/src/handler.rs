@@ -350,6 +350,7 @@ pub fn send_next_chunk<'a, M: NetworkMailbox<'a>>(
     max_chunk_size: usize,
     seq: &core::cell::Cell<u16>,
     offset: &core::cell::Cell<u32>,
+    expected_size: u32,
 ) -> core::result::Result<bool, NetworkMboxError> {
     if network::tftp_has_error() {
         let _ = send_error(mbox, MessageType::ImageChunk, ErrorCode::CorruptedData);
@@ -364,6 +365,17 @@ pub fn send_next_chunk<'a, M: NetworkMailbox<'a>>(
     let chunk_len = network::take_tftp_chunk(&mut chunk_buf[..chunk_max]);
 
     let is_last = network::tftp_is_complete() && network::tftp_buffered_len() == 0;
+    let next_offset = match o.checked_add(chunk_len as u32) {
+        Some(next_offset) => next_offset,
+        None => {
+            let _ = send_error(mbox, MessageType::ImageChunk, ErrorCode::CorruptedData);
+            return Err(NetworkMboxError::Failed);
+        }
+    };
+    if next_offset > expected_size || (is_last && next_offset != expected_size) {
+        let _ = send_error(mbox, MessageType::ImageChunk, ErrorCode::CorruptedData);
+        return Err(NetworkMboxError::Failed);
+    }
 
     let hdr = ImageChunkHeader::new(s, o, chunk_len as u32);
     let hdr_bytes = hdr.as_bytes();
@@ -378,7 +390,7 @@ pub fn send_next_chunk<'a, M: NetworkMailbox<'a>>(
     mbox.set_target_status(NetworkMboxStatus::CmdComplete)?;
 
     seq.set(s.wrapping_add(1));
-    offset.set(o.wrapping_add(chunk_len as u32));
+    offset.set(next_offset);
 
     if is_last {
         network::reset_tftp_state();
