@@ -3,6 +3,9 @@
 /* Auto-generated from Rust caliptra-util-host library */
 
 #define DEVICE_CAPABILITIES_SIZE 64
+#define VENDOR_PK_HASH_SLOT_COUNT 16
+#define VENDOR_PQC_KEY_TYPE_LMS 1
+#define VENDOR_PQC_KEY_TYPE_MLDSA 3
 
 #include <stdarg.h>
 #include <stdbool.h>
@@ -64,6 +67,21 @@ typedef struct GetFirmwareVersionResponse {
   uint32_t version[4];
   uint8_t commit_id[20];
 } GetFirmwareVersionResponse;
+
+/**
+ * Vendor public-key hash slot occupancy and key types.
+ */
+typedef struct VendorPkHashStatusResponse {
+  struct CommonResponse common;
+  /**
+   * Bit N is set when vendor public-key hash slot N is occupied.
+   */
+  uint32_t used_slots_bitmap;
+  /**
+   * Key type for each slot; zero for unused slots.
+   */
+  uint8_t key_types[VENDOR_PK_HASH_SLOT_COUNT];
+} VendorPkHashStatusResponse;
 
 /**
  * Opaque transport handle (from design document)
@@ -185,6 +203,12 @@ enum CaliptraError caliptra_cmd_get_device_capabilities_c_impl(struct CaliptraSe
 enum CaliptraError caliptra_cmd_get_firmware_version_c_impl(struct CaliptraSession *session_ptr,
                                                             uint32_t index,
                                                             struct GetFirmwareVersionResponse *firmware_version);
+
+/**
+ * Query vendor public-key hash slot occupancy and key types.
+ */
+enum CaliptraError caliptra_cmd_vendor_pk_hash_status_c_impl(struct CaliptraSession *session_ptr,
+                                                             struct VendorPkHashStatusResponse *status);
 
 /**
  * Create a new Caliptra session with transport

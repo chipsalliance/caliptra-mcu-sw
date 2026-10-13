@@ -28,6 +28,8 @@ pub struct TestConfig {
     #[serde(default)]
     pub firmware_version: Option<FirmwareVersionConfig>,
     #[serde(default)]
+    pub vendor_pk_hash_status: StatusCommandConfig,
+    #[serde(default)]
     pub fe_prog: FeProgConfig,
     #[serde(default)]
     pub provision_vendor_pk_hash: ProvisionVendorPkHashConfig,
@@ -39,6 +41,12 @@ pub struct TestConfig {
     pub revoke_vendor_pk_hash: RevokeVendorPkHashConfig,
     #[serde(default)]
     pub fuse_lock_partition: FuseLockPartitionConfig,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct StatusCommandConfig {
+    #[serde(default)]
+    pub enabled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -283,6 +291,7 @@ impl Default for TestConfig {
                 rom_firmware_id: 0,
                 runtime_firmware_id: 1,
             }),
+            vendor_pk_hash_status: StatusCommandConfig::default(),
             fe_prog: FeProgConfig::default(),
             provision_vendor_pk_hash: ProvisionVendorPkHashConfig::default(),
             increase_min_svn: IncreaseMinSvnConfig::default(),

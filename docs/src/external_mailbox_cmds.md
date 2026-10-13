@@ -87,6 +87,7 @@ These commands support common Caliptra management functions, including querying 
 | MC_PROVISION_VENDOR_PK_HASH   | 0x5056_504b ("PVPK") | See [fuses spec](fuses.md) for details                                                |
 | MC_PROVISION_OWNER_PK_HASH    | 0x504F_504B ("POPK") | See [fuses spec](fuses.md) for details                                                |
 | MC_FE_PROG                    | 0x4D43_4650 ("MCFP") | See [fuses spec](fuses.md) for details                                                |
+| MC_VENDOR_PK_HASH_STATUS      | 0x4D56_5053 ("MVPS") | Reports occupied vendor PK hash slots and their PQC key types.                         |
 | MC_FUSE_REVOKE_VENDOR_PUB_KEY | 0x4D52_564B ("MRVK") | See [fuses spec](fuses.md) for details                                                |
 | MC_FUSE_REVOKE_VENDOR_PK_HASH | 0x5256_4b48 ("RVKH") | See [fuses spec](fuses.md) for details                                                |
 | MC_DEVICE_OWNERSHIP_TRANSFER  | 0x0000_0011          | Device Ownership Transfer family; subcommand is carried in mailbox SRAM                |
@@ -329,6 +330,22 @@ Programs field entropy for the selected fuse partition.
 Command Code: `0x4D43_4650` ("MCFP")
 
 Payload semantics are defined by [Program Field Entropy](caliptra_common_commands.md#program-field-entropy).
+
+### MC_VENDOR_PK_HASH_STATUS
+
+Reports occupied vendor public-key hash slots and their PQC key types without
+requiring authorization. Revoked slots remain occupied because OTP storage
+cannot be reused.
+
+Command Code: `0x4D56_5053` ("MVPS")
+
+The request contains only the mailbox checksum header. The response contains
+the standard mailbox response header followed by:
+
+| Byte(s) | Name              | Type   | Description |
+| ------- | ----------------- | ------ | ----------- |
+| 0:3     | used_slots_bitmap | u32    | Bits 0 through 15 indicate occupied vendor PK hash slots. |
+| 4:19    | key_types         | u8[16] | Per-slot PQC key type: `0` = unused, `1` = LMS, `3` = ML-DSA. |
 
 {{#include fuse_api_cmd.md}}
 

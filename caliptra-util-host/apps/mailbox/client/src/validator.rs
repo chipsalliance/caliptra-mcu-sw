@@ -9,6 +9,9 @@ use caliptra_mcu_core_util_host_command_types::attestation::{
 use caliptra_mcu_core_util_host_command_types::certificate::AttestedCsrValidationError;
 use caliptra_mcu_core_util_host_command_types::crypto_aes::AesMode;
 use caliptra_mcu_core_util_host_command_types::crypto_hmac::CmKeyUsage;
+use caliptra_mcu_core_util_host_command_types::device_info::{
+    VENDOR_PK_HASH_SLOT_COUNT, VENDOR_PQC_KEY_TYPE_LMS, VENDOR_PQC_KEY_TYPE_MLDSA,
+};
 use caliptra_mcu_core_util_host_command_types::device_ownership_transfer::{
     DotAuthorizationTrailer, DotDisableRequest, DotLockRequest, DotRotateRequest, DotUnlockRequest,
     GetDotBackupBlobRequest, DOT_FAMILY_ID, MC_DOT_DISABLE_CANONICAL_CMD_ID,
@@ -169,6 +172,13 @@ impl Validator {
         if !fuse_only {
             results.push(self.validate_get_device_capabilities(&mut client));
             results.push(self.validate_get_firmware_version(&mut client));
+            if self
+                .config
+                .as_ref()
+                .is_some_and(|config| config.vendor_pk_hash_status.enabled)
+            {
+                results.push(self.validate_vendor_pk_hash_status(&mut client));
+            }
             results.push(self.validate_sha384(&mut client));
             results.push(self.validate_sha512(&mut client));
             results.push(self.validate_hmac_sha384(&mut client));
@@ -795,6 +805,53 @@ impl Validator {
                     error_message: Some(e.to_string()),
                 }
             }
+        }
+    }
+
+    fn validate_vendor_pk_hash_status(&self, client: &mut MailboxClient) -> ValidationResult {
+        let test_name = "VendorPkHashStatus".to_string();
+        let (passed, error_message) = match client.vendor_pk_hash_status() {
+            Ok(response) => {
+                let valid_slot_mask = (1u32 << VENDOR_PK_HASH_SLOT_COUNT) - 1;
+                let valid = response.used_slots_bitmap & !valid_slot_mask == 0
+                    && response
+                        .key_types
+                        .iter()
+                        .enumerate()
+                        .all(|(slot, key_type)| {
+                            if response.used_slots_bitmap & (1u32 << slot) == 0 {
+                                *key_type == 0
+                            } else {
+                                matches!(
+                                    *key_type,
+                                    VENDOR_PQC_KEY_TYPE_LMS | VENDOR_PQC_KEY_TYPE_MLDSA
+                                )
+                            }
+                        });
+                (
+                    valid,
+                    (!valid).then(|| {
+                        format!(
+                            "invalid vendor PK hash status bitmap={:#010x}, key_types={:?}",
+                            response.used_slots_bitmap, response.key_types
+                        )
+                    }),
+                )
+            }
+            Err(error) => (false, Some(error.to_string())),
+        };
+        if passed {
+            println!("✓ VendorPkHashStatus validation PASSED");
+        } else {
+            eprintln!(
+                "✗ VendorPkHashStatus validation FAILED: {}",
+                error_message.as_deref().unwrap_or("invalid status")
+            );
+        }
+        ValidationResult {
+            test_name,
+            passed,
+            error_message,
         }
     }
 

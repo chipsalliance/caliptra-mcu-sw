@@ -8,7 +8,7 @@ use crate::api::{CaliptraApiError, CaliptraResult};
 use caliptra_mcu_core_util_host_command_types::{
     device_info::{
         GetDeviceCapabilitiesRequest, GetDeviceCapabilitiesResponse, GetFirmwareVersionRequest,
-        GetFirmwareVersionResponse,
+        GetFirmwareVersionResponse, VendorPkHashStatusRequest, VendorPkHashStatusResponse,
     },
     CaliptraCommandId,
 };
@@ -73,4 +73,16 @@ fn caliptra_cmd_get_firmware_version_impl(
     session
         .execute_command_with_id(CaliptraCommandId::GetFirmwareVersion, &request)
         .map_err(|_| CaliptraApiError::SessionError("Command execution failed"))
+}
+
+/// Query vendor public-key hash slot occupancy and key types.
+pub fn caliptra_cmd_vendor_pk_hash_status(
+    session: &mut CaliptraSession,
+) -> CaliptraResult<VendorPkHashStatusResponse> {
+    session
+        .execute_command_with_id(
+            CaliptraCommandId::VendorPkHashStatus,
+            &VendorPkHashStatusRequest,
+        )
+        .map_err(|_| CaliptraApiError::SessionError("VendorPkHashStatus command execution failed"))
 }

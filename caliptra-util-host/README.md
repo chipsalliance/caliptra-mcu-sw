@@ -15,6 +15,12 @@ The library is organized into several focused crates:
 - `apps/mailbox`: Mailbox client/server applications
 - `apps/spdm`: SPDM VDM client and requester library for Caliptra VDM over SPDM
 
+## Vendor Key Status
+
+The Rust and C APIs support vendor-PK-hash slot occupancy and PQC key-type
+queries over the mailbox transport. Enable `[vendor_pk_hash_status]` in the
+mailbox validator configuration to include this query; it is disabled by default.
+
 ## Device Ownership Transfer
 
 The Rust command API supports all ten Runtime Device Ownership Transfer (DOT)

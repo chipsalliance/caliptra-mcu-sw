@@ -133,6 +133,31 @@ impl<S: Syscalls> Otp<S> {
         Ok(fuse_value)
     }
 
+    pub fn vendor_pk_hash_status(&self) -> Result<(u32, [u8; MAX_NUM_VENDOR_PK_HASH]), ErrorCode> {
+        let mut used_slots_bitmap = 0u32;
+        let mut key_types = [0u8; MAX_NUM_VENDOR_PK_HASH];
+
+        for (slot, key_type) in key_types.iter_mut().enumerate() {
+            let reg = reg::vendor_pk_hash_reg_by_slot(slot as u32).ok_or(ErrorCode::Invalid)?;
+            let mut used = false;
+            for word in 0..VENDOR_PK_HASH_SIZE / core::mem::size_of::<u32>() {
+                if self.read(reg, word as u32)? != 0 {
+                    used = true;
+                    break;
+                }
+            }
+            if used {
+                used_slots_bitmap |= 1 << slot;
+                *key_type = self
+                    .read(reg::VENDOR_PQC_KEY_TYPE, slot as u32)?
+                    .try_into()
+                    .map_err(|_| ErrorCode::Fail)?;
+            }
+        }
+
+        Ok((used_slots_bitmap, key_types))
+    }
+
     /// Revoke an individual key within a PK hash slot
     pub fn revoke_vendor_pub_key(
         &self,
@@ -419,4 +444,5 @@ pub mod reg {
     pub const SOC_MANIFEST_MAX_SVN: u32 = 35;
     /// Owner SoC Manifest SVN words; index must be 0 or 1.
     pub const OWNER_SOC_MANIFEST_MIN_SVN: u32 = 36;
+    pub const VENDOR_PQC_KEY_TYPE: u32 = 37;
 }

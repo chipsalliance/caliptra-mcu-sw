@@ -51,6 +51,7 @@ pub enum CaliptraCommandId {
     // Device Info Commands (0x0001-0x000F)
     GetFirmwareVersion = 0x0001,
     GetDeviceCapabilities = 0x0002,
+    VendorPkHashStatus = 0x0004,
 
     // Certificate Commands (0x1001-0x101F)
     GetIdevidCert = 0x1001,

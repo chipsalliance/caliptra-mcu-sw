@@ -99,6 +99,13 @@ static const uint8_t MOCK_FIRMWARE_VERSION_RESPONSE[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 };
 
+static const uint8_t MOCK_VENDOR_PK_HASH_STATUS_RESPONSE[] = {
+    0x01, 0x00, 0x00, 0x00,
+    0x05, 0x00, 0x00, 0x00,
+    0x01, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+};
+
 static enum CaliptraError mock_send(void *ctx, uint32_t command_id, const uint8_t *data, size_t len) {
     printf("  Custom transport: mock_send called with ctx=%p, command_id=0x%08X, len=%zu\n", ctx, command_id, len);
     (void)data;
@@ -134,6 +141,11 @@ static enum CaliptraError mock_send(void *ctx, uint32_t command_id, const uint8_
                    sizeof(MOCK_DEVICE_CAPABILITIES_RESPONSE));
             transport->response_len = sizeof(MOCK_DEVICE_CAPABILITIES_RESPONSE);
             printf("  Custom transport: Prepared device capabilities response\n");
+            break;
+        case 0x0004:
+            memcpy(transport->response_buffer, MOCK_VENDOR_PK_HASH_STATUS_RESPONSE,
+                   sizeof(MOCK_VENDOR_PK_HASH_STATUS_RESPONSE));
+            transport->response_len = sizeof(MOCK_VENDOR_PK_HASH_STATUS_RESPONSE);
             break;
         default:
             transport->has_pending_response = false;
@@ -258,6 +270,14 @@ int test_custom_c_transport_device_capabilities(void) {
         printf("✓ Successfully executed get_firmware_version through custom transport\n");
         printf("  Retrieved firmware version: %u.%u.%u\n",
             version_response.version[0], version_response.version[1], version_response.version[2]);
+
+    struct VendorPkHashStatusResponse vendor_status = {0};
+    result = caliptra_cmd_vendor_pk_hash_status_c_impl(session, &vendor_status);
+    TEST_ASSERT_EQ(result, Success, "Vendor PK hash status command should succeed");
+    TEST_ASSERT_EQ(vendor_status.common.fips_status, 1, "Vendor status FIPS value should match");
+    TEST_ASSERT_EQ(vendor_status.used_slots_bitmap, 5, "Vendor slot occupancy should match");
+    TEST_ASSERT_EQ(vendor_status.key_types[0], VENDOR_PQC_KEY_TYPE_LMS, "Slot 0 should use LMS");
+    TEST_ASSERT_EQ(vendor_status.key_types[2], VENDOR_PQC_KEY_TYPE_MLDSA, "Slot 2 should use ML-DSA");
 
     // Verify transport context shows command was processed
     TEST_ASSERT(transport_ctx.has_pending_response == false, "Response should have been consumed");

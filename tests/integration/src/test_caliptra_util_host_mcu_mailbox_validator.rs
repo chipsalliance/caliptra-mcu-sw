@@ -56,6 +56,7 @@ pub mod test {
         config.device_capabilities = None;
         config.firmware_version = None;
         config.fe_prog.enabled = fuse_suite.is_none() || fuse_suite == Some("fe-prog");
+        config.vendor_pk_hash_status.enabled = fuse_suite.is_none();
 
         match fuse_suite {
             None | Some("fe-prog") => {}
@@ -301,7 +302,11 @@ pub mod test {
                             .iter()
                             .any(|result| result.test_name == *test_name && result.passed)
                     });
-                    if all_passed && all_dot_results_passed {
+                    let vendor_status_passed = fuse_only
+                        || results.iter().any(|result| {
+                            result.test_name == "VendorPkHashStatus" && result.passed
+                        });
+                    if all_passed && all_dot_results_passed && vendor_status_passed {
                         println!("✓ Caliptra Mailbox validator PASSED");
                     } else {
                         println!("✗ Caliptra Mailbox validator FAILED");
@@ -317,6 +322,9 @@ pub mod test {
                             {
                                 println!("  FAIL: missing successful DOT result {test_name}");
                             }
+                        }
+                        if !vendor_status_passed {
+                            println!("  FAIL: missing successful VendorPkHashStatus result");
                         }
                         validator_failed_clone.store(true, Ordering::Relaxed);
                     }

@@ -7,8 +7,34 @@
 
 use crate::common::{test_constants::*, MockMailbox};
 use caliptra_mcu_core_util_host_transport::Mailbox;
-use caliptra_util_host_commands::api::device_info::caliptra_cmd_get_device_capabilities;
+use caliptra_util_host_commands::api::device_info::{
+    caliptra_cmd_get_device_capabilities, caliptra_cmd_vendor_pk_hash_status,
+};
 use caliptra_util_host_session::CaliptraSession;
+
+#[test]
+fn test_vendor_pk_hash_status_returns_typed_response() {
+    let mut mock_mailbox = MockMailbox::new_default();
+    let mut transport = Mailbox::new(&mut mock_mailbox);
+    let mut session = CaliptraSession::new(1, &mut transport).unwrap();
+    session.connect().unwrap();
+
+    let response = caliptra_cmd_vendor_pk_hash_status(&mut session).unwrap();
+    assert_eq!(response.common.fips_status, 1);
+    assert_eq!(response.used_slots_bitmap, 5);
+    assert_eq!(response.key_types[0], 1);
+    assert_eq!(response.key_types[2], 3);
+    assert_eq!(&response.key_types[3..], &[0; 13]);
+}
+
+#[test]
+fn test_vendor_pk_hash_status_requires_connected_session() {
+    let mut mock_mailbox = MockMailbox::new_default();
+    let mut transport = Mailbox::new(&mut mock_mailbox);
+    let mut session = CaliptraSession::new(1, &mut transport).unwrap();
+
+    assert!(caliptra_cmd_vendor_pk_hash_status(&mut session).is_err());
+}
 
 /// Test GetDeviceCapabilities command with basic configuration
 #[test]

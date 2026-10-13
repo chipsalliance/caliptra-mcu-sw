@@ -1467,6 +1467,12 @@ pub async fn program_field_entropy<A: ScratchAlloc>(
     fe_prog(alloc, partition).await.map_err(map_mcu_err)
 }
 
+pub fn vendor_pk_hash_status() -> CaliptraCmdResult<(u32, [u8; 16])> {
+    Otp::<DefaultSyscalls>::new()
+        .vendor_pk_hash_status()
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)
+}
+
 pub(crate) fn map_mcu_err(e: McuErrorCode) -> CaliptraCompletionCode {
     use mcu_error::codes;
     if e == codes::MAILBOX_BUSY {
