@@ -3,6 +3,9 @@
 /* Auto-generated from Rust caliptra-util-host library */
 
 #define DEVICE_CAPABILITIES_SIZE 64
+#define VENDOR_PK_HASH_SLOT_COUNT 16
+#define VENDOR_PQC_KEY_TYPE_LMS 1
+#define VENDOR_PQC_KEY_TYPE_MLDSA 3
 
 #include <stdarg.h>
 #include <stdbool.h>
@@ -64,6 +67,56 @@ typedef struct GetFirmwareVersionResponse {
   uint32_t version[4];
   uint8_t commit_id[20];
 } GetFirmwareVersionResponse;
+
+/**
+ * Field-entropy provisioning status returned by the MCU.
+ */
+typedef struct FieldEntropyStatusResponse {
+  /**
+   * Common response metadata, including FIPS status.
+   */
+  struct CommonResponse common;
+  /**
+   * One when every field-entropy partition is provisioned; otherwise zero.
+   */
+  uint32_t already_provisioned;
+} FieldEntropyStatusResponse;
+
+/**
+ * Vendor public-key hash slot occupancy and key types.
+ */
+typedef struct VendorPkHashStatusResponse {
+  /**
+   * Common response metadata, including FIPS status.
+   */
+  struct CommonResponse common;
+  /**
+   * Bit N is set when vendor public-key hash slot N is occupied.
+   */
+  uint32_t used_slots_bitmap;
+  /**
+   * Key type for each slot; zero for unused slots.
+   */
+  uint8_t key_types[VENDOR_PK_HASH_SLOT_COUNT];
+} VendorPkHashStatusResponse;
+
+/**
+ * Hardware-exported key slot occupancy and configured slot count.
+ */
+typedef struct HekStatusResponse {
+  /**
+   * Common response metadata, including FIPS status.
+   */
+  struct CommonResponse common;
+  /**
+   * Bit N is set when HEK slot N is no longer reusable.
+   */
+  uint32_t used_slots_bitmap;
+  /**
+   * Number of HEK slots configured by the device.
+   */
+  uint32_t total_slots;
+} HekStatusResponse;
 
 /**
  * Opaque transport handle (from design document)
@@ -185,6 +238,24 @@ enum CaliptraError caliptra_cmd_get_device_capabilities_c_impl(struct CaliptraSe
 enum CaliptraError caliptra_cmd_get_firmware_version_c_impl(struct CaliptraSession *session_ptr,
                                                             uint32_t index,
                                                             struct GetFirmwareVersionResponse *firmware_version);
+
+/**
+ * Query field-entropy provisioning status.
+ */
+enum CaliptraError caliptra_cmd_field_entropy_status_c_impl(struct CaliptraSession *session_ptr,
+                                                            struct FieldEntropyStatusResponse *status);
+
+/**
+ * Query vendor public-key hash slot occupancy and key types.
+ */
+enum CaliptraError caliptra_cmd_vendor_pk_hash_status_c_impl(struct CaliptraSession *session_ptr,
+                                                             struct VendorPkHashStatusResponse *status);
+
+/**
+ * Query hardware-exported key slot occupancy and configured slot count.
+ */
+enum CaliptraError caliptra_cmd_hek_status_c_impl(struct CaliptraSession *session_ptr,
+                                                  struct HekStatusResponse *status);
 
 /**
  * Create a new Caliptra session with transport

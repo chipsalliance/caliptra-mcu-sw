@@ -252,5 +252,7 @@ fn map_common_completion(code: CommonCode) -> CaliptraCompletionCode {
         CommonCode::InvalidState => CaliptraCompletionCode::InvalidState,
         CommonCode::CaliptraMailboxBusy => CaliptraCompletionCode::CaliptraMailboxBusy,
         CommonCode::CaliptraBufferTooSmall => CaliptraCompletionCode::CaliptraBufferTooSmall,
+        CommonCode::ZeroizeFailed => CaliptraCompletionCode::ZeroizeFailed,
+        CommonCode::RmaTransitionFailed => CaliptraCompletionCode::RmaTransitionFailed,
     }
 }

@@ -102,6 +102,12 @@ impl<S: Syscalls> Otp<S> {
         S::command(self.driver_num, cmd::OTP_WRITE_RAW, data, mask).to_result::<(), ErrorCode>()
     }
 
+    /// Mark all four field-entropy slots as zeroized.
+    pub fn mark_field_entropy_zeroized(&self) -> Result<(), ErrorCode> {
+        S::command(self.driver_num, cmd::OTP_MARK_FIELD_ENTROPY_ZEROIZED, 0, 0)
+            .to_result::<(), ErrorCode>()
+    }
+
     /// Check whether a given vendor pk hash slot is marked valid (has not been marked invalid).
     ///
     /// Also returns `false` if the slot ID is invalid or reading of the mask fails.
@@ -132,6 +138,31 @@ impl<S: Syscalls> Otp<S> {
         }
 
         Ok(fuse_value)
+    }
+
+    pub fn vendor_pk_hash_status(&self) -> Result<(u32, [u8; MAX_NUM_VENDOR_PK_HASH]), ErrorCode> {
+        let mut used_slots_bitmap = 0u32;
+        let mut key_types = [0u8; MAX_NUM_VENDOR_PK_HASH];
+
+        for (slot, key_type) in key_types.iter_mut().enumerate() {
+            let reg = reg::vendor_pk_hash_reg_by_slot(slot as u32).ok_or(ErrorCode::Invalid)?;
+            let mut used = false;
+            for word in 0..VENDOR_PK_HASH_SIZE / core::mem::size_of::<u32>() {
+                if self.read(reg, word as u32)? != 0 {
+                    used = true;
+                    break;
+                }
+            }
+            if used {
+                used_slots_bitmap |= 1 << slot;
+                *key_type = self
+                    .read(reg::VENDOR_PQC_KEY_TYPE, slot as u32)?
+                    .try_into()
+                    .map_err(|_| ErrorCode::Fail)?;
+            }
+        }
+
+        Ok((used_slots_bitmap, key_types))
     }
 
     /// Revoke an individual key within a PK hash slot
@@ -326,12 +357,46 @@ impl<S: Syscalls> Otp<S> {
             .to_result::<(u32, u32), ErrorCode>()
     }
 
+    pub fn hek_status(&self) -> Result<(u32, u32), ErrorCode> {
+        let (total_slots, _) = self.get_hek_metadata()?;
+        if total_slots as usize > reg::LOCK_HEK_PROD_ALL.len() {
+            return Err(ErrorCode::Invalid);
+        }
+
+        let mut used_slots_bitmap = 0;
+        for (slot, reg) in reg::LOCK_HEK_PROD_ALL[..total_slots as usize]
+            .iter()
+            .enumerate()
+        {
+            for word in 0..12 {
+                if self.read(*reg, word)? != 0 {
+                    used_slots_bitmap |= 1 << slot;
+                    break;
+                }
+            }
+        }
+
+        Ok((used_slots_bitmap, total_slots))
+    }
+
     pub fn rotate_hek(&self, slot: u32, seed: &[u8; 32]) -> Result<(), ErrorCode> {
         share::scope::<AllowRo<S, OTP_DRIVER_NUM, { ro_allow::SEED }>, _, _>(|allow_ro| {
             S::allow_ro::<DefaultConfig, OTP_DRIVER_NUM, { ro_allow::SEED }>(allow_ro, seed)?;
 
             S::command(self.driver_num, cmd::OTP_ROTATE_HEK, slot, 0).to_result::<(), ErrorCode>()
         })
+    }
+
+    pub fn program_hek(&self, slot: u32, seed: &[u8; 32]) -> Result<(), ErrorCode> {
+        share::scope::<AllowRo<S, OTP_DRIVER_NUM, { ro_allow::SEED }>, _, _>(|allow_ro| {
+            S::allow_ro::<DefaultConfig, OTP_DRIVER_NUM, { ro_allow::SEED }>(allow_ro, seed)?;
+
+            S::command(self.driver_num, cmd::OTP_PROGRAM_HEK, slot, 0).to_result::<(), ErrorCode>()
+        })
+    }
+
+    pub fn zero_hek(&self, slot: u32) -> Result<(), ErrorCode> {
+        S::command(self.driver_num, cmd::OTP_ZERO_HEK, slot, 0).to_result::<(), ErrorCode>()
     }
 
     pub fn is_hek_perma_set(&self) -> Result<bool, ErrorCode> {
@@ -359,6 +424,9 @@ pub mod cmd {
     pub const OTP_LOCK_PARTITION: u32 = 6;
     pub const OTP_GET_HEK_METADATA: u32 = 8; // Returns (total_slots, active_slot)
     pub const OTP_ROTATE_HEK: u32 = 9;
+    pub const OTP_PROGRAM_HEK: u32 = 10;
+    pub const OTP_ZERO_HEK: u32 = 11;
+    pub const OTP_MARK_FIELD_ENTROPY_ZEROIZED: u32 = 12;
 }
 
 mod ro_allow {
@@ -446,8 +514,10 @@ pub mod reg {
     pub const FUSE_WRITE: u32 = 31;
     pub const FUSE_LOCK_PARTITION: u32 = 32;
     pub const PERMA_HEK_EN: u32 = 33;
-    pub const SOC_MANIFEST_SVN: u32 = 34;
-    pub const SOC_MANIFEST_MAX_SVN: u32 = 35;
+    pub const FIELD_ENTROPY_STATE: u32 = 34;
+    pub const VENDOR_PQC_KEY_TYPE: u32 = 35;
+    pub const SOC_MANIFEST_SVN: u32 = 36;
+    pub const SOC_MANIFEST_MAX_SVN: u32 = 37;
     /// Owner SoC Manifest SVN words; index must be 0 or 1.
-    pub const OWNER_SOC_MANIFEST_MIN_SVN: u32 = 36;
+    pub const OWNER_SOC_MANIFEST_MIN_SVN: u32 = 38;
 }

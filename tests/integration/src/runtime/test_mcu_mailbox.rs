@@ -13,12 +13,13 @@ use caliptra_mcu_config::capabilities::{
 use caliptra_mcu_hw_model::{LifecycleControllerState, McuHwModel};
 use caliptra_mcu_mbox_common::messages::{
     CommandId as McuCommandId, DeviceCapsReq, DeviceCapsResp, DpeSignerContextCertReq,
-    EcdsaVerifyReq, FirmwareVersionReq, GetDpeCertChainReq, LmsVerifyReq,
+    EcdsaVerifyReq, FirmwareVersionReq, GetDpeCertChainReq, HekStatusReq, LmsVerifyReq,
     MailboxReqHeader as McuMailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize,
-    McuEcdsa384SigVerifyReq, McuFeProgReq, McuFipsPeriodicEnableReq, McuFipsPeriodicEnableResp,
-    McuFipsPeriodicStatusResp, McuFipsSelfTestGetResultsResp, McuFipsSelfTestStartResp,
-    McuLmsSigVerifyReq, McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp,
-    McuProdDebugUnlockTokenReq, ProductionAuthDebugUnlockReq, ProductionAuthDebugUnlockToken,
+    McuEcdsa384SigVerifyReq, McuFeProgReq, McuFeStatusReq, McuFipsPeriodicEnableReq,
+    McuFipsPeriodicEnableResp, McuFipsPeriodicStatusResp, McuFipsSelfTestGetResultsResp,
+    McuFipsSelfTestStartResp, McuLmsSigVerifyReq, McuProdDebugUnlockReqReq,
+    McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq, ProductionAuthDebugUnlockReq,
+    ProductionAuthDebugUnlockToken, VendorPkHashStatusReq, VENDOR_PQC_KEY_TYPE_LMS,
 };
 use caliptra_mcu_romtime::{handoff::McuRomCapabilities, McuBootMilestones};
 use std::mem::size_of;
@@ -385,6 +386,7 @@ fn test_device_capabilities_cmd() -> Result<()> {
             | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PK_HASH
             | AuthorizedSubcommandCapabilities::FUSE_LOCK_PARTITION
             | AuthorizedSubcommandCapabilities::PROVISION_OWNER_PK_HASH
+            | AuthorizedSubcommandCapabilities::ZEROIZE_UDS_FE_AND_ENTER_RMA
             | AuthorizedSubcommandCapabilities::DOT_ENABLE
             | AuthorizedSubcommandCapabilities::DOT_LOCK
             | AuthorizedSubcommandCapabilities::DOT_DISABLE
@@ -399,8 +401,23 @@ fn test_device_capabilities_cmd() -> Result<()> {
 
 #[test]
 fn test_get_and_clear_log_cmds() -> Result<()> {
+    const ISOLATED_PROCESS_ENV: &str = "CALIPTRA_MCU_ISOLATED_LOG_CMD_TEST";
+    const TEST_NAME: &str = "runtime::test_mcu_mailbox::test_get_and_clear_log_cmds";
+
+    if std::env::var_os(ISOLATED_PROCESS_ENV).is_none() {
+        let working_dir = tempfile::tempdir_in(env!("CARGO_MANIFEST_DIR"))?;
+        let status = std::process::Command::new(std::env::current_exe()?)
+            .args(["--exact", TEST_NAME, "--nocapture"])
+            .env(ISOLATED_PROCESS_ENV, "1")
+            .current_dir(working_dir.path())
+            .status()?;
+        assert!(status.success(), "isolated log command test failed");
+        return Ok(());
+    }
+
     let mut hw = start_runtime_hw_model(TestParams {
         feature: Some("test-defmt-logging-release"),
+        profile: Some("release"),
         seeded_log_entries: Some(caliptra_mcu_mbox_common::config::TEST_DEBUG_LOG_ENTRIES),
         ..Default::default()
     });
@@ -926,6 +943,111 @@ fn test_get_auth_cmd_challenge_cmd() -> Result<()> {
         challenge.iter().copied().reduce(|a, b| a | b).unwrap() != 0,
         "Challenge should not be all-zeros"
     );
+    Ok(())
+}
+
+#[test]
+fn test_fe_status_cmd_does_not_require_authorization() -> Result<()> {
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-mcu-mbox-cmds"),
+        ..Default::default()
+    });
+
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    let resp = hw.mailbox_execute_req(McuFeStatusReq::default())?;
+    assert_eq!(resp.already_provisioned, 0);
+
+    let cmd = McuCommandId::MC_FE_STATUS.into();
+
+    let truncated = [0u8; 3];
+    assert!(hw.mailbox_execute(cmd, &truncated).is_err());
+
+    let mut oversized = [0u8; 8];
+    oversized[4..].copy_from_slice(&0x1234_5678u32.to_le_bytes());
+    let oversized_checksum = calc_checksum(cmd, &oversized[4..]);
+    oversized[..4].copy_from_slice(&oversized_checksum.to_le_bytes());
+    assert!(hw.mailbox_execute(cmd, &oversized).is_err());
+
+    let invalid_checksum = [0u8; 4];
+    assert!(hw.mailbox_execute(cmd, &invalid_checksum).is_err());
+    Ok(())
+}
+
+#[test]
+fn test_vendor_pk_hash_status_cmd_does_not_require_authorization() -> Result<()> {
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-mcu-mbox-cmds"),
+        ..Default::default()
+    });
+
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    let resp = hw.mailbox_execute_req(VendorPkHashStatusReq::default())?;
+    assert_eq!(resp.used_slots_bitmap, 1 << 0);
+    assert_eq!(resp.key_types[0], VENDOR_PQC_KEY_TYPE_LMS);
+    assert_eq!(&resp.key_types[1..], &[0; 15]);
+
+    let cmd = McuCommandId::MC_VENDOR_PK_HASH_STATUS.into();
+
+    let truncated = [0u8; 3];
+    assert!(hw.mailbox_execute(cmd, &truncated).is_err());
+
+    let mut oversized = [0u8; 8];
+    oversized[4..].copy_from_slice(&0x1234_5678u32.to_le_bytes());
+    let oversized_checksum = calc_checksum(cmd, &oversized[4..]);
+    oversized[..4].copy_from_slice(&oversized_checksum.to_le_bytes());
+    assert!(hw.mailbox_execute(cmd, &oversized).is_err());
+
+    let invalid_checksum = [0u8; 4];
+    assert!(hw.mailbox_execute(cmd, &invalid_checksum).is_err());
+    Ok(())
+}
+
+#[test]
+fn test_hek_status_cmd_does_not_require_authorization() -> Result<()> {
+    let _lock = crate::test::TEST_LOCK.lock().unwrap();
+    let mut otp = vec![0u8; 4096];
+    crate::test_hek::test::setup_otp_hek(&mut otp, 0, false, false);
+    crate::test_hek::test::setup_otp_hek(&mut otp, 2, true, false);
+
+    let mut hw = start_runtime_hw_model(TestParams {
+        otp_memory: Some(otp),
+        ocp_lock_en: true,
+        feature: Some("test-ekp"),
+        rom_feature: Some("ocp-lock"),
+        ..Default::default()
+    });
+
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    let resp = hw.mailbox_execute_req(HekStatusReq::default())?;
+    assert_eq!(resp.used_slots_bitmap, (1 << 0) | (1 << 2));
+    assert_eq!(resp.used_slots_bitmap.count_ones(), 2);
+    assert_eq!(resp.total_slots, 8);
+
+    let cmd = McuCommandId::MC_HEK_STATUS.into();
+
+    let truncated = [0u8; 3];
+    assert!(hw.mailbox_execute(cmd, &truncated).is_err());
+
+    let mut oversized = [0u8; 8];
+    oversized[4..].copy_from_slice(&0x1234_5678u32.to_le_bytes());
+    let oversized_checksum = calc_checksum(cmd, &oversized[4..]);
+    oversized[..4].copy_from_slice(&oversized_checksum.to_le_bytes());
+    assert!(hw.mailbox_execute(cmd, &oversized).is_err());
+
+    let invalid_checksum = [0u8; 4];
+    assert!(hw.mailbox_execute(cmd, &invalid_checksum).is_err());
     Ok(())
 }
 

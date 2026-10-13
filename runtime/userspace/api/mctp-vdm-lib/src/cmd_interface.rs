@@ -343,6 +343,8 @@ fn map_caliptra_to_vdm(err: CaliptraCompletionCode) -> VdmCompletionCode {
         CaliptraCompletionCode::InvalidState => VdmCompletionCode::InvalidState,
         CaliptraCompletionCode::CaliptraMailboxBusy => VdmCompletionCode::CaliptraMailboxBusy,
         CaliptraCompletionCode::CaliptraBufferTooSmall => VdmCompletionCode::CaliptraBufferTooSmall,
+        CaliptraCompletionCode::ZeroizeFailed => VdmCompletionCode::ZeroizeFailed,
+        CaliptraCompletionCode::RmaTransitionFailed => VdmCompletionCode::RmaTransitionFailed,
     }
 }
 
