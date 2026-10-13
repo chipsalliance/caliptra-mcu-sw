@@ -14,7 +14,8 @@ use caliptra_mcu_mbox_common::messages::{
     CmEcdhFinishReq, CmEcdhGenerateReq, CmEcdsaPublicKeyReq, CmEcdsaSignReq, CmEcdsaVerifyReq,
     CmImportReq, CmKeyUsage, CmMldsaPublicKeyReq, CmMldsaSignReq, CmMldsaVerifyReq, Cmk,
     CommandId as McuCommandId, DeviceCapsReq, DeviceCapsResp, DpeSignerContextCertReq,
-    EcdsaVerifyReq, FirmwareVersionReq, GetAuthCmdChallengeReq, GetDpeCertChainReq, LmsVerifyReq,
+    EcdsaVerifyReq, EndorsementAlgorithm, ExportAttestedCsrReq, FirmwareVersionReq,
+    GetAttestationReq, GetAuthCmdChallengeReq, GetDpeCertChainReq, LmsVerifyReq,
     MailboxReqHeader as McuMailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize,
     McuCmImportReq, McuEcdhFinishReq, McuEcdhFinishResp, McuEcdhGenerateReq, McuEcdhGenerateResp,
     McuEcdsa384SigVerifyReq, McuEcdsaCmkPublicKeyReq, McuEcdsaCmkPublicKeyResp, McuEcdsaCmkSignReq,
@@ -23,9 +24,11 @@ use caliptra_mcu_mbox_common::messages::{
     McuFipsSelfTestStartResp, McuLmsSigVerifyReq, McuMailboxReq, McuMldsaCmkPublicKeyReq,
     McuMldsaCmkPublicKeyResp, McuMldsaCmkSignReq, McuMldsaCmkSignResp, McuMldsaCmkVerifyReq,
     McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq,
-    ProductionAuthDebugUnlockReq, ProductionAuthDebugUnlockToken,
+    ProductionAuthDebugUnlockReq, ProductionAuthDebugUnlockToken, GET_ATTESTATION_RESP_PREFIX_LEN,
+    MAX_RESP_DATA_SIZE,
 };
 use caliptra_mcu_romtime::{handoff::McuRomCapabilities, McuBootMilestones};
+use minicbor::Decoder;
 use std::mem::size_of;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
@@ -78,9 +81,154 @@ fn assert_fixed_response<T: FromBytes + Immutable + KnownLayout>(response: &[u8]
     T::ref_from_bytes(response).expect("invalid fixed-size response")
 }
 
+fn execute_var_mcu_req(hw: &mut impl McuHwModel, request: McuMailboxReq) -> Result<Vec<u8>> {
+    let response = execute_raw_mcu_req(hw, request)?;
+    assert_response_checksum(&response);
+    let (header, body) =
+        MailboxRespHeaderVarSize::ref_from_prefix(&response).expect("invalid response header");
+    assert_eq!(
+        header.hdr.fips_status,
+        MailboxRespHeader::FIPS_STATUS_APPROVED
+    );
+    assert_eq!(
+        response.len(),
+        size_of::<MailboxRespHeaderVarSize>() + header.data_len as usize
+    );
+    Ok(body.to_vec())
+}
+
+fn assert_signed_eat(data: &[u8], nonce: &[u8], expected_algorithms: &[i64], expect_csr: bool) {
+    const TAG_SELF_DESCRIBED_CBOR: u64 = 55799;
+    const TAG_CWT: u64 = 61;
+    const TAG_COSE_SIGN1: u64 = 18;
+    const HEADER_ALGORITHM: i64 = 1;
+    const CLAIM_NONCE: i64 = 10;
+    const CLAIM_MEASUREMENTS: i64 = 273;
+    const CLAIM_CSR: i64 = -70001;
+    const CLAIM_KEY_ATTRIBUTES: i64 = -70002;
+
+    let mut decoder = Decoder::new(data);
+    let mut tag = decoder.tag().expect("missing CWT tag").as_u64();
+    if tag == TAG_SELF_DESCRIBED_CBOR {
+        tag = decoder.tag().expect("missing CWT tag").as_u64();
+    }
+    assert_eq!(tag, TAG_CWT);
+    assert_eq!(
+        decoder.tag().expect("missing COSE_Sign1 tag").as_u64(),
+        TAG_COSE_SIGN1
+    );
+    assert_eq!(
+        decoder
+            .array()
+            .expect("invalid COSE_Sign1 array")
+            .expect("indefinite COSE_Sign1 array"),
+        4
+    );
+    let protected = decoder.bytes().expect("invalid protected header");
+    let mut protected_decoder = Decoder::new(protected);
+    let protected_len = protected_decoder.map().unwrap().unwrap();
+    assert!(protected_len > 0);
+    assert_eq!(protected_decoder.i64().unwrap(), HEADER_ALGORITHM);
+    let algorithm = protected_decoder.i64().unwrap();
+    for _ in 1..protected_len {
+        protected_decoder.skip().unwrap();
+        protected_decoder.skip().unwrap();
+    }
+    assert_eq!(
+        protected_decoder.position(),
+        protected.len(),
+        "trailing protected header data"
+    );
+    assert!(
+        expected_algorithms.contains(&algorithm),
+        "unexpected protected algorithm {algorithm}"
+    );
+    let unprotected_len = decoder
+        .map()
+        .expect("invalid unprotected header")
+        .expect("indefinite unprotected header");
+    for _ in 0..unprotected_len {
+        decoder.skip().expect("invalid unprotected header key");
+        decoder.skip().expect("invalid unprotected header value");
+    }
+    let payload = decoder.bytes().expect("invalid EAT payload");
+    assert!(!decoder.bytes().expect("invalid COSE signature").is_empty());
+    assert_eq!(decoder.position(), data.len(), "trailing COSE data");
+
+    let mut claims = Decoder::new(payload);
+    let claims_len = claims
+        .map()
+        .expect("EAT payload is not a claims map")
+        .expect("indefinite EAT claims map");
+    let mut found_nonce = false;
+    let mut found_measurements = false;
+    let mut found_csr = false;
+    let mut found_key_attributes = false;
+    for _ in 0..claims_len {
+        let key = claims.i64().expect("EAT claim key is not an integer");
+        match key {
+            CLAIM_NONCE => {
+                assert!(!found_nonce, "duplicate nonce claim");
+                assert_eq!(
+                    claims.bytes().expect("nonce claim is not a byte string"),
+                    nonce
+                );
+                found_nonce = true;
+            }
+            CLAIM_MEASUREMENTS => {
+                assert!(!found_measurements, "duplicate measurements claim");
+                let measurements_len = claims
+                    .array()
+                    .expect("measurements claim is not an array")
+                    .expect("indefinite measurements array");
+                assert!(measurements_len > 0, "measurements claim is empty");
+                for _ in 0..measurements_len {
+                    claims.skip().expect("invalid measurement");
+                }
+                found_measurements = true;
+            }
+            CLAIM_CSR => {
+                assert!(!found_csr, "duplicate CSR claim");
+                let csr_der = claims.bytes().expect("CSR claim is not a byte string");
+                let csr =
+                    openssl::x509::X509Req::from_der(csr_der).expect("invalid DER PKCS#10 CSR");
+                assert_eq!(csr.to_der().expect("failed to encode CSR"), csr_der);
+                found_csr = true;
+            }
+            CLAIM_KEY_ATTRIBUTES => {
+                assert!(!found_key_attributes, "duplicate key attributes claim");
+                claims.skip().expect("invalid key attributes claim");
+                found_key_attributes = true;
+            }
+            _ => claims.skip().expect("invalid EAT claim value"),
+        }
+    }
+    assert_eq!(claims.position(), payload.len(), "trailing EAT claims data");
+    assert!(found_nonce, "missing nonce claim");
+    if expect_csr {
+        assert!(found_csr, "missing CSR claim");
+        assert!(found_key_attributes, "missing key attributes claim");
+    } else {
+        assert!(found_measurements, "missing measurements claim");
+    }
+}
+
 fn start_crypto_mailbox_hw() -> DefaultHwModel {
     let mut hw = start_runtime_hw_model(TestParams {
         feature: Some("test-mcu-mbox-cmds"),
+        ..Default::default()
+    });
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+    hw
+}
+
+fn start_dpe_mailbox_hw() -> DefaultHwModel {
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-mcu-mbox-cmds"),
+        ocp_lock_en: true,
         ..Default::default()
     });
     hw.step_until(|hw| {
@@ -1493,33 +1641,158 @@ fn test_fe_prog_authorized_req() -> Result<()> {
 }
 
 #[test]
-fn test_dpe_signer_context_cert_cmd() -> Result<()> {
-    let mut hw = start_runtime_hw_model(TestParams {
-        feature: Some("test-mcu-mbox-cmds"),
-        ocp_lock_en: true,
-        ..Default::default()
-    });
+fn test_export_attested_csr_cmd() -> Result<()> {
+    let mut hw = start_crypto_mailbox_hw();
 
-    hw.step_until(|hw| {
-        hw.mci_boot_milestones()
-            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
-    });
+    for algorithm in [
+        ExportAttestedCsrReq::ALGO_ECC384,
+        ExportAttestedCsrReq::ALGO_MLDSA87,
+    ] {
+        let expected_algorithms: &[i64] = match algorithm {
+            ExportAttestedCsrReq::ALGO_ECC384 => &[-51],
+            ExportAttestedCsrReq::ALGO_MLDSA87 => &[-50],
+            _ => unreachable!(),
+        };
+        let nonce = [algorithm as u8; 32];
+        let body = execute_var_mcu_req(
+            &mut hw,
+            McuMailboxReq::ExportAttestedCsr(ExportAttestedCsrReq {
+                device_key_id: ExportAttestedCsrReq::KEY_ID_RT_ALIAS,
+                algorithm,
+                nonce,
+                ..Default::default()
+            }),
+        )?;
+        assert_signed_eat(&body, &nonce, expected_algorithms, true);
+    }
+
+    for request in [
+        ExportAttestedCsrReq {
+            device_key_id: u32::MAX,
+            algorithm: ExportAttestedCsrReq::ALGO_ECC384,
+            nonce: [0x5a; 32],
+            ..Default::default()
+        },
+        ExportAttestedCsrReq {
+            device_key_id: ExportAttestedCsrReq::KEY_ID_RT_ALIAS,
+            algorithm: u32::MAX,
+            nonce: [0x5a; 32],
+            ..Default::default()
+        },
+    ] {
+        assert_mcu_req_fails(&mut hw, McuMailboxReq::ExportAttestedCsr(request));
+    }
+    Ok(())
+}
+
+#[test]
+fn test_get_attestation_cmd() -> Result<()> {
+    const FORMAT_QUERY: u32 = 0;
+    const FORMAT_OCP_EAT: u32 = 1;
+    const ALGO_ECC384: u32 = 1;
+    const ALGO_MLDSA87: u32 = 2;
+    const SLOT_VENDOR: u32 = 0;
+    const SLOT_OWNER: u32 = 1;
+
+    let mut hw = start_crypto_mailbox_hw();
+
+    let query = execute_var_mcu_req(
+        &mut hw,
+        McuMailboxReq::GetAttestation(GetAttestationReq {
+            evidence_format: FORMAT_QUERY,
+            ..Default::default()
+        }),
+    )?;
+    assert_eq!(
+        query.len(),
+        GET_ATTESTATION_RESP_PREFIX_LEN + size_of::<u32>()
+    );
+    assert_eq!(
+        u32::from_le_bytes(query[..GET_ATTESTATION_RESP_PREFIX_LEN].try_into().unwrap()),
+        FORMAT_QUERY
+    );
+    let formats = u32::from_le_bytes(query[GET_ATTESTATION_RESP_PREFIX_LEN..].try_into().unwrap());
+    assert_eq!(formats, 1 << FORMAT_OCP_EAT);
+
+    for algorithm in [ALGO_ECC384, ALGO_MLDSA87] {
+        let expected_algorithm = match algorithm {
+            ALGO_ECC384 => -51,
+            ALGO_MLDSA87 => -50,
+            _ => unreachable!(),
+        };
+        let nonce = [0x40 | algorithm as u8; 32];
+        let body = execute_var_mcu_req(
+            &mut hw,
+            McuMailboxReq::GetAttestation(GetAttestationReq {
+                evidence_format: FORMAT_OCP_EAT,
+                algorithm,
+                pki_entity_slot: SLOT_VENDOR,
+                nonce,
+                ..Default::default()
+            }),
+        )?;
+        assert!(body.len() > GET_ATTESTATION_RESP_PREFIX_LEN);
+        assert_eq!(
+            u32::from_le_bytes(body[..GET_ATTESTATION_RESP_PREFIX_LEN].try_into().unwrap()),
+            FORMAT_OCP_EAT
+        );
+        let evidence = &body[GET_ATTESTATION_RESP_PREFIX_LEN..];
+        assert_signed_eat(evidence, &nonce, &[expected_algorithm], false);
+    }
+
+    for request in [
+        GetAttestationReq {
+            evidence_format: u32::MAX,
+            algorithm: ALGO_ECC384,
+            pki_entity_slot: SLOT_VENDOR,
+            ..Default::default()
+        },
+        GetAttestationReq {
+            evidence_format: FORMAT_OCP_EAT,
+            algorithm: u32::MAX,
+            pki_entity_slot: SLOT_VENDOR,
+            ..Default::default()
+        },
+        GetAttestationReq {
+            evidence_format: FORMAT_OCP_EAT,
+            algorithm: ALGO_ECC384,
+            pki_entity_slot: SLOT_OWNER,
+            ..Default::default()
+        },
+        GetAttestationReq {
+            evidence_format: FORMAT_OCP_EAT,
+            algorithm: ALGO_ECC384,
+            pki_entity_slot: u32::MAX,
+            ..Default::default()
+        },
+    ] {
+        assert_mcu_req_fails(&mut hw, McuMailboxReq::GetAttestation(request));
+    }
+    Ok(())
+}
+
+#[test]
+fn test_dpe_signer_context_cert_cmd() -> Result<()> {
+    let mut hw = start_dpe_mailbox_hw();
 
     // 1. Fetch DPE Certificate Chain via MC_GET_DPE_CERTIFICATE_CHAIN (looping across chunks)
     let mut chain_der = Vec::new();
     let mut offset = 0u32;
     loop {
-        let chain_req = GetDpeCertChainReq {
-            offset,
-            size: 1024,
-            ..Default::default()
-        };
-        let chain_resp = hw.mailbox_execute_req(chain_req)?;
-        let chunk_len = chain_resp.hdr.data_len as usize;
+        let chunk = execute_var_mcu_req(
+            &mut hw,
+            McuMailboxReq::GetDpeCertChain(GetDpeCertChainReq {
+                offset,
+                size: 1024,
+                ..Default::default()
+            }),
+        )?;
+        let chunk_len = chunk.len();
+        assert!(chunk_len <= 1024);
         if chunk_len == 0 {
             break;
         }
-        chain_der.extend_from_slice(&chain_resp.cert_data[..chunk_len]);
+        chain_der.extend_from_slice(&chunk);
         offset += chunk_len as u32;
         if chunk_len < 1024 {
             break;
@@ -1536,37 +1809,34 @@ fn test_dpe_signer_context_cert_cmd() -> Result<()> {
 
     let mut chain_certs = Vec::new();
     let mut remaining: &[u8] = &chain_der;
-    while !remaining.is_empty() && remaining[0] == 0x30 {
-        if let Ok(c) = openssl::x509::X509::from_der(remaining) {
-            if let Ok(der_bytes) = c.to_der() {
-                let der_len = der_bytes.len();
-                chain_certs.push(c);
-                if remaining.len() >= der_len {
-                    remaining = &remaining[der_len..];
-                    continue;
-                }
-            }
-        }
-        break;
+    while !remaining.is_empty() {
+        let (rest, _) =
+            x509_parser::parse_x509_certificate(remaining).expect("invalid certificate chain DER");
+        let cert_len = remaining.len() - rest.len();
+        chain_certs.push(
+            openssl::x509::X509::from_der(&remaining[..cert_len])
+                .expect("failed to parse chain certificate"),
+        );
+        remaining = rest;
     }
     assert!(
         !chain_certs.is_empty(),
         "Parsed DPE certificate chain should not be empty"
     );
+    assert!(remaining.is_empty(), "trailing certificate chain data");
 
     // 2. Fetch DPE Signer Context Certificate via MC_DPE_SIGNER_CONTEXT_CERT
-    let req = DpeSignerContextCertReq::default();
-    let resp = hw.mailbox_execute_req(req)?;
-    let cert_len = resp.hdr.data_len as usize;
-    assert!(cert_len > 0, "Response data length should be non-zero");
-
-    let cert_der = &resp.cert_data[..cert_len];
+    let cert_der = execute_var_mcu_req(
+        &mut hw,
+        McuMailboxReq::DpeSignerContextCert(DpeSignerContextCertReq::default()),
+    )?;
+    assert!(!cert_der.is_empty(), "Response data should be non-zero");
     assert_eq!(
         cert_der[0], 0x30,
         "Certificate should start with ASN.1 SEQUENCE tag 0x30"
     );
 
-    let cert = openssl::x509::X509::from_der(cert_der)
+    let cert = openssl::x509::X509::from_der(&cert_der)
         .expect("Failed to parse DPE derived leaf certificate as DER");
 
     // Validate Serial Number (SN)
@@ -1622,6 +1892,51 @@ fn test_dpe_signer_context_cert_cmd() -> Result<()> {
 
     let pubkey = expected_signer.public_key().unwrap();
     assert!(cert.verify(&pubkey).is_ok());
+
+    assert_mcu_req_fails(
+        &mut hw,
+        McuMailboxReq::DpeSignerContextCert(DpeSignerContextCertReq::default()),
+    );
+
+    for request in [
+        McuMailboxReq::GetDpeCertChain(GetDpeCertChainReq {
+            offset: 0,
+            size: MAX_RESP_DATA_SIZE as u32 + 1,
+            ..Default::default()
+        }),
+        McuMailboxReq::GetDpeCertChain(GetDpeCertChainReq {
+            offset: u32::MAX,
+            size: 1,
+            ..Default::default()
+        }),
+    ] {
+        assert_mcu_req_fails(&mut hw, request);
+    }
+
+    let mut mldsa_hw = start_dpe_mailbox_hw();
+    assert_mcu_req_fails(
+        &mut mldsa_hw,
+        McuMailboxReq::DpeSignerContextCert(DpeSignerContextCertReq {
+            algorithm: EndorsementAlgorithm(u32::MAX),
+            ..Default::default()
+        }),
+    );
+    let mldsa_cert = execute_var_mcu_req(
+        &mut mldsa_hw,
+        McuMailboxReq::DpeSignerContextCert(DpeSignerContextCertReq {
+            algorithm: EndorsementAlgorithm::MLDSA_87,
+            ..Default::default()
+        }),
+    )?;
+    let (remaining, cert) =
+        x509_parser::parse_x509_certificate(&mldsa_cert).expect("invalid ML-DSA certificate DER");
+    assert!(remaining.is_empty(), "trailing ML-DSA certificate data");
+    let mldsa87_oid = x509_parser::oid_registry::asn1_rs::oid!(2.16.840 .1 .101 .3 .4 .3 .19);
+    assert_eq!(
+        cert.tbs_certificate.subject_pki.algorithm.algorithm,
+        mldsa87_oid
+    );
+    assert_eq!(cert.signature_algorithm.algorithm, mldsa87_oid);
 
     Ok(())
 }
