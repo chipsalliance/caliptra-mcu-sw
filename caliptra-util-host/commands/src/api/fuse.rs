@@ -48,7 +48,7 @@ fn map_session_error(error: SessionError, context: &'static str) -> CaliptraApiE
 pub fn caliptra_cmd_get_auth_challenge(
     session: &mut CaliptraSession,
 ) -> CaliptraResult<GetAuthCmdChallengeResponse> {
-    let request = GetAuthCmdChallengeRequest::default();
+    let request = GetAuthCmdChallengeRequest;
     session
         .execute_command_with_id(CaliptraCommandId::GetAuthCmdChallenge, &request)
         .map_err(|error| map_session_error(error, "Get auth command challenge execution failed"))

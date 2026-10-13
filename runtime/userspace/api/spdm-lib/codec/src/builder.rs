@@ -22,7 +22,7 @@ use crate::{ReqRespCode, SpdmMsgHdrPdu, SpdmVersion, WireError, WireWriter};
 /// common header.
 pub trait ResponseBody {
     /// SPDM response code carried in the common header's `code` byte.
-    const RESPONSE_CODE: ReqRespCode;
+    fn response_code(&self) -> ReqRespCode;
 
     /// Number of body bytes (i.e. everything after the 2-byte common
     /// header). For variable-length bodies (e.g. VERSION's
@@ -35,18 +35,24 @@ pub trait ResponseBody {
 
     /// Total SPDM-payload size on the wire (common header + body).
     #[inline]
-    fn encoded_size(&self) -> usize {
+    fn encoded_size(&self) -> usize
+    where
+        Self: Sized,
+    {
         SpdmMsgHdrPdu::SIZE + self.body_size()
     }
 
-    /// Write `(common-header(version, Self::RESPONSE_CODE) | body)`
+    /// Write `(common-header(version, self.response_code()) | body)`
     /// at the writer's current position.
     fn encode_with_header(
         &self,
         version: SpdmVersion,
         w: &mut WireWriter<'_>,
-    ) -> Result<(), WireError> {
-        w.write(&SpdmMsgHdrPdu::new(version, Self::RESPONSE_CODE))?;
+    ) -> Result<(), WireError>
+    where
+        Self: Sized,
+    {
+        w.write(&SpdmMsgHdrPdu::new(version, self.response_code()))?;
         self.encode_body(w)
     }
 }

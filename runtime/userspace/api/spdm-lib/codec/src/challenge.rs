@@ -37,7 +37,9 @@ pub struct ChallengeAuthRsp<'a> {
 }
 
 impl ResponseBody for ChallengeAuthRsp<'_> {
-    const RESPONSE_CODE: ReqRespCode = ReqRespCode::CHALLENGE_AUTH;
+    fn response_code(&self) -> ReqRespCode {
+        ReqRespCode::CHALLENGE_AUTH
+    }
 
     fn body_size(&self) -> usize {
         1 + 1

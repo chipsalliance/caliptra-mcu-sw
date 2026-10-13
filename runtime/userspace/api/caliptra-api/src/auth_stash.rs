@@ -12,7 +12,7 @@ use zerocopy::{little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout,
 
 use crate::slice::{checked_slice_mut, internal_slice};
 use crate::wire::{mbox_execute, populate_checksum, CMD_AUTHORIZE_AND_STASH};
-use crate::ApiAlloc;
+use crate::ScratchAlloc;
 
 /// Width in bytes of an image measurement digest carried by `AUTHORIZE_AND_STASH`.
 pub const AUTHORIZE_AND_STASH_MEASUREMENT_SIZE: usize = 48;
@@ -115,7 +115,7 @@ const _: () = assert!(AUTHORIZE_AND_STASH_RESP_LEN == 12);
 /// [`AuthorizeAndStashFlags`]. Measurement API callers that manage DPE/PCR
 /// state themselves should pass [`AuthorizeAndStashFlags::SKIP_STASH`].
 #[inline(never)]
-pub async fn authorize_and_stash<A: ApiAlloc>(
+pub async fn authorize_and_stash<A: ScratchAlloc>(
     alloc: &A,
     params: &AuthorizeAndStashParams,
 ) -> McuResult<()> {
@@ -127,7 +127,7 @@ pub async fn authorize_and_stash<A: ApiAlloc>(
     validate_authorize_and_stash_response(&rsp, rsp_len, params.accept_owner_only)
 }
 
-fn build_authorize_and_stash_req<'a, A: ApiAlloc>(
+fn build_authorize_and_stash_req<'a, A: ScratchAlloc>(
     alloc: &'a A,
     params: &AuthorizeAndStashParams,
 ) -> McuResult<A::Buf<'a>> {
@@ -184,7 +184,7 @@ mod tests {
 
     struct TestAlloc;
 
-    impl ApiAlloc for TestAlloc {
+    impl ScratchAlloc for TestAlloc {
         type Buf<'a>
             = Vec<u8>
         where

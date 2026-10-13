@@ -19,7 +19,8 @@ use kernel::ErrorCode;
 use tock_registers::{register_bitfields, LocalRegisterCopy};
 
 pub const MDB_PENDING_READ_MCTP: u8 = 0xae;
-pub const MAX_READ_WRITE_SIZE: usize = 250;
+/// TTI RX and TX data FIFO capacity: 64 DWORD entries.
+pub const MAX_READ_WRITE_SIZE: usize = 256;
 const WRITE_DELAY_CYCLES: usize = 100;
 
 register_bitfields! {
@@ -54,6 +55,9 @@ pub struct I3CCore<'a, A: Alarm<'a>> {
     retry_outgoing_read: Cell<bool>,
     retry_incoming_write: Cell<bool>,
     pending_ibi: OptionalCell<(u8, u16)>,
+    tx_desc_complete: Cell<bool>,
+    max_read_len: Cell<usize>,
+    max_write_len: Cell<usize>,
     deferred_call: DeferredCall,
 }
 
@@ -78,8 +82,23 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
             retry_outgoing_read: Cell::new(false),
             retry_incoming_write: Cell::new(false),
             pending_ibi: OptionalCell::empty(),
+            tx_desc_complete: Cell::new(false),
+            max_read_len: Cell::new(MAX_READ_WRITE_SIZE),
+            max_write_len: Cell::new(MAX_READ_WRITE_SIZE),
             deferred_call: DeferredCall::new(),
         }
+    }
+
+    /// Sets the maximum bytes returned to the controller for one private read.
+    pub fn set_max_read_len(&self, max_read_len: usize) {
+        assert!((1..=MAX_READ_WRITE_SIZE).contains(&max_read_len));
+        self.max_read_len.set(max_read_len);
+    }
+
+    /// Sets the maximum bytes accepted from the controller for one private write.
+    pub fn set_max_write_len(&self, max_write_len: usize) {
+        assert!((1..=MAX_READ_WRITE_SIZE).contains(&max_write_len));
+        self.max_write_len.set(max_write_len);
     }
 
     pub fn init(&'static self) {
@@ -91,9 +110,11 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
 
     pub fn enable_interrupts(&self) {
         caliptra_mcu_romtime::println!("[mcu-runtime-i3c] Enabling I3C interrupts");
-        self.registers
-            .tti_interrupt_enable
-            .modify(InterruptEnable::RxDescStatEn::SET + InterruptEnable::IbiDoneEn::SET);
+        self.registers.tti_interrupt_enable.modify(
+            InterruptEnable::RxDescStatEn::SET
+                + InterruptEnable::IbiDoneEn::SET
+                + InterruptEnable::TxDescCompleteEn::SET,
+        );
     }
 
     pub fn disable_interrupts(&self) {
@@ -108,6 +129,13 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
                 // we have to read the IBI status to clear the interrupt
                 let ibi_status = self.registers.tti_status.read(Status::LastIbiStatus);
                 self.ibi_done(ibi_status);
+            }
+            if tti_interrupts.read(InterruptStatus::TxDescComplete) != 0 {
+                self.registers
+                    .tti_interrupt_status
+                    .write(InterruptStatus::TxDescComplete::SET);
+                self.tx_desc_complete.set(true);
+                self.try_complete_tx();
             }
             // There is a pending Write Transaction. Software should read data from the RX Descriptor Queue and the RX Data Queue
             while tti_interrupts.read(InterruptStatus::RxDescStat) != 0 {
@@ -215,10 +243,9 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
                 self.registers.tti_tx_data_port.set(word);
             }
         }
-        // Keep the buffer until the IBI completes. Returning it earlier lets
-        // the client start another private read while this packet's IBI is
-        // still pending, which races into BUSY and can wedge the transmit
-        // queue.
+        // Keep the buffer until both the IBI and the controller's private read
+        // complete. Returning it earlier lets the client fill the target TX
+        // queue with later packets before this packet is consumed.
 
         // add a small delay to ensure that the write is finished buffering
         for _ in 0..WRITE_DELAY_CYCLES {
@@ -236,6 +263,13 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         self.tx_client.map(|client| {
             client.send_done(self.tx_buffer.take().unwrap(), Ok(()));
         });
+    }
+
+    fn try_complete_tx(&self) {
+        if self.pending_ibi.is_none() && self.tx_desc_complete.get() && self.tx_buffer.is_some() {
+            self.tx_desc_complete.set(false);
+            self.deferred_call.set();
+        }
     }
 
     fn send_ibi(&self, mdb: u8, len: u16) {
@@ -258,10 +292,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         if let Some((mdb, len)) = self.pending_ibi.take() {
             // check if IBI was successful
             if ibi_status == 0 {
-                // The client may start the next transfer from send_done(), so
-                // only return the buffer after the previous IBI is no longer
-                // pending.
-                self.deferred_call.set();
+                self.try_complete_tx();
                 // schedule a callback to handle any pending private reads
                 self.set_alarm(Self::RETRY_WAIT_TICKS);
             } else {
@@ -293,12 +324,15 @@ impl<'a, A: Alarm<'a>> crate::hil::I3CTarget<'a> for I3CCore<'a, A> {
         tx_buf: &'static mut [u8],
         len: usize,
     ) -> Result<(), (ErrorCode, &'static mut [u8])> {
-        // we have to wait for the last IBI to be done before we can send another packet
-        // otherwise we can confuse the I3C controller's buffers
+        if len == 0 || len > self.max_read_len.get() || len > tx_buf.len() {
+            return Err((ErrorCode::SIZE, tx_buf));
+        }
+        // The buffer remains owned until both the IBI and private read complete.
         if self.tx_buffer.is_some() || self.pending_ibi.is_some() {
             caliptra_mcu_romtime::println!("[mcu-runtime-i3c] transmit_read called but previous IBI still pending or tx_buffer in use: {} {}", self.tx_buffer.is_some(), self.pending_ibi.is_some());
             return Err((ErrorCode::BUSY, tx_buf));
         }
+        self.tx_desc_complete.set(false);
         self.tx_buffer.replace(tx_buf);
         self.tx_buffer_idx.set(0);
         self.tx_buffer_size.set(len);
@@ -350,8 +384,8 @@ impl<'a, A: Alarm<'a>> crate::hil::I3CTarget<'a> for I3CCore<'a, A> {
         I3CTargetInfo {
             static_addr,
             dynamic_addr,
-            max_read_len: MAX_READ_WRITE_SIZE,
-            max_write_len: MAX_READ_WRITE_SIZE,
+            max_read_len: self.max_read_len.get(),
+            max_write_len: self.max_write_len.get(),
         }
     }
 }

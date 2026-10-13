@@ -4,10 +4,16 @@ use caliptra_mcu_libsyscall_caliptra::mailbox::MailboxError;
 use caliptra_mcu_libtock_platform::ErrorCode;
 use caliptra_ocp_eat::EatError;
 
-#[cfg(feature = "ocp-lock")]
-use caliptra_mcu_romtime::ocp_lock::Error as OcpLockError;
-
 pub type CaliptraApiResult<T> = Result<T, CaliptraApiError>;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OcpLockError(u32);
+
+impl OcpLockError {
+    pub const RUNTIME_HPKE_PUB_KEY_EMPTY: Self = Self(0x1000_0001);
+    pub const RUNTIME_HPKE_UNSUPPORTED_ALGORITHM: Self = Self(0x1000_0002);
+    pub const RUNTIME_HPKE_INVALID_CERT_FORMAT: Self = Self(0x1000_0003);
+}
 
 /// Errors returned by the Caliptra mailbox API (the MCU userspace interface
 /// to Caliptra mailbox commands).
@@ -92,11 +98,9 @@ pub enum CaliptraApiError {
     Mailbox(MailboxError),
     Syscall(ErrorCode),
     Eat(EatError),
-    #[cfg(feature = "ocp-lock")]
     OcpLock(OcpLockError),
 }
 
-#[cfg(feature = "ocp-lock")]
 impl From<der::Error> for CaliptraApiError {
     fn from(_: der::Error) -> Self {
         // TODO(clundin): Inspect error kind and create more fine-grained errors.
@@ -141,7 +145,6 @@ impl CaliptraApiError {
             CaliptraApiError::Mailbox(_) => 0x19,
             CaliptraApiError::Syscall(_) => 0x1A,
             CaliptraApiError::Eat(_) => 0x1B,
-            #[cfg(feature = "ocp-lock")]
             CaliptraApiError::OcpLock(_) => 0x1C,
         }
     }

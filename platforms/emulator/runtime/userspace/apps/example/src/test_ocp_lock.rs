@@ -4,15 +4,15 @@ use caliptra_api::mailbox::{
     CapabilitiesResp, CommandId, HpkeAlgorithms, MailboxReqHeader, Request,
 };
 use caliptra_api::Capabilities;
-use caliptra_mcu_libapi_caliptra::mailbox_api::execute_mailbox_cmd;
-use caliptra_mcu_libapi_caliptra::ocp_lock::{OcpLock, OcpLockEnumerateHpkeHandlesResp};
-use caliptra_mcu_libapi_caliptra::signer::CaliptraDpeSigner;
 use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
 use caliptra_mcu_libsyscall_caliptra::system::System;
 use caliptra_mcu_romtime::println;
 use caliptra_mcu_scratch_alloc::{BitmapAllocator, StaticBitmapAllocatorCell, BITMAP_SLOT_SIZE};
 use core::mem::size_of;
 use core::ptr::NonNull;
+use mcu_caliptra_api::ocp_lock::{OcpLock, OcpLockEnumerateHpkeHandlesResp};
+use mcu_caliptra_api::raw::raw_mailbox_execute;
+use mcu_caliptra_api::signer::CaliptraDpeSigner;
 use zerocopy::{FromBytes, FromZeros, IntoBytes, TryFromBytes};
 
 const OCP_LOCK_SIGNER_SCRATCH_SIZE: usize = 9 * 1024;
@@ -46,8 +46,7 @@ pub(crate) async fn test_get_algorithms() {
     let mut cap_resp_bytes = [0u8; size_of::<CapabilitiesResp>()];
 
     println!("Executing CAPABILITIES mailbox command");
-    match execute_mailbox_cmd(
-        &mailbox,
+    match raw_mailbox_execute(
         CommandId::CAPABILITIES.into(),
         cap_req.as_mut_bytes(),
         &mut cap_resp_bytes,
@@ -131,7 +130,7 @@ pub(crate) async fn test_get_hpke_public_key_x509() {
     };
     let mut mbox_req = caliptra_api::mailbox::InvokeDpeReq::new_zeroed();
     let cmd_hdr = dpe::commands::CommandHdr::new(
-        caliptra_mcu_libapi_caliptra::mailbox_api::DPE_PROFILE,
+        dpe::DpeProfile::P384Sha384,
         dpe::commands::Command::DERIVE_CONTEXT,
     );
     let cmd_hdr_bytes = cmd_hdr.as_bytes();
@@ -142,8 +141,7 @@ pub(crate) async fn test_get_hpke_public_key_x509() {
     mbox_req.data_size = (cmd_hdr_bytes.len() + cmd_bytes.len()) as u32;
 
     let mut mbox_resp = caliptra_api::mailbox::InvokeDpeResp::default();
-    execute_mailbox_cmd(
-        &mailbox,
+    raw_mailbox_execute(
         caliptra_api::mailbox::InvokeDpeReq::ID.0,
         mbox_req.as_mut_bytes(),
         mbox_resp.as_mut_bytes(),

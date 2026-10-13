@@ -14,6 +14,7 @@ pub use caliptra_mcu_mbox_common::messages::{
 };
 
 pub const DOT_FAMILY_ID: u32 = CommandId::MC_DEVICE_OWNERSHIP_TRANSFER.0;
+pub const MC_DOT_ENABLE_CANONICAL_CMD_ID: u32 = CommandId::MC_DOT_ENABLE.0;
 pub const MC_DOT_LOCK_CANONICAL_CMD_ID: u32 = CommandId::MC_DOT_LOCK.0;
 pub const MC_DOT_DISABLE_CANONICAL_CMD_ID: u32 = CommandId::MC_DOT_DISABLE.0;
 pub const MC_DOT_ROTATE_CANONICAL_CMD_ID: u32 = CommandId::MC_DOT_ROTATE.0;
@@ -45,6 +46,12 @@ impl Default for DotAuthorizationTrailer {
             signature: HybridSignature::default(),
         }
     }
+}
+
+#[repr(C)]
+#[derive(Debug, Default, Clone, IntoBytes, FromBytes, Immutable)]
+pub struct DotEnableRequest {
+    pub authorization: DotAuthorizationTrailer,
 }
 
 #[repr(C)]
@@ -192,6 +199,7 @@ macro_rules! command_request {
     };
 }
 
+command_request!(DotEnableRequest, DotTransitionResponse, DotEnable);
 command_request!(DotLockRequest, DotTransitionResponse, DotLock);
 command_request!(DotDisableRequest, DotTransitionResponse, DotDisable);
 command_request!(DotRotateRequest, DotTransitionResponse, DotRotate);
@@ -221,6 +229,7 @@ mod tests {
 
     #[test]
     fn canonical_ids_match_mcu_mailbox_commands() {
+        assert_eq!(MC_DOT_ENABLE_CANONICAL_CMD_ID, CommandId::MC_DOT_ENABLE.0);
         assert_eq!(MC_DOT_LOCK_CANONICAL_CMD_ID, CommandId::MC_DOT_LOCK.0);
         assert_eq!(MC_DOT_DISABLE_CANONICAL_CMD_ID, CommandId::MC_DOT_DISABLE.0);
         assert_eq!(MC_DOT_ROTATE_CANONICAL_CMD_ID, CommandId::MC_DOT_ROTATE.0);

@@ -10,9 +10,9 @@ pub struct I3CTargetInfo {
     /// Could be assigned by the controller or absent if
     /// static address is used, or device has not received the address yet.
     pub dynamic_addr: Option<u8>,
-    /// Maximum length of data that will be received in a Write command.
-    pub max_read_len: usize,
     /// Maximum length of data that can be sent in response to a Read command.
+    pub max_read_len: usize,
+    /// Maximum length of data that will be received in a Write command.
     pub max_write_len: usize,
 }
 

@@ -1343,6 +1343,8 @@ impl Emulator {
                 SpdmResponderTransport::Doe,
                 milestones.contains(McuBootMilestones::FIRMWARE_SPDM_DOE_READY),
             );
+            self.state
+                .set_pldm_ready(milestones.contains(McuBootMilestones::FIRMWARE_PLDM_READY));
         }
 
         if let Some(ref stdin_uart) = self.stdin_uart {

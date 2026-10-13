@@ -80,7 +80,7 @@ flowchart TD
 |---|---|
 | **MCU ROM** (`romtime::ocp_lock`) | • Reads HEK seed fuses from OTP during cold boot.<br>• Determines slot states and selects the active HEK slot using the `Platform` trait.<br>• Programs encryption engine registers (MEK size, key release target address).<br>• Dispatches `REPORT_HEK_METADATA` mailbox command to Caliptra Core.<br>• Writes `HekState` into DCCM `HandoffData` for the runtime kernel. |
 | **MCU Kernel** (`capsules::otp`) | • Provides kernel-level OTP access control and syscall drivers.<br>• Validates slot transition policies (sequential rotation, slot bounds).<br>• Enforces the single-rotation-per-boot lifecycle constraint (`has_rotated`).<br>• Performs atomic HEK sanitization (0xFF write) and new seed + digest programming via `KernelConfig`.<br>• Enforces permanent lock policy (`PERMA_HEK_EN`). |
-| **MCU Runtime Userspace** (`caliptra-libapi`) | • Exposes async `OcpLock` client for KMB operations (MEK/MPK generation, derivation, rotation).<br>• Constructs and signs X.509 v3 endorsement certificates for KMB HPKE public keys.<br>• Formats and signs TCG EKP Epoch Key Reports wrapped in standard `COSE_Sign1` structures.<br>• Integrates with DPE context signing (`CaliptraDpeSigner`). |
+| **MCU Runtime Userspace** (`mcu-caliptra-api`) | • Exposes async `OcpLock` client for KMB operations (MEK/MPK generation, derivation, rotation).<br>• Constructs and signs X.509 v3 endorsement certificates for KMB HPKE public keys.<br>• Formats and signs TCG EKP Epoch Key Reports wrapped in standard `COSE_Sign1` structures.<br>• Integrates with DPE context signing (`CaliptraDpeSigner`). |
 | **Host Mailbox Interface** (`mcu-mbox-lib`) | • Dispatches authorized host commands (`MC_OCP_LOCK_ROTATE_HEK`, `MC_OCP_LOCK_SET_PERMA_HEK`).<br>• Dispatches public key queries and attestation requests (`MC_GET_OCP_LOCK_ENDORSEMENT_CERT`, `MC_OCP_LOCK_ENUMERATE_HPKE_HANDLES`, `MC_GET_OCP_LOCK_EPOCH_KEY_REPORT`, `MC_DPE_SIGNER_CONTEXT_CERT`). |
 
 ---
@@ -274,9 +274,9 @@ The OTP driver capsule exposes the following commands to userspace:
 
 ---
 
-## 3. MCU Runtime Userspace Integration (`caliptra-libapi`)
+## 3. MCU Runtime Userspace Integration (`mcu-caliptra-api`)
 
-Userspace applications use the `OcpLock` struct defined in `caliptra_mcu_libapi_caliptra::ocp_lock` for KMB operations, certificate generation, and attestation reporting.
+Userspace applications use the `OcpLock` struct defined in `mcu_caliptra_api::ocp_lock` for KMB operations, certificate generation, and attestation reporting.
 
 ### Integrator Configuration: `RuntimeConfig`
 
@@ -404,10 +404,17 @@ The CBOR evidence is wrapped in a standard COSE `Sig_Structure`, signed with SHA
 
 The MCU exposes the following external mailbox and common commands to the host and external management agents (MCI Mailbox, MCTP VDM, SPDM VDM):
 
+Authorized OCP LOCK operations use the common authorization envelope on both
+MCI and SPDM. For MCI, the command register is `MC_AUTHORIZED_COMMAND`
+(`0x0000_0012`) and mailbox SRAM starts with
+`checksum || MC_OCP_LOCK(LE) || OCP_LOCK_FourCC(LE) || payload ||
+authorization_trailer`. Native/read-only OCP LOCK operations continue to use
+`MC_OCP_LOCK` (`0x0000_0013`) directly.
+
 | Command Name | Command ID / Subcommand | Auth Required | Description |
 |---|---|---|---|
-| `MC_OCP_LOCK_ROTATE_HEK` | `MC_OCP_LOCK` (`0x0000_0013`) + `0x4F4C_5248` ("OLRH") | Yes | Requests in-field rotation to the next HEK slot. Generates a 32-byte RNG seed from Caliptra Core, sanitizes the current slot, and programs the target slot. |
-| `MC_OCP_LOCK_SET_PERMA_HEK` | `MC_OCP_LOCK` (`0x0000_0013`) + `0x4F4C_5350` ("OLSP") | Yes | Sets the permanent lock fuse (`PERMA_HEK_EN`). Validates that all other slots are sanitized before blowing the fuse. |
+| `MC_OCP_LOCK_ROTATE_HEK` | `MC_AUTHORIZED_COMMAND` (`0x0000_0012`) + family `MC_OCP_LOCK` (`0x0000_0013`) + `0x4F4C_5248` ("OLRH") | Yes | Requests in-field rotation to the next HEK slot. Generates a 32-byte RNG seed from Caliptra Core, sanitizes the current slot, and programs the target slot. |
+| `MC_OCP_LOCK_SET_PERMA_HEK` | `MC_AUTHORIZED_COMMAND` (`0x0000_0012`) + family `MC_OCP_LOCK` (`0x0000_0013`) + `0x4F4C_5350` ("OLSP") | Yes | Sets the permanent lock fuse (`PERMA_HEK_EN`). Validates that all other slots are sanitized before blowing the fuse. |
 | `MC_GET_OCP_LOCK_ENDORSEMENT_CERT` | `MC_OCP_LOCK` (`0x0000_0013`) + `0x4F4C_4543` ("OLEC") | No | Returns the DER-encoded X.509 endorsement certificate for a specified `HpkeHandle`. |
 | `MC_OCP_LOCK_ENUMERATE_HPKE_HANDLES`| `MC_OCP_LOCK` (`0x0000_0013`) + `0x4F4C_4548` ("OLEH") | No | Queries Caliptra Core and returns all active HPKE handles. |
 | `MC_GET_OCP_LOCK_EPOCH_KEY_REPORT` | `MC_OCP_LOCK` (`0x0000_0013`) + `0x4F4C_4552` ("OLER") | No | Generates and returns a signed `COSE_Sign1` Epoch Key Report with freshness nonce. |

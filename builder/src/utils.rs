@@ -2,11 +2,27 @@
 
 //! A collection of useful utilities for xtask operations.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Result};
 
 use caliptra_mcu_firmware_bundler::utils::find_workspace_directory;
+
+/// Write `contents` to `path` only if the file is missing or differs.
+///
+/// Firmware build scripts track generated inputs (e.g. the files under
+/// `target/generated/`) with `cargo:rerun-if-changed`, which compares mtimes.
+/// Rewriting identical bytes would bump the mtime and force cargo to rebuild
+/// the firmware, so leave unchanged files untouched. Returns whether the file
+/// was written.
+pub(crate) fn write_if_changed(path: &Path, contents: impl AsRef<[u8]>) -> std::io::Result<bool> {
+    let contents = contents.as_ref();
+    if std::fs::read(path).is_ok_and(|existing| existing == contents) {
+        return Ok(false);
+    }
+    std::fs::write(path, contents)?;
+    Ok(true)
+}
 
 // Default emulator manifests use the constrained 512 KB SRAM layout (matches
 // the real device).  Built by the default `release` cargo profile.

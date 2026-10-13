@@ -60,6 +60,7 @@ pub fn get_command_handler(command_id: u32) -> Option<VdmCommandHandlerFn> {
         x if x == CaliptraCommandId::GetAuthCmdChallenge as u32 => {
             Some(commands::handle_get_auth_challenge)
         }
+        x if x == CaliptraCommandId::DotEnable as u32 => Some(commands::handle_dot_enable),
         x if x == CaliptraCommandId::DotLock as u32 => Some(commands::handle_dot_lock),
         x if x == CaliptraCommandId::DotDisable as u32 => Some(commands::handle_dot_disable),
         x if x == CaliptraCommandId::DotRotate as u32 => Some(commands::handle_dot_rotate),
@@ -103,6 +104,7 @@ mod tests {
             CaliptraCommandId::OcpLockRotateHek,
             CaliptraCommandId::OcpLockSetPermaHek,
             CaliptraCommandId::GetAuthCmdChallenge,
+            CaliptraCommandId::DotEnable,
             CaliptraCommandId::DotLock,
             CaliptraCommandId::DotDisable,
             CaliptraCommandId::DotRotate,

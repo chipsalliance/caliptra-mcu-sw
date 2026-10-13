@@ -496,7 +496,7 @@ struct OwnerPreambleHeader {
 }
 
 #[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
-async fn measure_owner_soc_manifest_preamble<A: mcu_caliptra_api::ApiAlloc>(
+async fn measure_owner_soc_manifest_preamble<A: mcu_caliptra_api::ScratchAlloc>(
     preamble_bytes: &[u8],
     allocator: &A,
     boot_kind: caliptra_mcu_measurement_api::BootKind,
@@ -574,7 +574,7 @@ async fn read_owner_measurement_policy(
 }
 
 #[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
-async fn authenticate_and_measure_owner_artifacts<A: mcu_caliptra_api::ApiAlloc>(
+async fn authenticate_and_measure_owner_artifacts<A: mcu_caliptra_api::ScratchAlloc>(
     static_policy_bytes: &'static [u8],
     allocator: &A,
     boot_kind: caliptra_mcu_measurement_api::BootKind,
@@ -625,7 +625,7 @@ async fn authenticate_and_measure_owner_artifacts<A: mcu_caliptra_api::ApiAlloc>
 }
 
 #[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
-async fn measure_owner_auth_key_component<A: mcu_caliptra_api::ApiAlloc>(
+async fn measure_owner_auth_key_component<A: mcu_caliptra_api::ScratchAlloc>(
     allocator: &A,
     boot_kind: caliptra_mcu_measurement_api::BootKind,
 ) -> Result<(), ErrorCode> {
@@ -644,7 +644,7 @@ async fn measure_owner_auth_key_component<A: mcu_caliptra_api::ApiAlloc>(
 }
 
 #[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
-async fn measure_owner_artifacts<A: mcu_caliptra_api::ApiAlloc>(
+async fn measure_owner_artifacts<A: mcu_caliptra_api::ScratchAlloc>(
     loader: &dyn ImageLoader,
     allocator: &A,
     boot_kind: caliptra_mcu_measurement_api::BootKind,
@@ -661,7 +661,7 @@ async fn measure_owner_artifacts<A: mcu_caliptra_api::ApiAlloc>(
 }
 
 #[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
-async fn load_soc_images<A: mcu_caliptra_api::ApiAlloc>(
+async fn load_soc_images<A: mcu_caliptra_api::ScratchAlloc>(
     loader: &impl ImageLoader,
     soc_image_load_list: &'static [u32],
     component_update: bool,

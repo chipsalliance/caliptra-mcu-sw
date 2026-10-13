@@ -10,7 +10,8 @@ use caliptra_mcu_libsyscall_caliptra::soft_pcr_store::{
 };
 use caliptra_mcu_libtock_platform::Syscalls;
 use mcu_caliptra_api::{
-    dpe_get_tagged_tci, ApiAlloc, DpeTaggedTci, DPE_CONTEXT_HANDLE_SIZE, DPE_TCI_MEASUREMENT_SIZE,
+    dpe_get_tagged_tci, DpeTaggedTci, ScratchAlloc, DPE_CONTEXT_HANDLE_SIZE,
+    DPE_TCI_MEASUREMENT_SIZE,
 };
 
 use super::{is_mcu_root_record, MeasurementApi};
@@ -25,7 +26,7 @@ pub(crate) struct MeasurementValue {
     pub svn: u64,
 }
 
-pub(super) async fn read_measurement<S: Syscalls, A: ApiAlloc>(
+pub(super) async fn read_measurement<S: Syscalls, A: ScratchAlloc>(
     api: &MeasurementApi<'_, S>,
     alloc: &A,
     fw_id: u32,
@@ -65,7 +66,7 @@ pub(super) fn should_include_tcb_measurement<S: Syscalls>(
     )
 }
 
-async fn read_tcb_measurement<S: Syscalls, A: ApiAlloc>(
+async fn read_tcb_measurement<S: Syscalls, A: ScratchAlloc>(
     alloc: &A,
     entry: AttestationManifestEntry,
 ) -> MeasurementApiResult<MeasurementValue> {
