@@ -17,7 +17,7 @@ use caliptra_mcu_mbox_common::messages::{
     CmImportReq, CmKeyUsage, CmMldsaPublicKeyReq, CmMldsaSignReq, CmMldsaVerifyReq, Cmk,
     CommandId as McuCommandId, DeviceCapsReq, DeviceCapsResp, DpeSignerContextCertReq,
     EcdsaVerifyReq, EndorsementAlgorithm, ExportAttestedCsrReq, FirmwareVersionReq,
-    GetAttestationReq, GetAuthCmdChallengeReq, GetDpeCertChainReq, LmsVerifyReq,
+    GetAttestationReq, GetDpeCertChainReq, LmsVerifyReq,
     MailboxReqHeader as McuMailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize,
     McuCmImportReq, McuEcdhFinishReq, McuEcdhFinishResp, McuEcdhGenerateReq, McuEcdhGenerateResp,
     McuEcdsa384SigVerifyReq, McuEcdsaCmkPublicKeyReq, McuEcdsaCmkPublicKeyResp, McuEcdsaCmkSignReq,
@@ -618,6 +618,7 @@ fn test_device_capabilities_cmd() -> Result<()> {
     assert_eq!(
         u32::from_be_bytes(resp.caps[24..28].try_into().unwrap()),
         (ExternalCommandCapabilities::GET_ATTESTATION
+            | ExternalCommandCapabilities::EXPORT_ATTESTED_CSR
             | ExternalCommandCapabilities::AUTHORIZED_COMMAND
             | ExternalCommandCapabilities::DEVICE_OWNERSHIP_TRANSFER)
             .bits()
