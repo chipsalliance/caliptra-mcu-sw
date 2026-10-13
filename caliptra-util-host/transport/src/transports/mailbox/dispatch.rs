@@ -20,7 +20,10 @@ use super::crypto_asymmetric::{
 };
 use super::debug_unlock::{ProdDebugUnlockReqCmd, ProdDebugUnlockTokenCmd};
 use super::delete::DeleteCmd;
-use super::device_info::{GetDeviceCapabilitiesCmd, GetFirmwareVersionCmd};
+use super::device_info::{
+    FieldEntropyStatusCmd, GetDeviceCapabilitiesCmd, GetFirmwareVersionCmd, HekStatusCmd,
+    VendorPkHashStatusCmd,
+};
 use super::device_log::{DebugClearLogCmd, DebugGetLogCmd};
 use super::device_ownership_transfer::{
     DotDisableCmd, DotEnableCmd, DotLockCmd, DotOverrideChallengeCmd, DotOverrideCmd,
@@ -56,6 +59,9 @@ pub fn get_command_handler(command_id: u32) -> Option<CommandHandlerFn> {
         // Device Info Commands
         1 => Some(process_command_with_metadata::<GetFirmwareVersionCmd>), // GetFirmwareVersion
         2 => Some(process_command_with_metadata::<GetDeviceCapabilitiesCmd>), // GetDeviceCapabilities
+        3 => Some(process_command_with_metadata::<FieldEntropyStatusCmd>),
+        4 => Some(process_command_with_metadata::<VendorPkHashStatusCmd>),
+        5 => Some(process_command_with_metadata::<HekStatusCmd>),
         // SHA Commands (0x2001-0x2003)
         0x2001 => Some(process_command_with_metadata::<ShaInitCmd>), // HashInit
         0x2002 => Some(process_command_with_metadata::<ShaUpdateCmd>), // HashUpdate
@@ -134,6 +140,9 @@ pub fn get_external_cmd_code(command_id: u32) -> Option<u32> {
         // Device Info Commands
         1 => Some(0x4D46_5756), // GetFirmwareVersion -> MC_FIRMWARE_VERSION ("MFWV")
         2 => Some(0x4D43_4150), // GetDeviceCapabilities -> MC_DEVICE_CAPABILITIES ("MCAP")
+        3 => Some(0x4D43_4653), // FieldEntropyStatus -> MC_FE_STATUS ("MCFS")
+        4 => Some(0x4D56_5053), // VendorPkHashStatus -> MC_VENDOR_PK_HASH_STATUS ("MVPS")
+        5 => Some(0x4D48_4B53), // HekStatus -> MC_HEK_STATUS ("MHKS")
         // SHA Commands
         0x2001 => Some(0x4D43_5349), // HashInit -> MC_SHA_INIT ("MCSI")
         0x2002 => Some(0x4D43_5355), // HashUpdate -> MC_SHA_UPDATE ("MCSU")
@@ -233,5 +242,17 @@ mod tests {
         let command = CaliptraCommandId::ProvisionOwnerPkHash;
         assert!(get_command_handler(command as u32).is_some());
         assert_eq!(get_external_cmd_code(command as u32), Some(0x12));
+    }
+
+    #[test]
+    fn status_commands_are_dispatched() {
+        for (command, external) in [
+            (CaliptraCommandId::FieldEntropyStatus, 0x4D43_4653),
+            (CaliptraCommandId::VendorPkHashStatus, 0x4D56_5053),
+            (CaliptraCommandId::HekStatus, 0x4D48_4B53),
+        ] {
+            assert!(get_command_handler(command as u32).is_some());
+            assert_eq!(get_external_cmd_code(command as u32), Some(external));
+        }
     }
 }

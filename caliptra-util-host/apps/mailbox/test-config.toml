@@ -48,6 +48,15 @@ fips_status = 0x00000001
 rom_firmware_id = 0
 runtime_firmware_id = 1
 
+[field_entropy_status]
+enabled = false
+
+[vendor_pk_hash_status]
+enabled = false
+
+[hek_status]
+enabled = false
+
 [fe_prog]
 enabled = true
 partition = 0

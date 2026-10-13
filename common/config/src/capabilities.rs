@@ -45,6 +45,9 @@ bitflags::bitflags! {
         const OCP_LOCK_ROTATE_HEK = 1 << 12;
         const OCP_LOCK_SET_PERMA_HEK = 1 << 13;
         const DOT_ENABLE = 1 << 14;
+        const OCP_LOCK_PROGRAM_HEK = 1 << 15;
+        const OCP_LOCK_ZERO_HEK = 1 << 16;
+        const ZEROIZE_UDS_FE_AND_ENTER_RMA = 1 << 17;
     }
 }
 
@@ -118,10 +121,39 @@ mod tests {
             1 << 13
         );
         assert_eq!(AuthorizedSubcommandCapabilities::DOT_ENABLE.bits(), 1 << 14);
+        assert_eq!(
+            AuthorizedSubcommandCapabilities::OCP_LOCK_PROGRAM_HEK.bits(),
+            1 << 15
+        );
+        assert_eq!(
+            AuthorizedSubcommandCapabilities::OCP_LOCK_ZERO_HEK.bits(),
+            1 << 16
+        );
+        assert_eq!(
+            AuthorizedSubcommandCapabilities::ZEROIZE_UDS_FE_AND_ENTER_RMA.bits(),
+            1 << 17
+        );
         assert_eq!(ExternalCommandCapabilities::OCP_LOCK.bits(), 1 << 18);
         assert_eq!(
             AuthorizedSubcommandCapabilities::FUSE_INCREASE_MIN_SVN.bits(),
             1 << 2
         );
+    }
+
+    #[test]
+    fn authorized_subcommand_extensions_preserve_dot_enable_wire_bit() {
+        assert_eq!(
+            encode_capabilities(AuthorizedSubcommandCapabilities::DOT_ENABLE.bits()),
+            [0x00, 0x00, 0x40, 0x00]
+        );
+
+        let new_commands = AuthorizedSubcommandCapabilities::OCP_LOCK_PROGRAM_HEK
+            | AuthorizedSubcommandCapabilities::OCP_LOCK_ZERO_HEK
+            | AuthorizedSubcommandCapabilities::ZEROIZE_UDS_FE_AND_ENTER_RMA;
+        assert_eq!(
+            encode_capabilities(new_commands.bits()),
+            [0x00, 0x03, 0x80, 0x00]
+        );
+        assert!(!new_commands.intersects(AuthorizedSubcommandCapabilities::DOT_ENABLE));
     }
 }

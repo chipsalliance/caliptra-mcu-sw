@@ -3,7 +3,10 @@
 use std::env;
 use std::path::PathBuf;
 
-use caliptra_mcu_core_util_host_command_types::DEVICE_CAPABILITIES_SIZE;
+use caliptra_mcu_core_util_host_command_types::{
+    DEVICE_CAPABILITIES_SIZE, VENDOR_PK_HASH_SLOT_COUNT, VENDOR_PQC_KEY_TYPE_LMS,
+    VENDOR_PQC_KEY_TYPE_MLDSA,
+};
 
 fn main() {
     let crate_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
@@ -31,7 +34,7 @@ fn main() {
 
     // Prepend license header to the generated content
     let license_header = format!(
-        "// Licensed under the Apache-2.0 license\n\n/* Auto-generated from Rust caliptra-util-host library */\n\n#define DEVICE_CAPABILITIES_SIZE {DEVICE_CAPABILITIES_SIZE}\n\n"
+        "// Licensed under the Apache-2.0 license\n\n/* Auto-generated from Rust caliptra-util-host library */\n\n#define DEVICE_CAPABILITIES_SIZE {DEVICE_CAPABILITIES_SIZE}\n#define VENDOR_PK_HASH_SLOT_COUNT {VENDOR_PK_HASH_SLOT_COUNT}\n#define VENDOR_PQC_KEY_TYPE_LMS {VENDOR_PQC_KEY_TYPE_LMS}\n#define VENDOR_PQC_KEY_TYPE_MLDSA {VENDOR_PQC_KEY_TYPE_MLDSA}\n\n"
     );
     let final_content = format!("{}{}", license_header, header_content);
 
