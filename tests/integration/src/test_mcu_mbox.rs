@@ -553,7 +553,8 @@ pub mod test {
                             | AuthorizedSubcommandCapabilities::DOT_LOCK
                             | AuthorizedSubcommandCapabilities::DOT_DISABLE
                             | AuthorizedSubcommandCapabilities::DOT_ROTATE
-                            | AuthorizedSubcommandCapabilities::GET_DOT_BACKUP_BLOB)
+                            | AuthorizedSubcommandCapabilities::GET_DOT_BACKUP_BLOB
+                            | AuthorizedSubcommandCapabilities::ZEROIZE_UDS_FE_AND_ENTER_RMA)
                             .bits()
                             .to_be_bytes(),
                     );
