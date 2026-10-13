@@ -61,269 +61,286 @@ sequenceDiagram
     end
 ```
 
-## Class Diagram
+## Architecture
+
+The SPDM responder is implemented by the "SPDM-Lite" crates in
+[`runtime/userspace/api/spdm-lib`](../../runtime/userspace/api/spdm-lib). It is
+split into three layers, and each layer talks to the layer below it only
+through a trait:
 
 ```mermaid
-classDiagram
-    direction RL
-    MCTP Transport <|--|> SPDMResponder: processRequest() / sendResponse()
-    SecureSessionMgr <|-- SPDMResponder: processSecureMessage()
-    TranscriptMgr <|-- SPDMResponder
-    TranscriptMgr <|-- SecureSessionMgr
-    class SPDMResponder{
-      - transcriptMgr
-      - sessionMgr
-      + processRequest()
-      + sendResponse()
-    }
-    class SecureSessionMgr {
-      -transcriptMgr
-      +TraitMethods
-    }
-    class TranscriptMgr{
-      +TraitMethods
-    }
+flowchart TB
+    subgraph StackLayer["SPDM stack"]
+        direction LR
+        Stack["SpdmStack<br/>run loop, handlers"]
+        Conn["ConnectionState<br/>transcripts"]
+        Sess["SessionManager<br/>key schedule"]
+        VDM["SpdmVdmBackend<br/>(optional)"]
+        Stack --> Conn
+        Stack --> Sess
+        Stack --> VDM
+    end
+
+    subgraph PalLayer["Platform abstraction layer"]
+        direction LR
+        McuPal["McuSpdmPal<br/>cert store, measurements,<br/>..."]
+        PalTrait["SpdmPal traits<br/>alloc, transport,<br/> crypo, ..."]
+        McuPal -. implements .-> PalTrait
+    end
+
+    subgraph TransportLayer["Transports"]
+        direction LR
+        MCTP["MCTP<br/>type 0x05 / 0x06"]
+        DOE["DOE<br/>object 1 / 2"]
+        MCTP ~~~ DOE
+    end
+
+    Caliptra["Caliptra core<br/>mailbox: SHA, DPE, crypto"]
+
+    StackLayer -- "SpdmPal" --> PalLayer
+    PalLayer -- "SpdmPalTransport" --> TransportLayer
+    PalLayer -- "Caliptra mailbox" --> Caliptra
 ```
+
+- **SPDM stack**: the protocol logic. It is platform independent and only
+  uses the `SpdmPal` trait.
+- **Platform abstraction layer**: `SpdmPal` combines the traits `SpdmPalAlloc`,
+  `SpdmPalIoTransport`, `SpdmPalHash`, `SpdmPalCertStore`,
+  `SpdmPalMeasurements` and `SpdmPalSessionCrypto`. `McuSpdmPal` implements
+  them using the Caliptra mailbox, the certificate store and a measurement
+  provider.
+- **Transports**: move SPDM messages over the wire. `McuSpdmPal` uses one
+  `SpdmPalTransport`, either MCTP (message type 0x05 for SPDM, 0x06 for
+  secured SPDM) or DOE (data object type 1 for SPDM, 2 for secured SPDM).
+
+| Crate                                                                            | Purpose                                                       |
+| -------------------------------------------------------------------------------- | ------------------------------------------------------------- |
+| [`traits`](../../runtime/userspace/api/spdm-lib/traits)                          | PAL trait definitions (`SpdmPal` and its component traits)    |
+| [`stack`](../../runtime/userspace/api/spdm-lib/stack)                            | Responder state machine, message handlers, transcripts, sessions |
+| [`codec`](../../runtime/userspace/api/spdm-lib/codec)                            | Encoding and decoding of SPDM messages                        |
+| [`pal`](../../runtime/userspace/api/spdm-lib/pal)                                | `McuSpdmPal`, the Caliptra-based PAL implementation           |
+| [`transports`](../../runtime/userspace/api/spdm-lib/transports)                  | MCTP and DOE transports                                       |
+| [`vdm-handler`](../../runtime/userspace/api/spdm-lib/vdm-handler)                | VENDOR_DEFINED backends (Caliptra VDM, IDE_KM, TDISP)         |
+| [`errors`](../../runtime/userspace/api/spdm-lib/errors)                          | SPDM error subdomains                                         |
 
 ## SPDM Responder
-The Responder is responsible for receiving and processing requests from the Requestor. It authenticates the Requestor's identity, attests its own state and configuration, and establishes a secure communication channel. The Responder uses cryptographic techniques, such as validating X.509v3 certificates, to ensure the integrity and confidentiality of the exchanged data.
+The Responder receives and processes requests from the Requester. It reports
+its identity (certificate chains), attests its state and configuration
+(signed measurements), and establishes secure sessions with the Requester.
+The Responder does not authenticate the Requester; mutual authentication is
+not supported.
 
-### Responder supported messages
-The SPDM Responder supports the following messages:
+The responder is `SpdmStack`, defined in
+[`stack/src/stack.rs`](../../runtime/userspace/api/spdm-lib/stack/src/stack.rs):
 
-| Message            | Description                                                                     |
-| ------------------ | ------------------------------------------------------------------------------- |
-| `VERSION`          | Retrieves version information                                                   |
-| `CAPABILITIES`     | Retrieves SPDM capabilities                                                     |
-| `ALGORITHMS`       | Retrieves the negotiated algorithms                                             |
-| `DIGESTS`          | Retrieves digest of the certificate chains                                      |
-| `CERTIFICATE`      | Retrieves certificate chains                                                    |
-| `MEASUREMENTS`     | Retrieves measurements of elements such as intenral state                       |
-| `KEY_EXCHANGE_RSP` | Retrieves the responder's public key information                                |
-| `FINISH_RSP`       | Provide key confirmation, bind the identity of each party to the exchanged keys |
-| `END_SESSION_ACK`  | End session acknowledgment                                                      |
-| `ERROR`            | Error message                                                                   |
-
-
-### Responder Interface
 ```Rust
-pub struct SpdmResponder<T: MctpTransport, U: SpdmTranscriptManager, V: SpdmSecureSessionManager> {
-    transport: T,
-    transcript_manager: U,
-    session_manager: V,
-    data_buffer: [u8; MAX_SPDM_MESSAGE_SIZE],
+pub struct SpdmStack<Pal: SpdmPal, const MAX_SESSIONS: usize = 1, Vdm: SpdmVdmBackend = NoVdmBackend> {
+    pal: Pal,
+    state: ConnectionState<..>,
+    sessions: SessionManager<..>,
+    vdm_backend: Vdm,
 }
 
-impl<T: MctpTransport, U: SpdmTranscriptManager, V: SpdmSecureSessionManager> SpdmResponder<T, U, V> {
-    pub fn new(transport: T, transcript_manager: U, session_manager: V) -> Self {
-        SpdmResponder {
-            transport,
-            transcript_manager,
-            session_manager,
-            data_buffer: [0; MAX_SPDM_MESSAGE_SIZE],
-        }
-    }
-
-    pub async fn handle_request(&mut self, request_info: u32) {
-        // request_info: Bits[16:23] Message Type [SPDM | Secure SPDM]
-    }
-}
-
-```
-
-## Transcript Manager
-The Transcript Manager is for managing the transcript and the transcript hash. The transcript is a sequential concatenation of prescribed full messages or message fields. The transcript hash is the cryptographic hash of this transcript, computed using the negotiated hash algorithm. This component ensures the integrity and authenticity of SPDM communications by managing these essential elements.
-
-### Transcript Manager Interface
-```Rust
-pub trait SpdmTranscriptManager {
-    /// Set the hash algorithm. The algorithm can be set only once.
-    ///
-    /// # Parameters
-    /// - `hash_algo`: Hash algorithm to set.
-    ///
-    /// # Returns
-    /// - `Result<(), SpdmError>`: Returns `Ok(())` if the hash algorithm was set, or an error code.
-    fn set_hash_algo(&self, hash_algo: HashType) -> Result<(), SpdmError>;
-
-    /// Set the SPDM negotiated version to be used for communication.
-    ///
-    /// # Parameters
-    /// - `spdm_version`: SPDM negotiated version.
-    fn set_spdm_version(&self, spdm_version: u8);
-
-    /// Update the transcript with a message.
-    ///
-    /// # Parameters
-    /// - `context_type`:        Transcript context to update.
-    /// - `message`:             Message to add to the transcript.
-    /// - `use_session_context`: Use session context to update an SPDM session transcript.
-    /// - `session_idx`:         SPDM session index.
-    ///
-    /// # Returns
-    /// - `Result<(), SpdmError>`:
-    /// Returns `Ok(())` if the message was added to the transcript successfully, or an error code.
-    async fn update(
-        &self,
-        context_type: SpdmTranscriptManagerContextType, // [VCA, M1M2, L1L2, TH]
-        message: &[u8],
-        use_session_context: bool,
-        session_idx: u8,
-    ) -> Result<(), SpdmError>;
-
-    /// Get the hash based on the hash type. The hashing operation is finished if `finish_hash` is set
-    /// to `true`. In that case, an additional call to update will start a new hashing operation.
-    /// If `finish_hash` is set to `false`, the hash is not finalized and can be updated with additional
-    /// calls to update.
-    ///
-    /// # Parameters
-    /// - `context_type`:        Transcript context type to get the hash from.
-    /// - `finish_hash`:         Flag to indicate to finish the hash.
-    /// - `use_session_context`: Use session context to update an SPDM session transcript.
-    /// - `session_idx`:         SPDM session index.
-    /// - `hash`:                Buffer to copy the hash to.
-    ///
-    /// # Returns
-    /// - `Result<Vec<u8>, SpdmError>`: Returns the hash if the operation was successful, or an error code.
-    fn get_hash(
-        &self,
-        context_type: SpdmTranscriptManagerContextType, // [VCA, M1M2, L1L2, TH]
-        finish_hash: bool,
-        use_session_context: bool,
-        session_idx: u8,
-        hash: &mut [u8]
-    ) -> Result<(), SpdmError>;
-
-    /// Reset a transcript context.
-    ///
-    /// # Parameters
-    /// - `context_type`:        Transcript context to reset.
-    /// - `use_session_context`: Use session context to update an SPDM session transcript.
-    /// - `session_idx`:         SPDM session index.
-    fn reset_transcript(
-        &self,
-        context_type: SpdmTranscriptManagerContextType, // [VCA, M1M2, L1L2, TH]
-        use_session_context: bool,
-        session_idx: u8,
-    );
+impl<Pal: SpdmPal, const MAX_SESSIONS: usize, Vdm: SpdmVdmBackend> SpdmStack<Pal, MAX_SESSIONS, Vdm> {
+    pub fn new(pal: Pal) -> Self;                                // no VDM backend
+    pub fn with_vdm_backend(pal: Pal, vdm_backend: Vdm) -> Self;
+    pub async fn run(&mut self) -> McuResult<()>;
 }
 ```
 
-## SPDM Secure Session Manager
-The SPDM Secure Session Manager is responsible for managing secure sessions within the SPDM protocol framework. It provides mechanisms to create, release, and retrieve secure sessions. The manager can set and query the state of a session, ensuring secure communication between devices. It generates necessary cryptographic keys, including shared secrets, handshake keys, and data keys, through asynchronous methods. Additionally, it verifies the integrity and optionally decrypts secure messages, and encodes messages with appropriate security measures. The manager also tracks session validity and can reset session states and identifiers as needed, ensuring robust and secure session management.
+- `Pal` provides transport, memory, hashing, certificates, measurements and
+  session cryptography.
+- `MAX_SESSIONS` is the number of secure sessions that can exist at the same
+  time.
+- `Vdm` handles `VENDOR_DEFINED_REQUEST` messages. With `new()`, these
+  requests are answered with `UnsupportedRequest`.
 
-### Secure Session Manager Interface
-```Rust
-pub trait SpdmSecureSessionManager {
-    /// Create a new SPDM secure session.
-    ///
-    /// # Parameters
-    /// - `session_id`:      Session Id for the session.
-    /// - `is_requester`:    True if the session is for the requester, false otherwise.
-    /// - `connection_info`: SPDM connection info.
-    ///
-    /// # Returns
-    /// - `Option<&SpdmSecureSession>`:
-    ///    A pointer to the created SPDM secure session or `None` if the session could not be created.
-    fn create_session(
-        &self,
-        session_id: u32,
-        is_requester: bool,
-        connection_info: &SpdmConnectionInfo,
-    ) -> Result<&SpdmSecureSession, SpdmError>;
+`with_vdm_backend()` checks that the PAL's maximum inbound request size is at
+least the transport MTU. If the PAL cannot buffer at least one MTU-sized large
+message, the `CHUNK` capability is removed from what the responder advertises.
 
+### Supported Requests
+The table lists the requests the responder handles and the response it
+sends. A request can arrive in three contexts:
 
-    /// Release an SPDM secure session.
-    ///
-    /// # Parameters
-    /// - `session_id`: Session Id for the session.
-    fn release_session(&self, session_id: u32);
+- **Plain**: outside a secure session.
+- **Handshake**: as a secured message in a session that is still in the
+  handshake (after `KEY_EXCHANGE`, before `FINISH`).
+- **Established**: as a secured message in an established session.
 
-    /// Get an SPDM secure session.
-    ///
-    /// # Parameters
-    /// - `session_id`: Session Id for the session.
-    ///
-    /// # Returns
-    /// - `Option<&SpdmSecureSession>`: A pointer to the SPDM secure session or `None` if the session does not exist.
-    fn get_session(& self, session_id: u32) -> Option<& SpdmSecureSession>;
+See [Secure Session Management](#secure-session-management) for details.
 
-    /// Set the session state for an SPDM secure session.
-    ///
-    /// # Parameters
-    /// - `session_id`:    Session Id for the session.
-    /// - `session_state`: Session state to set.
-    fn set_session_state(&self, session_id: u32, session_state: SpdmSecureSessionState);
+| Request → Response (code)                                    | Plain   | Handshake | Established |
+| ------------------------------------------------------------ | ------- | --------- | ----------- |
+| `GET_VERSION` → `VERSION` (0x84)                             | Yes [^v] | No       | No          |
+| `GET_CAPABILITIES` → `CAPABILITIES` (0xE1)                   | Yes     | No        | No          |
+| `NEGOTIATE_ALGORITHMS` → `ALGORITHMS` (0xE3)                 | Yes     | No        | No          |
+| `GET_DIGESTS` → `DIGESTS` (0x81)                             | Yes     | No        | Yes         |
+| `GET_CERTIFICATE` → `CERTIFICATE` (0x82)                     | Yes     | No        | Yes         |
+| `CHALLENGE` → `CHALLENGE_AUTH` (0x83)                        | Yes     | No        | No          |
+| `GET_MEASUREMENTS` → `MEASUREMENTS` (0xE0)                   | Yes     | No        | Yes         |
+| `KEY_EXCHANGE` → `KEY_EXCHANGE_RSP` (0xE4)                   | Yes     | No        | No          |
+| `FINISH` → `FINISH_RSP` (0xE5)                               | No      | Yes       | No          |
+| `END_SESSION` → `END_SESSION_ACK` (0xEC)                     | No      | No        | Yes         |
+| `VENDOR_DEFINED_REQUEST` → `VENDOR_DEFINED_RESPONSE` (0xFE)  | Yes [^vdm] | Yes    | Yes         |
+| `CHUNK_SEND` → `CHUNK_SEND_ACK` (0x85)                       | Yes     | Yes       | Yes         |
+| `CHUNK_GET` → `CHUNK_RESPONSE` (0x86)                        | Yes     | Yes       | Yes         |
+| `SET_CERTIFICATE` → `SET_CERTIFICATE_RSP` (0xEE)             | Yes [^setcert] | No | Yes [^setcert] |
 
-    /// Reset the Session Manager.
-    fn reset(&self);
+[^v]: A valid `GET_VERSION` resets the connection and removes all sessions.
 
-    /// Generate the shared secret from peer and local public keys.
-    ///
-    /// # Parameters
-    /// - `session`:            SPDM session info.
-    /// - `peer_pub_key_point`: Peer public key in point format.
-    /// - `local_public_key`: Generated local public key in point format on return.
-    ///
-    /// # Returns
-    /// - `Result<(), SpdmError>`:
-    ///    Returns the local public key in point format if the shared secret is generated successfully, or an error code.
-    fn generate_shared_secret(
-        &self,
-        session: &SpdmSecureSession,
-        peer_pub_key_point: &EccPointPublicKey,
-        local_public_key: &mut [u8]
-    ) -> Result<(), SpdmError>;
+[^vdm]: Only if a VDM backend is registered. PCI-SIG vendor-defined
+    messages (IDE_KM, TDISP) are only accepted inside a secure session.
 
-    /// Generate handshake keys for an SPDM secure session.
-    ///
-    /// # Parameters
-    /// - `session`: Secure Session.
-    ///
-    /// # Returns
-    /// - `Result<(), SpdmError>`: Returns `Ok(())` if the handshake keys are generated successfully, or an error code.
-    async fn generate_session_handshake_keys(&self, session: &mut SpdmSecureSession) -> Result<(), SpdmError>;
+[^setcert]: Only with the `set-certificate` feature. Inside a session,
+    `SET_CERTIFICATE` is accepted only when it is carried in `CHUNK_SEND`; a
+    direct `SET_CERTIFICATE` request is answered with `UnsupportedRequest`.
 
-    /// Generate data keys for an SPDM secure session.
-    ///
-    /// # Parameters
-    /// - `session`: SPDM Secure Session.
-    ///
-    /// # Returns
-    /// - `Result<(), SpdmError>`: Returns `Ok(())` if the data keys are generated successfully, or an error code.
-    async fn generate_session_data_keys(&self, session: &mut SpdmSecureSession) -> Result<(), SpdmError>;
+Requests that are not allowed in the current context are rejected:
 
-    /// Query if the last session is active.
-    ///
-    /// # Returns
-    /// - `bool`: True if the last session is active, false otherwise.
-    fn is_last_session_id_valid(&self) -> bool;
+- `FINISH` and `END_SESSION` outside a session: `SessionRequired`.
+- Other requests in a session's wrong state: `UnexpectedRequest`.
+- All other request codes, for example `PSK_EXCHANGE`, `HEARTBEAT`,
+  `KEY_UPDATE`, `GET_CSR` and encapsulated requests: `UnsupportedRequest`.
 
-    /// Get the last session id.
-    ///
-    /// # Returns
-    /// - `u32`: Last session id.
-    fn get_last_session_id(&self) -> u32;
+### Run Loop
+`run()` processes one request at a time and never returns unless the
+transport reports a fatal error:
 
-    /// Reset the last session id validity.
-    fn reset_last_session_id_validity(&self);
+1. Receive a request from the PAL (`recv_request`).
+2. Route the request based on its kind (`SpdmPalIoKind`):
+   - `Message`: a plain SPDM message, dispatched to the handler for its
+     request code.
+   - `SecuredMessage`: a message inside a secure session, which is decrypted,
+     dispatched and encrypted again (see
+     [Secured Messages](#secured-messages)).
+3. Send the handler's response, or an SPDM `ERROR` message if the handler
+   failed.
 
-    /// Decode a secure message. This includes MAC verification and optionally decryption.
-    ///
-    /// # Parameters
-    /// - `request`: SPDM request message to be decoded.
-    ///
-    /// # Returns
-    /// - `Result<(), SpdmError>`: Returns `Ok(())` if the secure message is decoded successfully, or an error code.
-    async fn decode_secure_message(&self, request: &mut [u8]) -> Result<(), SpdmError>;
+The stack has no fixed message buffer. Request and response buffers are
+allocated through the PAL for each request.
 
-    /// Encode a secure message. This includes MAC generation and optionally encryption.
-    ///
-    /// # Parameters
-    /// - `response`: SPDM response message to be encoded.
-    ///
-    /// # Returns
-    /// - `Result<(), SpdmError>`: Returns `Ok(())` if the secure message is encoded successfully, or an error code.
-    async fn encode_secure_message(&self, response: &mut [u8]) -> Result<(), SpdmError>;
-}
+### Connection State
+`ConnectionState` holds two kinds of data:
+
+- **Local policy**: the capabilities and algorithms the responder advertises.
+  These are fixed at construction by `ConnectionState::caliptra()`.
+- **Negotiated state**: the connection phase, negotiated version, the peer's
+  capabilities and transfer sizes, the selected algorithms, the
+  [transcript](#transcript-management) and large-message (chunking) context.
+
+The connection phase advances from `Start` through `AfterVersion`,
+`AfterCapabilities`, `AfterAlgorithms`, `AfterDigests` and `AfterCertificate`.
+Handlers reject requests that arrive out of order. A valid `GET_VERSION` is
+accepted in every phase: it resets the negotiated state and transcripts and
+destroys all secure sessions.
+
+### Errors
+Message handlers return `SpdmError`, which carries the SPDM error code and
+error data that are sent in the `ERROR` response. The PAL traits and lower
+layers use `McuErrorCode`/`McuResult`; these are converted to an SPDM error
+code when they reach a handler. A handler can also request that no response is
+sent at all.
+
+## Transcript Management
+SPDM signatures and session keys are computed over transcripts: the
+concatenation of specific request and response messages. The responder never
+stores raw transcript bytes. It keeps only running hash states, so each
+transcript costs one hash context (about 200 bytes of heap with the Caliptra
+mailbox hash backend). All hashing goes through the `SpdmPalHash` trait, and
+the hash algorithm is always SHA-384.
+
+Connection-level transcripts are held by `Transcript` in
+[`stack/src/transcript.rs`](../../runtime/userspace/api/spdm-lib/stack/src/transcript.rs).
+The per-session transcript is held by `SessionTranscript` in
+[`stack/src/session.rs`](../../runtime/userspace/api/spdm-lib/stack/src/session.rs).
+
+| Transcript | Contents                                                                                       | Used for                                                    |
+| ---------- | ---------------------------------------------------------------------------------------------- | ----------------------------------------------------------- |
+| VCA        | `GET_VERSION`/`VERSION`, `GET_CAPABILITIES`/`CAPABILITIES`, `NEGOTIATE_ALGORITHMS`/`ALGORITHMS` | Prefix of all other transcripts                             |
+| M1         | VCA, then `GET_DIGESTS`/`DIGESTS`, `GET_CERTIFICATE`/`CERTIFICATE`, `CHALLENGE`/`CHALLENGE_AUTH` | Signature in `CHALLENGE_AUTH`                               |
+| L1         | VCA, then `GET_MEASUREMENTS`/`MEASUREMENTS`                                                    | Signature in `MEASUREMENTS`                                 |
+| TH         | VCA, then certificate chain hash, `KEY_EXCHANGE`/`KEY_EXCHANGE_RSP`, `FINISH`/`FINISH_RSP`     | `KEY_EXCHANGE_RSP` signature and HMAC, session key derivation |
+
+How the transcripts are maintained:
+
+- The VCA hash runs for the whole connection.
+- M1 and L1 are started on first use by cloning the running VCA hash. They
+  are consumed when their signature is produced.
+- TH is created for each session in `KEY_EXCHANGE`, also by cloning the
+  running VCA hash. Intermediate digests (TH1) are taken from a clone so the
+  hash can continue; the final digest (TH2) is taken in `FINISH`.
+- `GET_VERSION` drops all connection transcripts. A session's TH is dropped
+  together with its session.
+
+## Secure Session Management
+Secure sessions are created with `KEY_EXCHANGE` and confirmed with `FINISH`.
+Afterwards, SPDM messages are exchanged as secured messages (DSP0277),
+protected with AES-256-GCM.
+
+### Session Lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> HandshakeInProgress: KEY_EXCHANGE
+    HandshakeInProgress --> Established: FINISH
+    HandshakeInProgress --> [*]: DecryptError / GET_VERSION
+    Established --> [*]: END_SESSION / DecryptError / GET_VERSION
 ```
+
+- `KEY_EXCHANGE` creates the session in `HandshakeInProgress`, computes the
+  shared secret and derives the handshake keys. If `KEY_EXCHANGE` fails, the
+  session is removed again.
+- `FINISH` verifies the requester's HMAC, derives the data keys, destroys the
+  handshake secrets and moves the session to `Established`.
+- `END_SESSION` removes that session. `GET_VERSION` removes all sessions.
+- Any `DecryptError`, including a failed `FINISH` HMAC check, removes the
+  session.
+
+### Session Manager
+`SessionManager` in
+[`stack/src/session.rs`](../../runtime/userspace/api/spdm-lib/stack/src/session.rs)
+is a fixed-size table with `MAX_SESSIONS` entries. If the table is full,
+`KEY_EXCHANGE` fails with `SessionLimitExceeded`.
+
+- The session ID combines the responder's and the requester's halves:
+  `(rsp_session_id << 16) | req_session_id`. The responder picks its half so
+  that it never collides with an existing session.
+- Each session is a `SessionInfo` holding the session ID, the state, the
+  `KeySchedule` and the session's TH transcript. It is allocated through the
+  PAL, and all of its keys are destroyed when it is dropped.
+
+### Key Schedule
+`KeySchedule` in
+[`stack/src/key_schedule.rs`](../../runtime/userspace/api/spdm-lib/stack/src/key_schedule.rs)
+implements the SPDM key schedule with HKDF. For the derivation chain, see the
+key schedule section of [DSP0274](https://www.dmtf.org/sites/default/files/standards/documents/DSP0274_1.3.2.pdf).
+
+- The shared secret comes from ECDH on SECP384R1 or ML-KEM-1024,
+  depending on the negotiated key exchange algorithm.
+- Handshake keys are derived from the shared secret and TH1. Data keys are
+  derived from TH2.
+- Each direction has its own sequence number for handshake and data keys.
+- All key operations go through `SpdmPalSessionCrypto`. Keys are opaque
+  handles (`SpdmPalSessionCrypto::Key`); on Caliptra these are `Cmk`
+  handles, so key material never leaves Caliptra.
+
+### Secured Messages
+A `SecuredMessage` request is processed as follows:
+
+1. Read the session ID from the secured message header. If no session with
+   that ID exists, the message is dropped without a response.
+2. Select the request key: the handshake key while the session is in
+   `HandshakeInProgress`, the data key once it is `Established`.
+3. Decrypt and verify the message with AES-256-GCM.
+4. Check that the inner request is allowed in the session's current state,
+   then dispatch it to its handler.
+5. Encrypt the response with the matching response key.
+
+If processing fails, the `ERROR` response is also sent encrypted. A
+`DecryptError` destroys the session.
+
+Secured messages require a transport that supports them: MCTP bound to
+message type 0x06 (secured SPDM), or DOE. If the transport does not support
+secured messages, the responder does not advertise `KEY_EX_CAP`, `ENCRYPT_CAP`
+or `MAC_CAP`.
