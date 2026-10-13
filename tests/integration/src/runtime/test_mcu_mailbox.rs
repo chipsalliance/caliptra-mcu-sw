@@ -7,20 +7,27 @@ use caliptra_api::{
     mailbox::{CapabilitiesResp, CommandId, MailboxReqHeader},
     SocManager,
 };
+use caliptra_image_types::MLDSA87_SIGNATURE_BYTE_SIZE;
 use caliptra_mcu_config::capabilities::{ExternalCommandCapabilities, McuRuntimeCapabilities};
-use caliptra_mcu_hw_model::{LifecycleControllerState, McuHwModel};
+use caliptra_mcu_hw_model::{DefaultHwModel, LifecycleControllerState, McuHwModel};
 use caliptra_mcu_mbox_common::messages::{
+    CmEcdhFinishReq, CmEcdhGenerateReq, CmEcdsaPublicKeyReq, CmEcdsaSignReq, CmEcdsaVerifyReq,
+    CmImportReq, CmKeyUsage, CmMldsaPublicKeyReq, CmMldsaSignReq, CmMldsaVerifyReq, Cmk,
     CommandId as McuCommandId, DeviceCapsReq, DeviceCapsResp, DpeSignerContextCertReq,
     EcdsaVerifyReq, FirmwareVersionReq, GetAuthCmdChallengeReq, GetDpeCertChainReq, LmsVerifyReq,
     MailboxReqHeader as McuMailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize,
-    McuEcdsa384SigVerifyReq, McuFeProgReq, McuFipsPeriodicEnableReq, McuFipsPeriodicEnableResp,
-    McuFipsPeriodicStatusResp, McuFipsSelfTestGetResultsResp, McuFipsSelfTestStartResp,
-    McuLmsSigVerifyReq, McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp,
-    McuProdDebugUnlockTokenReq, ProductionAuthDebugUnlockReq, ProductionAuthDebugUnlockToken,
+    McuCmImportReq, McuEcdhFinishReq, McuEcdhFinishResp, McuEcdhGenerateReq, McuEcdhGenerateResp,
+    McuEcdsa384SigVerifyReq, McuEcdsaCmkPublicKeyReq, McuEcdsaCmkPublicKeyResp, McuEcdsaCmkSignReq,
+    McuEcdsaCmkSignResp, McuEcdsaCmkVerifyReq, McuFeProgReq, McuFipsPeriodicEnableReq,
+    McuFipsPeriodicEnableResp, McuFipsPeriodicStatusResp, McuFipsSelfTestGetResultsResp,
+    McuFipsSelfTestStartResp, McuLmsSigVerifyReq, McuMailboxReq, McuMldsaCmkPublicKeyReq,
+    McuMldsaCmkPublicKeyResp, McuMldsaCmkSignReq, McuMldsaCmkSignResp, McuMldsaCmkVerifyReq,
+    McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq,
+    ProductionAuthDebugUnlockReq, ProductionAuthDebugUnlockToken,
 };
 use caliptra_mcu_romtime::{handoff::McuRomCapabilities, McuBootMilestones};
 use std::mem::size_of;
-use zerocopy::{FromBytes, IntoBytes};
+use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 fn semantic_version(packed_version: u32) -> String {
     format!(
@@ -43,6 +50,98 @@ fn raw_request(cmd: u32, payload: &[u8]) -> Vec<u8> {
     let mut request = calc_checksum(cmd, payload).to_le_bytes().to_vec();
     request.extend_from_slice(payload);
     request
+}
+
+fn execute_raw_mcu_req(hw: &mut impl McuHwModel, mut request: McuMailboxReq) -> Result<Vec<u8>> {
+    request
+        .populate_chksum()
+        .expect("failed to populate checksum");
+    let cmd = request.cmd_code().0;
+    Ok(hw
+        .mailbox_execute(cmd, request.as_bytes().expect("failed to encode request"))?
+        .expect("command returned no response"))
+}
+
+fn import_cmk(hw: &mut impl McuHwModel, key_usage: CmKeyUsage, key: &[u8]) -> Result<Cmk> {
+    let mut request = CmImportReq {
+        key_usage: key_usage.into(),
+        input_size: key.len() as u32,
+        ..Default::default()
+    };
+    request.input[..key.len()].copy_from_slice(key);
+    Ok(hw.mailbox_execute_req(McuCmImportReq(request))?.0.cmk)
+}
+
+fn assert_fixed_response<T: FromBytes + Immutable + KnownLayout>(response: &[u8]) -> &T {
+    assert_eq!(response.len(), size_of::<T>());
+    assert_response_checksum(response);
+    T::ref_from_bytes(response).expect("invalid fixed-size response")
+}
+
+fn start_crypto_mailbox_hw() -> DefaultHwModel {
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-mcu-mbox-cmds"),
+        ..Default::default()
+    });
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+    hw
+}
+
+fn assert_mcu_req_fails(hw: &mut impl McuHwModel, mut request: McuMailboxReq) {
+    request
+        .populate_chksum()
+        .expect("failed to populate checksum");
+    assert_mailbox_cmd_failed(hw.mailbox_execute(
+        request.cmd_code().0,
+        request.as_bytes().expect("failed to encode request"),
+    ));
+}
+
+fn assert_mailbox_cmd_failed<T>(result: Result<T>) {
+    let error = match result {
+        Ok(_) => panic!("mailbox command unexpectedly succeeded"),
+        Err(error) => error,
+    };
+    let message = error.to_string();
+    assert!(
+        message.contains("firmware error"),
+        "expected mailbox command failure, got {error:#}"
+    );
+}
+
+fn ecdsa_verify_req(
+    cmk: Cmk,
+    message: &[u8],
+    signature_r: [u8; 48],
+    signature_s: [u8; 48],
+) -> McuEcdsaCmkVerifyReq {
+    let mut request = CmEcdsaVerifyReq {
+        cmk,
+        signature_r,
+        signature_s,
+        message_size: message.len() as u32,
+        ..Default::default()
+    };
+    request.message[..message.len()].copy_from_slice(message);
+    McuEcdsaCmkVerifyReq(request)
+}
+
+fn mldsa_verify_req(
+    cmk: Cmk,
+    message: &[u8],
+    signature: [u8; MLDSA87_SIGNATURE_BYTE_SIZE],
+) -> McuMldsaCmkVerifyReq {
+    let mut request = CmMldsaVerifyReq {
+        cmk,
+        signature,
+        message_size: message.len() as u32,
+        ..Default::default()
+    };
+    request.message[..message.len()].copy_from_slice(message);
+    McuMldsaCmkVerifyReq(request)
 }
 
 #[test]
@@ -896,9 +995,227 @@ fn test_get_auth_cmd_challenge_cmd() -> Result<()> {
 }
 
 #[test]
+fn test_mcu_mbox_ecdh_commands() -> Result<()> {
+    let mut hw = start_crypto_mailbox_hw();
+
+    let generate_response = execute_raw_mcu_req(
+        &mut hw,
+        McuMailboxReq::EcdhGenerate(McuEcdhGenerateReq(CmEcdhGenerateReq::default())),
+    )?;
+    let generate = assert_fixed_response::<McuEcdhGenerateResp>(&generate_response);
+    assert_eq!(
+        generate.0.hdr.fips_status,
+        MailboxRespHeader::FIPS_STATUS_APPROVED
+    );
+    assert_ne!(generate.0.context, [0; 76]);
+    assert_ne!(generate.0.exchange_data, [0; 96]);
+
+    let finish_response = execute_raw_mcu_req(
+        &mut hw,
+        McuMailboxReq::EcdhFinish(McuEcdhFinishReq(CmEcdhFinishReq {
+            context: generate.0.context,
+            key_usage: CmKeyUsage::Aes.into(),
+            incoming_exchange_data: generate.0.exchange_data,
+            ..Default::default()
+        })),
+    )?;
+    let finish = assert_fixed_response::<McuEcdhFinishResp>(&finish_response);
+    assert_eq!(
+        finish.0.hdr.fips_status,
+        MailboxRespHeader::FIPS_STATUS_APPROVED
+    );
+    assert_ne!(finish.0.output, Cmk::default());
+
+    for invalid in [
+        CmEcdhFinishReq {
+            key_usage: CmKeyUsage::Aes.into(),
+            incoming_exchange_data: generate.0.exchange_data,
+            ..Default::default()
+        },
+        CmEcdhFinishReq {
+            context: generate.0.context,
+            key_usage: u32::MAX,
+            incoming_exchange_data: generate.0.exchange_data,
+            ..Default::default()
+        },
+        CmEcdhFinishReq {
+            context: generate.0.context,
+            key_usage: CmKeyUsage::Aes.into(),
+            incoming_exchange_data: [0; 96],
+            ..Default::default()
+        },
+    ] {
+        assert_mailbox_cmd_failed(hw.mailbox_execute_req(McuEcdhFinishReq(invalid)));
+    }
+    Ok(())
+}
+
+#[test]
+fn test_mcu_mbox_ecdsa_cmk_commands() -> Result<()> {
+    let mut hw = start_crypto_mailbox_hw();
+
+    let cmk = import_cmk(&mut hw, CmKeyUsage::Ecdsa, &[0; 48])?;
+    let public_key_response = execute_raw_mcu_req(
+        &mut hw,
+        McuMailboxReq::EcdsaCmkPublicKey(McuEcdsaCmkPublicKeyReq(CmEcdsaPublicKeyReq {
+            cmk,
+            ..Default::default()
+        })),
+    )?;
+    let public_key = assert_fixed_response::<McuEcdsaCmkPublicKeyResp>(&public_key_response);
+    assert_eq!(
+        public_key.0.hdr.fips_status,
+        MailboxRespHeader::FIPS_STATUS_APPROVED
+    );
+    assert_ne!(public_key.0.public_key_x, [0; 48]);
+    assert_ne!(public_key.0.public_key_y, [0; 48]);
+
+    let message = b"ECDSA mailbox test";
+    let mut sign_request = CmEcdsaSignReq {
+        cmk,
+        message_size: message.len() as u32,
+        ..Default::default()
+    };
+    sign_request.message[..message.len()].copy_from_slice(message);
+    let sign_response = execute_raw_mcu_req(
+        &mut hw,
+        McuMailboxReq::EcdsaCmkSign(McuEcdsaCmkSignReq(sign_request)),
+    )?;
+    let signature = assert_fixed_response::<McuEcdsaCmkSignResp>(&sign_response);
+    assert_eq!(
+        signature.0.hdr.fips_status,
+        MailboxRespHeader::FIPS_STATUS_APPROVED
+    );
+    assert_ne!(signature.0.signature_r, [0; 48]);
+    assert_ne!(signature.0.signature_s, [0; 48]);
+
+    let verify_response = execute_raw_mcu_req(
+        &mut hw,
+        McuMailboxReq::EcdsaCmkVerify(ecdsa_verify_req(
+            cmk,
+            message,
+            signature.0.signature_r,
+            signature.0.signature_s,
+        )),
+    )?;
+    assert_eq!(
+        assert_fixed_response::<MailboxRespHeader>(&verify_response).fips_status,
+        MailboxRespHeader::FIPS_STATUS_APPROVED
+    );
+
+    let mut invalid_signature = signature.0.signature_r;
+    invalid_signature[0] ^= 1;
+    assert_mcu_req_fails(
+        &mut hw,
+        McuMailboxReq::EcdsaCmkVerify(ecdsa_verify_req(
+            cmk,
+            message,
+            invalid_signature,
+            signature.0.signature_s,
+        )),
+    );
+
+    let aes_cmk = import_cmk(&mut hw, CmKeyUsage::Aes, &[0xa5; 32])?;
+    for invalid_cmk in [Cmk::default(), aes_cmk] {
+        for request in [
+            McuMailboxReq::EcdsaCmkPublicKey(McuEcdsaCmkPublicKeyReq(CmEcdsaPublicKeyReq {
+                cmk: invalid_cmk,
+                ..Default::default()
+            })),
+            McuMailboxReq::EcdsaCmkSign(McuEcdsaCmkSignReq(CmEcdsaSignReq {
+                cmk: invalid_cmk,
+                ..Default::default()
+            })),
+            McuMailboxReq::EcdsaCmkVerify(ecdsa_verify_req(invalid_cmk, &[], [0; 48], [0; 48])),
+        ] {
+            assert_mcu_req_fails(&mut hw, request);
+        }
+    }
+    Ok(())
+}
+
+#[test]
+fn test_mcu_mbox_mldsa_cmk_commands() -> Result<()> {
+    let mut hw = start_crypto_mailbox_hw();
+
+    let cmk = import_cmk(&mut hw, CmKeyUsage::Mldsa, &[0x5a; 32])?;
+    let public_key_response = execute_raw_mcu_req(
+        &mut hw,
+        McuMailboxReq::MldsaCmkPublicKey(McuMldsaCmkPublicKeyReq(CmMldsaPublicKeyReq {
+            cmk,
+            ..Default::default()
+        })),
+    )?;
+    let public_key = assert_fixed_response::<McuMldsaCmkPublicKeyResp>(&public_key_response);
+    assert_eq!(
+        public_key.0.hdr.fips_status,
+        MailboxRespHeader::FIPS_STATUS_APPROVED
+    );
+    assert!(public_key.0.public_key.iter().any(|byte| *byte != 0));
+
+    let message = b"ML-DSA mailbox test";
+    let mut sign_request = CmMldsaSignReq {
+        cmk,
+        message_size: message.len() as u32,
+        ..Default::default()
+    };
+    sign_request.message[..message.len()].copy_from_slice(message);
+    let sign_response = execute_raw_mcu_req(
+        &mut hw,
+        McuMailboxReq::MldsaCmkSign(McuMldsaCmkSignReq(sign_request)),
+    )?;
+    let signature = assert_fixed_response::<McuMldsaCmkSignResp>(&sign_response);
+    assert_eq!(
+        signature.0.hdr.fips_status,
+        MailboxRespHeader::FIPS_STATUS_APPROVED
+    );
+    assert!(signature.0.signature.iter().any(|byte| *byte != 0));
+
+    let verify_response = execute_raw_mcu_req(
+        &mut hw,
+        McuMailboxReq::MldsaCmkVerify(mldsa_verify_req(cmk, message, signature.0.signature)),
+    )?;
+    assert_eq!(
+        assert_fixed_response::<MailboxRespHeader>(&verify_response).fips_status,
+        MailboxRespHeader::FIPS_STATUS_APPROVED
+    );
+
+    let mut invalid_signature = signature.0.signature;
+    invalid_signature[0] ^= 1;
+    assert_mcu_req_fails(
+        &mut hw,
+        McuMailboxReq::MldsaCmkVerify(mldsa_verify_req(cmk, message, invalid_signature)),
+    );
+
+    let aes_cmk = import_cmk(&mut hw, CmKeyUsage::Aes, &[0xa5; 32])?;
+    for invalid_cmk in [Cmk::default(), aes_cmk] {
+        for request in [
+            McuMailboxReq::MldsaCmkPublicKey(McuMldsaCmkPublicKeyReq(CmMldsaPublicKeyReq {
+                cmk: invalid_cmk,
+                ..Default::default()
+            })),
+            McuMailboxReq::MldsaCmkSign(McuMldsaCmkSignReq(CmMldsaSignReq {
+                cmk: invalid_cmk,
+                ..Default::default()
+            })),
+            McuMailboxReq::MldsaCmkVerify(mldsa_verify_req(
+                invalid_cmk,
+                &[],
+                [0; MLDSA87_SIGNATURE_BYTE_SIZE],
+            )),
+        ] {
+            assert_mcu_req_fails(&mut hw, request);
+        }
+    }
+    Ok(())
+}
+
+#[test]
 fn test_mcu_mbox_ecdsa384_sig_verify() -> Result<()> {
     use caliptra_image_crypto::RustCrypto;
-    use caliptra_image_fake_keys::{VENDOR_ECC_KEY_0_PRIVATE, VENDOR_ECC_KEY_0_PUBLIC};
+    use caliptra_image_fake_keys::{
+        VENDOR_ECC_KEY_0_PRIVATE, VENDOR_ECC_KEY_0_PUBLIC, VENDOR_ECC_KEY_1_PUBLIC,
+    };
     use caliptra_image_gen::{from_hw_format, to_hw_format, ImageGeneratorCrypto};
 
     let mut hw = start_runtime_hw_model(TestParams {
@@ -918,17 +1235,24 @@ fn test_mcu_mbox_ecdsa384_sig_verify() -> Result<()> {
     )?;
     let signature_r = from_hw_format(&signature.r);
     let signature_s = from_hw_format(&signature.s);
+    let pub_key_x = from_hw_format(&VENDOR_ECC_KEY_0_PUBLIC.x);
+    let pub_key_y = from_hw_format(&VENDOR_ECC_KEY_0_PUBLIC.y);
 
-    let resp = hw.mailbox_execute_req(McuEcdsa384SigVerifyReq(EcdsaVerifyReq {
+    let request = EcdsaVerifyReq {
         hdr: McuMailboxReqHeader::default(),
-        pub_key_x: from_hw_format(&VENDOR_ECC_KEY_0_PUBLIC.x),
-        pub_key_y: from_hw_format(&VENDOR_ECC_KEY_0_PUBLIC.y),
+        pub_key_x,
+        pub_key_y,
         signature_r,
         signature_s,
         hash: digest,
-    }))?;
+    };
+    let cmd = McuCommandId::MC_ECDSA384_SIG_VERIFY.0;
+    let response = hw
+        .mailbox_execute(cmd, &raw_request(cmd, &request.as_bytes()[4..]))?
+        .expect("MC_ECDSA384_SIG_VERIFY returned no response");
+    let resp = assert_fixed_response::<MailboxRespHeader>(&response);
     assert_eq!(
-        resp.0.fips_status,
+        resp.fips_status,
         MailboxRespHeader::FIPS_STATUS_NOT_APPROVED_USER_SUPPLIED_DIGEST
     );
 
@@ -936,13 +1260,36 @@ fn test_mcu_mbox_ecdsa384_sig_verify() -> Result<()> {
     invalid_signature_r[0] ^= 1;
     let invalid = McuEcdsa384SigVerifyReq(EcdsaVerifyReq {
         hdr: McuMailboxReqHeader::default(),
-        pub_key_x: from_hw_format(&VENDOR_ECC_KEY_0_PUBLIC.x),
-        pub_key_y: from_hw_format(&VENDOR_ECC_KEY_0_PUBLIC.y),
+        pub_key_x,
+        pub_key_y,
         signature_r: invalid_signature_r,
         signature_s,
         hash: digest,
     });
-    assert!(hw.mailbox_execute_req(invalid).is_err());
+    assert_mailbox_cmd_failed(hw.mailbox_execute_req(invalid));
+
+    let mut invalid_digest = digest;
+    invalid_digest[0] ^= 1;
+    assert_mailbox_cmd_failed(
+        hw.mailbox_execute_req(McuEcdsa384SigVerifyReq(EcdsaVerifyReq {
+            hdr: McuMailboxReqHeader::default(),
+            pub_key_x,
+            pub_key_y,
+            signature_r,
+            signature_s,
+            hash: invalid_digest,
+        })),
+    );
+    assert_mailbox_cmd_failed(
+        hw.mailbox_execute_req(McuEcdsa384SigVerifyReq(EcdsaVerifyReq {
+            hdr: McuMailboxReqHeader::default(),
+            pub_key_x: from_hw_format(&VENDOR_ECC_KEY_1_PUBLIC.x),
+            pub_key_y: from_hw_format(&VENDOR_ECC_KEY_1_PUBLIC.y),
+            signature_r,
+            signature_s,
+            hash: digest,
+        })),
+    );
     Ok(())
 }
 
@@ -950,7 +1297,9 @@ fn test_mcu_mbox_ecdsa384_sig_verify() -> Result<()> {
 #[test]
 fn test_mcu_mbox_lms_sig_verify() -> Result<()> {
     use caliptra_image_crypto::RustCrypto;
-    use caliptra_image_fake_keys::{VENDOR_LMS_KEY_0_PRIVATE, VENDOR_LMS_KEY_0_PUBLIC};
+    use caliptra_image_fake_keys::{
+        VENDOR_LMS_KEY_0_PRIVATE, VENDOR_LMS_KEY_0_PUBLIC, VENDOR_LMS_KEY_1_PUBLIC,
+    };
     use caliptra_image_gen::{to_hw_format, ImageGeneratorCrypto};
 
     let mut hw = start_runtime_hw_model(TestParams {
@@ -966,25 +1315,32 @@ fn test_mcu_mbox_lms_sig_verify() -> Result<()> {
     let signature =
         RustCrypto::default().lms_sign(&to_hw_format(&digest), &VENDOR_LMS_KEY_0_PRIVATE)?;
     let signature_ots = signature.ots.as_bytes().try_into().unwrap();
+    let pub_key_digest = VENDOR_LMS_KEY_0_PUBLIC
+        .digest
+        .as_bytes()
+        .try_into()
+        .unwrap();
+    let signature_tree_path = signature.tree_path.as_bytes().try_into().unwrap();
 
-    let resp = hw.mailbox_execute_req(McuLmsSigVerifyReq(LmsVerifyReq {
+    let request = LmsVerifyReq {
         hdr: McuMailboxReqHeader::default(),
         pub_key_tree_type: u32::from(VENDOR_LMS_KEY_0_PUBLIC.tree_type.0),
         pub_key_ots_type: u32::from(VENDOR_LMS_KEY_0_PUBLIC.otstype.0),
         pub_key_id: VENDOR_LMS_KEY_0_PUBLIC.id,
-        pub_key_digest: VENDOR_LMS_KEY_0_PUBLIC
-            .digest
-            .as_bytes()
-            .try_into()
-            .unwrap(),
+        pub_key_digest,
         signature_q: u32::from(signature.q),
         signature_ots,
         signature_tree_type: u32::from(signature.tree_type.0),
-        signature_tree_path: signature.tree_path.as_bytes().try_into().unwrap(),
+        signature_tree_path,
         hash: digest,
-    }))?;
+    };
+    let cmd = McuCommandId::MC_LMS_SIG_VERIFY.0;
+    let response = hw
+        .mailbox_execute(cmd, &raw_request(cmd, &request.as_bytes()[4..]))?
+        .expect("MC_LMS_SIG_VERIFY returned no response");
+    let resp = assert_fixed_response::<MailboxRespHeader>(&response);
     assert_eq!(
-        resp.0.fips_status,
+        resp.fips_status,
         MailboxRespHeader::FIPS_STATUS_NOT_APPROVED_USER_SUPPLIED_DIGEST
     );
 
@@ -995,18 +1351,59 @@ fn test_mcu_mbox_lms_sig_verify() -> Result<()> {
         pub_key_tree_type: u32::from(VENDOR_LMS_KEY_0_PUBLIC.tree_type.0),
         pub_key_ots_type: u32::from(VENDOR_LMS_KEY_0_PUBLIC.otstype.0),
         pub_key_id: VENDOR_LMS_KEY_0_PUBLIC.id,
-        pub_key_digest: VENDOR_LMS_KEY_0_PUBLIC
-            .digest
-            .as_bytes()
-            .try_into()
-            .unwrap(),
+        pub_key_digest,
         signature_q: u32::from(signature.q),
         signature_ots: invalid_signature_ots,
         signature_tree_type: u32::from(signature.tree_type.0),
-        signature_tree_path: signature.tree_path.as_bytes().try_into().unwrap(),
+        signature_tree_path,
         hash: digest,
     });
-    assert!(hw.mailbox_execute_req(invalid).is_err());
+    assert_mailbox_cmd_failed(hw.mailbox_execute_req(invalid));
+
+    let mut invalid_digest = digest;
+    invalid_digest[0] ^= 1;
+    assert_mailbox_cmd_failed(hw.mailbox_execute_req(McuLmsSigVerifyReq(LmsVerifyReq {
+        hdr: McuMailboxReqHeader::default(),
+        pub_key_tree_type: u32::from(VENDOR_LMS_KEY_0_PUBLIC.tree_type.0),
+        pub_key_ots_type: u32::from(VENDOR_LMS_KEY_0_PUBLIC.otstype.0),
+        pub_key_id: VENDOR_LMS_KEY_0_PUBLIC.id,
+        pub_key_digest,
+        signature_q: u32::from(signature.q),
+        signature_ots,
+        signature_tree_type: u32::from(signature.tree_type.0),
+        signature_tree_path,
+        hash: invalid_digest,
+    })));
+    assert_mailbox_cmd_failed(hw.mailbox_execute_req(McuLmsSigVerifyReq(LmsVerifyReq {
+        hdr: McuMailboxReqHeader::default(),
+        pub_key_tree_type: u32::MAX,
+        pub_key_ots_type: u32::from(VENDOR_LMS_KEY_0_PUBLIC.otstype.0),
+        pub_key_id: VENDOR_LMS_KEY_0_PUBLIC.id,
+        pub_key_digest,
+        signature_q: u32::from(signature.q),
+        signature_ots,
+        signature_tree_type: u32::from(signature.tree_type.0),
+        signature_tree_path,
+        hash: digest,
+    })));
+    assert_mailbox_cmd_failed(
+        hw.mailbox_execute_req(McuLmsSigVerifyReq(LmsVerifyReq {
+            hdr: McuMailboxReqHeader::default(),
+            pub_key_tree_type: u32::from(VENDOR_LMS_KEY_1_PUBLIC.tree_type.0),
+            pub_key_ots_type: u32::from(VENDOR_LMS_KEY_1_PUBLIC.otstype.0),
+            pub_key_id: VENDOR_LMS_KEY_1_PUBLIC.id,
+            pub_key_digest: VENDOR_LMS_KEY_1_PUBLIC
+                .digest
+                .as_bytes()
+                .try_into()
+                .unwrap(),
+            signature_q: u32::from(signature.q),
+            signature_ots,
+            signature_tree_type: u32::from(signature.tree_type.0),
+            signature_tree_path,
+            hash: digest,
+        })),
+    );
     Ok(())
 }
 
