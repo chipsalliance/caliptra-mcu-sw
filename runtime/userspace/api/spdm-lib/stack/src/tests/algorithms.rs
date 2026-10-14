@@ -172,6 +172,35 @@ fn test_negotiate_algorithms_v13_multi_key_cap_negotiable_accepts_either_value()
     }
 }
 
+/// MULTI_KEY_CONN_RSP follows the request's ResponderMultiKeyConn, not the
+/// ALGORITHMS response bit. With our MULTI_KEY_CAP = 10b and a Requester whose
+/// own MULTI_KEY_CAP is 00b, the response bit 4 (RequesterMultiKeyConnSel) is
+/// masked off, but the Requester still chose a multi-key connection for the
+/// Responder, so MULTI_KEY_CONN_RSP must be true.
+#[test]
+fn test_negotiate_algorithms_v13_multi_key_conn_rsp_follows_request_not_response_bit() {
+    let pal = TestPal::default();
+    let mut state = with_multi_key_cap(
+        state_at_capabilities(SpdmVersion::V13),
+        CapFlags::MULTI_KEY_CONN_RSP.into_bits(),
+    );
+    state.peer_cap_flags = CapFlags::EMPTY; // Requester MULTI_KEY_CAP = 00b
+    let io = negotiate_algorithms_io(SpdmVersion::V13, OtherParamSupport::MULTI_KEY_CONN);
+
+    let rsp = block_on(handle_negotiate_algorithms(&mut state, &pal, &io)).unwrap();
+
+    assert_eq!(state.phase, Phase::AfterAlgorithms);
+    assert_eq!(
+        response_other_params(&pal, &rsp) & OtherParamSupport::MULTI_KEY_CONN.into_bits(),
+        0
+    );
+    assert!(crate::stack::multi_key_conn_rsp(&state).unwrap());
+
+    // And it is cleared again when the connection is renegotiated.
+    state.reset_negotiation();
+    assert!(!crate::stack::multi_key_conn_rsp(&state).unwrap());
+}
+
 /// Pre-V1.3 the bit is reserved, not illegal: the responder keeps
 /// masking it out of the response instead of failing the request.
 #[test]

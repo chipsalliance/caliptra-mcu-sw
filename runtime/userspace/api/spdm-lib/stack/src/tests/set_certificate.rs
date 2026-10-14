@@ -4,7 +4,7 @@ extern crate std;
 
 use super::*;
 use crate::error::{SPDM_BUSY, SPDM_OPERATION_FAILED, SPDM_RESET_REQUIRED, SPDM_UNSPECIFIED};
-use caliptra_mcu_spdm_codec::{errors as wire_errors, OtherParamSupport, PqcAsymAlgos};
+use caliptra_mcu_spdm_codec::{errors as wire_errors, PqcAsymAlgos};
 use caliptra_mcu_spdm_traits::SpdmPalAsymAlgo;
 use futures::executor::block_on;
 use std::vec::Vec;
@@ -19,7 +19,8 @@ fn state(version: SpdmVersion) -> ConnectionState<TestHashState, Vec<u8>> {
 
 fn state_v13_multi_key() -> ConnectionState<TestHashState, Vec<u8>> {
     let mut state = state(SpdmVersion::V13);
-    state.other_param_sel = OtherParamSupport::MULTI_KEY_CONN;
+    // MULTI_KEY_CONN_RSP as NEGOTIATE_ALGORITHMS resolves it.
+    state.multi_key_conn_rsp = true;
     state.peer_cap_flags = CapFlags::MULTI_KEY_CONN_RSP;
     state
 }
@@ -113,6 +114,9 @@ fn test_handle_set_certificate_v13_rejects_multikey_when_not_advertised() {
         | CapFlags::MEAS_SIG
         | CapFlags::ALIAS_CERT
         | CapFlags::SET_CERT;
+    // Without MULTI_KEY_CAP advertised, NEGOTIATE_ALGORITHMS resolves a
+    // single-key connection, so a KeyPairID / CertModel request is invalid.
+    state.multi_key_conn_rsp = false;
     let der = der_chain();
     let root_hash = test_digest(&der[..5]);
     let payload = cert_payload(&der, root_hash);

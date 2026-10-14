@@ -133,6 +133,12 @@ pub struct ConnectionState<S, L> {
     pub peer_cap_flags: CapFlags,
     /// Negotiated OtherParamsSel from NEGOTIATE_ALGORITHMS.
     pub other_param_sel: OtherParamSupport,
+    /// Negotiated `MULTI_KEY_CONN_RSP`: whether this connection uses multiple
+    /// Responder key pairs. Resolved at NEGOTIATE_ALGORITHMS from the request's
+    /// `ResponderMultiKeyConn` and our `MULTI_KEY_CAP` (DSP0274 1.3.0 Table 32).
+    /// Not derivable from `other_param_sel`: bit 4 of the ALGORITHMS
+    /// `OtherParamsSelection` is `RequesterMultiKeyConnSel`, a different field.
+    pub multi_key_conn_rsp: bool,
     /// Negotiated BaseAsymSel from NEGOTIATE_ALGORITHMS.
     pub negotiated_base_asym_sel: AsymAlgos,
     /// Negotiated BaseHashSel from NEGOTIATE_ALGORITHMS.
@@ -198,6 +204,7 @@ impl<S, L> ConnectionState<S, L> {
             advertised_cap_flags: CapFlags::EMPTY,
             peer_cap_flags: CapFlags::EMPTY,
             other_param_sel: OtherParamSupport::EMPTY,
+            multi_key_conn_rsp: false,
             negotiated_base_asym_sel: AsymAlgos::EMPTY,
             negotiated_base_hash_sel: HashAlgos::EMPTY,
             negotiated_pqc_asym_sel: PqcAsymAlgos::EMPTY,
@@ -259,6 +266,7 @@ impl<S, L: core::ops::DerefMut<Target = [u8]>> ConnectionState<S, L> {
         self.advertised_cap_flags = CapFlags::EMPTY;
         self.peer_cap_flags = CapFlags::EMPTY;
         self.other_param_sel = OtherParamSupport::EMPTY;
+        self.multi_key_conn_rsp = false;
         self.negotiated_base_asym_sel = AsymAlgos::EMPTY;
         self.negotiated_base_hash_sel = HashAlgos::EMPTY;
         self.negotiated_pqc_asym_sel = PqcAsymAlgos::EMPTY;
@@ -278,11 +286,9 @@ impl<S, L> Default for ConnectionState<S, L> {
     }
 }
 
+/// Returns the `MULTI_KEY_CONN_RSP` resolved at NEGOTIATE_ALGORITHMS.
 pub(crate) fn multi_key_conn_rsp<S, L>(state: &ConnectionState<S, L>) -> SpdmResult<bool> {
-    let selected = state
-        .other_param_sel
-        .contains(OtherParamSupport::MULTI_KEY_CONN);
-    multi_key_conn_value(state.version, state.advertised_cap_flags, selected)
+    Ok(state.multi_key_conn_rsp)
 }
 
 /// Resolves `MULTI_KEY_CONN_RSP` from a `ResponderMultiKeyConn` bit and

@@ -94,15 +94,20 @@ pub(crate) async fn handle_negotiate_algorithms<'a, Pal: SpdmPal>(
     // be refused here, before the response is built. Pre-V1.3 keeps
     // the mask-and-ignore behaviour: the bit is reserved there, not
     // illegal.
-    if state.version >= SpdmVersion::V13 {
+    // The table's result is the connection's MULTI_KEY_CONN_RSP, so keep it:
+    // it cannot be recovered from the ALGORITHMS response, whose bit 4 is
+    // RequesterMultiKeyConnSel and is also masked by the peer's MULTI_KEY_CAP.
+    let multi_key_conn_rsp = if state.version >= SpdmVersion::V13 {
         multi_key_conn_value(
             state.version,
             state.advertised_cap_flags,
             fixed
                 .other_param_support
                 .contains(OtherParamSupport::MULTI_KEY_CONN),
-        )?;
-    }
+        )?
+    } else {
+        false
+    };
 
     // Keep negotiation-only values out of the async state carried across
     // transcript hashing. The encoded response itself is scratch-backed.
@@ -112,6 +117,7 @@ pub(crate) async fn handle_negotiate_algorithms<'a, Pal: SpdmPal>(
         let rsp_body = build_response_body(state, fixed, &peer, pal.secure_message_supported());
         let spdm_len = rsp_body.encoded_size();
         state.other_param_sel = rsp_body.other_param_support;
+        state.multi_key_conn_rsp = multi_key_conn_rsp;
         state.negotiated_base_asym_sel = rsp_body.base_asym_sel;
         state.negotiated_base_hash_sel = rsp_body.base_hash_sel;
         state.negotiated_pqc_asym_sel = rsp_body.pqc_asym_sel;
