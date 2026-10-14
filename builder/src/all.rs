@@ -1382,18 +1382,10 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         .collect();
     let test_runtimes = test_runtimes?;
 
-    let mut network_rom_feature_list = Vec::new();
-    if let Some(features) = network_rom_features {
-        network_rom_feature_list.extend_from_slice(crate::features::NETWORK_ROM_TEST_FEATURES);
-        for feature in features.split(',').filter(|feature| !feature.is_empty()) {
-            if !network_rom_feature_list.contains(&feature) {
-                network_rom_feature_list.push(feature);
-            }
-        }
-    }
-
-    let network_roms: Result<Vec<(PathBuf, String)>> = network_rom_feature_list
-        .into_iter()
+    let network_roms: Result<Vec<(PathBuf, String)>> = network_rom_features
+        .unwrap_or_default()
+        .split(',')
+        .filter(|feature| !feature.is_empty())
         .enumerate()
         .filter(|(idx, _)| idx % total_shards == shard_index)
         .map(|(_, feature)| {
