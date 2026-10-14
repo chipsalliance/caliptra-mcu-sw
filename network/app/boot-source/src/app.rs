@@ -31,10 +31,15 @@ pub enum IpVersion {
 /// Minimum free space in the TFTP chunk buffer before accepting another RX packet.
 const TFTP_RX_THRESHOLD: usize = 512;
 
-#[cfg(not(any(feature = "test-short-timeouts", feature = "test-ipv6-dhcp-timeout")))]
-const DHCP_TIMEOUT_MS: u64 = 29_000;
-#[cfg(any(feature = "test-short-timeouts", feature = "test-ipv6-dhcp-timeout"))]
-const DHCP_TIMEOUT_MS: u64 = 8_000;
+#[cfg(not(feature = "test-short-timeouts"))]
+const DHCPV4_TIMEOUT_MS: u64 = 29_000;
+#[cfg(feature = "test-short-timeouts")]
+const DHCPV4_TIMEOUT_MS: u64 = 8_000;
+
+#[cfg(all(feature = "ipv6-boot", not(feature = "test-ipv6-dhcp-timeout")))]
+const DHCPV6_TIMEOUT_MS: u64 = 60_000;
+#[cfg(all(feature = "ipv6-boot", feature = "test-ipv6-dhcp-timeout"))]
+const DHCPV6_TIMEOUT_MS: u64 = 8_000;
 
 #[cfg(not(any(feature = "test-short-timeouts", feature = "test-ipv6-tftp-timeouts")))]
 const TFTP_TIMEOUT_MS: u64 = 28_000;
@@ -181,11 +186,19 @@ impl<'a, M: NetworkMailbox<'a>> BootSourceApp<'a, M> {
         }
     }
 
+    fn dhcp_timeout_ms(&self) -> u64 {
+        match self.ip_version {
+            IpVersion::V4 => DHCPV4_TIMEOUT_MS,
+            #[cfg(feature = "ipv6-boot")]
+            IpVersion::V6 => DHCPV6_TIMEOUT_MS,
+        }
+    }
+
     /// Poll DHCP progress. Called each iteration of `run_loop` while in
     /// `DhcpInProgress`. When an address is obtained, starts the TFTP TOC
     /// download and transitions to `TftpTocInProgress`.
     fn poll_dhcp(&self) {
-        if self.operation_timed_out(DHCP_TIMEOUT_MS) {
+        if self.operation_timed_out(self.dhcp_timeout_ms()) {
             caliptra_mcu_network_drivers::println!("[boot-src] DHCP timeout");
             self.stop_dhcp();
             let _ = handler::send_error(
