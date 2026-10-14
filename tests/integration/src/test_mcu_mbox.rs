@@ -680,6 +680,7 @@ pub mod test {
                     );
                     c[24..28].copy_from_slice(
                         &(ExternalCommandCapabilities::GET_ATTESTATION
+                            | ExternalCommandCapabilities::EXPORT_ATTESTED_CSR
                             | ExternalCommandCapabilities::AUTHORIZED_COMMAND
                             | ExternalCommandCapabilities::DEVICE_OWNERSHIP_TRANSFER)
                             .bits()
