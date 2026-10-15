@@ -30,26 +30,26 @@ pub mod test {
         CmHkdfExtractReq, CmHmacKdfCounterReq, CmHmacReq, CmImportReq, CmKeyUsage,
         CmMldsaPublicKeyReq, CmMldsaSignReq, CmMldsaVerifyReq, CmRandomGenerateReq,
         CmRandomStirReq, CmShaFinalReq, CmShaFinalResp, CmShaInitReq, CmShaUpdateReq, Cmk,
-        DeviceCapsReq, DeviceCapsResp, FirmwareVersionReq, FirmwareVersionResp, GetLogReq,
-        MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize, McuAesDecryptInitReq,
-        McuAesDecryptUpdateReq, McuAesEncryptInitReq, McuAesEncryptUpdateReq,
-        McuAesGcmDecryptFinalReq, McuAesGcmDecryptInitReq, McuAesGcmDecryptUpdateReq,
-        McuAesGcmEncryptFinalReq, McuAesGcmEncryptInitReq, McuAesGcmEncryptUpdateReq,
-        McuCmDeleteReq, McuCmImportReq, McuCmImportResp, McuCmStatusReq, McuCmStatusResp,
-        McuEcdhFinishReq, McuEcdhFinishResp, McuEcdhGenerateReq, McuEcdhGenerateResp,
-        McuEcdsaCmkPublicKeyReq, McuEcdsaCmkPublicKeyResp, McuEcdsaCmkSignReq, McuEcdsaCmkSignResp,
-        McuEcdsaCmkVerifyReq, McuEcdsaCmkVerifyResp, McuFipsPeriodicEnableReq,
-        McuFipsPeriodicStatusReq, McuFipsPeriodicStatusResp, McuFipsSelfTestGetResultsReq,
-        McuFipsSelfTestStartReq, McuFipsSelfTestStartResp, McuHkdfExpandReq, McuHkdfExpandResp,
-        McuHkdfExtractReq, McuHkdfExtractResp, McuHmacKdfCounterReq, McuHmacKdfCounterResp,
-        McuHmacReq, McuMailboxReq, McuMailboxResp, McuMldsaCmkPublicKeyReq,
-        McuMldsaCmkPublicKeyResp, McuMldsaCmkSignReq, McuMldsaCmkSignResp, McuMldsaCmkVerifyReq,
-        McuMldsaCmkVerifyResp, McuProdDebugUnlockReqReq, McuProdDebugUnlockTokenReq,
-        McuRandomGenerateReq, McuRandomStirReq, McuShaFinalReq, McuShaFinalResp, McuShaInitReq,
-        McuShaInitResp, McuShaUpdateReq, ProductionAuthDebugUnlockChallenge,
-        ProductionAuthDebugUnlockReq, ProductionAuthDebugUnlockToken,
-        CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, DEVICE_CAPS_SIZE,
-        MAX_CMB_DATA_SIZE,
+        CommandId as McuCommandId, DeviceCapsReq, DeviceCapsResp, FirmwareVersionReq,
+        FirmwareVersionResp, GetLogReq, MailboxReqHeader, MailboxRespHeader,
+        MailboxRespHeaderVarSize, McuAesDecryptInitReq, McuAesDecryptUpdateReq,
+        McuAesEncryptInitReq, McuAesEncryptUpdateReq, McuAesGcmDecryptFinalReq,
+        McuAesGcmDecryptInitReq, McuAesGcmDecryptUpdateReq, McuAesGcmEncryptFinalReq,
+        McuAesGcmEncryptInitReq, McuAesGcmEncryptUpdateReq, McuCmDeleteReq, McuCmImportReq,
+        McuCmImportResp, McuCmStatusReq, McuCmStatusResp, McuEcdhFinishReq, McuEcdhFinishResp,
+        McuEcdhGenerateReq, McuEcdhGenerateResp, McuEcdsaCmkPublicKeyReq, McuEcdsaCmkPublicKeyResp,
+        McuEcdsaCmkSignReq, McuEcdsaCmkSignResp, McuEcdsaCmkVerifyReq, McuEcdsaCmkVerifyResp,
+        McuFipsPeriodicEnableReq, McuFipsPeriodicStatusReq, McuFipsPeriodicStatusResp,
+        McuFipsSelfTestGetResultsReq, McuFipsSelfTestStartReq, McuFipsSelfTestStartResp,
+        McuHkdfExpandReq, McuHkdfExpandResp, McuHkdfExtractReq, McuHkdfExtractResp,
+        McuHmacKdfCounterReq, McuHmacKdfCounterResp, McuHmacReq, McuMailboxReq, McuMailboxResp,
+        McuMldsaCmkPublicKeyReq, McuMldsaCmkPublicKeyResp, McuMldsaCmkSignReq, McuMldsaCmkSignResp,
+        McuMldsaCmkVerifyReq, McuMldsaCmkVerifyResp, McuProdDebugUnlockReqReq,
+        McuProdDebugUnlockTokenReq, McuRandomGenerateReq, McuRandomStirReq, McuShaFinalReq,
+        McuShaFinalResp, McuShaInitReq, McuShaInitResp, McuShaUpdateReq,
+        ProductionAuthDebugUnlockChallenge, ProductionAuthDebugUnlockReq,
+        ProductionAuthDebugUnlockToken, CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE,
+        CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, DEVICE_CAPS_SIZE, MAX_CMB_DATA_SIZE,
     };
     use caliptra_mcu_registers_generated::mci;
     use caliptra_mcu_romtime::handoff::McuRomCapabilities;
@@ -489,6 +489,29 @@ pub mod test {
             request.populate_chksum().map_err(|_| ())?;
             let response = self
                 .process_message(request.cmd_code().0, request.as_bytes().map_err(|_| ())?)
+                .map_err(|_| ())?;
+            Self::assert_failure_response(&response, command);
+            Ok(())
+        }
+
+        fn expect_full_command_failure<T: FromBytes + IntoBytes>(
+            &mut self,
+            command_id: McuCommandId,
+            mut request: T,
+            command: &str,
+        ) -> Result<(), ()> {
+            let request = request.as_mut_bytes();
+            request
+                .get_mut(..core::mem::size_of::<u32>())
+                .ok_or(())?
+                .fill(0);
+            let checksum = calc_checksum(
+                command_id.0,
+                request.get(core::mem::size_of::<u32>()..).ok_or(())?,
+            );
+            request[..core::mem::size_of::<u32>()].copy_from_slice(&checksum.to_le_bytes());
+            let response = self
+                .process_message(command_id.0, request)
                 .map_err(|_| ())?;
             Self::assert_failure_response(&response, command);
             Ok(())
@@ -2839,8 +2862,9 @@ pub mod test {
                 ..Default::default()
             };
             request.input_size = request.input.len() as u32 + 1;
-            self.expect_command_failure(
-                McuMailboxReq::ShaInit(McuShaInitReq(request)),
+            self.expect_full_command_failure(
+                McuCommandId::MC_SHA_INIT,
+                request,
                 "MC_SHA_INIT above the maximum input length",
             )
         }
@@ -2872,8 +2896,9 @@ pub mod test {
                 ..Default::default()
             };
             request.input_size = request.input.len() as u32 + 1;
-            self.expect_command_failure(
-                McuMailboxReq::ShaUpdate(McuShaUpdateReq(request)),
+            self.expect_full_command_failure(
+                McuCommandId::MC_SHA_UPDATE,
+                request,
                 "MC_SHA_UPDATE above the maximum input length",
             )
         }
@@ -2908,8 +2933,9 @@ pub mod test {
                 ..Default::default()
             };
             request.input_size = request.input.len() as u32 + 1;
-            self.expect_command_failure(
-                McuMailboxReq::ShaFinal(McuShaFinalReq(request)),
+            self.expect_full_command_failure(
+                McuCommandId::MC_SHA_FINAL,
+                request,
                 "MC_SHA_FINAL above the maximum input length",
             )
         }
@@ -2928,12 +2954,13 @@ pub mod test {
                 let header = MailboxRespHeader::read_from_bytes(&response.data).map_err(|_| ())?;
                 assert_eq!(header.fips_status, MailboxRespHeader::FIPS_STATUS_APPROVED);
             }
-            self.expect_command_failure(
-                McuMailboxReq::RandomStir(McuRandomStirReq(CmRandomStirReq {
+            self.expect_full_command_failure(
+                McuCommandId::MC_RANDOM_STIR,
+                CmRandomStirReq {
                     hdr: MailboxReqHeader::default(),
                     input_size: (MAX_CMB_DATA_SIZE + 1) as u32,
                     input: [0x5a; MAX_CMB_DATA_SIZE],
-                })),
+                },
                 "MC_RANDOM_STIR above the maximum input length",
             )
         }
