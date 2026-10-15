@@ -49,7 +49,7 @@ pub enum MeasurementSigningAlgo {
 /// API keeps measurement state locked.
 ///
 /// Implementations must not call back into Measurement API, because
-/// [`measure_and_sign_evidence`] holds the global Measurement API lock while
+/// [`signed_measurement_evidence`] holds the global Measurement API lock while
 /// invoking this hook.
 pub trait EvidenceBuilder<A: ScratchAlloc> {
     /// Return the target signing algorithm.
@@ -318,7 +318,7 @@ pub async fn sign<A: ScratchAlloc>(
 /// TODO: it is unused while every slot signs with the same DPE leaf key; pass
 /// it to the cert store once signing is slot-aware.
 #[inline(never)]
-pub async fn measure_and_sign_evidence<A, B>(
+pub async fn signed_measurement_evidence<A, B>(
     alloc: &A,
     key_label: &[u8; DPE_LABEL_LEN],
     _pki_entity_slot: u8,
