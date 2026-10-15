@@ -11,6 +11,7 @@ mod test {
     use caliptra_mcu_config_emulator::flash::{
         PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
     };
+    use caliptra_mcu_flash_image::FlashHeader;
     use caliptra_mcu_pldm_fw_pkg::manifest::{
         ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
         PackageHeaderInformation, StringType,
@@ -22,7 +23,7 @@ mod test {
     use random_port::PortPicker;
     use std::env;
     use std::path::PathBuf;
-    use zerocopy::transmute;
+    use zerocopy::{transmute, IntoBytes};
 
     // Set an arbitrary MCI base address
     const MCI_BASE_AXI_ADDRESS: u64 = 0xA800_0000;
@@ -522,6 +523,73 @@ mod test {
 
         let test = run_runtime_with_options(&new_options);
         assert_eq!(0, test);
+    }
+
+    fn create_flash_rollback_options(
+        opts: &TestOptions,
+        active_partition: PartitionId,
+        fallback_status: PartitionStatus,
+    ) -> TestOptions {
+        let mut new_options = opts.clone();
+        let mut primary_flash = std::fs::read(
+            opts.primary_flash_image_path
+                .as_ref()
+                .expect("Primary flash image is required"),
+        )
+        .expect("Failed to read primary flash image");
+        let mut secondary_flash = primary_flash
+            .get(IMAGE_A_PARTITION.offset..)
+            .expect("Primary flash image does not contain partition A")
+            .to_vec();
+
+        let mut partition_table = PartitionTable {
+            active_partition: active_partition as u32,
+            partition_a_status: if active_partition == PartitionId::A {
+                PartitionStatus::Valid as u16
+            } else {
+                fallback_status as u16
+            },
+            partition_b_status: if active_partition == PartitionId::B {
+                PartitionStatus::Valid as u16
+            } else {
+                fallback_status as u16
+            },
+            rollback_enable: RollbackEnable::Enabled as u32,
+            ..Default::default()
+        };
+        partition_table.populate_checksum(&StandAloneChecksumCalculator::new());
+        primary_flash[..core::mem::size_of::<PartitionTable>()]
+            .copy_from_slice(partition_table.as_bytes());
+
+        let corrupt_header = [0u8; core::mem::size_of::<FlashHeader>()];
+        match active_partition {
+            PartitionId::A => {
+                let header = &mut primary_flash
+                    [IMAGE_A_PARTITION.offset..IMAGE_A_PARTITION.offset + corrupt_header.len()];
+                header.copy_from_slice(&corrupt_header);
+            }
+            PartitionId::B => {
+                secondary_flash[..corrupt_header.len()].copy_from_slice(&corrupt_header);
+            }
+            _ => panic!("Unsupported active partition"),
+        }
+
+        let primary_path = new_options._temp_dir.path().join(format!(
+            "rollback-primary-{:?}-{:?}.bin",
+            active_partition, fallback_status
+        ));
+        let secondary_path = new_options._temp_dir.path().join(format!(
+            "rollback-secondary-{:?}-{:?}.bin",
+            active_partition, fallback_status
+        ));
+        std::fs::write(&primary_path, primary_flash).expect("Failed to write primary flash image");
+        std::fs::write(&secondary_path, secondary_flash)
+            .expect("Failed to write secondary flash image");
+
+        new_options.primary_flash_image_path = Some(primary_path);
+        new_options.secondary_flash_image_path = Some(secondary_path);
+        new_options.partition_table = Some(partition_table);
+        new_options
     }
 
     // Test case: Partition table has invalid checksum
@@ -1213,6 +1281,36 @@ mod test {
         let lock = TEST_LOCK.lock().unwrap();
         let opts = create_soc_boot_options(true);
         test_boot_secondary_flash(opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_flash_soc_boot_rolls_back_from_partition_a_to_b() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_soc_boot_options(true);
+        let recovery_opts =
+            create_flash_rollback_options(&opts, PartitionId::A, PartitionStatus::Valid);
+        test_successful_boot(&recovery_opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_flash_soc_boot_rolls_back_from_partition_b_to_a() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_soc_boot_options(true);
+        let recovery_opts =
+            create_flash_rollback_options(&opts, PartitionId::B, PartitionStatus::Valid);
+        test_successful_boot(&recovery_opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_flash_soc_boot_does_not_use_invalid_rollback_partition() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_soc_boot_options(true);
+        let recovery_opts =
+            create_flash_rollback_options(&opts, PartitionId::A, PartitionStatus::Invalid);
+        assert_ne!(0, run_runtime_with_options(&recovery_opts));
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 

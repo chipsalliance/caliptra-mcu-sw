@@ -13,11 +13,12 @@ mod test {
     };
     use crate::test::{
         build_test_binaries, has_prebuilt_binaries, prebuilt_binaries, start_runtime_hw_model,
-        TestBinaries, TestParams, TEST_LOCK,
+        write_valid_partition_table_for_runtime_flash_load, TestBinaries, TestParams, TEST_LOCK,
     };
     use caliptra_mcu_builder::flash_image::{
-        calculate_checksum, generate_image_info, FirmwareImage, FlashImage,
+        build_flash_image_bytes, calculate_checksum, generate_image_info, FirmwareImage, FlashImage,
     };
+    use caliptra_mcu_config_emulator::flash::IMAGE_A_PARTITION;
     use caliptra_mcu_emulator_periph::LinuxTapDevice;
     use caliptra_mcu_error::McuError;
     use caliptra_mcu_flash_image::{
@@ -122,6 +123,22 @@ mod test {
         expected_outcome: ExpectedOutcome,
         network_rom_feature: &'static str,
     ) -> bool {
+        run_network_boot_internal(
+            faults,
+            content_fault,
+            expected_outcome,
+            network_rom_feature,
+            false,
+        )
+    }
+
+    fn run_network_boot_internal(
+        faults: Option<(FaultPlan, Arc<FaultStats>)>,
+        content_fault: ContentFault,
+        expected_outcome: ExpectedOutcome,
+        network_rom_feature: &'static str,
+        flash_fallback: bool,
+    ) -> bool {
         use caliptra_mcu_xtask::network::{server, server::ServerOptions, tap};
 
         let lock = TEST_LOCK.lock().unwrap();
@@ -148,13 +165,39 @@ mod test {
         }
 
         // --- Build firmware via the common test infrastructure ---
+        let feature = if flash_fallback {
+            "test-flash-based-boot"
+        } else {
+            "test-network-boot"
+        };
+        let rom_feature = if flash_fallback {
+            "test-flash-network-fallback"
+        } else {
+            "test-network-boot"
+        };
         let build_params = TestParams {
-            feature: Some("test-network-boot"),
-            rom_feature: Some("test-network-boot"),
+            feature: Some(feature),
+            rom_feature: Some(rom_feature),
             network_rom_feature: Some(network_rom_feature),
             ..Default::default()
         };
         let binaries = get_test_binaries(&build_params);
+        let primary_flash_image = if flash_fallback {
+            let mut flash = binaries.flash_image.clone().unwrap_or_else(|| {
+                build_flash_image_bytes(
+                    Some(&binaries.caliptra_fw),
+                    Some(&binaries.soc_manifest),
+                    Some(&binaries.mcu_runtime),
+                    None,
+                )
+            });
+            write_valid_partition_table_for_runtime_flash_load(&mut flash);
+            let header_size = core::mem::size_of::<caliptra_mcu_flash_image::FlashHeader>();
+            flash[IMAGE_A_PARTITION.offset..IMAGE_A_PARTITION.offset + header_size].fill(0);
+            Some(flash)
+        } else {
+            None
+        };
 
         // --- Write TFTP content (TOC + firmware files) ---
         let tftp_dir = std::env::temp_dir().join("network-boot-tftp-test");
@@ -207,10 +250,12 @@ mod test {
         let mut hw = start_runtime_hw_model(TestParams {
             include_network_rom: true,
             rom_only: true,
-            rom_feature: Some("test-network-boot"),
-            feature: Some("test-network-boot"),
+            rom_feature: Some(rom_feature),
+            feature: Some(feature),
             network_rom_feature: Some(network_rom_feature),
-            network_boot: true,
+            flash_boot: flash_fallback,
+            network_boot: !flash_fallback,
+            primary_flash_image,
             network_tap_device: Some(tap_device),
             ..Default::default()
         });
@@ -279,6 +324,18 @@ mod test {
     #[cfg_attr(feature = "fpga_realtime", ignore)]
     fn test_network_boot() {
         let _ = run_network_boot(None, ContentFault::None, ExpectedOutcome::BootComplete);
+    }
+
+    #[test]
+    #[cfg_attr(feature = "fpga_realtime", ignore)]
+    fn test_flash_boot_falls_back_to_user_selected_network() {
+        let _ = run_network_boot_internal(
+            None,
+            ContentFault::None,
+            ExpectedOutcome::BootComplete,
+            "network-boot",
+            true,
+        );
     }
 
     #[test]

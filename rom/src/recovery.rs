@@ -102,14 +102,14 @@ impl<'a> ImageProviderManager<'a> {
             match policy {
                 ErrorPolicy::Continue => {
                     self.current += 1;
-                    self.retries = 0;
+                    self.retries = 1;
                 }
                 ErrorPolicy::Retry(n) => {
                     if self.retries < n.get() {
                         self.retries += 1;
                     } else {
                         self.current += 1;
-                        self.retries = 0;
+                        self.retries = 1;
                     }
                 }
                 ErrorPolicy::RetryForever => {
@@ -552,5 +552,6 @@ mod tests {
             manager.provider().map(|(boot_type, _)| boot_type),
             Some(FirmwareBootType::Network)
         );
+        assert!(manager.provider().is_none());
     }
 }

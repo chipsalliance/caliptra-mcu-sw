@@ -108,6 +108,8 @@ mod test {
         pub network_boot: bool,
         /// Seed primary flash for a runtime flash loader while ROM boots via recovery.
         pub seed_primary_flash_image: bool,
+        /// Override the generated or prebuilt primary flash image.
+        pub primary_flash_image: Option<Vec<u8>>,
         pub network_tap_device: Option<Arc<Mutex<Box<dyn TapDevice>>>>,
         /// If true, set the DOT initialized fuse to enable DOT flow
         pub dot_enabled: bool,
@@ -167,6 +169,7 @@ mod test {
                 flash_boot: false,
                 network_boot: false,
                 seed_primary_flash_image: false,
+                primary_flash_image: None,
                 network_tap_device: None,
                 dot_enabled: false,
                 custom_caliptra_fw: None,
@@ -877,14 +880,17 @@ mod test {
         };
 
         let primary_flash_image = if params.flash_boot || params.seed_primary_flash_image {
-            let mut flash = flash_image.unwrap_or_else(|| {
-                build_flash_image_bytes(
-                    Some(&caliptra_fw),
-                    Some(&soc_manifest),
-                    Some(&mcu_runtime),
-                    None,
-                )
-            });
+            let mut flash = params
+                .primary_flash_image
+                .or(flash_image)
+                .unwrap_or_else(|| {
+                    build_flash_image_bytes(
+                        Some(&caliptra_fw),
+                        Some(&soc_manifest),
+                        Some(&mcu_runtime),
+                        None,
+                    )
+                });
             if params.seed_primary_flash_image && !params.flash_boot {
                 write_valid_partition_table_for_runtime_flash_load(&mut flash);
             }
@@ -959,7 +965,7 @@ mod test {
         .unwrap()
     }
 
-    fn write_valid_partition_table_for_runtime_flash_load(flash: &mut Vec<u8>) {
+    pub(crate) fn write_valid_partition_table_for_runtime_flash_load(flash: &mut Vec<u8>) {
         if !has_valid_partition_table(flash) {
             let unpartitioned_flash = std::mem::take(flash);
             flash.resize(IMAGE_A_PARTITION.offset + unpartitioned_flash.len(), 0xff);

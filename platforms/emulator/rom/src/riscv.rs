@@ -34,6 +34,7 @@ use caliptra_mcu_config_emulator::flash::{
 use caliptra_mcu_rom_common::flash::flash_partition::FlashPartition;
 use caliptra_mcu_rom_common::hil::FlashStorage;
 use caliptra_mcu_rom_common::memory::SimpleFlash;
+use caliptra_mcu_rom_common::recovery::ImageProvider;
 use caliptra_mcu_rom_common::{fatal_error, RomHooks, RomParameters};
 use caliptra_mcu_rom_common::{DotRecoveryHandler, DOT_BLOB_SIZE};
 use caliptra_mcu_romtime::HexWord;
@@ -200,6 +201,22 @@ pub static MCU_MEMORY_MAP: McuMemoryMap = caliptra_mcu_config_emulator::EMULATOR
 #[no_mangle]
 #[used]
 pub static MCU_STRAPS: McuStraps = caliptra_mcu_config_emulator::EMULATOR_MCU_STRAPS;
+
+struct UnavailableImageProvider;
+
+impl ImageProvider for UnavailableImageProvider {
+    fn image_ready(&mut self, _image_index: u32) -> Result<usize, ()> {
+        Err(())
+    }
+
+    fn next_bytes(&mut self, _data: &mut [u8]) -> Result<(), ()> {
+        Err(())
+    }
+
+    fn bytes_loaded(&self) -> usize {
+        0
+    }
+}
 
 pub extern "C" fn rom_entry() -> ! {
     unsafe {
@@ -368,15 +385,29 @@ pub extern "C" fn rom_entry() -> ! {
         let active_partition = boot_cfg
             .get_active_partition()
             .unwrap_or_else(|_| fatal_error(EmulatorError::InitBootCfg.into()));
+        let fallback_partition = match active_partition {
+            PartitionId::A => PartitionId::B,
+            PartitionId::B => PartitionId::A,
+            _ => fatal_error(EmulatorError::InvalidPartitionId.into()),
+        };
+        let fallback_enabled = boot_cfg
+            .is_rollback_enabled()
+            .unwrap_or_else(|_| fatal_error(EmulatorError::InitBootCfg.into()))
+            && matches!(
+                boot_cfg
+                    .get_partition_status(fallback_partition)
+                    .unwrap_or_else(|_| fatal_error(EmulatorError::InitBootCfg.into())),
+                PartitionStatus::Valid | PartitionStatus::BootSuccessful
+            );
 
-        let partition_a = FlashPartition::new(
+        let mut partition_a = FlashPartition::new(
             &primary_flash_ctrl,
             "Image A",
             IMAGE_A_PARTITION.offset,
             IMAGE_A_PARTITION.size,
         )
         .unwrap_or_else(|_| fatal_error(EmulatorError::InitFlashPartitionA.into()));
-        let partition_b = FlashPartition::new(
+        let mut partition_b = FlashPartition::new(
             &secondary_flash_ctrl,
             "Image B",
             IMAGE_B_PARTITION.offset,
@@ -384,46 +415,116 @@ pub extern "C" fn rom_entry() -> ! {
         )
         .unwrap_or_else(|_| fatal_error(EmulatorError::InitFlashPartitionB.into()));
 
-        let mut flash_image_partition_driver = match active_partition {
+        match active_partition {
             PartitionId::A => {
                 caliptra_mcu_romtime::println!("[mcu-rom] Booting from Partition A");
-                partition_a
             }
             PartitionId::B => {
                 caliptra_mcu_romtime::println!("[mcu-rom] Booting from Partition B");
-                partition_b
             }
             _ => fatal_error(EmulatorError::InvalidPartitionId.into()),
-        };
+        }
+        if fallback_enabled {
+            match fallback_partition {
+                PartitionId::A => {
+                    caliptra_mcu_romtime::println!("[mcu-rom] Partition A available for rollback")
+                }
+                PartitionId::B => {
+                    caliptra_mcu_romtime::println!("[mcu-rom] Partition B available for rollback")
+                }
+                _ => {}
+            }
+        }
 
         use caliptra_mcu_rom_common::recovery::flash::FlashImageProvider;
         use caliptra_mcu_rom_common::recovery::{
             ErrorPolicy, ImageProviderEntry, ImageProviderManager,
         };
 
-        let mut flash_provider = FlashImageProvider::new(&mut flash_image_partition_driver);
-        let mut entries = [ImageProviderEntry {
-            provider: &mut flash_provider,
-            policy: ErrorPolicy::Continue,
-            boot_type: caliptra_mcu_romtime::handoff::FirmwareBootType::Flash,
-        }];
-        let manager = ImageProviderManager::new(&mut entries);
+        let mut provider_a = FlashImageProvider::new(&mut partition_a);
+        let mut provider_b = FlashImageProvider::new(&mut partition_b);
+        let (active_provider, rollback_provider): (&mut dyn ImageProvider, &mut dyn ImageProvider) =
+            match active_partition {
+                PartitionId::A => (&mut provider_a, &mut provider_b),
+                PartitionId::B => (&mut provider_b, &mut provider_a),
+                _ => fatal_error(EmulatorError::InvalidPartitionId.into()),
+            };
+        let mut unavailable_provider = UnavailableImageProvider;
+        let rollback_provider = if fallback_enabled {
+            rollback_provider
+        } else {
+            &mut unavailable_provider
+        };
 
-        caliptra_mcu_rom_common::rom_start(RomParameters {
-            image_provider_manager: Some(manager),
-            dot_flash: Some(dot_flash),
-            owner_pk_hash_policy: read_owner_pk_hash_policy(),
-            request_recovery_boot: true,
-            cptra_mbox_axi_users: mbox_axi_users,
-            cptra_fuse_axi_user: axi_user0,
-            cptra_trng_axi_user: axi_user0,
-            cptra_dma_axi_user: axi_user0,
-            mci_mbox0_axi_users: mbox_axi_users,
-            mci_mbox1_axi_users: mbox_axi_users,
-            #[cfg(feature = "ocp-lock")]
-            ocp_lock_config,
-            ..Default::default()
-        });
+        macro_rules! start_flash_recovery {
+            ($entries:expr) => {{
+                let manager = ImageProviderManager::new($entries);
+                caliptra_mcu_rom_common::rom_start(RomParameters {
+                    image_provider_manager: Some(manager),
+                    dot_flash: Some(dot_flash),
+                    owner_pk_hash_policy: read_owner_pk_hash_policy(),
+                    request_recovery_boot: true,
+                    cptra_mbox_axi_users: mbox_axi_users,
+                    cptra_fuse_axi_user: axi_user0,
+                    cptra_trng_axi_user: axi_user0,
+                    cptra_dma_axi_user: axi_user0,
+                    mci_mbox0_axi_users: mbox_axi_users,
+                    mci_mbox1_axi_users: mbox_axi_users,
+                    #[cfg(feature = "ocp-lock")]
+                    ocp_lock_config,
+                    ..Default::default()
+                });
+            }};
+        }
+
+        #[cfg(feature = "test-flash-network-fallback")]
+        {
+            use caliptra_mcu_network_drivers::network_mbox::NetworkMboxDriver;
+            use caliptra_mcu_network_hil::network_mbox::NetworkMailbox;
+            use caliptra_mcu_rom_common::recovery::network::{
+                NetworkImageProvider, NetworkImageProviderRef,
+            };
+
+            let network_driver = NetworkMboxDriver::new();
+            let network_provider = NetworkImageProvider::new(&network_driver);
+            network_driver.set_client(&network_provider);
+            let mut network_provider_ref = NetworkImageProviderRef(&network_provider);
+            let mut entries = [
+                ImageProviderEntry {
+                    provider: active_provider,
+                    policy: ErrorPolicy::Continue,
+                    boot_type: caliptra_mcu_romtime::handoff::FirmwareBootType::Flash,
+                },
+                ImageProviderEntry {
+                    provider: rollback_provider,
+                    policy: ErrorPolicy::Continue,
+                    boot_type: caliptra_mcu_romtime::handoff::FirmwareBootType::Flash,
+                },
+                ImageProviderEntry {
+                    provider: &mut network_provider_ref,
+                    policy: ErrorPolicy::Continue,
+                    boot_type: caliptra_mcu_romtime::handoff::FirmwareBootType::Network,
+                },
+            ];
+            start_flash_recovery!(&mut entries);
+        }
+
+        #[cfg(not(feature = "test-flash-network-fallback"))]
+        {
+            let mut entries = [
+                ImageProviderEntry {
+                    provider: active_provider,
+                    policy: ErrorPolicy::Continue,
+                    boot_type: caliptra_mcu_romtime::handoff::FirmwareBootType::Flash,
+                },
+                ImageProviderEntry {
+                    provider: rollback_provider,
+                    policy: ErrorPolicy::Continue,
+                    boot_type: caliptra_mcu_romtime::handoff::FirmwareBootType::Flash,
+                },
+            ];
+            start_flash_recovery!(&mut entries);
+        }
     } else if cfg!(any(
         feature = "test-mcu-svn-gt-fuse",
         feature = "test-mcu-svn-lt-fuse"
