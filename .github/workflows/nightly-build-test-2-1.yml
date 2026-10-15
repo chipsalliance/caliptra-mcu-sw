@@ -93,7 +93,7 @@ jobs:
               `Tracking ${dispatchedRun.html_url} (run #${dispatchedRun.run_number}, id ${dispatchedRun.id})`,
             );
 
-            const maxTrackAttempts = 240;
+            const maxTrackAttempts = 420;
             const trackDelayMs = 30000;
 
             for (let attempt = 1; attempt <= maxTrackAttempts; attempt++) {
