@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-use crate::runtime::execute_authorized_req;
+use crate::runtime::{execute_authorized_req, execute_authorized_req_raw};
 use crate::test::{
     compile_runtime, start_runtime_hw_model, CustomCaliptraFw, TestParams, TEST_LOCK,
 };
@@ -8,12 +8,15 @@ use anyhow::Result;
 use caliptra_api::{calc_checksum, error::CaliptraError, mailbox::FwInfoResp, SocManager};
 use caliptra_mcu_builder::{CaliptraBuildArgs, CaliptraBuilder, FirmwareBinaries};
 use caliptra_mcu_hw_model::{LifecycleControllerState, McuHwModel};
-use caliptra_mcu_mbox_common::messages::{FuseIncreaseMinSvnReq, FuseWriteReq, SvnTarget};
+use caliptra_mcu_mbox_common::messages::{
+    FuseIncreaseMinSvnReq, FuseIncreaseMinSvnResp, FuseWriteReq, MailboxRespHeader, SvnTarget,
+};
 use caliptra_mcu_registers_generated::fuses::{
     FuseEntryInfo, OTP_CPTRA_CORE_RUNTIME_SVN, OTP_CPTRA_CORE_SOC_MANIFEST_MAX_SVN,
     OTP_CPTRA_CORE_SOC_MANIFEST_SVN,
 };
 use caliptra_mcu_romtime::McuBootMilestones;
+use core::mem::size_of;
 use std::sync::atomic::Ordering;
 use zerocopy::{FromBytes, IntoBytes};
 
@@ -22,6 +25,20 @@ fn linear_or_svn_from_otp(otp: &[u8], entry: &FuseEntryInfo) -> u32 {
         .try_into()
         .unwrap();
     128 - u128::from_le_bytes(bytes).leading_zeros()
+}
+
+fn assert_increase_svn_response(response: &[u8]) {
+    assert_eq!(response.len(), size_of::<FuseIncreaseMinSvnResp>());
+    assert_eq!(
+        u32::from_le_bytes(response[..size_of::<u32>()].try_into().unwrap()),
+        calc_checksum(0, &response[size_of::<u32>()..])
+    );
+    let response =
+        FuseIncreaseMinSvnResp::read_from_bytes(response).expect("invalid increase SVN response");
+    assert_eq!(
+        response.hdr.fips_status,
+        MailboxRespHeader::FIPS_STATUS_APPROVED
+    );
 }
 
 // The direct Core requester override used for PL0 installation is emulator-only.
@@ -308,7 +325,8 @@ fn test_increase_caliptra_svn() -> Result<()> {
         svn: 7,
         ..Default::default()
     };
-    let _resp = execute_authorized_req(&mut hw, cmd)?;
+    let response = execute_authorized_req_raw(&mut hw, cmd)?;
+    assert_increase_svn_response(&response);
 
     // Check requesting twice to burn the SVN of the value currently in fuses passes.
     let cmd = FuseIncreaseMinSvnReq {
@@ -316,7 +334,8 @@ fn test_increase_caliptra_svn() -> Result<()> {
         svn: 7,
         ..Default::default()
     };
-    let _resp = execute_authorized_req(&mut hw, cmd)?;
+    let response = execute_authorized_req_raw(&mut hw, cmd)?;
+    assert_increase_svn_response(&response);
 
     // Read OTP memory so we can use the same config in later boots.
     let otp = hw.read_otp_memory();
