@@ -2833,6 +2833,15 @@ pub mod test {
                     ..Default::default()
                 })),
                 "MC_SHA_INIT with a reserved hash algorithm",
+            )?;
+            let mut request = CmShaInitReq {
+                hash_algorithm: CmHashAlgorithm::Sha384.into(),
+                ..Default::default()
+            };
+            request.input_size = request.input.len() as u32 + 1;
+            self.expect_command_failure(
+                McuMailboxReq::ShaInit(McuShaInitReq(request)),
+                "MC_SHA_INIT above the maximum input length",
             )
         }
 
@@ -2857,6 +2866,15 @@ pub mod test {
             self.expect_command_failure(
                 McuMailboxReq::ShaUpdate(McuShaUpdateReq(CmShaUpdateReq::default())),
                 "MC_SHA_UPDATE without an initialized context",
+            )?;
+            let mut request = CmShaUpdateReq {
+                context: self.sha_init_checked(b"a")?,
+                ..Default::default()
+            };
+            request.input_size = request.input.len() as u32 + 1;
+            self.expect_command_failure(
+                McuMailboxReq::ShaUpdate(McuShaUpdateReq(request)),
+                "MC_SHA_UPDATE above the maximum input length",
             )
         }
 
@@ -2884,6 +2902,15 @@ pub mod test {
             self.expect_command_failure(
                 McuMailboxReq::ShaFinal(McuShaFinalReq(CmShaFinalReq::default())),
                 "MC_SHA_FINAL without an initialized context",
+            )?;
+            let mut request = CmShaFinalReq {
+                context: self.sha_init_checked(b"ab")?,
+                ..Default::default()
+            };
+            request.input_size = request.input.len() as u32 + 1;
+            self.expect_command_failure(
+                McuMailboxReq::ShaFinal(McuShaFinalReq(request)),
+                "MC_SHA_FINAL above the maximum input length",
             )
         }
 
@@ -2901,7 +2928,14 @@ pub mod test {
                 let header = MailboxRespHeader::read_from_bytes(&response.data).map_err(|_| ())?;
                 assert_eq!(header.fips_status, MailboxRespHeader::FIPS_STATUS_APPROVED);
             }
-            Ok(())
+            self.expect_command_failure(
+                McuMailboxReq::RandomStir(McuRandomStirReq(CmRandomStirReq {
+                    hdr: MailboxReqHeader::default(),
+                    input_size: (MAX_CMB_DATA_SIZE + 1) as u32,
+                    input: [0x5a; MAX_CMB_DATA_SIZE],
+                })),
+                "MC_RANDOM_STIR above the maximum input length",
+            )
         }
 
         fn test_random_generate_command(&mut self) -> Result<(), ()> {
