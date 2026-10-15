@@ -1959,6 +1959,7 @@ version = "0.1.0"
 dependencies = [
  "caliptra-mcu-libsyscall-caliptra",
  "caliptra-mcu-libtock_platform",
+ "caliptra-mcu-libtock_unittest",
  "caliptra-mcu-runtime-userspace-error",
  "caliptra-ocp-eat",
  "corim-rs",
