@@ -105,7 +105,7 @@ pub async fn encode_signed_ocp_eat<A: ScratchAlloc>(
     out: &mut [u8],
 ) -> McuResult<usize> {
     let mut builder = SignedOcpEatBuilder::new(algo, nonce, out);
-    caliptra_mcu_measurement_api::measure_and_sign_evidence(
+    caliptra_mcu_measurement_api::signed_measurement_evidence(
         alloc,
         key_label,
         pki_entity_slot,

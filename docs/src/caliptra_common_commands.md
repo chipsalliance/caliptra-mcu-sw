@@ -205,9 +205,10 @@ The requester selects the evidence format at runtime. The set of formats a
 device can produce is fixed at build time by the evidence generators it links.
 A requester discovers that set with the format-discovery query below.
 
-All formats are signed with the device attestation key that terminates the
-device's SPDM certificate chain. Evidence retrieved over the MCI mailbox
-verifies against a certificate chain retrieved over SPDM, and the reverse.
+OCP EAT is signed with the selected DPE leaf attestation key; PCR Quote is
+signed with the Caliptra AliasFMC key. Evidence retrieved over the MCI mailbox
+can be verified using the corresponding certificate chain retrieved over SPDM,
+and the reverse.
 
 #### Evidence Formats
 
@@ -218,7 +219,7 @@ verifies against a certificate chain retrieved over SPDM, and the reverse.
 | `0x0002` | PCR Quote | Caliptra PCR quote.                                                               |
 
 A device that supports a format need not support it under every algorithm. The
-OCP EAT signer emits ES384 only; ML-DSA-87 EATs are not implemented yet. A
+OCP EAT signer supports ESP384 (`-51`) and ML-DSA-87 (`-50`). A
 request naming an unsupported `(evidence_format, algorithm)` pair returns
 `UNSUPPORTED_OPERATION` and no evidence is generated.
 
