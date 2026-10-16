@@ -376,3 +376,36 @@ fn error_pdu_reports_request_resynch_at_requester_version() {
     assert_eq!(pdu[2], 0x43, "param1 = RequestResynch");
     assert_eq!(pdu[3], 0x00, "param2 reserved for RequestResynch");
 }
+
+// ── Case 10: a refused request leaves the owner's chunk transfer alone ──
+
+/// The gate runs before `dispatch` resets the large-message context, so a
+/// foreign request cannot cancel the owner's chunked response on its way to
+/// being refused.
+#[test]
+fn foreign_transport_leaves_owner_chunk_response_in_progress() {
+    let pal = TestPal::default();
+    let mut state = owned_state(&pal, Some(TID_OWNER));
+    let mut sessions: Sessions<TestPal, 1> = crate::session::SessionManager::new();
+    state
+        .large_msg_ctx
+        .start_response(crate::chunk::LargeResponse::Buffered, 100, None)
+        .expect("idle context must accept a response");
+
+    let io = TestIo::message(plain_request(SpdmVersion::V12, ReqRespCode::GET_DIGESTS))
+        .from_transport(TID_OTHER);
+    let err = dispatch_plain(
+        &mut state,
+        &mut sessions,
+        &pal,
+        &io,
+        ReqRespCode::GET_DIGESTS,
+    )
+    .expect_err("non-owning transport must be refused");
+
+    assert_eq!(err.spec_byte(), SPDM_REQUEST_RESYNCH.spec_byte());
+    assert!(
+        state.large_msg_ctx.response_in_progress(),
+        "owner's chunked response must survive a refused foreign request"
+    );
+}
