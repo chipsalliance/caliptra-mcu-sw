@@ -15,6 +15,7 @@ use core::mem::size_of;
 use zerocopy::{FromBytes, IntoBytes};
 
 mod test_cmd_auth_asym;
+mod test_fuse_mailbox;
 mod test_increase_caliptra_svn;
 mod test_mcu_mailbox;
 mod test_revoke_vendor_pub_key;
@@ -116,10 +117,10 @@ pub fn authorize_cmd(hw: &mut impl McuHwModel, cmd_id: u32, cmd: &[u8]) -> Resul
     Ok(auth_cmd)
 }
 
-pub fn execute_authorized_req<R: caliptra_mcu_mbox_common::messages::Request>(
+pub fn execute_authorized_req_raw<R: caliptra_mcu_mbox_common::messages::Request>(
     hw: &mut impl McuHwModel,
     mut req: R,
-) -> Result<R::Resp> {
+) -> Result<Vec<u8>> {
     let req_bytes = req.as_mut_bytes();
 
     // Authorize (sign)
@@ -135,9 +136,15 @@ pub fn execute_authorized_req<R: caliptra_mcu_mbox_common::messages::Request>(
     hdr.chksum = checksum;
 
     // Send the request to the mailbox
-    let mut response = hw
-        .mailbox_execute(CommandId::MC_AUTHORIZED_COMMAND.0, &auth_cmd)?
-        .unwrap_or_default();
+    hw.mailbox_execute(CommandId::MC_AUTHORIZED_COMMAND.0, &auth_cmd)?
+        .ok_or_else(|| anyhow!("Authorized command returned no response"))
+}
+
+pub fn execute_authorized_req<R: caliptra_mcu_mbox_common::messages::Request>(
+    hw: &mut impl McuHwModel,
+    req: R,
+) -> Result<R::Resp> {
+    let mut response = execute_authorized_req_raw(hw, req)?;
 
     // Check the response checksum
     if response.len() < 4 {

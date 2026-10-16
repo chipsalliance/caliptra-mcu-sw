@@ -17,17 +17,17 @@ use caliptra_mcu_mbox_common::messages::{
     CmImportReq, CmKeyUsage, CmMldsaPublicKeyReq, CmMldsaSignReq, CmMldsaVerifyReq, Cmk,
     CommandId as McuCommandId, DeviceCapsReq, DeviceCapsResp, DpeSignerContextCertReq,
     EcdsaVerifyReq, EndorsementAlgorithm, ExportAttestedCsrReq, FirmwareVersionReq,
-    GetAttestationReq, GetDpeCertChainReq, LmsVerifyReq, MailboxReqHeader as McuMailboxReqHeader,
-    MailboxRespHeader, MailboxRespHeaderVarSize, McuCmImportReq, McuEcdhFinishReq,
-    McuEcdhFinishResp, McuEcdhGenerateReq, McuEcdhGenerateResp, McuEcdsa384SigVerifyReq,
-    McuEcdsaCmkPublicKeyReq, McuEcdsaCmkPublicKeyResp, McuEcdsaCmkSignReq, McuEcdsaCmkSignResp,
-    McuEcdsaCmkVerifyReq, McuFeProgReq, McuFipsPeriodicEnableReq, McuFipsPeriodicEnableResp,
-    McuFipsPeriodicStatusResp, McuFipsSelfTestGetResultsResp, McuFipsSelfTestStartResp,
-    McuLmsSigVerifyReq, McuMailboxReq, McuMldsaCmkPublicKeyReq, McuMldsaCmkPublicKeyResp,
-    McuMldsaCmkSignReq, McuMldsaCmkSignResp, McuMldsaCmkVerifyReq, McuProdDebugUnlockReqReq,
-    McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq, ProductionAuthDebugUnlockReq,
-    ProductionAuthDebugUnlockToken, VendorPkHashStatusReq, GET_ATTESTATION_RESP_PREFIX_LEN,
-    MAX_RESP_DATA_SIZE, VENDOR_PQC_KEY_TYPE_LMS,
+    GetAttestationReq, GetAuthCmdChallengeResp, GetDpeCertChainReq, LmsVerifyReq,
+    MailboxReqHeader as McuMailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize,
+    McuCmImportReq, McuEcdhFinishReq, McuEcdhFinishResp, McuEcdhGenerateReq, McuEcdhGenerateResp,
+    McuEcdsa384SigVerifyReq, McuEcdsaCmkPublicKeyReq, McuEcdsaCmkPublicKeyResp, McuEcdsaCmkSignReq,
+    McuEcdsaCmkSignResp, McuEcdsaCmkVerifyReq, McuFeProgReq, McuFipsPeriodicEnableReq,
+    McuFipsPeriodicEnableResp, McuFipsPeriodicStatusResp, McuFipsSelfTestGetResultsResp,
+    McuFipsSelfTestStartResp, McuLmsSigVerifyReq, McuMailboxReq, McuMldsaCmkPublicKeyReq,
+    McuMldsaCmkPublicKeyResp, McuMldsaCmkSignReq, McuMldsaCmkSignResp, McuMldsaCmkVerifyReq,
+    McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq,
+    ProductionAuthDebugUnlockReq, ProductionAuthDebugUnlockToken, VendorPkHashStatusReq,
+    GET_ATTESTATION_RESP_PREFIX_LEN, MAX_RESP_DATA_SIZE, VENDOR_PQC_KEY_TYPE_LMS,
 };
 use caliptra_mcu_romtime::{handoff::McuRomCapabilities, McuBootMilestones};
 use minicbor::Decoder;
@@ -1166,43 +1166,59 @@ fn test_fips_periodic_complete_responses_and_repeated_operations() -> Result<()>
 }
 
 #[test]
-fn test_get_auth_cmd_challenge_cmd() -> Result<()> {
-    let mut hw = start_runtime_hw_model(TestParams {
-        feature: Some("test-mcu-mbox-cmds"),
-        ..Default::default()
-    });
-
-    // wait another little bit for the mailbox to come up after the runtime
-    hw.step_until(|hw| {
-        hw.mci_boot_milestones()
-            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
-    });
-
-    let challenge = super::get_auth_cmd_challenge(&mut hw)?;
-
-    assert_eq!(
-        challenge.len(),
-        caliptra_mcu_command_auth_challenge_signer::AUTH_CMD_NONCE_LEN
-    );
-    assert!(
-        challenge.iter().copied().reduce(|a, b| a | b).unwrap() != 0,
-        "Challenge should not be all-zeros"
-    );
-
+fn test_get_auth_cmd_challenge_invalid_fields() -> Result<()> {
+    let mut hw = start_crypto_mailbox_hw();
+    let cmd = McuCommandId::MC_AUTHORIZED_COMMAND.0;
     let target = McuCommandId::MC_GET_AUTH_CMD_CHALLENGE.0.to_le_bytes();
     for body in [
         vec![],
         target[..3].to_vec(),
         [target.as_slice(), &[0u8; 8]].concat(),
     ] {
-        let checksum = calc_checksum(McuCommandId::MC_AUTHORIZED_COMMAND.0, &body);
-        let mut request = checksum.to_le_bytes().to_vec();
-        request.extend_from_slice(&body);
-        let error = hw
-            .mailbox_execute(McuCommandId::MC_AUTHORIZED_COMMAND.0, &request)
-            .unwrap_err();
-        assert!(!error.to_string().contains("timed out"));
+        assert_mailbox_cmd_failed(hw.mailbox_execute(cmd, &raw_request(cmd, &body)));
     }
+
+    let mut invalid_flags = target.to_vec();
+    invalid_flags.extend_from_slice(&1u32.to_le_bytes());
+    assert_mailbox_cmd_failed(hw.mailbox_execute(cmd, &raw_request(cmd, &invalid_flags)));
+
+    let mut invalid_reserved = target.to_vec();
+    invalid_reserved.extend_from_slice(&0u32.to_le_bytes());
+    invalid_reserved.extend_from_slice(&1u32.to_le_bytes());
+    assert_mailbox_cmd_failed(hw.mailbox_execute(cmd, &raw_request(cmd, &invalid_reserved)));
+
+    Ok(())
+}
+
+#[test]
+fn test_get_auth_cmd_challenge_successive_generation() -> Result<()> {
+    let mut hw = start_crypto_mailbox_hw();
+    let cmd = McuCommandId::MC_AUTHORIZED_COMMAND.0;
+    let target = McuCommandId::MC_GET_AUTH_CMD_CHALLENGE.0.to_le_bytes();
+    let request = raw_request(cmd, &target);
+    let first_response = hw
+        .mailbox_execute(cmd, &request)?
+        .expect("MC_GET_AUTH_CMD_CHALLENGE returned no response");
+    let first = assert_fixed_response::<GetAuthCmdChallengeResp>(&first_response);
+    assert_eq!(
+        first.hdr.fips_status,
+        MailboxRespHeader::FIPS_STATUS_APPROVED
+    );
+    assert_eq!(first.reserved, 0);
+    assert!(first.challenge.iter().any(|&byte| byte != 0));
+
+    let second_response = hw
+        .mailbox_execute(cmd, &request)?
+        .expect("successive MC_GET_AUTH_CMD_CHALLENGE returned no response");
+    let second = assert_fixed_response::<GetAuthCmdChallengeResp>(&second_response);
+    assert_eq!(
+        second.hdr.fips_status,
+        MailboxRespHeader::FIPS_STATUS_APPROVED
+    );
+    assert_eq!(second.reserved, 0);
+    assert!(second.challenge.iter().any(|&byte| byte != 0));
+    assert_ne!(first.challenge, second.challenge);
+
     Ok(())
 }
 
