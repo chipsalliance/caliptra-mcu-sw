@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Caliptra DICE Certificate Chain Visualizer</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🔐</text></svg>">
+  <link rel="stylesheet" href="style.css?v=1.2">
+  <script>
+    function setVisualizerTheme(theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+      if (document.body) document.body.setAttribute('data-theme', theme);
+      localStorage.setItem('caliptra-dice-theme', theme);
+      const sel = document.getElementById('theme-select');
+      if (sel) sel.value = theme;
+      if (window.onThemeChanged) window.onThemeChanged(theme);
+    }
+    window.setVisualizerTheme = setVisualizerTheme;
+    (function() {
+      const saved = localStorage.getItem('caliptra-dice-theme') || 'slate';
+      document.documentElement.setAttribute('data-theme', saved);
+    })();
+  </script>
+  <!-- Mermaid.js for interactive cryptographic chain diagram -->
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-container">
+      <div class="header-row">
+        <div class="logo-group">
+          <span class="badge-tech">WASM</span>
+          <h1>Caliptra DICE Certificate Chain Visualizer</h1>
+        </div>
+        <div class="theme-picker">
+          <label for="theme-select" class="theme-label">Theme:</label>
+          <select id="theme-select" class="theme-select" onchange="setVisualizerTheme(this.value)" aria-label="Select color theme">
+            <option value="slate">Caliptra Slate (Default)</option>
+            <option value="github-dark">GitHub Dark</option>
+            <option value="nord">Nord Arctic</option>
+            <option value="catppuccin">Catppuccin Mocha</option>
+            <option value="tokyo-night">Tokyo Night</option>
+          </select>
+        </div>
+      </div>
+      <p class="subtitle">Client-side WebAssembly parser for DMTF SPDM and TCG DICE certificate chains (<code>dice-rs</code> &amp; <code>spdm-cert-rs</code>)</p>
+    </div>
+  </header>
+
+  <main class="main-content">
+    <!-- Upload and Actions Section -->
+    <section class="card upload-card">
+      <div class="drop-zone" id="drop-zone">
+        <svg class="icon-upload" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="17 8 12 3 7 8"></polyline>
+          <line x1="12" y1="3" x2="12" y2="15"></line>
+        </svg>
+        <p><strong>Drag &amp; drop</strong> a DICE certificate chain (<code>.der</code> / <code>.bin</code> / <code>.pem</code>, raw or SPDM envelope) or</p>
+        <label class="btn-file-label">
+          Choose File
+          <input type="file" id="file-input" accept=".der,.bin,.pem,.crt">
+        </label>
+      </div>
+      <div class="quick-actions">
+        <span>Quick Test:</span>
+        <button id="btn-load-sample" class="btn-secondary">Load Caliptra MCU ML-DSA-87 Chain (CI Test Vector)</button>
+      </div>
+    </section>
+
+    <!-- Status Bar -->
+    <section id="status-bar" class="status-bar hidden">
+      <div class="status-item">
+        <span class="status-label">Total Certificates:</span>
+        <span id="stat-total-certs" class="status-val">-</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">SPDM Header:</span>
+        <span id="stat-spdm-header" class="status-val">-</span>
+      </div>
+      <div class="status-item">
+        <span class="status-label">Root CA Verified:</span>
+        <span id="stat-root-hash" class="status-val">-</span>
+      </div>
+    </section>
+
+    <!-- Error Banner -->
+    <div id="error-banner" class="error-banner hidden"></div>
+
+    <!-- Chain Diagram Section -->
+    <section id="diagram-section" class="card diagram-card hidden">
+      <div class="section-header">
+        <h2>Certificate Trust Chain</h2>
+        <span class="hint">Click any node in the diagram or tab below to inspect that certificate</span>
+      </div>
+      <div id="mermaid-container" class="mermaid-container">
+        <pre class="mermaid" id="mermaid-graph"></pre>
+      </div>
+    </section>
+
+    <!-- Certificate Tabs Section -->
+    <section id="cert-viewer-section" class="card cert-viewer-card hidden">
+      <!-- Tabs Bar -->
+      <nav class="tabs-nav" id="cert-tabs-bar" role="tablist">
+        <!-- Injected dynamically by app.js -->
+      </nav>
+
+      <!-- Active Tab Panel Content -->
+      <div class="tab-panel" id="tab-panel">
+        <!-- Injected dynamically by app.js -->
+      </div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <p>Powered by <code>dice-rs</code> and <code>spdm-cert-rs</code>. 100% Client-side WebAssembly — zero network transmission of certificates.</p>
+  </footer>
+
+  <script type="module" src="app.js?v=1.2"></script>
+</body>
+</html>

@@ -356,3 +356,62 @@ jobs:
           ./target/release/ocptoken appraise \
             -e $EVIDENCE_DIR/measurement_block_fd.bin \
             -c $EVIDENCE_DIR/certificate_chain_slot_00.der
+
+      # ---- Run DICE decoder unit tests with ocp-dice-verifier --------------
+      - name: Run DICE decoder unit tests
+        if: matrix.appraise
+        working-directory: ocp-dice-verifier
+        run: |
+          cargo test -p dice-rs
+          cargo test -p spdm-cert-rs
+
+  build_dice_visualizer:
+    name: build-dice-visualizer
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        run: |
+          rustup update stable
+          rustup target add wasm32-unknown-unknown
+
+      - name: Build WebAssembly module
+        working-directory: ocp-dice-verifier
+        run: |
+          cargo build --target wasm32-unknown-unknown --release -p dice-visualizer-wasm
+
+      - name: Cache wasm-bindgen-cli
+        uses: actions/cache@v6
+        id: cache-wasm-bindgen
+        with:
+          path: ~/.cargo/bin/wasm-bindgen
+          key: wasm-bindgen-${{ runner.os }}-${{ hashFiles('ocp-dice-verifier/Cargo.lock') }}
+
+      - name: Install wasm-bindgen-cli
+        if: steps.cache-wasm-bindgen.outputs.cache-hit != 'true'
+        run: |
+          WASM_BINDGEN_VER=$(grep -A 1 'name = "wasm-bindgen"' ocp-dice-verifier/Cargo.lock | grep 'version =' | head -n 1 | cut -d '"' -f 2)
+          cargo install wasm-bindgen-cli --version "${WASM_BINDGEN_VER}"
+
+      - name: Generate WebAssembly bindings
+        working-directory: ocp-dice-verifier
+        run: |
+          mkdir -p crates/dice-visualizer-wasm/web/pkg
+          wasm-bindgen target/wasm32-unknown-unknown/release/dice_visualizer_wasm.wasm \
+            --out-dir crates/dice-visualizer-wasm/web/pkg \
+            --target web --no-typescript
+
+      - name: Prepare Pages distribution directory
+        run: |
+          mkdir -p dist/dice-visualizer
+          cp -r ocp-dice-verifier/crates/dice-visualizer-wasm/web/* dist/dice-visualizer/
+          cp -r ocp-dice-verifier/crates/dice-visualizer-wasm/web/* dist/
+
+      - name: Upload visualizer artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: dice-visualizer
+          path: dist/
+
