@@ -69,7 +69,7 @@ pub mod test {
     use sha2::{Digest, Sha384, Sha512};
     use std::process::exit;
     use std::sync::atomic::Ordering;
-    use zerocopy::{FromBytes, FromZeros, IntoBytes};
+    use zerocopy::{FromBytes, FromZeros, Immutable, IntoBytes};
 
     type HmacSha384 = Hmac<Sha384>;
     type HmacSha512 = Hmac<Sha512>;
@@ -88,24 +88,35 @@ pub mod test {
     /// Set to 2048 to ensure total request (headers ~140 bytes + data) fits within 4K SRAM.
     const AES_GCM_CHUNK_SIZE: usize = 2048;
 
+    #[derive(Clone, Copy)]
+    enum McuMboxTestSuite {
+        All,
+        AesCommandValidation,
+    }
+
     #[test]
     pub fn test_mcu_mbox_cmds() {
-        start_mcu_mbox_tests("test-mcu-mbox-cmds");
+        start_mcu_mbox_tests("test-mcu-mbox-cmds", McuMboxTestSuite::All);
+    }
+
+    #[test]
+    pub fn test_mcu_mbox_aes_command_validation() {
+        start_mcu_mbox_tests("test-mcu-mbox-cmds", McuMboxTestSuite::AesCommandValidation);
     }
 
     #[test]
     pub fn test_mcu_mbox_usermode() {
-        start_mcu_mbox_tests("test-mcu-mbox-usermode");
+        start_mcu_mbox_tests("test-mcu-mbox-usermode", McuMboxTestSuite::All);
     }
 
     #[test]
     pub fn test_mcu_mbox_fips_self_test() {
-        start_mcu_mbox_tests("test-mcu-mbox-fips-self-test");
+        start_mcu_mbox_tests("test-mcu-mbox-fips-self-test", McuMboxTestSuite::All);
     }
 
     #[test]
     pub fn test_mcu_mbox_fips_periodic() {
-        start_mcu_mbox_tests("test-mcu-mbox-fips-periodic");
+        start_mcu_mbox_tests("test-mcu-mbox-fips-periodic", McuMboxTestSuite::All);
     }
 
     #[test]
@@ -221,7 +232,7 @@ pub mod test {
         lock.fetch_add(1, Ordering::Relaxed);
     }
 
-    fn start_mcu_mbox_tests(feature: &str) {
+    fn start_mcu_mbox_tests(feature: &str, suite: McuMboxTestSuite) {
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, Ordering::Relaxed);
         let feature = feature.replace("_", "-");
@@ -270,12 +281,13 @@ pub mod test {
                 core_capabilities,
             );
 
-            if test.direct_test_process_and_check(&feature).is_err() {
-                println!("Failed");
-                exit(-1);
-            }
-
-            if test.test_send_receive(&feature).is_err() {
+            let result = match suite {
+                McuMboxTestSuite::All => test
+                    .direct_test_process_and_check(&feature)
+                    .and_then(|_| test.test_send_receive(&feature)),
+                McuMboxTestSuite::AesCommandValidation => test.add_aes_command_validation_tests(),
+            };
+            if result.is_err() {
                 println!("Failed");
                 exit(-1);
             } else {
@@ -488,29 +500,6 @@ pub mod test {
             Ok(())
         }
 
-        fn expect_full_command_failure<T: FromBytes + IntoBytes>(
-            &mut self,
-            command_id: McuCommandId,
-            mut request: T,
-            command: &str,
-        ) -> Result<(), ()> {
-            let request = request.as_mut_bytes();
-            request
-                .get_mut(..core::mem::size_of::<u32>())
-                .ok_or(())?
-                .fill(0);
-            let checksum = calc_checksum(
-                command_id.0,
-                request.get(core::mem::size_of::<u32>()..).ok_or(())?,
-            );
-            request[..core::mem::size_of::<u32>()].copy_from_slice(&checksum.to_le_bytes());
-            let response = self
-                .process_message(command_id.0, request)
-                .map_err(|_| ())?;
-            Self::assert_failure_response(&response, command);
-            Ok(())
-        }
-
         fn execute_success(
             &mut self,
             mut request: McuMailboxReq,
@@ -533,6 +522,36 @@ pub mod test {
 
         fn delete_key_checked(&mut self, cmk: &Cmk) -> Result<(), ()> {
             self.delete_key(cmk)
+        }
+
+        fn expect_raw_command_failure(
+            &mut self,
+            command_code: u32,
+            request: &[u8],
+            command: &str,
+        ) -> Result<(), ()> {
+            let mut request = request.to_vec();
+            let checksum = calc_checksum(command_code, &request[core::mem::size_of::<u32>()..]);
+            request[..core::mem::size_of::<u32>()].copy_from_slice(&checksum.to_le_bytes());
+            let response = self
+                .process_message(command_code, &request)
+                .map_err(|_| ())?;
+            Self::assert_failure_response(&response, command);
+            Ok(())
+        }
+
+        fn expect_oversized_command_failure<T: IntoBytes + Immutable>(
+            &mut self,
+            command_code: u32,
+            request: &T,
+            command: &str,
+        ) -> Result<(), ()> {
+            let request = request.as_bytes();
+            self.expect_raw_command_failure(
+                command_code,
+                &request[..request.len() - MAX_CMB_DATA_SIZE],
+                command,
+            )
         }
 
         fn direct_test_process_and_check(&mut self, feature: &str) -> Result<(), ()> {
@@ -653,6 +672,7 @@ pub mod test {
                     );
                     c[24..28].copy_from_slice(
                         &(ExternalCommandCapabilities::GET_ATTESTATION
+                            | ExternalCommandCapabilities::EXPORT_ATTESTED_CSR
                             | ExternalCommandCapabilities::AUTHORIZED_COMMAND
                             | ExternalCommandCapabilities::DEVICE_OWNERSHIP_TRANSFER)
                             .bits()
@@ -1103,8 +1123,8 @@ pub mod test {
 
                 // Test various plaintext lengths (for CBC, must be multiple of 16)
                 let test_lengths: Vec<usize> = match mode {
-                    CmAesMode::Cbc => vec![16, 32, 64, 128, 256], // CBC requires block-aligned
-                    CmAesMode::Ctr => vec![1, 15, 16, 17, 32, 64, 100, 256], // CTR can be any length
+                    CmAesMode::Cbc => vec![16, 32, 64, 128, 256, 2064], // CBC requires block-aligned
+                    CmAesMode::Ctr => vec![1, 15, 16, 17, 32, 64, 100, 256, 2049], // CTR can be any length
                     _ => vec![16],
                 };
 
@@ -1167,15 +1187,13 @@ pub mod test {
             };
             init_req.plaintext[..init_len].copy_from_slice(&plaintext[..init_len]);
 
-            let mut mcu_init_req = McuMailboxReq::AesEncryptInit(McuAesEncryptInitReq(init_req));
-            mcu_init_req.populate_chksum().unwrap();
-
-            let init_resp = self
-                .process_message(mcu_init_req.cmd_code().0, mcu_init_req.as_bytes().unwrap())
-                .map_err(|_| ())?;
-
             // Parse the init response header
             const INIT_HEADER_SIZE: usize = core::mem::size_of::<CmAesEncryptInitRespHeader>();
+            let init_resp = self.execute_success(
+                McuMailboxReq::AesEncryptInit(McuAesEncryptInitReq(init_req)),
+                INIT_HEADER_SIZE + init_len,
+                "MC_AES_ENCRYPT_INIT",
+            )?;
             let init_resp_hdr =
                 CmAesEncryptInitRespHeader::read_from_bytes(&init_resp.data[..INIT_HEADER_SIZE])
                     .map_err(|_| ())?;
@@ -1212,19 +1230,13 @@ pub mod test {
                 };
                 update_req.plaintext[..chunk_len].copy_from_slice(&remaining[..chunk_len]);
 
-                let mut mcu_update_req =
-                    McuMailboxReq::AesEncryptUpdate(McuAesEncryptUpdateReq(update_req));
-                mcu_update_req.populate_chksum().unwrap();
-
-                let update_resp = self
-                    .process_message(
-                        mcu_update_req.cmd_code().0,
-                        mcu_update_req.as_bytes().unwrap(),
-                    )
-                    .map_err(|_| ())?;
-
                 // Parse update response header
                 const UPDATE_HEADER_SIZE: usize = core::mem::size_of::<CmAesRespHeader>();
+                let update_resp = self.execute_success(
+                    McuMailboxReq::AesEncryptUpdate(McuAesEncryptUpdateReq(update_req)),
+                    UPDATE_HEADER_SIZE + chunk_len,
+                    "MC_AES_ENCRYPT_UPDATE",
+                )?;
                 let update_resp_hdr =
                     CmAesRespHeader::read_from_bytes(&update_resp.data[..UPDATE_HEADER_SIZE])
                         .map_err(|_| ())?;
@@ -1274,15 +1286,13 @@ pub mod test {
             };
             init_req.ciphertext[..init_len].copy_from_slice(&ciphertext[..init_len]);
 
-            let mut mcu_init_req = McuMailboxReq::AesDecryptInit(McuAesDecryptInitReq(init_req));
-            mcu_init_req.populate_chksum().unwrap();
-
-            let init_resp = self
-                .process_message(mcu_init_req.cmd_code().0, mcu_init_req.as_bytes().unwrap())
-                .map_err(|_| ())?;
-
             // Parse the init response (decrypt init uses CmAesResp format)
             const RESP_HEADER_SIZE: usize = core::mem::size_of::<CmAesRespHeader>();
+            let init_resp = self.execute_success(
+                McuMailboxReq::AesDecryptInit(McuAesDecryptInitReq(init_req)),
+                RESP_HEADER_SIZE + init_len,
+                "MC_AES_DECRYPT_INIT",
+            )?;
             let init_resp_hdr =
                 CmAesRespHeader::read_from_bytes(&init_resp.data[..RESP_HEADER_SIZE])
                     .map_err(|_| ())?;
@@ -1318,18 +1328,12 @@ pub mod test {
                 };
                 update_req.ciphertext[..chunk_len].copy_from_slice(&remaining[..chunk_len]);
 
-                let mut mcu_update_req =
-                    McuMailboxReq::AesDecryptUpdate(McuAesDecryptUpdateReq(update_req));
-                mcu_update_req.populate_chksum().unwrap();
-
-                let update_resp = self
-                    .process_message(
-                        mcu_update_req.cmd_code().0,
-                        mcu_update_req.as_bytes().unwrap(),
-                    )
-                    .map_err(|_| ())?;
-
                 // Parse update response header
+                let update_resp = self.execute_success(
+                    McuMailboxReq::AesDecryptUpdate(McuAesDecryptUpdateReq(update_req)),
+                    RESP_HEADER_SIZE + chunk_len,
+                    "MC_AES_DECRYPT_UPDATE",
+                )?;
                 let update_resp_hdr =
                     CmAesRespHeader::read_from_bytes(&update_resp.data[..RESP_HEADER_SIZE])
                         .map_err(|_| ())?;
@@ -1380,6 +1384,7 @@ pub mod test {
                 (512, 256),  // Even larger
                 (1024, 512), // Near half capacity
                 (2048, 256), // Larger plaintext
+                (2049, 256), // Exercise Update commands
             ];
 
             for (pt_len, aad_len) in test_cases {
@@ -1426,6 +1431,31 @@ pub mod test {
             Ok(())
         }
 
+        fn add_aes_command_validation_tests(&mut self) -> Result<(), ()> {
+            println!("Running AES command validation tests");
+
+            let aes_cmk = self.import_key(&[0xaa; 32], CmKeyUsage::Aes)?;
+            self.test_aes_command_failures(&aes_cmk)?;
+            self.delete_key(&aes_cmk)?;
+
+            let aes_gcm_cmk = self.import_key(&[0xbb; 32], CmKeyUsage::Aes)?;
+            let plaintext = [0u8; 16];
+            let aad = [];
+            let (iv, tag, ciphertext) = self.aes_gcm_encrypt(&aes_gcm_cmk, &aad, &plaintext)?;
+            self.test_aes_gcm_command_failures(
+                &aes_gcm_cmk,
+                &iv,
+                &tag,
+                &aad,
+                &ciphertext,
+                &plaintext,
+            )?;
+            self.delete_key(&aes_gcm_cmk)?;
+
+            println!("AES command validation tests passed");
+            Ok(())
+        }
+
         /// Perform AES-GCM encryption using Init, Update (optional), and Final commands.
         /// Returns (IV, tag, ciphertext).
         fn aes_gcm_encrypt(
@@ -1448,16 +1478,13 @@ pub mod test {
                 init_req.aad[..aad.len()].copy_from_slice(aad);
             }
 
-            let mut mcu_init_req =
-                McuMailboxReq::AesGcmEncryptInit(McuAesGcmEncryptInitReq(init_req));
-            mcu_init_req.populate_chksum().unwrap();
-
-            let init_resp = self
-                .process_message(mcu_init_req.cmd_code().0, mcu_init_req.as_bytes().unwrap())
-                .map_err(|_| ())?;
-
             // Parse init response to get context and IV
             // CmAesGcmEncryptInitResp has: hdr (MailboxRespHeader), context, iv
+            let init_resp = self.execute_success(
+                McuMailboxReq::AesGcmEncryptInit(McuAesGcmEncryptInitReq(init_req)),
+                core::mem::size_of::<MailboxRespHeader>() + CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE + 12,
+                "MC_AES_GCM_ENCRYPT_INIT",
+            )?;
             let hdr = MailboxRespHeader::read_from_bytes(
                 &init_resp.data[..core::mem::size_of::<MailboxRespHeader>()],
             )
@@ -1491,20 +1518,14 @@ pub mod test {
                 };
                 update_req.plaintext[..chunk_len].copy_from_slice(&remaining[..chunk_len]);
 
-                let mut mcu_update_req =
-                    McuMailboxReq::AesGcmEncryptUpdate(McuAesGcmEncryptUpdateReq(update_req));
-                mcu_update_req.populate_chksum().unwrap();
-
-                let update_resp = self
-                    .process_message(
-                        mcu_update_req.cmd_code().0,
-                        mcu_update_req.as_bytes().unwrap(),
-                    )
-                    .map_err(|_| ())?;
-
                 // Parse update response
                 const UPDATE_HEADER_SIZE: usize =
                     core::mem::size_of::<CmAesGcmEncryptUpdateRespHeader>();
+                let update_resp = self.execute_success(
+                    McuMailboxReq::AesGcmEncryptUpdate(McuAesGcmEncryptUpdateReq(update_req)),
+                    UPDATE_HEADER_SIZE + chunk_len,
+                    "MC_AES_GCM_ENCRYPT_UPDATE",
+                )?;
                 let update_hdr = CmAesGcmEncryptUpdateRespHeader::read_from_bytes(
                     &update_resp.data[..UPDATE_HEADER_SIZE],
                 )
@@ -1540,19 +1561,13 @@ pub mod test {
                 final_req.plaintext[..remaining.len()].copy_from_slice(remaining);
             }
 
-            let mut mcu_final_req =
-                McuMailboxReq::AesGcmEncryptFinal(McuAesGcmEncryptFinalReq(final_req));
-            mcu_final_req.populate_chksum().unwrap();
-
-            let final_resp = self
-                .process_message(
-                    mcu_final_req.cmd_code().0,
-                    mcu_final_req.as_bytes().unwrap(),
-                )
-                .map_err(|_| ())?;
-
             // Parse final response
             const FINAL_HEADER_SIZE: usize = core::mem::size_of::<CmAesGcmEncryptFinalRespHeader>();
+            let final_resp = self.execute_success(
+                McuMailboxReq::AesGcmEncryptFinal(McuAesGcmEncryptFinalReq(final_req)),
+                FINAL_HEADER_SIZE + remaining.len(),
+                "MC_AES_GCM_ENCRYPT_FINAL",
+            )?;
             let final_hdr = CmAesGcmEncryptFinalRespHeader::read_from_bytes(
                 &final_resp.data[..FINAL_HEADER_SIZE],
             )
@@ -1601,16 +1616,13 @@ pub mod test {
                 init_req.aad[..aad.len()].copy_from_slice(aad);
             }
 
-            let mut mcu_init_req =
-                McuMailboxReq::AesGcmDecryptInit(McuAesGcmDecryptInitReq(init_req));
-            mcu_init_req.populate_chksum().unwrap();
-
-            let init_resp = self
-                .process_message(mcu_init_req.cmd_code().0, mcu_init_req.as_bytes().unwrap())
-                .map_err(|_| ())?;
-
             // Parse init response to get context
             // CmAesGcmDecryptInitResp has: hdr (MailboxRespHeader), context
+            let init_resp = self.execute_success(
+                McuMailboxReq::AesGcmDecryptInit(McuAesGcmDecryptInitReq(init_req)),
+                core::mem::size_of::<MailboxRespHeader>() + CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE + 12,
+                "MC_AES_GCM_DECRYPT_INIT",
+            )?;
             let hdr = MailboxRespHeader::read_from_bytes(
                 &init_resp.data[..core::mem::size_of::<MailboxRespHeader>()],
             )
@@ -1640,20 +1652,14 @@ pub mod test {
                 };
                 update_req.ciphertext[..chunk_len].copy_from_slice(&remaining[..chunk_len]);
 
-                let mut mcu_update_req =
-                    McuMailboxReq::AesGcmDecryptUpdate(McuAesGcmDecryptUpdateReq(update_req));
-                mcu_update_req.populate_chksum().unwrap();
-
-                let update_resp = self
-                    .process_message(
-                        mcu_update_req.cmd_code().0,
-                        mcu_update_req.as_bytes().unwrap(),
-                    )
-                    .map_err(|_| ())?;
-
                 // Parse update response
                 const UPDATE_HEADER_SIZE: usize =
                     core::mem::size_of::<CmAesGcmDecryptUpdateRespHeader>();
+                let update_resp = self.execute_success(
+                    McuMailboxReq::AesGcmDecryptUpdate(McuAesGcmDecryptUpdateReq(update_req)),
+                    UPDATE_HEADER_SIZE + chunk_len,
+                    "MC_AES_GCM_DECRYPT_UPDATE",
+                )?;
                 let update_hdr = CmAesGcmDecryptUpdateRespHeader::read_from_bytes(
                     &update_resp.data[..UPDATE_HEADER_SIZE],
                 )
@@ -1691,19 +1697,13 @@ pub mod test {
                 final_req.ciphertext[..remaining.len()].copy_from_slice(remaining);
             }
 
-            let mut mcu_final_req =
-                McuMailboxReq::AesGcmDecryptFinal(McuAesGcmDecryptFinalReq(final_req));
-            mcu_final_req.populate_chksum().unwrap();
-
-            let final_resp = self
-                .process_message(
-                    mcu_final_req.cmd_code().0,
-                    mcu_final_req.as_bytes().unwrap(),
-                )
-                .map_err(|_| ())?;
-
             // Parse final response
             const FINAL_HEADER_SIZE: usize = core::mem::size_of::<CmAesGcmDecryptFinalRespHeader>();
+            let final_resp = self.execute_success(
+                McuMailboxReq::AesGcmDecryptFinal(McuAesGcmDecryptFinalReq(final_req)),
+                FINAL_HEADER_SIZE + remaining.len(),
+                "MC_AES_GCM_DECRYPT_FINAL",
+            )?;
             let final_hdr = CmAesGcmDecryptFinalRespHeader::read_from_bytes(
                 &final_resp.data[..FINAL_HEADER_SIZE],
             )
@@ -2812,6 +2812,291 @@ pub mod test {
             Ok(expand_resp.0.okm)
         }
 
+        fn test_aes_command_failures(&mut self, cmk: &Cmk) -> Result<(), ()> {
+            const BLOCK_SIZE: usize = 16;
+            for mode in [CmAesMode::Reserved, CmAesMode::Cbc] {
+                let size = if mode == CmAesMode::Cbc {
+                    BLOCK_SIZE - 1
+                } else {
+                    BLOCK_SIZE
+                };
+                self.expect_command_failure(
+                    McuMailboxReq::AesEncryptInit(McuAesEncryptInitReq(CmAesEncryptInitReq {
+                        cmk: *cmk,
+                        mode: mode.into(),
+                        plaintext_size: size as u32,
+                        ..Default::default()
+                    })),
+                    "MC_AES_ENCRYPT_INIT with invalid parameters",
+                )?;
+                self.expect_command_failure(
+                    McuMailboxReq::AesDecryptInit(McuAesDecryptInitReq(CmAesDecryptInitReq {
+                        cmk: *cmk,
+                        mode: mode.into(),
+                        ciphertext_size: size as u32,
+                        ..Default::default()
+                    })),
+                    "MC_AES_DECRYPT_INIT with invalid parameters",
+                )?;
+            }
+            self.expect_oversized_command_failure(
+                McuCommandId::MC_AES_ENCRYPT_INIT.0,
+                &CmAesEncryptInitReq {
+                    cmk: *cmk,
+                    mode: CmAesMode::Ctr.into(),
+                    plaintext_size: (MAX_CMB_DATA_SIZE + 1) as u32,
+                    ..Default::default()
+                },
+                "MC_AES_ENCRYPT_INIT above the maximum length",
+            )?;
+            self.expect_oversized_command_failure(
+                McuCommandId::MC_AES_DECRYPT_INIT.0,
+                &CmAesDecryptInitReq {
+                    cmk: *cmk,
+                    mode: CmAesMode::Ctr.into(),
+                    ciphertext_size: (MAX_CMB_DATA_SIZE + 1) as u32,
+                    ..Default::default()
+                },
+                "MC_AES_DECRYPT_INIT above the maximum length",
+            )?;
+            self.expect_oversized_command_failure(
+                McuCommandId::MC_AES_ENCRYPT_UPDATE.0,
+                &CmAesEncryptUpdateReq {
+                    plaintext_size: (MAX_CMB_DATA_SIZE + 1) as u32,
+                    ..Default::default()
+                },
+                "MC_AES_ENCRYPT_UPDATE above the maximum length",
+            )?;
+            self.expect_oversized_command_failure(
+                McuCommandId::MC_AES_DECRYPT_UPDATE.0,
+                &CmAesDecryptUpdateReq {
+                    ciphertext_size: (MAX_CMB_DATA_SIZE + 1) as u32,
+                    ..Default::default()
+                },
+                "MC_AES_DECRYPT_UPDATE above the maximum length",
+            )?;
+            self.expect_command_failure(
+                McuMailboxReq::AesEncryptUpdate(McuAesEncryptUpdateReq(
+                    CmAesEncryptUpdateReq::default(),
+                )),
+                "MC_AES_ENCRYPT_UPDATE without an initialized context",
+            )?;
+            self.expect_command_failure(
+                McuMailboxReq::AesDecryptUpdate(McuAesDecryptUpdateReq(
+                    CmAesDecryptUpdateReq::default(),
+                )),
+                "MC_AES_DECRYPT_UPDATE without an initialized context",
+            )?;
+
+            Ok(())
+        }
+
+        fn test_aes_gcm_command_failures(
+            &mut self,
+            cmk: &Cmk,
+            iv: &[u8; 12],
+            tag: &[u8; 16],
+            aad: &[u8],
+            ciphertext: &[u8],
+            plaintext: &[u8],
+        ) -> Result<(), ()> {
+            for request in [
+                McuMailboxReq::AesGcmEncryptUpdate(McuAesGcmEncryptUpdateReq(
+                    CmAesGcmEncryptUpdateReq::default(),
+                )),
+                McuMailboxReq::AesGcmEncryptFinal(McuAesGcmEncryptFinalReq(
+                    CmAesGcmEncryptFinalReq::default(),
+                )),
+                McuMailboxReq::AesGcmDecryptUpdate(McuAesGcmDecryptUpdateReq(
+                    CmAesGcmDecryptUpdateReq::default(),
+                )),
+                McuMailboxReq::AesGcmDecryptFinal(McuAesGcmDecryptFinalReq(
+                    CmAesGcmDecryptFinalReq {
+                        tag_len: 16,
+                        ..Default::default()
+                    },
+                )),
+            ] {
+                self.expect_command_failure(
+                    request,
+                    "AES-GCM command without initialized context",
+                )?;
+            }
+
+            self.expect_oversized_command_failure(
+                McuCommandId::MC_AES_GCM_ENCRYPT_INIT.0,
+                &CmAesGcmEncryptInitReq {
+                    cmk: *cmk,
+                    aad_size: (MAX_CMB_DATA_SIZE + 1) as u32,
+                    ..Default::default()
+                },
+                "MC_AES_GCM_ENCRYPT_INIT above the maximum AAD length",
+            )?;
+            self.expect_oversized_command_failure(
+                McuCommandId::MC_AES_GCM_DECRYPT_INIT.0,
+                &CmAesGcmDecryptInitReq {
+                    cmk: *cmk,
+                    iv: *iv,
+                    aad_size: (MAX_CMB_DATA_SIZE + 1) as u32,
+                    ..Default::default()
+                },
+                "MC_AES_GCM_DECRYPT_INIT above the maximum AAD length",
+            )?;
+            self.expect_oversized_command_failure(
+                McuCommandId::MC_AES_GCM_ENCRYPT_UPDATE.0,
+                &CmAesGcmEncryptUpdateReq {
+                    plaintext_size: (MAX_CMB_DATA_SIZE + 1) as u32,
+                    ..Default::default()
+                },
+                "MC_AES_GCM_ENCRYPT_UPDATE above the maximum length",
+            )?;
+            self.expect_oversized_command_failure(
+                McuCommandId::MC_AES_GCM_ENCRYPT_FINAL.0,
+                &CmAesGcmEncryptFinalReq {
+                    plaintext_size: (MAX_CMB_DATA_SIZE + 1) as u32,
+                    ..Default::default()
+                },
+                "MC_AES_GCM_ENCRYPT_FINAL above the maximum length",
+            )?;
+            self.expect_oversized_command_failure(
+                McuCommandId::MC_AES_GCM_DECRYPT_UPDATE.0,
+                &CmAesGcmDecryptUpdateReq {
+                    ciphertext_size: (MAX_CMB_DATA_SIZE + 1) as u32,
+                    ..Default::default()
+                },
+                "MC_AES_GCM_DECRYPT_UPDATE above the maximum length",
+            )?;
+            self.expect_oversized_command_failure(
+                McuCommandId::MC_AES_GCM_DECRYPT_FINAL.0,
+                &CmAesGcmDecryptFinalReq {
+                    tag_len: 16,
+                    ciphertext_size: (MAX_CMB_DATA_SIZE + 1) as u32,
+                    ..Default::default()
+                },
+                "MC_AES_GCM_DECRYPT_FINAL above the maximum length",
+            )?;
+
+            // Verify that the complete 16-byte authentication tag is accepted.
+            let context = self.aes_gcm_decrypt_init_checked(cmk, iv, aad)?;
+            self.aes_gcm_decrypt_final_checked(
+                context,
+                *tag,
+                ciphertext,
+                plaintext,
+                1,
+                "MC_AES_GCM_DECRYPT_FINAL with a valid full-length tag",
+            )?;
+
+            // Verify that altered authentication data is reported as unverified.
+            let context = self.aes_gcm_decrypt_init_checked(cmk, iv, aad)?;
+            let mut bad_tag = *tag;
+            bad_tag[0] ^= 1;
+            self.aes_gcm_decrypt_final_checked(
+                context,
+                bad_tag,
+                ciphertext,
+                plaintext,
+                0,
+                "MC_AES_GCM_DECRYPT_FINAL with a bad tag",
+            )?;
+
+            // Verify that tag lengths outside the supported 8..=16 range are rejected.
+            for tag_len in [7, 17] {
+                let context = self.aes_gcm_decrypt_init_checked(cmk, iv, aad)?;
+                let mut request = CmAesGcmDecryptFinalReq {
+                    context,
+                    tag_len,
+                    tag: *tag,
+                    ciphertext_size: ciphertext.len() as u32,
+                    ..Default::default()
+                };
+                request.ciphertext[..ciphertext.len()].copy_from_slice(ciphertext);
+                self.expect_command_failure(
+                    McuMailboxReq::AesGcmDecryptFinal(McuAesGcmDecryptFinalReq(request)),
+                    "MC_AES_GCM_DECRYPT_FINAL with an invalid tag length",
+                )?;
+            }
+
+            Ok(())
+        }
+
+        fn aes_gcm_decrypt_final_checked(
+            &mut self,
+            context: [u8; CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE],
+            tag: [u8; 16],
+            ciphertext: &[u8],
+            expected_plaintext: &[u8],
+            expected_tag_verified: u32,
+            message: &str,
+        ) -> Result<(), ()> {
+            let mut request = CmAesGcmDecryptFinalReq {
+                context,
+                tag_len: tag.len() as u32,
+                tag,
+                ciphertext_size: ciphertext.len() as u32,
+                ..Default::default()
+            };
+            request.ciphertext[..ciphertext.len()].copy_from_slice(ciphertext);
+            let header_size = core::mem::size_of::<CmAesGcmDecryptFinalRespHeader>();
+            let response = self.execute_success(
+                McuMailboxReq::AesGcmDecryptFinal(McuAesGcmDecryptFinalReq(request)),
+                header_size + expected_plaintext.len(),
+                message,
+            )?;
+            let header =
+                CmAesGcmDecryptFinalRespHeader::read_from_bytes(&response.data[..header_size])
+                    .map_err(|_| ())?;
+            assert_eq!(
+                header.hdr.fips_status,
+                MailboxRespHeader::FIPS_STATUS_APPROVED,
+                "{message}: unexpected FIPS status"
+            );
+            assert_eq!(
+                header.tag_verified, expected_tag_verified,
+                "{message}: unexpected tag verification result"
+            );
+            assert_eq!(
+                header.plaintext_size as usize,
+                expected_plaintext.len(),
+                "{message}: unexpected plaintext size"
+            );
+            assert_eq!(
+                &response.data[header_size..],
+                expected_plaintext,
+                "{message}: unexpected plaintext"
+            );
+            Ok(())
+        }
+
+        fn aes_gcm_decrypt_init_checked(
+            &mut self,
+            cmk: &Cmk,
+            iv: &[u8; 12],
+            aad: &[u8],
+        ) -> Result<[u8; CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE], ()> {
+            let mut request = CmAesGcmDecryptInitReq {
+                cmk: *cmk,
+                iv: *iv,
+                aad_size: aad.len() as u32,
+                ..Default::default()
+            };
+            request.aad[..aad.len()].copy_from_slice(aad);
+            let header_size = core::mem::size_of::<MailboxRespHeader>();
+            let context_end = header_size + CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE;
+            let response = self.execute_success(
+                McuMailboxReq::AesGcmDecryptInit(McuAesGcmDecryptInitReq(request)),
+                context_end + iv.len(),
+                "MC_AES_GCM_DECRYPT_INIT",
+            )?;
+            let header = MailboxRespHeader::read_from_bytes(&response.data[..header_size])
+                .map_err(|_| ())?;
+            assert_eq!(header.fips_status, MailboxRespHeader::FIPS_STATUS_APPROVED);
+            assert_eq!(&response.data[context_end..], iv);
+            response.data[header_size..context_end]
+                .try_into()
+                .map_err(|_| ())
+        }
+
         fn test_sha_commands(&mut self) -> Result<(), ()> {
             self.test_sha_init_command()?;
             self.test_sha_update_command()?;
@@ -2852,9 +3137,9 @@ pub mod test {
                 ..Default::default()
             };
             request.input_size = request.input.len() as u32 + 1;
-            self.expect_full_command_failure(
-                McuCommandId::MC_SHA_INIT,
-                request,
+            self.expect_oversized_command_failure(
+                McuCommandId::MC_SHA_INIT.0,
+                &request,
                 "MC_SHA_INIT above the maximum input length",
             )
         }
@@ -2886,9 +3171,9 @@ pub mod test {
                 ..Default::default()
             };
             request.input_size = request.input.len() as u32 + 1;
-            self.expect_full_command_failure(
-                McuCommandId::MC_SHA_UPDATE,
-                request,
+            self.expect_oversized_command_failure(
+                McuCommandId::MC_SHA_UPDATE.0,
+                &request,
                 "MC_SHA_UPDATE above the maximum input length",
             )
         }
@@ -2923,9 +3208,9 @@ pub mod test {
                 ..Default::default()
             };
             request.input_size = request.input.len() as u32 + 1;
-            self.expect_full_command_failure(
-                McuCommandId::MC_SHA_FINAL,
-                request,
+            self.expect_oversized_command_failure(
+                McuCommandId::MC_SHA_FINAL.0,
+                &request,
                 "MC_SHA_FINAL above the maximum input length",
             )
         }
@@ -2944,9 +3229,9 @@ pub mod test {
                 let header = MailboxRespHeader::read_from_bytes(&response.data).map_err(|_| ())?;
                 assert_eq!(header.fips_status, MailboxRespHeader::FIPS_STATUS_APPROVED);
             }
-            self.expect_full_command_failure(
-                McuCommandId::MC_RANDOM_STIR,
-                CmRandomStirReq {
+            self.expect_oversized_command_failure(
+                McuCommandId::MC_RANDOM_STIR.0,
+                &CmRandomStirReq {
                     hdr: MailboxReqHeader::default(),
                     input_size: (MAX_CMB_DATA_SIZE + 1) as u32,
                     input: [0x5a; MAX_CMB_DATA_SIZE],
@@ -3040,7 +3325,7 @@ pub mod test {
             let cmk = self.import_key_checked(&key, CmKeyUsage::Hmac)?;
             let response = self.execute_success(
                 McuMailboxReq::Hmac(McuHmacReq(CmHmacReq {
-                    cmk: cmk.clone(),
+                    cmk,
                     hash_algorithm: CmHashAlgorithm::Sha384.into(),
                     ..Default::default()
                 })),
@@ -3065,7 +3350,7 @@ pub mod test {
             ] {
                 self.expect_command_failure(
                     McuMailboxReq::Hmac(McuHmacReq(CmHmacReq {
-                        cmk: invalid_cmk.clone(),
+                        cmk: invalid_cmk,
                         hash_algorithm: CmHashAlgorithm::Sha384.into(),
                         ..Default::default()
                     })),
@@ -3082,7 +3367,7 @@ pub mod test {
             let hmac_key = self.import_key_checked(&[0x11; 48], CmKeyUsage::Hmac)?;
             let response = self.execute_success(
                 McuMailboxReq::HmacKdfCounter(McuHmacKdfCounterReq(CmHmacKdfCounterReq {
-                    kin: hmac_key.clone(),
+                    kin: hmac_key,
                     hash_algorithm: CmHashAlgorithm::Sha384.into(),
                     key_usage: CmKeyUsage::Aes.into(),
                     key_size: 32,
@@ -3100,10 +3385,7 @@ pub mod test {
             self.delete_key_checked(&response.0.kout)?;
 
             let aes_key = self.import_key_checked(&[0xa5; 32], CmKeyUsage::Aes)?;
-            for (kin, description) in [
-                (Cmk::default(), "unknown"),
-                (aes_key.clone(), "incompatible"),
-            ] {
+            for (kin, description) in [(Cmk::default(), "unknown"), (aes_key, "incompatible")] {
                 self.expect_command_failure(
                     McuMailboxReq::HmacKdfCounter(McuHmacKdfCounterReq(CmHmacKdfCounterReq {
                         kin,
@@ -3124,8 +3406,8 @@ pub mod test {
             let response = self.execute_success(
                 McuMailboxReq::HkdfExtract(McuHkdfExtractReq(CmHkdfExtractReq {
                     hash_algorithm: CmHashAlgorithm::Sha384.into(),
-                    salt: salt.clone(),
-                    ikm: ikm.clone(),
+                    salt,
+                    ikm,
                     ..Default::default()
                 })),
                 core::mem::size_of::<McuHkdfExtractResp>(),
@@ -3140,7 +3422,7 @@ pub mod test {
             let aes_key = self.import_key_checked(&[0xa5; 32], CmKeyUsage::Aes)?;
             for (salt, ikm, description) in [
                 (Cmk::default(), Cmk::default(), "unknown"),
-                (aes_key.clone(), aes_key.clone(), "incompatible"),
+                (aes_key, aes_key, "incompatible"),
             ] {
                 self.expect_command_failure(
                     McuMailboxReq::HkdfExtract(McuHkdfExtractReq(CmHkdfExtractReq {
@@ -3161,7 +3443,7 @@ pub mod test {
             let prk = self.hkdf_extract(&ikm, &salt, CmHashAlgorithm::Sha384)?;
             let response = self.execute_success(
                 McuMailboxReq::HkdfExpand(McuHkdfExpandReq(CmHkdfExpandReq {
-                    prk: prk.clone(),
+                    prk,
                     hash_algorithm: CmHashAlgorithm::Sha384.into(),
                     key_usage: CmKeyUsage::Aes.into(),
                     key_size: 32,
@@ -3178,10 +3460,7 @@ pub mod test {
             self.delete_key_checked(&response.0.okm)?;
 
             let aes_key = self.import_key_checked(&[0xa5; 32], CmKeyUsage::Aes)?;
-            for (prk, description) in [
-                (Cmk::default(), "unknown"),
-                (aes_key.clone(), "incompatible"),
-            ] {
+            for (prk, description) in [(Cmk::default(), "unknown"), (aes_key, "incompatible")] {
                 self.expect_command_failure(
                     McuMailboxReq::HkdfExpand(McuHkdfExpandReq(CmHkdfExpandReq {
                         prk,
