@@ -31,6 +31,21 @@ pub enum IpVersion {
 /// Minimum free space in the TFTP chunk buffer before accepting another RX packet.
 const TFTP_RX_THRESHOLD: usize = 512;
 
+#[cfg(not(feature = "test-short-timeouts"))]
+const DHCPV4_TIMEOUT_MS: u64 = 29_000;
+#[cfg(feature = "test-short-timeouts")]
+const DHCPV4_TIMEOUT_MS: u64 = 8_000;
+
+#[cfg(all(feature = "ipv6-boot", not(feature = "test-ipv6-dhcp-timeout")))]
+const DHCPV6_TIMEOUT_MS: u64 = 60_000;
+#[cfg(all(feature = "ipv6-boot", feature = "test-ipv6-dhcp-timeout"))]
+const DHCPV6_TIMEOUT_MS: u64 = 8_000;
+
+#[cfg(not(any(feature = "test-short-timeouts", feature = "test-ipv6-tftp-timeouts")))]
+const TFTP_TIMEOUT_MS: u64 = 28_000;
+#[cfg(any(feature = "test-short-timeouts", feature = "test-ipv6-tftp-timeouts"))]
+const TFTP_TIMEOUT_MS: u64 = 8_000;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppState {
     /// Waiting for InitiateBootRequest.
@@ -62,6 +77,8 @@ pub struct BootSourceApp<'a, M: NetworkMailbox<'a>> {
     dhcp_result: UnsafeCell<Option<network::DhcpResult>>,
     /// Whether the TFTP GET for the current image has been started.
     tftp_started: Cell<bool>,
+    /// Start time of the current asynchronous DHCP or TFTP operation.
+    operation_started_ms: Cell<u64>,
     /// IP version to use for network boot.
     ip_version: IpVersion,
 }
@@ -78,6 +95,7 @@ impl<'a, M: NetworkMailbox<'a>> BootSourceApp<'a, M> {
             max_chunk_size,
             dhcp_result: UnsafeCell::new(None),
             tftp_started: Cell::new(false),
+            operation_started_ms: Cell::new(0),
             ip_version,
         }
     }
@@ -152,10 +170,46 @@ impl<'a, M: NetworkMailbox<'a>> BootSourceApp<'a, M> {
         unsafe { &mut *self.dhcp_result.get() }
     }
 
+    fn start_operation(&self) {
+        self.operation_started_ms.set(network::now_ms());
+    }
+
+    fn operation_timed_out(&self, timeout_ms: u64) -> bool {
+        network::now_ms().wrapping_sub(self.operation_started_ms.get()) >= timeout_ms
+    }
+
+    fn stop_dhcp(&self) {
+        match self.ip_version {
+            IpVersion::V4 => network::stop_dhcp(),
+            #[cfg(feature = "ipv6-boot")]
+            IpVersion::V6 => network::stop_dhcp6(),
+        }
+    }
+
+    fn dhcp_timeout_ms(&self) -> u64 {
+        match self.ip_version {
+            IpVersion::V4 => DHCPV4_TIMEOUT_MS,
+            #[cfg(feature = "ipv6-boot")]
+            IpVersion::V6 => DHCPV6_TIMEOUT_MS,
+        }
+    }
+
     /// Poll DHCP progress. Called each iteration of `run_loop` while in
     /// `DhcpInProgress`. When an address is obtained, starts the TFTP TOC
     /// download and transitions to `TftpTocInProgress`.
     fn poll_dhcp(&self) {
+        if self.operation_timed_out(self.dhcp_timeout_ms()) {
+            caliptra_mcu_network_drivers::println!("[boot-src] DHCP timeout");
+            self.stop_dhcp();
+            let _ = handler::send_error(
+                self.mbox,
+                MessageType::InitiateBootResponse,
+                ErrorCode::SourceNotReady,
+            );
+            self.state.set(AppState::Idle);
+            return;
+        }
+
         let has_addr = match self.ip_version {
             IpVersion::V4 => network::dhcp_has_address(),
             #[cfg(feature = "ipv6-boot")]
@@ -210,6 +264,7 @@ impl<'a, M: NetworkMailbox<'a>> BootSourceApp<'a, M> {
             }
 
             *self.dhcp_result_mut() = Some(result);
+            self.start_operation();
             self.state.set(AppState::TftpTocInProgress);
         }
     }
@@ -218,6 +273,18 @@ impl<'a, M: NetworkMailbox<'a>> BootSourceApp<'a, M> {
     /// while in `TftpTocInProgress`. When the download completes, parses
     /// the TOC and sends `InitiateBootResponse`.
     fn poll_tftp_toc(&self) {
+        if self.operation_timed_out(TFTP_TIMEOUT_MS) {
+            caliptra_mcu_network_drivers::println!("[boot-src] TFTP TOC timeout");
+            network::abort_tftp();
+            let _ = handler::send_error(
+                self.mbox,
+                MessageType::InitiateBootResponse,
+                ErrorCode::SourceNotReady,
+            );
+            self.state.set(AppState::Idle);
+            return;
+        }
+
         if network::tftp_has_error() {
             let _ = handler::send_error(
                 self.mbox,
@@ -255,6 +322,19 @@ impl<'a, M: NetworkMailbox<'a>> BootSourceApp<'a, M> {
     /// next chunk response and transitions back to `Streaming` (or `Ready`
     /// if it was the last chunk).
     fn poll_chunk_data(&self) {
+        if self.operation_timed_out(TFTP_TIMEOUT_MS) {
+            caliptra_mcu_network_drivers::println!("[boot-src] TFTP image timeout");
+            network::abort_tftp();
+            let _ = handler::send_error(
+                self.mbox,
+                MessageType::ImageChunk,
+                ErrorCode::SourceNotReady,
+            );
+            self.tftp_started.set(false);
+            self.state.set(AppState::Ready);
+            return;
+        }
+
         // Start the TFTP GET on the first poll after ImageDownloadRequest.
         // This is deferred from handle_image_download to avoid filling the
         // TFTP buffer while the MCU processes the zero-payload header.
@@ -303,11 +383,24 @@ impl<'a, M: NetworkMailbox<'a>> BootSourceApp<'a, M> {
             return; // No data yet, keep polling.
         }
 
+        let expected_size = match self.toc_ref().find(self.active_firmware_id.get()) {
+            Some(entry) => entry.image_size,
+            None => {
+                let _ = handler::send_error(
+                    self.mbox,
+                    MessageType::ImageChunk,
+                    ErrorCode::ImageNotFound,
+                );
+                self.state.set(AppState::Ready);
+                return;
+            }
+        };
         match handler::send_next_chunk(
             self.mbox,
             self.max_chunk_size,
             &self.sequence_number,
             &self.transfer_offset,
+            expected_size,
         ) {
             Ok(true) => {
                 // Last chunk sent — go back to Ready for more images.
@@ -342,6 +435,7 @@ impl<'a, M: NetworkMailbox<'a>> BootSourceApp<'a, M> {
         match (self.state.get(), msg_type) {
             (AppState::Idle, MessageType::InitiateBootRequest) => {
                 handler::handle_initiate_boot_start(data, self.ip_version)?;
+                self.start_operation();
                 self.state.set(AppState::DhcpInProgress);
                 Ok(())
             }
@@ -367,6 +461,7 @@ impl<'a, M: NetworkMailbox<'a>> BootSourceApp<'a, M> {
                 // incrementally in run_loop (poll_chunk_data) so that the
                 // emulator can process ethernet RX between iterations.
                 handler::validate_chunk_ack(data)?;
+                self.start_operation();
                 self.state.set(AppState::ChunkPending);
                 Ok(())
             }

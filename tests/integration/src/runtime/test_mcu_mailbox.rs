@@ -105,6 +105,10 @@ fn assert_signed_eat(data: &[u8], nonce: &[u8], expected_algorithms: &[i64], exp
     const TAG_CWT: u64 = 61;
     const TAG_COSE_SIGN1: u64 = 18;
     const HEADER_ALGORITHM: i64 = 1;
+    const ALGORITHM_ESP384: i64 = -51;
+    const ALGORITHM_MLDSA87: i64 = -50;
+    const ESP384_SIGNATURE_LEN: usize = 96;
+    const MLDSA87_SIGNATURE_LEN: usize = 4627;
     const CLAIM_NONCE: i64 = 10;
     const CLAIM_MEASUREMENTS: i64 = 273;
     const CLAIM_CSR: i64 = -70001;
@@ -146,6 +150,11 @@ fn assert_signed_eat(data: &[u8], nonce: &[u8], expected_algorithms: &[i64], exp
         expected_algorithms.contains(&algorithm),
         "unexpected protected algorithm {algorithm}"
     );
+    let expected_signature_len = match algorithm {
+        ALGORITHM_ESP384 => ESP384_SIGNATURE_LEN,
+        ALGORITHM_MLDSA87 => MLDSA87_SIGNATURE_LEN,
+        _ => panic!("unsupported COSE signature algorithm {algorithm}"),
+    };
     let unprotected_len = decoder
         .map()
         .expect("invalid unprotected header")
@@ -155,7 +164,11 @@ fn assert_signed_eat(data: &[u8], nonce: &[u8], expected_algorithms: &[i64], exp
         decoder.skip().expect("invalid unprotected header value");
     }
     let payload = decoder.bytes().expect("invalid EAT payload");
-    assert!(!decoder.bytes().expect("invalid COSE signature").is_empty());
+    assert_eq!(
+        decoder.bytes().expect("invalid COSE signature").len(),
+        expected_signature_len,
+        "unexpected COSE signature length"
+    );
     assert_eq!(decoder.position(), data.len(), "trailing COSE data");
 
     let mut claims = Decoder::new(payload);
