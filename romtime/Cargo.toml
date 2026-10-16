@@ -25,7 +25,6 @@ zerocopy.workspace = true
 [features]
 default = ["cfi"]
 cfi = []
-core_test = []
 ocp-lock = []
 # Strip the `print!` / `println!` macros to no-ops that still type-check
 # `format_args!` so all call sites compile cleanly.  Used to drop a few KB of

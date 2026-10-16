@@ -100,6 +100,8 @@ pub const ROM_ONLY_TEST_FEATURES: &[&str] = &[
     "ocp-lock",
     "stable-owner-key",
     "test-dot-recovery",
+    "core_test",
+    "flash-boot",
     "test-fw-manifest-dot",
     "test-fw-manifest-dot-hitless",
     "test-i3c-services",

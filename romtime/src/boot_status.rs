@@ -138,7 +138,7 @@ pub enum McuRomBootStatus {
     HitlessUpdateFlowStarted = BOOT_FLOW_BASE + 6,
     HitlessUpdateFlowComplete = BOOT_FLOW_BASE + 7,
 
-    // Encrypted Firmware Boot (core_test only)
+    // Encrypted Firmware Boot (platform-selected)
     EncryptedFirmwareDecryptStarted = ENCRYPTED_FIRMWARE_BASE,
     EncryptedFirmwareDecryptComplete = ENCRYPTED_FIRMWARE_BASE + 1,
     EncryptedFirmwareActivateStarted = ENCRYPTED_FIRMWARE_BASE + 2,

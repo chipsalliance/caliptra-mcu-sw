@@ -149,11 +149,6 @@ impl Default for GetMcuFwSizeResp {
     }
 }
 
-/// Bit in `mci_reg_generic_input_wires[1]` that signals encrypted firmware boot.
-/// When set, MCU ROM sends `RI_DOWNLOAD_ENCRYPTED_FIRMWARE` instead of `RI_DOWNLOAD_FIRMWARE`,
-/// then decrypts the firmware in MCU SRAM after Caliptra RT finishes loading.
-const ENCRYPTED_BOOT_WIRE_BIT: u32 = 1 << 28;
-
 /// Test AES-256 key used for encrypted MCU firmware in sw-emulated models.
 /// Must match `MCU_TEST_AES_KEY` in caliptra-sw hw-model.
 const MCU_TEST_AES_KEY: [u8; 32] = [0xaa; 32];
@@ -1094,10 +1089,6 @@ impl ColdBoot {
         hek_state: Option<HekState>,
         soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
     ) {
-        if cfg!(feature = "core_test") {
-            return;
-        }
-
         let Some(hek_state) = hek_state else {
             caliptra_mcu_romtime::println!(
                 "[mcu-rom] No valid active HEK state. Skipping reporting HEK metadata."
@@ -1362,9 +1353,8 @@ impl BootFlow for ColdBoot {
         mci.set_flow_checkpoint(McuRomBootStatus::CaliptraBootGoAsserted.into());
         mci.set_flow_milestone(McuBootMilestones::CPTRA_BOOT_GO_ASSERTED.into());
 
-        // If testing Caliptra Core, hang here until the test signals it to continue.
-        if cfg!(feature = "core_test") {
-            while mci.registers.mci_reg_generic_input_wires[1].get() & (1 << 30) == 0 {}
+        if let Some(callback) = params.post_caliptra_boot_go {
+            callback();
         }
 
         lc.init().unwrap();
@@ -1441,8 +1431,10 @@ impl BootFlow for ColdBoot {
 
         caliptra_mcu_romtime::println!("[mcu-rom] OTP initialized");
 
-        let recovery_boot = ((mci.registers.mci_reg_generic_input_wires[1].get() & (1 << 29)) != 0)
-            || params.request_recovery_boot;
+        let recovery_boot = params.request_recovery_boot
+            || params
+                .recovery_boot_requested
+                .is_some_and(|request| request());
 
         if recovery_boot && (params.image_provider_manager.is_none() || !cfg!(feature = "hw-2-1")) {
             caliptra_mcu_romtime::println!(
@@ -1561,6 +1553,8 @@ impl BootFlow for ColdBoot {
                 #[cfg(feature = "ocp-lock")]
                 ocp_lock_config: Some(&mut params.ocp_lock_config),
                 vendor_key_policy: params.vendor_key_policy,
+                vendor_pk_hash_rotation: params.vendor_pk_hash_rotation,
+                populate_non_secret_test_seeds: params.populate_non_secret_test_seeds,
                 prod_debug_unlock_auth_pk_hash_count: params.prod_debug_unlock_auth_pk_hash_count,
                 ..Default::default()
             },
@@ -1661,9 +1655,8 @@ impl BootFlow for ColdBoot {
         mci.set_flow_milestone(McuBootMilestones::CPTRA_FUSES_WRITTEN.into());
         crate::call_hook(params.hooks, |h| h.post_populate_fuses_to_caliptra());
 
-        // If testing Caliptra Core, hang here until the test signals it to continue.
-        if cfg!(feature = "core_test") {
-            while mci.registers.mci_reg_generic_input_wires[1].get() & (1 << 31) == 0 {}
+        if let Some(callback) = params.post_caliptra_fuses_written {
+            callback();
         }
 
         caliptra_mcu_romtime::println!("[mcu-rom] Waiting for Caliptra Core boot FSM to be DONE");
@@ -1695,10 +1688,12 @@ impl BootFlow for ColdBoot {
 
         // Report HEK metadata to Caliptra ROM
         #[cfg(feature = "ocp-lock")]
-        Self::report_hek_metadata(
-            _fuse_state.ocp_lock.map(|o| o.hek_state),
-            &mut env.soc_manager,
-        );
+        if !params.skip_hek_metadata_report {
+            Self::report_hek_metadata(
+                _fuse_state.ocp_lock.map(|o| o.hek_state),
+                &mut env.soc_manager,
+            );
+        }
 
         // Load DOT fuses from vendor non-secret partition
         // TODO: read these from a place specified by ROM configuration
@@ -1857,11 +1852,11 @@ impl BootFlow for ColdBoot {
         let mci = &env.mci;
         let soc = &env.soc;
 
-        // Check GPIO wire for encrypted firmware boot mode (core_test only).
-        // When the encrypted boot wire is set, MCU ROM sends RI_DOWNLOAD_ENCRYPTED_FIRMWARE
-        // which tells Caliptra RT to load firmware without activating MCU.
-        let encrypted_boot = cfg!(feature = "core_test")
-            && mci.registers.mci_reg_generic_input_wires[1].get() & ENCRYPTED_BOOT_WIRE_BIT != 0;
+        // The platform selects whether Caliptra RT loads encrypted firmware
+        // without activating MCU, so ROM can decrypt it before activation.
+        let encrypted_boot = params
+            .encrypted_boot_requested
+            .is_some_and(|request| request());
 
         // Tell Caliptra to download firmware from the recovery interface.
         // Use RI_DOWNLOAD_ENCRYPTED_FIRMWARE when encrypted boot is requested.
@@ -2047,7 +2042,11 @@ impl BootFlow for ColdBoot {
             mci.set_flow_checkpoint(McuRomBootStatus::CaliptraRuntimeReady.into());
         }
 
-        soc.pk_hash_volatile_lock(&env.otp, &env.mci, _fuse_state.pk_hash_idx);
+        soc.pk_hash_volatile_lock(
+            &env.otp,
+            params.skip_vendor_pk_hash_volatile_lock,
+            _fuse_state.pk_hash_idx,
+        );
         if env.otp.check_error().is_some() {
             caliptra_mcu_romtime::println!("[mcu-rom] OTP error: {}", HexWord(env.otp.status()));
             env.otp.print_errors();
