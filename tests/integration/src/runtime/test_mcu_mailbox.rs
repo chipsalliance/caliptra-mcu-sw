@@ -1266,6 +1266,12 @@ fn test_mcu_mbox_ecdh_commands() -> Result<()> {
             incoming_exchange_data: generate.0.exchange_data,
             ..Default::default()
         },
+        CmEcdhFinishReq {
+            context: generate.0.context,
+            key_usage: CmKeyUsage::Aes.into(),
+            incoming_exchange_data: [0; 96],
+            ..Default::default()
+        },
     ] {
         assert_mailbox_cmd_failed(hw.mailbox_execute_req(McuEcdhFinishReq(invalid)));
     }
