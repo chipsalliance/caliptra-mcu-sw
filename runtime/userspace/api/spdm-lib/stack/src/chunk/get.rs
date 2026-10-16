@@ -23,7 +23,12 @@ pub(crate) async fn handle_chunk_get<'a, Pal: SpdmPal>(
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     req: &[u8],
 ) -> SpdmResult<PalBytes<'a, Pal>> {
-    if (state.phase as u8) < (Phase::AfterCapabilities as u8) || !state.chunking_enabled() {
+    // Same ordering floor as CHUNK_SEND: chunking only serves requests that need
+    // NEGOTIATE_ALGORITHMS (DSP0274 section 17, General ordering rules).
+    if (state.phase as u8) < (Phase::AfterAlgorithms as u8) {
+        return Err(state.out_of_order());
+    }
+    if !state.chunking_enabled() {
         return Err(SPDM_UNEXPECTED_REQUEST);
     }
 

@@ -15,7 +15,7 @@ use caliptra_mcu_spdm_traits::{
 use zerocopy::FromBytes;
 
 use crate::build::{build_response, write_fixed};
-use crate::error::{SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED};
+use crate::error::{SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNSPECIFIED};
 use crate::stack::{multi_key_conn_rsp, ConnectionState, Phase};
 
 /// Streaming chunk size when hashing a cert chain — comes from the
@@ -37,8 +37,11 @@ pub(crate) async fn handle_get_digests_req<'a, Pal: SpdmPal>(
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     spdm_msg: &[u8],
 ) -> SpdmResult<(PalBytes<'a, Pal>, usize)> {
+    // Out of order: a request that needs NEGOTIATE_ALGORITHMS arrived before it
+    // (DSP0274 section 17, General ordering rules). Inside a session the phase is
+    // always past algorithms, so this only ever fires outside one.
     if (state.phase as u8) < (Phase::AfterAlgorithms as u8) {
-        return Err(SPDM_UNEXPECTED_REQUEST);
+        return Err(state.out_of_order());
     }
 
     // DSP0274 §10.5 Table 24: GET_DIGESTS header version shall match

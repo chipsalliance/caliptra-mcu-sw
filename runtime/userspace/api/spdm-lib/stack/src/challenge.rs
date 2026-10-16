@@ -12,7 +12,7 @@ use caliptra_mcu_spdm_traits::*;
 use zerocopy::FromBytes;
 
 use crate::build::build_response;
-use crate::error::{SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED};
+use crate::error::{SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNSPECIFIED};
 use crate::stack::{ConnectionState, Phase};
 
 pub(crate) async fn handle_challenge<'a, Pal: SpdmPal>(
@@ -22,8 +22,11 @@ pub(crate) async fn handle_challenge<'a, Pal: SpdmPal>(
 ) -> SpdmResult<PalBytes<'a, Pal>> {
     // Phase: must be after algorithms negotiation.
     // GET_DIGESTS and GET_CERTIFICATE are optional before CHALLENGE.
+    // Out of order: a request that needs NEGOTIATE_ALGORITHMS arrived before it
+    // (DSP0274 section 17, General ordering rules). Inside a session the phase is
+    // always past algorithms, so this only ever fires outside one.
     if (state.phase as u8) < (Phase::AfterAlgorithms as u8) {
-        return Err(SPDM_UNEXPECTED_REQUEST);
+        return Err(state.out_of_order());
     }
 
     // Validate version matches negotiated.

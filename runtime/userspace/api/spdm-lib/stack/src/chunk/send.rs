@@ -148,10 +148,14 @@ async fn process_chunk_send<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     session_id: Option<u32>,
     set_certificate_allowed: bool,
 ) -> Result<ChunkInfo, ChunkProcessError> {
-    if state.large_msg_ctx.response_in_progress()
-        || (state.phase as u8) < (Phase::AfterCapabilities as u8)
-        || !state.chunking_enabled()
-    {
+    // CHUNK_SEND only ever carries a request that itself needs NEGOTIATE_ALGORITHMS,
+    // so arriving before it is out of order (DSP0274 section 17, General ordering
+    // rules). A response transfer in progress or a peer without chunking is a
+    // state/capability error, not an ordering one, so it stays UnexpectedRequest.
+    if (state.phase as u8) < (Phase::AfterAlgorithms as u8) {
+        return Err(ChunkProcessError::Spdm(state.out_of_order()));
+    }
+    if state.large_msg_ctx.response_in_progress() || !state.chunking_enabled() {
         return Err(ChunkProcessError::Spdm(SPDM_UNEXPECTED_REQUEST));
     }
 

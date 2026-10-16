@@ -23,8 +23,8 @@ use zerocopy::{little_endian::U16, FromBytes};
 use crate::build::{build_error_response, build_response};
 use crate::chunk::LargeResponse;
 use crate::error::{
-    SpdmResult, SPDM_DATA_TOO_LARGE, SPDM_INVALID_REQUEST, SPDM_LARGE_RESPONSE,
-    SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED, SPDM_UNSUPPORTED_REQUEST,
+    SpdmResult, SPDM_DATA_TOO_LARGE, SPDM_INVALID_REQUEST, SPDM_LARGE_RESPONSE, SPDM_UNSPECIFIED,
+    SPDM_UNSUPPORTED_REQUEST,
 };
 use crate::stack::{multi_key_conn_rsp, ConnectionState, Phase};
 
@@ -176,8 +176,11 @@ pub(crate) async fn handle_get_certificate_req<'a, Pal: SpdmPal>(
 ) -> SpdmResult<(PalBytes<'a, Pal>, usize)> {
     // GET_CERTIFICATE is legal once algorithms are negotiated, and
     // any number of times after (pagination, re-requests).
+    // Out of order: a request that needs NEGOTIATE_ALGORITHMS arrived before it
+    // (DSP0274 section 17, General ordering rules). Inside a session the phase is
+    // always past algorithms, so this only ever fires outside one.
     if (state.phase as u8) < (Phase::AfterAlgorithms as u8) {
-        return Err(SPDM_UNEXPECTED_REQUEST);
+        return Err(state.out_of_order());
     }
 
     let (hdr, body) = SpdmMsgHdrPdu::ref_from_prefix(spdm_msg).map_err(|_| SPDM_INVALID_REQUEST)?;

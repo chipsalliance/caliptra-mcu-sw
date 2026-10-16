@@ -57,8 +57,11 @@ pub(crate) async fn handle_key_exchange<'a, Pal: SpdmPal, const N: usize>(
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
     // ── Phase check ─────────────────────────────────────────────────
+    // Out of order: a request that needs NEGOTIATE_ALGORITHMS arrived before it
+    // (DSP0274 section 17, General ordering rules). Inside a session the phase is
+    // always past algorithms, so this only ever fires outside one.
     if (state.phase as u8) < (Phase::AfterAlgorithms as u8) {
-        return Err(SPDM_UNEXPECTED_REQUEST);
+        return Err(state.out_of_order());
     }
 
     // Only one handshake at a time.

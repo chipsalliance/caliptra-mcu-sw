@@ -267,3 +267,102 @@ fn out_of_order_nullifies_transcript() {
     assert!(state.transcript.m1.is_none());
     assert!(state.transcript.l1.is_none());
 }
+
+/// A connection that finished GET_VERSION and GET_CAPABILITIES but not
+/// NEGOTIATE_ALGORITHMS, with chunking negotiated so the CHUNK handlers reach
+/// their ordering check.
+fn before_algorithms_state() -> ConnectionState<TestHashState, Vec<u8>> {
+    let mut state = chunking_state();
+    state.phase = Phase::AfterCapabilities;
+    state
+}
+
+/// Header-only request for `code`, zero-padded so no handler stops at a length
+/// check before it reaches the ordering check.
+fn padded_request(code: ReqRespCode) -> TestIo {
+    let mut req = vec![SpdmVersion::V12.to_u8(), code.0, 0, 0];
+    req.resize(64, 0);
+    TestIo::message(req)
+}
+
+// Section 17: every request that needs NEGOTIATE_ALGORITHMS is out of order when
+// it arrives before it, not only the VCA requests themselves. Each one must
+// answer ERROR(RequestResynch) and latch.
+#[test]
+fn post_vca_request_before_algorithms_returns_request_resynch_and_latches() {
+    let pal = TestPal::default();
+    for code in [
+        ReqRespCode::GET_DIGESTS,
+        ReqRespCode::GET_CERTIFICATE,
+        ReqRespCode::CHALLENGE,
+        ReqRespCode::GET_MEASUREMENTS,
+        ReqRespCode::KEY_EXCHANGE,
+        ReqRespCode::CHUNK_GET,
+    ] {
+        let mut state = before_algorithms_state();
+        let mut sessions = crate::session::SessionManager::new();
+        let err = dispatch_code(&mut state, &mut sessions, &pal, code, &padded_request(code))
+            .unwrap_err();
+        assert_eq!(
+            err.spec_byte(),
+            0x43,
+            "{:?} before NEGOTIATE_ALGORITHMS",
+            code
+        );
+        assert!(state.resync_required, "{:?} must latch", code);
+    }
+}
+
+// CHUNK_SEND only carries requests that need NEGOTIATE_ALGORITHMS, so a CHUNK_SEND
+// before it is out of order too, even though chunking was already negotiated in
+// CAPABILITIES.
+#[test]
+fn chunk_send_before_algorithms_returns_request_resynch_and_latches() {
+    let pal = TestPal::default();
+    let mut state = before_algorithms_state();
+    let mut sessions = crate::session::SessionManager::new();
+    let io = TestIo::message(chunk_send_request(0, 0, false, Some(64), &[0u8; 16]));
+    let err = dispatch_code(
+        &mut state,
+        &mut sessions,
+        &pal,
+        ReqRespCode::CHUNK_SEND,
+        &io,
+    )
+    .unwrap_err();
+    assert_eq!(err.spec_byte(), 0x43);
+    assert!(state.resync_required);
+}
+
+// Past NEGOTIATE_ALGORITHMS, a CHUNK_GET from a peer that did not negotiate
+// chunking is a capability error, not an ordering one: UnexpectedRequest, no latch.
+#[test]
+fn chunk_get_without_chunking_after_algorithms_returns_unexpected_request() {
+    let pal = TestPal::default();
+    let mut state = negotiated_state(SpdmVersion::V12);
+    let mut sessions = crate::session::SessionManager::new();
+    let io = padded_request(ReqRespCode::CHUNK_GET);
+    let err =
+        dispatch_code(&mut state, &mut sessions, &pal, ReqRespCode::CHUNK_GET, &io).unwrap_err();
+    assert_eq!(err.spec_byte(), SPDM_UNEXPECTED_REQUEST.spec_byte());
+    assert!(!state.resync_required);
+}
+
+#[cfg(feature = "set-certificate")]
+#[test]
+fn set_certificate_before_algorithms_returns_request_resynch_and_latches() {
+    let pal = TestPal::default();
+    let mut state = before_algorithms_state();
+    let mut sessions = crate::session::SessionManager::new();
+    let io = TestIo::message(set_certificate_request(&pal));
+    let err = dispatch_code(
+        &mut state,
+        &mut sessions,
+        &pal,
+        ReqRespCode::SET_CERTIFICATE,
+        &io,
+    )
+    .unwrap_err();
+    assert_eq!(err.spec_byte(), 0x43);
+    assert!(state.resync_required);
+}

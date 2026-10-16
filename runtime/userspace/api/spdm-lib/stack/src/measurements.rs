@@ -12,7 +12,7 @@ use caliptra_mcu_spdm_traits::*;
 use zerocopy::{FromBytes, IntoBytes};
 
 use crate::chunk;
-use crate::error::{SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED};
+use crate::error::{SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNSPECIFIED};
 use crate::stack::{ConnectionState, Phase};
 
 const MEASUREMENTS_FIXED_BODY_SIZE: usize = 1 + 1 + 1 + 3;
@@ -40,8 +40,11 @@ pub(crate) async fn handle_get_measurements_req<'a, Pal: SpdmPal>(
     req: &[u8],
 ) -> SpdmResult<(PalBytes<'a, Pal>, usize)> {
     // Phase: must be after algorithms negotiation.
+    // Out of order: a request that needs NEGOTIATE_ALGORITHMS arrived before it
+    // (DSP0274 section 17, General ordering rules). Inside a session the phase is
+    // always past algorithms, so this only ever fires outside one.
     if (state.phase as u8) < (Phase::AfterAlgorithms as u8) {
-        return Err(SPDM_UNEXPECTED_REQUEST);
+        return Err(state.out_of_order());
     }
     // Validate version matches negotiated.
     let (hdr, rest) = SpdmMsgHdrPdu::ref_from_prefix(req).map_err(|_| SPDM_INVALID_REQUEST)?;
