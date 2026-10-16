@@ -779,6 +779,13 @@ impl McuHwModel for ModelEmulated {
 }
 
 impl ModelEmulated {
+    /// Emulator-only handle for deterministic I3C target fault scenarios.
+    pub fn i3c_target(&self) -> caliptra_mcu_emulator_periph::I3cTarget {
+        self.i3c_controller
+            .target(self.i3c_address.unwrap().into())
+            .unwrap()
+    }
+
     fn caliptra_axi_bus(&mut self) -> EmulatedAxiBus<'_> {
         EmulatedAxiBus { model: self }
     }
