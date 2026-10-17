@@ -40,10 +40,6 @@ const FPGA_EXAMPLE_APP_MANIFEST: &str = "firmware-bundler/reference/fpga/example
 const EMU_BARE_METAL_MANIFEST: &str = "firmware-bundler/reference/emulator/bare-metal.toml";
 const FPGA_BARE_METAL_MANIFEST: &str = "firmware-bundler/reference/fpga/bare-metal.toml";
 
-pub fn manifest_file(platform: Option<&str>, example_app: bool) -> Result<PathBuf> {
-    manifest_file_for_profile(platform, example_app, None)
-}
-
 /// Resolve the bundler platform manifest for `platform`, optionally swapping
 /// to the shipping `*.toml` variant when `profile == Some("release")`.  All
 /// other profile names — including `None`, `"devel"`, and any custom name —

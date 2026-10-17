@@ -771,6 +771,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     let mcu_rom = crate::rom_build(&CaliptraBuildArgs {
         platform: Some(platform),
         features: Some(rom_features),
+        profile,
         ..Default::default()
     })?;
 
@@ -1077,6 +1078,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                 platform: Some(platform),
                 features: Some(feature),
                 target_dir,
+                profile,
                 ..Default::default()
             }) {
                 Ok(rom_path) => {
