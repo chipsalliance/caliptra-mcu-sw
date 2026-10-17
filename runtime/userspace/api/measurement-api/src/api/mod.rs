@@ -254,13 +254,12 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
             .read_leaf_record(&mut leaf)
             .map_err(|_| MeasurementApiError::InvalidDpeHandleStoreState)?;
 
-        // The attestation target must be readable and, until downstream target
-        // re-marking exists, still the MCU Runtime root.
+        // The preserved target must match the unchanged cold-boot policy.
         let mut target = DpeHandleRecord::default();
         dpe_store
             .read_attestation_target(&mut target)
             .map_err(|_| MeasurementApiError::InvalidDpeHandleStoreState)?;
-        if target.fw_id != MCU_RT_FW_ID {
+        if target.fw_id != self.manifest.attestation_target_fw_id() {
             return Err(MeasurementApiError::InvalidDpeHandleStoreState);
         }
 
@@ -901,11 +900,16 @@ pub(super) async fn software_pcr_extend_digest<A: ScratchAlloc>(
 mod tests {
     extern crate std;
 
-    use std::vec::Vec;
+    use caliptra_mcu_libsyscall_caliptra::mailbox::MAILBOX_DRIVER_NUM;
+    use caliptra_mcu_libtock_platform::{CommandReturn, ErrorCode};
+    use caliptra_mcu_libtock_unittest::{
+        command_return, fake, DriverInfo, DriverShareRef, RoAllowBuffer, RwAllowBuffer,
+    };
+    use std::{boxed::Box, cell::RefCell, rc::Rc, vec::Vec};
 
     use super::*;
     use crate::attestation_manifest::{
-        ATTESTATION_FLAG_SOC_TCB_DPE, ATTESTATION_MANIFEST_ENTRY_SIZE,
+        ATTESTATION_FLAG_AK_TARGET, ATTESTATION_FLAG_SOC_TCB_DPE, ATTESTATION_MANIFEST_ENTRY_SIZE,
         ATTESTATION_MANIFEST_FIXED_HEADER_SIZE, ATTESTATION_MANIFEST_MARKER,
         ATTESTATION_MANIFEST_VERSION, MCU_RT_FW_ID,
     };
@@ -1047,6 +1051,284 @@ mod tests {
             hasher.update(fw_id.to_le_bytes());
         }
         hasher.finalize().into()
+    }
+
+    const HITLESS_LOAD_FW_IDS: [u32; 2] = [0x1000, 0x1001];
+    static HITLESS_BOOT_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    struct TestAlloc;
+
+    impl ScratchAlloc for TestAlloc {
+        type Buf<'a>
+            = Vec<u8>
+        where
+            Self: 'a;
+
+        fn alloc(&self, len: usize) -> mcu_error::McuResult<Self::Buf<'_>> {
+            Ok(std::vec![0; len])
+        }
+    }
+
+    struct TestMailbox(fake::FakeMailboxDriver);
+
+    impl fake::SyscallDriver for TestMailbox {
+        fn info(&self) -> DriverInfo {
+            fake::SyscallDriver::info(&self.0)
+        }
+
+        fn register(&self, share_ref: DriverShareRef) {
+            fake::SyscallDriver::register(&self.0, share_ref);
+        }
+
+        fn command(&self, command_id: u32, arg0: u32, arg1: u32) -> CommandReturn {
+            let result = fake::SyscallDriver::command(&self.0, command_id, arg0, arg1);
+            // Release completed transfers before scratch allocations reuse their addresses.
+            DefaultSyscalls::unallow_ro(MAILBOX_DRIVER_NUM, 0);
+            DefaultSyscalls::unallow_rw(MAILBOX_DRIVER_NUM, 0);
+            result
+        }
+
+        fn allow_readonly(
+            &self,
+            buffer_num: u32,
+            buffer: RoAllowBuffer,
+        ) -> Result<RoAllowBuffer, (RoAllowBuffer, ErrorCode)> {
+            fake::SyscallDriver::allow_readonly(&self.0, buffer_num, buffer)
+        }
+
+        fn allow_readwrite(
+            &self,
+            buffer_num: u32,
+            buffer: RwAllowBuffer,
+        ) -> Result<RwAllowBuffer, (RwAllowBuffer, ErrorCode)> {
+            fake::SyscallDriver::allow_readwrite(&self.0, buffer_num, buffer)
+        }
+    }
+
+    struct PreservedMeasurementStore {
+        driver_num: u32,
+        policy_digest: [u8; POLICY_DIGEST_SIZE],
+        records: Vec<DpeHandleRecord>,
+        target_fw_id: u32,
+        input: RefCell<RoAllowBuffer>,
+        output: RefCell<RwAllowBuffer>,
+    }
+
+    impl fake::SyscallDriver for PreservedMeasurementStore {
+        fn info(&self) -> DriverInfo {
+            DriverInfo::new(self.driver_num)
+        }
+
+        fn command(&self, command_id: u32, arg0: u32, arg1: u32) -> CommandReturn {
+            assert_eq!(arg1, 0);
+            let record = match (self.driver_num, command_id) {
+                (SOFT_PCR_STORE_DRIVER_NUM, 5) => return command_return::success(),
+                (DPE_HANDLE_STORE_DRIVER_NUM, 7) => {
+                    // VALIDATE_STORE checks the preserved policy and target reference.
+                    let input = self.input.borrow();
+                    if input[..] != self.policy_digest
+                        || !self.records.iter().any(|r| r.fw_id == self.target_fw_id)
+                    {
+                        return command_return::failure(ErrorCode::Fail);
+                    }
+                    return command_return::success();
+                }
+                (DPE_HANDLE_STORE_DRIVER_NUM, 1) => self.records.iter().find(|r| r.fw_id == arg0),
+                (DPE_HANDLE_STORE_DRIVER_NUM, 4) => self.records.last(),
+                (DPE_HANDLE_STORE_DRIVER_NUM, 6) => {
+                    self.records.iter().find(|r| r.fw_id == self.target_fw_id)
+                }
+                _ => panic!("Unexpected store command during hitless boot: {command_id}"),
+            };
+            let Some(record) = record else {
+                return command_return::failure(ErrorCode::Fail);
+            };
+            self.output.borrow_mut().copy_from_slice(&record.to_bytes());
+            command_return::success()
+        }
+
+        fn allow_readonly(
+            &self,
+            buffer_num: u32,
+            buffer: RoAllowBuffer,
+        ) -> Result<RoAllowBuffer, (RoAllowBuffer, ErrorCode)> {
+            assert_eq!(buffer_num, 0);
+            Ok(self.input.replace(buffer))
+        }
+
+        fn allow_readwrite(
+            &self,
+            buffer_num: u32,
+            buffer: RwAllowBuffer,
+        ) -> Result<RwAllowBuffer, (RwAllowBuffer, ErrorCode)> {
+            assert_eq!(buffer_num, 0);
+            Ok(self.output.replace(buffer))
+        }
+    }
+
+    fn run_hitless_boot(
+        manifest_bytes: &[u8],
+        cold_boot_manifest_bytes: &[u8],
+        target_fw_id: u32,
+    ) -> (MeasurementApiResult, AttestationState) {
+        // Mailbox state is global, while fake kernels are thread-local.
+        let _lock = HITLESS_BOOT_LOCK.lock().unwrap();
+        let kernel = fake::Kernel::new();
+        let records = std::vec![
+            DpeHandleRecord {
+                fw_id: MCU_RT_FW_ID,
+                parent_fw_id: None,
+                context_handle: [0x11; DPE_CONTEXT_HANDLE_SIZE],
+                tci_tag: MCU_RT_FW_ID,
+                ..Default::default()
+            },
+            DpeHandleRecord {
+                fw_id: HITLESS_LOAD_FW_IDS[0],
+                parent_fw_id: Some(MCU_RT_FW_ID),
+                context_handle: [0x22; DPE_CONTEXT_HANDLE_SIZE],
+                tci_tag: HITLESS_LOAD_FW_IDS[0],
+                ..Default::default()
+            },
+            DpeHandleRecord {
+                fw_id: HITLESS_LOAD_FW_IDS[1],
+                parent_fw_id: Some(HITLESS_LOAD_FW_IDS[0]),
+                context_handle: [0x33; DPE_CONTEXT_HANDLE_SIZE],
+                tci_tag: HITLESS_LOAD_FW_IDS[1],
+                ..Default::default()
+            },
+        ];
+        let policy_digest =
+            reference_measurement_policy_digest(cold_boot_manifest_bytes, &HITLESS_LOAD_FW_IDS);
+        for driver_num in [DPE_HANDLE_STORE_DRIVER_NUM, SOFT_PCR_STORE_DRIVER_NUM] {
+            kernel.add_driver(&Rc::new(PreservedMeasurementStore {
+                driver_num,
+                policy_digest,
+                records: records.clone(),
+                target_fw_id,
+                input: RefCell::default(),
+                output: RefCell::default(),
+            }));
+        }
+
+        let mailbox = Rc::new(TestMailbox(fake::FakeMailboxDriver::new()));
+        kernel.add_driver(&mailbox);
+        let context_response = std::vec![0; 8 + SHA_CONTEXT_SIZE];
+        mailbox
+            .0
+            .add_ready_response(u32::from_be_bytes(*b"CMSI"), &context_response);
+        for _ in HITLESS_LOAD_FW_IDS {
+            mailbox
+                .0
+                .add_ready_response(u32::from_be_bytes(*b"CMSU"), &context_response);
+        }
+        let digest = reference_measurement_policy_digest(manifest_bytes, &HITLESS_LOAD_FW_IDS);
+        let mut final_response = std::vec![0; 12 + POLICY_DIGEST_SIZE];
+        final_response[8..12].copy_from_slice(&(POLICY_DIGEST_SIZE as u32).to_le_bytes());
+        final_response[12..].copy_from_slice(&digest);
+        caliptra_mcu_libsyscall_caliptra::mailbox::populate_checksum(0, &mut final_response)
+            .unwrap();
+        mailbox
+            .0
+            .add_ready_response(u32::from_be_bytes(*b"CMSF"), &final_response);
+
+        let mut api =
+            MeasurementApi::<DefaultSyscalls>::new(manifest_bytes, &HITLESS_LOAD_FW_IDS).unwrap();
+        let result = fake::wait_for_future_ready(Box::pin(api.measurement_boot_init(
+            BootKind::HitlessUpdate,
+            EvidenceReadinessPolicy::ReadyAfterBootInit,
+            &TestAlloc,
+        )));
+        (result, api.attestation_state())
+    }
+
+    #[test]
+    fn hitless_preserves_configured_ak_target() {
+        for (configured_target, preserved_target) in [
+            (None, MCU_RT_FW_ID),
+            (Some(HITLESS_LOAD_FW_IDS[0]), HITLESS_LOAD_FW_IDS[0]),
+            (Some(HITLESS_LOAD_FW_IDS[1]), HITLESS_LOAD_FW_IDS[1]),
+        ] {
+            let entries = HITLESS_LOAD_FW_IDS.map(|fw_id| {
+                let flags = ATTESTATION_FLAG_SOC_TCB_DPE
+                    | if configured_target == Some(fw_id) {
+                        ATTESTATION_FLAG_AK_TARGET
+                    } else {
+                        0
+                    };
+                (fw_id, flags)
+            });
+            let bytes = valid_manifest_with_entries(&entries);
+
+            assert_eq!(
+                run_hitless_boot(&bytes, &bytes, preserved_target),
+                (Ok(()), AttestationState::Active),
+                "configured target: {configured_target:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn hitless_rejects_mismatched_ak_target() {
+        for (configured_target, preserved_target) in [
+            (None, HITLESS_LOAD_FW_IDS[0]),
+            (Some(HITLESS_LOAD_FW_IDS[0]), MCU_RT_FW_ID),
+            (Some(HITLESS_LOAD_FW_IDS[0]), HITLESS_LOAD_FW_IDS[1]),
+        ] {
+            let entries = HITLESS_LOAD_FW_IDS.map(|fw_id| {
+                let flags = ATTESTATION_FLAG_SOC_TCB_DPE
+                    | if configured_target == Some(fw_id) {
+                        ATTESTATION_FLAG_AK_TARGET
+                    } else {
+                        0
+                    };
+                (fw_id, flags)
+            });
+            let bytes = valid_manifest_with_entries(&entries);
+
+            assert_eq!(
+                run_hitless_boot(&bytes, &bytes, preserved_target),
+                (
+                    Err(MeasurementApiError::InvalidDpeHandleStoreState),
+                    AttestationState::Error
+                ),
+                "configured target: {configured_target:?}, preserved: {preserved_target:#x}"
+            );
+        }
+    }
+
+    #[test]
+    fn hitless_rejects_missing_ak_target() {
+        let entries = HITLESS_LOAD_FW_IDS.map(|fw_id| (fw_id, ATTESTATION_FLAG_SOC_TCB_DPE));
+        let bytes = valid_manifest_with_entries(&entries);
+
+        assert_eq!(
+            run_hitless_boot(&bytes, &bytes, 0xDEAD_BEEF),
+            (
+                Err(MeasurementApiError::InvalidDpeHandleStoreState),
+                AttestationState::Error
+            )
+        );
+    }
+
+    #[test]
+    fn hitless_rejects_changed_policy_with_unchanged_ak_target() {
+        let target_flags = ATTESTATION_FLAG_SOC_TCB_DPE | ATTESTATION_FLAG_AK_TARGET;
+        let cold_boot = valid_manifest_with_entries(&[
+            (HITLESS_LOAD_FW_IDS[0], target_flags),
+            (HITLESS_LOAD_FW_IDS[1], ATTESTATION_FLAG_SOC_TCB_DPE),
+        ]);
+        let updated = valid_manifest_with_entries(&[
+            (HITLESS_LOAD_FW_IDS[0], target_flags),
+            (HITLESS_LOAD_FW_IDS[1], 0),
+        ]);
+
+        assert_eq!(
+            run_hitless_boot(&updated, &cold_boot, HITLESS_LOAD_FW_IDS[0]),
+            (
+                Err(MeasurementApiError::InvalidDpeHandleStoreState),
+                AttestationState::Error
+            )
+        );
     }
 
     #[test]
