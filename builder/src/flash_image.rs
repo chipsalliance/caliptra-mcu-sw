@@ -312,6 +312,20 @@ pub fn flash_image_create(args: &CaliptraBuildArgs) -> Result<()> {
         images.push(FirmwareImage::new(identifier, soc_img, filename)?);
     }
 
+    // Owner SoC images are loaded by fw_id after the vendor SoC image load list.
+    let owner_soc_images = args.owner_soc_images.as_deref().unwrap_or(&[]);
+    let owner_img_buffers = owner_soc_images
+        .iter()
+        .map(|image| load_file(&image.path.to_string_lossy()))
+        .collect::<Result<Vec<_>>>()?;
+    for (image, owner_img) in owner_soc_images.iter().zip(owner_img_buffers.iter()) {
+        images.push(FirmwareImage::new(
+            image.image_id,
+            owner_img,
+            image.network_filename.as_deref().map(str::as_bytes),
+        )?);
+    }
+
     let image_info = generate_image_info(images.clone());
 
     let flash_image = FlashImage::new(&images, &image_info);
@@ -861,6 +875,54 @@ mod tests {
         let offset1 = offset0 + IMAGE_INFO_SIZE;
         let img1 = ImageHeader::read_from_bytes(&data[offset1..offset1 + IMAGE_INFO_SIZE]).unwrap();
         assert_eq!(img1.identifier, 6);
+    }
+
+    #[test]
+    fn test_flash_image_includes_owner_soc_images() {
+        let soc_image_content = b"Vendor SoC Image";
+        let owner_image_content = b"Owner SoC Image";
+
+        let soc_image = create_temp_file(soc_image_content).unwrap();
+        let owner_image = create_temp_file(owner_image_content).unwrap();
+
+        let output_file = NamedTempFile::new().unwrap();
+        let output_path = output_file.path().to_str().unwrap();
+
+        flash_image_create(&CaliptraBuildArgs {
+            soc_image_paths: Some(vec![soc_image.path().to_str().unwrap().to_string()]),
+            soc_images: Some(vec![ImageCfg {
+                path: soc_image.path().to_path_buf(),
+                image_id: 0x1000,
+                ..Default::default()
+            }]),
+            owner_soc_images: Some(vec![ImageCfg {
+                path: owner_image.path().to_path_buf(),
+                image_id: 0x1_0000,
+                ..Default::default()
+            }]),
+            offset: 0,
+            output_path: Some(output_path.to_string()),
+            ..Default::default()
+        })
+        .expect("Failed to build flash image");
+
+        let data = fs::read(output_path).unwrap();
+        let header =
+            FlashHeader::read_from_bytes(&data[..HEADER_SIZE]).expect("Failed to parse header");
+        assert_eq!(header.image_count, 2);
+
+        let offset0 = header.image_headers_offset as usize;
+        let img0 = ImageHeader::read_from_bytes(&data[offset0..offset0 + IMAGE_INFO_SIZE]).unwrap();
+        assert_eq!(img0.identifier, 0x1000);
+
+        let offset1 = offset0 + IMAGE_INFO_SIZE;
+        let img1 = ImageHeader::read_from_bytes(&data[offset1..offset1 + IMAGE_INFO_SIZE]).unwrap();
+        assert_eq!(img1.identifier, 0x1_0000);
+        let owner_start = img1.offset as usize;
+        assert_eq!(
+            &data[owner_start..owner_start + owner_image_content.len()],
+            owner_image_content
+        );
     }
 
     #[test]

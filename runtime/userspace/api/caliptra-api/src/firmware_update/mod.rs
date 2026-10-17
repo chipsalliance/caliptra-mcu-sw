@@ -17,8 +17,8 @@ use caliptra_auth_man_types::{
 use caliptra_image_types::ImageManifest;
 use caliptra_mcu_flash_image::{
     FlashHeader, ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, MCU_RT_IDENTIFIER,
-    OWNER_AUTH_MANIFEST_IDENTIFIER, OWNER_MEASUREMENT_POLICY_IDENTIFIER, SOC_MANIFEST_IDENTIFIER,
-    V_AUTH_KEY_ID,
+    OWNER_AUTH_MANIFEST_IDENTIFIER, OWNER_MEASUREMENT_POLICY_IDENTIFIER,
+    OWNER_SOC_IMAGES_BASE_IDENTIFIER, SOC_MANIFEST_IDENTIFIER, V_AUTH_KEY_ID,
 };
 use caliptra_mcu_libsyscall_caliptra::console_writeln;
 use caliptra_mcu_libsyscall_caliptra::dma::AXIAddr;
@@ -742,6 +742,7 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
         let mut req = GetImageInfoReq {
             hdr: MailboxReqHeader::default(),
             fw_id: image_id.to_le_bytes(),
+            flags: 0,
         };
         let req_data = req.as_mut_bytes();
         self.mailbox
@@ -1101,7 +1102,9 @@ pub use crate::image_loader::AuthManifestReqHeader;
 /// VERIFY_AUTH_MANIFEST. The owner authorization manifest is authenticated by
 /// Caliptra when it is installed with SET_OWNER_AUTH_MANIFEST at boot, and the
 /// owner measurement policy digest is checked against that manifest; neither has
-/// an entry in the SoC manifest.
+/// an entry in the SoC manifest. Owner SoC images are authorized against the
+/// owner authorization manifest when they are loaded, so they are not listed in
+/// the SoC manifest either.
 fn listed_in_soc_manifest(identifier: u32) -> bool {
     !matches!(
         identifier,
@@ -1109,6 +1112,7 @@ fn listed_in_soc_manifest(identifier: u32) -> bool {
             | SOC_MANIFEST_IDENTIFIER
             | OWNER_AUTH_MANIFEST_IDENTIFIER
             | OWNER_MEASUREMENT_POLICY_IDENTIFIER
+            | OWNER_SOC_IMAGES_BASE_IDENTIFIER..=u32::MAX
     )
 }
 
@@ -1143,6 +1147,23 @@ mod tests {
         }
 
         Ok(())
+    }
+
+    #[test]
+    fn owner_artifacts_are_not_listed_in_soc_manifest() {
+        for identifier in [
+            CALIPTRA_FMC_RT_IDENTIFIER,
+            SOC_MANIFEST_IDENTIFIER,
+            OWNER_AUTH_MANIFEST_IDENTIFIER,
+            OWNER_MEASUREMENT_POLICY_IDENTIFIER,
+            OWNER_SOC_IMAGES_BASE_IDENTIFIER,
+            u32::MAX,
+        ] {
+            assert!(!listed_in_soc_manifest(identifier));
+        }
+        for identifier in [MCU_RT_IDENTIFIER, A, OWNER_SOC_IMAGES_BASE_IDENTIFIER - 1] {
+            assert!(listed_in_soc_manifest(identifier));
+        }
     }
 
     #[test]

@@ -29,9 +29,9 @@ use mcu_caliptra_api::{
     authorize_and_stash as caliptra_authorize, dpe_certify_key_cert_size,
     dpe_certify_key_cert_slice, dpe_certify_key_mldsa87_tr, dpe_certify_key_pubkey,
     dpe_derive_context_exported_cdi, dpe_rotate_context_default, dpe_sign, dpe_tag_tci, sha_finish,
-    sha_init, sha_update, AuthorizeAndStashFlags, AuthorizeAndStashParams, DpeContextHandle,
-    DpeDeriveContextFlags, DpeDeriveContextParams, DpeProfile, HashAlgo, ScratchAlloc,
-    SigningInput, DPE_CONTEXT_HANDLE_SIZE, DPE_LABEL_LEN, DPE_TCI_MEASUREMENT_SIZE,
+    sha_init, sha_update, AuthManifestSource, AuthorizeAndStashFlags, AuthorizeAndStashParams,
+    DpeContextHandle, DpeDeriveContextFlags, DpeDeriveContextParams, DpeProfile, HashAlgo,
+    ScratchAlloc, SigningInput, DPE_CONTEXT_HANDLE_SIZE, DPE_LABEL_LEN, DPE_TCI_MEASUREMENT_SIZE,
     MLDSA87_TR_SIZE, SHA_CONTEXT_SIZE,
 };
 
@@ -283,8 +283,15 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
         let entry = self
             .manifest_lookup(fw_id)
             .map_err(|_| MeasurementApiError::UnknownFwId)?;
+        // Components resolved only through the Owner Attestation Manifest are
+        // authorized by Caliptra against the owner-only image-metadata collection.
+        let manifest_source = if self.manifest.lookup(fw_id).is_ok() {
+            AuthManifestSource::VendorOwner
+        } else {
+            AuthManifestSource::Owner
+        };
 
-        let params = caliptra_authorize_params(fw_id, metadata);
+        let params = caliptra_authorize_params(fw_id, metadata, manifest_source);
         caliptra_authorize(alloc, &params)
             .await
             .map_err(|_| MeasurementApiError::ImageAuthorizationFailed)?;
@@ -703,10 +710,15 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
                 .manifest
                 .lookup(*fw_id)
                 .map_err(|_| MeasurementApiError::UnknownFwId)?;
-            if entry.is_tcb() {
-                validate_loaded_tcb_record::<S>(*fw_id)?;
-            } else {
-                validate_loaded_non_tcb_record::<S>(*fw_id)?;
+            validate_loaded_record::<S>(entry)?;
+        }
+        if let Some(owner) = &self.owner_policy {
+            let owner_manifest = owner.manifest();
+            for fw_id in owner.load_list().entries() {
+                let entry = owner_manifest
+                    .lookup(fw_id)
+                    .map_err(|_| MeasurementApiError::UnknownFwId)?;
+                validate_loaded_record::<S>(entry)?;
             }
         }
         self.state = AttestationState::Active;
@@ -796,6 +808,14 @@ fn is_mcu_root_record(record: &DpeHandleRecord) -> bool {
         && record.context_handle != [0u8; 16]
 }
 
+fn validate_loaded_record<S: Syscalls>(entry: AttestationManifestEntry) -> MeasurementApiResult {
+    if entry.is_tcb() {
+        validate_loaded_tcb_record::<S>(entry.fw_id)
+    } else {
+        validate_loaded_non_tcb_record::<S>(entry.fw_id)
+    }
+}
+
 fn validate_loaded_tcb_record<S: Syscalls>(fw_id: u32) -> MeasurementApiResult {
     let dpe_store = DpeHandleStore::<S>::new(DPE_HANDLE_STORE_DRIVER_NUM);
     let mut record = DpeHandleRecord::default();
@@ -864,7 +884,11 @@ fn validate_soc_image_load_fw_ids(
     Ok(())
 }
 
-fn caliptra_authorize_params(fw_id: u32, metadata: ImageMetadata) -> AuthorizeAndStashParams {
+fn caliptra_authorize_params(
+    fw_id: u32,
+    metadata: ImageMetadata,
+    manifest_source: AuthManifestSource,
+) -> AuthorizeAndStashParams {
     AuthorizeAndStashParams {
         fw_id,
         measurement: metadata.measurement,
@@ -873,7 +897,7 @@ fn caliptra_authorize_params(fw_id: u32, metadata: ImageMetadata) -> AuthorizeAn
         flags: AuthorizeAndStashFlags::SKIP_STASH,
         source: metadata.source,
         image_size: metadata.image_size,
-        accept_owner_only: false,
+        manifest_source,
     }
 }
 
