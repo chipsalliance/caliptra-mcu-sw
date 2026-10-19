@@ -145,4 +145,18 @@ mod tests {
         assert_eq!(header.tag_owner(), 0);
         assert_eq!(header.msg_tag(), 0);
     }
+
+    #[test]
+    fn validates_endpoint_ids_and_message_tags_at_boundaries() {
+        assert!(valid_eid(0));
+        assert!(!valid_eid(1));
+        assert!(!valid_eid(6));
+        assert!(valid_eid(7));
+        assert!(valid_eid(0xfe));
+        assert!(!valid_eid(MCTP_BROADCAST_EID));
+
+        assert!(valid_msg_tag(0));
+        assert!(valid_msg_tag(MCTP_TAG_MASK));
+        assert!(!valid_msg_tag(MCTP_TAG_MASK + 1));
+    }
 }

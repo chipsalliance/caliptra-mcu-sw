@@ -121,6 +121,8 @@ pub struct TestPal {
     /// Algorithm passed to the most recent measurement value retrieval.
     pub meas_algo: Cell<Option<SpdmPalAsymAlgo>>,
     pub sign_ops: RefCell<Vec<RecordedSign>>,
+    pub aead_decrypt_error: Cell<Option<McuErrorCode>>,
+    pub last_aead_decrypt_sequence: Cell<Option<u64>>,
 }
 
 /// Signing input captured by [`TestPal::sign`], owned so tests can assert on it
@@ -161,6 +163,8 @@ impl Default for TestPal {
             write_algo: Cell::new(None),
             meas_algo: Cell::new(None),
             sign_ops: RefCell::new(Vec::new()),
+            aead_decrypt_error: Cell::new(None),
+            last_aead_decrypt_sequence: Cell::new(None),
         }
     }
 }
@@ -671,12 +675,16 @@ impl SpdmPalSessionCrypto for TestPal {
         _io: &impl SpdmPalIo,
         _key: &Self::Key,
         _spdm_version: u8,
-        _seq: u64,
+        seq: u64,
         _aad: &[u8],
         ciphertext: &[u8],
         _tag: &[u8; 16],
         plaintext: &mut [u8],
     ) -> McuResult<usize> {
+        self.last_aead_decrypt_sequence.set(Some(seq));
+        if let Some(error) = self.aead_decrypt_error.get() {
+            return Err(error);
+        }
         plaintext[..ciphertext.len()].copy_from_slice(ciphertext);
         Ok(ciphertext.len())
     }
