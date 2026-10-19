@@ -191,7 +191,7 @@ pub extern "C" fn rom_entry() -> ! {
 
     #[cfg(feature = "test-lpcip-usb-ocp-recovery")]
     {
-        use caliptra_mcu_registers_generated::{usb_combo, usb_dev0_mem};
+        use caliptra_mcu_registers_generated::{usb_combo, usb_dev0_mem, usb_dev1, usb_dev1_mem};
         use caliptra_mcu_romtime::{Mci, McuResetReason, StaticRef};
         use caliptra_mcu_usb_common::LpcipUsbDriver;
 
@@ -217,6 +217,18 @@ pub extern "C" fn rom_entry() -> ! {
                         as *const usb_dev0_mem::regs::UsbDev0Mem,
                 )
             };
+            let usb_device1_regs = unsafe {
+                StaticRef::new(
+                    caliptra_mcu_config_fpga::FPGA_USB_DEV1_CSR_ADDR
+                        as *const usb_dev1::regs::UsbDev1,
+                )
+            };
+            let usb_device1_memory = unsafe {
+                StaticRef::new(
+                    caliptra_mcu_config_fpga::FPGA_USB_DEV1_MEM_ADDR
+                        as *const usb_dev1_mem::regs::UsbDev1Mem,
+                )
+            };
             // Diagnostic guard: at least 5 ms for core clocks up to 1 GHz.
             const USB3320_STARTUP_DELAY_CYCLES: u64 = 5_000_000;
             let startup_cycle = caliptra_mcu_romtime::mcycle();
@@ -236,9 +248,11 @@ pub extern "C" fn rom_entry() -> ! {
                             );
                         }
             */
-            let result = usb_driver.init_and_enumerate();
+            let result =
+                usb_driver.init_and_enumerate_with_device1(usb_device1_regs, usb_device1_memory);
 //            usb_driver.dump_registers();
-            if result.is_err() {
+            if let Err(error) = result {
+                caliptra_mcu_romtime::println!("[usb] Hub/device enumeration failed: {:?}", error);
                 caliptra_mcu_rom_common::fatal_error(
                     caliptra_mcu_error::McuError::ROM_COLD_BOOT_RECOVERY_NOT_CONFIGURED_ERROR,
                 );

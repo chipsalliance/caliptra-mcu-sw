@@ -1,6 +1,9 @@
 // Licensed under the Apache-2.0 license
 
-//! NXP LPCIP3511 Device 0 initialization and EP0 enumeration.
+//! NXP LPCIP3511 initialization and EP0 enumeration.
+//!
+//! FPGA hub bring-up can enumerate Device 0 first, then connect and enumerate
+//! Device 1 as an EP0-only vendor-specific test device.
 //!
 //! OCP Recovery class requests are claimed by dedicated hardware after USB
 //! configuration, so this driver intentionally stops at enumeration instead
@@ -8,7 +11,7 @@
 
 use caliptra_mcu_ocp::usb::descriptors::*;
 use caliptra_mcu_ocp::usb::setup::{SetupPacket, StandardRequest, SETUP_PACKET_LEN};
-use caliptra_mcu_registers_generated::{usb_combo, usb_dev0_mem};
+use caliptra_mcu_registers_generated::{usb_combo, usb_dev0_mem, usb_dev1, usb_dev1_mem};
 use caliptra_mcu_romtime::StaticRef;
 use tock_registers::interfaces::{Readable, Writeable};
 use zerocopy::IntoBytes;
@@ -34,6 +37,95 @@ const IMPLEMENTED_INTERRUPTS: u32 = 0xc000_ffff;
 const DEFAULT_ULPI_POLL_LIMIT: u32 = 1_000_000;
 const KEEP_PHY_CLOCK: u32 = usb_combo::bits::DevcmdstatT::ForceNeedclk::SET.value;
 
+// Test-only identity; Device 1 does not advertise OCP recovery functionality.
+const DEVICE1_DESCRIPTOR: DeviceDescriptor =
+    DeviceDescriptor::ocp(0x0200, 0x0000, 0x0001, 0x0100, 0, 0, 0);
+const DEVICE1_CONFIGURATION: [u8; 18] = [
+    9, 2, 18, 0, 1, 1, 0, 0xc0, 0, // Self-powered configuration, one interface.
+    9, 4, 0, 0, 0, 0xff, 0, 0, 0, // Vendor-specific interface, EP0 only.
+];
+const DEVICE1_QUALIFIER: [u8; 10] = [10, 6, 0, 2, 0, 0, 0, 64, 1, 0];
+
+#[derive(Clone, Copy)]
+enum DeviceController {
+    Device0 {
+        regs: StaticRef<usb_combo::regs::UsbCombo>,
+        memory: StaticRef<usb_dev0_mem::regs::UsbDev0Mem>,
+    },
+    Device1 {
+        regs: StaticRef<usb_dev1::regs::UsbDev1>,
+        memory: StaticRef<usb_dev1_mem::regs::UsbDev1Mem>,
+    },
+}
+
+impl DeviceController {
+    fn number(&self) -> u8 {
+        match self {
+            Self::Device0 { .. } => 0,
+            Self::Device1 { .. } => 1,
+        }
+    }
+
+    // Both controllers implement the same DEVCMDSTAT and interrupt bit layout.
+    fn command_status(&self) -> u32 {
+        match self {
+            Self::Device0 { regs, .. } => regs.dev0_csr_devcmdstat.get(),
+            Self::Device1 { regs, .. } => regs.devcmdstat.get(),
+        }
+    }
+
+    fn set_command_status(&self, value: u32) {
+        match self {
+            Self::Device0 { regs, .. } => regs.dev0_csr_devcmdstat.set(value),
+            Self::Device1 { regs, .. } => regs.devcmdstat.set(value),
+        }
+    }
+
+    fn set_interrupt_enable(&self, value: u32) {
+        match self {
+            Self::Device0 { regs, .. } => regs.dev0_csr_inten.set(value),
+            Self::Device1 { regs, .. } => regs.inten.set(value),
+        }
+    }
+
+    fn clear_interrupts(&self, value: u32) {
+        match self {
+            Self::Device0 { regs, .. } => regs.dev0_csr_intstat.set(value),
+            Self::Device1 { regs, .. } => regs.intstat.set(value),
+        }
+    }
+
+    fn initialize(&self) {
+        self.set_command_status(KEEP_PHY_CLOCK);
+        self.set_interrupt_enable(0);
+        self.clear_interrupts(IMPLEMENTED_INTERRUPTS);
+        match self {
+            Self::Device0 { regs, .. } => {
+                regs.dev0_csr_epliststart.set(0);
+                regs.dev0_csr_databufstart.set(0);
+            }
+            Self::Device1 { regs, .. } => {
+                regs.epliststart.set(0);
+                regs.databufstart.set(0);
+            }
+        }
+    }
+
+    fn read_memory_word(&self, index: usize) -> u32 {
+        match self {
+            Self::Device0 { memory, .. } => memory.usb_dev0_mem[index].get(),
+            Self::Device1 { memory, .. } => memory.usb_dev1_mem[index].get(),
+        }
+    }
+
+    fn write_memory_word(&self, index: usize, value: u32) {
+        match self {
+            Self::Device0 { memory, .. } => memory.usb_dev0_mem[index].set(value),
+            Self::Device1 { memory, .. } => memory.usb_dev1_mem[index].set(value),
+        }
+    }
+}
+
 const USB3320_VENDOR_ID: [u8; 2] = [0x24, 0x04];
 const USB3320_PRODUCT_ID: [u8; 2] = [0x07, 0x00];
 const USB3320_FUNCTION_CTRL: u8 = 0x04;
@@ -53,7 +145,7 @@ pub enum LpcipUsbError {
 
 pub struct LpcipUsbDriver {
     regs: StaticRef<usb_combo::regs::UsbCombo>,
-    memory: StaticRef<usb_dev0_mem::regs::UsbDev0Mem>,
+    controller: DeviceController,
     poll_limit: Option<u32>,
 }
 
@@ -64,7 +156,7 @@ impl LpcipUsbDriver {
     ) -> Self {
         Self {
             regs,
-            memory,
+            controller: DeviceController::Device0 { regs, memory },
             poll_limit: None,
         }
     }
@@ -72,6 +164,37 @@ impl LpcipUsbDriver {
     pub const fn with_poll_limit(mut self, poll_limit: u32) -> Self {
         self.poll_limit = Some(poll_limit);
         self
+    }
+
+    /// Enumerate Device 0 before connecting Device 1 on the second hub port.
+    ///
+    /// Device 1 must be accessible to the MCU. Its descriptors are for hub
+    /// testing only, not a second OCP recovery interface. The shared PHY and
+    /// hub are initialized only once; Device 0 stays connected throughout.
+    pub fn init_and_enumerate_with_device1(
+        &mut self,
+        regs: StaticRef<usb_dev1::regs::UsbDev1>,
+        memory: StaticRef<usb_dev1_mem::regs::UsbDev1Mem>,
+    ) -> Result<(), LpcipUsbError> {
+        let controller = DeviceController::Device1 { regs, memory };
+        caliptra_mcu_romtime::println!(
+            "[usb] Keeping Device 1 disabled until Device 0 is configured"
+        );
+        controller.set_command_status(KEEP_PHY_CLOCK);
+        controller.set_interrupt_enable(0);
+        self.init_and_enumerate()?;
+
+        let device1 = Self {
+            regs: self.regs,
+            controller,
+            poll_limit: self.poll_limit,
+        };
+        caliptra_mcu_romtime::println!("[usb] Initializing Device 1");
+        device1.initialize_endpoints();
+        device1.enable_interrupts();
+        caliptra_mcu_romtime::println!("[usb] Connecting Device 1");
+        device1.connect();
+        device1.enumerate()
     }
 
     /// Print the Device 0 controller registers and readable USB3320 registers.
@@ -192,16 +315,25 @@ impl LpcipUsbDriver {
         self.enable_interrupts();
         caliptra_mcu_romtime::println!("[usb] Connecting Device 0");
         self.connect();
-        caliptra_mcu_romtime::println!("[usb] Waiting for USB bus reset");
+        self.enumerate()
+    }
+
+    fn enumerate(&self) -> Result<(), LpcipUsbError> {
+        let device = self.controller.number();
+        caliptra_mcu_romtime::println!("[usb] Device {}: waiting for USB bus reset", device);
         self.wait_for_bus_reset()?;
-        caliptra_mcu_romtime::println!("[usb] Servicing EP0 enumeration requests");
+        caliptra_mcu_romtime::println!(
+            "[usb] Device {}: servicing EP0 enumeration requests",
+            device
+        );
 
         loop {
             self.wait_for_setup()?;
             let setup = self.read_setup();
             let raw = setup.as_bytes();
             caliptra_mcu_romtime::println!(
-                "[usb] SETUP {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}",
+                "[usb] Device {} SETUP {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x} {:02x}",
+                device,
                 raw[0],
                 raw[1],
                 raw[2],
@@ -224,7 +356,10 @@ impl LpcipUsbDriver {
                         continue;
                     }
                     self.send_zlp_in()?;
-                    caliptra_mcu_romtime::println!("[usb] EP0 enumeration complete");
+                    caliptra_mcu_romtime::println!(
+                        "[usb] EP0 enumeration complete (Device {})",
+                        device
+                    );
                     return Ok(());
                 }
                 Some(StandardRequest::GetConfiguration) => {
@@ -499,12 +634,12 @@ impl LpcipUsbDriver {
     }
 
     fn disconnect_and_initialize(&self) {
-        self.regs.dev0_csr_devcmdstat.set(KEEP_PHY_CLOCK);
-        self.regs.dev0_csr_inten.set(0);
-        self.regs.dev0_csr_intstat.set(IMPLEMENTED_INTERRUPTS);
-        self.regs.dev0_csr_epliststart.set(0);
-        self.regs.dev0_csr_databufstart.set(0);
+        self.regs.hub_control.set(1);
+        self.initialize_endpoints();
+    }
 
+    fn initialize_endpoints(&self) {
+        self.controller.initialize();
         for descriptor in 0..DESCRIPTOR_COUNT {
             self.write_memory_word(descriptor, 0);
         }
@@ -523,15 +658,21 @@ impl LpcipUsbDriver {
     }
 
     fn enable_interrupts(&self) {
-        self.regs.dev0_csr_inten.set(
+        self.controller.set_interrupt_enable(
             usb_combo::bits::IntenT::EpIntEn.val(0x3).value
                 | usb_combo::bits::IntenT::DevIntEn::SET.value,
         );
-        self.regs.dev0_csr_intstat.set(IMPLEMENTED_INTERRUPTS);
+        self.controller.clear_interrupts(IMPLEMENTED_INTERRUPTS);
     }
 
     fn connect(&self) {
-        self.regs.dev0_csr_devcmdstat.set(
+        if matches!(self.controller, DeviceController::Device0 { .. }) {
+            self.regs.hub_control.set(
+                usb_combo::bits::Control::Enable::SET.value
+                    | usb_combo::bits::Control::Dcon::SET.value,
+            );
+        }
+        self.controller.set_command_status(
             KEEP_PHY_CLOCK
                 | usb_combo::bits::DevcmdstatT::DevEn::SET.value
                 | usb_combo::bits::DevcmdstatT::Dcon::SET.value,
@@ -540,34 +681,29 @@ impl LpcipUsbDriver {
 
     fn wait_for_bus_reset(&self) -> Result<(), LpcipUsbError> {
         self.wait_until(|| {
-            self.regs
-                .dev0_csr_devcmdstat
-                .is_set(usb_combo::bits::DevcmdstatT::DresC)
+            self.controller.command_status() & usb_combo::bits::DevcmdstatT::DresC::SET.value != 0
         })?;
-        self.regs.dev0_csr_devcmdstat.set(
+        self.controller.set_command_status(
             KEEP_PHY_CLOCK
                 | usb_combo::bits::DevcmdstatT::DevEn::SET.value
                 | usb_combo::bits::DevcmdstatT::Dcon::SET.value
                 | usb_combo::bits::DevcmdstatT::DresC::SET.value,
         );
-        self.regs
-            .dev0_csr_intstat
-            .set(usb_combo::bits::IntstatT::DevInt::SET.value);
+        self.controller
+            .clear_interrupts(usb_combo::bits::IntstatT::DevInt::SET.value);
         Ok(())
     }
 
     fn wait_for_setup(&self) -> Result<(), LpcipUsbError> {
         self.wait_until(|| {
-            self.regs
-                .dev0_csr_devcmdstat
-                .is_set(usb_combo::bits::DevcmdstatT::Setup)
+            self.controller.command_status() & usb_combo::bits::DevcmdstatT::Setup::SET.value != 0
         })
     }
 
     fn clear_setup_received(&self) {
         let value =
-            self.regs.dev0_csr_devcmdstat.get() | usb_combo::bits::DevcmdstatT::Setup::SET.value;
-        self.regs.dev0_csr_devcmdstat.set(value);
+            self.controller.command_status() | usb_combo::bits::DevcmdstatT::Setup::SET.value;
+        self.controller.set_command_status(value);
         self.clear_endpoint_interrupt(EP0_OUT_DESCRIPTOR);
     }
 
@@ -583,6 +719,27 @@ impl LpcipUsbDriver {
     }
 
     fn send_descriptor(&self, setup: &SetupPacket) -> Result<(), LpcipUsbError> {
+        if matches!(self.controller, DeviceController::Device1 { .. }) {
+            let requested = setup.data_length() as usize;
+            if setup.descriptor_index() != 0 {
+                self.stall_ep0();
+                return Ok(());
+            }
+            return match setup.w_value[1] {
+                1 => self.send_control_read(DEVICE1_DESCRIPTOR.as_bytes(), requested),
+                2 => self.send_control_read(&DEVICE1_CONFIGURATION, requested),
+                6 => self.send_control_read(&DEVICE1_QUALIFIER, requested),
+                7 => {
+                    let mut descriptor = DEVICE1_CONFIGURATION;
+                    descriptor[1] = 7;
+                    self.send_control_read(&descriptor, requested)
+                }
+                _ => {
+                    self.stall_ep0();
+                    Ok(())
+                }
+            };
+        }
         match setup.descriptor_type() {
             Some(DescriptorType::Device) => {
                 let descriptor = DeviceDescriptor::ocp(0x0200, 0x0424, 0x0007, 0x0100, 0, 0, 0);
@@ -617,11 +774,9 @@ impl LpcipUsbDriver {
 
     fn set_address(&self, setup: &SetupPacket) -> Result<(), LpcipUsbError> {
         let address = u32::from(setup.w_value[0] & 0x7f);
-        let value =
-            self.regs.dev0_csr_devcmdstat.get() & !usb_combo::bits::DevcmdstatT::DevAddr.mask;
-        self.regs
-            .dev0_csr_devcmdstat
-            .set(value | usb_combo::bits::DevcmdstatT::DevAddr.val(address).value);
+        let value = self.controller.command_status() & !usb_combo::bits::DevcmdstatT::DevAddr.mask;
+        self.controller
+            .set_command_status(value | usb_combo::bits::DevcmdstatT::DevAddr.val(address).value);
         self.send_zlp_in()
     }
 
@@ -684,7 +839,7 @@ impl LpcipUsbDriver {
             EP0_IN_DESCRIPTOR => usb_combo::bits::IntstatT::Ep0in::SET.value,
             _ => 0,
         };
-        self.regs.dev0_csr_intstat.set(interrupt);
+        self.controller.clear_interrupts(interrupt);
     }
 
     fn wait_until(&self, mut condition: impl FnMut() -> bool) -> Result<(), LpcipUsbError> {
@@ -722,17 +877,143 @@ impl LpcipUsbDriver {
     }
 
     fn read_memory_word(&self, index: usize) -> u32 {
-        self.memory.usb_dev0_mem[index].get()
+        self.controller.read_memory_word(index)
     }
 
     fn write_memory_word(&self, index: usize, value: u32) {
-        self.memory.usb_dev0_mem[index].set(value);
+        self.controller.write_memory_word(index, value);
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn test_driver() -> LpcipUsbDriver {
+        // Generated register blocks contain only integer registers and padding.
+        // Leak the allocations to satisfy StaticRef's program-duration contract.
+        let regs = Box::leak(Box::new(unsafe {
+            core::mem::zeroed::<usb_combo::regs::UsbCombo>()
+        }));
+        let memory = Box::leak(Box::new(unsafe {
+            core::mem::zeroed::<usb_dev0_mem::regs::UsbDev0Mem>()
+        }));
+        unsafe { LpcipUsbDriver::new(StaticRef::new(regs), StaticRef::new(memory)) }
+    }
+
+    fn test_device1() -> DeviceController {
+        let regs = Box::leak(Box::new(unsafe {
+            core::mem::zeroed::<usb_dev1::regs::UsbDev1>()
+        }));
+        let memory = Box::leak(Box::new(unsafe {
+            core::mem::zeroed::<usb_dev1_mem::regs::UsbDev1Mem>()
+        }));
+        DeviceController::Device1 {
+            regs: unsafe { StaticRef::new(regs) },
+            memory: unsafe { StaticRef::new(memory) },
+        }
+    }
+
+    #[test]
+    fn device1_remains_disabled_when_device0_initialization_fails() {
+        let mut driver = test_driver().with_poll_limit(0);
+        let DeviceController::Device1 { regs, memory } = test_device1() else {
+            unreachable!()
+        };
+        regs.devcmdstat.set(
+            usb_dev1::bits::DevcmdstatT::DevEn::SET.value
+                | usb_dev1::bits::DevcmdstatT::Dcon::SET.value,
+        );
+        assert_eq!(
+            driver.init_and_enumerate_with_device1(regs, memory),
+            Err(LpcipUsbError::UnsupportedPhy),
+        );
+        assert_eq!(regs.devcmdstat.get(), KEEP_PHY_CLOCK);
+        assert_eq!(regs.inten.get(), 0);
+    }
+
+    #[test]
+    fn connecting_device1_preserves_device0_and_hub() {
+        let driver = test_driver();
+        driver.disconnect_and_initialize();
+        driver.connect();
+        driver.write_memory_word(SETUP_DESCRIPTOR, 0x1234);
+        let device0_status = driver.controller.command_status();
+        let hub_control = driver.regs.hub_control.get();
+
+        let device1 = LpcipUsbDriver {
+            regs: driver.regs,
+            controller: test_device1(),
+            poll_limit: Some(0),
+        };
+        device1.initialize_endpoints();
+        device1.enable_interrupts();
+        device1.connect();
+        assert_eq!(driver.controller.command_status(), device0_status);
+        assert_eq!(driver.regs.hub_control.get(), hub_control);
+        assert_eq!(driver.read_memory_word(SETUP_DESCRIPTOR), 0x1234);
+        assert_eq!(device1.controller.command_status(), device0_status);
+        assert_eq!(
+            device1.read_memory_word(SETUP_DESCRIPTOR),
+            LpcipUsbDriver::buffer_offset(SETUP_BUFFER_OFFSET),
+        );
+        for descriptor in FIRST_GENERIC_DESCRIPTOR..DESCRIPTOR_COUNT {
+            assert_eq!(device1.read_memory_word(descriptor), DISABLED);
+        }
+        device1.controller.set_command_status(
+            device1.controller.command_status() | usb_dev1::bits::DevcmdstatT::DevAddr.val(5).value,
+        );
+        assert_eq!(driver.controller.command_status(), device0_status);
+        assert_eq!(
+            device1.controller.command_status() & usb_dev1::bits::DevcmdstatT::DevAddr.mask,
+            5,
+        );
+    }
+
+    #[test]
+    fn device1_descriptors_use_only_device1_ep0_memory() {
+        let driver = test_driver();
+        let device1 = LpcipUsbDriver {
+            regs: driver.regs,
+            controller: test_device1(),
+            poll_limit: Some(0),
+        };
+        for (descriptor_type, expected) in [
+            (1, DEVICE1_DESCRIPTOR.as_bytes()),
+            (2, DEVICE1_CONFIGURATION.as_slice()),
+            (6, DEVICE1_QUALIFIER.as_slice()),
+        ] {
+            let setup = SetupPacket {
+                bm_request_type: caliptra_mcu_ocp::usb::setup::BmRequestType(0x80),
+                b_request: 6,
+                w_value: [0, descriptor_type],
+                w_index: [0, 0],
+                w_length: 255u16.to_le(),
+            };
+            // No hardware completes the transfer; inspect the armed IN buffer.
+            assert_eq!(device1.send_descriptor(&setup), Err(LpcipUsbError::Timeout));
+            let actual: Vec<u8> = (0..expected.len().div_ceil(4))
+                .flat_map(|index| {
+                    device1
+                        .read_memory_word(IN_BUFFER_OFFSET / 4 + index)
+                        .to_le_bytes()
+                })
+                .collect();
+            assert_eq!(&actual[..expected.len()], expected);
+            assert_eq!(
+                device1.read_memory_word(EP0_IN_DESCRIPTOR),
+                LpcipUsbDriver::buffer_descriptor(IN_BUFFER_OFFSET, expected.len()) | ACTIVE,
+            );
+            assert_eq!(driver.read_memory_word(EP0_IN_DESCRIPTOR), 0);
+        }
+        assert_eq!(
+            DEVICE1_CONFIGURATION[2] as usize,
+            DEVICE1_CONFIGURATION.len()
+        );
+        assert_eq!(DEVICE1_CONFIGURATION[4], 1);
+        assert_eq!(DEVICE1_CONFIGURATION[13], 0);
+        assert_eq!(DEVICE1_CONFIGURATION[14], 0xff);
+    }
 
     #[test]
     fn buffer_offsets_are_encoded_in_64_byte_units() {

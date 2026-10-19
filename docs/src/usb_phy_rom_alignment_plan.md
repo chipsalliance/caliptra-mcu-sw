@@ -26,6 +26,37 @@ The USB3320 handles the electrical USB interface and translates it to ULPI. It d
 
 The compound controller contains Device 0, Device 1, hub support, packet memories, and hardware-assisted OCP Recovery. OCP Recovery is claimable only on Device 0 EP0. The current top-level disables hub mode, so Device 0 is the upstream device.
 
+### FPGA two-device hub bring-up
+
+The FPGA ROM `test-lpcip-usb-ocp-recovery` path now selects hub mode in software
+and enumerates its internal devices sequentially:
+
+1. Disable Device 1's controller and connection before initializing Device 0.
+2. Initialize the shared PHY and hub, connect Device 0, and service its standard
+   EP0 requests until `SET_CONFIGURATION(1)` completes.
+3. Initialize Device 1's separate endpoint list and packet buffers, enable and
+   connect it, and service its EP0 requests until it is configured.
+
+This requires MCU access to the Device 1 CSR and packet-memory windows configured
+at `0xa440_0000` and `0xa450_0000` on the FPGA. Device 1 is normally SoC-owned;
+SoC firmware must not drive it concurrently with this test. Device 0 remains
+connected, with its OCP recovery descriptors and hardware path unchanged.
+Device 1 uses a test-only VID:PID `0000:0001`, one vendor-specific interface,
+and no endpoints beyond EP0; it does not expose OCP recovery.
+
+Build with:
+
+```sh
+cargo xtask rom-build --platform fpga --features test-lpcip-usb-ocp-recovery
+```
+
+UART logs identify each device's SETUP packets and enumeration completion.
+The ROM proceeds to recovery after both devices have configured; it waits for
+Device 1 if the host does not configure it. This is an initial-enumeration test,
+not a persistent Device 1 function driver: later requests and re-enumeration
+after a reset are not serviced once this routine returns. The emulator ROM
+retains its Device 0-only path because its Device 1 model is a register stub.
+
 ## Current gaps
 
 ### Emulator
