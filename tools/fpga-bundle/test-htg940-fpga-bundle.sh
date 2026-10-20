@@ -11,7 +11,7 @@ program the FPGA, and run USB recovery with the bundled firmware.
 Options:
   --helper-dir PATH       Directory containing the HTG940 helper scripts
   --output-bitstream PATH Generated bitstream path (default: beside bundle)
-  --probes PATH           Vivado probes file (default: helper-dir/htg940_usb_dual_ila.ltx)
+  --probes PATH           Vivado probes file (default: helper-dir/htg940_board_top_20261020_1118.ltx)
   --device PATTERN        Vivado hardware device pattern
   --port COM_PORT         UART port (default: COM8)
   --verify-only           Verify and list the bundle without touching hardware
@@ -30,6 +30,7 @@ esac
 bundle="$1"
 shift
 helper_dir="/mnt/c/Users/marcovisaya/OneDrive - Microsoft/Desktop/htg940/marco"
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 output_bitstream=""
 probes=""
 device=""
@@ -158,7 +159,7 @@ if [[ "$verify_only" == true ]]; then
     exit 0
 fi
 
-for helper in update-htg940-roms.sh program-htg940.sh monitor-htg940.sh run-usb-recovery.sh; do
+for helper in update-htg940-roms.ps1 program-htg940.sh monitor-htg940.sh run-usb-recovery.sh; do
     [[ -f "$helper_dir/$helper" ]] || {
         echo "ERROR: Required helper does not exist: $helper_dir/$helper" >&2
         exit 2
@@ -171,8 +172,8 @@ fi
 output_bitstream="$(realpath -m -- "$output_bitstream")"
 mkdir -p -- "$(dirname -- "$output_bitstream")"
 
-if [[ -z "$probes" && -f "$helper_dir/htg940_usb_dual_ila.ltx" ]]; then
-    probes="$helper_dir/htg940_usb_dual_ila.ltx"
+if [[ -z "$probes" ]]; then
+    probes="$helper_dir/htg940_board_top_20261020_1118.ltx"
 fi
 if [[ -n "$probes" && ! -f "$probes" ]]; then
     echo "ERROR: Probes file does not exist: $probes" >&2
@@ -183,10 +184,11 @@ uart_log="${output_bitstream%.bit}.uart.log"
 recovery_log="${output_bitstream%.bit}.recovery.log"
 
 echo "Creating bitstream: $output_bitstream"
-bash "$helper_dir/update-htg940-roms.sh" \
+bash "$script_dir/update-htg940-roms.sh" \
     "$extract_dir/caliptra_rom.bin" \
     "$extract_dir/mcu_rom.bin" \
-    "$output_bitstream"
+    "$output_bitstream" \
+    "$helper_dir"
 
 program_args=("$output_bitstream")
 if [[ -n "$probes" ]]; then

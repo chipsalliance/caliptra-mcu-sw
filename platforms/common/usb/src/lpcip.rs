@@ -16,6 +16,9 @@ use caliptra_mcu_romtime::StaticRef;
 use tock_registers::interfaces::{Readable, Writeable};
 use zerocopy::IntoBytes;
 
+#[cfg(feature = "usb-compliance")]
+mod compliance;
+
 const MAX_TRANSFER_SIZE: u16 = 64;
 
 const EP0_OUT_DESCRIPTOR: usize = 0;
@@ -889,7 +892,7 @@ impl LpcipUsbDriver {
 mod tests {
     use super::*;
 
-    fn test_driver() -> LpcipUsbDriver {
+    pub(super) fn test_driver() -> LpcipUsbDriver {
         // Generated register blocks contain only integer registers and padding.
         // Leak the allocations to satisfy StaticRef's program-duration contract.
         let regs = Box::leak(Box::new(unsafe {
@@ -901,7 +904,7 @@ mod tests {
         unsafe { LpcipUsbDriver::new(StaticRef::new(regs), StaticRef::new(memory)) }
     }
 
-    fn test_device1() -> DeviceController {
+    pub(super) fn test_device1() -> DeviceController {
         let regs = Box::leak(Box::new(unsafe {
             core::mem::zeroed::<usb_dev1::regs::UsbDev1>()
         }));

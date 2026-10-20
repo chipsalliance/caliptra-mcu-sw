@@ -59,6 +59,63 @@ retains its Device 0-only path because its Device 1 model is a register stub.
 
 ## Current gaps
 
+### FPGA persistent device-framework test ROM
+
+Build the standalone compliance-test mode with:
+
+```sh
+cargo xtask rom-build --platform fpga --features test-lpcip-usb-compliance
+```
+
+The resulting image is
+`target/riscv32imc-unknown-none-elf/release/caliptra-mcu-rom-fpga-test-lpcip-usb-compliance.bin`.
+Use this image for the MCU ROM input to the existing bitstream ROM-update helper.
+Do not combine this feature with `test-lpcip-usb-ocp-recovery`.
+
+Unlike the recovery ROM, this mode connects both internal devices and remains
+in ROM indefinitely. Neither the host's initial configuration nor a later
+configuration change ends the service loop. It does not boot MCU runtime,
+release Caliptra for recovery boot, or run OCP recovery. Firmware disables the
+hardware OCP EP0 claim path so unsupported class/vendor requests reach software
+and receive STALL instead of being consumed by recovery hardware.
+
+Each device has an independent nonblocking EP0 state machine. The loop polls
+both controllers, handles bus/port resets and VBUS loss, and cancels interrupted
+transfers through EPSKIP before reusing packet buffers. Device addresses and
+configurations are independent and reset to zero on reset or cable removal.
+Pending address/configuration changes commit after the IN status stage.
+There is no Device 0-before-Device 1 enumeration requirement in this mode.
+
+Supported standard requests include device, configuration, other-speed,
+device-qualifier and supported string descriptors; GET/SET_CONFIGURATION
+(including configuration zero); recipient-specific GET_STATUS; and
+GET/SET_INTERFACE for the single alternate setting. Unsupported requests and
+invalid recipients, values, indices, lengths or states receive STALL. A new
+SETUP recovers from STALL. The advertised devices have no non-control endpoints
+and do not advertise remote wakeup.
+
+The initial implementation retains the existing descriptor identities:
+Device 0 `0424:0007` with its OCP interface descriptors, and Device 1 `0000:0001`
+with a vendor-specific interface. These are bring-up identities, not authorized
+production VID/PID assignments; in particular, VID zero is not a valid assigned
+vendor ID. The retained OCP descriptors do not imply functional OCP recovery in
+this test mode.
+
+This is a framework-testing aid, not a claim of USB-IF certification. Hub
+descriptors, hub requests, suspend/resume signaling and electrical behavior
+remain hardware responsibilities. In the compound RTL, hub mode selects the
+hub EP0 PHY-test-mode signal and Device 1's test-mode output is unconnected;
+the ROM therefore stalls device-directed SET_FEATURE(TEST_MODE) rather than
+acknowledging an ineffective register write. Electrical test-mode coverage
+requires the hub/hardware path. The framework suite's reports should guide
+further work, including any hardware-dependent feature tests.
+
+UART reports the persistent-service banner, resets, configuration changes,
+unsupported requests and stuck-transfer timeouts. Start the test suite after
+the banner; initial host enumeration does not require restarting this ROM.
+Device 1 is not modeled functionally by the current emulator, so two-device
+hardware behavior and cable reconnection must still be verified on FPGA.
+
 ### Emulator
 
 The Linux integration path already exercises:

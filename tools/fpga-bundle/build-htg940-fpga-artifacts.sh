@@ -10,6 +10,7 @@ Build the five binary artifacts used by the HTG940 USB recovery test.
 Options:
   --mcu-repo PATH       Caliptra MCU workspace
   --caliptra-repo PATH  Caliptra core workspace
+  --compliance         Build only Caliptra ROM and persistent USB compliance MCU ROM
   -h, --help            Show this help
 EOF
 }
@@ -17,6 +18,7 @@ EOF
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 mcu_repo="$(cd -- "$script_dir/../.." && pwd)"
 caliptra_repo="$mcu_repo/caliptra-sw"
+compliance=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -29,6 +31,10 @@ while [[ $# -gt 0 ]]; do
             [[ $# -ge 2 ]] || { usage; exit 2; }
             caliptra_repo="$2"
             shift 2
+            ;;
+        --compliance)
+            compliance=true
+            shift
             ;;
         -h|--help)
             usage
@@ -61,7 +67,11 @@ caliptra_repo="$(realpath -- "$caliptra_repo")"
 }
 
 caliptra_rom="$caliptra_repo/target/riscv32imc-unknown-none-elf/firmware/caliptra-fpga-rom.bin"
-mcu_rom="$mcu_repo/target/riscv32imc-unknown-none-elf/release/caliptra-mcu-rom-fpga-test-lpcip-usb-ocp-recovery.bin"
+mcu_feature=test-lpcip-usb-ocp-recovery
+if [[ "$compliance" == true ]]; then
+    mcu_feature=test-lpcip-usb-compliance
+fi
+mcu_rom="$mcu_repo/target/riscv32imc-unknown-none-elf/release/caliptra-mcu-rom-fpga-$mcu_feature.bin"
 recovery_zip="$mcu_repo/target/usb-recovery-minimal.zip"
 
 echo "Building Caliptra FPGA ROM"
@@ -72,7 +82,7 @@ echo "Building Caliptra FPGA ROM"
         "$caliptra_rom"
 )
 
-echo "Building MCU FPGA USB recovery ROM"
+echo "Building MCU FPGA ROM: $mcu_feature"
 (
     cd "$mcu_repo"
     # ROM dynamic sizing also builds runtime apps. Do not reuse generated
@@ -83,8 +93,20 @@ echo "Building MCU FPGA USB recovery ROM"
         "$mcu_repo/target/generated/soc_image_descriptors.toml"
     cargo xtask rom-build \
         --platform fpga \
-        --features test-lpcip-usb-ocp-recovery
+        --features "$mcu_feature"
 )
+
+if [[ "$compliance" == true ]]; then
+    for artifact in "$caliptra_rom" "$mcu_rom"; do
+        [[ -s "$artifact" ]] || {
+            echo "ERROR: Build did not produce a nonempty artifact: $artifact" >&2
+            exit 1
+        }
+    done
+    sha384sum "$caliptra_rom" "$mcu_rom"
+    echo "Compliance ROMs built successfully (no recovery runtime bundle)."
+    exit 0
+fi
 
 echo "Building Caliptra FMC/runtime, SoC manifest, and MCU runtime"
 (

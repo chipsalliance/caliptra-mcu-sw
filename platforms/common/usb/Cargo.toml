@@ -6,6 +6,9 @@ version.workspace = true
 authors.workspace = true
 edition.workspace = true
 
+[features]
+usb-compliance = []
+
 [dependencies]
 caliptra-mcu-ocp.workspace = true
 caliptra-mcu-registers-generated.workspace = true

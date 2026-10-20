@@ -12,7 +12,7 @@ bash ./update-htg940-roms.sh \
 
 2. Programming the bitstream to FPGA:
 
-bash ./program-htg940.sh ./htg940_bit28.bit htg940_usb_dual_ila.ltx
+bash ./program-htg940.sh ./htg940_bit28.bit htg940_board_top_20261020_1118.ltx
 
 3. Monitor serial port
 
@@ -99,3 +99,23 @@ bash ./restart-htg940-serial.sh
 Stop the watcher from WSL (or press Ctrl+C in its PowerShell window):
 
 bash ./restart-htg940-serial.sh --stop
+
+11. Persistent USB compliance ROM and bitstream (no recovery/runtime boot):
+
+From the MCU repository:
+
+bash tools/fpga-bundle/build-htg940-fpga-artifacts.sh --compliance
+
+bash tools/fpga-bundle/update-htg940-roms.sh \
+  caliptra-sw/target/riscv32imc-unknown-none-elf/firmware/caliptra-fpga-rom.bin \
+  target/riscv32imc-unknown-none-elf/release/caliptra-mcu-rom-fpga-test-lpcip-usb-compliance.bin \
+  "/mnt/c/Users/marcovisaya/OneDrive - Microsoft/Desktop/htg940/marco/htg940-usb-compliance-NEW.bit"
+
+The updater patches ROM contents only, using the matching implementation pair:
+  htg940_final_roms_20261020_1118.bit
+  htg940_board_top_20261020_1118.mmi
+Program with matching probes htg940_board_top_20261020_1118.ltx.
+Choose a new output name for each update; existing outputs are not overwritten.
+The optional fourth updater argument overrides the Windows helper directory.
+The default artifact build and bundle test remain OCP recovery flows; do not
+use the recovery test runner to test a compliance ROM.

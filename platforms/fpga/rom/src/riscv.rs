@@ -29,6 +29,12 @@ use caliptra_mcu_romtime::{
     LifecycleControllerState, LifecycleHashedToken, LifecycleHashedTokens, LifecycleToken,
 };
 
+#[cfg(all(
+    feature = "test-lpcip-usb-compliance",
+    feature = "test-lpcip-usb-ocp-recovery"
+))]
+compile_error!("USB compliance and OCP recovery ROM modes are mutually exclusive");
+
 /// Example `RomHooks` implementation for the FPGA platform. Emits a
 /// distinctive tagged log line for each milestone and records which
 /// hooks fired as a bitmask in `mci_reg_fw_extended_error_info[0]` so a
@@ -189,7 +195,10 @@ pub extern "C" fn rom_entry() -> ! {
 
     caliptra_mcu_romtime::println!("[mcu-rom] Starting FPGA MCU ROM");
 
-    #[cfg(feature = "test-lpcip-usb-ocp-recovery")]
+    #[cfg(any(
+        feature = "test-lpcip-usb-ocp-recovery",
+        feature = "test-lpcip-usb-compliance"
+    ))]
     {
         use caliptra_mcu_registers_generated::{usb_combo, usb_dev0_mem, usb_dev1, usb_dev1_mem};
         use caliptra_mcu_romtime::{Mci, McuResetReason, StaticRef};
@@ -204,7 +213,9 @@ pub extern "C" fn rom_entry() -> ! {
         let mci = Mci::new(mci_regs);
         mci.disable_wdt();
         caliptra_mcu_romtime::println!("[mcu-rom] Disabled retained MCU watchdog");
-        if mci.reset_reason_enum() == McuResetReason::ColdBoot {
+        if cfg!(feature = "test-lpcip-usb-compliance")
+            || mci.reset_reason_enum() == McuResetReason::ColdBoot
+        {
             let usb_regs = unsafe {
                 StaticRef::new(
                     caliptra_mcu_config_fpga::FPGA_USB_COMBO_ADDR
@@ -248,8 +259,12 @@ pub extern "C" fn rom_entry() -> ! {
                             );
                         }
             */
+            #[cfg(not(feature = "test-lpcip-usb-compliance"))]
             let result =
                 usb_driver.init_and_enumerate_with_device1(usb_device1_regs, usb_device1_memory);
+            #[cfg(feature = "test-lpcip-usb-compliance")]
+            let result = usb_driver
+                .run_compliance(usb_device1_regs, usb_device1_memory);
 //            usb_driver.dump_registers();
             if let Err(error) = result {
                 caliptra_mcu_romtime::println!("[usb] Hub/device enumeration failed: {:?}", error);
