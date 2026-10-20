@@ -59,6 +59,11 @@ unzip -o target/usb-recovery-minimal.zip \
 
 bash tools/fpga-bundle/build-htg940-fpga-artifacts.sh
 
+The build helper clears target/generated/attestation_manifest.toml and
+target/generated/soc_image_descriptors.toml before MCU ROM sizing, then all-build
+regenerates both for this bundle. This prevents stale configs from other builds
+causing a firmware-ID mismatch in the user-app build script.
+
 9. Package the five FPGA test artifacts:
 
 bash tools/fpga-bundle/create-htg940-fpga-bundle.sh \

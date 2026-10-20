@@ -42,7 +42,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-for command in cargo sed sha384sum unzip; do
+for command in cargo rm sed sha384sum unzip; do
     command -v "$command" >/dev/null 2>&1 || {
         echo "ERROR: Required command is not installed: $command" >&2
         exit 2
@@ -75,6 +75,12 @@ echo "Building Caliptra FPGA ROM"
 echo "Building MCU FPGA USB recovery ROM"
 (
     cd "$mcu_repo"
+    # ROM dynamic sizing also builds runtime apps. Do not reuse generated
+    # configs from another build; all-build regenerates this pair below.
+    echo "Clearing generated attestation/SoC image configs before ROM sizing"
+    rm -f -- \
+        "$mcu_repo/target/generated/attestation_manifest.toml" \
+        "$mcu_repo/target/generated/soc_image_descriptors.toml"
     cargo xtask rom-build \
         --platform fpga \
         --features test-lpcip-usb-ocp-recovery
