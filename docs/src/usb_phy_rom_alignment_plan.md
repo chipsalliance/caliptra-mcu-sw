@@ -59,7 +59,21 @@ retains its Device 0-only path because its Device 1 model is a register stub.
 
 ## Current gaps
 
+The production target is persistent standard-request service **in the OCP
+recovery ROM itself**, with OCP hardware claims enabled. The separate compliance
+mode below is a bring-up aid, not a substitute for that integration. ROM
+compliance testing covers the hub and Device 0 only; Device 1 remains disabled
+and outside ROM's service scope. ROM must not wait for Device 1 enumeration or
+configuration. Runtime compliance testing is separate. The
+[unified ROM service flow](./usb_recovery_emulation.md#95-target-persistent-usb-service-in-the-ocp-recovery-rom)
+and [interruption-handling flow](./usb_recovery_emulation.md#96-target-interruption-reset-and-error-recovery)
+describe the proposed behavior and outstanding restart/handoff policy decisions.
+
 ### FPGA persistent device-framework test ROM
+
+The existing diagnostic mode described here enables both devices in ROM. That
+development behavior predates the ROM scope decision above and is not the target
+production ROM compliance configuration.
 
 Build the standalone compliance-test mode with:
 

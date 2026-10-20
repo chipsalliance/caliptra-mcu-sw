@@ -596,6 +596,185 @@ USB OCP Recovery is an `ImageProvider`, not a replacement for ROM boot policy. `
 
 The recovery interface must remain independent of corrupt mutable flash. Static descriptors, the EP0 driver, minimum OCP commands, CMS staging, and reset handling must fit in the trusted boot environment needed to perform recovery.
 
+### 9.5 Target: persistent USB service in the OCP recovery ROM
+
+**Design target, not a description of completed production functionality.**
+The same OCP recovery ROM image must support standard USB device-framework
+testing and recovery traffic throughout the period in which ROM owns USB.
+The development recovery path currently stops software enumeration service,
+whereas the separate compliance-test mode provides persistent service with OCP
+hardware claims disabled. Neither alone implements the combined flow below.
+Passing tests with the compliance-only image does not validate the recovery
+image's behavior.
+
+ROM compliance testing covers the hub and Device 0, using the OCP recovery ROM.
+Device 1 remains disabled; ROM does not enumerate, service or wait for it.
+This is the agreed target scope, not the behavior of the existing development
+test modes. Runtime compliance testing is separate; Device 1 behavior outside
+ROM is out of scope for this design.
+
+There is no "ordinary host versus recovery host" detection step. The host can
+enumerate, issue standard requests, start recovery, reset a port, and issue
+more standard requests in the same connection. Dispatch follows request type,
+recipient and current protocol state, not host identity or an assumption that
+enumeration happens only once.
+
+#### Initialization and cooperative service loop
+
+```mermaid
+flowchart TD
+    Boot["Enter ROM USB recovery policy"]
+    Init["Establish controller ownership and MMIO access<br/>Initialize clocks, PHY and Device 0 endpoint memory<br/>Leave Device 1 disabled"]
+    InitOK{"Initialization successful?"}
+    InitFail["Report failure<br/>Bounded retry or platform reset per boot policy"]
+    Attach{"VBUS present and PHY ready?"}
+    Connect["Connect hub and Device 0<br/>Enable OCP claim routing on Device 0"]
+    Loop["Poll or dispatch a bounded amount of work<br/>for Device 0 and the recovery engine"]
+    Event{"Reset, disconnect or fault pending?"}
+    Recover["Run interruption handling<br/>See recovery flow below"]
+    EP0["Process Device 0 standard EP0 requests and transfers"]
+    OCP["Advance OCP hardware state, FIFO and image loading<br/>with bounded work and explicit ownership"]
+    Ready{"Required images authenticated<br/>and boot policy satisfied?"}
+    Handoff{"USB ownership transition ready?"}
+    Transfer["Transfer USB state and ownership to runtime<br/>or deliberately disconnect before handoff"]
+    Run["Continue boot into MCU Runtime"]
+
+    Boot --> Init --> InitOK
+    InitOK -->|No| InitFail
+    InitFail -->|Retry permitted| Init
+    InitFail -->|Reset required| Boot
+    InitOK -->|Yes| Attach
+    Attach -->|No| Attach
+    Attach -->|Yes| Connect --> Loop --> Event
+    Event -->|Yes| Recover
+    Recover -->|Link or PHY not ready| Attach
+    Recover -->|Safe to continue USB service| Loop
+    Recover -->|Platform reset required| Boot
+    Event -->|No| EP0 --> OCP --> Ready
+    Ready -->|No| Loop
+    Ready -->|Yes| Handoff
+    Handoff -->|No: keep servicing| Loop
+    Handoff -->|Yes| Transfer --> Run
+```
+
+The VBUS-wait state must still observe platform faults, reset requests and the
+selected watchdog/boot timeout policy. It must not spin forever on a failed PHY
+without a diagnosable outcome. Likewise, "bounded work" means that waiting for
+an image, FIFO data, DMA completion, or an EP0 status stage cannot starve
+the other service paths. An interrupt-driven
+implementation is also acceptable; interrupts do not by themselves solve a
+blocking image-loading call.
+
+ROM neither waits for nor services Device 1. Its service loop covers only
+Device 0 and recovery, with hub protocol handling provided by hardware.
+
+#### Request and hardware ownership
+
+| Input | Owner and response |
+| --- | --- |
+| Hub descriptors, hub class requests and downstream port changes | Hub hardware; ROM must not process them as Device 0 requests. Validate the hub path as part of the same system. |
+| Standard requests addressed to Device 0 during ROM | ROM's persistent Device 0 EP0 state machine, including after initial configuration. |
+| Supported Device 0 OCP requests | OCP recovery hardware owns framing and FIFO ingress; ROM coordinates recovery state and the downstream image consumer. |
+| Unsupported or invalid requests | The owner returns the specified protocol error or STALL. "Handle all packets" does not mean accept every request. |
+| Link retries, CRC/PID errors and physical signaling | Controller/PHY hardware performs protocol-level handling; ROM reacts to exposed fault/status events where required. |
+| Reset, detach, suspend/resume or transfer cancellation | Hardware and firmware coordinate the affected controller, EP0 transfer and recovery session state. |
+
+Do not disable OCP claims merely to make standard requests responsive. Standard
+requests and OCP commands must remain correctly routed while recovery is
+enabled. Firmware must never overwrite a descriptor or buffer owned by DMA or
+the OCP engine. A host may abandon or replace a transfer at any stage.
+
+### 9.6 Target: interruption, reset and error recovery
+
+USB transport recovery and image recovery are related but distinct. A USB bus
+reset resets the affected device's USB address/configuration; it does not
+automatically reset the MCU, erase an image destination, or roll back Caliptra's
+authentication state. A PHY reset is a different event and affects the shared
+link and upstream hub. During ROM, restore hub/Device 0 operation while leaving
+Device 1 disabled.
+
+```mermaid
+flowchart TD
+    Fault["Observe event and record affected scope<br/>Device, port, shared link, PHY or recovery engine"]
+    Kind{"Event type?"}
+    Suspend["Suspend or resume<br/>Preserve address/configuration<br/>Honor link-power rules and pause relevant timers"]
+    Supersede["New SETUP or host cancellation<br/>Cancel the affected transfer through its owner"]
+    Reset["Bus or port reset<br/>Quiesce affected transfer owners<br/>Reset that device's USB protocol state"]
+    Detach["VBUS loss or cable disconnect<br/>Stop active transfers across the lost link<br/>Invalidate connection state"]
+    Phy["PHY access failure or detected PHY reset<br/>Quiesce shared USB traffic<br/>Reinitialize PHY/controller as required"]
+    Error["OCP protocol error, DMA failure or timeout<br/>Abort the affected operation and report status"]
+    Session{"OCP session or image transfer affected?"}
+    Local["Clear stale completion and transfer state<br/>Rearm supported requests after ownership is released"]
+    Abort["Coordinate OCP claim abort and FIFO cleanup<br/>Stop or reconcile downstream DMA/image loading"]
+    Safe{"Can image state be restarted safely?"}
+    Restart["Invalidate partial image/session progress<br/>Publish failure or fresh image request when reachable"]
+    Escalate["Report terminal failure<br/>Use defined Caliptra/subsystem reset or fallback policy"]
+    Link{"Link and controller ready?"}
+    Wait["Wait for attach or complete bounded PHY recovery<br/>Re-enumerate affected devices when required"]
+    Serve["Return to persistent USB and recovery service"]
+
+    Fault --> Kind
+    Kind -->|Suspend or resume| Suspend --> Serve
+    Kind -->|Superseding SETUP or cancellation| Supersede --> Session
+    Kind -->|Bus or port reset| Reset --> Session
+    Kind -->|Disconnect| Detach --> Session
+    Kind -->|PHY reset or fault| Phy --> Session
+    Kind -->|Recovery error| Error --> Session
+    Session -->|No| Local --> Link
+    Session -->|Yes| Abort --> Safe
+    Safe -->|Yes| Restart --> Local
+    Safe -->|No or uncertain| Escalate
+    Link -->|Yes| Serve
+    Link -->|No| Wait
+    Wait -->|Ready| Serve
+    Wait -->|Recovery exhausted| Escalate
+```
+
+Cleanup is asynchronous where hardware requires it: wait for cancellation or
+DMA ownership release through the service loop before reusing memory.
+Cancellation completion must not be mistaken for a successfully ACKed status
+stage, image completion, or activation.
+
+#### Event-specific requirements
+
+| Event | USB state handling | OCP/image handling |
+| --- | --- | --- |
+| New SETUP during an existing standard transfer | Cancel the superseded transfer, release buffers safely and dispatch the latest SETUP; do not commit an abandoned address/configuration change. | Preserve unrelated OCP progress. If an OCP-owned transfer is interrupted, use its documented abort/error semantics. |
+| Bus reset or downstream port reset | Restore the affected device to Default state; clear address, configuration, pending EP0 state and stale completion indications according to RTL semantics. During ROM, Device 1 remains disabled and requires no software transfer handling. | Determine whether Device 0's active recovery transaction was affected. Do not assume reset also reset the FIFO or downstream consumer. |
+| Cable removal / VBUS loss | Quiesce transfers across the shared link and invalidate connection state. On reconnect, restore the appropriate hardware state and accept fresh enumeration without requiring a user-triggered MCU reset when safe. | Cancel or reconcile partial recovery and image loading before accepting a new session. Do not continue a partial image solely because some bytes remain buffered. |
+| PHY reset or persistent ULPI fault | Distinguish a real PHY reset from a USB bus reset. Reapply required PHY configuration and restore controller/hub state as needed, with bounded retries and platform reset support. | Treat shared-path disruption as potentially affecting the active recovery session. Reinitializing the PHY alone does not prove that image state is safe. |
+| Suspend / resume | Preserve address/configuration and honor hardware power-state behavior. Do not advertise or initiate remote wakeup unless implemented and permitted. | Do not treat normal suspend as image corruption or immediate failure; apply a specified suspend-aware timeout policy. |
+| Malformed or unsupported standard request | Validate recipient, direction, fields, length and device state; STALL where required and recover on the next valid SETUP/reset. | Do not enter recovery merely because arbitrary class/vendor traffic is present. Preserve an unrelated valid recovery session. |
+| OCP protocol error or abandoned FIFO batch | Keep standard EP0 service responsive; use the OCP engine's specified error/STALL clearing behavior. | Publish meaningful protocol/recovery status when the link permits. Abort/reset the relevant batch and restart only at an explicitly supported image/session boundary. |
+| DMA, destination, authentication or boot-policy failure | Retain diagnostic USB availability where policy and hardware permit; otherwise disconnect or escalate explicitly. | Stop the affected load, invalidate unsafe partial state, and report the appropriate failure. Authentication or policy failures must not be bypassed by reconnecting. |
+| Recovery completes / ROM exits | Continue servicing USB until the ownership transition. Hand off a consistent controller state to runtime, or deliberately disconnect before ROM stops executing. | Complete the required image verification and activation policy before boot. Runtime must not race ROM for registers or packet buffers. |
+
+#### Decisions to settle before implementing the unified path
+
+- Define which component consumes each image and which component can cancel its
+  DMA/load operation. This includes the Caliptra-side recovery flow, not only MCU
+  endpoint descriptors.
+- Define a restart boundary for each image stage. If a partial destination or
+  authentication state cannot be reset safely, escalate to the required reset
+  rather than inventing resumable recovery.
+- Confirm the selected RTL's OCP abort, FIFO reset, endpoint skip and sticky
+  status semantics, including completion ordering.
+- Define watchdog/time budgets for attach, PHY access, suspended links and
+  recovery failures without blocking valid USB traffic.
+- Define the Device 0/shared hub/PHY handoff or disconnection policy.
+
+Validation must use the **same recovery ROM image** for applicable
+device-framework tests and OCP recovery tests. Inject disconnect, reset,
+superseding SETUP and faults during standard SETUP/data/status stages and
+during each image's FIFO/DMA/activation boundary. Assert both subsequent USB
+responsiveness and image-state integrity. Repeat enumeration, configuration
+changes and recovery attempts after initial enumeration. ROM compliance testing
+covers the hub and Device 0, with Device 1 disabled. Run a separate compliance
+pass on MCU Runtime. Verify the
+boot-stage transition as well as each stage independently; hardware-dependent
+or uncovered cases must be reported explicitly rather than inferred from
+compliance-only results.
+
 ## 10. Network-emulation comparison
 
 | Network boot pattern                 | USB Recovery equivalent                           |
@@ -1164,6 +1343,11 @@ sequence unless firmware or directly connected recovery logic consumes the
 hardware state and advances recovery.
 
 ### B.6 Current repository integration status
+
+This subsection records the original bring-up baseline; it is not the target
+persistent recovery design. See [section 9.5](#95-target-persistent-usb-service-in-the-ocp-recovery-rom)
+and [section 9.6](#96-target-interruption-reset-and-error-recovery) for the unified
+service loop and fault-handling requirements.
 
 The current LPCIP ROM implementation is enabled by the
 `test-lpcip-usb-ocp-recovery` feature and calls `init_and_enumerate()` only on
