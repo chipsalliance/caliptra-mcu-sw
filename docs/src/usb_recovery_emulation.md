@@ -375,13 +375,13 @@ sequenceDiagram
 
 The register responsibilities and waits are:
 
-| Actor | Modifies | Reads or waits for |
-| --- | --- | --- |
-| RA | Writes `RECOVERY_CTRL`, `INDIRECT_FIFO_CTRL`, and `INDIRECT_FIFO_DATA` | Reads `PROT_CAP`; polls `DEVICE_STATUS`, `RECOVERY_STATUS`, and `INDIRECT_FIFO_STATUS` |
-| USB/OCP hardware | Decodes OCP commands, updates FIFO pointers and live FIFO status, records protocol errors, and exposes payload/activation indications | Accepts host EP0 requests and firmware-side MMIO/DMA accesses |
-| MCU ROM | Initializes the USB controller, performs standard enumeration, sends `RI_DOWNLOAD_FIRMWARE`, and later controls recovery shutdown/reset policy | Waits for the Caliptra mailbox operation, MCU firmware-ready, and Caliptra runtime-ready indications; it does not normally rewrite OCP status registers in this USB flow |
-| Caliptra ROM | Publishes capabilities and image-0 device/recovery status; clears activation/FIFO state after processing | Waits for image-0 payload availability and host activation |
-| Caliptra runtime | Publishes image-1/image-2 status, clears stage controls, and signals MCU firmware readiness/reset | Waits for the SoC manifest and MCU runtime payloads and their host activation requests |
+| Actor            | Modifies                                                                                                                                         | Reads or waits for                                                                                                                                                       |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| RA               | Writes `RECOVERY_CTRL`, `INDIRECT_FIFO_CTRL`, and `INDIRECT_FIFO_DATA`                                                                     | Reads `PROT_CAP`; polls `DEVICE_STATUS`, `RECOVERY_STATUS`, and `INDIRECT_FIFO_STATUS`                                                                           |
+| USB/OCP hardware | Decodes OCP commands, updates FIFO pointers and live FIFO status, records protocol errors, and exposes payload/activation indications            | Accepts host EP0 requests and firmware-side MMIO/DMA accesses                                                                                                            |
+| MCU ROM          | Initializes the USB controller, performs standard enumeration, sends `RI_DOWNLOAD_FIRMWARE`, and later controls recovery shutdown/reset policy | Waits for the Caliptra mailbox operation, MCU firmware-ready, and Caliptra runtime-ready indications; it does not normally rewrite OCP status registers in this USB flow |
+| Caliptra ROM     | Publishes capabilities and image-0 device/recovery status; clears activation/FIFO state after processing                                         | Waits for image-0 payload availability and host activation                                                                                                               |
+| Caliptra runtime | Publishes image-1/image-2 status, clears stage controls, and signals MCU firmware readiness/reset                                                | Waits for the SoC manifest and MCU runtime payloads and their host activation requests                                                                                   |
 
 In the transaction-level emulator, the dedicated OCP command decoder is
 replaced by the MCU-side `RecoveryStateMachine`, CMS objects, and
@@ -667,6 +667,7 @@ ownership handshake.
 ```mermaid
 flowchart TD
     Start(["ROM start"])
+    Mux["Set Caliptra OCP register address mux to USB<br/>MCI HW_CAPABILITIES[1:0] = 0"]
     Init["Initialize Device 0 controller, hub and PHY<br/>Set up Device 0 endpoint descriptors and buffers<br/>Leave Device 1 disabled"]
     InitOK{"Initialization successful?"}
     InitFail["Report failure<br/>Bounded retry or platform reset per boot policy"]
@@ -677,12 +678,13 @@ flowchart TD
     Recover["Run interruption handling<br/>See recovery flow below"]
     EP0["Process Device 0 standard EP0 requests and transfers"]
     Check{"Caliptra or hardware error reported?"}
+    Fatal["Report failure and enter ROM fatal-error handling"]
     Ready{"Caliptra indicates MCU firmware ready?"}
     Handoff{"USB ownership transition ready?"}
     Transfer["Transfer USB state and ownership to runtime<br/>or deliberately disconnect before handoff"]
     Run["Continue boot into MCU Runtime"]
 
-    Start --> Init --> InitOK
+    Start --> Mux --> Init --> InitOK
     InitOK -->|No| InitFail
     InitFail -->|Retry permitted| Init
     InitFail -->|Reset required| Start
@@ -695,8 +697,8 @@ flowchart TD
     Recover -->|Platform reset required| Start
     Event -->|No| EP0 --> Check
     Check -->|No| Ready
-    Check -->|Yes| InitFail
-    Ready -->|No| Loop
+    Check -->|Yes| Fatal
+    Ready -->|No - continue USB service| Loop
     Ready -->|Yes| Handoff
     Handoff -->|No: keep servicing| Loop
     Handoff -->|Yes| Transfer --> Run
@@ -714,23 +716,30 @@ the actual image consumer, not duplicated by MCU ROM and Caliptra.
 For the USB recovery flow here, Caliptra owns OCP image loading and status;
 MCU ROM waits for Caliptra's MCU firmware-ready indication while servicing USB.
 
-| Flowchart action / decision | Register or memory | Access and ROM action |
-| --- | --- | --- |
-| ROM start | No USB register | Enter ROM execution. |
-| Initialize Device 0 controller | `DEVCMDSTAT`, `INTEN`, `INTSTAT` | W: clear `DEV_EN`/`DCON`, retain `FORCE_NEEDCLK`; disable interrupts with `INTEN = 0`. W1C: clear implemented pending interrupts in `INTSTAT`. |
-| Initialize hub | `HUB_CONTROL` | W: set `ENABLE = 1` with `DCON = 0` during setup; request upstream connection later. |
-| Set up Device 0 endpoint descriptors and buffers | `EPLISTSTART`, `DATABUFSTART`; Device 0 packet SRAM | W: set both base registers to `0` for the current local-memory layout. Initialize EP0 OUT/IN transfer entries and the SETUP-buffer pointer in SRAM; disable unused endpoint entries. These are not the USB descriptors containing VID/PID. |
-| Initialize PHY / initialization successful? | `CONFIG.ULPI`, `ULPIDEBUG`; USB3320 ULPI registers | R: verify ULPI support. W: select `PHY_MODE`, program PHY read/write transactions and start `PHY_ACCESS`. R: poll access completion and read `PHY_RDATA`. Read PHY vendor/product IDs at ULPI `0x00`-`0x03`; write Function Control (`0x04`) and OTG Control (`0x0A`). Report identity/access failures. |
-| Leave Device 1 disabled | Device 1 `DEVCMDSTAT`, `INTEN` | Keep `DEV_EN = 0`, `DCON = 0` and interrupts disabled; no Device 1 enumeration or service. Explicitly disable it if the entry state is not guaranteed by reset. |
-| VBUS present and PHY ready? | `DEVCMDSTAT.VBUS_DEBOUNCED`; `ULPIDEBUG.PHY_ACCESS` and initialization result | R: wait for debounced VBUS after successful PHY initialization. There is no single combined "PHY ready" register bit implied by this decision. |
-| Connect hub and Device 0 | `HUB_CONTROL`, Device 0 `DEVCMDSTAT`, `INTEN`, `INTSTAT` | W: enable EP0/device interrupts and clear stale pending indications before connection. Set hub `ENABLE = 1`, `DCON = 1`; set Device 0 `DEV_EN = 1`, `DCON = 1`, retaining `FORCE_NEEDCLK = 1`. Hardware performs attachment signaling. |
-| Check Device 0 events / reset, disconnect or fault pending? | `INTSTAT`, `DEVCMDSTAT` | R: inspect endpoint/device interrupts, `SETUP`, bus-reset change (`DRES_C`), VBUS and suspend status. Software also checks transfer/PHY timeout state; MCU ROM does not poll OCP image-transfer status here. |
-| Process Device 0 standard EP0 requests and transfers | SETUP/IN/OUT buffers and EP0 transfer entries in SRAM; `DEVCMDSTAT`, `INTSTAT` | R: decode SETUP bytes and completion state. W: prepare response bytes and transfer entries (buffer offset, byte count, `ACTIVE` or `STALL`). Use `DEV_ADDR` for address assignment with the required status-stage timing. Acknowledge handled SETUP/interrupt indications using their defined clear semantics. Configuration state and USB descriptor bytes are maintained by firmware, not a VID/PID CSR. |
-| Run interruption handling | `EPSKIP`, `INTSTAT`, `DEVCMDSTAT`; recovery `CALIPTRA_CTRL` / `CALIPTRA_STATUS` when OCP is affected | W/R: request endpoint cancellation through `EPSKIP` and wait for ownership release before reusing SRAM. Clear handled status and restore/reset USB state as appropriate. If an OCP claim must be aborted, use `OCP_CLAIM_ABORT` and reconcile FIFO/image state per the interruption flow; aborting a claim alone is not image rollback. |
-| Caliptra or hardware error reported? | Caliptra fatal-error and platform hardware-error status used by the existing boot flow | R: check errors while waiting, as the existing firmware-ready wait does. Report and escalate failures instead of continuing boot or waiting indefinitely. |
-| Caliptra indicates MCU firmware ready? | Caliptra `ss_generic_fw_exec_ctrl[0]`, bit 2; MCI `NotifCptraMcuResetReqSts` notification | R: the current `fw_ready()` helper polls bit 2. The existing wait acknowledges the MCI reset-request notification after readiness. This is Caliptra's indication that MCU firmware is loaded and authorized for execution, not a USB FIFO completion bit. |
-| USB ownership transition ready? / transfer state or disconnect | `INTEN`, endpoint SRAM, `EPSKIP`, `DEVCMDSTAT.DCON`; `HUB_CONTROL.DCON` if disconnecting the whole hub | The handoff policy is still to be defined. Quiesce pending work before relinquishing access. For deliberate disconnection, clear the relevant `DCON` fields; do not stop ROM service while leaving an unmanaged connected device. |
-| Report failure / retry or platform reset / continue boot | ROM diagnostics and platform boot/reset interfaces | No generic USB register implements these actions. Use the selected platform's error, reset and boot mechanisms; retries and escalation remain policy decisions. |
+| Flowchart action / decision                                    | Register or memory                                                                                             | Access and ROM action                                                                                                                                                                                                                                                                                                                                                                                            |
+| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ROM start                                                      | No USB register                                                                                                | Enter ROM execution.                                                                                                                                                                                                                                                                                                                                                                                             |
+| Initialize Device 0 controller                                 | `DEVCMDSTAT`, `INTEN`, `INTSTAT`                                                                         | W: clear `DEV_EN`/`DCON`, retain `FORCE_NEEDCLK`; disable interrupts with `INTEN = 0`. W1C: clear implemented pending interrupts in `INTSTAT`.                                                                                                                                                                                                                                                         |
+| Initialize hub                                                 | `HUB_CONTROL`                                                                                                | W: set `ENABLE = 1` with `DCON = 0` during setup; request upstream connection later.                                                                                                                                                                                                                                                                                                                         |
+| Set up Device 0 endpoint descriptors and buffers               | `EPLISTSTART`, `DATABUFSTART`; Device 0 packet SRAM                                                        | W: set both base registers to `0` for the current local-memory layout. Initialize EP0 OUT/IN transfer entries and the SETUP-buffer pointer in SRAM; disable unused endpoint entries. These are not the USB descriptors containing VID/PID.                                                                                                                                                                     |
+| Initialize PHY / initialization successful?                    | `CONFIG.ULPI`, `ULPIDEBUG`; USB3320 ULPI registers                                                         | R: verify ULPI support. W: select `PHY_MODE`, program PHY read/write transactions and start `PHY_ACCESS`. R: poll access completion and read `PHY_RDATA`. Read PHY vendor/product IDs at ULPI `0x00`-`0x03`; write Function Control (`0x04`) and OTG Control (`0x0A`). Report identity/access failures.                                                                                            |
+| Leave Device 1 disabled                                        | Device 1 `DEVCMDSTAT`, `INTEN`                                                                             | Keep `DEV_EN = 0`, `DCON = 0` and interrupts disabled; no Device 1 enumeration or service. Explicitly disable it if the entry state is not guaranteed by reset.                                                                                                                                                                                                                                              |
+| VBUS present and PHY ready?                                    | `DEVCMDSTAT.VBUS_DEBOUNCED`; `ULPIDEBUG.PHY_ACCESS` and initialization result                              | R: wait for debounced VBUS after successful PHY initialization. There is no single combined "PHY ready" register bit implied by this decision.                                                                                                                                                                                                                                                                   |
+| Connect hub and Device 0                                       | `HUB_CONTROL`, Device 0 `DEVCMDSTAT`, `INTEN`, `INTSTAT`                                               | W: enable EP0/device interrupts and clear stale pending indications before connection. Set hub `ENABLE = 1`, `DCON = 1`; set Device 0 `DEV_EN = 1`, `DCON = 1`, retaining `FORCE_NEEDCLK = 1`. Hardware performs attachment signaling.                                                                                                                                                                 |
+| Check Device 0 events / reset, disconnect or fault pending?    | `INTSTAT`, `DEVCMDSTAT`                                                                                    | R: inspect endpoint/device interrupts, `SETUP`, bus-reset change (`DRES_C`), VBUS and suspend status. Software also checks transfer/PHY timeout state; MCU ROM does not poll OCP image-transfer status here.                                                                                                                                                                                                 |
+| Process Device 0 standard EP0 requests and transfers           | SETUP/IN/OUT buffers and EP0 transfer entries in SRAM; `DEVCMDSTAT`, `INTSTAT`                             | R: decode SETUP bytes and completion state. W: prepare response bytes and transfer entries (buffer offset, byte count, `ACTIVE` or `STALL`). Use `DEV_ADDR` for address assignment with the required status-stage timing. Acknowledge handled SETUP/interrupt indications using their defined clear semantics. Configuration state and USB descriptor bytes are maintained by firmware, not a VID/PID CSR. |
+| Run interruption handling                                      | `EPSKIP`, `INTSTAT`, `DEVCMDSTAT`; `ULPIDEBUG` for PHY recovery                                        | W/R: cancel software-owned EP0 transfers through `EPSKIP` and wait for ownership release before reusing SRAM. Clear handled status and restore USB state as appropriate. Reinitialize the PHY/controller if required. MCU ROM does not independently reset the OCP FIFO or restart Caliptra's image loader.                                                                                                    |
+| Caliptra or hardware error reported?                           | Caliptra fatal-error and platform hardware-error status used by the existing boot flow                         | R: check errors while waiting, as the existing firmware-ready wait does. Report and escalate failures instead of continuing boot or waiting indefinitely.                                                                                                                                                                                                                                                        |
+| Caliptra indicates MCU firmware ready?                         | Caliptra `ss_generic_fw_exec_ctrl[0]`, bit 2; MCI `NotifCptraMcuResetReqSts` notification                  | R: the current `fw_ready()` helper polls bit 2. The existing wait acknowledges the MCI reset-request notification after readiness. This is Caliptra's indication that MCU firmware is loaded and authorized for execution, not a USB FIFO completion bit.                                                                                                                                                      |
+| USB ownership transition ready? / transfer state or disconnect | `INTEN`, endpoint SRAM, `EPSKIP`, `DEVCMDSTAT.DCON`; `HUB_CONTROL.DCON` if disconnecting the whole hub | The handoff policy is still to be defined. Quiesce pending work before relinquishing access. For deliberate disconnection, clear the relevant `DCON` fields; do not stop ROM service while leaving an unmanaged connected device.                                                                                                                                                                              |
+| Report failure / retry or platform reset / continue boot       | ROM diagnostics and platform boot/reset interfaces                                                             | No generic USB register implements these actions. Use the selected platform's error, reset and boot mechanisms; retries and escalation remain policy decisions.                                                                                                                                                                                                                                                  |
+
+For **Set Caliptra OCP register address mux to USB**, ROM reads MCI
+`mci_reg_hw_capabilities`, clears bits `[1:0]` to select USB (`0`, versus
+I3C `1`), writes the result while preserving all other bits, and reads it back
+to verify the selection. This must occur before asserting Caliptra boot-go,
+as in the existing cold-boot sequence. This address-mux selection is distinct
+from the USB EP0 OCP request-routing control below.
 
 OCP routing remains enabled by reset default
 (`CALIPTRA_CTRL.OCP_PATH_DISABLE = 0`); it is not an additional connection
@@ -763,14 +772,14 @@ hardware.
 
 #### Request and hardware ownership
 
-| Input | Owner and response |
-| --- | --- |
-| Hub descriptors, hub class requests and downstream port changes | Hub hardware; ROM must not process them as Device 0 requests. Validate the hub path as part of the same system. |
-| Standard requests addressed to Device 0 during ROM | ROM's persistent Device 0 EP0 state machine, including after initial configuration. |
-| Supported Device 0 OCP requests | OCP recovery hardware owns framing and FIFO ingress; ROM coordinates recovery state and the downstream image consumer. |
-| Unsupported or invalid requests | The owner returns the specified protocol error or STALL. "Handle all packets" does not mean accept every request. |
-| Link retries, CRC/PID errors and physical signaling | Controller/PHY hardware performs protocol-level handling; ROM reacts to exposed fault/status events where required. |
-| Reset, detach, suspend/resume or transfer cancellation | Hardware and firmware coordinate the affected controller, EP0 transfer and recovery session state. |
+| Input                                                           | Owner and response                                                                                                                                                                 |
+| --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Hub descriptors, hub class requests and downstream port changes | Hub hardware; ROM must not process them as Device 0 requests. Validate the hub path as part of the same system.                                                                    |
+| Standard requests addressed to Device 0 during ROM              | ROM's persistent Device 0 EP0 state machine, including after initial configuration.                                                                                                |
+| Supported Device 0 OCP requests                                 | OCP recovery hardware owns framing and FIFO ingress; Caliptra ROM/runtime consume images and manage recovery status. MCU ROM checks Caliptra error and firmware-ready indications. |
+| Unsupported or invalid requests                                 | The owner returns the specified protocol error or STALL. "Handle all packets" does not mean accept every request.                                                                  |
+| Link retries, CRC/PID errors and physical signaling             | Controller/PHY hardware performs protocol-level handling; ROM reacts to exposed fault/status events where required.                                                                |
+| Reset, detach, suspend/resume or transfer cancellation          | Hardware and firmware coordinate the affected controller, EP0 transfer and recovery session state.                                                                                 |
 
 Do not disable OCP claims merely to make standard requests responsive. Standard
 requests and OCP commands must remain correctly routed while recovery is
@@ -786,40 +795,42 @@ authentication state. A PHY reset is a different event and affects the shared
 link and upstream hub. During ROM, restore hub/Device 0 operation while leaving
 Device 1 disabled.
 
+This flow is specifically for MCU ROM. OCP protocol errors, FIFO handling and
+image-loader recovery belong to the OCP hardware and Caliptra ROM/runtime.
+MCU ROM does not decode those errors as a separate USB event type. It checks
+Caliptra's fatal-error indication and the existing platform hardware-error
+checks while waiting for MCU firmware readiness in the main service loop
+in [section 9.5](#95-target-persistent-usb-service-in-the-ocp-recovery-rom).
+The interruption flow below returns to that loop rather than duplicating
+its error and firmware-ready decisions.
+
 ```mermaid
 flowchart TD
-    Fault["Observe event and record affected scope<br/>Device, port, shared link, PHY or recovery engine"]
+    Fault["Observe Device 0 event or software timeout"]
     Kind{"Event type?"}
     Suspend["Suspend or resume<br/>Preserve address/configuration<br/>Honor link-power rules and pause relevant timers"]
-    Supersede["New SETUP or host cancellation<br/>Cancel the affected transfer through its owner"]
-    Reset["Bus or port reset<br/>Quiesce affected transfer owners<br/>Reset that device's USB protocol state"]
-    Detach["VBUS loss or cable disconnect<br/>Stop active transfers across the lost link<br/>Invalidate connection state"]
+    Supersede["New SETUP or transfer cancellation<br/>Cancel the superseded software-owned EP0 transfer"]
+    Reset["Bus or port reset<br/>Cancel software-owned EP0 transfers<br/>Reset Device 0 address and configuration state"]
+    Detach["VBUS loss or cable disconnect<br/>Cancel software-owned EP0 transfers<br/>Invalidate Device 0 connection state"]
     Phy["PHY access failure or detected PHY reset<br/>Quiesce shared USB traffic<br/>Reinitialize PHY/controller as required"]
-    Error["OCP protocol error, DMA failure or timeout<br/>Abort the affected operation and report status"]
-    Session{"OCP session or image transfer affected?"}
-    Local["Clear stale completion and transfer state<br/>Rearm supported requests after ownership is released"]
-    Abort["Coordinate OCP claim abort and FIFO cleanup<br/>Stop or reconcile downstream DMA/image loading"]
-    Safe{"Can image state be restarted safely?"}
-    Restart["Invalidate partial image/session progress<br/>Publish failure or fresh image request when reachable"]
-    Escalate["Report terminal failure<br/>Use defined Caliptra/subsystem reset or fallback policy"]
+    Timeout["EP0 transfer timeout<br/>Report timeout and cancel the software-owned transfer"]
+    Local["Wait for EP0 cancellation to complete (EPSKIP[1:0] = 0)<br/>Clear stale completion state and rearm EP0 as appropriate"]
+    Escalate["Report failure<br/>Follow defined platform error/reset policy"]
     Link{"Link and controller ready?"}
     Wait["Wait for attach or complete bounded PHY recovery<br/>Re-enumerate affected devices when required"]
-    Serve["Return to persistent USB and recovery service"]
+    Serve["Return to main service loop in section 9.5<br/>Continue USB servicing and Caliptra error/readiness checks"]
 
     Fault --> Kind
     Kind -->|Suspend or resume| Suspend --> Serve
-    Kind -->|Superseding SETUP or cancellation| Supersede --> Session
-    Kind -->|Bus or port reset| Reset --> Session
-    Kind -->|Disconnect| Detach --> Session
-    Kind -->|PHY reset or fault| Phy --> Session
-    Kind -->|Recovery error| Error --> Session
-    Session -->|No| Local --> Link
-    Session -->|Yes| Abort --> Safe
-    Safe -->|Yes| Restart --> Local
-    Safe -->|No or uncertain| Escalate
+    Kind -->|Superseding SETUP or cancellation| Supersede --> Local
+    Kind -->|Bus or port reset| Reset --> Local
+    Kind -->|Disconnect| Detach --> Local
+    Kind -->|PHY reset or fault| Phy --> Local
+    Kind -->|EP0 timeout| Timeout --> Local
+    Local --> Link
     Link -->|Yes| Serve
     Link -->|No| Wait
-    Wait -->|Ready| Serve
+    Wait -->|Retry service loop| Serve
     Wait -->|Recovery exhausted| Escalate
 ```
 
@@ -828,19 +839,31 @@ DMA ownership release through the service loop before reusing memory.
 Cancellation completion must not be mistaken for a successfully ACKed status
 stage, image completion, or activation.
 
+Not every interrupted recovery produces a Caliptra fatal error. A disconnect
+or a host that stops sending data can leave Caliptra waiting or retrying.
+MCU ROM must continue servicing USB and checking Caliptra indications, including
+while waiting for reattachment. A recovery wait with neither firmware readiness
+nor a fatal error needs an explicit timeout/watchdog policy; it must not be
+treated as success or assumed to eventually generate a fatal error.
+
 #### Event-specific requirements
 
-| Event | USB state handling | OCP/image handling |
-| --- | --- | --- |
-| New SETUP during an existing standard transfer | Cancel the superseded transfer, release buffers safely and dispatch the latest SETUP; do not commit an abandoned address/configuration change. | Preserve unrelated OCP progress. If an OCP-owned transfer is interrupted, use its documented abort/error semantics. |
-| Bus reset or downstream port reset | Restore the affected device to Default state; clear address, configuration, pending EP0 state and stale completion indications according to RTL semantics. During ROM, Device 1 remains disabled and requires no software transfer handling. | Determine whether Device 0's active recovery transaction was affected. Do not assume reset also reset the FIFO or downstream consumer. |
-| Cable removal / VBUS loss | Quiesce transfers across the shared link and invalidate connection state. On reconnect, restore the appropriate hardware state and accept fresh enumeration without requiring a user-triggered MCU reset when safe. | Cancel or reconcile partial recovery and image loading before accepting a new session. Do not continue a partial image solely because some bytes remain buffered. |
-| PHY reset or persistent ULPI fault | Distinguish a real PHY reset from a USB bus reset. Reapply required PHY configuration and restore controller/hub state as needed, with bounded retries and platform reset support. | Treat shared-path disruption as potentially affecting the active recovery session. Reinitializing the PHY alone does not prove that image state is safe. |
-| Suspend / resume | Preserve address/configuration and honor hardware power-state behavior. Do not advertise or initiate remote wakeup unless implemented and permitted. | Do not treat normal suspend as image corruption or immediate failure; apply a specified suspend-aware timeout policy. |
-| Malformed or unsupported standard request | Validate recipient, direction, fields, length and device state; STALL where required and recover on the next valid SETUP/reset. | Do not enter recovery merely because arbitrary class/vendor traffic is present. Preserve an unrelated valid recovery session. |
-| OCP protocol error or abandoned FIFO batch | Keep standard EP0 service responsive; use the OCP engine's specified error/STALL clearing behavior. | Publish meaningful protocol/recovery status when the link permits. Abort/reset the relevant batch and restart only at an explicitly supported image/session boundary. |
-| DMA, destination, authentication or boot-policy failure | Retain diagnostic USB availability where policy and hardware permit; otherwise disconnect or escalate explicitly. | Stop the affected load, invalidate unsafe partial state, and report the appropriate failure. Authentication or policy failures must not be bypassed by reconnecting. |
-| Recovery completes / ROM exits | Continue servicing USB until the ownership transition. Hand off a consistent controller state to runtime, or deliberately disconnect before ROM stops executing. | Complete the required image verification and activation policy before boot. Runtime must not race ROM for registers or packet buffers. |
+Register names below refer to Device 0 unless qualified. Detection sources
+owned by OCP hardware/Caliptra are identified explicitly; they are not
+additional status polls required of MCU ROM.
+
+| Event | Detection register / message / condition | MCU ROM handling | Hardware / Caliptra responsibility |
+| --- | --- | --- | --- |
+| New SETUP during an existing standard transfer | `DEVCMDSTAT.SETUP`, EP0 OUT indication in `INTSTAT`, and the eight-byte SETUP packet in SRAM. | Cancel the superseded transfer, release buffers safely and dispatch the latest SETUP; do not commit an abandoned address/configuration change. | Preserve unrelated OCP progress. If an OCP-owned transfer is interrupted, use its documented abort/error semantics. |
+| Bus reset or downstream port reset | `DEVCMDSTAT.DRES_C`, notified through the device interrupt in `INTSTAT`. A hub port reset reaches Device 0 as a USB reset, not a ROM hub-class message. | Restore Device 0 to Default state; clear address, configuration, pending software EP0 state and stale completion indications according to RTL semantics. Device 1 remains disabled. | Reconcile any affected OCP transaction. A USB reset must not be assumed to reset the FIFO or downstream image consumer. |
+| Cable removal / VBUS loss | `DEVCMDSTAT.VBUS_DEBOUNCED = 0`; connection/session-change indications such as `DCON_C`/`OTG_C` where exposed by the integration. VBUS alone cannot detect every disconnect on a powered hub link. | Quiesce transfers across the lost link and invalidate connection state. On reconnect, restore the appropriate hardware state and accept fresh enumeration without requiring a user-triggered MCU reset when safe. | Cancel or reconcile partial recovery and image loading before accepting a new session. Do not continue a partial image solely because some bytes remain buffered. |
+| PHY reset or persistent ULPI fault | Software timeout while `ULPIDEBUG.PHY_ACCESS` remains set, unexpected ULPI register readback, or a platform-provided PHY reset/fault indication. No generic PHY-reset interrupt is assumed in `INTSTAT`/`DEVCMDSTAT`; exact reset detection depends on platform support. | Distinguish a real PHY reset from a USB bus reset. Reapply required PHY configuration and restore controller/hub state as needed, with bounded retries and platform reset support. | Treat shared-path disruption as potentially affecting the active recovery session. Reinitializing the PHY alone does not prove that image state is safe. |
+| Suspend / resume | `DEVCMDSTAT.DSUS` and `DSUS_C`, with device-event notification in `INTSTAT`; `LPM_SUS` for LPM suspend where supported. | Preserve address/configuration and honor hardware power-state behavior. Do not advertise or initiate remote wakeup unless implemented and permitted. | Do not treat normal suspend as image corruption or immediate failure; apply a specified suspend-aware timeout policy. |
+| Malformed or unsupported standard request | ROM validation of the SETUP packet in SRAM after `DEVCMDSTAT.SETUP`. No separate "unsupported request" CSR bit is needed. | Validate recipient, direction, fields, length and device state; STALL where required and recover on the next valid SETUP/reset. | Do not enter recovery merely because arbitrary class/vendor traffic is present. Preserve an unrelated valid recovery session. |
+| EP0 transfer timeout | Software deadline/poll budget expires while the SRAM transfer entry remains `ACTIVE` or expected EP0 completion in `INTSTAT` has not arrived. No generic EP0 timeout interrupt is assumed. | Report timeout, cancel the software-owned transfer through `EPSKIP`, and wait for ownership release before reusing buffers. | Controller completes cancellation according to its endpoint-skip semantics. |
+| OCP protocol error or abandoned FIFO batch | OCP hardware/Caliptra observe protocol status in `DEVICE_STATUS` and recovery `CALIPTRA_STATUS.BATCH_ABORTED`/`OVERFLOW` as applicable. These are not Device 0 `INTSTAT`/`DEVCMDSTAT` events or mandatory MCU ROM polls. | Keep standard EP0 service responsive and check Caliptra error/readiness indications. Do not independently consume/reset the recovery FIFO. | Handle OCP protocol status, abort/reset the relevant batch and restart only at an explicitly supported image/session boundary. Not every protocol error is fatal. |
+| Caliptra fatal error or checked hardware error | `CPTRA_FW_ERROR_FATAL != 0`; the current hardware checks inspect `CPTRA_HW_ERROR_FATAL` for ICCM/DCCM uncorrectable ECC errors. A failed `RI_DOWNLOAD_FIRMWARE` mailbox response is also handled by the existing boot flow. | Report the failure and enter the existing ROM fatal-error path. Do not continue boot based on partial image progress. | Caliptra publishes firmware/hardware errors through their defined status and mailbox interfaces. |
+| Recovery completes / ROM exits | Current `fw_ready()` polls Caliptra `ss_generic_fw_exec_ctrl[0]` bit 2. The existing wait acknowledges MCI `NotifCptraMcuResetReqSts`. This is not OCP FIFO `IMAGE_DONE`. | Continue servicing USB until the ownership transition. Perform remaining boot checks; hand off a consistent controller state to runtime, or deliberately disconnect before ROM stops executing. | Complete the required image verification and activation policy before signaling readiness. Runtime must not race ROM for registers or packet buffers. |
 
 #### Decisions to settle before implementing the unified path
 
@@ -1074,14 +1097,14 @@ The `cargo xtask-fpga fpga bootstrap` path performs host and bitstream setup:
 1. Connect to the target Linux host, normally over SSH.
 2. Check required host tools and access.
 3. Disable deep CPU idle on the two processing-system CPUs to avoid timing and
-    AXI-access instability.
+   AXI-access instability.
 4. Build `hw/fpga/kernel-modules/io_module.ko` when it is not already supplied
-    by the FPGA image.
+   by the FPGA image.
 5. Insert `io_module.ko` and make `/dev/uio0` and `/dev/uio1` accessible to the
-    test process.
+   test process.
 6. Load the segmented FPGA bitstream when supported by the target image.
 7. Store the selected FPGA configuration in `/dev/shm/fpga-config`; the cache
-    must be recreated after a power cycle.
+   must be recreated after a power cycle.
 
 The kernel-module Makefile also builds standalone Caliptra and MCU ROM
 backdoor character-device modules. The current bootstrap path does not insert
@@ -1097,18 +1120,18 @@ and archives tests with the `fpga_realtime` feature, and
 
 `hw/fpga/kernel-modules/io_module.c` registers the following physical windows:
 
-| UIO mapping | Physical address | Size | Current use |
-| --- | ---: | ---: | --- |
-| `uio0/map0` | `0xA401_0000` | 64 KiB | FPGA wrapper, reset, straps, log FIFOs, and test controls |
-| `uio0/map1` | `0xA410_0000` | 256 KiB | Caliptra MMIO |
-| `uio0/map2` | `0xB000_0000` | 96 KiB | Caliptra ROM BRAM backdoor |
-| `uio0/map3` | `0xA408_0000` | 64 KiB | External I3C controller |
-| `uio0/map4` | `0xB008_0000` | 512 KiB | OTP backing-memory window |
-| `uio1/map0` | `0xA404_0000` | 8 KiB | Lifecycle controller |
-| `uio1/map1` | `0xB002_0000` | 128 KiB | MCU ROM BRAM backdoor |
-| `uio1/map2` | `0xA403_0000` | 64 KiB | Caliptra Subsystem I3C target |
-| `uio1/map3` | `0xA800_0000` | 16 MiB | MCI and MCU-visible subsystem space |
-| `uio1/map4` | `0xA406_0000` | 8 KiB | OTP controller registers |
+| UIO mapping   | Physical address |    Size | Current use                                               |
+| ------------- | ---------------: | ------: | --------------------------------------------------------- |
+| `uio0/map0` |  `0xA401_0000` |  64 KiB | FPGA wrapper, reset, straps, log FIFOs, and test controls |
+| `uio0/map1` |  `0xA410_0000` | 256 KiB | Caliptra MMIO                                             |
+| `uio0/map2` |  `0xB000_0000` |  96 KiB | Caliptra ROM BRAM backdoor                                |
+| `uio0/map3` |  `0xA408_0000` |  64 KiB | External I3C controller                                   |
+| `uio0/map4` |  `0xB008_0000` | 512 KiB | OTP backing-memory window                                 |
+| `uio1/map0` |  `0xA404_0000` |   8 KiB | Lifecycle controller                                      |
+| `uio1/map1` |  `0xB002_0000` | 128 KiB | MCU ROM BRAM backdoor                                     |
+| `uio1/map2` |  `0xA403_0000` |  64 KiB | Caliptra Subsystem I3C target                             |
+| `uio1/map3` |  `0xA800_0000` |  16 MiB | MCI and MCU-visible subsystem space                       |
+| `uio1/map4` |  `0xA406_0000` |   8 KiB | OTP controller registers                                  |
 
 There are two important address-map qualifications:
 
@@ -1131,65 +1154,65 @@ stall for an unassigned address.
 
 The implemented portion contains four blocks on 4 KiB boundaries:
 
-| Map offset | Physical address | Block | Implemented contents |
-| ---: | ---: | --- | --- |
-| `0x0000` | `0xA401_0000` | Wrapper interface | Control, status, straps, test keys, and OCP LOCK staging through offset `0x280` |
-| `0x1000` | `0xA401_1000` | FIFO interface | Caliptra log, debug, message, and ITRNG FIFOs through offset `0x1024` |
-| `0x2000` | `0xA401_2000` | Primary flash controller | Control registers and a 256-byte page buffer |
-| `0x3000` | `0xA401_3000` | Secondary flash controller | Control registers and a separate 256-byte page buffer |
+| Map offset | Physical address | Block                      | Implemented contents                                                              |
+| ---------: | ---------------: | -------------------------- | --------------------------------------------------------------------------------- |
+| `0x0000` |  `0xA401_0000` | Wrapper interface          | Control, status, straps, test keys, and OCP LOCK staging through offset `0x280` |
+| `0x1000` |  `0xA401_1000` | FIFO interface             | Caliptra log, debug, message, and ITRNG FIFOs through offset `0x1024`           |
+| `0x2000` |  `0xA401_2000` | Primary flash controller   | Control registers and a 256-byte page buffer                                      |
+| `0x3000` |  `0xA401_3000` | Secondary flash controller | Control registers and a separate 256-byte page buffer                             |
 
 ##### Wrapper interface registers
 
-| Offset | Register or range | Access | Purpose |
-| ---: | --- | --- | --- |
-| `0x000` | `fpga_magic` | RO | ASCII `CPTR` (`0x52545043`) image-valid marker |
-| `0x004` | `fpga_version` | RO | Git revision used to build the FPGA image |
-| `0x008` | `control` | RW | Power-good, subsystem reset, boot-FSM breakpoint, scan mode, debug intent, I3C AXI filtering, OCP lock, RMA/scrap policy, FIPS zeroization, and AXI reset |
-| `0x00C` | `status` | RO | Fatal/nonfatal error, ready-for-fuses, mailbox readiness, runtime readiness, mailbox state, and MCU halt status |
-| `0x010` | `arm_user` | RW | AXI USER value applied to processing-system transactions |
-| `0x014` | `itrng_divisor` | RW | Internal-TRNG request throttling divisor |
-| `0x018` | `cycle_count` | RO | Free-running FPGA cycle counter |
-| `0x030`-`0x037` | `generic_input_wires[2]` | RW | Caliptra generic input straps |
-| `0x038`-`0x03F` | `generic_output_wires[2]` | RO | Caliptra generic output-wire observation |
-| `0x040`-`0x05F` | `cptra_obf_key[8]` | RW | Test obfuscation key straps |
-| `0x060`-`0x09F` | `cptra_csr_hmac_key[16]` | RW | Test CSR HMAC key straps |
-| `0x0A0`-`0x0DF` | `cptra_obf_uds_seed[16]` | RW | Test UDS seed straps |
-| `0x0E0`-`0x0FF` | `cptra_obf_field_entropy[8]` | RW | Test field-entropy straps |
-| `0x100`-`0x110` | AXI USER straps | RW | LSU, IFU, DMA, SoC-configuration, and SRAM-configuration AXI identities |
-| `0x114` | `mcu_reset_vector` | RW | MCU reset PC, normally `0xB004_0000` |
-| `0x118` | `ss_all_error` | RO | Aggregated subsystem fatal and nonfatal errors |
-| `0x11C` | `mcu_config` | RW | MCU no-ROM, boot breakpoint, lifecycle, and scan-reset controls |
-| `0x120` | `uds_seed_base_addr` | RW | Test UDS seed location |
-| `0x124`-`0x128` | Production debug-unlock configuration | RW | Public-key-hash register-bank offset and number of hashes |
-| `0x12C`-`0x133` | `mci_generic_input_wires[2]` | RW | MCU ROM boot handshakes and boot-mode straps |
-| `0x134`-`0x13B` | `mci_generic_output_wires[2]` | RO | MCU-generated status wires |
-| `0x13C`-`0x144` | Key-release and staging outputs | RO | Key-release base/size and external staging-area base |
-| `0x148` | `cptra_ss_mcu_ext_int` | RW | Host-driven MCU external interrupt bits |
-| `0x14C`-`0x158` | `cptra_ss_raw_unlock_token_hash[4]` | RW | Raw lifecycle unlock-token hash |
-| `0x15C` | `spare_i3c_control_sts` | RW/RO | Spare-I3C and external-host selection plus interrupt/recovery status |
-| `0x1F0`-`0x1FC` | `ss_strap_generic[4]` | RW | Generic subsystem straps |
-| `0x200`-`0x23C` | `ocp_lock_key_release_reg[16]` | RW | OCP LOCK media-encryption-key staging |
-| `0x240`-`0x250` | `ocp_lock_metadata_reg[5]` | RW | OCP LOCK metadata staging |
-| `0x260`-`0x27C` | `ocp_lock_auxiliary_data_reg[8]` | RW | OCP LOCK auxiliary-data staging |
-| `0x280` | `ocp_lock_control_reg` | RW/RO | OCP LOCK control and processed-key ready indication |
+|              Offset | Register or range                     | Access | Purpose                                                                                                                                                   |
+| ------------------: | ------------------------------------- | ------ | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|           `0x000` | `fpga_magic`                        | RO     | ASCII `CPTR` (`0x52545043`) image-valid marker                                                                                                        |
+|           `0x004` | `fpga_version`                      | RO     | Git revision used to build the FPGA image                                                                                                                 |
+|           `0x008` | `control`                           | RW     | Power-good, subsystem reset, boot-FSM breakpoint, scan mode, debug intent, I3C AXI filtering, OCP lock, RMA/scrap policy, FIPS zeroization, and AXI reset |
+|           `0x00C` | `status`                            | RO     | Fatal/nonfatal error, ready-for-fuses, mailbox readiness, runtime readiness, mailbox state, and MCU halt status                                           |
+|           `0x010` | `arm_user`                          | RW     | AXI USER value applied to processing-system transactions                                                                                                  |
+|           `0x014` | `itrng_divisor`                     | RW     | Internal-TRNG request throttling divisor                                                                                                                  |
+|           `0x018` | `cycle_count`                       | RO     | Free-running FPGA cycle counter                                                                                                                           |
+| `0x030`-`0x037` | `generic_input_wires[2]`            | RW     | Caliptra generic input straps                                                                                                                             |
+| `0x038`-`0x03F` | `generic_output_wires[2]`           | RO     | Caliptra generic output-wire observation                                                                                                                  |
+| `0x040`-`0x05F` | `cptra_obf_key[8]`                  | RW     | Test obfuscation key straps                                                                                                                               |
+| `0x060`-`0x09F` | `cptra_csr_hmac_key[16]`            | RW     | Test CSR HMAC key straps                                                                                                                                  |
+| `0x0A0`-`0x0DF` | `cptra_obf_uds_seed[16]`            | RW     | Test UDS seed straps                                                                                                                                      |
+| `0x0E0`-`0x0FF` | `cptra_obf_field_entropy[8]`        | RW     | Test field-entropy straps                                                                                                                                 |
+| `0x100`-`0x110` | AXI USER straps                       | RW     | LSU, IFU, DMA, SoC-configuration, and SRAM-configuration AXI identities                                                                                   |
+|           `0x114` | `mcu_reset_vector`                  | RW     | MCU reset PC, normally `0xB004_0000`                                                                                                                    |
+|           `0x118` | `ss_all_error`                      | RO     | Aggregated subsystem fatal and nonfatal errors                                                                                                            |
+|           `0x11C` | `mcu_config`                        | RW     | MCU no-ROM, boot breakpoint, lifecycle, and scan-reset controls                                                                                           |
+|           `0x120` | `uds_seed_base_addr`                | RW     | Test UDS seed location                                                                                                                                    |
+| `0x124`-`0x128` | Production debug-unlock configuration | RW     | Public-key-hash register-bank offset and number of hashes                                                                                                 |
+| `0x12C`-`0x133` | `mci_generic_input_wires[2]`        | RW     | MCU ROM boot handshakes and boot-mode straps                                                                                                              |
+| `0x134`-`0x13B` | `mci_generic_output_wires[2]`       | RO     | MCU-generated status wires                                                                                                                                |
+| `0x13C`-`0x144` | Key-release and staging outputs       | RO     | Key-release base/size and external staging-area base                                                                                                      |
+|           `0x148` | `cptra_ss_mcu_ext_int`              | RW     | Host-driven MCU external interrupt bits                                                                                                                   |
+| `0x14C`-`0x158` | `cptra_ss_raw_unlock_token_hash[4]` | RW     | Raw lifecycle unlock-token hash                                                                                                                           |
+|           `0x15C` | `spare_i3c_control_sts`             | RW/RO  | Spare-I3C and external-host selection plus interrupt/recovery status                                                                                      |
+| `0x1F0`-`0x1FC` | `ss_strap_generic[4]`               | RW     | Generic subsystem straps                                                                                                                                  |
+| `0x200`-`0x23C` | `ocp_lock_key_release_reg[16]`      | RW     | OCP LOCK media-encryption-key staging                                                                                                                     |
+| `0x240`-`0x250` | `ocp_lock_metadata_reg[5]`          | RW     | OCP LOCK metadata staging                                                                                                                                 |
+| `0x260`-`0x27C` | `ocp_lock_auxiliary_data_reg[8]`    | RW     | OCP LOCK auxiliary-data staging                                                                                                                           |
+|           `0x280` | `ocp_lock_control_reg`              | RW/RO  | OCP LOCK control and processed-key ready indication                                                                                                       |
 
 These writable key and secret inputs are FPGA test/provisioning facilities;
 they do not define the production secret-storage architecture.
 
 ##### FIFO interface registers
 
-| Offset | Register | Direction | Purpose |
-| ---: | --- | --- | --- |
-| `0x1000` | `log_fifo_data` | FPGA to host | Reading pops the next Caliptra log byte and reports whether it is valid |
-| `0x1004` | `log_fifo_status` | FPGA to host | Caliptra log FIFO empty/full status |
-| `0x1008` | `itrng_fifo_data` | Host to FPGA | Writes one 32-bit word containing eight 4-bit entropy samples |
-| `0x100C` | `itrng_fifo_status` | Bidirectional | Empty/full status and software FIFO reset |
-| `0x1010` | `dbg_fifo_pop` | FIFO to host | Pops one 32-bit debug word |
-| `0x1014` | `dbg_fifo_push` | Host to FIFO | Pushes one 32-bit debug word |
-| `0x1018` | `dbg_fifo_status` | FPGA to host | Debug FIFO empty/full status |
-| `0x101C` | `msg_fifo_pop` | FIFO to host | Pops one 32-bit message word |
-| `0x1020` | `msg_fifo_push` | Host to FIFO | Pushes one 32-bit message word |
-| `0x1024` | `msg_fifo_status` | FPGA to host | Message FIFO empty/full status |
+|     Offset | Register              | Direction     | Purpose                                                                 |
+| ---------: | --------------------- | ------------- | ----------------------------------------------------------------------- |
+| `0x1000` | `log_fifo_data`     | FPGA to host  | Reading pops the next Caliptra log byte and reports whether it is valid |
+| `0x1004` | `log_fifo_status`   | FPGA to host  | Caliptra log FIFO empty/full status                                     |
+| `0x1008` | `itrng_fifo_data`   | Host to FPGA  | Writes one 32-bit word containing eight 4-bit entropy samples           |
+| `0x100C` | `itrng_fifo_status` | Bidirectional | Empty/full status and software FIFO reset                               |
+| `0x1010` | `dbg_fifo_pop`      | FIFO to host  | Pops one 32-bit debug word                                              |
+| `0x1014` | `dbg_fifo_push`     | Host to FIFO  | Pushes one 32-bit debug word                                            |
+| `0x1018` | `dbg_fifo_status`   | FPGA to host  | Debug FIFO empty/full status                                            |
+| `0x101C` | `msg_fifo_pop`      | FIFO to host  | Pops one 32-bit message word                                            |
+| `0x1020` | `msg_fifo_push`     | Host to FIFO  | Pushes one 32-bit message word                                          |
+| `0x1024` | `msg_fifo_status`   | FPGA to host  | Message FIFO empty/full status                                          |
 
 The host-side entropy feeder writes `itrng_fifo_data` while the FPGA consumes
 4-bit samples from the width-converting FIFO. This is a test entropy source,
@@ -1200,18 +1223,18 @@ not a production physical-noise source.
 The primary block uses map offsets `0x2000` through `0x21FF`; the secondary
 block repeats the same relative layout at `0x3000` through `0x31FF`.
 
-| Relative offset | Register | Purpose |
-| ---: | --- | --- |
-| `0x00` | `FL_INTERRUPT_STATE` | Error and completion-event interrupt state |
-| `0x04` | `FL_INTERRUPT_ENABLE` | Error and completion-event interrupt enables |
-| `0x08` | `PAGE_SIZE` | Page size, normally 256 bytes |
-| `0x0C` | `PAGE_NUM` | Selected physical page |
-| `0x10` | `PAGE_ADDR` | Driver-provided page-buffer address field |
-| `0x14` | `FL_CONTROL` | Start and operation selection; the active model uses 1=read, 2=write, and 3=erase |
-| `0x18` | `OP_STATUS` | Completion and operation-error status |
-| `0x1C` | `CTRL_REGWEN` | Control-register write enable |
-| `0x20` | `FLASH_SIZE` | Advertised capacity, normally 16 MiB |
-| `0x100`-`0x1FF` | `FLASH_BUF[64]` | 256-byte page-transfer buffer |
+|     Relative offset | Register                | Purpose                                                                           |
+| ------------------: | ----------------------- | --------------------------------------------------------------------------------- |
+|            `0x00` | `FL_INTERRUPT_STATE`  | Error and completion-event interrupt state                                        |
+|            `0x04` | `FL_INTERRUPT_ENABLE` | Error and completion-event interrupt enables                                      |
+|            `0x08` | `PAGE_SIZE`           | Page size, normally 256 bytes                                                     |
+|            `0x0C` | `PAGE_NUM`            | Selected physical page                                                            |
+|            `0x10` | `PAGE_ADDR`           | Driver-provided page-buffer address field                                         |
+|            `0x14` | `FL_CONTROL`          | Start and operation selection; the active model uses 1=read, 2=write, and 3=erase |
+|            `0x18` | `OP_STATUS`           | Completion and operation-error status                                             |
+|            `0x1C` | `CTRL_REGWEN`         | Control-register write enable                                                     |
+|            `0x20` | `FLASH_SIZE`          | Advertised capacity, normally 16 MiB                                              |
+| `0x100`-`0x1FF` | `FLASH_BUF[64]`       | 256-byte page-transfer buffer                                                     |
 
 Only the controller registers and page buffers reside in `uio0/map0`. The
 actual primary and secondary flash arrays are host-memory buffers maintained by
@@ -1242,20 +1265,20 @@ recovery boot retains them as separate images.
 Creating `ModelFpgaRealtime` performs the following ordered setup:
 
 1. Convert the requested lifecycle into the Caliptra security state and build
-    the Caliptra Subsystem initialization parameters.
+   the Caliptra Subsystem initialization parameters.
 2. Open `/dev/uio0` and `/dev/uio1` and map the wrapper, ROM backdoors, OTP
-    backing RAM, Caliptra, MCI, lifecycle, OTP, and I3C regions.
+   backing RAM, Caliptra, MCI, lifecycle, OTP, and I3C regions.
 3. Reset the FPGA AXI interface before using reset-sensitive subsystem MMIO.
 4. Start the host entropy feeder after AXI reset.
 5. Zero-pad and copy the Caliptra ROM into the `0xB000_0000` BRAM backdoor.
 6. Zero-pad and copy the MCU ROM into the `0xB002_0000` BRAM backdoor.
 7. Program wrapper inputs, deterministic test keys and secrets, entropy
-    controls, AXI users, debug policy, OCP lock policy, and the MCU reset vector.
+   controls, AXI users, debug policy, OCP lock policy, and the MCU reset vector.
 8. Assert subsystem reset and power-good low before changing OTP contents.
 9. Clear the OTP backing RAM and construct the requested lifecycle and OTP
-    partitions. Depending on the requested provisioning stage, this can include
-    lifecycle transition tokens, manufacturing data, UDS test slots, field
-    entropy, vendor and owner hashes, revocations, SVN values, and HEK seed.
+   partitions. Depending on the requested provisioning stage, this can include
+   lifecycle transition tokens, manufacturing data, UDS test slots, field
+   entropy, vendor and owner hashes, revocations, SVN values, and HEK seed.
 10. Clear stale MCU and Caliptra log FIFOs.
 11. Set the MCU reset vector to the normal MCU ROM address `0xB004_0000`.
 12. Deassert subsystem reset and power-good, allowing MCU ROM execution.
@@ -1313,9 +1336,9 @@ function currently supplied by the VCK190/Versal processing-system path:
 4. Access to lifecycle, OTP, Caliptra, MCI, and I3C register windows.
 5. A way to service or replace the host-modeled flash controller.
 6. A physical USB device connection from the LPCIP3511 controller and PHY to
-    the external recovery-agent host.
+   the external recovery-agent host.
 7. A replacement for UIO mappings if HTG-940 exposes the FPGA through PCIe or
-    another host bridge rather than a processing-system AXI interconnect.
+   another host bridge rather than a processing-system AXI interconnect.
 
 The HTG-940 address map must be treated as a new platform contract. Existing
 physical addresses, UIO indices, reset semantics, and cache-coherency behavior
@@ -1351,12 +1374,12 @@ MCU ROM must initialize the device controller before enumeration can begin:
 2. Disable and clear controller interrupts.
 3. Initialize the endpoint-list and data-buffer base registers.
 4. Clear endpoint descriptor memory, configure the SETUP descriptor, and arm
-    EP0 OUT to receive an eight-byte SETUP packet.
+   EP0 OUT to receive an eight-byte SETUP packet.
 5. Wait until hardware reports debounced VBUS.
 6. Set `DEV_EN` and `DCON` to enable the device and connect it to the bus.
 7. Enable EP0 and device-status interrupts.
 8. Wait for the host's USB bus reset, acknowledge the reset indication, and
-    re-arm EP0 OUT.
+   re-arm EP0 OUT.
 
 Hardware performs the electrical and packet-level portions of these
 operations. It does not populate endpoint descriptors, connect the device, or
@@ -1418,17 +1441,17 @@ The complete recovery flow is not autonomous. MCU ROM or equivalent platform
 recovery logic must still:
 
 1. Publish meaningful `DEVICE_STATUS`, recovery reason, `RECOVERY_STATUS`, and
-    recovery image index values through the firmware-visible recovery aperture.
+   recovery image index values through the firmware-visible recovery aperture.
 2. Observe `payload_available` and drain recovery data from
-    `INDIRECT_FIFO_DATA` quickly enough to permit continued host streaming.
+   `INDIRECT_FIFO_DATA` quickly enough to permit continued host streaming.
 3. Observe `recovery_image_activated`, select the requested image, and clear or
-    acknowledge the stored activation request after accepting it.
+   acknowledge the stored activation request after accepting it.
 4. Forward each image through the Caliptra recovery interface and perform the
-    required authentication and boot-policy actions.
+   required authentication and boot-policy actions.
 5. Update recovery status for stage success, the next requested image, final
-    completion, or failure so the Recovery Agent can make progress.
+   completion, or failure so the Recovery Agent can make progress.
 6. Handle supported reset requests and report firmware-detected protocol or
-    hardware failures when required.
+   hardware failures when required.
 
 Therefore, the hardware can receive and buffer OCP commands without firmware
 servicing each EP0 transfer, but the Recovery Agent cannot complete the image
