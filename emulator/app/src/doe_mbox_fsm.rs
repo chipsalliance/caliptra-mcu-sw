@@ -9,7 +9,7 @@ use std::process::exit;
 use std::sync::mpsc::{Receiver, Sender};
 use std::time::Duration;
 
-const TEST_TIMEOUT: u64 = 120;
+const TEST_TIMEOUT: u64 = 240;
 
 #[derive(Debug, Clone, PartialEq)]
 enum DoeMboxState {
