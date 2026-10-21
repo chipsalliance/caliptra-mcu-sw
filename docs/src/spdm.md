@@ -112,6 +112,8 @@ flowchart TB
 - **Transports**: move SPDM messages over the wire. `McuSpdmPal` uses one
   `SpdmPalTransport`, either MCTP (message type 0x05 for SPDM, 0x06 for
   secured SPDM) or DOE (data object type 1 for SPDM, 2 for secured SPDM).
+  Secure sessions are currently only supported over DOE; see
+  [Transport Support](#transport-support).
 
 | Crate                                                                            | Purpose                                                       |
 | -------------------------------------------------------------------------------- | ------------------------------------------------------------- |
@@ -275,8 +277,64 @@ How the transcripts are maintained:
 
 ## Secure Session Management
 Secure sessions are created with `KEY_EXCHANGE` and confirmed with `FINISH`.
-Afterwards, SPDM messages are exchanged as secured messages (DSP0277),
-protected with AES-256-GCM.
+Starting with `FINISH`, all messages of the session are exchanged as secured
+messages (DSP0277), protected with AES-256-GCM.
+
+### Session Establishment
+A session is established in four steps. The first steps use plain SPDM
+messages. From `FINISH` on, every message of the session is a secured
+message.
+
+1. **Connection setup (plain)**: `GET_VERSION`, `GET_CAPABILITIES` and
+   `NEGOTIATE_ALGORITHMS`. The responder advertises `KEY_EX_CAP`,
+   `ENCRYPT_CAP` and `MAC_CAP`, and the two sides agree on the DHE/KEM, AEAD
+   and key schedule algorithms. Optionally, the requester reads the
+   certificate chain with `GET_DIGESTS` and `GET_CERTIFICATE`.
+2. **Key exchange (plain)**: the requester sends `KEY_EXCHANGE` with its
+   ephemeral public key (or KEM encapsulation key) and its half of the
+   session ID. The responder computes the shared secret, derives the
+   handshake keys from it and TH1, and answers with `KEY_EXCHANGE_RSP`. That
+   response is signed with the device key and carries an HMAC over the
+   transcript. `KEY_EXCHANGE` and `KEY_EXCHANGE_RSP` are always sent in the
+   clear, because no keys exist yet.
+3. **Handshake (secured, handshake keys)**: the requester sends `FINISH` and
+   the responder answers with `FINISH_RSP`. The responder does not advertise
+   `HANDSHAKE_IN_THE_CLEAR_CAP`, so both messages must be secured messages
+   protected with the handshake keys. After `FINISH_RSP`, both sides derive
+   the data keys from TH2 and the session is established.
+4. **Application phase (secured, data keys)**: all further requests in the
+   session, such as `GET_MEASUREMENTS`, `GET_CERTIFICATE`,
+   `VENDOR_DEFINED_REQUEST` and `END_SESSION`, are secured messages
+   protected with the data keys.
+
+```mermaid
+sequenceDiagram
+    participant Requester
+    participant Responder
+
+    rect rgb(230, 230, 230)
+        note right of Requester: Plain SPDM (MCTP 0x05 / DOE type 1)
+        Requester->>Responder: GET_VERSION, GET_CAPABILITIES, NEGOTIATE_ALGORITHMS
+        Responder-->>Requester: VERSION, CAPABILITIES, ALGORITHMS
+        Requester->>Responder: KEY_EXCHANGE
+        Responder-->>Requester: KEY_EXCHANGE_RSP
+    end
+    rect rgb(255, 255, 204)
+        note right of Requester: Secured SPDM, handshake keys (MCTP 0x06 / DOE type 2)
+        Requester->>Responder: FINISH
+        Responder-->>Requester: FINISH_RSP
+    end
+    rect rgb(204, 255, 204)
+        note right of Requester: Secured SPDM, data keys (MCTP 0x06 / DOE type 2)
+        Requester->>Responder: GET_MEASUREMENTS, VENDOR_DEFINED_REQUEST, ...
+        Responder-->>Requester: MEASUREMENTS, VENDOR_DEFINED_RESPONSE, ...
+        Requester->>Responder: END_SESSION
+        Responder-->>Requester: END_SESSION_ACK
+    end
+```
+
+A plain SPDM message is still accepted while a session exists. The responder
+handles it outside the session (see [Supported Requests](#supported-requests)).
 
 ### Session Lifecycle
 
@@ -340,7 +398,68 @@ A `SecuredMessage` request is processed as follows:
 If processing fails, the `ERROR` response is also sent encrypted. A
 `DecryptError` destroys the session.
 
-Secured messages require a transport that supports them: MCTP bound to
-message type 0x06 (secured SPDM), or DOE. If the transport does not support
-secured messages, the responder does not advertise `KEY_EX_CAP`, `ENCRYPT_CAP`
-or `MAC_CAP`.
+### Secured Messages and Transport Bindings
+A secured message is **not** an SPDM message. It is an envelope around an
+SPDM message:
+
+```text
+[ session ID | length | encrypted( app data length | SPDM message ) | MAC ]
+```
+
+It starts with the session ID, not with an SPDM header (version, request
+code). For this reason it cannot be sent as a plain SPDM message. Each
+transport needs its own message type for secured messages, and how the
+envelope is carried is defined by the transport binding:
+
+| Transport | Plain SPDM                   | Secured SPDM                  |
+| --------- | ---------------------------- | ----------------------------- |
+| MCTP      | message type 0x05 (DSP0275)  | message type 0x06 (DSP0276)   |
+| PCIe DOE  | data object type 1           | data object type 2            |
+
+The specifications are split like this:
+
+- **DSP0277** defines the secured message in general: the key schedule,
+  AEAD protection, the envelope, and sequence numbers. It does not define a
+  wire format for a specific transport.
+- **The transport binding** (DSP0276 for MCTP, the PCIe DOE specification
+  for DOE) defines how the envelope appears on that transport: its message
+  type, and transport-specific fields such as whether a sequence number is
+  sent on the wire.
+
+> **Note:** DSP0276 is not only for protecting non-SPDM data sent over MCTP.
+> Every message in an SPDM session sent over MCTP is a secured message and
+> must use message type 0x06 and DSP0276 framing. This includes `FINISH` and
+> all SPDM requests sent inside the session, such as `GET_MEASUREMENTS`.
+> Message type 0x05 only carries plain SPDM messages. An MCTP session
+> therefore uses **both** message types on the same endpoint: 0x05 until
+> `KEY_EXCHANGE_RSP`, then 0x06 from `FINISH` on.
+
+### Transport Support
+The stack learns from the transport whether it can carry secured messages
+(`SpdmPalTransport::secure_message_supported`). If it cannot, the responder
+does not advertise `KEY_EX_CAP`, `ENCRYPT_CAP` or `MAC_CAP`, and does not
+select DHE, KEM, AEAD or key schedule algorithms in `ALGORITHMS`. Requesters
+then cannot start a session.
+
+| Transport | Secure sessions | Notes                                                                    |
+| --------- | --------------- | ------------------------------------------------------------------------ |
+| PCIe DOE  | Supported       | One DOE mailbox carries both data object types 1 and 2.                  |
+| MCTP      | Not supported   | Limitation of the implementation, not of the specifications; see below.  |
+
+SPDM sessions over MCTP are allowed by DSP0276. They are not implemented
+yet, for these reasons:
+
+- `McuSpdmMctpTransport` is bound to a single MCTP driver and message type.
+  A responder on message type 0x05 never receives secured messages. A
+  responder on message type 0x06 never receives `GET_VERSION` or
+  `KEY_EXCHANGE`, so it cannot set up a session. Supporting sessions needs a
+  transport that serves both message types for the same responder.
+- The secured-message codec
+  ([`codec/src/secured_message.rs`](../../runtime/userspace/api/spdm-lib/codec/src/secured_message.rs))
+  implements the DOE framing, which sends no sequence number on the wire.
+  The DSP0276 framing for MCTP is not implemented.
+- The emulator platform does not register the MCTP secured-SPDM kernel
+  driver (`MCTP_SECURE_SPDM_DRIVER_NUM`).
+
+Because of this, the MCTP responder only uses message type 0x05, and
+features that need a session are only available over DOE.
