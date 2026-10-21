@@ -680,7 +680,6 @@ flowchart TD
     Check{"Caliptra or hardware error reported?"}
     Fatal["Report failure and enter ROM fatal-error handling"]
     Ready{"Caliptra indicates MCU firmware ready?"}
-    Handoff{"USB ownership transition ready?"}
     Transfer["Transfer USB state and ownership to runtime<br/>or deliberately disconnect before handoff"]
     Run["Continue boot into MCU Runtime"]
 
@@ -699,9 +698,7 @@ flowchart TD
     Check -->|No| Ready
     Check -->|Yes| Fatal
     Ready -->|No - continue USB service| Loop
-    Ready -->|Yes| Handoff
-    Handoff -->|No: keep servicing| Loop
-    Handoff -->|Yes| Transfer --> Run
+    Ready -->|Yes| Transfer --> Run
 ```
 
 #### Register mapping for the service-loop actions
@@ -731,7 +728,7 @@ MCU ROM waits for Caliptra's MCU firmware-ready indication while servicing USB.
 | Run interruption handling                                      | `EPSKIP`, `INTSTAT`, `DEVCMDSTAT`; `ULPIDEBUG` for PHY recovery                                        | W/R: cancel software-owned EP0 transfers through `EPSKIP` and wait for ownership release before reusing SRAM. Clear handled status and restore USB state as appropriate. Reinitialize the PHY/controller if required. MCU ROM does not independently reset the OCP FIFO or restart Caliptra's image loader.                                                                                                    |
 | Caliptra or hardware error reported?                           | Caliptra fatal-error and platform hardware-error status used by the existing boot flow                         | R: check errors while waiting, as the existing firmware-ready wait does. Report and escalate failures instead of continuing boot or waiting indefinitely.                                                                                                                                                                                                                                                        |
 | Caliptra indicates MCU firmware ready?                         | Caliptra `ss_generic_fw_exec_ctrl[0]`, bit 2; MCI `NotifCptraMcuResetReqSts` notification                  | R: the current `fw_ready()` helper polls bit 2. The existing wait acknowledges the MCI reset-request notification after readiness. This is Caliptra's indication that MCU firmware is loaded and authorized for execution, not a USB FIFO completion bit.                                                                                                                                                      |
-| USB ownership transition ready? / transfer state or disconnect | `INTEN`, endpoint SRAM, `EPSKIP`, `DEVCMDSTAT.DCON`; `HUB_CONTROL.DCON` if disconnecting the whole hub | The handoff policy is still to be defined. Quiesce pending work before relinquishing access. For deliberate disconnection, clear the relevant `DCON` fields; do not stop ROM service while leaving an unmanaged connected device.                                                                                                                                                                              |
+| Transfer state or disconnect | `INTEN`, endpoint SRAM, `EPSKIP`, `DEVCMDSTAT.DCON`; `HUB_CONTROL.DCON` if disconnecting the whole hub | The handoff policy is still to be defined. Quiesce pending work before relinquishing access. For deliberate disconnection, clear the relevant `DCON` fields; do not stop ROM service while leaving an unmanaged connected device. |
 | Report failure / retry or platform reset / continue boot       | ROM diagnostics and platform boot/reset interfaces                                                             | No generic USB register implements these actions. Use the selected platform's error, reset and boot mechanisms; retries and escalation remain policy decisions.                                                                                                                                                                                                                                                  |
 
 For **Set Caliptra OCP register address mux to USB**, ROM reads MCI
