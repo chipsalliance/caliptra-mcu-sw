@@ -241,7 +241,7 @@ pub(crate) fn run_doe_transport_tests(
             "DOE_TRANSPORT_TESTS Timeout after {:?} seconds",
             timeout.as_secs()
         );
-        stop_emulator();
+        exit(1);
     });
 
     // Spawn a thread to run the tests
@@ -256,4 +256,92 @@ pub(crate) fn run_doe_transport_tests(
         stop_emulator();
         println!("DOE_TRANSPORT_TESTS: All tests completed.");
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use caliptra_emu_bus::{Clock, ReadWriteRegister};
+    use caliptra_emu_cpu::Pic;
+    use caliptra_mcu_emulator_periph::DummyDoeMbox;
+    use caliptra_mcu_emulator_registers_generated::doe_mbox::DoeMboxPeripheral;
+    use caliptra_mcu_registers_generated::doe_mbox::bits::DoeMboxStatus;
+    use std::sync::{Arc, Mutex};
+
+    fn setup() -> (DoeMboxStateMachine, DummyDoeMbox, Receiver<Vec<u8>>) {
+        let periph = DoeMboxPeriph::default();
+        let clock = Clock::new();
+        let pic = Pic::new();
+        let mailbox = DummyDoeMbox::new(
+            &clock,
+            pic.register_irq(1),
+            periph.clone(),
+            Arc::new(Mutex::new(())),
+        );
+        let (tx, rx) = std::sync::mpsc::channel();
+        (DoeMboxStateMachine::new(periph, tx), mailbox, rx)
+    }
+
+    #[test]
+    fn overlapping_request_resets_interrupted_transfer_before_sending_replacement() {
+        for interrupt_before_send in [false, true] {
+            let (mut fsm, mut mailbox, rx) = setup();
+            fsm.handle_outgoing_message(vec![0xa5; 512]);
+            if !interrupt_before_send {
+                fsm.on_event();
+                assert_eq!(fsm.state, DoeMboxState::ReceiveData);
+                fsm.on_event();
+                assert_eq!(fsm.state, DoeMboxState::ReceiveData);
+                assert!(rx.try_recv().is_err());
+            }
+            fsm.handle_outgoing_message(vec![1, 2, 3, 4]);
+            assert_eq!(fsm.state, DoeMboxState::WaitingResetAck);
+            fsm.on_event();
+            assert_eq!(fsm.state, DoeMboxState::WaitingResetAck);
+            mailbox
+                .write_doe_mbox_status(ReadWriteRegister::new(DoeMboxStatus::ResetAck::SET.value));
+            fsm.on_event();
+            assert_eq!(fsm.state, DoeMboxState::SendData);
+            fsm.on_event();
+            assert_eq!(fsm.state, DoeMboxState::ReceiveData);
+            assert_eq!(mailbox.read_doe_mbox_dlen(), 1);
+            assert_eq!(mailbox.read_doe_mbox_sram(0), 0x0403_0201);
+            assert_eq!(mailbox.read_doe_mbox_sram(1), 0);
+
+            mailbox
+                .write_doe_mbox_status(ReadWriteRegister::new(DoeMboxStatus::DataReady::SET.value));
+            fsm.on_event();
+            assert_eq!(rx.try_recv().unwrap(), vec![1, 2, 3, 4]);
+            assert_eq!(fsm.state, DoeMboxState::Idle);
+            assert!(fsm.pending_outgoing_message.is_none());
+            fsm.on_event();
+            assert!(rx.try_recv().is_err());
+        }
+    }
+
+    #[test]
+    fn mailbox_write_and_read_errors_allow_subsequent_exchange() {
+        let (mut fsm, mut mailbox, rx) = setup();
+        fsm.handle_outgoing_message(vec![0xff; ((1 << 18) + 1) * 4]);
+        fsm.on_event();
+        assert_eq!(fsm.state, DoeMboxState::Error);
+        fsm.on_event();
+        assert_eq!(fsm.state, DoeMboxState::Idle);
+
+        fsm.handle_outgoing_message(vec![0xa5; 4]);
+        fsm.on_event();
+        mailbox.write_doe_mbox_status(ReadWriteRegister::new(DoeMboxStatus::Error::SET.value));
+        fsm.on_event();
+        assert_eq!(fsm.state, DoeMboxState::Error);
+        assert!(rx.try_recv().is_err());
+        fsm.on_event();
+        assert_eq!(fsm.state, DoeMboxState::Idle);
+
+        fsm.handle_outgoing_message(vec![0x5a; 4]);
+        fsm.on_event();
+        mailbox.write_doe_mbox_status(ReadWriteRegister::new(DoeMboxStatus::DataReady::SET.value));
+        fsm.on_event();
+        assert_eq!(rx.try_recv().unwrap(), vec![0x5a; 4]);
+        assert_eq!(fsm.state, DoeMboxState::Idle);
+    }
 }

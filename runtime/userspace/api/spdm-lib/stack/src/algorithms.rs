@@ -408,6 +408,45 @@ mod tests {
         request
     }
 
+    #[test]
+    fn doe_and_mctp_algorithms_append_exact_logical_transcript_bytes() {
+        let request = negotiate_request(
+            SpdmVersion::V14,
+            PqcAsymAlgos::ML_DSA_87,
+            AsymAlgos::ECDSA_ECC_NIST_P384,
+            false,
+        );
+        let mut baseline = None;
+        for (header_size, send_len_alignment) in [(1, 1), (8, 4)] {
+            let pal = TestPal {
+                header_size,
+                send_len_alignment,
+                ..TestPal::default()
+            };
+            let mut state = ConnectionState {
+                phase: Phase::AfterCapabilities,
+                version: SpdmVersion::V14,
+                ..ConnectionState::default()
+            };
+            let io = TestIo::message(request.clone());
+            block_on(state.transcript.append_vca(&pal, &io, b"VCA")).unwrap();
+            let response = block_on(handle_negotiate_algorithms(&mut state, &pal, &io)).unwrap();
+            let length =
+                u16::from_le_bytes([response[header_size + 4], response[header_size + 5]]) as usize;
+            let payload = &response[header_size..header_size + length];
+            let expected = [b"VCA".as_slice(), request.as_slice(), payload].concat();
+            assert_eq!(state.transcript.vca.as_ref().unwrap().bytes, expected);
+            assert!(response[header_size + length..]
+                .iter()
+                .all(|&byte| byte == 0));
+            if let Some(expected) = &baseline {
+                assert_eq!(&state.transcript.vca.as_ref().unwrap().bytes, expected);
+            } else {
+                baseline = Some(state.transcript.vca.as_ref().unwrap().bytes.clone());
+            }
+        }
+    }
+
     fn run_negotiate(request: Vec<u8>) -> (ConnectionState<TestHashState, Vec<u8>>, Vec<u8>) {
         let pal = TestPal::default();
         let version = SpdmVersion::from_u8(request[0]).unwrap();

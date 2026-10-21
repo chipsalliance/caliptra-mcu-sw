@@ -163,3 +163,49 @@ fn buf_write_doe_header(buf: &mut [u8], data_object_type: u8, length_dw: u32) {
     let length_field = length_dw & 0x0003_FFFF;
     hdr[4..8].copy_from_slice(&length_field.to_le_bytes());
 }
+
+#[cfg(test)]
+mod tests {
+    extern crate std;
+
+    use super::*;
+    use std::vec;
+
+    #[test]
+    fn plain_and_secured_objects_preserve_payload_and_padding_at_mtu_boundaries() {
+        let transport = McuSpdmDoeTransport::default();
+        assert!(transport.secure_message_supported());
+        assert_eq!(transport.header_size(), 8);
+        assert_eq!(transport.send_len_alignment(), 4);
+
+        for object_type in [DOE_TYPE_SPDM, DOE_TYPE_SECURE_SPDM] {
+            for payload_len in [1usize, 2, 3, 4, 1019, 1020, 1021, 1023, 1024] {
+                let length = (DOE_HEADER_SIZE + payload_len).next_multiple_of(4);
+                let mut frame = vec![0; length];
+                frame[DOE_HEADER_SIZE..DOE_HEADER_SIZE + payload_len].fill(0xa5);
+                buf_write_doe_header(&mut frame, object_type, (length / 4) as u32);
+                assert_eq!(&frame[..4], &[1, 0, object_type, 0]);
+                assert_eq!(
+                    &frame[4..DOE_HEADER_SIZE],
+                    &((length / 4) as u32).to_le_bytes()
+                );
+                assert!(frame[DOE_HEADER_SIZE..DOE_HEADER_SIZE + payload_len]
+                    .iter()
+                    .all(|&byte| byte == 0xa5));
+                assert!(frame[DOE_HEADER_SIZE + payload_len..]
+                    .iter()
+                    .all(|&byte| byte == 0));
+            }
+        }
+    }
+
+    #[test]
+    fn header_encoder_masks_reserved_length_bits() {
+        let mut frame = [0xa5; 12];
+        buf_write_doe_header(&mut frame, DOE_TYPE_SECURE_SPDM, 0xfffc_0003);
+        assert_eq!(
+            &frame[..DOE_HEADER_SIZE],
+            &[1, 0, DOE_TYPE_SECURE_SPDM, 0, 3, 0, 0, 0]
+        );
+    }
+}

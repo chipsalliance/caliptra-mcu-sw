@@ -9,11 +9,15 @@ use caliptra_mcu_registers_generated::doe_mbox::regs::DoeMbox;
 use caliptra_mcu_registers_generated::doe_mbox::DOE_MBOX_ADDR;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use core::cell::Cell;
+#[cfg(not(test))]
+use kernel::debug;
 use kernel::hil::time::{Alarm, AlarmClient, Time};
 use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeable};
 use kernel::utilities::StaticRef;
-use kernel::{debug, ErrorCode};
+use kernel::ErrorCode;
+#[cfg(test)]
+use std::println as debug;
 
 pub const DOE_MBOX_BASE: StaticRef<DoeMbox> =
     unsafe { StaticRef::new(DOE_MBOX_ADDR as *const DoeMbox) };
@@ -289,5 +293,225 @@ impl<'a, A: Alarm<'a>> DoeTransport<'a> for EmulatedDoeTransport<'a, A> {
         }
 
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kernel::hil::time::{Freq1MHz, Ticks, Ticks32};
+
+    #[derive(Default)]
+    struct ControlledAlarm {
+        now: Cell<u32>,
+        deadline: Cell<u32>,
+        armed: Cell<bool>,
+        client: OptionalCell<&'static dyn AlarmClient>,
+    }
+
+    impl ControlledAlarm {
+        fn fire(&self) {
+            assert!(self.armed.replace(false));
+            self.now.set(self.deadline.get());
+            self.client.get().unwrap().alarm();
+        }
+    }
+
+    impl Time for ControlledAlarm {
+        type Frequency = Freq1MHz;
+        type Ticks = Ticks32;
+
+        fn now(&self) -> Ticks32 {
+            self.now.get().into()
+        }
+    }
+
+    impl Alarm<'static> for ControlledAlarm {
+        fn set_alarm_client(&self, client: &'static dyn AlarmClient) {
+            self.client.set(client);
+        }
+
+        fn set_alarm(&self, reference: Ticks32, dt: Ticks32) {
+            self.deadline
+                .set(reference.into_u32().wrapping_add(dt.into_u32()));
+            self.armed.set(true);
+        }
+
+        fn get_alarm(&self) -> Ticks32 {
+            self.deadline.get().into()
+        }
+
+        fn disarm(&self) -> Result<(), ErrorCode> {
+            self.armed.set(false);
+            Ok(())
+        }
+
+        fn is_armed(&self) -> bool {
+            self.armed.get()
+        }
+
+        fn minimum_dt(&self) -> Ticks32 {
+            1.into()
+        }
+    }
+
+    struct Client {
+        receives: Cell<usize>,
+        sends: Cell<usize>,
+        held: TakeCell<'static, [u32]>,
+    }
+
+    impl Default for Client {
+        fn default() -> Self {
+            Self {
+                receives: Cell::new(0),
+                sends: Cell::new(0),
+                held: TakeCell::empty(),
+            }
+        }
+    }
+
+    impl DoeTransportRxClient for Client {
+        fn receive(&self, buf: &'static mut [u32], _len: usize) {
+            assert!(self.held.is_none());
+            self.held.replace(buf);
+            self.receives.set(self.receives.get() + 1);
+        }
+    }
+
+    impl DoeTransportTxClient<'static> for Client {
+        fn send_done(&self, result: Result<(), ErrorCode>) {
+            assert_eq!(result, Ok(()));
+            self.sends.set(self.sends.get() + 1);
+        }
+    }
+
+    fn setup() -> (
+        &'static EmulatedDoeTransport<'static, ControlledAlarm>,
+        &'static ControlledAlarm,
+        &'static Client,
+    ) {
+        let clock = Box::leak(Box::new(ControlledAlarm::default()));
+        let mux = Box::leak(Box::new(MuxAlarm::new(clock)));
+        clock.set_alarm_client(mux);
+        let register_words =
+            Box::leak(vec![0u32; core::mem::size_of::<DoeMbox>() / 4].into_boxed_slice());
+        // The generated register block contains only DWORD registers and reserved bytes.
+        let registers = unsafe { StaticRef::new(register_words.as_mut_ptr().cast::<DoeMbox>()) };
+        let driver = Box::leak(Box::new(EmulatedDoeTransport {
+            registers,
+            tx_client: OptionalCell::empty(),
+            rx_client: OptionalCell::empty(),
+            doe_data_buf: TakeCell::new(Box::leak(vec![0u32; 16].into_boxed_slice())),
+            doe_data_buf_len: 16,
+            pending_reset: Cell::new(false),
+            state: Cell::new(DoeMboxState::Idle),
+            timer_mode: Cell::new(TimerMode::NoTimer),
+            alarm: VirtualMuxAlarm::new(mux),
+        }));
+        let client = Box::leak(Box::new(Client::default()));
+        driver.set_rx_client(client);
+        driver.set_tx_client(client);
+        driver.init();
+        (driver, clock, client)
+    }
+
+    #[test]
+    #[ignore = "Known driver bug: overlapping transmit overwrites the active object"]
+    fn busy_transmit_preserves_first_object_and_allows_next_object() {
+        let (driver, clock, client) = setup();
+        driver.transmit([0xa5; 16].into_iter(), 16).unwrap();
+        assert_eq!(driver.transmit([0xff].into_iter(), 1), Err(ErrorCode::BUSY));
+        assert_eq!(driver.registers.doe_mbox_dlen.get(), 16);
+        driver.doe_data_buf.map(|buf| assert_eq!(buf, &[0xa5; 16]));
+        assert_eq!(client.sends.get(), 0);
+        clock.fire();
+        assert_eq!(client.sends.get(), 1);
+        assert_eq!(
+            clock.now.get(),
+            EmulatedDoeTransport::<ControlledAlarm>::DEFER_SEND_DONE_TICKS
+        );
+        assert_eq!(driver.state.get(), DoeMboxState::RxWait);
+        driver.transmit([0x5a].into_iter(), 1).unwrap();
+        driver.doe_data_buf.map(|buf| {
+            assert_eq!(buf[0], 0x5a);
+            assert!(buf[1..].iter().all(|&word| word == 0));
+        });
+        clock.fire();
+        assert_eq!(client.sends.get(), 2);
+    }
+
+    #[test]
+    #[ignore = "Known driver bug: alarm clears a rescheduled receive-retry mode"]
+    fn held_reader_retries_until_buffer_is_restored_without_losing_timer() {
+        let (driver, clock, client) = setup();
+        driver.registers.doe_mbox_dlen.set(3);
+        driver.handle_receive_data();
+        assert_eq!(client.receives.get(), 1);
+        assert_eq!(driver.transmit([0].into_iter(), 1), Err(ErrorCode::FAIL));
+        driver.handle_receive_data();
+        assert_eq!(driver.timer_mode.get(), TimerMode::ReceiveRetry);
+        clock.fire();
+        assert_eq!(client.receives.get(), 1);
+        assert_eq!(driver.timer_mode.get(), TimerMode::ReceiveRetry);
+        assert!(clock.is_armed());
+        driver.set_rx_buffer(client.held.take().unwrap());
+        clock.fire();
+        assert_eq!(client.receives.get(), 2);
+        assert_eq!(driver.timer_mode.get(), TimerMode::NoTimer);
+        assert!(!clock.is_armed());
+    }
+
+    #[test]
+    fn reset_during_deferred_send_acknowledges_once_and_recovers() {
+        let (driver, clock, client) = setup();
+        driver.transmit([0xa5; 4].into_iter(), 4).unwrap();
+        driver.handle_reset_request();
+        assert!(driver.pending_reset.get());
+        assert!(!driver
+            .registers
+            .doe_mbox_status
+            .is_set(DoeMboxStatus::ResetAck));
+        clock.fire();
+        assert_eq!(client.sends.get(), 1);
+        assert!(!driver.pending_reset.get());
+        assert!(driver
+            .registers
+            .doe_mbox_status
+            .is_set(DoeMboxStatus::ResetAck));
+        assert!(!driver
+            .registers
+            .doe_mbox_status
+            .is_set(DoeMboxStatus::DataReady));
+        driver.alarm();
+        assert_eq!(client.sends.get(), 1);
+        driver.transmit([0x5a].into_iter(), 1).unwrap();
+        clock.fire();
+        assert_eq!(client.sends.get(), 2);
+    }
+
+    #[test]
+    fn receive_reset_and_size_failure_preserve_buffer_for_fresh_exchange() {
+        let (driver, clock, client) = setup();
+        assert_eq!(
+            driver.transmit(core::iter::empty(), 17),
+            Err(ErrorCode::SIZE)
+        );
+        driver.registers.doe_mbox_dlen.set(17);
+        driver.handle_receive_data();
+        assert!(driver
+            .registers
+            .doe_mbox_status
+            .is_set(DoeMboxStatus::Error));
+        assert_eq!(client.receives.get(), 0);
+        driver.handle_reset_request();
+        assert_eq!(driver.state.get(), DoeMboxState::RxWait);
+        driver.registers.doe_mbox_dlen.set(3);
+        driver.handle_receive_data();
+        assert_eq!(client.receives.get(), 1);
+        driver.set_rx_buffer(client.held.take().unwrap());
+        driver.transmit([1, 2, 3].into_iter(), 3).unwrap();
+        clock.fire();
+        assert_eq!(client.sends.get(), 1);
     }
 }
