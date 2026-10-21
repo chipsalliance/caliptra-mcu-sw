@@ -18,6 +18,7 @@ pub const SOCKET_HEADER_LEN: usize = 12;
 
 pub static SERVER_LISTENING: AtomicBool = AtomicBool::new(false);
 static SPDM_RESPONDER_VALIDATOR_DONE: AtomicBool = AtomicBool::new(false);
+static SPDM_RESPONDER_VALIDATOR_PASSED: AtomicBool = AtomicBool::new(false);
 
 #[derive(Debug, Copy, Clone, Default, FromBytes, IntoBytes, Immutable)]
 pub struct SpdmSocketHeader {
@@ -58,6 +59,9 @@ impl SpdmValidatorRunner {
     }
 
     pub fn run_test(&mut self, stream: &mut TcpStream) {
+        self.state = SpdmServerState::Start;
+        self.passed = false;
+        self.responder_ready = false;
         while crate::is_emulator_running() {
             match self.state {
                 SpdmServerState::Start => {
@@ -71,6 +75,8 @@ impl SpdmValidatorRunner {
                         if !result {
                             self.state = SpdmServerState::Finish;
                         }
+                    } else {
+                        self.state = SpdmServerState::Finish;
                     }
                 }
                 SpdmServerState::SendResponse => {
@@ -111,6 +117,10 @@ impl SpdmValidatorRunner {
             let s = spdm_stream
                 .read(&mut buffer[buffer_size..])
                 .expect("socket read error!");
+            if s == 0 {
+                println!("[{}]: SPDM client disconnected before STOP", self.test_name);
+                return None;
+            }
             buffer_size += s;
             if (expected_size == 0) && (buffer_size >= SOCKET_HEADER_LEN) {
                 let socket_header_bytes: [u8; SOCKET_HEADER_LEN] =
@@ -331,11 +341,12 @@ pub fn wait_for_spdm_responder_validator() -> bool {
     while crate::is_emulator_running() && !SPDM_RESPONDER_VALIDATOR_DONE.load(Ordering::Acquire) {
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
-    SPDM_RESPONDER_VALIDATOR_DONE.load(Ordering::Acquire)
+    SPDM_RESPONDER_VALIDATOR_PASSED.load(Ordering::Acquire)
 }
 
 pub fn execute_spdm_responder_validator(transport: &'static str) -> std::thread::JoinHandle<bool> {
     SPDM_RESPONDER_VALIDATOR_DONE.store(false, Ordering::Release);
+    SPDM_RESPONDER_VALIDATOR_PASSED.store(false, Ordering::Release);
     crate::spawn_with_emulator_state(move || {
         println!(
             "Starting spdm_device_validator_sample process on transport: {}. Waiting for SPDM listener to start...",
@@ -355,12 +366,14 @@ pub fn execute_spdm_responder_validator(transport: &'static str) -> std::thread:
                                 status
                             );
                             let success = status.success();
-                            SPDM_RESPONDER_VALIDATOR_DONE.store(success, Ordering::Release);
+                            SPDM_RESPONDER_VALIDATOR_PASSED.store(success, Ordering::Release);
+                            SPDM_RESPONDER_VALIDATOR_DONE.store(true, Ordering::Release);
                             return success;
                         }
                         Ok(None) => {}
                         Err(e) => {
                             println!("Error: {:?}", e);
+                            SPDM_RESPONDER_VALIDATOR_DONE.store(true, Ordering::Release);
                             return false;
                         }
                     }
@@ -374,6 +387,7 @@ pub fn execute_spdm_responder_validator(transport: &'static str) -> std::thread:
                     "Error: {:?} Failed to spawn spdm_device_validator_sample!!",
                     e
                 );
+                SPDM_RESPONDER_VALIDATOR_DONE.store(true, Ordering::Release);
                 false
             }
         }
@@ -395,6 +409,42 @@ pub fn start_spdm_responder_validator(transport: &'static str) -> io::Result<Chi
                 .arg("caliptra_spdm_validator.pcap");
         },
     )
+}
+
+pub(crate) fn start_doe_session_requester(pqc: bool, kem: bool) -> io::Result<Child> {
+    let log_file = format!("doe-session-pqc-{pqc}-kem-{kem}.txt");
+    spawn_validator_binary("spdm_requester_emu", &log_file, |cmd| {
+        configure_doe_session_requester(cmd, pqc, kem);
+    })
+}
+
+fn configure_doe_session_requester(cmd: &mut Command, pqc: bool, kem: bool) {
+    cmd.args([
+        "--trans",
+        "PCI_DOE",
+        "--ver",
+        "1.4",
+        "--cap",
+        "CERT,CHUNK,LARGE_RESP,ENCRYPT,MAC,KEY_EX,HBEAT",
+        "--hash",
+        "SHA_384",
+        "--aead",
+        "AES_256_GCM",
+        "--key_schedule",
+        "HMAC_HASH",
+        "--asym",
+        if pqc { "NONE" } else { "ECDSA_P384" },
+        "--pqc_asym",
+        if pqc { "ML_DSA_87" } else { "NONE" },
+        "--dhe",
+        if kem { "NONE" } else { "SECP_384_R1" },
+        "--kem",
+        if kem { "ML_KEM_1024" } else { "NONE" },
+        "--exe_conn",
+        "DIGEST,CERT",
+        "--exe_session",
+        "KEY_EX,HEARTBEAT",
+    ]);
 }
 
 fn start_spdm_attestation_with_port(
@@ -511,6 +561,35 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn doe_session_requester_limits_each_tuple_to_authentication_and_secured_traffic() {
+        for pqc in [false, true] {
+            for kem in [false, true] {
+                let mut command = Command::new("spdm_requester_emu");
+                configure_doe_session_requester(&mut command, pqc, kem);
+                let args = command
+                    .get_args()
+                    .map(|arg| arg.to_str().unwrap())
+                    .collect::<Vec<_>>();
+                for pair in [
+                    ["--trans", "PCI_DOE"],
+                    ["--ver", "1.4"],
+                    ["--asym", if pqc { "NONE" } else { "ECDSA_P384" }],
+                    ["--pqc_asym", if pqc { "ML_DSA_87" } else { "NONE" }],
+                    ["--dhe", if kem { "NONE" } else { "SECP_384_R1" }],
+                    ["--kem", if kem { "ML_KEM_1024" } else { "NONE" }],
+                    ["--hash", "SHA_384"],
+                    ["--aead", "AES_256_GCM"],
+                    ["--key_schedule", "HMAC_HASH"],
+                    ["--exe_conn", "DIGEST,CERT"],
+                    ["--exe_session", "KEY_EX,HEARTBEAT"],
+                ] {
+                    assert!(args.windows(2).any(|args| args == pair));
+                }
+            }
+        }
+    }
 
     #[test]
     fn attestation_requester_excludes_endpoint_info() {
