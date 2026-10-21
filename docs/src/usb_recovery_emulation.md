@@ -62,50 +62,88 @@ This differs from network boot. In network boot, firmware is a network client th
 
 ### 5.2 Enumeration
 
-After attach and bus reset, the device enters the Default state at address zero. A minimum enumeration sequence is:
+ROM initializes Device 0 before connecting it. After attach and bus reset,
+the device enters the Default state at address zero. The sequence below
+distinguishes firmware-supplied Device 0 responses from hardware-handled hub
+requests and USB packet transfers. Device 1 remains disabled.
 
 ```mermaid
 sequenceDiagram
     participant RA as Recovery Agent / libusb
-    participant Host as Linux USB Host / VHCI
-    participant Dev as Emulated USB Device
+    participant Host as USB Host Stack / Host Controller
+    participant Hub as USB Hub Hardware
+    participant Dev as USB Device 0 Controller
     participant FW as MCU ROM USB Stack
 
-    Dev-->>Host: Attach device
+    Note over Hub,FW: ROM initialization (platform clocks, reset and MMIO access already available)
+    FW->>Dev: Disable/disconnect Device 0 and disable and clear interrupts
+    FW->>Dev: Configure EPLISTSTART and DATABUFSTART
+    FW->>Dev: Initialize EP0 transfer descriptors and packet buffers in SRAM
+    FW->>Dev: Initialize USB3320 PHY through ULPI register gateway
+    FW->>Dev: Wait for debounced VBUS and enable device/EP0 interrupts
+    FW->>Hub: Enable hub and request upstream connection
+    FW->>Dev: Enable Device 0 and request connection
+
+    Hub-->>Host: Upstream attach
+    Host->>Hub: Reset and enumerate hub, read descriptors and configure
+    Hub-->>Host: Hardware-generated hub responses
+    Note over Host,Hub: Hub identity/configuration descriptors and hub-class requests handled by hub hardware
+    Host->>Hub: Read port status and reset Device 0 port
+    Hub-->>Host: Port status and reset completion
+    Note over Host,Dev: Device 0 traffic below travels through the hub
     Host->>Dev: USB bus reset
-    Dev->>FW: LINK_RESET event
+    Dev->>FW: Bus-reset status/interrupt
+    FW->>Dev: Acknowledge reset and rearm EP0
     Note over Dev,FW: Default state, address 0
 
     Host->>Dev: GET_DESCRIPTOR(Device), wLength=18
     Dev->>FW: EP0 SETUP packet
-    FW-->>Dev: 18-byte device descriptor
-    Dev-->>Host: Device descriptor
+    FW->>Dev: Copy device descriptor bytes into IN buffer and arm EP0 IN
+    Note over Dev,FW: MCU ROM supplies VID/PID and other device descriptor fields
+    Dev-->>Host: Transmit device descriptor from ROM-prepared buffer
+    Note over Host,FW: Controller handles packet signaling/handshakes, ROM processes transfer completions
 
     Host->>Dev: SET_ADDRESS(address)
     Dev->>FW: EP0 SETUP packet
-    FW-->>Dev: Prepare IN status ZLP
+    FW->>Dev: Decode address and program address/status transfer
     Dev-->>Host: IN status ZLP
-    Note over Dev,FW: Apply address after status stage
+    Note over Dev,FW: Address takes effect only after status stage completes
 
     Host->>Dev: GET_DESCRIPTOR(Configuration)
     Dev->>FW: EP0 SETUP packet
-    FW-->>Dev: Configuration descriptor tree
+    FW->>Dev: Copy configuration/interface/functional descriptors and arm EP0 IN
     Dev-->>Host: Configuration + OCP interface + functional descriptor
 
     opt Referenced string descriptors
         Host->>Dev: GET_DESCRIPTOR(String)
         Dev->>FW: EP0 SETUP packet
-        FW-->>Dev: String descriptor
+        FW->>Dev: Supply supported string descriptor and arm EP0 IN
         Dev-->>Host: String descriptor
     end
 
     Host->>Dev: SET_CONFIGURATION(1)
     Dev->>FW: EP0 SETUP packet
-    FW-->>Dev: Prepare IN status ZLP
+    FW->>Dev: Validate configuration and arm IN status ZLP
     Dev-->>Host: IN status ZLP
+    Dev->>FW: Status-stage completion
     Note over RA,FW: Configured state
     Host-->>RA: Recovery interface available
 ```
+
+The **USB device descriptor** returned by `GET_DESCRIPTOR(Device)` contains
+VID/PID and is supplied by MCU ROM for Device 0. It is not the **EP0 transfer
+descriptor** initialized in packet SRAM: that hardware descriptor specifies
+buffer location, transfer length and control flags. `EPLISTSTART` and
+`DATABUFSTART` configure the controller's endpoint-list/data-buffer bases; they
+do not configure Device 0's host-visible VID/PID.
+
+Device 0 standard requests require ROM to decode the request and prepare the
+response or state change; the controller transmits the packets. Enabling the
+controller alone does not make it answer `GET_DESCRIPTOR` autonomously. Hub
+responses instead come from the hub hardware's descriptor/configuration logic,
+not the Device 0 ROM descriptor buffers. Supported OCP requests use the
+separate hardware recovery path described in
+[Appendix B.4](#b4-ocp-recovery-hardware-after-enumeration).
 
 A robust implementation must also tolerate repeated and short descriptor reads, a new SETUP packet aborting an active control transfer, and a bus reset at any point.
 
@@ -621,52 +659,107 @@ enumeration happens only once.
 
 #### Initialization and cooperative service loop
 
+Platform prerequisites: MCU access to the USB registers and packet SRAM,
+working controller/PHY clocks and reset sequencing, and no concurrent firmware
+access to Device 0 or shared hub/PHY controls. These are not a separate ROM
+ownership handshake.
+
 ```mermaid
 flowchart TD
-    Boot["Enter ROM USB recovery policy"]
-    Init["Establish controller ownership and MMIO access<br/>Initialize clocks, PHY and Device 0 endpoint memory<br/>Leave Device 1 disabled"]
+    Start(["ROM start"])
+    Init["Initialize Device 0 controller, hub and PHY<br/>Set up Device 0 endpoint descriptors and buffers<br/>Leave Device 1 disabled"]
     InitOK{"Initialization successful?"}
     InitFail["Report failure<br/>Bounded retry or platform reset per boot policy"]
     Attach{"VBUS present and PHY ready?"}
-    Connect["Connect hub and Device 0<br/>Enable OCP claim routing on Device 0"]
-    Loop["Poll or dispatch a bounded amount of work<br/>for Device 0 and the recovery engine"]
+    Connect["Connect hub and Device 0"]
+    Loop["Check Device 0 events"]
     Event{"Reset, disconnect or fault pending?"}
     Recover["Run interruption handling<br/>See recovery flow below"]
     EP0["Process Device 0 standard EP0 requests and transfers"]
-    OCP["Advance OCP hardware state, FIFO and image loading<br/>with bounded work and explicit ownership"]
-    Ready{"Required images authenticated<br/>and boot policy satisfied?"}
+    Check{"Caliptra or hardware error reported?"}
+    Ready{"Caliptra indicates MCU firmware ready?"}
     Handoff{"USB ownership transition ready?"}
     Transfer["Transfer USB state and ownership to runtime<br/>or deliberately disconnect before handoff"]
     Run["Continue boot into MCU Runtime"]
 
-    Boot --> Init --> InitOK
+    Start --> Init --> InitOK
     InitOK -->|No| InitFail
     InitFail -->|Retry permitted| Init
-    InitFail -->|Reset required| Boot
+    InitFail -->|Reset required| Start
     InitOK -->|Yes| Attach
     Attach -->|No| Attach
     Attach -->|Yes| Connect --> Loop --> Event
     Event -->|Yes| Recover
     Recover -->|Link or PHY not ready| Attach
     Recover -->|Safe to continue USB service| Loop
-    Recover -->|Platform reset required| Boot
-    Event -->|No| EP0 --> OCP --> Ready
+    Recover -->|Platform reset required| Start
+    Event -->|No| EP0 --> Check
+    Check -->|No| Ready
+    Check -->|Yes| InitFail
     Ready -->|No| Loop
     Ready -->|Yes| Handoff
     Handoff -->|No: keep servicing| Loop
     Handoff -->|Yes| Transfer --> Run
 ```
 
+#### Register mapping for the service-loop actions
+
+`R` means read, `W` means write, and `W1C` means write one to clear the
+documented status bits. Device 0 register names below are relative to its CSR
+block; `HUB_CONTROL` and `CALIPTRA_*` belong to the compound controller.
+Packet SRAM entries are memory, not CSR registers. This maps the proposed
+service loop to the hardware interface; it does not imply that the unified
+loop is already implemented. Recovery-register accesses must be assigned to
+the actual image consumer, not duplicated by MCU ROM and Caliptra.
+For the USB recovery flow here, Caliptra owns OCP image loading and status;
+MCU ROM waits for Caliptra's MCU firmware-ready indication while servicing USB.
+
+| Flowchart action / decision | Register or memory | Access and ROM action |
+| --- | --- | --- |
+| ROM start | No USB register | Enter ROM execution. |
+| Initialize Device 0 controller | `DEVCMDSTAT`, `INTEN`, `INTSTAT` | W: clear `DEV_EN`/`DCON`, retain `FORCE_NEEDCLK`; disable interrupts with `INTEN = 0`. W1C: clear implemented pending interrupts in `INTSTAT`. |
+| Initialize hub | `HUB_CONTROL` | W: set `ENABLE = 1` with `DCON = 0` during setup; request upstream connection later. |
+| Set up Device 0 endpoint descriptors and buffers | `EPLISTSTART`, `DATABUFSTART`; Device 0 packet SRAM | W: set both base registers to `0` for the current local-memory layout. Initialize EP0 OUT/IN transfer entries and the SETUP-buffer pointer in SRAM; disable unused endpoint entries. These are not the USB descriptors containing VID/PID. |
+| Initialize PHY / initialization successful? | `CONFIG.ULPI`, `ULPIDEBUG`; USB3320 ULPI registers | R: verify ULPI support. W: select `PHY_MODE`, program PHY read/write transactions and start `PHY_ACCESS`. R: poll access completion and read `PHY_RDATA`. Read PHY vendor/product IDs at ULPI `0x00`-`0x03`; write Function Control (`0x04`) and OTG Control (`0x0A`). Report identity/access failures. |
+| Leave Device 1 disabled | Device 1 `DEVCMDSTAT`, `INTEN` | Keep `DEV_EN = 0`, `DCON = 0` and interrupts disabled; no Device 1 enumeration or service. Explicitly disable it if the entry state is not guaranteed by reset. |
+| VBUS present and PHY ready? | `DEVCMDSTAT.VBUS_DEBOUNCED`; `ULPIDEBUG.PHY_ACCESS` and initialization result | R: wait for debounced VBUS after successful PHY initialization. There is no single combined "PHY ready" register bit implied by this decision. |
+| Connect hub and Device 0 | `HUB_CONTROL`, Device 0 `DEVCMDSTAT`, `INTEN`, `INTSTAT` | W: enable EP0/device interrupts and clear stale pending indications before connection. Set hub `ENABLE = 1`, `DCON = 1`; set Device 0 `DEV_EN = 1`, `DCON = 1`, retaining `FORCE_NEEDCLK = 1`. Hardware performs attachment signaling. |
+| Check Device 0 events / reset, disconnect or fault pending? | `INTSTAT`, `DEVCMDSTAT` | R: inspect endpoint/device interrupts, `SETUP`, bus-reset change (`DRES_C`), VBUS and suspend status. Software also checks transfer/PHY timeout state; MCU ROM does not poll OCP image-transfer status here. |
+| Process Device 0 standard EP0 requests and transfers | SETUP/IN/OUT buffers and EP0 transfer entries in SRAM; `DEVCMDSTAT`, `INTSTAT` | R: decode SETUP bytes and completion state. W: prepare response bytes and transfer entries (buffer offset, byte count, `ACTIVE` or `STALL`). Use `DEV_ADDR` for address assignment with the required status-stage timing. Acknowledge handled SETUP/interrupt indications using their defined clear semantics. Configuration state and USB descriptor bytes are maintained by firmware, not a VID/PID CSR. |
+| Run interruption handling | `EPSKIP`, `INTSTAT`, `DEVCMDSTAT`; recovery `CALIPTRA_CTRL` / `CALIPTRA_STATUS` when OCP is affected | W/R: request endpoint cancellation through `EPSKIP` and wait for ownership release before reusing SRAM. Clear handled status and restore/reset USB state as appropriate. If an OCP claim must be aborted, use `OCP_CLAIM_ABORT` and reconcile FIFO/image state per the interruption flow; aborting a claim alone is not image rollback. |
+| Caliptra or hardware error reported? | Caliptra fatal-error and platform hardware-error status used by the existing boot flow | R: check errors while waiting, as the existing firmware-ready wait does. Report and escalate failures instead of continuing boot or waiting indefinitely. |
+| Caliptra indicates MCU firmware ready? | Caliptra `ss_generic_fw_exec_ctrl[0]`, bit 2; MCI `NotifCptraMcuResetReqSts` notification | R: the current `fw_ready()` helper polls bit 2. The existing wait acknowledges the MCI reset-request notification after readiness. This is Caliptra's indication that MCU firmware is loaded and authorized for execution, not a USB FIFO completion bit. |
+| USB ownership transition ready? / transfer state or disconnect | `INTEN`, endpoint SRAM, `EPSKIP`, `DEVCMDSTAT.DCON`; `HUB_CONTROL.DCON` if disconnecting the whole hub | The handoff policy is still to be defined. Quiesce pending work before relinquishing access. For deliberate disconnection, clear the relevant `DCON` fields; do not stop ROM service while leaving an unmanaged connected device. |
+| Report failure / retry or platform reset / continue boot | ROM diagnostics and platform boot/reset interfaces | No generic USB register implements these actions. Use the selected platform's error, reset and boot mechanisms; retries and escalation remain policy decisions. |
+
+OCP routing remains enabled by reset default
+(`CALIPTRA_CTRL.OCP_PATH_DISABLE = 0`); it is not an additional connection
+write. Register offsets are intentionally omitted here: use the generated
+register definitions matching the selected RTL, especially for the recovery
+aperture.
+
+This diagram covers MCU ROM's USB-service and firmware-ready wait, not
+Caliptra's internal image-loading state machine. MCU ROM starts
+`RI_DOWNLOAD_FIRMWARE` through the existing boot flow; Caliptra ROM/runtime
+manage the recovery images, authentication/authorization and MCU firmware
+loading. For this unencrypted USB recovery flow, the MCU firmware-ready
+indication is the completion gate: ROM does not separately poll OCP status to
+prove that each required image was received and authenticated. It still
+performs the remaining MCU boot checks and reset sequence. Encrypted boot has
+a separate decrypt/activation sequence and is not represented here.
+
 The VBUS-wait state must still observe platform faults, reset requests and the
 selected watchdog/boot timeout policy. It must not spin forever on a failed PHY
 without a diagnosable outcome. Likewise, "bounded work" means that waiting for
-an image, FIFO data, DMA completion, or an EP0 status stage cannot starve
-the other service paths. An interrupt-driven
+Caliptra mailbox completion, firmware readiness, or an EP0 status stage cannot
+starve Device 0 service. The existing blocking boot waits must therefore be
+integrated with USB servicing in the proposed implementation. An interrupt-driven
 implementation is also acceptable; interrupts do not by themselves solve a
 blocking image-loading call.
 
 ROM neither waits for nor services Device 1. Its service loop covers only
-Device 0 and recovery, with hub protocol handling provided by hardware.
+Device 0 and Caliptra boot indications, with hub protocol handling provided by
+hardware.
 
 #### Request and hardware ownership
 
