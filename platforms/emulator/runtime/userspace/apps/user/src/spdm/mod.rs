@@ -400,7 +400,7 @@ fn measurement_provider(
 fn measurement_provider(
 ) -> caliptra_mcu_spdm_pal::measurements::providers::ocp_eat::OcpEatMeasurementProvider {
     caliptra_mcu_spdm_pal::measurements::providers::ocp_eat::OcpEatMeasurementProvider::new(
-        caliptra_mcu_spdm_pal::cert::DPE_LEAF_LABEL,
+        caliptra_mcu_cert_store::DPE_LEAF_LABEL,
     )
 }
 

@@ -27,6 +27,7 @@ futures.workspace = true
 default = []
 pcr-quote = ["caliptra-mcu-attestation-evidence/pcr-quote"]
 set-certificate = [
+  "caliptra-mcu-cert-store/set-certificate",
   "caliptra-mcu-spdm-traits/set-certificate",
   "caliptra-mcu-libsyscall-caliptra",
   "caliptra-mcu-libtock_platform",

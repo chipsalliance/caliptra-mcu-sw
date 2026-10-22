@@ -18,17 +18,19 @@
 //! read here and prepended to their respective Caliptra cert chains via the
 //! `POPULATE_IDEV_*_CERT` mailbox commands.
 
-#[cfg(feature = "spdm")]
 mod slot0_endorsements;
 
+#[cfg(feature = "test-mctp-spdm-set-certificate")]
+use caliptra_mcu_cert_store::CertificateAlgorithm;
+use caliptra_mcu_cert_store::{
+    store::SharedCertStore, CertificateProvisioningPolicy, EndorsementRole,
+};
 #[cfg(feature = "test-mctp-spdm-set-certificate")]
 use caliptra_mcu_config_emulator::flash::CERT_STORE_PARTITION;
 use caliptra_mcu_libsyscall_caliptra::external_otp::ExternalOtp;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_console::Console;
 use caliptra_mcu_scratch_alloc::BitmapAllocator;
-#[cfg(feature = "spdm")]
-use caliptra_mcu_spdm_pal::cert::store::SharedCertStore;
 // `log_warn!` writes through the console writer, so the trait must be in scope;
 // the macro compiles to nothing without a log transport, which makes the import
 // look unused.
@@ -39,14 +41,6 @@ use mcu_caliptra_api::{
     POPULATE_IDEV_MLDSA87_MAX_CERT_SIZE,
 };
 use mcu_error::McuResult;
-
-/// SPDM slot IDs for OCP PKI entities.
-#[cfg(feature = "spdm")]
-const VENDOR_STORE_SLOT: usize = 0;
-#[cfg(feature = "test-mctp-spdm-set-certificate")]
-const OWNER_SPDM_SLOT: u8 = 2;
-#[cfg(feature = "test-mctp-spdm-set-certificate")]
-const TENANT_SPDM_SLOT: u8 = 3;
 
 /// IDevID ECC cert size in OTP partition 1.
 const ECC_DEVID_CERT_SIZE: usize = 547;
@@ -65,37 +59,18 @@ const BOOT_SCRATCH_HEADROOM: usize = 1024;
 pub(crate) const BOOT_SCRATCH_SIZE: usize =
     POPULATE_IDEV_MLDSA87_MAX_CERT_SIZE + BOOT_SCRATCH_HEADROOM;
 
-#[cfg(feature = "spdm")]
-const PROVISIONING_POLICY: caliptra_mcu_cert_store::CertificateProvisioningPolicy =
-    caliptra_mcu_cert_store::CertificateProvisioningPolicy::DEFAULT;
+const PROVISIONING_POLICY: CertificateProvisioningPolicy = CertificateProvisioningPolicy::DEFAULT;
 
-#[cfg(feature = "spdm")]
 static CERT_STORE: SharedCertStore = SharedCertStore::with_policy(PROVISIONING_POLICY);
 
-/// Each managed `(slot, algorithm)` gets its own flash region so that
+/// Each managed `(role, algorithm)` gets its own flash region so that
 /// installing one algorithm's chain cannot erase the other's.
 #[cfg(feature = "test-mctp-spdm-set-certificate")]
-const MANAGED_ENDORSEMENT_REGIONS: &[(usize, u8, caliptra_mcu_spdm_traits::SpdmPalAsymAlgo)] = &[
-    (
-        1,
-        OWNER_SPDM_SLOT,
-        caliptra_mcu_spdm_traits::SpdmPalAsymAlgo::EccP384,
-    ),
-    (
-        1,
-        OWNER_SPDM_SLOT,
-        caliptra_mcu_spdm_traits::SpdmPalAsymAlgo::MlDsa87,
-    ),
-    (
-        2,
-        TENANT_SPDM_SLOT,
-        caliptra_mcu_spdm_traits::SpdmPalAsymAlgo::EccP384,
-    ),
-    (
-        2,
-        TENANT_SPDM_SLOT,
-        caliptra_mcu_spdm_traits::SpdmPalAsymAlgo::MlDsa87,
-    ),
+const MANAGED_ENDORSEMENT_REGIONS: &[(EndorsementRole, CertificateAlgorithm)] = &[
+    (EndorsementRole::Owner, CertificateAlgorithm::EccP384),
+    (EndorsementRole::Owner, CertificateAlgorithm::MlDsa87),
+    (EndorsementRole::Tenant, CertificateAlgorithm::EccP384),
+    (EndorsementRole::Tenant, CertificateAlgorithm::MlDsa87),
 ];
 /// Region size. The partition is statically sized, so subdividing it
 /// four ways instead of two costs no additional flash. ML-DSA chains
@@ -109,17 +84,16 @@ const MANAGED_SLOT_REGION_SIZE: usize = {
 };
 
 /// Initialize Caliptra identity chains before any SPDM or MCU-mailbox task can
-/// contend for the mailbox, then configure SPDM endorsements when enabled.
+/// contend for the mailbox, then configure endorsement chains in the shared
+/// certificate store.
 ///
 /// `scratch` must provide at least [`BOOT_SCRATCH_SIZE`] bytes.
 pub(crate) async fn init(scratch: &BitmapAllocator) -> McuResult<()> {
     populate_idev(scratch).await?;
-    #[cfg(feature = "spdm")]
     setup_endorsements(&CERT_STORE, scratch).await?;
     Ok(())
 }
 
-#[cfg(feature = "spdm")]
 pub(crate) fn shared() -> &'static SharedCertStore {
     &CERT_STORE
 }
@@ -148,32 +122,28 @@ async fn populate_idev<A: ScratchAlloc>(alloc: &A) -> McuResult<()> {
 /// Called once during boot initialization before spawning responders. Slot 0
 /// failure is fatal. Slots 1-2 stay unprovisioned if flash is empty (they'll be
 /// provisioned via SET_CERTIFICATE).
-#[cfg(feature = "spdm")]
 async fn setup_endorsements<A: ScratchAlloc>(store: &SharedCertStore, alloc: &A) -> McuResult<()> {
-    // Slot 0 (Vendor): ReadOnly endorsement with static Root CA (ECC & ML-DSA).
+    // Vendor: ReadOnly endorsement with static Root CA (ECC & ML-DSA).
     store
         .set_endorsement_chains(
             alloc,
-            VENDOR_STORE_SLOT,
+            EndorsementRole::Vendor,
             slot0_endorsements::SLOT0_ECC_ROOT_CERT_CHAIN,
             Some(slot0_endorsements::SLOT0_MLDSA_ROOT_CERT_CHAIN),
             0, // key_pair_id
         )
         .await?;
 
-    // Slots 1-2 (Owner/Tenant): Managed endorsements, initially empty or
-    // loaded from the cert-store flash partition. Each (slot, algorithm)
-    // gets its own contiguous region. This remains test-only until a
-    // production requester authorization exists.
+    // Owner/Tenant: Managed endorsements, initially empty or loaded from the
+    // cert-store flash partition. Each (role, algorithm) gets its own
+    // contiguous region. This remains test-only until a production requester
+    // authorization exists.
     #[cfg(feature = "test-mctp-spdm-set-certificate")]
     {
-        for (region_index, &(store_slot, spdm_slot, algo)) in
-            MANAGED_ENDORSEMENT_REGIONS.iter().enumerate()
-        {
+        for (region_index, &(role, algo)) in MANAGED_ENDORSEMENT_REGIONS.iter().enumerate() {
             store
                 .set_managed_endorsement(
-                    store_slot,
-                    spdm_slot,
+                    role,
                     algo,
                     CERT_STORE_PARTITION.driver_num,
                     region_index * MANAGED_SLOT_REGION_SIZE,
