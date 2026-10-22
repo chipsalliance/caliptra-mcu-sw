@@ -5,6 +5,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 fn main() {
     println!("cargo:rerun-if-env-changed=SOURCE_DATE_EPOCH");
+    // A missing path forces a rerun so the logged build time matches each ROM build.
+    println!("cargo:rerun-if-changed=.always-rebuild-timestamp");
 
     let unix_seconds = std::env::var("SOURCE_DATE_EPOCH")
         .ok()

@@ -140,6 +140,8 @@ const USB3320_SCRATCH: u8 = 0x16;
 const USB3320_SCRATCH_SET: u8 = 0x17;
 const USB3320_SCRATCH_CLEAR: u8 = 0x18;
 const USB3320_HS_DEVICE_FUNCTION_CTRL: u8 = 0x40;
+const PHY_IDENTITY_DIAGNOSTIC_RETRIES: u32 = 3;
+const PHY_IDENTITY_DIAGNOSTIC_DELAY: u32 = 1_000_000;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LpcipUsbError {
@@ -558,21 +560,80 @@ impl LpcipUsbDriver {
             return Err(LpcipUsbError::UnsupportedPhy);
         }
 
+        caliptra_mcu_romtime::println!(
+            "[usb-phy] CONFIG=0x{:08x} ULPIDEBUG=0x{:08x} HUB_CONTROL=0x{:08x} DEVCMDSTAT=0x{:08x}",
+            self.regs.dev0_csr_config.get(),
+            self.regs.dev0_csr_ulpidebug.get(),
+            self.regs.hub_control.get(),
+            self.controller.command_status()
+        );
+
         self.regs
             .dev0_csr_ulpidebug
             .write(usb_combo::bits::UlpidebugT::PhyMode::SET);
 
         //        self.verify_phy_scratch()?;
 
-        let vendor_id = [self.ulpi_read(0x00)?, self.ulpi_read(0x01)?];
-        let product_id = [self.ulpi_read(0x02)?, self.ulpi_read(0x03)?];
+        let (vendor_id, product_id) = self.read_phy_identity()?;
         if vendor_id != USB3320_VENDOR_ID || product_id != USB3320_PRODUCT_ID {
+            caliptra_mcu_romtime::println!(
+                "[usb-phy] Identity mismatch: read vendor=0x{:02x}{:02x} product=0x{:02x}{:02x}, expected vendor=0x0424 product=0x0007",
+                vendor_id[1],
+                vendor_id[0],
+                product_id[1],
+                product_id[0]
+            );
+            // Diagnostic only: show whether the PHY settles later. Still fail.
+            for attempt in 1..=PHY_IDENTITY_DIAGNOSTIC_RETRIES {
+                for _ in 0..PHY_IDENTITY_DIAGNOSTIC_DELAY {
+                    core::hint::spin_loop();
+                }
+                match self.read_phy_identity() {
+                    Ok((vendor, product)) => caliptra_mcu_romtime::println!(
+                        "[usb-phy] Re-read {}: vendor=0x{:02x}{:02x} product=0x{:02x}{:02x}",
+                        attempt,
+                        vendor[1],
+                        vendor[0],
+                        product[1],
+                        product[0]
+                    ),
+                    Err(error) => {
+                        caliptra_mcu_romtime::println!(
+                            "[usb-phy] Re-read {} failed: {:?}",
+                            attempt,
+                            error
+                        )
+                    }
+                }
+            }
             return Err(LpcipUsbError::PhyIdentityMismatch);
         }
+        caliptra_mcu_romtime::println!("[usb-phy] USB3320 identity OK");
 
         self.ulpi_write(USB3320_FUNCTION_CTRL, USB3320_HS_DEVICE_FUNCTION_CTRL)?;
         self.ulpi_write(USB3320_OTG_CTRL, 0)?;
         Ok(())
+    }
+
+    fn read_phy_identity(&self) -> Result<([u8; 2], [u8; 2]), LpcipUsbError> {
+        let mut id = [0u8; 4];
+        for (address, byte) in id.iter_mut().enumerate() {
+            *byte = self.ulpi_read(address as u8).inspect_err(|error| {
+                caliptra_mcu_romtime::println!(
+                    "[usb-phy] ULPI read 0x{:02x} failed: {:?} ULPIDEBUG=0x{:08x}",
+                    address,
+                    error,
+                    self.regs.dev0_csr_ulpidebug.get()
+                )
+            })?;
+            caliptra_mcu_romtime::println!(
+                "[usb-phy] ULPI read 0x{:02x} = 0x{:02x} ULPIDEBUG=0x{:08x}",
+                address,
+                *byte,
+                self.regs.dev0_csr_ulpidebug.get()
+            );
+        }
+        Ok(([id[0], id[1]], [id[2], id[3]]))
     }
 
     fn verify_phy_scratch(&self) -> Result<(), LpcipUsbError> {

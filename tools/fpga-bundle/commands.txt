@@ -12,7 +12,7 @@ bash ./update-htg940-roms.sh \
 
 2. Programming the bitstream to FPGA:
 
-bash ./program-htg940.sh ./htg940_bit28.bit htg940_board_top_20261020_1118.ltx
+bash ./program-htg940.sh ./htg940_bit28.bit htg940_usb_dual_ila_20261022_1304.ltx
 
 3. Monitor serial port
 
@@ -112,9 +112,9 @@ bash tools/fpga-bundle/update-htg940-roms.sh \
   "/mnt/c/Users/marcovisaya/OneDrive - Microsoft/Desktop/htg940/marco/htg940-usb-compliance-NEW.bit"
 
 The updater patches ROM contents only, using the matching implementation pair:
-  htg940_final_roms_20261020_1118.bit
-  htg940_board_top_20261020_1118.mmi
-Program with matching probes htg940_board_top_20261020_1118.ltx.
+  htg940_board_top_20261022_1304.bit
+  htg940_board_top_20261022_1304.mmi
+Program with matching probes htg940_usb_dual_ila_20261022_1304.ltx.
 Choose a new output name for each update; existing outputs are not overwritten.
 The optional fourth updater argument overrides the Windows helper directory.
 The default artifact build and bundle test remain OCP recovery flows; do not

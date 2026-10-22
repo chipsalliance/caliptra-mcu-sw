@@ -128,12 +128,18 @@ impl LpcipUsbDriver {
         vendor_id: u16,
         product_id: u16,
     ) -> Result<UsbRecovery, LpcipUsbError> {
+        caliptra_mcu_romtime::println!(
+            "[usb-recovery] Disabling Device 1 and initializing Device 0"
+        );
         device1_regs.devcmdstat.set(KEEP_PHY_CLOCK);
         device1_regs.inten.set(0);
         self.disconnect_and_initialize();
         // Preserve hardware OCP routing. Never use the diagnostic claim-disable path.
+        caliptra_mcu_romtime::println!("[usb-recovery] Initializing USB3320 PHY");
         self.initialize_phy()?;
+        caliptra_mcu_romtime::println!("[usb-recovery] Waiting for VBUS");
         self.wait_for_vbus()?;
+        caliptra_mcu_romtime::println!("[usb-recovery] Connecting hub and Device 0");
         self.connect();
         let mut ep0 = Ep0::new(self);
         ep0.descriptor = DeviceDescriptor::ocp(0x0200, vendor_id, product_id, 0x0100, 0, 0, 0);

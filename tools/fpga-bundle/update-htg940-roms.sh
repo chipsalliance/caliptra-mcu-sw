@@ -14,8 +14,8 @@ for command in powershell.exe wslpath; do
     }
 done
 
-base_bit="$helper_dir/htg940_final_roms_20261020_1118.bit"
-memory_map="$helper_dir/htg940_board_top_20261020_1118.mmi"
+base_bit="$helper_dir/htg940_board_top_20261022_1304.bit"
+memory_map="$helper_dir/htg940_board_top_20261022_1304.mmi"
 updater="$helper_dir/update-htg940-roms.ps1"
 for input in "$1" "$2" "$base_bit" "$memory_map" "$updater"; do
     [[ -s "$input" ]] || {

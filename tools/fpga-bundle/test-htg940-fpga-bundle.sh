@@ -11,7 +11,7 @@ program the FPGA, and run USB recovery with the bundled firmware.
 Options:
   --helper-dir PATH       Directory containing the HTG940 helper scripts
   --output-bitstream PATH Generated bitstream path (default: beside bundle)
-  --probes PATH           Vivado probes file (default: helper-dir/htg940_board_top_20261020_1118.ltx)
+  --probes PATH           Vivado probes file (default: helper-dir/htg940_usb_dual_ila_20261022_1304.ltx)
   --device PATTERN        Vivado hardware device pattern
   --port COM_PORT         UART port (default: COM8)
   --verify-only           Verify and list the bundle without touching hardware
@@ -173,7 +173,7 @@ output_bitstream="$(realpath -m -- "$output_bitstream")"
 mkdir -p -- "$(dirname -- "$output_bitstream")"
 
 if [[ -z "$probes" ]]; then
-    probes="$helper_dir/htg940_board_top_20261020_1118.ltx"
+    probes="$helper_dir/htg940_usb_dual_ila_20261022_1304.ltx"
 fi
 if [[ -n "$probes" && ! -f "$probes" ]]; then
     echo "ERROR: Probes file does not exist: $probes" >&2
