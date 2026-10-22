@@ -4,7 +4,7 @@ The Security Protocol and Data Model (SPDM) is a protocol designed to ensure sec
 ## Specifications
 | Specification                                 | Document Link                                                                             |
 | --------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Security Protocol and Data Model              | [DSP0274](https://www.dmtf.org/sites/default/files/standards/documents/DSP0274_1.3.2.pdf) |
+| Security Protocol and Data Model              | [DSP0274](https://www.dmtf.org/sites/default/files/standards/documents/DSP0274_1.4.0.pdf) |
 | Secured Messages using SPDM                   | [DSP0277](https://www.dmtf.org/sites/default/files/standards/documents/DSP0277_1.2.0.pdf) |
 | SPDM over MCTP Binding Specification          | [DSP0275](https://www.dmtf.org/sites/default/files/standards/documents/DSP0275_1.0.2.pdf) |
 | Secured Messages using SPDM over MCTP Binding | [DSP0276](https://www.dmtf.org/sites/default/files/standards/documents/DSP0276_1.2.0.pdf) |
@@ -52,7 +52,7 @@ sequenceDiagram
         Requester->>Responder: KeyExchange
         Responder-->>Requester: KeyExchangeRsp
     end
-    rect rgb(255, 255, 204)
+    rect rgba(255, 191, 0, 0.2)
         note right of Requester: Secure Session
         opt If supported
             Requester->>Responder: Finish
@@ -312,19 +312,19 @@ sequenceDiagram
     participant Requester
     participant Responder
 
-    rect rgb(230, 230, 230)
+    rect rgba(128, 128, 128, 0.15)
         note right of Requester: Plain SPDM (MCTP 0x05 / DOE type 1)
         Requester->>Responder: GET_VERSION, GET_CAPABILITIES, NEGOTIATE_ALGORITHMS
         Responder-->>Requester: VERSION, CAPABILITIES, ALGORITHMS
         Requester->>Responder: KEY_EXCHANGE
         Responder-->>Requester: KEY_EXCHANGE_RSP
     end
-    rect rgb(255, 255, 204)
+    rect rgba(255, 191, 0, 0.2)
         note right of Requester: Secured SPDM, handshake keys (MCTP 0x06 / DOE type 2)
         Requester->>Responder: FINISH
         Responder-->>Requester: FINISH_RSP
     end
-    rect rgb(204, 255, 204)
+    rect rgba(0, 170, 0, 0.2)
         note right of Requester: Secured SPDM, data keys (MCTP 0x06 / DOE type 2)
         Requester->>Responder: GET_MEASUREMENTS, VENDOR_DEFINED_REQUEST, ...
         Responder-->>Requester: MEASUREMENTS, VENDOR_DEFINED_RESPONSE, ...
