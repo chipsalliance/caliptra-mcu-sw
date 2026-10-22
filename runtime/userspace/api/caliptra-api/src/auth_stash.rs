@@ -19,7 +19,12 @@ pub const AUTHORIZE_AND_STASH_MEASUREMENT_SIZE: usize = 48;
 /// Width in bytes of the `context` field carried by `AUTHORIZE_AND_STASH`.
 pub const AUTHORIZE_AND_STASH_CONTEXT_SIZE: usize = 48;
 
-const IMAGE_AUTHORIZED: u32 = 0xDEAD_C0DE;
+/// Caliptra's `auth_req_result` for an image authorized against the vendor+owner
+/// image-metadata collection.
+///
+/// Public so callers that report the verdict reuse this definition instead of
+/// declaring their own copy.
+pub const IMAGE_AUTHORIZED: u32 = 0xDEAD_C0DE;
 /// Caliptra returns this when the `fw_id` was authorized against the owner-only
 /// image-metadata collection installed by `SET_OWNER_AUTH_MANIFEST`, rather than
 /// the base vendor+owner collection.
