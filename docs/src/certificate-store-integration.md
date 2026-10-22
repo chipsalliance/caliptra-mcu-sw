@@ -78,8 +78,37 @@ persistent storage (such as dedicated flash partitions) and configure size limit
 - **Role independence**: Owner and Tenant must use disjoint storage regions.
 - **Sizing**: Allocate sufficient space for the configured maximum endorsement
   size plus storage metadata and double-buffering.
-- **Persistence guarantees**: Storage must ensure atomic commits, power-loss
-  safety, and durable removal.
+- **Persistence guarantees**: Storage must ensure atomic commits while keeping
+  the active endorsement readable during updates, power-loss safety,
+  deterministic recovery of the newest valid endorsement, and durable removal.
+
+#### SDK reference implementation
+
+The SDK provides a reference SPI-flash implementation (`SingleManagedEndorsement`
+in `caliptra-mcu-cert-store`) that integrators can configure or replace to match
+their platform storage:
+
+- **Partition and A/B region layout**: On the emulator reference platform, the
+  `512 KiB` certificate-store partition is divided into four disjoint `128 KiB`
+  `(role, algorithm)` allocations (`Owner/Tenant` × `ECC P-384/ML-DSA-87`). Each
+  allocation is split into two equal `64 KiB` A/B flash regions (`active_region`
+  and `staging_region`, `MANAGED_REGION_COUNT = 2`).
+- **Active-chain continuity**: Single-shot and multi-chunk `SET_CERTIFICATE`
+  writes erase and program the `staging_region` while concurrent readers continue
+  reading the `active_region` (`RegionReadGuard` prevents erasing a region while
+  a reader is in flight).
+- **Record metadata and recovery**: Each A/B region stores a DER endorsement
+  chain preceded by an 80-byte `ManagedRecord` header (format version 2). The
+  header identifies the chain and contains certificate metadata, integrity
+  checks, and an update sequence number. Recovery verifies the header CRC and
+  payload checksum, then selects the valid region with the highest sequence
+  number. The DER payload is written and checksum-verified before the header is
+  written and read-back verified.
+- **Durable removal**: `erase` clears the older `staging_region` before the
+  `active_region` so an interrupted erase cannot resurrect a superseded chain
+  after reset. A failed erase recovers any surviving valid record before
+  allowing another update. If recovery also fails, the slot remains
+  unprovisioned and locked against updates until startup recovery after reset.
 
 ## Provide Vendor certificates
 
