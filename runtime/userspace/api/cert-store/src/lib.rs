@@ -1,15 +1,26 @@
 // Licensed under the Apache-2.0 license
 
-//! Transport-neutral certificate provisioning policy.
+//! Transport-neutral certificate store and provisioning policy.
 //! Requester authorization and endorsement-content validation are separate.
 
 #![no_std]
-#![forbid(unsafe_code)]
+
+pub mod endorsement;
+pub mod store;
 
 use caliptra_mcu_common_commands::{
     DEVICE_KEY_ID_FMC_ALIAS, DEVICE_KEY_ID_LDEV_ID, DEVICE_KEY_ID_RT_ALIAS,
 };
+use mcu_caliptra_api::{DpeProfile, DPE_LABEL_LEN};
 use mcu_error::McuResult;
+
+/// 48-byte label fed to DPE `CertifyKey`. Keep this stable so DPE
+/// leaf-cert key continuity matches what existing tooling expects.
+pub const DPE_LEAF_LABEL: [u8; DPE_LABEL_LEN] = [
+    0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f,
+    0x10, 0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18, 0x19, 0x1a, 0x1b, 0x1c, 0x1d, 0x1e, 0x1f,
+    0x20, 0x21, 0x22, 0x23, 0x24, 0x25, 0x26, 0x27, 0x28, 0x29, 0x2a, 0x2b, 0x2c, 0x2d, 0x2e, 0x2f,
+];
 
 pub mod errors {
     use mcu_error::{domain, McuErrorCode};
@@ -18,6 +29,8 @@ pub mod errors {
     pub const KEY_MISMATCH: McuErrorCode = McuErrorCode::new(domain::CERT_STORE, 0, 2);
     pub const UNSUPPORTED_KEY: McuErrorCode = McuErrorCode::new(domain::CERT_STORE, 0, 3);
     pub const INVALID_ENDORSEMENT: McuErrorCode = McuErrorCode::new(domain::CERT_STORE, 0, 4);
+    pub const STORAGE_BUSY: McuErrorCode = McuErrorCode::new(domain::CERT_STORE, 0, 5);
+    pub const STORAGE_ERROR: McuErrorCode = McuErrorCode::new(domain::CERT_STORE, 0, 6);
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -25,6 +38,59 @@ pub enum EndorsementRole {
     Vendor,
     Owner,
     Tenant,
+}
+
+impl EndorsementRole {
+    pub const ALL: [Self; 3] = [Self::Vendor, Self::Owner, Self::Tenant];
+
+    pub const fn index(self) -> usize {
+        match self {
+            Self::Vendor => 0,
+            Self::Owner => 1,
+            Self::Tenant => 2,
+        }
+    }
+
+    pub const fn from_index(index: usize) -> Option<Self> {
+        match index {
+            0 => Some(Self::Vendor),
+            1 => Some(Self::Owner),
+            2 => Some(Self::Tenant),
+            _ => None,
+        }
+    }
+
+    /// Persistent record tag stored in `ManagedRecord` (`Owner = 2`, `Tenant = 3`).
+    pub const fn record_tag(self) -> u8 {
+        match self {
+            Self::Vendor => 0,
+            Self::Owner => 2,
+            Self::Tenant => 3,
+        }
+    }
+}
+
+/// Asymmetric algorithm for a certificate chain in the common store.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CertificateAlgorithm {
+    EccP384,
+    MlDsa87,
+}
+
+impl CertificateAlgorithm {
+    pub const fn index(self) -> usize {
+        match self {
+            Self::EccP384 => 0,
+            Self::MlDsa87 => 1,
+        }
+    }
+
+    pub const fn dpe_profile(self) -> DpeProfile {
+        match self {
+            Self::EccP384 => DpeProfile::P384Sha384,
+            Self::MlDsa87 => DpeProfile::Mldsa87,
+        }
+    }
 }
 
 /// Logical Caliptra identity, independent of the certificate's algorithm.
