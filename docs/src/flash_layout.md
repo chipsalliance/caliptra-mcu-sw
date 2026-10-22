@@ -69,6 +69,7 @@ The Image Information section is repeated for each image and provides detailed m
 |                     |              | `0x00000FFF`: Reserved for the optional device UEID entry in the SoC Authorization Manifest (not a flash image identifier) |
 |                     |              | `0x00001000`-`0x0000FFFF`: Reserved for other Vendor-defined SoC images                |
 |                     |              | `0x00010000`-`0xFFFFFFFF`: Reserved for other Owner-only defined SoC images            |
+|                     |              | Vendor and owner SoC image entries use the image's `component_id` (as reported by `GET_IMAGE_INFO`) as the identifier. |
 | ImageLocationOffset | 4            | Offset in bytes from byte 0 of the header to where the image content begins. Used in flash-based boot.
 | Size                | 4            | Size in bytes of the image. This is the actual size of the image without padding.      |
 |                     |              | The image itself as written to the flash should be 4-byte aligned and additional       |

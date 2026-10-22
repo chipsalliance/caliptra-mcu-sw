@@ -13,12 +13,12 @@ use caliptra_api::mailbox::{
 };
 use caliptra_auth_man_types::{
     AuthManifestImageMetadata, AuthManifestImageMetadataCollection, AuthorizationManifest,
+    OwnerAuthManifestImageMetadataCollection, OwnerAuthorizationManifest,
 };
 use caliptra_image_types::ImageManifest;
 use caliptra_mcu_flash_image::{
     FlashHeader, ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, MCU_RT_IDENTIFIER,
-    OWNER_AUTH_MANIFEST_IDENTIFIER, OWNER_MEASUREMENT_POLICY_IDENTIFIER,
-    OWNER_SOC_IMAGES_BASE_IDENTIFIER, SOC_MANIFEST_IDENTIFIER, V_AUTH_KEY_ID,
+    OWNER_AUTH_MANIFEST_IDENTIFIER, SOC_MANIFEST_IDENTIFIER, V_AUTH_KEY_ID,
 };
 use caliptra_mcu_libsyscall_caliptra::console_writeln;
 use caliptra_mcu_libsyscall_caliptra::dma::AXIAddr;
@@ -266,8 +266,11 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
             )
             .await
             .map_err(|_| ErrorCode::Fail)?;
-        self.validate_auth_manifest_soc_fw_id_set(manifest_offset, manifest_len)
-            .await?;
+        self.validate_auth_manifest_soc_fw_id_set(&StagedAuthManifest::soc(
+            manifest_offset,
+            manifest_len,
+        ))
+        .await?;
 
         let mut payload_stream =
             MailboxPayloadStream::new(self.staging_memory, manifest_offset, manifest_len);
@@ -348,8 +351,20 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
             .await
             .map_err(|_| ErrorCode::Fail)?;
         self.verify_manifest(manifest_offset, manifest_len).await?;
-        self.validate_auth_manifest_soc_fw_id_set(manifest_offset, manifest_len)
+        let soc_manifest = StagedAuthManifest::soc(manifest_offset, manifest_len);
+        self.validate_auth_manifest_soc_fw_id_set(&soc_manifest)
             .await?;
+
+        // Verify the staged Owner Auth Manifest, if the package carries one.
+        let owner_manifest = self.get_staged_owner_manifest(&flash_header).await;
+        if let Some(owner_manifest) = &owner_manifest {
+            console_writeln!(
+                Console::<DefaultSyscalls>::writer(),
+                "[FW Upd] Verifying Owner Manifest"
+            );
+            self.verify_owner_manifest(owner_manifest.offset, owner_manifest.len)
+                .await?;
+        }
 
         for i in 0..flash_header.image_count as usize {
             let image_header = self
@@ -360,12 +375,16 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
                 )
                 .await?;
 
-            if !listed_in_soc_manifest(image_header.identifier) {
+            if verified_by_caliptra_command(image_header.identifier) {
                 continue;
             }
 
             let metadata = self
-                .get_image_metadata(manifest_offset, manifest_len, image_header.identifier)
+                .get_toc_entry_metadata(
+                    &soc_manifest,
+                    owner_manifest.as_ref(),
+                    image_header.identifier,
+                )
                 .await?;
 
             self.verify_mcu_or_soc_image(
@@ -382,7 +401,8 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
     ///
     /// Compares Caliptra FMC+RT digests from the downloaded ImageManifest against
     /// the running firmware's digests obtained via the FW_INFO mailbox command.
-    /// Also compares MCU RT and SoC image digests against the active auth manifest.
+    /// Also compares MCU RT, SoC and owner image digests against the staged
+    /// SoC and Owner Auth Manifests.
     async fn verify_running_image_match(
         &mut self,
         flash_header: &FlashHeader,
@@ -458,7 +478,7 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
             return Err(ErrorCode::Fail);
         }
 
-        // 2. Verify MCU RT and SoC image digests against active auth manifest
+        // 2. Verify MCU RT, SoC and owner image digests against the staged auth manifests
         let (manifest_offset, manifest_len) = self
             .get_image_toc(
                 flash_header.image_count as usize,
@@ -466,6 +486,8 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
                 SOC_MANIFEST_IDENTIFIER,
             )
             .await?;
+        let soc_manifest = StagedAuthManifest::soc(manifest_offset, manifest_len);
+        let owner_manifest = self.get_staged_owner_manifest(flash_header).await;
 
         for i in 0..flash_header.image_count as usize {
             let image_header = self
@@ -476,7 +498,7 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
                 )
                 .await?;
 
-            if !listed_in_soc_manifest(image_header.identifier) {
+            if verified_by_caliptra_command(image_header.identifier) {
                 continue;
             }
 
@@ -507,9 +529,13 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
                 .await
                 .map_err(|_| ErrorCode::Fail)?;
 
-            // Compare against the digest in the active auth manifest
+            // Compare against the digest in the staged auth manifest
             let metadata = self
-                .get_image_metadata(manifest_offset, manifest_len, image_header.identifier)
+                .get_toc_entry_metadata(
+                    &soc_manifest,
+                    owner_manifest.as_ref(),
+                    image_header.identifier,
+                )
                 .await?;
             if hash != metadata.digest {
                 console_writeln!(
@@ -528,38 +554,59 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
         Ok(())
     }
 
+    /// Find the metadata entry authorizing a staged TOC entry. TOC entries are
+    /// keyed by `component_id`, so the lookup matches on `component_id`.
     pub async fn get_image_metadata(
         &self,
-        manifest_staging_mem_offset: usize,
-        manifest_size: usize,
-        image_id: u32,
-    ) -> Result<AuthManifestImageMetadata, ErrorCode> {
-        let entry_count = self
-            .get_image_metadata_entry_count(manifest_staging_mem_offset, manifest_size)
-            .await?;
+        manifest: &StagedAuthManifest,
+        component_id: u32,
+    ) -> Result<Option<AuthManifestImageMetadata>, ErrorCode> {
+        let entry_count = self.get_image_metadata_entry_count(manifest).await?;
 
         for i in 0..entry_count as usize {
-            let metadata = self
-                .get_image_metadata_by_index(manifest_staging_mem_offset, manifest_size, i)
-                .await?;
+            let metadata = self.get_image_metadata_by_index(manifest, i).await?;
 
-            if metadata.fw_id == image_id {
-                return Ok(metadata);
+            if metadata.component_id == component_id {
+                return Ok(Some(metadata));
             }
         }
 
+        Ok(None)
+    }
+
+    /// Resolve the metadata for a staged TOC entry from the staged SoC (vendor)
+    /// auth manifest first, then from the staged Owner Auth Manifest (if any).
+    async fn get_toc_entry_metadata(
+        &self,
+        soc_manifest: &StagedAuthManifest,
+        owner_manifest: Option<&StagedAuthManifest>,
+        component_id: u32,
+    ) -> Result<AuthManifestImageMetadata, ErrorCode> {
+        if let Some(metadata) = self.get_image_metadata(soc_manifest, component_id).await? {
+            return Ok(metadata);
+        }
+        if let Some(owner_manifest) = owner_manifest {
+            if let Some(metadata) = self
+                .get_image_metadata(owner_manifest, component_id)
+                .await?
+            {
+                return Ok(metadata);
+            }
+        }
+        console_writeln!(
+            Console::<DefaultSyscalls>::writer(),
+            "[FW Upd] Image 0x{:x} not listed in any staged auth manifest",
+            component_id
+        );
         Err(ErrorCode::Fail)
     }
 
     async fn get_image_metadata_entry_count(
         &self,
-        manifest_staging_mem_offset: usize,
-        manifest_size: usize,
+        manifest: &StagedAuthManifest,
     ) -> Result<u32, ErrorCode> {
-        let entry_count_offset = manifest_staging_mem_offset
-            + offset_of!(AuthorizationManifest, image_metadata_col)
-            + offset_of!(AuthManifestImageMetadataCollection, entry_count);
-        if entry_count_offset + 4 > manifest_staging_mem_offset + manifest_size {
+        let entry_count_offset = manifest.offset + manifest.kind.entry_count_offset();
+        if entry_count_offset + 4 > manifest.offset + manifest.len {
             return Err(ErrorCode::Fail);
         }
 
@@ -572,17 +619,14 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
 
     async fn get_image_metadata_by_index(
         &self,
-        manifest_staging_mem_offset: usize,
-        manifest_size: usize,
+        manifest: &StagedAuthManifest,
         index: usize,
     ) -> Result<AuthManifestImageMetadata, ErrorCode> {
-        let image_metadata_collection_offset = manifest_staging_mem_offset
-            + offset_of!(AuthorizationManifest, image_metadata_col)
-            + offset_of!(AuthManifestImageMetadataCollection, image_metadata_list);
-        let metadata_offset = image_metadata_collection_offset
+        let metadata_offset = manifest.offset
+            + manifest.kind.metadata_list_offset()
             + index * core::mem::size_of::<AuthManifestImageMetadata>();
         let mut metadata_bytes = [0u8; core::mem::size_of::<AuthManifestImageMetadata>()];
-        if metadata_offset + metadata_bytes.len() > manifest_staging_mem_offset + manifest_size {
+        if metadata_offset + metadata_bytes.len() > manifest.offset + manifest.len {
             return Err(ErrorCode::Fail);
         }
         self.staging_memory
@@ -596,17 +640,12 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
 
     async fn validate_auth_manifest_soc_fw_id_set(
         &self,
-        manifest_staging_mem_offset: usize,
-        manifest_size: usize,
+        manifest: &StagedAuthManifest,
     ) -> Result<(), ErrorCode> {
-        let entry_count = self
-            .get_image_metadata_entry_count(manifest_staging_mem_offset, manifest_size)
-            .await?;
+        let entry_count = self.get_image_metadata_entry_count(manifest).await?;
         let mut manifest_soc_fw_id_count = 0usize;
         for i in 0..entry_count as usize {
-            let metadata = self
-                .get_image_metadata_by_index(manifest_staging_mem_offset, manifest_size, i)
-                .await?;
+            let metadata = self.get_image_metadata_by_index(manifest, i).await?;
             // The Vendor Authorization Key entry anchors a key digest; it is
             // not a loadable SoC image.
             if metadata.fw_id != MCU_RT_IDENTIFIER && metadata.fw_id != V_AUTH_KEY_ID {
@@ -625,12 +664,7 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
 
         for expected_fw_id in self.soc_image_load_fw_ids.iter().copied() {
             if !self
-                .auth_manifest_contains_fw_id(
-                    manifest_staging_mem_offset,
-                    manifest_size,
-                    entry_count,
-                    expected_fw_id,
-                )
+                .auth_manifest_contains_fw_id(manifest, entry_count, expected_fw_id)
                 .await?
             {
                 return Err(ErrorCode::Fail);
@@ -642,15 +676,12 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
 
     async fn auth_manifest_contains_fw_id(
         &self,
-        manifest_staging_mem_offset: usize,
-        manifest_size: usize,
+        manifest: &StagedAuthManifest,
         entry_count: u32,
         fw_id: u32,
     ) -> Result<bool, ErrorCode> {
         for i in 0..entry_count as usize {
-            let metadata = self
-                .get_image_metadata_by_index(manifest_staging_mem_offset, manifest_size, i)
-                .await?;
+            let metadata = self.get_image_metadata_by_index(manifest, i).await?;
             if metadata.fw_id == fw_id {
                 return Ok(true);
             }
@@ -736,6 +767,33 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
             len as u32,
         )
         .await
+    }
+
+    /// Verify a staged Owner Auth Manifest without replacing the active one.
+    async fn verify_owner_manifest(&mut self, offset: usize, len: usize) -> Result<(), ErrorCode> {
+        let mut payload_stream = MailboxPayloadStream::new(self.staging_memory, offset, len);
+        crate::image_loader::execute_auth_manifest_command(
+            &self.mailbox,
+            CommandId::VERIFY_OWNER_AUTH_MANIFEST,
+            &mut payload_stream,
+            len as u32,
+        )
+        .await
+    }
+
+    /// Locate the Owner Auth Manifest in the staged package, if present.
+    async fn get_staged_owner_manifest(
+        &self,
+        flash_header: &FlashHeader,
+    ) -> Option<StagedAuthManifest> {
+        self.get_image_toc(
+            flash_header.image_count as usize,
+            flash_header.image_headers_offset as usize,
+            OWNER_AUTH_MANIFEST_IDENTIFIER,
+        )
+        .await
+        .ok()
+        .map(|(offset, len)| StagedAuthManifest::owner(offset, len))
     }
 
     async fn get_dma_image_staging_address(&self, image_id: u32) -> Result<AXIAddr, ErrorCode> {
@@ -1105,20 +1163,86 @@ pub use crate::image_loader::AuthManifestReqHeader;
 /// an entry in the SoC manifest. Owner SoC images are authorized against the
 /// owner authorization manifest when they are loaded, so they are not listed in
 /// the SoC manifest either.
-fn listed_in_soc_manifest(identifier: u32) -> bool {
-    !matches!(
+/// TOC entries that are verified by dedicated Caliptra commands rather than by
+/// a digest in an auth manifest: the Caliptra FMC+RT bundle, the SoC (vendor)
+/// auth manifest and the Owner Auth Manifest. Every other TOC entry must be
+/// listed (by component_id) in the staged SoC or Owner Auth Manifest.
+fn verified_by_caliptra_command(identifier: u32) -> bool {
+    matches!(
         identifier,
-        CALIPTRA_FMC_RT_IDENTIFIER
-            | SOC_MANIFEST_IDENTIFIER
-            | OWNER_AUTH_MANIFEST_IDENTIFIER
-            | OWNER_MEASUREMENT_POLICY_IDENTIFIER
-            | OWNER_SOC_IMAGES_BASE_IDENTIFIER..=u32::MAX
+        CALIPTRA_FMC_RT_IDENTIFIER | SOC_MANIFEST_IDENTIFIER | OWNER_AUTH_MANIFEST_IDENTIFIER
     )
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AuthManifestKind {
+    Soc,
+    Owner,
+}
+
+impl AuthManifestKind {
+    fn entry_count_offset(self) -> usize {
+        match self {
+            AuthManifestKind::Soc => {
+                offset_of!(AuthorizationManifest, image_metadata_col)
+                    + offset_of!(AuthManifestImageMetadataCollection, entry_count)
+            }
+            AuthManifestKind::Owner => {
+                offset_of!(OwnerAuthorizationManifest, image_metadata_col)
+                    + offset_of!(OwnerAuthManifestImageMetadataCollection, entry_count)
+            }
+        }
+    }
+
+    fn metadata_list_offset(self) -> usize {
+        match self {
+            AuthManifestKind::Soc => {
+                offset_of!(AuthorizationManifest, image_metadata_col)
+                    + offset_of!(AuthManifestImageMetadataCollection, image_metadata_list)
+            }
+            AuthManifestKind::Owner => {
+                offset_of!(OwnerAuthorizationManifest, image_metadata_col)
+                    + offset_of!(
+                        OwnerAuthManifestImageMetadataCollection,
+                        image_metadata_list
+                    )
+            }
+        }
+    }
+}
+
+/// An auth manifest located in staging memory.
+#[derive(Clone, Copy, Debug)]
+pub struct StagedAuthManifest {
+    kind: AuthManifestKind,
+    offset: usize,
+    len: usize,
+}
+
+impl StagedAuthManifest {
+    pub fn soc(offset: usize, len: usize) -> Self {
+        Self {
+            kind: AuthManifestKind::Soc,
+            offset,
+            len,
+        }
+    }
+
+    pub fn owner(offset: usize, len: usize) -> Self {
+        Self {
+            kind: AuthManifestKind::Owner,
+            offset,
+            len,
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use caliptra_mcu_flash_image::{
+        OWNER_MEASUREMENT_POLICY_IDENTIFIER, OWNER_SOC_IMAGES_BASE_IDENTIFIER,
+    };
 
     const A: u32 = 0x1000;
     const B: u32 = 0x2000;
@@ -1150,20 +1274,45 @@ mod tests {
     }
 
     #[test]
-    fn owner_artifacts_are_not_listed_in_soc_manifest() {
+    fn only_caliptra_verified_artifacts_skip_manifest_digest_check() {
         for identifier in [
             CALIPTRA_FMC_RT_IDENTIFIER,
             SOC_MANIFEST_IDENTIFIER,
             OWNER_AUTH_MANIFEST_IDENTIFIER,
+        ] {
+            assert!(verified_by_caliptra_command(identifier));
+        }
+        for identifier in [
+            MCU_RT_IDENTIFIER,
             OWNER_MEASUREMENT_POLICY_IDENTIFIER,
+            A,
             OWNER_SOC_IMAGES_BASE_IDENTIFIER,
             u32::MAX,
         ] {
-            assert!(!listed_in_soc_manifest(identifier));
+            assert!(!verified_by_caliptra_command(identifier));
         }
-        for identifier in [MCU_RT_IDENTIFIER, A, OWNER_SOC_IMAGES_BASE_IDENTIFIER - 1] {
-            assert!(listed_in_soc_manifest(identifier));
-        }
+    }
+
+    #[test]
+    fn staged_manifest_metadata_offsets_match_manifest_layouts() {
+        let soc = AuthManifestKind::Soc;
+        let owner = AuthManifestKind::Owner;
+        assert_eq!(
+            soc.metadata_list_offset() - soc.entry_count_offset(),
+            core::mem::size_of::<u32>()
+        );
+        assert_eq!(
+            owner.metadata_list_offset() - owner.entry_count_offset(),
+            core::mem::size_of::<u32>()
+        );
+        assert_eq!(
+            soc.entry_count_offset(),
+            core::mem::size_of::<caliptra_auth_man_types::AuthManifestPreamble>()
+        );
+        assert_eq!(
+            owner.entry_count_offset(),
+            core::mem::size_of::<caliptra_auth_man_types::OwnerAuthManifestPreamble>()
+        );
     }
 
     #[test]

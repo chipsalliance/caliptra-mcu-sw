@@ -294,12 +294,14 @@ pub fn flash_image_create(args: &CaliptraBuildArgs) -> Result<()> {
         }
     }
 
-    // Generate FirmwareImage from soc image buffer
-    // Use image_id from soc_images config when available; otherwise fall back to
-    // SOC_IMAGES_BASE_IDENTIFIER + index for backward compatibility.
+    // Generate FirmwareImage from soc image buffer.
+    // SoC image TOC entries are keyed by component_id, matching how the runtime
+    // image loader resolves the image (via GET_IMAGE_INFO) and how the firmware
+    // updater matches TOC entries to auth manifest metadata. Without a
+    // soc_images config, fall back to SOC_IMAGES_BASE_IDENTIFIER + index.
     for (i, soc_img) in soc_img_buffers.iter().enumerate() {
         let identifier = if let Some(ref soc_images) = args.soc_images {
-            soc_images[i].image_id
+            soc_images[i].component_id
         } else {
             SOC_IMAGES_BASE_IDENTIFIER + i as u32
         };
@@ -312,7 +314,8 @@ pub fn flash_image_create(args: &CaliptraBuildArgs) -> Result<()> {
         images.push(FirmwareImage::new(identifier, soc_img, filename)?);
     }
 
-    // Owner SoC images are loaded by fw_id after the vendor SoC image load list.
+    // Owner SoC images are loaded after the vendor SoC image load list and, like
+    // vendor SoC images, are keyed in the TOC by component_id.
     let owner_soc_images = args.owner_soc_images.as_deref().unwrap_or(&[]);
     let owner_img_buffers = owner_soc_images
         .iter()
@@ -320,7 +323,7 @@ pub fn flash_image_create(args: &CaliptraBuildArgs) -> Result<()> {
         .collect::<Result<Vec<_>>>()?;
     for (image, owner_img) in owner_soc_images.iter().zip(owner_img_buffers.iter()) {
         images.push(FirmwareImage::new(
-            image.image_id,
+            image.component_id,
             owner_img,
             image.network_filename.as_deref().map(str::as_bytes),
         )?);
@@ -542,11 +545,13 @@ mod tests {
             soc_images: Some(vec![
                 ImageCfg {
                     image_id: SOC_IMAGES_BASE_IDENTIFIER,
+                    component_id: SOC_IMAGES_BASE_IDENTIFIER,
                     network_filename: Some("soc-image-1.bin".into()),
                     ..Default::default()
                 },
                 ImageCfg {
                     image_id: SOC_IMAGES_BASE_IDENTIFIER + 1,
+                    component_id: SOC_IMAGES_BASE_IDENTIFIER + 1,
                     network_filename: Some("soc-image-2.bin".into()),
                     ..Default::default()
                 },
@@ -817,10 +822,11 @@ mod tests {
     }
 
     #[test]
-    fn test_flash_image_uses_image_id_from_config() {
-        // Regression test for #1580: when ImageCfg provides nonsequential image_id
-        // values (e.g. 12 and 6), flash_image_create must use those as the flash
-        // TOC identifiers instead of SOC_IMAGES_BASE_IDENTIFIER + index.
+    fn test_flash_image_uses_component_id_from_config() {
+        // Regression test for #1580: when ImageCfg provides nonsequential IDs,
+        // flash_image_create must use them as the flash TOC identifiers instead of
+        // SOC_IMAGES_BASE_IDENTIFIER + index. The TOC is keyed by component_id
+        // (not fw_id/image_id) since that is what the runtime loader fetches by.
         let soc_image1_content = b"Soc Image 1 - custom id";
         let soc_image2_content = b"Soc Image 2 - custom id";
 
@@ -835,12 +841,14 @@ mod tests {
         let soc_images = Some(vec![
             ImageCfg {
                 path: soc_image1.path().to_path_buf(),
-                image_id: 12,
+                image_id: 0x1000,
+                component_id: 12,
                 ..Default::default()
             },
             ImageCfg {
                 path: soc_image2.path().to_path_buf(),
-                image_id: 6,
+                image_id: 0x1001,
+                component_id: 6,
                 ..Default::default()
             },
         ]);
@@ -893,11 +901,13 @@ mod tests {
             soc_images: Some(vec![ImageCfg {
                 path: soc_image.path().to_path_buf(),
                 image_id: 0x1000,
+                component_id: 0x1000,
                 ..Default::default()
             }]),
             owner_soc_images: Some(vec![ImageCfg {
                 path: owner_image.path().to_path_buf(),
                 image_id: 0x1_0000,
+                component_id: 0x2_0000,
                 ..Default::default()
             }]),
             offset: 0,
@@ -917,7 +927,7 @@ mod tests {
 
         let offset1 = offset0 + IMAGE_INFO_SIZE;
         let img1 = ImageHeader::read_from_bytes(&data[offset1..offset1 + IMAGE_INFO_SIZE]).unwrap();
-        assert_eq!(img1.identifier, 0x1_0000);
+        assert_eq!(img1.identifier, 0x2_0000);
         let owner_start = img1.offset as usize;
         assert_eq!(
             &data[owner_start..owner_start + owner_image_content.len()],
