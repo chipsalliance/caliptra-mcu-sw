@@ -22,8 +22,8 @@ extern crate alloc;
 use alloc::boxed::Box;
 use core::cell::UnsafeCell;
 
-use super::cert::store::{SharedCertStore, TaskCertStore};
 use super::measurements::MeasurementProvider;
+use caliptra_mcu_cert_store::store::{SharedCertStore, TaskCertStore};
 
 /// MCU implementation of the SPDM-Lite Platform Abstraction Layer.
 ///
