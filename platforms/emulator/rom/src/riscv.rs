@@ -467,7 +467,6 @@ pub extern "C" fn rom_entry() -> ! {
                     cptra_mbox_axi_users: mbox_axi_users,
                     cptra_fuse_axi_user: axi_user0,
                     cptra_trng_axi_user: axi_user0,
-                    cptra_dma_axi_user: axi_user0,
                     mci_mbox0_axi_users: mbox_axi_users,
                     mci_mbox1_axi_users: mbox_axi_users,
                     #[cfg(feature = "ocp-lock")]
@@ -542,7 +541,6 @@ pub extern "C" fn rom_entry() -> ! {
             cptra_mbox_axi_users: mbox_axi_users,
             cptra_fuse_axi_user: axi_user0,
             cptra_trng_axi_user: axi_user0,
-            cptra_dma_axi_user: axi_user0,
             mci_mbox0_axi_users: mbox_axi_users,
             mci_mbox1_axi_users: mbox_axi_users,
             #[cfg(feature = "ocp-lock")]
@@ -563,7 +561,6 @@ pub extern "C" fn rom_entry() -> ! {
             cptra_mbox_axi_users: mbox_axi_users,
             cptra_fuse_axi_user: axi_user0,
             cptra_trng_axi_user: axi_user0,
-            cptra_dma_axi_user: axi_user0,
             mci_mbox0_axi_users: mbox_axi_users,
             mci_mbox1_axi_users: mbox_axi_users,
             #[cfg(feature = "ocp-lock")]
@@ -663,7 +660,6 @@ pub extern "C" fn rom_entry() -> ! {
                 cptra_mbox_axi_users: mbox_axi_users,
                 cptra_fuse_axi_user: axi_user0,
                 cptra_trng_axi_user: axi_user0,
-                cptra_dma_axi_user: axi_user0,
                 mci_mbox0_axi_users: mbox_axi_users,
                 mci_mbox1_axi_users: mbox_axi_users,
                 #[cfg(feature = "ocp-lock")]
@@ -702,7 +698,6 @@ pub extern "C" fn rom_entry() -> ! {
             cptra_mbox_axi_users: mbox_axi_users,
             cptra_fuse_axi_user: axi_user0,
             cptra_trng_axi_user: axi_user0,
-            cptra_dma_axi_user: axi_user0,
             mci_mbox0_axi_users: mbox_axi_users,
             mci_mbox1_axi_users: mbox_axi_users,
             ..Default::default()
@@ -718,7 +713,6 @@ pub extern "C" fn rom_entry() -> ! {
             cptra_mbox_axi_users: mbox_axi_users,
             cptra_fuse_axi_user: axi_user0,
             cptra_trng_axi_user: axi_user0,
-            cptra_dma_axi_user: axi_user0,
             mci_mbox0_axi_users: mbox_axi_users,
             mci_mbox1_axi_users: mbox_axi_users,
             #[cfg(feature = "ocp-lock")]
@@ -766,7 +760,6 @@ pub extern "C" fn rom_entry() -> ! {
             cptra_mbox_axi_users: mbox_axi_users,
             cptra_fuse_axi_user: axi_user0,
             cptra_trng_axi_user: axi_user0,
-            cptra_dma_axi_user: axi_user0,
             mci_mbox0_axi_users: mbox_axi_users,
             mci_mbox1_axi_users: mbox_axi_users,
             #[cfg(feature = "ocp-lock")]
@@ -826,7 +819,6 @@ pub extern "C" fn rom_entry() -> ! {
             cptra_mbox_axi_users: mbox_axi_users,
             cptra_fuse_axi_user: axi_user0,
             cptra_trng_axi_user: axi_user0,
-            cptra_dma_axi_user: axi_user0,
             mci_mbox0_axi_users: mbox_axi_users,
             mci_mbox1_axi_users: mbox_axi_users,
             dot_recovery_handler: if cfg!(any(
