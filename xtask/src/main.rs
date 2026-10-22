@@ -29,6 +29,7 @@ mod registers;
 mod rom;
 mod runtime;
 mod sizes;
+mod submodules;
 mod test;
 #[cfg(feature = "cherry-picker")]
 mod vertex_ai;
