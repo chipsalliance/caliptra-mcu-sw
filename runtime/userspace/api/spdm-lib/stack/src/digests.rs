@@ -7,7 +7,9 @@
 //! array. Chunk buffers come from the per-IO bitmap pool — no
 //! stack-allocated `[u8; N]` arrays for cert content.
 
-use caliptra_mcu_spdm_codec::{DigestsRsp, ResponseBody, SpdmMsgHdrPdu, SHA384_HASH_SIZE};
+use caliptra_mcu_spdm_codec::{
+    DigestsRsp, ResponseBody, SpdmMsgHdrPdu, SpdmVersion, SHA384_HASH_SIZE,
+};
 use caliptra_mcu_spdm_traits::{
     PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalAsymAlgo, SpdmPalHashAlgo, SpdmPalIoTransport,
     MAX_SLOTS,
@@ -44,7 +46,13 @@ pub(crate) async fn handle_get_digests<'a, Pal: SpdmPal>(
     }
 
     let asym_algo = state.asym_algo();
-    let supported = pal.supported_slots();
+    // DSP0274 §10.5: Param1 is reserved before SPDM 1.3; 1.3 defines it
+    // as SupportedSlotMask.
+    let supported = if state.version >= SpdmVersion::V13 {
+        pal.supported_slots()
+    } else {
+        0
+    };
     let provisioned = pal.provisioned_slots(asym_algo);
     let digest_size = SpdmPalHashAlgo::Sha384.hash_size();
     let num_slots = provisioned.count_ones() as usize;
