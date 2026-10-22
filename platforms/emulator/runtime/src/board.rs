@@ -655,7 +655,7 @@ pub unsafe fn main() {
     mailbox.alarm.set_alarm_client(mailbox);
 
     let caliptra_soc = static_init!(
-        caliptra_mcu_romtime::CaliptraSoC,
+        caliptra_mcu_romtime::CaliptraSoC<'static>,
         caliptra_mcu_romtime::CaliptraSoC::new(
             Some(MCU_MEMORY_MAP.soc_offset),
             Some(MCU_MEMORY_MAP.soc_offset),

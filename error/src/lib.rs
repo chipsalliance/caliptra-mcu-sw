@@ -134,6 +134,31 @@ impl McuError {
             "Recovery boot mechanism not configured"
         ),
         (
+            ROM_USB_INITIALIZATION_ERROR,
+            0x1_0047,
+            "USB initialization failed"
+        ),
+        (
+            ROM_USB_RECOVERY_RESET,
+            0x1_0048,
+            "USB reset during recovery"
+        ),
+        (
+            ROM_USB_RECOVERY_DISCONNECTED,
+            0x1_0049,
+            "USB disconnected during recovery"
+        ),
+        (
+            ROM_USB_RECOVERY_SUSPENDED,
+            0x1_004a,
+            "USB suspended during recovery"
+        ),
+        (
+            ROM_USB_CANCELLATION_TIMEOUT,
+            0x1_004b,
+            "USB endpoint cancellation timed out"
+        ),
+        (
             ROM_DOT_RECOVERY_BLOB_AUTH_ERROR,
             0x1_001a,
             "DOT recovery blob authentication failed"

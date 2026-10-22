@@ -32,6 +32,20 @@ impl FatalErrorHandler for FpgaFatalErrorHandler {
     fn fatal_error(&mut self, code: u32) -> ! {
         let _ = writeln!(FpgaWriter {}, "MCU fatal error: {}", HexWord(code));
         RomEnv::new().mci.set_fw_fatal_error(code);
+        #[cfg(feature = "test-lpcip-usb-ocp-recovery")]
+        {
+            use caliptra_mcu_registers_generated::usb_combo;
+            use tock_registers::interfaces::ReadWriteable;
+            let regs = unsafe {
+                &*(caliptra_mcu_config_fpga::FPGA_USB_COMBO_ADDR
+                    as *const usb_combo::regs::UsbCombo)
+            };
+            // Vendor reason 0x80 denotes an MCU ROM failure; the full code is in MCI.
+            regs.recovery_device_status_0.modify(
+                usb_combo::bits::DeviceStatus0::DevStatus.val(0x0f)
+                    + usb_combo::bits::DeviceStatus0::RecReasonCode.val(0x80),
+            );
+        }
         exit_fpga(code);
     }
 }

@@ -17,7 +17,7 @@ macro_rules! mailbox_component_static {
     ($A:ty, $b:expr, $c:expr, $d:expr, $e:expr) => {{
         use capsules_core::virtualizers::virtual_alarm::VirtualMuxAlarm;
         let alarm = kernel::static_buf!(VirtualMuxAlarm<'static, $A>);
-        let caliptra_soc = kernel::static_buf!(CaliptraSoC);
+        let caliptra_soc = kernel::static_buf!(CaliptraSoC<'static>);
         let mbox = kernel::static_buf!(
             caliptra_mcu_capsules_runtime::mailbox::Mailbox<'static, VirtualMuxAlarm<'static, $A>>
         );
@@ -55,7 +55,7 @@ impl<A: Alarm<'static>> Component for MailboxComponent<A> {
     type StaticInput = (
         &'static mut MaybeUninit<VirtualMuxAlarm<'static, A>>,
         &'static mut MaybeUninit<Mailbox<'static, VirtualMuxAlarm<'static, A>>>,
-        &'static mut MaybeUninit<CaliptraSoC>,
+        &'static mut MaybeUninit<CaliptraSoC<'static>>,
         Option<u32>,
         Option<u32>,
         Option<u32>,

@@ -18,6 +18,8 @@ use zerocopy::IntoBytes;
 
 mod lpcip;
 
+#[cfg(feature = "usb-recovery")]
+pub use lpcip::UsbRecovery;
 pub use lpcip::{LpcipUsbDriver, LpcipUsbError};
 
 type RxEntry = LocalRegisterCopy<u32, Rxfifo::Register>;

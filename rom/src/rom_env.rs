@@ -19,7 +19,7 @@ use caliptra_mcu_romtime::{Lifecycle, Otp};
 use core::ptr::addr_of;
 
 /// ROM Environment containing all peripherals and managers
-pub struct RomEnv {
+pub struct RomEnv<'a> {
     pub mci: Mci,
     pub soc: Soc,
     pub lc: Lifecycle,
@@ -28,11 +28,11 @@ pub struct RomEnv {
     pub i3c_base: StaticRef<i3c::regs::I3c>,
     pub i3c1: crate::i3c::I3c,
     pub i3c1_base: StaticRef<i3c::regs::I3c>,
-    pub soc_manager: CaliptraSoC,
+    pub soc_manager: CaliptraSoC<'a>,
     pub straps: StaticRef<caliptra_mcu_config::McuStraps>,
 }
 
-impl RomEnv {
+impl RomEnv<'_> {
     /// Create a new ROM environment with all peripherals initialized
     pub fn new() -> Self {
         // Get straps
@@ -85,7 +85,7 @@ impl RomEnv {
     }
 }
 
-impl Default for RomEnv {
+impl Default for RomEnv<'_> {
     fn default() -> Self {
         Self::new()
     }

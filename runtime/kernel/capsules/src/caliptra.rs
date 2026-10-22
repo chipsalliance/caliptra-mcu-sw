@@ -34,7 +34,7 @@ pub struct App {
 
 pub struct Caliptra {
     // The underlying Caliptra API SoC interface
-    driver: TakeCell<'static, CaliptraSoC>,
+    driver: TakeCell<'static, CaliptraSoC<'static>>,
     // Per-app state.
     apps: Grant<App, UpcallCount<0>, AllowRoCount<0>, AllowRwCount<0>>,
 }
@@ -42,7 +42,7 @@ pub struct Caliptra {
 impl Caliptra {
     pub fn new(
         grant: Grant<App, UpcallCount<0>, AllowRoCount<0>, AllowRwCount<0>>,
-        driver: &'static mut CaliptraSoC,
+        driver: &'static mut CaliptraSoC<'static>,
     ) -> Caliptra {
         Caliptra {
             driver: TakeCell::new(driver),

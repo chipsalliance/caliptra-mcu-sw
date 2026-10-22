@@ -996,7 +996,7 @@ fn enter_i3c_services(
     i3c_base: caliptra_mcu_romtime::StaticRef<caliptra_mcu_registers_generated::i3c::regs::I3c>,
     services: I3cServicesModes,
     target_addr: u8,
-    dot_ctx: Option<crate::DotContext<'_>>,
+    dot_ctx: Option<crate::DotContext<'_, '_>>,
 ) {
     // Extend the watchdog timeout for I3C services since the loop may run
     // for an extended period waiting for commands from the BMC.
@@ -1148,7 +1148,9 @@ impl BootFlow for ColdBoot {
 
         // If testing Caliptra Core, hang here until the test signals it to continue.
         if cfg!(feature = "core_test") {
-            while mci.registers.mci_reg_generic_input_wires[1].get() & (1 << 30) == 0 {}
+            while mci.registers.mci_reg_generic_input_wires[1].get() & (1 << 30) == 0 {
+                env.soc_manager.poll();
+            }
         }
 
         lc.init().unwrap();
@@ -1322,7 +1324,9 @@ impl BootFlow for ColdBoot {
             "[mcu-rom] Waiting for Caliptra to be ready for fuses: {}",
             soc.ready_for_fuses()
         );
-        while !soc.ready_for_fuses() {}
+        while !soc.ready_for_fuses() {
+            env.soc_manager.poll();
+        }
         mci.set_flow_checkpoint(McuRomBootStatus::CaliptraReadyForFuses.into());
 
         caliptra_mcu_romtime::println!("[mcu-rom] Writing fuses to Caliptra");
@@ -1469,21 +1473,26 @@ impl BootFlow for ColdBoot {
 
         caliptra_mcu_romtime::println!("[mcu-rom] Setting Caliptra fuse write done");
         soc.fuse_write_done();
-        while soc.ready_for_fuses() {}
+        while soc.ready_for_fuses() {
+            env.soc_manager.poll();
+        }
         mci.set_flow_checkpoint(McuRomBootStatus::FuseWriteComplete.into());
         mci.set_flow_milestone(McuBootMilestones::CPTRA_FUSES_WRITTEN.into());
         crate::call_hook(params.hooks, |h| h.post_populate_fuses_to_caliptra());
 
         // If testing Caliptra Core, hang here until the test signals it to continue.
         if cfg!(feature = "core_test") {
-            while mci.registers.mci_reg_generic_input_wires[1].get() & (1 << 31) == 0 {}
+            while mci.registers.mci_reg_generic_input_wires[1].get() & (1 << 31) == 0 {
+                env.soc_manager.poll();
+            }
         }
 
         caliptra_mcu_romtime::println!("[mcu-rom] Waiting for Caliptra Core boot FSM to be DONE");
-        soc.wait_for_bootfsm_done(10_000_000);
+        soc.wait_for_bootfsm_done_with_poll(10_000_000, || env.soc_manager.poll());
 
         caliptra_mcu_romtime::println!("[mcu-rom] Waiting for Caliptra to be ready for mbox",);
         while !soc.ready_for_mbox() {
+            env.soc_manager.poll();
             if soc.cptra_fw_fatal_error() {
                 caliptra_mcu_romtime::println!("[mcu-rom] Caliptra reported a fatal error");
                 fatal_error(McuError::ROM_COLD_BOOT_CALIPTRA_FATAL_ERROR_BEFORE_MB_READY);
@@ -1706,6 +1715,9 @@ impl BootFlow for ColdBoot {
             fatal_error(McuError::ROM_COLD_BOOT_START_RI_DOWNLOAD_ERROR);
         }
         mci.set_flow_checkpoint(McuRomBootStatus::RiDownloadFirmwareCommandSent.into());
+        if let Some(service) = params.usb_service {
+            service.recovery_started();
+        }
 
         {
             let mut resp_buf = [0u8; core::mem::size_of::<MailboxRespHeader>()];
@@ -1757,6 +1769,7 @@ impl BootFlow for ColdBoot {
                 "[mcu-rom] Encrypted boot: waiting for Caliptra RT to be ready"
             );
             while !soc.ready_for_runtime() {
+                env.soc_manager.poll();
                 soc.check_hw_errors();
             }
             mci.set_flow_checkpoint(McuRomBootStatus::CaliptraRuntimeReady.into());
@@ -1788,7 +1801,7 @@ impl BootFlow for ColdBoot {
         } else {
             // --- Normal (unencrypted) firmware boot flow ---
             caliptra_mcu_romtime::println!("[mcu-rom] Waiting for MCU firmware to be ready");
-            soc.wait_for_firmware_ready(mci);
+            soc.wait_for_firmware_ready_with_poll(mci, || env.soc_manager.poll());
             caliptra_mcu_romtime::println!("[mcu-rom] Firmware is ready");
             mci.set_flow_checkpoint(McuRomBootStatus::FirmwareReadyDetected.into());
 
@@ -1825,6 +1838,7 @@ impl BootFlow for ColdBoot {
                 "[mcu-rom] Waiting for Caliptra RT to be ready for runtime mailbox commands"
             );
             while !soc.ready_for_runtime() {
+                env.soc_manager.poll();
                 soc.check_hw_errors();
             }
             mci.set_flow_checkpoint(McuRomBootStatus::CaliptraRuntimeReady.into());
@@ -1867,6 +1881,10 @@ impl BootFlow for ColdBoot {
         Self::report_field_entropy_state(&mut env.soc_manager, &env.otp);
 
         if params.usb_recovery_boot {
+            if let Some(service) = params.usb_service {
+                service.poll();
+                service.disconnect();
+            }
             let usb_regs = params.usb_recovery_regs.unwrap_or_else(|| {
                 fatal_error(McuError::ROM_COLD_BOOT_RECOVERY_NOT_CONFIGURED_ERROR)
             });

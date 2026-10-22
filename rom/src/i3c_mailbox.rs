@@ -71,8 +71,8 @@ enum DispatchResult {
 /// Holds split borrows of individual ROM environment fields rather than
 /// `&mut RomEnv`, so that `enter_i3c_services` can independently borrow
 /// `&Mci` for boot-status checkpoints without creating a duplicate handle.
-pub struct DotContext<'a> {
-    pub soc_manager: &'a mut caliptra_mcu_romtime::CaliptraSoC,
+pub struct DotContext<'a, 'poll> {
+    pub soc_manager: &'a mut caliptra_mcu_romtime::CaliptraSoC<'poll>,
     pub mci: &'a caliptra_mcu_romtime::Mci,
     pub otp: &'a caliptra_mcu_romtime::otp::Otp,
     pub dot_fuses: &'a crate::DotFuses,
@@ -94,14 +94,14 @@ enum OverrideState {
 ///
 /// The I3C peripheral must already be configured (via `I3c::configure()`)
 /// before constructing this handler.
-pub struct I3cMailboxHandler<'a> {
+pub struct I3cMailboxHandler<'a, 'poll> {
     registers: StaticRef<i3c::regs::I3c>,
     services: crate::I3cServicesModes,
     /// I3C target address for PEC computation. Uses the dynamic address
     /// assigned by the controller (via ENTDAA/SETDASA), falling back to
     /// the static address if no dynamic address has been assigned.
     pec_addr: u8,
-    dot_ctx: Option<DotContext<'a>>,
+    dot_ctx: Option<DotContext<'a, 'poll>>,
     override_state: OverrideState,
     /// Word-aligned reassembly buffer (backed by MCI mailbox SRAM).
     reassembly_buf: &'a mut [u32; MAX_REASSEMBLY_WORDS],
@@ -112,12 +112,12 @@ pub struct I3cMailboxHandler<'a> {
     reassembly_next_seq: u8,
 }
 
-impl<'a> I3cMailboxHandler<'a> {
+impl<'a, 'poll> I3cMailboxHandler<'a, 'poll> {
     pub fn new(
         registers: StaticRef<i3c::regs::I3c>,
         services: crate::I3cServicesModes,
         target_addr: u8,
-        dot_ctx: Option<DotContext<'a>>,
+        dot_ctx: Option<DotContext<'a, 'poll>>,
         reassembly_buf: &'a mut [u32; MAX_REASSEMBLY_WORDS],
     ) -> Self {
         use caliptra_mcu_registers_generated::i3c::bits::StbyCrDeviceAddr;
@@ -775,7 +775,7 @@ impl<'a> I3cMailboxHandler<'a> {
     }
 }
 
-impl Drop for I3cMailboxHandler<'_> {
+impl Drop for I3cMailboxHandler<'_, '_> {
     fn drop(&mut self) {
         self.zeroize_reassembly();
         self.override_state.zeroize();

@@ -12,14 +12,33 @@ use caliptra_ureg::RealMmioMut;
 use zerocopy::{transmute, FromBytes, IntoBytes};
 
 const MAILBOX_SIZE: usize = 256 * 1024;
-pub struct CaliptraSoC {
+
+#[cfg(test)]
+mod idle_tests {
+    use super::*;
+    use core::cell::Cell;
+
+    #[test]
+    fn mailbox_delay_services_the_installed_callback() {
+        let calls = Cell::new(0);
+        let poll = || calls.set(calls.get() + 1);
+        let mut manager = CaliptraSoC::new(None, None, None);
+        manager.set_idle_poll(&poll);
+        manager.delay();
+        manager.delay();
+        assert_eq!(calls.get(), 2);
+    }
+}
+
+pub struct CaliptraSoC<'a> {
     _private: (), // ensure that this struct cannot be instantiated directly except through new
     soc_ifc_addr: *mut u32,
     soc_ifc_trng_addr: *mut u32,
     soc_mbox_addr: *mut u32,
+    idle_poll: Option<&'a dyn Fn()>,
 }
 
-impl SocManager for CaliptraSoC {
+impl SocManager for CaliptraSoC<'_> {
     // we override the methods that use these
     const SOC_MBOX_ADDR: u32 = 0;
     const SOC_IFC_ADDR: u32 = 0;
@@ -29,7 +48,10 @@ impl SocManager for CaliptraSoC {
     const MAX_WAIT_CYCLES: u32 = 400_000;
 
     /// Type alias for mutable memory-mapped I/O.
-    type TMmio<'a> = RealMmioMut<'a>;
+    type TMmio<'a>
+        = RealMmioMut<'a>
+    where
+        Self: 'a;
 
     /// Returns a mutable reference to the memory-mapped I/O.
     fn mmio_mut(&mut self) -> Self::TMmio<'_> {
@@ -38,6 +60,7 @@ impl SocManager for CaliptraSoC {
 
     /// Provides a delay function to be invoked when polling mailbox status.
     fn delay(&mut self) {
+        self.poll();
         core::hint::spin_loop();
     }
 
@@ -75,7 +98,18 @@ impl SocManager for CaliptraSoC {
     }
 }
 
-impl CaliptraSoC {
+impl<'a> CaliptraSoC<'a> {
+    /// Service platform work while waiting for Caliptra.
+    pub fn set_idle_poll(&mut self, poll: &'a dyn Fn()) {
+        self.idle_poll = Some(poll);
+    }
+
+    pub fn poll(&self) {
+        if let Some(poll) = self.idle_poll {
+            poll();
+        }
+    }
+
     pub fn new(
         soc_ifc_addr: Option<u32>,
         soc_ifc_trng_addr: Option<u32>,
@@ -86,6 +120,7 @@ impl CaliptraSoC {
             soc_ifc_addr: soc_ifc_addr.unwrap_or(soc::SOC_IFC_REG_ADDR) as *mut u32,
             soc_ifc_trng_addr: soc_ifc_trng_addr.unwrap_or(soc::SOC_IFC_REG_ADDR) as *mut u32,
             soc_mbox_addr: soc_mbox_addr.unwrap_or(mbox::MBOX_CSR_ADDR) as *mut u32,
+            idle_poll: None,
         }
     }
 

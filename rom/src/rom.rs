@@ -61,6 +61,13 @@ pub trait BootFlow {
     fn run(env: &mut RomEnv, params: RomParameters) -> !;
 }
 
+/// Platform-owned USB service. Methods must not block on host transactions.
+pub trait RomUsbService {
+    fn poll(&self);
+    fn recovery_started(&self);
+    fn disconnect(&self);
+}
+
 /// An entropy source provided by the integrator, used for initializing the CFI counters.
 pub trait CfiEntropySource {
     fn entropy(&mut self) -> Result<(u32, u32, u32, u32), CfiError>;
@@ -126,8 +133,13 @@ impl Soc {
     }
 
     pub fn wait_for_bootfsm_done(&self, timeout_cycles: u64) {
+        self.wait_for_bootfsm_done_with_poll(timeout_cycles, || {});
+    }
+
+    pub fn wait_for_bootfsm_done_with_poll(&self, timeout_cycles: u64, poll: impl Fn()) {
         let start = caliptra_mcu_romtime::mcycle();
         while self.boot_fsm_ps() != Self::BOOT_FSM_DONE {
+            poll();
             if self.cptra_fw_fatal_error() {
                 caliptra_mcu_romtime::println!(
                     "[mcu-rom] Caliptra reported a fatal error during boot FSM transition"
@@ -668,10 +680,19 @@ impl Soc {
     /// Waits for Caliptra to indicate MCU firmware is ready through the `NotifCptraMcuResetReqSts`
     /// interrupt.
     pub fn wait_for_firmware_ready(&self, mci: &caliptra_mcu_romtime::Mci) {
+        self.wait_for_firmware_ready_with_poll(mci, || {});
+    }
+
+    pub fn wait_for_firmware_ready_with_poll(
+        &self,
+        mci: &caliptra_mcu_romtime::Mci,
+        poll: impl Fn(),
+    ) {
         let notif0 = &mci.registers.intr_block_rf_notif0_internal_intr_r;
         // TODO(zhalvorsen): use interrupt instead of fw_exec_ctrl register when the emulator supports it
         // Wait for a reset request from Caliptra
         while !self.fw_ready() {
+            poll();
             if self.cptra_fw_fatal_error() {
                 caliptra_mcu_romtime::println!("[mcu-rom] Caliptra reported a fatal error");
                 fatal_error(McuError::ROM_SOC_CALIPTRA_FATAL_ERROR_BEFORE_FW_READY);
@@ -954,6 +975,8 @@ pub struct RomParameters<'a> {
     /// Request recovery boot with Caliptra consuming images directly from the
     /// USB OCP Recovery interface instead of an MCU-managed image provider.
     pub usb_recovery_boot: bool,
+    /// Persistent Device 0 service for platforms with a software-owned EP0.
+    pub usb_service: Option<&'a dyn RomUsbService>,
     /// Platform mapping for the USB OCP Recovery status registers.
     pub usb_recovery_regs: Option<
         caliptra_mcu_romtime::StaticRef<
@@ -1057,6 +1080,20 @@ pub fn rom_start(mut params: RomParameters) {
 
     // Create ROM environment with all peripherals
     let mut env = RomEnv::new();
+    let usb_service = params.usb_service;
+    let poll_soc = Soc::new(env.soc.registers);
+    let idle_poll = || {
+        if let Some(service) = usb_service {
+            service.poll();
+            if poll_soc.cptra_fw_fatal_error() {
+                fatal_error(McuError::ROM_SOC_CALIPTRA_FATAL_ERROR_BEFORE_FW_READY);
+            }
+            poll_soc.check_hw_errors();
+        }
+    };
+    if usb_service.is_some() {
+        env.soc_manager.set_idle_poll(&idle_poll);
+    }
 
     // Create local references for printing
     let mci = &env.mci;

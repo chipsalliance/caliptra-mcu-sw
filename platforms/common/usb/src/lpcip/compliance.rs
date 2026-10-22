@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! Persistent, polled EP0 service for FPGA device-framework testing.
+//! Shared persistent EP0 service for FPGA recovery and device-framework testing.
 //! No transfer waits here: either controller may be reset or receive a new SETUP
 //! while its peer's host transfer is incomplete.
 
@@ -38,9 +38,117 @@ struct Ep0 {
     configuration: u8,
     setup: Option<SetupPacket>,
     polls: u32,
+    error: Option<LpcipUsbError>,
+    descriptor: DeviceDescriptor,
+    #[cfg(feature = "usb-recovery")]
+    ocp_claimed: bool,
+}
+
+/// Persistent Device 0 service. OCP framing and image ingress stay hardware-owned.
+#[cfg(feature = "usb-recovery")]
+pub struct UsbRecovery {
+    ep0: Ep0,
+    requested: bool,
+    active: bool,
+    had_vbus: bool,
+    stopped: bool,
+}
+
+#[cfg(feature = "usb-recovery")]
+impl UsbRecovery {
+    pub fn recovery_started(&mut self) {
+        self.requested = true;
+        // Only OCP traffic after RI submission arms the fatal policy.
+        self.ep0.ocp_claimed = false;
+    }
+
+    pub fn poll(&mut self) -> Result<(), LpcipUsbError> {
+        if self.stopped {
+            return Ok(());
+        }
+        let status = self.ep0.driver.controller.command_status();
+        if self.active {
+            if status & RESET != 0 {
+                return Err(LpcipUsbError::RecoveryReset);
+            }
+            if status & VBUS == 0 {
+                return Err(LpcipUsbError::RecoveryDisconnected);
+            }
+            if status
+                & (usb_combo::bits::DevcmdstatT::Dsus::SET.value
+                    | usb_combo::bits::DevcmdstatT::LpmSus::SET.value)
+                != 0
+            {
+                return Err(LpcipUsbError::RecoverySuspended);
+            }
+        }
+        let vbus = status & VBUS != 0;
+        if vbus {
+            self.ep0.poll();
+        } else if self.had_vbus {
+            self.ep0.reset(false);
+        }
+        self.had_vbus = vbus;
+        if let Some(error) = self.ep0.error {
+            return Err(error);
+        }
+        self.active |= self.requested && self.ep0.ocp_claimed;
+        Ok(())
+    }
+
+    /// Remove Device 0, keeping the hub; poll until EP0 cancellation completes.
+    pub fn disconnect(&mut self) -> Result<bool, LpcipUsbError> {
+        if !self.stopped {
+            self.stopped = true;
+            self.ep0
+                .driver
+                .controller
+                .set_command_status(KEEP_PHY_CLOCK);
+            self.ep0.driver.controller.set_interrupt_enable(0);
+            self.ep0.skip(3);
+            self.ep0.polls = 0;
+        }
+        if !self.ep0.skipping() {
+            return Ok(true);
+        }
+        self.ep0.polls += 1;
+        if self.ep0.polls >= TRANSFER_POLL_LIMIT {
+            return Err(LpcipUsbError::CancellationTimeout);
+        }
+        Ok(false)
+    }
 }
 
 impl LpcipUsbDriver {
+    /// Initialize hub/Device 0 only, using the integrator's USB device identity.
+    #[cfg(feature = "usb-recovery")]
+    pub fn init_recovery(
+        self,
+        device1_regs: StaticRef<usb_dev1::regs::UsbDev1>,
+        vendor_id: u16,
+        product_id: u16,
+    ) -> Result<UsbRecovery, LpcipUsbError> {
+        device1_regs.devcmdstat.set(KEEP_PHY_CLOCK);
+        device1_regs.inten.set(0);
+        self.disconnect_and_initialize();
+        // Preserve hardware OCP routing. Never use the diagnostic claim-disable path.
+        self.initialize_phy()?;
+        self.wait_for_vbus()?;
+        self.connect();
+        let mut ep0 = Ep0::new(self);
+        ep0.descriptor = DeviceDescriptor::ocp(0x0200, vendor_id, product_id, 0x0100, 0, 0, 0);
+        caliptra_mcu_romtime::println!(
+            "[usb-recovery] Serving hub and Device 0 persistently; Device 1 disabled"
+        );
+        Ok(UsbRecovery {
+            ep0,
+            requested: false,
+            active: false,
+            had_vbus: true,
+            stopped: false,
+        })
+    }
+
     /// Remain in ROM servicing both internal devices, without recovery boot.
     ///
     /// Hub class requests remain hardware-managed. Test identities and the
@@ -91,6 +199,9 @@ impl LpcipUsbDriver {
             } else {
                 for device in &mut devices {
                     device.poll();
+                    if let Some(error) = device.error {
+                        return Err(error);
+                    }
                 }
             }
             had_vbus = vbus;
@@ -108,6 +219,10 @@ impl Ep0 {
             configuration: 0,
             setup: None,
             polls: 0,
+            error: None,
+            descriptor: DeviceDescriptor::ocp(0x0200, 0x0424, 0x0007, 0x0100, 0, 0, 0),
+            #[cfg(feature = "usb-recovery")]
+            ocp_claimed: false,
         }
     }
 }
@@ -133,6 +248,361 @@ mod tests {
         driver.initialize_endpoints();
         driver.connect();
         Ep0::new(driver)
+    }
+
+    #[cfg(feature = "usb-recovery")]
+    fn recovery() -> UsbRecovery {
+        let ep0 = device();
+        ep0.driver.controller.set_command_status(CONNECTED | VBUS);
+        UsbRecovery {
+            ep0,
+            requested: false,
+            active: false,
+            had_vbus: true,
+            stopped: false,
+        }
+    }
+
+    #[cfg(feature = "usb-recovery")]
+    fn claim_ocp_request(service: &mut UsbRecovery) {
+        service
+            .ep0
+            .driver
+            .write_buffer(SETUP_BUFFER_OFFSET, setup(0xa1, 0, 0x22, 0, 48).as_bytes());
+        service
+            .ep0
+            .driver
+            .controller
+            .set_command_status(CONNECTED | VBUS | SETUP | 5);
+        service.poll().unwrap();
+        service
+            .ep0
+            .driver
+            .controller
+            .set_command_status(CONNECTED | VBUS | 5);
+    }
+
+    #[cfg(feature = "usb-recovery")]
+    fn arm(service: &mut UsbRecovery) {
+        service.ep0.configuration = 1;
+        service.recovery_started();
+        claim_ocp_request(service);
+        assert!(service.active);
+    }
+
+    #[cfg(feature = "usb-recovery")]
+    #[test]
+    fn recovery_policy_requires_command_submission_and_ocp_traffic() {
+        let mut service = recovery();
+        service.recovery_started();
+        service.ep0.configuration = 1;
+        service.poll().unwrap();
+        assert!(!service.active);
+        claim_ocp_request(&mut service);
+        assert!(service.active);
+
+        // OCP traffic seen before RI submission does not arm the policy.
+        let mut service = recovery();
+        service.ep0.configuration = 1;
+        claim_ocp_request(&mut service);
+        assert!(!service.active);
+        service.recovery_started();
+        service.poll().unwrap();
+        assert!(!service.active);
+        claim_ocp_request(&mut service);
+        assert!(service.active);
+    }
+
+    #[cfg(feature = "usb-recovery")]
+    #[test]
+    fn compliance_traffic_while_waiting_for_recovery_is_not_fatal() {
+        let mut service = recovery();
+        service.ep0.configuration = 1;
+        service.recovery_started();
+        for status in [
+            CONNECTED | VBUS | usb_combo::bits::DevcmdstatT::Dsus::SET.value,
+            CONNECTED | VBUS | usb_combo::bits::DevcmdstatT::LpmSus::SET.value,
+            CONNECTED | VBUS | RESET,
+            CONNECTED,
+            CONNECTED | VBUS,
+        ] {
+            service.ep0.driver.controller.set_command_status(status);
+            service.poll().unwrap();
+            assert!(!service.active);
+        }
+    }
+
+    #[cfg(feature = "usb-recovery")]
+    #[test]
+    fn recovery_initialization_disables_device1_without_disabling_ocp() {
+        let driver = test_driver();
+        let combo = driver.regs;
+        let DeviceController::Device1 { regs, .. } = test_device1() else {
+            unreachable!()
+        };
+        regs.devcmdstat.set(CONNECTED);
+        regs.inten.set(u32::MAX);
+        assert!(matches!(
+            driver.init_recovery(regs, 0x1234, 0x5678),
+            Err(LpcipUsbError::UnsupportedPhy)
+        ));
+        assert_eq!(regs.devcmdstat.get(), KEEP_PHY_CLOCK);
+        assert_eq!(regs.inten.get(), 0);
+        assert_eq!(combo.recovery_caliptra_ctrl.get(), 0);
+    }
+
+    #[cfg(feature = "usb-recovery")]
+    #[test]
+    fn enumeration_reset_is_not_fatal_before_recovery_is_active() {
+        let mut service = recovery();
+        service.recovery_started();
+        service.ep0.address = 5;
+        service
+            .ep0
+            .driver
+            .controller
+            .set_command_status(CONNECTED | VBUS | RESET);
+        service.poll().unwrap();
+        assert_eq!(service.ep0.address, 0);
+        assert!(!service.active);
+    }
+
+    #[cfg(feature = "usb-recovery")]
+    #[test]
+    fn active_recovery_reset_disconnect_and_suspend_are_fatal() {
+        for (status, error) in [
+            (CONNECTED | VBUS | RESET, LpcipUsbError::RecoveryReset),
+            (CONNECTED, LpcipUsbError::RecoveryDisconnected),
+            (
+                CONNECTED | VBUS | usb_combo::bits::DevcmdstatT::Dsus::SET.value,
+                LpcipUsbError::RecoverySuspended,
+            ),
+            (
+                CONNECTED | VBUS | usb_combo::bits::DevcmdstatT::LpmSus::SET.value,
+                LpcipUsbError::RecoverySuspended,
+            ),
+        ] {
+            let mut service = recovery();
+            arm(&mut service);
+            service.ep0.driver.controller.set_command_status(status);
+            assert_eq!(service.poll(), Err(error));
+        }
+    }
+
+    #[cfg(feature = "usb-recovery")]
+    #[test]
+    fn configuration_zero_does_not_disarm_the_recovery_failure_policy() {
+        let mut service = recovery();
+        arm(&mut service);
+        service.ep0.configuration = 0;
+        service
+            .ep0
+            .driver
+            .controller
+            .set_command_status(CONNECTED | VBUS | RESET);
+        assert_eq!(service.poll(), Err(LpcipUsbError::RecoveryReset));
+    }
+
+    #[cfg(feature = "usb-recovery")]
+    #[test]
+    fn recovery_service_preserves_hardware_ocp_routing_and_hub_on_exit() {
+        let mut service = recovery();
+        service.ep0.configuration = 1;
+        service.recovery_started();
+        service.ep0.driver.regs.hub_control.set(
+            usb_combo::bits::Control::Enable::SET.value | usb_combo::bits::Control::Dcon::SET.value,
+        );
+        let control = service.ep0.driver.regs.recovery_caliptra_ctrl.get();
+        let hub = service.ep0.driver.regs.hub_control.get();
+        service.poll().unwrap();
+        assert_eq!(
+            service.ep0.driver.regs.recovery_caliptra_ctrl.get(),
+            control
+        );
+        assert_eq!(service.disconnect(), Ok(false));
+        assert_eq!(
+            service.ep0.driver.controller.command_status(),
+            KEEP_PHY_CLOCK
+        );
+        assert_eq!(service.ep0.driver.regs.hub_control.get(), hub);
+        assert_eq!(service.ep0.driver.controller.number(), 0);
+        service.poll().unwrap();
+        assert_eq!(
+            service.ep0.driver.controller.command_status(),
+            KEEP_PHY_CLOCK
+        );
+        service.ep0.skip(0);
+        assert_eq!(service.disconnect(), Ok(true));
+        assert_eq!(service.ep0.driver.regs.hub_control.get(), hub);
+    }
+
+    #[cfg(feature = "usb-recovery")]
+    #[test]
+    fn recovery_exit_fails_if_dma_cancellation_never_completes() {
+        let mut service = recovery();
+        service
+            .ep0
+            .driver
+            .write_memory_word(EP0_IN_DESCRIPTOR, ACTIVE);
+        assert_eq!(service.disconnect(), Ok(false));
+        service.ep0.polls = TRANSFER_POLL_LIMIT - 1;
+        assert_eq!(
+            service.disconnect(),
+            Err(LpcipUsbError::CancellationTimeout)
+        );
+        assert_ne!(
+            service.ep0.driver.read_memory_word(EP0_IN_DESCRIPTOR) & ACTIVE,
+            0
+        );
+    }
+
+    #[cfg(feature = "usb-recovery")]
+    #[test]
+    fn recovery_descriptors_remain_available_with_integrator_vid_pid() {
+        let mut service = recovery();
+        service.ep0.descriptor = DeviceDescriptor::ocp(0x0200, 0x1234, 0x5678, 0x0100, 0, 0, 0);
+        service.ep0.address = 4;
+        service.ep0.configuration = 1;
+        service.recovery_started();
+        service.ep0.dispatch(&setup(0x80, 6, 0x100, 0, 18));
+        let bytes = read_buffer(&service.ep0, 18);
+        assert_eq!(&bytes[8..12], &[0x34, 0x12, 0x78, 0x56]);
+        assert!(matches!(service.ep0.phase, Phase::DataIn { .. }));
+    }
+
+    #[test]
+    fn cancellation_timeout_is_an_explicit_error_without_buffer_reuse() {
+        let mut device = device();
+        device.phase = Phase::Aborting;
+        device.skip(3);
+        device.driver.write_memory_word(EP0_IN_DESCRIPTOR, ACTIVE);
+        device.polls = TRANSFER_POLL_LIMIT - 1;
+        device.poll();
+        assert_eq!(device.error, Some(LpcipUsbError::CancellationTimeout));
+        assert_ne!(
+            device.driver.read_memory_word(EP0_IN_DESCRIPTOR) & ACTIVE,
+            0
+        );
+    }
+
+    #[test]
+    fn hardware_claim_matches_the_rtl_envelope_not_command_validation() {
+        let device = device();
+        for request in [
+            setup(0xa1, 0, 0x22, 0, 64),
+            setup(0xa1, 0, 0x24, 0, 64),
+            setup(0x21, 0, 0x2f, 0, 64),
+            setup(0xa1, 0, 0xffff, 0, 64),
+        ] {
+            assert!(device.hardware_owns(&request));
+        }
+        for request in [
+            setup(0x80, 6, 0x100, 0, 18),
+            setup(0xa1, 1, 0x24, 0, 64),
+            setup(0xa1, 0, 0x24, 1, 64),
+            setup(0xa1, 0, 0x24, 0x100, 64),
+            setup(0xa0, 0, 0x24, 0, 64),
+            setup(0xc1, 0, 0x24, 0, 64),
+        ] {
+            assert!(!device.hardware_owns(&request));
+        }
+        device
+            .driver
+            .regs
+            .recovery_caliptra_ctrl
+            .set(usb_combo::bits::CaliptraCtrl::OcpPathDisable::SET.value);
+        assert!(!device.hardware_owns(&setup(0xa1, 0, 0x24, 0, 64)));
+        device.driver.regs.recovery_caliptra_ctrl.set(0);
+        let device1 = Ep0::new(LpcipUsbDriver {
+            regs: device.driver.regs,
+            controller: test_device1(),
+            poll_limit: None,
+        });
+        assert!(!device1.hardware_owns(&setup(0xa1, 0, 0x24, 0, 64)));
+    }
+
+    #[test]
+    fn mirrored_ocp_setup_never_skips_stalls_or_reuses_dma_buffers() {
+        for phase in [
+            Phase::Idle,
+            Phase::DataIn {
+                terminating_zlp: false,
+            },
+            Phase::StatusOut,
+            Phase::StatusIn(Completion::Configuration(0)),
+            Phase::Aborting,
+        ] {
+            let mut device = device();
+            device.address = 5;
+            device.configuration = 1;
+            device.phase = phase;
+            device.setup = Some(setup(0, 9, 0, 0, 0));
+            device.polls = TRANSFER_POLL_LIMIT - 1;
+            device
+                .driver
+                .write_memory_word(EP0_IN_DESCRIPTOR, ACTIVE | 0x1234);
+            device
+                .driver
+                .write_memory_word(EP0_OUT_DESCRIPTOR, ACTIVE | 0x5678);
+            let request = setup(0xa1, 0, 0x24, 0, 64);
+            device
+                .driver
+                .write_buffer(SETUP_BUFFER_OFFSET, request.as_bytes());
+            device
+                .driver
+                .controller
+                .set_command_status(CONNECTED | SETUP | 5);
+            device.poll();
+            assert_eq!(device.phase, Phase::Idle);
+            assert!(device.setup.is_none());
+            assert_eq!(device.configuration, 1);
+            assert_eq!(device.polls, 0);
+            assert_eq!(device.driver.regs.dev0_csr_epskip.get(), 0);
+            assert_eq!(
+                device.driver.read_memory_word(EP0_IN_DESCRIPTOR),
+                ACTIVE | 0x1234
+            );
+            assert_eq!(
+                device.driver.read_memory_word(EP0_OUT_DESCRIPTOR),
+                ACTIVE | 0x5678
+            );
+            assert_eq!(device.driver.controller.command_status() & 127, 5);
+
+            let request = setup(0x80, 6, 0x100, 0, 18);
+            device
+                .driver
+                .write_buffer(SETUP_BUFFER_OFFSET, request.as_bytes());
+            device
+                .driver
+                .controller
+                .set_command_status(CONNECTED | SETUP | 5);
+            device.poll();
+            assert_eq!(device.phase, Phase::Aborting);
+            assert_eq!(device.driver.regs.dev0_csr_epskip.get(), 3);
+        }
+    }
+
+    #[test]
+    fn compliance_mode_still_stalls_unclaimed_ocp_requests() {
+        let mut device = device();
+        device
+            .driver
+            .regs
+            .recovery_caliptra_ctrl
+            .set(usb_combo::bits::CaliptraCtrl::OcpPathDisable::SET.value);
+        let request = setup(0xa1, 0, 0x24, 0, 64);
+        device
+            .driver
+            .write_buffer(SETUP_BUFFER_OFFSET, request.as_bytes());
+        device
+            .driver
+            .controller
+            .set_command_status(CONNECTED | SETUP);
+        device.poll();
+        assert_eq!(device.phase, Phase::Aborting);
+        device.skip(0);
+        device.poll();
+        assert_ne!(device.driver.read_memory_word(EP0_IN_DESCRIPTOR) & STALL, 0);
     }
 
     fn finish_status(device: &mut Ep0) {
@@ -514,6 +984,17 @@ impl Ep0 {
             && interrupts & usb_combo::bits::IntstatT::Ep0in::SET.value != 0
     }
 
+    fn hardware_owns(&self, setup: &SetupPacket) -> bool {
+        self.driver.controller.number() == 0
+            && self.driver.regs.recovery_caliptra_ctrl.get()
+                & usb_combo::bits::CaliptraCtrl::OcpPathDisable::SET.value
+                == 0
+            // Match the RTL claim envelope, including unsupported command values.
+            && setup.bm_request_type.0 & 0x7f == 0x21
+            && setup.b_request == 0
+            && setup.w_index == [0, 0]
+    }
+
     fn poll(&mut self) {
         let status = self.driver.controller.command_status();
         if status & RESET != 0 {
@@ -529,6 +1010,23 @@ impl Ep0 {
         if let Phase::StatusIn(completion) = self.phase {
             if self.in_completed() {
                 self.complete(completion);
+            }
+        }
+        if status & SETUP != 0 {
+            let setup = self.driver.read_setup();
+            if self.hardware_owns(&setup) {
+                // Claimed SETUPs are still visible to firmware. Leave their data
+                // and status stages to hardware; do not skip or stall EP0.
+                self.setup = None;
+                self.phase = Phase::Idle;
+                self.polls = 0;
+                #[cfg(feature = "usb-recovery")]
+                {
+                    self.ocp_claimed = true;
+                }
+                self.command(SETUP);
+                self.driver.controller.clear_interrupts(3);
+                return;
             }
         }
         if status & SETUP != 0 && self.phase != Phase::Aborting {
@@ -591,7 +1089,9 @@ impl Ep0 {
                 self.phase
             );
             // A failed skip must not lead to writes to DMA-owned buffers.
-            if self.phase != Phase::Aborting {
+            if self.phase == Phase::Aborting {
+                self.error = Some(LpcipUsbError::CancellationTimeout);
+            } else {
                 self.skip(3);
                 self.setup = None;
                 self.phase = Phase::Aborting;
@@ -727,7 +1227,7 @@ impl Ep0 {
         match setup.w_value[1] {
             1 if index == 0 && language == 0 => {
                 let descriptor = if device0 {
-                    DeviceDescriptor::ocp(0x0200, 0x0424, 0x0007, 0x0100, 0, 0, 0)
+                    self.descriptor
                 } else {
                     DEVICE1_DESCRIPTOR
                 };

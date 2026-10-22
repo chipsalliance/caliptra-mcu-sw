@@ -35,6 +35,49 @@ use caliptra_mcu_romtime::{
 ))]
 compile_error!("USB compliance and OCP recovery ROM modes are mutually exclusive");
 
+#[cfg(feature = "test-lpcip-usb-ocp-recovery")]
+struct FpgaUsbService(core::cell::RefCell<caliptra_mcu_usb_common::UsbRecovery>);
+
+#[cfg(feature = "test-lpcip-usb-ocp-recovery")]
+fn usb_fatal(error: caliptra_mcu_usb_common::LpcipUsbError) -> ! {
+    use caliptra_mcu_error::McuError;
+    use caliptra_mcu_usb_common::LpcipUsbError;
+    caliptra_mcu_romtime::println!("[usb-recovery] Fatal USB error: {:?}", error);
+    let code = match error {
+        LpcipUsbError::RecoveryReset => McuError::ROM_USB_RECOVERY_RESET,
+        LpcipUsbError::RecoveryDisconnected => McuError::ROM_USB_RECOVERY_DISCONNECTED,
+        LpcipUsbError::RecoverySuspended => McuError::ROM_USB_RECOVERY_SUSPENDED,
+        LpcipUsbError::CancellationTimeout => McuError::ROM_USB_CANCELLATION_TIMEOUT,
+        _ => McuError::ROM_USB_INITIALIZATION_ERROR,
+    };
+    caliptra_mcu_rom_common::fatal_error(code)
+}
+
+#[cfg(feature = "test-lpcip-usb-ocp-recovery")]
+impl caliptra_mcu_rom_common::RomUsbService for FpgaUsbService {
+    fn poll(&self) {
+        let result = self.0.borrow_mut().poll();
+        if let Err(error) = result {
+            usb_fatal(error);
+        }
+    }
+
+    fn recovery_started(&self) {
+        self.0.borrow_mut().recovery_started();
+    }
+
+    fn disconnect(&self) {
+        loop {
+            let result = self.0.borrow_mut().disconnect();
+            match result {
+                Ok(true) => return,
+                Ok(false) => core::hint::spin_loop(),
+                Err(error) => usb_fatal(error),
+            }
+        }
+    }
+}
+
 /// Example `RomHooks` implementation for the FPGA platform. Emits a
 /// distinctive tagged log line for each milestone and records which
 /// hooks fired as a bitmask in `mci_reg_fw_extended_error_info[0]` so a
@@ -195,12 +238,16 @@ pub extern "C" fn rom_entry() -> ! {
 
     caliptra_mcu_romtime::println!("[mcu-rom] Starting FPGA MCU ROM");
 
+    #[cfg(feature = "test-lpcip-usb-ocp-recovery")]
+    let mut usb_service = None;
     #[cfg(any(
         feature = "test-lpcip-usb-ocp-recovery",
         feature = "test-lpcip-usb-compliance"
     ))]
     {
-        use caliptra_mcu_registers_generated::{usb_combo, usb_dev0_mem, usb_dev1, usb_dev1_mem};
+        #[cfg(feature = "test-lpcip-usb-compliance")]
+        use caliptra_mcu_registers_generated::usb_dev1_mem;
+        use caliptra_mcu_registers_generated::{usb_combo, usb_dev0_mem, usb_dev1};
         use caliptra_mcu_romtime::{Mci, McuResetReason, StaticRef};
         use caliptra_mcu_usb_common::LpcipUsbDriver;
 
@@ -234,6 +281,7 @@ pub extern "C" fn rom_entry() -> ! {
                         as *const usb_dev1::regs::UsbDev1,
                 )
             };
+            #[cfg(feature = "test-lpcip-usb-compliance")]
             let usb_device1_memory = unsafe {
                 StaticRef::new(
                     caliptra_mcu_config_fpga::FPGA_USB_DEV1_MEM_ADDR
@@ -248,6 +296,7 @@ pub extern "C" fn rom_entry() -> ! {
             {
                 core::hint::spin_loop();
             }
+            #[allow(unused_mut)]
             let mut usb_driver = LpcipUsbDriver::new(usb_regs, usb_memory);
             /*
                         caliptra_mcu_romtime::println!("[usb-ulpi-test] Starting ULPIDEBUG test");
@@ -259,13 +308,19 @@ pub extern "C" fn rom_entry() -> ! {
                             );
                         }
             */
-            #[cfg(not(feature = "test-lpcip-usb-compliance"))]
-            let result =
-                usb_driver.init_and_enumerate_with_device1(usb_device1_regs, usb_device1_memory);
+            #[cfg(feature = "test-lpcip-usb-ocp-recovery")]
+            {
+                // Bring-up identity only; integrators must supply assigned VID/PID values.
+                usb_service = Some(FpgaUsbService(core::cell::RefCell::new(
+                    usb_driver
+                        .init_recovery(usb_device1_regs, 0x0424, 0x0007)
+                        .unwrap_or_else(|error| usb_fatal(error)),
+                )));
+            }
             #[cfg(feature = "test-lpcip-usb-compliance")]
-            let result = usb_driver
-                .run_compliance(usb_device1_regs, usb_device1_memory);
-//            usb_driver.dump_registers();
+            let result = usb_driver.run_compliance(usb_device1_regs, usb_device1_memory);
+            //            usb_driver.dump_registers();
+            #[cfg(feature = "test-lpcip-usb-compliance")]
             if let Err(error) = result {
                 caliptra_mcu_romtime::println!("[usb] Hub/device enumeration failed: {:?}", error);
                 caliptra_mcu_rom_common::fatal_error(
@@ -556,6 +611,10 @@ pub extern "C" fn rom_entry() -> ! {
         image_provider_manager: Some(manager),
         request_recovery_boot: !cfg!(feature = "test-lpcip-usb-ocp-recovery"),
         usb_recovery_boot: cfg!(feature = "test-lpcip-usb-ocp-recovery"),
+        #[cfg(feature = "test-lpcip-usb-ocp-recovery")]
+        usb_service: usb_service
+            .as_ref()
+            .map(|service| service as &dyn caliptra_mcu_rom_common::RomUsbService),
         #[cfg(feature = "test-lpcip-usb-ocp-recovery")]
         usb_recovery_regs: Some(unsafe {
             caliptra_mcu_romtime::StaticRef::new(

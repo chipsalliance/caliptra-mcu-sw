@@ -111,7 +111,7 @@ pub struct App {}
 pub struct Mailbox<'a, A: Alarm<'a>> {
     pub alarm: &'a A,
     // The underlying Caliptra API SoC interface
-    driver: TakeCell<'static, CaliptraSoC>,
+    driver: TakeCell<'static, CaliptraSoC<'static>>,
     // Per-app state.
     apps: Grant<
         App,
@@ -149,7 +149,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
             AllowRoCount<{ ro_allow::COUNT }>,
             AllowRwCount<{ rw_allow::COUNT }>,
         >,
-        driver: &'static mut CaliptraSoC,
+        driver: &'static mut CaliptraSoC<'static>,
         staging_sram_axi_addr: Option<u64>,
         dma_driver: &'static dyn Dma,
         timeout_ticks: Option<u32>,
