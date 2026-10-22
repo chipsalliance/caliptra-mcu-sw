@@ -269,12 +269,12 @@ impl LpcipUsbDriver {
             self.regs.dev0_csr_eptoggle.get()
         );
         caliptra_mcu_romtime::println!(
-            "[usb]   CLKCTRL      = 0x{:08x}",
-            self.regs.dev0_csr_clkctrl.get()
+            "[usb]   HUB_CONTROL  = 0x{:08x}",
+            self.regs.hub_control.get()
         );
         caliptra_mcu_romtime::println!(
             "[usb]   ULPIDEBUG    = 0x{:08x}",
-            self.regs.dev0_csr_ulpidebug.get()
+            self.regs.hub_ulpidebug.get()
         );
 
         caliptra_mcu_romtime::println!("[usb] USB3320 registers:");
@@ -394,11 +394,10 @@ impl LpcipUsbDriver {
         ];
 
         caliptra_mcu_romtime::println!(
-            "[usb-ulpi-test] Initial state: DEVCMDSTAT=0x{:08x} CONFIG=0x{:08x} CLKCTRL=0x{:08x} ULPIDEBUG=0x{:08x}",
+            "[usb-ulpi-test] Initial state: DEVCMDSTAT=0x{:08x} CONFIG=0x{:08x} ULPIDEBUG=0x{:08x}",
             self.regs.dev0_csr_devcmdstat.get(),
             self.regs.dev0_csr_config.get(),
-            self.regs.dev0_csr_clkctrl.get(),
-            self.regs.dev0_csr_ulpidebug.get()
+            self.regs.hub_ulpidebug.get()
         );
         if !self
             .regs
@@ -417,11 +416,11 @@ impl LpcipUsbDriver {
             self.regs.dev0_csr_devcmdstat.get()
         );
         self.regs
-            .dev0_csr_ulpidebug
+            .hub_ulpidebug
             .write(usb_combo::bits::UlpidebugT::PhyMode::SET);
         caliptra_mcu_romtime::println!(
             "[usb-ulpi-test] Selected ULPI mode: ULPIDEBUG=0x{:08x}",
-            self.regs.dev0_csr_ulpidebug.get()
+            self.regs.hub_ulpidebug.get()
         );
 
         caliptra_mcu_romtime::println!("[usb-ulpi-test] Reading USB3320 identity");
@@ -497,7 +496,7 @@ impl LpcipUsbDriver {
         caliptra_mcu_romtime::println!(
             "[usb-ulpi-test] READ  addr=0x{:02x} before=0x{:08x}",
             address,
-            self.regs.dev0_csr_ulpidebug.get()
+            self.regs.hub_ulpidebug.get()
         );
         match self.ulpi_read(address) {
             Ok(value) => {
@@ -505,7 +504,7 @@ impl LpcipUsbDriver {
                     "[usb-ulpi-test] READ  addr=0x{:02x} value=0x{:02x} after=0x{:08x}",
                     address,
                     value,
-                    self.regs.dev0_csr_ulpidebug.get()
+                    self.regs.hub_ulpidebug.get()
                 );
                 Ok(value)
             }
@@ -514,7 +513,7 @@ impl LpcipUsbDriver {
                     "[usb-ulpi-test] READ  addr=0x{:02x} failed={:?} pending=0x{:08x}",
                     address,
                     error,
-                    self.regs.dev0_csr_ulpidebug.get()
+                    self.regs.hub_ulpidebug.get()
                 );
                 Err(error)
             }
@@ -526,7 +525,7 @@ impl LpcipUsbDriver {
             "[usb-ulpi-test] WRITE addr=0x{:02x} value=0x{:02x} before=0x{:08x}",
             address,
             value,
-            self.regs.dev0_csr_ulpidebug.get()
+            self.regs.hub_ulpidebug.get()
         );
         match self.ulpi_write(address, value) {
             Ok(()) => {
@@ -534,7 +533,7 @@ impl LpcipUsbDriver {
                     "[usb-ulpi-test] WRITE addr=0x{:02x} value=0x{:02x} after=0x{:08x}",
                     address,
                     value,
-                    self.regs.dev0_csr_ulpidebug.get()
+                    self.regs.hub_ulpidebug.get()
                 );
                 Ok(())
             }
@@ -544,7 +543,7 @@ impl LpcipUsbDriver {
                     address,
                     value,
                     error,
-                    self.regs.dev0_csr_ulpidebug.get()
+                    self.regs.hub_ulpidebug.get()
                 );
                 Err(error)
             }
@@ -563,13 +562,13 @@ impl LpcipUsbDriver {
         caliptra_mcu_romtime::println!(
             "[usb-phy] CONFIG=0x{:08x} ULPIDEBUG=0x{:08x} HUB_CONTROL=0x{:08x} DEVCMDSTAT=0x{:08x}",
             self.regs.dev0_csr_config.get(),
-            self.regs.dev0_csr_ulpidebug.get(),
+            self.regs.hub_ulpidebug.get(),
             self.regs.hub_control.get(),
             self.controller.command_status()
         );
 
         self.regs
-            .dev0_csr_ulpidebug
+            .hub_ulpidebug
             .write(usb_combo::bits::UlpidebugT::PhyMode::SET);
 
         //        self.verify_phy_scratch()?;
@@ -623,14 +622,14 @@ impl LpcipUsbDriver {
                     "[usb-phy] ULPI read 0x{:02x} failed: {:?} ULPIDEBUG=0x{:08x}",
                     address,
                     error,
-                    self.regs.dev0_csr_ulpidebug.get()
+                    self.regs.hub_ulpidebug.get()
                 )
             })?;
             caliptra_mcu_romtime::println!(
                 "[usb-phy] ULPI read 0x{:02x} = 0x{:02x} ULPIDEBUG=0x{:08x}",
                 address,
                 *byte,
-                self.regs.dev0_csr_ulpidebug.get()
+                self.regs.hub_ulpidebug.get()
             );
         }
         Ok(([id[0], id[1]], [id[2], id[3]]))
@@ -656,14 +655,14 @@ impl LpcipUsbDriver {
 
     fn ulpi_read(&self, address: u8) -> Result<u8, LpcipUsbError> {
         let transaction = Self::ulpi_transaction(address);
-        self.regs.dev0_csr_ulpidebug.set(transaction);
+        self.regs.hub_ulpidebug.set(transaction);
         self.regs
-            .dev0_csr_ulpidebug
+            .hub_ulpidebug
             .set(transaction | usb_combo::bits::UlpidebugT::PhyAccess::SET.value);
         self.wait_for_ulpi_access()?;
         Ok(self
             .regs
-            .dev0_csr_ulpidebug
+            .hub_ulpidebug
             .read(usb_combo::bits::UlpidebugT::PhyRdata) as u8)
     }
 
@@ -673,9 +672,9 @@ impl LpcipUsbDriver {
                 .val(u32::from(value))
                 .value
             | usb_combo::bits::UlpidebugT::PhyRw::SET.value;
-        self.regs.dev0_csr_ulpidebug.set(transaction);
+        self.regs.hub_ulpidebug.set(transaction);
         self.regs
-            .dev0_csr_ulpidebug
+            .hub_ulpidebug
             .set(transaction | usb_combo::bits::UlpidebugT::PhyAccess::SET.value);
         self.wait_for_ulpi_access()
     }
@@ -695,7 +694,7 @@ impl LpcipUsbDriver {
         for _ in 0..poll_limit {
             if !self
                 .regs
-                .dev0_csr_ulpidebug
+                .hub_ulpidebug
                 .is_set(usb_combo::bits::UlpidebugT::PhyAccess)
             {
                 return Ok(());

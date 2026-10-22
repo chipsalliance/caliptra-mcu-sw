@@ -496,16 +496,16 @@ impl UsbCombo {
 
     fn register_command(command: RecoveryCommand) -> Option<RegisterCommand> {
         let (offset, response_len, direction) = match command {
-            RecoveryCommand::ProtCap => (0x000, 15, CommandDirection::Read),
-            RecoveryCommand::DeviceId => (0x010, 24, CommandDirection::Read),
-            RecoveryCommand::DeviceStatus => (0x028, 7, CommandDirection::Read),
-            RecoveryCommand::DeviceReset => (0x068, 3, CommandDirection::ReadWrite),
-            RecoveryCommand::RecoveryCtrl => (0x06c, 3, CommandDirection::Write),
-            RecoveryCommand::RecoveryStatus => (0x070, 2, CommandDirection::Read),
-            RecoveryCommand::HwStatus => (0x074, 4, CommandDirection::Read),
-            RecoveryCommand::Vendor => (0x1a4, 1, CommandDirection::ReadWrite),
-            RecoveryCommand::IndirectFifoCtrl => (0x184, 6, CommandDirection::ReadWrite),
-            RecoveryCommand::IndirectFifoStatus => (0x18c, 20, CommandDirection::Read),
+            RecoveryCommand::ProtCap => (0x004, 15, CommandDirection::Read),
+            RecoveryCommand::DeviceId => (0x014, 24, CommandDirection::Read),
+            RecoveryCommand::DeviceStatus => (0x030, 7, CommandDirection::Read),
+            RecoveryCommand::DeviceReset => (0x038, 3, CommandDirection::ReadWrite),
+            RecoveryCommand::RecoveryCtrl => (0x03c, 3, CommandDirection::Write),
+            RecoveryCommand::RecoveryStatus => (0x040, 2, CommandDirection::Read),
+            RecoveryCommand::HwStatus => (0x044, 4, CommandDirection::Read),
+            RecoveryCommand::Vendor => (0x100, 1, CommandDirection::ReadWrite),
+            RecoveryCommand::IndirectFifoCtrl => (0x048, 6, CommandDirection::ReadWrite),
+            RecoveryCommand::IndirectFifoStatus => (0x050, 20, CommandDirection::Read),
             RecoveryCommand::IndirectCtrl
             | RecoveryCommand::IndirectStatus
             | RecoveryCommand::IndirectData
@@ -519,7 +519,7 @@ impl UsbCombo {
     }
 
     fn read_recovery_bytes(&mut self, offset: u32, len: usize) -> Option<Vec<u8>> {
-        if offset == 0x184 && len == 6 {
+        if offset == 0x048 && len == 6 {
             let ctrl = self.read_recovery_indirect_fifo_ctrl_0().reg.get();
             let image_size = self.read_recovery_indirect_fifo_ctrl_1();
             return Some(vec![
@@ -540,7 +540,7 @@ impl UsbCombo {
     }
 
     fn write_recovery_bytes(&mut self, offset: u32, data: &[u8]) -> Result<(), UsbRecoveryError> {
-        if offset == 0x184 && data.len() == 6 {
+        if offset == 0x048 && data.len() == 6 {
             self.write_recovery_indirect_fifo_ctrl_0(caliptra_emu_bus::ReadWriteRegister::new(
                 u16::from_le_bytes(data[..2].try_into().unwrap()) as u32,
             ));
@@ -565,71 +565,57 @@ impl UsbCombo {
 
     fn read_recovery_interface(&mut self, addr: u32) -> Option<u32> {
         Some(match addr {
-            0x00 => self.read_recovery_prot_cap_0(),
-            0x04 => self.read_recovery_prot_cap_1(),
-            0x08 => self.read_recovery_prot_cap_2().reg.get(),
-            0x0c => self.read_recovery_prot_cap_3().reg.get(),
-            0x10 => self.read_recovery_device_id_0().reg.get(),
-            0x14 => self.read_recovery_device_id_1(),
-            0x18 => self.read_recovery_device_id_2(),
-            0x1c => self.read_recovery_device_id_3(),
-            0x20 => self.read_recovery_device_id_4(),
-            0x24 => self.read_recovery_device_id_5(),
-            0x28 => self.read_recovery_device_status_0().reg.get(),
-            0x2c => self.read_recovery_device_status_1().reg.get(),
-            0x30 => self.read_recovery_device_status_2(),
-            0x34 => self.read_recovery_device_status_3(),
-            0x38 => self.read_recovery_device_status_4(),
-            0x3c => self.read_recovery_device_status_5(),
-            0x40 => self.read_recovery_device_status_6(),
-            0x44 => self.read_recovery_device_status_7(),
-            0x48 => self.read_recovery_device_status_8(),
-            0x4c => self.read_recovery_device_status_9(),
-            0x50 => self.read_recovery_device_status_10(),
-            0x54 => self.read_recovery_device_status_11(),
-            0x58 => self.read_recovery_device_status_12(),
-            0x5c => self.read_recovery_device_status_13(),
-            0x60 => self.read_recovery_device_status_14(),
-            0x64 => self.read_recovery_device_status_15(),
-            0x68 => self.read_recovery_device_reset().reg.get(),
-            0x6c => self.read_recovery_recovery_ctrl().reg.get(),
-            0x70 => self.read_recovery_recovery_status().reg.get(),
-            0x74 => self.read_recovery_hw_status().reg.get(),
-            0x184 => self.read_recovery_indirect_fifo_ctrl_0().reg.get(),
-            0x188 => self.read_recovery_indirect_fifo_ctrl_1(),
-            0x18c => self.read_recovery_indirect_fifo_status_0().reg.get(),
-            0x190 => self.read_recovery_indirect_fifo_status_1(),
-            0x194 => self.read_recovery_indirect_fifo_status_2(),
-            0x198 => self.read_recovery_indirect_fifo_status_3(),
-            0x19c => self.read_recovery_indirect_fifo_status_4(),
-            0x1a0 => self.read_recovery_indirect_fifo_data(),
-            0x1a4 => self.read_recovery_vendor().reg.get(),
+            0x04 => self.read_recovery_prot_cap_0(),
+            0x08 => self.read_recovery_prot_cap_1(),
+            0x0c => self.read_recovery_prot_cap_2().reg.get(),
+            0x10 => self.read_recovery_prot_cap_3().reg.get(),
+            0x14 => self.read_recovery_device_id_0().reg.get(),
+            0x18 => self.read_recovery_device_id_1(),
+            0x1c => self.read_recovery_device_id_2(),
+            0x20 => self.read_recovery_device_id_3(),
+            0x24 => self.read_recovery_device_id_4(),
+            0x28 => self.read_recovery_device_id_5(),
+            0x30 => self.read_recovery_device_status_0().reg.get(),
+            0x34 => self.read_recovery_device_status_1().reg.get(),
+            0x38 => self.read_recovery_device_reset().reg.get(),
+            0x3c => self.read_recovery_recovery_ctrl().reg.get(),
+            0x40 => self.read_recovery_recovery_status().reg.get(),
+            0x44 => self.read_recovery_hw_status().reg.get(),
+            0x48 => self.read_recovery_indirect_fifo_ctrl_0().reg.get(),
+            0x4c => self.read_recovery_indirect_fifo_ctrl_1(),
+            0x50 => self.read_recovery_indirect_fifo_status_0().reg.get(),
+            0x54 => self.read_recovery_indirect_fifo_status_1(),
+            0x58 => self.read_recovery_indirect_fifo_status_2(),
+            0x5c => self.read_recovery_indirect_fifo_status_3(),
+            0x60 => self.read_recovery_indirect_fifo_status_4(),
+            0x68 => self.read_recovery_indirect_fifo_data(),
+            0x100 => self.read_recovery_vendor().reg.get(),
             _ => return None,
         })
     }
 
     fn write_recovery_interface(&mut self, addr: u32, value: u32) -> bool {
         match addr {
-            0x08 => self.write_recovery_prot_cap_2(caliptra_emu_bus::ReadWriteRegister::new(value)),
-            0x0c => self.write_recovery_prot_cap_3(caliptra_emu_bus::ReadWriteRegister::new(value)),
-            0x28 => {
+            0x0c => self.write_recovery_prot_cap_2(caliptra_emu_bus::ReadWriteRegister::new(value)),
+            0x10 => self.write_recovery_prot_cap_3(caliptra_emu_bus::ReadWriteRegister::new(value)),
+            0x30 => {
                 self.write_recovery_device_status_0(caliptra_emu_bus::ReadWriteRegister::new(value))
             }
-            0x68 => {
+            0x38 => {
                 self.write_recovery_device_reset(caliptra_emu_bus::ReadWriteRegister::new(value))
             }
-            0x6c => {
+            0x3c => {
                 self.write_recovery_recovery_ctrl(caliptra_emu_bus::ReadWriteRegister::new(value))
             }
-            0x70 => {
+            0x40 => {
                 self.write_recovery_recovery_status(caliptra_emu_bus::ReadWriteRegister::new(value))
             }
-            0x74 => self.write_recovery_hw_status(caliptra_emu_bus::ReadWriteRegister::new(value)),
-            0x184 => self.write_recovery_indirect_fifo_ctrl_0(
+            0x44 => self.write_recovery_hw_status(caliptra_emu_bus::ReadWriteRegister::new(value)),
+            0x48 => self.write_recovery_indirect_fifo_ctrl_0(
                 caliptra_emu_bus::ReadWriteRegister::new(value),
             ),
-            0x188 => self.write_recovery_indirect_fifo_ctrl_1(value),
-            0x1a4 => self.write_recovery_vendor(caliptra_emu_bus::ReadWriteRegister::new(value)),
+            0x4c => self.write_recovery_indirect_fifo_ctrl_1(value),
+            0x100 => self.write_recovery_vendor(caliptra_emu_bus::ReadWriteRegister::new(value)),
             _ => return false,
         }
         true
@@ -641,20 +627,12 @@ impl UsbCombo {
         self.recovery_fifo_read_index = 0;
     }
 
+    // USB Hub 2.6 uses the same recovery offsets as Caliptra's I3C-style view.
     fn caliptra_recovery_offset(offset: u32) -> Option<u32> {
-        Some(match offset {
-            0x04..=0x28 => offset - 0x04,
-            0x30..=0x34 => offset - 0x08,
-            0x38 => 0x068,
-            0x3c => 0x06c,
-            0x40 => 0x070,
-            0x44 => 0x074,
-            0x48 => 0x184,
-            0x4c => 0x188,
-            0x50..=0x60 => offset + 0x13c,
-            0x68 => 0x1a0,
-            _ => return None,
-        })
+        match offset {
+            0x04..=0x28 | 0x30..=0x68 => Some(offset),
+            _ => None,
+        }
     }
 
     fn progress_caliptra_fifo_read(&mut self) {
@@ -820,7 +798,7 @@ impl UsbComboPeripheral for UsbCombo {
         self.lpcip_state.lock().unwrap().intstat &= !val.reg.get();
     }
 
-    fn read_dev0_csr_ulpidebug(
+    fn read_hub_ulpidebug(
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
         u32,
@@ -829,7 +807,7 @@ impl UsbComboPeripheral for UsbCombo {
         caliptra_emu_bus::ReadWriteRegister::new(self.lpcip_state.lock().unwrap().ulpidebug)
     }
 
-    fn write_dev0_csr_ulpidebug(
+    fn write_hub_ulpidebug(
         &mut self,
         val: caliptra_emu_bus::ReadWriteRegister<
             u32,
@@ -1098,23 +1076,23 @@ mod tests {
     }
 
     fn ulpi_read(usb: &mut UsbCombo, address: u8) -> u8 {
-        usb.write_dev0_csr_ulpidebug(caliptra_emu_bus::ReadWriteRegister::new(
+        usb.write_hub_ulpidebug(caliptra_emu_bus::ReadWriteRegister::new(
             ULPI_PHY_MODE | ULPI_PHY_ACCESS | u32::from(address),
         ));
-        let result = usb.read_dev0_csr_ulpidebug().reg.get();
+        let result = usb.read_hub_ulpidebug().reg.get();
         assert_eq!(result & ULPI_PHY_ACCESS, 0);
         ((result >> ULPI_PHY_RDATA_SHIFT) & 0xff) as u8
     }
 
     fn ulpi_write(usb: &mut UsbCombo, address: u8, value: u8) {
-        usb.write_dev0_csr_ulpidebug(caliptra_emu_bus::ReadWriteRegister::new(
+        usb.write_hub_ulpidebug(caliptra_emu_bus::ReadWriteRegister::new(
             ULPI_PHY_MODE
                 | ULPI_PHY_ACCESS
                 | ULPI_PHY_RW
                 | (u32::from(value) << ULPI_PHY_WDATA_SHIFT)
                 | u32::from(address),
         ));
-        assert_eq!(usb.read_dev0_csr_ulpidebug().reg.get() & ULPI_PHY_ACCESS, 0);
+        assert_eq!(usb.read_hub_ulpidebug().reg.get() & ULPI_PHY_ACCESS, 0);
     }
 
     #[test]

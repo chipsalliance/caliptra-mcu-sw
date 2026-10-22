@@ -296,32 +296,22 @@ ispresent = !TOGGLE_REG_READABLE;
             "",
         ),
         (
-            usb2_rdl_dir.join("usbhsd.rdl"),
-            "sw = PLL_ENABLE ? rw : r; hw = r;",
-            "sw = r; hw = r;",
-        ),
-        (
-            usb2_rdl_dir.join("usbhsd.rdl"),
-            "EXT_CLK_ENABLE[0:0] = PLL_ENABLE ? 0 : 1;",
-            "EXT_CLK_ENABLE[0:0] = 1;",
-        ),
-        (
-            usb2_rdl_dir.join("usbhsd.rdl"),
+            usb2_rdl_dir.join("usb_hub.rdl"),
             "sw = ULPI_SUPPORT ? rw : r;",
             "sw = rw;",
         ),
         (
-            usb2_rdl_dir.join("usbhsd.rdl"),
+            usb2_rdl_dir.join("usb_hub.rdl"),
             "hw = ULPI_SUPPORT ? r : na;",
             "hw = r;",
         ),
         (
-            usb2_rdl_dir.join("usbhsd.rdl"),
+            usb2_rdl_dir.join("usb_hub.rdl"),
             "sw = (ULPI_SUPPORT && UTMI_SUPPORT) ? rw : r; hw = r;",
             "sw = rw; hw = r;",
         ),
         (
-            usb2_rdl_dir.join("usbhsd.rdl"),
+            usb2_rdl_dir.join("usb_hub.rdl"),
             "PHY_MODE[31:31] = (ULPI_SUPPORT && !UTMI_SUPPORT) ? 1 : 0;",
             "PHY_MODE[31:31] = 0;",
         ),
@@ -353,7 +343,7 @@ field { sw = rw; hw = rw; onwrite = woset; precedence = hw; } DEV_SET_INT[31:31]
         (
             usb2_rdl_dir.join("usb_hub.rdl"),
             "mementries = FIFO_WORDS - 16;",
-            "mementries = 156;",
+            "mementries = 180;",
         ),
         (
             usb2_rdl_dir.join("usb_device_memory.rdl"),

@@ -720,7 +720,9 @@ flowchart TD
 
 `R` means read, `W` means write, and `W1C` means write one to clear the
 documented status bits. Device 0 register names below are relative to its CSR
-block; `HUB_CONTROL` and `CALIPTRA_*` belong to the compound controller.
+block; `HUB_CONTROL`, `ULPIDEBUG`, and `CALIPTRA_*` belong to the compound
+controller. Since USB Hub Release 2.6, `ULPIDEBUG` is in the hub block, not the
+Device 0 CSR block.
 Packet SRAM entries are memory, not CSR registers. This maps the implemented
 service loop to the hardware interface. Recovery-register accesses must be assigned to
 the actual image consumer, not duplicated by MCU ROM and Caliptra.
