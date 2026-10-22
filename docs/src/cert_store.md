@@ -146,10 +146,13 @@ Persistent backing for managed endorsements must provide these guarantees:
 
 - An endorsement update is validated and committed atomically; the previous
   endorsement remains readable while an update is in progress.
-- Reset or power loss does not expose a partial endorsement.
-- Removal is durable.
-- Recovery restores the last valid committed endorsement or leaves the chain
-  unprovisioned.
+- Reset, power loss, or stream abort does not expose a partial endorsement.
+- Removal is durable so an older endorsement cannot reappear after reset.
+- Startup recovery restores the newest valid committed endorsement or leaves
+  the chain unprovisioned.
+
+See [Certificate Store Integration](./certificate-store-integration.md#allocate-managed-endorsement-storage)
+for how the SDK reference implementation satisfies these requirements.
 
 ## Shared runtime requirements
 

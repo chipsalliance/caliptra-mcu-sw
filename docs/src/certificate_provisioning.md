@@ -20,11 +20,10 @@ to managed Owner and Tenant slots.
 
 The current source implements Vendor ECC P-384 and ML-DSA-87 certificate
 retrieval through SPDM. Managed Owner and Tenant slots store an independent
-chain per algorithm and serve whichever one matches the negotiated
-algorithm, but SPDM provisioning of those slots is test-only and does not
-provide production authorization. Production authorization and managed
-backing contracts are deferred. MCI certificate commands and configurable
-Tenant SlotIDs are planned.
+chain per algorithm using A/B (`active_region` / `staging_region`) persistent
+flash backing and serve whichever chain matches the negotiated algorithm. SPDM
+provisioning of those slots is currently test-only and does not provide
+production authorization.
 
 SPDM `SET_CERTIFICATE` passes `key_pair_id = 0` when `KeyPairID` is absent
 (SPDM 1.2, or SPDM 1.3+ with `MULTI_KEY_CONN_RSP = 0`) and passes the request's
