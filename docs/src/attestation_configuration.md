@@ -5,23 +5,21 @@
 Attestation configuration specifies how measured boot and attestation evidence collection are carried out across a SoC that integrates Caliptra Subsystem. The configuration consists of three artifacts:
 
 1. **SoC Authorization Manifest**: Authorizes the firmware images permitted to run. Caliptra Core verifies the manifest signature and uses its image metadata to authenticate component reference digests and validate load/staging addresses.
-2. **Attestation Manifest**: Defines the measurement routing policy for each configured component ID (`fw_id`). It specifies whether a component is measured into a DPE context (TCB) or Software PCR storage (non-TCB), designates the Attestation Key (AK) target node, and provides platform identity for attestation evidence.
-3. **SoC Image Load List**: Defines the deterministic sequential order in which the MCU loads and measures SoC components at boot. For DPE-backed measurements, this sequence governs the runtime parent-child derivation order in the DPE context tree.
+2. **Attestation Manifest**: Defines the measurement routing policy for each configured firmware ID (`fw_id`). It specifies whether a component is measured into a DPE context (TCB) or Software PCR storage (non-TCB), designates the Attestation Key (AK) target node, and provides platform identity for attestation evidence.
+3. **SoC Image Load List**: Defines the deterministic sequential order in which the MCU loads and measures SoC components at boot.
 
-These artifacts are defined across two configuration layers:
-- **Base Vendor Layer**: Embedded at build time in the MCU Runtime user image.
-- **Owner Layer**: Staged externally (Component `0x00000005` in [Flash TOC](./flash_layout.md) / PLDM) and dynamically authenticated via the Owner SoC Manifest.
+These artifacts are defined across two configurations:
+- **Base Vendor Configuration**: Embedded at build time in the MCU Runtime user image and authenticated as part of MCU Runtime image verification against the Base SoC Manifest.
+- **Owner Configuration**: Staged externally (Component `0x00000005` in [Flash TOC](./flash_layout.md) / PLDM) and authenticated against the Owner SoC Manifest.
 
 ### Configuration Artifacts
 
 | SoC Config | Artifact | Lives In | Authenticated By | Purpose |
 |---|---|---|---|---|
 | **Base Vendor** | [Auth Manifest](https://github.com/chipsalliance/caliptra-sw/blob/main/auth-manifest/README.md) | Caliptra RT (DCCM) | Caliptra RT (Auth manifest verification) | Authorization of SoC image metadata; querying SoC image metadata via `GET_IMAGE_INFO` |
-| **Base Vendor** | Attestation Manifest (`MCAM`) | MCU RT Image | Caliptra RT (As part of MCU RT image verification) | Per-`fw_id` measurement routing policy (TCB vs. Non-TCB, AK target) |
-| **Base Vendor** | SoC Image Load List | MCU RT Image | Caliptra RT (As part of MCU RT image verification) | Ordered `fw_id` list used for SoC image loading, DPE topology, and hitless updates |
+| **Base Vendor** | Base Attestation Policy </br> `Attestation Manifest (MCAM)` </br>+ </br> `SoC Image Load List` | MCU RT (SRAM, loaded from MCU RT Image) | Caliptra RT (As part of MCU RT image verification) | Per-`fw_id` measurement routing policy (TCB vs. Non-TCB, AK target) and ordered `fw_id` load list used for SoC image loading, DPE topology, and hitless updates |
 | **Owner** | [Owner Auth Manifest](https://github.com/chipsalliance/caliptra-sw/blob/main/auth-manifest/README.md#owner-authorization-manifest) | Caliptra RT (DCCM) | Caliptra RT (Owner auth manifest verification) | Authorization of owner SoC image metadata; querying owner metadata via `GET_IMAGE_INFO` |
-| **Owner** | Owner Attestation Manifest (`MOAM`) | Component `0x00000005` ([Flash TOC](./flash_layout.md) / PLDM) | Caliptra RT (Authorized against Owner SoC Manifest) | Per-`fw_id` measurement routing policy for owner components |
-| **Owner** | Owner SoC Image Load List (`MOLL`) | Component `0x00000005` ([Flash TOC](./flash_layout.md) / PLDM) | Caliptra RT (Authorized against Owner SoC Manifest) | Ordered `fw_id` list used for owner SoC image loading and DPE topology |
+| **Owner** | Owner Attestation Policy </br> `Owner Attestation Manifest (MOAM)` </br>+ </br> `Owner SoC Image Load List (MOLL)` | MCU RT (SRAM, loaded from Component `0x00000005`) | MCU RT (Verified against Owner Auth Manifest via `GET_IMAGE_INFO`) | Per-`fw_id` measurement routing policy and ordered `fw_id` load list used for owner SoC image loading and DPE topology |
 
 ---
 
@@ -57,6 +55,8 @@ Consists of a 28-byte fixed header prefix, a 200-byte platform information regio
 
 If no entry asserts `AK_TARGET`, `MCU_RT` (`0x0000_0002`) is the default AK target.
 
+**Currently, only the base manifest supports AK-target selection.**
+
 ### Base SoC Image Load List (`SOC_IMAGE_LOAD_LIST`)
 
 An ordered array of little-endian `u32` firmware identifiers:
@@ -77,28 +77,22 @@ Stored in preserved measurement metadata at cold boot. On hitless update, any mi
 
 ---
 
-## 3. Owner Configuration Layer (Component 0x00000005)
+## 3. Owner Configuration (Component 0x00000005)
 
 The Owner Measurement Policy component packages the **Owner Attestation Manifest** and **Owner SoC Image Load List** contiguously into a single container staged in [Flash TOC](./flash_layout.md) or delivered via PLDM:
 
 ```text
-+---------------------------------------------------------------------------------+
-|                  Owner Measurement Policy (Component 0x00000005)                |
-+---------------------------------------------------------------------------------+
-|  Owner Attestation Manifest (MOAM)                                              |
-|  - 28-byte Header (marker: 0x4D41_4F4D, size, version: 1, header_size: 28,      |
-|    entry_count, tcb_entry_count, vendor_len: 0, model_len: 0)                   |
-|  - Variable Entry Array: [fw_id: u32, attestation_flags: u32] * entry_count     |
-+---------------------------------------------------------------------------------+
-|  Owner SoC Image Load List (MOLL)                                               |
-|  - 16-byte Header (marker: 0x4C4C_4F4D, size, version: 1, entry_count)          |
-|  - Ordered Array: [fw_id: u32] * entry_count                                    |
-+---------------------------------------------------------------------------------+
+Owner Measurement Policy (Component 0x00000005)
++-----------------------------------------+
+| Owner Attestation Manifest (MOAM)       |
++-----------------------------------------+
+| Owner SoC Image Load List (MOLL)        |
++-----------------------------------------+
 ```
 
 ### Owner Attestation Manifest (`MOAM`)
 
-Unlike the base manifest, the owner manifest omits platform strings (inheriting platform identity from the base layer):
+Unlike the base manifest, the owner manifest omits platform strings (inheriting platform identity from the base configuration):
 
 #### Header Format (28 bytes)
 
@@ -118,8 +112,7 @@ Unlike the base manifest, the owner manifest omits platform strings (inheriting 
 2. **Mandatory Reserved Entries**: Every owner manifest must include TCB entries for:
    - `0x0000_0005`: Owner Measurement Policy
    - `0x0000_0006`: Owner Authorization Key (`O_AUTH_KEY_ID`)
-3. **AK Target Prohibition**: Setting `AK_TARGET` on any owner component is rejected.
-4. **Allocated ID Range**: All loadable owner firmware IDs must fall in `0x0001_0000..=0xFFFF_FFFF`. IDs below `0x0001_0000` (except reserved IDs `0x5` and `0x6`) are rejected.
+3. **Allocated ID Range**: All loadable owner firmware IDs must fall in `0x0001_0000..=0xFFFF_FFFF`. IDs below `0x0001_0000` (except reserved IDs `0x5` and `0x6`) are rejected.
 
 ### Owner SoC Image Load List (`MOLL`)
 
@@ -191,15 +184,15 @@ At system startup, Caliptra MCU coordinates authorization, loading, and measurem
 
 ## 5. Symmetrical Consistency Rules
 
-The exact same consistency principles govern both the Base and Owner layers:
+The exact same consistency principles govern both the Base and Owner configurations:
 
-| Principle | Base Layer Rule | Owner Layer Rule |
+| Principle | Base Configuration Rule | Owner Configuration Rule |
 |---|---|---|
 | **Identifier Uniqueness** | `fw_id`s in Base Manifest and Base SoC Image Load List must be unique. | `fw_id`s in `MOAM` and `MOLL` must be unique. |
 | **Range Allocation** | Base IDs occupy the base range (`< 0x0001_0000`). | Owner IDs occupy the owner range (`0x0001_0000..=0xFFFF_FFFF`), except reserved IDs `0x5` and `0x6`. |
 | **Non-Loadable Entries** | `MCAM` may contain non-loadable entries such as the Vendor Authorization Key (`0x0000_0004`), which is excluded from `SOC_IMAGE_LOAD_LIST`. | `MOAM` contains reserved IDs `0x5` (Policy) and `0x6` (Owner Authorization Key), which are excluded from `MOLL`. |
 | **Cross-Artifact Parity** | Every loadable `fw_id` in `SOC_IMAGE_LOAD_LIST` must exist in `MCAM` and Base SoC Manifest. | Every loadable `fw_id` in `MOLL` must exist in `MOAM` and Owner SoC Manifest. |
-| **Hitless Update Protection** | `base_policy_digest` must match the value preserved in reserved SRAM (`DpeHandleStore` header). | `owner_policy_digest` must match the preserved cold-boot measurement of the Owner Measurement Policy in its DPE context or software-PCR record. It is not stored in the `DpeHandleStore` header. |
+| **Hitless Update Protection** | `base_policy_digest` must match the value preserved in reserved SRAM (`DpeHandleStore` header). | `owner_policy_digest` must match the preserved cold-boot measurement of the Owner Measurement Policy in its DPE context. It is not stored in the `DpeHandleStore` header. |
 
 ### Hitless Update Policy Preservation
 
@@ -207,22 +200,10 @@ During cold boot, MCU Runtime stores the base-policy digest in the
 `DpeHandleStore` header's `attestation_policy_digest` field at offset 24.
 
 The Owner policy digest, `SHA384(Owner Measurement Policy payload)`,
-is captured as the policy component's measurement in its DPE context
-or software-PCR record. It is neither combined with the base-policy
-digest nor stored separately in the `DpeHandleStore` header.
+is captured as the policy component's measurement in its DPE context.
 
 On a hitless-update reset:
 
-1. Recompute the base-policy digest and validate it against the preserved
-   store header using the existing `VALIDATE_STORE` flow.
-2. Authenticate and validate the incoming Owner Measurement Policy,
-   recompute its digest, and compare it against the policy's preserved
-   cold-boot measurement. Use the DPE context's current measurement or
-   the software-PCR record's `current_digest`, not a cumulative or
-   journey digest.
-3. Perform this comparison before changing Owner measurement state.
-   A digest mismatch or missing, invalid preserved measurement rejects
-   the update. Do not overwrite the baseline or silently initialize
-   fresh state. An unchanged policy reuses its preserved measurement
-   without another PCR31 extension.
-4. Non-loadable authorization keys (e.g., Vendor Authorization Key `0x0000_0004` and Owner Authorization Key `0x0000_0006`): on hitless update, the runtime queries the preserved DPE context measurement (`dpe_get_tagged_tci`). If the accepted key digest is unchanged, existing contexts and PCR31 are retained without re-extension. If the key changed, the existing context is updated via `dpe_update_context_measurement` and PCR31 is extended once.
+1. MCU Runtime recomputes the base-policy digest and validates it against the digest preserved in the `DpeHandleStore` header.
+2. MCU Runtime authenticates and validates the incoming Owner Measurement Policy, recomputes its digest, and compares it against the policy component's preserved DPE context measurement.
+3. If the policy digest mismatches or the preserved measurement is missing or invalid, the update is rejected. If the policy is unchanged, the preserved measurement is retained.
