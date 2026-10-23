@@ -217,8 +217,11 @@ async fn process_chunk_send<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     session_id: Option<u32>,
     set_certificate_allowed: bool,
 ) -> Result<ChunkInfo, ChunkProcessError> {
+    // GET_VERSION, GET_CAPABILITIES and NEGOTIATE_ALGORITHMS must all precede any
+    // other request (DSP0274 section 17, General ordering rules), so a CHUNK_SEND
+    // before algorithms are negotiated is out of order.
     if state.large_msg_ctx.response_in_progress()
-        || (state.phase as u8) < (Phase::AfterCapabilities as u8)
+        || (state.phase as u8) < (Phase::AfterAlgorithms as u8)
         || !state.chunking_enabled()
     {
         return Err(ChunkProcessError::Spdm(SPDM_UNEXPECTED_REQUEST));
@@ -1990,5 +1993,80 @@ mod tests {
         );
         assert!(!state.large_msg_ctx.request_in_progress());
         assert_eq!(rsp[1], ReqRespCode::CHUNK_SEND_ACK.0);
+    }
+
+    /// GET_VERSION, GET_CAPABILITIES and NEGOTIATE_ALGORITHMS must all precede
+    /// CHUNK_SEND (DSP0274 section 17, General ordering rules): a CHUNK_SEND that
+    /// arrives between CAPABILITIES and ALGORITHMS is rejected before any chunk
+    /// state is created.
+    #[test]
+    fn chunk_send_before_algorithms_is_unexpected_request() {
+        let pal = TestPal::default();
+        let mut state = chunking_state();
+        state.phase = Phase::AfterCapabilities;
+        let mut sessions = test_sessions();
+        let vdm = CaptureVdmBackend::new();
+
+        let mut chunk = [0u8; 64];
+        chunk[0] = SpdmVersion::V12.to_u8();
+        chunk[1] = ReqRespCode::GET_MEASUREMENTS.0;
+        let req = chunk_send_request(7, 0, false, Some(1024), &chunk);
+
+        let io = TestIo::message(req.clone());
+        let err = block_on(handle_chunk_send(
+            &mut state,
+            &mut sessions,
+            &pal,
+            &io,
+            &vdm,
+            &req,
+            None,
+            true,
+        ))
+        .expect_err("CHUNK_SEND before NEGOTIATE_ALGORITHMS must be rejected");
+        assert_eq!(err, SPDM_UNEXPECTED_REQUEST);
+        assert!(!state.large_msg_ctx.request_in_progress());
+    }
+
+    /// CHUNK_GET has the same VCA prerequisite as CHUNK_SEND: a CHUNK_GET that
+    /// arrives between CAPABILITIES and ALGORITHMS is rejected and the staged large
+    /// response is left alone. The same request at AfterAlgorithms returns the first
+    /// chunk, so the phase floor is the only reason the first call fails.
+    #[test]
+    fn chunk_get_before_algorithms_is_unexpected_request() {
+        let pal = TestPal::default();
+        let mut state = chunking_state();
+        state.phase = Phase::AfterCapabilities;
+
+        let handle = state.large_msg_ctx.next_handle();
+        state
+            .large_msg_ctx
+            .start_response(
+                super::super::LargeResponse::Buffered,
+                16,
+                Some(vec![0xA5u8; 16]),
+            )
+            .unwrap();
+
+        let req = vec![
+            SpdmVersion::V12.to_u8(),
+            ReqRespCode::CHUNK_GET.0,
+            0,
+            handle,
+            0,
+            0,
+        ];
+        let io = TestIo::message(req.clone());
+        let err = block_on(super::super::handle_chunk_get(&mut state, &pal, &io, &req))
+            .expect_err("CHUNK_GET before NEGOTIATE_ALGORITHMS must be rejected");
+        assert_eq!(err, SPDM_UNEXPECTED_REQUEST);
+        assert!(state.large_msg_ctx.response_in_progress());
+        assert_eq!(state.large_msg_ctx.response().unwrap().next_seq_num, 0);
+
+        state.phase = Phase::AfterAlgorithms;
+        assert!(
+            block_on(super::super::handle_chunk_get(&mut state, &pal, &io, &req)).is_ok(),
+            "the same CHUNK_GET after NEGOTIATE_ALGORITHMS must be served"
+        );
     }
 }
