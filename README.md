@@ -34,6 +34,31 @@ cargo xtask runtime
 
 This uses the full [active, or subsystem, mode boot flow](https://chipsalliance.github.io/caliptra-mcu-sw/rom.html#cold-boot-flow).
 
+### Emulator strap pins
+
+The emulator models six board strap pins: `bootmode0`, `bootmode1`, `strap0`, `strap1`, `strap2`, `strap3`.
+They are driven onto MCI `generic_input_wires[0]` bits 16..=21, in that order. The mapping lives in
+`EMULATOR_MCU_STRAPS` (`strap_pins_wire_index` / `strap_pins_shift`). Firmware reads them with
+`McuStraps::strap_pins()`, or with `read_strap_pins()` in the emulator ROM and runtime platform code.
+Both print `Strap pins: 0x.. bootmode=.. straps=..` at boot.
+
+| Pin       | Mask bit | `generic_input_wires[0]` bit |
+|-----------|----------|------------------------------|
+| bootmode0 | 0        | 16                           |
+| bootmode1 | 1        | 17                           |
+| strap0    | 2        | 18                           |
+| strap1    | 3        | 19                           |
+| strap2    | 4        | 20                           |
+| strap3    | 5        | 21                           |
+
+All pins default to 0. Set them with a bitmask, with individual flags, or both (they are ORed together):
+
+```shell
+cargo xtask rom --strap-pins 0x25          # bootmode0 + strap1 + strap3
+cargo xtask rom --bootmode1 --strap0
+cargo xtask runtime --strap-pins 0x3 --strap2
+```
+
 ## Testing
 
 The primary way to run integration tests with the emulator is using the `test` xtask:
