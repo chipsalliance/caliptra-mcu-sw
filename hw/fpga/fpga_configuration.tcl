@@ -172,8 +172,15 @@ register_axi_subordinate axi_interconnect_0 M10_AXI  0xA4081000 0x00001000 axi_c
 register_axi_subordinate axi_interconnect_0 M11_AXI  0xB0000000 0x00018000 cptra_rom_backdoor_bram_0/S_AXI        Mem0    S_AXI_CALIPTRA_ROM FALSE  "/ps_0/pl0_ref_clk"
 register_axi_subordinate axi_interconnect_0 M12_AXI  0xB0020000 0x00020000 mcu_rom_backdoor_bram_0/S_AXI          Mem0    S_AXI_SS_ROM       FALSE  "/ps_0/pl0_ref_clk"
 
-# Create reset block
+# Create reset blocks
+# proc_sys_reset_0 resets the wrapper register block. It is triggered by
+# trigger_axi_reset (full reset, used for cold boot).
 create_bd_cell -type ip -vlnv xilinx.com:ip:proc_sys_reset:5.0 proc_sys_reset_0
+# proc_sys_reset_1 resets the AXI fabric (interconnect and infrastructure IP).
+# It is triggered by trigger_axi_reset and trigger_fabric_reset. The latter
+# leaves the wrapper registers (pwrgood, straps) intact, so it can be used
+# during a subsystem warm reset to drop transactions orphaned by cptra_ss_rst_b.
+create_bd_cell -type ip -vlnv xilinx.com:ip:proc_sys_reset:5.0 proc_sys_reset_1
 
 #### Add Devices ####
 
@@ -246,25 +253,31 @@ for {set i 1} {$i <= $axi_subordinates(ID)} {incr i} {
 }
 
 # Create reset connections
-connect_bd_net [get_bd_pins $ps_pl_resetn] [get_bd_pins proc_sys_reset_0/ext_reset_in]
+connect_bd_net [get_bd_pins $ps_pl_resetn] \
+  [get_bd_pins proc_sys_reset_0/ext_reset_in] \
+  [get_bd_pins proc_sys_reset_1/ext_reset_in]
 connect_bd_net -net proc_sys_reset_0_peripheral_aresetn \
   [get_bd_pins proc_sys_reset_0/peripheral_aresetn] \
+  [get_bd_pins caliptra_package_top_0/S_AXI_WRAPPER_ARESETN]
+connect_bd_net -net proc_sys_reset_1_peripheral_aresetn \
+  [get_bd_pins proc_sys_reset_1/peripheral_aresetn] \
   [get_bd_pins axi_apb_bridge_0/s_axi_aresetn] \
   [get_bd_pins axi_interconnect_0/aresetn] \
-  [get_bd_pins caliptra_package_top_0/S_AXI_WRAPPER_ARESETN] \
   [get_bd_pins cptra_rom_backdoor_bram_0/s_axi_aresetn] \
   [get_bd_pins mcu_rom_backdoor_bram_0/s_axi_aresetn] \
   [get_bd_pins otp_ram_bram_ctrl_0/s_axi_aresetn] \
   [get_bd_pins axi_cdma_0/s_axi_lite_aresetn] \
   [get_bd_pins staging_sram_bram_ctrl_0/s_axi_aresetn]
-# Connect auxillary reset source to package
+# Connect auxillary reset sources to package
 connect_bd_net [get_bd_pins caliptra_package_top_0/axi_reset] [get_bd_pins proc_sys_reset_0/aux_reset_in]
+connect_bd_net [get_bd_pins caliptra_package_top_0/fabric_resetn] [get_bd_pins proc_sys_reset_1/aux_reset_in]
 
 # Create clock connections
 connect_bd_net \
   [get_bd_pins $ps_pl_clk] \
   [get_bd_pins $ps_axi_aclk] \
   [get_bd_pins proc_sys_reset_0/slowest_sync_clk] \
+  [get_bd_pins proc_sys_reset_1/slowest_sync_clk] \
   [get_bd_pins axi_interconnect_0/aclk] \
   [get_bd_pins caliptra_package_top_0/core_clk] \
   [get_bd_pins cptra_rom_backdoor_bram_0/s_axi_aclk] \
