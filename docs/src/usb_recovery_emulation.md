@@ -887,6 +887,156 @@ Caliptra has not flagged a fatal error. A recovery wait with neither firmware re
 nor a fatal error needs an explicit timeout/watchdog policy; it must not be
 treated as success or assumed to eventually generate a fatal error.
 
+#### `EPSKIP` and SETUP hold semantics
+
+The following behavior is taken from the USB Hub Release 2.6 RTL
+(`usb2` `97aa961`, `usb_dma.m.vhdl` and `usb_reg_if.m.vhdl`). It has not yet
+been validated on FPGA.
+
+`EPSKIP` and the SETUP hold are independent mechanisms:
+
+- **`EPSKIP` deactivates transfer entries.** Bit *n* selects physical endpoint
+  *n*; for EP0, bit 0 is OUT and bit 1 is IN. When the DMA engine is idle and has
+  no pending endpoint-information request, it scans the skip bits. For each set
+  bit it reads that endpoint's transfer entry from packet SRAM, clears `ACTIVE`
+  (bit 31) and writes the entry back. In the same step it clears the
+  corresponding `EPSKIP` bit. Endpoints are processed one at a time, so bits can
+  clear separately, and normal USB traffic is served before skip work.
+- **Skip completion can raise an endpoint interrupt.** If the entry was still
+  `ACTIVE`, hardware raises that endpoint's `INTSTAT` bit. A cancelled EP0
+  transfer can therefore produce a late `EP0OUT`/`EP0IN` indication that does
+  not mean successful completion.
+- **`EPSKIP[n] = 0` means hardware has released that entry.** Hardware no
+  longer uses that endpoint's transfer entry or its buffer, so firmware can
+  safely rewrite them. It does not mean a SETUP packet was flushed: `EPSKIP`
+  does not touch the SETUP entry, the SETUP buffer or `DEVCMDSTAT.SETUP`.
+- **The SETUP hold is separate.** On SETUP reception, hardware writes the eight
+  bytes to the SETUP buffer, sets `DEVCMDSTAT.SETUP` and resets the EP0 toggles.
+  While `SETUP` is set, the DMA engine presents EP0 as inactive and not stalled,
+  so the host receives NAK for EP0 data/status. It also skips data movement for
+  EP0. The hold ends only when firmware writes 1 to `DEVCMDSTAT.SETUP`.
+- **Old EP0 entries are inert only during the hold.** Clearing `SETUP` makes any
+  EP0 entry still marked `ACTIVE` live again. Firmware must replace both EP0
+  entries before acknowledging SETUP, whether or not it used `EPSKIP`.
+
+The current shared handler sequence is:
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Host
+    participant HW as LPCIP controller / DMA
+    participant SRAM as Packet SRAM
+    participant ROM as MCU ROM handler
+
+    Note over Host,ROM: An earlier EP0 transfer may still have ACTIVE entries
+    Host->>HW: SETUP (8 bytes)
+    HW->>SRAM: Write SETUP buffer
+    HW->>HW: Set DEVCMDSTAT.SETUP, reset EP0 toggles
+    Note over HW: SETUP hold: EP0 seen as inactive,<br/>host gets NAK on EP0 data/status
+    Host-->>HW: IN/OUT on EP0
+    HW-->>Host: NAK (while SETUP pending)
+    ROM->>HW: Poll DEVCMDSTAT, SETUP set
+    ROM->>SRAM: Read SETUP packet
+    alt Hardware-owned OCP request
+        ROM->>HW: Write 1 to DEVCMDSTAT.SETUP, clear EP0 interrupts
+        Note over HW: Hardware serves OCP data/status
+    else Standard or software-owned request
+        ROM->>HW: EPSKIP = 0b11 (EP0 OUT, EP0 IN)
+        loop Each EP0 direction, when DMA idle
+            HW->>SRAM: Read entry, clear ACTIVE, write back
+            opt Entry was ACTIVE
+                HW->>HW: Raise EP0 INTSTAT bit
+            end
+            HW->>HW: Clear EPSKIP bit
+        end
+        loop Bounded poll (timeout is fatal)
+            ROM->>HW: Read EPSKIP[1:0]
+        end
+        opt Newer SETUP arrived meanwhile
+            ROM->>SRAM: Re-read SETUP packet
+        end
+        ROM->>SRAM: Clear EP0 OUT/IN entries, re-arm SETUP entry
+        ROM->>HW: Write 1 to DEVCMDSTAT.SETUP, clear EP0 interrupts
+        Note over HW: SETUP hold released
+        ROM->>SRAM: Arm data/status entries for new request
+        Host->>HW: Data/status stages for new request
+    end
+```
+
+Writing `EPSKIP` for every SETUP is conservative. While the SETUP hold is
+active, hardware already ignores the old EP0 entries. `EPSKIP` additionally
+ensures that hardware has released an entry before firmware rewrites it.
+
+#### Superseding SETUP without `EPSKIP` (unvalidated)
+
+RTL inspection suggests that omitting `EPSKIP` is safe on this path only if
+firmware still replaces both EP0 entries before acknowledging SETUP:
+
+- **No DMA transfer is in flight when ROM sees `SETUP`.** The DMA engine
+  serves one USB transaction at a time. Its sequence is IDLE, read entry,
+  check entry, move data, write the entry back, then IDLE. The SETUP is itself
+  a transaction, so the preceding EP0 transaction has written its entry back
+  before SETUP is processed. No late DMA write-back targets the old entries or
+  buffers.
+- **Old entries are inert during the hold.** EP0 tokens still cause hardware
+  to read the EP0 entry. While `SETUP` is set, hardware treats EP0 as inactive,
+  NAKs, moves no data and does not write the entry back
+  (`WAIT_ON_ENDTRANSFER_NO_UPDATE`). Firmware can rewrite the entries.
+- **`clear_ep0()` replaces the entries before the hold is released.**
+  Acknowledging SETUP therefore cannot reactivate stale entries.
+
+Compared with the current handler, omitting `EPSKIP` changes the following:
+
+| Aspect | With `EPSKIP = 0b11` (current) | Without `EPSKIP` |
+| --- | --- | --- |
+| Handler phases | Enters `Aborting` and polls `EPSKIP[1:0]` across service iterations | Clears entries, acknowledges SETUP and dispatches in one iteration |
+| Fatal paths | `CancellationTimeout` if the skip does not complete | No cancellation timeout on this path |
+| Interrupts | Skipping an `ACTIVE` entry can raise `EP0OUT`/`EP0IN` | Only previously pending EP0 interrupts; the handler clears both |
+| Host-visible result | New request served | Same, if the assumptions below hold |
+
+Omitting `EPSKIP` is unsafe in these cases:
+
+- **Firmware skips rewriting the entries before clearing `SETUP`.** An old IN
+  entry still marked `ACTIVE` becomes live when the hold is released. It can
+  send stale data for the new request, or report a spurious completion.
+  `EPSKIP` alone would not prevent this either, because it clears only `ACTIVE`
+  and leaves the rest of the entry unchanged.
+- **Timeout and disconnect cancellation.** No SETUP hold protects the entries,
+  so hardware may still use them. `EPSKIP` and its bounded completion poll
+  remain required.
+
+Before removing `EPSKIP` from the superseding-SETUP path, FPGA validation must
+confirm:
+
+1. **The hold takes effect in time.** The DMA engine samples `SETUP` when it
+   is idle. Confirm that an EP0 IN/OUT token arriving immediately after the
+   SETUP handshake never reaches an old `ACTIVE` entry before the hold applies.
+2. **Firmware entry writes do not race hardware entry reads.** Hardware reads
+   EP0 entries during the hold. These reads are harmless, but the result
+   depends on packet SRAM arbitration.
+3. **Back-to-back SETUP packets keep the hold active.** A second SETUP must
+   overwrite the SETUP buffer without releasing the hold before firmware
+   acknowledges it.
+
+Validate these with a protocol exerciser or another way to inject a new SETUP:
+
+- during a multi-packet IN data stage;
+- during an OUT data stage;
+- during the status stage;
+- with back-to-back SETUP packets.
+
+Standard USB20CV Chapter 9 tests are not known to inject SETUP mid-transfer.
+
+If validation passes, the minimal superseding-SETUP sequence is:
+
+1. Read SETUP.
+2. Call `clear_ep0()`.
+3. Write 1 to `DEVCMDSTAT.SETUP` and clear the EP0 interrupts.
+4. Dispatch.
+
+`EPSKIP` remains in use only for timeout and disconnect cancellation.
+
 #### Event-specific requirements
 
 Register names below refer to Device 0 unless qualified. Detection sources
