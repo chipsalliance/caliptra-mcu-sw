@@ -147,6 +147,67 @@ pub struct McuStraps {
     pub mcu_wdt_cfg1_manufacturing: u32,
     pub mcu_wdt_cfg0_debug: u32,
     pub mcu_wdt_cfg1_debug: u32,
+    /// Index of the MCI `generic_input_wires` register that carries the
+    /// strap pins (see [`StrapPins`]), or [`STRAP_PINS_NOT_WIRED`] if the
+    /// platform does not expose them.
+    pub strap_pins_wire_index: u8,
+    /// Bit position of [`StrapPins::BOOTMODE0`] within that register; the
+    /// six strap pins occupy bits `shift..shift + 6`.
+    pub strap_pins_shift: u8,
+}
+
+/// Number of strap pin signals (bootmode0..1, strap0..3).
+pub const STRAP_PINS_COUNT: u32 = 6;
+
+/// Value of [`McuStraps::strap_pins_wire_index`] for platforms without strap pins.
+pub const STRAP_PINS_NOT_WIRED: u8 = 0xff;
+
+bitflags::bitflags! {
+    /// Board strap pin signals sampled by MCU firmware.
+    ///
+    /// Bit `n` of this value maps to bit `strap_pins_shift + n` of
+    /// `mci_reg_generic_input_wires[strap_pins_wire_index]`.
+    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+    pub struct StrapPins: u8 {
+        const BOOTMODE0 = 1 << 0;
+        const BOOTMODE1 = 1 << 1;
+        const STRAP0 = 1 << 2;
+        const STRAP1 = 1 << 3;
+        const STRAP2 = 1 << 4;
+        const STRAP3 = 1 << 5;
+    }
+}
+
+impl StrapPins {
+    /// Two-bit boot mode value: `bootmode1:bootmode0`.
+    pub const fn bootmode(self) -> u8 {
+        self.bits() & 0b11
+    }
+
+    /// Four-bit general-purpose strap value: `strap3:strap2:strap1:strap0`.
+    pub const fn straps(self) -> u8 {
+        (self.bits() >> 2) & 0b1111
+    }
+}
+
+impl McuStraps {
+    /// Decode the strap pins from the MCI generic input wires.
+    /// Returns empty pins when the platform does not wire them.
+    pub fn strap_pins(&self, generic_input_wires: [u32; 2]) -> StrapPins {
+        let Some(&wire) = generic_input_wires.get(self.strap_pins_wire_index as usize) else {
+            return StrapPins::empty();
+        };
+        StrapPins::from_bits_truncate((wire >> self.strap_pins_shift) as u8)
+    }
+
+    /// Encode strap pins into a generic input wires value for this platform.
+    pub fn strap_pins_to_wires(&self, pins: StrapPins) -> [u32; 2] {
+        let mut wires = [0u32; 2];
+        if let Some(wire) = wires.get_mut(self.strap_pins_wire_index as usize) {
+            *wire = (pins.bits() as u32) << self.strap_pins_shift;
+        }
+        wires
+    }
 }
 
 impl McuStraps {
@@ -163,7 +224,36 @@ impl McuStraps {
             mcu_wdt_cfg1_manufacturing: 1,
             mcu_wdt_cfg0_debug: 80_000_000,
             mcu_wdt_cfg1_debug: 1,
+            strap_pins_wire_index: STRAP_PINS_NOT_WIRED,
+            strap_pins_shift: 0,
         }
+    }
+}
+
+#[cfg(test)]
+mod strap_pin_tests {
+    use super::*;
+
+    #[test]
+    fn strap_pins_round_trip_through_wires() {
+        let straps = McuStraps {
+            strap_pins_wire_index: 0,
+            strap_pins_shift: 16,
+            ..McuStraps::default()
+        };
+        let pins = StrapPins::BOOTMODE1 | StrapPins::STRAP0 | StrapPins::STRAP3;
+        let wires = straps.strap_pins_to_wires(pins);
+        assert_eq!(wires, [0b10_0110 << 16, 0]);
+        assert_eq!(straps.strap_pins(wires), pins);
+        assert_eq!(pins.bootmode(), 0b10);
+        assert_eq!(pins.straps(), 0b1001);
+    }
+
+    #[test]
+    fn unwired_platform_reads_no_strap_pins() {
+        let straps = McuStraps::default();
+        assert_eq!(straps.strap_pins([u32::MAX; 2]), StrapPins::empty());
+        assert_eq!(straps.strap_pins_to_wires(StrapPins::all()), [0, 0]);
     }
 }
 

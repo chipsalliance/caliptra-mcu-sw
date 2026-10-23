@@ -71,8 +71,17 @@ pub const EMULATOR_UEID_SERIAL_NUMBER: [u8; 16] = [
     0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F, 0x10,
 ];
 
+/// MCI `generic_input_wires` register carrying the emulator strap pins.
+pub const EMULATOR_STRAP_PINS_WIRE_INDEX: u8 = 0;
+/// Bit of `generic_input_wires[0]` holding BOOTMODE0. The strap pins use
+/// bits 16..=21: bootmode0=16, bootmode1=17, strap0=18, strap1=19,
+/// strap2=20, strap3=21. Set them with the emulator `--strap-pins` option.
+pub const EMULATOR_STRAP_PINS_SHIFT: u8 = 16;
+
 pub const EMULATOR_MCU_STRAPS: McuStraps = McuStraps {
     active_i3c: ACTIVE_I3C,
+    strap_pins_wire_index: EMULATOR_STRAP_PINS_WIRE_INDEX,
+    strap_pins_shift: EMULATOR_STRAP_PINS_SHIFT,
     ..McuStraps::default()
 };
 

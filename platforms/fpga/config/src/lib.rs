@@ -71,6 +71,8 @@ pub const FPGA_MCU_STRAPS: McuStraps = McuStraps {
     mcu_wdt_cfg1_manufacturing: 1,
     mcu_wdt_cfg0_debug: 800_000_000,
     mcu_wdt_cfg1_debug: 1,
+    strap_pins_wire_index: caliptra_mcu_config::STRAP_PINS_NOT_WIRED,
+    strap_pins_shift: 0,
 };
 
 /// The MRAC value which should be populated for this memory map.  This corresponds to a value
