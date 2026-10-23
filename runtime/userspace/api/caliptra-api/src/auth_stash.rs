@@ -5,6 +5,7 @@
 //! This module only encodes and executes the mailbox command. It does not read
 //! or write Measurement API stores, derive DPE contexts, or extend PCRs.
 
+pub use caliptra_api::mailbox::AuthManifestSource;
 use core::mem::size_of;
 use mcu_error::codes::{INTERNAL_BUG, INVARIANT};
 use mcu_error::McuResult;
@@ -21,8 +22,8 @@ pub const AUTHORIZE_AND_STASH_CONTEXT_SIZE: usize = 48;
 
 const IMAGE_AUTHORIZED: u32 = 0xDEAD_C0DE;
 /// Caliptra returns this when the `fw_id` was authorized against the owner-only
-/// image-metadata collection installed by `SET_OWNER_AUTH_MANIFEST`, rather than
-/// the base vendor+owner collection.
+/// image-metadata collection installed by `SET_OWNER_AUTH_MANIFEST`, i.e. when
+/// the request selects [`AuthManifestSource::Owner`].
 ///
 /// Mirrored from `caliptra-runtime::IMAGE_AUTHORIZED_OWNER_ONLY`.
 const IMAGE_AUTHORIZED_OWNER_ONLY: u32 = 0xC0DE_DEAD;
@@ -75,12 +76,13 @@ pub struct AuthorizeAndStashParams {
     pub source: ImageHashSource,
     /// Image size in bytes for load-address or staging-address hashing.
     pub image_size: u32,
-    /// Accept an owner-only authorization result as success.
+    /// Image Metadata Collection Caliptra searches for `fw_id`.
     ///
-    /// Set only for components expected to be authorized by an installed Owner
-    /// Authorization Manifest. Base components leave this `false` so an
-    /// unexpected owner-only result is still rejected.
-    pub accept_owner_only: bool,
+    /// Base components use [`AuthManifestSource::VendorOwner`]. Components
+    /// authorized by an installed Owner Authorization Manifest use
+    /// [`AuthManifestSource::Owner`]; the expected success code follows the
+    /// selected source.
+    pub manifest_source: AuthManifestSource,
 }
 
 #[repr(C)]
@@ -124,7 +126,7 @@ pub async fn authorize_and_stash<A: ScratchAlloc>(
     let req = build_authorize_and_stash_req(alloc, params)?;
     let mut rsp = [0u8; AUTHORIZE_AND_STASH_RESP_LEN];
     let rsp_len = mbox_execute(CMD_AUTHORIZE_AND_STASH, &req, &mut rsp).await?;
-    validate_authorize_and_stash_response(&rsp, rsp_len, params.accept_owner_only)
+    validate_authorize_and_stash_response(&rsp, rsp_len, params.manifest_source)
 }
 
 fn build_authorize_and_stash_req<'a, A: ScratchAlloc>(
@@ -144,7 +146,7 @@ fn build_authorize_and_stash_req<'a, A: ScratchAlloc>(
         cmd.measurement = params.measurement;
         cmd.context = params.context;
         cmd.svn = U32::new(params.svn);
-        cmd.flags = U32::new(params.flags.bits());
+        cmd.flags = U32::new(params.flags.bits() | params.manifest_source.flag_bits());
         cmd.source = U32::new(params.source as u32);
         cmd.image_size = U32::new(params.image_size);
     }
@@ -155,7 +157,7 @@ fn build_authorize_and_stash_req<'a, A: ScratchAlloc>(
 fn validate_authorize_and_stash_response(
     rsp: &[u8],
     rsp_len: usize,
-    accept_owner_only: bool,
+    manifest_source: AuthManifestSource,
 ) -> McuResult<()> {
     if rsp_len < AUTHORIZE_AND_STASH_RESP_LEN {
         return Err(INTERNAL_BUG);
@@ -167,9 +169,11 @@ fn validate_authorize_and_stash_response(
     )?)
     .map_err(|_| INTERNAL_BUG)?;
     let result = resp.auth_req_result.get();
-    let authorized =
-        result == IMAGE_AUTHORIZED || (accept_owner_only && result == IMAGE_AUTHORIZED_OWNER_ONLY);
-    if !authorized {
+    let expected = match manifest_source {
+        AuthManifestSource::VendorOwner => IMAGE_AUTHORIZED,
+        AuthManifestSource::Owner => IMAGE_AUTHORIZED_OWNER_ONLY,
+    };
+    if result != expected {
         return Err(INTERNAL_BUG);
     }
     Ok(())
@@ -216,7 +220,7 @@ mod tests {
             flags: AuthorizeAndStashFlags::SKIP_STASH,
             source: ImageHashSource::LoadAddress,
             image_size: 0x1000,
-            accept_owner_only: false,
+            manifest_source: AuthManifestSource::VendorOwner,
         };
         let alloc = TestAlloc;
 
@@ -233,61 +237,72 @@ mod tests {
     }
 
     #[test]
-    fn response_validation_requires_authorized_result() {
-        let mut rsp = [0u8; AUTHORIZE_AND_STASH_RESP_LEN];
-        rsp[8..12].copy_from_slice(&IMAGE_AUTHORIZED.to_le_bytes());
-
+    fn request_builder_encodes_owner_manifest_source() {
+        let params = AuthorizeAndStashParams {
+            fw_id: 0x0001_0000,
+            measurement: [0; AUTHORIZE_AND_STASH_MEASUREMENT_SIZE],
+            context: [0; AUTHORIZE_AND_STASH_CONTEXT_SIZE],
+            svn: 0,
+            flags: AuthorizeAndStashFlags::SKIP_STASH,
+            source: ImageHashSource::LoadAddress,
+            image_size: 0x80,
+            manifest_source: AuthManifestSource::Owner,
+        };
+        let req = build_authorize_and_stash_req(&TestAlloc, &params).unwrap();
+        let cmd = AuthorizeAndStashReq::ref_from_bytes(&req).unwrap();
         assert_eq!(
-            validate_authorize_and_stash_response(&rsp, rsp.len(), false),
-            Ok(())
-        );
-
-        rsp[8..12].copy_from_slice(&0u32.to_le_bytes());
-        assert_eq!(
-            validate_authorize_and_stash_response(&rsp, rsp.len(), false),
-            Err(INTERNAL_BUG)
+            cmd.flags.get(),
+            AuthorizeAndStashFlags::SKIP_STASH.bits() | AuthManifestSource::Owner.flag_bits()
         );
     }
 
     #[test]
-    fn owner_only_result_requires_opt_in() {
+    fn vendor_owner_source_requires_vendor_owner_result() {
+        let mut rsp = [0u8; AUTHORIZE_AND_STASH_RESP_LEN];
+        rsp[8..12].copy_from_slice(&IMAGE_AUTHORIZED.to_le_bytes());
+        assert_eq!(
+            validate_authorize_and_stash_response(&rsp, rsp.len(), AuthManifestSource::VendorOwner),
+            Ok(())
+        );
+
+        for rejected in [0u32, IMAGE_AUTHORIZED_OWNER_ONLY] {
+            rsp[8..12].copy_from_slice(&rejected.to_le_bytes());
+            assert_eq!(
+                validate_authorize_and_stash_response(
+                    &rsp,
+                    rsp.len(),
+                    AuthManifestSource::VendorOwner
+                ),
+                Err(INTERNAL_BUG)
+            );
+        }
+    }
+
+    #[test]
+    fn owner_source_requires_owner_only_result() {
         assert_eq!(IMAGE_AUTHORIZED_OWNER_ONLY, 0xC0DE_DEAD);
 
         let mut rsp = [0u8; AUTHORIZE_AND_STASH_RESP_LEN];
         rsp[8..12].copy_from_slice(&IMAGE_AUTHORIZED_OWNER_ONLY.to_le_bytes());
-
-        // Base components must still reject an owner-only authorization.
         assert_eq!(
-            validate_authorize_and_stash_response(&rsp, rsp.len(), false),
-            Err(INTERNAL_BUG)
-        );
-        assert_eq!(
-            validate_authorize_and_stash_response(&rsp, rsp.len(), true),
-            Ok(())
-        );
-    }
-
-    #[test]
-    fn owner_opt_in_still_accepts_base_result_and_rejects_others() {
-        let mut rsp = [0u8; AUTHORIZE_AND_STASH_RESP_LEN];
-        rsp[8..12].copy_from_slice(&IMAGE_AUTHORIZED.to_le_bytes());
-        assert_eq!(
-            validate_authorize_and_stash_response(&rsp, rsp.len(), true),
+            validate_authorize_and_stash_response(&rsp, rsp.len(), AuthManifestSource::Owner),
             Ok(())
         );
 
-        rsp[8..12].copy_from_slice(&0xBAAD_F00Du32.to_le_bytes());
-        assert_eq!(
-            validate_authorize_and_stash_response(&rsp, rsp.len(), true),
-            Err(INTERNAL_BUG)
-        );
+        for rejected in [IMAGE_AUTHORIZED, 0xBAAD_F00D] {
+            rsp[8..12].copy_from_slice(&rejected.to_le_bytes());
+            assert_eq!(
+                validate_authorize_and_stash_response(&rsp, rsp.len(), AuthManifestSource::Owner),
+                Err(INTERNAL_BUG)
+            );
+        }
     }
 
     #[test]
     fn truncated_response_is_rejected() {
         let rsp = [0u8; AUTHORIZE_AND_STASH_RESP_LEN];
         assert_eq!(
-            validate_authorize_and_stash_response(&rsp, rsp.len() - 1, true),
+            validate_authorize_and_stash_response(&rsp, rsp.len() - 1, AuthManifestSource::Owner),
             Err(INTERNAL_BUG)
         );
     }
