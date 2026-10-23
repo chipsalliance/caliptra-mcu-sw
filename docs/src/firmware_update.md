@@ -141,9 +141,15 @@ sequenceDiagram
 
     API->>API: Verify Caliptra FW using FIRMWARE_VERIFY mbox command
     API->>API: Verify SOC Manifest using VERIFY_MANIFEST mbox command
+    opt Owner Auth Manifest present
+        API->>API: Verify Owner Auth Manifest using VERIFY_OWNER_AUTH_MANIFEST mbox command
+    end
     API->>API: Hash MCU Image and verify with SOC Manifest Digest
     loop for all SOC Images
         API->>API: Hash SOC Image and verify with SOC Manifest Digest
+    end
+    loop for all Owner SOC Images and the Owner Measurement Policy
+        API->>API: Hash image and verify with Owner Auth Manifest Digest
     end
 
     API-->>Firmware: Ok
@@ -276,7 +282,8 @@ To support full image updates, a SoC-defined staging memory must be provided to 
 5. Once all firmware chunks are downloaded, the PLDM stack notifies the API to verify the component. The API processes the component to extract and identify individual embedded images, referred to as subcomponents. The verification process is performed sequentially for each subcomponent:
     a. For the Caliptra FW Bundle, the MCU verifies the bundle thorugh the `FIRMWARE_VERIFY` mailbox command.
     b. For the SoC Manifest subcomponent, the MCU sends it to the Caliptra core using the `VERIFY_MANIFEST` mailbox command. The mailbox response confirms the authenticity and correctness of the manifest.
-    d. For MCU RT or SoC Image subcomponents, the MCU computes the hash of the MCU RT image and verifies it against the the digest in the verified SoC Manifest. The same is done with the SoC Image subcomponents
+    c. If the package contains an Owner Auth Manifest subcomponent, the MCU sends it to the Caliptra core using the `VERIFY_OWNER_AUTH_MANIFEST` mailbox command. This verifies the manifest without replacing the active Owner Auth Manifest.
+    d. For MCU RT or SoC Image subcomponents, the MCU computes the hash of the MCU RT image and verifies it against the the digest in the verified SoC Manifest. The same is done with the SoC Image subcomponents. Owner SoC Images and the Owner Measurement Policy are verified against the digests in the verified Owner Auth Manifest. Subcomponents are matched to manifest entries by `component_id`.
 6. After verification, the PLDM stack notifies the API to apply the image. If the staging area is not flash, the MCU writes the images from the temporary staging area to the inactive flash partition. Refer to [A/B Partition Mechanism](#a-b-partition-mechanism) for more details.
 7. When the Update Agent issues the `ActivateFirmware` command:
     a. The MCU activates the Caliptra core FW using the `FIRMWARE_LOAD ` mailbox command. This will also reset Caliptra core and boot up with the updated image.

@@ -92,8 +92,9 @@ pub use aes_gcm::{
 };
 #[cfg(feature = "mailbox-io")]
 pub use auth_stash::{
-    authorize_and_stash, AuthorizeAndStashFlags, AuthorizeAndStashParams, ImageHashSource,
-    AUTHORIZE_AND_STASH_CONTEXT_SIZE, AUTHORIZE_AND_STASH_MEASUREMENT_SIZE, IMAGE_AUTHORIZED,
+    authorize_and_stash, AuthManifestSource, AuthorizeAndStashFlags, AuthorizeAndStashParams,
+    ImageHashSource, AUTHORIZE_AND_STASH_CONTEXT_SIZE, AUTHORIZE_AND_STASH_MEASUREMENT_SIZE,
+    IMAGE_AUTHORIZED,
 };
 #[cfg(feature = "mailbox-io")]
 pub use caliptra_mcu_scratch_alloc::{ScratchAlloc, ScratchAllocProvider};
@@ -140,7 +141,7 @@ pub use fw_info::{fw_info, FwInfo};
 #[cfg(feature = "mailbox-io")]
 pub use hmac::{cm_hmac, cm_hmac_sha512, hkdf_expand, hkdf_extract, HkdfSalt, CMB_HMAC_MAX_SIZE};
 #[cfg(feature = "mailbox-io")]
-pub use image_loader::{core_image_info, GetImageInfoResp};
+pub use image_loader::{core_image_info, core_image_info_from, GetImageInfoResp};
 #[cfg(feature = "mailbox-io")]
 pub use import::{cm_delete, cm_import};
 #[cfg(feature = "mailbox-io")]
