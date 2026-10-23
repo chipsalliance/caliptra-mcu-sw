@@ -184,14 +184,14 @@ mod tests {
     use crate::attestation_manifest::{
         MCU_RT_FW_ID, OWNER_MEASUREMENT_POLICY_IDENTIFIER, OWSM_FW_ID, O_AUTH_KEY_ID, V_AUTH_KEY_ID,
     };
-    use mcu_caliptra_api::AuthorizeAndStashFlags;
+    use mcu_caliptra_api::{AuthManifestSource, AuthorizeAndStashFlags};
 
     #[test]
     fn caliptra_authorize_params_force_skip_stash_for_initial_load() {
         let measurement = [0xa5; crate::IMAGE_MEASUREMENT_DIGEST_SIZE];
         let metadata = ImageMetadata::initial_load_from_load_address(0x1234, measurement);
 
-        let params = caliptra_authorize_params(0x1000, metadata);
+        let params = caliptra_authorize_params(0x1000, metadata, AuthManifestSource::VendorOwner);
 
         assert_eq!(params.fw_id, 0x1000);
         assert_eq!(params.measurement, measurement);
@@ -200,6 +200,7 @@ mod tests {
         assert_eq!(params.flags, AuthorizeAndStashFlags::SKIP_STASH);
         assert_eq!(params.source, crate::ImageHashSource::LoadAddress);
         assert_eq!(params.image_size, 0x1234);
+        assert_eq!(params.manifest_source, AuthManifestSource::VendorOwner);
     }
 
     #[test]
