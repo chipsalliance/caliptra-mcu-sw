@@ -650,7 +650,7 @@ fn test_get_and_clear_log_cmds() -> Result<()> {
     const TEST_NAME: &str = "runtime::test_mcu_mailbox::test_get_and_clear_log_cmds";
 
     if std::env::var_os(ISOLATED_PROCESS_ENV).is_none() {
-        let working_dir = tempfile::tempdir_in(env!("CARGO_MANIFEST_DIR"))?;
+        let working_dir = tempfile::tempdir_in(std::env::current_dir()?)?;
         let status = std::process::Command::new(std::env::current_exe()?)
             .args(["--exact", TEST_NAME, "--nocapture"])
             .env(ISOLATED_PROCESS_ENV, "1")
