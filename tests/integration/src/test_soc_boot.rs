@@ -11,7 +11,7 @@ mod test {
     use caliptra_mcu_config_emulator::flash::{
         PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
     };
-    use caliptra_mcu_flash_image::FlashHeader;
+    use caliptra_mcu_flash_image::FlashHeaderV3;
     use caliptra_mcu_pldm_fw_pkg::manifest::{
         ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
         PackageHeaderInformation, StringType,
@@ -568,7 +568,7 @@ mod test {
         primary_flash[..core::mem::size_of::<PartitionTable>()]
             .copy_from_slice(partition_table.as_bytes());
 
-        let corrupt_header = [0u8; core::mem::size_of::<FlashHeader>()];
+        let corrupt_header = [0u8; core::mem::size_of::<FlashHeaderV3>()];
         match active_partition {
             PartitionId::A => {
                 let header = &mut primary_flash

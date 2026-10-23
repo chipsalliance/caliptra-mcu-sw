@@ -6,10 +6,10 @@
 //! boot configuration file downloaded via TFTP.
 //!
 //! The TOC binary format reuses the flash image layout defined in the
-//! `flash-image` crate: a [`FlashHeader`] followed by [`ImageHeader`]
+//! `flash-image` crate: a [`FlashHeaderV3`] followed by [`ImageHeaderV3`]
 //! entries.
 
-use caliptra_mcu_flash_image::{FlashHeader, ImageHeader, MAX_FILENAME_LEN};
+use caliptra_mcu_flash_image::{FlashHeaderV3, ImageHeaderV3, MAX_FILENAME_LEN};
 use zerocopy::FromBytes;
 
 /// Maximum number of firmware images in the TOC.
@@ -106,8 +106,8 @@ impl Toc {
 
     /// Parse a raw TOC buffer in flash-image format and populate the table.
     ///
-    /// The buffer must contain a valid [`FlashHeader`] followed by
-    /// [`ImageHeader`] entries.  Each image header's `identifier` is
+    /// The buffer must contain a valid [`FlashHeaderV3`] followed by
+    /// [`ImageHeaderV3`] entries.  Each image header's `identifier` is
     /// mapped to `firmware_id` (truncated to `u8`) and its `filename`
     /// field provides the TFTP path.
     ///
@@ -115,18 +115,19 @@ impl Toc {
     pub fn parse(&mut self, data: &[u8]) -> bool {
         self.count = 0;
 
-        let header_size = core::mem::size_of::<FlashHeader>();
-        let image_header_size = core::mem::size_of::<ImageHeader>();
+        let header_size = core::mem::size_of::<FlashHeaderV3>();
+        let image_header_size = core::mem::size_of::<ImageHeaderV3>();
 
         if data.len() < header_size {
             return false;
         }
 
-        let header = match FlashHeader::ref_from_bytes(&data[..header_size]) {
+        let header = match FlashHeaderV3::ref_from_bytes(&data[..header_size]) {
             Ok(h) => h,
             Err(_) => return false,
         };
 
+        // Network boot requires the filenames introduced in v3.
         if !header.verify() {
             return false;
         }
@@ -144,7 +145,7 @@ impl Toc {
                 return false;
             }
 
-            let img_hdr = match ImageHeader::ref_from_bytes(&data[offset..end]) {
+            let img_hdr = match ImageHeaderV3::ref_from_bytes(&data[offset..end]) {
                 Ok(h) => h,
                 Err(_) => return false,
             };
@@ -173,5 +174,49 @@ impl Toc {
         }
 
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use caliptra_mcu_flash_image::{
+        calculate_checksum, FlashHeaderV1, FlashHeaderV2, FlashImageVersion,
+    };
+    use zerocopy::IntoBytes;
+
+    #[test]
+    fn network_toc_requires_v3_filenames() {
+        for version in [
+            FlashImageVersion::V1,
+            FlashImageVersion::V2,
+            FlashImageVersion::V3,
+        ] {
+            let mut bytes = [0; 128];
+            let out = &mut bytes[..version.header_size()];
+            match version {
+                FlashImageVersion::V1 => out.copy_from_slice(FlashHeaderV1::new(1).as_bytes()),
+                FlashImageVersion::V2 => out.copy_from_slice(FlashHeaderV2::new(1).as_bytes()),
+                FlashImageVersion::V3 => out.copy_from_slice(FlashHeaderV3::new(1).as_bytes()),
+            }
+            let mut toc = Toc::new();
+            if version != FlashImageVersion::V3 {
+                assert!(!toc.parse(&bytes));
+                continue;
+            }
+            let mut image = ImageHeaderV3 {
+                identifier: 2,
+                offset: 128,
+                size: 4,
+                filename: [0; MAX_FILENAME_LEN],
+                image_checksum: 0,
+                image_header_checksum: 0,
+            };
+            image.filename[..7].copy_from_slice(b"mcu.bin");
+            image.image_header_checksum = calculate_checksum(&image.as_bytes()[..80]);
+            bytes[12..96].copy_from_slice(image.as_bytes());
+            assert!(toc.parse(&bytes));
+            assert_eq!(toc.find(2).unwrap().filename_len, 7);
+        }
     }
 }
