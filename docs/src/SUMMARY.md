@@ -22,6 +22,7 @@
         - [In-field Certificate Provisioning and Management](./certificate_provisioning.md)
     - [MCTP](./mctp.md)
     - [SPDM](./spdm.md)
+        - [SPDM Responder Support](./spdm_support.md)
         - [PCI DOE](./doe.md)
         - [IDE Key Management](./ide_km.md)
         - [TDISP](./tdisp.md)
