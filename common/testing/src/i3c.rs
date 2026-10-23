@@ -205,6 +205,10 @@ impl From<I3cTcriCommand> for u64 {
 }
 
 impl I3cTcriCommand {
+    pub fn is_read(&self) -> bool {
+        u64::from(self.clone()) & (1 << 29) != 0
+    }
+
     pub fn raw_data_len(&self) -> usize {
         match self {
             Self::Immediate(_) => 4,
