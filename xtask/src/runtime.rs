@@ -11,6 +11,7 @@ use std::process::Command;
 /// Run the Runtime Tock kernel image for RISC-V in the emulator.
 pub(crate) fn runtime_run(args: Commands) -> Result<()> {
     let Commands::Runtime {
+        strap_pins,
         hw_revision,
         trace,
         i3c_port,
@@ -195,6 +196,9 @@ pub(crate) fn runtime_run(args: Commands) -> Result<()> {
         caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP.lc_size
     );
     cargo_run_args.extend(["--lc-size", &lc_size]);
+
+    let strap_args = strap_pins.emulator_args();
+    cargo_run_args.extend(strap_args.iter().map(|s| s.as_str()));
 
     if no_stdin {
         cargo_run_args.push("--no-stdin-uart");

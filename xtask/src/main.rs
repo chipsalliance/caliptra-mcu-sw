@@ -29,6 +29,7 @@ mod registers;
 mod rom;
 mod runtime;
 mod sizes;
+mod strap_pins;
 mod test;
 #[cfg(feature = "cherry-picker")]
 mod vertex_ai;
@@ -50,6 +51,9 @@ struct Xtask {
 enum Commands {
     /// Build and Run Runtime image
     Runtime {
+        #[command(flatten)]
+        strap_pins: strap_pins::StrapPinArgs,
+
         /// HW revision in semver format (e.g., "2.0.0")
         #[arg(long, value_parser = semver::Version::parse, default_value = "2.0.0")]
         hw_revision: semver::Version,
@@ -149,6 +153,9 @@ enum Commands {
         /// Run with tracing options
         #[arg(short, long, default_value_t = false)]
         trace: bool,
+
+        #[command(flatten)]
+        strap_pins: strap_pins::StrapPinArgs,
     },
     /// Report binary `.text` sizes vs. ROM size budgets across all
     /// ROM variants (per platform / feature combo).
@@ -723,7 +730,7 @@ fn main() {
                 .map(|_| ())
             }
         }
-        Commands::Rom { trace } => rom::rom_run(*trace),
+        Commands::Rom { trace, strap_pins } => rom::rom_run(*trace, strap_pins),
         Commands::RomBuild { platform, features } => {
             caliptra_mcu_builder::rom_build(&CaliptraBuildArgs {
                 platform: platform.as_deref(),

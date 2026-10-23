@@ -196,6 +196,7 @@ pub(crate) fn test_xtask_runtime() -> Result<()> {
         }])?;
 
     crate::runtime::runtime_run(Commands::Runtime {
+        strap_pins: Default::default(),
         hw_revision: semver::Version::new(2, 0, 0),
         trace: false,
         i3c_port: None,

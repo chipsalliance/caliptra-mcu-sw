@@ -44,7 +44,7 @@ pub(crate) fn build_all_variants(
     Ok(())
 }
 
-pub(crate) fn rom_run(trace: bool) -> Result<()> {
+pub(crate) fn rom_run(trace: bool, strap_pins: &crate::strap_pins::StrapPinArgs) -> Result<()> {
     let rom_binary = caliptra_mcu_builder::rom_build(&CaliptraBuildArgs::default())?;
 
     // Use a minimal infinite-loop binary as the MCU firmware instead of
@@ -90,6 +90,9 @@ pub(crate) fn rom_run(trace: bool) -> Result<()> {
         "--vendor-pk-hash",
         vendor_pk_hash,
     ];
+
+    let strap_args = strap_pins.emulator_args();
+    cargo_run_args.extend(strap_args.iter().map(|s| s.as_str()));
 
     // Map the memory layout to the emulator
     let rom_offset = format!(
