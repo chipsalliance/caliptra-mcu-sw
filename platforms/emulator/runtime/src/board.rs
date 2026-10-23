@@ -401,6 +401,36 @@ impl caliptra_mcu_romtime::Exit for EmulatorExiter {
 /// Main function called after RAM initialized.
 ///
 /// # Safety
+
+/// Read the board strap pins (bootmode0/1, strap0-3) from the MCI generic
+/// input wires, using the mapping in `MCU_STRAPS`.
+pub fn read_strap_pins() -> caliptra_mcu_config::StrapPins {
+    use tock_registers::interfaces::Readable;
+    // Safety: `MCU_MEMORY_MAP.mci_offset` is the platform MCI register block
+    // base; the reference is only used for reads.
+    let mci: caliptra_mcu_romtime::StaticRef<caliptra_mcu_registers_generated::mci::regs::Mci> = unsafe {
+        caliptra_mcu_romtime::StaticRef::new(
+            MCU_MEMORY_MAP.mci_offset as *const caliptra_mcu_registers_generated::mci::regs::Mci,
+        )
+    };
+    MCU_STRAPS.strap_pins([
+        mci.mci_reg_generic_input_wires[0].get(),
+        mci.mci_reg_generic_input_wires[1].get(),
+    ])
+}
+
+/// Print the strap pins in a stable format (used by tests).
+pub fn print_strap_pins(prefix: &str) {
+    let pins = read_strap_pins();
+    caliptra_mcu_romtime::println!(
+        "[{}] Strap pins: {:#04x} bootmode={} straps={:#x}",
+        prefix,
+        pins.bits(),
+        pins.bootmode(),
+        pins.straps()
+    );
+}
+
 /// Accesses memory, memory-mapped registers and CSRs.
 pub unsafe fn main() {
     if cfg!(feature = "test-do-nothing") {
@@ -416,6 +446,8 @@ pub unsafe fn main() {
     caliptra_mcu_romtime::set_printer(&mut EMULATOR_WRITER);
     #[allow(static_mut_refs)]
     caliptra_mcu_romtime::set_exiter(&mut EMULATOR_EXITER);
+
+    print_strap_pins("mcu-runtime");
 
     // Read handoff table BEFORE PMP setup.
     let handoff = HandOff::new();
