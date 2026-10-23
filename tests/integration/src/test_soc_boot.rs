@@ -278,22 +278,27 @@ mod test {
         new_options.device_security_state = Some(DeviceLifecycle::Manufacturing);
 
         // Replace the SoC Manifest in the PLDM package
-        let flash_offset = opts
-            .partition_table
-            .as_ref()
-            .and_then(|pt| pt.get_active_partition().1.as_ref().map(|p| p.offset))
-            .unwrap_or(0);
-        let (_, flash_image_path) = create_flash_image(
-            new_options.builder.as_mut().unwrap().get_caliptra_fw().ok(),
-            new_options
-                .builder
-                .as_mut()
-                .unwrap()
-                .get_soc_manifest(None)
-                .ok(),
+        let builder = new_options.builder.as_mut().unwrap();
+        let (_, flash_image_path) = create_flash_image_with_owner_manifest(
+            Some(
+                builder
+                    .get_caliptra_fw()
+                    .expect("Failed to get Caliptra firmware"),
+            ),
+            Some(
+                builder
+                    .get_soc_manifest(None)
+                    .expect("Failed to get SoC manifest"),
+            ),
             Some(opts.runtime.clone()),
-            opts.partition_table.clone(),
-            flash_offset,
+            Some(
+                builder
+                    .get_owner_auth_manifest(None)
+                    .expect("Failed to get Owner Authorization Manifest"),
+            ),
+            Some(new_options.soc_images.clone()),
+            None,
+            0,
             new_options.soc_images_paths.clone(),
         );
         new_options.pldm_fw_pkg_path = if opts.pldm_fw_pkg_path.is_some() {
@@ -307,7 +312,7 @@ mod test {
         };
 
         let test = run_runtime_with_options(&new_options);
-        assert_ne!(0, test);
+        assert_eq!(0, test);
     }
 
     // Test case: Image ID in the SOC manifest is different from the one being authorized in the firmware

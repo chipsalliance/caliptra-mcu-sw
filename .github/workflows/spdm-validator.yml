@@ -225,6 +225,16 @@ jobs:
           path: spdm-rs
           submodules: recursive
 
+      - name: Limit TDISP/IDE requester to SPDM 1.3
+        working-directory: spdm-rs
+        run: |
+          requester=test/spdm-requester-emu/src/main.rs
+          if [ "$(grep -Fc 'Some(SpdmVersion::SpdmVersion14),' "$requester")" != 2 ]; then
+            echo "::error::Requester version lists changed; update the SPDM 1.3 cap."
+            exit 1
+          fi
+          sed -i 's/Some(SpdmVersion::SpdmVersion14),/None,/' "$requester"
+
       - name: Prepare, build spdm-rs, and copy test keys
         working-directory: spdm-rs
         run: |

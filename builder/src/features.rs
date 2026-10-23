@@ -41,6 +41,8 @@ pub const EMULATOR_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-mcu-mbox-driver",
     "test-mcu-mbox-soc-requester-loopback",
     "test-mcu-mbox-cmds",
+    "test-mcu-mbox-fips-self-test",
+    "test-mcu-mbox-fips-periodic",
     "test-mbox-sram",
     "test-external-otp",
     "test-dpe-handle-store",

@@ -14,7 +14,7 @@ store-failure-output = true
 failure-output = "immediate-final"
 fail-fast = false
 slow-timeout = { period = "30s", terminate-after = 30 }
-default-filter = "not test(test_defmt_logging_release)"
+default-filter = "not (test(test_defmt_logging_release) | test(test_get_and_clear_log_cmds))"
 
 [profile.nightly-emulator.junit]
 path = "/tmp/junit.xml"
@@ -99,7 +99,8 @@ inherits = "nightly-emulator"
 fail-fast = false
 default-filter = """
 (package(caliptra-mcu-tests-integration) and test(test_flash_soc_boot_successful)) |
-(package(caliptra-mcu-tests-integration) and test(test_defmt_logging_release))
+(package(caliptra-mcu-tests-integration) and test(test_defmt_logging_release)) |
+(package(caliptra-mcu-tests-integration) and test(test_get_and_clear_log_cmds))
 """
 
 [profile.nightly-ci-spdm]
@@ -130,6 +131,7 @@ not (
     test(test_firmware_update_flash_invalid_manifest) |
     test(test_header_burns_caliptra_runtime_svn) |
     test(test_mctp_user_loopback) |
-    test(test_defmt_logging_release)
+    test(test_defmt_logging_release) |
+    test(test_get_and_clear_log_cmds)
 )
 """
