@@ -11,7 +11,9 @@ mod test {
     use caliptra_mcu_config_emulator::flash::{
         PartitionTable, StandAloneChecksumCalculator, STAGING_PARTITION,
     };
-    use caliptra_mcu_flash_image::{MCU_RT_IDENTIFIER, SOC_IMAGES_BASE_IDENTIFIER};
+    use caliptra_mcu_flash_image::{
+        FlashImageVersion, MCU_RT_IDENTIFIER, SOC_IMAGES_BASE_IDENTIFIER,
+    };
     use caliptra_mcu_pldm_fw_pkg::manifest::{
         ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
         PackageHeaderInformation, StringType,
@@ -869,6 +871,49 @@ mod test {
         let opts = create_firmware_update_test_options(true);
         test_successful_update(&opts);
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    fn test_firmware_update_rejects_legacy_flash_format(version: FlashImageVersion) {
+        use caliptra_mcu_builder::flash_image::{FirmwareImage, FlashImage};
+        use caliptra_mcu_flash_image::{FlashHeader, ImageHeader};
+
+        let lock = TEST_LOCK.lock().unwrap();
+        let original_opts = create_firmware_update_test_options(true);
+        let original =
+            std::fs::read(original_opts.update_flash_image_path.as_ref().unwrap()).unwrap();
+        let header = FlashHeader::parse(&original).unwrap();
+        let format = header.format().unwrap();
+        let images: Vec<_> = (0..header.image_count as usize)
+            .map(|index| {
+                let offset = header.image_header_offset(index).unwrap();
+                let image = ImageHeader::parse(&original[offset..], format).unwrap();
+                FirmwareImage::new(
+                    image.identifier,
+                    &original[image.offset as usize..image.offset as usize + image.size as usize],
+                    None,
+                )
+                .unwrap()
+            })
+            .collect();
+        let bytes = FlashImage::with_version(&images, version).to_bytes();
+        FlashImage::verify_flash_image(&bytes).unwrap();
+        let output = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(output.path(), bytes).unwrap();
+        let mut opts = original_opts.clone();
+        opts.update_flash_image_path = Some(output.path().to_path_buf());
+        let opts = fast_update_options(&opts);
+        assert_ne!(run_runtime_with_options(&opts), 0);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_firmware_update_rejects_v1_with_v3_rom() {
+        test_firmware_update_rejects_legacy_flash_format(FlashImageVersion::V1);
+    }
+
+    #[test]
+    fn test_firmware_update_rejects_v2_with_v3_rom() {
+        test_firmware_update_rejects_legacy_flash_format(FlashImageVersion::V2);
     }
 
     #[test]

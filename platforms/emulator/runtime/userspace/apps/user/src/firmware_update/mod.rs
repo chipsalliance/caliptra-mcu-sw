@@ -175,22 +175,20 @@ pub async fn firmware_update<D: DMAMapping>(
 
     #[cfg(feature = "test-firmware-activate")]
     {
-        use caliptra_mcu_flash_image::FlashHeader;
+        use caliptra_mcu_flash_image::{FlashHeader, MAX_FLASH_HEADER_SIZE};
         use mcu_caliptra_api::firmware_update::StagingMemory;
-        use zerocopy::FromBytes;
 
         let fw_params = PldmFirmwareDeviceParams {
             descriptors: &config::fw_update_consts::DESCRIPTOR.get()[..],
             fw_params: config::fw_update_consts::FIRMWARE_PARAMS.get(),
         };
         let mut staging_memory = dummy_flash::ExternalFlash::new().await?;
-        let mut flash_header = [0u8; core::mem::size_of::<FlashHeader>()];
+        let mut flash_header = [0u8; MAX_FLASH_HEADER_SIZE];
         staging_memory
             .read(0, &mut flash_header)
             .await
             .map_err(|_| ErrorCode::Fail)?;
-        let (flash_header, _) =
-            FlashHeader::read_from_prefix(&flash_header).map_err(|_| ErrorCode::Fail)?;
+        let flash_header = FlashHeader::parse(&flash_header).map_err(|_| ErrorCode::Invalid)?;
         let staging_memory: &'static dummy_flash::ExternalFlash =
             unsafe { core::mem::transmute(&mut staging_memory) };
 
