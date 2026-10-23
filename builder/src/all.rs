@@ -86,6 +86,7 @@ const FEATURES_WITH_EXAMPLE_APP: &[&str] = &[
     "test-mcu-mbox-usermode",
     "test-ocp-lock",
     "test-warm-reset",
+    "test-caliptra-mailbox-mbox1-staging",
 ];
 
 /// Features that require SoC images to be included in the flash image

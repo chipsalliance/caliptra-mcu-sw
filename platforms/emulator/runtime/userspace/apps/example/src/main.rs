@@ -171,6 +171,12 @@ pub(crate) async fn async_main<S: Syscalls>() {
         System::exit(0);
     }
 
+    #[cfg(feature = "test-caliptra-mailbox-mbox1-staging")]
+    {
+        test_caliptra_mailbox::test_caliptra_mailbox_mbox1_staging().await;
+        System::exit(0);
+    }
+
     #[cfg(feature = "test-get-device-state")]
     {
         let alloc = test_get_device_state::init_pcr_quote_allocator();

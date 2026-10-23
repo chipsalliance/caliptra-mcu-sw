@@ -85,6 +85,7 @@ pub const FPGA_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-get-alarm-expired",
     "test-ocp-lock",
     "test-mctp-capsule-loopback-warm-reset",
+    "test-caliptra-mailbox-mbox1-staging",
 ];
 
 /// Release-profile runtime test features (emulator).
