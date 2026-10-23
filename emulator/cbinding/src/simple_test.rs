@@ -96,6 +96,7 @@ fn test_emulator_args_creation() {
         network_rom: None,
         stub_warnings: false,
         active_i3c1: false,
+        strap_pins: Default::default(),
     };
 
     println!("EmulatorArgs created successfully");

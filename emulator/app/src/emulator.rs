@@ -308,6 +308,67 @@ pub struct EmulatorArgs {
     /// Selects which I3C core is used for MCTP transport.
     #[arg(long, default_value_t = false)]
     pub active_i3c1: bool,
+
+    #[command(flatten)]
+    pub strap_pins: StrapPinArgs,
+}
+
+/// Board strap pins visible to MCU firmware through
+/// `mci_reg_generic_input_wires[0]` bits 16..=21 (all default to 0).
+#[derive(clap::Args, Debug, Clone, Default)]
+pub struct StrapPinArgs {
+    /// Strap pins as a bitmask: bit0=bootmode0, bit1=bootmode1, bit2=strap0,
+    /// bit3=strap1, bit4=strap2, bit5=strap3 (e.g. 0x21 = bootmode0 + strap3).
+    #[arg(long, value_parser = parse_strap_pins, default_value = "0")]
+    pub strap_pins: u8,
+    /// Set the bootmode0 strap pin (ORed with --strap-pins).
+    #[arg(long)]
+    pub bootmode0: bool,
+    /// Set the bootmode1 strap pin (ORed with --strap-pins).
+    #[arg(long)]
+    pub bootmode1: bool,
+    /// Set the strap0 pin (ORed with --strap-pins).
+    #[arg(long)]
+    pub strap0: bool,
+    /// Set the strap1 pin (ORed with --strap-pins).
+    #[arg(long)]
+    pub strap1: bool,
+    /// Set the strap2 pin (ORed with --strap-pins).
+    #[arg(long)]
+    pub strap2: bool,
+    /// Set the strap3 pin (ORed with --strap-pins).
+    #[arg(long)]
+    pub strap3: bool,
+}
+
+impl StrapPinArgs {
+    /// Combined strap pin value from the bitmask and individual flags.
+    pub fn pins(&self) -> caliptra_mcu_config::StrapPins {
+        use caliptra_mcu_config::StrapPins;
+        let mut pins = StrapPins::from_bits_truncate(self.strap_pins);
+        for (set, pin) in [
+            (self.bootmode0, StrapPins::BOOTMODE0),
+            (self.bootmode1, StrapPins::BOOTMODE1),
+            (self.strap0, StrapPins::STRAP0),
+            (self.strap1, StrapPins::STRAP1),
+            (self.strap2, StrapPins::STRAP2),
+            (self.strap3, StrapPins::STRAP3),
+        ] {
+            pins.set(pin, set || pins.contains(pin));
+        }
+        pins
+    }
+}
+
+fn parse_strap_pins(s: &str) -> Result<u8, String> {
+    let value = maybe_hex::<u8>(s)?;
+    if u32::from(value) >> caliptra_mcu_config::STRAP_PINS_COUNT != 0 {
+        return Err(format!(
+            "strap pins value {value:#x} has bits above bit {}",
+            caliptra_mcu_config::STRAP_PINS_COUNT - 1
+        ));
+    }
+    Ok(value)
 }
 
 pub struct Emulator {
@@ -593,6 +654,15 @@ impl Emulator {
         let mut straps = caliptra_mcu_config_emulator::EMULATOR_MCU_STRAPS;
         if cli.active_i3c1 {
             straps.active_i3c = 1;
+        }
+        let strap_pins = cli.strap_pins.pins();
+        let strap_pin_wires = straps.strap_pins_to_wires(strap_pins);
+        if !strap_pins.is_empty() {
+            println!(
+                "Strap pins: {:#04x} (generic_input_wires = {:08x?})",
+                strap_pins.bits(),
+                strap_pin_wires
+            );
         }
 
         let bus_args = McuRootBusArgs {
@@ -945,7 +1015,7 @@ impl Emulator {
             Some(mcu_mailbox0),
             Some(mcu_mailbox1),
             Some(soc_ifc),
-            [0, 0],
+            strap_pin_wires,
             false,
             cptra_boot_go.clone(),
         );
@@ -1523,4 +1593,51 @@ fn read_binary(path: &PathBuf, expect_load_addr: u32) -> io::Result<Vec<u8>> {
     }
 
     Ok(buffer)
+}
+
+#[cfg(test)]
+mod strap_pin_args_tests {
+    use super::*;
+    use caliptra_mcu_config::StrapPins;
+
+    #[derive(Parser)]
+    struct Wrapper {
+        #[command(flatten)]
+        straps: StrapPinArgs,
+    }
+
+    fn parse(args: &[&str]) -> Result<StrapPins, clap::Error> {
+        let mut argv = vec!["emu"];
+        argv.extend_from_slice(args);
+        Wrapper::try_parse_from(argv).map(|w| w.straps.pins())
+    }
+
+    #[test]
+    fn default_strap_pins_are_zero() {
+        assert_eq!(parse(&[]).unwrap(), StrapPins::empty());
+    }
+
+    #[test]
+    fn bitmask_and_flags_are_combined() {
+        assert_eq!(
+            parse(&["--strap-pins", "0x21"]).unwrap(),
+            StrapPins::BOOTMODE0 | StrapPins::STRAP3
+        );
+        assert_eq!(
+            parse(&["--strap-pins", "0x1", "--bootmode1", "--strap2"]).unwrap(),
+            StrapPins::BOOTMODE0 | StrapPins::BOOTMODE1 | StrapPins::STRAP2
+        );
+    }
+
+    #[test]
+    fn out_of_range_bitmask_is_rejected() {
+        assert!(parse(&["--strap-pins", "0x40"]).is_err());
+    }
+
+    #[test]
+    fn strap_pins_land_in_generic_input_wire_0() {
+        let pins = parse(&["--bootmode0", "--strap1"]).unwrap();
+        let wires = caliptra_mcu_config_emulator::EMULATOR_MCU_STRAPS.strap_pins_to_wires(pins);
+        assert_eq!(wires, [(1 << 16) | (1 << 19), 0]);
+    }
 }

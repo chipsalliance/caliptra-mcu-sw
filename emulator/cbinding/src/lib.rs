@@ -394,6 +394,7 @@ pub unsafe extern "C" fn emulator_init(
         network_rom: None,
         stub_warnings: config.stub_warnings != 0,
         active_i3c1: config.active_i3c1 != 0,
+        strap_pins: Default::default(),
     };
 
     // Convert C callbacks to Rust callbacks if provided
