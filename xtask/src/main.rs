@@ -473,6 +473,9 @@ pub enum CICommands {
 enum FlashImageCommands {
     /// Create a new flash image
     Create {
+        /// Flash container format; legacy ROMs require v1 or v2
+        #[arg(long, default_value_t = 3, value_parser = clap::value_parser!(u16).range(1..=3))]
+        format_version: u16,
         /// Path to the Caliptra firmware file
         #[arg(long, value_name = "CALIPTRA_FW", required = true)]
         caliptra_fw: Option<String>,
@@ -746,6 +749,7 @@ fn main() {
         }
         Commands::FlashImage { subcommand } => match subcommand {
             FlashImageCommands::Create {
+                format_version,
                 caliptra_fw,
                 soc_manifest,
                 mcu_runtime,
@@ -753,6 +757,7 @@ fn main() {
                 soc_images,
                 output,
             } => caliptra_mcu_builder::flash_image::flash_image_create(&CaliptraBuildArgs {
+                flash_image_version: Some(*format_version),
                 caliptra_firmware: caliptra_fw.as_ref().map(PathBuf::from),
                 soc_manifest: soc_manifest.as_ref().map(PathBuf::from),
                 mcu_firmware: mcu_runtime.as_ref().map(PathBuf::from),

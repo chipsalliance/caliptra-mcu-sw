@@ -6,7 +6,7 @@ use super::pldm_client::{FW_UPDATE_TASK_YIELD, PLDM_DAEMON_TASK_YIELD};
 use super::pldm_context::{State, DOWNLOAD_CTX, FW_UPDATE_HOOKS, PLDM_STATE};
 use alloc::boxed::Box;
 use async_trait::async_trait;
-use caliptra_mcu_flash_image::{FlashHeader, ImageHeader};
+use caliptra_mcu_flash_image::MIN_FLASH_IMAGE_SIZE;
 use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::ApplyResult;
 use caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
 use caliptra_mcu_pldm_common::message::firmware_update::get_status::ProgressPercent;
@@ -90,9 +90,7 @@ impl FdOps for UpdateFdOps {
         _op: ComponentOperation,
     ) -> McuResult<ComponentResponseCode> {
         if let Some(size) = component.comp_image_size {
-            if size
-                < (core::mem::size_of::<ImageHeader>() + core::mem::size_of::<FlashHeader>()) as u32
-            {
+            if size < MIN_FLASH_IMAGE_SIZE as u32 {
                 // Image size is too small
                 // Return Ok with response code here to allow PLDM lib to pass it to UA
                 // Returning an Err is considered fatal and will cause PLDM lib to halt PLDM process
