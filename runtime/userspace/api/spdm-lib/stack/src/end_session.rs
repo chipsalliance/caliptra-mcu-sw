@@ -32,3 +32,66 @@ pub(crate) fn handle_end_session(
     rsp_buf[1] = ReqRespCode::END_SESSION_ACK.0;
     Ok(rsp_buf)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn request(version: SpdmVersion, attributes: u8, reserved: u8) -> [u8; 4] {
+        [
+            version.to_u8(),
+            ReqRespCode::END_SESSION.0,
+            attributes,
+            reserved,
+        ]
+    }
+
+    #[test]
+    fn valid_request_returns_exact_ack() {
+        for attributes in [0, EndSessionReqBody::CLEAR_NEGOTIATED_STATE] {
+            let response =
+                handle_end_session(SpdmVersion::V12, &request(SpdmVersion::V12, attributes, 0))
+                    .unwrap();
+
+            assert_eq!(
+                response,
+                [
+                    SpdmVersion::V12.to_u8(),
+                    ReqRespCode::END_SESSION_ACK.0,
+                    0,
+                    0,
+                ]
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_version_mismatch_reserved_fields_truncation_and_trailing_data() {
+        assert_eq!(
+            handle_end_session(SpdmVersion::V12, &request(SpdmVersion::V11, 0, 0)),
+            Err(crate::error::SPDM_VERSION_MISMATCH)
+        );
+        assert_eq!(
+            handle_end_session(SpdmVersion::V12, &request(SpdmVersion::V12, 0, 1)),
+            Err(SPDM_INVALID_REQUEST)
+        );
+        assert_eq!(
+            handle_end_session(SpdmVersion::V12, &request(SpdmVersion::V12, 2, 0)),
+            Err(SPDM_INVALID_REQUEST)
+        );
+        assert_eq!(
+            handle_end_session(
+                SpdmVersion::V12,
+                &[SpdmVersion::V12.to_u8(), ReqRespCode::END_SESSION.0, 0]
+            ),
+            Err(SPDM_INVALID_REQUEST)
+        );
+
+        let mut trailing = request(SpdmVersion::V12, 0, 0).to_vec();
+        trailing.push(0);
+        assert_eq!(
+            handle_end_session(SpdmVersion::V12, &trailing),
+            Err(SPDM_INVALID_REQUEST)
+        );
+    }
+}

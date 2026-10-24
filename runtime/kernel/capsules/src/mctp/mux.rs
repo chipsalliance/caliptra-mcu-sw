@@ -17,6 +17,30 @@ use kernel::utilities::cells::TakeCell;
 use kernel::utilities::leasable_buffer::SubSliceMut;
 use kernel::ErrorCode;
 
+fn parse_packet(packet: &[u8]) -> (MCTPHeader, Option<MessageType>, usize) {
+    let mut msg_type = None;
+
+    if packet.len() < MCTP_HDR_SIZE {
+        return (MCTPHeader::default(), None, 0);
+    }
+
+    let mctp_header = MCTPHeader(u32::from_le_bytes(
+        packet[0..MCTP_HDR_SIZE].try_into().unwrap_or([0u8; 4]),
+    ));
+
+    if mctp_header.hdr_version() != 1 {
+        return (MCTPHeader::default(), None, 0);
+    }
+
+    if mctp_header.som() == 1 {
+        if packet.len() < MCTP_HDR_SIZE + 1 {
+            return (MCTPHeader::default(), None, 0);
+        }
+        msg_type = Some((packet[MCTP_HDR_SIZE] & 0x7F).into());
+    }
+    (mctp_header, msg_type, MCTP_HDR_SIZE)
+}
+
 /// MUX struct that manages multiple MCTP driver users (clients).
 ///
 /// This struct implements a FIFO queue for the
@@ -109,30 +133,6 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, A, M> {
         let msg_tag = self.next_msg_tag.get();
         self.next_msg_tag.set((msg_tag + 1) % 8);
         msg_tag
-    }
-
-    fn interpret_packet(&self, packet: &[u8]) -> (MCTPHeader, Option<MessageType>, usize) {
-        let mut msg_type = None;
-
-        if packet.len() < MCTP_HDR_SIZE {
-            return (MCTPHeader::default(), None, 0);
-        }
-
-        let mctp_header = MCTPHeader(u32::from_le_bytes(
-            packet[0..MCTP_HDR_SIZE].try_into().unwrap_or([0u8; 4]),
-        ));
-
-        if mctp_header.hdr_version() != 1 {
-            return (MCTPHeader::default(), None, 0);
-        }
-
-        if mctp_header.som() == 1 {
-            if packet.len() < MCTP_HDR_SIZE + 1 {
-                return (MCTPHeader::default(), None, 0);
-            }
-            msg_type = Some((packet[MCTP_HDR_SIZE] & 0x7F).into());
-        }
-        (mctp_header, msg_type, MCTP_HDR_SIZE)
     }
 
     fn fill_mctp_hdr_resp(
@@ -351,7 +351,7 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> TransportRxClient for MuxMCT
             return;
         }
 
-        let (mctp_header, msg_type, payload_offset) = self.interpret_packet(&rx_buffer[0..len]);
+        let (mctp_header, msg_type, payload_offset) = parse_packet(&rx_buffer[0..len]);
         if let Some(msg_type) = msg_type {
             match msg_type {
                 MessageType::MctpControl
@@ -400,5 +400,66 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> DeferredCallClient for MuxMC
 
     fn register(&'static self) {
         self.deferred_call.register(self);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    extern crate std;
+
+    use super::*;
+
+    fn packet(header: MCTPHeader, payload: &[u8]) -> std::vec::Vec<u8> {
+        let mut packet = header.0.to_le_bytes().to_vec();
+        packet.extend_from_slice(payload);
+        packet
+    }
+
+    #[test]
+    fn parser_marks_truncated_header_invalid_version_and_missing_message_type_invalid() {
+        for malformed in [&[][..], &[1, 2, 3][..]] {
+            let (header, msg_type, offset) = parse_packet(malformed);
+            assert_eq!(header.0, 0);
+            assert_eq!(msg_type, None);
+            assert_eq!(offset, 0);
+        }
+
+        let mut invalid_version = MCTPHeader::new(8, 0x20, 1, 1, 0, 1, 0);
+        invalid_version.set_hdr_version(2);
+        let (header, msg_type, offset) = parse_packet(&packet(invalid_version, &[5]));
+        assert_eq!(header.0, 0);
+        assert_eq!(msg_type, None);
+        assert_eq!(offset, 0);
+
+        let (header, msg_type, offset) =
+            parse_packet(&packet(MCTPHeader::new(8, 0x20, 1, 1, 0, 1, 0), &[]));
+        assert_eq!(header.0, 0);
+        assert_eq!(msg_type, None);
+        assert_eq!(offset, 0);
+    }
+
+    #[test]
+    fn parser_identifies_spdm_and_secured_spdm_first_packets() {
+        for (wire_type, expected) in [
+            (MessageType::Spdm as u8, MessageType::Spdm),
+            (MessageType::SecureSpdm as u8, MessageType::SecureSpdm),
+        ] {
+            let header = MCTPHeader::new(8, 0x20, 1, 0, 3, 1, 7);
+            let (parsed, msg_type, offset) = parse_packet(&packet(header, &[wire_type, 0x12]));
+
+            assert_eq!(parsed.0, header.0);
+            assert_eq!(msg_type, Some(expected));
+            assert_eq!(offset, MCTP_HDR_SIZE);
+        }
+    }
+
+    #[test]
+    fn parser_does_not_consume_payload_from_continuation_packet() {
+        let header = MCTPHeader::new(8, 0x20, 0, 1, 1, 1, 2);
+        let (parsed, msg_type, offset) = parse_packet(&packet(header, &[0xaa, 0xbb]));
+
+        assert_eq!(parsed.0, header.0);
+        assert_eq!(msg_type, None);
+        assert_eq!(offset, MCTP_HDR_SIZE);
     }
 }

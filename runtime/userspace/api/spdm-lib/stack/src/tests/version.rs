@@ -4,14 +4,14 @@ extern crate std;
 
 use super::*;
 use caliptra_mcu_spdm_codec::{CapFlags, ReqRespCode, SpdmVersion};
-use caliptra_mcu_spdm_traits::{NoVdmBackend, SpdmPalAlloc};
+use caliptra_mcu_spdm_traits::{NoVdmBackend, SpdmPalAlloc, SpdmPalHash};
 use futures::executor::block_on;
 use std::vec;
 use std::vec::Vec;
 
 #[path = "support.rs"]
 mod support;
-use support::{TestHashState, TestIo, TestPal};
+use support::{test_digest, TestHashState, TestIo, TestPal};
 
 fn get_version_request(version: u8, param1: u8, param2: u8) -> Vec<u8> {
     vec![version, ReqRespCode::GET_VERSION.0, param1, param2]
@@ -111,6 +111,46 @@ fn invalid_get_version_preserves_connection_and_sessions() {
         CapFlags::CHUNK.into_bits()
     );
     assert!(sessions.find(session_id).is_some());
+}
+
+#[test]
+fn get_version_clears_transcript_and_chunk_state() {
+    let pal = TestPal::default();
+    let io = TestIo::message(Vec::new());
+    let mut state = ConnectionState {
+        phase: Phase::AfterAlgorithms,
+        version: SpdmVersion::V14,
+        ..ConnectionState::default()
+    };
+    block_on(state.transcript.append_vca(&pal, &io, b"VCA")).unwrap();
+    block_on(state.transcript.append_m1(&pal, &io, b"M1")).unwrap();
+    block_on(state.transcript.append_l1(&pal, &io, b"L1")).unwrap();
+    state
+        .large_msg_ctx
+        .start_response(
+            crate::chunk::LargeResponse::Buffered,
+            3,
+            Some(vec![1, 2, 3]),
+        )
+        .unwrap();
+    let mut sessions = SessionManager::new();
+
+    let response = dispatch_request(
+        &mut state,
+        &mut sessions,
+        &pal,
+        get_version_request(SpdmVersion::V10.to_u8(), 0, 0),
+    )
+    .unwrap();
+
+    let mut vca_digest = [0u8; support::SHA384_DIGEST_SIZE];
+    block_on(pal.hash_finish(&io, state.transcript.vca.as_mut().unwrap(), &mut vca_digest))
+        .unwrap();
+    assert_eq!(vca_digest, test_digest(&response));
+    assert!(state.transcript.m1.is_none());
+    assert!(state.transcript.l1.is_none());
+    assert!(state.large_msg_ctx.is_idle());
+    assert!(state.large_msg_ctx.get_buffer().is_none());
 }
 
 #[test]
