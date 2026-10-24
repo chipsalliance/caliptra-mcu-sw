@@ -169,8 +169,9 @@ sequenceDiagram
 
     Firmware->>API: Apply component Notification
     API->>API: Set flash staging partition table status to `VALID`
+    API->>API: Call FirmwareUpdateHooks::post_apply()
 
-    API->>Firmware: Ok
+    API->>Firmware: ApplyOutcome (result, activation_methods)
     Firmware->>PLDM: ApplyComplete
 
 ```

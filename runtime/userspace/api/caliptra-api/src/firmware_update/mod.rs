@@ -29,7 +29,7 @@ use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
 use caliptra_mcu_libsyscall_caliptra::mailbox::{MailboxError, PayloadStream};
 use caliptra_mcu_libtock_platform::ErrorCode;
 use caliptra_mcu_libtockasync::TockExecutor;
-use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::ApplyResult;
+pub use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::ApplyOutcome;
 use caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
 use caliptra_mcu_pldm_common::message::firmware_update::verify_complete::VerifyResult;
 use caliptra_mcu_pldm_common::protocol::firmware_update::Descriptor;
@@ -157,11 +157,13 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
         pldm_client::pldm_set_verification_result(VerifyResult::VerifySuccess);
         pldm_client::pldm_wait(State::Apply).await?;
 
-        // Mark image as valid in staging memory
         let img_len = pldm_total_component_size();
-        self.staging_memory.image_valid(img_len).await?;
+        let outcome = apply_image(self.staging_memory, self.hooks, img_len).await?;
 
-        pldm_client::pldm_set_apply_result(ApplyResult::ApplySuccess);
+        pldm_client::pldm_set_apply_outcome(outcome);
+        if !outcome.result.is_success() {
+            return Err(ErrorCode::Fail);
+        }
         pldm_client::pldm_wait(State::Activate).await?;
 
         if self.skip_activation {
@@ -1004,11 +1006,23 @@ pub trait StagingMemory: core::fmt::Debug + Send + Sync {
     fn size(&self) -> usize;
 }
 
+async fn apply_image(
+    staging_memory: &dyn StagingMemory,
+    hooks: Option<&dyn FirmwareUpdateHooks>,
+    img_len: usize,
+) -> Result<ApplyOutcome, ErrorCode> {
+    staging_memory.image_valid(img_len).await?;
+    Ok(match hooks {
+        Some(hooks) => hooks.post_apply().await,
+        None => ApplyOutcome::default(),
+    })
+}
+
 /// Trait for platform-specific hooks invoked during the firmware update flow.
 ///
 /// Platforms can implement this trait to inject SoC-specific actions at key
 /// points in the update sequence (e.g., quiescing host I/O before activation).
-/// All methods have default no-op implementations, so platforms only need to
+/// Methods default to the standard update behavior, so platforms only need to
 /// override the hooks they care about.
 #[async_trait]
 pub trait FirmwareUpdateHooks: Send + Sync {
@@ -1019,6 +1033,17 @@ pub trait FirmwareUpdateHooks: Send + Sync {
     /// to proceed, or `Err` to reject it.
     fn on_fw_update_request(&self, _component: &FirmwareComponent) -> Result<(), ErrorCode> {
         Ok(())
+    }
+
+    /// Called after `image_valid()` succeeds and before reporting ApplyComplete.
+    ///
+    /// Return `ApplySuccessWithActivationMethod` and the required activation
+    /// methods when activation requirements change (for example, System Reboot
+    /// when a hitless update is unsafe). The default is ApplySuccess with no
+    /// modification. A failure result is reported to the update agent and aborts
+    /// the update before activation.
+    async fn post_apply(&self) -> ApplyOutcome {
+        ApplyOutcome::default()
     }
 
     /// Called before updating the Caliptra firmware. Returning an error aborts the update.
@@ -1243,6 +1268,125 @@ mod tests {
     use caliptra_mcu_flash_image::{
         OWNER_MEASUREMENT_POLICY_IDENTIFIER, OWNER_SOC_IMAGES_BASE_IDENTIFIER,
     };
+    use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::ApplyResult;
+    use caliptra_mcu_pldm_common::protocol::firmware_update::ComponentActivationMethods;
+    use core::future::Future;
+    use core::sync::atomic::{AtomicBool, Ordering};
+    use core::task::{Context, Poll, Waker};
+
+    fn run_ready<F: Future>(future: F) -> F::Output {
+        let mut future = core::pin::pin!(future);
+        match future
+            .as_mut()
+            .poll(&mut Context::from_waker(Waker::noop()))
+        {
+            Poll::Ready(output) => output,
+            Poll::Pending => panic!("test future unexpectedly yielded"),
+        }
+    }
+
+    #[derive(Debug)]
+    struct TestStagingMemory {
+        valid: AtomicBool,
+        fail: bool,
+    }
+
+    #[async_trait]
+    impl StagingMemory for TestStagingMemory {
+        async fn write(&self, _offset: usize, _data: &[u8]) -> Result<(), ErrorCode> {
+            unreachable!()
+        }
+
+        async fn read(&self, _offset: usize, _data: &mut [u8]) -> Result<(), ErrorCode> {
+            unreachable!()
+        }
+
+        async fn image_valid(&self, img_sz: usize) -> Result<(), ErrorCode> {
+            assert_eq!(img_sz, 1024);
+            if self.fail {
+                return Err(ErrorCode::Fail);
+            }
+            self.valid.store(true, Ordering::SeqCst);
+            Ok(())
+        }
+
+        fn size(&self) -> usize {
+            1024
+        }
+    }
+
+    struct DefaultHooks;
+
+    #[async_trait]
+    impl FirmwareUpdateHooks for DefaultHooks {}
+
+    struct RebootHooks<'a> {
+        staging: &'a TestStagingMemory,
+        called: AtomicBool,
+    }
+
+    #[async_trait]
+    impl FirmwareUpdateHooks for RebootHooks<'_> {
+        async fn post_apply(&self) -> ApplyOutcome {
+            assert!(self.staging.valid.load(Ordering::SeqCst));
+            self.called.store(true, Ordering::SeqCst);
+            let mut activation_methods = ComponentActivationMethods(0);
+            activation_methods.set_system_reboot(true);
+            ApplyOutcome {
+                result: ApplyResult::ApplySuccessWithActivationMethod,
+                activation_methods,
+            }
+        }
+    }
+
+    #[test]
+    fn apply_image_defaults_to_success_without_modification() {
+        for hooks in [None, Some(&DefaultHooks as &dyn FirmwareUpdateHooks)] {
+            let staging = TestStagingMemory {
+                valid: AtomicBool::new(false),
+                fail: false,
+            };
+            let outcome = run_ready(apply_image(&staging, hooks, 1024)).unwrap();
+            assert!(staging.valid.load(Ordering::SeqCst));
+            assert_eq!(outcome.result, ApplyResult::ApplySuccess);
+            assert_eq!(outcome.activation_methods.0, 0);
+        }
+    }
+
+    #[test]
+    fn apply_hook_runs_only_after_image_valid_and_reaches_fd_ops() {
+        use caliptra_mcu_pldm_common::message::firmware_update::get_status::ProgressPercent;
+        use caliptra_mcu_pldm_lib::firmware_device::fd_ops::FdOps;
+
+        for fail in [false, true] {
+            let staging = TestStagingMemory {
+                valid: AtomicBool::new(false),
+                fail,
+            };
+            let hooks = RebootHooks {
+                staging: &staging,
+                called: AtomicBool::new(false),
+            };
+            let outcome = run_ready(apply_image(&staging, Some(&hooks), 1024));
+            assert_eq!(hooks.called.load(Ordering::SeqCst), !fail);
+            if fail {
+                assert_eq!(outcome, Err(ErrorCode::Fail));
+            } else {
+                let outcome = outcome.unwrap();
+                assert_eq!(outcome.result as u8, 0x01);
+                assert_eq!(outcome.activation_methods.0, 0x0008);
+                pldm_client::pldm_set_apply_outcome(outcome);
+                let mut progress = ProgressPercent::default();
+                let fd_outcome = run_ready(
+                    pldm_fdops::UpdateFdOps::new()
+                        .apply_outcome(&FirmwareComponent::default(), &mut progress),
+                )
+                .unwrap();
+                assert_eq!(fd_outcome, outcome);
+                assert_eq!(progress.value(), 100);
+            }
+        }
+    }
 
     const A: u32 = 0x1000;
     const B: u32 = 0x2000;
