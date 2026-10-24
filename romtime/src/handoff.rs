@@ -277,12 +277,16 @@ impl HandoffData {
 
     /// Return the handoff table when its marker and major version are valid.
     pub fn get() -> Option<&'static Self> {
-        // SAFETY: Runtime treats ROM-owned handoff data as read-only.
-        let handoff = unsafe { &*core::ptr::addr_of!(HANDOFF) };
-        if handoff.rom.fht_marker != FHT_MARKER || handoff.rom.fht_major_ver != FHT_MAJOR_VERSION {
+        // ROM, a separate image, writes this table. A volatile header read stops LTO from
+        // folding HANDOFF to its zero initializer, which also keeps later plain field reads real.
+        // SAFETY: HANDOFF is placed in .handoff by the linker and both fields are aligned.
+        let marker = unsafe { (&raw const HANDOFF.rom.fht_marker).read_volatile() };
+        let major = unsafe { (&raw const HANDOFF.rom.fht_major_ver).read_volatile() };
+        if marker != FHT_MARKER || major != FHT_MAJOR_VERSION {
             return None;
         }
-        Some(handoff)
+        // SAFETY: Runtime treats ROM-owned handoff data as read-only.
+        Some(unsafe { &*core::ptr::addr_of!(HANDOFF) })
     }
 
     /// Return the stable owner CMK when this handoff version supports it.
@@ -391,9 +395,9 @@ pub fn get_mcu_rom_capabilities() -> Option<McuRomCapabilities> {
 #[cfg(feature = "ocp-lock")]
 #[allow(clippy::result_unit_err)]
 pub fn get_ocp_lock_state() -> Result<&'static OcpLockState, ()> {
-    // SAFETY: HANDOFF is populated by ROM at boot and is read-only for Runtime.
-    // The linker will place the handoff struct in the correct location.
-    unsafe { Ok(&HANDOFF.rom.ocp_lock) }
+    HandoffData::get()
+        .map(|handoff| &handoff.rom.ocp_lock)
+        .ok_or(())
 }
 
 #[cfg(test)]
