@@ -7,7 +7,7 @@ use super::pldm_fdops::UpdateFdOps;
 use super::StagingMemory;
 
 use caliptra_mcu_libtock_platform::ErrorCode;
-use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::ApplyResult;
+use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::ApplyOutcome;
 use caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
 use caliptra_mcu_pldm_common::message::firmware_update::verify_complete::VerifyResult;
 use caliptra_mcu_pldm_common::protocol::firmware_update::Descriptor;
@@ -97,10 +97,10 @@ pub fn pldm_set_verification_result(verify_result: VerifyResult) {
     PLDM_DAEMON_TASK_YIELD.signal(());
 }
 
-pub fn pldm_set_apply_result(apply_result: ApplyResult) {
+pub fn pldm_set_apply_outcome(outcome: ApplyOutcome) {
     DOWNLOAD_CTX.lock(|ctx| {
         let mut ctx = ctx.borrow_mut();
-        ctx.apply_result = apply_result;
+        ctx.apply_outcome = outcome;
     });
     // Yield to the PLDM daemon task to complete application
     PLDM_DAEMON_TASK_YIELD.signal(());
