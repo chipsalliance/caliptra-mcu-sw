@@ -149,8 +149,16 @@ pub struct LcCtrl {
 
     // Transition protocol state.
     mutex_claimed: bool,
+    transition_ctrl: u32,
     transition_target: u32,
     token: [u32; 4],
+
+    raw_unlock_token: [u8; 16],
+
+    /// Models the RTL SecVolatileRawUnlockEn test-chip parameter.
+    volatile_raw_unlock_enabled: bool,
+    /// Pre-unlock state, retained until the existing LCC reset path runs.
+    volatile_raw_unlock_state: Option<(u32, u32)>,
 
     /// Shared reference to OTP partition data for token reads and state writes.
     otp_partitions: Option<Rc<RefCell<Vec<u8>>>>,
@@ -174,7 +182,8 @@ impl LcCtrl {
         ctrl
     }
 
-    /// Create an LC controller without OTP access (read-only, no transitions).
+    /// Create an LC controller without OTP access.
+    /// Volatile RAW unlock can be enabled without an OTP backing store.
     pub fn with_state(lc_state_index: u32, lc_transition_cnt: u32) -> Self {
         Self {
             status: (STATUS_INITIALIZED | STATUS_READY).into(),
@@ -182,10 +191,28 @@ impl LcCtrl {
             lc_transition_cnt,
             generated: LcGenerated::default(),
             mutex_claimed: false,
+            transition_ctrl: 0,
             transition_target: 0,
             token: [0; 4],
+            raw_unlock_token: RAW_UNLOCK_TOKEN,
+            volatile_raw_unlock_enabled: false,
+            volatile_raw_unlock_state: None,
             otp_partitions: None,
         }
+    }
+
+    /// Enable the RTL's test-chip-only volatile RAW unlock mechanism.
+    ///
+    /// Disabled by default, as required for production devices. Software must
+    /// still claim the transition interface and set TRANSITION_CTRL bit 1.
+    /// The supplied token is the hash of the controller's RAW unlock token.
+    /// No OTP programming or reset of any other peripheral is performed.
+    pub fn with_volatile_raw_unlock(mut self, enabled: bool) -> Self {
+        self.volatile_raw_unlock_enabled = enabled;
+        if !enabled {
+            self.transition_ctrl &= !2;
+        }
+        self
     }
 
     /// Provide OTP partition access after construction.
@@ -196,6 +223,10 @@ impl LcCtrl {
     /// Re-read lifecycle state from OTP and reset transient state.
     /// Called on warm/cold reset so the new LC state takes effect.
     fn reload_from_otp(&mut self) {
+        if let Some((state, count)) = self.volatile_raw_unlock_state.take() {
+            self.lc_state_index = state;
+            self.lc_transition_cnt = count;
+        }
         if let Some(otp) = &self.otp_partitions {
             let otp = otp.borrow();
             let start = LIFE_CYCLE_BYTE_OFFSET;
@@ -211,6 +242,7 @@ impl LcCtrl {
         }
         self.status = (STATUS_INITIALIZED | STATUS_READY).into();
         self.mutex_claimed = false;
+        self.transition_ctrl = 0;
         self.transition_target = 0;
         self.token = [0; 4];
     }
@@ -262,6 +294,28 @@ impl LcCtrl {
 
     /// Execute the transition. Called when the ROM writes 1 to transition_cmd.
     fn execute_transition(&mut self) {
+        if self.transition_ctrl & 2 != 0 {
+            // lc_ctrl_fsm.sv handles this in IdleSt, bypassing OTP programming,
+            // KMAC and the normal transition-counter increment/overflow check.
+            self.volatile_raw_unlock_state
+                .get_or_insert((self.lc_state_index, self.lc_transition_cnt));
+            // Success is sticky until a non-volatile transition or reset.
+            let previous_success = self.status.reg.get() & STATUS_TRANSITION_SUCCESSFUL;
+            if self.lc_state_index != RAW
+                || self.transition_target & 0x3FFF_FFFF != calc_lc_state_mnemonic(TEST_UNLOCKED0)
+            {
+                self.transition_error(STATUS_TRANSITION_ERROR | previous_success);
+            } else if self.token_as_bytes() != hash_lc_token(&self.raw_unlock_token) {
+                self.transition_error(STATUS_TOKEN_ERROR | previous_success);
+            } else {
+                self.lc_state_index = TEST_UNLOCKED0;
+                self.lc_transition_cnt = self.lc_transition_cnt.max(1);
+                self.status =
+                    (STATUS_INITIALIZED | STATUS_READY | STATUS_TRANSITION_SUCCESSFUL).into();
+            }
+            return;
+        }
+
         let target_mnemonic = self.transition_target & 0x3FFF_FFFF;
         let target_index = match decode_lc_state_mnemonic(target_mnemonic) {
             Some(idx) if idx <= POST_TRANSITION => idx,
@@ -291,7 +345,7 @@ impl LcCtrl {
         match token_req {
             TokenRequirement::None => {}
             TokenRequirement::RawUnlock => {
-                if self.token_as_bytes() != RAW_UNLOCK_TOKEN {
+                if self.token_as_bytes() != self.raw_unlock_token {
                     self.transition_error(STATUS_TOKEN_ERROR);
                     return;
                 }
@@ -322,6 +376,10 @@ impl LcCtrl {
     fn transition_error(&mut self, error_bit: u32) {
         self.lc_state_index = POST_TRANSITION;
         self.status = (STATUS_INITIALIZED | error_bit).into();
+    }
+
+    fn transition_writable(&self) -> bool {
+        self.mutex_claimed && self.status.reg.get() & STATUS_READY != 0
     }
 }
 
@@ -377,31 +435,65 @@ impl caliptra_mcu_emulator_registers_generated::lc::LcPeripheral for LcCtrl {
         &mut self,
         val: ReadWriteRegister<u32, lc_ctrl::bits::TransitionTarget::Register>,
     ) {
-        if self.mutex_claimed {
+        if self.transition_writable() {
             self.transition_target = val.reg.get();
         }
     }
 
+    fn read_transition_regwen(
+        &mut self,
+    ) -> ReadWriteRegister<u32, lc_ctrl::bits::TransitionRegwen::Register> {
+        ReadWriteRegister::new(u32::from(
+            self.transition_writable() && !matches!(self.lc_state_index, POST_TRANSITION | SCRAP),
+        ))
+    }
+
+    fn read_transition_ctrl(
+        &mut self,
+    ) -> ReadWriteRegister<u32, lc_ctrl::bits::TransitionCtrl::Register> {
+        ReadWriteRegister::new(if self.mutex_claimed {
+            self.transition_ctrl
+        } else {
+            0
+        })
+    }
+
+    fn write_transition_ctrl(
+        &mut self,
+        val: ReadWriteRegister<u32, lc_ctrl::bits::TransitionCtrl::Register>,
+    ) {
+        if self.transition_writable() {
+            let mask = if self.volatile_raw_unlock_enabled {
+                3
+            } else {
+                1
+            };
+            // EXT_CLOCK_EN is sticky until reset; VOLATILE_RAW_UNLOCK is RW
+            // when compiled in, or tied to zero when the feature is disabled.
+            self.transition_ctrl = (self.transition_ctrl & 1) | (val.reg.get() & mask);
+        }
+    }
+
     fn write_transition_token_0(&mut self, val: caliptra_emu_types::RvData) {
-        if self.mutex_claimed {
+        if self.transition_writable() {
             self.token[0] = val;
         }
     }
 
     fn write_transition_token_1(&mut self, val: caliptra_emu_types::RvData) {
-        if self.mutex_claimed {
+        if self.transition_writable() {
             self.token[1] = val;
         }
     }
 
     fn write_transition_token_2(&mut self, val: caliptra_emu_types::RvData) {
-        if self.mutex_claimed {
+        if self.transition_writable() {
             self.token[2] = val;
         }
     }
 
     fn write_transition_token_3(&mut self, val: caliptra_emu_types::RvData) {
-        if self.mutex_claimed {
+        if self.transition_writable() {
             self.token[3] = val;
         }
     }
@@ -410,7 +502,7 @@ impl caliptra_mcu_emulator_registers_generated::lc::LcPeripheral for LcCtrl {
         &mut self,
         val: ReadWriteRegister<u32, lc_ctrl::bits::TransitionCmd::Register>,
     ) {
-        if self.mutex_claimed && (val.reg.get() & 1) != 0 {
+        if self.transition_writable() && (val.reg.get() & 1) != 0 {
             self.execute_transition();
         }
     }
@@ -497,6 +589,265 @@ mod tests {
         0x57, 0x5e, 0xd6, 0xcf, 0x32, 0x17, 0x18, 0xde, 0x30, 0xc8, 0xfc, 0x08, 0xc6, 0xb8, 0xed,
         0x05,
     ];
+
+    fn select_volatile_raw_unlock(lc: &mut LcCtrl) {
+        use caliptra_mcu_emulator_registers_generated::lc::LcPeripheral;
+
+        lc.write_claim_transition_if(ReadWriteRegister::new(MUTEX_TRUE));
+        lc.write_transition_ctrl(ReadWriteRegister::new(2));
+    }
+
+    #[test]
+    fn test_volatile_raw_unlock_success_and_counter() {
+        use caliptra_mcu_emulator_registers_generated::lc::LcPeripheral;
+
+        for count in [0, 1, 7, MAX_TRANSITION_COUNT] {
+            let mut lc = make_lc_ctrl(RAW, count, &TEST_RAW_TOKEN).with_volatile_raw_unlock(true);
+            let otp_before = lc.otp_partitions.as_ref().unwrap().borrow().clone();
+            select_volatile_raw_unlock(&mut lc);
+
+            let status = do_transition(
+                &mut lc,
+                TEST_UNLOCKED0,
+                token_to_words(&hash_lc_token(&RAW_UNLOCK_TOKEN)),
+            );
+            assert_eq!(
+                status,
+                STATUS_INITIALIZED | STATUS_READY | STATUS_TRANSITION_SUCCESSFUL
+            );
+            assert_eq!(
+                lc.read_lc_state().reg.get(),
+                calc_lc_state_mnemonic(TEST_UNLOCKED0)
+            );
+            assert_eq!(lc.read_lc_transition_cnt().reg.get(), count.max(1));
+            assert_eq!(lc.read_transition_regwen().reg.get(), 1);
+            assert_eq!(*lc.otp_partitions.as_ref().unwrap().borrow(), otp_before);
+
+            // An MCU update reset must not reset the LCC's volatile state.
+            lc.update_reset();
+            assert_eq!(lc.lc_state_index, TEST_UNLOCKED0);
+            assert_eq!(lc.lc_transition_cnt, count.max(1));
+            assert_eq!(lc.transition_ctrl, 2);
+
+            lc.warm_reset();
+            assert_eq!(lc.lc_state_index, RAW);
+            assert_eq!(lc.lc_transition_cnt, count);
+            assert_eq!(lc.transition_ctrl, 0);
+            assert!(!lc.mutex_claimed);
+            assert_eq!(lc.token, [0; 4]);
+        }
+    }
+
+    #[test]
+    fn test_volatile_raw_unlock_without_otp() {
+        use caliptra_mcu_emulator_registers_generated::lc::LcPeripheral;
+
+        let mut lc = LcCtrl::with_state(RAW, 0).with_volatile_raw_unlock(true);
+        select_volatile_raw_unlock(&mut lc);
+        assert_ne!(
+            do_transition(
+                &mut lc,
+                TEST_UNLOCKED0,
+                token_to_words(&hash_lc_token(&RAW_UNLOCK_TOKEN))
+            ) & STATUS_TRANSITION_SUCCESSFUL,
+            0
+        );
+        lc.warm_reset();
+        assert_eq!(lc.lc_state_index, RAW);
+        assert_eq!(lc.lc_transition_cnt, 0);
+        select_volatile_raw_unlock(&mut lc);
+        assert_eq!(lc.read_transition_ctrl().reg.get(), 2);
+    }
+
+    #[test]
+    fn test_volatile_raw_unlock_uses_controller_token() {
+        for (supplied, expected) in [
+            (
+                hash_lc_token(&TEST_RAW_TOKEN),
+                STATUS_READY | STATUS_TRANSITION_SUCCESSFUL,
+            ),
+            (hash_lc_token(&RAW_UNLOCK_TOKEN), STATUS_TOKEN_ERROR),
+        ] {
+            let mut lc = LcCtrl::with_state(RAW, 0).with_volatile_raw_unlock(true);
+            lc.raw_unlock_token = TEST_RAW_TOKEN;
+            select_volatile_raw_unlock(&mut lc);
+            assert_eq!(
+                do_transition(&mut lc, TEST_UNLOCKED0, token_to_words(&supplied)),
+                STATUS_INITIALIZED | expected
+            );
+        }
+    }
+
+    #[test]
+    fn test_volatile_raw_unlock_errors_do_not_program_otp_or_counter() {
+        use caliptra_mcu_emulator_registers_generated::lc::LcPeripheral;
+
+        let hashed = token_to_words(&hash_lc_token(&RAW_UNLOCK_TOKEN));
+        for (state, target, token, error) in [
+            (RAW, TEST_UNLOCKED0, [0; 4], STATUS_TOKEN_ERROR),
+            (
+                RAW,
+                TEST_UNLOCKED0,
+                token_to_words(&RAW_UNLOCK_TOKEN),
+                STATUS_TOKEN_ERROR,
+            ),
+            (RAW, SCRAP, hashed, STATUS_TRANSITION_ERROR),
+            (RAW, PROD, hashed, STATUS_TRANSITION_ERROR),
+            (
+                TEST_UNLOCKED0,
+                TEST_LOCKED0,
+                hashed,
+                STATUS_TRANSITION_ERROR,
+            ),
+            (DEV, PROD, hashed, STATUS_TRANSITION_ERROR),
+        ] {
+            for count in [0, 7, MAX_TRANSITION_COUNT] {
+                let mut lc =
+                    make_lc_ctrl(state, count, &TEST_RAW_TOKEN).with_volatile_raw_unlock(true);
+                let otp_before = lc.otp_partitions.as_ref().unwrap().borrow().clone();
+                select_volatile_raw_unlock(&mut lc);
+                let status = do_transition(&mut lc, target, token);
+                assert_eq!(status, STATUS_INITIALIZED | error);
+                assert_eq!(lc.lc_state_index, POST_TRANSITION);
+                assert_eq!(lc.lc_transition_cnt, count);
+                assert_eq!(*lc.otp_partitions.as_ref().unwrap().borrow(), otp_before);
+                assert_eq!(lc.read_transition_regwen().reg.get(), 0);
+
+                // Errors are terminal until reset, including register writes.
+                lc.write_transition_ctrl(ReadWriteRegister::new(0));
+                assert_eq!(lc.read_transition_ctrl().reg.get(), 2);
+                lc.write_transition_cmd(ReadWriteRegister::new(1));
+                assert_eq!(lc.read_status().reg.get(), status);
+                assert_eq!(lc.lc_transition_cnt, count);
+                lc.warm_reset();
+                assert_eq!(lc.lc_state_index, state);
+                assert_eq!(lc.lc_transition_cnt, count);
+                assert_eq!(
+                    lc.read_status().reg.get(),
+                    STATUS_INITIALIZED | STATUS_READY
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_volatile_raw_unlock_invalid_target_encoding() {
+        use caliptra_mcu_emulator_registers_generated::lc::LcPeripheral;
+
+        let mut lc = make_lc_ctrl(RAW, 0, &TEST_RAW_TOKEN).with_volatile_raw_unlock(true);
+        select_volatile_raw_unlock(&mut lc);
+        lc.write_transition_target(ReadWriteRegister::new(TEST_UNLOCKED0));
+        lc.write_transition_cmd(ReadWriteRegister::new(1));
+        assert_eq!(
+            lc.read_status().reg.get(),
+            STATUS_INITIALIZED | STATUS_TRANSITION_ERROR
+        );
+        assert_eq!(lc.lc_transition_cnt, 0);
+    }
+
+    #[test]
+    fn test_volatile_raw_unlock_disabled_by_default() {
+        use caliptra_mcu_emulator_registers_generated::lc::LcPeripheral;
+
+        for enabled in [false, true] {
+            let mut lc = make_lc_ctrl(RAW, 0, &TEST_RAW_TOKEN);
+            if enabled {
+                lc = lc.with_volatile_raw_unlock(true);
+            }
+            lc.write_claim_transition_if(ReadWriteRegister::new(MUTEX_TRUE));
+            if !enabled {
+                lc.write_transition_ctrl(ReadWriteRegister::new(2));
+            }
+            assert_eq!(lc.read_transition_ctrl().reg.get(), 0);
+            let status = do_transition(&mut lc, TEST_UNLOCKED0, token_to_words(&RAW_UNLOCK_TOKEN));
+            assert_ne!(status & STATUS_TRANSITION_SUCCESSFUL, 0);
+            assert_eq!(lc.lc_state_index, POST_TRANSITION);
+            assert_eq!(lc.lc_transition_cnt, 1);
+            lc.warm_reset();
+            assert_eq!(lc.lc_state_index, TEST_UNLOCKED0);
+            assert_eq!(lc.lc_transition_cnt, 1);
+        }
+    }
+
+    #[test]
+    fn test_volatile_raw_unlock_control_mutex_and_readback() {
+        use caliptra_mcu_emulator_registers_generated::lc::LcPeripheral;
+
+        for enabled in [false, true] {
+            let mut lc = LcCtrl::default().with_volatile_raw_unlock(enabled);
+            lc.write_transition_ctrl(ReadWriteRegister::new(u32::MAX));
+            assert_eq!(lc.read_transition_ctrl().reg.get(), 0);
+            assert_eq!(lc.read_transition_regwen().reg.get(), 0);
+            lc.write_claim_transition_if(ReadWriteRegister::new(MUTEX_TRUE));
+            assert_eq!(lc.read_transition_ctrl().reg.get(), 0);
+            assert_eq!(lc.read_transition_regwen().reg.get(), 1);
+            lc.write_transition_ctrl(ReadWriteRegister::new(u32::MAX));
+            let expected = if enabled { 3 } else { 1 };
+            assert_eq!(lc.read_transition_ctrl().reg.get(), expected);
+            lc.write_claim_transition_if(ReadWriteRegister::new(MUTEX_FALSE));
+            assert_eq!(lc.read_transition_ctrl().reg.get(), 0);
+            lc.write_transition_ctrl(ReadWriteRegister::new(0));
+            lc.write_claim_transition_if(ReadWriteRegister::new(MUTEX_TRUE));
+            assert_eq!(lc.read_transition_ctrl().reg.get(), expected);
+            lc.write_transition_ctrl(ReadWriteRegister::new(0));
+            assert_eq!(lc.read_transition_ctrl().reg.get(), 1);
+            lc.warm_reset();
+            lc.write_claim_transition_if(ReadWriteRegister::new(MUTEX_TRUE));
+            assert_eq!(lc.read_transition_ctrl().reg.get(), 0);
+        }
+    }
+
+    #[test]
+    fn test_volatile_raw_unlock_then_persistent_transition() {
+        use caliptra_mcu_emulator_registers_generated::lc::LcPeripheral;
+
+        let mut lc = make_lc_ctrl(RAW, 0, &TEST_RAW_TOKEN).with_volatile_raw_unlock(true);
+        select_volatile_raw_unlock(&mut lc);
+        do_transition(
+            &mut lc,
+            TEST_UNLOCKED0,
+            token_to_words(&hash_lc_token(&RAW_UNLOCK_TOKEN)),
+        );
+        lc.write_transition_ctrl(ReadWriteRegister::new(0));
+        assert_ne!(
+            do_transition(&mut lc, TEST_LOCKED0, [0; 4]) & STATUS_TRANSITION_SUCCESSFUL,
+            0
+        );
+        assert_eq!(lc.lc_transition_cnt, 2);
+        lc.warm_reset();
+        assert_eq!(lc.lc_state_index, TEST_LOCKED0);
+        assert_eq!(lc.lc_transition_cnt, 2);
+    }
+
+    #[test]
+    fn test_volatile_raw_unlock_success_cleared_by_nonvolatile_command() {
+        use caliptra_mcu_emulator_registers_generated::lc::LcPeripheral;
+
+        for volatile in [false, true] {
+            let mut lc = make_lc_ctrl(RAW, 0, &TEST_RAW_TOKEN).with_volatile_raw_unlock(true);
+            select_volatile_raw_unlock(&mut lc);
+            do_transition(
+                &mut lc,
+                TEST_UNLOCKED0,
+                token_to_words(&hash_lc_token(&RAW_UNLOCK_TOKEN)),
+            );
+            if !volatile {
+                lc.write_transition_ctrl(ReadWriteRegister::new(0));
+            }
+            let status = do_transition(&mut lc, PROD, [0; 4]);
+            let success = if volatile {
+                STATUS_TRANSITION_SUCCESSFUL
+            } else {
+                0
+            };
+            assert_eq!(
+                status,
+                STATUS_INITIALIZED | STATUS_TRANSITION_ERROR | success
+            );
+            assert_eq!(lc.lc_transition_cnt, if volatile { 1 } else { 2 });
+            assert_eq!(lc.read_transition_regwen().reg.get(), 0);
+        }
+    }
 
     #[test]
     fn test_mnemonic_roundtrip() {
