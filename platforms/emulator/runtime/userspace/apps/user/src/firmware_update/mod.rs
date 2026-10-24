@@ -192,8 +192,6 @@ pub async fn firmware_update<D: DMAMapping>(
         let staging_memory: &'static dummy_flash::ExternalFlash =
             unsafe { core::mem::transmute(&mut staging_memory) };
 
-        flash_header.verify().then_some(()).ok_or(ErrorCode::Fail)?;
-
         let mut updater = FirmwareUpdater::new(
             staging_memory,
             allocator,
