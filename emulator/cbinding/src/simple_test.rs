@@ -50,6 +50,7 @@ fn test_emulator_args_creation() {
         i3c_port: None,
         device_security_state: DeviceLifecycle::Production as u32,
         test_feature: None,
+        raw_unlock_token: None,
         vendor_pk_hash: None,
         vendor_pqc_type: FwVerificationPqcKeyType::LMS,
         owner_pk_hash: None,
