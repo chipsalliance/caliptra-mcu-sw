@@ -78,8 +78,34 @@ persistent storage (such as dedicated flash partitions) and configure size limit
 - **Role independence**: Owner and Tenant must use disjoint storage regions.
 - **Sizing**: Allocate sufficient space for the configured maximum endorsement
   size plus storage metadata and double-buffering.
-- **Persistence guarantees**: Storage must ensure atomic commits, power-loss
-  safety, and durable removal.
+- **Persistence guarantees**: Storage must ensure atomic commits while keeping
+  the active endorsement readable during updates, power-loss safety,
+  deterministic recovery of the newest valid endorsement, and durable removal.
+
+#### SDK reference implementation
+
+The SDK provides a reference SPI-flash implementation (`SingleManagedEndorsement`
+in `caliptra-mcu-cert-store`) that integrators can configure or replace to match
+their platform storage:
+
+- **Partition and A/B bank layout**: On the emulator reference platform, the
+  `512 KiB` certificate-store partition is divided into four disjoint `128 KiB`
+  `(role, algorithm)` regions (`Owner/Tenant` × `ECC P-384/ML-DSA-87`). Each
+  region is split into two equal `64 KiB` banks (`Bank 0` and `Bank 1`,
+  `MANAGED_BANK_COUNT = 2`).
+- **Active-chain continuity**: Single-shot and multi-chunk `SET_CERTIFICATE`
+  writes erase and program the inactive bank while concurrent readers continue
+  reading the active bank (`BankReadGuard` prevents erasing a bank while a
+  reader is in flight).
+- **Record metadata and recovery (`ManagedRecord`)**: Each bank stores a
+  `76`-byte header (`magic = "SPCE"`, `version = 2`, `slot`, `algo`,
+  `key_pair_id`, `cert_info`, `key_usage_mask`, `cert_len`, `data_checksum`,
+  `root_hash`, and a monotonic `sequence: u32`) followed by the DER endorsement
+  chain. The DER payload is written and checksum-verified before the header is
+  written, and startup `load()` selects the valid bank with the highest
+  `sequence`.
+- **Durable removal**: `erase` clears the older inactive bank before the active
+  bank so an interrupted erase cannot resurrect a superseded chain after reset.
 
 ## Provide Vendor certificates
 

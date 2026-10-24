@@ -18,7 +18,7 @@ use mcu_error::McuResult;
 
 #[cfg(feature = "set-certificate")]
 use core::ops::Range;
-use core::sync::atomic::{AtomicBool, Ordering};
+use core::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 
 /// Number of cert slots managed by the store.
 pub const NUM_CERT_SLOTS: usize = 3;
@@ -49,6 +49,8 @@ pub const fn algo_index(algo: CertificateAlgorithm) -> usize {
 ///
 /// Identity and certificate model are shared by the slot. Certificate
 /// availability and the in-progress write lock remain per algorithm.
+pub const MANAGED_BANK_COUNT: usize = 2;
+
 pub struct CertSlot {
     /// Slot certificate-chain backing storage.
     pub endorsement: SlotEndorsement,
@@ -57,6 +59,12 @@ pub struct CertSlot {
     /// State lock held high while an async write (flash erase/write) is
     /// in progress for the corresponding algorithm.
     write_in_progress: [AtomicBool; NUM_ASYM_ALGOS],
+    /// Monotonic generation counter per algorithm, incremented whenever an
+    /// endorsement is configured, published, or removed.
+    generation_counter: [AtomicU32; NUM_ASYM_ALGOS],
+    /// Count of in-flight async readers per `(algorithm, bank)` so an active
+    /// bank cannot be reclaimed/erased while a reader is suspended at `.await`.
+    bank_readers: [[AtomicU32; MANAGED_BANK_COUNT]; NUM_ASYM_ALGOS],
 }
 
 impl CertSlot {
@@ -65,6 +73,9 @@ impl CertSlot {
             endorsement: SlotEndorsement::Empty,
             key_pair_id,
             write_in_progress: [const { AtomicBool::new(false) }; NUM_ASYM_ALGOS],
+            generation_counter: [const { AtomicU32::new(0) }; NUM_ASYM_ALGOS],
+            bank_readers: [const { [const { AtomicU32::new(0) }; MANAGED_BANK_COUNT] };
+                NUM_ASYM_ALGOS],
         }
     }
 
@@ -78,7 +89,7 @@ impl CertSlot {
 
     /// Whether this slot can serve a cert chain for `algo` right now.
     pub fn is_provisioned(&self, algo: CertificateAlgorithm) -> bool {
-        !self.write_in_progress(algo) && self.endorsement.is_provisioned(algo)
+        self.endorsement.is_provisioned(algo)
     }
 
     pub fn write_in_progress(&self, algo: CertificateAlgorithm) -> bool {
@@ -87,6 +98,51 @@ impl CertSlot {
 
     pub fn set_write_in_progress(&self, algo: CertificateAlgorithm, value: bool) {
         self.write_in_progress[algo_index(algo)].store(value, Ordering::Relaxed);
+    }
+
+    pub fn generation_counter(&self, algo: CertificateAlgorithm) -> u32 {
+        self.generation_counter[algo_index(algo)].load(Ordering::Relaxed)
+    }
+
+    pub(crate) fn bump_generation_counter(&self, algo: CertificateAlgorithm) {
+        let idx = algo_index(algo);
+        let next = self.generation_counter[idx]
+            .load(Ordering::Relaxed)
+            .wrapping_add(1);
+        self.generation_counter[idx].store(next, Ordering::Relaxed);
+    }
+
+    pub(crate) fn acquire_bank_reader(&self, algo: CertificateAlgorithm, bank: u8) {
+        let idx = algo_index(algo);
+        let b = (bank as usize) % MANAGED_BANK_COUNT;
+        let next = self.bank_readers[idx][b]
+            .load(Ordering::Relaxed)
+            .saturating_add(1);
+        self.bank_readers[idx][b].store(next, Ordering::Relaxed);
+    }
+
+    pub(crate) fn release_bank_reader(&self, algo: CertificateAlgorithm, bank: u8) {
+        let idx = algo_index(algo);
+        let b = (bank as usize) % MANAGED_BANK_COUNT;
+        let next = self.bank_readers[idx][b]
+            .load(Ordering::Relaxed)
+            .saturating_sub(1);
+        self.bank_readers[idx][b].store(next, Ordering::Relaxed);
+    }
+
+    #[cfg(any(test, feature = "set-certificate"))]
+    pub(crate) fn bank_has_readers(&self, algo: CertificateAlgorithm, bank: u8) -> bool {
+        let idx = algo_index(algo);
+        let b = (bank as usize) % MANAGED_BANK_COUNT;
+        self.bank_readers[idx][b].load(Ordering::Relaxed) > 0
+    }
+
+    #[cfg(any(test, feature = "set-certificate"))]
+    pub(crate) fn any_bank_has_readers(&self, algo: CertificateAlgorithm) -> bool {
+        let idx = algo_index(algo);
+        self.bank_readers[idx]
+            .iter()
+            .any(|count| count.load(Ordering::Relaxed) > 0)
     }
 
     pub fn key_pair_id(&self, algo: CertificateAlgorithm) -> Option<u8> {
@@ -179,23 +235,31 @@ impl SlotEndorsement {
         }
     }
 
+    pub(crate) fn snapshot(&self, algo: CertificateAlgorithm) -> McuResult<EndorsementSnapshot> {
+        match self {
+            Self::ReadOnly(e) => e
+                .get_endorsement(algo)
+                .copied()
+                .map(EndorsementSnapshot::ReadOnly)
+                .ok_or(mcu_error::codes::INVARIANT),
+            #[cfg(feature = "set-certificate")]
+            Self::Managed(m) => m
+                .get_endorsement(algo)
+                .copied()
+                .map(EndorsementSnapshot::Managed)
+                .ok_or(mcu_error::codes::INVARIANT),
+            Self::Empty => Err(mcu_error::codes::INVARIANT),
+        }
+    }
+
     pub async fn read(
         &self,
         algo: CertificateAlgorithm,
         offset: usize,
         buf: &mut [u8],
     ) -> McuResult<usize> {
-        match self {
-            Self::ReadOnly(e) => e.read(algo, offset, buf),
-            #[cfg(feature = "set-certificate")]
-            Self::Managed(m) => {
-                m.get_endorsement(algo)
-                    .ok_or(mcu_error::codes::INVARIANT)?
-                    .read(offset, buf)
-                    .await
-            }
-            Self::Empty => Err(mcu_error::codes::INVARIANT),
-        }
+        let snapshot = self.snapshot(algo)?;
+        snapshot.read(offset, buf).await
     }
 
     pub fn is_supported(&self) -> bool {
@@ -237,6 +301,70 @@ impl SingleEndorsementChain {
             root_cert_hash,
             chain,
             chain_len,
+        }
+    }
+
+    pub fn read(&self, offset: usize, buf: &mut [u8]) -> usize {
+        let mut cert_offset = offset;
+        let mut pos = 0;
+        for cert in self.chain.iter() {
+            if cert_offset < cert.len() {
+                let len = cert
+                    .len()
+                    .saturating_sub(cert_offset)
+                    .min(buf.len().saturating_sub(pos));
+                if let (Some(dst), Some(src)) = (
+                    buf.get_mut(pos..pos + len),
+                    cert.get(cert_offset..cert_offset + len),
+                ) {
+                    for (d, s) in dst.iter_mut().zip(src) {
+                        *d = *s;
+                    }
+                }
+                pos += len;
+                cert_offset = 0;
+                if pos == buf.len() {
+                    break;
+                }
+            } else {
+                cert_offset -= cert.len();
+            }
+        }
+        pos
+    }
+}
+
+/// Immutable value-type snapshot of a single `(role, algo)` endorsement
+/// that can be held across `.await` points without borrowing [`CertSlot`].
+#[derive(Clone, Copy)]
+pub(crate) enum EndorsementSnapshot {
+    ReadOnly(SingleEndorsementChain),
+    #[cfg(feature = "set-certificate")]
+    Managed(SingleManagedEndorsement),
+}
+
+impl EndorsementSnapshot {
+    pub(crate) fn size(&self) -> McuResult<usize> {
+        match self {
+            Self::ReadOnly(e) => Ok(e.chain_len),
+            #[cfg(feature = "set-certificate")]
+            Self::Managed(m) => m.size(),
+        }
+    }
+
+    pub(crate) fn active_bank(&self) -> Option<u8> {
+        match self {
+            Self::ReadOnly(_) => None,
+            #[cfg(feature = "set-certificate")]
+            Self::Managed(m) => m.active_bank(),
+        }
+    }
+
+    pub(crate) async fn read(&self, offset: usize, buf: &mut [u8]) -> McuResult<usize> {
+        match self {
+            Self::ReadOnly(e) => Ok(e.read(offset, buf)),
+            #[cfg(feature = "set-certificate")]
+            Self::Managed(m) => m.read(offset, buf).await,
         }
     }
 }
@@ -283,46 +411,14 @@ impl ReadOnlyEndorsementSlot {
             .ok_or(mcu_error::codes::INVARIANT)?;
         Ok(chain.chain_len)
     }
-
-    fn read(&self, algo: CertificateAlgorithm, offset: usize, buf: &mut [u8]) -> McuResult<usize> {
-        let chain = self
-            .get_endorsement(algo)
-            .ok_or(mcu_error::codes::INVARIANT)?;
-        let mut cert_offset = offset;
-        let mut pos = 0;
-        for cert in chain.chain.iter() {
-            if cert_offset < cert.len() {
-                let len = cert
-                    .len()
-                    .saturating_sub(cert_offset)
-                    .min(buf.len().saturating_sub(pos));
-                if let (Some(dst), Some(src)) = (
-                    buf.get_mut(pos..pos + len),
-                    cert.get(cert_offset..cert_offset + len),
-                ) {
-                    for (d, s) in dst.iter_mut().zip(src) {
-                        *d = *s;
-                    }
-                }
-                pos += len;
-                cert_offset = 0;
-                if pos == buf.len() {
-                    break;
-                }
-            } else {
-                cert_offset -= cert.len();
-            }
-        }
-        Ok(pos)
-    }
 }
 
 #[cfg(feature = "set-certificate")]
 const MANAGED_MAGIC: [u8; 4] = *b"SPCE";
 #[cfg(feature = "set-certificate")]
-const MANAGED_FORMAT_VERSION: u16 = 1;
+const MANAGED_FORMAT_VERSION: u16 = 2;
 #[cfg(feature = "set-certificate")]
-const MANAGED_HEADER_SIZE: usize = 80;
+const MANAGED_HEADER_SIZE: usize = 76;
 #[cfg(feature = "set-certificate")]
 const MANAGED_ALGO_ECC_P384: u8 = 1;
 #[cfg(feature = "set-certificate")]
@@ -344,14 +440,15 @@ const SPDM_CERT_CHAIN_HEADER_SIZE: usize = 4 + 48;
 /// Largest DER payload the SPDM cert-chain format can describe.
 ///
 /// SPDM allows for large certificate chain indexing up to 32 bits, so in
-/// practice, this limit is the size of the managed flash region
+/// practice, this limit is the size of one bank in the managed flash region.
 #[cfg(feature = "set-certificate")]
 const MANAGED_MAX_DER_LEN: usize = (u32::MAX as usize) - SPDM_CERT_CHAIN_HEADER_SIZE;
 
-/// Usable DER bytes in one managed endorsement region.
+/// Usable DER bytes in one bank of a two-bank managed endorsement region.
 #[cfg(feature = "set-certificate")]
 pub const fn managed_endorsement_der_capacity(region_size: usize) -> usize {
-    let available = region_size.saturating_sub(MANAGED_HEADER_SIZE);
+    let bank_size = region_size / MANAGED_BANK_COUNT;
+    let available = bank_size.saturating_sub(MANAGED_HEADER_SIZE);
     if available < MANAGED_MAX_DER_LEN {
         available
     } else {
@@ -362,7 +459,7 @@ pub const fn managed_endorsement_der_capacity(region_size: usize) -> usize {
 /// Whether two half-open byte ranges intersect.
 ///
 /// The single definition of "these managed flash regions collide".
-/// Updating a chain erases its whole region, so any intersection at
+/// Updating a chain erases a bank within its region, so any intersection at
 /// all — partial, exact or containing — is destructive; only abutting
 /// ranges are safe. Empty ranges never overlap anything.
 #[cfg(feature = "set-certificate")]
@@ -377,10 +474,9 @@ type CertStoreFlash = SpiFlash<DefaultSyscalls>;
 /// SET_CERTIFICATE.
 ///
 /// A region is dedicated to a single asymmetric algorithm for its
-/// lifetime, fixed when the platform wires it up. A slot that serves
-/// both ECC and ML-DSA therefore owns two disjoint regions — see
-/// [`ManagedEndorsement`]. Sharing one region would make installing one
-/// algorithm's chain silently destroy the other's.
+/// lifetime, fixed when the platform wires it up, and subdivided into two
+/// equal A/B ping-pong banks so replacement writes stage in the inactive
+/// bank while the active bank remains readable.
 #[cfg(feature = "set-certificate")]
 #[derive(Clone, Copy)]
 pub struct SingleManagedEndorsement {
@@ -389,6 +485,9 @@ pub struct SingleManagedEndorsement {
     base: usize,
     capacity: usize,
     initialized: bool,
+    active_bank: u8,
+    active_sequence: u32,
+    staging_bank: Option<u8>,
     algo: CertificateAlgorithm,
     len: usize,
     root_hash: [u8; 48],
@@ -414,6 +513,9 @@ impl SingleManagedEndorsement {
             base,
             capacity,
             initialized: false,
+            active_bank: 0,
+            active_sequence: 0,
+            staging_bank: None,
             algo,
             len: 0,
             root_hash: [0; 48],
@@ -426,7 +528,9 @@ impl SingleManagedEndorsement {
 
     pub async fn load(&mut self) -> McuResult<()> {
         self.discard();
-        let mut header = [0u8; MANAGED_HEADER_SIZE];
+        if self.capacity % MANAGED_BANK_COUNT != 0 || self.der_capacity() == 0 {
+            return Err(mcu_error::codes::INVARIANT);
+        }
         let flash = self.flash();
         match flash.exists() {
             Ok(()) => {}
@@ -435,33 +539,60 @@ impl SingleManagedEndorsement {
             }
             Err(err) => return Err(map_flash_error(err)),
         }
-        flash
-            .read(self.base, MANAGED_HEADER_SIZE, &mut header)
-            .await
-            .map_err(map_flash_error)?;
-        if header.iter().all(|&b| b == MANAGED_ERASED_BYTE) || header[0..4] != MANAGED_MAGIC {
-            return Ok(());
+        let mut selected: Option<(u8, ManagedRecord)> = None;
+        for bank in 0..(MANAGED_BANK_COUNT as u8) {
+            let Some(record) = self.load_bank(&flash, bank).await? else {
+                continue;
+            };
+            let replace = match &selected {
+                None => true,
+                Some((_, current)) => record.sequence > current.sequence,
+            };
+            if replace {
+                selected = Some((bank, record));
+            }
         }
-        let Some(record) = ManagedRecord::decode(&header) else {
-            return Ok(());
-        };
-        if self.validate_record(&record).is_err() {
-            return Ok(());
+        if let Some((bank, record)) = selected {
+            self.initialized = true;
+            self.active_bank = bank;
+            self.active_sequence = record.sequence;
+            self.len = record.cert_len;
+            self.root_hash = record.root_hash;
+            self.key_pair_id = record.key_pair_id;
+            self.cert_info = record.cert_info;
+            self.key_usage_mask = record.key_usage_mask;
         }
-        if self.stored_checksum(record.cert_len).await? != record.data_checksum {
-            return Ok(());
-        }
-        self.initialized = true;
-        self.len = record.cert_len;
-        self.root_hash = record.root_hash;
-        self.key_pair_id = record.key_pair_id;
-        self.cert_info = record.cert_info;
-        self.key_usage_mask = record.key_usage_mask;
         Ok(())
     }
 
+    async fn load_bank(
+        &self,
+        flash: &CertStoreFlash,
+        bank: u8,
+    ) -> McuResult<Option<ManagedRecord>> {
+        let mut header = [0u8; MANAGED_HEADER_SIZE];
+        flash
+            .read(self.bank_base(bank), MANAGED_HEADER_SIZE, &mut header)
+            .await
+            .map_err(map_flash_error)?;
+        if header.iter().all(|&b| b == MANAGED_ERASED_BYTE) {
+            return Ok(None);
+        }
+        let Some(record) = ManagedRecord::decode(&header) else {
+            return Ok(None);
+        };
+        if self.validate_record(&record).is_err() {
+            return Ok(None);
+        }
+        if self.stored_checksum(bank, record.cert_len).await? != record.data_checksum {
+            return Ok(None);
+        }
+        Ok(Some(record))
+    }
+
     fn validate_record(&self, record: &ManagedRecord) -> McuResult<()> {
-        if record.version != MANAGED_FORMAT_VERSION
+        if self.capacity % MANAGED_BANK_COUNT != 0
+            || record.version != MANAGED_FORMAT_VERSION
             || record.header_size as usize != MANAGED_HEADER_SIZE
             || record.slot != self.slot
             || record.algo != managed_algo_code(self.algo)
@@ -488,16 +619,50 @@ impl SingleManagedEndorsement {
         Ok(())
     }
 
+    pub(crate) fn validate_erase(&self) -> McuResult<()> {
+        if let Some(key) = self.device_key {
+            key.validate_anchor_point()?;
+        }
+        Ok(())
+    }
+
     pub(crate) fn discard(&mut self) {
         self.initialized = false;
+        self.active_bank = 0;
+        self.active_sequence = 0;
+        self.staging_bank = None;
         self.len = 0;
         self.root_hash = [0; 48];
         self.key_pair_id = 0;
         self.cert_info = 0;
     }
 
+    pub(crate) fn abort_stream_update(&mut self) {
+        self.staging_bank = None;
+    }
+
     pub fn is_initialized(&self) -> bool {
         self.initialized
+    }
+
+    pub(crate) const fn active_bank(&self) -> Option<u8> {
+        if self.initialized {
+            Some(self.active_bank)
+        } else {
+            None
+        }
+    }
+
+    pub(crate) const fn inactive_bank(&self) -> u8 {
+        if self.initialized {
+            1 - (self.active_bank & 1)
+        } else {
+            0
+        }
+    }
+
+    const fn next_sequence(&self) -> u32 {
+        self.active_sequence.wrapping_add(1)
     }
 
     /// The algorithm this region is dedicated to.
@@ -543,7 +708,11 @@ impl SingleManagedEndorsement {
         }
         let n = (self.len - offset).min(buf.len());
         self.flash()
-            .read(self.data_base() + offset, n, &mut buf[..n])
+            .read(
+                self.bank_data_base(self.active_bank) + offset,
+                n,
+                &mut buf[..n],
+            )
             .await
             .map_err(map_flash_error)?;
         Ok(n)
@@ -556,22 +725,23 @@ impl SingleManagedEndorsement {
         data_len: usize,
     ) -> McuResult<Self> {
         self.validate_metadata(key_pair_id, cert_info)?;
-        if data_len == 0 || data_len > self.der_capacity() {
+        if self.capacity % MANAGED_BANK_COUNT != 0
+            || data_len == 0
+            || data_len > self.der_capacity()
+        {
             return Err(cert_errors::INVALID_ENDORSEMENT);
         }
+        let target_bank = self.inactive_bank();
         self.flash()
-            .erase(self.base, self.capacity)
+            .erase(self.bank_base(target_bank), self.bank_capacity())
             .await
             .map_err(map_flash_error)?;
-        self.initialized = false;
-        self.len = 0;
-        self.root_hash = [0; 48];
-        self.key_pair_id = key_pair_id;
-        self.cert_info = cert_info;
+        self.staging_bank = Some(target_bank);
         Ok(self)
     }
 
     pub async fn write_stream_chunk(&self, offset: usize, data: &[u8]) -> McuResult<()> {
+        let bank = self.staging_bank.ok_or(mcu_error::codes::INVARIANT)?;
         let end = offset
             .checked_add(data.len())
             .ok_or(mcu_error::codes::INVARIANT)?;
@@ -580,7 +750,7 @@ impl SingleManagedEndorsement {
         }
         if !data.is_empty() {
             self.flash()
-                .write(self.data_base() + offset, data.len(), data)
+                .write(self.bank_data_base(bank) + offset, data.len(), data)
                 .await
                 .map_err(map_flash_error)?;
         }
@@ -588,12 +758,13 @@ impl SingleManagedEndorsement {
     }
 
     pub async fn read_stream_chunk(&self, offset: usize, buf: &mut [u8]) -> McuResult<usize> {
+        let bank = self.staging_bank.ok_or(mcu_error::codes::INVARIANT)?;
         if offset >= self.der_capacity() || buf.is_empty() {
             return Ok(0);
         }
         let n = (self.der_capacity() - offset).min(buf.len());
         self.flash()
-            .read(self.data_base() + offset, n, &mut buf[..n])
+            .read(self.bank_data_base(bank) + offset, n, &mut buf[..n])
             .await
             .map_err(map_flash_error)?;
         Ok(n)
@@ -607,10 +778,15 @@ impl SingleManagedEndorsement {
         data_len: usize,
     ) -> McuResult<Self> {
         self.validate_metadata(key_pair_id, cert_info)?;
-        if data_len == 0 || data_len > self.der_capacity() {
+        if self.capacity % MANAGED_BANK_COUNT != 0
+            || data_len == 0
+            || data_len > self.der_capacity()
+        {
             return Err(cert_errors::INVALID_ENDORSEMENT);
         }
-        let data_checksum = self.stored_checksum(data_len).await?;
+        let bank = self.staging_bank.ok_or(mcu_error::codes::INVARIANT)?;
+        let data_checksum = self.stored_checksum(bank, data_len).await?;
+        let sequence = self.next_sequence();
         let record = ManagedRecord {
             version: MANAGED_FORMAT_VERSION,
             header_size: MANAGED_HEADER_SIZE as u16,
@@ -622,14 +798,13 @@ impl SingleManagedEndorsement {
             cert_len: data_len,
             data_checksum,
             root_hash: *root_hash,
+            sequence,
         };
-        let mut header = [MANAGED_ERASED_BYTE; MANAGED_HEADER_SIZE];
-        record.encode(&mut header);
-        self.flash()
-            .write(self.base, MANAGED_HEADER_SIZE, &header)
-            .await
-            .map_err(map_flash_error)?;
+        self.commit_record_to_bank(bank, &record).await?;
         self.initialized = true;
+        self.active_bank = bank;
+        self.active_sequence = sequence;
+        self.staging_bank = None;
         self.len = data_len;
         self.root_hash = *root_hash;
         self.key_pair_id = key_pair_id;
@@ -646,10 +821,16 @@ impl SingleManagedEndorsement {
         data: &[u8],
     ) -> McuResult<Self> {
         self.validate_metadata(key_pair_id, cert_info)?;
-        if data.is_empty() || data.len() > self.der_capacity() {
+        if self.capacity % MANAGED_BANK_COUNT != 0
+            || data.is_empty()
+            || data.len() > self.der_capacity()
+        {
             return Err(cert_errors::INVALID_ENDORSEMENT);
         }
 
+        let bank = self.inactive_bank();
+        let expected_checksum = checksum(data);
+        let sequence = self.next_sequence();
         let record = ManagedRecord {
             version: MANAGED_FORMAT_VERSION,
             header_size: MANAGED_HEADER_SIZE as u16,
@@ -659,30 +840,29 @@ impl SingleManagedEndorsement {
             cert_info,
             key_usage_mask: MANAGED_KEY_USAGE_MASK,
             cert_len: data.len(),
-            data_checksum: checksum(data),
+            data_checksum: expected_checksum,
             root_hash: *root_hash,
+            sequence,
         };
-        let mut header = [MANAGED_ERASED_BYTE; MANAGED_HEADER_SIZE];
-        record.encode(&mut header);
 
         let flash = self.flash();
         flash
-            .erase(self.base, self.capacity)
+            .erase(self.bank_base(bank), self.bank_capacity())
             .await
             .map_err(map_flash_error)?;
-        if !data.is_empty() {
-            flash
-                .write(self.data_base(), data.len(), data)
-                .await
-                .map_err(map_flash_error)?;
-        }
-        // Commit the record last so an interrupted write is seen as empty/invalid.
         flash
-            .write(self.base, MANAGED_HEADER_SIZE, &header)
+            .write(self.bank_data_base(bank), data.len(), data)
             .await
             .map_err(map_flash_error)?;
+        if self.stored_checksum(bank, data.len()).await? != expected_checksum {
+            return Err(cert_errors::STORAGE_ERROR);
+        }
+        self.commit_record_to_bank(bank, &record).await?;
 
         self.initialized = true;
+        self.active_bank = bank;
+        self.active_sequence = sequence;
+        self.staging_bank = None;
         self.len = data.len();
         self.root_hash = *root_hash;
         self.key_pair_id = key_pair_id;
@@ -692,11 +872,22 @@ impl SingleManagedEndorsement {
     }
 
     pub async fn erase_updated(mut self) -> McuResult<Self> {
-        if let Some(key) = self.device_key {
-            key.validate_anchor_point()?;
+        self.validate_erase()?;
+        if self.capacity % MANAGED_BANK_COUNT != 0 {
+            return Err(mcu_error::codes::INVARIANT);
         }
-        self.flash()
-            .erase(self.base, self.capacity)
+        let active_bank = self.active_bank & 1;
+        let inactive_bank = 1 - active_bank;
+        let bank_cap = self.bank_capacity();
+        let flash = self.flash();
+        // Erase the inactive (superseded) bank first, then the active bank, so
+        // an interrupted erase can never resurrect an older bank after reset.
+        flash
+            .erase(self.bank_base(inactive_bank), bank_cap)
+            .await
+            .map_err(map_flash_error)?;
+        flash
+            .erase(self.bank_base(active_bank), bank_cap)
             .await
             .map_err(map_flash_error)?;
         self.discard();
@@ -704,20 +895,31 @@ impl SingleManagedEndorsement {
         Ok(self)
     }
 
+    async fn commit_record_to_bank(&self, bank: u8, record: &ManagedRecord) -> McuResult<()> {
+        let mut header = [MANAGED_ERASED_BYTE; MANAGED_HEADER_SIZE];
+        record.encode(&mut header);
+        self.flash()
+            .write(self.bank_base(bank), MANAGED_HEADER_SIZE, &header)
+            .await
+            .map_err(map_flash_error)?;
+        Ok(())
+    }
+
     fn flash(&self) -> CertStoreFlash {
         CertStoreFlash::new(self.driver_num)
     }
 
-    async fn stored_checksum(&self, len: usize) -> McuResult<u32> {
+    async fn stored_checksum(&self, bank: u8, len: usize) -> McuResult<u32> {
         let mut remaining = len;
         let mut offset = 0usize;
         let mut sum = 0u32;
         let mut chunk = [0u8; 256];
         let flash = self.flash();
+        let data_base = self.bank_data_base(bank);
         while remaining > 0 {
             let n = remaining.min(chunk.len());
             flash
-                .read(self.data_base() + offset, n, &mut chunk[..n])
+                .read(data_base + offset, n, &mut chunk[..n])
                 .await
                 .map_err(map_flash_error)?;
             sum = sum.wrapping_add(checksum(&chunk[..n]));
@@ -727,8 +929,16 @@ impl SingleManagedEndorsement {
         Ok(sum)
     }
 
-    fn data_base(&self) -> usize {
-        self.base + MANAGED_HEADER_SIZE
+    pub(crate) const fn bank_capacity(&self) -> usize {
+        self.capacity / MANAGED_BANK_COUNT
+    }
+
+    pub(crate) const fn bank_base(&self, bank: u8) -> usize {
+        self.base + ((bank as usize) % MANAGED_BANK_COUNT) * self.bank_capacity()
+    }
+
+    const fn bank_data_base(&self, bank: u8) -> usize {
+        self.bank_base(bank) + MANAGED_HEADER_SIZE
     }
 
     pub(crate) fn der_capacity(&self) -> usize {
@@ -817,13 +1027,14 @@ struct ManagedRecord {
     cert_len: usize,
     data_checksum: u32,
     root_hash: [u8; 48],
+    sequence: u32,
 }
 
 #[cfg(feature = "set-certificate")]
 impl ManagedRecord {
     fn encode(&self, out: &mut [u8; MANAGED_HEADER_SIZE]) {
         // Layout (matches decode below):
-        //   [0..4]   magic
+        //   [0..4]   magic ("SPCE")
         //   [4..6]   version (LE)
         //   [6..8]   header_size (LE)
         //   [8]      slot
@@ -831,36 +1042,31 @@ impl ManagedRecord {
         //   [10]     key_pair_id
         //   [11]     cert_info
         //   [12..14] key_usage_mask (LE)
-        //   [14..16] reserved (zero)
+        //   [14..16] reserved
         //   [16..20] cert_len (LE u32)
         //   [20..24] data_checksum (LE)
         //   [24..72] root_hash
-        //   [72..80] reserved (zero)
-        let (magic, rest) = out.split_first_chunk_mut::<4>().unwrap();
-        *magic = MANAGED_MAGIC;
-        let (version, rest) = rest.split_first_chunk_mut::<2>().unwrap();
-        *version = self.version.to_le_bytes();
-        let (hdr_size, rest) = rest.split_first_chunk_mut::<2>().unwrap();
-        *hdr_size = self.header_size.to_le_bytes();
-        rest[0] = self.slot;
-        rest[1] = self.algo;
-        rest[2] = self.key_pair_id;
-        rest[3] = self.cert_info;
-        let rest = &mut rest[4..];
-        let (kum, rest) = rest.split_first_chunk_mut::<2>().unwrap();
-        *kum = self.key_usage_mask.to_le_bytes();
-        // skip [14..16] reserved (already MANAGED_ERASED_BYTE-filled)
-        let rest = &mut rest[2..];
-        let (len, rest) = rest.split_first_chunk_mut::<4>().unwrap();
-        *len = (self.cert_len as u32).to_le_bytes();
-        let (chk, rest) = rest.split_first_chunk_mut::<4>().unwrap();
-        *chk = self.data_checksum.to_le_bytes();
-        let (rh, _) = rest.split_first_chunk_mut::<48>().unwrap();
-        *rh = self.root_hash;
+        //   [72..76] sequence (LE u32)
+        out[0..4].copy_from_slice(&MANAGED_MAGIC);
+        out[4..6].copy_from_slice(&self.version.to_le_bytes());
+        out[6..8].copy_from_slice(&self.header_size.to_le_bytes());
+        out[8] = self.slot;
+        out[9] = self.algo;
+        out[10] = self.key_pair_id;
+        out[11] = self.cert_info;
+        out[12..14].copy_from_slice(&self.key_usage_mask.to_le_bytes());
+        out[14..16].copy_from_slice(&[0, 0]);
+        out[16..20].copy_from_slice(&(self.cert_len as u32).to_le_bytes());
+        out[20..24].copy_from_slice(&self.data_checksum.to_le_bytes());
+        out[24..72].copy_from_slice(&self.root_hash);
+        out[72..76].copy_from_slice(&self.sequence.to_le_bytes());
     }
 
     fn decode(input: &[u8; MANAGED_HEADER_SIZE]) -> Option<Self> {
         let (magic, rest) = input.split_first_chunk::<4>()?;
+        if magic != &MANAGED_MAGIC {
+            return None;
+        }
         let (version, rest) = rest.split_first_chunk::<2>()?;
         let (header_size, rest) = rest.split_first_chunk::<2>()?;
         let (slot, rest) = rest.split_first()?;
@@ -871,9 +1077,8 @@ impl ManagedRecord {
         let (_reserved, rest) = rest.split_first_chunk::<2>()?;
         let (cert_len, rest) = rest.split_first_chunk::<4>()?;
         let (data_checksum, rest) = rest.split_first_chunk::<4>()?;
-        let (root_hash, _) = rest.split_first_chunk::<48>()?;
-        // magic is not parsed here; caller checks it before invoking decode.
-        let _ = magic;
+        let (root_hash, rest) = rest.split_first_chunk::<48>()?;
+        let (sequence, _) = rest.split_first_chunk::<4>()?;
         Some(Self {
             version: u16::from_le_bytes(*version),
             header_size: u16::from_le_bytes(*header_size),
@@ -885,6 +1090,7 @@ impl ManagedRecord {
             cert_len: u32::from_le_bytes(*cert_len) as usize,
             data_checksum: u32::from_le_bytes(*data_checksum),
             root_hash: *root_hash,
+            sequence: u32::from_le_bytes(*sequence),
         })
     }
 }
@@ -1108,6 +1314,7 @@ mod tests {
             cert_len: 1234,
             data_checksum: 0xfeed_beef,
             root_hash: [0x5a; 48],
+            sequence: 42,
         };
         let mut buf = [MANAGED_ERASED_BYTE; MANAGED_HEADER_SIZE];
         record.encode(&mut buf);
@@ -1118,7 +1325,10 @@ mod tests {
     #[test]
     fn managed_capacity_excludes_header() {
         let endorsement = chain(SpdmPalAsymAlgo::EccP384, 0);
-        assert_eq!(endorsement.der_capacity(), 4096 - MANAGED_HEADER_SIZE);
+        assert_eq!(
+            endorsement.der_capacity(),
+            TEST_REGION / MANAGED_BANK_COUNT - MANAGED_HEADER_SIZE
+        );
     }
 
     #[test]
@@ -1132,11 +1342,11 @@ mod tests {
     #[test]
     fn managed_der_capacity_is_region_bound_past_64kib() {
         // ML-DSA chains routinely exceed the pre-1.4 64 KiB ceiling;
-        // only the flash region should limit them now.
-        let region = 128 * 1024;
+        // only the per-bank flash capacity should limit them now.
+        let region = 256 * 1024;
         assert_eq!(
             managed_endorsement_der_capacity(region),
-            region - MANAGED_HEADER_SIZE
+            region / MANAGED_BANK_COUNT - MANAGED_HEADER_SIZE
         );
         assert!(managed_endorsement_der_capacity(region) > u16::MAX as usize);
     }
@@ -1241,8 +1451,16 @@ mod tests {
                 cert_len: 123,
                 data_checksum: 0,
                 root_hash: [0; 48],
+                sequence: 1,
             };
             assert_eq!(region.validate_record(&record), Ok(()));
+            assert_eq!(
+                region.validate_record(&ManagedRecord {
+                    version: 1,
+                    ..record
+                }),
+                Err(cert_errors::INVALID_ENDORSEMENT),
+            );
             for id in [0, 2, 3] {
                 assert_eq!(
                     region.validate_record(&ManagedRecord {
@@ -1425,6 +1643,99 @@ mod tests {
             assert_eq!(region.key_pair_id(), Some(1));
         }
     }
+
+    #[test]
+    fn two_bank_ping_pong_preserves_active_bank_during_stream_and_abort() {
+        use caliptra_mcu_libtock_unittest::fake;
+        use std::{boxed::Box, rc::Rc, vec};
+
+        let kernel = fake::Kernel::new();
+        let flash = Rc::new(fake::FakeFlashDriver::new());
+        flash.set_flash_content(vec![MANAGED_ERASED_BYTE; TEST_REGION]);
+        kernel.add_driver(&flash);
+
+        // 1. Initial write lands in Bank 0 with sequence 1.
+        let region = chain(SpdmPalAsymAlgo::EccP384, 0);
+        let region = fake::wait_for_future_ready(Box::pin(region.write_updated(
+            1,
+            CERT_MODEL_ALIAS_CERT,
+            &[0x11; 48],
+            &[0xAA; 16],
+        )))
+        .unwrap();
+        assert_eq!(region.active_bank(), Some(0));
+        assert_eq!(region.inactive_bank(), 1);
+
+        // 2. Begin streaming replacement into Bank 1 while Bank 0 stays active and readable.
+        let mut staging = fake::wait_for_future_ready(Box::pin(region.begin_stream_update(
+            1,
+            CERT_MODEL_ALIAS_CERT,
+            16,
+        )))
+        .unwrap();
+        fake::wait_for_future_ready(Box::pin(staging.write_stream_chunk(0, &[0xBB; 16]))).unwrap();
+
+        let mut active_bytes = [0u8; 16];
+        assert_eq!(
+            fake::wait_for_future_ready(Box::pin(staging.read(0, &mut active_bytes))),
+            Ok(16)
+        );
+        assert_eq!(active_bytes, [0xAA; 16]);
+
+        // Simulated power loss mid-stream: load() recovers Bank 0 because Bank 1 has no CMTD marker.
+        let mut recovered = chain(SpdmPalAsymAlgo::EccP384, 0);
+        fake::wait_for_future_ready(Box::pin(recovered.load())).unwrap();
+        assert_eq!(recovered.active_bank(), Some(0));
+        let mut rec_bytes = [0u8; 16];
+        fake::wait_for_future_ready(Box::pin(recovered.read(0, &mut rec_bytes))).unwrap();
+        assert_eq!(rec_bytes, [0xAA; 16]);
+
+        // Aborting stream leaves Bank 0 intact.
+        staging.abort_stream_update();
+        assert!(staging.is_initialized());
+        assert_eq!(staging.active_bank(), Some(0));
+
+        // 3. Re-stream and commit to Bank 1 (sequence 2).
+        let staging = fake::wait_for_future_ready(Box::pin(staging.begin_stream_update(
+            1,
+            CERT_MODEL_ALIAS_CERT,
+            16,
+        )))
+        .unwrap();
+        fake::wait_for_future_ready(Box::pin(staging.write_stream_chunk(0, &[0xBB; 16]))).unwrap();
+        let region = fake::wait_for_future_ready(Box::pin(staging.finish_stream_update(
+            1,
+            CERT_MODEL_ALIAS_CERT,
+            &[0x22; 48],
+            16,
+        )))
+        .unwrap();
+        assert_eq!(region.active_bank(), Some(1));
+        fake::wait_for_future_ready(Box::pin(region.read(0, &mut active_bytes))).unwrap();
+        assert_eq!(active_bytes, [0xBB; 16]);
+
+        // Reboot recovery picks Bank 1 (sequence 2 > Bank 0 sequence 1).
+        let mut recovered = chain(SpdmPalAsymAlgo::EccP384, 0);
+        fake::wait_for_future_ready(Box::pin(recovered.load())).unwrap();
+        assert_eq!(recovered.active_bank(), Some(1));
+        fake::wait_for_future_ready(Box::pin(recovered.read(0, &mut rec_bytes))).unwrap();
+        assert_eq!(rec_bytes, [0xBB; 16]);
+
+        // 4. Third write ping-pongs back to Bank 0 (sequence 3).
+        let region = fake::wait_for_future_ready(Box::pin(region.write_updated(
+            1,
+            CERT_MODEL_ALIAS_CERT,
+            &[0x33; 48],
+            &[0xCC; 16],
+        )))
+        .unwrap();
+        assert_eq!(region.active_bank(), Some(0));
+        let mut recovered = chain(SpdmPalAsymAlgo::EccP384, 0);
+        fake::wait_for_future_ready(Box::pin(recovered.load())).unwrap();
+        assert_eq!(recovered.active_bank(), Some(0));
+        fake::wait_for_future_ready(Box::pin(recovered.read(0, &mut rec_bytes))).unwrap();
+        assert_eq!(rec_bytes, [0xCC; 16]);
+    }
 }
 
 #[cfg(test)]
@@ -1459,7 +1770,7 @@ mod algo_tests {
     }
 
     #[test]
-    fn cert_slot_metadata_consistency_and_write_masking() {
+    fn cert_slot_metadata_consistency_and_write_lock() {
         let mut slot = CertSlot::empty(Some(1));
         assert_eq!(slot.key_pair_id(CertificateAlgorithm::EccP384), None);
         assert_eq!(slot.cert_info(CertificateAlgorithm::EccP384), None);
@@ -1481,11 +1792,16 @@ mod algo_tests {
             Some(CERT_MODEL_ALIAS_CERT)
         );
 
-        // When a write is in progress for ECC, accessors mask its metadata
+        // When a write is in progress for ECC, the writer lock is active for ECC only,
+        // while active-bank metadata remains readable for both algorithms.
         slot.set_write_in_progress(CertificateAlgorithm::EccP384, true);
-        assert_eq!(slot.key_pair_id(CertificateAlgorithm::EccP384), None);
-        assert_eq!(slot.cert_info(CertificateAlgorithm::EccP384), None);
-        // But ML-DSA remains unmasked and accessible
+        assert!(slot.write_in_progress(CertificateAlgorithm::EccP384));
+        assert!(!slot.write_in_progress(CertificateAlgorithm::MlDsa87));
+        assert_eq!(slot.key_pair_id(CertificateAlgorithm::EccP384), Some(1));
+        assert_eq!(
+            slot.cert_info(CertificateAlgorithm::EccP384),
+            Some(CERT_MODEL_ALIAS_CERT)
+        );
         assert_eq!(slot.key_pair_id(CertificateAlgorithm::MlDsa87), Some(1));
         assert_eq!(
             slot.cert_info(CertificateAlgorithm::MlDsa87),
@@ -1493,11 +1809,7 @@ mod algo_tests {
         );
 
         slot.set_write_in_progress(CertificateAlgorithm::EccP384, false);
-        assert_eq!(slot.key_pair_id(CertificateAlgorithm::EccP384), Some(1));
-        assert_eq!(
-            slot.cert_info(CertificateAlgorithm::EccP384),
-            Some(CERT_MODEL_ALIAS_CERT)
-        );
+        assert!(!slot.write_in_progress(CertificateAlgorithm::EccP384));
     }
 
     #[test]
