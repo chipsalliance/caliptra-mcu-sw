@@ -8,7 +8,7 @@ Abstract:
 
 use crate::i3c_protocol::I3cController;
 use crate::{I3cIncomingCommandClient, I3cTarget};
-use caliptra_emu_bus::{Clock, ReadWriteRegister, Timer};
+use caliptra_emu_bus::{ActionHandle, Clock, ReadWriteRegister, Timer};
 use caliptra_emu_bus::{Device, Event, EventData};
 use caliptra_emu_cpu::Irq;
 use caliptra_emu_types::RvData;
@@ -50,6 +50,9 @@ impl I3cIncomingCommandClient for PollScheduler {
 pub struct I3c {
     /// Timer
     timer: Timer,
+    /// The pending keepalive poll, so poll() can replace it instead of
+    /// adding another one.
+    poll_action: Option<ActionHandle>,
     /// I3C target abstraction
     i3c_target: I3cTarget,
     /// RX Command in u32
@@ -132,7 +135,7 @@ impl I3c {
 
         controller.attach_target(i3c_target.clone()).unwrap();
         let timer = Timer::new(clock);
-        timer.schedule_poll_in(Self::HCI_TICKS);
+        let poll_action = Some(timer.schedule_poll_in(Self::HCI_TICKS));
         let incoming_poll_pending = Arc::new(AtomicBool::new(false));
         let poll_scheduler = PollScheduler {
             pending: incoming_poll_pending.clone(),
@@ -143,6 +146,7 @@ impl I3c {
         Self {
             i3c_target,
             timer,
+            poll_action,
             tti_rx_desc_queue_raw: VecDeque::new(),
             tti_rx_data_raw: VecDeque::new(),
             tti_rx_current: VecDeque::new(),
@@ -1018,7 +1022,13 @@ impl I3cPeripheral for I3c {
         } else {
             Self::HCI_TICKS
         };
-        self.timer.schedule_poll_in(next_poll);
+        // poll() runs whenever any peripheral's poll fires, so keep at most
+        // one keepalive pending. Adding one per call makes the clock's action
+        // set grow without bound.
+        if let Some(old) = self.poll_action.take() {
+            self.timer.cancel(old);
+        }
+        self.poll_action = Some(self.timer.schedule_poll_in(next_poll));
 
         if let Some(events_from_caliptra) = &self.events_from_caliptra {
             // Collect all events first to avoid borrowing issues
@@ -1078,7 +1088,7 @@ impl I3cPeripheral for I3c {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use caliptra_emu_bus::Bus;
+    use caliptra_emu_bus::{Bus, TimerAction};
     use caliptra_emu_cpu::Pic;
     use caliptra_emu_types::{RvAddr, RvSize};
     use caliptra_mcu_emulator_registers_generated::root_bus::AutoRootBus;
@@ -1144,6 +1154,57 @@ mod tests {
             read_back.iter().map(|&(word, _)| word).collect::<Vec<_>>(),
             image
         );
+    }
+
+    /// poll() runs on every bus poll, whoever scheduled it. Each call must
+    /// replace the keepalive poll, not add another one.
+    #[test]
+    fn keeps_one_keepalive_poll() {
+        let clock = Clock::new();
+        let pic = Pic::new();
+        let mut i3c_controller = I3cController::default();
+        let i3c = Box::new(I3c::new(
+            &clock,
+            &mut i3c_controller,
+            pic.register_irq(2),
+            Version::new(2, 0, 0),
+            Arc::new(Mutex::new(())),
+        ));
+        let mut bus = AutoRootBus::new(
+            vec![],
+            None,
+            None,
+            Some(i3c),
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+        );
+
+        // Polls from some other source on each of the first 100 ticks.
+        let timer = clock.timer();
+        for tick in 1..=100 {
+            timer.schedule_poll_at(tick);
+        }
+
+        let mut keepalive_polls = 0;
+        for _ in 0..3 * I3c::HCI_TICKS {
+            let fired = clock.increment_and_process_timer_actions(1, &mut bus);
+            if clock.now() > 100 && fired.contains(&TimerAction::Poll) {
+                keepalive_polls += 1;
+            }
+        }
+        // One keepalive every HCI_TICKS after the last outside poll.
+        assert_eq!(keepalive_polls, 2);
     }
 
     #[test]

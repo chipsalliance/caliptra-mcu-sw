@@ -1,5 +1,5 @@
 // Licensed under the Apache-2.0 license
-use caliptra_emu_bus::{Clock, ReadWriteRegister, Timer};
+use caliptra_emu_bus::{ActionHandle, Clock, ReadWriteRegister, Timer};
 use caliptra_emu_cpu::Irq;
 use caliptra_mcu_emulator_registers_generated::doe_mbox::{DoeMboxGenerated, DoeMboxPeripheral};
 use caliptra_mcu_registers_generated::doe_mbox::bits::{DoeMboxEvent, DoeMboxStatus};
@@ -11,6 +11,9 @@ pub struct DummyDoeMbox {
     event_irq: Irq,
     periph: DoeMboxPeriph,
     generated: DoeMboxGenerated,
+    /// The pending keepalive poll, so poll() can replace it instead of
+    /// adding another one.
+    poll_action: Option<ActionHandle>,
 }
 
 struct PollScheduler {
@@ -40,7 +43,7 @@ impl DummyDoeMbox {
         step_lock: Arc<Mutex<()>>,
     ) -> Self {
         let timer = Timer::new(clock);
-        timer.schedule_poll_in(Self::DOE_MBOX_TICKS);
+        let poll_action = Some(timer.schedule_poll_in(Self::DOE_MBOX_TICKS));
         let poll_scheduler = PollScheduler {
             timer: timer.clone(),
             step_lock,
@@ -52,6 +55,7 @@ impl DummyDoeMbox {
             event_irq,
             periph,
             generated: DoeMboxGenerated::default(),
+            poll_action,
         }
     }
 }
@@ -64,7 +68,13 @@ impl DoeMboxPeripheral for DummyDoeMbox {
     fn poll(&mut self) {
         let irq_status = self.periph.inner.lock().unwrap().check_interrupts();
         self.event_irq.set_level(irq_status);
-        self.timer.schedule_poll_in(Self::DOE_MBOX_TICKS);
+        // poll() runs whenever any peripheral's poll fires, so keep at most
+        // one keepalive pending. Adding one per call makes the clock's action
+        // set grow without bound.
+        if let Some(old) = self.poll_action.take() {
+            self.timer.cancel(old);
+        }
+        self.poll_action = Some(self.timer.schedule_poll_in(Self::DOE_MBOX_TICKS));
     }
 
     fn read_doe_mbox_dlen(&mut self) -> caliptra_emu_types::RvData {
@@ -358,7 +368,7 @@ impl DoeMboxInner {
 mod tests {
     use super::*;
     use crate::McuRootBus;
-    use caliptra_emu_bus::{Bus, Clock};
+    use caliptra_emu_bus::{Bus, Clock, TimerAction};
     use caliptra_emu_cpu::Pic;
     use caliptra_emu_types::RvSize;
     use caliptra_mcu_emulator_registers_generated::root_bus::AutoRootBus;
@@ -408,6 +418,30 @@ mod tests {
             None,
             None,
         )
+    }
+
+    /// poll() runs on every bus poll, whoever scheduled it. Each call must
+    /// replace the keepalive poll, not add another one.
+    #[test]
+    fn test_doe_mbox_keeps_one_keepalive_poll() {
+        let clock = Clock::new();
+        let mut autobus = test_helper_setup_autobus(&clock);
+
+        // Polls from some other source on each of the first 100 ticks.
+        let timer = clock.timer();
+        for tick in 1..=100 {
+            timer.schedule_poll_at(tick);
+        }
+
+        let mut keepalive_polls = 0;
+        for _ in 0..3 * DummyDoeMbox::DOE_MBOX_TICKS {
+            let fired = clock.increment_and_process_timer_actions(1, &mut autobus);
+            if clock.now() > 100 && fired.contains(&TimerAction::Poll) {
+                keepalive_polls += 1;
+            }
+        }
+        // One keepalive every DOE_MBOX_TICKS after the last outside poll.
+        assert_eq!(keepalive_polls, 2);
     }
 
     #[test]
