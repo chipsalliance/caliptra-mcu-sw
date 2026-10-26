@@ -62,13 +62,19 @@ impl ImageProvider for FlashImageProvider<'_> {
             return Err(());
         }
 
-        let image_count = flash_header.image_count;
+        let image_count = flash_header.image_count as usize;
+        let table_offset = flash_header.image_headers_offset as usize;
+        let table_end = image_count
+            .checked_mul(IMAGE_HEADER_SIZE)
+            .and_then(|size| table_offset.checked_add(size))
+            .filter(|end| *end <= self.flash_driver.len())
+            .ok_or_else(|| {
+                caliptra_mcu_romtime::println!("[mcu-rom] Flash image table exceeds partition");
+            })?;
 
-        for i in 0..image_count as usize {
+        for i in 0..image_count {
             // Read the image header
-            let offset = (flash_header.image_headers_offset as usize)
-                .checked_add(i * IMAGE_HEADER_SIZE)
-                .ok_or(())?;
+            let offset = table_offset + i * IMAGE_HEADER_SIZE;
             self.flash_driver.read(offset, &mut buf).map_err(|_| ())?;
             let image_header = ImageHeaderV3::read_from_bytes(&buf).map_err(|_| {
                 caliptra_mcu_romtime::println!("[mcu-rom] Invalid flash image entry");
@@ -79,10 +85,18 @@ impl ImageProvider for FlashImageProvider<'_> {
             }
 
             if image_header.identifier == image_id {
-                // SAFETY: Since this will only run on a riscv32 processor u32 and usize are
-                // identical.
-                self.flash_offset = image_header.offset as usize;
-                self.image_size = image_header.size as usize;
+                let image_offset = image_header.offset as usize;
+                let image_size = image_header.size as usize;
+                image_offset
+                    .checked_add(image_size)
+                    .filter(|end| image_offset >= table_end && *end <= self.flash_driver.len())
+                    .ok_or_else(|| {
+                        caliptra_mcu_romtime::println!(
+                            "[mcu-rom] Flash image payload outside partition"
+                        );
+                    })?;
+                self.flash_offset = image_offset;
+                self.image_size = image_size;
                 self.current_offset = 0;
                 return Ok(self.image_size);
             }
@@ -126,6 +140,7 @@ mod tests {
     use caliptra_mcu_flash_image::{
         calculate_checksum, FlashHeaderV1, FlashHeaderV2, FlashImageVersion,
     };
+    use core::mem::offset_of;
     use zerocopy::IntoBytes;
 
     struct Storage([u8; 256]);
@@ -150,6 +165,79 @@ mod tests {
 
         fn capacity(&self) -> usize {
             self.0.len()
+        }
+    }
+
+    fn storage_with_v3_image(
+        image_count: u16,
+        table_offset: u32,
+        image_offset: u32,
+        image_size: u32,
+    ) -> Storage {
+        let mut storage = Storage([0; 256]);
+        let mut header = FlashHeaderV3::new(image_count);
+        header.image_headers_offset = table_offset;
+        header.header_checksum =
+            calculate_checksum(&header.as_bytes()[..offset_of!(FlashHeaderV3, header_checksum)]);
+        assert!(header.verify());
+        storage.0[..size_of::<FlashHeaderV3>()].copy_from_slice(header.as_bytes());
+        let mut image = ImageHeaderV3 {
+            identifier: MCU_RT_IDENTIFIER,
+            offset: image_offset,
+            size: image_size,
+            filename: [0; 64],
+            image_checksum: 0,
+            image_header_checksum: 0,
+        };
+        image.image_header_checksum = calculate_checksum(
+            &image.as_bytes()[..offset_of!(ImageHeaderV3, image_header_checksum)],
+        );
+        assert!(image.verify());
+        let offset = table_offset as usize;
+        if offset <= storage.0.len() - size_of::<ImageHeaderV3>() {
+            storage.0[offset..offset + size_of::<ImageHeaderV3>()]
+                .copy_from_slice(image.as_bytes());
+        }
+        storage
+    }
+
+    #[test]
+    fn rom_rejects_complete_table_outside_partition() {
+        for (image_count, table_offset, partition_len) in [
+            (3, 12, 256),
+            (2, 12, 176),
+            (1, 200, 256),
+            (1, u32::MAX - 3, 256),
+            (u16::MAX, 12, 256),
+        ] {
+            let storage = storage_with_v3_image(image_count, table_offset, 192, 4);
+            let mut partition = FlashPartition::new(&storage, "test", 0, partition_len).unwrap();
+            let mut provider = FlashImageProvider::new(&mut partition);
+            assert!(provider.image_ready(2).is_err());
+        }
+    }
+
+    #[test]
+    fn rom_rejects_payload_outside_partition_or_overlapping_table() {
+        for (image_offset, image_size) in [(95, 4), (192, 65), (u32::MAX - 3, 8), (192, u32::MAX)] {
+            let storage = storage_with_v3_image(1, 12, image_offset, image_size);
+            let mut partition = FlashPartition::new(&storage, "test", 0, 256).unwrap();
+            let mut provider = FlashImageProvider::new(&mut partition);
+            assert!(provider.image_ready(2).is_err());
+        }
+    }
+
+    #[test]
+    fn rom_accepts_payload_at_table_and_partition_boundaries() {
+        for (table_offset, image_offset, partition_len) in [(12, 96, 100), (168, 252, 256)] {
+            let storage = storage_with_v3_image(1, table_offset, image_offset, 4);
+            let mut partition = FlashPartition::new(&storage, "test", 0, partition_len).unwrap();
+            let mut provider = FlashImageProvider::new(&mut partition);
+            assert_eq!(provider.image_ready(2), Ok(4));
+            let mut bytes = [0xff; 8];
+            provider.next_bytes(&mut bytes).unwrap();
+            assert_eq!(provider.bytes_loaded(), 4);
+            assert_eq!(bytes, [0, 0, 0, 0, 0xff, 0xff, 0xff, 0xff]);
         }
     }
 
