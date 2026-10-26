@@ -128,6 +128,13 @@ sequenceDiagram
 
 ### **Verifying Components**
 
+Before cryptographic verification, the API checks that the flash header, complete
+image table, and every payload fit within the downloaded PLDM component length.
+The component must also fit in the staging area. Bytes left in staging beyond the
+component length are not part of the update and cannot complete a truncated
+image. The same component length is used when marking the image valid for
+persistence.
+
 ```mermaid
 sequenceDiagram
     title Verifying Components
