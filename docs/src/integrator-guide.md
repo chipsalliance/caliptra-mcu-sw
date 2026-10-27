@@ -4,7 +4,8 @@ This guide provides recommendations for platform integrators building on
 Caliptra MCU.
 
 Identifier convention: this guide uses `lower_snake_case` for integrator-defined
-OTP field names from `hw/fuses.hjson`, and `UPPER_SNAKE_CASE` for generated
+OTP field names from the selected `hw/rev-2_1/fuses.hjson` or
+`hw/latest/fuses.hjson`, and `UPPER_SNAKE_CASE` for generated
 Rust constants, command IDs, Caliptra registers, and partition names.
 
 ## DOT Integration Recommendations
@@ -245,11 +246,12 @@ When adding storage for MCU-owned SVN fuses, integrators should:
 1. Size or add a vendor non-secret in-field partition in the Caliptra SS fuse
     controller configuration. The generator documentation explains the mechanics
     for vendor-specific partition sizing; field names and MCU-specific layouts
-    are defined in this repository's `hw/fuses.hjson`.
+    are defined in this repository's revision-specific
+    `hw/rev-2_1/fuses.hjson` or `hw/latest/fuses.hjson`.
 2. Ensure the selected partition's protection policy is compatible with
     repeated one-hot burns. SVN, DOT counters, and revocation bitmasks should not
     be finalized by ECC/digest protection before the last expected field update.
-3. Map each MCU-visible field in `hw/fuses.hjson` to the generated OTP item and
+3. Map each MCU-visible field in the selected `fuses.hjson` to the generated OTP item and
     use a one-hot layout (`OneHot` or `OneHotLinearOr`) so increments require
     only additional `0 -> 1` burns.
 4. Update `RomParameters::svn_fuse_map` for every SoC `component_id` that needs

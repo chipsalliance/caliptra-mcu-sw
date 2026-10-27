@@ -6,10 +6,13 @@ fn main() {
     let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap();
     let project_root = PathBuf::from(manifest_dir).join("../../..");
 
-    let otp_mmap = project_root.join(caliptra_mcu_fusegen::OTP_CTRL_MMAP_DEFAULT_PATH);
+    let revision = caliptra_mcu_hw_revision::HardwareRevision::from_env()
+        .unwrap_or_else(|error| panic!("{error}"));
+    revision.emit_build_configuration();
+    let otp_mmap = revision.otp_mmap(&project_root);
     let otp_values = project_root.join(caliptra_mcu_fusegen::FUSE_VALUES_DEFAULT_PATH);
 
-    let dest_path = project_root.join(caliptra_mcu_fusegen::FUSE_LIB_DEFAULT_PATH);
+    let dest_path = PathBuf::from(std::env::var_os("OUT_DIR").unwrap()).join("test.rs");
 
     if let Some(parent) = dest_path.parent() {
         std::fs::create_dir_all(parent).unwrap();

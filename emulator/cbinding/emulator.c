@@ -387,7 +387,7 @@ void print_usage(const char* program_name) {
     printf("                                       Primary flash image path\n");
     printf("      --secondary-flash-image <SECONDARY_FLASH_IMAGE>\n");
     printf("                                       Secondary flash image path\n");
-    printf("      --hw-revision <HW_REVISION>      HW revision in semver format (default: 2.0.0)\n");
+    printf("      --hw-revision <HW_REVISION>      HW revision in semver format (default: 2.1.0)\n");
     printf("  -h, --help                           Print help\n");
     printf("  -V, --version                        Print version\n");
     printf("\nMemory layout overrides (use hex values like 0x40000000):\n");
@@ -693,7 +693,7 @@ int main(int argc, char *argv[]) {
         .primary_flash_image_path = NULL,
         .secondary_flash_image_path = NULL,
         .hw_revision_major = 2,
-        .hw_revision_minor = 0,
+        .hw_revision_minor = 1,
         .hw_revision_patch = 0,
         .flash_based_boot = 0,
         .allow_sideloaded_rom = 0,
