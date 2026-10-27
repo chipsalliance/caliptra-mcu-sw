@@ -5,6 +5,7 @@ name = "caliptra-mcu-firmware-bundler"
 edition = "2021"
 
 [dependencies]
+caliptra-mcu-hw-revision.workspace = true
 anyhow.workspace = true
 clap.workspace = true
 elf.workspace = true

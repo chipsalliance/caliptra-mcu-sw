@@ -136,9 +136,9 @@ hardware model to enable various test cases to drive signals/data in/out of the
 Caliptra Subsystem toplevel. To add additional registers simply:
 
 1. Ensure you have the `peakrdl` and `peakrdl-markdown` python packages installed: `pip install peakrdl peakrdl-markdown`.
-2. Modify the RDL file in `hw/fpga/src/caliptra_fpga_realtime_regs.rdl` to add the new register descriptions.
+2. Modify the RDL file in `hw/latest/fpga/src/caliptra_fpga_realtime_regs.rdl` to add the new register descriptions.
 3. rerun the autogeneration script:
-    a. `cd hw/fpga/src`
+    a. `cd hw/latest/fpga/src`
     b. `./gen.sh`
 4. [optional]: connect the new registers Caliptra Subsystem toplevel if needed
 5. Rebuild the bitstream. 
@@ -187,7 +187,7 @@ Requirements:
 #### Debugger launch procedure ####
 JTAG connectivity is provided using EMIO GPIO pins bridging the PS and PL. OpenOCD is run on the ARM core and uses SysFs to interface with the GPIO pins. The Caliptra, MCU, and LCC JTAGs are each connected to their own set of EMIO pins and can be used independently.
 1. Invoke OpenOCD server
-    - `./caliptra-mcu-sw/hw/fpga/launch_openocd.sh [core/mcu/lcc]`
+    - `./caliptra-mcu-sw/hw/latest/fpga/launch_openocd.sh [core/mcu/lcc]`
 1. Connect client(s) for debug
     - GDB: `gdb-multiarch [bin] -ex 'target remote localhost:3333'`
     - Telnet: `telnet localhost 4444`

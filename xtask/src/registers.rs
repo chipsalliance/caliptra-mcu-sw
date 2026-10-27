@@ -3,6 +3,7 @@
 use anyhow::{anyhow, bail, Result};
 use caliptra_mcu_builder::PROJECT_ROOT;
 use caliptra_mcu_fusegen::{HEADER_PREFIX, HEADER_SUFFIX};
+use caliptra_mcu_hw_revision::HardwareRevision;
 use caliptra_mcu_registers_generator::{
     camel_case, has_single_32_bit_field, hex_const, snake_case, FieldType, Register, RegisterBlock,
     RegisterBlockInstance, RegisterWidth, ValidatedRegisterBlock,
@@ -38,24 +39,27 @@ pub(crate) fn autogen(
     fuses_hjson_path: Option<&Path>,
     otp_mmap_hjson_path: Option<&Path>,
 ) -> Result<()> {
-    let sub_dir = &PROJECT_ROOT.join("hw").join("caliptra-ss").to_path_buf();
+    let revision = HardwareRevision::from_env().map_err(anyhow::Error::msg)?;
+    let inputs_dir = PROJECT_ROOT.join(revision.inputs_path());
+    let sub_dir = &PROJECT_ROOT.join(revision.hardware_path());
     let registers_dest_dir = &PROJECT_ROOT
         .join("registers")
         .join("generated-firmware")
         .join("src")
+        .join(revision.directory())
         .to_path_buf();
     let bus_dest_dir = &PROJECT_ROOT
         .join("registers")
         .join("generated-emulator")
         .join("src")
+        .join(revision.directory())
         .to_path_buf();
 
-    let rdl_files = [
-        "hw/caliptra-ss/src/integration/rtl/soc_address_map.rdl",
-        "hw/mcu.rdl",
-        "hw/network.rdl",
+    let mut rdl_files = vec![
+        sub_dir.join("src/integration/rtl/soc_address_map.rdl"),
+        inputs_dir.join("mcu.rdl"),
+        inputs_dir.join("network.rdl"),
     ];
-    let mut rdl_files: Vec<PathBuf> = rdl_files.iter().map(|s| PROJECT_ROOT.join(s)).collect();
     rdl_files.extend_from_slice(extra_files);
 
     let mut temp_rdl = tempfile::NamedTempFile::new()?;
@@ -83,58 +87,48 @@ pub(crate) fn autogen(
     // eliminate duplicate type names
     let patches = [
         (
-            PROJECT_ROOT.join("hw/caliptra-ss/src/mci/rtl/mci_top.rdl"),
+            sub_dir.join("src/mci/rtl/mci_top.rdl"),
             // this is legal but our parser doesn't understand it
             r#"mem {name="MCU SRAM";"#,
             r#"external mem {name="MCU SRAM";"#,
         ),
         (
-            PROJECT_ROOT.join("hw/caliptra-ss/src/mci/rtl/mci_top.rdl"),
+            sub_dir.join("src/mci/rtl/mci_top.rdl"),
             r"external mcu_sram @ 0xC0_0000;",
             r"mcu_sram @ 0xC0_0000;",
         ),
         (
-            PROJECT_ROOT.join(
-                "hw/caliptra-ss/third_party/i3c-core/src/rdl/target_transaction_interface.rdl",
-            ),
+            sub_dir.join("third_party/i3c-core/src/rdl/target_transaction_interface.rdl"),
             "QUEUE_THLD_CTRL",
             "TTI_QUEUE_THLD_CTRL",
         ),
         (
-            PROJECT_ROOT.join(
-                "hw/caliptra-ss/third_party/i3c-core/src/rdl/target_transaction_interface.rdl",
-            ),
+            sub_dir.join("third_party/i3c-core/src/rdl/target_transaction_interface.rdl"),
             "QUEUE_SIZE",
             "TTI_QUEUE_SIZE",
         ),
         (
-            PROJECT_ROOT.join(
-                "hw/caliptra-ss/third_party/i3c-core/src/rdl/target_transaction_interface.rdl",
-            ),
+            sub_dir.join("third_party/i3c-core/src/rdl/target_transaction_interface.rdl"),
             "IBI_PORT",
             "TTI_IBI_PORT",
         ),
         (
-            PROJECT_ROOT.join(
-                "hw/caliptra-ss/third_party/i3c-core/src/rdl/target_transaction_interface.rdl",
-            ),
+            sub_dir.join("third_party/i3c-core/src/rdl/target_transaction_interface.rdl"),
             "DATA_BUFFER_THLD_CTRL",
             "TTI_DATA_BUFFER_THLD_CTRL",
         ),
         (
-            PROJECT_ROOT.join(
-                "hw/caliptra-ss/third_party/i3c-core/src/rdl/target_transaction_interface.rdl",
-            ),
+            sub_dir.join("third_party/i3c-core/src/rdl/target_transaction_interface.rdl"),
             "RESET_CONTROL",
             "TTI_RESET_CONTROL",
         ),
         (
-            PROJECT_ROOT.join("hw/caliptra-ss/src/fuse_ctrl/rtl/otp_ctrl.rdl"),
+            sub_dir.join("src/fuse_ctrl/rtl/otp_ctrl.rdl"),
             "INTERRUPT_ENABLE",
             "OTP_INTERRUPT_ENABLE",
         ),
         (
-            PROJECT_ROOT.join("hw/caliptra-ss/src/fuse_ctrl/rtl/otp_ctrl.rdl"),
+            sub_dir.join("src/fuse_ctrl/rtl/otp_ctrl.rdl"),
             "STATUS",
             "OTP_STATUS",
         ),
@@ -215,7 +209,7 @@ pub(crate) fn autogen(
         registers_dest_dir,
         &mut register_types_to_crates,
     )?;
-    let _defines = generate_defines(check, header.clone(), registers_dest_dir)?;
+    let _defines = generate_defines(check, header.clone(), registers_dest_dir, sub_dir)?;
     generate_emulator_types(
         check,
         &scopes,
@@ -1353,11 +1347,10 @@ fn generate_fw_registers(
     let root_type_tokens = caliptra_mcu_registers_generator::generate_code(
         "crate::",
         &root_block,
-        true,
+        false,
         register_types_to_crates,
         false,
     );
-    let recursion = "#![recursion_limit = \"2048\"]\n";
     let root_tokens = root_type_tokens;
     let defines_mod = "pub mod defines;\n";
     let fuses_tokens = "pub mod fuses;\n";
@@ -1365,7 +1358,6 @@ fn generate_fw_registers(
         &dest_dir.join("lib.rs"),
         &rustfmt(
             &(header.clone()
-                + recursion
                 + &root_tokens.to_string()
                 + &root_submod_tokens
                 + defines_mod
@@ -1375,7 +1367,12 @@ fn generate_fw_registers(
     Ok(())
 }
 
-fn generate_defines(check: bool, header: String, dest_dir: &Path) -> Result<HashMap<String, u32>> {
+fn generate_defines(
+    check: bool,
+    header: String,
+    dest_dir: &Path,
+    sub_dir: &Path,
+) -> Result<HashMap<String, u32>> {
     let file_action = if check {
         file_check_contents
     } else {
@@ -1384,8 +1381,7 @@ fn generate_defines(check: bool, header: String, dest_dir: &Path) -> Result<Hash
 
     let mut defines_map = HashMap::new();
 
-    let define_files = ["hw/caliptra-ss/src/riscv_core/veer_el2/rtl/defines/css_mcu0_defines.h"];
-    let define_files: Vec<PathBuf> = define_files.iter().map(|s| PROJECT_ROOT.join(s)).collect();
+    let define_files = [sub_dir.join("src/riscv_core/veer_el2/rtl/defines/css_mcu0_defines.h")];
     for define_file in define_files.iter() {
         if !define_file.exists() {
             bail!("Define file not found: {:?} -- ensure that you have run `git submodule init` and `git submodule update --recursive`", define_file);
