@@ -405,9 +405,16 @@ authorized MCI mailbox commands for the supported in-field flows:
 - `MC_FUSE_REVOKE_VENDOR_PUB_KEY` revokes an individual firmware
     verification key within a vendor PK hash slot. The command supports ECC
     P-384, LMS, and MLDSA-87 key types and burns the corresponding bit in the
-    slot's revocation field.
+    slot's revocation field. Use it when the other keys covered by that hash
+    remain trusted.
 - `MC_FUSE_REVOKE_VENDOR_PK_HASH` revokes an entire vendor PK hash slot by
-    setting the corresponding bit in `VENDOR_PK_HASH_VALID` to `1`.
+    setting the corresponding bit in `VENDOR_PK_HASH_VALID` to `1`. Use it when
+    trust in the entire associated key set must be withdrawn.
+
+See the Runtime fuse API documentation for
+[per-key revocation](./fuses.md#mc_fuse_revoke_vendor_pub_key) and
+[whole-slot revocation](./fuses.md#mc_fuse_revoke_vendor_pk_hash), including
+command payloads and restrictions.
 
 Both commands use the runtime authorization flow. They reject requests that
 target the key or PK hash slot used to boot the currently running firmware. This
@@ -417,6 +424,31 @@ booted with a replacement key or replacement PK hash slot.
 
 These revocation commands are exposed through the OOB SPDM VDM
 `AuthorizedCommand` path over MCTP/I3C as well as through the MCI mailbox path.
+
+#### Boot Failure and Recovery Planning
+
+Before revoking an old key or slot:
+
+1. Deploy a Caliptra FMC + Runtime bundle signed with the replacement vendor
+   key or key set. Cold boot and verify that both Caliptra Core and MCU Runtime
+   start successfully using the replacement key or slot.
+2. Update fallback and recovery images to use still-trusted keys and satisfy
+   the applicable [SVN anti-rollback requirements](./svn.md). Keep a known-good
+   recovery bundle that remains valid after the planned revocation.
+3. Verify that a supported platform recovery agent can supply that bundle and,
+   when needed, select a valid vendor hash slot without relying on MCU Runtime.
+   Do not assume automatic slot or image fallback after an authentication
+   failure.
+
+On subsequent cold boots, Caliptra Core rejects firmware signed with a revoked
+key. MCU ROM skips revoked vendor hash slots; firmware whose keys match only a
+revoked slot cannot authenticate against a surviving slot, and boot fails if no
+usable slot remains. These failures can prevent normal Caliptra and MCU Runtime
+startup, making Runtime-only recovery commands unavailable.
+
+Revocation is permanent: a reset or restoring an older image cannot clear the
+OTP revocation state. Recovery must use a still-trusted key or slot; it cannot
+undo revocation.
 
 #### Command Authorization Mechanism
 
