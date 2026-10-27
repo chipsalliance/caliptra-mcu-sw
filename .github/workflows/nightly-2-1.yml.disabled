@@ -94,4 +94,3 @@ jobs:
             }
 
             core.setFailed("Timed out while waiting for the dispatched nightly run to complete.");
-

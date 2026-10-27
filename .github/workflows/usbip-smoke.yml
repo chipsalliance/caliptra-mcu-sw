@@ -1,0 +1,105 @@
+# Licensed under the Apache-2.0 license
+
+name: Linux USB-IP smoke test
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [mlvisaya/usb-recovery-emulator]
+    paths:
+      - .github/workflows/usbip-smoke.yml
+      - tools/usbip-smoke/**
+      - tests/integration/src/usb/usbip.rs
+
+permissions:
+  contents: read
+
+jobs:
+  loopback:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install USB-IP and libusb tools
+        run: |
+          sudo -n true
+          uname -a
+          sudo apt-get update
+          sudo apt-get install -y linux-tools-common linux-tools-generic libusb-1.0-0-dev usbutils
+          # Some hosted kernels ship optional modules separately.
+          if ! modinfo vhci_hcd; then
+            sudo apt-get install -y "linux-modules-extra-$(uname -r)"
+          fi
+          sudo modprobe vhci_hcd
+          test -d /sys/module/vhci_hcd
+          usbip=$(find -L /usr/lib/linux-tools -type f -name usbip | sort | head -n 1)
+          test -n "$usbip"
+          "$usbip" version
+          echo "USBIP=$usbip" >> "$GITHUB_ENV"
+
+      - name: Build standalone device and host (no firmware or submodules)
+        run: |
+          mkdir -p /tmp/usbip-smoke
+          rustup run stable rustc --edition=2021 tools/usbip-smoke/device.rs -o /tmp/usbip-smoke/device
+          rustup run stable rustc --edition=2021 --test tools/usbip-smoke/device.rs -o /tmp/usbip-smoke/unit-tests
+          /tmp/usbip-smoke/unit-tests
+          cc -std=c11 -Wall -Wextra -Werror tools/usbip-smoke/host.c \
+            $(pkg-config --cflags --libs libusb-1.0) -o /tmp/usbip-smoke/host
+
+      - name: Attach over localhost and verify a real libusb payload round trip
+        shell: bash
+        run: |
+          set -euo pipefail
+          server_pid=
+          attached=false
+          cleanup() {
+            local result=$?
+            trap - EXIT
+            if "$attached"; then
+              if ! sudo "$USBIP" detach -p 0; then result=1; fi
+            fi
+            if [[ -n "$server_pid" ]]; then
+              if [[ "$result" == 0 ]]; then
+                if ! timeout 5s tail --pid="$server_pid" -f /dev/null; then
+                  result=1
+                  kill "$server_pid"
+                fi
+                if ! wait "$server_pid"; then result=1; fi
+              else
+                kill "$server_pid" 2>/dev/null || true
+                wait "$server_pid" || true
+              fi
+            fi
+            exit "$result"
+          }
+          trap cleanup EXIT
+          /tmp/usbip-smoke/device > /tmp/usbip-smoke/device.log 2>&1 &
+          server_pid=$!
+          for attempt in {1..100}; do
+            kill -0 "$server_pid"
+            if grep -q 'USB/IP device listening' /tmp/usbip-smoke/device.log; then break; fi
+            sleep 0.1
+          done
+          grep -q 'USB/IP device listening' /tmp/usbip-smoke/device.log
+          # This job uses a fresh hosted runner; its first VHCI attachment is port 0.
+          timeout 15s sudo "$USBIP" attach -r 127.0.0.1 -b 1-2
+          attached=true
+          sudo "$USBIP" port | tee /tmp/usbip-smoke/ports.log
+          timeout 30s sudo /tmp/usbip-smoke/host 2>&1 | tee /tmp/usbip-smoke/host.log
+          lsusb -d ca5e:0001
+          cat /tmp/usbip-smoke/device.log
+
+      - name: Collect diagnostics
+        if: always()
+        run: |
+          mkdir -p /tmp/usbip-smoke
+          sudo dmesg > /tmp/usbip-smoke/dmesg.log
+          lsmod > /tmp/usbip-smoke/modules.log
+          if [[ -n "${USBIP:-}" ]]; then sudo "$USBIP" port; fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: usbip-smoke-logs
+          path: /tmp/usbip-smoke/*.log

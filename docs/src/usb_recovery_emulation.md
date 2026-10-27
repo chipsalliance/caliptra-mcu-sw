@@ -1160,6 +1160,25 @@ Retain existing tests and add:
 
 ### 12.4 USB/IP tests
 
+The standalone [Linux USB-IP smoke workflow](../../.github/workflows/usbip-smoke.yml)
+checks runner support without building firmware or initializing submodules.
+It requires passwordless sudo, a working `usbip` utility and `vhci_hcd`, starts
+the [test device](../../tools/usbip-smoke/device.rs) on localhost port 3240, and
+imports it into Linux. The [libusb host](../../tools/usbip-smoke/host.c) verifies
+configuration 1 and an exact vendor control OUT/IN payload round trip for
+VID:PID `ca5e:0001`. Detachment and server shutdown are also checked.
+Missing prerequisites fail the job; the existing integration-test helper
+`linux_usbip_prerequisites_available()` instead skips tests when they are absent.
+Passing this smoke test proves Linux USB/IP connectivity, not LPCIP, OCP or ROM
+correctness.
+
+Run the workflow manually in Actions, or push changes to its paths on
+`mlvisaya/usb-recovery-emulator`. It uses a fresh GitHub-hosted Ubuntu runner and
+uploads device, host and kernel logs on failure. Other workflows are temporarily
+renamed to `.yml.disabled` on this branch to isolate the experiment; restore
+their `.yml` extensions before merging. This does not disable workflows on
+other branches or change repository settings.
+
 - run the complete production-style RA command suite over USB/IP;
 - compare USB/IP USB/OCP traces with existing integration-test golden vectors;
 - test fragmented TCP reads, oversized USB/IP requests, disconnect, URB unlink, and stale sequence numbers;
