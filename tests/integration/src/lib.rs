@@ -25,6 +25,8 @@ mod test_firmware_update;
 mod test_fpga_flash_ctrl;
 mod test_i3c_constant_writes;
 mod test_i3c_dcr;
+#[cfg(not(feature = "fpga_realtime"))]
+mod test_i3c_faults;
 mod test_i3c_simple;
 mod test_log_flash_usermode;
 mod test_mctp_capsule_loopback;
