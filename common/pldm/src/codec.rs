@@ -6,6 +6,7 @@ use zerocopy::{FromBytes, Immutable, IntoBytes};
 pub enum PldmCodecError {
     BufferTooShort,
     Unsupported,
+    InvalidData,
 }
 
 /// A trait for encoding and decoding PLDM (Platform Level Data Model) messages.

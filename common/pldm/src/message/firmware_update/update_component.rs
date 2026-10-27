@@ -108,10 +108,17 @@ impl PldmCodec for UpdateComponentRequest {
         .unwrap();
         offset += bytes;
 
+        let str_len = fixed.comp_ver_str_len as usize;
+        if str_len > PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN {
+            return Err(PldmCodecError::InvalidData);
+        }
         let comp_ver_str = {
             let mut arr = [0u8; PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN];
-            let str_len = fixed.comp_ver_str_len as usize;
-            arr[..str_len].copy_from_slice(&buffer[offset..offset + str_len]);
+            arr[..str_len].copy_from_slice(
+                buffer
+                    .get(offset..offset + str_len)
+                    .ok_or(PldmCodecError::BufferTooShort)?,
+            );
             arr
         };
         Ok(UpdateComponentRequest {
