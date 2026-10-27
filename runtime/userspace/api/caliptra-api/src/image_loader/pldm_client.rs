@@ -3,7 +3,7 @@
 extern crate alloc;
 use super::pldm_context::State;
 use super::pldm_fdops::StreamingFdOps;
-use caliptra_mcu_flash_image::{FlashHeader, ImageHeader};
+use caliptra_mcu_flash_image::{FlashHeader, ImageHeader, MAX_FLASH_HEADER_SIZE};
 
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 
@@ -18,8 +18,6 @@ use caliptra_mcu_pldm_common::message::firmware_update::verify_complete::VerifyR
 use caliptra_mcu_pldm_common::protocol::firmware_update::Descriptor;
 use caliptra_mcu_pldm_lib::daemon::PldmService;
 use caliptra_mcu_pldm_lib::firmware_device::fd_ops::FdOps;
-
-use zerocopy::FromBytes;
 
 use super::pldm_context::{DOWNLOAD_CTX, PLDM_STATE};
 
@@ -45,7 +43,7 @@ async fn pldm_download_header() -> Result<(), ErrorCode> {
     });
     DOWNLOAD_CTX.lock(|ctx| {
         let mut ctx = ctx.borrow_mut();
-        ctx.total_length = core::mem::size_of::<FlashHeader>();
+        ctx.total_length = MAX_FLASH_HEADER_SIZE;
         ctx.initial_offset = 0;
         ctx.current_offset = 0;
         ctx.total_downloaded = 0;
@@ -58,11 +56,10 @@ async fn pldm_download_header() -> Result<(), ErrorCode> {
         return Err(ErrorCode::Fail);
     }
 
-    let num_images = DOWNLOAD_CTX.lock(|ctx| {
-        let ctx = ctx.borrow();
-        let (header, _rest) = FlashHeader::ref_from_prefix(&ctx.header).unwrap();
-        header.image_count as usize
-    });
+    let header = DOWNLOAD_CTX
+        .lock(|ctx| FlashHeader::parse(&ctx.borrow().header))
+        .map_err(|_| ErrorCode::Invalid)?;
+    let num_images = header.image_count as usize;
 
     if num_images > MAX_IMAGE_COUNT as usize {
         return Err(ErrorCode::Fail);
@@ -71,11 +68,11 @@ async fn pldm_download_header() -> Result<(), ErrorCode> {
 }
 
 pub async fn pldm_download_toc(component_id: u32) -> Result<(u32, u32), ErrorCode> {
-    let num_images = DOWNLOAD_CTX.lock(|ctx| {
-        let ctx = ctx.borrow();
-        let (header, _rest) = FlashHeader::ref_from_prefix(&ctx.header).unwrap();
-        header.image_count as usize
-    });
+    let header = DOWNLOAD_CTX
+        .lock(|ctx| FlashHeader::parse(&ctx.borrow().header))
+        .map_err(|_| ErrorCode::Invalid)?;
+    let version = header.format().map_err(|_| ErrorCode::Invalid)?;
+    let num_images = header.image_count as usize;
 
     // Set State to DownloadingToc
     PLDM_STATE.lock(|state| {
@@ -85,11 +82,11 @@ pub async fn pldm_download_toc(component_id: u32) -> Result<(u32, u32), ErrorCod
 
     let mut image_offset_and_size = None;
     for index in 0..num_images {
+        let offset = header.image_header_offset(index).ok_or(ErrorCode::Size)?;
         DOWNLOAD_CTX.lock(|ctx| {
             let mut ctx = ctx.borrow_mut();
-            ctx.total_length = core::mem::size_of::<ImageHeader>(); // image info length
-            ctx.initial_offset =
-                core::mem::size_of::<FlashHeader>() + index * core::mem::size_of::<ImageHeader>();
+            ctx.total_length = version.image_header_size();
+            ctx.initial_offset = offset;
             ctx.current_offset = ctx.initial_offset;
             ctx.total_downloaded = 0;
         });
@@ -98,29 +95,24 @@ pub async fn pldm_download_toc(component_id: u32) -> Result<(u32, u32), ErrorCod
         loop {
             PLDM_TASK_YIELD.signal(());
             IMAGE_LOADING_TASK_YIELD.wait().await;
-            let is_dowload_complete = PLDM_STATE.lock(|state| {
-                let mut state = state.borrow_mut();
-                if *state == State::TocDownloadComplete {
-                    DOWNLOAD_CTX.lock(|ctx| {
-                        let ctx = ctx.borrow();
-                        let (info, _rest) = ImageHeader::ref_from_prefix(&ctx.image_info).unwrap();
-                        if info.identifier == component_id {
-                            image_offset_and_size = Some((info.offset, info.size));
-                            *state = State::ImageDownloadReady;
-                        } else {
-                            *state = State::DownloadingToc;
-                        }
-                    });
-
-                    true
-                } else {
-                    false
-                }
-            });
+            let is_dowload_complete =
+                PLDM_STATE.lock(|state| *state.borrow() == State::TocDownloadComplete);
             if is_dowload_complete {
                 break;
             }
         }
+
+        let info = DOWNLOAD_CTX
+            .lock(|ctx| ImageHeader::parse(&ctx.borrow().image_info, version))
+            .map_err(|_| ErrorCode::Invalid)?;
+        PLDM_STATE.lock(|state| {
+            *state.borrow_mut() = if info.identifier == component_id {
+                image_offset_and_size = Some((info.offset, info.size));
+                State::ImageDownloadReady
+            } else {
+                State::DownloadingToc
+            };
+        });
 
         if image_offset_and_size.is_some() {
             break;

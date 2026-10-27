@@ -917,7 +917,7 @@ mod test {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn runtime_command(
+    pub(crate) fn runtime_command(
         feature: &str,
         rom_path: PathBuf,
         runtime_path: PathBuf,
