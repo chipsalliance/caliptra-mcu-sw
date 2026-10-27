@@ -1043,6 +1043,7 @@ dependencies = [
  "caliptra-auth-man-gen",
  "caliptra-auth-man-types",
  "caliptra-builder",
+ "caliptra-hw-model-types",
  "caliptra-image-crypto",
  "caliptra-image-fake-keys",
  "caliptra-image-gen",
@@ -1052,6 +1053,7 @@ dependencies = [
  "caliptra-mcu-config-fpga",
  "caliptra-mcu-firmware-bundler",
  "caliptra-mcu-flash-image",
+ "caliptra-mcu-hw-revision",
  "caliptra-mcu-pldm-fw-pkg",
  "caliptra-mcu-tbf-header",
  "cargo_metadata",
@@ -1327,6 +1329,7 @@ dependencies = [
  "caliptra-mcu-emulator-mcu-mbox",
  "caliptra-mcu-emulator-periph",
  "caliptra-mcu-emulator-registers-generated",
+ "caliptra-mcu-hw-revision",
  "caliptra-mcu-mbox-common",
  "caliptra-mcu-otp-lifecycle",
  "caliptra-mcu-pldm-common",
@@ -1469,6 +1472,7 @@ version = "0.1.0"
 dependencies = [
  "caliptra-emu-bus",
  "caliptra-emu-types",
+ "caliptra-mcu-hw-revision",
  "caliptra-mcu-registers-generated",
  "tock-registers",
 ]
@@ -1535,6 +1539,7 @@ name = "caliptra-mcu-firmware-bundler"
 version = "0.0.0"
 dependencies = [
  "anyhow",
+ "caliptra-mcu-hw-revision",
  "caliptra-mcu-image-header",
  "caliptra-mcu-tbf-header",
  "clap 4.5.51",
@@ -1683,6 +1688,10 @@ dependencies = [
  "uio",
  "zerocopy",
 ]
+
+[[package]]
+name = "caliptra-mcu-hw-revision"
+version = "0.1.0"
 
 [[package]]
 name = "caliptra-mcu-i3c-driver"
@@ -2175,6 +2184,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "caliptra-mcu-fusegen",
+ "caliptra-mcu-hw-revision",
  "caliptra-mcu-registers-generated",
 ]
 
@@ -2209,6 +2219,7 @@ dependencies = [
 name = "caliptra-mcu-registers-generated"
 version = "0.1.0"
 dependencies = [
+ "caliptra-mcu-hw-revision",
  "tock-registers",
  "zeroize",
 ]
@@ -2805,6 +2816,7 @@ dependencies = [
  "caliptra-mcu-fusegen",
  "caliptra-mcu-fuses-generator",
  "caliptra-mcu-hw-model",
+ "caliptra-mcu-hw-revision",
  "caliptra-mcu-pldm-fw-pkg",
  "caliptra-mcu-registers-generator",
  "caliptra-mcu-registers-systemrdl",
