@@ -1148,6 +1148,7 @@ mod test {
         outcome: Option<ApplyOutcome>,
         progress: u8,
         apply_calls: core::cell::Cell<usize>,
+        apply_reported: core::cell::Cell<Option<McuResult<()>>>,
     }
 
     impl Default for MockFdOps {
@@ -1156,6 +1157,7 @@ mod test {
                 outcome: None,
                 progress: 100,
                 apply_calls: core::cell::Cell::new(0),
+                apply_reported: core::cell::Cell::new(None),
             }
         }
     }
@@ -1244,6 +1246,9 @@ mod test {
                 ..ApplyOutcome::default()
             }))
         }
+        fn apply_complete_reported(&self, result: McuResult<()>) {
+            self.apply_reported.set(Some(result));
+        }
         fn activate(
             &self,
             _self_contained_activation: u8,
@@ -1269,6 +1274,165 @@ mod test {
             SelfContainedActivationRequest::ActivateSelfContainedComponents,
         );
         req.encode(payload).unwrap()
+    }
+
+    #[derive(Default)]
+    struct FakeUpdateAgent {
+        share: caliptra_mcu_libtock_unittest::DriverShareRef,
+        request_buffer: core::cell::RefCell<caliptra_mcu_libtock_unittest::RoAllowBuffer>,
+        response_buffer: core::cell::RefCell<caliptra_mcu_libtock_unittest::RwAllowBuffer>,
+        received: core::cell::RefCell<std::vec::Vec<u8>>,
+        fail_send: bool,
+        fail_receive: bool,
+    }
+
+    impl caliptra_mcu_libtock_unittest::fake::SyscallDriver for FakeUpdateAgent {
+        fn info(&self) -> caliptra_mcu_libtock_unittest::DriverInfo {
+            caliptra_mcu_libtock_unittest::DriverInfo::new(
+                caliptra_mcu_libsyscall_caliptra::mctp::driver_num::MCTP_PLDM,
+            )
+            .upcall_count(3)
+        }
+
+        fn register(&self, share: caliptra_mcu_libtock_unittest::DriverShareRef) {
+            self.share.replace(share);
+        }
+
+        fn command(
+            &self,
+            command: u32,
+            eid: u32,
+            _tag: u32,
+        ) -> caliptra_mcu_libtock_platform::CommandReturn {
+            use caliptra_mcu_libtock_platform::ErrorCode;
+            use caliptra_mcu_libtock_unittest::command_return;
+            match command {
+                5 => command_return::success_u32(256),
+                3 if self.fail_send => command_return::failure(ErrorCode::Fail),
+                3 => {
+                    *self.received.borrow_mut() = self.request_buffer.borrow().as_ref().to_vec();
+                    self.share
+                        .schedule_upcall(2, (0, 0, (eid << 16) | 1))
+                        .unwrap();
+                    command_return::success()
+                }
+                2 if self.fail_receive => command_return::failure(ErrorCode::Fail),
+                2 => command_return::success(),
+                _ => panic!("unexpected MCTP command {command}"),
+            }
+        }
+
+        fn allow_readonly(
+            &self,
+            number: u32,
+            buffer: caliptra_mcu_libtock_unittest::RoAllowBuffer,
+        ) -> Result<
+            caliptra_mcu_libtock_unittest::RoAllowBuffer,
+            (
+                caliptra_mcu_libtock_unittest::RoAllowBuffer,
+                caliptra_mcu_libtock_platform::ErrorCode,
+            ),
+        > {
+            assert_eq!(number, 0);
+            Ok(self.request_buffer.replace(buffer))
+        }
+
+        fn allow_readwrite(
+            &self,
+            number: u32,
+            buffer: caliptra_mcu_libtock_unittest::RwAllowBuffer,
+        ) -> Result<
+            caliptra_mcu_libtock_unittest::RwAllowBuffer,
+            (
+                caliptra_mcu_libtock_unittest::RwAllowBuffer,
+                caliptra_mcu_libtock_platform::ErrorCode,
+            ),
+        > {
+            assert_eq!(number, 1);
+            Ok(self.response_buffer.replace(buffer))
+        }
+    }
+
+    #[test]
+    fn test_apply_failure_reporting_completes_only_after_update_agent_response() {
+        use crate::cmd_interface::CmdInterface;
+        use crate::transport::MctpTransport;
+        use caliptra_mcu_libtock_platform::Syscalls;
+        use caliptra_mcu_libtock_unittest::fake;
+        use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::ApplyCompleteResponse;
+        use core::future::Future;
+        use core::task::{Context, Poll, Waker};
+        use std::rc::Rc;
+
+        for (fail_send, fail_receive) in [(false, false), (true, false), (false, true)] {
+            let kernel = fake::Kernel::new();
+            let agent = Rc::new(FakeUpdateAgent {
+                fail_send,
+                fail_receive,
+                ..FakeUpdateAgent::default()
+            });
+            kernel.add_driver(&agent);
+            let ops = MockFdOps {
+                outcome: Some(ApplyOutcome {
+                    result: ApplyResult::ApplyGenericError,
+                    ..ApplyOutcome::default()
+                }),
+                ..MockFdOps::default()
+            };
+            let ctx = FirmwareDeviceContext::new(&ops);
+            ctx.internal.set_fd_state(FirmwareDeviceState::Apply);
+            ctx.internal
+                .set_initiator_mode(InitiatorModeState::Apply(ApplyState::default()));
+            ctx.internal
+                .set_fd_req(FdReqState::Ready, false, None, None, None, None);
+            let interface = CmdInterface::new(&[], ctx);
+            let mut transport =
+                MctpTransport::new(caliptra_mcu_libsyscall_caliptra::mctp::driver_num::MCTP_PLDM);
+            let mut buffer = [0u8; 256];
+            let mut transaction =
+                core::pin::pin!(interface.handle_initiator_msg(&mut transport, &mut buffer));
+            let mut cx = Context::from_waker(Waker::noop());
+            let first_poll = transaction.as_mut().poll(&mut cx);
+            if fail_send {
+                assert_eq!(first_poll, Poll::Ready(Err(errors::TRANSPORT_ERROR)));
+                assert_eq!(ops.apply_reported.get(), Some(Err(errors::TRANSPORT_ERROR)));
+                continue;
+            }
+            assert!(first_poll.is_pending());
+            assert_eq!(ops.apply_reported.get(), None);
+            let request = ApplyCompleteRequest::decode(&agent.received.borrow()[1..]).unwrap();
+            assert_eq!(request.apply_result, ApplyResult::ApplyGenericError as u8);
+            assert_eq!({ request.comp_activation_methods_modification }, 0);
+
+            fake::Syscalls::yield_no_wait();
+            // The fake kernel rejects overlapping RO/RW allows; transmission
+            // has finished, so release the request buffer before receiving.
+            fake::Syscalls::unallow_ro(
+                caliptra_mcu_libsyscall_caliptra::mctp::driver_num::MCTP_PLDM,
+                0,
+            );
+            let receiving = transaction.as_mut().poll(&mut cx);
+            if fail_receive {
+                assert_eq!(receiving, Poll::Ready(Err(errors::TRANSPORT_ERROR)));
+                assert_eq!(ops.apply_reported.get(), Some(Err(errors::TRANSPORT_ERROR)));
+                continue;
+            }
+            assert!(receiving.is_pending());
+            assert_eq!(ops.apply_reported.get(), None);
+            let mut response = agent.response_buffer.borrow_mut();
+            response[0] = 1;
+            let len = ApplyCompleteResponse::new(request.hdr.instance_id(), 0)
+                .encode(&mut response[1..])
+                .unwrap();
+            drop(response);
+            agent
+                .share
+                .schedule_upcall(1, ((len + 1) as u32, 0, 0))
+                .unwrap();
+            fake::Syscalls::yield_no_wait();
+            assert_eq!(transaction.as_mut().poll(&mut cx), Poll::Ready(Ok(())));
+            assert_eq!(ops.apply_reported.get(), Some(Ok(())));
+        }
     }
 
     #[test]

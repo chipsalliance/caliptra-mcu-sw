@@ -247,6 +247,11 @@ impl FdOps for UpdateFdOps {
         Ok(())
     }
 
+    fn apply_complete_reported(&self, result: McuResult<()>) {
+        super::pldm_client::APPLY_COMPLETE_REPORTED
+            .signal(result.map_err(|_| caliptra_mcu_libtock_platform::ErrorCode::Fail));
+    }
+
     fn activate(&self, _self_contained_activation: u8, estimated_time: &mut u16) -> McuResult<u8> {
         *estimated_time = ESTIMATED_ACTIVATION_TIME_SECS;
         PLDM_STATE.lock(|state| {

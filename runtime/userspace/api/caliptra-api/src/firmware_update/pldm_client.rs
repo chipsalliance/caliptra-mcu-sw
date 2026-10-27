@@ -5,20 +5,26 @@ use super::pldm_context::State;
 use super::pldm_context::{DOWNLOAD_CTX, PLDM_STATE};
 use super::pldm_fdops::UpdateFdOps;
 use super::StagingMemory;
+use core::fmt::Write;
 
+use caliptra_mcu_libtock_alarm::Milliseconds;
 use caliptra_mcu_libtock_platform::ErrorCode;
 use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::ApplyOutcome;
 use caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
 use caliptra_mcu_pldm_common::message::firmware_update::verify_complete::VerifyResult;
 use caliptra_mcu_pldm_common::protocol::firmware_update::Descriptor;
+use caliptra_mcu_pldm_lib::config::DEFAULT_FD_T1_TIMEOUT;
 use caliptra_mcu_pldm_lib::daemon::PldmService;
 use caliptra_mcu_pldm_lib::firmware_device::fd_ops::FdOps;
+use caliptra_mcu_pldm_lib::timer::AsyncAlarm;
 use embassy_executor::Spawner;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
 
 pub static FW_UPDATE_TASK_YIELD: Signal<CriticalSectionRawMutex, ()> = Signal::new();
 pub static PLDM_DAEMON_TASK_YIELD: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+pub(super) static APPLY_COMPLETE_REPORTED: Signal<CriticalSectionRawMutex, Result<(), ErrorCode>> =
+    Signal::new();
 
 #[embassy_executor::task]
 async fn pldm_service_task(pldm_ops: &'static dyn FdOps, spawner: Spawner) {
@@ -98,10 +104,47 @@ pub fn pldm_set_verification_result(verify_result: VerifyResult) {
 }
 
 pub fn pldm_set_apply_outcome(outcome: ApplyOutcome) {
+    APPLY_COMPLETE_REPORTED.reset();
     DOWNLOAD_CTX.lock(|ctx| {
         let mut ctx = ctx.borrow_mut();
         ctx.apply_outcome = outcome;
     });
     // Yield to the PLDM daemon task to complete application
     PLDM_DAEMON_TASK_YIELD.signal(());
+}
+
+pub async fn pldm_report_apply_outcome(outcome: ApplyOutcome) -> Result<(), ErrorCode> {
+    pldm_set_apply_outcome(outcome);
+    if outcome.result.is_success() {
+        return Ok(());
+    }
+
+    // Alarm futures cannot be cancelled safely. Check the completion signal
+    // between short, fully awaited sleeps instead of racing and dropping one.
+    const POLL_INTERVAL_MS: u32 = 10;
+    let result = async {
+        for _ in 0..DEFAULT_FD_T1_TIMEOUT.div_ceil(u64::from(POLL_INTERVAL_MS)) {
+            if let Some(result) = APPLY_COMPLETE_REPORTED.try_take() {
+                return result;
+            }
+            AsyncAlarm::<caliptra_mcu_libsyscall_caliptra::DefaultSyscalls>::sleep_for(
+                Milliseconds(POLL_INTERVAL_MS),
+            )
+            .await?;
+        }
+        APPLY_COMPLETE_REPORTED
+            .try_take()
+            .unwrap_or(Err(ErrorCode::NoAck))
+    }
+    .await;
+    if let Err(error) = result {
+        caliptra_mcu_libsyscall_caliptra::console_writeln!(
+            caliptra_mcu_libtock_console::Console::<
+                caliptra_mcu_libsyscall_caliptra::DefaultSyscalls,
+            >::writer(),
+            "[FW Upd] ApplyComplete reporting failed: {:?}",
+            error
+        );
+    }
+    Err(ErrorCode::Fail)
 }

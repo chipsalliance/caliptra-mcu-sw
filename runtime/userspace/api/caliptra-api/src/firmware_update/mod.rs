@@ -160,10 +160,7 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
         let img_len = pldm_total_component_size();
         let outcome = apply_image(self.staging_memory, self.hooks, img_len).await?;
 
-        pldm_client::pldm_set_apply_outcome(outcome);
-        if !outcome.result.is_success() {
-            return Err(ErrorCode::Fail);
-        }
+        pldm_client::pldm_report_apply_outcome(outcome).await?;
         pldm_client::pldm_wait(State::Activate).await?;
 
         if self.skip_activation {
@@ -1041,7 +1038,8 @@ pub trait FirmwareUpdateHooks: Send + Sync {
     /// methods when activation requirements change (for example, System Reboot
     /// when a hitless update is unsafe). The default is ApplySuccess with no
     /// modification. A failure result is reported to the update agent and aborts
-    /// the update before activation.
+    /// the update before activation. The updater waits for the ApplyComplete
+    /// transaction before returning a failure, with a bounded reporting timeout.
     async fn post_apply(&self) -> ApplyOutcome {
         ApplyOutcome::default()
     }
@@ -1264,6 +1262,8 @@ impl StagedAuthManifest {
 
 #[cfg(test)]
 mod tests {
+    extern crate std;
+
     use super::*;
     use caliptra_mcu_flash_image::{
         OWNER_MEASUREMENT_POLICY_IDENTIFIER, OWNER_SOC_IMAGES_BASE_IDENTIFIER,
@@ -1273,6 +1273,8 @@ mod tests {
     use core::future::Future;
     use core::sync::atomic::{AtomicBool, Ordering};
     use core::task::{Context, Poll, Waker};
+
+    static PLDM_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     fn run_ready<F: Future>(future: F) -> F::Output {
         let mut future = core::pin::pin!(future);
@@ -1358,6 +1360,7 @@ mod tests {
         use caliptra_mcu_pldm_common::message::firmware_update::get_status::ProgressPercent;
         use caliptra_mcu_pldm_lib::firmware_device::fd_ops::FdOps;
 
+        let _guard = PLDM_TEST_LOCK.lock().unwrap();
         for fail in [false, true] {
             let staging = TestStagingMemory {
                 valid: AtomicBool::new(false),
@@ -1386,6 +1389,73 @@ mod tests {
                 assert_eq!(progress.value(), 100);
             }
         }
+    }
+
+    #[test]
+    fn apply_failure_waits_for_reporting_or_timeout_before_returning() {
+        use caliptra_mcu_libtock_platform::Syscalls;
+        use caliptra_mcu_libtock_unittest::fake;
+        use caliptra_mcu_pldm_lib::firmware_device::fd_ops::FdOps;
+        use core::cell::Cell;
+
+        let _guard = PLDM_TEST_LOCK.lock().unwrap();
+        let kernel = fake::Kernel::new();
+        let alarm = fake::Alarm::new(1000);
+        kernel.add_driver(&alarm);
+        let console = fake::Console::new();
+        kernel.add_driver(&console);
+        let ops = pldm_fdops::UpdateFdOps::new();
+        let failure = ApplyOutcome {
+            result: ApplyResult::ApplyGenericError,
+            ..ApplyOutcome::default()
+        };
+        let mut cx = Context::from_waker(Waker::noop());
+
+        for reporting_result in [Ok(()), Err(caliptra_mcu_pldm_lib::errors::TRANSPORT_ERROR)] {
+            // A stale notification must not let a new failed update exit early.
+            ops.apply_complete_reported(Ok(()));
+            let activation_called = Cell::new(false);
+            let mut updater = core::pin::pin!(async {
+                pldm_client::pldm_report_apply_outcome(failure).await?;
+                activation_called.set(true);
+                Ok::<(), ErrorCode>(())
+            });
+            assert!(updater.as_mut().poll(&mut cx).is_pending());
+            assert!(updater.as_mut().poll(&mut cx).is_pending());
+            ops.apply_complete_reported(reporting_result);
+            fake::Syscalls::yield_no_wait();
+            assert_eq!(
+                updater.as_mut().poll(&mut cx),
+                Poll::Ready(Err(ErrorCode::Fail))
+            );
+            assert!(!activation_called.get());
+        }
+
+        for result in [
+            ApplyResult::ApplySuccess,
+            ApplyResult::ApplySuccessWithActivationMethod,
+        ] {
+            assert_eq!(
+                run_ready(pldm_client::pldm_report_apply_outcome(ApplyOutcome {
+                    result,
+                    ..ApplyOutcome::default()
+                })),
+                Ok(())
+            );
+        }
+
+        // An unresponsive update agent must not keep the application alive forever.
+        let mut updater = core::pin::pin!(pldm_client::pldm_report_apply_outcome(failure));
+        assert!(updater.as_mut().poll(&mut cx).is_pending());
+        for _ in 0..caliptra_mcu_pldm_lib::config::DEFAULT_FD_T1_TIMEOUT / 10 - 1 {
+            fake::Syscalls::yield_no_wait();
+            assert!(updater.as_mut().poll(&mut cx).is_pending());
+        }
+        fake::Syscalls::yield_no_wait();
+        assert_eq!(
+            updater.as_mut().poll(&mut cx),
+            Poll::Ready(Err(ErrorCode::Fail))
+        );
     }
 
     const A: u32 = 0x1000;

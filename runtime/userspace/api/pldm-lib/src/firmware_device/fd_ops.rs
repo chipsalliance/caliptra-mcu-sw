@@ -200,6 +200,13 @@ pub trait FdOps {
         })
     }
 
+    /// Called after the ApplyComplete request/response transaction finishes.
+    ///
+    /// An error means the outcome could not be reported successfully. Platforms
+    /// can use this notification to keep the application alive until reporting
+    /// finishes, rather than exiting immediately after producing a failure.
+    fn apply_complete_reported(&self, _result: McuResult<()>) {}
+
     /// Activates new firmware.
     ///
     /// # Arguments
