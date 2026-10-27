@@ -12,7 +12,7 @@ mod support;
 use support::{established_session, secured_io, secured_spdm_response, TestIo, TestPal};
 
 #[test]
-fn replay_authentication_failure_destroys_session_and_rejects_stale_record() {
+fn authentication_failure_destroys_session_and_rejects_stale_record() {
     let pal = TestPal::default();
     let (mut state, mut sessions, session_id) = established_session(&pal);
     let seed_io = TestIo::message(std::vec::Vec::new());
@@ -66,7 +66,7 @@ fn invalid_end_session_preserves_session_for_valid_teardown_and_reuse() {
     let (mut state, mut sessions, session_id) = established_session(&pal);
     let invalid_io = secured_io(
         session_id,
-        &[SpdmVersion::V12.to_u8(), ReqRespCode::END_SESSION.0, 2, 0],
+        &[SpdmVersion::V12.to_u8(), ReqRespCode::END_SESSION.0, 0],
     );
 
     let error_response = block_on(handle_secured_request(
@@ -122,4 +122,42 @@ fn invalid_end_session_preserves_session_for_valid_teardown_and_reuse() {
         .unwrap();
     assert_ne!(replacement, session_id);
     assert!(sessions.find(replacement).is_some());
+}
+
+#[test]
+fn end_session_ignores_reserved_fields_and_removes_session() {
+    for (attributes, reserved) in [(0x02, 0), (0, 1)] {
+        let pal = TestPal::default();
+        let (mut state, mut sessions, session_id) = established_session(&pal);
+        let io = secured_io(
+            session_id,
+            &[
+                SpdmVersion::V12.to_u8(),
+                ReqRespCode::END_SESSION.0,
+                attributes,
+                reserved,
+            ],
+        );
+
+        let response = block_on(handle_secured_request(
+            &mut state,
+            &mut sessions,
+            &pal,
+            &io,
+            &NoVdmBackend,
+        ))
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(
+            secured_spdm_response(&response),
+            [
+                SpdmVersion::V12.to_u8(),
+                ReqRespCode::END_SESSION_ACK.0,
+                0,
+                0,
+            ]
+        );
+        assert!(sessions.find(session_id).is_none());
+    }
 }

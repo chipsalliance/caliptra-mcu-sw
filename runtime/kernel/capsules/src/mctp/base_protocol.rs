@@ -122,7 +122,7 @@ pub fn supported_msg_types(
 }
 
 pub fn valid_eid(eid: u8) -> bool {
-    eid != MCTP_BROADCAST_EID && !(1..7).contains(&eid)
+    eid != MCTP_BROADCAST_EID && !(1..=7).contains(&eid)
 }
 
 pub fn valid_msg_tag(tag: u8) -> bool {
@@ -151,7 +151,8 @@ mod tests {
         assert!(valid_eid(0));
         assert!(!valid_eid(1));
         assert!(!valid_eid(6));
-        assert!(valid_eid(7));
+        assert!(!valid_eid(7));
+        assert!(valid_eid(8));
         assert!(valid_eid(0xfe));
         assert!(!valid_eid(MCTP_BROADCAST_EID));
 
