@@ -17,8 +17,9 @@ use caliptra_auth_man_types::{
 };
 use caliptra_image_types::ImageManifest;
 use caliptra_mcu_flash_image::{
-    FlashHeader, ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, MCU_RT_IDENTIFIER,
-    OWNER_AUTH_MANIFEST_IDENTIFIER, SOC_MANIFEST_IDENTIFIER, V_AUTH_KEY_ID,
+    FlashHeader, ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, MAX_FLASH_HEADER_SIZE,
+    MAX_IMAGE_HEADER_SIZE, MCU_RT_IDENTIFIER, OWNER_AUTH_MANIFEST_IDENTIFIER,
+    SOC_MANIFEST_IDENTIFIER, V_AUTH_KEY_ID,
 };
 use caliptra_mcu_libsyscall_caliptra::console_writeln;
 use caliptra_mcu_libsyscall_caliptra::dma::AXIAddr;
@@ -48,6 +49,82 @@ use core::mem::offset_of;
 use crate::{
     sha_finish, sha_init, sha_update, HashAlgo, ScratchAlloc, SHA_CHUNK_SIZE, SHA_CONTEXT_SIZE,
 };
+
+async fn read_flash_header(
+    staging_memory: &dyn StagingMemory,
+    image_len: usize,
+) -> Result<FlashHeader, ErrorCode> {
+    let mut bytes = [0; MAX_FLASH_HEADER_SIZE];
+    let read_len = image_len.min(bytes.len());
+    staging_memory.read(0, &mut bytes[..read_len]).await?;
+    FlashHeader::parse(&bytes[..read_len]).map_err(|error| {
+        console_writeln!(
+            Console::<DefaultSyscalls>::writer(),
+            "[FW Upd] Invalid flash header: {:?}",
+            error
+        );
+        ErrorCode::Invalid
+    })
+}
+
+async fn read_image_header(
+    staging_memory: &dyn StagingMemory,
+    header: &FlashHeader,
+    index: usize,
+) -> Result<ImageHeader, ErrorCode> {
+    let version = header.format().map_err(|_| ErrorCode::Invalid)?;
+    let offset = header.image_header_offset(index).ok_or(ErrorCode::Size)?;
+    let mut bytes = [0; MAX_IMAGE_HEADER_SIZE];
+    staging_memory
+        .read(offset, &mut bytes[..version.image_header_size()])
+        .await?;
+    ImageHeader::parse(&bytes, version).map_err(|error| {
+        console_writeln!(
+            Console::<DefaultSyscalls>::writer(),
+            "[FW Upd] Invalid image header {}: {:?}",
+            index,
+            error
+        );
+        ErrorCode::Invalid
+    })
+}
+
+async fn verify_flash_image_layout(
+    staging_memory: &dyn StagingMemory,
+    image_len: usize,
+) -> Result<FlashHeader, ErrorCode> {
+    if image_len > staging_memory.size() {
+        console_writeln!(
+            Console::<DefaultSyscalls>::writer(),
+            "[FW Upd] Downloaded component exceeds staging area"
+        );
+        return Err(ErrorCode::Size);
+    }
+    let header = read_flash_header(staging_memory, image_len).await?;
+    let table_end = header.table_end().ok_or(ErrorCode::Size)?;
+    if table_end > image_len {
+        console_writeln!(
+            Console::<DefaultSyscalls>::writer(),
+            "[FW Upd] Image table exceeds downloaded component"
+        );
+        return Err(ErrorCode::Size);
+    }
+    for index in 0..header.image_count as usize {
+        let image = read_image_header(staging_memory, &header, index).await?;
+        let end = (image.offset as usize)
+            .checked_add(image.size as usize)
+            .ok_or(ErrorCode::Size)?;
+        if (image.offset as usize) < table_end || end > image_len {
+            console_writeln!(
+                Console::<DefaultSyscalls>::writer(),
+                "[FW Upd] Image {} outside downloaded payload",
+                index
+            );
+            return Err(ErrorCode::Size);
+        }
+    }
+    Ok(header)
+}
 
 pub struct FirmwareUpdater<'a, D: DMAMapping, A: ScratchAlloc> {
     staging_memory: &'static dyn StagingMemory,
@@ -135,7 +212,8 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
         pldm_client::pldm_wait(State::Verifying).await?;
 
         // Download is complete, verify the image
-        let flash_header = self.verify().await;
+        let img_len = pldm_total_component_size();
+        let flash_header = self.verify(img_len).await;
         if flash_header.is_err() {
             pldm_client::pldm_set_verification_result(VerifyResult::VerifyErrorVerificationFailure);
             // Abort firmware update
@@ -157,7 +235,6 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
         pldm_client::pldm_set_verification_result(VerifyResult::VerifySuccess);
         pldm_client::pldm_wait(State::Apply).await?;
 
-        let img_len = pldm_total_component_size();
         let outcome = apply_image(self.staging_memory, self.hooks, img_len).await?;
 
         pldm_client::pldm_report_apply_outcome(outcome).await?;
@@ -199,20 +276,17 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
         image_headers_offset: usize,
         image_id: u32,
     ) -> Result<(usize, usize), ErrorCode> {
-        let mut current_header_offset = image_headers_offset;
-        for _ in 0..num_images {
-            let mut image_header = [0u8; core::mem::size_of::<ImageHeader>()];
-            self.staging_memory
-                .read(current_header_offset, &mut image_header)
-                .await?;
-            let (image_header, _) =
-                ImageHeader::read_from_prefix(&image_header).map_err(|_| ErrorCode::Fail)?;
-            image_header.verify().then_some(()).ok_or(ErrorCode::Fail)?;
-
+        let header = self.read_flash_header().await?;
+        if num_images != header.image_count as usize
+            || image_headers_offset != header.image_headers_offset as usize
+        {
+            return Err(ErrorCode::Invalid);
+        }
+        for index in 0..num_images {
+            let image_header = self.read_image_header(&header, index).await?;
             if image_header.identifier == image_id {
                 return Ok((image_header.offset as usize, image_header.size as usize));
             }
-            current_header_offset += core::mem::size_of::<ImageHeader>();
         }
 
         Err(ErrorCode::Fail)
@@ -224,35 +298,68 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
         image_headers_offset: usize,
         index: usize,
     ) -> Result<ImageHeader, ErrorCode> {
-        if index >= num_images {
-            return Err(ErrorCode::Fail);
+        let header = self.read_flash_header().await?;
+        if num_images != header.image_count as usize
+            || image_headers_offset != header.image_headers_offset as usize
+        {
+            return Err(ErrorCode::Invalid);
         }
-        let offset = image_headers_offset + index * core::mem::size_of::<ImageHeader>();
-        let mut image_header = [0u8; core::mem::size_of::<ImageHeader>()];
-        self.staging_memory.read(offset, &mut image_header).await?;
-        let (image_header, _) =
-            ImageHeader::read_from_prefix(&image_header).map_err(|_| ErrorCode::Fail)?;
-        image_header.verify().then_some(()).ok_or(ErrorCode::Fail)?;
+        self.read_image_header(&header, index).await
+    }
 
-        Ok(image_header)
+    async fn read_flash_header(&self) -> Result<FlashHeader, ErrorCode> {
+        read_flash_header(self.staging_memory, self.staging_memory.size()).await
+    }
+
+    async fn read_image_header(
+        &self,
+        header: &FlashHeader,
+        index: usize,
+    ) -> Result<ImageHeader, ErrorCode> {
+        read_image_header(self.staging_memory, header, index).await
+    }
+
+    fn check_rom_compatibility(header: &FlashHeader) -> Result<(), ErrorCode> {
+        use caliptra_mcu_libsyscall_caliptra::system::System;
+        let rom_version = match System::mcu_rom_version() {
+            Ok(version) => Some(version),
+            Err(ErrorCode::NoSupport) => None,
+            Err(error) => {
+                console_writeln!(
+                    Console::<DefaultSyscalls>::writer(),
+                    "[FW Upd] Unable to read ROM version: {:?}",
+                    error
+                );
+                return Err(error);
+            }
+        };
+        if !header
+            .format()
+            .map_err(|_| ErrorCode::Invalid)?
+            .supports_rom(rom_version)
+        {
+            console_writeln!(
+                Console::<DefaultSyscalls>::writer(),
+                "[FW Upd] Flash format {} incompatible with ROM {:?}",
+                header.version,
+                rom_version
+            );
+            return Err(ErrorCode::NoSupport);
+        }
+        Ok(())
     }
 
     pub async fn update_mcu_with_auth_manifest(
         &mut self,
         flash_header: &FlashHeader,
     ) -> Result<(), ErrorCode> {
+        Self::check_rom_compatibility(flash_header)?;
         self.set_auth_manifest().await?;
         self.update_mcu(flash_header).await
     }
 
     async fn set_auth_manifest(&mut self) -> Result<(), ErrorCode> {
-        let mut flash_header = [0u8; core::mem::size_of::<FlashHeader>()];
-        self.staging_memory
-            .read(0, &mut flash_header)
-            .await
-            .map_err(|_| ErrorCode::Fail)?;
-        let (flash_header, _) =
-            FlashHeader::read_from_prefix(&flash_header).map_err(|_| ErrorCode::Fail)?;
+        let flash_header = self.read_flash_header().await?;
         console_writeln!(
             Console::<DefaultSyscalls>::writer(),
             "[FW Upd] Setting Manifest"
@@ -282,16 +389,10 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
         .await
     }
 
-    async fn verify(&mut self) -> Result<FlashHeader, ErrorCode> {
+    async fn verify(&mut self, image_len: usize) -> Result<FlashHeader, ErrorCode> {
         // Parse the downloaded firmware image
-        let mut flash_header = [0u8; core::mem::size_of::<FlashHeader>()];
-        self.staging_memory
-            .read(0, &mut flash_header)
-            .await
-            .map_err(|_| ErrorCode::Fail)?;
-        let (flash_header, _) =
-            FlashHeader::read_from_prefix(&flash_header).map_err(|_| ErrorCode::Fail)?;
-        flash_header.verify().then_some(()).ok_or(ErrorCode::Fail)?;
+        let flash_header = verify_flash_image_layout(self.staging_memory, image_len).await?;
+        Self::check_rom_compatibility(&flash_header)?;
 
         // Verify Caliptra bundle
         console_writeln!(
@@ -902,6 +1003,7 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
     }
 
     pub async fn update_mcu(&mut self, flash_header: &FlashHeader) -> Result<(), ErrorCode> {
+        Self::check_rom_compatibility(flash_header)?;
         console_writeln!(
             Console::<DefaultSyscalls>::writer(),
             "[FW Upd] Updating MCU"
@@ -1266,8 +1368,11 @@ mod tests {
 
     use super::*;
     use caliptra_mcu_flash_image::{
-        OWNER_MEASUREMENT_POLICY_IDENTIFIER, OWNER_SOC_IMAGES_BASE_IDENTIFIER,
+        calculate_checksum, FlashHeaderV1, FlashHeaderV2, FlashHeaderV3, FlashImageVersion,
+        ImageHeaderV1V2, ImageHeaderV3, OWNER_MEASUREMENT_POLICY_IDENTIFIER,
+        OWNER_SOC_IMAGES_BASE_IDENTIFIER,
     };
+    use caliptra_mcu_libtock_unittest::fake;
     use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::ApplyResult;
     use caliptra_mcu_pldm_common::protocol::firmware_update::ComponentActivationMethods;
     use core::future::Future;
@@ -1462,6 +1567,129 @@ mod tests {
     const B: u32 = 0x2000;
     const C: u32 = 0x3000;
     const D: u32 = 0x4000;
+
+    #[derive(Debug)]
+    struct LayoutStagingMemory {
+        bytes: std::vec::Vec<u8>,
+        downloaded_len: usize,
+    }
+
+    #[async_trait]
+    impl StagingMemory for LayoutStagingMemory {
+        async fn write(&self, _offset: usize, _data: &[u8]) -> Result<(), ErrorCode> {
+            panic!("Layout verification must not write staging memory");
+        }
+
+        async fn read(&self, offset: usize, data: &mut [u8]) -> Result<(), ErrorCode> {
+            assert!(offset + data.len() <= self.downloaded_len);
+            data.copy_from_slice(&self.bytes[offset..offset + data.len()]);
+            Ok(())
+        }
+
+        async fn image_valid(&self, _img_sz: usize) -> Result<(), ErrorCode> {
+            panic!("Layout verification must not mark the image valid");
+        }
+
+        fn size(&self) -> usize {
+            self.bytes.len()
+        }
+    }
+
+    fn run<T>(future: impl Future<Output = T>) -> T {
+        let mut future = core::pin::pin!(future);
+        let mut context = Context::from_waker(Waker::noop());
+        match future.as_mut().poll(&mut context) {
+            Poll::Ready(value) => value,
+            Poll::Pending => panic!("In-memory staging read must complete immediately"),
+        }
+    }
+
+    fn staged_image(version: FlashImageVersion) -> (std::vec::Vec<u8>, usize) {
+        let table_end = version.header_size() + 2 * version.image_header_size();
+        let image_len = table_end + 8;
+        let mut bytes = std::vec![0; image_len + 64];
+        let out = &mut bytes[..version.header_size()];
+        match version {
+            FlashImageVersion::V1 => out.copy_from_slice(FlashHeaderV1::new(2).as_bytes()),
+            FlashImageVersion::V2 => out.copy_from_slice(FlashHeaderV2::new(2).as_bytes()),
+            FlashImageVersion::V3 => out.copy_from_slice(FlashHeaderV3::new(2).as_bytes()),
+        }
+        for index in 0..2 {
+            let mut image = ImageHeaderV3 {
+                identifier: index as u32,
+                offset: (table_end + index * 4) as u32,
+                size: 4,
+                filename: [0; 64],
+                image_checksum: 0,
+                image_header_checksum: 0,
+            };
+            image.image_header_checksum = calculate_checksum(
+                &image.as_bytes()[..offset_of!(ImageHeaderV3, image_header_checksum)],
+            );
+            let mut legacy = ImageHeaderV1V2 {
+                identifier: image.identifier,
+                offset: image.offset,
+                size: image.size,
+                image_checksum: 0,
+                image_header_checksum: 0,
+            };
+            legacy.image_header_checksum = calculate_checksum(
+                &legacy.as_bytes()[..offset_of!(ImageHeaderV1V2, image_header_checksum)],
+            );
+            let offset = version.header_size() + index * version.image_header_size();
+            bytes[offset..offset + version.image_header_size()].copy_from_slice(
+                if version == FlashImageVersion::V3 {
+                    image.as_bytes()
+                } else {
+                    legacy.as_bytes()
+                },
+            );
+        }
+        (bytes, image_len)
+    }
+
+    #[test]
+    fn layout_verification_bounds_all_formats_by_downloaded_length() {
+        let _kernel = fake::Kernel::new();
+        for version in [
+            FlashImageVersion::V1,
+            FlashImageVersion::V2,
+            FlashImageVersion::V3,
+        ] {
+            let (bytes, image_len) = staged_image(version);
+            let staging = LayoutStagingMemory {
+                bytes,
+                downloaded_len: image_len,
+            };
+            assert!(run(verify_flash_image_layout(&staging, image_len)).is_ok());
+
+            for downloaded_len in 0..image_len {
+                let staging = LayoutStagingMemory {
+                    bytes: staging.bytes.clone(),
+                    downloaded_len,
+                };
+                assert!(
+                    run(verify_flash_image_layout(&staging, downloaded_len)).is_err(),
+                    "{version:?} accepted a truncated component of {downloaded_len} bytes"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn layout_verification_rejects_component_larger_than_staging() {
+        let _kernel = fake::Kernel::new();
+        let (bytes, _) = staged_image(FlashImageVersion::V3);
+        let component_len = bytes.len() + 1;
+        let staging = LayoutStagingMemory {
+            bytes,
+            downloaded_len: 0,
+        };
+        assert_eq!(
+            run(verify_flash_image_layout(&staging, component_len)),
+            Err(ErrorCode::Size)
+        );
+    }
 
     fn validate_soc_fw_id_same_set(
         cold_boot_soc_fw_ids: &[u32],

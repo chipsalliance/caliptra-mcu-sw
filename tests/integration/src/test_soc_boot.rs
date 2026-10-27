@@ -11,7 +11,7 @@ mod test {
     use caliptra_mcu_config_emulator::flash::{
         PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
     };
-    use caliptra_mcu_flash_image::FlashHeader;
+    use caliptra_mcu_flash_image::FlashHeaderV3;
     use caliptra_mcu_pldm_fw_pkg::manifest::{
         ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
         PackageHeaderInformation, StringType,
@@ -65,6 +65,21 @@ mod test {
             .collect();
         soc_images_paths
     }
+
+    fn create_partition_table_flash(partition_table: &PartitionTable) -> PathBuf {
+        let (_, flash_image_path) = tempfile::NamedTempFile::new()
+            .expect("Failed to create flash image file")
+            .keep()
+            .expect("Failed to keep temp file");
+        caliptra_mcu_builder::flash_image::write_partition_table(
+            partition_table,
+            0,
+            flash_image_path.to_str().unwrap(),
+        )
+        .expect("Failed to write partition table");
+        flash_image_path
+    }
+
     // Helper function to create a flash image from the provided SOC images
     fn create_flash_image(
         caliptra_fw_path: Option<PathBuf>,
@@ -514,15 +529,7 @@ mod test {
 
         // Update the partition table in the primary flash
         let primary_flash_image_path = if opts.primary_flash_image_path.is_some() {
-            let (_, primary_flash_image_path) = create_flash_image(
-                None,
-                None,
-                None,
-                Some(new_partition_table),
-                IMAGE_A_PARTITION.offset,
-                vec![],
-            );
-            Some(primary_flash_image_path)
+            Some(create_partition_table_flash(&new_partition_table))
         } else {
             None
         };
@@ -568,7 +575,7 @@ mod test {
         primary_flash[..core::mem::size_of::<PartitionTable>()]
             .copy_from_slice(partition_table.as_bytes());
 
-        let corrupt_header = [0u8; core::mem::size_of::<FlashHeader>()];
+        let corrupt_header = [0u8; core::mem::size_of::<FlashHeaderV3>()];
         match active_partition {
             PartitionId::A => {
                 let header = &mut primary_flash
@@ -637,15 +644,7 @@ mod test {
         // Update the partition table in the primary flash
 
         new_options.primary_flash_image_path = if opts.primary_flash_image_path.is_some() {
-            let (_, primary_flash_image_path) = create_flash_image(
-                None,
-                None,
-                None,
-                Some(new_partition_table),
-                IMAGE_A_PARTITION.offset,
-                vec![],
-            );
-            Some(primary_flash_image_path)
+            Some(create_partition_table_flash(&new_partition_table))
         } else {
             None
         };

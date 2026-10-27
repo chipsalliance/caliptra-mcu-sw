@@ -42,6 +42,7 @@ fn test_emulator_args_creation() {
         otp: None,
         gdb_port: None,
         log_dir: None,
+        flash_storage_dir: None,
         trace_instr: false,
         stdin_uart: false,
         _no_stdin_uart: false,
