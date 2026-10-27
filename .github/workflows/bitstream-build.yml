@@ -22,7 +22,7 @@ jobs:
         env:
           STAGING_DIR: ${{ runner.temp }}/pr2136-bitstream
         run: |
-          set -euo pipefail
+          set -eo pipefail
           source /vck190-tools/Vivado/2024.2/settings64.sh
           mkdir -p "$STAGING_DIR"
           git rev-parse HEAD > "$STAGING_DIR/source-commit.txt"
