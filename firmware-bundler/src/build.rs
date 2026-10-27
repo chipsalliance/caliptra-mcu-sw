@@ -261,6 +261,9 @@ impl<'a> BuildPass<'a> {
 
         // Instantiate the rustc command
         let mut cmd = Command::new("cargo");
+        let revision =
+            caliptra_mcu_hw_revision::HardwareRevision::from_env().map_err(anyhow::Error::msg)?;
+        cmd.env(caliptra_mcu_hw_revision::ENV, revision.as_str());
         cmd.arg("rustc")
             .arg("--package")
             .arg(&app.name)

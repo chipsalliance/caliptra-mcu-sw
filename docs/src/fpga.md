@@ -68,11 +68,12 @@ For example:
 
 #### Bitstream source
 
-The subsystem bitstream is pulled from the [subsystem.toml](../../hw/fpga/bitstream_manifests/subsystem.toml). The core bitstream is pulled from "core.toml" from the active `caliptra-sw` folder.
+`CALIPTRA_HW_REV=2.1` selects FPGA inputs in [hw/rev-2_1/fpga](../../hw/rev-2_1/fpga/); `CALIPTRA_HW_REV=latest` selects [hw/latest/fpga](../../hw/latest/fpga/).
+The subsystem bitstream is pulled from that directory's `bitstream_manifests/subsystem.toml`. The core bitstream is pulled from "core.toml" from the active `caliptra-sw` folder.
 
 ### Ubuntu Image
 
-Follow the instructions in `hw/fpga/README.md` on building and loading a bitstream.
+Follow the [2.1 FPGA instructions](../../hw/rev-2_1/fpga/README.md) or [latest FPGA instructions](../../hw/latest/fpga/README.md) on building and loading a bitstream. The [2.1 workflow](../../.github/workflows/bitstream-build_2.1.yml) and [2.2 workflow](../../.github/workflows/bitstream-build_2.2.yml) call the [shared bitstream build](../../.github/workflows/bitstream-build.yml) with the hardware version, repository, ref/SHA, FPGA and RTL paths, and target branch. Both callers support manual runs.
 
 ## FPGA bootstrap
 
