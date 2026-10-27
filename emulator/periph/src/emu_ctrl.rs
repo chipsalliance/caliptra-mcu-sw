@@ -15,9 +15,12 @@ Abstract:
 use caliptra_emu_bus::{Bus, BusError};
 use caliptra_emu_types::{RvAddr, RvData, RvSize};
 use std::process::exit;
+use std::{cell::Cell, rc::Rc};
 
 /// Emulation Control
-pub struct EmuCtrl {}
+pub struct EmuCtrl {
+    exit_status: Option<Rc<Cell<Option<i32>>>>,
+}
 
 impl EmuCtrl {
     // Exit emulator address
@@ -29,7 +32,10 @@ impl EmuCtrl {
     ///
     /// * `name` - Name of the device
     pub fn new() -> Self {
-        Self {}
+        Self { exit_status: None }
+    }
+    pub fn capture_exit(&mut self, status: Rc<Cell<Option<i32>>>) {
+        self.exit_status = Some(status);
     }
     /// Memory map size.
     pub fn mmap_size(&self) -> RvAddr {
@@ -76,10 +82,33 @@ impl Bus for EmuCtrl {
     fn write(&mut self, _size: RvSize, addr: RvAddr, val: RvData) -> Result<(), BusError> {
         match addr {
             EmuCtrl::ADDR_EXIT => {
-                exit(val as i32);
+                if let Some(status) = &self.exit_status {
+                    eprintln!("MCU requested emulator exit with status {}", val as i32);
+                    status.set(Some(val as i32));
+                } else {
+                    exit(val as i32);
+                }
             }
+
             _ => Err(BusError::StoreAccessFault)?,
         }
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn captures_guest_exit_without_terminating_host() {
+        for code in [0, 1, -1] {
+            let status = Rc::new(Cell::new(None));
+            let mut ctrl = EmuCtrl::new();
+            ctrl.capture_exit(status.clone());
+            ctrl.write(RvSize::Word, EmuCtrl::ADDR_EXIT, code as u32)
+                .unwrap();
+            assert_eq!(status.get(), Some(code));
+        }
     }
 }

@@ -1,0 +1,373 @@
+# Licensed under the Apache-2.0 license
+
+name: Released ROM/runtime compatibility
+
+on:
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  RUSTUP_TOOLCHAIN: "1.96.1-x86_64-unknown-linux-gnu"
+  CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+  CARGO_BUILD_JOBS: "4"
+  RAYON_NUM_THREADS: "4"
+  CARGO_INCREMENTAL: "0"
+  EXTRA_CARGO_CONFIG: 'target.''cfg(all())''.rustflags = ["-Dwarnings"]'
+
+jobs:
+  resolve-runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      source: ${{ steps.resolve.outputs.source }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main-2.1
+      - name: Resolve current runtime once
+        id: resolve
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = refs/heads/main-2.1
+          printf 'source=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+  build-xtask:
+    needs: resolve-runtime
+    runs-on: e2-standard-4
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve-runtime.outputs.source }}
+          submodules: recursive
+      - name: Install xtask build tools
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qy
+          sudo apt-get install -qy build-essential libclang-dev llvm pkg-config libssl-dev cmake
+          rustup toolchain install "$RUSTUP_TOOLCHAIN" \
+            -c rust-src,llvm-tools,rustc-dev \
+            -t riscv32imc-unknown-none-elf,aarch64-unknown-linux-gnu
+      - name: Cache host Cargo dependencies and build outputs
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/
+          key: compatibility-host-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.RUSTUP_TOOLCHAIN }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '.github/workflows/rom-runtime-compatibility.yml') }}-${{ needs.resolve-runtime.outputs.source }}
+          restore-keys: |
+            compatibility-host-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.RUSTUP_TOOLCHAIN }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '.github/workflows/rom-runtime-compatibility.yml') }}-
+      - name: Prebuild xtask
+        run: |
+          cargo build --locked --package caliptra-mcu-xtask --features parallel-build
+          cp target/debug/caliptra-mcu-xtask /tmp/xtask
+      - name: Install cargo-nextest
+        run: curl -LsSf https://get.nexte.st/0.9.118/linux | tar zxf - -C "$HOME/.cargo/bin"
+      - name: Build shared integration-test archive
+        env:
+          CALIPTRA_HW_REV: "2.1"
+        run: |
+          cargo nextest archive --locked --package caliptra-mcu-tests-integration \
+            --archive-file /tmp/compatibility-tests.tar.zst
+      - name: Check orchestration and harness regressions before building images
+        run: |
+          cargo test --locked --package caliptra-mcu-xtask --features parallel-build
+          cargo nextest run --archive-file /tmp/compatibility-tests.tar.zst \
+            --workspace-remap . --profile emulator --test-threads=1 --no-tests fail \
+            -E 'test(test_rom_runtime_compatibility)'
+      - uses: actions/upload-artifact@v7
+        with:
+          name: compatibility-xtask
+          path: /tmp/xtask
+          retention-days: 1
+      - uses: actions/upload-artifact@v7
+        with:
+          name: compatibility-test-archive
+          path: /tmp/compatibility-tests.tar.zst
+          retention-days: 1
+
+  build-images:
+    needs: [resolve-runtime, build-xtask]
+    runs-on: e2-standard-16-big-disk
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        label: [rom-sdk-2.1.0, rom-sdk-2.1.0rc1, rt-sdk-2.1.0, rt-sdk-2.1.1, main-2.1]
+    env:
+      CARGO_BUILD_JOBS: "8"
+      RAYON_NUM_THREADS: "8"
+      MCU_COMPAT_ROOT: ${{ github.workspace }}/compatibility
+      MCU_COMPAT_CURRENT_RUNTIME_SHA: ${{ needs.resolve-runtime.outputs.source }}
+      IMAGE_LABEL: ${{ matrix.label }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve-runtime.outputs.source }}
+          fetch-depth: 0
+          submodules: recursive
+      - name: Install build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qy
+          sudo apt-get install -qy build-essential libclang-dev llvm pkg-config libssl-dev cmake
+          for toolchain in 1.85 1.96.1; do
+            rustup toolchain install "$toolchain" \
+              -c rust-src,llvm-tools,rustc-dev \
+              -t riscv32imc-unknown-none-elf,aarch64-unknown-linux-gnu
+          done
+      - uses: actions/download-artifact@v8
+        with:
+          name: compatibility-xtask
+          path: /tmp/
+      - name: Cache immutable images and build provenance
+        id: image-cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            compatibility/artifacts/${{ matrix.label }}/
+            compatibility/streaming-emulator/artifacts/${{ matrix.label }}/
+            compatibility/image-builds/${{ matrix.label }}.json
+          key: compatibility-image-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.label }}-${{ hashFiles('Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', 'xtask/**', 'builder/**', '.github/workflows/rom-runtime-compatibility.yml') }}-${{ matrix.label == 'main-2.1' && needs.resolve-runtime.outputs.source || 'released' }}
+      - name: Build selected immutable images and retain provenance
+        if: steps.image-cache.outputs.cache-hit != 'true'
+        run: |
+          chmod +x /tmp/xtask
+          /tmp/xtask rom-runtime-compatibility build-images --label "$IMAGE_LABEL"
+      - name: Save images and build evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: compatibility-image-${{ matrix.label }}
+          if-no-files-found: error
+          path: |
+            compatibility/artifacts/${{ matrix.label }}/
+            compatibility/streaming-emulator/artifacts/${{ matrix.label }}/
+            compatibility/image-builds/${{ matrix.label }}.json
+
+  prepare-fixtures:
+    needs: [resolve-runtime, build-xtask, build-images]
+    runs-on: e2-standard-16-big-disk
+    timeout-minutes: 60
+    env:
+      CARGO_BUILD_JOBS: "8"
+      RAYON_NUM_THREADS: "8"
+      MCU_COMPAT_ROOT: ${{ github.workspace }}/compatibility
+      MCU_COMPAT_CURRENT_RUNTIME_SHA: ${{ needs.resolve-runtime.outputs.source }}
+      MCU_COMPAT_TEST_ARCHIVE: /tmp/compatibility-tests.tar.zst
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve-runtime.outputs.source }}
+          fetch-depth: 0
+          submodules: recursive
+      - name: Install fixture build tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qy
+          sudo apt-get install -qy build-essential libclang-dev llvm pkg-config libssl-dev cmake
+          for toolchain in 1.85 1.96.1; do
+            rustup toolchain install "$toolchain" \
+              -c rust-src,llvm-tools,rustc-dev \
+              -t riscv32imc-unknown-none-elf,aarch64-unknown-linux-gnu
+          done
+          curl -LsSf https://get.nexte.st/0.9.118/linux | tar zxf - -C "$HOME/.cargo/bin"
+      - uses: actions/download-artifact@v8
+        with:
+          name: compatibility-xtask
+          path: /tmp/
+      - uses: actions/download-artifact@v8
+        with:
+          name: compatibility-test-archive
+          path: /tmp/
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: compatibility-image-*
+          merge-multiple: true
+          path: compatibility
+      - name: Cache fixture Cargo dependencies and build outputs
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            compatibility/core-build-target/
+            compatibility/capability-evaluator/target/
+            compatibility/streaming-emulator/capability-evaluator/target/
+          key: compatibility-fixtures-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.RUSTUP_TOOLCHAIN }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', 'xtask/src/rom_runtime_compatibility/**', '.github/workflows/rom-runtime-compatibility.yml') }}-${{ needs.resolve-runtime.outputs.source }}
+          restore-keys: |
+            compatibility-fixtures-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.RUSTUP_TOOLCHAIN }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', 'xtask/src/rom_runtime_compatibility/**', '.github/workflows/rom-runtime-compatibility.yml') }}-
+      - name: Produce fixed Core, signed manifests, OTP, packages and pair configurations
+        run: |
+          chmod +x /tmp/xtask
+          /tmp/xtask rom-runtime-compatibility prepare-fixtures
+      - name: Validate all generated configurations before pair execution
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$MCU_COMPAT_ROOT/preflight"
+          for variant in baseline service; do
+            artifacts="$MCU_COMPAT_ROOT/artifacts"
+            if [ "$variant" = service ]; then
+              artifacts="$MCU_COMPAT_ROOT/streaming-emulator/artifacts"
+            fi
+            for rom in rom-sdk-2.1.0 rom-sdk-2.1.0rc1; do
+              for runtime in rt-sdk-2.1.0 rt-sdk-2.1.1 main-2.1; do
+                log="$MCU_COMPAT_ROOT/preflight/$variant-$rom-$runtime.log"
+                MCU_COMPAT_ARTIFACT_DIR="$artifacts" \
+                MCU_COMPAT_CONFIG="$artifacts/pairs/$rom/$runtime/config.json" \
+                MCU_COMPAT_ROM="$rom" MCU_COMPAT_RUNTIME="$runtime" \
+                  cargo nextest run --archive-file "$MCU_COMPAT_TEST_ARCHIVE" \
+                    --workspace-remap . --profile emulator --run-ignored only \
+                    --test-threads=1 --no-tests fail \
+                    -E 'test(=test_rom_runtime_compatibility::test_artifact_integrity)' \
+                    2>&1 | tee "$log"
+              done
+            done
+          done
+      - name: Save exact fixture inputs and evidence
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: compatibility-inputs
+          if-no-files-found: error
+          path: |
+            compatibility/artifacts/
+            compatibility/streaming-emulator/artifacts/
+            compatibility/*.json
+            compatibility/streaming-emulator/*.json
+            compatibility/preflight/
+
+  spdm-tools:
+    needs: resolve-runtime
+    uses: ./.github/workflows/spdm-validator.yml
+    with:
+      tools-only: true
+      artifact-suffix: -compatibility
+
+  test-pairs:
+    needs: [resolve-runtime, prepare-fixtures, spdm-tools]
+    if: ${{ always() && needs.resolve-runtime.result == 'success' && needs.prepare-fixtures.result == 'success' }}
+    runs-on: e2-standard-16-big-disk
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        rom: [rom-sdk-2.1.0, rom-sdk-2.1.0rc1]
+        runtime: [rt-sdk-2.1.0, rt-sdk-2.1.1, main-2.1]
+    env:
+      MCU_COMPAT_ROOT: ${{ github.workspace }}/compatibility
+      MCU_COMPAT_CURRENT_RUNTIME_SHA: ${{ needs.resolve-runtime.outputs.source }}
+      MCU_COMPAT_TEST_ARCHIVE: /tmp/compatibility-tests.tar.zst
+      MCU_COMPAT_ROM: ${{ matrix.rom }}
+      MCU_COMPAT_RUNTIME: ${{ matrix.runtime }}
+      SPDM_VALIDATOR_DIR: ${{ github.workspace }}/compatibility-spdm-tools/build/bin
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve-runtime.outputs.source }}
+          submodules: recursive
+      - name: Install test tools
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qy
+          sudo apt-get install -qy build-essential libclang-dev llvm pkg-config libssl-dev cmake
+          rustup toolchain install "$RUSTUP_TOOLCHAIN" \
+            -c rust-src,llvm-tools,rustc-dev \
+            -t riscv32imc-unknown-none-elf,aarch64-unknown-linux-gnu
+          curl -LsSf https://get.nexte.st/0.9.118/linux | tar zxf - -C "$HOME/.cargo/bin"
+      - uses: actions/download-artifact@v8
+        with:
+          name: compatibility-xtask
+          path: /tmp/
+      - uses: actions/download-artifact@v8
+        with:
+          name: compatibility-test-archive
+          path: /tmp/
+      - uses: actions/download-artifact@v8
+        with:
+          name: compatibility-inputs
+          path: compatibility
+      - name: Download shared SPDM validators
+        continue-on-error: true
+        uses: actions/download-artifact@v8
+        with:
+          name: spdm-emu-tools-compatibility
+          path: ${{ runner.temp }}
+      - name: Extract shared SPDM validators
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          mkdir -p compatibility-spdm-tools
+          tar -xzf "$RUNNER_TEMP/spdm-emu-tools.tar.gz" -C compatibility-spdm-tools
+          cat "$SPDM_VALIDATOR_DIR/spdm-emu-revision.txt"
+      - name: Run boot checks, then supported selected-image suites, for both configurations
+        run: |
+          set -euo pipefail
+          SPDM_NONCE="$(openssl rand -hex 32)"
+          export SPDM_NONCE
+          chmod +x /tmp/xtask
+          /tmp/xtask rom-runtime-compatibility run-pair \
+            --rom "$MCU_COMPAT_ROM" --runtime "$MCU_COMPAT_RUNTIME"
+      - name: Save case results, commands, logs, JUnit and configuration metadata
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: compatibility-results-${{ matrix.rom }}-${{ matrix.runtime }}
+          if-no-files-found: error
+          path: |
+            compatibility/reports/${{ matrix.rom }}/${{ matrix.runtime }}/
+            compatibility/artifacts/results/${{ matrix.rom }}/${{ matrix.runtime }}/
+            compatibility/streaming-emulator/artifacts/results/${{ matrix.rom }}/${{ matrix.runtime }}/
+
+  report:
+    needs: [resolve-runtime, build-xtask, build-images, prepare-fixtures, spdm-tools, test-pairs]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      MCU_COMPAT_ROOT: ${{ github.workspace }}/compatibility
+      MCU_COMPAT_CURRENT_RUNTIME_SHA: ${{ needs.resolve-runtime.outputs.source || github.sha }}
+      UPSTREAM_STATUS: ${{ toJSON(needs) }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve-runtime.outputs.source || github.sha }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: compatibility-xtask
+          path: /tmp/
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: compatibility-results-*
+          merge-multiple: true
+          path: compatibility
+      - name: Summarize all six pairs, including failures and blocked cases
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p compatibility
+          printf '%s\n' "$UPSTREAM_STATUS" > compatibility/upstream-status.json
+          chmod +x /tmp/xtask
+          /tmp/xtask rom-runtime-compatibility report
+      - name: Always save aggregate JSON, JUnit and summary
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: compatibility-summary
+          if-no-files-found: error
+          path: |
+            compatibility/matrix-results.json
+            compatibility/execution-results.json
+            compatibility/upstream-status.json
+            compatibility/junit.xml
+            compatibility/summary.md

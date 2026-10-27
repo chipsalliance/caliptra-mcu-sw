@@ -17,23 +17,383 @@ use caliptra_mcu_mbox_common::messages::{
     CmImportReq, CmKeyUsage, CmMldsaPublicKeyReq, CmMldsaSignReq, CmMldsaVerifyReq, Cmk,
     CommandId as McuCommandId, DeviceCapsReq, DeviceCapsResp, DpeSignerContextCertReq,
     EcdsaVerifyReq, EndorsementAlgorithm, ExportAttestedCsrReq, FirmwareVersionReq,
-    GetAttestationReq, GetAuthCmdChallengeResp, GetDpeCertChainReq, HekStatusReq, LmsVerifyReq,
-    MailboxReqHeader as McuMailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize,
-    McuCmImportReq, McuEcdhFinishReq, McuEcdhFinishResp, McuEcdhGenerateReq, McuEcdhGenerateResp,
-    McuEcdsa384SigVerifyReq, McuEcdsaCmkPublicKeyReq, McuEcdsaCmkPublicKeyResp, McuEcdsaCmkSignReq,
-    McuEcdsaCmkSignResp, McuEcdsaCmkVerifyReq, McuFeProgReq, McuFeStatusReq,
-    McuFipsPeriodicEnableReq, McuFipsPeriodicEnableResp, McuFipsPeriodicStatusResp,
-    McuFipsSelfTestGetResultsResp, McuFipsSelfTestStartResp, McuLmsSigVerifyReq, McuMailboxReq,
-    McuMldsaCmkPublicKeyReq, McuMldsaCmkPublicKeyResp, McuMldsaCmkSignReq, McuMldsaCmkSignResp,
-    McuMldsaCmkVerifyReq, McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp,
-    McuProdDebugUnlockTokenReq, ProductionAuthDebugUnlockReq, ProductionAuthDebugUnlockToken,
-    VendorPkHashStatusReq, GET_ATTESTATION_RESP_PREFIX_LEN, MAX_RESP_DATA_SIZE,
+    GetAttestationReq, GetAuthCmdChallengeResp, GetDpeCertChainReq, HekStatusReq, HekStatusResp,
+    LmsVerifyReq, MailboxReqHeader as McuMailboxReqHeader, MailboxRespHeader,
+    MailboxRespHeaderVarSize, McuCmImportReq, McuEcdhFinishReq, McuEcdhFinishResp,
+    McuEcdhGenerateReq, McuEcdhGenerateResp, McuEcdsa384SigVerifyReq, McuEcdsaCmkPublicKeyReq,
+    McuEcdsaCmkPublicKeyResp, McuEcdsaCmkSignReq, McuEcdsaCmkSignResp, McuEcdsaCmkVerifyReq,
+    McuFeProgReq, McuFeStatusReq, McuFeStatusResp, McuFipsPeriodicEnableReq,
+    McuFipsPeriodicEnableResp, McuFipsPeriodicStatusResp, McuFipsSelfTestGetResultsResp,
+    McuFipsSelfTestStartResp, McuLmsSigVerifyReq, McuMailboxReq, McuMldsaCmkPublicKeyReq,
+    McuMldsaCmkPublicKeyResp, McuMldsaCmkSignReq, McuMldsaCmkSignResp, McuMldsaCmkVerifyReq,
+    McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq,
+    ProductionAuthDebugUnlockReq, ProductionAuthDebugUnlockToken, VendorPkHashStatusReq,
+    VendorPkHashStatusResp, GET_ATTESTATION_RESP_PREFIX_LEN, MAX_RESP_DATA_SIZE,
     VENDOR_PQC_KEY_TYPE_LMS,
 };
 use caliptra_mcu_romtime::{handoff::McuRomCapabilities, McuBootMilestones};
 use minicbor::Decoder;
 use std::mem::size_of;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
+
+/// Wire contracts extracted from the selected runtime's messages, dispatcher and
+/// common-command implementation, not inferred from its release label.
+#[derive(Clone, Copy, Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum SelectedMailboxAbi {
+    /// 36 capability bytes; MACC is direct with flags/reserved in its request.
+    Legacy36Direct,
+    /// 64 capability bytes; MACC is a target inside authorized command 0x12.
+    Capabilities64Envelope,
+}
+
+#[derive(Clone, Copy, Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum SelectedCryptoAbi {
+    /// The selected dispatcher preserves the imported Core request/response
+    /// layouts and translates IDs only; the booted Core is the fixed fixture.
+    FixedCoreE5d1f27,
+}
+
+/// The compatibility caller verifies source/artifact provenance before supplying
+/// this contract and boots the exact selected images before invoking the checks.
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub(crate) struct SelectedMailboxExpectations {
+    pub runtime_version: String,
+    /// Exact bytes after the 16 Core capability bytes, including reserved bytes.
+    pub mcu_capabilities: Vec<u8>,
+    pub abi: SelectedMailboxAbi,
+    pub crypto_abi: SelectedCryptoAbi,
+    /// Symbol names and numeric IDs extracted from the selected messages.rs.
+    pub command_ids: std::collections::BTreeMap<String, u32>,
+    pub provisioning_status: SelectedProvisioningStatusSupport,
+}
+
+/// Missing/unknown support is a prerequisite error, never an implicit exclusion.
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum SelectedProvisioningStatusSupport {
+    UnavailableInSource,
+    Supported(SelectedProvisioningStatus),
+}
+
+#[derive(Debug, serde::Deserialize, serde::Serialize)]
+pub(crate) struct SelectedProvisioningStatus {
+    pub field_entropy_provisioned: u32,
+    pub vendor_used_slots: u32,
+    pub vendor_key_types: [u8; 16],
+    pub hek: SelectedHekStatusExpectation,
+}
+
+#[derive(Clone, Copy, Debug, serde::Deserialize, serde::Serialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum SelectedHekStatusExpectation {
+    /// The command exists, but OTP_GET_HEK_METADATA requires the OCP-lock kernel
+    /// context and ROM handoff that the agreed images do not enable.
+    UnavailableInConfiguration,
+    Supported {
+        used_slots: u32,
+        total_slots: u32,
+    },
+}
+
+impl SelectedMailboxExpectations {
+    fn require_commands(&self, commands: &[(&str, McuCommandId)]) -> Result<()> {
+        for (name, command) in commands {
+            anyhow::ensure!(
+                self.command_ids.get(*name) == Some(&command.0),
+                "selected source does not establish {name} wire ID {:#x}",
+                command.0
+            );
+        }
+        Ok(())
+    }
+
+    fn validate_capabilities(&self) -> Result<()> {
+        let expected_len = match self.abi {
+            SelectedMailboxAbi::Legacy36Direct => 36 - 16,
+            SelectedMailboxAbi::Capabilities64Envelope => 64 - 16,
+        };
+        anyhow::ensure!(
+            self.mcu_capabilities.len() == expected_len,
+            "selected capability layout does not match the source-derived mailbox ABI"
+        );
+        Ok(())
+    }
+}
+
+/// Production mailbox checks, without compiling firmware or selecting a model.
+///
+/// Required source evidence: common/mcu-mbox/src/messages.rs IDs and response
+/// layouts; mcu-mbox-lib/src/cmd_interface.rs passthrough/feature dispatch;
+/// caliptra_cmd_handler capabilities/version implementations; selected Core's
+/// mailbox layouts matching the fixed e5d1f27 Core fixture. Periodic FIPS and
+/// disable-lms-sig-verify must be off in the agreed runtime configuration.
+/// Self-test start/results are *ungated* Core passthrough commands in all three
+/// selected sources; their test-feature wrapper is not a production prerequisite.
+#[cfg(not(feature = "fpga_realtime"))]
+pub(crate) fn run_selected_mailbox_checks(
+    hw: &mut DefaultHwModel,
+    expected: &SelectedMailboxExpectations,
+) -> Result<()> {
+    expected.validate_capabilities()?;
+    let SelectedCryptoAbi::FixedCoreE5d1f27 = expected.crypto_abi;
+    expected.require_commands(&[
+        ("MC_FIRMWARE_VERSION", McuCommandId::MC_FIRMWARE_VERSION),
+        (
+            "MC_DEVICE_CAPABILITIES",
+            McuCommandId::MC_DEVICE_CAPABILITIES,
+        ),
+        (
+            "MC_FIPS_SELF_TEST_START",
+            McuCommandId::MC_FIPS_SELF_TEST_START,
+        ),
+        (
+            "MC_FIPS_SELF_TEST_GET_RESULTS",
+            McuCommandId::MC_FIPS_SELF_TEST_GET_RESULTS,
+        ),
+        (
+            "MC_FIPS_PERIODIC_STATUS",
+            McuCommandId::MC_FIPS_PERIODIC_STATUS,
+        ),
+        ("MC_IMPORT", McuCommandId::MC_IMPORT),
+        ("MC_ECDH_GENERATE", McuCommandId::MC_ECDH_GENERATE),
+        ("MC_ECDH_FINISH", McuCommandId::MC_ECDH_FINISH),
+        (
+            "MC_ECDSA_CMK_PUBLIC_KEY",
+            McuCommandId::MC_ECDSA_CMK_PUBLIC_KEY,
+        ),
+        ("MC_ECDSA_CMK_SIGN", McuCommandId::MC_ECDSA_CMK_SIGN),
+        ("MC_ECDSA_CMK_VERIFY", McuCommandId::MC_ECDSA_CMK_VERIFY),
+        (
+            "MC_MLDSA_CMK_PUBLIC_KEY",
+            McuCommandId::MC_MLDSA_CMK_PUBLIC_KEY,
+        ),
+        ("MC_MLDSA_CMK_SIGN", McuCommandId::MC_MLDSA_CMK_SIGN),
+        ("MC_MLDSA_CMK_VERIFY", McuCommandId::MC_MLDSA_CMK_VERIFY),
+        (
+            "MC_ECDSA384_SIG_VERIFY",
+            McuCommandId::MC_ECDSA384_SIG_VERIFY,
+        ),
+        ("MC_LMS_SIG_VERIFY", McuCommandId::MC_LMS_SIG_VERIFY),
+    ])?;
+
+    // Keep malformed requests distinct from unsupported-command success checks.
+    assert_mailbox_cmd_failed(hw.mailbox_execute(0, &[0xaa; 8]));
+    assert_mailbox_cmd_failed(hw.mailbox_execute(0, &raw_request(0, &[])));
+    let version_cmd = McuCommandId::MC_FIRMWARE_VERSION.0;
+    assert_mailbox_cmd_failed(
+        hw.mailbox_execute(version_cmd, &[0; size_of::<FirmwareVersionReq>()]),
+    );
+    assert_mailbox_cmd_failed(
+        hw.mailbox_execute(version_cmd, &[0; size_of::<McuMailboxReqHeader>() - 1]),
+    );
+
+    let core_version = hw
+        .caliptra_soc_manager()
+        .soc_ifc()
+        .cptra_fw_rev_id()
+        .at(1)
+        .read();
+    let versions = [
+        semantic_version(core_version),
+        expected.runtime_version.clone(),
+    ];
+    for (index, version) in versions.iter().enumerate() {
+        let response = hw
+            .mailbox_execute(
+                version_cmd,
+                &raw_request(version_cmd, &(index as u32).to_le_bytes()),
+            )?
+            .expect("MC_FIRMWARE_VERSION returned no response");
+        assert_response_checksum(&response);
+        let (header, body) = MailboxRespHeaderVarSize::ref_from_prefix(&response)
+            .expect("invalid firmware-version response");
+        assert_eq!(
+            header.hdr.fips_status,
+            MailboxRespHeader::FIPS_STATUS_APPROVED
+        );
+        assert_eq!(header.data_len as usize, version.len());
+        assert_eq!(body, version.as_bytes());
+    }
+    for index in [2u32, 99] {
+        assert_mailbox_cmd_failed(
+            hw.mailbox_execute(version_cmd, &raw_request(version_cmd, &index.to_le_bytes())),
+        );
+    }
+
+    let core_cmd = CommandId::CAPABILITIES.into();
+    let core_response = hw
+        .caliptra_mailbox_execute(core_cmd, &raw_request(core_cmd, &[]))?
+        .expect("Core CAPABILITIES returned no response");
+    let core_caps = assert_fixed_response::<CapabilitiesResp>(&core_response);
+    assert_eq!(
+        core_caps.hdr.fips_status,
+        MailboxRespHeader::FIPS_STATUS_APPROVED
+    );
+    let caps_cmd = McuCommandId::MC_DEVICE_CAPABILITIES.0;
+    let response = hw
+        .mailbox_execute(caps_cmd, &raw_request(caps_cmd, &[]))?
+        .expect("MC_DEVICE_CAPABILITIES returned no response");
+    assert_response_checksum(&response);
+    let (header, capabilities) =
+        MailboxRespHeader::ref_from_prefix(&response).expect("invalid capabilities response");
+    assert_eq!(header.fips_status, MailboxRespHeader::FIPS_STATUS_APPROVED);
+    assert_eq!(capabilities.len(), 16 + expected.mcu_capabilities.len());
+    assert_eq!(&capabilities[..16], &core_caps.capabilities);
+    assert_eq!(&capabilities[16..], expected.mcu_capabilities);
+
+    let periodic_cmd = McuCommandId::MC_FIPS_PERIODIC_STATUS.0;
+    assert_mailbox_cmd_failed(hw.mailbox_execute(periodic_cmd, &raw_request(periodic_cmd, &[])));
+    run_fips_self_test_checks(hw)?;
+    run_ecdh_checks(hw)?;
+    run_ecdsa_cmk_checks(hw)?;
+    run_mldsa_cmk_checks(hw)?;
+    run_ecdsa384_verify_checks(hw)?;
+    run_lms_verify_checks(hw)?;
+    Ok(())
+}
+
+/// Non-mutating provisioning protocol checks for the agreed zero-owner/Raw OTP.
+/// This preserves nonce freshness, checksum/FIPS/layout and malformed-envelope
+/// checks; it does not claim successful authenticated fuse programming. The
+/// existing positive FE_PROG test requires a different Production lifecycle.
+pub(crate) fn run_selected_provisioning_checks(
+    hw: &mut DefaultHwModel,
+    expected: &SelectedMailboxExpectations,
+) -> Result<()> {
+    let status_commands = [
+        ("MC_FE_STATUS", McuCommandId::MC_FE_STATUS),
+        (
+            "MC_VENDOR_PK_HASH_STATUS",
+            McuCommandId::MC_VENDOR_PK_HASH_STATUS,
+        ),
+        ("MC_HEK_STATUS", McuCommandId::MC_HEK_STATUS),
+    ];
+    match &expected.provisioning_status {
+        SelectedProvisioningStatusSupport::Supported(status) => {
+            expected.require_commands(&status_commands)?;
+            run_selected_provisioning_status_checks(hw, status)?;
+        }
+        SelectedProvisioningStatusSupport::UnavailableInSource => {
+            anyhow::ensure!(
+                status_commands
+                    .iter()
+                    .all(|(name, _)| !expected.command_ids.contains_key(*name)),
+                "provisioning status exclusion contradicts selected command IDs"
+            );
+        }
+    }
+    expected.require_commands(&[(
+        "MC_GET_AUTH_CMD_CHALLENGE",
+        McuCommandId::MC_GET_AUTH_CMD_CHALLENGE,
+    )])?;
+    let challenge_cmd = McuCommandId::MC_GET_AUTH_CMD_CHALLENGE.0;
+    let (command, payload) = match expected.abi {
+        SelectedMailboxAbi::Legacy36Direct => (challenge_cmd, vec![0; 8]),
+        SelectedMailboxAbi::Capabilities64Envelope => {
+            expected.require_commands(&[(
+                "MC_AUTHORIZED_COMMAND",
+                McuCommandId::MC_AUTHORIZED_COMMAND,
+            )])?;
+            let command = McuCommandId::MC_AUTHORIZED_COMMAND.0;
+            // Legacy direct authorization is not accepted by the envelope ABI.
+            assert_mailbox_cmd_failed(
+                hw.mailbox_execute(challenge_cmd, &raw_request(challenge_cmd, &[0; 8])),
+            );
+            for invalid in [vec![1, 0, 0, 0], vec![0, 0, 0, 0, 1, 0, 0, 0]] {
+                let mut payload = challenge_cmd.to_le_bytes().to_vec();
+                payload.extend_from_slice(&invalid);
+                assert_mailbox_cmd_failed(
+                    hw.mailbox_execute(command, &raw_request(command, &payload)),
+                );
+            }
+            (command, challenge_cmd.to_le_bytes().to_vec())
+        }
+    };
+    let mut previous = None;
+    for _ in 0..2 {
+        let response = hw
+            .mailbox_execute(command, &raw_request(command, &payload))?
+            .expect("MC_GET_AUTH_CMD_CHALLENGE returned no response");
+        // Both ABIs encode 8-byte status, a zero reserved word, and 48-byte nonce.
+        // The envelope's zero word is not a variable-response data length.
+        let challenge = assert_fixed_response::<GetAuthCmdChallengeResp>(&response);
+        assert_eq!(
+            challenge.hdr.fips_status,
+            MailboxRespHeader::FIPS_STATUS_APPROVED
+        );
+        assert_eq!(challenge.reserved, 0);
+        assert!(challenge.challenge.iter().any(|&byte| byte != 0));
+        if let Some(previous) = previous {
+            assert_ne!(challenge.challenge, previous);
+        }
+        previous = Some(challenge.challenge);
+    }
+    Ok(())
+}
+
+fn run_selected_provisioning_status_checks(
+    hw: &mut DefaultHwModel,
+    expected: &SelectedProvisioningStatus,
+) -> Result<()> {
+    let fe_cmd = McuCommandId::MC_FE_STATUS.0;
+    let response = hw
+        .mailbox_execute(fe_cmd, &raw_request(fe_cmd, &[]))?
+        .expect("MC_FE_STATUS returned no response");
+    let status = assert_fixed_response::<McuFeStatusResp>(&response);
+    assert_eq!(
+        status.hdr.fips_status,
+        MailboxRespHeader::FIPS_STATUS_APPROVED
+    );
+    assert_eq!(
+        status.already_provisioned,
+        expected.field_entropy_provisioned
+    );
+
+    let vendor_cmd = McuCommandId::MC_VENDOR_PK_HASH_STATUS.0;
+    let response = hw
+        .mailbox_execute(vendor_cmd, &raw_request(vendor_cmd, &[]))?
+        .expect("MC_VENDOR_PK_HASH_STATUS returned no response");
+    let status = assert_fixed_response::<VendorPkHashStatusResp>(&response);
+    assert_eq!(
+        status.hdr.fips_status,
+        MailboxRespHeader::FIPS_STATUS_APPROVED
+    );
+    assert_eq!(status.used_slots_bitmap, expected.vendor_used_slots);
+    assert_eq!(status.key_types, expected.vendor_key_types);
+
+    let hek_cmd = McuCommandId::MC_HEK_STATUS.0;
+    let response = hw.mailbox_execute(hek_cmd, &raw_request(hek_cmd, &[]));
+    match expected.hek {
+        SelectedHekStatusExpectation::UnavailableInConfiguration => {
+            assert_mailbox_cmd_failed(response);
+        }
+        SelectedHekStatusExpectation::Supported {
+            used_slots,
+            total_slots,
+        } => {
+            let response = response?.expect("MC_HEK_STATUS returned no response");
+            let status = assert_fixed_response::<HekStatusResp>(&response);
+            assert_eq!(
+                status.hdr.fips_status,
+                MailboxRespHeader::FIPS_STATUS_APPROVED
+            );
+            assert_eq!(status.used_slots_bitmap, used_slots);
+            assert_eq!(status.total_slots, total_slots);
+        }
+    }
+
+    for command in [fe_cmd, vendor_cmd, hek_cmd] {
+        assert_mailbox_cmd_failed(hw.mailbox_execute(command, &[0; 3]));
+        assert_mailbox_cmd_failed(hw.mailbox_execute(
+            command,
+            &raw_request(command, &0x1234_5678u32.to_le_bytes()),
+        ));
+        assert_mailbox_cmd_failed(hw.mailbox_execute(command, &[0; 4]));
+    }
+    Ok(())
+}
 
 fn semantic_version(packed_version: u32) -> String {
     format!(
@@ -1048,6 +1408,10 @@ fn test_fips_self_test_start_complete_response() -> Result<()> {
             .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
     });
 
+    run_fips_self_test_checks(&mut hw)
+}
+
+fn run_fips_self_test_checks(hw: &mut impl McuHwModel) -> Result<()> {
     let results_cmd = McuCommandId::MC_FIPS_SELF_TEST_GET_RESULTS.0;
     let request = raw_request(results_cmd, &[]);
     assert!(
@@ -1242,9 +1606,12 @@ fn test_get_auth_cmd_challenge_successive_generation() -> Result<()> {
 #[test]
 fn test_mcu_mbox_ecdh_commands() -> Result<()> {
     let mut hw = start_crypto_mailbox_hw();
+    run_ecdh_checks(&mut hw)
+}
 
+fn run_ecdh_checks(hw: &mut impl McuHwModel) -> Result<()> {
     let generate_response = execute_raw_mcu_req(
-        &mut hw,
+        hw,
         McuMailboxReq::EcdhGenerate(McuEcdhGenerateReq(CmEcdhGenerateReq::default())),
     )?;
     let generate = assert_fixed_response::<McuEcdhGenerateResp>(&generate_response);
@@ -1256,7 +1623,7 @@ fn test_mcu_mbox_ecdh_commands() -> Result<()> {
     assert_ne!(generate.0.exchange_data, [0; 96]);
 
     let finish_response = execute_raw_mcu_req(
-        &mut hw,
+        hw,
         McuMailboxReq::EcdhFinish(McuEcdhFinishReq(CmEcdhFinishReq {
             context: generate.0.context,
             key_usage: CmKeyUsage::Aes.into(),
@@ -1298,10 +1665,13 @@ fn test_mcu_mbox_ecdh_commands() -> Result<()> {
 #[test]
 fn test_mcu_mbox_ecdsa_cmk_commands() -> Result<()> {
     let mut hw = start_crypto_mailbox_hw();
+    run_ecdsa_cmk_checks(&mut hw)
+}
 
-    let cmk = import_cmk(&mut hw, CmKeyUsage::Ecdsa, &[0; 48])?;
+fn run_ecdsa_cmk_checks(hw: &mut impl McuHwModel) -> Result<()> {
+    let cmk = import_cmk(hw, CmKeyUsage::Ecdsa, &[0; 48])?;
     let public_key_response = execute_raw_mcu_req(
-        &mut hw,
+        hw,
         McuMailboxReq::EcdsaCmkPublicKey(McuEcdsaCmkPublicKeyReq(CmEcdsaPublicKeyReq {
             cmk,
             ..Default::default()
@@ -1323,7 +1693,7 @@ fn test_mcu_mbox_ecdsa_cmk_commands() -> Result<()> {
     };
     sign_request.message[..message.len()].copy_from_slice(message);
     let sign_response = execute_raw_mcu_req(
-        &mut hw,
+        hw,
         McuMailboxReq::EcdsaCmkSign(McuEcdsaCmkSignReq(sign_request)),
     )?;
     let signature = assert_fixed_response::<McuEcdsaCmkSignResp>(&sign_response);
@@ -1335,7 +1705,7 @@ fn test_mcu_mbox_ecdsa_cmk_commands() -> Result<()> {
     assert_ne!(signature.0.signature_s, [0; 48]);
 
     let verify_response = execute_raw_mcu_req(
-        &mut hw,
+        hw,
         McuMailboxReq::EcdsaCmkVerify(ecdsa_verify_req(
             cmk,
             message,
@@ -1351,7 +1721,7 @@ fn test_mcu_mbox_ecdsa_cmk_commands() -> Result<()> {
     let mut invalid_signature = signature.0.signature_r;
     invalid_signature[0] ^= 1;
     assert_mcu_req_fails(
-        &mut hw,
+        hw,
         McuMailboxReq::EcdsaCmkVerify(ecdsa_verify_req(
             cmk,
             message,
@@ -1360,7 +1730,7 @@ fn test_mcu_mbox_ecdsa_cmk_commands() -> Result<()> {
         )),
     );
 
-    let aes_cmk = import_cmk(&mut hw, CmKeyUsage::Aes, &[0xa5; 32])?;
+    let aes_cmk = import_cmk(hw, CmKeyUsage::Aes, &[0xa5; 32])?;
     for invalid_cmk in [Cmk::default(), aes_cmk] {
         for request in [
             McuMailboxReq::EcdsaCmkPublicKey(McuEcdsaCmkPublicKeyReq(CmEcdsaPublicKeyReq {
@@ -1373,7 +1743,7 @@ fn test_mcu_mbox_ecdsa_cmk_commands() -> Result<()> {
             })),
             McuMailboxReq::EcdsaCmkVerify(ecdsa_verify_req(invalid_cmk, &[], [0; 48], [0; 48])),
         ] {
-            assert_mcu_req_fails(&mut hw, request);
+            assert_mcu_req_fails(hw, request);
         }
     }
     Ok(())
@@ -1413,10 +1783,13 @@ fn test_fe_status_cmd_does_not_require_authorization() -> Result<()> {
 #[test]
 fn test_mcu_mbox_mldsa_cmk_commands() -> Result<()> {
     let mut hw = start_crypto_mailbox_hw();
+    run_mldsa_cmk_checks(&mut hw)
+}
 
-    let cmk = import_cmk(&mut hw, CmKeyUsage::Mldsa, &[0x5a; 32])?;
+fn run_mldsa_cmk_checks(hw: &mut impl McuHwModel) -> Result<()> {
+    let cmk = import_cmk(hw, CmKeyUsage::Mldsa, &[0x5a; 32])?;
     let public_key_response = execute_raw_mcu_req(
-        &mut hw,
+        hw,
         McuMailboxReq::MldsaCmkPublicKey(McuMldsaCmkPublicKeyReq(CmMldsaPublicKeyReq {
             cmk,
             ..Default::default()
@@ -1437,7 +1810,7 @@ fn test_mcu_mbox_mldsa_cmk_commands() -> Result<()> {
     };
     sign_request.message[..message.len()].copy_from_slice(message);
     let sign_response = execute_raw_mcu_req(
-        &mut hw,
+        hw,
         McuMailboxReq::MldsaCmkSign(McuMldsaCmkSignReq(sign_request)),
     )?;
     let signature = assert_fixed_response::<McuMldsaCmkSignResp>(&sign_response);
@@ -1448,7 +1821,7 @@ fn test_mcu_mbox_mldsa_cmk_commands() -> Result<()> {
     assert!(signature.0.signature.iter().any(|byte| *byte != 0));
 
     let verify_response = execute_raw_mcu_req(
-        &mut hw,
+        hw,
         McuMailboxReq::MldsaCmkVerify(mldsa_verify_req(cmk, message, signature.0.signature)),
     )?;
     assert_eq!(
@@ -1459,11 +1832,11 @@ fn test_mcu_mbox_mldsa_cmk_commands() -> Result<()> {
     let mut invalid_signature = signature.0.signature;
     invalid_signature[0] ^= 1;
     assert_mcu_req_fails(
-        &mut hw,
+        hw,
         McuMailboxReq::MldsaCmkVerify(mldsa_verify_req(cmk, message, invalid_signature)),
     );
 
-    let aes_cmk = import_cmk(&mut hw, CmKeyUsage::Aes, &[0xa5; 32])?;
+    let aes_cmk = import_cmk(hw, CmKeyUsage::Aes, &[0xa5; 32])?;
     for invalid_cmk in [Cmk::default(), aes_cmk] {
         for request in [
             McuMailboxReq::MldsaCmkPublicKey(McuMldsaCmkPublicKeyReq(CmMldsaPublicKeyReq {
@@ -1480,7 +1853,7 @@ fn test_mcu_mbox_mldsa_cmk_commands() -> Result<()> {
                 [0; MLDSA87_SIGNATURE_BYTE_SIZE],
             )),
         ] {
-            assert_mcu_req_fails(&mut hw, request);
+            assert_mcu_req_fails(hw, request);
         }
     }
     Ok(())
@@ -1562,12 +1935,6 @@ fn test_hek_status_cmd_does_not_require_authorization() -> Result<()> {
 
 #[test]
 fn test_mcu_mbox_ecdsa384_sig_verify() -> Result<()> {
-    use caliptra_image_crypto::RustCrypto;
-    use caliptra_image_fake_keys::{
-        VENDOR_ECC_KEY_0_PRIVATE, VENDOR_ECC_KEY_0_PUBLIC, VENDOR_ECC_KEY_1_PUBLIC,
-    };
-    use caliptra_image_gen::{from_hw_format, to_hw_format, ImageGeneratorCrypto};
-
     let mut hw = start_runtime_hw_model(TestParams {
         feature: Some("test-mcu-mbox-cmds"),
         ..Default::default()
@@ -1576,6 +1943,16 @@ fn test_mcu_mbox_ecdsa384_sig_verify() -> Result<()> {
         hw.mci_boot_milestones()
             .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
     });
+
+    run_ecdsa384_verify_checks(&mut hw)
+}
+
+fn run_ecdsa384_verify_checks(hw: &mut impl McuHwModel) -> Result<()> {
+    use caliptra_image_crypto::RustCrypto;
+    use caliptra_image_fake_keys::{
+        VENDOR_ECC_KEY_0_PRIVATE, VENDOR_ECC_KEY_0_PUBLIC, VENDOR_ECC_KEY_1_PUBLIC,
+    };
+    use caliptra_image_gen::{from_hw_format, to_hw_format, ImageGeneratorCrypto};
 
     let digest = [0x5au8; 48];
     let signature = RustCrypto::default().ecdsa384_sign(
@@ -1646,12 +2023,6 @@ fn test_mcu_mbox_ecdsa384_sig_verify() -> Result<()> {
 #[cfg(not(feature = "fpga_realtime"))]
 #[test]
 fn test_mcu_mbox_lms_sig_verify() -> Result<()> {
-    use caliptra_image_crypto::RustCrypto;
-    use caliptra_image_fake_keys::{
-        VENDOR_LMS_KEY_0_PRIVATE, VENDOR_LMS_KEY_0_PUBLIC, VENDOR_LMS_KEY_1_PUBLIC,
-    };
-    use caliptra_image_gen::{to_hw_format, ImageGeneratorCrypto};
-
     let mut hw = start_runtime_hw_model(TestParams {
         feature: Some("test-mcu-mbox-cmds"),
         ..Default::default()
@@ -1660,6 +2031,17 @@ fn test_mcu_mbox_lms_sig_verify() -> Result<()> {
         hw.mci_boot_milestones()
             .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
     });
+
+    run_lms_verify_checks(&mut hw)
+}
+
+#[cfg(not(feature = "fpga_realtime"))]
+fn run_lms_verify_checks(hw: &mut impl McuHwModel) -> Result<()> {
+    use caliptra_image_crypto::RustCrypto;
+    use caliptra_image_fake_keys::{
+        VENDOR_LMS_KEY_0_PRIVATE, VENDOR_LMS_KEY_0_PUBLIC, VENDOR_LMS_KEY_1_PUBLIC,
+    };
+    use caliptra_image_gen::{to_hw_format, ImageGeneratorCrypto};
 
     let digest = [0xa5u8; 48];
     let signature =

@@ -16,7 +16,7 @@ use zerocopy::{FromBytes, IntoBytes};
 
 mod test_fuse_mailbox;
 mod test_increase_caliptra_svn;
-mod test_mcu_mailbox;
+pub(crate) mod test_mcu_mailbox;
 mod test_ocp_lock;
 mod test_revoke_vendor_pub_key;
 

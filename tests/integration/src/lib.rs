@@ -43,6 +43,8 @@ mod test_ocp_dev_identity_provision_tool;
 mod test_owner_stable_key;
 mod test_pldm_fw_update;
 mod test_raw_lifecycle_boot;
+#[cfg(all(test, not(feature = "fpga_realtime")))]
+mod test_rom_runtime_compatibility;
 mod test_soc_boot;
 mod test_svn_manifest;
 mod test_sw_pcr_store;
@@ -96,10 +98,12 @@ mod test {
     }
 
     pub struct TestParams<'a> {
+        pub hw_revision: Option<&'a str>,
         pub feature: Option<&'a str>,
         pub rom_feature: Option<&'a str>,
         pub network_rom_feature: Option<&'a str>,
         pub i3c_port: Option<u16>,
+        pub capture_mcu_exit: bool,
         pub dot_flash_initial_contents: Option<Vec<u8>>,
         pub rom_only: bool,
         pub include_network_rom: bool,
@@ -110,6 +114,8 @@ mod test {
         pub seed_primary_flash_image: bool,
         /// Override the generated or prebuilt primary flash image.
         pub primary_flash_image: Option<Vec<u8>>,
+        /// Use the supplied flash byte-for-byte, without seeding test certificates.
+        pub exact_primary_flash: bool,
         pub network_tap_device: Option<Arc<Mutex<Box<dyn TapDevice>>>>,
         /// If true, set the DOT initialized fuse to enable DOT flow
         pub dot_enabled: bool,
@@ -159,10 +165,12 @@ mod test {
     impl Default for TestParams<'_> {
         fn default() -> Self {
             Self {
+                hw_revision: None,
                 feature: None,
                 rom_feature: None,
                 network_rom_feature: None,
                 i3c_port: None,
+                capture_mcu_exit: false,
                 dot_flash_initial_contents: None,
                 rom_only: false,
                 include_network_rom: false,
@@ -170,6 +178,7 @@ mod test {
                 network_boot: false,
                 seed_primary_flash_image: false,
                 primary_flash_image: None,
+                exact_primary_flash: false,
                 network_tap_device: None,
                 dot_enabled: false,
                 custom_caliptra_fw: None,
@@ -745,15 +754,7 @@ mod test {
     }
 
     pub fn start_runtime_hw_model(params: TestParams) -> DefaultHwModel {
-        let TestBinaries {
-            vendor_pk_hash_u8,
-            caliptra_rom,
-            caliptra_fw,
-            mcu_rom,
-            soc_manifest,
-            mcu_runtime,
-            flash_image,
-        } = match FirmwareBinaries::from_env() {
+        let binaries = match FirmwareBinaries::from_env() {
             Ok(binaries)
                 if params.firmware_prefix.is_none()
                     && params.custom_mcu_runtime.is_none()
@@ -769,6 +770,22 @@ mod test {
                 build_test_binaries(&params)
             }
         };
+        start_runtime_hw_model_with_binaries(params, binaries)
+    }
+
+    pub fn start_runtime_hw_model_with_binaries(
+        params: TestParams,
+        binaries: TestBinaries,
+    ) -> DefaultHwModel {
+        let TestBinaries {
+            vendor_pk_hash_u8,
+            caliptra_rom,
+            caliptra_fw,
+            mcu_rom,
+            soc_manifest,
+            mcu_runtime,
+            flash_image,
+        } = binaries;
 
         // Use custom MCU ROM if provided, otherwise use prebuilt/compiled
         let mcu_rom = if let Some(custom_rom) = params.custom_mcu_rom {
@@ -908,22 +925,29 @@ mod test {
             (caliptra_fw, soc_manifest, mcu_runtime)
         };
 
-        let primary_flash_initial_contents = build_primary_flash_initial_contents(
-            primary_flash_image,
-            #[cfg(not(feature = "fpga_realtime"))]
-            Some(ECC_DEVID_CERT_DER.as_slice()),
-            #[cfg(feature = "fpga_realtime")]
-            // Initialized in run_imaginary_flash_controller_service
-            None,
-            #[cfg(not(feature = "fpga_realtime"))]
-            Some(MLDSA_IDEVID_CERT.as_slice()),
-            #[cfg(feature = "fpga_realtime")]
-            // Initialized in run_imaginary_flash_controller_service
-            None,
-            params.seeded_log_entries,
-        );
+        let primary_flash_initial_contents = if params.exact_primary_flash {
+            primary_flash_image
+        } else {
+            build_primary_flash_initial_contents(
+                primary_flash_image,
+                #[cfg(not(feature = "fpga_realtime"))]
+                Some(ECC_DEVID_CERT_DER.as_slice()),
+                #[cfg(feature = "fpga_realtime")]
+                // Initialized in run_imaginary_flash_controller_service
+                None,
+                #[cfg(not(feature = "fpga_realtime"))]
+                Some(MLDSA_IDEVID_CERT.as_slice()),
+                #[cfg(feature = "fpga_realtime")]
+                // Initialized in run_imaginary_flash_controller_service
+                None,
+                params.seeded_log_entries,
+            )
+        };
 
         caliptra_mcu_hw_model::new(InitParams {
+            hw_revision: params
+                .hw_revision
+                .map(|revision| revision.parse().expect("Invalid hardware revision")),
             fuses: Fuses {
                 fuse_pqc_key_type: params.vendor_pqc_type.map(|t| t as u32).unwrap_or(0),
                 vendor_pk_hash,
@@ -940,6 +964,7 @@ mod test {
             active_mode: true,
             vendor_pqc_type: params.vendor_pqc_type,
             i3c_port: params.i3c_port,
+            capture_mcu_exit: params.capture_mcu_exit,
             enable_mcu_uart_log: true,
             dot_flash_initial_contents: params.dot_flash_initial_contents,
             lifecycle_controller_state: params.lifecycle_controller_state,
