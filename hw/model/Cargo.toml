@@ -69,3 +69,6 @@ caliptra-builder.workspace = true
 caliptra-registers.workspace = true
 caliptra-test-harness-types.workspace = true
 nix.workspace = true
+
+[build-dependencies]
+caliptra-mcu-hw-revision.workspace = true

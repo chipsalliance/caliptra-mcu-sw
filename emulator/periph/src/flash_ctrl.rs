@@ -819,7 +819,17 @@ mod test {
                 None,
                 None,
                 None,
+                #[cfg(hw_rev = "latest")]
+                None,
+                #[cfg(hw_rev = "latest")]
+                None,
                 Some(flash_controller),
+                #[cfg(hw_rev = "latest")]
+                None,
+                #[cfg(hw_rev = "latest")]
+                None,
+                #[cfg(hw_rev = "latest")]
+                None,
                 None,
                 None,
                 None,
@@ -839,7 +849,17 @@ mod test {
                 None,
                 None,
                 None,
+                #[cfg(hw_rev = "latest")]
+                None,
+                #[cfg(hw_rev = "latest")]
+                None,
                 Some(flash_controller),
+                #[cfg(hw_rev = "latest")]
+                None,
+                #[cfg(hw_rev = "latest")]
+                None,
+                #[cfg(hw_rev = "latest")]
+                None,
                 None,
                 None,
                 None,

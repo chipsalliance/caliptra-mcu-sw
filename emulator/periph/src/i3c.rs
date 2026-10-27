@@ -1178,7 +1178,17 @@ mod tests {
             vec![],
             None,
             None,
+            #[cfg(hw_rev = "latest")]
+            None,
+            #[cfg(hw_rev = "latest")]
+            None,
             Some(i3c),
+            #[cfg(hw_rev = "latest")]
+            None,
+            #[cfg(hw_rev = "latest")]
+            None,
+            #[cfg(hw_rev = "latest")]
+            None,
             None,
             None,
             None,

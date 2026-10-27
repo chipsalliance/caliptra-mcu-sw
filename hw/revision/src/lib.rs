@@ -58,8 +58,8 @@ impl HardwareRevision {
         }
     }
 
-    // Both snapshots initially use the validated 2.1 hardware. Advance this
-    // contract together with latest's hardware and generated bindings.
+    // This is the existing emulator/core behavior contract, not the MCU register
+    // revision. Full 2.2 behavior remains gated on core alignment and new models.
     pub const fn emulator_version(self) -> &'static str {
         "2.1.0"
     }
