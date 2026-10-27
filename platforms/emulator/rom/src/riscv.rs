@@ -204,7 +204,12 @@ pub extern "C" fn rom_entry() -> ! {
     let axi_user1 = 0xdddd_ddddu32;
     let mbox_axi_users = [axi_user0, axi_user1, 0, 0, 0];
 
-    if cfg!(feature = "use-flash-partition-table") {
+    // Explicit I3C-services test mode must override the flash-boot features
+    // pulled in by hw-2-1, otherwise the services parameters are never set.
+    if cfg!(all(
+        feature = "use-flash-partition-table",
+        not(feature = "test-i3c-services")
+    )) {
         // Initialize the flash controller for testing purposes
 
         let primary_flash_ctrl = EmulatedFlashCtrl::initialize_flash_ctrl(PRIMARY_FLASH_CTRL_BASE);
@@ -336,7 +341,10 @@ pub extern "C" fn rom_entry() -> ! {
             mci_mbox1_axi_users: mbox_axi_users,
             ..Default::default()
         });
-    } else if cfg!(feature = "flash-boot") {
+    } else if cfg!(all(
+        feature = "flash-boot",
+        not(feature = "test-i3c-services")
+    )) {
         // Simple flash-based boot without partition tables.
         // Uses flash image starting at offset 0.
         let primary_flash_ctrl = EmulatedFlashCtrl::initialize_flash_ctrl(PRIMARY_FLASH_CTRL_BASE);

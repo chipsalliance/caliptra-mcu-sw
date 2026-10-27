@@ -23,6 +23,39 @@ use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
+/// Firmware-visible LAST_IBI_STATUS values from i3c-core's `ibi_status_e`.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+#[repr(u8)]
+pub enum I3cIbiStatus {
+    #[default]
+    Success = 0,
+    Nack = 1,
+    PartialData = 2,
+    Retry = 3,
+    AddressArbitration = 4,
+}
+
+/// One deterministic IBI attempt. No electrical bus behavior is simulated.
+#[derive(Clone, Copy, Debug)]
+pub enum I3cIbiOutcome {
+    /// Complete after this many peripheral polls (at least one).
+    Complete {
+        status: I3cIbiStatus,
+        after_polls: u32,
+    },
+    /// Never complete: no IbiDone and no controller notification.
+    Missing,
+}
+
+impl Default for I3cIbiOutcome {
+    fn default() -> Self {
+        Self::Complete {
+            status: I3cIbiStatus::Success,
+            after_polls: 1,
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct I3cController {
     targets: Arc<Mutex<Vec<I3cTarget>>>,
@@ -131,6 +164,17 @@ impl I3cController {
         Ok(())
     }
 
+    /// A shared target handle for emulator-only fault scripting and inspection.
+    pub fn target(&self, addr: DynamicI3cAddress) -> Result<I3cTarget, I3cError> {
+        self.targets
+            .lock()
+            .unwrap()
+            .iter()
+            .find(|target| target.get_address() == Some(addr))
+            .cloned()
+            .ok_or(I3cError::TargetNotFound)
+    }
+
     pub fn tcri_send(
         &mut self,
         addr: DynamicI3cAddress,
@@ -188,11 +232,14 @@ impl I3cController {
                     addr: target.get_address().unwrap(),
                     resp,
                 }));
-                v.extend(target.get_ibis().iter().map(|mdb| {
+                v.extend(target.get_ibis().into_iter().map(|(mdb, data)| {
+                    let mut resp = I3cTcriResponseXfer::default();
+                    resp.resp.set_data_length(data.len() as u16);
+                    resp.data = data;
                     I3cBusResponse {
-                        ibi: Some(*mdb),
+                        ibi: Some(mdb),
                         addr: target.get_address().unwrap(),
-                        resp: I3cTcriResponseXfer::default(), // empty descriptor for the IBI
+                        resp,
                     }
                 }));
                 v
@@ -232,7 +279,19 @@ impl I3cTarget {
     pub fn send_command(&mut self, cmd: I3cTcriCommandXfer) {
         // Release the target lock before calling incoming() to avoid a
         // lock-ordering inversion with the emulator step lock.
-        self.target.lock().unwrap().rx_buffer.push_back(cmd);
+        {
+            let mut target = self.target.lock().unwrap();
+            if cmd.cmd.is_read() {
+                // A read belongs to the TX path, never to the RX descriptor
+                // FIFO. Retain early requests until a TX packet is available.
+                let tid = ((u64::from(cmd.cmd.clone()) >> 3) & 0xf) as u8;
+                target
+                    .read_requests
+                    .push_back((cmd.cmd.raw_data_len(), tid));
+            } else {
+                target.rx_buffer.push_back(cmd);
+            }
+        }
         let client = self.incoming_command_client.lock().unwrap().clone();
         if let Some(client) = client {
             client.incoming();
@@ -240,7 +299,21 @@ impl I3cTarget {
     }
 
     pub fn get_response(&mut self) -> Option<I3cTcriResponseXfer> {
-        self.target.lock().unwrap().tx_buffer.pop_front()
+        let mut target = self.target.lock().unwrap();
+        let (requested, tid) = *target.read_requests.front()?;
+        let mut resp = target.tx_buffer.pop_front()?;
+        target.read_requests.pop_front();
+        // A zero length means read the whole queued packet, matching existing
+        // socket clients. A short read consumes this packet, not the next one.
+        let len = if requested == 0 {
+            resp.data.len()
+        } else {
+            requested.min(resp.data.len())
+        };
+        resp.data.truncate(len);
+        resp.resp.set_data_length(len as u16);
+        resp.resp.0 = (resp.resp.0 & !(0xf << 24)) | ((tid as u32) << 24);
+        Some(resp)
     }
 
     pub fn has_pending_response(&self) -> bool {
@@ -259,12 +332,49 @@ impl I3cTarget {
         self.target.lock().unwrap().tx_buffer.push_back(resp)
     }
 
-    pub fn get_ibis(&mut self) -> Vec<u8> {
+    pub fn get_ibis(&mut self) -> Vec<(u8, Vec<u8>)> {
         self.target.lock().unwrap().ibi_buffer.drain(..).collect()
     }
 
-    pub fn send_ibi(&mut self, mdb: u8) {
-        self.target.lock().unwrap().ibi_buffer.push_back(mdb)
+    pub fn send_ibi(&mut self, mdb: u8, data: Vec<u8>) {
+        self.target
+            .lock()
+            .unwrap()
+            .ibi_buffer
+            .push_back((mdb, data))
+    }
+
+    /// Queue next-N outcomes before triggering firmware transmissions. Once
+    /// exhausted, subsequent attempts succeed after one peripheral poll.
+    pub fn queue_ibi_outcome(&self, outcome: I3cIbiOutcome) {
+        self.target.lock().unwrap().ibi_outcomes.push_back(outcome);
+    }
+
+    pub fn ibi_attempts(&self) -> usize {
+        self.target.lock().unwrap().ibi_attempts
+    }
+
+    pub(crate) fn next_ibi_outcome(&self) -> I3cIbiOutcome {
+        let mut target = self.target.lock().unwrap();
+        target.ibi_attempts += 1;
+        target.ibi_outcomes.pop_front().unwrap_or_default()
+    }
+
+    /// Override the next private write's RX descriptor Error field. Queue zero
+    /// to leave an intervening packet valid. Oversized writes need no special
+    /// control: send their actual data and length through the normal interface.
+    pub fn queue_rx_error(&self, error: u8) {
+        assert!(error <= 0xf);
+        self.target.lock().unwrap().rx_errors.push_back(error);
+    }
+
+    pub(crate) fn next_rx_error(&self) -> u8 {
+        self.target
+            .lock()
+            .unwrap()
+            .rx_errors
+            .pop_front()
+            .unwrap_or(0)
     }
 }
 
@@ -273,7 +383,11 @@ pub struct I3cTargetDevice {
     dynamic_address: Option<DynamicI3cAddress>,
     rx_buffer: VecDeque<I3cTcriCommandXfer>,
     tx_buffer: VecDeque<I3cTcriResponseXfer>,
-    ibi_buffer: VecDeque<u8>,
+    read_requests: VecDeque<(usize, u8)>,
+    ibi_buffer: VecDeque<(u8, Vec<u8>)>,
+    ibi_outcomes: VecDeque<I3cIbiOutcome>,
+    ibi_attempts: usize,
+    rx_errors: VecDeque<u8>,
 }
 
 #[cfg(test)]

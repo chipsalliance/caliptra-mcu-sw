@@ -2284,6 +2284,7 @@ dependencies = [
  "caliptra-mcu-core-util-host-mctp-vdm-test-config",
  "caliptra-mcu-core-util-host-transport",
  "caliptra-mcu-debug-unlock-signer",
+ "caliptra-mcu-emulator-periph",
  "caliptra-mcu-error",
  "caliptra-mcu-firmware-bundler",
  "caliptra-mcu-flash-image",
