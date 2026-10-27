@@ -2,7 +2,7 @@
 
 use core::cell::RefCell;
 
-use caliptra_mcu_flash_image::{FlashHeader, ImageHeader};
+use caliptra_mcu_flash_image::{MAX_FLASH_HEADER_SIZE, MAX_IMAGE_HEADER_SIZE};
 use caliptra_mcu_libsyscall_caliptra::dma::AXIAddr;
 
 use caliptra_mcu_pldm_common::message::firmware_update::verify_complete::VerifyResult;
@@ -36,8 +36,8 @@ pub struct DownloadCtx {
     pub last_requested_length: usize,
     pub download_complete: bool,
     pub verify_result: VerifyResult,
-    pub header: [u8; core::mem::size_of::<FlashHeader>()],
-    pub image_info: [u8; core::mem::size_of::<ImageHeader>()],
+    pub header: [u8; MAX_FLASH_HEADER_SIZE],
+    pub image_info: [u8; MAX_IMAGE_HEADER_SIZE],
     pub payload: [u8; PLDM_PAYLOAD_CHUNK_SIZE],
     pub load_address: AXIAddr,
 }
@@ -50,8 +50,8 @@ pub static DOWNLOAD_CTX: Mutex<CriticalSectionRawMutex, RefCell<DownloadCtx>> =
         total_downloaded: 0,
         download_complete: false,
         verify_result: VerifyResult::VerifySuccess,
-        header: [0; core::mem::size_of::<FlashHeader>()],
-        image_info: [0; core::mem::size_of::<ImageHeader>()],
+        header: [0; MAX_FLASH_HEADER_SIZE],
+        image_info: [0; MAX_IMAGE_HEADER_SIZE],
         payload: [0; PLDM_PAYLOAD_CHUNK_SIZE],
         load_address: 0,
         last_requested_length: 0,
