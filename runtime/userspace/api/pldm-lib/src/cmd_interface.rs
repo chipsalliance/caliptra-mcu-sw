@@ -101,6 +101,10 @@ impl<'a> CmdInterface<'a> {
         if req_len == 0 {
             return Ok(());
         }
+        let is_apply_complete = PldmMsgHeader::<[u8; 3]>::decode(payload)
+            .map_err(|_| errors::CODEC_ERROR)?
+            .cmd_code()
+            == FwUpdateCmd::ApplyComplete as u8;
 
         // Mark that a response is pending. The responder task will wait
         // on the signal in wait_for_initiator() before processing commands
@@ -129,6 +133,10 @@ impl<'a> CmdInterface<'a> {
 
         // Always clear the flag — this also signals the responder.
         self.fd_ctx.set_pending_response(false);
+
+        if is_apply_complete {
+            self.fd_ctx.ops().apply_complete_reported(result);
+        }
 
         result
     }

@@ -2,10 +2,12 @@
 
 use core::cell::RefCell;
 
-use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::ApplyResult;
+use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::{
+    ApplyOutcome, ApplyResult,
+};
 use caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
 use caliptra_mcu_pldm_common::message::firmware_update::verify_complete::VerifyResult;
-use caliptra_mcu_pldm_common::protocol::firmware_update::Descriptor;
+use caliptra_mcu_pldm_common::protocol::firmware_update::{ComponentActivationMethods, Descriptor};
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::blocking_mutex::Mutex;
 
@@ -31,7 +33,7 @@ pub struct DownloadCtx<'a> {
     pub total_downloaded: usize,
     pub last_requested_length: usize,
     pub verify_result: VerifyResult,
-    pub apply_result: ApplyResult,
+    pub apply_outcome: ApplyOutcome,
     pub descriptors: Option<&'a [Descriptor]>,
     pub fw_params: Option<&'a FirmwareParameters>,
     pub staging_memory: Option<&'a dyn StagingMemory>,
@@ -44,7 +46,10 @@ pub static DOWNLOAD_CTX: Mutex<CriticalSectionRawMutex, RefCell<DownloadCtx>> =
         initial_offset: 0,
         total_downloaded: 0,
         verify_result: VerifyResult::VerifySuccess,
-        apply_result: ApplyResult::ApplySuccess,
+        apply_outcome: ApplyOutcome {
+            result: ApplyResult::ApplySuccess,
+            activation_methods: ComponentActivationMethods(0),
+        },
         last_requested_length: 0,
         descriptors: None,
         fw_params: None,
