@@ -4,7 +4,9 @@ extern crate alloc;
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
-use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::ApplyResult;
+use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::{
+    ApplyOutcome, ApplyResult,
+};
 use caliptra_mcu_pldm_common::message::firmware_update::get_status::ProgressPercent;
 use caliptra_mcu_pldm_common::message::firmware_update::request_cancel::{
     NonFunctioningComponentBitmap, NonFunctioningComponentIndication,
@@ -182,6 +184,28 @@ pub trait FdOps {
         component: &FirmwareComponent,
         progress_percent: &mut ProgressPercent,
     ) -> McuResult<ApplyResult>;
+
+    /// Applies firmware and reports any activation method changes.
+    ///
+    /// Existing implementations delegate to `apply` with no modification.
+    /// Override this method to supply ComponentActivationMethodsModification.
+    async fn apply_outcome(
+        &self,
+        component: &FirmwareComponent,
+        progress_percent: &mut ProgressPercent,
+    ) -> McuResult<ApplyOutcome> {
+        Ok(ApplyOutcome {
+            result: self.apply(component, progress_percent).await?,
+            ..ApplyOutcome::default()
+        })
+    }
+
+    /// Called after the ApplyComplete request/response transaction finishes.
+    ///
+    /// An error means the outcome could not be reported successfully. Platforms
+    /// can use this notification to keep the application alive until reporting
+    /// finishes, rather than exiting immediately after producing a failure.
+    fn apply_complete_reported(&self, _result: McuResult<()>) {}
 
     /// Activates new firmware.
     ///

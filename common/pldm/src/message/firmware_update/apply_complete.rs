@@ -19,6 +19,31 @@ pub enum ApplyResult {
     VendorDefined,
 }
 
+impl ApplyResult {
+    pub fn is_success(self) -> bool {
+        matches!(
+            self,
+            Self::ApplySuccess | Self::ApplySuccessWithActivationMethod
+        )
+    }
+}
+
+/// Result and activation method changes to report in ApplyComplete.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ApplyOutcome {
+    pub result: ApplyResult,
+    pub activation_methods: ComponentActivationMethods,
+}
+
+impl Default for ApplyOutcome {
+    fn default() -> Self {
+        Self {
+            result: ApplyResult::ApplySuccess,
+            activation_methods: ComponentActivationMethods(0),
+        }
+    }
+}
+
 impl TryFrom<u8> for ApplyResult {
     type Error = PldmError;
 

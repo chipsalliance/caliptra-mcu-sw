@@ -7,7 +7,9 @@ use super::pldm_context::{State, DOWNLOAD_CTX, FW_UPDATE_HOOKS, PLDM_STATE};
 use alloc::boxed::Box;
 use async_trait::async_trait;
 use caliptra_mcu_flash_image::{FlashHeader, ImageHeader};
-use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::ApplyResult;
+use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::{
+    ApplyOutcome, ApplyResult,
+};
 use caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
 use caliptra_mcu_pldm_common::message::firmware_update::get_status::ProgressPercent;
 use caliptra_mcu_pldm_common::message::firmware_update::request_fw_data::MAX_PLDM_FW_DATA_SIZE as MAX_PLDM_TRANSFER_SIZE;
@@ -210,10 +212,21 @@ impl FdOps for UpdateFdOps {
 
     async fn apply(
         &self,
-        _component: &FirmwareComponent,
+        component: &FirmwareComponent,
         progress_percent: &mut ProgressPercent,
     ) -> McuResult<ApplyResult> {
-        // Transition to Verify state
+        Ok(self
+            .apply_outcome(component, progress_percent)
+            .await?
+            .result)
+    }
+
+    async fn apply_outcome(
+        &self,
+        _component: &FirmwareComponent,
+        progress_percent: &mut ProgressPercent,
+    ) -> McuResult<ApplyOutcome> {
+        // Transition to Apply state
         PLDM_STATE.lock(|state| {
             let mut state = state.borrow_mut();
             *state = State::Apply;
@@ -221,17 +234,22 @@ impl FdOps for UpdateFdOps {
         // Pass control to firmware update task
         FW_UPDATE_TASK_YIELD.signal(());
 
-        // Wait for the firmware update task to complete verification
+        // Wait for the firmware update task to complete application
         PLDM_DAEMON_TASK_YIELD.wait().await;
 
         *progress_percent = ProgressPercent::new(100).unwrap();
-        let apply_result = DOWNLOAD_CTX.lock(|ctx| ctx.borrow().apply_result);
-        Ok(apply_result)
+        let outcome = DOWNLOAD_CTX.lock(|ctx| ctx.borrow().apply_outcome);
+        Ok(outcome)
     }
 
     fn cancel_update_component(&self, _component: &FirmwareComponent) -> McuResult<()> {
         // TODO: Implement cancel update component logic if needed
         Ok(())
+    }
+
+    fn apply_complete_reported(&self, result: McuResult<()>) {
+        super::pldm_client::APPLY_COMPLETE_REPORTED
+            .signal(result.map_err(|_| caliptra_mcu_libtock_platform::ErrorCode::Fail));
     }
 
     fn activate(&self, _self_contained_activation: u8, estimated_time: &mut u16) -> McuResult<u8> {
