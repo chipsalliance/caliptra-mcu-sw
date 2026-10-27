@@ -190,8 +190,8 @@ pub struct EmulatorArgs {
     #[arg(long, default_value_t = cfg!(feature = "ocp-lock"))]
     pub ocp_lock: bool,
 
-    /// HW revision in semver format (e.g., "2.0.0")
-    #[arg(long, value_parser = semver::Version::parse, default_value = "2.0.0")]
+    /// Runtime HW contract; must match the compiled register snapshot (currently 2.1.0).
+    #[arg(long, value_parser = semver::Version::parse, default_value = "2.1.0")]
     pub hw_revision: semver::Version,
 
     /// Override ROM offset
@@ -360,6 +360,13 @@ impl Emulator {
         external_read_callback: Option<ExternalReadCallback>,
         external_write_callback: Option<ExternalWriteCallback>,
     ) -> std::io::Result<Self> {
+        let revision = caliptra_mcu_hw_revision::HardwareRevision::parse(
+            caliptra_mcu_emulator_registers_generated::HARDWARE_REVISION,
+        )
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error))?;
+        revision
+            .validate_emulator_version(&cli.hw_revision.to_string())
+            .map_err(|error| io::Error::new(io::ErrorKind::InvalidInput, error))?;
         // Install per-instance state on the calling thread BEFORE any worker
         // thread is spawned below (start_i3c_socket, doe_mbox_fsm.start, etc.
         // all spawn via spawn_with_emulator_state and inherit state from this

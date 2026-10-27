@@ -8,8 +8,7 @@ on:
       - ".github/workflows/bitstream-build.yml"
       - "hw/fpga/**/*.tcl"
       - "hw/fpga/src/**"
-      - "hw/caliptra-ss/**"
-      - "hw/*.rdl"
+      - "hw/rev-2_1/**"
 
   workflow_dispatch:
 
@@ -54,7 +53,7 @@ jobs:
         env:
           STAGING_DIR: ${{ runner.temp }}/bitstream
         run: |
-          SS_COMMIT=$(git submodule status hw/caliptra-ss | awk '{print $1}' | tr -d '+-')
+          SS_COMMIT=$(git submodule status hw/rev-2_1/caliptra-ss | awk '{print $1}' | tr -d '+-')
           SEGMENTED_ARG=""
           if [ "${{ matrix.segmented }}" = "true" ]; then
             SEGMENTED_ARG="--segmented"

@@ -426,7 +426,10 @@ pub unsafe extern "C" fn emulator_init(
         write_callback,
     ) {
         Ok(emu) => emu,
-        Err(_) => return EmulatorError::InitializationFailed,
+        Err(error) => {
+            eprintln!("Failed to initialize emulator: {error}");
+            return EmulatorError::InitializationFailed;
+        }
     };
 
     // Determine if we should be in GDB mode based on config

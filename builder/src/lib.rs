@@ -101,6 +101,89 @@ pub fn target_dir() -> PathBuf {
         .unwrap_or_else(|_| PROJECT_ROOT.join("target"))
 }
 
+pub fn hardware_revision() -> Result<caliptra_mcu_hw_revision::HardwareRevision> {
+    caliptra_mcu_hw_revision::HardwareRevision::from_env().map_err(anyhow::Error::msg)
+}
+
+/// Name cached and packaged artifacts independently of Cargo's compilation cache.
+pub fn revisioned_name(name: &str) -> Result<String> {
+    Ok(match hardware_revision()? {
+        caliptra_mcu_hw_revision::HardwareRevision::V2_1 => name.to_owned(),
+        revision => revision.cache_name(name),
+    })
+}
+
+/// Record source identities, not a claim that different hardware pins are equivalent.
+pub fn hardware_provenance() -> Result<String> {
+    let revision = hardware_revision()?;
+    let hardware = PROJECT_ROOT.join(revision.hardware_path());
+    let git_revision = |directory: &Path| -> Result<String> {
+        let output = Command::new("git")
+            .args(["rev-parse", "HEAD"])
+            .current_dir(directory)
+            .output()?;
+        if !output.status.success() {
+            return Err(anyhow!(
+                "Cannot read hardware/source revision in {}: {}",
+                directory.display(),
+                String::from_utf8_lossy(&output.stderr)
+            ));
+        }
+        Ok(String::from_utf8(output.stdout)?.trim().to_owned())
+    };
+    let submodules = Command::new("git")
+        .args(["submodule", "status", "--recursive"])
+        .current_dir(&hardware)
+        .output()?;
+    if !submodules.status.success() {
+        return Err(anyhow!(
+            "Cannot read nested hardware revisions: {}",
+            String::from_utf8_lossy(&submodules.stderr)
+        ));
+    }
+    let core_root = caliptra_sw_workspace_root();
+    let core_revision = git_revision(&core_root)?;
+    let rom_source = std::env::var("CALIPTRA_ROM_REF")
+        .map(|value| format!("separate caliptra-sw ref {value}"))
+        .unwrap_or_else(|_| format!("Cargo caliptra-sw {core_revision}"));
+    Ok(format!(
+        "CALIPTRA_HW_REV={revision}\nMCU source={}\nMCU subsystem={} {}\n\
+         Nested MCU hardware:\n{}\nCaliptra FMC/runtime source={core_revision}\n\
+         Caliptra ROM source={rom_source}\nCPTRA_CI_ROM_VERSION={}\n\
+         CPTRA_ROM_TYPE={}\nCALIPTRA_PREBUILT_FW_DIR={}\n\
+         Core hardware pins (not assumed identical to MCU pins):\n{}",
+        git_revision(&PROJECT_ROOT)?,
+        revision.hardware_path(),
+        git_revision(&hardware)?,
+        String::from_utf8(submodules.stdout)?,
+        std::env::var("CPTRA_CI_ROM_VERSION").unwrap_or_else(|_| "source build".into()),
+        std::env::var("CPTRA_ROM_TYPE").unwrap_or_else(|_| "ROM_WITH_UART".into()),
+        std::env::var("CALIPTRA_PREBUILT_FW_DIR").unwrap_or_else(|_| "unset".into()),
+        {
+            let output = Command::new("git")
+                .args([
+                    "ls-tree",
+                    "HEAD",
+                    "hw/latest/caliptra-ss",
+                    "hw/rev-2_1/caliptra-ss",
+                ])
+                .current_dir(core_root)
+                .output()?;
+            if !output.status.success() {
+                return Err(anyhow!("Cannot read core hardware pins"));
+            }
+            String::from_utf8(output.stdout)?
+        }
+    ))
+}
+
+pub fn write_hardware_provenance(binary: &Path) -> Result<()> {
+    let mut name = binary.as_os_str().to_os_string();
+    name.push(".provenance.txt");
+    std::fs::write(PathBuf::from(name), hardware_provenance()?)?;
+    Ok(())
+}
+
 /// Returns the Path to the caliptra-sw workspace root.
 pub fn caliptra_sw_workspace_root() -> PathBuf {
     let metadata = cargo_metadata::MetadataCommand::new().exec().unwrap();

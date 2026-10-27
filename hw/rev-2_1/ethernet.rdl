@@ -1,0 +1,109 @@
+// Licensed under the Apache-2.0 license
+//
+// Ethernet peripheral for Network Coprocessor
+
+addrmap ethernet {
+    desc = "Ethernet peripheral for Network Coprocessor";
+
+    reg {
+        desc = "Control register";
+        field {
+            sw = rw;
+            desc = "Start transmitting the frame in TX buffer";
+        } TX_START[0:0];
+        field {
+            sw = rw;
+            desc = "Pop the current RX frame from the queue";
+        } RX_POP[1:1];
+        field {
+            sw = rw;
+            desc = "Acknowledge/clear the RX interrupt";
+        } IRQ_ACK[2:2];
+    } ETH_CTRL @ 0x00;
+
+    reg {
+        desc = "Status register";
+        field {
+            sw = r;
+            desc = "TX buffer is ready to accept data";
+        } TX_READY[0:0];
+        field {
+            sw = r;
+            desc = "At least one RX frame is available";
+        } RX_AVAIL[1:1];
+        field {
+            sw = r;
+            desc = "TX is currently in progress";
+        } TX_BUSY[2:2];
+        field {
+            sw = r;
+            desc = "Number of frames in RX queue";
+        } RX_QUEUE_COUNT[15:8];
+    } ETH_STATUS @ 0x04;
+
+    reg {
+        desc = "TX frame length register";
+        field {
+            sw = rw;
+            desc = "Length of frame to transmit (max 1514)";
+        } LEN[15:0];
+    } ETH_TX_LEN @ 0x08;
+
+    reg {
+        desc = "RX frame length register";
+        field {
+            sw = r;
+            desc = "Length of current RX frame";
+        } LEN[15:0];
+    } ETH_RX_LEN @ 0x0C;
+
+    reg {
+        desc = "TX buffer write pointer";
+        field {
+            sw = rw;
+            desc = "Current write offset in TX buffer";
+        } PTR[15:0];
+    } ETH_TX_PTR @ 0x10;
+
+    reg {
+        desc = "RX buffer read pointer";
+        field {
+            sw = rw;
+            desc = "Current read offset in RX buffer";
+        } PTR[15:0];
+    } ETH_RX_PTR @ 0x14;
+
+    reg {
+        desc = "MAC address low 4 bytes";
+        field {
+            sw = rw;
+            desc = "MAC address bytes 0-3 (little-endian)";
+        } ADDR[31:0];
+    } ETH_MAC_LOW @ 0x18;
+
+    reg {
+        desc = "MAC address high 2 bytes";
+        field {
+            sw = rw;
+            desc = "MAC address bytes 4-5 (little-endian)";
+        } ADDR[15:0];
+    } ETH_MAC_HIGH @ 0x1C;
+
+    // TX data buffer: 0x100 - 0x6E2 (1514 bytes for max Ethernet frame)
+    reg {
+        desc = "TX data buffer word";
+        field {
+            sw = rw;
+            desc = "TX frame data";
+        } DATA[31:0];
+    } ETH_TX_DATA[379] @ 0x100;
+
+    // RX data buffer: 0x800 - 0xDE2 (1514 bytes for max Ethernet frame)
+    reg {
+        desc = "RX data buffer word";
+        field {
+            sw = r;
+            desc = "RX frame data";
+        } DATA[31:0];
+    } ETH_RX_DATA[379] @ 0x800;
+};

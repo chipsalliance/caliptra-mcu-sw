@@ -56,7 +56,7 @@ fn test_emulator_args_creation() {
         streaming_boot: None,
         primary_flash_image: None,
         secondary_flash_image: None,
-        hw_revision: semver::Version::new(2, 0, 0),
+        hw_revision: semver::Version::new(2, 1, 0),
         ocp_lock: false,
         rom_offset: None,
         rom_size: None,

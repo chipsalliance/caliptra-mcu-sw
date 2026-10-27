@@ -42,7 +42,7 @@ file mkdir $outputDir
 file mkdir $caliptrapackageDir
 
 # Path to rtl
-set ssrtlDir $fpgaDir/../caliptra-ss
+set ssrtlDir $fpgaDir/../rev-2_1/caliptra-ss
 set caliptrartlDir $ssrtlDir/third_party/caliptra-rtl
 puts "ITRNG: $ITRNG"
 puts "CG_EN: $CG_EN"

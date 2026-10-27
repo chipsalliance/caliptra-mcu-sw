@@ -78,7 +78,10 @@ pub fn runtime_build_with_apps(args: &CaliptraBuildArgs) -> Result<PathBuf> {
 
     let manifest = manifest_file_for_profile(platform, example_app, args.profile)?;
     let platform_str = platform.unwrap_or("emulator");
-    let output_name = output_name.unwrap_or_else(|| format!("runtime-{}.bin", platform_str));
+    let output_name = match output_name {
+        Some(name) => name,
+        None => crate::revisioned_name(&format!("runtime-{}.bin", platform_str))?,
+    };
 
     let common = Common {
         manifest,
@@ -112,6 +115,7 @@ pub fn runtime_build_with_apps(args: &CaliptraBuildArgs) -> Result<PathBuf> {
     };
 
     caliptra_mcu_firmware_bundler::execute(bundle_cmd)?;
+    crate::write_hardware_provenance(&runtime_bin)?;
 
     Ok(runtime_bin)
 }

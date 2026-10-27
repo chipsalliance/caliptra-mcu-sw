@@ -50,8 +50,8 @@ struct Xtask {
 enum Commands {
     /// Build and Run Runtime image
     Runtime {
-        /// HW revision in semver format (e.g., "2.0.0")
-        #[arg(long, value_parser = semver::Version::parse, default_value = "2.0.0")]
+        /// Runtime HW contract; must match the selected register snapshot (currently 2.1.0).
+        #[arg(long, value_parser = semver::Version::parse, default_value = "2.1.0")]
         hw_revision: semver::Version,
 
         /// Run with tracing options
@@ -352,11 +352,11 @@ enum Commands {
         #[arg(short, long)]
         addrmap: Vec<String>,
 
-        /// Path to fuses.hjson file. Default: hw/fuses.hjson
+        /// Path to fuses.hjson. Defaults to the CALIPTRA_HW_REV-selected hardware inputs.
         #[arg(long)]
         fuses_hjson: Option<PathBuf>,
 
-        /// Path to otp_ctrl_mmap.hjson file. Default: hw/caliptra-ss/src/fuse_ctrl/data/otp_ctrl_mmap.hjson
+        /// Path to otp_ctrl_mmap.hjson. Defaults to the CALIPTRA_HW_REV-selected subsystem.
         #[arg(long)]
         otp_mmap_hjson: Option<PathBuf>,
     },
@@ -637,6 +637,14 @@ fn resolve_variants(
 
 fn main() {
     let cli = Xtask::parse();
+    let revision = caliptra_mcu_hw_revision::HardwareRevision::from_env().unwrap_or_else(|error| {
+        eprintln!("{error}");
+        std::process::exit(1);
+    });
+    println!(
+        "MCU hardware revision: {revision} ({})",
+        revision.hardware_path()
+    );
     let result = match &cli.xtask {
         Commands::AllBuild {
             output,

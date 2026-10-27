@@ -1,0 +1,61 @@
+addrmap doe_mbox {
+    reg {
+        field {
+            sw = r;
+            onread = rset;
+            desc = "DOE Mailbox lock register for mailbox access. Reading 0 will set the lock.";
+        } LOCK[0:0];
+    } DOE_MBOX_LOCK @ 0x00;
+
+    reg {
+        field {
+            sw = rw;
+            reset = 0;
+            desc = "Data length for mailbox access in dwords. Cleared when lock is cleared.";
+        } LENGTH[31:0];
+    } DOE_MBOX_DLEN @ 0x04;
+
+    reg {
+        field {
+            sw = rw;
+            reset = 0;
+            desc = "Set by MCU when new data is ready for SoC to read. MCU can explicitly set/clear this bit.";
+        } DATA_READY[0:0];
+        field {
+            sw = rw;
+            reset = 0;
+            desc = "Set by MCU to acknowledge RESET_REQ from SoC. MCU can explicitly set/clear this bit.";
+        } RESET_ACK[1:1];
+        field {
+            sw = rw;
+            reset = 0;
+            desc = "Indicates mailbox error. MCU can explicitly set/clear this bit.";
+        } ERROR[2:2];
+    } DOE_MBOX_STATUS @ 0x08;
+
+    reg {
+        field {
+            sw = rw;
+            onwrite = woclr;
+            reset = 0;
+            desc = "Data ready indicator set by SoC. When set to 1, data is ready to be consumed by MCU for processing. Cleared by MCU writing 1 to this bit.";
+        } DATA_READY[0:0];
+        field {
+            sw = rw;
+            onwrite = woclr;
+            reset = 0;
+            desc = "Reset request set by SoC. When set to 1, requests MCU to reset its state. Cleared by MCU writing 1 to this bit.";
+        } RESET_REQ[1:1];
+    } DOE_MBOX_EVENT @ 0x0C;
+
+    mem { 
+        name = "DOE_MBOX_SRAM";
+        desc = "Mailbox SRAM for DOE mailbox accesses. Accessible by either SoC or MCU depending on security configuration. 
+                [br] Max size is 1MB (1 << 18 DWORDS as per the PCI-DOE specification). This is configurable by the integration team.
+                [br]MCU Access: RW*
+                [br]SOC Access: RW*";
+        memwidth = 32;
+        mementries = 262144; // 1MB / 4 bytes per entry = 262144 entries
+        sw = rw;
+    } external doe_mbox_sram @ 0x1000; // Define it after DOE_MBOX register block
+};
