@@ -157,7 +157,11 @@ fn switch_at(root: &Path, version: &str) -> Result<()> {
         .args(["cat-file", "-e", &format!("{revision}^{{commit}}")])
         .output()?;
     if !present.status.success() {
-        git(&core, &["fetch", "origin", revision])?;
+        // Initialize only the selected commit's submodules after checkout.
+        git(
+            &core,
+            &["fetch", "--no-recurse-submodules", "origin", revision],
+        )?;
     }
 
     println!("Switching core/caliptra-sw to {version} ({revision})");
@@ -370,6 +374,83 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn fetches_missing_pin_without_fetching_unselected_submodule_history() {
+        let fixture = Fixture::new();
+        let remote = fixture.root().join("remote");
+        git(
+            fixture.root(),
+            &[
+                "clone",
+                "--no-hardlinks",
+                "--no-recurse-submodules",
+                fixture.core().to_str().unwrap(),
+                remote.to_str().unwrap(),
+            ],
+        )
+        .unwrap();
+        let nested = git(&fixture.core(), &["rev-parse", "HEAD:nested"]).unwrap();
+        for reference in ["1111111111111111111111111111111111111111", &nested] {
+            git(
+                &remote,
+                &[
+                    "update-index",
+                    "--cacheinfo",
+                    &format!("160000,{reference},nested"),
+                ],
+            )
+            .unwrap();
+            git(
+                &remote,
+                &[
+                    "-c",
+                    "user.name=Switch test",
+                    "-c",
+                    "user.email=switch@example.invalid",
+                    "-c",
+                    "commit.gpgsign=false",
+                    "commit",
+                    "-m",
+                    "change nested reference",
+                ],
+            )
+            .unwrap();
+        }
+        let target = git(&remote, &["rev-parse", "HEAD"]).unwrap();
+        git(
+            &fixture.core(),
+            &["remote", "add", "origin", remote.to_str().unwrap()],
+        )
+        .unwrap();
+        git(
+            &fixture.core(),
+            &["config", "protocol.file.allow", "always"],
+        )
+        .unwrap();
+        git(
+            &fixture.core(),
+            &["config", "fetch.recurseSubmodules", "true"],
+        )
+        .unwrap();
+        switch_at(fixture.root(), "2.1").unwrap();
+        std::fs::write(
+            fixture.root().join("core/versions.toml"),
+            format!(
+                "[versions]\n'2.1'='{}'\nlatest='{target}'\n",
+                fixture.stable
+            ),
+        )
+        .unwrap();
+        switch_at(fixture.root(), "latest").unwrap();
+        assert_eq!(
+            git(&fixture.core(), &["rev-parse", "HEAD"]).unwrap(),
+            target
+        );
+        assert!(git(&fixture.core(), &["status", "--porcelain"])
+            .unwrap()
+            .is_empty());
     }
 
     #[test]

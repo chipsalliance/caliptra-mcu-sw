@@ -168,6 +168,7 @@ software pin, preventing accidental use of the wrong owner-provisioning API.
 The switch command refuses local changes, untracked files, or modified nested
 submodules. It checks out the selected commit detached and reinitializes nested
 submodules at their recorded pins, removing clean retired submodule checkouts.
+Fetching a missing software pin does not fetch unrelated submodule history.
 It selects the reviewed **root and host** lockfile snapshots from
 [`core/locks`](core/locks) and validates them with `--locked`.
 The 2.1 and latest dependency graphs differ. Local lockfile edits are refused
