@@ -817,6 +817,14 @@ impl ModelEmulated {
     }
 }
 
+#[cfg(all(feature = "test-hooks", hw_rev = "latest"))]
+impl ModelEmulated {
+    /// MCU-side bus access for emulator integration tests.
+    pub fn mcu_bus_for_test(&mut self) -> &mut impl Bus {
+        &mut self.cpu.bus
+    }
+}
+
 pub struct EmulatedAxiBus<'a> {
     model: &'a mut ModelEmulated,
 }
@@ -924,10 +932,6 @@ impl Drop for ModelEmulated {
         caliptra_mcu_testing_common::stop_emulator();
     }
 }
-
-#[cfg(all(test, hw_rev = "latest"))]
-#[path = "usb_phy_tests.rs"]
-mod usb_phy_tests;
 
 #[cfg(test)]
 mod test {

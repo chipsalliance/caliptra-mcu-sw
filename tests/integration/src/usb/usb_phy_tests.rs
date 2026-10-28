@@ -1,10 +1,9 @@
 // Licensed under the Apache-2.0 license
 
-use super::ModelEmulated;
-use crate::{InitParams, McuHwModel};
 use caliptra_emu_bus::Bus;
 use caliptra_emu_types::RvSize;
 use caliptra_mcu_emulator_periph::LpcipUsbPhyError;
+use caliptra_mcu_hw_model::{InitParams, McuHwModel, ModelEmulated};
 use caliptra_mcu_registers_generated::usb_dev0_mem::USB_DEV0_MEM_ADDR;
 
 fn branch(rs1: u32, rs2: u32, offset: i32, not_equal: bool) -> u32 {
@@ -109,12 +108,13 @@ fn test_lpcip_phy_rom_initializes_before_dcon() {
     let rom = phy_init_rom(0x24);
     let mut model = ModelEmulated::new_unbooted(InitParams {
         mcu_rom: &rom,
+        check_booted_to_runtime: false,
         ..Default::default()
     })
     .unwrap();
     let host = model.lpcip_usb_host_controller.clone();
     host.set_vbus(true);
-    model.cpu_enabled.set(true);
+    model.boot().unwrap();
     for _ in 0..2000 {
         model.step();
         if host.connected() {
@@ -133,7 +133,10 @@ fn test_lpcip_phy_rom_initializes_before_dcon() {
         model.step();
     }
     assert_eq!(
-        model.cpu.bus.read(RvSize::Word, USB_DEV0_MEM_ADDR).unwrap(),
+        model
+            .mcu_bus_for_test()
+            .read(RvSize::Word, USB_DEV0_MEM_ADDR)
+            .unwrap(),
         1
     );
 }
@@ -143,19 +146,23 @@ fn test_lpcip_phy_rom_timeout_is_bounded_and_never_connects() {
     let rom = phy_init_rom(0x24);
     let mut model = ModelEmulated::new_unbooted(InitParams {
         mcu_rom: &rom,
+        check_booted_to_runtime: false,
         ..Default::default()
     })
     .unwrap();
     let host = model.lpcip_usb_host_controller.clone();
     host.set_vbus(true);
     host.phy().set_access_stalled(true);
-    model.cpu_enabled.set(true);
+    model.boot().unwrap();
     for _ in 0..1000 {
         model.step();
         assert!(!host.connected());
     }
     assert_eq!(
-        model.cpu.bus.read(RvSize::Word, USB_DEV0_MEM_ADDR).unwrap(),
+        model
+            .mcu_bus_for_test()
+            .read(RvSize::Word, USB_DEV0_MEM_ADDR)
+            .unwrap(),
         2
     );
     let snapshot = host.phy().snapshot();
@@ -171,18 +178,22 @@ fn test_lpcip_phy_rom_rejects_identity_mismatch_before_connect() {
     let rom = phy_init_rom(0x25);
     let mut model = ModelEmulated::new_unbooted(InitParams {
         mcu_rom: &rom,
+        check_booted_to_runtime: false,
         ..Default::default()
     })
     .unwrap();
     let host = model.lpcip_usb_host_controller.clone();
     host.set_vbus(true);
-    model.cpu_enabled.set(true);
+    model.boot().unwrap();
     for _ in 0..1000 {
         model.step();
         assert!(!host.connected());
     }
     assert_eq!(
-        model.cpu.bus.read(RvSize::Word, USB_DEV0_MEM_ADDR).unwrap(),
+        model
+            .mcu_bus_for_test()
+            .read(RvSize::Word, USB_DEV0_MEM_ADDR)
+            .unwrap(),
         2
     );
     let snapshot = host.phy().snapshot();
