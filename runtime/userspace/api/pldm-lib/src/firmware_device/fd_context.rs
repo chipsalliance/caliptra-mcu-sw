@@ -1126,6 +1126,12 @@ mod test {
     use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::{
         ApplyOutcome, ApplyResult,
     };
+    use caliptra_mcu_pldm_common::message::firmware_update::request_cancel::{
+        CancelUpdateRequest, CancelUpdateResponse,
+    };
+    use caliptra_mcu_pldm_common::message::firmware_update::request_fw_data::{
+        RequestFirmwareDataResponse, RequestFirmwareDataResponseFixed,
+    };
     use caliptra_mcu_pldm_common::message::firmware_update::request_update::RequestUpdateRequest;
     use caliptra_mcu_pldm_common::message::firmware_update::update_component::{
         UpdateComponentRequest, UpdateComponentResponse,
@@ -1615,6 +1621,24 @@ mod test {
         req.encode(payload).unwrap()
     }
 
+    fn prepare_download_request(
+        fd_ctx: &FirmwareDeviceContext<'_>,
+        instance_id: u8,
+        offset: u32,
+        length: u32,
+    ) {
+        fd_ctx.internal.set_fd_state(FirmwareDeviceState::Download);
+        fd_ctx.internal.set_fd_download_state(offset, length);
+        fd_ctx.internal.set_fd_req(
+            FdReqState::Sent,
+            false,
+            None,
+            Some(instance_id),
+            Some(FwUpdateCmd::RequestFirmwareData as u8),
+            Some(0),
+        );
+    }
+
     #[test]
     fn test_request_update_acceptance() {
         let mock_ops = MockFdOps::default();
@@ -1647,6 +1671,134 @@ mod test {
 
         let mut malformed_payload = [0u8; 2];
         assert!(block_on(fd_ctx.request_update_rsp(&mut malformed_payload)).is_err());
+    }
+
+    #[test]
+    fn test_partial_firmware_data_response_is_rejected() {
+        let mock_ops = MockFdOps::default();
+        let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
+        let mut payload = [0u8; 256];
+        prepare_download_request(&fd_ctx, 3, 0, 64);
+
+        let response =
+            RequestFirmwareDataResponse::new(3, PldmBaseCompletionCode::Success as u8, &[0x5a; 32]);
+        let response_len = response.encode(&mut payload).unwrap();
+
+        assert!(block_on(fd_ctx.handle_response(&mut payload[..response_len])).is_err());
+        assert_eq!(
+            fd_ctx.internal.get_fd_state(),
+            FirmwareDeviceState::Download
+        );
+        assert!(!fd_ctx.internal.is_fd_req_complete());
+    }
+
+    #[test]
+    fn test_out_of_order_firmware_data_response_is_rejected() {
+        let mock_ops = MockFdOps::default();
+        let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
+        let mut payload = [0u8; 256];
+        prepare_download_request(&fd_ctx, 4, 64, 64);
+
+        let response =
+            RequestFirmwareDataResponse::new(3, PldmBaseCompletionCode::Success as u8, &[0x5a; 64]);
+        let response_len = response.encode(&mut payload).unwrap();
+
+        assert!(block_on(fd_ctx.handle_response(&mut payload[..response_len])).is_err());
+        assert_eq!(fd_ctx.internal.get_fd_download_state(), Some((64, 64)));
+        assert_eq!(fd_ctx.internal.get_fd_req_state(), FdReqState::Sent);
+    }
+
+    #[test]
+    fn test_retry_firmware_data_response_keeps_download_retryable() {
+        let mock_ops = MockFdOps::default();
+        let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
+        let mut payload = [0u8; 256];
+        prepare_download_request(&fd_ctx, 5, 64, 64);
+
+        let response = RequestFirmwareDataResponseFixed {
+            hdr: PldmMsgHeader::new(
+                5,
+                PldmMsgType::Response,
+                caliptra_mcu_pldm_common::protocol::base::PldmSupportedType::FwUpdate,
+                FwUpdateCmd::RequestFirmwareData as u8,
+            ),
+            completion_code: FwUpdateCompletionCode::RetryRequestFwData as u8,
+        };
+        let response_len = response.encode(&mut payload).unwrap();
+
+        block_on(fd_ctx.handle_response(&mut payload[..response_len])).unwrap();
+        assert_eq!(
+            fd_ctx.internal.get_fd_state(),
+            FirmwareDeviceState::Download
+        );
+        assert_eq!(fd_ctx.internal.get_fd_req_state(), FdReqState::Sent);
+        assert!(!fd_ctx.internal.is_fd_req_complete());
+    }
+
+    #[test]
+    fn test_cancel_update_allows_a_new_update_request() {
+        let mock_ops = MockFdOps::default();
+        let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
+        let mut payload = [0u8; 256];
+        fd_ctx.internal.set_fd_state(FirmwareDeviceState::Download);
+
+        let request = CancelUpdateRequest::new(6, PldmMsgType::Request);
+        request.encode(&mut payload).unwrap();
+        block_on(fd_ctx.cancel_update_rsp(&mut payload)).unwrap();
+        let response = CancelUpdateResponse::decode(&payload).unwrap();
+
+        assert_eq!(
+            response.completion_code,
+            PldmBaseCompletionCode::Success as u8
+        );
+        assert_eq!(fd_ctx.internal.get_fd_state(), FirmwareDeviceState::Idle);
+        assert!(fd_ctx.is_cancelled());
+
+        encode_request_update(&mut payload, PLDM_FWUP_BASELINE_TRANSFER_SIZE as u32);
+        let (_, accepted) = block_on(fd_ctx.request_update_rsp(&mut payload)).unwrap();
+        assert!(accepted);
+        assert_eq!(
+            fd_ctx.internal.get_fd_state(),
+            FirmwareDeviceState::LearnComponents
+        );
+        block_on(fd_ctx.create_transfer_session());
+        assert!(!fd_ctx.is_cancelled());
+    }
+
+    #[test]
+    fn test_reset_reinitializes_in_progress_update_state() {
+        let mock_ops = MockFdOps::default();
+        let interrupted_ctx = FirmwareDeviceContext::new(&mock_ops);
+        interrupted_ctx
+            .internal
+            .set_fd_state(FirmwareDeviceState::Download);
+        interrupted_ctx.cancellation_flag.cancel();
+
+        let reset_ctx = FirmwareDeviceContext::new(&mock_ops);
+        assert_eq!(reset_ctx.internal.get_fd_state(), FirmwareDeviceState::Idle);
+        assert!(!reset_ctx.is_cancelled());
+        assert_eq!(reset_ctx.internal.get_fd_req_state(), FdReqState::Unused);
+    }
+
+    #[test]
+    fn test_verification_failure_waits_for_cancel_without_applying() {
+        let mock_ops = MockFdOps::default();
+        let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
+        fd_ctx.internal.set_fd_state(FirmwareDeviceState::Verify);
+        fd_ctx.internal.set_fd_req(
+            FdReqState::Sent,
+            true,
+            Some(VerifyResult::VerifyErrorVerificationFailure as u8),
+            Some(7),
+            Some(FwUpdateCmd::VerifyComplete as u8),
+            Some(0),
+        );
+
+        block_on(fd_ctx.process_verify_complete_rsp(&mut [])).unwrap();
+
+        assert_eq!(fd_ctx.internal.get_fd_state(), FirmwareDeviceState::Verify);
+        assert_eq!(fd_ctx.internal.get_fd_req_state(), FdReqState::Failed);
+        assert_ne!(fd_ctx.internal.get_fd_state(), FirmwareDeviceState::Apply);
     }
 
     // =========================================================================
