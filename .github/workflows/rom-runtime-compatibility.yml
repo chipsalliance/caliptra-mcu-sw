@@ -6,7 +6,7 @@ on:
   workflow_call:
     inputs:
       fixture-agreement:
-        description: Owner approval of 2.1 Core e5d1f27, LMS test keys, Raw OTP and release flash/streaming configurations
+        description: Owner approval of 2.1 Core e5d1f27, LMS test keys, Raw OTP, non-TCB images 4096/4097 and release flash/streaming configurations
         type: string
         default: ""
       expected-capabilities:
@@ -16,7 +16,7 @@ on:
   workflow_dispatch:
     inputs:
       fixture-agreement:
-        description: Owner approval of the fixed 2.1 Core/OTP/signing and release configurations
+        description: Owner approval of the fixed 2.1 Core/OTP/signing, non-TCB images 4096/4097 and release configurations
         type: string
         required: false
       expected-capabilities:
@@ -102,6 +102,35 @@ jobs:
             cp error/src/lib.rs output/errors.rs
             cp target/riscv32imc-unknown-none-elf/linker-scripts/caliptra-mcu-rom-emulator-*.ld output/
           else
+            # Match CaliptraBuilder's policy for the two non-TCB fixture images.
+            mkdir -p target/generated
+            cat > target/generated/attestation_manifest.toml <<'EOF'
+          vendor = "ChipsAlliance"
+          model = "Caliptra-SS"
+
+          [[components]]
+          fw_id = 4
+          is_tcb = true
+          is_ak_target = false
+
+          [[components]]
+          fw_id = 4096
+          is_tcb = false
+          is_ak_target = false
+
+          [[components]]
+          fw_id = 4097
+          is_tcb = false
+          is_ak_target = false
+          EOF
+            cat > target/generated/soc_image_descriptors.toml <<'EOF'
+          [[images]]
+          fw_id = 4096
+
+          [[images]]
+          fw_id = 4097
+          EOF
+            cp target/generated/attestation_manifest.toml target/generated/soc_image_descriptors.toml output/
             for mode in flash streaming; do
               features=(--features hw-2-1 --features mcu-mbox-service --features "$mode-boot")
               if [ "$mode" = streaming ]; then features+=(--features spdm --features mctp-vdm-service); fi
@@ -127,6 +156,8 @@ jobs:
               assert len(addresses) == 1, "Missing or ambiguous handoff address"
               data["handoff_address"] = addresses.pop()
           else:
+              data["embedded_configuration"] = {name: hashlib.sha256((p/name).read_bytes()).hexdigest()
+                  for name in ["attestation_manifest.toml", "soc_image_descriptors.toml"]}
               text = (p/"version.rs").read_text()
               data["version"] = ".".join(re.search(rf"MCU_RUNTIME_VERSION_{n}: u32 = (\d+);", text)[1] for n in ["MAJOR","MINOR","PATCH"])
               text = (p/"messages.rs").read_text()

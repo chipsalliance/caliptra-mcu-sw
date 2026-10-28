@@ -3,6 +3,7 @@
 //! Native fixture preparation, run once by the workflow before the six pairs.
 
 use super::*;
+use crate::test::{build_primary_flash_initial_contents, ECC_DEVID_CERT_DER, MLDSA_IDEVID_CERT};
 use caliptra_auth_man_types::{AuthManifestPreamble, AuthorizationManifest};
 use caliptra_mcu_builder::{CaliptraBuildArgs, CaliptraBuilder, ImageCfg};
 use serde_json::json;
@@ -41,25 +42,35 @@ fn write_json(path: &Path, value: &serde_json::Value) -> Result<()> {
     Ok(())
 }
 
-fn runtime_flash(path: &Path, args: CaliptraBuildArgs) -> Result<()> {
-    use caliptra_mcu_builder::flash_image::{flash_image_create, write_partition_table};
+fn seed_idevid_certificates(path: &Path) -> Result<()> {
+    ensure!(
+        ECC_DEVID_CERT_DER.len() + MLDSA_IDEVID_CERT.len()
+            <= caliptra_mcu_config_emulator::flash::EMULATED_EXT_OTP_PARTITION.size,
+        "IDevID certificates exceed the external OTP partition"
+    );
+    let flash = build_primary_flash_initial_contents(
+        Some(fs::read(path)?),
+        Some(ECC_DEVID_CERT_DER.as_slice()),
+        Some(MLDSA_IDEVID_CERT.as_slice()),
+        None,
+    )
+    .context("Missing primary flash with IDevID certificates")?;
+    fs::write(path, flash)?;
+    Ok(())
+}
+
+fn partition_flash_payload(path: &Path, payload: &[u8]) -> Result<()> {
+    use caliptra_mcu_builder::flash_image::write_partition_table;
     use caliptra_mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
     use caliptra_mcu_config_emulator::flash::{
         PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION,
     };
-    fs::File::create(path)?;
-    flash_image_create(&CaliptraBuildArgs {
-        output_path: Some(path.to_str().context("Non-UTF-8 flash path")?.into()),
-        ..args
-    })?;
-    let payload = fs::read(path)?;
-    caliptra_mcu_builder::flash_image::FlashImage::verify_flash_image(&payload)?;
     ensure!(
-        payload.len() <= IMAGE_A_PARTITION.size,
-        "Runtime flash exceeds partition"
+        !payload.is_empty() && payload.len() <= IMAGE_A_PARTITION.size,
+        "Flash payload is empty or exceeds image-A partition"
     );
     let mut flash = vec![0xff; IMAGE_A_PARTITION.offset];
-    flash.extend_from_slice(&payload);
+    flash.extend_from_slice(payload);
     fs::write(path, flash)?;
     let mut table = PartitionTable::new(
         PartitionId::A,
@@ -71,7 +82,18 @@ fn runtime_flash(path: &Path, args: CaliptraBuildArgs) -> Result<()> {
     );
     table.populate_checksum(&StandAloneChecksumCalculator::new());
     write_partition_table(&table, 0, path.to_str().context("Non-UTF-8 flash path")?)?;
-    Ok(())
+    seed_idevid_certificates(path)
+}
+
+fn runtime_flash(path: &Path, args: CaliptraBuildArgs) -> Result<()> {
+    fs::File::create(path)?;
+    caliptra_mcu_builder::flash_image::flash_image_create(&CaliptraBuildArgs {
+        output_path: Some(path.to_str().context("Non-UTF-8 flash path")?.into()),
+        ..args
+    })?;
+    let payload = fs::read(path)?;
+    caliptra_mcu_builder::flash_image::FlashImage::verify_flash_image(&payload)?;
+    partition_flash_payload(path, &payload)
 }
 
 fn streaming_package(args: &[String]) -> Result<()> {
@@ -370,6 +392,7 @@ fn prepare_inputs() -> Result<()> {
                     status.success(),
                     "Pinned ROM flash producer failed: {status}"
                 );
+                partition_flash_payload(&rom_flash, &fs::read(&rom_flash)?)?;
                 let mut negatives = serde_json::Map::new();
                 for (name, symbol, offset) in [
                     (

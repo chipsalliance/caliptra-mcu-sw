@@ -427,10 +427,8 @@ fn verify_svn_boundary(manifest: &[u8], otp: &[u8], runtime: &[u8]) -> Result<u3
 fn streaming_package(pair: &SelectedPair) -> Result<caliptra_mcu_pldm_fw_pkg::FirmwareManifest> {
     pair.config.pldm_package.read(&pair.root)?;
     let path = pair.root.join(&pair.config.pldm_package.path);
-    let package = caliptra_mcu_pldm_fw_pkg::FirmwareManifest::decode_firmware_package(
-        path.to_str().context("Non-UTF-8 PLDM path")?,
-        None,
-    )?;
+    let path = path.to_str().context("Non-UTF-8 PLDM path")?.to_owned();
+    let package = caliptra_mcu_pldm_fw_pkg::FirmwareManifest::decode_firmware_package(&path, None)?;
     ensure!(
         package.component_image_information.len() == 1
             && package.component_image_information[0].identifier == 0xffff,
@@ -1082,6 +1080,8 @@ fn provisioning(pair: &SelectedPair, hw: &mut DefaultHwModel) -> Result<()> {
 
 fn suite_check(pair: &SelectedPair, scenario: &str) -> Result<Option<String>> {
     match scenario {
+        "suite_spdm_mctp" if pair.streaming() =>
+            bail!("BLOCKED: full MCTP SPDM conformance requires same-model PLDM loading, verified SoC measurement completion and a live responder after loading; separate boot tests do not establish these prerequisites"),
         "suite_attestation_ocp_eat_non_tcb" | "suite_attestation_ocp_eat_tcb" |
         "suite_attestation_ocp_eat_mixed" if pair.streaming() =>
             bail!("BLOCKED: production EAT fixtures need verified embedded component policy, initial measurement completion and matching appraisal inputs"),

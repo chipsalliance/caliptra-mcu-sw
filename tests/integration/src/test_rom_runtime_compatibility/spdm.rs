@@ -258,7 +258,6 @@ fn start_conformance(
         })();
 
         let _ = result_tx.send(result);
-        caliptra_mcu_testing_common::stop_emulator();
     });
 
     Ok(result_rx)
