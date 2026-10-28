@@ -925,6 +925,10 @@ impl Drop for ModelEmulated {
     }
 }
 
+#[cfg(all(test, hw_rev = "latest"))]
+#[path = "usb_phy_tests.rs"]
+mod usb_phy_tests;
+
 #[cfg(test)]
 mod test {
     use super::*;

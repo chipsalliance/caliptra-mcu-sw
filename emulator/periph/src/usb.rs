@@ -18,6 +18,10 @@ use tock_registers::interfaces::Readable;
 
 mod hub;
 pub use hub::LpcipUsbHubHostController;
+mod phy;
+pub use phy::{LpcipUsbPhy, LpcipUsbPhyError, LpcipUsbPhySnapshot};
+#[cfg(test)]
+mod phy_tests;
 
 const MEMORY_SIZE: usize = 0x10000;
 const ENDPOINTS: u8 = 30;
@@ -282,9 +286,14 @@ impl DeviceState {
 #[derive(Clone)]
 pub struct LpcipUsbHostController {
     state: Arc<Mutex<DeviceState>>,
+    phy: LpcipUsbPhy,
 }
 
 impl LpcipUsbHostController {
+    pub fn phy(&self) -> LpcipUsbPhy {
+        self.phy.clone()
+    }
+
     pub fn device_enabled(&self) -> bool {
         self.state.lock().unwrap().command & DEV_EN != 0
     }
@@ -298,6 +307,7 @@ impl LpcipUsbHostController {
     }
 
     pub fn set_vbus(&self, present: bool) {
+        self.phy.set_vbus(present);
         let mut state = self.state.lock().unwrap();
         let connected = state.link_connected();
         state.vbus = present;
@@ -397,6 +407,7 @@ impl LpcipUsbHostController {
 
 struct UsbDevice {
     state: Arc<Mutex<DeviceState>>,
+    phy: LpcipUsbPhy,
     irq: Option<Irq>,
     legacy_host: Option<crate::UsbHostController>,
     peer: Option<LpcipUsbHostController>,
@@ -406,6 +417,7 @@ impl Default for UsbDevice {
     fn default() -> Self {
         Self {
             state: Arc::new(Mutex::new(DeviceState::default())),
+            phy: LpcipUsbPhy::default(),
             irq: None,
             legacy_host: None,
             peer: None,
@@ -417,6 +429,7 @@ impl UsbDevice {
     fn host_controller(&self) -> LpcipUsbHostController {
         LpcipUsbHostController {
             state: self.state.clone(),
+            phy: self.phy.clone(),
         }
     }
 
@@ -651,7 +664,7 @@ pub struct UsbDev1 {
 }
 
 /// Device controllers share protocol semantics, not CSR state or packet SRAM.
-/// PHY and OCP-recovery surfaces remain explicitly nonfunctional trait handlers.
+/// OCP-recovery surfaces remain explicitly nonfunctional trait handlers.
 pub struct UsbCombo {
     device0: UsbDevice,
     device1: LpcipUsbHostController,
@@ -660,7 +673,9 @@ pub struct UsbCombo {
 
 impl Default for UsbCombo {
     fn default() -> Self {
+        let phy = LpcipUsbPhy::default();
         let device1 = LpcipUsbHostController {
+            phy: phy.clone(),
             state: Arc::new(Mutex::new(DeviceState {
                 memory_base: USB_DEV1_MEM_ADDR,
                 ..DeviceState::default()
@@ -668,6 +683,7 @@ impl Default for UsbCombo {
         };
         Self {
             device0: UsbDevice {
+                phy,
                 peer: Some(device1.clone()),
                 ..UsbDevice::default()
             },
@@ -712,6 +728,7 @@ impl UsbCombo {
         UsbDev1 {
             device: UsbDevice {
                 state: self.device1.state.clone(),
+                phy: self.device1.phy.clone(),
                 irq: None,
                 legacy_host: None,
                 peer: None,
@@ -731,6 +748,7 @@ impl UsbCombo {
         self.device0.reset();
         self.device1().device.reset();
         self.hub.lock().unwrap().reset();
+        self.device0.phy.reset_gateway();
         self.device0.update_irq();
     }
 }
@@ -749,6 +767,7 @@ macro_rules! forward_register {
 
 impl UsbComboPeripheral for UsbCombo {
     fn poll(&mut self) {
+        self.device0.phy.poll();
         self.hub_host_controller().poll();
         self.device0.poll();
     }
@@ -891,6 +910,14 @@ impl UsbComboPeripheral for UsbCombo {
 
     fn write_hub_control(&mut self, value: ReadWriteRegister<u32, bits::Control::Register>) {
         self.hub.lock().unwrap().write_word(12, value.reg.get());
+    }
+
+    fn read_hub_ulpidebug(&mut self) -> ReadWriteRegister<u32, bits::UlpidebugT::Register> {
+        ReadWriteRegister::new(self.device0.phy.read())
+    }
+
+    fn write_hub_ulpidebug(&mut self, value: ReadWriteRegister<u32, bits::UlpidebugT::Register>) {
+        self.device0.phy.write(value.reg.get());
     }
 }
 
