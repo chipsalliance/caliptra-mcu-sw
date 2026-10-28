@@ -3,6 +3,10 @@
 name: Released ROM/runtime compatibility
 
 on:
+  # Temporary validation trigger; remove before merging.
+  push:
+    branches:
+      - v-focutter/runtime-compat
   workflow_call:
     inputs:
       fixture-agreement:
@@ -183,7 +187,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.resolve.outputs.runtime-sha }}
+          ref: ${{ github.sha }}
           submodules: recursive
       - name: Install host tools
         run: |
@@ -231,7 +235,7 @@ jobs:
       - name: Checkout workflow build settings
         uses: actions/checkout@v7
         with:
-          ref: ${{ needs.resolve.outputs.runtime-sha }}
+          ref: ${{ github.sha }}
           sparse-checkout: .github/workflows/rom-runtime-compatibility.yml
           sparse-checkout-cone-mode: false
       - name: Install required packages
@@ -318,7 +322,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.resolve.outputs.runtime-sha }}
+          ref: ${{ github.sha }}
       - name: Install test tools
         run: |
           sudo apt-get update -qy
