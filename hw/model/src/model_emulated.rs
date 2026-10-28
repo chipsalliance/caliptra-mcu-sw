@@ -844,6 +844,15 @@ impl ModelEmulated {
     pub fn mcu_bus_for_test(&mut self) -> &mut impl Bus {
         &mut self.cpu.bus
     }
+
+    /// Exercise the actual Caliptra DMA and AXI event path in integration tests.
+    pub fn caliptra_dma_for_test(&mut self) -> &mut caliptra_emu_periph::dma::Dma {
+        &mut self.caliptra_cpu.bus.dma
+    }
+
+    pub fn has_bmc_for_test(&self) -> bool {
+        self.bmc.is_some()
+    }
 }
 
 pub struct EmulatedAxiBus<'a> {
@@ -953,10 +962,6 @@ impl Drop for ModelEmulated {
         caliptra_mcu_testing_common::stop_emulator();
     }
 }
-
-#[cfg(all(test, hw_rev = "latest"))]
-#[path = "usb_recovery_tests.rs"]
-mod usb_recovery_tests;
 
 #[cfg(test)]
 mod test {

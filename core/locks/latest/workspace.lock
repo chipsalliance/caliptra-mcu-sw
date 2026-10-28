@@ -2660,6 +2660,7 @@ dependencies = [
  "caliptra-builder",
  "caliptra-emu-bus",
  "caliptra-emu-cpu",
+ "caliptra-emu-periph",
  "caliptra-emu-types",
  "caliptra-hw-model",
  "caliptra-hw-model-types",
