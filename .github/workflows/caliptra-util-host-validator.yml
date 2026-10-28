@@ -195,7 +195,7 @@ jobs:
 
       - name: Build validator test firmware bundle
         run: |
-          cargo xtask all-build --separate-runtimes \
+          cargo xtask all-build --output target/all-fw.zip --separate-runtimes \
             --runtime-features test-caliptra-util-host-validator,test-caliptra-util-host-mctp-vdm-validator,test-caliptra-util-host-spdm-vdm-validator,test-mctp-spdm-set-certificate
 
       - name: Run Caliptra Util Host validator tests

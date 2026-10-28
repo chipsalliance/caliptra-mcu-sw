@@ -183,6 +183,7 @@ jobs:
       - name: Build ROM and runtime binaries (Shard ${{ matrix.shard }}/5)
         run: |
           /tmp/xtask all-build --platform emulator \
+            --output target/all-fw-shard-${{ matrix.shard }}.zip \
             --rom-features "hw-2-1" \
             --test-rom-features "ocp-lock,stable-owner-key,test-network-boot,test-flash-network-fallback" \
             --network-rom-features "network-boot,test-network-boot-ipv6,test-network-boot-timeouts,test-network-boot-ipv6-dhcp-timeout,test-network-boot-ipv6-tftp-timeouts,test-network-mbox-comm,test-network-rom-dhcp-discover,test-network-rom-lwip-dhcp,test-network-rom-lwip-dhcp6,test-network-rom-lwip-tftp,test-network-rom-lwip-tftpv6" \
@@ -193,6 +194,7 @@ jobs:
       - name: Build release ROM and runtime binaries (Shard ${{ matrix.shard }}/5)
         run: |
           /tmp/xtask all-build \
+            --output target/all-fw-release-shard-${{ matrix.shard }}.zip \
             --platform emulator --separate-runtimes \
             --profile release \
             --shard-index ${{ matrix.shard }} \
@@ -203,6 +205,7 @@ jobs:
         with:
           name: firmware-bundle-shard-${{ matrix.shard }}
           path: target/all-fw*.zip
+          if-no-files-found: error
           retention-days: 1
 
   merge-firmware-bundles:
@@ -223,23 +226,21 @@ jobs:
       - name: Merge firmware bundles
         run: |
           mkdir -p target/merged-all-fw target/merged-all-fw-release
-          for shard_dir in staging/firmware-bundle-shard-*; do
-            if [ -f "$shard_dir"/all-fw-shard-*.zip ]; then
-              unzip -o "$shard_dir"/all-fw-shard-*.zip -d target/merged-all-fw/
-            fi
-            if [ -f "$shard_dir"/all-fw-release-shard-*.zip ]; then
-              unzip -o "$shard_dir"/all-fw-release-shard-*.zip -d target/merged-all-fw-release/
-            fi
+          for shard in 0 1 2 3 4; do
+            shard_dir="staging/firmware-bundle-shard-$shard"
+            unzip -o "$shard_dir/all-fw-shard-$shard.zip" -d target/merged-all-fw/
+            unzip -o "$shard_dir/all-fw-release-shard-$shard.zip" -d target/merged-all-fw-release/
           done
 
-          cd target/merged-all-fw && zip -r ../all-fw.zip . && cd -
-          cd target/merged-all-fw-release && zip -r ../all-fw-release.zip . && cd -
+          (cd target/merged-all-fw && zip -r ../all-fw.zip .)
+          (cd target/merged-all-fw-release && zip -r ../all-fw-release.zip .)
 
       - name: Upload firmware bundle
         uses: actions/upload-artifact@v7
         with:
           name: firmware-bundle
           path: target/all-fw.zip
+          if-no-files-found: error
           retention-days: 1
 
       - name: Upload release firmware bundle
@@ -247,6 +248,7 @@ jobs:
         with:
           name: release-firmware-bundle
           path: target/all-fw-release.zip
+          if-no-files-found: error
           retention-days: 1
 
   build-emulator:
@@ -282,13 +284,14 @@ jobs:
       - name: Build emulator binary
         run: |
           # Build a single emulator that supports all test features via runtime flags
-          /tmp/xtask emulator-build
+          /tmp/xtask emulator-build --output target/emulators.zip
 
       - name: Upload emulator bundle
         uses: actions/upload-artifact@v7
         with:
           name: emulator-bundle
           path: target/emulators.zip
+          if-no-files-found: error
           retention-days: 1
 
   build-tests:
@@ -456,7 +459,7 @@ jobs:
   print_test_results:
     runs-on: ubuntu-latest
     needs: [test_emulator]
-    if: always()
+    if: ${{ always() && (needs.test_emulator.result == 'success' || needs.test_emulator.result == 'failure') }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v7

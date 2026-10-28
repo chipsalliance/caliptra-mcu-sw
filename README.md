@@ -140,6 +140,8 @@ optional upstream FPGA smoke workflow once compatible bitstreams and that
 workflow are ready. `RUN_FPGA_CI=false` still disables the FPGA workflows,
 including their build jobs. FPGA CI and the test-build container use the local
 revision-specific fuse file instead of downloading a legacy MCU fuse path.
+CI supplies explicit bundle output names for artifact handoff; ordinary builds
+retain their hardware-revision-specific default names.
 
 Initialize the submodule, then explicitly switch **before** building:
 
