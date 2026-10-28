@@ -2,14 +2,12 @@
 Licensed under the Apache-2.0 license.
 --*/
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 
 use crate::component_meta::PropertyMeta;
 use crate::file_source::FileSource;
-use crate::value::{
-    AddressingType, ComponentType, InterruptType, PropertyType, Reference, ScopeType,
-};
+use crate::value::{AddressingType, ComponentType, InterruptType, PropertyType, ScopeType};
 use crate::ParseError;
 use crate::{
     component_meta, token::Token, token_iter::TokenIter, Bits, FileParseError, RdlError, Result,
@@ -51,7 +49,7 @@ impl DynamicAssignment {
             Value::Bool(true)
         } else {
             tokens.expect(Token::Equals)?;
-            prop_meta.ty.parse_or_lookup(tokens, parameters)?
+            prop_meta.ty.eval(tokens, parameters)?
         };
         Ok(Self {
             instance_path: instance_path.into_iter().map(|s| s.to_string()).collect(),
@@ -69,6 +67,8 @@ pub struct ParameterDefinition {
 impl ParameterDefinition {
     fn parse_map<'a>(
         tokens: &mut TokenIter<'a>,
+        parent: Option<&ParameterScope<'_>>,
+        overrides: Option<&HashMap<String, Value>>,
     ) -> Result<'a, HashMap<String, ParameterDefinition>> {
         tokens.expect(Token::Hash)?;
         tokens.expect(Token::ParenOpen)?;
@@ -78,17 +78,31 @@ impl ParameterDefinition {
             let ty = PropertyType::parse_type(tokens)?;
             let name = tokens.expect_identifier()?;
             // default value for bits is 0
-            let default = if tokens.peek(0) == &Token::Comma || tokens.peek(0) == &Token::ParenClose
-            {
-                if ty == PropertyType::Bits {
-                    Value::Bits(Bits::new(32, 0))
+            let mut default =
+                if tokens.peek(0) == &Token::Comma || tokens.peek(0) == &Token::ParenClose {
+                    if ty == PropertyType::Bits {
+                        Value::Bits(Bits::new(32, 0))
+                    } else {
+                        return Err(RdlError::NotImplemented);
+                    }
                 } else {
-                    return Err(RdlError::NotImplemented);
+                    tokens.expect(Token::Equals)?;
+                    ty.eval(
+                        tokens,
+                        Some(&ParameterScope {
+                            parent,
+                            parameters: result.clone(),
+                        }),
+                    )?
+                };
+            if ty == PropertyType::Bits {
+                if let Value::U64(value) = default {
+                    default = Value::Bits(Bits::new(32, value));
                 }
-            } else {
-                tokens.expect(Token::Equals)?;
-                ty.parse_or_lookup(tokens, None)?
-            };
+            }
+            if let Some(value) = overrides.and_then(|values| values.get(name)) {
+                default = value.clone();
+            }
             if result.contains_key(name) {
                 return Err(RdlError::DuplicateParameterName(name));
             }
@@ -121,7 +135,18 @@ pub struct Scope {
     pub default_properties: HashMap<String, Value>,
     pub properties: HashMap<String, Value>,
     pub dynamic_assignments: Vec<DynamicAssignment>,
+    pub template: Option<ScopeTemplate>,
 }
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ScopeTemplate {
+    parameters: HashMap<String, ParameterDefinition>,
+    inherited_parameters: HashMap<String, ParameterDefinition>,
+    path: PathBuf,
+    offset: usize,
+    defines: HashSet<String>,
+}
+
 impl Scope {
     fn new(ty: ScopeType) -> Self {
         Scope {
@@ -189,6 +214,22 @@ impl Scope {
     }
 
     fn calculate_offsets(&mut self) -> Result<'static, ()> {
+        for assignment in self.dynamic_assignments.clone() {
+            self.set_instance_property(
+                &assignment.instance_path,
+                &assignment.prop_name,
+                assignment.value,
+            )?;
+        }
+        for instance in std::mem::take(&mut self.instances) {
+            if instance
+                .scope
+                .property_val_opt::<bool>("ispresent")?
+                .unwrap_or(true)
+            {
+                self.instances.push(instance);
+            }
+        }
         let addr_mode = AddressingType::Compact;
 
         let default_alignment = self.property_val_opt::<u64>("alignment").ok().flatten();
@@ -294,6 +335,27 @@ impl Scope {
         Ok(())
     }
 
+    fn set_instance_property(
+        &mut self,
+        path: &[String],
+        name: &str,
+        value: Value,
+    ) -> Result<'static, ()> {
+        if let Some((head, tail)) = path.split_first() {
+            let instance = self
+                .instances
+                .iter_mut()
+                .find(|instance| instance.name == *head)
+                .ok_or_else(|| {
+                    RdlError::InvalidExpression(format!("unknown dynamic assignment target {head}"))
+                })?;
+            instance.scope.set_instance_property(tail, name, value)
+        } else {
+            self.properties.insert(name.to_owned(), value);
+            Ok(())
+        }
+    }
+
     fn parse<'a>(
         &mut self,
         tokens: &mut TokenIter<'a>,
@@ -323,19 +385,33 @@ impl Scope {
                     Some(tokens.expect_identifier()?)
                 };
 
-                let pscope;
-                let parameters = if type_name.is_some() && tokens.peek(0) == &Token::Hash {
-                    pscope = ParameterScope {
+                let template_position = (
+                    tokens.current_file_path().to_path_buf(),
+                    tokens.last_span().end,
+                    tokens.defines(),
+                );
+                let pscope = if type_name.is_some() && tokens.peek(0) == &Token::Hash {
+                    Some(ParameterScope {
                         parent: parameters,
-                        parameters: ParameterDefinition::parse_map(tokens)?,
-                    };
-                    Some(&pscope)
+                        parameters: ParameterDefinition::parse_map(tokens, parameters, None)?,
+                    })
                 } else {
-                    parameters
+                    None
                 };
+                let parameters = pscope.as_ref().or(parameters);
 
                 let mut ty_scope = Self::new(ScopeType::Component(component_type));
                 tokens.expect(Token::BraceOpen)?;
+                let template = pscope.as_ref().map(|scope| ScopeTemplate {
+                    parameters: scope.parameters.clone(),
+                    inherited_parameters: scope
+                        .parent
+                        .map(ParameterScope::flatten)
+                        .unwrap_or_default(),
+                    path: template_position.0,
+                    offset: template_position.1,
+                    defines: template_position.2,
+                });
                 ty_scope.parse(
                     tokens,
                     Some(&ParentScope {
@@ -349,6 +425,7 @@ impl Scope {
                     scope: self,
                 }));
                 tokens.expect(Token::BraceClose)?;
+                ty_scope.template = template;
 
                 if let Some(type_name) = type_name {
                     if self.types.contains_key(type_name) {
@@ -361,7 +438,15 @@ impl Scope {
                         tokens.next(); // ignore external keyword
                     }
                     loop {
-                        let instance = Instance::parse(ty_scope.clone(), tokens, parameters)?;
+                        let instance = Instance::parse(
+                            ty_scope.clone(),
+                            tokens,
+                            parameters,
+                            Some(&ParentScope {
+                                parent,
+                                scope: self,
+                            }),
+                        )?;
                         if self.instances.iter().any(|e| e.name == instance.name) {
                             return Err(RdlError::DuplicateInstanceName(instance.name));
                         }
@@ -470,12 +555,50 @@ impl Scope {
                 continue;
             }
 
+            let external = *tokens.peek(0) == Token::External;
+            if external {
+                tokens.next();
+            }
+            let alias_of = if *tokens.peek(0) == Token::Identifier("alias") {
+                tokens.next();
+                let name = tokens.expect_identifier()?;
+                let primary = self
+                    .instances
+                    .iter()
+                    .find(|instance| instance.name == name)
+                    .ok_or(RdlError::UnknownInstanceName(name))?;
+                if primary.scope.ty != ComponentType::Reg.into() {
+                    return Err(RdlError::InvalidExpression(format!(
+                        "alias primary {name} is not a register"
+                    )));
+                }
+                Some(name.to_string())
+            } else {
+                None
+            };
             let type_name = tokens.expect_identifier()?;
 
             // This is a template instantiation
-            let ty_scope = lookup_typedef(self, parent, type_name)?.clone();
-            let mut instance = Instance::parse(ty_scope, tokens, parameters)?;
+            let (ty_scope, definition_parent) = lookup_typedef(self, parent, type_name)?;
+            if alias_of.is_some() && ty_scope.ty != ComponentType::Reg.into() {
+                return Err(RdlError::InvalidExpression(
+                    "alias type is not a register".into(),
+                ));
+            }
+            if external
+                && ty_scope.ty != ComponentType::Mem.into()
+                && ty_scope.ty != ComponentType::Reg.into()
+            {
+                return Err(RdlError::UnexpectedToken(Token::External));
+            }
+            let mut instance = Instance::parse(
+                ty_scope.clone(),
+                tokens,
+                parameters,
+                Some(&definition_parent),
+            )?;
             instance.type_name = Some(type_name.into());
+            instance.alias_of = alias_of;
             if self.instances.iter().any(|e| e.name == instance.name) {
                 return Err(RdlError::DuplicateInstanceName(instance.name));
             }
@@ -539,6 +662,13 @@ pub struct ParameterScope<'a> {
     parent: Option<&'a ParameterScope<'a>>,
     parameters: HashMap<String, ParameterDefinition>,
 }
+impl ParameterScope<'_> {
+    fn flatten(&self) -> HashMap<String, ParameterDefinition> {
+        let mut result = self.parent.map(Self::flatten).unwrap_or_default();
+        result.extend(self.parameters.clone());
+        result
+    }
+}
 
 #[derive(Copy, Clone)]
 pub struct ParentScope<'a> {
@@ -588,10 +718,10 @@ fn lookup_typedef<'a, 'b>(
     mut scope: &'b Scope,
     mut parent: Option<&'b ParentScope<'_>>,
     name: &'a str,
-) -> Result<'a, &'b Scope> {
+) -> Result<'a, (&'b Scope, ParentScope<'b>)> {
     loop {
         if let Some(result) = scope.types.get(name) {
-            return Ok(result);
+            return Ok((result, ParentScope { scope, parent }));
         }
         if let Some(parent_scope) = parent {
             scope = parent_scope.scope;
@@ -640,20 +770,14 @@ fn expect_number<'a>(
     i: &mut TokenIter<'a>,
     parameters: Option<&ParameterScope<'_>>,
 ) -> Result<'a, u64> {
-    match i.next() {
-        Token::Number(val) => Ok(val),
-        Token::Identifier(name) => match lookup_parameter(parameters, name)? {
-            Value::U64(val) => Ok(*val),
-            unexpected => Err(RdlError::UnexpectedPropertyType {
-                expected_type: PropertyType::U64,
-                value: unexpected.clone(),
-            }),
-        },
-        unexpected => Err(RdlError::UnexpectedToken(unexpected)),
-    }
+    crate::expression::integer(PropertyType::U64.eval(i, parameters)?)
 }
 
-fn parse_parameter_map<'a>(i: &mut TokenIter<'a>) -> Result<'a, HashMap<String, Value>> {
+fn parse_parameter_map<'a>(
+    i: &mut TokenIter<'a>,
+    parameters: Option<&ParameterScope<'_>>,
+    template: Option<&ScopeTemplate>,
+) -> Result<'a, HashMap<String, Value>> {
     i.expect(Token::Hash)?;
     i.expect(Token::ParenOpen)?;
     if *i.peek(0) == Token::ParenClose {
@@ -666,19 +790,21 @@ fn parse_parameter_map<'a>(i: &mut TokenIter<'a>) -> Result<'a, HashMap<String, 
         i.expect(Token::Period)?;
         let name = i.expect_identifier()?;
         i.expect(Token::ParenOpen)?;
-        let token = i.peek(0).clone();
-        let value = match token {
-            Token::Bits(n) => {
-                i.next();
-                Value::Bits(n)
-            }
-            Token::Identifier(_) => {
-                let reference = Reference::parse(i)?;
-                Value::Reference(reference)
-            }
-            unexpected => return Err(RdlError::UnexpectedToken(unexpected)),
-        };
-        map.insert(name.into(), value);
+        let definition = template
+            .and_then(|template| template.parameters.get(name))
+            .ok_or_else(|| RdlError::InvalidParameter(format!("unknown parameter {name}")))?;
+        let mut value = definition.ty.eval(i, parameters)?;
+        if definition.ty == PropertyType::Bits {
+            let Value::Bits(default) = definition.default else {
+                return Err(RdlError::InvalidParameter(format!(
+                    "invalid bit parameter {name}"
+                )));
+            };
+            value = Value::Bits(Bits::new(default.w(), crate::expression::integer(value)?));
+        }
+        if map.insert(name.into(), value).is_some() {
+            return Err(RdlError::DuplicateParameterName(name));
+        }
         i.expect(Token::ParenClose)?;
         if *i.peek(0) == Token::ParenClose {
             i.next();
@@ -703,6 +829,7 @@ pub struct Instance {
     pub next_alignment: Option<u64>,
     pub scope: Scope,
     pub parameters: HashMap<String, Value>,
+    pub alias_of: Option<String>,
 }
 impl Instance {
     pub fn element_size(&self) -> u64 {
@@ -726,9 +853,10 @@ impl Instance {
         Ok(total_elements * stride)
     }
     fn parse<'a>(
-        scope: Scope,
+        mut scope: Scope,
         i: &mut TokenIter<'a>,
         parameters: Option<&ParameterScope<'_>>,
+        definition_parent: Option<&ParentScope<'_>>,
     ) -> Result<'a, Self> {
         let ScopeType::Component(component_type) = scope.ty else {
             return Err(RdlError::RootCantBeInstantiated);
@@ -740,10 +868,39 @@ impl Instance {
 
         // check for parameters
         let specified_params = if *i.peek(0) == Token::Hash {
-            parse_parameter_map(i)?
+            parse_parameter_map(i, parameters, scope.template.as_ref())?
         } else {
             HashMap::new()
         };
+        if !specified_params.is_empty() {
+            let template = scope
+                .template
+                .as_ref()
+                .ok_or_else(|| RdlError::InvalidParameter("component has no parameters".into()))?;
+            let inherited = ParameterScope {
+                parent: None,
+                parameters: template.inherited_parameters.clone(),
+            };
+            let mut tokens = i
+                .at_position(&template.path, template.offset, template.defines.clone())
+                .map_err(|error| RdlError::InvalidParameter(error.to_string()))?;
+            let definitions = ParameterDefinition::parse_map(
+                &mut tokens,
+                Some(&inherited),
+                Some(&specified_params),
+            )?;
+            let parameters = ParameterScope {
+                parent: Some(&inherited),
+                parameters: definitions,
+            };
+            tokens.expect(Token::BraceOpen)?;
+            let mut expanded = Scope::new(scope.ty);
+            expanded.parse(&mut tokens, definition_parent, Some(&parameters))?;
+            tokens.expect(Token::BraceClose)?;
+            expanded.set_property_defaults(definition_parent);
+            expanded.template = scope.template.clone();
+            scope = expanded;
+        }
 
         let mut result = Self {
             name: i.expect_identifier()?.to_string(),
@@ -751,19 +908,20 @@ impl Instance {
             parameters: specified_params,
             ..Default::default()
         };
-        if component_type == ComponentType::Field
-            && *i.peek(0) == Token::BracketOpen
-            && *i.peek(2) == Token::Colon
-        {
+        if component_type == ComponentType::Field && *i.peek(0) == Token::BracketOpen {
             i.next();
-            let msb = expect_number(i, parameters)?;
-            i.expect(Token::Colon)?;
-            let lsb = expect_number(i, parameters)?;
-            if msb < lsb {
-                return Err(RdlError::MsbLessThanLsb);
+            let first = expect_number(i, parameters)?;
+            if *i.peek(0) == Token::Colon {
+                i.next();
+                let lsb = expect_number(i, parameters)?;
+                if first < lsb {
+                    return Err(RdlError::MsbLessThanLsb);
+                }
+                result.dimension_sizes.push(first - lsb + 1);
+                result.offset = Some(lsb);
+            } else {
+                result.dimension_sizes.push(first);
             }
-            result.dimension_sizes.push(msb - lsb + 1);
-            result.offset = Some(lsb);
             i.expect(Token::BracketClose)?;
         } else {
             while *i.peek(0) == Token::BracketOpen {
@@ -774,11 +932,14 @@ impl Instance {
         }
         if *i.peek(0) == Token::Equals {
             i.next();
-            result.reset = match i.next() {
-                Token::Bits(bits) => Some(bits),
-                Token::Number(num) => Some(Bits::new(result.dimension_sizes.iter().product(), num)),
-                unexpected => return Err(RdlError::UnexpectedToken(unexpected)),
-            }
+            let value = PropertyType::Bits.eval(i, parameters)?;
+            result.reset = Some(match value {
+                Value::Bits(bits) => bits,
+                value => Bits::new(
+                    result.dimension_sizes.iter().product(),
+                    crate::expression::integer(value)?,
+                ),
+            });
         }
         if result.scope.ty == ComponentType::Reg.into()
             || result.scope.ty == ComponentType::RegFile.into()
@@ -876,6 +1037,170 @@ mod tests {
     use crate::{file_source::MemFileSource, value::AccessType, EnumReference};
 
     use super::*;
+
+    fn parse(text: &str) -> Scope {
+        let fs = MemFileSource::from_entries(&[("test.rdl".into(), text.into())]);
+        Scope::parse_root(&fs, &["test.rdl".into()]).unwrap()
+    }
+
+    #[test]
+    fn parameter_overrides_elaborate_nested_layouts_resets_and_presence() {
+        let scope = parse(
+            r#"
+            addrmap device #(longint unsigned ENDPOINTS = 14, bit TOGGLE = 1) {
+                reg {
+                    field {sw = rw;} endpoints[ENDPOINTS + 1:0] = ENDPOINTS;
+                } status @ 0x20;
+                reg {
+                    field {ispresent = TOGGLE != 0; sw = rw;} visible[ENDPOINTS + 1:0] = 0;
+                    field {ispresent = TOGGLE == 0; sw = r;} hidden[ENDPOINTS + 1:0] = 0;
+                } toggle @ 0x34;
+            };
+            addrmap combo #(longint unsigned ENDPOINTS = 14) {
+                device #(.ENDPOINTS(ENDPOINTS), .TOGGLE(0)) device0 @ 0;
+            };
+            addrmap soc {
+                combo #(.ENDPOINTS(28)) usb @ 0x20000000;
+                device defaults @ 0x20002000;
+            };
+        "#,
+        );
+        let soc = &scope.types["soc"];
+        let overridden = &soc.instances[0].scope.instances[0].scope;
+        let status = &overridden.instances[0].scope.instances[0];
+        assert_eq!(status.dimension_sizes, [30]);
+        assert_eq!(status.reset, Some(Bits::new(30, 28)));
+        let toggle = &overridden.instances[1].scope.instances;
+        assert_eq!(toggle.len(), 1);
+        assert_eq!(toggle[0].name, "hidden");
+        assert_eq!(toggle[0].dimension_sizes, [30]);
+        let default = &soc.instances[1].scope.instances[0].scope.instances[0];
+        assert_eq!(default.dimension_sizes, [16]);
+        assert_eq!(default.reset, Some(Bits::new(16, 14)));
+        assert_eq!(
+            scope.types["device"].instances[1].scope.instances[0].name,
+            "visible"
+        );
+    }
+
+    #[test]
+    fn parameter_templates_keep_lexical_types_and_parameters() {
+        let scope = parse(
+            r#"
+            addrmap outer #(longint unsigned WIDTH = 8) {
+                reg word {field {sw = r;} bits[WIDTH - 1:0] = WIDTH;};
+                addrmap nested #(longint unsigned OFFSET = 0) {
+                    word value @ OFFSET;
+                };
+                addrmap caller {
+                    reg word {field {} different[0:0];};
+                    nested #(.OFFSET(4)) inner @ 0;
+                } instance @ 0;
+            };
+            addrmap soc {outer #(.WIDTH(16)) usb @ 0;};
+        "#,
+        );
+        let outer = &scope.types["soc"].instances[0].scope;
+        let word = &outer.instances[0].scope.instances[0].scope.instances[0];
+        assert_eq!(word.offset, Some(4));
+        assert_eq!(word.scope.instances[0].name, "bits");
+        assert_eq!(word.scope.instances[0].dimension_sizes, [16]);
+        assert_eq!(word.scope.instances[0].reset, Some(Bits::new(16, 16)));
+    }
+
+    #[test]
+    fn overrides_recompute_dependent_defaults_and_preserve_bit_width() {
+        let scope = parse(
+            r#"
+            addrmap device #(longint unsigned COUNT = 14,
+                             longint unsigned WIDTH = COUNT + 2, bit FLAGS = 8'hff) {
+                reg {field {} bitmap[WIDTH - 1:0] = FLAGS;} status @ 0;
+            };
+            addrmap soc {
+                device #(.COUNT(28), .FLAGS(16'h1234)) first @ 0;
+                device #(.COUNT(28), .WIDTH(8)) second @ 0x100;
+            };
+        "#,
+        );
+        let instances = &scope.types["soc"].instances;
+        let first = &instances[0].scope.instances[0].scope.instances[0];
+        assert_eq!(first.dimension_sizes, [30]);
+        assert_eq!(first.reset.unwrap().val(), 0x34);
+        assert_eq!(
+            instances[0].parameters["FLAGS"],
+            Value::Bits(Bits::new(8, 0x34))
+        );
+        assert_eq!(
+            instances[1].scope.instances[0].scope.instances[0].dimension_sizes,
+            [8]
+        );
+    }
+
+    #[test]
+    fn aliases_external_memories_and_dynamic_assignments() {
+        let scope = parse(
+            r#"
+            mem packet #(longint unsigned ENTRIES = 4) {
+                memwidth = 64; mementries = ENTRIES; sw = rw;
+            };
+            addrmap soc {
+                reg status_t {field {sw = rw; onwrite = woclr;} pending[29:0] = 0;};
+                status_t status @ 0x20;
+                alias status status_t set_status @ 0x28;
+                set_status.pending->onwrite = woset;
+                external packet #(.ENTRIES(8192)) buffer @ 0x30000000;
+            };
+        "#,
+        );
+        let instances = &scope.types["soc"].instances;
+        assert_eq!(instances[1].alias_of.as_deref(), Some("status"));
+        assert_eq!(
+            instances[0].scope.instances[0].scope.properties["onwrite"],
+            Value::OnWriteType(crate::OnWriteType::WoClr)
+        );
+        assert_eq!(
+            instances[1].scope.instances[0].scope.properties["onwrite"],
+            Value::OnWriteType(crate::OnWriteType::WoSet)
+        );
+        assert_eq!(
+            instances[2]
+                .scope
+                .property_val::<u64>("mementries")
+                .unwrap(),
+            8192
+        );
+        assert_eq!(
+            instances[2].scope.property_val::<u64>("memwidth").unwrap(),
+            64
+        );
+    }
+
+    #[test]
+    fn invalid_parameter_overrides_and_aliases_are_rejected() {
+        for instance in [
+            "device #(.UNKNOWN(1)) instance;",
+            "device #(.COUNT(1), .COUNT(2)) instance;",
+            "device #(.COUNT(\"wrong\")) instance;",
+            "device #(.FLAG(\"wrong\")) instance;",
+            "alias absent word instance;",
+            "alias memory word instance;",
+            "word status; alias status device instance;",
+        ] {
+            let source = format!(
+                r#"
+                addrmap device #(longint unsigned COUNT = 14, bit FLAG = 1) {{}};
+                reg word {{field {{}} value;}};
+                mem {{memwidth = 32; mementries = 4;}} memory;
+                {instance}
+            "#
+            );
+            let fs = MemFileSource::from_entries(&[("test.rdl".into(), source)]);
+            assert!(
+                Scope::parse_root(&fs, &["test.rdl".into()]).is_err(),
+                "{instance}"
+            );
+        }
+    }
 
     #[test]
     fn test_scope_def() {

@@ -43,6 +43,8 @@ jobs:
         run: |
           cargo xtask registers-autogen --check
           cargo test -p caliptra-mcu-hw-revision -p caliptra-mcu-registers-generated -p caliptra-mcu-emulator-registers-generated
+          cargo test -p caliptra-mcu-registers-systemrdl -p caliptra-mcu-registers-generator -p caliptra-mcu-mbox-common
+          cargo test -p caliptra-mcu-emulator-periph --lib
           cargo test -p caliptra-mcu-builder --lib
           cargo check -p caliptra-mcu-emulator -p caliptra-mcu-provisioning-fuses
           cargo test -p caliptra-mcu-emulator --lib hardware_revision
