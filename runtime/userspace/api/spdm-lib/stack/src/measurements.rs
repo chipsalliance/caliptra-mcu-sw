@@ -522,7 +522,10 @@ mod tests {
 
         let ops = pal.sign_ops.borrow();
         assert_eq!(ops.len(), 1);
-        assert_eq!(ops[0].algo, SpdmPalAsymAlgo::EccP384);
+        assert!(matches!(
+            ops[0].input,
+            support::RecordedSigningInput::EccP384Digest(_)
+        ));
         assert_eq!(ops[0].sig_len, 96);
 
         // The 96-byte signature is the tail of the response.
@@ -556,7 +559,10 @@ mod tests {
 
         let ops = pal.sign_ops.borrow();
         assert_eq!(ops.len(), 1);
-        assert_eq!(ops[0].algo, SpdmPalAsymAlgo::MlDsa87);
+        assert!(matches!(
+            ops[0].input,
+            support::RecordedSigningInput::Mldsa87Message { .. }
+        ));
         assert_eq!(ops[0].sig_len, 4627);
 
         let sig = &resp[spdm_len - 4627..spdm_len];

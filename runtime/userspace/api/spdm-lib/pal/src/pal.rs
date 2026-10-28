@@ -23,7 +23,7 @@ use alloc::boxed::Box;
 use core::cell::UnsafeCell;
 
 use super::measurements::MeasurementProvider;
-use caliptra_mcu_cert_store::store::{SharedCertStore, TaskCertStore};
+use caliptra_mcu_cert_store::{SharedCertStore, TaskCertStore};
 
 /// MCU implementation of the SPDM Platform Abstraction Layer.
 ///
@@ -134,5 +134,9 @@ impl<M: MeasurementProvider> McuSpdmPal<M> {
 impl<M: MeasurementProvider> SpdmPal for McuSpdmPal<M> {
     fn max_inbound_spdm_request_size(&self) -> usize {
         self.max_inbound_spdm_request_size
+    }
+
+    async fn generate_nonce(&self, _io: &Self::Io<'_>, out: &mut [u8]) -> McuResult<()> {
+        mcu_caliptra_api::rng_generate(self.allocator, out).await
     }
 }

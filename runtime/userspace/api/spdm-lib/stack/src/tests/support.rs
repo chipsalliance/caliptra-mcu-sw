@@ -134,7 +134,6 @@ pub enum RecordedSigningInput {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RecordedSign {
-    pub algo: SpdmPalAsymAlgo,
     pub input: RecordedSigningInput,
     pub sig_len: usize,
 }
@@ -391,7 +390,6 @@ impl SpdmPalCertStore for TestPal {
         &self,
         _io: &Self::Io<'_>,
         _slot: u8,
-        algo: SpdmPalAsymAlgo,
         signing_input: SigningInput<'_>,
         signature: &mut [u8],
     ) -> McuResult<usize> {
@@ -414,7 +412,6 @@ impl SpdmPalCertStore for TestPal {
             SigningInput::Mldsa87Mu(mu) => RecordedSigningInput::Mldsa87Mu(mu.to_vec()),
         };
         self.sign_ops.borrow_mut().push(RecordedSign {
-            algo,
             input,
             sig_len: signature.len(),
         });
@@ -550,11 +547,6 @@ impl SpdmPalCertStore for TestPal {
 
     fn key_usage_mask(&self, _slot: u8, _algo: SpdmPalAsymAlgo) -> Option<u16> {
         None
-    }
-
-    async fn generate_nonce(&self, _io: &Self::Io<'_>, out: &mut [u8]) -> McuResult<()> {
-        out.fill(0xA5);
-        Ok(())
     }
 }
 
@@ -695,6 +687,11 @@ impl SpdmPalSessionCrypto for TestPal {
 impl caliptra_mcu_spdm_traits::SpdmPal for TestPal {
     fn max_inbound_spdm_request_size(&self) -> usize {
         self.max_inbound_spdm_request_size
+    }
+
+    async fn generate_nonce(&self, _io: &Self::Io<'_>, out: &mut [u8]) -> McuResult<()> {
+        out.fill(0xA5);
+        Ok(())
     }
 }
 

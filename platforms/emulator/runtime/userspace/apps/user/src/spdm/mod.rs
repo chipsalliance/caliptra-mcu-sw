@@ -391,17 +391,13 @@ const TEST_PCI_SIG_VENDOR_ID: u16 = 0x0001;
 const SUPPORTED_TDISP_VERSIONS: &[TdispVersion] = &[TdispVersion::V10];
 
 #[cfg(feature = "test-mctp-spdm-attestation-pcr-quote")]
-fn measurement_provider(
-) -> caliptra_mcu_spdm_pal::measurements::providers::pcr_quote::PcrQuoteMeasurementProvider {
-    caliptra_mcu_spdm_pal::measurements::providers::pcr_quote::PcrQuoteMeasurementProvider::new()
+fn measurement_provider() -> caliptra_mcu_spdm_pal::PcrQuoteMeasurementProvider {
+    caliptra_mcu_spdm_pal::PcrQuoteMeasurementProvider::new()
 }
 
 #[cfg(not(feature = "test-mctp-spdm-attestation-pcr-quote"))]
-fn measurement_provider(
-) -> caliptra_mcu_spdm_pal::measurements::providers::ocp_eat::OcpEatMeasurementProvider {
-    caliptra_mcu_spdm_pal::measurements::providers::ocp_eat::OcpEatMeasurementProvider::new(
-        caliptra_mcu_cert_store::DPE_LEAF_LABEL,
-    )
+fn measurement_provider() -> caliptra_mcu_spdm_pal::OcpEatMeasurementProvider {
+    caliptra_mcu_spdm_pal::OcpEatMeasurementProvider::new(caliptra_mcu_cert_store::DPE_LEAF_LABEL)
 }
 
 #[repr(C, align(64))]
