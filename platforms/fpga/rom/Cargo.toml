@@ -7,10 +7,12 @@ authors.workspace = true
 edition.workspace = true
 
 [build-dependencies]
+caliptra-mcu-hw-revision.workspace = true
 caliptra-mcu-builder.workspace = true
 caliptra-mcu-config-fpga.workspace = true
 
 [dependencies]
+caliptra-mcu-usb-common = { workspace = true, optional = true }
 caliptra-mcu-config.workspace = true
 caliptra-mcu-config-fpga.workspace = true
 caliptra-mcu-rom-common.workspace = true
@@ -50,3 +52,4 @@ test-pldm-streaming-boot = []
 test-ocp-lock = []
 test-streaming-boot-flash-write-back = []
 test-usb-ocp-recovery = ["hw-2-1"]
+test-lpcip-usb-enumeration = ["dep:caliptra-mcu-usb-common", "caliptra-mcu-usb-common/test-enumeration"]

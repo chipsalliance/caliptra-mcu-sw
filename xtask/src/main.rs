@@ -629,15 +629,16 @@ EXAMPLES:
 }
 
 /// Resolve a `--variants` CLI value to a `Vec<RomVariant>`. `None`
-/// returns the project-wide default list
-/// (`caliptra_mcu_builder::features::ROM_VARIANTS`).
+/// returns the revision-aware project-wide default list.
 fn resolve_variants(
     raw: Option<&str>,
 ) -> Result<Vec<caliptra_mcu_builder::features::RomVariant>, anyhow::Error> {
-    use caliptra_mcu_builder::features::{parse_variants, ROM_VARIANTS};
+    use caliptra_mcu_builder::features::{default_rom_variants, parse_variants};
     match raw {
         Some(s) => parse_variants(s).map_err(|e| anyhow::anyhow!("invalid --variants: {e}")),
-        None => Ok(ROM_VARIANTS.to_vec()),
+        None => Ok(default_rom_variants(
+            caliptra_mcu_builder::hardware_revision()?,
+        )),
     }
 }
 

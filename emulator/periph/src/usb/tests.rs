@@ -426,7 +426,10 @@ fn unsupported_iso_is_explicit_and_interrupt_packets_use_descriptor_limits() {
 fn info_error_code_and_configuration_are_hardware_owned_except_diagnostics() {
     let mut f = Fixture::new();
     assert_eq!(f.read(4) >> 24, 2);
-    assert_eq!(f.read(0x30), 28 | (1 << 5) | (1 << 6) | (1 << 7));
+    assert_eq!(
+        f.read(0x30),
+        28 | (1 << 5) | (1 << 6) | (1 << 7) | (1 << 10)
+    );
     f.write(4, u32::MAX);
     assert_eq!(f.read(4), 0x0200_7800);
     assert_eq!(f.host.host_in(0, 0), Err(LpcipUsbError::Nak));
