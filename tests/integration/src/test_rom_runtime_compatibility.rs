@@ -988,10 +988,11 @@ fn boot_check(pair: &SelectedPair, scenario: &str) -> Result<Option<String>> {
             let bytes = read_memory(&mut hw.mcu_manager(), pair.config.handoff_address, 8)?;
             ensure!(
                 &bytes[..4] == b"MCUH" && bytes[4..8] == [1, 0, 0, 0],
-                "Released ROM handoff is not version 1.0"
+                "Released ROM handoff at {:#x} is not version 1.0 after runtime startup: got {}",
+                pair.config.handoff_address,
+                hex::encode(&bytes)
             );
-            // Both selected ROMs predate boot-source/capability fields. Successful
-            // mailbox commands prove the real runtime accepts this older layout.
+            // Both selected ROMs predate boot-source/capability fields.
         }
         "flash_cold_boot" | "cold_reboot" => {
             // Never provide PLDM payloads here: flash must work without streaming fallback.

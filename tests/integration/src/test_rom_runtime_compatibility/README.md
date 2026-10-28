@@ -20,9 +20,10 @@ The [workflow](../../../../.github/workflows/rom-runtime-compatibility.yml):
 3. Builds one Nextest archive. The ignored `fixtures::prepare_inputs` test uses
    the existing builder APIs to produce fixed Core, OTP and signed manifests.
    The selected ROM's own flash producer creates its native raw flash payload.
-   Both native-ROM and runtime payloads are wrapped with image A at `0x10000`
-   and a checksummed partition table at offset zero before certificate seeding
-   and hashing; the native payload format is not rewritten.
+   The production ROMs read the native payload at offset zero, without a
+   partition table. Only runtime payloads are wrapped with image A at `0x10000`
+   and a checksummed partition table at offset zero. Both layouts are seeded
+   with certificates before hashing; the native payload format is not rewritten.
 4. Runs exactly six ROM/runtime jobs. Each runs the new ignored boot checks,
    then applicable service checks, using the `emulator` profile and one test
    thread. Nextest already isolates test cases; there is no extra test runner.
@@ -67,6 +68,13 @@ Boot checks cover recovery, flash without streaming fallback, streaming/PLDM
 activation, old handoff layouts, mailbox version/capabilities, preserved-flash
 cold reboot, corruption rejection and the SVN boundary. Service checks exercise
 mailbox and non-mutating provisioning status/challenge behavior.
+
+The SDK 2.1.0 ROM's native `rom-build` selects a development manifest with its
+handoff at `0x50003800`; the selected release runtimes use `0x50003c00`. The RC
+ROM uses `0x50003c00`. The handoff check reads the selected ROM's generated
+linker address after runtime startup and reports the observed bytes on failure.
+It does not relocate the table, patch historical firmware, or treat a working
+mailbox as proof that the runtime accepted the handoff.
 
 Full streaming MCTP SPDM conformance is **BLOCKED** until the same model has
 completed PLDM loading and verified SoC measurement setup, with a live responder

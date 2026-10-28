@@ -392,7 +392,8 @@ fn prepare_inputs() -> Result<()> {
                     status.success(),
                     "Pinned ROM flash producer failed: {status}"
                 );
-                partition_flash_payload(&rom_flash, &fs::read(&rom_flash)?)?;
+                // Production ROMs read their native flash header at offset zero.
+                seed_idevid_certificates(&rom_flash)?;
                 let mut negatives = serde_json::Map::new();
                 for (name, symbol, offset) in [
                     (
