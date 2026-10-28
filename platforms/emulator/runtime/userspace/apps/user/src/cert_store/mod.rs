@@ -22,9 +22,7 @@ mod slot0_endorsements;
 
 #[cfg(feature = "test-mctp-spdm-set-certificate")]
 use caliptra_mcu_cert_store::CertificateAlgorithm;
-use caliptra_mcu_cert_store::{
-    store::SharedCertStore, CertificateProvisioningPolicy, EndorsementRole,
-};
+use caliptra_mcu_cert_store::{CertificateProvisioningPolicy, EndorsementRole, SharedCertStore};
 #[cfg(feature = "test-mctp-spdm-set-certificate")]
 use caliptra_mcu_config_emulator::flash::CERT_STORE_PARTITION;
 use caliptra_mcu_libsyscall_caliptra::external_otp::ExternalOtp;
@@ -125,12 +123,11 @@ async fn populate_idev<A: ScratchAlloc>(alloc: &A) -> McuResult<()> {
 async fn setup_endorsements<A: ScratchAlloc>(store: &SharedCertStore, alloc: &A) -> McuResult<()> {
     // Vendor: ReadOnly endorsement with static Root CA (ECC & ML-DSA).
     store
-        .set_endorsement_chains(
+        .init_readonly_endorsement(
             alloc,
             EndorsementRole::Vendor,
             slot0_endorsements::SLOT0_ECC_ROOT_CERT_CHAIN,
             Some(slot0_endorsements::SLOT0_MLDSA_ROOT_CERT_CHAIN),
-            0, // key_pair_id
         )
         .await?;
 
@@ -142,7 +139,7 @@ async fn setup_endorsements<A: ScratchAlloc>(store: &SharedCertStore, alloc: &A)
     {
         for (region_index, &(role, algo)) in MANAGED_ENDORSEMENT_REGIONS.iter().enumerate() {
             store
-                .set_managed_endorsement(
+                .init_managed_endorsement(
                     role,
                     algo,
                     CERT_STORE_PARTITION.driver_num,

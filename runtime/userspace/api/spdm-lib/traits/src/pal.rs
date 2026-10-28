@@ -31,4 +31,7 @@ pub trait SpdmPal:
     fn max_inbound_spdm_request_size(&self) -> usize {
         self.large_buffered_msg_capacity().max(self.mtu())
     }
+
+    /// Fill `out` with random bytes from the platform RNG.
+    async fn generate_nonce(&self, io: &Self::Io<'_>, out: &mut [u8]) -> McuResult<()>;
 }

@@ -10,39 +10,26 @@ use super::measurements::MeasurementProvider;
 use super::*;
 #[cfg(feature = "set-certificate")]
 use caliptra_mcu_cert_store::errors as cert_errors;
-use caliptra_mcu_cert_store::{
-    endorsement::NUM_CERT_SLOTS, CertificateAlgorithm, EndorsementRole, DPE_LEAF_LABEL,
-};
+use caliptra_mcu_cert_store::{CertificateAlgorithm, EndorsementRole, DPE_LEAF_LABEL};
 use caliptra_mcu_spdm_traits::{SigningInput, SpdmPalAsymAlgo, SpdmPalCertStore, SpdmPalHashAlgo};
-use mcu_caliptra_api::DpeProfile;
 use mcu_error::codes::{INTERNAL_BUG, INVARIANT};
 
-/// SPDM slot numbers assigned to the three logical slots:
-/// - index 0 → SPDM slot 0 (Vendor)
-/// - index 1 → SPDM slot 2 (Owner)
-/// - index 2 → SPDM slot 3 (Tenant)
-pub const DEFAULT_SLOT_MAP: [u8; NUM_CERT_SLOTS] = [0, 2, 3];
-
-/// Bitmask of all supported SPDM slots (`0b0000_1101` = slots 0, 2, 3).
-pub const SUPPORTED_SLOT_MASK: u8 = (1 << 0) | (1 << 2) | (1 << 3);
-
-/// Map an SPDM wire slot number to its [`EndorsementRole`].
 #[inline]
-pub const fn slot_role(spdm_slot: u8) -> Option<EndorsementRole> {
+const fn role_spdm_slot(role: EndorsementRole) -> u8 {
+    match role {
+        EndorsementRole::Vendor => 0,
+        EndorsementRole::Owner => 2,
+        EndorsementRole::Tenant => 3,
+    }
+}
+
+#[inline]
+const fn slot_role(spdm_slot: u8) -> Option<EndorsementRole> {
     match spdm_slot {
         0 => Some(EndorsementRole::Vendor),
         2 => Some(EndorsementRole::Owner),
         3 => Some(EndorsementRole::Tenant),
         _ => None,
-    }
-}
-
-/// Map an SPDM wire slot number to its internal array index (`0..NUM_CERT_SLOTS`).
-#[inline]
-pub const fn slot_index(spdm_slot: u8) -> Option<usize> {
-    match slot_role(spdm_slot) {
-        Some(role) => Some(role.index()),
-        None => None,
     }
 }
 
@@ -74,9 +61,9 @@ fn map_set_cert_error(err: mcu_error::McuErrorCode) -> mcu_error::McuErrorCode {
 impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
     fn supported_slots(&self) -> u8 {
         let mut mask = 0u8;
-        for (i, slot) in self.cert_store.cert_slots().iter().enumerate() {
-            if slot.is_supported() {
-                mask |= 1 << DEFAULT_SLOT_MAP[i];
+        for role in EndorsementRole::ALL {
+            if self.cert_store.cert_slot(role).is_supported() {
+                mask |= 1 << role_spdm_slot(role);
             }
         }
         mask
@@ -85,9 +72,9 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
     fn provisioned_slots(&self, algo: SpdmPalAsymAlgo) -> u8 {
         let algo = cert_algo(algo);
         let mut mask = 0u8;
-        for (i, slot) in self.cert_store.cert_slots().iter().enumerate() {
-            if slot.is_provisioned(algo) {
-                mask |= 1 << DEFAULT_SLOT_MAP[i];
+        for role in EndorsementRole::ALL {
+            if self.cert_store.cert_slot(role).is_provisioned(algo) {
+                mask |= 1 << role_spdm_slot(role);
             }
         }
         mask
@@ -100,7 +87,9 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         algo: SpdmPalAsymAlgo,
     ) -> McuResult<usize> {
         let role = slot_role(slot).ok_or(INVARIANT)?;
-        self.cert_store.endorsement_capacity(role, cert_algo(algo))
+        self.cert_store
+            .cert_slot(role)
+            .endorsement_capacity(cert_algo(algo))
     }
 
     #[inline]
@@ -163,7 +152,9 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         out: &mut [u8],
     ) -> McuResult<()> {
         let role = slot_role(slot).ok_or(INVARIANT)?;
-        self.cert_store.root_cert_hash(role, cert_algo(algo), out)
+        self.cert_store
+            .cert_slot(role)
+            .root_cert_hash(cert_algo(algo), out)
     }
 
     async fn read_cert_chain(
@@ -184,14 +175,10 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
         &self,
         _io: &Self::Io<'_>,
         slot: u8,
-        algo: SpdmPalAsymAlgo,
         signing_input: SigningInput<'_>,
         signature: &mut [u8],
     ) -> McuResult<usize> {
         let _role = slot_role(slot).ok_or(INVARIANT)?;
-        if DpeProfile::from(algo) != signing_input.profile() {
-            return Err(INVARIANT);
-        }
         caliptra_mcu_measurement_api::sign(
             self.allocator,
             &DPE_LEAF_LABEL,
@@ -355,12 +342,7 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
 
     fn cert_info(&self, slot: u8, algo: SpdmPalAsymAlgo) -> Option<u8> {
         let role = slot_role(slot)?;
-        let cert_slot = self.cert_store.cert_slot(role);
-        let algo = cert_algo(algo);
-        if !cert_slot.is_provisioned(algo) {
-            return None;
-        }
-        cert_slot.cert_info(algo)
+        self.cert_store.cert_slot(role).cert_info(cert_algo(algo))
     }
 
     fn key_usage_mask(&self, slot: u8, algo: SpdmPalAsymAlgo) -> Option<u16> {
@@ -395,10 +377,6 @@ impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
                 .cache_chain_digest(role, cert_algo(asym_algo), digest);
         }
     }
-
-    async fn generate_nonce(&self, _io: &Self::Io<'_>, out: &mut [u8]) -> McuResult<()> {
-        mcu_caliptra_api::rng_generate(self.allocator, out).await
-    }
 }
 
 #[cfg(test)]
@@ -406,17 +384,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn slot_role_and_index_map_vendor_owner_tenant() {
+    fn slot_role_maps_vendor_owner_tenant() {
         assert_eq!(slot_role(0), Some(EndorsementRole::Vendor));
         assert_eq!(slot_role(2), Some(EndorsementRole::Owner));
         assert_eq!(slot_role(3), Some(EndorsementRole::Tenant));
         assert_eq!(slot_role(1), None);
         assert_eq!(slot_role(4), None);
-
-        assert_eq!(slot_index(0), Some(0));
-        assert_eq!(slot_index(2), Some(1));
-        assert_eq!(slot_index(3), Some(2));
-        assert_eq!(slot_index(1), None);
     }
 
     #[cfg(feature = "set-certificate")]

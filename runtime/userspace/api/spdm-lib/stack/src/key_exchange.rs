@@ -511,13 +511,7 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
         .await
         .map_err(|_| SPDM_UNSPECIFIED)?;
     let written = pal
-        .sign(
-            io,
-            slot_id,
-            asym_algo,
-            SigningInput::EccP384Digest(th1),
-            sig_slot,
-        )
+        .sign(io, slot_id, SigningInput::EccP384Digest(th1), sig_slot)
         .await
         .map_err(|_| SPDM_UNSPECIFIED)?;
     if written != sig_len {
