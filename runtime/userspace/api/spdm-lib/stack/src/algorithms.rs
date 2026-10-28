@@ -32,7 +32,7 @@ use zerocopy::FromBytes;
 
 use crate::build::build_response;
 use crate::error::{SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST};
-use crate::stack::{ConnectionState, Phase};
+use crate::stack::{multi_key_conn_value, ConnectionState, Phase};
 
 /// Peer-advertised algorithm bitmaps, one per family the responder
 /// actually consumes.
@@ -65,7 +65,8 @@ struct PeerAlgs {
 ///   [`Phase::AfterCapabilities`].
 /// * [`SPDM_INVALID_REQUEST`] — header undecodable or body violates
 ///   the corresponding table (see [`locate_alg_structs`] / [`parse_peer_algs`]
-///   for the exact rules).
+///   for the exact rules), or the requested `ResponderMultiKeyConn`
+///   contradicts our `MULTI_KEY_CAP` (see [`multi_key_conn_value`]).
 pub(crate) async fn handle_negotiate_algorithms<'a, Pal: SpdmPal>(
     state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
     pal: &'a Pal,
@@ -86,6 +87,29 @@ pub(crate) async fn handle_negotiate_algorithms<'a, Pal: SpdmPal>(
     )
     .map_err(|_| SPDM_INVALID_REQUEST)?;
 
+    // DSP0274 1.3.0 Table 32 (MULTI_KEY_CONN_RSP value calculation)
+    // marks two ResponderMultiKeyConn / MULTI_KEY_CAP combinations
+    // invalid rather than false. `build_response_body` only masks the
+    // bit out of the response, which would answer ALGORITHMS -- i.e.
+    // success -- to a request the table rejects, so the request has to
+    // be refused here, before the response is built. Pre-V1.3 keeps
+    // the mask-and-ignore behaviour: the bit is reserved there, not
+    // illegal.
+    // The table's result is the connection's MULTI_KEY_CONN_RSP, so keep it:
+    // it cannot be recovered from the ALGORITHMS response, whose bit 4 is
+    // RequesterMultiKeyConnSel and is also masked by the peer's MULTI_KEY_CAP.
+    let multi_key_conn_rsp = if state.version >= SpdmVersion::V13 {
+        multi_key_conn_value(
+            state.version,
+            state.advertised_cap_flags,
+            fixed
+                .other_param_support
+                .contains(OtherParamSupport::MULTI_KEY_CONN),
+        )?
+    } else {
+        false
+    };
+
     // Keep negotiation-only values out of the async state carried across
     // transcript hashing. The encoded response itself is scratch-backed.
     let (resp, spdm_len) = {
@@ -95,6 +119,7 @@ pub(crate) async fn handle_negotiate_algorithms<'a, Pal: SpdmPal>(
             build_response_body(state, fixed, &peer, pal.secure_message_supported());
         let spdm_len = rsp_body.encoded_size();
         state.other_param_sel = rsp_body.other_param_support;
+        state.multi_key_conn_rsp = multi_key_conn_rsp;
         state.negotiated_base_asym_sel = rsp_body.base_asym_sel;
         state.negotiated_base_hash_sel = rsp_body.base_hash_sel;
         state.negotiated_pqc_asym_sel = rsp_body.pqc_asym_sel;
@@ -338,6 +363,10 @@ fn build_response_body<S, L>(
 fn multi_key_cap_allows_connection(local: CapFlags, peer: CapFlags) -> bool {
     matches!(local.multi_key_field(), 0b01 | 0b10) && matches!(peer.multi_key_field(), 0b01 | 0b10)
 }
+
+#[cfg(test)]
+#[path = "tests/algorithms.rs"]
+mod multi_key_conn_tests;
 
 #[cfg(test)]
 mod tests {
