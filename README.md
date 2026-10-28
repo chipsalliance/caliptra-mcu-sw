@@ -47,10 +47,10 @@ For more details on how to run tests locally, how CI works, and how to add new t
 ## Hardware revisions
 
 `CALIPTRA_HW_REV` selects the hardware inputs and both firmware and emulator
-register interfaces. Supported values are `2.1` (default) and `latest`.
+register interfaces. Supported values are `2.1` and `latest` (default).
 Other values, including `2.2`, are rejected; `latest` is not an alias for 2.2.
-The repository's Cargo configuration also supplies the 2.1 default to Caliptra
-core dependencies, whose upstream default differs.
+The repository's Cargo configuration also supplies the `latest` default to
+Caliptra core dependencies, matching the default 2.2 development software.
 
 | Selector | Pinned subsystem | Generated interfaces |
 |---|---|---|
@@ -74,7 +74,9 @@ validated 2.1 subsystem.
 
 ```shell
 git submodule update --init --recursive
+CALIPTRA_HW_REV=latest cargo xtask switch-version 2.1
 CALIPTRA_HW_REV=2.1 cargo xtask rom-build
+CALIPTRA_HW_REV=latest cargo xtask switch-version latest
 CALIPTRA_HW_REV=latest cargo xtask rom-build
 CALIPTRA_HW_REV=latest cargo xtask runtime-build
 ```
@@ -90,27 +92,107 @@ Both snapshots currently require `2.1.0`, now the emulator and
 `cargo xtask runtime` default; incompatible runtime revisions are rejected.
 This intentionally removes the previous implicit 2.0 emulator behavior.
 
-Default 2.1 firmware/archive filenames remain compatible with existing tooling.
+The 2.1 firmware/archive filenames remain compatible with existing tooling.
 Latest outputs have a `latest-` prefix; explicit output paths remain caller-owned.
 Caliptra ROM/FW cache keys always include `rev_2_1-` or `latest-`, including
 separately sourced ROM builds. Core source builds run in a child process with
 the selected revision explicitly set, preserving upstream's registered firmware
 IDs and isolating its in-process firmware cache. ROM/runtime outputs have `.provenance.txt`
 sidecars, and firmware/emulator ZIPs include `hardware-provenance.txt`.
-These record subsystem and nested hardware commits, the Cargo Caliptra source,
+These record subsystem and nested hardware commits, the checked-out Caliptra source,
 and the separately configured ROM source (`CALIPTRA_ROM_REF`), frozen ROM
 selection (`CPTRA_CI_ROM_VERSION`), and prebuilt directory, when applicable.
 Explicit externally supplied binaries remain the caller's compatibility responsibility.
 
 **Core integration boundary:** the pinned Caliptra core uses different
-subsystem commits (`753308dd...` for 2.1 and `01b0a352...` for latest).
-Equal selector names do not prove equivalent hardware. This change preserves
-the existing core dependency; core/MCU pin alignment and actual 2.2 validation
-remain in #2238. Both current MCU snapshots retain the existing 2.1 ROM contract,
-including the CI `CALIPTRA_ROM_REF=rom-2.1.2`. Prebuilt or separately sourced ROMs
-must be revalidated before advancing latest. Upstream core Verilator hardware
+subsystem commits (`753308dd...` for 2.1 and `6e5ed764...` for latest).
+Equal selector names do not prove equivalent hardware. Core/MCU pin alignment and actual 2.2 validation
+remain in #2238. Latest ROM/FMC/runtime source builds use the pinned fork
+together; do not pair its owner-register provisioning with an older ROM.
+Prebuilt or separately sourced ROMs (`CALIPTRA_ROM_REF`) must be revalidated
+for the selected hardware. Upstream core Verilator hardware
 selection is not fully revision-aware; this change does not claim dual-revision
 RTL simulation or FPGA validation.
+
+## Caliptra software versions
+
+All Caliptra software dependencies use paths into the single
+[`core/caliptra-sw`](core/caliptra-sw) submodule, fetched from
+[`mhatrevi/caliptra-sw`](https://github.com/mhatrevi/caliptra-sw).
+Its recorded default is `latest`, the 2.2 development baseline from that fork's
+`caliptra-dev-2.2` branch. Immutable commits are listed in
+[`core/versions.toml`](core/versions.toml):
+
+| Software selection | Caliptra software commit |
+|---|---|
+| `2.1` | `e5d1f27b15ba02e4e0a57b942bbde39b74cab2eb` |
+| `latest` (2.2, default checkout) | `9c7b25b00508c0f028d2a76d2809e63d389037b1` |
+
+The `2.1` pin remains the official baseline. `latest` includes the fork's 2.2
+changes; pinning it does not by itself certify complete 2.2 hardware support.
+The switch uses the exact commit above, not a moving branch tip. CFI and DPE
+pins remain unchanged.
+
+Initialize the submodule, then explicitly switch **before** building:
+
+```shell
+git submodule update --init --recursive
+cargo xtask switch-version 2.1
+CALIPTRA_HW_REV=2.1 cargo test -p caliptra-mcu-mbox-common
+CALIPTRA_HW_REV=2.1 cargo xtask rom-build
+
+cargo xtask switch-version latest
+CALIPTRA_HW_REV=latest cargo test -p caliptra-mcu-mbox-common
+CALIPTRA_HW_REV=latest cargo xtask rom-build
+```
+
+Normal Cargo commands, including commands run in member directories and the
+independent `caliptra-util-host` workspace, use the active checkout directly.
+There are no version features, re-export wrappers, or build bootstrap.
+Software selection and `CALIPTRA_HW_REV` are separate: changing one does not
+change the other or the parent shell environment. The hardware and software defaults are both `latest`. After selecting software
+`2.1`, explicitly set `CALIPTRA_HW_REV=2.1` on subsequent builds. The fork only
+accepts latest/2.2 hardware, so use `CALIPTRA_HW_REV=latest` when compiling xtask
+to switch away from that checkout (including when the shell is set to `2.1`).
+ROM compilation rejects a hardware selector that does not match the recorded
+software pin, preventing accidental use of the wrong owner-provisioning API.
+
+The switch command refuses local changes, untracked files, or modified nested
+submodules. It checks out the selected commit detached and reinitializes nested
+submodules at their recorded pins, removing clean retired submodule checkouts.
+It selects the reviewed **root and host** lockfile snapshots from
+[`core/locks`](core/locks) and validates them with `--locked`.
+The 2.1 and latest dependency graphs differ. Local lockfile edits are refused
+rather than overwritten. On failure it attempts to restore the original checkout,
+branch and both active lockfiles, reporting any rollback failure. When adding a
+new pin or changing dependencies, regenerate and review its two snapshots along
+with the active lockfiles; switching never resolves new dependency versions.
+Update the submodule gitlink together with `latest` when advancing the default.
+
+Only one software selection can be active per checkout. Stop builds before
+switching; parallel builds of different versions need separate checkouts or
+worktrees. Switching commands are serialized, but ordinary Cargo builds are not
+locked against a switch. Selecting `2.1` leaves the submodule different from the
+recorded `latest` gitlink; this is expected. A top-level `git submodule update`
+restores the recorded default, so do not run it after choosing another version.
+
+`switch-version` is an ordinary xtask and therefore compiles against the current
+checkout first. If that checkout cannot compile, save any local work and use Git
+to check out an immutable commit from `core/versions.toml`, then update that
+submodule's nested dependencies and restore the matching root and host snapshots
+from `core/locks/<selection>/` to their active `Cargo.lock` paths.
+No switch happens inside a build or `build.rs`.
+Prebuilt MCU build tools must be rebuilt after switching; stale binaries are
+rejected. Firmware caches and provenance use the actual core Git SHA, and local
+core modifications disable firmware-cache reuse.
+
+Owner-hash provisioning is compiled for the selected hardware: 2.1 retains
+`INSTALL_OWNER_PK_HASH`; latest writes and verifies all twelve architectural
+owner-hash register words, then sets and verifies the owner-hash lock before
+firmware download. A zero digest means an unpinned owner on latest and is also
+locked. An already locked matching hash is accepted; a mismatch is fatal.
+This split uses `hw_rev` from `CALIPTRA_HW_REV`, not the legacy `hw-2-1` flash-boot
+Cargo feature, whose existing behavior is preserved.
 
 ## Documentation
 

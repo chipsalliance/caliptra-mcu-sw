@@ -1790,10 +1790,8 @@ impl BootFlow for ColdBoot {
             owner_pk_hash = None;
         }
 
-        // Deliver the owner PK hash via mailbox; the cptra_owner_pk_hash register
-        // is locked once fuse write done is set. An all-zero hash means no owner
-        // is provisioned and must not be installed (it would make Caliptra reject
-        // every image).
+        // The 2.1 mailbox command rejects an all-zero owner digest.
+        #[cfg(hw_rev = "2.1")]
         if let Some(ref owner) = owner_pk_hash {
             if owner.0.iter().any(|&word| word != 0) {
                 if let Err(err) =
@@ -1802,6 +1800,20 @@ impl BootFlow for ColdBoot {
                     caliptra_mcu_romtime::println!("[mcu-rom] owner err: {}", HexWord(err.into()));
                     fatal_error(err);
                 }
+            }
+        }
+
+        #[cfg(hw_rev = "latest")]
+        {
+            // 2.2 uses the architectural registers, including a locked zero
+            // digest for an unpinned owner or debug intent.
+            let digest = owner_pk_hash
+                .as_ref()
+                .map(|owner| owner.0)
+                .unwrap_or([0; 12]);
+            if let Err(err) = env.soc.provision_owner_pk_hash(&digest) {
+                caliptra_mcu_romtime::println!("[mcu-rom] owner err: {}", HexWord(err.into()));
+                fatal_error(err);
             }
         }
 

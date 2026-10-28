@@ -11,9 +11,7 @@ on:
     - cron: '0 2 * * *'
 
 env:
-  # Pin the Caliptra core ROM to a release tag; image/update crates continue
-  # to use the Cargo.toml caliptra-sw rev. main-2.1 pins rom-2.1.2 instead.
-  CALIPTRA_ROM_REF: rom-2.1.2
+  # ROM, FMC and runtime follow the selected core/caliptra-sw pin together.
   RUSTUP_TOOLCHAIN: "1.96.1-x86_64-unknown-linux-gnu"
 
 concurrency:
@@ -39,6 +37,8 @@ jobs:
           sudo apt-get update -qy
           sudo apt-get install -qy build-essential libclang-dev llvm
           rustup toolchain install 1.96.1-x86_64-unknown-linux-gnu -c rust-src,llvm-tools-preview,rustfmt -t riscv32imc-unknown-none-elf
+      - name: Select pinned Caliptra software before building
+        run: CALIPTRA_HW_REV=latest cargo xtask switch-version "${{ matrix.hw-revision }}"
       - name: Check selected snapshot and cache isolation
         run: |
           cargo xtask registers-autogen --check
@@ -55,6 +55,7 @@ jobs:
       - name: Switch revisions without cleaning
         run: |
           for revision in 2.1 latest 2.1; do
+            CALIPTRA_HW_REV=latest cargo xtask switch-version "$revision"
             CALIPTRA_HW_REV="$revision" cargo test -p caliptra-mcu-registers-generated -p caliptra-mcu-emulator-registers-generated
           done
       - name: Reject unsupported selector

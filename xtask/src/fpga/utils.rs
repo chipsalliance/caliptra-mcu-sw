@@ -1,7 +1,6 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{bail, Context, Result};
-use cargo_metadata::MetadataCommand;
 
 use std::path::Path;
 
@@ -395,45 +394,9 @@ pub fn run_test_suite(
     Ok(())
 }
 
-/// Checks if any caliptra_sw dependencies are a local path.
-///
-/// If so, returns the Path to the caliptra_sw workspace root.
+/// Returns the selected local Caliptra software workspace.
 pub fn caliptra_sw_workspace_root() -> PathBuf {
-    let metadata = MetadataCommand::new().exec().unwrap();
-
-    // Look at the workspace dependencies for xtask and find a caliptra-sw crate.
-    // Check if the crate contains a path, that indicates that caliptra-sw is local.
-    //
-    // We have to look at workspace, otherwise `path` may not be set (opposed to looking at the
-    // local xtask dependencies).
-    let caliptra_path = metadata
-        .workspace_packages()
-        .iter()
-        .find(|p| p.name.as_ref() == "xtask")
-        .and_then(|xtask| {
-            xtask
-                .dependencies
-                .iter()
-                .find(|p| p.name == "caliptra-api-types")
-        })
-        .and_then(|caliptra_package| caliptra_package.path.clone())
-        .and_then(|p| p.ancestors().nth(2).map(|p| p.to_path_buf()))
-        // Fallback to the git manifest if caliptra-sw doesn't appear to be local.
-        .or_else(|| {
-            let metadata = cargo_metadata::MetadataCommand::new().exec().unwrap();
-            let package = metadata
-                .packages
-                .iter()
-                .find(|p| p.name.to_string() == "caliptra-api-types")
-                .map(|p| p.manifest_path.clone())
-                .and_then(|p| p.ancestors().nth(3).map(|p| p.to_path_buf()));
-            package
-        });
-
-    match caliptra_path {
-        Some(path) => path.into(),
-        None => panic!("Could not determine caliptra-sw path"),
-    }
+    caliptra_mcu_builder::caliptra_sw_workspace_root()
 }
 
 /// Download a bitstream from a Caliptra bitstream manifest
