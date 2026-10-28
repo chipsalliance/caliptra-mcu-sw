@@ -500,7 +500,17 @@ mod tests {
             None,
             None,
             None,
+            #[cfg(hw_rev = "latest")]
+            None,
+            #[cfg(hw_rev = "latest")]
+            None,
             Some(doe_mbox),
+            #[cfg(hw_rev = "latest")]
+            None,
+            #[cfg(hw_rev = "latest")]
+            None,
+            #[cfg(hw_rev = "latest")]
+            None,
             None,
             None,
             None,
