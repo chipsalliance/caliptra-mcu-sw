@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! SPDM cert-store abstraction (DSP0274 §10.5 / §10.6).
+//! SPDM cert-store abstraction.
 //!
 //! All cert-chain methods take an [`SpdmPalAsymAlgo`] parameter
 //! so each slot can hold chains and signing keys for multiple algorithms
@@ -10,8 +10,7 @@ use crate::SpdmPalHashAlgo;
 pub use mcu_caliptra_api::SigningInput;
 use mcu_error::McuResult;
 
-/// Maximum number of cert-chain slots the responder advertises.
-/// DSP0274 §10.5 caps this at 8 (`SlotMask` is one byte).
+/// Maximum number of cert-chain slots the responder advertises (`SlotMask` is one byte).
 pub const MAX_SLOTS: u8 = 8;
 
 /// Asymmetric algorithm selector.
@@ -97,8 +96,8 @@ pub trait SpdmPalCertStore: crate::SpdmPalIoTransport {
     fn supported_slots(&self) -> u8;
 
     /// Bitmask of slots provisioned with a cert chain for `algo`, bits
-    /// 0..=7. Drives DIGESTS's `ProvisionedSlotMask` (DSP0274 §10.5
-    /// Table 25) and gates every slot-addressed read path.
+    /// 0..=7. Drives DIGESTS's `ProvisionedSlotMask` and gates every
+    /// slot-addressed read path.
     ///
     /// A connection negotiates exactly one asymmetric algorithm, so a
     /// slot holding no chain for `algo` reports as unprovisioned: the

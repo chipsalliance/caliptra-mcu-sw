@@ -81,7 +81,7 @@ pub(crate) fn align_send_len<Pal: SpdmPal>(pal: &Pal, len: usize) -> SpdmResult<
 ///   [`SpdmPalAlloc::alloc_bytes`] so the PAL can scope the
 ///   allocation to this exchange.
 /// * `version` — SPDM version to put in the common-header `version`
-///   byte (DSP0274 §10.1).
+///   byte.
 /// * `body` — The response body that will be encoded after the common
 ///   header. Anything implementing [`ResponseBody`] works.
 ///

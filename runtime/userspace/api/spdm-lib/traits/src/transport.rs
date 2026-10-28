@@ -1,9 +1,9 @@
 // Licensed under the Apache-2.0 license
 
-//! Low-level asynchronous transport trait used by the SPDM-Lite PAL.
+//! Low-level asynchronous transport trait used by the SPDM PAL.
 //!
 //! This module defines [`PalTransport`], an `async` byte-oriented interface
-//! that platform implementations expose to the SPDM-Lite stack. Unlike the
+//! that platform implementations expose to the SPDM stack. Unlike the
 //! higher-level [`SpdmIoTransport`](crate::SpdmIoTransport), which operates
 //! on framed [`SpdmIo`](crate::SpdmIo) objects, `PalTransport` works
 //! directly on raw byte buffers and is intended to wrap an underlying
@@ -21,7 +21,7 @@ use async_trait::async_trait;
 
 use super::*;
 
-/// Asynchronous, byte-oriented transport interface for the SPDM-Lite PAL.
+/// Asynchronous, byte-oriented transport interface for the SPDM PAL.
 ///
 /// Implementors provide the platform-specific mechanism for exchanging
 /// raw SPDM byte streams with a remote endpoint. The trait is `async`,

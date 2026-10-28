@@ -3,7 +3,7 @@
 //! MCU-side [`SpdmPalIo`] / [`SpdmPalIoTransport`] implementations.
 //!
 //! This module bridges the framed-request/response interface that the
-//! SPDM-Lite stack drives
+//! SPDM stack drives
 //! ([`SpdmPalIoTransport`](caliptra_mcu_spdm_traits::SpdmPalIoTransport))
 //! onto the byte-oriented platform transport
 //! ([`SpdmPalTransport`](caliptra_mcu_spdm_traits::SpdmPalTransport))

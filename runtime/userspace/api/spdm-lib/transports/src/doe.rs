@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! PCIe DOE (Data Object Exchange) transport for SPDM-Lite.
+//! PCIe DOE (Data Object Exchange) transport for the SPDM stack.
 //!
 //! Implements [`SpdmPalTransport`] over the MCU DOE syscall driver.
 //!
