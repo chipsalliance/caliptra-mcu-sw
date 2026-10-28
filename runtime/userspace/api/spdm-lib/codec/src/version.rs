@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! SPDM protocol version + VERSION response wire types (DSP0274 §10.2).
+//! SPDM protocol version + VERSION response wire types.
 
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
 
@@ -43,7 +43,7 @@ impl SpdmVersion {
     }
 
     /// Wire-spec "M.N" string used as the version token inside the
-    /// SPDM signing-context prefix (DSP0274 §15.6).
+    /// SPDM signing-context prefix.
     pub const fn spec_str(self) -> &'static str {
         match self {
             SpdmVersion::V10 => "1.0",
@@ -57,13 +57,13 @@ impl SpdmVersion {
 
 // ---- VERSION response wire types -------------------------------------------
 
-/// 4-byte VERSION response body header (DSP0274 §10.2 Table 9).
+/// 4-byte VERSION response body header.
 ///
 /// ```text
 ///  byte 0   byte 1   byte 2     byte 3
 /// ┌────────┬────────┬──────────┬───────┐
 /// │ Param1 │ Param2 │ Reserved │ Count │
-/// └────────┴────────┴──────────┴───────┘
+/// └────────┬────────┬──────────┬───────┘
 /// ```
 ///
 /// `Count` is the number of [`VersionNumberEntry`] entries that
@@ -81,7 +81,7 @@ impl VersionRspBody {
     pub const SIZE: usize = 4;
 }
 
-/// 2-byte SPDM `VersionNumberEntry` (DSP0274 §10.2 Table 10).
+/// 2-byte SPDM `VersionNumberEntry`.
 #[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned, Copy, Clone, Debug, Default)]
 #[repr(C)]
 pub struct VersionNumberEntry {
@@ -109,7 +109,7 @@ const _: () = assert!(core::mem::size_of::<VersionNumberEntry>() == VersionNumbe
 
 /// Builder for a VERSION response.
 ///
-/// Per DSP0274 §10.2 the VERSION response's `SPDMVersion` field is
+/// Per DSP0274 the VERSION response's `SPDMVersion` field is
 /// always `V1.0` (version negotiation happens later, in
 /// `GET_CAPABILITIES`). The caller of
 /// [`encode_with_header`](crate::ResponseBody::encode_with_header)

@@ -1,8 +1,8 @@
 // Licensed under the Apache-2.0 license
 
-//! GET_CERTIFICATE / CERTIFICATE wire types (DSP0274 §10.8).
+//! GET_CERTIFICATE / CERTIFICATE wire types.
 //!
-//! ## Request (Table 38)
+//! ## Request
 //!
 //! ```text
 //!  byte 0     byte 1     byte 2..3   byte 4..5
@@ -14,7 +14,7 @@
 //!
 //! `Attrib` bit 0 = `SlotSizeRequested` (V1.2+).
 //!
-//! ## Response (Table 40)
+//! ## Response
 //!
 //! ```text
 //!  byte 0     byte 1     byte 2..3        byte 4..5         byte 6..end
@@ -83,7 +83,7 @@ impl GetCertificateReqBody {
 const _: () = assert!(core::mem::size_of::<GetCertificateReqBody>() == GetCertificateReqBody::SIZE);
 
 /// 14-byte GET_CERTIFICATE request body when LargeCertChain=1
-/// (after the 2-byte SPDM common header). DSP0274 §10.8 Table 39.
+/// (after the 2-byte SPDM common header).
 #[derive(
     FromBytes,
     IntoBytes,

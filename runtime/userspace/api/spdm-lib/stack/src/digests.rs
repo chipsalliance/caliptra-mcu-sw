@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! GET_DIGESTS → DIGESTS handler (DSP0274 §10.5).
+//! GET_DIGESTS → DIGESTS handler.
 //!
 //! Streams each provisioned slot's SPDM cert-chain wire bytes
 //! through the negotiated hash and emits a concatenated digest
@@ -33,8 +33,7 @@ pub(crate) async fn handle_get_digests<'a, Pal: SpdmPal>(
         return Err(SPDM_UNEXPECTED_REQUEST);
     }
 
-    // DSP0274 §10.5 Table 24: GET_DIGESTS header version shall match
-    // the negotiated VCA version.
+    // GET_DIGESTS header version shall match the negotiated VCA version.
     let (hdr, rest) = SpdmMsgHdrPdu::ref_from_prefix(spdm_msg).map_err(|_| SPDM_INVALID_REQUEST)?;
     if hdr.version != state.version.to_u8() {
         return Err(crate::error::SPDM_VERSION_MISMATCH);
