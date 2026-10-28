@@ -233,6 +233,11 @@ pub extern "C" fn rom_entry() -> ! {
     }
 
     const EMULATOR_DOT_FLASH_ADDR: *mut u8 = 0x8100_0000 as *mut u8;
+    #[cfg(all(hw_rev = "latest", feature = "test-lpcip-usb-enumeration"))]
+    if cfg!(feature = "test-lpcip-usb-enumeration") {
+        crate::usb::enumeration_test();
+    }
+
     const EMULATOR_DOT_FLASH_SIZE: usize = 4 * 1024;
 
     let raw_dot_flash = unsafe {

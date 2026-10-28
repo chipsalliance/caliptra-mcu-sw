@@ -1042,7 +1042,9 @@ impl UsbComboPeripheral for UsbCombo {
     );
 
     fn read_dev0_csr_config(&mut self) -> ReadWriteRegister<u32, bits::ConfigT::Register> {
-        self.device0.read_dev0_csr_config()
+        ReadWriteRegister::new(
+            self.device0.read_dev0_csr_config().reg.get() | bits::ConfigT::Ulpi::SET.value,
+        )
     }
 
     fn read_dev0_csr_eptoggle(&mut self) -> ReadWriteRegister<u32, bits::EptoggleT::Register> {

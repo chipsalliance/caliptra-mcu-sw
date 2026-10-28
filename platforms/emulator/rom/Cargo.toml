@@ -7,6 +7,7 @@ authors.workspace = true
 edition.workspace = true
 
 [build-dependencies]
+caliptra-mcu-hw-revision.workspace = true
 caliptra-mcu-builder.workspace = true
 caliptra-mcu-config-emulator.workspace = true
 
@@ -16,6 +17,7 @@ caliptra-mcu-config.workspace = true
 caliptra-mcu-config-emulator.workspace = true
 caliptra-mcu-error.workspace = true
 caliptra-mcu-usb-emulator.workspace = true
+caliptra-mcu-usb-common = { workspace = true, optional = true }
 caliptra-mcu-ocp.workspace = true
 caliptra-mcu-image-header.workspace = true
 caliptra-mcu-network-drivers = { workspace = true, optional = true }
@@ -64,6 +66,7 @@ test-i3c-services = ["caliptra-mcu-rom-common/test-i3c-services"]
 test-dot-recovery-reset-flow = ["caliptra-mcu-rom-common/test-dot-recovery-reset-flow"]
 test-rom-hooks = []
 test-usb-ocp-recovery = ["hw-2-1"]
+test-lpcip-usb-enumeration = ["dep:caliptra-mcu-usb-common", "caliptra-mcu-usb-common/test-enumeration"]
 test-network-mbox-comm = ["caliptra-mcu-network-drivers", "caliptra-mcu-network-hil"]
 test-network-boot = ["hw-2-1", "caliptra-mcu-network-drivers", "caliptra-mcu-network-hil", "caliptra-mcu-rom-common/network-boot"]
 test-flash-network-fallback = ["test-network-boot", "use-flash-partition-table"]

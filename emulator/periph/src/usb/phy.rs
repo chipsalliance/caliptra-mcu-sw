@@ -85,6 +85,12 @@ impl LpcipUsbPhy {
         }
     }
 
+    /// Simulates an unexpected PHY part without making identity USB-writable.
+    #[cfg(any(test, feature = "test-hooks"))]
+    pub fn set_identity_for_test(&self, identity: [u8; 4]) {
+        self.state.lock().unwrap().phy.identity = identity;
+    }
+
     pub(super) fn set_vbus(&self, present: bool) {
         let mut state = self.state.lock().unwrap();
         // VBUS is binary here: model VbusValid and SessValid, not comparators.
@@ -164,6 +170,7 @@ impl UlpiGateway {
 }
 
 struct Usb3320 {
+    identity: [u8; 4],
     // Function, Interface, OTG, IRQ rising, IRQ falling, Scratch.
     controls: [u8; 6],
     interrupt_status: u8,
@@ -173,6 +180,7 @@ struct Usb3320 {
 impl Default for Usb3320 {
     fn default() -> Self {
         Self {
+            identity: [0x24, 4, 7, 0],
             controls: [0x41, 0, 6, 0x1f, 0x1f, 0],
             interrupt_status: 0,
             interrupt_latch: 0,
@@ -198,7 +206,7 @@ impl Usb3320 {
             return Ok(self.controls[index]);
         }
         match address {
-            0..=3 => Ok([0x24, 4, 7, 0][usize::from(address)]),
+            0..=3 => Ok(self.identity[usize::from(address)]),
             0x13 => Ok(self.interrupt_status),
             0x14 => Ok(std::mem::take(&mut self.interrupt_latch)),
             0x15 => Ok(0), // No pin-level line-state model.
