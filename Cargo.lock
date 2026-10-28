@@ -1382,6 +1382,7 @@ dependencies = [
  "caliptra-emu-types",
  "caliptra-image-types",
  "caliptra-mcu-emulator",
+ "caliptra-mcu-hw-revision",
  "caliptra-mcu-testing-common",
  "cbindgen",
  "libc",

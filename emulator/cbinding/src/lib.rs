@@ -351,6 +351,8 @@ pub unsafe extern "C" fn emulator_init(
             config.hw_revision_patch as u64,
         ),
         flash_based_boot: config.flash_based_boot != 0,
+        #[cfg(hw_rev = "latest")]
+        usb_recovery: false,
         allow_sideloaded_rom: config.allow_sideloaded_rom != 0,
         ocp_lock: config.ocp_lock_en != 0,
         // Use provided offset and size override parameters (-1 means use default)
