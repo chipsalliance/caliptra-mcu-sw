@@ -5,8 +5,11 @@
 
 #![no_std]
 
-pub mod endorsement;
-pub mod store;
+mod endorsement;
+mod store;
+
+pub use endorsement::CertSlot;
+pub use store::{SharedCertStore, TaskCertStore};
 
 use caliptra_mcu_common_commands::{
     DEVICE_KEY_ID_FMC_ALIAS, DEVICE_KEY_ID_LDEV_ID, DEVICE_KEY_ID_RT_ALIAS,
@@ -33,58 +36,52 @@ pub mod errors {
     pub const STORAGE_ERROR: McuErrorCode = McuErrorCode::new(domain::CERT_STORE, 0, 6);
 }
 
+#[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum EndorsementRole {
-    Vendor,
-    Owner,
-    Tenant,
+    Vendor = 0,
+    Owner = 1,
+    Tenant = 2,
+}
+
+impl TryFrom<u8> for EndorsementRole {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::Vendor),
+            1 => Ok(Self::Owner),
+            2 => Ok(Self::Tenant),
+            _ => Err(()),
+        }
+    }
 }
 
 impl EndorsementRole {
     pub const ALL: [Self; 3] = [Self::Vendor, Self::Owner, Self::Tenant];
-
-    pub const fn index(self) -> usize {
-        match self {
-            Self::Vendor => 0,
-            Self::Owner => 1,
-            Self::Tenant => 2,
-        }
-    }
-
-    pub const fn from_index(index: usize) -> Option<Self> {
-        match index {
-            0 => Some(Self::Vendor),
-            1 => Some(Self::Owner),
-            2 => Some(Self::Tenant),
-            _ => None,
-        }
-    }
-
-    /// Persistent record tag stored in `ManagedRecord` (`Owner = 2`, `Tenant = 3`).
-    pub const fn record_tag(self) -> u8 {
-        match self {
-            Self::Vendor => 0,
-            Self::Owner => 2,
-            Self::Tenant => 3,
-        }
-    }
 }
 
 /// Asymmetric algorithm for a certificate chain in the common store.
+#[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum CertificateAlgorithm {
-    EccP384,
-    MlDsa87,
+    EccP384 = 1,
+    MlDsa87 = 2,
+}
+
+impl TryFrom<u8> for CertificateAlgorithm {
+    type Error = ();
+
+    fn try_from(value: u8) -> Result<Self, Self::Error> {
+        match value {
+            1 => Ok(Self::EccP384),
+            2 => Ok(Self::MlDsa87),
+            _ => Err(()),
+        }
+    }
 }
 
 impl CertificateAlgorithm {
-    pub const fn index(self) -> usize {
-        match self {
-            Self::EccP384 => 0,
-            Self::MlDsa87 => 1,
-        }
-    }
-
     pub const fn dpe_profile(self) -> DpeProfile {
         match self {
             Self::EccP384 => DpeProfile::P384Sha384,
@@ -94,33 +91,42 @@ impl CertificateAlgorithm {
 }
 
 /// Logical Caliptra identity, independent of the certificate's algorithm.
+#[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-#[repr(u32)]
 pub enum DeviceKey {
-    LDevId = DEVICE_KEY_ID_LDEV_ID,
-    FmcAlias = DEVICE_KEY_ID_FMC_ALIAS,
-    RtAlias = DEVICE_KEY_ID_RT_ALIAS,
+    LDevId = DEVICE_KEY_ID_LDEV_ID as u8,
+    FmcAlias = DEVICE_KEY_ID_FMC_ALIAS as u8,
+    RtAlias = DEVICE_KEY_ID_RT_ALIAS as u8,
+}
+
+impl TryFrom<u8> for DeviceKey {
+    type Error = ();
+
+    fn try_from(id: u8) -> Result<Self, Self::Error> {
+        match id as u32 {
+            DEVICE_KEY_ID_LDEV_ID => Ok(Self::LDevId),
+            DEVICE_KEY_ID_FMC_ALIAS => Ok(Self::FmcAlias),
+            DEVICE_KEY_ID_RT_ALIAS => Ok(Self::RtAlias),
+            _ => Err(()),
+        }
+    }
 }
 
 impl DeviceKey {
-    pub const fn key_pair_id(self) -> u8 {
-        self as u8
-    }
-
-    pub const fn from_key_pair_id(id: u8) -> Option<Self> {
-        match id as u32 {
-            DEVICE_KEY_ID_LDEV_ID => Some(Self::LDevId),
-            DEVICE_KEY_ID_FMC_ALIAS => Some(Self::FmcAlias),
-            DEVICE_KEY_ID_RT_ALIAS => Some(Self::RtAlias),
-            _ => None,
-        }
-    }
-
-    pub fn validate_anchor_point(self) -> McuResult<()> {
+    pub(crate) fn validate_anchor_point(self) -> McuResult<()> {
         match self {
             Self::LDevId => Ok(()),
             Self::FmcAlias | Self::RtAlias => Err(errors::UNSUPPORTED_KEY),
         }
+    }
+
+    /// Number of leading certificates (`IDevID`, `LDevID`, …) to skip in
+    /// Caliptra's device certificate chain for a slot anchored at `self`.
+    ///
+    /// The endorsement chain ends with the signed `self` certificate, so the
+    /// device chain skips through `self` (`(self as usize) + 1` certificates).
+    pub(crate) const fn device_cert_skip_count(self) -> usize {
+        (self as usize) + 1
     }
 }
 
@@ -136,7 +142,8 @@ impl CertificateProvisioningPolicy {
         tenant_anchor_point: None,
     };
 
-    pub const fn anchor_point(self, role: EndorsementRole) -> Option<DeviceKey> {
+    #[cfg(any(feature = "set-certificate", test))]
+    pub(crate) const fn anchor_point(self, role: EndorsementRole) -> Option<DeviceKey> {
         match role {
             EndorsementRole::Vendor => None,
             EndorsementRole::Owner => self.owner_anchor_point,
@@ -144,7 +151,7 @@ impl CertificateProvisioningPolicy {
         }
     }
 
-    pub fn validate(self) -> McuResult<()> {
+    pub(crate) fn validate(self) -> McuResult<()> {
         for key in [self.owner_anchor_point, self.tenant_anchor_point]
             .into_iter()
             .flatten()
@@ -154,7 +161,8 @@ impl CertificateProvisioningPolicy {
         Ok(())
     }
 
-    pub fn validate_role(self, role: EndorsementRole) -> McuResult<()> {
+    #[cfg(any(feature = "set-certificate", test))]
+    pub(crate) fn validate_role(self, role: EndorsementRole) -> McuResult<()> {
         if role == EndorsementRole::Vendor {
             return Err(errors::PROVISIONING_DISABLED);
         }
@@ -167,21 +175,26 @@ impl CertificateProvisioningPolicy {
     /// Resolve and validate `key_pair_id` against the role's configured key anchor point:
     /// - Configured anchor point: `key_pair_id == 0` resolves to it; nonzero must match it.
     /// - No configured anchor point: requires an explicit nonzero `key_pair_id` for a supported anchor point.
-    pub fn validate_key(self, role: EndorsementRole, key_pair_id: u8) -> McuResult<DeviceKey> {
+    #[cfg(any(feature = "set-certificate", test))]
+    pub(crate) fn validate_key(
+        self,
+        role: EndorsementRole,
+        key_pair_id: u8,
+    ) -> McuResult<DeviceKey> {
         if role == EndorsementRole::Vendor {
             return Err(errors::PROVISIONING_DISABLED);
         }
         match self.anchor_point(role) {
             Some(key) => {
                 key.validate_anchor_point()?;
-                if key_pair_id == 0 || key_pair_id == key.key_pair_id() {
+                if key_pair_id == 0 || key_pair_id == key as u8 {
                     Ok(key)
                 } else {
                     Err(errors::KEY_MISMATCH)
                 }
             }
             None => {
-                let key = DeviceKey::from_key_pair_id(key_pair_id).ok_or(errors::KEY_MISMATCH)?;
+                let key = DeviceKey::try_from(key_pair_id).map_err(|_| errors::KEY_MISMATCH)?;
                 key.validate_anchor_point()?;
                 Ok(key)
             }
@@ -270,7 +283,7 @@ mod tests {
             };
             assert_eq!(policy.validate(), Err(errors::UNSUPPORTED_KEY));
             assert_eq!(
-                policy.validate_key(EndorsementRole::Owner, key.key_pair_id()),
+                policy.validate_key(EndorsementRole::Owner, key as u8),
                 Err(errors::UNSUPPORTED_KEY)
             );
         }
