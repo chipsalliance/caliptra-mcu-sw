@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! Behavioral LPCIP Device 0 model. This is separate from the OpenTitan USBDEV.
+//! Behavioral LPCIP compound controller, separate from the OpenTitan USBDEV.
 
 use caliptra_emu_bus::ReadWriteRegister;
 use caliptra_emu_cpu::Irq;
@@ -8,10 +8,16 @@ use caliptra_mcu_emulator_registers_generated::{
     usb_combo::UsbComboPeripheral, usb_dev0_mem::UsbDev0MemPeripheral, usb_dev1::UsbDev1Peripheral,
     usb_dev1_mem::UsbDev1MemPeripheral,
 };
-use caliptra_mcu_registers_generated::{usb_combo::bits, usb_dev0_mem::USB_DEV0_MEM_ADDR};
+use caliptra_mcu_registers_generated::{
+    usb_combo::bits, usb_dev0_mem::USB_DEV0_MEM_ADDR, usb_dev1::bits as dev1_bits,
+    usb_dev1_mem::USB_DEV1_MEM_ADDR,
+};
 use std::ops::Range;
 use std::sync::{Arc, Mutex};
 use tock_registers::interfaces::Readable;
+
+mod hub;
+pub use hub::LpcipUsbHubHostController;
 
 const MEMORY_SIZE: usize = 0x10000;
 const ENDPOINTS: u8 = 30;
@@ -45,6 +51,7 @@ pub enum LpcipUsbError {
     Stall,
     EndpointDisabled,
     InvalidEndpoint,
+    InvalidPort,
     UnsupportedTransfer,
     InvalidSetup,
     InvalidMemory,
@@ -65,8 +72,9 @@ pub enum LpcipUsbSpeed {
     High,
 }
 
-struct Device0 {
+struct DeviceState {
     memory: Vec<u8>,
+    memory_base: u32,
     command: u32,
     address: u8,
     pending_address: u8,
@@ -85,10 +93,11 @@ struct Device0 {
     error_code: u8,
 }
 
-impl Default for Device0 {
+impl Default for DeviceState {
     fn default() -> Self {
         Self {
             memory: vec![0; MEMORY_SIZE],
+            memory_base: USB_DEV0_MEM_ADDR,
             command: 0,
             address: 0,
             pending_address: 0,
@@ -109,7 +118,20 @@ impl Default for Device0 {
     }
 }
 
-impl Device0 {
+impl DeviceState {
+    fn reset_bus(&mut self, speed: LpcipUsbSpeed) {
+        self.speed = if self.command & (1 << 21) != 0 {
+            LpcipUsbSpeed::Full
+        } else {
+            speed
+        };
+        self.address = 0;
+        self.pending_address = 0;
+        self.eptoggle = 0;
+        self.command |= RESET_CHANGE;
+        self.intstat |= DEVICE_INTERRUPT;
+    }
+
     fn link_connected(&self) -> bool {
         self.command & CONNECT != 0 && (self.vbus || self.command & FORCE_VBUS != 0)
     }
@@ -132,7 +154,7 @@ impl Device0 {
 
     fn memory_range(&self, address: u32, length: usize) -> Result<Range<usize>, LpcipUsbError> {
         let start = address
-            .checked_sub(USB_DEV0_MEM_ADDR)
+            .checked_sub(self.memory_base)
             .ok_or(LpcipUsbError::InvalidMemory)? as usize;
         let end = start
             .checked_add(length)
@@ -259,7 +281,7 @@ impl Device0 {
 /// CPU MMIO. Transactions do not run firmware; callers step the emulator on NAK.
 #[derive(Clone)]
 pub struct LpcipUsbHostController {
-    state: Arc<Mutex<Device0>>,
+    state: Arc<Mutex<DeviceState>>,
 }
 
 impl LpcipUsbHostController {
@@ -287,16 +309,7 @@ impl LpcipUsbHostController {
         if !state.connected() {
             return Err(LpcipUsbError::Disconnected);
         }
-        state.speed = if state.command & (1 << 21) != 0 {
-            LpcipUsbSpeed::Full
-        } else {
-            speed
-        };
-        state.address = 0;
-        state.pending_address = 0;
-        state.eptoggle = 0;
-        state.command |= RESET_CHANGE;
-        state.intstat |= DEVICE_INTERRUPT;
+        state.reset_bus(speed);
         // A USB bus reset does not clear SRAM or software-owned descriptors.
         Ok(())
     }
@@ -382,44 +395,32 @@ impl LpcipUsbHostController {
     }
 }
 
-/// Only Device 0 CSRs are implemented. The trait defaults explicitly report
-/// nonfunctional stubs for hub, PHY and OCP-recovery registers.
-pub struct UsbCombo {
-    state: Arc<Mutex<Device0>>,
+struct UsbDevice {
+    state: Arc<Mutex<DeviceState>>,
     irq: Option<Irq>,
     legacy_host: Option<crate::UsbHostController>,
+    peer: Option<LpcipUsbHostController>,
 }
 
-impl Default for UsbCombo {
+impl Default for UsbDevice {
     fn default() -> Self {
         Self {
-            state: Arc::new(Mutex::new(Device0::default())),
+            state: Arc::new(Mutex::new(DeviceState::default())),
             irq: None,
             legacy_host: None,
+            peer: None,
         }
     }
 }
 
-impl UsbCombo {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn new_with_irq(irq: Irq, legacy_host: crate::UsbHostController) -> Self {
-        Self {
-            irq: Some(irq),
-            legacy_host: Some(legacy_host),
-            ..Self::default()
-        }
-    }
-
-    pub fn host_controller(&self) -> LpcipUsbHostController {
+impl UsbDevice {
+    fn host_controller(&self) -> LpcipUsbHostController {
         LpcipUsbHostController {
             state: self.state.clone(),
         }
     }
 
-    pub fn device0_memory(&self) -> UsbDev0Mem {
+    fn device0_memory(&self) -> UsbDev0Mem {
         UsbDev0Mem {
             state: self.state.clone(),
         }
@@ -431,7 +432,13 @@ impl UsbCombo {
                 .legacy_host
                 .as_ref()
                 .is_some_and(crate::UsbHostController::interrupt_pending);
-            irq.set_level(self.host_controller().interrupt_pending() || legacy_pending);
+            let peer_pending = self
+                .peer
+                .as_ref()
+                .is_some_and(LpcipUsbHostController::interrupt_pending);
+            irq.set_level(
+                self.host_controller().interrupt_pending() || peer_pending || legacy_pending,
+            );
         }
     }
 
@@ -439,10 +446,12 @@ impl UsbCombo {
         let mut state = self.state.lock().unwrap();
         let memory = std::mem::take(&mut state.memory);
         let vbus = state.vbus;
-        *state = Device0 {
+        let memory_base = state.memory_base;
+        *state = DeviceState {
             memory,
+            memory_base,
             vbus,
-            ..Device0::default()
+            ..DeviceState::default()
         };
         drop(state);
         self.update_irq();
@@ -461,7 +470,7 @@ macro_rules! device_register {
     };
 }
 
-impl UsbComboPeripheral for UsbCombo {
+impl UsbComboPeripheral for UsbDevice {
     fn poll(&mut self) {
         self.update_irq();
     }
@@ -606,7 +615,7 @@ impl UsbComboPeripheral for UsbCombo {
 }
 
 pub struct UsbDev0Mem {
-    state: Arc<Mutex<Device0>>,
+    state: Arc<Mutex<DeviceState>>,
 }
 
 impl UsbDev0MemPeripheral for UsbDev0Mem {
@@ -621,12 +630,389 @@ impl UsbDev0MemPeripheral for UsbDev0Mem {
     }
 }
 
-/// Device 1 is deliberately nonfunctional, including its packet-memory window.
-/// Unlike generated defaults these adapters do not store writes.
-pub struct UnsupportedUsbDev1;
-impl UsbDev1Peripheral for UnsupportedUsbDev1 {}
-pub struct UnsupportedUsbDev1Mem;
-impl UsbDev1MemPeripheral for UnsupportedUsbDev1Mem {}
+pub struct UsbDev1Mem {
+    memory: UsbDev0Mem,
+}
 
+impl UsbDev1MemPeripheral for UsbDev1Mem {
+    fn read_usb_dev1_mem(&mut self, index: usize) -> u32 {
+        self.memory.read_usb_dev0_mem(index)
+    }
+
+    fn write_usb_dev1_mem(&mut self, value: u32, index: usize) {
+        self.memory.write_usb_dev0_mem(value, index);
+    }
+}
+
+/// Independent Device 1 CSRs. The model exposes one register owner through the
+/// MCU bus; it does not attach a competing SoC controller or enable the device.
+pub struct UsbDev1 {
+    device: UsbDevice,
+}
+
+/// Device controllers share protocol semantics, not CSR state or packet SRAM.
+/// PHY and OCP-recovery surfaces remain explicitly nonfunctional trait handlers.
+pub struct UsbCombo {
+    device0: UsbDevice,
+    device1: LpcipUsbHostController,
+    hub: Arc<Mutex<hub::Hub>>,
+}
+
+impl Default for UsbCombo {
+    fn default() -> Self {
+        let device1 = LpcipUsbHostController {
+            state: Arc::new(Mutex::new(DeviceState {
+                memory_base: USB_DEV1_MEM_ADDR,
+                ..DeviceState::default()
+            })),
+        };
+        Self {
+            device0: UsbDevice {
+                peer: Some(device1.clone()),
+                ..UsbDevice::default()
+            },
+            device1,
+            hub: Arc::new(Mutex::new(hub::Hub::default())),
+        }
+    }
+}
+
+impl UsbCombo {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn new_with_irq(irq: Irq, legacy_host: crate::UsbHostController) -> Self {
+        let mut combo = Self::new();
+        combo.device0.irq = Some(irq);
+        combo.device0.legacy_host = Some(legacy_host);
+        combo
+    }
+
+    pub fn host_controller(&self) -> LpcipUsbHostController {
+        self.device0.host_controller()
+    }
+
+    pub fn device1_host_controller(&self) -> LpcipUsbHostController {
+        self.device1.clone()
+    }
+
+    pub fn hub_host_controller(&self) -> LpcipUsbHubHostController {
+        LpcipUsbHubHostController::new(
+            self.hub.clone(),
+            [self.host_controller(), self.device1.clone()],
+        )
+    }
+
+    pub fn device0_memory(&self) -> UsbDev0Mem {
+        self.device0.device0_memory()
+    }
+
+    pub fn device1(&self) -> UsbDev1 {
+        UsbDev1 {
+            device: UsbDevice {
+                state: self.device1.state.clone(),
+                irq: None,
+                legacy_host: None,
+                peer: None,
+            },
+        }
+    }
+
+    pub fn device1_memory(&self) -> UsbDev1Mem {
+        UsbDev1Mem {
+            memory: UsbDev0Mem {
+                state: self.device1.state.clone(),
+            },
+        }
+    }
+
+    fn reset(&mut self) {
+        self.device0.reset();
+        self.device1().device.reset();
+        self.hub.lock().unwrap().reset();
+        self.device0.update_irq();
+    }
+}
+
+macro_rules! forward_register {
+    ($field:ident, $bits:ident, $read:ident, $write:ident, $model_read:ident, $model_write:ident, $register:ident) => {
+        fn $read(&mut self) -> ReadWriteRegister<u32, $bits::$register::Register> {
+            ReadWriteRegister::new(self.$field.$model_read().reg.get())
+        }
+        fn $write(&mut self, val: ReadWriteRegister<u32, $bits::$register::Register>) {
+            self.$field
+                .$model_write(ReadWriteRegister::new(val.reg.get()));
+        }
+    };
+}
+
+impl UsbComboPeripheral for UsbCombo {
+    fn poll(&mut self) {
+        self.hub_host_controller().poll();
+        self.device0.poll();
+    }
+
+    fn warm_reset(&mut self) {
+        self.reset();
+    }
+
+    fn update_reset(&mut self) {
+        self.reset();
+    }
+
+    forward_register!(
+        device0,
+        bits,
+        read_dev0_csr_devcmdstat,
+        write_dev0_csr_devcmdstat,
+        read_dev0_csr_devcmdstat,
+        write_dev0_csr_devcmdstat,
+        DevcmdstatT
+    );
+    forward_register!(
+        device0,
+        bits,
+        read_dev0_csr_info,
+        write_dev0_csr_info,
+        read_dev0_csr_info,
+        write_dev0_csr_info,
+        InfoT
+    );
+    forward_register!(
+        device0,
+        bits,
+        read_dev0_csr_epliststart,
+        write_dev0_csr_epliststart,
+        read_dev0_csr_epliststart,
+        write_dev0_csr_epliststart,
+        EpliststartT
+    );
+    forward_register!(
+        device0,
+        bits,
+        read_dev0_csr_databufstart,
+        write_dev0_csr_databufstart,
+        read_dev0_csr_databufstart,
+        write_dev0_csr_databufstart,
+        DatabufstartT
+    );
+    forward_register!(
+        device0,
+        bits,
+        read_dev0_csr_epskip,
+        write_dev0_csr_epskip,
+        read_dev0_csr_epskip,
+        write_dev0_csr_epskip,
+        EpskipT
+    );
+    forward_register!(
+        device0,
+        bits,
+        read_dev0_csr_epinuse,
+        write_dev0_csr_epinuse,
+        read_dev0_csr_epinuse,
+        write_dev0_csr_epinuse,
+        EpinuseT
+    );
+    forward_register!(
+        device0,
+        bits,
+        read_dev0_csr_epbufcfg,
+        write_dev0_csr_epbufcfg,
+        read_dev0_csr_epbufcfg,
+        write_dev0_csr_epbufcfg,
+        EpbufcfgT
+    );
+    forward_register!(
+        device0,
+        bits,
+        read_dev0_csr_intstat,
+        write_dev0_csr_intstat,
+        read_dev0_csr_intstat,
+        write_dev0_csr_intstat,
+        IntstatT
+    );
+    forward_register!(
+        device0,
+        bits,
+        read_dev0_csr_inten,
+        write_dev0_csr_inten,
+        read_dev0_csr_inten,
+        write_dev0_csr_inten,
+        IntenT
+    );
+    forward_register!(
+        device0,
+        bits,
+        read_dev0_csr_intsetstat,
+        write_dev0_csr_intsetstat,
+        read_dev0_csr_intsetstat,
+        write_dev0_csr_intsetstat,
+        Intsetstat
+    );
+    forward_register!(
+        device0,
+        bits,
+        read_dev0_csr_introute,
+        write_dev0_csr_introute,
+        read_dev0_csr_introute,
+        write_dev0_csr_introute,
+        IntrouteT
+    );
+
+    fn read_dev0_csr_config(&mut self) -> ReadWriteRegister<u32, bits::ConfigT::Register> {
+        self.device0.read_dev0_csr_config()
+    }
+
+    fn read_dev0_csr_eptoggle(&mut self) -> ReadWriteRegister<u32, bits::EptoggleT::Register> {
+        self.device0.read_dev0_csr_eptoggle()
+    }
+
+    fn read_hub_descriptor_low(&mut self, index: usize) -> u32 {
+        self.hub.lock().unwrap().read_word(index)
+    }
+
+    fn write_hub_descriptor_low(&mut self, value: u32, index: usize) {
+        self.hub.lock().unwrap().write_word(index, value);
+    }
+
+    fn read_hub_descriptor_high(&mut self, index: usize) -> u32 {
+        self.hub.lock().unwrap().read_word(index + 16)
+    }
+
+    fn write_hub_descriptor_high(&mut self, value: u32, index: usize) {
+        self.hub.lock().unwrap().write_word(index + 16, value);
+    }
+
+    fn read_hub_control(&mut self) -> ReadWriteRegister<u32, bits::Control::Register> {
+        ReadWriteRegister::new(self.hub.lock().unwrap().read_word(12))
+    }
+
+    fn write_hub_control(&mut self, value: ReadWriteRegister<u32, bits::Control::Register>) {
+        self.hub.lock().unwrap().write_word(12, value.reg.get());
+    }
+}
+
+impl UsbDev1Peripheral for UsbDev1 {
+    fn warm_reset(&mut self) {
+        self.device.reset();
+    }
+
+    fn update_reset(&mut self) {
+        self.device.reset();
+    }
+
+    forward_register!(
+        device,
+        dev1_bits,
+        read_devcmdstat,
+        write_devcmdstat,
+        read_dev0_csr_devcmdstat,
+        write_dev0_csr_devcmdstat,
+        DevcmdstatT
+    );
+    forward_register!(
+        device,
+        dev1_bits,
+        read_info,
+        write_info,
+        read_dev0_csr_info,
+        write_dev0_csr_info,
+        InfoT
+    );
+    forward_register!(
+        device,
+        dev1_bits,
+        read_epliststart,
+        write_epliststart,
+        read_dev0_csr_epliststart,
+        write_dev0_csr_epliststart,
+        EpliststartT
+    );
+    forward_register!(
+        device,
+        dev1_bits,
+        read_databufstart,
+        write_databufstart,
+        read_dev0_csr_databufstart,
+        write_dev0_csr_databufstart,
+        DatabufstartT
+    );
+    forward_register!(
+        device,
+        dev1_bits,
+        read_epskip,
+        write_epskip,
+        read_dev0_csr_epskip,
+        write_dev0_csr_epskip,
+        EpskipT
+    );
+    forward_register!(
+        device,
+        dev1_bits,
+        read_epinuse,
+        write_epinuse,
+        read_dev0_csr_epinuse,
+        write_dev0_csr_epinuse,
+        EpinuseT
+    );
+    forward_register!(
+        device,
+        dev1_bits,
+        read_epbufcfg,
+        write_epbufcfg,
+        read_dev0_csr_epbufcfg,
+        write_dev0_csr_epbufcfg,
+        EpbufcfgT
+    );
+    forward_register!(
+        device,
+        dev1_bits,
+        read_intstat,
+        write_intstat,
+        read_dev0_csr_intstat,
+        write_dev0_csr_intstat,
+        IntstatT
+    );
+    forward_register!(
+        device,
+        dev1_bits,
+        read_inten,
+        write_inten,
+        read_dev0_csr_inten,
+        write_dev0_csr_inten,
+        IntenT
+    );
+    forward_register!(
+        device,
+        dev1_bits,
+        read_intsetstat,
+        write_intsetstat,
+        read_dev0_csr_intsetstat,
+        write_dev0_csr_intsetstat,
+        Intsetstat
+    );
+    forward_register!(
+        device,
+        dev1_bits,
+        read_introute,
+        write_introute,
+        read_dev0_csr_introute,
+        write_dev0_csr_introute,
+        IntrouteT
+    );
+
+    fn read_config(&mut self) -> ReadWriteRegister<u32, dev1_bits::ConfigT::Register> {
+        ReadWriteRegister::new(self.device.read_dev0_csr_config().reg.get())
+    }
+
+    fn read_eptoggle(&mut self) -> ReadWriteRegister<u32, dev1_bits::EptoggleT::Register> {
+        ReadWriteRegister::new(self.device.read_dev0_csr_eptoggle().reg.get())
+    }
+}
+
+#[cfg(test)]
+mod hub_tests;
 #[cfg(test)]
 mod tests;

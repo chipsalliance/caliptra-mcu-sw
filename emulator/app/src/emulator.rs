@@ -344,6 +344,8 @@ pub struct Emulator {
     pub usb_host_controller: caliptra_mcu_emulator_periph::UsbHostController,
     #[cfg(hw_rev = "latest")]
     pub lpcip_usb_host_controller: caliptra_mcu_emulator_periph::LpcipUsbHostController,
+    #[cfg(hw_rev = "latest")]
+    pub lpcip_usb_hub_host_controller: caliptra_mcu_emulator_periph::LpcipUsbHubHostController,
     /// Caliptra CPU is held until MCU ROM writes CPTRA_BOOT_GO
     pub cptra_boot_go: Rc<Cell<bool>>,
     mci_regs: Rc<RefCell<caliptra_emu_periph::mci::MciRegs>>,
@@ -980,6 +982,12 @@ impl Emulator {
         let lpcip_usb_host_controller = usb_combo.host_controller();
         #[cfg(hw_rev = "latest")]
         let usb_dev0_memory = usb_combo.device0_memory();
+        #[cfg(hw_rev = "latest")]
+        let usb_dev1 = usb_combo.device1();
+        #[cfg(hw_rev = "latest")]
+        let usb_dev1_memory = usb_combo.device1_memory();
+        #[cfg(hw_rev = "latest")]
+        let lpcip_usb_hub_host_controller = usb_combo.hub_host_controller();
 
         let mut auto_root_bus = AutoRootBus::new(
             delegates,
@@ -988,7 +996,7 @@ impl Emulator {
             #[cfg(hw_capability = "usb-support")]
             Some(Box::new(usb_combo)),
             #[cfg(hw_capability = "usb-support")]
-            Some(Box::new(caliptra_mcu_emulator_periph::UnsupportedUsbDev1)),
+            Some(Box::new(usb_dev1)),
             Some(Box::new(i3c)),
             Some(Box::new(caliptra_mcu_emulator_periph::StubI3c1::new())),
             Some(Box::new(primary_flash_controller)),
@@ -999,9 +1007,7 @@ impl Emulator {
             #[cfg(hw_capability = "usb-support")]
             Some(Box::new(usb_dev0_memory)),
             #[cfg(hw_capability = "usb-support")]
-            Some(Box::new(
-                caliptra_mcu_emulator_periph::UnsupportedUsbDev1Mem,
-            )),
+            Some(Box::new(usb_dev1_memory)),
             None,
             Some(Box::new(otp)),
             Some(Box::new(lc)),
@@ -1283,6 +1289,8 @@ impl Emulator {
             usb_host_controller,
             #[cfg(hw_rev = "latest")]
             lpcip_usb_host_controller,
+            #[cfg(hw_rev = "latest")]
+            lpcip_usb_hub_host_controller,
             cptra_boot_go,
             mci_regs,
             state,
@@ -1309,6 +1317,8 @@ impl Emulator {
         usb_host_controller: caliptra_mcu_emulator_periph::UsbHostController,
         #[cfg(hw_rev = "latest")]
         lpcip_usb_host_controller: caliptra_mcu_emulator_periph::LpcipUsbHostController,
+        #[cfg(hw_rev = "latest")]
+        lpcip_usb_hub_host_controller: caliptra_mcu_emulator_periph::LpcipUsbHubHostController,
         cptra_boot_go: Rc<Cell<bool>>,
         mci_regs: Rc<RefCell<caliptra_emu_periph::mci::MciRegs>>,
         state: Arc<EmulatorState>,
@@ -1349,6 +1359,8 @@ impl Emulator {
             usb_host_controller,
             #[cfg(hw_rev = "latest")]
             lpcip_usb_host_controller,
+            #[cfg(hw_rev = "latest")]
+            lpcip_usb_hub_host_controller,
             cptra_boot_go,
             mci_regs,
             state,
