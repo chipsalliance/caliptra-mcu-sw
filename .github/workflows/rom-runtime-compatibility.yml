@@ -247,10 +247,81 @@ jobs:
 
   spdm-tools:
     needs: resolve-runtime
-    uses: ./.github/workflows/spdm-validator.yml
-    with:
-      tools-only: true
-      artifact-suffix: -compatibility
+    name: Build spdm-emu tools
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout workflow build settings
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ needs.resolve-runtime.outputs.source }}
+          sparse-checkout: .github/workflows/rom-runtime-compatibility.yml
+          sparse-checkout-cone-mode: false
+      - name: Install required packages
+        run: |
+          sudo apt-get update -qy && \
+          sudo apt-get install -qy build-essential gcc-multilib git
+
+      - name: Install cmake 3.x
+        run: |
+          wget https://github.com/Kitware/CMake/releases/download/v3.31.6/cmake-3.31.6-linux-x86_64.tar.gz &&
+          mkdir -p /opt/cmake &&
+          tar xvzf cmake-3.31.6-linux-x86_64.tar.gz -C /opt/cmake --strip-components=1 &&
+          echo "/opt/cmake/bin" >> $GITHUB_PATH
+
+      - name: Checkout spdm-emu repository
+        uses: actions/checkout@v7
+        with:
+          repository: chipsalliance/caliptra-spdm-emu
+          ref: caliptra-main-14
+          path: spdm-emu
+          submodules: recursive
+
+      - name: Resolve spdm-emu build inputs
+        id: spdm_emu_inputs
+        run: |
+          set -euo pipefail
+          echo "source=$(git -C spdm-emu rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          fingerprint="$({ gcc --version; cmake --version; } | sha256sum | cut -d' ' -f1)"
+          echo "toolchain=$fingerprint" >> "$GITHUB_OUTPUT"
+
+      - name: Cache spdm-emu tools
+        id: spdm_emu_cache
+        uses: actions/cache@v6
+        with:
+          path: spdm-emu/build/bin/
+          key: compatibility-spdm-emu-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.spdm_emu_inputs.outputs.source }}-${{ steps.spdm_emu_inputs.outputs.toolchain }}-${{ hashFiles('.github/workflows/rom-runtime-compatibility.yml') }}
+
+      - name: Build spdm-emu tools
+        if: steps.spdm_emu_cache.outputs.cache-hit != 'true'
+        run: |
+          pushd spdm-emu
+          git submodule update --init --recursive
+          find . -path '*/openssllib/CMakeLists.txt' -exec sed -i \
+            -e 's/set(OPENSSL_SHARED_OPTION "shared")/set(OPENSSL_SHARED_OPTION "no-shared")/' \
+            -e 's/set(OPENSSL_LIBRARY_TYPE "SHARED")/set(OPENSSL_LIBRARY_TYPE "STATIC")/' {} +
+          mkdir build
+          pushd build
+          cmake -DARCH=x64 -DTOOLCHAIN=GCC -DTARGET=Debug -DCRYPTO=openssl -DCMAKE_C_FLAGS="-DLIBSPDM_MAX_CERT_CHAIN_SIZE=0x10000 -DLIBSPDM_MAX_MEASUREMENT_RECORD_SIZE=0x10000" ..
+          make copy_sample_key
+          make
+          popd
+          popd
+
+      - name: Package spdm-emu tools
+        run: |
+          test -x spdm-emu/build/bin/spdm_device_validator_sample
+          test -x spdm-emu/build/bin/spdm_requester_emu
+          git -C spdm-emu rev-parse HEAD | tee spdm-emu/build/bin/spdm-emu-revision.txt
+          tar -czf "${RUNNER_TEMP}/spdm-emu-tools.tar.gz" -C spdm-emu build/bin
+
+      - name: Upload spdm-emu tools
+        uses: actions/upload-artifact@v7
+        with:
+          name: spdm-emu-tools-compatibility
+          path: ${{ runner.temp }}/spdm-emu-tools.tar.gz
+          retention-days: 1
 
   test-pairs:
     needs: [resolve-runtime, prepare-fixtures, spdm-tools]

@@ -8,9 +8,6 @@ use caliptra_mcu_testing_common::spdm_responder_validator::mctp::MctpTransport;
 use caliptra_mcu_testing_common::spdm_responder_validator::{
     execute_spdm_responder_validator, SpdmValidatorRunner, SERVER_LISTENING,
 };
-use caliptra_mcu_testing_common::{
-    wait_for_runtime_start, wait_for_spdm_responder_ready, SpdmResponderTransport,
-};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::{self, Receiver};
@@ -18,64 +15,11 @@ use std::time::{Duration, Instant};
 
 const TEST_NAME: &str = "MCTP-SPDM-RESPONDER-VALIDATOR";
 
-/// Verification inputs for the parent's pinned-source support report.
-/// Advertised versions/algorithms must be read from these definitions, not
-/// inferred from release labels or from the current host crate.
-#[cfg(not(feature = "fpga_realtime"))]
-pub(crate) fn compatibility_spdm_source_checks() -> serde_json::Value {
-    serde_json::json!([
-        {
-            "path": "platforms/emulator/runtime/userspace/apps/user/Cargo.toml",
-            "symbols": ["spdm", "doe", "pcr-quote", "test-mctp-spdm-attestation-pcr-quote", "test-doe-spdm-tdisp-ide-validator"],
-            "role": "Compare actual selected feature closure; baseline lacks spdm, service lacks doe and the test-selected PCR provider"
-        },
-        {
-            "path": "platforms/emulator/runtime/userspace/apps/user/src/main.rs",
-            "symbols": ["async_main", "boot_init", "spawn_spdm_tasks"],
-            "role": "Measurement boot initialization precedes SPDM task startup"
-        },
-        {
-            "path": "platforms/emulator/runtime/userspace/apps/user/src/spdm/mod.rs",
-            "symbols": ["spawn_spdm_tasks", "spdm_mctp_responder", "spdm_doe_responder", "measurement_provider", "pci_sig_vdm"],
-            "role": "MCTP startup; DOE requires doe; spdm-rs TDISP/IDE path requires test-doe-spdm-tdisp-ide-validator; OCP EAT is default; PCR provider requires test-mctp-spdm-attestation-pcr-quote"
-        },
-        {
-            "path": "runtime/userspace/api/spdm-lib/stack/src/version.rs",
-            "symbols": ["SUPPORTED_VERSIONS", "handle_get_version"],
-            "role": "Exact advertised version list from pinned source"
-        },
-        {
-            "path": "runtime/userspace/api/spdm-lib/stack/src/stack.rs",
-            "symbols": ["ConnectionState", "caliptra"],
-            "role": "Exact capability and algorithm defaults: meas_hash_algo, base_asym_sel, base_hash_sel, dhe, aead, key_schedule, and optional pqc_asym_sel/kem"
-        },
-        {
-            "path": "runtime/userspace/api/spdm-lib/stack/src/algorithms.rs",
-            "symbols": ["handle_negotiate_algorithms"],
-            "role": "Version/capability-dependent algorithm selection; defaults alone do not prove every combination"
-        },
-        {
-            "path": "runtime/userspace/api/spdm-lib/pal/src/measurements/providers/ocp_eat.rs",
-            "symbols": ["OcpEatMeasurementProvider", "get_measurement_value"],
-            "role": "Production OCP EAT measurement provider implementation"
-        }
-    ])
-}
-
 /// The caller owns the selected image, boot readiness and live transport
 /// services. Copy the complete tool bundle into persistent per-case evidence
 /// storage; the existing launcher writes through `SPDM_VALIDATOR_DIR`.
-#[cfg(not(feature = "fpga_realtime"))]
 pub(crate) fn run_compatibility_conformance(hw: &mut DefaultHwModel) -> Result<()> {
-    let bundle = std::sync::Arc::new(stage_compatibility_validator(
-        "spdm_device_validator_sample",
-    )?);
-    let output_dir = &bundle.output_dir;
-    std::fs::write(
-        output_dir.join("spdm-source-checks.json"),
-        serde_json::to_vec_pretty(&compatibility_spdm_source_checks())?,
-    )
-    .context("could not retain SPDM source-support verification inputs")?;
+    let output_dir = stage_compatibility_validator("spdm_device_validator_sample")?;
 
     let timeout = Duration::from_secs(9000);
     let port = hw
@@ -84,13 +28,7 @@ pub(crate) fn run_compatibility_conformance(hw: &mut DefaultHwModel) -> Result<(
     let address = hw
         .i3c_address()
         .context("BLOCKED: selected model has no I3C target address")?;
-    let result = run_mctp_spdm_conformance_test_inner(
-        port,
-        address.into(),
-        timeout,
-        true,
-        Some(bundle.clone()),
-    );
+    let result = start_conformance(port, address.into())?;
     drive_compatibility_protocol(hw, result, timeout)?;
 
     // The validator can exit successfully even when individual suites fail.
@@ -125,21 +63,7 @@ pub(crate) fn run_compatibility_conformance(hw: &mut DefaultHwModel) -> Result<(
     Ok(())
 }
 
-#[cfg(not(feature = "fpga_realtime"))]
-struct StagedValidatorBundle {
-    output_dir: std::path::PathBuf,
-    original_dir: std::ffi::OsString,
-}
-
-#[cfg(not(feature = "fpga_realtime"))]
-impl Drop for StagedValidatorBundle {
-    fn drop(&mut self) {
-        std::env::set_var("SPDM_VALIDATOR_DIR", &self.original_dir);
-    }
-}
-
-#[cfg(not(feature = "fpga_realtime"))]
-fn stage_compatibility_validator(binary: &str) -> Result<StagedValidatorBundle> {
+fn stage_compatibility_validator(binary: &str) -> Result<std::path::PathBuf> {
     let original_dir = std::env::var_os("SPDM_VALIDATOR_DIR")
         .context("BLOCKED: SPDM_VALIDATOR_DIR is required for the selected SPDM suite")?;
     let source = std::fs::canonicalize(&original_dir)
@@ -175,14 +99,11 @@ fn stage_compatibility_validator(binary: &str) -> Result<StagedValidatorBundle> 
         )
     })?;
     copy_compatibility_tool_bundle(&source, &source, &output_dir, &mut Vec::new())?;
+    // Each compatibility case runs in its own child process.
     std::env::set_var("SPDM_VALIDATOR_DIR", &output_dir);
-    Ok(StagedValidatorBundle {
-        output_dir,
-        original_dir,
-    })
+    Ok(output_dir)
 }
 
-#[cfg(not(feature = "fpga_realtime"))]
 fn copy_compatibility_tool_bundle(
     root: &std::path::Path,
     source: &std::path::Path,
@@ -240,8 +161,7 @@ fn copy_compatibility_tool_bundle(
     Ok(())
 }
 
-#[cfg(not(feature = "fpga_realtime"))]
-pub(crate) fn drive_compatibility_protocol(
+fn drive_compatibility_protocol(
     hw: &mut DefaultHwModel,
     result: Receiver<std::result::Result<(), String>>,
     timeout: Duration,
@@ -278,68 +198,25 @@ pub(crate) fn drive_compatibility_protocol(
     }
 }
 
-fn run_mctp_spdm_conformance_test_inner<Guard: Send + 'static>(
+fn start_conformance(
     port: u16,
     target_addr: DynamicI3cAddress,
-    test_timeout: Duration,
-    selected_model_ready: bool,
-    bundle_guard: Option<Guard>,
-) -> Receiver<Result<(), String>> {
+) -> Result<Receiver<Result<(), String>>> {
     let (result_tx, result_rx) = mpsc::channel();
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
-    let stream = match TcpStream::connect(addr) {
-        Ok(stream) => stream,
-        Err(err) if selected_model_ready => {
-            let _ = result_tx.send(Err(format!(
-                "could not connect to selected I3C port: {err}"
-            )));
-            return result_rx;
-        }
-        Err(err) => panic!("could not connect to I3C port: {err}"),
-    };
+    let stream = TcpStream::connect(addr).context("could not connect to selected I3C port")?;
     let transport = MctpTransport::new(BufferedStream::new(stream), target_addr.into(), 1);
-    let (timeout_cancel_tx, timeout_cancel_rx) = mpsc::channel();
-
-    let timeout_result_tx = result_tx.clone();
-    caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
-        if timeout_cancel_rx.recv_timeout(test_timeout).is_err() {
-            let message = format!(
-                "{TEST_NAME} timed out after {} seconds",
-                test_timeout.as_secs()
-            );
-            println!("[{TEST_NAME}] {message}");
-            let _ = timeout_result_tx.send(Err(message));
-            caliptra_mcu_testing_common::stop_emulator();
-        }
-    });
-
     SERVER_LISTENING.store(false, Ordering::Relaxed);
     caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
-        // A failed model can return to the caller before this worker exits.
-        // Retain the staged environment until its launcher has finished.
-        let _bundle_guard = bundle_guard;
-        if !selected_model_ready {
-            wait_for_runtime_start();
-            if !caliptra_mcu_testing_common::is_emulator_running() {
-                return;
-            }
-            wait_for_spdm_responder_ready(SpdmResponderTransport::Mctp);
-            if !caliptra_mcu_testing_common::is_emulator_running() {
-                return;
-            }
-        }
-
         let result = (|| -> Result<(), String> {
             let listener = TcpListener::bind("127.0.0.1:2323")
                 .map_err(|err| format!("could not bind SPDM listener: {err}"))?;
             println!("[{TEST_NAME}]: SPDM server listening on port 2323");
             SERVER_LISTENING.store(true, Ordering::Relaxed);
 
-            if selected_model_ready {
-                listener
-                    .set_nonblocking(true)
-                    .map_err(|err| format!("could not configure SPDM listener: {err}"))?;
-            }
+            listener
+                .set_nonblocking(true)
+                .map_err(|err| format!("could not configure SPDM listener: {err}"))?;
             let validator = execute_spdm_responder_validator("MCTP");
             let (mut spdm_stream, _) = loop {
                 match listener.accept() {
@@ -355,17 +232,15 @@ fn run_mctp_spdm_conformance_test_inner<Guard: Send + 'static>(
                         std::thread::sleep(Duration::from_millis(20));
                     }
                     Err(err) => {
-                        if selected_model_ready {
-                            caliptra_mcu_testing_common::stop_emulator();
-                            let _ = validator.join();
-                        }
+                        caliptra_mcu_testing_common::stop_emulator();
+                        let _ = validator.join();
                         return Err(format!("failed to accept SPDM connection: {err}"));
                     }
                 }
             };
             let mut test = SpdmValidatorRunner::new(Box::new(transport), TEST_NAME);
             test.run_test(&mut spdm_stream);
-            if selected_model_ready && !test.is_passed() {
+            if !test.is_passed() {
                 caliptra_mcu_testing_common::stop_emulator();
                 let _ = validator.join();
                 return Err("SPDM transport bridge failed".to_string());
@@ -374,9 +249,6 @@ fn run_mctp_spdm_conformance_test_inner<Guard: Send + 'static>(
             let validator_passed = validator
                 .join()
                 .map_err(|_| "SPDM validator worker panicked".to_string())?;
-            if !test.is_passed() {
-                return Err("SPDM transport bridge failed".to_string());
-            }
             if !validator_passed {
                 return Err("SPDM validator exited unsuccessfully".to_string());
             }
@@ -385,10 +257,9 @@ fn run_mctp_spdm_conformance_test_inner<Guard: Send + 'static>(
             Ok(())
         })();
 
-        let _ = timeout_cancel_tx.send(());
         let _ = result_tx.send(result);
         caliptra_mcu_testing_common::stop_emulator();
     });
 
-    result_rx
+    Ok(result_rx)
 }

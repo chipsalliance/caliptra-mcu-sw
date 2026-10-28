@@ -1,6 +1,5 @@
 // Licensed under the Apache-2.0 license
 
-mod attestation;
 mod mailbox;
 mod spdm;
 
@@ -1709,17 +1708,6 @@ fn exercise_suite(pair: &SelectedPair, scenario: &str) -> Result<()> {
             hw.start_i3c_controller();
             spdm::run_compatibility_conformance(&mut hw)?;
         }
-        "suite_attestation_ocp_eat_non_tcb" | "suite_attestation_ocp_eat_tcb"
-        | "suite_attestation_ocp_eat_mixed" | "suite_attestation_pcr_quote" => {
-            let kind = match scenario {
-                "suite_attestation_ocp_eat_non_tcb" => "ocp-eat-non-tcb",
-                "suite_attestation_ocp_eat_tcb" => "ocp-eat-tcb",
-                "suite_attestation_ocp_eat_mixed" => "ocp-eat-mixed",
-                _ => "pcr-quote",
-            };
-            hw.start_i3c_controller();
-            attestation::run_compatibility_attestation(&mut hw, kind)?;
-        }
         _ => bail!("BLOCKED: {scenario} has no supported adapter for the agreed selected-image configuration"),
     }
     check_no_fatal(&mut hw)?;
@@ -1799,23 +1787,16 @@ fn run_case(scenario: &str) -> Result<()> {
         let pair = SelectedPair::load(&artifacts)?;
         configuration_sha256 = Some(pair.configuration_sha256.clone());
         if SUITES.contains(&scenario) {
-            if scenario.starts_with("suite_spdm_") {
-                let output = PathBuf::from(
-                    std::env::var_os("MCU_COMPAT_EVIDENCE_DIR")
-                        .context("Missing suite evidence directory")?,
-                );
-                fs::write(
-                    output.join("spdm-source-requirements.json"),
-                    serde_json::to_vec_pretty(&spdm::compatibility_spdm_source_checks())?,
-                )?;
-            }
-            if scenario.starts_with("suite_attestation_") {
-                let output = PathBuf::from(
-                    std::env::var_os("MCU_COMPAT_EVIDENCE_DIR")
-                        .context("Missing suite evidence directory")?,
-                );
-                attestation::write_compatibility_attestation_support(&output)?;
-            }
+            let output = PathBuf::from(
+                std::env::var_os("MCU_COMPAT_EVIDENCE_DIR")
+                    .context("Missing suite evidence directory")?,
+            );
+            let support = pair
+                .config
+                .suite_support
+                .as_ref()
+                .context("BLOCKED: missing source-derived suite support")?;
+            fs::write(output.join("suite-support.json"), support.read(&pair.root)?)?;
             if let Some(reason) = suite_disposition(&pair, scenario)? {
                 return Ok(Some(reason.into()));
             }

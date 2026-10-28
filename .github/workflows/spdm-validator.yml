@@ -6,39 +6,22 @@ on:
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
   workflow_call:
-    inputs:
-      tools-only:
-        description: Build shared spdm-emu tools without running current-image suites
-        type: boolean
-        default: false
-      artifact-suffix:
-        description: Suffix for shared tool artifacts
-        type: string
-        default: ""
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.run_id }}${{ inputs.artifact-suffix }}
+  group: ${{ github.workflow }}-${{ github.run_id }}
   cancel-in-progress: false
 
 env:
   # Pin the Caliptra core ROM to a release tag; image/update crates continue
   # to use the Cargo.toml caliptra-sw rev. main-2.1 pins rom-2.1.2 instead.
   CALIPTRA_ROM_REF: rom-2.1.2
-  CARGO_BUILD_JOBS: "2"
-  RAYON_NUM_THREADS: "2"
 
 jobs:
   build_spdm_emu_tools:
     name: Build spdm-emu tools
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
 
     steps:
-      - name: Checkout workflow build settings
-        uses: actions/checkout@v7
-        with:
-          sparse-checkout: .github/workflows/spdm-validator.yml
-          sparse-checkout-cone-mode: false
       - name: Install required packages
         run: |
           sudo apt-get update -qy && \
@@ -59,23 +42,7 @@ jobs:
           path: spdm-emu
           submodules: recursive
 
-      - name: Resolve spdm-emu build inputs
-        id: spdm_emu_inputs
-        run: |
-          set -euo pipefail
-          echo "source=$(git -C spdm-emu rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          fingerprint="$({ gcc --version; cmake --version; } | sha256sum | cut -d' ' -f1)"
-          echo "toolchain=$fingerprint" >> "$GITHUB_OUTPUT"
-
-      - name: Cache spdm-emu tools
-        id: spdm_emu_cache
-        uses: actions/cache@v6
-        with:
-          path: spdm-emu/build/bin/
-          key: spdm-emu-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.spdm_emu_inputs.outputs.source }}-${{ steps.spdm_emu_inputs.outputs.toolchain }}-${{ hashFiles('.github/workflows/spdm-validator.yml') }}
-
       - name: Build spdm-emu tools
-        if: steps.spdm_emu_cache.outputs.cache-hit != 'true'
         run: |
           pushd spdm-emu
           git submodule update --init --recursive
@@ -92,32 +59,21 @@ jobs:
 
       - name: Package spdm-emu tools
         run: |
-          test -x spdm-emu/build/bin/spdm_device_validator_sample
-          test -x spdm-emu/build/bin/spdm_requester_emu
           git -C spdm-emu rev-parse HEAD | tee spdm-emu/build/bin/spdm-emu-revision.txt
           tar -czf "${RUNNER_TEMP}/spdm-emu-tools.tar.gz" -C spdm-emu build/bin
 
       - name: Upload spdm-emu tools
         uses: actions/upload-artifact@v7
         with:
-          name: spdm-emu-tools${{ inputs.artifact-suffix }}
+          name: spdm-emu-tools
           path: ${{ runner.temp }}/spdm-emu-tools.tar.gz
           retention-days: 1
 
   build_spdm_rs_tools:
-    if: ${{ !inputs.tools-only }}
     name: Build spdm-rs tools
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
 
     env:
-      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
-      GIT_TERMINAL_PROMPT: "0"
-      GIT_CONFIG_COUNT: "2"
-      GIT_CONFIG_KEY_0: url.https://github.com/.insteadOf
-      GIT_CONFIG_VALUE_0: ssh://git@github.com/
-      GIT_CONFIG_KEY_1: url.https://github.com/.insteadOf
-      GIT_CONFIG_VALUE_1: "git@github.com:"
       CARGO_INCREMENTAL: 0
       SCCACHE_VERSION: 0.8.2
       SCCACHE_GHA_CACHE_TO: sccache-caliptra-mcu-sw
@@ -127,11 +83,6 @@ jobs:
       SCCACHE_C_CUSTOM_CACHE_BUSTER: 8b42a6e70ec4
 
     steps:
-      - name: Checkout workflow build settings
-        uses: actions/checkout@v7
-        with:
-          sparse-checkout: .github/workflows/spdm-validator.yml
-          sparse-checkout-cone-mode: false
       - name: Checkout CCC spdm-rs repository
         uses: actions/checkout@v7
         with:
@@ -147,26 +98,7 @@ jobs:
           sudo apt-get install -qy build-essential curl git rustup &&
           rustup toolchain install --profile minimal
 
-      - name: Resolve spdm-rs build inputs
-        id: spdm_rs_inputs
-        working-directory: spdm-rs
-        run: |
-          set -euo pipefail
-          echo "source=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-          fingerprint="$({ rustc -Vv; gcc --version; } | sha256sum | cut -d' ' -f1)"
-          echo "toolchain=$fingerprint" >> "$GITHUB_OUTPUT"
-
-      - name: Cache spdm-rs tools
-        id: spdm_rs_cache
-        uses: actions/cache@v6
-        with:
-          path: |
-            spdm-rs/target/debug/spdm-requester-emu
-            spdm-rs/target/debug/test_key/
-          key: spdm-rs-v1-${{ runner.os }}-${{ runner.arch }}-${{ steps.spdm_rs_inputs.outputs.source }}-${{ steps.spdm_rs_inputs.outputs.toolchain }}-${{ hashFiles('.github/workflows/spdm-validator.yml') }}
-
       - name: Restore sccache binary
-        if: steps.spdm_rs_cache.outputs.cache-hit != 'true'
         uses: actions/cache/restore@v6
         id: sccache_bin_restore
         with:
@@ -175,19 +107,18 @@ jobs:
             env.SCCACHE_C_CUSTOM_CACHE_BUSTER }}
 
       - name: Install sccache
-        if: steps.spdm_rs_cache.outputs.cache-hit != 'true' && steps.sccache_bin_restore.outputs.cache-hit != 'true'
+        if: steps.sccache_bin_restore.outputs.cache-hit != 'true'
         run: |
           cargo install sccache --version ${SCCACHE_VERSION} --no-default-features --features=gha --locked
 
       - name: Save sccache binary
         uses: actions/cache/save@v6
-        if: steps.spdm_rs_cache.outputs.cache-hit != 'true' && steps.sccache_bin_restore.outputs.cache-hit != 'true'
+        if: steps.sccache_bin_restore.outputs.cache-hit != 'true'
         with:
           path: ~/.cargo/bin/sccache
           key: ${{ steps.sccache_bin_restore.outputs.cache-primary-key }}
 
       - name: Configure sccache
-        if: steps.spdm_rs_cache.outputs.cache-hit != 'true'
         uses: actions/github-script@v9
         with:
           script: |
@@ -196,7 +127,6 @@ jobs:
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
       - name: Prepare and build spdm-rs tools
-        if: steps.spdm_rs_cache.outputs.cache-hit != 'true'
         working-directory: spdm-rs
         run: |
           git submodule update --init --recursive
@@ -207,8 +137,6 @@ jobs:
 
       - name: Package spdm-rs tools
         run: |
-          test -x spdm-rs/target/debug/spdm-requester-emu
-          test -f spdm-rs/target/debug/test_key/ecp384/ca.cert.der
           git -C spdm-rs rev-parse HEAD | tee spdm-rs/target/debug/spdm-rs-revision.txt
           tar -czf "${RUNNER_TEMP}/spdm-rs-tools.tar.gz" \
             -C spdm-rs \
@@ -219,16 +147,14 @@ jobs:
       - name: Upload spdm-rs tools
         uses: actions/upload-artifact@v7
         with:
-          name: spdm-rs-tools${{ inputs.artifact-suffix }}
+          name: spdm-rs-tools
           path: ${{ runner.temp }}/spdm-rs-tools.tar.gz
           retention-days: 1
 
   spdm_emu_tests:
-    if: ${{ !inputs.tools-only }}
     name: ${{ matrix.suite }}
     needs: build_spdm_emu_tools
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
 
     strategy:
       fail-fast: false
@@ -297,7 +223,7 @@ jobs:
       - name: Download spdm-emu tools
         uses: actions/download-artifact@v8
         with:
-          name: spdm-emu-tools${{ inputs.artifact-suffix }}
+          name: spdm-emu-tools
           path: ${{ runner.temp }}
 
       - name: Extract spdm-emu tools
@@ -320,8 +246,7 @@ jobs:
           echo "SPDM_NONCE in MCTP stage: ${SPDM_NONCE}"
           echo "SPDM_NONCE length: ${#SPDM_NONCE}"
           cargo xtask all-build
-          timeout --signal=TERM --kill-after=30s 30m \
-            cargo t -p caliptra-mcu-tests-integration -- --test test_mctp_spdm_responder_conformance --nocapture --include-ignored
+          cargo t -p caliptra-mcu-tests-integration -- --test test_mctp_spdm_responder_conformance --nocapture  --include-ignored
           sccache --show-stats
 
       - name: Upload logs and traces for MCTP transport
@@ -357,8 +282,7 @@ jobs:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
         run: |
           cargo xtask all-build
-          timeout --signal=TERM --kill-after=30s 30m \
-            cargo t -p caliptra-mcu-tests-integration -- --test test_mctp_spdm_attestation_pcr_quote --nocapture --include-ignored
+          cargo t -p caliptra-mcu-tests-integration -- --test test_mctp_spdm_attestation_pcr_quote --nocapture --include-ignored
 
       - name: Upload attestation logs and traces for MCTP transport
         if: always() && matrix.suite == 'pcr-quote'
@@ -381,8 +305,7 @@ jobs:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-emu/build/bin
         run: |
           cargo xtask all-build
-          timeout --signal=TERM --kill-after=30s 30m \
-            cargo t -p caliptra-mcu-tests-integration -- --test test_doe_spdm_responder_conformance --nocapture --include-ignored
+          cargo t -p caliptra-mcu-tests-integration -- --test test_doe_spdm_responder_conformance --nocapture  --include-ignored
           sccache --show-stats
 
       - name: Upload logs and traces for DOE transport
@@ -413,11 +336,9 @@ jobs:
           fi
 
   tdisp_ide_tests:
-    if: ${{ !inputs.tools-only }}
     name: tdisp-ide
     needs: build_spdm_rs_tools
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
 
     env:
       CARGO_INCREMENTAL: 0
@@ -476,7 +397,7 @@ jobs:
       - name: Download spdm-rs tools
         uses: actions/download-artifact@v8
         with:
-          name: spdm-rs-tools${{ inputs.artifact-suffix }}
+          name: spdm-rs-tools
           path: ${{ runner.temp }}
 
       - name: Extract spdm-rs tools
@@ -496,8 +417,7 @@ jobs:
           SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-rs/target/debug
         run: |
           cargo xtask all-build
-          timeout --signal=TERM --kill-after=30s 30m \
-            cargo t -p caliptra-mcu-tests-integration -- --test test_doe_spdm_tdisp_ide_validator --nocapture --include-ignored
+          cargo t -p caliptra-mcu-tests-integration -- --test test_doe_spdm_tdisp_ide_validator --nocapture --include-ignored
           sccache --show-stats
 
       - name: Display CCC spdm-requester-emu test results for TDISP+IDE
