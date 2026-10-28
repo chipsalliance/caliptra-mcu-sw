@@ -668,6 +668,16 @@ mod tests {
             vec![],
             None,
             Some(Box::new(periph)),
+            #[cfg(hw_rev = "latest")]
+            None,
+            #[cfg(hw_rev = "latest")]
+            None,
+            #[cfg(hw_rev = "latest")]
+            None,
+            #[cfg(hw_rev = "latest")]
+            None,
+            #[cfg(hw_rev = "latest")]
+            None,
             None,
             None,
             None,

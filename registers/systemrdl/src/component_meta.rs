@@ -217,7 +217,12 @@ static ALL_COMPONENTS: [&ComponentMeta; 8] = [
     &CONSTRAINT,
 ];
 
-static GENERAL_PROPERTIES: [PropertyMeta; 2] = [
+static GENERAL_PROPERTIES: [PropertyMeta; 3] = [
+    PropertyMeta {
+        name: "ispresent",
+        ty: PropertyType::Boolean,
+        is_dynamic: false,
+    },
     PropertyMeta {
         name: "name",
         ty: PropertyType::String,

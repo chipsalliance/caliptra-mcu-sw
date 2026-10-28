@@ -5,8 +5,8 @@ use caliptra_mcu_builder::PROJECT_ROOT;
 use caliptra_mcu_fusegen::{HEADER_PREFIX, HEADER_SUFFIX};
 use caliptra_mcu_hw_revision::HardwareRevision;
 use caliptra_mcu_registers_generator::{
-    camel_case, has_single_32_bit_field, hex_const, snake_case, FieldType, Register, RegisterBlock,
-    RegisterBlockInstance, RegisterWidth, ValidatedRegisterBlock,
+    camel_case, has_single_32_bit_field, hex_const, snake_case, FieldType, OnWriteSemantics,
+    Register, RegisterBlock, RegisterBlockInstance, RegisterWidth, ValidatedRegisterBlock,
 };
 use caliptra_mcu_registers_systemrdl::ParentScope;
 use proc_macro2::{Ident, Literal, TokenStream};
@@ -41,6 +41,10 @@ pub(crate) fn autogen(
 ) -> Result<()> {
     let revision = HardwareRevision::from_env().map_err(anyhow::Error::msg)?;
     let inputs_dir = PROJECT_ROOT.join(revision.inputs_path());
+    let semantics = match revision {
+        HardwareRevision::V2_1 => OnWriteSemantics::Legacy,
+        HardwareRevision::Latest => OnWriteSemantics::SystemRdl,
+    };
     let sub_dir = &PROJECT_ROOT.join(revision.hardware_path());
     let registers_dest_dir = &PROJECT_ROOT
         .join("registers")
@@ -186,15 +190,22 @@ pub(crate) fn autogen(
     let addrmap = scope.lookup_typedef("soc").unwrap();
     let addrmap2 = scope.lookup_typedef("mcu").unwrap();
     let addrmap_network = scope.lookup_typedef("network").unwrap();
-    let mut scopes = vec![addrmap, addrmap2, addrmap_network];
+    // Local synthetic peripherals retain the contract used by their existing models.
+    let mut scopes = vec![
+        (addrmap, semantics),
+        (addrmap2, OnWriteSemantics::Legacy),
+        (addrmap_network, OnWriteSemantics::Legacy),
+    ];
     if !extra_addrmap.is_empty() {
         let addrmap3 = scope.lookup_typedef("extra").unwrap();
-        scopes.push(addrmap3);
+        scopes.push((addrmap3, semantics));
     }
 
     // These are types like kv_read_ctrl_reg that are used by multiple crates
     let root_block = RegisterBlock {
-        declared_register_types: caliptra_mcu_registers_generator::translate_types(scope)?,
+        declared_register_types: caliptra_mcu_registers_generator::translate_types_with_semantics(
+            scope, semantics,
+        )?,
         ..Default::default()
     };
     let root_block = root_block.validate_and_dedup()?;
@@ -228,7 +239,7 @@ pub(crate) fn autogen(
 /// Generate types used by the emulator.
 fn generate_emulator_types(
     check: bool,
-    scopes: &[ParentScope],
+    scopes: &[(ParentScope, OnWriteSemantics)],
     dest_dir: &Path,
     header: String,
     register_types_to_crates: &HashMap<String, Vec<String>>,
@@ -241,8 +252,10 @@ fn generate_emulator_types(
     };
     let mut lib_code = TokenStream::new();
     let mut blocks = vec![];
-    for scope in scopes.iter() {
-        blocks.extend(caliptra_mcu_registers_generator::translate_addrmap(*scope)?);
+    for (scope, semantics) in scopes.iter() {
+        blocks.extend(
+            caliptra_mcu_registers_generator::translate_addrmap_with_semantics(*scope, *semantics)?,
+        );
     }
     let mut validated_blocks = vec![];
 
@@ -1245,7 +1258,7 @@ fn delete_rust_files(dir: &Path) -> Result<()> {
 fn generate_fw_registers(
     check: bool,
     mut root_block: ValidatedRegisterBlock,
-    scopes: &[ParentScope],
+    scopes: &[(ParentScope, OnWriteSemantics)],
     header: String,
     dest_dir: &Path,
     register_types_to_crates: &mut HashMap<String, Vec<String>>,
@@ -1258,8 +1271,10 @@ fn generate_fw_registers(
     };
 
     let mut blocks = vec![];
-    for scope in scopes.iter() {
-        blocks.extend(caliptra_mcu_registers_generator::translate_addrmap(*scope)?);
+    for (scope, semantics) in scopes.iter() {
+        blocks.extend(
+            caliptra_mcu_registers_generator::translate_addrmap_with_semantics(*scope, *semantics)?,
+        );
     }
     let mut validated_blocks = vec![];
     for mut block in blocks {

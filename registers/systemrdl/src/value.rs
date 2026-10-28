@@ -192,6 +192,19 @@ impl TryFrom<Value> for AccessType {
     }
 }
 
+impl TryFrom<Value> for OnWriteType {
+    type Error = RdlError<'static>;
+    fn try_from(value: Value) -> Result<'static, Self> {
+        match value {
+            Value::OnWriteType(value) => Ok(value),
+            value => Err(RdlError::UnexpectedPropertyType {
+                expected_type: PropertyType::OnWriteType,
+                value,
+            }),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct Reference {
     path: Vec<String>,
@@ -316,46 +329,6 @@ pub fn parse_str_literal(s: &str) -> Result<'_, String> {
         .replace("\\\\", "\\"))
 }
 
-fn to_bool<'a>(v: Value, parameters: Option<&'_ ParameterScope<'_>>) -> Result<'a, bool> {
-    match v {
-        Value::Bool(b) => Ok(b),
-        Value::Reference(r) => {
-            let r = r.path[0].clone();
-            match lookup_parameter_of_type(parameters, &r, PropertyType::Boolean) {
-                Ok(Value::Bool(b)) => Ok(*b),
-                _ => Err(RdlError::UnexpectedPropertyType {
-                    expected_type: PropertyType::Boolean,
-                    value: Value::Bool(false),
-                }),
-            }
-        }
-        _ => Err(RdlError::UnexpectedPropertyType {
-            expected_type: PropertyType::Boolean,
-            value: v,
-        }),
-    }
-}
-
-fn to_bit<'a>(v: Value, parameters: Option<&'_ ParameterScope<'_>>) -> Result<'a, Bits> {
-    match v {
-        Value::Bits(b) => Ok(b),
-        Value::Reference(r) => {
-            let r = r.path[0].clone();
-            match lookup_parameter_of_type(parameters, &r, PropertyType::Bits) {
-                Ok(Value::Bits(b)) => Ok(*b),
-                _ => Err(RdlError::UnexpectedPropertyType {
-                    expected_type: PropertyType::Bits,
-                    value: Value::Bool(false),
-                }),
-            }
-        }
-        _ => Err(RdlError::UnexpectedPropertyType {
-            expected_type: PropertyType::Bits,
-            value: v,
-        }),
-    }
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PropertyType {
     U64,
@@ -393,74 +366,13 @@ impl PropertyType {
         }
     }
 
-    /// Special case expression parser and evaluator that only supports singleton, ternary, &&, and != expressions.
+    /// Evaluate constant expressions, including parameter references and lazy conditionals.
     pub fn eval<'a>(
         self,
         tokens: &mut TokenIter<'a>,
         parameters: Option<&'_ ParameterScope<'_>>,
     ) -> Result<'a, Value> {
-        let first = tokens.peek(0).clone();
-        if *tokens.peek(1) == Token::NotEquals {
-            match self {
-                PropertyType::BitOrReference => {}
-                _ => {
-                    return Err(RdlError::UnexpectedPropertyType {
-                        expected_type: PropertyType::Boolean,
-                        value: self.parse_or_lookup(tokens, parameters)?,
-                    })
-                }
-            }
-            let a = to_bit(self.parse_or_lookup(tokens, parameters)?, parameters)?;
-            tokens.expect(Token::NotEquals)?;
-            let b = to_bit(self.parse_or_lookup(tokens, parameters)?, parameters)?;
-            Ok(Value::Bool(a != b))
-        } else if *tokens.peek(1) == Token::And {
-            match self {
-                PropertyType::Boolean => {}
-                PropertyType::BitOrReference => {}
-                _ => {
-                    return Err(RdlError::UnexpectedPropertyType {
-                        expected_type: PropertyType::Boolean,
-                        value: self.parse_or_lookup(tokens, parameters)?,
-                    })
-                }
-            }
-            let a = to_bool(self.parse_or_lookup(tokens, parameters)?, parameters)?;
-            tokens.expect(Token::And)?;
-            let b = to_bool(self.parse_or_lookup(tokens, parameters)?, parameters)?;
-            Ok(Value::Bool(a && b))
-        } else if *tokens.peek(1) == Token::QuestionMark && *tokens.peek(3) == Token::Colon {
-            tokens.next();
-            tokens.next();
-            let name = match first {
-                Token::Identifier(name) => name,
-                _ => Err(RdlError::BadTernaryExpression(format!(
-                    "Expected identifier but got {:?}",
-                    first
-                )))?,
-            };
-            let cond = lookup_parameter_of_type(parameters, name, PropertyType::Boolean)?;
-            match cond {
-                Value::Bool(true) => {
-                    let ret = self.parse_or_lookup(tokens, parameters);
-                    tokens.expect(Token::Colon)?;
-                    tokens.next();
-                    ret
-                }
-                Value::Bool(false) => {
-                    tokens.next();
-                    tokens.expect(Token::Colon)?;
-                    let ret = self.parse_or_lookup(tokens, parameters);
-                    ret
-                }
-                _ => Err(RdlError::BadTernaryExpression(format!(
-                    "Expected boolean but got {:?}",
-                    name
-                )))?,
-            }
-        } else {
-            self.parse_or_lookup(tokens, parameters)
-        }
+        crate::expression::evaluate(tokens, parameters, self)
     }
 
     pub fn parse_or_lookup<'a>(
