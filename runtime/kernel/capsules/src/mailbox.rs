@@ -558,7 +558,10 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
                             }
                         }
                     }
-                    resp.verify_checksum().map(|_| resp.len())
+                    // Report only what was copied: a response longer than the app
+                    // buffer is truncated above, so its full length would cover
+                    // bytes the app never received.
+                    resp.verify_checksum().map(|_| resp.len().min(out_len))
                 } else {
                     // no response, so we don't need to copy anything
                     Ok(0)
