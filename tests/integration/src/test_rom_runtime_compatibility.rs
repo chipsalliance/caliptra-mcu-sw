@@ -1,6 +1,9 @@
 // Licensed under the Apache-2.0 license
 
-use crate::test::{start_runtime_hw_model_with_binaries, TestBinaries, TestParams};
+mod attestation;
+mod mailbox;
+mod spdm;
+
 use anyhow::{bail, ensure, Context, Result};
 use caliptra_api::{calc_checksum, SocManager};
 use caliptra_mcu_builder::flash_image::calculate_checksum;
@@ -8,7 +11,7 @@ use caliptra_mcu_flash_image::{
     CALIPTRA_FMC_RT_IDENTIFIER, MCU_RT_IDENTIFIER, OWNER_AUTH_MANIFEST_IDENTIFIER,
     OWNER_MEASUREMENT_POLICY_IDENTIFIER, SOC_MANIFEST_IDENTIFIER,
 };
-use caliptra_mcu_hw_model::{DefaultHwModel, McuHwModel, McuManager};
+use caliptra_mcu_hw_model::{DefaultHwModel, Fuses, InitParams, McuHwModel, McuManager};
 use caliptra_mcu_mbox_common::messages::{CommandId, MailboxRespHeader, MailboxRespHeaderVarSize};
 use caliptra_mcu_romtime::McuBootMilestones;
 use caliptra_ureg::Mmio;
@@ -696,39 +699,55 @@ impl SelectedPair {
                 [&caliptra_fw, &soc_manifest, &runtime],
             )?;
         }
-        let binaries = TestBinaries {
-            vendor_pk_hash_u8: vendor_pk_hash.to_vec(),
-            caliptra_rom,
-            caliptra_fw,
-            mcu_rom: self.rom.clone(),
-            soc_manifest,
-            mcu_runtime: runtime,
-            flash_image: None,
-        };
-        Ok(start_runtime_hw_model_with_binaries(
-            TestParams {
-                hw_revision: Some(&self.config.hardware),
-                otp_memory: Some(otp),
-                flash_boot: flash,
-                exact_primary_flash: true,
-                seed_primary_flash_image: !flash && flash_image.is_some(),
-                primary_flash_image: flash_image,
-                capture_mcu_exit: true,
-                i3c_port: if transport {
-                    Some(
-                        random_port::PortPicker::new()
-                            .random(true)
-                            .pick()
-                            .context("No free I3C port")?,
-                    )
-                } else {
-                    None
-                },
-                rom_only: true,
+        let mut flash_image = flash_image;
+        if !flash {
+            if let Some(image) = &mut flash_image {
+                crate::test::write_valid_partition_table_for_runtime_flash_load(image);
+            }
+        }
+        let vendor_pqc_type = caliptra_image_types::FwVerificationPqcKeyType::LMS;
+        let fuse_vendor_pk_hash = std::array::from_fn(|index| {
+            let offset = index * 4;
+            u32::from_be_bytes(vendor_pk_hash[offset..offset + 4].try_into().unwrap())
+        });
+        Ok(caliptra_mcu_hw_model::new(InitParams {
+            hw_revision: Some(
+                self.config
+                    .hardware
+                    .parse()
+                    .context("Invalid hardware revision")?,
+            ),
+            fuses: Fuses {
+                fuse_pqc_key_type: vendor_pqc_type as u32,
+                vendor_pk_hash: fuse_vendor_pk_hash,
                 ..Default::default()
             },
-            binaries,
-        ))
+            caliptra_rom: &caliptra_rom,
+            mcu_rom: &self.rom,
+            caliptra_firmware: if flash { &[] } else { &caliptra_fw },
+            soc_manifest: if flash { &[] } else { &soc_manifest },
+            mcu_firmware: if flash { &[] } else { &runtime },
+            vendor_pk_hash: Some(vendor_pk_hash),
+            vendor_pqc_type: Some(vendor_pqc_type),
+            active_mode: true,
+            i3c_port: if transport {
+                Some(
+                    random_port::PortPicker::new()
+                        .random(true)
+                        .pick()
+                        .context("No free I3C port")?,
+                )
+            } else {
+                None
+            },
+            capture_mcu_exit: true,
+            enable_mcu_uart_log: true,
+            check_booted_to_runtime: false,
+            otp_memory: Some(&otp),
+            primary_flash_initial_contents: flash_image,
+            flash_boot: flash,
+            ..Default::default()
+        })?)
     }
 
     fn streaming(&self) -> bool {
@@ -1680,15 +1699,15 @@ fn exercise_suite(pair: &SelectedPair, scenario: &str) -> Result<()> {
             let expected = serde_json::from_value(support["mailbox"].clone())
                 .context("BLOCKED: missing or invalid selected-source mailbox expectations")?;
             if scenario == "suite_mailbox" {
-                crate::runtime::test_mcu_mailbox::run_selected_mailbox_checks(&mut hw, &expected)?;
+                mailbox::run_selected_mailbox_checks(&mut hw, &expected)?;
             } else {
-                crate::runtime::test_mcu_mailbox::run_selected_provisioning_checks(&mut hw, &expected)?;
+                mailbox::run_selected_provisioning_checks(&mut hw, &expected)?;
             }
         }
         "suite_spdm_mctp" => {
             ensure!(pair.streaming(), "BLOCKED: MCTP service configuration is required");
             hw.start_i3c_controller();
-            crate::test_mctp_spdm_responder_conformance::test::run_compatibility_conformance(&mut hw)?;
+            spdm::run_compatibility_conformance(&mut hw)?;
         }
         "suite_attestation_ocp_eat_non_tcb" | "suite_attestation_ocp_eat_tcb"
         | "suite_attestation_ocp_eat_mixed" | "suite_attestation_pcr_quote" => {
@@ -1699,7 +1718,7 @@ fn exercise_suite(pair: &SelectedPair, scenario: &str) -> Result<()> {
                 _ => "pcr-quote",
             };
             hw.start_i3c_controller();
-            crate::test_mctp_spdm_attestation::test::run_compatibility_attestation(&mut hw, kind)?;
+            attestation::run_compatibility_attestation(&mut hw, kind)?;
         }
         _ => bail!("BLOCKED: {scenario} has no supported adapter for the agreed selected-image configuration"),
     }
@@ -1785,18 +1804,17 @@ fn run_case(scenario: &str) -> Result<()> {
                     std::env::var_os("MCU_COMPAT_EVIDENCE_DIR")
                         .context("Missing suite evidence directory")?,
                 );
-                fs::write(output.join("spdm-source-requirements.json"), serde_json::to_vec_pretty(
-                    &crate::test_mctp_spdm_responder_conformance::test::compatibility_spdm_source_checks()
-                )?)?;
+                fs::write(
+                    output.join("spdm-source-requirements.json"),
+                    serde_json::to_vec_pretty(&spdm::compatibility_spdm_source_checks())?,
+                )?;
             }
             if scenario.starts_with("suite_attestation_") {
                 let output = PathBuf::from(
                     std::env::var_os("MCU_COMPAT_EVIDENCE_DIR")
                         .context("Missing suite evidence directory")?,
                 );
-                crate::test_mctp_spdm_attestation::test::write_compatibility_attestation_support(
-                    &output,
-                )?;
+                attestation::write_compatibility_attestation_support(&output)?;
             }
             if let Some(reason) = suite_disposition(&pair, scenario)? {
                 return Ok(Some(reason.into()));
