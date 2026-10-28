@@ -99,7 +99,6 @@ fn challenge_v14_ecdsa_emits_96_byte_signature() {
 
     let ops = pal.sign_ops.borrow();
     assert_eq!(ops.len(), 1);
-    assert_eq!(ops[0].algo, SpdmPalAsymAlgo::EccP384);
     assert_eq!(ops[0].sig_len, ECC_P384_SIGNATURE_SIZE);
     assert!(matches!(
         ops[0].input,
@@ -127,7 +126,10 @@ fn challenge_v14_mldsa87_emits_4627_byte_signature() {
 
     let ops = pal.sign_ops.borrow();
     assert_eq!(ops.len(), 1);
-    assert_eq!(ops[0].algo, SpdmPalAsymAlgo::MlDsa87);
+    assert!(matches!(
+        ops[0].input,
+        RecordedSigningInput::Mldsa87Message { .. }
+    ));
     assert_eq!(ops[0].sig_len, MLDSA87_SIGNATURE_SIZE);
 }
 

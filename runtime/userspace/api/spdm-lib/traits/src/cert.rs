@@ -36,59 +36,6 @@ impl SpdmPalAsymAlgo {
     }
 }
 
-impl From<SpdmPalAsymAlgo> for mcu_caliptra_api::DpeProfile {
-    fn from(algo: SpdmPalAsymAlgo) -> Self {
-        match algo {
-            SpdmPalAsymAlgo::EccP384 => mcu_caliptra_api::DpeProfile::P384Sha384,
-            SpdmPalAsymAlgo::MlDsa87 => mcu_caliptra_api::DpeProfile::Mldsa87,
-        }
-    }
-}
-
-impl From<mcu_caliptra_api::DpeProfile> for SpdmPalAsymAlgo {
-    fn from(profile: mcu_caliptra_api::DpeProfile) -> Self {
-        match profile {
-            mcu_caliptra_api::DpeProfile::P384Sha384 => SpdmPalAsymAlgo::EccP384,
-            mcu_caliptra_api::DpeProfile::Mldsa87 => SpdmPalAsymAlgo::MlDsa87,
-        }
-    }
-}
-
-/// Endorsement certificate chain provider for a single slot.
-///
-/// Integrators implement this for each endorsement type:
-/// - `ReadOnlyEndorsement` — static root CA certs (slot 0)
-/// - `MutableEndorsement` — flash-backed certs (slots 1-2, SET_CERTIFICATE)
-///
-/// The PAL uses this to compose the full SPDM cert chain:
-/// `endorsement (this) + DPE device chain + leaf (CertifyKey)`
-#[allow(async_fn_in_trait)]
-pub trait EndorsementCertChain {
-    /// Hash of the root certificate under the given algorithm.
-    async fn root_cert_hash(&self, algo: SpdmPalAsymAlgo, out: &mut [u8]) -> McuResult<()>;
-
-    /// Total byte length of the endorsement cert chain for the
-    /// given algorithm.
-    async fn size(&mut self, algo: SpdmPalAsymAlgo) -> McuResult<usize>;
-
-    /// Read endorsement chain bytes at `offset` into `buf`.
-    /// Returns bytes written.
-    async fn read(
-        &mut self,
-        algo: SpdmPalAsymAlgo,
-        offset: usize,
-        buf: &mut [u8],
-    ) -> McuResult<usize>;
-
-    /// Write endorsement cert chain data for the given algorithm.
-    /// `ReadOnlyEndorsement` rejects this; `MutableEndorsement`
-    /// persists to flash.
-    async fn write(&mut self, algo: SpdmPalAsymAlgo, data: &[u8]) -> McuResult<()>;
-
-    /// Erase the endorsement cert chain for the given algorithm.
-    async fn erase(&mut self, algo: SpdmPalAsymAlgo) -> McuResult<()>;
-}
-
 /// Slot-indexed cert-store backend.
 #[allow(async_fn_in_trait)]
 pub trait SpdmPalCertStore: crate::SpdmPalIoTransport {
@@ -172,13 +119,10 @@ pub trait SpdmPalCertStore: crate::SpdmPalIoTransport {
     ) -> McuResult<usize>;
 
     /// Sign the caller-prepared input using the key in `slot`.
-    ///
-    /// `algo` must identify the same DPE profile as `signing_input`.
     async fn sign(
         &self,
         io: &Self::Io<'_>,
         slot: u8,
-        algo: SpdmPalAsymAlgo,
         signing_input: SigningInput<'_>,
         signature: &mut [u8],
     ) -> McuResult<usize>;
@@ -304,7 +248,4 @@ pub trait SpdmPalCertStore: crate::SpdmPalIoTransport {
         _digest: &[u8],
     ) {
     }
-
-    /// Fill `out` with random bytes from the platform RNG.
-    async fn generate_nonce(&self, io: &Self::Io<'_>, out: &mut [u8]) -> McuResult<()>;
 }

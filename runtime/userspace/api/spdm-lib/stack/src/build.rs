@@ -241,7 +241,7 @@ pub(crate) async fn sign_transcript<Pal: SpdmPal>(
         },
     };
     let sig_len = pal
-        .sign(io, slot_id, asym_algo, signing_input, sig_slot)
+        .sign(io, slot_id, signing_input, sig_slot)
         .await
         .map_err(|_| SPDM_UNSPECIFIED)?;
     if sig_len != expected_sig_len {

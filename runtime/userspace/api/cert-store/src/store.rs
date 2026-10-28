@@ -1,23 +1,26 @@
 // Licensed under the Apache-2.0 license
 
-//! Shared cert store — a single static instance referenced by all PAL
-//! instances (MCTP, DOE, …).
+//! Shared certificate store — a single static [`SharedCertStore`] instance
+//! referenced by per-task [`TaskCertStore`] views across all transports
+//! (SPDM over MCTP/DOE, MCU mailbox, …).
 //!
-//! Interior mutability is safe because embassy tasks are cooperative
-//! on a single-core MCU — only one task runs at a time.
+//! Tasks run cooperatively on a single-core Embassy executor and only yield at
+//! `.await` points. `SharedCertStore` is `Sync` because borrows of `cert_slots`
+//! are strictly synchronous and dropped before `.await`, while state that spans
+//! `.await` points (write lock, generation counter, and region reader counts)
+//! is tracked with atomics.
 
 #[cfg(feature = "set-certificate")]
-use crate::{
-    endorsement::{
-        managed_endorsement_der_capacity, ManagedEndorsementSlot, SingleManagedEndorsement,
-        CERT_MODEL_ALIAS_CERT, MANAGED_REGION_COUNT,
-    },
-    DeviceKey,
+use crate::endorsement::{
+    managed_endorsement_der_capacity, ManagedEndorsementChain, ManagedEndorsementSlot,
+    CERT_MODEL_ALIAS_CERT, MANAGED_REGION_COUNT,
 };
 use crate::{
-    endorsement::{CertSlot, ReadOnlyEndorsementSlot, SlotEndorsement, NUM_CERT_SLOTS},
-    errors as cert_errors, CertificateAlgorithm, CertificateProvisioningPolicy, EndorsementRole,
-    DPE_LEAF_LABEL,
+    endorsement::{
+        CertSlot, ReadOnlyEndorsementSlot, SlotEndorsement, NUM_ASYM_ALGOS, NUM_CERT_SLOTS,
+    },
+    errors as cert_errors, CertificateAlgorithm, CertificateProvisioningPolicy, DeviceKey,
+    EndorsementRole, DPE_LEAF_LABEL,
 };
 use core::cell::UnsafeCell;
 use core::ops::Range;
@@ -31,7 +34,6 @@ use mcu_error::{
     McuResult,
 };
 
-const DPE_IDEVID_AND_LDEVID_CERT_COUNT: usize = 2;
 const CERT_DIGEST_CHUNK_SIZE: usize = 1024;
 
 async fn compute_root_hash<A: ScratchAlloc>(alloc: &A, root_cert: &[u8]) -> McuResult<[u8; 48]> {
@@ -43,17 +45,18 @@ async fn compute_root_hash<A: ScratchAlloc>(alloc: &A, root_cert: &[u8]) -> McuR
     Ok(hash)
 }
 
-/// Static shared cert store.
+/// Static shared certificate store.
 ///
-/// Holds per-slot endorsement data common to all transports. Created once at
-/// program start and referenced by every `McuSpdmPal` instance via
-/// `&'static SharedCertStore`.
+/// Holds per-slot endorsement state and provisioning policy common to all
+/// transports. Created once at startup and referenced by each transport task's
+/// [`TaskCertStore`] via `&'static SharedCertStore`.
 pub struct SharedCertStore {
     cert_slots: UnsafeCell<[CertSlot; NUM_CERT_SLOTS]>,
     policy: CertificateProvisioningPolicy,
 }
 
-// SAFETY: single-core cooperative scheduling — no concurrent access.
+// SAFETY: Tasks run on a single-core cooperative Embassy executor and never
+// hold borrows into `cert_slots` across `.await` points.
 unsafe impl Sync for SharedCertStore {}
 
 impl Default for SharedCertStore {
@@ -72,11 +75,11 @@ impl SharedCertStore {
             cert_slots: UnsafeCell::new([
                 CertSlot::empty(Some(0)),
                 CertSlot::empty(match policy.owner_anchor_point {
-                    Some(key) => Some(key.key_pair_id()),
+                    Some(key) => Some(key as u8),
                     None => None,
                 }),
                 CertSlot::empty(match policy.tenant_anchor_point {
-                    Some(key) => Some(key.key_pair_id()),
+                    Some(key) => Some(key as u8),
                     None => None,
                 }),
             ]),
@@ -84,119 +87,43 @@ impl SharedCertStore {
         }
     }
 
-    pub const fn policy(&self) -> CertificateProvisioningPolicy {
-        self.policy
-    }
-
-    #[cfg(feature = "set-certificate")]
-    pub(crate) fn validate_key(
-        &self,
-        role: EndorsementRole,
-        key_pair_id: u8,
-    ) -> McuResult<DeviceKey> {
-        self.policy.validate_key(role, key_pair_id)
-    }
-
-    // ---------------------------------------------------------------
-    // Cert-slot accessors
-    // ---------------------------------------------------------------
-
-    pub fn cert_slots(&self) -> &[CertSlot; NUM_CERT_SLOTS] {
-        // SAFETY: single-task invariant.
-        unsafe { &*self.cert_slots.get() }
-    }
-
-    pub fn cert_slot(&self, role: EndorsementRole) -> &CertSlot {
-        &self.cert_slots()[role.index()]
-    }
-
-    #[allow(clippy::mut_from_ref)]
-    pub(crate) fn cert_slot_mut(&self, idx: usize) -> Option<&mut CertSlot> {
-        // SAFETY: single-task invariant.
-        unsafe { (*self.cert_slots.get()).get_mut(idx) }
-    }
-
-    // ---------------------------------------------------------------
-    // Endorsement setup
-    // ---------------------------------------------------------------
-
-    /// Configure a read-only endorsement chain with both ECC and optional ML-DSA roots.
-    pub async fn set_endorsement_chains<A: ScratchAlloc>(
+    /// Configure a read-only endorsement chain with ECC and optional ML-DSA roots.
+    pub async fn init_readonly_endorsement<A: ScratchAlloc>(
         &self,
         alloc: &A,
         role: EndorsementRole,
         ecc_chain: &'static [&'static [u8]],
         mldsa_chain: Option<&'static [&'static [u8]]>,
-        key_pair_id: u8,
     ) -> McuResult<()> {
         self.policy.validate()?;
-        let idx = role.index();
-        if ecc_chain.is_empty() {
+        if !matches!(self.cert_slot(role).endorsement, SlotEndorsement::Empty) {
             return Err(mcu_error::codes::INVARIANT);
         }
-        if self.cert_slots()[idx].configured_key_pair_id() != Some(key_pair_id) {
-            return Err(cert_errors::KEY_MISMATCH);
+        self.cert_slot(role)
+            .configured_key_pair_id()
+            .ok_or(cert_errors::KEY_MISMATCH)?;
+        let &first_ecc = ecc_chain.first().ok_or(mcu_error::codes::INVARIANT)?;
+        if first_ecc.is_empty() {
+            return Err(mcu_error::codes::INVARIANT);
         }
-        let ecc_hash = compute_root_hash(alloc, ecc_chain[0]).await?;
+        let ecc_hash = compute_root_hash(alloc, first_ecc).await?;
         let mut ro = ReadOnlyEndorsementSlot::new(ecc_chain, ecc_hash);
 
         if let Some(mldsa) = mldsa_chain {
-            if !mldsa.is_empty() {
-                let mldsa_hash = compute_root_hash(alloc, mldsa[0]).await?;
-                ro = ro.with_mldsa(mldsa, mldsa_hash);
+            let &first_mldsa = mldsa.first().ok_or(mcu_error::codes::INVARIANT)?;
+            if first_mldsa.is_empty() {
+                return Err(mcu_error::codes::INVARIANT);
             }
+            let mldsa_hash = compute_root_hash(alloc, first_mldsa).await?;
+            ro = ro.with_mldsa(mldsa, mldsa_hash);
         }
 
-        let slot = self.cert_slot_mut(idx).ok_or(mcu_error::codes::INVARIANT)?;
+        let slot = self.cert_slot_mut(role);
         slot.endorsement = SlotEndorsement::ReadOnly(ro);
         slot.bump_generation_counter(CertificateAlgorithm::EccP384);
-        slot.bump_generation_counter(CertificateAlgorithm::MlDsa87);
-        Ok(())
-    }
-
-    /// Configure a DPE-only slot with no static endorsement certs.
-    ///
-    /// The certificate chain contains only the DPE device chain
-    /// (LDevID → FMC → RT) plus a CertifyKey leaf — no Root CA or IDevID
-    /// in the endorsement segment.
-    ///
-    /// The `*_first_dpe_cert` bytes (typically the LDevID cert) are used
-    /// **only** to compute the RootHash for each algorithm's
-    /// CertificateChain header; they are not stored in the endorsement
-    /// segment. Pass `mldsa_first_dpe_cert = None` on platforms that do not
-    /// serve an ML-DSA-87 chain for this slot.
-    pub async fn set_dpe_only_slot<A: ScratchAlloc>(
-        &self,
-        alloc: &A,
-        role: EndorsementRole,
-        ecc_first_dpe_cert: &[u8],
-        mldsa_first_dpe_cert: Option<&[u8]>,
-        key_pair_id: u8,
-    ) -> McuResult<()> {
-        self.policy.validate()?;
-        let idx = role.index();
-        if ecc_first_dpe_cert.is_empty() {
-            return Err(mcu_error::codes::INVARIANT);
+        if mldsa_chain.is_some() {
+            slot.bump_generation_counter(CertificateAlgorithm::MlDsa87);
         }
-        if self.cert_slots()[idx].configured_key_pair_id() != Some(key_pair_id) {
-            return Err(cert_errors::KEY_MISMATCH);
-        }
-        static EMPTY_CHAIN: &[&[u8]] = &[];
-
-        let ecc_hash = compute_root_hash(alloc, ecc_first_dpe_cert).await?;
-        let mut ro = ReadOnlyEndorsementSlot::new(EMPTY_CHAIN, ecc_hash);
-
-        if let Some(cert) = mldsa_first_dpe_cert {
-            if !cert.is_empty() {
-                let mldsa_hash = compute_root_hash(alloc, cert).await?;
-                ro = ro.with_mldsa(EMPTY_CHAIN, mldsa_hash);
-            }
-        }
-
-        let slot = self.cert_slot_mut(idx).ok_or(mcu_error::codes::INVARIANT)?;
-        slot.endorsement = SlotEndorsement::ReadOnly(ro);
-        slot.bump_generation_counter(CertificateAlgorithm::EccP384);
-        slot.bump_generation_counter(CertificateAlgorithm::MlDsa87);
         Ok(())
     }
 
@@ -208,7 +135,7 @@ impl SharedCertStore {
     /// already wired to any slot (including another algorithm in the same
     /// slot), since an update erases a whole region.
     #[cfg(feature = "set-certificate")]
-    pub async fn set_managed_endorsement(
+    pub async fn init_managed_endorsement(
         &self,
         role: EndorsementRole,
         algo: CertificateAlgorithm,
@@ -218,38 +145,37 @@ impl SharedCertStore {
     ) -> McuResult<()> {
         self.policy.validate()?;
         if capacity == 0
-            || capacity % MANAGED_REGION_COUNT != 0
+            || !capacity.is_multiple_of(MANAGED_REGION_COUNT)
             || managed_endorsement_der_capacity(capacity) == 0
         {
             return Err(mcu_error::codes::INVARIANT);
         }
         self.policy.validate_role(role)?;
-        let idx = role.index();
 
         // Updating a chain erases its whole region, so regions must be
         // strictly disjoint — any intersection means installing one
-        // chain destroys another. Checking all slots (including `idx`
+        // chain destroys another. Checking all slots (including `role`
         // itself) catches both intra-slot and cross-slot collisions.
         let range = base..base
             .checked_add(capacity)
             .ok_or(mcu_error::codes::INVARIANT)?;
-        for slot in self.cert_slots() {
-            if let SlotEndorsement::Managed(existing) = &slot.endorsement {
+        for existing_role in EndorsementRole::ALL {
+            if let SlotEndorsement::Managed(existing) = &self.cert_slot(existing_role).endorsement {
                 if existing.any_region_overlaps(driver_num, &range) {
                     return Err(mcu_error::codes::INVARIANT);
                 }
             }
         }
 
-        match (&self.cert_slots()[idx].endorsement, algo) {
+        match (&self.cert_slot(role).endorsement, algo) {
             (SlotEndorsement::Empty, CertificateAlgorithm::EccP384) => {}
             (SlotEndorsement::Managed(m), CertificateAlgorithm::MlDsa87)
                 if m.get_endorsement(CertificateAlgorithm::MlDsa87).is_none() => {}
             _ => return Err(mcu_error::codes::INVARIANT),
         }
 
-        let mut region = SingleManagedEndorsement::new(
-            role.record_tag(),
+        let mut region = ManagedEndorsementChain::new(
+            role,
             algo,
             driver_num,
             base,
@@ -257,7 +183,7 @@ impl SharedCertStore {
             self.policy.anchor_point(role),
         );
         region.load().await?;
-        let slot = self.cert_slot_mut(idx).ok_or(mcu_error::codes::INVARIANT)?;
+        let slot = self.cert_slot_mut(role);
         match &mut slot.endorsement {
             SlotEndorsement::Empty => {
                 slot.endorsement = SlotEndorsement::Managed(ManagedEndorsementSlot::new(region));
@@ -270,28 +196,45 @@ impl SharedCertStore {
         slot.bump_generation_counter(algo);
         Ok(())
     }
+
+    pub(crate) fn cert_slot(&self, role: EndorsementRole) -> &CertSlot {
+        // SAFETY: synchronous borrow not held across `.await`.
+        unsafe { &(*self.cert_slots.get())[role as usize] }
+    }
+
+    #[cfg(feature = "set-certificate")]
+    pub(crate) fn validate_key(
+        &self,
+        role: EndorsementRole,
+        key_pair_id: u8,
+    ) -> McuResult<DeviceKey> {
+        self.policy.validate_key(role, key_pair_id)
+    }
+
+    #[allow(clippy::mut_from_ref)]
+    pub(crate) fn cert_slot_mut(&self, role: EndorsementRole) -> &mut CertSlot {
+        // SAFETY: synchronous borrow not held across `.await`.
+        unsafe { &mut (*self.cert_slots.get())[role as usize] }
+    }
 }
 
 #[derive(Copy, Clone, Default)]
-struct AlgoCache {
+struct CertChainCache {
     generation_counter: u32,
     chain_len: Option<u32>,
     leaf_len: Option<u32>,
     chain_digest: Option<[u8; 48]>,
-    dpe_skip_len: Option<u32>,
+    device_chain_offset: Option<u32>,
 }
 
-#[derive(Copy, Clone, Default)]
-struct SlotCache {
-    ecc: AlgoCache,
-    mldsa: AlgoCache,
-}
-
-impl SlotCache {
-    fn algo_cache_mut(&mut self, algo: CertificateAlgorithm) -> &mut AlgoCache {
-        match algo {
-            CertificateAlgorithm::EccP384 => &mut self.ecc,
-            CertificateAlgorithm::MlDsa87 => &mut self.mldsa,
+impl CertChainCache {
+    const fn empty() -> Self {
+        Self {
+            generation_counter: 0,
+            chain_len: None,
+            leaf_len: None,
+            chain_digest: None,
+            device_chain_offset: None,
         }
     }
 }
@@ -338,42 +281,15 @@ impl Drop for RegionReadGuard<'_> {
 /// task-local caches (lengths, digests, etc.) to ensure complete task isolation.
 pub struct TaskCertStore {
     shared: &'static SharedCertStore,
-    caches: UnsafeCell<[SlotCache; NUM_CERT_SLOTS]>,
+    caches: UnsafeCell<[[CertChainCache; NUM_ASYM_ALGOS]; NUM_CERT_SLOTS]>,
 }
 
 impl TaskCertStore {
     pub const fn new(shared: &'static SharedCertStore) -> Self {
         Self {
             shared,
-            caches: UnsafeCell::new(
-                [SlotCache {
-                    ecc: AlgoCache {
-                        generation_counter: 0,
-                        chain_len: None,
-                        leaf_len: None,
-                        chain_digest: None,
-                        dpe_skip_len: None,
-                    },
-                    mldsa: AlgoCache {
-                        generation_counter: 0,
-                        chain_len: None,
-                        leaf_len: None,
-                        chain_digest: None,
-                        dpe_skip_len: None,
-                    },
-                }; NUM_CERT_SLOTS],
-            ),
+            caches: UnsafeCell::new([[CertChainCache::empty(); NUM_ASYM_ALGOS]; NUM_CERT_SLOTS]),
         }
-    }
-
-    #[inline]
-    pub fn shared(&self) -> &'static SharedCertStore {
-        self.shared
-    }
-
-    #[inline]
-    pub fn cert_slots(&self) -> &[CertSlot; NUM_CERT_SLOTS] {
-        self.shared.cert_slots()
     }
 
     #[inline]
@@ -381,106 +297,12 @@ impl TaskCertStore {
         self.shared.cert_slot(role)
     }
 
-    #[inline]
-    #[allow(dead_code)]
-    pub(crate) fn cert_slot_mut(&self, idx: usize) -> Option<&mut CertSlot> {
-        self.shared.cert_slot_mut(idx)
-    }
-
-    fn valid_algo_cache(
-        &self,
-        role: EndorsementRole,
-        algo: CertificateAlgorithm,
-    ) -> Option<AlgoCache> {
-        let slot = self.cert_slot(role);
-        let gen = slot.generation_counter(algo);
-        let cache = unsafe { (*self.caches.get())[role.index()].algo_cache_mut(algo) };
-        if cache.generation_counter != gen {
-            *cache = AlgoCache {
-                generation_counter: gen,
-                ..AlgoCache::default()
-            };
-            return None;
-        }
-        Some(*cache)
-    }
-
-    fn update_algo_cache(
-        &self,
-        role: EndorsementRole,
-        algo: CertificateAlgorithm,
-        update: impl FnOnce(&mut AlgoCache),
-    ) {
-        let slot = self.cert_slot(role);
-        let gen = slot.generation_counter(algo);
-        let cache = unsafe { (*self.caches.get())[role.index()].algo_cache_mut(algo) };
-        if cache.generation_counter != gen {
-            *cache = AlgoCache {
-                generation_counter: gen,
-                ..AlgoCache::default()
-            };
-        }
-        update(cache);
-    }
-
-    pub fn cached_chain_len(
-        &self,
-        role: EndorsementRole,
-        algo: CertificateAlgorithm,
-    ) -> Option<u32> {
-        self.valid_algo_cache(role, algo)?.chain_len
-    }
-
-    pub fn set_cached_chain_len(
-        &self,
-        role: EndorsementRole,
-        algo: CertificateAlgorithm,
-        len: u32,
-    ) {
-        self.update_algo_cache(role, algo, |cache| {
-            cache.chain_len = Some(len);
-        });
-    }
-
-    pub fn cached_leaf_len(
-        &self,
-        role: EndorsementRole,
-        algo: CertificateAlgorithm,
-    ) -> Option<u32> {
-        self.valid_algo_cache(role, algo)?.leaf_len
-    }
-
-    pub fn set_cached_leaf_len(&self, role: EndorsementRole, algo: CertificateAlgorithm, len: u32) {
-        self.update_algo_cache(role, algo, |cache| {
-            cache.leaf_len = Some(len);
-        });
-    }
-
-    pub fn cached_dpe_skip_len(
-        &self,
-        role: EndorsementRole,
-        algo: CertificateAlgorithm,
-    ) -> Option<u32> {
-        self.valid_algo_cache(role, algo)?.dpe_skip_len
-    }
-
-    pub fn set_cached_dpe_skip_len(
-        &self,
-        role: EndorsementRole,
-        algo: CertificateAlgorithm,
-        len: u32,
-    ) {
-        self.update_algo_cache(role, algo, |cache| {
-            cache.dpe_skip_len = Some(len);
-        });
-    }
-
     pub fn cached_chain_digest(
         &self,
         role: EndorsementRole,
         algo: CertificateAlgorithm,
     ) -> Option<[u8; 48]> {
-        self.valid_algo_cache(role, algo)?.chain_digest
+        self.valid_chain_cache(role, algo)?.chain_digest
     }
 
     pub fn cache_chain_digest(
@@ -496,62 +318,14 @@ impl TaskCertStore {
         for (d, s) in entry.iter_mut().zip(digest) {
             *d = *s;
         }
-        self.update_algo_cache(role, algo, |cache| {
+        self.update_chain_cache(role, algo, |cache| {
             cache.chain_digest = Some(entry);
         });
-    }
-
-    pub fn invalidate_algo_cache(&self, role: EndorsementRole, algo: CertificateAlgorithm) {
-        let gen = self.cert_slot(role).generation_counter(algo);
-        unsafe {
-            *(*self.caches.get())[role.index()].algo_cache_mut(algo) = AlgoCache {
-                generation_counter: gen,
-                ..AlgoCache::default()
-            };
-        }
-    }
-
-    pub fn invalidate_cert_caches(&self, role: EndorsementRole) {
-        self.invalidate_algo_cache(role, CertificateAlgorithm::EccP384);
-        self.invalidate_algo_cache(role, CertificateAlgorithm::MlDsa87);
-    }
-
-    fn ensure_generation_counter(
-        &self,
-        role: EndorsementRole,
-        algo: CertificateAlgorithm,
-        expected_gen: u32,
-    ) -> McuResult<()> {
-        let slot = self.cert_slot(role);
-        if slot.generation_counter(algo) != expected_gen {
-            self.invalidate_algo_cache(role, algo);
-            return Err(INVARIANT);
-        }
-        Ok(())
     }
 
     // ---------------------------------------------------------------
     // Complete-chain assembly & digest
     // ---------------------------------------------------------------
-
-    pub fn endorsement_capacity(
-        &self,
-        role: EndorsementRole,
-        algo: CertificateAlgorithm,
-    ) -> McuResult<usize> {
-        let cert_slot = self.cert_slot(role);
-        cert_slot.endorsement.capacity(algo).map_err(|_| INVARIANT)
-    }
-
-    pub fn root_cert_hash(
-        &self,
-        role: EndorsementRole,
-        algo: CertificateAlgorithm,
-        out: &mut [u8],
-    ) -> McuResult<()> {
-        let cert_slot = self.cert_slot(role);
-        cert_slot.endorsement.root_cert_hash(algo, out)
-    }
 
     pub async fn cert_chain_len<A: ScratchAlloc>(
         &self,
@@ -563,29 +337,33 @@ impl TaskCertStore {
             return Ok(n as usize);
         }
 
-        let (gen, is_writable, slot_chain_len) = {
+        let (gen, skip_certs, slot_chain_len) = {
             let slot = self.cert_slot(role);
             let gen = slot.generation_counter(algo);
-            let is_writable = slot.is_writable();
             let len = slot.endorsement.size(algo).map_err(|_| INVARIANT)?;
-            (gen, is_writable, len)
+            let skip_certs = slot
+                .key_pair_id(algo)
+                .and_then(|id| DeviceKey::try_from(id).ok())
+                .map_or(0, |k| k.device_cert_skip_count());
+            (gen, skip_certs, len)
         };
         self.invalidate_algo_cache(role, algo);
 
-        let dpe_skip = if is_writable {
-            DPE_IDEVID_AND_LDEVID_CERT_COUNT
-        } else {
-            0
-        };
         let profile = algo.dpe_profile();
-        let (dpe_len, dpe_skip_len) =
-            dpe_chain_len_and_skip_prefix(alloc, profile, dpe_skip).await?;
+        let (device_chain_len, device_chain_offset) =
+            device_chain_len_and_offset(alloc, profile, skip_certs).await?;
         let leaf_len = probe_leaf_len(alloc, profile).await?;
-        let total = ChainLayout::new(slot_chain_len, dpe_len, dpe_skip_len, leaf_len)?.total_len();
+        let total = ChainLayout::new(
+            slot_chain_len,
+            device_chain_len,
+            device_chain_offset,
+            leaf_len,
+        )?
+        .total_len();
 
         self.ensure_generation_counter(role, algo, gen)?;
         self.set_cached_leaf_len(role, algo, leaf_len as u32);
-        self.set_cached_dpe_skip_len(role, algo, dpe_skip_len as u32);
+        self.set_cached_device_chain_offset(role, algo, device_chain_offset as u32);
         self.set_cached_chain_len(role, algo, total as u32);
         Ok(total)
     }
@@ -609,12 +387,15 @@ impl TaskCertStore {
             return Ok(0);
         }
 
-        let (gen, is_writable, endorsement_len) = {
+        let (gen, skip_certs, endorsement_len) = {
             let slot = self.cert_slot(role);
             let gen = slot.generation_counter(algo);
-            let is_writable = slot.is_writable();
             let len = slot.endorsement.size(algo).map_err(|_| INVARIANT)?;
-            (gen, is_writable, len)
+            let skip_certs = slot
+                .key_pair_id(algo)
+                .and_then(|id| DeviceKey::try_from(id).ok())
+                .map_or(0, |k| k.device_cert_skip_count());
+            (gen, skip_certs, len)
         };
         let want = (total - offset).min(dst.len());
         let profile = algo.dpe_profile();
@@ -627,25 +408,21 @@ impl TaskCertStore {
                 n
             }
         };
-        let dpe_skip_len = if is_writable {
-            match self.cached_dpe_skip_len(role, algo) {
+        let device_chain_offset = if skip_certs > 0 {
+            match self.cached_device_chain_offset(role, algo) {
                 Some(n) => n as usize,
                 None => {
-                    let (_, skip) = dpe_chain_len_and_skip_prefix(
-                        alloc,
-                        profile,
-                        DPE_IDEVID_AND_LDEVID_CERT_COUNT,
-                    )
-                    .await?;
+                    let (_, skip) = device_chain_len_and_offset(alloc, profile, skip_certs).await?;
                     self.ensure_generation_counter(role, algo, gen)?;
-                    self.set_cached_dpe_skip_len(role, algo, skip as u32);
+                    self.set_cached_device_chain_offset(role, algo, skip as u32);
                     skip
                 }
             }
         } else {
             0
         };
-        let layout = ChainLayout::from_total(endorsement_len, total, dpe_skip_len, leaf_len)?;
+        let layout =
+            ChainLayout::from_total(endorsement_len, total, device_chain_offset, leaf_len)?;
         if total != layout.total_len() {
             return Err(INVARIANT);
         }
@@ -686,23 +463,27 @@ impl TaskCertStore {
             cur_offset = offset + written;
         }
 
-        // 2. DPE-chain region
-        while cur_offset < layout.dpe.end && written < want {
-            let dpe_off = layout
-                .dpe_source_offset
-                .checked_add(cur_offset.checked_sub(layout.dpe.start).ok_or(INVARIANT)?)
+        // 2. Device cert-chain region (fetched from Caliptra Core via DPE GetCertificateChain)
+        while cur_offset < layout.device_chain.end && written < want {
+            let dev_off = layout
+                .device_chain_offset
+                .checked_add(
+                    cur_offset
+                        .checked_sub(layout.device_chain.start)
+                        .ok_or(INVARIANT)?,
+                )
                 .ok_or(INVARIANT)?;
-            let dpe_take = (layout.dpe.end - cur_offset)
+            let dev_take = (layout.device_chain.end - cur_offset)
                 .min(want - written)
                 .min(DPE_MAX_CHUNK_SIZE);
             let got = dpe_get_cert_chain_chunk(
                 alloc,
                 profile,
-                dpe_off as u32,
-                checked_slice_mut(dst, written, dpe_take)?,
+                dev_off as u32,
+                checked_slice_mut(dst, written, dev_take)?,
             )
             .await?;
-            if got != dpe_take {
+            if got != dev_take {
                 return Err(INTERNAL_BUG);
             }
             self.ensure_generation_counter(role, algo, gen)?;
@@ -808,29 +589,28 @@ impl TaskCertStore {
         root_hash: &[u8; 48],
         data: &[u8],
     ) -> McuResult<()> {
-        let idx = role.index();
         let key = self.shared.validate_key(role, key_pair_id)?;
         if cert_info != CERT_MODEL_ALIAS_CERT {
             return Err(cert_errors::INVALID_ENDORSEMENT);
         }
-        if self.cert_slots()[idx].write_in_progress(algo) {
+        if self.cert_slot(role).write_in_progress(algo) {
             return Err(cert_errors::STORAGE_BUSY);
         }
-        let chain = managed_endorsement(self, idx, algo)?;
+        let chain = managed_endorsement(self, role, algo)?;
         let target_region = chain.inactive_region();
-        if self.cert_slots()[idx].region_has_readers(algo, target_region) {
+        if self.cert_slot(role).region_has_readers(algo, target_region) {
             return Err(cert_errors::STORAGE_BUSY);
         }
-        self.cert_slots()[idx].set_write_in_progress(algo, true);
+        self.cert_slot(role).set_write_in_progress(algo, true);
         let result: McuResult<()> = async {
             let chain = chain
-                .write_updated(key.key_pair_id(), cert_info, root_hash, data)
+                .write_updated(key as u8, cert_info, root_hash, data)
                 .await?;
-            commit_managed_endorsement(self, idx, chain)?;
+            commit_managed_endorsement(self, role, chain)?;
             Ok(())
         }
         .await;
-        self.cert_slots()[idx].set_write_in_progress(algo, false);
+        self.cert_slot(role).set_write_in_progress(algo, false);
         result?;
         self.invalidate_algo_cache(role, algo);
         Ok(())
@@ -845,30 +625,29 @@ impl TaskCertStore {
         cert_info: u8,
         data_len: usize,
     ) -> McuResult<()> {
-        let idx = role.index();
         let key = self.shared.validate_key(role, key_pair_id)?;
         if cert_info != CERT_MODEL_ALIAS_CERT {
             return Err(cert_errors::INVALID_ENDORSEMENT);
         }
-        if self.cert_slots()[idx].write_in_progress(algo) {
+        if self.cert_slot(role).write_in_progress(algo) {
             return Err(cert_errors::STORAGE_BUSY);
         }
-        let chain = managed_endorsement(self, idx, algo)?;
+        let chain = managed_endorsement(self, role, algo)?;
         let target_region = chain.inactive_region();
-        if self.cert_slots()[idx].region_has_readers(algo, target_region) {
+        if self.cert_slot(role).region_has_readers(algo, target_region) {
             return Err(cert_errors::STORAGE_BUSY);
         }
-        self.cert_slots()[idx].set_write_in_progress(algo, true);
+        self.cert_slot(role).set_write_in_progress(algo, true);
         let result: McuResult<()> = async {
             let chain = chain
-                .begin_stream_update(key.key_pair_id(), cert_info, data_len)
+                .begin_stream_update(key as u8, cert_info, data_len)
                 .await?;
-            stage_managed_endorsement(self, idx, chain)?;
+            stage_managed_endorsement(self, role, chain)?;
             Ok(())
         }
         .await;
         if result.is_err() {
-            self.cert_slots()[idx].set_write_in_progress(algo, false);
+            self.cert_slot(role).set_write_in_progress(algo, false);
         }
         result
     }
@@ -881,11 +660,10 @@ impl TaskCertStore {
         offset: usize,
         data: &[u8],
     ) -> McuResult<()> {
-        let idx = role.index();
-        if !self.cert_slots()[idx].write_in_progress(algo) {
+        if !self.cert_slot(role).write_in_progress(algo) {
             return Err(cert_errors::INVALID_ENDORSEMENT);
         }
-        managed_endorsement(self, idx, algo)?
+        managed_endorsement(self, role, algo)?
             .write_stream_chunk(offset, data)
             .await
     }
@@ -902,8 +680,7 @@ impl TaskCertStore {
         root_hash: &[u8; 48],
         data_len: usize,
     ) -> McuResult<()> {
-        let idx = role.index();
-        if !self.cert_slots()[idx].write_in_progress(algo) {
+        if !self.cert_slot(role).write_in_progress(algo) {
             return Err(cert_errors::INVALID_ENDORSEMENT);
         }
         let result: McuResult<()> = async {
@@ -911,12 +688,12 @@ impl TaskCertStore {
             if cert_info != CERT_MODEL_ALIAS_CERT {
                 return Err(cert_errors::INVALID_ENDORSEMENT);
             }
-            let chain = managed_endorsement(self, idx, algo)?;
+            let chain = managed_endorsement(self, role, algo)?;
             validate_streamed_root_hash(alloc, &chain, root_hash, data_len).await?;
             let chain = chain
-                .finish_stream_update(key.key_pair_id(), cert_info, root_hash, data_len)
+                .finish_stream_update(key as u8, cert_info, root_hash, data_len)
                 .await?;
-            commit_managed_endorsement(self, idx, chain)?;
+            commit_managed_endorsement(self, role, chain)?;
             Ok(())
         }
         .await;
@@ -924,7 +701,7 @@ impl TaskCertStore {
             self.abort_write_endorsement_stream(role, algo).await?;
             return Err(err);
         }
-        self.cert_slots()[idx].set_write_in_progress(algo, false);
+        self.cert_slot(role).set_write_in_progress(algo, false);
         self.invalidate_algo_cache(role, algo);
         Ok(())
     }
@@ -935,13 +712,12 @@ impl TaskCertStore {
         role: EndorsementRole,
         algo: CertificateAlgorithm,
     ) -> McuResult<()> {
-        let idx = role.index();
-        if self.cert_slots()[idx].write_in_progress(algo) {
-            let mut chain = managed_endorsement(self, idx, algo)?;
+        if self.cert_slot(role).write_in_progress(algo) {
+            let mut chain = managed_endorsement(self, role, algo)?;
             chain.abort_stream_update()?;
-            stage_managed_endorsement(self, idx, chain)?;
+            stage_managed_endorsement(self, role, chain)?;
         }
-        self.cert_slots()[idx].set_write_in_progress(algo, false);
+        self.cert_slot(role).set_write_in_progress(algo, false);
         Ok(())
     }
 
@@ -951,42 +727,151 @@ impl TaskCertStore {
         role: EndorsementRole,
         algo: CertificateAlgorithm,
     ) -> McuResult<()> {
-        let idx = role.index();
-        self.shared.policy().validate_role(role)?;
-        if self.cert_slots()[idx].write_in_progress(algo)
-            || self.cert_slots()[idx].any_region_has_readers(algo)
+        self.shared.policy.validate_role(role)?;
+        if self.cert_slot(role).write_in_progress(algo)
+            || self.cert_slot(role).any_region_has_readers(algo)
         {
             return Err(cert_errors::STORAGE_BUSY);
         }
-        let chain = managed_endorsement(self, idx, algo)?;
+        let chain = managed_endorsement(self, role, algo)?;
         chain.validate_erase()?;
-        self.cert_slots()[idx].set_write_in_progress(algo, true);
+        self.cert_slot(role).set_write_in_progress(algo, true);
         let mut unpublished = chain;
         unpublished.discard();
-        commit_managed_endorsement(self, idx, unpublished)?;
+        commit_managed_endorsement(self, role, unpublished)?;
         self.invalidate_algo_cache(role, algo);
         let result = match chain.erase_updated().await {
-            Ok(erased) => stage_managed_endorsement(self, idx, erased),
+            Ok(erased) => stage_managed_endorsement(self, role, erased),
             Err(err) => {
                 let mut recovered = chain;
                 // Keep the slot unpublished and locked if recovery also fails.
                 recovered.recover().await?;
-                commit_managed_endorsement(self, idx, recovered)?;
+                commit_managed_endorsement(self, role, recovered)?;
                 Err(err)
             }
         };
-        self.cert_slots()[idx].set_write_in_progress(algo, false);
+        self.cert_slot(role).set_write_in_progress(algo, false);
         result
+    }
+
+    #[inline]
+    #[allow(dead_code)]
+    pub(crate) fn cert_slot_mut(&self, role: EndorsementRole) -> &mut CertSlot {
+        self.shared.cert_slot_mut(role)
+    }
+
+    fn cached_chain_len(&self, role: EndorsementRole, algo: CertificateAlgorithm) -> Option<u32> {
+        self.valid_chain_cache(role, algo)?.chain_len
+    }
+
+    fn set_cached_chain_len(&self, role: EndorsementRole, algo: CertificateAlgorithm, len: u32) {
+        self.update_chain_cache(role, algo, |cache| {
+            cache.chain_len = Some(len);
+        });
+    }
+
+    fn cached_leaf_len(&self, role: EndorsementRole, algo: CertificateAlgorithm) -> Option<u32> {
+        self.valid_chain_cache(role, algo)?.leaf_len
+    }
+
+    fn set_cached_leaf_len(&self, role: EndorsementRole, algo: CertificateAlgorithm, len: u32) {
+        self.update_chain_cache(role, algo, |cache| {
+            cache.leaf_len = Some(len);
+        });
+    }
+
+    fn cached_device_chain_offset(
+        &self,
+        role: EndorsementRole,
+        algo: CertificateAlgorithm,
+    ) -> Option<u32> {
+        self.valid_chain_cache(role, algo)?.device_chain_offset
+    }
+
+    fn set_cached_device_chain_offset(
+        &self,
+        role: EndorsementRole,
+        algo: CertificateAlgorithm,
+        offset: u32,
+    ) {
+        self.update_chain_cache(role, algo, |cache| {
+            cache.device_chain_offset = Some(offset);
+        });
+    }
+
+    fn invalidate_algo_cache(&self, role: EndorsementRole, algo: CertificateAlgorithm) {
+        let gen = self.cert_slot(role).generation_counter(algo);
+        *self.chain_cache_mut(role, algo) = CertChainCache {
+            generation_counter: gen,
+            ..CertChainCache::default()
+        };
+    }
+
+    #[allow(clippy::mut_from_ref)]
+    fn chain_cache_mut(
+        &self,
+        role: EndorsementRole,
+        algo: CertificateAlgorithm,
+    ) -> &mut CertChainCache {
+        unsafe { &mut (*self.caches.get())[role as usize][(algo as usize) - 1] }
+    }
+
+    fn valid_chain_cache(
+        &self,
+        role: EndorsementRole,
+        algo: CertificateAlgorithm,
+    ) -> Option<CertChainCache> {
+        let gen = self.cert_slot(role).generation_counter(algo);
+        let cache = self.chain_cache_mut(role, algo);
+        if cache.generation_counter != gen {
+            *cache = CertChainCache {
+                generation_counter: gen,
+                ..CertChainCache::default()
+            };
+            return None;
+        }
+        Some(*cache)
+    }
+
+    fn update_chain_cache(
+        &self,
+        role: EndorsementRole,
+        algo: CertificateAlgorithm,
+        update: impl FnOnce(&mut CertChainCache),
+    ) {
+        let gen = self.cert_slot(role).generation_counter(algo);
+        let cache = self.chain_cache_mut(role, algo);
+        if cache.generation_counter != gen {
+            *cache = CertChainCache {
+                generation_counter: gen,
+                ..CertChainCache::default()
+            };
+        }
+        update(cache);
+    }
+
+    fn ensure_generation_counter(
+        &self,
+        role: EndorsementRole,
+        algo: CertificateAlgorithm,
+        expected_gen: u32,
+    ) -> McuResult<()> {
+        let slot = self.cert_slot(role);
+        if slot.generation_counter(algo) != expected_gen {
+            self.invalidate_algo_cache(role, algo);
+            return Err(INVARIANT);
+        }
+        Ok(())
     }
 }
 
 #[cfg(feature = "set-certificate")]
 fn managed_endorsement(
     store: &TaskCertStore,
-    idx: usize,
+    role: EndorsementRole,
     algo: CertificateAlgorithm,
-) -> McuResult<SingleManagedEndorsement> {
-    match &store.cert_slots()[idx].endorsement {
+) -> McuResult<ManagedEndorsementChain> {
+    match &store.cert_slot(role).endorsement {
         SlotEndorsement::Managed(m) => m.get_endorsement(algo).copied().ok_or(INVARIANT),
         SlotEndorsement::ReadOnly(_) => Err(mcu_error::codes::NOT_IMPLEMENTED),
         SlotEndorsement::Empty => Err(INVARIANT),
@@ -996,10 +881,10 @@ fn managed_endorsement(
 #[cfg(feature = "set-certificate")]
 fn stage_managed_endorsement(
     store: &TaskCertStore,
-    idx: usize,
-    chain: SingleManagedEndorsement,
+    role: EndorsementRole,
+    chain: ManagedEndorsementChain,
 ) -> McuResult<()> {
-    let cert_slot = store.cert_slot_mut(idx).ok_or(INVARIANT)?;
+    let cert_slot = store.cert_slot_mut(role);
     match &mut cert_slot.endorsement {
         SlotEndorsement::Managed(m) => {
             m.set_endorsement(chain);
@@ -1012,11 +897,11 @@ fn stage_managed_endorsement(
 #[cfg(feature = "set-certificate")]
 fn commit_managed_endorsement(
     store: &TaskCertStore,
-    idx: usize,
-    chain: SingleManagedEndorsement,
+    role: EndorsementRole,
+    chain: ManagedEndorsementChain,
 ) -> McuResult<()> {
     let algo = chain.algo();
-    let cert_slot = store.cert_slot_mut(idx).ok_or(INVARIANT)?;
+    let cert_slot = store.cert_slot_mut(role);
     match &mut cert_slot.endorsement {
         SlotEndorsement::Managed(m) => {
             m.set_endorsement(chain);
@@ -1034,7 +919,7 @@ impl DpeChainSink for CountSink {
     }
 }
 
-pub(crate) struct DpePrefixScanner {
+pub(crate) struct DeviceChainPrefixScanner {
     pub(crate) certs_left: usize,
     cert_bytes_left: usize,
     pub(crate) skip_len: usize,
@@ -1042,7 +927,7 @@ pub(crate) struct DpePrefixScanner {
     header_len: usize,
 }
 
-impl DpePrefixScanner {
+impl DeviceChainPrefixScanner {
     pub(crate) fn new(certs: usize) -> Self {
         Self {
             certs_left: certs,
@@ -1087,7 +972,7 @@ impl DpePrefixScanner {
     }
 }
 
-impl DpeChainSink for DpePrefixScanner {
+impl DpeChainSink for DeviceChainPrefixScanner {
     async fn on_chunk(&mut self, chunk: &[u8]) -> McuResult<()> {
         self.consume(chunk)
     }
@@ -1095,35 +980,37 @@ impl DpeChainSink for DpePrefixScanner {
 
 struct ChainLayout {
     endorsement: Range<usize>,
-    dpe: Range<usize>,
+    device_chain: Range<usize>,
     leaf: Range<usize>,
-    dpe_source_offset: usize,
+    device_chain_offset: usize,
 }
 
 impl ChainLayout {
     fn new(
         endorsement_len: usize,
-        full_dpe_len: usize,
-        dpe_source_offset: usize,
+        full_device_chain_len: usize,
+        device_chain_offset: usize,
         leaf_len: usize,
     ) -> McuResult<Self> {
-        let dpe_len = full_dpe_len
-            .checked_sub(dpe_source_offset)
+        let device_chain_len = full_device_chain_len
+            .checked_sub(device_chain_offset)
             .ok_or(INVARIANT)?;
-        let dpe_end = endorsement_len.checked_add(dpe_len).ok_or(INVARIANT)?;
-        let leaf_end = dpe_end.checked_add(leaf_len).ok_or(INVARIANT)?;
+        let device_chain_end = endorsement_len
+            .checked_add(device_chain_len)
+            .ok_or(INVARIANT)?;
+        let leaf_end = device_chain_end.checked_add(leaf_len).ok_or(INVARIANT)?;
         Ok(Self {
             endorsement: 0..endorsement_len,
-            dpe: endorsement_len..dpe_end,
-            leaf: dpe_end..leaf_end,
-            dpe_source_offset,
+            device_chain: endorsement_len..device_chain_end,
+            leaf: device_chain_end..leaf_end,
+            device_chain_offset,
         })
     }
 
     fn from_total(
         endorsement_len: usize,
         total: usize,
-        dpe_source_offset: usize,
+        device_chain_offset: usize,
         leaf_len: usize,
     ) -> McuResult<Self> {
         let leaf_start = total.checked_sub(leaf_len).ok_or(INVARIANT)?;
@@ -1132,9 +1019,9 @@ impl ChainLayout {
         }
         Ok(Self {
             endorsement: 0..endorsement_len,
-            dpe: endorsement_len..leaf_start,
+            device_chain: endorsement_len..leaf_start,
             leaf: leaf_start..total,
-            dpe_source_offset,
+            device_chain_offset,
         })
     }
 
@@ -1169,7 +1056,7 @@ async fn validate_root_hash<A: ScratchAlloc>(
 #[cfg(feature = "set-certificate")]
 async fn validate_streamed_root_hash<A: ScratchAlloc>(
     alloc: &A,
-    managed: &SingleManagedEndorsement,
+    managed: &ManagedEndorsementChain,
     root_hash: &[u8; 48],
     data_len: usize,
 ) -> McuResult<()> {
@@ -1199,7 +1086,7 @@ async fn validate_streamed_root_hash<A: ScratchAlloc>(
 
 #[cfg(feature = "set-certificate")]
 async fn streamed_first_der_len(
-    managed: &SingleManagedEndorsement,
+    managed: &ManagedEndorsementChain,
     data_len: usize,
 ) -> McuResult<usize> {
     let mut header = [0u8; 6];
@@ -1259,7 +1146,7 @@ fn checked_slice_mut(src: &mut [u8], offset: usize, len: usize) -> McuResult<&mu
     src.get_mut(offset..end).ok_or(INVARIANT)
 }
 
-async fn dpe_chain_len_and_skip_prefix<A: ScratchAlloc>(
+async fn device_chain_len_and_offset<A: ScratchAlloc>(
     alloc: &A,
     profile: DpeProfile,
     skip_certs: usize,
@@ -1271,7 +1158,7 @@ async fn dpe_chain_len_and_skip_prefix<A: ScratchAlloc>(
         ));
     }
 
-    let mut sink = DpePrefixScanner::new(skip_certs);
+    let mut sink = DeviceChainPrefixScanner::new(skip_certs);
     let total = walk_dpe_chain(alloc, profile, &mut sink).await? as usize;
     if sink.certs_left != 0 || sink.skip_len > total {
         return Err(INVARIANT);
@@ -1312,20 +1199,26 @@ pub(crate) fn der_first_seq_len(buf: &[u8]) -> Option<usize> {
 mod tests {
     use super::*;
 
-    #[test]
-    fn dpe_only_endorsement_has_zero_size() {
-        let hash = [0xAB_u8; 48];
-        let endorsement = SlotEndorsement::ReadOnly(ReadOnlyEndorsementSlot::new(&[], hash));
+    static TEST_CERT: &[u8] = &[0x30, 0x03, 0x02, 0x01, 0x01];
+    static TEST_CHAIN: &[&[u8]] = &[TEST_CERT];
 
-        assert_eq!(endorsement.size(CertificateAlgorithm::EccP384).unwrap(), 0);
+    #[test]
+    fn readonly_endorsement_size_matches_chain() {
+        let hash = [0xAB_u8; 48];
+        let endorsement = SlotEndorsement::ReadOnly(ReadOnlyEndorsementSlot::new(TEST_CHAIN, hash));
+
+        assert_eq!(
+            endorsement.size(CertificateAlgorithm::EccP384).unwrap(),
+            TEST_CERT.len()
+        );
     }
 
     #[test]
-    fn dpe_only_endorsement_returns_correct_root_hash() {
+    fn readonly_endorsement_returns_correct_root_hash() {
         let mut hash = [0u8; 48];
         hash[0] = 0xDE;
         hash[47] = 0xAD;
-        let endorsement = SlotEndorsement::ReadOnly(ReadOnlyEndorsementSlot::new(&[], hash));
+        let endorsement = SlotEndorsement::ReadOnly(ReadOnlyEndorsementSlot::new(TEST_CHAIN, hash));
 
         let mut out = [0u8; 48];
         endorsement
@@ -1335,9 +1228,9 @@ mod tests {
     }
 
     #[test]
-    fn dpe_only_endorsement_is_supported() {
+    fn readonly_endorsement_is_supported_and_provisioned() {
         let hash = [0x11_u8; 48];
-        let endorsement = SlotEndorsement::ReadOnly(ReadOnlyEndorsementSlot::new(&[], hash));
+        let endorsement = SlotEndorsement::ReadOnly(ReadOnlyEndorsementSlot::new(TEST_CHAIN, hash));
 
         assert!(endorsement.is_supported());
         assert!(endorsement.is_provisioned(CertificateAlgorithm::EccP384));
@@ -1347,30 +1240,39 @@ mod tests {
     #[test]
     fn shared_store_slot_defaults_to_empty() {
         let store = SharedCertStore::new();
-        let slot = &store.cert_slots()[0];
+        let slot = store.cert_slot(EndorsementRole::Vendor);
         assert!(!slot.endorsement.is_supported());
         assert!(slot.key_pair_id(CertificateAlgorithm::EccP384).is_none());
     }
 
     #[test]
-    fn dpe_only_without_mldsa_errors_on_mldsa_algo() {
+    fn readonly_endorsement_without_mldsa_errors_on_mldsa_algo() {
         let hash = [0x22_u8; 48];
-        let endorsement = SlotEndorsement::ReadOnly(ReadOnlyEndorsementSlot::new(&[], hash));
+        let endorsement = SlotEndorsement::ReadOnly(ReadOnlyEndorsementSlot::new(TEST_CHAIN, hash));
 
-        assert_eq!(endorsement.size(CertificateAlgorithm::EccP384).unwrap(), 0);
+        assert_eq!(
+            endorsement.size(CertificateAlgorithm::EccP384).unwrap(),
+            TEST_CERT.len()
+        );
         assert!(endorsement.size(CertificateAlgorithm::MlDsa87).is_err());
     }
 
     #[test]
-    fn dpe_only_with_mldsa_has_zero_size_for_both_algos() {
+    fn readonly_endorsement_with_mldsa_supports_both_algos() {
         let ecc_hash = [0x33_u8; 48];
         let mldsa_hash = [0x44_u8; 48];
         let endorsement = SlotEndorsement::ReadOnly(
-            ReadOnlyEndorsementSlot::new(&[], ecc_hash).with_mldsa(&[], mldsa_hash),
+            ReadOnlyEndorsementSlot::new(TEST_CHAIN, ecc_hash).with_mldsa(TEST_CHAIN, mldsa_hash),
         );
 
-        assert_eq!(endorsement.size(CertificateAlgorithm::EccP384).unwrap(), 0);
-        assert_eq!(endorsement.size(CertificateAlgorithm::MlDsa87).unwrap(), 0);
+        assert_eq!(
+            endorsement.size(CertificateAlgorithm::EccP384).unwrap(),
+            TEST_CERT.len()
+        );
+        assert_eq!(
+            endorsement.size(CertificateAlgorithm::MlDsa87).unwrap(),
+            TEST_CERT.len()
+        );
 
         let mut out = [0u8; 48];
         endorsement
@@ -1382,7 +1284,8 @@ mod tests {
     #[test]
     fn shared_cert_store_new_has_empty_slots_and_no_metadata() {
         let store = SharedCertStore::new();
-        for slot in store.cert_slots() {
+        for role in EndorsementRole::ALL {
+            let slot = store.cert_slot(role);
             assert!(!slot.is_supported());
             assert!(!slot.is_writable());
             assert_eq!(slot.key_pair_id(CertificateAlgorithm::EccP384), None);
@@ -1406,7 +1309,7 @@ mod tests {
             Some(1024)
         );
 
-        store.invalidate_cert_caches(EndorsementRole::Vendor);
+        store.invalidate_algo_cache(EndorsementRole::Vendor, CertificateAlgorithm::EccP384);
         assert_eq!(
             store.cached_chain_len(EndorsementRole::Vendor, CertificateAlgorithm::EccP384),
             None
@@ -1477,10 +1380,9 @@ mod tests {
     fn active_region_remains_readable_while_write_in_progress() {
         static SHARED: SharedCertStore = SharedCertStore::new();
         let store = TaskCertStore::new(&SHARED);
-        let slot = store
-            .cert_slot_mut(EndorsementRole::Vendor.index())
-            .unwrap();
-        slot.endorsement = SlotEndorsement::ReadOnly(ReadOnlyEndorsementSlot::new(&[], [0x55; 48]));
+        let slot = store.cert_slot_mut(EndorsementRole::Vendor);
+        slot.endorsement =
+            SlotEndorsement::ReadOnly(ReadOnlyEndorsementSlot::new(TEST_CHAIN, [0x55; 48]));
         slot.bump_generation_counter(CertificateAlgorithm::EccP384);
 
         store
@@ -1489,11 +1391,8 @@ mod tests {
 
         let mut hash = [0u8; 48];
         store
-            .root_cert_hash(
-                EndorsementRole::Vendor,
-                CertificateAlgorithm::EccP384,
-                &mut hash,
-            )
+            .cert_slot(EndorsementRole::Vendor)
+            .root_cert_hash(CertificateAlgorithm::EccP384, &mut hash)
             .unwrap();
         assert_eq!(hash, [0x55; 48]);
 
@@ -1641,7 +1540,7 @@ mod tests {
             flash: &FaultyFlash,
         ) -> TaskCertStore {
             flash.flash.set_flash_content(vec![0xFF; TEST_REGION]);
-            fake::wait_for_future_ready(Box::pin(shared.set_managed_endorsement(
+            fake::wait_for_future_ready(Box::pin(shared.init_managed_endorsement(
                 EndorsementRole::Owner,
                 CertificateAlgorithm::EccP384,
                 TEST_DRIVER,
@@ -1665,8 +1564,8 @@ mod tests {
         }
 
         fn recovered_data() -> [u8; 16] {
-            let mut recovered = SingleManagedEndorsement::new(
-                EndorsementRole::Owner.record_tag(),
+            let mut recovered = ManagedEndorsementChain::new(
+                EndorsementRole::Owner,
                 CertificateAlgorithm::EccP384,
                 TEST_DRIVER,
                 0,
@@ -1823,8 +1722,8 @@ mod tests {
     }
 
     #[test]
-    fn dpe_prefix_scanner_handles_split_headers_and_bodies() {
-        let mut scanner = DpePrefixScanner::new(2);
+    fn device_chain_prefix_scanner_handles_split_headers_and_bodies() {
+        let mut scanner = DeviceChainPrefixScanner::new(2);
         scanner.consume(&[0x30]).unwrap();
         scanner.consume(&[0x03, 1]).unwrap();
         scanner.consume(&[2, 3, 0x30, 0x02, 4, 5, 9]).unwrap();

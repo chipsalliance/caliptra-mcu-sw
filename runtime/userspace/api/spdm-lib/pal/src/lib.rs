@@ -41,7 +41,9 @@ pub mod measurements;
 mod pal;
 mod session_crypto;
 
-pub use measurements::MeasurementProvider;
+#[cfg(feature = "pcr-quote")]
+pub use measurements::PcrQuoteMeasurementProvider;
+pub use measurements::{MeasurementProvider, OcpEatMeasurementProvider};
 pub use pal::*;
 
 pub use caliptra_mcu_spdm_codec as codec;
