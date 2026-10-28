@@ -1,11 +1,10 @@
 // Licensed under the Apache-2.0 license
 
-use super::ModelEmulated;
-use crate::{InitParams, McuHwModel};
 use caliptra_emu_bus::Bus;
 use caliptra_emu_periph::dma::axi_root_bus::AxiRootBus;
 use caliptra_emu_types::RvSize;
 use caliptra_mcu_emulator_periph::LpcipUsbHostController;
+use caliptra_mcu_hw_model::{InitParams, McuHwModel, ModelEmulated};
 
 fn model() -> ModelEmulated {
     // Minimal MCU firmware configures the shared SETUP mirror and connection.
@@ -28,15 +27,16 @@ fn model() -> ModelEmulated {
     let mut model = ModelEmulated::new_unbooted(InitParams {
         mcu_rom: &rom,
         usb_recovery: true,
+        check_booted_to_runtime: false,
         ..Default::default()
     })
     .unwrap();
-    model.cpu_enabled.set(true);
+    model.boot().unwrap();
     for _ in 0..100 {
         model.step();
     }
     assert!(
-        model.bmc.is_none(),
+        !model.has_bmc_for_test(),
         "USB recovery must not auto-load BMC images"
     );
     assert!(model.lpcip_usb_host_controller.connected());
@@ -54,13 +54,13 @@ fn put(host: &LpcipUsbHostController, command: u8, data: &[u8]) {
 fn progress(model: &mut ModelEmulated) {
     // Deliver via the registered MCU/core CPU event channels, not a local mock.
     for _ in 0..1000 {
-        model.cpu.bus.poll();
+        model.mcu_bus_for_test().poll();
         model.step();
     }
 }
 
 fn start_dma_read(model: &mut ModelEmulated, address: u64, bytes: u32) {
-    let dma = &mut model.caliptra_cpu.bus.dma;
+    let dma = model.caliptra_dma_for_test();
     for (offset, value) in [
         (8, 2), // FLUSH
         (0x14, address as u32),
@@ -73,12 +73,17 @@ fn start_dma_read(model: &mut ModelEmulated, address: u64, bytes: u32) {
 }
 
 fn dma_busy(model: &mut ModelEmulated) -> bool {
-    model.caliptra_cpu.bus.dma.read(RvSize::Word, 0x0c).unwrap() & 1 != 0
+    model
+        .caliptra_dma_for_test()
+        .read(RvSize::Word, 0x0c)
+        .unwrap()
+        & 1
+        != 0
 }
 
 fn finish_dma_read(model: &mut ModelEmulated, words: usize) -> Vec<u32> {
     progress(model);
-    let dma = &mut model.caliptra_cpu.bus.dma;
+    let dma = model.caliptra_dma_for_test();
     let status = dma.read(RvSize::Word, 0x0c).unwrap();
     assert_eq!(
         status & 3,
@@ -97,7 +102,7 @@ fn test_lpcip_recovery_caliptra_axi_streams_beyond_fifo_depth() {
     put(&host, 0x2d, &[0, 1, 151, 0, 0, 0]);
     let mut expected: Vec<u8> = (0..601).map(|index| (index % 251) as u8).collect();
     let address = AxiRootBus::RECOVERY_REGISTER_INTERFACE_OFFSET + 0x68;
-    assert!(model.caliptra_cpu.bus.dma.axi.must_schedule(address));
+    assert!(model.caliptra_dma_for_test().axi.must_schedule(address));
     start_dma_read(&mut model, address, 604);
     progress(&mut model);
     assert!(dma_busy(&mut model));
@@ -118,7 +123,13 @@ fn test_lpcip_recovery_caliptra_axi_streams_beyond_fifo_depth() {
     assert_eq!(received, expected);
     assert_eq!(host.recovery_snapshot().unwrap().accepted_words, 151);
     assert_eq!(host.recovery_snapshot().unwrap().fifo_words, 0);
-    assert_eq!(model.cpu.bus.read(RvSize::Word, 0x2000_0a04).unwrap(), 5);
+    assert_eq!(
+        model
+            .mcu_bus_for_test()
+            .read(RvSize::Word, 0x2000_0a04)
+            .unwrap(),
+        5
+    );
     put(&host, 0x26, &[0, 1, 0x0f]);
     assert!(host.recovery_snapshot().unwrap().image_activated);
     start_dma_read(
@@ -140,9 +151,7 @@ fn test_lpcip_recovery_caliptra_register_events_use_the_usb_aperture() {
     );
     // Caliptra firmware status is returned to the USB Recovery Agent verbatim.
     model
-        .caliptra_cpu
-        .bus
-        .dma
+        .caliptra_dma_for_test()
         .axi
         .write(RvSize::Word, address + 0x40, 0x21)
         .unwrap();
@@ -152,7 +161,13 @@ fn test_lpcip_recovery_caliptra_register_events_use_the_usb_aperture() {
         .unwrap();
     assert_eq!(host.host_in(0, 0).unwrap(), [0x21, 0]);
     host.host_out(0, 0, &[]).unwrap();
-    assert_eq!(model.cpu.bus.read(RvSize::Word, 0x2000_0840).unwrap(), 0x21);
+    assert_eq!(
+        model
+            .mcu_bus_for_test()
+            .read(RvSize::Word, 0x2000_0840)
+            .unwrap(),
+        0x21
+    );
 }
 
 #[test]
