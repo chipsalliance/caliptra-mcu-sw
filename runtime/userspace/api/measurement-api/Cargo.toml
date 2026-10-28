@@ -18,6 +18,8 @@ sha3 = { workspace = true }
 caliptra-ocp-eat = { workspace = true }
 
 [dev-dependencies]
+caliptra-mcu-attestation-evidence = { workspace = true }
+caliptra-mcu-libtock_unittest = { workspace = true }
 caliptra-ocp-eat = { workspace = true }
 corim-rs = { git = "https://github.com/chipsalliance/caliptra-corim-rs.git", branch = "caliptra-main" }
 coset = "0.4.1"
