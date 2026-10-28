@@ -5,6 +5,8 @@ pub mod doe;
 pub mod mctp;
 mod transport;
 
+pub use transport::Transport;
+
 pub enum SpdmTestType {
     SpdmResponderConformance,
     SpdmTeeIoValidator,

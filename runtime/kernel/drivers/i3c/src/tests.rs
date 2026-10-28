@@ -6,7 +6,9 @@
 
 use super::*;
 use crate::hil::I3CTarget;
+use caliptra_mcu_registers_generated::i3c::bits::QueueStatus;
 use kernel::hil::time::{Frequency, Ticks, Ticks32};
+use std::mem::{align_of, offset_of, size_of};
 use std::sync::{Mutex, MutexGuard};
 use tock_registers::registers::ReadWrite;
 
@@ -88,11 +90,19 @@ struct Registers(usize);
 impl Registers {
     fn new() -> Self {
         // Leaked, aligned storage lives as long as the driver's StaticRef.
-        Self(Box::leak(Box::new([0u32; 0x1000 / 4])).as_ptr() as usize)
+        Self(
+            Box::leak(Box::new(
+                [0u32; size_of::<I3c>().div_ceil(size_of::<u32>())],
+            ))
+            .as_ptr() as usize,
+        )
     }
 
     fn port(&self, offset: usize) -> &ReadWrite<u32> {
-        assert!(offset < 0x1000 && offset.is_multiple_of(4));
+        assert!(
+            offset + size_of::<u32>() <= size_of::<I3c>()
+                && offset.is_multiple_of(align_of::<u32>())
+        );
         // Safety: only test RAM, not real MMIO, is accessed. The aligned backing
         // allocation is permanent. Tock register wrappers provide interior
         // mutability, including simulated hardware writes to ReadOnly ports.
@@ -127,6 +137,7 @@ impl TxClient for TxRecorder {
 
 struct RxRecorder {
     driver: &'static Driver,
+    registers: Registers,
     requested: Cell<usize>,
     calls: Cell<usize>,
     len: Cell<usize>,
@@ -146,7 +157,10 @@ impl RxClient for RxRecorder {
         self.calls.set(self.calls.get() + 1);
         self.len.set(len);
         self.received.replace(buffer);
-        // A real FIFO pop deasserts RxDescStat. Test RAM has no read side effects.
+        // Test RAM has no descriptor-pop side effects.
+        self.registers
+            .port(offset_of!(I3c, tti_queue_status))
+            .set(QueueStatus::RxDescQueueEmpty::SET.value);
         self.driver.registers.tti_interrupt_status.set(0);
     }
 }
@@ -165,6 +179,9 @@ impl Harness {
         let guard = TEST_LOCK.lock().unwrap();
         assert!(!DeferredCall::has_tasks());
         let registers = Registers::new();
+        registers
+            .port(offset_of!(I3c, tti_queue_status))
+            .set(QueueStatus::RxDescQueueEmpty::SET.value);
         let alarm = Box::leak(Box::new(TestAlarm::new()));
         let mux = Box::leak(Box::new(MuxAlarm::new(alarm)));
         alarm.set_alarm_client(mux);
@@ -179,6 +196,7 @@ impl Harness {
         }));
         let rx = Box::leak(Box::new(RxRecorder {
             driver,
+            registers,
             requested: Cell::new(0),
             calls: Cell::new(0),
             len: Cell::new(0),
@@ -199,7 +217,7 @@ impl Harness {
 
     fn ibi_done(&self, status: u32) {
         self.registers
-            .port(0x208)
+            .port(offset_of!(I3c, tti_status))
             .set(Status::LastIbiStatus.val(status).value);
         self.driver
             .registers
@@ -211,9 +229,14 @@ impl Harness {
 
     fn receive(&self, len: usize, error: u32) {
         self.registers
-            .port(0x270)
+            .port(offset_of!(I3c, tti_queue_status))
+            .set(0);
+        self.registers
+            .port(offset_of!(I3c, tti_rx_desc_queue_port))
             .set((RxDesc::DataLength.val(len as u32) + RxDesc::Error.val(error)).value);
-        self.registers.port(0x274).set(0x44332211);
+        self.registers
+            .port(offset_of!(I3c, tti_rx_data_port))
+            .set(0x44332211);
     }
 
     fn private_read_done(&self) {
@@ -254,9 +277,11 @@ fn tx_bounds_and_word_padding() {
         (257, 257, false),
         (4, 5, false),
     ] {
-        h.registers.port(0x278).set(0);
-        h.registers.port(0x27c).set(0);
-        h.registers.port(0x280).set(0);
+        h.registers
+            .port(offset_of!(I3c, tti_tx_desc_queue_port))
+            .set(0);
+        h.registers.port(offset_of!(I3c, tti_tx_data_port)).set(0);
+        h.registers.port(offset_of!(I3c, tti_tti_ibi_port)).set(0);
         let buf = buffer(capacity);
         let ptr = buf.as_ptr();
         for (i, byte) in buf.iter_mut().enumerate() {
@@ -265,14 +290,22 @@ fn tx_bounds_and_word_padding() {
         let result = h.driver.transmit_read(buf, len);
         if valid {
             assert!(result.is_ok());
-            assert_eq!(h.registers.port(0x278).get(), len as u32);
+            assert_eq!(
+                h.registers
+                    .port(offset_of!(I3c, tti_tx_desc_queue_port))
+                    .get(),
+                len as u32
+            );
             let start = (len - 1) / 4 * 4;
             let expected = (start..len)
                 .enumerate()
                 .fold(0, |word, (i, byte)| word | ((byte as u8 as u32) << (8 * i)));
-            assert_eq!(h.registers.port(0x27c).get(), expected);
             assert_eq!(
-                h.registers.port(0x280).get(),
+                h.registers.port(offset_of!(I3c, tti_tx_data_port)).get(),
+                expected
+            );
+            assert_eq!(
+                h.registers.port(offset_of!(I3c, tti_tti_ibi_port)).get(),
                 (len as u16).swap_bytes() as u32
             );
             h.complete_tx();
@@ -281,9 +314,14 @@ fn tx_bounds_and_word_padding() {
             let (error, returned) = result.unwrap_err();
             assert_eq!(error, ErrorCode::SIZE);
             assert_eq!(returned.as_ptr(), ptr);
-            assert_eq!(h.registers.port(0x278).get(), 0);
-            assert_eq!(h.registers.port(0x27c).get(), 0);
-            assert_eq!(h.registers.port(0x280).get(), 0);
+            assert_eq!(
+                h.registers
+                    .port(offset_of!(I3c, tti_tx_desc_queue_port))
+                    .get(),
+                0
+            );
+            assert_eq!(h.registers.port(offset_of!(I3c, tti_tx_data_port)).get(), 0);
+            assert_eq!(h.registers.port(offset_of!(I3c, tti_tti_ibi_port)).get(), 0);
             assert!(h.driver.tx_buffer.is_none());
             assert!(h.driver.pending_ibi.is_none());
         }
@@ -372,9 +410,12 @@ fn failed_ibi_resends_without_completing_or_releasing_buffer() {
     let ptr = buf.as_ptr();
     h.driver.transmit_read(buf, 5).unwrap();
     for status in 1..=4 {
-        h.registers.port(0x280).set(0);
+        h.registers.port(offset_of!(I3c, tti_tti_ibi_port)).set(0);
         h.ibi_done(status);
-        assert_eq!(h.registers.port(0x280).get(), 5u16.swap_bytes() as u32);
+        assert_eq!(
+            h.registers.port(offset_of!(I3c, tti_tti_ibi_port)).get(),
+            5u16.swap_bytes() as u32
+        );
         assert_eq!(h.driver.pending_ibi.get(), Some((MDB_PENDING_READ_MCTP, 5)));
         assert_eq!(h.tx.calls.get(), 0);
         assert!(!DeferredCall::has_tasks());
@@ -394,7 +435,7 @@ fn spurious_ibi_does_not_complete_twice() {
     let h = Harness::new();
     h.ibi_done(0);
     assert!(!DeferredCall::has_tasks());
-    assert_eq!(h.registers.port(0x280).get(), 0);
+    assert_eq!(h.registers.port(offset_of!(I3c, tti_tti_ibi_port)).get(), 0);
     h.driver.transmit_read(buffer(4), 4).unwrap();
     // An empty interrupt must not release a still-pending IBI.
     h.driver.handle_interrupt();
@@ -453,6 +494,55 @@ fn rx_rejects_error_and_overflow_then_accepts_next_packet() {
 }
 
 #[test]
+fn rx_queue_is_drained_without_a_latched_notification() {
+    let h = Harness::new();
+    h.driver.set_rx_buffer(buffer(4));
+    h.receive(4, 0);
+    // Reading an earlier descriptor can clear RX_DESC_STAT while another
+    // descriptor remains queued. Queue occupancy must drive further reads.
+    h.driver.registers.tti_interrupt_status.set(0);
+    h.driver.handle_interrupt();
+    assert_eq!(h.rx.calls.get(), 1);
+    assert_eq!(h.rx.len.get(), 4);
+    assert_eq!(h.rx.received.take().unwrap(), &[0x11, 0x22, 0x33, 0x44]);
+}
+
+#[test]
+fn enabling_interrupts_drains_writes_received_while_disabled() {
+    let h = Harness::new();
+    h.driver.disable();
+    h.driver.set_rx_buffer(buffer(4));
+    h.receive(4, 0);
+    // RX_DESC_STAT capture is disabled, so only queue occupancy records this write.
+    assert_eq!(h.driver.registers.tti_interrupt_status.get(), 0);
+    assert_eq!(h.rx.calls.get(), 0);
+    h.driver.enable();
+    assert!(h
+        .driver
+        .registers
+        .tti_interrupt_enable
+        .is_set(InterruptEnable::RxDescStatEn));
+    assert_eq!(h.rx.calls.get(), 1);
+    assert_eq!(h.rx.received.take().unwrap(), &[0x11, 0x22, 0x33, 0x44]);
+    assert!(!h.driver.retry_incoming_write.get());
+    assert!(!h.alarm.is_armed());
+}
+
+#[test]
+fn empty_rx_queue_does_not_request_a_buffer() {
+    let h = Harness::new();
+    h.driver
+        .registers
+        .tti_interrupt_status
+        .write(InterruptStatus::RxDescStat::SET);
+    h.driver.handle_interrupt();
+    assert_eq!(h.rx.requested.get(), 0);
+    assert_eq!(h.rx.calls.get(), 0);
+    assert!(!h.driver.retry_incoming_write.get());
+    assert!(!h.alarm.is_armed());
+}
+
+#[test]
 fn rx_waits_for_buffer_and_retries_through_alarm() {
     let h = Harness::new();
     h.receive(4, 0);
@@ -480,7 +570,11 @@ fn zero_length_rx_keeps_buffer_and_empty_tx_retries() {
     let h = Harness::new();
     h.driver.set_rx_buffer(buffer(4));
     h.receive(0, 0);
-    assert!(!h.driver.handle_incoming_write());
+    assert!(h.driver.handle_incoming_write());
+    // Model the descriptor pop: no receive callback occurs for an empty write.
+    h.registers
+        .port(offset_of!(I3c, tti_queue_status))
+        .set(QueueStatus::RxDescQueueEmpty::SET.value);
     assert!(h.driver.rx_buffer.is_some());
     assert_eq!(h.rx.calls.get(), 0);
     h.driver.handle_outgoing_read();

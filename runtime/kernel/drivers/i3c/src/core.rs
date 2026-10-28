@@ -5,7 +5,7 @@
 use crate::hil::I3CTargetInfo;
 use crate::hil::{RxClient, TxClient};
 use caliptra_mcu_registers_generated::i3c::bits::{
-    InterruptEnable, InterruptStatus, Status, StbyCrDeviceAddr,
+    InterruptEnable, InterruptStatus, QueueStatus, Status, StbyCrDeviceAddr,
 };
 use caliptra_mcu_registers_generated::i3c::regs::I3c;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
@@ -112,6 +112,11 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
                 + InterruptEnable::IbiDoneEn::SET
                 + InterruptEnable::TxDescCompleteEn::SET,
         );
+        // RX_DESC_STAT capture is gated by RX_DESC_STAT_EN (i3c-core tti.sv /
+        // interrupt.sv): a write received while disabled latches no status and
+        // raises no interrupt. Drain by queue occupancy to pick up any such
+        // packet. Enable first so later arrivals still generate interrupts.
+        self.handle_interrupt();
     }
 
     pub fn disable_interrupts(&self) {
@@ -120,7 +125,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
     }
 
     pub fn handle_interrupt(&self) {
-        let mut tti_interrupts = self.registers.tti_interrupt_status.extract();
+        let tti_interrupts = self.registers.tti_interrupt_status.extract();
         if tti_interrupts.get() != 0 {
             if tti_interrupts.read(InterruptStatus::IbiDone) != 0 {
                 // we have to read the IBI status to clear the interrupt
@@ -134,12 +139,17 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
                 self.tx_desc_complete.set(true);
                 self.try_complete_tx();
             }
-            // There is a pending Write Transaction. Software should read data from the RX Descriptor Queue and the RX Data Queue
-            while tti_interrupts.read(InterruptStatus::RxDescStat) != 0 {
-                if !self.handle_incoming_write() {
-                    break;
-                }
-                tti_interrupts = self.registers.tti_interrupt_status.extract();
+        }
+        // A descriptor read clears RX_DESC_STAT even if more writes are queued.
+        // Drain by queue occupancy so a batched MCTP message does not wait for
+        // an unrelated write to generate another notification.
+        while !self
+            .registers
+            .tti_queue_status
+            .is_set(QueueStatus::RxDescQueueEmpty)
+        {
+            if !self.handle_incoming_write() {
+                break;
             }
         }
     }
@@ -170,8 +180,8 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         let desc = LocalRegisterCopy::<u32, RxDesc::Register>::new(desc);
         let len = desc.read(RxDesc::DataLength) as usize;
         if len == 0 {
-            // we're done
-            return false;
+            // This descriptor was consumed; continue with the next queued one.
+            return true;
         }
         let rx_buffer = self.rx_buffer.take().unwrap();
         let valid = desc.read(RxDesc::Error) == 0
@@ -234,7 +244,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         // queue with later packets before this packet is consumed.
 
         // Give hardware time to finish buffering. Tock's host nop is a
-        // panicking stub; memory-backed host tests do not need this delay.
+        // panicking stub, so only execute this delay on the MCU.
         #[cfg(target_arch = "riscv32")]
         for _ in 0..WRITE_DELAY_CYCLES {
             rv32i::support::nop();
