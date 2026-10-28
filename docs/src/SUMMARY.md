@@ -45,4 +45,3 @@
     - [OCP Recovery Integration Guide](./ocp_recovery_integrator_guide.md)
 - [Testing](./testing.md)
     - [I3C Testing over TCP](./testing-i3c.md)
-    - [LPCIP Device 0 Emulation](./testing-usb-device0.md)

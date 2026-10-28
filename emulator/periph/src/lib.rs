@@ -59,8 +59,8 @@ pub use root_bus::{McuRootBus, McuRootBusArgs, McuRootBusOffsets};
 pub use uart::Uart;
 #[cfg(hw_rev = "latest")]
 pub use usb::{
-    LpcipUsbError, LpcipUsbHostController, LpcipUsbSpeed, UnsupportedUsbDev1,
-    UnsupportedUsbDev1Mem, UsbCombo, UsbDev0Mem,
+    LpcipUsbError, LpcipUsbHostController, LpcipUsbHubHostController, LpcipUsbSpeed, UsbCombo,
+    UsbDev0Mem, UsbDev1, UsbDev1Mem,
 };
 pub use usbdev::{UsbDevPeriph, UsbHostController, UsbTransactionError};
 

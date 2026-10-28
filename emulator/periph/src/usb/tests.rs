@@ -382,20 +382,28 @@ fn packet_memory_bus_bounds_alignment_and_reset_preservation() {
 }
 
 #[test]
-fn unsupported_surfaces_do_not_retain_writes() {
+fn device1_registers_and_memory_are_independent_and_disabled_at_reset() {
     use caliptra_mcu_emulator_registers_generated::{
         usb_dev1::UsbDev1Bus, usb_dev1_mem::UsbDev1MemBus,
     };
+    let combo = UsbCombo::new();
+    let host = combo.device1_host_controller();
     let mut device = UsbDev1Bus {
-        periph: Box::new(UnsupportedUsbDev1),
+        periph: Box::new(combo.device1()),
     };
     let mut memory = UsbDev1MemBus {
-        periph: Box::new(UnsupportedUsbDev1Mem),
+        periph: Box::new(combo.device1_memory()),
     };
-    device.write(RvSize::Word, 0, u32::MAX).unwrap();
+    assert!(!host.device_enabled());
+    assert!(!host.connected());
     assert_eq!(device.read(RvSize::Word, 0).unwrap(), 0);
+    device.write(RvSize::Word, 0x28, 1).unwrap();
+    assert_eq!(device.read(RvSize::Word, 0x20).unwrap(), 1);
+    assert!(!combo.host_controller().interrupt_pending());
     memory.write(RvSize::Word, 0, 0x1234).unwrap();
-    assert_eq!(memory.read(RvSize::Word, 0).unwrap(), 0);
+    assert_eq!(memory.read(RvSize::Word, 0).unwrap(), 0x1234);
+    let mut device0_memory = combo.device0_memory();
+    assert_eq!(device0_memory.read_usb_dev0_mem(0), 0);
 }
 
 #[test]
@@ -483,4 +491,18 @@ fn polling_ors_legacy_and_lpcip_interrupts_on_the_shared_pic_line() {
     device.write_dev0_csr_intsetstat(ReadWriteRegister::new(1));
     assert!(device.host_controller().fast_interrupt_pending());
     assert_eq!(pic.highest_priority_irq(0), None);
+    let mut device1 = device.device1();
+    device1.write_inten(ReadWriteRegister::new(1));
+    device1.write_intsetstat(ReadWriteRegister::new(1));
+    device.poll();
+    assert_eq!(pic.highest_priority_irq(0), Some(irq));
+    device.write_dev0_csr_intstat(ReadWriteRegister::new(1));
+    assert_eq!(pic.highest_priority_irq(0), Some(irq));
+    device1.write_introute(ReadWriteRegister::new(1));
+    device.poll();
+    assert!(device.device1_host_controller().fast_interrupt_pending());
+    assert_eq!(pic.highest_priority_irq(0), None);
+    device1.write_intstat(ReadWriteRegister::new(1));
+    device.poll();
+    assert!(!device.device1_host_controller().fast_interrupt_pending());
 }
