@@ -13,8 +13,9 @@ The [workflow](../../../../.github/workflows/rom-runtime-compatibility.yml):
    lockfiles and submodules. Each runtime has flash-only and streaming/service
    configurations; neither configuration uses test firmware.
    Before either runtime build, it writes matching embedded attestation and
-   image-descriptor inputs for vendor key 4 (TCB) and images 4096/4097
-   (non-TCB, neither an AK target), matching the fixture builder's defaults.
+   image-descriptor inputs for images 4096/4097 (non-TCB, neither an AK target).
+   SDK 2.1.0's embedded policy contains only those images; SDK 2.1.1 and
+   `main-2.1` also include vendor key 4 (TCB), matching their native builders.
    Both input files and their SHA-256 hashes are retained with the image.
 3. Builds one Nextest archive. The ignored `fixtures::prepare_inputs` test uses
    the existing builder APIs to produce fixed Core, OTP and signed manifests.

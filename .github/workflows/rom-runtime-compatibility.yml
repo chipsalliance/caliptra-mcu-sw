@@ -106,16 +106,22 @@ jobs:
             cp error/src/lib.rs output/errors.rs
             cp target/riscv32imc-unknown-none-elf/linker-scripts/caliptra-mcu-rom-emulator-*.ld output/
           else
-            # Match CaliptraBuilder's policy for the two non-TCB fixture images.
+            # SDK 2.1.0's builder includes only SoC images in the embedded policy.
             mkdir -p target/generated
             cat > target/generated/attestation_manifest.toml <<'EOF'
           vendor = "ChipsAlliance"
           model = "Caliptra-SS"
+          EOF
+            if [ "$LABEL" != rt-sdk-2.1.0 ]; then
+              cat >> target/generated/attestation_manifest.toml <<'EOF'
 
           [[components]]
           fw_id = 4
           is_tcb = true
           is_ak_target = false
+          EOF
+            fi
+            cat >> target/generated/attestation_manifest.toml <<'EOF'
 
           [[components]]
           fw_id = 4096
