@@ -89,7 +89,7 @@ fn invalid_end_session_and_reuse(header_size: usize, send_len_alignment: usize) 
     let (mut state, mut sessions, session_id) = established_session(&pal);
     let invalid_io = secured_io(
         session_id,
-        &[SpdmVersion::V12.to_u8(), ReqRespCode::END_SESSION.0, 2, 0],
+        &[SpdmVersion::V12.to_u8(), ReqRespCode::END_SESSION.0, 0],
     );
 
     let error_response = block_on(handle_secured_request(
@@ -265,5 +265,43 @@ fn invalid_finish_releases_session_for_fresh_finish_and_teardown_on_both_layouts
         } else {
             baseline = Some(transcript_inputs);
         }
+    }
+}
+
+#[test]
+fn end_session_ignores_reserved_fields_and_removes_session() {
+    for (attributes, reserved) in [(0x02, 0), (0, 1)] {
+        let pal = TestPal::default();
+        let (mut state, mut sessions, session_id) = established_session(&pal);
+        let io = secured_io(
+            session_id,
+            &[
+                SpdmVersion::V12.to_u8(),
+                ReqRespCode::END_SESSION.0,
+                attributes,
+                reserved,
+            ],
+        );
+
+        let response = block_on(handle_secured_request(
+            &mut state,
+            &mut sessions,
+            &pal,
+            &io,
+            &NoVdmBackend,
+        ))
+        .unwrap()
+        .unwrap();
+
+        assert_eq!(
+            secured_spdm_response(&response),
+            [
+                SpdmVersion::V12.to_u8(),
+                ReqRespCode::END_SESSION_ACK.0,
+                0,
+                0,
+            ]
+        );
+        assert!(sessions.find(session_id).is_none());
     }
 }

@@ -168,6 +168,46 @@ mod tests {
     }
 
     #[test]
+    fn invalid_start_packets_do_not_assemble_or_deliver_and_allow_fresh_message() {
+        let cases: [(u8, &[u8]); 3] = [(0, &[5, 1]), (1, &[]), (1, &[5, 1, 2, 3, 4])];
+
+        for (som, payload) in cases {
+            for eom in [0, 1] {
+                let (state, client) = new_state(4);
+                state.start_receive(
+                    MCTPHeader::new(0x08, 0x20, som, eom, 0, 1, 3),
+                    MessageType::Spdm,
+                    payload,
+                    0,
+                );
+
+                assert!(state.msg_terminus.map(|_| ()).is_none());
+                assert!(!state.is_next_packet(MCTPHeader::new(0x08, 0x20, 0, 1, 1, 1, 3), 1));
+                assert!(client.messages.borrow().is_empty());
+
+                state.start_receive(
+                    MCTPHeader::new(0x08, 0x20, 1, 1, 0, 1, 3),
+                    MessageType::Spdm,
+                    &[5, 0x84],
+                    42,
+                );
+
+                assert_eq!(
+                    client.messages.borrow().as_slice(),
+                    &[ReceivedMessage {
+                        source_eid: 0x20,
+                        msg_type: MessageType::Spdm as u8,
+                        msg_tag: MCTP_TAG_OWNER | 3,
+                        payload: vec![5, 0x84],
+                        recv_time: 42,
+                    }]
+                );
+                assert!(state.msg_terminus.map(|_| ()).is_none());
+            }
+        }
+    }
+
+    #[test]
     fn multi_packet_reassembly_handles_sequence_wrap() {
         let (state, client) = new_state(16);
         let first = MCTPHeader::new(0x08, 0x20, 1, 0, 3, 0, 2);
@@ -261,7 +301,7 @@ mod tests {
         receive_fragmented_message(state, &oversize);
 
         assert!(client.messages.borrow().is_empty());
-        assert!(!state.is_next_packet(MCTPHeader::new(0x08, 0x20, 0, 1, 1, 1, 3), 1));
+        assert!(!state.is_next_packet(MCTPHeader::new(0x08, 0x20, 0, 1, 0, 1, 3), 1));
 
         state.start_receive(
             MCTPHeader::new(0x08, 0x20, 1, 1, 0, 1, 4),

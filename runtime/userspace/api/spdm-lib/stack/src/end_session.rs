@@ -21,9 +21,8 @@ pub(crate) fn handle_end_session(
         return Err(crate::error::SPDM_VERSION_MISMATCH);
     }
 
-    let (req, after) =
-        EndSessionReqBody::ref_from_prefix(rest).map_err(|_| SPDM_INVALID_REQUEST)?;
-    if !after.is_empty() || !req.reserved_is_zero() {
+    let (_, after) = EndSessionReqBody::ref_from_prefix(rest).map_err(|_| SPDM_INVALID_REQUEST)?;
+    if !after.is_empty() {
         return Err(SPDM_INVALID_REQUEST);
     }
 
@@ -47,11 +46,18 @@ mod tests {
     }
 
     #[test]
-    fn valid_request_returns_exact_ack() {
-        for attributes in [0, EndSessionReqBody::CLEAR_NEGOTIATED_STATE] {
-            let response =
-                handle_end_session(SpdmVersion::V12, &request(SpdmVersion::V12, attributes, 0))
-                    .unwrap();
+    fn valid_request_ignores_reserved_fields_and_returns_exact_ack() {
+        for (attributes, reserved) in [
+            (0, 0),
+            (EndSessionReqBody::CLEAR_NEGOTIATED_STATE, 0),
+            (0x02, 0),
+            (0, 1),
+        ] {
+            let response = handle_end_session(
+                SpdmVersion::V12,
+                &request(SpdmVersion::V12, attributes, reserved),
+            )
+            .unwrap();
 
             assert_eq!(
                 response,
@@ -66,18 +72,10 @@ mod tests {
     }
 
     #[test]
-    fn rejects_version_mismatch_reserved_fields_truncation_and_trailing_data() {
+    fn rejects_version_mismatch_truncation_and_trailing_data() {
         assert_eq!(
             handle_end_session(SpdmVersion::V12, &request(SpdmVersion::V11, 0, 0)),
             Err(crate::error::SPDM_VERSION_MISMATCH)
-        );
-        assert_eq!(
-            handle_end_session(SpdmVersion::V12, &request(SpdmVersion::V12, 0, 1)),
-            Err(SPDM_INVALID_REQUEST)
-        );
-        assert_eq!(
-            handle_end_session(SpdmVersion::V12, &request(SpdmVersion::V12, 2, 0)),
-            Err(SPDM_INVALID_REQUEST)
         );
         assert_eq!(
             handle_end_session(
