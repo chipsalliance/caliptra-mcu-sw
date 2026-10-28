@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! DIGESTS response (DSP0274 §10.5 Table 25).
+//! DIGESTS response.
 //!
 //! ```text
 //!  byte 0           byte 1           byte 2..end

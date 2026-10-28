@@ -77,8 +77,7 @@ impl StandardsBodyId {
     }
 }
 
-/// `Param1` field of VENDOR_DEFINED_REQUEST / VENDOR_DEFINED_RESPONSE
-/// (DSP0274 §10.15 Table 74, §10.16 Table 75).
+/// `Param1` field of VENDOR_DEFINED_REQUEST / VENDOR_DEFINED_RESPONSE.
 /// Bits 0..=6 are reserved, and bit 7 is the `LargeReq` / `LargeResp` flag (SPDM 1.4).
 #[bitfield(u8)]
 #[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned, PartialEq, Eq)]

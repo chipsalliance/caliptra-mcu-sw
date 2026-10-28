@@ -31,7 +31,7 @@ pub enum Slot {
     L1,
 }
 
-/// SPDM-Lite transcript state.
+/// SPDM transcript state.
 ///
 /// `S` is the [`Hash::State`] of the chosen hash backend.
 ///

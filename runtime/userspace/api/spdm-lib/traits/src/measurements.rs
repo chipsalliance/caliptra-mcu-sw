@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! Measurement provider trait for SPDM-Lite.
+//! Measurement provider trait for the SPDM stack.
 //!
 //! Platform integrators implement [`SpdmPalMeasurements`] to supply
 //! measurement data (firmware digests, configuration hashes, device mode, etc.)

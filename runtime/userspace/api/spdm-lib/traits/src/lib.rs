@@ -1,8 +1,8 @@
 // Licensed under the Apache-2.0 license
 
-//! `caliptra-mcu-spdm-traits` — Core trait definitions for the SPDM-Lite stack.
+//! `caliptra-mcu-spdm-traits` — Core trait definitions for the SPDM stack.
 //!
-//! This crate provides the foundational abstractions used by the SPDM-Lite
+//! This crate provides the foundational abstractions used by the SPDM stack
 //! implementation. It is intentionally kept minimal and dependency-free
 //! (beyond `core`) so that platform-specific implementations can depend on
 //! it without pulling in the full stack.

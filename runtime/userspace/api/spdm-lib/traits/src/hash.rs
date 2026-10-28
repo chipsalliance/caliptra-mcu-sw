@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! Running-hash abstraction used by the SPDM-Lite stack.
+//! Running-hash abstraction used by the SPDM stack.
 //!
 //! Each backend defines its own [`SpdmPalHash::State`] type — the
 //! 200-byte Caliptra mailbox context, a `sha2::Sha384` instance,
@@ -26,7 +26,7 @@
 
 use super::*;
 
-/// Hash algorithms supported by SPDM-Lite backends.
+/// Hash algorithms supported by SPDM backends.
 ///
 /// Extend this enum as new algorithms (SHA-256, SHA-512, …) are
 /// wired up. Every variant must have an entry in
