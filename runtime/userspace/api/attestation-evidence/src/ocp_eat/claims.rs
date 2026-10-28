@@ -323,7 +323,7 @@ mod tests {
         // previously errored; assert the in-place path is byte-identical to the
         // known-good non-in-place encoder, i.e. canonically encoded.
         let nonce = [0x11; NONCE_LEN];
-        for concise_len in [10usize, 32, 200, 300] {
+        for concise_len in [10usize, 32, 200, 300, CONCISE_EVIDENCE_MAX_SIZE] {
             let concise_evidence: std::vec::Vec<u8> =
                 (0..concise_len).map(|i| (i % 251) as u8).collect();
 
@@ -357,5 +357,17 @@ mod tests {
             };
             assert_eq!(entries.len(), 1);
         }
+    }
+
+    #[test]
+    fn in_place_payload_rejects_evidence_above_configured_capacity() {
+        let nonce = [0x11; NONCE_LEN];
+        let mut payload = std::vec![0; EAT_PAYLOAD_MAX_SIZE];
+        let layout =
+            start_claims_payload_with_debug_status(&mut payload, &nonce, EAT_DBGSTAT_ENABLED)
+                .unwrap();
+        assert!(
+            finish_claims_payload(&mut payload, layout, CONCISE_EVIDENCE_MAX_SIZE + 1,).is_err()
+        );
     }
 }
