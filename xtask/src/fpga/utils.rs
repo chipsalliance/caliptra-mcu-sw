@@ -307,10 +307,15 @@ impl Container {
         let home = std::env::var("HOME").unwrap();
         let project_root = PROJECT_ROOT.clone();
         let project_root = project_root.display();
+        let revision =
+            caliptra_mcu_hw_revision::HardwareRevision::from_env().map_err(anyhow::Error::msg)?;
+        let fuses = revision.fuses_hjson(Path::new("/work-dir"));
 
         self.run()
             .rm()
             .env("TERM", "xterm-256color")
+            .env("CALIPTRA_HW_REV", revision.as_str())
+            .env("CALIPTRA_MCU_FUSES_HJSON", &fuses.to_string_lossy())
             .volume(&project_root.to_string(), "/work-dir")
             .workdir("/work-dir")
             .volume(&format!("{home}/.cargo/registry"), "/root/.cargo/registry")
@@ -491,6 +496,32 @@ pub fn resolve_target_host(target_host: Option<&str>) -> Option<String> {
                 default_host
             );
             None
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_build_container_uses_selected_hardware_and_local_fuses() {
+        let revision = caliptra_mcu_hw_revision::HardwareRevision::from_env().unwrap();
+        let mut container = Container {
+            cmd: Command::new("docker"),
+        };
+        container.setup_build_env().unwrap();
+        let args: Vec<_> = container.cmd.get_args().collect();
+        for expected in [
+            format!("CALIPTRA_HW_REV={revision}"),
+            format!(
+                "CALIPTRA_MCU_FUSES_HJSON={}",
+                revision.fuses_hjson(Path::new("/work-dir")).display()
+            ),
+        ] {
+            assert!(args.windows(2).any(|pair| {
+                pair[0] == std::ffi::OsStr::new("-e") && pair[1] == std::ffi::OsStr::new(&expected)
+            }));
         }
     }
 }

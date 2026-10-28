@@ -8,6 +8,9 @@ on:
 
 # ROM, FMC and runtime follow the selected core/caliptra-sw pin together.
 
+env:
+  CALIPTRA_MCU_FUSES_HJSON: ${{ github.workspace }}/hw/latest/fuses.hjson
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
@@ -33,7 +36,7 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v7
         with:
-          submodules: 'true'
+          submodules: recursive
 
       - name: Install cross compiler
         run: |
@@ -167,7 +170,7 @@ jobs:
       - name: Checkout repo
         uses: actions/checkout@v3
         with:
-          submodules: 'true'
+          submodules: recursive
 
       - name: Install required tools
         run: |
@@ -278,6 +281,7 @@ jobs:
           cd target/merged-fpga-fw && zip -r ../../all-fw.zip . && cd -
 
       - name: Download bitstream
+        if: ${{ vars.RUN_FPGA_LATEST_CI == 'true' }}
         run: |
           cargo xtask-fpga fpga download-bitstream
           mv caliptra-bitstream.pdi /tmp/caliptra-bitstream.pdi
@@ -312,6 +316,7 @@ jobs:
           mksquashfs /tmp/caliptra-test-binaries /tmp/caliptra-test-binaries.sqsh -comp zstd
 
       - name: 'Upload bitstream'
+        if: ${{ vars.RUN_FPGA_LATEST_CI == 'true' }}
         uses: actions/upload-artifact@v7
         with:
           name: caliptra-bitstream${{ inputs.artifact-suffix }}
@@ -334,7 +339,8 @@ jobs:
           retention-days: 1
 
   test_artifacts:
-    if: ${{ vars.RUN_FPGA_CI != 'false' }}
+    # Latest/2.2 has no compatible bitstream yet; retain build-only coverage.
+    if: ${{ vars.RUN_FPGA_CI != 'false' && vars.RUN_FPGA_LATEST_CI == 'true' }}
     runs-on: vck190-subsystem
     needs: build_test_binaries
     timeout-minutes: 120

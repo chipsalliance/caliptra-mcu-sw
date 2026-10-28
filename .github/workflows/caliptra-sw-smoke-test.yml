@@ -8,7 +8,8 @@ on:
 
 jobs:
   caliptra-sw-mcu-rom-smoke-test:
-    if: ${{ vars.RUN_FPGA_CI != 'false' }}
+    # The upstream workflow includes FPGA execution, not just compilation.
+    if: ${{ vars.RUN_FPGA_CI != 'false' && vars.RUN_FPGA_LATEST_CI == 'true' }}
     name: Smoke Test (Optional)
     uses: chipsalliance/caliptra-sw/.github/workflows/fpga-subsystem.yml@main
     with:

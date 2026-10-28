@@ -133,6 +133,14 @@ changes; pinning it does not by itself certify complete 2.2 hardware support.
 The switch uses the exact commit above, not a moving branch tip. CFI and DPE
 pins remain unchanged.
 
+Latest/2.2 CI builds FPGA firmware and test binaries, but skips bitstream
+downloads and FPGA execution because compatible bitstreams are not available.
+The repository variable `RUN_FPGA_LATEST_CI=true` enables those steps and the
+optional upstream FPGA smoke workflow once compatible bitstreams and that
+workflow are ready. `RUN_FPGA_CI=false` still disables the FPGA workflows,
+including their build jobs. FPGA CI and the test-build container use the local
+revision-specific fuse file instead of downloading a legacy MCU fuse path.
+
 Initialize the submodule, then explicitly switch **before** building:
 
 ```shell
