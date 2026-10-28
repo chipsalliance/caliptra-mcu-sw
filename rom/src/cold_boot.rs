@@ -1520,14 +1520,7 @@ impl BootFlow for ColdBoot {
 
         caliptra_mcu_romtime::println!("[mcu-rom] Writing fuses to Caliptra");
 
-        soc.set_axi_users(AxiUsers {
-            mbox_users: params
-                .cptra_mbox_axi_users
-                .map(|u| if u != 0 { Some(u) } else { None }),
-            fuse_user: params.cptra_fuse_axi_user,
-            trng_user: params.cptra_trng_axi_user,
-            dma_user: params.cptra_dma_axi_user,
-        });
+        soc.set_axi_users(AxiUsers::from(&params), mci);
         mci.set_flow_checkpoint(McuRomBootStatus::AxiUsersConfigured.into());
 
         // Configure iTRNG

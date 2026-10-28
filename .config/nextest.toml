@@ -139,7 +139,6 @@ not (
     test(test_firmware_update_flash_successful) |
     test(test_streaming_boot_flash_write_back) |
     test(test_firmware_update_benchmark_64k) |
-    test(test_firmware_update_flash_successful_fast) |
     test(test_firmware_update_flash_invalid_soc_image) |
     test(test_firmware_update_flash_invalid_mcu_image) |
     test(test_firmware_update_flash_invalid_manifest) |

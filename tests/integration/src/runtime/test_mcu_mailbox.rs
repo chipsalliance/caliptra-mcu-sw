@@ -666,7 +666,8 @@ fn test_get_and_clear_log_cmds() -> Result<()> {
     const TEST_NAME: &str = "runtime::test_mcu_mailbox::test_get_and_clear_log_cmds";
 
     if std::env::var_os(ISOLATED_PROCESS_ENV).is_none() {
-        let working_dir = tempfile::tempdir_in(env!("CARGO_MANIFEST_DIR"))?;
+        // Nextest archives can run in a different workspace than the build.
+        let working_dir = tempfile::tempdir_in(std::env::current_dir()?)?;
         let status = std::process::Command::new(std::env::current_exe()?)
             .args(["--exact", TEST_NAME, "--nocapture"])
             .env(ISOLATED_PROCESS_ENV, "1")
@@ -1107,15 +1108,26 @@ fn test_fips_self_test_start_complete_response() -> Result<()> {
 
 #[test]
 fn test_fips_periodic_complete_responses_and_repeated_operations() -> Result<()> {
+    const MAILBOX_READY_TIMEOUT_CYCLES: u64 = 100_000_000;
+
     let mut hw = start_runtime_hw_model(TestParams {
         feature: Some("test-mcu-mbox-fips-periodic"),
         ..Default::default()
     });
 
+    let start_cycles = hw.cycle_count();
     hw.step_until(|hw| {
         hw.mci_boot_milestones()
             .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+            || hw.cycle_count().saturating_sub(start_cycles) >= MAILBOX_READY_TIMEOUT_CYCLES
     });
+    anyhow::ensure!(
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY),
+        "Firmware mailbox did not become ready within {} cycles; milestones: {:#06x}",
+        MAILBOX_READY_TIMEOUT_CYCLES,
+        hw.mci_boot_milestones().bits(),
+    );
 
     let status_cmd = McuCommandId::MC_FIPS_PERIODIC_STATUS.0;
     assert!(

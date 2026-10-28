@@ -23,6 +23,11 @@ the mailbox transport.
 The status-query validations are disabled by default so existing mailbox
 validator runs are unchanged.
 
+The emulator integration validator enables all three status queries. Its main
+suite uses an OCP LOCK-enabled ROM and Runtime so the HEK metadata syscall is
+available. The isolated fuse suites keep their
+non-OCP boot configuration and do not enable the status queries.
+
 ## Device Ownership Transfer
 
 The Rust command API supports all ten Runtime Device Ownership Transfer (DOT)

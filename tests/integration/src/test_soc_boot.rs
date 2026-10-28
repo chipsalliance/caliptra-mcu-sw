@@ -11,7 +11,7 @@ mod test {
     use caliptra_mcu_config_emulator::flash::{
         PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
     };
-    use caliptra_mcu_flash_image::FlashHeader;
+    use caliptra_mcu_flash_image::FlashHeaderV3;
     use caliptra_mcu_pldm_fw_pkg::manifest::{
         ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
         PackageHeaderInformation, StringType,
@@ -39,6 +39,7 @@ mod test {
         i3c_port: u32,
         soc_images: Vec<ImageCfg>,
         soc_images_paths: Vec<PathBuf>,
+        owner_soc_images: Vec<ImageCfg>,
         primary_flash_image_path: Option<PathBuf>,
         secondary_flash_image_path: Option<PathBuf>,
         pldm_fw_pkg_path: Option<PathBuf>,
@@ -64,6 +65,21 @@ mod test {
             .collect();
         soc_images_paths
     }
+
+    fn create_partition_table_flash(partition_table: &PartitionTable) -> PathBuf {
+        let (_, flash_image_path) = tempfile::NamedTempFile::new()
+            .expect("Failed to create flash image file")
+            .keep()
+            .expect("Failed to keep temp file");
+        caliptra_mcu_builder::flash_image::write_partition_table(
+            partition_table,
+            0,
+            flash_image_path.to_str().unwrap(),
+        )
+        .expect("Failed to write partition table");
+        flash_image_path
+    }
+
     // Helper function to create a flash image from the provided SOC images
     fn create_flash_image(
         caliptra_fw_path: Option<PathBuf>,
@@ -80,6 +96,7 @@ mod test {
             None,
             None,
             None,
+            None,
             partition_table,
             flash_offset,
             soc_images_paths,
@@ -93,6 +110,7 @@ mod test {
         owner_auth_manifest_path: Option<PathBuf>,
         owner_measurement_policy_path: Option<PathBuf>,
         soc_images: Option<Vec<ImageCfg>>,
+        owner_soc_images: Option<Vec<ImageCfg>>,
         partition_table: Option<PartitionTable>,
         flash_offset: usize,
         soc_images_paths: Vec<PathBuf>,
@@ -109,6 +127,7 @@ mod test {
             owner_auth_manifest: owner_auth_manifest_path,
             owner_measurement_policy: owner_measurement_policy_path,
             soc_images,
+            owner_soc_images,
             soc_image_paths: Some(
                 soc_images_paths
                     .iter()
@@ -309,6 +328,7 @@ mod test {
                 owner_auth_manifest.clone(),
                 owner_measurement_policy.clone(),
                 Some(new_options.soc_images.clone()),
+                Some(new_options.owner_soc_images.clone()),
                 opts.partition_table.clone(),
                 flash_offset,
                 new_options.soc_images_paths.clone(),
@@ -325,6 +345,7 @@ mod test {
                 owner_auth_manifest,
                 owner_measurement_policy,
                 Some(new_options.soc_images.clone()),
+                Some(new_options.owner_soc_images.clone()),
                 None,
                 0,
                 new_options.soc_images_paths.clone(),
@@ -495,6 +516,7 @@ mod test {
                 Some(owner_auth_manifest),
                 owner_measurement_policy,
                 None,
+                Some(new_options.owner_soc_images.clone()),
                 None,
                 0,
                 soc_images_paths.clone(),
@@ -507,15 +529,7 @@ mod test {
 
         // Update the partition table in the primary flash
         let primary_flash_image_path = if opts.primary_flash_image_path.is_some() {
-            let (_, primary_flash_image_path) = create_flash_image(
-                None,
-                None,
-                None,
-                Some(new_partition_table),
-                IMAGE_A_PARTITION.offset,
-                vec![],
-            );
-            Some(primary_flash_image_path)
+            Some(create_partition_table_flash(&new_partition_table))
         } else {
             None
         };
@@ -561,7 +575,7 @@ mod test {
         primary_flash[..core::mem::size_of::<PartitionTable>()]
             .copy_from_slice(partition_table.as_bytes());
 
-        let corrupt_header = [0u8; core::mem::size_of::<FlashHeader>()];
+        let corrupt_header = [0u8; core::mem::size_of::<FlashHeaderV3>()];
         match active_partition {
             PartitionId::A => {
                 let header = &mut primary_flash
@@ -630,15 +644,7 @@ mod test {
         // Update the partition table in the primary flash
 
         new_options.primary_flash_image_path = if opts.primary_flash_image_path.is_some() {
-            let (_, primary_flash_image_path) = create_flash_image(
-                None,
-                None,
-                None,
-                Some(new_partition_table),
-                IMAGE_A_PARTITION.offset,
-                vec![],
-            );
-            Some(primary_flash_image_path)
+            Some(create_partition_table_flash(&new_partition_table))
         } else {
             None
         };
@@ -800,6 +806,7 @@ mod test {
             Some(owner_auth_manifest.clone()),
             owner_measurement_policy.clone(),
             Some(new_options.soc_images.clone()),
+            Some(new_options.owner_soc_images.clone()),
             opts.partition_table.clone(),
             flash_offset,
             soc_images_paths.clone(),
@@ -817,6 +824,7 @@ mod test {
                 Some(owner_auth_manifest),
                 owner_measurement_policy,
                 Some(new_options.soc_images.clone()),
+                Some(new_options.owner_soc_images.clone()),
                 None,
                 0,
                 soc_images_paths.clone(),
@@ -997,7 +1005,7 @@ mod test {
             vendor_pk_hash: Some(vendor_pk_hash),
             mcu_firmware: Some(test_runtime.clone()),
             soc_images: Some(soc_images.clone()),
-            owner_soc_images: Some(owner_soc_images),
+            owner_soc_images: Some(owner_soc_images.clone()),
             ..Default::default()
         });
 
@@ -1031,6 +1039,7 @@ mod test {
             i3c_port,
             soc_images,
             soc_images_paths,
+            owner_soc_images,
             primary_flash_image_path: primary_flash_image_path.clone(),
             secondary_flash_image_path: primary_flash_image_path,
             pldm_fw_pkg_path,
@@ -1150,7 +1159,7 @@ mod test {
             vendor_pk_hash: prebuilt_vendor_pk_hash,
             mcu_firmware: Some(test_runtime.clone()),
             soc_images: Some(soc_images.clone()),
-            owner_soc_images: Some(owner_soc_images),
+            owner_soc_images: Some(owner_soc_images.clone()),
             ..Default::default()
         });
 
@@ -1201,6 +1210,7 @@ mod test {
             Some(owner_auth_manifest.clone()),
             Some(owner_measurement_policy.clone()),
             Some(soc_image_load_list.clone()),
+            Some(owner_soc_images.clone()),
             Some(partition_table.clone()),
             flash_offset,
             soc_images_paths.clone(),
@@ -1218,6 +1228,7 @@ mod test {
                 Some(owner_auth_manifest.clone()),
                 Some(owner_measurement_policy.clone()),
                 Some(soc_image_load_list),
+                Some(owner_soc_images.clone()),
                 None,
                 0,
                 soc_images_paths.clone(),
@@ -1245,6 +1256,7 @@ mod test {
             i3c_port,
             soc_images: soc_images.clone(),
             soc_images_paths: soc_images_paths.clone(),
+            owner_soc_images,
             primary_flash_image_path: flash_image_path.clone(),
             secondary_flash_image_path: flash_image_path.clone(),
             pldm_fw_pkg_path: pldm_fw_pkg_path.clone(),

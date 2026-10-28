@@ -51,6 +51,11 @@ impl Mci {
         self.registers.mci_reg_security_state.get()
     }
 
+    /// AXI USER strapped for the agent that loads the MCU execution region.
+    pub fn sram_config_axi_user(&self) -> u32 {
+        self.registers.mci_reg_mcu_sram_config_axi_user.get()
+    }
+
     pub fn caliptra_boot_go(&self) {
         self.registers.mci_reg_cptra_boot_go.set(1);
     }

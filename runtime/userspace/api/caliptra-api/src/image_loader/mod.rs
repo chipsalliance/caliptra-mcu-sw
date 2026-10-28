@@ -11,10 +11,10 @@ use alloc::boxed::Box;
 use async_trait::async_trait;
 pub use caliptra_api::mailbox::GetImageInfoResp;
 use caliptra_api::mailbox::{
-    CommandId, GetImageInfoReq, MailboxReqHeader, MailboxRespHeader, Request,
+    AuthManifestSource, CommandId, GetImageInfoReq, MailboxReqHeader, MailboxRespHeader, Request,
 };
 use caliptra_mcu_flash_image::{
-    FlashHeader, OWNER_AUTH_MANIFEST_IDENTIFIER, OWNER_MEASUREMENT_POLICY_IDENTIFIER,
+    MAX_FLASH_HEADER_SIZE, OWNER_AUTH_MANIFEST_IDENTIFIER, OWNER_MEASUREMENT_POLICY_IDENTIFIER,
     SOC_MANIFEST_IDENTIFIER,
 };
 use caliptra_mcu_libsyscall_caliptra::dma::DMAMapping;
@@ -46,11 +46,16 @@ pub trait ImageLoader {
     ///
     /// # Parameters
     /// image_id: The unsigned integer identifier of the image.
+    /// source: Image Metadata Collection used to resolve `image_id` in Caliptra.
     ///
     /// # Returns
     /// - `Ok(LoadedImage)`: Image has been loaded and metadata preserved.
     /// - `Err(ErrorCode)`: Indication of the failure to load the image.
-    async fn load(&self, image_id: u32) -> Result<LoadedImage, ErrorCode>;
+    async fn load(
+        &self,
+        image_id: u32,
+        source: AuthManifestSource,
+    ) -> Result<LoadedImage, ErrorCode>;
 
     /// Installs the Owner Authorization Manifest in Caliptra persistent memory,
     /// capturing up to `retained_preamble.len()` bytes of the accepted stream.
@@ -97,9 +102,13 @@ impl<'a, T: DmaTransfer> FlashImageLoader<'a, T> {
 
 #[async_trait(?Send)]
 impl<T: DmaTransfer> ImageLoader for FlashImageLoader<'_, T> {
-    async fn load(&self, image_id: u32) -> Result<LoadedImage, ErrorCode> {
+    async fn load(
+        &self,
+        image_id: u32,
+        source: AuthManifestSource,
+    ) -> Result<LoadedImage, ErrorCode> {
         let (load_address, component_id, measurement) = {
-            let image_info = get_image_info(&self.mailbox, image_id).await?;
+            let image_info = get_image_info(&self.mailbox, image_id, source).await?;
             let load_address = convert_dma_cptra_addr_to_mcu_addr(
                 self.dma_transfer,
                 ((image_info.image_load_address_high as u64) << 32)
@@ -108,8 +117,7 @@ impl<T: DmaTransfer> ImageLoader for FlashImageLoader<'_, T> {
             (load_address, image_info.component_id, image_info.digest)
         };
 
-        let mut header: [u8; core::mem::size_of::<FlashHeader>()] =
-            [0; core::mem::size_of::<FlashHeader>()];
+        let mut header = [0; MAX_FLASH_HEADER_SIZE];
         flash_client::flash_read_header(&self.flash, &mut header).await?;
         let (offset, size) =
             flash_client::flash_read_toc(&self.flash, &header, component_id).await?;
@@ -130,7 +138,7 @@ impl<T: DmaTransfer> ImageLoader for FlashImageLoader<'_, T> {
         &self,
         retained_preamble: &mut [u8],
     ) -> Result<usize, ErrorCode> {
-        let mut header = [0u8; core::mem::size_of::<FlashHeader>()];
+        let mut header = [0u8; MAX_FLASH_HEADER_SIZE];
         flash_client::flash_read_header(&self.flash, &mut header).await?;
         let (offset, size) =
             flash_client::flash_read_toc(&self.flash, &header, OWNER_AUTH_MANIFEST_IDENTIFIER)
@@ -156,7 +164,7 @@ impl<T: DmaTransfer> ImageLoader for FlashImageLoader<'_, T> {
     }
 
     async fn read_owner_measurement_policy(&self, dst: &mut [u8]) -> Result<usize, ErrorCode> {
-        let mut header = [0u8; core::mem::size_of::<FlashHeader>()];
+        let mut header = [0u8; MAX_FLASH_HEADER_SIZE];
         flash_client::flash_read_header(&self.flash, &mut header).await?;
         let (offset, size) =
             flash_client::flash_read_toc(&self.flash, &header, OWNER_MEASUREMENT_POLICY_IDENTIFIER)
@@ -174,8 +182,7 @@ impl<T: DmaTransfer> ImageLoader for FlashImageLoader<'_, T> {
 
 impl<T: DmaTransfer> FlashImageLoader<'_, T> {
     pub async fn set_auth_manifest(&self) -> Result<(), ErrorCode> {
-        let mut header: [u8; core::mem::size_of::<FlashHeader>()] =
-            [0; core::mem::size_of::<FlashHeader>()];
+        let mut header = [0; MAX_FLASH_HEADER_SIZE];
         flash_client::flash_read_header(&self.flash, &mut header).await?;
         let (offset, size) =
             flash_client::flash_read_toc(&self.flash, &header, SOC_MANIFEST_IDENTIFIER).await?;
@@ -217,9 +224,13 @@ impl<'a, D: DMAMapping + 'static> PldmImageLoader<'a, D> {
 
 #[async_trait(?Send)]
 impl<D: DMAMapping + 'static> ImageLoader for PldmImageLoader<'_, D> {
-    async fn load(&self, image_id: u32) -> Result<LoadedImage, ErrorCode> {
+    async fn load(
+        &self,
+        image_id: u32,
+        source: AuthManifestSource,
+    ) -> Result<LoadedImage, ErrorCode> {
         let (load_address, component_id, measurement) = {
-            let image_info = get_image_info(&self.mailbox, image_id).await?;
+            let image_info = get_image_info(&self.mailbox, image_id, source).await?;
             let load_address = convert_dma_cptra_addr_to_mcu_addr(
                 self.dma_mapping,
                 ((image_info.image_load_address_high as u64) << 32)
@@ -359,14 +370,28 @@ fn convert_dma_cptra_addr_to_mcu_addr(
         .map_err(|_| ErrorCode::Fail)
 }
 
+/// Queries `GET_IMAGE_INFO` for `image_id` in the base (vendor+owner) manifest.
 pub async fn core_image_info(image_id: u32) -> Result<GetImageInfoResp, ErrorCode> {
-    get_image_info(&Mailbox::new(), image_id).await
+    core_image_info_from(image_id, AuthManifestSource::VendorOwner).await
 }
 
-async fn get_image_info(mailbox: &Mailbox, image_id: u32) -> Result<GetImageInfoResp, ErrorCode> {
+/// Queries `GET_IMAGE_INFO` for `image_id` in the selected Image Metadata Collection.
+pub async fn core_image_info_from(
+    image_id: u32,
+    source: AuthManifestSource,
+) -> Result<GetImageInfoResp, ErrorCode> {
+    get_image_info(&Mailbox::new(), image_id, source).await
+}
+
+async fn get_image_info(
+    mailbox: &Mailbox,
+    image_id: u32,
+    source: AuthManifestSource,
+) -> Result<GetImageInfoResp, ErrorCode> {
     let mut req = GetImageInfoReq {
         hdr: MailboxReqHeader::default(),
         fw_id: image_id.to_le_bytes(),
+        flags: source.flag_bits(),
     };
     let req_data = req.as_mut_bytes();
     mailbox

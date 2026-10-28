@@ -450,7 +450,9 @@ impl<'a> FirmwareDeviceContext<'a> {
             FirmwareDeviceState::Apply => {
                 // In apply state, only cancel if not completed successfully
                 !(self.internal.get_fd_req().complete
-                    && self.internal.get_fd_req().result == Some(ApplyResult::ApplySuccess as u8))
+                    && self.internal.get_fd_req().result.is_some_and(|result| {
+                        ApplyResult::try_from(result).is_ok_and(ApplyResult::is_success)
+                    }))
             }
             _ => {
                 return generate_failure_response(
@@ -509,7 +511,9 @@ impl<'a> FirmwareDeviceContext<'a> {
             FirmwareDeviceState::Apply => {
                 // In apply state, only cancel if not completed successfully
                 !(self.internal.get_fd_req().complete
-                    && self.internal.get_fd_req().result == Some(ApplyResult::ApplySuccess as u8))
+                    && self.internal.get_fd_req().result.is_some_and(|result| {
+                        ApplyResult::try_from(result).is_ok_and(ApplyResult::is_success)
+                    }))
             }
             _ => false,
         };
@@ -863,7 +867,10 @@ impl<'a> FirmwareDeviceContext<'a> {
             return Err(errors::FD_INITIATOR_MODE_ERROR);
         }
 
-        if fd_req.result == Some(ApplyResult::ApplySuccess as u8) {
+        if fd_req
+            .result
+            .is_some_and(|result| ApplyResult::try_from(result).is_ok_and(ApplyResult::is_success))
+        {
             // Switch to Xfer
             self.internal
                 .set_fd_req(FdReqState::Unused, false, None, None, None, None);
@@ -1005,33 +1012,39 @@ impl<'a> FirmwareDeviceContext<'a> {
             return Err(errors::FD_INITIATOR_MODE_ERROR);
         }
 
-        let mut res = ApplyResult::default();
-        if !self.internal.is_fd_req_complete() {
+        let outcome = if !self.internal.is_fd_req_complete() {
             let mut progress_percent = ProgressPercent::default();
-            res = self
+            let outcome = self
                 .ops
-                .apply(&self.internal.get_component(), &mut progress_percent)
+                .apply_outcome(&self.internal.get_component(), &mut progress_percent)
                 .await
                 .map_err(|_| errors::FD_OPS_ERROR)?;
-
             // Set the progress percent to ApplyState
             self.internal
                 .set_fd_apply_progress(progress_percent.value());
 
-            if res == ApplyResult::ApplySuccess && progress_percent.value() < 100 {
+            if outcome.result.is_success() && progress_percent.value() < 100 {
                 // doing nothing and wait for the next call
                 return Ok(0);
             }
-        }
+            self.internal.set_fd_apply_outcome(outcome);
+            outcome
+        } else {
+            self.internal
+                .get_fd_apply_outcome()
+                .ok_or(errors::FD_INITIATOR_MODE_ERROR)?
+        };
+        let res = outcome.result;
+        let activation_methods = if res == ApplyResult::ApplySuccessWithActivationMethod {
+            outcome.activation_methods
+        } else {
+            ComponentActivationMethods(0)
+        };
 
         // Allocate the next instance ID
         let instance_id = self.internal.alloc_next_instance_id().unwrap();
-        let apply_complete_req = ApplyCompleteRequest::new(
-            instance_id,
-            PldmMsgType::Request,
-            res,
-            ComponentActivationMethods(0),
-        );
+        let apply_complete_req =
+            ApplyCompleteRequest::new(instance_id, PldmMsgType::Request, res, activation_methods);
         // Encode the request message
         let msg_len = apply_complete_req
             .encode(_payload)
@@ -1110,7 +1123,9 @@ mod test {
     use caliptra_mcu_pldm_common::message::firmware_update::activate_fw::{
         ActivateFirmwareRequest, ActivateFirmwareResponse, SelfContainedActivationRequest,
     };
-    use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::ApplyResult;
+    use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::{
+        ApplyOutcome, ApplyResult,
+    };
     use caliptra_mcu_pldm_common::message::firmware_update::request_cancel::{
         CancelUpdateRequest, CancelUpdateResponse,
     };
@@ -1121,6 +1136,7 @@ mod test {
     use caliptra_mcu_pldm_common::message::firmware_update::update_component::{
         UpdateComponentRequest, UpdateComponentResponse,
     };
+    use caliptra_mcu_pldm_common::protocol::base::PLDM_MSG_HEADER_LEN;
     use caliptra_mcu_pldm_common::protocol::base::{
         PldmBaseCompletionCode, PldmFailureResponse, PldmMsgType,
     };
@@ -1134,7 +1150,23 @@ mod test {
     use crate::firmware_device::fd_ops::FdOps;
 
     /// Minimal mock FdOps for testing.
-    struct MockFdOps;
+    struct MockFdOps {
+        outcome: Option<ApplyOutcome>,
+        progress: u8,
+        apply_calls: core::cell::Cell<usize>,
+        apply_reported: core::cell::Cell<Option<McuResult<()>>>,
+    }
+
+    impl Default for MockFdOps {
+        fn default() -> Self {
+            Self {
+                outcome: None,
+                progress: 100,
+                apply_calls: core::cell::Cell::new(0),
+                apply_reported: core::cell::Cell::new(None),
+            }
+        }
+    }
 
     #[async_trait::async_trait(?Send)]
     impl FdOps for MockFdOps {
@@ -1203,9 +1235,25 @@ mod test {
         async fn apply(
             &self,
             _component: &caliptra_mcu_pldm_common::util::fw_component::FirmwareComponent,
-            _progress_percent: &mut caliptra_mcu_pldm_common::message::firmware_update::get_status::ProgressPercent,
+            progress_percent: &mut caliptra_mcu_pldm_common::message::firmware_update::get_status::ProgressPercent,
         ) -> McuResult<ApplyResult> {
+            self.apply_calls.set(self.apply_calls.get() + 1);
+            *progress_percent = ProgressPercent::new(self.progress).unwrap();
             Ok(ApplyResult::ApplySuccess)
+        }
+        async fn apply_outcome(
+            &self,
+            component: &FirmwareComponent,
+            progress_percent: &mut ProgressPercent,
+        ) -> McuResult<ApplyOutcome> {
+            let result = self.apply(component, progress_percent).await?;
+            Ok(self.outcome.unwrap_or(ApplyOutcome {
+                result,
+                ..ApplyOutcome::default()
+            }))
+        }
+        fn apply_complete_reported(&self, result: McuResult<()>) {
+            self.apply_reported.set(Some(result));
         }
         fn activate(
             &self,
@@ -1232,6 +1280,315 @@ mod test {
             SelfContainedActivationRequest::ActivateSelfContainedComponents,
         );
         req.encode(payload).unwrap()
+    }
+
+    #[derive(Default)]
+    struct FakeUpdateAgent {
+        share: caliptra_mcu_libtock_unittest::DriverShareRef,
+        request_buffer: core::cell::RefCell<caliptra_mcu_libtock_unittest::RoAllowBuffer>,
+        response_buffer: core::cell::RefCell<caliptra_mcu_libtock_unittest::RwAllowBuffer>,
+        received: core::cell::RefCell<std::vec::Vec<u8>>,
+        fail_send: bool,
+        fail_receive: bool,
+    }
+
+    impl caliptra_mcu_libtock_unittest::fake::SyscallDriver for FakeUpdateAgent {
+        fn info(&self) -> caliptra_mcu_libtock_unittest::DriverInfo {
+            caliptra_mcu_libtock_unittest::DriverInfo::new(
+                caliptra_mcu_libsyscall_caliptra::mctp::driver_num::MCTP_PLDM,
+            )
+            .upcall_count(3)
+        }
+
+        fn register(&self, share: caliptra_mcu_libtock_unittest::DriverShareRef) {
+            self.share.replace(share);
+        }
+
+        fn command(
+            &self,
+            command: u32,
+            eid: u32,
+            _tag: u32,
+        ) -> caliptra_mcu_libtock_platform::CommandReturn {
+            use caliptra_mcu_libtock_platform::ErrorCode;
+            use caliptra_mcu_libtock_unittest::command_return;
+            match command {
+                5 => command_return::success_u32(256),
+                3 if self.fail_send => command_return::failure(ErrorCode::Fail),
+                3 => {
+                    *self.received.borrow_mut() = self.request_buffer.borrow().as_ref().to_vec();
+                    self.share
+                        .schedule_upcall(2, (0, 0, (eid << 16) | 1))
+                        .unwrap();
+                    command_return::success()
+                }
+                2 if self.fail_receive => command_return::failure(ErrorCode::Fail),
+                2 => command_return::success(),
+                _ => panic!("unexpected MCTP command {command}"),
+            }
+        }
+
+        fn allow_readonly(
+            &self,
+            number: u32,
+            buffer: caliptra_mcu_libtock_unittest::RoAllowBuffer,
+        ) -> Result<
+            caliptra_mcu_libtock_unittest::RoAllowBuffer,
+            (
+                caliptra_mcu_libtock_unittest::RoAllowBuffer,
+                caliptra_mcu_libtock_platform::ErrorCode,
+            ),
+        > {
+            assert_eq!(number, 0);
+            Ok(self.request_buffer.replace(buffer))
+        }
+
+        fn allow_readwrite(
+            &self,
+            number: u32,
+            buffer: caliptra_mcu_libtock_unittest::RwAllowBuffer,
+        ) -> Result<
+            caliptra_mcu_libtock_unittest::RwAllowBuffer,
+            (
+                caliptra_mcu_libtock_unittest::RwAllowBuffer,
+                caliptra_mcu_libtock_platform::ErrorCode,
+            ),
+        > {
+            assert_eq!(number, 1);
+            Ok(self.response_buffer.replace(buffer))
+        }
+    }
+
+    #[test]
+    fn test_apply_failure_reporting_completes_only_after_update_agent_response() {
+        use crate::cmd_interface::CmdInterface;
+        use crate::transport::MctpTransport;
+        use caliptra_mcu_libtock_platform::Syscalls;
+        use caliptra_mcu_libtock_unittest::fake;
+        use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::ApplyCompleteResponse;
+        use core::future::Future;
+        use core::task::{Context, Poll, Waker};
+        use std::rc::Rc;
+
+        for (fail_send, fail_receive) in [(false, false), (true, false), (false, true)] {
+            let kernel = fake::Kernel::new();
+            let agent = Rc::new(FakeUpdateAgent {
+                fail_send,
+                fail_receive,
+                ..FakeUpdateAgent::default()
+            });
+            kernel.add_driver(&agent);
+            let ops = MockFdOps {
+                outcome: Some(ApplyOutcome {
+                    result: ApplyResult::ApplyGenericError,
+                    ..ApplyOutcome::default()
+                }),
+                ..MockFdOps::default()
+            };
+            let ctx = FirmwareDeviceContext::new(&ops);
+            ctx.internal.set_fd_state(FirmwareDeviceState::Apply);
+            ctx.internal
+                .set_initiator_mode(InitiatorModeState::Apply(ApplyState::default()));
+            ctx.internal
+                .set_fd_req(FdReqState::Ready, false, None, None, None, None);
+            let interface = CmdInterface::new(&[], ctx);
+            let mut transport =
+                MctpTransport::new(caliptra_mcu_libsyscall_caliptra::mctp::driver_num::MCTP_PLDM);
+            let mut buffer = [0u8; 256];
+            let mut transaction =
+                core::pin::pin!(interface.handle_initiator_msg(&mut transport, &mut buffer));
+            let mut cx = Context::from_waker(Waker::noop());
+            let first_poll = transaction.as_mut().poll(&mut cx);
+            if fail_send {
+                assert_eq!(first_poll, Poll::Ready(Err(errors::TRANSPORT_ERROR)));
+                assert_eq!(ops.apply_reported.get(), Some(Err(errors::TRANSPORT_ERROR)));
+                continue;
+            }
+            assert!(first_poll.is_pending());
+            assert_eq!(ops.apply_reported.get(), None);
+            let request = ApplyCompleteRequest::decode(&agent.received.borrow()[1..]).unwrap();
+            assert_eq!(request.apply_result, ApplyResult::ApplyGenericError as u8);
+            assert_eq!({ request.comp_activation_methods_modification }, 0);
+
+            fake::Syscalls::yield_no_wait();
+            // The fake kernel rejects overlapping RO/RW allows; transmission
+            // has finished, so release the request buffer before receiving.
+            fake::Syscalls::unallow_ro(
+                caliptra_mcu_libsyscall_caliptra::mctp::driver_num::MCTP_PLDM,
+                0,
+            );
+            let receiving = transaction.as_mut().poll(&mut cx);
+            if fail_receive {
+                assert_eq!(receiving, Poll::Ready(Err(errors::TRANSPORT_ERROR)));
+                assert_eq!(ops.apply_reported.get(), Some(Err(errors::TRANSPORT_ERROR)));
+                continue;
+            }
+            assert!(receiving.is_pending());
+            assert_eq!(ops.apply_reported.get(), None);
+            let mut response = agent.response_buffer.borrow_mut();
+            response[0] = 1;
+            let len = ApplyCompleteResponse::new(request.hdr.instance_id(), 0)
+                .encode(&mut response[1..])
+                .unwrap();
+            drop(response);
+            agent
+                .share
+                .schedule_upcall(1, ((len + 1) as u32, 0, 0))
+                .unwrap();
+            fake::Syscalls::yield_no_wait();
+            assert_eq!(transaction.as_mut().poll(&mut cx), Poll::Ready(Ok(())));
+            assert_eq!(ops.apply_reported.get(), Some(Ok(())));
+        }
+    }
+
+    #[test]
+    fn test_apply_outcomes_on_wire_and_state_transition() {
+        for result in [
+            ApplyResult::ApplySuccess,
+            ApplyResult::ApplySuccessWithActivationMethod,
+            ApplyResult::ApplyGenericError,
+        ] {
+            let mut activation_methods = ComponentActivationMethods(0);
+            activation_methods.set_system_reboot(true);
+            let mock_ops = MockFdOps {
+                outcome: Some(ApplyOutcome {
+                    result,
+                    activation_methods,
+                }),
+                ..MockFdOps::default()
+            };
+            let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
+            fd_ctx.internal.set_fd_state(FirmwareDeviceState::Apply);
+            fd_ctx
+                .internal
+                .set_initiator_mode(InitiatorModeState::Apply(ApplyState::default()));
+            fd_ctx
+                .internal
+                .set_fd_req(FdReqState::Ready, false, None, None, None, None);
+
+            let mut payload = [0u8; 256];
+            let len = block_on(fd_ctx.pldm_fd_progress_apply(&mut payload)).unwrap();
+            let expected_methods = if result == ApplyResult::ApplySuccessWithActivationMethod {
+                0x0008u16
+            } else {
+                0
+            };
+            assert_eq!(len, PLDM_MSG_HEADER_LEN + 3);
+            assert_eq!(payload[PLDM_MSG_HEADER_LEN], result as u8);
+            assert_eq!(
+                &payload[PLDM_MSG_HEADER_LEN + 1..len],
+                &expected_methods.to_le_bytes()
+            );
+
+            // Make the sent request old enough to retry without invoking apply again.
+            let first_payload = payload;
+            fd_ctx.internal.set_fd_t2_retry_time(0);
+            let retry_len = block_on(fd_ctx.pldm_fd_progress_apply(&mut payload)).unwrap();
+            assert_eq!(retry_len, len);
+            assert_eq!(mock_ops.apply_calls.get(), 1);
+            assert_eq!(
+                &payload[PLDM_MSG_HEADER_LEN..len],
+                &first_payload[PLDM_MSG_HEADER_LEN..len]
+            );
+
+            block_on(fd_ctx.process_apply_complete_rsp(&mut payload)).unwrap();
+            if result.is_success() {
+                assert_eq!(
+                    fd_ctx.internal.get_fd_state(),
+                    FirmwareDeviceState::ReadyXfer
+                );
+                encode_activate_firmware_request(&mut payload);
+                block_on(fd_ctx.activate_firmware_rsp(&mut payload)).unwrap();
+                let response = ActivateFirmwareResponse::decode(&payload).unwrap();
+                assert_eq!(
+                    response.completion_code,
+                    PldmBaseCompletionCode::Success as u8
+                );
+            } else {
+                assert_eq!(fd_ctx.internal.get_fd_state(), FirmwareDeviceState::Apply);
+                assert_eq!(fd_ctx.internal.get_fd_req().state, FdReqState::Failed);
+            }
+        }
+    }
+
+    #[test]
+    fn test_apply_waits_for_full_progress_for_both_success_results() {
+        for result in [
+            ApplyResult::ApplySuccess,
+            ApplyResult::ApplySuccessWithActivationMethod,
+        ] {
+            let mock_ops = MockFdOps {
+                outcome: Some(ApplyOutcome {
+                    result,
+                    activation_methods: ComponentActivationMethods(0x0008),
+                }),
+                progress: 99,
+                ..MockFdOps::default()
+            };
+            let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
+            fd_ctx.internal.set_fd_state(FirmwareDeviceState::Apply);
+            fd_ctx
+                .internal
+                .set_initiator_mode(InitiatorModeState::Apply(ApplyState::default()));
+            fd_ctx
+                .internal
+                .set_fd_req(FdReqState::Ready, false, None, None, None, None);
+            assert_eq!(
+                block_on(fd_ctx.pldm_fd_progress_apply(&mut [0u8; 256])).unwrap(),
+                0
+            );
+            assert_eq!(fd_ctx.internal.get_fd_req().state, FdReqState::Ready);
+        }
+    }
+
+    #[test]
+    fn test_completed_apply_success_is_not_cancelled() {
+        for result in [
+            ApplyResult::ApplySuccess,
+            ApplyResult::ApplySuccessWithActivationMethod,
+            ApplyResult::ApplyGenericError,
+        ] {
+            for cancel_component in [false, true] {
+                let mock_ops = MockFdOps::default();
+                let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
+                fd_ctx.internal.set_fd_state(FirmwareDeviceState::Apply);
+                fd_ctx.internal.set_fd_req(
+                    FdReqState::Sent,
+                    true,
+                    Some(result as u8),
+                    Some(1),
+                    Some(FwUpdateCmd::ApplyComplete as u8),
+                    Some(0),
+                );
+                let mut payload = [0u8; 256];
+                let completion_code = if cancel_component {
+                    CancelUpdateComponentRequest::new(2, PldmMsgType::Request)
+                        .encode(&mut payload)
+                        .unwrap();
+                    block_on(fd_ctx.cancel_update_component_rsp(&mut payload)).unwrap();
+                    CancelUpdateComponentResponse::decode(&payload)
+                        .unwrap()
+                        .completion_code
+                } else {
+                    CancelUpdateRequest::new(2, PldmMsgType::Request)
+                        .encode(&mut payload)
+                        .unwrap();
+                    block_on(fd_ctx.cancel_update_rsp(&mut payload)).unwrap();
+                    CancelUpdateResponse::decode(&payload)
+                        .unwrap()
+                        .completion_code
+                };
+                assert_eq!(fd_ctx.is_cancelled(), !result.is_success());
+                assert_eq!(
+                    completion_code,
+                    if result.is_success() {
+                        PldmBaseCompletionCode::Error as u8
+                    } else {
+                        PldmBaseCompletionCode::Success as u8
+                    }
+                );
+            }
+        }
     }
 
     fn encode_update_component_request(payload: &mut [u8]) -> usize {
@@ -1284,7 +1641,7 @@ mod test {
 
     #[test]
     fn test_request_update_acceptance() {
-        let mock_ops = MockFdOps;
+        let mock_ops = MockFdOps::default();
         let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
         let mut payload = [0u8; 256];
 
@@ -1304,7 +1661,7 @@ mod test {
 
     #[test]
     fn test_invalid_request_update_is_not_accepted() {
-        let mock_ops = MockFdOps;
+        let mock_ops = MockFdOps::default();
         let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
         let mut payload = [0u8; 256];
 
@@ -1318,7 +1675,7 @@ mod test {
 
     #[test]
     fn test_partial_firmware_data_response_is_rejected() {
-        let mock_ops = MockFdOps;
+        let mock_ops = MockFdOps::default();
         let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
         let mut payload = [0u8; 256];
         prepare_download_request(&fd_ctx, 3, 0, 64);
@@ -1337,7 +1694,7 @@ mod test {
 
     #[test]
     fn test_out_of_order_firmware_data_response_is_rejected() {
-        let mock_ops = MockFdOps;
+        let mock_ops = MockFdOps::default();
         let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
         let mut payload = [0u8; 256];
         prepare_download_request(&fd_ctx, 4, 64, 64);
@@ -1353,7 +1710,7 @@ mod test {
 
     #[test]
     fn test_retry_firmware_data_response_keeps_download_retryable() {
-        let mock_ops = MockFdOps;
+        let mock_ops = MockFdOps::default();
         let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
         let mut payload = [0u8; 256];
         prepare_download_request(&fd_ctx, 5, 64, 64);
@@ -1380,7 +1737,7 @@ mod test {
 
     #[test]
     fn test_cancel_update_allows_a_new_update_request() {
-        let mock_ops = MockFdOps;
+        let mock_ops = MockFdOps::default();
         let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
         let mut payload = [0u8; 256];
         fd_ctx.internal.set_fd_state(FirmwareDeviceState::Download);
@@ -1410,7 +1767,7 @@ mod test {
 
     #[test]
     fn test_reset_reinitializes_in_progress_update_state() {
-        let mock_ops = MockFdOps;
+        let mock_ops = MockFdOps::default();
         let interrupted_ctx = FirmwareDeviceContext::new(&mock_ops);
         interrupted_ctx
             .internal
@@ -1425,7 +1782,7 @@ mod test {
 
     #[test]
     fn test_verification_failure_waits_for_cancel_without_applying() {
-        let mock_ops = MockFdOps;
+        let mock_ops = MockFdOps::default();
         let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
         fd_ctx.internal.set_fd_state(FirmwareDeviceState::Verify);
         fd_ctx.internal.set_fd_req(
@@ -1452,7 +1809,7 @@ mod test {
     /// sets the flag, set_pending_response(false) clears it and signals.
     #[test]
     fn test_pending_response_signal_mechanism() {
-        let mock_ops = MockFdOps;
+        let mock_ops = MockFdOps::default();
         let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
 
         // Initially no response pending
@@ -1474,7 +1831,7 @@ mod test {
     /// has been sent (i.e. pending_response was cleared).
     #[test]
     fn test_wait_for_initiator_returns_after_signal() {
-        let mock_ops = MockFdOps;
+        let mock_ops = MockFdOps::default();
         let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
 
         // Simulate: initiator sets pending, then clears (signal is sent).
@@ -1498,7 +1855,7 @@ mod test {
     /// This is the ordering that the signal mechanism guarantees at runtime.
     #[test]
     fn test_two_task_activate_firmware_with_signal_ordering() {
-        let mock_ops = MockFdOps;
+        let mock_ops = MockFdOps::default();
         let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
 
         // Setup: state=Apply, pending successful ApplyComplete
@@ -1547,7 +1904,7 @@ mod test {
     /// 2. Responder handles UpdateComponent for next component → succeeds
     #[test]
     fn test_two_task_update_component_with_signal_ordering() {
-        let mock_ops = MockFdOps;
+        let mock_ops = MockFdOps::default();
         let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
 
         // Setup: state=Apply, pending successful ApplyComplete
@@ -1595,7 +1952,7 @@ mod test {
     /// (the normal, non-racy case with no pending response).
     #[test]
     fn test_activate_firmware_in_ready_xfer_state() {
-        let mock_ops = MockFdOps;
+        let mock_ops = MockFdOps::default();
         let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
 
         fd_ctx.internal.set_fd_state(FirmwareDeviceState::ReadyXfer);
@@ -1613,7 +1970,7 @@ mod test {
     /// Verify that activate_firmware_rsp rejects requests in invalid states.
     #[test]
     fn test_activate_firmware_rejected_in_wrong_state() {
-        let mock_ops = MockFdOps;
+        let mock_ops = MockFdOps::default();
         let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
 
         fd_ctx.internal.set_fd_state(FirmwareDeviceState::Download);
@@ -1634,7 +1991,7 @@ mod test {
     /// Verify that update_component_rsp rejects requests in invalid states.
     #[test]
     fn test_update_component_rejected_in_wrong_state() {
-        let mock_ops = MockFdOps;
+        let mock_ops = MockFdOps::default();
         let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
 
         fd_ctx.internal.set_fd_state(FirmwareDeviceState::Download);

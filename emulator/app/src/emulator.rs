@@ -122,6 +122,10 @@ pub struct EmulatorArgs {
     #[arg(short, long)]
     pub log_dir: Option<PathBuf>,
 
+    /// Directory for persistent primary and secondary flash backing files.
+    #[arg(long)]
+    pub flash_storage_dir: Option<PathBuf>,
+
     /// Trace instructions.
     #[arg(short, long, default_value_t = false)]
     pub trace_instr: bool,
@@ -796,7 +800,12 @@ impl Emulator {
                             .to_path_buf(),
                     )
                 } else {
-                    Some(PathBuf::from(default_path))
+                    Some(
+                        cli.flash_storage_dir
+                            .as_deref()
+                            .unwrap_or_else(|| std::path::Path::new("."))
+                            .join(default_path),
+                    )
                 };
 
                 DummyFlashCtrl::new(

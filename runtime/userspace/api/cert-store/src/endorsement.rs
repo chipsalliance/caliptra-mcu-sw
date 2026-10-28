@@ -8,59 +8,38 @@
 //! or `Managed` (slots 1-2) without dynamic dispatch.
 
 #[cfg(feature = "set-certificate")]
+use crate::{errors as cert_errors, DeviceKey};
+use crate::{CertificateAlgorithm, EndorsementRole};
+#[cfg(feature = "set-certificate")]
 use caliptra_mcu_libsyscall_caliptra::{flash::SpiFlash, DefaultSyscalls};
 #[cfg(feature = "set-certificate")]
 use caliptra_mcu_libtock_platform::ErrorCode;
-use caliptra_mcu_spdm_traits::SpdmPalAsymAlgo;
 use mcu_error::McuResult;
 
 #[cfg(feature = "set-certificate")]
 use core::ops::Range;
 use core::sync::atomic::{AtomicBool, Ordering};
 
-/// Number of cert slots managed by the PAL.
+/// Number of cert slots managed by the store.
 pub const NUM_CERT_SLOTS: usize = 3;
 
-/// SPDM slot_id → internal index mapping.
-/// Default: Vendor=0, Owner=2, Tenant=3.
-// TODO: make configurable per integrator at build time.
-pub const DEFAULT_SLOT_MAP: [u8; NUM_CERT_SLOTS] = [0, 2, 3];
+/// Default KeyUsageMask for Caliptra certificate slots.
+pub const DEFAULT_KEY_USAGE_MASK: u16 = 0x0003;
 
-/// Supported slot bitmask, computed from DEFAULT_SLOT_MAP at compile time.
-pub const SUPPORTED_SLOT_MASK: u8 = {
-    let mut mask = 0u8;
-    let mut i = 0;
-    while i < NUM_CERT_SLOTS {
-        mask |= 1 << DEFAULT_SLOT_MAP[i];
-        i += 1;
-    }
-    mask
-};
-
-/// Map SPDM slot_id to internal cert slot index.
-pub const fn slot_index(slot_id: u8) -> Option<usize> {
-    let mut i = 0;
-    while i < NUM_CERT_SLOTS {
-        if DEFAULT_SLOT_MAP[i] == slot_id {
-            return Some(i);
-        }
-        i += 1;
-    }
-    None
+/// Map internal cert slot index to [`EndorsementRole`].
+pub const fn endorsement_role(index: usize) -> Option<EndorsementRole> {
+    EndorsementRole::from_index(index)
 }
 
 /// Number of asymmetric algorithms a slot can hold a chain for.
 pub const NUM_ASYM_ALGOS: usize = 2;
 
+/// Supported certificate model in Caliptra (AliasCert).
+pub const CERT_MODEL_ALIAS_CERT: u8 = 2;
+
 /// Index into per-algorithm arrays.
-///
-/// Exactly one asymmetric algorithm is negotiated per SPDM connection,
-/// so every read and write path is already scoped to one of these.
-pub const fn algo_index(algo: SpdmPalAsymAlgo) -> usize {
-    match algo {
-        SpdmPalAsymAlgo::EccP384 => 0,
-        SpdmPalAsymAlgo::MlDsa87 => 1,
-    }
+pub const fn algo_index(algo: CertificateAlgorithm) -> usize {
+    algo.index()
 }
 
 /// A single SPDM certificate slot.
@@ -68,29 +47,23 @@ pub const fn algo_index(algo: SpdmPalAsymAlgo) -> usize {
 /// Slots store the endorsement/root portion. The PAL composes the full
 /// SPDM cert chain by appending the DPE device chain and DPE leaf cert.
 ///
-/// A slot may hold an independent chain per asymmetric algorithm, so
-/// the metadata and the in-progress write lock are tracked per
-/// algorithm rather than per slot.
+/// Identity and certificate model are shared by the slot. Certificate
+/// availability and the in-progress write lock remain per algorithm.
 pub struct CertSlot {
     /// Slot certificate-chain backing storage.
     pub endorsement: SlotEndorsement,
-    /// KeyPairID associated with this slot's signing key, per algorithm.
-    /// `None` where that algorithm is unprovisioned.
-    key_pair_id: [Option<u8>; NUM_ASYM_ALGOS],
-    /// CertificateInfo/CertModel for this slot, per algorithm.
-    /// `None` where that algorithm is unprovisioned.
-    cert_info: [Option<u8>; NUM_ASYM_ALGOS],
+    /// Immutable logical device-key binding shared by both algorithms.
+    key_pair_id: Option<u8>,
     /// State lock held high while an async write (flash erase/write) is
     /// in progress for the corresponding algorithm.
     write_in_progress: [AtomicBool; NUM_ASYM_ALGOS],
 }
 
 impl CertSlot {
-    pub const fn empty() -> Self {
+    pub const fn empty(key_pair_id: Option<u8>) -> Self {
         Self {
             endorsement: SlotEndorsement::Empty,
-            key_pair_id: [None; NUM_ASYM_ALGOS],
-            cert_info: [None; NUM_ASYM_ALGOS],
+            key_pair_id,
             write_in_progress: [const { AtomicBool::new(false) }; NUM_ASYM_ALGOS],
         }
     }
@@ -104,65 +77,73 @@ impl CertSlot {
     }
 
     /// Whether this slot can serve a cert chain for `algo` right now.
-    pub fn is_provisioned(&self, algo: SpdmPalAsymAlgo) -> bool {
+    pub fn is_provisioned(&self, algo: CertificateAlgorithm) -> bool {
         !self.write_in_progress(algo) && self.endorsement.is_provisioned(algo)
     }
 
-    pub fn write_in_progress(&self, algo: SpdmPalAsymAlgo) -> bool {
+    pub fn write_in_progress(&self, algo: CertificateAlgorithm) -> bool {
         self.write_in_progress[algo_index(algo)].load(Ordering::Relaxed)
     }
 
-    pub fn set_write_in_progress(&self, algo: SpdmPalAsymAlgo, value: bool) {
+    pub fn set_write_in_progress(&self, algo: CertificateAlgorithm, value: bool) {
         self.write_in_progress[algo_index(algo)].store(value, Ordering::Relaxed);
     }
 
-    pub fn key_pair_id(&self, algo: SpdmPalAsymAlgo) -> Option<u8> {
-        self.key_pair_id[algo_index(algo)]
+    pub fn key_pair_id(&self, algo: CertificateAlgorithm) -> Option<u8> {
+        if !self.is_provisioned(algo) {
+            return None;
+        }
+        match &self.endorsement {
+            SlotEndorsement::ReadOnly(_) => self.key_pair_id,
+            #[cfg(feature = "set-certificate")]
+            SlotEndorsement::Managed(m) => m.get_endorsement(algo)?.key_pair_id(),
+            SlotEndorsement::Empty => None,
+        }
     }
 
-    pub fn cert_info(&self, algo: SpdmPalAsymAlgo) -> Option<u8> {
-        self.cert_info[algo_index(algo)]
+    pub(crate) fn configured_key_pair_id(&self) -> Option<u8> {
+        self.key_pair_id
     }
 
-    pub fn set_metadata(
-        &mut self,
-        algo: SpdmPalAsymAlgo,
-        key_pair_id: Option<u8>,
-        info: Option<u8>,
-    ) {
-        let i = algo_index(algo);
-        self.key_pair_id[i] = key_pair_id;
-        self.cert_info[i] = info;
+    pub fn cert_info(&self, algo: CertificateAlgorithm) -> Option<u8> {
+        if !self.is_provisioned(algo) {
+            return None;
+        }
+        Some(CERT_MODEL_ALIAS_CERT)
     }
 
-    /// Apply the same metadata to every algorithm.
-    ///
-    /// Read-only slots derive both chains from one provisioning event,
-    /// so they share a KeyPairID and CertificateInfo.
-    pub fn set_metadata_all(&mut self, key_pair_id: Option<u8>, info: Option<u8>) {
-        self.key_pair_id = [key_pair_id; NUM_ASYM_ALGOS];
-        self.cert_info = [info; NUM_ASYM_ALGOS];
-    }
-
-    pub fn clear_metadata(&mut self, algo: SpdmPalAsymAlgo) {
-        self.set_metadata(algo, None, None);
+    pub fn key_usage_mask(&self, algo: CertificateAlgorithm) -> Option<u16> {
+        if !self.is_provisioned(algo) {
+            return None;
+        }
+        #[cfg(feature = "set-certificate")]
+        {
+            match &self.endorsement {
+                SlotEndorsement::Managed(m) => m.get_endorsement(algo)?.key_usage_mask(),
+                _ => Some(DEFAULT_KEY_USAGE_MASK),
+            }
+        }
+        #[cfg(not(feature = "set-certificate"))]
+        {
+            Some(DEFAULT_KEY_USAGE_MASK)
+        }
     }
 }
 
 /// Per-slot endorsement cert chain — enum dispatch.
 pub enum SlotEndorsement {
-    /// Not provisioned and not exposed as a supported SPDM slot.
+    /// Not provisioned and not exposed as a supported slot.
     Empty,
     /// Read-only endorsement backed by static root CA certs (slot 0).
     ReadOnly(ReadOnlyEndorsementSlot),
-    /// Managed endorsement/root chains backed by flash (slots 1-2,
-    /// SET_CERTIFICATE), one independent region per algorithm.
+    /// Managed endorsement/root chains backed by flash (slots 1-2),
+    /// one independent region per algorithm.
     #[cfg(feature = "set-certificate")]
     Managed(ManagedEndorsementSlot),
 }
 
 impl SlotEndorsement {
-    pub fn root_cert_hash(&self, algo: SpdmPalAsymAlgo, out: &mut [u8]) -> McuResult<()> {
+    pub fn root_cert_hash(&self, algo: CertificateAlgorithm, out: &mut [u8]) -> McuResult<()> {
         match self {
             Self::ReadOnly(e) => e.root_cert_hash(algo, out),
             #[cfg(feature = "set-certificate")]
@@ -174,7 +155,7 @@ impl SlotEndorsement {
         }
     }
 
-    pub fn size(&self, algo: SpdmPalAsymAlgo) -> McuResult<usize> {
+    pub fn size(&self, algo: CertificateAlgorithm) -> McuResult<usize> {
         match self {
             Self::ReadOnly(e) => e.size(algo),
             #[cfg(feature = "set-certificate")]
@@ -186,7 +167,7 @@ impl SlotEndorsement {
         }
     }
 
-    pub fn capacity(&self, algo: SpdmPalAsymAlgo) -> McuResult<usize> {
+    pub fn capacity(&self, algo: CertificateAlgorithm) -> McuResult<usize> {
         match self {
             Self::ReadOnly(e) => e.size(algo),
             #[cfg(feature = "set-certificate")]
@@ -200,7 +181,7 @@ impl SlotEndorsement {
 
     pub async fn read(
         &self,
-        algo: SpdmPalAsymAlgo,
+        algo: CertificateAlgorithm,
         offset: usize,
         buf: &mut [u8],
     ) -> McuResult<usize> {
@@ -232,7 +213,7 @@ impl SlotEndorsement {
         }
     }
 
-    pub fn is_provisioned(&self, algo: SpdmPalAsymAlgo) -> bool {
+    pub fn is_provisioned(&self, algo: CertificateAlgorithm) -> bool {
         match self {
             Self::ReadOnly(e) => e.get_endorsement(algo).is_some(),
             #[cfg(feature = "set-certificate")]
@@ -279,14 +260,14 @@ impl ReadOnlyEndorsementSlot {
         self
     }
 
-    pub fn get_endorsement(&self, algo: SpdmPalAsymAlgo) -> Option<&SingleEndorsementChain> {
+    pub fn get_endorsement(&self, algo: CertificateAlgorithm) -> Option<&SingleEndorsementChain> {
         match algo {
-            SpdmPalAsymAlgo::EccP384 => Some(&self.ecc),
-            SpdmPalAsymAlgo::MlDsa87 => self.mldsa.as_ref(),
+            CertificateAlgorithm::EccP384 => Some(&self.ecc),
+            CertificateAlgorithm::MlDsa87 => self.mldsa.as_ref(),
         }
     }
 
-    fn root_cert_hash(&self, algo: SpdmPalAsymAlgo, out: &mut [u8]) -> McuResult<()> {
+    fn root_cert_hash(&self, algo: CertificateAlgorithm, out: &mut [u8]) -> McuResult<()> {
         let chain = self
             .get_endorsement(algo)
             .ok_or(mcu_error::codes::INVARIANT)?;
@@ -296,14 +277,14 @@ impl ReadOnlyEndorsementSlot {
         Ok(())
     }
 
-    fn size(&self, algo: SpdmPalAsymAlgo) -> McuResult<usize> {
+    fn size(&self, algo: CertificateAlgorithm) -> McuResult<usize> {
         let chain = self
             .get_endorsement(algo)
             .ok_or(mcu_error::codes::INVARIANT)?;
         Ok(chain.chain_len)
     }
 
-    fn read(&self, algo: SpdmPalAsymAlgo, offset: usize, buf: &mut [u8]) -> McuResult<usize> {
+    fn read(&self, algo: CertificateAlgorithm, offset: usize, buf: &mut [u8]) -> McuResult<usize> {
         let chain = self
             .get_endorsement(algo)
             .ok_or(mcu_error::codes::INVARIANT)?;
@@ -348,10 +329,10 @@ const MANAGED_ALGO_ECC_P384: u8 = 1;
 const MANAGED_ALGO_MLDSA_87: u8 = 2;
 
 #[cfg(feature = "set-certificate")]
-const fn managed_algo_code(algo: SpdmPalAsymAlgo) -> u8 {
+const fn managed_algo_code(algo: CertificateAlgorithm) -> u8 {
     match algo {
-        SpdmPalAsymAlgo::EccP384 => MANAGED_ALGO_ECC_P384,
-        SpdmPalAsymAlgo::MlDsa87 => MANAGED_ALGO_MLDSA_87,
+        CertificateAlgorithm::EccP384 => MANAGED_ALGO_ECC_P384,
+        CertificateAlgorithm::MlDsa87 => MANAGED_ALGO_MLDSA_87,
     }
 }
 #[cfg(feature = "set-certificate")]
@@ -408,22 +389,24 @@ pub struct SingleManagedEndorsement {
     base: usize,
     capacity: usize,
     initialized: bool,
-    algo: SpdmPalAsymAlgo,
+    algo: CertificateAlgorithm,
     len: usize,
     root_hash: [u8; 48],
     key_pair_id: u8,
     cert_info: u8,
     key_usage_mask: u16,
+    device_key: Option<DeviceKey>,
 }
 
 #[cfg(feature = "set-certificate")]
 impl SingleManagedEndorsement {
     pub const fn new(
         slot: u8,
-        algo: SpdmPalAsymAlgo,
+        algo: CertificateAlgorithm,
         driver_num: u32,
         base: usize,
         capacity: usize,
+        device_key: Option<DeviceKey>,
     ) -> Self {
         Self {
             slot,
@@ -437,12 +420,12 @@ impl SingleManagedEndorsement {
             key_pair_id: 0,
             cert_info: 0,
             key_usage_mask: MANAGED_KEY_USAGE_MASK,
+            device_key,
         }
     }
 
     pub async fn load(&mut self) -> McuResult<()> {
-        self.initialized = false;
-        self.len = 0;
+        self.discard();
         let mut header = [0u8; MANAGED_HEADER_SIZE];
         let flash = self.flash();
         match flash.exists() {
@@ -462,12 +445,7 @@ impl SingleManagedEndorsement {
         let Some(record) = ManagedRecord::decode(&header) else {
             return Ok(());
         };
-        if record.version != MANAGED_FORMAT_VERSION
-            || record.header_size as usize != MANAGED_HEADER_SIZE
-            || record.slot != self.slot
-            || record.algo != managed_algo_code(self.algo)
-            || record.cert_len > self.der_capacity()
-        {
+        if self.validate_record(&record).is_err() {
             return Ok(());
         }
         if self.stored_checksum(record.cert_len).await? != record.data_checksum {
@@ -482,12 +460,48 @@ impl SingleManagedEndorsement {
         Ok(())
     }
 
+    fn validate_record(&self, record: &ManagedRecord) -> McuResult<()> {
+        if record.version != MANAGED_FORMAT_VERSION
+            || record.header_size as usize != MANAGED_HEADER_SIZE
+            || record.slot != self.slot
+            || record.algo != managed_algo_code(self.algo)
+            || record.cert_len > self.der_capacity()
+            || record.cert_len == 0
+            || record.key_usage_mask != MANAGED_KEY_USAGE_MASK
+        {
+            return Err(cert_errors::INVALID_ENDORSEMENT);
+        }
+        self.validate_metadata(record.key_pair_id, record.cert_info)
+    }
+
+    fn validate_metadata(&self, key_pair_id: u8, cert_info: u8) -> McuResult<()> {
+        let key = DeviceKey::from_key_pair_id(key_pair_id).ok_or(cert_errors::KEY_MISMATCH)?;
+        if let Some(expected) = self.device_key {
+            if key != expected {
+                return Err(cert_errors::KEY_MISMATCH);
+            }
+        }
+        key.validate_anchor_point()?;
+        if cert_info != CERT_MODEL_ALIAS_CERT {
+            return Err(cert_errors::INVALID_ENDORSEMENT);
+        }
+        Ok(())
+    }
+
+    pub(crate) fn discard(&mut self) {
+        self.initialized = false;
+        self.len = 0;
+        self.root_hash = [0; 48];
+        self.key_pair_id = 0;
+        self.cert_info = 0;
+    }
+
     pub fn is_initialized(&self) -> bool {
         self.initialized
     }
 
     /// The algorithm this region is dedicated to.
-    pub const fn algo(&self) -> SpdmPalAsymAlgo {
+    pub const fn algo(&self) -> CertificateAlgorithm {
         self.algo
     }
 
@@ -535,9 +549,15 @@ impl SingleManagedEndorsement {
         Ok(n)
     }
 
-    pub async fn begin_stream_update(mut self, data_len: usize) -> McuResult<Self> {
-        if data_len > self.der_capacity() {
-            return Err(mcu_error::codes::INVARIANT);
+    pub async fn begin_stream_update(
+        mut self,
+        key_pair_id: u8,
+        cert_info: u8,
+        data_len: usize,
+    ) -> McuResult<Self> {
+        self.validate_metadata(key_pair_id, cert_info)?;
+        if data_len == 0 || data_len > self.der_capacity() {
+            return Err(cert_errors::INVALID_ENDORSEMENT);
         }
         self.flash()
             .erase(self.base, self.capacity)
@@ -546,8 +566,8 @@ impl SingleManagedEndorsement {
         self.initialized = false;
         self.len = 0;
         self.root_hash = [0; 48];
-        self.key_pair_id = 0;
-        self.cert_info = 0;
+        self.key_pair_id = key_pair_id;
+        self.cert_info = cert_info;
         Ok(self)
     }
 
@@ -586,8 +606,9 @@ impl SingleManagedEndorsement {
         root_hash: &[u8; 48],
         data_len: usize,
     ) -> McuResult<Self> {
-        if data_len > self.der_capacity() {
-            return Err(mcu_error::codes::INVARIANT);
+        self.validate_metadata(key_pair_id, cert_info)?;
+        if data_len == 0 || data_len > self.der_capacity() {
+            return Err(cert_errors::INVALID_ENDORSEMENT);
         }
         let data_checksum = self.stored_checksum(data_len).await?;
         let record = ManagedRecord {
@@ -624,8 +645,9 @@ impl SingleManagedEndorsement {
         root_hash: &[u8; 48],
         data: &[u8],
     ) -> McuResult<Self> {
-        if data.len() > self.der_capacity() {
-            return Err(mcu_error::codes::INVARIANT);
+        self.validate_metadata(key_pair_id, cert_info)?;
+        if data.is_empty() || data.len() > self.der_capacity() {
+            return Err(cert_errors::INVALID_ENDORSEMENT);
         }
 
         let record = ManagedRecord {
@@ -670,15 +692,14 @@ impl SingleManagedEndorsement {
     }
 
     pub async fn erase_updated(mut self) -> McuResult<Self> {
+        if let Some(key) = self.device_key {
+            key.validate_anchor_point()?;
+        }
         self.flash()
             .erase(self.base, self.capacity)
             .await
             .map_err(map_flash_error)?;
-        self.initialized = false;
-        self.len = 0;
-        self.root_hash = [0; 48];
-        self.key_pair_id = 0;
-        self.cert_info = 0;
+        self.discard();
         self.key_usage_mask = MANAGED_KEY_USAGE_MASK;
         Ok(self)
     }
@@ -710,7 +731,7 @@ impl SingleManagedEndorsement {
         self.base + MANAGED_HEADER_SIZE
     }
 
-    fn der_capacity(&self) -> usize {
+    pub(crate) fn der_capacity(&self) -> usize {
         managed_endorsement_der_capacity(self.capacity)
     }
 
@@ -745,21 +766,21 @@ pub struct ManagedEndorsementSlot {
 #[cfg(feature = "set-certificate")]
 impl ManagedEndorsementSlot {
     pub const fn new(ecc: SingleManagedEndorsement) -> Self {
-        debug_assert!(matches!(ecc.algo(), SpdmPalAsymAlgo::EccP384));
+        debug_assert!(matches!(ecc.algo(), CertificateAlgorithm::EccP384));
         Self { ecc, mldsa: None }
     }
 
     pub const fn with_mldsa(mut self, mldsa: SingleManagedEndorsement) -> Self {
-        debug_assert!(matches!(mldsa.algo(), SpdmPalAsymAlgo::MlDsa87));
+        debug_assert!(matches!(mldsa.algo(), CertificateAlgorithm::MlDsa87));
         self.mldsa = Some(mldsa);
         self
     }
 
     /// The endorsement region serving `algo`, or `None` if this slot has none.
-    pub fn get_endorsement(&self, algo: SpdmPalAsymAlgo) -> Option<&SingleManagedEndorsement> {
+    pub fn get_endorsement(&self, algo: CertificateAlgorithm) -> Option<&SingleManagedEndorsement> {
         match algo {
-            SpdmPalAsymAlgo::EccP384 => Some(&self.ecc),
-            SpdmPalAsymAlgo::MlDsa87 => self.mldsa.as_ref(),
+            CertificateAlgorithm::EccP384 => Some(&self.ecc),
+            CertificateAlgorithm::MlDsa87 => self.mldsa.as_ref(),
         }
     }
 
@@ -767,8 +788,8 @@ impl ManagedEndorsementSlot {
     /// algorithm for that position.
     pub fn set_endorsement(&mut self, endorsement: SingleManagedEndorsement) {
         match endorsement.algo() {
-            SpdmPalAsymAlgo::EccP384 => self.ecc = endorsement,
-            SpdmPalAsymAlgo::MlDsa87 => self.mldsa = Some(endorsement),
+            CertificateAlgorithm::EccP384 => self.ecc = endorsement,
+            CertificateAlgorithm::MlDsa87 => self.mldsa = Some(endorsement),
         }
     }
 
@@ -876,23 +897,32 @@ fn checksum(data: &[u8]) -> u32 {
 
 #[cfg(feature = "set-certificate")]
 fn map_flash_error(err: ErrorCode) -> mcu_error::McuErrorCode {
-    use caliptra_mcu_spdm_codec::errors::*;
-
     match err {
-        ErrorCode::Busy => SPDM_BUSY,
-        _ => SPDM_OPERATION_FAILED,
+        ErrorCode::Busy => cert_errors::STORAGE_BUSY,
+        _ => cert_errors::STORAGE_ERROR,
     }
 }
 
 #[cfg(all(test, feature = "set-certificate"))]
 mod tests {
-    use super::*;
+    extern crate std;
 
-    const TEST_DRIVER: u32 = 0x7000_000A;
+    use super::*;
+    use CertificateAlgorithm as SpdmPalAsymAlgo;
+
+    // Image partition exposed by FakeFlashDriver.
+    const TEST_DRIVER: u32 = 0x8000_0006;
     const TEST_REGION: usize = 4096;
 
     fn chain(algo: SpdmPalAsymAlgo, base: usize) -> SingleManagedEndorsement {
-        SingleManagedEndorsement::new(2, algo, TEST_DRIVER, base, TEST_REGION)
+        SingleManagedEndorsement::new(
+            2,
+            algo,
+            TEST_DRIVER,
+            base,
+            TEST_REGION,
+            Some(DeviceKey::LDevId),
+        )
     }
 
     fn span(base: usize) -> Range<usize> {
@@ -1110,6 +1140,291 @@ mod tests {
         );
         assert!(managed_endorsement_der_capacity(region) > u16::MAX as usize);
     }
+
+    #[test]
+    fn managed_endorsements_share_the_configured_key_pair_id() {
+        let mut ecc = chain(SpdmPalAsymAlgo::EccP384, 0);
+        let mut mldsa = chain(SpdmPalAsymAlgo::MlDsa87, TEST_REGION);
+
+        ecc.initialized = true;
+        ecc.key_pair_id = 1;
+        ecc.cert_info = CERT_MODEL_ALIAS_CERT;
+
+        mldsa.initialized = true;
+        mldsa.key_pair_id = 1;
+        mldsa.cert_info = CERT_MODEL_ALIAS_CERT;
+
+        let slot = ManagedEndorsementSlot::new(ecc).with_mldsa(mldsa);
+        assert_eq!(
+            slot.get_endorsement(SpdmPalAsymAlgo::EccP384)
+                .unwrap()
+                .key_pair_id(),
+            Some(1)
+        );
+        assert_eq!(
+            slot.get_endorsement(SpdmPalAsymAlgo::MlDsa87)
+                .unwrap()
+                .key_pair_id(),
+            Some(1)
+        );
+        for algo in [SpdmPalAsymAlgo::EccP384, SpdmPalAsymAlgo::MlDsa87] {
+            let endorsement = slot.get_endorsement(algo).unwrap();
+            assert_eq!(
+                endorsement.validate_metadata(1, CERT_MODEL_ALIAS_CERT),
+                Ok(())
+            );
+            assert_eq!(
+                endorsement.validate_metadata(2, CERT_MODEL_ALIAS_CERT),
+                Err(cert_errors::KEY_MISMATCH)
+            );
+        }
+    }
+
+    #[test]
+    fn wrong_key_is_rejected_before_ordinary_or_streamed_flash_writes() {
+        use futures::executor::block_on;
+
+        for algo in [SpdmPalAsymAlgo::EccP384, SpdmPalAsymAlgo::MlDsa87] {
+            for provisioned in [false, true] {
+                let mut region = chain(algo, 0);
+                region.initialized = provisioned;
+                for id in [0, 2, 3, 255] {
+                    assert_eq!(
+                        block_on(region.write_updated(id, CERT_MODEL_ALIAS_CERT, &[0; 48], &[1]))
+                            .err(),
+                        Some(cert_errors::KEY_MISMATCH),
+                    );
+                    assert_eq!(
+                        block_on(region.begin_stream_update(id, CERT_MODEL_ALIAS_CERT, 1)).err(),
+                        Some(cert_errors::KEY_MISMATCH),
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn none_policy_allows_explicit_supported_key_and_rejects_invalid_ids() {
+        use futures::executor::block_on;
+
+        let mut region = chain(SpdmPalAsymAlgo::EccP384, 0);
+        region.device_key = None;
+        assert_eq!(region.validate_metadata(1, CERT_MODEL_ALIAS_CERT), Ok(()));
+        assert_eq!(
+            region.validate_metadata(0, CERT_MODEL_ALIAS_CERT),
+            Err(cert_errors::KEY_MISMATCH)
+        );
+        for id in [2, 3] {
+            assert_eq!(
+                region.validate_metadata(id, CERT_MODEL_ALIAS_CERT),
+                Err(cert_errors::UNSUPPORTED_KEY)
+            );
+            assert_eq!(
+                block_on(region.begin_stream_update(id, CERT_MODEL_ALIAS_CERT, 1)).err(),
+                Some(cert_errors::UNSUPPORTED_KEY),
+            );
+        }
+    }
+
+    #[test]
+    fn recovery_rejects_old_ids_and_unsupported_models() {
+        for algo in [SpdmPalAsymAlgo::EccP384, SpdmPalAsymAlgo::MlDsa87] {
+            let region = chain(algo, 0);
+            let record = ManagedRecord {
+                version: MANAGED_FORMAT_VERSION,
+                header_size: MANAGED_HEADER_SIZE as u16,
+                slot: 2,
+                algo: managed_algo_code(algo),
+                key_pair_id: 1,
+                cert_info: CERT_MODEL_ALIAS_CERT,
+                key_usage_mask: MANAGED_KEY_USAGE_MASK,
+                cert_len: 123,
+                data_checksum: 0,
+                root_hash: [0; 48],
+            };
+            assert_eq!(region.validate_record(&record), Ok(()));
+            for id in [0, 2, 3] {
+                assert_eq!(
+                    region.validate_record(&ManagedRecord {
+                        key_pair_id: id,
+                        ..record
+                    }),
+                    Err(cert_errors::KEY_MISMATCH),
+                );
+            }
+            assert_eq!(
+                region.validate_record(&ManagedRecord {
+                    cert_info: 1,
+                    ..record
+                }),
+                Err(cert_errors::INVALID_ENDORSEMENT),
+            );
+            let mut unrestricted = region;
+            unrestricted.device_key = None;
+            assert_eq!(unrestricted.validate_record(&record), Ok(()));
+            assert_eq!(
+                unrestricted.validate_record(&ManagedRecord {
+                    key_pair_id: 0,
+                    ..record
+                }),
+                Err(cert_errors::KEY_MISMATCH),
+            );
+            assert_eq!(
+                unrestricted.validate_record(&ManagedRecord {
+                    key_pair_id: 2,
+                    ..record
+                }),
+                Err(cert_errors::UNSUPPORTED_KEY),
+            );
+        }
+    }
+
+    #[test]
+    fn stream_commit_rejects_key_and_model_before_flash_access() {
+        use futures::executor::block_on;
+
+        for algo in [SpdmPalAsymAlgo::EccP384, SpdmPalAsymAlgo::MlDsa87] {
+            let region = chain(algo, 0);
+            for (id, model, error) in [
+                (0, CERT_MODEL_ALIAS_CERT, cert_errors::KEY_MISMATCH),
+                (2, CERT_MODEL_ALIAS_CERT, cert_errors::KEY_MISMATCH),
+                (1, 1, cert_errors::INVALID_ENDORSEMENT),
+            ] {
+                assert_eq!(
+                    block_on(region.finish_stream_update(id, model, &[3; 48], 100)).err(),
+                    Some(error),
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn discarding_data_does_not_change_the_binding() {
+        let mut region = chain(SpdmPalAsymAlgo::EccP384, 0);
+        region.initialized = true;
+        region.key_pair_id = 1;
+        region.cert_info = CERT_MODEL_ALIAS_CERT;
+        region.discard();
+        assert_eq!(region.key_pair_id(), None);
+        assert_eq!(region.validate_metadata(1, CERT_MODEL_ALIAS_CERT), Ok(()));
+        assert_eq!(
+            region.validate_metadata(2, CERT_MODEL_ALIAS_CERT),
+            Err(cert_errors::KEY_MISMATCH)
+        );
+    }
+
+    #[test]
+    fn flash_replacement_removal_and_recovery_preserve_the_configured_identity() {
+        use caliptra_mcu_libtock_unittest::fake;
+        use std::{boxed::Box, rc::Rc, vec};
+
+        let kernel = fake::Kernel::new();
+        let flash = Rc::new(fake::FakeFlashDriver::new());
+        flash.set_flash_content(vec![MANAGED_ERASED_BYTE; 2 * TEST_REGION]);
+        kernel.add_driver(&flash);
+        // Provision ML-DSA first, with no ECC endorsement present.
+        let mut ecc = chain(SpdmPalAsymAlgo::EccP384, 0);
+        let mldsa = chain(SpdmPalAsymAlgo::MlDsa87, TEST_REGION);
+        let mldsa = fake::wait_for_future_ready(Box::pin(mldsa.write_updated(
+            1,
+            CERT_MODEL_ALIAS_CERT,
+            &[2; 48],
+            &[2; 16],
+        )))
+        .unwrap();
+        fake::wait_for_future_ready(Box::pin(ecc.load())).unwrap();
+        assert!(!ecc.is_initialized());
+        assert_eq!(mldsa.key_pair_id(), Some(1));
+
+        for (algo, base) in [
+            (SpdmPalAsymAlgo::EccP384, 0),
+            (SpdmPalAsymAlgo::MlDsa87, TEST_REGION),
+        ] {
+            let mut region = chain(algo, base);
+            for byte in [3, 4] {
+                region = fake::wait_for_future_ready(Box::pin(region.write_updated(
+                    1,
+                    CERT_MODEL_ALIAS_CERT,
+                    &[byte; 48],
+                    &[byte; 16],
+                )))
+                .unwrap();
+                let mut recovered = chain(algo, base);
+                fake::wait_for_future_ready(Box::pin(recovered.load())).unwrap();
+                assert_eq!(recovered.key_pair_id(), Some(1));
+                let mut data = [0; 16];
+                assert_eq!(
+                    fake::wait_for_future_ready(Box::pin(recovered.read(0, &mut data))),
+                    Ok(16)
+                );
+                assert_eq!(data, [byte; 16]);
+            }
+            let mut unrestricted = region;
+            unrestricted.device_key = None;
+            fake::wait_for_future_ready(Box::pin(unrestricted.load())).unwrap();
+            assert_eq!(unrestricted.key_pair_id(), Some(1));
+            fake::wait_for_future_ready(Box::pin(region.load())).unwrap();
+            assert_eq!(region.key_pair_id(), Some(1));
+
+            region = fake::wait_for_future_ready(Box::pin(region.erase_updated())).unwrap();
+            fake::wait_for_future_ready(Box::pin(region.load())).unwrap();
+            assert!(!region.is_initialized());
+            region = fake::wait_for_future_ready(Box::pin(region.write_updated(
+                1,
+                CERT_MODEL_ALIAS_CERT,
+                &[5; 48],
+                &[5; 16],
+            )))
+            .unwrap();
+            fake::wait_for_future_ready(Box::pin(region.load())).unwrap();
+            assert_eq!(region.key_pair_id(), Some(1));
+        }
+    }
+
+    #[test]
+    fn streamed_flash_record_is_not_published_with_changed_metadata() {
+        use caliptra_mcu_libtock_unittest::fake;
+        use std::{boxed::Box, rc::Rc, vec};
+
+        let kernel = fake::Kernel::new();
+        let flash = Rc::new(fake::FakeFlashDriver::new());
+        flash.set_flash_content(vec![MANAGED_ERASED_BYTE; TEST_REGION]);
+        kernel.add_driver(&flash);
+        for algo in [SpdmPalAsymAlgo::EccP384, SpdmPalAsymAlgo::MlDsa87] {
+            let mut region = chain(algo, 0);
+            region = fake::wait_for_future_ready(Box::pin(region.begin_stream_update(
+                1,
+                CERT_MODEL_ALIAS_CERT,
+                16,
+            )))
+            .unwrap();
+            fake::wait_for_future_ready(Box::pin(region.write_stream_chunk(0, &[4; 8]))).unwrap();
+            fake::wait_for_future_ready(Box::pin(region.write_stream_chunk(8, &[5; 8]))).unwrap();
+            assert_eq!(
+                fake::wait_for_future_ready(Box::pin(region.finish_stream_update(
+                    2,
+                    CERT_MODEL_ALIAS_CERT,
+                    &[3; 48],
+                    16,
+                )))
+                .err(),
+                Some(cert_errors::KEY_MISMATCH),
+            );
+            let mut recovered = region;
+            fake::wait_for_future_ready(Box::pin(recovered.load())).unwrap();
+            assert!(!recovered.is_initialized());
+            region = fake::wait_for_future_ready(Box::pin(region.finish_stream_update(
+                1,
+                CERT_MODEL_ALIAS_CERT,
+                &[3; 48],
+                16,
+            )))
+            .unwrap();
+            fake::wait_for_future_ready(Box::pin(recovered.load())).unwrap();
+            assert_eq!(recovered.key_pair_id(), Some(1));
+            assert_eq!(region.key_pair_id(), Some(1));
+        }
+    }
 }
 
 #[cfg(test)]
@@ -1123,23 +1438,75 @@ mod algo_tests {
     fn read_only_slot_is_unprovisioned_for_missing_algorithm() {
         let ecc_only =
             SlotEndorsement::ReadOnly(ReadOnlyEndorsementSlot::new(ECC_CHAIN, [0u8; 48]));
-        assert!(ecc_only.is_provisioned(SpdmPalAsymAlgo::EccP384));
+        assert!(ecc_only.is_provisioned(CertificateAlgorithm::EccP384));
         // Without an ML-DSA chain the slot must not be advertised in an
         // ML-DSA connection: otherwise GET_CERTIFICATE would serve the
         // ECC chain against an ML-DSA negotiation.
-        assert!(!ecc_only.is_provisioned(SpdmPalAsymAlgo::MlDsa87));
+        assert!(!ecc_only.is_provisioned(CertificateAlgorithm::MlDsa87));
 
         let both = SlotEndorsement::ReadOnly(
             ReadOnlyEndorsementSlot::new(ECC_CHAIN, [0u8; 48]).with_mldsa(MLDSA_CHAIN, [1u8; 48]),
         );
-        assert!(both.is_provisioned(SpdmPalAsymAlgo::EccP384));
-        assert!(both.is_provisioned(SpdmPalAsymAlgo::MlDsa87));
+        assert!(both.is_provisioned(CertificateAlgorithm::EccP384));
+        assert!(both.is_provisioned(CertificateAlgorithm::MlDsa87));
     }
 
     #[test]
     fn empty_slot_is_never_provisioned() {
         let empty = SlotEndorsement::Empty;
-        assert!(!empty.is_provisioned(SpdmPalAsymAlgo::EccP384));
-        assert!(!empty.is_provisioned(SpdmPalAsymAlgo::MlDsa87));
+        assert!(!empty.is_provisioned(CertificateAlgorithm::EccP384));
+        assert!(!empty.is_provisioned(CertificateAlgorithm::MlDsa87));
+    }
+
+    #[test]
+    fn cert_slot_metadata_consistency_and_write_masking() {
+        let mut slot = CertSlot::empty(Some(1));
+        assert_eq!(slot.key_pair_id(CertificateAlgorithm::EccP384), None);
+        assert_eq!(slot.cert_info(CertificateAlgorithm::EccP384), None);
+
+        // Provision a read-only slot for both algorithms.
+        slot.endorsement = SlotEndorsement::ReadOnly(
+            ReadOnlyEndorsementSlot::new(ECC_CHAIN, [0u8; 48]).with_mldsa(MLDSA_CHAIN, [1u8; 48]),
+        );
+
+        // Both algorithms expose the configured identity when provisioned.
+        assert_eq!(slot.key_pair_id(CertificateAlgorithm::EccP384), Some(1));
+        assert_eq!(
+            slot.cert_info(CertificateAlgorithm::EccP384),
+            Some(CERT_MODEL_ALIAS_CERT)
+        );
+        assert_eq!(slot.key_pair_id(CertificateAlgorithm::MlDsa87), Some(1));
+        assert_eq!(
+            slot.cert_info(CertificateAlgorithm::MlDsa87),
+            Some(CERT_MODEL_ALIAS_CERT)
+        );
+
+        // When a write is in progress for ECC, accessors mask its metadata
+        slot.set_write_in_progress(CertificateAlgorithm::EccP384, true);
+        assert_eq!(slot.key_pair_id(CertificateAlgorithm::EccP384), None);
+        assert_eq!(slot.cert_info(CertificateAlgorithm::EccP384), None);
+        // But ML-DSA remains unmasked and accessible
+        assert_eq!(slot.key_pair_id(CertificateAlgorithm::MlDsa87), Some(1));
+        assert_eq!(
+            slot.cert_info(CertificateAlgorithm::MlDsa87),
+            Some(CERT_MODEL_ALIAS_CERT)
+        );
+
+        slot.set_write_in_progress(CertificateAlgorithm::EccP384, false);
+        assert_eq!(slot.key_pair_id(CertificateAlgorithm::EccP384), Some(1));
+        assert_eq!(
+            slot.cert_info(CertificateAlgorithm::EccP384),
+            Some(CERT_MODEL_ALIAS_CERT)
+        );
+    }
+
+    #[test]
+    fn configured_identity_is_hidden_for_an_absent_algorithm() {
+        let mut slot = CertSlot::empty(Some(1));
+        slot.endorsement =
+            SlotEndorsement::ReadOnly(ReadOnlyEndorsementSlot::new(ECC_CHAIN, [0; 48]));
+        assert_eq!(slot.key_pair_id(CertificateAlgorithm::EccP384), Some(1));
+        assert_eq!(slot.key_pair_id(CertificateAlgorithm::MlDsa87), None);
+        assert_eq!(slot.cert_info(CertificateAlgorithm::MlDsa87), None);
     }
 }
