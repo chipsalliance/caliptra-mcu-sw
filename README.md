@@ -143,6 +143,12 @@ revision-specific fuse file instead of downloading a legacy MCU fuse path.
 CI supplies explicit bundle output names for artifact handoff; ordinary builds
 retain their hardware-revision-specific default names.
 
+Three shared integration tests are temporarily ignored on latest/2.2 and remain
+enabled on 2.1: `test_vendor_pk_lock_applied`, `test_rom_iccm_ecc_unc`, and
+`test_rom_dccm_ecc_unc`. [Issue #2279](https://github.com/chipsalliance/caliptra-mcu-sw/issues/2279)
+tracks their investigation and re-enablement. These tests remain discoverable
+with ignore reasons; they do not silently return success.
+
 Initialize the submodule, then explicitly switch **before** building:
 
 ```shell

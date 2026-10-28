@@ -2681,6 +2681,7 @@ dependencies = [
  "caliptra-mcu-flash-image",
  "caliptra-mcu-fw-signer",
  "caliptra-mcu-hw-model",
+ "caliptra-mcu-hw-revision",
  "caliptra-mcu-image-header",
  "caliptra-mcu-mailbox-client",
  "caliptra-mcu-mbox-common",
