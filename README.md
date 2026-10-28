@@ -57,11 +57,12 @@ core dependencies, whose upstream default differs.
 | `2.1` | `hw/rev-2_1/caliptra-ss` | `registers/generated-{firmware,emulator}/src/rev_2_1` |
 | `latest` | `hw/latest/caliptra-ss` | `registers/generated-{firmware,emulator}/src/latest` |
 
-Both subsystem snapshots initially pin the validated commit
-`3350c70a296bf897abe8c02e5ec0da69cc83ee16`, including its recorded nested
-dependencies. Update a subsystem gitlink and regenerate its interfaces together;
+The 2.1 snapshot pins the validated commit
+`3350c70a296bf897abe8c02e5ec0da69cc83ee16`. The latest snapshot pins
+`726db5ba926ec523f72962d8703d605fdd479ec9`, including the compound USB hardware
+described below. Both use their recorded nested dependencies.
+Update a subsystem gitlink and regenerate its interfaces together;
 do not independently advance nested RTL/I3C dependencies to branch tips.
-The production USB hardware upgrade is tracked separately in #2237.
 
 Each hardware-input directory (`hw/rev-2_1` or `hw/latest`) also owns its local
 RDL files and `fuses.hjson`. Register generation selects `mcu.rdl`, `network.rdl`,
@@ -83,8 +84,9 @@ firmware functionality must still have its own Cargo feature gates: selecting
 `latest` does not enable new behavior. The existing `hw-2-1` feature keeps its
 firmware semantics and is valid for both current snapshots.
 
-The emulator's `--hw-revision` is a runtime behavior contract, not a register
-selector. Both snapshots currently require `2.1.0`, now the emulator and
+The emulator's `--hw-revision` is the existing emulator/core behavior contract,
+not a register selector or a claim of complete 2.2 hardware emulation.
+Both snapshots currently require `2.1.0`, now the emulator and
 `cargo xtask runtime` default; incompatible runtime revisions are rejected.
 This intentionally removes the previous implicit 2.0 emulator behavior.
 
