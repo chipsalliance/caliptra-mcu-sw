@@ -20,8 +20,12 @@ mod hub;
 pub use hub::LpcipUsbHubHostController;
 mod phy;
 pub use phy::{LpcipUsbPhy, LpcipUsbPhyError, LpcipUsbPhySnapshot};
+mod recovery;
+pub use recovery::LpcipUsbRecoverySnapshot;
 #[cfg(test)]
 mod phy_tests;
+#[cfg(test)]
+mod recovery_tests;
 
 const MEMORY_SIZE: usize = 0x10000;
 const ENDPOINTS: u8 = 30;
@@ -95,6 +99,7 @@ struct DeviceState {
     introute: u32,
     frame: u16,
     error_code: u8,
+    recovery: Option<recovery::Recovery>,
 }
 
 impl Default for DeviceState {
@@ -118,12 +123,16 @@ impl Default for DeviceState {
             introute: 0,
             frame: 0,
             error_code: 0,
+            recovery: None,
         }
     }
 }
 
 impl DeviceState {
     fn reset_bus(&mut self, speed: LpcipUsbSpeed) {
+        if let Some(recovery) = &mut self.recovery {
+            recovery.abort();
+        }
         self.speed = if self.command & (1 << 21) != 0 {
             LpcipUsbSpeed::Full
         } else {
@@ -335,6 +344,13 @@ impl LpcipUsbHostController {
         state.memory[range].copy_from_slice(setup);
         state.address = address;
         state.pending_address = address;
+        if state
+            .recovery
+            .as_mut()
+            .is_some_and(|recovery| recovery.setup(setup))
+        {
+            return Ok(());
+        }
         state.command |= SETUP;
         state.eptoggle |= 3;
         state.intstat |= 1;
@@ -344,6 +360,15 @@ impl LpcipUsbHostController {
     pub fn host_in(&self, address: u8, endpoint: u8) -> Result<Vec<u8>, LpcipUsbError> {
         let mut state = self.state.lock().unwrap();
         state.check_token(address)?;
+        if endpoint == 0 {
+            if let Some(result) = state
+                .recovery
+                .as_mut()
+                .and_then(recovery::Recovery::host_in)
+            {
+                return result;
+            }
+        }
         let physical = endpoint
             .checked_mul(2)
             .and_then(|ep| ep.checked_add(1))
@@ -365,6 +390,15 @@ impl LpcipUsbHostController {
     pub fn host_out(&self, address: u8, endpoint: u8, data: &[u8]) -> Result<(), LpcipUsbError> {
         let mut state = self.state.lock().unwrap();
         state.check_token(address)?;
+        if endpoint == 0 {
+            if let Some(result) = state
+                .recovery
+                .as_mut()
+                .and_then(|recovery| recovery.host_out(data))
+            {
+                return result;
+            }
+        }
         let physical = endpoint
             .checked_mul(2)
             .filter(|&ep| ep < ENDPOINTS)
@@ -382,6 +416,16 @@ impl LpcipUsbHostController {
         let done = data.len() == remaining || data.len() < max_packet;
         state.complete(physical, offset, word, data.len(), done);
         Ok(())
+    }
+
+    /// Device 1 has no hardware recovery engine and returns `None`.
+    pub fn recovery_snapshot(&self) -> Option<LpcipUsbRecoverySnapshot> {
+        self.state
+            .lock()
+            .unwrap()
+            .recovery
+            .as_ref()
+            .map(recovery::Recovery::snapshot)
     }
 
     pub fn host_sof(&self, frame: u16) -> Result<(), LpcipUsbError> {
@@ -460,10 +504,15 @@ impl UsbDevice {
         let memory = std::mem::take(&mut state.memory);
         let vbus = state.vbus;
         let memory_base = state.memory_base;
+        let recovery = state.recovery.take().map(|mut recovery| {
+            recovery.reset();
+            recovery
+        });
         *state = DeviceState {
             memory,
             memory_base,
             vbus,
+            recovery,
             ..DeviceState::default()
         };
         drop(state);
@@ -664,11 +713,12 @@ pub struct UsbDev1 {
 }
 
 /// Device controllers share protocol semantics, not CSR state or packet SRAM.
-/// OCP-recovery surfaces remain explicitly nonfunctional trait handlers.
+/// Only Device 0 owns the hardware-assisted OCP recovery path.
 pub struct UsbCombo {
     device0: UsbDevice,
     device1: LpcipUsbHostController,
     hub: Arc<Mutex<hub::Hub>>,
+    recovery_events: Option<recovery::RecoveryEvents>,
 }
 
 impl Default for UsbCombo {
@@ -685,10 +735,15 @@ impl Default for UsbCombo {
             device0: UsbDevice {
                 phy,
                 peer: Some(device1.clone()),
+                state: Arc::new(Mutex::new(DeviceState {
+                    recovery: Some(recovery::Recovery::default()),
+                    ..DeviceState::default()
+                })),
                 ..UsbDevice::default()
             },
             device1,
             hub: Arc::new(Mutex::new(hub::Hub::default())),
+            recovery_events: None,
         }
     }
 }
@@ -744,6 +799,28 @@ impl UsbCombo {
         }
     }
 
+    fn recovery_read(&self, offset: u32) -> u32 {
+        self.device0
+            .state
+            .lock()
+            .unwrap()
+            .recovery
+            .as_mut()
+            .unwrap()
+            .read(offset)
+    }
+
+    fn recovery_write(&self, offset: u32, value: u32) {
+        self.device0
+            .state
+            .lock()
+            .unwrap()
+            .recovery
+            .as_mut()
+            .unwrap()
+            .write(offset, value);
+    }
+
     fn reset(&mut self) {
         self.device0.reset();
         self.device1().device.reset();
@@ -751,6 +828,31 @@ impl UsbCombo {
         self.device0.phy.reset_gateway();
         self.device0.update_irq();
     }
+}
+
+macro_rules! recovery_register {
+    ($read:ident, $offset:expr) => {
+        fn $read(&mut self) -> u32 {
+            self.recovery_read($offset)
+        }
+    };
+    ($read:ident, $write:ident, $offset:expr) => {
+        recovery_register!($read, $offset);
+        fn $write(&mut self, value: u32) {
+            self.recovery_write($offset, value);
+        }
+    };
+    (typed $read:ident, $register:ident, $offset:expr) => {
+        fn $read(&mut self) -> ReadWriteRegister<u32, bits::$register::Register> {
+            ReadWriteRegister::new(self.recovery_read($offset))
+        }
+    };
+    (typed $read:ident, $write:ident, $register:ident, $offset:expr) => {
+        recovery_register!(typed $read, $register, $offset);
+        fn $write(&mut self, value: ReadWriteRegister<u32, bits::$register::Register>) {
+            self.recovery_write($offset, value.reg.get());
+        }
+    };
 }
 
 macro_rules! forward_register {
@@ -766,7 +868,33 @@ macro_rules! forward_register {
 }
 
 impl UsbComboPeripheral for UsbCombo {
+    fn register_event_channels(
+        &mut self,
+        to_caliptra: std::sync::mpsc::Sender<caliptra_emu_bus::Event>,
+        from_caliptra: std::sync::mpsc::Receiver<caliptra_emu_bus::Event>,
+        to_mcu: std::sync::mpsc::Sender<caliptra_emu_bus::Event>,
+        from_mcu: std::sync::mpsc::Receiver<caliptra_emu_bus::Event>,
+    ) {
+        self.recovery_events = Some(recovery::RecoveryEvents::new(
+            to_caliptra,
+            from_caliptra,
+            to_mcu,
+            from_mcu,
+        ));
+    }
+
     fn poll(&mut self) {
+        if let Some(events) = &mut self.recovery_events {
+            events.poll(
+                self.device0
+                    .state
+                    .lock()
+                    .unwrap()
+                    .recovery
+                    .as_mut()
+                    .unwrap(),
+            );
+        }
         self.device0.phy.poll();
         self.hub_host_controller().poll();
         self.device0.poll();
@@ -779,6 +907,39 @@ impl UsbComboPeripheral for UsbCombo {
     fn update_reset(&mut self) {
         self.reset();
     }
+
+    recovery_register!(read_recovery_prot_cap_0, 0x04);
+    recovery_register!(read_recovery_prot_cap_1, 0x08);
+    recovery_register!(typed read_recovery_prot_cap_2, write_recovery_prot_cap_2, ProtCap2, 0x0c);
+    recovery_register!(typed read_recovery_prot_cap_3, write_recovery_prot_cap_3, ProtCap3, 0x10);
+    recovery_register!(typed read_recovery_device_id_0, write_recovery_device_id_0, DeviceId0, 0x14);
+    recovery_register!(read_recovery_device_id_1, write_recovery_device_id_1, 0x18);
+    recovery_register!(read_recovery_device_id_2, write_recovery_device_id_2, 0x1c);
+    recovery_register!(read_recovery_device_id_3, write_recovery_device_id_3, 0x20);
+    recovery_register!(read_recovery_device_id_4, write_recovery_device_id_4, 0x24);
+    recovery_register!(read_recovery_device_id_5, write_recovery_device_id_5, 0x28);
+    recovery_register!(typed read_recovery_device_status_0, write_recovery_device_status_0, DeviceStatus0, 0x30);
+    recovery_register!(typed read_recovery_device_status_1, DeviceStatus1, 0x34);
+    recovery_register!(typed read_recovery_device_reset, write_recovery_device_reset, DeviceReset, 0x38);
+    recovery_register!(typed read_recovery_recovery_ctrl, write_recovery_recovery_ctrl, RecoveryCtrl, 0x3c);
+    recovery_register!(typed read_recovery_recovery_status, write_recovery_recovery_status, RecoveryStatus, 0x40);
+    recovery_register!(typed read_recovery_hw_status, write_recovery_hw_status, HwStatus, 0x44);
+    recovery_register!(typed read_recovery_indirect_fifo_ctrl_0, write_recovery_indirect_fifo_ctrl_0, IndirectFifoCtrl0, 0x48);
+    recovery_register!(
+        read_recovery_indirect_fifo_ctrl_1,
+        write_recovery_indirect_fifo_ctrl_1,
+        0x4c
+    );
+    recovery_register!(typed read_recovery_indirect_fifo_status_0, IndirectFifoStatus0, 0x50);
+    recovery_register!(read_recovery_indirect_fifo_status_1, 0x54);
+    recovery_register!(read_recovery_indirect_fifo_status_2, 0x58);
+    recovery_register!(read_recovery_indirect_fifo_status_3, 0x5c);
+    recovery_register!(read_recovery_indirect_fifo_status_4, 0x60);
+    recovery_register!(read_recovery_indirect_fifo_data, 0x68);
+    recovery_register!(typed read_recovery_vendor, write_recovery_vendor, Vendor, 0x100);
+    recovery_register!(typed read_recovery_caliptra_ctrl, write_recovery_caliptra_ctrl, CaliptraCtrl, 0x200);
+    recovery_register!(typed read_recovery_caliptra_status, CaliptraStatus, 0x204);
+    recovery_register!(read_recovery_window_pad, 0x7fc);
 
     forward_register!(
         device0,
