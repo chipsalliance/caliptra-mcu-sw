@@ -76,6 +76,12 @@ impl<S: Syscalls> Otp<S> {
             .to_result::<u32, ErrorCode>()
     }
 
+    pub fn anti_rollback_disabled(&self) -> Result<bool, ErrorCode> {
+        let entry = caliptra_mcu_registers_generated::fuses::OTP_CPTRA_CORE_ANTI_ROLLBACK_DISABLE;
+        self.read_raw((entry.byte_offset / 4) as u32, 0)
+            .map(|value| value != 0)
+    }
+
     pub fn write(&self, reg_offset: u32, index: u32, value: u32) -> Result<(), ErrorCode> {
         S::command(self.driver_num, cmd::OTP_SET_REGISTER, reg_offset, index)
             .to_result::<(), ErrorCode>()?;
@@ -520,4 +526,41 @@ pub mod reg {
     pub const SOC_MANIFEST_MAX_SVN: u32 = 37;
     /// Owner SoC Manifest SVN words; index must be 0 or 1.
     pub const OWNER_SOC_MANIFEST_MIN_SVN: u32 = 38;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn anti_rollback_disabled_reads_physical_fuse_and_preserves_errors() {
+        use caliptra_mcu_libtock_unittest::{command_return, fake, ExpectedSyscall};
+
+        let kernel = fake::Kernel::new();
+        let otp = Otp::<fake::Syscalls>::new();
+        let entry = caliptra_mcu_registers_generated::fuses::OTP_CPTRA_CORE_ANTI_ROLLBACK_DISABLE;
+        for expected in [
+            Ok(0),
+            Ok(1),
+            Ok(4),
+            Ok(7),
+            Err(ErrorCode::Fail),
+            Err(ErrorCode::NoDevice),
+        ] {
+            kernel.add_expected_syscall(ExpectedSyscall::Command {
+                driver_id: OTP_DRIVER_NUM,
+                command_id: cmd::OTP_READ_RAW,
+                argument0: (entry.byte_offset / 4) as u32,
+                argument1: 0,
+                override_return: Some(match expected {
+                    Ok(value) => command_return::success_u32(value),
+                    Err(error) => command_return::failure(error),
+                }),
+            });
+            assert_eq!(
+                otp.anti_rollback_disabled(),
+                expected.map(|value| value != 0)
+            );
+        }
+    }
 }
