@@ -4,249 +4,194 @@ name: Released ROM/runtime compatibility
 
 on:
   workflow_call:
+    inputs:
+      fixture-agreement:
+        description: Owner approval of 2.1 Core e5d1f27, LMS test keys, Raw OTP and release flash/streaming configurations
+        type: string
+        default: ""
+      expected-capabilities:
+        description: JSON mapping each runtime label to its expected flash and streaming capability hex strings
+        type: string
+        default: ""
   workflow_dispatch:
+    inputs:
+      fixture-agreement:
+        description: Owner approval of the fixed 2.1 Core/OTP/signing and release configurations
+        type: string
+        required: false
+      expected-capabilities:
+        description: 'JSON: {"rt-sdk-2.1.0":{"flash":"...","streaming":"..."},"rt-sdk-2.1.1":{...},"main-2.1":{...}}'
+        type: string
+        required: false
 
 permissions:
   contents: read
 
 env:
-  RUSTUP_TOOLCHAIN: "1.96.1-x86_64-unknown-linux-gnu"
+  RUSTUP_TOOLCHAIN: "1.96.1"
   CARGO_NET_GIT_FETCH_WITH_CLI: "true"
   CARGO_BUILD_JOBS: "4"
-  RAYON_NUM_THREADS: "4"
   CARGO_INCREMENTAL: "0"
-  EXTRA_CARGO_CONFIG: 'target.''cfg(all())''.rustflags = ["-Dwarnings"]'
+  CALIPTRA_HW_REV: "2.1"
+  MCU_COMPAT_AGREEMENT: ${{ inputs.fixture-agreement || vars.MCU_COMPAT_FIXTURE_AGREEMENT }}
+  MCU_COMPAT_CAPABILITIES: ${{ inputs.expected-capabilities || vars.MCU_COMPAT_CAPABILITIES }}
 
 jobs:
-  resolve-runtime:
+  resolve:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
-      source: ${{ steps.resolve.outputs.source }}
+      runtime-sha: ${{ steps.source.outputs.sha }}
     steps:
       - uses: actions/checkout@v7
         with:
           ref: main-2.1
-      - name: Resolve current runtime once
-        id: resolve
-        shell: bash
-        run: |
-          set -euo pipefail
-          test "$GITHUB_REF" = refs/heads/main-2.1
-          printf 'source=%s\n' "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-
-  build-xtask:
-    needs: resolve-runtime
-    runs-on: e2-standard-4
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.resolve-runtime.outputs.source }}
-          submodules: recursive
-      - name: Install xtask build tools
-        run: |
-          set -euo pipefail
-          sudo apt-get update -qy
-          sudo apt-get install -qy build-essential libclang-dev llvm pkg-config libssl-dev cmake
-          rustup toolchain install "$RUSTUP_TOOLCHAIN" \
-            -c rust-src,llvm-tools,rustc-dev \
-            -t riscv32imc-unknown-none-elf,aarch64-unknown-linux-gnu
-      - name: Cache host Cargo dependencies and build outputs
-        uses: actions/cache@v6
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target/
-          key: compatibility-host-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.RUSTUP_TOOLCHAIN }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '.github/workflows/rom-runtime-compatibility.yml') }}-${{ needs.resolve-runtime.outputs.source }}
-          restore-keys: |
-            compatibility-host-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.RUSTUP_TOOLCHAIN }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', '.github/workflows/rom-runtime-compatibility.yml') }}-
-      - name: Prebuild xtask
-        run: |
-          cargo build --locked --package caliptra-mcu-xtask --features parallel-build
-          cp target/debug/caliptra-mcu-xtask /tmp/xtask
-      - name: Install cargo-nextest
-        run: curl -LsSf https://get.nexte.st/0.9.118/linux | tar zxf - -C "$HOME/.cargo/bin"
-      - name: Build shared integration-test archive
-        env:
-          CALIPTRA_HW_REV: "2.1"
-        run: |
-          cargo nextest archive --locked --package caliptra-mcu-tests-integration \
-            --archive-file /tmp/compatibility-tests.tar.zst
-      - name: Check orchestration and harness regressions before building images
-        run: |
-          cargo test --locked --package caliptra-mcu-xtask --features parallel-build
-          cargo nextest run --archive-file /tmp/compatibility-tests.tar.zst \
-            --workspace-remap . --profile emulator --test-threads=1 --no-tests fail \
-            -E 'test(test_rom_runtime_compatibility)'
-      - uses: actions/upload-artifact@v7
-        with:
-          name: compatibility-xtask
-          path: /tmp/xtask
-          retention-days: 1
-      - uses: actions/upload-artifact@v7
-        with:
-          name: compatibility-test-archive
-          path: /tmp/compatibility-tests.tar.zst
-          retention-days: 1
+      - id: source
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   build-images:
-    needs: [resolve-runtime, build-xtask]
+    needs: resolve
     runs-on: e2-standard-16-big-disk
     timeout-minutes: 90
     strategy:
       fail-fast: false
       matrix:
-        label: [rom-sdk-2.1.0, rom-sdk-2.1.0rc1, rt-sdk-2.1.0, rt-sdk-2.1.1, main-2.1]
+        include:
+          - label: rom-sdk-2.1.0
+            source: da451221542758758f1c4ce35efbe48da9935dd8
+            toolchain: "1.85"
+          - label: rom-sdk-2.1.0rc1
+            source: 12b6dc3f760767a17e931db3b4a4aa5dca47b95f
+            toolchain: "1.85"
+          - label: rt-sdk-2.1.0
+            source: 24ea8b90bb56c0aed5512232dfbbca3dd2e39716
+            toolchain: "1.85"
+          - label: rt-sdk-2.1.1
+            source: 8c9c8ff27de1babf63c0be74e973185837439040
+            toolchain: "1.96.1"
+          - label: main-2.1
+            source: ${{ needs.resolve.outputs.runtime-sha }}
+            toolchain: "1.96.1"
     env:
-      CARGO_BUILD_JOBS: "8"
-      RAYON_NUM_THREADS: "8"
-      MCU_COMPAT_ROOT: ${{ github.workspace }}/compatibility
-      MCU_COMPAT_CURRENT_RUNTIME_SHA: ${{ needs.resolve-runtime.outputs.source }}
-      IMAGE_LABEL: ${{ matrix.label }}
+      LABEL: ${{ matrix.label }}
+      RUSTUP_TOOLCHAIN: ${{ matrix.toolchain }}
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.resolve-runtime.outputs.source }}
-          fetch-depth: 0
+          ref: ${{ matrix.source }}
           submodules: recursive
       - name: Install build tools
+        run: |
+          sudo apt-get update -qy
+          sudo apt-get install -qy build-essential libclang-dev llvm pkg-config libssl-dev cmake
+          rustup toolchain install "$RUSTUP_TOOLCHAIN" -c rust-src,llvm-tools,rustc-dev -t riscv32imc-unknown-none-elf
+      - name: Build each selected image once without changing historical sources
         shell: bash
         run: |
           set -euo pipefail
-          sudo apt-get update -qy
-          sudo apt-get install -qy build-essential libclang-dev llvm pkg-config libssl-dev cmake
-          for toolchain in 1.85 1.96.1; do
-            rustup toolchain install "$toolchain" \
-              -c rust-src,llvm-tools,rustc-dev \
-              -t riscv32imc-unknown-none-elf,aarch64-unknown-linux-gnu
-          done
-      - uses: actions/download-artifact@v8
-        with:
-          name: compatibility-xtask
-          path: /tmp/
-      - name: Cache immutable images and build provenance
-        id: image-cache
-        uses: actions/cache@v6
-        with:
-          path: |
-            compatibility/artifacts/${{ matrix.label }}/
-            compatibility/streaming-emulator/artifacts/${{ matrix.label }}/
-            compatibility/image-builds/${{ matrix.label }}.json
-          key: compatibility-image-v1-${{ runner.os }}-${{ runner.arch }}-${{ matrix.label }}-${{ hashFiles('Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', 'xtask/**', 'builder/**', '.github/workflows/rom-runtime-compatibility.yml') }}-${{ matrix.label == 'main-2.1' && needs.resolve-runtime.outputs.source || 'released' }}
-      - name: Build selected immutable images and retain provenance
-        if: steps.image-cache.outputs.cache-hit != 'true'
-        run: |
-          chmod +x /tmp/xtask
-          /tmp/xtask rom-runtime-compatibility build-images --label "$IMAGE_LABEL"
-      - name: Save images and build evidence
+          mkdir -p output
+          cp Cargo.lock rust-toolchain.toml output/
+          git rev-parse HEAD > output/source.sha
+          git submodule status --recursive > output/submodules.txt
+          rustc --version > output/toolchain.txt
+          if [[ "$LABEL" == rom-* ]]; then
+            echo 'cargo run --locked -p caliptra-mcu-xtask -- rom-build --platform emulator --features hw-2-1' > output/build-command.txt
+            cargo run --locked -p caliptra-mcu-xtask -- rom-build --platform emulator --features hw-2-1 2>&1 | tee output/build.log
+            cp target/riscv32imc-unknown-none-elf/release/caliptra-mcu-rom-emulator-hw-2-1.bin output/image.bin
+            cp target/debug/caliptra-mcu-xtask output/flash-image-tool
+            cp error/src/lib.rs output/errors.rs
+            cp target/riscv32imc-unknown-none-elf/linker-scripts/caliptra-mcu-rom-emulator-*.ld output/
+          else
+            for mode in flash streaming; do
+              features=(--features hw-2-1 --features mcu-mbox-service --features "$mode-boot")
+              if [ "$mode" = streaming ]; then features+=(--features spdm --features mctp-vdm-service); fi
+              printf '%q ' cargo run --locked -p caliptra-mcu-xtask -- runtime-build --platform emulator --profile release "${features[@]}" --output "$mode.bin" > "output/$mode-command.txt"
+              cargo run --locked -p caliptra-mcu-xtask -- runtime-build --platform emulator --profile release "${features[@]}" --output "$mode.bin" 2>&1 | tee "output/$mode-build.log"
+              cp "target/riscv32imc-unknown-none-elf/release/$mode.bin" output/
+            done
+            cp common/config/src/version.rs output/
+            cp common/mcu-mbox/src/messages.rs output/
+          fi
+          git diff --exit-code HEAD -- Cargo.lock rust-toolchain.toml
+          git submodule foreach --recursive 'git diff --exit-code HEAD --'
+          python3 - <<'PY'
+          import hashlib, json, os, pathlib, re
+          p = pathlib.Path("output")
+          data = {"source": (p/"source.sha").read_text().strip(),
+                  "toolchain": os.environ["RUSTUP_TOOLCHAIN"],
+                  "images": {f.name: hashlib.sha256(f.read_bytes()).hexdigest() for f in p.glob("*.bin")}}
+          if os.environ["LABEL"].startswith("rom-"):
+              source = re.sub(r"\s+", "", (p/"errors.rs").read_text())
+              data["mcu_error"] = int(re.search(r"\(ROM_SOC_CALIPTRA_FATAL_ERROR_BEFORE_FW_READY,(0x[0-9a-fA-F_]+),", source)[1].replace("_", ""), 16)
+              addresses = {int(x, 16) for f in p.glob("*.ld") for x in re.findall(r"HANDOFF_ADDR\s*=\s*0x([0-9a-fA-F]+);", f.read_text())}
+              assert len(addresses) == 1, "Missing or ambiguous handoff address"
+              data["handoff_address"] = addresses.pop()
+          else:
+              text = (p/"version.rs").read_text()
+              data["version"] = ".".join(re.search(rf"MCU_RUNTIME_VERSION_{n}: u32 = (\d+);", text)[1] for n in ["MAJOR","MINOR","PATCH"])
+              text = (p/"messages.rs").read_text()
+              data["command_ids"] = {n: int(v.replace("_",""), 0) for n,v in re.findall(r"pub const (MC_\w+): Self = Self\((0x[0-9a-fA-F_]+|\d+)\);", text)}
+              assert data["command_ids"], "No selected command IDs"
+          (p/"metadata.json").write_text(json.dumps(data, indent=2))
+          PY
+      - uses: actions/upload-artifact@v7
         if: always()
-        uses: actions/upload-artifact@v7
         with:
           name: compatibility-image-${{ matrix.label }}
+          path: output/
           if-no-files-found: error
-          path: |
-            compatibility/artifacts/${{ matrix.label }}/
-            compatibility/streaming-emulator/artifacts/${{ matrix.label }}/
-            compatibility/image-builds/${{ matrix.label }}.json
 
-  prepare-fixtures:
-    needs: [resolve-runtime, build-xtask, build-images]
+  prepare:
+    needs: [resolve, build-images]
     runs-on: e2-standard-16-big-disk
-    timeout-minutes: 60
+    timeout-minutes: 90
     env:
-      CARGO_BUILD_JOBS: "8"
-      RAYON_NUM_THREADS: "8"
-      MCU_COMPAT_ROOT: ${{ github.workspace }}/compatibility
-      MCU_COMPAT_CURRENT_RUNTIME_SHA: ${{ needs.resolve-runtime.outputs.source }}
-      MCU_COMPAT_TEST_ARCHIVE: /tmp/compatibility-tests.tar.zst
+      MCU_COMPAT_CURRENT_RUNTIME_SHA: ${{ needs.resolve.outputs.runtime-sha }}
+      MCU_COMPAT_ARTIFACT_DIR: ${{ github.workspace }}/inputs
+      CPTRA_ROM_TYPE: ROM_WITH_UART
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.resolve-runtime.outputs.source }}
-          fetch-depth: 0
+          ref: ${{ needs.resolve.outputs.runtime-sha }}
           submodules: recursive
-      - name: Install fixture build tools
-        shell: bash
+      - name: Install host tools
         run: |
-          set -euo pipefail
           sudo apt-get update -qy
           sudo apt-get install -qy build-essential libclang-dev llvm pkg-config libssl-dev cmake
-          for toolchain in 1.85 1.96.1; do
-            rustup toolchain install "$toolchain" \
-              -c rust-src,llvm-tools,rustc-dev \
-              -t riscv32imc-unknown-none-elf,aarch64-unknown-linux-gnu
-          done
+          rustup toolchain install "$RUSTUP_TOOLCHAIN" -c rust-src,llvm-tools,rustc-dev -t riscv32imc-unknown-none-elf
           curl -LsSf https://get.nexte.st/0.9.118/linux | tar zxf - -C "$HOME/.cargo/bin"
       - uses: actions/download-artifact@v8
         with:
-          name: compatibility-xtask
-          path: /tmp/
-      - uses: actions/download-artifact@v8
-        with:
-          name: compatibility-test-archive
-          path: /tmp/
-      - uses: actions/download-artifact@v8
-        with:
           pattern: compatibility-image-*
-          merge-multiple: true
-          path: compatibility
-      - name: Cache fixture Cargo dependencies and build outputs
-        uses: actions/cache@v6
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            compatibility/core-build-target/
-            compatibility/capability-evaluator/target/
-            compatibility/streaming-emulator/capability-evaluator/target/
-          key: compatibility-fixtures-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.RUSTUP_TOOLCHAIN }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', 'xtask/src/rom_runtime_compatibility/**', '.github/workflows/rom-runtime-compatibility.yml') }}-${{ needs.resolve-runtime.outputs.source }}
-          restore-keys: |
-            compatibility-fixtures-v1-${{ runner.os }}-${{ runner.arch }}-${{ env.RUSTUP_TOOLCHAIN }}-${{ hashFiles('Cargo.lock', 'rust-toolchain.toml', 'xtask/src/rom_runtime_compatibility/**', '.github/workflows/rom-runtime-compatibility.yml') }}-
-      - name: Produce fixed Core, signed manifests, OTP, packages and pair configurations
+          path: downloads
+      - name: Arrange selected inputs
         run: |
-          chmod +x /tmp/xtask
-          /tmp/xtask rom-runtime-compatibility prepare-fixtures
-      - name: Validate all generated configurations before pair execution
+          mkdir -p inputs/images
+          for directory in downloads/compatibility-image-*; do
+            label="${directory##*/compatibility-image-}"
+            mv "$directory" "inputs/images/$label"
+          done
+          chmod +x inputs/images/rom-*/flash-image-tool
+      - name: Build the test archive and prepare native signed fixtures once
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p "$MCU_COMPAT_ROOT/preflight"
-          for variant in baseline service; do
-            artifacts="$MCU_COMPAT_ROOT/artifacts"
-            if [ "$variant" = service ]; then
-              artifacts="$MCU_COMPAT_ROOT/streaming-emulator/artifacts"
-            fi
-            for rom in rom-sdk-2.1.0 rom-sdk-2.1.0rc1; do
-              for runtime in rt-sdk-2.1.0 rt-sdk-2.1.1 main-2.1; do
-                log="$MCU_COMPAT_ROOT/preflight/$variant-$rom-$runtime.log"
-                MCU_COMPAT_ARTIFACT_DIR="$artifacts" \
-                MCU_COMPAT_CONFIG="$artifacts/pairs/$rom/$runtime/config.json" \
-                MCU_COMPAT_ROM="$rom" MCU_COMPAT_RUNTIME="$runtime" \
-                  cargo nextest run --archive-file "$MCU_COMPAT_TEST_ARCHIVE" \
-                    --workspace-remap . --profile emulator --run-ignored only \
-                    --test-threads=1 --no-tests fail \
-                    -E 'test(=test_rom_runtime_compatibility::test_artifact_integrity)' \
-                    2>&1 | tee "$log"
-              done
-            done
-          done
-      - name: Save exact fixture inputs and evidence
+          cargo nextest archive --locked -p caliptra-mcu-tests-integration --archive-file compatibility-tests.tar.zst
+          cargo nextest run --archive-file compatibility-tests.tar.zst --workspace-remap . \
+            --profile emulator --run-ignored only --test-threads=1 --no-tests fail \
+            -E 'test(=test_rom_runtime_compatibility::fixtures::prepare_inputs)' 2>&1 | tee prepare.log
+      - uses: actions/upload-artifact@v7
         if: always()
-        uses: actions/upload-artifact@v7
         with:
           name: compatibility-inputs
-          if-no-files-found: error
           path: |
-            compatibility/artifacts/
-            compatibility/streaming-emulator/artifacts/
-            compatibility/*.json
-            compatibility/streaming-emulator/*.json
-            compatibility/preflight/
+            inputs/
+            prepare.log
+            compatibility-tests.tar.zst
+          if-no-files-found: error
 
   spdm-tools:
-    needs: resolve-runtime
+    needs: resolve
     name: Build spdm-emu tools
     runs-on: ubuntu-24.04
     timeout-minutes: 60
@@ -255,7 +200,7 @@ jobs:
       - name: Checkout workflow build settings
         uses: actions/checkout@v7
         with:
-          ref: ${{ needs.resolve-runtime.outputs.source }}
+          ref: ${{ needs.resolve.outputs.runtime-sha }}
           sparse-checkout: .github/workflows/rom-runtime-compatibility.yml
           sparse-checkout-cone-mode: false
       - name: Install required packages
@@ -324,8 +269,8 @@ jobs:
           retention-days: 1
 
   test-pairs:
-    needs: [resolve-runtime, prepare-fixtures, spdm-tools]
-    if: ${{ always() && needs.resolve-runtime.result == 'success' && needs.prepare-fixtures.result == 'success' }}
+    needs: [resolve, prepare, spdm-tools]
+    if: ${{ always() && needs.prepare.result == 'success' }}
     runs-on: e2-standard-16-big-disk
     timeout-minutes: 90
     strategy:
@@ -334,111 +279,170 @@ jobs:
         rom: [rom-sdk-2.1.0, rom-sdk-2.1.0rc1]
         runtime: [rt-sdk-2.1.0, rt-sdk-2.1.1, main-2.1]
     env:
-      MCU_COMPAT_ROOT: ${{ github.workspace }}/compatibility
-      MCU_COMPAT_CURRENT_RUNTIME_SHA: ${{ needs.resolve-runtime.outputs.source }}
-      MCU_COMPAT_TEST_ARCHIVE: /tmp/compatibility-tests.tar.zst
       MCU_COMPAT_ROM: ${{ matrix.rom }}
       MCU_COMPAT_RUNTIME: ${{ matrix.runtime }}
-      SPDM_VALIDATOR_DIR: ${{ github.workspace }}/compatibility-spdm-tools/build/bin
+      MCU_COMPAT_CURRENT_RUNTIME_SHA: ${{ needs.resolve.outputs.runtime-sha }}
+      MCU_COMPAT_ARTIFACT_DIR: ${{ github.workspace }}/inputs
+      SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-tools/build/bin
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ needs.resolve-runtime.outputs.source }}
-          submodules: recursive
+          ref: ${{ needs.resolve.outputs.runtime-sha }}
       - name: Install test tools
-        shell: bash
         run: |
-          set -euo pipefail
           sudo apt-get update -qy
-          sudo apt-get install -qy build-essential libclang-dev llvm pkg-config libssl-dev cmake
-          rustup toolchain install "$RUSTUP_TOOLCHAIN" \
-            -c rust-src,llvm-tools,rustc-dev \
-            -t riscv32imc-unknown-none-elf,aarch64-unknown-linux-gnu
+          sudo apt-get install -qy libssl-dev
+          rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
           curl -LsSf https://get.nexte.st/0.9.118/linux | tar zxf - -C "$HOME/.cargo/bin"
       - uses: actions/download-artifact@v8
         with:
-          name: compatibility-xtask
-          path: /tmp/
-      - uses: actions/download-artifact@v8
-        with:
-          name: compatibility-test-archive
-          path: /tmp/
-      - uses: actions/download-artifact@v8
-        with:
           name: compatibility-inputs
-          path: compatibility
-      - name: Download shared SPDM validators
+      - uses: actions/download-artifact@v8
         continue-on-error: true
-        uses: actions/download-artifact@v8
         with:
           name: spdm-emu-tools-compatibility
-          path: ${{ runner.temp }}
-      - name: Extract shared SPDM validators
+          path: spdm-tools
+      - name: Extract SPDM tools when available
         continue-on-error: true
+        run: tar -xzf spdm-tools/spdm-emu-tools.tar.gz -C spdm-tools
+      - name: Run only the ignored compatibility tests, boot checks before optional suites
+        shell: bash
         run: |
-          set -euo pipefail
-          mkdir -p compatibility-spdm-tools
-          tar -xzf "$RUNNER_TEMP/spdm-emu-tools.tar.gz" -C compatibility-spdm-tools
-          cat "$SPDM_VALIDATOR_DIR/spdm-emu-revision.txt"
-      - name: Run boot checks, then supported selected-image suites, for both configurations
-        run: |
-          set -euo pipefail
-          SPDM_NONCE="$(openssl rand -hex 32)"
-          export SPDM_NONCE
-          chmod +x /tmp/xtask
-          /tmp/xtask rom-runtime-compatibility run-pair \
-            --rom "$MCU_COMPAT_ROM" --runtime "$MCU_COMPAT_RUNTIME"
-      - name: Save case results, commands, logs, JUnit and configuration metadata
+          set -uo pipefail
+          export SPDM_NONCE="$(openssl rand -hex 32)"
+          failed=0
+          for mode in flash streaming; do
+            export MCU_COMPAT_MODE="$mode"
+            export MCU_COMPAT_RESULTS="$GITHUB_WORKSPACE/results/$mode"
+            export MCU_COMPAT_EVIDENCE_DIR="$MCU_COMPAT_RESULTS/evidence"
+            mkdir -p "$MCU_COMPAT_EVIDENCE_DIR"
+            for phase in boot suites; do
+              filter='test(test_rom_runtime_compatibility) - test(::fixtures::) - test(test_suite_)'
+              if [ "$phase" = suites ]; then filter='test(test_rom_runtime_compatibility::test_suite_)'; fi
+              printf '%s\n' "cargo nextest run --archive-file compatibility-tests.tar.zst --workspace-remap . --profile emulator --run-ignored only --test-threads=1 --no-fail-fast --no-tests fail -E '$filter'" > "$MCU_COMPAT_RESULTS/$phase-command.txt"
+              rm -f /tmp/junit.xml
+              cargo nextest run --archive-file compatibility-tests.tar.zst --workspace-remap . \
+                --profile emulator --run-ignored only --test-threads=1 --no-fail-fast --no-tests fail \
+                -E "$filter" 2>&1 | tee "$MCU_COMPAT_RESULTS/$phase.log"
+              code=$?
+              echo "$code" > "$MCU_COMPAT_RESULTS/$phase-exit-code.txt"
+              if [ -f /tmp/junit.xml ]; then cp /tmp/junit.xml "$MCU_COMPAT_RESULTS/$phase-junit.xml"; else code=1; fi
+              if grep -q 'Skipping test' "$MCU_COMPAT_RESULTS/$phase.log"; then code=1; fi
+              if [ "$code" -ne 0 ]; then
+                failed=1
+              fi
+              if [ "$phase" = boot ]; then
+                # Missing warm-reset support must not hide evidence from working services.
+                python3 - <<'PY'
+          import json, os, pathlib
+          required = ["recovery_cold_boot", "runtime_commands"]
+          if os.environ["MCU_COMPAT_MODE"] == "streaming": required += ["streaming_boot", "discovery"]
+          root = pathlib.Path(os.environ["MCU_COMPAT_RESULTS"])
+          raise SystemExit(any(not (root/f"{name}.json").is_file()
+              or json.loads((root/f"{name}.json").read_text())["result"] != "PASS" for name in required))
+          PY
+                if [ "$?" -ne 0 ]; then failed=1; break; fi
+              fi
+            done
+          done
+          exit "$failed"
+      - uses: actions/upload-artifact@v7
         if: always()
-        uses: actions/upload-artifact@v7
         with:
           name: compatibility-results-${{ matrix.rom }}-${{ matrix.runtime }}
-          if-no-files-found: error
           path: |
-            compatibility/reports/${{ matrix.rom }}/${{ matrix.runtime }}/
-            compatibility/artifacts/results/${{ matrix.rom }}/${{ matrix.runtime }}/
-            compatibility/streaming-emulator/artifacts/results/${{ matrix.rom }}/${{ matrix.runtime }}/
+            results/
+            inputs/images/*/metadata.json
+            inputs/fixtures/core.json
+            inputs/fixture-hashes.json
+          if-no-files-found: error
 
   report:
-    needs: [resolve-runtime, build-xtask, build-images, prepare-fixtures, spdm-tools, test-pairs]
+    needs: [resolve, build-images, prepare, spdm-tools, test-pairs]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 10
-    env:
-      MCU_COMPAT_ROOT: ${{ github.workspace }}/compatibility
-      MCU_COMPAT_CURRENT_RUNTIME_SHA: ${{ needs.resolve-runtime.outputs.source || github.sha }}
-      UPSTREAM_STATUS: ${{ toJSON(needs) }}
     steps:
-      - uses: actions/checkout@v7
-        with:
-          ref: ${{ needs.resolve-runtime.outputs.source || github.sha }}
       - uses: actions/download-artifact@v8
-        with:
-          name: compatibility-xtask
-          path: /tmp/
-      - uses: actions/download-artifact@v8
+        continue-on-error: true
         with:
           pattern: compatibility-results-*
-          merge-multiple: true
-          path: compatibility
-      - name: Summarize all six pairs, including failures and blocked cases
+          path: reports
+      - name: Report all six pairs even when an earlier job failed
         if: always()
+        env:
+          UPSTREAM_STATUS: ${{ toJSON(needs) }}
         shell: bash
         run: |
-          set -euo pipefail
-          mkdir -p compatibility
-          printf '%s\n' "$UPSTREAM_STATUS" > compatibility/upstream-status.json
-          chmod +x /tmp/xtask
-          /tmp/xtask rom-runtime-compatibility report
-      - name: Always save aggregate JSON, JUnit and summary
+          mkdir -p reports
+          python3 - <<'PY'
+          import itertools, json, os, pathlib, xml.etree.ElementTree as ET
+          root = pathlib.Path("reports")
+          rows, records = [], []
+          junit = ET.Element("testsuite", name="ROM/runtime compatibility")
+          scenarios = """recovery_cold_boot flash_cold_boot streaming_boot handoff runtime_commands discovery
+          cold_reboot corrupted_runtime corrupted_manifest svn_rollback svn_boundary warm_reset
+          suite_attestation_ocp_eat_non_tcb suite_attestation_ocp_eat_tcb suite_attestation_ocp_eat_mixed
+          suite_attestation_pcr_quote suite_spdm_mctp suite_spdm_doe suite_spdm_rs suite_mailbox
+          suite_provisioning suite_ownership_dot suite_owner_stable_key suite_ownership_handoff
+          suite_network_boot suite_usb_recovery""".split()
+          for rom, runtime in itertools.product(["rom-sdk-2.1.0","rom-sdk-2.1.0rc1"], ["rt-sdk-2.1.0","rt-sdk-2.1.1","main-2.1"]):
+              directory = root / f"compatibility-results-{rom}-{runtime}" / "results"
+              cases, issues, received = [], [], 0
+              for mode, scenario in itertools.product(["flash","streaming"], scenarios):
+                  path = directory/mode/f"{scenario}.json"
+                  case = {"scenario": scenario, "result": "BLOCKED", "reason": "No case result; prerequisites or execution unavailable"}
+                  if path.is_file():
+                      try:
+                          case = json.loads(path.read_text())
+                          if not isinstance(case, dict) or case.get("scenario") != scenario or case.get("result") not in ["PASS","FAIL","BLOCKED","NOT APPLICABLE"]:
+                              raise ValueError("Invalid case record")
+                          received += 1
+                      except (OSError, ValueError) as error:
+                          case = {"scenario": scenario, "result": "FAIL", "reason": f"Invalid evidence: {error}"}
+                  case["mode"] = mode
+                  cases.append(case)
+                  node = ET.SubElement(junit, "testcase", classname=f"{rom}/{runtime}/{mode}", name=scenario)
+                  if case["result"] in ["FAIL","BLOCKED"]:
+                      ET.SubElement(node, "failure" if case["result"] == "FAIL" else "error", message=case.get("reason", case["result"]))
+                  elif case["result"] == "NOT APPLICABLE":
+                      ET.SubElement(node, "skipped", message=case.get("reason", "Not applicable"))
+              executions_ok = True
+              for mode, phase in itertools.product(["flash","streaming"], ["boot","suites"]):
+                  path = directory/mode/f"{phase}-junit.xml"
+                  code = directory/mode/f"{phase}-exit-code.txt"
+                  log = directory/mode/f"{phase}.log"
+                  try:
+                      tests = ET.parse(path).findall(".//testcase")
+                      if len(tests) != (12 if phase == "boot" else 14) or code.read_text().strip() != "0" or "Skipping test" in log.read_text():
+                          executions_ok = False
+                      if any(test.find("skipped") is not None for test in tests):
+                          issues.append(f"{mode}/{phase}: Nextest skipped a selected test")
+                      if any(test.find("failure") is not None or test.find("error") is not None for test in tests):
+                          executions_ok = False
+                  except FileNotFoundError:
+                      executions_ok = False
+                  except (OSError, ET.ParseError) as error:
+                      executions_ok = False
+                      issues.append(f"{mode}/{phase}: Invalid execution evidence: {error}")
+              dispositions_ok = all(c["result"] in ["PASS","NOT APPLICABLE"] for c in cases)
+              status = ("FAIL" if issues or any(c["result"] == "FAIL" for c in cases) or (dispositions_ok and not executions_ok)
+                        else "PASS" if executions_ok and dispositions_ok else "BLOCKED")
+              rows.append(f"| {rom} | {runtime} | {status} | {received}/52 case records |")
+              if issues or (dispositions_ok and not executions_ok):
+                  node = ET.SubElement(junit, "testcase", classname=rom, name=f"{runtime}/execution-evidence")
+                  ET.SubElement(node, "failure", message="; ".join(issues) or "Nextest execution evidence is incomplete or failed")
+              records.append({"rom": rom, "runtime": runtime, "result": status, "issues": issues, "cases": cases})
+          summary = "# ROM/runtime compatibility\n\n| ROM | Runtime | Result | Coverage |\n|---|---|---|---|\n" + "\n".join(rows) + "\n"
+          (root/"summary.md").write_text(summary)
+          (root/"matrix-results.json").write_text(json.dumps(records, indent=2))
+          (root/"upstream-status.json").write_text(os.environ["UPSTREAM_STATUS"])
+          ET.ElementTree(junit).write(root/"junit.xml", encoding="utf-8", xml_declaration=True)
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as output: output.write(summary)
+          raise SystemExit(any(r["result"] != "PASS" for r in records))
+          PY
+      - uses: actions/upload-artifact@v7
         if: always()
-        uses: actions/upload-artifact@v7
         with:
           name: compatibility-summary
-          if-no-files-found: error
-          path: |
-            compatibility/matrix-results.json
-            compatibility/execution-results.json
-            compatibility/upstream-status.json
-            compatibility/junit.xml
-            compatibility/summary.md
+          path: reports/

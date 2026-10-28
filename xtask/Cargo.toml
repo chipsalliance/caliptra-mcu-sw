@@ -32,13 +32,11 @@ caliptra-image-types = { workspace = true, features = ["std"] }
 caliptra-hw-model = { workspace = true, optional = true }
 clap.workspace = true
 clap-num.workspace = true
-chrono.workspace = true
 ecdsa.workspace = true
 elf.workspace = true
 hex.workspace = true
 caliptra-mcu-coverage.workspace = true
 caliptra-mcu-builder.workspace = true
-caliptra-mcu-config.workspace = true
 caliptra-mcu-config-emulator.workspace = true
 caliptra-mcu-config-fpga.workspace = true
 caliptra-mcu-firmware-bundler.workspace = true
@@ -70,7 +68,6 @@ tokio = { workspace = true, features = ["macros", "rt-multi-thread"] }
 google-cloud-aiplatform-v1 = { workspace = true, optional = true }
 google-cloud-auth = { workspace = true, optional = true }
 rustls = { workspace = true, features = ["ring"] }
-roxmltree.workspace = true
 
  # infra dependencies for CI
  size-history.workspace = true

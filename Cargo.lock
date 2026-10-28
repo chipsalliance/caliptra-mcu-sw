@@ -2793,7 +2793,6 @@ dependencies = [
  "caliptra-image-gen",
  "caliptra-image-types",
  "caliptra-mcu-builder",
- "caliptra-mcu-config",
  "caliptra-mcu-config-emulator",
  "caliptra-mcu-config-fpga",
  "caliptra-mcu-coverage",
@@ -2809,7 +2808,6 @@ dependencies = [
  "caliptra-size-history",
  "cargo_metadata",
  "cc",
- "chrono",
  "clap 4.5.51",
  "clap-num",
  "ecdsa",
@@ -2820,7 +2818,6 @@ dependencies = [
  "p384",
  "proc-macro2",
  "quote",
- "roxmltree",
  "rustls",
  "semver",
  "serde",
@@ -6602,12 +6599,6 @@ name = "riscv-pac"
 version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8188909339ccc0c68cfb5a04648313f09621e8b87dc03095454f1a11f6c5d436"
-
-[[package]]
-name = "roxmltree"
-version = "0.20.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6c20b6793b5c2fa6553b250154b78d6d0db37e72700ae35fad9387a46f487c97"
 
 [[package]]
 name = "rustc-hash"

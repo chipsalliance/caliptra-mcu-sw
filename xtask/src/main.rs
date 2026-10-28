@@ -27,7 +27,6 @@ mod pldm_fw_pkg;
 mod precheckin;
 mod registers;
 mod rom;
-mod rom_runtime_compatibility;
 mod runtime;
 mod sizes;
 mod test;
@@ -49,11 +48,6 @@ struct Xtask {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Released ROM/runtime compatibility builds, fixtures, tests and reports.
-    RomRuntimeCompatibility {
-        #[command(subcommand)]
-        command: rom_runtime_compatibility::CompatibilityCommands,
-    },
     /// Build and Run Runtime image
     Runtime {
         /// HW revision in semver format (e.g., "2.0.0")
@@ -730,7 +724,6 @@ fn main() {
             }
         }
         Commands::Rom { trace } => rom::rom_run(*trace),
-        Commands::RomRuntimeCompatibility { command } => rom_runtime_compatibility::run(command),
         Commands::RomBuild { platform, features } => {
             caliptra_mcu_builder::rom_build(&CaliptraBuildArgs {
                 platform: platform.as_deref(),

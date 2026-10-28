@@ -190,7 +190,7 @@ fn drive_compatibility_protocol(
             caliptra_mcu_testing_common::stop_emulator();
             bail!("selected firmware reported fatal error 0x{error:08x}");
         }
-        if hw.output().exit_status().is_some() {
+        if hw.mcu_exit_status().is_some() || hw.output().exit_status().is_some() {
             caliptra_mcu_testing_common::stop_emulator();
             bail!("selected firmware exited before reporting an SPDM protocol result");
         }
