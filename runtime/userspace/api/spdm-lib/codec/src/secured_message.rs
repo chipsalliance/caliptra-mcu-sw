@@ -53,14 +53,11 @@ impl SecuredMessageHeader {
 /// Encode the AAD (Associated Authenticated Data) for AEAD.
 ///
 /// AAD = session_id(4, LE) || length(2, LE).
-/// Returns 6 (= `SECURED_MSG_HDR_SIZE`).
-pub fn encode_aad(session_id: u32, length: u16, out: &mut [u8]) -> Result<usize, WireError> {
-    let hdr = out
-        .first_chunk_mut::<SECURED_MSG_HDR_SIZE>()
-        .ok_or(WireError)?;
-    let (session, rest) = hdr.split_first_chunk_mut::<4>().ok_or(WireError)?;
-    *session = session_id.to_le_bytes();
-    let (len, _) = rest.split_first_chunk_mut::<2>().ok_or(WireError)?;
-    *len = length.to_le_bytes();
-    Ok(SECURED_MSG_HDR_SIZE)
+pub fn encode_aad(session_id: u32, length: u16, out: &mut [u8]) -> Result<(), WireError> {
+    let (header, _) = SecuredMessageHeader::mut_from_prefix(out).map_err(|_| WireError)?;
+    *header = SecuredMessageHeader {
+        session_id: session_id.to_le_bytes(),
+        length: length.to_le_bytes(),
+    };
+    Ok(())
 }

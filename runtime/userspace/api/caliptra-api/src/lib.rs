@@ -7,25 +7,20 @@
 //! attestation flows) actually need, without dragging in the heavy
 //! `caliptra-api` crate.
 //!
-//! Two abstractions:
-//!
-//! * [`ApiAlloc`] — per-call scratch-allocator the caller
-//!   implements. Large mailbox request / response buffers come from
-//!   here so large `[u8; N]` arrays do not sit on the stack across an
-//!   `.await`.
-//! * Free functions [`sha_init`] / [`sha_update`] / [`sha_finish`]
-//!   driving Caliptra's `CM_SHA_*` mailbox commands.
-//!
-//! Future modules (`cert`, `dpe`, `ecdsa`) will follow the same
-//! pattern: free `async` functions taking `&impl ApiAlloc`.
+//! Every mailbox primitive is a free `async` function taking
+//! `&impl ScratchAlloc`: request and response buffers come from the caller's
+//! scratch so large `[u8; N]` arrays do not sit on the stack across an
+//! `.await`. [`ScratchAlloc`] and [`ScratchAllocProvider`] are defined in
+//! `caliptra-mcu-scratch-alloc` and re-exported here for convenience.
 
 #![no_std]
 #![allow(async_fn_in_trait)]
 
+#[cfg(feature = "ocp-lock")]
+extern crate alloc;
+
 #[cfg(feature = "mailbox-io")]
 mod aes_gcm;
-#[cfg(feature = "mailbox-io")]
-mod alloc;
 #[cfg(feature = "mailbox-io")]
 mod auth_stash;
 #[cfg(feature = "mailbox-io")]
@@ -42,6 +37,8 @@ mod dpe;
 mod ecdh;
 #[cfg(feature = "mailbox-io")]
 mod ecdsa;
+#[cfg(feature = "ocp-lock")]
+pub mod error;
 #[cfg(feature = "mailbox-io")]
 mod fe_prog;
 #[cfg(feature = "mailbox-io")]
@@ -56,7 +53,11 @@ pub mod image_loader;
 mod import;
 pub mod mailbox;
 #[cfg(feature = "mailbox-io")]
+mod ml_kem;
+#[cfg(feature = "mailbox-io")]
 mod mldsa;
+#[cfg(feature = "ocp-lock")]
+pub mod ocp_lock;
 #[cfg(feature = "mailbox-io")]
 mod owner_auth_manifest;
 #[cfg(feature = "mailbox-io")]
@@ -71,6 +72,8 @@ mod rng;
 mod sha;
 #[cfg(feature = "mailbox-io")]
 mod shake;
+#[cfg(feature = "ocp-lock")]
+pub mod signer;
 #[cfg(feature = "mailbox-io")]
 mod slice;
 #[cfg(feature = "mailbox-io")]
@@ -88,12 +91,12 @@ pub use aes_gcm::{
     spdm_aes_gcm_encrypt_init, spdm_aes_gcm_encrypt_update, Aes256GcmTag, AesGcmCtx,
 };
 #[cfg(feature = "mailbox-io")]
-pub use alloc::{ApiAlloc, ApiAllocPool};
-#[cfg(feature = "mailbox-io")]
 pub use auth_stash::{
-    authorize_and_stash, AuthorizeAndStashFlags, AuthorizeAndStashParams, ImageHashSource,
-    AUTHORIZE_AND_STASH_CONTEXT_SIZE, AUTHORIZE_AND_STASH_MEASUREMENT_SIZE,
+    authorize_and_stash, AuthManifestSource, AuthorizeAndStashFlags, AuthorizeAndStashParams,
+    ImageHashSource, AUTHORIZE_AND_STASH_CONTEXT_SIZE, AUTHORIZE_AND_STASH_MEASUREMENT_SIZE,
 };
+#[cfg(feature = "mailbox-io")]
+pub use caliptra_mcu_scratch_alloc::{ScratchAlloc, ScratchAllocProvider};
 #[cfg(feature = "mailbox-io")]
 pub use capabilities::{core_capabilities, CORE_CAPABILITIES_SIZE};
 #[cfg(feature = "mailbox-io")]
@@ -112,16 +115,17 @@ pub use dma::{mcu_sram_to_axi_dma, AxiDmaTarget};
 #[cfg(feature = "mailbox-io")]
 pub use dpe::{
     dpe_certify_key, dpe_certify_key_cert_size, dpe_certify_key_cert_slice,
-    dpe_certify_key_mldsa87_pubkey, dpe_certify_key_pubkey, dpe_derive_context,
+    dpe_certify_key_mldsa87_tr, dpe_certify_key_pubkey, dpe_derive_context,
     dpe_derive_context_exported_cdi, dpe_get_cert_chain_chunk, dpe_get_tagged_tci,
     dpe_rotate_context_default, dpe_sign, dpe_sign_ecc_p384, dpe_sign_mldsa87, dpe_tag_tci,
     dpe_update_context_measurement, walk_dpe_chain, DpeChainSink, DpeContextHandle,
     DpeDeriveContextExportedCdiResult, DpeDeriveContextFlags, DpeDeriveContextParams,
     DpeDeriveContextResult, DpeProfile, DpeTaggedTci, DpeUpdateContextMeasurementParams,
     DpeUpdateContextMeasurementResult, SigningInput, CERTIFY_KEY_MLDSA87_PUBKEY_SIZE,
-    DPE_CONTEXT_HANDLE_SIZE, DPE_LABEL_LEN, DPE_MAX_CHUNK_SIZE, DPE_MAX_LEAF_CERT_SIZE,
-    DPE_MLDSA87_MU_SIZE, DPE_MLDSA87_SIGNATURE_SIZE, DPE_MLDSA87_SIGN_SCRATCH_PEAK,
-    DPE_P384_DIGEST_SIZE, DPE_P384_SIGNATURE_SIZE, DPE_TCI_MEASUREMENT_SIZE, EXPORTED_CDI_SIZE,
+    DPE_CONTEXT_HANDLE_SIZE, DPE_DERIVE_CONTEXT_EXPORTED_CDI_SCRATCH_PEAK, DPE_LABEL_LEN,
+    DPE_MAX_CHUNK_SIZE, DPE_MAX_LEAF_CERT_SIZE, DPE_MLDSA87_MU_SIZE, DPE_MLDSA87_SIGNATURE_SIZE,
+    DPE_MLDSA87_SIGN_SCRATCH_PEAK, DPE_P384_DIGEST_SIZE, DPE_P384_SIGNATURE_SIZE,
+    DPE_TCI_MEASUREMENT_SIZE, EXPORTED_CDI_SIZE,
 };
 #[cfg(feature = "mailbox-io")]
 pub use ecdh::{
@@ -136,9 +140,15 @@ pub use fw_info::{fw_info, FwInfo};
 #[cfg(feature = "mailbox-io")]
 pub use hmac::{cm_hmac, cm_hmac_sha512, hkdf_expand, hkdf_extract, HkdfSalt, CMB_HMAC_MAX_SIZE};
 #[cfg(feature = "mailbox-io")]
-pub use image_loader::{core_image_info, GetImageInfoResp};
+pub use image_loader::{core_image_info, core_image_info_from, GetImageInfoResp};
 #[cfg(feature = "mailbox-io")]
 pub use import::{cm_delete, cm_import};
+#[cfg(feature = "mailbox-io")]
+pub use ml_kem::{
+    mlkem_decapsulate, mlkem_encapsulate, mlkem_key_gen, MLKEM1024_CIPHERTEXT_SIZE,
+    MLKEM1024_ENCAPS_KEY_SIZE, MLKEM_ENCAPSULATE_REQ_SIZE, MLKEM_ENCAPSULATE_RSP_SIZE,
+    MLKEM_ENCAPSULATE_SCRATCH_PEAK,
+};
 #[cfg(feature = "mailbox-io")]
 pub use mldsa::{
     mldsa87_compute_mu, mldsa87_compute_tr, MLDSA87_CONTEXT_MAX_SIZE, MLDSA87_TR_SIZE,

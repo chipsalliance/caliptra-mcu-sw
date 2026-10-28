@@ -9,30 +9,40 @@ use caliptra_mcu_command_auth_challenge_signer::{
 };
 use caliptra_mcu_hw_model::McuHwModel;
 use caliptra_mcu_mbox_common::messages::{
-    calc_checksum, GetAuthCmdChallengeReq, MailboxReqHeader, AUTH_CMD_NONCE_LEN,
+    calc_checksum, CommandId, GetAuthCmdChallengeResp, MailboxReqHeader, AUTH_CMD_NONCE_LEN,
 };
 use core::mem::size_of;
 use zerocopy::{FromBytes, IntoBytes};
 
+mod test_fuse_mailbox;
 mod test_increase_caliptra_svn;
 mod test_mcu_mailbox;
 mod test_ocp_lock;
 mod test_revoke_vendor_pub_key;
 
 pub fn get_auth_cmd_challenge(hw: &mut impl McuHwModel) -> Result<[u8; AUTH_CMD_NONCE_LEN]> {
-    let cmd = GetAuthCmdChallengeReq::default();
-    let resp = hw.mailbox_execute_req(cmd)?;
+    let mut request = vec![0u8; size_of::<MailboxReqHeader>()];
+    request.extend_from_slice(&CommandId::MC_GET_AUTH_CMD_CHALLENGE.0.to_le_bytes());
+    let checksum = calc_checksum(
+        CommandId::MC_AUTHORIZED_COMMAND.0,
+        &request[size_of::<MailboxReqHeader>()..],
+    );
+    request[..size_of::<MailboxReqHeader>()].copy_from_slice(&checksum.to_le_bytes());
+    let response = hw
+        .mailbox_execute(CommandId::MC_AUTHORIZED_COMMAND.0, &request)?
+        .ok_or_else(|| anyhow!("MACC returned no response"))?;
+    let resp = GetAuthCmdChallengeResp::read_from_bytes(&response)
+        .map_err(|_| anyhow!("MACC returned an invalid response"))?;
     Ok(resp.challenge)
 }
 
 pub fn sign_auth_cmd_challenge(
     challenge: &[u8; AUTH_CMD_NONCE_LEN],
     cmd_id: u32,
-    cmd: &[u8],
+    payload: &[u8],
 ) -> Result<Vec<u8>> {
     let authorizer = AsymmetricCommandAuthorizer::new(&TEST_ECC_PRIV_KEY, &TEST_MLDSA_SEED)?;
-    let cmd_body = &cmd[size_of::<MailboxReqHeader>()..];
-    let sigs = authorizer.authorize(cmd_id, cmd_body, challenge)?;
+    let sigs = authorizer.authorize(cmd_id, payload, challenge)?;
     let (ecc_pub_x, ecc_pub_y, mldsa_pub) = authorizer.public_keys()?;
 
     let mut tail = challenge.to_vec();
@@ -43,33 +53,47 @@ pub fn sign_auth_cmd_challenge(
     Ok(tail)
 }
 
-pub fn authorize_cmd(hw: &mut impl McuHwModel, cmd_id: u32, cmd: &[u8]) -> Result<Vec<u8>> {
+pub fn authorize_cmd(hw: &mut impl McuHwModel, target: u32, cmd: &[u8]) -> Result<Vec<u8>> {
     let challenge = get_auth_cmd_challenge(hw)?;
-    let sigs = sign_auth_cmd_challenge(&challenge, cmd_id, cmd)?;
-    let mut auth_cmd = cmd.to_vec();
+    let body = cmd
+        .get(size_of::<MailboxReqHeader>()..)
+        .ok_or_else(|| anyhow!("Authorized request is missing its payload"))?;
+    let sigs = sign_auth_cmd_challenge(&challenge, target, body)?;
+    let mut auth_cmd = vec![0u8; size_of::<MailboxReqHeader>()];
+    auth_cmd.extend_from_slice(&target.to_le_bytes());
+    auth_cmd.extend_from_slice(body);
     auth_cmd.extend_from_slice(&sigs);
     Ok(auth_cmd)
 }
 
-pub fn execute_authorized_req<R: caliptra_mcu_mbox_common::messages::Request>(
+pub fn execute_authorized_req_raw<R: caliptra_mcu_mbox_common::messages::Request>(
     hw: &mut impl McuHwModel,
     mut req: R,
-) -> Result<R::Resp> {
+) -> Result<Vec<u8>> {
     let req_bytes = req.as_mut_bytes();
 
     // Authorize (sign)
     let mut auth_cmd = authorize_cmd(hw, u32::from(R::ID), req_bytes)?;
 
     // Populate the request checksum over body + MAC
-    let checksum = calc_checksum(R::ID.into(), &auth_cmd[size_of::<i32>()..]);
+    let checksum = calc_checksum(
+        CommandId::MC_AUTHORIZED_COMMAND.0,
+        &auth_cmd[size_of::<i32>()..],
+    );
     let hdr: &mut MailboxReqHeader =
         MailboxReqHeader::mut_from_bytes(&mut auth_cmd[..size_of::<MailboxReqHeader>()]).unwrap();
     hdr.chksum = checksum;
 
     // Send the request to the mailbox
-    let mut response = hw
-        .mailbox_execute(R::ID.into(), &auth_cmd)?
-        .unwrap_or_default();
+    hw.mailbox_execute(CommandId::MC_AUTHORIZED_COMMAND.0, &auth_cmd)?
+        .ok_or_else(|| anyhow!("Authorized command returned no response"))
+}
+
+pub fn execute_authorized_req<R: caliptra_mcu_mbox_common::messages::Request>(
+    hw: &mut impl McuHwModel,
+    req: R,
+) -> Result<R::Resp> {
+    let mut response = execute_authorized_req_raw(hw, req)?;
 
     // Check the response checksum
     if response.len() < 4 {
@@ -108,13 +132,16 @@ pub fn execute_authorized_req_tampered<R: caliptra_mcu_mbox_common::messages::Re
     let mut auth_cmd = authorize_cmd(hw, u32::from(R::ID), req_bytes)?;
     tamper(&mut auth_cmd);
 
-    let checksum = calc_checksum(R::ID.into(), &auth_cmd[size_of::<i32>()..]);
+    let checksum = calc_checksum(
+        CommandId::MC_AUTHORIZED_COMMAND.0,
+        &auth_cmd[size_of::<i32>()..],
+    );
     let hdr: &mut MailboxReqHeader =
         MailboxReqHeader::mut_from_bytes(&mut auth_cmd[..size_of::<MailboxReqHeader>()]).unwrap();
     hdr.chksum = checksum;
 
     let mut response = hw
-        .mailbox_execute(R::ID.into(), &auth_cmd)?
+        .mailbox_execute(CommandId::MC_AUTHORIZED_COMMAND.0, &auth_cmd)?
         .unwrap_or_default();
 
     if response.len() < 4 {

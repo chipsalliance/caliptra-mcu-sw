@@ -61,6 +61,7 @@ use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 
+const DEFAULT_AXI_PAUSER: u32 = 0x1;
 const BOOT_CYCLES: u64 = 100_000_000;
 
 /// Emulated model
@@ -349,7 +350,7 @@ impl McuHwModel for ModelEmulated {
                 device_lifecycle,
                 req_idevid_csr,
                 use_mcu_recovery_interface,
-                extra_soc_bus: Some(params.caliptra_soc_axi_user.unwrap_or(0xdddd_dddd)),
+                extra_soc_bus: Some(params.caliptra_soc_axi_user.unwrap_or(DEFAULT_AXI_PAUSER)),
                 ocp_lock_en: params.ocp_lock_en,
                 debug_intent: params.debug_intent,
                 prod_dbg_unlock_keypairs: params.prod_dbg_unlock_keypairs.clone(),
@@ -650,6 +651,8 @@ impl McuHwModel for ModelEmulated {
                 SpdmResponderTransport::Doe,
                 milestones.contains(McuBootMilestones::FIRMWARE_SPDM_DOE_READY),
             );
+            self.state
+                .set_pldm_ready(milestones.contains(McuBootMilestones::FIRMWARE_PLDM_READY));
         }
     }
 
@@ -689,8 +692,8 @@ impl McuHwModel for ModelEmulated {
         }))
     }
 
-    fn set_axi_user(&mut self, _axi_user: u32) {
-        unimplemented!();
+    fn set_axi_user(&mut self, axi_user: u32) {
+        self.soc_to_caliptra_bus.mailbox.soc_user = MailboxRequester::SocUser(axi_user);
     }
 
     fn events_from_caliptra(&mut self) -> Vec<Event> {
@@ -776,6 +779,13 @@ impl McuHwModel for ModelEmulated {
 }
 
 impl ModelEmulated {
+    /// Emulator-only handle for deterministic I3C target fault scenarios.
+    pub fn i3c_target(&self) -> caliptra_mcu_emulator_periph::I3cTarget {
+        self.i3c_controller
+            .target(self.i3c_address.unwrap().into())
+            .unwrap()
+    }
+
     fn caliptra_axi_bus(&mut self) -> EmulatedAxiBus<'_> {
         EmulatedAxiBus { model: self }
     }

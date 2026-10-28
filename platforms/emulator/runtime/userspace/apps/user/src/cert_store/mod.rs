@@ -18,37 +18,29 @@
 //! read here and prepended to their respective Caliptra cert chains via the
 //! `POPULATE_IDEV_*_CERT` mailbox commands.
 
-extern crate alloc;
-
-#[cfg(feature = "spdm")]
 mod slot0_endorsements;
 
+#[cfg(feature = "test-mctp-spdm-set-certificate")]
+use caliptra_mcu_cert_store::CertificateAlgorithm;
+use caliptra_mcu_cert_store::{
+    store::SharedCertStore, CertificateProvisioningPolicy, EndorsementRole,
+};
 #[cfg(feature = "test-mctp-spdm-set-certificate")]
 use caliptra_mcu_config_emulator::flash::CERT_STORE_PARTITION;
 use caliptra_mcu_libsyscall_caliptra::external_otp::ExternalOtp;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_console::Console;
-use caliptra_mcu_scratch_alloc::{BitmapAllocator, BITMAP_SLOT_SIZE};
-#[cfg(feature = "spdm")]
-use caliptra_mcu_spdm_pal::cert::store::SharedCertStore;
+use caliptra_mcu_scratch_alloc::BitmapAllocator;
 // `log_warn!` writes through the console writer, so the trait must be in scope;
 // the macro compiles to nothing without a log transport, which makes the import
 // look unused.
 #[allow(unused_imports)]
 use core::fmt::Write as _;
-use core::ptr::NonNull;
 use mcu_caliptra_api::{
-    mldsa87_cert_der_len, populate_idev_ecc384_cert, populate_idev_mldsa87_cert, ApiAlloc,
+    mldsa87_cert_der_len, populate_idev_ecc384_cert, populate_idev_mldsa87_cert, ScratchAlloc,
+    POPULATE_IDEV_MLDSA87_MAX_CERT_SIZE,
 };
 use mcu_error::McuResult;
-
-/// SPDM slot IDs for OCP PKI entities.
-#[cfg(feature = "spdm")]
-const VENDOR_STORE_SLOT: usize = 0;
-#[cfg(feature = "test-mctp-spdm-set-certificate")]
-const OWNER_SPDM_SLOT: u8 = 2;
-#[cfg(feature = "test-mctp-spdm-set-certificate")]
-const TENANT_SPDM_SLOT: u8 = 3;
 
 /// IDevID ECC cert size in OTP partition 1.
 const ECC_DEVID_CERT_SIZE: usize = 547;
@@ -59,44 +51,26 @@ const OTP_IDEVID_ECC_PARTITION: u32 = 0x01;
 /// OTP partition ID for the IDevID ML-DSA-87 certificate.
 const OTP_IDEVID_MLDSA_PARTITION: u32 = 0x02;
 
-/// Temporary boot pool for the ML-DSA certificate plus mailbox response.
-///
-/// This reuses the global heap after measurement boot releases its temporary
-/// allocation, and is released before any service task is spawned.
-const CERT_STORE_BOOT_SCRATCH_SIZE: usize = 9 * 1024;
-const CERT_STORE_BOOT_SCRATCH_SLOTS: usize = CERT_STORE_BOOT_SCRATCH_SIZE / BITMAP_SLOT_SIZE;
+/// Headroom for the mailbox response and bitmap allocator bookkeeping.
+const BOOT_SCRATCH_HEADROOM: usize = 1024;
 
-#[repr(C, align(64))]
-#[derive(Clone, Copy)]
-struct CertStoreBootScratchSlot([u8; BITMAP_SLOT_SIZE]);
+/// Scratch that [`init`] needs for the ML-DSA certificate import. Boot
+/// borrows it from an idle task pool.
+pub(crate) const BOOT_SCRATCH_SIZE: usize =
+    POPULATE_IDEV_MLDSA87_MAX_CERT_SIZE + BOOT_SCRATCH_HEADROOM;
 
-#[cfg(feature = "spdm")]
-static CERT_STORE: SharedCertStore = SharedCertStore::new();
+const PROVISIONING_POLICY: CertificateProvisioningPolicy = CertificateProvisioningPolicy::DEFAULT;
 
-/// Each managed `(slot, algorithm)` gets its own flash region so that
+static CERT_STORE: SharedCertStore = SharedCertStore::with_policy(PROVISIONING_POLICY);
+
+/// Each managed `(role, algorithm)` gets its own flash region so that
 /// installing one algorithm's chain cannot erase the other's.
 #[cfg(feature = "test-mctp-spdm-set-certificate")]
-const MANAGED_ENDORSEMENT_REGIONS: &[(usize, u8, caliptra_mcu_spdm_traits::SpdmPalAsymAlgo)] = &[
-    (
-        1,
-        OWNER_SPDM_SLOT,
-        caliptra_mcu_spdm_traits::SpdmPalAsymAlgo::EccP384,
-    ),
-    (
-        1,
-        OWNER_SPDM_SLOT,
-        caliptra_mcu_spdm_traits::SpdmPalAsymAlgo::MlDsa87,
-    ),
-    (
-        2,
-        TENANT_SPDM_SLOT,
-        caliptra_mcu_spdm_traits::SpdmPalAsymAlgo::EccP384,
-    ),
-    (
-        2,
-        TENANT_SPDM_SLOT,
-        caliptra_mcu_spdm_traits::SpdmPalAsymAlgo::MlDsa87,
-    ),
+const MANAGED_ENDORSEMENT_REGIONS: &[(EndorsementRole, CertificateAlgorithm)] = &[
+    (EndorsementRole::Owner, CertificateAlgorithm::EccP384),
+    (EndorsementRole::Owner, CertificateAlgorithm::MlDsa87),
+    (EndorsementRole::Tenant, CertificateAlgorithm::EccP384),
+    (EndorsementRole::Tenant, CertificateAlgorithm::MlDsa87),
 ];
 /// Region size. The partition is statically sized, so subdividing it
 /// four ways instead of two costs no additional flash. ML-DSA chains
@@ -110,30 +84,16 @@ const MANAGED_SLOT_REGION_SIZE: usize = {
 };
 
 /// Initialize Caliptra identity chains before any SPDM or MCU-mailbox task can
-/// contend for the mailbox, then configure SPDM endorsements when enabled.
-pub(crate) async fn boot_init() -> McuResult<()> {
-    let mut scratch = alloc::vec::Vec::new();
-    scratch
-        .try_reserve_exact(CERT_STORE_BOOT_SCRATCH_SLOTS)
-        .map_err(|_| mcu_error::codes::OUT_OF_MEMORY)?;
-    scratch.resize(
-        CERT_STORE_BOOT_SCRATCH_SLOTS,
-        CertStoreBootScratchSlot([0; BITMAP_SLOT_SIZE]),
-    );
-    let scratch_ptr =
-        NonNull::new(scratch.as_mut_ptr().cast::<u8>()).ok_or(mcu_error::codes::OUT_OF_MEMORY)?;
-
-    // SAFETY: `scratch_ptr` points at aligned heap memory owned by `scratch`.
-    // The vector outlives every allocation, and no allocation escapes.
-    let allocator = unsafe { BitmapAllocator::new(scratch_ptr, CERT_STORE_BOOT_SCRATCH_SIZE) };
-
-    populate_idev(&allocator).await?;
-    #[cfg(feature = "spdm")]
-    setup_endorsements(&CERT_STORE, &allocator).await?;
+/// contend for the mailbox, then configure endorsement chains in the shared
+/// certificate store.
+///
+/// `scratch` must provide at least [`BOOT_SCRATCH_SIZE`] bytes.
+pub(crate) async fn init(scratch: &BitmapAllocator) -> McuResult<()> {
+    populate_idev(scratch).await?;
+    setup_endorsements(&CERT_STORE, scratch).await?;
     Ok(())
 }
 
-#[cfg(feature = "spdm")]
 pub(crate) fn shared() -> &'static SharedCertStore {
     &CERT_STORE
 }
@@ -144,7 +104,7 @@ pub(crate) fn shared() -> &'static SharedCertStore {
 /// the installs cannot contend with an SPDM responder or the MCU mailbox
 /// service. ECC-384 is required; ML-DSA-87 remains best-effort until SPDM can
 /// negotiate that algorithm.
-async fn populate_idev<A: ApiAlloc>(alloc: &A) -> McuResult<()> {
+async fn populate_idev<A: ScratchAlloc>(alloc: &A) -> McuResult<()> {
     populate_idev_cert_from_otp_ecc(alloc).await?;
     if let Err(e) = populate_idev_cert_from_otp_mldsa(alloc).await {
         let mut cw = Console::<DefaultSyscalls>::writer();
@@ -162,32 +122,28 @@ async fn populate_idev<A: ApiAlloc>(alloc: &A) -> McuResult<()> {
 /// Called once during boot initialization before spawning responders. Slot 0
 /// failure is fatal. Slots 1-2 stay unprovisioned if flash is empty (they'll be
 /// provisioned via SET_CERTIFICATE).
-#[cfg(feature = "spdm")]
-async fn setup_endorsements<A: ApiAlloc>(store: &SharedCertStore, alloc: &A) -> McuResult<()> {
-    // Slot 0 (Vendor): ReadOnly endorsement with static Root CA (ECC & ML-DSA).
+async fn setup_endorsements<A: ScratchAlloc>(store: &SharedCertStore, alloc: &A) -> McuResult<()> {
+    // Vendor: ReadOnly endorsement with static Root CA (ECC & ML-DSA).
     store
         .set_endorsement_chains(
             alloc,
-            VENDOR_STORE_SLOT,
+            EndorsementRole::Vendor,
             slot0_endorsements::SLOT0_ECC_ROOT_CERT_CHAIN,
             Some(slot0_endorsements::SLOT0_MLDSA_ROOT_CERT_CHAIN),
             0, // key_pair_id
         )
         .await?;
 
-    // Slots 1-2 (Owner/Tenant): Managed endorsements, initially empty or
-    // loaded from the cert-store flash partition. Each (slot, algorithm)
-    // gets its own contiguous region. This remains test-only until a
-    // production authorization/key-binding policy exists.
+    // Owner/Tenant: Managed endorsements, initially empty or loaded from the
+    // cert-store flash partition. Each (role, algorithm) gets its own
+    // contiguous region. This remains test-only until a production requester
+    // authorization exists.
     #[cfg(feature = "test-mctp-spdm-set-certificate")]
     {
-        for (region_index, &(store_slot, spdm_slot, algo)) in
-            MANAGED_ENDORSEMENT_REGIONS.iter().enumerate()
-        {
+        for (region_index, &(role, algo)) in MANAGED_ENDORSEMENT_REGIONS.iter().enumerate() {
             store
                 .set_managed_endorsement(
-                    store_slot,
-                    spdm_slot,
+                    role,
                     algo,
                     CERT_STORE_PARTITION.driver_num,
                     region_index * MANAGED_SLOT_REGION_SIZE,
@@ -201,7 +157,7 @@ async fn setup_endorsements<A: ApiAlloc>(store: &SharedCertStore, alloc: &A) -> 
 }
 
 /// Read the IDevID ECC-384 cert from OTP and install it into Caliptra.
-async fn populate_idev_cert_from_otp_ecc<A: ApiAlloc>(alloc: &A) -> McuResult<()> {
+async fn populate_idev_cert_from_otp_ecc<A: ScratchAlloc>(alloc: &A) -> McuResult<()> {
     let mut cert_buf = [0u8; ECC_DEVID_CERT_SIZE];
     let otp = ExternalOtp::<DefaultSyscalls>::new();
 
@@ -222,7 +178,7 @@ async fn populate_idev_cert_from_otp_ecc<A: ApiAlloc>(alloc: &A) -> McuResult<()
 /// mailbox mutex *before* pulling from the stream, so streaming would hold the
 /// Caliptra mailbox with EXECUTE asserted across ~1,900 sequential 4-byte OTP
 /// syscalls. Staging keeps the mailbox held only for the transfer itself.
-async fn populate_idev_cert_from_otp_mldsa<A: ApiAlloc>(alloc: &A) -> McuResult<()> {
+async fn populate_idev_cert_from_otp_mldsa<A: ScratchAlloc>(alloc: &A) -> McuResult<()> {
     let otp = ExternalOtp::<DefaultSyscalls>::new();
 
     // Submit the cert's own DER length, not the whole partition: a production
@@ -259,7 +215,7 @@ async fn mldsa_cert_der_len(otp: &ExternalOtp<DefaultSyscalls>) -> McuResult<Opt
     let partition_size = otp
         .partition_size(OTP_IDEVID_MLDSA_PARTITION)
         .map_err(|_| mcu_error::codes::INTERNAL_BUG)? as usize;
-    // Length policy lives in api-lite so it is covered by host unit tests;
+    // Length policy lives in mcu-caliptra-api so it is covered by host unit tests;
     // user-app itself is excluded from `cargo test` (xtask/src/test.rs).
     Ok(mldsa87_cert_der_len(word, partition_size))
 }

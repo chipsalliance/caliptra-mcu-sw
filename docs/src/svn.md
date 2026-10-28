@@ -14,7 +14,7 @@ Each firmware component tracks two SVN values:
 the device runs version 10. The deployer chooses when to permanently commit a
 new minimum.
 
-This document covers four categories of components:
+This document covers five categories of components:
 
 1. **Caliptra Core firmware** — enforced by Caliptra Core ROM.
 2. **MCU Runtime firmware** — its `current_svn` is the **SoC manifest SVN**
@@ -28,6 +28,8 @@ This document covers four categories of components:
    `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN`.
 4. **SoC component images** — manifest-level SVN enforced by Caliptra Core;
    optional per-component enforcement by MCU against `SOC_IMAGE_MIN_SVN[i]`.
+5. **Owner SoC Manifest** — enforced by Caliptra Core against the
+   decoded floor forwarded by MCU ROM in `SS_STRAP_GENERIC[3][15:8]`.
 
 ### MCU Runtime SVN reuses the SoC manifest SVN
 
@@ -82,6 +84,32 @@ set, neither side rejects lower-SVN images and no SVN fuses are burned. MCU
 reuses this fuse rather than introducing a separate MCU-only switch. The fuse
 defaults to 0 (enforcement on) and should be set only on development or
 manufacturing devices.
+
+### Owner SoC Manifest SVN
+
+The SDK stores `OWNER_SOC_MANIFEST_MIN_SVN` in 8 bytes of non-ECC
+`VENDOR_TEST_PARTITION` at `[0x410, 0x418)`, between `FIELD_ENTROPY_STATE` and the
+partition digest. Its `OneHot { bits: 64 }` layout counts programmed bits:
+one bit per SVN increment, no redundant copies, and a range of **0-64**.
+
+Integrators may adapt this storage, encoding, and capacity with matching
+ROM/runtime changes. The stored minimum SVN must never decrease.
+
+Advance the floor with the authorized
+[Fuse Increase Min SVN](caliptra_common_commands.md#fuse-increase-min-svn)
+command, target `OwnerSocManifest`. `SET_OWNER_AUTH_MANIFEST` does not program
+OTP. The runtime handler preserves programmed bits and verifies writes by
+readback; repeating the current floor requires no write. An interrupted write
+may leave a partial increase. Each retry starts by reading the stored value.
+
+Activation requires a **full subsystem cold boot**: MCU ROM writes the binary
+minimum SVN to `SS_STRAP_GENERIC[3][15:8]` before `CPTRA_FUSE_WR_DONE`, without
+changing other strap bits. This 8-bit strap field supports 0-255 and is locked for
+that boot; MCU-only hitless updates do not activate a new floor.
+
+Keep the partition digest unsealed while updates are needed. The reference
+lifecycle policy blocks programming in `ProdEnd` and `RMA`. OTP read failures
+during ROM fuse population are fatal.
 
 ### New MCU SVN Fuses
 

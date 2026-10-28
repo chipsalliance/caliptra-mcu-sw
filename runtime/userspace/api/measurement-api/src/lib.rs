@@ -8,6 +8,13 @@ pub mod attestation_manifest;
 pub mod errors;
 pub mod image_metadata;
 
+pub use attestation_manifest::{
+    parse_and_validate_owner, parse_and_validate_owner_fw_load_list,
+    parse_and_validate_owner_measurement_policy, AttestationManifest, OwnerFwLoadList,
+    OwnerMeasurementPolicy, OWNER_MEASUREMENT_POLICY_IDENTIFIER, OWSM_FW_ID, O_AUTH_KEY_ID,
+    V_AUTH_KEY_ID,
+};
+
 use api::MeasurementApi;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
@@ -16,8 +23,8 @@ use errors::{MeasurementApiError, MeasurementApiResult};
 pub use image_metadata::{
     ImageMetadata, ImageMetadataFlags, MeasurementOperation, IMAGE_MEASUREMENT_DIGEST_SIZE,
 };
-use mcu_caliptra_api::{ApiAlloc, DPE_LABEL_LEN};
 pub use mcu_caliptra_api::{DpeProfile, ImageHashSource, SigningInput};
+use mcu_caliptra_api::{ScratchAlloc, DPE_LABEL_LEN};
 use mcu_error::McuResult;
 
 static MEASUREMENT_API: Mutex<
@@ -25,9 +32,18 @@ static MEASUREMENT_API: Mutex<
     Option<MeasurementApi<'static, DefaultSyscalls>>,
 > = Mutex::new(None);
 
-pub const ATTESTATION_P384_DIGEST_SIZE: usize = 48;
+pub const ATTESTATION_KID_SIZE: usize = 48;
+pub const ATTESTATION_P384_DIGEST_SIZE: usize = ATTESTATION_KID_SIZE;
 pub const ATTESTATION_P384_SIGNATURE_SIZE: usize = 96;
+pub const ATTESTATION_MLDSA87_SIGNATURE_SIZE: usize = mcu_caliptra_api::DPE_MLDSA87_SIGNATURE_SIZE;
 pub const EXPORTED_CDI_SIZE: usize = 32;
+
+/// Target algorithm for measurement evidence signing.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum MeasurementSigningAlgo {
+    EccP384,
+    MlDsa87,
+}
 
 /// Builds evidence token buffers and the to-be-signed digest while Measurement
 /// API keeps measurement state locked.
@@ -35,28 +51,37 @@ pub const EXPORTED_CDI_SIZE: usize = 32;
 /// Implementations must not call back into Measurement API, because
 /// [`measure_and_sign_evidence`] holds the global Measurement API lock while
 /// invoking this hook.
-pub trait EvidenceBuilder<A: ApiAlloc> {
+pub trait EvidenceBuilder<A: ScratchAlloc> {
+    /// Return the target signing algorithm.
+    fn signing_algo(&self) -> MeasurementSigningAlgo {
+        MeasurementSigningAlgo::EccP384
+    }
+
     /// Return the final token `kid` slot.
-    fn kid_buffer_mut(&mut self) -> McuResult<&mut [u8; ATTESTATION_P384_DIGEST_SIZE]>;
+    fn kid_buffer_mut(&mut self) -> McuResult<&mut [u8; ATTESTATION_KID_SIZE]>;
+
+    /// Pass the ML-DSA-87 public-key hash `tr` to the builder.
+    /// Only called when `signing_algo() == MeasurementSigningAlgo::MlDsa87`.
+    fn set_mldsa87_tr(&mut self, _tr: &[u8; mcu_caliptra_api::MLDSA87_TR_SIZE]) -> McuResult<()> {
+        Ok(())
+    }
 
     /// Return the final concise-evidence slot.
     fn concise_evidence_buffer_mut(&mut self) -> McuResult<&mut [u8]>;
 
-    /// Build the evidence payload from the concise evidence already written,
-    /// write the signature digest into `digest`, and return the payload length.
-    async fn digest_for_signature(
+    /// Build the evidence payload and signature digest/mu from concise evidence.
+    /// Writes the SHA-384 digest (48 bytes) for EccP384 or the external `mu`
+    /// (64 bytes) for MlDsa87 into `signing_input`.
+    async fn prepare_signing_input(
         &mut self,
         alloc: &A,
         concise_evidence_len: usize,
-        digest: &mut [u8; ATTESTATION_P384_DIGEST_SIZE],
+        signing_input: &mut [u8],
     ) -> McuResult<usize>;
 
     /// Finalize the evidence layout for `payload_len` and return the final
     /// token length plus the final signature slot.
-    fn signature_buffer_mut(
-        &mut self,
-        payload_len: usize,
-    ) -> McuResult<(usize, &mut [u8; ATTESTATION_P384_SIGNATURE_SIZE])>;
+    fn signature_buffer_mut(&mut self, payload_len: usize) -> McuResult<(usize, &mut [u8])>;
 }
 
 /// Reset classification passed to `measurement_boot_init`.
@@ -103,7 +128,7 @@ pub enum AttestationState {
 /// reset classification. After this succeeds, cert/sign/evidence paths use the
 /// global Measurement API surface below so DPE Handle Storage updates remain
 /// serialized.
-pub async fn init<A: ApiAlloc>(
+pub async fn init<A: ScratchAlloc>(
     manifest_bytes: &'static [u8],
     soc_image_load_fw_ids: &'static [u32],
     boot_kind: BootKind,
@@ -119,8 +144,17 @@ pub async fn init<A: ApiAlloc>(
     result
 }
 
+/// Return whether the active attestation manifest policy includes `fw_id`.
+pub async fn policy_contains_component(fw_id: u32) -> bool {
+    let guard = MEASUREMENT_API.lock().await;
+    guard
+        .as_ref()
+        .map(|api| api.manifest_lookup(fw_id).is_ok())
+        .unwrap_or(false)
+}
+
 /// Return the DPE leaf certificate length for the configured attestation target.
-pub async fn leaf_cert_size<A: ApiAlloc>(
+pub async fn leaf_cert_size<A: ScratchAlloc>(
     alloc: &A,
     profile: DpeProfile,
     key_label: &[u8; DPE_LABEL_LEN],
@@ -132,8 +166,75 @@ pub async fn leaf_cert_size<A: ApiAlloc>(
     api.leaf_cert_size(alloc, profile, key_label).await
 }
 
+/// Measure or sync the Vendor Authorization Key (`0x0000_0004`) under the `MCU_RT` DPE context.
+pub async fn measure_vendor_auth_key<A: ScratchAlloc>(
+    alloc: &A,
+    vendor_auth_key_digest: &[u8; IMAGE_MEASUREMENT_DIGEST_SIZE],
+    boot: BootKind,
+) -> MeasurementApiResult {
+    let mut guard = MEASUREMENT_API.lock().await;
+    let api = guard
+        .as_mut()
+        .ok_or(MeasurementApiError::AttestationDisabled)?;
+    api.measure_vendor_auth_key(alloc, vendor_auth_key_digest, boot)
+        .await
+}
+
+/// Measure or sync the Owner Authorization Manifest preamble (`0x0000_0003`) under the Vendor Auth Key DPE context.
+pub async fn measure_owsm<A: ScratchAlloc>(
+    alloc: &A,
+    preamble_digest: &[u8; IMAGE_MEASUREMENT_DIGEST_SIZE],
+    svn: u32,
+    boot: BootKind,
+) -> MeasurementApiResult {
+    let mut guard = MEASUREMENT_API.lock().await;
+    let api = guard
+        .as_mut()
+        .ok_or(MeasurementApiError::AttestationDisabled)?;
+    api.measure_owsm(alloc, preamble_digest, svn, boot).await
+}
+
+/// Measure or sync the Owner Measurement Policy (`0x0000_0005`) under the OWSM DPE context.
+pub async fn measure_owner_measurement_policy<A: ScratchAlloc>(
+    alloc: &A,
+    policy_digest: &[u8; IMAGE_MEASUREMENT_DIGEST_SIZE],
+    boot: BootKind,
+) -> MeasurementApiResult {
+    let mut guard = MEASUREMENT_API.lock().await;
+    let api = guard
+        .as_mut()
+        .ok_or(MeasurementApiError::AttestationDisabled)?;
+    api.measure_owner_measurement_policy(alloc, policy_digest, boot)
+        .await
+}
+
+/// Measure or sync the Owner Authorization Key (`0x0000_0006`) under the Owner Policy DPE context.
+pub async fn measure_owner_auth_key<A: ScratchAlloc>(
+    alloc: &A,
+    owner_auth_key_digest: &[u8; IMAGE_MEASUREMENT_DIGEST_SIZE],
+    boot: BootKind,
+) -> MeasurementApiResult {
+    let mut guard = MEASUREMENT_API.lock().await;
+    let api = guard
+        .as_mut()
+        .ok_or(MeasurementApiError::AttestationDisabled)?;
+    api.measure_owner_auth_key(alloc, owner_auth_key_digest, boot)
+        .await
+}
+
+/// Validate and set authenticated Owner Measurement Policy (Component 0x0000_0005) bytes.
+pub async fn validate_and_set_owner_policy(
+    owner_policy_bytes: &'static [u8],
+) -> MeasurementApiResult {
+    let mut guard = MEASUREMENT_API.lock().await;
+    let api = guard
+        .as_mut()
+        .ok_or(MeasurementApiError::AttestationDisabled)?;
+    api.validate_and_set_owner_policy(owner_policy_bytes)
+}
+
 /// Authorize one MCU-managed initial-load component.
-pub async fn authorize_and_stash<A: ApiAlloc>(
+pub async fn authorize_and_stash<A: ScratchAlloc>(
     alloc: &A,
     fw_id: u32,
     metadata: ImageMetadata,
@@ -154,8 +255,16 @@ pub async fn mark_initial_soc_load_complete() -> MeasurementApiResult {
     api.mark_initial_soc_load_complete()
 }
 
+/// Permanently disable attestation by transitioning the Measurement API to an error state.
+pub async fn disable_attestation() {
+    let mut guard = MEASUREMENT_API.lock().await;
+    if let Some(api) = guard.as_mut() {
+        api.disable_attestation();
+    }
+}
+
 /// Fetch a DPE leaf certificate slice for the configured attestation target.
-pub async fn leaf_cert_slice<A: ApiAlloc>(
+pub async fn leaf_cert_slice<A: ScratchAlloc>(
     alloc: &A,
     profile: DpeProfile,
     key_label: &[u8; DPE_LABEL_LEN],
@@ -171,7 +280,7 @@ pub async fn leaf_cert_slice<A: ApiAlloc>(
 }
 
 /// Compute the COSE `kid` for the configured attestation target.
-pub async fn leaf_kid<A: ApiAlloc>(
+pub async fn leaf_kid<A: ScratchAlloc>(
     alloc: &A,
     key_label: &[u8; DPE_LABEL_LEN],
     kid: &mut [u8; ATTESTATION_P384_DIGEST_SIZE],
@@ -184,7 +293,7 @@ pub async fn leaf_kid<A: ApiAlloc>(
 }
 
 /// Sign a typed input with the configured attestation target.
-pub async fn sign<A: ApiAlloc>(
+pub async fn sign<A: ScratchAlloc>(
     alloc: &A,
     key_label: &[u8; DPE_LABEL_LEN],
     signing_input: SigningInput<'_>,
@@ -208,6 +317,7 @@ pub async fn sign<A: ApiAlloc>(
 /// `pki_entity_slot` selects the endorsement hierarchy for the signing key.
 /// TODO: it is unused while every slot signs with the same DPE leaf key; pass
 /// it to the cert store once signing is slot-aware.
+#[inline(never)]
 pub async fn measure_and_sign_evidence<A, B>(
     alloc: &A,
     key_label: &[u8; DPE_LABEL_LEN],
@@ -215,7 +325,7 @@ pub async fn measure_and_sign_evidence<A, B>(
     evidence_builder: &mut B,
 ) -> McuResult<usize>
 where
-    A: ApiAlloc,
+    A: ScratchAlloc,
     B: EvidenceBuilder<A>,
 {
     let mut guard = MEASUREMENT_API.lock().await;
@@ -223,9 +333,18 @@ where
         .as_mut()
         .ok_or(MeasurementApiError::AttestationDisabled)?;
 
-    {
-        let kid = evidence_builder.kid_buffer_mut()?;
-        api.leaf_kid(alloc, key_label, kid).await?;
+    let algo = evidence_builder.signing_algo();
+    match algo {
+        MeasurementSigningAlgo::EccP384 => {
+            let kid = evidence_builder.kid_buffer_mut()?;
+            api.leaf_kid(alloc, key_label, kid).await?;
+        }
+        MeasurementSigningAlgo::MlDsa87 => {
+            let kid = evidence_builder.kid_buffer_mut()?;
+            let mut tr = [0u8; mcu_caliptra_api::MLDSA87_TR_SIZE];
+            api.leaf_kid_and_tr(alloc, key_label, kid, &mut tr).await?;
+            evidence_builder.set_mldsa87_tr(&tr)?;
+        }
     }
     let concise_evidence_len = {
         let concise_evidence = evidence_builder.concise_evidence_buffer_mut()?;
@@ -233,31 +352,38 @@ where
             .await?
     };
 
-    let mut sig_digest_buf = alloc.alloc(ATTESTATION_P384_DIGEST_SIZE)?;
-    let sig_digest = sig_digest_buf
-        .get_mut(..ATTESTATION_P384_DIGEST_SIZE)
-        .and_then(|buf| buf.first_chunk_mut::<ATTESTATION_P384_DIGEST_SIZE>())
-        .ok_or(mcu_error::codes::INTERNAL_BUG)?;
+    let mut sig_buf = [0u8; mcu_caliptra_api::DPE_MLDSA87_MU_SIZE];
     let payload_len = evidence_builder
-        .digest_for_signature(alloc, concise_evidence_len, sig_digest)
+        .prepare_signing_input(alloc, concise_evidence_len, &mut sig_buf)
         .await?;
     let (evidence_len, signature) = evidence_builder.signature_buffer_mut(payload_len)?;
-    let sig_len = api
-        .sign(
-            alloc,
-            key_label,
-            SigningInput::EccP384Digest(sig_digest),
-            signature,
-        )
-        .await?;
-    if sig_len != signature.len() {
+
+    let (signing_input, expected_sig_len) = match algo {
+        MeasurementSigningAlgo::EccP384 => {
+            let digest = sig_buf
+                .get(..ATTESTATION_P384_DIGEST_SIZE)
+                .and_then(|s| s.first_chunk::<ATTESTATION_P384_DIGEST_SIZE>())
+                .ok_or(mcu_error::codes::INTERNAL_BUG)?;
+            (
+                SigningInput::EccP384Digest(digest),
+                ATTESTATION_P384_SIGNATURE_SIZE,
+            )
+        }
+        MeasurementSigningAlgo::MlDsa87 => (
+            SigningInput::Mldsa87Mu(&sig_buf),
+            ATTESTATION_MLDSA87_SIGNATURE_SIZE,
+        ),
+    };
+
+    let sig_len = api.sign(alloc, key_label, signing_input, signature).await?;
+    if sig_len != expected_sig_len {
         return Err(mcu_error::codes::INTERNAL_BUG);
     }
     Ok(evidence_len)
 }
 
 /// Encode concise measurement evidence for all eligible manifest entries.
-pub async fn encode_measurement_evidence<A: ApiAlloc>(
+pub async fn encode_measurement_evidence<A: ScratchAlloc>(
     alloc: &A,
     buffer: &mut [u8],
 ) -> MeasurementApiResult<usize> {
@@ -271,7 +397,7 @@ pub async fn encode_measurement_evidence<A: ApiAlloc>(
 /// Derive an exported CDI context from the configured attestation target, persist the
 /// 32-byte exported CDI handle in DPE handle storage, update the rotated target handle,
 /// and write the emitted leaf certificate into `cert_out`.
-pub async fn export_cdi_and_stash<A: ApiAlloc>(
+pub async fn export_cdi_and_stash<A: ScratchAlloc>(
     alloc: &A,
     profile: DpeProfile,
     cert_out: &mut [u8],

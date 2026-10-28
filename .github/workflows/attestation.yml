@@ -137,7 +137,7 @@ jobs:
             -e 's/set(OPENSSL_LIBRARY_TYPE "SHARED")/set(OPENSSL_LIBRARY_TYPE "STATIC")/' {} +
           mkdir build
           pushd build
-          cmake -DARCH=x64 -DTOOLCHAIN=GCC -DTARGET=Debug -DCRYPTO=openssl -DCMAKE_C_FLAGS="-DLIBSPDM_MAX_CERT_CHAIN_SIZE=0x10000" ..
+          cmake -DARCH=x64 -DTOOLCHAIN=GCC -DTARGET=Debug -DCRYPTO=openssl -DCMAKE_C_FLAGS="-DLIBSPDM_MAX_CERT_CHAIN_SIZE=0x10000 -DLIBSPDM_MAX_MEASUREMENT_RECORD_SIZE=0x10000" ..
           make copy_sample_key
           make
           popd
@@ -287,9 +287,9 @@ jobs:
 
           mkdir -p "$TA_STORE_DIR/roots" "$TA_STORE_DIR/endorsement-certs"
 
-          # The test root CA that endorsed the device ID cert.
-          cp ocp-eat-verifier/ocptoken/test-data/ta-store/roots/slot0_ecc_test_root_ca.der \
-            "$TA_STORE_DIR/roots/slot0_ecc_test_root_ca.der"
+          # The test root CAs that endorsed the device ID certs (both ECC and ML-DSA).
+          cp ocp-eat-verifier/ocptoken/test-data/ta-store/roots/*.der \
+            "$TA_STORE_DIR/roots/"
 
           # All reference-value CoRIMs share one signer, so a single cert covers
           # both the cold-boot and post-update appraisals.

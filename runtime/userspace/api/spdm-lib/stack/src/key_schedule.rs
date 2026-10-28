@@ -4,7 +4,7 @@
 //!
 //! Implements the SPDM secure-session key derivation chain:
 //! ```text
-//! DHE_Secret ──HKDF-Extract(Salt_0)──▸ handshake_secret
+//! Shared_Secret ──HKDF-Extract(Salt_0)──▸ handshake_secret
 //!   ├─ HKDF-Expand(bin_str1, TH1') ──▸ request_handshake_secret
 //!   ├─ HKDF-Expand(bin_str2, TH1') ──▸ response_handshake_secret
 //!   │  ├─ HKDF-Expand(bin_str7)  ──▸ request_finished_key
@@ -24,6 +24,10 @@ use caliptra_mcu_spdm_traits::{McuResult, SpdmPalAlloc, SpdmPalIo, SpdmPalSessio
 
 /// SHA-384 digest size in bytes.
 pub const SHA384_HASH_SIZE: usize = 48;
+
+/// All-zero input reused as `Salt_0` for Handshake-Secret extraction and
+/// `zero_filled` for Master-Secret extraction.
+static ZERO_HASH: [u8; SHA384_HASH_SIZE] = [0; SHA384_HASH_SIZE];
 
 /// Maximum length of the HKDF info field built by [`bin_concat`].
 const MAX_BIN_STR_LABEL_LEN: usize = 12;
@@ -66,7 +70,7 @@ pub struct KeySchedule<K: Clone> {
 }
 
 struct MasterSecretCtx<K: Clone> {
-    dhe_secret: Option<K>,
+    shared_secret: Option<K>,
     handshake_secret: Option<K>,
     master_secret: Option<K>,
 }
@@ -93,7 +97,7 @@ impl<K: Clone> KeySchedule<K> {
         Self {
             version_str,
             master_ctx: MasterSecretCtx {
-                dhe_secret: None,
+                shared_secret: None,
                 handshake_secret: None,
                 master_secret: None,
             },
@@ -114,20 +118,20 @@ impl<K: Clone> KeySchedule<K> {
         }
     }
 
-    /// Store the DHE shared secret produced by [`SpdmPalSessionCrypto::ecdh_finish`].
-    pub fn set_dhe_secret(&mut self, secret: K) {
-        self.master_ctx.dhe_secret = Some(secret);
+    /// Store the shared secret produced by either ECDH or ML-KEM during KEY_EXCHANGE.
+    pub fn set_shared_secret(&mut self, secret: K) {
+        self.master_ctx.shared_secret = Some(secret);
     }
 
     // ── Handshake keys ──────────────────────────────────────────────
 
-    /// Derive handshake keys from the DHE secret and TH1' hash.
+    /// Derive handshake keys from the shared secret and TH1' hash.
     ///
     /// Produces:
     /// - request / response handshake secrets (AEAD major secrets)
     /// - request / response finished keys (HMAC keys for verify_data)
     ///
-    /// Destroys the DHE secret handle on success.
+    /// Destroys the shared secret handle on success.
     #[inline(never)]
     pub async fn generate_handshake_keys<P: SpdmPalAlloc + SpdmPalSessionCrypto<Key = K>>(
         &mut self,
@@ -135,15 +139,15 @@ impl<K: Clone> KeySchedule<K> {
         io: &impl SpdmPalIo,
         th1_hash: &[u8],
     ) -> McuResult<()> {
-        // handshake_secret = HKDF-Extract(Salt_0 = zeros, DHE_Secret)
-        let dhe = self
+        // handshake_secret = HKDF-Extract(Salt_0 = zeros, shared_secret)
+        let shared_secret = self
             .master_ctx
-            .dhe_secret
+            .shared_secret
             .take()
             .ok_or(mcu_error::codes::INVARIANT)?;
-        let mut salt_0 = pal.alloc_bytes(io, SHA384_HASH_SIZE)?;
-        salt_0.fill(0);
-        let hs = pal.hkdf_extract_bytes(io, &salt_0, &dhe).await?;
+        let hs = pal
+            .hkdf_extract_bytes(io, &ZERO_HASH, &shared_secret)
+            .await?;
         self.master_ctx.handshake_secret = Some(hs);
 
         let hs_ref = self
@@ -237,9 +241,7 @@ impl<K: Clone> KeySchedule<K> {
             hkdf_expand_bin_str(pal, io, self.version_str, hs_ref, BinStr::Str0, None).await?;
 
         // Master-Secret = HKDF-Extract(Salt_1, zero_filled)
-        let mut zero_filled = pal.alloc_bytes(io, SHA384_HASH_SIZE)?;
-        zero_filled.fill(0);
-        let zero_cmk = pal.import_key(io, &zero_filled).await?;
+        let zero_cmk = pal.import_key(io, &ZERO_HASH).await?;
         self.master_ctx.master_secret = Some(pal.hkdf_extract_key(io, &salt_1, &zero_cmk).await?);
 
         let ms_ref = self
@@ -280,16 +282,16 @@ impl<K: Clone> KeySchedule<K> {
     // ── Crypto operations ───────────────────────────────────────────
 
     /// Compute HMAC with the specified finished key.
-    pub async fn hmac_finished<P: SpdmPalSessionCrypto<Key = K>>(
-        &self,
-        pal: &P,
-        io: &impl SpdmPalIo,
+    pub fn hmac_finished<'a, P: SpdmPalSessionCrypto<Key = K>>(
+        &'a self,
+        pal: &'a P,
+        io: &'a impl SpdmPalIo,
         key_type: SessionKeyType,
-        data: &[u8],
-        out: &mut [u8],
-    ) -> McuResult<usize> {
+        data: &'a [u8],
+        out: &'a mut [u8],
+    ) -> McuResult<impl core::future::Future<Output = McuResult<usize>> + 'a> {
         let key = self.finished_key(key_type)?;
-        pal.hmac(io, key, data, out).await
+        Ok(pal.hmac(io, key, data, out))
     }
 
     /// Encrypt with the appropriate session key.
@@ -306,9 +308,10 @@ impl<K: Clone> KeySchedule<K> {
     ) -> McuResult<(usize, [u8; 16])> {
         let (key, seq) = self.aead_key_and_seq(key_type)?;
         let result = pal
-            .aead_encrypt(io, key, spdm_version, seq, aad, plaintext, ciphertext)
+            .aead_encrypt(io, key, spdm_version, *seq, aad, plaintext, ciphertext)
             .await?;
-        self.increment_seq(key_type);
+        // Increment the seq number after successful encryption.
+        *seq += 1;
         Ok(result)
     }
 
@@ -327,9 +330,10 @@ impl<K: Clone> KeySchedule<K> {
     ) -> McuResult<usize> {
         let (key, seq) = self.aead_key_and_seq(key_type)?;
         let result = pal
-            .aead_decrypt(io, key, spdm_version, seq, aad, ciphertext, tag, plaintext)
+            .aead_decrypt(io, key, spdm_version, *seq, aad, ciphertext, tag, plaintext)
             .await?;
-        self.increment_seq(key_type);
+        // Increment the seq number after successful authentication and decryption.
+        *seq += 1;
         Ok(result)
     }
 
@@ -350,7 +354,7 @@ impl<K: Clone> KeySchedule<K> {
     /// Clear all key blobs.
     pub fn destroy_all(&mut self) {
         self.destroy_handshake_secrets();
-        self.master_ctx.dhe_secret = None;
+        self.master_ctx.shared_secret = None;
         self.master_ctx.master_secret = None;
         self.data_ctx.request_data_secret = None;
         self.data_ctx.response_data_secret = None;
@@ -372,47 +376,37 @@ impl<K: Clone> KeySchedule<K> {
         }
     }
 
-    fn aead_key_and_seq(&self, key_type: SessionKeyType) -> McuResult<(&K, u64)> {
+    fn aead_key_and_seq(&mut self, key_type: SessionKeyType) -> McuResult<(&K, &mut u64)> {
         match key_type {
             SessionKeyType::RequestHandshakeKey => Ok((
                 self.handshake_ctx
                     .request_handshake_secret
                     .as_ref()
                     .ok_or(mcu_error::codes::INVARIANT)?,
-                self.handshake_ctx.request_seq,
+                &mut self.handshake_ctx.request_seq,
             )),
             SessionKeyType::ResponseHandshakeKey => Ok((
                 self.handshake_ctx
                     .response_handshake_secret
                     .as_ref()
                     .ok_or(mcu_error::codes::INVARIANT)?,
-                self.handshake_ctx.response_seq,
+                &mut self.handshake_ctx.response_seq,
             )),
             SessionKeyType::RequestDataKey => Ok((
                 self.data_ctx
                     .request_data_secret
                     .as_ref()
                     .ok_or(mcu_error::codes::INVARIANT)?,
-                self.data_ctx.request_seq,
+                &mut self.data_ctx.request_seq,
             )),
             SessionKeyType::ResponseDataKey => Ok((
                 self.data_ctx
                     .response_data_secret
                     .as_ref()
                     .ok_or(mcu_error::codes::INVARIANT)?,
-                self.data_ctx.response_seq,
+                &mut self.data_ctx.response_seq,
             )),
             _ => Err(mcu_error::codes::INVARIANT),
-        }
-    }
-
-    fn increment_seq(&mut self, key_type: SessionKeyType) {
-        match key_type {
-            SessionKeyType::RequestHandshakeKey => self.handshake_ctx.request_seq += 1,
-            SessionKeyType::ResponseHandshakeKey => self.handshake_ctx.response_seq += 1,
-            SessionKeyType::RequestDataKey => self.data_ctx.request_seq += 1,
-            SessionKeyType::ResponseDataKey => self.data_ctx.response_seq += 1,
-            _ => {}
         }
     }
 }

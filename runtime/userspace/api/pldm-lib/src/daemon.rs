@@ -8,6 +8,7 @@ use crate::firmware_device::fd_ops::FdOps;
 use crate::firmware_device::transfer_session::TransferSession;
 use crate::timer::AsyncAlarm;
 use crate::transport::MctpTransport;
+use caliptra_mcu_libsyscall_caliptra::mci::Mci;
 use caliptra_mcu_libsyscall_caliptra::mctp::driver_num;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_console::Console;
@@ -245,6 +246,12 @@ pub async fn pldm_responder(
     let mut msg_buffer = [0; MAX_MCTP_PLDM_MSG_SIZE];
     let mut console_writer = Console::<DefaultSyscalls>::writer();
 
+    // Tell the host that the PLDM responder is up. The MCTP capsule buffers a
+    // request that arrives before the first receive is armed, so it is safe to
+    // signal readiness just before entering the receive loop. Failure is not
+    // fatal: hosts that wait on this milestone fall back to a timeout.
+    let _ = Mci::<DefaultSyscalls>::new().set_pldm_ready();
+
     while running.load(Ordering::SeqCst) {
         match cmd_interface
             .handle_responder_msg(&mut transport, &mut msg_buffer)
@@ -362,6 +369,14 @@ async fn run_optimized_download(
 
     let rsp_fixed =
         RequestFirmwareDataResponseFixed::decode(resp_payload).map_err(|_| errors::CODEC_ERROR)?;
+
+    // Reject a stale response to an earlier request rather than writing its
+    // data at the current offset.
+    if rsp_fixed.hdr.instance_id() != instance_id
+        || rsp_fixed.hdr.cmd_code() != FwUpdateCmd::RequestFirmwareData as u8
+    {
+        return Err(errors::UNEXPECTED_MESSAGE_TYPE);
+    }
 
     // Update T1 timestamp on response
     session.update_t1_timestamp(cmd_interface.now());

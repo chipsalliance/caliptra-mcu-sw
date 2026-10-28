@@ -42,6 +42,15 @@ pub trait SpdmPalSessionCrypto {
         peer_exchange_data: &[u8],
     ) -> McuResult<Self::Key>;
 
+    /// Perform ML-KEM-1024 encapsulation,
+    /// producing ciphertext and a shared secret.
+    async fn mlkem_encapsulate(
+        &self,
+        io: &impl SpdmPalIo,
+        encaps_key: &[u8],
+        ciphertext: &mut [u8],
+    ) -> McuResult<Self::Key>;
+
     /// HKDF-Extract with raw-byte salt.
     ///
     /// Salt is imported into the crypto backend internally if needed.

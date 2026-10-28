@@ -26,15 +26,20 @@ use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_platform::Syscalls;
 use core::marker::PhantomData;
 use mcu_caliptra_api::{
-    dpe_certify_key_cert_size, dpe_certify_key_cert_slice, dpe_certify_key_pubkey,
+    authorize_and_stash as caliptra_authorize, dpe_certify_key_cert_size,
+    dpe_certify_key_cert_slice, dpe_certify_key_mldsa87_tr, dpe_certify_key_pubkey,
     dpe_derive_context_exported_cdi, dpe_rotate_context_default, dpe_sign, dpe_tag_tci, sha_finish,
-    sha_init, sha_update, ApiAlloc, AuthorizeAndStashFlags, AuthorizeAndStashParams,
+    sha_init, sha_update, AuthManifestSource, AuthorizeAndStashFlags, AuthorizeAndStashParams,
     DpeContextHandle, DpeDeriveContextFlags, DpeDeriveContextParams, DpeProfile, HashAlgo,
-    SigningInput, DPE_CONTEXT_HANDLE_SIZE, DPE_LABEL_LEN, DPE_TCI_MEASUREMENT_SIZE,
-    SHA_CONTEXT_SIZE,
+    ScratchAlloc, SigningInput, DPE_CONTEXT_HANDLE_SIZE, DPE_LABEL_LEN, DPE_TCI_MEASUREMENT_SIZE,
+    MLDSA87_TR_SIZE, SHA_CONTEXT_SIZE,
 };
 
-use crate::attestation_manifest::{parse_and_validate, AttestationManifest, MCU_RT_FW_ID};
+use crate::attestation_manifest::{
+    parse_and_validate, parse_and_validate_owner_measurement_policy, AttestationManifest,
+    AttestationManifestEntry, OwnerMeasurementPolicy, MCU_RT_FW_ID,
+    OWNER_MEASUREMENT_POLICY_IDENTIFIER, OWSM_FW_ID, O_AUTH_KEY_ID, V_AUTH_KEY_ID,
+};
 use crate::errors::{MeasurementApiError, MeasurementApiResult};
 use crate::{
     AttestationState, BootKind, EvidenceReadinessPolicy, ImageMetadata, MeasurementOperation,
@@ -50,6 +55,7 @@ use crate::{
 pub(crate) struct MeasurementApi<'a, S: Syscalls = DefaultSyscalls> {
     manifest: AttestationManifest<'a>,
     soc_image_load_fw_ids: &'a [u32],
+    owner_policy: Option<OwnerMeasurementPolicy<'a>>,
     state: AttestationState,
     _syscalls: PhantomData<S>,
 }
@@ -69,9 +75,47 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
         Ok(Self {
             manifest,
             soc_image_load_fw_ids,
+            owner_policy: None,
             state: AttestationState::Uninitialized,
             _syscalls: PhantomData,
         })
+    }
+
+    /// Validate and set authenticated Owner Measurement Policy (Component 0x0000_0005).
+    pub fn validate_and_set_owner_policy(
+        &mut self,
+        owner_policy_bytes: &'a [u8],
+    ) -> MeasurementApiResult {
+        let policy = parse_and_validate_owner_measurement_policy(owner_policy_bytes)
+            .map_err(|_| MeasurementApiError::InvalidManifest)?;
+        self.owner_policy = Some(policy);
+        Ok(())
+    }
+
+    /// Return the currently attached Owner Measurement Policy, if any.
+    #[allow(dead_code)]
+    pub fn owner_policy(&self) -> Option<&OwnerMeasurementPolicy<'a>> {
+        self.owner_policy.as_ref()
+    }
+
+    /// Lookup a component across the Base Attestation Manifest and Owner Attestation Manifest.
+    ///
+    /// Also returns the Caliptra auth manifest source that authorizes the component:
+    /// `VendorOwner` for Base Attestation Manifest entries and `Owner` for entries
+    /// resolved only through the Owner Attestation Manifest.
+    pub(crate) fn manifest_lookup(
+        &self,
+        fw_id: u32,
+    ) -> Result<(AttestationManifestEntry, AuthManifestSource), MeasurementApiError> {
+        if let Ok(entry) = self.manifest.lookup(fw_id) {
+            return Ok((entry, AuthManifestSource::VendorOwner));
+        }
+        if let Some(owner) = &self.owner_policy {
+            if let Ok(entry) = owner.manifest().lookup(fw_id) {
+                return Ok((entry, AuthManifestSource::Owner));
+            }
+        }
+        Err(MeasurementApiError::UnknownFwId)
     }
 
     /// Compute `measurement_policy_digest = SHA384(canonical manifest bytes ||
@@ -80,7 +124,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
     /// The digest binds the authenticated integrator static attestation
     /// configuration and the cold-boot SoC load topology. Any mailbox failure
     /// is reported as [`MeasurementApiError::DigestFailed`].
-    async fn measurement_policy_digest<A: ApiAlloc>(
+    async fn measurement_policy_digest<A: ScratchAlloc>(
         &self,
         alloc: &A,
         digest_out: &mut [u8; POLICY_DIGEST_SIZE],
@@ -110,7 +154,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
     /// On any failure the API is left in [`AttestationState::Error`] so later
     /// measurement flows fail closed; on success it becomes
     /// [`AttestationState::Active`].
-    pub async fn measurement_boot_init<A: ApiAlloc>(
+    pub async fn measurement_boot_init<A: ScratchAlloc>(
         &mut self,
         boot: BootKind,
         readiness_policy: EvidenceReadinessPolicy,
@@ -121,11 +165,11 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
             BootKind::HitlessUpdate => self.hitless_update_init(alloc).await,
         };
         self.state = if result.is_ok() {
-            match (boot, readiness_policy) {
-                (BootKind::ColdBoot, EvidenceReadinessPolicy::RequireInitialSocLoadComplete) => {
+            match readiness_policy {
+                EvidenceReadinessPolicy::RequireInitialSocLoadComplete => {
                     AttestationState::InitialMeasurementsPending
                 }
-                _ => AttestationState::Active,
+                EvidenceReadinessPolicy::ReadyAfterBootInit => AttestationState::Active,
             }
         } else {
             AttestationState::Error
@@ -136,7 +180,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
     /// Cold-boot sequence: compute the policy digest, initialize both stores,
     /// rotate and tag the MCU Runtime DPE context, write the MCU Runtime root
     /// record, and mark it as the initial attestation target.
-    async fn cold_boot_init<A: ApiAlloc>(&self, alloc: &A) -> MeasurementApiResult {
+    async fn cold_boot_init<A: ScratchAlloc>(&self, alloc: &A) -> MeasurementApiResult {
         let dpe_store = DpeHandleStore::<S>::new(DPE_HANDLE_STORE_DRIVER_NUM);
         let pcr_store = SoftwarePcrStore::<S>::new(SOFT_PCR_STORE_DRIVER_NUM);
 
@@ -181,7 +225,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
     /// mismatch, a missing required record, or invalid root-record semantics
     /// fails closed so measurement state is not silently reinitialized under a
     /// new lineage.
-    async fn hitless_update_init<A: ApiAlloc>(&self, alloc: &A) -> MeasurementApiResult {
+    async fn hitless_update_init<A: ScratchAlloc>(&self, alloc: &A) -> MeasurementApiResult {
         let dpe_store = DpeHandleStore::<S>::new(DPE_HANDLE_STORE_DRIVER_NUM);
         let pcr_store = SoftwarePcrStore::<S>::new(SOFT_PCR_STORE_DRIVER_NUM);
 
@@ -233,25 +277,172 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
     /// then uses public `AUTHORIZE_AND_STASH` with `SKIP_STASH=true` for
     /// authorization only. Initial-load and component-update callers then
     /// dispatch to operation-specific Measurement API state updates.
-    pub async fn authorize_and_stash<A: ApiAlloc>(
+    pub async fn authorize_and_stash<A: ScratchAlloc>(
         &mut self,
         alloc: &A,
         fw_id: u32,
         metadata: ImageMetadata,
     ) -> MeasurementApiResult {
+        self.initial_load_measurement_state_ready()?;
+        let (entry, manifest_source) = self
+            .manifest_lookup(fw_id)
+            .map_err(|_| MeasurementApiError::UnknownFwId)?;
+
+        let params = caliptra_authorize_params(fw_id, metadata, manifest_source);
+        caliptra_authorize(alloc, &params)
+            .await
+            .map_err(|_| MeasurementApiError::ImageAuthorizationFailed)?;
+
         match metadata.operation {
             MeasurementOperation::InitialLoad => {
-                initial_load::authorize_and_stash(self, alloc, fw_id, metadata).await
+                initial_load::record_authorized_image(self, alloc, entry, metadata).await
             }
             MeasurementOperation::ComponentUpdate => {
-                component_update::authorize_and_stash(self, alloc, fw_id, metadata).await
+                component_update::record_authorized_image(self, alloc, entry, metadata).await
+            }
+        }
+    }
+
+    /// Measure or sync the Vendor Authorization Key (`0x0000_0004`) under the `MCU_RT` DPE context.
+    ///
+    /// On cold boot, derives and tags a new DPE context and extends PCR31.
+    /// On hitless update, checks if the key matches the preserved DPE measurement;
+    /// if unchanged, retains the context without re-extending PCR31; if changed, updates
+    /// the context measurement and extends PCR31 once.
+    pub async fn measure_vendor_auth_key<A: ScratchAlloc>(
+        &mut self,
+        alloc: &A,
+        vendor_auth_key_digest: &[u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE],
+        boot: BootKind,
+    ) -> MeasurementApiResult {
+        self.manifest
+            .lookup(V_AUTH_KEY_ID)
+            .map_err(|_| MeasurementApiError::InvalidManifest)?;
+        match boot {
+            BootKind::ColdBoot => {
+                initial_load::create_dpe_context(
+                    self,
+                    alloc,
+                    V_AUTH_KEY_ID,
+                    vendor_auth_key_digest,
+                    0,
+                    false,
+                )
+                .await
+            }
+            BootKind::HitlessUpdate => {
+                component_update::update_dpe_context(
+                    self,
+                    alloc,
+                    V_AUTH_KEY_ID,
+                    vendor_auth_key_digest,
+                    component_update::DpeUpdateMode::UpdateIfChanged,
+                )
+                .await
+            }
+        }
+    }
+
+    /// Measure or sync the Owner Authorization Manifest preamble (`0x0000_0003`) under the Vendor Auth Key DPE context.
+    pub async fn measure_owsm<A: ScratchAlloc>(
+        &mut self,
+        alloc: &A,
+        preamble_digest: &[u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE],
+        svn: u32,
+        boot: BootKind,
+    ) -> MeasurementApiResult {
+        match boot {
+            BootKind::ColdBoot => {
+                initial_load::create_dpe_context(
+                    self,
+                    alloc,
+                    OWSM_FW_ID,
+                    preamble_digest,
+                    svn,
+                    false,
+                )
+                .await
+            }
+            BootKind::HitlessUpdate => {
+                component_update::update_dpe_context(
+                    self,
+                    alloc,
+                    OWSM_FW_ID,
+                    preamble_digest,
+                    component_update::DpeUpdateMode::UpdateIfChanged,
+                )
+                .await
+            }
+        }
+    }
+
+    /// Measure or sync the Owner Measurement Policy (`0x0000_0005`) under the OWSM DPE context.
+    pub async fn measure_owner_measurement_policy<A: ScratchAlloc>(
+        &mut self,
+        alloc: &A,
+        policy_digest: &[u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE],
+        boot: BootKind,
+    ) -> MeasurementApiResult {
+        match boot {
+            BootKind::ColdBoot => {
+                initial_load::create_dpe_context(
+                    self,
+                    alloc,
+                    OWNER_MEASUREMENT_POLICY_IDENTIFIER,
+                    policy_digest,
+                    0,
+                    false,
+                )
+                .await
+            }
+            BootKind::HitlessUpdate => {
+                component_update::update_dpe_context(
+                    self,
+                    alloc,
+                    OWNER_MEASUREMENT_POLICY_IDENTIFIER,
+                    policy_digest,
+                    component_update::DpeUpdateMode::VerifyUnchanged,
+                )
+                .await
+            }
+        }
+    }
+
+    /// Measure or sync the Owner Authorization Key (`0x0000_0006`) under the Owner Policy DPE context.
+    pub async fn measure_owner_auth_key<A: ScratchAlloc>(
+        &mut self,
+        alloc: &A,
+        owner_auth_key_digest: &[u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE],
+        boot: BootKind,
+    ) -> MeasurementApiResult {
+        match boot {
+            BootKind::ColdBoot => {
+                initial_load::create_dpe_context(
+                    self,
+                    alloc,
+                    O_AUTH_KEY_ID,
+                    owner_auth_key_digest,
+                    0,
+                    false,
+                )
+                .await
+            }
+            BootKind::HitlessUpdate => {
+                component_update::update_dpe_context(
+                    self,
+                    alloc,
+                    O_AUTH_KEY_ID,
+                    owner_auth_key_digest,
+                    component_update::DpeUpdateMode::UpdateIfChanged,
+                )
+                .await
             }
         }
     }
 
     /// Return the DPE leaf certificate length for the configured attestation
     /// target and persist the rotated target handle returned by DPE.
-    pub async fn leaf_cert_size<A: ApiAlloc>(
+    pub async fn leaf_cert_size<A: ScratchAlloc>(
         &mut self,
         alloc: &A,
         profile: DpeProfile,
@@ -268,7 +459,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
 
     /// Fetch a DPE leaf certificate slice for the configured attestation target
     /// and persist the rotated target handle returned by DPE.
-    pub async fn leaf_cert_slice<A: ApiAlloc>(
+    pub async fn leaf_cert_slice<A: ScratchAlloc>(
         &mut self,
         alloc: &A,
         profile: DpeProfile,
@@ -291,7 +482,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
         Ok(bytes_written)
     }
 
-    async fn leaf_pubkey<A: ApiAlloc>(
+    async fn leaf_pubkey<A: ScratchAlloc>(
         &mut self,
         alloc: &A,
         key_label: &[u8; DPE_LABEL_LEN],
@@ -313,7 +504,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
 
     /// Compute the COSE `kid` for the configured attestation target and
     /// persist the rotated target handle returned by DPE.
-    pub async fn leaf_kid<A: ApiAlloc>(
+    pub async fn leaf_kid<A: ScratchAlloc>(
         &mut self,
         alloc: &A,
         key_label: &[u8; DPE_LABEL_LEN],
@@ -342,9 +533,35 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
             .map_err(|_| MeasurementApiError::DigestFailed)
     }
 
+    /// Compute the COSE `kid` and ML-DSA-87 public-key hash `tr` for the
+    /// configured attestation target and persist the rotated target handle
+    /// returned by DPE.
+    pub async fn leaf_kid_and_tr<A: ScratchAlloc>(
+        &mut self,
+        alloc: &A,
+        key_label: &[u8; DPE_LABEL_LEN],
+        kid: &mut [u8; crate::ATTESTATION_KID_SIZE],
+        tr: &mut [u8; MLDSA87_TR_SIZE],
+    ) -> MeasurementApiResult {
+        let target = self.read_attestation_target_record()?;
+        let next_handle =
+            dpe_certify_key_mldsa87_tr(alloc, Some(&target.context_handle), key_label, tr)
+                .await
+                .map_err(|_| MeasurementApiError::DpeCommandFailed)?;
+
+        let kid_bytes = tr
+            .get(..crate::ATTESTATION_KID_SIZE)
+            .ok_or(MeasurementApiError::DigestFailed)?;
+        if kid.len() != kid_bytes.len() {
+            return Err(MeasurementApiError::DigestFailed);
+        }
+        kid.copy_from_slice(kid_bytes);
+        self.write_attestation_target_handle(target, next_handle)
+    }
+
     /// Sign a typed input with the configured attestation target and persist
     /// the rotated target handle returned by DPE.
-    pub async fn sign<A: ApiAlloc>(
+    pub async fn sign<A: ScratchAlloc>(
         &mut self,
         alloc: &A,
         key_label: &[u8; DPE_LABEL_LEN],
@@ -368,7 +585,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
     /// Derive an exported CDI context from the active attestation target, persist the
     /// 32-byte exported CDI handle in DPE handle storage, persist the rotated target handle
     /// returned by DPE, and write the emitted leaf certificate into `cert_out`.
-    pub async fn export_cdi_and_stash<A: ApiAlloc>(
+    pub async fn export_cdi_and_stash<A: ScratchAlloc>(
         &mut self,
         alloc: &A,
         profile: DpeProfile,
@@ -425,7 +642,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
     /// This is an internal Measurement API primitive for evidence generation and
     /// diagnostics. Transport code should not iterate policy or call it directly.
     #[allow(dead_code)]
-    pub(crate) async fn read_measurement<A: ApiAlloc>(
+    pub(crate) async fn read_measurement<A: ScratchAlloc>(
         &self,
         alloc: &A,
         fw_id: u32,
@@ -450,7 +667,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
     /// the complete encoded evidence size. A too-small buffer returns
     /// [`MeasurementApiError::EvidenceBufferTooSmall`] without returning a
     /// partial length.
-    pub async fn encode_measurement_evidence<A: ApiAlloc>(
+    pub async fn encode_measurement_evidence<A: ScratchAlloc>(
         &self,
         alloc: &A,
         buffer: &mut [u8],
@@ -490,14 +707,24 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
                 .manifest
                 .lookup(*fw_id)
                 .map_err(|_| MeasurementApiError::UnknownFwId)?;
-            if entry.is_tcb() {
-                validate_loaded_tcb_record::<S>(*fw_id)?;
-            } else {
-                validate_loaded_non_tcb_record::<S>(*fw_id)?;
+            validate_loaded_record::<S>(entry)?;
+        }
+        if let Some(owner) = &self.owner_policy {
+            let owner_manifest = owner.manifest();
+            for fw_id in owner.load_list().entries() {
+                let entry = owner_manifest
+                    .lookup(fw_id)
+                    .map_err(|_| MeasurementApiError::UnknownFwId)?;
+                validate_loaded_record::<S>(entry)?;
             }
         }
         self.state = AttestationState::Active;
         Ok(())
+    }
+
+    /// Permanently transition to error state.
+    pub fn disable_attestation(&mut self) {
+        self.state = AttestationState::Error;
     }
 
     /// Current attestation availability state.
@@ -578,6 +805,14 @@ fn is_mcu_root_record(record: &DpeHandleRecord) -> bool {
         && record.context_handle != [0u8; 16]
 }
 
+fn validate_loaded_record<S: Syscalls>(entry: AttestationManifestEntry) -> MeasurementApiResult {
+    if entry.is_tcb() {
+        validate_loaded_tcb_record::<S>(entry.fw_id)
+    } else {
+        validate_loaded_non_tcb_record::<S>(entry.fw_id)
+    }
+}
+
 fn validate_loaded_tcb_record<S: Syscalls>(fw_id: u32) -> MeasurementApiResult {
     let dpe_store = DpeHandleStore::<S>::new(DPE_HANDLE_STORE_DRIVER_NUM);
     let mut record = DpeHandleRecord::default();
@@ -619,11 +854,18 @@ fn validate_soc_image_load_fw_ids(
     manifest: &AttestationManifest<'_>,
     soc_image_load_fw_ids: &[u32],
 ) -> MeasurementApiResult {
-    if soc_image_load_fw_ids.len() != manifest.entries().count() {
+    let expected_count = manifest
+        .entries()
+        .filter(|entry| entry.fw_id != V_AUTH_KEY_ID)
+        .count();
+    if soc_image_load_fw_ids.len() != expected_count {
         return Err(MeasurementApiError::InvalidSocImageLoadList);
     }
 
     for (index, fw_id) in soc_image_load_fw_ids.iter().copied().enumerate() {
+        if fw_id == V_AUTH_KEY_ID {
+            return Err(MeasurementApiError::InvalidSocImageLoadList);
+        }
         if soc_image_load_fw_ids
             .iter()
             .take(index)
@@ -639,7 +881,11 @@ fn validate_soc_image_load_fw_ids(
     Ok(())
 }
 
-fn caliptra_authorize_params(fw_id: u32, metadata: ImageMetadata) -> AuthorizeAndStashParams {
+fn caliptra_authorize_params(
+    fw_id: u32,
+    metadata: ImageMetadata,
+    manifest_source: AuthManifestSource,
+) -> AuthorizeAndStashParams {
     AuthorizeAndStashParams {
         fw_id,
         measurement: metadata.measurement,
@@ -648,8 +894,28 @@ fn caliptra_authorize_params(fw_id: u32, metadata: ImageMetadata) -> AuthorizeAn
         flags: AuthorizeAndStashFlags::SKIP_STASH,
         source: metadata.source,
         image_size: metadata.image_size,
-        accept_owner_only: false,
+        manifest_source,
     }
+}
+
+pub(super) async fn software_pcr_extend_digest<A: ScratchAlloc>(
+    alloc: &A,
+    previous_digest: &[u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE],
+    measurement: &[u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE],
+    digest: &mut [u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE],
+) -> MeasurementApiResult {
+    let ctx = alloc
+        .alloc(SHA_CONTEXT_SIZE)
+        .map_err(|_| MeasurementApiError::DigestFailed)?;
+    let mut state = sha_init(alloc, ctx, HashAlgo::Sha384, previous_digest)
+        .await
+        .map_err(|_| MeasurementApiError::DigestFailed)?;
+    sha_update(alloc, &mut state, measurement)
+        .await
+        .map_err(|_| MeasurementApiError::DigestFailed)?;
+    sha_finish(alloc, &mut state, digest)
+        .await
+        .map_err(|_| MeasurementApiError::DigestFailed)
 }
 
 #[cfg(test)]
@@ -776,6 +1042,20 @@ mod tests {
         );
     }
 
+    #[test]
+    fn disable_attestation_permanently_blocks_evidence() {
+        let bytes = valid_empty_manifest();
+        let mut api = MeasurementApi::<DefaultSyscalls>::new(&bytes, &[]).unwrap();
+        api.state = AttestationState::Active;
+
+        api.disable_attestation();
+        assert_eq!(api.attestation_state(), AttestationState::Error);
+        assert_eq!(
+            api.attestation_state_active(),
+            Err(MeasurementApiError::AttestationDisabled)
+        );
+    }
+
     fn reference_measurement_policy_digest(
         manifest_bytes: &[u8],
         soc_image_load_fw_ids: &[u32],
@@ -859,5 +1139,70 @@ mod tests {
             api.read_exported_cdi(&mut cdi),
             Err(MeasurementApiError::AttestationDisabled)
         );
+    }
+
+    #[test]
+    fn attach_owner_policy_enables_dual_manifest_lookup() {
+        use crate::attestation_manifest::{
+            OWNER_ATTESTATION_MANIFEST_FIXED_HEADER_SIZE, OWNER_ATTESTATION_MANIFEST_MARKER,
+            OWNER_FW_LOAD_LIST_FIXED_HEADER_SIZE, OWNER_FW_LOAD_LIST_MARKER,
+            OWNER_FW_LOAD_LIST_VERSION, OWNER_MEASUREMENT_POLICY_IDENTIFIER, O_AUTH_KEY_ID,
+        };
+
+        let base_bytes = valid_manifest_with_entries(&[(0x1000, ATTESTATION_FLAG_SOC_TCB_DPE)]);
+        let mut api = MeasurementApi::<DefaultSyscalls>::new(&base_bytes, &[0x1000]).unwrap();
+
+        assert!(api.owner_policy().is_none());
+        assert_eq!(api.manifest_lookup(0x1000).unwrap().0.fw_id, 0x1000);
+        assert!(api.manifest_lookup(0x10000).is_err());
+
+        // Construct valid Owner Measurement Policy container
+        let mut policy_bytes = Vec::new();
+        let header_size = OWNER_ATTESTATION_MANIFEST_FIXED_HEADER_SIZE;
+        let entries = [
+            (
+                OWNER_MEASUREMENT_POLICY_IDENTIFIER,
+                ATTESTATION_FLAG_SOC_TCB_DPE,
+            ),
+            (O_AUTH_KEY_ID, ATTESTATION_FLAG_SOC_TCB_DPE),
+            (0x10000, ATTESTATION_FLAG_SOC_TCB_DPE),
+        ];
+        let size = header_size + entries.len() * ATTESTATION_MANIFEST_ENTRY_SIZE;
+        policy_bytes.extend_from_slice(&OWNER_ATTESTATION_MANIFEST_MARKER.to_le_bytes());
+        policy_bytes.extend_from_slice(&(size as u32).to_le_bytes());
+        policy_bytes.extend_from_slice(&ATTESTATION_MANIFEST_VERSION.to_le_bytes());
+        policy_bytes.extend_from_slice(&(header_size as u32).to_le_bytes());
+        policy_bytes.extend_from_slice(&(entries.len() as u32).to_le_bytes());
+        policy_bytes.extend_from_slice(&3u32.to_le_bytes()); // 3 TCB entries
+        policy_bytes.extend_from_slice(&0u16.to_le_bytes());
+        policy_bytes.extend_from_slice(&0u16.to_le_bytes());
+        for (fw_id, flags) in entries {
+            policy_bytes.extend_from_slice(&fw_id.to_le_bytes());
+            policy_bytes.extend_from_slice(&flags.to_le_bytes());
+        }
+
+        let load_list_header_size = OWNER_FW_LOAD_LIST_FIXED_HEADER_SIZE;
+        let load_list_size = load_list_header_size + 4;
+        policy_bytes.extend_from_slice(&OWNER_FW_LOAD_LIST_MARKER.to_le_bytes());
+        policy_bytes.extend_from_slice(&(load_list_size as u32).to_le_bytes());
+        policy_bytes.extend_from_slice(&OWNER_FW_LOAD_LIST_VERSION.to_le_bytes());
+        policy_bytes.extend_from_slice(&1u32.to_le_bytes()); // 1 load list entry
+        policy_bytes.extend_from_slice(&0x10000u32.to_le_bytes());
+
+        api.validate_and_set_owner_policy(&policy_bytes).unwrap();
+        assert!(api.owner_policy().is_some());
+
+        // Base component lookup succeeds and is authorized by the vendor/owner manifest
+        let (entry, source) = api.manifest_lookup(0x1000).unwrap();
+        assert_eq!(entry.fw_id, 0x1000);
+        assert_eq!(source, AuthManifestSource::VendorOwner);
+        // Owner components lookup succeeds and is authorized by the owner manifest
+        for fw_id in [OWNER_MEASUREMENT_POLICY_IDENTIFIER, O_AUTH_KEY_ID, 0x10000] {
+            let (entry, source) = api.manifest_lookup(fw_id).unwrap();
+            assert_eq!(entry.fw_id, fw_id);
+            assert_eq!(source, AuthManifestSource::Owner);
+        }
+        // Unknown component fails
+        assert!(api.manifest_lookup(0x9999).is_err());
     }
 }

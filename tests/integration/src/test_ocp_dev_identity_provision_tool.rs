@@ -1,11 +1,12 @@
 // Licensed under the Apache-2.0 license
 
-//! Firmware integration test for SPDM SET_CERTIFICATE.
+//! Firmware integration tests for `ocp_dev_identity_provision_tool`.
 //!
-//! The test boots MCU runtime firmware with the SPDM responder enabled, bridges
-//! `ocp_dev_identity_provision_tool` to the firmware over MCTP, sends
-//! SET_CERTIFICATE, verifies the full Owner slot chain through GET_CERTIFICATE,
-//! and performs Owner-slot CHALLENGE attestation.
+//! Each test boots MCU runtime firmware with the SPDM responder enabled and
+//! bridges the tool to the firmware over MCTP:
+//! - `export-csr` verifies the keypair inventory and an attested CSR.
+//! - `provision-test` sends SET_CERTIFICATE, verifies the full Owner slot
+//!   chain through GET_CERTIFICATE, and performs Owner-slot CHALLENGE.
 
 #[cfg(test)]
 mod test {
@@ -21,19 +22,76 @@ mod test {
         is_emulator_running, spawn_with_emulator_state, wait_for_runtime_start,
     };
     use random_port::PortPicker;
+    use std::ffi::OsString;
     use std::net::{SocketAddr, TcpListener, TcpStream};
     use std::path::{Path, PathBuf};
     use std::process::{exit, Command, Stdio};
     use std::sync::atomic::Ordering;
     use std::thread;
     use std::time::Duration;
+    use x509_parser::certification_request::X509CertificationRequest;
+    use x509_parser::prelude::FromDer;
 
     const TEST_NAME: &str = "MCTP-SPDM-SET-CERTIFICATE";
     const FIRMWARE_FEATURE: &str = "test-mctp-spdm-set-certificate";
 
+    /// Runs in the bridge after the tool sent STOP, right before the bridge
+    /// ends the test process.
+    type PostCheck = Box<dyn FnOnce() -> Result<(), String> + Send>;
+
     #[ignore]
     #[test]
     fn test_mctp_spdm_set_certificate_with_ocp_provision_tool() {
+        run_tool_against_firmware(vec!["provision-test".into()], Box::new(|| Ok(())));
+    }
+
+    #[ignore]
+    #[test]
+    fn test_mctp_spdm_dip_export_csr_with_ocp_provision_tool() {
+        let out_dir = tempfile::Builder::new()
+            .prefix("ocp-dip-export-csr")
+            .tempdir()
+            .unwrap();
+        let csr_path = out_dir.path().join("csr.der");
+        let eat_path = out_dir.path().join("evidence.cbor");
+        let tool_args = vec![
+            "export-csr".into(),
+            "--key-pair-id".into(),
+            "1".into(),
+            "--out-csr".into(),
+            csr_path.clone().into(),
+            "--out-eat".into(),
+            eat_path.clone().into(),
+        ];
+        run_tool_against_firmware(
+            tool_args,
+            Box::new(move || {
+                let result = check_exported_csr(&csr_path, &eat_path);
+                drop(out_dir);
+                result
+            }),
+        );
+    }
+
+    /// The CSR must be DER PKCS#10 and be carried by the exported CWT.
+    fn check_exported_csr(csr_path: &Path, eat_path: &Path) -> Result<(), String> {
+        let read = |path: &Path| {
+            std::fs::read(path).map_err(|e| format!("failed to read {}: {e}", path.display()))
+        };
+        let csr = read(csr_path)?;
+        let eat = read(eat_path)?;
+        X509CertificationRequest::from_der(&csr)
+            .map_err(|e| format!("exported CSR is not DER PKCS#10: {e}"))?;
+        if !eat.starts_with(&[0xd8, 0x3d]) {
+            return Err("exported evidence is not a CWT-tagged token".into());
+        }
+        if !eat.windows(csr.len()).any(|window| window == csr) {
+            return Err("exported evidence does not carry the exported CSR".into());
+        }
+        Ok(())
+    }
+
+    fn run_tool_against_firmware(tool_args: Vec<OsString>, post_check: PostCheck) {
         let tool_bin = find_ocp_provisioning_tool();
         let vendor_trust_anchor = test_vendor_root_path();
         assert!(
@@ -58,7 +116,9 @@ mod test {
             hw.i3c_address().unwrap().into(),
             Duration::from_secs(600),
             &tool_bin,
+            tool_args,
             &vendor_trust_anchor,
+            post_check,
         );
 
         let test = finish_runtime_hw_model(&mut hw);
@@ -72,7 +132,9 @@ mod test {
         target_addr: DynamicI3cAddress,
         test_timeout: Duration,
         tool_bin: &Path,
+        tool_args: Vec<OsString>,
         vendor_trust_anchor: &Path,
+        post_check: PostCheck,
     ) {
         SERVER_LISTENING.store(false, Ordering::Relaxed);
 
@@ -113,6 +175,10 @@ mod test {
                 runner.run_test(&mut spdm_stream);
 
                 if runner.is_passed() {
+                    if let Err(e) = post_check() {
+                        println!("[{}]: {}", TEST_NAME, e);
+                        exit(-1);
+                    }
                     println!("[{}]: Bridge completed successfully", TEST_NAME);
                     exit(0);
                 } else {
@@ -133,6 +199,7 @@ mod test {
 
             let bridge_addr = format!("127.0.0.1:{}", bridge_port);
             let mut child = Command::new(&tool_bin)
+                .args(&tool_args)
                 .arg("--server")
                 .arg(&bridge_addr)
                 .arg("--vendor-trust-anchor")
@@ -154,7 +221,7 @@ mod test {
                 match child.try_wait() {
                     Ok(Some(status)) => {
                         println!(
-                            "[{}]: provisioning tool exited with status: {:?}",
+                            "[{}]: OCP DIP tool exited with status: {:?}",
                             TEST_NAME, status
                         );
                         if !status.success() {
@@ -164,10 +231,7 @@ mod test {
                     }
                     Ok(None) => {}
                     Err(e) => {
-                        println!(
-                            "[{}]: Error waiting for provisioning tool: {:?}",
-                            TEST_NAME, e
-                        );
+                        println!("[{}]: Error waiting for OCP DIP tool: {:?}", TEST_NAME, e);
                         exit(-1);
                     }
                 }

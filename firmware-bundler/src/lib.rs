@@ -50,7 +50,22 @@ pub fn execute(cmd: Commands) -> Result<()> {
             build,
             target,
         } => {
-            let (manifest, build_definition) = ld_step(&common, &ld, &build)?;
+            let mut manifest = common.manifest()?;
+
+            // The ROM's layout depends only on the platform's ROM and DCCM regions, so building
+            // just the ROM doesn't need the runtime and apps compiled for a sizing pass.
+            let rom_only = target
+                .as_deref()
+                .is_some_and(|t| manifest.rom.as_ref().is_some_and(|rom| rom.name == t));
+            if rom_only {
+                if manifest.platform.dynamic_sizing() {
+                    size_rom(&mut manifest);
+                }
+                let rom = ld::generate_rom(&manifest, &common, &ld)?;
+                return build::build_rom(&manifest, &rom, &common, &build);
+            }
+
+            let (manifest, build_definition) = ld_step(manifest, &common, &ld, &build)?;
 
             match target {
                 Some(t) => {
@@ -65,7 +80,7 @@ pub fn execute(cmd: Commands) -> Result<()> {
             build,
             bundle,
         } => {
-            let (manifest, build_definition) = ld_step(&common, &ld, &build)?;
+            let (manifest, build_definition) = ld_step(common.manifest()?, &common, &ld, &build)?;
             let build_output = build::build(&manifest, &build_definition, &common, &build)?;
             bundle::bundle(&manifest, &build_output, &common, &bundle)?;
             Ok(())
@@ -74,9 +89,12 @@ pub fn execute(cmd: Commands) -> Result<()> {
 }
 
 /// A utility function to run the logic for a build step.
-fn ld_step(common: &Common, ld: &LdArgs, build: &BuildArgs) -> Result<(Manifest, BuildDefinition)> {
-    let mut manifest = common.manifest()?;
-
+fn ld_step(
+    mut manifest: Manifest,
+    common: &Common,
+    ld: &LdArgs,
+    build: &BuildArgs,
+) -> Result<(Manifest, BuildDefinition)> {
     if common.svn.is_some() {
         manifest.reserve_itcm(size_of::<McuImageHeader>().try_into()?)?;
     }
@@ -87,6 +105,21 @@ fn ld_step(common: &Common, ld: &LdArgs, build: &BuildArgs) -> Result<(Manifest,
 
     let build_definition = ld::generate(&manifest, common, ld)?;
     Ok((manifest, build_definition))
+}
+
+/// Give the ROM the platform's entire ROM and DCCM regions.
+fn size_rom(manifest: &mut Manifest) {
+    if let (Some(rom), Some(dccm)) = (manifest.rom.as_mut(), &manifest.platform.dccm) {
+        rom.exec_mem = Some(AllocationRequest {
+            size: manifest.platform.rom.size,
+            alignment: None,
+        });
+
+        rom.data_mem = Some(AllocationRequest {
+            size: dccm.size,
+            alignment: None,
+        });
+    }
 }
 
 /// Execute a dynamic sizing pass.  This will build each runtime application with a maximal linker
@@ -108,17 +141,7 @@ fn dynamically_size(
     let maximal_output = build::build(manifest, &maximal_build_definition, common, build)?;
     let sizes = size::sizes(&maximal_output)?;
 
-    if let (Some(rom), Some(dccm)) = (manifest.rom.as_mut(), &manifest.platform.dccm) {
-        rom.exec_mem = Some(AllocationRequest {
-            size: manifest.platform.rom.size,
-            alignment: None,
-        });
-
-        rom.data_mem = Some(AllocationRequest {
-            size: dccm.size,
-            alignment: None,
-        });
-    }
+    size_rom(manifest);
 
     let is_bare_metal = manifest.runtime.is_bare_metal();
     let runtime_binary = manifest.runtime.inner_mut();

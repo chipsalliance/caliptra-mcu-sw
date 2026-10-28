@@ -40,10 +40,13 @@ pub fn run_caliptra_util_host_validator() {
                 max_connections: 10,
             },
             device_capabilities: Some(DeviceCapabilitiesConfig {
-                capabilities: [
-                    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 0, 0, 0, 0, 0, 0, 0,
-                    0x40, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                ],
+                capabilities: {
+                    let mut capabilities = [0; 64];
+                    capabilities[..16]
+                        .copy_from_slice(&[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
+                    capabilities[23] = 0x40;
+                    capabilities
+                },
                 fips_status: 0x00000000,
             }),
             firmware_version: Some(FirmwareVersionConfig {

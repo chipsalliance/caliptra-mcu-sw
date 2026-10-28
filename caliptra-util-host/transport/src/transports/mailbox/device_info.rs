@@ -50,8 +50,9 @@ pub struct ExtCmdGetDeviceCapabilitiesResponse {
     /// - Bytes [20:23]: MCU RT feature capabilities
     /// - Bytes [24:27]: External Caliptra common-command bitmap
     /// - Bytes [28:31]: Authorized-subcommand bitmap
-    /// - Bytes [32:35]: Reserved, zero
-    pub caps: [u8; 36],
+    /// - Bytes [32:47]: Reserved, zero
+    /// - Bytes [48:63]: Vendor-defined
+    pub caps: [u8; DEVICE_CAPABILITIES_SIZE],
 }
 
 impl FromInternalRequest<GetDeviceCapabilitiesRequest> for ExtCmdGetDeviceCapabilitiesRequest {
@@ -72,6 +73,80 @@ impl ToInternalResponse<GetDeviceCapabilitiesResponse> for ExtCmdGetDeviceCapabi
         }
     }
 }
+
+macro_rules! define_status_command {
+    (
+        $request:ident,
+        $response:ident,
+        $internal_request:ty,
+        $internal_response:ident,
+        { $($field:ident: $ty:ty),+ $(,)? }
+    ) => {
+        #[repr(C)]
+        #[derive(Debug, Clone, Default, IntoBytes, FromBytes, Immutable)]
+        pub struct $request {
+            pub chksum: u32,
+        }
+
+        #[repr(C)]
+        #[derive(Debug, Clone, Default, IntoBytes, FromBytes, Immutable)]
+        pub struct $response {
+            pub chksum: u32,
+            pub fips_status: u32,
+            $(pub $field: $ty,)+
+        }
+
+        impl FromInternalRequest<$internal_request> for $request {
+            fn from_internal(_internal: &$internal_request, command_code: u32) -> Self {
+                Self {
+                    chksum: calc_checksum(command_code, &[]),
+                }
+            }
+        }
+
+        impl ToInternalResponse<$internal_response> for $response {
+            fn to_internal(&self) -> $internal_response {
+                $internal_response {
+                    common: CommonResponse {
+                        fips_status: self.fips_status,
+                    },
+                    $($field: self.$field,)+
+                }
+            }
+        }
+
+        impl VariableSizeBytes for $request {}
+        impl VariableSizeBytes for $response {}
+    };
+}
+
+define_status_command!(
+    ExtCmdFieldEntropyStatusRequest,
+    ExtCmdFieldEntropyStatusResponse,
+    FieldEntropyStatusRequest,
+    FieldEntropyStatusResponse,
+    { already_provisioned: u32 }
+);
+define_status_command!(
+    ExtCmdVendorPkHashStatusRequest,
+    ExtCmdVendorPkHashStatusResponse,
+    VendorPkHashStatusRequest,
+    VendorPkHashStatusResponse,
+    {
+        used_slots_bitmap: u32,
+        key_types: [u8; VENDOR_PK_HASH_SLOT_COUNT]
+    }
+);
+define_status_command!(
+    ExtCmdHekStatusRequest,
+    ExtCmdHekStatusResponse,
+    HekStatusRequest,
+    HekStatusResponse,
+    {
+        used_slots_bitmap: u32,
+        total_slots: u32
+    }
+);
 
 impl FromInternalRequest<GetFirmwareVersionRequest> for ExtCmdGetFirmwareVersionRequest {
     fn from_internal(internal: &GetFirmwareVersionRequest, command_code: u32) -> Self {
@@ -255,6 +330,33 @@ define_command!(
     ExtCmdGetFirmwareVersionResponse
 );
 
+define_command!(
+    FieldEntropyStatusCmd,
+    0x4D43_4653,
+    FieldEntropyStatusRequest,
+    FieldEntropyStatusResponse,
+    ExtCmdFieldEntropyStatusRequest,
+    ExtCmdFieldEntropyStatusResponse
+);
+
+define_command!(
+    VendorPkHashStatusCmd,
+    0x4D56_5053,
+    VendorPkHashStatusRequest,
+    VendorPkHashStatusResponse,
+    ExtCmdVendorPkHashStatusRequest,
+    ExtCmdVendorPkHashStatusResponse
+);
+
+define_command!(
+    HekStatusCmd,
+    0x4D48_4B53,
+    HekStatusRequest,
+    HekStatusResponse,
+    ExtCmdHekStatusRequest,
+    ExtCmdHekStatusResponse
+);
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -267,5 +369,42 @@ mod tests {
 
         assert_eq!(internal.version, [2, 0, 0, 0]);
         assert_eq!(internal.commit_id, [0; 20]);
+    }
+
+    #[test]
+    fn status_commands_use_empty_payload_checksums_and_decode_responses() {
+        let fe_request =
+            ExtCmdFieldEntropyStatusRequest::from_internal(&FieldEntropyStatusRequest, 0x4D43_4653);
+        assert_eq!(fe_request.chksum, calc_checksum(0x4D43_4653, &[]));
+        assert_eq!(
+            ExtCmdFieldEntropyStatusResponse {
+                chksum: 0,
+                fips_status: 0,
+                already_provisioned: 1,
+            }
+            .to_internal()
+            .already_provisioned,
+            1
+        );
+
+        let vendor = ExtCmdVendorPkHashStatusResponse {
+            chksum: 0,
+            fips_status: 0,
+            used_slots_bitmap: 5,
+            key_types: [3; VENDOR_PK_HASH_SLOT_COUNT],
+        }
+        .to_internal();
+        assert_eq!(vendor.used_slots_bitmap, 5);
+        assert_eq!(vendor.key_types, [3; VENDOR_PK_HASH_SLOT_COUNT]);
+
+        let hek = ExtCmdHekStatusResponse {
+            chksum: 0,
+            fips_status: 0,
+            used_slots_bitmap: 3,
+            total_slots: 8,
+        }
+        .to_internal();
+        assert_eq!(hek.used_slots_bitmap, 3);
+        assert_eq!(hek.total_slots, 8);
     }
 }

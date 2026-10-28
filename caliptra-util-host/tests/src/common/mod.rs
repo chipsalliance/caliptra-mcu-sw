@@ -9,7 +9,7 @@ use caliptra_mcu_core_util_host_transport::{MailboxDriver, MailboxError};
 
 // Buffer length constants
 const RESPONSE_BUFFER_SIZE: usize = 1024; // Increased for SHA context (200 bytes) + overhead
-const CAPABILITIES_ARRAY_SIZE: usize = 36;
+const CAPABILITIES_ARRAY_SIZE: usize = 64;
 const SHA_CONTEXT_SIZE: usize = 200; // Matches CMB_SHA_CONTEXT_SIZE from caliptra-api
 const MAX_HASH_SIZE: usize = 64;
 
@@ -62,7 +62,7 @@ impl MockMailbox {
         match external_cmd {
             0x4D43_4150 => {
                 // MC_DEVICE_CAPABILITIES ("MCAP")
-                // Mock capabilities response with proper external structure (36-byte caps array)
+                // Mock capabilities response with proper external structure (64-byte caps array)
                 let mut payload = Vec::new();
                 payload.extend_from_slice(&0x00000001u32.to_le_bytes()); // fips_status
 
@@ -99,6 +99,53 @@ impl MockMailbox {
 
                 let chksum = calc_checksum(0, &payload);
                 // Complete response with checksum
+                let mut response = Vec::new();
+                response.extend_from_slice(&chksum.to_le_bytes());
+                response.extend_from_slice(&payload);
+
+                let response_len = response.len();
+                self.response_buffer[0..response_len].copy_from_slice(&response);
+                Ok(&self.response_buffer[0..response_len])
+            }
+            0x4D43_4653 => {
+                // MC_FE_STATUS ("MCFS")
+                let mut payload = Vec::new();
+                payload.extend_from_slice(&0x00000001u32.to_le_bytes()); // fips_status
+                payload.extend_from_slice(&1u32.to_le_bytes()); // already_provisioned
+
+                let chksum = calc_checksum(0, &payload);
+                let mut response = Vec::new();
+                response.extend_from_slice(&chksum.to_le_bytes());
+                response.extend_from_slice(&payload);
+
+                let response_len = response.len();
+                self.response_buffer[0..response_len].copy_from_slice(&response);
+                Ok(&self.response_buffer[0..response_len])
+            }
+            0x4D56_5053 => {
+                // MC_VENDOR_PK_HASH_STATUS ("MVPS")
+                let mut payload = Vec::new();
+                payload.extend_from_slice(&0x00000001u32.to_le_bytes()); // fips_status
+                payload.extend_from_slice(&5u32.to_le_bytes()); // used_slots_bitmap
+                payload.extend_from_slice(&[1, 0, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+
+                let chksum = calc_checksum(0, &payload);
+                let mut response = Vec::new();
+                response.extend_from_slice(&chksum.to_le_bytes());
+                response.extend_from_slice(&payload);
+
+                let response_len = response.len();
+                self.response_buffer[0..response_len].copy_from_slice(&response);
+                Ok(&self.response_buffer[0..response_len])
+            }
+            0x4D48_4B53 => {
+                // MC_HEK_STATUS ("MHKS")
+                let mut payload = Vec::new();
+                payload.extend_from_slice(&0x00000001u32.to_le_bytes()); // fips_status
+                payload.extend_from_slice(&5u32.to_le_bytes()); // used_slots_bitmap
+                payload.extend_from_slice(&8u32.to_le_bytes()); // total_slots
+
+                let chksum = calc_checksum(0, &payload);
                 let mut response = Vec::new();
                 response.extend_from_slice(&chksum.to_le_bytes());
                 response.extend_from_slice(&payload);

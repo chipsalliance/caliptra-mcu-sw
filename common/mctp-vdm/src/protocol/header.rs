@@ -38,6 +38,8 @@ pub enum VdmCompletionCode {
     InvalidState = 0x0F,
     CaliptraMailboxBusy = 0xC0,
     CaliptraBufferTooSmall = 0xC1,
+    ZeroizeFailed = 0xC2,
+    RmaTransitionFailed = 0xC3,
 }
 
 impl TryFrom<u32> for VdmCompletionCode {
@@ -63,6 +65,8 @@ impl TryFrom<u32> for VdmCompletionCode {
             0x0F => Ok(VdmCompletionCode::InvalidState),
             0xC0 => Ok(VdmCompletionCode::CaliptraMailboxBusy),
             0xC1 => Ok(VdmCompletionCode::CaliptraBufferTooSmall),
+            0xC2 => Ok(VdmCompletionCode::ZeroizeFailed),
+            0xC3 => Ok(VdmCompletionCode::RmaTransitionFailed),
             _ => Err(VdmError::InvalidCompletionCode),
         }
     }

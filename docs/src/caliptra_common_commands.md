@@ -31,6 +31,9 @@ The following table describes the commands defined under this specification. The
 | Authorize Debug Unlock Token    | O   | SPDM VDM, MCI Mailbox | Send debug unlock token to device for authorization.                                                                                 |
 | Export Attested CSR             | O   | SPDM VDM, MCI Mailbox | Discover Caliptra identity keys or export an attested CSR for LDevID, FMC Alias, or RT Alias.                                        |
 | Device Ownership Transfer       | O   | SPDM VDM, MCI Mailbox | Query and change the implemented DOT state.                                                                                          |
+| Field Entropy Status            | O   | MCI Mailbox           | Report whether all field entropy partitions are provisioned.                                                                        |
+| Vendor PK Hash Status           | O   | MCI Mailbox           | Report occupied vendor PK hash slots and each slot's PQC key type.                                                                   |
+| HEK Status                      | O   | MCI Mailbox           | Report used HEK slots and the total number of configured HEK slots.                                                                  |
 | Authorization-Gated Subcommands | O   | SPDM VDM, MCI Mailbox | Security-sensitive provisioning and fuse subcommands using a one-use challenge and hybrid signature.                                |
 
 ### Authorization-Gated Subcommands
@@ -46,6 +49,10 @@ The following subcommands are assigned to the SPDM VDM IANA authorization-gated 
 | Fuse Revoke Vendor Public Key  | SPDM VDM IANA, MCI Mailbox | Revoke vendor public key.                          |
 | Fuse Revoke Vendor PK Hash     | SPDM VDM IANA, MCI Mailbox | Revoke vendor public key hash.                     |
 | Fuse Lock Partition            | SPDM VDM IANA, MCI Mailbox | Lock fuse partition.                               |
+| Zeroize UDS/FE and Enter RMA   | SPDM VDM IANA, MCI Mailbox | Zeroize UDS and field entropy, then enter RMA.     |
+| OCP LOCK Program HEK           | SPDM VDM IANA, MCI Mailbox | Program an unused HEK slot.                        |
+| OCP LOCK Zero HEK              | SPDM VDM IANA, MCI Mailbox | Permanently sanitize an unused HEK slot.           |
+| Dot Enable                     | SPDM VDM IANA, MCI Mailbox | Program the one-time DOT initialization gate.      |
 | Dot Lock                       | SPDM VDM IANA, MCI Mailbox | Lock the DOT after ownership validation.          |
 | Dot Disable                    | SPDM VDM IANA, MCI Mailbox | Enter ODD state with no DOT-supplied CAK.          |
 | Dot Rotate                     | SPDM VDM IANA, MCI Mailbox | Replace DOT key digests and advance the epoch.     |
@@ -90,7 +97,8 @@ Versions use `major.minor.patch` ASCII format. Index `02h` returns `UnsupportedO
 | 20:23   | mcu_rt                 | u32   | MCU Runtime feature capabilities, big-endian                |
 | 24:27   | external_commands      | u32   | Supported top-level common commands, big-endian             |
 | 28:31   | authorized_subcommands | u32   | Supported subcommands under `AuthorizedCommand`, big-endian |
-| 32:35   | reserved               | u8[4] | Reserved; responders set to zero                            |
+| 32:47   | reserved               | u8[16] | Reserved; responders set to zero                           |
+| 48:63   | vendor                 | u8[16] | Vendor-defined capabilities                                 |
 
 `external_commands` covers the OCP command codes `01h` through `20h`. Command code `N` maps to bitmap bit `N - 1`, allowing all 32 top-level codes to fit in this field. This is Caliptra common-command discovery carried by `DeviceCapabilities`; it is not MCTP Control Protocol command discovery.
 
@@ -106,9 +114,9 @@ Versions use `major.minor.patch` ASCII format. Index `02h` returns `UnsupportedO
 | 5          | `06h`        | `RequestDebugUnlock`        | SPDM VDM              |
 | 6          | `07h`        | `AuthorizeDebugUnlockToken` | SPDM VDM              |
 | 7          | `08h`        | `ExportAttestedCsr`         | SPDM VDM              |
-| 16         | `11h`        | `DeviceOwnershipTransfer`   | SPDM VDM              |
-| 17         | `12h`        | `AuthorizedCommand`         | SPDM VDM              |
-| 18         | `13h`        | `OcpLock`                   | SPDM VDM              |
+| 16         | `11h`        | `DeviceOwnershipTransfer`   | SPDM VDM, MCI mailbox |
+| 17         | `12h`        | `AuthorizedCommand`         | SPDM VDM, MCI mailbox |
+| 18         | `13h`        | `OcpLock`                   | SPDM VDM, MCI mailbox |
 
 This table defines the bit assignment for every allocated command code. A responder sets a bit only when the corresponding command is implemented. `GetAttestation` is set when a responder that carries it is built and the device can produce at least one evidence format. `AuthorizedCommand` is set when its wrapper and at least one authorized subcommand are implemented.
 
@@ -130,7 +138,11 @@ This table defines the bit assignment for every allocated command code. A respon
 | 11         | `GetDotBackupBlob`           | Implemented |
 | 12         | `OcpLockRotateHek`           | Implemented |
 | 13         | `OcpLockSetPermaHek`         | Implemented |
-| 14:31      | Reserved                     | —           |
+| 14         | `DotEnable`                  | Implemented |
+| 15         | `OcpLockProgramHek`          | Implemented |
+| 16         | `OcpLockZeroHek`             | Implemented |
+| 17         | `ZeroizeUdsFeAndEnterRma`     | Implemented |
+| 18:31      | Reserved                     | —           |
 
 The authorized-subcommand assignments are stable capability indexes; they are not transport command IDs. A responder sets a bit only when that subcommand is implemented under `AuthorizedCommand`. Authorization, lifecycle, or policy restrictions do not clear an implementation capability bit; execution can still return `AccessDenied`, `PolicyViolation`, or `InvalidState`.
 
@@ -337,6 +349,13 @@ Authorizes the debug unlock token. The request body is identical for MCI mailbox
 Discovers supported Caliptra identity keys or exports an attested Certificate
 Signing Request (CSR) for a specified device key.
 
+This command is optional and compiled in only with the `attested-csr` cargo
+feature (`caliptra-mcu-mbox-lib/attested-csr` for the MCI mailbox,
+`caliptra-mcu-spdm-vdm-handler/attested-csr` for SPDM VDM); without it, the
+command is rejected as unsupported (SPDM VDM completion `UnsupportedOperation`;
+MCI mailbox command failure) and the `EXPORT_ATTESTED_CSR` capability bit is
+clear.
+
 **Request Payload**:
 
 | Byte(s) | Name          | Type   | Description                                                                                         |
@@ -391,10 +410,11 @@ claim `-70002`).
 
 Security-sensitive provisioning and fuse subcommands are assigned to the SPDM
 VDM IANA authorization-gated path and the MCI mailbox path. The SPDM VDM
-transport uses an `Authorized Command` wrapper, while MCI uses each operation's
-mailbox command ID directly. In both cases the requester first obtains a one-use
-48-byte challenge and appends the common public-key and hybrid-signature trailer
-over `command_id(BE) || command_payload || challenge`. See
+transport and MCI both use an `Authorized Command` (`0x12`) wrapper. In both
+cases the first four payload bytes are a little-endian target ID. The requester
+first obtains a one-use 48-byte challenge and appends the common public-key and
+hybrid-signature trailer over
+`target_id(BE) || command_payload || challenge`. See
 [Caliptra SPDM VDM Commands](caliptra_spdm_vdm_cmds.md#authorization-flow) for
 the byte-exact SPDM framing.
 
@@ -417,6 +437,18 @@ The subcommands covered by this wrapper are listed in [Authorization-Gated Subco
 `DotLock`, `DotDisable`, `DotRotate`, and `GetDotBackupBlob` are the DOT-family subcommands that use this authorization wrapper. The remaining DOT commands (`DotUnlockChallenge`, `DotUnlock`, `DotStatus`, `DotRecovery`, `DotOverrideChallenge`, and `DotOverride`) are native device-ownership-transfer commands carried under top-level command `0x11` rather than via the `AuthorizedCommand` wrapper.
 
 Subcommand-specific payloads are defined by the corresponding command specifications and contain no mailbox request header.
+
+#### Vendor-Unique Command IDs
+
+The innermost target-ID namespace reserves `VU00` through `VUFF` for
+vendor-unique commands. This is exactly 256 FourCC values: `VUxy`, where `x`
+and `y` are uppercase ASCII hexadecimal digits. Both transports carry `VUxy`
+inside `AuthorizedCommand`; it does not consume a top-level transport command
+code.
+
+The reference MCU assigns no behavior to this namespace and returns
+`UnsupportedOperation`. Vendor implementations may define payloads and behavior
+within this reserved namespace without colliding with Caliptra-defined FourCCs.
 
 ### Get Auth Challenge
 
@@ -443,19 +475,28 @@ Provisions the vendor public key hash.
 Increases a selected minimum SVN using command code `0x4D43_4D53` (`MCMS`).
 `flags` is reserved and must be zero.
 
-| Target | Name               | Status      | Fuse                               |
-| ------ | ------------------ | ----------- | ---------------------------------- |
-| `0`    | Caliptra Runtime   | Implemented | `CPTRA_CORE_RUNTIME_SVN`           |
-| `1`    | SoC Manifest       | Implemented | `CPTRA_CORE_SOC_MANIFEST_SVN`      |
-| `2`    | Owner SoC Manifest | Reserved    | Not implemented                    |
+| Target | Name               | Requested SVN      | Fuse                         |
+| ------ | ------------------ | ------------------ | ---------------------------- |
+| `0`    | Caliptra Runtime   | 1-128              | `CPTRA_CORE_RUNTIME_SVN`     |
+| `1`    | SoC Manifest       | 1-128              | `CPTRA_CORE_SOC_MANIFEST_SVN` |
+| `2`    | Owner SoC Manifest | 1-64 (SDK default) | `OWNER_SOC_MANIFEST_MIN_SVN`  |
 
-Unknown targets are invalid. The reserved Owner SoC Manifest target returns
-`UnsupportedOperation`. The SVN must be between 1 and 128 and cannot decrease
-the current fuse floor. The Caliptra Runtime target is additionally bounded by
-the running SVN reported by `FW_INFO`. The SoC Manifest target is bounded by
-`CPTRA_CORE_SOC_MANIFEST_MAX_SVN`. No trusted running SoC Manifest SVN is
+Unknown targets, zero, values outside the target's range, and decreases below
+the current fuse floor are invalid. The Caliptra Runtime target is additionally
+bounded by the running SVN reported by `FW_INFO`. The SoC Manifest target is
+bounded by `CPTRA_CORE_SOC_MANIFEST_MAX_SVN`. No trusted running SoC Manifest SVN is
 currently exposed, so that target cannot verify the requested floor against the
 currently running image.
+
+The Owner SoC Manifest target is additionally bounded by
+`FW_INFO.owner_auth_manifest_current_svn`, the SVN accepted by Core.
+
+After programming any target, the command verifies the full SVN field by
+readback. A read failure or a mismatch returns `OperationFailed`.
+
+The command does not reset the device. For Owner SoC Manifest storage and
+activation, see
+[Owner SoC Manifest SVN](svn.md#owner-soc-manifest-svn).
 
 **Request Payload**: `flags:u32 | target:u32 | svn:u32 | HybridSignature`
 
@@ -468,6 +509,50 @@ Programs field entropy.
 **Request Payload**: `partition:u32 | HybridSignature`
 
 **Response Payload**: Empty
+
+### Field Entropy Status
+
+Reports whether all four field entropy partitions are in the finished state.
+Zeroized field entropy is not reported as provisioned. This command does not
+require authorization.
+
+**Request Payload**: Empty
+
+**Response Payload**:
+
+| Byte(s) | Name                | Type | Description                                             |
+| ------- | ------------------- | ---- | ------------------------------------------------------- |
+| 0:3     | already_provisioned | u32  | `1` if all four partitions are provisioned; otherwise 0 |
+
+### Vendor PK Hash Status
+
+Reports occupied vendor public-key hash slots and their PQC key types. A slot
+remains occupied after revocation because OTP hash storage cannot be reused.
+This command does not require authorization.
+
+**Request Payload**: Empty
+
+**Response Payload**:
+
+| Byte(s) | Name              | Type   | Description                                                                                                       |
+| ------- | ----------------- | ------ | ----------------------------------------------------------------------------------------------------------------- |
+| 0:3     | used_slots_bitmap | u32    | Bitmap of occupied slots; bits 0 through 15 correspond to vendor PK hash slots 0 through 15. |
+| 4:19    | key_types         | u8[16] | Per-slot PQC key type: `0` = unused, `1` = LMS, `3` = ML-DSA                                                      |
+
+### HEK Status
+
+Reports used HEK slots and the total number of configured HEK slots. A
+programmed or sanitized slot is used because OTP storage cannot be reused.
+This command does not require authorization.
+
+**Request Payload**: Empty
+
+**Response Payload**:
+
+| Byte(s) | Name              | Type | Description                                                                                       |
+| ------- | ----------------- | ---- | ------------------------------------------------------------------------------------------------- |
+| 0:3     | used_slots_bitmap | u32  | Bitmap of used slots; bits 0 through 7 correspond to HEK slots 0 through 7. |
+| 4:7     | total_slots       | u32  | Number of configured HEK slots                                                                    |
 
 ### Fuse Revoke Vendor Public Key
 
@@ -493,17 +578,56 @@ Locks a fuse partition.
 
 **Response Payload**: Empty
 
+### Zeroize UDS, Field Entropy, and Enter RMA
+
+Zeroizes the UDS and all four field-entropy partitions, records the
+field-entropy partitions as zeroized, and then requests entry into RMA.
+Zeroization occurs before the RMA transition is requested and is not rolled
+back if that transition fails.
+
+**Request Payload**: `rma_token:u8[16] | HybridSignature`
+
+**Response Payload**: Empty
+
+### OCP LOCK Program HEK
+
+Programs an unused HEK slot with an internally generated 256-bit random seed
+and its OTP digest. The slot must be within the implementation's configured HEK
+slot count, contain only erased values, and not be protected by the permanent
+HEK lock.
+
+**Request Payload**: `hek_slot:u32 | HybridSignature`
+
+`hek_slot` selects HEK slot 0 through 7. Implementations may provide fewer than
+eight slots and reject an index beyond the configured slot count.
+
+**Response Payload**: Empty
+
+### OCP LOCK Zero HEK
+
+Permanently sanitizes an unused HEK slot. The slot must be within the
+implementation's configured HEK slot count, contain only erased values, and
+not be protected by the permanent HEK lock.
+
+**Request Payload**: `hek_slot:u32 | HybridSignature`
+
+`hek_slot` selects HEK slot 0 through 7. Implementations may provide fewer than
+eight slots and reject an index beyond the configured slot count.
+
+**Response Payload**: Empty
+
 ### Device Ownership Transfer (DOT)
 
 The device-ownership-transfer family is carried under the top-level `DeviceOwnershipTransfer` command (`0x11`). This family uses the DOT FourCC namespace and is split between authorization-gated and native commands:
 
-- Authorization-gated: `MDLK` (`DotLock`), `MDDS` (`DotDisable`), `MDRT` (`DotRotate`), `MDBB` (`GetDotBackupBlob`)
+- Authorization-gated: `MDEN` (`DotEnable`), `MDLK` (`DotLock`), `MDDS` (`DotDisable`), `MDRT` (`DotRotate`), `MDBB` (`GetDotBackupBlob`)
 - Native: `MDUC` (`DotUnlockChallenge`), `MDUL` (`DotUnlock`), `MDST` (`DotStatus`), `MDRC` (`DotRecovery`), `DOTW` (`DotOverrideChallenge`), `DOTX` (`DotOverride`)
 
 The authorization-gated DOT commands are sent via the `AuthorizedCommand` wrapper and are rejected if delivered directly under `0x11`. The native DOT commands perform challenge-and-signature verification against the current ownership blob or the recovery-key hash, as appropriate for the command.
 
 | FourCC | Command | Path | Description |
 | ------ | ------- | ---- | ----------- |
+| `MDEN` (`0x4D44_454E`) | `DotEnable` | Authorized | Program the redundant `dot_initialized` fuse bits when DOT and its epoch counter are pristine. |
 | `MDLK` | `DotLock` | Authorized | Lock DOT with a nonzero CAK digest and LAK digest. |
 | `MDDS` | `DotDisable` | Authorized | Enter ODD state with a zero CAK digest and a nonzero LAK digest. |
 | `MDRT` | `DotRotate` | Authorized | Replace the CAK and LAK digests and advance the DOT epoch by two. |
@@ -548,3 +672,5 @@ Command responses include a completion code indicating the result of the operati
 | ------ | ------------------------- | ----------------------------- |
 | `0xC0` | Caliptra Mailbox Busy     | Caliptra mailbox is not ready |
 | `0xC1` | Caliptra Buffer Too Small | Response buffer too small     |
+| `0xC2` | Zeroize Failed            | UDS or field entropy zeroization failed; RMA was not attempted |
+| `0xC3` | RMA Transition Failed     | UDS and field entropy were zeroized, but the lifecycle transition to RMA failed |

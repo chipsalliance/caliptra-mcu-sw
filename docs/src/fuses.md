@@ -247,4 +247,8 @@ The default `McuFuseLayoutPolicy` uses:
 - `LinearOr` (3x): for single flags and small bitmasks
 - `WordMajorityVote` (3x): for large bitmasks
 
+The SDK Owner SoC Manifest counter uses one OTP bit per SVN increment,
+without redundant copies. See
+[Owner SoC Manifest SVN](svn.md#owner-soc-manifest-svn) for storage and activation.
+
 This provides a balance between redundancy for critical security fields and storage efficiency for larger data structures.

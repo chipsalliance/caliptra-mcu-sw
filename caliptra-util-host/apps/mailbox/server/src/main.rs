@@ -71,14 +71,12 @@ fn main() -> Result<()> {
                     println!("✓ MATCHED GetDeviceCapabilities command (MCAP)!");
 
                     // Create proper external mailbox response format for GetDeviceCapabilities
-                    // Following the MockMailbox format: checksum + fips_status + 36-byte caps array
+                    // Following the MockMailbox format: checksum + fips_status + 64-byte caps array
                     // Response structure:
                     // - chksum: u32 (4 bytes)
                     // - fips_status: u32 (4 bytes)
-                    // - caps_array: [u8; 36] (36 bytes containing structured capability data)
-                    // Total: 44 bytes
-
-                    let mut response = vec![0u8; 44];
+                    // - caps_array: [u8; 64] (64 bytes containing structured capability data)
+                    // Total: 72 bytes
 
                     // Use config values if available, otherwise fallback defaults
                     let (fips_status, capabilities) = if let Some(ref config) = test_config {
@@ -90,13 +88,14 @@ fn main() -> Result<()> {
                     } else {
                         (0x00000001u32, DEFAULT_DEVICE_CAPABILITIES)
                     };
+                    let mut response = vec![0u8; 8 + capabilities.len()];
 
                     // Fill response data (excluding checksum)
                     response[4..8].copy_from_slice(&fips_status.to_le_bytes());
-                    response[8..44].copy_from_slice(&capabilities);
+                    response[8..].copy_from_slice(&capabilities);
 
                     // Calculate checksum on payload only
-                    let payload = &response[4..44];
+                    let payload = &response[4..];
                     let mut sum = 0u32;
                     for byte in payload.iter() {
                         sum = sum.wrapping_add(*byte as u32);

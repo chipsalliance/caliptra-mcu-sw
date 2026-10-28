@@ -7,7 +7,7 @@
 //! `caliptra-dpe/dpe::commands` (request) and
 //! `caliptra-dpe/dpe::response` (response) using slim
 //! [`zerocopy::Unaligned`] structs so request / response buffers are
-//! allocated from the caller's [`ApiAlloc`] — never the stack —
+//! allocated from the caller's [`ScratchAlloc`] — never the stack —
 //! keeping async futures small.
 
 use core::{
@@ -19,18 +19,17 @@ use mcu_error::McuResult;
 use zerocopy::{little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
 
 use crate::dma::mcu_sram_to_axi_dma;
-use crate::mldsa::{
-    mldsa87_compute_mu, mldsa87_compute_tr, MLDSA87_CONTEXT_MAX_SIZE, MLDSA87_TR_SIZE,
-};
+use crate::mldsa::{mldsa87_compute_mu, MLDSA87_CONTEXT_MAX_SIZE, MLDSA87_TR_SIZE};
+use crate::shake::shake256_hash;
 use crate::slice::{checked_slice, checked_slice_mut, copy_bytes, internal_slice};
 use crate::wire::{
-    calc_checksum, mbox_execute, populate_checksum, CMD_CERTIFY_KEY_CHUNKS, CMD_DPE_GET_TAGGED_TCI,
-    CMD_DPE_TAG_TCI, CMD_INVOKE_DPE, CMD_INVOKE_DPE_MLDSA87, DPE_CMD_DERIVE_CONTEXT,
-    DPE_CMD_GET_CERTIFICATE_CHAIN, DPE_CMD_ROTATE_CONTEXT_HANDLE, DPE_CMD_SIGN,
-    DPE_CMD_UPDATE_CONTEXT_MEASUREMENT, DPE_COMMAND_MAGIC, DPE_PROFILE_MLDSA87,
+    calc_checksum, mbox_execute, mbox_execute_in_place, populate_checksum, CMD_CERTIFY_KEY_CHUNKS,
+    CMD_DPE_GET_TAGGED_TCI, CMD_DPE_TAG_TCI, CMD_INVOKE_DPE, CMD_INVOKE_DPE_MLDSA87,
+    DPE_CMD_DERIVE_CONTEXT, DPE_CMD_GET_CERTIFICATE_CHAIN, DPE_CMD_ROTATE_CONTEXT_HANDLE,
+    DPE_CMD_SIGN, DPE_CMD_UPDATE_CONTEXT_MEASUREMENT, DPE_COMMAND_MAGIC, DPE_PROFILE_MLDSA87,
     DPE_PROFILE_P384_SHA384, DPE_RESPONSE_MAGIC, MBOX_RESP_HEADER_SIZE,
 };
-use crate::ApiAlloc;
+use crate::ScratchAlloc;
 
 /// DPE profile identifier used for DPE command dispatch.
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -76,7 +75,7 @@ const DEFAULT_DPE_CONTEXT_HANDLE: DpeContextHandle = [0u8; DPE_CONTEXT_HANDLE_SI
 
 /// Upper bound on the X.509 leaf certificate Caliptra's DPE can
 /// emit — fits both ECC-384 and ML-DSA-87 leaf certificates.
-pub const DPE_MAX_LEAF_CERT_SIZE: usize = 12 * 1024;
+pub const DPE_MAX_LEAF_CERT_SIZE: usize = 10 * 1024;
 
 /// Maximum bytes that may be fetched in a single
 /// [`dpe_get_cert_chain_chunk`] call. Bounded well below the
@@ -107,6 +106,8 @@ pub enum SigningInput<'a> {
         /// Transcript hash bound by the signature.
         hash: &'a [u8],
     },
+    /// Precomputed external `mu` for ML-DSA-87.
+    Mldsa87Mu(&'a [u8; DPE_MLDSA87_MU_SIZE]),
 }
 
 impl SigningInput<'_> {
@@ -114,7 +115,7 @@ impl SigningInput<'_> {
     pub const fn profile(&self) -> DpeProfile {
         match self {
             Self::EccP384Digest(_) => DpeProfile::P384Sha384,
-            Self::Mldsa87Message { .. } => DpeProfile::Mldsa87,
+            Self::Mldsa87Message { .. } | Self::Mldsa87Mu(_) => DpeProfile::Mldsa87,
         }
     }
 }
@@ -373,17 +374,24 @@ const CERTIFY_KEY_CHUNKS_RESP_INFO_LEN: usize =
     size_of::<caliptra_api::mailbox::CertifyKeyChunksRespInfo>();
 /// Peak scratch allocation during ML-DSA-87 signing: max of CertifyKey phase and Sign phase.
 pub const DPE_MLDSA87_SIGN_SCRATCH_PEAK: usize = {
-    let certify_key_phase = CERTIFY_KEY_MLDSA87_PUBKEY_SIZE
-        + CERTIFY_KEY_CHUNKS_REQ_LEN
+    let certify_key_phase = CERTIFY_KEY_CHUNKS_REQ_LEN
         + CERTIFY_KEY_CHUNKS_RESP_INFO_LEN
-        + CERTIFY_KEY_MLDSA87_RESP_PREFIX_LEN;
-    let sign_phase = SIGN_MLDSA87_REQ_LEN + SIGN_MLDSA87_RESP_LEN;
+        + CERTIFY_KEY_MLDSA87_RESP_PREFIX_LEN
+        + crate::shake::SHAKE256_CONTEXT_SIZE;
+    let sign_phase = SIGN_MLDSA87_RESP_LEN;
     if certify_key_phase > sign_phase {
         certify_key_phase
     } else {
         sign_phase
     }
 };
+/// Peak scratch allocation during `dpe_derive_context_exported_cdi`
+pub const DPE_DERIVE_CONTEXT_EXPORTED_CDI_SCRATCH_PEAK: usize =
+    if DERIVE_CONTEXT_MLDSA87_REQ_LEN > DERIVE_CONTEXT_REQ_LEN {
+        DERIVE_CONTEXT_MLDSA87_REQ_LEN
+    } else {
+        DERIVE_CONTEXT_REQ_LEN
+    };
 
 const CERTIFY_KEY_CHUNKS_MAX_REQ_SIZE: usize =
     if CERTIFY_KEY_MLDSA87_RESP_PREFIX_LEN > DPE_MAX_CHUNK_SIZE {
@@ -480,7 +488,7 @@ const _: () = assert!(CERTIFY_KEY_MLDSA87_PUBKEY_SIZE == 2592);
 const _: () = assert!(CERTIFY_KEY_MLDSA87_RESP_PREFIX_LEN == 2624);
 const _: () = assert!(CERTIFY_KEY_CHUNKS_REQ_LEN == 92);
 const _: () = assert!(CERTIFY_KEY_CHUNKS_RESP_INFO_LEN == 32);
-const _: () = assert!(DPE_MLDSA87_SIGN_SCRATCH_PEAK == 2592 + 92 + 32 + 2624);
+const _: () = assert!(DPE_MLDSA87_SIGN_SCRATCH_PEAK == SIGN_MLDSA87_RESP_LEN);
 const _: () = assert!(size_of::<RotateCtxCmd>() == DPE_CONTEXT_HANDLE_SIZE + 4);
 const _: () = assert!(size_of::<NewHandleRespBody>() == 12 + DPE_CONTEXT_HANDLE_SIZE);
 const _: () = assert!(ROTATE_CTX_REQ_LEN == 8 + 12 + 20);
@@ -588,7 +596,7 @@ pub struct DpeTaggedTci {
 
 /// Invoke DPE `DeriveContext`, returning the child handle and rotated parent handle.
 #[inline(never)]
-pub async fn dpe_derive_context<A: ApiAlloc>(
+pub async fn dpe_derive_context<A: ScratchAlloc>(
     alloc: &A,
     params: &DpeDeriveContextParams,
 ) -> McuResult<DpeDeriveContextResult> {
@@ -599,7 +607,7 @@ pub async fn dpe_derive_context<A: ApiAlloc>(
     parse_derive_context_response(&rsp, rsp_len)
 }
 
-fn build_derive_context_req<'a, A: ApiAlloc>(
+fn build_derive_context_req<'a, A: ScratchAlloc>(
     alloc: &'a A,
     params: &DpeDeriveContextParams,
     profile: DpeProfile,
@@ -664,34 +672,50 @@ fn parse_derive_context_response(rsp: &[u8], rsp_len: usize) -> McuResult<DpeDer
     })
 }
 
+/// Minimum size and alignment required for `cert_dst` in [`dpe_derive_context_exported_cdi`],
+/// which stages `InvokeDpeRespPrefix` (12 B) + `DeriveContextExportedCdiRespPrefix` (80 B)
+/// ahead of the leaf certificate in-place before shifting the certificate to offset 0.
+pub const DERIVE_CONTEXT_EXPORTED_CDI_RESP_PREFIX_LEN: usize =
+    size_of::<InvokeDpeRespPrefix>() + size_of::<DeriveContextExportedCdiRespPrefix>();
+
 /// Invoke DPE `DeriveContext` with `EXPORT_CDI`, returning the child handle, rotated parent handle,
-/// 32-byte exported CDI handle, and copying the emitted leaf certificate into `cert_dst`.
+/// 32-byte exported CDI handle, and writing the emitted leaf certificate into `cert_dst`.
+///
+/// `cert_dst` must be 4-byte aligned and at least
+/// `DERIVE_CONTEXT_EXPORTED_CDI_RESP_PREFIX_LEN + DPE_MAX_LEAF_CERT_SIZE` (`10,332`) bytes long so
+/// the response can be staged in-place without a secondary scratch allocation.
 #[inline(never)]
-pub async fn dpe_derive_context_exported_cdi<A: ApiAlloc>(
+pub async fn dpe_derive_context_exported_cdi<A: ScratchAlloc>(
     alloc: &A,
     params: &DpeDeriveContextParams,
     profile: DpeProfile,
     cert_dst: &mut [u8],
 ) -> McuResult<DpeDeriveContextExportedCdiResult> {
-    let max_resp_len = match profile {
-        DpeProfile::Mldsa87 => 24 * 1024,
-        DpeProfile::P384Sha384 => {
-            size_of::<InvokeDpeRespPrefix>()
-                + size_of::<DeriveContextExportedCdiRespPrefix>()
-                + cert_dst.len().min(DPE_MAX_LEAF_CERT_SIZE)
-        }
-    };
-    let mut rsp = alloc.alloc(max_resp_len)?;
+    let in_place_len = DERIVE_CONTEXT_EXPORTED_CDI_RESP_PREFIX_LEN + DPE_MAX_LEAF_CERT_SIZE;
+    if cert_dst.len() < in_place_len
+        || !(cert_dst.as_ptr() as usize).is_multiple_of(core::mem::align_of::<u32>())
+    {
+        return Err(INVARIANT);
+    }
+
+    let rsp = &mut cert_dst[..in_place_len];
     let axi_response = match profile {
-        DpeProfile::Mldsa87 => Some(mcu_sram_to_axi_dma(&rsp)?),
+        DpeProfile::Mldsa87 => {
+            let (axi_addr, _) = mcu_sram_to_axi_dma(rsp)?;
+            // Bound Caliptra's DMA write to the in-place buffer.
+            Some((
+                axi_addr,
+                u32::try_from(in_place_len).map_err(|_| INVARIANT)?,
+            ))
+        }
         DpeProfile::P384Sha384 => None,
     };
     let (req, mbox_cmd) = build_derive_context_req(alloc, params, profile, axi_response)?;
-    let rsp_len = mbox_execute(mbox_cmd, &req, &mut rsp).await?;
+    let rsp_len = mbox_execute(mbox_cmd, &req, rsp).await?;
     let effective_rsp_len = match profile {
         DpeProfile::Mldsa87 => {
             let prefix = InvokeDpeRespPrefix::ref_from_bytes(checked_slice(
-                &rsp,
+                rsp,
                 0,
                 size_of::<InvokeDpeRespPrefix>(),
             )?)
@@ -700,13 +724,12 @@ pub async fn dpe_derive_context_exported_cdi<A: ApiAlloc>(
         }
         DpeProfile::P384Sha384 => rsp_len,
     };
-    parse_derive_context_exported_cdi_response(&rsp, effective_rsp_len, cert_dst)
+    parse_derive_context_exported_cdi_response_in_place(rsp, effective_rsp_len)
 }
 
-fn parse_derive_context_exported_cdi_response(
+fn parse_derive_context_exported_cdi_header(
     rsp: &[u8],
     rsp_len: usize,
-    cert_dst: &mut [u8],
 ) -> McuResult<DpeDeriveContextExportedCdiResult> {
     let resp_body_off = size_of::<InvokeDpeRespPrefix>();
     let prefix_len = size_of::<DeriveContextExportedCdiRespPrefix>();
@@ -734,13 +757,9 @@ fn parse_derive_context_exported_cdi_response(
 
     let cert_size = prefix.cert_size.get() as usize;
     let cert_off = resp_body_off + prefix_len;
-    if cert_off + cert_size > rsp_len || cert_size > cert_dst.len() {
+    if cert_off + cert_size > rsp_len || cert_size > rsp.len() {
         return Err(INTERNAL_BUG);
     }
-    let cert = internal_slice(rsp, cert_off, cert_size)?;
-    let out = cert_dst.get_mut(..cert_size).ok_or(INTERNAL_BUG)?;
-    copy_bytes(out, cert)?;
-
     Ok(DpeDeriveContextExportedCdiResult {
         child_handle: prefix.handle,
         parent_handle: prefix.parent_handle,
@@ -749,9 +768,22 @@ fn parse_derive_context_exported_cdi_response(
     })
 }
 
+fn parse_derive_context_exported_cdi_response_in_place(
+    rsp: &mut [u8],
+    rsp_len: usize,
+) -> McuResult<DpeDeriveContextExportedCdiResult> {
+    let result = parse_derive_context_exported_cdi_header(rsp, rsp_len)?;
+    let cert_off = DERIVE_CONTEXT_EXPORTED_CDI_RESP_PREFIX_LEN;
+    if result.cert_size > rsp.len() - cert_off {
+        return Err(INTERNAL_BUG);
+    }
+    rsp.copy_within(cert_off..cert_off + result.cert_size, 0);
+    Ok(result)
+}
+
 /// Invoke DPE `UpdateContextMeasurement`, returning the rotated component and parent handles.
 #[inline(never)]
-pub async fn dpe_update_context_measurement<A: ApiAlloc>(
+pub async fn dpe_update_context_measurement<A: ScratchAlloc>(
     alloc: &A,
     params: &DpeUpdateContextMeasurementParams,
 ) -> McuResult<DpeUpdateContextMeasurementResult> {
@@ -762,7 +794,7 @@ pub async fn dpe_update_context_measurement<A: ApiAlloc>(
     parse_update_context_measurement_response(&rsp, rsp_len)
 }
 
-fn build_update_context_measurement_req<'a, A: ApiAlloc>(
+fn build_update_context_measurement_req<'a, A: ScratchAlloc>(
     alloc: &'a A,
     params: &DpeUpdateContextMeasurementParams,
 ) -> McuResult<A::Buf<'a>> {
@@ -826,7 +858,7 @@ fn parse_update_context_measurement_response(
 /// actually wrote. A short read (`returned < dst.len()`) signals
 /// end-of-chain; callers should stop probing.
 #[inline(never)]
-pub async fn dpe_get_cert_chain_chunk<A: ApiAlloc>(
+pub async fn dpe_get_cert_chain_chunk<A: ScratchAlloc>(
     alloc: &A,
     profile: DpeProfile,
     offset: u32,
@@ -910,7 +942,7 @@ pub async fn dpe_get_cert_chain_chunk<A: ApiAlloc>(
 /// This composes the bounded size and slice commands so callers with smaller
 /// certificate buffers do not need to implement chunking themselves.
 #[inline(never)]
-pub async fn dpe_certify_key<A: ApiAlloc>(
+pub async fn dpe_certify_key<A: ScratchAlloc>(
     alloc: &A,
     profile: DpeProfile,
     handle: Option<&DpeContextHandle>,
@@ -948,7 +980,7 @@ pub async fn dpe_certify_key<A: ApiAlloc>(
 /// Return the DER leaf certificate length emitted by DPE `CertifyKey`
 /// without fetching the certificate body, along with the rotated context handle.
 #[inline(never)]
-pub async fn dpe_certify_key_cert_size<A: ApiAlloc>(
+pub async fn dpe_certify_key_cert_size<A: ScratchAlloc>(
     alloc: &A,
     profile: DpeProfile,
     handle: Option<&DpeContextHandle>,
@@ -978,7 +1010,7 @@ pub async fn dpe_certify_key_cert_size<A: ApiAlloc>(
 /// enclosing `CertifyKey` response. Returns the rotated context handle plus
 /// the number of bytes copied into `dst`.
 #[inline(never)]
-pub async fn dpe_certify_key_cert_slice<A: ApiAlloc>(
+pub async fn dpe_certify_key_cert_slice<A: ScratchAlloc>(
     alloc: &A,
     profile: DpeProfile,
     handle: Option<&DpeContextHandle>,
@@ -1019,7 +1051,7 @@ pub async fn dpe_certify_key_cert_slice<A: ApiAlloc>(
 /// is needed (e.g. to compute an attestation kid). Returns the rotated
 /// context handle.
 #[inline(never)]
-pub async fn dpe_certify_key_pubkey<A: ApiAlloc>(
+pub async fn dpe_certify_key_pubkey<A: ScratchAlloc>(
     alloc: &A,
     handle: Option<&DpeContextHandle>,
     label: &[u8; DPE_LABEL_LEN],
@@ -1044,14 +1076,23 @@ pub async fn dpe_certify_key_pubkey<A: ApiAlloc>(
     Ok(chunk.next_handle)
 }
 
-/// Return the raw 2,592-byte ML-DSA-87 public key emitted by DPE
-/// `CertifyKey`, along with the rotated context handle.
+fn extract_certify_key_mldsa87_pubkey(response: &[u8]) -> McuResult<&[u8]> {
+    validate_certify_key_prefix(response, DpeProfile::Mldsa87)?;
+    internal_slice(
+        response,
+        CERTIFY_KEY_RESP_PUBKEY_X_OFF,
+        CERTIFY_KEY_MLDSA87_PUBKEY_SIZE,
+    )
+}
+
+/// Return the ML-DSA-87 public-key hash `tr` emitted by DPE `CertifyKey`,
+/// along with the rotated context handle.
 #[inline(never)]
-pub async fn dpe_certify_key_mldsa87_pubkey<A: ApiAlloc>(
+pub async fn dpe_certify_key_mldsa87_tr<A: ScratchAlloc>(
     alloc: &A,
     handle: Option<&DpeContextHandle>,
     label: &[u8; DPE_LABEL_LEN],
-    public_key: &mut [u8; CERTIFY_KEY_MLDSA87_PUBKEY_SIZE],
+    tr: &mut [u8; MLDSA87_TR_SIZE],
 ) -> McuResult<DpeContextHandle> {
     let chunk = certify_key_chunks_response(
         alloc,
@@ -1062,23 +1103,10 @@ pub async fn dpe_certify_key_mldsa87_pubkey<A: ApiAlloc>(
         CERTIFY_KEY_MLDSA87_RESP_PREFIX_LEN,
     )
     .await?;
-    parse_certify_key_mldsa87_pubkey(chunk.chunk()?, public_key)?;
+    let response = chunk.chunk()?;
+    let pubkey = extract_certify_key_mldsa87_pubkey(response)?;
+    shake256_hash(alloc, pubkey, tr).await?;
     Ok(chunk.next_handle)
-}
-
-fn parse_certify_key_mldsa87_pubkey(
-    response: &[u8],
-    public_key: &mut [u8; CERTIFY_KEY_MLDSA87_PUBKEY_SIZE],
-) -> McuResult<()> {
-    validate_certify_key_prefix(response, DpeProfile::Mldsa87)?;
-    copy_bytes(
-        public_key,
-        internal_slice(
-            response,
-            CERTIFY_KEY_RESP_PUBKEY_X_OFF,
-            CERTIFY_KEY_MLDSA87_PUBKEY_SIZE,
-        )?,
-    )
 }
 
 struct CertifyKeyChunk<B> {
@@ -1102,7 +1130,7 @@ async fn certify_key_chunks_response<'a, A>(
     max_size: usize,
 ) -> McuResult<CertifyKeyChunk<A::Buf<'a>>>
 where
-    A: ApiAlloc,
+    A: ScratchAlloc,
 {
     if max_size == 0 || max_size > CERTIFY_KEY_CHUNKS_MAX_REQ_SIZE {
         return Err(INVARIANT);
@@ -1129,7 +1157,7 @@ where
     })
 }
 
-fn build_certify_key_chunks_req<'a, A: ApiAlloc>(
+fn build_certify_key_chunks_req<'a, A: ScratchAlloc>(
     alloc: &'a A,
     profile: DpeProfile,
     label: &[u8; DPE_LABEL_LEN],
@@ -1272,7 +1300,7 @@ pub trait DpeChainSink {
 /// [`DPE_MAX_CHUNK_SIZE`]-byte chunks, feeding each chunk to `sink`.
 /// Returns the total number of bytes walked. A short read
 /// (`returned < DPE_MAX_CHUNK_SIZE`) ends the walk.
-pub async fn walk_dpe_chain<A: ApiAlloc, S: DpeChainSink>(
+pub async fn walk_dpe_chain<A: ScratchAlloc, S: DpeChainSink>(
     alloc: &A,
     profile: DpeProfile,
     sink: &mut S,
@@ -1299,7 +1327,7 @@ pub async fn walk_dpe_chain<A: ApiAlloc, S: DpeChainSink>(
 ///
 /// Supports P-384 digests and pure ML-DSA-87 messages with context.
 #[inline(never)]
-pub async fn dpe_sign<A: ApiAlloc>(
+pub async fn dpe_sign<A: ScratchAlloc>(
     alloc: &A,
     handle: Option<&DpeContextHandle>,
     label: &[u8; DPE_LABEL_LEN],
@@ -1315,12 +1343,13 @@ pub async fn dpe_sign<A: ApiAlloc>(
             prefix,
             hash,
         } => dpe_sign_mldsa87_message(alloc, handle, label, context, prefix, hash, signature).await,
+        SigningInput::Mldsa87Mu(mu) => dpe_sign_mldsa87(alloc, handle, label, mu, signature).await,
     }
 }
 
 /// Sign pure ML-DSA-87 under FIPS 204 `context` over `prefix || hash`.
 #[inline(never)]
-async fn dpe_sign_mldsa87_message<A: ApiAlloc>(
+async fn dpe_sign_mldsa87_message<A: ScratchAlloc>(
     alloc: &A,
     handle: Option<&DpeContextHandle>,
     label: &[u8; DPE_LABEL_LEN],
@@ -1337,17 +1366,8 @@ async fn dpe_sign_mldsa87_message<A: ApiAlloc>(
     drop(alloc.alloc(SIGN_MLDSA87_RESP_LEN)?);
 
     let (next_handle, mu) = {
-        let mut public_key_buf = alloc.alloc(CERTIFY_KEY_MLDSA87_PUBKEY_SIZE)?;
-        let public_key: &mut [u8; CERTIFY_KEY_MLDSA87_PUBKEY_SIZE] = public_key_buf
-            .as_mut()
-            .try_into()
-            .map_err(|_| INTERNAL_BUG)?;
-        let next_handle = dpe_certify_key_mldsa87_pubkey(alloc, handle, label, public_key).await?;
-
         let mut tr = [0u8; MLDSA87_TR_SIZE];
-        mldsa87_compute_tr(alloc, public_key, &mut tr).await?;
-
-        drop(public_key_buf);
+        let next_handle = dpe_certify_key_mldsa87_tr(alloc, handle, label, &mut tr).await?;
 
         let mut mu = [0u8; DPE_MLDSA87_MU_SIZE];
         mldsa87_compute_mu(alloc, &tr, context, &[prefix, hash], &mut mu).await?;
@@ -1365,7 +1385,7 @@ async fn dpe_sign_mldsa87_message<A: ApiAlloc>(
 /// `signature` must be at least [`DPE_P384_SIGNATURE_SIZE`] (96) bytes. Returns
 /// the rotated context handle plus the signature length.
 #[inline(never)]
-pub async fn dpe_sign_ecc_p384<A: ApiAlloc>(
+pub async fn dpe_sign_ecc_p384<A: ScratchAlloc>(
     alloc: &A,
     handle: Option<&DpeContextHandle>,
     label: &[u8; DPE_LABEL_LEN],
@@ -1434,7 +1454,7 @@ pub async fn dpe_sign_ecc_p384<A: ApiAlloc>(
 /// `signature` must provide at least [`DPE_MLDSA87_SIGNATURE_SIZE`] bytes.
 /// Returns the rotated context handle and signature length.
 #[inline(never)]
-pub async fn dpe_sign_mldsa87<A: ApiAlloc>(
+pub async fn dpe_sign_mldsa87<A: ScratchAlloc>(
     alloc: &A,
     handle: Option<&DpeContextHandle>,
     label: &[u8; DPE_LABEL_LEN],
@@ -1445,29 +1465,48 @@ pub async fn dpe_sign_mldsa87<A: ApiAlloc>(
         return Err(INVARIANT);
     }
 
-    let request = build_sign_mldsa87_req(alloc, dpe_handle_or_default(handle), label, mu)?;
+    let handle = dpe_handle_or_default(handle);
     let mut response = alloc.alloc(SIGN_MLDSA87_RESP_LEN)?;
-    let response_len = mbox_execute(CMD_INVOKE_DPE_MLDSA87, &request, &mut response).await?;
+    write_sign_mldsa87_req(&mut response[..SIGN_MLDSA87_REQ_LEN], handle, label, mu)?;
+    let response_len = mbox_execute_in_place(
+        CMD_INVOKE_DPE_MLDSA87,
+        SIGN_MLDSA87_REQ_LEN,
+        SIGN_MLDSA87_RESP_LEN,
+        &mut response,
+    )
+    .await?;
     parse_sign_mldsa87_response(&response, response_len, signature)
 }
 
-fn build_sign_mldsa87_req<'a, A: ApiAlloc>(
+#[cfg(test)]
+fn build_sign_mldsa87_req<'a, A: ScratchAlloc>(
     alloc: &'a A,
     handle: &DpeContextHandle,
     label: &[u8; DPE_LABEL_LEN],
     mu: &[u8; DPE_MLDSA87_MU_SIZE],
 ) -> McuResult<A::Buf<'a>> {
     let mut request = alloc.alloc(SIGN_MLDSA87_REQ_LEN)?;
+    write_sign_mldsa87_req(&mut request, handle, label, mu)?;
+    Ok(request)
+}
+
+fn write_sign_mldsa87_req(
+    request: &mut [u8],
+    handle: &DpeContextHandle,
+    label: &[u8; DPE_LABEL_LEN],
+    mu: &[u8; DPE_MLDSA87_MU_SIZE],
+) -> McuResult<()> {
+    let request = checked_slice_mut(request, 0, SIGN_MLDSA87_REQ_LEN)?;
     request.fill(0);
     let command_offset = build_invoke_dpe_header_profile(
-        &mut request,
+        request,
         SIGN_MLDSA87_DPE_PAYLOAD_LEN,
         DPE_CMD_SIGN,
         DpeProfile::Mldsa87,
         None,
     )?;
     let command = SignMldsa87Cmd::mut_from_bytes(checked_slice_mut(
-        &mut request,
+        request,
         command_offset,
         size_of::<SignMldsa87Cmd>(),
     )?)
@@ -1477,9 +1516,9 @@ fn build_sign_mldsa87_req<'a, A: ApiAlloc>(
     command.flags = U32::new(0);
     command.mu = *mu;
 
-    let checksum = calc_checksum(CMD_INVOKE_DPE_MLDSA87, &request);
+    let checksum = calc_checksum(CMD_INVOKE_DPE_MLDSA87, request);
     *request.first_chunk_mut::<4>().ok_or(INVARIANT)? = checksum.to_le_bytes();
-    Ok(request)
+    Ok(())
 }
 
 fn parse_sign_mldsa87_response(
@@ -1490,7 +1529,6 @@ fn parse_sign_mldsa87_response(
     if signature.len() < DPE_MLDSA87_SIGNATURE_SIZE {
         return Err(INVARIANT);
     }
-
     let body_offset = size_of::<InvokeDpeRespPrefix>();
     if response_len < body_offset + size_of::<DpeResponseHdr>() {
         return Err(INTERNAL_BUG);
@@ -1538,7 +1576,7 @@ fn parse_sign_mldsa87_response(
 /// initialization uses this to obtain a stable MCU-held handle for the
 /// MCU Runtime context.
 #[inline(never)]
-pub async fn dpe_rotate_context_default<A: ApiAlloc>(
+pub async fn dpe_rotate_context_default<A: ScratchAlloc>(
     alloc: &A,
 ) -> McuResult<[u8; DPE_CONTEXT_HANDLE_SIZE]> {
     // Build request: prefix + DPE command header + RotateCtx body.
@@ -1597,7 +1635,7 @@ pub async fn dpe_rotate_context_default<A: ApiAlloc>(
 /// MCU Runtime boot initialization tags the rotated MCU Runtime
 /// context so its TCI can later be read back by tag.
 #[inline(never)]
-pub async fn dpe_tag_tci<A: ApiAlloc>(
+pub async fn dpe_tag_tci<A: ScratchAlloc>(
     alloc: &A,
     handle: &[u8; DPE_CONTEXT_HANDLE_SIZE],
     tag: u32,
@@ -1622,14 +1660,14 @@ pub async fn dpe_tag_tci<A: ApiAlloc>(
 
 /// Read cumulative and current TCI values for the DPE context associated with `tag`.
 #[inline(never)]
-pub async fn dpe_get_tagged_tci<A: ApiAlloc>(alloc: &A, tag: u32) -> McuResult<DpeTaggedTci> {
+pub async fn dpe_get_tagged_tci<A: ScratchAlloc>(alloc: &A, tag: u32) -> McuResult<DpeTaggedTci> {
     let req = build_get_tagged_tci_req(alloc, tag)?;
     let mut rsp = alloc.alloc(GET_TAGGED_TCI_RESP_LEN)?;
     let rsp_len = mbox_execute(CMD_DPE_GET_TAGGED_TCI, &req, &mut rsp).await?;
     parse_get_tagged_tci_response(&rsp, rsp_len)
 }
 
-fn build_get_tagged_tci_req<A: ApiAlloc>(alloc: &A, tag: u32) -> McuResult<A::Buf<'_>> {
+fn build_get_tagged_tci_req<A: ScratchAlloc>(alloc: &A, tag: u32) -> McuResult<A::Buf<'_>> {
     let mut req = alloc.alloc(GET_TAGGED_TCI_REQ_LEN)?;
     req.fill(0);
     {
@@ -1671,7 +1709,7 @@ mod tests {
 
     struct TestAlloc;
 
-    impl ApiAlloc for TestAlloc {
+    impl ScratchAlloc for TestAlloc {
         type Buf<'a>
             = Vec<u8>
         where
@@ -1887,7 +1925,7 @@ mod tests {
     }
 
     #[test]
-    fn certify_key_mldsa87_pubkey_parser_copies_raw_key() {
+    fn certify_key_mldsa87_pubkey_extractor() {
         let expected_key = [0x5au8; CERTIFY_KEY_MLDSA87_PUBKEY_SIZE];
         let mut response = std::vec![0u8; CERTIFY_KEY_MLDSA87_RESP_PREFIX_LEN];
         response[..4].copy_from_slice(&DPE_RESPONSE_MAGIC.to_le_bytes());
@@ -1896,10 +1934,8 @@ mod tests {
             ..CERTIFY_KEY_RESP_PUBKEY_X_OFF + CERTIFY_KEY_MLDSA87_PUBKEY_SIZE]
             .copy_from_slice(&expected_key);
 
-        let mut public_key = [0u8; CERTIFY_KEY_MLDSA87_PUBKEY_SIZE];
-        parse_certify_key_mldsa87_pubkey(&response, &mut public_key).unwrap();
-
-        assert_eq!(public_key, expected_key);
+        let pubkey = extract_certify_key_mldsa87_pubkey(&response).unwrap();
+        assert_eq!(pubkey, expected_key.as_slice());
     }
 
     #[test]
@@ -2094,15 +2130,15 @@ mod tests {
             .copy_from_slice(&(cert_data.len() as u32).to_le_bytes());
         rsp[resp_body_off + prefix_len..].copy_from_slice(&cert_data);
 
-        let mut cert_dst = [0u8; 128];
+        let rsp_len = rsp.len();
         let result =
-            parse_derive_context_exported_cdi_response(&rsp, rsp.len(), &mut cert_dst).unwrap();
+            parse_derive_context_exported_cdi_response_in_place(&mut rsp, rsp_len).unwrap();
 
         assert_eq!(result.child_handle, child_handle);
         assert_eq!(result.parent_handle, parent_handle);
         assert_eq!(result.exported_cdi, exported_cdi);
         assert_eq!(result.cert_size, cert_data.len());
-        assert_eq!(&cert_dst[..cert_data.len()], &cert_data);
+        assert_eq!(&rsp[..cert_data.len()], &cert_data);
     }
 
     #[test]
@@ -2124,6 +2160,7 @@ mod tests {
     #[test]
     fn signing_input_selects_dpe_profile() {
         let digest = [0u8; DPE_P384_DIGEST_SIZE];
+        let mu = [0u8; DPE_MLDSA87_MU_SIZE];
 
         assert_eq!(
             SigningInput::EccP384Digest(&digest).profile(),
@@ -2138,6 +2175,7 @@ mod tests {
             .profile(),
             DpeProfile::Mldsa87
         );
+        assert_eq!(SigningInput::Mldsa87Mu(&mu).profile(), DpeProfile::Mldsa87);
     }
 
     #[test]

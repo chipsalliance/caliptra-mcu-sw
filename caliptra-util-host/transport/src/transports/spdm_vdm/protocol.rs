@@ -82,6 +82,8 @@ pub enum CaliptraVdmCompletionCode {
     // Caliptra project-specific codes (0xC0-0xFF)
     CaliptraMailboxBusy = 0xC0,
     CaliptraBufferTooSmall = 0xC1,
+    ZeroizeFailed = 0xC2,
+    RmaTransitionFailed = 0xC3,
 }
 
 impl TryFrom<u8> for CaliptraVdmCompletionCode {
@@ -107,6 +109,8 @@ impl TryFrom<u8> for CaliptraVdmCompletionCode {
             0x0F => Ok(Self::InvalidState),
             0xC0 => Ok(Self::CaliptraMailboxBusy),
             0xC1 => Ok(Self::CaliptraBufferTooSmall),
+            0xC2 => Ok(Self::ZeroizeFailed),
+            0xC3 => Ok(Self::RmaTransitionFailed),
             _ => Err(SpdmVdmProtocolError::UnknownCompletionCode(value)),
         }
     }
@@ -152,7 +156,8 @@ pub fn command_id_to_vdm(command_id: u32) -> Option<CaliptraVdmCommand> {
         x if x == CaliptraCommandId::GetAuthCmdChallenge as u32 => {
             Some(CaliptraVdmCommand::AuthorizedCommand)
         }
-        x if x == CaliptraCommandId::DotLock as u32
+        x if x == CaliptraCommandId::DotEnable as u32
+            || x == CaliptraCommandId::DotLock as u32
             || x == CaliptraCommandId::DotDisable as u32
             || x == CaliptraCommandId::DotRotate as u32
             || x == CaliptraCommandId::GetDotBackupBlob as u32 =>
@@ -204,6 +209,14 @@ mod tests {
             CaliptraVdmCompletionCode::try_from(0xC1).unwrap(),
             CaliptraVdmCompletionCode::CaliptraBufferTooSmall
         );
+        assert_eq!(
+            CaliptraVdmCompletionCode::try_from(0xC2).unwrap(),
+            CaliptraVdmCompletionCode::ZeroizeFailed
+        );
+        assert_eq!(
+            CaliptraVdmCompletionCode::try_from(0xC3).unwrap(),
+            CaliptraVdmCompletionCode::RmaTransitionFailed
+        );
         assert!(CaliptraVdmCompletionCode::try_from(0x10).is_err());
     }
 
@@ -219,6 +232,7 @@ mod tests {
             Some(CaliptraVdmCommand::RequestDebugUnlock)
         );
         for id in [
+            CaliptraCommandId::DotEnable,
             CaliptraCommandId::DotLock,
             CaliptraCommandId::DotDisable,
             CaliptraCommandId::DotRotate,

@@ -99,13 +99,24 @@ The following subcommands are assigned to the SPDM VDM IANA authorization-gated 
 | `0x4D41_4343` (`MACC`) | GetAuthChallenge           | Supported     | Acquire a one-use 48-byte authorization challenge.  |
 | `0x5056_504B` (`PVPK`) | ProvisionVendorPkHash      | Supported     | Provision vendor public key hash.                   |
 | `0x504F_504B` (`POPK`) | ProvisionOwnerPkHash       | Supported     | Provision owner public key hash.                    |
-| `0x4D43_4D53` (`MCMS`) | FuseIncreaseMinSvn         | Supported     | Increase the Caliptra Runtime or SoC Manifest minimum SVN. |
+| `0x4D43_4D53` (`MCMS`) | FuseIncreaseMinSvn         | Supported     | Increase the Caliptra Runtime, SoC Manifest, or Owner SoC Manifest minimum SVN. |
 | `0x4D43_4650` (`MCFP`) | ProgramFieldEntropy        | Supported     | Program field entropy.                              |
 | `0x4D52_564B` (`MRVK`) | FuseRevokeVendorPubKey     | Supported     | Revoke vendor public key.                           |
 | `0x5256_4B48` (`RVKH`) | FuseRevokeVendorPkHash     | Supported     | Revoke vendor public key hash.                      |
 | `0x4946_504B` (`IFPK`) | FuseLockPartition          | Supported     | Lock fuse partition.                                |
+| `0x4D5A_524D` (`MZRM`) | ZeroizeUdsFeAndEnterRma    | Supported     | Zeroize UDS and field entropy, then enter RMA.      |
+| `0x4F4C_5048` (`OLPH`) | OcpLockProgramHek          | Supported     | Program an unused HEK slot.                         |
+| `0x4F4C_5A48` (`OLZH`) | OcpLockZeroHek             | Supported     | Permanently sanitize an unused HEK slot.            |
 | `0x0000_0011`          | DeviceOwnershipTransfer    | Supported     | Carry authorization-gated DOT subcommands.          |
 | `0x0000_0013`          | OcpLock                    | Supported     | Carry authorization-gated OCP LOCK subcommands.     |
+| `VU00`-`VUFF`           | VendorUnique               | Reserved      | Vendor-unique innermost commands; unsupported by the reference MCU. |
+
+`VU00` through `VUFF` represent exactly 256 IDs of the form `VUxy`, where both
+suffix characters are uppercase ASCII hexadecimal digits. They are encoded in
+the little-endian `sub_cmd_id` field like the other FourCC subcommands. Numeric
+values in the ASCII gaps between `9` and `A` are not reserved. The reference
+implementation returns `UnsupportedOperation` for these recognized but
+unimplemented IDs.
 
 ### Authorization Flow
 
@@ -131,6 +142,12 @@ nonce[48] || ecc_pub_x[48] || ecc_pub_y[48] || mldsa_pub[2592] || HybridSignatur
 ```
 
 `nonce` echoes the challenge. `HybridSignature` is `ecc_sig_r[48] || ecc_sig_s[48] || mldsa_sig[4628]`. The challenge is consumed by the verification attempt and cannot be reused. Requests must have the exact documented size; missing, truncated, and oversized trailers are rejected with `InvalidPayloadSize`, while failed authorization returns `AccessDenied`.
+
+`ZeroizeUdsFeAndEnterRma` reports `ZeroizeFailed` if the zeroization command
+fails or the kernel cannot confirm by OTP readback that UDS and all field
+entropy partitions are zeroized. In that case, RMA is not attempted. It reports
+`RmaTransitionFailed` if zeroization is confirmed but the lifecycle-controller
+transition to RMA fails.
 
 ### Implemented Subcommand Payloads
 
@@ -186,6 +203,24 @@ Byte offsets below begin immediately after the four-byte `subcommand_id` and inc
 | | 100:147 | `ecc_pub_y` | u8[48] |
 | | 148:2739 | `mldsa_pub` | u8[2592] |
 | | 2740:7463 | `signature` | HybridSignature |
+| MZRM | 0:15 | `rma_token` | u8[16] |
+| | 16:63 | `nonce` | u8[48] |
+| | 64:111 | `ecc_pub_x` | u8[48] |
+| | 112:159 | `ecc_pub_y` | u8[48] |
+| | 160:2751 | `mldsa_pub` | u8[2592] |
+| | 2752:7475 | `signature` | HybridSignature |
+| OLPH | 0:3 | `hek_slot` | u32, little-endian; slot 0 through 7 |
+| | 4:51 | `nonce` | u8[48] |
+| | 52:99 | `ecc_pub_x` | u8[48] |
+| | 100:147 | `ecc_pub_y` | u8[48] |
+| | 148:2739 | `mldsa_pub` | u8[2592] |
+| | 2740:7463 | `signature` | HybridSignature |
+| OLZH | 0:3 | `hek_slot` | u32, little-endian; slot 0 through 7 |
+| | 4:51 | `nonce` | u8[48] |
+| | 52:99 | `ecc_pub_x` | u8[48] |
+| | 100:147 | `ecc_pub_y` | u8[48] |
+| | 148:2739 | `mldsa_pub` | u8[2592] |
+| | 2740:7463 | `signature` | HybridSignature |
 
 ## Device Ownership Transfer Commands
 
@@ -207,6 +242,7 @@ Native-authenticated/read-only DOT request:
 
 | FourCC | Command | Path | DOT payload | Validation |
 | ------ | ------- | ---- | ----------- | ---------- |
+| `MDEN` (`0x4D44_454E`) | Enable | Authorized | Empty | Initialization gate clear and zero epoch bits; programs all three redundant gate bits |
 | `MDLK` | Lock | Authorized | `cak_digest[48] || lak_digest[48]` | Nonzero digests; EVEN state |
 | `MDDS` | Disable | Authorized | `lak_digest[48]` | Nonzero LAK digest; EVEN state |
 | `MDRT` | Rotate | Authorized | `min_fuse_count:u32 || cak_digest[48] || lak_digest[48]` | Runs when burned count is below the minimum |
@@ -218,7 +254,7 @@ Native-authenticated/read-only DOT request:
 | `DOTW` | Override challenge | Native | Recovery ECC key and ML-DSA key | Keys match fused recovery-key hash |
 | `DOTX` | Override | Native | Recovery keys and hybrid signature | Fused key hash and challenge signatures |
 
-`MDLK`, `MDDS`, `MDRT`, and `MDBB` are rejected with `AccessDenied` when sent
+`MDEN`, `MDLK`, `MDDS`, `MDRT`, and `MDBB` are rejected with `AccessDenied` when sent
 directly under top-level command `0x11`. `MDRC`, `DOTW`, and `DOTX` are not
 gated by a ROM recovery-mode signal; their native cryptographic and state checks
 are always enforced.

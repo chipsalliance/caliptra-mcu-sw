@@ -9,7 +9,7 @@ use zerocopy::{little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout,
 use crate::wire::{
     calc_checksum, CMD_QUOTE_PCRS_ECC384, CMD_QUOTE_PCRS_MLDSA87, MBOX_RESP_HEADER_SIZE,
 };
-use crate::ApiAlloc;
+use crate::ScratchAlloc;
 
 const PCR_VALUE_SIZE: usize = 48;
 const NUM_PCRS: usize = 32;
@@ -80,7 +80,7 @@ const _: () = assert!(PCR_QUOTE_MLDSA87_LEN == 6388);
 ///
 /// The returned payload shape is PCRs, nonce, reset counters, digest, and ECC signature.
 #[inline(never)]
-pub async fn pcr_quote_ecc384<A: ApiAlloc>(
+pub async fn pcr_quote_ecc384<A: ScratchAlloc>(
     alloc: &A,
     nonce: Option<&[u8; NONCE_SIZE]>,
     out: &mut [u8],
@@ -90,7 +90,7 @@ pub async fn pcr_quote_ecc384<A: ApiAlloc>(
 
 /// Generate a Caliptra MLDSA87 PCR quote into `out`, excluding the mailbox response header.
 #[inline(never)]
-pub async fn pcr_quote_mldsa87<A: ApiAlloc>(
+pub async fn pcr_quote_mldsa87<A: ScratchAlloc>(
     alloc: &A,
     nonce: Option<&[u8; NONCE_SIZE]>,
     out: &mut [u8],
@@ -98,7 +98,7 @@ pub async fn pcr_quote_mldsa87<A: ApiAlloc>(
     pcr_quote(alloc, CMD_QUOTE_PCRS_MLDSA87, nonce, out, MLDSA87_RSP_SIZE).await
 }
 
-async fn pcr_quote<A: ApiAlloc>(
+async fn pcr_quote<A: ScratchAlloc>(
     alloc: &A,
     cmd: u32,
     nonce: Option<&[u8; NONCE_SIZE]>,

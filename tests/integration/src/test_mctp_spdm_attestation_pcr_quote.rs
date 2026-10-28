@@ -41,7 +41,7 @@ mod test {
 
         hw.start_i3c_controller();
 
-        run_mctp_spdm_attestation_test(
+        let attestation_result = run_mctp_spdm_attestation_test(
             hw.i3c_port().unwrap(),
             hw.i3c_address().unwrap().into(),
             PortPicker::new().pick().unwrap(),
@@ -50,8 +50,12 @@ mod test {
         );
 
         let test = finish_runtime_hw_model(&mut hw);
+        let attestation_result = attestation_result
+            .recv_timeout(Duration::from_secs(10))
+            .expect("SPDM attestation worker did not report a result");
 
         assert_eq!(0, test);
+        attestation_result.expect("SPDM attestation failed");
         assert_spdm_attestation_artifacts();
 
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);

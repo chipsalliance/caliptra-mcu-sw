@@ -13,8 +13,15 @@ use caliptra_mcu_core_util_host_osal::time::{sleep, Duration, Instant};
 use caliptra_mcu_core_util_host_transport::{Transport, TransportError};
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-/// Maximum size for command packets
-const MAX_COMMAND_PACKET_SIZE: usize = 8 * 1024;
+/// Maximum size for command packets. Must hold the largest typed response,
+/// currently an ML-DSA-87 attested CSR.
+const MAX_COMMAND_PACKET_SIZE: usize = 16 * 1024;
+
+const _: () = assert!(
+    core::mem::size_of::<
+        caliptra_mcu_core_util_host_command_types::certificate::ExportAttestedCsrResponse,
+    >() <= MAX_COMMAND_PACKET_SIZE
+);
 
 /// Pack a command request using zerocopy
 fn pack_command_request<T: IntoBytes + Immutable>(

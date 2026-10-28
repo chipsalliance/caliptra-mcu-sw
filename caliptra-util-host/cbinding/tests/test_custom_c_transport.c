@@ -72,7 +72,7 @@ static enum CaliptraError mock_disconnect(void *ctx) {
 // Mock hardcoded GetDeviceCapabilities response.
 static const uint8_t MOCK_DEVICE_CAPABILITIES_RESPONSE[] = {
     0x01, 0x00, 0x00, 0x00,  // fips_status (little-endian host field)
-    // caps[36] (component capability fields are big-endian)
+    // caps[64] (component capability fields are big-endian)
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x01, // Caliptra RT
     0x00, 0x00, 0x00, 0x00,                         // Caliptra FMC
     0x00, 0x00, 0x00, 0x01,                         // Caliptra ROM
@@ -80,7 +80,12 @@ static const uint8_t MOCK_DEVICE_CAPABILITIES_RESPONSE[] = {
     0x00, 0x00, 0x00, 0xFF,                         // MCU RT
     0x00, 0x02, 0x00, 0xEF,                         // External commands
     0x00, 0x00, 0x00, 0x09,                         // Authorized subcommands
-    0x00, 0x00, 0x00, 0x00                          // Reserved
+    // Reserved
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    // Vendor-defined
+    0xA0, 0xA1, 0xA2, 0xA3, 0xA4, 0xA5, 0xA6, 0xA7,
+    0xA8, 0xA9, 0xAA, 0xAB, 0xAC, 0xAD, 0xAE, 0xAF
 };
 
 static const uint8_t MOCK_FIRMWARE_VERSION_RESPONSE[] = {
@@ -92,6 +97,24 @@ static const uint8_t MOCK_FIRMWARE_VERSION_RESPONSE[] = {
     // commit_id[20]
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
+};
+
+static const uint8_t MOCK_FIELD_ENTROPY_STATUS_RESPONSE[] = {
+    0x01, 0x00, 0x00, 0x00, // fips_status
+    0x01, 0x00, 0x00, 0x00, // already_provisioned
+};
+
+static const uint8_t MOCK_VENDOR_PK_HASH_STATUS_RESPONSE[] = {
+    0x01, 0x00, 0x00, 0x00, // fips_status
+    0x05, 0x00, 0x00, 0x00, // used_slots_bitmap
+    0x01, 0x00, 0x03, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, // key_types
+};
+
+static const uint8_t MOCK_HEK_STATUS_RESPONSE[] = {
+    0x01, 0x00, 0x00, 0x00, // fips_status
+    0x05, 0x00, 0x00, 0x00, // used_slots_bitmap
+    0x08, 0x00, 0x00, 0x00, // total_slots
 };
 
 static enum CaliptraError mock_send(void *ctx, uint32_t command_id, const uint8_t *data, size_t len) {
@@ -129,6 +152,21 @@ static enum CaliptraError mock_send(void *ctx, uint32_t command_id, const uint8_
                    sizeof(MOCK_DEVICE_CAPABILITIES_RESPONSE));
             transport->response_len = sizeof(MOCK_DEVICE_CAPABILITIES_RESPONSE);
             printf("  Custom transport: Prepared device capabilities response\n");
+            break;
+        case 0x0003:
+            memcpy(transport->response_buffer, MOCK_FIELD_ENTROPY_STATUS_RESPONSE,
+                   sizeof(MOCK_FIELD_ENTROPY_STATUS_RESPONSE));
+            transport->response_len = sizeof(MOCK_FIELD_ENTROPY_STATUS_RESPONSE);
+            break;
+        case 0x0004:
+            memcpy(transport->response_buffer, MOCK_VENDOR_PK_HASH_STATUS_RESPONSE,
+                   sizeof(MOCK_VENDOR_PK_HASH_STATUS_RESPONSE));
+            transport->response_len = sizeof(MOCK_VENDOR_PK_HASH_STATUS_RESPONSE);
+            break;
+        case 0x0005:
+            memcpy(transport->response_buffer, MOCK_HEK_STATUS_RESPONSE,
+                   sizeof(MOCK_HEK_STATUS_RESPONSE));
+            transport->response_len = sizeof(MOCK_HEK_STATUS_RESPONSE);
             break;
         default:
             transport->has_pending_response = false;
@@ -235,6 +273,9 @@ int test_custom_c_transport_device_capabilities(void) {
     TEST_ASSERT(capabilities_response.caps[19] == 0x00, "MCU ROM capabilities should be unavailable");
     TEST_ASSERT(capabilities_response.caps[27] == 0xEF, "External commands should match expected mock value");
     TEST_ASSERT(capabilities_response.caps[31] == 0x09, "Authorized subcommands should match expected mock value");
+    TEST_ASSERT(capabilities_response.caps[47] == 0x00, "Reserved capabilities should be zero");
+    TEST_ASSERT(capabilities_response.caps[48] == 0xA0, "First vendor capability byte should match");
+    TEST_ASSERT(capabilities_response.caps[63] == 0xAF, "Last vendor capability byte should match");
 
     printf("✓ Successfully executed get_device_capabilities through custom transport\n");
     printf("  Retrieved MCU Runtime capabilities: 0x%02X\n", capabilities_response.caps[23]);
@@ -250,6 +291,27 @@ int test_custom_c_transport_device_capabilities(void) {
         printf("✓ Successfully executed get_firmware_version through custom transport\n");
         printf("  Retrieved firmware version: %u.%u.%u\n",
             version_response.version[0], version_response.version[1], version_response.version[2]);
+
+    struct FieldEntropyStatusResponse field_entropy_status = {0};
+    result = caliptra_cmd_field_entropy_status_c_impl(session, &field_entropy_status);
+    TEST_ASSERT_EQ(result, Success, "Field entropy status command should succeed");
+    TEST_ASSERT(field_entropy_status.common.fips_status == 1, "Field entropy FIPS status should match");
+    TEST_ASSERT(field_entropy_status.already_provisioned == 1, "Field entropy should be provisioned");
+
+    struct VendorPkHashStatusResponse vendor_pk_hash_status = {0};
+    result = caliptra_cmd_vendor_pk_hash_status_c_impl(session, &vendor_pk_hash_status);
+    TEST_ASSERT_EQ(result, Success, "Vendor PK hash status command should succeed");
+    TEST_ASSERT(vendor_pk_hash_status.common.fips_status == 1, "Vendor PK hash FIPS status should match");
+    TEST_ASSERT(vendor_pk_hash_status.used_slots_bitmap == 5, "Vendor PK hash bitmap should match");
+    TEST_ASSERT(vendor_pk_hash_status.key_types[0] == 1, "Vendor PK hash slot 0 key type should match");
+    TEST_ASSERT(vendor_pk_hash_status.key_types[2] == 3, "Vendor PK hash slot 2 key type should match");
+
+    struct HekStatusResponse hek_status = {0};
+    result = caliptra_cmd_hek_status_c_impl(session, &hek_status);
+    TEST_ASSERT_EQ(result, Success, "HEK status command should succeed");
+    TEST_ASSERT(hek_status.common.fips_status == 1, "HEK FIPS status should match");
+    TEST_ASSERT(hek_status.used_slots_bitmap == 5, "HEK bitmap should match");
+    TEST_ASSERT(hek_status.total_slots == 8, "HEK total slots should match");
 
     // Verify transport context shows command was processed
     TEST_ASSERT(transport_ctx.has_pending_response == false, "Response should have been consumed");

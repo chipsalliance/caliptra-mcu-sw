@@ -9,8 +9,8 @@
 
 use caliptra_mcu_spdm_codec::{DigestsRsp, ResponseBody, SpdmMsgHdrPdu, SHA384_HASH_SIZE};
 use caliptra_mcu_spdm_traits::{
-    PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalAsymAlgo, SpdmPalHashAlgo, SpdmPalIo,
-    SpdmPalIoTransport, MAX_SLOTS,
+    PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalAsymAlgo, SpdmPalHashAlgo, SpdmPalIoTransport,
+    MAX_SLOTS,
 };
 use zerocopy::FromBytes;
 
@@ -24,15 +24,6 @@ use crate::stack::{multi_key_conn_rsp, ConnectionState, Phase};
 const CERT_CHUNK_SIZE: usize = 1024;
 
 pub(crate) async fn handle_get_digests<'a, Pal: SpdmPal>(
-    state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
-    pal: &'a Pal,
-    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
-) -> SpdmResult<PalBytes<'a, Pal>> {
-    let (resp, _) = handle_get_digests_req(state, pal, io, io.request()).await?;
-    Ok(resp)
-}
-
-pub(crate) async fn handle_get_digests_req<'a, Pal: SpdmPal>(
     state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,

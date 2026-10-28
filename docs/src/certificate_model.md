@@ -17,33 +17,14 @@ reported state is acceptable.
 
 Caliptra applies the [OCP Device Identity
 Provisioning](https://opencomputeproject.github.io/Security/device-identity-provisioning/HEAD/)
-multi-PKI-owner model through three certificate endorsement roles: Vendor,
-Owner, and Tenant. The Vendor role represents the initial device identity
-established during manufacturing. After deployment, the Owner role allows the
-device owner to establish an identity rooted in its own PKI. The optional
-Tenant role allows a tenant to establish a separate identity under the
-tenant's PKI. The Caliptra MCU certificate store enables the same device to
-present each of these trust paths while the corresponding private keys remain
-protected inside Caliptra.
-
-This document describes:
-
-- What certificate chains enable.
-- How Caliptra supports multiple PKI owners.
-- How a complete Caliptra certificate chain is composed.
-- What the Vendor, Owner, and Tenant certificate slots contain.
+multi-PKI-owner model through three certificate endorsement roles: [Vendor,
+Owner, and Tenant](#supporting-multiple-pki-owners). The Caliptra MCU
+certificate store enables the device to present independent trust paths for
+each role while private keys remain protected inside Caliptra.
 
 Software integration, initialization, persistence, synchronization, and
 transport command handling are defined in the [Caliptra MCU Certificate
 Store](./cert_store.md).
-
-## Implementation status
-
-This document defines the target certificate model. The current certificate
-store implements ECC P-384 Vendor certificate-chain retrieval through SPDM.
-ML-DSA-87 certificate chains are planned. Managed Owner and Tenant
-provisioning is test-only until production authorization and backing contracts
-are implemented.
 
 ## What certificate chains are used for
 
@@ -65,8 +46,7 @@ flowchart TB
         FMC["Caliptra FMC Alias<br/>certificate"]
         RT["Caliptra RT Alias<br/>certificate"]
         Leaf["Generated DPE leaf<br/>certificate"]
-        LeafKey["DPE leaf private key<br/>(protected in device)"]
-        Evidence["Signed Caliptra<br/>device evidence"]
+        Evidence["Device Attestation evidence"]
     end
 
     Root --> Issuers
@@ -75,10 +55,9 @@ flowchart TB
     LDevID --> FMC
     FMC --> RT
     RT --> Leaf
-    LeafKey -. "corresponding key pair" .-> Leaf
-    LeafKey --> Evidence
-    Leaf --> Verifier
-    Evidence --> Verifier
+    Leaf -. "signs" .-> Evidence
+    Leaf -->|"Certificate chain"| Verifier
+    Evidence --> |"Signed evidence"| Verifier
     Verifier --> Policy
 ```
 
@@ -89,22 +68,16 @@ Certificate-backed device keys can be used to authenticate:
 
 - Device identity.
 - Responses to freshness challenges.
-- Firmware and configuration measurements.
-- Attestation evidence.
-- Secure-session establishment.
+- Attestation evidence (firmware and configuration measurements).
+- SPDM transcripts and secure-session establishment.
 - Other signed device-management responses.
 
 Although DMTF DSP0274 uses certificate chains for these purposes, the
-trust model is not specific to SPDM. The Caliptra certificate store is
-independent of the protocol used to retrieve or provision a chain.
-
-A valid certificate chain authenticates the signing identity. It does not, by
-itself, assert that the signed measurements or configuration are acceptable.
-That decision remains with the verifier's policy.
-
-The certificate store contains certificates and certificate metadata. Device
-private keys remain protected inside Caliptra and are never provisioned
-through the certificate store.
+trust model is transport-neutral. A valid certificate chain authenticates the
+signing identity; evaluating whether the signed measurements or claims are
+acceptable remains the responsibility of the verifier's policy. Private keys
+remain protected inside Caliptra and are never exposed or managed through the
+certificate store.
 
 ## Supporting multiple PKI owners
 
@@ -141,36 +114,21 @@ should accept that identity.
 The Vendor endorsement is provisioned once during manufacturing and remains
 read-only for the lifetime of the device.
 
-OCP DIP separates the identity key for which a CSR is requested from the
-Attestation Key that authenticates the CSR. The target identity might not have
-a provisioned certificate yet, so the device signs the attested CSR with an
-Attestation Key associated with an already trusted certificate slot.
+An Owner or Tenant establishes its trust path through in-field provisioning:
 
-A PKI owner establishes its trust path as follows:
+1. **Attest the device**: Perform an initial attestation using an existing
+   trusted slot (such as Vendor).
+2. **Obtain an attested CSR**: Request a CSR for the target PKI anchor point,
+   attested by the trusted slot's key.
+3. **Issue the endorsement**: The PKI owner validates the attested CSR and
+   issues the device endorsement under its Root or Intermediate CA.
+4. **Provision and verify**: Install the endorsement into the designated slot
+   and verify the complete composed chain with an attestation challenge.
 
-1. Authenticate the device by performing an initial attestation with an
-   already trusted and provisioned certificate slot, for example, the Vendor
-   slot.
-2. Select the identity key that will be the PKI anchor point.
-3. Obtain a CSR for that identity key, attested by the Attestation Key
-   associated with the trusted slot.
-4. Validate the trusted slot's certificate chain, the attested CSR signature,
-   freshness, device binding, key derivation attributes, requested algorithm,
-   and intended endorsement role.
-5. Issue a certificate for the device public key under the PKI owner's Root
-   CA or an authorized intermediate CA.
-6. Provision the resulting endorsement into the matching certificate slot.
-7. Read and validate the complete chain assembled by the device.
-8. Configure the PKI owner's Root CA in the appropriate attestation
-   verifiers.
-9. Perform an attestation with the newly provisioned slot to verify the new
-   trust path end to end.
-
-Changing the endorsement changes which PKI authenticates the device key. It
-does not import, export, or replace the private key held by Caliptra.
-
-For the protocol-level Owner and Tenant workflow, see [In-field Certificate
-Provisioning and Management](./certificate_provisioning.md).
+Changing the endorsement binds a new PKI to the existing device key; it does
+not import, export, or replace private keys held by Caliptra. See [In-field
+Certificate Provisioning and Management](./certificate_provisioning.md) for the
+complete protocol workflow.
 
 ## Caliptra certificate-chain composition
 
@@ -217,102 +175,36 @@ A certificate slot is available to consumers only when the platform can:
 - Access the corresponding device private key for signing.
 - Satisfy the certificate and signature algorithm profile for that slot.
 
-## Certificate slots by endorsement role
+## Certificate slots
 
-The certificate store identifies each logical certificate-chain slot by its
-certificate algorithm and endorsement role.
+Each certificate-chain slot is identified by its `(EndorsementRole, Algorithm)`
+pair.
 
-Supported certificate algorithms are:
+Supported certificate algorithms:
 
 | Certificate algorithm | Profile |
 | --- | --- |
 | ECDSA P-384 | Classical device identity and attestation |
-| ML-DSA-87 | Planned post-quantum device identity and attestation |
+| ML-DSA-87 | Post-quantum device identity and attestation |
 
-The target design allows the platform to select one global certificate
-algorithm profile: ECDSA P-384 only, or ECDSA P-384 plus planned ML-DSA-87.
-When ML-DSA-87 is enabled, every enabled endorsement role has both
-algorithm-specific chains. SPDM negotiates one of the supported algorithms
-for a connection; the two chains are not a hybrid certificate chain.
+The platform selects one global certificate algorithm profile: ECDSA P-384
+only, or ECDSA P-384 plus ML-DSA-87. When ML-DSA-87 is enabled, every enabled
+endorsement role has both algorithm-specific chains. Transports negotiate
+one of the supported algorithms for a connection; the two chains are not a
+hybrid certificate chain. Updating one chain does not change any other
+algorithm or role.
 
-This produces independent certificate chains such as Owner/ECDSA P-384 and
-Owner/ML-DSA-87. Updating one chain does not change any other algorithm or PKI
-entity.
+### Endorsement role slots
 
-`EndorsementRole` identifies whether the chain is endorsed by the Vendor,
-Owner, or Tenant PKI.
+Each role anchors its endorsement at a designated Caliptra identity key and
+completes the chain down to the DPE leaf as shown in Figure 2:
 
-### Vendor certificate slot
+| Role | PKI anchor point | Endorsement source | Caliptra chain below anchor |
+| --- | --- | --- | --- |
+| **Vendor** | Caliptra IDevID | MCU runtime image and/or External OTP (read-only) | LDevID &rarr; FMC &rarr; RT &rarr; DPE leaf |
+| **Owner** | Configured key (e.g. Caliptra LDevID) | In-field provisioning via attested CSR (mutable) | Keys below anchor &rarr; DPE leaf (e.g. FMC &rarr; RT &rarr; DPE leaf) |
+| **Tenant** | Configured key | In-field provisioning, if enabled (mutable) | Keys below anchor &rarr; DPE leaf |
 
-The Vendor slot contains the manufacturer-established identity. Its PKI
-anchor point is the Caliptra IDevID.
-
-```text
-Vendor Root CA
-    -> optional Vendor intermediate CA certificates
-    -> Caliptra IDevID
-    -> Caliptra LDevID
-    -> Caliptra FMC Alias
-    -> Caliptra RT Alias
-    -> generated DPE leaf certificate
-```
-
-The Vendor Root CA and optional intermediate CA certificates are embedded in
-the MCU Runtime user application image. The current implementation supplies a
-complete signed ECC P-384 IDevID certificate. The target
-classical-plus-PQC profile additionally supplies a complete signed ML-DSA-87
-IDevID certificate. The platform can assemble those certificates using
-certificate data from the MCU Runtime user application image, External OTP,
-or both. Certificates below the IDevID are supplied by Caliptra.
-
-The Vendor endorsement certificates are established during manufacturing and
-remain read-only for the device lifetime.
-
-### Owner certificate slot
-
-The default Owner PKI anchor point is the Caliptra LDevID. The Owner
-provisions an endorsement for the existing LDevID public key:
-
-```text
-Owner Root CA
-    -> optional Owner intermediate CA certificates
-    -> Owner-endorsed Caliptra LDevID
-    -> Caliptra FMC Alias
-    -> Caliptra RT Alias
-    -> generated DPE leaf certificate
-```
-
-The Owner Root CA, intermediate certificates, and Owner-endorsed LDevID
-certificate form the managed endorsement. Caliptra supplies the remaining
-certificates.
-
-An authorized Owner can replace or deactivate this endorsement without
-changing the LDevID private key.
-
-### Tenant certificate slot
-
-The Tenant slot follows the Owner model but belongs to a separate PKI owner.
-The platform profile selects the Caliptra identity key used as the Tenant PKI
-anchor point.
-
-```text
-Tenant Root CA
-    -> optional Tenant intermediate CA certificates
-    -> Tenant-endorsed configured PKI anchor point
-    -> Caliptra certificates below that anchor point
-    -> generated DPE leaf certificate
-```
-
-Tenant support is optional. When enabled, its endorsement and lifecycle are
-managed independently from both Vendor and Owner.
-
-### Algorithm-specific slot availability
-
-The chain shape and PKI ownership rules are the same for ECC P-384 and
-planned ML-DSA-87, but every algorithm-specific slot requires its own
-endorsement, generated certificate path, signing key support, and platform
-backing.
-
-When implemented, an ML-DSA-87 slot SHALL remain unavailable until the
-platform can provide every component of the corresponding post-quantum chain
-and use its leaf key for signing.
+The platform profile selects which Caliptra identity key serves as the PKI
+anchor point for Owner (defaulting to LDevID) and Tenant. Caliptra
+supplies all device certificates situated below the configured anchor point.

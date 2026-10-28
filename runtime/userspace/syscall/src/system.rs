@@ -45,6 +45,12 @@ impl System {
         DefaultSyscalls::command(DRIVER_NUM, cmd::GET_MCU_ROM_CAPABILITIES, 0, 0)
             .to_result::<u32, ErrorCode>()
     }
+
+    /// Return the ROM version, or `NoSupport` for a legacy ROM handoff.
+    pub fn mcu_rom_version() -> Result<u32, ErrorCode> {
+        DefaultSyscalls::command(DRIVER_NUM, cmd::GET_MCU_ROM_VERSION, 0, 0)
+            .to_result::<u32, ErrorCode>()
+    }
 }
 
 pub const DRIVER_NUM: u32 = 0xC000_0000;
@@ -53,6 +59,7 @@ mod cmd {
     pub const EXIT: u32 = 1;
     pub const GET_FIRMWARE_BOOT_TYPE: u32 = 2;
     pub const GET_MCU_ROM_CAPABILITIES: u32 = 3;
+    pub const GET_MCU_ROM_VERSION: u32 = 4;
 }
 
 #[cfg(test)]
@@ -69,5 +76,28 @@ mod tests {
         );
         assert_eq!(FirmwareBootType::try_from(3), Ok(FirmwareBootType::Network));
         assert_eq!(FirmwareBootType::try_from(4), Err(ErrorCode::Invalid));
+    }
+
+    #[test]
+    fn rom_version_syscall_preserves_version_and_errors() {
+        use caliptra_mcu_libtock_unittest::{command_return, fake, ExpectedSyscall};
+        let kernel = fake::Kernel::new();
+        for expected in [
+            Ok(0x0201_0001),
+            Err(ErrorCode::NoSupport),
+            Err(ErrorCode::Invalid),
+        ] {
+            kernel.add_expected_syscall(ExpectedSyscall::Command {
+                driver_id: DRIVER_NUM,
+                command_id: cmd::GET_MCU_ROM_VERSION,
+                argument0: 0,
+                argument1: 0,
+                override_return: Some(match expected {
+                    Ok(version) => command_return::success_u32(version),
+                    Err(error) => command_return::failure(error),
+                }),
+            });
+            assert_eq!(System::mcu_rom_version(), expected);
+        }
     }
 }

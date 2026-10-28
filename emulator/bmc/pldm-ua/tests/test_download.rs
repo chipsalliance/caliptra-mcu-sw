@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod common;
 
-use std::cmp::min;
+use std::{cmp::min, time::Duration};
 
 use caliptra_mcu_pldm_common::{
     codec::PldmCodec,
@@ -27,7 +27,12 @@ use caliptra_mcu_pldm_fw_pkg::{
     },
     FirmwareManifest,
 };
-use caliptra_mcu_pldm_ua::{daemon::Options, events::PldmEvents, transport::PldmSocket, update_sm};
+use caliptra_mcu_pldm_ua::{
+    daemon::Options,
+    events::PldmEvents,
+    transport::{PldmSocket, PldmTransportError},
+    update_sm,
+};
 use chrono::Utc;
 use common::CustomDiscoverySm;
 use uuid::Uuid;
@@ -251,6 +256,13 @@ fn test_download_size_divisible_by_transfer_size() {
             .as_ref()
             .unwrap()[..]
     );
+
+    // The FD may pause for authentication between chunks. A response must not
+    // be retransmitted during that pause as if it were an outstanding request.
+    assert!(matches!(
+        setup.fd_sock.receive(Some(Duration::from_secs(4))),
+        Err(PldmTransportError::Timeout)
+    ));
 
     let request = TransferCompleteRequest::new(
         instance_id,

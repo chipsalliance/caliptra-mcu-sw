@@ -56,6 +56,11 @@ pub mod test {
         config.device_capabilities = None;
         config.firmware_version = None;
         config.fe_prog.enabled = fuse_suite.is_none() || fuse_suite == Some("fe-prog");
+        if fuse_suite.is_none() {
+            config.field_entropy_status.enabled = true;
+            config.vendor_pk_hash_status.enabled = true;
+            config.hek_status.enabled = true;
+        }
 
         match fuse_suite {
             None | Some("fe-prog") => {}
@@ -225,6 +230,8 @@ pub mod test {
         // --- Start hw_model with keys provisioned in fuses ---
         let mut hw = start_runtime_hw_model(TestParams {
             feature: Some(TEST_FEATURE),
+            rom_feature: fuse_suite.is_none().then_some("ocp-lock"),
+            ocp_lock_en: fuse_suite.is_none(),
             custom_caliptra_fw: (fuse_suite.as_deref() == Some("increase-min-svn"))
                 .then(caliptra_fw_svn7),
             dot_enabled: true,
@@ -301,7 +308,15 @@ pub mod test {
                             .iter()
                             .any(|result| result.test_name == *test_name && result.passed)
                     });
-                    if all_passed && all_dot_results_passed {
+                    let required_status_results =
+                        ["FieldEntropyStatus", "VendorPkHashStatus", "HekStatus"];
+                    let all_status_results_passed = fuse_only
+                        || required_status_results.iter().all(|test_name| {
+                            results
+                                .iter()
+                                .any(|result| result.test_name == *test_name && result.passed)
+                        });
+                    if all_passed && all_dot_results_passed && all_status_results_passed {
                         println!("✓ Caliptra Mailbox validator PASSED");
                     } else {
                         println!("✗ Caliptra Mailbox validator FAILED");
@@ -316,6 +331,18 @@ pub mod test {
                                 .any(|result| result.test_name == test_name && result.passed)
                             {
                                 println!("  FAIL: missing successful DOT result {test_name}");
+                            }
+                        }
+                        if !fuse_only {
+                            for test_name in required_status_results {
+                                if !results
+                                    .iter()
+                                    .any(|result| result.test_name == test_name && result.passed)
+                                {
+                                    println!(
+                                        "  FAIL: missing successful status result {test_name}"
+                                    );
+                                }
                             }
                         }
                         validator_failed_clone.store(true, Ordering::Relaxed);

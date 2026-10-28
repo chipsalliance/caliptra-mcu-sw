@@ -26,11 +26,10 @@ use caliptra_mcu_core_util_host_command_types::device_ownership_transfer::{
 };
 use caliptra_mcu_core_util_host_command_types::fuse::{
     MC_FE_PROG_CANONICAL_CMD_ID, MC_FUSE_INCREASE_MIN_SVN_CANONICAL_CMD_ID,
-    MC_FUSE_LOCK_PARTITION_CANONICAL_CMD_ID,
-    MC_FUSE_REVOKE_VENDOR_PK_HASH_CANONICAL_CMD_ID, MC_FUSE_REVOKE_VENDOR_PUB_KEY_CANONICAL_CMD_ID,
-    MC_OCP_LOCK_ROTATE_HEK_CANONICAL_CMD_ID, MC_OCP_LOCK_SET_PERMA_HEK_CANONICAL_CMD_ID,
-    MC_PROVISION_OWNER_PK_HASH_CANONICAL_CMD_ID, MC_PROVISION_VENDOR_PK_HASH_CANONICAL_CMD_ID,
-    OCP_LOCK_FAMILY_ID,
+    MC_FUSE_LOCK_PARTITION_CANONICAL_CMD_ID, MC_FUSE_REVOKE_VENDOR_PK_HASH_CANONICAL_CMD_ID,
+    MC_FUSE_REVOKE_VENDOR_PUB_KEY_CANONICAL_CMD_ID, MC_OCP_LOCK_ROTATE_HEK_CANONICAL_CMD_ID,
+    MC_OCP_LOCK_SET_PERMA_HEK_CANONICAL_CMD_ID, MC_PROVISION_OWNER_PK_HASH_CANONICAL_CMD_ID,
+    MC_PROVISION_VENDOR_PK_HASH_CANONICAL_CMD_ID, OCP_LOCK_FAMILY_ID,
 };
 use caliptra_mcu_core_util_host_transport::{CaliptraVdmCommand, CaliptraVdmCompletionCode};
 use caliptra_mcu_debug_unlock_signer::{DebugUnlockSigner, ProdDebugUnlockChallenge};
@@ -1234,7 +1233,9 @@ fn signed_ocp_lock_rotate_hek(
     slot: u32,
     authorizer: &dyn CommandAuthChallengeSigner,
 ) -> Result<(), AuthorizedCommandError> {
-    let mut payload = MC_OCP_LOCK_ROTATE_HEK_CANONICAL_CMD_ID.to_le_bytes().to_vec();
+    let mut payload = MC_OCP_LOCK_ROTATE_HEK_CANONICAL_CMD_ID
+        .to_le_bytes()
+        .to_vec();
     payload.extend_from_slice(&slot.to_le_bytes());
     let auth = authorize_command(client, OCP_LOCK_FAMILY_ID, &payload, Some(authorizer))
         .map_err(AuthorizedCommandError::Preparation)?;
@@ -1697,7 +1698,11 @@ fn run_fuse_suite(
         "ocp-lock-set-perma-hek" => vec![
             expect_completion(
                 "OLSP rejects native 0x13 access",
-                send_native_ocp_lock_command(client, MC_OCP_LOCK_SET_PERMA_HEK_CANONICAL_CMD_ID, &[]),
+                send_native_ocp_lock_command(
+                    client,
+                    MC_OCP_LOCK_SET_PERMA_HEK_CANONICAL_CMD_ID,
+                    &[],
+                ),
                 CaliptraVdmCompletionCode::AccessDenied,
             ),
             expect_success(

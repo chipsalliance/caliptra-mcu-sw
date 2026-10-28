@@ -9,18 +9,11 @@ pub(crate) mod authorized_command;
 pub(crate) mod debug_unlock;
 #[cfg(feature = "device-ownership-transfer")]
 pub(crate) mod device_ownership_transfer;
+#[cfg(feature = "attested-csr")]
 pub(crate) mod export_attested_csr;
 pub(crate) mod get_attestation;
 #[cfg(feature = "ocp-lock")]
 pub(crate) mod ocp_lock;
-
-pub(crate) fn require_empty(req: &[u8]) -> Result<(), CaliptraCompletionCode> {
-    if req.is_empty() {
-        Ok(())
-    } else {
-        Err(CaliptraCompletionCode::InvalidPayloadSize)
-    }
-}
 
 pub(crate) fn write_success(out: &mut [u8]) -> Result<&mut [u8], CaliptraCompletionCode> {
     let Some((completion, rest)) = out.split_first_mut() else {
@@ -56,5 +49,7 @@ pub(crate) fn map_common_completion(code: CommonCompletionCode) -> CaliptraCompl
         CommonCompletionCode::CaliptraBufferTooSmall => {
             CaliptraCompletionCode::CaliptraBufferTooSmall
         }
+        CommonCompletionCode::ZeroizeFailed => CaliptraCompletionCode::ZeroizeFailed,
+        CommonCompletionCode::RmaTransitionFailed => CaliptraCompletionCode::RmaTransitionFailed,
     }
 }

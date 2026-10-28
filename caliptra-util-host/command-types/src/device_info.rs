@@ -46,6 +46,8 @@ impl CommandResponse for GetFirmwareVersionResponse {}
 // GET_DEVICE_CAPABILITIES Command (0x0002)
 // ============================================================================
 
+pub const DEVICE_CAPABILITIES_SIZE: usize = 64;
+
 /// Get device capabilities request
 #[repr(C)]
 #[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
@@ -58,7 +60,7 @@ pub struct GetDeviceCapabilitiesRequest {
 #[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
 pub struct GetDeviceCapabilitiesResponse {
     pub common: CommonResponse,
-    pub caps: [u8; 36],
+    pub caps: [u8; DEVICE_CAPABILITIES_SIZE],
 }
 
 impl GetDeviceCapabilitiesResponse {
@@ -89,6 +91,14 @@ impl GetDeviceCapabilitiesResponse {
     pub fn authorized_subcommand_capabilities(&self) -> u32 {
         u32::from_be_bytes(self.caps[28..32].try_into().unwrap())
     }
+
+    pub fn reserved_capabilities(&self) -> &[u8; 16] {
+        self.caps[32..48].try_into().unwrap()
+    }
+
+    pub fn vendor_capabilities(&self) -> &[u8; 16] {
+        self.caps[48..64].try_into().unwrap()
+    }
 }
 
 impl CommandRequest for GetDeviceCapabilitiesRequest {
@@ -98,13 +108,102 @@ impl CommandRequest for GetDeviceCapabilitiesRequest {
 
 impl CommandResponse for GetDeviceCapabilitiesResponse {}
 
+// ============================================================================
+// FIELD_ENTROPY_STATUS Command (0x0003)
+// ============================================================================
+
+/// Empty request for the field-entropy provisioning status.
+#[repr(C)]
+#[derive(Debug, Clone, Default, IntoBytes, FromBytes, Immutable)]
+pub struct FieldEntropyStatusRequest;
+
+/// Field-entropy provisioning status returned by the MCU.
+#[repr(C)]
+#[derive(Debug, Clone, Default, IntoBytes, FromBytes, Immutable)]
+pub struct FieldEntropyStatusResponse {
+    /// Common response metadata, including FIPS status.
+    pub common: CommonResponse,
+    /// One when every field-entropy partition is provisioned; otherwise zero.
+    pub already_provisioned: u32,
+}
+
+impl CommandRequest for FieldEntropyStatusRequest {
+    type Response = FieldEntropyStatusResponse;
+    const COMMAND_ID: CaliptraCommandId = CaliptraCommandId::FieldEntropyStatus;
+}
+
+impl CommandResponse for FieldEntropyStatusResponse {}
+
+// ============================================================================
+// VENDOR_PK_HASH_STATUS Command (0x0004)
+// ============================================================================
+
+/// Number of vendor public-key hash slots reported by the MCU.
+pub const VENDOR_PK_HASH_SLOT_COUNT: usize = 16;
+/// Key-type value for an LMS vendor public key.
+pub const VENDOR_PQC_KEY_TYPE_LMS: u8 = 1;
+/// Key-type value for an ML-DSA vendor public key.
+pub const VENDOR_PQC_KEY_TYPE_MLDSA: u8 = 3;
+
+/// Empty request for vendor public-key hash slot status.
+#[repr(C)]
+#[derive(Debug, Clone, Default, IntoBytes, FromBytes, Immutable)]
+pub struct VendorPkHashStatusRequest;
+
+/// Vendor public-key hash slot occupancy and key types.
+#[repr(C)]
+#[derive(Debug, Clone, Default, IntoBytes, FromBytes, Immutable)]
+pub struct VendorPkHashStatusResponse {
+    /// Common response metadata, including FIPS status.
+    pub common: CommonResponse,
+    /// Bit N is set when vendor public-key hash slot N is occupied.
+    pub used_slots_bitmap: u32,
+    /// Key type for each slot; zero for unused slots.
+    pub key_types: [u8; VENDOR_PK_HASH_SLOT_COUNT],
+}
+
+impl CommandRequest for VendorPkHashStatusRequest {
+    type Response = VendorPkHashStatusResponse;
+    const COMMAND_ID: CaliptraCommandId = CaliptraCommandId::VendorPkHashStatus;
+}
+
+impl CommandResponse for VendorPkHashStatusResponse {}
+
+// ============================================================================
+// HEK_STATUS Command (0x0005)
+// ============================================================================
+
+/// Empty request for hardware-exported key slot status.
+#[repr(C)]
+#[derive(Debug, Clone, Default, IntoBytes, FromBytes, Immutable)]
+pub struct HekStatusRequest;
+
+/// Hardware-exported key slot occupancy and configured slot count.
+#[repr(C)]
+#[derive(Debug, Clone, Default, IntoBytes, FromBytes, Immutable)]
+pub struct HekStatusResponse {
+    /// Common response metadata, including FIPS status.
+    pub common: CommonResponse,
+    /// Bit N is set when HEK slot N is no longer reusable.
+    pub used_slots_bitmap: u32,
+    /// Number of HEK slots configured by the device.
+    pub total_slots: u32,
+}
+
+impl CommandRequest for HekStatusRequest {
+    type Response = HekStatusResponse;
+    const COMMAND_ID: CaliptraCommandId = CaliptraCommandId::HekStatus;
+}
+
+impl CommandResponse for HekStatusResponse {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn device_capability_accessors_use_big_endian_component_fields() {
-        let mut caps = [0u8; 36];
+        let mut caps = [0u8; DEVICE_CAPABILITIES_SIZE];
         caps[0..8].copy_from_slice(&0x0102_0304_0506_0708u64.to_be_bytes());
         caps[8..12].copy_from_slice(&0x1112_1314u32.to_be_bytes());
         caps[12..16].copy_from_slice(&0x2122_2324u32.to_be_bytes());
@@ -112,6 +211,8 @@ mod tests {
         caps[20..24].copy_from_slice(&0x0000_00FFu32.to_be_bytes());
         caps[24..28].copy_from_slice(&0x0002_00EFu32.to_be_bytes());
         caps[28..32].copy_from_slice(&0x0000_0009u32.to_be_bytes());
+        caps[32..48].copy_from_slice(&[0xA5; 16]);
+        caps[48..64].copy_from_slice(&[0x5A; 16]);
         let response = GetDeviceCapabilitiesResponse {
             common: CommonResponse { fips_status: 0 },
             caps,
@@ -127,5 +228,7 @@ mod tests {
         assert_eq!(response.mcu_rom_capabilities(), 0x3132_3334);
         assert_eq!(response.external_command_capabilities(), 0x0002_00EF);
         assert_eq!(response.authorized_subcommand_capabilities(), 0x0000_0009);
+        assert_eq!(response.reserved_capabilities(), &[0xA5; 16]);
+        assert_eq!(response.vendor_capabilities(), &[0x5A; 16]);
     }
 }

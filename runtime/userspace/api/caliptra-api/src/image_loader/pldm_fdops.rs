@@ -6,7 +6,7 @@ use super::pldm_client::{IMAGE_LOADING_TASK_YIELD, PLDM_TASK_YIELD};
 use super::pldm_context::{State, DOWNLOAD_CTX, PLDM_STATE};
 use alloc::boxed::Box;
 use async_trait::async_trait;
-use caliptra_mcu_flash_image::{FlashHeader, ImageHeader};
+use caliptra_mcu_flash_image::MIN_FLASH_IMAGE_SIZE;
 use caliptra_mcu_libsyscall_caliptra::dma::{
     AXIAddr, DMAMapping, DMASource, DMATransaction, DMA as DMASyscall,
 };
@@ -70,17 +70,24 @@ impl<'a, D: DMAMapping> StreamingFdOps<'a, D> {
         let state = PLDM_STATE.lock(|state| *state.borrow());
         let dma_params = DOWNLOAD_CTX.lock(|ctx| {
             let mut ctx = ctx.borrow_mut();
-            ctx.total_downloaded += data.len();
             let start = ctx.current_offset - ctx.initial_offset;
 
             if state == State::DownloadingHeader {
+                ctx.total_downloaded += data.len();
                 let end = (start + data.len()).min(ctx.header.len());
                 ctx.header[start..end].copy_from_slice(&data[..end - start]);
             } else if state == State::DownloadingToc {
+                ctx.total_downloaded += data.len();
                 let end = (start + data.len()).min(ctx.image_info.len());
                 ctx.image_info[start..end].copy_from_slice(&data[..end - start]);
             } else if state == State::DownloadingImage {
+                ctx.total_downloaded += data.len();
                 return Some((ctx.load_address, start));
+            } else if state == State::DownloadingPayload {
+                let bytes_to_copy = data.len().min(ctx.total_length - ctx.total_downloaded);
+                let end = start + bytes_to_copy;
+                ctx.payload[start..end].copy_from_slice(&data[..bytes_to_copy]);
+                ctx.total_downloaded += bytes_to_copy;
             }
 
             None
@@ -124,9 +131,7 @@ impl<D: DMAMapping> FdOps for StreamingFdOps<'_, D> {
         _op: ComponentOperation,
     ) -> McuResult<ComponentResponseCode> {
         if let Some(size) = component.comp_image_size {
-            if size
-                < (core::mem::size_of::<ImageHeader>() + core::mem::size_of::<FlashHeader>()) as u32
-            {
+            if size < MIN_FLASH_IMAGE_SIZE as u32 {
                 // Image size is too small
                 // Return Ok with response code here to allow PLDM lib to pass it to UA
                 // Returning an Err is considered fatal and will cause PLDM lib to halt PLDM process
@@ -195,6 +200,9 @@ impl<D: DMAMapping> FdOps for StreamingFdOps<'_, D> {
                         return true;
                     } else if *state == State::DownloadingImage {
                         *state = State::ImageDownloadComplete;
+                        return true;
+                    } else if *state == State::DownloadingPayload {
+                        *state = State::PayloadDownloadComplete;
                         return true;
                     }
                     false

@@ -49,8 +49,9 @@ use caliptra_mcu_core_util_host_command_types::debug_unlock::{
     ProdDebugUnlockReqResponse, ProdDebugUnlockTokenRequest, ProdDebugUnlockTokenResponse,
 };
 use caliptra_mcu_core_util_host_command_types::device_ownership_transfer::{
-    DotChallengeResponse, DotDisableRequest, DotLockRequest, DotRotateRequest, DotStatusResponse,
-    DotTransitionResponse, DotUnlockRequest, GetDotBackupBlobRequest, GetDotBackupBlobResponse,
+    DotChallengeResponse, DotDisableRequest, DotEnableRequest, DotLockRequest, DotRotateRequest,
+    DotStatusResponse, DotTransitionResponse, DotUnlockRequest, GetDotBackupBlobRequest,
+    GetDotBackupBlobResponse,
 };
 use caliptra_mcu_core_util_host_command_types::fuse::{
     FeProgRequest, FeProgResponse, FuseIncreaseMinSvnRequest, FuseIncreaseMinSvnResponse,
@@ -61,7 +62,8 @@ use caliptra_mcu_core_util_host_command_types::fuse::{
     ProvisionVendorPkHashResponse,
 };
 use caliptra_mcu_core_util_host_command_types::{
-    GetDeviceCapabilitiesResponse, GetFirmwareVersionResponse,
+    FieldEntropyStatusResponse, GetDeviceCapabilitiesResponse, GetFirmwareVersionResponse,
+    HekStatusResponse, VendorPkHashStatusResponse,
 };
 use caliptra_mcu_core_util_host_transport::Mailbox;
 use caliptra_util_host_commands::api::attestation::{
@@ -88,12 +90,13 @@ use caliptra_util_host_commands::api::debug_unlock::{
     caliptra_cmd_prod_debug_unlock_req, caliptra_cmd_prod_debug_unlock_token,
 };
 use caliptra_util_host_commands::api::device_info::{
-    caliptra_cmd_get_device_capabilities, caliptra_cmd_get_firmware_version,
+    caliptra_cmd_field_entropy_status, caliptra_cmd_get_device_capabilities,
+    caliptra_cmd_get_firmware_version, caliptra_cmd_hek_status, caliptra_cmd_vendor_pk_hash_status,
 };
 use caliptra_util_host_commands::api::device_ownership_transfer::{
-    caliptra_cmd_dot_disable, caliptra_cmd_dot_lock, caliptra_cmd_dot_rotate,
-    caliptra_cmd_dot_status, caliptra_cmd_dot_unlock, caliptra_cmd_dot_unlock_challenge,
-    caliptra_cmd_get_dot_backup_blob,
+    caliptra_cmd_dot_disable, caliptra_cmd_dot_enable, caliptra_cmd_dot_lock,
+    caliptra_cmd_dot_rotate, caliptra_cmd_dot_status, caliptra_cmd_dot_unlock,
+    caliptra_cmd_dot_unlock_challenge, caliptra_cmd_get_dot_backup_blob,
 };
 use caliptra_util_host_commands::api::fuse::{
     caliptra_cmd_fe_prog, caliptra_cmd_fuse_increase_min_svn, caliptra_cmd_fuse_lock_partition,
@@ -169,6 +172,39 @@ impl<'a> MailboxClient<'a> {
                 ))
             }
         }
+    }
+
+    /// Query whether all field-entropy partitions have been provisioned.
+    pub fn field_entropy_status(&mut self) -> Result<FieldEntropyStatusResponse> {
+        let mut session = CaliptraSession::new(1, &mut self.transport)
+            .map_err(|e| anyhow::anyhow!("Failed to create session: {e:?}"))?;
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {e:?}"))?;
+        caliptra_cmd_field_entropy_status(&mut session)
+            .map_err(|e| anyhow::anyhow!("FieldEntropyStatus command failed: {e:?}"))
+    }
+
+    /// Query vendor public-key hash slot occupancy and key types.
+    pub fn vendor_pk_hash_status(&mut self) -> Result<VendorPkHashStatusResponse> {
+        let mut session = CaliptraSession::new(1, &mut self.transport)
+            .map_err(|e| anyhow::anyhow!("Failed to create session: {e:?}"))?;
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {e:?}"))?;
+        caliptra_cmd_vendor_pk_hash_status(&mut session)
+            .map_err(|e| anyhow::anyhow!("VendorPkHashStatus command failed: {e:?}"))
+    }
+
+    /// Query hardware-exported key slot occupancy and configured slot count.
+    pub fn hek_status(&mut self) -> Result<HekStatusResponse> {
+        let mut session = CaliptraSession::new(1, &mut self.transport)
+            .map_err(|e| anyhow::anyhow!("Failed to create session: {e:?}"))?;
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {e:?}"))?;
+        caliptra_cmd_hek_status(&mut session)
+            .map_err(|e| anyhow::anyhow!("HekStatus command failed: {e:?}"))
     }
 
     /// Execute the GetFirmwareVersion command and return the response
@@ -1042,6 +1078,19 @@ impl<'a> MailboxClient<'a> {
             .map_err(|error| anyhow::anyhow!("Failed to connect to device: {error:?}"))?;
         caliptra_cmd_dot_status(&mut session)
             .map_err(|error| anyhow::anyhow!("DOT_STATUS command failed: {error:?}"))
+    }
+
+    pub fn dot_enable(&mut self, request: &DotEnableRequest) -> Result<DotTransitionResponse> {
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+        )
+        .map_err(|error| anyhow::anyhow!("Failed to create session: {error:?}"))?;
+        session
+            .connect()
+            .map_err(|error| anyhow::anyhow!("Failed to connect to device: {error:?}"))?;
+        caliptra_cmd_dot_enable(&mut session, request)
+            .map_err(|error| anyhow::anyhow!("DOT_ENABLE command failed: {error:?}"))
     }
 
     pub fn dot_lock(&mut self, request: &DotLockRequest) -> Result<DotTransitionResponse> {

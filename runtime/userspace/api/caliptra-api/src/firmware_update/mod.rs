@@ -9,16 +9,17 @@ use alloc::boxed::Box;
 use async_trait::async_trait;
 use caliptra_api::mailbox::{
     ActivateFirmwareReq, ActivateFirmwareResp, CommandId, FirmwareVerifyResp, FirmwareVerifyResult,
-    FwInfoResp, GetImageInfoReq, GetImageInfoResp, MailboxReqHeader, MailboxRespHeader, Request,
+    FwInfoResp, GetImageInfoReq, GetImageInfoResp, MailboxReqHeader, Request,
 };
 use caliptra_auth_man_types::{
     AuthManifestImageMetadata, AuthManifestImageMetadataCollection, AuthManifestPreamble,
-    AuthorizationManifest,
+    AuthorizationManifest, OwnerAuthManifestImageMetadataCollection, OwnerAuthorizationManifest,
 };
 use caliptra_image_types::{ImageHeader as CaliptraImageHeader, ImageManifest};
 use caliptra_mcu_flash_image::{
-    FlashHeader, ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, MCU_RT_IDENTIFIER,
-    SOC_MANIFEST_IDENTIFIER,
+    FlashHeader, ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, MAX_FLASH_HEADER_SIZE,
+    MAX_IMAGE_HEADER_SIZE, MCU_RT_IDENTIFIER, OWNER_AUTH_MANIFEST_IDENTIFIER,
+    SOC_MANIFEST_IDENTIFIER, V_AUTH_KEY_ID,
 };
 use caliptra_mcu_libsyscall_caliptra::console_writeln;
 use caliptra_mcu_libsyscall_caliptra::dma::AXIAddr;
@@ -30,7 +31,7 @@ use caliptra_mcu_libsyscall_caliptra::mailbox::{MailboxError, PayloadStream};
 use caliptra_mcu_libsyscall_caliptra::otp::{self, Otp};
 use caliptra_mcu_libtock_platform::ErrorCode;
 use caliptra_mcu_libtockasync::TockExecutor;
-use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::ApplyResult;
+pub use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::ApplyOutcome;
 use caliptra_mcu_pldm_common::message::firmware_update::get_fw_params::FirmwareParameters;
 use caliptra_mcu_pldm_common::message::firmware_update::verify_complete::VerifyResult;
 use caliptra_mcu_pldm_common::protocol::firmware_update::Descriptor;
@@ -39,7 +40,7 @@ use caliptra_mcu_pldm_lib::daemon::PldmService;
 use embassy_executor::Spawner;
 use pldm_client::pldm_total_component_size;
 use pldm_context::State;
-use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
+use zerocopy::{FromBytes, IntoBytes};
 
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_console::Console;
@@ -47,10 +48,86 @@ use core::fmt::Write;
 use core::mem::offset_of;
 
 use crate::{
-    sha_finish, sha_init, sha_update, ApiAlloc, HashAlgo, SHA_CHUNK_SIZE, SHA_CONTEXT_SIZE,
+    sha_finish, sha_init, sha_update, HashAlgo, ScratchAlloc, SHA_CHUNK_SIZE, SHA_CONTEXT_SIZE,
 };
 
-pub struct FirmwareUpdater<'a, D: DMAMapping, A: ApiAlloc> {
+async fn read_flash_header(
+    staging_memory: &dyn StagingMemory,
+    image_len: usize,
+) -> Result<FlashHeader, ErrorCode> {
+    let mut bytes = [0; MAX_FLASH_HEADER_SIZE];
+    let read_len = image_len.min(bytes.len());
+    staging_memory.read(0, &mut bytes[..read_len]).await?;
+    FlashHeader::parse(&bytes[..read_len]).map_err(|error| {
+        console_writeln!(
+            Console::<DefaultSyscalls>::writer(),
+            "[FW Upd] Invalid flash header: {:?}",
+            error
+        );
+        ErrorCode::Invalid
+    })
+}
+
+async fn read_image_header(
+    staging_memory: &dyn StagingMemory,
+    header: &FlashHeader,
+    index: usize,
+) -> Result<ImageHeader, ErrorCode> {
+    let version = header.format().map_err(|_| ErrorCode::Invalid)?;
+    let offset = header.image_header_offset(index).ok_or(ErrorCode::Size)?;
+    let mut bytes = [0; MAX_IMAGE_HEADER_SIZE];
+    staging_memory
+        .read(offset, &mut bytes[..version.image_header_size()])
+        .await?;
+    ImageHeader::parse(&bytes, version).map_err(|error| {
+        console_writeln!(
+            Console::<DefaultSyscalls>::writer(),
+            "[FW Upd] Invalid image header {}: {:?}",
+            index,
+            error
+        );
+        ErrorCode::Invalid
+    })
+}
+
+async fn verify_flash_image_layout(
+    staging_memory: &dyn StagingMemory,
+    image_len: usize,
+) -> Result<FlashHeader, ErrorCode> {
+    if image_len > staging_memory.size() {
+        console_writeln!(
+            Console::<DefaultSyscalls>::writer(),
+            "[FW Upd] Downloaded component exceeds staging area"
+        );
+        return Err(ErrorCode::Size);
+    }
+    let header = read_flash_header(staging_memory, image_len).await?;
+    let table_end = header.table_end().ok_or(ErrorCode::Size)?;
+    if table_end > image_len {
+        console_writeln!(
+            Console::<DefaultSyscalls>::writer(),
+            "[FW Upd] Image table exceeds downloaded component"
+        );
+        return Err(ErrorCode::Size);
+    }
+    for index in 0..header.image_count as usize {
+        let image = read_image_header(staging_memory, &header, index).await?;
+        let end = (image.offset as usize)
+            .checked_add(image.size as usize)
+            .ok_or(ErrorCode::Size)?;
+        if (image.offset as usize) < table_end || end > image_len {
+            console_writeln!(
+                Console::<DefaultSyscalls>::writer(),
+                "[FW Upd] Image {} outside downloaded payload",
+                index
+            );
+            return Err(ErrorCode::Size);
+        }
+    }
+    Ok(header)
+}
+
+pub struct FirmwareUpdater<'a, D: DMAMapping, A: ScratchAlloc> {
     staging_memory: &'static dyn StagingMemory,
     alloc: &'a A,
     mailbox: Mailbox,
@@ -91,7 +168,7 @@ fn verify_candidate_svn(candidate_svn: u32, physical_min_svn: u32) -> Result<(),
         .ok_or(ErrorCode::Fail)
 }
 
-impl<'a, D: DMAMapping, A: ApiAlloc> FirmwareUpdater<'a, D, A> {
+impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
     pub fn new(
         staging_memory: &'static dyn StagingMemory,
         alloc: &'a A,
@@ -200,7 +277,8 @@ impl<'a, D: DMAMapping, A: ApiAlloc> FirmwareUpdater<'a, D, A> {
         pldm_client::pldm_wait(State::Verifying).await?;
 
         // Download is complete, verify the image
-        let flash_header = self.verify().await;
+        let img_len = pldm_total_component_size();
+        let flash_header = self.verify(img_len).await;
         if flash_header.is_err() {
             pldm_client::pldm_set_verification_result(VerifyResult::VerifyErrorVerificationFailure);
             // Abort firmware update
@@ -222,11 +300,9 @@ impl<'a, D: DMAMapping, A: ApiAlloc> FirmwareUpdater<'a, D, A> {
         pldm_client::pldm_set_verification_result(VerifyResult::VerifySuccess);
         pldm_client::pldm_wait(State::Apply).await?;
 
-        // Mark image as valid in staging memory
-        let img_len = pldm_total_component_size();
-        self.staging_memory.image_valid(img_len).await?;
+        let outcome = apply_image(self.staging_memory, self.hooks, img_len).await?;
 
-        pldm_client::pldm_set_apply_result(ApplyResult::ApplySuccess);
+        pldm_client::pldm_report_apply_outcome(outcome).await?;
         pldm_client::pldm_wait(State::Activate).await?;
 
         if self.skip_activation {
@@ -265,20 +341,17 @@ impl<'a, D: DMAMapping, A: ApiAlloc> FirmwareUpdater<'a, D, A> {
         image_headers_offset: usize,
         image_id: u32,
     ) -> Result<(usize, usize), ErrorCode> {
-        let mut current_header_offset = image_headers_offset;
-        for _ in 0..num_images {
-            let mut image_header = [0u8; core::mem::size_of::<ImageHeader>()];
-            self.staging_memory
-                .read(current_header_offset, &mut image_header)
-                .await?;
-            let (image_header, _) =
-                ImageHeader::read_from_prefix(&image_header).map_err(|_| ErrorCode::Fail)?;
-            image_header.verify().then_some(()).ok_or(ErrorCode::Fail)?;
-
+        let header = self.read_flash_header().await?;
+        if num_images != header.image_count as usize
+            || image_headers_offset != header.image_headers_offset as usize
+        {
+            return Err(ErrorCode::Invalid);
+        }
+        for index in 0..num_images {
+            let image_header = self.read_image_header(&header, index).await?;
             if image_header.identifier == image_id {
                 return Ok((image_header.offset as usize, image_header.size as usize));
             }
-            current_header_offset += core::mem::size_of::<ImageHeader>();
         }
 
         Err(ErrorCode::Fail)
@@ -290,35 +363,68 @@ impl<'a, D: DMAMapping, A: ApiAlloc> FirmwareUpdater<'a, D, A> {
         image_headers_offset: usize,
         index: usize,
     ) -> Result<ImageHeader, ErrorCode> {
-        if index >= num_images {
-            return Err(ErrorCode::Fail);
+        let header = self.read_flash_header().await?;
+        if num_images != header.image_count as usize
+            || image_headers_offset != header.image_headers_offset as usize
+        {
+            return Err(ErrorCode::Invalid);
         }
-        let offset = image_headers_offset + index * core::mem::size_of::<ImageHeader>();
-        let mut image_header = [0u8; core::mem::size_of::<ImageHeader>()];
-        self.staging_memory.read(offset, &mut image_header).await?;
-        let (image_header, _) =
-            ImageHeader::read_from_prefix(&image_header).map_err(|_| ErrorCode::Fail)?;
-        image_header.verify().then_some(()).ok_or(ErrorCode::Fail)?;
+        self.read_image_header(&header, index).await
+    }
 
-        Ok(image_header)
+    async fn read_flash_header(&self) -> Result<FlashHeader, ErrorCode> {
+        read_flash_header(self.staging_memory, self.staging_memory.size()).await
+    }
+
+    async fn read_image_header(
+        &self,
+        header: &FlashHeader,
+        index: usize,
+    ) -> Result<ImageHeader, ErrorCode> {
+        read_image_header(self.staging_memory, header, index).await
+    }
+
+    fn check_rom_compatibility(header: &FlashHeader) -> Result<(), ErrorCode> {
+        use caliptra_mcu_libsyscall_caliptra::system::System;
+        let rom_version = match System::mcu_rom_version() {
+            Ok(version) => Some(version),
+            Err(ErrorCode::NoSupport) => None,
+            Err(error) => {
+                console_writeln!(
+                    Console::<DefaultSyscalls>::writer(),
+                    "[FW Upd] Unable to read ROM version: {:?}",
+                    error
+                );
+                return Err(error);
+            }
+        };
+        if !header
+            .format()
+            .map_err(|_| ErrorCode::Invalid)?
+            .supports_rom(rom_version)
+        {
+            console_writeln!(
+                Console::<DefaultSyscalls>::writer(),
+                "[FW Upd] Flash format {} incompatible with ROM {:?}",
+                header.version,
+                rom_version
+            );
+            return Err(ErrorCode::NoSupport);
+        }
+        Ok(())
     }
 
     pub async fn update_mcu_with_auth_manifest(
         &mut self,
         flash_header: &FlashHeader,
     ) -> Result<(), ErrorCode> {
+        Self::check_rom_compatibility(flash_header)?;
         self.set_auth_manifest().await?;
         self.update_mcu(flash_header).await
     }
 
     async fn set_auth_manifest(&mut self) -> Result<(), ErrorCode> {
-        let mut flash_header = [0u8; core::mem::size_of::<FlashHeader>()];
-        self.staging_memory
-            .read(0, &mut flash_header)
-            .await
-            .map_err(|_| ErrorCode::Fail)?;
-        let (flash_header, _) =
-            FlashHeader::read_from_prefix(&flash_header).map_err(|_| ErrorCode::Fail)?;
+        let flash_header = self.read_flash_header().await?;
         console_writeln!(
             Console::<DefaultSyscalls>::writer(),
             "[FW Upd] Setting Manifest"
@@ -339,57 +445,27 @@ impl<'a, D: DMAMapping, A: ApiAlloc> FirmwareUpdater<'a, D, A> {
             "SoC authorization manifest",
         )
         .await?;
-        self.validate_auth_manifest_soc_fw_id_set(manifest_offset, manifest_len)
-            .await?;
-
-        let mut req = AuthManifestReqHeader {
-            chksum: 0,
-            manifest_size: manifest_len as u32,
-        };
+        self.validate_auth_manifest_soc_fw_id_set(&StagedAuthManifest::soc(
+            manifest_offset,
+            manifest_len,
+        ))
+        .await?;
 
         let mut payload_stream =
             MailboxPayloadStream::new(self.staging_memory, manifest_offset, manifest_len);
-
-        // Calculate the mailbox checksum
-        let mut checksum = payload_stream.get_bytesum().await;
-        for b in CommandId::SET_AUTH_MANIFEST.0.to_le_bytes().iter() {
-            checksum = checksum.wrapping_add(u32::from(*b));
-        }
-        for b in req.as_mut_bytes().iter() {
-            checksum = checksum.wrapping_add(u32::from(*b));
-        }
-        req.chksum = 0u32.wrapping_sub(checksum);
-
-        let response_buffer = &mut [0u8; core::mem::size_of::<MailboxRespHeader>()];
-        let header = req.as_mut_bytes();
-        loop {
-            let result = self
-                .mailbox
-                .execute_with_payload_stream(
-                    CommandId::SET_AUTH_MANIFEST.into(),
-                    Some(header),
-                    &mut payload_stream,
-                    response_buffer,
-                )
-                .await;
-            match result {
-                Ok(_) => return Ok(()),
-                Err(MailboxError::ErrorCode(ErrorCode::Busy)) => continue,
-                Err(_) => return Err(ErrorCode::Fail),
-            }
-        }
+        crate::image_loader::execute_auth_manifest_command(
+            &self.mailbox,
+            CommandId::SET_AUTH_MANIFEST,
+            &mut payload_stream,
+            manifest_len as u32,
+        )
+        .await
     }
 
-    async fn verify(&mut self) -> Result<FlashHeader, ErrorCode> {
+    async fn verify(&mut self, image_len: usize) -> Result<FlashHeader, ErrorCode> {
         // Parse the downloaded firmware image
-        let mut flash_header = [0u8; core::mem::size_of::<FlashHeader>()];
-        self.staging_memory
-            .read(0, &mut flash_header)
-            .await
-            .map_err(|_| ErrorCode::Fail)?;
-        let (flash_header, _) =
-            FlashHeader::read_from_prefix(&flash_header).map_err(|_| ErrorCode::Fail)?;
-        flash_header.verify().then_some(()).ok_or(ErrorCode::Fail)?;
+        let flash_header = verify_flash_image_layout(self.staging_memory, image_len).await?;
+        Self::check_rom_compatibility(&flash_header)?;
 
         // Verify Caliptra bundle
         console_writeln!(
@@ -464,8 +540,20 @@ impl<'a, D: DMAMapping, A: ApiAlloc> FirmwareUpdater<'a, D, A> {
         )
         .await?;
         self.verify_manifest(manifest_offset, manifest_len).await?;
-        self.validate_auth_manifest_soc_fw_id_set(manifest_offset, manifest_len)
+        let soc_manifest = StagedAuthManifest::soc(manifest_offset, manifest_len);
+        self.validate_auth_manifest_soc_fw_id_set(&soc_manifest)
             .await?;
+
+        // Verify the staged Owner Auth Manifest, if the package carries one.
+        let owner_manifest = self.get_staged_owner_manifest(&flash_header).await;
+        if let Some(owner_manifest) = &owner_manifest {
+            console_writeln!(
+                Console::<DefaultSyscalls>::writer(),
+                "[FW Upd] Verifying Owner Manifest"
+            );
+            self.verify_owner_manifest(owner_manifest.offset, owner_manifest.len)
+                .await?;
+        }
 
         for i in 0..flash_header.image_count as usize {
             let image_header = self
@@ -476,22 +564,16 @@ impl<'a, D: DMAMapping, A: ApiAlloc> FirmwareUpdater<'a, D, A> {
                 )
                 .await?;
 
-            match image_header.identifier {
-                CALIPTRA_FMC_RT_IDENTIFIER => {
-                    // Skip Caliptra image verification
-                    continue;
-                }
-                SOC_MANIFEST_IDENTIFIER => {
-                    // Skip SOC Manifest verification
-                    continue;
-                }
-                _ => {
-                    // Verify MCU or SOC images
-                }
+            if verified_by_caliptra_command(image_header.identifier) {
+                continue;
             }
 
             let metadata = self
-                .get_image_metadata(manifest_offset, manifest_len, image_header.identifier)
+                .get_toc_entry_metadata(
+                    &soc_manifest,
+                    owner_manifest.as_ref(),
+                    image_header.identifier,
+                )
                 .await?;
 
             self.verify_mcu_or_soc_image(
@@ -508,7 +590,8 @@ impl<'a, D: DMAMapping, A: ApiAlloc> FirmwareUpdater<'a, D, A> {
     ///
     /// Compares Caliptra FMC+RT digests from the downloaded ImageManifest against
     /// the running firmware's digests obtained via the FW_INFO mailbox command.
-    /// Also compares MCU RT and SoC image digests against the active auth manifest.
+    /// Also compares MCU RT, SoC and owner image digests against the staged
+    /// SoC and Owner Auth Manifests.
     async fn verify_running_image_match(
         &mut self,
         flash_header: &FlashHeader,
@@ -584,7 +667,7 @@ impl<'a, D: DMAMapping, A: ApiAlloc> FirmwareUpdater<'a, D, A> {
             return Err(ErrorCode::Fail);
         }
 
-        // 2. Verify MCU RT and SoC image digests against active auth manifest
+        // 2. Verify MCU RT, SoC and owner image digests against the staged auth manifests
         let (manifest_offset, manifest_len) = self
             .get_image_toc(
                 flash_header.image_count as usize,
@@ -592,6 +675,8 @@ impl<'a, D: DMAMapping, A: ApiAlloc> FirmwareUpdater<'a, D, A> {
                 SOC_MANIFEST_IDENTIFIER,
             )
             .await?;
+        let soc_manifest = StagedAuthManifest::soc(manifest_offset, manifest_len);
+        let owner_manifest = self.get_staged_owner_manifest(flash_header).await;
 
         for i in 0..flash_header.image_count as usize {
             let image_header = self
@@ -602,9 +687,8 @@ impl<'a, D: DMAMapping, A: ApiAlloc> FirmwareUpdater<'a, D, A> {
                 )
                 .await?;
 
-            match image_header.identifier {
-                CALIPTRA_FMC_RT_IDENTIFIER | SOC_MANIFEST_IDENTIFIER => continue,
-                _ => {}
+            if verified_by_caliptra_command(image_header.identifier) {
+                continue;
             }
 
             // Compute SHA-384 of the downloaded image
@@ -634,9 +718,13 @@ impl<'a, D: DMAMapping, A: ApiAlloc> FirmwareUpdater<'a, D, A> {
                 .await
                 .map_err(|_| ErrorCode::Fail)?;
 
-            // Compare against the digest in the active auth manifest
+            // Compare against the digest in the staged auth manifest
             let metadata = self
-                .get_image_metadata(manifest_offset, manifest_len, image_header.identifier)
+                .get_toc_entry_metadata(
+                    &soc_manifest,
+                    owner_manifest.as_ref(),
+                    image_header.identifier,
+                )
                 .await?;
             if hash != metadata.digest {
                 console_writeln!(
@@ -655,38 +743,59 @@ impl<'a, D: DMAMapping, A: ApiAlloc> FirmwareUpdater<'a, D, A> {
         Ok(())
     }
 
+    /// Find the metadata entry authorizing a staged TOC entry. TOC entries are
+    /// keyed by `component_id`, so the lookup matches on `component_id`.
     pub async fn get_image_metadata(
         &self,
-        manifest_staging_mem_offset: usize,
-        manifest_size: usize,
-        image_id: u32,
-    ) -> Result<AuthManifestImageMetadata, ErrorCode> {
-        let entry_count = self
-            .get_image_metadata_entry_count(manifest_staging_mem_offset, manifest_size)
-            .await?;
+        manifest: &StagedAuthManifest,
+        component_id: u32,
+    ) -> Result<Option<AuthManifestImageMetadata>, ErrorCode> {
+        let entry_count = self.get_image_metadata_entry_count(manifest).await?;
 
         for i in 0..entry_count as usize {
-            let metadata = self
-                .get_image_metadata_by_index(manifest_staging_mem_offset, manifest_size, i)
-                .await?;
+            let metadata = self.get_image_metadata_by_index(manifest, i).await?;
 
-            if metadata.fw_id == image_id {
-                return Ok(metadata);
+            if metadata.component_id == component_id {
+                return Ok(Some(metadata));
             }
         }
 
+        Ok(None)
+    }
+
+    /// Resolve the metadata for a staged TOC entry from the staged SoC (vendor)
+    /// auth manifest first, then from the staged Owner Auth Manifest (if any).
+    async fn get_toc_entry_metadata(
+        &self,
+        soc_manifest: &StagedAuthManifest,
+        owner_manifest: Option<&StagedAuthManifest>,
+        component_id: u32,
+    ) -> Result<AuthManifestImageMetadata, ErrorCode> {
+        if let Some(metadata) = self.get_image_metadata(soc_manifest, component_id).await? {
+            return Ok(metadata);
+        }
+        if let Some(owner_manifest) = owner_manifest {
+            if let Some(metadata) = self
+                .get_image_metadata(owner_manifest, component_id)
+                .await?
+            {
+                return Ok(metadata);
+            }
+        }
+        console_writeln!(
+            Console::<DefaultSyscalls>::writer(),
+            "[FW Upd] Image 0x{:x} not listed in any staged auth manifest",
+            component_id
+        );
         Err(ErrorCode::Fail)
     }
 
     async fn get_image_metadata_entry_count(
         &self,
-        manifest_staging_mem_offset: usize,
-        manifest_size: usize,
+        manifest: &StagedAuthManifest,
     ) -> Result<u32, ErrorCode> {
-        let entry_count_offset = manifest_staging_mem_offset
-            + offset_of!(AuthorizationManifest, image_metadata_col)
-            + offset_of!(AuthManifestImageMetadataCollection, entry_count);
-        if entry_count_offset + 4 > manifest_staging_mem_offset + manifest_size {
+        let entry_count_offset = manifest.offset + manifest.kind.entry_count_offset();
+        if entry_count_offset + 4 > manifest.offset + manifest.len {
             return Err(ErrorCode::Fail);
         }
 
@@ -699,17 +808,14 @@ impl<'a, D: DMAMapping, A: ApiAlloc> FirmwareUpdater<'a, D, A> {
 
     async fn get_image_metadata_by_index(
         &self,
-        manifest_staging_mem_offset: usize,
-        manifest_size: usize,
+        manifest: &StagedAuthManifest,
         index: usize,
     ) -> Result<AuthManifestImageMetadata, ErrorCode> {
-        let image_metadata_collection_offset = manifest_staging_mem_offset
-            + offset_of!(AuthorizationManifest, image_metadata_col)
-            + offset_of!(AuthManifestImageMetadataCollection, image_metadata_list);
-        let metadata_offset = image_metadata_collection_offset
+        let metadata_offset = manifest.offset
+            + manifest.kind.metadata_list_offset()
             + index * core::mem::size_of::<AuthManifestImageMetadata>();
         let mut metadata_bytes = [0u8; core::mem::size_of::<AuthManifestImageMetadata>()];
-        if metadata_offset + metadata_bytes.len() > manifest_staging_mem_offset + manifest_size {
+        if metadata_offset + metadata_bytes.len() > manifest.offset + manifest.len {
             return Err(ErrorCode::Fail);
         }
         self.staging_memory
@@ -723,18 +829,15 @@ impl<'a, D: DMAMapping, A: ApiAlloc> FirmwareUpdater<'a, D, A> {
 
     async fn validate_auth_manifest_soc_fw_id_set(
         &self,
-        manifest_staging_mem_offset: usize,
-        manifest_size: usize,
+        manifest: &StagedAuthManifest,
     ) -> Result<(), ErrorCode> {
-        let entry_count = self
-            .get_image_metadata_entry_count(manifest_staging_mem_offset, manifest_size)
-            .await?;
+        let entry_count = self.get_image_metadata_entry_count(manifest).await?;
         let mut manifest_soc_fw_id_count = 0usize;
         for i in 0..entry_count as usize {
-            let metadata = self
-                .get_image_metadata_by_index(manifest_staging_mem_offset, manifest_size, i)
-                .await?;
-            if metadata.fw_id != MCU_RT_IDENTIFIER {
+            let metadata = self.get_image_metadata_by_index(manifest, i).await?;
+            // The Vendor Authorization Key entry anchors a key digest; it is
+            // not a loadable SoC image.
+            if metadata.fw_id != MCU_RT_IDENTIFIER && metadata.fw_id != V_AUTH_KEY_ID {
                 manifest_soc_fw_id_count = manifest_soc_fw_id_count
                     .checked_add(1)
                     .ok_or(ErrorCode::Fail)?;
@@ -750,12 +853,7 @@ impl<'a, D: DMAMapping, A: ApiAlloc> FirmwareUpdater<'a, D, A> {
 
         for expected_fw_id in self.soc_image_load_fw_ids.iter().copied() {
             if !self
-                .auth_manifest_contains_fw_id(
-                    manifest_staging_mem_offset,
-                    manifest_size,
-                    entry_count,
-                    expected_fw_id,
-                )
+                .auth_manifest_contains_fw_id(manifest, entry_count, expected_fw_id)
                 .await?
             {
                 return Err(ErrorCode::Fail);
@@ -767,15 +865,12 @@ impl<'a, D: DMAMapping, A: ApiAlloc> FirmwareUpdater<'a, D, A> {
 
     async fn auth_manifest_contains_fw_id(
         &self,
-        manifest_staging_mem_offset: usize,
-        manifest_size: usize,
+        manifest: &StagedAuthManifest,
         entry_count: u32,
         fw_id: u32,
     ) -> Result<bool, ErrorCode> {
         for i in 0..entry_count as usize {
-            let metadata = self
-                .get_image_metadata_by_index(manifest_staging_mem_offset, manifest_size, i)
-                .await?;
+            let metadata = self.get_image_metadata_by_index(manifest, i).await?;
             if metadata.fw_id == fw_id {
                 return Ok(true);
             }
@@ -861,47 +956,48 @@ impl<'a, D: DMAMapping, A: ApiAlloc> FirmwareUpdater<'a, D, A> {
     }
 
     async fn verify_manifest(&mut self, offset: usize, len: usize) -> Result<(), ErrorCode> {
-        let mut req = AuthManifestReqHeader {
-            chksum: 0,
-            manifest_size: len as u32,
-        };
-
         let mut payload_stream = MailboxPayloadStream::new(self.staging_memory, offset, len);
+        crate::image_loader::execute_auth_manifest_command(
+            &self.mailbox,
+            CommandId::VERIFY_AUTH_MANIFEST,
+            &mut payload_stream,
+            len as u32,
+        )
+        .await
+    }
 
-        // Calculate the mailbox checksum
-        let mut checksum = payload_stream.get_bytesum().await;
-        for b in CommandId::VERIFY_AUTH_MANIFEST.0.to_le_bytes().iter() {
-            checksum = checksum.wrapping_add(u32::from(*b));
-        }
-        for b in req.as_mut_bytes().iter() {
-            checksum = checksum.wrapping_add(u32::from(*b));
-        }
-        req.chksum = 0u32.wrapping_sub(checksum);
+    /// Verify a staged Owner Auth Manifest without replacing the active one.
+    async fn verify_owner_manifest(&mut self, offset: usize, len: usize) -> Result<(), ErrorCode> {
+        let mut payload_stream = MailboxPayloadStream::new(self.staging_memory, offset, len);
+        crate::image_loader::execute_auth_manifest_command(
+            &self.mailbox,
+            CommandId::VERIFY_OWNER_AUTH_MANIFEST,
+            &mut payload_stream,
+            len as u32,
+        )
+        .await
+    }
 
-        let response_buffer = &mut [0u8; core::mem::size_of::<MailboxRespHeader>()];
-        let header = req.as_mut_bytes();
-        loop {
-            let result = self
-                .mailbox
-                .execute_with_payload_stream(
-                    CommandId::VERIFY_AUTH_MANIFEST.into(),
-                    Some(header),
-                    &mut payload_stream,
-                    response_buffer,
-                )
-                .await;
-            match result {
-                Ok(_) => return Ok(()),
-                Err(MailboxError::ErrorCode(ErrorCode::Busy)) => continue,
-                Err(_) => return Err(ErrorCode::Fail),
-            }
-        }
+    /// Locate the Owner Auth Manifest in the staged package, if present.
+    async fn get_staged_owner_manifest(
+        &self,
+        flash_header: &FlashHeader,
+    ) -> Option<StagedAuthManifest> {
+        self.get_image_toc(
+            flash_header.image_count as usize,
+            flash_header.image_headers_offset as usize,
+            OWNER_AUTH_MANIFEST_IDENTIFIER,
+        )
+        .await
+        .ok()
+        .map(|(offset, len)| StagedAuthManifest::owner(offset, len))
     }
 
     async fn get_dma_image_staging_address(&self, image_id: u32) -> Result<AXIAddr, ErrorCode> {
         let mut req = GetImageInfoReq {
             hdr: MailboxReqHeader::default(),
             fw_id: image_id.to_le_bytes(),
+            flags: 0,
         };
         let req_data = req.as_mut_bytes();
         self.mailbox
@@ -1004,6 +1100,7 @@ impl<'a, D: DMAMapping, A: ApiAlloc> FirmwareUpdater<'a, D, A> {
     }
 
     pub async fn update_mcu(&mut self, flash_header: &FlashHeader) -> Result<(), ErrorCode> {
+        Self::check_rom_compatibility(flash_header)?;
         console_writeln!(
             Console::<DefaultSyscalls>::writer(),
             "[FW Upd] Updating MCU"
@@ -1105,11 +1202,23 @@ pub trait StagingMemory: core::fmt::Debug + Send + Sync {
     fn size(&self) -> usize;
 }
 
+async fn apply_image(
+    staging_memory: &dyn StagingMemory,
+    hooks: Option<&dyn FirmwareUpdateHooks>,
+    img_len: usize,
+) -> Result<ApplyOutcome, ErrorCode> {
+    staging_memory.image_valid(img_len).await?;
+    Ok(match hooks {
+        Some(hooks) => hooks.post_apply().await,
+        None => ApplyOutcome::default(),
+    })
+}
+
 /// Trait for platform-specific hooks invoked during the firmware update flow.
 ///
 /// Platforms can implement this trait to inject SoC-specific actions at key
 /// points in the update sequence (e.g., quiescing host I/O before activation).
-/// All methods have default no-op implementations, so platforms only need to
+/// Methods default to the standard update behavior, so platforms only need to
 /// override the hooks they care about.
 #[async_trait]
 pub trait FirmwareUpdateHooks: Send + Sync {
@@ -1120,6 +1229,18 @@ pub trait FirmwareUpdateHooks: Send + Sync {
     /// to proceed, or `Err` to reject it.
     fn on_fw_update_request(&self, _component: &FirmwareComponent) -> Result<(), ErrorCode> {
         Ok(())
+    }
+
+    /// Called after `image_valid()` succeeds and before reporting ApplyComplete.
+    ///
+    /// Return `ApplySuccessWithActivationMethod` and the required activation
+    /// methods when activation requirements change (for example, System Reboot
+    /// when a hitless update is unsafe). The default is ApplySuccess with no
+    /// modification. A failure result is reported to the update agent and aborts
+    /// the update before activation. The updater waits for the ApplyComplete
+    /// transaction before returning a failure, with a bounded reporting timeout.
+    async fn post_apply(&self) -> ApplyOutcome {
+        ApplyOutcome::default()
     }
 
     /// Called before updating the Caliptra firmware. Returning an error aborts the update.
@@ -1217,31 +1338,16 @@ impl MailboxPayloadStream {
             len,
         }
     }
-    pub fn reset(&mut self) {
-        // Reset the cursor to the starting offset
-        self.cursor = self.offset;
-    }
-    pub async fn get_bytesum(&mut self) -> u32 {
-        self.reset();
-        let mut sum = 0u32;
-        let mut buffer = [0u8; 256];
-        while let Ok(bytes_read) = self.read(&mut buffer).await {
-            if bytes_read == 0 {
-                break; // No more data to read
-            }
-            for byte in &buffer[..bytes_read] {
-                sum = sum.wrapping_add(u32::from(*byte));
-            }
-        }
-        self.reset();
-        sum
-    }
 }
 
 #[async_trait(?Send)]
 impl PayloadStream for MailboxPayloadStream {
     fn size(&self) -> usize {
         self.len
+    }
+
+    fn reset(&mut self) {
+        self.cursor = self.offset;
     }
 
     async fn read(&mut self, buffer: &mut [u8]) -> Result<usize, ErrorCode> {
@@ -1268,16 +1374,291 @@ impl PayloadStream for MailboxPayloadStream {
     }
 }
 
-#[repr(C)]
-#[derive(Debug, FromBytes, IntoBytes, Clone, Copy, Immutable, KnownLayout)]
-pub struct AuthManifestReqHeader {
-    pub chksum: u32,
-    pub manifest_size: u32,
+pub use crate::image_loader::AuthManifestReqHeader;
+
+/// Whether a flash image's digest is carried by the SoC authorization manifest.
+///
+/// The Caliptra bundle is checked by FIRMWARE_VERIFY and the SoC manifest by
+/// VERIFY_AUTH_MANIFEST. The owner authorization manifest is authenticated by
+/// Caliptra when it is installed with SET_OWNER_AUTH_MANIFEST at boot, and the
+/// owner measurement policy digest is checked against that manifest; neither has
+/// an entry in the SoC manifest. Owner SoC images are authorized against the
+/// owner authorization manifest when they are loaded, so they are not listed in
+/// the SoC manifest either.
+/// TOC entries that are verified by dedicated Caliptra commands rather than by
+/// a digest in an auth manifest: the Caliptra FMC+RT bundle, the SoC (vendor)
+/// auth manifest and the Owner Auth Manifest. Every other TOC entry must be
+/// listed (by component_id) in the staged SoC or Owner Auth Manifest.
+fn verified_by_caliptra_command(identifier: u32) -> bool {
+    matches!(
+        identifier,
+        CALIPTRA_FMC_RT_IDENTIFIER | SOC_MANIFEST_IDENTIFIER | OWNER_AUTH_MANIFEST_IDENTIFIER
+    )
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AuthManifestKind {
+    Soc,
+    Owner,
+}
+
+impl AuthManifestKind {
+    fn entry_count_offset(self) -> usize {
+        match self {
+            AuthManifestKind::Soc => {
+                offset_of!(AuthorizationManifest, image_metadata_col)
+                    + offset_of!(AuthManifestImageMetadataCollection, entry_count)
+            }
+            AuthManifestKind::Owner => {
+                offset_of!(OwnerAuthorizationManifest, image_metadata_col)
+                    + offset_of!(OwnerAuthManifestImageMetadataCollection, entry_count)
+            }
+        }
+    }
+
+    fn metadata_list_offset(self) -> usize {
+        match self {
+            AuthManifestKind::Soc => {
+                offset_of!(AuthorizationManifest, image_metadata_col)
+                    + offset_of!(AuthManifestImageMetadataCollection, image_metadata_list)
+            }
+            AuthManifestKind::Owner => {
+                offset_of!(OwnerAuthorizationManifest, image_metadata_col)
+                    + offset_of!(
+                        OwnerAuthManifestImageMetadataCollection,
+                        image_metadata_list
+                    )
+            }
+        }
+    }
+}
+
+/// An auth manifest located in staging memory.
+#[derive(Clone, Copy, Debug)]
+pub struct StagedAuthManifest {
+    kind: AuthManifestKind,
+    offset: usize,
+    len: usize,
+}
+
+impl StagedAuthManifest {
+    pub fn soc(offset: usize, len: usize) -> Self {
+        Self {
+            kind: AuthManifestKind::Soc,
+            offset,
+            len,
+        }
+    }
+
+    pub fn owner(offset: usize, len: usize) -> Self {
+        Self {
+            kind: AuthManifestKind::Owner,
+            offset,
+            len,
+        }
+    }
 }
 
 #[cfg(test)]
 mod tests {
+    extern crate std;
+
     use super::*;
+    use caliptra_mcu_flash_image::{
+        calculate_checksum, FlashHeaderV1, FlashHeaderV2, FlashHeaderV3, FlashImageVersion,
+        ImageHeaderV1V2, ImageHeaderV3, OWNER_MEASUREMENT_POLICY_IDENTIFIER,
+        OWNER_SOC_IMAGES_BASE_IDENTIFIER,
+    };
+    use caliptra_mcu_libtock_unittest::fake;
+    use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::ApplyResult;
+    use caliptra_mcu_pldm_common::protocol::firmware_update::ComponentActivationMethods;
+    use core::future::Future;
+    use core::sync::atomic::{AtomicBool, Ordering};
+    use core::task::{Context, Poll, Waker};
+
+    static PLDM_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn run_ready<F: Future>(future: F) -> F::Output {
+        let mut future = core::pin::pin!(future);
+        match future
+            .as_mut()
+            .poll(&mut Context::from_waker(Waker::noop()))
+        {
+            Poll::Ready(output) => output,
+            Poll::Pending => panic!("test future unexpectedly yielded"),
+        }
+    }
+
+    #[derive(Debug)]
+    struct TestStagingMemory {
+        valid: AtomicBool,
+        fail: bool,
+    }
+
+    #[async_trait]
+    impl StagingMemory for TestStagingMemory {
+        async fn write(&self, _offset: usize, _data: &[u8]) -> Result<(), ErrorCode> {
+            unreachable!()
+        }
+
+        async fn read(&self, _offset: usize, _data: &mut [u8]) -> Result<(), ErrorCode> {
+            unreachable!()
+        }
+
+        async fn image_valid(&self, img_sz: usize) -> Result<(), ErrorCode> {
+            assert_eq!(img_sz, 1024);
+            if self.fail {
+                return Err(ErrorCode::Fail);
+            }
+            self.valid.store(true, Ordering::SeqCst);
+            Ok(())
+        }
+
+        fn size(&self) -> usize {
+            1024
+        }
+    }
+
+    struct DefaultHooks;
+
+    #[async_trait]
+    impl FirmwareUpdateHooks for DefaultHooks {}
+
+    struct RebootHooks<'a> {
+        staging: &'a TestStagingMemory,
+        called: AtomicBool,
+    }
+
+    #[async_trait]
+    impl FirmwareUpdateHooks for RebootHooks<'_> {
+        async fn post_apply(&self) -> ApplyOutcome {
+            assert!(self.staging.valid.load(Ordering::SeqCst));
+            self.called.store(true, Ordering::SeqCst);
+            let mut activation_methods = ComponentActivationMethods(0);
+            activation_methods.set_system_reboot(true);
+            ApplyOutcome {
+                result: ApplyResult::ApplySuccessWithActivationMethod,
+                activation_methods,
+            }
+        }
+    }
+
+    #[test]
+    fn apply_image_defaults_to_success_without_modification() {
+        for hooks in [None, Some(&DefaultHooks as &dyn FirmwareUpdateHooks)] {
+            let staging = TestStagingMemory {
+                valid: AtomicBool::new(false),
+                fail: false,
+            };
+            let outcome = run_ready(apply_image(&staging, hooks, 1024)).unwrap();
+            assert!(staging.valid.load(Ordering::SeqCst));
+            assert_eq!(outcome.result, ApplyResult::ApplySuccess);
+            assert_eq!(outcome.activation_methods.0, 0);
+        }
+    }
+
+    #[test]
+    fn apply_hook_runs_only_after_image_valid_and_reaches_fd_ops() {
+        use caliptra_mcu_pldm_common::message::firmware_update::get_status::ProgressPercent;
+        use caliptra_mcu_pldm_lib::firmware_device::fd_ops::FdOps;
+
+        let _guard = PLDM_TEST_LOCK.lock().unwrap();
+        for fail in [false, true] {
+            let staging = TestStagingMemory {
+                valid: AtomicBool::new(false),
+                fail,
+            };
+            let hooks = RebootHooks {
+                staging: &staging,
+                called: AtomicBool::new(false),
+            };
+            let outcome = run_ready(apply_image(&staging, Some(&hooks), 1024));
+            assert_eq!(hooks.called.load(Ordering::SeqCst), !fail);
+            if fail {
+                assert_eq!(outcome, Err(ErrorCode::Fail));
+            } else {
+                let outcome = outcome.unwrap();
+                assert_eq!(outcome.result as u8, 0x01);
+                assert_eq!(outcome.activation_methods.0, 0x0008);
+                pldm_client::pldm_set_apply_outcome(outcome);
+                let mut progress = ProgressPercent::default();
+                let fd_outcome = run_ready(
+                    pldm_fdops::UpdateFdOps::new()
+                        .apply_outcome(&FirmwareComponent::default(), &mut progress),
+                )
+                .unwrap();
+                assert_eq!(fd_outcome, outcome);
+                assert_eq!(progress.value(), 100);
+            }
+        }
+    }
+
+    #[test]
+    fn apply_failure_waits_for_reporting_or_timeout_before_returning() {
+        use caliptra_mcu_libtock_platform::Syscalls;
+        use caliptra_mcu_libtock_unittest::fake;
+        use caliptra_mcu_pldm_lib::firmware_device::fd_ops::FdOps;
+        use core::cell::Cell;
+
+        let _guard = PLDM_TEST_LOCK.lock().unwrap();
+        let kernel = fake::Kernel::new();
+        let alarm = fake::Alarm::new(1000);
+        kernel.add_driver(&alarm);
+        let console = fake::Console::new();
+        kernel.add_driver(&console);
+        let ops = pldm_fdops::UpdateFdOps::new();
+        let failure = ApplyOutcome {
+            result: ApplyResult::ApplyGenericError,
+            ..ApplyOutcome::default()
+        };
+        let mut cx = Context::from_waker(Waker::noop());
+
+        for reporting_result in [Ok(()), Err(caliptra_mcu_pldm_lib::errors::TRANSPORT_ERROR)] {
+            // A stale notification must not let a new failed update exit early.
+            ops.apply_complete_reported(Ok(()));
+            let activation_called = Cell::new(false);
+            let mut updater = core::pin::pin!(async {
+                pldm_client::pldm_report_apply_outcome(failure).await?;
+                activation_called.set(true);
+                Ok::<(), ErrorCode>(())
+            });
+            assert!(updater.as_mut().poll(&mut cx).is_pending());
+            assert!(updater.as_mut().poll(&mut cx).is_pending());
+            ops.apply_complete_reported(reporting_result);
+            fake::Syscalls::yield_no_wait();
+            assert_eq!(
+                updater.as_mut().poll(&mut cx),
+                Poll::Ready(Err(ErrorCode::Fail))
+            );
+            assert!(!activation_called.get());
+        }
+
+        for result in [
+            ApplyResult::ApplySuccess,
+            ApplyResult::ApplySuccessWithActivationMethod,
+        ] {
+            assert_eq!(
+                run_ready(pldm_client::pldm_report_apply_outcome(ApplyOutcome {
+                    result,
+                    ..ApplyOutcome::default()
+                })),
+                Ok(())
+            );
+        }
+
+        // An unresponsive update agent must not keep the application alive forever.
+        let mut updater = core::pin::pin!(pldm_client::pldm_report_apply_outcome(failure));
+        assert!(updater.as_mut().poll(&mut cx).is_pending());
+        for _ in 0..caliptra_mcu_pldm_lib::config::DEFAULT_FD_T1_TIMEOUT / 10 - 1 {
+            fake::Syscalls::yield_no_wait();
+            assert!(updater.as_mut().poll(&mut cx).is_pending());
+        }
+        fake::Syscalls::yield_no_wait();
+        assert_eq!(
+            updater.as_mut().poll(&mut cx),
+            Poll::Ready(Err(ErrorCode::Fail))
+        );
+    }
 
     const A: u32 = 0x1000;
     const B: u32 = 0x2000;
@@ -1300,16 +1681,145 @@ mod tests {
 
     #[test]
     fn decode_linear_or_svn_fuse() {
-        for svn in [0, 1, 5, 32, 33, 64, 127, 128] {
+        for svn in 0..=u128::BITS {
             assert_eq!(decode_linear_or_svn(&encode_linear_or_svn(svn)), svn);
         }
     }
 
     #[test]
     fn physical_svn_check_rejects_only_rollback() {
-        assert!(verify_candidate_svn(4, 5).is_err());
-        assert!(verify_candidate_svn(5, 5).is_ok());
-        assert!(verify_candidate_svn(6, 5).is_ok());
+        for candidate_svn in [3, 4] {
+            assert_eq!(verify_candidate_svn(candidate_svn, 5), Err(ErrorCode::Fail));
+        }
+        for candidate_svn in [5, 6] {
+            assert_eq!(verify_candidate_svn(candidate_svn, 5), Ok(()));
+        }
+        assert_eq!(verify_candidate_svn(0, 0), Ok(()));
+        assert_eq!(verify_candidate_svn(127, 128), Err(ErrorCode::Fail));
+        assert_eq!(verify_candidate_svn(128, 128), Ok(()));
+    }
+
+    #[derive(Debug)]
+    struct LayoutStagingMemory {
+        bytes: std::vec::Vec<u8>,
+        downloaded_len: usize,
+    }
+
+    #[async_trait]
+    impl StagingMemory for LayoutStagingMemory {
+        async fn write(&self, _offset: usize, _data: &[u8]) -> Result<(), ErrorCode> {
+            panic!("Layout verification must not write staging memory");
+        }
+
+        async fn read(&self, offset: usize, data: &mut [u8]) -> Result<(), ErrorCode> {
+            assert!(offset + data.len() <= self.downloaded_len);
+            data.copy_from_slice(&self.bytes[offset..offset + data.len()]);
+            Ok(())
+        }
+
+        async fn image_valid(&self, _img_sz: usize) -> Result<(), ErrorCode> {
+            panic!("Layout verification must not mark the image valid");
+        }
+
+        fn size(&self) -> usize {
+            self.bytes.len()
+        }
+    }
+
+    fn run<T>(future: impl Future<Output = T>) -> T {
+        let mut future = core::pin::pin!(future);
+        let mut context = Context::from_waker(Waker::noop());
+        match future.as_mut().poll(&mut context) {
+            Poll::Ready(value) => value,
+            Poll::Pending => panic!("In-memory staging read must complete immediately"),
+        }
+    }
+
+    fn staged_image(version: FlashImageVersion) -> (std::vec::Vec<u8>, usize) {
+        let table_end = version.header_size() + 2 * version.image_header_size();
+        let image_len = table_end + 8;
+        let mut bytes = std::vec![0; image_len + 64];
+        let out = &mut bytes[..version.header_size()];
+        match version {
+            FlashImageVersion::V1 => out.copy_from_slice(FlashHeaderV1::new(2).as_bytes()),
+            FlashImageVersion::V2 => out.copy_from_slice(FlashHeaderV2::new(2).as_bytes()),
+            FlashImageVersion::V3 => out.copy_from_slice(FlashHeaderV3::new(2).as_bytes()),
+        }
+        for index in 0..2 {
+            let mut image = ImageHeaderV3 {
+                identifier: index as u32,
+                offset: (table_end + index * 4) as u32,
+                size: 4,
+                filename: [0; 64],
+                image_checksum: 0,
+                image_header_checksum: 0,
+            };
+            image.image_header_checksum = calculate_checksum(
+                &image.as_bytes()[..offset_of!(ImageHeaderV3, image_header_checksum)],
+            );
+            let mut legacy = ImageHeaderV1V2 {
+                identifier: image.identifier,
+                offset: image.offset,
+                size: image.size,
+                image_checksum: 0,
+                image_header_checksum: 0,
+            };
+            legacy.image_header_checksum = calculate_checksum(
+                &legacy.as_bytes()[..offset_of!(ImageHeaderV1V2, image_header_checksum)],
+            );
+            let offset = version.header_size() + index * version.image_header_size();
+            bytes[offset..offset + version.image_header_size()].copy_from_slice(
+                if version == FlashImageVersion::V3 {
+                    image.as_bytes()
+                } else {
+                    legacy.as_bytes()
+                },
+            );
+        }
+        (bytes, image_len)
+    }
+
+    #[test]
+    fn layout_verification_bounds_all_formats_by_downloaded_length() {
+        let _kernel = fake::Kernel::new();
+        for version in [
+            FlashImageVersion::V1,
+            FlashImageVersion::V2,
+            FlashImageVersion::V3,
+        ] {
+            let (bytes, image_len) = staged_image(version);
+            let staging = LayoutStagingMemory {
+                bytes,
+                downloaded_len: image_len,
+            };
+            assert!(run(verify_flash_image_layout(&staging, image_len)).is_ok());
+
+            for downloaded_len in 0..image_len {
+                let staging = LayoutStagingMemory {
+                    bytes: staging.bytes.clone(),
+                    downloaded_len,
+                };
+                assert!(
+                    run(verify_flash_image_layout(&staging, downloaded_len)).is_err(),
+                    "{version:?} accepted a truncated component of {downloaded_len} bytes"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn layout_verification_rejects_component_larger_than_staging() {
+        let _kernel = fake::Kernel::new();
+        let (bytes, _) = staged_image(FlashImageVersion::V3);
+        let component_len = bytes.len() + 1;
+        let staging = LayoutStagingMemory {
+            bytes,
+            downloaded_len: 0,
+        };
+        assert_eq!(
+            run(verify_flash_image_layout(&staging, component_len)),
+            Err(ErrorCode::Size)
+        );
     }
 
     fn validate_soc_fw_id_same_set(
@@ -1334,6 +1844,48 @@ mod tests {
         }
 
         Ok(())
+    }
+
+    #[test]
+    fn only_caliptra_verified_artifacts_skip_manifest_digest_check() {
+        for identifier in [
+            CALIPTRA_FMC_RT_IDENTIFIER,
+            SOC_MANIFEST_IDENTIFIER,
+            OWNER_AUTH_MANIFEST_IDENTIFIER,
+        ] {
+            assert!(verified_by_caliptra_command(identifier));
+        }
+        for identifier in [
+            MCU_RT_IDENTIFIER,
+            OWNER_MEASUREMENT_POLICY_IDENTIFIER,
+            A,
+            OWNER_SOC_IMAGES_BASE_IDENTIFIER,
+            u32::MAX,
+        ] {
+            assert!(!verified_by_caliptra_command(identifier));
+        }
+    }
+
+    #[test]
+    fn staged_manifest_metadata_offsets_match_manifest_layouts() {
+        let soc = AuthManifestKind::Soc;
+        let owner = AuthManifestKind::Owner;
+        assert_eq!(
+            soc.metadata_list_offset() - soc.entry_count_offset(),
+            core::mem::size_of::<u32>()
+        );
+        assert_eq!(
+            owner.metadata_list_offset() - owner.entry_count_offset(),
+            core::mem::size_of::<u32>()
+        );
+        assert_eq!(
+            soc.entry_count_offset(),
+            core::mem::size_of::<caliptra_auth_man_types::AuthManifestPreamble>()
+        );
+        assert_eq!(
+            owner.entry_count_offset(),
+            core::mem::size_of::<caliptra_auth_man_types::OwnerAuthManifestPreamble>()
+        );
     }
 
     #[test]

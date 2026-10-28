@@ -48,6 +48,7 @@ pub struct CaliptraBuildArgs<'a> {
     pub soc_manifest: Option<PathBuf>,
     pub soc_manifest_network_filename: Option<String>,
     pub owner_auth_manifest: Option<PathBuf>,
+    pub owner_measurement_policy: Option<PathBuf>,
     pub vendor_pk_hash: Option<String>,
     pub mcu_firmware: Option<PathBuf>,
     pub soc_images: Option<Vec<ImageCfg>>,
@@ -59,6 +60,8 @@ pub struct CaliptraBuildArgs<'a> {
     pub vendor: Option<String>,
     pub model: Option<String>,
     pub offset: usize,
+    /// Flash container format (1, 2, or 3). Defaults to the current format.
+    pub flash_image_version: Option<u16>,
     pub output_path: Option<String>,
     pub soc_image_paths: Option<Vec<String>>,
     pub use_second_key: bool,
