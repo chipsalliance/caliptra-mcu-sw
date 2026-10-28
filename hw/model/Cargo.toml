@@ -65,6 +65,7 @@ caliptra-ureg.workspace = true
 zerocopy.workspace = true
 
 [dev-dependencies]
+caliptra-mcu-emulator-periph = { workspace = true, features = ["test-hooks"] }
 caliptra-builder.workspace = true
 caliptra-registers.workspace = true
 caliptra-test-harness-types.workspace = true
