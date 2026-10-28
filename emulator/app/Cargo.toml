@@ -77,3 +77,6 @@ path = "src/lib.rs"
 [features]
 default = ["ocp-lock"]
 ocp-lock = []
+
+[build-dependencies]
+caliptra-mcu-hw-revision.workspace = true

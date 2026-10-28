@@ -29,6 +29,30 @@ pub struct TokenIter<'a> {
     defines: HashSet<String>,
 }
 impl<'a> TokenIter<'a> {
+    pub fn defines(&self) -> HashSet<String> {
+        self.defines.clone()
+    }
+
+    pub fn at_position(
+        &self,
+        path: &Path,
+        offset: usize,
+        defines: HashSet<String>,
+    ) -> std::io::Result<Self> {
+        let source = self.file_source.ok_or_else(|| {
+            std::io::Error::other("parameterized components require a file source")
+        })?;
+        let mut result = Self::from_path(source, path)?;
+        if !result.current_file_contents.is_char_boundary(offset) {
+            return Err(std::io::Error::other(
+                "invalid parameterized component position",
+            ));
+        }
+        result.lex = Lexer::at_offset(result.current_file_contents, offset);
+        result.defines = defines;
+        Ok(result)
+    }
+
     pub fn from_path(file_source: &'a dyn FileSource, file_path: &Path) -> std::io::Result<Self> {
         let file_contents = file_source.read_to_string(file_path)?;
         let lex = Lexer::new(file_contents);
