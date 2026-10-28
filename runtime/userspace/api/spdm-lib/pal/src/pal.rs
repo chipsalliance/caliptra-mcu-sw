@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! Concrete MCU implementation of the SPDM-Lite Platform Abstraction Layer.
+//! Concrete MCU implementation of the SPDM Platform Abstraction Layer.
 //!
 //! This module defines [`McuSpdmPal`], the MCU-side type that satisfies
 //! the [`SpdmPal`](caliptra_mcu_spdm_traits::SpdmPal) super-trait by
@@ -12,7 +12,7 @@
 //! [`SpdmIoTransport`](caliptra_mcu_spdm_traits::SpdmIoTransport) via the
 //! companion [`io`](super::io) module.
 //!
-//! The MCU SPDM-Lite stack consumes `McuSpdmPal` as its single entry
+//! The MCU SPDM stack consumes `McuSpdmPal` as its single entry
 //! point for platform-specific I/O.
 
 use super::*;
@@ -25,7 +25,7 @@ use core::cell::UnsafeCell;
 use super::measurements::MeasurementProvider;
 use caliptra_mcu_cert_store::store::{SharedCertStore, TaskCertStore};
 
-/// MCU implementation of the SPDM-Lite Platform Abstraction Layer.
+/// MCU implementation of the SPDM Platform Abstraction Layer.
 ///
 /// Generic over `M: MeasurementProvider` so all measurement dispatch
 /// is monomorphized (no dyn).

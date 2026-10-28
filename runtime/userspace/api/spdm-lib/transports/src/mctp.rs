@@ -54,7 +54,7 @@
 //! numbers and route between them.
 //!
 //! This implementation operates on raw byte buffers as required by the
-//! SPDM-Lite PAL trait.
+//! SPDM PAL trait.
 
 extern crate alloc;
 

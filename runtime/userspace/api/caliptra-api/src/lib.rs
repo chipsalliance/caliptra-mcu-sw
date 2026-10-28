@@ -3,7 +3,7 @@
 //! `mcu-caliptra-api` — minimal Caliptra mailbox API surface.
 //!
 //! Self-contained crate exposing the Caliptra-mailbox primitives
-//! consumers (today: SPDM-Lite, tomorrow: DPE clients, custom
+//! consumers (today: SPDM stack, tomorrow: DPE clients, custom
 //! attestation flows) actually need, without dragging in the heavy
 //! `caliptra-api` crate.
 //!

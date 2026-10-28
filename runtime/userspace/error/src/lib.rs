@@ -22,7 +22,7 @@
 //! * `code` — the actual specific error within `(domain, subdomain)`.
 //!
 //! For wire-protocol errors that have a canonical byte assigned by a
-//! spec (SPDM DSP0274 §10.10.2, PLDM completion codes, …), protocol
+//! spec (SPDM DSP0274, PLDM completion codes, …), protocol
 //! crates encode the spec byte directly in the low bits of `code` so
 //! responders can extract it losslessly when emitting an error PDU.
 //!

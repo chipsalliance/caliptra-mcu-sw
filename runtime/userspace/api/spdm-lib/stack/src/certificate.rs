@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! GET_CERTIFICATE → CERTIFICATE handler (DSP0274 §10.8).
+//! GET_CERTIFICATE → CERTIFICATE handler.
 //!
 //! Splices the 52-byte SPDM cert-chain header (Length | Reserved |
 //! RootHash) with raw DER bytes from the cert store into a single
