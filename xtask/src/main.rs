@@ -197,6 +197,10 @@ enum Commands {
         #[arg(long = "soc_image", value_name = "SOC_IMAGE", num_args = 1.., required = false)]
         soc_images: Option<Vec<ImageCfg>>,
 
+        /// Owner-only SoC images, using the same format as --soc_image.
+        #[arg(long = "owner_soc_image", value_name = "OWNER_SOC_IMAGE", num_args = 1.., required = false)]
+        owner_soc_images: Option<Vec<ImageCfg>>,
+
         // MCU configuration to include in the SoC manifest
         // format: mcu,<load_addr>,<staging_addr>,<image_id>,<exec_bit>,<component_id>,<feature>[,<is_tcb>[,<is_ak_target>[,<network_filename>]]]
         // Example: --mcu_cfg mcu,0x10000000,0x10000000,1,1,test-dma
@@ -567,16 +571,24 @@ enum EmulatorCbindingCommands {
 
 #[derive(Subcommand)]
 enum CorimCommands {
-    /// Generate a reference-value CoRIM from a firmware bundle
+    /// Generate separate Vendor and Owner reference-value CoRIMs from a firmware bundle
     #[command(long_about = "\
-Generate a reference-value CoRIM from a firmware bundle.
+Generate separate Vendor and Owner reference-value CoRIMs from a firmware bundle.
 
 Reads the all-build ZIP bundle (from `cargo xtask all-build`) and produces
 CoMID/CoRIM CBOR files with reference value digests for each firmware component.
 
-Components are auto-discovered from the bundle's SoC manifest metadata and
-encoded to match Measurement API evidence:
-    mkey 1: SoC firmware  - Auto-discovered from AuthManifest metadata
+Components are auto-discovered from image metadata entries in the bundle's Base
+and optional Owner SoC manifests, including MCU runtime:
+    mkey 1: SoC firmware  - Vendor and Owner image reference measurements
+
+Manifest preambles are not included. References may include components absent
+from EAT evidence; missing evidence does not pass appraisal.
+
+The Vendor references are written to signed-corim-refval-vendor.cbor.
+When an Owner manifest is present, its image references are written separately
+to signed-corim-refval-owner.cbor.
+Both CoRIMs use the configured signing key and certificate.
 
 CONFIG FILE (--config):
   Optional JSON file controlling vendor/model, hash algorithm, output
@@ -610,14 +622,15 @@ EXAMPLES:
 
         /// Feature name to select per-feature entries from the bundle
         /// (e.g. "test-mctp-spdm-attestation").
-        /// When set, reads mcu-test-runtime-<feature>.bin and
-        /// mcu-test-soc-manifest-<feature>.bin instead of the generic entries.
+        /// When set, reads mcu-test-soc-manifest-<feature>.bin and the optional
+        /// mcu-test-owner-soc-manifest-<feature>.bin instead of the generic entries.
         #[arg(long, value_name = "FEATURE")]
         feature: Option<String>,
 
         /// Generate reference values for the payload shipped in the hitless
         /// update package instead of the cold-boot payload. Reads
-        /// mcu-test-soc-manifest-update-<feature>.bin from the bundle.
+        /// mcu-test-soc-manifest-update-<feature>.bin and the optional
+        /// mcu-test-owner-soc-manifest-update-<feature>.bin from the bundle.
         #[arg(long)]
         post_update: bool,
     },
@@ -650,6 +663,7 @@ fn main() {
             runtime_features,
             separate_runtimes,
             soc_images,
+            owner_soc_images,
             mcu_cfgs,
             caliptra_firmware_network_filename,
             soc_manifest_network_filename,
@@ -667,6 +681,7 @@ fn main() {
             runtime_features: runtime_features.as_deref(),
             separate_runtimes: *separate_runtimes,
             soc_images: soc_images.clone(),
+            owner_soc_images: owner_soc_images.clone(),
             mcu_cfgs: mcu_cfgs.clone(),
             caliptra_firmware_network_filename: caliptra_firmware_network_filename.as_deref(),
             soc_manifest_network_filename: soc_manifest_network_filename.as_deref(),
@@ -911,4 +926,37 @@ fn main() {
         eprintln!("Error: {:?}", e);
         std::process::exit(1);
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn all_build_accepts_separate_owner_images() {
+        let cli = Xtask::try_parse_from([
+            "xtask",
+            "all-build",
+            "--owner_soc_image",
+            "tcb.bin,0xA8801000,0x0,65536,7,65536,test-mctp-spdm-attestation-mixed,true,false",
+            "non-tcb.bin,0xA8801200,0x0,65537,8,65537,test-mctp-spdm-attestation-mixed,false,false",
+        ])
+        .unwrap();
+        match cli.xtask {
+            Commands::AllBuild {
+                soc_images,
+                owner_soc_images: Some(images),
+                ..
+            } => {
+                assert!(soc_images.is_none());
+                assert_eq!(images.len(), 2);
+                assert_eq!(images[0].image_id, 0x10000);
+                assert!(images[0].is_tcb);
+                assert_eq!(images[1].image_id, 0x10001);
+                assert!(!images[1].is_tcb);
+                assert!(images.iter().all(|image| !image.is_ak_target));
+            }
+            _ => panic!("Expected all-build with Owner images"),
+        }
+    }
 }

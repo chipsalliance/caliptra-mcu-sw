@@ -211,6 +211,9 @@ fn certificate_algorithm_mismatch_does_not_consume_session_or_transcript() {
         let response = block_on(handle_key_exchange(&mut state, &mut sessions, &pal, &io)).unwrap();
         assert_eq!(response[header_size + 1], ReqRespCode::KEY_EXCHANGE_RSP.0);
         assert!(sessions.has_handshake_in_progress());
-        assert_eq!(pal.sign_ops.borrow()[0].algo, SpdmPalAsymAlgo::EccP384);
+        assert!(matches!(
+            pal.sign_ops.borrow()[0].input,
+            support::RecordedSigningInput::EccP384Digest(_)
+        ));
     }
 }

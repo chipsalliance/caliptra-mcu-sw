@@ -37,10 +37,6 @@ pub(crate) mod test {
     /// rather than merely accepted.
     const MCU_HITLESS_UPDATE_BANNER: &str = "Starting firmware hitless update flow";
 
-    /// Number of PLDM payload bytes actually transferred during the hitless
-    /// update. Matches the firmware-update "fast" tests.
-    const PLDM_FAST_TRANSFER_BYTES: usize = 1024;
-
     #[ignore]
     #[test]
     fn test_mctp_spdm_attestation() {
@@ -534,22 +530,10 @@ pub(crate) mod test {
         pldm_file
             .write_all(&pldm_data)
             .expect("failed to write PLDM package temp file");
-        let mut manifest = FirmwareManifest::decode_firmware_package(
+        FirmwareManifest::decode_firmware_package(
             &pldm_file.path().to_string_lossy().to_string(),
             None,
         )
-        .expect("failed to decode PLDM package");
-
-        // The staging flash is pre-seeded with the full update image by
-        // `start_attestation_standalone_runtime`, so only a token payload has to
-        // travel over PLDM. This keeps the emulated transfer short while still
-        // exercising the real download/verify/apply/activate state machine.
-        for component in manifest.component_image_information.iter_mut() {
-            if let Some(image_data) = component.image_data.as_mut() {
-                image_data.truncate(PLDM_FAST_TRANSFER_BYTES);
-                component.size = image_data.len() as u32;
-            }
-        }
-        manifest
+        .expect("failed to decode PLDM package")
     }
 }
