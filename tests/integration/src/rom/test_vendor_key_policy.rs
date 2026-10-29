@@ -214,6 +214,10 @@ mod test {
     }
 
     #[test]
+    #[cfg_attr(
+        hw_rev = "latest",
+        ignore = "Caliptra 2.2 vendor-lock investigation: https://github.com/chipsalliance/caliptra-mcu-sw/issues/2279"
+    )]
     fn test_vendor_pk_lock_applied() -> Result<()> {
         let mut hw = setup_hw_model(
             0x0000,
