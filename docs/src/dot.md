@@ -197,7 +197,8 @@ LAK digests are authentic.
 - Performs cryptographic operations offload(key derivation, HMAC, signature verification)
 - Derives DOT_EFFECTIVE_KEY
 - Authenticates DOT_BLOBs and commands
-- Installs the selected owner public key hash (`INSTALL_OWNER_PK_HASH`)
+- Consumes the selected owner public key hash: `INSTALL_OWNER_PK_HASH` on 2.1,
+  or MCU-programmed and locked `CPTRA_OWNER_PK_HASH` registers on latest (2.2).
 
 ### DOT_FUSE_ARRAY
 - Hardware fuse array
@@ -342,8 +343,12 @@ else DOT_BLOB is present
         end
     end
 end
-opt Selected owner digest is nonzero
-    Caliptra_MCU -> Caliptra_Core : MCU ROM calls INSTALL_OWNER_PK_HASH with selected digest
+alt Hardware is 2.1
+    opt Selected owner digest is nonzero
+        Caliptra_MCU -> Caliptra_Core : MCU ROM calls INSTALL_OWNER_PK_HASH with selected digest
+    end
+else Hardware is latest (2.2)
+    Caliptra_MCU -> Caliptra_Core : Write and verify all owner digest words, then set and verify owner hash lock
 end
 Caliptra_MCU -> Caliptra_Core : MCU ROM asks Core-ROM to run RI_DOWNLOAD_FIRMWARE to boot
 Caliptra_MCU -> Caliptra_MCU : MCU ROM resets and jumps to RT
@@ -368,8 +373,12 @@ states and the `ForceFuse` policy bypass the DOT blob and use the fused owner.
     fused owner remains the fallback until the next boot.
 5. For an authenticated ODD-state blob, ROM selects its nonzero CAK digest;
     otherwise it selects the fused owner PK hash.
-6. ROM sends a nonzero selected digest through `INSTALL_OWNER_PK_HASH`, then
-    continues the normal firmware-load flow.
+6. On 2.1, ROM sends a nonzero selected digest through `INSTALL_OWNER_PK_HASH`.
+    On latest (2.2), ROM writes and verifies all twelve architectural owner-hash
+    words and sets and verifies the owner-hash lock before firmware download.
+    No selected owner means a locked zero digest on latest. A prelocked mismatch
+    or failed readback is fatal; an already locked matching digest is accepted.
+    ROM then continues the normal firmware-load flow.
 
 ### State Determination Logic
 

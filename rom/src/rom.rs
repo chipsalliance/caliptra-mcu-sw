@@ -136,6 +136,36 @@ impl Soc {
         Soc { registers }
     }
 
+    #[cfg(hw_rev = "latest")]
+    pub(crate) fn provision_owner_pk_hash(&self, digest: &[u32; 12]) -> McuResult<()> {
+        let matches = || {
+            self.registers
+                .cptra_owner_pk_hash
+                .iter()
+                .zip(digest)
+                .all(|(register, expected)| register.get() == *expected)
+        };
+        let lock = &self.registers.cptra_owner_pk_hash_lock;
+        if lock.is_set(soc::bits::CptraXxxxxxxk::Lock) {
+            return if matches() {
+                Ok(())
+            } else {
+                Err(McuError::ROM_DOT_INSTALL_OWNER_PK_HASH_FAILED)
+            };
+        }
+        for (register, word) in self.registers.cptra_owner_pk_hash.iter().zip(digest) {
+            register.set(*word);
+        }
+        if !matches() {
+            return Err(McuError::ROM_DOT_INSTALL_OWNER_PK_HASH_FAILED);
+        }
+        lock.write(soc::bits::CptraXxxxxxxk::Lock::SET);
+        if !lock.is_set(soc::bits::CptraXxxxxxxk::Lock) || !matches() {
+            return Err(McuError::ROM_DOT_INSTALL_OWNER_PK_HASH_FAILED);
+        }
+        Ok(())
+    }
+
     pub fn ready_for_runtime(&self) -> bool {
         self.registers
             .cptra_flow_status
@@ -404,8 +434,7 @@ impl Soc {
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
         self.registers.fuse_mldsa_revocation.set(word);
 
-        // Owner PK hash is sent via mailbox after the DOT flow; see
-        // device_ownership_transfer::install_owner_pk_hash().
+        // Owner PK hash is provisioned after DOT: mailbox on 2.1, registers on latest.
 
         // Stable owner key builds forward HEK for derivation here.
         // OCP LOCK keeps its HEK selection and handoff metadata in the OCP path below.
@@ -1158,6 +1187,88 @@ impl From<&RomParameters<'_>> for AxiUsers {
             trng_user: params.cptra_trng_axi_user,
             dma_user: params.cptra_dma_axi_user,
         }
+    }
+}
+
+#[cfg(all(test, hw_rev = "latest"))]
+mod owner_pk_hash_tests {
+    extern crate std;
+
+    use super::*;
+    use core::mem::{align_of, size_of};
+    use std::boxed::Box;
+
+    fn soc() -> Soc {
+        assert_eq!(align_of::<soc::regs::Soc>(), align_of::<u32>());
+        let words = Box::leak(Box::new([0u32; size_of::<soc::regs::Soc>() / 4]));
+        // The aligned, zero-initialized backing storage outlives the registers.
+        Soc::new(unsafe { StaticRef::new(words.as_ptr().cast()) })
+    }
+
+    fn digest(soc: &Soc) -> [u32; 12] {
+        core::array::from_fn(|i| soc.registers.cptra_owner_pk_hash[i].get())
+    }
+
+    #[test]
+    fn writes_and_locks_all_twelve_words() {
+        let soc = soc();
+        let expected = core::array::from_fn(|i| 0x1234_5678 + i as u32);
+        soc.provision_owner_pk_hash(&expected).unwrap();
+        assert_eq!(digest(&soc), expected);
+        assert!(soc
+            .registers
+            .cptra_owner_pk_hash_lock
+            .is_set(soc::bits::CptraXxxxxxxk::Lock));
+    }
+
+    #[test]
+    fn unpinned_owner_clears_and_locks_the_digest() {
+        let soc = soc();
+        for register in &soc.registers.cptra_owner_pk_hash {
+            register.set(u32::MAX);
+        }
+        soc.provision_owner_pk_hash(&[0; 12]).unwrap();
+        assert_eq!(digest(&soc), [0; 12]);
+        assert!(soc
+            .registers
+            .cptra_owner_pk_hash_lock
+            .is_set(soc::bits::CptraXxxxxxxk::Lock));
+    }
+
+    #[test]
+    fn accepts_an_already_locked_matching_owner() {
+        let soc = soc();
+        let expected = [0x1234_5678; 12];
+        soc.provision_owner_pk_hash(&expected).unwrap();
+        soc.provision_owner_pk_hash(&expected).unwrap();
+        assert_eq!(digest(&soc), expected);
+    }
+
+    #[test]
+    fn rejects_a_locked_mismatch_at_every_word_without_writing() {
+        for index in 0..12 {
+            let soc = soc();
+            let original = [0x1234_5678; 12];
+            soc.provision_owner_pk_hash(&original).unwrap();
+            let mut changed = original;
+            changed[index] ^= 1;
+            assert_eq!(
+                soc.provision_owner_pk_hash(&changed),
+                Err(McuError::ROM_DOT_INSTALL_OWNER_PK_HASH_FAILED)
+            );
+            assert_eq!(digest(&soc), original);
+        }
+    }
+
+    #[test]
+    fn debug_intent_cannot_clear_a_previously_locked_owner() {
+        let soc = soc();
+        soc.provision_owner_pk_hash(&[1; 12]).unwrap();
+        assert_eq!(
+            soc.provision_owner_pk_hash(&[0; 12]),
+            Err(McuError::ROM_DOT_INSTALL_OWNER_PK_HASH_FAILED)
+        );
+        assert_eq!(digest(&soc), [1; 12]);
     }
 }
 
