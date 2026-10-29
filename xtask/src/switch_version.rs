@@ -65,7 +65,7 @@ fn check_lockfiles(root: &Path) -> Result<()> {
                 workspace.join("Cargo.lock").display()
             );
         }
-        let status = Command::new(env!("CARGO"))
+        let status = Command::new(std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into()))
             .current_dir(&workspace)
             .args(["metadata", "--locked", "--format-version", "1"])
             .stdout(Stdio::null())

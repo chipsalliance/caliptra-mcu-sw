@@ -281,6 +281,7 @@ jobs:
       - name: Load bitstream
         run: |
           chmod +x /tmp/caliptra-binaries/xtask
+          /tmp/caliptra-binaries/xtask switch-version 2.1
           /tmp/caliptra-binaries/xtask fpga bootstrap --bitstream /tmp/caliptra-bitstream/caliptra-bitstream.pdi
 
       - name: Mount binaries
