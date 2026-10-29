@@ -79,6 +79,18 @@ pub const MCTP_MSG_TYPE_SECURED_SPDM: u8 = 0x06;
 // internally we alias the module so existing call sites keep working.
 use crate::errors::mctp as error_code;
 
+fn validate_request_header(buf: &[u8], req_len: usize, msg_type: u8) -> McuResult<()> {
+    if req_len < MCTP_MSG_HEADER_SIZE || req_len > buf.len() {
+        return Err(error_code::INVALID_MESSAGE);
+    }
+
+    if (buf[0] & MCTP_MSG_TYPE_MASK) != msg_type {
+        return Err(error_code::UNEXPECTED_MESSAGE_TYPE);
+    }
+
+    Ok(())
+}
+
 /// MCTP-based SPDM PAL transport.
 ///
 /// Wraps a single [`Mctp`] syscall handle bound to a specific driver
@@ -178,13 +190,7 @@ impl SpdmPalTransport for McuSpdmMctpTransport {
         let (req_len, msg_info) = self.mctp.receive_request(buf).await?;
 
         let req_len = req_len as usize;
-        if req_len < MCTP_MSG_HEADER_SIZE || req_len > buf.len() {
-            return Err(error_code::INVALID_MESSAGE);
-        }
-
-        if (buf[0] & MCTP_MSG_TYPE_MASK) != self.msg_type {
-            return Err(error_code::UNEXPECTED_MESSAGE_TYPE);
-        }
+        validate_request_header(buf, req_len, self.msg_type)?;
 
         self.cur_resp_ctx = Some(msg_info);
         Ok((self.kind(), req_len))
@@ -215,5 +221,56 @@ impl SpdmPalTransport for McuSpdmMctpTransport {
 
         self.mctp.send_response(msg, msg_info).await?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn constructor_accepts_only_matching_spdm_driver_and_message_type() {
+        let plain = McuSpdmMctpTransport::new(driver_num::MCTP_SPDM, MCTP_MSG_TYPE_SPDM).unwrap();
+        assert_eq!(plain.kind(), SpdmPalIoKind::Message);
+        assert!(!plain.secure_message_supported());
+
+        let secured =
+            McuSpdmMctpTransport::new(driver_num::MCTP_SECURE, MCTP_MSG_TYPE_SECURED_SPDM).unwrap();
+        assert_eq!(secured.kind(), SpdmPalIoKind::SecuredMessage);
+        assert!(secured.secure_message_supported());
+
+        assert!(matches!(
+            McuSpdmMctpTransport::new(driver_num::MCTP_SPDM, MCTP_MSG_TYPE_SECURED_SPDM),
+            Err(error) if error == error_code::UNEXPECTED_MESSAGE_TYPE
+        ));
+        assert!(matches!(
+            McuSpdmMctpTransport::new(driver_num::MCTP_SECURE, MCTP_MSG_TYPE_SPDM),
+            Err(error) if error == error_code::UNEXPECTED_MESSAGE_TYPE
+        ));
+        assert!(matches!(
+            McuSpdmMctpTransport::new(driver_num::MCTP_SPDM, 0x7f),
+            Err(error) if error == error_code::UNEXPECTED_MESSAGE_TYPE
+        ));
+    }
+
+    #[test]
+    fn request_header_validation_checks_length_and_bound_message_type() {
+        assert_eq!(
+            validate_request_header(&[], 0, MCTP_MSG_TYPE_SPDM),
+            Err(error_code::INVALID_MESSAGE)
+        );
+        assert_eq!(
+            validate_request_header(&[MCTP_MSG_TYPE_SPDM], 2, MCTP_MSG_TYPE_SPDM),
+            Err(error_code::INVALID_MESSAGE)
+        );
+        assert_eq!(
+            validate_request_header(&[MCTP_MSG_TYPE_SECURED_SPDM], 1, MCTP_MSG_TYPE_SPDM),
+            Err(error_code::UNEXPECTED_MESSAGE_TYPE)
+        );
+
+        assert_eq!(
+            validate_request_header(&[MCTP_MSG_TYPE_SPDM, 0x12], 2, MCTP_MSG_TYPE_SPDM),
+            Ok(())
+        );
     }
 }
