@@ -15,19 +15,28 @@ const CACHE_FORMAT_VERSION: &str = "main-2.1-v2";
 pub const MCU_KERNEL_FPGA: FwId = FwId {
     crate_name: "caliptra-mcu-runtime-fpga",
     bin_name: "caliptra-mcu-runtime-fpga",
-    fw_type: FirmwareType::Source { features: &[] },
+    fw_type: FirmwareType::Source {
+        features: &[],
+        hw_revision: None,
+    },
 };
 
 pub const MCU_ROM_FPGA: FwId = FwId {
     crate_name: "caliptra-mcu-rom-fpga",
     bin_name: "caliptra-mcu-rom-fpga",
-    fw_type: FirmwareType::Source { features: &[] },
+    fw_type: FirmwareType::Source {
+        features: &[],
+        hw_revision: None,
+    },
 };
 
 pub const MCU_USER_FPGA: FwId = FwId {
     crate_name: "user-app",
     bin_name: "user-app",
-    fw_type: FirmwareType::Source { features: &[] },
+    fw_type: FirmwareType::Source {
+        features: &[],
+        hw_revision: None,
+    },
 };
 
 pub(crate) fn size_history() -> Result<(), anyhow::Error> {

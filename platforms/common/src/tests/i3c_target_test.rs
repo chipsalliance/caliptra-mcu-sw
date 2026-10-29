@@ -2,7 +2,7 @@
 
 use caliptra_mcu_i3c_driver::{
     core::I3CCore,
-    hil::{I3CTarget, RxClient},
+    hil::{I3CTarget, RxClient, TxClient},
 };
 use caliptra_mcu_romtime::println;
 use caliptra_mcu_tock_veer::chip::{VeeR, VeeRDefaultPeripherals};
@@ -114,15 +114,73 @@ impl<'a> DeferredCallClient for I3CConstantWritesTest<'a> {
 }
 
 impl<'a> RxClient for I3CConstantWritesTest<'a> {
-    fn receive_write(&self, rx_buffer: &'static mut [u8], _len: usize) {
+    fn receive_write(&self, rx_buffer: &'static mut [u8], len: usize) {
+        let count = self.count.get();
+        assert_eq!(len, 5);
+        assert_eq!(&rx_buffer[..4], &[1, 2, 3, count as u8]);
+        let addr = self
+            .i3c
+            .get()
+            .unwrap()
+            .get_device_info()
+            .dynamic_addr
+            .unwrap();
+        assert_eq!(rx_buffer[4], pec(addr << 1, &rx_buffer[..4]));
         self.buf.replace(rx_buffer);
-        self.count.set(self.count.get() + 1);
+        self.count.set(count + 1);
     }
 
     fn write_expected(&self) {
-        self.i3c
-            .get()
-            .unwrap()
-            .set_rx_buffer(self.buf.take().unwrap());
+        if let Some(buffer) = self.buf.take() {
+            self.i3c.get().unwrap().set_rx_buffer(buffer);
+        }
+    }
+}
+
+fn pec(addr: u8, bytes: &[u8]) -> u8 {
+    bytes
+        .iter()
+        .fold(caliptra_mcu_romtime::crc8(0, addr), |crc, byte| {
+            caliptra_mcu_romtime::crc8(crc, *byte)
+        })
+}
+
+/// Real-driver echo for emulator read/IBI fault and recovery tests. The same
+/// buffer moves RX -> TX -> RX; it is not available to RX while TX owns it.
+pub fn test_i3c_echo(chip: &'static VeeR<'static, VeeRDefaultPeripherals<'static>>) -> Option<u32> {
+    let i3c = &chip.peripherals.i3c;
+    // Safety: called once, after board initialization, in this test firmware.
+    let buf = unsafe { static_buf!([u8; 250]) }.write([0; 250]);
+    let tester = unsafe { static_init!(I3CEchoTest, I3CEchoTest { i3c }) };
+    i3c.set_rx_client(tester);
+    i3c.set_tx_client(tester);
+    i3c.set_rx_buffer(buf);
+    i3c.enable();
+    println!("I3C echo ready");
+    None
+}
+
+struct I3CEchoTest {
+    i3c: &'static I3CCore<'static, InternalTimers<'static>>,
+}
+
+impl RxClient for I3CEchoTest {
+    fn write_expected(&self) {
+        // TX completion rearms the buffer; the driver retries RX meanwhile.
+    }
+
+    fn receive_write(&self, buf: &'static mut [u8], len: usize) {
+        assert!(len > 1);
+        let addr = self.i3c.get_device_info().dynamic_addr.unwrap();
+        assert_eq!(buf[len - 1], pec(addr << 1, &buf[..len - 1]));
+        buf[len - 1] = pec((addr << 1) | 1, &buf[..len - 1]);
+        self.i3c.transmit_read(buf, len).unwrap();
+    }
+}
+
+impl TxClient for I3CEchoTest {
+    fn send_done(&self, buf: &'static mut [u8], result: Result<(), kernel::ErrorCode>) {
+        assert_eq!(result, Ok(()));
+        self.i3c.set_rx_buffer(buf);
     }
 }

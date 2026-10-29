@@ -14,8 +14,8 @@ use mcu_caliptra_api::{
     DPE_TCI_MEASUREMENT_SIZE,
 };
 
-use super::{is_mcu_root_record, MeasurementApi};
-use crate::attestation_manifest::{AttestationManifestEntry, MCU_RT_FW_ID};
+use super::{is_mcu_root_record, MeasurementApi, OWSM_ENTRY};
+use crate::attestation_manifest::{AttestationManifestEntry, MCU_RT_FW_ID, OWSM_FW_ID};
 use crate::errors::{MeasurementApiError, MeasurementApiResult};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -52,12 +52,19 @@ pub(super) fn should_include_tcb_measurement<S: Syscalls>(
 
     let target = api.read_attestation_target_record()?;
     let expected_target_fw_id = api.manifest.attestation_target_fw_id();
+    let mut tcb_entry_count = api.manifest.header().tcb_entry_count;
+    if let Some(owner) = &api.owner_policy {
+        tcb_entry_count = tcb_entry_count
+            .checked_add(owner.manifest().header().tcb_entry_count)
+            .and_then(|count| count.checked_add(1))
+            .ok_or(MeasurementApiError::InvalidManifest)?;
+    }
     let dpe_store = DpeHandleStore::<S>::new(DPE_HANDLE_STORE_DRIVER_NUM);
     should_include_tcb_candidate(
         target,
         expected_target_fw_id,
         fw_id,
-        api.manifest.header().tcb_entry_count,
+        tcb_entry_count,
         |parent_fw_id, out| {
             dpe_store
                 .read_record(parent_fw_id, out)
@@ -99,9 +106,10 @@ fn manifest_entry<S: Syscalls>(
     api: &MeasurementApi<'_, S>,
     fw_id: u32,
 ) -> MeasurementApiResult<AttestationManifestEntry> {
-    api.manifest
-        .lookup(fw_id)
-        .map_err(|_| MeasurementApiError::UnknownFwId)
+    if fw_id == OWSM_FW_ID && api.owner_policy.is_some() {
+        return Ok(OWSM_ENTRY);
+    }
+    api.manifest_lookup(fw_id).map(|(entry, _)| entry)
 }
 
 fn validate_tcb_handle_record(

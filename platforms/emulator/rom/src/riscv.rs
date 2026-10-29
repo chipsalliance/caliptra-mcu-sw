@@ -367,7 +367,12 @@ pub extern "C" fn rom_entry() -> ! {
         ..Default::default()
     };
 
-    if cfg!(feature = "use-flash-partition-table") {
+    // Explicit I3C-services test mode must override the flash-boot features
+    // pulled in by hw-2-1, otherwise the services parameters are never set.
+    if cfg!(all(
+        feature = "use-flash-partition-table",
+        not(feature = "test-i3c-services")
+    )) {
         // Initialize the flash controller for testing purposes
 
         let primary_flash_ctrl = EmulatedFlashCtrl::initialize_flash_ctrl(PRIMARY_FLASH_CTRL_BASE);
@@ -467,7 +472,6 @@ pub extern "C" fn rom_entry() -> ! {
                     cptra_mbox_axi_users: mbox_axi_users,
                     cptra_fuse_axi_user: axi_user0,
                     cptra_trng_axi_user: axi_user0,
-                    cptra_dma_axi_user: axi_user0,
                     mci_mbox0_axi_users: mbox_axi_users,
                     mci_mbox1_axi_users: mbox_axi_users,
                     #[cfg(feature = "ocp-lock")]
@@ -542,7 +546,6 @@ pub extern "C" fn rom_entry() -> ! {
             cptra_mbox_axi_users: mbox_axi_users,
             cptra_fuse_axi_user: axi_user0,
             cptra_trng_axi_user: axi_user0,
-            cptra_dma_axi_user: axi_user0,
             mci_mbox0_axi_users: mbox_axi_users,
             mci_mbox1_axi_users: mbox_axi_users,
             #[cfg(feature = "ocp-lock")]
@@ -563,7 +566,6 @@ pub extern "C" fn rom_entry() -> ! {
             cptra_mbox_axi_users: mbox_axi_users,
             cptra_fuse_axi_user: axi_user0,
             cptra_trng_axi_user: axi_user0,
-            cptra_dma_axi_user: axi_user0,
             mci_mbox0_axi_users: mbox_axi_users,
             mci_mbox1_axi_users: mbox_axi_users,
             #[cfg(feature = "ocp-lock")]
@@ -663,7 +665,6 @@ pub extern "C" fn rom_entry() -> ! {
                 cptra_mbox_axi_users: mbox_axi_users,
                 cptra_fuse_axi_user: axi_user0,
                 cptra_trng_axi_user: axi_user0,
-                cptra_dma_axi_user: axi_user0,
                 mci_mbox0_axi_users: mbox_axi_users,
                 mci_mbox1_axi_users: mbox_axi_users,
                 #[cfg(feature = "ocp-lock")]
@@ -702,7 +703,6 @@ pub extern "C" fn rom_entry() -> ! {
             cptra_mbox_axi_users: mbox_axi_users,
             cptra_fuse_axi_user: axi_user0,
             cptra_trng_axi_user: axi_user0,
-            cptra_dma_axi_user: axi_user0,
             mci_mbox0_axi_users: mbox_axi_users,
             mci_mbox1_axi_users: mbox_axi_users,
             ..Default::default()
@@ -718,7 +718,6 @@ pub extern "C" fn rom_entry() -> ! {
             cptra_mbox_axi_users: mbox_axi_users,
             cptra_fuse_axi_user: axi_user0,
             cptra_trng_axi_user: axi_user0,
-            cptra_dma_axi_user: axi_user0,
             mci_mbox0_axi_users: mbox_axi_users,
             mci_mbox1_axi_users: mbox_axi_users,
             #[cfg(feature = "ocp-lock")]
@@ -727,7 +726,10 @@ pub extern "C" fn rom_entry() -> ! {
         });
     } else if cfg!(all(
         feature = "flash-boot",
-        not(feature = "test-dot-recovery-reset-flow")
+        not(any(
+            feature = "test-dot-recovery-reset-flow",
+            feature = "test-i3c-services"
+        ))
     )) {
         // Simple flash-based boot without partition tables.
         // Uses flash image starting at offset 0.
@@ -766,7 +768,6 @@ pub extern "C" fn rom_entry() -> ! {
             cptra_mbox_axi_users: mbox_axi_users,
             cptra_fuse_axi_user: axi_user0,
             cptra_trng_axi_user: axi_user0,
-            cptra_dma_axi_user: axi_user0,
             mci_mbox0_axi_users: mbox_axi_users,
             mci_mbox1_axi_users: mbox_axi_users,
             #[cfg(feature = "ocp-lock")]
@@ -826,7 +827,6 @@ pub extern "C" fn rom_entry() -> ! {
             cptra_mbox_axi_users: mbox_axi_users,
             cptra_fuse_axi_user: axi_user0,
             cptra_trng_axi_user: axi_user0,
-            cptra_dma_axi_user: axi_user0,
             mci_mbox0_axi_users: mbox_axi_users,
             mci_mbox1_axi_users: mbox_axi_users,
             dot_recovery_handler: if cfg!(any(

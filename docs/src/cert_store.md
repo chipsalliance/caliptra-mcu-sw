@@ -2,40 +2,36 @@
 
 ## Purpose and scope
 
-This document defines the protocol-neutral behavior of the Caliptra MCU
-certificate store. It describes the store's runtime contract, certificate
-composition, persistence guarantees, and transport boundaries.
+This document defines the protocol-neutral design and behavioral contract of
+the Caliptra MCU certificate store. It describes certificate composition,
+provisioning policy, persistence requirements, and transport boundaries.
+
+Initialization and transport interfaces are described as design contracts.
+Persistence and shared-state consistency rules define requirements for
+production integrations.
 
 The trust model and certificate-chain contents are defined in the [Caliptra
 Certificate Model](./certificate_model.md). The in-field provisioning
 workflow is defined in [In-field Certificate Provisioning and
 Management](./certificate_provisioning.md).
 
-For concrete platform configuration steps, see [Certificate Store
+For available SDK interfaces and platform configuration, see [Certificate Store
 Integration](./certificate-store-integration.md).
-
-## Implementation status
-
-This document defines the target release behavior. The current source
-implements ECC P-384 Vendor certificate-chain retrieval through SPDM. Managed
-Owner and Tenant slots are test-only. Common certificate-store initialization,
-the Vendor IDevID certificate provider, ML-DSA-87 certificate chains, MCI
-certificate commands, and configurable Tenant SlotIDs are planned. Production
-authorization and managed-backing contracts are deferred.
 
 ## Certificate store overview
 
-The target architecture provides one protocol-neutral certificate store
-shared by all enabled SPDM and MCI mailbox responder tasks. The store supports
-ECC P-384 and planned ML-DSA-87 certificate chains in Vendor, Owner, and
-Tenant certificate slots. A static platform profile determines which optional
-slots are enabled and whether the store uses the classical-only or
-classical-plus-PQC algorithm profile.
+The design uses one protocol-neutral certificate store shared by all enabled
+certificate transports. It separates static provisioning policy from
+transport-specific request handling. The store models ECC
+P-384 and ML-DSA-87 certificate chains in Vendor, Owner, and Tenant certificate
+slots. A static platform profile determines which optional slots are enabled
+and whether the store uses the classical-only or classical-plus-PQC algorithm
+profile.
 
 Supported certificate algorithms are:
 
 - ECC P-384, which is always enabled.
-- ML-DSA-87, which is planned and enabled explicitly by the platform profile.
+- ML-DSA-87, enabled explicitly by the platform profile.
 
 Supported certificate slots are:
 
@@ -43,61 +39,40 @@ Supported certificate slots are:
 - Owner.
 - Tenant.
 
-When planned ML-DSA-87 support is enabled, every enabled certificate slot is
+When ML-DSA-87 support is enabled, every enabled certificate slot is
 configured with both an ECC P-384 chain and an independent ML-DSA-87 chain.
 For example, Owner ECC P-384 and Owner ML-DSA-87 have separate certificate
 data, lifecycle state, and persistent backing.
 
-SPDM SlotIDs and the planned MCI command fields are transport-specific
-identifiers. They are mapped to the corresponding certificate chain before
-the common store is accessed.
+SPDM SlotIDs and MCI request fields are transport-specific identifiers.
+Adapters map these identifiers to a certificate role and algorithm before
+accessing the common store.
 
 ## Runtime architecture
 
-![Proposed certificate store runtime architecture](images/cert_store_design.svg)
+![Certificate store runtime architecture](images/cert_store_design.svg)
 
-The diagram shows the target release architecture. The current implementation
-initializes `SharedCertStore` from the SPDM module. The common initialization,
-ML-DSA-87, MCI, and configurable Tenant elements shown in the diagram are
-planned.
+The application calls `cert_store::init(...)` once during startup;
+certificate responders must start only after it succeeds. Initialization:
 
-The proposed initialization module is part of `CertStore` and exposes a
-one-time `cert_store::initialize(...)` API. The user application will call
-this API from its startup `boot_init()` path. The proposed API:
+- Imports integrator-provided IDevID certificates for each enabled algorithm
+  into Caliptra and configures the read-only Vendor slot. Vendor always uses
+  IDevID endorsements; certificate provisioning is outside the SDK.
+- Loads and validates saved Owner and Tenant endorsements from configured
+  persistent backing under the static provisioning policy.
 
-- Applies the static platform certificate-store profile.
-- Obtains the complete IDevID certificate for each provisioned algorithm from
-  the proposed platform `VendorIdevidCertificateProvider`.
-- Recovers provisioned Owner and Tenant endorsements from their configured
-  persistent backing.
-- Determines which ECC P-384 and ML-DSA-87 certificate chains are available.
-- Makes the store available to the responder tasks.
-
-Initialization SHALL fail unless the Vendor ECC P-384 chain is provisioned
-and available. Failure to initialize any other configured
-algorithm-and-slot chain leaves only that chain unavailable and does not fail
-common initialization.
+Initialization requires a provisioned, available Vendor ECC P-384 chain.
+Other chain initialization failures are reported for platform diagnostics
+and leave only the affected chain unavailable.
 
 A managed chain with accessible backing but no committed endorsement is
-unprovisioned. A chain that cannot initialize because its anchor point,
-certificate or signing capability, endorsement source, or backing is
-unavailable is marked unavailable. Both states are excluded from the
-provisioned-chain advertisement, and the initialization failure is reported
-for platform diagnostics.
+unprovisioned. Only available, provisioned chains are advertised.
 
-The target release starts the SPDM MCTP, SPDM DOE, and planned MCI mailbox
-responder tasks only after the proposed initialization API succeeds. The SPDM
-responder tasks access the store through the existing `SpdmPalCertStore`
-implementation. The planned MCI mailbox command handler calls the common
-certificate-store API directly.
+SPDM responders use `SpdmPalCertStore`; MCI mailbox certificate responder uses the common API.
 
-The common store represents each logical algorithm-and-certificate-slot
-combination as a `CertSlot`. These logical certificate slots are independent
-of SPDM SlotIDs.
-
-Each enabled certificate transport accesses the same `CertStore` instance.
-An endorsement update through one transport is visible to all other enabled
-certificate transports.
+Each enabled certificate transport must access the same `CertStore` instance.
+An endorsement update through one transport must be visible to all other
+enabled certificate transports.
 
 ## Certificate slot behavior
 
@@ -113,6 +88,29 @@ The Vendor endorsement certificates are established during manufacturing and
 remain read-only for the device lifetime. They cannot be provisioned,
 replaced, or removed at runtime. Owner and Tenant provisioning requires
 authorization.
+
+### Static provisioning policy
+
+The certificate store uses an immutable, transport-neutral provisioning policy.
+Vendor is read-only and runtime mutation is always denied. Each managed role
+(Owner and Tenant) is configured with either:
+
+- **A fixed key anchor point** (for example, Owner is configured with LDevID in
+  the default policy): pins the role to that identity key. `key_pair_id = 0`
+  resolves to the configured key anchor point, and any nonzero `key_pair_id`
+  must match it.
+- **No fixed key anchor point** (for example, Tenant in the default policy):
+  allows any supported key anchor point when a nonzero `key_pair_id` is
+  provided; `key_pair_id = 0` is rejected.
+
+SPDM `SET_CERTIFICATE` passes `key_pair_id = 0` when the request has no
+`KeyPairID` field (SPDM 1.2, or SPDM 1.3+ with `MULTI_KEY_CONN_RSP = 0`) and
+passes the request's `KeyPairID` when `MULTI_KEY_CONN_RSP = 1`; MCI mailbox
+commands must always provide a nonzero `key_pair_id`.
+
+Provisioning also requires AliasCert metadata and enforces the configured region
+capacity. Requester authorization and certificate-content validation are outside
+this policy.
 
 ## Certificate-chain composition
 
@@ -140,89 +138,46 @@ signing key represent the same active identity.
 ## Managed endorsement backing
 
 Managed Owner and Tenant endorsements use platform-provided persistent
-backing. Each enabled algorithm-and-slot endorsement has independent backing.
+backing. Each enabled algorithm-and-slot endorsement has independent backing
+and size limits. ECC P-384 and ML-DSA-87 endorsements SHALL NOT share the same
+managed region.
 
-The configured size is the maximum number of DER bytes accepted for the
-provisioned PKI endorsement. It does not include the generated Caliptra and
-DPE certificates used to compose the complete chain.
+Persistent backing for managed endorsements must provide these guarantees:
 
-The backing may require additional space for implementation metadata and
-atomic updates. ECC P-384 and ML-DSA-87 endorsements SHALL NOT share the same
-managed certificate region.
+- An endorsement update is validated and committed atomically; the previous
+  endorsement remains readable while an update is in progress.
+- Reset, power loss, or stream abort does not expose a partial endorsement.
+- Removal is durable so an older endorsement cannot reappear after reset.
+- Startup recovery restores the newest valid committed endorsement or leaves
+  the chain unprovisioned.
 
-ML-DSA-87 chains are roughly an order of magnitude larger than ECC P-384
-ones, so a composed ML-DSA-87 chain can exceed the 64 KiB addressable by the
-pre-1.4 `GET_CERTIFICATE` form. SPDM 1.4 widens the certificate-chain
-`Length` field to 32 bits by absorbing the adjacent `Reserved` field, so
-oversized chains are served to a 1.4 requester that uses `LargeCertChain`. A
-1.4 requester that asks for an oversized chain without `LargeCertChain`
-receives `CertChainTooLarge` carrying the actual size and can retry; below
-1.4 the chain is not retrievable at all.
+See [Certificate Store Integration](./certificate-store-integration.md#allocate-managed-endorsement-storage)
+for how the SDK reference implementation satisfies these requirements.
 
-The certificate store provides these externally visible guarantees:
+## Shared runtime requirements
 
-- A replacement endorsement does not become active until it is completely
-  received, validated, and committed.
-- The previous endorsement remains readable while a replacement is in
-  progress.
-- Reset or power loss does not expose a partial endorsement.
-- Removal is durable.
-- Recovery selects a complete committed endorsement or an unprovisioned
-  state.
+All enabled transports share the same `CertStore` instance and observe the same
+published state:
 
-The certificate store does not require a particular flash layout or
-persistent record format.
-
-## Shared runtime behavior
-
-All enabled transports observe the same published state for each certificate
-chain.
-
-Reads return the complete chain. Provisioning operations accept only the PKI
-endorsement. Provisioning cannot modify the configured device key, generated
-certificate path, DPE leaf certificate, or private key.
-
-Updates to different certificate keys are independent. An update to an Owner
-ECC P-384 endorsement does not block or modify Owner ML-DSA-87, Vendor, or
-Tenant state.
-
-Readers receive a consistent certificate chain while an update is in
-progress. Publication changes the active endorsement atomically for
-subsequent operations.
-
-These consistency guarantees do not require a reader-writer lock or another
-particular synchronization primitive. Synchronization is internal to the
-common store and is not exposed to the `SpdmPalCertStore` implementation or
-the planned MCI mailbox command handler.
+- Reads return the complete composed chain; provisioning accepts only the PKI
+  endorsement.
+- Updates to one algorithm or slot do not affect or block another.
+- Switching to a new endorsement is atomic: readers on any transport always
+  receive a complete, consistent chain, never an intermediate state.
 
 ## Certificate algorithm requirements
 
-### ECC P-384
+Each enabled algorithm (ECC P-384 and ML-DSA-87) in an enabled slot requires:
 
-The ECC P-384 chain for each enabled endorsement role requires:
+- A dedicated PKI endorsement source or managed backing.
+- The corresponding Caliptra-generated certificate path.
+- The corresponding DPE leaf certificate.
+- Access to the corresponding signing key.
 
-- Its PKI endorsement source or managed backing.
-- An ECC P-384 generated certificate path.
-- An ECC P-384 DPE leaf certificate.
-- Access to the corresponding ECC P-384 signing key.
-
-### ML-DSA-87 (planned)
-
-The ML-DSA-87 chain for each enabled endorsement role requires:
-
-- Its own PKI endorsement source or managed backing.
-- An ML-DSA-87 generated certificate path.
-- An ML-DSA-87 DPE leaf certificate.
-- Access to the corresponding ML-DSA-87 signing key.
-
-ML-DSA-87 certificate data and storage are independent from ECC P-384. An
-ML-DSA-87 chain remains unavailable until every component required for its
-complete chain and signing operation is present.
-
-Enabling ML-DSA-87 is independent of the configured SPDM protocol version.
-SPDM 1.4 negotiates either ECC P-384 or ML-DSA-87 for a connection; it does
-not use both algorithms together. The certificate store does not define SPDM
-post-quantum protocol negotiation or message encoding.
+ML-DSA-87 certificate data and storage are independent from ECC P-384. A chain
+remains unavailable until every component required for its complete chain and
+signing operation is present. Algorithm negotiation and transport encodings
+remain transport responsibilities.
 
 ## SPDM integration
 
@@ -232,33 +187,30 @@ The `SpdmPalCertStore` implementation:
   chain.
 - Advertises only certificate chains available through SPDM.
 - Obtains complete chains from the common store.
-- Sends authorized endorsement updates to the common store.
+- Forwards authorized endorsement updates to the common store.
 
 SPDM SlotID policy is defined in [In-field Certificate Provisioning and
 Management](./certificate_provisioning.md). SPDM message formats are defined
 by the SPDM specifications.
 
-## MCI integration (planned)
+## MCI integration
 
-The planned MCI mailbox command handler:
+An MCI mailbox command handler must:
 
-- Validates the requested certificate algorithm and `EndorsementRole`.
-- Calls the `CertStore` API for complete-chain reads.
-- Calls the common authorization and `CertStore` APIs for endorsement
-  updates.
-- Exposes only certificate chains available through MCI.
+- Validate the requested certificate algorithm and `EndorsementRole`.
+- Call the `CertStore` API for complete-chain reads.
+- Forward authorized endorsement updates to the common store.
+- Expose only certificate chains available through MCI.
 
-MCI will not use SPDM SlotIDs. The reserved command codes are documented in
-[External Mailbox Commands](./external_mailbox_cmds.md); command formats and
-handlers remain planned.
+MCI certificate requests identify the role directly rather than use SPDM
+SlotIDs.
 
 ## Authorization boundary
 
-Vendor endorsements are never writable. Owner and Tenant updates reach the
-certificate store only after the requester and requested operation have been
-authorized.
+Vendor endorsements are read-only and never writable. Platforms must authorize
+the requester and requested operation before passing Owner or Tenant updates to
+the certificate store.
 
-The production authorization credential format, policy, and lifecycle are
-deferred and defined separately from the certificate store. The target design
-uses the same transport-independent authorization content for SPDM and MCI;
-only their outer transport framing differs.
+The authorization credential format, policy, and lifecycle are defined by the
+platform outside the certificate store. Static provisioning policy and
+metadata checks do not evaluate requester authorization.

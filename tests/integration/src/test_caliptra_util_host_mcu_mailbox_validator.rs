@@ -230,6 +230,8 @@ pub mod test {
         // --- Start hw_model with keys provisioned in fuses ---
         let mut hw = start_runtime_hw_model(TestParams {
             feature: Some(TEST_FEATURE),
+            rom_feature: fuse_suite.is_none().then_some("ocp-lock"),
+            ocp_lock_en: fuse_suite.is_none(),
             custom_caliptra_fw: (fuse_suite.as_deref() == Some("increase-min-svn"))
                 .then(caliptra_fw_svn7),
             dot_enabled: true,

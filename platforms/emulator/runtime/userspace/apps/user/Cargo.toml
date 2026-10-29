@@ -18,6 +18,7 @@ embassy-sync.workspace = true
 caliptra-image-types.workspace = true
 caliptra-mcu-attestation-evidence.workspace = true
 caliptra-mcu-common-commands.workspace = true
+caliptra-mcu-cert-store.workspace = true
 caliptra-mcu-flash-image.workspace = true
 caliptra-mcu-measurement-api.workspace = true
 caliptra-mcu-libapi-emulated-caliptra.workspace = true
@@ -172,6 +173,7 @@ test-exit-immediately = []
 test-xtask-runtime = []
 test-i3c-simple = []
 test-i3c-constant-writes = []
+test-i3c-echo = []
 test-flash-ctrl-init = []
 test-flash-ctrl-read-write-page = []
 test-flash-ctrl-erase-page = []
@@ -233,6 +235,7 @@ test-mctp-spdm-responder-conformance = ["spdm"]
 cert-provisioning = [
   "spdm",
   "attested-csr",
+  "caliptra-mcu-cert-store/set-certificate",
   "caliptra-mcu-spdm-pal/set-certificate",
   "caliptra-mcu-spdm-stack/set-certificate",
   "caliptra-mcu-spdm-vdm-handler/cert-provisioning",

@@ -17,7 +17,8 @@ use serde::Deserialize;
 
 const NONCE_LEN: usize = 32;
 const KID_LEN: usize = 48;
-const DEFAULT_CONCISE_EVIDENCE_MEASUREMENT_COUNT: usize = 8;
+// Reference inventory: three Base entries, OWSM, and four Owner entries.
+const DEFAULT_CONCISE_EVIDENCE_MEASUREMENT_COUNT: usize = 3 + 1 + 4;
 const CONCISE_EVIDENCE_MEASUREMENT_COUNT_ENV: &str = "CALIPTRA_CONCISE_EVIDENCE_MEASUREMENT_COUNT";
 const EAT_CLAIMS_CONFIG_ENV: &str = "CALIPTRA_EAT_CLAIMS_CONFIG";
 const EVIDENCE_DIGEST_SIZE: usize = 48;
@@ -54,6 +55,8 @@ struct EatClaimsConfig {
 #[derive(Default, Deserialize)]
 #[serde(deny_unknown_fields)]
 struct MeasurementsConfig {
+    // Platform budget for all Base entries, OWSM when present, and Owner entries,
+    // including the Owner policy and key, before selected-AK lineage exclusions.
     measurement_count: Option<usize>,
 }
 

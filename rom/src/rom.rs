@@ -660,7 +660,7 @@ impl Soc {
         }
     }
 
-    pub fn set_axi_users(&self, users: AxiUsers) {
+    pub fn set_axi_users(&self, users: AxiUsers, mci: &Mci) {
         let AxiUsers {
             mbox_users,
             fuse_user,
@@ -692,10 +692,9 @@ impl Soc {
             caliptra_mcu_romtime::println!("[mcu-rom] Locking TRNG user");
             self.set_cptra_trng_axi_user_lock(1);
         }
-        if dma_user != 0 {
-            caliptra_mcu_romtime::println!("[mcu-rom] Setting DMA user");
-            self.set_ss_caliptra_dma_axi_user(dma_user);
-        }
+        let dma_user = dma_user.unwrap_or_else(|| mci.sram_config_axi_user());
+        caliptra_mcu_romtime::println!("[mcu-rom] Setting DMA user to {}", HexWord(dma_user));
+        self.set_ss_caliptra_dma_axi_user(dma_user);
     }
 
     #[cfg_attr(all(not(test), feature = "cfi"), cfi_impl_fn)]
@@ -1004,8 +1003,12 @@ pub struct RomParameters<'a> {
     pub cptra_fuse_axi_user: u32,
     /// Valid AXI user for Caliptra TRNG. 0 = don't configure.
     pub cptra_trng_axi_user: u32,
-    /// Valid AXI user for Caliptra DMA. 0 = don't configure.
-    pub cptra_dma_axi_user: u32,
+    /// Outgoing Caliptra DMA ARUSER/AWUSER value, not a DMA access allowlist.
+    /// `None` uses MCI's MCU SRAM-config AXI USER strap so DMA can load the
+    /// execution region. `Some(user)` overrides it, including `Some(0)`.
+    /// An override must match the SRAM-config USER for streaming boot.
+    /// Configured before CPTRA_FUSE_WR_DONE locks the register.
+    pub cptra_dma_axi_user: Option<u32>,
     /// Valid AXI users for MCI mailbox 0. 0 values are ignored.
     pub mci_mbox0_axi_users: [u32; 5],
     /// Valid AXI users for MCI mailbox 1. 0 values are ignored.
@@ -1141,7 +1144,8 @@ pub struct AxiUsers {
     pub mbox_users: [Option<u32>; 5],
     pub fuse_user: u32,
     pub trng_user: u32,
-    pub dma_user: u32,
+    /// `None` selects MCI's SRAM-config AXI USER; `Some` explicitly overrides it.
+    pub dma_user: Option<u32>,
 }
 
 impl From<&RomParameters<'_>> for AxiUsers {
@@ -1153,6 +1157,84 @@ impl From<&RomParameters<'_>> for AxiUsers {
             fuse_user: params.cptra_fuse_axi_user,
             trng_user: params.cptra_trng_axi_user,
             dma_user: params.cptra_dma_axi_user,
+        }
+    }
+}
+
+#[cfg(test)]
+mod axi_user_tests {
+    extern crate std;
+
+    use super::*;
+    use core::mem::{align_of, offset_of, size_of};
+    use std::boxed::Box;
+
+    const MCU_LSU_USER: u32 = 0x300;
+
+    fn registers(sram_config_user: u32) -> (Soc, Mci) {
+        assert_eq!(align_of::<soc::regs::Soc>(), align_of::<u32>());
+        assert_eq!(align_of::<mci::regs::Mci>(), align_of::<u32>());
+        let soc_words = Box::leak(Box::new([0u32; size_of::<soc::regs::Soc>() / 4]));
+        let mci_words = Box::leak(Box::new([0u32; size_of::<mci::regs::Mci>() / 4]));
+        mci_words[offset_of!(mci::regs::Mci, mci_reg_mcu_lsu_axi_user) / 4] = MCU_LSU_USER;
+        mci_words[offset_of!(mci::regs::Mci, mci_reg_mcu_sram_config_axi_user) / 4] =
+            sram_config_user;
+        // The leaked buffers are aligned, zero-initialized register storage
+        // with static lifetimes. All register fields contain integer values.
+        unsafe {
+            (
+                Soc::new(StaticRef::new(soc_words.as_ptr().cast())),
+                Mci::new(StaticRef::new(mci_words.as_ptr().cast())),
+            )
+        }
+    }
+
+    #[test]
+    fn default_dma_user_matches_sram_config_not_mcu_lsu() {
+        for sram_config_user in [0x7e00, MCU_LSU_USER, 0, 1, u32::MAX] {
+            let (soc, mci) = registers(sram_config_user);
+            let params = RomParameters {
+                cptra_mbox_axi_users: [MCU_LSU_USER, 0, 0, 0, 0],
+                cptra_fuse_axi_user: MCU_LSU_USER,
+                cptra_trng_axi_user: MCU_LSU_USER,
+                ..Default::default()
+            };
+            soc.set_ss_caliptra_dma_axi_user(0xdead_beef);
+
+            soc.set_axi_users(AxiUsers::from(&params), &mci);
+
+            assert_eq!(
+                soc.registers.ss_caliptra_dma_axi_user.get(),
+                sram_config_user
+            );
+            assert_eq!(
+                soc.registers.cptra_mbox_valid_axi_user[0].get(),
+                MCU_LSU_USER
+            );
+            assert_eq!(soc.registers.cptra_mbox_axi_user_lock[0].get(), 1);
+            assert_eq!(soc.registers.cptra_mbox_axi_user_lock[1].get(), 0);
+            assert_eq!(soc.registers.cptra_fuse_valid_axi_user.get(), MCU_LSU_USER);
+            assert_eq!(soc.registers.cptra_fuse_axi_user_lock.get(), 1);
+            assert_eq!(soc.registers.cptra_trng_valid_axi_user.get(), MCU_LSU_USER);
+            assert_eq!(soc.registers.cptra_trng_axi_user_lock.get(), 1);
+        }
+    }
+
+    #[test]
+    fn explicit_dma_user_overrides_sram_config_including_zero() {
+        for dma_user in [0, MCU_LSU_USER, u32::MAX] {
+            let (soc, mci) = registers(0x7e00);
+            let params = RomParameters {
+                cptra_dma_axi_user: Some(dma_user),
+                ..Default::default()
+            };
+            soc.set_ss_caliptra_dma_axi_user(0xdead_beef);
+
+            soc.set_axi_users(AxiUsers::from(&params), &mci);
+
+            assert_eq!(soc.registers.ss_caliptra_dma_axi_user.get(), dma_user);
+            assert_eq!(soc.registers.cptra_fuse_axi_user_lock.get(), 0);
+            assert_eq!(soc.registers.cptra_trng_axi_user_lock.get(), 0);
         }
     }
 }

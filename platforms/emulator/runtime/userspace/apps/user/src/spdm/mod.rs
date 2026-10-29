@@ -400,7 +400,7 @@ fn measurement_provider(
 fn measurement_provider(
 ) -> caliptra_mcu_spdm_pal::measurements::providers::ocp_eat::OcpEatMeasurementProvider {
     caliptra_mcu_spdm_pal::measurements::providers::ocp_eat::OcpEatMeasurementProvider::new(
-        caliptra_mcu_spdm_pal::cert::DPE_LEAF_LABEL,
+        caliptra_mcu_cert_store::DPE_LEAF_LABEL,
     )
 }
 
@@ -431,7 +431,7 @@ pub(crate) unsafe fn borrow_boot_scratch() -> BootScratch {
     )
 }
 
-/// Spawn SPDM responder tasks after [`crate::cert_store::boot_init`] succeeds,
+/// Spawn SPDM responder tasks after [`crate::cert_store::init`] succeeds,
 /// consuming the boot owner before the MCTP responder starts.
 pub(crate) fn spawn_spdm_tasks(spawner: &Spawner, boot_owner: BootScratch) {
     let mut cw = Console::<DefaultSyscalls>::writer();

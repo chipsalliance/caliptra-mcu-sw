@@ -17,7 +17,8 @@ pub struct I3CTargetInfo {
 }
 
 pub trait TxClient {
-    /// Called when the packet has been transmitted.
+    /// Called after the pending-read IBI succeeds and the target reports
+    /// private-read completion. The original transmit buffer is returned.
     fn send_done(&self, tx_buffer: &'static mut [u8], result: Result<(), ErrorCode>);
 }
 
@@ -39,9 +40,14 @@ pub trait I3CTarget<'a> {
     fn set_rx_client(&self, client: &'a dyn RxClient);
 
     /// Set the buffer that will be used for receiving Write packets.
+    /// Errored or oversized packets are drained and dropped without a receive
+    /// callback; the buffer remains available for the next packet.
     fn set_rx_buffer(&self, rx_buf: &'static mut [u8]);
 
-    /// Queue a packet in response to a private Read.
+    /// Queue a nonempty packet in response to a private Read.
+    /// Returns `SIZE` with the original buffer if `len` exceeds the buffer or
+    /// `get_device_info().max_read_len`, or is zero. An outstanding transfer
+    /// takes precedence and returns `BUSY`.
     fn transmit_read(
         &self,
         tx_buf: &'static mut [u8],
