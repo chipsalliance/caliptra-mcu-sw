@@ -20,14 +20,20 @@
 
 mod slot0_endorsements;
 
+#[cfg(not(feature = "test-mctp-spdm-set-certificate"))]
+use caliptra_mcu_cert_store::NoEndorsementStorage;
 #[cfg(feature = "test-mctp-spdm-set-certificate")]
-use caliptra_mcu_cert_store::CertificateAlgorithm;
+use caliptra_mcu_cert_store::{errors as cert_errors, CertificateAlgorithm, EndorsementStorage};
 use caliptra_mcu_cert_store::{CertificateProvisioningPolicy, EndorsementRole, SharedCertStore};
 #[cfg(feature = "test-mctp-spdm-set-certificate")]
 use caliptra_mcu_config_emulator::flash::CERT_STORE_PARTITION;
 use caliptra_mcu_libsyscall_caliptra::external_otp::ExternalOtp;
+#[cfg(feature = "test-mctp-spdm-set-certificate")]
+use caliptra_mcu_libsyscall_caliptra::flash::SpiFlash;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_console::Console;
+#[cfg(feature = "test-mctp-spdm-set-certificate")]
+use caliptra_mcu_libtock_platform::ErrorCode;
 use caliptra_mcu_scratch_alloc::BitmapAllocator;
 // `log_warn!` writes through the console writer, so the trait must be in scope;
 // the macro compiles to nothing without a log transport, which makes the import
@@ -57,9 +63,69 @@ const BOOT_SCRATCH_HEADROOM: usize = 1024;
 pub(crate) const BOOT_SCRATCH_SIZE: usize =
     POPULATE_IDEV_MLDSA87_MAX_CERT_SIZE + BOOT_SCRATCH_HEADROOM;
 
+/// SPI flash implementation of [`EndorsementStorage`] for managed endorsements.
+#[cfg(feature = "test-mctp-spdm-set-certificate")]
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) struct SpiFlashEndorsementStorage {
+    driver_num: u32,
+}
+
+#[cfg(feature = "test-mctp-spdm-set-certificate")]
+impl SpiFlashEndorsementStorage {
+    pub(crate) const fn new(driver_num: u32) -> Self {
+        Self { driver_num }
+    }
+}
+
+#[cfg(feature = "test-mctp-spdm-set-certificate")]
+impl EndorsementStorage for SpiFlashEndorsementStorage {
+    fn is_available(&self) -> McuResult<bool> {
+        match SpiFlash::<DefaultSyscalls>::new(self.driver_num).exists() {
+            Ok(()) => Ok(true),
+            Err(ErrorCode::NoDevice | ErrorCode::NoSupport | ErrorCode::Uninstalled) => Ok(false),
+            Err(err) => Err(map_flash_error(err)),
+        }
+    }
+
+    async fn read(&self, offset: usize, buf: &mut [u8]) -> McuResult<()> {
+        SpiFlash::<DefaultSyscalls>::new(self.driver_num)
+            .read(offset, buf.len(), buf)
+            .await
+            .map_err(map_flash_error)
+    }
+
+    async fn write(&self, offset: usize, data: &[u8]) -> McuResult<()> {
+        SpiFlash::<DefaultSyscalls>::new(self.driver_num)
+            .write(offset, data.len(), data)
+            .await
+            .map_err(map_flash_error)
+    }
+
+    async fn erase(&self, offset: usize, len: usize) -> McuResult<()> {
+        SpiFlash::<DefaultSyscalls>::new(self.driver_num)
+            .erase(offset, len)
+            .await
+            .map_err(map_flash_error)
+    }
+}
+
+#[cfg(feature = "test-mctp-spdm-set-certificate")]
+fn map_flash_error(err: ErrorCode) -> mcu_error::McuErrorCode {
+    match err {
+        ErrorCode::Busy => cert_errors::STORAGE_BUSY,
+        _ => cert_errors::STORAGE_ERROR,
+    }
+}
+
+#[cfg(feature = "test-mctp-spdm-set-certificate")]
+pub(crate) type CertStoreStorage = SpiFlashEndorsementStorage;
+#[cfg(not(feature = "test-mctp-spdm-set-certificate"))]
+pub(crate) type CertStoreStorage = NoEndorsementStorage;
+
 const PROVISIONING_POLICY: CertificateProvisioningPolicy = CertificateProvisioningPolicy::DEFAULT;
 
-static CERT_STORE: SharedCertStore = SharedCertStore::with_policy(PROVISIONING_POLICY);
+static CERT_STORE: SharedCertStore<CertStoreStorage> =
+    SharedCertStore::with_policy(PROVISIONING_POLICY);
 
 /// Each managed `(role, algorithm)` gets its own flash region so that
 /// installing one algorithm's chain cannot erase the other's.
@@ -92,7 +158,7 @@ pub(crate) async fn init(scratch: &BitmapAllocator) -> McuResult<()> {
     Ok(())
 }
 
-pub(crate) fn shared() -> &'static SharedCertStore {
+pub(crate) fn shared() -> &'static SharedCertStore<CertStoreStorage> {
     &CERT_STORE
 }
 
@@ -120,7 +186,10 @@ async fn populate_idev<A: ScratchAlloc>(alloc: &A) -> McuResult<()> {
 /// Called once during boot initialization before spawning responders. Slot 0
 /// failure is fatal. Slots 1-2 stay unprovisioned if flash is empty (they'll be
 /// provisioned via SET_CERTIFICATE).
-async fn setup_endorsements<A: ScratchAlloc>(store: &SharedCertStore, alloc: &A) -> McuResult<()> {
+async fn setup_endorsements<A: ScratchAlloc>(
+    store: &SharedCertStore<CertStoreStorage>,
+    alloc: &A,
+) -> McuResult<()> {
     // Vendor: ReadOnly endorsement with static Root CA (ECC & ML-DSA).
     store
         .init_readonly_endorsement(
@@ -137,12 +206,13 @@ async fn setup_endorsements<A: ScratchAlloc>(store: &SharedCertStore, alloc: &A)
     // authorization exists.
     #[cfg(feature = "test-mctp-spdm-set-certificate")]
     {
+        let storage = SpiFlashEndorsementStorage::new(CERT_STORE_PARTITION.driver_num);
         for (region_index, &(role, algo)) in MANAGED_ENDORSEMENT_REGIONS.iter().enumerate() {
             store
                 .init_managed_endorsement(
                     role,
                     algo,
-                    CERT_STORE_PARTITION.driver_num,
+                    storage,
                     region_index * MANAGED_SLOT_REGION_SIZE,
                     MANAGED_SLOT_REGION_SIZE,
                 )
