@@ -336,9 +336,9 @@ jobs:
       - name: Install cmake 3.x
         run: |
           wget https://github.com/Kitware/CMake/releases/download/v3.31.6/cmake-3.31.6-linux-x86_64.tar.gz &&
-          mkdir -p /opt/cmake &&
-          tar xvzf cmake-3.31.6-linux-x86_64.tar.gz -C /opt/cmake --strip-components=1 &&
-          echo "/opt/cmake/bin" >> $GITHUB_PATH
+          mkdir -p "$RUNNER_TEMP/cmake" &&
+          tar xvzf cmake-3.31.6-linux-x86_64.tar.gz -C "$RUNNER_TEMP/cmake" --strip-components=1 &&
+          echo "$RUNNER_TEMP/cmake/bin" >> "$GITHUB_PATH"
 
       - name: Checkout spdm-emu repository
         uses: actions/checkout@v7
