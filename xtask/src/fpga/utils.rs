@@ -369,11 +369,12 @@ pub fn run_test_suite(
     };
     // Allow CI (which runs xtask from the repo root) to override the cd target.
     let workspace = std::env::var("CPTRA_TEST_WORKSPACE").unwrap_or_else(|_| test_dir.to_string());
+    let revision = caliptra_mcu_builder::hardware_revision()?;
     // --status-level=all emits STARTING lines so a hung test is visible in the
     // streamed log even if nextest never reports a PASS/FAIL.
     let mut test_command = format!(
         "(cd {workspace} && \
-                sudo {prelude} \
+                sudo CALIPTRA_HW_REV={revision} {prelude} \
                 cargo-nextest nextest run \
                 {binaries_args}\
                 {test_output} --no-fail-fast --status-level=all "

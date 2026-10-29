@@ -13,6 +13,9 @@ concurrency:
 
 # ROM, FMC and runtime follow the selected core/caliptra-sw pin together.
 
+env:
+  CALIPTRA_HW_REV: "2.1"
+
 jobs:
   build_spdm_emu_tools:
     name: Build spdm-emu tools
@@ -186,6 +189,9 @@ jobs:
           sudo apt-get update -qy && \
           sudo apt-get install -qy build-essential curl gcc-multilib gcc-riscv64-unknown-elf git rustup &&
           rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
+
+      - name: Select pinned Caliptra 2.1 software
+        run: CALIPTRA_HW_REV=latest cargo xtask switch-version 2.1
 
       - name: Restore sccache binary
         uses: actions/cache/restore@v6
@@ -362,6 +368,9 @@ jobs:
           sudo apt-get update -qy && \
           sudo apt-get install -qy build-essential curl gcc-multilib gcc-riscv64-unknown-elf git rustup &&
           rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
+
+      - name: Select pinned Caliptra 2.1 software
+        run: CALIPTRA_HW_REV=latest cargo xtask switch-version 2.1
 
       - name: Restore sccache binary
         uses: actions/cache/restore@v6

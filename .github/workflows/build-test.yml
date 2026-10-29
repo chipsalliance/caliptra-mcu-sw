@@ -69,8 +69,13 @@ jobs:
   build-xtask:
     runs-on: e2-standard-4
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        hw-revision: ["2.1", "latest"]
 
     env:
+      CALIPTRA_HW_REV: ${{ matrix.hw-revision }}
       CARGO_INCREMENTAL: 0
       EXTRA_CARGO_CONFIG: 'target.''cfg(all())''.rustflags = ["-Dwarnings"]'
 
@@ -88,13 +93,14 @@ jobs:
 
       - name: Prebuild xtask
         run: |
+          CALIPTRA_HW_REV=latest cargo xtask switch-version "${{ matrix.hw-revision }}"
           cargo build --package caliptra-mcu-xtask --features parallel-build
           cp target/debug/caliptra-mcu-xtask /tmp/xtask
 
       - name: Upload xtask binary
         uses: actions/upload-artifact@v4
         with:
-          name: xtask-binary
+          name: xtask-binary-${{ matrix.hw-revision }}
           path: /tmp/xtask
           retention-days: 1
 
@@ -102,8 +108,13 @@ jobs:
     runs-on: e2-standard-8
     needs: [build-xtask]
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        hw-revision: ["2.1", "latest"]
 
     env:
+      CALIPTRA_HW_REV: ${{ matrix.hw-revision }}
       CARGO_INCREMENTAL: 0
       EXTRA_CARGO_CONFIG: 'target.''cfg(all())''.rustflags = ["-Dwarnings"]'
 
@@ -126,7 +137,7 @@ jobs:
       - name: Download xtask binary
         uses: actions/download-artifact@v4
         with:
-          name: xtask-binary
+          name: xtask-binary-${{ matrix.hw-revision }}
           path: /tmp/
 
       - name: Make xtask executable
@@ -137,12 +148,19 @@ jobs:
           curl -LsSf https://get.nexte.st/0.9.118/linux | tar zxf - -C ~/.cargo/bin
 
       - name: Run precheckin
-        run: /tmp/xtask precheckin
+        run: |
+          CALIPTRA_HW_REV=latest cargo xtask switch-version "${{ matrix.hw-revision }}"
+          /tmp/xtask precheckin
 
   caliptra-util-host-precheckin:
+    strategy:
+      fail-fast: false
+      matrix:
+        hw-revision: ["2.1", "latest"]
     uses: ./.github/workflows/caliptra-util-host-validator.yml
     with:
       run-validator-tests: false
+      hw-revision: ${{ matrix.hw-revision }}
 
   build-firmware:
     runs-on: e2-standard-16-big-disk
@@ -153,9 +171,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        hw-revision: ["2.1", "latest"]
         shard: [0, 1, 2, 3, 4]
 
     env:
+      CALIPTRA_HW_REV: ${{ matrix.hw-revision }}
       CARGO_INCREMENTAL: 0
       EXTRA_CARGO_CONFIG: 'target.''cfg(all())''.rustflags = ["-Dwarnings"]'
 
@@ -174,7 +194,7 @@ jobs:
       - name: Download xtask binary
         uses: actions/download-artifact@v8
         with:
-          name: xtask-binary
+          name: xtask-binary-${{ matrix.hw-revision }}
           path: /tmp/
 
       - name: Make xtask executable
@@ -182,6 +202,7 @@ jobs:
 
       - name: Build ROM and runtime binaries (Shard ${{ matrix.shard }}/5)
         run: |
+          CALIPTRA_HW_REV=latest cargo xtask switch-version "${{ matrix.hw-revision }}"
           /tmp/xtask all-build --platform emulator \
             --output target/all-fw-shard-${{ matrix.shard }}.zip \
             --rom-features "hw-2-1" \
@@ -203,7 +224,7 @@ jobs:
       - name: Upload partial firmware bundle
         uses: actions/upload-artifact@v4
         with:
-          name: firmware-bundle-shard-${{ matrix.shard }}
+          name: firmware-bundle-${{ matrix.hw-revision }}-shard-${{ matrix.shard }}
           path: target/all-fw*.zip
           if-no-files-found: error
           retention-days: 1
@@ -212,6 +233,10 @@ jobs:
     needs: build-firmware
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    strategy:
+      fail-fast: false
+      matrix:
+        hw-revision: ["2.1", "latest"]
 
     steps:
       - name: Install zip/unzip tools
@@ -220,14 +245,14 @@ jobs:
       - name: Download all shard artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: firmware-bundle-shard-*
+          pattern: firmware-bundle-${{ matrix.hw-revision }}-shard-*
           path: staging/
 
       - name: Merge firmware bundles
         run: |
           mkdir -p target/merged-all-fw target/merged-all-fw-release
           for shard in 0 1 2 3 4; do
-            shard_dir="staging/firmware-bundle-shard-$shard"
+            shard_dir="staging/firmware-bundle-${{ matrix.hw-revision }}-shard-$shard"
             unzip -o "$shard_dir/all-fw-shard-$shard.zip" -d target/merged-all-fw/
             unzip -o "$shard_dir/all-fw-release-shard-$shard.zip" -d target/merged-all-fw-release/
           done
@@ -238,7 +263,7 @@ jobs:
       - name: Upload firmware bundle
         uses: actions/upload-artifact@v7
         with:
-          name: firmware-bundle
+          name: firmware-bundle-${{ matrix.hw-revision }}
           path: target/all-fw.zip
           if-no-files-found: error
           retention-days: 1
@@ -246,7 +271,7 @@ jobs:
       - name: Upload release firmware bundle
         uses: actions/upload-artifact@v7
         with:
-          name: release-firmware-bundle
+          name: release-firmware-bundle-${{ matrix.hw-revision }}
           path: target/all-fw-release.zip
           if-no-files-found: error
           retention-days: 1
@@ -255,8 +280,13 @@ jobs:
     runs-on: e2-standard-16
     needs: [build-xtask]
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        hw-revision: ["2.1", "latest"]
 
     env:
+      CALIPTRA_HW_REV: ${{ matrix.hw-revision }}
       CARGO_INCREMENTAL: 0
       EXTRA_CARGO_CONFIG: 'target.''cfg(all())''.rustflags = ["-Dwarnings"]'
 
@@ -275,7 +305,7 @@ jobs:
       - name: Download xtask binary
         uses: actions/download-artifact@v8
         with:
-          name: xtask-binary
+          name: xtask-binary-${{ matrix.hw-revision }}
           path: /tmp/
 
       - name: Make xtask executable
@@ -283,13 +313,14 @@ jobs:
 
       - name: Build emulator binary
         run: |
+          CALIPTRA_HW_REV=latest cargo xtask switch-version "${{ matrix.hw-revision }}"
           # Build a single emulator that supports all test features via runtime flags
           /tmp/xtask emulator-build --output target/emulators.zip
 
       - name: Upload emulator bundle
         uses: actions/upload-artifact@v7
         with:
-          name: emulator-bundle
+          name: emulator-bundle-${{ matrix.hw-revision }}
           path: target/emulators.zip
           if-no-files-found: error
           retention-days: 1
@@ -298,8 +329,13 @@ jobs:
     runs-on: e2-standard-8
     needs: [build-xtask]
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        hw-revision: ["2.1", "latest"]
 
     env:
+      CALIPTRA_HW_REV: ${{ matrix.hw-revision }}
       CARGO_INCREMENTAL: 0
       EXTRA_CARGO_CONFIG: 'target.''cfg(all())''.rustflags = ["-Dwarnings"]'
 
@@ -326,7 +362,7 @@ jobs:
       - name: Download xtask binary
         uses: actions/download-artifact@v8
         with:
-          name: xtask-binary
+          name: xtask-binary-${{ matrix.hw-revision }}
           path: /tmp/
 
       - name: Make xtask executable
@@ -334,13 +370,14 @@ jobs:
 
       - name: Build test archive
         run: |
+          CALIPTRA_HW_REV=latest cargo xtask switch-version "${{ matrix.hw-revision }}"
           /tmp/xtask test-archive \
             --archive /tmp/nextest-archive.tar.zst
 
       - name: Upload test archive
         uses: actions/upload-artifact@v7
         with:
-          name: nextest-archive
+          name: nextest-archive-${{ matrix.hw-revision }}
           path: /tmp/nextest-archive.tar.zst
           retention-days: 1
 
@@ -351,9 +388,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        hw-revision: ["2.1", "latest"]
         shard: [1, 2, 3, 4, 5, 6, 7, 8]
 
     env:
+      CALIPTRA_HW_REV: ${{ matrix.hw-revision }}
       CARGO_INCREMENTAL: 0
       EXTRA_CARGO_CONFIG: 'target.''cfg(all())''.rustflags = ["-Dwarnings"]'
       NEXTEST_PROFILE: ${{ github.event_name == 'schedule' && 'emulator' || 'pr-emulator' }}
@@ -377,7 +416,7 @@ jobs:
       - name: Download xtask binary
         uses: actions/download-artifact@v4
         with:
-          name: xtask-binary
+          name: xtask-binary-${{ matrix.hw-revision }}
           path: /tmp/
 
       - name: Make xtask executable
@@ -385,30 +424,31 @@ jobs:
 
       - name: Setup TAP interface for network tests
         run: |
+          CALIPTRA_HW_REV=latest cargo xtask switch-version "${{ matrix.hw-revision }}"
           /tmp/xtask network tap setup
 
       - name: Download firmware bundle
         uses: actions/download-artifact@v8
         with:
-          name: firmware-bundle
+          name: firmware-bundle-${{ matrix.hw-revision }}
           path: target/
 
       - name: Download release firmware bundle
         uses: actions/download-artifact@v8
         with:
-          name: release-firmware-bundle
+          name: release-firmware-bundle-${{ matrix.hw-revision }}
           path: target/
 
       - name: Download emulator bundle
         uses: actions/download-artifact@v8
         with:
-          name: emulator-bundle
+          name: emulator-bundle-${{ matrix.hw-revision }}
           path: target/
 
       - name: Download test archive
         uses: actions/download-artifact@v8
         with:
-          name: nextest-archive
+          name: nextest-archive-${{ matrix.hw-revision }}
           path: /tmp/
 
       # To run these tests locally for debugging, first build the firmware and emulators:
@@ -450,7 +490,7 @@ jobs:
         uses: actions/upload-artifact@v7
         if: success() || failure()
         with:
-          name: caliptra-test-results-${{ matrix.shard }}
+          name: caliptra-test-results-${{ matrix.hw-revision }}-${{ matrix.shard }}
           path: |
             /tmp/junit-${{ matrix.shard }}.xml
             /tmp/junit-release.xml
@@ -460,6 +500,10 @@ jobs:
     runs-on: ubuntu-latest
     needs: [test_emulator]
     if: ${{ always() && (needs.test_emulator.result == 'success' || needs.test_emulator.result == 'failure') }}
+    strategy:
+      fail-fast: false
+      matrix:
+        hw-revision: ["2.1", "latest"]
     steps:
       - name: Checkout repo
         uses: actions/checkout@v7
@@ -469,7 +513,7 @@ jobs:
       - name: 'Download test results'
         uses: actions/download-artifact@v8
         with:
-          pattern: caliptra-test-results-*
+          pattern: caliptra-test-results-${{ matrix.hw-revision }}-*
           merge-multiple: true
           path: /tmp/junit
 
@@ -479,7 +523,7 @@ jobs:
 
       - name: Print results
         run: |
-          echo "## Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "## Test Results (${{ matrix.hw-revision }})" >> $GITHUB_STEP_SUMMARY
           for xml in /tmp/junit/junit-*.xml; do
             /tmp/test-printer/bin/test-printer --xml-path "$xml" >> $GITHUB_STEP_SUMMARY
           done
@@ -487,8 +531,13 @@ jobs:
   coverage:
     runs-on: ubuntu-latest
     needs: [precheckin, merge-firmware-bundles, build-emulator, build-tests, build-xtask]
+    strategy:
+      fail-fast: false
+      matrix:
+        hw-revision: ["2.1", "latest"]
 
     env:
+      CALIPTRA_HW_REV: ${{ matrix.hw-revision }}
       CARGO_INCREMENTAL: 0
 
     steps:
@@ -510,7 +559,7 @@ jobs:
       - name: Download xtask binary
         uses: actions/download-artifact@v4
         with:
-          name: xtask-binary
+          name: xtask-binary-${{ matrix.hw-revision }}
           path: /tmp/
 
       - name: Make xtask executable
@@ -519,23 +568,25 @@ jobs:
       - name: Download firmware bundle
         uses: actions/download-artifact@v8
         with:
-          name: firmware-bundle
+          name: firmware-bundle-${{ matrix.hw-revision }}
           path: target/
 
       - name: Download emulator bundle
         uses: actions/download-artifact@v8
         with:
-          name: emulator-bundle
+          name: emulator-bundle-${{ matrix.hw-revision }}
           path: target/
 
       - name: Download test archive
         uses: actions/download-artifact@v8
         with:
-          name: nextest-archive
+          name: nextest-archive-${{ matrix.hw-revision }}
           path: /tmp/
 
       - name: Build ROM ELF for coverage analysis
-        run: /tmp/xtask rom-build
+        run: |
+          CALIPTRA_HW_REV=latest cargo xtask switch-version "${{ matrix.hw-revision }}"
+          /tmp/xtask rom-build
 
       - name: Run tests with coverage collection
         run: |
@@ -552,7 +603,7 @@ jobs:
       - name: Analyze coverage
         run: |
           MCU_COVERAGE_PATH=/tmp/mcu-coverage /tmp/xtask coverage --analyze-only 2>&1 | tee /tmp/coverage-results.txt
-          echo '## Code Coverage' >> $GITHUB_STEP_SUMMARY
+          echo '## Code Coverage (${{ matrix.hw-revision }})' >> $GITHUB_STEP_SUMMARY
           echo '' >> $GITHUB_STEP_SUMMARY
           echo '| Image | Metric | Value |' >> $GITHUB_STEP_SUMMARY
           echo '|-------|--------|-------|' >> $GITHUB_STEP_SUMMARY

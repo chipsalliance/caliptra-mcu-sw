@@ -133,15 +133,25 @@ changes; pinning it does not by itself certify complete 2.2 hardware support.
 The switch uses the exact commit above, not a moving branch tip. CFI and DPE
 pins remain unchanged.
 
-Latest/2.2 CI builds FPGA firmware and test binaries, but skips bitstream
-downloads and FPGA execution because compatible bitstreams are not available.
-The repository variable `RUN_FPGA_LATEST_CI=true` enables those steps and the
-optional upstream FPGA smoke workflow once compatible bitstreams and that
-workflow are ready. `RUN_FPGA_CI=false` still disables the FPGA workflows,
-including their build jobs. FPGA CI and the test-build container use the local
-revision-specific fuse file instead of downloading a legacy MCU fuse path.
-CI supplies explicit bundle output names for artifact handoff; ordinary builds
-retain their hardware-revision-specific default names.
+CI runs the complete precheckin, emulator integration, release-test and coverage
+pipeline on both `2.1` and `latest`. Every build selects the matching pinned core
+source and reviewed lockfiles; firmware, emulators, test archives and results
+have revision-qualified artifact names so the two pipelines cannot mix inputs.
+Host-tool precheckin also runs on both revisions. The existing nightly SPDM,
+attestation and host-validator suites use `2.1`.
+
+Both revisions build FPGA firmware and test binaries. Only `2.1` downloads and
+executes the validated bitstream, including the FPGA SPDM suite. Latest/2.2 is
+strictly build-only because compatible bitstreams are not available.
+`RUN_FPGA_CI=false` still disables the FPGA workflows, including their build
+jobs. The separate optional upstream FPGA smoke workflow remains gated by
+`RUN_FPGA_LATEST_CI=true`; its external build flow is not yet revision-aware and
+is not part of the restored 2.1 MCU test coverage. [Issue #2288](https://github.com/chipsalliance/caliptra-mcu-sw/issues/2288)
+tracks restoring that smoke test for 2.1 only.
+FPGA CI and the test-build container use the local revision-specific fuse file
+instead of downloading a legacy MCU fuse path. CI supplies explicit bundle
+output names for artifact handoff; ordinary builds retain their
+hardware-revision-specific default names.
 
 Three shared integration tests are temporarily ignored on latest/2.2 and remain
 enabled on 2.1: `test_vendor_pk_lock_applied`, `test_rom_iccm_ecc_unc`, and
