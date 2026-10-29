@@ -16,7 +16,7 @@ pub enum OwnerManifestCommands {
             long = "owner_soc_image",
             value_name = "OWNER_SOC_IMAGE",
             num_args = 1..,
-            required = true
+            required_unless_present = "command_auth_key_digest"
         )]
         images: Vec<ImageCfg>,
 
@@ -27,6 +27,10 @@ pub enum OwnerManifestCommands {
         /// Owner Authorization Manifest SVN value
         #[arg(long = "svn", value_name = "SVN")]
         svn: Option<u32>,
+
+        /// SHA-384 command-key digest for the Owner-only command-authorization IME.
+        #[arg(long = "command-auth-key-digest", value_name = "HEX_DIGEST")]
+        command_auth_key_digest: Option<String>,
     },
     /// Parse and display an Owner Authorization Manifest
     Parse {
@@ -36,12 +40,21 @@ pub enum OwnerManifestCommands {
     },
 }
 
-pub fn create(owner_soc_images: &[ImageCfg], output: &str, svn: Option<u32>) -> Result<()> {
+pub fn create(
+    owner_soc_images: &[ImageCfg],
+    output: &str,
+    svn: Option<u32>,
+    command_auth_key_digest: Option<&str>,
+) -> Result<()> {
     let mut builder = CaliptraBuilder::new(&CaliptraBuildArgs {
         owner_soc_images: Some(owner_soc_images.to_vec()),
         owner_manifest_svn: svn,
         ..Default::default()
-    });
+    })
+    .with_command_auth_key_digests(
+        None,
+        crate::auth_manifest::parse_command_auth_key_digest(command_auth_key_digest)?,
+    )?;
 
     let path = builder.get_owner_auth_manifest(Some(output))?;
     println!(
@@ -111,6 +124,57 @@ mod tests {
     }
 
     #[test]
+    fn command_auth_only_manifest_does_not_require_owner_firmware_images() {
+        let digest = "11".repeat(48);
+        let cli = Cli::try_parse_from([
+            "test",
+            "create",
+            "--output",
+            "owner-manifest.bin",
+            "--command-auth-key-digest",
+            digest.as_str(),
+        ])
+        .unwrap();
+        match cli.command {
+            OwnerManifestCommands::Create {
+                images,
+                command_auth_key_digest,
+                ..
+            } => {
+                assert!(images.is_empty());
+                assert_eq!(command_auth_key_digest.as_deref(), Some(digest.as_str()));
+            }
+            _ => panic!("Expected OwnerManifestCommands::Create"),
+        }
+        assert!(Cli::try_parse_from(["test", "create", "--output", "owner.bin"]).is_err());
+    }
+
+    #[test]
+    fn command_auth_only_manifest_contains_one_configured_owner_key_ime() {
+        let directory = tempdir().unwrap();
+        let output = directory.path().join("owner-manifest.bin");
+        create(
+            &[],
+            output.to_str().unwrap(),
+            Some(9),
+            Some(&"11".repeat(48)),
+        )
+        .unwrap();
+
+        let bytes = std::fs::read(output).unwrap();
+        let manifest = OwnerAuthorizationManifest::read_from_bytes(&bytes).unwrap();
+        assert_eq!(manifest.preamble.svn, 9);
+        assert_eq!(manifest.image_metadata_col.entry_count, 2);
+        let owner_keys: Vec<_> = manifest.image_metadata_col.image_metadata_list
+            [..manifest.image_metadata_col.entry_count as usize]
+            .iter()
+            .filter(|entry| entry.fw_id == 0x0000_0006)
+            .collect();
+        assert_eq!(owner_keys.len(), 1);
+        assert_eq!(owner_keys[0].digest, [0x11; 48]);
+    }
+
+    #[test]
     fn test_owner_manifest_create_cli_parse() {
         let cli = Cli::parse_from([
             "test",
@@ -128,11 +192,13 @@ mod tests {
                 images,
                 output,
                 svn,
+                command_auth_key_digest,
             } => {
                 assert_eq!(images.len(), 1);
                 assert_eq!(images[0].image_id, 0x10000);
                 assert_eq!(output, "owner-manifest.bin");
                 assert_eq!(svn, Some(11));
+                assert!(command_auth_key_digest.is_none());
             }
             _ => panic!("Expected OwnerManifestCommands::Create"),
         }
@@ -154,6 +220,7 @@ mod tests {
             }],
             output_path.to_str().unwrap(),
             Some(11),
+            None,
         )
         .unwrap();
 

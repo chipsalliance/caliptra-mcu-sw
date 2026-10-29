@@ -432,6 +432,7 @@ mod tests {
         AsymAlgo, AuthorizationError, CaliptraCompletionCode as CommonCompletionCode,
         CommandAuthorizer, DeviceCapabilities, EvidenceFormat, FirmwareVersion, PkiEntitySlot,
     };
+    use caliptra_mcu_mbox_common::authorization::{AuthorizationMetadata, CommandAuthMode};
     use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
 
     /// Stand-in for an ECC PCR quote: small enough to prove the per-format
@@ -631,6 +632,7 @@ mod tests {
         authorized_operation: Mutex<Option<AuthorizedOperation>>,
         authorization_error: Mutex<Option<CommonCompletionCode>>,
         enforce_authorization: bool,
+        generated_nonce: [u8; AUTH_CMD_NONCE_LEN],
         challenge: Mutex<Option<[u8; 48]>>,
         last_attested_csr_args: Mutex<Option<AttestedCsrArgs>>,
     }
@@ -655,6 +657,7 @@ mod tests {
                 authorized_operation: Mutex::new(None),
                 authorization_error: Mutex::new(None),
                 enforce_authorization: false,
+                generated_nonce: TEST_AUTH_CHALLENGE,
                 challenge: Mutex::new(None),
                 last_attested_csr_args: Mutex::new(None),
             }
@@ -679,6 +682,7 @@ mod tests {
                 authorized_operation: Mutex::new(None),
                 authorization_error: Mutex::new(None),
                 enforce_authorization: false,
+                generated_nonce: TEST_AUTH_CHALLENGE,
                 challenge: Mutex::new(None),
                 last_attested_csr_args: Mutex::new(None),
             }
@@ -1017,12 +1021,15 @@ mod tests {
     impl CaliptraVdmStreamOps for TestCommands {}
 
     impl CommandAuthorizer for TestCommands {
+        fn device_ueid(&self) -> Result<[u8; 16], AuthorizationError> {
+            Ok([0x42; 16])
+        }
+
         async fn generate_challenge<Alloc: mcu_caliptra_api::ScratchAlloc>(
             &self,
             _alloc: &Alloc,
         ) -> Result<[u8; AUTH_CMD_NONCE_LEN], AuthorizationError> {
-            *self.challenge.lock().unwrap() = Some(TEST_AUTH_CHALLENGE);
-            Ok(TEST_AUTH_CHALLENGE)
+            Ok(self.generated_nonce)
         }
 
         async fn verify_signatures<Alloc: mcu_caliptra_api::ScratchAlloc>(
@@ -1030,6 +1037,7 @@ mod tests {
             _alloc: &Alloc,
             cmd_id: u32,
             payload: &[u8],
+            metadata: &AuthorizationMetadata,
             nonce: &[u8; AUTH_CMD_NONCE_LEN],
             _ecc_pub_x: &[u8; 48],
             _ecc_pub_y: &[u8; 48],
@@ -1039,17 +1047,28 @@ mod tests {
             if !self.enforce_authorization {
                 return Ok(());
             }
-            let challenge = self.take_challenge().ok_or(AuthorizationError)?;
-            if *nonce != challenge {
-                return Err(AuthorizationError);
-            }
+            let challenge = if CommandAuthMode::from_nonce(nonce) == CommandAuthMode::ChallengeBound
+            {
+                let challenge = self.take_challenge().ok_or(AuthorizationError)?;
+                if *nonce != challenge {
+                    return Err(AuthorizationError);
+                }
+                challenge
+            } else {
+                [0; AUTH_CMD_NONCE_LEN]
+            };
             let signature = signature.as_bytes();
             let payload_end = 4 + payload.len();
-            let challenge_end = payload_end + challenge.len();
+            let metadata_end = payload_end + metadata.as_bytes().len();
+            let challenge_end = metadata_end + challenge.len();
             if signature[..4] != cmd_id.to_be_bytes()
                 || signature[4..payload_end] != *payload
-                || signature[payload_end..challenge_end] != challenge
-                || signature[challenge_end..].iter().any(|byte| *byte != 0x3C)
+                || signature[payload_end..metadata_end] != *metadata.as_bytes()
+                || signature[metadata_end..challenge_end] != challenge
+                || signature[challenge_end..signature.len() - 1]
+                    .iter()
+                    .any(|byte| *byte != 0x3C)
+                || signature.last() != Some(&0)
             {
                 return Err(AuthorizationError);
             }
@@ -1137,6 +1156,7 @@ mod tests {
         ];
         req.extend_from_slice(&sub_cmd.to_le_bytes());
         req.extend_from_slice(payload);
+        req.extend_from_slice(AuthorizationMetadata::default().as_bytes());
         req.extend_from_slice(&TEST_AUTH_CHALLENGE);
         req.extend_from_slice(&[0u8; 48]);
         req.extend_from_slice(&[0u8; 48]);
@@ -1151,16 +1171,58 @@ mod tests {
 
     /// Deterministic test signature containing the complete signed preimage.
     /// The production verifier performs ECC and ML-DSA verification over this
-    /// same `cmd_id(BE) || payload || challenge(48)` byte sequence.
+    /// same `cmd_id(BE) || payload || metadata || challenge(48)` byte sequence.
     fn test_signature(cmd_id: u32, payload: &[u8], challenge: &[u8; 48]) -> HybridSignature {
+        test_signature_with_metadata(
+            cmd_id,
+            payload,
+            &AuthorizationMetadata::default(),
+            challenge,
+        )
+    }
+
+    fn test_signature_with_metadata(
+        cmd_id: u32,
+        payload: &[u8],
+        metadata: &AuthorizationMetadata,
+        challenge: &[u8; 48],
+    ) -> HybridSignature {
         let mut sig = HybridSignature::default();
         sig.as_mut_bytes().fill(0x3C);
-        let preimage_len = 4 + payload.len() + challenge.len();
+        let payload_end = 4 + payload.len();
+        let metadata_end = payload_end + metadata.as_bytes().len();
+        let preimage_len = metadata_end + challenge.len();
         let preimage = &mut sig.as_mut_bytes()[..preimage_len];
         preimage[..4].copy_from_slice(&cmd_id.to_be_bytes());
-        preimage[4..4 + payload.len()].copy_from_slice(payload);
-        preimage[4 + payload.len()..].copy_from_slice(challenge);
+        preimage[4..payload_end].copy_from_slice(payload);
+        preimage[payload_end..metadata_end].copy_from_slice(metadata.as_bytes());
+        preimage[metadata_end..].copy_from_slice(challenge);
+        *sig.mldsa_sig.last_mut().unwrap() = 0;
         sig
+    }
+
+    fn authorized_request_with_context(
+        command_id: u32,
+        payload: &[u8],
+        metadata: AuthorizationMetadata,
+        nonce: [u8; AUTH_CMD_NONCE_LEN],
+    ) -> Vec<u8> {
+        use caliptra_mcu_mbox_common::authorization::AuthorizationBlock;
+
+        let block = AuthorizationBlock {
+            metadata,
+            nonce,
+            signature: test_signature_with_metadata(command_id, payload, &metadata, &nonce),
+            ..Default::default()
+        };
+        let mut request = vec![
+            CALIPTRA_VDM_COMMAND_VERSION,
+            CaliptraVdmCommand::AuthorizedCommand as u8,
+        ];
+        request.extend_from_slice(&command_id.to_le_bytes());
+        request.extend_from_slice(payload);
+        request.extend_from_slice(block.as_bytes());
+        request
     }
 
     fn issue_test_challenge(cmds: &TestCommands) {
@@ -1413,27 +1475,22 @@ mod tests {
 
     #[test]
     fn unsupported_command_returns_vdm_completion() {
-        // 0x7E is not a defined Caliptra VDM command code.
-        const UNKNOWN_COMMAND: u8 = 0x7E;
-        assert!(CaliptraVdmCommand::try_from(UNKNOWN_COMMAND).is_err());
-
         let cmds = TestCommands::new(0);
-        let (response, inline, _) = dispatch(
-            &cmds,
-            &[CALIPTRA_VDM_COMMAND_VERSION, UNKNOWN_COMMAND],
-            32,
-            0,
-        );
+        for command in [0x02, 0x7E] {
+            assert!(CaliptraVdmCommand::try_from(command).is_err());
+            let (response, inline, _) =
+                dispatch(&cmds, &[CALIPTRA_VDM_COMMAND_VERSION, command], 32, 0);
 
-        assert_inline(response, 3);
-        assert_eq!(
-            &inline[..3],
-            &[
-                CALIPTRA_VDM_COMMAND_VERSION,
-                UNKNOWN_COMMAND,
-                CaliptraCompletionCode::UnsupportedOperation as u8,
-            ]
-        );
+            assert_inline(response, 3);
+            assert_eq!(
+                &inline[..3],
+                &[
+                    CALIPTRA_VDM_COMMAND_VERSION,
+                    command,
+                    CaliptraCompletionCode::UnsupportedOperation as u8,
+                ]
+            );
+        }
     }
 
     #[cfg(not(feature = "device-ownership-transfer"))]
@@ -1854,6 +1911,167 @@ mod tests {
     }
 
     #[test]
+    fn authorization_supports_device_and_fleet_scope_in_both_modes() {
+        use caliptra_mcu_mbox_common::authorization::CommandAuthority;
+
+        let cmds = TestCommands::new(0).with_authorization();
+        for mode in [CommandAuthMode::ChallengeBound, CommandAuthMode::Offline] {
+            for ueid in [[0; 16], [0x42; 16]] {
+                let nonce = match mode {
+                    CommandAuthMode::ChallengeBound => {
+                        issue_test_challenge(&cmds);
+                        TEST_AUTH_CHALLENGE
+                    }
+                    CommandAuthMode::Offline => [0; AUTH_CMD_NONCE_LEN],
+                };
+                let request = authorized_request_with_context(
+                    FUSE_LOCK_PARTITION_CMD_ID,
+                    &0u32.to_le_bytes(),
+                    AuthorizationMetadata::new(CommandAuthority::Owner, ueid),
+                    nonce,
+                );
+                let (response, inline, _) = dispatch(&cmds, &request, 3, 0);
+                assert_inline(response, 3);
+                assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+                assert!(cmds.authorized_operation.lock().unwrap().take().is_some());
+                assert!(cmds.challenge.lock().unwrap().is_none());
+
+                let (response, inline, _) = dispatch(&cmds, &request, 3, 0);
+                assert_inline(response, 3);
+                match mode {
+                    CommandAuthMode::ChallengeBound => {
+                        assert_eq!(inline[2], CaliptraCompletionCode::AccessDenied as u8);
+                        assert!(cmds.authorized_operation.lock().unwrap().is_none());
+                    }
+                    CommandAuthMode::Offline => {
+                        assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+                        assert!(cmds.authorized_operation.lock().unwrap().is_some());
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn authorization_rejects_forbidden_authority_target_and_version() {
+        use caliptra_mcu_mbox_common::authorization::CommandAuthority;
+        use zerocopy::little_endian::U32;
+
+        let mut wrong_version = AuthorizationMetadata::default();
+        wrong_version.version = U32::new(0);
+        let mut unknown_authority = AuthorizationMetadata::default();
+        unknown_authority.authority = U32::new(0);
+        let cases = [
+            AuthorizationMetadata::new(CommandAuthority::VendorOwner, [0; 16]),
+            AuthorizationMetadata::new(CommandAuthority::Owner, [0x43; 16]),
+            wrong_version,
+            unknown_authority,
+        ];
+        for metadata in cases {
+            let cmds = TestCommands::new(0);
+            let request = authorized_request_with_context(
+                FUSE_LOCK_PARTITION_CMD_ID,
+                &0u32.to_le_bytes(),
+                metadata,
+                TEST_AUTH_CHALLENGE,
+            );
+            let (response, inline, _) = dispatch(&cmds, &request, 3, 0);
+            assert_inline(response, 3);
+            assert_eq!(inline[2], CaliptraCompletionCode::AccessDenied as u8);
+            assert!(cmds.authorized_operation.lock().unwrap().is_none());
+        }
+    }
+
+    #[test]
+    fn authorization_rejects_legacy_trailers_and_nonzero_signature_padding() {
+        let payload = 0u32.to_le_bytes();
+        let mut request = authorized_request_with_context(
+            FUSE_LOCK_PARTITION_CMD_ID,
+            &payload,
+            AuthorizationMetadata::default(),
+            TEST_AUTH_CHALLENGE,
+        );
+        *request.last_mut().unwrap() = 1;
+        let cmds = TestCommands::new(0);
+        let (response, inline, _) = dispatch(&cmds, &request, 3, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::AccessDenied as u8);
+        assert!(cmds.authorized_operation.lock().unwrap().is_none());
+
+        let metadata_offset = 2 + core::mem::size_of::<u32>() + payload.len();
+        request.drain(
+            metadata_offset..metadata_offset + core::mem::size_of::<AuthorizationMetadata>(),
+        );
+        let (response, inline, _) = dispatch(&cmds, &request, 3, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::InvalidPayloadSize as u8);
+        assert!(cmds.authorized_operation.lock().unwrap().is_none());
+    }
+
+    #[test]
+    fn zero_rng_challenge_is_rejected_without_replacing_live_challenge() {
+        let mut cmds = TestCommands::new(0);
+        cmds.generated_nonce = [0; AUTH_CMD_NONCE_LEN];
+        cmds.set_challenge(TEST_AUTH_CHALLENGE);
+        let mut request = vec![
+            CALIPTRA_VDM_COMMAND_VERSION,
+            CaliptraVdmCommand::AuthorizedCommand as u8,
+        ];
+        request.extend_from_slice(&GET_AUTH_CHALLENGE_CMD_ID.to_le_bytes());
+        let (response, inline, _) = dispatch(&cmds, &request, 51, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::OperationFailed as u8);
+        assert_eq!(*cmds.challenge.lock().unwrap(), Some(TEST_AUTH_CHALLENGE));
+    }
+
+    #[test]
+    fn offline_requests_preserve_live_challenges_and_signed_mode() {
+        let cmds = TestCommands::new(0).with_authorization();
+        issue_test_challenge(&cmds);
+        let payload = 0u32.to_le_bytes();
+        let offline = authorized_request_with_context(
+            FUSE_LOCK_PARTITION_CMD_ID,
+            &payload,
+            AuthorizationMetadata::default(),
+            [0; AUTH_CMD_NONCE_LEN],
+        );
+        let (response, inline, _) = dispatch(&cmds, &offline, 3, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+        assert!(cmds.authorized_operation.lock().unwrap().take().is_some());
+        assert_eq!(*cmds.challenge.lock().unwrap(), Some(TEST_AUTH_CHALLENGE));
+
+        let bound = authorized_request_with_context(
+            FUSE_LOCK_PARTITION_CMD_ID,
+            &payload,
+            AuthorizationMetadata::default(),
+            TEST_AUTH_CHALLENGE,
+        );
+        let mut tampered = bound.clone();
+        let nonce_offset = VDM_HEADER_LEN
+            + core::mem::size_of::<u32>()
+            + payload.len()
+            + core::mem::size_of::<AuthorizationMetadata>();
+        tampered[nonce_offset..nonce_offset + AUTH_CMD_NONCE_LEN].fill(0);
+        let (response, inline, _) = dispatch(&cmds, &tampered, 3, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::AccessDenied as u8);
+        assert!(cmds.authorized_operation.lock().unwrap().is_none());
+        assert_eq!(*cmds.challenge.lock().unwrap(), Some(TEST_AUTH_CHALLENGE));
+
+        let (response, inline, _) = dispatch(&cmds, &bound, 3, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+        assert!(cmds.authorized_operation.lock().unwrap().take().is_some());
+        assert!(cmds.challenge.lock().unwrap().is_none());
+
+        let (response, inline, _) = dispatch(&cmds, &bound, 3, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::AccessDenied as u8);
+        assert!(cmds.authorized_operation.lock().unwrap().is_none());
+    }
+
+    #[test]
     fn fe_prog_accepts_unaligned_wire_payload() {
         let cmds = TestCommands::new(0);
         let mut req = vec![
@@ -1862,7 +2080,8 @@ mod tests {
         ];
         req.extend_from_slice(&FE_PROG_CMD_ID.to_le_bytes());
         req.extend_from_slice(&0u32.to_le_bytes());
-        req.extend_from_slice(&[0u8; AUTH_CMD_NONCE_LEN]);
+        req.extend_from_slice(AuthorizationMetadata::default().as_bytes());
+        req.extend_from_slice(&TEST_AUTH_CHALLENGE);
         req.extend_from_slice(&[0u8; 48]);
         req.extend_from_slice(&[0u8; 48]);
         req.extend_from_slice(&[0u8; 2592]);

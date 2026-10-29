@@ -41,16 +41,14 @@ use zerocopy::{transmute, FromBytes, IntoBytes};
 
 const DEFAULT_PQC_KEY_TYPE: FwVerificationPqcKeyType = FwVerificationPqcKeyType::LMS;
 
-/// SHA-384 anchor of the test vendor authorization keys derived from
-/// label "caliptra-mcu-test-vendor-authorization-keys".
+/// Legacy vendor-key measurement fixture, unchanged unless explicitly configured.
 pub const VENDOR_AUTH_KEY_ANCHOR: [u8; 48] = [
     0xa2, 0x68, 0x7c, 0xf2, 0x45, 0x99, 0xb8, 0xf0, 0xf8, 0x26, 0x81, 0xd9, 0xbf, 0x6d, 0x77, 0xac,
     0x22, 0x47, 0x09, 0x4d, 0x1e, 0x9a, 0x2d, 0x81, 0x41, 0x55, 0x5f, 0xc6, 0x0d, 0x05, 0xc3, 0x0a,
     0x9f, 0xbd, 0x23, 0x46, 0x18, 0x09, 0xbf, 0xa5, 0x7d, 0xc7, 0x28, 0xd7, 0xbc, 0xc1, 0x7d, 0xea,
 ];
 
-/// SHA-384 anchor of the test owner authorization keys (mirrors AUTH_PK_HASH in auth_keys.rs,
-/// which authorizes existing commands).
+/// Legacy owner-key measurement fixture, unchanged unless explicitly configured.
 pub const OWNER_AUTH_KEY_ANCHOR: [u8; 48] = [
     0x29, 0x04, 0x41, 0x6e, 0xf2, 0x71, 0x31, 0x40, 0xd4, 0xa2, 0x21, 0x14, 0x48, 0xa3, 0xa8, 0x42,
     0x73, 0x7b, 0xf1, 0x8c, 0x6f, 0x84, 0x3f, 0x56, 0x5b, 0x5c, 0xe5, 0x35, 0xea, 0x69, 0xef, 0x2a,
@@ -144,6 +142,8 @@ pub struct CaliptraBuilder {
     svn: Option<u16>,
     pqc_key_type: FwVerificationPqcKeyType,
     use_second_key: bool,
+    command_auth_vendor_owner_digest: Option<[u8; 48]>,
+    command_auth_owner_digest: Option<[u8; 48]>,
 }
 
 impl CaliptraBuilder {
@@ -179,6 +179,8 @@ impl CaliptraBuilder {
             svn: args.svn,
             pqc_key_type: args.pqc_key_type.unwrap_or(DEFAULT_PQC_KEY_TYPE),
             use_second_key: args.use_second_key,
+            command_auth_vendor_owner_digest: None,
+            command_auth_owner_digest: None,
         }
     }
 
@@ -210,6 +212,23 @@ impl CaliptraBuilder {
     ) -> Self {
         self.auth_manifest_owner_config = Some(auth_manifest_owner_config);
         self
+    }
+
+    /// Configure the existing auth-key IME digests before generating signed manifests.
+    pub fn with_command_auth_key_digests(
+        mut self,
+        vendor_owner: Option<[u8; 48]>,
+        owner: Option<[u8; 48]>,
+    ) -> Result<Self> {
+        if self.soc_manifest.is_some() && vendor_owner != self.command_auth_vendor_owner_digest {
+            bail!("Cannot change command-key metadata in an existing original SoC Manifest");
+        }
+        if self.owner_auth_manifest.is_some() && owner != self.command_auth_owner_digest {
+            bail!("Cannot change command-key metadata in an existing Owner SoC Manifest");
+        }
+        self.command_auth_vendor_owner_digest = vendor_owner;
+        self.command_auth_owner_digest = owner;
+        Ok(self)
     }
 
     /// Returns the owner public key hash if available.
@@ -328,6 +347,14 @@ impl CaliptraBuilder {
             }
         }
         Ok(metadata)
+    }
+
+    fn configured_vendor_auth_key_metadata(&self) -> AuthManifestImageMetadata {
+        let mut metadata = Self::get_vendor_auth_key_metadata();
+        if let Some(digest) = self.command_auth_vendor_owner_digest {
+            metadata.digest = digest;
+        }
+        metadata
     }
 
     pub fn get_vendor_auth_key_metadata() -> AuthManifestImageMetadata {
@@ -501,7 +528,7 @@ impl CaliptraBuilder {
             .map(|imgs| imgs.iter().any(|img| img.image_id == O_AUTH_KEY_ID))
             .unwrap_or(false);
 
-        if has_owner_auth_key {
+        let mut owner_key = if has_owner_auth_key {
             let key_img = self
                 .owner_soc_images
                 .as_ref()
@@ -509,10 +536,20 @@ impl CaliptraBuilder {
                 .iter()
                 .find(|img| img.image_id == O_AUTH_KEY_ID)
                 .unwrap();
-            metadata.push(Self::get_soc_manifest_metadata(key_img)?);
+            Self::get_soc_manifest_metadata(key_img)?
         } else {
-            metadata.push(Self::get_owner_auth_key_metadata());
+            Self::get_owner_auth_key_metadata()
+        };
+
+        if let Some(digest) = self.command_auth_owner_digest {
+            if has_owner_auth_key && owner_key.digest != digest {
+                bail!(
+                    "Owner auth-key IME 0x6 has conflicting digests in owner_soc_images and command-auth-key-digest"
+                );
+            }
+            owner_key.digest = digest;
         }
+        metadata.push(owner_key);
 
         if let Some(owner_soc_images) = &self.owner_soc_images {
             Self::validate_owner_soc_images(owner_soc_images)?;
@@ -570,7 +607,7 @@ impl CaliptraBuilder {
             let mcu_fw_metadata =
                 self.get_mcu_manifest_metadata(self.mcu_firmware.as_ref().unwrap())?;
             let soc_images_metadata = self.get_soc_images_metadata()?;
-            let mut metadata = vec![mcu_fw_metadata, Self::get_vendor_auth_key_metadata()];
+            let mut metadata = vec![mcu_fw_metadata, self.configured_vendor_auth_key_metadata()];
             metadata.extend(soc_images_metadata);
 
             let path = self.write_soc_manifest(
@@ -1367,7 +1404,7 @@ fn main() -> Result<()> {
         let mcu_fw_metadata =
             self.get_mcu_manifest_metadata(self.mcu_firmware.as_ref().unwrap())?;
         let soc_images_metadata = self.get_soc_images_metadata()?;
-        let mut metadata = vec![mcu_fw_metadata, Self::get_vendor_auth_key_metadata()];
+        let mut metadata = vec![mcu_fw_metadata, self.configured_vendor_auth_key_metadata()];
         metadata.extend(soc_images_metadata);
 
         let manifest = Self::create_unsigned_auth_manifest_with_metadata(
@@ -1617,6 +1654,179 @@ mod tests {
     use super::*;
     use caliptra_auth_man_types::OWNER_AUTH_MANIFEST_MARKER;
     use tempfile::tempdir;
+
+    #[test]
+    fn command_auth_reuses_existing_reserved_key_metadata() {
+        use caliptra_auth_man_types::AUTH_MANIFEST_UEID_FW_ID;
+
+        assert_eq!(AUTH_MANIFEST_UEID_FW_ID, 0x0000_0FFF);
+        assert_eq!(V_AUTH_KEY_ID, 4);
+        assert_eq!(OWNER_MEASUREMENT_POLICY_IDENTIFIER, 5);
+        assert_eq!(O_AUTH_KEY_ID, 6);
+        let builder = CaliptraBuilder::new(&crate::CaliptraBuildArgs::default())
+            .with_command_auth_key_digests(Some([0x11; 48]), None)
+            .unwrap();
+        let metadata = builder.configured_vendor_auth_key_metadata();
+        assert_eq!(metadata.fw_id, V_AUTH_KEY_ID);
+        assert_eq!(metadata.component_id, V_AUTH_KEY_ID);
+        assert_eq!(metadata.digest, [0x11; 48]);
+        assert_eq!(metadata.flags, 0);
+        assert_eq!(metadata.image_load_address.lo, 0);
+        assert_eq!(metadata.image_load_address.hi, 0);
+        assert_eq!(metadata.image_staging_address.lo, 0);
+        assert_eq!(metadata.image_staging_address.hi, 0);
+    }
+
+    #[test]
+    fn command_auth_configuration_updates_existing_imes_without_duplicates() {
+        let directory = tempdir().unwrap();
+        let firmware = directory.path().join("mcu.bin");
+        std::fs::write(&firmware, b"command authorization test firmware").unwrap();
+        let args = crate::CaliptraBuildArgs {
+            mcu_firmware: Some(firmware),
+            owner_soc_images: Some(Vec::new()),
+            target_dir: Some(directory.path().to_path_buf()),
+            ..Default::default()
+        };
+        let mut unconfigured = CaliptraBuilder::new(&args);
+        let original_path = directory.path().join("without-command-keys.bin");
+        let (path, _) = unconfigured
+            .get_unsigned_auth_manifest(original_path.to_str(), None)
+            .unwrap();
+        let bytes = std::fs::read(path).unwrap();
+        let manifest = AuthorizationManifest::read_from_bytes(&bytes).unwrap();
+        assert_eq!(manifest.image_metadata_col.entry_count, 2);
+        assert_eq!(
+            manifest
+                .image_metadata_col
+                .image_metadata_list
+                .iter()
+                .find(|entry| entry.fw_id == V_AUTH_KEY_ID)
+                .unwrap()
+                .digest,
+            VENDOR_AUTH_KEY_ANCHOR
+        );
+        let legacy_owner = unconfigured.get_owner_soc_images_metadata().unwrap();
+        assert_eq!(legacy_owner.len(), 2);
+
+        let mut configured = CaliptraBuilder::new(&args)
+            .with_command_auth_key_digests(Some([0x11; 48]), Some([0x22; 48]))
+            .unwrap();
+        let original_path = directory.path().join("with-command-keys.bin");
+        let (path, _) = configured
+            .get_unsigned_auth_manifest(original_path.to_str(), None)
+            .unwrap();
+        let bytes = std::fs::read(path).unwrap();
+        let manifest = AuthorizationManifest::read_from_bytes(&bytes).unwrap();
+        let entries = &manifest.image_metadata_col.image_metadata_list
+            [..manifest.image_metadata_col.entry_count as usize];
+        assert_eq!(entries.len(), 2);
+        assert_eq!(
+            entries
+                .iter()
+                .find(|entry| entry.fw_id == V_AUTH_KEY_ID)
+                .unwrap()
+                .digest,
+            [0x11; 48]
+        );
+        assert_eq!(
+            entries
+                .iter()
+                .filter(|entry| entry.fw_id == V_AUTH_KEY_ID)
+                .count(),
+            1
+        );
+        assert!(entries.iter().all(|entry| entry.fw_id != O_AUTH_KEY_ID));
+        assert!(AuthManifestFlags::from(manifest.preamble.flags)
+            .contains(AuthManifestFlags::VENDOR_SIGNATURE_REQUIRED));
+
+        let owner = configured.get_owner_soc_images_metadata().unwrap();
+        assert_eq!(owner.len(), 2);
+        assert_eq!(
+            owner
+                .iter()
+                .find(|entry| entry.fw_id == O_AUTH_KEY_ID)
+                .unwrap()
+                .digest,
+            [0x22; 48]
+        );
+        assert_eq!(
+            owner
+                .iter()
+                .filter(|entry| entry.fw_id == O_AUTH_KEY_ID)
+                .count(),
+            1
+        );
+        for legacy in legacy_owner {
+            let entry = owner
+                .iter()
+                .find(|entry| entry.fw_id == legacy.fw_id)
+                .unwrap();
+            let expected = if legacy.fw_id == O_AUTH_KEY_ID {
+                [0x22; 48]
+            } else {
+                legacy.digest
+            };
+            assert_eq!(entry.digest, expected);
+            assert_eq!(entry.component_id, legacy.component_id);
+            assert_eq!(entry.flags, legacy.flags);
+        }
+        assert!(owner.iter().all(|entry| entry.fw_id != V_AUTH_KEY_ID));
+    }
+
+    #[test]
+    fn command_auth_owner_key_image_and_digest_must_agree() {
+        let directory = tempdir().unwrap();
+        let key_path = directory.path().join("owner-key.bin");
+        std::fs::write(&key_path, b"owner command authorization key").unwrap();
+        let image = ImageCfg {
+            path: key_path,
+            image_id: O_AUTH_KEY_ID,
+            component_id: O_AUTH_KEY_ID,
+            ..Default::default()
+        };
+        let digest = CaliptraBuilder::get_soc_manifest_metadata(&image)
+            .unwrap()
+            .digest;
+        let args = crate::CaliptraBuildArgs {
+            owner_soc_images: Some(vec![image]),
+            target_dir: Some(directory.path().to_path_buf()),
+            ..Default::default()
+        };
+        let mut matching = CaliptraBuilder::new(&args)
+            .with_command_auth_key_digests(None, Some(digest))
+            .unwrap();
+        let entries = matching.get_owner_soc_images_metadata().unwrap();
+        assert_eq!(
+            entries
+                .iter()
+                .filter(|entry| entry.fw_id == O_AUTH_KEY_ID)
+                .count(),
+            1
+        );
+        let mut conflicting = CaliptraBuilder::new(&args)
+            .with_command_auth_key_digests(None, Some([0; 48]))
+            .unwrap();
+        assert!(conflicting.get_owner_soc_images_metadata().is_err());
+    }
+
+    #[test]
+    fn command_auth_configuration_cannot_silently_change_cached_manifests() {
+        let args = crate::CaliptraBuildArgs {
+            soc_manifest: Some(PathBuf::from("existing-original-manifest")),
+            owner_auth_manifest: Some(PathBuf::from("existing-owner-manifest")),
+            ..Default::default()
+        };
+        assert!(CaliptraBuilder::new(&args)
+            .with_command_auth_key_digests(Some([0x11; 48]), None)
+            .is_err());
+        assert!(CaliptraBuilder::new(&args)
+            .with_command_auth_key_digests(None, Some([0x22; 48]))
+            .is_err());
+        assert!(CaliptraBuilder::new(&args)
+            .with_command_auth_key_digests(None, None)
+            .is_ok());
+    }
 
     #[test]
     fn test_image_cfg_optional_network_filename() {

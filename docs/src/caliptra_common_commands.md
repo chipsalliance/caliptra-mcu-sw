@@ -23,7 +23,7 @@ The following table describes the commands defined under this specification. The
 | Message Name                    | R/O | Transport(s)          | Description                                                                                                                          |
 | ------------------------------- | --- | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
 | Firmware Version                | R   | MCTP VDM, MCI Mailbox | Retrieve firmware version information.                                                                                               |
-| Device Capabilities             | R   | MCTP VDM, MCI Mailbox | Retrieve device capabilities.                                                                                                        |
+| Device Capabilities             | R   | MCTP VDM, MCI Mailbox | Retrieve device capabilities.                                                                                                       |
 | Get Debug Log                   | R   | MCTP VDM, MCI Mailbox | Retrieve debug log.                                                                                                                  |
 | Clear Debug Log                 | R   | MCTP VDM, MCI Mailbox | Clear debug log.                                                                                                                     |
 | Get Attestation                 | O   | SPDM VDM, MCI Mailbox | Retrieve signed attestation evidence in a requester-selected format.                                                                 |
@@ -34,11 +34,11 @@ The following table describes the commands defined under this specification. The
 | Field Entropy Status            | O   | MCI Mailbox           | Report whether all field entropy partitions are provisioned.                                                                        |
 | Vendor PK Hash Status           | O   | MCI Mailbox           | Report occupied vendor PK hash slots and each slot's PQC key type.                                                                   |
 | HEK Status                      | O   | MCI Mailbox           | Report used HEK slots and the total number of configured HEK slots.                                                                  |
-| Authorization-Gated Subcommands | O   | SPDM VDM, MCI Mailbox | Security-sensitive provisioning and fuse subcommands using a one-use challenge and hybrid signature.                                |
+| Authorization-Gated Subcommands | O   | SPDM VDM, MCI Mailbox | Security-sensitive provisioning and fuse subcommands using a manifest-backed hybrid signature and signer-selected nonce form.          |
 
 ### Authorization-Gated Subcommands
 
-The following subcommands are assigned to the SPDM VDM IANA authorization-gated path and are also available through the MCI mailbox path where implemented. Both paths use the same one-use challenge and hybrid-signature verification described in [Caliptra SPDM VDM Commands](caliptra_spdm_vdm_cmds.md#authorization-flow); only their outer framing differs.
+The following subcommands are assigned to the SPDM VDM IANA authorization-gated path and are also available through the MCI mailbox path where implemented. Both paths use the same versioned [Authorization Block](caliptra_spdm_vdm_cmds.md#authorization-block), authority policy, target rules, and signature verification; only their outer framing differs. The signer selects Challenge-bound or replayable Offline authorization per request.
 
 | Subcommand Name                | Transport(s)               | Description                                        |
 | ------------------------------ | -------------------------- | -------------------------------------------------- |
@@ -411,21 +411,40 @@ claim `-70002`).
 Security-sensitive provisioning and fuse subcommands are assigned to the SPDM
 VDM IANA authorization-gated path and the MCI mailbox path. The SPDM VDM
 transport and MCI both use an `Authorized Command` (`0x12`) wrapper. In both
-cases the first four payload bytes are a little-endian target ID. The requester
-first obtains a one-use 48-byte challenge and appends the common public-key and
-hybrid-signature trailer over
-`target_id(BE) || command_payload || challenge`. See
-[Caliptra SPDM VDM Commands](caliptra_spdm_vdm_cmds.md#authorization-flow) for
-the byte-exact SPDM framing.
+cases the first four payload bytes are a little-endian target ID. Protected
+commands append the common version-1
+[Authorization Block](caliptra_spdm_vdm_cmds.md#authorization-block), including
+metadata, nonce, public keys, and both signatures. Both signatures bind:
+
+```text
+target_id(BE) || command_payload ||
+version(LE) || authority(LE) || soc_ueid[16] || nonce[48]
+```
+
+The signer chooses the nonce form per request. In Challenge-bound mode, it is
+a live, one-use device challenge. In Offline mode, it is 48 zero bytes and no
+challenge request is needed. See
+[Caliptra SPDM VDM Commands](caliptra_spdm_vdm_cmds.md#signed-transcript-and-key-digest)
+for the signature algorithms and key encodings.
 
 #### Request Payload
 
-| Byte(s) | Name        | Type  | Description                                         |
-| ------- | ----------- | ----- | --------------------------------------------------- |
-| 0:3     | sub_cmd_id  | u32   | Subcommand identifier defined by the SPDM VDM spec. |
-| 4:N     | sub_payload | u8[N] | Subcommand-specific payload.                        |
+Let `P` be the command-specific payload length. Transport headers and checksums
+are outside this body.
+
+| Offset | Length (bytes) | Field | Description |
+| ------ | -------------- | ----- | ----------- |
+| 0 | 4 | `sub_cmd_id` | Little-endian target ID. |
+| 4 | `P` | `command_payload` | Command-specific bytes, including any family operation ID. |
+| `4 + P` | 7,484 | `authorization_block` | The fixed-size [Authorization Block](caliptra_spdm_vdm_cmds.md#authorization-block). |
+
+`GetAuthChallenge` is the bootstrap exception: its wrapper payload contains
+only the target ID, without an Authorization Block.
 
 #### Response Payload
+
+SPDM VDM uses the response payload below after its Caliptra command header.
+MCI instead uses normal mailbox response framing and command-status reporting.
 
 | Byte(s) | Name            | Type  | Description                                                             |
 | ------- | --------------- | ----- | ----------------------------------------------------------------------- |
@@ -434,7 +453,7 @@ the byte-exact SPDM framing.
 
 The subcommands covered by this wrapper are listed in [Authorization-Gated Subcommands](#authorization-gated-subcommands).
 
-`DotLock`, `DotDisable`, `DotRotate`, and `GetDotBackupBlob` are the DOT-family subcommands that use this authorization wrapper. The remaining DOT commands (`DotUnlockChallenge`, `DotUnlock`, `DotStatus`, `DotRecovery`, `DotOverrideChallenge`, and `DotOverride`) are native device-ownership-transfer commands carried under top-level command `0x11` rather than via the `AuthorizedCommand` wrapper.
+`DotEnable`, `DotLock`, `DotDisable`, `DotRotate`, and `GetDotBackupBlob` are the DOT-family subcommands that use this authorization wrapper. The remaining DOT commands (`DotUnlockChallenge`, `DotUnlock`, `DotStatus`, `DotRecovery`, `DotOverrideChallenge`, and `DotOverride`) are native device-ownership-transfer commands carried under top-level command `0x11` rather than via the `AuthorizedCommand` wrapper.
 
 Subcommand-specific payloads are defined by the corresponding command specifications and contain no mailbox request header.
 
@@ -452,7 +471,8 @@ within this reserved namespace without colliding with Caliptra-defined FourCCs.
 
 ### Get Auth Challenge
 
-Requests a one-use challenge for authorization-gated commands.
+Returns a one-use 48-byte nonce for Challenge-bound authorization. Offline
+requests instead use an all-zero nonce.
 
 **Request Payload**: Empty
 
@@ -466,7 +486,18 @@ Requests a one-use challenge for authorization-gated commands.
 
 Provisions the vendor public key hash.
 
-**Request Payload**: `slot:u32 | hash:u8[48] | HybridSignature`
+**Request Payload**: `slot:u32 | hash:u8[48] | AuthorizationBlock`
+
+**Response Payload**: Empty
+
+### Provision Owner PK Hash
+
+Provisions the firmware owner public-key hash in OTP. This is distinct from
+configuring the command-key digest in Owner SoC Manifest IME `0x6`.
+
+**Request Payload**: `hash:u8[48] | AuthorizationBlock`
+
+The hash retains its existing dword-reversed OTP byte representation.
 
 **Response Payload**: Empty
 
@@ -498,7 +529,7 @@ The command does not reset the device. For Owner SoC Manifest storage and
 activation, see
 [Owner SoC Manifest SVN](svn.md#owner-soc-manifest-svn).
 
-**Request Payload**: `flags:u32 | target:u32 | svn:u32 | HybridSignature`
+**Request Payload**: `flags:u32 | target:u32 | svn:u32 | AuthorizationBlock`
 
 **Response Payload**: Empty
 
@@ -506,7 +537,7 @@ activation, see
 
 Programs field entropy.
 
-**Request Payload**: `partition:u32 | HybridSignature`
+**Request Payload**: `partition:u32 | AuthorizationBlock`
 
 **Response Payload**: Empty
 
@@ -558,7 +589,7 @@ This command does not require authorization.
 
 Revokes a vendor public key.
 
-**Request Payload**: `reserved:u32 | slot:u32 | key_type:u32 | key_index:u32 | HybridSignature`
+**Request Payload**: `reserved:u32 | slot:u32 | key_type:u32 | key_index:u32 | AuthorizationBlock`
 
 **Response Payload**: Empty
 
@@ -566,7 +597,7 @@ Revokes a vendor public key.
 
 Revokes a vendor public key hash.
 
-**Request Payload**: `reserved:u32 | slot:u32 | HybridSignature`
+**Request Payload**: `reserved:u32 | slot:u32 | AuthorizationBlock`
 
 **Response Payload**: Empty
 
@@ -574,7 +605,7 @@ Revokes a vendor public key hash.
 
 Locks a fuse partition.
 
-**Request Payload**: `partition:u32 | HybridSignature`
+**Request Payload**: `partition:u32 | AuthorizationBlock`
 
 **Response Payload**: Empty
 
@@ -585,7 +616,7 @@ field-entropy partitions as zeroized, and then requests entry into RMA.
 Zeroization occurs before the RMA transition is requested and is not rolled
 back if that transition fails.
 
-**Request Payload**: `rma_token:u8[16] | HybridSignature`
+**Request Payload**: `rma_token:u8[16] | AuthorizationBlock`
 
 **Response Payload**: Empty
 
@@ -596,7 +627,7 @@ and its OTP digest. The slot must be within the implementation's configured HEK
 slot count, contain only erased values, and not be protected by the permanent
 HEK lock.
 
-**Request Payload**: `hek_slot:u32 | HybridSignature`
+**Request Payload**: `hek_slot:u32 | AuthorizationBlock`
 
 `hek_slot` selects HEK slot 0 through 7. Implementations may provide fewer than
 eight slots and reject an index beyond the configured slot count.
@@ -609,7 +640,7 @@ Permanently sanitizes an unused HEK slot. The slot must be within the
 implementation's configured HEK slot count, contain only erased values, and
 not be protected by the permanent HEK lock.
 
-**Request Payload**: `hek_slot:u32 | HybridSignature`
+**Request Payload**: `hek_slot:u32 | AuthorizationBlock`
 
 `hek_slot` selects HEK slot 0 through 7. Implementations may provide fewer than
 eight slots and reject an index beyond the configured slot count.

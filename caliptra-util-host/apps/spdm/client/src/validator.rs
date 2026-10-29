@@ -380,6 +380,7 @@ pub fn run_dot(
         cak,
         lak_hash,
         authorization: DotAuthorizationTrailer {
+            metadata: Default::default(),
             nonce: lock_auth.nonce,
             ecc_pub_x: lock_auth.ecc_pub_x,
             ecc_pub_y: lock_auth.ecc_pub_y,
@@ -419,6 +420,7 @@ pub fn run_dot(
     };
     let backup_request = GetDotBackupBlobRequest {
         authorization: DotAuthorizationTrailer {
+            metadata: Default::default(),
             nonce: backup_auth.nonce,
             ecc_pub_x: backup_auth.ecc_pub_x,
             ecc_pub_y: backup_auth.ecc_pub_y,
@@ -465,6 +467,7 @@ pub fn run_dot(
         cak,
         lak_hash,
         authorization: DotAuthorizationTrailer {
+            metadata: Default::default(),
             nonce: rotate_auth.nonce,
             ecc_pub_x: rotate_auth.ecc_pub_x,
             ecc_pub_y: rotate_auth.ecc_pub_y,
@@ -559,6 +562,7 @@ pub fn run_dot(
     let disable_request = DotDisableRequest {
         lak_hash,
         authorization: DotAuthorizationTrailer {
+            metadata: Default::default(),
             nonce: disable_auth.nonce,
             ecc_pub_x: disable_auth.ecc_pub_x,
             ecc_pub_y: disable_auth.ecc_pub_y,
@@ -849,6 +853,7 @@ struct AuthorizedCommandAuthorization {
 impl AuthorizedCommandAuthorization {
     fn as_command_data(&self) -> AuthorizedCommandData<'_> {
         AuthorizedCommandData {
+            metadata: Default::default(),
             sig: &self.sig,
             nonce: &self.nonce,
             ecc_pub_x: &self.ecc_pub_x,
@@ -1243,6 +1248,7 @@ fn signed_ocp_lock_rotate_hek(
         .ocp_lock_rotate_hek(
             slot,
             AuthorizedCommandData {
+                metadata: Default::default(),
                 sig: &auth.sig,
                 nonce: &auth.nonce,
                 ecc_pub_x: &auth.ecc_pub_x,
@@ -1263,6 +1269,7 @@ fn signed_ocp_lock_set_perma_hek(
         .map_err(AuthorizedCommandError::Preparation)?;
     client
         .ocp_lock_set_perma_hek(AuthorizedCommandData {
+            metadata: Default::default(),
             sig: &auth.sig,
             nonce: &auth.nonce,
             ecc_pub_x: &auth.ecc_pub_x,

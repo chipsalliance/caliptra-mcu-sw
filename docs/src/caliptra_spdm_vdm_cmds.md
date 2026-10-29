@@ -83,7 +83,7 @@ These command codes are assigned from the Caliptra range reserved in the [OCP co
 | `0x07`       | AuthorizeDebugUnlockToken | O   | Send debug unlock token to device for authorization.                       |
 | `0x08`       | ExportAttestedCsr         | O   | Discover device identity keys or export an attested CSR.                   |
 | `0x11`       | DeviceOwnershipTransfer   | O   | Carry DOT commands with native authentication.                             |
-| `0x12`       | AuthorizedCommand         | O   | Carry challenge-authorized provisioning and fuse subcommands.              |
+| `0x12`       | AuthorizedCommand         | O   | Carry manifest-authorized provisioning and fuse subcommands.               |
 | `0x13`       | OcpLock                   | O   | Carry OCP LOCK commands.                                                   |
 
 R = Required, O = Optional
@@ -118,30 +118,147 @@ values in the ASCII gaps between `9` and `A` are not reserved. The reference
 implementation returns `UnsupportedOperation` for these recognized but
 unimplemented IDs.
 
+### Authorization Modes and Targets
+
+The signer selects the authorization mode independently for each request using
+the signed nonce. An all-zero nonce selects Offline authorization; a nonzero
+nonce selects Challenge-bound authorization and must match a live device
+challenge. Runtime accepts either form for any otherwise-authorized command.
+There is no firmware-wide mode switch or mode-discovery command.
+
+| Scope | Mode | Signed SoC UEID | Nonce |
+| ----- | ---- | --------------- | ----- |
+| Device | Challenge-bound | Target manufacturer serial number | Live nonzero device challenge |
+| Device | Offline | Target manufacturer serial number | 48 zero bytes |
+| Fleet | Challenge-bound | 16 zero bytes | Live nonzero device challenge |
+| Fleet | Offline | 16 zero bytes | 48 zero bytes |
+
+A nonzero UEID must match the 16-byte manufacturer serial number in local OTP.
+This is the serial-number portion of the UEID, without its type byte. Zero
+UEID selects Fleet scope. Fleet challenge-bound requests still require a
+separate challenge and signature for each target device; a nonce is not
+fleet-wide.
+
+Offline authorization intentionally permits replay on every matching device
+whose key and command-policy checks succeed. An operation's lifecycle and
+state checks can still reject a repeated operation.
+
+### Authorization Block
+
+Both MCI mailbox and SPDM VDM carry:
+
+```text
+subcommand_id(LE) || command_payload || AuthorizationBlock
+```
+
+The fixed-size Authorization Block is **7,484 bytes**. Offsets below are relative
+to its beginning, immediately after the command payload.
+
+| Bytes | Field | Encoding |
+| ----- | ----- | -------- |
+| 0:3 | `version` | u32 little-endian; must be `1` |
+| 4:7 | `authority` | u32 little-endian; `1` = Vendor+Owner, `2` = Owner-only |
+| 8:23 | `soc_ueid` | 16 opaque bytes |
+| 24:71 | `nonce` | 48 opaque bytes |
+| 72:119 | `ecc_pub_x` | Standard 48-byte big-endian coordinate |
+| 120:167 | `ecc_pub_y` | Standard 48-byte big-endian coordinate |
+| 168:2759 | `mldsa_pub` | Standard 2,592-byte ML-DSA-87 public key |
+| 2760:2807 | `ecc_sig_r` | Standard 48-byte big-endian scalar |
+| 2808:2855 | `ecc_sig_s` | Standard 48-byte big-endian scalar |
+| 2856:7483 | `mldsa_sig` | Standard 4,627-byte signature followed by one zero padding byte |
+
+These are Core's byte-array cryptographic encodings; do not word-swap the ECC
+key or signature fields on the wire. Unknown authorization versions and
+authorities, and nonzero ML-DSA padding, are rejected.
+
+The signed Authority selects an existing, fixed IME firmware ID and manifest:
+
+| Authority | IME `fw_id` | Manifest |
+| --------- | ----------- | -------- |
+| Vendor+Owner (`1`) | `0x0000_0004` (`V_AUTH_KEY_ID`) | Original/base SoC Manifest |
+| Owner-only (`2`) | `0x0000_0006` (`O_AUTH_KEY_ID`) | Owner-only SoC Manifest |
+
+The request does not carry an IME selector. There is no cross-manifest fallback
+or separate command-key installation command. The applicable manifest must
+already be authenticated and active in Core. In particular, Owner commands
+cannot use the original manifest as a fallback when the Owner manifest is
+unavailable. The reference original-manifest generator requires vendor IMC
+signatures as well as owner authentication.
+
+The initial Runtime command policy permits **Owner-only** authorization for all
+currently implemented protected commands. Vendor+Owner permissions must be
+enabled explicitly for individual commands or targets through
+`CommandAuthorizer::permits_authority`. A trusted key alone does not grant
+permission.
+
+These IME IDs are not new flash images or DPE identities. Existing measurement
+logic is unchanged. The optional Core UEID-binding IME at `0x0000_0FFF` is
+separate from the command's signed 16-byte target UEID.
+
+### Signed Transcript and Key Digest
+
+Both signatures bind the following bytes in order:
+
+```text
+subcommand_id(BE) || command_payload ||
+version(LE) || authority(LE) || soc_ueid[16] || nonce[48]
+```
+
+The signed command ID retains the existing big-endian signing convention,
+although its transport field is little-endian. ECDSA P-384 signs
+`SHA384(transcript)`. The ML-DSA-87 leg uses pure ML-DSA with an empty context
+and `SHA512(transcript)` as its 64-byte message; this is not direct signing of
+the transcript or the standardized HashML-DSA encoding.
+
+For ordinary subcommands, the signed ID is the FourCC above. For DOT
+(`0x00000011`) and OCP LOCK (`0x00000013`), it is the outer family ID and the
+signed payload includes `FourCC(LE) || operation_payload`. Transport headers
+and checksums, supplied public keys, and signatures are not in the signed
+transcript.
+
+The supplied keys are authenticated separately against the selected IME's
+48-byte digest:
+
+```text
+key_digest = SHA384(
+    CoreWordEncode(ecc_pub_x) ||
+    CoreWordEncode(ecc_pub_y) ||
+    mldsa_pub
+)
+```
+
+`CoreWordEncode` reverses bytes within each four-byte ECC word, preserving word
+and coordinate order. ML-DSA bytes are unchanged. This matches Core's owner
+firmware key-pair hash in ML-DSA mode and production debug-unlock key hash.
+Store the resulting standard digest bytes directly in the IME; do not apply
+the additional word-storage conversion used for fuse/register buffers.
+
 ### Authorization Flow
 
-1. Send `GetAuthChallenge` with an empty subcommand payload. The successful response data is a 48-byte challenge.
-2. Serialize the target subcommand payload exactly as listed below, excluding the common authorization trailer.
-3. Sign `subcommand_id(BE) || payload || challenge` with both the authorized ECC P-384 and ML-DSA-87 keys. The signed command ID is big-endian even though the `AuthorizedCommand` wire field is little-endian.
-4. Append the common authorization trailer and submit the complete request under `AuthorizedCommand`.
+1. Select Challenge-bound or Offline authorization for this request.
+2. Select the permitted authority and Device or Fleet target.
+3. In Challenge-bound mode, request a live, nonzero 48-byte nonce through
+   `GetAuthChallenge`. In Offline mode, use 48 zero bytes without requesting
+   a challenge.
+4. Sign the canonical transcript with both authorized keys.
+5. Append the Authorization Block and submit through `AuthorizedCommand`.
+6. Runtime checks format, authority policy, target, key digest, both signatures,
+   and live-challenge freshness when requested, before executing the operation.
 
-For ordinary authorized subcommands, `subcommand_id` is the FourCC shown in the
-table. For family commands (`DeviceOwnershipTransfer` `0x00000011` and `OcpLock`
-`0x00000013`), `subcommand_id` is the outer family ID; the signed payload is
-`FourCC(LE) || subcommand_payload`. For example:
+After format, policy, and target checks succeed, a Challenge-bound
+verification attempt consumes the stored challenge before key/signature
+verification. A mismatched live nonce or failed signature therefore requires
+a fresh challenge. A successful new challenge request replaces the old one.
+An all-zero RNG result is rejected without replacing the outstanding challenge.
+MCI and SPDM share challenge state, so a challenge cannot be replayed through
+the other transport. Offline requests do not consume a pending challenge.
+Changing a signed nonce to switch modes invalidates both signatures.
 
-```text
-0x00000011(BE) || DOT_FourCC(LE) || DOT_payload || challenge
-0x00000013(BE) || OCP_LOCK_FourCC(LE) || OCP_LOCK_payload || challenge
-```
-
-The common authorization trailer is:
-
-```text
-nonce[48] || ecc_pub_x[48] || ecc_pub_y[48] || mldsa_pub[2592] || HybridSignature
-```
-
-`nonce` echoes the challenge. `HybridSignature` is `ecc_sig_r[48] || ecc_sig_s[48] || mldsa_sig[4628]`. The challenge is consumed by the verification attempt and cannot be reused. Requests must have the exact documented size; missing, truncated, and oversized trailers are rejected with `InvalidPayloadSize`, while failed authorization returns `AccessDenied`.
+Requests must have the exact size. Missing, truncated, oversized, and legacy
+nonce-only trailers are rejected with `InvalidPayloadSize`. Authorization
+mismatches return `AccessDenied`; operational and resource failures retain
+their normal completion codes. Version 1 requires coordinated host, Runtime,
+and manifest-key-digest updates; there is no legacy hash or trailer fallback.
 
 `ZeroizeUdsFeAndEnterRma` reports `ZeroizeFailed` if the zeroization command
 fails or the kernel cannot confirm by OTP readback that UDS and all field
@@ -151,76 +268,22 @@ transition to RMA fails.
 
 ### Implemented Subcommand Payloads
 
-Byte offsets below begin immediately after the four-byte `subcommand_id` and include the complete authorization trailer.
+These operation payloads exclude the Authorization Block, which is appended
+immediately afterwards. All payload integers are little-endian. Family
+operations additionally prefix their FourCC as described above.
 
-| Subcommand | Bytes | Field | Encoding |
-| ---------- | ----- | ----- | -------- |
-| PVPK | 0:3 | `slot` | u32, little-endian |
-| | 4:51 | `hash` | u8[48] |
-| | 52:99 | `nonce` | u8[48] |
-| | 100:147 | `ecc_pub_x` | u8[48] |
-| | 148:195 | `ecc_pub_y` | u8[48] |
-| | 196:2787 | `mldsa_pub` | u8[2592] |
-| | 2788:7511 | `signature` | HybridSignature |
-| POPK | 0:47 | `hash` | u8[48], dword-reversed OTP representation |
-| | 48:95 | `nonce` | u8[48] |
-| | 96:143 | `ecc_pub_x` | u8[48] |
-| | 144:191 | `ecc_pub_y` | u8[48] |
-| | 192:2783 | `mldsa_pub` | u8[2592] |
-| | 2784:7507 | `signature` | HybridSignature |
-| MCMS | 0:3 | `flags` | u32, little-endian; must be zero |
-| | 4:7 | `svn` | u32, little-endian |
-| | 8:55 | `nonce` | u8[48] |
-| | 56:103 | `ecc_pub_x` | u8[48] |
-| | 104:151 | `ecc_pub_y` | u8[48] |
-| | 152:2743 | `mldsa_pub` | u8[2592] |
-| | 2744:7467 | `signature` | HybridSignature |
-| MCFP | 0:3 | `partition` | u32, little-endian |
-| | 4:51 | `nonce` | u8[48] |
-| | 52:99 | `ecc_pub_x` | u8[48] |
-| | 100:147 | `ecc_pub_y` | u8[48] |
-| | 148:2739 | `mldsa_pub` | u8[2592] |
-| | 2740:7463 | `signature` | HybridSignature |
-| MRVK | 0:3 | `reserved` | u32, little-endian; must be zero |
-| | 4:7 | `slot` | u32, little-endian |
-| | 8:11 | `key_type` | u32, little-endian |
-| | 12:15 | `key_index` | u32, little-endian |
-| | 16:63 | `nonce` | u8[48] |
-| | 64:111 | `ecc_pub_x` | u8[48] |
-| | 112:159 | `ecc_pub_y` | u8[48] |
-| | 160:2751 | `mldsa_pub` | u8[2592] |
-| | 2752:7475 | `signature` | HybridSignature |
-| RVKH | 0:3 | `reserved` | u32, little-endian; must be zero |
-| | 4:7 | `slot` | u32, little-endian |
-| | 8:55 | `nonce` | u8[48] |
-| | 56:103 | `ecc_pub_x` | u8[48] |
-| | 104:151 | `ecc_pub_y` | u8[48] |
-| | 152:2743 | `mldsa_pub` | u8[2592] |
-| | 2744:7467 | `signature` | HybridSignature |
-| IFPK | 0:3 | `partition` | u32, little-endian |
-| | 4:51 | `nonce` | u8[48] |
-| | 52:99 | `ecc_pub_x` | u8[48] |
-| | 100:147 | `ecc_pub_y` | u8[48] |
-| | 148:2739 | `mldsa_pub` | u8[2592] |
-| | 2740:7463 | `signature` | HybridSignature |
-| MZRM | 0:15 | `rma_token` | u8[16] |
-| | 16:63 | `nonce` | u8[48] |
-| | 64:111 | `ecc_pub_x` | u8[48] |
-| | 112:159 | `ecc_pub_y` | u8[48] |
-| | 160:2751 | `mldsa_pub` | u8[2592] |
-| | 2752:7475 | `signature` | HybridSignature |
-| OLPH | 0:3 | `hek_slot` | u32, little-endian; slot 0 through 7 |
-| | 4:51 | `nonce` | u8[48] |
-| | 52:99 | `ecc_pub_x` | u8[48] |
-| | 100:147 | `ecc_pub_y` | u8[48] |
-| | 148:2739 | `mldsa_pub` | u8[2592] |
-| | 2740:7463 | `signature` | HybridSignature |
-| OLZH | 0:3 | `hek_slot` | u32, little-endian; slot 0 through 7 |
-| | 4:51 | `nonce` | u8[48] |
-| | 52:99 | `ecc_pub_x` | u8[48] |
-| | 100:147 | `ecc_pub_y` | u8[48] |
-| | 148:2739 | `mldsa_pub` | u8[2592] |
-| | 2740:7463 | `signature` | HybridSignature |
+| Subcommand | Operation payload | Payload bytes |
+| ---------- | ----------------- | ------------- |
+| PVPK | `slot:u32 || hash:u8[48]` | 52 |
+| POPK | `hash:u8[48]`, existing dword-reversed OTP representation | 48 |
+| MCMS | `flags:u32 || target:u32 || svn:u32`; flags must be zero | 12 |
+| MCFP | `partition:u32` | 4 |
+| MRVK | `reserved:u32 || slot:u32 || key_type:u32 || key_index:u32`; reserved must be zero | 16 |
+| RVKH | `reserved:u32 || slot:u32`; reserved must be zero | 8 |
+| IFPK | `partition:u32` | 4 |
+| MZRM | `rma_token:u8[16]` | 16 |
+| OLPH | `hek_slot:u32`, slot 0 through 7 | 4 |
+| OLZH | `hek_slot:u32`, slot 0 through 7 | 4 |
 
 ## Device Ownership Transfer Commands
 

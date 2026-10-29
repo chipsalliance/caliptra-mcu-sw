@@ -23,7 +23,6 @@ pub(crate) use caliptra_mcu_userlog::{Bytes, Dbg, Hex32};
 #[allow(unused_imports)]
 pub use caliptra_mcu_libsyscall_caliptra::console_writeln;
 
-pub(crate) mod auth_keys;
 // Certificate-store boot is the only borrower, so this shares its gate.
 #[cfg(feature = "spdm")]
 mod boot_scratch;
