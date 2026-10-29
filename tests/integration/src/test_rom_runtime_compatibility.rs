@@ -28,7 +28,7 @@ use std::{
 };
 use zerocopy::FromBytes;
 
-const CORE: &str = "e5d1f27b15ba02e4e0a57b942bbde39b74cab2eb";
+const CORE: &str = "b99535ded32492d6c23bbc56f95e787a1e275b59";
 const ROMS: [(&str, &str); 2] = [
     ("rom-sdk-2.1.0", "da451221542758758f1c4ce35efbe48da9935dd8"),
     (
@@ -99,6 +99,8 @@ struct Build {
     command_ids: BTreeMap<String, u32>,
     mcu_error: Option<u32>,
     handoff_address: Option<u32>,
+    #[serde(default)]
+    embedded_configuration: BTreeMap<String, String>,
 }
 
 fn image(root: &Path, label: &str, mode: &str) -> Result<(Build, Vec<u8>)> {
@@ -175,12 +177,14 @@ struct SelectedPair {
     root: PathBuf,
     rom: Vec<u8>,
     runtime: Vec<u8>,
+    rom_source: String,
+    runtime_source: String,
     version: String,
     commands: BTreeMap<String, u32>,
 }
 
 impl SelectedPair {
-    fn load() -> Result<Self> {
+    fn load(scenario: &str) -> Result<Self> {
         require_agreement()?;
         let root = artifact_root()?;
         let rom = std::env::var("MCU_COMPAT_ROM")?;
@@ -190,12 +194,13 @@ impl SelectedPair {
             matches!(mode.as_str(), "flash" | "streaming"),
             "Unknown runtime configuration"
         );
-        let (_, rom_bytes) = image(&root, &rom, &mode)?;
-        let (build, runtime_bytes) = image(&root, &runtime, &mode)?;
+        let configuration = Self::service_configuration(scenario, &mode);
+        let (rom_build, rom_bytes) = image(&root, &rom, &mode)?;
+        let (build, runtime_bytes) = image(&root, &runtime, configuration)?;
         let config_path = PathBuf::from("pairs")
             .join(&rom)
             .join(&runtime)
-            .join(&mode)
+            .join(configuration)
             .join("config.json");
         let manifest: BTreeMap<String, String> =
             serde_json::from_slice(&fs::read(root.join("fixture-hashes.json"))?)?;
@@ -222,9 +227,24 @@ impl SelectedPair {
             root,
             rom: rom_bytes,
             runtime: runtime_bytes,
+            rom_source: rom_build.source,
+            runtime_source: build.source,
             version: build.version.context("Missing selected runtime version")?,
             commands: build.command_ids,
         })
+    }
+
+    fn service_configuration<'a>(scenario: &str, mode: &'a str) -> &'a str {
+        if mode == "streaming" {
+            match scenario {
+                "suite_spdm_mctp" | "suite_attestation_ocp_eat_non_tcb" => "services-non-tcb",
+                "suite_attestation_ocp_eat_tcb" => "services-tcb",
+                "suite_attestation_ocp_eat_mixed" => "services-mixed",
+                _ => mode,
+            }
+        } else {
+            mode
+        }
     }
 
     fn command(&self, name: &str) -> Result<u32> {
@@ -338,6 +358,7 @@ impl SelectedPair {
             vendor_pk_hash: Some(core.vendor_pk_hash),
             vendor_pqc_type: Some(caliptra_image_types::FwVerificationPqcKeyType::LMS),
             active_mode: true,
+            ocp_lock_en: false,
             i3c_port: params.i3c_port,
             enable_mcu_uart_log: true,
             check_booted_to_runtime: false,
@@ -711,7 +732,9 @@ fn wait_ready(hw: &mut impl McuHwModel) -> Result<()> {
         ensure!(
             hw.cycle_count() - initial_cycles < 100_000_000
                 && start.elapsed() < Duration::from_secs(180),
-            "Boot/mailbox readiness timed out; milestones={:#x}",
+            "Boot/mailbox readiness timed out; elapsed_ms={}, cycles={}, milestones={:#x}",
+            start.elapsed().as_millis(),
+            hw.cycle_count() - initial_cycles,
             milestones.bits()
         );
         hw.step();
@@ -736,7 +759,10 @@ fn mailbox(hw: &mut impl McuHwModel, command: u32, payload: &[u8]) -> Result<Vec
         );
         ensure!(
             hw.cycle_count() - cycles < 40_000_000 && start.elapsed() < Duration::from_secs(60),
-            "Mailbox command timed out"
+            "Mailbox command {command:#x} timed out; elapsed_ms={}, cycles={}, Core nonfatal error={:#x}",
+            start.elapsed().as_millis(),
+            hw.cycle_count() - cycles,
+            hw.caliptra_soc_manager().soc_ifc().cptra_fw_error_non_fatal().read()
         );
         hw.step();
     }
@@ -822,38 +848,48 @@ fn check_soc_images(hw: &mut impl McuHwModel, pair: &SelectedPair) -> Result<()>
         .iter()
         .map(|check| Ok((check.address, check.image.read(&pair.root)?)))
         .collect::<Result<Vec<_>>>()?;
+    let mut required = [0u32; 4];
+    for image in &pair.config.soc_images {
+        ensure!(image.execution_bit < 128, "Invalid SoC execution bit");
+        required[usize::from(image.execution_bit / 32)] |= 1 << (image.execution_bit % 32);
+    }
     loop {
-        check_no_fatal(hw)?;
-        let mut complete = true;
+        check_no_fatal(hw).context("stage=soc_loading_activation")?;
+        let mut first_mismatch = None;
         for (address, expected) in &images {
-            complete &= read_memory(&mut hw.mcu_manager(), *address, expected.len())? == *expected;
+            let actual = read_memory(&mut hw.mcu_manager(), *address, expected.len())?;
+            if first_mismatch.is_none() {
+                if let Some(offset) = expected.iter().zip(&actual).position(|(a, b)| a != b) {
+                    first_mismatch = Some((*address, offset, expected[offset], actual[offset]));
+                }
+            }
         }
-        if complete {
-            let mut required = [0u32; 4];
-            for image in &pair.config.soc_images {
-                ensure!(image.execution_bit < 128, "Invalid SoC execution bit");
-                required[usize::from(image.execution_bit / 32)] |= 1 << (image.execution_bit % 32);
-            }
-            if required.iter().enumerate().all(|(index, bits)| {
-                hw.caliptra_soc_manager()
-                    .soc_ifc()
-                    .ss_generic_fw_exec_ctrl()
-                    .at(index)
-                    .read()
-                    & bits
-                    == *bits
-            }) {
-                return Ok(());
-            }
+        let execution: [u32; 4] = std::array::from_fn(|index| {
+            hw.caliptra_soc_manager()
+                .soc_ifc()
+                .ss_generic_fw_exec_ctrl()
+                .at(index)
+                .read()
+        });
+        if first_mismatch.is_none()
+            && execution
+                .iter()
+                .zip(&required)
+                .all(|(actual, expected)| actual & expected == *expected)
+        {
+            return Ok(());
         }
         ensure!(
             hw.mcu_exit_status().is_none(),
-            "MCU exited before SoC loading and activation completed"
+            "stage=soc_loading_activation; MCU exited before SoC loading and activation completed"
         );
         ensure!(
             hw.cycle_count() - initial_cycles < 100_000_000
                 && start.elapsed() < Duration::from_secs(180),
-            "SoC loading/activation timed out; payloads_match={complete}"
+            "stage=soc_loading_activation; timed out after {} ms / {} cycles (limits: 180000 ms / 100000000 cycles); first mismatch (address, offset, expected, actual)={first_mismatch:x?}; execution expected={required:x?}, actual={execution:x?}; Core nonfatal error={:#x}",
+            start.elapsed().as_millis(),
+            hw.cycle_count() - initial_cycles,
+            hw.caliptra_soc_manager().soc_ifc().cptra_fw_error_non_fatal().read()
         );
         hw.step();
     }
@@ -899,10 +935,7 @@ fn rejection_complete(mcu_error: u32, core_error: u32, expected: &NegativeCase) 
 }
 
 fn boot_check(pair: &SelectedPair, scenario: &str) -> Result<Option<String>> {
-    if scenario == "warm_reset" {
-        bail!("BLOCKED: a validated FPGA warm-reset lane or emulator implementation is required");
-    }
-    if matches!(scenario, "streaming_boot" | "discovery") && !pair.streaming() {
+    if scenario == "streaming_boot" && !pair.streaming() {
         return Ok(Some(
             "Covered by the separate streaming configuration".into(),
         ));
@@ -977,9 +1010,65 @@ fn boot_check(pair: &SelectedPair, scenario: &str) -> Result<Option<String>> {
             hw.step();
         }
     }
-    wait_ready(&mut hw)?;
-    check_version(&mut hw, pair)?;
+    wait_ready(&mut hw).context("stage=runtime_readiness")?;
+    check_version(&mut hw, pair).context("stage=firmware_version")?;
     match scenario {
+        "warm_reset" => {
+            let otp = hw.read_otp_memory();
+            let flash =
+                fs::read("primary_flash").context("Cannot snapshot flash before warm reset")?;
+            hw.warm_reset();
+            let reason = hw.mcu_manager().with_mci(|mci| mci.reset_reason().read());
+            ensure!(
+                reason.warm_reset()
+                    && !reason.fw_boot_upd_reset()
+                    && !reason.fw_hitless_upd_reset(),
+                "Warm reset did not set the hardware reset reason: {:#x}",
+                u32::from(reason)
+            );
+            ensure!(
+                !hw.mci_boot_milestones().intersects(
+                    McuBootMilestones::WARM_RESET_FLOW_COMPLETE
+                        | McuBootMilestones::FIRMWARE_MAILBOX_READY
+                ),
+                "Warm reset retained stale readiness milestones"
+            );
+            let start = Instant::now();
+            let cycles = hw.cycle_count();
+            while !hw.mci_boot_milestones().contains(
+                McuBootMilestones::WARM_RESET_FLOW_COMPLETE
+                    | McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE
+                    | McuBootMilestones::FIRMWARE_MAILBOX_READY,
+            ) {
+                check_no_fatal(&mut hw).context("stage=warm_reset")?;
+                ensure!(
+                    hw.mcu_exit_status().is_none(),
+                    "MCU exited during warm reset"
+                );
+                ensure!(
+                    hw.cycle_count() - cycles < 100_000_000
+                        && start.elapsed() < Duration::from_secs(180),
+                    "Warm reset timed out after {} ms / {} cycles; milestones={:#x}",
+                    start.elapsed().as_millis(),
+                    hw.cycle_count() - cycles,
+                    hw.mci_boot_milestones().bits()
+                );
+                hw.step();
+            }
+            check_version(&mut hw, pair).context("stage=warm_reset_mailbox")?;
+            check_capabilities(
+                &mailbox(&mut hw, pair.command("MC_DEVICE_CAPABILITIES")?, &[])?,
+                &hex::decode(&pair.config.expected_capabilities)?,
+            )?;
+            ensure!(hw.read_otp_memory() == otp, "OTP changed across warm reset");
+            ensure!(
+                fs::read("primary_flash")? == flash,
+                "Flash changed across warm reset"
+            );
+            if pair.streaming() {
+                start_transport(&mut hw, pair)?.finish(&mut hw, pair)?;
+            }
+        }
         "runtime_commands" => check_capabilities(
             &mailbox(&mut hw, pair.command("MC_DEVICE_CAPABILITIES")?, &[])?,
             &hex::decode(&pair.config.expected_capabilities)?,
@@ -988,7 +1077,7 @@ fn boot_check(pair: &SelectedPair, scenario: &str) -> Result<Option<String>> {
             let bytes = read_memory(&mut hw.mcu_manager(), pair.config.handoff_address, 8)?;
             ensure!(
                 &bytes[..4] == b"MCUH" && bytes[4..8] == [1, 0, 0, 0],
-                "Released ROM handoff at {:#x} is not version 1.0 after runtime startup: got {}",
+                "Released ROM handoff at {:#x} is not version 1.0 after runtime startup: expected 4d43554801000000, got {}",
                 pair.config.handoff_address,
                 hex::encode(&bytes)
             );
@@ -1011,7 +1100,7 @@ fn boot_check(pair: &SelectedPair, scenario: &str) -> Result<Option<String>> {
                 check_soc_images(&mut hw, pair)?;
             }
         }
-        "streaming_boot" | "discovery" => start_transport(&mut hw, pair)?.finish(&mut hw, pair)?,
+        "streaming_boot" => start_transport(&mut hw, pair)?.finish(&mut hw, pair)?,
         _ => {}
     }
     check_no_fatal(&mut hw)?;
@@ -1081,33 +1170,80 @@ fn provisioning(pair: &SelectedPair, hw: &mut DefaultHwModel) -> Result<()> {
 
 fn suite_check(pair: &SelectedPair, scenario: &str) -> Result<Option<String>> {
     match scenario {
-        "suite_spdm_mctp" if pair.streaming() =>
-            bail!("BLOCKED: full MCTP SPDM conformance requires same-model PLDM loading, verified SoC measurement completion and a live responder after loading; separate boot tests do not establish these prerequisites"),
-        "suite_attestation_ocp_eat_non_tcb" | "suite_attestation_ocp_eat_tcb" |
-        "suite_attestation_ocp_eat_mixed" if pair.streaming() =>
-            bail!("BLOCKED: production EAT fixtures need verified embedded component policy, initial measurement completion and matching appraisal inputs"),
-        "suite_attestation_ocp_eat_non_tcb" | "suite_attestation_ocp_eat_tcb" |
-        "suite_attestation_ocp_eat_mixed" | "suite_spdm_mctp" if !pair.streaming() =>
-            return Ok(Some("The flash configuration does not enable SPDM".into())),
-        "suite_attestation_pcr_quote" =>
-            return Ok(Some("The selected production configuration uses OCP EAT, not the test-only PCR provider".into())),
-        "suite_spdm_doe" | "suite_spdm_rs" =>
-            return Ok(Some("The selected service configuration enables MCTP, not DOE/TDISP/IDE".into())),
-        "suite_ownership_dot" | "suite_owner_stable_key" =>
-            return Ok(Some("The selected ROM/OTP do not enable DOT or stable-owner-key".into())),
+        "suite_attestation_ocp_eat_non_tcb"
+        | "suite_attestation_ocp_eat_tcb"
+        | "suite_attestation_ocp_eat_mixed"
+        | "suite_spdm_mctp"
+            if !pair.streaming() =>
+        {
+            return Ok(Some("The flash configuration does not enable SPDM".into()))
+        }
+        "suite_attestation_pcr_quote" => return Ok(Some(
+            "The selected production configuration uses OCP EAT, not the test-only PCR provider"
+                .into(),
+        )),
+        "suite_spdm_doe" | "suite_spdm_rs" => {
+            return Ok(Some(
+                "The selected service configuration enables MCTP, not DOE/TDISP/IDE".into(),
+            ))
+        }
+        "suite_ownership_dot" | "suite_owner_stable_key" => {
+            return Ok(Some(
+                "The selected ROM/OTP do not enable DOT or stable-owner-key".into(),
+            ))
+        }
         "suite_network_boot" => return Ok(Some("No network ROM/configuration is selected".into())),
-        "suite_usb_recovery" => return Ok(Some("USB recovery is outside the selected 2.1 I3C configuration".into())),
-        "suite_ownership_handoff" => return boot_check(pair, "handoff"),
-        "suite_mailbox" => return boot_check(pair, "runtime_commands"),
+        "suite_usb_recovery" => {
+            return Ok(Some(
+                "USB recovery is outside the selected 2.1 I3C configuration".into(),
+            ))
+        }
         _ => {}
     }
     let mut hw = pair.boot(false, None, None, pair.streaming())?;
     wait_ready(&mut hw)?;
     check_version(&mut hw, pair)?;
     match scenario {
-        "suite_spdm_mctp" => {
-            hw.start_i3c_controller();
-            spdm::run_compatibility_conformance(&mut hw)?;
+        "suite_spdm_mctp"
+        | "suite_attestation_ocp_eat_non_tcb"
+        | "suite_attestation_ocp_eat_tcb"
+        | "suite_attestation_ocp_eat_mixed" => {
+            start_transport(&mut hw, pair)?
+                .finish(&mut hw, pair)
+                .context("stage=service_soc_loading")?;
+            let started = Instant::now();
+            let cycles = hw.cycle_count();
+            while !hw
+                .mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_SPDM_MCTP_READY)
+            {
+                check_no_fatal(&mut hw)?;
+                ensure!(
+                    hw.mcu_exit_status().is_none(),
+                    "MCU exited before SPDM readiness"
+                );
+                ensure!(
+                    started.elapsed() < Duration::from_secs(180)
+                        && hw.cycle_count() - cycles < 100_000_000,
+                    "SPDM responder readiness timed out; milestones={:#x}",
+                    hw.mci_boot_milestones().bits()
+                );
+                hw.step();
+            }
+            if scenario == "suite_spdm_mctp" {
+                spdm::run_compatibility_conformance(&mut hw)?;
+            } else {
+                let directory = pair.root.join(&pair.config.soc_manifest.path);
+                spdm::run_compatibility_attestation(
+                    &mut hw,
+                    &directory
+                        .parent()
+                        .context("Missing fixture directory")?
+                        .join("attestation"),
+                    &pair.root.join("fixtures/ta-store"),
+                    scenario,
+                )?;
+            }
         }
         "suite_provisioning" => provisioning(pair, &mut hw)?,
         _ => bail!("BLOCKED: no selected-image implementation for {scenario}"),
@@ -1117,7 +1253,20 @@ fn suite_check(pair: &SelectedPair, scenario: &str) -> Result<Option<String>> {
 }
 
 fn run_case(scenario: &str) -> Result<()> {
-    let result = SelectedPair::load().and_then(|pair| {
+    let started = Instant::now();
+    let mut inputs = None;
+    let mut phase = "input_validation";
+    let result = SelectedPair::load(scenario).and_then(|pair| {
+        inputs = Some(serde_json::json!({
+            "rom": pair.config.rom,
+            "runtime": pair.config.runtime,
+            "mode": pair.config.mode,
+            "configuration": SelectedPair::service_configuration(scenario, &pair.config.mode),
+            "rom_source": pair.rom_source,
+            "runtime_source": pair.runtime_source,
+            "core_source": CORE,
+        }));
+        phase = "scenario";
         if scenario.starts_with("suite_") {
             suite_check(&pair, scenario)
         } else {
@@ -1144,9 +1293,10 @@ fn run_case(scenario: &str) -> Result<()> {
     fs::create_dir_all(&directory)?;
     fs::write(
         directory.join(format!("{scenario}.json")),
-        serde_json::to_vec_pretty(
-            &serde_json::json!({"scenario": scenario, "result": status, "reason": reason}),
-        )?,
+        serde_json::to_vec_pretty(&serde_json::json!({
+            "scenario": scenario, "result": status, "reason": reason,
+            "phase": phase, "elapsed_ms": started.elapsed().as_millis(), "inputs": inputs,
+        }))?,
     )?;
     println!("{status}: {scenario}: {reason}");
     result.map(|_| ())
@@ -1167,7 +1317,6 @@ compatibility_test!(test_flash_cold_boot, "flash_cold_boot");
 compatibility_test!(test_streaming_boot, "streaming_boot");
 compatibility_test!(test_handoff, "handoff");
 compatibility_test!(test_runtime_commands, "runtime_commands");
-compatibility_test!(test_discovery, "discovery");
 compatibility_test!(test_cold_reboot, "cold_reboot");
 compatibility_test!(test_corrupted_runtime, "corrupted_runtime");
 compatibility_test!(test_corrupted_manifest, "corrupted_manifest");
@@ -1193,10 +1342,8 @@ compatibility_test!(
 compatibility_test!(test_suite_spdm_mctp, "suite_spdm_mctp");
 compatibility_test!(test_suite_spdm_doe, "suite_spdm_doe");
 compatibility_test!(test_suite_spdm_rs, "suite_spdm_rs");
-compatibility_test!(test_suite_mailbox, "suite_mailbox");
 compatibility_test!(test_suite_provisioning, "suite_provisioning");
 compatibility_test!(test_suite_ownership_dot, "suite_ownership_dot");
 compatibility_test!(test_suite_owner_stable_key, "suite_owner_stable_key");
-compatibility_test!(test_suite_ownership_handoff, "suite_ownership_handoff");
 compatibility_test!(test_suite_network_boot, "suite_network_boot");
 compatibility_test!(test_suite_usb_recovery, "suite_usb_recovery");

@@ -9,6 +9,14 @@ use caliptra_mcu_builder::{CaliptraBuildArgs, CaliptraBuilder, ImageCfg};
 use serde_json::json;
 use std::process::Command;
 
+const CONFIGURATIONS: [&str; 5] = [
+    "flash",
+    "streaming",
+    "services-non-tcb",
+    "services-tcb",
+    "services-mixed",
+];
+
 fn artifact(root: &Path, path: &Path) -> Result<serde_json::Value> {
     Ok(json!({
         "path": path.strip_prefix(root)?,
@@ -185,12 +193,25 @@ fn streaming_package(args: &[String]) -> Result<()> {
 fn prepare_inputs() -> Result<()> {
     require_agreement()?;
     let root = artifact_root()?;
+    let selected_runtime = std::env::var_os("MCU_COMPAT_RUNTIME");
+    let runtimes: Vec<_> = RUNTIMES
+        .into_iter()
+        .filter(|runtime| {
+            selected_runtime
+                .as_ref()
+                .is_none_or(|selected| selected == runtime)
+        })
+        .collect();
+    ensure!(
+        !runtimes.is_empty(),
+        "Unknown runtime selected for fixture preparation"
+    );
     let capabilities: serde_json::Value = serde_json::from_str(
         &std::env::var("MCU_COMPAT_CAPABILITIES")
             .context("BLOCKED: selected-release capabilities are required")?,
     )
     .context("BLOCKED: capabilities must map runtime labels to flash/streaming hex strings")?;
-    for runtime in RUNTIMES {
+    for &runtime in &runtimes {
         for mode in ["flash", "streaming"] {
             let bytes = hex::decode(
                 capabilities[runtime][mode]
@@ -205,34 +226,29 @@ fn prepare_inputs() -> Result<()> {
     }
     let shared = root.join("fixtures");
     fs::create_dir_all(&shared)?;
-    let core_source = caliptra_mcu_builder::caliptra_sw_workspace_root();
-    let revision = Command::new("git")
-        .current_dir(&core_source)
-        .args(["rev-parse", "HEAD"])
-        .output()?;
+    let core_directory = root.join("images/core");
+    let core_build: Build =
+        serde_json::from_slice(&fs::read(core_directory.join("metadata.json"))?)?;
     ensure!(
-        revision.status.success() && String::from_utf8(revision.stdout)?.trim() == CORE,
-        "Core dependency must be pinned to {CORE}"
+        core_build.source == CORE && core_build.toolchain == "1.96",
+        "Core fixtures must use {CORE} and its native toolchain"
     );
-    // Resolve MCU paths before the Core builder changes the workspace.
-    fs::create_dir_all(caliptra_mcu_builder::target_dir())?;
-    let previous = std::env::current_dir()?;
-    std::env::set_current_dir(&core_source)?;
-    let built = (|| -> Result<(PathBuf, PathBuf, String)> {
-        let mut builder = CaliptraBuilder::new(&CaliptraBuildArgs {
-            svn: Some(0),
-            ..Default::default()
-        });
-        Ok((
-            builder.get_caliptra_rom()?,
-            builder.get_caliptra_fw()?,
-            builder.get_vendor_pk_hash()?.to_string(),
-        ))
-    })();
-    std::env::set_current_dir(previous)?;
-    let (rom, fw, vendor_hash) = built?;
-    fs::copy(rom, shared.join("caliptra-rom.bin"))?;
-    fs::copy(fw, shared.join("caliptra-firmware.bin"))?;
+    for name in ["caliptra-rom.bin", "caliptra-firmware.bin"] {
+        let bytes = Artifact {
+            path: PathBuf::from("images/core").join(name),
+            sha256: core_build
+                .images
+                .get(name)
+                .with_context(|| format!("Missing Core image hash for {name}"))?
+                .clone(),
+        }
+        .read(&root)?;
+        fs::write(shared.join(name), bytes)?;
+    }
+    let firmware = fs::read(shared.join("caliptra-firmware.bin"))?;
+    let (manifest, _) = caliptra_image_types::ImageManifest::ref_from_prefix(&firmware)
+        .map_err(|error| anyhow::anyhow!("Invalid Core firmware manifest: {error}"))?;
+    let vendor_hash = hex::encode(CaliptraBuilder::vendor_pk_hash(manifest)?);
     let base_args = CaliptraBuildArgs {
         caliptra_rom: Some(shared.join("caliptra-rom.bin")),
         caliptra_firmware: Some(shared.join("caliptra-firmware.bin")),
@@ -292,10 +308,31 @@ fn prepare_inputs() -> Result<()> {
         })
         .collect::<Result<Vec<_>>>()?,
     )?;
-    let errors = core_source.join("error/src/lib.rs");
-    for runtime in RUNTIMES {
-        for mode in ["flash", "streaming"] {
-            image(&root, runtime, mode)?;
+    let errors = core_directory.join("errors.rs");
+    for &runtime in &runtimes {
+        for mode in CONFIGURATIONS {
+            let (build, _) = image(&root, runtime, mode)?;
+            let boot_mode = if mode.starts_with("services-") {
+                "streaming"
+            } else {
+                mode
+            };
+            if mode.starts_with("services-") {
+                for name in [
+                    format!("{mode}-attestation_manifest.toml"),
+                    format!("{mode}-soc_image_descriptors.toml"),
+                ] {
+                    Artifact {
+                        path: PathBuf::from("images").join(runtime).join(&name),
+                        sha256: build
+                            .embedded_configuration
+                            .get(&name)
+                            .context("Missing service configuration hash")?
+                            .clone(),
+                    }
+                    .read(&root)?;
+                }
+            }
             let runtime_image = root
                 .join("images")
                 .join(runtime)
@@ -435,7 +472,7 @@ fn prepare_inputs() -> Result<()> {
                 write_json(
                     &pair.join("config.json"),
                     &json!({
-                        "rom": rom, "runtime": runtime, "mode": mode,
+                        "rom": rom, "runtime": runtime, "mode": boot_mode,
                         "caliptra_rom": artifact(&root, &shared.join("caliptra-rom.bin"))?,
                         "caliptra_firmware": artifact(&root, &shared.join("caliptra-firmware.bin"))?,
                         "soc_manifest": artifact(&root, &directory.join("soc-manifest.bin"))?,
@@ -443,7 +480,7 @@ fn prepare_inputs() -> Result<()> {
                         "primary_flash": artifact(&root, &rom_flash)?,
                         "runtime_flash": artifact(&root, &directory.join("runtime-flash.bin"))?,
                         "pldm_package": artifact(&root, &shared.join("streaming.pldm"))?,
-                        "expected_capabilities": capabilities[runtime][mode],
+                        "expected_capabilities": capabilities[runtime][boot_mode],
                         "handoff_address": rom_build.handoff_address.context("Missing ROM handoff address")?,
                         "soc_images": soc, "negative_cases": negatives,
                     }),
@@ -453,8 +490,8 @@ fn prepare_inputs() -> Result<()> {
     }
     let mut hashes = BTreeMap::new();
     for (rom, _) in ROMS {
-        for runtime in RUNTIMES {
-            for mode in ["flash", "streaming"] {
+        for &runtime in &runtimes {
+            for mode in CONFIGURATIONS {
                 let path = PathBuf::from("pairs")
                     .join(rom)
                     .join(runtime)

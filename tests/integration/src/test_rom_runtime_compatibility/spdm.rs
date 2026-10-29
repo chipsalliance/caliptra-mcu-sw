@@ -1,12 +1,13 @@
 // Licensed under the Apache-2.0 license
 
-use anyhow::{bail, Context, Result};
+use anyhow::{bail, ensure, Context, Result};
 use caliptra_mcu_hw_model::{DefaultHwModel, McuHwModel};
 use caliptra_mcu_testing_common::i3c::DynamicI3cAddress;
 use caliptra_mcu_testing_common::i3c_socket::BufferedStream;
 use caliptra_mcu_testing_common::spdm_responder_validator::mctp::MctpTransport;
 use caliptra_mcu_testing_common::spdm_responder_validator::{
-    execute_spdm_responder_validator, SpdmValidatorRunner, SERVER_LISTENING,
+    execute_spdm_attestation_with_port, execute_spdm_responder_validator, SpdmValidatorRunner,
+    SERVER_LISTENING,
 };
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::Ordering;
@@ -19,7 +20,8 @@ const TEST_NAME: &str = "MCTP-SPDM-RESPONDER-VALIDATOR";
 /// services. Copy the complete tool bundle into persistent per-case evidence
 /// storage; the existing launcher writes through `SPDM_VALIDATOR_DIR`.
 pub(crate) fn run_compatibility_conformance(hw: &mut DefaultHwModel) -> Result<()> {
-    let output_dir = stage_compatibility_validator("spdm_device_validator_sample")?;
+    let output_dir =
+        stage_compatibility_validator("spdm_device_validator_sample", "suite_spdm_mctp")?;
 
     let timeout = Duration::from_secs(9000);
     let port = hw
@@ -28,13 +30,17 @@ pub(crate) fn run_compatibility_conformance(hw: &mut DefaultHwModel) -> Result<(
     let address = hw
         .i3c_address()
         .context("BLOCKED: selected model has no I3C target address")?;
-    let result = start_conformance(port, address.into())?;
+    let result = start_protocol(port, address.into(), false)?;
     drive_compatibility_protocol(hw, result, timeout)?;
 
     // The validator can exit successfully even when individual suites fail.
     // Retain the workflow's result-log checks as part of the selected case.
     let log = std::fs::read_to_string(output_dir.join("test.log"))
         .context("SPDM validator did not produce test.log")?;
+    validate_conformance_log(&log)
+}
+
+fn validate_conformance_log(log: &str) -> Result<()> {
     if !log.lines().any(|line| line == "test result done") {
         bail!("SPDM validator did not report 'test result done'");
     }
@@ -63,7 +69,72 @@ pub(crate) fn run_compatibility_conformance(hw: &mut DefaultHwModel) -> Result<(
     Ok(())
 }
 
-fn stage_compatibility_validator(binary: &str) -> Result<std::path::PathBuf> {
+pub(crate) fn run_compatibility_attestation(
+    hw: &mut DefaultHwModel,
+    references: &std::path::Path,
+    trust_store: &std::path::Path,
+    scenario: &str,
+) -> Result<()> {
+    let output_dir = stage_compatibility_validator("spdm_requester_emu", scenario)?;
+    let verifier = output_dir.join("ocptoken");
+    ensure!(verifier.is_file(), "BLOCKED: OCP EAT verifier is missing");
+    let references = references.join("signed");
+    ensure!(
+        references.is_dir() && trust_store.is_dir(),
+        "BLOCKED: signed reference values or trust anchors are missing"
+    );
+    let nonce = std::env::var("SPDM_NONCE").context("BLOCKED: SPDM_NONCE is required")?;
+    ensure!(
+        nonce.len() == 64 && hex::decode(&nonce)?.len() == 32,
+        "Invalid SPDM nonce"
+    );
+    let port = hw.i3c_port().context("Missing I3C port")?;
+    let address = hw.i3c_address().context("Missing I3C address")?;
+    let result = start_protocol(port, address.into(), true)?;
+    drive_compatibility_protocol(hw, result, Duration::from_secs(180))?;
+    for name in ["measurement_block_fd.bin", "certificate_chain_slot_00.der"] {
+        ensure!(
+            std::fs::metadata(output_dir.join(name))
+                .with_context(|| format!("Missing attestation evidence {name}"))?
+                .len()
+                > 0,
+            "Empty attestation evidence {name}"
+        );
+    }
+    for action in ["authenticate", "appraise"] {
+        let output = std::process::Command::new(&verifier)
+            .arg(action)
+            .arg("-e")
+            .arg(output_dir.join("measurement_block_fd.bin"))
+            .arg("-c")
+            .arg(output_dir.join("certificate_chain_slot_00.der"))
+            .env("TA_STORE_PATH", trust_store)
+            .env("SIGNED_REFVAL_CORIM_PATH", &references)
+            .env("SPDM_NONCE", &nonce)
+            .output()
+            .with_context(|| format!("Cannot execute OCP EAT {action}"))?;
+        let log = output_dir.join(format!("{action}.log"));
+        let mut bytes = output.stdout.clone();
+        bytes.extend_from_slice(&output.stderr);
+        std::fs::write(&log, bytes)?;
+        ensure!(
+            output.status.success(),
+            "OCP EAT {action} failed: {}; evidence={}",
+            output.status,
+            log.display()
+        );
+        if action == "appraise" {
+            ensure!(
+                String::from_utf8_lossy(&output.stdout).contains("ATTESTATION RESULT: PASS"),
+                "OCP EAT appraisal did not report PASS; evidence={}",
+                log.display()
+            );
+        }
+    }
+    Ok(())
+}
+
+fn stage_compatibility_validator(binary: &str, scenario: &str) -> Result<std::path::PathBuf> {
     let original_dir = std::env::var_os("SPDM_VALIDATOR_DIR")
         .context("BLOCKED: SPDM_VALIDATOR_DIR is required for the selected SPDM suite")?;
     let source = std::fs::canonicalize(&original_dir)
@@ -89,7 +160,7 @@ fn stage_compatibility_validator(binary: &str) -> Result<std::path::PathBuf> {
     if evidence.starts_with(&source) {
         bail!("BLOCKED: SPDM evidence directory must be outside the shared tool bundle");
     }
-    let output_dir = evidence.join("spdm-validator");
+    let output_dir = evidence.join(scenario);
     // Never reuse or remove a previous attempt: even a failed attempt's raw
     // files are evidence, and stale validator results cannot establish PASS.
     std::fs::create_dir(&output_dir).with_context(|| {
@@ -184,7 +255,10 @@ fn drive_compatibility_protocol(
             );
         }
         if !caliptra_mcu_testing_common::is_emulator_running() {
-            bail!("selected model stopped before reporting an SPDM protocol result");
+            return result
+                .recv_timeout(Duration::from_secs(1))
+                .context("selected model stopped before reporting an SPDM protocol result")?
+                .map_err(anyhow::Error::msg);
         }
         if let Some(error) = hw.mci_fw_fatal_error() {
             caliptra_mcu_testing_common::stop_emulator();
@@ -198,9 +272,10 @@ fn drive_compatibility_protocol(
     }
 }
 
-fn start_conformance(
+fn start_protocol(
     port: u16,
     target_addr: DynamicI3cAddress,
+    attestation: bool,
 ) -> Result<Receiver<Result<(), String>>> {
     let (result_tx, result_rx) = mpsc::channel();
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
@@ -209,15 +284,27 @@ fn start_conformance(
     SERVER_LISTENING.store(false, Ordering::Relaxed);
     caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
         let result = (|| -> Result<(), String> {
-            let listener = TcpListener::bind("127.0.0.1:2323")
+            let listener = TcpListener::bind(("127.0.0.1", if attestation { 0 } else { 2323 }))
                 .map_err(|err| format!("could not bind SPDM listener: {err}"))?;
-            println!("[{TEST_NAME}]: SPDM server listening on port 2323");
+            let spdm_port = listener
+                .local_addr()
+                .map_err(|err| format!("could not read SPDM listener address: {err}"))?
+                .port();
+            println!("[{TEST_NAME}]: SPDM server listening on port {spdm_port}");
             SERVER_LISTENING.store(true, Ordering::Relaxed);
 
             listener
                 .set_nonblocking(true)
                 .map_err(|err| format!("could not configure SPDM listener: {err}"))?;
-            let validator = execute_spdm_responder_validator("MCTP");
+            let validator = if attestation {
+                execute_spdm_attestation_with_port(
+                    "MCTP",
+                    Some(spdm_port),
+                    std::env::var("SPDM_NONCE").ok(),
+                )
+            } else {
+                execute_spdm_responder_validator("MCTP")
+            };
             let (mut spdm_stream, _) = loop {
                 match listener.accept() {
                     Ok(connection) => break connection,
@@ -253,7 +340,7 @@ fn start_conformance(
                 return Err("SPDM validator exited unsuccessfully".to_string());
             }
 
-            println!("[{TEST_NAME}]: SPDM responder conformance passed");
+            println!("[{TEST_NAME}]: SPDM protocol completed");
             Ok(())
         })();
 
@@ -261,4 +348,55 @@ fn start_conformance(
     });
 
     Ok(result_rx)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn conformance_requires_positive_counts_and_no_failures() {
+        assert!(validate_conformance_log(
+            "test suite (version) - pass: 2, fail: 0\ntest result done"
+        )
+        .is_ok());
+        for log in [
+            "test result done",
+            "test suite (version) - pass: 0, fail: 0\ntest result done",
+            "test suite (version) - pass: 2, fail: 1\ntest result done",
+            "test suite (version) - pass: 2, fail: 0",
+            "test suite (version) - pass: invalid, fail: 0\ntest result done",
+        ] {
+            assert!(validate_conformance_log(log).is_err(), "{log}");
+        }
+    }
+
+    #[test]
+    fn service_selection_preserves_boot_configurations() {
+        use super::super::SelectedPair;
+        for scenario in [
+            "suite_spdm_mctp",
+            "suite_attestation_ocp_eat_non_tcb",
+            "suite_attestation_ocp_eat_tcb",
+            "suite_attestation_ocp_eat_mixed",
+        ] {
+            assert_eq!(
+                SelectedPair::service_configuration(scenario, "flash"),
+                "flash"
+            );
+        }
+        for (scenario, expected) in [
+            ("suite_spdm_mctp", "services-non-tcb"),
+            ("suite_attestation_ocp_eat_non_tcb", "services-non-tcb"),
+            ("suite_attestation_ocp_eat_tcb", "services-tcb"),
+            ("suite_attestation_ocp_eat_mixed", "services-mixed"),
+            ("warm_reset", "streaming"),
+            ("suite_provisioning", "streaming"),
+        ] {
+            assert_eq!(
+                SelectedPair::service_configuration(scenario, "streaming"),
+                expected
+            );
+        }
+    }
 }

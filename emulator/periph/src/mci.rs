@@ -201,6 +201,67 @@ impl Mci {
 }
 
 impl MciPeripheral for Mci {
+    fn warm_reset(&mut self) {
+        self.reset_reason.handle_warm_reset();
+        self.reset_requested = false;
+        self.reset_cycle_complete = false;
+        self.reason_at_cycle_complete = 0;
+        Self::cancel_poll(&mut self.timer, &mut self.op_wdt_timer1_expired_action);
+        Self::cancel_poll(&mut self.timer, &mut self.op_wdt_timer2_expired_action);
+
+        // Reset the mci_rst_b domain, retaining mci_pwrgood state (including errors).
+        self.generated.write_mci_reg_hw_capabilities(0);
+        self.generated.write_mci_reg_fw_capabilities(0);
+        self.generated.write_mci_reg_cap_lock(0.into());
+        self.generated.write_mci_reg_ss_config_done(0.into());
+        self.generated.write_mci_reg_cptra_boot_go(0.into());
+        self.generated
+            .write_mci_reg_fw_sram_exec_region_size(0.into());
+        self.generated.write_mci_reg_mcu_nmi_vector(0);
+        self.generated.write_mci_reg_mcu_reset_vector(0);
+        for index in 0..2 {
+            self.generated.write_mci_reg_fw_rev_id(0, index);
+        }
+        for index in 0..5 {
+            self.generated
+                .write_mci_reg_mbox0_valid_axi_user(u32::MAX, index);
+            self.generated
+                .write_mci_reg_mbox0_axi_user_lock(0.into(), index);
+            self.generated
+                .write_mci_reg_mbox1_valid_axi_user(u32::MAX, index);
+            self.generated
+                .write_mci_reg_mbox1_axi_user_lock(0.into(), index);
+        }
+        {
+            let mut regs = self.ext_mci_regs.regs.borrow_mut();
+            regs.flow_status = 0;
+            regs.reset_request = 0;
+            regs.reset_status = 0;
+            regs.wdt_timer1_en = 0;
+            regs.wdt_timer1_ctrl = 0;
+            regs.wdt_timer1_timeout_period = [u32::MAX; 2];
+            regs.wdt_timer2_en = 0;
+            regs.wdt_timer2_ctrl = 0;
+            regs.wdt_timer2_timeout_period = [u32::MAX; 2];
+            regs.wdt_status = 0;
+            regs.intr_block_rf_global_intr_en_r = 0;
+            regs.intr_block_rf_error0_intr_en_r = 0;
+            regs.intr_block_rf_notif0_intr_en_r = 0;
+            regs.intr_block_rf_error0_internal_intr_r = 0;
+            regs.intr_block_rf_notif0_internal_intr_r = 0;
+            regs.intr_block_rf_error0_intr_trig_r = 0;
+            regs.intr_block_rf_notif0_intr_trig_r = 0;
+        }
+        for mailbox in [&mut self.mcu_mailbox0, &mut self.mcu_mailbox1]
+            .into_iter()
+            .flatten()
+        {
+            mailbox.regs.lock().unwrap().warm_reset();
+        }
+        self.cptra_boot_go.set(false);
+        self.update_mci_irq();
+    }
+
     fn generated(&mut self) -> Option<&mut MciGenerated> {
         Some(&mut self.generated)
     }
@@ -1526,6 +1587,63 @@ mod tests {
     use caliptra_emu_types::RvSize;
     use caliptra_mcu_emulator_registers_generated::mci::MciBus;
     use tock_registers::registers::InMemoryRegister;
+
+    #[test]
+    fn test_subsystem_warm_reset_domains() {
+        let clock = Clock::new();
+        let ext = caliptra_emu_periph::mci::Mci::new(vec![]);
+        let pic = caliptra_emu_cpu::Pic::new();
+        let mailbox = McuMailbox0Internal::new(&clock);
+        let mut mci = Mci::new(
+            &clock,
+            ext.clone(),
+            Rc::new(RefCell::new(pic.register_irq(1))),
+            Some(mailbox.clone()),
+            None,
+            None,
+            [0x1234, 0x5678],
+            false,
+            Rc::new(Cell::new(true)),
+        );
+        mci.generated.write_mci_reg_ss_config_done_sticky(1.into());
+        mci.generated.write_mci_reg_ss_config_done(1.into());
+        mci.generated.write_mci_reg_mbox0_axi_user_lock(1.into(), 0);
+        mci.generated.write_mci_reg_mbox0_valid_axi_user(7, 0);
+        ext.regs.borrow_mut().fw_error_non_fatal = 0x1234;
+        ext.regs.borrow_mut().flow_status = u32::MAX;
+        mci.write_mci_reg_wdt_timer1_en(1.into());
+        assert!(mci.op_wdt_timer1_expired_action.is_some());
+        let mtimecmp = mci.mtimecmp;
+        {
+            let mut regs = mailbox.regs.lock().unwrap();
+            regs.write_mcu_mbox0_csr_mbox_sram(0xdead_beef, 0);
+            regs.write_mcu_mbox0_csr_mbox_cmd(0x1234);
+        }
+
+        mci.warm_reset();
+
+        assert_eq!(mci.reset_reason.get(), 4);
+        assert_eq!(ext.regs.borrow().flow_status, 0);
+        assert_eq!(ext.regs.borrow().fw_error_non_fatal, 0x1234);
+        assert_eq!(ext.regs.borrow().generic_input_wires, [0x1234, 0x5678]);
+        assert_eq!(
+            mci.generated.read_mci_reg_ss_config_done_sticky().reg.get(),
+            1
+        );
+        assert_eq!(mci.generated.read_mci_reg_ss_config_done().reg.get(), 0);
+        assert_eq!(
+            mci.generated.read_mci_reg_mbox0_axi_user_lock(0).reg.get(),
+            0
+        );
+        assert_eq!(mci.generated.read_mci_reg_mbox0_valid_axi_user(0), u32::MAX);
+        assert!(mci.op_wdt_timer1_expired_action.is_none());
+        assert_eq!(mci.mtimecmp, mtimecmp);
+        let mut regs = mailbox.regs.lock().unwrap();
+        assert!(regs.is_locked());
+        assert_eq!(regs.read_mcu_mbox0_csr_mbox_user(), u32::MAX);
+        assert_eq!(regs.read_mcu_mbox0_csr_mbox_cmd(), 0);
+        assert_eq!(regs.read_mcu_mbox0_csr_mbox_sram(0), 0xdead_beef);
+    }
 
     pub const CPTRA_WDT_TIMER1_EN_START: u32 = 0xb0;
     pub const CPTRA_WDT_TIMER1_TIMEOUT_PERIOD_START: u32 = 0xb8;

@@ -10,7 +10,7 @@ on:
   workflow_call:
     inputs:
       fixture-agreement:
-        description: Owner approval of 2.1 Core e5d1f27, LMS test keys, Raw OTP, non-TCB images 4096/4097 and release flash/streaming configurations
+        description: Owner approval of 2.1 Core b99535d, LMS test keys, Raw OTP, release flash/streaming and non-TCB/TCB/mixed live-service configurations
         type: string
         default: ""
       expected-capabilities:
@@ -20,7 +20,7 @@ on:
   workflow_dispatch:
     inputs:
       fixture-agreement:
-        description: Owner approval of the fixed 2.1 Core/OTP/signing, non-TCB images 4096/4097 and release configurations
+        description: Owner approval of the fixed 2.1 Core/OTP/signing, release flash/streaming and non-TCB/TCB/mixed live-service configurations
         type: string
         required: false
       expected-capabilities:
@@ -61,6 +61,10 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - label: core
+            repository: chipsalliance/caliptra-sw
+            source: b99535ded32492d6c23bbc56f95e787a1e275b59
+            toolchain: "1.96"
           - label: rom-sdk-2.1.0
             source: da451221542758758f1c4ce35efbe48da9935dd8
             toolchain: "1.85"
@@ -82,6 +86,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
+          repository: ${{ matrix.repository || github.repository }}
           ref: ${{ matrix.source }}
           submodules: recursive
       - name: Install build tools
@@ -98,10 +103,31 @@ jobs:
           git rev-parse HEAD > output/source.sha
           git submodule status --recursive > output/submodules.txt
           rustc --version > output/toolchain.txt
-          if [[ "$LABEL" == rom-* ]]; then
-            echo 'cargo run --locked -p caliptra-mcu-xtask -- rom-build --platform emulator --features hw-2-1' > output/build-command.txt
-            cargo run --locked -p caliptra-mcu-xtask -- rom-build --platform emulator --features hw-2-1 2>&1 | tee output/build.log
-            cp target/riscv32imc-unknown-none-elf/release/caliptra-mcu-rom-emulator-hw-2-1.bin output/image.bin
+          if [ "$LABEL" = core ]; then
+            echo 'cargo run --locked -p caliptra-builder --bin image -- --rom-with-log output/caliptra-rom.bin --fw output/caliptra-firmware.bin --hw-revision 2.1 --pqc-key-type 3 --fw-svn 0' > output/build-command.txt
+            cargo run --locked -p caliptra-builder --bin image -- \
+              --rom-with-log output/caliptra-rom.bin --fw output/caliptra-firmware.bin \
+              --hw-revision 2.1 --pqc-key-type 3 --fw-svn 0 2>&1 | tee output/build.log
+            cp error/src/lib.rs output/errors.rs
+          elif [[ "$LABEL" == rom-* ]]; then
+            # Use the shipping handoff allocation, not rom-build's devel manifest.
+            sizing_features=hw-2-1
+            if [ "$LABEL" = rom-sdk-2.1.0 ]; then sizing_features+=,release; fi
+            command=(cargo run --locked -p caliptra-mcu-xtask -- firmware-bundler build
+              firmware-bundler/reference/emulator/user-app.toml \
+              --rom-features hw-2-1 --runtime-features "$sizing_features"
+              caliptra-mcu-rom-emulator)
+            printf '%q ' "${command[@]}" > output/build-command.txt
+            "${command[@]}" 2>&1 | tee output/build.log
+            # Match rom-build's zero padding and appended SHA-384 ROM digest.
+            python3 - <<'PY'
+          import hashlib, pathlib
+          data = pathlib.Path("target/riscv32imc-unknown-none-elf/release/caliptra-mcu-rom-emulator.bin").read_bytes()
+          assert len(data) <= 0x10000 - 48, "ROM does not leave space for its digest"
+          data = data.ljust(0x10000 - 48, b"\0")
+          pathlib.Path("output/image.bin").write_bytes(data + hashlib.sha384(data).digest())
+          PY
+            cp firmware-bundler/reference/emulator/user-app.toml output/rom-manifest.toml
             cp target/debug/caliptra-mcu-xtask output/flash-image-tool
             cp error/src/lib.rs output/errors.rs
             cp target/riscv32imc-unknown-none-elf/linker-scripts/caliptra-mcu-rom-emulator-*.ld output/
@@ -141,9 +167,27 @@ jobs:
           fw_id = 4097
           EOF
             cp target/generated/attestation_manifest.toml target/generated/soc_image_descriptors.toml output/
-            for mode in flash streaming; do
-              features=(--features hw-2-1 --features mcu-mbox-service --features "$mode-boot")
-              if [ "$mode" = streaming ]; then features+=(--features spdm --features mctp-vdm-service); fi
+            for mode in flash streaming services-non-tcb services-tcb services-mixed; do
+              cp output/attestation_manifest.toml target/generated/attestation_manifest.toml
+              boot_mode="$mode"
+              if [[ "$mode" == services-* ]]; then
+                boot_mode=streaming
+                if [ "$mode" = services-tcb ]; then
+                  sed -i 's/is_tcb = false/is_tcb = true/g' target/generated/attestation_manifest.toml
+                elif [ "$mode" = services-mixed ]; then
+                  sed -i '0,/is_tcb = false/s//is_tcb = true/' target/generated/attestation_manifest.toml
+                fi
+                cp target/generated/attestation_manifest.toml "output/$mode-attestation_manifest.toml"
+                cp target/generated/soc_image_descriptors.toml "output/$mode-soc_image_descriptors.toml"
+              fi
+              features=(--features hw-2-1 --features mcu-mbox-service --features "$boot_mode-boot")
+              if [ "$boot_mode" = streaming ]; then features+=(--features spdm --features mctp-vdm-service); fi
+              # Native cold-boot attestation features retain the responder after loading.
+              case "$mode" in
+                services-non-tcb) features+=(--features test-mctp-spdm-attestation) ;;
+                services-tcb) features+=(--features test-mctp-spdm-attestation-tcb) ;;
+                services-mixed) features+=(--features test-mctp-spdm-attestation-mixed) ;;
+              esac
               printf '%q ' cargo run --locked -p caliptra-mcu-xtask -- runtime-build --platform emulator --profile release "${features[@]}" --output "$mode.bin" > "output/$mode-command.txt"
               cargo run --locked -p caliptra-mcu-xtask -- runtime-build --platform emulator --profile release "${features[@]}" --output "$mode.bin" 2>&1 | tee "output/$mode-build.log"
               cp "target/riscv32imc-unknown-none-elf/release/$mode.bin" output/
@@ -165,9 +209,11 @@ jobs:
               addresses = {int(x, 16) for f in p.glob("*.ld") for x in re.findall(r"HANDOFF_ADDR\s*=\s*0x([0-9a-fA-F]+);", f.read_text())}
               assert len(addresses) == 1, "Missing or ambiguous handoff address"
               data["handoff_address"] = addresses.pop()
-          else:
-              data["embedded_configuration"] = {name: hashlib.sha256((p/name).read_bytes()).hexdigest()
-                  for name in ["attestation_manifest.toml", "soc_image_descriptors.toml"]}
+              assert data["handoff_address"] == 0x50003c00, "ROM must use the shipping handoff address"
+              data["rom_manifest_sha256"] = hashlib.sha256((p/"rom-manifest.toml").read_bytes()).hexdigest()
+          elif os.environ["LABEL"] != "core":
+              data["embedded_configuration"] = {f.name: hashlib.sha256(f.read_bytes()).hexdigest()
+                  for pattern in ["*attestation_manifest.toml", "*soc_image_descriptors.toml"] for f in p.glob(pattern)}
               text = (p/"version.rs").read_text()
               data["version"] = ".".join(re.search(rf"MCU_RUNTIME_VERSION_{n}: u32 = (\d+);", text)[1] for n in ["MAJOR","MINOR","PATCH"])
               text = (p/"messages.rs").read_text()
@@ -221,6 +267,39 @@ jobs:
           cargo nextest run --archive-file compatibility-tests.tar.zst --workspace-remap . \
             --profile emulator --run-ignored only --test-threads=1 --no-tests fail \
             -E 'test(=test_rom_runtime_compatibility::fixtures::prepare_inputs)' 2>&1 | tee prepare.log
+      - name: Prepare signed EAT reference values and trust anchors
+        shell: bash
+        run: |
+          set -euo pipefail
+          go install github.com/veraison/cocli@v1.0.0-alpha0
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          python3 - <<'PY'
+          import json, os, pathlib, zipfile
+          root = pathlib.Path(os.environ["MCU_COMPAT_ARTIFACT_DIR"])
+          directories = sorted(root.glob("fixtures/*/services-*"))
+          assert len(directories) == 9, "Missing selected service fixtures"
+          for directory in directories:
+              output = directory / "attestation"
+              output.mkdir()
+              with zipfile.ZipFile(output / "bundle.zip", "w") as bundle:
+                  bundle.write(directory / "soc-manifest.bin", "soc_manifest.bin")
+              (output / "config.json").write_text(json.dumps({
+                  "vendor": "ChipsAlliance", "model": "Caliptra-SS",
+                  "output_dir": str(output / "refval"),
+                  "signing": {"test_key": "caliptra-corim-test-signing-key",
+                              "keys_dir": str(root / "fixtures/corim-keys")}
+              }))
+          PY
+          for directory in inputs/fixtures/*/services-*/attestation; do
+            cargo run --locked -p caliptra-mcu-xtask -- corim gen-refval \
+              --bundle "$directory/bundle.zip" --config "$directory/config.json" 2>&1 | tee -a prepare-corim.log
+            mkdir "$directory/signed"
+            cp "$directory"/refval/signed-*.cbor "$directory/signed/"
+          done
+          mkdir -p inputs/fixtures/ta-store/{roots,endorsement-certs}
+          cp ocp-eat-verifier/ocptoken/test-data/ta-store/roots/*.der inputs/fixtures/ta-store/roots/
+          cp inputs/fixtures/corim-keys/signing-cert.der inputs/fixtures/ta-store/roots/corim_signing_cert.der
+          cp inputs/fixtures/corim-keys/signing-cert.der inputs/fixtures/ta-store/endorsement-certs/corim_signing_cert.der
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -228,12 +307,13 @@ jobs:
           path: |
             inputs/
             prepare.log
+            prepare-corim.log
             compatibility-tests.tar.zst
           if-no-files-found: error
 
   spdm-tools:
     needs: resolve
-    name: Build spdm-emu tools
+    name: Build SPDM and EAT tools
     runs-on: ubuntu-24.04
     timeout-minutes: 60
 
@@ -242,7 +322,9 @@ jobs:
         uses: actions/checkout@v7
         with:
           ref: ${{ github.sha }}
-          sparse-checkout: .github/workflows/rom-runtime-compatibility.yml
+          sparse-checkout: |
+            .github/workflows/rom-runtime-compatibility.yml
+            ocp-eat-verifier/
           sparse-checkout-cone-mode: false
       - name: Install required packages
         run: |
@@ -297,6 +379,9 @@ jobs:
 
       - name: Package spdm-emu tools
         run: |
+          rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+          cargo build --release --manifest-path ocp-eat-verifier/Cargo.toml -p ocptoken
+          cp ocp-eat-verifier/target/release/ocptoken spdm-emu/build/bin/
           test -x spdm-emu/build/bin/spdm_device_validator_sample
           test -x spdm-emu/build/bin/spdm_requester_emu
           git -C spdm-emu rev-parse HEAD | tee spdm-emu/build/bin/spdm-emu-revision.txt
@@ -349,7 +434,7 @@ jobs:
       - name: Run only the ignored compatibility tests, boot checks before optional suites
         shell: bash
         run: |
-          set -uo pipefail
+          set -euo pipefail
           export SPDM_NONCE="$(openssl rand -hex 32)"
           failed=0
           for mode in flash streaming; do
@@ -362,10 +447,13 @@ jobs:
               if [ "$phase" = suites ]; then filter='test(test_rom_runtime_compatibility::test_suite_)'; fi
               printf '%s\n' "cargo nextest run --archive-file compatibility-tests.tar.zst --workspace-remap . --profile emulator --run-ignored only --test-threads=1 --no-fail-fast --no-tests fail -E '$filter'" > "$MCU_COMPAT_RESULTS/$phase-command.txt"
               rm -f /tmp/junit.xml
-              cargo nextest run --archive-file compatibility-tests.tar.zst --workspace-remap . \
+              if cargo nextest run --archive-file compatibility-tests.tar.zst --workspace-remap . \
                 --profile emulator --run-ignored only --test-threads=1 --no-fail-fast --no-tests fail \
-                -E "$filter" 2>&1 | tee "$MCU_COMPAT_RESULTS/$phase.log"
-              code=$?
+                -E "$filter" 2>&1 | tee "$MCU_COMPAT_RESULTS/$phase.log"; then
+                code=0
+              else
+                code=$?
+              fi
               echo "$code" > "$MCU_COMPAT_RESULTS/$phase-exit-code.txt"
               if [ -f /tmp/junit.xml ]; then cp /tmp/junit.xml "$MCU_COMPAT_RESULTS/$phase-junit.xml"; else code=1; fi
               if grep -q 'Skipping test' "$MCU_COMPAT_RESULTS/$phase.log"; then code=1; fi
@@ -374,15 +462,19 @@ jobs:
               fi
               if [ "$phase" = boot ]; then
                 # Missing warm-reset support must not hide evidence from working services.
-                python3 - <<'PY'
+                if ! python3 - <<'PY'
           import json, os, pathlib
           required = ["recovery_cold_boot", "runtime_commands"]
-          if os.environ["MCU_COMPAT_MODE"] == "streaming": required += ["streaming_boot", "discovery"]
+          if os.environ["MCU_COMPAT_MODE"] == "streaming": required += ["streaming_boot"]
           root = pathlib.Path(os.environ["MCU_COMPAT_RESULTS"])
           raise SystemExit(any(not (root/f"{name}.json").is_file()
               or json.loads((root/f"{name}.json").read_text())["result"] != "PASS" for name in required))
           PY
-                if [ "$?" -ne 0 ]; then failed=1; break; fi
+                then
+                  echo "BLOCKED: $mode service checks require successful boot/mailbox prerequisites"
+                  failed=1
+                  break
+                fi
               fi
             done
           done
@@ -419,13 +511,15 @@ jobs:
           python3 - <<'PY'
           import itertools, json, os, pathlib, xml.etree.ElementTree as ET
           root = pathlib.Path("reports")
-          rows, records = [], []
+          rows, records, details = [], [], []
+          def cell(value):
+              return str(value).replace("|", "\\|").replace("\r", " ").replace("\n", " ")
           junit = ET.Element("testsuite", name="ROM/runtime compatibility")
-          scenarios = """recovery_cold_boot flash_cold_boot streaming_boot handoff runtime_commands discovery
+          scenarios = """recovery_cold_boot flash_cold_boot streaming_boot handoff runtime_commands
           cold_reboot corrupted_runtime corrupted_manifest svn_rollback svn_boundary warm_reset
           suite_attestation_ocp_eat_non_tcb suite_attestation_ocp_eat_tcb suite_attestation_ocp_eat_mixed
-          suite_attestation_pcr_quote suite_spdm_mctp suite_spdm_doe suite_spdm_rs suite_mailbox
-          suite_provisioning suite_ownership_dot suite_owner_stable_key suite_ownership_handoff
+          suite_attestation_pcr_quote suite_spdm_mctp suite_spdm_doe suite_spdm_rs
+          suite_provisioning suite_ownership_dot suite_owner_stable_key
           suite_network_boot suite_usb_recovery""".split()
           for rom, runtime in itertools.product(["rom-sdk-2.1.0","rom-sdk-2.1.0rc1"], ["rt-sdk-2.1.0","rt-sdk-2.1.1","main-2.1"]):
               directory = root / f"compatibility-results-{rom}-{runtime}" / "results"
@@ -449,32 +543,53 @@ jobs:
                   elif case["result"] == "NOT APPLICABLE":
                       ET.SubElement(node, "skipped", message=case.get("reason", "Not applicable"))
               executions_ok = True
+              execution_notes = []
               for mode, phase in itertools.product(["flash","streaming"], ["boot","suites"]):
                   path = directory/mode/f"{phase}-junit.xml"
                   code = directory/mode/f"{phase}-exit-code.txt"
                   log = directory/mode/f"{phase}.log"
                   try:
                       tests = ET.parse(path).findall(".//testcase")
-                      if len(tests) != (12 if phase == "boot" else 14) or code.read_text().strip() != "0" or "Skipping test" in log.read_text():
+                      expected_count = 11 if phase == "boot" else 12
+                      exit_code = code.read_text().strip()
+                      skip_marker = "Skipping test" in log.read_text()
+                      if len(tests) != expected_count or exit_code != "0" or skip_marker:
                           executions_ok = False
+                          execution_notes.append(f"{mode}/{phase}: Nextest cases={len(tests)}/{expected_count}, exit={exit_code}, skip_marker={skip_marker}")
                       if any(test.find("skipped") is not None for test in tests):
                           issues.append(f"{mode}/{phase}: Nextest skipped a selected test")
                       if any(test.find("failure") is not None or test.find("error") is not None for test in tests):
                           executions_ok = False
-                  except FileNotFoundError:
+                  except FileNotFoundError as error:
                       executions_ok = False
+                      execution_notes.append(f"{mode}/{phase}: Missing execution evidence: {error.filename}")
                   except (OSError, ET.ParseError) as error:
                       executions_ok = False
                       issues.append(f"{mode}/{phase}: Invalid execution evidence: {error}")
               dispositions_ok = all(c["result"] in ["PASS","NOT APPLICABLE"] for c in cases)
               status = ("FAIL" if issues or any(c["result"] == "FAIL" for c in cases) or (dispositions_ok and not executions_ok)
                         else "PASS" if executions_ok and dispositions_ok else "BLOCKED")
-              rows.append(f"| {rom} | {runtime} | {status} | {received}/52 case records |")
+              counts = {result: sum(c["result"] == result for c in cases)
+                        for result in ["PASS", "FAIL", "BLOCKED", "NOT APPLICABLE"]}
+              rows.append(f"| {rom} | {runtime} | {status} | {counts['PASS']} | {counts['FAIL']} | {counts['BLOCKED']} | {counts['NOT APPLICABLE']} | {received}/46 |")
+              failures = [c for c in cases if c["result"] in ["FAIL", "BLOCKED"]]
+              if failures:
+                  details.append(f"\n## {rom} / {runtime}\n\n| Mode | Case | Result | Phase | Elapsed ms | Reason |\n|---|---|---|---|---|---|\n")
+                  details.extend(
+                      f"| {c['mode']} | {c['scenario']} | {c['result']} | {cell(c.get('phase', 'not recorded'))} | {cell(c.get('elapsed_ms', 'not recorded'))} | {cell(c.get('reason', 'No reason recorded'))} |\n"
+                      for c in failures)
               if issues or (dispositions_ok and not executions_ok):
                   node = ET.SubElement(junit, "testcase", classname=rom, name=f"{runtime}/execution-evidence")
                   ET.SubElement(node, "failure", message="; ".join(issues) or "Nextest execution evidence is incomplete or failed")
-              records.append({"rom": rom, "runtime": runtime, "result": status, "issues": issues, "cases": cases})
-          summary = "# ROM/runtime compatibility\n\n| ROM | Runtime | Result | Coverage |\n|---|---|---|---|\n" + "\n".join(rows) + "\n"
+              if execution_notes or issues:
+                  details.append(f"\n### Execution evidence: {rom} / {runtime}\n\n")
+                  details.extend(f"- {cell(note)}\n" for note in execution_notes + issues)
+              records.append({"rom": rom, "runtime": runtime, "result": status, "counts": counts, "issues": issues, "cases": cases})
+          upstream = json.loads(os.environ["UPSTREAM_STATUS"])
+          summary = "# ROM/runtime compatibility\n\n| ROM | Runtime | Result | PASS | FAIL | BLOCKED | N/A | Records |\n|---|---|---|---|---|---|---|---|\n" + "\n".join(rows) + "\n"
+          summary += "\n## Workflow prerequisites\n\n| Job | Result |\n|---|---|\n"
+          summary += "".join(f"| {cell(name)} | {cell(job['result'])} |\n" for name, job in upstream.items())
+          summary += "".join(details)
           (root/"summary.md").write_text(summary)
           (root/"matrix-results.json").write_text(json.dumps(records, indent=2))
           (root/"upstream-status.json").write_text(os.environ["UPSTREAM_STATUS"])

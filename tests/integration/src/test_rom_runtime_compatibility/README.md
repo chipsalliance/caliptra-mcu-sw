@@ -1,90 +1,101 @@
 # Released ROM/runtime compatibility
 
-This Linux/WSL-only lane follows
-[the compatibility handoff](../../../../rom-runtime-compatibility-matrix-2.md).
+Linux/WSL-only tests for the six pairs in the
+[task document](../../../../rom-runtime-compatibility-matrix-2.md).
 Existing tests and current/current workflows are unchanged.
 
 ## What runs
 
 The [workflow](../../../../.github/workflows/rom-runtime-compatibility.yml):
 
-1. Resolves `main-2.1` once.
-2. Builds the two pinned ROMs and three runtimes with their own toolchains,
-   lockfiles and submodules. Each runtime has flash-only and streaming/service
-   configurations; neither configuration uses test firmware.
-   Before either runtime build, it writes matching embedded attestation and
-   image-descriptor inputs for images 4096/4097 (non-TCB, neither an AK target).
-   SDK 2.1.0's embedded policy contains only those images; SDK 2.1.1 and
-   `main-2.1` also include vendor key 4 (TCB), matching their native builders.
-   Both input files and their SHA-256 hashes are retained with the image.
-3. Builds one Nextest archive. The ignored `fixtures::prepare_inputs` test uses
-   the existing builder APIs to produce fixed Core, OTP and signed manifests.
-   The selected ROM's own flash producer creates its native raw flash payload.
-   The production ROMs read the native payload at offset zero, without a
-   partition table. Only runtime payloads are wrapped with image A at `0x10000`
-   and a checksummed partition table at offset zero. Both layouts are seeded
-   with certificates before hashing; the native payload format is not rewritten.
-4. Runs exactly six ROM/runtime jobs. Each runs the new ignored boot checks,
-   then applicable service checks, using the `emulator` profile and one test
-   thread. Nextest already isolates test cases; there is no extra test runner.
-5. Always reports all six pairs and uploads logs, commands, hashes and JUnit.
+1. Builds the two pinned ROMs and three runtimes with their own toolchains,
+   lockfiles and submodules. Resolves `main-2.1` once per run.
+2. Prepares signed fixtures using Caliptra 2.1, repository test keys and Core
+   `b99535ded32492d6c23bbc56f95e787a1e275b59`.
+3. Runs each pair in flash and streaming configurations using ignored Nextest
+   tests, the `emulator` profile and one test thread.
+4. Uploads results, logs, JUnit, build commands and image hashes.
 
-The Core source is fixed at
-`e5d1f27b15ba02e4e0a57b942bbde39b74cab2eb`, with 2.1 hardware, repository LMS
-test keys, Raw OTP and SVN 0. The boundary fixture uses a separately signed
-SVN-1 manifest and matching OTP floor.
-Before hashing, all primary/runtime flash artifacts (including SVN-1) are seeded
-with the existing integration `ECC_DEVID_CERT_DER` and `MLDSA_IDEVID_CERT`
-fixtures, using `build_primary_flash_initial_contents`' external-OTP layout.
-The selected boot payloads are preserved.
+Cases come only from task-document sections 3 and 5: boot, handoff, commands,
+authentication/SVN, reset and applicable service suites. Historical firmware
+is not patched, and missing images never fall back to current firmware.
+Failed batches do not stop independent checks; service suites run only when
+their boot prerequisites pass.
 
-## Required owner inputs
+There are **23 distinct cases**, each recorded for flash and streaming
+configurations: **46 records per pair**, not 46 different tests.
 
-Section 1 of the handoff requires agreement, not guessed defaults. Supply these
-manual/reusable workflow inputs, or their repository-variable equivalents:
+| Task-document requirement | Cases |
+|---|---|
+| Section 3: recovery, flash, streaming, handoff, commands, cold reboot, warm reset | 7 |
+| Section 3: corrupt runtime, corrupt manifest, SVN rollback, SVN boundary | 4 |
+| Section 5: attestation modes, SPDM transports, provisioning, optional ownership/boot | 12 |
 
-- `fixture-agreement` / `MCU_COMPAT_FIXTURE_AGREEMENT`: approval of the fixed
-  Core, OTP/signing, IDevID certificates, embedded boot policy and release
-  configurations above.
-- `expected-capabilities` / `MCU_COMPAT_CAPABILITIES`: reviewed capability bytes
-  for each selected runtime and configuration, not bytes learned from the
-  firmware under test. The JSON shape is:
+Discovery assertions are part of streaming boot. The core command and handoff
+checks also cover those requirements in section 5; they are not rerun as suites.
+Unsupported optional cases record N/A or BLOCKED, not passing coverage.
 
-  ```json
-  {
-    "rt-sdk-2.1.0": {"flash": "<36-byte hex>", "streaming": "<36-byte hex>"},
-    "rt-sdk-2.1.1": {"flash": "<64-byte hex>", "streaming": "<64-byte hex>"},
-    "main-2.1": {"flash": "<64-byte hex>", "streaming": "<64-byte hex>"}
-  }
-  ```
+Service suites use three additional release configurations per runtime:
+non-TCB, TCB and mixed SoC policies, using each release's native cold-boot
+attestation feature to retain services after loading. Each suite verifies PLDM
+loading and activation on its own model before SPDM. EAT evidence is
+authenticated and appraised against signed reference values generated from
+that configuration's manifest.
 
-Missing inputs block preparation and the six-pair report; they never produce a
-compatibility pass. Version strings and command IDs come from each selected
-source's build metadata.
+## Required inputs
 
-## Coverage and limitations
+Run the workflow manually or through `workflow_call`. Supply:
 
-Boot checks cover recovery, flash without streaming fallback, streaming/PLDM
-activation, old handoff layouts, mailbox version/capabilities, preserved-flash
-cold reboot, corruption rejection and the SVN boundary. Service checks exercise
-mailbox and non-mutating provisioning status/challenge behavior.
+| Workflow input | Repository-variable alternative | Value |
+|---|---|---|
+| `fixture-agreement` | `MCU_COMPAT_FIXTURE_AGREEMENT` | Approval of the Core, signing/OTP and release configurations. |
+| `expected-capabilities` | `MCU_COMPAT_CAPABILITIES` | Reviewed capability bytes for each runtime and mode. |
 
-The SDK 2.1.0 ROM's native `rom-build` selects a development manifest with its
-handoff at `0x50003800`; the selected release runtimes use `0x50003c00`. The RC
-ROM uses `0x50003c00`. The handoff check reads the selected ROM's generated
-linker address after runtime startup and reports the observed bytes on failure.
-It does not relocate the table, patch historical firmware, or treat a working
-mailbox as proof that the runtime accepted the handoff.
+Capability JSON uses this shape:
 
-Full streaming MCTP SPDM conformance is **BLOCKED** until the same model has
-completed PLDM loading and verified SoC measurement setup, with a live responder
-after loading. Separate streaming-boot results do not initialize the fresh
-conformance model. The selected production configuration can exit after loading;
-no test-only runtime is substituted to keep it alive.
+```json
+{
+  "rt-sdk-2.1.0": {"flash": "<36-byte hex>", "streaming": "<36-byte hex>"},
+  "rt-sdk-2.1.1": {"flash": "<64-byte hex>", "streaming": "<64-byte hex>"},
+  "main-2.1": {"flash": "<64-byte hex>", "streaming": "<64-byte hex>"}
+}
+```
 
-Warm reset remains **BLOCKED** until a validated FPGA lane or emulator support
-exists. Production EAT modes remain **BLOCKED** until embedded-policy,
-measurement-completion and appraisal fixtures exist. Disabled PCR, DOE,
-ownership, network and USB configurations are explicitly **NOT APPLICABLE**,
-not counted as executed coverage. No historical firmware is patched to enable
-them.
+Missing inputs block execution; they do not produce a pass.
+For local fixture preparation, `MCU_COMPAT_RUNTIME` limits work to one runtime.
+
+## Reading results
+
+Open the Actions summary or `compatibility-summary` artifact. Each pair shows
+PASS, FAIL, BLOCKED and N/A counts, followed by failure reasons and timings.
+Per-case JSON records include source SHAs and distinguish input-validation
+failures from scenario failures. Logs contain error codes and expected/actual
+values where available.
+
+- **PASS:** the check ran and passed.
+- **FAIL:** an assertion, execution or evidence check failed.
+- **BLOCKED:** required inputs, prerequisites or coverage are unavailable.
+- **NOT APPLICABLE:** the selected configuration does not enable the feature.
+
+FAIL and BLOCKED keep the matrix nonpassing. N/A is not executed coverage.
+
+## Known limitations
+
+- Production ROMs expect a raw flash header at offset zero; release runtimes
+  expect a partition table there. Flash failures remain visible; the tests do
+  not swap flash contents or use streaming fallback to hide them.
+- Emulator warm reset resets both CPUs and checks fresh runtime readiness,
+  mailbox commands and OTP/flash preservation. The RC ROM with SDK 2.1.0 runtime
+  passed in flash configuration; other pairs and streaming remain unverified.
+- Missing SPDM/EAT tools, signed reference values or trust anchors block the
+  corresponding service checks. Protocol or appraisal failures are FAIL, not PASS.
+
+Focused validation passed all three EAT modes on RC ROM + SDK 2.1.1 streaming,
+including authentication and appraisal. Full SPDM conformance and other pairs
+were not rerun locally.
+
+The [last executed baseline](https://github.com/chipsalliance/caliptra-mcu-sw/actions/runs/40789714542)
+had 39 passing cases, but also flash/handoff failures and blocked coverage.
+Its workflow exited after the first batch, leaving 40 cases per pair unrun.
+The Core, ROM-build and batch-continuation corrections have not yet been
+verified by a new firmware matrix run.

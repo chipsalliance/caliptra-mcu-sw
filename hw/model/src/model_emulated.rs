@@ -784,6 +784,26 @@ impl McuHwModel for ModelEmulated {
     }
 
     fn warm_reset(&mut self) {
+        // Core's emulator reset does not clear these reset-domain registers.
+        // Clear them before MCI resets so firmware cannot reuse stale readiness.
+        for index in 0..4 {
+            self.caliptra_soc_manager()
+                .soc_ifc()
+                .ss_generic_fw_exec_ctrl()
+                .at(index)
+                .write(|_| 0);
+        }
+        self.ready_for_fw.set(false);
+        self.mcu_exit_status.set(None);
+        self.state
+            .runtime_started
+            .store(false, std::sync::atomic::Ordering::Release);
+        self.state.set_pldm_ready(false);
+        self.state
+            .set_spdm_responder_ready(SpdmResponderTransport::Mctp, false);
+        self.state
+            .set_spdm_responder_ready(SpdmResponderTransport::Doe, false);
+        self.caliptra_cpu.warm_reset();
         self.cpu.warm_reset();
         self.step();
     }
@@ -913,6 +933,75 @@ mod test {
     use super::*;
     use crate::{InitParams, McuHwModel, ModelEmulated};
     use caliptra_mcu_builder::{CaliptraBuildArgs, CaliptraBuilder};
+
+    #[test]
+    fn test_subsystem_warm_reset_preserves_memory_and_clears_readiness() {
+        let rom = [0x6f, 0, 0, 0]; // jal zero, 0
+        let mut model = ModelEmulated::new_unbooted(InitParams {
+            mcu_rom: &rom,
+            caliptra_rom: &rom,
+            hw_revision: Some(Version::new(2, 1, 0)),
+            check_booted_to_runtime: false,
+            ..Default::default()
+        })
+        .unwrap();
+        let otp = model.read_otp_memory();
+        model.mci_regs.borrow_mut().flow_status = u32::MAX;
+        model.mci_regs.borrow_mut().reset_reason = 3;
+        for index in 0..4 {
+            model
+                .caliptra_soc_manager()
+                .soc_ifc()
+                .ss_generic_fw_exec_ctrl()
+                .at(index)
+                .write(|_| u32::MAX);
+        }
+        model
+            .cpu
+            .bus
+            .write(RvSize::Word, EMULATOR_MEMORY_MAP.sram_offset, 0x1234_5678)
+            .unwrap();
+        model.state.set_pldm_ready(true);
+        model
+            .state
+            .set_spdm_responder_ready(SpdmResponderTransport::Mctp, true);
+        model.cpu_enabled.set(true);
+
+        model.warm_reset();
+
+        assert_eq!(model.mci_regs.borrow().reset_reason, 4);
+        assert_eq!(model.mci_regs.borrow().flow_status, 0);
+        for index in 0..4 {
+            assert_eq!(
+                model
+                    .caliptra_soc_manager()
+                    .soc_ifc()
+                    .ss_generic_fw_exec_ctrl()
+                    .at(index)
+                    .read(),
+                0
+            );
+        }
+        assert!(model
+            .caliptra_soc_manager()
+            .soc_ifc()
+            .cptra_reset_reason()
+            .read()
+            .warm_reset());
+        assert!(!model.state.is_pldm_ready());
+        assert!(!model
+            .state
+            .is_spdm_responder_ready(SpdmResponderTransport::Mctp));
+        assert_eq!(model.read_otp_memory(), otp);
+        assert_eq!(
+            model
+                .cpu
+                .bus
+                .read(RvSize::Word, EMULATOR_MEMORY_MAP.sram_offset)
+                .unwrap(),
+            0x1234_5678
+        );
+    }
 
     #[test]
     fn test_emulator_hw_revision_override_preserves_defaults() {
