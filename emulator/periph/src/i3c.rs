@@ -14,9 +14,9 @@ use caliptra_emu_cpu::Irq;
 use caliptra_emu_types::RvData;
 use caliptra_mcu_emulator_registers_generated::i3c::{I3cGenerated, I3cPeripheral};
 use caliptra_mcu_registers_generated::i3c::bits::{
-    DeviceStatus0, ExtcapHeader, IndirectFifoCtrl0, IndirectFifoStatus0, InterruptEnable,
-    InterruptStatus, RecIntfCfg, RecoveryCtrl, Status, StbyCrCapabilities, StbyCrDeviceAddr,
-    TtiQueueSize,
+    DeviceReset, DeviceStatus0, ExtcapHeader, IndirectFifoCtrl0, IndirectFifoStatus0,
+    InterruptEnable, InterruptStatus, RecIntfCfg, RecoveryCtrl, Status, StbyCrCapabilities,
+    StbyCrDeviceAddr, TtiQueueSize,
 };
 use caliptra_mcu_testing_common::i3c::{
     DynamicI3cAddress, I3cTcriCommand, I3cTcriResponseXfer, IbiDescriptor, ResponseDescriptor,
@@ -84,6 +84,7 @@ pub struct I3c {
         caliptra_mcu_registers_generated::i3c::bits::DeviceStatus0::Register,
     >,
     i3c_ec_sec_fw_recovery_if_recovery_status: ReadWriteRegister<u32>,
+    i3c_ec_sec_fw_recovery_if_device_reset: ReadWriteRegister<u32, DeviceReset::Register>,
     i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0: ReadWriteRegister<
         u32,
         caliptra_mcu_registers_generated::i3c::bits::IndirectFifoCtrl0::Register,
@@ -164,6 +165,7 @@ impl I3c {
             i3c_ec_sec_fw_recovery_if_prot_cap_2: ReadWriteRegister::new(0),
             i3c_ec_sec_fw_recovery_if_device_status_0: ReadWriteRegister::new(0),
             i3c_ec_sec_fw_recovery_if_recovery_status: ReadWriteRegister::new(0),
+            i3c_ec_sec_fw_recovery_if_device_reset: ReadWriteRegister::new(0),
             i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_0: ReadWriteRegister::new(0),
             i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1: ReadWriteRegister::new(0),
             // Initialize with Empty bit set (bit 0) to indicate FIFO can receive data
@@ -550,9 +552,10 @@ impl I3c {
                 Ok(())
             }
             0x038 => {
-                self.write_i3c_ec_sec_fw_recovery_if_device_reset(
-                    caliptra_emu_bus::ReadWriteRegister::new(val),
-                );
+                // Recovery-controller ingress is a hardware update, not W1C.
+                self.i3c_ec_sec_fw_recovery_if_device_reset
+                    .reg
+                    .set(val & 0x00ff_ffff);
                 Ok(())
             }
             0x03c => {
@@ -957,6 +960,23 @@ impl I3cPeripheral for I3c {
         INDIRECT_FIFO_DEPTH
     }
 
+    fn read_i3c_ec_sec_fw_recovery_if_device_reset(
+        &mut self,
+    ) -> ReadWriteRegister<u32, DeviceReset::Register> {
+        ReadWriteRegister::new(self.i3c_ec_sec_fw_recovery_if_device_reset.reg.get())
+    }
+
+    fn write_i3c_ec_sec_fw_recovery_if_device_reset(
+        &mut self,
+        val: ReadWriteRegister<u32, DeviceReset::Register>,
+    ) {
+        let value = val.reg.get();
+        let reset_ctrl = self.i3c_ec_sec_fw_recovery_if_device_reset.reg.get() & 0xff & !value;
+        self.i3c_ec_sec_fw_recovery_if_device_reset
+            .reg
+            .set(reset_ctrl | (value & 0x00ff_ff00));
+    }
+
     fn read_i3c_ec_sec_fw_recovery_if_recovery_ctrl(
         &mut self,
     ) -> caliptra_emu_bus::ReadWriteRegister<
@@ -1045,12 +1065,16 @@ impl I3cPeripheral for I3c {
         let new_device_reset = self.i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access.reg.read(
             caliptra_mcu_registers_generated::i3c::bits::RecIntfRegW1cAccess::DeviceResetCtrl,
         );
-        let device_reset = self.read_i3c_ec_sec_fw_recovery_if_device_reset();
-        device_reset.reg.modify(
-            caliptra_mcu_registers_generated::i3c::bits::DeviceReset::ResetCtrl
-                .val(new_device_reset),
-        );
-        self.write_i3c_ec_sec_fw_recovery_if_device_reset(device_reset);
+        if self
+            .i3c_ec_soc_mgmt_if_rec_intf_cfg
+            .reg
+            .read(RecIntfCfg::RecIntfBypass)
+            == I3C_REC_INT_BYPASS_AXI_DIRECT
+        {
+            self.i3c_ec_sec_fw_recovery_if_device_reset
+                .reg
+                .modify(DeviceReset::ResetCtrl.val(new_device_reset));
+        }
     }
 
     fn poll(&mut self) {
@@ -1137,6 +1161,53 @@ mod tests {
     };
 
     const TTI_RX_DESC_QUEUE_PORT: RvAddr = 0x270;
+
+    #[test]
+    fn device_reset_distinguishes_software_w1c_and_hardware_updates() {
+        let clock = Clock::new();
+        let pic = Pic::new();
+        let mut controller = I3cController::default();
+        let mut i3c = I3c::new(
+            &clock,
+            &mut controller,
+            pic.register_irq(2),
+            Version::new(2, 1, 0),
+            Arc::new(Mutex::new(())),
+        );
+        let read = |i3c: &mut I3c| i3c.read_i3c_ec_sec_fw_recovery_if_device_reset().reg.get();
+        assert_eq!(read(&mut i3c), 0);
+        i3c.write_i3c_ec_sec_fw_recovery_if_device_reset(ReadWriteRegister::new(0x0056_3411));
+        assert_eq!(read(&mut i3c), 0x0056_3400);
+
+        // The SoC mock aperture is effective only in bypass mode.
+        i3c.write_i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access(ReadWriteRegister::new(0x11));
+        assert_eq!(read(&mut i3c), 0x0056_3400);
+        i3c.write_i3c_ec_soc_mgmt_if_rec_intf_cfg(ReadWriteRegister::new(
+            I3C_REC_INT_BYPASS_AXI_DIRECT,
+        ));
+        i3c.write_i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access(ReadWriteRegister::new(0x11));
+        assert_eq!(read(&mut i3c), 0x0056_3411);
+        i3c.write_i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access(ReadWriteRegister::new(0x10));
+        assert_eq!(read(&mut i3c), 0x0056_3410);
+        i3c.write_i3c_ec_soc_mgmt_if_rec_intf_reg_w1_c_access(ReadWriteRegister::new(0x11));
+        i3c.write_i3c_ec_sec_fw_recovery_if_device_reset(ReadWriteRegister::new(0x0056_3401));
+        assert_eq!(read(&mut i3c), 0x0056_3410);
+        i3c.write_i3c_ec_sec_fw_recovery_if_device_reset(ReadWriteRegister::new(0x0056_3410));
+        assert_eq!(read(&mut i3c), 0x0056_3400);
+
+        // Actual recovery ingress also sets bits, instead of acknowledging them.
+        i3c.write_i3c_ec_soc_mgmt_if_rec_intf_cfg(ReadWriteRegister::new(
+            I3C_REC_INT_BYPASS_I3C_CORE,
+        ));
+        i3c.write_recovery_interface(RvSize::Word, 0x38, 0xff12_3411)
+            .unwrap();
+        assert_eq!(read(&mut i3c), 0x0012_3411);
+        i3c.write_recovery_interface(RvSize::Word, 0x38, 0x0012_3410)
+            .unwrap();
+        assert_eq!(read(&mut i3c), 0x0012_3410);
+        i3c.write_i3c_ec_sec_fw_recovery_if_device_reset(ReadWriteRegister::new(0x0012_34ff));
+        assert_eq!(read(&mut i3c), 0x0012_3400);
+    }
 
     /// The indirect FIFO indices must wrap at the FIFO depth like hardware,
     /// so firmware cannot use them to track how much of an image was sent.
