@@ -341,8 +341,14 @@ impl McuHwModel for ModelEmulated {
             _ => None,
         };
 
-        // Use MCU recovery interface when flash-based boot or network boot is enabled
-        let use_mcu_recovery_interface = params.flash_boot || params.network_boot;
+        #[cfg(hw_rev = "latest")]
+        let usb_recovery = params.usb_recovery;
+        #[cfg(not(hw_rev = "latest"))]
+        let usb_recovery = false;
+        if usb_recovery && (params.flash_boot || params.network_boot) {
+            bail!("USB recovery cannot share the I3C flash/network recovery event channels");
+        }
+        let use_mcu_recovery_interface = params.flash_boot || params.network_boot || usb_recovery;
 
         if std::env::var("CPTRA_EMULATOR_SS_MCI_OFFSET").is_err() {
             std::env::set_var("CPTRA_EMULATOR_SS_MCI_OFFSET", "0x00000000a8000000");
@@ -487,7 +493,22 @@ impl McuHwModel for ModelEmulated {
         // Use MCU recovery interface (I3C) when flash-based boot or network
         // boot is enabled; otherwise use BMC recovery interface.
         let use_mcu_recovery = params.flash_boot || params.network_boot;
-        let bmc = if use_mcu_recovery {
+        let bmc = if usb_recovery {
+            #[cfg(hw_rev = "latest")]
+            cpu.bus
+                .bus
+                .usb_combo_periph
+                .as_mut()
+                .unwrap()
+                .periph
+                .register_event_channels(
+                    caliptra_event_sender,
+                    caliptra_event_receiver,
+                    mcu_event_sender,
+                    mcu_event_receiver,
+                );
+            None
+        } else if use_mcu_recovery {
             // Connect event channels to I3C peripheral for MCU recovery interface
             cpu.bus
                 .bus
@@ -822,6 +843,15 @@ impl ModelEmulated {
     /// MCU-side bus access for emulator integration tests.
     pub fn mcu_bus_for_test(&mut self) -> &mut impl Bus {
         &mut self.cpu.bus
+    }
+
+    /// Exercise the actual Caliptra DMA and AXI event path in integration tests.
+    pub fn caliptra_dma_for_test(&mut self) -> &mut caliptra_emu_periph::dma::Dma {
+        &mut self.caliptra_cpu.bus.dma
+    }
+
+    pub fn has_bmc_for_test(&self) -> bool {
+        self.bmc.is_some()
     }
 }
 

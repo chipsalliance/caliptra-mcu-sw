@@ -21,4 +21,5 @@ caliptra-mcu-testing-common.workspace = true
 semver.workspace = true
 
 [build-dependencies]
+caliptra-mcu-hw-revision.workspace = true
 cbindgen.workspace = true
