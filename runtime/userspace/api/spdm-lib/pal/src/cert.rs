@@ -10,7 +10,9 @@ use super::measurements::MeasurementProvider;
 use super::*;
 #[cfg(feature = "set-certificate")]
 use caliptra_mcu_cert_store::errors as cert_errors;
-use caliptra_mcu_cert_store::{CertificateAlgorithm, EndorsementRole, DPE_LEAF_LABEL};
+use caliptra_mcu_cert_store::{
+    CertificateAlgorithm, EndorsementRole, EndorsementStorage, DPE_LEAF_LABEL,
+};
 use caliptra_mcu_spdm_traits::{SigningInput, SpdmPalAsymAlgo, SpdmPalCertStore, SpdmPalHashAlgo};
 use mcu_error::codes::{INTERNAL_BUG, INVARIANT};
 
@@ -58,7 +60,7 @@ fn map_set_cert_error(err: mcu_error::McuErrorCode) -> mcu_error::McuErrorCode {
 // Trait impl
 // ---------------------------------------------------------------------------
 
-impl<M: MeasurementProvider> SpdmPalCertStore for McuSpdmPal<M> {
+impl<M: MeasurementProvider, S: EndorsementStorage> SpdmPalCertStore for McuSpdmPal<M, S> {
     fn supported_slots(&self) -> u8 {
         let mut mask = 0u8;
         for role in EndorsementRole::ALL {
