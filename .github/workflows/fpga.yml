@@ -357,6 +357,7 @@ jobs:
     env:
       CALIPTRA_HW_REV: "2.1"
       CALIPTRA_MCU_FUSES_HJSON: ${{ github.workspace }}/hw/rev-2_1/fuses.hjson
+      RUSTUP_TOOLCHAIN: "1.96.1"
 
     steps:
       - name: Checkout repo
@@ -381,6 +382,11 @@ jobs:
         with:
           name: caliptra-bitstream-2.1
           path: /tmp/caliptra-bitstream
+
+      - name: Install Cargo for source-switch validation
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.96.1"
 
       - name: Load bitstream
         run: |

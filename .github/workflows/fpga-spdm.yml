@@ -240,6 +240,7 @@ jobs:
     env:
       CALIPTRA_HW_REV: "2.1"
       CALIPTRA_MCU_FUSES_HJSON: ${{ github.workspace }}/hw/rev-2_1/fuses.hjson
+      RUSTUP_TOOLCHAIN: "1.96.1"
 
     steps:
       - name: Checkout repo
@@ -277,6 +278,11 @@ jobs:
           chmod +x /tmp/spdm-emu-binaries/spdm_requester_emu
           chmod +x /tmp/spdm-emu-binaries/spdm_device_attester_sample
           chmod +x /tmp/spdm-emu-binaries/spdm_responder_emu
+
+      - name: Install Cargo for source-switch validation
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: "1.96.1"
 
       - name: Load bitstream
         run: |

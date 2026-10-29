@@ -69,7 +69,13 @@ fn check_lockfiles(root: &Path) -> Result<()> {
             .current_dir(&workspace)
             .args(["metadata", "--locked", "--format-version", "1"])
             .stdout(Stdio::null())
-            .status()?;
+            .status()
+            .with_context(|| {
+                format!(
+                    "Cannot run Cargo metadata validation in {}; install Cargo or set CARGO to its executable",
+                    workspace.display()
+                )
+            })?;
         if !status.success() {
             bail!(
                 "The selected source is incompatible with {}. Review the dependency graph \
