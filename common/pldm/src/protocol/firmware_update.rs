@@ -361,15 +361,15 @@ impl PldmCodec for Descriptor {
         .unwrap();
         offset += core::mem::size_of::<u16>();
 
-        if descriptor_length as usize > DESCRIPTOR_DATA_MAX_LEN {
-            return Err(PldmCodecError::InvalidData);
-        }
         let mut descriptor_data = [0u8; DESCRIPTOR_DATA_MAX_LEN];
-        descriptor_data[..descriptor_length as usize].copy_from_slice(
-            buffer
-                .get(offset..offset + descriptor_length as usize)
-                .ok_or(PldmCodecError::BufferTooShort)?,
-        );
+        descriptor_data
+            .get_mut(..descriptor_length as usize)
+            .ok_or(PldmCodecError::InvalidData)?
+            .copy_from_slice(
+                buffer
+                    .get(offset..offset + descriptor_length as usize)
+                    .ok_or(PldmCodecError::BufferTooShort)?,
+            );
 
         Ok(Descriptor {
             descriptor_type,
@@ -697,28 +697,27 @@ impl PldmCodec for ComponentParameterEntry {
         offset += core::mem::size_of::<ComponentParameterEntryFixed>();
 
         let active_comp_ver_str_len = comp_param_entry_fixed.active_comp_ver_str_len as usize;
-        if active_comp_ver_str_len > PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN {
-            return Err(PldmCodecError::InvalidData);
-        }
         let mut active_comp_ver_str = [0u8; PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN];
-        active_comp_ver_str[..active_comp_ver_str_len].copy_from_slice(
-            buffer
-                .get(offset..offset + active_comp_ver_str_len)
-                .ok_or(PldmCodecError::BufferTooShort)?,
-        );
+        active_comp_ver_str
+            .get_mut(..active_comp_ver_str_len)
+            .ok_or(PldmCodecError::InvalidData)?
+            .copy_from_slice(
+                buffer
+                    .get(offset..offset + active_comp_ver_str_len)
+                    .ok_or(PldmCodecError::BufferTooShort)?,
+            );
         offset += active_comp_ver_str_len;
 
         let pending_comp_ver_str = if comp_param_entry_fixed.pending_comp_ver_str_len > 0 {
             let len = comp_param_entry_fixed.pending_comp_ver_str_len as usize;
-            if len > PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN {
-                return Err(PldmCodecError::InvalidData);
-            }
             let mut arr = [0u8; PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN];
-            arr[..len].copy_from_slice(
-                buffer
-                    .get(offset..offset + len)
-                    .ok_or(PldmCodecError::BufferTooShort)?,
-            );
+            arr.get_mut(..len)
+                .ok_or(PldmCodecError::InvalidData)?
+                .copy_from_slice(
+                    buffer
+                        .get(offset..offset + len)
+                        .ok_or(PldmCodecError::BufferTooShort)?,
+                );
             Some(arr)
         } else {
             None

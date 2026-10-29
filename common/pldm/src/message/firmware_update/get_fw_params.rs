@@ -163,14 +163,14 @@ impl PldmCodec for FirmwareParameters {
 
         let mut active_comp_image_set_ver_str = [0u8; PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN];
         let len = params_fixed.active_comp_image_set_ver_str_len as usize;
-        if len > PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN {
-            return Err(PldmCodecError::InvalidData);
-        }
-        active_comp_image_set_ver_str[..len].copy_from_slice(
-            buffer
-                .get(offset..offset + len)
-                .ok_or(PldmCodecError::BufferTooShort)?,
-        );
+        active_comp_image_set_ver_str
+            .get_mut(..len)
+            .ok_or(PldmCodecError::InvalidData)?
+            .copy_from_slice(
+                buffer
+                    .get(offset..offset + len)
+                    .ok_or(PldmCodecError::BufferTooShort)?,
+            );
 
         offset += len;
 
@@ -178,14 +178,13 @@ impl PldmCodec for FirmwareParameters {
         {
             let mut arr = [0u8; PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN];
             let len = params_fixed.pending_comp_image_set_ver_str_len as usize;
-            if len > PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN {
-                return Err(PldmCodecError::InvalidData);
-            }
-            arr[..len].copy_from_slice(
-                buffer
-                    .get(offset..offset + len)
-                    .ok_or(PldmCodecError::BufferTooShort)?,
-            );
+            arr.get_mut(..len)
+                .ok_or(PldmCodecError::InvalidData)?
+                .copy_from_slice(
+                    buffer
+                        .get(offset..offset + len)
+                        .ok_or(PldmCodecError::BufferTooShort)?,
+                );
             Some(arr)
         } else {
             None
@@ -196,14 +195,27 @@ impl PldmCodec for FirmwareParameters {
         if comp_count > MAX_COMPONENT_COUNT {
             return Err(PldmCodecError::InvalidData);
         }
-        let mut comp_param_table: [ComponentParameterEntry; MAX_COMPONENT_COUNT] =
-            core::array::from_fn(|_| ComponentParameterEntry::default());
-        for entry in comp_param_table.iter_mut().take(comp_count) {
-            *entry = ComponentParameterEntry::decode(
-                buffer.get(offset..).ok_or(PldmCodecError::BufferTooShort)?,
-            )?;
-            offset += entry.codec_size_in_bytes();
-        }
+        let mut index = 0;
+        let mut result = Ok(());
+        let comp_param_table: [ComponentParameterEntry; MAX_COMPONENT_COUNT] =
+            core::array::from_fn(|_| {
+                if index < comp_count && result.is_ok() {
+                    index += 1;
+                    match buffer
+                        .get(offset..)
+                        .ok_or(PldmCodecError::BufferTooShort)
+                        .and_then(ComponentParameterEntry::decode)
+                    {
+                        Ok(comp_param_table_entry) => {
+                            offset += comp_param_table_entry.codec_size_in_bytes();
+                            return comp_param_table_entry;
+                        }
+                        Err(e) => result = Err(e),
+                    }
+                }
+                ComponentParameterEntry::default() // Fill remaining slots with default values
+            });
+        result?;
 
         Ok(FirmwareParameters {
             params_fixed,

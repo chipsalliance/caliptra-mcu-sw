@@ -120,15 +120,15 @@ impl PldmCodec for RequestUpdateRequest {
         offset += core::mem::size_of::<RequestUpdateRequestFixed>();
 
         let str_len = fixed.comp_image_set_ver_str_len as usize;
-        if str_len > PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN {
-            return Err(PldmCodecError::InvalidData);
-        }
         let mut comp_image_set_ver_str = [0u8; PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN];
-        comp_image_set_ver_str[..str_len].copy_from_slice(
-            buffer
-                .get(offset..offset + str_len)
-                .ok_or(PldmCodecError::BufferTooShort)?,
-        );
+        comp_image_set_ver_str
+            .get_mut(..str_len)
+            .ok_or(PldmCodecError::InvalidData)?
+            .copy_from_slice(
+                buffer
+                    .get(offset..offset + str_len)
+                    .ok_or(PldmCodecError::BufferTooShort)?,
+            );
 
         Ok(RequestUpdateRequest {
             fixed,
