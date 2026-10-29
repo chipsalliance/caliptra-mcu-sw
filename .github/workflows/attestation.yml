@@ -7,10 +7,10 @@ on:
   workflow_dispatch:
   workflow_call:
 
+# ROM, FMC and runtime follow the selected core/caliptra-sw pin together.
+
 env:
-  # Pin the Caliptra core ROM to a release tag; image/update crates continue
-  # to use the Cargo.toml caliptra-sw rev. main-2.1 pins rom-2.1.2 instead.
-  CALIPTRA_ROM_REF: rom-2.1.2
+  CALIPTRA_HW_REV: "2.1"
 
 jobs:
   attestation_e2e:
@@ -79,6 +79,9 @@ jobs:
           sudo apt-get install -qy build-essential curl gcc-multilib gcc-riscv64-unknown-elf git rustup &&
           rustup toolchain install -c clippy,rust-src,llvm-tools,rustfmt,rustc-dev
 
+      - name: Select pinned Caliptra 2.1 software
+        run: CALIPTRA_HW_REV=latest cargo xtask switch-version 2.1
+
       - name: Restore sccache binary
         uses: actions/cache/restore@v6
         id: sccache_bin_restore
@@ -146,7 +149,7 @@ jobs:
       # ---- Build firmware with test features enabled -------------------------------
       - name: Build firmware with test SPDM responder features
         run: |
-          cargo xtask all-build --separate-runtimes --runtime-features ${{ matrix.runtime_feature }} \
+          cargo xtask all-build --output target/all-fw.zip --separate-runtimes --runtime-features ${{ matrix.runtime_feature }} \
             --vendor "$ATTESTATION_VENDOR" --model "$ATTESTATION_MODEL"
 
       # ---- Generate reference CoRIM values -------------------------------

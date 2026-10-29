@@ -6,6 +6,10 @@ version.workspace = true
 authors.workspace = true
 edition.workspace = true
 
+[build-dependencies]
+caliptra-mcu-hw-revision.workspace = true
+toml.workspace = true
+
 [dependencies]
 bitfield.workspace = true
 bitflags.workspace = true
