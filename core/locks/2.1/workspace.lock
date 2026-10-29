@@ -2268,6 +2268,7 @@ dependencies = [
  "caliptra-mcu-config",
  "caliptra-mcu-config-emulator",
  "caliptra-mcu-error",
+ "caliptra-mcu-hw-revision",
  "caliptra-mcu-image-header",
  "caliptra-mcu-network-drivers",
  "caliptra-mcu-network-hil",
@@ -2275,6 +2276,7 @@ dependencies = [
  "caliptra-mcu-registers-generated",
  "caliptra-mcu-rom-common",
  "caliptra-mcu-romtime",
+ "caliptra-mcu-usb-common",
  "caliptra-mcu-usb-emulator",
  "riscv-csr",
  "rv32i",
@@ -2290,9 +2292,11 @@ dependencies = [
  "caliptra-mcu-builder",
  "caliptra-mcu-config",
  "caliptra-mcu-config-fpga",
+ "caliptra-mcu-hw-revision",
  "caliptra-mcu-registers-generated",
  "caliptra-mcu-rom-common",
  "caliptra-mcu-romtime",
+ "caliptra-mcu-usb-common",
  "riscv-csr",
  "rv32i",
  "tock-registers",
@@ -2748,6 +2752,18 @@ dependencies = [
  "riscv-csr",
  "rv32i",
  "tock-registers",
+]
+
+[[package]]
+name = "caliptra-mcu-usb-common"
+version = "0.1.0"
+dependencies = [
+ "caliptra-mcu-hw-revision",
+ "caliptra-mcu-ocp",
+ "caliptra-mcu-registers-generated",
+ "caliptra-mcu-romtime",
+ "tock-registers",
+ "zerocopy",
 ]
 
 [[package]]

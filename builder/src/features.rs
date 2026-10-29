@@ -110,6 +110,8 @@ pub const ROM_ONLY_TEST_FEATURES: &[&str] = &[
     "test-usb-ocp-recovery",
 ];
 
+pub const LATEST_ROM_ONLY_TEST_FEATURES: &[&str] = &["test-lpcip-usb-enumeration"];
+
 pub const BARE_METAL_BINARIES: &[&str] = &[
     "caliptra-mcu-bare-metal",
     "caliptra-mcu-provisioning-test-unlocked-fw",
@@ -143,8 +145,7 @@ impl RomVariant {
     }
 }
 
-/// Default set of ROM variants exercised by per-variant checks
-/// (`cargo xtask sizes`, `test_panic_missing`, etc.).
+/// Revision-independent ROM variants exercised by per-variant checks.
 ///
 /// Mirrors what `cargo xtask all-build` builds for CI, so any size
 /// regression or panic introduction in a feature ROM is caught by
@@ -170,6 +171,20 @@ pub const ROM_VARIANTS: &[RomVariant] = &[
     RomVariant::new(Some("fpga"), Some("hw-2-1")),
     RomVariant::new(Some("fpga"), Some("hw-2-1,test-rom-hooks")),
 ];
+
+/// Include latest-only ROMs in size, lint and panic checks, but never on 2.1.
+pub fn default_rom_variants(
+    revision: caliptra_mcu_hw_revision::HardwareRevision,
+) -> Vec<RomVariant> {
+    let mut variants = ROM_VARIANTS.to_vec();
+    if revision == caliptra_mcu_hw_revision::HardwareRevision::Latest {
+        for &feature in LATEST_ROM_ONLY_TEST_FEATURES {
+            variants.push(RomVariant::new(None, Some(feature)));
+            variants.push(RomVariant::new(Some("fpga"), Some(feature)));
+        }
+    }
+    variants
+}
 
 /// Parse a `--variants` CLI value into a list of [`RomVariant`].
 ///
@@ -215,4 +230,22 @@ pub fn parse_variants(s: &str) -> Result<Vec<RomVariant>, String> {
         return Err(format!("no variants parsed from {s:?}"));
     }
     Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use caliptra_mcu_hw_revision::HardwareRevision;
+
+    #[test]
+    fn latest_usb_roms_are_checked_only_on_latest_hardware() {
+        assert_eq!(default_rom_variants(HardwareRevision::V2_1), ROM_VARIANTS);
+        let latest = default_rom_variants(HardwareRevision::Latest);
+        for platform in [None, Some("fpga")] {
+            assert!(latest.contains(&RomVariant::new(
+                platform,
+                Some("test-lpcip-usb-enumeration")
+            )));
+        }
+    }
 }
