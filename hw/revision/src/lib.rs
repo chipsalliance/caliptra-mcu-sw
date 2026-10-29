@@ -3,7 +3,7 @@
 use std::{env, fmt, path::Path};
 
 pub const ENV: &str = "CALIPTRA_HW_REV";
-pub const DEFAULT: HardwareRevision = HardwareRevision::V2_1;
+pub const DEFAULT: HardwareRevision = HardwareRevision::Latest;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum HardwareRevision {
@@ -115,12 +115,9 @@ mod tests {
 
     #[test]
     fn supported_selectors_and_default() {
-        assert_eq!(DEFAULT, HardwareRevision::V2_1);
-        assert_eq!(HardwareRevision::parse("2.1"), Ok(DEFAULT));
-        assert_eq!(
-            HardwareRevision::parse("latest"),
-            Ok(HardwareRevision::Latest)
-        );
+        assert_eq!(DEFAULT, HardwareRevision::Latest);
+        assert_eq!(HardwareRevision::parse("2.1"), Ok(HardwareRevision::V2_1));
+        assert_eq!(HardwareRevision::parse("latest"), Ok(DEFAULT));
         for value in ["", "2.0", "2.2", "2.1.0", "../latest"] {
             assert!(HardwareRevision::parse(value).is_err());
         }

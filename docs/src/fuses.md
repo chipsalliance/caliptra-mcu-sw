@@ -62,9 +62,9 @@ The implemented generator runs as:
 cargo xtask registers-autogen --fuses-hjson <path> --otp-mmap-hjson <path>
 ```
 
-Both path options are optional. `CALIPTRA_HW_REV=2.1` (the default) selects
+Both path options are optional. `CALIPTRA_HW_REV=2.1` selects
 `hw/rev-2_1/fuses.hjson` and the OTP memory map under
-`hw/rev-2_1/caliptra-ss`; `CALIPTRA_HW_REV=latest` selects the corresponding
+`hw/rev-2_1/caliptra-ss`; `CALIPTRA_HW_REV=latest` (the default) selects the corresponding
 inputs under `hw/latest`. Explicit path options override these defaults.
 The command generates:
 

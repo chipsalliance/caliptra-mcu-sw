@@ -29,6 +29,7 @@ mod registers;
 mod rom;
 mod runtime;
 mod sizes;
+mod switch_version;
 mod test;
 #[cfg(feature = "cherry-picker")]
 mod vertex_ai;
@@ -48,6 +49,11 @@ struct Xtask {
 
 #[derive(Subcommand)]
 enum Commands {
+    /// Explicitly check out a pinned Caliptra software version (does not set CALIPTRA_HW_REV).
+    SwitchVersion {
+        #[arg(value_parser = ["2.1", "latest"])]
+        version: String,
+    },
     /// Build and Run Runtime image
     Runtime {
         /// Runtime HW contract; must match the selected register snapshot (currently 2.1.0).
@@ -656,6 +662,12 @@ fn main() {
         std::env::set_var("CALIPTRA_HW_REV", "2.1");
     }
     let cli = Xtask::parse();
+    if !matches!(cli.xtask, Commands::SwitchVersion { .. }) {
+        if let Err(error) = caliptra_mcu_builder::caliptra_source_revision() {
+            eprintln!("{error:#}");
+            std::process::exit(1);
+        }
+    }
     let revision = caliptra_mcu_hw_revision::HardwareRevision::from_env().unwrap_or_else(|error| {
         eprintln!("{error}");
         std::process::exit(1);
@@ -665,6 +677,7 @@ fn main() {
         revision.hardware_path()
     );
     let result = match &cli.xtask {
+        Commands::SwitchVersion { version } => switch_version::switch_version(version),
         Commands::AllBuild {
             output,
             platform,

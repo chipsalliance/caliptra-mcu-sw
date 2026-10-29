@@ -5,6 +5,7 @@ use caliptra_builder::{firmware, ImageOptions};
 use caliptra_image_types::FwVerificationPqcKeyType;
 
 fn main() -> Result<()> {
+    caliptra_mcu_builder::caliptra_source_revision()?;
     let mut args = std::env::args().skip(1);
     let action = args.next().ok_or_else(|| anyhow!("missing build action"))?;
     let output = args.next().ok_or_else(|| anyhow!("missing output path"))?;
