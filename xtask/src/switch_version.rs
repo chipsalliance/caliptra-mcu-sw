@@ -42,7 +42,18 @@ fn checkout(core: &Path, reference: &str) -> Result<()> {
     // when the selected hardware pin removes them.
     git(core, &["submodule", "deinit", "--all"])?;
     git(core, &["checkout", "--detach", reference])?;
-    git(core, &["submodule", "update", "--init", "--recursive"])?;
+    // Fetches must not visit deinitialized worktrees; update initializes each level.
+    git(
+        core,
+        &[
+            "-c",
+            "fetch.recurseSubmodules=false",
+            "submodule",
+            "update",
+            "--init",
+            "--recursive",
+        ],
+    )?;
     Ok(())
 }
 
@@ -374,6 +385,135 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn fetches_missing_nested_pin_without_fetching_deinitialized_descendants() {
+        let fixture = Fixture::new();
+        let core = fixture.core();
+        let nested = fixture.root().join("nested-source");
+        let descendant = fixture.root().join("descendant-source");
+        std::fs::create_dir(&descendant).unwrap();
+        git(&descendant, &["init"]).unwrap();
+        std::fs::write(descendant.join("input"), "descendant\n").unwrap();
+        commit(&descendant);
+        git(
+            &nested,
+            &[
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "add",
+                "--depth=1",
+                &format!("file://{}", descendant.display()),
+                "descendant",
+            ],
+        )
+        .unwrap();
+        git(
+            &nested,
+            &[
+                "config",
+                "-f",
+                ".gitmodules",
+                "submodule.descendant.shallow",
+                "true",
+            ],
+        )
+        .unwrap();
+        commit(&nested);
+        let stable = git(&nested, &["rev-parse", "HEAD"]).unwrap();
+        std::fs::write(descendant.join("input"), "latest descendant\n").unwrap();
+        commit(&descendant);
+        let latest_descendant = git(&descendant, &["rev-parse", "HEAD"]).unwrap();
+        git(
+            &nested.join("descendant"),
+            &[
+                "fetch",
+                "--no-recurse-submodules",
+                "origin",
+                &latest_descendant,
+            ],
+        )
+        .unwrap();
+        git(
+            &nested.join("descendant"),
+            &["checkout", &latest_descendant],
+        )
+        .unwrap();
+        std::fs::write(nested.join("input"), "latest\n").unwrap();
+        commit(&nested);
+        git(
+            &core,
+            &[
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "add",
+                "--depth=1",
+                &format!("file://{}", nested.display()),
+                "shallow",
+            ],
+        )
+        .unwrap();
+        git(
+            &core,
+            &[
+                "-c",
+                "protocol.file.allow=always",
+                "submodule",
+                "update",
+                "--init",
+                "--recursive",
+            ],
+        )
+        .unwrap();
+        let shallow = core.join("shallow");
+        git(&shallow, &["config", "protocol.file.allow", "always"]).unwrap();
+        git(
+            &shallow.join("descendant"),
+            &["config", "protocol.file.allow", "always"],
+        )
+        .unwrap();
+        git(&shallow, &["config", "fetch.recurseSubmodules", "true"]).unwrap();
+        assert!(git(&shallow, &["cat-file", "-e", &stable]).is_err());
+        commit(&core);
+        let latest = git(&core, &["rev-parse", "HEAD"]).unwrap();
+        git(
+            &core,
+            &[
+                "update-index",
+                "--cacheinfo",
+                &format!("160000,{stable},shallow"),
+            ],
+        )
+        .unwrap();
+        git(
+            &core,
+            &[
+                "-c",
+                "user.name=Switch test",
+                "-c",
+                "user.email=switch@example.invalid",
+                "-c",
+                "commit.gpgsign=false",
+                "commit",
+                "-m",
+                "pin older nested commit",
+            ],
+        )
+        .unwrap();
+        let selected = git(&core, &["rev-parse", "HEAD"]).unwrap();
+        git(&core, &["checkout", &latest]).unwrap();
+
+        checkout(&core, &selected).unwrap();
+
+        assert_eq!(git(&shallow, &["rev-parse", "HEAD"]).unwrap(), stable);
+        assert_eq!(
+            std::fs::read_to_string(shallow.join("descendant/input")).unwrap(),
+            "descendant\n"
+        );
+        assert!(git(&core, &["status", "--porcelain"]).unwrap().is_empty());
     }
 
     #[test]
