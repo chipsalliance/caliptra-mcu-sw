@@ -1067,6 +1067,10 @@ mod tests;
 mod version_tests;
 
 #[cfg(test)]
+#[path = "tests/secured_session.rs"]
+mod secured_session_tests;
+
+#[cfg(test)]
 #[path = "tests/capabilities.rs"]
 mod capabilities_tests;
 

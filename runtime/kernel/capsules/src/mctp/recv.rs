@@ -58,7 +58,338 @@ impl<'a> MCTPRxState<'a> {
             next: ListLink::empty(),
         }
     }
+}
 
+#[cfg(test)]
+mod tests {
+    extern crate std;
+
+    use super::*;
+    use crate::mctp::base_protocol::MCTP_BASELINE_TRANSMISSION_UNIT;
+    use crate::mctp::driver::MCTP_MAX_MESSAGE_SIZE;
+    use std::boxed::Box;
+    use std::cell::RefCell;
+    use std::vec;
+    use std::vec::Vec;
+
+    #[derive(Debug, PartialEq, Eq)]
+    struct ReceivedMessage {
+        source_eid: u8,
+        msg_type: u8,
+        msg_tag: u8,
+        payload: Vec<u8>,
+        recv_time: u32,
+    }
+
+    #[derive(Default)]
+    struct RecordingClient {
+        messages: RefCell<Vec<ReceivedMessage>>,
+    }
+
+    impl MCTPRxClient for RecordingClient {
+        fn receive(
+            &self,
+            source_eid: u8,
+            msg_type: u8,
+            msg_tag: u8,
+            msg_payload: &[u8],
+            msg_len: usize,
+            recv_time: u32,
+        ) {
+            self.messages.borrow_mut().push(ReceivedMessage {
+                source_eid,
+                msg_type,
+                msg_tag,
+                payload: msg_payload[..msg_len].to_vec(),
+                recv_time,
+            });
+        }
+    }
+
+    fn new_state(capacity: usize) -> (&'static MCTPRxState<'static>, &'static RecordingClient) {
+        let buffer = Box::leak(vec![0; capacity].into_boxed_slice());
+        let state = Box::leak(Box::new(MCTPRxState::new(buffer, MessageType::Spdm)));
+        let client = Box::leak(Box::new(RecordingClient::default()));
+        state.set_client(client);
+        (state, client)
+    }
+
+    fn receive_fragmented_message(state: &MCTPRxState<'_>, payload: &[u8]) {
+        const PACKET_PAYLOAD_SIZE: usize = MCTP_BASELINE_TRANSMISSION_UNIT;
+
+        let first_len = payload.len().min(PACKET_PAYLOAD_SIZE);
+        state.start_receive(
+            MCTPHeader::new(0x08, 0x20, 1, u8::from(first_len == payload.len()), 0, 1, 3),
+            MessageType::Spdm,
+            &payload[..first_len],
+            0,
+        );
+
+        let mut offset = first_len;
+        let mut pkt_seq = 1;
+        while offset < payload.len() {
+            let end = (offset + PACKET_PAYLOAD_SIZE).min(payload.len());
+            let header =
+                MCTPHeader::new(0x08, 0x20, 0, u8::from(end == payload.len()), pkt_seq, 1, 3);
+            assert!(state.is_next_packet(header, end - offset));
+            state.receive_next(header, &payload[offset..end], pkt_seq as u32);
+            offset = end;
+            pkt_seq = header.next_pkt_seq();
+        }
+    }
+
+    fn chunk_send_message(handle: u8, sequence: u16, last: bool, chunk: &[u8]) -> Vec<u8> {
+        let mut message = vec![MessageType::Spdm as u8, 0x14, 0x85, u8::from(last), handle];
+        message.extend_from_slice(&sequence.to_le_bytes());
+        message.extend_from_slice(&0u16.to_le_bytes());
+        message.extend_from_slice(&(chunk.len() as u32).to_le_bytes());
+        message.extend_from_slice(chunk);
+        message
+    }
+
+    #[test]
+    fn single_packet_delivers_payload_and_response_context() {
+        let (state, client) = new_state(16);
+        let header = MCTPHeader::new(0x08, 0x20, 1, 1, 0, 1, 3);
+
+        state.start_receive(header, MessageType::Spdm, &[5, 0x12, 0x84], 42);
+
+        assert_eq!(
+            client.messages.borrow().as_slice(),
+            &[ReceivedMessage {
+                source_eid: 0x20,
+                msg_type: MessageType::Spdm as u8,
+                msg_tag: MCTP_TAG_OWNER | 3,
+                payload: vec![5, 0x12, 0x84],
+                recv_time: 42,
+            }]
+        );
+        assert!(!state.is_next_packet(MCTPHeader::new(0x08, 0x20, 0, 1, 1, 1, 3), 1));
+    }
+
+    #[test]
+    fn invalid_start_packets_do_not_assemble_or_deliver_and_allow_fresh_message() {
+        let cases: [(u8, &[u8]); 3] = [(0, &[5, 1]), (1, &[]), (1, &[5, 1, 2, 3, 4])];
+
+        for (som, payload) in cases {
+            for eom in [0, 1] {
+                let (state, client) = new_state(4);
+                state.start_receive(
+                    MCTPHeader::new(0x08, 0x20, som, eom, 0, 1, 3),
+                    MessageType::Spdm,
+                    payload,
+                    0,
+                );
+
+                assert!(state.msg_terminus.map(|_| ()).is_none());
+                assert!(!state.is_next_packet(MCTPHeader::new(0x08, 0x20, 0, 1, 1, 1, 3), 1));
+                assert!(client.messages.borrow().is_empty());
+
+                state.start_receive(
+                    MCTPHeader::new(0x08, 0x20, 1, 1, 0, 1, 3),
+                    MessageType::Spdm,
+                    &[5, 0x84],
+                    42,
+                );
+
+                assert_eq!(
+                    client.messages.borrow().as_slice(),
+                    &[ReceivedMessage {
+                        source_eid: 0x20,
+                        msg_type: MessageType::Spdm as u8,
+                        msg_tag: MCTP_TAG_OWNER | 3,
+                        payload: vec![5, 0x84],
+                        recv_time: 42,
+                    }]
+                );
+                assert!(state.msg_terminus.map(|_| ()).is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn multi_packet_reassembly_handles_sequence_wrap() {
+        let (state, client) = new_state(16);
+        let first = MCTPHeader::new(0x08, 0x20, 1, 0, 3, 0, 2);
+        let middle = MCTPHeader::new(0x08, 0x20, 0, 0, 0, 0, 2);
+        let last = MCTPHeader::new(0x08, 0x20, 0, 1, 1, 0, 2);
+
+        state.start_receive(first, MessageType::Spdm, &[5, 1, 2, 3], 1);
+        assert!(state.is_next_packet(middle, 4));
+        state.receive_next(middle, &[4, 5, 6, 7], 2);
+        assert!(state.is_next_packet(last, 2));
+        state.receive_next(last, &[8, 9], 3);
+
+        assert_eq!(client.messages.borrow().len(), 1);
+        assert_eq!(
+            client.messages.borrow()[0].payload,
+            [5, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+        );
+        assert_eq!(client.messages.borrow()[0].recv_time, 3);
+    }
+
+    #[test]
+    fn continuation_requires_matching_fields_without_disrupting_reassembly() {
+        let (state, client) = new_state(16);
+        state.start_receive(
+            MCTPHeader::new(0x08, 0x20, 1, 0, 0, 1, 3),
+            MessageType::Spdm,
+            &[5, 1, 2, 3],
+            0,
+        );
+
+        assert!(!state.is_next_packet(MCTPHeader::new(0x08, 0x20, 0, 0, 2, 1, 3), 4));
+        assert!(!state.is_next_packet(MCTPHeader::new(0x08, 0x21, 0, 0, 1, 1, 3), 4));
+        assert!(!state.is_next_packet(MCTPHeader::new(0x08, 0x20, 0, 0, 1, 1, 4), 4));
+        assert!(!state.is_next_packet(MCTPHeader::new(0x08, 0x20, 0, 0, 1, 0, 3), 4));
+        assert!(!state.is_next_packet(MCTPHeader::new(0x08, 0x20, 0, 0, 1, 1, 3), 3));
+        assert!(client.messages.borrow().is_empty());
+
+        let valid_last = MCTPHeader::new(0x08, 0x20, 0, 1, 1, 1, 3);
+        assert!(state.is_next_packet(valid_last, 2));
+        state.receive_next(valid_last, &[4, 5], 1);
+
+        assert_eq!(client.messages.borrow()[0].payload, [5, 1, 2, 3, 4, 5]);
+    }
+
+    #[test]
+    fn duplicate_and_reordered_fragments_do_not_advance_reassembly() {
+        let (state, client) = new_state(16);
+        state.start_receive(
+            MCTPHeader::new(0x08, 0x20, 1, 0, 0, 0, 1),
+            MessageType::Spdm,
+            &[5, 1, 2, 3],
+            0,
+        );
+
+        let duplicate = MCTPHeader::new(0x08, 0x20, 0, 0, 0, 0, 1);
+        let reordered = MCTPHeader::new(0x08, 0x20, 0, 1, 2, 0, 1);
+        assert!(!state.is_next_packet(duplicate, 4));
+        assert!(!state.is_next_packet(reordered, 2));
+        assert!(client.messages.borrow().is_empty());
+
+        let middle = MCTPHeader::new(0x08, 0x20, 0, 0, 1, 0, 1);
+        assert!(state.is_next_packet(middle, 4));
+        state.receive_next(middle, &[4, 5, 6, 7], 1);
+
+        let last = MCTPHeader::new(0x08, 0x20, 0, 1, 2, 0, 1);
+        assert!(state.is_next_packet(last, 2));
+        state.receive_next(last, &[8, 9], 2);
+
+        assert_eq!(
+            client.messages.borrow()[0].payload,
+            [5, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+        );
+    }
+
+    #[test]
+    fn maximum_boundary_messages_deliver_and_oversize_aborts() {
+        for size in [MCTP_MAX_MESSAGE_SIZE - 1, MCTP_MAX_MESSAGE_SIZE] {
+            let (state, client) = new_state(MCTP_MAX_MESSAGE_SIZE);
+            let payload: Vec<u8> = (0..size).map(|index| index as u8).collect();
+
+            receive_fragmented_message(state, &payload);
+
+            assert_eq!(client.messages.borrow().len(), 1);
+            assert_eq!(client.messages.borrow()[0].payload, payload);
+        }
+
+        let (state, client) = new_state(MCTP_MAX_MESSAGE_SIZE);
+        let oversize: Vec<u8> = (0..=MCTP_MAX_MESSAGE_SIZE)
+            .map(|index| index as u8)
+            .collect();
+        receive_fragmented_message(state, &oversize);
+
+        assert!(client.messages.borrow().is_empty());
+        assert!(!state.is_next_packet(MCTPHeader::new(0x08, 0x20, 0, 1, 0, 1, 3), 1));
+
+        state.start_receive(
+            MCTPHeader::new(0x08, 0x20, 1, 1, 0, 1, 4),
+            MessageType::Spdm,
+            &[5, 0x84],
+            20,
+        );
+        assert_eq!(client.messages.borrow()[0].payload, [5, 0x84]);
+    }
+
+    #[test]
+    fn fragmented_spdm_chunk_recovers_after_transport_fragment_fault() {
+        let (state, client) = new_state(MCTP_MAX_MESSAGE_SIZE);
+        let interrupted = chunk_send_message(7, 0, false, &[0xa5; 96]);
+        assert!(interrupted.len() > MCTP_BASELINE_TRANSMISSION_UNIT);
+
+        state.start_receive(
+            MCTPHeader::new(0x08, 0x20, 1, 0, 0, 1, 3),
+            MessageType::Spdm,
+            &interrupted[..MCTP_BASELINE_TRANSMISSION_UNIT],
+            0,
+        );
+        let reordered_last = MCTPHeader::new(0x08, 0x20, 0, 1, 2, 1, 3);
+        assert!(!state.is_next_packet(
+            reordered_last,
+            interrupted.len() - MCTP_BASELINE_TRANSMISSION_UNIT
+        ));
+        assert!(client.messages.borrow().is_empty());
+
+        let replacement = chunk_send_message(8, 0, true, &[0x5a; 80]);
+        receive_fragmented_message(state, &replacement);
+
+        assert_eq!(client.messages.borrow().len(), 1);
+        assert_eq!(client.messages.borrow()[0].payload, replacement);
+    }
+
+    #[test]
+    fn overflow_aborts_reassembly_and_allows_fresh_message() {
+        let (state, client) = new_state(5);
+        state.start_receive(
+            MCTPHeader::new(0x08, 0x20, 1, 0, 0, 0, 1),
+            MessageType::Spdm,
+            &[5, 1, 2, 3],
+            0,
+        );
+        state.receive_next(MCTPHeader::new(0x08, 0x20, 0, 1, 1, 0, 1), &[4, 5], 1);
+
+        assert!(client.messages.borrow().is_empty());
+        assert!(!state.is_next_packet(MCTPHeader::new(0x08, 0x20, 0, 1, 1, 0, 1), 1));
+
+        state.start_receive(
+            MCTPHeader::new(0x08, 0x20, 1, 1, 0, 0, 2),
+            MessageType::Spdm,
+            &[5, 0x84],
+            2,
+        );
+        assert_eq!(client.messages.borrow()[0].payload, [5, 0x84]);
+    }
+
+    #[test]
+    fn new_start_replaces_interrupted_message_without_cross_delivery() {
+        let (state, client) = new_state(16);
+        state.start_receive(
+            MCTPHeader::new(0x08, 0x20, 1, 0, 0, 0, 1),
+            MessageType::Spdm,
+            &[5, 1, 1, 1],
+            0,
+        );
+        state.start_receive(
+            MCTPHeader::new(0x08, 0x21, 1, 0, 2, 1, 3),
+            MessageType::Spdm,
+            &[5, 2, 2, 2],
+            1,
+        );
+
+        assert!(!state.is_next_packet(MCTPHeader::new(0x08, 0x20, 0, 1, 1, 0, 1), 1));
+
+        let replacement_last = MCTPHeader::new(0x08, 0x21, 0, 1, 3, 1, 3);
+        assert!(state.is_next_packet(replacement_last, 2));
+        state.receive_next(replacement_last, &[3, 3], 2);
+
+        assert_eq!(client.messages.borrow().len(), 1);
+        assert_eq!(client.messages.borrow()[0].source_eid, 0x21);
+        assert_eq!(client.messages.borrow()[0].payload, [5, 2, 2, 2, 3, 3]);
+    }
+}
+
+impl<'a> MCTPRxState<'a> {
     pub fn set_client(&self, client: &'a dyn MCTPRxClient) {
         self.client.set(client);
     }
