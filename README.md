@@ -116,110 +116,25 @@ RTL simulation or FPGA validation.
 
 ## Caliptra software versions
 
-All Caliptra software dependencies use paths into the single
-[`core/caliptra-sw`](core/caliptra-sw) submodule, fetched from
-[`mhatrevi/caliptra-sw`](https://github.com/mhatrevi/caliptra-sw).
-Its recorded default is `latest`, the 2.2 development baseline from that fork's
-`caliptra-dev-2.2` branch. Immutable commits are listed in
-[`core/versions.toml`](core/versions.toml):
+Use `cargo xtask switch-version` to select `2.1` or `latest` (default).
+Set `CALIPTRA_HW_REV` to the matching version when building.
 
-| Software selection | Caliptra software commit |
-|---|---|
-| `2.1` | `e5d1f27b15ba02e4e0a57b942bbde39b74cab2eb` |
-| `latest` (2.2, default checkout) | `9c7b25b00508c0f028d2a76d2809e63d389037b1` |
-
-The `2.1` pin remains the official baseline. `latest` includes the fork's 2.2
-changes; pinning it does not by itself certify complete 2.2 hardware support.
-The switch uses the exact commit above, not a moving branch tip. CFI and DPE
-pins remain unchanged.
-
-CI runs the complete precheckin, emulator integration, release-test and coverage
-pipeline on both `2.1` and `latest`. Every build selects the matching pinned core
-source and reviewed lockfiles; firmware, emulators, test archives and results
-have revision-qualified artifact names so the two pipelines cannot mix inputs.
-Host-tool precheckin also runs on both revisions. The existing nightly SPDM,
-attestation and host-validator suites use `2.1`.
-
-Both revisions build FPGA firmware and test binaries. Only `2.1` downloads and
-executes the validated bitstream, including the FPGA SPDM suite. Latest/2.2 is
-strictly build-only because compatible bitstreams are not available.
-`RUN_FPGA_CI=false` still disables the FPGA workflows, including their build
-jobs. The separate optional upstream FPGA smoke workflow remains gated by
-`RUN_FPGA_LATEST_CI=true`; its external build flow is not yet revision-aware and
-is not part of the restored 2.1 MCU test coverage. [Issue #2288](https://github.com/chipsalliance/caliptra-mcu-sw/issues/2288)
-tracks restoring that smoke test for 2.1 only.
-FPGA CI and the test-build container use the local revision-specific fuse file
-instead of downloading a legacy MCU fuse path. CI supplies explicit bundle
-output names for artifact handoff; ordinary builds retain their
-hardware-revision-specific default names.
-
-Three shared integration tests are temporarily ignored on latest/2.2 and remain
-enabled on 2.1: `test_vendor_pk_lock_applied`, `test_rom_iccm_ecc_unc`, and
-`test_rom_dccm_ecc_unc`. [Issue #2279](https://github.com/chipsalliance/caliptra-mcu-sw/issues/2279)
-tracks their investigation and re-enablement. These tests remain discoverable
-with ignore reasons; they do not silently return success.
-
-Initialize the submodule, then explicitly switch **before** building:
+Initialize the submodules and switch to 2.1:
 
 ```shell
 git submodule update --init --recursive
-cargo xtask switch-version 2.1
-CALIPTRA_HW_REV=2.1 cargo test -p caliptra-mcu-mbox-common
+CALIPTRA_HW_REV=latest cargo xtask switch-version 2.1
 CALIPTRA_HW_REV=2.1 cargo xtask rom-build
-
-cargo xtask switch-version latest
-CALIPTRA_HW_REV=latest cargo test -p caliptra-mcu-mbox-common
-CALIPTRA_HW_REV=latest cargo xtask rom-build
+CALIPTRA_HW_REV=2.1 cargo xtask runtime-build
 ```
 
-Normal Cargo commands, including commands run in member directories and the
-independent `caliptra-util-host` workspace, use the active checkout directly.
-There are no version features, re-export wrappers, or build bootstrap.
-Software selection and `CALIPTRA_HW_REV` are separate: changing one does not
-change the other or the parent shell environment. The hardware and software defaults are both `latest`. After selecting software
-`2.1`, explicitly set `CALIPTRA_HW_REV=2.1` on subsequent builds. The fork only
-accepts latest/2.2 hardware, so use `CALIPTRA_HW_REV=latest` when compiling xtask
-to switch away from that checkout (including when the shell is set to `2.1`).
-ROM compilation rejects a hardware selector that does not match the recorded
-software pin, preventing accidental use of the wrong owner-provisioning API.
+Switch back to latest:
 
-The switch command refuses local changes, untracked files, or modified nested
-submodules. It checks out the selected commit detached and reinitializes nested
-submodules at their recorded pins, removing clean retired submodule checkouts.
-Fetching a missing software pin does not fetch unrelated submodule history.
-It selects the reviewed **root and host** lockfile snapshots from
-[`core/locks`](core/locks) and validates them with `--locked`.
-The 2.1 and latest dependency graphs differ. Local lockfile edits are refused
-rather than overwritten. On failure it attempts to restore the original checkout,
-branch and both active lockfiles, reporting any rollback failure. When adding a
-new pin or changing dependencies, regenerate and review its two snapshots along
-with the active lockfiles; switching never resolves new dependency versions.
-Update the submodule gitlink together with `latest` when advancing the default.
-
-Only one software selection can be active per checkout. Stop builds before
-switching; parallel builds of different versions need separate checkouts or
-worktrees. Switching commands are serialized, but ordinary Cargo builds are not
-locked against a switch. Selecting `2.1` leaves the submodule different from the
-recorded `latest` gitlink; this is expected. A top-level `git submodule update`
-restores the recorded default, so do not run it after choosing another version.
-
-`switch-version` is an ordinary xtask and therefore compiles against the current
-checkout first. If that checkout cannot compile, save any local work and use Git
-to check out an immutable commit from `core/versions.toml`, then update that
-submodule's nested dependencies and restore the matching root and host snapshots
-from `core/locks/<selection>/` to their active `Cargo.lock` paths.
-No switch happens inside a build or `build.rs`.
-Prebuilt MCU build tools must be rebuilt after switching; stale binaries are
-rejected. Firmware caches and provenance use the actual core Git SHA, and local
-core modifications disable firmware-cache reuse.
-
-Owner-hash provisioning is compiled for the selected hardware: 2.1 retains
-`INSTALL_OWNER_PK_HASH`; latest writes and verifies all twelve architectural
-owner-hash register words, then sets and verifies the owner-hash lock before
-firmware download. A zero digest means an unpinned owner on latest and is also
-locked. An already locked matching hash is accepted; a mismatch is fatal.
-This split uses `hw_rev` from `CALIPTRA_HW_REV`, not the legacy `hw-2-1` flash-boot
-Cargo feature, whose existing behavior is preserved.
+```shell
+CALIPTRA_HW_REV=2.1 cargo xtask switch-version latest
+CALIPTRA_HW_REV=latest cargo xtask rom-build
+CALIPTRA_HW_REV=latest cargo xtask runtime-build
+```
 
 ## Documentation
 
