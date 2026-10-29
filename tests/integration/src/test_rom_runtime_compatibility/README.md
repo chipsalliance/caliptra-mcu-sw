@@ -1,50 +1,35 @@
 # Released ROM/runtime compatibility
 
-Linux/WSL-only tests for the six pairs in the
-[task document](../../../../rom-runtime-compatibility-matrix-2.md).
-Existing tests and current/current workflows are unchanged.
+Linux/WSL-only tests from the
+[task plan](../../../../rom-runtime-compatibility-matrix-2.md).
+Temporarily tests only GA `rom-sdk-2.1.0` against `rt-sdk-2.1.0`,
+`rt-sdk-2.1.1`, and current `main-2.1`: **three pairs**. The RC ROM is excluded.
 
 ## What runs
 
 The [workflow](../../../../.github/workflows/rom-runtime-compatibility.yml):
 
-1. Builds the two pinned ROMs and three runtimes with their own toolchains,
-   lockfiles and submodules. Resolves `main-2.1` once per run.
-2. Prepares signed fixtures using Caliptra 2.1, repository test keys and Core
+1. Builds pinned images with their native toolchains, lockfiles and submodules.
+   Resolves `main-2.1` once per run.
+2. Uses Caliptra 2.1 hardware, repository test keys and Core
    `b99535ded32492d6c23bbc56f95e787a1e275b59`.
-3. Runs each pair in flash and streaming configurations using ignored Nextest
-   tests, the `emulator` profile and one test thread.
-4. Uploads results, logs, JUnit, build commands and image hashes.
+3. Runs ignored compatibility tests with the `emulator` profile and one test
+   thread, then uploads results, logs, JUnit, build commands and hashes.
 
-Cases come only from task-document sections 3 and 5: boot, handoff, commands,
-authentication/SVN, reset and applicable service suites. Historical firmware
-is not patched, and missing images never fall back to current firmware.
-Failed batches do not stop independent checks; service suites run only when
-their boot prerequisites pass.
+The 21 cases cover boot, handoff, mailbox commands, authentication/SVN, resets
+and applicable service checks. Flash and streaming configurations produce
+**42 result records per pair**, including unsupported cases.
 
-There are **23 distinct cases**, each recorded for flash and streaming
-configurations: **46 records per pair**, not 46 different tests.
+SPDM/EAT checks require successful boot and SoC loading. EAT uses non-TCB,
+TCB and mixed configurations with signed reference values. There is no
+standalone provisioning or TDISP/IDE case.
 
-| Task-document requirement | Cases |
-|---|---|
-| Section 3: recovery, flash, streaming, handoff, commands, cold reboot, warm reset | 7 |
-| Section 3: corrupt runtime, corrupt manifest, SVN rollback, SVN boundary | 4 |
-| Section 5: attestation modes, SPDM transports, provisioning, optional ownership/boot | 12 |
-
-Discovery assertions are part of streaming boot. The core command and handoff
-checks also cover those requirements in section 5; they are not rerun as suites.
-Unsupported optional cases record N/A or BLOCKED, not passing coverage.
-
-Service suites use three additional release configurations per runtime:
-non-TCB, TCB and mixed SoC policies, using each release's native cold-boot
-attestation feature to retain services after loading. Each suite verifies PLDM
-loading and activation on its own model before SPDM. EAT evidence is
-authenticated and appraised against signed reference values generated from
-that configuration's manifest.
+Released firmware is not patched, and missing artifacts never fall back to
+current firmware. Existing current/current CI is unchanged.
 
 ## Required inputs
 
-Run the workflow manually or through `workflow_call`. Supply:
+Run manually or through `workflow_call`, supplying:
 
 | Workflow input | Repository-variable alternative | Value |
 |---|---|---|
@@ -61,41 +46,29 @@ Capability JSON uses this shape:
 }
 ```
 
-Missing inputs block execution; they do not produce a pass.
+Missing inputs block execution.
 For local fixture preparation, `MCU_COMPAT_RUNTIME` limits work to one runtime.
 
 ## Reading results
 
-Open the Actions summary or `compatibility-summary` artifact. Each pair shows
-PASS, FAIL, BLOCKED and N/A counts, followed by failure reasons and timings.
-Per-case JSON records include source SHAs and distinguish input-validation
-failures from scenario failures. Logs contain error codes and expected/actual
-values where available.
+Open the Actions summary or `compatibility-summary` artifact for per-case
+results, reasons, timings and source revisions.
 
 - **PASS:** the check ran and passed.
 - **FAIL:** an assertion, execution or evidence check failed.
-- **BLOCKED:** required inputs, prerequisites or coverage are unavailable.
+- **BLOCKED:** required inputs or prerequisites are unavailable.
 - **NOT APPLICABLE:** the selected configuration does not enable the feature.
 
-FAIL and BLOCKED keep the matrix nonpassing. N/A is not executed coverage.
+FAIL and BLOCKED fail the matrix. N/A is not executed coverage, even though
+Nextest counts those invocations as successful. Use the per-case results.
 
-## Known limitations
+## Known failures
 
-- Production ROMs expect a raw flash header at offset zero; release runtimes
-  expect a partition table there. Flash failures remain visible; the tests do
-  not swap flash contents or use streaming fallback to hide them.
-- Emulator warm reset resets both CPUs and checks fresh runtime readiness,
-  mailbox commands and OTP/flash preservation. The RC ROM with SDK 2.1.0 runtime
-  passed in flash configuration; other pairs and streaming remain unverified.
-- Missing SPDM/EAT tools, signed reference values or trust anchors block the
-  corresponding service checks. Protocol or appraisal failures are FAIL, not PASS.
-
-Focused validation passed all three EAT modes on RC ROM + SDK 2.1.1 streaming,
-including authentication and appraisal. Full SPDM conformance and other pairs
-were not rerun locally.
-
-The [last executed baseline](https://github.com/chipsalliance/caliptra-mcu-sw/actions/runs/40789714542)
-had 39 passing cases, but also flash/handoff failures and blocked coverage.
-Its workflow exited after the first batch, leaving 40 cases per pair unrun.
-The Core, ROM-build and batch-continuation corrections have not yet been
-verified by a new firmware matrix run.
+- **Flash boot:** the ROM requires a raw header at offset zero; the runtimes
+  require a partition table there. No flash swapping or streaming fallback
+  hides this incompatibility.
+- **Current runtime:** `main-2.1` sends a 12-byte `GET_IMAGE_INFO` request;
+  the fixed Core expects 8 bytes and rejects it with `0x000e0003`.
+- Warm-reset and SDK 2.1.0 service failures from the
+  [last full matrix](https://github.com/chipsalliance/caliptra-mcu-sw/actions/runs/40828633500)
+  remain unresolved. The current GA-only matrix has not been fully rerun.

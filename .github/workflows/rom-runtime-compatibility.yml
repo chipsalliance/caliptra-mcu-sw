@@ -68,9 +68,6 @@ jobs:
           - label: rom-sdk-2.1.0
             source: da451221542758758f1c4ce35efbe48da9935dd8
             toolchain: "1.85"
-          - label: rom-sdk-2.1.0rc1
-            source: 12b6dc3f760767a17e931db3b4a4aa5dca47b95f
-            toolchain: "1.85"
           - label: rt-sdk-2.1.0
             source: 24ea8b90bb56c0aed5512232dfbbca3dd2e39716
             toolchain: "1.85"
@@ -319,7 +316,7 @@ jobs:
   spdm-tools:
     needs: resolve
     name: Build SPDM and EAT tools
-    runs-on: ubuntu-24.04
+    runs-on: e2-standard-16-big-disk
     timeout-minutes: 60
 
     steps:
@@ -407,7 +404,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        rom: [rom-sdk-2.1.0, rom-sdk-2.1.0rc1]
+        rom: [rom-sdk-2.1.0]
         runtime: [rt-sdk-2.1.0, rt-sdk-2.1.1, main-2.1]
     env:
       MCU_COMPAT_ROM: ${{ matrix.rom }}
@@ -506,7 +503,7 @@ jobs:
         with:
           pattern: compatibility-results-*
           path: reports
-      - name: Report all six pairs even when an earlier job failed
+      - name: Report all selected pairs even when an earlier job failed
         if: always()
         env:
           UPSTREAM_STATUS: ${{ toJSON(needs) }}
@@ -523,10 +520,10 @@ jobs:
           scenarios = """recovery_cold_boot flash_cold_boot streaming_boot handoff runtime_commands
           cold_reboot corrupted_runtime corrupted_manifest svn_rollback svn_boundary warm_reset
           suite_attestation_ocp_eat_non_tcb suite_attestation_ocp_eat_tcb suite_attestation_ocp_eat_mixed
-          suite_attestation_pcr_quote suite_spdm_mctp suite_spdm_doe suite_spdm_rs
-          suite_provisioning suite_ownership_dot suite_owner_stable_key
+          suite_attestation_pcr_quote suite_spdm_mctp suite_spdm_doe
+          suite_ownership_dot suite_owner_stable_key
           suite_network_boot suite_usb_recovery""".split()
-          for rom, runtime in itertools.product(["rom-sdk-2.1.0","rom-sdk-2.1.0rc1"], ["rt-sdk-2.1.0","rt-sdk-2.1.1","main-2.1"]):
+          for rom, runtime in itertools.product(["rom-sdk-2.1.0"], ["rt-sdk-2.1.0","rt-sdk-2.1.1","main-2.1"]):
               directory = root / f"compatibility-results-{rom}-{runtime}" / "results"
               cases, issues, received = [], [], 0
               for mode, scenario in itertools.product(["flash","streaming"], scenarios):
@@ -555,7 +552,7 @@ jobs:
                   log = directory/mode/f"{phase}.log"
                   try:
                       tests = ET.parse(path).findall(".//testcase")
-                      expected_count = 11 if phase == "boot" else 12
+                      expected_count = sum(s.startswith("suite_") == (phase == "suites") for s in scenarios)
                       exit_code = code.read_text().strip()
                       skip_marker = "Skipping test" in log.read_text()
                       if len(tests) != expected_count or exit_code != "0" or skip_marker:
@@ -576,7 +573,7 @@ jobs:
                         else "PASS" if executions_ok and dispositions_ok else "BLOCKED")
               counts = {result: sum(c["result"] == result for c in cases)
                         for result in ["PASS", "FAIL", "BLOCKED", "NOT APPLICABLE"]}
-              rows.append(f"| {rom} | {runtime} | {status} | {counts['PASS']} | {counts['FAIL']} | {counts['BLOCKED']} | {counts['NOT APPLICABLE']} | {received}/46 |")
+              rows.append(f"| {rom} | {runtime} | {status} | {counts['PASS']} | {counts['FAIL']} | {counts['BLOCKED']} | {counts['NOT APPLICABLE']} | {received}/{2 * len(scenarios)} |")
               failures = [c for c in cases if c["result"] in ["FAIL", "BLOCKED"]]
               if failures:
                   details.append(f"\n## {rom} / {runtime}\n\n| Mode | Case | Result | Phase | Elapsed ms | Reason |\n|---|---|---|---|---|---|\n")

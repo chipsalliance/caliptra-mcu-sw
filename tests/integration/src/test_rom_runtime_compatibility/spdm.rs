@@ -9,6 +9,7 @@ use caliptra_mcu_testing_common::spdm_responder_validator::{
     execute_spdm_attestation_with_port, execute_spdm_responder_validator, SpdmValidatorRunner,
     SERVER_LISTENING,
 };
+use std::io::{Read, Seek, SeekFrom};
 use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::sync::atomic::Ordering;
 use std::sync::mpsc::{self, Receiver};
@@ -272,11 +273,34 @@ fn drive_compatibility_protocol(
     }
 }
 
+fn validator_failure(message: &str, log: &std::path::Path) -> String {
+    let output = (|| -> std::io::Result<String> {
+        let mut file = std::fs::File::open(log)?;
+        let start = file.metadata()?.len().saturating_sub(4096);
+        file.seek(SeekFrom::Start(start))?;
+        let mut bytes = Vec::new();
+        file.take(4096).read_to_end(&mut bytes)?;
+        Ok(String::from_utf8_lossy(&bytes).into_owned())
+    })();
+    match output {
+        Ok(output) => format!("{message}; {}:\n{output}", log.display()),
+        Err(error) => format!("{message}; could not read {}: {error}", log.display()),
+    }
+}
+
 fn start_protocol(
     port: u16,
     target_addr: DynamicI3cAddress,
     attestation: bool,
 ) -> Result<Receiver<Result<(), String>>> {
+    let validator_log = std::path::PathBuf::from(
+        std::env::var_os("SPDM_VALIDATOR_DIR").context("Missing SPDM validator directory")?,
+    )
+    .join(if attestation {
+        "spdm_requester_emu_output.txt"
+    } else {
+        "spdm_device_validator_output.txt"
+    });
     let (result_tx, result_rx) = mpsc::channel();
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let stream = TcpStream::connect(addr).context("could not connect to selected I3C port")?;
@@ -313,8 +337,13 @@ fn start_protocol(
                             || validator.is_finished()
                         {
                             caliptra_mcu_testing_common::stop_emulator();
-                            let _ = validator.join();
-                            return Err("SPDM validator stopped before connecting".to_string());
+                            validator
+                                .join()
+                                .map_err(|_| "SPDM validator worker panicked".to_string())?;
+                            return Err(validator_failure(
+                                "SPDM validator stopped before connecting",
+                                &validator_log,
+                            ));
                         }
                         std::thread::sleep(Duration::from_millis(20));
                     }
@@ -337,7 +366,10 @@ fn start_protocol(
                 .join()
                 .map_err(|_| "SPDM validator worker panicked".to_string())?;
             if !validator_passed {
-                return Err("SPDM validator exited unsuccessfully".to_string());
+                return Err(validator_failure(
+                    "SPDM validator exited unsuccessfully",
+                    &validator_log,
+                ));
             }
 
             println!("[{TEST_NAME}]: SPDM protocol completed");
@@ -353,6 +385,30 @@ fn start_protocol(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn validator_failure_includes_process_diagnostics() {
+        let directory = tempfile::tempdir().unwrap();
+        let log = directory.path().join("requester.log");
+        let diagnostic = "version `GLIBC_2.38' not found";
+        std::fs::write(
+            &log,
+            format!("old prefix\n{}\n{diagnostic}", "x".repeat(8192)),
+        )
+        .unwrap();
+        let error = validator_failure("SPDM validator stopped before connecting", &log);
+        assert!(error.contains("SPDM validator stopped before connecting"));
+        assert!(error.contains(log.to_str().unwrap()));
+        assert!(error.contains(diagnostic));
+        assert!(!error.contains("old prefix"));
+        assert!(error.len() < 4608);
+
+        std::fs::remove_file(&log).unwrap();
+        let error = validator_failure("SPDM validator exited unsuccessfully", &log);
+        assert!(error.contains("SPDM validator exited unsuccessfully"));
+        assert!(error.contains("could not read"));
+        assert!(error.contains(log.to_str().unwrap()));
+    }
 
     #[test]
     fn conformance_requires_positive_counts_and_no_failures() {

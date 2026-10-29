@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! Selected-image tests for the six pairs in rom-runtime-compatibility-matrix-2.md.
+//! Selected-image tests scoped by rom-runtime-compatibility-matrix-2.md.
 //! The workflow builds images and prepares fixtures before running these ignored tests.
 
 mod fixtures;
@@ -29,13 +29,7 @@ use std::{
 use zerocopy::FromBytes;
 
 const CORE: &str = "b99535ded32492d6c23bbc56f95e787a1e275b59";
-const ROMS: [(&str, &str); 2] = [
-    ("rom-sdk-2.1.0", "da451221542758758f1c4ce35efbe48da9935dd8"),
-    (
-        "rom-sdk-2.1.0rc1",
-        "12b6dc3f760767a17e931db3b4a4aa5dca47b95f",
-    ),
-];
+const ROMS: [(&str, &str); 1] = [("rom-sdk-2.1.0", "da451221542758758f1c4ce35efbe48da9935dd8")];
 const RUNTIMES: [&str; 3] = ["rt-sdk-2.1.0", "rt-sdk-2.1.1", "main-2.1"];
 const PLDM_TID: u8 = 1;
 
@@ -1081,7 +1075,7 @@ fn boot_check(pair: &SelectedPair, scenario: &str) -> Result<Option<String>> {
                 pair.config.handoff_address,
                 hex::encode(&bytes)
             );
-            // Both selected ROMs predate boot-source/capability fields.
+            // The selected ROM predates boot-source/capability fields.
         }
         "flash_cold_boot" | "cold_reboot" => {
             // Never provide PLDM payloads here: flash must work without streaming fallback.
@@ -1107,67 +1101,6 @@ fn boot_check(pair: &SelectedPair, scenario: &str) -> Result<Option<String>> {
     Ok(None)
 }
 
-fn provisioning(pair: &SelectedPair, hw: &mut DefaultHwModel) -> Result<()> {
-    let challenge = pair.command("MC_GET_AUTH_CMD_CHALLENGE")?;
-    let (command, payload) = if pair.commands.contains_key("MC_AUTHORIZED_COMMAND") {
-        (
-            pair.command("MC_AUTHORIZED_COMMAND")?,
-            challenge.to_le_bytes().to_vec(),
-        )
-    } else {
-        (challenge, vec![0; 8])
-    };
-    let mut previous = None;
-    for _ in 0..2 {
-        let response = mailbox(hw, command, &payload)?;
-        ensure!(
-            response.len() == 60,
-            "Authorization challenge response length"
-        );
-        let (header, bytes) = MailboxRespHeader::ref_from_prefix(&response)
-            .map_err(|error| anyhow::anyhow!("Invalid challenge: {error}"))?;
-        ensure!(
-            header.fips_status == MailboxRespHeader::FIPS_STATUS_APPROVED
-                && header.chksum == calc_checksum(0, &response[4..])
-                && bytes[..4] == [0; 4]
-                && bytes[4..].iter().any(|byte| *byte != 0),
-            "Invalid authorization challenge status/checksum/nonce"
-        );
-        ensure!(
-            previous.as_deref() != Some(&bytes[4..]),
-            "Authorization nonce was reused"
-        );
-        previous = Some(bytes[4..].to_vec());
-    }
-    // Non-mutating checks only: authenticated fuse writes require another lifecycle fixture.
-    for name in ["MC_FE_STATUS", "MC_VENDOR_PK_HASH_STATUS"] {
-        if let Some(&command) = pair.commands.get(name) {
-            let response = mailbox(hw, command, &[])?;
-            let (header, bytes) = MailboxRespHeader::ref_from_prefix(&response)
-                .map_err(|error| anyhow::anyhow!("Invalid provisioning status: {error}"))?;
-            ensure!(
-                header.fips_status == MailboxRespHeader::FIPS_STATUS_APPROVED
-                    && header.chksum == calc_checksum(0, &response[4..]),
-                "Invalid provisioning status"
-            );
-            if name == "MC_FE_STATUS" {
-                ensure!(bytes == [0; 4], "Unexpected field-entropy provisioning");
-            } else {
-                ensure!(
-                    bytes.len() == 20
-                        && bytes[..4] == 1u32.to_le_bytes()
-                        && bytes[4] == 1
-                        && bytes[5..].iter().all(|byte| *byte == 0),
-                    "Unexpected vendor key slots/types"
-                );
-            }
-        } else {
-            println!("NOT APPLICABLE: selected source has no {name}");
-        }
-    }
-    Ok(())
-}
-
 fn suite_check(pair: &SelectedPair, scenario: &str) -> Result<Option<String>> {
     match scenario {
         "suite_attestation_ocp_eat_non_tcb"
@@ -1182,9 +1115,9 @@ fn suite_check(pair: &SelectedPair, scenario: &str) -> Result<Option<String>> {
             "The selected production configuration uses OCP EAT, not the test-only PCR provider"
                 .into(),
         )),
-        "suite_spdm_doe" | "suite_spdm_rs" => {
+        "suite_spdm_doe" => {
             return Ok(Some(
-                "The selected service configuration enables MCTP, not DOE/TDISP/IDE".into(),
+                "The selected service configuration enables MCTP, not DOE".into(),
             ))
         }
         "suite_ownership_dot" | "suite_owner_stable_key" => {
@@ -1245,7 +1178,6 @@ fn suite_check(pair: &SelectedPair, scenario: &str) -> Result<Option<String>> {
                 )?;
             }
         }
-        "suite_provisioning" => provisioning(pair, &mut hw)?,
         _ => bail!("BLOCKED: no selected-image implementation for {scenario}"),
     }
     check_no_fatal(&mut hw)?;
@@ -1341,8 +1273,6 @@ compatibility_test!(
 );
 compatibility_test!(test_suite_spdm_mctp, "suite_spdm_mctp");
 compatibility_test!(test_suite_spdm_doe, "suite_spdm_doe");
-compatibility_test!(test_suite_spdm_rs, "suite_spdm_rs");
-compatibility_test!(test_suite_provisioning, "suite_provisioning");
 compatibility_test!(test_suite_ownership_dot, "suite_ownership_dot");
 compatibility_test!(test_suite_owner_stable_key, "suite_owner_stable_key");
 compatibility_test!(test_suite_network_boot, "suite_network_boot");

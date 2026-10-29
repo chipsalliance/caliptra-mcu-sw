@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! Native fixture preparation, run once by the workflow before the six pairs.
+//! Native fixture preparation, run once by the workflow before the pair tests.
 
 use super::*;
 use crate::test::{build_primary_flash_initial_contents, ECC_DEVID_CERT_DER, MLDSA_IDEVID_CERT};
@@ -104,7 +104,7 @@ fn runtime_flash(path: &Path, args: CaliptraBuildArgs) -> Result<()> {
     partition_flash_payload(path, &payload)
 }
 
-fn streaming_package(args: &[String]) -> Result<()> {
+fn streaming_package(directory: &Path) -> Result<()> {
     use caliptra_mcu_pldm_fw_pkg::{
         manifest::{
             ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
@@ -114,19 +114,28 @@ fn streaming_package(args: &[String]) -> Result<()> {
     };
     use chrono::{TimeZone, Utc};
 
-    ensure!(
-        args.len() == 6,
-        "expected SoC flash output, PLDM output, owner manifest, owner policy, and two SoC input images"
-    );
-    fs::File::create(&args[0])?;
+    let flash_path = directory.join("soc-images.bin");
+    let package_path = directory.join("streaming.pldm");
+    fs::File::create(&flash_path)?;
     caliptra_mcu_builder::flash_image::flash_image_create(&CaliptraBuildArgs {
-        output_path: Some(args[0].clone()),
-        owner_auth_manifest: Some(args[2].clone().into()),
-        owner_measurement_policy: Some(args[3].clone().into()),
-        soc_image_paths: Some(args[4..].to_vec()),
+        output_path: Some(flash_path.to_str().context("Non-UTF-8 flash path")?.into()),
+        owner_auth_manifest: Some(directory.join("owner-auth-manifest.bin")),
+        owner_measurement_policy: Some(directory.join("owner-measurement-policy.bin")),
+        soc_image_paths: Some(
+            [4096, 4097]
+                .iter()
+                .map(|id| {
+                    directory
+                        .join(format!("soc-image-{id}.bin"))
+                        .to_str()
+                        .context("Non-UTF-8 SoC image path")
+                        .map(str::to_owned)
+                })
+                .collect::<Result<Vec<_>>>()?,
+        ),
         ..Default::default()
     })?;
-    let image = fs::read(&args[0])?;
+    let image = fs::read(&flash_path)?;
     caliptra_mcu_builder::flash_image::FlashImage::verify_flash_image(&image)?;
     let manifest = FirmwareManifest {
         package_header_information: PackageHeaderInformation {
@@ -168,8 +177,12 @@ fn streaming_package(args: &[String]) -> Result<()> {
         }],
     };
     manifest.verify().map_err(anyhow::Error::msg)?;
-    manifest.generate_firmware_package(&args[1])?;
-    let decoded = FirmwareManifest::decode_firmware_package(&args[1], None)?;
+    let package_path = package_path
+        .to_str()
+        .context("Non-UTF-8 PLDM path")?
+        .to_owned();
+    manifest.generate_firmware_package(&package_path)?;
+    let decoded = FirmwareManifest::decode_firmware_package(&package_path, None)?;
     ensure!(
         decoded.component_image_information.len() == 1,
         "wrong component count"
@@ -185,6 +198,36 @@ fn streaming_package(args: &[String]) -> Result<()> {
             == (1..=16).collect::<Vec<u8>>(),
         "wrong device UUID"
     );
+    Ok(())
+}
+
+#[test]
+fn streaming_package_preserves_fixture_images() -> Result<()> {
+    use caliptra_mcu_flash_image::{FlashHeader, ImageHeader};
+
+    let directory = tempfile::tempdir()?;
+    let fixtures = [
+        ("owner-auth-manifest.bin", 3, vec![1; 256]),
+        ("owner-measurement-policy.bin", 5, vec![2; 256]),
+        ("soc-image-4096.bin", 4096, vec![0x55; 512]),
+        ("soc-image-4097.bin", 4097, vec![0xaa; 256]),
+    ];
+    for (name, _, bytes) in &fixtures {
+        fs::write(directory.path().join(name), bytes)?;
+    }
+    streaming_package(directory.path())?;
+    let image = fs::read(directory.path().join("soc-images.bin"))?;
+    let (header, _) = FlashHeader::ref_from_prefix(&image)
+        .map_err(|error| anyhow::anyhow!("Invalid fixture flash header: {error}"))?;
+    assert_eq!(usize::from(header.image_count), fixtures.len());
+    for (index, (_, identifier, expected)) in fixtures.iter().enumerate() {
+        let offset = header.image_headers_offset as usize + index * size_of::<ImageHeader>();
+        let (entry, _) = ImageHeader::ref_from_prefix(&image[offset..])
+            .map_err(|error| anyhow::anyhow!("Invalid fixture image header: {error}"))?;
+        assert_eq!(entry.identifier, *identifier);
+        let start = entry.offset as usize;
+        assert_eq!(&image[start..start + entry.size as usize], expected);
+    }
     Ok(())
 }
 
@@ -291,23 +334,7 @@ fn prepare_inputs() -> Result<()> {
             "agreement": std::env::var("MCU_COMPAT_AGREEMENT")?,
         }),
     )?;
-    streaming_package(
-        &[
-            shared.join("soc-images.bin"),
-            shared.join("streaming.pldm"),
-            shared.join("owner-auth-manifest.bin"),
-            shared.join("owner-measurement-policy.bin"),
-            shared.join("soc-image-4096.bin"),
-            shared.join("soc-image-4097.bin"),
-        ]
-        .iter()
-        .map(|path| {
-            path.to_str()
-                .context("Non-UTF-8 package path")
-                .map(str::to_owned)
-        })
-        .collect::<Result<Vec<_>>>()?,
-    )?;
+    streaming_package(&shared)?;
     let errors = core_directory.join("errors.rs");
     for &runtime in &runtimes {
         for mode in CONFIGURATIONS {
