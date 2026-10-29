@@ -203,7 +203,10 @@ fn streaming_package(directory: &Path) -> Result<()> {
 
 #[test]
 fn streaming_package_preserves_fixture_images() -> Result<()> {
-    use caliptra_mcu_flash_image::{FlashHeader, ImageHeader};
+    use caliptra_mcu_builder::flash_image::{generate_image_info, FirmwareImage, FlashImage};
+    use caliptra_mcu_flash_image::{
+        OWNER_AUTH_MANIFEST_IDENTIFIER, OWNER_MEASUREMENT_POLICY_IDENTIFIER,
+    };
 
     let directory = tempfile::tempdir()?;
     let fixtures = [
@@ -217,17 +220,23 @@ fn streaming_package_preserves_fixture_images() -> Result<()> {
     }
     streaming_package(directory.path())?;
     let image = fs::read(directory.path().join("soc-images.bin"))?;
-    let (header, _) = FlashHeader::ref_from_prefix(&image)
-        .map_err(|error| anyhow::anyhow!("Invalid fixture flash header: {error}"))?;
-    assert_eq!(usize::from(header.image_count), fixtures.len());
-    for (index, (_, identifier, expected)) in fixtures.iter().enumerate() {
-        let offset = header.image_headers_offset as usize + index * size_of::<ImageHeader>();
-        let (entry, _) = ImageHeader::ref_from_prefix(&image[offset..])
-            .map_err(|error| anyhow::anyhow!("Invalid fixture image header: {error}"))?;
-        assert_eq!(entry.identifier, *identifier);
-        let start = entry.offset as usize;
-        assert_eq!(&image[start..start + entry.size as usize], expected);
-    }
+    let expected_images = fixtures
+        .iter()
+        .map(|(name, identifier, bytes)| {
+            let filename = match *identifier {
+                OWNER_AUTH_MANIFEST_IDENTIFIER | OWNER_MEASUREMENT_POLICY_IDENTIFIER => {
+                    Some(name.as_bytes())
+                }
+                _ => None,
+            };
+            FirmwareImage::new(*identifier, bytes, filename)
+        })
+        .collect::<std::io::Result<Vec<_>>>()?;
+    let expected_headers = generate_image_info(expected_images.clone());
+    assert_eq!(
+        image,
+        FlashImage::new(&expected_images, &expected_headers).to_bytes()
+    );
     Ok(())
 }
 

@@ -24,8 +24,16 @@ SPDM/EAT checks require successful boot and SoC loading. EAT uses non-TCB,
 TCB and mixed configurations with signed reference values. There is no
 standalone provisioning or TDISP/IDE case.
 
+Warm reset checks readiness, firmware-version/capability responses, preserved
+OTP/flash, and streaming-mode MCTP discovery plus PLDM GetTID. It completes the
+initial streaming boot before resetting, but does not repeat firmware download,
+owner-artifact measurement or SoC activation after reset.
+
 Released firmware is not patched, and missing artifacts never fall back to
 current firmware. Existing current/current CI is unchanged.
+
+The streaming-fixture regression compares the complete container with canonical
+builder output, without assuming an internal flash-header layout.
 
 ## Required inputs
 
@@ -69,6 +77,6 @@ Nextest counts those invocations as successful. Use the per-case results.
   hides this incompatibility.
 - **Current runtime:** `main-2.1` sends a 12-byte `GET_IMAGE_INFO` request;
   the fixed Core expects 8 bytes and rejects it with `0x000e0003`.
-- Warm-reset and SDK 2.1.0 service failures from the
-  [last full matrix](https://github.com/chipsalliance/caliptra-mcu-sw/actions/runs/40828633500)
-  remain unresolved. The current GA-only matrix has not been fully rerun.
+- GA ROM + SDK 2.1.0 streaming boot passes locally with unchanged CI images.
+  SDK 2.1.0 service failures remain unresolved; the full GA-only matrix has
+  not completed.

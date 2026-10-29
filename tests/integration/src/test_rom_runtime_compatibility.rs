@@ -576,14 +576,17 @@ impl TransportSession {
     }
 }
 
-fn check_mctp_discovery(port: u16, address: u8) -> Result<()> {
+fn check_transport_discovery(port: u16, address: u8) -> Result<()> {
+    use caliptra_mcu_pldm_common::{message::control::GetTidRequest, protocol::base::PldmMsgType};
     use caliptra_mcu_testing_common::{
         i3c_socket::BufferedStream,
         mctp_util::{
+            base_protocol::MctpMsgType,
             common::MctpUtil,
             ctrl_protocol::{MCTPCtrlCmd, MCTPCtrlMsgHdr},
         },
     };
+    use zerocopy::IntoBytes;
     let mut stream = BufferedStream::new(std::net::TcpStream::connect(("127.0.0.1", port))?);
     let mut protocol = MctpUtil::new();
     protocol.set_boot_delay_ticks(0);
@@ -608,6 +611,57 @@ fn check_mctp_discovery(port: u16, address: u8) -> Result<()> {
             hex::encode(response)
         );
     }
+    let mut request = vec![MctpMsgType::Pldm as u8];
+    request.extend_from_slice(GetTidRequest::new(0, PldmMsgType::Request).as_bytes());
+    let response = protocol
+        .wait_for_responder(0, &request, &mut stream, address)
+        .context("No PLDM GetTID response")?;
+    check_pldm_discovery_response(&response)?;
+    println!("PLDM GetTID discovery response: {}", hex::encode(response));
+    Ok(())
+}
+
+fn check_pldm_discovery_response(response: &[u8]) -> Result<()> {
+    use caliptra_mcu_pldm_common::message::control::GetTidResponse;
+    use caliptra_mcu_testing_common::mctp_util::base_protocol::MctpMsgType;
+    ensure!(
+        response.first() == Some(&(MctpMsgType::Pldm as u8)),
+        "Invalid PLDM discovery message type"
+    );
+    let response = GetTidResponse::read_from_bytes(&response[1..]).map_err(|_| {
+        anyhow::anyhow!(
+            "Invalid PLDM GetTID response length: {}",
+            response.len() - 1
+        )
+    })?;
+    ensure!(
+        response == GetTidResponse::new(0, response.tid, 0) && response.tid != u8::MAX,
+        "Invalid PLDM GetTID response: {response:?}"
+    );
+    Ok(())
+}
+
+#[test]
+fn pldm_discovery_rejects_invalid_responses() -> Result<()> {
+    use caliptra_mcu_pldm_common::message::control::GetTidResponse;
+    use caliptra_mcu_testing_common::mctp_util::base_protocol::MctpMsgType;
+    use zerocopy::IntoBytes;
+    for tid in [0, PLDM_TID] {
+        let mut response = vec![MctpMsgType::Pldm as u8];
+        response.extend_from_slice(GetTidResponse::new(0, tid, 0).as_bytes());
+        check_pldm_discovery_response(&response)?;
+        for index in 0..response.len() {
+            let mut invalid = response.clone();
+            invalid[index] = if index == response.len() - 1 {
+                u8::MAX
+            } else {
+                invalid[index] ^ 0x80
+            };
+            ensure!(check_pldm_discovery_response(&invalid).is_err());
+        }
+        ensure!(check_pldm_discovery_response(&response[..response.len() - 1]).is_err());
+    }
+    ensure!(check_pldm_discovery_response(&[]).is_err());
     Ok(())
 }
 
@@ -642,44 +696,21 @@ fn check_mctp_response(command: u8, request_header: u8, response: &[u8]) -> Resu
     Ok(())
 }
 
-fn start_transport(hw: &mut impl McuHwModel, pair: &SelectedPair) -> Result<TransportSession> {
-    use caliptra_mcu_pldm_ua::{
-        daemon::{Options, PldmDaemon},
-        transport::{EndpointId, PldmSocket, PldmTransport},
-    };
+fn discover_transport(
+    hw: &mut impl McuHwModel,
+) -> Result<caliptra_mcu_testing_common::mctp_transport::MctpPldmSocket> {
+    use caliptra_mcu_pldm_ua::transport::{EndpointId, PldmTransport};
     use caliptra_mcu_testing_common::{mctp_transport::MctpTransport, spawn_with_emulator_state};
-    let manifest = streaming_package(pair)?;
     let port = hw.i3c_port().context("Missing selected-image I3C port")?;
     let address = hw.i3c_address().context("Missing dynamic I3C address")?;
     hw.start_i3c_controller();
-    let discovered = Arc::new(AtomicBool::new(false));
-    let observer = discovered.clone();
-    let verification_error = Arc::new(AtomicU8::new(0));
-    let update_observer = verification_error.clone();
     let (tx, rx) = mpsc::channel();
     spawn_with_emulator_state(move || {
-        let result = (|| -> Result<TransportSession> {
-            check_mctp_discovery(port, address)?;
-            let socket = MctpTransport::new(port, address.into())
+        let result = (|| {
+            check_transport_discovery(port, address)?;
+            MctpTransport::new(port, address.into())
                 .create_socket(EndpointId(8), EndpointId(0))
-                .map_err(|error| anyhow::anyhow!("I3C PLDM socket failed: {error:?}"))?;
-            let daemon = PldmDaemon::run(
-                socket.clone(),
-                Options {
-                    caliptra_mcu_pldm_fw_pkg: Some(manifest),
-                    discovery_sm_actions: DiscoveryObserver(observer),
-                    update_sm_actions: UpdateObserver(update_observer),
-                    fd_tid: PLDM_TID,
-                    rerun_count: 0,
-                },
-            )
-            .map_err(|()| anyhow::anyhow!("Cannot start selected-image PLDM daemon"))?;
-            Ok(TransportSession {
-                daemon,
-                socket,
-                discovered,
-                verification_error,
-            })
+                .map_err(|error| anyhow::anyhow!("I3C PLDM socket failed: {error:?}"))
         })();
         if tx.send(result).is_err() {
             eprintln!("Selected-image transport receiver exited");
@@ -698,14 +729,42 @@ fn start_transport(hw: &mut impl McuHwModel, pair: &SelectedPair) -> Result<Tran
         check_no_fatal(hw)?;
         ensure!(
             hw.mcu_exit_status().is_none(),
-            "MCU exited during MCTP discovery"
+            "MCU exited during MCTP/PLDM discovery"
         );
         ensure!(
             hw.cycle_count() - cycles < 100_000_000 && start.elapsed() < Duration::from_secs(120),
-            "MCTP discovery timed out"
+            "MCTP/PLDM discovery timed out"
         );
         hw.step();
     }
+}
+
+fn start_transport(hw: &mut impl McuHwModel, pair: &SelectedPair) -> Result<TransportSession> {
+    use caliptra_mcu_pldm_ua::{
+        daemon::{Options, PldmDaemon},
+        transport::PldmSocket,
+    };
+    let manifest = streaming_package(pair)?;
+    let socket = discover_transport(hw)?;
+    let discovered = Arc::new(AtomicBool::new(false));
+    let verification_error = Arc::new(AtomicU8::new(0));
+    let daemon = PldmDaemon::run(
+        socket.clone(),
+        Options {
+            caliptra_mcu_pldm_fw_pkg: Some(manifest),
+            discovery_sm_actions: DiscoveryObserver(discovered.clone()),
+            update_sm_actions: UpdateObserver(verification_error.clone()),
+            fd_tid: PLDM_TID,
+            rerun_count: 0,
+        },
+    )
+    .map_err(|()| anyhow::anyhow!("Cannot start selected-image PLDM daemon"))?;
+    Ok(TransportSession {
+        daemon,
+        socket,
+        discovered,
+        verification_error,
+    })
 }
 
 fn wait_ready(hw: &mut impl McuHwModel) -> Result<()> {
@@ -760,7 +819,16 @@ fn mailbox(hw: &mut impl McuHwModel, command: u32, payload: &[u8]) -> Result<Vec
         );
         hw.step();
     }
-    hw.finish_mailbox_execute()?
+    hw.finish_mailbox_execute()
+        .with_context(|| {
+            let mut core = hw.caliptra_soc_manager();
+            let core_command = core.soc_mbox().cmd().read();
+            let core_status = u32::from(core.soc_mbox().status().read());
+            let core_error = core.soc_ifc().cptra_fw_error_non_fatal().read();
+            format!(
+                "Mailbox command {command:#x} failed; Core mailbox command={core_command:#x}, status={core_status:#x}, nonfatal={core_error:#x}"
+            )
+        })?
         .context("Mailbox command returned no response")
 }
 
@@ -870,6 +938,13 @@ fn check_soc_images(hw: &mut impl McuHwModel, pair: &SelectedPair) -> Result<()>
                 .iter()
                 .zip(&required)
                 .all(|(actual, expected)| actual & expected == *expected)
+            && hw
+                .caliptra_soc_manager()
+                .soc_mbox()
+                .status()
+                .read()
+                .mbox_fsm_ps()
+                .mbox_idle()
         {
             return Ok(());
         }
@@ -1008,6 +1083,11 @@ fn boot_check(pair: &SelectedPair, scenario: &str) -> Result<Option<String>> {
     check_version(&mut hw, pair).context("stage=firmware_version")?;
     match scenario {
         "warm_reset" => {
+            if pair.streaming() {
+                start_transport(&mut hw, pair)?
+                    .finish(&mut hw, pair)
+                    .context("stage=initial_streaming_boot")?;
+            }
             let otp = hw.read_otp_memory();
             let flash =
                 fs::read("primary_flash").context("Cannot snapshot flash before warm reset")?;
@@ -1033,7 +1113,13 @@ fn boot_check(pair: &SelectedPair, scenario: &str) -> Result<Option<String>> {
                 McuBootMilestones::WARM_RESET_FLOW_COMPLETE
                     | McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE
                     | McuBootMilestones::FIRMWARE_MAILBOX_READY,
-            ) {
+            ) || !hw
+                .caliptra_soc_manager()
+                .soc_ifc()
+                .cptra_flow_status()
+                .read()
+                .ready_for_runtime()
+            {
                 check_no_fatal(&mut hw).context("stage=warm_reset")?;
                 ensure!(
                     hw.mcu_exit_status().is_none(),
@@ -1060,7 +1146,11 @@ fn boot_check(pair: &SelectedPair, scenario: &str) -> Result<Option<String>> {
                 "Flash changed across warm reset"
             );
             if pair.streaming() {
-                start_transport(&mut hw, pair)?.finish(&mut hw, pair)?;
+                use caliptra_mcu_pldm_ua::transport::PldmSocket;
+                discover_transport(&mut hw)
+                    .context("stage=warm_reset_discovery")?
+                    .disconnect();
+                println!("Post-reset MCTP/PLDM discovery verified without a firmware download");
             }
         }
         "runtime_commands" => check_capabilities(
