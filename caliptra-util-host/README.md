@@ -33,7 +33,7 @@ non-OCP boot configuration and do not enable the status queries.
 The Rust command API supports all ten Runtime Device Ownership Transfer (DOT)
 commands over both the `Mailbox` and `SpdmVdm` transports:
 
-- Generic-authorized: `DOT_LOCK`, `DOT_DISABLE`, `DOT_ROTATE`, and
+- Generic-authorized: `DOT_ENABLE`, `DOT_LOCK`, `DOT_DISABLE`, `DOT_ROTATE`, and
     `GET_DOT_BACKUP_BLOB`
 - Native: `DOT_UNLOCK_CHALLENGE`, `DOT_UNLOCK`, `DOT_STATUS`, `DOT_RECOVERY`,
     `DOT_OVERRIDE_CHALLENGE`, and `DOT_OVERRIDE`
@@ -50,6 +50,57 @@ require separately provisioned test states. DOT APIs are not currently exported
 by the C bindings. See the
 [DOT documentation](../docs/src/dot.md#runtime-commands) for target platform and
 authorization requirements.
+
+## Command Authorization
+
+Mailbox and SPDM VDM use the same 7,484-byte, version-1
+[Authorization Block](../docs/src/caliptra_spdm_vdm_cmds.md#authorization-block).
+The signed fields include the version, authority, 16-byte target manufacturer
+serial number, and 48-byte nonce. Both hybrid signatures bind these fields and
+the command payload.
+
+`AuthorizationMetadata::default()` selects Owner-only authority and Fleet scope.
+The existing `authorize(command_id, payload, nonce)` helper signs that default
+metadata. Use `authorize_with_metadata` for an explicit authority or Device
+scope, and put the identical metadata in the request. The caller chooses
+`offline_authorization` independently for each command:
+
+```rust
+use caliptra_mcu_core_util_host_command_types::fuse::{
+    AuthorizationMetadata, CommandAuthority,
+};
+
+let metadata = AuthorizationMetadata::new(CommandAuthority::Owner, target_ueid);
+let nonce = if offline_authorization {
+    [0; 48]
+} else {
+    client.get_auth_challenge()?.challenge
+};
+let signature = signer.authorize_with_metadata(command_id, payload, &metadata, &nonce)?;
+```
+
+`target_ueid` is the exact 16-byte OTP manufacturer serial number; all zeroes
+select Fleet scope. A Fleet online request still needs a different device
+challenge and signature for each device. Offline authorization intentionally
+allows replay and must be selected intentionally by the signer; never fall back
+to a zero nonce after a challenge request fails. Runtime accepts both modes
+without a global mode switch or separate mode-discovery query.
+
+Mailbox typed requests expose `metadata`. SPDM `AuthorizedCommandData` carries
+it alongside the nonce, keys, and signatures. Use the explicit-context
+`fe_prog_with_authorization`, `fuse_lock_partition_with_authorization`, and
+`provision_owner_pk_hash_with_authorization` methods when selecting Device
+scope or non-default authority; their existing convenience methods retain
+Owner-only/Fleet metadata. DOT authorization trailers use the same block.
+
+`AsymmetricCommandAuthorizer::anchor()` returns the Core-compatible public-key
+digest: SHA-384 of word-encoded ECC X and Y followed by the raw ML-DSA key.
+Wire ECC coordinates and signature scalars remain standard big-endian byte
+arrays. Provision the standard 48 digest bytes in existing original-manifest
+IME `0x4` or Owner-manifest IME `0x6`; the latter must be active in Core for the
+reference Owner-only command policy. There is no hardcoded-key or alternate
+manifest fallback. Existing manifests and clients using the old nonce-only
+trailer require coordinated migration.
 
 ## Quick Start
 

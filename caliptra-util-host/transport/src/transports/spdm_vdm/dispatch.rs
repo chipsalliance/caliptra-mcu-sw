@@ -128,7 +128,12 @@ mod tests {
             );
         }
 
-        assert!(get_command_handler(CaliptraCommandId::HashInit as u32).is_none());
-        assert!(command_id_to_vdm(CaliptraCommandId::HashInit as u32).is_none());
+        for id in [
+            CaliptraCommandId::HashInit,
+            CaliptraCommandId::GetDeviceCapabilities,
+        ] {
+            assert!(get_command_handler(id as u32).is_none());
+            assert!(command_id_to_vdm(id as u32).is_none());
+        }
     }
 }

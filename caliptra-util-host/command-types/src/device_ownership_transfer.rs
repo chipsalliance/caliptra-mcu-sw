@@ -26,27 +26,7 @@ pub const MC_GET_DOT_BACKUP_BLOB_CANONICAL_CMD_ID: u32 = CommandId::MC_GET_DOT_B
 pub const MC_DOT_OVERRIDE_CHALLENGE_CANONICAL_CMD_ID: u32 = CommandId::MC_DOT_OVERRIDE_CHALLENGE.0;
 pub const MC_DOT_OVERRIDE_CANONICAL_CMD_ID: u32 = CommandId::MC_DOT_OVERRIDE.0;
 
-#[repr(C)]
-#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
-pub struct DotAuthorizationTrailer {
-    pub nonce: [u8; AUTH_CMD_NONCE_LEN],
-    pub ecc_pub_x: [u8; DOT_ECC_PUBLIC_KEY_COORD_SIZE],
-    pub ecc_pub_y: [u8; DOT_ECC_PUBLIC_KEY_COORD_SIZE],
-    pub mldsa_pub: [u8; DOT_MLDSA_PUBLIC_KEY_SIZE],
-    pub signature: HybridSignature,
-}
-
-impl Default for DotAuthorizationTrailer {
-    fn default() -> Self {
-        Self {
-            nonce: [0; AUTH_CMD_NONCE_LEN],
-            ecc_pub_x: [0; DOT_ECC_PUBLIC_KEY_COORD_SIZE],
-            ecc_pub_y: [0; DOT_ECC_PUBLIC_KEY_COORD_SIZE],
-            mldsa_pub: [0; DOT_MLDSA_PUBLIC_KEY_SIZE],
-            signature: HybridSignature::default(),
-        }
-    }
-}
+pub type DotAuthorizationTrailer = caliptra_mcu_mbox_common::authorization::AuthorizationBlock;
 
 #[repr(C)]
 #[derive(Debug, Default, Clone, IntoBytes, FromBytes, Immutable)]

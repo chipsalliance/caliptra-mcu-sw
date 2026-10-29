@@ -28,6 +28,7 @@ use caliptra_mcu_libtock_platform::ErrorCode;
 // certificate; attestation evidence must be signed under the same label so the
 // leaf cert in the device's chain is the one that verifies it.
 use caliptra_mcu_cert_store::DPE_LEAF_LABEL;
+use caliptra_mcu_mbox_common::authorization::{ecc_public_key_core_bytes, AuthorizationMetadata};
 use caliptra_mcu_mbox_common::messages::{
     CommandId, DotDisablePayload, DotLockPayload, DotOverrideChallengePayload, DotOverridePayload,
     DotRotatePayload, DotStatus, DotUnlockPayload, HybridSignature, SvnTarget, AUTH_CMD_NONCE_LEN,
@@ -556,41 +557,36 @@ pub async fn verify_authorized_signatures<A: ScratchAlloc>(
     alloc: &A,
     cmd_id: u32,
     payload: &[u8],
+    metadata: &AuthorizationMetadata,
     challenge: &[u8; AUTH_CMD_NONCE_LEN],
-    ecc_pub_x: [u8; 48],
-    ecc_pub_y: [u8; 48],
+    ecc_pub_x: &[u8; 48],
+    ecc_pub_y: &[u8; 48],
     mldsa_pub: &[u8; 2592],
     sig: &HybridSignature,
 ) -> CaliptraCmdResult<()> {
-    let context = alloc
-        .alloc(SHA_CONTEXT_SIZE)
-        .map_err(|_| CaliptraCompletionCode::InsufficientResources)?;
-    let mut anchor = sha_init(alloc, context, HashAlgo::Sha384, &ecc_pub_x)
-        .await
-        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
-    sha_update(alloc, &mut anchor, &ecc_pub_y)
-        .await
-        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
-    sha_update(alloc, &mut anchor, mldsa_pub)
-        .await
-        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
-    let mut pk_hash = [0u8; 48];
-    sha_finish(alloc, &mut anchor, &mut pk_hash)
-        .await
-        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
-    if pk_hash != crate::auth_keys::AUTH_PK_HASH {
+    let authority = metadata
+        .validate()
+        .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
+    let expected =
+        mcu_caliptra_api::core_image_info_from(authority.key_fw_id(), authority.manifest_source())
+            .await
+            .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
+    let pk_hash = dot_lak_hash(alloc, ecc_pub_x, ecc_pub_y, mldsa_pub).await?;
+    if pk_hash != expected.digest {
         return Err(CaliptraCompletionCode::AccessDenied);
     }
 
-    // Pre-image = cmd_id(BE,4) || payload || challenge(48), built from the raw
-    // payload (no inner hash), mirroring prod-debug-unlock. Each leg verifies a
-    // digest of it: ECDSA over SHA-384(pre-image), ML-DSA over SHA-512(pre-image).
-    let mut pre_image = ArrayVec::<u8, 256>::new();
+    let mut pre_image =
+        ArrayVec::<u8, { caliptra_mcu_common_commands::command::MAX_AUTHORIZED_MESSAGE_LEN }>::new(
+        );
     pre_image
         .try_extend_from_slice(&cmd_id.to_be_bytes())
         .map_err(|_| CaliptraCompletionCode::InsufficientResources)?;
     pre_image
         .try_extend_from_slice(payload)
+        .map_err(|_| CaliptraCompletionCode::InsufficientResources)?;
+    pre_image
+        .try_extend_from_slice(metadata.as_bytes())
         .map_err(|_| CaliptraCompletionCode::InsufficientResources)?;
     pre_image
         .try_extend_from_slice(challenge)
@@ -610,8 +606,8 @@ pub async fn verify_authorized_signatures<A: ScratchAlloc>(
         alloc,
         pre_image.as_slice(),
         &mldsa_digest,
-        &ecc_pub_x,
-        &ecc_pub_y,
+        ecc_pub_x,
+        ecc_pub_y,
         mldsa_pub,
         sig,
     )
@@ -698,23 +694,7 @@ async fn dot_lak_hash<A: ScratchAlloc>(
     ecc_pub_y: &[u8; 48],
     mldsa_pub: &[u8; DOT_MLDSA_PUBLIC_KEY_SIZE],
 ) -> CaliptraCmdResult<[u8; DOT_KEY_HASH_SIZE]> {
-    // DOT hashes ECC coordinates in Caliptra's hardware word layout: reverse
-    // bytes within each 32-bit word, then append ML-DSA in its wire byte order.
-    let mut ecc_key = [0u8; 96];
-    for (dst, src) in ecc_key[..48]
-        .chunks_exact_mut(4)
-        .zip(ecc_pub_x.chunks_exact(4))
-    {
-        dst.copy_from_slice(src);
-        dst.reverse();
-    }
-    for (dst, src) in ecc_key[48..]
-        .chunks_exact_mut(4)
-        .zip(ecc_pub_y.chunks_exact(4))
-    {
-        dst.copy_from_slice(src);
-        dst.reverse();
-    }
+    let ecc_key = ecc_public_key_core_bytes(ecc_pub_x, ecc_pub_y);
     let context = alloc
         .alloc(SHA_CONTEXT_SIZE)
         .map_err(|_| CaliptraCompletionCode::InsufficientResources)?;

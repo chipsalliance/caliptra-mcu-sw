@@ -1037,7 +1037,7 @@ impl<'a> MailboxClient<'a> {
     /// Program field entropy for an OTP partition (authorized command)
     ///
     /// The request carries a valid hybrid signature over
-    /// `cmd_id(BE) || partition(LE) || challenge` and the corresponding public
+    /// `cmd_id(BE) || partition(LE) || metadata || nonce` and the corresponding public
     /// keys.
     pub fn fe_prog(&mut self, request: &FeProgRequest) -> Result<FeProgResponse> {
         println!(

@@ -7,6 +7,7 @@ pub mod command;
 
 #[cfg(feature = "ocp-lock")]
 use caliptra_api::mailbox::HpkeHandle;
+use caliptra_mcu_mbox_common::authorization::{AuthorizationMetadata, CommandAuthority};
 use caliptra_mcu_mbox_common::messages::{
     DotDisablePayload, DotLockPayload, DotOverrideChallengePayload, DotOverridePayload,
     DotRotatePayload, DotStatus, DotUnlockPayload, HybridSignature, SvnTarget, AUTH_CMD_NONCE_LEN,
@@ -748,6 +749,19 @@ pub struct AuthorizationError;
 pub type AuthorizationResult<T> = Result<T, AuthorizationError>;
 
 pub trait CommandAuthorizer {
+    fn permits_authority(
+        &self,
+        _cmd_id: u32,
+        _payload: &[u8],
+        authority: CommandAuthority,
+    ) -> bool {
+        authority == CommandAuthority::Owner
+    }
+
+    fn device_ueid(&self) -> AuthorizationResult<[u8; 16]> {
+        Err(AuthorizationError)
+    }
+
     /// Generate the one-use challenge returned by `MACC`.
     async fn generate_challenge<Alloc: ScratchAlloc>(
         &self,
@@ -760,13 +774,16 @@ pub trait CommandAuthorizer {
         Ok(challenge)
     }
 
-    /// Verify signatures over a command using the stored challenge and wire keys.
+    /// Validate manifest-backed keys and both signatures, consuming a live
+    /// challenge when the signed nonce is nonzero. Authority and UEID checks
+    /// run before this; an all-zero nonce selects replayable Offline authorization.
     #[allow(clippy::too_many_arguments)]
     async fn verify_signatures<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         cmd_id: u32,
         payload: &[u8],
+        metadata: &AuthorizationMetadata,
         nonce: &[u8; AUTH_CMD_NONCE_LEN],
         ecc_pub_x: &[u8; 48],
         ecc_pub_y: &[u8; 48],

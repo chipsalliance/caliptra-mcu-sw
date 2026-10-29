@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
-#[cfg(feature = "mcu-mbox-service")]
-pub(crate) mod cmd_auth_mock;
+#[cfg(any(feature = "mcu-mbox-service", feature = "spdm"))]
+pub(crate) mod cmd_auth;
 
 use caliptra_mcu_libsyscall_caliptra::system::System;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
@@ -172,10 +172,8 @@ async fn start_mcu_mbox_service() -> Result<(), ErrorCode> {
 
         // Command handler shared with the MCTP and SPDM VDM backends.
         let handler = crate::caliptra_cmd_handler::CaliptraCmdBackend;
-        // Authorizer: HMAC-based command authorization stays wired in production
-        // (uses a placeholder test key for now; to be replaced with real
-        // provisioned key material later).
-        let mut cmd_authorizer = cmd_auth_mock::MockCommandAuthorizer;
+        // Shares challenge state with the SPDM VDM command authorizer.
+        let mut cmd_authorizer = cmd_auth::RuntimeCommandAuthorizer;
         let mut transport = caliptra_mcu_mbox_lib::transport::McuMboxTransport::new(
             caliptra_mcu_libsyscall_caliptra::mcu_mbox::MCU_MBOX0_DRIVER_NUM,
         );
