@@ -1056,12 +1056,9 @@ mod test {
 
         let soc_image_load_list = soc_images.clone();
 
-        CaliptraBuilder::new(&CaliptraBuildArgs {
-            target_dir: Some(temp_path.to_path_buf()),
-            ..Default::default()
-        })
-        .write_attestation_manifest_config(&soc_image_load_list)
-        .expect("Failed to write attestation manifest config");
+        CaliptraBuilder::new(&CaliptraBuildArgs::default())
+            .write_attestation_manifest_config(&soc_image_load_list)
+            .expect("Failed to write attestation manifest config");
 
         // Get runtime after writing descriptors so user-app embeds this load list.
         let test_runtime = if let Ok(binaries) = FirmwareBinaries::from_env() {
