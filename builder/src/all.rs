@@ -37,6 +37,7 @@ struct FeatureTestResource {
     feature: String,
     runtime_file: tempfile::NamedTempFile,
     soc_manifest_file: tempfile::NamedTempFile,
+    owner_auth_manifest_file: Option<tempfile::NamedTempFile>,
     flash_image: PathBuf,
     pldm_fw_pkg: tempfile::NamedTempFile,
     update_flash_image: Option<PathBuf>,
@@ -370,6 +371,7 @@ impl FirmwareBinaries {
     const USER_APP_ELF_NAME: &'static str = "user_app_elf.bin";
     const MCU_BARE_METAL_RUNTIME_NAME: &'static str = "mcu_bare_metal_runtime.bin";
     const SOC_MANIFEST_NAME: &'static str = "soc_manifest.bin";
+    const OWNER_SOC_MANIFEST_NAME: &'static str = "owner_soc_manifest.bin";
     const FLASH_IMAGE_NAME: &'static str = "flash_image.bin";
     const PLDM_FW_PKG_NAME: &'static str = "pldm_fw_pkg.bin";
 
@@ -657,6 +659,7 @@ pub struct AllBuildArgs<'a> {
     pub runtime_features: Option<&'a str>,
     pub separate_runtimes: bool,
     pub soc_images: Option<Vec<ImageCfg>>,
+    pub owner_soc_images: Option<Vec<ImageCfg>>,
     pub mcu_cfgs: Option<Vec<ImageCfg>>,
     pub caliptra_firmware_network_filename: Option<&'a str>,
     pub soc_manifest_network_filename: Option<&'a str>,
@@ -675,6 +678,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         runtime_features,
         separate_runtimes,
         soc_images,
+        owner_soc_images: configured_owner_soc_images,
         mcu_cfgs,
         caliptra_firmware_network_filename,
         soc_manifest_network_filename,
@@ -859,8 +863,9 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
 
     let mcu_image_cfg = get_image_cfg_feature(&mcu_cfgs.clone().unwrap_or_default(), "none");
     // Caliptra currently rejects owner manifests with an empty metadata collection.
-    let owner_soc_images =
-        create_default_owner_soc_images(effective_soc_images.as_deref().unwrap_or(&[]));
+    let owner_soc_images = configured_owner_soc_images.clone().unwrap_or_else(|| {
+        create_default_owner_soc_images(effective_soc_images.as_deref().unwrap_or(&[]))
+    });
     let mut caliptra_builder = crate::CaliptraBuilder::new(&CaliptraBuildArgs {
         fpga: platform == "fpga",
         mcu_firmware: Some(mcu_runtime.into()),
@@ -901,7 +906,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     let flash_image = create_flash_image(FlashImageBuildArgs {
         caliptra_fw_path: Some(caliptra_fw.clone()),
         soc_manifest_path: Some(soc_manifest.clone()),
-        owner_auth_manifest_path: Some(owner_auth_manifest),
+        owner_auth_manifest_path: Some(owner_auth_manifest.clone()),
         owner_measurement_policy_path: Some(owner_measurement_policy),
         owner_soc_images: Some(owner_soc_images),
         mcu_runtime_path: Some(mcu_runtime.into()),
@@ -1021,7 +1026,9 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                             .collect(),
                     )
                 };
-            let feature_owner_soc_images = if FEATURES_REQUIRING_SOC_IMAGES.contains(feature) {
+            let feature_owner_soc_images = if let Some(images) = &configured_owner_soc_images {
+                Some(images.clone())
+            } else if FEATURES_REQUIRING_SOC_IMAGES.contains(feature) {
                 Some(create_default_owner_soc_images(
                     feature_soc_images.as_deref().unwrap_or(&[]),
                 ))
@@ -1249,6 +1256,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                 feature: feature.to_string(),
                 runtime_file: feature_runtime_file,
                 soc_manifest_file: feature_soc_manifest_file,
+                owner_auth_manifest_file: feature_owner_auth_manifest_file.map(|(file, _)| file),
                 flash_image: feature_flash_image,
                 pldm_fw_pkg: feature_pldm_fw_pkg,
                 update_flash_image: feature_update_flash_image,
@@ -1332,6 +1340,12 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         options,
     )?;
     add_to_zip(
+        &owner_auth_manifest,
+        FirmwareBinaries::OWNER_SOC_MANIFEST_NAME,
+        &mut zip,
+        options,
+    )?;
+    add_to_zip(
         &flash_image,
         FirmwareBinaries::FLASH_IMAGE_NAME,
         &mut zip,
@@ -1351,6 +1365,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         feature,
         runtime_file: runtime,
         soc_manifest_file: soc_manifest,
+        owner_auth_manifest_file: owner_auth_manifest,
         flash_image,
         pldm_fw_pkg,
         update_flash_image,
@@ -1379,6 +1394,24 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             &mut zip,
             options,
         )?;
+
+        if let Some(owner_auth_manifest) = owner_auth_manifest.as_ref() {
+            add_to_zip(
+                &owner_auth_manifest.path().to_path_buf(),
+                &format!("mcu-test-owner-soc-manifest-{}.bin", feature),
+                &mut zip,
+                options,
+            )?;
+            if update_soc_manifest.is_some() {
+                // Hitless update flash images reuse the cold-boot Owner manifest.
+                add_to_zip(
+                    &owner_auth_manifest.path().to_path_buf(),
+                    &format!("mcu-test-owner-soc-manifest-update-{}.bin", feature),
+                    &mut zip,
+                    options,
+                )?;
+            }
+        }
 
         if let Some(update_soc_manifest) = update_soc_manifest.as_ref() {
             let update_soc_manifest_name = format!("mcu-test-soc-manifest-update-{}.bin", feature);
