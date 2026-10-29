@@ -23,12 +23,14 @@ use alloc::boxed::Box;
 use core::cell::UnsafeCell;
 
 use super::measurements::MeasurementProvider;
-use caliptra_mcu_cert_store::{SharedCertStore, TaskCertStore};
+use caliptra_mcu_cert_store::{
+    EndorsementStorage, NoEndorsementStorage, SharedCertStore, TaskCertStore,
+};
 
 /// MCU implementation of the SPDM Platform Abstraction Layer.
 ///
-/// Generic over `M: MeasurementProvider` so all measurement dispatch
-/// is monomorphized (no dyn).
+/// Generic over `M: MeasurementProvider` and `S: EndorsementStorage` so all
+/// measurement and storage dispatch is monomorphized (no dyn).
 ///
 /// Owns the underlying byte-oriented PAL transport (held behind an
 /// [`UnsafeCell`] for interior mutability — the SPDM responder is
@@ -37,7 +39,7 @@ use caliptra_mcu_cert_store::{SharedCertStore, TaskCertStore};
 /// a caller-supplied scratch region. The allocator serves both
 /// per-request scratch allocations and any large-message buffer
 /// retained on connection state across exchanges.
-pub struct McuSpdmPal<M: MeasurementProvider> {
+pub struct McuSpdmPal<M: MeasurementProvider, S: EndorsementStorage = NoEndorsementStorage> {
     /// The wrapped byte-oriented PAL transport.
     pub(crate) transport: UnsafeCell<Box<dyn SpdmPalTransport>>,
 
@@ -49,7 +51,7 @@ pub struct McuSpdmPal<M: MeasurementProvider> {
     pub(crate) allocator: &'static BitmapAllocator,
 
     /// Per-task cert store and cache wrapper.
-    pub(crate) cert_store: TaskCertStore,
+    pub(crate) cert_store: TaskCertStore<S>,
 
     /// Measurement data provider (monomorphized).
     pub(crate) meas_provider: M,
@@ -63,7 +65,7 @@ pub struct McuSpdmPal<M: MeasurementProvider> {
     pub(crate) large_buffered_msg_capacity: usize,
 }
 
-impl<M: MeasurementProvider> McuSpdmPal<M> {
+impl<M: MeasurementProvider, S: EndorsementStorage> McuSpdmPal<M, S> {
     /// Creates a new `McuSpdmPal` with a measurement provider.
     ///
     /// # Safety
@@ -84,7 +86,7 @@ impl<M: MeasurementProvider> McuSpdmPal<M> {
     pub unsafe fn new(
         transport: Box<dyn SpdmPalTransport>,
         allocator: &'static BitmapAllocator,
-        cert_store: &'static SharedCertStore,
+        cert_store: &'static SharedCertStore<S>,
         meas_provider: M,
         max_inbound_spdm_request_size: usize,
         large_buffered_msg_capacity: usize,
@@ -131,7 +133,7 @@ impl<M: MeasurementProvider> McuSpdmPal<M> {
     }
 }
 
-impl<M: MeasurementProvider> SpdmPal for McuSpdmPal<M> {
+impl<M: MeasurementProvider, S: EndorsementStorage> SpdmPal for McuSpdmPal<M, S> {
     fn max_inbound_spdm_request_size(&self) -> usize {
         self.max_inbound_spdm_request_size
     }

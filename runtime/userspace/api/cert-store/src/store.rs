@@ -17,7 +17,8 @@ use crate::endorsement::{
 };
 use crate::{
     endorsement::{
-        CertSlot, ReadOnlyEndorsementSlot, SlotEndorsement, NUM_ASYM_ALGOS, NUM_CERT_SLOTS,
+        CertSlot, EndorsementStorage, NoEndorsementStorage, ReadOnlyEndorsementSlot,
+        SlotEndorsement, NUM_ASYM_ALGOS, NUM_CERT_SLOTS,
     },
     errors as cert_errors, CertificateAlgorithm, CertificateProvisioningPolicy, DeviceKey,
     EndorsementRole, DPE_LEAF_LABEL,
@@ -49,23 +50,23 @@ async fn compute_root_hash<A: ScratchAlloc>(alloc: &A, root_cert: &[u8]) -> McuR
 ///
 /// Holds per-slot endorsement state and provisioning policy common to all
 /// transports. Created once at startup and referenced by each transport task's
-/// [`TaskCertStore`] via `&'static SharedCertStore`.
-pub struct SharedCertStore {
-    cert_slots: UnsafeCell<[CertSlot; NUM_CERT_SLOTS]>,
+/// [`TaskCertStore`] via `&'static SharedCertStore<S>`.
+pub struct SharedCertStore<S: EndorsementStorage = NoEndorsementStorage> {
+    cert_slots: UnsafeCell<[CertSlot<S>; NUM_CERT_SLOTS]>,
     policy: CertificateProvisioningPolicy,
 }
 
 // SAFETY: Tasks run on a single-core cooperative Embassy executor and never
 // hold borrows into `cert_slots` across `.await` points.
-unsafe impl Sync for SharedCertStore {}
+unsafe impl<S: EndorsementStorage> Sync for SharedCertStore<S> {}
 
-impl Default for SharedCertStore {
+impl<S: EndorsementStorage> Default for SharedCertStore<S> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl SharedCertStore {
+impl<S: EndorsementStorage> SharedCertStore<S> {
     pub const fn new() -> Self {
         Self::with_policy(CertificateProvisioningPolicy::DEFAULT)
     }
@@ -127,9 +128,10 @@ impl SharedCertStore {
         Ok(())
     }
 
-    /// Configure a flash-backed managed cert-chain region for `(role, algo)`
-    /// and load any existing record from flash. Uninitialized flash leaves
-    /// that `(role, algo)` supported but not provisioned.
+    /// Configure a persistent-storage-backed managed cert-chain region for
+    /// `(role, algo)` and load any existing record from `storage`.
+    /// Uninitialized storage leaves that `(role, algo)` supported but not
+    /// provisioned.
     ///
     /// Returns `INVARIANT` if the requested region intersects any region
     /// already wired to any slot (including another algorithm in the same
@@ -139,7 +141,7 @@ impl SharedCertStore {
         &self,
         role: EndorsementRole,
         algo: CertificateAlgorithm,
-        driver_num: u32,
+        storage: S,
         base: usize,
         capacity: usize,
     ) -> McuResult<()> {
@@ -161,7 +163,7 @@ impl SharedCertStore {
             .ok_or(mcu_error::codes::INVARIANT)?;
         for existing_role in EndorsementRole::ALL {
             if let SlotEndorsement::Managed(existing) = &self.cert_slot(existing_role).endorsement {
-                if existing.any_region_overlaps(driver_num, &range) {
+                if existing.any_region_overlaps(storage, &range) {
                     return Err(mcu_error::codes::INVARIANT);
                 }
             }
@@ -177,7 +179,7 @@ impl SharedCertStore {
         let mut region = ManagedEndorsementChain::new(
             role,
             algo,
-            driver_num,
+            storage,
             base,
             capacity,
             self.policy.anchor_point(role),
@@ -197,7 +199,7 @@ impl SharedCertStore {
         Ok(())
     }
 
-    pub(crate) fn cert_slot(&self, role: EndorsementRole) -> &CertSlot {
+    pub(crate) fn cert_slot(&self, role: EndorsementRole) -> &CertSlot<S> {
         // SAFETY: synchronous borrow not held across `.await`.
         unsafe { &(*self.cert_slots.get())[role as usize] }
     }
@@ -212,7 +214,7 @@ impl SharedCertStore {
     }
 
     #[allow(clippy::mut_from_ref)]
-    pub(crate) fn cert_slot_mut(&self, role: EndorsementRole) -> &mut CertSlot {
+    pub(crate) fn cert_slot_mut(&self, role: EndorsementRole) -> &mut CertSlot<S> {
         // SAFETY: synchronous borrow not held across `.await`.
         unsafe { &mut (*self.cert_slots.get())[role as usize] }
     }
@@ -239,16 +241,16 @@ impl CertChainCache {
     }
 }
 
-struct RegionReadGuard<'a> {
-    shared: &'a SharedCertStore,
+struct RegionReadGuard<'a, S: EndorsementStorage = NoEndorsementStorage> {
+    shared: &'a SharedCertStore<S>,
     role: EndorsementRole,
     algo: CertificateAlgorithm,
     region: Option<u8>,
 }
 
-impl<'a> RegionReadGuard<'a> {
+impl<'a, S: EndorsementStorage> RegionReadGuard<'a, S> {
     fn new(
-        shared: &'a SharedCertStore,
+        shared: &'a SharedCertStore<S>,
         role: EndorsementRole,
         algo: CertificateAlgorithm,
         region: Option<u8>,
@@ -265,7 +267,7 @@ impl<'a> RegionReadGuard<'a> {
     }
 }
 
-impl Drop for RegionReadGuard<'_> {
+impl<S: EndorsementStorage> Drop for RegionReadGuard<'_, S> {
     fn drop(&mut self) {
         if let Some(r) = self.region {
             self.shared
@@ -277,15 +279,15 @@ impl Drop for RegionReadGuard<'_> {
 
 /// Per-task cert store wrapper.
 ///
-/// Wraps a reference to the global `'static SharedCertStore` alongside
+/// Wraps a reference to the global `'static SharedCertStore<S>` alongside
 /// task-local caches (lengths, digests, etc.) to ensure complete task isolation.
-pub struct TaskCertStore {
-    shared: &'static SharedCertStore,
+pub struct TaskCertStore<S: EndorsementStorage = NoEndorsementStorage> {
+    shared: &'static SharedCertStore<S>,
     caches: UnsafeCell<[[CertChainCache; NUM_ASYM_ALGOS]; NUM_CERT_SLOTS]>,
 }
 
-impl TaskCertStore {
-    pub const fn new(shared: &'static SharedCertStore) -> Self {
+impl<S: EndorsementStorage> TaskCertStore<S> {
+    pub const fn new(shared: &'static SharedCertStore<S>) -> Self {
         Self {
             shared,
             caches: UnsafeCell::new([[CertChainCache::empty(); NUM_ASYM_ALGOS]; NUM_CERT_SLOTS]),
@@ -293,7 +295,7 @@ impl TaskCertStore {
     }
 
     #[inline]
-    pub fn cert_slot(&self, role: EndorsementRole) -> &CertSlot {
+    pub fn cert_slot(&self, role: EndorsementRole) -> &CertSlot<S> {
         self.shared.cert_slot(role)
     }
 
@@ -438,7 +440,6 @@ impl TaskCertStore {
                 SlotEndorsement::ReadOnly(e) => {
                     e.read(algo, cur_offset, out_slice).map_err(|_| INVARIANT)?
                 }
-                #[cfg(feature = "set-certificate")]
                 SlotEndorsement::Managed(m) => {
                     let snapshot = m
                         .get_endorsement(algo)
@@ -663,9 +664,9 @@ impl TaskCertStore {
         if !self.cert_slot(role).write_in_progress(algo) {
             return Err(cert_errors::INVALID_ENDORSEMENT);
         }
-        managed_endorsement(self, role, algo)?
-            .write_stream_chunk(offset, data)
-            .await
+        let mut chain = managed_endorsement(self, role, algo)?;
+        chain.write_stream_chunk(offset, data).await?;
+        stage_managed_endorsement(self, role, chain)
     }
 
     #[cfg(feature = "set-certificate")]
@@ -756,7 +757,7 @@ impl TaskCertStore {
 
     #[inline]
     #[allow(dead_code)]
-    pub(crate) fn cert_slot_mut(&self, role: EndorsementRole) -> &mut CertSlot {
+    pub(crate) fn cert_slot_mut(&self, role: EndorsementRole) -> &mut CertSlot<S> {
         self.shared.cert_slot_mut(role)
     }
 
@@ -866,11 +867,11 @@ impl TaskCertStore {
 }
 
 #[cfg(feature = "set-certificate")]
-fn managed_endorsement(
-    store: &TaskCertStore,
+fn managed_endorsement<S: EndorsementStorage>(
+    store: &TaskCertStore<S>,
     role: EndorsementRole,
     algo: CertificateAlgorithm,
-) -> McuResult<ManagedEndorsementChain> {
+) -> McuResult<ManagedEndorsementChain<S>> {
     match &store.cert_slot(role).endorsement {
         SlotEndorsement::Managed(m) => m.get_endorsement(algo).copied().ok_or(INVARIANT),
         SlotEndorsement::ReadOnly(_) => Err(mcu_error::codes::NOT_IMPLEMENTED),
@@ -879,10 +880,10 @@ fn managed_endorsement(
 }
 
 #[cfg(feature = "set-certificate")]
-fn stage_managed_endorsement(
-    store: &TaskCertStore,
+fn stage_managed_endorsement<S: EndorsementStorage>(
+    store: &TaskCertStore<S>,
     role: EndorsementRole,
-    chain: ManagedEndorsementChain,
+    chain: ManagedEndorsementChain<S>,
 ) -> McuResult<()> {
     let cert_slot = store.cert_slot_mut(role);
     match &mut cert_slot.endorsement {
@@ -895,10 +896,10 @@ fn stage_managed_endorsement(
 }
 
 #[cfg(feature = "set-certificate")]
-fn commit_managed_endorsement(
-    store: &TaskCertStore,
+fn commit_managed_endorsement<S: EndorsementStorage>(
+    store: &TaskCertStore<S>,
     role: EndorsementRole,
-    chain: ManagedEndorsementChain,
+    chain: ManagedEndorsementChain<S>,
 ) -> McuResult<()> {
     let algo = chain.algo();
     let cert_slot = store.cert_slot_mut(role);
@@ -1054,9 +1055,9 @@ async fn validate_root_hash<A: ScratchAlloc>(
 }
 
 #[cfg(feature = "set-certificate")]
-async fn validate_streamed_root_hash<A: ScratchAlloc>(
+async fn validate_streamed_root_hash<A: ScratchAlloc, S: EndorsementStorage>(
     alloc: &A,
-    managed: &ManagedEndorsementChain,
+    managed: &ManagedEndorsementChain<S>,
     root_hash: &[u8; 48],
     data_len: usize,
 ) -> McuResult<()> {
@@ -1085,8 +1086,8 @@ async fn validate_streamed_root_hash<A: ScratchAlloc>(
 }
 
 #[cfg(feature = "set-certificate")]
-async fn streamed_first_der_len(
-    managed: &ManagedEndorsementChain,
+async fn streamed_first_der_len<S: EndorsementStorage>(
+    managed: &ManagedEndorsementChain<S>,
     data_len: usize,
 ) -> McuResult<usize> {
     let mut header = [0u8; 6];
@@ -1205,7 +1206,8 @@ mod tests {
     #[test]
     fn readonly_endorsement_size_matches_chain() {
         let hash = [0xAB_u8; 48];
-        let endorsement = SlotEndorsement::ReadOnly(ReadOnlyEndorsementSlot::new(TEST_CHAIN, hash));
+        let endorsement: SlotEndorsement =
+            SlotEndorsement::ReadOnly(ReadOnlyEndorsementSlot::new(TEST_CHAIN, hash));
 
         assert_eq!(
             endorsement.size(CertificateAlgorithm::EccP384).unwrap(),
@@ -1218,7 +1220,8 @@ mod tests {
         let mut hash = [0u8; 48];
         hash[0] = 0xDE;
         hash[47] = 0xAD;
-        let endorsement = SlotEndorsement::ReadOnly(ReadOnlyEndorsementSlot::new(TEST_CHAIN, hash));
+        let endorsement: SlotEndorsement =
+            SlotEndorsement::ReadOnly(ReadOnlyEndorsementSlot::new(TEST_CHAIN, hash));
 
         let mut out = [0u8; 48];
         endorsement
@@ -1230,7 +1233,8 @@ mod tests {
     #[test]
     fn readonly_endorsement_is_supported_and_provisioned() {
         let hash = [0x11_u8; 48];
-        let endorsement = SlotEndorsement::ReadOnly(ReadOnlyEndorsementSlot::new(TEST_CHAIN, hash));
+        let endorsement: SlotEndorsement =
+            SlotEndorsement::ReadOnly(ReadOnlyEndorsementSlot::new(TEST_CHAIN, hash));
 
         assert!(endorsement.is_supported());
         assert!(endorsement.is_provisioned(CertificateAlgorithm::EccP384));
@@ -1239,7 +1243,7 @@ mod tests {
 
     #[test]
     fn shared_store_slot_defaults_to_empty() {
-        let store = SharedCertStore::new();
+        let store: SharedCertStore = SharedCertStore::new();
         let slot = store.cert_slot(EndorsementRole::Vendor);
         assert!(!slot.endorsement.is_supported());
         assert!(slot.key_pair_id(CertificateAlgorithm::EccP384).is_none());
@@ -1248,7 +1252,8 @@ mod tests {
     #[test]
     fn readonly_endorsement_without_mldsa_errors_on_mldsa_algo() {
         let hash = [0x22_u8; 48];
-        let endorsement = SlotEndorsement::ReadOnly(ReadOnlyEndorsementSlot::new(TEST_CHAIN, hash));
+        let endorsement: SlotEndorsement =
+            SlotEndorsement::ReadOnly(ReadOnlyEndorsementSlot::new(TEST_CHAIN, hash));
 
         assert_eq!(
             endorsement.size(CertificateAlgorithm::EccP384).unwrap(),
@@ -1261,7 +1266,7 @@ mod tests {
     fn readonly_endorsement_with_mldsa_supports_both_algos() {
         let ecc_hash = [0x33_u8; 48];
         let mldsa_hash = [0x44_u8; 48];
-        let endorsement = SlotEndorsement::ReadOnly(
+        let endorsement: SlotEndorsement = SlotEndorsement::ReadOnly(
             ReadOnlyEndorsementSlot::new(TEST_CHAIN, ecc_hash).with_mldsa(TEST_CHAIN, mldsa_hash),
         );
 
@@ -1283,7 +1288,7 @@ mod tests {
 
     #[test]
     fn shared_cert_store_new_has_empty_slots_and_no_metadata() {
-        let store = SharedCertStore::new();
+        let store: SharedCertStore = SharedCertStore::new();
         for role in EndorsementRole::ALL {
             let slot = store.cert_slot(role);
             assert!(!slot.is_supported());
@@ -1428,7 +1433,7 @@ mod tests {
     #[cfg(feature = "set-certificate")]
     #[test]
     fn validate_key_resolves_zero_for_some_policy_and_requires_explicit_for_none() {
-        let store = SharedCertStore::new();
+        let store: SharedCertStore = SharedCertStore::new();
         assert_eq!(
             store.validate_key(EndorsementRole::Owner, 0),
             Ok(DeviceKey::LDevId)
@@ -1464,146 +1469,175 @@ mod tests {
         extern crate std;
 
         use super::*;
-        use caliptra_mcu_libtock_platform::{CommandReturn, ErrorCode};
-        use caliptra_mcu_libtock_unittest::{
-            command_return,
-            fake::{self, SyscallDriver},
-            DriverInfo, DriverShareRef, RoAllowBuffer, RwAllowBuffer,
+        use futures::executor::block_on;
+        use std::{
+            boxed::Box,
+            cell::{Cell, RefCell},
+            vec,
+            vec::Vec,
         };
-        use std::{boxed::Box, cell::Cell, rc::Rc, vec};
 
         const TEST_DRIVER: u32 = 0x8000_0006;
         const TEST_REGION: usize = 4096;
-        const FLASH_READ: u32 = 2;
-        const FLASH_WRITE: u32 = 3;
-        const FLASH_ERASE: u32 = 4;
 
-        #[derive(Default)]
         struct FaultyFlash {
-            flash: fake::FakeFlashDriver,
+            bytes: RefCell<Vec<u8>>,
             successful_erases_before_failure: Cell<Option<usize>>,
             fail_reads: Cell<bool>,
             short_header_write: Cell<bool>,
         }
 
-        impl SyscallDriver for FaultyFlash {
-            fn info(&self) -> DriverInfo {
-                self.flash.info()
+        // Safety: each FaultyStorage instance in unit tests is used on a single thread.
+        unsafe impl Sync for FaultyFlash {}
+
+        #[derive(Clone, Copy)]
+        struct FaultyStorage {
+            id: u32,
+            flash: &'static FaultyFlash,
+        }
+
+        impl PartialEq for FaultyStorage {
+            fn eq(&self, other: &Self) -> bool {
+                self.id == other.id
+            }
+        }
+
+        impl Eq for FaultyStorage {}
+
+        impl FaultyStorage {
+            fn new() -> Self {
+                let flash = Box::leak(Box::new(FaultyFlash {
+                    bytes: RefCell::new(vec![0xFF; TEST_REGION]),
+                    successful_erases_before_failure: Cell::new(None),
+                    fail_reads: Cell::new(false),
+                    short_header_write: Cell::new(false),
+                }));
+                Self {
+                    id: TEST_DRIVER,
+                    flash,
+                }
+            }
+        }
+
+        impl EndorsementStorage for FaultyStorage {
+            async fn read(&self, offset: usize, buf: &mut [u8]) -> McuResult<()> {
+                if self.flash.fail_reads.get() {
+                    return Err(cert_errors::STORAGE_ERROR);
+                }
+                let bytes = self.flash.bytes.borrow();
+                let end = offset
+                    .checked_add(buf.len())
+                    .ok_or(cert_errors::STORAGE_ERROR)?;
+                if end > bytes.len() {
+                    return Err(cert_errors::STORAGE_ERROR);
+                }
+                buf.copy_from_slice(&bytes[offset..end]);
+                Ok(())
             }
 
-            fn register(&self, share_ref: DriverShareRef) {
-                self.flash.register(share_ref);
-            }
-
-            fn command(&self, command: u32, address: u32, len: u32) -> CommandReturn {
-                if command == FLASH_READ && self.fail_reads.get() {
-                    return command_return::failure(ErrorCode::NoDevice);
-                }
-                if command == FLASH_ERASE {
-                    if let Some(remaining) = self.successful_erases_before_failure.get() {
-                        if remaining == 0 {
-                            self.successful_erases_before_failure.set(None);
-                            return command_return::failure(ErrorCode::Fail);
-                        }
-                        self.successful_erases_before_failure
-                            .set(Some(remaining - 1));
-                    }
-                }
-                if command == FLASH_WRITE
-                    && (address as usize).is_multiple_of(TEST_REGION / MANAGED_REGION_COUNT)
-                    && self.short_header_write.replace(false)
+            async fn write(&self, offset: usize, data: &[u8]) -> McuResult<()> {
+                let mut bytes = self.flash.bytes.borrow_mut();
+                let len = if offset.is_multiple_of(TEST_REGION / MANAGED_REGION_COUNT)
+                    && self.flash.short_header_write.replace(false)
                 {
-                    return self.flash.command(command, address, len - 8);
+                    data.len() - 8
+                } else {
+                    data.len()
+                };
+                let end = offset.checked_add(len).ok_or(cert_errors::STORAGE_ERROR)?;
+                if end > bytes.len() {
+                    return Err(cert_errors::STORAGE_ERROR);
                 }
-                self.flash.command(command, address, len)
+                bytes[offset..end].copy_from_slice(&data[..len]);
+                Ok(())
             }
 
-            fn allow_readonly(
-                &self,
-                buffer_num: u32,
-                buffer: RoAllowBuffer,
-            ) -> Result<RoAllowBuffer, (RoAllowBuffer, ErrorCode)> {
-                self.flash.allow_readonly(buffer_num, buffer)
-            }
-
-            fn allow_readwrite(
-                &self,
-                buffer_num: u32,
-                buffer: RwAllowBuffer,
-            ) -> Result<RwAllowBuffer, (RwAllowBuffer, ErrorCode)> {
-                self.flash.allow_readwrite(buffer_num, buffer)
+            async fn erase(&self, offset: usize, len: usize) -> McuResult<()> {
+                if let Some(remaining) = self.flash.successful_erases_before_failure.get() {
+                    if remaining == 0 {
+                        self.flash.successful_erases_before_failure.set(None);
+                        return Err(cert_errors::STORAGE_ERROR);
+                    }
+                    self.flash
+                        .successful_erases_before_failure
+                        .set(Some(remaining - 1));
+                }
+                let mut bytes = self.flash.bytes.borrow_mut();
+                let end = offset.checked_add(len).ok_or(cert_errors::STORAGE_ERROR)?;
+                if end > bytes.len() {
+                    return Err(cert_errors::STORAGE_ERROR);
+                }
+                bytes[offset..end].fill(0xFF);
+                Ok(())
             }
         }
 
         fn provisioned_store(
-            shared: &'static SharedCertStore,
-            flash: &FaultyFlash,
-        ) -> TaskCertStore {
-            flash.flash.set_flash_content(vec![0xFF; TEST_REGION]);
-            fake::wait_for_future_ready(Box::pin(shared.init_managed_endorsement(
+            shared: &'static SharedCertStore<FaultyStorage>,
+            storage: FaultyStorage,
+        ) -> TaskCertStore<FaultyStorage> {
+            *storage.flash.bytes.borrow_mut() = vec![0xFF; TEST_REGION];
+            block_on(shared.init_managed_endorsement(
                 EndorsementRole::Owner,
                 CertificateAlgorithm::EccP384,
-                TEST_DRIVER,
+                storage,
                 0,
                 TEST_REGION,
-            )))
+            ))
             .unwrap();
             let store = TaskCertStore::new(shared);
             for byte in [0xAA, 0xBB] {
-                fake::wait_for_future_ready(Box::pin(store.write_endorsement_chain(
+                block_on(store.write_endorsement_chain(
                     EndorsementRole::Owner,
                     CertificateAlgorithm::EccP384,
                     1,
                     CERT_MODEL_ALIAS_CERT,
                     &[byte; 48],
                     &[byte; 16],
-                )))
+                ))
                 .unwrap();
             }
             store
         }
 
-        fn recovered_data() -> [u8; 16] {
+        fn recovered_data(storage: FaultyStorage) -> [u8; 16] {
             let mut recovered = ManagedEndorsementChain::new(
                 EndorsementRole::Owner,
                 CertificateAlgorithm::EccP384,
-                TEST_DRIVER,
+                storage,
                 0,
                 TEST_REGION,
                 Some(DeviceKey::LDevId),
             );
-            fake::wait_for_future_ready(Box::pin(recovered.load())).unwrap();
+            block_on(recovered.load()).unwrap();
             let mut data = [0; 16];
-            fake::wait_for_future_ready(Box::pin(
-                recovered.read_snapshot().unwrap().read(0, &mut data),
-            ))
-            .unwrap();
+            block_on(recovered.read_snapshot().unwrap().read(0, &mut data)).unwrap();
             data
         }
 
         #[test]
         fn erase_failure_recovers_tracking_before_replacement() {
-            static SHARED: [SharedCertStore; 2] = [const { SharedCertStore::new() }; 2];
+            static SHARED: [SharedCertStore<FaultyStorage>; 2] =
+                [const { SharedCertStore::new() }; 2];
             for (successful_erases, shared) in SHARED.iter().enumerate() {
-                let kernel = fake::Kernel::new();
-                let flash = Rc::new(FaultyFlash::default());
-                kernel.add_driver(&flash);
-                let store = provisioned_store(shared, &flash);
+                let storage = FaultyStorage::new();
+                let store = provisioned_store(shared, storage);
                 let other_task = TaskCertStore::new(shared);
                 other_task.set_cached_chain_len(
                     EndorsementRole::Owner,
                     CertificateAlgorithm::EccP384,
                     512,
                 );
-                flash
+                storage
+                    .flash
                     .successful_erases_before_failure
                     .set(Some(successful_erases));
 
                 assert_eq!(
-                    fake::wait_for_future_ready(Box::pin(store.erase_endorsement_chain(
+                    block_on(store.erase_endorsement_chain(
                         EndorsementRole::Owner,
                         CertificateAlgorithm::EccP384,
-                    ))),
+                    )),
                     Err(cert_errors::STORAGE_ERROR),
                 );
                 let slot = store.cert_slot(EndorsementRole::Owner);
@@ -1615,96 +1649,92 @@ mod tests {
                     None,
                 );
 
-                fake::wait_for_future_ready(Box::pin(store.write_endorsement_chain(
+                block_on(store.write_endorsement_chain(
                     EndorsementRole::Owner,
                     CertificateAlgorithm::EccP384,
                     1,
                     CERT_MODEL_ALIAS_CERT,
                     &[0xCC; 48],
                     &[0xCC; 16],
-                )))
+                ))
                 .unwrap();
-                assert_eq!(recovered_data(), [0xCC; 16]);
+                assert_eq!(recovered_data(storage), [0xCC; 16]);
             }
         }
 
         #[test]
         fn failed_erase_recovery_blocks_updates_and_cannot_be_aborted() {
-            static SHARED: SharedCertStore = SharedCertStore::new();
-            let kernel = fake::Kernel::new();
-            let flash = Rc::new(FaultyFlash::default());
-            kernel.add_driver(&flash);
-            let store = provisioned_store(&SHARED, &flash);
-            flash.successful_erases_before_failure.set(Some(0));
-            flash.fail_reads.set(true);
+            static SHARED: SharedCertStore<FaultyStorage> = SharedCertStore::new();
+            let storage = FaultyStorage::new();
+            let store = provisioned_store(&SHARED, storage);
+            storage.flash.successful_erases_before_failure.set(Some(0));
+            storage.flash.fail_reads.set(true);
 
             assert_eq!(
-                fake::wait_for_future_ready(Box::pin(store.erase_endorsement_chain(
+                block_on(store.erase_endorsement_chain(
                     EndorsementRole::Owner,
                     CertificateAlgorithm::EccP384,
-                ))),
+                )),
                 Err(cert_errors::STORAGE_ERROR),
             );
             let slot = store.cert_slot(EndorsementRole::Owner);
             assert!(!slot.is_provisioned(CertificateAlgorithm::EccP384));
             assert!(slot.write_in_progress(CertificateAlgorithm::EccP384));
             assert_eq!(
-                fake::wait_for_future_ready(Box::pin(store.abort_write_endorsement_stream(
+                block_on(store.abort_write_endorsement_stream(
                     EndorsementRole::Owner,
                     CertificateAlgorithm::EccP384,
-                ))),
+                )),
                 Err(cert_errors::INVALID_ENDORSEMENT),
             );
             assert_eq!(
-                fake::wait_for_future_ready(Box::pin(store.write_endorsement_chain(
+                block_on(store.write_endorsement_chain(
                     EndorsementRole::Owner,
                     CertificateAlgorithm::EccP384,
                     1,
                     CERT_MODEL_ALIAS_CERT,
                     &[0xCC; 48],
                     &[0xCC; 16],
-                ))),
+                )),
                 Err(cert_errors::STORAGE_BUSY),
             );
             assert_eq!(
-                fake::wait_for_future_ready(Box::pin(store.begin_write_endorsement_stream(
+                block_on(store.begin_write_endorsement_stream(
                     EndorsementRole::Owner,
                     CertificateAlgorithm::EccP384,
                     1,
                     CERT_MODEL_ALIAS_CERT,
                     16,
-                ))),
+                )),
                 Err(cert_errors::STORAGE_BUSY),
             );
 
-            flash.fail_reads.set(false);
-            assert_eq!(recovered_data(), [0xBB; 16]);
+            storage.flash.fail_reads.set(false);
+            assert_eq!(recovered_data(storage), [0xBB; 16]);
         }
 
         #[test]
         fn header_readback_failure_does_not_publish_replacement() {
-            static SHARED: SharedCertStore = SharedCertStore::new();
-            let kernel = fake::Kernel::new();
-            let flash = Rc::new(FaultyFlash::default());
-            kernel.add_driver(&flash);
-            let store = provisioned_store(&SHARED, &flash);
-            flash.short_header_write.set(true);
+            static SHARED: SharedCertStore<FaultyStorage> = SharedCertStore::new();
+            let storage = FaultyStorage::new();
+            let store = provisioned_store(&SHARED, storage);
+            storage.flash.short_header_write.set(true);
 
             assert_eq!(
-                fake::wait_for_future_ready(Box::pin(store.write_endorsement_chain(
+                block_on(store.write_endorsement_chain(
                     EndorsementRole::Owner,
                     CertificateAlgorithm::EccP384,
                     1,
                     CERT_MODEL_ALIAS_CERT,
                     &[0xCC; 48],
                     &[0xCC; 16],
-                ))),
+                )),
                 Err(cert_errors::STORAGE_ERROR),
             );
             let slot = store.cert_slot(EndorsementRole::Owner);
             assert!(slot.is_provisioned(CertificateAlgorithm::EccP384));
             assert!(!slot.write_in_progress(CertificateAlgorithm::EccP384));
-            assert_eq!(recovered_data(), [0xBB; 16]);
+            assert_eq!(recovered_data(storage), [0xBB; 16]);
         }
     }
 

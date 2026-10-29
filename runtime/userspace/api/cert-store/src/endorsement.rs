@@ -10,10 +10,6 @@
 use crate::CertificateAlgorithm;
 #[cfg(feature = "set-certificate")]
 use crate::{errors as cert_errors, DeviceKey};
-#[cfg(feature = "set-certificate")]
-use caliptra_mcu_libsyscall_caliptra::{flash::SpiFlash, DefaultSyscalls};
-#[cfg(feature = "set-certificate")]
-use caliptra_mcu_libtock_platform::ErrorCode;
 use mcu_error::McuResult;
 
 #[cfg(feature = "set-certificate")]
@@ -21,6 +17,41 @@ use core::ops::Range;
 #[cfg(any(test, feature = "set-certificate"))]
 use core::sync::atomic::AtomicBool;
 use core::sync::atomic::{AtomicU32, Ordering};
+
+/// Platform-provided persistent storage for managed endorsements.
+pub trait EndorsementStorage: Copy + PartialEq + Eq + Sync + 'static {
+    /// Whether the underlying storage device is present on the platform.
+    fn is_available(&self) -> McuResult<bool> {
+        Ok(true)
+    }
+
+    /// Read `buf.len()` bytes starting at `offset` into `buf`.
+    async fn read(&self, offset: usize, buf: &mut [u8]) -> McuResult<()>;
+
+    /// Write `data` starting at `offset`.
+    async fn write(&self, offset: usize, data: &[u8]) -> McuResult<()>;
+
+    /// Erase `len` bytes starting at `offset`.
+    async fn erase(&self, offset: usize, len: usize) -> McuResult<()>;
+}
+
+/// Default uninhabited [`EndorsementStorage`] for stores without managed slots.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NoEndorsementStorage {}
+
+impl EndorsementStorage for NoEndorsementStorage {
+    async fn read(&self, _offset: usize, _buf: &mut [u8]) -> McuResult<()> {
+        match *self {}
+    }
+
+    async fn write(&self, _offset: usize, _data: &[u8]) -> McuResult<()> {
+        match *self {}
+    }
+
+    async fn erase(&self, _offset: usize, _len: usize) -> McuResult<()> {
+        match *self {}
+    }
+}
 
 /// Number of cert slots managed by the store.
 pub(crate) const NUM_CERT_SLOTS: usize = crate::EndorsementRole::ALL.len();
@@ -71,16 +102,16 @@ impl AlgoSlotState {
 ///
 /// Identity and certificate model are shared by the slot. Certificate
 /// availability and concurrency state remain per algorithm.
-pub struct CertSlot {
+pub struct CertSlot<S: EndorsementStorage = NoEndorsementStorage> {
     /// Slot certificate-chain backing storage.
-    pub(crate) endorsement: SlotEndorsement,
+    pub(crate) endorsement: SlotEndorsement<S>,
     /// Immutable logical device-key binding shared by both algorithms.
     key_pair_id: Option<u8>,
     /// Per-algorithm write lock, generation counter, and active-region reader counts.
     algo_state: [AlgoSlotState; NUM_ASYM_ALGOS],
 }
 
-impl CertSlot {
+impl<S: EndorsementStorage> CertSlot<S> {
     pub fn is_supported(&self) -> bool {
         self.endorsement.is_supported()
     }
@@ -100,7 +131,6 @@ impl CertSlot {
         }
         match &self.endorsement {
             SlotEndorsement::ReadOnly(_) => self.key_pair_id,
-            #[cfg(feature = "set-certificate")]
             SlotEndorsement::Managed(m) => m.get_endorsement(algo)?.key_pair_id(),
             SlotEndorsement::Empty => None,
         }
@@ -193,18 +223,18 @@ impl CertSlot {
 }
 
 /// Per-slot endorsement cert chain — enum dispatch.
-pub(crate) enum SlotEndorsement {
+#[allow(dead_code)]
+pub(crate) enum SlotEndorsement<S: EndorsementStorage = NoEndorsementStorage> {
     /// Not provisioned and not exposed as a supported slot.
     Empty,
     /// Read-only endorsement backed by static root CA certs (slot 0).
     ReadOnly(ReadOnlyEndorsementSlot),
-    /// Managed endorsement/root chains backed by flash (slots 1-2),
+    /// Managed endorsement/root chains backed by persistent storage (slots 1-2),
     /// one independent region per algorithm.
-    #[cfg(feature = "set-certificate")]
-    Managed(ManagedEndorsementSlot),
+    Managed(ManagedEndorsementSlot<S>),
 }
 
-impl SlotEndorsement {
+impl<S: EndorsementStorage> SlotEndorsement<S> {
     pub(crate) fn root_cert_hash(
         &self,
         algo: CertificateAlgorithm,
@@ -212,7 +242,6 @@ impl SlotEndorsement {
     ) -> McuResult<()> {
         match self {
             Self::ReadOnly(e) => e.root_cert_hash(algo, out),
-            #[cfg(feature = "set-certificate")]
             Self::Managed(m) => m
                 .get_endorsement(algo)
                 .ok_or(mcu_error::codes::INVARIANT)?
@@ -224,7 +253,6 @@ impl SlotEndorsement {
     pub(crate) fn size(&self, algo: CertificateAlgorithm) -> McuResult<usize> {
         match self {
             Self::ReadOnly(e) => e.size(algo),
-            #[cfg(feature = "set-certificate")]
             Self::Managed(m) => m
                 .get_endorsement(algo)
                 .ok_or(mcu_error::codes::INVARIANT)?
@@ -236,7 +264,6 @@ impl SlotEndorsement {
     pub(crate) fn capacity(&self, algo: CertificateAlgorithm) -> McuResult<usize> {
         match self {
             Self::ReadOnly(e) => e.size(algo),
-            #[cfg(feature = "set-certificate")]
             Self::Managed(m) => Ok(m
                 .get_endorsement(algo)
                 .ok_or(mcu_error::codes::INVARIANT)?
@@ -251,7 +278,6 @@ impl SlotEndorsement {
                 let _ = e.get_endorsement(algo).ok_or(mcu_error::codes::INVARIANT)?;
                 Ok(None)
             }
-            #[cfg(feature = "set-certificate")]
             Self::Managed(m) => Ok(Some(
                 m.get_endorsement(algo)
                     .ok_or(mcu_error::codes::INVARIANT)?
@@ -267,20 +293,12 @@ impl SlotEndorsement {
     }
 
     pub(crate) fn is_writable(&self) -> bool {
-        #[cfg(feature = "set-certificate")]
-        {
-            matches!(self, Self::Managed(_))
-        }
-        #[cfg(not(feature = "set-certificate"))]
-        {
-            false
-        }
+        cfg!(feature = "set-certificate") && matches!(self, Self::Managed(_))
     }
 
     pub(crate) fn is_provisioned(&self, algo: CertificateAlgorithm) -> bool {
         match self {
             Self::ReadOnly(e) => e.get_endorsement(algo).is_some(),
-            #[cfg(feature = "set-certificate")]
             Self::Managed(m) => m.get_endorsement(algo).is_some_and(|r| r.is_initialized()),
             Self::Empty => false,
         }
@@ -401,22 +419,18 @@ impl ReadOnlyEndorsementSlot {
 const MANAGED_MAGIC: [u8; 4] = *b"SPCE";
 #[cfg(feature = "set-certificate")]
 const MANAGED_FORMAT_VERSION: u16 = 2;
-#[cfg(feature = "set-certificate")]
 const MANAGED_HEADER_SIZE: usize = 80;
 #[cfg(feature = "set-certificate")]
 const MANAGED_ERASED_BYTE: u8 = 0xFF;
-#[cfg(feature = "set-certificate")]
 const SPDM_CERT_CHAIN_HEADER_SIZE: usize = 4 + 48;
 /// Largest DER payload the SPDM cert-chain format can describe.
 ///
 /// SPDM allows for large certificate chain indexing up to 32 bits, so in
 /// practice, this limit is the size of one A/B flash region in the managed
 /// endorsement allocation.
-#[cfg(feature = "set-certificate")]
 const MANAGED_MAX_DER_LEN: usize = (u32::MAX as usize) - SPDM_CERT_CHAIN_HEADER_SIZE;
 
 /// Usable DER bytes in one A/B region of a managed endorsement allocation.
-#[cfg(feature = "set-certificate")]
 pub(crate) const fn managed_endorsement_der_capacity(allocation_size: usize) -> usize {
     let region_size = allocation_size / MANAGED_REGION_COUNT;
     let available = region_size.saturating_sub(MANAGED_HEADER_SIZE);
@@ -438,23 +452,18 @@ fn ranges_overlap(a: &Range<usize>, b: &Range<usize>) -> bool {
     !a.is_empty() && !b.is_empty() && a.start < b.end && b.start < a.end
 }
 
-#[cfg(feature = "set-certificate")]
-type CertStoreFlash = SpiFlash<DefaultSyscalls>;
-
-/// Lightweight 16-byte read coordinates for an initialized managed flash
-/// endorsement, captured synchronously so async flash reads do not borrow
-/// [`CertSlot`] across `.await`.
-#[cfg(feature = "set-certificate")]
+/// Lightweight read coordinates for an initialized managed endorsement,
+/// captured synchronously so async storage reads do not borrow [`CertSlot`]
+/// across `.await`.
 #[derive(Clone, Copy)]
-pub(crate) struct ManagedReadSnapshot {
-    driver_num: u32,
+pub(crate) struct ManagedReadSnapshot<S: EndorsementStorage = NoEndorsementStorage> {
+    storage: S,
     data_base: usize,
     len: usize,
     active_region: u8,
 }
 
-#[cfg(feature = "set-certificate")]
-impl ManagedReadSnapshot {
+impl<S: EndorsementStorage> ManagedReadSnapshot<S> {
     pub(crate) const fn active_region(&self) -> u8 {
         self.active_region
     }
@@ -464,15 +473,14 @@ impl ManagedReadSnapshot {
             return Ok(0);
         }
         let n = (self.len - offset).min(buf.len());
-        CertStoreFlash::new(self.driver_num)
-            .read(self.data_base + offset, n, &mut buf[..n])
-            .await
-            .map_err(map_flash_error)?;
+        self.storage
+            .read(self.data_base + offset, &mut buf[..n])
+            .await?;
         Ok(n)
     }
 }
 
-/// One managed flash-backed endorsement/root chain installed by
+/// One managed storage-backed endorsement/root chain installed by
 /// SET_CERTIFICATE.
 ///
 /// An allocation is dedicated to a single asymmetric algorithm for its
@@ -480,43 +488,100 @@ impl ManagedReadSnapshot {
 /// equal A/B ping-pong regions (`active_region` and `staging_region`) so
 /// replacement writes stage in `staging_region` while `active_region`
 /// remains readable.
-#[cfg(feature = "set-certificate")]
+#[allow(dead_code)]
 #[derive(Clone, Copy)]
-pub(crate) struct ManagedEndorsementChain {
+pub(crate) struct ManagedEndorsementChain<S: EndorsementStorage = NoEndorsementStorage> {
     role: crate::EndorsementRole,
-    driver_num: u32,
+    storage: S,
     base: usize,
     capacity: usize,
     initialized: bool,
     active_region: u8,
     active_sequence: u32,
     staging_region: Option<u8>,
+    staging_checksum: u32,
     algo: CertificateAlgorithm,
     len: usize,
     root_hash: [u8; 48],
     key_pair_id: u8,
-    device_key: Option<DeviceKey>,
+    device_key: Option<crate::DeviceKey>,
+}
+
+impl<S: EndorsementStorage> ManagedEndorsementChain<S> {
+    pub(crate) fn is_initialized(&self) -> bool {
+        self.initialized
+    }
+
+    pub(crate) fn key_pair_id(&self) -> Option<u8> {
+        self.initialized.then_some(self.key_pair_id)
+    }
+
+    fn root_cert_hash(&self, out: &mut [u8]) -> McuResult<()> {
+        if !self.initialized {
+            return Err(mcu_error::codes::INVARIANT);
+        }
+        let n = out.len().min(self.root_hash.len());
+        out[..n].copy_from_slice(&self.root_hash[..n]);
+        Ok(())
+    }
+
+    fn size(&self) -> McuResult<usize> {
+        if self.initialized {
+            Ok(self.len)
+        } else {
+            Err(mcu_error::codes::INVARIANT)
+        }
+    }
+
+    pub(crate) const fn read_snapshot(&self) -> McuResult<ManagedReadSnapshot<S>> {
+        if !self.initialized {
+            return Err(mcu_error::codes::INVARIANT);
+        }
+        Ok(ManagedReadSnapshot {
+            storage: self.storage,
+            data_base: self.region_data_base(self.active_region),
+            len: self.len,
+            active_region: self.active_region,
+        })
+    }
+
+    pub(crate) const fn region_capacity(&self) -> usize {
+        self.capacity / MANAGED_REGION_COUNT
+    }
+
+    pub(crate) const fn region_base(&self, region: u8) -> usize {
+        self.base + ((region as usize) % MANAGED_REGION_COUNT) * self.region_capacity()
+    }
+
+    const fn region_data_base(&self, region: u8) -> usize {
+        self.region_base(region) + MANAGED_HEADER_SIZE
+    }
+
+    pub(crate) fn der_capacity(&self) -> usize {
+        managed_endorsement_der_capacity(self.capacity)
+    }
 }
 
 #[cfg(feature = "set-certificate")]
-impl ManagedEndorsementChain {
+impl<S: EndorsementStorage> ManagedEndorsementChain<S> {
     pub(crate) const fn new(
         role: crate::EndorsementRole,
         algo: CertificateAlgorithm,
-        driver_num: u32,
+        storage: S,
         base: usize,
         capacity: usize,
         device_key: Option<DeviceKey>,
     ) -> Self {
         Self {
             role,
-            driver_num,
+            storage,
             base,
             capacity,
             initialized: false,
             active_region: 0,
             active_sequence: 0,
             staging_region: None,
+            staging_checksum: 0,
             algo,
             len: 0,
             root_hash: [0; 48],
@@ -530,24 +595,18 @@ impl ManagedEndorsementChain {
         if !self.capacity.is_multiple_of(MANAGED_REGION_COUNT) || self.der_capacity() == 0 {
             return Err(mcu_error::codes::INVARIANT);
         }
-        let flash = self.flash();
-        match flash.exists() {
-            Ok(()) => {}
-            Err(ErrorCode::NoDevice | ErrorCode::NoSupport | ErrorCode::Uninstalled) => {
-                return Ok(())
-            }
-            Err(err) => return Err(map_flash_error(err)),
+        if !self.storage.is_available()? {
+            return Ok(());
         }
         self.recover().await
     }
 
-    /// Recover both regions without treating unavailable flash as empty.
+    /// Recover both regions without treating unavailable storage as empty.
     pub(crate) async fn recover(&mut self) -> McuResult<()> {
         self.discard();
-        let flash = self.flash();
         let mut selected: Option<(u8, ManagedRecord)> = None;
         for region in 0..(MANAGED_REGION_COUNT as u8) {
-            let Some(record) = self.load_region(&flash, region).await? else {
+            let Some(record) = self.load_region(region).await? else {
                 continue;
             };
             let replace = match &selected {
@@ -569,16 +628,11 @@ impl ManagedEndorsementChain {
         Ok(())
     }
 
-    async fn load_region(
-        &self,
-        flash: &CertStoreFlash,
-        region: u8,
-    ) -> McuResult<Option<ManagedRecord>> {
+    async fn load_region(&self, region: u8) -> McuResult<Option<ManagedRecord>> {
         let mut header = [0u8; MANAGED_HEADER_SIZE];
-        flash
-            .read(self.region_base(region), MANAGED_HEADER_SIZE, &mut header)
-            .await
-            .map_err(map_flash_error)?;
+        self.storage
+            .read(self.region_base(region), &mut header)
+            .await?;
         if header.iter().all(|&b| b == MANAGED_ERASED_BYTE) {
             return Ok(None);
         }
@@ -635,6 +689,7 @@ impl ManagedEndorsementChain {
         self.active_region = 0;
         self.active_sequence = 0;
         self.staging_region = None;
+        self.staging_checksum = 0;
         self.len = 0;
         self.root_hash = [0; 48];
         self.key_pair_id = 0;
@@ -644,11 +699,8 @@ impl ManagedEndorsementChain {
         self.staging_region
             .take()
             .ok_or(cert_errors::INVALID_ENDORSEMENT)?;
+        self.staging_checksum = 0;
         Ok(())
-    }
-
-    pub(crate) fn is_initialized(&self) -> bool {
-        self.initialized
     }
 
     #[cfg(test)]
@@ -677,39 +729,6 @@ impl ManagedEndorsementChain {
         self.algo
     }
 
-    pub(crate) fn key_pair_id(&self) -> Option<u8> {
-        self.initialized.then_some(self.key_pair_id)
-    }
-
-    fn root_cert_hash(&self, out: &mut [u8]) -> McuResult<()> {
-        if !self.initialized {
-            return Err(mcu_error::codes::INVARIANT);
-        }
-        let n = out.len().min(self.root_hash.len());
-        out[..n].copy_from_slice(&self.root_hash[..n]);
-        Ok(())
-    }
-
-    fn size(&self) -> McuResult<usize> {
-        if self.initialized {
-            Ok(self.len)
-        } else {
-            Err(mcu_error::codes::INVARIANT)
-        }
-    }
-
-    pub(crate) const fn read_snapshot(&self) -> McuResult<ManagedReadSnapshot> {
-        if !self.initialized {
-            return Err(mcu_error::codes::INVARIANT);
-        }
-        Ok(ManagedReadSnapshot {
-            driver_num: self.driver_num,
-            data_base: self.region_data_base(self.active_region),
-            len: self.len,
-            active_region: self.active_region,
-        })
-    }
-
     #[cfg(test)]
     async fn read(&self, offset: usize, buf: &mut [u8]) -> McuResult<usize> {
         self.read_snapshot()?.read(offset, buf).await
@@ -729,15 +748,15 @@ impl ManagedEndorsementChain {
             return Err(cert_errors::INVALID_ENDORSEMENT);
         }
         let target_region = self.inactive_region();
-        self.flash()
+        self.storage
             .erase(self.region_base(target_region), self.region_capacity())
-            .await
-            .map_err(map_flash_error)?;
+            .await?;
         self.staging_region = Some(target_region);
+        self.staging_checksum = 0;
         Ok(self)
     }
 
-    pub(crate) async fn write_stream_chunk(&self, offset: usize, data: &[u8]) -> McuResult<()> {
+    pub(crate) async fn write_stream_chunk(&mut self, offset: usize, data: &[u8]) -> McuResult<()> {
         let region = self.staging_region.ok_or(mcu_error::codes::INVARIANT)?;
         let end = offset
             .checked_add(data.len())
@@ -746,24 +765,27 @@ impl ManagedEndorsementChain {
             return Err(mcu_error::codes::INVARIANT);
         }
         if !data.is_empty() {
-            self.flash()
-                .write(self.region_data_base(region) + offset, data.len(), data)
-                .await
-                .map_err(map_flash_error)?;
+            self.storage
+                .write(self.region_data_base(region) + offset, data)
+                .await?;
+            self.staging_checksum = self.staging_checksum.wrapping_add(checksum(data));
         }
         Ok(())
     }
 
-    pub(crate) async fn read_stream_chunk(&self, offset: usize, buf: &mut [u8]) -> McuResult<usize> {
+    pub(crate) async fn read_stream_chunk(
+        &self,
+        offset: usize,
+        buf: &mut [u8],
+    ) -> McuResult<usize> {
         let region = self.staging_region.ok_or(mcu_error::codes::INVARIANT)?;
         if offset >= self.der_capacity() || buf.is_empty() {
             return Ok(0);
         }
         let n = (self.der_capacity() - offset).min(buf.len());
-        self.flash()
-            .read(self.region_data_base(region) + offset, n, &mut buf[..n])
-            .await
-            .map_err(map_flash_error)?;
+        self.storage
+            .read(self.region_data_base(region) + offset, &mut buf[..n])
+            .await?;
         Ok(n)
     }
 
@@ -783,6 +805,9 @@ impl ManagedEndorsementChain {
         }
         let region = self.staging_region.ok_or(mcu_error::codes::INVARIANT)?;
         let data_checksum = self.stored_checksum(region, data_len).await?;
+        if data_checksum != self.staging_checksum {
+            return Err(cert_errors::STORAGE_ERROR);
+        }
         let sequence = self.next_sequence();
         let record = ManagedRecord {
             version: MANAGED_FORMAT_VERSION,
@@ -802,6 +827,7 @@ impl ManagedEndorsementChain {
         self.active_region = region;
         self.active_sequence = sequence;
         self.staging_region = None;
+        self.staging_checksum = 0;
         self.len = data_len;
         self.root_hash = *root_hash;
         self.key_pair_id = key_pair_id;
@@ -840,15 +866,12 @@ impl ManagedEndorsementChain {
             sequence,
         };
 
-        let flash = self.flash();
-        flash
+        self.storage
             .erase(self.region_base(region), self.region_capacity())
-            .await
-            .map_err(map_flash_error)?;
-        flash
-            .write(self.region_data_base(region), data.len(), data)
-            .await
-            .map_err(map_flash_error)?;
+            .await?;
+        self.storage
+            .write(self.region_data_base(region), data)
+            .await?;
         if self.stored_checksum(region, data.len()).await? != expected_checksum {
             return Err(cert_errors::STORAGE_ERROR);
         }
@@ -858,6 +881,7 @@ impl ManagedEndorsementChain {
         self.active_region = region;
         self.active_sequence = sequence;
         self.staging_region = None;
+        self.staging_checksum = 0;
         self.len = data.len();
         self.root_hash = *root_hash;
         self.key_pair_id = key_pair_id;
@@ -872,17 +896,14 @@ impl ManagedEndorsementChain {
         let active_region = self.active_region & 1;
         let staging_region = 1 - active_region;
         let region_cap = self.region_capacity();
-        let flash = self.flash();
         // Erase the staging (superseded) region first, then the active region, so
         // an interrupted erase can never resurrect an older region after reset.
-        flash
+        self.storage
             .erase(self.region_base(staging_region), region_cap)
-            .await
-            .map_err(map_flash_error)?;
-        flash
+            .await?;
+        self.storage
             .erase(self.region_base(active_region), region_cap)
-            .await
-            .map_err(map_flash_error)?;
+            .await?;
         self.discard();
         Ok(self)
     }
@@ -890,24 +911,17 @@ impl ManagedEndorsementChain {
     async fn commit_record_to_region(&self, region: u8, record: &ManagedRecord) -> McuResult<()> {
         let mut header = [MANAGED_ERASED_BYTE; MANAGED_HEADER_SIZE];
         record.encode(&mut header);
-        let flash = self.flash();
-        flash
-            .write(self.region_base(region), MANAGED_HEADER_SIZE, &header)
-            .await
-            .map_err(map_flash_error)?;
+        self.storage
+            .write(self.region_base(region), &header)
+            .await?;
         let mut stored = [0u8; MANAGED_HEADER_SIZE];
-        flash
-            .read(self.region_base(region), MANAGED_HEADER_SIZE, &mut stored)
-            .await
-            .map_err(map_flash_error)?;
+        self.storage
+            .read(self.region_base(region), &mut stored)
+            .await?;
         if stored != header {
             return Err(cert_errors::STORAGE_ERROR);
         }
         Ok(())
-    }
-
-    fn flash(&self) -> CertStoreFlash {
-        CertStoreFlash::new(self.driver_num)
     }
 
     async fn stored_checksum(&self, region: u8, len: usize) -> McuResult<u32> {
@@ -915,14 +929,12 @@ impl ManagedEndorsementChain {
         let mut offset = 0usize;
         let mut sum = 0u32;
         let mut chunk = [0u8; 256];
-        let flash = self.flash();
         let data_base = self.region_data_base(region);
         while remaining > 0 {
             let n = remaining.min(chunk.len());
-            flash
-                .read(data_base + offset, n, &mut chunk[..n])
-                .await
-                .map_err(map_flash_error)?;
+            self.storage
+                .read(data_base + offset, &mut chunk[..n])
+                .await?;
             sum = sum.wrapping_add(checksum(&chunk[..n]));
             remaining -= n;
             offset += n;
@@ -930,59 +942,41 @@ impl ManagedEndorsementChain {
         Ok(sum)
     }
 
-    pub(crate) const fn region_capacity(&self) -> usize {
-        self.capacity / MANAGED_REGION_COUNT
-    }
-
-    pub(crate) const fn region_base(&self, region: u8) -> usize {
-        self.base + ((region as usize) % MANAGED_REGION_COUNT) * self.region_capacity()
-    }
-
-    const fn region_data_base(&self, region: u8) -> usize {
-        self.region_base(region) + MANAGED_HEADER_SIZE
-    }
-
-    pub(crate) fn der_capacity(&self) -> usize {
-        managed_endorsement_der_capacity(self.capacity)
-    }
-
-    /// The flash region this chain occupies, as a half-open range.
+    /// The storage region this chain occupies, as a half-open range.
     pub(crate) fn region_range(&self) -> Range<usize> {
         self.base..self.base.saturating_add(self.capacity)
     }
 
-    /// Whether this chain's flash region intersects `range` on the
-    /// flash device `driver_num`.
+    /// Whether this chain's storage region intersects `range` on `storage`.
     ///
-    /// Regions on different devices never collide.
-    pub(crate) fn region_overlaps(&self, driver_num: u32, range: &Range<usize>) -> bool {
-        self.driver_num == driver_num && ranges_overlap(&self.region_range(), range)
+    /// Regions on different storage instances never collide.
+    pub(crate) fn region_overlaps(&self, storage: S, range: &Range<usize>) -> bool {
+        self.storage == storage && ranges_overlap(&self.region_range(), range)
     }
 }
 
-/// The managed flash regions backing one SPDM slot.
+/// The managed storage regions backing one endorsement role.
 ///
 /// ECC is mandatory — a managed slot always has somewhere to put the
 /// classical chain — while ML-DSA is optional so that a platform which
 /// has not allocated a PQC region still builds and runs. A slot with
 /// no ML-DSA region simply reports itself unprovisioned on an ML-DSA
 /// connection.
-#[cfg(feature = "set-certificate")]
 #[derive(Clone, Copy)]
-pub(crate) struct ManagedEndorsementSlot {
-    ecc: ManagedEndorsementChain,
-    mldsa: Option<ManagedEndorsementChain>,
+pub(crate) struct ManagedEndorsementSlot<S: EndorsementStorage = NoEndorsementStorage> {
+    ecc: ManagedEndorsementChain<S>,
+    mldsa: Option<ManagedEndorsementChain<S>>,
 }
 
-#[cfg(feature = "set-certificate")]
-impl ManagedEndorsementSlot {
-    pub(crate) const fn new(ecc: ManagedEndorsementChain) -> Self {
+impl<S: EndorsementStorage> ManagedEndorsementSlot<S> {
+    #[cfg(feature = "set-certificate")]
+    pub(crate) const fn new(ecc: ManagedEndorsementChain<S>) -> Self {
         debug_assert!(matches!(ecc.algo(), CertificateAlgorithm::EccP384));
         Self { ecc, mldsa: None }
     }
 
-    #[cfg(test)]
-    pub(crate) const fn with_mldsa(mut self, mldsa: ManagedEndorsementChain) -> Self {
+    #[cfg(all(test, feature = "set-certificate"))]
+    pub(crate) const fn with_mldsa(mut self, mldsa: ManagedEndorsementChain<S>) -> Self {
         debug_assert!(matches!(mldsa.algo(), CertificateAlgorithm::MlDsa87));
         self.mldsa = Some(mldsa);
         self
@@ -992,7 +986,7 @@ impl ManagedEndorsementSlot {
     pub(crate) fn get_endorsement(
         &self,
         algo: CertificateAlgorithm,
-    ) -> Option<&ManagedEndorsementChain> {
+    ) -> Option<&ManagedEndorsementChain<S>> {
         match algo {
             CertificateAlgorithm::EccP384 => Some(&self.ecc),
             CertificateAlgorithm::MlDsa87 => self.mldsa.as_ref(),
@@ -1001,21 +995,22 @@ impl ManagedEndorsementSlot {
 
     /// Install an updated endorsement region, which must belong to this slot's
     /// algorithm for that position.
-    pub(crate) fn set_endorsement(&mut self, endorsement: ManagedEndorsementChain) {
+    #[cfg(feature = "set-certificate")]
+    pub(crate) fn set_endorsement(&mut self, endorsement: ManagedEndorsementChain<S>) {
         match endorsement.algo() {
             CertificateAlgorithm::EccP384 => self.ecc = endorsement,
             CertificateAlgorithm::MlDsa87 => self.mldsa = Some(endorsement),
         }
     }
 
-    /// Whether any of this slot's regions intersects `range` on the
-    /// flash device `driver_num`.
-    pub(crate) fn any_region_overlaps(&self, driver_num: u32, range: &Range<usize>) -> bool {
-        self.ecc.region_overlaps(driver_num, range)
+    /// Whether any of this slot's regions intersects `range` on `storage`.
+    #[cfg(feature = "set-certificate")]
+    pub(crate) fn any_region_overlaps(&self, storage: S, range: &Range<usize>) -> bool {
+        self.ecc.region_overlaps(storage, range)
             || self
                 .mldsa
                 .as_ref()
-                .is_some_and(|m| m.region_overlaps(driver_num, range))
+                .is_some_and(|m| m.region_overlaps(storage, range))
     }
 }
 
@@ -1130,30 +1125,120 @@ fn checksum(data: &[u8]) -> u32 {
         .fold(0u32, |acc, &byte| acc.wrapping_add(byte as u32))
 }
 
-#[cfg(feature = "set-certificate")]
-fn map_flash_error(err: ErrorCode) -> mcu_error::McuErrorCode {
-    match err {
-        ErrorCode::Busy => cert_errors::STORAGE_BUSY,
-        _ => cert_errors::STORAGE_ERROR,
-    }
-}
-
 #[cfg(all(test, feature = "set-certificate"))]
 mod tests {
     extern crate std;
 
     use super::*;
+    use std::cell::RefCell;
+    use std::{boxed::Box, vec, vec::Vec};
     use CertificateAlgorithm as SpdmPalAsymAlgo;
 
-    // Image partition exposed by FakeFlashDriver.
     const TEST_DRIVER: u32 = 0x8000_0006;
     const TEST_REGION: usize = 4096;
 
-    fn chain(algo: SpdmPalAsymAlgo, base: usize) -> ManagedEndorsementChain {
+    struct TestFlash {
+        bytes: RefCell<Vec<u8>>,
+    }
+
+    // Safety: each TestStorage instance in unit tests is used on a single thread.
+    unsafe impl Sync for TestFlash {}
+
+    #[derive(Clone, Copy)]
+    struct TestStorage {
+        id: u32,
+        flash: Option<&'static TestFlash>,
+    }
+
+    impl PartialEq for TestStorage {
+        fn eq(&self, other: &Self) -> bool {
+            self.id == other.id
+        }
+    }
+
+    impl Eq for TestStorage {}
+
+    impl TestStorage {
+        const fn dummy(id: u32) -> Self {
+            Self { id, flash: None }
+        }
+
+        fn with_size(size: usize) -> Self {
+            let flash = Box::leak(Box::new(TestFlash {
+                bytes: RefCell::new(vec![MANAGED_ERASED_BYTE; size]),
+            }));
+            Self {
+                id: TEST_DRIVER,
+                flash: Some(flash),
+            }
+        }
+
+        fn snapshot(&self) -> Vec<u8> {
+            self.flash.unwrap().bytes.borrow().clone()
+        }
+
+        fn set_content(&self, content: Vec<u8>) {
+            *self.flash.unwrap().bytes.borrow_mut() = content;
+        }
+    }
+
+    impl EndorsementStorage for TestStorage {
+        async fn read(&self, offset: usize, buf: &mut [u8]) -> McuResult<()> {
+            let bytes = self.flash.ok_or(cert_errors::STORAGE_ERROR)?.bytes.borrow();
+            let end = offset
+                .checked_add(buf.len())
+                .ok_or(cert_errors::STORAGE_ERROR)?;
+            if end > bytes.len() {
+                return Err(cert_errors::STORAGE_ERROR);
+            }
+            buf.copy_from_slice(&bytes[offset..end]);
+            Ok(())
+        }
+
+        async fn write(&self, offset: usize, data: &[u8]) -> McuResult<()> {
+            let mut bytes = self
+                .flash
+                .ok_or(cert_errors::STORAGE_ERROR)?
+                .bytes
+                .borrow_mut();
+            let end = offset
+                .checked_add(data.len())
+                .ok_or(cert_errors::STORAGE_ERROR)?;
+            if end > bytes.len() {
+                return Err(cert_errors::STORAGE_ERROR);
+            }
+            bytes[offset..end].copy_from_slice(data);
+            Ok(())
+        }
+
+        async fn erase(&self, offset: usize, len: usize) -> McuResult<()> {
+            let mut bytes = self
+                .flash
+                .ok_or(cert_errors::STORAGE_ERROR)?
+                .bytes
+                .borrow_mut();
+            let end = offset.checked_add(len).ok_or(cert_errors::STORAGE_ERROR)?;
+            if end > bytes.len() {
+                return Err(cert_errors::STORAGE_ERROR);
+            }
+            bytes[offset..end].fill(MANAGED_ERASED_BYTE);
+            Ok(())
+        }
+    }
+
+    fn chain(algo: SpdmPalAsymAlgo, base: usize) -> ManagedEndorsementChain<TestStorage> {
+        chain_with(TestStorage::dummy(TEST_DRIVER), algo, base)
+    }
+
+    fn chain_with(
+        storage: TestStorage,
+        algo: SpdmPalAsymAlgo,
+        base: usize,
+    ) -> ManagedEndorsementChain<TestStorage> {
         ManagedEndorsementChain::new(
             crate::EndorsementRole::Owner,
             algo,
-            TEST_DRIVER,
+            storage,
             base,
             TEST_REGION,
             Some(DeviceKey::LDevId),
@@ -1208,7 +1293,7 @@ mod tests {
         ));
     }
 
-    /// `region_overlaps` adds flash-device scoping on top of the range
+    /// `region_overlaps` adds storage-instance scoping on top of the range
     /// predicate: identical addresses on another device must not
     /// collide.
     #[test]
@@ -1216,24 +1301,25 @@ mod tests {
         let ecc = chain(SpdmPalAsymAlgo::EccP384, TEST_REGION);
 
         assert_eq!(ecc.region_range(), span(TEST_REGION));
-        assert!(ecc.region_overlaps(TEST_DRIVER, &span(TEST_REGION)));
-        assert!(!ecc.region_overlaps(TEST_DRIVER + 1, &span(TEST_REGION)));
+        assert!(ecc.region_overlaps(TestStorage::dummy(TEST_DRIVER), &span(TEST_REGION)));
+        assert!(!ecc.region_overlaps(TestStorage::dummy(TEST_DRIVER + 1), &span(TEST_REGION)));
     }
 
     /// Cross-slot collisions must be caught against either of a slot's
     /// regions, including the optional ML-DSA one.
     #[test]
     fn any_region_overlap_covers_both_algorithms() {
+        let storage = TestStorage::dummy(TEST_DRIVER);
         let slot = ManagedEndorsementSlot::new(chain(SpdmPalAsymAlgo::EccP384, 0))
             .with_mldsa(chain(SpdmPalAsymAlgo::MlDsa87, TEST_REGION));
 
-        assert!(slot.any_region_overlaps(TEST_DRIVER, &span(0)));
-        assert!(slot.any_region_overlaps(TEST_DRIVER, &span(TEST_REGION)));
-        assert!(!slot.any_region_overlaps(TEST_DRIVER, &span(TEST_REGION * 2)));
+        assert!(slot.any_region_overlaps(storage, &span(0)));
+        assert!(slot.any_region_overlaps(storage, &span(TEST_REGION)));
+        assert!(!slot.any_region_overlaps(storage, &span(TEST_REGION * 2)));
 
         // Without an ML-DSA region that address range is free.
         let ecc_only = ManagedEndorsementSlot::new(chain(SpdmPalAsymAlgo::EccP384, 0));
-        assert!(!ecc_only.any_region_overlaps(TEST_DRIVER, &span(TEST_REGION)));
+        assert!(!ecc_only.any_region_overlaps(storage, &span(TEST_REGION)));
     }
 
     /// Each algorithm's region is provisioned independently: writing
@@ -1560,24 +1646,15 @@ mod tests {
 
     #[test]
     fn flash_replacement_removal_and_recovery_preserve_the_configured_identity() {
-        use caliptra_mcu_libtock_unittest::fake;
-        use std::{boxed::Box, rc::Rc, vec};
+        use futures::executor::block_on;
 
-        let kernel = fake::Kernel::new();
-        let flash = Rc::new(fake::FakeFlashDriver::new());
-        flash.set_flash_content(vec![MANAGED_ERASED_BYTE; 2 * TEST_REGION]);
-        kernel.add_driver(&flash);
+        let storage = TestStorage::with_size(2 * TEST_REGION);
         // Provision ML-DSA first, with no ECC endorsement present.
-        let mut ecc = chain(SpdmPalAsymAlgo::EccP384, 0);
-        let mldsa = chain(SpdmPalAsymAlgo::MlDsa87, TEST_REGION);
-        let mldsa = fake::wait_for_future_ready(Box::pin(mldsa.write_updated(
-            1,
-            CERT_MODEL_ALIAS_CERT,
-            &[2; 48],
-            &[2; 16],
-        )))
-        .unwrap();
-        fake::wait_for_future_ready(Box::pin(ecc.load())).unwrap();
+        let mut ecc = chain_with(storage, SpdmPalAsymAlgo::EccP384, 0);
+        let mldsa = chain_with(storage, SpdmPalAsymAlgo::MlDsa87, TEST_REGION);
+        let mldsa =
+            block_on(mldsa.write_updated(1, CERT_MODEL_ALIAS_CERT, &[2; 48], &[2; 16])).unwrap();
+        block_on(ecc.load()).unwrap();
         assert!(!ecc.is_initialized());
         assert_eq!(mldsa.key_pair_id(), Some(1));
 
@@ -1585,70 +1662,51 @@ mod tests {
             (SpdmPalAsymAlgo::EccP384, 0),
             (SpdmPalAsymAlgo::MlDsa87, TEST_REGION),
         ] {
-            let mut region = chain(algo, base);
+            let mut region = chain_with(storage, algo, base);
             for byte in [3, 4] {
-                region = fake::wait_for_future_ready(Box::pin(region.write_updated(
+                region = block_on(region.write_updated(
                     1,
                     CERT_MODEL_ALIAS_CERT,
                     &[byte; 48],
                     &[byte; 16],
-                )))
+                ))
                 .unwrap();
-                let mut recovered = chain(algo, base);
-                fake::wait_for_future_ready(Box::pin(recovered.load())).unwrap();
+                let mut recovered = chain_with(storage, algo, base);
+                block_on(recovered.load()).unwrap();
                 assert_eq!(recovered.key_pair_id(), Some(1));
                 let mut data = [0; 16];
-                assert_eq!(
-                    fake::wait_for_future_ready(Box::pin(recovered.read(0, &mut data))),
-                    Ok(16)
-                );
+                assert_eq!(block_on(recovered.read(0, &mut data)), Ok(16));
                 assert_eq!(data, [byte; 16]);
             }
             let mut unrestricted = region;
             unrestricted.device_key = None;
-            fake::wait_for_future_ready(Box::pin(unrestricted.load())).unwrap();
+            block_on(unrestricted.load()).unwrap();
             assert_eq!(unrestricted.key_pair_id(), Some(1));
-            fake::wait_for_future_ready(Box::pin(region.load())).unwrap();
+            block_on(region.load()).unwrap();
             assert_eq!(region.key_pair_id(), Some(1));
 
-            region = fake::wait_for_future_ready(Box::pin(region.erase_updated())).unwrap();
-            fake::wait_for_future_ready(Box::pin(region.load())).unwrap();
+            region = block_on(region.erase_updated()).unwrap();
+            block_on(region.load()).unwrap();
             assert!(!region.is_initialized());
-            region = fake::wait_for_future_ready(Box::pin(region.write_updated(
-                1,
-                CERT_MODEL_ALIAS_CERT,
-                &[5; 48],
-                &[5; 16],
-            )))
-            .unwrap();
-            fake::wait_for_future_ready(Box::pin(region.load())).unwrap();
+            region = block_on(region.write_updated(1, CERT_MODEL_ALIAS_CERT, &[5; 48], &[5; 16]))
+                .unwrap();
+            block_on(region.load()).unwrap();
             assert_eq!(region.key_pair_id(), Some(1));
         }
     }
 
     #[test]
     fn recovery_rejects_torn_headers_and_corrupted_metadata() {
-        use caliptra_mcu_libtock_unittest::fake;
-        use std::{boxed::Box, rc::Rc, vec};
+        use futures::executor::block_on;
 
-        let kernel = fake::Kernel::new();
-        let flash = Rc::new(fake::FakeFlashDriver::new());
-        flash.set_flash_content(vec![MANAGED_ERASED_BYTE; TEST_REGION]);
-        kernel.add_driver(&flash);
-
-        let mut region = chain(SpdmPalAsymAlgo::EccP384, 0);
+        let storage = TestStorage::with_size(TEST_REGION);
+        let mut region = chain_with(storage, SpdmPalAsymAlgo::EccP384, 0);
         for byte in [0xAA, 0xBB] {
-            region = fake::wait_for_future_ready(Box::pin(region.write_updated(
-                1,
-                CERT_MODEL_ALIAS_CERT,
-                &[byte; 48],
-                &[byte; 16],
-            )))
-            .unwrap();
+            region =
+                block_on(region.write_updated(1, CERT_MODEL_ALIAS_CERT, &[byte; 48], &[byte; 16]))
+                    .unwrap();
         }
-        let mut contents = vec![0; TEST_REGION];
-        fake::wait_for_future_ready(Box::pin(region.flash().read(0, TEST_REGION, &mut contents)))
-            .unwrap();
+        let contents = storage.snapshot();
 
         let header_base = region.region_base(1);
         let mut corruptions = [
@@ -1664,57 +1722,37 @@ mod tests {
             .fill(MANAGED_ERASED_BYTE);
 
         for contents in corruptions {
-            flash.set_flash_content(contents);
-            let mut recovered = chain(SpdmPalAsymAlgo::EccP384, 0);
-            fake::wait_for_future_ready(Box::pin(recovered.load())).unwrap();
+            storage.set_content(contents);
+            let mut recovered = chain_with(storage, SpdmPalAsymAlgo::EccP384, 0);
+            block_on(recovered.load()).unwrap();
             assert_eq!(recovered.active_region(), Some(0));
             assert_eq!(recovered.active_sequence, 1);
             let mut data = [0; 16];
-            fake::wait_for_future_ready(Box::pin(recovered.read(0, &mut data))).unwrap();
+            block_on(recovered.read(0, &mut data)).unwrap();
             assert_eq!(data, [0xAA; 16]);
         }
     }
 
     #[test]
     fn streamed_flash_record_is_not_published_with_changed_metadata() {
-        use caliptra_mcu_libtock_unittest::fake;
-        use std::{boxed::Box, rc::Rc, vec};
+        use futures::executor::block_on;
 
-        let kernel = fake::Kernel::new();
-        let flash = Rc::new(fake::FakeFlashDriver::new());
-        flash.set_flash_content(vec![MANAGED_ERASED_BYTE; TEST_REGION]);
-        kernel.add_driver(&flash);
+        let storage = TestStorage::with_size(TEST_REGION);
         for algo in [SpdmPalAsymAlgo::EccP384, SpdmPalAsymAlgo::MlDsa87] {
-            let mut region = chain(algo, 0);
-            region = fake::wait_for_future_ready(Box::pin(region.begin_stream_update(
-                1,
-                CERT_MODEL_ALIAS_CERT,
-                16,
-            )))
-            .unwrap();
-            fake::wait_for_future_ready(Box::pin(region.write_stream_chunk(0, &[4; 8]))).unwrap();
-            fake::wait_for_future_ready(Box::pin(region.write_stream_chunk(8, &[5; 8]))).unwrap();
+            let mut region = chain_with(storage, algo, 0);
+            region = block_on(region.begin_stream_update(1, CERT_MODEL_ALIAS_CERT, 16)).unwrap();
+            block_on(region.write_stream_chunk(0, &[4; 8])).unwrap();
+            block_on(region.write_stream_chunk(8, &[5; 8])).unwrap();
             assert_eq!(
-                fake::wait_for_future_ready(Box::pin(region.finish_stream_update(
-                    2,
-                    CERT_MODEL_ALIAS_CERT,
-                    &[3; 48],
-                    16,
-                )))
-                .err(),
+                block_on(region.finish_stream_update(2, CERT_MODEL_ALIAS_CERT, &[3; 48], 16)).err(),
                 Some(cert_errors::KEY_MISMATCH),
             );
             let mut recovered = region;
-            fake::wait_for_future_ready(Box::pin(recovered.load())).unwrap();
+            block_on(recovered.load()).unwrap();
             assert!(!recovered.is_initialized());
-            region = fake::wait_for_future_ready(Box::pin(region.finish_stream_update(
-                1,
-                CERT_MODEL_ALIAS_CERT,
-                &[3; 48],
-                16,
-            )))
-            .unwrap();
-            fake::wait_for_future_ready(Box::pin(recovered.load())).unwrap();
+            region = block_on(region.finish_stream_update(1, CERT_MODEL_ALIAS_CERT, &[3; 48], 16))
+                .unwrap();
+            block_on(recovered.load()).unwrap();
             assert_eq!(recovered.key_pair_id(), Some(1));
             assert_eq!(region.key_pair_id(), Some(1));
         }
@@ -1722,48 +1760,33 @@ mod tests {
 
     #[test]
     fn ab_region_ping_pong_preserves_active_region_during_stream_and_abort() {
-        use caliptra_mcu_libtock_unittest::fake;
-        use std::{boxed::Box, rc::Rc, vec};
+        use futures::executor::block_on;
 
-        let kernel = fake::Kernel::new();
-        let flash = Rc::new(fake::FakeFlashDriver::new());
-        flash.set_flash_content(vec![MANAGED_ERASED_BYTE; TEST_REGION]);
-        kernel.add_driver(&flash);
+        let storage = TestStorage::with_size(TEST_REGION);
 
         // 1. Initial write lands in region 0 with sequence 1.
-        let region = chain(SpdmPalAsymAlgo::EccP384, 0);
-        let region = fake::wait_for_future_ready(Box::pin(region.write_updated(
-            1,
-            CERT_MODEL_ALIAS_CERT,
-            &[0x11; 48],
-            &[0xAA; 16],
-        )))
-        .unwrap();
+        let region = chain_with(storage, SpdmPalAsymAlgo::EccP384, 0);
+        let region =
+            block_on(region.write_updated(1, CERT_MODEL_ALIAS_CERT, &[0x11; 48], &[0xAA; 16]))
+                .unwrap();
         assert_eq!(region.active_region(), Some(0));
         assert_eq!(region.inactive_region(), 1);
 
         // 2. Begin streaming replacement into region 1 while region 0 stays active and readable.
-        let mut staging = fake::wait_for_future_ready(Box::pin(region.begin_stream_update(
-            1,
-            CERT_MODEL_ALIAS_CERT,
-            16,
-        )))
-        .unwrap();
-        fake::wait_for_future_ready(Box::pin(staging.write_stream_chunk(0, &[0xBB; 16]))).unwrap();
+        let mut staging =
+            block_on(region.begin_stream_update(1, CERT_MODEL_ALIAS_CERT, 16)).unwrap();
+        block_on(staging.write_stream_chunk(0, &[0xBB; 16])).unwrap();
 
         let mut active_bytes = [0u8; 16];
-        assert_eq!(
-            fake::wait_for_future_ready(Box::pin(staging.read(0, &mut active_bytes))),
-            Ok(16)
-        );
+        assert_eq!(block_on(staging.read(0, &mut active_bytes)), Ok(16));
         assert_eq!(active_bytes, [0xAA; 16]);
 
         // Simulated power loss mid-stream: load() recovers region 0 because region 1 has no committed header.
-        let mut recovered = chain(SpdmPalAsymAlgo::EccP384, 0);
-        fake::wait_for_future_ready(Box::pin(recovered.load())).unwrap();
+        let mut recovered = chain_with(storage, SpdmPalAsymAlgo::EccP384, 0);
+        block_on(recovered.load()).unwrap();
         assert_eq!(recovered.active_region(), Some(0));
         let mut rec_bytes = [0u8; 16];
-        fake::wait_for_future_ready(Box::pin(recovered.read(0, &mut rec_bytes))).unwrap();
+        block_on(recovered.read(0, &mut rec_bytes)).unwrap();
         assert_eq!(rec_bytes, [0xAA; 16]);
 
         // Aborting stream leaves region 0 intact.
@@ -1772,44 +1795,44 @@ mod tests {
         assert_eq!(staging.active_region(), Some(0));
 
         // 3. Re-stream and commit to region 1 (sequence 2).
-        let staging = fake::wait_for_future_ready(Box::pin(staging.begin_stream_update(
-            1,
-            CERT_MODEL_ALIAS_CERT,
-            16,
-        )))
-        .unwrap();
-        fake::wait_for_future_ready(Box::pin(staging.write_stream_chunk(0, &[0xBB; 16]))).unwrap();
-        let region = fake::wait_for_future_ready(Box::pin(staging.finish_stream_update(
-            1,
-            CERT_MODEL_ALIAS_CERT,
-            &[0x22; 48],
-            16,
-        )))
-        .unwrap();
+        let mut staging =
+            block_on(staging.begin_stream_update(1, CERT_MODEL_ALIAS_CERT, 16)).unwrap();
+        block_on(staging.write_stream_chunk(0, &[0xBB; 16])).unwrap();
+
+        // Corrupted flash payload during streaming is rejected before committing the header.
+        let mut corrupted_flash = storage.snapshot();
+        let good_flash = corrupted_flash.clone();
+        corrupted_flash[staging.region_data_base(1) + 15] ^= 0x01;
+        storage.set_content(corrupted_flash);
+        assert_eq!(
+            block_on(staging.finish_stream_update(1, CERT_MODEL_ALIAS_CERT, &[0x22; 48], 16)).err(),
+            Some(cert_errors::STORAGE_ERROR),
+        );
+        storage.set_content(good_flash);
+
+        let region =
+            block_on(staging.finish_stream_update(1, CERT_MODEL_ALIAS_CERT, &[0x22; 48], 16))
+                .unwrap();
         assert_eq!(region.active_region(), Some(1));
-        fake::wait_for_future_ready(Box::pin(region.read(0, &mut active_bytes))).unwrap();
+        block_on(region.read(0, &mut active_bytes)).unwrap();
         assert_eq!(active_bytes, [0xBB; 16]);
 
         // Reboot recovery picks region 1 (sequence 2 > region 0 sequence 1).
-        let mut recovered = chain(SpdmPalAsymAlgo::EccP384, 0);
-        fake::wait_for_future_ready(Box::pin(recovered.load())).unwrap();
+        let mut recovered = chain_with(storage, SpdmPalAsymAlgo::EccP384, 0);
+        block_on(recovered.load()).unwrap();
         assert_eq!(recovered.active_region(), Some(1));
-        fake::wait_for_future_ready(Box::pin(recovered.read(0, &mut rec_bytes))).unwrap();
+        block_on(recovered.read(0, &mut rec_bytes)).unwrap();
         assert_eq!(rec_bytes, [0xBB; 16]);
 
         // 4. Third write ping-pongs back to region 0 (sequence 3).
-        let region = fake::wait_for_future_ready(Box::pin(region.write_updated(
-            1,
-            CERT_MODEL_ALIAS_CERT,
-            &[0x33; 48],
-            &[0xCC; 16],
-        )))
-        .unwrap();
+        let region =
+            block_on(region.write_updated(1, CERT_MODEL_ALIAS_CERT, &[0x33; 48], &[0xCC; 16]))
+                .unwrap();
         assert_eq!(region.active_region(), Some(0));
-        let mut recovered = chain(SpdmPalAsymAlgo::EccP384, 0);
-        fake::wait_for_future_ready(Box::pin(recovered.load())).unwrap();
+        let mut recovered = chain_with(storage, SpdmPalAsymAlgo::EccP384, 0);
+        block_on(recovered.load()).unwrap();
         assert_eq!(recovered.active_region(), Some(0));
-        fake::wait_for_future_ready(Box::pin(recovered.read(0, &mut rec_bytes))).unwrap();
+        block_on(recovered.read(0, &mut rec_bytes)).unwrap();
         assert_eq!(rec_bytes, [0xCC; 16]);
     }
 }
@@ -1823,7 +1846,7 @@ mod algo_tests {
 
     #[test]
     fn read_only_slot_is_unprovisioned_for_missing_algorithm() {
-        let ecc_only =
+        let ecc_only: SlotEndorsement =
             SlotEndorsement::ReadOnly(ReadOnlyEndorsementSlot::new(ECC_CHAIN, [0u8; 48]));
         assert!(ecc_only.is_provisioned(CertificateAlgorithm::EccP384));
         // Without an ML-DSA chain the slot must not be advertised in an
@@ -1831,7 +1854,7 @@ mod algo_tests {
         // ECC chain against an ML-DSA negotiation.
         assert!(!ecc_only.is_provisioned(CertificateAlgorithm::MlDsa87));
 
-        let both = SlotEndorsement::ReadOnly(
+        let both: SlotEndorsement = SlotEndorsement::ReadOnly(
             ReadOnlyEndorsementSlot::new(ECC_CHAIN, [0u8; 48]).with_mldsa(MLDSA_CHAIN, [1u8; 48]),
         );
         assert!(both.is_provisioned(CertificateAlgorithm::EccP384));
@@ -1840,14 +1863,14 @@ mod algo_tests {
 
     #[test]
     fn empty_slot_is_never_provisioned() {
-        let empty = SlotEndorsement::Empty;
+        let empty: SlotEndorsement = SlotEndorsement::Empty;
         assert!(!empty.is_provisioned(CertificateAlgorithm::EccP384));
         assert!(!empty.is_provisioned(CertificateAlgorithm::MlDsa87));
     }
 
     #[test]
     fn cert_slot_metadata_consistency_and_write_lock() {
-        let mut slot = CertSlot::empty(Some(1));
+        let mut slot: CertSlot = CertSlot::empty(Some(1));
         assert_eq!(slot.key_pair_id(CertificateAlgorithm::EccP384), None);
         assert_eq!(slot.cert_info(CertificateAlgorithm::EccP384), None);
 
@@ -1890,7 +1913,7 @@ mod algo_tests {
 
     #[test]
     fn configured_identity_is_hidden_for_an_absent_algorithm() {
-        let mut slot = CertSlot::empty(Some(1));
+        let mut slot: CertSlot = CertSlot::empty(Some(1));
         slot.endorsement =
             SlotEndorsement::ReadOnly(ReadOnlyEndorsementSlot::new(ECC_CHAIN, [0; 48]));
         assert_eq!(slot.key_pair_id(CertificateAlgorithm::EccP384), Some(1));

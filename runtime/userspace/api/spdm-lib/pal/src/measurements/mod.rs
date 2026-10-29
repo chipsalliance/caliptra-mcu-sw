@@ -5,6 +5,7 @@
 //! Measurement data is supplied by the platform via a generic
 //! [`MeasurementProvider`] type parameter on [`McuSpdmPal`].
 
+use caliptra_mcu_cert_store::EndorsementStorage;
 use caliptra_mcu_scratch_alloc::BitmapAllocator;
 use caliptra_mcu_spdm_traits::{
     MeasurementInfo, SpdmPalAsymAlgo, SpdmPalMeasurements, SPDM_NONCE_LEN,
@@ -60,7 +61,7 @@ pub trait MeasurementProvider: Sync + 'static {
     ) -> McuResult<usize>;
 }
 
-impl<M: MeasurementProvider> SpdmPalMeasurements for McuSpdmPal<M> {
+impl<M: MeasurementProvider, S: EndorsementStorage> SpdmPalMeasurements for McuSpdmPal<M, S> {
     fn measurement_info(&self) -> &[MeasurementInfo] {
         self.meas_provider.measurement_info()
     }

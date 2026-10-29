@@ -9,8 +9,9 @@
 
 use super::measurements::MeasurementProvider;
 use super::*;
+use caliptra_mcu_cert_store::EndorsementStorage;
 
-impl<M: MeasurementProvider> SpdmPalAlloc for McuSpdmPal<M> {
+impl<M: MeasurementProvider, S: EndorsementStorage> SpdmPalAlloc for McuSpdmPal<M, S> {
     type Box<'a, T>
         = ScratchBox<'a, T>
     where
