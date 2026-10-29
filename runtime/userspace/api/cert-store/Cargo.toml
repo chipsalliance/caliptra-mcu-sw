@@ -11,16 +11,10 @@ caliptra-mcu-common-commands.workspace = true
 caliptra-mcu-measurement-api.workspace = true
 mcu-caliptra-api = { workspace = true, features = ["mailbox-io"] }
 mcu-error.workspace = true
-caliptra-mcu-libsyscall-caliptra = { workspace = true, optional = true }
-caliptra-mcu-libtock_platform = { workspace = true, optional = true }
 
 [dev-dependencies]
-caliptra-mcu-libtock_unittest.workspace = true
 futures.workspace = true
 
 [features]
 default = []
-set-certificate = [
-  "caliptra-mcu-libsyscall-caliptra",
-  "caliptra-mcu-libtock_platform",
-]
+set-certificate = []

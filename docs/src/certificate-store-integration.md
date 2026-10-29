@@ -84,11 +84,13 @@ persistent storage (such as dedicated flash partitions) and configure size limit
 
 #### SDK reference implementation
 
-The SDK provides a reference SPI-flash implementation (`SingleManagedEndorsement`
-in `caliptra-mcu-cert-store`) that integrators can configure or replace to match
-their platform storage:
+`caliptra-mcu-cert-store` owns the managed endorsement record format, A/B
+ping-pong staging, checksum verification, and startup recovery
+(`SingleManagedEndorsement<S>`) over the platform-agnostic `EndorsementStorage`
+trait (`is_available`, `read`, `write`, `erase`), while the reference
+implementation provides `SpiFlashEndorsementStorage` (`user/src/cert_store/mod.rs`):
 
-- **Partition and A/B region layout**: On the emulator reference platform, the
+- **Partition and A/B region layout**: In the reference implementation, the
   `512 KiB` certificate-store partition is divided into four disjoint `128 KiB`
   `(role, algorithm)` allocations (`Owner/Tenant` × `ECC P-384/ML-DSA-87`). Each
   allocation is split into two equal `64 KiB` A/B flash regions (`active_region`

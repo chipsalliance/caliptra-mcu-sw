@@ -4,11 +4,12 @@
 //! Requester authorization and endorsement-content validation are separate.
 
 #![no_std]
+#![allow(async_fn_in_trait)]
 
 mod endorsement;
 mod store;
 
-pub use endorsement::CertSlot;
+pub use endorsement::{CertSlot, EndorsementStorage, NoEndorsementStorage};
 pub use store::{SharedCertStore, TaskCertStore};
 
 use caliptra_mcu_common_commands::{
