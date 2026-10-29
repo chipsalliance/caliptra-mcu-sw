@@ -267,6 +267,11 @@ jobs:
           cargo nextest run --archive-file compatibility-tests.tar.zst --workspace-remap . \
             --profile emulator --run-ignored only --test-threads=1 --no-tests fail \
             -E 'test(=test_rom_runtime_compatibility::fixtures::prepare_inputs)' 2>&1 | tee prepare.log
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version: stable
+          cache: false
       - name: Prepare signed EAT reference values and trust anchors
         shell: bash
         run: |
