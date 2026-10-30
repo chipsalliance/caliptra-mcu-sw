@@ -60,7 +60,7 @@ impl BootFlow for WarmBoot {
         }
         mci.set_flow_checkpoint(McuRomBootStatus::I3cInitialized.into());
 
-        #[cfg(hw_rev = "latest")]
+        #[cfg(hw_capability = "recovery-interface-select")]
         if let Err(err) = params
             .recovery_interface
             .configure(&mci.registers.mci_reg_hw_capabilities)

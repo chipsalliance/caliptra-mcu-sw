@@ -1355,7 +1355,7 @@ impl BootFlow for ColdBoot {
             straps.active_i3c
         );
 
-        #[cfg(hw_rev = "latest")]
+        #[cfg(hw_capability = "recovery-interface-select")]
         if let Err(err) = params
             .recovery_interface
             .configure(&mci.registers.mci_reg_hw_capabilities)
@@ -1802,8 +1802,8 @@ impl BootFlow for ColdBoot {
             owner_pk_hash = None;
         }
 
-        // The 2.1 mailbox command rejects an all-zero owner digest.
-        #[cfg(hw_rev = "2.1")]
+        // The mailbox command rejects an all-zero owner digest.
+        #[cfg(hw_capability = "owner-pk-hash-mailbox")]
         if let Some(ref owner) = owner_pk_hash {
             if owner.0.iter().any(|&word| word != 0) {
                 if let Err(err) =
@@ -1815,10 +1815,10 @@ impl BootFlow for ColdBoot {
             }
         }
 
-        #[cfg(hw_rev = "latest")]
+        #[cfg(hw_capability = "owner-pk-hash-registers")]
         {
-            // 2.2 uses the architectural registers, including a locked zero
-            // digest for an unpinned owner or debug intent.
+            // The register backend installs a locked zero digest for an
+            // unpinned owner or debug intent.
             let digest = owner_pk_hash
                 .as_ref()
                 .map(|owner| owner.0)
