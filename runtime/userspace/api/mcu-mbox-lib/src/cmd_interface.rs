@@ -1344,10 +1344,10 @@ async fn stage_get_cert_chain<H: CaliptraCmdHandler, Alloc: ScratchAlloc>(
     let entity =
         PkiEntitySlot::try_from(req.pki_entity_slot).map_err(|_| errors::INVALID_PARAMS)?;
     let algorithm = AsymAlgo::try_from(req.algorithm).map_err(|_| errors::INVALID_PARAMS)?;
-    if req.length == 0 {
+    let req_len = req.length as usize;
+    if req_len == 0 || req_len > MAX_RESP_DATA_SIZE {
         return Err(errors::INVALID_PARAMS);
     }
-    let req_len = (req.length as usize).min(MAX_RESP_DATA_SIZE);
     let (hdr_bytes, body) = resp_buf
         .split_at_mut_checked(size_of::<MailboxRespHeaderVarSize>())
         .ok_or(errors::INVALID_PARAMS)?;

@@ -218,6 +218,87 @@ impl MockMailbox {
                 self.response_buffer[0..response_len].copy_from_slice(&response);
                 Ok(&self.response_buffer[0..response_len])
             }
+            0x4D47_4349 => {
+                // MC_GET_CERT_CHAIN_INFO ("MGCI")
+                if _payload.len() != 12 {
+                    return Err(MailboxError::InvalidCommand);
+                }
+                let req_chksum = u32::from_le_bytes(_payload[0..4].try_into().unwrap());
+                if req_chksum != calc_checksum(external_cmd, &_payload[4..]) {
+                    return Err(MailboxError::InvalidCommand);
+                }
+                let slot = u32::from_le_bytes(_payload[4..8].try_into().unwrap());
+                let device_key_id = if slot == 0 { 0u32 } else { 1u32 };
+
+                let mut payload = Vec::new();
+                payload.extend_from_slice(&0u32.to_le_bytes()); // fips_status
+                payload.extend_from_slice(&device_key_id.to_le_bytes());
+                payload.extend_from_slice(&64u32.to_le_bytes()); // chain_len
+                payload.extend_from_slice(&[0x5Au8; 48]); // chain_digest
+
+                let chksum = calc_checksum(0, &payload);
+                let mut response = Vec::new();
+                response.extend_from_slice(&chksum.to_le_bytes());
+                response.extend_from_slice(&payload);
+
+                let response_len = response.len();
+                self.response_buffer[0..response_len].copy_from_slice(&response);
+                Ok(&self.response_buffer[0..response_len])
+            }
+            0x4D47_4343 => {
+                // MC_GET_CERT_CHAIN ("MGCC")
+                if _payload.len() != 20 {
+                    return Err(MailboxError::InvalidCommand);
+                }
+                let req_chksum = u32::from_le_bytes(_payload[0..4].try_into().unwrap());
+                if req_chksum != calc_checksum(external_cmd, &_payload[4..]) {
+                    return Err(MailboxError::InvalidCommand);
+                }
+                let offset = u32::from_le_bytes(_payload[12..16].try_into().unwrap()) as usize;
+                let length = u32::from_le_bytes(_payload[16..20].try_into().unwrap()) as usize;
+                let full_chain = [0x30u8; 64];
+                if offset > full_chain.len() || length == 0 {
+                    return Err(MailboxError::InvalidCommand);
+                }
+                let end = (offset + length).min(full_chain.len());
+                let chunk = &full_chain[offset..end];
+
+                let mut payload = Vec::new();
+                payload.extend_from_slice(&0u32.to_le_bytes()); // fips_status
+                payload.extend_from_slice(&(chunk.len() as u32).to_le_bytes());
+                payload.extend_from_slice(chunk);
+
+                let chksum = calc_checksum(0, &payload);
+                let mut response = Vec::new();
+                response.extend_from_slice(&chksum.to_le_bytes());
+                response.extend_from_slice(&payload);
+
+                let response_len = response.len();
+                self.response_buffer[0..response_len].copy_from_slice(&response);
+                Ok(&self.response_buffer[0..response_len])
+            }
+            0x4D53_4343 => {
+                // MC_SET_CERT_CHAIN ("MSCC")
+                if _payload.len() < 28 {
+                    return Err(MailboxError::InvalidCommand);
+                }
+                let req_chksum = u32::from_le_bytes(_payload[0..4].try_into().unwrap());
+                if req_chksum != calc_checksum(external_cmd, &_payload[4..]) {
+                    return Err(MailboxError::InvalidCommand);
+                }
+
+                let mut payload = Vec::new();
+                payload.extend_from_slice(&0u32.to_le_bytes()); // fips_status
+
+                let chksum = calc_checksum(0, &payload);
+                let mut response = Vec::new();
+                response.extend_from_slice(&chksum.to_le_bytes());
+                response.extend_from_slice(&payload);
+
+                let response_len = response.len();
+                self.response_buffer[0..response_len].copy_from_slice(&response);
+                Ok(&self.response_buffer[0..response_len])
+            }
             _ => Err(MailboxError::InvalidCommand),
         }
     }

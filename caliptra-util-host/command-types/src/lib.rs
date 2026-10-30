@@ -63,10 +63,12 @@ pub enum CaliptraCommandId {
     ExportAttestedCsr = 0x1005,
     ExportIdevidCsr = 0x1006,
     GetAttestation = 0x1007,
+    GetCertChainInfo = 0x1008,
     GetCertChain = 0x1010,
     StoreCertificate = 0x1011,
     GetCertificate = 0x1012, // Generic get certificate
     SetCertificate = 0x1013, // Generic set certificate
+    SetCertChain = 0x1014,
 
     // Hash Commands (0x2001-0x2003)
     HashInit = 0x2001,
