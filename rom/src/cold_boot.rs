@@ -1823,7 +1823,7 @@ impl BootFlow for ColdBoot {
                 .as_ref()
                 .map(|owner| owner.0)
                 .unwrap_or([0; 12]);
-            if let Err(err) = env.soc.provision_owner_pk_hash(&digest) {
+            if let Err(err) = env.soc.write_and_lock_owner_pk_hash_csrs(&digest) {
                 caliptra_mcu_romtime::println!("[mcu-rom] owner err: {}", HexWord(err.into()));
                 fatal_error(err);
             }
