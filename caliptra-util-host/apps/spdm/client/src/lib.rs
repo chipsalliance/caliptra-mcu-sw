@@ -61,6 +61,7 @@ use caliptra_mcu_core_util_host_transport::transports::spdm_vdm::transport::{
     SpdmVdmDriver, SpdmVdmError, SpdmVdmTransport,
 };
 use caliptra_mcu_core_util_host_transport::Transport;
+use caliptra_mcu_mbox_common::authorization::AuthorizationMetadata;
 use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
 use caliptra_util_host_commands::api::attestation::{
     caliptra_cmd_get_attestation, caliptra_cmd_get_attestation_formats,
@@ -94,6 +95,7 @@ pub struct SpdmVdmClient<'a> {
 }
 
 pub struct AuthorizedCommandData<'a> {
+    pub metadata: AuthorizationMetadata,
     pub sig: &'a HybridSignature,
     pub nonce: &'a [u8; AUTH_CMD_NONCE_LEN],
     pub ecc_pub_x: &'a [u8; 48],
@@ -205,9 +207,9 @@ impl<'a> SpdmVdmClient<'a> {
     /// # Parameters
     /// - `partition`: OTP partition to program (0-3)
     /// - `sig`: hybrid ECC-P384 + ML-DSA-87 signature over the transcript
-    /// - `nonce`: the 48-byte challenge received from `get_auth_challenge`,
-    ///   echoed back on the wire (device compares it to its stored one-time
-    ///   challenge, then rebuilds the transcript from this wire copy)
+    /// - `nonce`: a live 48-byte challenge from `get_auth_challenge`, or all
+    ///   zeroes for Offline authorization; both signatures bind the selected
+    ///   nonce in the transcript.
     /// - `ecc_pub_x`/`ecc_pub_y`/`mldsa_pub`: the public keys that travel on the
     ///   wire; the device holds only their SHA-384 anchor and re-derives it from
     ///   these received bytes before verifying
@@ -220,14 +222,33 @@ impl<'a> SpdmVdmClient<'a> {
         ecc_pub_y: &[u8; 48],
         mldsa_pub: &[u8; 2592],
     ) -> CaliptraResult<FeProgResponse> {
+        self.fe_prog_with_authorization(
+            partition,
+            AuthorizedCommandData {
+                metadata: AuthorizationMetadata::default(),
+                sig,
+                nonce,
+                ecc_pub_x,
+                ecc_pub_y,
+                mldsa_pub,
+            },
+        )
+    }
+
+    pub fn fe_prog_with_authorization(
+        &mut self,
+        partition: u32,
+        auth: AuthorizedCommandData<'_>,
+    ) -> CaliptraResult<FeProgResponse> {
         use caliptra_mcu_core_util_host_command_types::fuse::FeProgRequest;
         let request = FeProgRequest {
             partition,
-            sig: sig.clone(),
-            nonce: *nonce,
-            ecc_pub_x: *ecc_pub_x,
-            ecc_pub_y: *ecc_pub_y,
-            mldsa_pub: *mldsa_pub,
+            metadata: auth.metadata,
+            sig: auth.sig.clone(),
+            nonce: *auth.nonce,
+            ecc_pub_x: *auth.ecc_pub_x,
+            ecc_pub_y: *auth.ecc_pub_y,
+            mldsa_pub: *auth.mldsa_pub,
         };
         let mut session = self
             .create_session()
@@ -244,6 +265,7 @@ impl<'a> SpdmVdmClient<'a> {
         let request = ProvisionVendorPkHashRequest {
             slot,
             hash: *hash,
+            metadata: auth.metadata,
             sig: auth.sig.clone(),
             nonce: *auth.nonce,
             ecc_pub_x: *auth.ecc_pub_x,
@@ -265,13 +287,32 @@ impl<'a> SpdmVdmClient<'a> {
         ecc_pub_y: &[u8; 48],
         mldsa_pub: &[u8; 2592],
     ) -> CaliptraResult<FuseLockPartitionResponse> {
+        self.fuse_lock_partition_with_authorization(
+            partition,
+            AuthorizedCommandData {
+                metadata: AuthorizationMetadata::default(),
+                sig,
+                nonce,
+                ecc_pub_x,
+                ecc_pub_y,
+                mldsa_pub,
+            },
+        )
+    }
+
+    pub fn fuse_lock_partition_with_authorization(
+        &mut self,
+        partition: u32,
+        auth: AuthorizedCommandData<'_>,
+    ) -> CaliptraResult<FuseLockPartitionResponse> {
         let request = FuseLockPartitionRequest {
             partition,
-            sig: sig.clone(),
-            nonce: *nonce,
-            ecc_pub_x: *ecc_pub_x,
-            ecc_pub_y: *ecc_pub_y,
-            mldsa_pub: *mldsa_pub,
+            metadata: auth.metadata,
+            sig: auth.sig.clone(),
+            nonce: *auth.nonce,
+            ecc_pub_x: *auth.ecc_pub_x,
+            ecc_pub_y: *auth.ecc_pub_y,
+            mldsa_pub: *auth.mldsa_pub,
         };
         let mut session = self
             .create_session()
@@ -288,13 +329,32 @@ impl<'a> SpdmVdmClient<'a> {
         ecc_pub_y: &[u8; 48],
         mldsa_pub: &[u8; 2592],
     ) -> CaliptraResult<ProvisionOwnerPkHashResponse> {
+        self.provision_owner_pk_hash_with_authorization(
+            hash,
+            AuthorizedCommandData {
+                metadata: AuthorizationMetadata::default(),
+                sig,
+                nonce,
+                ecc_pub_x,
+                ecc_pub_y,
+                mldsa_pub,
+            },
+        )
+    }
+
+    pub fn provision_owner_pk_hash_with_authorization(
+        &mut self,
+        hash: &[u8; 48],
+        auth: AuthorizedCommandData<'_>,
+    ) -> CaliptraResult<ProvisionOwnerPkHashResponse> {
         let request = ProvisionOwnerPkHashRequest {
             hash: *hash,
-            sig: sig.clone(),
-            nonce: *nonce,
-            ecc_pub_x: *ecc_pub_x,
-            ecc_pub_y: *ecc_pub_y,
-            mldsa_pub: *mldsa_pub,
+            metadata: auth.metadata,
+            sig: auth.sig.clone(),
+            nonce: *auth.nonce,
+            ecc_pub_x: *auth.ecc_pub_x,
+            ecc_pub_y: *auth.ecc_pub_y,
+            mldsa_pub: *auth.mldsa_pub,
         };
         let mut session = self
             .create_session()
@@ -313,6 +373,7 @@ impl<'a> SpdmVdmClient<'a> {
             flags,
             target,
             svn,
+            metadata: auth.metadata,
             sig: auth.sig.clone(),
             nonce: *auth.nonce,
             ecc_pub_x: *auth.ecc_pub_x,
@@ -338,6 +399,7 @@ impl<'a> SpdmVdmClient<'a> {
             vendor_pk_hash_slot,
             key_type,
             key_index,
+            metadata: auth.metadata,
             sig: auth.sig.clone(),
             nonce: *auth.nonce,
             ecc_pub_x: *auth.ecc_pub_x,
@@ -359,6 +421,7 @@ impl<'a> SpdmVdmClient<'a> {
         let request = FuseRevokeVendorPkHashRequest {
             reserved,
             vendor_pk_hash_slot,
+            metadata: auth.metadata,
             sig: auth.sig.clone(),
             nonce: *auth.nonce,
             ecc_pub_x: *auth.ecc_pub_x,
@@ -378,6 +441,7 @@ impl<'a> SpdmVdmClient<'a> {
     ) -> CaliptraResult<OcpLockRotateHekResponse> {
         let request = OcpLockRotateHekRequest {
             slot,
+            metadata: auth.metadata,
             sig: auth.sig.clone(),
             nonce: *auth.nonce,
             ecc_pub_x: *auth.ecc_pub_x,
@@ -395,6 +459,7 @@ impl<'a> SpdmVdmClient<'a> {
         auth: AuthorizedCommandData<'_>,
     ) -> CaliptraResult<OcpLockSetPermaHekResponse> {
         let request = OcpLockSetPermaHekRequest {
+            metadata: auth.metadata,
             sig: auth.sig.clone(),
             nonce: *auth.nonce,
             ecc_pub_x: *auth.ecc_pub_x,

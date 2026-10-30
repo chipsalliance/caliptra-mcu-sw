@@ -452,32 +452,64 @@ undo revocation.
 
 #### Command Authorization Mechanism
 
-Command authorization across both MCU mailbox and SPDM VDM transports uses an
-asymmetric challenge-response signature flow. To execute an authorized command
-(e.g., key revocation or field entropy programming), the requester must:
+MCU mailbox and SPDM VDM use the same versioned
+[Authorization Block](caliptra_spdm_vdm_cmds.md#authorization-block). Each request
+carries its public keys and both ECDSA P-384 and ML-DSA-87 signatures. Runtime
+authenticates the supplied key pair against an existing, authenticated SoC
+Manifest IME:
 
-1. Request a one-use 48-byte challenge nonce from the device via `Get Auth Challenge`.
-2. Compute dual asymmetric signatures (ECC P-384 and ML-DSA-87) over
-   `cmd_id(BE) || payload(LE) || challenge(48)`.
-3. Submit the command payload accompanied by the resulting hybrid signature.
+- Vendor+Owner authority selects IME `0x4` in the original SoC Manifest.
+- Owner-only authority selects IME `0x6` in the Owner-only SoC Manifest.
 
-Integrators configure the authorizer policy by implementing the platform
-authorizer trait (`CommandAuthorizer` for mailbox or `CaliptraVdmAuthorization` for
-SPDM VDM) and provisioning the corresponding verification public keys in OTP
-fuses, secure platform storage, or embedded in firmware directly.
+The reference policy keeps all existing protected commands **Owner-only**.
+Integrators may explicitly enable Vendor+Owner for individual operations through
+`CommandAuthorizer::permits_authority`. There is no arbitrary IME selector,
+cross-manifest fallback, compiled-in verification-key fallback, or separate
+command-key installation command. The Owner manifest must be active in Core
+before an Owner command can succeed. Existing DPE identities and logic are
+unchanged; configured key digests update the existing IMEs in place.
+
+The signer selects Challenge-bound or Offline authorization independently for
+each request, without rebuilding firmware or querying a mode capability.
+A nonzero nonce must be a live 48-byte device challenge; an all-zero nonce
+selects replayable Offline authorization. Both forms require the same key,
+authority, scope, and signature checks. A nonzero 16-byte target UEID must match local OTP;
+zero UEID selects Fleet scope. Fleet online signatures are still bound to the
+individual device's nonce.
+
+The signed transcript is
+`cmd_id(BE) || payload || version(LE) || authority(LE) || UEID[16] || nonce[48]`.
+ECDSA signs SHA-384 of these bytes. ML-DSA signs their 64-byte SHA-512 digest
+using pure ML-DSA with an empty context. Public keys are bound separately by
+`SHA384(CoreWordEncode(ECC_X) || CoreWordEncode(ECC_Y) || MLDSA_public_key)`.
+Store the standard 48 digest bytes in the selected IME, not their fuse-word
+storage representation.
+
+Configure these entries through the builder's `with_command_auth_key_digests`
+API, or `--command-auth-key-digest HEX_DIGEST` on `xtask auth-manifest create`
+and `xtask owner-manifest create` respectively. The digest is exactly 96 hex
+digits (an optional `0x` prefix is accepted). Repository signing defaults are
+test fixtures; real deployment manifests must use the platform's production
+vendor/owner signing pipeline and dedicated command keys. Existing legacy
+digest fixtures must be reprovisioned in the canonical format for authorization.
+For an Owner command-key-only manifest, supply `--command-auth-key-digest`
+without `--owner_soc_image`; firmware image inputs are not required.
+Authorization integration fixtures explicitly activate an authenticated Owner
+manifest containing the test signer digest on both emulator and FPGA. This is
+test setup, not a Runtime command-key fallback.
 
 The `caliptra-spdm-validator` host tool supports the authorized fuse VDMs
 through the `[provision_vendor_pk_hash]`, `[increase_min_svn]`,
 `[revoke_vendor_pub_key]`, and `[revoke_vendor_pk_hash]` configuration sections.
-All integer fields below are little-endian, and the signature covers exactly the
-bytes before `HybridSignature`:
+Payload integers below are little-endian. The signed transcript is the one
+defined above; supplied public keys and signatures are not included in it.
 
 | Subcommand | Canonical ID | Authorized payload |
 |---|---:|---|
-| Provision Vendor PK Hash | `0x5056504b` (`PVPK`) | `slot:u32 \| hash:[u8;48] \| HybridSignature` |
-| Increase Min SVN | `0x4d434d53` (`MCMS`) | `flags:u32 \| target:u32 \| svn:u32 \| HybridSignature` |
-| Revoke Vendor Public Key | `0x4d52564b` (`MRVK`) | `reserved:u32 \| slot:u32 \| key_type:u32 \| key_index:u32 \| HybridSignature` |
-| Revoke Vendor PK Hash | `0x52564b48` (`RVKH`) | `reserved:u32 \| slot:u32 \| HybridSignature` |
+| Provision Vendor PK Hash | `0x5056504b` (`PVPK`) | `slot:u32 \| hash:[u8;48] \| AuthorizationBlock` |
+| Increase Min SVN | `0x4d434d53` (`MCMS`) | `flags:u32 \| target:u32 \| svn:u32 \| AuthorizationBlock` |
+| Revoke Vendor Public Key | `0x4d52564b` (`MRVK`) | `reserved:u32 \| slot:u32 \| key_type:u32 \| key_index:u32 \| AuthorizationBlock` |
+| Revoke Vendor PK Hash | `0x52564b48` (`RVKH`) | `reserved:u32 \| slot:u32 \| AuthorizationBlock` |
 
 The shared `[authorized_commands]` section supplies the test signer keys. The
 integration harness selects `authorization`, `provision-vendor-pk-hash`,
@@ -487,7 +519,7 @@ asserts responder completion codes for malformed, authorization, and policy
 failures rather than treating transport/session failures as expected rejection.
 These operations burn OTP state: validation must use disposable devices or a
 fresh emulator instance for each independently destructive scenario. The
-checked-in test keys are emulator fixtures only and must not be used as
+checked-in test keys are test fixtures only and must not be used as
 production authorization credentials.
 
 For per-key revocation, the reference implementation rejects the maximum key

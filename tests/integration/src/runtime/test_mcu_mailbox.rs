@@ -8,9 +8,6 @@ use caliptra_api::{
     SocManager,
 };
 use caliptra_image_types::MLDSA87_SIGNATURE_BYTE_SIZE;
-use caliptra_mcu_config::capabilities::{
-    AuthorizedSubcommandCapabilities, ExternalCommandCapabilities, McuRuntimeCapabilities,
-};
 use caliptra_mcu_hw_model::{DefaultHwModel, LifecycleControllerState, McuHwModel};
 use caliptra_mcu_mbox_common::messages::{
     CmEcdhFinishReq, CmEcdhGenerateReq, CmEcdsaPublicKeyReq, CmEcdsaSignReq, CmEcdsaVerifyReq,
@@ -30,7 +27,7 @@ use caliptra_mcu_mbox_common::messages::{
     VendorPkHashStatusReq, GET_ATTESTATION_RESP_PREFIX_LEN, MAX_RESP_DATA_SIZE,
     VENDOR_PQC_KEY_TYPE_LMS,
 };
-use caliptra_mcu_romtime::{handoff::McuRomCapabilities, McuBootMilestones};
+use caliptra_mcu_romtime::McuBootMilestones;
 use minicbor::Decoder;
 use std::mem::size_of;
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
@@ -616,47 +613,8 @@ fn test_device_capabilities_cmd() -> Result<()> {
         .capabilities;
 
     let resp = hw.mailbox_execute_req(DeviceCapsReq::default())?;
-    assert_eq!(&resp.caps[..16], &core_caps);
-    let expected_rom = (McuRomCapabilities::STREAMING_BOOT_I3C
-        | McuRomCapabilities::FLASH_BOOT
-        | McuRomCapabilities::DOT_BOOT)
-        .bits();
-    assert_eq!(
-        u32::from_be_bytes(resp.caps[16..20].try_into().unwrap()),
-        expected_rom
-    );
-    assert_eq!(
-        u32::from_be_bytes(resp.caps[20..24].try_into().unwrap()),
-        McuRuntimeCapabilities::MCI_MAILBOX_SERVICE.bits()
-    );
-    assert_eq!(
-        u32::from_be_bytes(resp.caps[24..28].try_into().unwrap()),
-        (ExternalCommandCapabilities::GET_ATTESTATION
-            | ExternalCommandCapabilities::EXPORT_ATTESTED_CSR
-            | ExternalCommandCapabilities::AUTHORIZED_COMMAND
-            | ExternalCommandCapabilities::DEVICE_OWNERSHIP_TRANSFER)
-            .bits()
-    );
-    assert_eq!(
-        u32::from_be_bytes(resp.caps[28..32].try_into().unwrap()),
-        (AuthorizedSubcommandCapabilities::GET_AUTH_CHALLENGE
-            | AuthorizedSubcommandCapabilities::PROVISION_VENDOR_PK_HASH
-            | AuthorizedSubcommandCapabilities::FUSE_INCREASE_MIN_SVN
-            | AuthorizedSubcommandCapabilities::PROGRAM_FIELD_ENTROPY
-            | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PUBLIC_KEY
-            | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PK_HASH
-            | AuthorizedSubcommandCapabilities::FUSE_LOCK_PARTITION
-            | AuthorizedSubcommandCapabilities::PROVISION_OWNER_PK_HASH
-            | AuthorizedSubcommandCapabilities::ZEROIZE_UDS_FE_AND_ENTER_RMA
-            | AuthorizedSubcommandCapabilities::DOT_ENABLE
-            | AuthorizedSubcommandCapabilities::DOT_LOCK
-            | AuthorizedSubcommandCapabilities::DOT_DISABLE
-            | AuthorizedSubcommandCapabilities::DOT_ROTATE
-            | AuthorizedSubcommandCapabilities::GET_DOT_BACKUP_BLOB)
-            .bits()
-    );
-    assert_eq!(&resp.caps[32..48], &[0; 16]);
-    assert_eq!(&resp.caps[48..64], &[0; 16]);
+    let expected = super::expected_mcu_mailbox_capabilities(core_caps);
+    assert_eq!(resp.as_bytes(), expected.as_bytes().unwrap());
     Ok(())
 }
 
@@ -1799,7 +1757,7 @@ fn test_mcu_mbox_lms_sig_verify() -> Result<()> {
 
 #[test]
 fn test_fe_prog_authorized_req() -> Result<()> {
-    use crate::runtime::execute_authorized_req;
+    use crate::runtime::{execute_authorized_req, start_command_authorized_runtime};
     use caliptra_mcu_builder::{CaliptraBuildArgs, CaliptraBuilder, FirmwareBinaries};
 
     let mcu_runtime_path = compile_runtime(Some("test-mcu-mbox-cmds"), false);
@@ -1824,7 +1782,7 @@ fn test_fe_prog_authorized_req() -> Result<()> {
             (fw, pk_hash_arr, manifest)
         };
 
-    let mut hw = start_runtime_hw_model(TestParams {
+    let mut hw = start_command_authorized_runtime(TestParams {
         feature: Some("test-mcu-mbox-cmds"),
         custom_caliptra_fw: Some(CustomCaliptraFw {
             fw_bytes: caliptra_fw,

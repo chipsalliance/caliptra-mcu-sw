@@ -878,7 +878,8 @@ fn main() {
                 images,
                 output,
                 svn,
-            } => owner_manifest::create(images, output, *svn),
+                command_auth_key_digest,
+            } => owner_manifest::create(images, output, *svn, command_auth_key_digest.as_deref()),
             OwnerManifestCommands::Parse { file } => owner_manifest::parse(file),
         },
         Commands::Corim { subcommand } => match subcommand {

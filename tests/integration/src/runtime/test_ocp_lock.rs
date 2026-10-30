@@ -1,5 +1,6 @@
 // Licensed under the Apache-2.0 license
 
+use crate::runtime::start_command_authorized_runtime;
 use crate::test::{start_runtime_hw_model, TestParams};
 use anyhow::Result;
 use caliptra_mcu_hw_model::McuHwModel;
@@ -25,7 +26,7 @@ fn test_otp_perma_hek_mailbox() -> Result<()> {
         crate::test_hek::test::setup_otp_hek(&mut otp, slot, true, false);
     }
 
-    let mut hw = start_runtime_hw_model(TestParams {
+    let mut hw = start_command_authorized_runtime(TestParams {
         otp_memory: Some(otp),
         ocp_lock_en: true,
         feature: Some("test-ocp-lock"),
@@ -66,7 +67,7 @@ fn test_otp_perma_hek_mailbox_not_zeroized_failure() -> Result<()> {
         crate::test_hek::test::setup_otp_hek(&mut otp, slot, true, false);
     }
 
-    let mut hw = start_runtime_hw_model(TestParams {
+    let mut hw = start_command_authorized_runtime(TestParams {
         otp_memory: Some(otp),
         ocp_lock_en: true,
         feature: Some("test-ocp-lock"),
@@ -103,7 +104,7 @@ fn test_otp_program_hek_mailbox() -> Result<()> {
     let mut otp = vec![0u8; 4096];
     crate::test_hek::test::setup_otp_hek(&mut otp, 0, false, false);
 
-    let mut hw = start_runtime_hw_model(TestParams {
+    let mut hw = start_command_authorized_runtime(TestParams {
         otp_memory: Some(otp),
         ocp_lock_en: true,
         feature: Some("test-ocp-lock"),
@@ -153,7 +154,7 @@ fn test_otp_program_hek_mailbox_used_slot_failure() -> Result<()> {
     let mut otp = vec![0u8; 4096];
     crate::test_hek::test::setup_otp_hek(&mut otp, 0, false, false);
 
-    let mut hw = start_runtime_hw_model(TestParams {
+    let mut hw = start_command_authorized_runtime(TestParams {
         otp_memory: Some(otp),
         ocp_lock_en: true,
         feature: Some("test-ocp-lock"),
@@ -188,7 +189,7 @@ fn test_otp_zero_hek_mailbox() -> Result<()> {
     let mut otp = vec![0u8; 4096];
     crate::test_hek::test::setup_otp_hek(&mut otp, 0, false, false);
 
-    let mut hw = start_runtime_hw_model(TestParams {
+    let mut hw = start_command_authorized_runtime(TestParams {
         otp_memory: Some(otp),
         ocp_lock_en: true,
         feature: Some("test-ocp-lock"),
@@ -226,7 +227,7 @@ fn test_otp_zero_hek_mailbox_used_slot_failure() -> Result<()> {
     let mut otp = vec![0u8; 4096];
     crate::test_hek::test::setup_otp_hek(&mut otp, 0, false, false);
 
-    let mut hw = start_runtime_hw_model(TestParams {
+    let mut hw = start_command_authorized_runtime(TestParams {
         otp_memory: Some(otp),
         ocp_lock_en: true,
         feature: Some("test-ocp-lock"),
@@ -263,7 +264,7 @@ fn test_otp_rotate_hek_mailbox() -> Result<()> {
     // Program valid HEK in slot 0 (slot 1 starts empty)
     crate::test_hek::test::setup_otp_hek(&mut otp, 0, false, false);
 
-    let mut hw = start_runtime_hw_model(TestParams {
+    let mut hw = start_command_authorized_runtime(TestParams {
         otp_memory: Some(otp),
         ocp_lock_en: true,
         feature: Some("test-ocp-lock"),
@@ -333,7 +334,7 @@ fn test_otp_rotate_hek_mailbox() -> Result<()> {
     let modified_otp = otp_after;
     drop(hw);
 
-    let mut hw_after_reboot = start_runtime_hw_model(TestParams {
+    let mut hw_after_reboot = start_command_authorized_runtime(TestParams {
         otp_memory: Some(modified_otp),
         ocp_lock_en: true,
         feature: Some("test-ocp-lock"),

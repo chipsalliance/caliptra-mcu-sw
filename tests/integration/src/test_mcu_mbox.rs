@@ -12,9 +12,6 @@ pub mod test {
         },
         SocManager,
     };
-    use caliptra_mcu_config::capabilities::{
-        AuthorizedSubcommandCapabilities, ExternalCommandCapabilities, McuRuntimeCapabilities,
-    };
     use caliptra_mcu_hw_model::mcu_mbox_transport::{
         McuMailboxError, McuMailboxResponse, McuMailboxTransport,
     };
@@ -30,29 +27,27 @@ pub mod test {
         CmHkdfExtractReq, CmHmacKdfCounterReq, CmHmacReq, CmImportReq, CmKeyUsage,
         CmMldsaPublicKeyReq, CmMldsaSignReq, CmMldsaVerifyReq, CmRandomGenerateReq,
         CmRandomStirReq, CmShaFinalReq, CmShaFinalResp, CmShaInitReq, CmShaUpdateReq, Cmk,
-        CommandId as McuCommandId, DeviceCapsReq, DeviceCapsResp, FirmwareVersionReq,
-        FirmwareVersionResp, GetLogReq, MailboxReqHeader, MailboxRespHeader,
-        MailboxRespHeaderVarSize, McuAesDecryptInitReq, McuAesDecryptUpdateReq,
-        McuAesEncryptInitReq, McuAesEncryptUpdateReq, McuAesGcmDecryptFinalReq,
-        McuAesGcmDecryptInitReq, McuAesGcmDecryptUpdateReq, McuAesGcmEncryptFinalReq,
-        McuAesGcmEncryptInitReq, McuAesGcmEncryptUpdateReq, McuCmDeleteReq, McuCmImportReq,
-        McuCmImportResp, McuCmStatusReq, McuCmStatusResp, McuEcdhFinishReq, McuEcdhFinishResp,
-        McuEcdhGenerateReq, McuEcdhGenerateResp, McuEcdsaCmkPublicKeyReq, McuEcdsaCmkPublicKeyResp,
-        McuEcdsaCmkSignReq, McuEcdsaCmkSignResp, McuEcdsaCmkVerifyReq, McuEcdsaCmkVerifyResp,
-        McuFipsPeriodicEnableReq, McuFipsPeriodicStatusReq, McuFipsPeriodicStatusResp,
-        McuFipsSelfTestGetResultsReq, McuFipsSelfTestStartReq, McuFipsSelfTestStartResp,
-        McuHkdfExpandReq, McuHkdfExpandResp, McuHkdfExtractReq, McuHkdfExtractResp,
-        McuHmacKdfCounterReq, McuHmacKdfCounterResp, McuHmacReq, McuMailboxReq, McuMailboxResp,
-        McuMldsaCmkPublicKeyReq, McuMldsaCmkPublicKeyResp, McuMldsaCmkSignReq, McuMldsaCmkSignResp,
-        McuMldsaCmkVerifyReq, McuMldsaCmkVerifyResp, McuProdDebugUnlockReqReq,
-        McuProdDebugUnlockTokenReq, McuRandomGenerateReq, McuRandomStirReq, McuShaFinalReq,
-        McuShaFinalResp, McuShaInitReq, McuShaInitResp, McuShaUpdateReq,
-        ProductionAuthDebugUnlockChallenge, ProductionAuthDebugUnlockReq,
-        ProductionAuthDebugUnlockToken, CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE,
-        CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, DEVICE_CAPS_SIZE, MAX_CMB_DATA_SIZE,
+        CommandId as McuCommandId, DeviceCapsReq, FirmwareVersionReq, FirmwareVersionResp,
+        GetLogReq, MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize,
+        McuAesDecryptInitReq, McuAesDecryptUpdateReq, McuAesEncryptInitReq, McuAesEncryptUpdateReq,
+        McuAesGcmDecryptFinalReq, McuAesGcmDecryptInitReq, McuAesGcmDecryptUpdateReq,
+        McuAesGcmEncryptFinalReq, McuAesGcmEncryptInitReq, McuAesGcmEncryptUpdateReq,
+        McuCmDeleteReq, McuCmImportReq, McuCmImportResp, McuCmStatusReq, McuCmStatusResp,
+        McuEcdhFinishReq, McuEcdhFinishResp, McuEcdhGenerateReq, McuEcdhGenerateResp,
+        McuEcdsaCmkPublicKeyReq, McuEcdsaCmkPublicKeyResp, McuEcdsaCmkSignReq, McuEcdsaCmkSignResp,
+        McuEcdsaCmkVerifyReq, McuEcdsaCmkVerifyResp, McuFipsPeriodicEnableReq,
+        McuFipsPeriodicStatusReq, McuFipsPeriodicStatusResp, McuFipsSelfTestGetResultsReq,
+        McuFipsSelfTestStartReq, McuFipsSelfTestStartResp, McuHkdfExpandReq, McuHkdfExpandResp,
+        McuHkdfExtractReq, McuHkdfExtractResp, McuHmacKdfCounterReq, McuHmacKdfCounterResp,
+        McuHmacReq, McuMailboxReq, McuMailboxResp, McuMldsaCmkPublicKeyReq,
+        McuMldsaCmkPublicKeyResp, McuMldsaCmkSignReq, McuMldsaCmkSignResp, McuMldsaCmkVerifyReq,
+        McuMldsaCmkVerifyResp, McuProdDebugUnlockReqReq, McuProdDebugUnlockTokenReq,
+        McuRandomGenerateReq, McuRandomStirReq, McuShaFinalReq, McuShaFinalResp, McuShaInitReq,
+        McuShaInitResp, McuShaUpdateReq, ProductionAuthDebugUnlockChallenge,
+        ProductionAuthDebugUnlockReq, ProductionAuthDebugUnlockToken,
+        CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, MAX_CMB_DATA_SIZE,
     };
     use caliptra_mcu_registers_generated::mci;
-    use caliptra_mcu_romtime::handoff::McuRomCapabilities;
     use caliptra_mcu_testing_common::{
         emulator_ticks_elapsed, get_emulator_ticks, sleep_emulator_ticks, wait_for_runtime_start,
     };
@@ -661,53 +656,8 @@ pub mod test {
             let cmd = device_caps_req.cmd_code();
             device_caps_req.populate_chksum().unwrap();
 
-            let mut device_caps_resp = McuMailboxResp::DeviceCaps(DeviceCapsResp {
-                hdr: MailboxRespHeader::default(),
-                caps: {
-                    let mut c = [0u8; DEVICE_CAPS_SIZE];
-                    c[..16].copy_from_slice(&self.core_capabilities);
-                    c[16..20].copy_from_slice(
-                        &(McuRomCapabilities::STREAMING_BOOT_I3C
-                            | McuRomCapabilities::FLASH_BOOT
-                            | McuRomCapabilities::DOT_BOOT)
-                            .bits()
-                            .to_be_bytes(),
-                    );
-                    c[20..24].copy_from_slice(
-                        &McuRuntimeCapabilities::MCI_MAILBOX_SERVICE
-                            .bits()
-                            .to_be_bytes(),
-                    );
-                    c[24..28].copy_from_slice(
-                        &(ExternalCommandCapabilities::GET_ATTESTATION
-                            | ExternalCommandCapabilities::EXPORT_ATTESTED_CSR
-                            | ExternalCommandCapabilities::AUTHORIZED_COMMAND
-                            | ExternalCommandCapabilities::DEVICE_OWNERSHIP_TRANSFER)
-                            .bits()
-                            .to_be_bytes(),
-                    );
-                    c[28..32].copy_from_slice(
-                        &(AuthorizedSubcommandCapabilities::GET_AUTH_CHALLENGE
-                            | AuthorizedSubcommandCapabilities::PROVISION_VENDOR_PK_HASH
-                            | AuthorizedSubcommandCapabilities::FUSE_INCREASE_MIN_SVN
-                            | AuthorizedSubcommandCapabilities::PROGRAM_FIELD_ENTROPY
-                            | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PUBLIC_KEY
-                            | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PK_HASH
-                            | AuthorizedSubcommandCapabilities::FUSE_LOCK_PARTITION
-                            | AuthorizedSubcommandCapabilities::PROVISION_OWNER_PK_HASH
-                            | AuthorizedSubcommandCapabilities::DOT_ENABLE
-                            | AuthorizedSubcommandCapabilities::DOT_LOCK
-                            | AuthorizedSubcommandCapabilities::DOT_DISABLE
-                            | AuthorizedSubcommandCapabilities::DOT_ROTATE
-                            | AuthorizedSubcommandCapabilities::GET_DOT_BACKUP_BLOB
-                            | AuthorizedSubcommandCapabilities::ZEROIZE_UDS_FE_AND_ENTER_RMA)
-                            .bits()
-                            .to_be_bytes(),
-                    );
-                    c
-                },
-            });
-            device_caps_resp.populate_chksum().unwrap();
+            let device_caps_resp =
+                crate::runtime::expected_mcu_mailbox_capabilities(self.core_capabilities);
 
             self.push(
                 cmd.0,
