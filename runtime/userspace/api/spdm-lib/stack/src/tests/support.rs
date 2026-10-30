@@ -33,6 +33,7 @@ pub const TEST_CERT_CHAIN: &[u8] = &[0x30, 0x03, 1, 2, 3, 0x30, 0x01, 4];
 #[derive(Clone)]
 pub struct TestHashState {
     digest: [u8; SHA384_DIGEST_SIZE],
+    pub bytes: Vec<u8>,
 }
 
 pub struct TestIo {
@@ -100,11 +101,14 @@ impl<T> DerefMut for TestBox<'_, T> {
 }
 
 pub struct TestPal {
+    pub header_size: usize,
+    pub send_len_alignment: usize,
     pub mtu: usize,
     pub large_buffered_msg_capacity: usize,
     pub max_inbound_spdm_request_size: usize,
     pub supported_slots: u8,
     pub provisioned_slots: u8,
+    pub mldsa_provisioned_slots: Option<u8>,
     pub authorized: bool,
     pub validate_error: Option<McuErrorCode>,
     pub write_error: Option<McuErrorCode>,
@@ -121,6 +125,7 @@ pub struct TestPal {
     /// Algorithm passed to the most recent measurement value retrieval.
     pub meas_algo: Cell<Option<SpdmPalAsymAlgo>>,
     pub sign_ops: RefCell<Vec<RecordedSign>>,
+    pub hash_finishes: RefCell<Vec<Vec<u8>>>,
     pub aead_decrypt_error: Cell<Option<McuErrorCode>>,
     pub last_aead_decrypt_sequence: Cell<Option<u64>>,
 }
@@ -143,11 +148,14 @@ pub struct RecordedSign {
 impl Default for TestPal {
     fn default() -> Self {
         Self {
+            header_size: 0,
+            send_len_alignment: 1,
             mtu: 1024,
             large_buffered_msg_capacity: 1024,
             max_inbound_spdm_request_size: 1024,
             supported_slots: u8::MAX,
             provisioned_slots: 1,
+            mldsa_provisioned_slots: None,
             authorized: true,
             validate_error: None,
             write_error: None,
@@ -162,6 +170,7 @@ impl Default for TestPal {
             write_algo: Cell::new(None),
             meas_algo: Cell::new(None),
             sign_ops: RefCell::new(Vec::new()),
+            hash_finishes: RefCell::new(Vec::new()),
             aead_decrypt_error: Cell::new(None),
             last_aead_decrypt_sequence: Cell::new(None),
         }
@@ -248,7 +257,11 @@ impl SpdmPalIoTransport for TestPal {
     }
 
     fn header_size(&self) -> usize {
-        0
+        self.header_size
+    }
+
+    fn send_len_alignment(&self) -> usize {
+        self.send_len_alignment
     }
 
     fn mtu(&self) -> usize {
@@ -280,6 +293,7 @@ impl SpdmPalHash for TestPal {
     ) -> McuResult<Self::State> {
         Ok(TestHashState {
             digest: test_digest(seed),
+            bytes: seed.to_vec(),
         })
     }
 
@@ -290,6 +304,7 @@ impl SpdmPalHash for TestPal {
         data: &[u8],
     ) -> McuResult<()> {
         state.digest = test_digest(data);
+        state.bytes.extend_from_slice(data);
         Ok(())
     }
 
@@ -303,14 +318,20 @@ impl SpdmPalHash for TestPal {
         state: &mut Self::State,
         out: &mut [u8],
     ) -> McuResult<()> {
+        self.hash_finishes.borrow_mut().push(state.bytes.clone());
         out[..SHA384_DIGEST_SIZE].copy_from_slice(&state.digest);
         Ok(())
     }
 }
 
 impl SpdmPalCertStore for TestPal {
-    fn provisioned_slots(&self, _algo: SpdmPalAsymAlgo) -> u8 {
-        self.provisioned_slots
+    fn provisioned_slots(&self, algo: SpdmPalAsymAlgo) -> u8 {
+        match algo {
+            SpdmPalAsymAlgo::EccP384 => self.provisioned_slots,
+            SpdmPalAsymAlgo::MlDsa87 => self
+                .mldsa_provisioned_slots
+                .unwrap_or(self.provisioned_slots),
+        }
     }
 
     fn supported_slots(&self) -> u8 {
@@ -897,6 +918,7 @@ pub async fn drain_chunked_response(
 
         let chunk_rsp = crate::chunk::handle_chunk_get(state, pal, io, &chunk_get_buf).await?;
         let head = pal.header_size();
+        assert_eq!(chunk_rsp.len() % pal.send_len_alignment(), 0);
         let spdm_msg = &chunk_rsp[head..];
 
         let (hdr, rest) = SpdmMsgHdrPdu::ref_from_prefix(spdm_msg)
@@ -915,7 +937,9 @@ pub async fn drain_chunked_response(
         } else {
             chunk_data
         };
-        reassembled.extend_from_slice(payload);
+        let chunk_len = body.chunk_size.get() as usize;
+        assert!(payload[chunk_len..].iter().all(|&byte| byte == 0));
+        reassembled.extend_from_slice(&payload[..chunk_len]);
 
         let is_last = (body.chunk_sender_attr & CHUNK_ATTR_LAST_CHUNK) != 0;
         if is_last {

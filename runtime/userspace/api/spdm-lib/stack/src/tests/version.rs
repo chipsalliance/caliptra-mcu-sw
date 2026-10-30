@@ -115,42 +115,57 @@ fn invalid_get_version_preserves_connection_and_sessions() {
 
 #[test]
 fn get_version_clears_transcript_and_chunk_state() {
-    let pal = TestPal::default();
-    let io = TestIo::message(Vec::new());
-    let mut state = ConnectionState {
-        phase: Phase::AfterAlgorithms,
-        version: SpdmVersion::V14,
-        ..ConnectionState::default()
-    };
-    block_on(state.transcript.append_vca(&pal, &io, b"VCA")).unwrap();
-    block_on(state.transcript.append_m1(&pal, &io, b"M1")).unwrap();
-    block_on(state.transcript.append_l1(&pal, &io, b"L1")).unwrap();
-    state
-        .large_msg_ctx
-        .start_response(
-            crate::chunk::LargeResponse::Buffered,
-            3,
-            Some(vec![1, 2, 3]),
-        )
-        .unwrap();
-    let mut sessions = SessionManager::new();
-
-    let response = dispatch_request(
-        &mut state,
-        &mut sessions,
-        &pal,
-        get_version_request(SpdmVersion::V10.to_u8(), 0, 0),
-    )
-    .unwrap();
-
-    let mut vca_digest = [0u8; support::SHA384_DIGEST_SIZE];
-    block_on(pal.hash_finish(&io, state.transcript.vca.as_mut().unwrap(), &mut vca_digest))
-        .unwrap();
-    assert_eq!(vca_digest, test_digest(&response));
-    assert!(state.transcript.m1.is_none());
-    assert!(state.transcript.l1.is_none());
-    assert!(state.large_msg_ctx.is_idle());
-    assert!(state.large_msg_ctx.get_buffer().is_none());
+    let mut baseline = None;
+    for (header_size, send_len_alignment) in [(0, 1), (1, 1), (8, 4)] {
+        let pal = TestPal {
+            header_size,
+            send_len_alignment,
+            ..TestPal::default()
+        };
+        let io = TestIo::message(Vec::new());
+        let mut state = ConnectionState {
+            phase: Phase::AfterAlgorithms,
+            version: SpdmVersion::V14,
+            ..ConnectionState::default()
+        };
+        block_on(state.transcript.append_vca(&pal, &io, b"VCA")).unwrap();
+        block_on(state.transcript.append_m1(&pal, &io, b"M1")).unwrap();
+        block_on(state.transcript.append_l1(&pal, &io, b"L1")).unwrap();
+        state
+            .large_msg_ctx
+            .start_response(
+                crate::chunk::LargeResponse::Buffered,
+                3,
+                Some(vec![1, 2, 3]),
+            )
+            .unwrap();
+        let mut sessions = SessionManager::new();
+        let request = get_version_request(SpdmVersion::V10.to_u8(), 0, 0);
+        let response = dispatch_request(&mut state, &mut sessions, &pal, request.clone()).unwrap();
+        let payload = &response[header_size..header_size + 12];
+        assert_eq!(response.len() % send_len_alignment, 0);
+        assert!(response[..header_size].iter().all(|&byte| byte == 0));
+        assert!(response[header_size + 12..].iter().all(|&byte| byte == 0));
+        assert_eq!(state.phase, Phase::AfterVersion);
+        assert_eq!(
+            state.transcript.vca.as_ref().unwrap().bytes,
+            [request.as_slice(), payload].concat()
+        );
+        let mut vca_digest = [0u8; support::SHA384_DIGEST_SIZE];
+        block_on(pal.hash_finish(&io, state.transcript.vca.as_mut().unwrap(), &mut vca_digest))
+            .unwrap();
+        assert_eq!(vca_digest, test_digest(payload));
+        assert!(state.transcript.m1.is_none());
+        assert!(state.transcript.l1.is_none());
+        assert!(state.large_msg_ctx.is_idle());
+        assert!(state.large_msg_ctx.get_buffer().is_none());
+        let result = (payload.to_vec(), pal.hash_finishes.borrow().clone());
+        if let Some(expected) = &baseline {
+            assert_eq!(&result, expected);
+        } else {
+            baseline = Some(result);
+        }
+    }
 }
 
 #[test]

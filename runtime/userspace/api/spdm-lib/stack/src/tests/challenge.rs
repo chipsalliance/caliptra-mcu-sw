@@ -236,3 +236,85 @@ fn challenge_v14_rejects_truncated_requester_context() {
     let io = TestIo::message(req);
     assert!(block_on(handle_challenge(&mut state, &pal, &io)).is_err());
 }
+
+#[test]
+fn doe_and_mctp_challenge_chunking_preserves_payload_and_signing_transcript() {
+    for pqc in [false, true] {
+        let mut baseline = None;
+        for (header_size, send_len_alignment, mtu) in
+            [(1, 1, 8192), (8, 4, 8192), (1, 1, 128), (8, 4, 128)]
+        {
+            let pal = TestPal {
+                header_size,
+                send_len_alignment,
+                mtu,
+                large_buffered_msg_capacity: 8192,
+                ..TestPal::default()
+            };
+            let mut state = if pqc {
+                mldsa_state(SpdmVersion::V14)
+            } else {
+                ecdsa_state(SpdmVersion::V14)
+            };
+            state.peer_cap_flags = CapFlags::CHUNK;
+            state.peer_data_transfer_size = mtu as u32;
+            state.peer_max_spdm_msg_size = 8192;
+            let io = TestIo::message(challenge_request(SpdmVersion::V14, 0, 0));
+            block_on(state.transcript.append_vca(&pal, &io, b"VCA")).unwrap();
+            let response = block_on(handle_challenge(&mut state, &pal, &io)).unwrap();
+            let signature_size = if pqc {
+                MLDSA87_SIGNATURE_SIZE
+            } else {
+                ECC_P384_SIGNATURE_SIZE
+            };
+            let spdm_len = SpdmMsgHdrPdu::SIZE
+                + 1
+                + 1
+                + SHA384_HASH_SIZE
+                + SPDM_NONCE_LEN
+                + 2
+                + REQUESTER_CONTEXT_LEN
+                + signature_size;
+            let payload = if response[header_size + 1] == ReqRespCode::ERROR.0 {
+                let handle = response[header_size + 4];
+                for (bad_handle, sequence) in [(handle.wrapping_add(1), 0u32), (handle, 1u32)] {
+                    let mut request = std::vec![
+                        SpdmVersion::V14.to_u8(),
+                        ReqRespCode::CHUNK_GET.0,
+                        0,
+                        bad_handle
+                    ];
+                    request.extend_from_slice(&sequence.to_le_bytes());
+                    assert_eq!(
+                        block_on(crate::chunk::handle_chunk_get(
+                            &mut state, &pal, &io, &request
+                        )),
+                        Err(crate::error::SPDM_INVALID_REQUEST)
+                    );
+                    assert_eq!(state.large_msg_ctx.response().unwrap().bytes_sent, 0);
+                }
+                let payload =
+                    block_on(drain_chunked_response(&mut state, &pal, &io, handle)).unwrap();
+                assert!(state.large_msg_ctx.is_idle());
+                assert!(state.large_msg_ctx.get_buffer().is_none());
+                payload
+            } else {
+                assert!(response[header_size + spdm_len..]
+                    .iter()
+                    .all(|&byte| byte == 0));
+                response[header_size..header_size + spdm_len].to_vec()
+            };
+            assert_eq!(payload.len(), spdm_len);
+            let result = (
+                payload,
+                pal.sign_ops.borrow().clone(),
+                pal.hash_finishes.borrow().clone(),
+            );
+            if let Some(expected) = &baseline {
+                assert_eq!(&result, expected);
+            } else {
+                baseline = Some(result);
+            }
+        }
+    }
+}
