@@ -583,6 +583,11 @@ impl McuError {
             "MCU mailbox 0 AXI user verification failed after locking"
         ),
         (
+            ROM_SOC_RECOVERY_INTERFACE_VERIFY_FAILED,
+            0x5_001F,
+            "Caliptra recovery interface selection verification failed"
+        ),
+        (
             ROM_SOC_SS_CONFIG_DONE_VERIFY_FAILED,
             0x5_0010,
             "SS_CONFIG_DONE or SS_CONFIG_DONE_STICKY verification failed after setting"
