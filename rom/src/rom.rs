@@ -136,7 +136,7 @@ impl Soc {
         Soc { registers }
     }
 
-    #[cfg(hw_rev = "latest")]
+    #[cfg(hw_capability = "owner-pk-hash-registers")]
     pub(crate) fn provision_owner_pk_hash(&self, digest: &[u32; 12]) -> McuResult<()> {
         let matches = || {
             self.registers
@@ -434,7 +434,7 @@ impl Soc {
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
         self.registers.fuse_mldsa_revocation.set(word);
 
-        // Owner PK hash is provisioned after DOT: mailbox on 2.1, registers on latest.
+        // Owner PK hash is provisioned after DOT using the selected backend.
 
         // Stable owner key builds forward HEK for derivation here.
         // OCP LOCK keeps its HEK selection and handoff metadata in the OCP path below.
@@ -952,8 +952,8 @@ pub enum DotRecoveryPolicy {
     None,
 }
 
-/// Recovery register and signal routing presented to Caliptra Core on 2.2.
-#[cfg(hw_rev = "latest")]
+/// Recovery register and signal routing presented to Caliptra Core.
+#[cfg(hw_capability = "recovery-interface-select")]
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum RecoveryInterface {
     #[default]
@@ -961,7 +961,7 @@ pub enum RecoveryInterface {
     Usb,
 }
 
-#[cfg(hw_rev = "latest")]
+#[cfg(hw_capability = "recovery-interface-select")]
 impl RecoveryInterface {
     pub(crate) fn configure(
         self,
@@ -982,7 +982,7 @@ impl RecoveryInterface {
     }
 }
 
-#[cfg(all(test, hw_rev = "latest"))]
+#[cfg(all(test, hw_capability = "recovery-interface-select"))]
 mod recovery_interface_tests {
     use super::*;
     use tock_registers::registers::InMemoryRegister;
@@ -1045,7 +1045,7 @@ pub struct RomParameters<'a> {
     /// and warm boot.
     /// Defaults to I3C, including flash and AXI-bypass boot. USB platforms must
     /// opt in explicitly; this selects routing, not USB controller initialization.
-    #[cfg(hw_rev = "latest")]
+    #[cfg(hw_capability = "recovery-interface-select")]
     pub recovery_interface: RecoveryInterface,
     pub lifecycle_transition: Option<(LifecycleControllerState, LifecycleToken)>,
     pub burn_lifecycle_tokens: Option<LifecycleHashedTokens>,
@@ -1283,7 +1283,7 @@ impl From<&RomParameters<'_>> for AxiUsers {
     }
 }
 
-#[cfg(all(test, hw_rev = "latest"))]
+#[cfg(all(test, hw_capability = "owner-pk-hash-registers"))]
 mod owner_pk_hash_tests {
     extern crate std;
 

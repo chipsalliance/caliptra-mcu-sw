@@ -49,6 +49,33 @@ For more details on how to run tests locally, how CI works, and how to add new t
 Set `CALIPTRA_HW_REV` to `2.1` or `latest` (default) to select the hardware
 revision. Use the matching Caliptra software version as shown below.
 
+Functionality is gated by named capabilities rather than revision labels:
+
+```rust
+#[cfg(hw_capability = "usb-support")]
+```
+
+The shared `caliptra-mcu-hw-revision` build helper derives these cfgs from the
+selected hardware revision and its pinned Core:
+
+| Capability | `2.1` | `latest` |
+| --- | --- | --- |
+| `usb-support` (compound USB registers and packet-memory windows) | No | Yes |
+| `recovery-interface-select` (Caliptra recovery register/signal routing) | No | Yes |
+| `owner-pk-hash-mailbox` (DOT owner hash via Core mailbox) | Yes | No |
+| `owner-pk-hash-registers` (DOT owner hash via architectural registers) | No | Yes |
+| `mbox-target-done` (mailbox completion requires DONE) | Yes | No |
+| `mbox-status-completion` (mailbox completion uses non-BUSY status) | No | Yes |
+
+Add capabilities and their revision mapping in `hw/revision/src/lib.rs`; each
+consuming crate's build script must call `emit_build_configuration()`. Ordinary
+Rust build scripts emit cfgs only for their own crate, not dependencies.
+Keep `hw_rev` gates for exact register snapshots, revision-specific constructor
+layouts, and temporary revision-specific test exclusions. Capabilities are not
+Cargo features: retain Cargo features for optional software and dependencies.
+USB availability does not select USB boot or initialize a USB controller; the
+ROM still defaults to I3C routing unless explicitly configured otherwise.
+
 ## Caliptra software versions
 
 Use `cargo xtask switch-version` to select `2.1` or `latest` (default).
