@@ -96,6 +96,24 @@ This script provides a number of configuration options for features that can be 
 | BUILD=TRUE  | Automatically start building the FPGA.
 | GUI=TRUE    | Open the Vivado GUI.
 
+The build applies additional placement spreading and congestion settings when
+Vivado exposes the `STEPS.PLACE_DESIGN.ARGS.SUBDIRECTIVE` run property. Otherwise,
+it prints a warning and uses the `Explore` directive alone. Check placement and
+timing results before using the generated image.
+
+This checkout uses Caliptra SS `main` at `726db5ba` and its pinned submodules.
+The FPGA wrapper preserves the existing I3C and backdoor ROM/OTP interfaces,
+provides the new 4 KiB MCU ROM-patch SRAM, and uses TRNG source 0 with source 1
+disabled. The USB PHY and USB memory interfaces are inactive: no ULPI daughter
+card is required or supported by this configuration, and USB recovery is not
+available. The subsystem SPI host and UART are disabled; the existing external
+flash controllers and Versal console are unchanged. USB RTL is included to
+resolve the subsystem's instances, but its AXI ports accept no requests and its
+PHY is held disabled. ROM/firmware compatibility with this SS revision still
+requires separate runtime validation.
+The IP packager also preserves the `lib/` and `generated/` header paths used by
+the Core RTL and USB sources, so their relative includes resolve during synthesis.
+
 ### Build boot.bin: ###
 
 Note: If using the Calptra CI Image (or PetaLinux image), you can skip this step. Instead use a segmented bitstream and load the PDI file directly.
