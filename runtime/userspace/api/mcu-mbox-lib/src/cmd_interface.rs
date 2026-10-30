@@ -8,20 +8,22 @@ use caliptra_mcu_common_commands::command::execute_dot;
 use caliptra_mcu_common_commands::command::execute_ocp_lock;
 use caliptra_mcu_common_commands::command::{execute_authorized, CommandPolicy, CommandResponse};
 use caliptra_mcu_common_commands::{
-    AsymAlgo, CaliptraCmdHandler, CaliptraCompletionCode, CommandAuthorizer, DebugUnlockChallenge,
-    DeviceCapabilities, EvidenceFormat, FirmwareVersion, GetLogResult, PkiEntitySlot,
-    EVIDENCE_FORMAT_QUERY,
+    AsymAlgo, CaliptraCmdHandler, CaliptraCompletionCode, CertChainInfo, CommandAuthorizer,
+    DebugUnlockChallenge, DeviceCapabilities, EvidenceFormat, FirmwareVersion, GetLogResult,
+    PkiEntitySlot, EVIDENCE_FORMAT_QUERY,
 };
 use caliptra_mcu_libsyscall_caliptra::mcu_mbox::MbxCmdStatus;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_mbox_common::messages::{
     ClearLogReq, ClearLogResp, CommandId, DeviceCapsReq, DeviceCapsResp, DpeSignerContextCertReq,
     EndorsementAlgorithm, FirmwareVersionReq, FirmwareVersionResp, FuseReadResp, GetAttestationReq,
-    GetAuthCmdChallengeResp, GetDpeCertChainReq, GetLogReq, HekStatusReq, HekStatusResp, LogType,
+    GetAuthCmdChallengeResp, GetCertChainInfoReq, GetCertChainInfoResp, GetCertChainReq,
+    GetCertChainResp, GetDpeCertChainReq, GetLogReq, HekStatusReq, HekStatusResp, LogType,
     MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize, McuFeStatusReq, McuFeStatusResp,
     McuMailboxReq, McuMailboxResp, McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp,
-    McuProdDebugUnlockTokenReq, McuResponseVarSize, VendorPkHashStatusReq, VendorPkHashStatusResp,
-    DEVICE_CAPS_SIZE, GET_ATTESTATION_RESP_PREFIX_LEN, MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
+    McuProdDebugUnlockTokenReq, McuResponseVarSize, SetCertChainReq, SetCertChainResp,
+    VendorPkHashStatusReq, VendorPkHashStatusResp, DEVICE_CAPS_SIZE,
+    GET_ATTESTATION_RESP_PREFIX_LEN, MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
 };
 #[cfg(feature = "attested-csr")]
 use caliptra_mcu_mbox_common::messages::{
@@ -46,7 +48,7 @@ use core::fmt::Write;
 use core::sync::atomic::{AtomicBool, Ordering};
 use mcu_caliptra_api::{raw, ScratchAlloc};
 use mcu_error::{McuErrorCode, McuResult};
-use zerocopy::{FromBytes, IntoBytes};
+use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 fn map_common_cmd_error(error: CaliptraCompletionCode) -> McuErrorCode {
     match error {
@@ -303,6 +305,11 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer> CmdInterface<'a, H, A> {
                 CommandId::MC_GET_DPE_CERTIFICATE_CHAIN => {
                     self.handle_get_dpe_cert_chain(req, resp_buf).await
                 }
+                CommandId::MC_GET_CERT_CHAIN_INFO => {
+                    self.handle_get_cert_chain_info(req, resp_buf).await
+                }
+                CommandId::MC_GET_CERT_CHAIN => self.handle_get_cert_chain(req, resp_buf).await,
+                CommandId::MC_SET_CERT_CHAIN => self.handle_set_cert_chain(req, resp_buf).await,
                 CommandId::MC_PROD_DEBUG_UNLOCK_TOKEN => {
                     self.handle_prod_debug_unlock_token(req, resp_buf).await
                 }
@@ -684,6 +691,37 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer> CmdInterface<'a, H, A> {
         resp_buf[..header_len].copy_from_slice(hdr.as_bytes());
         let total_len = header_len + cert_len;
         Ok((&mut resp_buf[..total_len], mbox_cmd_status))
+    }
+
+    async fn handle_get_cert_chain_info<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let len =
+            stage_get_cert_chain_info(self.non_crypto_cmds_handler, self.scratch, req, resp_buf)
+                .await?;
+        Ok((&mut resp_buf[..len], MbxCmdStatus::Complete))
+    }
+
+    async fn handle_get_cert_chain<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let len =
+            stage_get_cert_chain(self.non_crypto_cmds_handler, self.scratch, req, resp_buf).await?;
+        Ok((&mut resp_buf[..len], MbxCmdStatus::Complete))
+    }
+
+    async fn handle_set_cert_chain<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let len =
+            stage_set_cert_chain(self.non_crypto_cmds_handler, self.scratch, req, resp_buf).await?;
+        Ok((&mut resp_buf[..len], MbxCmdStatus::Complete))
     }
 
     /// Handles `MC_GET_ATTESTATION`.
@@ -1167,6 +1205,9 @@ fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32, req: &[u8]) -> usize {
         c if c == CommandId::MC_GET_DPE_CERTIFICATE_CHAIN => {
             size_of::<MailboxRespHeaderVarSize>() + 1024
         }
+        c if c == CommandId::MC_GET_CERT_CHAIN_INFO => size_of::<GetCertChainInfoResp>(),
+        c if c == CommandId::MC_GET_CERT_CHAIN => size_of::<GetCertChainResp>(),
+        c if c == CommandId::MC_SET_CERT_CHAIN => size_of::<SetCertChainResp>(),
         #[cfg(feature = "attested-csr")]
         c if c == CommandId::MC_EXPORT_ATTESTED_CSR => size_of::<ExportAttestedCsrResp>(),
         c if c == CommandId::MC_GET_ATTESTATION => size_of::<McuMailboxResp>().max(
@@ -1255,6 +1296,111 @@ async fn stage_attestation<H: CaliptraCmdHandler, Alloc: ScratchAlloc>(
     Ok(GET_ATTESTATION_RESP_PREFIX_LEN + evidence_len)
 }
 
+#[repr(C)]
+#[derive(FromBytes, Immutable, KnownLayout)]
+struct SetCertChainReqPrefix {
+    hdr: MailboxReqHeader,
+    pki_entity_slot: u32,
+    algorithm: u32,
+    device_key_id: u32,
+    offset: u32,
+    total_size: u32,
+    data_len: u32,
+}
+
+async fn stage_get_cert_chain_info<H: CaliptraCmdHandler, Alloc: ScratchAlloc>(
+    handler: &H,
+    alloc: &Alloc,
+    req: &[u8],
+    resp_buf: &mut [u8],
+) -> McuResult<usize> {
+    let req = GetCertChainInfoReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+    let entity =
+        PkiEntitySlot::try_from(req.pki_entity_slot).map_err(|_| errors::INVALID_PARAMS)?;
+    let algorithm = AsymAlgo::try_from(req.algorithm).map_err(|_| errors::INVALID_PARAMS)?;
+    let mut info = CertChainInfo::default();
+    handler
+        .get_cert_chain_info(alloc, entity, algorithm, &mut info)
+        .await
+        .map_err(map_common_cmd_error)?;
+    let (resp, _) =
+        GetCertChainInfoResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
+    *resp = GetCertChainInfoResp {
+        hdr: MailboxRespHeader::default(),
+        device_key_id: info.device_key_id,
+        chain_len: info.chain_len,
+        chain_digest: info.chain_digest,
+    };
+    Ok(size_of::<GetCertChainInfoResp>())
+}
+
+async fn stage_get_cert_chain<H: CaliptraCmdHandler, Alloc: ScratchAlloc>(
+    handler: &H,
+    alloc: &Alloc,
+    req: &[u8],
+    resp_buf: &mut [u8],
+) -> McuResult<usize> {
+    let req = GetCertChainReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
+    let entity =
+        PkiEntitySlot::try_from(req.pki_entity_slot).map_err(|_| errors::INVALID_PARAMS)?;
+    let algorithm = AsymAlgo::try_from(req.algorithm).map_err(|_| errors::INVALID_PARAMS)?;
+    if req.length == 0 {
+        return Err(errors::INVALID_PARAMS);
+    }
+    let req_len = (req.length as usize).min(MAX_RESP_DATA_SIZE);
+    let (hdr_bytes, body) = resp_buf
+        .split_at_mut_checked(size_of::<MailboxRespHeaderVarSize>())
+        .ok_or(errors::INVALID_PARAMS)?;
+    let out = body.get_mut(..req_len).ok_or(errors::INVALID_PARAMS)?;
+    let n = handler
+        .get_cert_chain(alloc, entity, algorithm, req.offset, out)
+        .await
+        .map_err(map_common_cmd_error)?;
+    let hdr = MailboxRespHeaderVarSize {
+        data_len: n as u32,
+        ..Default::default()
+    };
+    hdr_bytes.copy_from_slice(hdr.as_bytes());
+    Ok(size_of::<MailboxRespHeaderVarSize>() + n)
+}
+
+async fn stage_set_cert_chain<H: CaliptraCmdHandler, Alloc: ScratchAlloc>(
+    handler: &H,
+    alloc: &Alloc,
+    req: &[u8],
+    resp_buf: &mut [u8],
+) -> McuResult<usize> {
+    let (prefix, rest) =
+        SetCertChainReqPrefix::ref_from_prefix(req).map_err(|_| errors::INVALID_PARAMS)?;
+    let _ = prefix.hdr;
+    let data_len = prefix.data_len as usize;
+    if data_len > SetCertChainReq::MAX_DATA_SIZE
+        || (rest.len() != data_len && req.len() != size_of::<SetCertChainReq>())
+    {
+        return Err(errors::INVALID_PARAMS);
+    }
+    let data = rest.get(..data_len).ok_or(errors::INVALID_PARAMS)?;
+    let entity =
+        PkiEntitySlot::try_from(prefix.pki_entity_slot).map_err(|_| errors::INVALID_PARAMS)?;
+    let algorithm = AsymAlgo::try_from(prefix.algorithm).map_err(|_| errors::INVALID_PARAMS)?;
+    let (resp, _) =
+        SetCertChainResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
+    handler
+        .set_cert_chain(
+            alloc,
+            entity,
+            algorithm,
+            prefix.device_key_id,
+            prefix.offset,
+            prefix.total_size,
+            data,
+        )
+        .await
+        .map_err(map_common_cmd_error)?;
+    *resp = SetCertChainResp::default();
+    Ok(size_of::<SetCertChainResp>())
+}
+
 fn populate_response_checksum(resp: &mut [u8]) -> McuResult<()> {
     if resp.len() < size_of::<MailboxRespHeader>() {
         return Err(errors::INVALID_PARAMS);
@@ -1269,6 +1415,7 @@ mod tests {
     extern crate std;
 
     use super::*;
+    use caliptra_mcu_mbox_common::messages::McuRequestVarSize;
     use caliptra_mcu_mbox_common::messages::MAX_ATTESTATION_RESP_DATA_SIZE;
     use futures::executor::block_on;
     use std::vec;
@@ -1378,6 +1525,68 @@ mod tests {
             out[8..len].fill(0xAB);
             Ok(len)
         }
+
+        async fn get_cert_chain_info<Alloc: ScratchAlloc>(
+            &self,
+            _alloc: &Alloc,
+            entity: PkiEntitySlot,
+            _algorithm: AsymAlgo,
+            info: &mut CertChainInfo,
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            if entity == PkiEntitySlot::Tenant {
+                return Err(CaliptraCompletionCode::InvalidState);
+            }
+            info.device_key_id = (entity as u32) + 1;
+            info.chain_len = 3200;
+            info.chain_digest = [0x42; 48];
+            Ok(())
+        }
+
+        async fn get_cert_chain<Alloc: ScratchAlloc>(
+            &self,
+            _alloc: &Alloc,
+            entity: PkiEntitySlot,
+            _algorithm: AsymAlgo,
+            offset: u32,
+            out: &mut [u8],
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<usize> {
+            if entity == PkiEntitySlot::Tenant {
+                return Err(CaliptraCompletionCode::InvalidState);
+            }
+            let total = 100usize;
+            let off = offset as usize;
+            if off >= total {
+                return Err(CaliptraCompletionCode::InvalidParameter);
+            }
+            let n = (total - off).min(out.len());
+            out[..n].fill(0xCD);
+            Ok(n)
+        }
+
+        async fn set_cert_chain<Alloc: ScratchAlloc>(
+            &self,
+            _alloc: &Alloc,
+            entity: PkiEntitySlot,
+            _algorithm: AsymAlgo,
+            device_key_id: u32,
+            offset: u32,
+            total_size: u32,
+            data: &[u8],
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            if entity == PkiEntitySlot::Vendor {
+                return Err(CaliptraCompletionCode::UnsupportedOperation);
+            }
+            if device_key_id > 1 {
+                return Err(CaliptraCompletionCode::InvalidParameter);
+            }
+            if total_size == 0 && offset == 0 && data.is_empty() {
+                return Ok(());
+            }
+            if data.is_empty() || offset + (data.len() as u32) > total_size {
+                return Err(CaliptraCompletionCode::InvalidParameter);
+            }
+            Ok(())
+        }
     }
 
     fn request(format: u32, algorithm: u32) -> GetAttestationReq {
@@ -1474,6 +1683,135 @@ mod tests {
         assert_eq!(
             block_on(stage_attestation(&TestHandler, &TestAlloc, &req, &mut body)),
             Err(errors::BUFFER_TOO_SMALL)
+        );
+    }
+
+    #[test]
+    fn cert_chain_info_encodes_metadata_and_digest() {
+        let req = GetCertChainInfoReq {
+            hdr: MailboxReqHeader::default(),
+            pki_entity_slot: PkiEntitySlot::Owner as u32,
+            algorithm: AsymAlgo::EccP384 as u32,
+        };
+        let mut resp_buf = vec![0u8; size_of::<GetCertChainInfoResp>()];
+        let len = block_on(stage_get_cert_chain_info(
+            &TestHandler,
+            &TestAlloc,
+            req.as_bytes(),
+            &mut resp_buf,
+        ))
+        .unwrap();
+        assert_eq!(len, size_of::<GetCertChainInfoResp>());
+        let resp = GetCertChainInfoResp::ref_from_bytes(&resp_buf).unwrap();
+        assert_eq!(resp.device_key_id, 2);
+        assert_eq!(resp.chain_len, 3200);
+        assert_eq!(resp.chain_digest, [0x42; 48]);
+
+        // Unprovisioned slot maps InvalidState to MCU_MBOX_COMMON.
+        let unprov = GetCertChainInfoReq {
+            pki_entity_slot: PkiEntitySlot::Tenant as u32,
+            ..req
+        };
+        assert_eq!(
+            block_on(stage_get_cert_chain_info(
+                &TestHandler,
+                &TestAlloc,
+                unprov.as_bytes(),
+                &mut resp_buf,
+            )),
+            Err(errors::MCU_MBOX_COMMON),
+        );
+    }
+
+    #[test]
+    fn get_cert_chain_frames_variable_chunk_and_rejects_zero_length() {
+        let req = GetCertChainReq {
+            hdr: MailboxReqHeader::default(),
+            pki_entity_slot: PkiEntitySlot::Vendor as u32,
+            algorithm: AsymAlgo::EccP384 as u32,
+            offset: 80,
+            length: 64,
+        };
+        let mut resp_buf = vec![0u8; size_of::<GetCertChainResp>()];
+        let len = block_on(stage_get_cert_chain(
+            &TestHandler,
+            &TestAlloc,
+            req.as_bytes(),
+            &mut resp_buf,
+        ))
+        .unwrap();
+        assert_eq!(len, size_of::<MailboxRespHeaderVarSize>() + 20);
+        let resp = GetCertChainResp::ref_from_bytes(&resp_buf).unwrap();
+        assert_eq!(resp.hdr.data_len, 20);
+        assert_eq!(&resp.cert_data[..20], &[0xCD; 20]);
+
+        let zero_len = GetCertChainReq { length: 0, ..req };
+        assert_eq!(
+            block_on(stage_get_cert_chain(
+                &TestHandler,
+                &TestAlloc,
+                zero_len.as_bytes(),
+                &mut resp_buf,
+            )),
+            Err(errors::INVALID_PARAMS),
+        );
+    }
+
+    #[test]
+    fn set_cert_chain_parses_variable_payload_and_erase_request() {
+        let mut req = SetCertChainReq {
+            hdr: MailboxReqHeader::default(),
+            pki_entity_slot: PkiEntitySlot::Owner as u32,
+            algorithm: AsymAlgo::EccP384 as u32,
+            device_key_id: 1,
+            offset: 0,
+            total_size: 4,
+            data_len: 4,
+            cert_data: [0u8; MAX_RESP_DATA_SIZE],
+        };
+        req.cert_data[..4].copy_from_slice(&[0x30, 0x02, 0x05, 0x00]);
+        let req_bytes = req.as_bytes_partial().unwrap();
+        let mut resp_buf = vec![0u8; size_of::<SetCertChainResp>()];
+        let len = block_on(stage_set_cert_chain(
+            &TestHandler,
+            &TestAlloc,
+            req_bytes,
+            &mut resp_buf,
+        ))
+        .unwrap();
+        assert_eq!(len, size_of::<SetCertChainResp>());
+
+        // Erase request with 0 bytes of trailing payload.
+        let erase_req = SetCertChainReq {
+            total_size: 0,
+            data_len: 0,
+            ..req
+        };
+        let erase_bytes = erase_req.as_bytes_partial().unwrap();
+        assert_eq!(erase_bytes.len(), SetCertChainReq::HEADER_SIZE);
+        assert_eq!(
+            block_on(stage_set_cert_chain(
+                &TestHandler,
+                &TestAlloc,
+                erase_bytes,
+                &mut resp_buf,
+            )),
+            Ok(size_of::<SetCertChainResp>()),
+        );
+
+        // Read-only Vendor slot maps UnsupportedOperation to UNSUPPORTED_COMMAND.
+        let vendor_req = SetCertChainReq {
+            pki_entity_slot: PkiEntitySlot::Vendor as u32,
+            ..erase_req
+        };
+        assert_eq!(
+            block_on(stage_set_cert_chain(
+                &TestHandler,
+                &TestAlloc,
+                vendor_req.as_bytes_partial().unwrap(),
+                &mut resp_buf,
+            )),
+            Err(errors::UNSUPPORTED_COMMAND),
         );
     }
 

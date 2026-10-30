@@ -5,9 +5,9 @@ pub(crate) mod device_ops;
 
 use caliptra_mcu_attestation_evidence::SIGNED_OCP_EAT_MAX_SIZE;
 use caliptra_mcu_common_commands::{
-    AsymAlgo, CaliptraCmdHandler, CaliptraCmdResult, CaliptraCompletionCode, DebugUnlockChallenge,
-    DeviceCapabilities, EvidenceFormat, FirmwareVersion, GetLogResult, PkiEntitySlot,
-    ATTESTATION_NONCE_LEN,
+    AsymAlgo, CaliptraCmdHandler, CaliptraCmdResult, CaliptraCompletionCode, CertChainInfo,
+    DebugUnlockChallenge, DeviceCapabilities, EvidenceFormat, FirmwareVersion, GetLogResult,
+    PkiEntitySlot, ATTESTATION_NONCE_LEN,
 };
 use caliptra_mcu_config::capabilities::{
     encode_capabilities, AuthorizedSubcommandCapabilities, ExternalCommandCapabilities,
@@ -330,6 +330,49 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         out: &mut [u8],
     ) -> CaliptraCmdResult<usize> {
         device_ops::get_attestation(alloc, format, algorithm, entity, nonce, out).await
+    }
+
+    async fn get_cert_chain_info<Alloc: ScratchAlloc>(
+        &self,
+        alloc: &Alloc,
+        entity: PkiEntitySlot,
+        algorithm: AsymAlgo,
+        info: &mut CertChainInfo,
+    ) -> CaliptraCmdResult<()> {
+        device_ops::get_cert_chain_info(alloc, entity, algorithm, info).await
+    }
+
+    async fn get_cert_chain<Alloc: ScratchAlloc>(
+        &self,
+        alloc: &Alloc,
+        entity: PkiEntitySlot,
+        algorithm: AsymAlgo,
+        offset: u32,
+        out: &mut [u8],
+    ) -> CaliptraCmdResult<usize> {
+        device_ops::get_cert_chain(alloc, entity, algorithm, offset, out).await
+    }
+
+    async fn set_cert_chain<Alloc: ScratchAlloc>(
+        &self,
+        alloc: &Alloc,
+        entity: PkiEntitySlot,
+        algorithm: AsymAlgo,
+        device_key_id: u32,
+        offset: u32,
+        total_size: u32,
+        data: &[u8],
+    ) -> CaliptraCmdResult<()> {
+        device_ops::set_cert_chain(
+            alloc,
+            entity,
+            algorithm,
+            device_key_id,
+            offset,
+            total_size,
+            data,
+        )
+        .await
     }
 
     /// Drain entries of `log_type` from the backing store.

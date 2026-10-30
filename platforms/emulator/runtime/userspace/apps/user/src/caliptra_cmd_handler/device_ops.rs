@@ -15,8 +15,8 @@ use caliptra_api::mailbox::{
 use caliptra_mcu_attestation_evidence::pcr_quote::{encode_pcr_quote, PcrQuoteAlgorithm};
 use caliptra_mcu_attestation_evidence::{encode_signed_ocp_eat, OcpEatAlgorithm};
 use caliptra_mcu_common_commands::{
-    AsymAlgo, CaliptraCmdResult, CaliptraCompletionCode, EvidenceFormat, GetLogResult, LogType,
-    PkiEntitySlot, ATTESTATION_NONCE_LEN, DEBUG_UNLOCK_CHALLENGE_SIZE,
+    AsymAlgo, CaliptraCmdResult, CaliptraCompletionCode, CertChainInfo, EvidenceFormat,
+    GetLogResult, LogType, PkiEntitySlot, ATTESTATION_NONCE_LEN, DEBUG_UNLOCK_CHALLENGE_SIZE,
     DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE,
 };
 use caliptra_mcu_libsyscall_caliptra::flash::SpiFlash;
@@ -490,11 +490,9 @@ pub async fn export_attested_csr(
 /// `CaliptraCmdHandler::attestation_evidence_len` before they reach here; the
 /// arms below are the same set, so the two stay consistent.
 ///
-/// Only [`PkiEntitySlot::Vendor`] is served. Signing is not slot-aware yet —
-/// every entity resolves to the same vendor DPE leaf — so honoring `Owner`
-/// would return evidence claiming an owner endorsement that was never
-/// selected or provisioned. It is refused until slot-aware key and
-/// certificate selection exists.
+/// Every entity signs with the same DPE leaf key; whether an entity can be
+/// served follows the provisioning state of its `(entity, algorithm)`
+/// certificate chain in the common certificate store.
 pub async fn get_attestation<A: ScratchAlloc>(
     alloc: &A,
     format: EvidenceFormat,
@@ -503,8 +501,13 @@ pub async fn get_attestation<A: ScratchAlloc>(
     nonce: &[u8; ATTESTATION_NONCE_LEN],
     out: &mut [u8],
 ) -> CaliptraCmdResult<usize> {
+    #[cfg(any(feature = "spdm", feature = "mcu-mbox-service"))]
+    if !crate::cert_store::shared().is_provisioned(entity.into(), algorithm.into()) {
+        return Err(CaliptraCompletionCode::InvalidState);
+    }
+    #[cfg(not(any(feature = "spdm", feature = "mcu-mbox-service")))]
     if entity != PkiEntitySlot::Vendor {
-        return Err(CaliptraCompletionCode::UnsupportedOperation);
+        return Err(CaliptraCompletionCode::InvalidState);
     }
     match (format, algorithm) {
         (EvidenceFormat::OcpEat, algo) => {
@@ -527,6 +530,121 @@ pub async fn get_attestation<A: ScratchAlloc>(
                 .map_err(map_mcu_err)
         }
         _ => Err(CaliptraCompletionCode::UnsupportedOperation),
+    }
+}
+
+pub async fn get_cert_chain_info<A: ScratchAlloc>(
+    alloc: &A,
+    entity: PkiEntitySlot,
+    algorithm: AsymAlgo,
+    info: &mut CertChainInfo,
+) -> CaliptraCmdResult<()> {
+    #[cfg(feature = "mcu-mbox-service")]
+    {
+        let store = crate::cert_store::mci_store();
+        let role = entity.into();
+        let algo = algorithm.into();
+        if !store.cert_slot(role).is_provisioned(algo) {
+            return Err(CaliptraCompletionCode::InvalidState);
+        }
+        store
+            .cert_chain_info(alloc, role, algo, info)
+            .await
+            .map_err(map_cert_store_err)
+    }
+    #[cfg(not(feature = "mcu-mbox-service"))]
+    {
+        let _ = (alloc, entity, algorithm, info);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+}
+
+pub async fn get_cert_chain<A: ScratchAlloc>(
+    alloc: &A,
+    entity: PkiEntitySlot,
+    algorithm: AsymAlgo,
+    offset: u32,
+    out: &mut [u8],
+) -> CaliptraCmdResult<usize> {
+    #[cfg(feature = "mcu-mbox-service")]
+    {
+        if out.is_empty() {
+            return Err(CaliptraCompletionCode::InvalidParameter);
+        }
+        let store = crate::cert_store::mci_store();
+        let role = entity.into();
+        let algo = algorithm.into();
+        if !store.cert_slot(role).is_provisioned(algo) {
+            return Err(CaliptraCompletionCode::InvalidState);
+        }
+        let n = store
+            .read_cert_chain(alloc, role, algo, offset as usize, out)
+            .await
+            .map_err(map_cert_store_err)?;
+        if n == 0 {
+            return Err(CaliptraCompletionCode::InvalidParameter);
+        }
+        Ok(n)
+    }
+    #[cfg(not(feature = "mcu-mbox-service"))]
+    {
+        let _ = (alloc, entity, algorithm, offset, out);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+}
+
+pub async fn set_cert_chain<A: ScratchAlloc>(
+    alloc: &A,
+    entity: PkiEntitySlot,
+    algorithm: AsymAlgo,
+    device_key_id: u32,
+    offset: u32,
+    total_size: u32,
+    data: &[u8],
+) -> CaliptraCmdResult<()> {
+    #[cfg(all(feature = "mcu-mbox-service", feature = "cert-provisioning"))]
+    {
+        let key_pair_id =
+            u8::try_from(device_key_id).map_err(|_| CaliptraCompletionCode::InvalidParameter)?;
+        crate::cert_store::mci_store()
+            .set_raw_endorsement_chain(
+                alloc,
+                entity.into(),
+                algorithm.into(),
+                key_pair_id,
+                offset as usize,
+                total_size as usize,
+                data,
+            )
+            .await
+            .map_err(map_cert_store_err)
+    }
+    #[cfg(not(all(feature = "mcu-mbox-service", feature = "cert-provisioning")))]
+    {
+        let _ = (
+            alloc,
+            entity,
+            algorithm,
+            device_key_id,
+            offset,
+            total_size,
+            data,
+        );
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+}
+
+#[cfg(feature = "mcu-mbox-service")]
+fn map_cert_store_err(err: McuErrorCode) -> CaliptraCompletionCode {
+    use caliptra_mcu_cert_store::errors as cert_errors;
+    match err {
+        cert_errors::PROVISIONING_DISABLED => CaliptraCompletionCode::UnsupportedOperation,
+        cert_errors::KEY_MISMATCH
+        | cert_errors::UNSUPPORTED_KEY
+        | cert_errors::INVALID_ENDORSEMENT => CaliptraCompletionCode::InvalidParameter,
+        cert_errors::STORAGE_BUSY => CaliptraCompletionCode::InvalidState,
+        cert_errors::STORAGE_ERROR => CaliptraCompletionCode::OperationFailed,
+        _ => map_mcu_err(err),
     }
 }
 
