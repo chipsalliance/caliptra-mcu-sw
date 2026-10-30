@@ -953,7 +953,7 @@ fn test_prod_debug_unlock_complete_responses() -> Result<()> {
         otp_memory: Some(otp_memory),
         ..Default::default()
     });
-
+    crate::test::run_imaginary_flash_controller_service(&mut hw);
     hw.step_until(|hw| {
         hw.mci_boot_milestones()
             .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
@@ -1584,6 +1584,7 @@ fn test_mcu_mbox_ecdsa384_sig_verify() -> Result<()> {
         feature: Some("test-mcu-mbox-cmds"),
         ..Default::default()
     });
+    crate::test::run_imaginary_flash_controller_service(&mut hw);
     hw.step_until(|hw| {
         hw.mci_boot_milestones()
             .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
@@ -1776,6 +1777,7 @@ fn test_mcu_mbox_lms_sig_verify() -> Result<()> {
         feature: Some("test-mcu-mbox-cmds"),
         ..Default::default()
     });
+    crate::test::run_imaginary_flash_controller_service(&mut hw);
     hw.step_until(|hw| {
         hw.mci_boot_milestones()
             .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)

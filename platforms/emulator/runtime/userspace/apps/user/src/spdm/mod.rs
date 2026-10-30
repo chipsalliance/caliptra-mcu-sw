@@ -110,7 +110,7 @@ const _: () = assert!(
 /// Maximum across streaming request handlers. Add new streamed request limits
 /// to this block.
 const MAX_STREAMED_SPDM_REQUEST_LEN: usize = {
-    #[cfg(feature = "test-mctp-spdm-set-certificate")]
+    #[cfg(feature = "cert-provisioning")]
     {
         if MAX_STREAMED_SET_CERTIFICATE_REQUEST_LEN > MAX_STREAMED_VDM_REQUEST_LEN {
             MAX_STREAMED_SET_CERTIFICATE_REQUEST_LEN
@@ -119,7 +119,7 @@ const MAX_STREAMED_SPDM_REQUEST_LEN: usize = {
         }
     }
 
-    #[cfg(not(feature = "test-mctp-spdm-set-certificate"))]
+    #[cfg(not(feature = "cert-provisioning"))]
     {
         MAX_STREAMED_VDM_REQUEST_LEN
     }
@@ -133,9 +133,9 @@ const MAX_STREAMED_VDM_REQUEST_LEN: usize =
 /// Maximum streamed SET_CERTIFICATE request for a CertChain.
 ///
 /// This limit is tunable based on the integrator's requirements.
-#[cfg(feature = "test-mctp-spdm-set-certificate")]
+#[cfg(feature = "cert-provisioning")]
 const MAX_STANDARD_CERT_CHAIN_LEN: usize = u16::MAX as usize;
-#[cfg(feature = "test-mctp-spdm-set-certificate")]
+#[cfg(feature = "cert-provisioning")]
 const MAX_STREAMED_SET_CERTIFICATE_REQUEST_LEN: usize = caliptra_mcu_spdm_codec::SpdmMsgHdrPdu::SIZE
     + caliptra_mcu_spdm_codec::SetCertificateReqBody::SIZE
     + MAX_STANDARD_CERT_CHAIN_LEN;

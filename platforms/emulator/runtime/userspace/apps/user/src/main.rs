@@ -25,7 +25,7 @@ pub use caliptra_mcu_libsyscall_caliptra::console_writeln;
 
 pub(crate) mod auth_keys;
 // Certificate-store boot is the only borrower, so this shares its gate.
-#[cfg(feature = "spdm")]
+#[cfg(any(feature = "spdm", feature = "mcu-mbox-service"))]
 mod boot_scratch;
 // Only the feature-gated command services below construct
 // `CaliptraCmdBackend`; without them the whole module is unused.
@@ -34,9 +34,7 @@ mod boot_scratch;
     allow(dead_code)
 )]
 mod caliptra_cmd_handler;
-// SPDM is the only current consumer; widen this gate when another protocol
-// integrates the boot-provisioned certificate chains.
-#[cfg(feature = "spdm")]
+#[cfg(any(feature = "spdm", feature = "mcu-mbox-service"))]
 mod cert_store;
 #[cfg(any(
     feature = "test-defmt-logging-mailbox",
@@ -163,6 +161,24 @@ pub(crate) async fn async_main() {
                 );
             }
         }
+    }
+
+    #[cfg(all(feature = "mcu-mbox-service", not(feature = "spdm")))]
+    {
+        // SAFETY: `mcu_mbox_task` has not been spawned yet, and `scratch` is
+        // dropped before spawning it.
+        let scratch = unsafe { mcu_mbox::borrow_boot_scratch() };
+        if let Err(e) = cert_store::init(&scratch).await {
+            let mut cw = caliptra_mcu_libtock_console::Console::<
+                caliptra_mcu_libsyscall_caliptra::DefaultSyscalls,
+            >::writer();
+            crate::log_error!(
+                cw,
+                "CERT_STORE: boot initialization failed: 0x{}",
+                crate::Hex32(u32::from(e))
+            );
+        }
+        drop(scratch);
     }
 
     EXECUTOR

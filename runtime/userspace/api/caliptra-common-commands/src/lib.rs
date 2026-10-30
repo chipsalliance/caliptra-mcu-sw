@@ -158,21 +158,19 @@ impl TryFrom<u32> for AsymAlgo {
 /// PKI entity whose hierarchy endorses the evidence's signing key.
 ///
 /// This selects an endorsement hierarchy, not a signing key: every slot signs
-/// with the same DPE leaf key today.
-///
-/// Because signing is not slot-aware yet, only [`PkiEntitySlot::Vendor`] is
-/// served; responders reject [`PkiEntitySlot::Owner`] with
-/// `UNSUPPORTED_OPERATION` rather than return evidence claiming an endorsement
-/// that was never selected. Once signing is slot-aware, whether an entity can
-/// be served follows the provisioning state of its endorsement slot.
+/// with the same DPE leaf key, and whether an entity can be served follows the
+/// provisioning state of its `(role, algorithm)` certificate chain in the
+/// common certificate store.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[repr(u32)]
 pub enum PkiEntitySlot {
     /// Vendor (device manufacturer) hierarchy.
     #[default]
     Vendor = 0,
-    /// Owner hierarchy. Reserved.
+    /// Owner hierarchy.
     Owner = 1,
+    /// Tenant hierarchy.
+    Tenant = 2,
 }
 
 impl TryFrom<u32> for PkiEntitySlot {
@@ -181,7 +179,26 @@ impl TryFrom<u32> for PkiEntitySlot {
         match value {
             0 => Ok(PkiEntitySlot::Vendor),
             1 => Ok(PkiEntitySlot::Owner),
+            2 => Ok(PkiEntitySlot::Tenant),
             _ => Err(CaliptraCompletionCode::InvalidParameter),
+        }
+    }
+}
+
+/// Metadata, byte length, and raw DER SHA-384 digest for a certificate chain slot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CertChainInfo {
+    pub device_key_id: u32,
+    pub chain_len: u32,
+    pub chain_digest: [u8; 48],
+}
+
+impl Default for CertChainInfo {
+    fn default() -> Self {
+        Self {
+            device_key_id: 0,
+            chain_len: 0,
+            chain_digest: [0u8; 48],
         }
     }
 }
@@ -385,6 +402,58 @@ pub trait CaliptraCmdHandler {
         out: &mut [u8],
     ) -> CaliptraCmdResult<usize> {
         let _ = (alloc, format, algorithm, entity, nonce, out);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Retrieves metadata, total byte length, and raw DER SHA-384 digest for a
+    /// provisioned `(entity, algorithm)` certificate chain slot.
+    async fn get_cert_chain_info<Alloc: ScratchAlloc>(
+        &self,
+        alloc: &Alloc,
+        entity: PkiEntitySlot,
+        algorithm: AsymAlgo,
+        info: &mut CertChainInfo,
+    ) -> CaliptraCmdResult<()> {
+        let _ = (alloc, entity, algorithm, info);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Reads a contiguous byte slice of the complete raw DER certificate chain
+    /// for a provisioned `(entity, algorithm)` slot into `out`.
+    async fn get_cert_chain<Alloc: ScratchAlloc>(
+        &self,
+        alloc: &Alloc,
+        entity: PkiEntitySlot,
+        algorithm: AsymAlgo,
+        offset: u32,
+        out: &mut [u8],
+    ) -> CaliptraCmdResult<usize> {
+        let _ = (alloc, entity, algorithm, offset, out);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Provisions, replaces, or erases the PKI endorsement chain for a managed
+    /// `(entity, algorithm)` slot.
+    #[allow(clippy::too_many_arguments)]
+    async fn set_cert_chain<Alloc: ScratchAlloc>(
+        &self,
+        alloc: &Alloc,
+        entity: PkiEntitySlot,
+        algorithm: AsymAlgo,
+        device_key_id: u32,
+        offset: u32,
+        total_size: u32,
+        data: &[u8],
+    ) -> CaliptraCmdResult<()> {
+        let _ = (
+            alloc,
+            entity,
+            algorithm,
+            device_key_id,
+            offset,
+            total_size,
+            data,
+        );
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 
