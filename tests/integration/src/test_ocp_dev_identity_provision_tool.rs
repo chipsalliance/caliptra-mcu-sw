@@ -20,6 +20,7 @@ mod test {
     };
     use caliptra_mcu_testing_common::{
         is_emulator_running, spawn_with_emulator_state, wait_for_runtime_start,
+        wait_for_spdm_responder_ready, SpdmResponderTransport,
     };
     use random_port::PortPicker;
     use std::ffi::OsString;
@@ -159,7 +160,8 @@ mod test {
             if !is_emulator_running() {
                 exit(-1);
             }
-            thread::sleep(Duration::from_secs(5));
+            // Boot-time certificate provisioning can outlast a fixed delay.
+            wait_for_spdm_responder_ready(SpdmResponderTransport::Mctp);
             if !is_emulator_running() {
                 exit(-1);
             }

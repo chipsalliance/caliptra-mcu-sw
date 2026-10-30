@@ -1173,7 +1173,21 @@ mod test {
 
     impl SpawnedRuntime {
         pub fn i3c_port(&self) -> u16 {
-            self.i3c_port
+            if self.i3c_port != 0 {
+                return self.i3c_port;
+            }
+            self.output
+                .text
+                .lock()
+                .unwrap()
+                .lines()
+                .find_map(|line| {
+                    line.strip_prefix(
+                        caliptra_mcu_testing_common::i3c_socket_server::I3C_SOCKET_LISTENING,
+                    )
+                    .and_then(|port| port.parse().ok())
+                })
+                .expect("emulator has not reported its bound I3C port")
         }
 
         pub fn i3c_address(&self) -> DynamicI3cAddress {
@@ -1413,7 +1427,9 @@ mod test {
     pub fn start_attestation_standalone_runtime(feature: &str) -> SpawnedRuntime {
         let feature = feature.replace('_', "-");
         let test_runtime = get_or_compile_runtime(&feature, false);
-        let i3c_port = PortPicker::new().random(true).pick().unwrap();
+        // Let the emulator bind an available port atomically. A port picked
+        // before compilation can be taken by another connection before bind.
+        let i3c_port = 0;
         let mut caliptra_builder =
             create_caliptra_builder_with_prebuilt(test_runtime.clone(), &feature).unwrap_or_else(
                 || {
