@@ -25,6 +25,16 @@ path = "/tmp/junit.xml"
 store-success-output = false
 store-failure-output = true
 
+[profile.usb-host]
+inherits = "emulator"
+default-filter = 'package(caliptra-mcu-tests-integration) and test(=usb::usbip_tests::usbip_linux_enumerates_and_probes_shared_rom)'
+slow-timeout = { period = "60s", terminate-after = 3 }
+
+[profile.usb-host.junit]
+path = "/tmp/junit-usb.xml"
+store-success-output = false
+store-failure-output = true
+
 [profile.nightly-ci]
 inherits = "nightly"
 retries = 2

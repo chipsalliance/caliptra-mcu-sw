@@ -325,6 +325,21 @@ jobs:
           if-no-files-found: error
           retention-days: 1
 
+      - name: Build USB recovery CLI
+        if: matrix.hw-revision == 'latest'
+        run: |
+          sudo apt-get install -qy libusb-1.0-0-dev pkg-config
+          cargo build --locked -p caliptra-mcu-usb-recovery --features libusb
+
+      - name: Upload USB recovery CLI
+        if: matrix.hw-revision == 'latest'
+        uses: actions/upload-artifact@v7
+        with:
+          name: usb-recovery-cli-latest
+          path: target/debug/caliptra-mcu-usb-recovery
+          if-no-files-found: error
+          retention-days: 1
+
   build-tests:
     runs-on: e2-standard-8
     needs: [build-xtask]
@@ -380,6 +395,12 @@ jobs:
           name: nextest-archive-${{ matrix.hw-revision }}
           path: /tmp/nextest-archive.tar.zst
           retention-days: 1
+
+      - name: Test libusb recovery adapter and CLI
+        if: matrix.hw-revision == 'latest'
+        run: |
+          sudo apt-get install -qy libusb-1.0-0-dev pkg-config
+          cargo test --locked -p caliptra-mcu-usb-recovery --features libusb
 
   test_emulator:
     runs-on: e2-standard-4
@@ -486,6 +507,81 @@ jobs:
         run: |
           sudo mv /tmp/junit.xml /tmp/junit-release.xml
 
+      - name: Setup Linux USB/IP
+        if: matrix.hw-revision == 'latest' && matrix.shard == 1
+        env:
+          USBIP_STATE_FILE: ${{ runner.temp }}/caliptra-usbip-attachment
+        run: |
+          sudo apt-get install -qy libusb-1.0-0 linux-tools-generic acl
+          if ! modinfo vhci_hcd >/dev/null 2>&1; then
+            sudo apt-get install -qy "linux-modules-extra-$(uname -r)"
+          fi
+          sudo modprobe vhci_hcd
+          test -d /sys/devices/platform/vhci_hcd.0
+          usbip=$(find /usr/lib -type f -path '*/linux-tools*/usbip' -executable -print -quit)
+          test -n "$usbip"
+          "$usbip" version
+          echo "USBIP=$usbip" >> "$GITHUB_ENV"
+          echo "USBIP_STATE_FILE=$USBIP_STATE_FILE" >> "$GITHUB_ENV"
+
+      - name: Download USB recovery CLI
+        if: matrix.hw-revision == 'latest' && matrix.shard == 1
+        uses: actions/download-artifact@v8
+        with:
+          name: usb-recovery-cli-latest
+          path: target/usb-host/
+
+      - name: Run Linux USB enumeration and libusb probe
+        if: matrix.hw-revision == 'latest' && matrix.shard == 1
+        env:
+          CPTRA_FIRMWARE_BUNDLE: ${{ github.workspace }}/target/all-fw.zip
+          USB_RECOVERY_CLI: ${{ github.workspace }}/target/usb-host/caliptra-mcu-usb-recovery
+        run: |
+          chmod +x "$USB_RECOVERY_CLI"
+          cargo nextest run \
+            --archive-file /tmp/nextest-archive.tar.zst \
+            --workspace-remap . \
+            --profile usb-host \
+            --run-ignored only \
+            --no-tests fail \
+            --test-threads 1
+
+      - name: Cleanup owned USB/IP attachment
+        if: always() && matrix.hw-revision == 'latest' && matrix.shard == 1
+        env:
+          USBIP_STATE_FILE: ${{ runner.temp }}/caliptra-usbip-attachment
+        run: |
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+          import re
+          import subprocess
+
+          state = Path(os.environ["USBIP_STATE_FILE"])
+          if state.exists():
+              remote = state.read_text().strip()
+              if not re.fullmatch(r"usbip://127\.0\.0\.1:\d+/1-1", remote):
+                  raise RuntimeError(f"Unexpected owned USB/IP URL: {remote!r}")
+              tool = os.environ["USBIP"]
+              ports = subprocess.run(
+                  ["sudo", "-n", tool, "port"], check=True,
+                  capture_output=True, text=True, timeout=30,
+              ).stdout
+              port = None
+              for line in ports.splitlines():
+                  match = re.match(r"\s*Port (\d+):", line)
+                  if match:
+                      port = match.group(1)
+                  if line.strip().endswith("-> " + remote):
+                      if port is None:
+                          raise RuntimeError("Owned USB/IP attachment has no port")
+                      subprocess.run(
+                          ["sudo", "-n", tool, "detach", "-p", port],
+                          check=True, timeout=30,
+                      )
+              state.unlink()
+          PY
+
       - name: 'Upload test results'
         uses: actions/upload-artifact@v7
         if: success() || failure()
@@ -494,6 +590,7 @@ jobs:
           path: |
             /tmp/junit-${{ matrix.shard }}.xml
             /tmp/junit-release.xml
+            /tmp/junit-usb.xml
           retention-days: 1
 
   print_test_results:

@@ -18,6 +18,8 @@ use tock_registers::interfaces::Readable;
 
 mod hub;
 pub use hub::LpcipUsbHubHostController;
+pub mod ip;
+pub use ip::{UsbIpServer, BUS_ID as USBIP_BUS_ID};
 mod phy;
 pub use phy::{LpcipUsbPhy, LpcipUsbPhyError, LpcipUsbPhySnapshot};
 mod recovery;
