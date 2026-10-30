@@ -2,8 +2,8 @@
 
 ## Purpose
 
-This document defines the target in-field workflow for provisioning and
-managing Caliptra Owner and Tenant endorsements over SPDM and planned MCI
+This document defines the in-field workflow for provisioning and
+managing Caliptra Owner and Tenant endorsements over SPDM and MCI
 certificate commands. The workflow is protocol-neutral; SPDM-specific SlotID
 allocation and commands are identified where applicable.
 
@@ -15,25 +15,6 @@ Specification](https://opencomputeproject.github.io/Security/device-identity-pro
 The Vendor endorsement is provisioned once during manufacturing and remains
 read-only for the lifetime of the device. In-field provisioning applies only
 to managed Owner and Tenant slots.
-
-## Implementation status
-
-The current source implements Vendor ECC P-384 and ML-DSA-87 certificate
-retrieval through SPDM. Managed Owner and Tenant slots store an independent
-chain per algorithm using A/B (`active_region` / `staging_region`) persistent
-flash backing and serve whichever chain matches the negotiated algorithm. SPDM
-provisioning of those slots is currently test-only and does not provide
-production authorization.
-
-SPDM `SET_CERTIFICATE` passes `key_pair_id = 0` when `KeyPairID` is absent
-(SPDM 1.2, or SPDM 1.3+ with `MULTI_KEY_CONN_RSP = 0`) and passes the request's
-`KeyPairID` when `MULTI_KEY_CONN_RSP = 1`; MCI mailbox commands must always
-provide a nonzero `key_pair_id`. When a role has a configured key anchor point,
-`key_pair_id = 0` resolves to it and any nonzero `key_pair_id` must match it;
-when no key anchor point is configured, a nonzero `key_pair_id` for a supported
-key anchor point is required (`key_pair_id = 0` is rejected). In the default
-configuration, Owner is configured with the LDevID key anchor point
-(`key_pair_id = 1`) and Tenant has no fixed key anchor point.
 
 ## Trust bootstrap
 
@@ -93,8 +74,10 @@ SlotID for subsequent Tenant operations.
 | `2` | Owner | OCP allocated; provisionable by an authorized Owner |
 | `3` | Tenant | Current fixed Tenant slot; configurable Tenant SlotIDs are planned |
 
-This SlotID allocation applies only to SPDM. The planned MCI certificate
-commands identify the `EndorsementRole` directly and do not use SPDM SlotIDs.
+This SlotID allocation applies only to SPDM. The MCI certificate commands
+(`MC_GET_CERT_CHAIN_INFO`, `MC_GET_CERT_CHAIN`, and `MC_SET_CERT_CHAIN`)
+identify the `EndorsementRole` directly (`0` = Vendor, `1` = Owner, `2` =
+Tenant) and do not use SPDM SlotIDs.
 
 The current implementation fixes Tenant to Slot 3. The target design adds
 compile-time platform configuration for other eligible, otherwise unallocated
@@ -113,11 +96,11 @@ The same workflow applies to Owner and Tenant. The selected slot and PKI
 anchor point differ.
 
 The target workflow supports certificate management over SPDM and MCI mailbox
-transports. The sequence below shows the SPDM commands. SPDM managed updates
-are currently test-only, and MCI certificate commands are planned. Once both
-transports are implemented, they use the same certificate-store state. MCI
-command codes are reserved in [External Mailbox
-Commands](./external_mailbox_cmds.md).
+transports. The sequence below shows the SPDM commands; the MCI mailbox path
+uses `MC_GET_CERT_CHAIN_INFO`, `MC_GET_CERT_CHAIN`, and `MC_SET_CERT_CHAIN` with
+the same certificate-store state (see [External Mailbox
+Commands](./external_mailbox_cmds.md)). Managed updates on both transports are
+currently test-only until production authorization is enabled.
 
 ```mermaid
 sequenceDiagram
@@ -184,9 +167,9 @@ The PKI owner SHALL NOT issue an endorsement if any validation fails.
 
 ## Provisioning the endorsement certificate chain
 
-The SPDM `SET_CERTIFICATE` command currently supports test-only managed
-provisioning. The planned MCI `MC_SET_CERT_CHAIN` command follows the same
-target rule: provisioning accepts only the PKI endorsement.
+The SPDM `SET_CERTIFICATE` and MCI `MC_SET_CERT_CHAIN` commands currently
+support test-only managed provisioning. Both follow the same rule: provisioning
+accepts only the PKI endorsement.
 
 ```text
 PKI Root CA
