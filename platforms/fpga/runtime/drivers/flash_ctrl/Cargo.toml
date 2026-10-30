@@ -11,3 +11,4 @@ capsules-core.workspace = true
 kernel.workspace = true
 caliptra-mcu-registers-generated.workspace = true
 caliptra-mcu-romtime.workspace = true
+caliptra-mcu-mbox-common.workspace = true

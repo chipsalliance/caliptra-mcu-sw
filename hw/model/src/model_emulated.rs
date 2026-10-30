@@ -414,6 +414,10 @@ impl McuHwModel for ModelEmulated {
             delegates,
             None,
             Some(Box::new(usb_periph)),
+            #[cfg(hw_capability = "usb-support")]
+            None,
+            #[cfg(hw_capability = "usb-support")]
+            None,
             Some(Box::new(i3c)),
             Some(Box::new(caliptra_mcu_emulator_periph::StubI3c1::new())),
             Some(Box::new(primary_flash_controller)),
@@ -421,9 +425,15 @@ impl McuHwModel for ModelEmulated {
             Some(Box::new(network_mbox.clone())),
             Some(Box::new(mci)),
             None,
+            #[cfg(hw_capability = "usb-support")]
+            None,
+            #[cfg(hw_capability = "usb-support")]
+            None,
             None,
             Some(Box::new(otp)),
             Some(Box::new(lc)),
+            #[cfg(hw_rev = "latest")]
+            None,
             None,
             None,
             None,

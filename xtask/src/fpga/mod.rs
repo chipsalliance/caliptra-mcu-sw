@@ -191,6 +191,7 @@ pub(crate) enum Fpga {
 }
 
 pub fn fpga_install_kernel_modules(target_host: Option<&str>) -> Result<()> {
+    let fpga_path = caliptra_mcu_builder::hardware_revision()?.fpga_path();
     disable_all_cpus_idle(target_host)?;
 
     // Make file assumes we are in the same directory.
@@ -198,14 +199,14 @@ pub fn fpga_install_kernel_modules(target_host: Option<&str>) -> Result<()> {
     // to build kernel modules.
     run_command(
         target_host,
-        "(cd caliptra-mcu-sw/hw/fpga/kernel-modules && make)",
+        &format!("(cd caliptra-mcu-sw/{fpga_path}/kernel-modules && make)"),
     )?;
 
     // TODO(clundin): Need to test this, the Ubuntu FPGA is in a bad state and seems to not be able
     // to build kernel modules.
     run_command(
         target_host,
-        "sudo insmod caliptra-mcu-sw/hw/fpga/kernel-modules/io_module.ko",
+        &format!("sudo insmod caliptra-mcu-sw/{fpga_path}/kernel-modules/io_module.ko"),
     )?;
 
     fix_permissions(target_host)?;

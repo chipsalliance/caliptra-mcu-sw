@@ -120,6 +120,10 @@ pub struct LdArgs {
 /// Arguments required for commands which execute the build step of the bundle process.
 #[derive(Args, Default, Debug, Clone)]
 pub struct BuildArgs {
+    /// Explicit binary output path for a single-target build.
+    #[arg(skip)]
+    pub binary_output: Option<PathBuf>,
+
     /// If specified the objcopy binary to use.  If not specified the bundler will attempt to use
     /// `llvm-objcopy` from the rustc compiler.
     #[arg(long, env = "OBJCOPY")]

@@ -46,18 +46,57 @@ For more details on how to run tests locally, how CI works, and how to add new t
 
 ## Hardware revisions
 
-Currently, two hardware revisions are supported: 2.0 and 2.1.
+Set `CALIPTRA_HW_REV` to `2.1` or `latest` (default) to select the hardware
+revision. Use the matching Caliptra software version as shown below.
 
-The features added to the 2.1 hardware are, briefly:
+Functionality is gated by named capabilities rather than revision labels:
 
-* Caliptra ML-KEM support
-* I3C AXI recovery bypass
+```rust
+#[cfg(hw_capability = "usb-support")]
+```
 
-By default, the emulator and firmware use the 2.0 hardware features.
+The shared `caliptra-mcu-hw-revision` build helper derives these cfgs from the
+selected hardware revision and its pinned Core:
 
-For the emulator, there is a `--hw-revision 2.1.0` flag that can be used to select the 2.1 hardware when running (`cargo xtask runtime` also supports this flag).
+| Capability | `2.1` | `latest` |
+| --- | --- | --- |
+| `usb-support` (compound USB registers and packet-memory windows) | No | Yes |
+| `recovery-interface-select` (Caliptra recovery register/signal routing) | No | Yes |
+| `owner-pk-hash-mailbox` (DOT owner hash via Core mailbox) | Yes | No |
+| `owner-pk-hash-registers` (DOT owner hash via architectural registers) | No | Yes |
+| `mbox-target-done` (mailbox completion requires DONE) | Yes | No |
+| `mbox-status-completion` (mailbox completion uses non-BUSY status) | No | Yes |
 
-For firmware, 2.1 features can be enabled using the `hw-2-1` feature flag when specifying dependencies.
+Add capabilities and their revision mapping in `hw/revision/src/lib.rs`; each
+consuming crate's build script must call `emit_build_configuration()`. Ordinary
+Rust build scripts emit cfgs only for their own crate, not dependencies.
+Keep `hw_rev` gates for exact register snapshots, revision-specific constructor
+layouts, and temporary revision-specific test exclusions. Capabilities are not
+Cargo features: retain Cargo features for optional software and dependencies.
+USB availability does not select USB boot or initialize a USB controller; the
+ROM still defaults to I3C routing unless explicitly configured otherwise.
+
+## Caliptra software versions
+
+Use `cargo xtask switch-version` to select `2.1` or `latest` (default).
+Set `CALIPTRA_HW_REV` to the matching version when building.
+
+Initialize the submodules and switch to 2.1:
+
+```shell
+git submodule update --init --recursive
+CALIPTRA_HW_REV=latest cargo xtask switch-version 2.1
+CALIPTRA_HW_REV=2.1 cargo xtask rom-build
+CALIPTRA_HW_REV=2.1 cargo xtask runtime-build
+```
+
+Switch back to latest:
+
+```shell
+CALIPTRA_HW_REV=2.1 cargo xtask switch-version latest
+CALIPTRA_HW_REV=latest cargo xtask rom-build
+CALIPTRA_HW_REV=latest cargo xtask runtime-build
+```
 
 ## Documentation
 
@@ -158,12 +197,16 @@ You can run the registers RDL to Rust autogenerator as an `xtask`:
 cargo xtask registers-autogen
 ```
 
-By default, this generates Rust register files from the pre-defined RDL files contained in the `hw/` directory.
+By default, this generates only the selected snapshot, including its fuse map,
+OTP input and MCU definitions. It does not overwrite the other snapshot or the
+public register-crate facades.
 
 If you only want to check the output, you can use `--check`.
 
 ```shell
 cargo xtask registers-autogen --check
+CALIPTRA_HW_REV=latest cargo xtask registers-autogen
+CALIPTRA_HW_REV=latest cargo xtask registers-autogen --check
 ```
 
 ### Quickly checking new RDL files

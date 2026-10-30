@@ -1355,6 +1355,18 @@ impl BootFlow for ColdBoot {
             straps.active_i3c
         );
 
+        #[cfg(hw_capability = "recovery-interface-select")]
+        if let Err(err) = params
+            .recovery_interface
+            .configure(&mci.registers.mci_reg_hw_capabilities)
+        {
+            caliptra_mcu_romtime::println!(
+                "[mcu-rom] Recovery interface selection failed: {}",
+                HexWord(err.into())
+            );
+            fatal_error(err);
+        }
+
         caliptra_mcu_romtime::println!("[mcu-rom] Setting Caliptra boot go");
 
         crate::call_hook(params.hooks, |h| h.pre_caliptra_boot());
@@ -1790,10 +1802,8 @@ impl BootFlow for ColdBoot {
             owner_pk_hash = None;
         }
 
-        // Deliver the owner PK hash via mailbox; the cptra_owner_pk_hash register
-        // is locked once fuse write done is set. An all-zero hash means no owner
-        // is provisioned and must not be installed (it would make Caliptra reject
-        // every image).
+        // The mailbox command rejects an all-zero owner digest.
+        #[cfg(hw_capability = "owner-pk-hash-mailbox")]
         if let Some(ref owner) = owner_pk_hash {
             if owner.0.iter().any(|&word| word != 0) {
                 if let Err(err) =
@@ -1802,6 +1812,20 @@ impl BootFlow for ColdBoot {
                     caliptra_mcu_romtime::println!("[mcu-rom] owner err: {}", HexWord(err.into()));
                     fatal_error(err);
                 }
+            }
+        }
+
+        #[cfg(hw_capability = "owner-pk-hash-registers")]
+        {
+            // The register backend installs a locked zero digest for an
+            // unpinned owner or debug intent.
+            let digest = owner_pk_hash
+                .as_ref()
+                .map(|owner| owner.0)
+                .unwrap_or([0; 12]);
+            if let Err(err) = env.soc.write_and_lock_owner_pk_hash_csrs(&digest) {
+                caliptra_mcu_romtime::println!("[mcu-rom] owner err: {}", HexWord(err.into()));
+                fatal_error(err);
             }
         }
 

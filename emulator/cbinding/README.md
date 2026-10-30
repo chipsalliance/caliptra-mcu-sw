@@ -145,7 +145,7 @@ struct CEmulatorConfig config = {
 
     // Hardware version
     .hw_revision_major = 2,
-    .hw_revision_minor = 0,
+    .hw_revision_minor = 1,
     .hw_revision_patch = 0,
 };
 ```

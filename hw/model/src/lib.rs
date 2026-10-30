@@ -781,11 +781,16 @@ pub trait McuHwModel {
     }
 
     fn set_i3c_recovery_device_reset_ctrl(&mut self, reset_ctrl: u32) {
-        self.mcu_manager()
-            .i3c()
-            .sec_fw_recovery_if()
-            .device_reset()
-            .write(|w| w.reset_ctrl(reset_ctrl));
+        // Inject a BMC result through the hardware-update aperture: a direct
+        // software write to DEVICE_RESET.RESET_CTRL only clears bits.
+        let mut manager = self.mcu_manager();
+        let i3c = manager.i3c();
+        let mgmt = i3c.so_cmgmt_if();
+        let bypass = mgmt.rec_intf_cfg().read().rec_intf_bypass();
+        mgmt.rec_intf_cfg().modify(|w| w.rec_intf_bypass(true));
+        mgmt.rec_intf_reg_w1_c_access()
+            .modify(|w| w.device_reset_ctrl(reset_ctrl));
+        mgmt.rec_intf_cfg().modify(|w| w.rec_intf_bypass(bypass));
     }
 
     fn network_manager(&mut self) -> impl NetworkManager;

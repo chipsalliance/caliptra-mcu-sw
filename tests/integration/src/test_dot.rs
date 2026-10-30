@@ -11,6 +11,7 @@ mod test {
             CmDeriveStableKeyReq, CmDeriveStableKeyResp, CmHashAlgorithm, CmHmacReq, CmHmacResp,
             CmStableKeyType, CommandId,
         },
+        SocManager,
     };
     use caliptra_auth_man_types::{AuthManifestPrivKeysConfig, AuthManifestPubKeysConfig};
     use caliptra_image_gen::ImageGeneratorOwnerConfig;
@@ -794,6 +795,17 @@ mod test {
             "Forced fuse owner boot should not fatal: 0x{:x}",
             fatal_error.unwrap_or(0)
         );
+        assert!(
+            hw.mci_boot_milestones()
+                .contains(McuBootMilestones::COLD_BOOT_FLOW_COMPLETE),
+            "Forced fuse owner boot timed out before completing cold boot"
+        );
+        if caliptra_mcu_builder::hardware_revision().unwrap().as_str() == "latest" {
+            let mut manager = hw.caliptra_soc_manager();
+            let soc = manager.soc_ifc();
+            assert_eq!(soc.cptra_owner_pk_hash().read(), get_owner_pk_hash());
+            assert!(soc.cptra_owner_pk_hash_lock().read().lock());
+        }
 
         let output = hw.output().peek().to_string();
         // The DOT flow must be skipped entirely.

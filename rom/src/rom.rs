@@ -136,6 +136,36 @@ impl Soc {
         Soc { registers }
     }
 
+    #[cfg(hw_capability = "owner-pk-hash-registers")]
+    pub(crate) fn write_and_lock_owner_pk_hash_csrs(&self, digest: &[u32; 12]) -> McuResult<()> {
+        let matches = || {
+            self.registers
+                .cptra_owner_pk_hash
+                .iter()
+                .zip(digest)
+                .all(|(register, expected)| register.get() == *expected)
+        };
+        let lock = &self.registers.cptra_owner_pk_hash_lock;
+        if lock.is_set(soc::bits::CptraXxxxxxxk::Lock) {
+            return if matches() {
+                Ok(())
+            } else {
+                Err(McuError::ROM_DOT_INSTALL_OWNER_PK_HASH_FAILED)
+            };
+        }
+        for (register, word) in self.registers.cptra_owner_pk_hash.iter().zip(digest) {
+            register.set(*word);
+        }
+        if !matches() {
+            return Err(McuError::ROM_DOT_INSTALL_OWNER_PK_HASH_FAILED);
+        }
+        lock.write(soc::bits::CptraXxxxxxxk::Lock::SET);
+        if !lock.is_set(soc::bits::CptraXxxxxxxk::Lock) || !matches() {
+            return Err(McuError::ROM_DOT_INSTALL_OWNER_PK_HASH_FAILED);
+        }
+        Ok(())
+    }
+
     pub fn ready_for_runtime(&self) -> bool {
         self.registers
             .cptra_flow_status
@@ -404,8 +434,7 @@ impl Soc {
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
         self.registers.fuse_mldsa_revocation.set(word);
 
-        // Owner PK hash is sent via mailbox after the DOT flow; see
-        // device_ownership_transfer::install_owner_pk_hash().
+        // Owner PK hash is provisioned after DOT using the selected backend.
 
         // Stable owner key builds forward HEK for derivation here.
         // OCP LOCK keeps its HEK selection and handoff metadata in the OCP path below.
@@ -923,8 +952,101 @@ pub enum DotRecoveryPolicy {
     None,
 }
 
+/// Recovery register and signal routing presented to Caliptra Core.
+#[cfg(hw_capability = "recovery-interface-select")]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum RecoveryInterface {
+    #[default]
+    I3c,
+    Usb,
+}
+
+#[cfg(hw_capability = "recovery-interface-select")]
+impl RecoveryInterface {
+    pub(crate) fn configure(
+        self,
+        capabilities: &(impl Readable<T = u32, R = mci::bits::HwCapabilities::Register>
+              + Writeable<T = u32, R = mci::bits::HwCapabilities::Register>),
+    ) -> McuResult<()> {
+        use mci::bits::HwCapabilities::StreamingBootSelect;
+
+        let selection = match self {
+            Self::I3c => StreamingBootSelect::I3c,
+            Self::Usb => StreamingBootSelect::Usb,
+        };
+        capabilities.modify(selection);
+        if !capabilities.matches_all(selection) {
+            return Err(McuError::ROM_SOC_RECOVERY_INTERFACE_VERIFY_FAILED);
+        }
+        Ok(())
+    }
+}
+
+#[cfg(all(test, hw_capability = "recovery-interface-select"))]
+mod recovery_interface_tests {
+    use super::*;
+    use tock_registers::registers::InMemoryRegister;
+
+    struct LockedCapabilities(u32);
+
+    impl Readable for LockedCapabilities {
+        type T = u32;
+        type R = mci::bits::HwCapabilities::Register;
+
+        fn get(&self) -> u32 {
+            self.0
+        }
+    }
+
+    impl Writeable for LockedCapabilities {
+        type T = u32;
+        type R = mci::bits::HwCapabilities::Register;
+
+        fn set(&self, _value: u32) {}
+    }
+
+    #[test]
+    fn default_parameters_select_i3c_instead_of_the_usb_reset_default() {
+        let capabilities = InMemoryRegister::new(0);
+        RomParameters::default()
+            .recovery_interface
+            .configure(&capabilities)
+            .unwrap();
+        assert_eq!(capabilities.get(), 1);
+    }
+
+    #[test]
+    fn explicit_usb_and_default_i3c_preserve_other_capability_bits() {
+        for initial in [0, u32::MAX, 0xa5a5_5a5a] {
+            for (interface, expected) in [(RecoveryInterface::I3c, 1), (RecoveryInterface::Usb, 0)]
+            {
+                let capabilities = InMemoryRegister::new(initial);
+                interface.configure(&capabilities).unwrap();
+                assert_eq!(capabilities.get() & 3, expected);
+                assert_eq!(capabilities.get() & !3, initial & !3);
+            }
+        }
+    }
+
+    #[test]
+    fn locked_wrong_selection_is_an_error() {
+        for (interface, current) in [(RecoveryInterface::I3c, 0), (RecoveryInterface::Usb, 1)] {
+            assert_eq!(
+                interface.configure(&LockedCapabilities(current)),
+                Err(McuError::ROM_SOC_RECOVERY_INTERFACE_VERIFY_FAILED)
+            );
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct RomParameters<'a> {
+    /// Select Caliptra Core's recovery register backend before boot-go on cold
+    /// and warm boot.
+    /// Defaults to I3C, including flash and AXI-bypass boot. USB platforms must
+    /// opt in explicitly; this selects routing, not USB controller initialization.
+    #[cfg(hw_capability = "recovery-interface-select")]
+    pub recovery_interface: RecoveryInterface,
     pub lifecycle_transition: Option<(LifecycleControllerState, LifecycleToken)>,
     pub burn_lifecycle_tokens: Option<LifecycleHashedTokens>,
     pub image_provider_manager: Option<crate::recovery::ImageProviderManager<'a>>,
@@ -1158,6 +1280,88 @@ impl From<&RomParameters<'_>> for AxiUsers {
             trng_user: params.cptra_trng_axi_user,
             dma_user: params.cptra_dma_axi_user,
         }
+    }
+}
+
+#[cfg(all(test, hw_capability = "owner-pk-hash-registers"))]
+mod owner_pk_hash_tests {
+    extern crate std;
+
+    use super::*;
+    use core::mem::{align_of, size_of};
+    use std::boxed::Box;
+
+    fn soc() -> Soc {
+        assert_eq!(align_of::<soc::regs::Soc>(), align_of::<u32>());
+        let words = Box::leak(Box::new([0u32; size_of::<soc::regs::Soc>() / 4]));
+        // The aligned, zero-initialized backing storage outlives the registers.
+        Soc::new(unsafe { StaticRef::new(words.as_ptr().cast()) })
+    }
+
+    fn digest(soc: &Soc) -> [u32; 12] {
+        core::array::from_fn(|i| soc.registers.cptra_owner_pk_hash[i].get())
+    }
+
+    #[test]
+    fn writes_and_locks_all_twelve_words() {
+        let soc = soc();
+        let expected = core::array::from_fn(|i| 0x1234_5678 + i as u32);
+        soc.write_and_lock_owner_pk_hash_csrs(&expected).unwrap();
+        assert_eq!(digest(&soc), expected);
+        assert!(soc
+            .registers
+            .cptra_owner_pk_hash_lock
+            .is_set(soc::bits::CptraXxxxxxxk::Lock));
+    }
+
+    #[test]
+    fn unpinned_owner_clears_and_locks_the_digest() {
+        let soc = soc();
+        for register in &soc.registers.cptra_owner_pk_hash {
+            register.set(u32::MAX);
+        }
+        soc.write_and_lock_owner_pk_hash_csrs(&[0; 12]).unwrap();
+        assert_eq!(digest(&soc), [0; 12]);
+        assert!(soc
+            .registers
+            .cptra_owner_pk_hash_lock
+            .is_set(soc::bits::CptraXxxxxxxk::Lock));
+    }
+
+    #[test]
+    fn accepts_an_already_locked_matching_owner() {
+        let soc = soc();
+        let expected = [0x1234_5678; 12];
+        soc.write_and_lock_owner_pk_hash_csrs(&expected).unwrap();
+        soc.write_and_lock_owner_pk_hash_csrs(&expected).unwrap();
+        assert_eq!(digest(&soc), expected);
+    }
+
+    #[test]
+    fn rejects_a_locked_mismatch_at_every_word_without_writing() {
+        for index in 0..12 {
+            let soc = soc();
+            let original = [0x1234_5678; 12];
+            soc.write_and_lock_owner_pk_hash_csrs(&original).unwrap();
+            let mut changed = original;
+            changed[index] ^= 1;
+            assert_eq!(
+                soc.write_and_lock_owner_pk_hash_csrs(&changed),
+                Err(McuError::ROM_DOT_INSTALL_OWNER_PK_HASH_FAILED)
+            );
+            assert_eq!(digest(&soc), original);
+        }
+    }
+
+    #[test]
+    fn debug_intent_cannot_clear_a_previously_locked_owner() {
+        let soc = soc();
+        soc.write_and_lock_owner_pk_hash_csrs(&[1; 12]).unwrap();
+        assert_eq!(
+            soc.write_and_lock_owner_pk_hash_csrs(&[0; 12]),
+            Err(McuError::ROM_DOT_INSTALL_OWNER_PK_HASH_FAILED)
+        );
+        assert_eq!(digest(&soc), [1; 12]);
     }
 }
 

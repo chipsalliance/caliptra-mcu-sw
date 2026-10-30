@@ -134,6 +134,10 @@ pub fn build_emulator_with_feature(feature: &str) -> Result<Option<PathBuf>> {
     use std::process::Command;
 
     let mut cmd = Command::new("cargo");
+    cmd.env(
+        caliptra_mcu_hw_revision::ENV,
+        crate::hardware_revision()?.as_str(),
+    );
     cmd.current_dir(&*PROJECT_ROOT).args([
         "build",
         "-p",
@@ -792,7 +796,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                     ..Default::default()
                 })?);
 
-                let filename = bin_path.file_name().unwrap().to_str().unwrap().to_string();
+                let filename = format!("mcu-test-rom-{}-{}.bin", fwid.crate_name, fwid.bin_name);
                 Ok((bin_path, filename))
             })
             .collect();
@@ -810,9 +814,8 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                 let release_dir = target_dir.join(TARGET).join("release");
 
                 std::fs::create_dir_all(&release_dir)?;
-                let bin_path = release_dir.join(&filename);
-                let rom_bytes = caliptra_builder::build_firmware_rom(fwid)?;
-                std::fs::write(&bin_path, rom_bytes)?;
+                let bin_path = release_dir.join(crate::revisioned_name(&filename)?);
+                CaliptraBuilder::build_core_rom(*fwid, &bin_path)?;
                 Ok((bin_path, filename))
             })
             .collect();
@@ -1412,7 +1415,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         (false, true) => format!("all-fw-shard-{}.zip", shard_index),
         (false, false) => "all-fw.zip".to_string(),
     };
-    let default_path = crate::target_dir().join(&default_name);
+    let default_path = crate::target_dir().join(crate::revisioned_name(&default_name)?);
     let path = output.map(Path::new).unwrap_or(&default_path);
     println!("Creating ZIP file: {}", path.display());
     let file = std::fs::File::create(path)?;
@@ -1422,6 +1425,12 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         .unix_permissions(0o644)
         .last_modified_time(zip::DateTime::try_from(chrono::Local::now().naive_local())?);
 
+    add_bytes_to_zip(
+        crate::hardware_provenance()?.as_bytes(),
+        "hardware-provenance.txt",
+        &mut zip,
+        options,
+    )?;
     add_to_zip(
         &caliptra_rom,
         FirmwareBinaries::CALIPTRA_ROM_NAME,
@@ -1605,7 +1614,7 @@ pub fn emulator_build(args: EmulatorBuildArgs) -> Result<()> {
     let emulator_path = build_emulator_with_feature("")?
         .ok_or_else(|| anyhow::anyhow!("Failed to build emulator"))?;
 
-    let default_path = crate::target_dir().join("emulators.zip");
+    let default_path = crate::target_dir().join(crate::revisioned_name("emulators.zip")?);
     let path = output.map(Path::new).unwrap_or(&default_path);
     println!("Creating emulator ZIP file: {}", path.display());
     let file = std::fs::File::create(path)?;
@@ -1616,6 +1625,12 @@ pub fn emulator_build(args: EmulatorBuildArgs) -> Result<()> {
         .last_modified_time(zip::DateTime::try_from(chrono::Local::now().naive_local())?);
 
     println!("Adding {} -> emulator", emulator_path.display());
+    add_bytes_to_zip(
+        crate::hardware_provenance()?.as_bytes(),
+        "hardware-provenance.txt",
+        &mut zip,
+        options,
+    )?;
     add_to_zip(&emulator_path, "emulator", &mut zip, options)?;
 
     zip.finish()?;

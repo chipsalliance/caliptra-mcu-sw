@@ -165,12 +165,10 @@ impl<'a> EmulatedFlashCtrl<'a> {
         if !self.mailbox_locked.get() || self.pending_op.is_none() {
             return;
         }
-        // Check DONE flag in mbox_target_status
         let target_status = self.registers.mcu_mbox0_csr_mbox_target_status.get();
-        let done = target_status & MboxTargetStatus::Done::SET.value;
         let status = target_status & MboxTargetStatus::Status::SET.value;
 
-        if done == MboxTargetStatus::Done::SET.value {
+        if caliptra_mcu_mbox_common::target_status::is_complete(target_status) {
             // Operation is complete
             let op = match self.pending_op.take() {
                 Some(o) => o,

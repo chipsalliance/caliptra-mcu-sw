@@ -53,6 +53,25 @@ authorization requirements.
 
 ## Quick Start
 
+Initialize the parent repository's submodules before building. This workspace
+shares the active `core/caliptra-sw` checkout with MCU firmware:
+
+```shell
+# From the parent repository root:
+git submodule update --init --recursive
+cargo xtask switch-version 2.1
+
+# Normal Cargo commands remain available:
+cd caliptra-util-host
+CALIPTRA_HW_REV=2.1 cargo check --workspace --locked
+```
+
+Run software switches from the parent repository, not this workspace's separate
+xtask. The switch selects the reviewed lockfile snapshots for both workspaces
+and validates them with `--locked`; local lockfile edits are not overwritten.
+See [Caliptra software versions](../README.md#caliptra-software-versions) for
+pins, the default `latest` checkout, and hardware-selection/concurrency rules.
+
 ### Rust API
 
 ```rust
