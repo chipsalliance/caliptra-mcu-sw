@@ -23,6 +23,8 @@
 //! enforce the shared hub's physical link speed.
 //! `LpcipUsbDriver::poll` is nonblocking between host transactions;
 //! ROM and runtime can schedule it without a persistent compliance-mode loop.
+//! `test-host` keeps the enumeration-only test fixture servicing EP0 after
+//! configuration for Linux/libusb tests; it does not implement recovery boot.
 
 #![no_std]
 
@@ -44,11 +46,15 @@ pub fn enumeration_test(params: UsbParams) -> ! {
         match driver.poll() {
             Ok(UsbPoll::ConfigurationChanged(1)) => {
                 caliptra_mcu_romtime::println!("[usb-enumeration-test] configured");
-                caliptra_mcu_romtime::test_exit(0);
+                if !cfg!(feature = "test-host") {
+                    caliptra_mcu_romtime::test_exit(0);
+                }
             }
             Ok(UsbPoll::Disconnected) => {
                 caliptra_mcu_romtime::println!("[usb-enumeration-test] disconnected");
-                caliptra_mcu_romtime::test_exit(1);
+                if !cfg!(feature = "test-host") {
+                    caliptra_mcu_romtime::test_exit(1);
+                }
             }
             Ok(UsbPoll::Stalled) => {
                 caliptra_mcu_romtime::println!(

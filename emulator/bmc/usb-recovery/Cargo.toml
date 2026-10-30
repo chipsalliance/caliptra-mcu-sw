@@ -1,0 +1,24 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "caliptra-mcu-usb-recovery"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[features]
+default = []
+libusb = ["dep:rusb", "dep:clap", "dep:clap-num"]
+
+[dependencies]
+anyhow.workspace = true
+caliptra-mcu-ocp.workspace = true
+clap = { workspace = true, optional = true }
+clap-num = { workspace = true, optional = true }
+rusb = { workspace = true, optional = true }
+zerocopy.workspace = true
+
+[[bin]]
+name = "caliptra-mcu-usb-recovery"
+path = "src/main.rs"
+required-features = ["libusb"]
