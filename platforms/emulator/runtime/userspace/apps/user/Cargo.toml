@@ -206,8 +206,8 @@ test-mctp-vdm-cmds = ["mctp-vdm-service"]
 # Exercise the production CaliptraCmdBackend rather than the VDM test mock.
 test-mctp-vdm-production = ["mctp-vdm-service"]
 test-caliptra-util-host-mctp-vdm-validator = ["mctp-vdm-service", "userspace-log"]
-test-caliptra-util-host-validator = ["mcu-mbox-test-handlers", "dot-mci-mailbox", "attested-csr"]
-test-mcu-mbox-cmds = ["mcu-mbox-test-handlers", "dot-mci-mailbox", "attested-csr"]
+test-caliptra-util-host-validator = ["mcu-mbox-test-handlers", "dot-mci-mailbox", "cert-provisioning"]
+test-mcu-mbox-cmds = ["mcu-mbox-test-handlers", "dot-mci-mailbox", "cert-provisioning"]
 test-mcu-mbox-fips-self-test = ["mcu-mbox-test-handlers"]
 test-ocp-lock = ["ocp-lock"]
 test-handoff = ["mcu-caliptra-api/ocp-lock"]
@@ -228,12 +228,11 @@ test-mctp-spdm-attestation-hitless-tcb = ["spdm", "flash-boot", "firmware-update
 test-mctp-spdm-attestation-hitless-mixed = ["spdm", "flash-boot", "firmware-update"]
 test-mctp-spdm-attestation-pcr-quote = ["spdm", "pcr-quote"]
 test-mctp-spdm-responder-conformance = ["spdm"]
-# Test-only SPDM certificate provisioning path. Enables flash-backed certificate
+# Test-only certificate provisioning path. Enables flash-backed certificate
 # installation without production authorization/key-binding. Implies
-# `attested-csr`, which sizes SPDM scratch and VDM response buffers for large
+# `attested-csr`, which sizes scratch and response buffers for large
 # ML-DSA-87 CSRs.
 cert-provisioning = [
-  "spdm",
   "attested-csr",
   "caliptra-mcu-cert-store/set-certificate",
   "caliptra-mcu-spdm-pal/set-certificate",
@@ -241,7 +240,7 @@ cert-provisioning = [
   "caliptra-mcu-spdm-vdm-handler/cert-provisioning",
 ]
 set-certificate = ["cert-provisioning"]
-test-mctp-spdm-set-certificate = ["cert-provisioning"]
+test-mctp-spdm-set-certificate = ["spdm", "cert-provisioning"]
 test-doe-spdm-responder-conformance = ["spdm", "doe"]
 test-doe-spdm-tdisp-ide-validator = ["spdm", "doe"]
 # --- Test features: pass-through (no cfg in source, host-side only) ---

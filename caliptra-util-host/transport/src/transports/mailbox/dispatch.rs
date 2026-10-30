@@ -14,7 +14,9 @@ use super::aes::{
     AesGcmEncryptInitCmd, AesGcmEncryptUpdateCmd,
 };
 use super::attestation::GetAttestationCmd;
-use super::certificate::ExportAttestedCsrCmd;
+use super::certificate::{
+    ExportAttestedCsrCmd, GetCertChainCmd, GetCertChainInfoCmd, SetCertChainCmd,
+};
 use super::crypto_asymmetric::{
     EcdhFinishCmd, EcdhGenerateCmd, EcdsaPublicKeyCmd, EcdsaSignCmd, EcdsaVerifyCmd,
 };
@@ -97,9 +99,12 @@ pub fn get_command_handler(command_id: u32) -> Option<CommandHandlerFn> {
         // Debug Unlock Commands (0x7010-0x7011)
         0x7010 => Some(process_command_with_metadata::<ProdDebugUnlockReqCmd>), // ProdDebugUnlockReq
         0x7011 => Some(process_command_with_metadata::<ProdDebugUnlockTokenCmd>), // ProdDebugUnlockToken
-        // Certificate / Attestation Commands (0x1005, 0x1007)
+        // Certificate / Attestation Commands (0x1005, 0x1007-0x1014)
         0x1005 => Some(process_command_with_metadata::<ExportAttestedCsrCmd>), // ExportAttestedCsr
         0x1007 => Some(process_command_with_metadata::<GetAttestationCmd>),    // GetAttestation
+        0x1008 => Some(process_command_with_metadata::<GetCertChainInfoCmd>),  // GetCertChainInfo
+        0x1010 => Some(process_command_with_metadata::<GetCertChainCmd>),      // GetCertChain
+        0x1014 => Some(process_command_with_metadata::<SetCertChainCmd>),      // SetCertChain
         // Authorized / Fuse Commands (0x8010-0x8016)
         0x8010 => Some(process_command_with_metadata::<GetAuthCmdChallengeCmd>), // GetAuthCmdChallenge
         0x8011 => Some(process_command_with_metadata::<FeProgCmd>),              // FeProg
@@ -181,6 +186,9 @@ pub fn get_external_cmd_code(command_id: u32) -> Option<u32> {
         // Certificate Commands
         0x1005 => Some(0x4D45_4143), // ExportAttestedCsr -> MC_EXPORT_ATTESTED_CSR ("MEAC")
         0x1007 => Some(0x4D47_4154), // GetAttestation -> MC_GET_ATTESTATION ("MGAT")
+        0x1008 => Some(0x4D47_4349), // GetCertChainInfo -> MC_GET_CERT_CHAIN_INFO ("MGCI")
+        0x1010 => Some(0x4D47_4343), // GetCertChain -> MC_GET_CERT_CHAIN ("MGCC")
+        0x1014 => Some(0x4D53_4343), // SetCertChain -> MC_SET_CERT_CHAIN ("MSCC")
         // Authorized / Fuse Commands
         0x8010..=0x8017 => Some(0x0000_0012),
         0x8018..=0x8019 => Some(0x0000_0012),
