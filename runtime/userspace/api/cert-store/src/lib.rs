@@ -9,11 +9,12 @@
 mod endorsement;
 mod store;
 
+pub use caliptra_mcu_common_commands::CertChainInfo;
 pub use endorsement::{CertSlot, EndorsementStorage, NoEndorsementStorage};
 pub use store::{SharedCertStore, TaskCertStore};
 
 use caliptra_mcu_common_commands::{
-    DEVICE_KEY_ID_FMC_ALIAS, DEVICE_KEY_ID_LDEV_ID, DEVICE_KEY_ID_RT_ALIAS,
+    AsymAlgo, PkiEntitySlot, DEVICE_KEY_ID_FMC_ALIAS, DEVICE_KEY_ID_LDEV_ID, DEVICE_KEY_ID_RT_ALIAS,
 };
 use mcu_caliptra_api::{DpeProfile, DPE_LABEL_LEN};
 use mcu_error::McuResult;
@@ -62,6 +63,16 @@ impl EndorsementRole {
     pub const ALL: [Self; 3] = [Self::Vendor, Self::Owner, Self::Tenant];
 }
 
+impl From<PkiEntitySlot> for EndorsementRole {
+    fn from(slot: PkiEntitySlot) -> Self {
+        match slot {
+            PkiEntitySlot::Vendor => Self::Vendor,
+            PkiEntitySlot::Owner => Self::Owner,
+            PkiEntitySlot::Tenant => Self::Tenant,
+        }
+    }
+}
+
 /// Asymmetric algorithm for a certificate chain in the common store.
 #[repr(u8)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -78,6 +89,15 @@ impl TryFrom<u8> for CertificateAlgorithm {
             1 => Ok(Self::EccP384),
             2 => Ok(Self::MlDsa87),
             _ => Err(()),
+        }
+    }
+}
+
+impl From<AsymAlgo> for CertificateAlgorithm {
+    fn from(algo: AsymAlgo) -> Self {
+        match algo {
+            AsymAlgo::EccP384 => Self::EccP384,
+            AsymAlgo::Mldsa87 => Self::MlDsa87,
         }
     }
 }

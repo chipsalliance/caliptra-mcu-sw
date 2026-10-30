@@ -140,6 +140,33 @@ const MCU_MBOX_SCRATCH_SIZE: usize = {
     declared
 };
 
+#[cfg(feature = "mcu-mbox-service")]
+#[repr(C, align(64))]
+struct ScratchBuf([u8; MCU_MBOX_SCRATCH_SIZE]);
+
+#[cfg(feature = "mcu-mbox-service")]
+static mut MCU_MBOX_SCRATCH: ScratchBuf = ScratchBuf([0u8; MCU_MBOX_SCRATCH_SIZE]);
+
+#[cfg(all(feature = "mcu-mbox-service", not(feature = "spdm")))]
+const _: () = assert!(
+    MCU_MBOX_SCRATCH_SIZE >= crate::cert_store::BOOT_SCRATCH_SIZE,
+    "MCU_MBOX scratch pool is too small for certificate-store boot"
+);
+
+/// Borrows the idle MCU mailbox task pool for boot initialization when SPDM is disabled.
+///
+/// # Safety
+///
+/// Call only before `mcu_mbox_task` is spawned, and drop the returned `BootScratch`
+/// before spawning `mcu_mbox_task`.
+#[cfg(all(feature = "mcu-mbox-service", not(feature = "spdm")))]
+pub(crate) unsafe fn borrow_boot_scratch() -> crate::boot_scratch::BootScratch {
+    crate::boot_scratch::BootScratch::new(
+        NonNull::new_unchecked(core::ptr::addr_of_mut!(MCU_MBOX_SCRATCH).cast::<u8>()),
+        MCU_MBOX_SCRATCH_SIZE,
+    )
+}
+
 #[embassy_executor::task]
 pub async fn mcu_mbox_task() {
     match start_mcu_mbox_service().await {
@@ -156,9 +183,6 @@ async fn start_mcu_mbox_service() -> Result<(), ErrorCode> {
 
     #[cfg(feature = "mcu-mbox-service")]
     {
-        #[repr(C, align(64))]
-        struct ScratchBuf([u8; MCU_MBOX_SCRATCH_SIZE]);
-        static mut MCU_MBOX_SCRATCH: ScratchBuf = ScratchBuf([0u8; MCU_MBOX_SCRATCH_SIZE]);
         // SAFETY: this task is the sole owner of `MCU_MBOX_SCRATCH`.
         let scratch_ptr: NonNull<u8> =
             unsafe { NonNull::new_unchecked(MCU_MBOX_SCRATCH.0.as_mut_ptr()) };

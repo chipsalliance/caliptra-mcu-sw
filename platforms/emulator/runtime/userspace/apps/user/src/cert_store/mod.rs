@@ -20,19 +20,21 @@
 
 mod slot0_endorsements;
 
-#[cfg(not(feature = "test-mctp-spdm-set-certificate"))]
+#[cfg(not(feature = "cert-provisioning"))]
 use caliptra_mcu_cert_store::NoEndorsementStorage;
-#[cfg(feature = "test-mctp-spdm-set-certificate")]
+#[cfg(feature = "mcu-mbox-service")]
+use caliptra_mcu_cert_store::TaskCertStore;
+#[cfg(feature = "cert-provisioning")]
 use caliptra_mcu_cert_store::{errors as cert_errors, CertificateAlgorithm, EndorsementStorage};
 use caliptra_mcu_cert_store::{CertificateProvisioningPolicy, EndorsementRole, SharedCertStore};
-#[cfg(feature = "test-mctp-spdm-set-certificate")]
+#[cfg(feature = "cert-provisioning")]
 use caliptra_mcu_config_emulator::flash::CERT_STORE_PARTITION;
 use caliptra_mcu_libsyscall_caliptra::external_otp::ExternalOtp;
-#[cfg(feature = "test-mctp-spdm-set-certificate")]
+#[cfg(feature = "cert-provisioning")]
 use caliptra_mcu_libsyscall_caliptra::flash::SpiFlash;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 use caliptra_mcu_libtock_console::Console;
-#[cfg(feature = "test-mctp-spdm-set-certificate")]
+#[cfg(feature = "cert-provisioning")]
 use caliptra_mcu_libtock_platform::ErrorCode;
 use caliptra_mcu_scratch_alloc::BitmapAllocator;
 // `log_warn!` writes through the console writer, so the trait must be in scope;
@@ -64,20 +66,20 @@ pub(crate) const BOOT_SCRATCH_SIZE: usize =
     POPULATE_IDEV_MLDSA87_MAX_CERT_SIZE + BOOT_SCRATCH_HEADROOM;
 
 /// SPI flash implementation of [`EndorsementStorage`] for managed endorsements.
-#[cfg(feature = "test-mctp-spdm-set-certificate")]
+#[cfg(feature = "cert-provisioning")]
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) struct SpiFlashEndorsementStorage {
     driver_num: u32,
 }
 
-#[cfg(feature = "test-mctp-spdm-set-certificate")]
+#[cfg(feature = "cert-provisioning")]
 impl SpiFlashEndorsementStorage {
     pub(crate) const fn new(driver_num: u32) -> Self {
         Self { driver_num }
     }
 }
 
-#[cfg(feature = "test-mctp-spdm-set-certificate")]
+#[cfg(feature = "cert-provisioning")]
 impl EndorsementStorage for SpiFlashEndorsementStorage {
     fn is_available(&self) -> McuResult<bool> {
         match SpiFlash::<DefaultSyscalls>::new(self.driver_num).exists() {
@@ -109,7 +111,7 @@ impl EndorsementStorage for SpiFlashEndorsementStorage {
     }
 }
 
-#[cfg(feature = "test-mctp-spdm-set-certificate")]
+#[cfg(feature = "cert-provisioning")]
 fn map_flash_error(err: ErrorCode) -> mcu_error::McuErrorCode {
     match err {
         ErrorCode::Busy => cert_errors::STORAGE_BUSY,
@@ -117,9 +119,9 @@ fn map_flash_error(err: ErrorCode) -> mcu_error::McuErrorCode {
     }
 }
 
-#[cfg(feature = "test-mctp-spdm-set-certificate")]
+#[cfg(feature = "cert-provisioning")]
 pub(crate) type CertStoreStorage = SpiFlashEndorsementStorage;
-#[cfg(not(feature = "test-mctp-spdm-set-certificate"))]
+#[cfg(not(feature = "cert-provisioning"))]
 pub(crate) type CertStoreStorage = NoEndorsementStorage;
 
 const PROVISIONING_POLICY: CertificateProvisioningPolicy = CertificateProvisioningPolicy::DEFAULT;
@@ -127,9 +129,22 @@ const PROVISIONING_POLICY: CertificateProvisioningPolicy = CertificateProvisioni
 static CERT_STORE: SharedCertStore<CertStoreStorage> =
     SharedCertStore::with_policy(PROVISIONING_POLICY);
 
+#[cfg(feature = "mcu-mbox-service")]
+struct MciTaskCertStore(TaskCertStore<CertStoreStorage>);
+
+// SAFETY: `user-app` runs on a single-threaded Embassy executor and
+// `MCI_CERT_STORE` is accessed exclusively from the single `mcu_mbox_task`
+// via the MCI-only `MC_GET_CERT_CHAIN_INFO`, `MC_GET_CERT_CHAIN`, and
+// `MC_SET_CERT_CHAIN` commands.
+#[cfg(feature = "mcu-mbox-service")]
+unsafe impl Sync for MciTaskCertStore {}
+
+#[cfg(feature = "mcu-mbox-service")]
+static MCI_CERT_STORE: MciTaskCertStore = MciTaskCertStore(TaskCertStore::new(&CERT_STORE));
+
 /// Each managed `(role, algorithm)` gets its own flash region so that
 /// installing one algorithm's chain cannot erase the other's.
-#[cfg(feature = "test-mctp-spdm-set-certificate")]
+#[cfg(feature = "cert-provisioning")]
 const MANAGED_ENDORSEMENT_REGIONS: &[(EndorsementRole, CertificateAlgorithm)] = &[
     (EndorsementRole::Owner, CertificateAlgorithm::EccP384),
     (EndorsementRole::Owner, CertificateAlgorithm::MlDsa87),
@@ -140,7 +155,7 @@ const MANAGED_ENDORSEMENT_REGIONS: &[(EndorsementRole, CertificateAlgorithm)] = 
 /// four ways instead of two costs no additional flash. ML-DSA chains
 /// are roughly an order of magnitude larger than ECC ones, so the
 /// remaining room per region still far exceeds what either needs.
-#[cfg(feature = "test-mctp-spdm-set-certificate")]
+#[cfg(feature = "cert-provisioning")]
 const MANAGED_SLOT_REGION_SIZE: usize = {
     assert!(!MANAGED_ENDORSEMENT_REGIONS.is_empty());
     assert!(CERT_STORE_PARTITION.size % MANAGED_ENDORSEMENT_REGIONS.len() == 0);
@@ -160,6 +175,11 @@ pub(crate) async fn init(scratch: &BitmapAllocator) -> McuResult<()> {
 
 pub(crate) fn shared() -> &'static SharedCertStore<CertStoreStorage> {
     &CERT_STORE
+}
+
+#[cfg(feature = "mcu-mbox-service")]
+pub(crate) fn mci_store() -> &'static TaskCertStore<CertStoreStorage> {
+    &MCI_CERT_STORE.0
 }
 
 /// One-time Caliptra setup: read the IDevID certs from OTP and install them.
@@ -204,7 +224,7 @@ async fn setup_endorsements<A: ScratchAlloc>(
     // cert-store flash partition. Each (role, algorithm) gets its own
     // contiguous region. This remains test-only until a production requester
     // authorization exists.
-    #[cfg(feature = "test-mctp-spdm-set-certificate")]
+    #[cfg(feature = "cert-provisioning")]
     {
         let storage = SpiFlashEndorsementStorage::new(CERT_STORE_PARTITION.driver_num);
         for (region_index, &(role, algo)) in MANAGED_ENDORSEMENT_REGIONS.iter().enumerate() {
