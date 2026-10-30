@@ -137,7 +137,7 @@ impl Soc {
     }
 
     #[cfg(hw_capability = "owner-pk-hash-registers")]
-    pub(crate) fn provision_owner_pk_hash(&self, digest: &[u32; 12]) -> McuResult<()> {
+    pub(crate) fn write_and_lock_owner_pk_hash_csrs(&self, digest: &[u32; 12]) -> McuResult<()> {
         let matches = || {
             self.registers
                 .cptra_owner_pk_hash
@@ -1306,7 +1306,7 @@ mod owner_pk_hash_tests {
     fn writes_and_locks_all_twelve_words() {
         let soc = soc();
         let expected = core::array::from_fn(|i| 0x1234_5678 + i as u32);
-        soc.provision_owner_pk_hash(&expected).unwrap();
+        soc.write_and_lock_owner_pk_hash_csrs(&expected).unwrap();
         assert_eq!(digest(&soc), expected);
         assert!(soc
             .registers
@@ -1320,7 +1320,7 @@ mod owner_pk_hash_tests {
         for register in &soc.registers.cptra_owner_pk_hash {
             register.set(u32::MAX);
         }
-        soc.provision_owner_pk_hash(&[0; 12]).unwrap();
+        soc.write_and_lock_owner_pk_hash_csrs(&[0; 12]).unwrap();
         assert_eq!(digest(&soc), [0; 12]);
         assert!(soc
             .registers
@@ -1332,8 +1332,8 @@ mod owner_pk_hash_tests {
     fn accepts_an_already_locked_matching_owner() {
         let soc = soc();
         let expected = [0x1234_5678; 12];
-        soc.provision_owner_pk_hash(&expected).unwrap();
-        soc.provision_owner_pk_hash(&expected).unwrap();
+        soc.write_and_lock_owner_pk_hash_csrs(&expected).unwrap();
+        soc.write_and_lock_owner_pk_hash_csrs(&expected).unwrap();
         assert_eq!(digest(&soc), expected);
     }
 
@@ -1342,11 +1342,11 @@ mod owner_pk_hash_tests {
         for index in 0..12 {
             let soc = soc();
             let original = [0x1234_5678; 12];
-            soc.provision_owner_pk_hash(&original).unwrap();
+            soc.write_and_lock_owner_pk_hash_csrs(&original).unwrap();
             let mut changed = original;
             changed[index] ^= 1;
             assert_eq!(
-                soc.provision_owner_pk_hash(&changed),
+                soc.write_and_lock_owner_pk_hash_csrs(&changed),
                 Err(McuError::ROM_DOT_INSTALL_OWNER_PK_HASH_FAILED)
             );
             assert_eq!(digest(&soc), original);
@@ -1356,9 +1356,9 @@ mod owner_pk_hash_tests {
     #[test]
     fn debug_intent_cannot_clear_a_previously_locked_owner() {
         let soc = soc();
-        soc.provision_owner_pk_hash(&[1; 12]).unwrap();
+        soc.write_and_lock_owner_pk_hash_csrs(&[1; 12]).unwrap();
         assert_eq!(
-            soc.provision_owner_pk_hash(&[0; 12]),
+            soc.write_and_lock_owner_pk_hash_csrs(&[0; 12]),
             Err(McuError::ROM_DOT_INSTALL_OWNER_PK_HASH_FAILED)
         );
         assert_eq!(digest(&soc), [1; 12]);
