@@ -20,7 +20,6 @@ jobs:
       matrix:
         workflow:
           - build-test.yml
-          - nightly.yml
     env:
       TARGET_REF: main-2.1
       TARGET_WORKFLOW: ${{ matrix.workflow }}

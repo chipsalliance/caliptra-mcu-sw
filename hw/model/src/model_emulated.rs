@@ -75,6 +75,7 @@ pub struct ModelEmulated {
     caliptra_trace_fn: Option<Box<InstrTracer<'static>>>,
     ready_for_fw: Rc<Cell<bool>>,
     cpu_enabled: Rc<Cell<bool>>,
+    mcu_exit_status: Rc<Cell<Option<i32>>>,
     trace_path: Option<PathBuf>,
     mcu_uart_output: Rc<RefCell<Vec<u8>>>,
 
@@ -111,11 +112,22 @@ fn hash_slice(slice: &[u8]) -> u64 {
     hasher.finish()
 }
 
+fn emulator_hw_revision(params: &InitParams<'_>) -> Version {
+    params.hw_revision.clone().unwrap_or_else(|| {
+        if params.flash_boot || params.network_boot {
+            Version::new(2, 1, 0)
+        } else {
+            Version::new(2, 0, 0)
+        }
+    })
+}
+
 impl McuHwModel for ModelEmulated {
     fn new_unbooted(params: InitParams) -> Result<Self>
     where
         Self: Sized,
     {
+        let hw_version = emulator_hw_revision(&params);
         // Install per-instance emulator state on this thread BEFORE any
         // worker thread is spawned below (start_i3c_socket, I3c::new, etc.
         // spawn via spawn_with_emulator_state and inherit state from this
@@ -158,7 +170,11 @@ impl McuHwModel for ModelEmulated {
             straps,
             ..Default::default()
         };
-        let mcu_root_bus = McuRootBus::new(bus_args).unwrap();
+        let mut mcu_root_bus = McuRootBus::new(bus_args).unwrap();
+        let mcu_exit_status = Rc::new(Cell::new(None));
+        if params.capture_mcu_exit {
+            mcu_root_bus.ctrl.capture_exit(mcu_exit_status.clone());
+        }
 
         let mut i3c_controller = if let Some(i3c_port) = params.i3c_port {
             let (rx, tx) = start_i3c_socket(i3c_port);
@@ -172,13 +188,6 @@ impl McuHwModel for ModelEmulated {
         let dma_ram = mcu_root_bus.ram.clone();
         let rom_sram = mcu_root_bus.rom_sram.clone();
         let dot_flash = mcu_root_bus.dot_flash.clone();
-
-        // Use HW 2.1.0 for flash-based or network-based boot, otherwise 2.0.0
-        let hw_version = if params.flash_boot || params.network_boot {
-            Version::new(2, 1, 0)
-        } else {
-            Version::new(2, 0, 0)
-        };
 
         let step_lock = Arc::new(Mutex::new(()));
 
@@ -539,6 +548,7 @@ impl McuHwModel for ModelEmulated {
             caliptra_trace_fn: None,
             ready_for_fw,
             cpu_enabled,
+            mcu_exit_status,
             trace_path: trace_path_or_env(params.trace_path),
             mcu_uart_output,
             _rom_image_tag: image_tag,
@@ -604,6 +614,10 @@ impl McuHwModel for ModelEmulated {
         self.ready_for_fw.get()
     }
 
+    fn mcu_exit_status(&self) -> Option<i32> {
+        self.mcu_exit_status.get()
+    }
+
     fn step(&mut self) {
         if self.cpu_enabled.get() {
             {
@@ -611,7 +625,9 @@ impl McuHwModel for ModelEmulated {
                 // cross-thread callers (e.g. I3C PollScheduler::incoming)
                 // cannot observe a mid-step clock value.
                 let _guard = self.step_lock.lock().unwrap();
-                self.cpu.step(self.caliptra_trace_fn.as_deref_mut());
+                if self.mcu_exit_status.get().is_none() {
+                    self.cpu.step(self.caliptra_trace_fn.as_deref_mut());
+                }
                 self.caliptra_cpu
                     .step(self.caliptra_trace_fn.as_deref_mut());
             }
@@ -768,6 +784,26 @@ impl McuHwModel for ModelEmulated {
     }
 
     fn warm_reset(&mut self) {
+        // Core's emulator reset does not clear these reset-domain registers.
+        // Clear them before MCI resets so firmware cannot reuse stale readiness.
+        for index in 0..4 {
+            self.caliptra_soc_manager()
+                .soc_ifc()
+                .ss_generic_fw_exec_ctrl()
+                .at(index)
+                .write(|_| 0);
+        }
+        self.ready_for_fw.set(false);
+        self.mcu_exit_status.set(None);
+        self.state
+            .runtime_started
+            .store(false, std::sync::atomic::Ordering::Release);
+        self.state.set_pldm_ready(false);
+        self.state
+            .set_spdm_responder_ready(SpdmResponderTransport::Mctp, false);
+        self.state
+            .set_spdm_responder_ready(SpdmResponderTransport::Doe, false);
+        self.caliptra_cpu.warm_reset();
         self.cpu.warm_reset();
         self.step();
     }
@@ -904,6 +940,93 @@ mod test {
     use super::*;
     use crate::{InitParams, McuHwModel, ModelEmulated};
     use caliptra_mcu_builder::{CaliptraBuildArgs, CaliptraBuilder};
+
+    #[test]
+    fn test_subsystem_warm_reset_preserves_memory_and_clears_readiness() {
+        let rom = [0x6f, 0, 0, 0]; // jal zero, 0
+        let mut model = ModelEmulated::new_unbooted(InitParams {
+            mcu_rom: &rom,
+            caliptra_rom: &rom,
+            hw_revision: Some(Version::new(2, 1, 0)),
+            check_booted_to_runtime: false,
+            ..Default::default()
+        })
+        .unwrap();
+        let otp = model.read_otp_memory();
+        model.mci_regs.borrow_mut().flow_status = u32::MAX;
+        model.mci_regs.borrow_mut().reset_reason = 3;
+        for index in 0..4 {
+            model
+                .caliptra_soc_manager()
+                .soc_ifc()
+                .ss_generic_fw_exec_ctrl()
+                .at(index)
+                .write(|_| u32::MAX);
+        }
+        model
+            .cpu
+            .bus
+            .write(RvSize::Word, EMULATOR_MEMORY_MAP.sram_offset, 0x1234_5678)
+            .unwrap();
+        model.state.set_pldm_ready(true);
+        model
+            .state
+            .set_spdm_responder_ready(SpdmResponderTransport::Mctp, true);
+        model.cpu_enabled.set(true);
+
+        model.warm_reset();
+
+        assert_eq!(model.mci_regs.borrow().reset_reason, 4);
+        assert_eq!(model.mci_regs.borrow().flow_status, 0);
+        for index in 0..4 {
+            assert_eq!(
+                model
+                    .caliptra_soc_manager()
+                    .soc_ifc()
+                    .ss_generic_fw_exec_ctrl()
+                    .at(index)
+                    .read(),
+                0
+            );
+        }
+        assert!(model
+            .caliptra_soc_manager()
+            .soc_ifc()
+            .cptra_reset_reason()
+            .read()
+            .warm_reset());
+        assert!(!model.state.is_pldm_ready());
+        assert!(!model
+            .state
+            .is_spdm_responder_ready(SpdmResponderTransport::Mctp));
+        assert_eq!(model.read_otp_memory(), otp);
+        assert_eq!(
+            model
+                .cpu
+                .bus
+                .read(RvSize::Word, EMULATOR_MEMORY_MAP.sram_offset)
+                .unwrap(),
+            0x1234_5678
+        );
+    }
+
+    #[test]
+    fn test_emulator_hw_revision_override_preserves_defaults() {
+        for (flash_boot, network_boot, expected) in [
+            (false, false, Version::new(2, 0, 0)),
+            (true, false, Version::new(2, 1, 0)),
+            (false, true, Version::new(2, 1, 0)),
+        ] {
+            let mut params = InitParams {
+                flash_boot,
+                network_boot,
+                ..Default::default()
+            };
+            assert_eq!(emulator_hw_revision(&params), expected);
+            params.hw_revision = Some(Version::new(2, 1, 0));
+            assert_eq!(emulator_hw_revision(&params), Version::new(2, 1, 0));
+        }
+    }
 
     #[test]
     fn test_new_unbooted() {

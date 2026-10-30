@@ -117,6 +117,8 @@ pub fn new(init_params: InitParams) -> Result<DefaultHwModel> {
 }
 
 pub struct InitParams<'a> {
+    /// Explicit emulator hardware revision; otherwise retain boot-mode defaults.
+    pub hw_revision: Option<semver::Version>,
     /// Fuse settings
     pub fuses: Fuses,
     /// The contents of the Caliptra ROM
@@ -223,6 +225,8 @@ pub struct InitParams<'a> {
     pub enable_mcu_uart_log: bool,
 
     pub i3c_port: Option<u16>,
+    /// Observe MCU emulator termination instead of exiting the test process.
+    pub capture_mcu_exit: bool,
 
     /// Initial contents of DOT flash.
     pub dot_flash_initial_contents: Option<Vec<u8>>,
@@ -289,6 +293,7 @@ impl Default for InitParams<'_> {
                 Box::new(RandomEtrngResponses::new_from_stdrng())
             };
         Self {
+            hw_revision: None,
             fuses: Default::default(),
             caliptra_rom: Default::default(),
             caliptra_firmware: Default::default(),
@@ -331,6 +336,7 @@ impl Default for InitParams<'_> {
             vendor_pk_hash: None,
             vendor_pqc_type: None,
             i3c_port: None,
+            capture_mcu_exit: false,
             dot_flash_initial_contents: None,
             primary_flash_initial_contents: None,
             check_booted_to_runtime: true,
@@ -540,6 +546,10 @@ pub trait McuHwModel {
     fn set_caliptra_boot_go(&mut self, _value: bool) {}
 
     fn events_from_caliptra(&mut self) -> Vec<Event>;
+
+    fn mcu_exit_status(&self) -> Option<i32> {
+        None
+    }
 
     fn events_to_caliptra(&mut self) -> mpsc::Sender<Event>;
 

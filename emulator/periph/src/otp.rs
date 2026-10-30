@@ -176,8 +176,9 @@ impl Otp {
                 }
             }
 
-            partitions[fuses::SVN_PARTITION_BYTE_OFFSET + 36] =
-                args.soc_manifest_max_svn.unwrap_or(0);
+            if let Some(max_svn) = args.soc_manifest_max_svn {
+                partitions[fuses::SVN_PARTITION_BYTE_OFFSET + 36] = max_svn;
+            }
             if let Some(soc_manifest_svn) = args.soc_manifest_svn {
                 let svn_bitmap = Self::svn_to_bitmap(soc_manifest_svn as u32);
                 partitions
@@ -665,6 +666,35 @@ mod test {
     use tock_registers::interfaces::{Readable, Writeable};
 
     const HEK_RATCHET_SEED_SIZE: usize = 32;
+
+    #[test]
+    fn preserves_raw_soc_manifest_svn_limits_unless_overridden() {
+        let clock = Clock::new();
+        let offset = fuses::SVN_PARTITION_BYTE_OFFSET + 36;
+        let mut raw = vec![0; fuses::LIFE_CYCLE_BYTE_OFFSET + fuses::LIFE_CYCLE_BYTE_SIZE];
+        raw[offset] = 7;
+        let preserved = Otp::new(
+            &clock,
+            OtpArgs {
+                raw_memory: Some(raw.clone()),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(preserved.partitions.borrow()[offset], 7);
+        let overridden = Otp::new(
+            &clock,
+            OtpArgs {
+                raw_memory: Some(raw),
+                soc_manifest_max_svn: Some(0),
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(overridden.partitions.borrow()[offset], 0);
+        let default = Otp::new(&clock, OtpArgs::default()).unwrap();
+        assert_eq!(default.partitions.borrow()[offset], 0);
+    }
 
     #[test]
     fn test_bootup() {

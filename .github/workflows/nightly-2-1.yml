@@ -14,6 +14,7 @@ permissions:
 jobs:
   dispatch_nightly_main_2_1:
     runs-on: ubuntu-latest
+    timeout-minutes: 310
     env:
       TARGET_REF: main-2.1
     steps:
@@ -70,7 +71,7 @@ jobs:
 
             core.info(`Tracking run #${dispatchedRun.run_number} (id: ${dispatchedRun.id})`);
 
-            const maxTrackAttempts = 240;
+            const maxTrackAttempts = 600;
             const trackDelayMs = 30000;
 
             for (let attempt = 1; attempt <= maxTrackAttempts; attempt++) {
@@ -94,4 +95,3 @@ jobs:
             }
 
             core.setFailed("Timed out while waiting for the dispatched nightly run to complete.");
-
