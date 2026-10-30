@@ -1355,6 +1355,18 @@ impl BootFlow for ColdBoot {
             straps.active_i3c
         );
 
+        #[cfg(hw_rev = "latest")]
+        if let Err(err) = params
+            .recovery_interface
+            .configure(&mci.registers.mci_reg_hw_capabilities)
+        {
+            caliptra_mcu_romtime::println!(
+                "[mcu-rom] Recovery interface selection failed: {}",
+                HexWord(err.into())
+            );
+            fatal_error(err);
+        }
+
         caliptra_mcu_romtime::println!("[mcu-rom] Setting Caliptra boot go");
 
         crate::call_hook(params.hooks, |h| h.pre_caliptra_boot());

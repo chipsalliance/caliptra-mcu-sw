@@ -60,6 +60,18 @@ impl BootFlow for WarmBoot {
         }
         mci.set_flow_checkpoint(McuRomBootStatus::I3cInitialized.into());
 
+        #[cfg(hw_rev = "latest")]
+        if let Err(err) = params
+            .recovery_interface
+            .configure(&mci.registers.mci_reg_hw_capabilities)
+        {
+            caliptra_mcu_romtime::println!(
+                "[mcu-rom] Recovery interface selection failed: {}",
+                caliptra_mcu_romtime::HexWord(err.into())
+            );
+            fatal_error(err);
+        }
+
         caliptra_mcu_romtime::println!("[mcu-rom] Setting Caliptra boot go");
         crate::call_hook(params.hooks, |h| h.pre_caliptra_boot());
         mci.caliptra_boot_go();
