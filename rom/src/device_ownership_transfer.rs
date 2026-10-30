@@ -19,7 +19,7 @@ use caliptra_api::mailbox::{
     CmDeriveStableKeyReq, CmDeriveStableKeyResp, CmHashAlgorithm, CmHmacResp, CmShaReqHdr,
     CmShaResp, CmStableKeyType, CommandId, EcdsaVerifyReq, MailboxReqHeader, MailboxRespHeader,
 };
-#[cfg(hw_rev = "2.1")]
+#[cfg(hw_capability = "owner-pk-hash-mailbox")]
 use caliptra_api::mailbox::{InstallOwnerPkHashReq, InstallOwnerPkHashResp};
 #[cfg(all(not(test), feature = "cfi"))]
 use caliptra_cfi_derive::cfi_mod_fn;
@@ -153,7 +153,7 @@ pub fn load_owner_pkhash(otp: &Otp) -> Option<OwnerPkHash> {
 ///
 /// The `digest` payload uses the same word layout as the register, so the
 /// `OwnerPkHash` words are forwarded unchanged.
-#[cfg(hw_rev = "2.1")]
+#[cfg(hw_capability = "owner-pk-hash-mailbox")]
 pub(crate) fn install_owner_pk_hash(
     soc_manager: &mut caliptra_mcu_romtime::CaliptraSoC,
     owner_pk_hash: &OwnerPkHash,
