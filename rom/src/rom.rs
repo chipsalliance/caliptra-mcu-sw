@@ -952,8 +952,101 @@ pub enum DotRecoveryPolicy {
     None,
 }
 
+/// Recovery register and signal routing presented to Caliptra Core on 2.2.
+#[cfg(hw_rev = "latest")]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum RecoveryInterface {
+    #[default]
+    I3c,
+    Usb,
+}
+
+#[cfg(hw_rev = "latest")]
+impl RecoveryInterface {
+    pub(crate) fn configure(
+        self,
+        capabilities: &(impl Readable<T = u32, R = mci::bits::HwCapabilities::Register>
+              + Writeable<T = u32, R = mci::bits::HwCapabilities::Register>),
+    ) -> McuResult<()> {
+        use mci::bits::HwCapabilities::StreamingBootSelect;
+
+        let selection = match self {
+            Self::I3c => StreamingBootSelect::I3c,
+            Self::Usb => StreamingBootSelect::Usb,
+        };
+        capabilities.modify(selection);
+        if !capabilities.matches_all(selection) {
+            return Err(McuError::ROM_SOC_RECOVERY_INTERFACE_VERIFY_FAILED);
+        }
+        Ok(())
+    }
+}
+
+#[cfg(all(test, hw_rev = "latest"))]
+mod recovery_interface_tests {
+    use super::*;
+    use tock_registers::registers::InMemoryRegister;
+
+    struct LockedCapabilities(u32);
+
+    impl Readable for LockedCapabilities {
+        type T = u32;
+        type R = mci::bits::HwCapabilities::Register;
+
+        fn get(&self) -> u32 {
+            self.0
+        }
+    }
+
+    impl Writeable for LockedCapabilities {
+        type T = u32;
+        type R = mci::bits::HwCapabilities::Register;
+
+        fn set(&self, _value: u32) {}
+    }
+
+    #[test]
+    fn default_parameters_select_i3c_instead_of_the_usb_reset_default() {
+        let capabilities = InMemoryRegister::new(0);
+        RomParameters::default()
+            .recovery_interface
+            .configure(&capabilities)
+            .unwrap();
+        assert_eq!(capabilities.get(), 1);
+    }
+
+    #[test]
+    fn explicit_usb_and_default_i3c_preserve_other_capability_bits() {
+        for initial in [0, u32::MAX, 0xa5a5_5a5a] {
+            for (interface, expected) in [(RecoveryInterface::I3c, 1), (RecoveryInterface::Usb, 0)]
+            {
+                let capabilities = InMemoryRegister::new(initial);
+                interface.configure(&capabilities).unwrap();
+                assert_eq!(capabilities.get() & 3, expected);
+                assert_eq!(capabilities.get() & !3, initial & !3);
+            }
+        }
+    }
+
+    #[test]
+    fn locked_wrong_selection_is_an_error() {
+        for (interface, current) in [(RecoveryInterface::I3c, 0), (RecoveryInterface::Usb, 1)] {
+            assert_eq!(
+                interface.configure(&LockedCapabilities(current)),
+                Err(McuError::ROM_SOC_RECOVERY_INTERFACE_VERIFY_FAILED)
+            );
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct RomParameters<'a> {
+    /// Select Caliptra Core's recovery register backend before boot-go on cold
+    /// and warm boot.
+    /// Defaults to I3C, including flash and AXI-bypass boot. USB platforms must
+    /// opt in explicitly; this selects routing, not USB controller initialization.
+    #[cfg(hw_rev = "latest")]
+    pub recovery_interface: RecoveryInterface,
     pub lifecycle_transition: Option<(LifecycleControllerState, LifecycleToken)>,
     pub burn_lifecycle_tokens: Option<LifecycleHashedTokens>,
     pub image_provider_manager: Option<crate::recovery::ImageProviderManager<'a>>,
