@@ -105,17 +105,17 @@ impl TryFrom<u32> for AsymAlgo {
 /// PKI entity whose hierarchy endorses the evidence's signing key.
 ///
 /// Mirrors the firmware `PkiEntitySlot`. Selects an endorsement hierarchy, not
-/// a signing key: every slot signs with the same DPE leaf key today.
-///
-/// Host tooling only ever sends `Vendor`; `Owner` documents the wire encoding.
+/// a signing key: every slot signs with the same DPE leaf key.
 #[repr(u32)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PkiEntitySlot {
     /// Vendor (device manufacturer) hierarchy.
     #[default]
     Vendor = 0,
-    /// Owner hierarchy. Reserved.
+    /// Owner hierarchy.
     Owner = 1,
+    /// Tenant hierarchy.
+    Tenant = 2,
 }
 
 /// GET_ATTESTATION request.
@@ -126,7 +126,7 @@ pub struct GetAttestationRequest {
     pub evidence_format: u32,
     /// Signing algorithm (0x0001=ECC384, 0x0002=MLDSA87)
     pub algorithm: u32,
-    /// PKI entity whose hierarchy signs (0=Vendor, 1=Owner)
+    /// PKI entity whose hierarchy signs (0=Vendor, 1=Owner, 2=Tenant)
     pub pki_entity_slot: u32,
     /// Freshness nonce, bound into the signed evidence
     pub nonce: [u8; ATTESTATION_NONCE_LEN],
