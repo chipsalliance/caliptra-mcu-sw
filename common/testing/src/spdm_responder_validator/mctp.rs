@@ -9,8 +9,10 @@ use crate::spdm_responder_validator::transport::{
 
 const TEST_NAME: &str = "MCTP-SPDM-RESPONDER-VALIDATOR";
 const I3C_PEC_SIZE: usize = 1;
-const MCTP_I3C_MIN_PACKET_SIZE: usize = MCTP_HDR_SIZE + 64 + I3C_PEC_SIZE;
-const MCTP_I3C_DEFAULT_PACKET_SIZE: usize = 256;
+/// I3C packet size carrying the MCTP baseline transmission unit, including header and PEC.
+pub const MCTP_I3C_MIN_PACKET_SIZE: usize = MCTP_HDR_SIZE + 64 + I3C_PEC_SIZE;
+/// Default I3C packet size, including the MCTP header and PEC.
+pub const MCTP_I3C_DEFAULT_PACKET_SIZE: usize = 256;
 
 #[derive(Debug, Clone)]
 enum TxRxState {

@@ -2699,6 +2699,7 @@ dependencies = [
  "caliptra-mcu-registers-generated",
  "caliptra-mcu-rom-common",
  "caliptra-mcu-romtime",
+ "caliptra-mcu-spdm-codec",
  "caliptra-mcu-testing-common",
  "caliptra-mcu-xtask",
  "caliptra-registers",

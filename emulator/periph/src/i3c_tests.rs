@@ -93,6 +93,77 @@ impl Fixture {
 }
 
 #[test]
+fn rx_descriptor_read_clears_notification_but_not_queued_packets() {
+    let mut f = Fixture::new();
+    f.i3c
+        .write_i3c_ec_tti_interrupt_enable(ReadWriteRegister::new(
+            InterruptEnable::RxDescStatEn::SET.value,
+        ));
+    for byte in [0x11, 0x22] {
+        f.command(false, 1, vec![byte]);
+    }
+    assert!(f
+        .i3c
+        .interrupt_status
+        .reg
+        .is_set(InterruptStatus::RxDescStat));
+    for byte in [0x11, 0x22] {
+        assert!(!f
+            .i3c
+            .read_i3c_ec_tti_queue_status()
+            .reg
+            .is_set(QueueStatus::RxDescQueueEmpty));
+        assert_eq!(f.i3c.read_i3c_ec_tti_rx_desc_queue_port(), 1);
+        assert_eq!(f.i3c.read_i3c_ec_tti_rx_data_port(), byte);
+        f.poll();
+        assert!(!f
+            .i3c
+            .interrupt_status
+            .reg
+            .is_set(InterruptStatus::RxDescStat));
+    }
+    assert!(f
+        .i3c
+        .read_i3c_ec_tti_queue_status()
+        .reg
+        .is_set(QueueStatus::RxDescQueueEmpty));
+}
+
+#[test]
+fn enabling_rx_capture_does_not_notify_for_an_already_queued_write() {
+    let mut f = Fixture::new();
+    f.i3c
+        .write_i3c_ec_tti_interrupt_enable(ReadWriteRegister::new(0));
+    f.command(false, 1, vec![0x11]);
+    for enabled in [false, true] {
+        if enabled {
+            f.i3c
+                .write_i3c_ec_tti_interrupt_enable(ReadWriteRegister::new(
+                    InterruptEnable::RxDescStatEn::SET.value,
+                ));
+        }
+        f.poll();
+        assert!(!f
+            .i3c
+            .interrupt_status
+            .reg
+            .is_set(InterruptStatus::RxDescStat));
+        assert!(!f
+            .i3c
+            .read_i3c_ec_tti_queue_status()
+            .reg
+            .is_set(QueueStatus::RxDescQueueEmpty));
+    }
+    assert_eq!(f.i3c.read_i3c_ec_tti_rx_desc_queue_port(), 1);
+    assert_eq!(f.i3c.read_i3c_ec_tti_rx_data_port(), 0x11);
+    assert!(f
+        .i3c
+        .read_i3c_ec_tti_queue_status()
+        .reg
+        .is_set(QueueStatus::RxDescQueueEmpty));
+}
+
+#[test]
 fn tx_waits_for_explicit_read_and_strips_word_padding() {
     let mut f = Fixture::new();
     f.tx(&[1, 2, 3, 4, 5]);
