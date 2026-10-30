@@ -112,6 +112,22 @@ pub const ROM_ONLY_TEST_FEATURES: &[&str] = &[
 
 pub const LATEST_ROM_ONLY_TEST_FEATURES: &[&str] = &["test-lpcip-usb-enumeration"];
 
+pub const LATEST_EMULATOR_ROM_ONLY_TEST_FEATURES: &[&str] = &["test-lpcip-usb-host"];
+
+pub fn latest_rom_only_test_features(
+    revision: caliptra_mcu_hw_revision::HardwareRevision,
+    platform: &str,
+) -> Vec<&'static str> {
+    if revision != caliptra_mcu_hw_revision::HardwareRevision::Latest {
+        return vec![];
+    }
+    let mut features = LATEST_ROM_ONLY_TEST_FEATURES.to_vec();
+    if platform == "emulator" {
+        features.extend_from_slice(LATEST_EMULATOR_ROM_ONLY_TEST_FEATURES);
+    }
+    features
+}
+
 pub const BARE_METAL_BINARIES: &[&str] = &[
     "caliptra-mcu-bare-metal",
     "caliptra-mcu-provisioning-test-unlocked-fw",
@@ -177,10 +193,9 @@ pub fn default_rom_variants(
     revision: caliptra_mcu_hw_revision::HardwareRevision,
 ) -> Vec<RomVariant> {
     let mut variants = ROM_VARIANTS.to_vec();
-    if revision == caliptra_mcu_hw_revision::HardwareRevision::Latest {
-        for &feature in LATEST_ROM_ONLY_TEST_FEATURES {
-            variants.push(RomVariant::new(None, Some(feature)));
-            variants.push(RomVariant::new(Some("fpga"), Some(feature)));
+    for platform in [None, Some("fpga")] {
+        for feature in latest_rom_only_test_features(revision, platform.unwrap_or("emulator")) {
+            variants.push(RomVariant::new(platform, Some(feature)));
         }
     }
     variants
@@ -246,6 +261,25 @@ mod tests {
                 platform,
                 Some("test-lpcip-usb-enumeration")
             )));
+        }
+        assert!(latest.contains(&RomVariant::new(None, Some("test-lpcip-usb-host"))));
+        assert!(!latest.contains(&RomVariant::new(Some("fpga"), Some("test-lpcip-usb-host"))));
+    }
+
+    #[test]
+    fn host_fixture_is_prebuilt_only_for_latest_emulator() {
+        for revision in [HardwareRevision::V2_1, HardwareRevision::Latest] {
+            for platform in ["emulator", "fpga"] {
+                let features = latest_rom_only_test_features(revision, platform);
+                assert_eq!(
+                    features.contains(&"test-lpcip-usb-host"),
+                    revision == HardwareRevision::Latest && platform == "emulator"
+                );
+                assert_eq!(
+                    features.contains(&"test-lpcip-usb-enumeration"),
+                    revision == HardwareRevision::Latest
+                );
+            }
         }
     }
 }

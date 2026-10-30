@@ -21,6 +21,7 @@ members = [
     "emulator/app/mcu-mbox",
     "emulator/bmc/pldm-fw-pkg",
     "emulator/bmc/pldm-ua",
+    "emulator/bmc/usb-recovery",
     "emulator/caliptra",
     "emulator/cbinding",
     "emulator/compliance-test",
@@ -208,6 +209,7 @@ prettyplease = "0.2.37"
 proc-macro2 = "1.0.66"
 quote = "1.0"
 rand = "0.8.5"
+rusb = "0.9.4"
 rayon = "1.10"
 random-port = "0.1.1"
 rustls = "0.23.40"
@@ -315,6 +317,7 @@ caliptra-mcu-usb-common = { path = "platforms/common/usb" }
 caliptra-mcu-test-harness = {path = "platforms/test_harness"}
 caliptra-mcu-lwip-rs = { path = "network/net/lwip-rs", default-features = false }
 caliptra-mcu-ocp = { path = "common/ocp" }
+caliptra-mcu-usb-recovery = { path = "emulator/bmc/usb-recovery", default-features = false }
 caliptra-mcu-boot-source-protocol = { path = "network/boot-source-protocol", package = "boot-source-protocol" }
 caliptra-mcu-network-app-boot-source = { path = "network/app/boot-source" }
 caliptra-mcu-network-app-rom-test = { path = "network/app/test" }

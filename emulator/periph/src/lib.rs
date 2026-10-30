@@ -61,7 +61,7 @@ pub use uart::Uart;
 pub use usb::{
     LpcipUsbError, LpcipUsbHostController, LpcipUsbHubHostController, LpcipUsbPhy,
     LpcipUsbPhyError, LpcipUsbPhySnapshot, LpcipUsbRecoverySnapshot, LpcipUsbSpeed, UsbCombo,
-    UsbDev0Mem, UsbDev1, UsbDev1Mem,
+    UsbDev0Mem, UsbDev1, UsbDev1Mem, UsbIpServer, USBIP_BUS_ID,
 };
 pub use usbdev::{UsbDevPeriph, UsbHostController, UsbTransactionError};
 
