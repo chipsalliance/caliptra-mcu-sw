@@ -306,7 +306,30 @@ pub mod test {
                         || results.iter().any(|result| {
                             result.test_name == "VendorPkHashStatus" && result.passed
                         });
-                    if all_passed && all_dot_results_passed && vendor_status_passed {
+                    let required_cert_results = [
+                        "GetCertChainInfo(Vendor/ECC_P384)",
+                        "GetCertChain(Vendor/ECC_P384)",
+                        "SetCertChain(Vendor/readonly)",
+                        "GetCertChainInfo(Owner/unprovisioned)",
+                        "SetCertChain(Owner/ECC_P384)",
+                        "GetCertChainInfo(Owner/ECC_P384)",
+                        "GetCertChain(Owner/ECC_P384)",
+                        "SetCertChain(Tenant/key_id_0_rejected)",
+                        "SetCertChain(Tenant/ECC_P384)",
+                        "GetCertChainInfo(Tenant/ECC_P384)",
+                        "GetCertChain(Tenant/ECC_P384)",
+                    ];
+                    let all_cert_results_passed = fuse_only
+                        || required_cert_results.iter().all(|test_name| {
+                            results
+                                .iter()
+                                .any(|result| result.test_name == *test_name && result.passed)
+                        });
+                    if all_passed
+                        && all_dot_results_passed
+                        && vendor_status_passed
+                        && all_cert_results_passed
+                    {
                         println!("✓ Caliptra Mailbox validator PASSED");
                     } else {
                         println!("✗ Caliptra Mailbox validator FAILED");

@@ -39,10 +39,24 @@ use mcu_error::{
 
 const CERT_DIGEST_CHUNK_SIZE: usize = 1024;
 
+struct NoInlineFut<F>(F);
+
+impl<F: core::future::Future> core::future::Future for NoInlineFut<F> {
+    type Output = F::Output;
+
+    #[inline(never)]
+    fn poll(
+        self: core::pin::Pin<&mut Self>,
+        cx: &mut core::task::Context<'_>,
+    ) -> core::task::Poll<Self::Output> {
+        // SAFETY: structural pin projection to inner future.
+        unsafe { self.map_unchecked_mut(|s| &mut s.0).poll(cx) }
+    }
+}
+
 async fn compute_root_hash<A: ScratchAlloc>(alloc: &A, root_cert: &[u8]) -> McuResult<[u8; 48]> {
     let sha_buf = alloc.alloc(SHA_CONTEXT_SIZE)?;
-    let mut state = sha_init(alloc, sha_buf, HashAlgo::Sha384, &[]).await?;
-    sha_update(alloc, &mut state, root_cert).await?;
+    let mut state = sha_init(alloc, sha_buf, HashAlgo::Sha384, root_cert).await?;
     let mut hash = [0u8; 48];
     sha_finish(alloc, &mut state, &mut hash).await?;
     Ok(hash)
@@ -226,24 +240,37 @@ impl<S: EndorsementStorage> SharedCertStore<S> {
     }
 }
 
-#[derive(Copy, Clone, Default)]
+const CACHE_HAS_DEVICE_OFFSET: u8 = 1 << 0;
+const CACHE_HAS_CHAIN_DIGEST: u8 = 1 << 1;
+
+#[derive(Copy, Clone)]
 struct CertChainCache {
     generation_counter: u32,
-    chain_len: Option<u32>,
-    leaf_len: Option<u32>,
-    chain_digest: Option<[u8; 48]>,
-    device_chain_offset: Option<u32>,
+    chain_len: usize,
+    leaf_len: usize,
+    device_chain_offset: usize,
+    flags: u8,
+    chain_digest: [u8; 48],
 }
 
 impl CertChainCache {
     const fn empty() -> Self {
         Self {
             generation_counter: 0,
-            chain_len: None,
-            leaf_len: None,
-            chain_digest: None,
-            device_chain_offset: None,
+            chain_len: 0,
+            leaf_len: 0,
+            device_chain_offset: 0,
+            flags: 0,
+            chain_digest: [0u8; 48],
         }
+    }
+
+    fn reset(&mut self, generation_counter: u32) {
+        self.generation_counter = generation_counter;
+        self.chain_len = 0;
+        self.leaf_len = 0;
+        self.device_chain_offset = 0;
+        self.flags = 0;
     }
 }
 
@@ -324,7 +351,8 @@ impl<S: EndorsementStorage> TaskCertStore<S> {
         role: EndorsementRole,
         algo: CertificateAlgorithm,
     ) -> Option<[u8; 48]> {
-        self.valid_chain_cache(role, algo)?.chain_digest
+        let cache = self.valid_chain_cache(role, algo)?;
+        (cache.flags & CACHE_HAS_CHAIN_DIGEST != 0).then_some(cache.chain_digest)
     }
 
     pub fn cache_chain_digest(
@@ -336,12 +364,12 @@ impl<S: EndorsementStorage> TaskCertStore<S> {
         if digest.len() > 48 {
             return;
         }
-        let mut entry = [0u8; 48];
-        for (d, s) in entry.iter_mut().zip(digest) {
-            *d = *s;
-        }
         self.update_chain_cache(role, algo, |cache| {
-            cache.chain_digest = Some(entry);
+            cache.chain_digest.fill(0);
+            for (d, s) in cache.chain_digest.iter_mut().zip(digest) {
+                *d = *s;
+            }
+            cache.flags |= CACHE_HAS_CHAIN_DIGEST;
         });
     }
 
@@ -355,39 +383,42 @@ impl<S: EndorsementStorage> TaskCertStore<S> {
         role: EndorsementRole,
         algo: CertificateAlgorithm,
     ) -> McuResult<usize> {
-        if let Some(n) = self.cached_chain_len(role, algo) {
-            return Ok(n as usize);
-        }
+        NoInlineFut(async move {
+            if let Some(n) = self.cached_chain_len(role, algo) {
+                return Ok(n as usize);
+            }
 
-        let (gen, skip_certs, slot_chain_len) = {
-            let slot = self.cert_slot(role);
-            let gen = slot.generation_counter(algo);
-            let len = slot.endorsement.size(algo).map_err(|_| INVARIANT)?;
-            let skip_certs = slot
-                .key_pair_id(algo)
-                .and_then(|id| DeviceKey::try_from(id).ok())
-                .map_or(0, |k| k.device_cert_skip_count());
-            (gen, skip_certs, len)
-        };
-        self.invalidate_algo_cache(role, algo);
+            let (gen, skip_certs, slot_chain_len) = {
+                let slot = self.cert_slot(role);
+                let gen = slot.generation_counter(algo);
+                let len = slot.endorsement.size(algo).map_err(|_| INVARIANT)?;
+                let skip_certs = slot
+                    .key_pair_id(algo)
+                    .and_then(|id| DeviceKey::try_from(id).ok())
+                    .map_or(0, |k| k.device_cert_skip_count());
+                (gen, skip_certs, len)
+            };
+            self.invalidate_algo_cache(role, algo);
 
-        let profile = algo.dpe_profile();
-        let (device_chain_len, device_chain_offset) =
-            device_chain_len_and_offset(alloc, profile, skip_certs).await?;
-        let leaf_len = probe_leaf_len(alloc, profile).await?;
-        let total = ChainLayout::new(
-            slot_chain_len,
-            device_chain_len,
-            device_chain_offset,
-            leaf_len,
-        )?
-        .total_len();
+            let profile = algo.dpe_profile();
+            let (device_chain_len, device_chain_offset) =
+                device_chain_len_and_offset(alloc, profile, skip_certs).await?;
+            let leaf_len = probe_leaf_len(alloc, profile).await?;
+            let total = ChainLayout::new(
+                slot_chain_len,
+                device_chain_len,
+                device_chain_offset,
+                leaf_len,
+            )?
+            .total_len();
 
-        self.ensure_generation_counter(role, algo, gen)?;
-        self.set_cached_leaf_len(role, algo, leaf_len as u32);
-        self.set_cached_device_chain_offset(role, algo, device_chain_offset as u32);
-        self.set_cached_chain_len(role, algo, total as u32);
-        Ok(total)
+            self.ensure_generation_counter(role, algo, gen)?;
+            self.set_cached_leaf_len(role, algo, leaf_len as u32);
+            self.set_cached_device_chain_offset(role, algo, device_chain_offset as u32);
+            self.set_cached_chain_len(role, algo, total as u32);
+            Ok(total)
+        })
+        .await
     }
 
     pub async fn read_cert_chain<A: ScratchAlloc>(
@@ -398,144 +429,133 @@ impl<S: EndorsementStorage> TaskCertStore<S> {
         offset: usize,
         dst: &mut [u8],
     ) -> McuResult<usize> {
-        let total = match self.cached_chain_len(role, algo) {
-            Some(n) if n > 0 => n as usize,
-            _ if offset == 0 => self.cert_chain_len(alloc, role, algo).await?,
-            _ => return Err(INVARIANT),
-        };
-        if total == 0 || offset > total {
-            return Err(INVARIANT);
-        }
-        if dst.is_empty() || offset == total {
-            return Ok(0);
-        }
-
-        let (gen, skip_certs, endorsement_len) = {
-            let slot = self.cert_slot(role);
-            let gen = slot.generation_counter(algo);
-            let len = slot.endorsement.size(algo).map_err(|_| INVARIANT)?;
-            let skip_certs = slot
-                .key_pair_id(algo)
-                .and_then(|id| DeviceKey::try_from(id).ok())
-                .map_or(0, |k| k.device_cert_skip_count());
-            (gen, skip_certs, len)
-        };
-        let want = (total - offset).min(dst.len());
-        let profile = algo.dpe_profile();
-        let leaf_len = match self.cached_leaf_len(role, algo) {
-            Some(n) => n as usize,
-            None => {
-                let n = probe_leaf_len(alloc, profile).await?;
-                self.ensure_generation_counter(role, algo, gen)?;
-                self.set_cached_leaf_len(role, algo, n as u32);
-                n
-            }
-        };
-        let device_chain_offset = if skip_certs > 0 {
-            match self.cached_device_chain_offset(role, algo) {
-                Some(n) => n as usize,
-                None => {
-                    let (_, skip) = device_chain_len_and_offset(alloc, profile, skip_certs).await?;
-                    self.ensure_generation_counter(role, algo, gen)?;
-                    self.set_cached_device_chain_offset(role, algo, skip as u32);
-                    skip
-                }
-            }
-        } else {
-            0
-        };
-        let layout =
-            ChainLayout::from_total(endorsement_len, total, device_chain_offset, leaf_len)?;
-        if total != layout.total_len() {
-            return Err(INVARIANT);
-        }
-        let mut written = 0usize;
-        let mut cur_offset = offset;
-
-        // 1. Endorsement region: ReadOnly copies synchronously from static RODATA;
-        //    Managed captures a 16-byte flash coordinate snapshot and region guard
-        //    before awaiting SPI flash.
-        if cur_offset < layout.endorsement.end && written < want {
-            let out_slice = checked_slice_mut(dst, written, want - written)?;
-            let n = match &self.cert_slot(role).endorsement {
-                SlotEndorsement::ReadOnly(e) => {
-                    e.read(algo, cur_offset, out_slice).map_err(|_| INVARIANT)?
-                }
-                SlotEndorsement::Managed(m) => {
-                    let snapshot = m
-                        .get_endorsement(algo)
-                        .ok_or(INVARIANT)?
-                        .read_snapshot()
-                        .map_err(|_| INVARIANT)?;
-                    let _guard = RegionReadGuard::new(
-                        self.shared,
-                        role,
-                        algo,
-                        Some(snapshot.active_region()),
-                    );
-                    snapshot
-                        .read(cur_offset, out_slice)
-                        .await
-                        .map_err(|_| INVARIANT)?
-                }
-                SlotEndorsement::Empty => return Err(INVARIANT),
+        NoInlineFut(async move {
+            let total = match self.cached_chain_len(role, algo) {
+                Some(n) if n > 0 => n as usize,
+                _ if offset == 0 => self.cert_chain_len(alloc, role, algo).await?,
+                _ => return Err(INVARIANT),
             };
-            self.ensure_generation_counter(role, algo, gen)?;
-            written += n;
-            cur_offset = offset + written;
-        }
+            if total == 0 || offset > total {
+                return Err(INVARIANT);
+            }
+            if dst.is_empty() || offset == total {
+                return Ok(0);
+            }
 
-        // 2. Device cert-chain region (fetched from Caliptra Core via DPE GetCertificateChain)
-        while cur_offset < layout.device_chain.end && written < want {
-            let dev_off = layout
-                .device_chain_offset
-                .checked_add(
-                    cur_offset
-                        .checked_sub(layout.device_chain.start)
-                        .ok_or(INVARIANT)?,
+            let (gen, skip_certs, endorsement_len) = {
+                let slot = self.cert_slot(role);
+                let gen = slot.generation_counter(algo);
+                let len = slot.endorsement.size(algo).map_err(|_| INVARIANT)?;
+                let skip_certs = slot
+                    .key_pair_id(algo)
+                    .and_then(|id| DeviceKey::try_from(id).ok())
+                    .map_or(0, |k| k.device_cert_skip_count());
+                (gen, skip_certs, len)
+            };
+            let want = (total - offset).min(dst.len());
+            let profile = algo.dpe_profile();
+            let leaf_len = self.cached_leaf_len(role, algo).ok_or(INVARIANT)? as usize;
+            let device_chain_offset = if skip_certs > 0 {
+                self.cached_device_chain_offset(role, algo)
+                    .ok_or(INVARIANT)? as usize
+            } else {
+                0
+            };
+            let layout =
+                ChainLayout::from_total(endorsement_len, total, device_chain_offset, leaf_len)?;
+            if total != layout.total_len() {
+                return Err(INVARIANT);
+            }
+            let mut written = 0usize;
+            let mut cur_offset = offset;
+
+            // 1. Endorsement region: ReadOnly copies synchronously from static RODATA;
+            //    Managed captures a 16-byte flash coordinate snapshot and region guard
+            //    before awaiting SPI flash.
+            if cur_offset < layout.endorsement.end && written < want {
+                let out_slice = checked_slice_mut(dst, written, want - written)?;
+                let n = match &self.cert_slot(role).endorsement {
+                    SlotEndorsement::ReadOnly(e) => {
+                        e.read(algo, cur_offset, out_slice).map_err(|_| INVARIANT)?
+                    }
+                    SlotEndorsement::Managed(m) => {
+                        let snapshot = m
+                            .get_endorsement(algo)
+                            .ok_or(INVARIANT)?
+                            .read_snapshot()
+                            .map_err(|_| INVARIANT)?;
+                        let _guard = RegionReadGuard::new(
+                            self.shared,
+                            role,
+                            algo,
+                            Some(snapshot.active_region()),
+                        );
+                        snapshot
+                            .read(cur_offset, out_slice)
+                            .await
+                            .map_err(|_| INVARIANT)?
+                    }
+                    SlotEndorsement::Empty => return Err(INVARIANT),
+                };
+                self.ensure_generation_counter(role, algo, gen)?;
+                written += n;
+                cur_offset = offset + written;
+            }
+
+            // 2. Device cert-chain region (fetched from Caliptra Core via DPE GetCertificateChain)
+            while cur_offset < layout.device_chain.end && written < want {
+                let dev_off = layout
+                    .device_chain_offset
+                    .checked_add(
+                        cur_offset
+                            .checked_sub(layout.device_chain.start)
+                            .ok_or(INVARIANT)?,
+                    )
+                    .ok_or(INVARIANT)?;
+                let dev_take = (layout.device_chain.end - cur_offset)
+                    .min(want - written)
+                    .min(DPE_MAX_CHUNK_SIZE);
+                let got = dpe_get_cert_chain_chunk(
+                    alloc,
+                    profile,
+                    dev_off as u32,
+                    checked_slice_mut(dst, written, dev_take)?,
                 )
-                .ok_or(INVARIANT)?;
-            let dev_take = (layout.device_chain.end - cur_offset)
-                .min(want - written)
-                .min(DPE_MAX_CHUNK_SIZE);
-            let got = dpe_get_cert_chain_chunk(
-                alloc,
-                profile,
-                dev_off as u32,
-                checked_slice_mut(dst, written, dev_take)?,
-            )
-            .await?;
-            if got != dev_take {
-                return Err(INTERNAL_BUG);
+                .await?;
+                if got != dev_take {
+                    return Err(INTERNAL_BUG);
+                }
+                self.ensure_generation_counter(role, algo, gen)?;
+                written += got;
+                cur_offset += got;
             }
-            self.ensure_generation_counter(role, algo, gen)?;
-            written += got;
-            cur_offset += got;
-        }
 
-        // 3. Leaf-cert region
-        while cur_offset >= layout.leaf.start && cur_offset < layout.leaf.end && written < want {
-            let leaf_off = cur_offset - layout.leaf.start;
-            let leaf_take = (layout.leaf.end - cur_offset)
-                .min(want - written)
-                .min(DPE_MAX_CHUNK_SIZE);
-            let got = caliptra_mcu_measurement_api::leaf_cert_slice(
-                alloc,
-                profile,
-                &DPE_LEAF_LABEL,
-                leaf_off as u32,
-                checked_slice_mut(dst, written, leaf_take)?,
-            )
-            .await
-            .map_err(|_| INTERNAL_BUG)?;
-            if got != leaf_take {
-                return Err(INTERNAL_BUG);
+            // 3. Leaf-cert region
+            while cur_offset >= layout.leaf.start && cur_offset < layout.leaf.end && written < want
+            {
+                let leaf_off = cur_offset - layout.leaf.start;
+                let leaf_take = (layout.leaf.end - cur_offset)
+                    .min(want - written)
+                    .min(DPE_MAX_CHUNK_SIZE);
+                let got = caliptra_mcu_measurement_api::leaf_cert_slice(
+                    alloc,
+                    profile,
+                    &DPE_LEAF_LABEL,
+                    leaf_off as u32,
+                    checked_slice_mut(dst, written, leaf_take)?,
+                )
+                .await
+                .map_err(|_| INTERNAL_BUG)?;
+                if got != leaf_take {
+                    return Err(INTERNAL_BUG);
+                }
+                self.ensure_generation_counter(role, algo, gen)?;
+                written += got;
+                cur_offset += got;
             }
-            self.ensure_generation_counter(role, algo, gen)?;
-            written += got;
-            cur_offset += got;
-        }
-        Ok(written)
+            Ok(written)
+        })
+        .await
     }
 
     /// Compute the SHA-384 digest over the raw DER certificate chain for `(role, algo)`.
@@ -553,7 +573,6 @@ impl<S: EndorsementStorage> TaskCertStore<S> {
             *out = cached;
             return Ok(());
         }
-        let _ = self.cert_chain_len(alloc, role, algo).await?;
         let (gen, _region_guard) = {
             let slot = self.cert_slot(role);
             let gen = slot.generation_counter(algo);
@@ -945,22 +964,24 @@ impl<S: EndorsementStorage> TaskCertStore<S> {
     }
 
     fn cached_chain_len(&self, role: EndorsementRole, algo: CertificateAlgorithm) -> Option<u32> {
-        self.valid_chain_cache(role, algo)?.chain_len
+        let len = self.valid_chain_cache(role, algo)?.chain_len;
+        (len > 0).then_some(len as u32)
     }
 
     fn set_cached_chain_len(&self, role: EndorsementRole, algo: CertificateAlgorithm, len: u32) {
         self.update_chain_cache(role, algo, |cache| {
-            cache.chain_len = Some(len);
+            cache.chain_len = len as usize;
         });
     }
 
     fn cached_leaf_len(&self, role: EndorsementRole, algo: CertificateAlgorithm) -> Option<u32> {
-        self.valid_chain_cache(role, algo)?.leaf_len
+        let len = self.valid_chain_cache(role, algo)?.leaf_len;
+        (len > 0).then_some(len as u32)
     }
 
     fn set_cached_leaf_len(&self, role: EndorsementRole, algo: CertificateAlgorithm, len: u32) {
         self.update_chain_cache(role, algo, |cache| {
-            cache.leaf_len = Some(len);
+            cache.leaf_len = len as usize;
         });
     }
 
@@ -969,7 +990,8 @@ impl<S: EndorsementStorage> TaskCertStore<S> {
         role: EndorsementRole,
         algo: CertificateAlgorithm,
     ) -> Option<u32> {
-        self.valid_chain_cache(role, algo)?.device_chain_offset
+        let cache = self.valid_chain_cache(role, algo)?;
+        (cache.flags & CACHE_HAS_DEVICE_OFFSET != 0).then_some(cache.device_chain_offset as u32)
     }
 
     fn set_cached_device_chain_offset(
@@ -979,16 +1001,14 @@ impl<S: EndorsementStorage> TaskCertStore<S> {
         offset: u32,
     ) {
         self.update_chain_cache(role, algo, |cache| {
-            cache.device_chain_offset = Some(offset);
+            cache.device_chain_offset = offset as usize;
+            cache.flags |= CACHE_HAS_DEVICE_OFFSET;
         });
     }
 
     fn invalidate_algo_cache(&self, role: EndorsementRole, algo: CertificateAlgorithm) {
         let gen = self.cert_slot(role).generation_counter(algo);
-        *self.chain_cache_mut(role, algo) = CertChainCache {
-            generation_counter: gen,
-            ..CertChainCache::default()
-        };
+        self.chain_cache_mut(role, algo).reset(gen);
     }
 
     #[allow(clippy::mut_from_ref)]
@@ -1004,17 +1024,14 @@ impl<S: EndorsementStorage> TaskCertStore<S> {
         &self,
         role: EndorsementRole,
         algo: CertificateAlgorithm,
-    ) -> Option<CertChainCache> {
+    ) -> Option<&CertChainCache> {
         let gen = self.cert_slot(role).generation_counter(algo);
         let cache = self.chain_cache_mut(role, algo);
         if cache.generation_counter != gen {
-            *cache = CertChainCache {
-                generation_counter: gen,
-                ..CertChainCache::default()
-            };
+            cache.reset(gen);
             return None;
         }
-        Some(*cache)
+        Some(cache)
     }
 
     fn update_chain_cache(
@@ -1026,10 +1043,7 @@ impl<S: EndorsementStorage> TaskCertStore<S> {
         let gen = self.cert_slot(role).generation_counter(algo);
         let cache = self.chain_cache_mut(role, algo);
         if cache.generation_counter != gen {
-            *cache = CertChainCache {
-                generation_counter: gen,
-                ..CertChainCache::default()
-            };
+            cache.reset(gen);
         }
         update(cache);
     }
