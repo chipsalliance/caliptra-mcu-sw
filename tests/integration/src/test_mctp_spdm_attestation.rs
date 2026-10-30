@@ -165,6 +165,12 @@ pub(crate) mod test {
             .wait_for_next_output_contains(ATTESTATION_EVIDENCE_READY, Duration::from_secs(9000))
             .unwrap();
 
+        // The child reports readiness over stdout; its state is not shared
+        // with the transport bridge in this process.
+        let state = caliptra_mcu_testing_common::get_emulator_state()
+            .expect("standalone runtime state not initialized");
+        state.set_spdm_responder_ready(SpdmResponderTransport::Mctp, true);
+
         let i3c_port = runtime.i3c_port();
         let i3c_addr = runtime.i3c_address();
         // `pick()` only tests a port, it never reserves it, and the default
@@ -193,6 +199,7 @@ pub(crate) mod test {
         // appraises it against the cold-boot reference values, and the second
         // SPDM session below reuses the same fixed output filenames.
         preserve_spdm_attestation_artifacts(COLD_BOOT_EVIDENCE_DIR);
+        state.set_spdm_responder_ready(SpdmResponderTransport::Mctp, false);
         let update_agent = run_successful_pldm_update(feature, i3c_port, i3c_addr);
         runtime
             .wait_for_next_output_contains(MCU_HITLESS_UPDATE_BANNER, Duration::from_secs(9000))
@@ -200,6 +207,7 @@ pub(crate) mod test {
         runtime
             .wait_for_next_output_contains(ATTESTATION_EVIDENCE_READY, Duration::from_secs(9000))
             .expect("updated firmware did not re-publish attestation evidence");
+        state.set_spdm_responder_ready(SpdmResponderTransport::Mctp, true);
         update_agent
             .activated
             .recv_timeout(Duration::from_secs(30))

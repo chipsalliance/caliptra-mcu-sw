@@ -27,8 +27,8 @@ use caliptra_mcu_core_util_host_command_types::device_ownership_transfer::{
 use caliptra_mcu_core_util_host_command_types::fuse::{
     MC_FE_PROG_CANONICAL_CMD_ID, MC_FUSE_INCREASE_MIN_SVN_CANONICAL_CMD_ID,
     MC_FUSE_LOCK_PARTITION_CANONICAL_CMD_ID, MC_FUSE_REVOKE_VENDOR_PK_HASH_CANONICAL_CMD_ID,
-    MC_FUSE_REVOKE_VENDOR_PUB_KEY_CANONICAL_CMD_ID,
-    MC_PROVISION_OWNER_PK_HASH_CANONICAL_CMD_ID, MC_PROVISION_VENDOR_PK_HASH_CANONICAL_CMD_ID,
+    MC_FUSE_REVOKE_VENDOR_PUB_KEY_CANONICAL_CMD_ID, MC_PROVISION_OWNER_PK_HASH_CANONICAL_CMD_ID,
+    MC_PROVISION_VENDOR_PK_HASH_CANONICAL_CMD_ID,
 };
 use caliptra_mcu_core_util_host_transport::{CaliptraVdmCommand, CaliptraVdmCompletionCode};
 use caliptra_mcu_debug_unlock_signer::{DebugUnlockSigner, ProdDebugUnlockChallenge};
