@@ -1066,11 +1066,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     let mcu_rom = mcu_rom_preserved.path().to_path_buf();
 
     let latest_rom_features =
-        if crate::hardware_revision()? == caliptra_mcu_hw_revision::HardwareRevision::Latest {
-            crate::features::LATEST_ROM_ONLY_TEST_FEATURES
-        } else {
-            &[]
-        };
+        crate::features::latest_rom_only_test_features(crate::hardware_revision()?, platform);
     let rom_features_to_build: Vec<&str> = separate_features
         .iter()
         .copied()
