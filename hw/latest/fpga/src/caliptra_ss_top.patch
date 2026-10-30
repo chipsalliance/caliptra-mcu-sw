@@ -7,12 +7,10 @@
 > 
 > // Trying to avoid compile error in css_mcu0_el2_param.vh. This worked in caliptra_ss_top but this would be better.
 > `include "css_mcu0_el2_pdef.vh"
-39a47,48
+64a72,73
 >     // TODO: Hacking in this i3c clock
 >     input logic cptra_i3c_clk_i,
-895c904,959
-<     
----
+1226a1235,1290
 >     logic i3c_rst_sync;
 >     xpm_cdc_async_rst #(
 >     .DEST_SYNC_FF(4),    // DECIMAL; range: 2-10
@@ -69,21 +67,23 @@
 >         .dest_out({cptra_ss_strap_caliptra_dma_axi_user_i_synch, cptra_ss_strap_mcu_lsu_axi_user_i_synch, disable_id_filtering_i_synch})
 >     );
 > 
-898,899c962,963
+1228,1231c1292,1295
+<     assign priv_ids[0] = cptra_ss_strap_caliptra_dma_axi_user_i;
+<     assign priv_ids[1] = cptra_ss_strap_mcu_lsu_axi_user_i;
 <     assign priv_ids[2] = cptra_ss_strap_caliptra_dma_axi_user_i;
 <     assign priv_ids[3] = cptra_ss_strap_mcu_lsu_axi_user_i;
 ---
+>     assign priv_ids[0] = cptra_ss_strap_caliptra_dma_axi_user_i_synch;
+>     assign priv_ids[1] = cptra_ss_strap_mcu_lsu_axi_user_i_synch;
 >     assign priv_ids[2] = cptra_ss_strap_caliptra_dma_axi_user_i_synch;
 >     assign priv_ids[3] = cptra_ss_strap_mcu_lsu_axi_user_i_synch;
-909,911c973,975
+1259,1260c1323,1324
 <         .clk_i                          (cptra_ss_clk_i),
 <         .rst_ni                         (cptra_ss_rst_b_o),
-<     
 ---
 >         .clk_i                          (cptra_i3c_clk_i),
 >         .rst_ni                         (i3c_rst_sync),
-> 
-969,971c1033,1035
+1291,1293c1355,1357
 <         .recovery_payload_available_o   (cptra_ss_i3c_recovery_payload_available_o),
 <         .recovery_image_activated_o     (cptra_ss_i3c_recovery_image_activated_o),
 <         .peripheral_reset_o             (i3c_peripheral_reset),
@@ -91,15 +91,15 @@
 >         .recovery_payload_available_o   (cptra_ss_i3c_recovery_payload_available_o_presync),
 >         .recovery_image_activated_o     (cptra_ss_i3c_recovery_image_activated_o_presync),
 >         .peripheral_reset_o             (i3c_peripheral_reset_presync),
-973c1037
+1295c1359
 <         .escalated_reset_o              (i3c_escalated_reset),
 ---
 >         .escalated_reset_o              (i3c_escalated_reset_presync),
-976c1040
+1298c1362
 <         .irq_o                          (i3c_irq_o),
 ---
 >         .irq_o                          (i3c_irq_o_presync),
-979c1043
+1301c1365
 <         .disable_id_filtering_i         (disable_id_filtering_i),
 ---
 >         .disable_id_filtering_i         (disable_id_filtering_i_synch),
