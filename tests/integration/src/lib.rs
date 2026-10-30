@@ -1647,9 +1647,9 @@ mod test {
             .expect("failed to flush primary flash temp file");
         let primary_flash_path = primary_flash_file.path().to_path_buf();
 
-        // Mirror the firmware-update "fast" strategy: pre-populate the staging
-        // (secondary) flash with the full update image so the PLDM transfer can
-        // be truncated to a token payload. See `hitless_update_pldm_package`.
+        // Seed the secondary flash with the update image. The attestation test
+        // also transfers the complete image over PLDM so downloaded-length
+        // checks cover every image entry.
         let secondary_flash_file = FirmwareBinaries::from_env()
             .ok()
             .and_then(|binaries| binaries.test_update_flash_image(&feature).ok())
