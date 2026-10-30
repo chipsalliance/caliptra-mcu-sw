@@ -67,14 +67,20 @@ pub(crate) fn run(
     };
 
     for triple_result in &report.results {
-        let mark = if triple_result.passed() {
+        let mark = if triple_result.missing_optional_claim {
+            "MISSING OPTIONAL CLAIM"
+        } else if !triple_result.env_matched {
+            "NOT APPRAISED"
+        } else if triple_result.passed() {
             "PASS"
         } else {
             "FAIL"
         };
         println!("  [{}] {}", mark, triple_result.env_label);
-        if !triple_result.env_matched {
-            println!("         No matching evidence environment found");
+        if triple_result.missing_optional_claim {
+            println!("         Reason: MCU RT is absent from EAT; not appraised");
+        } else if !triple_result.env_matched {
+            println!("         Reason: missing in evidence (no matching environment)");
         } else {
             for m in &triple_result.measurements {
                 let mark = if m.matched { "PASS" } else { "FAIL" };
@@ -97,7 +103,7 @@ pub(crate) fn run(
     // Phase 6: Attestation Result
     println!("\nPhase 6: Attestation Result");
     if report.all_passed() {
-        println!("ATTESTATION RESULT: PASS — all phases completed successfully.");
+        println!("ATTESTATION RESULT: PASS — all required checks passed.");
     } else {
         println!("ATTESTATION RESULT: FAIL — one or more checks did not pass.");
         std::process::exit(1);
