@@ -1449,6 +1449,8 @@ dependencies = [
  "caliptra-mcu-config-emulator",
  "caliptra-mcu-emulator-consts",
  "caliptra-mcu-emulator-registers-generated",
+ "caliptra-mcu-hw-revision",
+ "caliptra-mcu-mbox-common",
  "caliptra-mcu-network-config",
  "caliptra-mcu-otp-digest",
  "caliptra-mcu-otp-lifecycle",
@@ -1567,6 +1569,7 @@ dependencies = [
 name = "caliptra-mcu-flash-ctrl-fpga"
 version = "0.1.0"
 dependencies = [
+ "caliptra-mcu-mbox-common",
  "caliptra-mcu-registers-generated",
  "caliptra-mcu-romtime",
  "capsules-core",
@@ -1659,6 +1662,7 @@ dependencies = [
  "caliptra-mcu-emulator-consts",
  "caliptra-mcu-emulator-periph",
  "caliptra-mcu-emulator-registers-generated",
+ "caliptra-mcu-hw-revision",
  "caliptra-mcu-mbox-common",
  "caliptra-mcu-network-config",
  "caliptra-mcu-ocp",
@@ -1907,6 +1911,7 @@ version = "0.1.0"
 dependencies = [
  "caliptra-api",
  "caliptra-image-types",
+ "caliptra-mcu-hw-revision",
  "caliptra-mcu-registers-generated",
  "mcu-caliptra-api",
  "zerocopy",

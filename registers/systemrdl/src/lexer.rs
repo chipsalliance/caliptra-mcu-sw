@@ -28,6 +28,13 @@ impl<'a> Lexer<'a> {
             end: self.iter.as_str().as_ptr() as usize - self.start_ptr as usize,
         }
     }
+
+    pub fn at_offset(s: &'a str, offset: usize) -> Self {
+        Self {
+            iter: s[offset..].chars(),
+            ..Self::new(s)
+        }
+    }
 }
 impl<'a> Iterator for Lexer<'a> {
     type Item = Token<'a>;
@@ -60,7 +67,11 @@ impl<'a> Iterator for Lexer<'a> {
                                 None => break None,
                             }
                         },
-                        _ => Some(Token::Error),
+                        _ => {
+                            iter = self.iter.clone();
+                            iter.next();
+                            Some(Token::Divide)
+                        }
                     }
                 }
                 Some('"') => loop {
@@ -115,14 +126,45 @@ impl<'a> Iterator for Lexer<'a> {
                         }
                     }
                 }
-                Some('!') => match iter.next() {
-                    Some('=') => Some(Token::NotEquals),
-                    _ => Some(Token::Error),
-                },
+                Some('!') => {
+                    if iter.peek() == Some('=') {
+                        iter.next();
+                        Some(Token::NotEquals)
+                    } else {
+                        Some(Token::Not)
+                    }
+                }
                 Some('&') => match iter.next() {
                     Some('&') => Some(Token::And),
                     _ => Some(Token::Error),
                 },
+                Some('|') => match iter.next() {
+                    Some('|') => Some(Token::Or),
+                    _ => Some(Token::Error),
+                },
+                Some('<') => Some(match iter.peek() {
+                    Some('<') => {
+                        iter.next();
+                        Token::ShiftLeft
+                    }
+                    Some('=') => {
+                        iter.next();
+                        Token::LessEqual
+                    }
+                    _ => Token::Less,
+                }),
+                Some('>') => Some(match iter.peek() {
+                    Some('>') => {
+                        iter.next();
+                        Token::ShiftRight
+                    }
+                    Some('=') => {
+                        iter.next();
+                        Token::GreaterEqual
+                    }
+                    _ => Token::Greater,
+                }),
+                Some('*') => Some(Token::Multiply),
                 Some('{') => Some(Token::BraceOpen),
                 Some('}') => Some(Token::BraceClose),
                 Some('[') => Some(Token::BracketOpen),
@@ -132,7 +174,12 @@ impl<'a> Iterator for Lexer<'a> {
                 Some(';') => Some(Token::Semicolon),
                 Some(',') => Some(Token::Comma),
                 Some('.') => Some(Token::Period),
-                Some('=') => Some(Token::Equals),
+                Some('=') => Some(if iter.peek() == Some('=') {
+                    iter.next();
+                    Token::EqualEqual
+                } else {
+                    Token::Equals
+                }),
                 Some('@') => Some(Token::At),
                 Some('#') => Some(Token::Hash),
                 Some(':') => Some(Token::Colon),
@@ -148,18 +195,24 @@ impl<'a> Iterator for Lexer<'a> {
                         _ => Some(Token::Error),
                     }
                 }
-                Some('+') => match iter.next() {
-                    Some('=') => Some(Token::PlusEqual),
-                    _ => return Some(Token::Error),
-                },
-                Some('%') => match iter.next() {
-                    Some('=') => Some(Token::PercentEqual),
-                    _ => Some(Token::Error),
-                },
-                Some('-') => match iter.next() {
-                    Some('>') => Some(Token::Pointer),
-                    _ => Some(Token::Error),
-                },
+                Some('+') => Some(if iter.peek() == Some('=') {
+                    iter.next();
+                    Token::PlusEqual
+                } else {
+                    Token::Plus
+                }),
+                Some('%') => Some(if iter.peek() == Some('=') {
+                    iter.next();
+                    Token::PercentEqual
+                } else {
+                    Token::Modulo
+                }),
+                Some('-') => Some(if iter.peek() == Some('>') {
+                    iter.next();
+                    Token::Pointer
+                } else {
+                    Token::Minus
+                }),
                 None => None,
                 _ => Some(Token::Error),
             };

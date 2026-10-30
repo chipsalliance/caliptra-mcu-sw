@@ -161,9 +161,9 @@ impl ImaginaryFlashController {
         };
 
         // Update the target status register
-        self.mci
-            .mcu_mbox0_csr_mbox_target_status
-            .modify(MboxTargetStatus::Status.val(status_val) + MboxTargetStatus::Done::SET);
+        self.mci.mcu_mbox0_csr_mbox_target_status.set(
+            caliptra_mcu_mbox_common::target_status::completion_value(status_val),
+        );
 
         // Wait for EXECUTE bit to CLEAR with 200ms timeout
         let timeout = Duration::from_millis(IO_COMPLETION_TIMEOUT_MS as u64);

@@ -32,6 +32,8 @@ pub enum RdlError<'a> {
     StrideIsLessThanElementSize,
     MultidimensionalFieldsNotSupported,
     BadTernaryExpression(String),
+    InvalidExpression(String),
+    InvalidParameter(String),
 }
 
 impl Error for RdlError<'_> {}
@@ -39,6 +41,8 @@ impl Error for RdlError<'_> {}
 impl Display for RdlError<'_> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            Self::InvalidExpression(message) => write!(f, "Invalid expression: {message}"),
+            Self::InvalidParameter(message) => write!(f, "Invalid parameter: {message}"),
             Self::BadTernaryExpression(v) => write!(
                 f,
                 "Ternary expression takes boolean value for first argument but bot {v:?}"

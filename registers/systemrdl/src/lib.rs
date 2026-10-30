@@ -5,8 +5,7 @@ Licensed under the Apache-2.0 license.
 //! General-purpose parser for systemrdl files.
 //!
 //! Not yet implemented:
-//! - dynamic assignment
-//! - instance parameters
+//! - full SystemRDL expression and type coverage
 //!
 //! Examples
 //!
@@ -61,6 +60,7 @@ Licensed under the Apache-2.0 license.
 mod bits;
 mod component_meta;
 mod error;
+mod expression;
 mod file_source;
 mod lexer;
 mod scope;
@@ -80,6 +80,7 @@ pub use value::AccessType;
 pub use value::AddressingType;
 pub use value::ComponentType;
 pub use value::EnumReference;
+pub use value::OnWriteType;
 pub use value::ScopeType;
 
 pub use crate::bits::Bits;
