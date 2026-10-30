@@ -86,7 +86,7 @@ persistent storage (such as dedicated flash partitions) and configure size limit
 
 `caliptra-mcu-cert-store` owns the managed endorsement record format, A/B
 ping-pong staging, checksum verification, and startup recovery
-(`SingleManagedEndorsement<S>`) over the platform-agnostic `EndorsementStorage`
+(`ManagedEndorsementChain<S>`) over the platform-agnostic `EndorsementStorage`
 trait (`is_available`, `read`, `write`, `erase`), while the reference
 implementation provides `SpiFlashEndorsementStorage` (`user/src/cert_store/mod.rs`):
 
@@ -124,14 +124,17 @@ The Vendor slot is established during manufacturing and is strictly read-only:
 
 ## Configure transport exposure
 
-All enabled transports share the single initialized `CertStore` instance:
+All enabled transports share the single initialized `SharedCertStore<S>` instance
+via per-task `TaskCertStore<S>` handles:
 
-- **SPDM**: Uses `SpdmPalCertStore` to map negotiated algorithms and SlotIDs
-  (default: Slot 0 Vendor, Slot 2 Owner, Slot 3 Tenant), advertising only
+- **SPDM responder**: Pass `TaskCertStore<S>` into `McuSpdmPal<M, S>`
+  (`SpdmPalCertStore`), mapping negotiated algorithms and SPDM SlotIDs
+  (default: Slot 0 Vendor, Slot 2 Owner, Slot 3 Tenant) and advertising only
   available provisioned chains.
-- **MCI mailbox**: Queries the store directly by algorithm and endorsement role
-  (`Vendor`, `Owner`, `Tenant`). Command formats are defined in [External
-  Mailbox Commands](./external_mailbox_cmds.md).
+- **MCI mailbox responder**: Use a dedicated `TaskCertStore<S>` to service
+  `MC_GET_CERT_CHAIN_INFO`, `MC_GET_CERT_CHAIN`, and `MC_SET_CERT_CHAIN` by
+  `(EndorsementRole, CertificateAlgorithm)`. Command formats are defined in
+  [External Mailbox Commands](./external_mailbox_cmds.md).
 
 ## Configure authorization
 
@@ -162,9 +165,10 @@ P-384 chain fails, startup must halt.
 Verify the integrated certificate store:
 
 1. **Chain retrieval**: Retrieve complete chains across all enabled transports
-   (SPDM, MCI) and verify they match expectations from Root CA to DPE leaf.
-2. **Attestation**: Verify attestation challenges against the retrieved leaf
-   certificate.
+   (`GET_CERTIFICATE` on SPDM, `MC_GET_CERT_CHAIN_INFO` / `MC_GET_CERT_CHAIN`
+   on MCI) and verify they match expectations from Root CA to DPE leaf.
+2. **Attestation**: Verify attestation challenges (`CHALLENGE` on SPDM,
+   `MC_GET_ATTESTATION` on MCI) against the retrieved leaf certificate.
 3. **Availability**: Confirm that unprovisioned or failed chains are not
    advertised.
 4. **Independent updates**: Verify that updating an Owner endorsement does not
@@ -172,6 +176,8 @@ Verify the integrated certificate store:
 5. **Atomic updates**: Verify that a failed or interrupted update leaves the
    previous valid endorsement intact.
 6. **Cross-transport consistency**: Confirm that an update made via one transport
-   is immediately visible on all other transports.
+   (`SET_CERTIFICATE` or `MC_SET_CERT_CHAIN`) is immediately visible on all
+   other transports.
 7. **Authorization enforcement**: Verify that unauthorized update attempts
-   and writes to the Vendor slot are rejected without altering stored state.
+   and writes to the Vendor slot (`role = 0`) are rejected without altering
+   stored state.
