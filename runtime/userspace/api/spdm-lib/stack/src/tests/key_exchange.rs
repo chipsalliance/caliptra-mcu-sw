@@ -7,6 +7,7 @@ use caliptra_mcu_spdm_codec::{
     CapFlags, KeyExchangeReqBodyFixed, PqcAsymAlgos, ReqRespCode, SpdmVersion,
     ECC_P384_SIGNATURE_SIZE, ECDH_P384_EXCHANGE_DATA_SIZE, KEY_EXCHANGE_RSP_FIXED_BODY_SIZE,
 };
+use caliptra_mcu_spdm_traits::SpdmPalHash;
 use futures::executor::block_on;
 use std::vec::Vec;
 use zerocopy::IntoBytes;
@@ -159,4 +160,90 @@ fn v14_buffered_key_exchange_is_unsupported() {
     assert_eq!(err.spec_byte(), SPDM_UNSUPPORTED_REQUEST.spec_byte());
     assert!(!sessions.has_handshake_in_progress());
     assert!(pal.sign_ops.borrow().is_empty());
+}
+
+#[test]
+fn doe_and_mctp_supported_key_exchange_has_identical_payloads_and_signing_inputs() {
+    for version in [SpdmVersion::V12, SpdmVersion::V13] {
+        let mut baseline = None;
+        for (header_size, send_len_alignment) in [(1, 1), (8, 4)] {
+            let pal = TestPal {
+                header_size,
+                send_len_alignment,
+                mtu: 8192,
+                ..TestPal::default()
+            };
+            let mut state = negotiated_state(version);
+            let mut request = key_exchange_request(&[]);
+            request[0] = version.to_u8();
+            if send_len_alignment == 4 {
+                request.resize(request.len().next_multiple_of(4), 0);
+            }
+            let io = TestIo::message(request);
+            block_on(state.transcript.append_vca(&pal, &io, b"VCA")).unwrap();
+            let mut sessions: Sessions<TestPal, 1> = crate::session::SessionManager::new();
+            let response =
+                block_on(handle_key_exchange(&mut state, &mut sessions, &pal, &io)).unwrap();
+            let spdm_len = SpdmMsgHdrPdu::SIZE
+                + KEY_EXCHANGE_RSP_FIXED_BODY_SIZE
+                + ECDH_P384_EXCHANGE_DATA_SIZE
+                + 2
+                + ECC_P384_SIGNATURE_SIZE
+                + support::SHA384_DIGEST_SIZE;
+            assert_eq!(
+                response.len(),
+                (header_size + spdm_len).next_multiple_of(send_len_alignment)
+            );
+            assert!(response[header_size + spdm_len..]
+                .iter()
+                .all(|&byte| byte == 0));
+            let payload = &response[header_size..header_size + spdm_len];
+            assert_eq!(payload[1], ReqRespCode::KEY_EXCHANGE_RSP.0);
+            assert!(sessions.has_handshake_in_progress());
+            let result = (
+                payload.to_vec(),
+                pal.sign_ops.borrow().clone(),
+                pal.hash_finishes.borrow().clone(),
+            );
+            if let Some(expected) = &baseline {
+                assert_eq!(&result, expected);
+            } else {
+                baseline = Some(result);
+            }
+        }
+    }
+}
+
+#[test]
+fn invalid_key_exchange_preserves_capacity_and_transcript_for_valid_retry() {
+    for (header_size, send_len_alignment) in [(1, 1), (8, 4)] {
+        let pal = TestPal {
+            header_size,
+            send_len_alignment,
+            ..TestPal::default()
+        };
+        let mut state = negotiated_state(SpdmVersion::V13);
+        let valid = key_exchange_request(&[]);
+        let mut sessions: Sessions<TestPal, 1> = crate::session::SessionManager::new();
+        let seed = TestIo::message(Vec::new());
+        block_on(state.transcript.append_vca(&pal, &seed, b"VCA")).unwrap();
+        for request in [
+            valid[..valid.len() - 1].to_vec(),
+            key_exchange_request(&[0xff]),
+        ] {
+            let io = TestIo::message(request);
+            assert!(block_on(handle_key_exchange(&mut state, &mut sessions, &pal, &io)).is_err());
+            assert!(!sessions.has_handshake_in_progress());
+            assert!(pal.sign_ops.borrow().is_empty());
+            let mut digest = [0; support::SHA384_DIGEST_SIZE];
+            block_on(pal.hash_finish(&io, state.transcript.vca.as_mut().unwrap(), &mut digest))
+                .unwrap();
+            assert_eq!(digest, support::test_digest(b"VCA"));
+        }
+
+        let io = TestIo::message(valid);
+        let response = block_on(handle_key_exchange(&mut state, &mut sessions, &pal, &io)).unwrap();
+        assert_eq!(response[header_size + 1], ReqRespCode::KEY_EXCHANGE_RSP.0);
+        assert!(sessions.has_handshake_in_progress());
+    }
 }
