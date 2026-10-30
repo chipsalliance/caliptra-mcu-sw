@@ -9,3 +9,6 @@ authors.workspace = true
 [dependencies]
 tock-registers.workspace = true
 zeroize.workspace = true
+
+[build-dependencies]
+caliptra-mcu-hw-revision.workspace = true

@@ -1,0 +1,26 @@
+# Licensed under the Apache-2.0 license
+
+name: FPGA Bitstream build 2.2 (latest)
+
+on:
+  pull_request:
+    paths:
+      - ".github/workflows/bitstream-build.yml"
+      - ".github/workflows/bitstream-build_2.2.yml"
+      - "hw/latest/**"
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build-bitstream:
+    uses: ./.github/workflows/bitstream-build.yml
+    with:
+      hw-version: "2.2"
+      repository: ${{ github.repository }}
+      ref: ${{ github.sha }}
+      fpga-path: hw/latest/fpga
+      rtl-path: hw/latest/caliptra-ss
+      target-branch: ${{ github.base_ref || github.ref_name }}

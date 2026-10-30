@@ -18,8 +18,13 @@ pub fn network_rom_build(feature: Option<&str>) -> Result<String> {
         Some(f) => format!("network-rom-feature-{}.bin", f),
         None => "network-rom.bin".to_string(),
     };
+    let bin_name = crate::revisioned_name(&bin_name)?;
 
     let mut cmd = Command::new("cargo");
+    cmd.env(
+        caliptra_mcu_hw_revision::ENV,
+        crate::hardware_revision()?.as_str(),
+    );
     cmd.current_dir(&*PROJECT_ROOT).args([
         "build",
         "-p",
@@ -63,6 +68,7 @@ pub fn network_rom_build(feature: Option<&str>) -> Result<String> {
     if !objcopy_cmd.status()?.success() {
         bail!("objcopy failed to build Network ROM");
     }
+    crate::write_hardware_provenance(&rom_binary)?;
     println!(
         "Network ROM binary is at {:?} ({} bytes)",
         &rom_binary,
