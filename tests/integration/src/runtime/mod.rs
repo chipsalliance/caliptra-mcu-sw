@@ -88,6 +88,7 @@ pub(crate) fn start_command_authorized_runtime(
         .vendor_pqc_type
         .unwrap_or(caliptra_image_types::FwVerificationPqcKeyType::LMS);
     let mut hw = crate::test::start_runtime_hw_model(params);
+    crate::test::run_imaginary_flash_controller_service(&mut hw);
     hw.step_until(|hw| {
         hw.mci_boot_milestones()
             .contains(caliptra_mcu_romtime::McuBootMilestones::FIRMWARE_MAILBOX_READY)

@@ -183,6 +183,7 @@ pub mod test {
 
         hw.start_i3c_controller();
         let mci_ptr = hw.base.mmio.mci().unwrap().ptr as u64;
+        crate::test_fpga_flash_ctrl::test::run_imaginary_flash_controller_service(mci_ptr);
         let caliptra_mmio_ptr = hw.base.mmio.caliptra_mmio().unwrap() as u64;
 
         let test_thread = caliptra_mcu_testing_common::spawn_with_emulator_state(move || {

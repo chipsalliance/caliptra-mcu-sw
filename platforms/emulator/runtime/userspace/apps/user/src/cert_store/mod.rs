@@ -130,7 +130,7 @@ static CERT_STORE: SharedCertStore<CertStoreStorage> =
     SharedCertStore::with_policy(PROVISIONING_POLICY);
 
 #[cfg(feature = "mcu-mbox-service")]
-struct MciTaskCertStore(TaskCertStore<CertStoreStorage>);
+struct MciTaskCertStore(core::cell::UnsafeCell<Option<TaskCertStore<CertStoreStorage>>>);
 
 // SAFETY: `user-app` runs on a single-threaded Embassy executor and
 // `MCI_CERT_STORE` is accessed exclusively from the single `mcu_mbox_task`
@@ -139,8 +139,10 @@ struct MciTaskCertStore(TaskCertStore<CertStoreStorage>);
 #[cfg(feature = "mcu-mbox-service")]
 unsafe impl Sync for MciTaskCertStore {}
 
+// Stored as `None` (all-zero niche on `&'static SharedCertStore`) so the
+// static resides in `.bss` rather than `.data`.
 #[cfg(feature = "mcu-mbox-service")]
-static MCI_CERT_STORE: MciTaskCertStore = MciTaskCertStore(TaskCertStore::new(&CERT_STORE));
+static MCI_CERT_STORE: MciTaskCertStore = MciTaskCertStore(core::cell::UnsafeCell::new(None));
 
 /// Each managed `(role, algorithm)` gets its own flash region so that
 /// installing one algorithm's chain cannot erase the other's.
@@ -179,7 +181,8 @@ pub(crate) fn shared() -> &'static SharedCertStore<CertStoreStorage> {
 
 #[cfg(feature = "mcu-mbox-service")]
 pub(crate) fn mci_store() -> &'static TaskCertStore<CertStoreStorage> {
-    &MCI_CERT_STORE.0
+    // SAFETY: single-threaded executor; accessed only from `mcu_mbox_task`.
+    unsafe { (*MCI_CERT_STORE.0.get()).get_or_insert_with(|| TaskCertStore::new(&CERT_STORE)) }
 }
 
 /// One-time Caliptra setup: read the IDevID certs from OTP and install them.

@@ -29,3 +29,6 @@ pub mod test_sha;
 
 #[cfg(test)]
 pub mod test_crypto_asymmetric;
+
+#[cfg(test)]
+pub mod test_certificate_commands;
