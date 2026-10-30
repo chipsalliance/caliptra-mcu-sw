@@ -43,5 +43,6 @@
     - [Certificate Store Integration](./certificate-store-integration.md)
     - [OCP LOCK Integrator Guide](./ocp_lock_integrator_guide.md)
     - [OCP Recovery Integration Guide](./ocp_recovery_integrator_guide.md)
+    - [Caliptra 2.2 Firmware Impact Assessment](./caliptra_2_2_firmware_impact.md)
 - [Testing](./testing.md)
     - [I3C Testing over TCP](./testing-i3c.md)
