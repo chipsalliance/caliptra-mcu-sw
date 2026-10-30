@@ -23,8 +23,8 @@ use caliptra_util_host_session::CaliptraSession;
 /// - `format`: Evidence format to generate (OCP EAT or PCR quote)
 /// - `algorithm`: Signing algorithm (ECC P-384 or ML-DSA-87)
 /// - `nonce`: 32-byte freshness nonce, bound into the signed evidence
-/// - `entity`: PKI entity whose hierarchy endorses the signing key. Only
-///   [`PkiEntitySlot::Vendor`] is accepted by devices today.
+/// - `entity`: PKI entity whose hierarchy endorses the signing key (`Vendor`,
+///   `Owner`, or `Tenant`).
 ///
 /// # Returns
 ///

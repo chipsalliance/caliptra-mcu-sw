@@ -171,6 +171,9 @@ impl CommandId {
     pub const MC_EXPORT_ATTESTED_CSR: Self = Self(0x4D45_4143); // "MEAC"
     pub const MC_DPE_SIGNER_CONTEXT_CERT: Self = Self(0x4D44_5343); // "MDSC"
     pub const MC_GET_DPE_CERTIFICATE_CHAIN: Self = Self(0x4D44_4343); // "MDCC"
+    pub const MC_GET_CERT_CHAIN_INFO: Self = Self(0x4D47_4349); // "MGCI"
+    pub const MC_GET_CERT_CHAIN: Self = Self(0x4D47_4343); // "MGCC"
+    pub const MC_SET_CERT_CHAIN: Self = Self(0x4D53_4343); // "MSCC"
 
     // Attestation commands
     pub const MC_GET_ATTESTATION: Self = Self(0x4D47_4154); // "MGAT"
@@ -265,6 +268,9 @@ pub enum McuMailboxReq {
     ExportAttestedCsr(ExportAttestedCsrReq),
     DpeSignerContextCert(DpeSignerContextCertReq),
     GetDpeCertChain(GetDpeCertChainReq),
+    GetCertChainInfo(GetCertChainInfoReq),
+    GetCertChain(GetCertChainReq),
+    SetCertChain(SetCertChainReq),
     GetAttestation(GetAttestationReq),
     // Device Ownership Transfer commands
     DotEnable(DotEnableReq),
@@ -339,6 +345,9 @@ impl McuMailboxReq {
             McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_bytes()),
             McuMailboxReq::DpeSignerContextCert(req) => Ok(req.as_bytes()),
             McuMailboxReq::GetDpeCertChain(req) => Ok(req.as_bytes()),
+            McuMailboxReq::GetCertChainInfo(req) => Ok(req.as_bytes()),
+            McuMailboxReq::GetCertChain(req) => Ok(req.as_bytes()),
+            McuMailboxReq::SetCertChain(req) => req.as_bytes_partial(),
             McuMailboxReq::GetAttestation(req) => Ok(req.as_bytes()),
             McuMailboxReq::DotEnable(req) => Ok(req.as_bytes()),
             McuMailboxReq::DotLock(req) => Ok(req.as_bytes()),
@@ -412,6 +421,9 @@ impl McuMailboxReq {
             McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::DpeSignerContextCert(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::GetDpeCertChain(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::GetCertChainInfo(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::GetCertChain(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::SetCertChain(req) => req.as_bytes_partial_mut(),
             McuMailboxReq::GetAttestation(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::DotEnable(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::DotLock(req) => Ok(req.as_mut_bytes()),
@@ -485,6 +497,9 @@ impl McuMailboxReq {
             McuMailboxReq::ExportAttestedCsr(_) => CommandId::MC_EXPORT_ATTESTED_CSR,
             McuMailboxReq::DpeSignerContextCert(_) => CommandId::MC_DPE_SIGNER_CONTEXT_CERT,
             McuMailboxReq::GetDpeCertChain(_) => CommandId::MC_GET_DPE_CERTIFICATE_CHAIN,
+            McuMailboxReq::GetCertChainInfo(_) => CommandId::MC_GET_CERT_CHAIN_INFO,
+            McuMailboxReq::GetCertChain(_) => CommandId::MC_GET_CERT_CHAIN,
+            McuMailboxReq::SetCertChain(_) => CommandId::MC_SET_CERT_CHAIN,
             McuMailboxReq::GetAttestation(_) => CommandId::MC_GET_ATTESTATION,
             McuMailboxReq::DotEnable(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
             McuMailboxReq::DotLock(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
@@ -580,6 +595,9 @@ pub enum McuMailboxResp {
     FuseRevokeVendorPkHash(FuseRevokeVendorPkHashResp),
     // Certificate commands
     GetDpeCertChain(GetDpeCertChainResp),
+    GetCertChainInfo(GetCertChainInfoResp),
+    GetCertChain(GetCertChainResp),
+    SetCertChain(SetCertChainResp),
     // Device Ownership Transfer commands
     DotEnable(DotEnableResp),
     DotLock(DotLockResp),
@@ -710,6 +728,9 @@ impl McuMailboxResp {
             McuMailboxResp::ProvisionOwnerPkHash(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FuseRevokeVendorPkHash(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::GetDpeCertChain(resp) => resp.as_bytes_partial(),
+            McuMailboxResp::GetCertChainInfo(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::GetCertChain(resp) => resp.as_bytes_partial(),
+            McuMailboxResp::SetCertChain(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::DotEnable(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::DotLock(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::DotDisable(resp) => Ok(resp.as_bytes()),
@@ -779,6 +800,9 @@ impl McuMailboxResp {
             McuMailboxResp::ProvisionOwnerPkHash(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FuseRevokeVendorPkHash(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::GetDpeCertChain(resp) => resp.as_bytes_partial_mut(),
+            McuMailboxResp::GetCertChainInfo(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::GetCertChain(resp) => resp.as_bytes_partial_mut(),
+            McuMailboxResp::SetCertChain(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::DotEnable(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::DotLock(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::DotDisable(resp) => Ok(resp.as_mut_bytes()),
@@ -1919,6 +1943,138 @@ impl Default for GetDpeCertChainResp {
 
 impl McuResponseVarSize for GetDpeCertChainResp {}
 
+/// MC_GET_CERT_CHAIN_INFO request: Query certificate chain metadata, length, and raw DER digest.
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+pub struct GetCertChainInfoReq {
+    pub hdr: MailboxReqHeader,
+    pub pki_entity_slot: u32,
+    pub algorithm: u32,
+}
+impl Request for GetCertChainInfoReq {
+    const ID: CommandId = CommandId::MC_GET_CERT_CHAIN_INFO;
+    type Resp = GetCertChainInfoResp;
+}
+
+/// MC_GET_CERT_CHAIN_INFO response.
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+pub struct GetCertChainInfoResp {
+    pub hdr: MailboxRespHeader,
+    pub device_key_id: u32,
+    pub chain_len: u32,
+    pub chain_digest: [u8; 48],
+}
+impl Default for GetCertChainInfoResp {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxRespHeader::default(),
+            device_key_id: 0,
+            chain_len: 0,
+            chain_digest: [0u8; 48],
+        }
+    }
+}
+impl Response for GetCertChainInfoResp {}
+
+/// MC_GET_CERT_CHAIN request: Retrieve a chunk of the complete raw DER certificate chain.
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+pub struct GetCertChainReq {
+    pub hdr: MailboxReqHeader,
+    pub pki_entity_slot: u32,
+    pub algorithm: u32,
+    pub offset: u32,
+    pub length: u32,
+}
+impl Request for GetCertChainReq {
+    const ID: CommandId = CommandId::MC_GET_CERT_CHAIN;
+    type Resp = GetCertChainResp;
+}
+
+/// MC_GET_CERT_CHAIN response.
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+pub struct GetCertChainResp {
+    pub hdr: MailboxRespHeaderVarSize,
+    pub cert_data: [u8; MAX_RESP_DATA_SIZE],
+}
+impl Default for GetCertChainResp {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxRespHeaderVarSize::default(),
+            cert_data: [0u8; MAX_RESP_DATA_SIZE],
+        }
+    }
+}
+impl McuResponseVarSize for GetCertChainResp {}
+
+/// MC_SET_CERT_CHAIN request: Provision, replace, or erase a managed PKI endorsement chain.
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+pub struct SetCertChainReq {
+    pub hdr: MailboxReqHeader,
+    pub pki_entity_slot: u32,
+    pub algorithm: u32,
+    pub device_key_id: u32,
+    pub offset: u32,
+    pub total_size: u32,
+    pub data_len: u32,
+    pub cert_data: [u8; MAX_RESP_DATA_SIZE],
+}
+impl Default for SetCertChainReq {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxReqHeader::default(),
+            pki_entity_slot: 0,
+            algorithm: 0,
+            device_key_id: 0,
+            offset: 0,
+            total_size: 0,
+            data_len: 0,
+            cert_data: [0u8; MAX_RESP_DATA_SIZE],
+        }
+    }
+}
+impl SetCertChainReq {
+    pub const HEADER_SIZE: usize = size_of::<MailboxReqHeader>() + 6 * size_of::<u32>();
+    pub const MAX_DATA_SIZE: usize = MAX_RESP_DATA_SIZE;
+
+    pub fn partial_len(&self) -> McuMboxResult<usize> {
+        let data_len = self.data_len as usize;
+        if data_len > Self::MAX_DATA_SIZE {
+            return Err(McuMboxError::MCU_MBOX_REQUEST_DATA_LEN_TOO_LARGE);
+        }
+        Ok(Self::HEADER_SIZE + data_len)
+    }
+}
+impl Request for SetCertChainReq {
+    const ID: CommandId = CommandId::MC_SET_CERT_CHAIN;
+    type Resp = SetCertChainResp;
+}
+impl McuRequestVarSize for SetCertChainReq {
+    fn as_bytes_partial(&self) -> McuMboxResult<&[u8]> {
+        self.as_bytes()
+            .get(..self.partial_len()?)
+            .ok_or(McuMboxError::MCU_MBOX_REQUEST_DATA_LEN_TOO_LARGE)
+    }
+
+    fn as_bytes_partial_mut(&mut self) -> McuMboxResult<&mut [u8]> {
+        let partial_len = self.partial_len()?;
+        self.as_mut_bytes()
+            .get_mut(..partial_len)
+            .ok_or(McuMboxError::MCU_MBOX_REQUEST_DATA_LEN_TOO_LARGE)
+    }
+}
+
+/// MC_SET_CERT_CHAIN response.
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+pub struct SetCertChainResp {
+    pub hdr: MailboxRespHeader,
+}
+impl Response for SetCertChainResp {}
+
 // ============================================================================
 // MC_GET_ATTESTATION Command (0x4D47_4154 - "MGAT")
 // ============================================================================
@@ -2969,5 +3125,31 @@ mod tests {
         assert_eq!(parsed.device_key_id, 0);
         assert_eq!(parsed.algorithm, 1);
         assert_eq!(parsed.nonce, [0x5A; 32]);
+    }
+
+    #[test]
+    fn cert_chain_commands_wire_contract() {
+        assert_eq!(CommandId::MC_GET_CERT_CHAIN_INFO.0, 0x4D47_4349); // "MGCI"
+        assert_eq!(CommandId::MC_GET_CERT_CHAIN.0, 0x4D47_4343); // "MGCC"
+        assert_eq!(CommandId::MC_SET_CERT_CHAIN.0, 0x4D53_4343); // "MSCC"
+
+        assert_eq!(core::mem::size_of::<GetCertChainInfoReq>(), 12);
+        assert_eq!(core::mem::size_of::<GetCertChainInfoResp>(), 64);
+        assert_eq!(core::mem::size_of::<GetCertChainReq>(), 20);
+        assert_eq!(SetCertChainReq::HEADER_SIZE, 28);
+        assert_eq!(core::mem::size_of::<SetCertChainResp>(), 8);
+
+        let mut set_req = SetCertChainReq {
+            hdr: MailboxReqHeader::default(),
+            pki_entity_slot: 1,
+            algorithm: 1,
+            device_key_id: 2,
+            total_size: 4,
+            offset: 0,
+            data_len: 4,
+            cert_data: [0; MAX_RESP_DATA_SIZE],
+        };
+        set_req.cert_data[..4].copy_from_slice(&[0x30, 0x82, 0x01, 0x00]);
+        assert_eq!(set_req.as_bytes_partial().unwrap().len(), 32);
     }
 }
