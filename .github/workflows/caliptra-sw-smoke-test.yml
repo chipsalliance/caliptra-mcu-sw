@@ -8,7 +8,8 @@ on:
 
 jobs:
   caliptra-sw-mcu-rom-smoke-test:
-    if: ${{ vars.RUN_FPGA_CI != 'false' }}
+    # Upstream MCU revision selection must be fixed before restoring 2.1 smoke (#2288).
+    if: ${{ vars.RUN_FPGA_CI != 'false' && vars.RUN_FPGA_LATEST_CI == 'true' }}
     name: Smoke Test (Optional)
     uses: chipsalliance/caliptra-sw/.github/workflows/fpga-subsystem.yml@main
     with:
