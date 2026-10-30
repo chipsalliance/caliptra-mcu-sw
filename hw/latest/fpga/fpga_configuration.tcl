@@ -453,7 +453,11 @@ if {$SEGMENTED} {
 
 # Set place design directives to avoid SLICE overlaps
 set_property STEPS.PLACE_DESIGN.ARGS.DIRECTIVE Explore [get_runs impl_1]
-set_property STEPS.PLACE_DESIGN.ARGS.SUBDIRECTIVE { Floorplan.ForceSpreading.high GPlace.ForceSpreading.high GPlace.ReduceCongestion.high DPlace.ReducePinDensity.med} [get_runs impl_1]
+if {[lsearch -exact [list_property [get_runs impl_1]] STEPS.PLACE_DESIGN.ARGS.SUBDIRECTIVE] >= 0} {
+  set_property STEPS.PLACE_DESIGN.ARGS.SUBDIRECTIVE { Floorplan.ForceSpreading.high GPlace.ForceSpreading.high GPlace.ReduceCongestion.high DPlace.ReducePinDensity.med} [get_runs impl_1]
+} else {
+  puts stderr "WARNING: This Vivado version does not support placement SUBDIRECTIVE; using Explore without the additional spreading and congestion settings. Check implementation placement and timing results."
+}
 
 # Load a previous NCR
 if {$SEGMENTED} {

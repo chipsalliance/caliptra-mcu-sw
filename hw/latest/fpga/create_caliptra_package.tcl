@@ -57,6 +57,7 @@ add_files $ssrtlDir/src/riscv_core/veer_el2/rtl/defines/css_mcu0_el2_pdef.vh
 add_files $ssrtlDir/src/riscv_core/veer_el2/rtl/defines/css_mcu0_el2_param.vh
 add_files $ssrtlDir/src/riscv_core/veer_el2/rtl/defines/css_mcu0_common_defines.vh
 add_files [ glob $ssrtlDir/src/riscv_core/veer_el2/rtl/design/include/*.svh ]
+add_files [ glob $ssrtlDir/src/riscv_core/veer_el2/rtl/design/include/*.sv ]
 # For SS EL2_IC_DATA_SRAM is defined in testbench
 add_files [ glob $ssrtlDir/src/riscv_core/veer_el2/tb/icache_macros.svh ]
 # Add MCU VEER sources
@@ -87,8 +88,15 @@ add_files [ glob $i3cDir/src/*/*/*.sv ]
 add_files [ glob $i3cDir/src/*/*.sv ]
 add_files [ glob $i3cDir/src/*.sv ]
 
-# Remove unused spi_host files.
-remove_files [ glob $caliptrartlDir/src/spi_host/rtl/*.sv ]
+# USB remains physically disconnected, but its instantiated RTL must resolve.
+set usbDir $ssrtlDir/third_party/usb2/src
+add_files [ glob $usbDir/integration/rtl/generated/*.svh ]
+add_files [ glob $usbDir/integration/rtl/*.sv ]
+add_files [ glob $usbDir/integration/rtl/generated/*.sv ]
+add_files [ glob $usbDir/usb_hub_composite_device/RTL/INTERFACE/*.vhdl ]
+add_files [ glob $usbDir/usb_hub_composite_device/RTL/RTL/*.vhdl ]
+add_files [ glob $usbDir/usb_hub_composite_device/RTL/STRUCTURE/*.vhdl ]
+set_property file_type {VHDL 2008} [get_files *.vhdl]
 
 # Add FPGA specific sources
 add_files [ glob $fpgaDir/src/*.sv]
@@ -102,12 +110,6 @@ file copy [ glob $ssrtlDir/src/integration/rtl/caliptra_ss_top.sv ] $outputDir/c
 exec patch $outputDir/caliptra_ss_top.sv $fpgaDir/src/caliptra_ss_top.patch
 remove_files [ glob $ssrtlDir/src/integration/rtl/caliptra_ss_top.sv ]
 add_files $outputDir/caliptra_ss_top.sv
-
-# Hack version to 2.1.1
-file copy [ glob $caliptrartlDir/src/soc_ifc/rtl/soc_ifc_reg.sv ] $outputDir/soc_ifc_reg.sv
-exec sed -i {s/\(CPTRA_HW_REV_ID.*16'h\)12/\1112/g} $outputDir/soc_ifc_reg.sv
-remove_files [ glob $caliptrartlDir/src/soc_ifc/rtl/soc_ifc_reg.sv ]
-add_files $outputDir/soc_ifc_reg.sv
 
 # Add missing include
 file copy [ glob $caliptrartlDir/src/ahb_lite_bus/rtl/ahb_lite_address_decoder.sv ] $outputDir/ahb_lite_address_decoder.sv
@@ -141,6 +143,27 @@ close_bd_design [get_bd_designs caliptra_package_bd]
 puts "Fileset when packaging: [current_fileset]"
 puts "\n\nVERILOG DEFINES: [get_property verilog_define [current_fileset]]"
 ipx::package_project -root_dir $caliptrapackageDir -vendor design -library user -taxonomy /UserIP -import_files
+
+# IP import flattens sources, but these includes require their subdirectories.
+set rtlFileGroups [concat \
+    [ipx::get_file_groups xilinx_anylanguagesynthesis* -of_objects [ipx::current_core]] \
+    [ipx::get_file_groups xilinx_anylanguagebehavioralsimulation* -of_objects [ipx::current_core]]]
+if {[llength $rtlFileGroups] != 2} {
+    error "Expected synthesis and simulation file groups in the packaged Caliptra IP"
+}
+foreach {includePath sourcePath} [list \
+    lib/el2_assert.sv $caliptrartlDir/src/riscv_core/veer_el2/rtl/lib/el2_assert.sv \
+    generated/usb_ocp_recovery_reg_addr_defs.svh $usbDir/integration/rtl/generated/usb_ocp_recovery_reg_addr_defs.svh] {
+    set packagedPath src/$includePath
+    file mkdir [file dirname $caliptrapackageDir/$packagedPath]
+    file copy -force $sourcePath $caliptrapackageDir/$packagedPath
+    foreach group $rtlFileGroups {
+        set header [ipx::add_file $packagedPath $group]
+        set_property type systemVerilogSource $header
+        set_property is_include true $header
+    }
+}
+
 # Infer interfaces
 ipx::infer_bus_interfaces xilinx.com:interface:bram_rtl:1.0 [ipx::current_core]
 ipx::add_bus_parameter MASTER_TYPE [ipx::get_bus_interfaces rom_backdoor -of_objects [ipx::current_core]]
