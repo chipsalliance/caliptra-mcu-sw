@@ -4,6 +4,7 @@
 //!
 //! Command structures for certificate operations
 
+use crate::attestation::{AsymAlgo, PkiEntitySlot};
 use crate::{CaliptraCommandId, CommandRequest, CommandResponse, CommonResponse};
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
@@ -206,6 +207,171 @@ impl ExportIdevidCsrResponse {
         Ok(len)
     }
 }
+
+// ============================================================================
+// MC_GET_CERT_CHAIN_INFO / MC_GET_CERT_CHAIN / MC_SET_CERT_CHAIN Commands
+// ============================================================================
+
+/// Maximum chunk size for certificate chain reads and writes (4 KiB).
+pub const MAX_CERT_CHAIN_CHUNK_SIZE: usize = caliptra_mcu_mbox_common::messages::MAX_RESP_DATA_SIZE;
+
+/// SHA-384 digest byte length for `MC_GET_CERT_CHAIN_INFO`.
+pub const CERT_CHAIN_DIGEST_SIZE: usize = 48;
+
+/// Request for `MC_GET_CERT_CHAIN_INFO` (`0x4D47_4349`, `"MGCI"`).
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, IntoBytes, FromBytes, Immutable)]
+pub struct GetCertChainInfoRequest {
+    /// PKI entity slot (`PkiEntitySlot` wire value).
+    pub pki_entity_slot: u32,
+    /// Asymmetric algorithm (`AsymAlgo` wire value).
+    pub algorithm: u32,
+}
+
+impl GetCertChainInfoRequest {
+    pub const fn new(pki_entity_slot: PkiEntitySlot, algorithm: AsymAlgo) -> Self {
+        Self {
+            pki_entity_slot: pki_entity_slot as u32,
+            algorithm: algorithm as u32,
+        }
+    }
+}
+
+/// Response for `MC_GET_CERT_CHAIN_INFO` (`0x4D47_4349`, `"MGCI"`).
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+pub struct GetCertChainInfoResponse {
+    pub common: CommonResponse,
+    /// Logical Caliptra device key bound to the slot's endorsement chain.
+    pub device_key_id: u32,
+    /// Total byte length of the full DER certificate chain.
+    pub chain_len: u32,
+    /// SHA-384 digest over the concatenated DER certificates from root CA to leaf.
+    pub chain_digest: [u8; CERT_CHAIN_DIGEST_SIZE],
+}
+
+impl CommandRequest for GetCertChainInfoRequest {
+    type Response = GetCertChainInfoResponse;
+    const COMMAND_ID: CaliptraCommandId = CaliptraCommandId::GetCertChainInfo;
+}
+
+impl CommandResponse for GetCertChainInfoResponse {}
+
+/// Request for `MC_GET_CERT_CHAIN` (`0x4D47_4343`, `"MGCC"`).
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, IntoBytes, FromBytes, Immutable)]
+pub struct GetCertChainRequest {
+    /// PKI entity slot (`PkiEntitySlot` wire value).
+    pub pki_entity_slot: u32,
+    /// Asymmetric algorithm (`AsymAlgo` wire value).
+    pub algorithm: u32,
+    /// Byte offset into the full DER certificate chain.
+    pub offset: u32,
+    /// Maximum number of bytes to read in this chunk (1..=`MAX_CERT_CHAIN_CHUNK_SIZE`).
+    pub length: u32,
+}
+
+impl GetCertChainRequest {
+    pub const fn new(
+        pki_entity_slot: PkiEntitySlot,
+        algorithm: AsymAlgo,
+        offset: u32,
+        length: u32,
+    ) -> Self {
+        Self {
+            pki_entity_slot: pki_entity_slot as u32,
+            algorithm: algorithm as u32,
+            offset,
+            length,
+        }
+    }
+}
+
+/// Response for `MC_GET_CERT_CHAIN` (`0x4D47_4343`, `"MGCC"`).
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+pub struct GetCertChainResponse {
+    pub common: CommonResponse,
+    /// Number of valid bytes in `cert_data`.
+    pub data_len: u32,
+    /// Raw DER certificate chain chunk bytes.
+    pub cert_data: [u8; MAX_CERT_CHAIN_CHUNK_SIZE],
+}
+
+impl GetCertChainResponse {
+    /// Returns the valid slice of `cert_data` (`..data_len`).
+    pub fn cert_bytes(&self) -> &[u8] {
+        let len = (self.data_len as usize).min(MAX_CERT_CHAIN_CHUNK_SIZE);
+        &self.cert_data[..len]
+    }
+}
+
+impl CommandRequest for GetCertChainRequest {
+    type Response = GetCertChainResponse;
+    const COMMAND_ID: CaliptraCommandId = CaliptraCommandId::GetCertChain;
+}
+
+impl CommandResponse for GetCertChainResponse {}
+
+/// Request for `MC_SET_CERT_CHAIN` (`0x4D53_4343`, `"MSCC"`).
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+pub struct SetCertChainRequest {
+    /// Target PKI entity slot (`PkiEntitySlot` wire value).
+    pub pki_entity_slot: u32,
+    /// Asymmetric algorithm (`AsymAlgo` wire value).
+    pub algorithm: u32,
+    /// Logical Caliptra device key signed by the endorsement chain's leaf CA (`0` for policy default).
+    pub device_key_id: u32,
+    /// Byte offset of this chunk within the endorsement chain.
+    pub offset: u32,
+    /// Total byte length of the complete endorsement chain being provisioned (`0` to erase at `offset == 0 && data_len == 0`).
+    pub total_size: u32,
+    /// Number of valid bytes in `cert_data` (`0..=MAX_CERT_CHAIN_CHUNK_SIZE`).
+    pub data_len: u32,
+    /// Endorsement DER chunk bytes.
+    pub cert_data: [u8; MAX_CERT_CHAIN_CHUNK_SIZE],
+}
+
+impl SetCertChainRequest {
+    pub fn new(
+        pki_entity_slot: PkiEntitySlot,
+        algorithm: AsymAlgo,
+        device_key_id: u32,
+        offset: u32,
+        total_size: u32,
+        chunk: &[u8],
+    ) -> Option<Self> {
+        if chunk.len() > MAX_CERT_CHAIN_CHUNK_SIZE {
+            return None;
+        }
+        let mut cert_data = [0u8; MAX_CERT_CHAIN_CHUNK_SIZE];
+        cert_data[..chunk.len()].copy_from_slice(chunk);
+        Some(Self {
+            pki_entity_slot: pki_entity_slot as u32,
+            algorithm: algorithm as u32,
+            device_key_id,
+            offset,
+            total_size,
+            data_len: chunk.len() as u32,
+            cert_data,
+        })
+    }
+}
+
+/// Response for `MC_SET_CERT_CHAIN` (`0x4D53_4343`, `"MSCC"`).
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+pub struct SetCertChainResponse {
+    pub common: CommonResponse,
+}
+
+impl CommandRequest for SetCertChainRequest {
+    type Response = SetCertChainResponse;
+    const COMMAND_ID: CaliptraCommandId = CaliptraCommandId::SetCertChain;
+}
+
+impl CommandResponse for SetCertChainResponse {}
 
 #[cfg(test)]
 mod tests {

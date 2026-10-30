@@ -280,6 +280,7 @@ impl Validator {
 
         if !fuse_only {
             results.extend(self.validate_export_attested_csr_all(&mut client));
+            results.extend(self.validate_cert_chain_all(&mut client));
             results.extend(self.validate_get_attestation_all(&mut client));
         }
 
@@ -2478,7 +2479,14 @@ impl Validator {
         };
 
         for format in formats_from_bitmap(bitmap) {
-            results.push(self.validate_get_attestation(client, format, algorithm, &nonce));
+            for entity in [
+                PkiEntitySlot::Vendor,
+                PkiEntitySlot::Owner,
+                PkiEntitySlot::Tenant,
+            ] {
+                results
+                    .push(self.validate_get_attestation(client, format, algorithm, entity, &nonce));
+            }
         }
 
         // Negative case: a format the device did not advertise must be refused
@@ -2522,19 +2530,26 @@ impl Validator {
         client: &mut MailboxClient,
         format: EvidenceFormat,
         algorithm: AsymAlgo,
+        entity: PkiEntitySlot,
         nonce: &[u8; 32],
     ) -> ValidationResult {
-        let test_name = format!("GetAttestation({}/{})", format.name(), algorithm.name());
+        let test_name = format!(
+            "GetAttestation({}/{}/{})",
+            entity.name(),
+            format.name(),
+            algorithm.name()
+        );
 
         if self.verbose {
             println!(
-                "\n=== Validating GetAttestation: {} {} ===",
+                "\n=== Validating GetAttestation: {} {} {} ===",
+                entity.name(),
                 format.name(),
                 algorithm.name()
             );
         }
 
-        match client.get_attestation(format, algorithm, PkiEntitySlot::Vendor, nonce) {
+        match client.get_attestation(format, algorithm, entity, nonce) {
             Ok(response) => match response.validate_evidence_payload(format) {
                 Ok(len) => {
                     println!(
@@ -2568,6 +2583,222 @@ impl Validator {
                 }
             }
         }
+    }
+
+    /// Build a synthetic valid ASN.1 DER `SEQUENCE` (`0x30`, long-form 2-byte length)
+    /// filled with `tag_byte` for testing endorsement provisioning.
+    fn synthetic_der_cert(body_len: usize, tag_byte: u8) -> Vec<u8> {
+        let mut der = Vec::with_capacity(4 + body_len);
+        der.push(0x30);
+        der.push(0x82);
+        der.extend_from_slice(&(body_len as u16).to_be_bytes());
+        der.extend(std::iter::repeat_n(tag_byte, body_len));
+        der
+    }
+
+    /// Validate `MC_GET_CERT_CHAIN_INFO`, `MC_GET_CERT_CHAIN`, and `MC_SET_CERT_CHAIN`
+    /// across `Vendor`, `Owner`, and `Tenant`.
+    ///
+    /// Leaves `Owner` and `Tenant` provisioned so the subsequent
+    /// `validate_get_attestation_all` run exercises all three PKI entity slots.
+    fn validate_cert_chain_all(&self, client: &mut MailboxClient) -> Vec<ValidationResult> {
+        use sha2::{Digest, Sha384};
+
+        let mut results = Vec::new();
+        let algo = AsymAlgo::EccP384;
+        let pass = |test_name: &str| ValidationResult {
+            test_name: test_name.to_string(),
+            passed: true,
+            error_message: None,
+        };
+        let fail = |test_name: &str, msg: String| ValidationResult {
+            test_name: test_name.to_string(),
+            passed: false,
+            error_message: Some(msg),
+        };
+
+        // 1. Vendor slot: read-only, anchored at IDevID (device_key_id == 0).
+        let vendor_info_test = "GetCertChainInfo(Vendor/ECC_P384)";
+        let vendor_chain_test = "GetCertChain(Vendor/ECC_P384)";
+        let vendor_chain_len = match client.get_cert_chain_info(PkiEntitySlot::Vendor, algo) {
+            Ok(info) => {
+                if info.device_key_id != 0 || info.chain_len == 0 || info.chain_digest == [0u8; 48]
+                {
+                    results.push(fail(
+                        vendor_info_test,
+                        format!(
+                            "unexpected Vendor info: key_id={}, chain_len={}",
+                            info.device_key_id, info.chain_len
+                        ),
+                    ));
+                    None
+                } else {
+                    results.push(pass(vendor_info_test));
+                    match client.get_full_cert_chain(PkiEntitySlot::Vendor, algo, 512) {
+                        Ok(chain) => {
+                            let digest: [u8; 48] = Sha384::digest(&chain).into();
+                            if chain.len() != info.chain_len as usize {
+                                results.push(fail(
+                                    vendor_chain_test,
+                                    format!(
+                                        "Vendor chain length {} != info.chain_len {}",
+                                        chain.len(),
+                                        info.chain_len
+                                    ),
+                                ));
+                            } else if digest != info.chain_digest {
+                                results.push(fail(
+                                    vendor_chain_test,
+                                    "Vendor DER chain SHA-384 mismatch with info.chain_digest"
+                                        .to_string(),
+                                ));
+                            } else {
+                                results.push(pass(vendor_chain_test));
+                            }
+                            Some(chain.len())
+                        }
+                        Err(e) => {
+                            results.push(fail(vendor_chain_test, e.to_string()));
+                            None
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                results.push(fail(vendor_info_test, e.to_string()));
+                None
+            }
+        };
+
+        // Vendor slot must reject writes.
+        let vendor_write_test = "SetCertChain(Vendor/readonly)";
+        let dummy_der = Self::synthetic_der_cert(256, 0xAA);
+        match client.set_full_cert_chain(PkiEntitySlot::Vendor, algo, 0, &dummy_der, 256) {
+            Ok(()) => results.push(fail(
+                vendor_write_test,
+                "Vendor slot unexpectedly accepted SetCertChain".to_string(),
+            )),
+            Err(_) => results.push(pass(vendor_write_test)),
+        }
+
+        // 2. Owner slot: initially unprovisioned, then provisioned via policy default (key_id == 0 -> LDevID == 1).
+        let owner_unprov_test = "GetCertChainInfo(Owner/unprovisioned)";
+        match client.get_cert_chain_info(PkiEntitySlot::Owner, algo) {
+            Ok(_) => results.push(fail(
+                owner_unprov_test,
+                "unprovisioned Owner slot unexpectedly succeeded".to_string(),
+            )),
+            Err(_) => results.push(pass(owner_unprov_test)),
+        }
+
+        let mut owner_endorsement = Self::synthetic_der_cert(300, 0x11);
+        owner_endorsement.extend_from_slice(&Self::synthetic_der_cert(280, 0x22));
+        let owner_set_test = "SetCertChain(Owner/ECC_P384)";
+        let owner_info_test = "GetCertChainInfo(Owner/ECC_P384)";
+        let owner_get_test = "GetCertChain(Owner/ECC_P384)";
+        match client.set_full_cert_chain(PkiEntitySlot::Owner, algo, 0, &owner_endorsement, 256) {
+            Ok(()) => {
+                results.push(pass(owner_set_test));
+                match client.get_cert_chain_info(PkiEntitySlot::Owner, algo) {
+                    Ok(info) => {
+                        if info.device_key_id != 1
+                            || (info.chain_len as usize) <= owner_endorsement.len()
+                        {
+                            results.push(fail(
+                                owner_info_test,
+                                format!(
+                                    "unexpected Owner info: key_id={}, chain_len={}",
+                                    info.device_key_id, info.chain_len
+                                ),
+                            ));
+                        } else {
+                            results.push(pass(owner_info_test));
+                        }
+                        match client.get_full_cert_chain(PkiEntitySlot::Owner, algo, 512) {
+                            Ok(chain) => {
+                                let digest: [u8; 48] = Sha384::digest(&chain).into();
+                                if chain.len() != info.chain_len as usize
+                                    || !chain.starts_with(&owner_endorsement)
+                                    || digest != info.chain_digest
+                                {
+                                    results.push(fail(
+                                        owner_get_test,
+                                        "Owner cert chain content or digest mismatch".to_string(),
+                                    ));
+                                } else {
+                                    results.push(pass(owner_get_test));
+                                }
+                            }
+                            Err(e) => results.push(fail(owner_get_test, e.to_string())),
+                        }
+                    }
+                    Err(e) => results.push(fail(owner_info_test, e.to_string())),
+                }
+            }
+            Err(e) => results.push(fail(owner_set_test, e.to_string())),
+        }
+
+        // 3. Tenant slot: requires explicit key_id == 1 (LDevID); key_id == 0 must be rejected.
+        let tenant_zero_key_test = "SetCertChain(Tenant/key_id_0_rejected)";
+        let tenant_endorsement = Self::synthetic_der_cert(320, 0x33);
+        match client.set_full_cert_chain(PkiEntitySlot::Tenant, algo, 0, &tenant_endorsement, 256) {
+            Ok(()) => results.push(fail(
+                tenant_zero_key_test,
+                "Tenant slot unexpectedly accepted device_key_id=0".to_string(),
+            )),
+            Err(_) => results.push(pass(tenant_zero_key_test)),
+        }
+
+        let tenant_set_test = "SetCertChain(Tenant/ECC_P384)";
+        let tenant_info_test = "GetCertChainInfo(Tenant/ECC_P384)";
+        let tenant_get_test = "GetCertChain(Tenant/ECC_P384)";
+        match client.set_full_cert_chain(PkiEntitySlot::Tenant, algo, 1, &tenant_endorsement, 200) {
+            Ok(()) => {
+                results.push(pass(tenant_set_test));
+                match client.get_cert_chain_info(PkiEntitySlot::Tenant, algo) {
+                    Ok(info) => {
+                        if info.device_key_id != 1
+                            || (info.chain_len as usize) <= tenant_endorsement.len()
+                        {
+                            results.push(fail(
+                                tenant_info_test,
+                                format!(
+                                    "unexpected Tenant info: key_id={}, chain_len={}",
+                                    info.device_key_id, info.chain_len
+                                ),
+                            ));
+                        } else {
+                            results.push(pass(tenant_info_test));
+                        }
+                        match client.get_full_cert_chain(PkiEntitySlot::Tenant, algo, 512) {
+                            Ok(chain) => {
+                                let digest: [u8; 48] = Sha384::digest(&chain).into();
+                                let vendor_len_ok = vendor_chain_len
+                                    .map(|v_len| chain.len() != v_len)
+                                    .unwrap_or(true);
+                                if chain.len() != info.chain_len as usize
+                                    || !chain.starts_with(&tenant_endorsement)
+                                    || digest != info.chain_digest
+                                    || !vendor_len_ok
+                                {
+                                    results.push(fail(
+                                        tenant_get_test,
+                                        "Tenant cert chain content or digest mismatch".to_string(),
+                                    ));
+                                } else {
+                                    results.push(pass(tenant_get_test));
+                                }
+                            }
+                            Err(e) => results.push(fail(tenant_get_test, e.to_string())),
+                        }
+                    }
+                    Err(e) => results.push(fail(tenant_info_test, e.to_string())),
+                }
+            }
+            Err(e) => results.push(fail(tenant_set_test, e.to_string())),
+        }
+
+        results
     }
 }
 

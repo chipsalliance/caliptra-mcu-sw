@@ -118,6 +118,17 @@ pub enum PkiEntitySlot {
     Tenant = 2,
 }
 
+impl PkiEntitySlot {
+    /// Human-readable name, for test and CLI output.
+    pub const fn name(self) -> &'static str {
+        match self {
+            PkiEntitySlot::Vendor => "Vendor",
+            PkiEntitySlot::Owner => "Owner",
+            PkiEntitySlot::Tenant => "Tenant",
+        }
+    }
+}
+
 /// GET_ATTESTATION request.
 #[repr(C)]
 #[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]

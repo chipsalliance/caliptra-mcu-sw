@@ -29,7 +29,10 @@ use anyhow::Result;
 use caliptra_mcu_core_util_host_command_types::attestation::{
     AsymAlgo, EvidenceFormat, GetAttestationResponse, PkiEntitySlot,
 };
-use caliptra_mcu_core_util_host_command_types::certificate::ExportAttestedCsrResponse;
+use caliptra_mcu_core_util_host_command_types::certificate::{
+    ExportAttestedCsrResponse, GetCertChainInfoResponse, GetCertChainResponse,
+    SetCertChainResponse, MAX_CERT_CHAIN_CHUNK_SIZE,
+};
 use caliptra_mcu_core_util_host_command_types::crypto_aes::{
     AesMode, AES_GCM_IV_SIZE, AES_GCM_TAG_SIZE, AES_IV_SIZE,
 };
@@ -69,7 +72,10 @@ use caliptra_mcu_core_util_host_transport::Mailbox;
 use caliptra_util_host_commands::api::attestation::{
     caliptra_cmd_get_attestation, caliptra_cmd_get_attestation_formats,
 };
-use caliptra_util_host_commands::api::certificate::caliptra_cmd_export_attested_csr;
+use caliptra_util_host_commands::api::certificate::{
+    caliptra_cmd_export_attested_csr, caliptra_cmd_get_cert_chain,
+    caliptra_cmd_get_cert_chain_info, caliptra_cmd_set_cert_chain,
+};
 use caliptra_util_host_commands::api::crypto_aes::{
     caliptra_aes_decrypt, caliptra_aes_encrypt, caliptra_aes_gcm_decrypt, caliptra_aes_gcm_encrypt,
     AesEncryptResult, AesGcmDecryptResult, AesGcmEncryptResult,
@@ -1000,6 +1006,133 @@ impl<'a> MailboxClient<'a> {
                 ))
             }
         }
+    }
+
+    /// Query certificate chain metadata, total byte length, and raw DER SHA-384 digest.
+    pub fn get_cert_chain_info(
+        &mut self,
+        entity: PkiEntitySlot,
+        algorithm: AsymAlgo,
+    ) -> Result<GetCertChainInfoResponse> {
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+        caliptra_cmd_get_cert_chain_info(&mut session, entity, algorithm)
+            .map_err(|e| anyhow::anyhow!("GetCertChainInfo command failed: {:?}", e))
+    }
+
+    /// Read a chunk of the full raw DER certificate chain.
+    pub fn get_cert_chain(
+        &mut self,
+        entity: PkiEntitySlot,
+        algorithm: AsymAlgo,
+        offset: u32,
+        length: u32,
+    ) -> Result<GetCertChainResponse> {
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+        caliptra_cmd_get_cert_chain(&mut session, entity, algorithm, offset, length)
+            .map_err(|e| anyhow::anyhow!("GetCertChain command failed: {:?}", e))
+    }
+
+    /// Read the complete raw DER certificate chain in chunks of `chunk_size` bytes.
+    pub fn get_full_cert_chain(
+        &mut self,
+        entity: PkiEntitySlot,
+        algorithm: AsymAlgo,
+        chunk_size: u32,
+    ) -> Result<Vec<u8>> {
+        let step = chunk_size.clamp(1, MAX_CERT_CHAIN_CHUNK_SIZE as u32);
+        let mut chain = Vec::new();
+        let mut offset = 0u32;
+        loop {
+            let resp = self.get_cert_chain(entity, algorithm, offset, step)?;
+            let bytes = resp.cert_bytes();
+            if bytes.is_empty() {
+                break;
+            }
+            chain.extend_from_slice(bytes);
+            offset = offset
+                .checked_add(bytes.len() as u32)
+                .ok_or_else(|| anyhow::anyhow!("certificate chain offset overflow"))?;
+            if (bytes.len() as u32) < step {
+                break;
+            }
+        }
+        Ok(chain)
+    }
+
+    /// Write a single endorsement certificate chain chunk (or erase when `offset == 0 && total_size == 0 && chunk.is_empty()`).
+    pub fn set_cert_chain(
+        &mut self,
+        entity: PkiEntitySlot,
+        algorithm: AsymAlgo,
+        device_key_id: u32,
+        offset: u32,
+        total_size: u32,
+        chunk: &[u8],
+    ) -> Result<SetCertChainResponse> {
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+        caliptra_cmd_set_cert_chain(
+            &mut session,
+            entity,
+            algorithm,
+            device_key_id,
+            offset,
+            total_size,
+            chunk,
+        )
+        .map_err(|e| anyhow::anyhow!("SetCertChain command failed: {:?}", e))
+    }
+
+    /// Provision a complete endorsement certificate chain in chunks of `chunk_size` bytes.
+    pub fn set_full_cert_chain(
+        &mut self,
+        entity: PkiEntitySlot,
+        algorithm: AsymAlgo,
+        device_key_id: u32,
+        endorsement: &[u8],
+        chunk_size: usize,
+    ) -> Result<()> {
+        let total_size = u32::try_from(endorsement.len())
+            .map_err(|_| anyhow::anyhow!("endorsement chain length overflow"))?;
+        if endorsement.is_empty() {
+            self.set_cert_chain(entity, algorithm, device_key_id, 0, 0, &[])?;
+            return Ok(());
+        }
+        let step = chunk_size.clamp(1, MAX_CERT_CHAIN_CHUNK_SIZE);
+        let mut offset = 0usize;
+        while offset < endorsement.len() {
+            let end = (offset + step).min(endorsement.len());
+            self.set_cert_chain(
+                entity,
+                algorithm,
+                device_key_id,
+                offset as u32,
+                total_size,
+                &endorsement[offset..end],
+            )?;
+            offset = end;
+        }
+        Ok(())
     }
 
     /// Request an authorization command challenge nonce
