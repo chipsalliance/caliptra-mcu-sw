@@ -14,6 +14,10 @@ See the License for the specific language governing permissions and<BR>
 limitations under the License.*_<BR>
 
 # **Caliptra FPGA Guide** #
+For an end-to-end software bring-up using a prebuilt SD-card image, see the
+[VCK190 step-by-step setup guide](../../docs/src/vck190-setup.md).
+The hardware build and custom boot-image instructions remain below.
+
 FPGA provides a fast environment for software development and testing that is built on Caliptra Core and Subsystem RTL.
 The ARM CPU takes the place of an SOC manager and can drive stimulus to Caliptra SS over an AXI bus. In addition the Caliptra Core, MCU, and LCC JTAGs are connected to GPIO pins for debug and testing from the ARM CPU.
 

@@ -29,6 +29,7 @@
 - [Out of Tree Build](./firmware_bundler.md)
 - [Reference Provisioning Guide](./provisioning.md)
 - [Running with an FPGA](./fpga.md)
+    - [VCK190 Step-by-Step Setup](./vck190-setup.md)
 - [Caliptra Utility Host Library](./caliptra_util_host_library.md)
 - [Network Boot Recovery](./network_boot.md)
 - [Integrator's Guide](./integrator-guide.md)

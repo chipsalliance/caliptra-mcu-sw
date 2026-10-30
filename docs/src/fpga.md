@@ -1,5 +1,9 @@
 # Working with an FPGA
 
+For a first-time board bring-up, follow the
+[VCK190 step-by-step setup guide](./vck190-setup.md), from SD-card preparation
+through SSH setup, artifact builds, deployment, and testing.
+
 This section covers how to perform common MCU flows on an FPGA. You can always fallback to working on the FPGA directly, as it is an ARM Linux host, albeit low powered.
 
 ## Pre Requisites
