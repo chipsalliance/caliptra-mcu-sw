@@ -734,10 +734,19 @@ impl Soc {
     /// Waits for Caliptra to indicate MCU firmware is ready through the `NotifCptraMcuResetReqSts`
     /// interrupt.
     pub fn wait_for_firmware_ready(&self, mci: &caliptra_mcu_romtime::Mci) {
+        self.wait_for_firmware_ready_with(mci, || {});
+    }
+
+    pub(crate) fn wait_for_firmware_ready_with(
+        &self,
+        mci: &caliptra_mcu_romtime::Mci,
+        mut service: impl FnMut(),
+    ) {
         let notif0 = &mci.registers.intr_block_rf_notif0_internal_intr_r;
         // TODO(zhalvorsen): use interrupt instead of fw_exec_ctrl register when the emulator supports it
         // Wait for a reset request from Caliptra
         while !self.fw_ready() {
+            service();
             if self.cptra_fw_fatal_error() {
                 caliptra_mcu_romtime::println!("[mcu-rom] Caliptra reported a fatal error");
                 fatal_error(McuError::ROM_SOC_CALIPTRA_FATAL_ERROR_BEFORE_FW_READY);
@@ -952,11 +961,92 @@ pub enum DotRecoveryPolicy {
     None,
 }
 
+/// Hardware recovery interface used by Caliptra. This does not select a provider
+/// for the legacy I3C AXI-bypass recovery flow.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum RecoveryInterface {
+    #[default]
+    I3c,
+    #[cfg(all(hw_rev = "latest", feature = "usb-recovery"))]
+    Usb,
+}
+
+impl RecoveryInterface {
+    #[cfg(hw_rev = "latest")]
+    pub(crate) fn configure(
+        self,
+        register: &(impl Readable<T = u32, R = mci::bits::HwCapabilities::Register>
+              + Writeable<T = u32, R = mci::bits::HwCapabilities::Register>),
+    ) -> Result<(), McuError> {
+        use mci::bits::HwCapabilities;
+        let value = match self {
+            Self::I3c => 1,
+            #[cfg(feature = "usb-recovery")]
+            Self::Usb => 0,
+        };
+        let selection = HwCapabilities::StreamingBootSelect.val(value);
+        register.set(selection.modify(register.get()));
+        if !register.matches_all(selection) {
+            return Err(McuError::ROM_SOC_RECOVERY_INTERFACE_VERIFY_FAILED);
+        }
+        Ok(())
+    }
+}
+
+#[cfg(all(test, hw_rev = "latest"))]
+mod recovery_interface_tests {
+    use super::*;
+    use tock_registers::registers::InMemoryRegister;
+
+    #[test]
+    fn default_selects_i3c_and_preserves_other_capabilities() {
+        let register =
+            InMemoryRegister::<u32, mci::bits::HwCapabilities::Register>::new(0xa5a5_0000);
+        RecoveryInterface::default().configure(&register).unwrap();
+        assert_eq!(register.get(), 0xa5a5_0001);
+    }
+
+    #[cfg(feature = "usb-recovery")]
+    #[test]
+    fn usb_selection_replaces_i3c_without_changing_other_bits() {
+        let register =
+            InMemoryRegister::<u32, mci::bits::HwCapabilities::Register>::new(0xa5a5_0001);
+        RecoveryInterface::Usb.configure(&register).unwrap();
+        assert_eq!(register.get(), 0xa5a5_0000);
+    }
+
+    #[test]
+    fn locked_wrong_selection_is_rejected() {
+        struct Locked;
+        impl Readable for Locked {
+            type T = u32;
+            type R = mci::bits::HwCapabilities::Register;
+            fn get(&self) -> u32 {
+                0
+            }
+        }
+        impl Writeable for Locked {
+            type T = u32;
+            type R = mci::bits::HwCapabilities::Register;
+            fn set(&self, _: u32) {}
+        }
+        assert_eq!(
+            RecoveryInterface::I3c.configure(&Locked),
+            Err(McuError::ROM_SOC_RECOVERY_INTERFACE_VERIFY_FAILED)
+        );
+    }
+}
+
 #[derive(Default)]
 pub struct RomParameters<'a> {
     pub lifecycle_transition: Option<(LifecycleControllerState, LifecycleToken)>,
     pub burn_lifecycle_tokens: Option<LifecycleHashedTokens>,
     pub image_provider_manager: Option<crate::recovery::ImageProviderManager<'a>>,
+    pub recovery_interface: RecoveryInterface,
+    /// Platform-supplied Device 0 MMIO, USB identity and power configuration.
+    /// Required exactly when selecting hardware-assisted USB recovery.
+    #[cfg(all(hw_rev = "latest", feature = "usb-recovery"))]
+    pub usb: Option<caliptra_mcu_usb_common::UsbParams>,
     /// Whether or not to program field entropy after booting Caliptra runtime firmware
     pub program_field_entropy: [bool; 4],
     pub mcu_image_header_size: usize,
@@ -1010,7 +1100,7 @@ pub struct RomParameters<'a> {
     pub otp_enable_integrity_check: bool,
     pub otp_enable_consistency_check: bool,
     pub otp_check_timeout_override: Option<u32>,
-    /// Request recovery boot (AXI recovery bypass).
+    /// Request legacy provider-based recovery boot (I3C AXI recovery bypass).
     pub request_recovery_boot: bool,
     /// Request network boot through the Network Coprocessor.
     pub request_network_boot: bool,

@@ -4,6 +4,8 @@ pub mod flash;
 #[cfg(feature = "network-boot")]
 pub mod network;
 pub mod ocp;
+#[cfg(all(hw_rev = "latest", feature = "usb-recovery"))]
+pub mod usb;
 
 use core::num::NonZeroU8;
 

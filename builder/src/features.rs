@@ -110,7 +110,8 @@ pub const ROM_ONLY_TEST_FEATURES: &[&str] = &[
     "test-usb-ocp-recovery",
 ];
 
-pub const LATEST_ROM_ONLY_TEST_FEATURES: &[&str] = &["test-lpcip-usb-enumeration"];
+pub const LATEST_ROM_ONLY_TEST_FEATURES: &[&str] =
+    &["test-lpcip-usb-enumeration", "test-lpcip-usb-ocp-recovery"];
 
 pub const LATEST_EMULATOR_ROM_ONLY_TEST_FEATURES: &[&str] = &["test-lpcip-usb-host"];
 
@@ -261,6 +262,10 @@ mod tests {
                 platform,
                 Some("test-lpcip-usb-enumeration")
             )));
+            assert!(latest.contains(&RomVariant::new(
+                platform,
+                Some("test-lpcip-usb-ocp-recovery")
+            )));
         }
         assert!(latest.contains(&RomVariant::new(None, Some("test-lpcip-usb-host"))));
         assert!(!latest.contains(&RomVariant::new(Some("fpga"), Some("test-lpcip-usb-host"))));
@@ -277,6 +282,10 @@ mod tests {
                 );
                 assert_eq!(
                     features.contains(&"test-lpcip-usb-enumeration"),
+                    revision == HardwareRevision::Latest
+                );
+                assert_eq!(
+                    features.contains(&"test-lpcip-usb-ocp-recovery"),
                     revision == HardwareRevision::Latest
                 );
             }

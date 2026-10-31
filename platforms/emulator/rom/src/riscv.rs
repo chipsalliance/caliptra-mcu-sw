@@ -372,7 +372,23 @@ pub extern "C" fn rom_entry() -> ! {
         ..Default::default()
     };
 
-    if cfg!(feature = "use-flash-partition-table") {
+    if cfg!(feature = "test-lpcip-usb-ocp-recovery") {
+        #[cfg(all(hw_rev = "latest", feature = "test-lpcip-usb-ocp-recovery"))]
+        caliptra_mcu_rom_common::rom_start(RomParameters {
+            recovery_interface: caliptra_mcu_rom_common::RecoveryInterface::Usb,
+            usb: Some(crate::usb::test_parameters()),
+            dot_flash: Some(dot_flash),
+            owner_pk_hash_policy: read_owner_pk_hash_policy(),
+            cptra_mbox_axi_users: mbox_axi_users,
+            cptra_fuse_axi_user: axi_user0,
+            cptra_trng_axi_user: axi_user0,
+            mci_mbox0_axi_users: mbox_axi_users,
+            mci_mbox1_axi_users: mbox_axi_users,
+            #[cfg(feature = "ocp-lock")]
+            ocp_lock_config,
+            ..Default::default()
+        });
+    } else if cfg!(feature = "use-flash-partition-table") {
         // Initialize the flash controller for testing purposes
 
         let primary_flash_ctrl = EmulatedFlashCtrl::initialize_flash_ctrl(PRIMARY_FLASH_CTRL_BASE);
@@ -655,7 +671,7 @@ pub extern "C" fn rom_entry() -> ! {
             let mut entries = [ImageProviderEntry {
                 provider: &mut ocp_provider,
                 policy: ErrorPolicy::RetryForever,
-                boot_type: caliptra_mcu_romtime::handoff::FirmwareBootType::Streaming,
+                boot_type: caliptra_mcu_romtime::handoff::FirmwareBootType::UsbStreaming,
             }];
             let manager = ImageProviderManager::new(&mut entries);
 

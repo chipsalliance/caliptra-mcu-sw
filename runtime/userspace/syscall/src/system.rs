@@ -10,6 +10,8 @@ pub enum FirmwareBootType {
     Flash = 1,
     Streaming = 2,
     Network = 3,
+    HwOcpUsb = 4,
+    UsbStreaming = 5,
 }
 
 impl TryFrom<u32> for FirmwareBootType {
@@ -21,6 +23,8 @@ impl TryFrom<u32> for FirmwareBootType {
             value if value == Self::Flash as u32 => Ok(Self::Flash),
             value if value == Self::Streaming as u32 => Ok(Self::Streaming),
             value if value == Self::Network as u32 => Ok(Self::Network),
+            value if value == Self::HwOcpUsb as u32 => Ok(Self::HwOcpUsb),
+            value if value == Self::UsbStreaming as u32 => Ok(Self::UsbStreaming),
             _ => Err(ErrorCode::Invalid),
         }
     }
@@ -68,6 +72,14 @@ mod tests {
             Ok(FirmwareBootType::Streaming)
         );
         assert_eq!(FirmwareBootType::try_from(3), Ok(FirmwareBootType::Network));
-        assert_eq!(FirmwareBootType::try_from(4), Err(ErrorCode::Invalid));
+        assert_eq!(
+            FirmwareBootType::try_from(4),
+            Ok(FirmwareBootType::HwOcpUsb)
+        );
+        assert_eq!(
+            FirmwareBootType::try_from(5),
+            Ok(FirmwareBootType::UsbStreaming)
+        );
+        assert_eq!(FirmwareBootType::try_from(6), Err(ErrorCode::Invalid));
     }
 }

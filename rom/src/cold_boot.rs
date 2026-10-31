@@ -179,7 +179,8 @@ fn mcu_rom_capabilities(
         if let Some(manager) = params.image_provider_manager.as_ref() {
             for entry in manager.entries.iter() {
                 capabilities |= match entry.boot_type {
-                    caliptra_mcu_romtime::handoff::FirmwareBootType::Unknown => {
+                    caliptra_mcu_romtime::handoff::FirmwareBootType::Unknown
+                    | caliptra_mcu_romtime::handoff::FirmwareBootType::HwOcpUsb => {
                         McuRomCapabilities::empty()
                     }
                     caliptra_mcu_romtime::handoff::FirmwareBootType::Flash => {
@@ -191,9 +192,16 @@ fn mcu_rom_capabilities(
                     caliptra_mcu_romtime::handoff::FirmwareBootType::Network => {
                         McuRomCapabilities::NETWORK_BOOT
                     }
+                    caliptra_mcu_romtime::handoff::FirmwareBootType::UsbStreaming => {
+                        McuRomCapabilities::AXI_STREAMING_USB_BOOT
+                    }
                 };
             }
         }
+    }
+    #[cfg(all(hw_rev = "latest", feature = "usb-recovery"))]
+    if params.recovery_interface == crate::RecoveryInterface::Usb {
+        capabilities |= McuRomCapabilities::HW_OCP_USB_BOOT;
     }
     if cfg!(feature = "ocp-lock") {
         capabilities |= McuRomCapabilities::OCP_LOCK;
@@ -401,6 +409,46 @@ mod capability_tests {
             assert!(capabilities.contains(McuRomCapabilities::FLASH_BOOT));
             assert!(capabilities.contains(McuRomCapabilities::NETWORK_BOOT));
         }
+    }
+
+    #[test]
+    fn usb_provider_capability_is_distinct_from_hardware_usb_boot() {
+        let mut provider = TestImageProvider;
+        let mut entries = [ImageProviderEntry {
+            provider: &mut provider,
+            policy: ErrorPolicy::Continue,
+            boot_type: FirmwareBootType::UsbStreaming,
+        }];
+        let params = RomParameters {
+            image_provider_manager: Some(ImageProviderManager::new(&mut entries)),
+            ..Default::default()
+        };
+        let capabilities = mcu_rom_capabilities(&params);
+
+        assert!(capabilities.contains(McuRomCapabilities::STREAMING_BOOT_I3C));
+        assert_eq!(
+            capabilities.contains(McuRomCapabilities::AXI_STREAMING_USB_BOOT),
+            cfg!(feature = "hw-2-1")
+        );
+        assert!(!capabilities.contains(McuRomCapabilities::HW_OCP_USB_BOOT));
+    }
+
+    #[cfg(all(hw_rev = "latest", feature = "usb-recovery"))]
+    #[test]
+    fn hardware_usb_capability_does_not_require_an_image_provider() {
+        let mut params = RomParameters {
+            recovery_interface: crate::RecoveryInterface::Usb,
+            ..Default::default()
+        };
+        assert!(params.image_provider_manager.is_none());
+        let capabilities = mcu_rom_capabilities(&params);
+        assert!(capabilities.contains(McuRomCapabilities::HW_OCP_USB_BOOT));
+        assert!(!capabilities.contains(McuRomCapabilities::AXI_STREAMING_USB_BOOT));
+
+        params.recovery_interface = crate::RecoveryInterface::I3c;
+        assert!(!mcu_rom_capabilities(&params).intersects(
+            McuRomCapabilities::HW_OCP_USB_BOOT | McuRomCapabilities::AXI_STREAMING_USB_BOOT
+        ));
     }
 }
 
@@ -1355,6 +1403,36 @@ impl BootFlow for ColdBoot {
             straps.active_i3c
         );
 
+        #[cfg(all(hw_rev = "latest", feature = "usb-recovery"))]
+        let direct_usb = {
+            crate::recovery::usb::validate(&params, mci).unwrap_or_else(|err| {
+                caliptra_mcu_romtime::println!(
+                    "[mcu-rom] Invalid USB recovery configuration: {}",
+                    HexWord(err.into())
+                );
+                fatal_error(err);
+            });
+            params.recovery_interface == crate::RecoveryInterface::Usb
+        };
+        #[cfg(not(all(hw_rev = "latest", feature = "usb-recovery")))]
+        let direct_usb = false;
+
+        #[cfg(hw_rev = "latest")]
+        if let Err(err) = params
+            .recovery_interface
+            .configure(&mci.registers.mci_reg_hw_capabilities)
+        {
+            caliptra_mcu_romtime::println!(
+                "[mcu-rom] Recovery interface selection failed: {}",
+                HexWord(err.into())
+            );
+            fatal_error(err);
+        }
+
+        caliptra_mcu_romtime::println!(
+            "[mcu-rom] Caliptra recovery interface: {:?}",
+            params.recovery_interface
+        );
         caliptra_mcu_romtime::println!("[mcu-rom] Setting Caliptra boot go");
 
         crate::call_hook(params.hooks, |h| h.pre_caliptra_boot());
@@ -1451,7 +1529,7 @@ impl BootFlow for ColdBoot {
             fatal_error(McuError::ROM_COLD_BOOT_RECOVERY_NOT_CONFIGURED_ERROR);
         }
 
-        if recovery_boot {
+        if recovery_boot || direct_usb {
             caliptra_mcu_romtime::println!(
                 "[mcu-rom] Configuring Caliptra watchdog timers for recovery boot: {} {}",
                 straps.cptra_wdt_cfg0,
@@ -1497,14 +1575,14 @@ impl BootFlow for ColdBoot {
             caliptra_mcu_romtime::println!("[mcu-rom] Initializing I3C1 (active)");
             i3c1.configure(crate::I3cConfig {
                 static_addr: straps.i3c1_static_addr,
-                recovery_enabled: true,
+                recovery_enabled: !direct_usb,
                 dcr: crate::i3c::MCTP_DCR,
                 timings: params.i3c1_timings.unwrap_or_default(),
             });
         } else {
             i3c.configure(crate::I3cConfig {
                 static_addr: straps.i3c_static_addr,
-                recovery_enabled: true,
+                recovery_enabled: !direct_usb,
                 dcr: crate::i3c::MCTP_DCR,
                 timings: params.i3c_timings.unwrap_or_default(),
             });
@@ -1566,7 +1644,9 @@ impl BootFlow for ColdBoot {
         // Create handoff data
         caliptra_mcu_romtime::handoff::HandoffData::write(
             caliptra_mcu_romtime::handoff::HandoffArgs {
-                firmware_boot_type: if recovery_boot {
+                firmware_boot_type: if direct_usb {
+                    caliptra_mcu_romtime::handoff::FirmwareBootType::HwOcpUsb
+                } else if recovery_boot {
                     caliptra_mcu_romtime::handoff::FirmwareBootType::Unknown
                 } else {
                     caliptra_mcu_romtime::handoff::FirmwareBootType::Streaming
@@ -1879,6 +1959,12 @@ impl BootFlow for ColdBoot {
             CommandId::RI_DOWNLOAD_FIRMWARE.into()
         };
 
+        #[cfg(all(hw_rev = "latest", feature = "usb-recovery"))]
+        let mut usb_recovery = params.usb.take().map(|usb| {
+            crate::recovery::usb::UsbRecovery::initialize(usb)
+                .unwrap_or_else(|err| fatal_error(err))
+        });
+
         crate::call_hook(params.hooks, |h| h.pre_load_firmware());
         if let Err(err) = env.soc_manager.start_mailbox_req_bytes(ri_cmd, &[]) {
             match err {
@@ -1901,6 +1987,26 @@ impl BootFlow for ColdBoot {
 
         {
             let mut resp_buf = [0u8; core::mem::size_of::<MailboxRespHeader>()];
+            #[cfg(all(hw_rev = "latest", feature = "usb-recovery"))]
+            if let Some(recovery) = usb_recovery.as_mut() {
+                use caliptra_api::SocManager;
+                // Host enumeration/transfer is governed by recovery watchdogs,
+                // not the mailbox API's short command-response polling bound.
+                while env
+                    .soc_manager
+                    .soc_mbox()
+                    .status()
+                    .read()
+                    .status()
+                    .cmd_busy()
+                {
+                    recovery.poll();
+                    soc.check_hw_errors();
+                    if soc.cptra_fw_fatal_error() {
+                        fatal_error(McuError::ROM_SOC_CALIPTRA_FATAL_ERROR_BEFORE_FW_READY);
+                    }
+                }
+            }
             if let Err(err) = env.soc_manager.finish_mailbox_resp_bytes(&mut resp_buf) {
                 match err {
                     CaliptraApiError::MailboxCmdFailed(code) => {
@@ -1979,6 +2085,10 @@ impl BootFlow for ColdBoot {
                 "[mcu-rom] Encrypted boot: waiting for Caliptra RT to be ready"
             );
             while !soc.ready_for_runtime() {
+                #[cfg(all(hw_rev = "latest", feature = "usb-recovery"))]
+                if let Some(recovery) = usb_recovery.as_mut() {
+                    recovery.poll();
+                }
                 soc.check_hw_errors();
             }
             mci.set_flow_checkpoint(McuRomBootStatus::CaliptraRuntimeReady.into());
@@ -2010,7 +2120,12 @@ impl BootFlow for ColdBoot {
         } else {
             // --- Normal (unencrypted) firmware boot flow ---
             caliptra_mcu_romtime::println!("[mcu-rom] Waiting for MCU firmware to be ready");
-            soc.wait_for_firmware_ready(mci);
+            soc.wait_for_firmware_ready_with(mci, || {
+                #[cfg(all(hw_rev = "latest", feature = "usb-recovery"))]
+                if let Some(recovery) = usb_recovery.as_mut() {
+                    recovery.poll();
+                }
+            });
             caliptra_mcu_romtime::println!("[mcu-rom] Firmware is ready");
             mci.set_flow_checkpoint(McuRomBootStatus::FirmwareReadyDetected.into());
 
@@ -2047,6 +2162,10 @@ impl BootFlow for ColdBoot {
                 "[mcu-rom] Waiting for Caliptra RT to be ready for runtime mailbox commands"
             );
             while !soc.ready_for_runtime() {
+                #[cfg(all(hw_rev = "latest", feature = "usb-recovery"))]
+                if let Some(recovery) = usb_recovery.as_mut() {
+                    recovery.poll();
+                }
                 soc.check_hw_errors();
             }
             mci.set_flow_checkpoint(McuRomBootStatus::CaliptraRuntimeReady.into());
@@ -2088,11 +2207,16 @@ impl BootFlow for ColdBoot {
 
         Self::report_field_entropy_state(&mut env.soc_manager, &env.otp);
 
-        if params.recovery_status_open {
+        #[cfg(all(hw_rev = "latest", feature = "usb-recovery"))]
+        if let Some(recovery) = usb_recovery.as_ref() {
+            recovery.finish(params.recovery_status_open);
+        }
+
+        if !direct_usb && params.recovery_status_open {
             caliptra_mcu_romtime::println!("[mcu-rom] Leaving recovery interface open");
             if env.straps.active_i3c == 1 {
                 env.i3c1.set_recovery_status_open();
-            } else {
+            } else if !direct_usb {
                 env.i3c.set_recovery_status_open();
             }
         } else {
