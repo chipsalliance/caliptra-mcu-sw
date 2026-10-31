@@ -3,6 +3,7 @@
 mod usb_driver_tests;
 mod usb_phy_tests;
 mod usb_recovery_tests;
+mod usb_rom_recovery_tests;
 #[cfg(target_os = "linux")]
 mod usbip_tests;
 

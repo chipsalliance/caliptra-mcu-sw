@@ -423,17 +423,13 @@ jobs:
           path: /tmp/nextest-archive.tar.zst
           retention-days: 7
 
-<<<<<<< ours
-  test_emulator_revision:
-=======
       - name: Test libusb recovery adapter and CLI
         if: matrix.hw-revision == 'latest'
         run: |
           sudo apt-get install -qy libusb-1.0-0-dev pkg-config
           cargo test --locked -p caliptra-mcu-usb-recovery --features libusb
 
-  test_emulator:
->>>>>>> theirs
+  test_emulator_revision:
     runs-on: e2-standard-4
     needs: [precheckin, merge-firmware-bundles, build-emulator, build-tests, build-xtask]
     timeout-minutes: 120

@@ -928,10 +928,19 @@ impl Soc {
     /// Waits for Caliptra to indicate MCU firmware is ready through the `NotifCptraMcuResetReqSts`
     /// interrupt.
     pub fn wait_for_firmware_ready(&self, mci: &caliptra_mcu_romtime::Mci) {
+        self.wait_for_firmware_ready_with(mci, || {});
+    }
+
+    pub(crate) fn wait_for_firmware_ready_with(
+        &self,
+        mci: &caliptra_mcu_romtime::Mci,
+        mut service: impl FnMut(),
+    ) {
         let notif0 = &mci.registers.intr_block_rf_notif0_internal_intr_r;
         // TODO(zhalvorsen): use interrupt instead of fw_exec_ctrl register when the emulator supports it
         // Wait for a reset request from Caliptra
         while !self.fw_ready() {
+            service();
             if self.cptra_fw_fatal_error() {
                 caliptra_mcu_romtime::println!("[mcu-rom] Caliptra reported a fatal error");
                 fatal_error(McuError::ROM_SOC_CALIPTRA_FATAL_ERROR_BEFORE_FW_READY);
@@ -1244,6 +1253,10 @@ pub struct RomParameters<'a> {
     pub lifecycle_transition: Option<(LifecycleControllerState, LifecycleToken)>,
     pub burn_lifecycle_tokens: Option<LifecycleHashedTokens>,
     pub image_provider_manager: Option<crate::recovery::ImageProviderManager<'a>>,
+    /// Platform-supplied Device 0 MMIO, USB identity and power configuration.
+    /// Required exactly when selecting hardware-assisted USB recovery.
+    #[cfg(all(hw_rev = "latest", feature = "usb-recovery"))]
+    pub usb: Option<caliptra_mcu_usb_common::UsbParams>,
     pub mcu_image_header_size: usize,
     pub mcu_image_verifier: Option<&'a dyn ImageVerifier>,
     /// The stable key type to use for DOT operations (IDevID or LDevID; IDevID is the default if not specified).
@@ -1295,7 +1308,7 @@ pub struct RomParameters<'a> {
     pub otp_enable_integrity_check: bool,
     pub otp_enable_consistency_check: bool,
     pub otp_check_timeout_override: Option<u32>,
-    /// Request recovery boot (AXI recovery bypass).
+    /// Request legacy provider-based recovery boot (I3C AXI recovery bypass).
     pub request_recovery_boot: bool,
     /// Request network boot through the Network Coprocessor.
     pub request_network_boot: bool,

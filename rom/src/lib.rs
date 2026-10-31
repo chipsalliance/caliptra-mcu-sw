@@ -14,6 +14,9 @@ Abstract:
 
 #![no_std]
 
+#[cfg(all(feature = "usb-recovery", not(hw_rev = "latest")))]
+compile_error!("hardware-assisted USB recovery requires CALIPTRA_HW_REV=latest");
+
 #[cfg(all(feature = "ocp-lock", feature = "stable-owner-key"))]
 compile_error!("features `ocp-lock` and `stable-owner-key` are mutually exclusive");
 

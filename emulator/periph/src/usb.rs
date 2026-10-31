@@ -907,7 +907,7 @@ impl UsbComboPeripheral for UsbCombo {
     }
 
     fn update_reset(&mut self) {
-        self.reset();
+        // MCU-only firmware reset does not assert the subsystem USB reset.
     }
 
     recovery_register!(read_recovery_prot_cap_0, 0x04);
@@ -1092,7 +1092,7 @@ impl UsbDev1Peripheral for UsbDev1 {
     }
 
     fn update_reset(&mut self) {
-        self.device.reset();
+        // Device 1 shares the subsystem reset domain with the combo.
     }
 
     forward_register!(
