@@ -23,6 +23,14 @@ const FIFO_DEPTH: usize = 64;
 const MAX_DMA_BYTES: u32 = 1024 * 1024;
 const FIFO_DATA: u8 = 0x2f;
 
+/// Opt-in observations of the existing hardware recovery path, not injected data.
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum LpcipUsbRecoveryEvent {
+    Requested { image: u8, words: u32 },
+    Consumed { image: u8, data: Vec<u8> },
+    Activated { image: u8 },
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct LpcipUsbRecoverySnapshot {
     pub claimed: bool,
@@ -63,6 +71,7 @@ pub(super) struct Recovery {
     aborted_dma_reads: u64,
     status_snapshot: [u32; 5],
     status_next: Option<u32>,
+    observer: Option<Box<dyn FnMut(LpcipUsbRecoveryEvent) + Send>>,
 }
 
 impl Default for Recovery {
@@ -86,6 +95,7 @@ impl Default for Recovery {
             aborted_dma_reads: 0,
             status_snapshot: [0; 5],
             status_next: None,
+            observer: None,
         }
     }
 }
@@ -93,10 +103,35 @@ impl Default for Recovery {
 impl Recovery {
     pub(super) fn reset(&mut self) {
         let generation = self.generation.wrapping_add(1);
+        let observer = self.observer.take();
         *self = Self {
             generation,
+            observer,
             ..Self::default()
         };
+    }
+
+    pub(super) fn observe(&mut self, observer: impl FnMut(LpcipUsbRecoveryEvent) + Send + 'static) {
+        self.observer = Some(Box::new(observer));
+    }
+
+    fn image_index(&self) -> u8 {
+        ((self.registers[0x40 / 4] >> 4) & 0xf) as u8
+    }
+
+    fn notify(&mut self, event: LpcipUsbRecoveryEvent) {
+        if let Some(observer) = &mut self.observer {
+            observer(event);
+        }
+    }
+
+    fn consumed(&mut self, data: &[u8]) {
+        if self.observer.is_some() {
+            self.notify(LpcipUsbRecoveryEvent::Consumed {
+                image: self.image_index(),
+                data: data.to_vec(),
+            });
+        }
     }
 
     pub(super) fn snapshot(&self) -> LpcipUsbRecoverySnapshot {
@@ -365,6 +400,13 @@ impl Recovery {
         } else if command == 0x2d {
             self.write(0x48, u32::from(data[0]) | u32::from(data[1]) << 8);
             self.write(0x4c, u32::from_le_bytes(data[2..6].try_into().unwrap()));
+            let words = self.registers[0x4c / 4];
+            if words != 0 {
+                self.notify(LpcipUsbRecoveryEvent::Requested {
+                    image: self.image_index(),
+                    words,
+                });
+            }
         } else {
             let offset = match command {
                 0x25 => 0x38,
@@ -375,6 +417,11 @@ impl Recovery {
             let mut word = [0; 4];
             word[..data.len()].copy_from_slice(data);
             self.write(offset, u32::from_le_bytes(word));
+            if command == 0x26 && self.registers[offset as usize / 4] >> 16 == 0x0f {
+                self.notify(LpcipUsbRecoveryEvent::Activated {
+                    image: self.image_index(),
+                });
+            }
         }
         self.transfer = Transfer::StatusIn;
         Some(Ok(()))
@@ -468,6 +515,7 @@ impl RecoveryEvents {
             }
             if pending.data.len() == pending.length {
                 let pending = self.pending.take().unwrap();
+                recovery.consumed(&pending.data);
                 self.reply(EventData::MemoryReadResponse {
                     start_addr: pending.address,
                     data: pending.data,
