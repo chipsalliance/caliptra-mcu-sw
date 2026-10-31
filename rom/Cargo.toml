@@ -30,6 +30,7 @@ caliptra-mcu-otp-digest.workspace = true
 caliptra-mcu-otp-lifecycle.workspace = true
 caliptra-mcu-registers-generated.workspace = true
 caliptra-mcu-romtime.workspace = true
+caliptra-mcu-usb-common = { workspace = true, optional = true }
 smlang.workspace = true
 tock-registers.workspace = true
 zeroize.workspace = true
@@ -43,6 +44,7 @@ rv32i.workspace = true
 default = ["hw-2-1"]              # default is 2.1
 cfi = []
 hw-2-1 = []
+usb-recovery = ["dep:caliptra-mcu-usb-common"]
 network-boot = ["caliptra-mcu-boot-source-protocol", "caliptra-mcu-network-drivers", "caliptra-mcu-network-hil"]
 core_test = ["caliptra-mcu-romtime/core_test"]
 # Test-only: enables extra diagnostics in the I3C services / DOT recovery path.

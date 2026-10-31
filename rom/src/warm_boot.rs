@@ -60,6 +60,15 @@ impl BootFlow for WarmBoot {
         }
         mci.set_flow_checkpoint(McuRomBootStatus::I3cInitialized.into());
 
+        #[cfg(all(hw_rev = "latest", feature = "usb-recovery"))]
+        if let Err(err) = crate::recovery::usb::validate(&params, mci) {
+            caliptra_mcu_romtime::println!(
+                "[mcu-rom] Invalid USB recovery configuration: {}",
+                caliptra_mcu_romtime::HexWord(err.into())
+            );
+            crate::fatal_error(err);
+        }
+
         #[cfg(hw_capability = "recovery-interface-select")]
         if let Err(err) = params
             .recovery_interface
@@ -72,6 +81,16 @@ impl BootFlow for WarmBoot {
             fatal_error(err);
         }
 
+        #[cfg(all(hw_rev = "latest", feature = "usb-recovery"))]
+        if let Some(usb) = params.usb.as_ref() {
+            crate::recovery::usb::finish(usb.registers, false);
+        }
+
+        #[cfg(hw_capability = "recovery-interface-select")]
+        caliptra_mcu_romtime::println!(
+            "[mcu-rom] Caliptra recovery interface: {:?}",
+            params.recovery_interface
+        );
         caliptra_mcu_romtime::println!("[mcu-rom] Setting Caliptra boot go");
         crate::call_hook(params.hooks, |h| h.pre_caliptra_boot());
         mci.caliptra_boot_go();

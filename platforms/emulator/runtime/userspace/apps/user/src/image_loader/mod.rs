@@ -292,7 +292,7 @@ async fn image_loading<D: DMAMapping>(
     #[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
     match firmware_boot_type {
         FirmwareBootType::Unknown => return Err(ErrorCode::Invalid),
-        FirmwareBootType::Streaming => {
+        FirmwareBootType::Streaming | FirmwareBootType::UsbStreaming => {
             #[cfg(feature = "streaming-boot")]
             {
                 let fw_params = PldmFirmwareDeviceParams {
@@ -461,7 +461,7 @@ async fn image_loading<D: DMAMapping>(
             #[cfg(not(feature = "flash-boot"))]
             return Err(ErrorCode::NoSupport);
         }
-        FirmwareBootType::Network => return Err(ErrorCode::NoSupport),
+        FirmwareBootType::Network | FirmwareBootType::HwOcpUsb => return Err(ErrorCode::NoSupport),
     }
 
     #[cfg(any(
