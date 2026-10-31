@@ -273,18 +273,19 @@ fn bus_and_mcu_resets_do_not_reset_the_external_phy() {
     f.bus.write(RvSize::Word, 0, DEV_EN | CONNECT).unwrap();
     f.host.bus_reset(LpcipUsbSpeed::Full).unwrap();
     assert_eq!(f.read(0x16), 0xa5);
-    for warm in [true, false] {
-        f.command(MODE | ACCESS | 0);
-        if warm {
-            f.bus.warm_reset();
-        } else {
-            f.bus.update_reset();
-        }
-        assert_eq!(f.gateway(), 0);
-        assert_eq!(f.host.phy().snapshot().completed_accesses, 0);
-        assert_eq!(f.read(4), 0x40);
-        assert_eq!(f.read(10), 0);
-        assert_eq!(f.read(0x16), 0xa5);
-        assert_eq!(f.read(0x13), 6);
-    }
+    f.command(MODE | ACCESS | 0);
+    let gateway = f.gateway();
+    let accesses = f.host.phy().snapshot().completed_accesses;
+    f.bus.update_reset();
+    assert_eq!(f.gateway(), gateway);
+    assert_eq!(f.host.phy().snapshot().completed_accesses, accesses);
+    assert!(f.host.connected());
+    f.bus.warm_reset();
+    assert_eq!(f.gateway(), 0);
+    assert_eq!(f.host.phy().snapshot().completed_accesses, 0);
+    assert!(!f.host.connected());
+    assert_eq!(f.read(4), 0x40);
+    assert_eq!(f.read(10), 0);
+    assert_eq!(f.read(0x16), 0xa5);
+    assert_eq!(f.read(0x13), 6);
 }
