@@ -233,18 +233,17 @@ OCP EAT signer emits ES384 only; ML-DSA-87 EATs are not implemented yet. A
 request naming an unsupported `(evidence_format, algorithm)` pair returns
 `UNSUPPORTED_OPERATION` and no evidence is generated.
 
-#### PKI Entity Slot
+#### PKI Entity Slot (`EndorsementRole`)
 
-`pki_entity_slot` names the PKI entity whose hierarchy endorses the signing key.
+`pki_entity_slot` (or `role` in MCI certificate commands) names the PKI entity whose hierarchy endorses the signing key or certificate chain. This encoding is shared across Caliptra attestation and certificate-management commands:
 
 | Value    | Name   | Description                    |
 | -------- | ------ | ------------------------------ |
 | `0x0000` | Vendor | Device manufacturer hierarchy. |
-| `0x0001` | Owner  | Owner hierarchy. Reserved.     |
+| `0x0001` | Owner  | Owner hierarchy.               |
+| `0x0002` | Tenant | Tenant hierarchy.              |
 
-A value not listed above returns `INVALID_PARAMS`. `Owner` is reserved and
-returns `UNSUPPORTED_OPERATION`; the current signer supports only the Vendor
-entity.
+A value not listed above returns `INVALID_PARAMS`. Requesting an unprovisioned `(pki_entity_slot, algorithm)` certificate chain returns `INVALID_STATE`.
 
 #### Format Discovery
 
@@ -263,7 +262,7 @@ inferring the set from `DeviceCapabilities`.
 | ------- | --------------- | ------ | ---------------------------------------------------------------------------------------------------- |
 | 0:3     | evidence_format | u32    | Requested evidence format, or `0x0000` for the format-discovery query                                |
 | 4:7     | algorithm       | u32    | Asymmetric Algorithm: <br>- `0x0001` = ECC P-384 <br>- `0x0002` = ML-DSA-87 <br>Ignored for the query request |
-| 8:11    | pki_entity_slot | u32    | PKI entity: <br>- `0x0000` = Vendor <br>- `0x0001` = Owner <br>Ignored for the query request |
+| 8:11    | pki_entity_slot | u32    | PKI entity (`EndorsementRole`): <br>- `0x0000` = Vendor <br>- `0x0001` = Owner <br>- `0x0002` = Tenant <br>Ignored for the query request |
 | 12:43   | nonce           | u8[32] | Nonce bound into the signed evidence for freshness. Ignored for the query request.                    |
 
 For the query request, `algorithm`, `pki_entity_slot`, and `nonce` are ignored.

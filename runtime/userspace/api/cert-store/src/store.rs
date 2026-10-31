@@ -20,9 +20,11 @@ use crate::{
         CertSlot, EndorsementStorage, NoEndorsementStorage, ReadOnlyEndorsementSlot,
         SlotEndorsement, NUM_ASYM_ALGOS, NUM_CERT_SLOTS,
     },
-    errors as cert_errors, CertificateAlgorithm, CertificateProvisioningPolicy, DeviceKey,
-    EndorsementRole, DPE_LEAF_LABEL,
+    errors as cert_errors, CertChainInfo, CertificateAlgorithm, CertificateProvisioningPolicy,
+    DeviceKey, EndorsementRole, DPE_LEAF_LABEL,
 };
+#[cfg(feature = "set-certificate")]
+use core::cell::Cell;
 use core::cell::UnsafeCell;
 use core::ops::Range;
 
@@ -199,6 +201,10 @@ impl<S: EndorsementStorage> SharedCertStore<S> {
         Ok(())
     }
 
+    pub fn is_provisioned(&self, role: EndorsementRole, algo: CertificateAlgorithm) -> bool {
+        self.cert_slot(role).is_provisioned(algo)
+    }
+
     pub(crate) fn cert_slot(&self, role: EndorsementRole) -> &CertSlot<S> {
         // SAFETY: synchronous borrow not held across `.await`.
         unsafe { &(*self.cert_slots.get())[role as usize] }
@@ -277,6 +283,16 @@ impl<S: EndorsementStorage> Drop for RegionReadGuard<'_, S> {
     }
 }
 
+#[cfg(feature = "set-certificate")]
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct RawEndorsementStream {
+    role: EndorsementRole,
+    algo: CertificateAlgorithm,
+    key_pair_id: u8,
+    total_size: usize,
+    next_offset: usize,
+}
+
 /// Per-task cert store wrapper.
 ///
 /// Wraps a reference to the global `'static SharedCertStore<S>` alongside
@@ -284,6 +300,8 @@ impl<S: EndorsementStorage> Drop for RegionReadGuard<'_, S> {
 pub struct TaskCertStore<S: EndorsementStorage = NoEndorsementStorage> {
     shared: &'static SharedCertStore<S>,
     caches: UnsafeCell<[[CertChainCache; NUM_ASYM_ALGOS]; NUM_CERT_SLOTS]>,
+    #[cfg(feature = "set-certificate")]
+    active_stream: Cell<Option<RawEndorsementStream>>,
 }
 
 impl<S: EndorsementStorage> TaskCertStore<S> {
@@ -291,6 +309,8 @@ impl<S: EndorsementStorage> TaskCertStore<S> {
         Self {
             shared,
             caches: UnsafeCell::new([[CertChainCache::empty(); NUM_ASYM_ALGOS]; NUM_CERT_SLOTS]),
+            #[cfg(feature = "set-certificate")]
+            active_stream: Cell::new(None),
         }
     }
 
@@ -378,14 +398,15 @@ impl<S: EndorsementStorage> TaskCertStore<S> {
         offset: usize,
         dst: &mut [u8],
     ) -> McuResult<usize> {
-        if dst.is_empty() {
-            return Ok(0);
-        }
-        let total = self.cached_chain_len(role, algo).unwrap_or(0) as usize;
-        if total == 0 {
+        let total = match self.cached_chain_len(role, algo) {
+            Some(n) if n > 0 => n as usize,
+            _ if offset == 0 => self.cert_chain_len(alloc, role, algo).await?,
+            _ => return Err(INVARIANT),
+        };
+        if total == 0 || offset > total {
             return Err(INVARIANT);
         }
-        if offset >= total {
+        if dst.is_empty() || offset == total {
             return Ok(0);
         }
 
@@ -493,9 +514,11 @@ impl<S: EndorsementStorage> TaskCertStore<S> {
         }
 
         // 3. Leaf-cert region
-        if cur_offset >= layout.leaf.start && written < want {
+        while cur_offset >= layout.leaf.start && cur_offset < layout.leaf.end && written < want {
             let leaf_off = cur_offset - layout.leaf.start;
-            let leaf_take = (layout.leaf.end - cur_offset).min(want - written);
+            let leaf_take = (layout.leaf.end - cur_offset)
+                .min(want - written)
+                .min(DPE_MAX_CHUNK_SIZE);
             let got = caliptra_mcu_measurement_api::leaf_cert_slice(
                 alloc,
                 profile,
@@ -510,6 +533,7 @@ impl<S: EndorsementStorage> TaskCertStore<S> {
             }
             self.ensure_generation_counter(role, algo, gen)?;
             written += got;
+            cur_offset += got;
         }
         Ok(written)
     }
@@ -524,6 +548,10 @@ impl<S: EndorsementStorage> TaskCertStore<S> {
     ) -> McuResult<()> {
         if !self.cert_slot(role).is_provisioned(algo) {
             return Err(INVARIANT);
+        }
+        if let Some(cached) = self.cached_chain_digest(role, algo) {
+            *out = cached;
+            return Ok(());
         }
         let _ = self.cert_chain_len(alloc, role, algo).await?;
         let (gen, _region_guard) = {
@@ -556,7 +584,32 @@ impl<S: EndorsementStorage> TaskCertStore<S> {
             }
         }
         self.ensure_generation_counter(role, algo, gen)?;
-        sha_finish(alloc, &mut state, out).await
+        sha_finish(alloc, &mut state, out).await?;
+        self.cache_chain_digest(role, algo, out);
+        Ok(())
+    }
+
+    /// Retrieve metadata, total byte length, and raw DER SHA-384 digest for `(role, algo)`.
+    pub async fn cert_chain_info<A: ScratchAlloc>(
+        &self,
+        alloc: &A,
+        role: EndorsementRole,
+        algo: CertificateAlgorithm,
+        info: &mut CertChainInfo,
+    ) -> McuResult<()> {
+        let (gen, device_key_id) = {
+            let slot = self.cert_slot(role);
+            let gen = slot.generation_counter(algo);
+            let device_key_id = slot.key_pair_id(algo).ok_or(INVARIANT)? as u32;
+            (gen, device_key_id)
+        };
+        let chain_len = self.cert_chain_len(alloc, role, algo).await? as u32;
+        self.cert_chain_digest(alloc, role, algo, &mut info.chain_digest)
+            .await?;
+        self.ensure_generation_counter(role, algo, gen)?;
+        info.device_key_id = device_key_id;
+        info.chain_len = chain_len;
+        Ok(())
     }
 
     // ---------------------------------------------------------------
@@ -753,6 +806,136 @@ impl<S: EndorsementStorage> TaskCertStore<S> {
         };
         self.cert_slot(role).set_write_in_progress(algo, false);
         result
+    }
+
+    /// Provision, replace, or erase a raw DER endorsement chain for `(role, algo)`.
+    ///
+    /// - `offset == 0 && total_size == 0 && data.is_empty()` erases the slot.
+    /// - `offset == 0 && data.len() == total_size > 0` validates the key and DER root
+    ///   certificate, computes the SHA-384 root hash, and writes in a single shot.
+    /// - Multi-chunk transfers (`data.len() < total_size`) stream into the inactive
+    ///   A/B region and compute the SHA-384 root hash from the first DER SEQUENCE
+    ///   before committing the final chunk.
+    #[cfg(feature = "set-certificate")]
+    #[allow(clippy::too_many_arguments)]
+    pub async fn set_raw_endorsement_chain<A: ScratchAlloc>(
+        &self,
+        alloc: &A,
+        role: EndorsementRole,
+        algo: CertificateAlgorithm,
+        key_pair_id: u8,
+        offset: usize,
+        total_size: usize,
+        data: &[u8],
+    ) -> McuResult<()> {
+        if offset == 0 {
+            if let Some(prev) = self.active_stream.take() {
+                self.abort_write_endorsement_stream(prev.role, prev.algo)
+                    .await?;
+            }
+            if total_size == 0 {
+                if !data.is_empty() {
+                    return Err(cert_errors::INVALID_ENDORSEMENT);
+                }
+                return self.erase_endorsement_chain(role, algo).await;
+            }
+            if data.is_empty() || data.len() > total_size {
+                return Err(cert_errors::INVALID_ENDORSEMENT);
+            }
+            if data.len() == total_size {
+                let key = self.shared.validate_key(role, key_pair_id)?;
+                let root_hash = compute_endorsement_root_hash(alloc, data).await?;
+                return self
+                    .write_endorsement_chain(
+                        role,
+                        algo,
+                        key as u8,
+                        CERT_MODEL_ALIAS_CERT,
+                        &root_hash,
+                        data,
+                    )
+                    .await;
+            }
+            self.begin_write_endorsement_stream(
+                role,
+                algo,
+                key_pair_id,
+                CERT_MODEL_ALIAS_CERT,
+                total_size,
+            )
+            .await?;
+            if let Err(err) = self
+                .write_endorsement_stream_chunk(role, algo, 0, data)
+                .await
+            {
+                let _ = self.abort_write_endorsement_stream(role, algo).await;
+                return Err(err);
+            }
+            self.active_stream.set(Some(RawEndorsementStream {
+                role,
+                algo,
+                key_pair_id,
+                total_size,
+                next_offset: data.len(),
+            }));
+            return Ok(());
+        }
+
+        let Some(stream) = self.active_stream.get() else {
+            return Err(cert_errors::INVALID_ENDORSEMENT);
+        };
+        let end = offset
+            .checked_add(data.len())
+            .ok_or(cert_errors::INVALID_ENDORSEMENT)?;
+        if stream.role != role
+            || stream.algo != algo
+            || stream.key_pair_id != key_pair_id
+            || stream.total_size != total_size
+            || offset != stream.next_offset
+            || data.is_empty()
+            || end > total_size
+        {
+            self.active_stream.set(None);
+            let _ = self
+                .abort_write_endorsement_stream(stream.role, stream.algo)
+                .await;
+            return Err(cert_errors::INVALID_ENDORSEMENT);
+        }
+        if let Err(err) = self
+            .write_endorsement_stream_chunk(role, algo, offset, data)
+            .await
+        {
+            self.active_stream.set(None);
+            let _ = self.abort_write_endorsement_stream(role, algo).await;
+            return Err(err);
+        }
+        if end < total_size {
+            self.active_stream.set(Some(RawEndorsementStream {
+                next_offset: end,
+                ..stream
+            }));
+            return Ok(());
+        }
+
+        self.active_stream.set(None);
+        let result: McuResult<()> = async {
+            let key = self.shared.validate_key(role, key_pair_id)?;
+            let chain = managed_endorsement(self, role, algo)?;
+            let root_hash = compute_streamed_root_hash(alloc, &chain, total_size).await?;
+            let chain = chain
+                .finish_stream_update(key as u8, CERT_MODEL_ALIAS_CERT, &root_hash, total_size)
+                .await?;
+            commit_managed_endorsement(self, role, chain)?;
+            Ok(())
+        }
+        .await;
+        if let Err(err) = result {
+            self.abort_write_endorsement_stream(role, algo).await?;
+            return Err(err);
+        }
+        self.cert_slot(role).set_write_in_progress(algo, false);
+        self.invalidate_algo_cache(role, algo);
+        Ok(())
     }
 
     #[inline]
@@ -1032,22 +1215,21 @@ impl ChainLayout {
 }
 
 #[cfg(feature = "set-certificate")]
+async fn compute_endorsement_root_hash<A: ScratchAlloc>(
+    alloc: &A,
+    cert_chain: &[u8],
+) -> McuResult<[u8; 48]> {
+    let root_cert_len = der_first_seq_len(cert_chain).ok_or(cert_errors::INVALID_ENDORSEMENT)?;
+    compute_root_hash(alloc, checked_slice(cert_chain, 0, root_cert_len)?).await
+}
+
+#[cfg(feature = "set-certificate")]
 async fn validate_root_hash<A: ScratchAlloc>(
     alloc: &A,
     root_hash: &[u8; 48],
     cert_chain: &[u8],
 ) -> McuResult<()> {
-    let root_cert_len = der_first_seq_len(cert_chain).ok_or(cert_errors::INVALID_ENDORSEMENT)?;
-    let sha_buf = alloc.alloc(SHA_CONTEXT_SIZE)?;
-    let mut state = sha_init(alloc, sha_buf, HashAlgo::Sha384, &[]).await?;
-    sha_update(
-        alloc,
-        &mut state,
-        checked_slice(cert_chain, 0, root_cert_len)?,
-    )
-    .await?;
-    let mut digest = [0u8; 48];
-    sha_finish(alloc, &mut state, &mut digest).await?;
+    let digest = compute_endorsement_root_hash(alloc, cert_chain).await?;
     if &digest != root_hash {
         return Err(cert_errors::INVALID_ENDORSEMENT);
     }
@@ -1055,12 +1237,11 @@ async fn validate_root_hash<A: ScratchAlloc>(
 }
 
 #[cfg(feature = "set-certificate")]
-async fn validate_streamed_root_hash<A: ScratchAlloc, S: EndorsementStorage>(
+async fn compute_streamed_root_hash<A: ScratchAlloc, S: EndorsementStorage>(
     alloc: &A,
     managed: &ManagedEndorsementChain<S>,
-    root_hash: &[u8; 48],
     data_len: usize,
-) -> McuResult<()> {
+) -> McuResult<[u8; 48]> {
     let first_cert_len = streamed_first_der_len(managed, data_len).await?;
     let sha_buf = alloc.alloc(SHA_CONTEXT_SIZE)?;
     let mut state = sha_init(alloc, sha_buf, HashAlgo::Sha384, &[]).await?;
@@ -1079,6 +1260,17 @@ async fn validate_streamed_root_hash<A: ScratchAlloc, S: EndorsementStorage>(
     }
     let mut digest = [0u8; 48];
     sha_finish(alloc, &mut state, &mut digest).await?;
+    Ok(digest)
+}
+
+#[cfg(feature = "set-certificate")]
+async fn validate_streamed_root_hash<A: ScratchAlloc, S: EndorsementStorage>(
+    alloc: &A,
+    managed: &ManagedEndorsementChain<S>,
+    root_hash: &[u8; 48],
+    data_len: usize,
+) -> McuResult<()> {
+    let digest = compute_streamed_root_hash(alloc, managed, data_len).await?;
     if &digest != root_hash {
         return Err(cert_errors::INVALID_ENDORSEMENT);
     }
@@ -1091,16 +1283,18 @@ async fn streamed_first_der_len<S: EndorsementStorage>(
     data_len: usize,
 ) -> McuResult<usize> {
     let mut header = [0u8; 6];
-    if data_len < 2
-        || managed
-            .read_stream_chunk(0, checked_slice_mut(&mut header, 0, 2)?)
-            .await?
-            != 2
+    if data_len < 2 {
+        return Err(cert_errors::INVALID_ENDORSEMENT);
+    }
+    if managed
+        .read_stream_chunk(0, checked_slice_mut(&mut header, 0, 2)?)
+        .await?
+        != 2
     {
         return Err(INVARIANT);
     }
     if header[0] != 0x30 {
-        return Err(INVARIANT);
+        return Err(cert_errors::INVALID_ENDORSEMENT);
     }
     let len_byte = header[1];
     let (header_len, content_len) = if len_byte & 0x80 == 0 {
@@ -1108,7 +1302,7 @@ async fn streamed_first_der_len<S: EndorsementStorage>(
     } else {
         let len_len = (len_byte & 0x7f) as usize;
         if len_len == 0 || len_len > 4 || data_len < 2 + len_len {
-            return Err(INVARIANT);
+            return Err(cert_errors::INVALID_ENDORSEMENT);
         }
         let len_buf = checked_slice_mut(&mut header, 2, len_len)?;
         if managed.read_stream_chunk(2, len_buf).await? != len_len {
@@ -1116,17 +1310,23 @@ async fn streamed_first_der_len<S: EndorsementStorage>(
         }
         let mut content_len = 0usize;
         for &byte in checked_slice(&header, 2, len_len)? {
-            content_len = content_len.checked_shl(8).ok_or(INVARIANT)?;
-            content_len = content_len.checked_add(byte as usize).ok_or(INVARIANT)?;
+            content_len = content_len
+                .checked_shl(8)
+                .ok_or(cert_errors::INVALID_ENDORSEMENT)?;
+            content_len = content_len
+                .checked_add(byte as usize)
+                .ok_or(cert_errors::INVALID_ENDORSEMENT)?;
         }
         (2 + len_len, content_len)
     };
     if content_len == 0 {
-        return Err(INVARIANT);
+        return Err(cert_errors::INVALID_ENDORSEMENT);
     }
-    let cert_len = header_len.checked_add(content_len).ok_or(INVARIANT)?;
+    let cert_len = header_len
+        .checked_add(content_len)
+        .ok_or(cert_errors::INVALID_ENDORSEMENT)?;
     if cert_len > data_len {
-        return Err(INVARIANT);
+        return Err(cert_errors::INVALID_ENDORSEMENT);
     }
     Ok(cert_len)
 }
@@ -1735,6 +1935,176 @@ mod tests {
             assert!(slot.is_provisioned(CertificateAlgorithm::EccP384));
             assert!(!slot.write_in_progress(CertificateAlgorithm::EccP384));
             assert_eq!(recovered_data(storage), [0xBB; 16]);
+        }
+
+        struct DummyAlloc;
+        impl ScratchAlloc for DummyAlloc {
+            type Buf<'a>
+                = Vec<u8>
+            where
+                Self: 'a;
+
+            fn alloc(&self, _size: usize) -> McuResult<Self::Buf<'_>> {
+                Err(INVARIANT)
+            }
+        }
+
+        #[test]
+        fn raw_endorsement_chain_erases_and_handles_stream_aborts() {
+            static SHARED: SharedCertStore<FaultyStorage> = SharedCertStore::new();
+            let storage = FaultyStorage::new();
+            let store = provisioned_store(&SHARED, storage);
+
+            // Non-empty data with total_size == 0 is rejected.
+            assert_eq!(
+                block_on(store.set_raw_endorsement_chain(
+                    &DummyAlloc,
+                    EndorsementRole::Owner,
+                    CertificateAlgorithm::EccP384,
+                    1,
+                    0,
+                    0,
+                    &[0x30],
+                )),
+                Err(cert_errors::INVALID_ENDORSEMENT),
+            );
+
+            // Begin a multi-chunk stream at offset 0.
+            block_on(store.set_raw_endorsement_chain(
+                &DummyAlloc,
+                EndorsementRole::Owner,
+                CertificateAlgorithm::EccP384,
+                1,
+                0,
+                16,
+                &[0x30, 0x0E, 1, 2],
+            ))
+            .unwrap();
+            assert!(store
+                .cert_slot(EndorsementRole::Owner)
+                .write_in_progress(CertificateAlgorithm::EccP384));
+
+            // Parameter mismatch at offset > 0 aborts the active stream.
+            assert_eq!(
+                block_on(store.set_raw_endorsement_chain(
+                    &DummyAlloc,
+                    EndorsementRole::Owner,
+                    CertificateAlgorithm::EccP384,
+                    1,
+                    4,
+                    32,
+                    &[3, 4],
+                )),
+                Err(cert_errors::INVALID_ENDORSEMENT),
+            );
+            assert!(!store
+                .cert_slot(EndorsementRole::Owner)
+                .write_in_progress(CertificateAlgorithm::EccP384));
+
+            // Skipped/non-contiguous offset at offset > 0 aborts the active stream.
+            block_on(store.set_raw_endorsement_chain(
+                &DummyAlloc,
+                EndorsementRole::Owner,
+                CertificateAlgorithm::EccP384,
+                1,
+                0,
+                16,
+                &[0x30, 0x0E, 1, 2],
+            ))
+            .unwrap();
+            assert_eq!(
+                block_on(store.set_raw_endorsement_chain(
+                    &DummyAlloc,
+                    EndorsementRole::Owner,
+                    CertificateAlgorithm::EccP384,
+                    1,
+                    8,
+                    16,
+                    &[5, 6, 7, 8, 9, 10, 11, 12],
+                )),
+                Err(cert_errors::INVALID_ENDORSEMENT),
+            );
+            assert!(!store
+                .cert_slot(EndorsementRole::Owner)
+                .write_in_progress(CertificateAlgorithm::EccP384));
+
+            // Begin another stream, advance next_offset across chunks, then restart at offset == 0 with total_size == 0 (erase).
+            block_on(store.set_raw_endorsement_chain(
+                &DummyAlloc,
+                EndorsementRole::Owner,
+                CertificateAlgorithm::EccP384,
+                1,
+                0,
+                16,
+                &[0x30, 0x0E, 1, 2],
+            ))
+            .unwrap();
+            block_on(store.set_raw_endorsement_chain(
+                &DummyAlloc,
+                EndorsementRole::Owner,
+                CertificateAlgorithm::EccP384,
+                1,
+                4,
+                16,
+                &[3, 4, 5, 6],
+            ))
+            .unwrap();
+            block_on(store.set_raw_endorsement_chain(
+                &DummyAlloc,
+                EndorsementRole::Owner,
+                CertificateAlgorithm::EccP384,
+                0,
+                0,
+                0,
+                &[],
+            ))
+            .unwrap();
+            let slot = store.cert_slot(EndorsementRole::Owner);
+            assert!(!slot.is_provisioned(CertificateAlgorithm::EccP384));
+            assert!(!slot.write_in_progress(CertificateAlgorithm::EccP384));
+        }
+
+        #[test]
+        fn read_cert_chain_rejects_uncached_nonzero_offset_and_out_of_bounds_offset() {
+            static SHARED: SharedCertStore<FaultyStorage> = SharedCertStore::new();
+            let storage = FaultyStorage::new();
+            let store = provisioned_store(&SHARED, storage);
+            let mut buf = [0u8; 8];
+
+            // Uncached read with offset > 0 fails with INVARIANT.
+            assert_eq!(
+                block_on(store.read_cert_chain(
+                    &DummyAlloc,
+                    EndorsementRole::Owner,
+                    CertificateAlgorithm::EccP384,
+                    4,
+                    &mut buf,
+                )),
+                Err(INVARIANT),
+            );
+
+            // Cached read with offset == total returns Ok(0), offset > total returns Err(INVARIANT).
+            store.set_cached_chain_len(EndorsementRole::Owner, CertificateAlgorithm::EccP384, 64);
+            assert_eq!(
+                block_on(store.read_cert_chain(
+                    &DummyAlloc,
+                    EndorsementRole::Owner,
+                    CertificateAlgorithm::EccP384,
+                    64,
+                    &mut buf,
+                )),
+                Ok(0),
+            );
+            assert_eq!(
+                block_on(store.read_cert_chain(
+                    &DummyAlloc,
+                    EndorsementRole::Owner,
+                    CertificateAlgorithm::EccP384,
+                    65,
+                    &mut buf,
+                )),
+                Err(INVARIANT),
+            );
         }
     }
 
