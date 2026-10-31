@@ -53,6 +53,10 @@ bitflags::bitflags! {
         const DOT_LOCKED_RECOVERY = 1 << 8;
         /// MCU ROM supports DOT recovery over I3C.
         const I3C_DOT_RECOVERY = 1 << 9;
+        /// MCU ROM forwards software-handled USB images into the I3C AXI-bypass FIFO.
+        const AXI_STREAMING_USB_BOOT = 1 << 10;
+        /// USB hardware handles OCP recovery and Caliptra consumes its FIFO directly.
+        const HW_OCP_USB_BOOT = 1 << 11;
     }
 }
 
@@ -65,10 +69,14 @@ pub enum FirmwareBootType {
     Unknown = 0,
     /// Firmware was loaded from flash by MCU ROM.
     Flash = 1,
-    /// Firmware used streaming boot.
+    /// Firmware used I3C streaming boot.
     Streaming = 2,
     /// Firmware was loaded over the network.
     Network = 3,
+    /// Firmware was loaded through hardware-assisted USB OCP recovery.
+    HwOcpUsb = 4,
+    /// MCU ROM forwarded USB images through the I3C AXI-bypass recovery FIFO.
+    UsbStreaming = 5,
 }
 
 impl TryFrom<u8> for FirmwareBootType {
@@ -80,6 +88,8 @@ impl TryFrom<u8> for FirmwareBootType {
             value if value == Self::Flash as u8 => Ok(Self::Flash),
             value if value == Self::Streaming as u8 => Ok(Self::Streaming),
             value if value == Self::Network as u8 => Ok(Self::Network),
+            value if value == Self::HwOcpUsb as u8 => Ok(Self::HwOcpUsb),
+            value if value == Self::UsbStreaming as u8 => Ok(Self::UsbStreaming),
             _ => Err(()),
         }
     }
@@ -450,6 +460,24 @@ mod tests {
             Some(FirmwareBootType::Network)
         );
 
+        handoff.rom.firmware_boot_type = 4;
+        assert_eq!(
+            handoff.firmware_boot_type(),
+            Some(FirmwareBootType::HwOcpUsb)
+        );
+
+        handoff.rom.firmware_boot_type = 5;
+        assert_eq!(
+            handoff.firmware_boot_type(),
+            Some(FirmwareBootType::UsbStreaming)
+        );
+
+        handoff.rom.firmware_boot_type = 6;
+        assert_eq!(
+            handoff.read_firmware_boot_type(),
+            Err(FirmwareBootTypeReadError::Invalid)
+        );
+
         handoff.rom.firmware_boot_type = u8::MAX;
         assert_eq!(handoff.firmware_boot_type(), None);
         assert_eq!(
@@ -492,5 +520,7 @@ mod tests {
         assert_eq!(McuRomCapabilities::DOT_BOOT.bits(), 1 << 7);
         assert_eq!(McuRomCapabilities::DOT_LOCKED_RECOVERY.bits(), 1 << 8);
         assert_eq!(McuRomCapabilities::I3C_DOT_RECOVERY.bits(), 1 << 9);
+        assert_eq!(McuRomCapabilities::AXI_STREAMING_USB_BOOT.bits(), 1 << 10);
+        assert_eq!(McuRomCapabilities::HW_OCP_USB_BOOT.bits(), 1 << 11);
     }
 }

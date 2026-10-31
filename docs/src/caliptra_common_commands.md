@@ -176,7 +176,9 @@ Runtime paired with an MCU ROM handoff version before 1.3 reports zero.
 | 7    | `DOT_BOOT`           | MCU ROM supports DOT blob authentication during boot |
 | 8    | `DOT_LOCKED_RECOVERY` | MCU ROM has a configured DOT locked-state recovery path |
 | 9    | `I3C_DOT_RECOVERY`   | MCU ROM supports DOT recovery over I3C              |
-| 10:31 | Reserved            | Responders report zero                              |
+| 10   | `AXI_STREAMING_USB_BOOT` | MCU ROM forwards USB image-provider data through the I3C AXI-bypass FIFO |
+| 11   | `HW_OCP_USB_BOOT` | MCU ROM supports hardware-assisted USB OCP recovery |
+| 12:31 | Reserved            | Responders report zero                              |
 
 ### Get Debug Log
 

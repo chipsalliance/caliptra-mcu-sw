@@ -423,7 +423,15 @@ pub extern "C" fn rom_entry() -> ! {
         // lenient and runs the same tests with the checks enabled.
         otp_enable_integrity_check: !cfg!(feature = "test-i3c-services"),
         otp_enable_consistency_check: !cfg!(feature = "test-i3c-services"),
-        image_provider_manager: Some(manager),
+        image_provider_manager: if cfg!(feature = "test-lpcip-usb-ocp-recovery") {
+            None
+        } else {
+            Some(manager)
+        },
+        #[cfg(all(hw_rev = "latest", feature = "test-lpcip-usb-ocp-recovery"))]
+        recovery_interface: caliptra_mcu_rom_common::RecoveryInterface::Usb,
+        #[cfg(all(hw_rev = "latest", feature = "test-lpcip-usb-ocp-recovery"))]
+        usb: Some(crate::usb::test_parameters()),
         dot_flash: Some(dot_flash),
         fw_manifest_dot_enabled: cfg!(feature = "test-fw-manifest-dot"),
         owner_pk_hash_policy: read_owner_pk_hash_policy(),

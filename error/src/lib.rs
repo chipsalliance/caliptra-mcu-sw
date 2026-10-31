@@ -871,6 +871,21 @@ impl McuError {
         ),
         (ROM_COLD_BOOT_DOT_ERROR, 0x1_0046, "DOT cold boot error"),
         (
+            ROM_SOC_RECOVERY_INTERFACE_VERIFY_FAILED,
+            0x5_001F,
+            "Recovery interface selection readback failed"
+        ),
+        (
+            ROM_USB_RECOVERY_ERROR,
+            0x1_0048,
+            "USB recovery initialization or service failed"
+        ),
+        (
+            ROM_USB_RECOVERY_DMA_USER_ERROR,
+            0x1_0049,
+            "USB recovery DMA user does not match MCU SRAM configuration user"
+        ),
+        (
             GENERIC_EXCEPTION,
             0xF_0000,
             "Machine level exception was encountered during ROM execution"

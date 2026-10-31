@@ -134,6 +134,75 @@ sequenceDiagram
     note right of mcu: resets to Firmware Boot flow
 ```
 
+### Hardware-assisted USB Recovery (2.2)
+
+With `CALIPTRA_HW_REV=latest`, enable the common ROM's `usb-recovery` feature,
+select `RomParameters::recovery_interface = RecoveryInterface::Usb`, and provide
+`RomParameters::usb` with the platform's generated Device 0 CSR/SRAM mappings,
+approved USB identity and VBUS power budget. The platform must release USB3320
+reset and supply its clocks. There are no production identity or power defaults.
+Hub topology and Device 1 remain platform responsibilities.
+
+On 2.2, cold and warm boot explicitly select the hardware recovery interface
+before Caliptra boot-go and verify readback, preserving other capability bits.
+ROM logs the selected Caliptra recovery interface before boot-go on both flows.
+The default remains I3C, including flash/provider and network recovery.
+USB cannot be combined with an image provider, forced provider-recovery wire,
+network boot, or forced I3C services. It does not use I3C AXI bypass.
+
+Normal lifecycle initialization, fuse provisioning, DOT owner policy, mailbox
+allowlists and SRAM execution-region configuration remain in effect. Caliptra's
+outgoing DMA user defaults to the MCU SRAM-configuration user; a USB override
+must match it. DMA configuration precedes `CPTRA_FUSE_WR_DONE` and MCI locks.
+
+ROM initializes the shared LPCIP driver before requesting firmware download.
+While waiting for the mailbox response and MCU firmware activation, ROM polls
+standard USB requests. The hardware handles OCP commands and FIFO streaming;
+Caliptra requests, consumes and authenticates image 0 (Caliptra FMC/runtime),
+image 1 (SoC manifest), then image 2 (MCU runtime). Image lengths, authentication,
+activation and recovery status are owned by the existing Caliptra recovery flow,
+not a second MCU-side image loader. Firmware-ready and runtime-ready checks,
+optional MCU header verification and reset handoff are unchanged.
+
+USB uses the existing **recovery watchdog strap policy**: Caliptra timers use
+`cptra_wdt_cfg0/1`; MCU timers select debug, manufacturing or production values
+according to security state. These are platform build-time constants, not USB
+host commands. ROM does not disable watchdogs or refresh them indefinitely.
+Missing images remain awaiting recovery until the configured watchdog expires;
+authentication and hardware errors fail explicitly. PHY/service failures and
+disconnects report `ROM_USB_RECOVERY_ERROR`. An interrupted FIFO batch is
+reported through the hardware's general protocol-error mechanism.
+
+At successful completion, `recovery_status_open` leaves USB recovery status in
+the booting/open state; otherwise ROM publishes recovery success and healthy
+device status without disabling OCP status reads. Warm boot closes recovery.
+Handoff reports boot source `HwOcpUsb` (4) and capability `HW_OCP_USB_BOOT`
+(bit 11), independently of the image-provider manager.
+The software `OcpImageProvider` path instead reports `UsbStreaming` (5) and
+`AXI_STREAMING_USB_BOOT` (bit 10): MCU ROM forwards its USB image bytes into
+the I3C AXI-bypass FIFO. That path retains the Runtime PLDM streaming loader
+for additional SoC images.
+The emulator preserves USB configuration and recovery status across MCU-only
+firmware reset, matching the RTL's subsystem reset domain; a full subsystem
+warm reset still clears the USB controller.
+Runtime does not silently select the I3C/PLDM loader for additional images after
+hardware OCP USB boot; loading additional SoC images over USB is not implemented
+here.
+
+The emulator and FPGA `test-lpcip-usb-ocp-recovery` ROM feature supplies explicitly
+test-only identity/power values and exercises this common path:
+
+```sh
+CALIPTRA_HW_REV=latest cargo xtask rom-build --features test-lpcip-usb-ocp-recovery
+CALIPTRA_HW_REV=latest cargo xtask rom-build --platform fpga --features test-lpcip-usb-ocp-recovery
+CALIPTRA_HW_REV=latest cargo test -p caliptra-mcu-tests-integration test_lpcip_usb_common_rom
+```
+
+The fixture is prebuilt only for latest hardware. It is distinct from the legacy
+emulator-only `test-usb-ocp-recovery` provider. Complete Linux USB/IP/libusb boot
+validation using the recovery CLI is tracked in #2246; FPGA execution requires a
+bitstream exposing the USB CSR/SRAM windows and an operational PHY connection.
+
 ### Firmware Boot Flow
 
 This flow is used to boot the MCU into the MCU Runtime Firmware following either a cold or warm reset. It ensures that the runtime firmware is properly loaded and ready for execution.

@@ -68,8 +68,10 @@ Handoff version 1.2 defines `firmware_boot_type` as follows:
 |---:|---|---|
 | 0 | Unknown | Source is unavailable |
 | 1 | Flash | MCU ROM loaded the firmware from flash |
-| 2 | Streaming | Early firmware was streamed through the OCP recovery interface; remainder firmware uses the Runtime streaming loader (typically PLDM) |
+| 2 | Streaming | Early firmware was streamed through the I3C OCP recovery interface; remainder firmware uses the Runtime streaming loader (typically PLDM) |
 | 3 | Network | Firmware was loaded over the network |
+| 4 | HwOcpUsb | USB hardware handled OCP recovery; Caliptra consumed the USB FIFO directly |
+| 5 | UsbStreaming | MCU ROM handled USB OCP images and forwarded bytes into the I3C AXI-bypass FIFO |
 | Other | Invalid | Runtime rejects the value |
 
 Runtime uses `HandOff::firmware_boot_type()` so tables from versions before 1.2
@@ -86,11 +88,19 @@ Handoff version 1.3 defines `mcu_rom_capabilities` as follows:
 | 0 | `STREAMING_BOOT_I3C` | MCU ROM supports streaming boot over I3C |
 | 1 | `FLASH_BOOT` | MCU ROM supports flash boot |
 | 2 | `NETWORK_BOOT` | MCU ROM supports network boot |
-| 3:31 | Reserved | ROM writes zero; consumers ignore these bits |
+| 3:9 | Other ROM capabilities | See the [common command capability table](caliptra_common_commands.md#device-capabilities) |
+| 10 | `AXI_STREAMING_USB_BOOT` | MCU ROM has a USB image provider feeding the I3C AXI-bypass FIFO |
+| 11 | `HW_OCP_USB_BOOT` | MCU ROM supports hardware-assisted USB OCP recovery without an image provider |
+| 12:31 | Reserved | ROM writes zero; consumers ignore these bits |
 
 The bitmap describes capabilities implemented by the ROM image, independent of
 the source selected for the current boot. Runtime reports zero when paired with
 a handoff version before 1.3.
+
+`UsbStreaming` preserves the existing Runtime PLDM streaming-loader behavior
+for additional SoC images; it does not add a Runtime USB image loader.
+`HwOcpUsb` reports that operation as unsupported, as network boot does, rather
+than selecting the wrong transport.
 
 ## Stable Owner Key
 
