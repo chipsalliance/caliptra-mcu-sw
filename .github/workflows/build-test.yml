@@ -531,7 +531,7 @@ jobs:
           name: usb-recovery-cli-latest
           path: target/usb-host/
 
-      - name: Run Linux USB enumeration and libusb probe
+      - name: Run Linux USB/IP and libusb ROM recovery
         if: matrix.hw-revision == 'latest' && matrix.shard == 1
         env:
           CPTRA_FIRMWARE_BUNDLE: ${{ github.workspace }}/target/all-fw.zip

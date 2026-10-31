@@ -88,6 +88,8 @@ zerocopy.workspace = true
 libc.workspace = true
 
 [dev-dependencies]
+caliptra-mcu-emulator.workspace = true
+clap.workspace = true
 caliptra-mcu-usb-recovery.workspace = true
 caliptra-emu-periph.workspace = true
 caliptra-mcu-hw-model = { workspace = true, features = ["test-hooks"] }

@@ -199,9 +199,11 @@ CALIPTRA_HW_REV=latest cargo test -p caliptra-mcu-tests-integration test_lpcip_u
 ```
 
 The fixture is prebuilt only for latest hardware. It is distinct from the legacy
-emulator-only `test-usb-ocp-recovery` provider. Complete Linux USB/IP/libusb boot
-validation using the recovery CLI is tracked in #2246; FPGA execution requires a
-bitstream exposing the USB CSR/SRAM windows and an operational PHY connection.
+emulator-only `test-usb-ocp-recovery` provider. The
+[USB recovery host tests](../../emulator/bmc/usb-recovery/README.md#linux-usbip-complete-rom-recovery-tests)
+exercise complete Linux USB/IP/libusb recovery with the external CLI.
+FPGA execution requires a bitstream exposing the USB CSR/SRAM windows and an
+operational PHY connection.
 
 ### Firmware Boot Flow
 

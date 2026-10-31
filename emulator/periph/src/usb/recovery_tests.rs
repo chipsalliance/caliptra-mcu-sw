@@ -4,7 +4,7 @@ use super::*;
 use caliptra_emu_bus::{Bus, Device, Event, EventData};
 use caliptra_emu_types::RvSize;
 use caliptra_mcu_emulator_registers_generated::usb_combo::UsbComboBus;
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc, Mutex};
 
 struct Fixture {
     bus: UsbComboBus,
@@ -77,6 +77,15 @@ impl Fixture {
         data.extend(words.to_le_bytes());
         self.put(0x2d, &data);
     }
+
+    fn observe(&self) -> Arc<Mutex<Vec<LpcipUsbRecoveryEvent>>> {
+        let events = Arc::new(Mutex::new(Vec::new()));
+        let observed = events.clone();
+        self.host
+            .observe_recovery(move |event| observed.lock().unwrap().push(event))
+            .unwrap();
+        events
+    }
 }
 
 #[test]
@@ -143,6 +152,11 @@ fn recovery_device1_has_no_hardware_engine() {
     assert_eq!(f.host1.recovery_snapshot(), None);
     assert_ne!(f.device1.read_devcmdstat().reg.get() & SETUP, 0);
     assert_eq!(f.host1.host_in(0, 0), Err(LpcipUsbError::Nak));
+    assert_eq!(
+        f.host1
+            .observe_recovery(|_| panic!("Device 1 has no recovery engine")),
+        Err(LpcipUsbError::UnsupportedTransfer)
+    );
 }
 
 #[test]
@@ -379,6 +393,7 @@ fn recovery_replacement_setup_after_committed_data_does_not_abort_the_batch() {
 #[test]
 fn recovery_event_adapter_does_not_mix_dma_data_across_fifo_reset() {
     let mut f = Fixture::new();
+    let observed = f.observe();
     let (to_core, responses) = mpsc::channel();
     let (core, from_core) = mpsc::channel();
     let (to_mcu, _mcu_responses) = mpsc::channel();
@@ -412,4 +427,70 @@ fn recovery_event_adapter_does_not_mix_dma_data_across_fifo_reset() {
         responses.try_recv().is_err(),
         "must not fabricate a mixed-image DMA completion"
     );
+    assert_eq!(
+        *observed.lock().unwrap(),
+        [LpcipUsbRecoveryEvent::Requested {
+            image: 0,
+            words: 128
+        }],
+        "an incomplete or aborted DMA read must not be reported as consumed"
+    );
+}
+
+#[test]
+fn recovery_observations_report_delivered_padding_and_survive_reset() {
+    let mut f = Fixture::new();
+    let observed = f.observe();
+    let (to_core, responses) = mpsc::channel();
+    let (core, from_core) = mpsc::channel();
+    let (to_mcu, _mcu_responses) = mpsc::channel();
+    let (_mcu, from_mcu) = mpsc::channel();
+    f.bus
+        .periph
+        .register_event_channels(to_core, from_core, to_mcu, from_mcu);
+    f.write(0x40, 0x21);
+    f.image(2);
+    f.put(0x2f, &[1, 2, 3, 4, 5]);
+    f.put(0x26, &[0, 1, 0x0f]);
+    let mut expected = vec![
+        LpcipUsbRecoveryEvent::Requested { image: 2, words: 2 },
+        LpcipUsbRecoveryEvent::Activated { image: 2 },
+    ];
+    assert_eq!(
+        *observed.lock().unwrap(),
+        expected,
+        "acceptance is not consumption"
+    );
+    core.send(Event::new(
+        Device::CaliptraCore,
+        Device::RecoveryIntf,
+        EventData::MemoryRead {
+            start_addr: 0x68,
+            len: 8,
+        },
+    ))
+    .unwrap();
+    f.bus.poll();
+    let data = vec![1, 2, 3, 4, 5, 0, 0, 0];
+    match responses.try_recv().unwrap().event {
+        EventData::MemoryReadResponse {
+            start_addr,
+            data: delivered,
+        } => {
+            assert_eq!(start_addr, 0x68);
+            assert_eq!(delivered, data);
+        }
+        event => panic!("unexpected DMA response: {event:?}"),
+    }
+    expected.push(LpcipUsbRecoveryEvent::Consumed { image: 2, data });
+    assert_eq!(*observed.lock().unwrap(), expected);
+    f.bus.warm_reset();
+    f.bus
+        .write(RvSize::Word, 0, DEV_EN | CONNECT | FORCE_VBUS)
+        .unwrap();
+    f.bus.write(RvSize::Word, 8, USB_DEV0_MEM_ADDR).unwrap();
+    f.bus.write(RvSize::Word, 12, USB_DEV0_MEM_ADDR).unwrap();
+    f.image(1);
+    expected.push(LpcipUsbRecoveryEvent::Requested { image: 0, words: 1 });
+    assert_eq!(*observed.lock().unwrap(), expected);
 }

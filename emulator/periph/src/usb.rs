@@ -23,7 +23,7 @@ pub use ip::{UsbIpServer, BUS_ID as USBIP_BUS_ID};
 mod phy;
 pub use phy::{LpcipUsbPhy, LpcipUsbPhyError, LpcipUsbPhySnapshot};
 mod recovery;
-pub use recovery::LpcipUsbRecoverySnapshot;
+pub use recovery::{LpcipUsbRecoveryEvent, LpcipUsbRecoverySnapshot};
 #[cfg(test)]
 mod phy_tests;
 #[cfg(test)]
@@ -428,6 +428,21 @@ impl LpcipUsbHostController {
             .recovery
             .as_ref()
             .map(recovery::Recovery::snapshot)
+    }
+
+    /// Observe host requests/activation and completed Caliptra FIFO DMA responses.
+    pub fn observe_recovery(
+        &self,
+        observer: impl FnMut(LpcipUsbRecoveryEvent) + Send + 'static,
+    ) -> Result<(), LpcipUsbError> {
+        self.state
+            .lock()
+            .unwrap()
+            .recovery
+            .as_mut()
+            .ok_or(LpcipUsbError::UnsupportedTransfer)?
+            .observe(observer);
+        Ok(())
     }
 
     pub fn host_sof(&self, frame: u16) -> Result<(), LpcipUsbError> {
