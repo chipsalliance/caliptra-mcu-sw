@@ -149,6 +149,11 @@ pub struct EmulatorArgs {
     #[arg(long, conflicts_with_all = ["flash_based_boot", "network_rom"])]
     pub usb_recovery: bool,
 
+    /// Export Device 0 through the loopback USB/IP bridge; Linux owns enumeration.
+    #[cfg(hw_rev = "latest")]
+    #[arg(long, requires = "usb_recovery", conflicts_with = "gdb_port")]
+    pub usbip_listen: Option<std::net::SocketAddr>,
+
     /// The ROM path for the Caliptra CPU.
     #[arg(long)]
     pub caliptra_rom: PathBuf,
@@ -339,6 +344,10 @@ mod usb_recovery_args_tests {
     fn usb_recovery_is_explicit_and_does_not_change_boot_defaults() {
         EmulatorArgs::command().debug_assert();
         assert!(!EmulatorArgs::try_parse_from(ARGS).unwrap().usb_recovery);
+        assert!(EmulatorArgs::try_parse_from(ARGS)
+            .unwrap()
+            .usbip_listen
+            .is_none());
         assert!(
             EmulatorArgs::try_parse_from(ARGS.into_iter().chain(["--usb-recovery"]))
                 .unwrap()
@@ -358,6 +367,30 @@ mod usb_recovery_args_tests {
             .unwrap_err();
             assert_eq!(error.kind(), ErrorKind::ArgumentConflict);
         }
+    }
+
+    #[test]
+    fn usbip_export_requires_hardware_recovery_and_free_run() {
+        let error =
+            EmulatorArgs::try_parse_from(ARGS.into_iter().chain(["--usbip-listen", "127.0.0.1:0"]))
+                .unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::MissingRequiredArgument);
+        let error = EmulatorArgs::try_parse_from(ARGS.into_iter().chain([
+            "--usb-recovery",
+            "--usbip-listen",
+            "127.0.0.1:0",
+            "--gdb-port",
+            "3333",
+        ]))
+        .unwrap_err();
+        assert_eq!(error.kind(), ErrorKind::ArgumentConflict);
+        let args = EmulatorArgs::try_parse_from(ARGS.into_iter().chain([
+            "--usb-recovery",
+            "--usbip-listen",
+            "127.0.0.1:0",
+        ]))
+        .unwrap();
+        assert_eq!(args.usbip_listen, Some("127.0.0.1:0".parse().unwrap()));
     }
 }
 
@@ -393,6 +426,10 @@ pub struct Emulator {
     pub lpcip_usb_host_controller: caliptra_mcu_emulator_periph::LpcipUsbHostController,
     #[cfg(hw_rev = "latest")]
     pub lpcip_usb_hub_host_controller: caliptra_mcu_emulator_periph::LpcipUsbHubHostController,
+    #[cfg(hw_rev = "latest")]
+    pub usbip_server: Option<caliptra_mcu_emulator_periph::UsbIpServer>,
+    #[cfg(hw_rev = "latest")]
+    pub usbip_error: Option<io::Error>,
     /// Caliptra CPU is held until MCU ROM writes CPTRA_BOOT_GO
     pub cptra_boot_go: Rc<Cell<bool>>,
     mci_regs: Rc<RefCell<caliptra_emu_periph::mci::MciRegs>>,
@@ -1335,7 +1372,8 @@ impl Emulator {
 
         // Create the emulator instance with the same per-instance state
         // we installed on this thread at the top of from_args_with_callbacks.
-        Ok(Self::new(
+        #[allow(unused_mut)]
+        let mut emulator = Self::new(
             cpu,
             caliptra_cpu,
             network_cpu,
@@ -1359,7 +1397,17 @@ impl Emulator {
             cptra_boot_go,
             mci_regs,
             state,
-        ))
+        );
+        #[cfg(hw_rev = "latest")]
+        if let Some(address) = cli.usbip_listen {
+            let server = caliptra_mcu_emulator_periph::UsbIpServer::bind(
+                address,
+                emulator.lpcip_usb_host_controller.clone(),
+            )?;
+            println!("USB/IP Device 0 listening at {}", server.local_addr()?);
+            emulator.usbip_server = Some(server);
+        }
+        Ok(emulator)
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -1426,6 +1474,10 @@ impl Emulator {
             lpcip_usb_host_controller,
             #[cfg(hw_rev = "latest")]
             lpcip_usb_hub_host_controller,
+            #[cfg(hw_rev = "latest")]
+            usbip_server: None,
+            #[cfg(hw_rev = "latest")]
+            usbip_error: None,
             cptra_boot_go,
             mci_regs,
             state,
@@ -1434,6 +1486,10 @@ impl Emulator {
 
     pub fn get_i3c_addr(&self) -> Option<u8> {
         self.i3c_address
+    }
+
+    pub fn mcu_boot_milestones(&self) -> McuBootMilestones {
+        McuBootMilestones::from((self.mci_regs.borrow().flow_status >> 16) as u16)
     }
 
     pub fn start_i3c_controller(&mut self) {
@@ -1454,9 +1510,16 @@ impl Emulator {
         let now = self.mcu_cpu.clock.now();
         self.state.ticks.store(now, Ordering::Relaxed);
         if now.is_multiple_of(1000) {
+            #[cfg(hw_rev = "latest")]
+            if let Some(server) = &mut self.usbip_server {
+                if let Err(error) = server.poll() {
+                    eprintln!("USB/IP bridge failed: {error}");
+                    self.usbip_error = Some(error);
+                    return StepAction::Fatal;
+                }
+            }
             self.state.tick_cond.notify_all();
-            let milestones =
-                McuBootMilestones::from((self.mci_regs.borrow().flow_status >> 16) as u16);
+            let milestones = self.mcu_boot_milestones();
             self.state.set_spdm_responder_ready(
                 SpdmResponderTransport::Mctp,
                 milestones.contains(McuBootMilestones::FIRMWARE_SPDM_MCTP_READY),

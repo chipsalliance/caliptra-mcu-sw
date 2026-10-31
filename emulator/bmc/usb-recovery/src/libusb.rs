@@ -137,7 +137,7 @@ fn bounded_timeout(timeout: Duration) -> Result<Duration> {
         .context("libusb timeout exceeds the 32-bit millisecond limit")?;
     ensure!(
         milliseconds != 0,
-        "less than one millisecond remains for libusb transfer"
+        "libusb transfer timeout: less than one millisecond remains"
     );
     Ok(Duration::from_millis(u64::from(milliseconds)))
 }
@@ -210,7 +210,10 @@ mod tests {
 
     #[test]
     fn timeout_conversion_cannot_disable_or_wrap_a_deadline() {
-        assert!(bounded_timeout(Duration::ZERO).is_err());
+        assert!(bounded_timeout(Duration::ZERO)
+            .unwrap_err()
+            .to_string()
+            .contains("timeout"));
         assert!(bounded_timeout(Duration::from_nanos(999_999)).is_err());
         assert!(bounded_timeout(Duration::from_millis(u64::from(u32::MAX) + 1)).is_err());
         assert_eq!(
