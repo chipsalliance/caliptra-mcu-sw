@@ -60,8 +60,8 @@ pub use uart::Uart;
 #[cfg(hw_rev = "latest")]
 pub use usb::{
     LpcipUsbError, LpcipUsbHostController, LpcipUsbHubHostController, LpcipUsbPhy,
-    LpcipUsbPhyError, LpcipUsbPhySnapshot, LpcipUsbRecoverySnapshot, LpcipUsbSpeed, UsbCombo,
-    UsbDev0Mem, UsbDev1, UsbDev1Mem, UsbIpServer, USBIP_BUS_ID,
+    LpcipUsbPhyError, LpcipUsbPhySnapshot, LpcipUsbRecoveryEvent, LpcipUsbRecoverySnapshot,
+    LpcipUsbSpeed, UsbCombo, UsbDev0Mem, UsbDev1, UsbDev1Mem, UsbIpServer, USBIP_BUS_ID,
 };
 pub use usbdev::{UsbDevPeriph, UsbHostController, UsbTransactionError};
 
