@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! Focused ROM/model coverage. Complete OS/libusb recovery is tracked in #2246.
+//! Nonprivileged ROM/model coverage; usbip_tests covers Linux/libusb recovery.
 
 use crate::test::{build_test_binaries, TestBinaries, TestParams, TEST_LOCK};
 use anyhow::{anyhow, bail, ensure, Result};
@@ -23,7 +23,7 @@ use zerocopy::TryFromBytes;
 
 const FEATURE: &str = "test-lpcip-usb-ocp-recovery";
 
-fn binaries() -> &'static TestBinaries {
+pub(super) fn binaries() -> &'static TestBinaries {
     static BINARIES: OnceLock<TestBinaries> = OnceLock::new();
     BINARIES.get_or_init(|| {
         build_test_binaries(&TestParams {
