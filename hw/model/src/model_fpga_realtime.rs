@@ -727,30 +727,9 @@ impl McuHwModel for ModelFpgaRealtime {
             }
             self.base.i3c_controller().unwrap().configure();
         } else {
-            // ROM-only mode: wait for recovery to deliver firmware, but don't
-            // assert FIRMWARE_BOOT_FLOW_COMPLETE since the ROM may stay in a
-            // service loop instead of booting the runtime.
-            const ROM_ONLY_WAIT_CYCLES: u64 = 800_000_000;
-            let start_cycle = self.cycle_count();
-            self.step_until(|hw| hw.cycle_count() - start_cycle >= ROM_ONLY_WAIT_CYCLES);
-            println!(
-                "ROM-only boot wait completed at cycle count {}, flow status {}",
-                self.cycle_count(),
-                u32::from(self.mci_flow_status())
-            );
-            self.base.recovery_started = false;
-            // Reconfigure the I3C controller (RSTDAA+ENTDAA) so the bus
-            // transitions from recovery state to normal TTI operation.
-            // The RSTDAA strips the target's dynamic address, then ENTDAA
-            // re-assigns it. This ensures the controller and target are in
-            // sync for private write transactions.
-            println!("Resetting I3C controller for TTI mode");
-            {
-                let i3c_ctrl = self.base.i3c_controller().unwrap();
-                let ctrl = i3c_ctrl.controller.lock().unwrap();
-                ctrl.ready.set(false);
-            }
-            self.base.i3c_controller().unwrap().configure();
+            // ROM-only callers step to their own readiness checkpoint before
+            // start_i3c_controller() hands recovery over to services.
+            println!("ROM-only boot: recovery remains active until firmware readiness");
         }
 
         Ok(())
@@ -840,6 +819,7 @@ impl McuHwModel for ModelFpgaRealtime {
         while !self.base.i3c_target_configured() {
             self.step();
         }
+        self.base.recovery_started = false;
         {
             let i3c_ctrl = self.base.i3c_controller().unwrap();
             let ctrl = i3c_ctrl.controller.lock().unwrap();
