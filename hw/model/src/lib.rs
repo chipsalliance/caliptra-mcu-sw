@@ -230,6 +230,10 @@ pub struct InitParams<'a> {
     /// Initial contents of the primary flash (for flash-based boot testing).
     pub primary_flash_initial_contents: Option<Vec<u8>>,
 
+    /// Initial MCU boot-policy straps, driven before the ROM starts.
+    /// The model adds its boot-progress bits without replacing these inputs.
+    pub mcu_generic_input_wires: [u32; 2],
+
     pub check_booted_to_runtime: bool,
 
     pub rom_callback: Option<ModelCallback>,
@@ -333,6 +337,7 @@ impl Default for InitParams<'_> {
             i3c_port: None,
             dot_flash_initial_contents: None,
             primary_flash_initial_contents: None,
+            mcu_generic_input_wires: [0; 2],
             check_booted_to_runtime: true,
             rom_callback: None,
             flash_boot: false,
