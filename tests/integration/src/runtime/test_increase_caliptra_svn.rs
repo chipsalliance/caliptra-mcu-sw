@@ -190,7 +190,7 @@ mod owner {
         }
         assert_eq!(hw.read_otp_memory(), persisted);
 
-        // Programming OTP must not claim to update the already-locked Core strap.
+        // Programming OTP must not update the already-locked Core floor.
         assert_eq!(read_fw_info(&mut hw)?.owner_auth_manifest_min_svn, 0);
         let original_strap = hw
             .caliptra_soc_manager()
@@ -218,8 +218,22 @@ mod owner {
             .ss_strap_generic()
             .at(3)
             .read();
-        assert_eq!((strap >> 8) & 0xff, 64);
-        assert_eq!(strap & !(0xff << 8), original_strap & !(0xff << 8));
+        #[cfg(hw_capability = "numeric-svn-floors")]
+        {
+            assert_eq!(
+                hw.caliptra_soc_manager()
+                    .soc_ifc()
+                    .fuse_soc_manifest_svn()
+                    .read(),
+                [0, 0, 64, 0]
+            );
+            assert_eq!(strap, original_strap);
+        }
+        #[cfg(not(hw_capability = "numeric-svn-floors"))]
+        {
+            assert_eq!((strap >> 8) & 0xff, 64);
+            assert_eq!(strap & !(0xff << 8), original_strap & !(0xff << 8));
+        }
 
         assert!(install_owner_manifest(&mut hw, pqc_key_type, 63).is_err());
         assert_eq!(

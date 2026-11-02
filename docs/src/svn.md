@@ -29,7 +29,9 @@ This document covers five categories of components:
 4. **SoC component images** — manifest-level SVN enforced by Caliptra Core;
    optional per-component enforcement by MCU against `SOC_IMAGE_MIN_SVN[i]`.
 5. **Owner SoC Manifest** — enforced by Caliptra Core against the
-   decoded floor forwarded by MCU ROM in `SS_STRAP_GENERIC[3][15:8]`.
+   decoded floor forwarded by MCU ROM in numeric `FUSE_SOC_MANIFEST_SVN[2]`
+   on 2.2 (`CALIPTRA_HW_REV=latest`). The 2.1 handoff remains
+   `SS_STRAP_GENERIC[3][15:8]`.
 
 ### MCU Runtime SVN reuses the SoC manifest SVN
 
@@ -78,6 +80,34 @@ during cold boot; Caliptra Core enforces anti-rollback internally.
 > the value for any check. It is documented here for completeness;
 > integrators do not need to provision it for current behavior.
 
+#### Core register handoff on 2.2
+
+The OTP representation is unchanged: `CPTRA_CORE_SOC_MANIFEST_SVN` remains a
+128-bit monotonic bitmap. MCU ROM converts it to a numeric minimum using the
+position of the highest programmed bit (zero for an empty bitmap), preserving
+the legacy Core bitmap interpretation. It does not store a binary integer
+directly in OTP.
+
+With `CALIPTRA_HW_REV=latest`, MCU ROM populates four independent numeric
+`FUSE_SOC_MANIFEST_SVN` words before `CPTRA_FUSE_WR_DONE`:
+
+| Word | Meaning | Reference MCU ROM value |
+|---|---|---|
+| 0 | SoC manifest minimum SVN | Decoded `CPTRA_CORE_SOC_MANIFEST_SVN` (0-128) |
+| 1 | Independent MCU Runtime minimum SVN | 0; independent storage and enforcement are not enabled |
+| 2 | Owner manifest minimum SVN | Decoded `OWNER_SOC_MANIFEST_MIN_SVN` (0-64) |
+| 3 | Reserved / late-binding use | 0 |
+
+Caliptra Runtime firmware SVN remains a separate bitmap in
+`FUSE_RUNTIME_SVN[0..3]`. The SoC manifest maximum is still forwarded separately
+to `FUSE_SOC_MANIFEST_MAX_SVN`. Caliptra Core's one-byte SoC SVN measurement
+format is unchanged; the reference OTP range fits that format.
+
+This handoff does not introduce an independent MCU Runtime SVN or change its
+existing SoC-manifest-based enforcement. Word 1 and reserved-word policy require
+platform coordination before use. `CALIPTRA_HW_REV=2.1` retains the raw SoC
+bitmap and owner strap handoff.
+
 The pre-existing `CPTRA_CORE_ANTI_ROLLBACK_DISABLE` fuse (in
 `sw_manuf_partition`) controls enforcement for both Caliptra Core and MCU. When
 set, neither side rejects lower-SVN images and no SVN fuses are burned. MCU
@@ -102,10 +132,12 @@ OTP. The runtime handler preserves programmed bits and verifies writes by
 readback; repeating the current floor requires no write. An interrupted write
 may leave a partial increase. Each retry starts by reading the stored value.
 
-Activation requires a **full subsystem cold boot**: MCU ROM writes the binary
-minimum SVN to `SS_STRAP_GENERIC[3][15:8]` before `CPTRA_FUSE_WR_DONE`, without
-changing other strap bits. This 8-bit strap field supports 0-255 and is locked for
-that boot; MCU-only hitless updates do not activate a new floor.
+Activation requires a **full subsystem cold boot**: MCU ROM writes the numeric
+minimum SVN to `FUSE_SOC_MANIFEST_SVN[2]` before `CPTRA_FUSE_WR_DONE` on 2.2
+(`CALIPTRA_HW_REV=latest`), leaving `SS_STRAP_GENERIC[3]` unchanged. The 2.1
+handoff still uses `SS_STRAP_GENERIC[3][15:8]`, preserving other strap bits.
+The forwarded floor is locked for that boot; MCU-only hitless updates do not
+activate a new floor.
 
 Keep the partition digest unsealed while updates are needed. The reference
 lifecycle policy blocks programming in `ProdEnd` and `RMA`. OTP read failures

@@ -43,6 +43,78 @@ mod test {
         128 - u128::from_le_bytes(bytes).leading_zeros()
     }
 
+    #[cfg(all(hw_capability = "numeric-svn-floors", not(feature = "fpga_realtime")))]
+    #[test]
+    fn test_numeric_svn_fuse_handoff() {
+        use caliptra_api::SocManager;
+        use caliptra_mcu_registers_generated::fuses::{
+            OTP_CPTRA_CORE_SOC_MANIFEST_MAX_SVN, OWNER_SOC_MANIFEST_MIN_SVN,
+        };
+
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+
+        let soc_bitmap = (u128::MAX >> 31).to_le_bytes();
+        let owner_bitmap = ((1u64 << 63) | 0b1010).to_le_bytes();
+        let mut otp =
+            vec![0; OWNER_SOC_MANIFEST_MIN_SVN.byte_offset + OWNER_SOC_MANIFEST_MIN_SVN.byte_size];
+        let soc_start = OTP_CPTRA_CORE_SOC_MANIFEST_SVN.byte_offset;
+        otp[soc_start..soc_start + soc_bitmap.len()].copy_from_slice(&soc_bitmap);
+        let owner_start = OWNER_SOC_MANIFEST_MIN_SVN.byte_offset;
+        otp[owner_start..owner_start + owner_bitmap.len()].copy_from_slice(&owner_bitmap);
+        let runtime_start = OTP_CPTRA_CORE_RUNTIME_SVN.byte_offset;
+        otp[runtime_start..runtime_start + 4].copy_from_slice(&7u32.to_le_bytes());
+        let max_start = OTP_CPTRA_CORE_SOC_MANIFEST_MAX_SVN.byte_offset;
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            rom_only: true,
+            otp_memory: Some(otp),
+            ..Default::default()
+        });
+        let expected_max_svn = u32::from_le_bytes(
+            hw.read_otp_memory()[max_start..max_start + 4]
+                .try_into()
+                .unwrap(),
+        );
+        let original_strap = 0x8000_5501;
+        hw.caliptra_soc_manager()
+            .soc_ifc()
+            .ss_strap_generic()
+            .at(3)
+            .write(|_| original_strap);
+        hw.step_until(|hw| {
+            hw.caliptra_soc_manager()
+                .soc_ifc()
+                .cptra_fuse_wr_done()
+                .read()
+                .done()
+                || hw.mci_fw_fatal_error().is_some()
+                || hw.cycle_count() > 100_000_000
+        });
+
+        assert_eq!(hw.mci_fw_fatal_error(), None);
+        {
+            let mut soc_manager = hw.caliptra_soc_manager();
+            let soc_ifc = soc_manager.soc_ifc();
+            assert!(soc_ifc.cptra_fuse_wr_done().read().done());
+            assert_eq!(soc_ifc.fuse_soc_manifest_svn().read(), [97, 0, 3, 0]);
+            assert_eq!(soc_ifc.fuse_runtime_svn().read(), [7, 0, 0, 0]);
+            assert_eq!(
+                soc_ifc.fuse_soc_manifest_max_svn().read().svn(),
+                expected_max_svn
+            );
+            assert_eq!(soc_ifc.ss_strap_generic().at(3).read(), original_strap);
+        }
+        let otp = hw.read_otp_memory();
+        assert_eq!(&otp[soc_start..soc_start + soc_bitmap.len()], &soc_bitmap);
+        assert_eq!(
+            &otp[owner_start..owner_start + owner_bitmap.len()],
+            &owner_bitmap
+        );
+
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
     /// A header requesting a `soc_manifest_min_svn` floor burns
     /// `CPTRA_CORE_SOC_MANIFEST_SVN`. This path is guarded only by the
     /// header's self-attestation (FW_INFO has no SoC manifest SVN), so

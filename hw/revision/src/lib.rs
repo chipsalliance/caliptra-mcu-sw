@@ -14,6 +14,7 @@ pub enum Capability {
     OwnerPkHashRegisters,
     MboxTargetDone,
     MboxStatusCompletion,
+    NumericSvnFloors,
 }
 
 impl Capability {
@@ -24,6 +25,7 @@ impl Capability {
         Self::OwnerPkHashRegisters,
         Self::MboxTargetDone,
         Self::MboxStatusCompletion,
+        Self::NumericSvnFloors,
     ];
 
     pub const fn as_str(self) -> &'static str {
@@ -34,6 +36,7 @@ impl Capability {
             Self::OwnerPkHashRegisters => "owner-pk-hash-registers",
             Self::MboxTargetDone => "mbox-target-done",
             Self::MboxStatusCompletion => "mbox-status-completion",
+            Self::NumericSvnFloors => "numeric-svn-floors",
         }
     }
 }
@@ -53,6 +56,7 @@ impl HardwareRevision {
                 Capability::RecoveryInterfaceSelect,
                 Capability::OwnerPkHashRegisters,
                 Capability::MboxStatusCompletion,
+                Capability::NumericSvnFloors,
             ],
         }
     }
@@ -196,6 +200,7 @@ mod tests {
                 RecoveryInterfaceSelect,
                 OwnerPkHashRegisters,
                 MboxStatusCompletion,
+                NumericSvnFloors,
             ]
         );
         for revision in [HardwareRevision::V2_1, HardwareRevision::Latest] {
@@ -206,6 +211,10 @@ mod tests {
             assert_ne!(
                 revision.supports(MboxTargetDone),
                 revision.supports(MboxStatusCompletion)
+            );
+            assert_eq!(
+                revision.supports(NumericSvnFloors),
+                revision == HardwareRevision::Latest
             );
         }
     }

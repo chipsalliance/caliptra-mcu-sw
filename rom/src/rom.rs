@@ -53,12 +53,53 @@ const OTP_DAI_IDLE_BIT_OFFSET: u32 = 30;
 const OTP_STATUS_REG_OFFSET: u32 = 0x10;
 const OTP_DIRECT_ACCESS_CMD_REG_OFFSET: u32 = 0x80;
 
+#[cfg(hw_capability = "numeric-svn-floors")]
+fn soc_manifest_svn_fuse_words(bitmap: [u8; 16], owner_svn: u32) -> [u32; 4] {
+    // Preserve the legacy bitmap's highest-programmed-bit floor.
+    let soc_svn = u128::BITS - u128::from_le_bytes(bitmap).leading_zeros();
+    [soc_svn, 0, owner_svn, 0]
+}
+
+#[cfg(all(test, hw_capability = "numeric-svn-floors"))]
+mod numeric_svn_tests {
+    use super::*;
+
+    #[test]
+    fn converts_every_soc_floor_and_keeps_owner_floor_independent() {
+        for soc_svn in 0..=128 {
+            let bitmap = if soc_svn == 0 {
+                0
+            } else {
+                u128::MAX >> (128 - soc_svn)
+            };
+            for owner_svn in [0, 1, 7, 32, 64, 255, u32::MAX] {
+                assert_eq!(
+                    soc_manifest_svn_fuse_words(bitmap.to_le_bytes(), owner_svn),
+                    [soc_svn, 0, owner_svn, 0]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn sparse_bitmaps_do_not_lower_the_legacy_floor() {
+        for soc_svn in 1..=128 {
+            let bitmap = 1u128 << (soc_svn - 1);
+            assert_eq!(
+                soc_manifest_svn_fuse_words(bitmap.to_le_bytes(), 3),
+                [soc_svn, 0, 3, 0]
+            );
+        }
+    }
+}
+
+#[cfg(not(hw_capability = "numeric-svn-floors"))]
 fn owner_manifest_svn_strap(current: u32, svn: u32) -> McuResult<u32> {
     let svn = u8::try_from(svn).map_err(|_| McuError::ROM_FUSE_VALUE_TOO_LARGE)?;
     Ok((current & !(0xff << 8)) | (u32::from(svn) << 8))
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(hw_capability = "numeric-svn-floors")))]
 mod owner_svn_tests {
     use super::*;
 
@@ -382,7 +423,22 @@ impl Soc {
             self.registers.fuse_runtime_svn[i].set(word);
         }
 
-        // SoC Manifest SVN.
+        // SoC and owner manifest SVN floors.
+        #[cfg(hw_capability = "numeric-svn-floors")]
+        {
+            let bitmap = otp
+                .read_cptra_core_soc_manifest_svn()
+                .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
+            let owner_svn = otp
+                .read_owner_soc_manifest_min_svn()
+                .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
+            let words = soc_manifest_svn_fuse_words(bitmap, owner_svn);
+            for (reg, word) in self.registers.fuse_soc_manifest_svn.iter().zip(words) {
+                reg.set(word);
+            }
+        }
+
+        #[cfg(not(hw_capability = "numeric-svn-floors"))]
         for i in 0..self.registers.fuse_soc_manifest_svn.len() {
             let word = otp
                 .read_u32_at(fuses::OTP_CPTRA_CORE_SOC_MANIFEST_SVN.byte_offset + i * 4)
@@ -396,12 +452,16 @@ impl Soc {
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
         self.registers.fuse_soc_manifest_max_svn.set(word);
 
-        let owner_svn = otp
-            .read_owner_soc_manifest_min_svn()
-            .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
-        let strap = owner_manifest_svn_strap(self.registers.ss_strap_generic[3].get(), owner_svn)
-            .unwrap_or_else(|_| fatal_error(McuError::ROM_FUSE_VALUE_TOO_LARGE));
-        self.registers.ss_strap_generic[3].set(strap);
+        #[cfg(not(hw_capability = "numeric-svn-floors"))]
+        {
+            let owner_svn = otp
+                .read_owner_soc_manifest_min_svn()
+                .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
+            let strap =
+                owner_manifest_svn_strap(self.registers.ss_strap_generic[3].get(), owner_svn)
+                    .unwrap_or_else(|_| fatal_error(McuError::ROM_FUSE_VALUE_TOO_LARGE));
+            self.registers.ss_strap_generic[3].set(strap);
+        }
 
         // Manuf Debug Unlock Token.
         for i in 0..self.registers.fuse_manuf_dbg_unlock_token.len() {
