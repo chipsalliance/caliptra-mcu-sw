@@ -5,7 +5,6 @@ mod test {
     use crate::test::{start_runtime_hw_model, TestParams, TEST_LOCK};
     use caliptra_mcu_hw_model::{McuHwModel, McuManager};
     use caliptra_mcu_registers_generated::fuses::FIELD_ENTROPY_STATE;
-    use caliptra_mcu_romtime::otp::FieldEntropySlot;
     use std::sync::atomic::Ordering;
 
     const MAX_ZEROIZATION_CYCLES: u64 = 500_000_000;
@@ -28,7 +27,11 @@ mod test {
             ..Default::default()
         });
 
-        // Poll until the ROM writes the zeroization mask or we time out.
+        let otp_before = hw.read_otp_memory();
+        let field_entropy_offset = FIELD_ENTROPY_STATE.byte_offset;
+        let field_entropy_before = &otp_before[field_entropy_offset..field_entropy_offset + 4];
+
+        // Poll until the ROM completes zeroization or we time out.
         //
         // We cannot use `mci_boot_checkpoint() >= FipsZeroizationComplete`
         // because boot-flow checkpoint values (e.g. ColdBootFlowStarted =
@@ -39,6 +42,11 @@ mod test {
                 == u16::from(caliptra_mcu_romtime::McuRomBootStatus::FipsZeroizationComplete)
                 || hw.cycle_count() >= MAX_ZEROIZATION_CYCLES
         });
+        assert_eq!(
+            hw.mci_boot_checkpoint(),
+            u16::from(caliptra_mcu_romtime::McuRomBootStatus::FipsZeroizationComplete),
+            "FIPS zeroization did not complete before the timeout"
+        );
 
         let mask = hw
             .mcu_manager()
@@ -106,22 +114,13 @@ mod test {
             }
         }
 
-        // Check that FIELD_ENTROPY_STATE has all slots marked as ZEROIZED.
+        // Zeroization must not update the retired vendor bookkeeping word.
         let otp_mem = hw.read_otp_memory();
-        let field_entropy_offset = FIELD_ENTROPY_STATE.byte_offset;
-        let field_entropy_word = u32::from_le_bytes(
-            otp_mem[field_entropy_offset..field_entropy_offset + 4]
-                .try_into()
-                .unwrap(),
+        assert_eq!(
+            &otp_mem[field_entropy_offset..field_entropy_offset + 4],
+            field_entropy_before,
+            "FIELD_ENTROPY_STATE should remain unchanged"
         );
-        for slot in 0..4 {
-            let bit = slot * 3 + FieldEntropySlot::ZEROIZED_BIT_OFFSET;
-            assert_ne!(
-                field_entropy_word & (1 << bit),
-                0,
-                "FIELD_ENTROPY_STATE for slot {slot} should be marked as ZEROIZED"
-            );
-        }
 
         lock.fetch_add(1, Ordering::Relaxed);
     }
