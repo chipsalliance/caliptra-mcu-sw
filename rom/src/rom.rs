@@ -34,6 +34,16 @@ use caliptra_mcu_registers_generated::fuses;
 use caliptra_mcu_registers_generated::mci;
 use caliptra_mcu_registers_generated::mci::bits::SecurityState::DeviceLifecycle;
 use caliptra_mcu_registers_generated::soc;
+#[cfg(all(
+    hw_capability = "owner-pk-hash-registers",
+    hw_capability = "named-soc-ifc-config"
+))]
+use caliptra_mcu_registers_generated::soc::bits::CptraLock as CptraOwnerPkHashLock;
+#[cfg(all(
+    hw_capability = "owner-pk-hash-registers",
+    not(hw_capability = "named-soc-ifc-config")
+))]
+use caliptra_mcu_registers_generated::soc::bits::CptraXxxxxxxk as CptraOwnerPkHashLock;
 use caliptra_mcu_romtime::otp::{Otp, PROD_DEBUG_UNLOCK_PK_ENTRIES};
 use caliptra_mcu_romtime::LifecycleControllerState;
 use caliptra_mcu_romtime::LifecycleHashedTokens;
@@ -52,13 +62,56 @@ const LMS_CALIPTRA_VALUE: u8 = 3;
 const OTP_DAI_IDLE_BIT_OFFSET: u32 = 30;
 const OTP_STATUS_REG_OFFSET: u32 = 0x10;
 const OTP_DIRECT_ACCESS_CMD_REG_OFFSET: u32 = 0x80;
+const STABLE_OWNER_KEY_ENABLE: u32 = 1 << 0;
+const VENDOR_DEBUG_IMAGES_DISABLE: u32 = 1 << 31;
 
+#[cfg(hw_capability = "numeric-svn-floors")]
+fn soc_manifest_svn_fuse_words(bitmap: [u8; 16], owner_svn: u32) -> [u32; 4] {
+    // Preserve the legacy bitmap's highest-programmed-bit floor.
+    let soc_svn = u128::BITS - u128::from_le_bytes(bitmap).leading_zeros();
+    [soc_svn, 0, owner_svn, 0]
+}
+
+#[cfg(all(test, hw_capability = "numeric-svn-floors"))]
+mod numeric_svn_tests {
+    use super::*;
+
+    #[test]
+    fn converts_every_soc_floor_and_keeps_owner_floor_independent() {
+        for soc_svn in 0..=128 {
+            let bitmap = if soc_svn == 0 {
+                0
+            } else {
+                u128::MAX >> (128 - soc_svn)
+            };
+            for owner_svn in [0, 1, 7, 32, 64, 255, u32::MAX] {
+                assert_eq!(
+                    soc_manifest_svn_fuse_words(bitmap.to_le_bytes(), owner_svn),
+                    [soc_svn, 0, owner_svn, 0]
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn sparse_bitmaps_do_not_lower_the_legacy_floor() {
+        for soc_svn in 1..=128 {
+            let bitmap = 1u128 << (soc_svn - 1);
+            assert_eq!(
+                soc_manifest_svn_fuse_words(bitmap.to_le_bytes(), 3),
+                [soc_svn, 0, 3, 0]
+            );
+        }
+    }
+}
+
+#[cfg(not(hw_capability = "numeric-svn-floors"))]
 fn owner_manifest_svn_strap(current: u32, svn: u32) -> McuResult<u32> {
     let svn = u8::try_from(svn).map_err(|_| McuError::ROM_FUSE_VALUE_TOO_LARGE)?;
     Ok((current & !(0xff << 8)) | (u32::from(svn) << 8))
 }
 
-#[cfg(test)]
+#[cfg(all(test, not(hw_capability = "numeric-svn-floors")))]
 mod owner_svn_tests {
     use super::*;
 
@@ -81,6 +134,82 @@ mod owner_svn_tests {
                 Err(McuError::ROM_FUSE_VALUE_TOO_LARGE)
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod soc_config_tests {
+    extern crate std;
+
+    use super::*;
+    use core::mem::{align_of, size_of};
+    use std::boxed::Box;
+
+    fn soc() -> Soc {
+        assert_eq!(align_of::<soc::regs::Soc>(), align_of::<u32>());
+        let words = Box::leak(Box::new([0u32; size_of::<soc::regs::Soc>() / 4]));
+        Soc::new(unsafe { StaticRef::new(words.as_ptr().cast()) })
+    }
+
+    #[test]
+    fn routes_otp_controller_configuration_for_selected_core() {
+        let soc = soc();
+        soc.registers.ss_strap_generic[0].set(0xdead_beef);
+        soc.registers.ss_strap_generic[1].set(0x1234_5678);
+        soc.configure_otp_fuse_controller();
+
+        #[cfg(hw_capability = "named-soc-ifc-config")]
+        {
+            assert_eq!(
+                soc.registers.ss_otp_fc_status_cfg.get(),
+                (OTP_DAI_IDLE_BIT_OFFSET << 16) | OTP_STATUS_REG_OFFSET
+            );
+            assert_eq!(
+                soc.registers.ss_otp_fc_cmd_cfg.get(),
+                OTP_DIRECT_ACCESS_CMD_REG_OFFSET
+            );
+            assert_eq!(soc.registers.ss_strap_generic[0].get(), 0xdead_beef);
+            assert_eq!(soc.registers.ss_strap_generic[1].get(), 0x1234_5678);
+        }
+        #[cfg(not(hw_capability = "named-soc-ifc-config"))]
+        {
+            assert_eq!(
+                soc.registers.ss_strap_generic[0].get(),
+                (OTP_DAI_IDLE_BIT_OFFSET << 16) | OTP_STATUS_REG_OFFSET
+            );
+            assert_eq!(
+                soc.registers.ss_strap_generic[1].get(),
+                OTP_DIRECT_ACCESS_CMD_REG_OFFSET
+            );
+        }
+    }
+
+    #[test]
+    fn feature_configuration_preserves_unowned_bits() {
+        let soc = soc();
+        let initial = 0x4000_0002;
+        #[cfg(hw_capability = "named-soc-ifc-config")]
+        soc.registers.ss_fw_feature_cfg.set(initial);
+        #[cfg(not(hw_capability = "named-soc-ifc-config"))]
+        soc.registers.ss_strap_generic[3].set(initial);
+
+        soc.configure_fw_features(true, Some(true));
+
+        #[cfg(hw_capability = "named-soc-ifc-config")]
+        let configured = soc.registers.ss_fw_feature_cfg.get();
+        #[cfg(not(hw_capability = "named-soc-ifc-config"))]
+        let configured = soc.registers.ss_strap_generic[3].get();
+        assert_eq!(
+            configured,
+            initial | STABLE_OWNER_KEY_ENABLE | VENDOR_DEBUG_IMAGES_DISABLE
+        );
+
+        soc.configure_fw_features(false, Some(false));
+        #[cfg(hw_capability = "named-soc-ifc-config")]
+        let configured = soc.registers.ss_fw_feature_cfg.get();
+        #[cfg(not(hw_capability = "named-soc-ifc-config"))]
+        let configured = soc.registers.ss_strap_generic[3].get();
+        assert_eq!(configured, initial | STABLE_OWNER_KEY_ENABLE);
     }
 }
 
@@ -116,6 +245,9 @@ pub struct FuseParams<'a, 'b> {
     /// programmed into the MCI PK hash register bank. When `None`, defaults
     /// to the number of entries in `PROD_DEBUG_UNLOCK_PK_ENTRIES`.
     pub prod_debug_unlock_auth_pk_hash_count: Option<u32>,
+    /// Optional platform policy for vendor-authorized debug images. `None`
+    /// preserves a value configured before MCU ROM runs.
+    pub vendor_debug_images_disabled: Option<bool>,
     // Used to prevent compiler warnings for unused lifetime.
     pub _inner: PhantomData<(&'a (), &'b ())>,
 }
@@ -136,6 +268,48 @@ impl Soc {
         Soc { registers }
     }
 
+    fn configure_otp_fuse_controller(&self) {
+        #[cfg(hw_capability = "named-soc-ifc-config")]
+        {
+            self.registers
+                .ss_otp_fc_status_cfg
+                .set((OTP_DAI_IDLE_BIT_OFFSET << 16) | OTP_STATUS_REG_OFFSET);
+            self.registers
+                .ss_otp_fc_cmd_cfg
+                .set(OTP_DIRECT_ACCESS_CMD_REG_OFFSET);
+        }
+        #[cfg(not(hw_capability = "named-soc-ifc-config"))]
+        {
+            self.registers.ss_strap_generic[0]
+                .set((OTP_DAI_IDLE_BIT_OFFSET << 16) | OTP_STATUS_REG_OFFSET);
+            self.registers.ss_strap_generic[1].set(OTP_DIRECT_ACCESS_CMD_REG_OFFSET);
+        }
+    }
+
+    fn configure_fw_features(
+        &self,
+        stable_owner_key_enabled: bool,
+        vendor_debug_images_disabled: Option<bool>,
+    ) {
+        #[cfg(hw_capability = "named-soc-ifc-config")]
+        let register = &self.registers.ss_fw_feature_cfg;
+        #[cfg(not(hw_capability = "named-soc-ifc-config"))]
+        let register = &self.registers.ss_strap_generic[3];
+
+        let mut value = register.get();
+        if stable_owner_key_enabled {
+            value |= STABLE_OWNER_KEY_ENABLE;
+        }
+        if let Some(disabled) = vendor_debug_images_disabled {
+            if disabled {
+                value |= VENDOR_DEBUG_IMAGES_DISABLE;
+            } else {
+                value &= !VENDOR_DEBUG_IMAGES_DISABLE;
+            }
+        }
+        register.set(value);
+    }
+
     #[cfg(hw_capability = "owner-pk-hash-registers")]
     pub(crate) fn write_and_lock_owner_pk_hash_csrs(&self, digest: &[u32; 12]) -> McuResult<()> {
         let matches = || {
@@ -146,7 +320,7 @@ impl Soc {
                 .all(|(register, expected)| register.get() == *expected)
         };
         let lock = &self.registers.cptra_owner_pk_hash_lock;
-        if lock.is_set(soc::bits::CptraXxxxxxxk::Lock) {
+        if lock.is_set(CptraOwnerPkHashLock::Lock) {
             return if matches() {
                 Ok(())
             } else {
@@ -159,8 +333,8 @@ impl Soc {
         if !matches() {
             return Err(McuError::ROM_DOT_INSTALL_OWNER_PK_HASH_FAILED);
         }
-        lock.write(soc::bits::CptraXxxxxxxk::Lock::SET);
-        if !lock.is_set(soc::bits::CptraXxxxxxxk::Lock) || !matches() {
+        lock.write(CptraOwnerPkHashLock::Lock::SET);
+        if !lock.is_set(CptraOwnerPkHashLock::Lock) || !matches() {
             return Err(McuError::ROM_DOT_INSTALL_OWNER_PK_HASH_FAILED);
         }
         Ok(())
@@ -310,9 +484,11 @@ impl Soc {
             OTP_STATUS_REG_OFFSET,
             OTP_DIRECT_ACCESS_CMD_REG_OFFSET
         );
-        self.registers.ss_strap_generic[0]
-            .set((OTP_DAI_IDLE_BIT_OFFSET << 16) | OTP_STATUS_REG_OFFSET);
-        self.registers.ss_strap_generic[1].set(OTP_DIRECT_ACCESS_CMD_REG_OFFSET);
+        self.configure_otp_fuse_controller();
+        self.configure_fw_features(
+            cfg!(feature = "stable-owner-key"),
+            params.vendor_debug_images_disabled,
+        );
 
         // Select the vendor public key slot to use.
         let default_policy = DefaultVendorKeyPolicy::new(
@@ -326,9 +502,6 @@ impl Soc {
             .unwrap_or_else(|_| fatal_error(McuError::ROM_PK_HASH_SELECTION_FAILED));
         let pk_hash_idx_expected = cfi_launder(pk_hash_idx);
         caliptra_mcu_romtime::println!("[mcu-fuse-write] Selected vendor PK slot {}", pk_hash_idx);
-
-        #[cfg(feature = "stable-owner-key")]
-        crate::stable_owner_key::enable_owner_key_strap(self.registers);
 
         // PQC Key Type.
         cfi_assert_eq(pk_hash_idx, pk_hash_idx_expected);
@@ -382,7 +555,22 @@ impl Soc {
             self.registers.fuse_runtime_svn[i].set(word);
         }
 
-        // SoC Manifest SVN.
+        // SoC and owner manifest SVN floors.
+        #[cfg(hw_capability = "numeric-svn-floors")]
+        {
+            let bitmap = otp
+                .read_cptra_core_soc_manifest_svn()
+                .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
+            let owner_svn = otp
+                .read_owner_soc_manifest_min_svn()
+                .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
+            let words = soc_manifest_svn_fuse_words(bitmap, owner_svn);
+            for (reg, word) in self.registers.fuse_soc_manifest_svn.iter().zip(words) {
+                reg.set(word);
+            }
+        }
+
+        #[cfg(not(hw_capability = "numeric-svn-floors"))]
         for i in 0..self.registers.fuse_soc_manifest_svn.len() {
             let word = otp
                 .read_u32_at(fuses::OTP_CPTRA_CORE_SOC_MANIFEST_SVN.byte_offset + i * 4)
@@ -396,12 +584,16 @@ impl Soc {
             .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
         self.registers.fuse_soc_manifest_max_svn.set(word);
 
-        let owner_svn = otp
-            .read_owner_soc_manifest_min_svn()
-            .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
-        let strap = owner_manifest_svn_strap(self.registers.ss_strap_generic[3].get(), owner_svn)
-            .unwrap_or_else(|_| fatal_error(McuError::ROM_FUSE_VALUE_TOO_LARGE));
-        self.registers.ss_strap_generic[3].set(strap);
+        #[cfg(not(hw_capability = "numeric-svn-floors"))]
+        {
+            let owner_svn = otp
+                .read_owner_soc_manifest_min_svn()
+                .unwrap_or_else(|_| fatal_error(McuError::ROM_OTP_READ_ERROR));
+            let strap =
+                owner_manifest_svn_strap(self.registers.ss_strap_generic[3].get(), owner_svn)
+                    .unwrap_or_else(|_| fatal_error(McuError::ROM_FUSE_VALUE_TOO_LARGE));
+            self.registers.ss_strap_generic[3].set(strap);
+        }
 
         // Manuf Debug Unlock Token.
         for i in 0..self.registers.fuse_manuf_dbg_unlock_token.len() {
@@ -1166,6 +1358,10 @@ pub struct RomParameters<'a> {
     /// ROM uses the reference fuse map count (number of entries in
     /// `PROD_DEBUG_UNLOCK_PK_ENTRIES`).
     pub prod_debug_unlock_auth_pk_hash_count: Option<u32>,
+    /// Optional platform policy for vendor-authorized debug images. `None`
+    /// preserves `SS_FW_FEATURE_CFG.VENDOR_DEBUG_IMAGES_DIS` on 2.2 or the
+    /// legacy strap bit on 2.1.
+    pub vendor_debug_images_disabled: Option<bool>,
     /// An optional entropy source used for the initialization of CFI counters before Caliptra
     /// mailbox is available. If `None` and CFI is enabled, initialization will error out.
     pub cfi_entropy_source: Option<&'a mut dyn CfiEntropySource>,
@@ -1311,7 +1507,7 @@ mod owner_pk_hash_tests {
         assert!(soc
             .registers
             .cptra_owner_pk_hash_lock
-            .is_set(soc::bits::CptraXxxxxxxk::Lock));
+            .is_set(CptraOwnerPkHashLock::Lock));
     }
 
     #[test]
@@ -1325,7 +1521,7 @@ mod owner_pk_hash_tests {
         assert!(soc
             .registers
             .cptra_owner_pk_hash_lock
-            .is_set(soc::bits::CptraXxxxxxxk::Lock));
+            .is_set(CptraOwnerPkHashLock::Lock));
     }
 
     #[test]

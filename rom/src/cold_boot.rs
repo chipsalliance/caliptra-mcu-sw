@@ -1567,6 +1567,7 @@ impl BootFlow for ColdBoot {
                 ocp_lock_config: Some(&mut params.ocp_lock_config),
                 vendor_key_policy: params.vendor_key_policy,
                 prod_debug_unlock_auth_pk_hash_count: params.prod_debug_unlock_auth_pk_hash_count,
+                vendor_debug_images_disabled: params.vendor_debug_images_disabled,
                 ..Default::default()
             },
         );

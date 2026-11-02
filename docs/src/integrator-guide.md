@@ -181,6 +181,22 @@ context. The fuse-backed floor for this value is
 `CPTRA_CORE_SOC_MANIFEST_SVN`; Caliptra Core enforces it, but MCU ROM performs
 the OTP burn because Caliptra Core cannot write its own fuses.
 
+On 2.2 (`CALIPTRA_HW_REV=latest`), MCU ROM decodes the existing OTP counters
+and forwards the SoC and owner floors as independent numeric values in
+`FUSE_SOC_MANIFEST_SVN[0]` and `[2]`. Words `[1]` and `[3]` remain zero:
+this change does not enable an independent MCU Runtime floor. Caliptra
+Runtime firmware SVN remains a separate bitmap. The 2.1 bitmap/strap handoff
+is unchanged. See [Core register handoff on 2.2](svn.md#core-register-handoff-on-22)
+for the register allocation and activation rules.
+
+The 2.2 ROM also provisions named SOC_IFC configuration before
+`CPTRA_FUSE_WR_DONE`: `SS_OTP_FC_STATUS_CFG` carries the OTP status offset and
+DAI-idle bit index, `SS_OTP_FC_CMD_CFG` carries the direct-access command
+offset, and `SS_FW_FEATURE_CFG` carries stable-owner and vendor-debug policy.
+`RomParameters::vendor_debug_images_disabled = None` preserves a value already
+written by the platform; use `Some(true)` or `Some(false)` for an explicit MCU
+policy. The 2.1 build continues to use the legacy generic straps.
+
 The optional MCU Component SVN Manifest is a 1024-byte authenticated header in
 the MCU runtime image. When present and enabled by ROM configuration, it can
 request floors for:
