@@ -88,6 +88,7 @@ pub struct ModelFpgaRealtime {
     /// each IBI it sees. We must discard those stale client reads.
     i3c_ibi_reads_pending: u32,
     flash_boot: bool,
+    initial_mcu_generic_input_wires: [u32; 2],
     check_booted_to_runtime: bool,
     caliptra_firmware: Option<Vec<u8>>,
     soc_manifest: Option<Vec<u8>>,
@@ -530,29 +531,36 @@ impl McuHwModel for ModelFpgaRealtime {
         // standard fuses are preserved. The read-modify-write goes through a
         // heap Vec + `copy_from_slice` so LLVM emits a memcpy: byte-by-byte
         // writes to the FPGA block RAM fault with SIGBUS.
-        if let Some(otp_memory) = params.otp_memory {
+        // Custom straps must be stable before reset release: ROM can sample
+        // them before boot() enables fuse/runtime progress.
+        if params.otp_memory.is_some() || params.mcu_generic_input_wires != [0; 2] {
             base.set_subsystem_reset(true);
             std::thread::sleep(Duration::from_micros(1));
-            let mut otp_data = base.otp_slice().to_vec();
-            if otp_memory.len() > otp_data.len() {
-                bail!(
-                    "otp_memory ({} bytes) is larger than the OTP backing memory ({} bytes)",
-                    otp_memory.len(),
-                    otp_data.len()
-                );
+            if let Some(otp_memory) = params.otp_memory {
+                let mut otp_data = base.otp_slice().to_vec();
+                if otp_memory.len() > otp_data.len() {
+                    bail!(
+                        "otp_memory ({} bytes) is larger than the OTP backing memory ({} bytes)",
+                        otp_memory.len(),
+                        otp_data.len()
+                    );
+                }
+                // Zero the overlay region first, then copy test data on top.
+                // The FPGA OTP backing RAM is NOT zero-initialized (it may
+                // contain a counting pattern or other residual data).  A plain
+                // OR would merge test bits with that residual data, producing
+                // wrong fuse values.
+                for dst in otp_data[..otp_memory.len()].iter_mut() {
+                    *dst = 0;
+                }
+                for (dst, src) in otp_data.iter_mut().zip(otp_memory.iter()) {
+                    *dst |= *src;
+                }
+                base.otp_slice().copy_from_slice(&otp_data);
             }
-            // Zero the overlay region first, then copy test data on top.
-            // The FPGA OTP backing RAM is NOT zero-initialized (it may
-            // contain a counting pattern or other residual data).  A plain
-            // OR would merge test bits with that residual data, producing
-            // wrong fuse values.
-            for dst in otp_data[..otp_memory.len()].iter_mut() {
-                *dst = 0;
+            for (i, wire) in params.mcu_generic_input_wires.into_iter().enumerate() {
+                base.wrapper.regs().mci_generic_input_wires[i].set(wire);
             }
-            for (dst, src) in otp_data.iter_mut().zip(otp_memory.iter()) {
-                *dst |= *src;
-            }
-            base.otp_slice().copy_from_slice(&otp_data);
             base.set_subsystem_reset(false);
         }
 
@@ -633,6 +641,7 @@ impl McuHwModel for ModelFpgaRealtime {
             i3c_client_read_retries: 0,
             i3c_ibi_reads_pending: 0,
             flash_boot: params.flash_boot,
+            initial_mcu_generic_input_wires: params.mcu_generic_input_wires,
             check_booted_to_runtime: params.check_booted_to_runtime,
             caliptra_firmware: Some(params.caliptra_firmware.to_vec()).filter(|f| !f.is_empty()),
             soc_manifest: Some(params.soc_manifest.to_vec()).filter(|f| !f.is_empty()),
@@ -673,7 +682,10 @@ impl McuHwModel for ModelFpgaRealtime {
         } else {
             gpio1
         };
-        let mci_generic_input_wires = &[0, gpio1];
+        let mci_generic_input_wires = &[
+            self.initial_mcu_generic_input_wires[0],
+            self.initial_mcu_generic_input_wires[1] | gpio1,
+        ];
         println!(
             "Setting: MCI generic input wires: {:08x?}",
             mci_generic_input_wires
