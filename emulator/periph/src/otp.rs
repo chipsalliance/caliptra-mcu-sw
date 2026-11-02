@@ -386,6 +386,12 @@ fn scramble_key_for_addr(byte_addr: usize) -> Option<u128> {
         if byte_addr < p.byte_offset || byte_addr >= p.byte_offset + p.byte_size {
             continue;
         }
+        if p.digest_offset
+            .is_some_and(|offset| byte_addr >= offset && byte_addr < offset + 8)
+            || p.zeroizable && byte_addr >= p.byte_offset + p.byte_size - 8
+        {
+            return None;
+        }
         return match i {
             1 => Some(caliptra_mcu_otp_digest::OTP_SCRAMBLE_KEYS[0]),
             2 => Some(caliptra_mcu_otp_digest::OTP_SCRAMBLE_KEYS[1]),
@@ -792,6 +798,43 @@ mod test {
             // read the data
             let data = otp.read_dai_rdata_rf_direct_access_rdata_0();
             assert_eq!(data, i as u32);
+        }
+    }
+
+    #[test]
+    fn test_field_entropy_metadata_reads_are_raw_full_width_and_live() {
+        let clock = Clock::new();
+        let mut otp = Otp::new(&clock, OtpArgs::default()).unwrap();
+
+        for partition in [
+            fuses::SECRET_PROD_PARTITION_0,
+            fuses::SECRET_PROD_PARTITION_1,
+            fuses::SECRET_PROD_PARTITION_2,
+            fuses::SECRET_PROD_PARTITION_3,
+        ] {
+            for offset in [
+                partition.digest_offset.unwrap(),
+                partition.byte_offset + partition.byte_size - 8,
+            ] {
+                for value in [0u64, 1 << 32, 0x1122_3344_5566_7788, u64::MAX] {
+                    otp.partitions.borrow_mut()[offset..offset + 8]
+                        .copy_from_slice(&value.to_le_bytes());
+                    otp.write_direct_access_address((offset as u32).into());
+                    otp.write_direct_access_cmd(1u32.into());
+                    for _ in 0..1000 {
+                        if otp.status.reg.read(OtpStatus::DaiIdle) != 0 {
+                            break;
+                        }
+                        otp.poll();
+                    }
+                    assert_eq!(otp.status.reg.get(), OtpStatus::DaiIdle::SET.value);
+                    assert_eq!(otp.read_dai_rdata_rf_direct_access_rdata_0(), value as u32);
+                    assert_eq!(
+                        otp.read_dai_rdata_rf_direct_access_rdata_1(),
+                        (value >> 32) as u32
+                    );
+                }
+            }
         }
     }
 

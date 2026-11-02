@@ -76,6 +76,22 @@ impl<S: Syscalls> Otp<S> {
             .to_result::<u32, ErrorCode>()
     }
 
+    /// Read a field-entropy partition's full-width digest and zeroization marker.
+    pub fn read_field_entropy_metadata(&self, partition: u32) -> Result<(u64, u64), ErrorCode> {
+        let mut metadata = [0u64; 2];
+        for (field, value) in metadata.iter_mut().enumerate() {
+            let (lo, hi) = S::command(
+                self.driver_num,
+                cmd::OTP_READ_FIELD_ENTROPY_METADATA,
+                partition,
+                field as u32,
+            )
+            .to_result::<(u32, u32), ErrorCode>()?;
+            *value = u64::from(lo) | (u64::from(hi) << 32);
+        }
+        Ok((metadata[0], metadata[1]))
+    }
+
     pub fn write(&self, reg_offset: u32, index: u32, value: u32) -> Result<(), ErrorCode> {
         S::command(self.driver_num, cmd::OTP_SET_REGISTER, reg_offset, index)
             .to_result::<(), ErrorCode>()?;
@@ -427,6 +443,7 @@ pub mod cmd {
     pub const OTP_PROGRAM_HEK: u32 = 10;
     pub const OTP_ZERO_HEK: u32 = 11;
     pub const OTP_MARK_FIELD_ENTROPY_ZEROIZED: u32 = 12;
+    pub const OTP_READ_FIELD_ENTROPY_METADATA: u32 = 13; // (partition, 0=digest/1=marker)
 }
 
 mod ro_allow {
@@ -520,4 +537,56 @@ pub mod reg {
     pub const SOC_MANIFEST_MAX_SVN: u32 = 37;
     /// Owner SoC Manifest SVN words; index must be 0 or 1.
     pub const OWNER_SOC_MANIFEST_MIN_SVN: u32 = 38;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use caliptra_mcu_libtock_unittest::{command_return, fake, ExpectedSyscall};
+
+    #[test]
+    fn field_entropy_metadata_preserves_both_halves() {
+        let kernel = fake::Kernel::new();
+        let metadata = [0x1122_3344_5566_7788u64, 0x99aa_bbcc_ddee_ff00];
+        for (field, value) in metadata.into_iter().enumerate() {
+            kernel.add_expected_syscall(ExpectedSyscall::Command {
+                driver_id: OTP_DRIVER_NUM,
+                command_id: cmd::OTP_READ_FIELD_ENTROPY_METADATA,
+                argument0: 3,
+                argument1: field as u32,
+                override_return: Some(command_return::success_2_u32(
+                    value as u32,
+                    (value >> 32) as u32,
+                )),
+            });
+        }
+        assert_eq!(
+            Otp::<DefaultSyscalls>::new().read_field_entropy_metadata(3),
+            Ok((metadata[0], metadata[1]))
+        );
+    }
+
+    #[test]
+    fn field_entropy_metadata_propagates_read_errors() {
+        for failed_field in 0..2 {
+            let kernel = fake::Kernel::new();
+            for field in 0..=failed_field {
+                kernel.add_expected_syscall(ExpectedSyscall::Command {
+                    driver_id: OTP_DRIVER_NUM,
+                    command_id: cmd::OTP_READ_FIELD_ENTROPY_METADATA,
+                    argument0: 0,
+                    argument1: field,
+                    override_return: Some(if field == failed_field {
+                        command_return::failure(ErrorCode::Fail)
+                    } else {
+                        command_return::success_2_u32(0, 0)
+                    }),
+                });
+            }
+            assert_eq!(
+                Otp::<DefaultSyscalls>::new().read_field_entropy_metadata(0),
+                Err(ErrorCode::Fail)
+            );
+        }
+    }
 }

@@ -408,11 +408,90 @@ mod tests {
     }
 
     #[test]
-    fn field_entropy_is_provisioned_only_when_every_slot_is_finished() {
-        assert!(!is_field_entropy_provisioned(0));
-        assert!(!is_field_entropy_provisioned(0x036d));
-        assert!(is_field_entropy_provisioned(0x06db));
-        assert!(!is_field_entropy_provisioned(0x0fff));
+    fn field_entropy_status_uses_full_width_partition_metadata() {
+        use caliptra_mcu_libtock_unittest::{command_return, fake, ExpectedSyscall};
+
+        let finalized = (1u64 << 32, 0u64);
+        let mut mixed = [finalized; 4];
+        mixed[2].0 = 0;
+        for (metadata, expected) in [
+            ([(0, 0); 4], false),
+            ([finalized; 4], true),
+            (mixed, false),
+            ([(1, u64::MAX); 4], false),
+            ([(1, u64::MAX << 6); 4], false),
+        ] {
+            let kernel = fake::Kernel::new();
+            for (partition, (digest, marker)) in metadata.into_iter().enumerate() {
+                for (field, value) in [digest, marker].into_iter().enumerate() {
+                    kernel.add_expected_syscall(ExpectedSyscall::Command {
+                        driver_id: otp::OTP_DRIVER_NUM,
+                        command_id: otp::cmd::OTP_READ_FIELD_ENTROPY_METADATA,
+                        argument0: partition as u32,
+                        argument1: field as u32,
+                        override_return: Some(command_return::success_2_u32(
+                            value as u32,
+                            (value >> 32) as u32,
+                        )),
+                    });
+                }
+            }
+            assert_eq!(field_entropy_already_provisioned(), Ok(expected));
+        }
+    }
+
+    #[test]
+    fn field_entropy_status_rejects_partial_zeroization_markers() {
+        use caliptra_mcu_libtock_unittest::{command_return, fake, ExpectedSyscall};
+
+        for marker in [1u64, 1 << 32, u64::MAX << 7] {
+            let kernel = fake::Kernel::new();
+            for (field, value) in [1u64, marker].into_iter().enumerate() {
+                kernel.add_expected_syscall(ExpectedSyscall::Command {
+                    driver_id: otp::OTP_DRIVER_NUM,
+                    command_id: otp::cmd::OTP_READ_FIELD_ENTROPY_METADATA,
+                    argument0: 0,
+                    argument1: field as u32,
+                    override_return: Some(command_return::success_2_u32(
+                        value as u32,
+                        (value >> 32) as u32,
+                    )),
+                });
+            }
+            assert_eq!(
+                field_entropy_already_provisioned(),
+                Err(CaliptraCompletionCode::OperationFailed)
+            );
+        }
+    }
+
+    #[test]
+    fn field_entropy_status_propagates_read_errors_after_an_unfinalized_partition() {
+        use caliptra_mcu_libtock_unittest::{command_return, fake, ExpectedSyscall};
+
+        let kernel = fake::Kernel::new();
+        for partition in 0..3 {
+            for field in 0..2 {
+                kernel.add_expected_syscall(ExpectedSyscall::Command {
+                    driver_id: otp::OTP_DRIVER_NUM,
+                    command_id: otp::cmd::OTP_READ_FIELD_ENTROPY_METADATA,
+                    argument0: partition,
+                    argument1: field,
+                    override_return: Some(command_return::success_2_u32(0, 0)),
+                });
+            }
+        }
+        kernel.add_expected_syscall(ExpectedSyscall::Command {
+            driver_id: otp::OTP_DRIVER_NUM,
+            command_id: otp::cmd::OTP_READ_FIELD_ENTROPY_METADATA,
+            argument0: 3,
+            argument1: 0,
+            override_return: Some(command_return::failure(ErrorCode::Fail)),
+        });
+        assert_eq!(
+            field_entropy_already_provisioned(),
+            Err(CaliptraCompletionCode::OperationFailed)
+        );
     }
 }
 
@@ -1463,18 +1542,23 @@ pub async fn program_field_entropy<A: ScratchAlloc>(
     fe_prog(alloc, partition).await.map_err(map_mcu_err)
 }
 
-fn is_field_entropy_provisioned(state: u32) -> bool {
-    const FINISHED_MASK: u32 = 0x06db;
-    const ZEROIZED_MASK: u32 = 0x0924;
-
-    state & FINISHED_MASK == FINISHED_MASK && state & ZEROIZED_MASK == 0
-}
-
 pub fn field_entropy_already_provisioned() -> CaliptraCmdResult<bool> {
-    let state = Otp::<DefaultSyscalls>::new()
-        .read(otp::reg::FIELD_ENTROPY_STATE, 0)
-        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
-    Ok(is_field_entropy_provisioned(state))
+    // Match the 2.1 OTP controller's ZeroizationValidBound.
+    const ZEROIZATION_VALID_BOUND: u32 = 64 - 6;
+
+    let otp = Otp::<DefaultSyscalls>::new();
+    let mut all_provisioned = true;
+    for partition in 0..4 {
+        let (digest, marker) = otp
+            .read_field_entropy_metadata(partition)
+            .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+        let zeroized_bits = marker.count_ones();
+        if zeroized_bits != 0 && zeroized_bits < ZEROIZATION_VALID_BOUND {
+            return Err(CaliptraCompletionCode::OperationFailed);
+        }
+        all_provisioned &= digest != 0 && zeroized_bits < ZEROIZATION_VALID_BOUND;
+    }
+    Ok(all_provisioned)
 }
 
 pub fn vendor_pk_hash_status() -> CaliptraCmdResult<(u32, [u8; 16])> {
@@ -1511,9 +1595,7 @@ pub(crate) async fn zeroize_uds_fe() -> CaliptraCmdResult<()> {
         return Err(CaliptraCompletionCode::ZeroizeFailed);
     }
 
-    Otp::<DefaultSyscalls>::new()
-        .mark_field_entropy_zeroized()
-        .map_err(|_| CaliptraCompletionCode::ZeroizeFailed)
+    Ok(())
 }
 
 pub(crate) fn enter_rma(rma_token: &[u8; 16]) -> CaliptraCmdResult<()> {

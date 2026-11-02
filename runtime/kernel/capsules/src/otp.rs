@@ -10,7 +10,8 @@ use caliptra_mcu_registers_generated::fuses;
 use caliptra_mcu_registers_generated::fuses::{
     OTP_CPTRA_CORE_RUNTIME_SVN, OTP_CPTRA_CORE_SOC_MANIFEST_MAX_SVN,
     OTP_CPTRA_CORE_SOC_MANIFEST_SVN, OTP_CPTRA_CORE_VENDOR_PK_HASH_0,
-    OTP_CPTRA_CORE_VENDOR_PK_HASH_VALID, OWNER_SOC_MANIFEST_MIN_SVN,
+    OTP_CPTRA_CORE_VENDOR_PK_HASH_VALID, OWNER_SOC_MANIFEST_MIN_SVN, SECRET_PROD_PARTITION_0,
+    SECRET_PROD_PARTITION_1, SECRET_PROD_PARTITION_2, SECRET_PROD_PARTITION_3,
 };
 use caliptra_mcu_romtime::println;
 #[cfg(feature = "ocp-lock")]
@@ -53,6 +54,7 @@ pub mod cmd {
     pub const OTP_PROGRAM_HEK: u32 = 10;
     pub const OTP_ZERO_HEK: u32 = 11;
     pub const OTP_MARK_FIELD_ENTROPY_ZEROIZED: u32 = 12;
+    pub const OTP_READ_FIELD_ENTROPY_METADATA: u32 = 13; // (partition, 0=digest/1=marker)
 }
 
 pub mod reg {
@@ -571,6 +573,30 @@ impl Otp {
         }
     }
 
+    fn read_field_entropy_metadata(&self, partition: usize, field: usize) -> CommandReturn {
+        let partitions = [
+            SECRET_PROD_PARTITION_0,
+            SECRET_PROD_PARTITION_1,
+            SECRET_PROD_PARTITION_2,
+            SECRET_PROD_PARTITION_3,
+        ];
+        let Some(partition) = partitions.get(partition) else {
+            return CommandReturn::failure(ErrorCode::INVAL);
+        };
+        let offset = match field {
+            0 => partition.digest_offset,
+            1 => Some(partition.byte_offset + partition.byte_size - 8),
+            _ => None,
+        };
+        let Some(offset) = offset else {
+            return CommandReturn::failure(ErrorCode::INVAL);
+        };
+        match self.driver.read_dword(offset / 8) {
+            Ok(value) => CommandReturn::success_u32_u32(value as u32, (value >> 32) as u32),
+            Err(_) => CommandReturn::failure(ErrorCode::FAIL),
+        }
+    }
+
     /// Writes a word to an OTP word address.
     ///
     /// Only bits specified with `mask` are written.
@@ -683,6 +709,7 @@ impl SyscallDriver for Otp {
             #[cfg(feature = "ocp-lock")]
             cmd::OTP_ZERO_HEK => self.zero_hek(arg1, processid),
             cmd::OTP_MARK_FIELD_ENTROPY_ZEROIZED => self.mark_field_entropy_zeroized(),
+            cmd::OTP_READ_FIELD_ENTROPY_METADATA => self.read_field_entropy_metadata(arg1, arg2),
             _ => CommandReturn::failure(ErrorCode::NOSUPPORT),
         }
     }

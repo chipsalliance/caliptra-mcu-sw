@@ -1392,6 +1392,70 @@ fn test_mcu_mbox_ecdsa_cmk_commands() -> Result<()> {
 }
 
 #[test]
+#[cfg(not(feature = "fpga_realtime"))]
+fn test_fe_status_uses_partition_metadata_instead_of_vendor_bookkeeping() -> Result<()> {
+    use caliptra_mcu_registers_generated::fuses;
+
+    let provisioned = [1u64 << 32; 4];
+    let mut mixed = provisioned;
+    mixed[2] = 0;
+    let mut zeroized = [0u64; 4];
+    zeroized[3] = u64::MAX << 6;
+    let mut partial = [0u64; 4];
+    partial[3] = u64::MAX << 7;
+
+    // Synthetic digests are emulator-only; hardware must finalize them through FE_PROG.
+    for (digests, markers, bookkeeping, expected) in [
+        ([0u64; 4], [0u64; 4], 0x06dbu32, Some(0)),
+        (provisioned, [0; 4], 0, Some(1)),
+        (mixed, [0; 4], 0x06db, Some(0)),
+        (provisioned, zeroized, 0x06db, Some(0)),
+        (provisioned, partial, 0x06db, None),
+    ] {
+        let mut otp_memory = vec![0u8; 4096];
+        for (index, partition) in [
+            fuses::SECRET_PROD_PARTITION_0,
+            fuses::SECRET_PROD_PARTITION_1,
+            fuses::SECRET_PROD_PARTITION_2,
+            fuses::SECRET_PROD_PARTITION_3,
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let digest_offset = partition.digest_offset.unwrap();
+            otp_memory[digest_offset..digest_offset + 8]
+                .copy_from_slice(&digests[index].to_le_bytes());
+            let marker_offset = partition.byte_offset + partition.byte_size - 8;
+            otp_memory[marker_offset..marker_offset + 8]
+                .copy_from_slice(&markers[index].to_le_bytes());
+        }
+        let bookkeeping_offset = fuses::FIELD_ENTROPY_STATE.byte_offset;
+        otp_memory[bookkeeping_offset..bookkeeping_offset + 4]
+            .copy_from_slice(&bookkeeping.to_le_bytes());
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            otp_memory: Some(otp_memory),
+            ..Default::default()
+        });
+        hw.step_until(|hw| {
+            hw.mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+        let response = hw.mailbox_execute_req(McuFeStatusReq::default());
+        match expected {
+            Some(expected) => assert_eq!(response?.already_provisioned, expected),
+            None => assert!(response.is_err()),
+        }
+        assert_eq!(
+            &hw.read_otp_memory()[bookkeeping_offset..bookkeeping_offset + 4],
+            &bookkeeping.to_le_bytes()
+        );
+    }
+    Ok(())
+}
+
+#[test]
 fn test_fe_status_cmd_does_not_require_authorization() -> Result<()> {
     let mut hw = start_runtime_hw_model(TestParams {
         feature: Some("test-mcu-mbox-cmds"),
