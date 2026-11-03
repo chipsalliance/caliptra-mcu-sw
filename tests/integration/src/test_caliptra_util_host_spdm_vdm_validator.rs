@@ -13,9 +13,8 @@
 
 #[cfg(test)]
 mod test {
-    use crate::test::{
-        compile_runtime, start_runtime_hw_model, CustomCaliptraFw, TestParams, TEST_LOCK,
-    };
+    use crate::runtime::start_command_authorized_runtime;
+    use crate::test::{compile_runtime, CustomCaliptraFw, TestParams, TEST_LOCK};
     use caliptra_api::SocManager;
     use caliptra_mcu_builder::{CaliptraBuildArgs, CaliptraBuilder, FirmwareBinaries};
     use caliptra_mcu_debug_unlock_signer::DebugUnlockKeys;
@@ -303,7 +302,7 @@ mod test {
             .expect("Failed to write debug unlock keys");
         let keys_path = keys_file.path().to_str().unwrap().to_string();
 
-        let mut hw = start_runtime_hw_model(TestParams {
+        let mut hw = start_command_authorized_runtime(TestParams {
             feature: Some(TEST_FEATURE),
             i3c_port: Some(PortPicker::new().pick().unwrap()),
             debug_intent: true,
@@ -359,7 +358,7 @@ mod test {
         let keys_path = keys_file.path().to_str().unwrap().to_string();
 
         // --- Start hw_model with keys provisioned in fuses ---
-        let mut hw = start_runtime_hw_model(TestParams {
+        let mut hw = start_command_authorized_runtime(TestParams {
             feature: Some(TEST_FEATURE),
             custom_caliptra_fw: Some(caliptra_fw_svn7()),
             i3c_port: Some(PortPicker::new().pick().unwrap()),

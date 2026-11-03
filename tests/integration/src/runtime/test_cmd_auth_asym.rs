@@ -6,12 +6,15 @@
 //! Covers the five runtime-bootable authorized commands; the three rom_only
 //! commands are not covered (pre-existing harness limitation).
 
-use crate::runtime::{execute_authorized_req, execute_authorized_req_tampered};
-use crate::test::{compile_runtime, start_runtime_hw_model, CustomCaliptraFw, TestParams};
+use crate::runtime::{
+    execute_authorized_req, execute_authorized_req_tampered, start_command_authorized_runtime,
+};
+use crate::test::{compile_runtime, CustomCaliptraFw, TestParams};
 use anyhow::Result;
 use caliptra_mcu_builder::{CaliptraBuildArgs, CaliptraBuilder, FirmwareBinaries};
 use caliptra_mcu_command_auth_challenge_signer::AUTH_CMD_NONCE_LEN;
 use caliptra_mcu_hw_model::{DefaultHwModel, LifecycleControllerState, McuHwModel};
+use caliptra_mcu_mbox_common::authorization::{AuthorizationBlock, AuthorizationMetadata};
 use caliptra_mcu_mbox_common::messages::{
     FuseLockPartitionReq, FuseReadReq, FuseWriteReq, HybridSignature, MailboxReqHeader,
     McuFeProgReq, ProvisionOwnerPkHashReq, ProvisionVendorPkHashReq,
@@ -48,7 +51,7 @@ fn boot_mcu_mbox_hw() -> DefaultHwModel {
             (fw, pk_hash_arr, manifest)
         };
 
-    let mut hw = start_runtime_hw_model(TestParams {
+    let mut hw = start_command_authorized_runtime(TestParams {
         feature: Some("test-mcu-mbox-cmds"),
         custom_caliptra_fw: Some(CustomCaliptraFw {
             fw_bytes: caliptra_fw,
@@ -227,9 +230,9 @@ fn test_fe_prog_auth_negative_gates() -> Result<()> {
     let mut hw = boot_mcu_mbox_hw();
 
     // Byte offsets into the assembled authorized frame:
-    //   [ checksum | target | body | nonce(48) | ecc_x(48) | ecc_y(48) | mldsa_pub(2592) | sig(HybridSignature) ]
+    //   [ checksum | target | body | metadata(24) | nonce(48) | ecc_x(48) | ecc_y(48) | mldsa_pub(2592) | sig(HybridSignature) ]
     let body_len = size_of::<McuFeProgReq>() + size_of::<u32>();
-    let nonce_off = body_len;
+    let nonce_off = body_len + core::mem::offset_of!(AuthorizationBlock, nonce);
     let ecc_pub_x_off = nonce_off + AUTH_CMD_NONCE_LEN;
     let sig_off = ecc_pub_x_off + 48 + 48 + 2592; // after ecc_x | ecc_y | mldsa_pub
     let ecc_r_off = sig_off; // first byte of the ECDSA signature (r||s)
@@ -271,7 +274,7 @@ fn test_fuse_read_auth_negative_gates() -> Result<()> {
     let mut hw = boot_mcu_mbox_hw();
 
     let body_len = size_of::<FuseReadReq>() + size_of::<u32>();
-    let nonce_off = body_len;
+    let nonce_off = body_len + core::mem::offset_of!(AuthorizationBlock, nonce);
     let ecc_pub_x_off = nonce_off + AUTH_CMD_NONCE_LEN;
     let sig_off = ecc_pub_x_off + 48 + 48 + 2592; // after ecc_x | ecc_y | mldsa_pub
     let ecc_r_off = sig_off;
@@ -320,11 +323,10 @@ fn test_auth_wire_sizes_kat() {
     assert_eq!(AUTH_CMD_NONCE_LEN, 48);
 
     // Device-side canonical authorized FE_PROG request (matches FeProgVdmReq /
-    // FeProgRequest, which the firmware/host assert == 7464):
-    //   partition(4) | nonce(48) | ecc_x(48) | ecc_y(48) | mldsa_pub(2592) | ecc_sig(96) | mldsa_sig(4628)
-    let fe_prog_authed_body =
-        size_of::<u32>() + AUTH_CMD_NONCE_LEN + 48 + 48 + 2592 + size_of::<HybridSignature>();
-    assert_eq!(fe_prog_authed_body, 7464);
+    // FeProgRequest, which the firmware/host assert == 7488):
+    //   partition(4) | metadata(24) | nonce(48) | ecc_x(48) | ecc_y(48) | mldsa_pub(2592) | ecc_sig(96) | mldsa_sig(4628)
+    let fe_prog_authed_body = size_of::<u32>() + size_of::<AuthorizationBlock>();
+    assert_eq!(fe_prog_authed_body, 7488);
 
     // The canonical MCI envelope adds a target ID after the checksum. The
     // command-specific request remains hdr(4) + partition(4).
@@ -337,19 +339,20 @@ fn test_auth_wire_sizes_kat() {
 // this, since a flip also trips a downstream signature check).
 // ===========================================================================
 
-/// A second, valid-but-unauthorized vendor keypair (distinct from the device
+/// A second, valid-but-unauthorized command keypair (distinct from the device
 /// anchor's TEST_* keypair). `[0x02; 48]` is a valid P-384 scalar; the seed is 32 bytes.
 const OTHER_ECC_PRIV_KEY: [u8; 48] = [0x02; 48];
 const OTHER_MLDSA_SEED: [u8; 32] = *b"caliptra-mcu-OTHER-test-seed-002";
 
 /// ANCHOR isolation: sign FE_PROG with a DIFFERENT self-consistent keypair and
 /// present that keypair's own public keys + a freshly issued nonce. Steps 1/3/4
-/// all pass under the presented keys — only step-0 (SHA-384(pubkeys)==AUTH_PK_HASH)
+/// all pass under the presented keys — only the manifest key-digest check
 /// can reject. If the anchor gate were removed, this would fail-open.
 #[test]
 fn test_fe_prog_auth_key_substitution_rejected() -> Result<()> {
-    use crate::runtime::{
-        get_auth_cmd_challenge, send_authorized_bytes, sign_auth_cmd_challenge_with,
+    use crate::runtime::{get_auth_cmd_challenge, send_authorized_bytes};
+    use caliptra_mcu_command_auth_challenge_signer::{
+        AsymmetricCommandAuthorizer, CommandAuthChallengeSigner,
     };
     use caliptra_mcu_mbox_common::messages::McuFeProgReq;
     use zerocopy::IntoBytes;
@@ -364,17 +367,27 @@ fn test_fe_prog_auth_key_substitution_rejected() -> Result<()> {
     let challenge = get_auth_cmd_challenge(&mut hw)?;
 
     // Fully valid frame under the attacker keypair (its pubkeys travel on the wire).
-    let tail = sign_auth_cmd_challenge_with(
-        &OTHER_ECC_PRIV_KEY,
-        &OTHER_MLDSA_SEED,
-        &challenge,
+    let signer = AsymmetricCommandAuthorizer::new(&OTHER_ECC_PRIV_KEY, &OTHER_MLDSA_SEED)?;
+    let metadata = AuthorizationMetadata::default();
+    let signature = signer.authorize_with_metadata(
         cmd_id,
         &req.as_mut_bytes()[size_of::<MailboxReqHeader>()..],
+        &metadata,
+        &challenge,
     )?;
+    let (ecc_pub_x, ecc_pub_y, mldsa_pub) = signer.public_keys()?;
+    let tail = AuthorizationBlock {
+        metadata,
+        nonce: challenge,
+        ecc_pub_x,
+        ecc_pub_y,
+        mldsa_pub,
+        signature,
+    };
     let mut auth_cmd = vec![0u8; size_of::<MailboxReqHeader>()];
     auth_cmd.extend_from_slice(&cmd_id.to_le_bytes());
     auth_cmd.extend_from_slice(&req.as_mut_bytes()[size_of::<MailboxReqHeader>()..]);
-    auth_cmd.extend_from_slice(&tail);
+    auth_cmd.extend_from_slice(tail.as_bytes());
 
     let r = send_authorized_bytes::<McuFeProgReq>(&mut hw, &mut auth_cmd);
     assert_rejected_not_timeout(r, "ANCHOR key-substitution");
@@ -386,7 +399,9 @@ fn test_fe_prog_auth_key_substitution_rejected() -> Result<()> {
 /// `.take()` of the stored challenge can reject the replay.
 #[test]
 fn test_fe_prog_auth_replay_rejected() -> Result<()> {
-    use crate::runtime::{get_auth_cmd_challenge, send_authorized_bytes, sign_auth_cmd_challenge};
+    use crate::runtime::{
+        get_auth_cmd_challenge, send_authorized_bytes, sign_auth_cmd_with_metadata,
+    };
     use caliptra_mcu_mbox_common::messages::McuFeProgReq;
     use zerocopy::IntoBytes;
 
@@ -398,7 +413,8 @@ fn test_fe_prog_auth_replay_rejected() -> Result<()> {
     };
     let cmd_id: u32 = <McuFeProgReq as caliptra_mcu_mbox_common::messages::Request>::ID.into();
     let challenge = get_auth_cmd_challenge(&mut hw)?;
-    let tail = sign_auth_cmd_challenge(
+    let tail = sign_auth_cmd_with_metadata(
+        &AuthorizationMetadata::default(),
         &challenge,
         cmd_id,
         &req.as_mut_bytes()[size_of::<MailboxReqHeader>()..],

@@ -439,6 +439,21 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1fd0f2584146f6f2ef48085050886acf353beff7305ebd1ae69500e27c67f64b"
 
 [[package]]
+name = "caliptra-api"
+version = "0.1.0"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=fbbe33073514da92870f6c2857341db6402d737a#fbbe33073514da92870f6c2857341db6402d737a"
+dependencies = [
+ "bitflags 2.11.1",
+ "caliptra-api-types",
+ "caliptra-emu-types",
+ "caliptra-error",
+ "caliptra-image-types",
+ "caliptra-registers",
+ "caliptra-ureg",
+ "zerocopy",
+]
+
+[[package]]
 name = "caliptra-api-types"
 version = "0.1.0"
 source = "git+https://github.com/chipsalliance/caliptra-sw?rev=fbbe33073514da92870f6c2857341db6402d737a#fbbe33073514da92870f6c2857341db6402d737a"
@@ -466,6 +481,11 @@ dependencies = [
  "caliptra-registers",
  "ufmt",
 ]
+
+[[package]]
+name = "caliptra-emu-types"
+version = "0.1.0"
+source = "git+https://github.com/chipsalliance/caliptra-sw?rev=fbbe33073514da92870f6c2857341db6402d737a#fbbe33073514da92870f6c2857341db6402d737a"
 
 [[package]]
 name = "caliptra-error"
@@ -618,10 +638,19 @@ name = "caliptra-mcu-emulator-state"
 version = "0.1.0"
 
 [[package]]
+name = "caliptra-mcu-flash-image"
+version = "0.1.0"
+dependencies = [
+ "zerocopy",
+]
+
+[[package]]
 name = "caliptra-mcu-mbox-common"
 version = "0.1.0"
 dependencies = [
+ "caliptra-api",
  "caliptra-image-types",
+ "caliptra-mcu-flash-image",
  "caliptra-mcu-registers-generated",
  "mcu-caliptra-api",
  "zerocopy",

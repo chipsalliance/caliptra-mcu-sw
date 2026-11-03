@@ -18,7 +18,7 @@ use mcu_caliptra_api::{
 };
 
 use crate::caliptra_cmd_handler::CaliptraCmdBackend;
-use crate::mcu_mbox::cmd_auth_mock;
+use crate::mcu_mbox::cmd_auth;
 
 // Kernel chunked-mailbox state rejects other processes; this flag serializes this
 // app's DebugUnlock stream and lets abort clean up the in-flight mailbox request.
@@ -30,7 +30,7 @@ type EnabledVdm = CaliptraVdm<
     'static,
     CaliptraCmdBackend,
     CaliptraVdmStreamHook,
-    cmd_auth_mock::MockCommandAuthorizer,
+    cmd_auth::RuntimeCommandAuthorizer,
 >;
 
 /// Common backend type for MCTP and DOE so the SPDM stack is instantiated once.
@@ -41,7 +41,7 @@ impl AppVdmBackend {
     pub fn enabled(
         commands: &'static CaliptraCmdBackend,
         stream: &'static CaliptraVdmStreamHook,
-        authorization: &'static cmd_auth_mock::MockCommandAuthorizer,
+        authorization: &'static cmd_auth::RuntimeCommandAuthorizer,
     ) -> Self {
         Self(Some(CaliptraVdm::new(commands, stream, authorization)))
     }

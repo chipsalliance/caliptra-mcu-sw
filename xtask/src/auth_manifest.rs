@@ -26,6 +26,10 @@ pub struct AuthManifestKeyPaths {
     /// Path to Owner Manifest Public Key PEM file
     #[arg(long = "owner-man-pub-key", value_name = "OWNER_MAN_PUB_KEY")]
     pub owner_man_pub_key: Option<String>,
+
+    /// SHA-384 command-key digest for the Vendor+Owner command-authorization IME.
+    #[arg(long = "command-auth-key-digest", value_name = "HEX_DIGEST")]
+    pub command_auth_key_digest: Option<String>,
 }
 
 /// Subcommands for creating and inspecting authorization manifests.
@@ -98,6 +102,20 @@ pub enum AuthManifestCommands {
     },
 }
 
+pub(crate) fn parse_command_auth_key_digest(value: Option<&str>) -> Result<Option<[u8; 48]>> {
+    value
+        .map(|value| {
+            let bytes = hex::decode(value.strip_prefix("0x").unwrap_or(value))?;
+            <[u8; 48]>::try_from(bytes).map_err(|bytes| {
+                anyhow::anyhow!(
+                    "Command-authorization key digest must be 48 bytes, got {}",
+                    bytes.len()
+                )
+            })
+        })
+        .transpose()
+}
+
 /// Creates a signed or unsigned authorization manifest from SoC and MCU image configurations.
 pub fn create(
     soc_images: &[ImageCfg],
@@ -113,7 +131,11 @@ pub fn create(
         mcu_image_cfg: Some(mcu_image.clone()),
         soc_manifest_svn: svn,
         ..Default::default()
-    });
+    })
+    .with_command_auth_key_digests(
+        parse_command_auth_key_digest(key_paths.command_auth_key_digest.as_deref())?,
+        None,
+    )?;
 
     if let Some(req_path) = signing_request_path {
         let vendor_fw_path = key_paths.vendor_fw_pub_key.as_ref().map(PathBuf::from);
@@ -229,6 +251,27 @@ mod tests {
     struct Cli {
         #[command(subcommand)]
         cmd: AuthManifestCommands,
+    }
+
+    #[test]
+    fn command_auth_digest_requires_exact_sha384_bytes() {
+        assert_eq!(parse_command_auth_key_digest(None).unwrap(), None);
+        assert_eq!(
+            parse_command_auth_key_digest(Some(&"ab".repeat(48))).unwrap(),
+            Some([0xab; 48])
+        );
+        assert_eq!(
+            parse_command_auth_key_digest(Some(&format!("0x{}", "AB".repeat(48)))).unwrap(),
+            Some([0xab; 48])
+        );
+        for value in [
+            "".to_string(),
+            "ab".repeat(47),
+            "ab".repeat(49),
+            "zz".repeat(48),
+        ] {
+            assert!(parse_command_auth_key_digest(Some(&value)).is_err());
+        }
     }
 
     #[test]
