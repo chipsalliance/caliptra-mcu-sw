@@ -23,9 +23,9 @@ pub const SKIP_PARTITIONS: &[&str] = &[
     "LIFE_CYCLE",
 ];
 
-/// The default Caliptra Subsystem OTP memory map file.
+/// The default 2.1 Caliptra Subsystem OTP memory map file.
 pub const OTP_CTRL_MMAP_DEFAULT_PATH: &str =
-    "hw/caliptra-ss/src/fuse_ctrl/data/otp_ctrl_mmap.hjson";
+    "hw/rev-2_1/caliptra-ss/src/fuse_ctrl/data/otp_ctrl_mmap.hjson";
 
 /// Default fuse values for testing provisioning flows.
 pub const FUSE_VALUES_DEFAULT_PATH: &str = "provisioning/fuses/test.hjson";

@@ -581,6 +581,10 @@ name = "caliptra-mcu-emulator-state"
 version = "0.1.0"
 
 [[package]]
+name = "caliptra-mcu-hw-revision"
+version = "0.1.0"
+
+[[package]]
 name = "caliptra-mcu-mailbox-client"
 version = "0.1.0"
 dependencies = [
@@ -660,6 +664,7 @@ dependencies = [
 name = "caliptra-mcu-registers-generated"
 version = "0.1.0"
 dependencies = [
+ "caliptra-mcu-hw-revision",
  "tock-registers",
  "zeroize",
 ]

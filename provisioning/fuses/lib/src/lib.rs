@@ -3,8 +3,4 @@
 
 use caliptra_mcu_registers_generated::fuses::*;
 
-include!(concat!(
-    env!("CARGO_MANIFEST_DIR"),
-    "/../../../",
-    "target/provisioning/fuses/test.rs"
-));
+include!(concat!(env!("OUT_DIR"), "/test.rs"));
