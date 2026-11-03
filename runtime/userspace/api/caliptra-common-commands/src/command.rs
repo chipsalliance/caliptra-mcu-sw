@@ -1,9 +1,10 @@
 // Licensed under the Apache-2.0 license
 
 use crate::{CaliptraCmdHandler, CaliptraCmdResult, CaliptraCompletionCode, CommandAuthorizer};
+use caliptra_mcu_mbox_common::authorization::{AuthorizationBlock, AuthorizationMetadata};
 use caliptra_mcu_mbox_common::messages::{
-    CommandId, DotDisablePayload, DotLockPayload, DotRotatePayload, HybridSignature, SvnTarget,
-    AUTH_CMD_NONCE_LEN, MAX_FUSE_DATA_SIZE,
+    CommandId, DotDisablePayload, DotLockPayload, DotRotatePayload, SvnTarget, AUTH_CMD_NONCE_LEN,
+    MAX_FUSE_DATA_SIZE,
 };
 #[cfg(feature = "device-ownership-transfer")]
 use caliptra_mcu_mbox_common::messages::{
@@ -20,12 +21,7 @@ use zerocopy::IntoBytes;
 use zerocopy::{FromBytes, Immutable, KnownLayout};
 
 const U32_LEN: usize = core::mem::size_of::<u32>();
-const ECC_P384_COORD_LEN: usize = 48;
-const MLDSA87_PUB_KEY_LEN: usize = 2592;
-const AUTHORIZATION_TRAILER_LEN: usize = AUTH_CMD_NONCE_LEN
-    + 2 * ECC_P384_COORD_LEN
-    + MLDSA87_PUB_KEY_LEN
-    + core::mem::size_of::<HybridSignature>();
+const AUTHORIZATION_TRAILER_LEN: usize = core::mem::size_of::<AuthorizationBlock>();
 
 #[cfg(feature = "device-ownership-transfer")]
 const MAX_AUTHORIZED_PAYLOAD_LEN: usize = U32_LEN + core::mem::size_of::<DotRotatePayload>();
@@ -35,6 +31,10 @@ const MAX_AUTHORIZED_PAYLOAD_LEN: usize = U32_LEN + 48;
 /// Largest canonical AuthorizedCommand body, including its target ID.
 pub const MAX_AUTHORIZED_REQUEST_LEN: usize =
     U32_LEN + MAX_AUTHORIZED_PAYLOAD_LEN + AUTHORIZATION_TRAILER_LEN;
+pub const MAX_AUTHORIZED_MESSAGE_LEN: usize = U32_LEN
+    + MAX_AUTHORIZED_PAYLOAD_LEN
+    + core::mem::size_of::<AuthorizationMetadata>()
+    + AUTH_CMD_NONCE_LEN;
 
 #[repr(C)]
 #[derive(FromBytes, Immutable, KnownLayout)]
@@ -122,18 +122,6 @@ struct OcpLockEpochKeyReportPayload {
     algorithm: U32,
 }
 
-#[repr(C)]
-#[derive(FromBytes, Immutable, KnownLayout)]
-struct AuthorizationBlock {
-    nonce: [u8; AUTH_CMD_NONCE_LEN],
-    ecc_pub_x: [u8; ECC_P384_COORD_LEN],
-    ecc_pub_y: [u8; ECC_P384_COORD_LEN],
-    mldsa_pub: [u8; MLDSA87_PUB_KEY_LEN],
-    signature: HybridSignature,
-}
-
-const _: () = assert!(core::mem::size_of::<AuthorizationBlock>() == AUTHORIZATION_TRAILER_LEN);
-
 /// Result data produced by a transport-independent command executor.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CommandResponse {
@@ -206,6 +194,9 @@ where
             .generate_challenge(alloc)
             .await
             .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+        if challenge == [0; AUTH_CMD_NONCE_LEN] {
+            return Err(CaliptraCompletionCode::OperationFailed);
+        }
         output.copy_from_slice(&challenge);
         authorizer.set_challenge(challenge);
         return Ok(CommandResponse::Data(AUTH_CMD_NONCE_LEN));
@@ -231,11 +222,29 @@ where
 
     let payload_len = authorized_payload_len(target_id, request)?;
     let parsed = split_authorized_request(request, payload_len)?;
+    let authority = parsed
+        .authorization
+        .validate_format()
+        .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
+    if !authorizer.permits_authority(target_id, parsed.payload, authority) {
+        return Err(CaliptraCompletionCode::AccessDenied);
+    }
+    if !parsed.authorization.metadata.is_fleet() {
+        let ueid = authorizer
+            .device_ueid()
+            .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
+        parsed
+            .authorization
+            .metadata
+            .validate_target(&ueid)
+            .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
+    }
     authorizer
         .verify_signatures(
             alloc,
             target_id,
             parsed.payload,
+            &parsed.authorization.metadata,
             &parsed.authorization.nonce,
             &parsed.authorization.ecc_pub_x,
             &parsed.authorization.ecc_pub_y,

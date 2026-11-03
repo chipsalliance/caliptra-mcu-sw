@@ -15,7 +15,8 @@
 
 #[cfg(test)]
 pub mod test {
-    use crate::test::{start_runtime_hw_model, CustomCaliptraFw, TestParams, TEST_LOCK};
+    use crate::runtime::start_command_authorized_runtime;
+    use crate::test::{CustomCaliptraFw, TestParams, TEST_LOCK};
     use caliptra_api::SocManager;
     use caliptra_mailbox_client::{
         AsymmetricCommandAuthorizer, DebugUnlockKeys, LocalDebugUnlockSigner, TestConfig, Validator,
@@ -99,8 +100,7 @@ pub mod test {
         config
     }
 
-    // Hardcoded testing keys.
-    // These match the public keys hardcoded in the mock authorizer.
+    // Test keys whose Core-compatible digest is provisioned in the test Owner manifest.
     pub const TEST_ECC_PRIV_KEY: [u8; 48] = [
         61, 169, 230, 128, 175, 245, 161, 206, 169, 106, 62, 137, 129, 2, 134, 251, 59, 48, 48,
         169, 201, 36, 173, 47, 32, 49, 160, 125, 41, 64, 82, 169, 124, 175, 161, 252, 110, 167, 96,
@@ -228,7 +228,7 @@ pub mod test {
         let debug_unlock_signer = LocalDebugUnlockSigner::new(debug_unlock_keys);
 
         // --- Start hw_model with keys provisioned in fuses ---
-        let mut hw = start_runtime_hw_model(TestParams {
+        let mut hw = start_command_authorized_runtime(TestParams {
             feature: Some(TEST_FEATURE),
             rom_feature: fuse_suite.is_none().then_some("ocp-lock"),
             ocp_lock_en: fuse_suite.is_none(),
