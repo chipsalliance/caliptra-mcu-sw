@@ -87,7 +87,7 @@ flowchart TB
     subgraph PalLayer["Platform abstraction layer"]
         direction LR
         McuPal["McuSpdmPal<br/>cert store, measurements,<br/>..."]
-        PalTrait["SpdmPal traits<br/>alloc, transport,<br/> crypo, ..."]
+        PalTrait["SpdmPal traits<br/>alloc, transport,<br/> crypto, ..."]
         McuPal -. implements .-> PalTrait
     end
 
