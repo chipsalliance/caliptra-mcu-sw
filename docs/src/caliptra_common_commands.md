@@ -49,6 +49,7 @@ The following subcommands are assigned to the SPDM VDM IANA authorization-gated 
 | Fuse Revoke Vendor Public Key  | SPDM VDM IANA, MCI Mailbox | Revoke vendor public key.                          |
 | Fuse Revoke Vendor PK Hash     | SPDM VDM IANA, MCI Mailbox | Revoke vendor public key hash.                     |
 | Fuse Lock Partition            | SPDM VDM IANA, MCI Mailbox | Lock fuse partition.                               |
+| Zeroize UDS/FE                 | SPDM VDM IANA, MCI Mailbox | Zeroize UDS and field entropy without entering RMA. |
 | Zeroize UDS/FE and Enter RMA   | SPDM VDM IANA, MCI Mailbox | Zeroize UDS and field entropy, then enter RMA.     |
 | OCP LOCK Program HEK           | SPDM VDM IANA, MCI Mailbox | Program an unused HEK slot.                        |
 | OCP LOCK Zero HEK              | SPDM VDM IANA, MCI Mailbox | Permanently sanitize an unused HEK slot.           |
@@ -142,7 +143,8 @@ This table defines the bit assignment for every allocated command code. A respon
 | 15         | `OcpLockProgramHek`          | Implemented |
 | 16         | `OcpLockZeroHek`             | Implemented |
 | 17         | `ZeroizeUdsFeAndEnterRma`     | Implemented |
-| 18:31      | Reserved                     | —           |
+| 18         | `ZeroizeUdsFe`                | Implemented |
+| 19:31      | Reserved                     | —           |
 
 The authorized-subcommand assignments are stable capability indexes; they are not transport command IDs. A responder sets a bit only when that subcommand is implemented under `AuthorizedCommand`. Authorization, lifecycle, or policy restrictions do not clear an implementation capability bit; execution can still return `AccessDenied`, `PolicyViolation`, or `InvalidState`.
 
@@ -605,6 +607,16 @@ Revokes a vendor public key hash.
 Locks a fuse partition.
 
 **Request Payload**: `partition:u32 | AuthorizationBlock`
+
+**Response Payload**: Empty
+
+### Zeroize UDS and Field Entropy
+
+Zeroizes the UDS and all four field-entropy partitions and records the
+field-entropy partitions as zeroized. This operation does not request or
+implicitly enter RMA.
+
+**Request Payload**: `AuthorizationBlock`
 
 **Response Payload**: Empty
 

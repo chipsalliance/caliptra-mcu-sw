@@ -684,6 +684,11 @@ pub trait CaliptraCmdHandler {
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 
+    /// Zeroize UDS and all field entropy partitions.
+    async fn zeroize_uds_fe(&self) -> CaliptraCmdResult<()> {
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
     /// Zeroize UDS and field entropy, then transition the device to RMA.
     async fn zeroize_uds_fe_and_enter_rma(&self, rma_token: &[u8; 16]) -> CaliptraCmdResult<()> {
         let _ = rma_token;

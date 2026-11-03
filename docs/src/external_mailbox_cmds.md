@@ -101,6 +101,7 @@ framing and is not changed by this Runtime ABI.
 | MC_HEK_STATUS                 | 0x4D48_4B53 ("MHKS") | Reports used HEK slots and the total number of configured HEK slots.                    |
 | MC_FUSE_REVOKE_VENDOR_PUB_KEY | 0x4D52_564B ("MRVK") | Target ID under `MC_AUTHORIZED_COMMAND`; see [fuses spec](fuses.md).                    |
 | MC_FUSE_REVOKE_VENDOR_PK_HASH | 0x5256_4b48 ("RVKH") | Target ID under `MC_AUTHORIZED_COMMAND`; see [fuses spec](fuses.md).                    |
+| MC_ZEROIZE_UDS_FE             | 0x4D5A_5546 ("MZUF") | Target ID under `MC_AUTHORIZED_COMMAND`; zeroizes UDS and field entropy without entering RMA. |
 | MC_ZEROIZE_UDS_FE_AND_ENTER_RMA | 0x4D5A_524D ("MZRM") | Target ID under `MC_AUTHORIZED_COMMAND`; zeroizes UDS and field entropy, then requests entry into RMA. |
 | MC_DEVICE_OWNERSHIP_TRANSFER  | 0x0000_0011          | Native Device Ownership Transfer family; subcommand is carried in mailbox SRAM.         |
 | MC_OCP_LOCK                   | 0x0000_0013          | Native OCP LOCK family; subcommand is carried in mailbox SRAM.                          |
@@ -500,6 +501,19 @@ of configured HEK slots. This command does not require authorization.
 Command Code: `0x4D48_4B53` ("MHKS")
 
 Payload semantics are defined by [HEK Status](caliptra_common_commands.md#hek-status).
+
+### MC_ZEROIZE_UDS_FE
+
+Zeroizes the UDS and all four field-entropy partitions and records the
+field-entropy partitions as zeroized. This command never requests or
+implicitly enters RMA.
+
+Command Code: `0x4D5A_5546` ("MZUF")
+
+This command requires the authorization flow described in
+[Authorization-Gated Subcommand Wrapper](caliptra_common_commands.md#authorization-gated-subcommand-wrapper).
+Payload semantics are defined by
+[Zeroize UDS and Field Entropy](caliptra_common_commands.md#zeroize-uds-and-field-entropy).
 
 ### MC_ZEROIZE_UDS_FE_AND_ENTER_RMA
 

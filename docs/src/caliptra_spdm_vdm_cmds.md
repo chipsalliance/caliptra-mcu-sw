@@ -104,6 +104,7 @@ The following subcommands are assigned to the SPDM VDM IANA authorization-gated 
 | `0x4D52_564B` (`MRVK`) | FuseRevokeVendorPubKey     | Supported     | Revoke vendor public key.                           |
 | `0x5256_4B48` (`RVKH`) | FuseRevokeVendorPkHash     | Supported     | Revoke vendor public key hash.                      |
 | `0x4946_504B` (`IFPK`) | FuseLockPartition          | Supported     | Lock fuse partition.                                |
+| `0x4D5A_5546` (`MZUF`) | ZeroizeUdsFe                | Supported     | Zeroize UDS and field entropy without entering RMA. |
 | `0x4D5A_524D` (`MZRM`) | ZeroizeUdsFeAndEnterRma    | Supported     | Zeroize UDS and field entropy, then enter RMA.      |
 | `0x4F4C_5048` (`OLPH`) | OcpLockProgramHek          | Supported     | Program an unused HEK slot.                         |
 | `0x4F4C_5A48` (`OLZH`) | OcpLockZeroHek             | Supported     | Permanently sanitize an unused HEK slot.            |
@@ -260,11 +261,14 @@ mismatches return `AccessDenied`; operational and resource failures retain
 their normal completion codes. Version 1 requires coordinated host, Runtime,
 and manifest-key-digest updates; there is no legacy hash or trailer fallback.
 
+`ZeroizeUdsFe` reports `ZeroizeFailed` if the zeroization command fails. It
+never requests an RMA transition.
+
 `ZeroizeUdsFeAndEnterRma` reports `ZeroizeFailed` if the zeroization command
 fails or the kernel cannot confirm by OTP readback that UDS and all field
-entropy partitions are zeroized. In that case, RMA is not attempted. It reports
-`RmaTransitionFailed` if zeroization is confirmed but the lifecycle-controller
-transition to RMA fails.
+entropy partitions are zeroized. In that case, RMA is not attempted. It
+reports `RmaTransitionFailed` if zeroization is confirmed but the
+lifecycle-controller transition to RMA fails.
 
 ### Implemented Subcommand Payloads
 
@@ -281,6 +285,7 @@ operations additionally prefix their FourCC as described above.
 | MRVK | `reserved:u32 \|\| slot:u32 \|\| key_type:u32 \|\| key_index:u32`; reserved must be zero | 16 |
 | RVKH | `reserved:u32 \|\| slot:u32`; reserved must be zero | 8 |
 | IFPK | `partition:u32` | 4 |
+| MZUF | Empty | 0 |
 | MZRM | `rma_token:u8[16]` | 16 |
 | OLPH | `hek_slot:u32`, slot 0 through 7 | 4 |
 | OLZH | `hek_slot:u32`, slot 0 through 7 | 4 |

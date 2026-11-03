@@ -170,6 +170,7 @@ impl CommandId {
     pub const MC_HEK_STATUS: Self = Self(0x4D48_4B53); // "MHKS"
     pub const MC_FUSE_REVOKE_VENDOR_PUB_KEY: Self = Self(0x4D52_564B); // "MRVK"
     pub const MC_FUSE_REVOKE_VENDOR_PK_HASH: Self = Self(0x5256_4b48); // "RVKH"
+    pub const MC_ZEROIZE_UDS_FE: Self = Self(0x4D5A_5546); // "MZUF"
     pub const MC_ZEROIZE_UDS_FE_AND_ENTER_RMA: Self = Self(0x4D5A_524D); // "MZRM"
 
     // Certificate commands
@@ -281,6 +282,7 @@ pub enum McuMailboxReq {
     ProvisionVendorPkHash(ProvisionVendorPkHashReq),
     ProvisionOwnerPkHash(ProvisionOwnerPkHashReq),
     FuseRevokeVendorPkHash(FuseRevokeVendorPkHashReq),
+    ZeroizeUdsFe(ZeroizeUdsFeReq),
     ZeroizeUdsFeAndEnterRma(ZeroizeUdsFeAndEnterRmaReq),
     // Certificate commands
     ExportAttestedCsr(ExportAttestedCsrReq),
@@ -371,6 +373,7 @@ impl McuMailboxReq {
             McuMailboxReq::ProvisionVendorPkHash(req) => Ok(req.as_bytes()),
             McuMailboxReq::ProvisionOwnerPkHash(req) => Ok(req.as_bytes()),
             McuMailboxReq::FuseRevokeVendorPkHash(req) => Ok(req.as_bytes()),
+            McuMailboxReq::ZeroizeUdsFe(req) => Ok(req.as_bytes()),
             McuMailboxReq::ZeroizeUdsFeAndEnterRma(req) => Ok(req.as_bytes()),
             McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_bytes()),
             McuMailboxReq::DpeSignerContextCert(req) => Ok(req.as_bytes()),
@@ -458,6 +461,7 @@ impl McuMailboxReq {
             McuMailboxReq::ProvisionVendorPkHash(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::ProvisionOwnerPkHash(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FuseRevokeVendorPkHash(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::ZeroizeUdsFe(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::ZeroizeUdsFeAndEnterRma(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::DpeSignerContextCert(req) => Ok(req.as_mut_bytes()),
@@ -545,6 +549,7 @@ impl McuMailboxReq {
             McuMailboxReq::ProvisionVendorPkHash(_) => CommandId::MC_PROVISION_VENDOR_PK_HASH,
             McuMailboxReq::ProvisionOwnerPkHash(_) => CommandId::MC_PROVISION_OWNER_PK_HASH,
             McuMailboxReq::FuseRevokeVendorPkHash(_) => CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH,
+            McuMailboxReq::ZeroizeUdsFe(_) => CommandId::MC_ZEROIZE_UDS_FE,
             McuMailboxReq::ZeroizeUdsFeAndEnterRma(_) => CommandId::MC_ZEROIZE_UDS_FE_AND_ENTER_RMA,
             McuMailboxReq::ExportAttestedCsr(_) => CommandId::MC_EXPORT_ATTESTED_CSR,
             McuMailboxReq::DpeSignerContextCert(_) => CommandId::MC_DPE_SIGNER_CONTEXT_CERT,
@@ -655,6 +660,7 @@ pub enum McuMailboxResp {
     ProvisionVendorPkHash(ProvisionVendorPkHashResp),
     ProvisionOwnerPkHash(ProvisionOwnerPkHashResp),
     FuseRevokeVendorPkHash(FuseRevokeVendorPkHashResp),
+    ZeroizeUdsFe(ZeroizeUdsFeResp),
     ZeroizeUdsFeAndEnterRma(ZeroizeUdsFeAndEnterRmaResp),
     // Certificate commands
     GetDpeCertChain(GetDpeCertChainResp),
@@ -799,6 +805,7 @@ impl McuMailboxResp {
             McuMailboxResp::ProvisionVendorPkHash(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::ProvisionOwnerPkHash(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FuseRevokeVendorPkHash(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::ZeroizeUdsFe(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::ZeroizeUdsFeAndEnterRma(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::GetDpeCertChain(resp) => resp.as_bytes_partial(),
             McuMailboxResp::GetCertChainInfo(resp) => Ok(resp.as_bytes()),
@@ -880,6 +887,7 @@ impl McuMailboxResp {
             McuMailboxResp::ProvisionVendorPkHash(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::ProvisionOwnerPkHash(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FuseRevokeVendorPkHash(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::ZeroizeUdsFe(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::ZeroizeUdsFeAndEnterRma(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::GetDpeCertChain(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::GetCertChainInfo(resp) => Ok(resp.as_mut_bytes()),
@@ -2297,6 +2305,26 @@ pub struct ProvisionVendorPkHashResp {
 }
 impl Response for ProvisionVendorPkHashResp {}
 
+/// MC_ZEROIZE_UDS_FE request.
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct ZeroizeUdsFeReq {
+    pub hdr: MailboxReqHeader,
+}
+
+impl Request for ZeroizeUdsFeReq {
+    const ID: CommandId = CommandId::MC_ZEROIZE_UDS_FE;
+    type Resp = ZeroizeUdsFeResp;
+}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct ZeroizeUdsFeResp {
+    pub hdr: MailboxRespHeader,
+}
+
+impl Response for ZeroizeUdsFeResp {}
+
 /// MC_ZEROIZE_UDS_FE_AND_ENTER_RMA request.
 #[repr(C)]
 #[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
@@ -3237,6 +3265,8 @@ mod tests {
             core::mem::size_of::<MailboxRespHeader>() + 2 * core::mem::size_of::<u32>()
         );
         assert_eq!(CommandId::MC_PROVISION_OWNER_PK_HASH.0, 0x504F_504B); // "POPK"
+        assert_eq!(CommandId::MC_ZEROIZE_UDS_FE.0, 0x4D5A_5546); // "MZUF"
+        assert_eq!(size_of::<ZeroizeUdsFeReq>(), size_of::<MailboxReqHeader>());
         assert_eq!(CommandId::MC_ZEROIZE_UDS_FE_AND_ENTER_RMA.0, 0x4D5A_524D); // "MZRM"
         assert_eq!(
             size_of::<ZeroizeUdsFeAndEnterRmaReq>(),

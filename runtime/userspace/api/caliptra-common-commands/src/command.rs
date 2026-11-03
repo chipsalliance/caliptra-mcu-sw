@@ -338,6 +338,10 @@ where
                 .await?;
             Ok(CommandResponse::Empty)
         }
+        value if value == CommandId::MC_ZEROIZE_UDS_FE.0 => {
+            commands.zeroize_uds_fe().await?;
+            Ok(CommandResponse::Empty)
+        }
         value if value == CommandId::MC_ZEROIZE_UDS_FE_AND_ENTER_RMA.0 => {
             let payload = ZeroizeUdsFeAndEnterRmaPayload::ref_from_bytes(parsed.payload)
                 .map_err(|_| CaliptraCompletionCode::InvalidPayloadSize)?;
@@ -502,6 +506,7 @@ fn authorized_payload_len(target_id: u32, request: &[u8]) -> CaliptraCmdResult<u
         value if value == CommandId::MC_FUSE_WRITE.0 => {
             Ok(core::mem::size_of::<FuseWritePayload>())
         }
+        value if value == CommandId::MC_ZEROIZE_UDS_FE.0 => Ok(0),
         value if value == CommandId::MC_ZEROIZE_UDS_FE_AND_ENTER_RMA.0 => {
             Ok(core::mem::size_of::<ZeroizeUdsFeAndEnterRmaPayload>())
         }
