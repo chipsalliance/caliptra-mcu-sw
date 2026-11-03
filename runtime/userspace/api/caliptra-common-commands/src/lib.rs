@@ -5,6 +5,7 @@
 
 pub mod command;
 
+use caliptra_mcu_mbox_common::authorization::{AuthorizationMetadata, CommandAuthority};
 use caliptra_mcu_mbox_common::messages::{
     DotDisablePayload, DotLockPayload, DotOverrideChallengePayload, DotOverridePayload,
     DotRotatePayload, DotStatus, DotUnlockPayload, HybridSignature, SvnTarget, AUTH_CMD_NONCE_LEN,
@@ -713,6 +714,19 @@ pub struct AuthorizationError;
 pub type AuthorizationResult<T> = Result<T, AuthorizationError>;
 
 pub trait CommandAuthorizer {
+    fn permits_authority(
+        &self,
+        _cmd_id: u32,
+        _payload: &[u8],
+        authority: CommandAuthority,
+    ) -> bool {
+        authority == CommandAuthority::Owner
+    }
+
+    fn device_ueid(&self) -> AuthorizationResult<[u8; 16]> {
+        Err(AuthorizationError)
+    }
+
     /// Generate the one-use challenge returned by `MACC`.
     async fn generate_challenge<Alloc: ScratchAlloc>(
         &self,
@@ -725,31 +739,16 @@ pub trait CommandAuthorizer {
         Ok(challenge)
     }
 
-    /// Verify signatures over a command using the stored challenge.
-    ///
-    /// This is transport-agnostic and is the SINGLE step-1 gate shared by the
-    /// mailbox and SPDM VDM paths: the implementation consumes
-    /// the stored one-time challenge via `take()`, redundantly/constant-time
-    /// compares it against the wire `nonce`, then verifies the hybrid signature
-    /// with the wire-carried public keys (the device-side anchor check lives in
-    /// `device_ops`).
-    ///
-    /// Consumes the stored challenge (one-time use) on any attempt.
-    ///
-    /// # Arguments
-    /// * `cmd_id` - Raw command identifier (u32, serialized big-endian in verification)
-    /// * `payload` - Command-specific payload bytes
-    /// * `nonce` - 48-byte freshness nonce carried on the wire (compared to the
-    ///   stored one-time challenge)
-    /// * `ecc_pub_x`/`ecc_pub_y`/`mldsa_pub` - verifier public keys carried on the
-    ///   wire (hash-anchored device-side before use)
-    /// * `sig` - The hybrid signature received from the host
+    /// Validate manifest-backed keys and both signatures, consuming a live
+    /// challenge when the signed nonce is nonzero. Authority and UEID checks
+    /// run before this; an all-zero nonce selects replayable Offline authorization.
     #[allow(clippy::too_many_arguments)]
     async fn verify_signatures<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         cmd_id: u32,
         payload: &[u8],
+        metadata: &AuthorizationMetadata,
         nonce: &[u8; AUTH_CMD_NONCE_LEN],
         ecc_pub_x: &[u8; 48],
         ecc_pub_y: &[u8; 48],

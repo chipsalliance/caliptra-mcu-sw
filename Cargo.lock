@@ -1756,7 +1756,9 @@ dependencies = [
 name = "caliptra-mcu-mbox-common"
 version = "0.1.0"
 dependencies = [
+ "caliptra-api",
  "caliptra-image-types",
+ "caliptra-mcu-flash-image",
  "caliptra-mcu-registers-generated",
  "mcu-caliptra-api",
  "zerocopy",

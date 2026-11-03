@@ -962,6 +962,7 @@ mod tests {
         sig.mldsa_sig.fill(0x33);
 
         let pvpk = fuse::ProvisionVendorPkHashRequest {
+            metadata: Default::default(),
             slot: 0x0102_0304,
             hash: [0xA5; 48],
             sig: sig.clone(),
@@ -971,6 +972,7 @@ mod tests {
             mldsa_pub: [0; fuse::AUTH_PUB_MLDSA_SIZE],
         };
         let mcms = fuse::FuseIncreaseMinSvnRequest {
+            metadata: Default::default(),
             flags: 0x1122_3344,
             target: 0x99AA_BBCC,
             svn: 0x5566_7788,
@@ -981,6 +983,7 @@ mod tests {
             mldsa_pub: [0; fuse::AUTH_PUB_MLDSA_SIZE],
         };
         let mrvk = fuse::FuseRevokeVendorPubKeyRequest {
+            metadata: Default::default(),
             reserved: 0x0102_0304,
             vendor_pk_hash_slot: 0x1112_1314,
             key_type: 0x2122_2324,
@@ -992,6 +995,7 @@ mod tests {
             mldsa_pub: [0; fuse::AUTH_PUB_MLDSA_SIZE],
         };
         let rvkh = fuse::FuseRevokeVendorPkHashRequest {
+            metadata: Default::default(),
             reserved: 0x4142_4344,
             vendor_pk_hash_slot: 0x5152_5354,
             sig: sig.clone(),
@@ -1001,6 +1005,7 @@ mod tests {
             mldsa_pub: [0; fuse::AUTH_PUB_MLDSA_SIZE],
         };
         let ifpk = fuse::FuseLockPartitionRequest {
+            metadata: Default::default(),
             partition: 0x6162_6364,
             sig: sig.clone(),
             nonce: [0; fuse::AUTH_CMD_CHALLENGE_SIZE],
@@ -1009,6 +1014,7 @@ mod tests {
             mldsa_pub: [0; fuse::AUTH_PUB_MLDSA_SIZE],
         };
         let popk = fuse::ProvisionOwnerPkHashRequest {
+            metadata: Default::default(),
             hash: [0xC3; 48],
             sig: sig.clone(),
             nonce: [0; fuse::AUTH_CMD_CHALLENGE_SIZE],
@@ -1030,6 +1036,9 @@ mod tests {
             ];
             packet.extend_from_slice(&command_id.to_le_bytes());
             packet.extend_from_slice(fields);
+            packet.extend_from_slice(&1u32.to_le_bytes());
+            packet.extend_from_slice(&2u32.to_le_bytes());
+            packet.extend_from_slice(&[0; 16]);
             packet.extend_from_slice(&[0u8; fuse::AUTH_CMD_CHALLENGE_SIZE]);
             packet.extend_from_slice(&[0u8; fuse::AUTH_PUB_ECC_COORD_SIZE]);
             packet.extend_from_slice(&[0u8; fuse::AUTH_PUB_ECC_COORD_SIZE]);
@@ -1127,6 +1136,7 @@ mod tests {
     #[test]
     fn authorized_command_rejects_trailing_response_and_small_output_buffer() {
         let req = fuse::FuseIncreaseMinSvnRequest {
+            metadata: Default::default(),
             flags: 0,
             target: 0,
             svn: 1,

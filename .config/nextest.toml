@@ -58,6 +58,7 @@ default-filter = """
 (package(caliptra-mcu-tests-integration) and test(test_rom_hooks_fire_in_order)) |
 (package(caliptra-mcu-tests-integration) and test(jtag::test_uds)) |
 (package(caliptra-mcu-tests-integration) and test(jtag::test_manuf_debug_unlock)) |
+(package(caliptra-mcu-tests-integration) and test(test_command_authorized_runtime_installs_owner_key)) |
 (package(caliptra-mcu-tests-integration) and test(test_sw_digest_lock)) |
 (package(caliptra-mcu-tests-integration) and test(test_bootfsm_timeout)) |
 (package(caliptra-mcu-tests-integration) and test(test_otp_blank_check)) |

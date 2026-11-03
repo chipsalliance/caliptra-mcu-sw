@@ -27,8 +27,8 @@ use caliptra_mcu_core_util_host_command_types::device_ownership_transfer::{
 use caliptra_mcu_core_util_host_command_types::fuse::{
     MC_FE_PROG_CANONICAL_CMD_ID, MC_FUSE_INCREASE_MIN_SVN_CANONICAL_CMD_ID,
     MC_FUSE_LOCK_PARTITION_CANONICAL_CMD_ID, MC_FUSE_REVOKE_VENDOR_PK_HASH_CANONICAL_CMD_ID,
-    MC_FUSE_REVOKE_VENDOR_PUB_KEY_CANONICAL_CMD_ID,
-    MC_PROVISION_OWNER_PK_HASH_CANONICAL_CMD_ID, MC_PROVISION_VENDOR_PK_HASH_CANONICAL_CMD_ID,
+    MC_FUSE_REVOKE_VENDOR_PUB_KEY_CANONICAL_CMD_ID, MC_PROVISION_OWNER_PK_HASH_CANONICAL_CMD_ID,
+    MC_PROVISION_VENDOR_PK_HASH_CANONICAL_CMD_ID,
 };
 use caliptra_mcu_core_util_host_transport::{CaliptraVdmCommand, CaliptraVdmCompletionCode};
 use caliptra_mcu_debug_unlock_signer::{DebugUnlockSigner, ProdDebugUnlockChallenge};
@@ -379,6 +379,7 @@ pub fn run_dot(
         cak,
         lak_hash,
         authorization: DotAuthorizationTrailer {
+            metadata: Default::default(),
             nonce: lock_auth.nonce,
             ecc_pub_x: lock_auth.ecc_pub_x,
             ecc_pub_y: lock_auth.ecc_pub_y,
@@ -418,6 +419,7 @@ pub fn run_dot(
     };
     let backup_request = GetDotBackupBlobRequest {
         authorization: DotAuthorizationTrailer {
+            metadata: Default::default(),
             nonce: backup_auth.nonce,
             ecc_pub_x: backup_auth.ecc_pub_x,
             ecc_pub_y: backup_auth.ecc_pub_y,
@@ -464,6 +466,7 @@ pub fn run_dot(
         cak,
         lak_hash,
         authorization: DotAuthorizationTrailer {
+            metadata: Default::default(),
             nonce: rotate_auth.nonce,
             ecc_pub_x: rotate_auth.ecc_pub_x,
             ecc_pub_y: rotate_auth.ecc_pub_y,
@@ -558,6 +561,7 @@ pub fn run_dot(
     let disable_request = DotDisableRequest {
         lak_hash,
         authorization: DotAuthorizationTrailer {
+            metadata: Default::default(),
             nonce: disable_auth.nonce,
             ecc_pub_x: disable_auth.ecc_pub_x,
             ecc_pub_y: disable_auth.ecc_pub_y,
@@ -848,11 +852,12 @@ struct AuthorizedCommandAuthorization {
 impl AuthorizedCommandAuthorization {
     fn as_command_data(&self) -> AuthorizedCommandData<'_> {
         AuthorizedCommandData {
-            sig: &self.sig,
+            metadata: Default::default(),
             nonce: &self.nonce,
             ecc_pub_x: &self.ecc_pub_x,
             ecc_pub_y: &self.ecc_pub_y,
             mldsa_pub: &self.mldsa_pub,
+            sig: &self.sig,
         }
     }
 }

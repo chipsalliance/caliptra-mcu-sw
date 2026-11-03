@@ -276,6 +276,7 @@ impl Validator {
         let signature = authorizer.authorize(DOT_FAMILY_ID, payload, &challenge)?;
         let (ecc_pub_x, ecc_pub_y, mldsa_pub) = authorizer.public_keys()?;
         Ok(DotAuthorizationTrailer {
+            metadata: Default::default(),
             nonce: challenge,
             ecc_pub_x,
             ecc_pub_y,
@@ -617,6 +618,7 @@ impl Validator {
             |auth| ProvisionVendorPkHashRequest {
                 slot,
                 hash,
+                metadata: Default::default(),
                 nonce: auth.nonce,
                 ecc_pub_x: auth.ecc_pub_x,
                 ecc_pub_y: auth.ecc_pub_y,
@@ -651,6 +653,7 @@ impl Validator {
                 flags,
                 target,
                 svn,
+                metadata: Default::default(),
                 nonce: auth.nonce,
                 ecc_pub_x: auth.ecc_pub_x,
                 ecc_pub_y: auth.ecc_pub_y,
@@ -687,6 +690,7 @@ impl Validator {
                 vendor_pk_hash_slot,
                 key_type,
                 key_index,
+                metadata: Default::default(),
                 nonce: auth.nonce,
                 ecc_pub_x: auth.ecc_pub_x,
                 ecc_pub_y: auth.ecc_pub_y,
@@ -718,6 +722,7 @@ impl Validator {
             |auth| FuseRevokeVendorPkHashRequest {
                 reserved,
                 vendor_pk_hash_slot,
+                metadata: Default::default(),
                 nonce: auth.nonce,
                 ecc_pub_x: auth.ecc_pub_x,
                 ecc_pub_y: auth.ecc_pub_y,
@@ -744,6 +749,7 @@ impl Validator {
             &partition.to_le_bytes(),
             |auth| FuseLockPartitionRequest {
                 partition,
+                metadata: Default::default(),
                 nonce: auth.nonce,
                 ecc_pub_x: auth.ecc_pub_x,
                 ecc_pub_y: auth.ecc_pub_y,
@@ -2222,6 +2228,7 @@ impl Validator {
         // its stored one-time challenge, then rebuilds the transcript from it.
         let request = FeProgRequest {
             partition,
+            metadata: Default::default(),
             sig,
             nonce: challenge_resp.challenge,
             ecc_pub_x,

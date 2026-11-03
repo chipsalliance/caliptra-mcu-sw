@@ -1,7 +1,11 @@
 // Licensed under the Apache-2.0 license
 
-use crate::runtime::{execute_authorized_req, execute_authorized_req_raw};
-use crate::test::{compile_runtime, start_runtime_hw_model, CustomCaliptraFw, TestParams};
+use crate::runtime::{
+    execute_authorized_req, execute_authorized_req_raw, start_command_authorized_runtime,
+};
+use crate::test::{
+    compile_runtime, start_runtime_hw_model, CustomCaliptraFw, TestParams, TEST_LOCK,
+};
 use anyhow::Result;
 use caliptra_api::{calc_checksum, error::CaliptraError, mailbox::FwInfoResp, SocManager};
 use caliptra_mcu_builder::{CaliptraBuildArgs, CaliptraBuilder, FirmwareBinaries};
@@ -15,6 +19,7 @@ use caliptra_mcu_registers_generated::fuses::{
 };
 use caliptra_mcu_romtime::McuBootMilestones;
 use core::mem::size_of;
+use std::sync::atomic::Ordering;
 use zerocopy::{FromBytes, IntoBytes};
 
 fn linear_or_svn_from_otp(otp: &[u8], entry: &FuseEntryInfo) -> u32 {
@@ -42,28 +47,11 @@ fn assert_increase_svn_response(response: &[u8]) {
 #[cfg(not(feature = "fpga_realtime"))]
 mod owner {
     use super::*;
-    use crate::test::TEST_LOCK;
-    use anyhow::{anyhow, bail};
+    use crate::runtime::core_request;
+    use anyhow::anyhow;
     use caliptra_api::mailbox::{CommandId, MailboxReqHeader};
     use caliptra_mcu_registers_generated::fuses::OWNER_SOC_MANIFEST_MIN_SVN;
     use std::sync::atomic::Ordering;
-
-    fn core_request(hw: &mut impl McuHwModel, cmd: CommandId, request: &[u8]) -> Result<Vec<u8>> {
-        let cmd = u32::from(cmd);
-        for _ in 0..10 {
-            match hw.caliptra_mailbox_execute(cmd, request) {
-                Ok(Some(response)) => return Ok(response),
-                Ok(None) => bail!("Core command {cmd:#010x} did not return a response"),
-                Err(caliptra_hw_model::ModelError::UnableToLockMailbox) => {
-                    for _ in 0..1_000_000 {
-                        hw.step();
-                    }
-                }
-                Err(error) => return Err(error.into()),
-            }
-        }
-        bail!("Core mailbox remained busy for {cmd:#010x}")
-    }
 
     fn read_fw_info(hw: &mut impl McuHwModel) -> Result<FwInfoResp> {
         let request = MailboxReqHeader {
@@ -162,7 +150,7 @@ fn test_increase_caliptra_svn() -> Result<()> {
         };
 
     // Start the hardware model with the custom Caliptra firmware (SVN 7).
-    let mut hw = start_runtime_hw_model(TestParams {
+    let mut hw = start_command_authorized_runtime(TestParams {
         feature: Some("test-mcu-mbox-cmds"),
         custom_caliptra_fw: Some(CustomCaliptraFw {
             fw_bytes: caliptra_fw_svn7.clone(),
@@ -229,7 +217,7 @@ fn test_increase_caliptra_svn() -> Result<()> {
     let otp = hw.read_otp_memory();
 
     // Step 2: Cold boot with the burned fuses and verify the firmware with SVN 7 can still boot.
-    let mut hw = start_runtime_hw_model(TestParams {
+    let mut hw = start_command_authorized_runtime(TestParams {
         feature: Some("test-mcu-mbox-cmds"),
         custom_caliptra_fw: Some(CustomCaliptraFw {
             fw_bytes: caliptra_fw_svn7,
@@ -333,7 +321,7 @@ fn test_increase_caliptra_svn_max() -> Result<()> {
         };
 
     // Start the hardware model with the custom Caliptra firmware (SVN 128).
-    let mut hw = start_runtime_hw_model(TestParams {
+    let mut hw = start_command_authorized_runtime(TestParams {
         feature: Some("test-mcu-mbox-cmds"),
         custom_caliptra_fw: Some(CustomCaliptraFw {
             fw_bytes: caliptra_fw_svn128.clone(),
@@ -369,7 +357,7 @@ fn test_increase_caliptra_svn_max() -> Result<()> {
     assert_eq!(svn, 128);
 
     // Verify persistence across cold boot.
-    let mut hw = start_runtime_hw_model(TestParams {
+    let mut hw = start_command_authorized_runtime(TestParams {
         feature: Some("test-mcu-mbox-cmds"),
         custom_caliptra_fw: Some(CustomCaliptraFw {
             fw_bytes: caliptra_fw_svn128,
@@ -404,7 +392,10 @@ fn test_increase_caliptra_svn_max() -> Result<()> {
 
 #[test]
 fn test_increase_soc_manifest_svn() -> Result<()> {
-    let mut hw = start_runtime_hw_model(TestParams {
+    let lock = TEST_LOCK.lock().unwrap();
+    lock.fetch_add(1, Ordering::Relaxed);
+
+    let mut hw = start_command_authorized_runtime(TestParams {
         feature: Some("test-mcu-mbox-cmds"),
         lifecycle_controller_state: Some(LifecycleControllerState::Prod),
         ..Default::default()

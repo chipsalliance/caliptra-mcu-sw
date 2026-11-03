@@ -100,6 +100,7 @@ mod test {
         pub custom_caliptra_fw: Option<CustomCaliptraFw>,
         /// Custom OTP memory contents. If provided, takes precedence over dot_enabled.
         pub otp_memory: Option<Vec<u8>>,
+        pub caliptra_soc_axi_user: Option<u32>,
         pub flash_boot: bool,
         /// Seed the primary flash with the built firmware bundle without
         /// requesting ROM flash boot. This lets runtime tests boot through the
@@ -155,6 +156,7 @@ mod test {
                 dot_enabled: false,
                 custom_caliptra_fw: None,
                 otp_memory: None,
+                caliptra_soc_axi_user: None,
                 flash_boot: false,
                 seed_primary_flash_image: false,
                 force_fuse_owner_pk_hash: false,
@@ -787,6 +789,7 @@ mod test {
             dot_flash_initial_contents: params.dot_flash_initial_contents,
             check_booted_to_runtime: !params.rom_only,
             otp_memory: otp_memory.as_deref(),
+            caliptra_soc_axi_user: params.caliptra_soc_axi_user,
             lifecycle_controller_state: params.lifecycle_controller_state,
             primary_flash_initial_contents,
             flash_boot: params.flash_boot,
