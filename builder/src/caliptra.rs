@@ -41,8 +41,10 @@ use zerocopy::{transmute, FromBytes, IntoBytes};
 
 const DEFAULT_PQC_KEY_TYPE: FwVerificationPqcKeyType = FwVerificationPqcKeyType::LMS;
 
-/// Default SHA-384 test Vendor+Owner authorization-key digest, derived from
+/// Default SHA-384 test vendor authorization-key digest, derived from
 /// label "caliptra-mcu-test-vendor-authorization-keys".
+/// The original SoC Manifest authorizes this vendor key under Vendor+Owner
+/// authority.
 /// Explicit command-key digest configuration overrides this default.
 pub const VENDOR_AUTH_KEY_ANCHOR: [u8; 48] = [
     0xa2, 0x68, 0x7c, 0xf2, 0x45, 0x99, 0xb8, 0xf0, 0xf8, 0x26, 0x81, 0xd9, 0xbf, 0x6d, 0x77, 0xac,
