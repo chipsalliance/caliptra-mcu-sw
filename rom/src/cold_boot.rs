@@ -408,17 +408,19 @@ impl ColdBoot {
         const DIGEST_SIZE: usize = 48;
         // Safety: MCU_MEMORY_MAP fields are linker-provided constants.
         let rom_size = unsafe { MCU_MEMORY_MAP.rom_size } as usize;
+        let rom_offset = unsafe { MCU_MEMORY_MAP.rom_offset } as usize;
         let hashable_len = rom_size - DIGEST_SIZE;
-        let rom = unsafe {
-            core::slice::from_raw_parts(MCU_MEMORY_MAP.rom_offset as *const u32, hashable_len / 4)
-        };
+        // Do not form a slice: the platform may map ROM at address zero.
+        let rom = (0..hashable_len / 4).map(|i| {
+            // Safety: the platform ROM range is readable and word-aligned.
+            unsafe { core::ptr::read_volatile((rom_offset + i * 4) as *const u32) }
+        });
 
         let digest = mailbox::cm_sha384(soc_manager, rom);
         caliptra_mcu_romtime::println!("[mcu-rom] MCU ROM digest: {}", HexBytes(&digest));
 
-        let expected_digest: &[u8; DIGEST_SIZE] = unsafe {
-            &*((MCU_MEMORY_MAP.rom_offset as usize + hashable_len) as *const [u8; DIGEST_SIZE])
-        };
+        let expected_digest: &[u8; DIGEST_SIZE] =
+            unsafe { &*((rom_offset + hashable_len) as *const [u8; DIGEST_SIZE]) };
         caliptra_mcu_romtime::println!(
             "[mcu-rom] MCU ROM expected digest: {}",
             HexBytes(expected_digest)
