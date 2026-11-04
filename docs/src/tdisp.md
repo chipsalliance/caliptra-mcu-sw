@@ -4,6 +4,8 @@ Caliptra Subsystem supports handling of TDISP messages by processing them as VEN
 
 To facilitate the TDISP protocol, devices provide a platform implementation of the `TdispDriver` trait from `caliptra-mcu-spdm-vdm-handler::pci_sig::tdisp`. The responder owns the TDISP wire-format handling, command dispatch, and protocol state; the driver supplies device-specific operations such as capabilities, interface state transitions, nonce generation, and interface report contents.
 
+The driver owns the TDI state machine of each interface and must reject any request that is not valid in the interface's current state. START_INTERFACE must carry the nonce from the last LOCK_INTERFACE the driver accepted. That nonce is cleared when the driver accepts START_INTERFACE or STOP_INTERFACE, or when GET_TDISP_VERSION is sent again; a rejected request leaves it unchanged.
+
 The relevant public driver API is summarized below.
 
 ```rust
