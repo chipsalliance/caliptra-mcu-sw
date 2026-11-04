@@ -682,6 +682,11 @@ impl MciPeripheral for Mci {
             // Schedule the reset status assertion
             println!("MCI: MCU reset requested");
             self.reset_requested = true;
+            // Service the request on the next tick. Otherwise it waits for
+            // some other peripheral's poll, which can be long enough for the
+            // ROM to run past trigger_warm_reset() into its "still running
+            // after reset request" fatal path.
+            self.timer.schedule_poll_in(1);
         }
     }
 
@@ -2065,6 +2070,42 @@ mod tests {
             mci.read_mci_reg_reset_reason().reg.get(),
             WARM_RESET_MASK,
             "Plain warm reset should produce WARM_RESET"
+        );
+    }
+
+    /// MCU_REQ must reset the MCU within two ticks, not whenever some other
+    /// peripheral's poll happens to fire.
+    #[test]
+    fn test_reset_request_is_serviced_on_next_tick() {
+        let clock = Clock::new();
+        let ext_mci_regs = caliptra_emu_periph::mci::Mci::new(vec![]);
+        let pic = caliptra_emu_cpu::Pic::new();
+        let irq = pic.register_irq(1);
+        let mut mci = Mci::new(
+            &clock,
+            ext_mci_regs,
+            Rc::new(RefCell::new(irq)),
+            None,
+            None,
+            None,
+            [0, 0],
+            false,
+            Rc::new(Cell::new(true)),
+        );
+
+        let mut reset_req = ReadWriteRegister::<u32, ResetRequest::Register>::new(0);
+        reset_req.reg.modify(ResetRequest::McuReq::SET);
+        mci.write_mci_reg_reset_request(reset_req);
+
+        let mut mci_bus = MciBus {
+            periph: Box::new(mci),
+        };
+        let fired = clock.increment_and_process_timer_actions(1, &mut mci_bus);
+        assert!(fired.contains(&TimerAction::Poll), "no poll after MCU_REQ");
+        let fired = clock.increment_and_process_timer_actions(1, &mut mci_bus);
+        assert!(
+            fired.contains(&TimerAction::UpdateReset),
+            "MCU_REQ not serviced on the next tick"
         );
     }
 
