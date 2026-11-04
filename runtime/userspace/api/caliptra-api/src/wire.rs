@@ -79,6 +79,16 @@ pub(crate) const CMD_DPE_TAG_TCI: u32 = 0x5451_4754; // "TGQT"
 /// Mirrored from `caliptra-api::CommandId::DPE_GET_TAGGED_TCI`.
 pub(crate) const CMD_DPE_GET_TAGGED_TCI: u32 = 0x4754_4744; // "GTGD"
 
+/// Caliptra mailbox command ID for `SIGN_WITH_EXPORTED_ECDSA`.
+/// Mirrored from `caliptra-api::CommandId::SIGN_WITH_EXPORTED_ECDSA`.
+pub(crate) const CMD_SIGN_WITH_EXPORTED_ECDSA: u32 =
+    caliptra_api::mailbox::CommandId::SIGN_WITH_EXPORTED_ECDSA.0;
+
+/// Caliptra mailbox command ID for `REVOKE_EXPORTED_CDI_HANDLE`.
+/// Mirrored from `caliptra-api::CommandId::REVOKE_EXPORTED_CDI_HANDLE`.
+pub(crate) const CMD_REVOKE_EXPORTED_CDI_HANDLE: u32 =
+    caliptra_api::mailbox::CommandId::REVOKE_EXPORTED_CDI_HANDLE.0;
+
 /// DPE per-command-header magic (`CommandHdr::DPE_COMMAND_MAGIC`).
 pub(crate) const DPE_COMMAND_MAGIC: u32 = 0x4450_4543; // "DPEC"
 

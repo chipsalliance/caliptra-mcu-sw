@@ -22,8 +22,9 @@ use crate::slice::{checked_slice_mut, copy_bytes, internal_slice};
 use crate::wire::{
     calc_checksum, mbox_execute, mbox_execute_in_place, populate_checksum, CMD_CERTIFY_KEY_CHUNKS,
     CMD_DPE_GET_TAGGED_TCI, CMD_DPE_TAG_TCI, CMD_INVOKE_DPE, CMD_INVOKE_DPE_MLDSA87,
-    DPE_CMD_DERIVE_CONTEXT, DPE_CMD_GET_CERTIFICATE_CHAIN, DPE_CMD_ROTATE_CONTEXT_HANDLE,
-    DPE_CMD_SIGN, DPE_CMD_UPDATE_CONTEXT_MEASUREMENT, DPE_COMMAND_MAGIC, DPE_PROFILE_MLDSA87,
+    CMD_REVOKE_EXPORTED_CDI_HANDLE, CMD_SIGN_WITH_EXPORTED_ECDSA, DPE_CMD_DERIVE_CONTEXT,
+    DPE_CMD_GET_CERTIFICATE_CHAIN, DPE_CMD_ROTATE_CONTEXT_HANDLE, DPE_CMD_SIGN,
+    DPE_CMD_UPDATE_CONTEXT_MEASUREMENT, DPE_COMMAND_MAGIC, DPE_PROFILE_MLDSA87,
     DPE_PROFILE_P384_SHA384, DPE_RESPONSE_MAGIC, MBOX_RESP_HEADER_SIZE,
 };
 use crate::ScratchAlloc;
@@ -121,6 +122,25 @@ impl SigningInput<'_> {
         }
     }
 }
+/// Typed input to exported-CDI signing.
+#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+pub enum ExportedCdiSigningInput<'a> {
+    /// SHA-384 digest (48 bytes) for ECDSA P-384 (`SIGN_WITH_EXPORTED_ECDSA`).
+    EccP384Digest(&'a [u8; DPE_P384_DIGEST_SIZE]),
+    /// Raw ML-DSA-87 input; exported-CDI ML-DSA signing is unsupported on 2.0.
+    Mldsa87Raw(&'a [u8]),
+}
+
+impl ExportedCdiSigningInput<'_> {
+    /// DPE profile required by this exported-CDI signing input.
+    pub const fn profile(&self) -> DpeProfile {
+        match self {
+            Self::EccP384Digest(_) => DpeProfile::P384Sha384,
+            Self::Mldsa87Raw(_) => DpeProfile::Mldsa87,
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Slim wire types
 // ---------------------------------------------------------------------------
@@ -326,12 +346,56 @@ struct GetTaggedTciResp {
     tci_current: [u8; DPE_TCI_MEASUREMENT_SIZE],
 }
 
+/// Caliptra `RevokeExportedCdiHandleReq`: `chksum(4) + exported_cdi_handle(32)`.
+#[repr(C)]
+#[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned)]
+struct RevokeExportedCdiHandleReqWire {
+    chksum: U32,
+    exported_cdi_handle: [u8; EXPORTED_CDI_SIZE],
+}
+
+/// Caliptra `SignWithExportedEcdsaReq`: `chksum(4) + exported_cdi_handle(32) + tbs(48)`.
+#[repr(C)]
+#[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned)]
+struct SignWithExportedEcdsaReqWire {
+    chksum: U32,
+    exported_cdi_handle: [u8; EXPORTED_CDI_SIZE],
+    tbs: [u8; DPE_P384_DIGEST_SIZE],
+}
+
+/// Caliptra `SignWithExportedEcdsaResp`: mailbox response header + derived pubkey (x, y) + sig (r, s).
+#[repr(C)]
+#[derive(FromBytes, IntoBytes, KnownLayout, Immutable, Unaligned)]
+struct SignWithExportedEcdsaRespWire {
+    _chksum: U32,
+    _fips_status: U32,
+    _derived_pubkey_x: [u8; 48],
+    _derived_pubkey_y: [u8; 48],
+    signature_r: [u8; 48],
+    signature_s: [u8; 48],
+}
+
 const TAG_TCI_REQ_LEN: usize = size_of::<TagTciReq>();
 const GET_TAGGED_TCI_REQ_LEN: usize = size_of::<GetTaggedTciReq>();
 const GET_TAGGED_TCI_RESP_LEN: usize = size_of::<GetTaggedTciResp>();
+const REVOKE_EXPORTED_CDI_HANDLE_REQ_LEN: usize = size_of::<RevokeExportedCdiHandleReqWire>();
+pub const SIGN_WITH_EXPORTED_ECDSA_REQ_LEN: usize = size_of::<SignWithExportedEcdsaReqWire>();
+pub const SIGN_WITH_EXPORTED_ECDSA_RESP_LEN: usize = size_of::<SignWithExportedEcdsaRespWire>();
 const _: () = assert!(TAG_TCI_REQ_LEN == 4 + DPE_CONTEXT_HANDLE_SIZE + 4);
 const _: () = assert!(GET_TAGGED_TCI_REQ_LEN == 4 + 4);
 const _: () = assert!(GET_TAGGED_TCI_RESP_LEN == MBOX_RESP_HEADER_SIZE + 48 + 48);
+const _: () = assert!(
+    REVOKE_EXPORTED_CDI_HANDLE_REQ_LEN
+        == size_of::<caliptra_api::mailbox::RevokeExportedCdiHandleReq>()
+);
+const _: () = assert!(
+    SIGN_WITH_EXPORTED_ECDSA_REQ_LEN
+        == size_of::<caliptra_api::mailbox::SignWithExportedEcdsaReq>()
+);
+const _: () = assert!(
+    SIGN_WITH_EXPORTED_ECDSA_RESP_LEN
+        == size_of::<caliptra_api::mailbox::SignWithExportedEcdsaResp>()
+);
 
 const GET_CERT_CHAIN_REQ_P384_LEN: usize =
     size_of::<InvokeDpeReqPrefix>() + size_of::<DpeCommandHdr>() + size_of::<GetCertChainCmd>();
@@ -1627,6 +1691,123 @@ fn parse_get_tagged_tci_response(rsp: &[u8], rsp_len: usize) -> McuResult<DpeTag
     })
 }
 
+/// Revoke a previously derived exported CDI handle in Caliptra via the
+/// top-level `REVOKE_EXPORTED_CDI_HANDLE` mailbox command.
+#[inline(never)]
+pub async fn dpe_revoke_exported_cdi_handle<A: ScratchAlloc>(
+    alloc: &A,
+    exported_cdi: &[u8; EXPORTED_CDI_SIZE],
+) -> McuResult<()> {
+    let req = build_revoke_exported_cdi_handle_req(alloc, exported_cdi)?;
+    let mut rsp = alloc.alloc(MBOX_RESP_HEADER_SIZE)?;
+    let rsp_len = mbox_execute(CMD_REVOKE_EXPORTED_CDI_HANDLE, &req, &mut rsp).await?;
+    if rsp_len < MBOX_RESP_HEADER_SIZE {
+        return Err(INTERNAL_BUG);
+    }
+    Ok(())
+}
+
+fn build_revoke_exported_cdi_handle_req<'a, A: ScratchAlloc>(
+    alloc: &'a A,
+    exported_cdi: &[u8; EXPORTED_CDI_SIZE],
+) -> McuResult<A::Buf<'a>> {
+    let mut req = alloc.alloc(REVOKE_EXPORTED_CDI_HANDLE_REQ_LEN)?;
+    req.fill(0);
+    {
+        let cmd = RevokeExportedCdiHandleReqWire::mut_from_bytes(checked_slice_mut(
+            &mut req,
+            0,
+            REVOKE_EXPORTED_CDI_HANDLE_REQ_LEN,
+        )?)
+        .map_err(|_| INVARIANT)?;
+        cmd.exported_cdi_handle = *exported_cdi;
+    }
+    populate_checksum(CMD_REVOKE_EXPORTED_CDI_HANDLE, &mut req)?;
+    Ok(req)
+}
+
+/// Sign with an exported CDI handle for a typed [`ExportedCdiSigningInput`].
+///
+/// Returns the number of ECDSA signature bytes written to `signature`.
+/// Exported-CDI ML-DSA signing returns `NOT_IMPLEMENTED` without issuing a mailbox command.
+#[inline(never)]
+pub async fn dpe_sign_with_exported_cdi<A: ScratchAlloc>(
+    alloc: &A,
+    exported_cdi: &[u8; EXPORTED_CDI_SIZE],
+    input: ExportedCdiSigningInput<'_>,
+    signature: &mut [u8],
+) -> McuResult<usize> {
+    match input {
+        ExportedCdiSigningInput::EccP384Digest(digest) => {
+            dpe_sign_with_exported_ecdsa(alloc, exported_cdi, digest, signature).await
+        }
+        ExportedCdiSigningInput::Mldsa87Raw(_) => Err(mcu_error::codes::NOT_IMPLEMENTED),
+    }
+}
+
+/// Sign a 48-byte SHA-384 digest using an exported CDI handle via
+/// `SIGN_WITH_EXPORTED_ECDSA`, writing the 96-byte `(r || s)` signature into `signature`.
+#[inline(never)]
+pub async fn dpe_sign_with_exported_ecdsa<A: ScratchAlloc>(
+    alloc: &A,
+    exported_cdi: &[u8; EXPORTED_CDI_SIZE],
+    digest: &[u8; DPE_P384_DIGEST_SIZE],
+    signature: &mut [u8],
+) -> McuResult<usize> {
+    if signature.len() < DPE_P384_SIGNATURE_SIZE {
+        return Err(INVARIANT);
+    }
+    let req = build_sign_with_exported_ecdsa_req(alloc, exported_cdi, digest)?;
+    let mut rsp = alloc.alloc(SIGN_WITH_EXPORTED_ECDSA_RESP_LEN)?;
+    let rsp_len = mbox_execute(CMD_SIGN_WITH_EXPORTED_ECDSA, &req, &mut rsp).await?;
+    parse_sign_with_exported_ecdsa_response(&rsp, rsp_len, signature)
+}
+
+fn build_sign_with_exported_ecdsa_req<'a, A: ScratchAlloc>(
+    alloc: &'a A,
+    exported_cdi: &[u8; EXPORTED_CDI_SIZE],
+    digest: &[u8; DPE_P384_DIGEST_SIZE],
+) -> McuResult<A::Buf<'a>> {
+    let mut req = alloc.alloc(SIGN_WITH_EXPORTED_ECDSA_REQ_LEN)?;
+    req.fill(0);
+    {
+        let cmd = SignWithExportedEcdsaReqWire::mut_from_bytes(checked_slice_mut(
+            &mut req,
+            0,
+            SIGN_WITH_EXPORTED_ECDSA_REQ_LEN,
+        )?)
+        .map_err(|_| INVARIANT)?;
+        cmd.exported_cdi_handle = *exported_cdi;
+        cmd.tbs = *digest;
+    }
+    populate_checksum(CMD_SIGN_WITH_EXPORTED_ECDSA, &mut req)?;
+    Ok(req)
+}
+
+fn parse_sign_with_exported_ecdsa_response(
+    rsp: &[u8],
+    rsp_len: usize,
+    signature: &mut [u8],
+) -> McuResult<usize> {
+    if signature.len() < DPE_P384_SIGNATURE_SIZE {
+        return Err(INVARIANT);
+    }
+    if rsp_len < SIGN_WITH_EXPORTED_ECDSA_RESP_LEN {
+        return Err(INTERNAL_BUG);
+    }
+    let resp = SignWithExportedEcdsaRespWire::ref_from_bytes(internal_slice(
+        rsp,
+        0,
+        SIGN_WITH_EXPORTED_ECDSA_RESP_LEN,
+    )?)
+    .map_err(|_| INTERNAL_BUG)?;
+    let (sig_r, rest) = signature.split_first_chunk_mut::<48>().ok_or(INVARIANT)?;
+    *sig_r = resp.signature_r;
+    let (sig_s, _) = rest.split_first_chunk_mut::<48>().ok_or(INVARIANT)?;
+    *sig_s = resp.signature_s;
+    Ok(DPE_P384_SIGNATURE_SIZE)
+}
+
 #[inline]
 fn dpe_handle_or_default(handle: Option<&DpeContextHandle>) -> &DpeContextHandle {
     handle.unwrap_or(&DEFAULT_DPE_CONTEXT_HANDLE)
@@ -2202,6 +2383,80 @@ mod tests {
             }
             .profile(),
             DpeProfile::Mldsa87
+        );
+    }
+
+    #[test]
+    fn exported_cdi_signing_input_selects_dpe_profile() {
+        let digest = [0u8; DPE_P384_DIGEST_SIZE];
+        assert_eq!(
+            ExportedCdiSigningInput::EccP384Digest(&digest).profile(),
+            DpeProfile::P384Sha384
+        );
+        assert_eq!(
+            ExportedCdiSigningInput::Mldsa87Raw(b"tbs").profile(),
+            DpeProfile::Mldsa87
+        );
+    }
+
+    #[test]
+    fn revoke_exported_cdi_handle_request_preserves_handle() {
+        let alloc = TestAlloc;
+        let exported_cdi = [0x77u8; EXPORTED_CDI_SIZE];
+        let req = build_revoke_exported_cdi_handle_req(&alloc, &exported_cdi).unwrap();
+
+        let mut checksum_input = req.clone();
+        checksum_input[0..4].fill(0);
+        assert_eq!(
+            req.get(0..4).and_then(|s| s.first_chunk::<4>()),
+            Some(&calc_checksum(CMD_REVOKE_EXPORTED_CDI_HANDLE, &checksum_input).to_le_bytes())
+        );
+        assert_eq!(&req[4..4 + EXPORTED_CDI_SIZE], &exported_cdi);
+    }
+
+    #[test]
+    fn sign_with_exported_ecdsa_request_and_response() {
+        let alloc = TestAlloc;
+        let exported_cdi = [0x11u8; EXPORTED_CDI_SIZE];
+        let digest = [0x22u8; DPE_P384_DIGEST_SIZE];
+        let req = build_sign_with_exported_ecdsa_req(&alloc, &exported_cdi, &digest).unwrap();
+
+        let mut checksum_input = req.clone();
+        checksum_input[0..4].fill(0);
+        assert_eq!(
+            req.get(0..4).and_then(|s| s.first_chunk::<4>()),
+            Some(&calc_checksum(CMD_SIGN_WITH_EXPORTED_ECDSA, &checksum_input).to_le_bytes())
+        );
+        assert_eq!(&req[4..4 + EXPORTED_CDI_SIZE], &exported_cdi);
+        assert_eq!(&req[4 + EXPORTED_CDI_SIZE..], &digest);
+
+        let mut rsp = [0u8; SIGN_WITH_EXPORTED_ECDSA_RESP_LEN];
+        let sig_r = [0xAAu8; 48];
+        let sig_s = [0xBBu8; 48];
+        rsp[8 + 96..8 + 144].copy_from_slice(&sig_r);
+        rsp[8 + 144..8 + 192].copy_from_slice(&sig_s);
+
+        let mut signature = [0u8; DPE_P384_SIGNATURE_SIZE];
+        let len = parse_sign_with_exported_ecdsa_response(&rsp, rsp.len(), &mut signature).unwrap();
+        assert_eq!(len, DPE_P384_SIGNATURE_SIZE);
+        assert_eq!(&signature[..48], &sig_r);
+        assert_eq!(&signature[48..], &sig_s);
+    }
+
+    #[test]
+    fn exported_cdi_mldsa_is_unsupported_without_mailbox_access() {
+        let exported_cdi = [0x33u8; EXPORTED_CDI_SIZE];
+        let mut signature = [];
+        let mut signing = core::pin::pin!(dpe_sign_with_exported_cdi(
+            &TestAlloc,
+            &exported_cdi,
+            ExportedCdiSigningInput::Mldsa87Raw(b"tbs"),
+            &mut signature,
+        ));
+        let mut cx = core::task::Context::from_waker(core::task::Waker::noop());
+        assert_eq!(
+            core::future::Future::poll(signing.as_mut(), &mut cx),
+            core::task::Poll::Ready(Err(mcu_error::codes::NOT_IMPLEMENTED)),
         );
     }
 }
