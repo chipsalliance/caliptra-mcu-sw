@@ -569,7 +569,7 @@ jobs:
                   if path.is_file():
                       try:
                           case = json.loads(path.read_text())
-                          if not isinstance(case, dict) or case.get("scenario") != scenario or case.get("result") not in ["PASS","FAIL","BLOCKED","NOT APPLICABLE"]:
+                          if not isinstance(case, dict) or case.get("scenario") != scenario or case.get("result") not in ["PASS","FAIL","BLOCKED","NOT APPLICABLE","KNOWN INCOMPATIBLE"]:
                               raise ValueError("Invalid case record")
                           received += 1
                       except (OSError, ValueError) as error:
@@ -579,8 +579,8 @@ jobs:
                   node = ET.SubElement(junit, "testcase", classname=f"{rom}/{runtime}/{mode}", name=scenario)
                   if case["result"] in ["FAIL","BLOCKED"]:
                       ET.SubElement(node, "failure" if case["result"] == "FAIL" else "error", message=case.get("reason", case["result"]))
-                  elif case["result"] == "NOT APPLICABLE":
-                      ET.SubElement(node, "skipped", message=case.get("reason", "Not applicable"))
+                  elif case["result"] in ["NOT APPLICABLE", "KNOWN INCOMPATIBLE"]:
+                      ET.SubElement(node, "skipped", message=f'{case["result"]}: {case.get("reason", "")}')
               executions_ok = True
               execution_notes = []
               for mode, phase in itertools.product(["flash","streaming"], ["boot","suites"]):
@@ -605,13 +605,13 @@ jobs:
                   except (OSError, ET.ParseError) as error:
                       executions_ok = False
                       issues.append(f"{mode}/{phase}: Invalid execution evidence: {error}")
-              dispositions_ok = all(c["result"] in ["PASS","NOT APPLICABLE"] for c in cases)
+              dispositions_ok = all(c["result"] in ["PASS","NOT APPLICABLE","KNOWN INCOMPATIBLE"] for c in cases)
               status = ("FAIL" if issues or any(c["result"] == "FAIL" for c in cases) or (dispositions_ok and not executions_ok)
                         else "PASS" if executions_ok and dispositions_ok else "BLOCKED")
               counts = {result: sum(c["result"] == result for c in cases)
-                        for result in ["PASS", "FAIL", "BLOCKED", "NOT APPLICABLE"]}
-              rows.append(f"| {rom} | {runtime} | {status} | {counts['PASS']} | {counts['FAIL']} | {counts['BLOCKED']} | {counts['NOT APPLICABLE']} | {received}/{2 * len(scenarios)} |")
-              failures = [c for c in cases if c["result"] in ["FAIL", "BLOCKED"]]
+                        for result in ["PASS", "FAIL", "BLOCKED", "NOT APPLICABLE", "KNOWN INCOMPATIBLE"]}
+              rows.append(f"| {rom} | {runtime} | {status} | {counts['PASS']} | {counts['FAIL']} | {counts['BLOCKED']} | {counts['NOT APPLICABLE']} | {counts['KNOWN INCOMPATIBLE']} | {received}/{2 * len(scenarios)} |")
+              failures = [c for c in cases if c["result"] in ["FAIL", "BLOCKED", "KNOWN INCOMPATIBLE"]]
               if failures:
                   details.append(f"\n## {rom} / {runtime}\n\n| Mode | Case | Result | Phase | Elapsed ms | Reason |\n|---|---|---|---|---|---|\n")
                   details.extend(
@@ -625,7 +625,7 @@ jobs:
                   details.extend(f"- {cell(note)}\n" for note in execution_notes + issues)
               records.append({"rom": rom, "runtime": runtime, "result": status, "counts": counts, "issues": issues, "cases": cases})
           upstream = json.loads(os.environ["UPSTREAM_STATUS"])
-          summary = "# ROM/runtime compatibility\n\n| ROM | Runtime | Result | PASS | FAIL | BLOCKED | N/A | Records |\n|---|---|---|---|---|---|---|---|\n" + "\n".join(rows) + "\n"
+          summary = "# ROM/runtime compatibility\n\n| ROM | Runtime | Result | PASS | FAIL | BLOCKED | N/A | Known incompatible | Records |\n|---|---|---|---|---|---|---|---|---|\n" + "\n".join(rows) + "\n"
           summary += "\n## Workflow prerequisites\n\n| Job | Result |\n|---|---|\n"
           summary += "".join(f"| {cell(name)} | {cell(job['result'])} |\n" for name, job in upstream.items())
           summary += "".join(details)

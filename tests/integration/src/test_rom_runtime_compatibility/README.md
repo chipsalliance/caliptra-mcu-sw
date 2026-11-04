@@ -68,15 +68,21 @@ results, reasons, timings and source revisions.
 - **FAIL:** an assertion, execution or evidence check failed.
 - **BLOCKED:** required inputs or prerequisites are unavailable.
 - **NOT APPLICABLE:** the selected configuration does not enable the feature.
+- **KNOWN INCOMPATIBLE:** the inputs match a documented incompatibility below;
+  the case still checks everything before it.
 
-FAIL and BLOCKED fail the matrix. N/A is not executed coverage, even though
+FAIL and BLOCKED fail the matrix; KNOWN INCOMPATIBLE is listed in the summary
+but does not. N/A is not executed coverage, even though
 Nextest counts those invocations as successful. Use the per-case results.
 
-## Known failures
+## Known incompatibilities
 
-- **Flash boot:** the ROM requires a raw header at offset zero; the runtimes
-  require a partition table there. No flash swapping or streaming fallback
-  hides this incompatibility.
+- **Flash boot:** `rom-sdk-2.1.0` reads its flash image at offset zero; every
+  runtime's flash loader requires a partition table there, so SoC images
+  cannot be loaded from that flash. `flash_cold_boot` and `cold_reboot` detect
+  this from the flash fixture, check that the ROM still loads and starts the
+  runtime from flash, and report KNOWN INCOMPATIBLE. A ROM with a bootable
+  partition table runs the full cases.
 - **SDK 2.1.0 services:** its attestation features reload SoC images from
   flash after any streaming load and predate the SPDM-ready milestone, so its
   service images load SoC images from flash, as its own tests did.

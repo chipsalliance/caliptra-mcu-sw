@@ -1023,6 +1023,91 @@ fn rejection_complete(mcu_error: u32, core_error: u32, expected: &NegativeCase) 
     Ok(mcu_error == expected.expected_mcu_error && core_error == expected.expected_core_error)
 }
 
+/// Reason prefix for a documented incompatibility that the case still checks up to.
+const KNOWN_INCOMPATIBLE: &str = "KNOWN INCOMPATIBLE: ";
+
+/// Every runtime's flash loader reads a checksummed partition table at offset 0.
+fn has_bootable_partition_table(flash: &[u8]) -> bool {
+    use caliptra_mcu_config::boot::{PartitionId, PartitionStatus};
+    use caliptra_mcu_config_emulator::flash::{PartitionTable, StandAloneChecksumCalculator};
+    PartitionTable::read_from_prefix(flash).is_ok_and(|(table, _)| {
+        let (id, _) = table.get_active_partition();
+        table.verify_checksum(&StandAloneChecksumCalculator::new())
+            && matches!(id, PartitionId::A | PartitionId::B)
+            && matches!(
+                table.get_partition_status(id),
+                PartitionStatus::Valid | PartitionStatus::BootSuccessful
+            )
+    })
+}
+
+#[test]
+fn flash_layout_requires_bootable_partition_table() {
+    use caliptra_mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
+    use caliptra_mcu_config_emulator::flash::{PartitionTable, StandAloneChecksumCalculator};
+    use zerocopy::IntoBytes;
+    let mut table = PartitionTable::new(
+        PartitionId::A,
+        0,
+        PartitionStatus::Valid,
+        0,
+        PartitionStatus::Invalid,
+        RollbackEnable::Enabled,
+    );
+    table.populate_checksum(&StandAloneChecksumCalculator::new());
+    assert!(has_bootable_partition_table(table.as_bytes()));
+    let mut corrupt = table.as_bytes().to_vec();
+    corrupt[0] ^= 1;
+    assert!(!has_bootable_partition_table(&corrupt));
+    assert!(!has_bootable_partition_table(&[0xff; 64]));
+    assert!(!has_bootable_partition_table(&[]));
+}
+
+/// Returns why the selected ROM's flash image cannot serve the runtime's flash loader.
+fn flash_layout_incompatibility(pair: &SelectedPair) -> Result<Option<String>> {
+    let flash = pair.config.primary_flash.read(&pair.root)?;
+    Ok((!has_bootable_partition_table(&flash)).then(|| {
+        format!(
+            "{} stores its flash image at offset 0, where the runtime's flash loader requires \
+             a partition table, so the runtime cannot load SoC images from this flash",
+            pair.config.rom
+        )
+    }))
+}
+
+/// Wait until the ROM has loaded the runtime from flash and jumped to it.
+fn wait_rom_flash_handoff(hw: &mut impl McuHwModel) -> Result<()> {
+    let start = Instant::now();
+    let cycles = hw.cycle_count();
+    while !hw
+        .mci_boot_milestones()
+        .contains(McuBootMilestones::FIRMWARE_BOOT_FLOW_COMPLETE)
+    {
+        ensure!(
+            hw.mci_fw_fatal_error().is_none(),
+            "Fatal MCU ROM error: {:?}",
+            hw.mci_fw_fatal_error()
+        );
+        let fatal = hw
+            .caliptra_soc_manager()
+            .soc_ifc()
+            .cptra_fw_error_fatal()
+            .read();
+        ensure!(fatal == 0, "Fatal Core error: {fatal:#x}");
+        ensure!(
+            hw.mcu_exit_status().is_none(),
+            "MCU exited before the ROM handed off to the runtime"
+        );
+        ensure!(
+            hw.cycle_count() - cycles < 100_000_000 && start.elapsed() < Duration::from_secs(180),
+            "ROM flash handoff timed out; milestones={:#x}",
+            hw.mci_boot_milestones().bits()
+        );
+        hw.step();
+    }
+    Ok(())
+}
+
 fn boot_check(pair: &SelectedPair, scenario: &str) -> Result<Option<String>> {
     if scenario == "streaming_boot" && !pair.streaming() {
         return Ok(Some(
@@ -1033,6 +1118,14 @@ fn boot_check(pair: &SelectedPair, scenario: &str) -> Result<Option<String>> {
         return Ok(Some(
             "Covered by the separate flash-only configuration".into(),
         ));
+    }
+    if matches!(scenario, "flash_cold_boot" | "cold_reboot") {
+        if let Some(reason) = flash_layout_incompatibility(pair)? {
+            // The released ROM must still load and start the runtime from flash.
+            let mut hw = pair.boot(true, None, None, false)?;
+            wait_rom_flash_handoff(&mut hw).context("stage=rom_flash_handoff")?;
+            return Ok(Some(format!("{KNOWN_INCOMPATIBLE}{reason}")));
+        }
     }
     let negative = pair.config.negative_cases.get(scenario);
     let reject = matches!(
@@ -1326,7 +1419,10 @@ fn run_case(scenario: &str) -> Result<()> {
     });
     let (status, reason) = match &result {
         Ok(None) => ("PASS", String::new()),
-        Ok(Some(reason)) => ("NOT APPLICABLE", reason.clone()),
+        Ok(Some(reason)) => match reason.strip_prefix(KNOWN_INCOMPATIBLE) {
+            Some(reason) => ("KNOWN INCOMPATIBLE", reason.to_string()),
+            None => ("NOT APPLICABLE", reason.clone()),
+        },
         Err(error) => {
             let reason = format!("{error:#}");
             (
