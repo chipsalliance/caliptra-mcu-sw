@@ -300,6 +300,13 @@ mailbox, and not every runtime MCI command is wrapped by the current host
 utility dispatch tables. MCI-only operations still require a trusted SoC-side
 service or bridge that owns MCI access and enforces the deployment policy.
 
+## ROM-Owned Measurements
+
+When `RomParameters::stash_rom_digest` is enabled, MCU ROM stashes its own ROM
+digest with four-byte ASCII metadata `MROM` after Caliptra RT is ready for
+runtime mailbox commands. Field entropy provisioning remains available through
+the authorized runtime `MC_FE_PROG` command, not MCU ROM.
+
 ## Vendor Public Key Selection and Rotation
 
 Caliptra MCU supports a vendor public key selection and rotation scheme

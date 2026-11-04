@@ -22,11 +22,9 @@ use crate::{
     I3cMailboxHandler, I3cServicesModes, RomEnv, RomParameters, MCU_MEMORY_MAP,
 };
 use caliptra_api::mailbox::{
-    CmStableKeyType, CommandId, FeProgReq, MailboxReqHeader, StashMeasurementReq,
-    StashMeasurementResp,
+    CmStableKeyType, CommandId, MailboxReqHeader, StashMeasurementReq, StashMeasurementResp,
 };
-use caliptra_api::CaliptraApiError;
-use caliptra_api::SocManager;
+use caliptra_api::{CaliptraApiError, SocManager};
 use caliptra_api_types::{DeviceLifecycle, SecurityState};
 use caliptra_mcu_error::McuError;
 use caliptra_mcu_registers_generated::fuses;
@@ -37,7 +35,7 @@ use caliptra_mcu_romtime::{CaliptraSoC, HexBytes, HexWord, McuBootMilestones, Mc
 use core::ops::Deref;
 
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
-use zerocopy::{transmute, IntoBytes};
+use zerocopy::transmute;
 
 pub struct ColdBoot {}
 
@@ -331,78 +329,6 @@ fn recover_locked_dot_or_fail(
 }
 
 impl ColdBoot {
-    fn program_field_entropy(
-        program_field_entropy: &[bool; 4],
-        soc_manager: &mut CaliptraSoC,
-        mci: &caliptra_mcu_romtime::Mci,
-    ) {
-        for (partition, _) in program_field_entropy
-            .iter()
-            .enumerate()
-            .filter(|(_, partition)| **partition)
-        {
-            caliptra_mcu_romtime::println!(
-                "[mcu-rom] Executing FE_PROG command for partition {}",
-                partition
-            );
-
-            let req = FeProgReq {
-                partition: partition as u32,
-                ..Default::default()
-            };
-            let req = req.as_bytes();
-            let chksum = caliptra_api::calc_checksum(CommandId::FE_PROG.into(), req);
-            // set the checksum
-            let req = FeProgReq {
-                hdr: MailboxReqHeader { chksum },
-                partition: partition as u32,
-            };
-            let req: [u32; 2] = transmute!(req);
-            if let Err(err) = soc_manager.start_mailbox_req(
-                CommandId::FE_PROG.into(),
-                req.len() * 4,
-                req.iter().copied(),
-            ) {
-                match err {
-                    CaliptraApiError::MailboxCmdFailed(code) => {
-                        caliptra_mcu_romtime::println!(
-                            "[mcu-rom] Error sending mailbox command: {}",
-                            HexWord(code)
-                        );
-                    }
-                    _ => {
-                        caliptra_mcu_romtime::println!("[mcu-rom] Error sending mailbox command");
-                    }
-                }
-                fatal_error(McuError::ROM_COLD_BOOT_FIELD_ENTROPY_PROG_START);
-            }
-            if let Err(err) = soc_manager.finish_mailbox_resp(8, 8) {
-                match err {
-                    CaliptraApiError::MailboxCmdFailed(code) => {
-                        caliptra_mcu_romtime::println!(
-                            "[mcu-rom] Error finishing mailbox command: {}",
-                            HexWord(code)
-                        );
-                    }
-                    _ => {
-                        caliptra_mcu_romtime::println!("[mcu-rom] Error finishing mailbox command");
-                    }
-                }
-                fatal_error(McuError::ROM_COLD_BOOT_FIELD_ENTROPY_PROG_FINISH);
-            };
-
-            // Set status for each partition completion
-            let partition_status = match partition {
-                0 => McuRomBootStatus::FieldEntropyPartition0Complete.into(),
-                1 => McuRomBootStatus::FieldEntropyPartition1Complete.into(),
-                2 => McuRomBootStatus::FieldEntropyPartition2Complete.into(),
-                3 => McuRomBootStatus::FieldEntropyPartition3Complete.into(),
-                _ => mci.flow_checkpoint(),
-            };
-            mci.set_flow_checkpoint(partition_status);
-        }
-    }
-
     /// Calculate SHA384 hash of ROM and compare it against the stored value. Optionally stash it.
     fn rom_digest_integrity(soc_manager: &mut CaliptraSoC, stash: bool) {
         const DIGEST_SIZE: usize = 48;
@@ -432,14 +358,14 @@ impl ColdBoot {
         }
 
         if stash {
-            Self::stash_measurement(soc_manager, &digest);
+            Self::stash_measurement(soc_manager, *b"MROM", &digest);
         }
     }
 
-    fn stash_measurement(soc_manager: &mut CaliptraSoC, measurement: &[u8; 48]) {
+    fn stash_measurement(soc_manager: &mut CaliptraSoC, metadata: [u8; 4], measurement: &[u8; 48]) {
         let req = StashMeasurementReq {
             hdr: MailboxReqHeader { chksum: 0 },
-            metadata: [0u8; 4],
+            metadata,
             measurement: *measurement,
             context: [0u8; 48],
             svn: 0,
@@ -1216,14 +1142,6 @@ impl BootFlow for ColdBoot {
         // `params.fw_manifest_dot_enabled` so integrators can opt in.
 
         caliptra_mcu_romtime::println!("[mcu-rom] Finished common initialization");
-
-        // program field entropy if requested
-        if params.program_field_entropy.iter().any(|x| *x) {
-            caliptra_mcu_romtime::println!("[mcu-rom] Programming field entropy");
-            mci.set_flow_checkpoint(McuRomBootStatus::FieldEntropyProgrammingStarted.into());
-            Self::program_field_entropy(&params.program_field_entropy, &mut env.soc_manager, mci);
-            mci.set_flow_checkpoint(McuRomBootStatus::FieldEntropyProgrammingComplete.into());
-        }
 
         if params.recovery_status_open {
             caliptra_mcu_romtime::println!("[mcu-rom] Leaving recovery interface open");
