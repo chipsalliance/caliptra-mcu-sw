@@ -607,16 +607,17 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
         cert_out: &mut [u8],
     ) -> MeasurementApiResult<usize> {
         self.attestation_state_active()?;
+        let target = self.read_attestation_target_record()?;
         let dpe_store = DpeHandleStore::<S>::new(DPE_HANDLE_STORE_DRIVER_NUM);
         let mut existing_cdi = [0u8; EXPORTED_CDI_SIZE];
-        dpe_store
-            .read_exported_cdi(&mut existing_cdi)
-            .map_err(|_| MeasurementApiError::StoreFailed)?;
-        if existing_cdi != [0u8; EXPORTED_CDI_SIZE] {
+        if dpe_store
+            .read_exported_cdi(target.fw_id, &mut existing_cdi)
+            .is_ok()
+            && existing_cdi != [0u8; EXPORTED_CDI_SIZE]
+        {
             return Err(MeasurementApiError::ExportedCdiAlreadyDerived);
         }
 
-        let target = self.read_attestation_target_record()?;
         let params = DpeDeriveContextParams {
             parent_handle: target.context_handle,
             measurement: [0u8; DPE_TCI_MEASUREMENT_SIZE],
@@ -632,10 +633,23 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
             .map_err(|_| MeasurementApiError::DpeCommandFailed)?;
 
         dpe_store
-            .write_exported_cdi(&derived.exported_cdi)
+            .write_exported_cdi(target.fw_id, &derived.exported_cdi)
             .map_err(|_| self.enter_error_state(MeasurementApiError::StoreFailed))?;
         self.write_attestation_target_handle(target, derived.parent_handle)?;
         Ok(derived.cert_size)
+    }
+
+    /// Read the stored 32-byte exported CDI handle from DPE handle storage into `cdi_out`.
+    pub fn read_exported_cdi(&self, cdi_out: &mut [u8; EXPORTED_CDI_SIZE]) -> MeasurementApiResult {
+        self.attestation_state_active()?;
+        let dpe_store = DpeHandleStore::<S>::new(DPE_HANDLE_STORE_DRIVER_NUM);
+        dpe_store
+            .read_exported_cdi(self.manifest.attestation_target_fw_id(), cdi_out)
+            .map_err(|_| MeasurementApiError::ExportedCdiNotDerived)?;
+        if *cdi_out == [0u8; EXPORTED_CDI_SIZE] {
+            return Err(MeasurementApiError::ExportedCdiNotDerived);
+        }
+        Ok(())
     }
 
     /// Read stored measurement state for one manifest `fw_id`.
