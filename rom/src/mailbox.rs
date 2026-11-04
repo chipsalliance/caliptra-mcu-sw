@@ -67,10 +67,9 @@ fn word_byte_sum(w: u32) -> u32 {
         .wrapping_add(b[3] as u32)
 }
 
-/// Wrapping byte-sum over a slice of u32 words.
-fn u32_byte_sum(data: &[u32]) -> u32 {
-    data.iter()
-        .fold(0u32, |acc, &w| acc.wrapping_add(word_byte_sum(w)))
+/// Wrapping byte-sum over an iterator of u32 words.
+fn u32_byte_sum(data: impl Iterator<Item = u32>) -> u32 {
+    data.fold(0u32, |acc, w| acc.wrapping_add(word_byte_sum(w)))
 }
 
 /// Interpret a `[u8; CMB_SHA_CONTEXT_SIZE]` as `&[u32; CTX_DWORDS]`.
@@ -80,35 +79,38 @@ fn ctx_as_u32(ctx: &[u8; CMB_SHA_CONTEXT_SIZE]) -> &[u32; CTX_DWORDS] {
     unsafe { &*(ctx.as_ptr() as *const [u32; CTX_DWORDS]) }
 }
 
-/// Compute SHA-384 of `data` (a u32 slice representing the ROM) using
+/// Compute SHA-384 of `data` using
 /// CM_SHA_INIT / UPDATE / FINAL streaming mailbox commands. Returns the
 /// 48-byte digest.
 ///
 /// Data words are passed directly to the mailbox via u32 iterators, avoiding
 /// the ~4 KiB stack allocations that the request structs would otherwise
-/// require.
-pub fn cm_sha384(soc_manager: &mut CaliptraSoC, data: &[u32]) -> [u8; 48] {
-    let mut offset = 0;
-    let first_chunk = data.len().min(CHUNK_DWORDS);
+/// require. Cloned iterators must yield the same words for the checksum and
+/// mailbox payload.
+pub fn cm_sha384(
+    soc_manager: &mut CaliptraSoC,
+    data: impl ExactSizeIterator<Item = u32> + Clone,
+) -> [u8; 48] {
+    let mut offset = data.len().min(CHUNK_DWORDS);
+    let first_chunk = data.clone().take(offset);
+    let mut sha_context = cm_sha_init(soc_manager, first_chunk);
 
-    let mut sha_context = cm_sha_init(soc_manager, &data[..first_chunk]);
-    offset += first_chunk;
-
-    while data.len() - offset > CHUNK_DWORDS {
-        cm_sha_update(
-            soc_manager,
-            &data[offset..offset + CHUNK_DWORDS],
-            &mut sha_context,
-        );
-        offset += CHUNK_DWORDS;
+    while offset < data.len() {
+        let end = offset.saturating_add(CHUNK_DWORDS).min(data.len());
+        let chunk = data.clone().skip(offset).take(end - offset);
+        cm_sha_update(soc_manager, chunk, &mut sha_context);
+        offset = end;
     }
 
-    cm_sha_final(soc_manager, &data[offset..], sha_context)
+    cm_sha_final(soc_manager, &[], sha_context)
 }
 
 /// Send CM_SHA_INIT with the first data chunk and return the SHA context.
 #[inline(never)]
-fn cm_sha_init(soc_manager: &mut CaliptraSoC, chunk: &[u32]) -> [u8; CMB_SHA_CONTEXT_SIZE] {
+fn cm_sha_init(
+    soc_manager: &mut CaliptraSoC,
+    chunk: impl ExactSizeIterator<Item = u32> + Clone,
+) -> [u8; CMB_SHA_CONTEXT_SIZE] {
     let cmd: u32 = CommandId::CM_SHA_INIT.into();
     let hash_algorithm = CM_HASH_ALGORITHM_SHA384;
     let input_size = (chunk.len() * 4) as u32;
@@ -116,7 +118,7 @@ fn cm_sha_init(soc_manager: &mut CaliptraSoC, chunk: &[u32]) -> [u8; CMB_SHA_CON
     let mut sum = word_byte_sum(cmd);
     sum = sum.wrapping_add(word_byte_sum(hash_algorithm));
     sum = sum.wrapping_add(word_byte_sum(input_size));
-    sum = sum.wrapping_add(u32_byte_sum(chunk));
+    sum = sum.wrapping_add(u32_byte_sum(chunk.clone()));
     let checksum = 0u32.wrapping_sub(sum);
 
     // CmShaInitReq: chksum(4) + hash_algorithm(4) + input_size(4) + input(MAX_CMB_DATA_SIZE)
@@ -126,7 +128,7 @@ fn cm_sha_init(soc_manager: &mut CaliptraSoC, chunk: &[u32]) -> [u8; CMB_SHA_CON
     let iter = core::iter::once(checksum)
         .chain(core::iter::once(hash_algorithm))
         .chain(core::iter::once(input_size))
-        .chain(chunk.iter().copied())
+        .chain(chunk)
         .chain(core::iter::repeat_n(0u32, padding));
 
     if let Err(err) = soc_manager.start_mailbox_req(cmd, total_bytes, iter) {
@@ -158,7 +160,7 @@ fn cm_sha_init(soc_manager: &mut CaliptraSoC, chunk: &[u32]) -> [u8; CMB_SHA_CON
 #[inline(never)]
 fn cm_sha_update(
     soc_manager: &mut CaliptraSoC,
-    chunk: &[u32],
+    chunk: impl ExactSizeIterator<Item = u32> + Clone,
     sha_context: &mut [u8; CMB_SHA_CONTEXT_SIZE],
 ) {
     let cmd: u32 = CommandId::CM_SHA_UPDATE.into();
@@ -166,9 +168,9 @@ fn cm_sha_update(
     let ctx = ctx_as_u32(sha_context);
 
     let mut sum = word_byte_sum(cmd);
-    sum = sum.wrapping_add(u32_byte_sum(ctx));
+    sum = sum.wrapping_add(u32_byte_sum(ctx.iter().copied()));
     sum = sum.wrapping_add(word_byte_sum(input_size));
-    sum = sum.wrapping_add(u32_byte_sum(chunk));
+    sum = sum.wrapping_add(u32_byte_sum(chunk.clone()));
     let checksum = 0u32.wrapping_sub(sum);
 
     let total_bytes = 4 + CMB_SHA_CONTEXT_SIZE + 4 + MAX_CMB_DATA_SIZE;
@@ -177,7 +179,7 @@ fn cm_sha_update(
     let iter = core::iter::once(checksum)
         .chain(ctx.iter().copied())
         .chain(core::iter::once(input_size))
-        .chain(chunk.iter().copied())
+        .chain(chunk)
         .chain(core::iter::repeat_n(0u32, padding));
 
     if let Err(err) = soc_manager.start_mailbox_req(cmd, total_bytes, iter) {
@@ -215,9 +217,9 @@ fn cm_sha_final(
     let ctx = ctx_as_u32(&sha_context);
 
     let mut sum = word_byte_sum(cmd);
-    sum = sum.wrapping_add(u32_byte_sum(ctx));
+    sum = sum.wrapping_add(u32_byte_sum(ctx.iter().copied()));
     sum = sum.wrapping_add(word_byte_sum(input_size));
-    sum = sum.wrapping_add(u32_byte_sum(remaining));
+    sum = sum.wrapping_add(u32_byte_sum(remaining.iter().copied()));
     let checksum = 0u32.wrapping_sub(sum);
 
     let total_bytes = 4 + CMB_SHA_CONTEXT_SIZE + 4 + MAX_CMB_DATA_SIZE;
