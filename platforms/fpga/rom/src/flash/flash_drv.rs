@@ -102,18 +102,23 @@ impl FlashStorage for FpgaFlashCtrl {
             let page_offset = flash_offset % PAGE_SIZE;
             let to_read = core::cmp::min(PAGE_SIZE - page_offset, remaining);
 
-            // Read the page into page_buf
-            self.read_page(page_number, &mut page_buf)?;
-
             let dest = buf
                 .get_mut(buf_offset..buf_offset + to_read)
                 .ok_or(FlashDrvError::INVAL)?;
-            let src = page_buf
-                .0
-                .get(page_offset..page_offset + to_read)
-                .ok_or(FlashDrvError::INVAL)?;
-            for (d, s) in dest.iter_mut().zip(src.iter()) {
-                *d = *s;
+
+            if page_offset == 0 && to_read == PAGE_SIZE {
+                self.read_page_bytes(page_number, dest)?;
+            } else {
+                // Read the page into page_buf
+                self.read_page(page_number, &mut page_buf)?;
+
+                let src = page_buf
+                    .0
+                    .get(page_offset..page_offset + to_read)
+                    .ok_or(FlashDrvError::INVAL)?;
+                for (d, s) in dest.iter_mut().zip(src.iter()) {
+                    *d = *s;
+                }
             }
 
             remaining -= to_read;
@@ -206,18 +211,14 @@ impl FpgaFlashCtrl {
     }
 
     fn read_page(&self, page_number: usize, buf: &mut FpgaFlashPage) -> Result<(), FlashDrvError> {
+        self.read_page_bytes(page_number, &mut buf.0)
+    }
+
+    fn read_page_bytes(&self, page_number: usize, buf: &mut [u8]) -> Result<(), FlashDrvError> {
         // Check if the page number is valid
-        if page_number >= FLASH_MAX_PAGES {
+        if page_number >= FLASH_MAX_PAGES || buf.len() < PAGE_SIZE {
             return Err(FlashDrvError::INVAL);
         }
-
-        // Clear the control register
-        self.registers
-            .fl_control
-            .modify(FlControl::Op::CLEAR + FlControl::Start::CLEAR);
-
-        // Use the fixed SRAM buffer address for FPGA
-        let page_buf_addr = FLASH_PAGE_BUFFER_SRAM_OFFSET;
 
         // Program page_num, page_addr registers (page_size is fixed on FPGA)
         self.registers.page_num.set(page_number as u32);
@@ -225,16 +226,18 @@ impl FpgaFlashCtrl {
         // Start the read operation
         self.registers
             .fl_control
-            .modify(FlControl::Op.val(FlashOperation::ReadPage as u32) + FlControl::Start::SET);
+            .write(FlControl::Op.val(FlashOperation::ReadPage as u32) + FlControl::Start::SET);
 
         // Polling for the operation to complete. This is a blocking call.
         self.poll_for_completion()?;
 
-        // Copy data from SRAM buffer to the provided buffer
-        let sram_ptr = page_buf_addr as *const u8;
+        // Copy data from SRAM buffer to the provided buffer using 32-bit word reads
+        let sram_ptr = FLASH_PAGE_BUFFER_SRAM_OFFSET as *const u32;
+        let dst_ptr = buf.as_mut_ptr() as *mut u32;
         unsafe {
-            for i in 0..PAGE_SIZE {
-                buf.0[i] = core::ptr::read_volatile(sram_ptr.add(i));
+            for i in 0..(PAGE_SIZE / 4) {
+                let word = core::ptr::read_volatile(sram_ptr.add(i));
+                core::ptr::write_unaligned(dst_ptr.add(i), word);
             }
         }
 
