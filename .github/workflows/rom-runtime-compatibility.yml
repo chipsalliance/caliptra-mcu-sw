@@ -202,7 +202,12 @@ jobs:
                 cp target/generated/attestation_manifest.toml "output/$mode-attestation_manifest.toml"
                 cp target/generated/soc_image_descriptors.toml "output/$mode-soc_image_descriptors.toml"
               fi
-              features=(--features hw-2-1 --features mcu-mbox-service --features "$boot_mode-boot")
+              soc_loading="$boot_mode"
+              # SDK 2.1.0's attestation features always reload SoC images from
+              # flash, even after a streaming load. Build its service images
+              # flash-loaded, as its SDK tested them; prepare_inputs reads this.
+              if [[ "$LABEL" == rt-sdk-2.1.0 && "$mode" == services-* ]]; then soc_loading=flash; fi
+              features=(--features hw-2-1 --features mcu-mbox-service --features "$soc_loading-boot")
               if [ "$boot_mode" = streaming ]; then features+=(--features spdm --features mctp-vdm-service); fi
               # Native cold-boot attestation features retain the responder after loading.
               case "$mode" in
@@ -310,7 +315,8 @@ jobs:
               output = directory / "attestation"
               output.mkdir()
               with zipfile.ZipFile(output / "bundle.zip", "w") as bundle:
-                  bundle.write(directory / "soc-manifest.bin", "soc_manifest.bin")
+                  # Reference values cover only the components the runtime measures.
+                  bundle.write(directory / "reference-soc-manifest.bin", "soc_manifest.bin")
               (output / "config.json").write_text(json.dumps({
                   "vendor": "ChipsAlliance", "model": "Caliptra-SS",
                   "output_dir": str(output / "refval"),

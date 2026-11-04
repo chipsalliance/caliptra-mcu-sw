@@ -45,6 +45,50 @@ fn error_value(path: &Path, name: &str) -> Result<u32> {
     )?)
 }
 
+/// Write an unsigned copy of `manifest` listing only the components that the
+/// runtime's embedded attestation policy measures. It is input to the CoRIM
+/// reference-value generator only; devices always receive the signed manifest.
+fn write_reference_manifest(manifest: &[u8], policy: &Path, output: &Path) -> Result<()> {
+    use zerocopy::{FromZeros, IntoBytes};
+    let measured: std::collections::BTreeSet<u32> = fs::read_to_string(policy)?
+        .lines()
+        .filter_map(|line| {
+            line.trim()
+                .strip_prefix("fw_id")?
+                .trim()
+                .strip_prefix('=')?
+                .trim()
+                .parse()
+                .ok()
+        })
+        .collect();
+    ensure!(
+        !measured.is_empty(),
+        "Attestation policy lists no components"
+    );
+    let mut manifest = AuthorizationManifest::read_from_bytes(manifest)
+        .map_err(|error| anyhow::anyhow!("Invalid signed manifest: {error}"))?;
+    let collection = &mut manifest.image_metadata_col;
+    let entries = collection
+        .image_metadata_list
+        .get(..usize::try_from(collection.entry_count)?)
+        .context("Invalid manifest entry count")?;
+    let kept: Vec<_> = entries
+        .iter()
+        .copied()
+        .filter(|entry| measured.contains(&entry.fw_id))
+        .collect();
+    ensure!(
+        kept.len() == measured.len(),
+        "Signed manifest lacks a component of the attestation policy"
+    );
+    collection.image_metadata_list.zero();
+    collection.image_metadata_list[..kept.len()].copy_from_slice(&kept);
+    collection.entry_count = u32::try_from(kept.len())?;
+    fs::write(output, manifest.as_bytes())?;
+    Ok(())
+}
+
 fn write_json(path: &Path, value: &serde_json::Value) -> Result<()> {
     fs::write(path, serde_json::to_vec_pretty(value)?)?;
     Ok(())
@@ -413,6 +457,18 @@ fn prepare_inputs() -> Result<()> {
                 .join("images")
                 .join(runtime)
                 .join(format!("{mode}.bin"));
+            // The image build records whether this runtime loads SoC images over PLDM.
+            let soc_loading = if fs::read_to_string(
+                root.join("images")
+                    .join(runtime)
+                    .join(format!("{mode}-command.txt")),
+            )?
+            .contains("streaming-boot")
+            {
+                "pldm"
+            } else {
+                "flash"
+            };
             let directory = shared.join(runtime).join(mode);
             fs::create_dir_all(&directory)?;
             for svn in [0, 1] {
@@ -444,6 +500,16 @@ fn prepare_inputs() -> Result<()> {
                 let manifest = AuthorizationManifest::ref_from_bytes(&bytes)
                     .map_err(|error| anyhow::anyhow!("Invalid signed manifest: {error}"))?;
                 ensure!(manifest.preamble.svn == svn, "Wrong signed manifest SVN");
+                if svn == 0 && mode.starts_with("services-") {
+                    write_reference_manifest(
+                        &bytes,
+                        &root
+                            .join("images")
+                            .join(runtime)
+                            .join(format!("{mode}-attestation_manifest.toml")),
+                        &directory.join("reference-soc-manifest.bin"),
+                    )?;
+                }
                 let entries = manifest
                     .image_metadata_col
                     .image_metadata_list
@@ -560,6 +626,7 @@ fn prepare_inputs() -> Result<()> {
                         "primary_flash": artifact(&root, &rom_flash)?,
                         "runtime_flash": artifact(&root, &directory.join("runtime-flash.bin"))?,
                         "pldm_package": artifact(&root, &shared.join("streaming.pldm"))?,
+                        "soc_loading": soc_loading,
                         "expected_capabilities": capabilities[runtime][boot_mode],
                         "handoff_address": rom_build.handoff_address.context("Missing ROM handoff address")?,
                         "soc_images": soc, "negative_cases": negatives,

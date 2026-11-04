@@ -171,6 +171,8 @@ struct PairConfig {
     primary_flash: Artifact,
     runtime_flash: Artifact,
     pldm_package: Artifact,
+    /// How the selected runtime loads SoC images: `pldm` or `flash`.
+    soc_loading: String,
     expected_capabilities: String,
     handoff_address: u32,
     soc_images: Vec<MemoryCheck>,
@@ -580,7 +582,7 @@ impl TransportSession {
             device.initial_descriptor.descriptor_data == (1..=16).collect::<Vec<u8>>(),
             "Discovered wrong PLDM device"
         );
-        check_soc_images(hw, pair)?;
+        check_soc_images(hw, pair, true)?;
         self.daemon.stop();
         self.socket.disconnect();
         check_no_fatal(hw)?;
@@ -910,7 +912,11 @@ fn read_memory_mmio(
         .collect())
 }
 
-fn check_soc_images(hw: &mut impl McuHwModel, pair: &SelectedPair) -> Result<()> {
+fn check_soc_images(
+    hw: &mut impl McuHwModel,
+    pair: &SelectedPair,
+    require_activation: bool,
+) -> Result<()> {
     ensure!(
         !pair.config.soc_images.is_empty(),
         "BLOCKED: no expected SoC images supplied"
@@ -947,10 +953,11 @@ fn check_soc_images(hw: &mut impl McuHwModel, pair: &SelectedPair) -> Result<()>
                 .read()
         });
         if first_mismatch.is_none()
-            && execution
-                .iter()
-                .zip(&required)
-                .all(|(actual, expected)| actual & expected == *expected)
+            && (!require_activation
+                || execution
+                    .iter()
+                    .zip(&required)
+                    .all(|(actual, expected)| actual & expected == *expected))
             && hw
                 .caliptra_soc_manager()
                 .soc_mbox()
@@ -1182,7 +1189,7 @@ fn boot_check(pair: &SelectedPair, scenario: &str) -> Result<Option<String>> {
         }
         "flash_cold_boot" | "cold_reboot" => {
             // Never provide PLDM payloads here: flash must work without streaming fallback.
-            check_soc_images(&mut hw, pair)?;
+            check_soc_images(&mut hw, pair, true)?;
             if scenario == "cold_reboot" {
                 let otp = hw.read_otp_memory();
                 drop(hw);
@@ -1194,7 +1201,7 @@ fn boot_check(pair: &SelectedPair, scenario: &str) -> Result<Option<String>> {
                 );
                 wait_ready(&mut hw)?;
                 check_version(&mut hw, pair)?;
-                check_soc_images(&mut hw, pair)?;
+                check_soc_images(&mut hw, pair, true)?;
             }
         }
         "streaming_boot" => start_transport(&mut hw, pair)?.finish(&mut hw, pair)?,
@@ -1244,14 +1251,22 @@ fn suite_check(pair: &SelectedPair, scenario: &str) -> Result<Option<String>> {
         | "suite_attestation_ocp_eat_non_tcb"
         | "suite_attestation_ocp_eat_tcb"
         | "suite_attestation_ocp_eat_mixed" => {
-            start_transport(&mut hw, pair)?
-                .finish(&mut hw, pair)
-                .context("stage=service_soc_loading")?;
+            if pair.config.soc_loading == "pldm" {
+                start_transport(&mut hw, pair)?
+                    .finish(&mut hw, pair)
+                    .context("stage=service_soc_loading")?;
+            } else {
+                // SDK 2.1.0 attestation loads SoC images from flash and keeps
+                // them unactivated; it also predates FIRMWARE_SPDM_MCTP_READY.
+                hw.start_i3c_controller();
+                check_soc_images(&mut hw, pair, false).context("stage=service_soc_loading")?;
+            }
             let started = Instant::now();
             let cycles = hw.cycle_count();
-            while !hw
-                .mci_boot_milestones()
-                .contains(McuBootMilestones::FIRMWARE_SPDM_MCTP_READY)
+            while pair.config.soc_loading == "pldm"
+                && !hw
+                    .mci_boot_milestones()
+                    .contains(McuBootMilestones::FIRMWARE_SPDM_MCTP_READY)
             {
                 check_no_fatal(&mut hw)?;
                 ensure!(

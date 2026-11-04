@@ -77,6 +77,9 @@ Nextest counts those invocations as successful. Use the per-case results.
 - **Flash boot:** the ROM requires a raw header at offset zero; the runtimes
   require a partition table there. No flash swapping or streaming fallback
   hides this incompatibility.
+- **SDK 2.1.0 services:** its attestation features reload SoC images from
+  flash after any streaming load and predate the SPDM-ready milestone, so its
+  service images load SoC images from flash, as its own tests did.
 - **Core firmware ABI:** `GET_IMAGE_INFO` grew from 8 to 12 bytes in
   caliptra-sw `3382bdb0`. Pairing a runtime with Core firmware from the other
   side of that change fails SoC loading with `0x000e0003`; each runtime
