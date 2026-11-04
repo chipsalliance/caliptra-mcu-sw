@@ -266,6 +266,7 @@ mod tests {
     struct TestTdispDriver {
         state: Cell<TdiStatus>,
         nonce_counter: Cell<u8>,
+        start_calls: Cell<u8>,
     }
 
     impl TestTdispDriver {
@@ -273,6 +274,7 @@ mod tests {
             Self {
                 state: Cell::new(TdiStatus::ConfigUnlocked),
                 nonce_counter: Cell::new(0),
+                start_calls: Cell::new(0),
             }
         }
     }
@@ -385,6 +387,7 @@ mod tests {
         where
             Alloc: SpdmPalAlloc,
         {
+            self.start_calls.set(self.start_calls.get() + 1);
             if self.state.get() != TdiStatus::ConfigLocked {
                 return Ok(TDISP_ERROR_INVALID_INTERFACE_STATE);
             }
@@ -691,6 +694,50 @@ mod tests {
         let (response, out) = dispatch(&backend, &start, 64).expect("TDISP error is framed");
         assert_inline(response, 1 + TDISP_ERROR_RSP_LEN);
         assert_tdisp_error(&out, TDISP_ERROR_INVALID_INTERFACE_STATE, 0);
+    }
+
+    #[test]
+    fn rejected_lock_keeps_pending_start_nonce() {
+        let backend = backend();
+        let get_version = request(TdispCommand::GetTdispVersion as u8, &[]);
+        dispatch(&backend, &get_version, 64).expect("interface initialized");
+
+        let lock = request(TdispCommand::LockInterface as u8, &[0; 20]);
+        let (_response, out) = dispatch(&backend, &lock, 64).expect("LOCK_INTERFACE succeeds");
+        let mut nonce = [0u8; 32];
+        nonce.copy_from_slice(&out[17..49]);
+
+        let (response, out) = dispatch(&backend, &lock, 64).expect("TDISP error is framed");
+        assert_inline(response, 1 + TDISP_ERROR_RSP_LEN);
+        assert_tdisp_error(&out, TDISP_ERROR_INVALID_INTERFACE_STATE, 0);
+
+        let start = request(TdispCommand::StartInterfaceRequest as u8, &nonce);
+        let (response, out) = dispatch(&backend, &start, 64).expect("START_INTERFACE succeeds");
+        assert_inline(response, 1 + TDISP_HEADER_LEN);
+        assert_eq!(out[2], TdispCommand::StartInterfaceResponse as u8);
+    }
+
+    #[test]
+    fn accepted_stop_invalidates_pending_start_nonce() {
+        let backend = backend();
+        let get_version = request(TdispCommand::GetTdispVersion as u8, &[]);
+        dispatch(&backend, &get_version, 64).expect("interface initialized");
+
+        let lock = request(TdispCommand::LockInterface as u8, &[0; 20]);
+        let (_response, out) = dispatch(&backend, &lock, 64).expect("LOCK_INTERFACE succeeds");
+        let mut nonce = [0u8; 32];
+        nonce.copy_from_slice(&out[17..49]);
+
+        let stop = request(TdispCommand::StopInterfaceRequest as u8, &[]);
+        let (response, out) = dispatch(&backend, &stop, 64).expect("STOP_INTERFACE succeeds");
+        assert_inline(response, 1 + TDISP_HEADER_LEN);
+        assert_eq!(out[2], TdispCommand::StopInterfaceResponse as u8);
+
+        let start = request(TdispCommand::StartInterfaceRequest as u8, &nonce);
+        let (response, out) = dispatch(&backend, &start, 64).expect("TDISP error is framed");
+        assert_inline(response, 1 + TDISP_ERROR_RSP_LEN);
+        assert_tdisp_error(&out, TDISP_ERROR_INVALID_INTERFACE_STATE, 0);
+        assert_eq!(backend.tdisp.driver().start_calls.get(), 0);
     }
 
     #[test]
