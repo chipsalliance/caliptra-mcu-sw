@@ -7,7 +7,7 @@ use caliptra_mcu_attestation_evidence::SIGNED_OCP_EAT_MAX_SIZE;
 use caliptra_mcu_common_commands::{
     AsymAlgo, CaliptraCmdHandler, CaliptraCmdResult, CaliptraCompletionCode, CertChainInfo,
     DebugUnlockChallenge, DeviceCapabilities, EvidenceFormat, FirmwareVersion, GetLogResult,
-    PkiEntitySlot, ATTESTATION_NONCE_LEN,
+    PkiEntitySlot, ProvisionIdevCertMode, ATTESTATION_NONCE_LEN,
 };
 use caliptra_mcu_config::capabilities::{
     encode_capabilities, AuthorizedSubcommandCapabilities, ExternalCommandCapabilities,
@@ -373,6 +373,16 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
             data,
         )
         .await
+    }
+
+    async fn provision_idevid_cert<Alloc: ScratchAlloc>(
+        &self,
+        alloc: &Alloc,
+        algorithm: AsymAlgo,
+        mode: ProvisionIdevCertMode,
+        data: &[u8],
+    ) -> CaliptraCmdResult<()> {
+        device_ops::provision_idevid_cert(alloc, algorithm, mode, data).await
     }
 
     /// Drain entries of `log_type` from the backing store.
