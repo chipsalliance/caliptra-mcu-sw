@@ -308,9 +308,9 @@ pub trait CaliptraCmdHandler {
 
     /// Describes a supported `VUxy` target inside `AuthorizedCommand`.
     ///
-    /// This side-effect-free lookup may run before authorization for buffer
-    /// sizing. Payloads must fit [`command::MAX_AUTHORIZED_PAYLOAD_LEN`] and
-    /// responses must fit [`caliptra_mcu_mbox_common::messages::MAX_RESP_DATA_SIZE`].
+    /// This side-effect-free lookup runs before authorization. Payloads must fit
+    /// [`command::MAX_AUTHORIZED_PAYLOAD_LEN`]. The declared response limit must
+    /// fit the transport's existing response buffer; no resizing is done.
     /// The default registers no vendor commands.
     fn vendor_command_limits(_cmd_id: u32) -> Option<VendorCommandLimits> {
         None

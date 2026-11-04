@@ -6,9 +6,7 @@ use crate::transport::McuMboxTransport;
 use caliptra_mcu_common_commands::command::execute_dot;
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_common_commands::command::execute_ocp_lock;
-use caliptra_mcu_common_commands::command::{
-    execute_authorized, vendor_command_limits, CommandPolicy, CommandResponse,
-};
+use caliptra_mcu_common_commands::command::{execute_authorized, CommandPolicy, CommandResponse};
 use caliptra_mcu_common_commands::{
     AsymAlgo, CaliptraCmdHandler, CaliptraCompletionCode, CertChainInfo, CommandAuthorizer,
     DebugUnlockChallenge, DeviceCapabilities, EvidenceFormat, FirmwareVersion, GetLogResult,
@@ -200,14 +198,10 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer> CmdInterface<'a, H, A> {
             return Err(err);
         }
 
-        let response_size = match response_buffer_size::<H>(cmd_id, &req_buf[..req_len]) {
-            Ok(size) => size,
-            Err(err) => {
-                let _ = self.transport.finalize_response(MbxCmdStatus::Failure);
-                return Err(err);
-            }
-        };
-        let mut resp_buf = match self.scratch.alloc_bytes(response_size) {
+        let mut resp_buf = match self
+            .scratch
+            .alloc_bytes(response_buffer_size::<H>(cmd_id, &req_buf[..req_len]))
+        {
             Ok(buf) => buf,
             Err(err) => {
                 let _ = self.transport.finalize_response(MbxCmdStatus::Failure);
@@ -1154,10 +1148,10 @@ pub const DPE_SIGNER_CONTEXT_CERT_RESP_SIZE: usize = size_of::<MailboxRespHeader
 #[cfg(feature = "ocp-lock")]
 pub const OCP_LOCK_IN_PLACE_SIGN_RESP_DATA_SIZE: usize = 11_828;
 
-fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32, req: &[u8]) -> McuResult<usize> {
+fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32, req: &[u8]) -> usize {
     #[cfg(not(feature = "ocp-lock"))]
     let _ = req;
-    let size = match CommandId::from(cmd) {
+    match CommandId::from(cmd) {
         c if c == CommandId::MC_MLDSA_CMK_VERIFY
             || c == CommandId::MC_ECDSA_CMK_VERIFY
             || c == CommandId::MC_ECDSA384_SIG_VERIFY
@@ -1171,12 +1165,6 @@ fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32, req: &[u8]) -> McuResul
                 .get(size_of::<MailboxReqHeader>()..)
                 .and_then(|body| request_id(body, 0).ok());
             match target {
-                Some(target) if CommandId::from(target).is_vendor_unique() => {
-                    let limits = vendor_command_limits::<H>(target)
-                        .map_err(map_common_cmd_error)?
-                        .ok_or(errors::UNSUPPORTED_COMMAND)?;
-                    size_of::<MailboxRespHeader>() + limits.max_response_len
-                }
                 Some(target) if target == CommandId::MC_GET_AUTH_CMD_CHALLENGE.0 => {
                     size_of::<GetAuthCmdChallengeResp>()
                 }
@@ -1230,8 +1218,7 @@ fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32, req: &[u8]) -> McuResul
         #[cfg(feature = "device-ownership-transfer")]
         CommandId::MC_DEVICE_OWNERSHIP_TRANSFER => size_of::<GetDotBackupBlobResp>(),
         _ => size_of::<McuMailboxResp>(),
-    };
-    Ok(size)
+    }
 }
 
 /// Writes the `MC_EXPORT_ATTESTED_CSR` response body into `body` and returns its
@@ -1428,21 +1415,14 @@ mod tests {
     extern crate std;
 
     use super::*;
-    use caliptra_mcu_common_commands::{AuthorizationError, VendorCommandLimits};
-    use caliptra_mcu_mbox_common::authorization::{AuthorizationBlock, AuthorizationMetadata};
     use caliptra_mcu_mbox_common::messages::McuRequestVarSize;
     use caliptra_mcu_mbox_common::messages::MAX_ATTESTATION_RESP_DATA_SIZE;
-    use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
-    use caliptra_mcu_scratch_alloc::BITMAP_SLOT_SIZE;
-    use core::cell::Cell;
-    use core::ptr::NonNull;
     use futures::executor::block_on;
     use std::vec;
     use std::vec::Vec;
 
     const TEST_EAT_LEN: usize = 3059;
     const TEST_QUOTE_MLDSA_LEN: usize = 6388;
-    const TEST_VENDOR_ID: u32 = u32::from_be_bytes(*b"VU01");
 
     #[test]
     fn request_buffer_fits_largest_authorized_envelope() {
@@ -1484,29 +1464,6 @@ mod tests {
             _capabilities: &mut DeviceCapabilities,
         ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
             unimplemented!("not exercised by the attestation tests")
-        }
-
-        fn vendor_command_limits(cmd_id: u32) -> Option<VendorCommandLimits> {
-            if cmd_id == TEST_VENDOR_ID || cmd_id == CommandId::VENDOR_UNIQUE_COMMAND_END.0 {
-                Some(VendorCommandLimits {
-                    max_payload_len: 16,
-                    max_response_len: 32,
-                })
-            } else {
-                None
-            }
-        }
-
-        async fn handle_vendor_command<Alloc: ScratchAlloc>(
-            &self,
-            _alloc: &Alloc,
-            _cmd_id: u32,
-            payload: &[u8],
-            response: &mut [u8],
-        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<usize> {
-            assert_eq!(response.len(), 32);
-            response[..payload.len()].copy_from_slice(payload);
-            Ok(payload.len())
         }
 
         async fn export_attested_csr<Alloc: ScratchAlloc>(
@@ -1632,137 +1589,6 @@ mod tests {
         }
     }
 
-    struct TestAuthorizer {
-        allow: bool,
-        verified: Cell<bool>,
-    }
-
-    impl CommandAuthorizer for TestAuthorizer {
-        async fn verify_signatures<Alloc: ScratchAlloc>(
-            &self,
-            _alloc: &Alloc,
-            _cmd_id: u32,
-            _payload: &[u8],
-            _metadata: &AuthorizationMetadata,
-            _nonce: &[u8; AUTH_CMD_NONCE_LEN],
-            _ecc_pub_x: &[u8; 48],
-            _ecc_pub_y: &[u8; 48],
-            _mldsa_pub: &[u8; 2592],
-            _signature: &HybridSignature,
-        ) -> Result<(), AuthorizationError> {
-            self.verified.set(true);
-            if self.allow {
-                Ok(())
-            } else {
-                Err(AuthorizationError)
-            }
-        }
-
-        fn take_challenge(&self) -> Option<[u8; AUTH_CMD_NONCE_LEN]> {
-            None
-        }
-
-        fn set_challenge(&self, _challenge: [u8; AUTH_CMD_NONCE_LEN]) {}
-    }
-
-    fn vendor_request(cmd_id: u32, payload: &[u8]) -> Vec<u8> {
-        let mut req = MailboxReqHeader { chksum: 0 }.as_bytes().to_vec();
-        req.extend_from_slice(&cmd_id.to_le_bytes());
-        req.extend_from_slice(payload);
-        req.extend_from_slice(AuthorizationBlock::default().as_bytes());
-        req
-    }
-
-    fn dispatch_vendor_request(
-        req: &[u8],
-        response_size: usize,
-        allow: bool,
-    ) -> (McuResult<Vec<u8>>, bool, Vec<u8>) {
-        let mut backing = vec![0; 5 * BITMAP_SLOT_SIZE];
-        let offset = backing.as_ptr().align_offset(BITMAP_SLOT_SIZE);
-        let ptr = NonNull::new(backing[offset..].as_mut_ptr()).unwrap();
-        // SAFETY: The aligned region fits in backing, which outlives the allocator.
-        let scratch = unsafe { BitmapAllocator::new(ptr, 4 * BITMAP_SLOT_SIZE) };
-        let mut transport = McuMboxTransport::new(0);
-        let mut authorizer = TestAuthorizer {
-            allow,
-            verified: Cell::new(false),
-        };
-        let interface = CmdInterface::new(&mut transport, &TestHandler, &mut authorizer, &scratch);
-        let mut response = vec![0xA5; response_size];
-        let result = block_on(interface.handle_authorized_command(req, &mut response)).map(
-            |(bytes, status)| {
-                assert_eq!(status, MbxCmdStatus::Complete);
-                bytes.to_vec()
-            },
-        );
-        (result, authorizer.verified.get(), response)
-    }
-
-    #[test]
-    fn vendor_unique_mailbox_commands_use_registered_bounds_and_normal_framing() {
-        for cmd_id in [TEST_VENDOR_ID, CommandId::VENDOR_UNIQUE_COMMAND_END.0] {
-            let payload = [0x12, 0x34, 0x56, 0x78];
-            let req = vendor_request(cmd_id, &payload);
-            let size =
-                response_buffer_size::<TestHandler>(CommandId::MC_AUTHORIZED_COMMAND.0, &req)
-                    .unwrap();
-            assert_eq!(size, size_of::<MailboxRespHeader>() + 32);
-            let (response, verified, _) = dispatch_vendor_request(&req, size, true);
-            let response = response.unwrap();
-            assert!(verified);
-            assert_eq!(
-                response.len(),
-                size_of::<MailboxRespHeader>() + payload.len()
-            );
-            assert_eq!(
-                &response[..size_of::<MailboxRespHeader>()],
-                MailboxRespHeader::default().as_bytes()
-            );
-            assert_eq!(&response[size_of::<MailboxRespHeader>()..], &payload);
-        }
-    }
-
-    #[test]
-    fn vendor_unique_mailbox_bad_authorization_does_not_run_the_handler() {
-        let req = vendor_request(TEST_VENDOR_ID, &[1, 2, 3, 4]);
-        let size =
-            response_buffer_size::<TestHandler>(CommandId::MC_AUTHORIZED_COMMAND.0, &req).unwrap();
-        let (response, verified, buffer) = dispatch_vendor_request(&req, size, false);
-        assert_eq!(response, Err(errors::UNAUTHORIZED_COMMAND));
-        assert!(verified);
-        assert!(buffer.iter().all(|byte| *byte == 0xA5));
-    }
-
-    #[test]
-    fn vendor_unique_mailbox_rejects_bad_lengths_before_authorization() {
-        let req = vendor_request(TEST_VENDOR_ID, &[0; 17]);
-        let (response, verified, _) =
-            dispatch_vendor_request(&req, size_of::<MailboxRespHeader>() + 32, true);
-        assert_eq!(response, Err(errors::INVALID_PARAMS));
-        assert!(!verified);
-
-        let req = vendor_request(TEST_VENDOR_ID, &[1, 2, 3, 4]);
-        let (response, verified, buffer) =
-            dispatch_vendor_request(&req, size_of::<MailboxRespHeader>() + 31, true);
-        assert_eq!(response, Err(errors::MCU_MBOX_COMMON));
-        assert!(!verified);
-        assert!(buffer.iter().all(|byte| *byte == 0xA5));
-    }
-
-    #[test]
-    fn vendor_unique_mailbox_unregistered_ids_remain_unsupported() {
-        let req = vendor_request(CommandId::VENDOR_UNIQUE_COMMAND_START.0, &[]);
-        assert_eq!(
-            response_buffer_size::<TestHandler>(CommandId::MC_AUTHORIZED_COMMAND.0, &req),
-            Err(errors::UNSUPPORTED_COMMAND)
-        );
-        let (response, verified, _) =
-            dispatch_vendor_request(&req, size_of::<MailboxRespHeader>(), true);
-        assert_eq!(response, Err(errors::UNSUPPORTED_COMMAND));
-        assert!(!verified);
-    }
-
     fn request(format: u32, algorithm: u32) -> GetAttestationReq {
         GetAttestationReq {
             hdr: MailboxReqHeader { chksum: 0 },
@@ -1775,8 +1601,7 @@ mod tests {
 
     #[test]
     fn response_buffer_is_sized_from_the_handler_not_a_fixed_variant() {
-        let sized =
-            response_buffer_size::<TestHandler>(CommandId::MC_GET_ATTESTATION.0, &[]).unwrap();
+        let sized = response_buffer_size::<TestHandler>(CommandId::MC_GET_ATTESTATION.0, &[]);
         assert!(
             sized
                 >= size_of::<MailboxRespHeaderVarSize>()
@@ -1785,7 +1610,7 @@ mod tests {
         );
         // Other commands must not grow because attestation needs a big buffer.
         assert_eq!(
-            response_buffer_size::<TestHandler>(CommandId::MC_FIRMWARE_VERSION.0, &[]).unwrap(),
+            response_buffer_size::<TestHandler>(CommandId::MC_FIRMWARE_VERSION.0, &[]),
             size_of::<McuMailboxResp>()
         );
     }
@@ -1993,8 +1818,7 @@ mod tests {
     #[cfg(feature = "attested-csr")]
     #[test]
     fn response_buffer_size_for_export_attested_csr_matches_export_attested_csr_resp() {
-        let sized =
-            response_buffer_size::<TestHandler>(CommandId::MC_EXPORT_ATTESTED_CSR.0, &[]).unwrap();
+        let sized = response_buffer_size::<TestHandler>(CommandId::MC_EXPORT_ATTESTED_CSR.0, &[]);
         assert_eq!(sized, size_of::<ExportAttestedCsrResp>());
         assert!(sized >= size_of::<MailboxRespHeaderVarSize>() + MAX_ATTESTED_CSR_RESP_DATA_SIZE);
         assert!(sized > 4096);
@@ -2004,7 +1828,7 @@ mod tests {
     #[test]
     fn export_attested_csr_reserves_no_large_buffer_without_feature() {
         assert_eq!(
-            response_buffer_size::<TestHandler>(CommandId::MC_EXPORT_ATTESTED_CSR.0, &[]).unwrap(),
+            response_buffer_size::<TestHandler>(CommandId::MC_EXPORT_ATTESTED_CSR.0, &[]),
             size_of::<McuMailboxResp>()
         );
     }

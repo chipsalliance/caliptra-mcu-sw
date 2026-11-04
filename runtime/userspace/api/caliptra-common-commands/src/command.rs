@@ -1,13 +1,10 @@
 // Licensed under the Apache-2.0 license
 
-use crate::{
-    CaliptraCmdHandler, CaliptraCmdResult, CaliptraCompletionCode, CommandAuthorizer,
-    VendorCommandLimits,
-};
+use crate::{CaliptraCmdHandler, CaliptraCmdResult, CaliptraCompletionCode, CommandAuthorizer};
 use caliptra_mcu_mbox_common::authorization::{AuthorizationBlock, AuthorizationMetadata};
 use caliptra_mcu_mbox_common::messages::{
     CommandId, DotDisablePayload, DotLockPayload, DotRotatePayload, SvnTarget, AUTH_CMD_NONCE_LEN,
-    MAX_FUSE_DATA_SIZE, MAX_RESP_DATA_SIZE,
+    MAX_FUSE_DATA_SIZE,
 };
 #[cfg(feature = "device-ownership-transfer")]
 use caliptra_mcu_mbox_common::messages::{
@@ -165,26 +162,6 @@ struct AuthorizedRequest<'a> {
     authorization: &'a AuthorizationBlock,
 }
 
-/// Looks up vendor limits without allowing platforms to override standard IDs.
-///
-/// Invalid platform limits are reported rather than used to size allocations.
-pub fn vendor_command_limits<H: CaliptraCmdHandler>(
-    target_id: u32,
-) -> CaliptraCmdResult<Option<VendorCommandLimits>> {
-    if !CommandId::from(target_id).is_vendor_unique() {
-        return Ok(None);
-    }
-    let Some(limits) = H::vendor_command_limits(target_id) else {
-        return Ok(None);
-    };
-    if limits.max_payload_len > MAX_AUTHORIZED_PAYLOAD_LEN
-        || limits.max_response_len > MAX_RESP_DATA_SIZE
-    {
-        return Err(CaliptraCompletionCode::InvalidParameter);
-    }
-    Ok(Some(limits))
-}
-
 /// Executes a canonical AuthorizedCommand body.
 ///
 /// `request` starts with a four-byte little-endian target ID. Family targets
@@ -206,7 +183,7 @@ where
     let (target_id, request) = split_id(request)?;
     let vendor_limits = if CommandId::from(target_id).is_vendor_unique() {
         Some(
-            vendor_command_limits::<H>(target_id)?
+            H::vendor_command_limits(target_id)
                 .ok_or(CaliptraCompletionCode::UnsupportedOperation)?,
         )
     } else {
@@ -255,7 +232,7 @@ where
             .len()
             .checked_sub(AUTHORIZATION_TRAILER_LEN)
             .ok_or(CaliptraCompletionCode::InvalidPayloadSize)?;
-        if len > limits.max_payload_len {
+        if len > limits.max_payload_len || len > MAX_AUTHORIZED_PAYLOAD_LEN {
             return Err(CaliptraCompletionCode::InvalidPayloadSize);
         }
         len

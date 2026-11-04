@@ -155,9 +155,8 @@ where
     /// can actually overflow one transport frame, sized to that command's own
     /// worst case rather than the backend-wide maximum.
     ///
-    /// Debug-unlock and standard authorization commands always answer inline,
-    /// so they reserve nothing. Vendor authorization responses use their
-    /// platform-declared bound.
+    /// Debug-unlock and authorization commands always answer inline, so they
+    /// reserve nothing.
     fn large_response_capacity(&self, req: &[u8]) -> usize {
         let Some(command) = req
             .get(1)
@@ -192,15 +191,10 @@ where
                     None => 0,
                 }
             }
-            CaliptraVdmCommand::AuthorizedCommand => {
-                // The command adapter reports invalid limits; do not rent
-                // memory using an invalid platform declaration.
-                commands::authorized_command::vendor_response_capacity::<H>(&req[VDM_HEADER_LEN..])
-                    .unwrap_or_default()
-            }
             CaliptraVdmCommand::RequestDebugUnlock
             | CaliptraVdmCommand::AuthorizeDebugUnlockToken
             | CaliptraVdmCommand::DeviceOwnershipTransfer
+            | CaliptraVdmCommand::AuthorizedCommand
             | CaliptraVdmCommand::OcpLock => 0,
         }
     }
@@ -398,10 +392,8 @@ where
                     self.commands,
                     self.authorization,
                     cmd_req,
-                    command_code,
-                    payload,
-                    large,
                     scratch,
+                    payload,
                 )
                 .await
             }
@@ -441,9 +433,7 @@ mod tests {
         CommandAuthorizer, DeviceCapabilities, EvidenceFormat, FirmwareVersion, PkiEntitySlot,
         VendorCommandLimits,
     };
-    use caliptra_mcu_mbox_common::authorization::{
-        AuthorizationMetadata, CommandAuthMode, CommandAuthority,
-    };
+    use caliptra_mcu_mbox_common::authorization::{AuthorizationMetadata, CommandAuthMode};
     use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
 
     /// Stand-in for an ECC PCR quote: small enough to prove the per-format
@@ -453,10 +443,6 @@ mod tests {
     const TEST_MAX_EVIDENCE_LEN: usize = 6388;
     const TEST_VENDOR_ECHO: u32 = u32::from_be_bytes(*b"VU01");
     const TEST_VENDOR_BAD_LEN: u32 = u32::from_be_bytes(*b"VU02");
-    const TEST_VENDOR_BAD_PAYLOAD_LIMIT: u32 = u32::from_be_bytes(*b"VU03");
-    const TEST_VENDOR_BAD_RESPONSE_LIMIT: u32 = u32::from_be_bytes(*b"VU04");
-    const TEST_VENDOR_MAX_RESPONSE: u32 = u32::from_be_bytes(*b"VU05");
-    const TEST_VENDOR_MAX_PAYLOAD: u32 = u32::from_be_bytes(*b"VU06");
     use caliptra_mcu_spdm_traits::{
         SpdmPalAlloc, SpdmPalIo, SpdmPalIoKind, SpdmVdmBackend, VdmResponse, VdmResponseBuffer,
     };
@@ -603,10 +589,7 @@ mod tests {
         FuseLockPartition {
             partition: u32,
         },
-        Vendor {
-            cmd_id: u32,
-            payload: Vec<u8>,
-        },
+        Vendor([u8; 4]),
         DotEnable,
         DotLock {
             cak: [u8; 48],
@@ -765,22 +748,12 @@ mod tests {
         }
 
         fn vendor_command_limits(cmd_id: u32) -> Option<VendorCommandLimits> {
-            use caliptra_mcu_common_commands::command::MAX_AUTHORIZED_PAYLOAD_LEN;
-            use caliptra_mcu_mbox_common::messages::MAX_RESP_DATA_SIZE;
-
-            let (max_payload_len, max_response_len) = match cmd_id {
-                TEST_VENDOR_ECHO => (32, 32),
-                TEST_VENDOR_BAD_LEN => (0, 4),
-                TEST_VENDOR_BAD_PAYLOAD_LIMIT => (MAX_AUTHORIZED_PAYLOAD_LEN + 1, 0),
-                TEST_VENDOR_BAD_RESPONSE_LIMIT => (0, MAX_RESP_DATA_SIZE + 1),
-                TEST_VENDOR_MAX_RESPONSE => (0, MAX_RESP_DATA_SIZE),
-                TEST_VENDOR_MAX_PAYLOAD => (MAX_AUTHORIZED_PAYLOAD_LEN, 0),
-                _ => return None,
-            };
-            Some(VendorCommandLimits {
-                max_payload_len,
-                max_response_len,
-            })
+            matches!(cmd_id, TEST_VENDOR_ECHO | TEST_VENDOR_BAD_LEN).then_some(
+                VendorCommandLimits {
+                    max_payload_len: 4,
+                    max_response_len: 4,
+                },
+            )
         }
 
         async fn handle_vendor_command<Alloc: mcu_caliptra_api::ScratchAlloc>(
@@ -790,23 +763,15 @@ mod tests {
             payload: &[u8],
             response: &mut [u8],
         ) -> caliptra_mcu_common_commands::CaliptraCmdResult<usize> {
-            self.complete_authorized(AuthorizedOperation::Vendor {
-                cmd_id,
-                payload: payload.to_vec(),
-            })?;
-            match cmd_id {
-                TEST_VENDOR_ECHO => {
-                    response[..payload.len()].copy_from_slice(payload);
-                    Ok(payload.len())
-                }
-                TEST_VENDOR_BAD_LEN => Ok(response.len() + 1),
-                TEST_VENDOR_MAX_RESPONSE => {
-                    response.fill(0x5A);
-                    Ok(response.len())
-                }
-                TEST_VENDOR_MAX_PAYLOAD => Ok(0),
-                _ => Err(CommonCompletionCode::UnsupportedOperation),
+            if cmd_id == TEST_VENDOR_BAD_LEN {
+                return Ok(response.len() + 1);
             }
+            let payload: [u8; 4] = payload
+                .try_into()
+                .map_err(|_| CommonCompletionCode::InvalidPayloadSize)?;
+            self.complete_authorized(AuthorizedOperation::Vendor(payload))?;
+            response.copy_from_slice(&payload);
+            Ok(payload.len())
         }
 
         // Both formats are advertised, but only PcrQuote/EccP384 and
@@ -2692,236 +2657,80 @@ mod tests {
     }
 
     #[test]
-    fn vendor_unique_authorized_commands_execute_with_unmodified_body_framing() {
-        for payload in [
-            vec![],
-            vec![0xA5],
-            vec![1, 2, 3],
-            vec![1, 2, 3, 4],
-            vec![0xA5; 32],
-        ] {
-            let cmds = TestCommands::new(0).with_authorization();
-            let req = signed_vendor_req(TEST_VENDOR_ECHO, &payload);
-            let (response, inline, _) = dispatch(&cmds, &req, 64, 0);
-            assert_inline(response, 3 + payload.len());
-            assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
-            assert_eq!(&inline[3..3 + payload.len()], &payload);
-            assert_eq!(
-                cmds.authorized_operation.lock().unwrap().take(),
-                Some(AuthorizedOperation::Vendor {
-                    cmd_id: TEST_VENDOR_ECHO,
-                    payload,
-                })
-            );
-        }
-    }
-
-    #[test]
-    fn vendor_unique_authorized_commands_require_signatures_authority_and_target() {
-        let payload = [1, 2, 3, 4];
-        let mut tampered = signed_vendor_req(TEST_VENDOR_ECHO, &payload);
-        tampered[VDM_HEADER_LEN + 4] ^= 1;
-        let wrong_authority = authorized_request_with_context(
-            TEST_VENDOR_ECHO,
-            &payload,
-            AuthorizationMetadata::new(CommandAuthority::VendorOwner, [0; 16]),
-            [0; AUTH_CMD_NONCE_LEN],
-        );
-        let wrong_target = authorized_request_with_context(
-            TEST_VENDOR_ECHO,
-            &payload,
-            AuthorizationMetadata::new(CommandAuthority::Owner, [0x43; 16]),
-            [0; AUTH_CMD_NONCE_LEN],
-        );
-        for req in [tampered, wrong_authority, wrong_target] {
-            let cmds = TestCommands::new(0).with_authorization();
-            let (response, inline, _) = dispatch(&cmds, &req, 64, 0);
-            assert_inline(response, 3);
-            assert_eq!(inline[2], CaliptraCompletionCode::AccessDenied as u8);
-            assert_eq!(*cmds.authorized_operation.lock().unwrap(), None);
-        }
-    }
-
-    #[test]
-    fn vendor_unique_authorized_command_challenge_cannot_be_replayed() {
+    fn vendor_unique_commands_fit_existing_spdm_response_buffers() {
         let cmds = TestCommands::new(0).with_authorization();
-        issue_test_challenge(&cmds);
-        let req = authorized_request_with_context(
-            TEST_VENDOR_ECHO,
-            &[1, 2, 3, 4],
-            AuthorizationMetadata::default(),
-            TEST_AUTH_CHALLENGE,
-        );
-        let (response, inline, _) = dispatch(&cmds, &req, 64, 0);
+        let payload = [1, 2, 3, 4];
+        let req = signed_vendor_req(TEST_VENDOR_ECHO, &payload);
+        assert_eq!(backend_capacity(&req), 0);
+        let (response, inline, _) = dispatch(&cmds, &req, 7, 0);
         assert_inline(response, 7);
         assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
-        assert!(cmds.authorized_operation.lock().unwrap().take().is_some());
-
-        let (response, inline, _) = dispatch(&cmds, &req, 64, 0);
-        assert_inline(response, 3);
-        assert_eq!(inline[2], CaliptraCompletionCode::AccessDenied as u8);
-        assert_eq!(*cmds.authorized_operation.lock().unwrap(), None);
-    }
-
-    #[test]
-    fn vendor_unique_authorized_commands_reject_bad_lengths_and_platform_limits() {
-        use caliptra_mcu_common_commands::command::MAX_AUTHORIZED_PAYLOAD_LEN;
-
-        for (cmd_id, payload, expected) in [
-            (
-                TEST_VENDOR_ECHO,
-                vec![0; 33],
-                CaliptraCompletionCode::InvalidPayloadSize,
-            ),
-            (
-                TEST_VENDOR_MAX_PAYLOAD,
-                vec![0; MAX_AUTHORIZED_PAYLOAD_LEN + 1],
-                CaliptraCompletionCode::InvalidPayloadSize,
-            ),
-            (
-                TEST_VENDOR_BAD_PAYLOAD_LIMIT,
-                vec![],
-                CaliptraCompletionCode::InvalidParameter,
-            ),
-            (
-                TEST_VENDOR_BAD_RESPONSE_LIMIT,
-                vec![],
-                CaliptraCompletionCode::InvalidParameter,
-            ),
-            (
-                u32::from_be_bytes(*b"VU0a"),
-                vec![],
-                CaliptraCompletionCode::InvalidParameter,
-            ),
-            (
-                u32::from_be_bytes(*b"VU0:"),
-                vec![],
-                CaliptraCompletionCode::InvalidParameter,
-            ),
-        ] {
-            let cmds = TestCommands::new(0).with_authorization();
-            let req = signed_vendor_req(cmd_id, &payload);
-            let (response, inline, _) = dispatch(&cmds, &req, 64, 0);
-            assert_inline(response, 3);
-            assert_eq!(inline[2], expected as u8);
-            assert_eq!(*cmds.authorized_operation.lock().unwrap(), None);
-        }
-        for cmd_id in [
-            TEST_VENDOR_BAD_PAYLOAD_LIMIT,
-            TEST_VENDOR_BAD_RESPONSE_LIMIT,
-        ] {
-            assert_eq!(backend_capacity(&signed_vendor_req(cmd_id, &[])), 0);
-        }
-    }
-
-    #[test]
-    fn vendor_unique_authorized_commands_reject_missing_or_truncated_authorization() {
-        let req = signed_vendor_req(TEST_VENDOR_ECHO, &[1, 2, 3, 4]);
-        for (length, expected) in [
-            (
-                VDM_HEADER_LEN + 4,
-                CaliptraCompletionCode::InvalidPayloadSize,
-            ),
-            (req.len() - 1, CaliptraCompletionCode::AccessDenied),
-        ] {
-            let cmds = TestCommands::new(0).with_authorization();
-            let (response, inline, _) = dispatch(&cmds, &req[..length], 64, 0);
-            assert_inline(response, 3);
-            assert_eq!(inline[2], expected as u8);
-            assert_eq!(*cmds.authorized_operation.lock().unwrap(), None);
-        }
-    }
-
-    #[test]
-    fn vendor_unique_responses_use_large_buffers_and_prefer_inline_when_they_fit() {
-        for (payload, inline_len, expect_large) in
-            [(vec![0xA5; 32], 16, true), (vec![1, 2, 3, 4], 8, false)]
-        {
-            let cmds = TestCommands::new(0).with_authorization();
-            let req = signed_vendor_req(TEST_VENDOR_ECHO, &payload);
-            let capacity = backend_capacity(&req);
-            assert_eq!(capacity, 3 + 32);
-            let (response, inline, large) = dispatch(&cmds, &req, inline_len, capacity);
-            let framed = if expect_large {
-                assert_large(response, 3 + payload.len());
-                &large
-            } else {
-                assert_inline(response, 3 + payload.len());
-                &inline
-            };
-            assert_eq!(
-                &framed[..3],
-                &[
-                    CALIPTRA_VDM_COMMAND_VERSION,
-                    CaliptraVdmCommand::AuthorizedCommand as u8,
-                    CaliptraCompletionCode::Success as u8,
-                ]
-            );
-            assert_eq!(&framed[3..3 + payload.len()], &payload);
-        }
-    }
-
-    #[test]
-    fn vendor_unique_short_large_buffers_never_execute_the_handler() {
-        let req = signed_vendor_req(TEST_VENDOR_ECHO, &[0; 32]);
-        for large_len in [0, backend_capacity(&req) - 1] {
-            let cmds = TestCommands::new(0).with_authorization();
-            let (response, inline, _) = dispatch(&cmds, &req, 16, large_len);
-            assert_inline(response, 3);
-            assert_eq!(
-                inline[2],
-                CaliptraCompletionCode::InsufficientResources as u8
-            );
-            assert_eq!(*cmds.authorized_operation.lock().unwrap(), None);
-        }
-    }
-
-    #[test]
-    fn vendor_unique_handler_cannot_report_an_out_of_bounds_response() {
-        let cmds = TestCommands::new(0).with_authorization();
-        let req = signed_vendor_req(TEST_VENDOR_BAD_LEN, &[]);
-        let (response, inline, _) = dispatch(&cmds, &req, 64, 0);
-        assert_inline(response, 3);
-        assert_eq!(inline[2], CaliptraCompletionCode::OperationFailed as u8);
-    }
-
-    #[test]
-    fn vendor_unique_commands_support_the_existing_sdk_payload_and_response_bounds() {
-        use caliptra_mcu_common_commands::command::MAX_AUTHORIZED_PAYLOAD_LEN;
-        use caliptra_mcu_mbox_common::messages::MAX_RESP_DATA_SIZE;
-
-        let cmds = TestCommands::new(0).with_authorization();
-        let payload = vec![0xA5; MAX_AUTHORIZED_PAYLOAD_LEN];
-        let req = signed_vendor_req(TEST_VENDOR_MAX_PAYLOAD, &payload);
-        let (response, inline, _) = dispatch(&cmds, &req, 64, 0);
-        assert_inline(response, 3);
-        assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+        assert_eq!(&inline[3..7], &payload);
         assert_eq!(
             cmds.authorized_operation.lock().unwrap().take(),
-            Some(AuthorizedOperation::Vendor {
-                cmd_id: TEST_VENDOR_MAX_PAYLOAD,
-                payload,
-            })
+            Some(AuthorizedOperation::Vendor(payload))
         );
-
-        let req = signed_vendor_req(TEST_VENDOR_MAX_RESPONSE, &[]);
-        let capacity = backend_capacity(&req);
-        assert_eq!(capacity, 3 + MAX_RESP_DATA_SIZE);
-        assert!(capacity <= large_response_capacity::<TestCommands>());
-        let (response, _, large) = dispatch(&cmds, &req, 16, capacity);
-        assert_large(response, capacity);
-        assert_eq!(large[2], CaliptraCompletionCode::Success as u8);
-        assert!(large[3..].iter().all(|byte| *byte == 0x5A));
     }
 
     #[test]
-    fn vendor_unique_handler_errors_are_reported() {
+    fn vendor_unique_commands_fit_the_existing_mci_response_body() {
+        use caliptra_mcu_common_commands::command::{
+            execute_authorized, CommandPolicy, CommandResponse,
+        };
+
         let cmds = TestCommands::new(0).with_authorization();
-        *cmds.authorization_error.lock().unwrap() = Some(CommonCompletionCode::InvalidState);
-        let req = signed_vendor_req(TEST_VENDOR_ECHO, &[1, 2, 3, 4]);
-        let (response, inline, _) = dispatch(&cmds, &req, 64, 0);
-        assert_inline(response, 3);
-        assert_eq!(inline[2], CaliptraCompletionCode::InvalidState as u8);
+        let payload = [1, 2, 3, 4];
+        let req = signed_vendor_req(TEST_VENDOR_ECHO, &payload);
+        let mut response = [0; 4];
+        assert_eq!(
+            block_on(execute_authorized(
+                &cmds,
+                &cmds,
+                &TestAlloc,
+                &req[VDM_HEADER_LEN..],
+                &mut response,
+                CommandPolicy::MCI,
+            )),
+            Ok(CommandResponse::Data(4))
+        );
+        assert_eq!(response, payload);
+        assert_eq!(
+            cmds.authorized_operation.lock().unwrap().take(),
+            Some(AuthorizedOperation::Vendor(payload))
+        );
+    }
+
+    #[test]
+    fn vendor_unique_commands_reject_bad_authorization_and_lengths() {
+        let payload = [1, 2, 3, 4];
+        let req = signed_vendor_req(TEST_VENDOR_ECHO, &payload);
+        let mut tampered = req.clone();
+        tampered[VDM_HEADER_LEN + 4] ^= 1;
+        for (request, inline_len, expected) in [
+            (tampered, 7, CaliptraCompletionCode::AccessDenied),
+            (
+                signed_vendor_req(TEST_VENDOR_ECHO, &[0; 5]),
+                7,
+                CaliptraCompletionCode::InvalidPayloadSize,
+            ),
+            (
+                req[..VDM_HEADER_LEN + 4].to_vec(),
+                7,
+                CaliptraCompletionCode::InvalidPayloadSize,
+            ),
+            (req, 6, CaliptraCompletionCode::InsufficientResources),
+            (
+                signed_vendor_req(TEST_VENDOR_BAD_LEN, &payload),
+                7,
+                CaliptraCompletionCode::OperationFailed,
+            ),
+        ] {
+            let cmds = TestCommands::new(0).with_authorization();
+            let (response, inline, _) = dispatch(&cmds, &request, inline_len, 0);
+            assert_inline(response, 3);
+            assert_eq!(inline[2], expected as u8);
+            assert_eq!(*cmds.authorized_operation.lock().unwrap(), None);
+        }
     }
 
     #[test]

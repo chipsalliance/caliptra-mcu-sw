@@ -470,56 +470,25 @@ within this reserved namespace without colliding with Caliptra-defined FourCCs.
 
 ##### Platform Extension Hooks
 
-Platforms can implement vendor commands in their existing
-[`CaliptraCmdHandler`](../../runtime/userspace/api/caliptra-common-commands/src/lib.rs)
-backend without modifying the common dispatcher or replacing either transport
-service:
+Platforms opt in through their existing `CaliptraCmdHandler` backend:
+`vendor_command_limits(cmd_id)` declares body limits for supported `VUxy` IDs,
+and `handle_vendor_command(alloc, cmd_id, payload, response)` implements them.
+The metadata lookup must have no side effects. Its default returns `None`;
+the execution hook defaults to `UnsupportedOperation` and runs only after the
+normal authorization checks pass.
 
-- Override `vendor_command_limits(cmd_id)` to return
-  `Some(VendorCommandLimits { max_payload_len, max_response_len })` for each
-  supported `VUxy` ID. The default is `None`, which preserves unsupported-command
-  behavior. This lookup must have no side effects because frontends use it before
-  authorization to size response buffers.
-- Override `handle_vendor_command(alloc, cmd_id, payload, response)` to validate
-  the vendor-defined payload and execute the operation. Return the number of
-  response-body bytes written, or a `CaliptraCompletionCode` error. The default
-  returns `UnsupportedOperation`.
+The payload excludes the target ID and Authorization Block. It must fit the
+declared limit and `command::MAX_AUTHORIZED_PAYLOAD_LEN` (52 bytes, or 104 with
+`device-ownership-transfer`). The response buffer excludes transport framing;
+the hook returns its written length, bounded by the declared response limit.
+Exact payload lengths and semantics remain the platform's responsibility.
 
-The common executor checks authorization format, authority, device targeting,
-signatures, and the nonce before invoking the execution hook. The existing
-`CommandAuthorizer::permits_authority` policy applies to vendor commands too;
-its default permits Owner authorization only. Both Offline and Challenge-bound
-authorization use the normal `AuthorizedCommand` encoding.
-
-The hook receives neither a mailbox request header nor the target ID or
-Authorization Block in `payload`. Its response buffer contains no transport
-header and is restricted to the registered response limit. The MCU mailbox
-frontend adds its normal response header and checksum; SPDM adds its normal
-completion code and uses the large-message path when the response cannot fit
-inline. Neither frontend adds a vendor-specific length field. The returned
-length must not exceed the provided response buffer.
-
-Limits must fit the existing SDK buffers:
-
-| Limit | Maximum |
-| ----- | ------- |
-| Vendor payload | `command::MAX_AUTHORIZED_PAYLOAD_LEN`: 52 bytes, or 104 bytes with `device-ownership-transfer` enabled |
-| Vendor response body | `MAX_RESP_DATA_SIZE`: 4,096 bytes |
-
-These are body sizes, excluding authorization and transport framing. A platform
-declaration exceeding either bound is rejected with `InvalidParameter`, not
-used to allocate an unbounded buffer. Platforms must provision scratch memory
-for their selected vendor commands and any nested operations.
-
-For example, a platform can register `u32::from_be_bytes(*b"VU01")` with
-four-byte payload and response limits, then implement a four-byte operation
-entirely in its backend. The common executor enforces the maximum payload size;
-the platform handler remains responsible for exact lengths and payload semantics.
-The ID is carried little-endian in the request, just like standard target IDs.
-
-Vendor hooks cannot override standard command IDs or accept the ASCII gaps in
-the `VUxy` namespace. Top-level `VUxy` mailbox opcodes remain unsupported: vendor
-commands are exposed only inside `AuthorizedCommand`.
+Transport buffers and framing are unchanged. The declared response limit must
+fit the buffer already supplied by the frontend: the normal MCU mailbox scratch
+service provides four vendor response-body bytes, and SPDM uses its existing
+inline response capacity. Insufficient space returns `InsufficientResources`
+(mailbox command failure). Vendor hooks do not enable large responses, resize
+buffers, override standard IDs, or expose top-level `VUxy` mailbox opcodes.
 
 ### Get Auth Challenge
 
