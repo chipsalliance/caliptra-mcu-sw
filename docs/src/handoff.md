@@ -6,6 +6,20 @@ structure at a fixed address supplied to both ROM and Runtime linker scripts.
 The handoff is volatile: Runtime may use it after the ROM-to-Runtime reset, but
 software must not treat it as persistent storage across a power cycle.
 
+Runtime validates the marker and major version with volatile reads before
+borrowing the table. ROM writes this memory in a separate executable, so ordinary
+reads of Runtime's zero-initialized static can otherwise be constant-folded by
+LTO. Linker `NOLOAD` and `KEEP` directives alone do not prevent that optimization.
+All Runtime entry points, including the OCP LOCK state accessor, use this
+validation.
+
+ROM and Runtime must also use the same memory layout. On the emulator, `devel`
+places the handoff at `0x50003800`, while `release` uses `0x50003C00`. Build both
+images with matching `--profile` values (`cargo xtask rom-build --profile release`
+and `cargo xtask runtime-build --profile release` for shipping layouts).
+Profile-specific build directories keep the ROM artifacts separate. FPGA uses
+`0x50003C00` for both profiles.
+
 ## Ownership
 
 `HandoffData` begins with two fixed-size tables:
@@ -131,3 +145,19 @@ offset of every existing field. Larger fields must be added as fixed-layout
 extensions after the last defined block. Each extension that can be populated
 later than initial handoff creation should provide an explicit validity signal,
 which the producer publishes only after writing all associated data.
+
+## Regression Coverage
+
+The `test-handoff` kernel hook checks layout and HEK state. Its exit status must
+not be overwritten by `test-exit-immediately`; a negative integration test
+supplies the wrong HEK slot and requires a firmware failure.
+
+The emulator's `test-handoff-syscalls` feature enables release logging behavior
+even in development bundles, without the address-observing kernel hook. A
+userspace test checks the exact boot type, capability bitmap, ROM version, and
+programmed HEK state through production syscalls. It is also built into the
+release bundle and selected by the `nightly-release` nextest profile. Tests using
+a firmware bundle require their feature-specific runtime and OCP LOCK ROM to
+be present rather than silently compiling a replacement image.
+Source-built syscall tests default to `release`; `MCU_TEST_PROFILE=devel` also
+exercises the development layout without restoring address-observing diagnostics.

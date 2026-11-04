@@ -293,12 +293,29 @@ impl HandoffData {
 
     /// Return the handoff table when its marker and major version are valid.
     pub fn get() -> Option<&'static Self> {
-        // SAFETY: Runtime treats ROM-owned handoff data as read-only.
-        let handoff = unsafe { &*core::ptr::addr_of!(HANDOFF) };
-        if handoff.rom.fht_marker != FHT_MARKER || handoff.rom.fht_major_ver != FHT_MAJOR_VERSION {
+        // SAFETY: ROM initializes HANDOFF before Runtime, which treats it as read-only.
+        unsafe { Self::from_ptr(core::ptr::addr_of!(HANDOFF)) }
+    }
+
+    /// The pointer must refer to an initialized, aligned table that remains
+    /// readable and unmodified for the returned reference's lifetime.
+    unsafe fn from_ptr<'a>(handoff: *const Self) -> Option<&'a Self> {
+        // ROM is a separate image. Ordinary reads can be folded to HANDOFF's
+        // zero initializer by LTO, even though its NOLOAD storage contains ROM data.
+        let marker = unsafe { core::ptr::addr_of!((*handoff).rom.fht_marker).read_volatile() };
+        if marker != FHT_MARKER {
             return None;
         }
-        Some(handoff)
+        let major = unsafe { core::ptr::addr_of!((*handoff).rom.fht_major_ver).read_volatile() };
+        if major != FHT_MAJOR_VERSION {
+            println!(
+                "[mcu-runtime] ERROR: Invalid handoff major version: {}",
+                major
+            );
+            return None;
+        }
+        // SAFETY: The caller guarantees the table's validity and lifetime.
+        Some(unsafe { &*handoff })
     }
 
     /// Return the stable owner CMK when this handoff version supports it.
@@ -408,15 +425,49 @@ pub fn get_mcu_rom_capabilities() -> Option<McuRomCapabilities> {
 #[cfg(feature = "ocp-lock")]
 #[allow(clippy::result_unit_err)]
 pub fn get_ocp_lock_state() -> Result<&'static OcpLockState, ()> {
-    // SAFETY: HANDOFF is populated by ROM at boot and is read-only for Runtime.
-    // The linker will place the handoff struct in the correct location.
-    unsafe { Ok(&HANDOFF.rom.ocp_lock) }
+    HandoffData::get()
+        .map(|handoff| &handoff.rom.ocp_lock)
+        .ok_or(())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use core::mem::{offset_of, size_of};
+
+    #[cfg(feature = "ocp-lock")]
+    #[test]
+    fn ocp_lock_state_rejects_uninitialized_handoff() {
+        assert!(get_ocp_lock_state().is_err());
+    }
+
+    #[test]
+    fn handoff_reader_validates_header_and_reads_rom_payload() {
+        let mut handoff = HandoffData::default();
+        handoff.rom.firmware_boot_type = FirmwareBootType::Flash as u8;
+        handoff.rom.mcu_rom_capabilities =
+            (McuRomCapabilities::FLASH_BOOT | McuRomCapabilities::OCP_LOCK).bits();
+
+        // SAFETY: Each reference is used before the local table is modified.
+        let read = unsafe { HandoffData::from_ptr(&handoff) }.unwrap();
+        assert_eq!(read.firmware_boot_type(), Some(FirmwareBootType::Flash));
+        assert_eq!(
+            read.mcu_rom_capabilities(),
+            Some(McuRomCapabilities::FLASH_BOOT | McuRomCapabilities::OCP_LOCK)
+        );
+        assert_eq!(read.mcu_rom_version(), Some(MCU_ROM_VERSION));
+
+        handoff.rom.fht_marker = 0;
+        assert!(unsafe { HandoffData::from_ptr(&handoff) }.is_none());
+        handoff.rom.fht_marker = FHT_MARKER;
+        handoff.rom.fht_major_ver = FHT_MAJOR_VERSION + 1;
+        assert!(unsafe { HandoffData::from_ptr(&handoff) }.is_none());
+        handoff.rom.fht_major_ver = FHT_MAJOR_VERSION;
+        handoff.rom.fht_minor_ver = 0;
+        assert!(unsafe { HandoffData::from_ptr(&handoff) }.is_some());
+        handoff.rom.fht_minor_ver = u16::MAX;
+        assert!(unsafe { HandoffData::from_ptr(&handoff) }.is_some());
+    }
 
     #[test]
     fn handoff_layout_is_append_only() {

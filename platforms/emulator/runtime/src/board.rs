@@ -1329,7 +1329,7 @@ fn run_kernel_tests(
     #[cfg(feature = "test-exit-immediately")]
     {
         caliptra_mcu_romtime::println!("Executing test-exit-immediately");
-        exit = Some(0);
+        exit.get_or_insert(0);
     }
     #[cfg(feature = "test-network-boot")]
     {

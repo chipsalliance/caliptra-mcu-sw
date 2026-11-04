@@ -211,6 +211,7 @@ test-mcu-mbox-cmds = ["mcu-mbox-test-handlers", "dot-mci-mailbox", "cert-provisi
 test-mcu-mbox-fips-self-test = ["mcu-mbox-test-handlers"]
 test-ocp-lock = ["ocp-lock"]
 test-handoff = ["mcu-caliptra-api/ocp-lock"]
+test-handoff-syscalls = ["release", "caliptra-mcu-romtime/ocp-lock"]
 test-pldm-discovery = []
 test-pldm-fw-update = []
 test-pldm-fw-update-e2e = []

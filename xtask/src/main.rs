@@ -143,6 +143,10 @@ enum Commands {
         /// Features to build ROM with.
         #[arg(long)]
         features: Option<String>,
+
+        /// Match the Runtime profile and its handoff memory layout.
+        #[arg(long, default_value = "devel")]
+        profile: String,
     },
     /// Build and Run ROM image
     Rom {
@@ -742,14 +746,17 @@ fn main() {
             }
         }
         Commands::Rom { trace } => rom::rom_run(*trace),
-        Commands::RomBuild { platform, features } => {
-            caliptra_mcu_builder::rom_build(&CaliptraBuildArgs {
-                platform: platform.as_deref(),
-                features: features.as_deref(),
-                ..Default::default()
-            })
-            .map(|_| ())
-        }
+        Commands::RomBuild {
+            platform,
+            features,
+            profile,
+        } => caliptra_mcu_builder::rom_build(&CaliptraBuildArgs {
+            platform: platform.as_deref(),
+            features: features.as_deref(),
+            profile: Some(profile),
+            ..Default::default()
+        })
+        .map(|_| ()),
         Commands::Sizes { csv, variants } => {
             resolve_variants(variants.as_deref()).and_then(|resolved| {
                 sizes::run(
