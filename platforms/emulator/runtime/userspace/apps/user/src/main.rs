@@ -46,8 +46,6 @@ mod defmt_test;
     feature = "test-firmware-update-streaming"
 ))]
 mod firmware_update;
-#[cfg(feature = "test-handoff-syscalls")]
-mod handoff_test;
 mod image_loader;
 mod mcu_mbox;
 mod measurement;
@@ -121,9 +119,6 @@ async fn start() {
 }
 
 pub(crate) async fn async_main() {
-    #[cfg(feature = "test-handoff-syscalls")]
-    handoff_test::run();
-
     // Initialize measurement state before spawning any task that could consume
     // it (image loading, firmware update, SPDM/evidence, MCU mailbox).
     let soc_image_load_list = soc_image_descriptors::SOC_IMAGE_LOAD_LIST;

@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 use anyhow::{bail, Result};
 
-use crate::utils::manifest_file_for_profile;
+use crate::utils::manifest_file;
 use crate::PROJECT_ROOT;
 use caliptra_image_crypto::RustCrypto as Crypto;
 use caliptra_image_gen::{from_hw_format, ImageGeneratorCrypto};
@@ -16,7 +16,6 @@ pub fn rom_build(args: &crate::CaliptraBuildArgs) -> Result<PathBuf> {
         args.platform.map(String::from),
         args.features.map(String::from),
         args.target_dir.clone(),
-        args.profile,
     )
 }
 
@@ -24,7 +23,6 @@ fn rom_build_inner(
     platform: Option<String>,
     features: Option<String>,
     target_dir: Option<PathBuf>,
-    profile: Option<&str>,
 ) -> Result<PathBuf> {
     let feature_suffix = match &features {
         Some(f) => format!("-{f}"),
@@ -36,11 +34,10 @@ fn rom_build_inner(
         platform.clone().unwrap_or_else(|| "emulator".to_string())
     );
     let rom = format!("{target_name}{feature_suffix}");
-    let manifest = manifest_file_for_profile(platform.as_deref(), false, profile)?;
+    let manifest = manifest_file(platform.as_deref(), false)?;
     let common = Common {
         manifest,
         target_dir,
-        profile: profile.unwrap_or("devel").to_string(),
         ..Default::default()
     };
     let rom_size = rom_size_for_platform(platform.as_deref().unwrap_or("emulator"));

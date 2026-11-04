@@ -46,13 +46,11 @@ pub const EMULATOR_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-mbox-sram",
     "test-external-otp",
     "test-handoff",
-    "test-handoff-syscalls",
     "test-dpe-handle-store",
     "test-sw-pcr-store",
     "test-warm-reset",
     "test-ocp-lock",
     "test-exit-immediately",
-    "test-exit-immediately,ocp-lock",
     "test-mcu-rom-flash-access",
     "test-mcu-svn-gt-fuse",
     "test-mcu-svn-lt-fuse",
@@ -78,7 +76,6 @@ pub const FPGA_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-mcu-mbox-fips-periodic",
     "test-defmt-logging-vdm",
     "test-exit-immediately",
-    "test-exit-immediately,ocp-lock",
     "test-mctp-spdm-attestation",
     "test-mctp-spdm-attestation-tcb",
     "test-mctp-spdm-attestation-mixed",
@@ -88,26 +85,14 @@ pub const FPGA_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-log-flash-usermode",
     "test-get-alarm-expired",
     "test-ocp-lock",
-    "test-handoff",
     "test-mctp-capsule-loopback-warm-reset",
 ];
 
 /// Release-profile runtime test features (emulator).
 /// These are the subset of tests we run against the release (512 KB SRAM)
-/// firmware to verify boot, userspace logging, and the ROM handoff. The syscall
-/// variant deliberately excludes the address-observing kernel handoff hook.
-pub const RELEASE_RUNTIME_TEST_FEATURES: &[&str] = &[
-    "test-flash-based-boot",
-    "test-defmt-logging-release",
-    "test-handoff",
-    "test-handoff-syscalls",
-];
-
-pub const FPGA_RELEASE_RUNTIME_TEST_FEATURES: &[&str] = &[
-    "test-flash-based-boot",
-    "test-defmt-logging-release",
-    "test-handoff",
-];
+/// firmware to verify it boots and keeps release userspace defmt logs working.
+pub const RELEASE_RUNTIME_TEST_FEATURES: &[&str] =
+    &["test-flash-based-boot", "test-defmt-logging-release"];
 
 /// ROM-only test features that need a prebuilt ROM but no custom runtime.
 /// These features exist in both the emulator and FPGA ROM crates; the

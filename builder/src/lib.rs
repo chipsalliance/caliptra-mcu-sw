@@ -36,10 +36,11 @@ pub struct CaliptraBuildArgs<'a> {
     /// Defaults to LMS when not specified.
     pub pqc_key_type: Option<caliptra_image_types::FwVerificationPqcKeyType>,
     /// Cargo profile name to build with (e.g. `"release"` or `"devel"`).
-    /// ROM and Runtime default to `devel`. Drives both the Cargo profile and
-    /// the shared memory layout: `release` selects the shipping manifest;
-    /// other profiles select the development manifest. ROM and Runtime must
-    /// use compatible layouts for their shared handoff data.
+    /// When `None`, builds use `release`.  Drives both the `cargo --profile
+    /// <name>` invocation and the bundler manifest selection (`devel` swaps to
+    /// the `*-devel.toml` platform manifest with the larger 1 MB SRAM
+    /// dev-time layout; everything else falls through to the default 512 KB
+    /// shipping layout).
     pub profile: Option<&'a str>,
     pub caliptra_rom: Option<PathBuf>,
     pub caliptra_firmware: Option<PathBuf>,

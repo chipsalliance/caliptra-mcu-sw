@@ -114,8 +114,7 @@ inherits = "emulator"
 fail-fast = false
 default-filter = """
 (package(caliptra-mcu-tests-integration) and test(test_flash_soc_boot_successful)) |
-(package(caliptra-mcu-tests-integration) and test(test_defmt_logging_release)) |
-(package(caliptra-mcu-tests-integration) and test(test_handoff))
+(package(caliptra-mcu-tests-integration) and test(test_defmt_logging_release))
 """
 
 [profile.nightly-ci-spdm]

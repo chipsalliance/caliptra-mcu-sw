@@ -775,7 +775,6 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
     let mcu_rom = crate::rom_build(&CaliptraBuildArgs {
         platform: Some(platform),
         features: Some(rom_features),
-        profile,
         ..Default::default()
     })?;
 
@@ -832,9 +831,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         Some(r) if !r.is_empty() => r.split(",").collect::<Vec<&str>>(),
         _ => {
             if separate_runtimes {
-                if is_release && platform == "fpga" {
-                    crate::features::FPGA_RELEASE_RUNTIME_TEST_FEATURES.to_vec()
-                } else if is_release {
+                if is_release {
                     crate::features::RELEASE_RUNTIME_TEST_FEATURES.to_vec()
                 } else if platform == "fpga" {
                     crate::features::FPGA_RUNTIME_TEST_FEATURES.to_vec()
@@ -1082,16 +1079,10 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
             } else {
                 None
             };
-            let combined_features = if propagate_hw_2_1 && *feature != "hw-2-1" {
-                format!("{feature},hw-2-1")
-            } else {
-                feature.to_string()
-            };
             match crate::rom_build(&CaliptraBuildArgs {
                 platform: Some(platform),
-                features: Some(&combined_features),
+                features: Some(feature),
                 target_dir,
-                profile,
                 ..Default::default()
             }) {
                 Ok(rom_path) => {

@@ -149,7 +149,7 @@ mod test {
         pub seeded_log_entries: Option<&'static [&'static [u8]]>,
         /// If true, include the example app in the runtime build instead of the user app.
         pub example_app: bool,
-        /// Cargo profile for source-built ROM and Runtime images.
+        /// Cargo profile to use for a from-source runtime build.
         pub profile: Option<&'a str>,
         /// Override the Caliptra firmware SVN. Forces a from-source
         /// Caliptra FW + SoC manifest build (ignoring any prebuilt
@@ -212,11 +212,6 @@ mod test {
 
     // Get ROM from prebuilt or compile
     fn get_or_compile_rom(feature: &str) -> PathBuf {
-        let profile = std::env::var("MCU_TEST_PROFILE").ok();
-        get_or_compile_rom_with_profile(feature, profile.as_deref())
-    }
-
-    fn get_or_compile_rom_with_profile(feature: &str, profile: Option<&str>) -> PathBuf {
         if let Ok(binaries) = FirmwareBinaries::from_env() {
             // Empty feature → use the generic prebuilt ROM.
             // Otherwise, only use the prebuilt ROM if it was actually built
@@ -234,32 +229,42 @@ mod test {
             };
             if let Some(rom_data) = rom_data {
                 let safe_name = feature.replace('/', "_");
-                let profile = profile.unwrap_or("devel");
                 let filename = if safe_name.is_empty() {
-                    format!("mcu_rom_prebuilt_{profile}.bin")
+                    "mcu_rom_prebuilt.bin".to_string()
                 } else {
-                    format!("mcu_rom_prebuilt_{profile}_{safe_name}.bin")
+                    format!("mcu_rom_prebuilt_{}.bin", safe_name)
                 };
                 let output = target_binary(&filename);
-                let parent = output.parent().expect("ROM cache path has no parent");
-                std::fs::create_dir_all(parent).expect("Failed to create ROM cache directory");
-                // Refresh atomically: a previous test pass may have used a bundle
-                // with a different layout or ROM feature set.
-                let mut temp = tempfile::NamedTempFile::new_in(parent)
-                    .expect("Failed to create prebuilt ROM cache file");
-                temp.write_all(&rom_data)
-                    .expect("Failed to cache prebuilt ROM");
-                temp.persist(&output)
-                    .expect("Failed to publish prebuilt ROM cache file");
+                if !output.exists() {
+                    if let Some(parent) = output.parent() {
+                        std::fs::create_dir_all(parent).ok();
+                    }
+                    let temp_output = output.with_extension(format!(
+                        "tmp.{}.{}",
+                        std::process::id(),
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_nanos()
+                    ));
+                    if std::fs::write(&temp_output, &rom_data).is_ok() {
+                        let _ = std::fs::rename(&temp_output, &output);
+                    }
+                }
                 return output;
             }
         }
         // Fall back to compilation
-        compile_rom(feature, profile)
+        compile_rom(feature)
     }
 
     // only build the default ROM once
     pub static ROM: LazyLock<PathBuf> = LazyLock::new(|| get_or_compile_rom(""));
+    pub static ROM_FW_MANIFEST_DOT: LazyLock<Vec<u8>> =
+        LazyLock::new(|| std::fs::read(get_or_compile_rom("test-fw-manifest-dot")).unwrap());
+    pub static ROM_FW_MANIFEST_DOT_HITLESS: LazyLock<Vec<u8>> = LazyLock::new(|| {
+        std::fs::read(get_or_compile_rom("test-fw-manifest-dot-hitless")).unwrap()
+    });
 
     pub static TEST_LOCK: LazyLock<Mutex<AtomicU32>> =
         LazyLock::new(|| Mutex::new(AtomicU32::new(0)));
@@ -277,7 +282,7 @@ mod test {
         }
     }
 
-    fn compile_rom(feature: &str, profile: Option<&str>) -> PathBuf {
+    fn compile_rom(feature: &str) -> PathBuf {
         let requested_feature = feature;
         let feature = if TEST_HW_REVISION == "2.1.0" {
             if feature.is_empty() {
@@ -295,17 +300,12 @@ mod test {
         let output: PathBuf = caliptra_mcu_builder::rom_build(&CaliptraBuildArgs {
             platform: Some(platform()),
             features: Some(&feature),
-            profile,
             ..Default::default()
         })
         .expect("ROM build failed");
         assert!(output.exists());
         if requested_feature.is_empty() {
-            let stable_output = target_binary(&format!(
-                "mcu_rom_default_{}_{}.bin",
-                platform(),
-                profile.unwrap_or("devel")
-            ));
+            let stable_output = target_binary(&format!("mcu_rom_default_{}.bin", platform()));
             std::fs::copy(&output, &stable_output).expect("Failed to copy default MCU ROM");
             stable_output
         } else {
@@ -588,8 +588,6 @@ mod test {
     }
 
     pub fn build_test_binaries(params: &TestParams) -> TestBinaries {
-        let profile_env = std::env::var("MCU_TEST_PROFILE").ok();
-        let profile = params.profile.or(profile_env.as_deref());
         // Get MCU runtime: prefer an explicit override, then prebuilt for the
         // requested feature, and fall back to compilation.
         let mcu_runtime_path = if let Some(runtime_bytes) = params.custom_mcu_runtime.as_ref() {
@@ -616,14 +614,14 @@ mod test {
                 std::fs::write(&path, &bytes).expect("Failed to write prebuilt runtime to file");
                 path
             } else if params.rom_only {
-                compile_runtime_with_profile(None, false, profile)
+                compile_runtime(None, false)
             } else {
-                compile_runtime_with_profile(params.feature, params.example_app, profile)
+                compile_runtime(params.feature, false)
             }
         } else if params.rom_only {
-            compile_runtime_with_profile(None, false, profile)
+            compile_runtime(None, false)
         } else {
-            compile_runtime_with_profile(params.feature, params.example_app, profile)
+            compile_runtime_with_profile(params.feature, params.example_app, params.profile)
         };
 
         // When a firmware prefix is provided, create a modified binary that
@@ -716,22 +714,15 @@ mod test {
         .unwrap();
 
         let mcu_rom = if params.firmware_prefix.is_some() && params.rom_feature.is_none() {
-            let feature = if params.fw_manifest_dot_hitless {
-                "test-fw-manifest-dot-hitless"
+            if params.fw_manifest_dot_hitless {
+                ROM_FW_MANIFEST_DOT_HITLESS.clone()
             } else {
-                "test-fw-manifest-dot"
-            };
-            std::fs::read(get_or_compile_rom_with_profile(feature, profile)).unwrap()
+                ROM_FW_MANIFEST_DOT.clone()
+            }
         } else if let Some(f) = params.rom_feature {
-            std::fs::read(get_or_compile_rom_with_profile(f, profile)).unwrap()
+            std::fs::read(compile_rom(f)).unwrap()
         } else if params.rom_only && params.feature.is_some() {
-            std::fs::read(get_or_compile_rom_with_profile(
-                params.feature.unwrap(),
-                profile,
-            ))
-            .unwrap()
-        } else if profile.is_some() {
-            std::fs::read(get_or_compile_rom_with_profile("", profile)).unwrap()
+            std::fs::read(compile_rom(params.feature.unwrap())).unwrap()
         } else {
             std::fs::read(ROM.to_path_buf()).unwrap()
         };

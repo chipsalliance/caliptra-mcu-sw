@@ -1150,7 +1150,7 @@ pub unsafe fn main() {
 
     #[cfg(feature = "test-handoff")]
     {
-        caliptra_mcu_romtime::println!("Executing test-handoff");
+        debug!("Executing test-handoff");
         // Safety: Test code, no other users of Handoff table so it's safe to take a mutable reference.
         if let Some(ho) = unsafe { HandOff::new_mut() } {
             use caliptra_mcu_romtime::ocp_lock::HekSeedState;
@@ -1199,7 +1199,7 @@ pub unsafe fn main() {
     #[cfg(feature = "test-exit-immediately")]
     {
         caliptra_mcu_romtime::println!("Executing test-exit-immediately");
-        exit.get_or_insert(0);
+        exit = Some(0);
     }
     #[cfg(feature = "test-get-alarm-expired")]
     {
