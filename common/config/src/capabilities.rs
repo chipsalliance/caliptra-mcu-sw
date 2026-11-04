@@ -23,6 +23,7 @@ bitflags::bitflags! {
         const REQUEST_DEBUG_UNLOCK = command_capability(0x06);
         const AUTHORIZE_DEBUG_UNLOCK_TOKEN = command_capability(0x07);
         const EXPORT_ATTESTED_CSR = command_capability(0x08);
+        const PROVISION_IDEV_CERT = command_capability(0x09);
         const DEVICE_OWNERSHIP_TRANSFER = command_capability(0x11);
         const AUTHORIZED_COMMAND = command_capability(0x12);
         const OCP_LOCK = command_capability(0x13);
@@ -127,6 +128,10 @@ mod tests {
         assert_eq!(
             AuthorizedSubcommandCapabilities::OCP_LOCK_ZERO_HEK.bits(),
             1 << 16
+        );
+        assert_eq!(
+            ExternalCommandCapabilities::PROVISION_IDEV_CERT.bits(),
+            1 << 8
         );
         assert_eq!(ExternalCommandCapabilities::OCP_LOCK.bits(), 1 << 18);
         assert_eq!(
