@@ -67,6 +67,7 @@ mod test {
             component_id: 0,
             is_tcb: true,
             is_ak_target: false,
+            is_export_cdi_target: false,
             feature: "test".to_string(),
         };
 
@@ -80,6 +81,7 @@ mod test {
             component_id: 1,
             is_tcb: false,
             is_ak_target: false,
+            is_export_cdi_target: false,
             feature: "test".to_string(),
         };
 
@@ -299,6 +301,7 @@ mod test {
             component_id: 0,
             is_tcb: true,
             is_ak_target: false,
+            is_export_cdi_target: false,
             feature: "test".to_string(),
         };
 
@@ -312,6 +315,7 @@ mod test {
             component_id: 1,
             is_tcb: false,
             is_ak_target: false,
+            is_export_cdi_target: false,
             feature: "test".to_string(),
         };
 
