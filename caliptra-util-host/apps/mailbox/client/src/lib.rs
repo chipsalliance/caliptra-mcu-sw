@@ -31,7 +31,8 @@ use caliptra_mcu_core_util_host_command_types::attestation::{
 };
 use caliptra_mcu_core_util_host_command_types::certificate::{
     ExportAttestedCsrResponse, GetCertChainInfoResponse, GetCertChainResponse,
-    SetCertChainResponse, MAX_CERT_CHAIN_CHUNK_SIZE,
+    ProvisionIdevCertMode, ProvisionIdevCertResponse, SetCertChainResponse,
+    MAX_CERT_CHAIN_CHUNK_SIZE,
 };
 use caliptra_mcu_core_util_host_command_types::crypto_aes::{
     AesMode, AES_GCM_IV_SIZE, AES_GCM_TAG_SIZE, AES_IV_SIZE,
@@ -74,7 +75,8 @@ use caliptra_util_host_commands::api::attestation::{
 };
 use caliptra_util_host_commands::api::certificate::{
     caliptra_cmd_export_attested_csr, caliptra_cmd_get_cert_chain,
-    caliptra_cmd_get_cert_chain_info, caliptra_cmd_set_cert_chain,
+    caliptra_cmd_get_cert_chain_info, caliptra_cmd_provision_idevid_cert,
+    caliptra_cmd_set_cert_chain,
 };
 use caliptra_util_host_commands::api::crypto_aes::{
     caliptra_aes_decrypt, caliptra_aes_encrypt, caliptra_aes_gcm_decrypt, caliptra_aes_gcm_encrypt,
@@ -1133,6 +1135,25 @@ impl<'a> MailboxClient<'a> {
             offset = end;
         }
         Ok(())
+    }
+
+    /// Provision an `IDevID` certificate or signature payload (`PopulateOnly` or `WriteOtp`).
+    pub fn provision_idevid_cert(
+        &mut self,
+        algorithm: AsymAlgo,
+        mode: ProvisionIdevCertMode,
+        data: &[u8],
+    ) -> Result<ProvisionIdevCertResponse> {
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+        caliptra_cmd_provision_idevid_cert(&mut session, algorithm, mode, data)
+            .map_err(|e| anyhow::anyhow!("ProvisionIdevCert command failed: {:?}", e))
     }
 
     /// Request an authorization command challenge nonce

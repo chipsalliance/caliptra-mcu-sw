@@ -23,7 +23,7 @@ impl Default for ServerConfig {
         Self {
             bind_addr: "127.0.0.1:62222".parse().unwrap(),
             timeout: Some(Duration::from_secs(30)),
-            buffer_size: 4096,
+            buffer_size: 16 * 1024,
         }
     }
 }
@@ -40,7 +40,7 @@ impl ServerConfig {
         Ok(Self {
             bind_addr,
             timeout: Some(Duration::from_secs(config.validation.timeout_seconds)),
-            buffer_size: 4096,
+            buffer_size: 16 * 1024,
         })
     }
 }
