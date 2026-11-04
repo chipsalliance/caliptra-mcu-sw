@@ -3,7 +3,7 @@
 //! Component-update `authorize_and_stash` implementation details.
 
 use caliptra_mcu_libsyscall_caliptra::dpe_handle_store::{
-    DpeHandleRecord, DpeHandleStore, DPE_HANDLE_STORE_DRIVER_NUM,
+    DpeHandleRecord, DpeHandleStore, DPE_HANDLE_STORE_DRIVER_NUM, EXPORTED_CDI_SIZE,
 };
 use caliptra_mcu_libsyscall_caliptra::soft_pcr_store::{
     MeasurementRecord, SoftwarePcrStore, SOFT_PCR_STORE_DRIVER_NUM,
@@ -82,10 +82,34 @@ pub(super) async fn update_dpe_context<S: Syscalls, A: ScratchAlloc>(
     }
 
     dpe_update_context_and_persist(api, alloc, &dpe_store, component, measurement).await?;
+    revoke_exported_cdi_if_lineage_updated(api, alloc, &dpe_store, fw_id).await?;
 
     extend_pcr31(measurement)
         .await
         .map_err(|_| api.enter_error_state(MeasurementApiError::PcrExtendFailed))
+}
+
+async fn revoke_exported_cdi_if_lineage_updated<S: Syscalls, A: ScratchAlloc>(
+    api: &mut MeasurementApi<'_, S>,
+    alloc: &A,
+    dpe_store: &DpeHandleStore<S>,
+    updated_fw_id: u32,
+) -> MeasurementApiResult {
+    let target_fw_id = api.manifest.export_cdi_target_fw_id();
+    let mut existing_cdi = [0u8; EXPORTED_CDI_SIZE];
+    if dpe_store
+        .read_exported_cdi(target_fw_id, &mut existing_cdi)
+        .is_ok()
+        && super::read::export_cdi_target_lineage_contains(api, target_fw_id, updated_fw_id)?
+    {
+        mcu_caliptra_api::dpe_revoke_exported_cdi_handle(alloc, &existing_cdi)
+            .await
+            .map_err(|_| api.enter_error_state(MeasurementApiError::DpeCommandFailed))?;
+        dpe_store
+            .clear_exported_cdi(target_fw_id)
+            .map_err(|_| api.enter_error_state(MeasurementApiError::StoreFailed))?;
+    }
+    Ok(())
 }
 
 async fn dpe_update_context_and_persist<S: Syscalls, A: ScratchAlloc>(

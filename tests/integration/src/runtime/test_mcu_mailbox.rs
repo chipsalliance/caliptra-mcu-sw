@@ -13,19 +13,20 @@ use caliptra_mcu_mbox_common::messages::{
     CmEcdhFinishReq, CmEcdhGenerateReq, CmEcdsaPublicKeyReq, CmEcdsaSignReq, CmEcdsaVerifyReq,
     CmImportReq, CmKeyUsage, CmMldsaPublicKeyReq, CmMldsaSignReq, CmMldsaVerifyReq, Cmk,
     CommandId as McuCommandId, DeviceCapsReq, DeviceCapsResp, DpeSignerContextCertReq,
-    EcdsaVerifyReq, EndorsementAlgorithm, ExportAttestedCsrReq, FirmwareVersionReq,
-    GetAttestationReq, GetAuthCmdChallengeResp, GetCertChainInfoReq, GetCertChainInfoResp,
-    GetCertChainReq, GetDpeCertChainReq, LmsVerifyReq, MailboxReqHeader as McuMailboxReqHeader,
-    MailboxRespHeader, MailboxRespHeaderVarSize, McuCmImportReq, McuEcdhFinishReq,
-    McuEcdhFinishResp, McuEcdhGenerateReq, McuEcdhGenerateResp, McuEcdsa384SigVerifyReq,
-    McuEcdsaCmkPublicKeyReq, McuEcdsaCmkPublicKeyResp, McuEcdsaCmkSignReq, McuEcdsaCmkSignResp,
-    McuEcdsaCmkVerifyReq, McuFeProgReq, McuFipsPeriodicEnableReq, McuFipsPeriodicEnableResp,
-    McuFipsPeriodicStatusResp, McuFipsSelfTestGetResultsResp, McuFipsSelfTestStartResp,
-    McuLmsSigVerifyReq, McuMailboxReq, McuMldsaCmkPublicKeyReq, McuMldsaCmkPublicKeyResp,
-    McuMldsaCmkSignReq, McuMldsaCmkSignResp, McuMldsaCmkVerifyReq, McuProdDebugUnlockReqReq,
-    McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq, ProductionAuthDebugUnlockReq,
-    ProductionAuthDebugUnlockToken, SetCertChainReq, SetCertChainResp, VendorPkHashStatusReq,
-    GET_ATTESTATION_RESP_PREFIX_LEN, MAX_RESP_DATA_SIZE, VENDOR_PQC_KEY_TYPE_LMS,
+    DpeSignerContextSignReq, EcdsaVerifyReq, EndorsementAlgorithm, ExportAttestedCsrReq,
+    FirmwareVersionReq, GetAttestationReq, GetAuthCmdChallengeResp, GetCertChainInfoReq,
+    GetCertChainInfoResp, GetCertChainReq, GetDpeCertChainReq, LmsVerifyReq,
+    MailboxReqHeader as McuMailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize,
+    McuCmImportReq, McuEcdhFinishReq, McuEcdhFinishResp, McuEcdhGenerateReq, McuEcdhGenerateResp,
+    McuEcdsa384SigVerifyReq, McuEcdsaCmkPublicKeyReq, McuEcdsaCmkPublicKeyResp, McuEcdsaCmkSignReq,
+    McuEcdsaCmkSignResp, McuEcdsaCmkVerifyReq, McuFeProgReq, McuFipsPeriodicEnableReq,
+    McuFipsPeriodicEnableResp, McuFipsPeriodicStatusResp, McuFipsSelfTestGetResultsResp,
+    McuFipsSelfTestStartResp, McuLmsSigVerifyReq, McuMailboxReq, McuMldsaCmkPublicKeyReq,
+    McuMldsaCmkPublicKeyResp, McuMldsaCmkSignReq, McuMldsaCmkSignResp, McuMldsaCmkVerifyReq,
+    McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq,
+    ProductionAuthDebugUnlockReq, ProductionAuthDebugUnlockToken, SetCertChainReq,
+    SetCertChainResp, VendorPkHashStatusReq, GET_ATTESTATION_RESP_PREFIX_LEN, MAX_RESP_DATA_SIZE,
+    VENDOR_PQC_KEY_TYPE_LMS,
 };
 use caliptra_mcu_romtime::McuBootMilestones;
 use minicbor::Decoder;
@@ -1852,10 +1853,52 @@ fn test_dpe_signer_context_cert_cmd() -> Result<()> {
         "invalid exported-CDI certificate signature"
     );
 
-    assert_mcu_req_fails(
+    let rederived_cert_der = execute_var_mcu_req(
         &mut hw,
         McuMailboxReq::DpeSignerContextCert(DpeSignerContextCertReq::default()),
-    );
+    )?;
+    let rederived_cert = openssl::x509::X509::from_der(&rederived_cert_der)?;
+    assert!(rederived_cert.verify(&public_key)?);
+
+    let digest = [0x42u8; 48];
+    let mut sign_req = DpeSignerContextSignReq {
+        algorithm: EndorsementAlgorithm::ECDSA_384,
+        data_len: digest.len() as u32,
+        ..Default::default()
+    };
+    sign_req.data[..digest.len()].copy_from_slice(&digest);
+    let signature = execute_var_mcu_req(&mut hw, McuMailboxReq::DpeSignerContextSign(sign_req))?;
+    assert_eq!(signature.len(), 96);
+    let sig_r = openssl::bn::BigNum::from_slice(&signature[..48])?;
+    let sig_s = openssl::bn::BigNum::from_slice(&signature[48..])?;
+    let signature = openssl::ecdsa::EcdsaSig::from_private_components(sig_r, sig_s)?;
+    let leaf_key = rederived_cert.public_key()?.ec_key()?;
+    assert!(signature.verify(&digest, &leaf_key)?);
+
+    for bad_req in [
+        DpeSignerContextSignReq {
+            algorithm: EndorsementAlgorithm(u32::MAX),
+            data_len: 48,
+            ..Default::default()
+        },
+        DpeSignerContextSignReq {
+            algorithm: EndorsementAlgorithm::ECDSA_384,
+            data_len: 32,
+            ..Default::default()
+        },
+        DpeSignerContextSignReq {
+            algorithm: EndorsementAlgorithm::MLDSA_87,
+            data_len: 0,
+            ..Default::default()
+        },
+        DpeSignerContextSignReq {
+            algorithm: EndorsementAlgorithm::MLDSA_87,
+            data_len: 64,
+            ..Default::default()
+        },
+    ] {
+        assert_mcu_req_fails(&mut hw, McuMailboxReq::DpeSignerContextSign(bad_req));
+    }
     for request in [
         GetDpeCertChainReq {
             size: MAX_RESP_DATA_SIZE as u32 + 1,

@@ -34,16 +34,20 @@ const fn slot_bytes(len: usize) -> usize {
 /// * `MC_GET_ATTESTATION` (OCP EAT, ML-DSA-87): the request, an evidence-sized
 ///   response, the raw COSE signing input, and the DPE ML-DSA-87 sign response.
 ///   This is the largest path when `attested-csr` is off (13,440 B).
-/// * `MC_DPE_SIGNER_CONTEXT_CERT`: the request, in-place certificate response,
-///   and nested DPE derive request.
+/// * `MC_DPE_SIGNER_CONTEXT_CERT`: the request, a response sized for a
+///   `DPE_MAX_LEAF_CERT_SIZE` leaf certificate staged in place, and the DPE
+///   `DeriveContext` request. Included so a change to the leaf
+///   certificate bound is caught by the asserts below.
+/// * `MC_DPE_SIGNER_CONTEXT_SIGN`: the request, ECC signature response,
+///   and nested exported-ECDSA request and response.
 ///
 /// All remaining commands peak below these.
 #[cfg(feature = "mcu-mbox-service")]
 const BASE_MCU_MBOX_SCRATCH_REQUIRED: usize = {
     use caliptra_mcu_common_commands::CaliptraCmdHandler;
     use caliptra_mcu_mbox_common::messages::{
-        DpeSignerContextCertReq, GetAttestationReq, MailboxRespHeaderVarSize, McuMailboxReq,
-        McuMailboxResp, GET_ATTESTATION_RESP_PREFIX_LEN,
+        GetAttestationReq, MailboxRespHeaderVarSize, McuMailboxReq, McuMailboxResp,
+        GET_ATTESTATION_RESP_PREFIX_LEN,
     };
 
     const fn max_usize(a: usize, b: usize) -> usize {
@@ -65,17 +69,31 @@ const BASE_MCU_MBOX_SCRATCH_REQUIRED: usize = {
         ))
         + slot_bytes(mcu_caliptra_api::DPE_MLDSA87_RAW_MAX_SIZE)
         + slot_bytes(mcu_caliptra_api::DPE_MLDSA87_SIGN_SCRATCH_PEAK);
+    let required = max_usize(initial_req, get_attestation);
 
-    let dpe_certificate = BITMAP_SLOT_SIZE
-        + slot_bytes(core::mem::size_of::<DpeSignerContextCertReq>())
-        + slot_bytes(
-            core::mem::size_of::<MailboxRespHeaderVarSize>()
-                + mcu_caliptra_api::DERIVE_CONTEXT_EXPORTED_CDI_RESP_PREFIX_LEN
-                + mcu_caliptra_api::DPE_MAX_LEAF_CERT_SIZE,
-        )
-        + slot_bytes(mcu_caliptra_api::DPE_DERIVE_CONTEXT_EXPORTED_CDI_SCRATCH_PEAK);
+    #[cfg(feature = "allow-mcu-signer-cert")]
+    let required = {
+        use caliptra_mcu_mbox_common::messages::DpeSignerContextCertReq;
+        use caliptra_mcu_mbox_lib::cmd_interface::DPE_SIGNER_CONTEXT_CERT_RESP_SIZE;
+        let dpe_signer_context_cert = BITMAP_SLOT_SIZE
+            + slot_bytes(core::mem::size_of::<DpeSignerContextCertReq>())
+            + slot_bytes(DPE_SIGNER_CONTEXT_CERT_RESP_SIZE)
+            + slot_bytes(mcu_caliptra_api::DPE_DERIVE_CONTEXT_EXPORTED_CDI_SCRATCH_PEAK);
+        max_usize(required, dpe_signer_context_cert)
+    };
 
-    max_usize(max_usize(initial_req, get_attestation), dpe_certificate)
+    #[cfg(feature = "unsafe-allow-mcu-signing-oracle")]
+    let required = {
+        use caliptra_mcu_mbox_common::messages::DpeSignerContextSignReq;
+        use caliptra_mcu_mbox_lib::cmd_interface::DPE_SIGNER_CONTEXT_SIGN_RESP_SIZE;
+        let dpe_signer_context_sign = BITMAP_SLOT_SIZE
+            + slot_bytes(core::mem::size_of::<DpeSignerContextSignReq>())
+            + slot_bytes(DPE_SIGNER_CONTEXT_SIGN_RESP_SIZE)
+            + slot_bytes(mcu_caliptra_api::SIGN_WITH_EXPORTED_ECDSA_REQ_LEN)
+            + slot_bytes(mcu_caliptra_api::SIGN_WITH_EXPORTED_ECDSA_RESP_LEN);
+        max_usize(required, dpe_signer_context_sign)
+    };
+    required
 };
 
 /// `MC_EXPORT_ATTESTED_CSR` stages up to 12.8 KiB of CSR in one response, so
