@@ -241,6 +241,12 @@ Entire u32 words are duplicated. Each bit position across the duplicated words i
 
 ### Default Platform Configuration
 
+Generic fuse-entry reads use the generated per-field layouts from
+`hw/fuses.hjson`, not `McuFuseLayoutPolicy`. See
+[Reference SDK Layouts](rom-fuses.md#reference-sdk-layouts) for those defaults.
+The policy defaults below do not override the generated entries; for example,
+the SDK `perma_hek_en` entry remains 3x `LinearMajorityVote`.
+
 The default `McuFuseLayoutPolicy` uses:
 - `Single`: For certificate data, identifiers, and validity flags that are assumed to be protected by ECC
 - `OneHotLinearOr` (3x): for monotonic bit-count counters such as SVN fields
