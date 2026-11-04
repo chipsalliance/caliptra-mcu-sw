@@ -749,8 +749,6 @@ pub struct RomParameters<'a> {
     pub lifecycle_transition: Option<(LifecycleControllerState, LifecycleToken)>,
     pub burn_lifecycle_tokens: Option<LifecycleHashedTokens>,
     pub flash_partition_driver: Option<&'a mut FlashPartition<'a>>,
-    /// Whether or not to program field entropy after booting Caliptra runtime firmware
-    pub program_field_entropy: [bool; 4],
     pub mcu_image_header_size: usize,
     pub mcu_image_verifier: Option<&'a dyn ImageVerifier>,
     /// The stable key type to use for DOT operations (IDevID or LDevID; IDevID is the default if not specified).

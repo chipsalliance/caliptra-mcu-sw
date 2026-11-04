@@ -364,6 +364,7 @@ pub extern "C" fn rom_entry() -> ! {
             flash_partition_driver: Some(&mut flash_partition),
             dot_flash: Some(dot_flash),
             owner_pk_hash_policy: read_owner_pk_hash_policy(),
+            stash_rom_digest: Some(cfg!(feature = "test-stash-rom-digest")),
             // Let the generic wire (bit 29 of mci_reg_generic_input_wires[1]) control flash boot
             // request_flash_boot defaults to false - emulator sets the wire when flash boot is requested
             cptra_mbox_axi_users: mbox_axi_users,
@@ -428,6 +429,7 @@ pub extern "C" fn rom_entry() -> ! {
             cptra_trng_axi_user: axi_user0,
             mci_mbox0_axi_users: mbox_axi_users,
             mci_mbox1_axi_users: mbox_axi_users,
+            stash_rom_digest: Some(cfg!(feature = "test-stash-rom-digest")),
             dot_recovery_handler: if cfg!(any(
                 feature = "test-dot-recovery",
                 feature = "test-dot-recovery-reset-flow"
