@@ -23,7 +23,11 @@ where
         .stop_interface(req_hdr.interface_id.function_id, scratch)
         .await
     {
-        Ok(0) => Ok(TdispHandlerResult::Response(0)),
+        Ok(0) => {
+            // An accepted STOP unlocks the TDI, so drop any nonce from an earlier LOCK.
+            tdisp.state.set_nonce(req_hdr.interface_id, None);
+            Ok(TdispHandlerResult::Response(0))
+        }
         Ok(e) => Ok(TdispHandlerResult::Error(tdisp_error_code(e), 0)),
         Err(_) => Ok(TdispHandlerResult::Error(TDISP_ERROR_UNSPECIFIED, 0)),
     }
