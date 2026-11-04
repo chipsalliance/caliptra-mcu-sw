@@ -2268,6 +2268,7 @@ dependencies = [
  "caliptra-api-types",
  "caliptra-auth-man-types",
  "caliptra-builder",
+ "caliptra-dpe",
  "caliptra-hw-model",
  "caliptra-hw-model-types",
  "caliptra-image-crypto",
