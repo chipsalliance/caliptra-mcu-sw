@@ -99,6 +99,11 @@ impl Registers {
         unsafe { &*((self.0 + offset) as *const ReadWrite<u32>) }
     }
 
+    fn set_rx_queue_empty(&self, empty: bool) {
+        self.port(0x210)
+            .set(QueueStatus::RxDescQueueEmpty.val(empty as u32).value);
+    }
+
     fn base(&self) -> StaticRef<I3c> {
         // Safety: this permanent, aligned allocation covers the register block.
         unsafe { StaticRef::new(self.0 as *const I3c) }
@@ -127,6 +132,7 @@ impl TxClient for TxRecorder {
 
 struct RxRecorder {
     driver: &'static Driver,
+    registers: Registers,
     requested: Cell<usize>,
     calls: Cell<usize>,
     len: Cell<usize>,
@@ -146,7 +152,8 @@ impl RxClient for RxRecorder {
         self.calls.set(self.calls.get() + 1);
         self.len.set(len);
         self.received.replace(buffer);
-        // A real FIFO pop deasserts RxDescStat. Test RAM has no read side effects.
+        // Test RAM has no read side effects; model the FIFO pop.
+        self.registers.set_rx_queue_empty(true);
         self.driver.registers.tti_interrupt_status.set(0);
     }
 }
@@ -165,6 +172,7 @@ impl Harness {
         let guard = TEST_LOCK.lock().unwrap();
         assert!(!DeferredCall::has_tasks());
         let registers = Registers::new();
+        registers.set_rx_queue_empty(true);
         let alarm = Box::leak(Box::new(TestAlarm::new()));
         let mux = Box::leak(Box::new(MuxAlarm::new(alarm)));
         alarm.set_alarm_client(mux);
@@ -179,6 +187,7 @@ impl Harness {
         }));
         let rx = Box::leak(Box::new(RxRecorder {
             driver,
+            registers,
             requested: Cell::new(0),
             calls: Cell::new(0),
             len: Cell::new(0),
@@ -210,6 +219,7 @@ impl Harness {
     }
 
     fn receive(&self, len: usize, error: u32) {
+        self.registers.set_rx_queue_empty(false);
         self.registers
             .port(0x270)
             .set((RxDesc::DataLength.val(len as u32) + RxDesc::Error.val(error)).value);
@@ -473,6 +483,23 @@ fn rx_waits_for_buffer_and_retries_through_alarm() {
     assert_eq!(h.rx.requested.get(), 3);
     assert!(!h.driver.retry_incoming_write.get());
     assert!(!h.alarm.is_armed());
+}
+
+#[test]
+fn rx_drains_queue_without_notification() {
+    let h = Harness::new();
+    h.driver.disable();
+    h.driver.set_rx_buffer(buffer(4));
+    // Hardware latches no RX_DESC_STAT for this write: capture is disabled,
+    // and a later descriptor read would clear it anyway.
+    h.receive(4, 0);
+    h.driver.handle_interrupt();
+    assert_eq!(h.rx.calls.get(), 1);
+
+    h.driver.set_rx_buffer(buffer(4));
+    h.receive(4, 0);
+    h.driver.enable();
+    assert_eq!(h.rx.calls.get(), 2);
 }
 
 #[test]
