@@ -88,9 +88,9 @@ manufacturing devices.
 ### Owner SoC Manifest SVN
 
 The SDK stores `OWNER_SOC_MANIFEST_MIN_SVN` in 8 bytes of non-ECC
-`VENDOR_TEST_PARTITION` at `[0x410, 0x418)`, between `FIELD_ENTROPY_STATE` and the
-partition digest. Its `OneHot { bits: 64 }` layout counts programmed bits:
-one bit per SVN increment, no redundant copies, and a range of **0-64**.
+`VENDOR_TEST_PARTITION` at `[0x410, 0x418)`. Its `OneHot { bits: 64 }`
+layout counts programmed bits: one bit per SVN increment, no redundant copies,
+and a range of **0-64**.
 
 Integrators may adapt this storage, encoding, and capacity with matching
 ROM/runtime changes. The stored minimum SVN must never decrease.

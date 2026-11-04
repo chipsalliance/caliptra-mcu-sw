@@ -223,7 +223,6 @@ pub extern "C" fn rom_entry() -> ! {
     let burn_tokens = false;
     let transition_manufacturing = false;
     let transition_production = false;
-    let program_field_entropy = false;
 
     // For now, we use the same tokens for all lifecycle transitions.
     let burn_lifecycle_tokens = if burn_tokens {
@@ -407,7 +406,6 @@ pub extern "C" fn rom_entry() -> ! {
     caliptra_mcu_rom_common::rom_start(RomParameters {
         lifecycle_transition,
         burn_lifecycle_tokens,
-        program_field_entropy: [program_field_entropy; 4],
         // The DOT/recovery FPGA tests inject OTP fuses (DOT state + the
         // DOT recovery key hash in the scrambled VENDOR_SECRET_PROD
         // partition) through the hw-model OTP backdoor. That backdoor image is
@@ -427,6 +425,7 @@ pub extern "C" fn rom_entry() -> ! {
         cptra_trng_axi_user: axi_user0,
         mci_mbox0_axi_users: mbox_axi_users,
         mci_mbox1_axi_users: mbox_axi_users,
+        stash_rom_digest: Some(cfg!(feature = "test-stash-rom-digest")),
         i3c_services: if cfg!(feature = "test-i3c-services") {
             Some(caliptra_mcu_rom_common::I3cServicesModes::DOT_RECOVERY)
         } else {
