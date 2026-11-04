@@ -118,9 +118,10 @@ mod tests {
 
     use super::*;
     use crate::pci_sig::tdisp::{
-        FunctionId, TdiStatus, TdispCommand, TdispDriver, TdispDriverResult, TdispErrorCode,
-        TdispLockInterfaceParam, TdispReqCapabilities, TdispRespCapabilities, TdispResponder,
-        TdispVersion, START_INTERFACE_NONCE_SIZE, TDISP_ERROR_INVALID_INTERFACE_STATE,
+        FunctionId, TdiStatus, TdispCommand, TdispDriver, TdispDriverError, TdispDriverResult,
+        TdispErrorCode, TdispLockInterfaceParam, TdispReqCapabilities, TdispRespCapabilities,
+        TdispResponder, TdispVersion, MAX_TDISP_INTERFACES, START_INTERFACE_NONCE_SIZE,
+        TDISP_ERROR_INVALID_INTERFACE, TDISP_ERROR_INVALID_INTERFACE_STATE,
         TDISP_ERROR_INVALID_REQUEST, TDISP_VERSION_1_0,
     };
 
@@ -267,6 +268,8 @@ mod tests {
         state: Cell<TdiStatus>,
         nonce_counter: Cell<u8>,
         start_calls: Cell<u8>,
+        reject_stop: Cell<bool>,
+        fail_state_query: Cell<bool>,
     }
 
     impl TestTdispDriver {
@@ -275,6 +278,8 @@ mod tests {
                 state: Cell::new(TdiStatus::ConfigUnlocked),
                 nonce_counter: Cell::new(0),
                 start_calls: Cell::new(0),
+                reject_stop: Cell::new(false),
+                fail_state_query: Cell::new(false),
             }
         }
     }
@@ -375,6 +380,9 @@ mod tests {
         where
             Alloc: SpdmPalAlloc,
         {
+            if self.fail_state_query.get() {
+                return Err(TdispDriverError::GetDeviceInterfaceStateFail);
+            }
             *tdi_state = self.state.get();
             Ok(0)
         }
@@ -403,7 +411,7 @@ mod tests {
         where
             Alloc: SpdmPalAlloc,
         {
-            if self.state.get() == TdiStatus::ConfigUnlocked {
+            if self.reject_stop.get() || self.state.get() == TdiStatus::ConfigUnlocked {
                 return Ok(TDISP_ERROR_INVALID_INTERFACE_STATE);
             }
             self.state.set(TdiStatus::ConfigUnlocked);
@@ -429,12 +437,16 @@ mod tests {
     }
 
     fn request(message_type: u8, payload: &[u8]) -> Vec<u8> {
+        request_for(1, message_type, payload)
+    }
+
+    fn request_for(function_id: u32, message_type: u8, payload: &[u8]) -> Vec<u8> {
         let mut req = Vec::with_capacity(1 + TDISP_HEADER_LEN + payload.len());
         req.push(TDISP_PROTOCOL_ID);
         req.push(TDISP_VERSION_1_0);
         req.push(message_type);
         req.extend_from_slice(&0u16.to_le_bytes());
-        req.extend_from_slice(&1u32.to_le_bytes());
+        req.extend_from_slice(&function_id.to_le_bytes());
         req.extend_from_slice(&0u64.to_le_bytes());
         req.extend_from_slice(payload);
         req
@@ -736,8 +748,115 @@ mod tests {
         let start = request(TdispCommand::StartInterfaceRequest as u8, &nonce);
         let (response, out) = dispatch(&backend, &start, 64).expect("TDISP error is framed");
         assert_inline(response, 1 + TDISP_ERROR_RSP_LEN);
-        assert_tdisp_error(&out, TDISP_ERROR_INVALID_INTERFACE_STATE, 0);
+        assert_tdisp_error(&out, TDISP_ERROR_INVALID_INTERFACE, 0);
         assert_eq!(backend.tdisp.driver().start_calls.get(), 0);
+    }
+
+    #[test]
+    fn rejected_stop_keeps_pending_start_nonce() {
+        let backend = backend();
+        let get_version = request(TdispCommand::GetTdispVersion as u8, &[]);
+        dispatch(&backend, &get_version, 64).expect("interface initialized");
+
+        let lock = request(TdispCommand::LockInterface as u8, &[0; 20]);
+        let (_response, out) = dispatch(&backend, &lock, 64).expect("LOCK_INTERFACE succeeds");
+        let mut nonce = [0u8; 32];
+        nonce.copy_from_slice(&out[17..49]);
+
+        backend.tdisp.driver().reject_stop.set(true);
+        let stop = request(TdispCommand::StopInterfaceRequest as u8, &[]);
+        let (response, out) = dispatch(&backend, &stop, 64).expect("TDISP error is framed");
+        assert_inline(response, 1 + TDISP_ERROR_RSP_LEN);
+        assert_tdisp_error(&out, TDISP_ERROR_INVALID_INTERFACE_STATE, 0);
+
+        let start = request(TdispCommand::StartInterfaceRequest as u8, &nonce);
+        let (response, out) = dispatch(&backend, &start, 64).expect("START_INTERFACE succeeds");
+        assert_inline(response, 1 + TDISP_HEADER_LEN);
+        assert_eq!(out[2], TdispCommand::StartInterfaceResponse as u8);
+    }
+
+    #[test]
+    fn rejected_stop_in_run_keeps_interface_tracked() {
+        let backend = backend();
+        let get_version = request(TdispCommand::GetTdispVersion as u8, &[]);
+        dispatch(&backend, &get_version, 64).expect("interface initialized");
+
+        let lock = request(TdispCommand::LockInterface as u8, &[0; 20]);
+        let (_response, out) = dispatch(&backend, &lock, 64).expect("LOCK_INTERFACE succeeds");
+        let start = request(TdispCommand::StartInterfaceRequest as u8, &out[17..49]);
+        let (_response, out) = dispatch(&backend, &start, 64).expect("START_INTERFACE succeeds");
+        assert_eq!(out[2], TdispCommand::StartInterfaceResponse as u8);
+
+        backend.tdisp.driver().reject_stop.set(true);
+        let stop = request(TdispCommand::StopInterfaceRequest as u8, &[]);
+        let (response, out) = dispatch(&backend, &stop, 64).expect("TDISP error is framed");
+        assert_inline(response, 1 + TDISP_ERROR_RSP_LEN);
+        assert_tdisp_error(&out, TDISP_ERROR_INVALID_INTERFACE_STATE, 0);
+
+        let mut report_req = Vec::new();
+        report_req.extend_from_slice(&0u16.to_le_bytes());
+        report_req.extend_from_slice(&20u16.to_le_bytes());
+        let report = request(TdispCommand::GetDeviceInterfaceReport as u8, &report_req);
+        let (response, out) = dispatch(&backend, &report, 64).expect("report succeeds");
+        assert_inline(response, 1 + TDISP_HEADER_LEN + 4 + 20);
+        assert_eq!(out[2], TdispCommand::DeviceInterfaceReport as u8);
+    }
+
+    #[test]
+    fn rejected_stop_keeps_interface_tracked_when_state_query_fails() {
+        let backend = backend();
+        let get_version = request(TdispCommand::GetTdispVersion as u8, &[]);
+        dispatch(&backend, &get_version, 64).expect("interface initialized");
+
+        backend.tdisp.driver().fail_state_query.set(true);
+        let stop = request(TdispCommand::StopInterfaceRequest as u8, &[]);
+        let (response, out) = dispatch(&backend, &stop, 64).expect("TDISP error is framed");
+        assert_inline(response, 1 + TDISP_ERROR_RSP_LEN);
+        assert_tdisp_error(&out, TDISP_ERROR_INVALID_INTERFACE_STATE, 0);
+
+        let lock = request(TdispCommand::LockInterface as u8, &[0; 20]);
+        let (response, out) = dispatch(&backend, &lock, 64).expect("LOCK_INTERFACE succeeds");
+        assert_inline(response, 1 + TDISP_HEADER_LEN + 32);
+        assert_eq!(out[2], TdispCommand::LockInterfaceResponse as u8);
+    }
+
+    #[test]
+    fn stop_frees_interface_slot_for_reuse() {
+        let backend = backend();
+        let max = MAX_TDISP_INTERFACES as u32;
+        for function_id in 0..max {
+            let get_version = request_for(function_id, TdispCommand::GetTdispVersion as u8, &[]);
+            let (response, _out) =
+                dispatch(&backend, &get_version, 64).expect("interface initialized");
+            assert_inline(response, 1 + TDISP_HEADER_LEN + 2);
+        }
+        let get_version = request_for(max, TdispCommand::GetTdispVersion as u8, &[]);
+        let (response, out) = dispatch(&backend, &get_version, 64).expect("TDISP error is framed");
+        assert_inline(response, 1 + TDISP_ERROR_RSP_LEN);
+        assert_tdisp_error(&out, TDISP_ERROR_INVALID_INTERFACE, 0);
+
+        // An accepted STOP frees the slot.
+        let lock = request_for(0, TdispCommand::LockInterface as u8, &[0; 20]);
+        dispatch(&backend, &lock, 64).expect("LOCK_INTERFACE succeeds");
+        let stop = request_for(0, TdispCommand::StopInterfaceRequest as u8, &[]);
+        let (response, out) = dispatch(&backend, &stop, 64).expect("STOP_INTERFACE succeeds");
+        assert_inline(response, 1 + TDISP_HEADER_LEN);
+        assert_eq!(out[2], TdispCommand::StopInterfaceResponse as u8);
+        let (response, out) =
+            dispatch(&backend, &get_version, 64).expect("GET_TDISP_VERSION succeeds");
+        assert_inline(response, 1 + TDISP_HEADER_LEN + 2);
+        assert_eq!(out[2], TdispCommand::TdispVersion as u8);
+
+        // A rejected STOP frees the slot when the driver reports CONFIG_UNLOCKED.
+        let stop = request_for(1, TdispCommand::StopInterfaceRequest as u8, &[]);
+        let (response, out) = dispatch(&backend, &stop, 64).expect("TDISP error is framed");
+        assert_inline(response, 1 + TDISP_ERROR_RSP_LEN);
+        assert_tdisp_error(&out, TDISP_ERROR_INVALID_INTERFACE_STATE, 0);
+        let get_version = request_for(max + 1, TdispCommand::GetTdispVersion as u8, &[]);
+        let (response, out) =
+            dispatch(&backend, &get_version, 64).expect("GET_TDISP_VERSION succeeds");
+        assert_inline(response, 1 + TDISP_HEADER_LEN + 2);
+        assert_eq!(out[2], TdispCommand::TdispVersion as u8);
     }
 
     #[test]

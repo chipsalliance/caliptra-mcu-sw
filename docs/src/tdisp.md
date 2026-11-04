@@ -4,7 +4,9 @@ Caliptra Subsystem supports handling of TDISP messages by processing them as VEN
 
 To facilitate the TDISP protocol, devices provide a platform implementation of the `TdispDriver` trait from `caliptra-mcu-spdm-vdm-handler::pci_sig::tdisp`. The responder owns the TDISP wire-format handling, command dispatch, and protocol state; the driver supplies device-specific operations such as capabilities, interface state transitions, nonce generation, and interface report contents.
 
-The driver owns the TDI state machine of each interface and must reject any request that is not valid in the interface's current state. START_INTERFACE must carry the nonce from the last LOCK_INTERFACE the driver accepted. That nonce is cleared when the driver accepts START_INTERFACE or STOP_INTERFACE, or when GET_TDISP_VERSION is sent again; a rejected request leaves it unchanged.
+The driver owns the TDI state machine of each interface and must reject any request that is not valid in the interface's current state. START_INTERFACE must carry the nonce from the last LOCK_INTERFACE the driver accepted. That nonce is cleared when the driver accepts START_INTERFACE, when GET_TDISP_VERSION is sent again, or when the responder stops tracking the interface; a rejected LOCK_INTERFACE or START_INTERFACE leaves it unchanged.
+
+The responder tracks up to `MAX_TDISP_INTERFACES` interfaces. GET_TDISP_VERSION starts tracking an interface and returns INVALID_INTERFACE when no slot is free. LOCK_INTERFACE, GET_DEVICE_INTERFACE_REPORT, and START_INTERFACE return INVALID_INTERFACE for an interface that is not tracked. STOP_INTERFACE stops tracking the interface, so the requester sends GET_TDISP_VERSION again before using it again. If the driver rejects STOP_INTERFACE, the interface and any pending nonce stay tracked unless the driver reports the interface state as CONFIG_UNLOCKED.
 
 The relevant public driver API is summarized below.
 
