@@ -92,7 +92,9 @@ pub(crate) fn run_compatibility_attestation(
     let port = hw.i3c_port().context("Missing I3C port")?;
     let address = hw.i3c_address().context("Missing I3C address")?;
     let result = start_protocol(port, address.into(), true)?;
-    drive_compatibility_protocol(hw, result, Duration::from_secs(180))?;
+    // ML-DSA certificate and measurement signing is slow in the emulator; match
+    // the existing attestation tests and let Nextest's slow-timeout bound the case.
+    drive_compatibility_protocol(hw, result, Duration::from_secs(9000))?;
     for name in ["measurement_block_fd.bin", "certificate_chain_slot_00.der"] {
         ensure!(
             std::fs::metadata(output_dir.join(name))

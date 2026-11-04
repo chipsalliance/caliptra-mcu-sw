@@ -20,6 +20,12 @@ default-filter = """
 all() - test(test_defmt_logging_release)
 """
 
+[[profile.emulator.overrides]]
+filter = "package(caliptra-mcu-tests-integration) and test(/^test_rom_runtime_compatibility::test_suite_/)"
+# Released-image SPDM conformance and OCP EAT appraisal run full ML-DSA
+# flows in the emulator and exceed the default 30-minute slow-timeout.
+slow-timeout = { period = "5m", terminate-after = 18 }
+
 [profile.emulator.junit]
 path = "/tmp/junit.xml"
 store-success-output = false
