@@ -13,6 +13,10 @@ caliptra-mcu-libtock_platform = { workspace = true }
 embassy-sync = { workspace = true }
 mcu-caliptra-api = { workspace = true, features = ["mailbox-io"] }
 
+[features]
+default = []
+ocp-lock = ["mcu-caliptra-api/ocp-lock"]
+
 [build-dependencies]
 caliptra-ocp-eat = { workspace = true }
 

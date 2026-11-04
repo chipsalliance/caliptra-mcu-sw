@@ -13,9 +13,9 @@ use caliptra_mcu_mbox_common::messages::{
     CmEcdhFinishReq, CmEcdhGenerateReq, CmEcdsaPublicKeyReq, CmEcdsaSignReq, CmEcdsaVerifyReq,
     CmImportReq, CmKeyUsage, CmMldsaPublicKeyReq, CmMldsaSignReq, CmMldsaVerifyReq, Cmk,
     CommandId as McuCommandId, DeviceCapsReq, DeviceCapsResp, DpeSignerContextCertReq,
-    EcdsaVerifyReq, EndorsementAlgorithm, ExportAttestedCsrReq, FirmwareVersionReq,
-    GetAttestationReq, GetAuthCmdChallengeResp, GetCertChainInfoReq, GetCertChainInfoResp,
-    GetCertChainReq, GetDpeCertChainReq, HekStatusReq, LmsVerifyReq,
+    DpeSignerContextSignReq, EcdsaVerifyReq, EndorsementAlgorithm, ExportAttestedCsrReq,
+    FirmwareVersionReq, GetAttestationReq, GetAuthCmdChallengeResp, GetCertChainInfoReq,
+    GetCertChainInfoResp, GetCertChainReq, GetDpeCertChainReq, HekStatusReq, LmsVerifyReq,
     MailboxReqHeader as McuMailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize,
     McuCmImportReq, McuEcdhFinishReq, McuEcdhFinishResp, McuEcdhGenerateReq, McuEcdhGenerateResp,
     McuEcdsa384SigVerifyReq, McuEcdsaCmkPublicKeyReq, McuEcdsaCmkPublicKeyResp, McuEcdsaCmkSignReq,
@@ -2068,10 +2068,61 @@ fn test_dpe_signer_context_cert_cmd() -> Result<()> {
     let pubkey = expected_signer.public_key().unwrap();
     assert!(cert.verify(&pubkey).is_ok());
 
-    assert_mcu_req_fails(
+    // A repeat MC_DPE_SIGNER_CONTEXT_CERT automatically revokes the prior exported CDI
+    // handle in Caliptra and derives a fresh certificate.
+    let rederived_cert_der = execute_var_mcu_req(
         &mut hw,
         McuMailboxReq::DpeSignerContextCert(DpeSignerContextCertReq::default()),
+    )?;
+    let rederived_cert = openssl::x509::X509::from_der(&rederived_cert_der)
+        .expect("Failed to parse re-derived DPE leaf certificate as DER");
+    assert!(rederived_cert.verify(&pubkey).is_ok());
+
+    // 3. Sign a 48-byte SHA-384 digest via MC_DPE_SIGNER_CONTEXT_SIGN (ECDSA_384)
+    // and verify against the derived leaf certificate public key.
+    let ecdsa_digest = [0x42u8; 48];
+    let mut ecdsa_sign_req = DpeSignerContextSignReq {
+        algorithm: EndorsementAlgorithm::ECDSA_384,
+        data_len: ecdsa_digest.len() as u32,
+        ..Default::default()
+    };
+    ecdsa_sign_req.data[..ecdsa_digest.len()].copy_from_slice(&ecdsa_digest);
+    let ecdsa_sig =
+        execute_var_mcu_req(&mut hw, McuMailboxReq::DpeSignerContextSign(ecdsa_sign_req))?;
+    assert_eq!(
+        ecdsa_sig.len(),
+        96,
+        "ECDSA P-384 signature must be 96 bytes"
     );
+    let sig_r = openssl::bn::BigNum::from_slice(&ecdsa_sig[..48]).unwrap();
+    let sig_s = openssl::bn::BigNum::from_slice(&ecdsa_sig[48..96]).unwrap();
+    let ossl_ecdsa_sig = openssl::ecdsa::EcdsaSig::from_private_components(sig_r, sig_s).unwrap();
+    let leaf_ec_key = rederived_cert.public_key().unwrap().ec_key().unwrap();
+    assert!(
+        ossl_ecdsa_sig.verify(&ecdsa_digest, &leaf_ec_key).unwrap(),
+        "ECDSA signature from MC_DPE_SIGNER_CONTEXT_SIGN failed verification against leaf cert"
+    );
+
+    // Invalid algorithm and wrong ECDSA digest length must fail.
+    for bad_req in [
+        DpeSignerContextSignReq {
+            algorithm: EndorsementAlgorithm(u32::MAX),
+            data_len: 48,
+            ..Default::default()
+        },
+        DpeSignerContextSignReq {
+            algorithm: EndorsementAlgorithm::ECDSA_384,
+            data_len: 32,
+            ..Default::default()
+        },
+        DpeSignerContextSignReq {
+            algorithm: EndorsementAlgorithm::MLDSA_87,
+            data_len: 0,
+            ..Default::default()
+        },
+    ] {
+        assert_mcu_req_fails(&mut hw, McuMailboxReq::DpeSignerContextSign(bad_req));
+    }
 
     for request in [
         McuMailboxReq::GetDpeCertChain(GetDpeCertChainReq {
@@ -2112,6 +2163,41 @@ fn test_dpe_signer_context_cert_cmd() -> Result<()> {
         mldsa87_oid
     );
     assert_eq!(cert.signature_algorithm.algorithm, mldsa87_oid);
+
+    // 4. Sign a raw TBS payload via MC_DPE_SIGNER_CONTEXT_SIGN (MLDSA_87)
+    // and verify against the ML-DSA-87 leaf certificate public key.
+    use fips204::traits::{SerDes, Verifier as MldsaVerifier};
+    let mldsa_tbs = b"Caliptra MCU Exported-CDI ML-DSA-87 test message";
+    let mut mldsa_sign_req = DpeSignerContextSignReq {
+        algorithm: EndorsementAlgorithm::MLDSA_87,
+        data_len: mldsa_tbs.len() as u32,
+        ..Default::default()
+    };
+    mldsa_sign_req.data[..mldsa_tbs.len()].copy_from_slice(mldsa_tbs);
+    let mldsa_sig = execute_var_mcu_req(
+        &mut mldsa_hw,
+        McuMailboxReq::DpeSignerContextSign(mldsa_sign_req),
+    )?;
+    assert_eq!(
+        mldsa_sig.len(),
+        4627,
+        "ML-DSA-87 signature must be 4627 bytes"
+    );
+    let mldsa_pubkey_bytes: [u8; fips204::ml_dsa_87::PK_LEN] = cert
+        .tbs_certificate
+        .subject_pki
+        .subject_public_key
+        .data
+        .as_ref()
+        .try_into()
+        .expect("unexpected ML-DSA-87 subject public key length");
+    let mldsa_pubkey = fips204::ml_dsa_87::PublicKey::try_from_bytes(mldsa_pubkey_bytes)
+        .expect("invalid ML-DSA-87 public key in leaf cert");
+    let mldsa_sig_arr: [u8; fips204::ml_dsa_87::SIG_LEN] = mldsa_sig.as_slice().try_into().unwrap();
+    assert!(
+        mldsa_pubkey.verify(mldsa_tbs, &mldsa_sig_arr, &[]),
+        "ML-DSA-87 signature from MC_DPE_SIGNER_CONTEXT_SIGN failed verification against leaf cert"
+    );
 
     Ok(())
 }

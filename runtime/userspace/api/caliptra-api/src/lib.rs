@@ -16,9 +16,6 @@
 #![no_std]
 #![allow(async_fn_in_trait)]
 
-#[cfg(feature = "ocp-lock")]
-extern crate alloc;
-
 #[cfg(feature = "mailbox-io")]
 mod aes_gcm;
 #[cfg(feature = "mailbox-io")]
@@ -72,8 +69,6 @@ mod rng;
 mod sha;
 #[cfg(feature = "mailbox-io")]
 mod shake;
-#[cfg(feature = "ocp-lock")]
-pub mod signer;
 #[cfg(feature = "mailbox-io")]
 mod slice;
 #[cfg(feature = "mailbox-io")]
@@ -117,15 +112,19 @@ pub use dpe::{
     dpe_certify_key, dpe_certify_key_cert_size, dpe_certify_key_cert_slice,
     dpe_certify_key_mldsa87_tr, dpe_certify_key_pubkey, dpe_derive_context,
     dpe_derive_context_exported_cdi, dpe_get_cert_chain_chunk, dpe_get_tagged_tci,
-    dpe_rotate_context_default, dpe_sign, dpe_sign_ecc_p384, dpe_sign_mldsa87, dpe_tag_tci,
-    dpe_update_context_measurement, walk_dpe_chain, DpeChainSink, DpeContextHandle,
-    DpeDeriveContextExportedCdiResult, DpeDeriveContextFlags, DpeDeriveContextParams,
-    DpeDeriveContextResult, DpeProfile, DpeTaggedTci, DpeUpdateContextMeasurementParams,
-    DpeUpdateContextMeasurementResult, SigningInput, CERTIFY_KEY_MLDSA87_PUBKEY_SIZE,
+    dpe_revoke_exported_cdi_handle, dpe_rotate_context_default, dpe_sign, dpe_sign_ecc_p384,
+    dpe_sign_mldsa87, dpe_sign_with_exported_cdi, dpe_sign_with_exported_ecdsa,
+    dpe_sign_with_exported_mldsa, dpe_tag_tci, dpe_update_context_measurement, walk_dpe_chain,
+    DpeChainSink, DpeContextHandle, DpeDeriveContextExportedCdiResult, DpeDeriveContextFlags,
+    DpeDeriveContextParams, DpeDeriveContextResult, DpeProfile, DpeTaggedTci,
+    DpeUpdateContextMeasurementParams, DpeUpdateContextMeasurementResult, ExportedCdiSigningInput,
+    SigningInput, CERTIFY_KEY_MLDSA87_PUBKEY_SIZE, DERIVE_CONTEXT_EXPORTED_CDI_RESP_PREFIX_LEN,
     DPE_CONTEXT_HANDLE_SIZE, DPE_DERIVE_CONTEXT_EXPORTED_CDI_SCRATCH_PEAK, DPE_LABEL_LEN,
     DPE_MAX_CHUNK_SIZE, DPE_MAX_LEAF_CERT_SIZE, DPE_MLDSA87_MU_SIZE, DPE_MLDSA87_SIGNATURE_SIZE,
     DPE_MLDSA87_SIGN_SCRATCH_PEAK, DPE_P384_DIGEST_SIZE, DPE_P384_SIGNATURE_SIZE,
-    DPE_TCI_MEASUREMENT_SIZE, EXPORTED_CDI_SIZE,
+    DPE_TCI_MEASUREMENT_SIZE, EXPORTED_CDI_MAX_MLDSA87_TBS_SIZE, EXPORTED_CDI_SIZE,
+    SIGN_WITH_EXPORTED_ECDSA_REQ_LEN, SIGN_WITH_EXPORTED_ECDSA_RESP_LEN,
+    SIGN_WITH_EXPORTED_MLDSA_REQ_LEN, SIGN_WITH_EXPORTED_MLDSA_RESP_LEN,
 };
 #[cfg(feature = "mailbox-io")]
 pub use ecdh::{
