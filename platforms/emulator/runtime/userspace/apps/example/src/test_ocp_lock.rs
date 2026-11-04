@@ -115,6 +115,8 @@ pub(crate) async fn test_get_hpke_public_key_x509() {
     {
         dpe::context::ContextHandle(target.context_handle)
     } else {
+        let _ = dpe_store.initialize_store(&[0u8; 48]);
+        target.fw_id = 0x0000_0002;
         dpe::context::ContextHandle::default()
     };
 
@@ -153,11 +155,11 @@ pub(crate) async fn test_get_hpke_public_key_x509() {
         dpe::response::DeriveContextExportedCdiResp::try_read_from_prefix(&mbox_resp.data).unwrap();
     assert_eq!(resp.resp_hdr.status, 0);
 
-    if target.context_handle != [0u8; 16] {
-        target.context_handle = resp.parent_handle.0;
-        let _ = dpe_store.write_record(target.fw_id, &target);
-    }
-    dpe_store.write_exported_cdi(&resp.exported_cdi).unwrap();
+    target.context_handle = resp.parent_handle.0;
+    let _ = dpe_store.write_record(target.fw_id, &target);
+    dpe_store
+        .write_exported_cdi(target.fw_id, &resp.exported_cdi)
+        .unwrap();
 
     let ocp_lock = OcpLock::new(&mailbox, &crate::ocp_lock_config::EXAMPLE_RUNTIME_CONFIG);
     let signer_scratch = init_ocp_lock_signer_allocator();
