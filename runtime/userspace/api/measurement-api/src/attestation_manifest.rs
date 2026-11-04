@@ -49,9 +49,12 @@ pub const ATTESTATION_FLAG_SOC_TCB_DPE: u32 = 1 << 0;
 /// Component is the SoC TCB entry selected as the attestation key target.
 pub const ATTESTATION_FLAG_AK_TARGET: u32 = 1 << 1;
 
+/// Component is the SoC TCB entry selected as the DPE Exported-CDI derivation target.
+pub const ATTESTATION_FLAG_EXPORT_CDI_TARGET: u32 = 1 << 2;
+
 /// Attestation flags supported by this format version.
 pub const ATTESTATION_FLAGS_SUPPORTED: u32 =
-    ATTESTATION_FLAG_SOC_TCB_DPE | ATTESTATION_FLAG_AK_TARGET;
+    ATTESTATION_FLAG_SOC_TCB_DPE | ATTESTATION_FLAG_AK_TARGET | ATTESTATION_FLAG_EXPORT_CDI_TARGET;
 
 /// MCU Runtime firmware identifier used as the default attestation target.
 pub const MCU_RT_FW_ID: u32 = 0x0000_0002;
@@ -113,6 +116,10 @@ impl AttestationManifestEntry {
     pub const fn is_ak_target(self) -> bool {
         self.attestation_flags & ATTESTATION_FLAG_AK_TARGET != 0
     }
+
+    pub const fn is_export_cdi_target(self) -> bool {
+        self.attestation_flags & ATTESTATION_FLAG_EXPORT_CDI_TARGET != 0
+    }
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -137,9 +144,12 @@ pub enum AttestationManifestError {
     TcbEntryCountMismatch,
     DuplicateAkTarget,
     AkTargetNotTcb,
+    DuplicateExportCdiTarget,
+    ExportCdiTargetNotTcb,
     StoreLayoutMismatch,
     UnknownFwId,
     OwnerAkTargetNotAllowed,
+    OwnerExportCdiTargetNotAllowed,
     OwnerFwIdOutOfRange,
     MissingRequiredEntry,
     TcbEntriesNotContiguous,
@@ -181,6 +191,12 @@ impl<'a> AttestationManifest<'a> {
 
     pub const fn attestation_target_fw_id(&self) -> u32 {
         self.ak_target_fw_id
+    }
+
+    pub fn export_cdi_target_fw_id(&self) -> u32 {
+        self.entries()
+            .find(|e| e.is_export_cdi_target())
+            .map_or(MCU_RT_FW_ID, |e| e.fw_id)
     }
 
     pub fn entries(&self) -> AttestationManifestEntryIter<'a> {
@@ -422,6 +438,7 @@ fn validate_entries(
         .map_err(|_| AttestationManifestError::EntryCountOverflow)?;
     let mut tcb_count = 0usize;
     let mut ak_target_fw_id = None;
+    let mut has_export_cdi_target = false;
     let mut seen_non_tcb = false;
     let mut has_policy_entry = false;
     let mut has_owner_auth_key_entry = false;
@@ -451,6 +468,17 @@ fn validate_entries(
             }
             if ak_target_fw_id.replace(entry.fw_id).is_some() {
                 return Err(AttestationManifestError::DuplicateAkTarget);
+            }
+        }
+        if entry.is_export_cdi_target() {
+            if is_owner {
+                return Err(AttestationManifestError::OwnerExportCdiTargetNotAllowed);
+            }
+            if !entry.is_tcb() {
+                return Err(AttestationManifestError::ExportCdiTargetNotTcb);
+            }
+            if core::mem::replace(&mut has_export_cdi_target, true) {
+                return Err(AttestationManifestError::DuplicateExportCdiTarget);
             }
         }
         if entry.is_tcb() {
@@ -800,7 +828,74 @@ mod tests {
         assert_eq!(manifest.vendor(), "vendor");
         assert_eq!(manifest.model(), "model");
         assert_eq!(manifest.attestation_target_fw_id(), MCU_RT_FW_ID);
+        assert_eq!(manifest.export_cdi_target_fw_id(), MCU_RT_FW_ID);
         assert_eq!(manifest.entries().count(), 0);
+    }
+
+    #[test]
+    fn valid_manifest_reads_independent_ak_and_export_cdi_targets() {
+        let bytes = manifest(
+            "v",
+            "m",
+            &[
+                entry(
+                    TCB_FW_ID,
+                    ATTESTATION_FLAG_SOC_TCB_DPE | ATTESTATION_FLAG_AK_TARGET,
+                ),
+                entry(
+                    CHILD_TCB_FW_ID,
+                    ATTESTATION_FLAG_SOC_TCB_DPE | ATTESTATION_FLAG_EXPORT_CDI_TARGET,
+                ),
+                entry(NON_TCB_FW_ID, 0),
+            ],
+        );
+
+        let manifest = parse_and_validate(&bytes).unwrap();
+        let entries: Vec<_> = manifest.entries().collect();
+
+        assert!(entries[0].is_ak_target());
+        assert!(!entries[0].is_export_cdi_target());
+        assert!(!entries[1].is_ak_target());
+        assert!(entries[1].is_export_cdi_target());
+        assert_eq!(manifest.attestation_target_fw_id(), TCB_FW_ID);
+        assert_eq!(manifest.export_cdi_target_fw_id(), CHILD_TCB_FW_ID);
+    }
+
+    #[test]
+    fn duplicate_export_cdi_target_is_rejected() {
+        let bytes = manifest(
+            "v",
+            "m",
+            &[
+                entry(
+                    TCB_FW_ID,
+                    ATTESTATION_FLAG_SOC_TCB_DPE | ATTESTATION_FLAG_EXPORT_CDI_TARGET,
+                ),
+                entry(
+                    CHILD_TCB_FW_ID,
+                    ATTESTATION_FLAG_SOC_TCB_DPE | ATTESTATION_FLAG_EXPORT_CDI_TARGET,
+                ),
+            ],
+        );
+
+        assert_eq!(
+            parse_and_validate(&bytes).unwrap_err(),
+            AttestationManifestError::DuplicateExportCdiTarget
+        );
+    }
+
+    #[test]
+    fn export_cdi_target_without_tcb_is_rejected() {
+        let bytes = manifest(
+            "v",
+            "m",
+            &[entry(NON_TCB_FW_ID, ATTESTATION_FLAG_EXPORT_CDI_TARGET)],
+        );
+
+        assert_eq!(
+            parse_and_validate(&bytes).unwrap_err(),
+            AttestationManifestError::ExportCdiTargetNotTcb
+        );
     }
 
     #[test]
@@ -1107,6 +1202,26 @@ mod tests {
         assert_eq!(
             parse_and_validate_owner(&bytes).unwrap_err(),
             AttestationManifestError::OwnerAkTargetNotAllowed
+        );
+    }
+
+    #[test]
+    fn owner_manifest_rejects_export_cdi_target() {
+        let bytes = owner_manifest(&[
+            entry(
+                OWNER_MEASUREMENT_POLICY_IDENTIFIER,
+                ATTESTATION_FLAG_SOC_TCB_DPE,
+            ),
+            entry(O_AUTH_KEY_ID, ATTESTATION_FLAG_SOC_TCB_DPE),
+            entry(
+                0x10000,
+                ATTESTATION_FLAG_SOC_TCB_DPE | ATTESTATION_FLAG_EXPORT_CDI_TARGET,
+            ),
+        ]);
+
+        assert_eq!(
+            parse_and_validate_owner(&bytes).unwrap_err(),
+            AttestationManifestError::OwnerExportCdiTargetNotAllowed
         );
     }
 
