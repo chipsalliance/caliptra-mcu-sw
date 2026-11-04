@@ -394,7 +394,8 @@ jobs:
         with:
           name: spdm-emu-tools-compatibility
           path: ${{ runner.temp }}/spdm-emu-tools.tar.gz
-          retention-days: 1
+          # Test jobs can wait more than a day for a big-disk runner.
+          retention-days: 7
 
   test-pairs:
     needs: [resolve, prepare, spdm-tools]
@@ -441,7 +442,7 @@ jobs:
           failed=0
           for mode in flash streaming; do
             export MCU_COMPAT_MODE="$mode"
-            export MCU_COMPAT_RESULTS="$GITHUB_WORKSPACE/results/$mode"
+            export MCU_COMPAT_RESULTS="$GITHUB_WORKSPACE/results/$MCU_COMPAT_ROM/$MCU_COMPAT_RUNTIME/$mode"
             export MCU_COMPAT_EVIDENCE_DIR="$MCU_COMPAT_RESULTS/evidence"
             mkdir -p "$MCU_COMPAT_EVIDENCE_DIR"
             for phase in boot suites; do
@@ -503,6 +504,8 @@ jobs:
         with:
           pattern: compatibility-results-*
           path: reports
+          # Pair-qualified paths keep results separate even when only one pair uploaded.
+          merge-multiple: true
       - name: Report all selected pairs even when an earlier job failed
         if: always()
         env:
@@ -524,7 +527,7 @@ jobs:
           suite_ownership_dot suite_owner_stable_key
           suite_network_boot suite_usb_recovery""".split()
           for rom, runtime in itertools.product(["rom-sdk-2.1.0"], ["rt-sdk-2.1.0","rt-sdk-2.1.1","main-2.1"]):
-              directory = root / f"compatibility-results-{rom}-{runtime}" / "results"
+              directory = root / "results" / rom / runtime
               cases, issues, received = [], [], 0
               for mode, scenario in itertools.product(["flash","streaming"], scenarios):
                   path = directory/mode/f"{scenario}.json"
