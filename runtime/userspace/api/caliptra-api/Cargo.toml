@@ -22,7 +22,6 @@ caliptra-mcu-userlog = { workspace = true, optional = true }
 caliptra-ocp-eat = { workspace = true, optional = true }
 const-oid = { workspace = true, optional = true }
 der = { workspace = true, optional = true }
-dpe = { workspace = true, optional = true }
 embassy-executor = { workspace = true, optional = true }
 embassy-sync = { workspace = true, optional = true }
 mcu-error = { workspace = true, optional = true }
@@ -58,7 +57,6 @@ ocp-lock = [
     "dep:caliptra-ocp-eat",
     "dep:const-oid",
     "dep:der",
-    "dep:dpe",
     "dep:sha2",
     "dep:spki",
 ]

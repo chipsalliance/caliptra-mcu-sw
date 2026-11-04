@@ -175,6 +175,7 @@ impl CommandId {
     // Certificate commands
     pub const MC_EXPORT_ATTESTED_CSR: Self = Self(0x4D45_4143); // "MEAC"
     pub const MC_DPE_SIGNER_CONTEXT_CERT: Self = Self(0x4D44_5343); // "MDSC"
+    pub const MC_DPE_SIGNER_CONTEXT_SIGN: Self = Self(0x4D44_5353); // "MDSS"
     pub const MC_GET_DPE_CERTIFICATE_CHAIN: Self = Self(0x4D44_4343); // "MDCC"
     pub const MC_GET_CERT_CHAIN_INFO: Self = Self(0x4D47_4349); // "MGCI"
     pub const MC_GET_CERT_CHAIN: Self = Self(0x4D47_4343); // "MGCC"
@@ -285,6 +286,7 @@ pub enum McuMailboxReq {
     // Certificate commands
     ExportAttestedCsr(ExportAttestedCsrReq),
     DpeSignerContextCert(DpeSignerContextCertReq),
+    DpeSignerContextSign(DpeSignerContextSignReq),
     GetDpeCertChain(GetDpeCertChainReq),
     GetCertChainInfo(GetCertChainInfoReq),
     GetCertChain(GetCertChainReq),
@@ -374,6 +376,7 @@ impl McuMailboxReq {
             McuMailboxReq::ZeroizeUdsFeAndEnterRma(req) => Ok(req.as_bytes()),
             McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_bytes()),
             McuMailboxReq::DpeSignerContextCert(req) => Ok(req.as_bytes()),
+            McuMailboxReq::DpeSignerContextSign(req) => req.as_bytes_partial(),
             McuMailboxReq::GetDpeCertChain(req) => Ok(req.as_bytes()),
             McuMailboxReq::GetCertChainInfo(req) => Ok(req.as_bytes()),
             McuMailboxReq::GetCertChain(req) => Ok(req.as_bytes()),
@@ -461,6 +464,7 @@ impl McuMailboxReq {
             McuMailboxReq::ZeroizeUdsFeAndEnterRma(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::DpeSignerContextCert(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::DpeSignerContextSign(req) => req.as_bytes_partial_mut(),
             McuMailboxReq::GetDpeCertChain(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::GetCertChainInfo(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::GetCertChain(req) => Ok(req.as_mut_bytes()),
@@ -548,6 +552,7 @@ impl McuMailboxReq {
             McuMailboxReq::ZeroizeUdsFeAndEnterRma(_) => CommandId::MC_ZEROIZE_UDS_FE_AND_ENTER_RMA,
             McuMailboxReq::ExportAttestedCsr(_) => CommandId::MC_EXPORT_ATTESTED_CSR,
             McuMailboxReq::DpeSignerContextCert(_) => CommandId::MC_DPE_SIGNER_CONTEXT_CERT,
+            McuMailboxReq::DpeSignerContextSign(_) => CommandId::MC_DPE_SIGNER_CONTEXT_SIGN,
             McuMailboxReq::GetDpeCertChain(_) => CommandId::MC_GET_DPE_CERTIFICATE_CHAIN,
             McuMailboxReq::GetCertChainInfo(_) => CommandId::MC_GET_CERT_CHAIN_INFO,
             McuMailboxReq::GetCertChain(_) => CommandId::MC_GET_CERT_CHAIN,
@@ -2010,6 +2015,8 @@ impl Default for EndorsementAlgorithm {
 #[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq, Default)]
 pub struct DpeSignerContextCertReq {
     pub hdr: MailboxReqHeader,
+    /// Target DPE node `fw_id` (`0` uses the default `EXPORT_CDI_TARGET` configured in `MCAM`).
+    pub target_fw_id: u32,
     pub algorithm: EndorsementAlgorithm,
 }
 
@@ -2037,6 +2044,93 @@ impl Default for DpeSignerContextCertResp {
 }
 
 impl McuResponseVarSize for DpeSignerContextCertResp {}
+
+pub const MAX_DPE_SIGNER_CONTEXT_SIGN_DATA_SIZE: usize = MAX_RESP_DATA_SIZE;
+
+/// MC_DPE_SIGNER_CONTEXT_SIGN Command (0x4D44_5353 - "MDSS")
+///
+/// Signs `data[..data_len]` using the stored Exported-CDI key for `target_fw_id`
+/// (`0` uses the default `EXPORT_CDI_TARGET` configured in `MCAM`;
+/// `EndorsementAlgorithm::ECDSA_384` requires a 48-byte SHA-384 digest;
+/// `EndorsementAlgorithm::MLDSA_87` accepts a raw TBS up to
+/// `MAX_DPE_SIGNER_CONTEXT_SIGN_DATA_SIZE` bytes).
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+pub struct DpeSignerContextSignReq {
+    pub hdr: MailboxReqHeader,
+    /// Target DPE node `fw_id` (`0` uses the default `EXPORT_CDI_TARGET` configured in `MCAM`).
+    pub target_fw_id: u32,
+    pub algorithm: EndorsementAlgorithm,
+    pub data_len: u32,
+    pub data: [u8; MAX_DPE_SIGNER_CONTEXT_SIGN_DATA_SIZE],
+}
+
+impl Default for DpeSignerContextSignReq {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxReqHeader::default(),
+            target_fw_id: 0,
+            algorithm: EndorsementAlgorithm::default(),
+            data_len: 0,
+            data: [0u8; MAX_DPE_SIGNER_CONTEXT_SIGN_DATA_SIZE],
+        }
+    }
+}
+
+impl DpeSignerContextSignReq {
+    pub const HEADER_SIZE: usize = size_of::<MailboxReqHeader>() + 3 * size_of::<u32>();
+    pub const MAX_DATA_SIZE: usize = MAX_DPE_SIGNER_CONTEXT_SIGN_DATA_SIZE;
+
+    pub fn partial_len(&self) -> McuMboxResult<usize> {
+        let data_len = self.data_len as usize;
+        if data_len > Self::MAX_DATA_SIZE {
+            return Err(McuMboxError::MCU_MBOX_REQUEST_DATA_LEN_TOO_LARGE);
+        }
+        Ok(Self::HEADER_SIZE + data_len)
+    }
+}
+
+impl Request for DpeSignerContextSignReq {
+    const ID: CommandId = CommandId::MC_DPE_SIGNER_CONTEXT_SIGN;
+    type Resp = DpeSignerContextSignResp;
+}
+
+impl McuRequestVarSize for DpeSignerContextSignReq {
+    fn as_bytes_partial(&self) -> McuMboxResult<&[u8]> {
+        self.as_bytes()
+            .get(..self.partial_len()?)
+            .ok_or(McuMboxError::MCU_MBOX_REQUEST_DATA_LEN_TOO_LARGE)
+    }
+
+    fn as_bytes_partial_mut(&mut self) -> McuMboxResult<&mut [u8]> {
+        let partial_len = self.partial_len()?;
+        self.as_mut_bytes()
+            .get_mut(..partial_len)
+            .ok_or(McuMboxError::MCU_MBOX_REQUEST_DATA_LEN_TOO_LARGE)
+    }
+}
+
+/// MC_DPE_SIGNER_CONTEXT_SIGN response.
+///
+/// Deliberately absent from [`McuMailboxResp`]: `signature` is variable-length
+/// (`96` bytes `r || s` for `ECDSA_384`, `4627` bytes for `MLDSA_87`).
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+pub struct DpeSignerContextSignResp {
+    pub hdr: MailboxRespHeaderVarSize,
+    pub signature: [u8; MLDSA87_SIGNATURE_BYTE_SIZE],
+}
+
+impl Default for DpeSignerContextSignResp {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxRespHeaderVarSize::default(),
+            signature: [0u8; MLDSA87_SIGNATURE_BYTE_SIZE],
+        }
+    }
+}
+
+impl McuResponseVarSize for DpeSignerContextSignResp {}
 
 /// MC_GET_DPE_CERTIFICATE_CHAIN request: Retrieve DPE Certificate Chain
 #[repr(C)]
@@ -3658,6 +3752,7 @@ mod tests {
     fn test_dpe_signer_context_cert_req_serialization() {
         let req = DpeSignerContextCertReq {
             hdr: MailboxReqHeader { chksum: 0xABCD },
+            target_fw_id: 0,
             algorithm: EndorsementAlgorithm::ECDSA_384,
         };
 
@@ -3666,6 +3761,7 @@ mod tests {
 
         let parsed = DpeSignerContextCertReq::read_from_bytes(bytes).unwrap();
         assert_eq!(parsed.hdr.chksum, 0xABCD);
+        assert_eq!(parsed.target_fw_id, 0);
         assert_eq!(parsed.algorithm, EndorsementAlgorithm::ECDSA_384);
     }
 

@@ -14,17 +14,21 @@ use caliptra_mcu_common_commands::{
 };
 use caliptra_mcu_libsyscall_caliptra::mcu_mbox::MbxCmdStatus;
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
+#[cfg(feature = "unsafe-allow-mcu-signing-oracle")]
+use caliptra_mcu_mbox_common::messages::DpeSignerContextSignReq;
 use caliptra_mcu_mbox_common::messages::{
-    ClearLogReq, ClearLogResp, CommandId, DeviceCapsReq, DeviceCapsResp, DpeSignerContextCertReq,
-    EndorsementAlgorithm, FirmwareVersionReq, FirmwareVersionResp, FuseReadResp, GetAttestationReq,
-    GetAuthCmdChallengeResp, GetCertChainInfoReq, GetCertChainInfoResp, GetCertChainReq,
-    GetCertChainResp, GetDpeCertChainReq, GetLogReq, HekStatusReq, HekStatusResp, LogType,
-    MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize, McuFeStatusReq, McuFeStatusResp,
-    McuMailboxReq, McuMailboxResp, McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp,
+    ClearLogReq, ClearLogResp, CommandId, DeviceCapsReq, DeviceCapsResp, FirmwareVersionReq,
+    FirmwareVersionResp, FuseReadResp, GetAttestationReq, GetAuthCmdChallengeResp,
+    GetCertChainInfoReq, GetCertChainInfoResp, GetCertChainReq, GetCertChainResp,
+    GetDpeCertChainReq, GetLogReq, HekStatusReq, HekStatusResp, LogType, MailboxReqHeader,
+    MailboxRespHeader, MailboxRespHeaderVarSize, McuFeStatusReq, McuFeStatusResp, McuMailboxReq,
+    McuMailboxResp, McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp,
     McuProdDebugUnlockTokenReq, McuResponseVarSize, SetCertChainReq, SetCertChainResp,
     VendorPkHashStatusReq, VendorPkHashStatusResp, DEVICE_CAPS_SIZE,
     GET_ATTESTATION_RESP_PREFIX_LEN, MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
 };
+#[cfg(feature = "allow-mcu-signer-cert")]
+use caliptra_mcu_mbox_common::messages::{DpeSignerContextCertReq, EndorsementAlgorithm};
 #[cfg(feature = "attested-csr")]
 use caliptra_mcu_mbox_common::messages::{
     ExportAttestedCsrReq, ExportAttestedCsrResp, MAX_ATTESTED_CSR_RESP_DATA_SIZE,
@@ -299,8 +303,13 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer> CmdInterface<'a, H, A> {
                 CommandId::MC_PROD_DEBUG_UNLOCK_REQ => {
                     self.handle_prod_debug_unlock_req(req, resp_buf).await
                 }
+                #[cfg(feature = "allow-mcu-signer-cert")]
                 CommandId::MC_DPE_SIGNER_CONTEXT_CERT => {
                     self.handle_dpe_signer_context_cert(req, resp_buf).await
+                }
+                #[cfg(feature = "unsafe-allow-mcu-signing-oracle")]
+                CommandId::MC_DPE_SIGNER_CONTEXT_SIGN => {
+                    self.handle_dpe_signer_context_sign(req, resp_buf).await
                 }
                 CommandId::MC_GET_DPE_CERTIFICATE_CHAIN => {
                     self.handle_get_dpe_cert_chain(req, resp_buf).await
@@ -589,6 +598,7 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer> CmdInterface<'a, H, A> {
         Ok((&mut resp_buf[..resp_len], mbox_cmd_status))
     }
 
+    #[cfg(feature = "allow-mcu-signer-cert")]
     async fn handle_dpe_signer_context_cert<'r>(
         &mut self,
         req: &[u8],
@@ -607,8 +617,10 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer> CmdInterface<'a, H, A> {
             _ => return Err(errors::INVALID_PARAMS),
         };
 
+        let target_fw_id = (req.target_fw_id != 0).then_some(req.target_fw_id);
         let ret = caliptra_mcu_measurement_api::export_cdi_and_stash(
             self.scratch,
+            target_fw_id,
             profile,
             &mut resp_buf[header_len..],
         )
@@ -629,6 +641,45 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer> CmdInterface<'a, H, A> {
 
         resp_buf[..header_len].copy_from_slice(hdr.as_bytes());
         let total_len = header_len + cert_len;
+        Ok((&mut resp_buf[..total_len], mbox_cmd_status))
+    }
+
+    #[cfg(feature = "unsafe-allow-mcu-signing-oracle")]
+    async fn handle_dpe_signer_context_sign<'r>(
+        &mut self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let (target_fw_id, signing_input) = parse_dpe_signer_context_sign_req(req)?;
+
+        let header_len = size_of::<MailboxRespHeaderVarSize>();
+        if resp_buf.len() < header_len {
+            return Err(errors::INVALID_PARAMS);
+        }
+
+        let ret = caliptra_mcu_measurement_api::sign_with_exported_cdi(
+            self.scratch,
+            target_fw_id,
+            signing_input,
+            &mut resp_buf[header_len..],
+        )
+        .await;
+
+        let (mbox_cmd_status, sig_len) = match ret {
+            Ok(len) => (MbxCmdStatus::Complete, len),
+            Err(_) => (MbxCmdStatus::Failure, 0),
+        };
+
+        let hdr = MailboxRespHeaderVarSize {
+            hdr: MailboxRespHeader {
+                chksum: 0,
+                fips_status: 0,
+            },
+            data_len: sig_len as u32,
+        };
+
+        resp_buf[..header_len].copy_from_slice(hdr.as_bytes());
+        let total_len = header_len + sig_len;
         Ok((&mut resp_buf[..total_len], mbox_cmd_status))
     }
 
@@ -1135,6 +1186,13 @@ pub const DPE_SIGNER_CONTEXT_CERT_RESP_SIZE: usize = size_of::<MailboxRespHeader
     + mcu_caliptra_api::DPE_MAX_LEAF_CERT_SIZE
     + DPE_EXPORTED_CDI_IN_PLACE_PREFIX_LEN;
 
+/// Response buffer size for `MC_DPE_SIGNER_CONTEXT_SIGN`: the var-size header
+/// plus room for `dpe_sign_with_exported_mldsa` to stage
+/// `SignWithExportedMldsaResp` (7,228 B) in-place ahead of the 4,627-byte
+/// signature.
+pub const DPE_SIGNER_CONTEXT_SIGN_RESP_SIZE: usize =
+    size_of::<MailboxRespHeaderVarSize>() + mcu_caliptra_api::SIGN_WITH_EXPORTED_MLDSA_RESP_LEN;
+
 /// Response payload buffer size for `MC_GET_OCP_LOCK_ENDORSEMENT_CERT` and
 /// `MC_GET_OCP_LOCK_EPOCH_KEY_REPORT`.
 ///
@@ -1201,7 +1259,10 @@ fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32, req: &[u8]) -> usize {
                 _ => size_of::<MailboxRespHeader>(),
             }
         }
+        #[cfg(feature = "allow-mcu-signer-cert")]
         c if c == CommandId::MC_DPE_SIGNER_CONTEXT_CERT => DPE_SIGNER_CONTEXT_CERT_RESP_SIZE,
+        #[cfg(feature = "unsafe-allow-mcu-signing-oracle")]
+        c if c == CommandId::MC_DPE_SIGNER_CONTEXT_SIGN => DPE_SIGNER_CONTEXT_SIGN_RESP_SIZE,
         c if c == CommandId::MC_GET_DPE_CERTIFICATE_CHAIN => {
             size_of::<MailboxRespHeaderVarSize>() + 1024
         }
@@ -1294,6 +1355,54 @@ async fn stage_attestation<H: CaliptraCmdHandler, Alloc: ScratchAlloc>(
         .map_err(|_| errors::MCU_MBOX_COMMON)?;
 
     Ok(GET_ATTESTATION_RESP_PREFIX_LEN + evidence_len)
+}
+
+#[cfg(feature = "unsafe-allow-mcu-signing-oracle")]
+#[repr(C)]
+#[derive(FromBytes, Immutable, KnownLayout)]
+struct DpeSignerContextSignReqPrefix {
+    hdr: MailboxReqHeader,
+    target_fw_id: u32,
+    algorithm: EndorsementAlgorithm,
+    data_len: u32,
+}
+
+#[cfg(feature = "unsafe-allow-mcu-signing-oracle")]
+fn parse_dpe_signer_context_sign_req(
+    req: &[u8],
+) -> McuResult<(
+    Option<u32>,
+    caliptra_mcu_measurement_api::ExportedCdiSigningInput<'_>,
+)> {
+    let (prefix, rest) =
+        DpeSignerContextSignReqPrefix::ref_from_prefix(req).map_err(|_| errors::INVALID_PARAMS)?;
+    let _ = prefix.hdr;
+    let target_fw_id = (prefix.target_fw_id != 0).then_some(prefix.target_fw_id);
+    let data_len = prefix.data_len as usize;
+    if data_len > DpeSignerContextSignReq::MAX_DATA_SIZE
+        || (rest.len() != data_len && req.len() != size_of::<DpeSignerContextSignReq>())
+    {
+        return Err(errors::INVALID_PARAMS);
+    }
+    let data = rest.get(..data_len).ok_or(errors::INVALID_PARAMS)?;
+
+    let input = match prefix.algorithm {
+        EndorsementAlgorithm::ECDSA_384 => {
+            let digest: &[u8; mcu_caliptra_api::DPE_P384_DIGEST_SIZE] =
+                data.try_into().map_err(|_| errors::INVALID_PARAMS)?;
+            caliptra_mcu_measurement_api::ExportedCdiSigningInput::EccP384Digest(digest)
+        }
+        EndorsementAlgorithm::MLDSA_87 => {
+            if data.is_empty()
+                || data.len() > caliptra_mcu_measurement_api::EXPORTED_CDI_MAX_MLDSA87_TBS_SIZE
+            {
+                return Err(errors::INVALID_PARAMS);
+            }
+            caliptra_mcu_measurement_api::ExportedCdiSigningInput::Mldsa87Raw(data)
+        }
+        _ => return Err(errors::INVALID_PARAMS),
+    };
+    Ok((target_fw_id, input))
 }
 
 #[repr(C)]
@@ -1415,8 +1524,7 @@ mod tests {
     extern crate std;
 
     use super::*;
-    use caliptra_mcu_mbox_common::messages::McuRequestVarSize;
-    use caliptra_mcu_mbox_common::messages::MAX_ATTESTATION_RESP_DATA_SIZE;
+    use caliptra_mcu_mbox_common::messages::{McuRequestVarSize, MAX_ATTESTATION_RESP_DATA_SIZE};
     use futures::executor::block_on;
     use std::vec;
     use std::vec::Vec;
@@ -1612,6 +1720,81 @@ mod tests {
         assert_eq!(
             response_buffer_size::<TestHandler>(CommandId::MC_FIRMWARE_VERSION.0, &[]),
             size_of::<McuMailboxResp>()
+        );
+        #[cfg(feature = "unsafe-allow-mcu-signing-oracle")]
+        assert_eq!(
+            response_buffer_size::<TestHandler>(CommandId::MC_DPE_SIGNER_CONTEXT_SIGN.0, &[]),
+            DPE_SIGNER_CONTEXT_SIGN_RESP_SIZE
+        );
+    }
+
+    #[cfg(feature = "unsafe-allow-mcu-signing-oracle")]
+    #[test]
+    fn dpe_signer_context_sign_parses_variable_payload_and_validates_inputs() {
+        let mut ecdsa_req = DpeSignerContextSignReq {
+            hdr: MailboxReqHeader::default(),
+            algorithm: EndorsementAlgorithm::ECDSA_384,
+            data_len: 48,
+            ..Default::default()
+        };
+        ecdsa_req.data[..48].fill(0xA5);
+        let ecdsa_bytes = ecdsa_req.as_bytes_partial().unwrap();
+        assert_eq!(ecdsa_bytes.len(), DpeSignerContextSignReq::HEADER_SIZE + 48);
+        match parse_dpe_signer_context_sign_req(ecdsa_bytes).unwrap() {
+            (None, caliptra_mcu_measurement_api::ExportedCdiSigningInput::EccP384Digest(d)) => {
+                assert_eq!(d, &[0xA5; 48]);
+            }
+            _ => panic!("expected (None, EccP384Digest)"),
+        }
+
+        // Wrong ECDSA digest length is rejected.
+        let bad_ecdsa = DpeSignerContextSignReq {
+            data_len: 32,
+            ..ecdsa_req
+        };
+        assert_eq!(
+            parse_dpe_signer_context_sign_req(bad_ecdsa.as_bytes_partial().unwrap()),
+            Err(errors::INVALID_PARAMS)
+        );
+
+        // ML-DSA-87 variable-length TBS is accepted up to 4,096 bytes, with explicit target_fw_id.
+        let mut mldsa_req = DpeSignerContextSignReq {
+            hdr: MailboxReqHeader::default(),
+            target_fw_id: 0x10,
+            algorithm: EndorsementAlgorithm::MLDSA_87,
+            data_len: 128,
+            ..Default::default()
+        };
+        mldsa_req.data[..128].fill(0x5C);
+        let mldsa_bytes = mldsa_req.as_bytes_partial().unwrap();
+        match parse_dpe_signer_context_sign_req(mldsa_bytes).unwrap() {
+            (
+                Some(0x10),
+                caliptra_mcu_measurement_api::ExportedCdiSigningInput::Mldsa87Raw(tbs),
+            ) => {
+                assert_eq!(tbs, &[0x5C; 128]);
+            }
+            _ => panic!("expected (Some(0x10), Mldsa87Raw)"),
+        }
+
+        // Empty ML-DSA-87 TBS and unknown algorithm are rejected.
+        let empty_mldsa = DpeSignerContextSignReq {
+            data_len: 0,
+            ..mldsa_req
+        };
+        assert_eq!(
+            parse_dpe_signer_context_sign_req(empty_mldsa.as_bytes_partial().unwrap()),
+            Err(errors::INVALID_PARAMS)
+        );
+        let bad_algo = DpeSignerContextSignReq {
+            hdr: MailboxReqHeader::default(),
+            algorithm: EndorsementAlgorithm(u32::MAX),
+            data_len: 48,
+            ..Default::default()
+        };
+        assert_eq!(
+            parse_dpe_signer_context_sign_req(bad_algo.as_bytes_partial().unwrap()),
+            Err(errors::INVALID_PARAMS)
         );
     }
 

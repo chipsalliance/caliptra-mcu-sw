@@ -1,19 +1,58 @@
 // Licensed under the Apache-2.0 license
 
-use caliptra_api::mailbox::{
-    CapabilitiesResp, CommandId, HpkeAlgorithms, MailboxReqHeader, Request,
-};
+use caliptra_api::mailbox::{CapabilitiesResp, CommandId, HpkeAlgorithms, MailboxReqHeader};
 use caliptra_api::Capabilities;
 use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
 use caliptra_mcu_libsyscall_caliptra::system::System;
+use caliptra_mcu_measurement_api::attestation_manifest::{
+    ATTESTATION_MANIFEST_FIXED_HEADER_SIZE, ATTESTATION_MANIFEST_MARKER,
+    ATTESTATION_MANIFEST_VERSION,
+};
+use caliptra_mcu_measurement_api::signer::CaliptraDpeSigner;
+use caliptra_mcu_measurement_api::{BootKind, DpeProfile, EvidenceReadinessPolicy};
 use caliptra_mcu_romtime::println;
 use caliptra_mcu_scratch_alloc::{BitmapAllocator, StaticBitmapAllocatorCell, BITMAP_SLOT_SIZE};
 use core::mem::size_of;
 use core::ptr::NonNull;
 use mcu_caliptra_api::ocp_lock::{OcpLock, OcpLockEnumerateHpkeHandlesResp};
 use mcu_caliptra_api::raw::raw_mailbox_execute;
-use mcu_caliptra_api::signer::CaliptraDpeSigner;
-use zerocopy::{FromBytes, FromZeros, IntoBytes, TryFromBytes};
+use zerocopy::{FromBytes, IntoBytes};
+
+static EXAMPLE_ATTESTATION_MANIFEST_BYTES: [u8; ATTESTATION_MANIFEST_FIXED_HEADER_SIZE] = {
+    let mut bytes = [0u8; ATTESTATION_MANIFEST_FIXED_HEADER_SIZE];
+    let marker = ATTESTATION_MANIFEST_MARKER.to_le_bytes();
+    let size = (ATTESTATION_MANIFEST_FIXED_HEADER_SIZE as u32).to_le_bytes();
+    let version = ATTESTATION_MANIFEST_VERSION.to_le_bytes();
+    bytes[0] = marker[0];
+    bytes[1] = marker[1];
+    bytes[2] = marker[2];
+    bytes[3] = marker[3];
+    bytes[4] = size[0];
+    bytes[5] = size[1];
+    bytes[6] = size[2];
+    bytes[7] = size[3];
+    bytes[8] = version[0];
+    bytes[9] = version[1];
+    bytes[10] = version[2];
+    bytes[11] = version[3];
+    bytes[12] = size[0];
+    bytes[13] = size[1];
+    bytes[14] = size[2];
+    bytes[15] = size[3];
+    // entry_count = 0 (bytes 16..20), tcb_entry_count = 0 (bytes 20..24)
+    // vendor_len = 4 ("test"), model_len = 4 ("test")
+    bytes[24] = 4;
+    bytes[26] = 4;
+    bytes[28] = b't';
+    bytes[29] = b'e';
+    bytes[30] = b's';
+    bytes[31] = b't';
+    bytes[128] = b't';
+    bytes[129] = b'e';
+    bytes[130] = b's';
+    bytes[131] = b't';
+    bytes
+};
 
 const OCP_LOCK_SIGNER_SCRATCH_SIZE: usize = 9 * 1024;
 const OCP_LOCK_SIGNER_SCRATCH_SLOTS: usize = OCP_LOCK_SIGNER_SCRATCH_SIZE / BITMAP_SLOT_SIZE;
@@ -102,68 +141,29 @@ pub(crate) async fn test_get_hpke_public_key_x509() {
     println!("Starting OCP LOCK get HPKE public key x509 test");
 
     let mailbox = Mailbox::new();
+    let signer_scratch = init_ocp_lock_signer_allocator();
+    let mut cert_buf = [0u8; OcpLock::MAX_ENDORSEMENT_CERT_SIZE];
 
-    // Derive exported CDI and stash in DPE handle store for CaliptraDpeSigner
-    let dpe_store = caliptra_mcu_libsyscall_caliptra::dpe_handle_store::DpeHandleStore::<
-        caliptra_mcu_libsyscall_caliptra::DefaultSyscalls,
-    >::new(
-        caliptra_mcu_libsyscall_caliptra::dpe_handle_store::DPE_HANDLE_STORE_DRIVER_NUM,
-    );
-    let mut target = caliptra_mcu_libsyscall_caliptra::dpe_handle_store::DpeHandleRecord::default();
-    let handle = if dpe_store.read_attestation_target(&mut target).is_ok()
-        || dpe_store.read_leaf_record(&mut target).is_ok()
-    {
-        dpe::context::ContextHandle(target.context_handle)
-    } else {
-        let _ = dpe_store.initialize_store(&[0u8; 48]);
-        target.fw_id = 0x0000_0002;
-        dpe::context::ContextHandle::default()
-    };
-
-    let cmd = dpe::commands::DeriveContextCmd {
-        handle,
-        data: dpe::tci::TciMeasurement([0u8; 48]),
-        flags: dpe::commands::DeriveContextFlags::EXPORT_CDI
-            | dpe::commands::DeriveContextFlags::CREATE_CERTIFICATE
-            | dpe::commands::DeriveContextFlags::RETAIN_PARENT_CONTEXT,
-        tci_type: 0,
-        target_locality: 0,
-        svn: 0,
-    };
-    let mut mbox_req = caliptra_api::mailbox::InvokeDpeReq::new_zeroed();
-    let cmd_hdr = dpe::commands::CommandHdr::new(
-        dpe::DpeProfile::P384Sha384,
-        dpe::commands::Command::DERIVE_CONTEXT,
-    );
-    let cmd_hdr_bytes = cmd_hdr.as_bytes();
-    let cmd_bytes = cmd.as_bytes();
-    mbox_req.data[..cmd_hdr_bytes.len()].copy_from_slice(cmd_hdr_bytes);
-    mbox_req.data[cmd_hdr_bytes.len()..cmd_hdr_bytes.len() + cmd_bytes.len()]
-        .copy_from_slice(cmd_bytes);
-    mbox_req.data_size = (cmd_hdr_bytes.len() + cmd_bytes.len()) as u32;
-
-    let mut mbox_resp = caliptra_api::mailbox::InvokeDpeResp::default();
-    raw_mailbox_execute(
-        caliptra_api::mailbox::InvokeDpeReq::ID.0,
-        mbox_req.as_mut_bytes(),
-        mbox_resp.as_mut_bytes(),
+    caliptra_mcu_measurement_api::init(
+        &EXAMPLE_ATTESTATION_MANIFEST_BYTES,
+        &[],
+        BootKind::ColdBoot,
+        EvidenceReadinessPolicy::ReadyAfterBootInit,
+        signer_scratch,
+    )
+    .await
+    .unwrap();
+    caliptra_mcu_measurement_api::export_cdi_and_stash(
+        signer_scratch,
+        None,
+        DpeProfile::P384Sha384,
+        &mut cert_buf,
     )
     .await
     .unwrap();
 
-    let (resp, _) =
-        dpe::response::DeriveContextExportedCdiResp::try_read_from_prefix(&mbox_resp.data).unwrap();
-    assert_eq!(resp.resp_hdr.status, 0);
-
-    target.context_handle = resp.parent_handle.0;
-    let _ = dpe_store.write_record(target.fw_id, &target);
-    dpe_store
-        .write_exported_cdi(target.fw_id, &resp.exported_cdi)
-        .unwrap();
-
     let ocp_lock = OcpLock::new(&mailbox, &crate::ocp_lock_config::EXAMPLE_RUNTIME_CONFIG);
-    let signer_scratch = init_ocp_lock_signer_allocator();
-    let signer = CaliptraDpeSigner::new(&mailbox, signer_scratch);
+    let signer = CaliptraDpeSigner::new(signer_scratch);
 
     println!("Enumerate HPKE handles...");
     let mut handles_resp = OcpLockEnumerateHpkeHandlesResp::default();
@@ -180,8 +180,6 @@ pub(crate) async fn test_get_hpke_public_key_x509() {
         .iter()
         .find(|handle| handle.hpke_algorithm == HpkeAlgorithms::ECDH_P384_HKDF_SHA384_AES_256_GCM)
         .unwrap();
-
-    let mut cert_buf = [0u8; OcpLock::MAX_ENDORSEMENT_CERT_SIZE];
 
     match ocp_lock
         .get_hpke_public_key_x509(handle, &mut cert_buf, &signer)

@@ -24,6 +24,8 @@ use caliptra_mcu_mbox_common::messages::{
     DotDisablePayload, DotLockPayload, DotOverrideChallengePayload, DotOverridePayload,
     DotRotatePayload, DotStatus, DotUnlockPayload, AUTH_CMD_NONCE_LEN, DOT_BLOB_SIZE,
 };
+#[cfg(feature = "ocp-lock")]
+use caliptra_mcu_measurement_api::signer::CaliptraDpeSigner;
 use caliptra_mcu_otp_fuse::fuse_read_dai_params;
 #[cfg(feature = "ocp-lock")]
 use mcu_caliptra_api::error::CaliptraApiError;
@@ -31,8 +33,6 @@ use mcu_caliptra_api::error::CaliptraApiError;
 use mcu_caliptra_api::ocp_lock::{
     HpkeHandle, OcpLock, OcpLockEnumerateHpkeHandlesResp, SekState as OcpLockSekState,
 };
-#[cfg(feature = "ocp-lock")]
-use mcu_caliptra_api::signer::CaliptraDpeSigner;
 use mcu_caliptra_api::{core_capabilities, core_firmware_version, ScratchAlloc};
 #[cfg(feature = "pcr-quote")]
 use mcu_caliptra_api::{PCR_QUOTE_ECC384_BUF_LEN, PCR_QUOTE_MLDSA87_BUF_LEN};
@@ -607,7 +607,7 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
             .map_err(|_| CaliptraCompletionCode::InvalidParameter)?;
         let mailbox = caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox::new();
         let ocp_lock = OcpLock::new(&mailbox, &crate::ocp_lock_config::APP_RUNTIME_CONFIG);
-        let signer = CaliptraDpeSigner::with_algorithm(&mailbox, algo, alloc);
+        let signer = CaliptraDpeSigner::with_algorithm(algo, alloc);
 
         ocp_lock
             .get_hpke_public_key_x509(hpke_handle, cert_buf, &signer)
@@ -656,7 +656,7 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
             .map_err(|_| CaliptraCompletionCode::InvalidParameter)?;
         let mailbox = Mailbox::new();
         let ocp_lock = OcpLock::new(&mailbox, &crate::ocp_lock_config::APP_RUNTIME_CONFIG);
-        let signer = CaliptraDpeSigner::with_algorithm(&mailbox, algo, alloc);
+        let signer = CaliptraDpeSigner::with_algorithm(algo, alloc);
 
         let len = ocp_lock
             .get_ocp_lock_epoch_key_report(nonce, sek_state, &signer, report_buf)

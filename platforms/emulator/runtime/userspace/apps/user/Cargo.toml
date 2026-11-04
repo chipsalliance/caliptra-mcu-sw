@@ -89,6 +89,16 @@ attested-csr = [
   "caliptra-mcu-mbox-lib/attested-csr",
   "caliptra-mcu-spdm-vdm-handler/attested-csr",
 ]
+# Enables MC_DPE_SIGNER_CONTEXT_CERT in MCU mailbox
+allow-mcu-signer-cert = [
+  "mcu-mbox-service",
+  "caliptra-mcu-mbox-lib/allow-mcu-signer-cert",
+]
+# Enables MC_DPE_SIGNER_CONTEXT_SIGN in MCU mailbox
+unsafe-allow-mcu-signing-oracle = [
+  "allow-mcu-signer-cert",
+  "caliptra-mcu-mbox-lib/unsafe-allow-mcu-signing-oracle",
+]
 spdm = [
   "mcu-mbox-service",
   "caliptra-mcu-spdm-stack/generic-large-request",
@@ -123,8 +133,10 @@ pcr-quote = [
 debug = []
 hw-2-1 = []
 ocp-lock = [
+    "caliptra-mcu-measurement-api/ocp-lock",
     "mcu-caliptra-api/ocp-lock",
     "mcu-mbox-service",
+    "allow-mcu-signer-cert",
     "caliptra-mcu-mbox-lib/ocp-lock",
     "caliptra-mcu-common-commands/ocp-lock",
     "caliptra-mcu-spdm-vdm-handler/ocp-lock",
@@ -210,7 +222,12 @@ test-mctp-vdm-cmds = ["mctp-vdm-service"]
 test-mctp-vdm-production = ["mctp-vdm-service"]
 test-caliptra-util-host-mctp-vdm-validator = ["mctp-vdm-service", "userspace-log"]
 test-caliptra-util-host-validator = ["mcu-mbox-test-handlers", "dot-mci-mailbox", "cert-provisioning"]
-test-mcu-mbox-cmds = ["mcu-mbox-test-handlers", "dot-mci-mailbox", "cert-provisioning"]
+test-mcu-mbox-cmds = [
+  "mcu-mbox-test-handlers",
+  "dot-mci-mailbox",
+  "cert-provisioning",
+  "unsafe-allow-mcu-signing-oracle",
+]
 test-mcu-mbox-fips-self-test = ["mcu-mbox-test-handlers"]
 test-ocp-lock = ["ocp-lock"]
 test-handoff = ["mcu-caliptra-api/ocp-lock"]
