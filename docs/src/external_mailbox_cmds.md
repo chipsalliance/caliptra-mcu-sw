@@ -119,6 +119,11 @@ These are innermost command IDs. Both MCI and SPDM carry the ID inside
 reference MCU does not implement vendor-specific behavior and returns an
 unsupported-command error.
 
+Platforms can opt in through the common backend's
+[vendor command hooks](caliptra_common_commands.md#platform-extension-hooks).
+The common authorization checks and mailbox response framing still apply;
+vendor IDs do not become top-level mailbox opcodes.
+
 ## Command Format
 
 Common command payloads are defined in [Caliptra Common Commands](caliptra_common_commands.md#command-definitions). This section lists the MCI mailbox command code for each common command and keeps mailbox-only command definitions in this document. MCI mailbox checksum, `fips_status`, and variable-length `data_len` fields are transport-specific response framing and are not part of the common command payload tables.

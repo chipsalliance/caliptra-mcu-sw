@@ -1,10 +1,13 @@
 // Licensed under the Apache-2.0 license
 
-use crate::{CaliptraCmdHandler, CaliptraCmdResult, CaliptraCompletionCode, CommandAuthorizer};
+use crate::{
+    CaliptraCmdHandler, CaliptraCmdResult, CaliptraCompletionCode, CommandAuthorizer,
+    VendorCommandLimits,
+};
 use caliptra_mcu_mbox_common::authorization::{AuthorizationBlock, AuthorizationMetadata};
 use caliptra_mcu_mbox_common::messages::{
     CommandId, DotDisablePayload, DotLockPayload, DotRotatePayload, SvnTarget, AUTH_CMD_NONCE_LEN,
-    MAX_FUSE_DATA_SIZE,
+    MAX_FUSE_DATA_SIZE, MAX_RESP_DATA_SIZE,
 };
 #[cfg(feature = "device-ownership-transfer")]
 use caliptra_mcu_mbox_common::messages::{
@@ -24,9 +27,11 @@ const U32_LEN: usize = core::mem::size_of::<u32>();
 const AUTHORIZATION_TRAILER_LEN: usize = core::mem::size_of::<AuthorizationBlock>();
 
 #[cfg(feature = "device-ownership-transfer")]
-const MAX_AUTHORIZED_PAYLOAD_LEN: usize = U32_LEN + core::mem::size_of::<DotRotatePayload>();
+/// Largest payload supported by the canonical authorization buffers.
+pub const MAX_AUTHORIZED_PAYLOAD_LEN: usize = U32_LEN + core::mem::size_of::<DotRotatePayload>();
 #[cfg(not(feature = "device-ownership-transfer"))]
-const MAX_AUTHORIZED_PAYLOAD_LEN: usize = U32_LEN + 48;
+/// Largest payload supported by the canonical authorization buffers.
+pub const MAX_AUTHORIZED_PAYLOAD_LEN: usize = U32_LEN + 48;
 
 /// Largest canonical AuthorizedCommand body, including its target ID.
 pub const MAX_AUTHORIZED_REQUEST_LEN: usize =
@@ -160,6 +165,26 @@ struct AuthorizedRequest<'a> {
     authorization: &'a AuthorizationBlock,
 }
 
+/// Looks up vendor limits without allowing platforms to override standard IDs.
+///
+/// Invalid platform limits are reported rather than used to size allocations.
+pub fn vendor_command_limits<H: CaliptraCmdHandler>(
+    target_id: u32,
+) -> CaliptraCmdResult<Option<VendorCommandLimits>> {
+    if !CommandId::from(target_id).is_vendor_unique() {
+        return Ok(None);
+    }
+    let Some(limits) = H::vendor_command_limits(target_id) else {
+        return Ok(None);
+    };
+    if limits.max_payload_len > MAX_AUTHORIZED_PAYLOAD_LEN
+        || limits.max_response_len > MAX_RESP_DATA_SIZE
+    {
+        return Err(CaliptraCompletionCode::InvalidParameter);
+    }
+    Ok(Some(limits))
+}
+
 /// Executes a canonical AuthorizedCommand body.
 ///
 /// `request` starts with a four-byte little-endian target ID. Family targets
@@ -179,9 +204,14 @@ where
     Alloc: ScratchAlloc,
 {
     let (target_id, request) = split_id(request)?;
-    if CommandId::from(target_id).is_vendor_unique() {
-        return Err(CaliptraCompletionCode::UnsupportedOperation);
-    }
+    let vendor_limits = if CommandId::from(target_id).is_vendor_unique() {
+        Some(
+            vendor_command_limits::<H>(target_id)?
+                .ok_or(CaliptraCompletionCode::UnsupportedOperation)?,
+        )
+    } else {
+        None
+    };
 
     if target_id == CommandId::MC_GET_AUTH_CMD_CHALLENGE.0 {
         if !request.is_empty() {
@@ -220,8 +250,26 @@ where
         return Err(CaliptraCompletionCode::UnsupportedOperation);
     }
 
-    let payload_len = authorized_payload_len(target_id, request)?;
+    let payload_len = if let Some(limits) = vendor_limits {
+        let len = request
+            .len()
+            .checked_sub(AUTHORIZATION_TRAILER_LEN)
+            .ok_or(CaliptraCompletionCode::InvalidPayloadSize)?;
+        if len > limits.max_payload_len {
+            return Err(CaliptraCompletionCode::InvalidPayloadSize);
+        }
+        len
+    } else {
+        authorized_payload_len(target_id, request)?
+    };
     let parsed = split_authorized_request(request, payload_len)?;
+    let output = if let Some(limits) = vendor_limits {
+        output
+            .get_mut(..limits.max_response_len)
+            .ok_or(CaliptraCompletionCode::InsufficientResources)?
+    } else {
+        output
+    };
     let authority = parsed
         .authorization
         .validate_format()
@@ -253,6 +301,16 @@ where
         )
         .await
         .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
+
+    if vendor_limits.is_some() {
+        let len = commands
+            .handle_vendor_command(alloc, target_id, parsed.payload, output)
+            .await?;
+        if len > output.len() {
+            return Err(CaliptraCompletionCode::OperationFailed);
+        }
+        return Ok(CommandResponse::Data(len));
+    }
 
     match target_id {
         value if value == CommandId::MC_PROVISION_VENDOR_PK_HASH.0 => {

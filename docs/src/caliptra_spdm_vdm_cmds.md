@@ -118,6 +118,11 @@ values in the ASCII gaps between `9` and `A` are not reserved. The reference
 implementation returns `UnsupportedOperation` for these recognized but
 unimplemented IDs.
 
+Platforms may implement these IDs through the shared backend's
+[vendor command hooks](caliptra_common_commands.md#platform-extension-hooks).
+Vendor commands retain the normal authorization requirements and may return
+inline or large responses according to their registered bounds.
+
 ### Authorization Modes and Targets
 
 The signer selects the authorization mode independently for each request using
