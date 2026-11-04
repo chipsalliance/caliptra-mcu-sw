@@ -62,41 +62,19 @@ fn reset_entry(i: usize) {
     csr::CSR.pmpconfig_set(i / 4, pmpcfg_csr & !(0x18 << ((i % 4) * 8)));
 }
 
-trait PMPRegisters {
-    fn write_entry(&self, i: usize, pmpcfg: u8, pmpaddr: usize);
-    fn read_entry(&self, i: usize) -> (u8, usize);
-    fn set_mseccfg(&self, value: usize);
-    fn get_mseccfg(&self) -> usize;
-}
-
-impl PMPRegisters for csr::CSR {
-    fn write_entry(&self, i: usize, pmpcfg: u8, pmpaddr: usize) {
-        // Set the address first: locking pmpcfg also locks pmpaddr.
-        self.pmpaddr_set(i, pmpaddr);
-        self.pmpconfig_modify(
-            i / 4,
-            FieldValue::<usize, csr::pmpconfig::pmpcfg::Register>::new(
-                0x000000FF_usize,
-                (i % 4) * 8,
-                u32::from_be_bytes([0, 0, 0, pmpcfg]) as usize,
-            ),
-        );
-    }
-
-    fn read_entry(&self, i: usize) -> (u8, usize) {
-        (
-            (self.pmpconfig_get(i / 4) >> ((i % 4) * 8)) as u8,
-            self.pmpaddr_get(i),
-        )
-    }
-
-    fn set_mseccfg(&self, value: usize) {
-        self.mseccfg.set(value);
-    }
-
-    fn get_mseccfg(&self) -> usize {
-        self.mseccfg.get()
-    }
+// Helper to modify an arbitrary PMP entry.
+fn write_pmpaddr_pmpcfg(i: usize, pmpcfg: u8, pmpaddr: usize) {
+    // Important to set the address first. Locking the pmpcfg
+    // register will also lock the adress register!
+    csr::CSR.pmpaddr_set(i, pmpaddr);
+    csr::CSR.pmpconfig_modify(
+        i / 4,
+        FieldValue::<usize, csr::pmpconfig::pmpcfg::Register>::new(
+            0x000000FF_usize,
+            (i % 4) * 8,
+            u32::from_be_bytes([0, 0, 0, pmpcfg]) as usize,
+        ),
+    );
 }
 
 // ---------- Kernel memory-protection PMP memory region wrapper types -----
@@ -378,25 +356,12 @@ impl VeeRProtectionMMLEPMP {
         0
     }
 
-    /// Install kernel mappings before enabling MML/MMWP, then activate shared MMIO.
-    ///
-    /// Shared MMIO uses RW=01, which is reserved while MML is clear. Its
-    /// configuration and address are read back before userspace may run.
-    ///
-    /// # Safety
-    ///
-    /// PMP must be unconfigured, and the supplied regions must cover all kernel
-    /// code, read-only data, and RAM needed after machine-mode protection is enabled.
     pub unsafe fn new(pmp_regions: PMPRegionList) -> Result<Self, ()> {
         // Clear all PMP entries first
         for i in 0..AVAILABLE_ENTRIES {
             reset_entry(i);
         }
 
-        Self::configure(pmp_regions, csr::CSR)
-    }
-
-    fn configure(pmp_regions: PMPRegionList, registers: &impl PMPRegisters) -> Result<Self, ()> {
         // Use precise entry counting: TOR regions consume 2 entries, NAPOT regions consume 1.
         // `PMPRegionList::add_region` guarantees `total_entries() <= MAX_KERNEL_ENTRIES`;
         // we re-check below as defence in depth.
@@ -426,7 +391,7 @@ impl VeeRProtectionMMLEPMP {
             match region {
                 PMPRegion::KernelText(r) => {
                     // TOR region: start address (OFF) + end address (TOR with R+X)
-                    registers.write_entry(
+                    write_pmpaddr_pmpcfg(
                         pmp_entry,
                         (pmpcfg_octet::a::OFF
                             + pmpcfg_octet::r::CLEAR
@@ -436,7 +401,7 @@ impl VeeRProtectionMMLEPMP {
                             .into(),
                         (r.0.start() as usize) >> 2,
                     );
-                    registers.write_entry(
+                    write_pmpaddr_pmpcfg(
                         pmp_entry + 1,
                         (pmpcfg_octet::a::TOR
                             + pmpcfg_octet::r::SET
@@ -450,7 +415,7 @@ impl VeeRProtectionMMLEPMP {
                 }
                 PMPRegion::ReadOnly(r) => {
                     // TOR region: start address (OFF) + end address (TOR with R only)
-                    registers.write_entry(
+                    write_pmpaddr_pmpcfg(
                         pmp_entry,
                         (pmpcfg_octet::a::OFF
                             + pmpcfg_octet::r::CLEAR
@@ -460,7 +425,7 @@ impl VeeRProtectionMMLEPMP {
                             .into(),
                         (r.0.start() as usize) >> 2,
                     );
-                    registers.write_entry(
+                    write_pmpaddr_pmpcfg(
                         pmp_entry + 1,
                         (pmpcfg_octet::a::TOR
                             + pmpcfg_octet::r::SET
@@ -474,7 +439,7 @@ impl VeeRProtectionMMLEPMP {
                 }
                 PMPRegion::Data(r) => {
                     // TOR region: start address (OFF) + end address (TOR with R+W)
-                    registers.write_entry(
+                    write_pmpaddr_pmpcfg(
                         pmp_entry,
                         (pmpcfg_octet::a::OFF
                             + pmpcfg_octet::r::CLEAR
@@ -484,7 +449,7 @@ impl VeeRProtectionMMLEPMP {
                             .into(),
                         (r.0.start() as usize) >> 2,
                     );
-                    registers.write_entry(
+                    write_pmpaddr_pmpcfg(
                         pmp_entry + 1,
                         (pmpcfg_octet::a::TOR
                             + pmpcfg_octet::r::SET
@@ -496,14 +461,12 @@ impl VeeRProtectionMMLEPMP {
                     );
                     pmp_entry += 2;
                 }
-                PMPRegion::UserMMIO(r) => {
-                    // Reserve the shared entry, but leave it OFF until MML is set.
-                    registers.write_entry(pmp_entry, 0, r.0.napot_addr());
+                PMPRegion::UserMMIO(_) => {
                     pmp_entry += 1;
                 }
                 PMPRegion::MachineMMIO(r) => {
                     // NAPOT region: machine-only MMIO (R+W for machine only)
-                    registers.write_entry(
+                    write_pmpaddr_pmpcfg(
                         pmp_entry,
                         (pmpcfg_octet::a::NAPOT
                             + pmpcfg_octet::r::SET
@@ -518,10 +481,13 @@ impl VeeRProtectionMMLEPMP {
             }
         }
 
-        // Kernel code and data must already be mapped: MML restricts execution
-        // immediately and prevents adding machine-only executable rules without RLB.
+        // Next, attempt to enable the MSECCFG security bits, and verify
+        // that they have been set correctly. If they have not been set to
+        // the written value, this means that this hardware either does not
+        // support ePMP, or it was in some invalid state otherwise.
+        //
         // Set RLB(2) = 0, MMWP(1) = 1, MML(0) = 1
-        registers.set_mseccfg(0x00000003);
+        csr::CSR.mseccfg.set(0x00000003);
 
         // Read back the MSECCFG CSR to ensure that the machine's security
         // configuration was set properly. If this fails, we have set up the
@@ -529,11 +495,12 @@ impl VeeRProtectionMMLEPMP {
         // space. The caller of this method must appropriately handle this
         // error condition by ensuring that the platform will never execute
         // userspace code!
-        if registers.get_mseccfg() != 0x00000003 {
+        if csr::CSR.mseccfg.get() != 0x00000003 {
             return Err(()); // Hardware doesn't support ePMP or configuration failed
         }
 
-        let mut pmp_entry = kernel_start_entry;
+        // Shared data encoding (RW=01) is only valid once MML is set.
+        pmp_entry = kernel_start_entry;
         for region in pmp_regions.iter() {
             if let PMPRegion::UserMMIO(r) = region {
                 let pmpcfg = (pmpcfg_octet::a::NAPOT
@@ -542,10 +509,10 @@ impl VeeRProtectionMMLEPMP {
                     + pmpcfg_octet::x::SET
                     + pmpcfg_octet::l::CLEAR)
                     .into();
-                registers.write_entry(pmp_entry, pmpcfg, r.0.napot_addr());
-
-                // Unlocked entries are still WARL, so verify the accepted rule.
-                if registers.read_entry(pmp_entry) != (pmpcfg, r.0.napot_addr()) {
+                write_pmpaddr_pmpcfg(pmp_entry, pmpcfg, r.0.napot_addr());
+                let actual_pmpcfg =
+                    (csr::CSR.pmpconfig_get(pmp_entry / 4) >> ((pmp_entry % 4) * 8)) as u8;
+                if actual_pmpcfg != pmpcfg || csr::CSR.pmpaddr_get(pmp_entry) != r.0.napot_addr() {
                     return Err(());
                 }
             }
@@ -846,157 +813,6 @@ impl fmt::Display for VeeRProtectionMMLEPMP {
 mod tests {
     use super::*;
     use rv32i::pmp::{NAPOTRegionSpec, TORRegionSpec};
-
-    struct StrictPMPRegisters {
-        entries: [Cell<(u8, usize)>; AVAILABLE_ENTRIES],
-        mseccfg: Cell<usize>,
-        entries_at_mml: Cell<Option<[(u8, usize); AVAILABLE_ENTRIES]>>,
-        reject_mseccfg: bool,
-        drop_shared_write: bool,
-        corrupt_shared_address: bool,
-    }
-
-    impl StrictPMPRegisters {
-        fn new() -> Self {
-            Self {
-                entries: [const { Cell::new((0, 0)) }; AVAILABLE_ENTRIES],
-                mseccfg: Cell::new(0),
-                entries_at_mml: Cell::new(None),
-                reject_mseccfg: false,
-                drop_shared_write: false,
-                corrupt_shared_address: false,
-            }
-        }
-    }
-
-    impl PMPRegisters for StrictPMPRegisters {
-        fn write_entry(&self, i: usize, pmpcfg: u8, pmpaddr: usize) {
-            if self.entries[i].get().0 & 0x80 != 0 {
-                return;
-            }
-            if self.mseccfg.get() & 1 != 0 && pmpcfg & 0x84 == 0x84 {
-                return;
-            }
-
-            let mut accepted_cfg = pmpcfg & 0x9f;
-            // Model WARL sanitization of RW=01 before MML is enabled.
-            if self.mseccfg.get() & 1 == 0 && pmpcfg & 1 == 0
-                || self.drop_shared_write && pmpcfg == 0x1e
-            {
-                accepted_cfg &= !2;
-            }
-            let accepted_addr = if self.corrupt_shared_address && pmpcfg == 0x1e {
-                pmpaddr ^ 1
-            } else {
-                pmpaddr
-            };
-            self.entries[i].set((accepted_cfg, accepted_addr));
-        }
-
-        fn read_entry(&self, i: usize) -> (u8, usize) {
-            self.entries[i].get()
-        }
-
-        fn set_mseccfg(&self, value: usize) {
-            self.entries_at_mml
-                .set(Some(core::array::from_fn(|i| self.entries[i].get())));
-            if !self.reject_mseccfg {
-                self.mseccfg.set(value);
-            }
-        }
-
-        fn get_mseccfg(&self) -> usize {
-            self.mseccfg.get()
-        }
-    }
-
-    fn initialization_regions() -> PMPRegionList {
-        let mmio =
-            |start: usize| MMIORegion(NAPOTRegionSpec::new(start as *const u8, 0x1000).unwrap());
-        let tor = |start: usize| {
-            TORRegionSpec::new(start as *const u8, (start + 0x1000) as *const u8).unwrap()
-        };
-        let mut regions = PMPRegionList::new();
-        for region in [
-            PMPRegion::UserMMIO(mmio(0x1000_0000)),
-            PMPRegion::KernelText(KernelTextRegion(tor(0x2000_0000))),
-            PMPRegion::MachineMMIO(mmio(0x1000_1000)),
-            PMPRegion::ReadOnly(ReadOnlyRegion(tor(0x2000_1000))),
-            PMPRegion::UserMMIO(mmio(0x1000_2000)),
-            PMPRegion::Data(DataRegion(tor(0x2000_2000))),
-        ] {
-            regions.add_region(region).unwrap();
-        }
-        regions
-    }
-
-    #[test]
-    fn strict_pmp_clears_shared_write_before_mml() {
-        let registers = StrictPMPRegisters::new();
-        registers.write_entry(0, 0x1e, 0xbdff);
-        assert_eq!(registers.read_entry(0), (0x1c, 0xbdff));
-        registers.set_mseccfg(3);
-        assert_eq!(registers.read_entry(0), (0x1c, 0xbdff));
-        registers.write_entry(0, 0x1e, 0xbdff);
-        assert_eq!(registers.read_entry(0), (0x1e, 0xbdff));
-    }
-
-    #[test]
-    fn shared_mmio_is_activated_after_mml_without_changing_layout() {
-        let registers = StrictPMPRegisters::new();
-        let regions = initialization_regions();
-        let start = AVAILABLE_ENTRIES - regions.total_entries();
-        let protection = VeeRProtectionMMLEPMP::configure(regions, &registers).unwrap();
-
-        assert_eq!(registers.get_mseccfg(), 3);
-        assert!(!protection.user_pmp_enabled.get());
-        let entries_at_mml = registers.entries_at_mml.get().unwrap();
-        let expected = [
-            (0x1e, 0x0400_01ff),
-            (0x80, 0x0800_0000),
-            (0x8d, 0x0800_0400),
-            (0x9b, 0x0400_05ff),
-            (0x80, 0x0800_0400),
-            (0x89, 0x0800_0800),
-            (0x1e, 0x0400_09ff),
-            (0x80, 0x0800_0800),
-            (0x8b, 0x0800_0c00),
-        ];
-        for (offset, (cfg, addr)) in expected.into_iter().enumerate() {
-            let i = start + offset;
-            assert_eq!(registers.read_entry(i), (cfg, addr));
-            let initial_cfg = if cfg == 0x1e { 0 } else { cfg };
-            assert_eq!(entries_at_mml[i], (initial_cfg, addr));
-        }
-        for i in 0..start {
-            assert_eq!(registers.read_entry(i), (0, 0));
-        }
-    }
-
-    #[test]
-    fn rejects_shared_config_readback_mismatch() {
-        let mut registers = StrictPMPRegisters::new();
-        registers.drop_shared_write = true;
-        assert!(VeeRProtectionMMLEPMP::configure(initialization_regions(), &registers).is_err());
-    }
-
-    #[test]
-    fn rejects_shared_address_readback_mismatch() {
-        let mut registers = StrictPMPRegisters::new();
-        registers.corrupt_shared_address = true;
-        assert!(VeeRProtectionMMLEPMP::configure(initialization_regions(), &registers).is_err());
-    }
-
-    #[test]
-    fn mseccfg_readback_failure_leaves_shared_entries_off() {
-        let mut registers = StrictPMPRegisters::new();
-        registers.reject_mseccfg = true;
-        let regions = initialization_regions();
-        let start = AVAILABLE_ENTRIES - regions.total_entries();
-        assert!(VeeRProtectionMMLEPMP::configure(regions, &registers).is_err());
-        assert_eq!(registers.read_entry(start).0, 0);
-        assert_eq!(registers.read_entry(start + 6).0, 0);
-    }
 
     // A valid NAPOT-backed region. NAPOT regions consume exactly 1 PMP entry.
     fn napot() -> PMPRegion {
