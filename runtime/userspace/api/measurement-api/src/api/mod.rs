@@ -599,15 +599,17 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
     ) -> MeasurementApiResult<usize> {
         self.attestation_state_active()?;
 
+        let target = self.read_attestation_target_record()?;
         let dpe_store = DpeHandleStore::<S>::new(DPE_HANDLE_STORE_DRIVER_NUM);
         let mut existing_cdi = [0u8; EXPORTED_CDI_SIZE];
-        if dpe_store.read_exported_cdi(&mut existing_cdi).is_ok()
+        if dpe_store
+            .read_exported_cdi(target.fw_id, &mut existing_cdi)
+            .is_ok()
             && existing_cdi != [0u8; EXPORTED_CDI_SIZE]
         {
             return Err(MeasurementApiError::ExportedCdiAlreadyDerived);
         }
 
-        let target = self.read_attestation_target_record()?;
         let params = DpeDeriveContextParams {
             parent_handle: target.context_handle,
             measurement: [0u8; DPE_TCI_MEASUREMENT_SIZE],
@@ -623,7 +625,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
             .map_err(|_| MeasurementApiError::DpeCommandFailed)?;
 
         dpe_store
-            .write_exported_cdi(&derived.exported_cdi)
+            .write_exported_cdi(target.fw_id, &derived.exported_cdi)
             .map_err(|_| self.enter_error_state(MeasurementApiError::StoreFailed))?;
 
         self.write_attestation_target_handle(target, derived.parent_handle)?;
@@ -635,8 +637,8 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
         self.attestation_state_active()?;
         let dpe_store = DpeHandleStore::<S>::new(DPE_HANDLE_STORE_DRIVER_NUM);
         dpe_store
-            .read_exported_cdi(cdi_out)
-            .map_err(|_| MeasurementApiError::StoreFailed)?;
+            .read_exported_cdi(self.manifest.attestation_target_fw_id(), cdi_out)
+            .map_err(|_| MeasurementApiError::ExportedCdiNotDerived)?;
         if *cdi_out == [0u8; EXPORTED_CDI_SIZE] {
             return Err(MeasurementApiError::ExportedCdiNotDerived);
         }

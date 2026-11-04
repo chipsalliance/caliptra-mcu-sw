@@ -52,21 +52,22 @@ The DPE Handle Storage capsule stores `fw_id`-keyed DPE context handle records f
 
 ### Storage and record format
 
-The DPE subregion begins with a 104-byte store header followed by an ordered log of 32-byte records (`records[0..record_count]`). The header uses fixed little-endian byte offsets:
+The DPE subregion begins with a 72-byte store header, followed by `exported_cdi_capacity` 36-byte exported-CDI slots (`exported_cdi_slots[0..exported_cdi_capacity]`), followed by an ordered log of 32-byte records (`records[0..record_count]`). The header uses fixed little-endian byte offsets:
 
 ```text
 offset  0 : magic                     u32 LE   // 0xD9E4_C7A1
-offset  4 : version                   u8       // 1
+offset  4 : version                   u8       // 2
 offset  5 : _pad                      u8
-offset  6 : header_size               u16 LE   // 104 bytes
+offset  6 : header_size               u16 LE   // 72 bytes
 offset  8 : record_size               u16 LE   // 32 bytes
 offset 10 : record_capacity           u16 LE
 offset 12 : record_count              u32 LE   // Valid records occupy records[0..record_count]; last entry is the active DPE leaf
 offset 16 : attestation_target_fw_id  u32 LE   // fw_id of the DPE record marked as the AK target (0xFFFF_FFFF when unset)
-offset 20 : _pad                      [u8; 4]
+offset 20 : exported_cdi_capacity     u16 LE   // Configured exported-CDI slot capacity (default 1, matching Caliptra EXPORTED_HANDLES_NUM)
+offset 22 : exported_cdi_count        u16 LE   // Active exported-CDI slots in exported_cdi_slots[0..exported_cdi_count]
 offset 24 : attestation_policy_digest [u8; 48] // SHA-384 digest of Base Attestation Policy (MCAM + Base SoC Image Load List)
-offset 72 : exported_cdi_handle       [u8; 32] // Caliptra exported CDI handle
-offset 104: records[0..capacity]               // 32 bytes each
+offset 72 : exported_cdi_slots[0..exported_cdi_capacity] // 36 bytes each: fw_id (u32 LE) + exported_cdi_handle ([u8; 32])
+offset 72 + exported_cdi_capacity * 36 : records[0..capacity] // 32 bytes each
 ```
 
 Each record holds a serialized `DpeHandleRecord`:
@@ -99,8 +100,9 @@ impl<S: Syscalls> DpeHandleStore<S> {
     pub fn read_leaf_record(&self, out: &mut DpeHandleRecord) -> Result<(), ErrorCode>;
     pub fn mark_attestation_target(&self, fw_id: u32) -> Result<(), ErrorCode>;
     pub fn read_attestation_target(&self, out: &mut DpeHandleRecord) -> Result<(), ErrorCode>;
-    pub fn read_exported_cdi(&self, out: &mut [u8; 32]) -> Result<(), ErrorCode>;
-    pub fn write_exported_cdi(&self, cdi: &[u8; 32]) -> Result<(), ErrorCode>;
+    pub fn read_exported_cdi(&self, fw_id: u32, out: &mut [u8; 32]) -> Result<(), ErrorCode>;
+    pub fn write_exported_cdi(&self, fw_id: u32, cdi: &[u8; 32]) -> Result<(), ErrorCode>;
+    pub fn clear_exported_cdi(&self, fw_id: u32) -> Result<(), ErrorCode>;
 }
 ```
 
@@ -140,7 +142,7 @@ The DPE Handle Storage capsule implements the `SyscallDriver` trait.
         - Argument 1: Reserved, must be zero.
         - Argument 2: Reserved, must be zero.
         - Input: Reads a 48-byte `base_policy_digest` from the Read-Only Allow buffer.
-        - Behavior: Writes a fresh store header, zeroizes all record slots and the exported CDI handle, resets `record_count`, and clears the attestation target marker.
+        - Behavior: Writes a fresh store header, zeroizes all exported-CDI and record slots, resets `exported_cdi_count` and `record_count`, and clears the attestation target marker.
     - Command number 4:
         - Description: `READ_LEAF_RECORD`
         - Argument 1: Reserved, must be zero.
@@ -160,15 +162,23 @@ The DPE Handle Storage capsule implements the `SyscallDriver` trait.
         - Argument 1: Reserved, must be zero.
         - Argument 2: Reserved, must be zero.
         - Input: Reads a 48-byte expected `base_policy_digest` from the Read-Only Allow buffer.
-        - Behavior: Validates header magic/version/sizes, capacity against the assigned SRAM slice, `record_count <= record_capacity`, stored digest equality, and that `attestation_target_fw_id` is unset or points to an existing record.
+        - Behavior: Validates header magic/version/sizes, `exported_cdi_capacity`, `exported_cdi_count <= exported_cdi_capacity`, record capacity against the assigned SRAM slice, `record_count <= record_capacity`, stored digest equality, that `attestation_target_fw_id` is unset or points to an existing record, and that every active exported-CDI slot references an existing record with a non-zero handle.
     - Command number 8:
         - Description: `READ_EXPORTED_CDI`
-        - Arguments: Reserved, clients pass zero.
-        - Output: Writes the 32-byte handle into the Read-Write Allow buffer.
+        - Argument 1: `fw_id` (or `0xFFFF_FFFF` for the first active slot)
+        - Argument 2: Reserved, must be zero.
+        - Output: Writes the 32-byte handle for `fw_id` into the Read-Write Allow buffer.
     - Command number 9:
         - Description: `WRITE_EXPORTED_CDI`
-        - Arguments: Reserved, clients pass zero.
+        - Argument 1: `fw_id`
+        - Argument 2: Reserved, must be zero.
         - Input: Reads the 32-byte handle from the Read-Only Allow buffer.
+        - Behavior: Rejects an all-zero handle (`INVAL`) or a `fw_id` without a stored DPE record (`FAIL`). Updates the existing slot for `fw_id` in place, or appends a new slot if `exported_cdi_count < exported_cdi_capacity` (`NOMEM` when full).
+    - Command number 10:
+        - Description: `CLEAR_EXPORTED_CDI`
+        - Argument 1: `fw_id`
+        - Argument 2: Reserved, must be zero.
+        - Behavior: Removes the exported-CDI slot for `fw_id`, compacts any trailing active slots, and decrements `exported_cdi_count`.
 
 ### Error behavior
 

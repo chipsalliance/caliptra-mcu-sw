@@ -10,7 +10,7 @@ use caliptra_api::mailbox::{
     SignWithExportedEcdsaResp, SignWithExportedMldsaReq, SignWithExportedMldsaResp,
 };
 use caliptra_mcu_libsyscall_caliptra::dpe_handle_store::{
-    DpeHandleStore, DPE_HANDLE_STORE_DRIVER_NUM, EXPORTED_CDI_SIZE,
+    DpeHandleStore, DPE_HANDLE_STORE_DRIVER_NUM, EXPORTED_CDI_ANY_FW_ID, EXPORTED_CDI_SIZE,
 };
 use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError};
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
@@ -80,7 +80,7 @@ impl<A: ScratchAlloc> OcpLockSigner for CaliptraDpeSigner<'_, A> {
         let dpe_store = DpeHandleStore::<DefaultSyscalls>::new(DPE_HANDLE_STORE_DRIVER_NUM);
         let mut exported_cdi = [0u8; EXPORTED_CDI_SIZE];
         dpe_store
-            .read_exported_cdi(&mut exported_cdi)
+            .read_exported_cdi(EXPORTED_CDI_ANY_FW_ID, &mut exported_cdi)
             .map_err(|_| CaliptraApiError::InvalidResponse)?;
 
         if exported_cdi == [0u8; EXPORTED_CDI_SIZE] {
