@@ -42,6 +42,17 @@ fn runtime_source(label: &str) -> Result<String> {
     })
 }
 
+/// Core firmware source and toolchain that ship with each MCU runtime.
+/// Only the Core ROM (`CORE`) is fixed across the matrix.
+fn core_firmware_source(runtime: &str) -> Result<(String, &'static str)> {
+    Ok(match runtime {
+        "rt-sdk-2.1.0" => ("557fd1a9864831a7d1cdfaffd3b33fd2e26f5e93".into(), "1.85"),
+        "rt-sdk-2.1.1" => (CORE.into(), "1.96"),
+        "main-2.1" => (std::env::var("MCU_COMPAT_CURRENT_CORE_SHA")?, "1.96"),
+        _ => bail!("Unknown runtime {runtime}"),
+    })
+}
+
 fn artifact_root() -> Result<PathBuf> {
     let path = std::env::var_os("MCU_COMPAT_ARTIFACT_DIR")
         .context("BLOCKED: MCU_COMPAT_ARTIFACT_DIR is required")?;
@@ -213,8 +224,10 @@ impl SelectedPair {
         let core: serde_json::Value =
             serde_json::from_slice(&fs::read(root.join("fixtures/core.json"))?)?;
         ensure!(
-            core["source"] == CORE && core["hardware"] == "2.1.0",
-            "Fixtures are not the agreed 2.1 Core"
+            core["source"] == CORE
+                && core["hardware"] == "2.1.0"
+                && core["firmware"][&runtime] == core_firmware_source(&runtime)?.0,
+            "Fixtures are not the agreed 2.1 Core ROM and the runtime's Core firmware"
         );
         Ok(Self {
             config,
@@ -1287,6 +1300,7 @@ fn run_case(scenario: &str) -> Result<()> {
             "rom_source": pair.rom_source,
             "runtime_source": pair.runtime_source,
             "core_source": CORE,
+            "core_firmware_source": core_firmware_source(&pair.config.runtime).ok().map(|source| source.0),
         }));
         phase = "scenario";
         if scenario.starts_with("suite_") {

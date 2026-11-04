@@ -11,8 +11,10 @@ The [workflow](../../../../.github/workflows/rom-runtime-compatibility.yml):
 
 1. Builds pinned images with their native toolchains, lockfiles and submodules.
    Resolves `main-2.1` once per run.
-2. Uses Caliptra 2.1 hardware, repository test keys and Core
-   `b99535ded32492d6c23bbc56f95e787a1e275b59`.
+2. Uses Caliptra 2.1 hardware, repository test keys and the Core ROM from
+   `b99535ded32492d6c23bbc56f95e787a1e275b59`. Core firmware ships with the
+   MCU runtime, so each runtime uses the Core firmware it pins: `557fd1a` for
+   `rt-sdk-2.1.0`, `b99535d` for `rt-sdk-2.1.1`, and `main-2.1`'s pin.
 3. Runs ignored compatibility tests with the `emulator` profile and one test
    thread, then uploads results, logs, JUnit, build commands and hashes.
 
@@ -75,8 +77,7 @@ Nextest counts those invocations as successful. Use the per-case results.
 - **Flash boot:** the ROM requires a raw header at offset zero; the runtimes
   require a partition table there. No flash swapping or streaming fallback
   hides this incompatibility.
-- **Current runtime:** `main-2.1` sends a 12-byte `GET_IMAGE_INFO` request;
-  the fixed Core expects 8 bytes and rejects it with `0x000e0003`.
-- GA ROM + SDK 2.1.0 streaming boot passes locally with unchanged CI images.
-  SDK 2.1.0 service failures remain unresolved; the full GA-only matrix has
-  not completed.
+- **Core firmware ABI:** `GET_IMAGE_INFO` grew from 8 to 12 bytes in
+  caliptra-sw `3382bdb0`. Pairing a runtime with Core firmware from the other
+  side of that change fails SoC loading with `0x000e0003`; each runtime
+  therefore uses its own Core firmware.

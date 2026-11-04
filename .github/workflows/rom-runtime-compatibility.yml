@@ -46,12 +46,18 @@ jobs:
     timeout-minutes: 10
     outputs:
       runtime-sha: ${{ steps.source.outputs.sha }}
+      core-sha: ${{ steps.source.outputs.core }}
     steps:
       - uses: actions/checkout@v7
         with:
           ref: main-2.1
       - id: source
-        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          # The Core firmware that ships with the current runtime.
+          core="$(grep -oP 'caliptra-sw", rev = "\K[0-9a-f]{40}' Cargo.toml | head -1)"
+          test -n "$core"
+          echo "core=$core" >> "$GITHUB_OUTPUT"
 
   build-images:
     needs: resolve
@@ -64,6 +70,19 @@ jobs:
           - label: core
             repository: chipsalliance/caliptra-sw
             source: b99535ded32492d6c23bbc56f95e787a1e275b59
+            toolchain: "1.96"
+          # Core firmware ships with each MCU runtime; only the Core ROM above is fixed.
+          - label: core-fw-rt-sdk-2.1.0
+            repository: chipsalliance/caliptra-sw
+            source: 557fd1a9864831a7d1cdfaffd3b33fd2e26f5e93
+            toolchain: "1.85"
+          - label: core-fw-rt-sdk-2.1.1
+            repository: chipsalliance/caliptra-sw
+            source: b99535ded32492d6c23bbc56f95e787a1e275b59
+            toolchain: "1.96"
+          - label: core-fw-main-2.1
+            repository: chipsalliance/caliptra-sw
+            source: ${{ needs.resolve.outputs.core-sha }}
             toolchain: "1.96"
           - label: rom-sdk-2.1.0
             source: da451221542758758f1c4ce35efbe48da9935dd8
@@ -104,6 +123,12 @@ jobs:
             echo 'cargo run --locked -p caliptra-builder --bin image -- --rom-with-log output/caliptra-rom.bin --fw output/caliptra-firmware.bin --hw-revision 2.1 --pqc-key-type 3 --fw-svn 0' > output/build-command.txt
             cargo run --locked -p caliptra-builder --bin image -- \
               --rom-with-log output/caliptra-rom.bin --fw output/caliptra-firmware.bin \
+              --hw-revision 2.1 --pqc-key-type 3 --fw-svn 0 2>&1 | tee output/build.log
+            cp error/src/lib.rs output/errors.rs
+          elif [[ "$LABEL" == core-fw-* ]]; then
+            echo 'cargo run --locked -p caliptra-builder --bin image -- --fw output/caliptra-firmware.bin --hw-revision 2.1 --pqc-key-type 3 --fw-svn 0' > output/build-command.txt
+            cargo run --locked -p caliptra-builder --bin image -- \
+              --fw output/caliptra-firmware.bin \
               --hw-revision 2.1 --pqc-key-type 3 --fw-svn 0 2>&1 | tee output/build.log
             cp error/src/lib.rs output/errors.rs
           elif [[ "$LABEL" == rom-* ]]; then
@@ -208,7 +233,7 @@ jobs:
               data["handoff_address"] = addresses.pop()
               assert data["handoff_address"] == 0x50003c00, "ROM must use the shipping handoff address"
               data["rom_manifest_sha256"] = hashlib.sha256((p/"rom-manifest.toml").read_bytes()).hexdigest()
-          elif os.environ["LABEL"] != "core":
+          elif not os.environ["LABEL"].startswith("core"):
               data["embedded_configuration"] = {f.name: hashlib.sha256(f.read_bytes()).hexdigest()
                   for pattern in ["*attestation_manifest.toml", "*soc_image_descriptors.toml"] for f in p.glob(pattern)}
               text = (p/"version.rs").read_text()
@@ -231,6 +256,7 @@ jobs:
     timeout-minutes: 90
     env:
       MCU_COMPAT_CURRENT_RUNTIME_SHA: ${{ needs.resolve.outputs.runtime-sha }}
+      MCU_COMPAT_CURRENT_CORE_SHA: ${{ needs.resolve.outputs.core-sha }}
       MCU_COMPAT_ARTIFACT_DIR: ${{ github.workspace }}/inputs
       CPTRA_ROM_TYPE: ROM_WITH_UART
     steps:
@@ -411,6 +437,7 @@ jobs:
       MCU_COMPAT_ROM: ${{ matrix.rom }}
       MCU_COMPAT_RUNTIME: ${{ matrix.runtime }}
       MCU_COMPAT_CURRENT_RUNTIME_SHA: ${{ needs.resolve.outputs.runtime-sha }}
+      MCU_COMPAT_CURRENT_CORE_SHA: ${{ needs.resolve.outputs.core-sha }}
       MCU_COMPAT_ARTIFACT_DIR: ${{ github.workspace }}/inputs
       SPDM_VALIDATOR_DIR: ${{ github.workspace }}/spdm-tools/build/bin
     steps:

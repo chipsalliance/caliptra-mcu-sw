@@ -336,16 +336,56 @@ fn prepare_inputs() -> Result<()> {
     fs::write(shared.join("otp-svn1.bin"), &otp)?;
     fs::write(shared.join("soc-image-4096.bin"), [0x55; 512])?;
     fs::write(shared.join("soc-image-4097.bin"), [0xaa; 256])?;
+    let firmware_sources = runtimes
+        .iter()
+        .map(|runtime| Ok((runtime.to_string(), core_firmware_source(runtime)?.0)))
+        .collect::<Result<BTreeMap<_, _>>>()?;
     write_json(
         &shared.join("core.json"),
         &json!({
-            "source": CORE, "hardware": "2.1.0", "signing": "repository test keys, LMS, default Raw OTP",
+            "source": CORE, "firmware": firmware_sources, "hardware": "2.1.0",
+            "signing": "repository test keys, LMS, default Raw OTP",
             "agreement": std::env::var("MCU_COMPAT_AGREEMENT")?,
         }),
     )?;
     streaming_package(&shared)?;
     let errors = core_directory.join("errors.rs");
     for &runtime in &runtimes {
+        // Core firmware ships with the MCU runtime; only the Core ROM is fixed.
+        let firmware_directory = root.join("images").join(format!("core-fw-{runtime}"));
+        let firmware_build: Build =
+            serde_json::from_slice(&fs::read(firmware_directory.join("metadata.json"))?)?;
+        let (firmware_source, firmware_toolchain) = core_firmware_source(runtime)?;
+        ensure!(
+            firmware_build.source == firmware_source
+                && firmware_build.toolchain == firmware_toolchain,
+            "Core firmware for {runtime} must use {firmware_source} and its native toolchain"
+        );
+        let firmware = Artifact {
+            path: PathBuf::from("images")
+                .join(format!("core-fw-{runtime}"))
+                .join("caliptra-firmware.bin"),
+            sha256: firmware_build
+                .images
+                .get("caliptra-firmware.bin")
+                .context("Missing Core firmware hash")?
+                .clone(),
+        }
+        .read(&root)?;
+        let (manifest, _) = caliptra_image_types::ImageManifest::ref_from_prefix(&firmware)
+            .map_err(|error| anyhow::anyhow!("Invalid Core firmware manifest: {error}"))?;
+        ensure!(
+            hex::encode(CaliptraBuilder::vendor_pk_hash(manifest)?) == vendor_hash,
+            "Core firmware for {runtime} is not signed with the agreed vendor keys"
+        );
+        let core_firmware = shared.join(runtime).join("caliptra-firmware.bin");
+        fs::create_dir_all(shared.join(runtime))?;
+        fs::write(&core_firmware, firmware)?;
+        let runtime_errors = firmware_directory.join("errors.rs");
+        let runtime_args = CaliptraBuildArgs {
+            caliptra_firmware: Some(core_firmware.clone()),
+            ..base_args.clone()
+        };
         for mode in CONFIGURATIONS {
             let (build, _) = image(&root, runtime, mode)?;
             let boot_mode = if mode.starts_with("services-") {
@@ -397,7 +437,7 @@ fn prepare_inputs() -> Result<()> {
                             })
                             .collect(),
                     ),
-                    ..base_args.clone()
+                    ..runtime_args.clone()
                 });
                 builder.get_soc_manifest(Some(manifest_path.to_str().context("Manifest path")?))?;
                 let bytes = fs::read(&manifest_path)?;
@@ -439,7 +479,7 @@ fn prepare_inputs() -> Result<()> {
                                 .context("SoC path")?
                                 .into(),
                         ]),
-                        ..base_args.clone()
+                        ..runtime_args.clone()
                     },
                 )?;
             }
@@ -450,7 +490,7 @@ fn prepare_inputs() -> Result<()> {
                 let rom_flash = pair.join("primary-flash.bin");
                 let status = Command::new(root.join("images").join(rom).join("flash-image-tool"))
                     .args(["flash-image", "create", "--caliptra-fw"])
-                    .arg(shared.join("caliptra-firmware.bin"))
+                    .arg(&core_firmware)
                     .arg("--soc-manifest")
                     .arg(directory.join("soc-manifest.bin"))
                     .arg("--mcu-runtime")
@@ -490,7 +530,11 @@ fn prepare_inputs() -> Result<()> {
                 ] {
                     negatives.insert(name.into(), json!({
                         "expected_mcu_error": rom_build.mcu_error.context("Missing ROM rejection code")?,
-                        "expected_core_error": error_value(&errors, symbol)?,
+                        // The Core ROM verifies firmware images; Core firmware verifies the SoC manifest.
+                        "expected_core_error": error_value(
+                            if symbol.starts_with("RUNTIME_") { &runtime_errors } else { &errors },
+                            symbol,
+                        )?,
                         "soc_manifest": null, "runtime_flash": null, "corrupt_offset": offset,
                         "otp": if name == "svn_rollback" { artifact(&root, &shared.join("otp-svn1.bin"))? } else { serde_json::Value::Null },
                     }));
@@ -510,7 +554,7 @@ fn prepare_inputs() -> Result<()> {
                     &json!({
                         "rom": rom, "runtime": runtime, "mode": boot_mode,
                         "caliptra_rom": artifact(&root, &shared.join("caliptra-rom.bin"))?,
-                        "caliptra_firmware": artifact(&root, &shared.join("caliptra-firmware.bin"))?,
+                        "caliptra_firmware": artifact(&root, &core_firmware)?,
                         "soc_manifest": artifact(&root, &directory.join("soc-manifest.bin"))?,
                         "otp": artifact(&root, &shared.join("otp.bin"))?, "vendor_pk_hash": vendor_hash,
                         "primary_flash": artifact(&root, &rom_flash)?,
