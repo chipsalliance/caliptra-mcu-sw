@@ -427,7 +427,8 @@ jobs:
     needs: [resolve, prepare, spdm-tools]
     if: ${{ always() && needs.prepare.result == 'success' }}
     runs-on: e2-standard-16-big-disk
-    timeout-minutes: 90
+    # SPDM conformance alone can take most of an hour in the emulator.
+    timeout-minutes: 240
     strategy:
       fail-fast: false
       matrix:
