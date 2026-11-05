@@ -796,6 +796,7 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
         let mut req = GetImageInfoReq {
             hdr: MailboxReqHeader::default(),
             fw_id: image_id.to_le_bytes(),
+            flags: 0,
         };
         let req_data = req.as_mut_bytes();
         self.mailbox
@@ -937,6 +938,7 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
                 fw_ids
             },
             mcu_fw_image_size: mcu_image_len as u32,
+            flags: 0,
         };
 
         let req = req.as_mut_bytes();

@@ -366,6 +366,7 @@ async fn get_image_info(mailbox: &Mailbox, image_id: u32) -> Result<GetImageInfo
     let mut req = GetImageInfoReq {
         hdr: MailboxReqHeader::default(),
         fw_id: image_id.to_le_bytes(),
+        flags: 0,
     };
     let req_data = req.as_mut_bytes();
     mailbox
