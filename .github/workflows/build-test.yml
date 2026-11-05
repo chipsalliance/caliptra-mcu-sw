@@ -340,6 +340,7 @@ jobs:
           sudo mv /tmp/junit.xml /tmp/junit-${{ matrix.shard }}.xml
 
       - name: Run release tests
+        id: release_tests
         if: matrix.shard == 1
         run: |
           cargo --config "$EXTRA_CARGO_CONFIG" xtask test \
@@ -350,9 +351,11 @@ jobs:
             --nextest-profile nightly-release
 
       - name: Move release junit xml
-        if: (success() || failure()) && matrix.shard == 1
+        if: (success() || failure()) && matrix.shard == 1 && steps.release_tests.outcome != 'skipped'
         run: |
-          sudo mv /tmp/junit.xml /tmp/junit-release.xml
+          if [ -f /tmp/junit.xml ]; then
+            sudo mv /tmp/junit.xml /tmp/junit-release.xml
+          fi
 
       - name: 'Upload test results'
         uses: actions/upload-artifact@v7

@@ -6,14 +6,13 @@ mod test {
         compile_runtime, get_rom_with_feature, has_prebuilt_binaries, run_runtime, TEST_LOCK,
     };
     use caliptra_image_types::ImageManifest;
-    use caliptra_mcu_builder::flash_image::{generate_image_info, FirmwareImage, FlashImage};
     use caliptra_mcu_builder::{CaliptraBuildArgs, CaliptraBuilder, FirmwareBinaries, ImageCfg};
     use caliptra_mcu_config::boot::{PartitionId, PartitionStatus, RollbackEnable};
     use caliptra_mcu_config_emulator::flash::{
         PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
     };
     use caliptra_mcu_flash_image::{
-        FlashHeaderV3 as FlashHeader, ImageHeaderV3 as ImageHeader,
+        FlashHeaderV3 as FlashHeader, ImageHeaderV3 as ImageHeader, OWNER_AUTH_MANIFEST_IDENTIFIER,
         OWNER_MEASUREMENT_POLICY_IDENTIFIER,
     };
     use caliptra_mcu_pldm_fw_pkg::manifest::{
@@ -1453,7 +1452,7 @@ mod test {
     #[test]
     fn test_streaming_boot_flash_write_back_with_owner_policy_artifact() {
         let lock = TEST_LOCK.lock().unwrap();
-        let mut opts = create_streaming_boot_flash_write_back_options();
+        let opts = create_streaming_boot_flash_write_back_options();
         let package = FirmwareManifest::decode_firmware_package(
             &opts
                 .pldm_fw_pkg_path
@@ -1477,22 +1476,17 @@ mod test {
             .chunks_exact(size_of::<ImageHeader>())
             .map(|bytes| ImageHeader::read_from_bytes(bytes).unwrap())
             .collect();
-        let mut images: Vec<FirmwareImage> = headers
+        assert_eq!(
+            headers
+                .iter()
+                .filter(|header| header.identifier == OWNER_MEASUREMENT_POLICY_IDENTIFIER)
+                .count(),
+            1,
+            "Expected one policy matching the signed Owner manifest"
+        );
+        assert!(headers
             .iter()
-            .map(|header| FirmwareImage {
-                identifier: header.identifier,
-                data: &image[header.offset as usize..(header.offset + header.size) as usize],
-                filename: header.filename,
-            })
-            .collect();
-        // Exercise control-artifact classification, not the deferred policy authentication flow.
-        let policy = [0xa5; 256];
-        images
-            .push(FirmwareImage::new(OWNER_MEASUREMENT_POLICY_IDENTIFIER, &policy, None).unwrap());
-        let image_info = generate_image_info(images.clone());
-        let image = FlashImage::new(&images, &image_info).to_bytes();
-        let manifest = get_streaming_boot_pldm_fw_manifest(&get_device_uuid(), &image);
-        opts.pldm_fw_pkg_path = Some(create_pldm_fw_package(&manifest));
+            .any(|header| header.identifier == OWNER_AUTH_MANIFEST_IDENTIFIER));
         test_successful_boot(&opts);
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }

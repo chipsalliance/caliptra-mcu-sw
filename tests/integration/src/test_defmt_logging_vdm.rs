@@ -22,13 +22,15 @@ mod test {
         compile_runtime, finish_runtime_hw_model, start_runtime_hw_model, TestParams, TEST_LOCK,
     };
     use caliptra_mcu_core_mctp_vdm_client::{
-        DefmtRoundTripCheck, DynamicI3cAddress, TestConfig, Validator,
+        DefmtRoundTripCheck, DynamicI3cAddress, MctpVdmSocketDriver, TestConfig, Validator,
+        VdmClient,
     };
     use caliptra_mcu_hw_model::McuHwModel;
     use caliptra_mcu_testing_common::wait_for_runtime_start;
     use random_port::PortPicker;
     use std::process::exit;
     use std::sync::atomic::Ordering;
+    use std::time::{Duration, Instant};
 
     const FEATURE: &str = "test-defmt-logging-vdm";
 
@@ -91,6 +93,31 @@ mod test {
                 exit(-1);
             }
 
+            // Boot completion precedes certificate initialization and VDM startup.
+            // Probe readiness without draining or clearing the startup log.
+            let mut driver = MctpVdmSocketDriver::new(i3c_port, i3c_address);
+            let mut client = VdmClient::new(&mut driver);
+            let deadline = Instant::now() + Duration::from_secs(90);
+            loop {
+                match client
+                    .connect()
+                    .and_then(|_| client.get_device_capabilities())
+                {
+                    Ok(_) => break,
+                    Err(e) => {
+                        if Instant::now() >= deadline
+                            || !caliptra_mcu_testing_common::is_emulator_running()
+                        {
+                            eprintln!("MCTP VDM responder did not become ready: {e:#}");
+                            exit(-1);
+                        }
+                        client.disconnect().ok();
+                        std::thread::sleep(Duration::from_millis(100));
+                    }
+                }
+            }
+            client.disconnect().expect("Failed to disconnect VDM probe");
+
             let config = TestConfig {
                 network: caliptra_mcu_core_mctp_vdm_client::NetworkConfig {
                     default_server_address: format!("127.0.0.1:{}", i3c_port),
@@ -149,8 +176,7 @@ mod test {
         hw.start_i3c_controller();
 
         // FPGA-only setup: bring up the imaginary flash controller (the
-        // device-side userlog drain task writes through mcu_mbox0 to it) and
-        // wait for the VDM responder before the test thread races subscribe.
+        // device-side userlog drain task writes through mcu_mbox0 to it).
         // The log starts empty; the runtime fills it from defmt::* call sites.
         #[cfg(feature = "fpga_realtime")]
         {
@@ -167,10 +193,6 @@ mod test {
                 mci_ptr,
                 Some(seeded),
             );
-
-            hw.step_until_output_contains("Starting MCTP VDM service")
-                .expect("MCU did not enter MCTP VDM service");
-            std::thread::sleep(std::time::Duration::from_millis(200));
         }
 
         let i3c_address = hw.i3c_address().unwrap();
