@@ -2556,3 +2556,208 @@ fn test_cert_chain_and_all_role_attestation_cmds() -> Result<()> {
 
     Ok(())
 }
+
+#[cfg_attr(feature = "fpga_realtime", ignore)]
+#[test]
+fn test_cert_chain_and_attestation_vendor_certs_oob() -> Result<()> {
+    use sha2::{Digest, Sha384};
+
+    const ISOLATED_PROCESS_ENV: &str = "CALIPTRA_MCU_ISOLATED_VENDOR_CERTS_OOB_TEST";
+    const TEST_NAME: &str =
+        "runtime::test_mcu_mailbox::test_cert_chain_and_attestation_vendor_certs_oob";
+
+    if std::env::var_os(ISOLATED_PROCESS_ENV).is_none() {
+        let working_dir = tempfile::tempdir_in(std::env::current_dir()?)?;
+        let status = std::process::Command::new(std::env::current_exe()?)
+            .args(["--exact", TEST_NAME, "--nocapture"])
+            .env(ISOLATED_PROCESS_ENV, "1")
+            .current_dir(working_dir.path())
+            .status()?;
+        assert!(status.success(), "isolated vendor-certs-oob test failed");
+        return Ok(());
+    }
+
+    const FORMAT_OCP_EAT: u32 = 1;
+    const ALGO_ECC384: u32 = 1;
+    const ALGO_MLDSA87: u32 = 2;
+    const SLOT_VENDOR: u32 = 0;
+    const SLOT_OWNER: u32 = 1;
+    const KEY_ID_DEFAULT: u32 = 0;
+    const KEY_ID_LDEV_ID: u32 = 1;
+
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-mcu-mbox-cmds,vendor-certs-oob"),
+        ..Default::default()
+    });
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    // 1. With `vendor-certs-oob`, Slot 0 skips OTP IDevID cert population and static
+    //    Root CA endorsements, serving `[LDevID, FMC Alias, RT Alias, DPE Leaf]` (4 certs).
+    for (algo, chunk_size, expected_alg_id) in [
+        (ALGO_ECC384, 512u32, -51i64),
+        (ALGO_MLDSA87, MAX_RESP_DATA_SIZE as u32, -50i64),
+    ] {
+        let info_resp = execute_raw_mcu_req(
+            &mut hw,
+            McuMailboxReq::GetCertChainInfo(GetCertChainInfoReq {
+                pki_entity_slot: SLOT_VENDOR,
+                algorithm: algo,
+                ..Default::default()
+            }),
+        )?;
+        let info = assert_fixed_response::<GetCertChainInfoResp>(&info_resp);
+        assert_eq!(
+            info.hdr.fips_status,
+            MailboxRespHeader::FIPS_STATUS_APPROVED
+        );
+        assert_eq!(info.device_key_id, 0);
+        assert!(info.chain_len > 0);
+
+        let chain =
+            read_full_mci_cert_chain(&mut hw, SLOT_VENDOR, algo, info.chain_len, chunk_size)?;
+        assert_eq!(chain.len(), info.chain_len as usize);
+        let expected_digest: [u8; 48] = Sha384::digest(&chain).into();
+        assert_eq!(info.chain_digest, expected_digest);
+
+        let mut rem = chain.as_slice();
+        let mut cert_subjects = Vec::new();
+        while !rem.is_empty() {
+            let (rest, cert) = x509_parser::parse_x509_certificate(rem)
+                .expect("invalid X.509 DER certificate in OOB Vendor chain");
+            cert_subjects.push(cert.subject().to_string());
+            rem = rest;
+        }
+        assert_eq!(
+            cert_subjects.len(),
+            4,
+            "expected [LDevID, FMC Alias, RT Alias, DPE Leaf] for algo {algo}, got {cert_subjects:?}"
+        );
+        assert!(
+            cert_subjects[0].contains("LDevID"),
+            "expected first cert in OOB Vendor chain to be LDevID, got {}",
+            cert_subjects[0]
+        );
+
+        let vendor_nonce = [0x41u8; 32];
+        let vendor_att = execute_var_mcu_req(
+            &mut hw,
+            McuMailboxReq::GetAttestation(GetAttestationReq {
+                evidence_format: FORMAT_OCP_EAT,
+                algorithm: algo,
+                pki_entity_slot: SLOT_VENDOR,
+                nonce: vendor_nonce,
+                ..Default::default()
+            }),
+        )?;
+        assert_signed_eat(
+            &vendor_att[GET_ATTESTATION_RESP_PREFIX_LEN..],
+            &vendor_nonce,
+            &[expected_alg_id],
+            false,
+        );
+    }
+
+    // Vendor slot remains read-only under `vendor-certs-oob`.
+    let vendor_write_der = synthetic_der_cert(128, 0xAA);
+    let mut vendor_set_req = SetCertChainReq {
+        pki_entity_slot: SLOT_VENDOR,
+        algorithm: ALGO_ECC384,
+        device_key_id: KEY_ID_LDEV_ID,
+        offset: 0,
+        total_size: vendor_write_der.len() as u32,
+        data_len: vendor_write_der.len() as u32,
+        ..Default::default()
+    };
+    vendor_set_req.cert_data[..vendor_write_der.len()].copy_from_slice(&vendor_write_der);
+    assert_mcu_req_fails(&mut hw, McuMailboxReq::SetCertChain(vendor_set_req));
+
+    // 2. Owner slot (anchored at LDevID) still skips LDevID and appends the 3 remaining
+    //    device certs `[FMC Alias, RT Alias, DPE Leaf]` when IDevID is unpopulated in Core.
+    let owner_endorsement = synthetic_der_cert(280, 0x31);
+    let mut owner_set_req = SetCertChainReq {
+        pki_entity_slot: SLOT_OWNER,
+        algorithm: ALGO_ECC384,
+        device_key_id: KEY_ID_DEFAULT,
+        offset: 0,
+        total_size: owner_endorsement.len() as u32,
+        data_len: owner_endorsement.len() as u32,
+        ..Default::default()
+    };
+    owner_set_req.cert_data[..owner_endorsement.len()].copy_from_slice(&owner_endorsement);
+    let owner_set_resp = execute_raw_mcu_req(&mut hw, McuMailboxReq::SetCertChain(owner_set_req))?;
+    assert_eq!(
+        assert_fixed_response::<SetCertChainResp>(&owner_set_resp)
+            .hdr
+            .fips_status,
+        MailboxRespHeader::FIPS_STATUS_APPROVED
+    );
+
+    let owner_info_resp = execute_raw_mcu_req(
+        &mut hw,
+        McuMailboxReq::GetCertChainInfo(GetCertChainInfoReq {
+            pki_entity_slot: SLOT_OWNER,
+            algorithm: ALGO_ECC384,
+            ..Default::default()
+        }),
+    )?;
+    let owner_info = assert_fixed_response::<GetCertChainInfoResp>(&owner_info_resp);
+    assert_eq!(owner_info.device_key_id, KEY_ID_LDEV_ID);
+    let owner_chain =
+        read_full_mci_cert_chain(&mut hw, SLOT_OWNER, ALGO_ECC384, owner_info.chain_len, 512)?;
+    assert_eq!(owner_chain.len(), owner_info.chain_len as usize);
+    assert!(owner_chain.starts_with(&owner_endorsement));
+    let owner_digest: [u8; 48] = Sha384::digest(&owner_chain).into();
+    assert_eq!(owner_info.chain_digest, owner_digest);
+
+    let mut rem = &owner_chain[owner_endorsement.len()..];
+    let mut dpe_subjects = Vec::new();
+    while !rem.is_empty() {
+        let (rest, cert) =
+            x509_parser::parse_x509_certificate(rem).expect("invalid appended DPE certificate DER");
+        dpe_subjects.push(cert.subject().to_string());
+        rem = rest;
+    }
+    assert_eq!(
+        dpe_subjects.len(),
+        3,
+        "expected [FMC Alias, RT Alias, DPE Leaf] after Owner endorsement, got {dpe_subjects:?}"
+    );
+    assert!(
+        !dpe_subjects[0].contains("LDevID"),
+        "Owner chain must skip LDevID when anchored at LDevID, got {}",
+        dpe_subjects[0]
+    );
+
+    // Erase Owner slot so persistent flash state stays clean across tests.
+    let erase_resp = execute_raw_mcu_req(
+        &mut hw,
+        McuMailboxReq::SetCertChain(SetCertChainReq {
+            pki_entity_slot: SLOT_OWNER,
+            algorithm: ALGO_ECC384,
+            device_key_id: KEY_ID_LDEV_ID,
+            offset: 0,
+            total_size: 0,
+            data_len: 0,
+            ..Default::default()
+        }),
+    )?;
+    assert_eq!(
+        assert_fixed_response::<SetCertChainResp>(&erase_resp)
+            .hdr
+            .fips_status,
+        MailboxRespHeader::FIPS_STATUS_APPROVED
+    );
+    assert_mcu_req_fails(
+        &mut hw,
+        McuMailboxReq::GetCertChainInfo(GetCertChainInfoReq {
+            pki_entity_slot: SLOT_OWNER,
+            algorithm: ALGO_ECC384,
+            ..Default::default()
+        }),
+    );
+
+    Ok(())
+}
