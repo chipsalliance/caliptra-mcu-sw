@@ -63,6 +63,8 @@ pub(crate) struct MeasurementApi<'a, S: Syscalls = DefaultSyscalls> {
     manifest: AttestationManifest<'a>,
     soc_image_load_fw_ids: &'a [u32],
     owner_policy: Option<OwnerMeasurementPolicy<'a>>,
+    vendor_owner_leaf_fw_id: u32,
+    owner_leaf_fw_id: u32,
     state: AttestationState,
     _syscalls: PhantomData<S>,
 }
@@ -79,10 +81,17 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
     ) -> MeasurementApiResult<Self> {
         let manifest = parse_and_validate(manifest_bytes)?;
         validate_soc_image_load_fw_ids(&manifest, soc_image_load_fw_ids)?;
+        let vendor_owner_leaf_fw_id = if manifest.lookup(V_AUTH_KEY_ID).is_ok() {
+            V_AUTH_KEY_ID
+        } else {
+            MCU_RT_FW_ID
+        };
         Ok(Self {
             manifest,
             soc_image_load_fw_ids,
             owner_policy: None,
+            vendor_owner_leaf_fw_id,
+            owner_leaf_fw_id: O_AUTH_KEY_ID,
             state: AttestationState::Uninitialized,
             _syscalls: PhantomData,
         })
@@ -187,7 +196,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
     /// Cold-boot sequence: compute the policy digest, initialize both stores,
     /// rotate and tag the MCU Runtime DPE context, write the MCU Runtime root
     /// record, and mark it as the initial attestation target.
-    async fn cold_boot_init<A: ScratchAlloc>(&self, alloc: &A) -> MeasurementApiResult {
+    async fn cold_boot_init<A: ScratchAlloc>(&mut self, alloc: &A) -> MeasurementApiResult {
         let dpe_store = DpeHandleStore::<S>::new(DPE_HANDLE_STORE_DRIVER_NUM);
         let pcr_store = SoftwarePcrStore::<S>::new(SOFT_PCR_STORE_DRIVER_NUM);
 
@@ -221,6 +230,12 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
         dpe_store
             .mark_attestation_target(MCU_RT_FW_ID)
             .map_err(|_| MeasurementApiError::StoreFailed)?;
+        self.vendor_owner_leaf_fw_id = if self.manifest.lookup(V_AUTH_KEY_ID).is_ok() {
+            V_AUTH_KEY_ID
+        } else {
+            MCU_RT_FW_ID
+        };
+        self.owner_leaf_fw_id = O_AUTH_KEY_ID;
         Ok(())
     }
 
@@ -302,7 +317,8 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
 
         match metadata.operation {
             MeasurementOperation::InitialLoad => {
-                initial_load::record_authorized_image(self, alloc, entry, metadata).await
+                initial_load::record_authorized_image(self, alloc, entry, manifest_source, metadata)
+                    .await
             }
             MeasurementOperation::ComponentUpdate => {
                 component_update::record_authorized_image(self, alloc, entry, metadata).await
@@ -331,11 +347,14 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
                     self,
                     alloc,
                     V_AUTH_KEY_ID,
+                    MCU_RT_FW_ID,
                     vendor_auth_key_digest,
                     0,
                     false,
                 )
-                .await
+                .await?;
+                self.vendor_owner_leaf_fw_id = V_AUTH_KEY_ID;
+                Ok(())
             }
             BootKind::HitlessUpdate => {
                 component_update::update_dpe_context(
@@ -350,7 +369,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
         }
     }
 
-    /// Measure or sync the Owner Authorization Manifest preamble (`0x0000_0003`) under the Vendor Auth Key DPE context.
+    /// Measure or sync the Owner Authorization Manifest preamble (`0x0000_0003`) under the `MCU_RT` DPE context.
     pub async fn measure_owsm<A: ScratchAlloc>(
         &mut self,
         alloc: &A,
@@ -364,6 +383,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
                     self,
                     alloc,
                     OWSM_FW_ID,
+                    MCU_RT_FW_ID,
                     preamble_digest,
                     svn,
                     false,
@@ -396,6 +416,7 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
                     self,
                     alloc,
                     OWNER_MEASUREMENT_POLICY_IDENTIFIER,
+                    OWSM_FW_ID,
                     policy_digest,
                     0,
                     false,
@@ -428,11 +449,14 @@ impl<'a, S: Syscalls> MeasurementApi<'a, S> {
                     self,
                     alloc,
                     O_AUTH_KEY_ID,
+                    OWNER_MEASUREMENT_POLICY_IDENTIFIER,
                     owner_auth_key_digest,
                     0,
                     false,
                 )
-                .await
+                .await?;
+                self.owner_leaf_fw_id = O_AUTH_KEY_ID;
+                Ok(())
             }
             BootKind::HitlessUpdate => {
                 component_update::update_dpe_context(
@@ -1061,7 +1085,9 @@ mod tests {
     use caliptra_mcu_libsyscall_caliptra::mailbox::MAILBOX_DRIVER_NUM;
     use caliptra_mcu_libsyscall_caliptra::soft_pcr_store::MeasurementRecord;
     use caliptra_mcu_libtock_platform::{CommandReturn, ErrorCode};
-    use caliptra_mcu_libtock_unittest::{command_return, fake, DriverInfo, RwAllowBuffer};
+    use caliptra_mcu_libtock_unittest::{
+        command_return, fake, DriverInfo, RoAllowBuffer, RwAllowBuffer,
+    };
 
     static EVIDENCE_TEST_LOCK: Mutex<()> = Mutex::new(());
 
@@ -1079,6 +1105,7 @@ mod tests {
         driver_num: u32,
         target_fw_id: u32,
         records: RefCell<Vec<(u32, Vec<u8>)>>,
+        input: RefCell<RoAllowBuffer>,
         output: RefCell<RwAllowBuffer>,
     }
 
@@ -1088,6 +1115,16 @@ mod tests {
         }
 
         fn command(&self, command: u32, fw_id: u32, _: u32) -> CommandReturn {
+            if command == 2 && self.driver_num == DPE_HANDLE_STORE_DRIVER_NUM {
+                let data = self.input.borrow().to_vec();
+                let mut records = self.records.borrow_mut();
+                if let Some((_, existing)) = records.iter_mut().find(|(id, _)| *id == fw_id) {
+                    *existing = data;
+                } else {
+                    records.push((fw_id, data));
+                }
+                return command_return::success();
+            }
             let fw_id = match command {
                 1 => fw_id,
                 6 if self.driver_num == DPE_HANDLE_STORE_DRIVER_NUM => self.target_fw_id,
@@ -1099,6 +1136,18 @@ mod tests {
             };
             self.output.borrow_mut().copy_from_slice(record);
             command_return::success()
+        }
+
+        fn allow_readonly(
+            &self,
+            buffer_num: u32,
+            buffer: RoAllowBuffer,
+        ) -> Result<RoAllowBuffer, (RoAllowBuffer, ErrorCode)> {
+            if buffer_num == 0 {
+                Ok(self.input.replace(buffer))
+            } else {
+                Err((buffer, ErrorCode::Invalid))
+            }
         }
 
         fn allow_readwrite(
@@ -1200,26 +1249,26 @@ mod tests {
         target_fw_id: u32,
         measurements: &[read::MeasurementValue],
     ) -> (Rc<TestMeasurementStore>, Rc<TestMeasurementStore>) {
-        let chain = [
-            MCU_RT_FW_ID,
-            V_AUTH_KEY_ID,
-            OWSM_FW_ID,
-            OWNER_MEASUREMENT_POLICY_IDENTIFIER,
-            O_AUTH_KEY_ID,
-            0x1000,
-            0x10000,
+        let topology = [
+            (MCU_RT_FW_ID, None),
+            (V_AUTH_KEY_ID, Some(MCU_RT_FW_ID)),
+            (OWSM_FW_ID, Some(MCU_RT_FW_ID)),
+            (OWNER_MEASUREMENT_POLICY_IDENTIFIER, Some(OWSM_FW_ID)),
+            (O_AUTH_KEY_ID, Some(OWNER_MEASUREMENT_POLICY_IDENTIFIER)),
+            (0x1000, Some(V_AUTH_KEY_ID)),
+            (0x10000, Some(O_AUTH_KEY_ID)),
         ];
         let dpe_store = Rc::new(TestMeasurementStore {
             driver_num: DPE_HANDLE_STORE_DRIVER_NUM,
             target_fw_id,
             records: RefCell::new(
-                chain
+                topology
                     .iter()
                     .enumerate()
-                    .map(|(index, fw_id)| {
+                    .map(|(index, (fw_id, parent_fw_id))| {
                         let record = DpeHandleRecord {
                             fw_id: *fw_id,
-                            parent_fw_id: index.checked_sub(1).map(|parent| chain[parent]),
+                            parent_fw_id: *parent_fw_id,
                             context_handle: [index as u8 + 1; DPE_CONTEXT_HANDLE_SIZE],
                             tci_tag: *fw_id,
                             ..Default::default()
@@ -1228,6 +1277,7 @@ mod tests {
                     })
                     .collect(),
             ),
+            input: RefCell::default(),
             output: RefCell::default(),
         });
         let pcr_store = Rc::new(TestMeasurementStore {
@@ -1249,6 +1299,7 @@ mod tests {
                     })
                     .collect(),
             ),
+            input: RefCell::default(),
             output: RefCell::default(),
         });
         let dpe_bytes = 104
@@ -1552,15 +1603,38 @@ mod tests {
         api.state = AttestationState::Active;
         let _stores = evidence_stores(&kernel, MCU_RT_FW_ID, &[]);
 
-        // Verify export_cdi_target_lineage_contains traverses a retained topology
-        // that includes owner TCB records (5 hops to MCU_RT_FW_ID despite base tcb_entry_count = 2),
-        // both before and after owner policy attachment.
+        // Verify export_cdi_target_lineage_contains isolates the Vendor+Owner and Owner
+        // branches rooted at MCU_RT_FW_ID, both before and after owner policy attachment.
         assert_eq!(
             read::export_cdi_target_lineage_contains(&api, 0x1000, MCU_RT_FW_ID),
             Ok(true)
         );
         assert_eq!(
+            read::export_cdi_target_lineage_contains(&api, 0x1000, V_AUTH_KEY_ID),
+            Ok(true)
+        );
+        assert_eq!(
+            read::export_cdi_target_lineage_contains(&api, 0x1000, OWSM_FW_ID),
+            Ok(false)
+        );
+        assert_eq!(
+            read::export_cdi_target_lineage_contains(&api, 0x1000, O_AUTH_KEY_ID),
+            Ok(false)
+        );
+        assert_eq!(
             read::export_cdi_target_lineage_contains(&api, 0x1000, 0x10000),
+            Ok(false)
+        );
+        assert_eq!(
+            read::export_cdi_target_lineage_contains(&api, 0x10000, MCU_RT_FW_ID),
+            Ok(true)
+        );
+        assert_eq!(
+            read::export_cdi_target_lineage_contains(&api, 0x10000, OWSM_FW_ID),
+            Ok(true)
+        );
+        assert_eq!(
+            read::export_cdi_target_lineage_contains(&api, 0x10000, V_AUTH_KEY_ID),
             Ok(false)
         );
         let policy = owner_evidence_policy();
@@ -1568,6 +1642,10 @@ mod tests {
         assert_eq!(
             read::export_cdi_target_lineage_contains(&api, 0x1000, V_AUTH_KEY_ID),
             Ok(true)
+        );
+        assert_eq!(
+            read::export_cdi_target_lineage_contains(&api, 0x1000, OWSM_FW_ID),
+            Ok(false)
         );
 
         // Even with an active target record, an undersized cert_out fails fast before
@@ -1683,7 +1761,7 @@ mod tests {
                     if !with_owner {
                         matches!(value.target_env_id, V_AUTH_KEY_ID | 0x1000 | 0x2000)
                     } else if target_fw_id != MCU_RT_FW_ID {
-                        matches!(value.target_env_id, 0x2000 | 0x10000 | 0x10001)
+                        !matches!(value.target_env_id, V_AUTH_KEY_ID | 0x1000)
                     } else {
                         true
                     }
@@ -1795,5 +1873,108 @@ mod tests {
             run(api.encode_measurement_evidence(&TestAlloc, &mut buffer)),
             Err(MeasurementApiError::EvidenceBufferTooSmall)
         );
+    }
+
+    #[test]
+    fn cold_boot_branches_vendor_owner_and_owner_dpe_contexts_from_mcu_rt() {
+        let _guard = EVIDENCE_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let kernel = fake::Kernel::new();
+        let base = valid_manifest_with_entries(&[
+            (V_AUTH_KEY_ID, ATTESTATION_FLAG_SOC_TCB_DPE),
+            (0x1000, ATTESTATION_FLAG_SOC_TCB_DPE),
+        ]);
+        let policy = owner_evidence_policy();
+        let mut api = MeasurementApi::<DefaultSyscalls>::new(&base, &[0x1000]).unwrap();
+        api.validate_and_set_owner_policy(&policy).unwrap();
+        api.state = AttestationState::InitialMeasurementsPending;
+
+        let root = DpeHandleRecord {
+            fw_id: MCU_RT_FW_ID,
+            parent_fw_id: None,
+            context_handle: [0x01; DPE_CONTEXT_HANDLE_SIZE],
+            tci_tag: MCU_RT_FW_ID,
+            ..Default::default()
+        };
+        let dpe_store = Rc::new(TestMeasurementStore {
+            driver_num: DPE_HANDLE_STORE_DRIVER_NUM,
+            target_fw_id: MCU_RT_FW_ID,
+            records: RefCell::new(std::vec![(MCU_RT_FW_ID, root.to_bytes().to_vec())]),
+            input: RefCell::default(),
+            output: RefCell::default(),
+        });
+        let mailbox = Rc::new(fake::FakeMailboxDriver::new());
+        let add_ok_resp = |cmd: [u8; 4], payload: &[u8]| {
+            let mut resp = std::vec![0u8; 8];
+            resp.extend_from_slice(payload);
+            let csum = mcu_caliptra_api::raw::mailbox_checksum(0, &resp);
+            resp[..4].copy_from_slice(&csum.to_le_bytes());
+            mailbox.add_ready_response(u32::from_be_bytes(cmd), &resp);
+        };
+        let queue_derive_tag_extend = |step: u8| {
+            let mut dpe_payload = std::vec![0u8; 4]; // data_size
+            dpe_payload.extend_from_slice(&0x4450_4552u32.to_le_bytes()); // DPE_RESPONSE_MAGIC
+            dpe_payload.extend_from_slice(&0u32.to_le_bytes()); // status
+            dpe_payload.extend_from_slice(&0u32.to_le_bytes()); // profile
+            dpe_payload.extend_from_slice(&[step; DPE_CONTEXT_HANDLE_SIZE]);
+            dpe_payload.extend_from_slice(&[step | 0x80; DPE_CONTEXT_HANDLE_SIZE]);
+            add_ok_resp(*b"DPEC", &dpe_payload);
+            add_ok_resp(*b"TQGT", &[]);
+            add_ok_resp(*b"PCRE", &[]);
+        };
+        let queue_authorize = |status: u32| {
+            add_ok_resp(*b"ATSH", &status.to_le_bytes());
+        };
+
+        for step in 1..=4 {
+            queue_derive_tag_extend(step);
+        }
+        queue_authorize(0xDEAD_C0DE);
+        queue_derive_tag_extend(5);
+        queue_authorize(0xC0DE_DEAD);
+        queue_derive_tag_extend(6);
+
+        kernel.add_driver(&dpe_store);
+        kernel.add_driver(&mailbox);
+
+        let digest = [0xAA; crate::IMAGE_MEASUREMENT_DIGEST_SIZE];
+        run(api.measure_vendor_auth_key(&TestAlloc, &digest, BootKind::ColdBoot)).unwrap();
+        run(api.measure_owsm(&TestAlloc, &digest, 1, BootKind::ColdBoot)).unwrap();
+        run(api.measure_owner_measurement_policy(&TestAlloc, &digest, BootKind::ColdBoot)).unwrap();
+        run(api.measure_owner_auth_key(&TestAlloc, &digest, BootKind::ColdBoot)).unwrap();
+        run(api.authorize_and_stash(
+            &TestAlloc,
+            0x1000,
+            ImageMetadata::initial_load_from_load_address(0x100, digest),
+        ))
+        .unwrap();
+        run(api.authorize_and_stash(
+            &TestAlloc,
+            0x10000,
+            ImageMetadata::initial_load_from_load_address(0x100, digest),
+        ))
+        .unwrap();
+
+        let parent_of = |fw_id: u32| -> Option<u32> {
+            let records = dpe_store.records.borrow();
+            let (_, bytes) = records.iter().find(|(id, _)| *id == fw_id).unwrap();
+            let arr: [u8;
+                caliptra_mcu_libsyscall_caliptra::dpe_handle_store::DPE_HANDLE_RECORD_SIZE] =
+                bytes.as_slice().try_into().unwrap();
+            DpeHandleRecord::from_bytes(&arr).parent_fw_id
+        };
+
+        assert_eq!(parent_of(MCU_RT_FW_ID), None);
+        assert_eq!(parent_of(V_AUTH_KEY_ID), Some(MCU_RT_FW_ID));
+        assert_eq!(parent_of(0x1000), Some(V_AUTH_KEY_ID));
+        assert_eq!(parent_of(OWSM_FW_ID), Some(MCU_RT_FW_ID));
+        assert_eq!(
+            parent_of(OWNER_MEASUREMENT_POLICY_IDENTIFIER),
+            Some(OWSM_FW_ID)
+        );
+        assert_eq!(
+            parent_of(O_AUTH_KEY_ID),
+            Some(OWNER_MEASUREMENT_POLICY_IDENTIFIER)
+        );
+        assert_eq!(parent_of(0x10000), Some(O_AUTH_KEY_ID));
     }
 }
