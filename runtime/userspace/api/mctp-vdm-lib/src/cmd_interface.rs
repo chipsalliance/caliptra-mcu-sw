@@ -50,7 +50,7 @@ impl<'a, H: CaliptraCmdHandler> CmdInterface<'a, H> {
 
         // Send the response.
         self.transport
-            .send_response(&msg_buf[..resp_len])
+            .send_response(msg_buf.get(..resp_len).ok_or(VdmLibError::EncodingError)?)
             .await
             .map_err(|_| VdmLibError::TransportError)?;
 
@@ -68,8 +68,12 @@ impl<'a, H: CaliptraCmdHandler> CmdInterface<'a, H> {
         }
 
         // Extract the VDM message from the MCTP payload, using only the received length.
-        let vdm_msg =
-            extract_vdm_msg(&mut msg_buf[..req_len]).map_err(|_| VdmLibError::DecodingError)?;
+        let vdm_msg = extract_vdm_msg(
+            msg_buf
+                .get_mut(..req_len)
+                .ok_or(VdmLibError::DecodingError)?,
+        )
+        .map_err(|_| VdmLibError::DecodingError)?;
 
         // Need at least the VDM header.
         if vdm_msg.len() < VDM_MSG_HEADER_LEN {
@@ -145,8 +149,10 @@ impl<'a, H: CaliptraCmdHandler> CmdInterface<'a, H> {
         let vdm_msg = extract_vdm_msg(msg_buf).map_err(|_| VdmLibError::DecodingError)?;
 
         // Decode the request.
-        let req = FirmwareVersionRequest::decode(&vdm_msg[..req_len])
-            .map_err(|_| VdmLibError::DecodingError)?;
+        let req = FirmwareVersionRequest::decode(
+            vdm_msg.get(..req_len).ok_or(VdmLibError::DecodingError)?,
+        )
+        .map_err(|_| VdmLibError::DecodingError)?;
 
         // Get the firmware version using the unified handler.
         let mut version = FirmwareVersion::default();
@@ -157,12 +163,10 @@ impl<'a, H: CaliptraCmdHandler> CmdInterface<'a, H> {
             .await;
 
         // Build the response.
-        let (completion_code, ver_bytes) = match result {
-            Ok(()) if version.len <= version.ver_str.len() => {
-                (VdmCompletionCode::Success, &version.ver_str[..version.len])
-            }
-            Ok(()) => (VdmCompletionCode::GeneralError, &[][..]),
-            Err(err) => (map_caliptra_to_vdm(err), &[][..]),
+        let (completion_code, ver_bytes) = match (result, version.ver_str.get(..version.len)) {
+            (Ok(()), Some(bytes)) => (VdmCompletionCode::Success, bytes),
+            (Ok(()), None) => (VdmCompletionCode::GeneralError, &[][..]),
+            (Err(err), _) => (map_caliptra_to_vdm(err), &[][..]),
         };
 
         let resp = FirmwareVersionResponse::new(completion_code as u32, ver_bytes);
@@ -572,6 +576,23 @@ mod tests {
             request_len,
             0xff,
             VdmCompletionCode::UnsupportedOperation,
+        );
+    }
+
+    #[test]
+    fn rejects_request_ranges_outside_the_backing_buffer() {
+        let handler = TestHandler::default();
+        let mut transport = MctpVdmTransport::default();
+        let interface = CmdInterface::new(&mut transport, &handler);
+        let (mut buffer, request_len) = encode_request(&FirmwareVersionRequest::new(0));
+
+        assert_eq!(
+            block_on(interface.process_request(&mut buffer, BUFFER_SIZE + 1)),
+            Err(VdmLibError::DecodingError)
+        );
+        assert_eq!(
+            block_on(interface.handle_firmware_version(&mut buffer[..request_len], request_len)),
+            Err(VdmLibError::DecodingError)
         );
     }
 
