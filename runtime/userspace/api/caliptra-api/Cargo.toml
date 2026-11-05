@@ -65,3 +65,4 @@ ocp-lock = [
 
 [dev-dependencies]
 caliptra-mcu-libtock_unittest = { workspace = true }
+caliptra-mcu-registers-generated = { workspace = true }

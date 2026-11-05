@@ -423,6 +423,11 @@ immediately before `FIRMWARE_LOAD` and `SET_AUTH_MANIFEST`, respectively, so
 an OTP floor increase between Verify Component and activation cannot admit a
 candidate below the new floor.
 
+These checks use only bit 0 of `CPTRA_CORE_ANTI_ROLLBACK_DISABLE`, matching
+Caliptra's hardware disable field. Other bits do not bypass enforcement.
+Failure to read the disable fuse or either physical SVN floor rejects the
+update.
+
 After PLDM verification succeeds, the bundle is applied and activated. The
 hitless update reset then triggers MCU ROM, which performs the actual
 fuse burns described in

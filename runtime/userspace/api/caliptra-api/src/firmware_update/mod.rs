@@ -1463,6 +1463,8 @@ impl StagedAuthManifest {
 mod tests {
     extern crate std;
 
+    mod svn;
+
     use super::*;
     use caliptra_mcu_flash_image::{
         calculate_checksum, FlashHeaderV1, FlashHeaderV2, FlashHeaderV3, FlashImageVersion,

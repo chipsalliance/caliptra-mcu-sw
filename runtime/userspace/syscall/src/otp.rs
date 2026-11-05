@@ -79,7 +79,7 @@ impl<S: Syscalls> Otp<S> {
     pub fn anti_rollback_disabled(&self) -> Result<bool, ErrorCode> {
         let entry = caliptra_mcu_registers_generated::fuses::OTP_CPTRA_CORE_ANTI_ROLLBACK_DISABLE;
         self.read_raw((entry.byte_offset / 4) as u32, 0)
-            .map(|value| value != 0)
+            .map(|value| (value & 1) != 0)
     }
 
     pub fn write(&self, reg_offset: u32, index: u32, value: u32) -> Result<(), ErrorCode> {
@@ -539,28 +539,28 @@ mod tests {
         let kernel = fake::Kernel::new();
         let otp = Otp::<fake::Syscalls>::new();
         let entry = caliptra_mcu_registers_generated::fuses::OTP_CPTRA_CORE_ANTI_ROLLBACK_DISABLE;
-        for expected in [
-            Ok(0),
-            Ok(1),
-            Ok(4),
-            Ok(7),
-            Err(ErrorCode::Fail),
-            Err(ErrorCode::NoDevice),
+        for (read_result, expected) in [
+            (Ok(0), Ok(false)),
+            (Ok(1), Ok(true)),
+            (Ok(2), Ok(false)),
+            (Ok(4), Ok(false)),
+            (Ok(7), Ok(true)),
+            (Ok(0x8000_0000), Ok(false)),
+            (Ok(0x8000_0001), Ok(true)),
+            (Err(ErrorCode::Fail), Err(ErrorCode::Fail)),
+            (Err(ErrorCode::NoDevice), Err(ErrorCode::NoDevice)),
         ] {
             kernel.add_expected_syscall(ExpectedSyscall::Command {
                 driver_id: OTP_DRIVER_NUM,
                 command_id: cmd::OTP_READ_RAW,
                 argument0: (entry.byte_offset / 4) as u32,
                 argument1: 0,
-                override_return: Some(match expected {
+                override_return: Some(match read_result {
                     Ok(value) => command_return::success_u32(value),
                     Err(error) => command_return::failure(error),
                 }),
             });
-            assert_eq!(
-                otp.anti_rollback_disabled(),
-                expected.map(|value| value != 0)
-            );
+            assert_eq!(otp.anti_rollback_disabled(), expected);
         }
     }
 }
