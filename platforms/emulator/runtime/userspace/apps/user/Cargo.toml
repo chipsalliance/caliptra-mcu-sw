@@ -142,6 +142,9 @@ release = [
     "caliptra-mcu-romtime/no-print",
     "caliptra-mcu-libsyscall-caliptra/release",
 ]
+# Vendor (Slot 0) out-of-band certificates: all Vendor certificates (Root/Int
+# CAs and IDevID) are held out-of-band; Slot 0 serves LDevID -> FMC -> RT -> DPE Leaf.
+vendor-certs-oob = []
 # --- Test features: example-app ---
 test-caliptra-certs = []
 test-get-caliptra-idev-csr = []

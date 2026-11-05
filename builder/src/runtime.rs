@@ -61,6 +61,20 @@ pub fn runtime_build_with_apps(args: &CaliptraBuildArgs) -> Result<PathBuf> {
     let svn = args.svn;
     let target_dir = args.target_dir.clone();
     let profile = args.profile.unwrap_or("devel").to_string();
+    let config_target_dir = target_dir.clone().unwrap_or_else(crate::target_dir);
+    if !["attestation_manifest.toml", "soc_image_descriptors.toml"]
+        .iter()
+        .all(|name| config_target_dir.join("generated").join(name).exists())
+    {
+        crate::attestation_manifest::write_config_to_target_dir(
+            &config_target_dir,
+            args.vendor.as_deref().unwrap_or("ChipsAlliance"),
+            args.model.as_deref().unwrap_or("Caliptra-SS"),
+            args.soc_images.as_deref().unwrap_or(&[]),
+            "runtime_build_with_apps",
+            "Pre-generated",
+        )?;
+    }
 
     let manifest = manifest_file_for_profile(platform, example_app, args.profile)?;
     let platform_str = platform.unwrap_or("emulator");

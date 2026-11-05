@@ -114,12 +114,18 @@ implementation provides `SpiFlashEndorsementStorage` (`user/src/cert_store/mod.r
 
 ## Provide Vendor certificates
 
-The Vendor slot is established during manufacturing and is strictly read-only:
+The Vendor slot (`EndorsementRole::Vendor`, Slot 0) is established during
+manufacturing and is strictly read-only:
 
-- **Root and Intermediate CAs**: Embed the Vendor CA certificates in the
-  application image.
-- **IDevID certificates**: Supply the manufacturing-signed IDevID certificates
-  for each enabled algorithm (e.g., from OTP or secure platform storage).
+- **Default (in-band Root/Int CA + OTP `IDevID`)**: Embed the Vendor CA
+  certificates in the application image and supply the manufacturing-signed
+  `IDevID` certificates (e.g., from OTP) via `populate_idev_ecc384_cert` /
+  `populate_idev_mldsa87_cert` before calling `init_readonly_endorsement`.
+- **All Vendor certificates out-of-band (`vendor-certs-oob`)**: For deployments
+  where the verifier holds the Vendor CA chain and `IDevID` out-of-band, skip
+  `POPULATE_IDEV_*` and call `init_oob_endorsement`. Slot 0 serves `LDevID ->
+  FMC -> RT -> DPE Leaf` with `RootHash = SHA-384(LDevID)` (enabled in the
+  reference user app via the `vendor-certs-oob` Cargo feature).
 - Do not allocate writable persistent backing for the Vendor slot.
 
 ## Configure transport exposure

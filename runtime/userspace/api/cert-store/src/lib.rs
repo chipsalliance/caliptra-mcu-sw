@@ -103,6 +103,11 @@ impl From<AsymAlgo> for CertificateAlgorithm {
 }
 
 impl CertificateAlgorithm {
+    #[inline]
+    pub(crate) const fn index(self) -> usize {
+        (self as usize) - 1
+    }
+
     pub const fn dpe_profile(self) -> DpeProfile {
         match self {
             Self::EccP384 => DpeProfile::P384Sha384,
@@ -145,9 +150,11 @@ impl DeviceKey {
     /// Caliptra's device certificate chain for a slot anchored at `self`.
     ///
     /// The endorsement chain ends with the signed `self` certificate, so the
-    /// device chain skips through `self` (`(self as usize) + 1` certificates).
-    pub(crate) const fn device_cert_skip_count(self) -> usize {
-        (self as usize) + 1
+    /// device chain skips through `self`: `(self as usize) + 1` when `IDevID`
+    /// is populated at the start of the DPE chain, or `self as usize` when
+    /// `IDevID` is omitted.
+    pub(crate) const fn device_cert_skip_count(self, idevid_populated: bool) -> usize {
+        (self as usize) + if idevid_populated { 1 } else { 0 }
     }
 }
 
