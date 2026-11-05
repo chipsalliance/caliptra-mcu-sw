@@ -18,7 +18,7 @@ concurrency:
 jobs:
   build_firmware_fpga:
     if: ${{ vars.RUN_FPGA_CI != 'false' }}
-    runs-on: [e2-standard-8-big-disk]
+    runs-on: [e2-standard-4-big-disk]
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -158,7 +158,7 @@ jobs:
   build_test_binaries:
     if: ${{ vars.RUN_FPGA_CI != 'false' }}
     needs: build_firmware_fpga
-    runs-on: [e2-standard-8-big-disk]
+    runs-on: [e2-standard-4-big-disk]
     timeout-minutes: 60
     env:
       SCCACHE_VERSION: 0.10.0
