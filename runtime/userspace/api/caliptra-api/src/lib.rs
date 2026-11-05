@@ -94,6 +94,7 @@ pub use aes_gcm::{
 pub use auth_stash::{
     authorize_and_stash, AuthManifestSource, AuthorizeAndStashFlags, AuthorizeAndStashParams,
     ImageHashSource, AUTHORIZE_AND_STASH_CONTEXT_SIZE, AUTHORIZE_AND_STASH_MEASUREMENT_SIZE,
+    IMAGE_AUTHORIZED,
 };
 #[cfg(feature = "mailbox-io")]
 pub use caliptra_mcu_scratch_alloc::{ScratchAlloc, ScratchAllocProvider};
