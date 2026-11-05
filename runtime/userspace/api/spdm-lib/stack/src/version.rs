@@ -13,7 +13,7 @@ use caliptra_mcu_spdm_traits::{PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalIo};
 use zerocopy::FromBytes;
 
 use crate::build::build_response;
-use crate::error::{SpdmResult, SPDM_INVALID_REQUEST, SPDM_VERSION_MISMATCH};
+use crate::error::{SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNSPECIFIED, SPDM_VERSION_MISMATCH};
 use crate::stack::{ConnectionState, Phase};
 
 /// Versions advertised by the responder, in descending order of preference.
@@ -80,10 +80,9 @@ pub(crate) async fn handle_get_version<'a, Pal: SpdmPal>(
     // Use spdm_len to exclude any transport-layer padding (e.g. DOE DWORD alignment).
     let head = pal.header_size();
     state.transcript.append_vca(pal, io, io.request()).await?;
-    state
-        .transcript
-        .append_vca(pal, io, &resp[head..head + spdm_len])
-        .await?;
+    let end = head.checked_add(spdm_len).ok_or(SPDM_UNSPECIFIED)?;
+    let response = resp.get(head..end).ok_or(SPDM_UNSPECIFIED)?;
+    state.transcript.append_vca(pal, io, response).await?;
 
     state.phase = Phase::AfterVersion;
     Ok(resp)
