@@ -8,13 +8,14 @@ use crate::api::{CaliptraApiError, CaliptraResult};
 use caliptra_mcu_core_util_host_command_types::{
     attestation::{AsymAlgo, PkiEntitySlot},
     certificate::{
-        ExportAttestedCsrRequest, ExportAttestedCsrResponse, ExportIdevidCsrRequest,
-        ExportIdevidCsrResponse, GetCertChainInfoRequest, GetCertChainInfoResponse,
-        GetCertChainRequest, GetCertChainResponse, SetCertChainRequest, SetCertChainResponse,
+        AuthSetCertChainRequest, AuthSetCertChainResponse, ExportAttestedCsrRequest,
+        ExportAttestedCsrResponse, ExportIdevidCsrRequest, ExportIdevidCsrResponse,
+        GetCertChainInfoRequest, GetCertChainInfoResponse, GetCertChainRequest,
+        GetCertChainResponse, SetCertChainRequest, SetCertChainResponse,
     },
     CaliptraCommandId,
 };
-use caliptra_util_host_session::CaliptraSession;
+use caliptra_util_host_session::{CaliptraSession, SessionError};
 
 /// Export an attested CSR or perform keypair discovery from the device
 ///
@@ -117,4 +118,17 @@ pub fn caliptra_cmd_set_cert_chain(
     session
         .execute_command_with_id(CaliptraCommandId::SetCertChain, &request)
         .map_err(|_| CaliptraApiError::SessionError("SetCertChain command failed"))
+}
+
+/// Execute `MC_AUTH_SET_CERT_CHAIN` (`0x4D41_5343`, `"MASC"`) via `0x0000_0012` (`AuthorizedCommand`).
+pub fn caliptra_cmd_auth_set_cert_chain<'a>(
+    session: &mut CaliptraSession<'a>,
+    request: &AuthSetCertChainRequest,
+) -> CaliptraResult<AuthSetCertChainResponse> {
+    session
+        .execute_command_with_id(CaliptraCommandId::AuthSetCertChain, request)
+        .map_err(|error| match error {
+            SessionError::DeviceError(code) => CaliptraApiError::DeviceError(code),
+            _ => CaliptraApiError::SessionError("AuthSetCertChain command failed"),
+        })
 }

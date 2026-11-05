@@ -30,8 +30,9 @@ use caliptra_mcu_core_util_host_command_types::attestation::{
     AsymAlgo, EvidenceFormat, GetAttestationResponse, PkiEntitySlot,
 };
 use caliptra_mcu_core_util_host_command_types::certificate::{
-    ExportAttestedCsrResponse, GetCertChainInfoResponse, GetCertChainResponse,
-    SetCertChainResponse, MAX_CERT_CHAIN_CHUNK_SIZE,
+    AuthSetCertChainRequest, AuthSetCertChainResponse, ExportAttestedCsrResponse,
+    GetCertChainInfoResponse, GetCertChainResponse, SetCertChainResponse,
+    MAX_CERT_CHAIN_CHUNK_SIZE,
 };
 use caliptra_mcu_core_util_host_command_types::crypto_aes::{
     AesMode, AES_GCM_IV_SIZE, AES_GCM_TAG_SIZE, AES_IV_SIZE,
@@ -73,8 +74,8 @@ use caliptra_util_host_commands::api::attestation::{
     caliptra_cmd_get_attestation, caliptra_cmd_get_attestation_formats,
 };
 use caliptra_util_host_commands::api::certificate::{
-    caliptra_cmd_export_attested_csr, caliptra_cmd_get_cert_chain,
-    caliptra_cmd_get_cert_chain_info, caliptra_cmd_set_cert_chain,
+    caliptra_cmd_auth_set_cert_chain, caliptra_cmd_export_attested_csr,
+    caliptra_cmd_get_cert_chain, caliptra_cmd_get_cert_chain_info, caliptra_cmd_set_cert_chain,
 };
 use caliptra_util_host_commands::api::crypto_aes::{
     caliptra_aes_decrypt, caliptra_aes_encrypt, caliptra_aes_gcm_decrypt, caliptra_aes_gcm_encrypt,
@@ -1133,6 +1134,23 @@ impl<'a> MailboxClient<'a> {
             offset = end;
         }
         Ok(())
+    }
+
+    /// Execute `MC_AUTH_SET_CERT_CHAIN` (`0x4D41_5343`, `"MASC"`) via `0x0000_0012` (`AuthorizedCommand`).
+    pub fn auth_set_cert_chain(
+        &mut self,
+        request: &AuthSetCertChainRequest,
+    ) -> Result<AuthSetCertChainResponse> {
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+        caliptra_cmd_auth_set_cert_chain(&mut session, request)
+            .map_err(|e| anyhow::anyhow!("AuthSetCertChain command failed: {:?}", e))
     }
 
     /// Request an authorization command challenge nonce

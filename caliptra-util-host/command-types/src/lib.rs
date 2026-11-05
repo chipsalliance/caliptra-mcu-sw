@@ -139,6 +139,7 @@ pub enum CaliptraCommandId {
     ProvisionOwnerPkHash = 0x8017,
     OcpLockRotateHek = 0x8018,
     OcpLockSetPermaHek = 0x8019,
+    AuthSetCertChain = 0x801A,
 
     // Device Ownership Transfer Commands (0x8020-0x802A)
     DotLock = 0x8020,

@@ -15,7 +15,8 @@ use super::aes::{
 };
 use super::attestation::GetAttestationCmd;
 use super::certificate::{
-    ExportAttestedCsrCmd, GetCertChainCmd, GetCertChainInfoCmd, SetCertChainCmd,
+    AuthSetCertChainCmd, ExportAttestedCsrCmd, GetCertChainCmd, GetCertChainInfoCmd,
+    SetCertChainCmd,
 };
 use super::crypto_asymmetric::{
     EcdhFinishCmd, EcdhGenerateCmd, EcdsaPublicKeyCmd, EcdsaSignCmd, EcdsaVerifyCmd,
@@ -116,6 +117,7 @@ pub fn get_command_handler(command_id: u32) -> Option<CommandHandlerFn> {
         0x8017 => Some(process_command_with_metadata::<ProvisionOwnerPkHashCmd>),
         0x8018 => Some(process_command_with_metadata::<OcpLockRotateHekCmd>),
         0x8019 => Some(process_command_with_metadata::<OcpLockSetPermaHekCmd>),
+        0x801A => Some(process_command_with_metadata::<AuthSetCertChainCmd>),
         // Device Ownership Transfer Commands (0x8020-0x802A)
         0x8020 => Some(process_command_with_metadata::<DotLockCmd>),
         0x8021 => Some(process_command_with_metadata::<DotDisableCmd>),
@@ -191,7 +193,7 @@ pub fn get_external_cmd_code(command_id: u32) -> Option<u32> {
         0x1014 => Some(0x4D53_4343), // SetCertChain -> MC_SET_CERT_CHAIN ("MSCC")
         // Authorized / Fuse Commands
         0x8010..=0x8017 => Some(0x0000_0012),
-        0x8018..=0x8019 => Some(0x0000_0012),
+        0x8018..=0x801A => Some(0x0000_0012),
         0x8020 | 0x8021 | 0x8024 | 0x8025 | 0x802A => Some(0x0000_0012),
         0x8022 | 0x8023 | 0x8026..=0x8029 => Some(0x0000_0011),
         _ => None,
@@ -237,6 +239,7 @@ mod tests {
         let commands = [
             CaliptraCommandId::OcpLockRotateHek,
             CaliptraCommandId::OcpLockSetPermaHek,
+            CaliptraCommandId::AuthSetCertChain,
         ];
 
         for command in commands {

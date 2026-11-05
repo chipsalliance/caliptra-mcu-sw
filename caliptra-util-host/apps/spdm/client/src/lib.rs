@@ -39,7 +39,10 @@ use anyhow::Result;
 use caliptra_mcu_core_util_host_command_types::attestation::{
     AsymAlgo, EvidenceFormat, GetAttestationResponse, PkiEntitySlot,
 };
-use caliptra_mcu_core_util_host_command_types::certificate::ExportAttestedCsrResponse;
+use caliptra_mcu_core_util_host_command_types::certificate::{
+    AuthSetCertChainRequest, AuthSetCertChainResponse, ExportAttestedCsrResponse,
+    CERT_CHAIN_DIGEST_SIZE,
+};
 use caliptra_mcu_core_util_host_command_types::debug_unlock::{
     ProdDebugUnlockReqResponse, ProdDebugUnlockTokenRequest, ProdDebugUnlockTokenResponse,
 };
@@ -66,7 +69,9 @@ use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
 use caliptra_util_host_commands::api::attestation::{
     caliptra_cmd_get_attestation, caliptra_cmd_get_attestation_formats,
 };
-use caliptra_util_host_commands::api::certificate::caliptra_cmd_export_attested_csr;
+use caliptra_util_host_commands::api::certificate::{
+    caliptra_cmd_auth_set_cert_chain, caliptra_cmd_export_attested_csr,
+};
 use caliptra_util_host_commands::api::debug_unlock::{
     caliptra_cmd_prod_debug_unlock_req, caliptra_cmd_prod_debug_unlock_token,
 };
@@ -471,6 +476,33 @@ impl<'a> SpdmVdmClient<'a> {
             .create_session()
             .map_err(|_| CaliptraApiError::SessionError("Failed to create session"))?;
         caliptra_cmd_ocp_lock_set_perma_hek(&mut session, &request)
+    }
+
+    /// Execute `MC_AUTH_SET_CERT_CHAIN` (`0x4D41_5343`, `"MASC"`) via `AuthorizedCommand` (`0x12`).
+    pub fn auth_set_cert_chain(
+        &mut self,
+        pki_entity_slot: u32,
+        algorithm: u32,
+        total_size: u32,
+        expected_sha384: &[u8; CERT_CHAIN_DIGEST_SIZE],
+        auth: AuthorizedCommandData<'_>,
+    ) -> CaliptraResult<AuthSetCertChainResponse> {
+        let request = AuthSetCertChainRequest {
+            pki_entity_slot,
+            algorithm,
+            total_size,
+            expected_sha384: *expected_sha384,
+            metadata: auth.metadata,
+            nonce: *auth.nonce,
+            ecc_pub_x: *auth.ecc_pub_x,
+            ecc_pub_y: *auth.ecc_pub_y,
+            mldsa_pub: *auth.mldsa_pub,
+            sig: auth.sig.clone(),
+        };
+        let mut session = self
+            .create_session()
+            .map_err(|_| CaliptraApiError::SessionError("Failed to create session"))?;
+        caliptra_cmd_auth_set_cert_chain(&mut session, &request)
     }
 
     /// Send an unencoded Caliptra VDM payload for responder-negative validation.
