@@ -575,6 +575,13 @@ name = "caliptra-mcu-emulator-state"
 version = "0.1.0"
 
 [[package]]
+name = "caliptra-mcu-flash-image"
+version = "0.1.0"
+dependencies = [
+ "zerocopy",
+]
+
+[[package]]
 name = "caliptra-mcu-hw-revision"
 version = "0.1.0"
 
@@ -607,6 +614,7 @@ version = "0.1.0"
 dependencies = [
  "caliptra-api",
  "caliptra-image-types",
+ "caliptra-mcu-flash-image",
  "caliptra-mcu-hw-revision",
  "caliptra-mcu-registers-generated",
  "mcu-caliptra-api",

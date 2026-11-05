@@ -1090,9 +1090,6 @@ name = "caliptra-mcu-cert-store"
 version = "0.1.0"
 dependencies = [
  "caliptra-mcu-common-commands",
- "caliptra-mcu-libsyscall-caliptra",
- "caliptra-mcu-libtock_platform",
- "caliptra-mcu-libtock_unittest",
  "caliptra-mcu-measurement-api",
  "caliptra-mcu-runtime-userspace-error",
  "futures",
@@ -1884,6 +1881,7 @@ version = "0.1.0"
 dependencies = [
  "caliptra-api",
  "caliptra-image-types",
+ "caliptra-mcu-flash-image",
  "caliptra-mcu-hw-revision",
  "caliptra-mcu-registers-generated",
  "mcu-caliptra-api",
@@ -2427,9 +2425,6 @@ version = "0.1.0"
 dependencies = [
  "caliptra-mcu-attestation-evidence",
  "caliptra-mcu-cert-store",
- "caliptra-mcu-libsyscall-caliptra",
- "caliptra-mcu-libtock_platform",
- "caliptra-mcu-libtock_unittest",
  "caliptra-mcu-measurement-api",
  "caliptra-mcu-runtime-userspace-error",
  "caliptra-mcu-scratch-alloc",
