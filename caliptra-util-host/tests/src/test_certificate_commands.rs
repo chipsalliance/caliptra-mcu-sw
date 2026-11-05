@@ -3,13 +3,15 @@
 use crate::common::MockMailbox;
 use caliptra_mcu_core_util_host_command_types::attestation::{AsymAlgo, PkiEntitySlot};
 use caliptra_mcu_core_util_host_command_types::certificate::{
-    ProvisionIdevCertMode, ECDSA384_SIGNATURE_SIZE, MAX_DPE_SIGNER_SIGN_DATA_SIZE,
+    AuthSetCertChainRequest, ProvisionIdevCertMode, ECDSA384_SIGNATURE_SIZE,
+    MAX_DPE_SIGNER_SIGN_DATA_SIZE,
 };
 use caliptra_mcu_core_util_host_transport::{Mailbox, MailboxDriver, Transport};
 use caliptra_util_host_commands::api::certificate::{
-    caliptra_cmd_dpe_signer_context_cert, caliptra_cmd_dpe_signer_context_sign,
-    caliptra_cmd_get_cert_chain, caliptra_cmd_get_cert_chain_info,
-    caliptra_cmd_provision_idevid_cert, caliptra_cmd_set_cert_chain,
+    caliptra_cmd_auth_set_cert_chain, caliptra_cmd_dpe_signer_context_cert,
+    caliptra_cmd_dpe_signer_context_sign, caliptra_cmd_get_cert_chain,
+    caliptra_cmd_get_cert_chain_info, caliptra_cmd_provision_idevid_cert,
+    caliptra_cmd_set_cert_chain,
 };
 use caliptra_util_host_session::CaliptraSession;
 
@@ -64,6 +66,22 @@ fn certificate_chain_commands_round_trip_through_session() {
         )
         .expect("ProvisionIdevCert failed");
         assert_eq!(prov_resp.common.fips_status, 0);
+
+        let auth_req = AuthSetCertChainRequest {
+            pki_entity_slot: PkiEntitySlot::Owner as u32,
+            algorithm: AsymAlgo::EccP384 as u32,
+            total_size: 16,
+            expected_sha384: [0x5Au8; 48],
+            metadata: Default::default(),
+            nonce: [0x11; 48],
+            ecc_pub_x: [0x22; 48],
+            ecc_pub_y: [0x33; 48],
+            mldsa_pub: [0x44; 2592],
+            sig: Default::default(),
+        };
+        let auth_resp =
+            caliptra_cmd_auth_set_cert_chain(session, &auth_req).expect("AuthSetCertChain failed");
+        assert_eq!(auth_resp.common.fips_status, 0);
     });
 }
 

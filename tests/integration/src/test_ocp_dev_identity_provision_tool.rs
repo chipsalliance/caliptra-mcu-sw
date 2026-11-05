@@ -10,7 +10,8 @@
 
 #[cfg(test)]
 mod test {
-    use crate::test::{finish_runtime_hw_model, start_runtime_hw_model, TestParams, TEST_LOCK};
+    use crate::runtime::start_command_authorized_runtime;
+    use crate::test::{finish_runtime_hw_model, TestParams, TEST_LOCK};
     use caliptra_mcu_hw_model::McuHwModel;
     use caliptra_mcu_testing_common::i3c::DynamicI3cAddress;
     use caliptra_mcu_testing_common::i3c_socket::BufferedStream;
@@ -103,7 +104,7 @@ mod test {
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, Ordering::Relaxed);
 
-        let mut hw = start_runtime_hw_model(TestParams {
+        let mut hw = start_command_authorized_runtime(TestParams {
             feature: Some(FIRMWARE_FEATURE),
             i3c_port: Some(PortPicker::new().pick().unwrap()),
             use_strap_secrets: true,
