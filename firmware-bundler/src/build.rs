@@ -268,6 +268,7 @@ impl<'a> BuildPass<'a> {
             .arg(&self.manifest.platform.tuple)
             .arg("--target-dir")
             .arg(&self.target_dir)
+            .env("CARGO_TARGET_DIR", std::path::absolute(&self.target_dir)?)
             .arg("--profile")
             .arg(&self.profile);
 
@@ -282,6 +283,9 @@ impl<'a> BuildPass<'a> {
         if app.name == "user-app" {
             if let Some(level) = user_app_defmt_log_level(features) {
                 cmd.env("DEFMT_LOG", level);
+            }
+            if let Some(fingerprint) = &self.build_args.user_app_config_fingerprint {
+                cmd.env("MCU_USER_APP_CONFIG_FINGERPRINT", fingerprint);
             }
         }
 
