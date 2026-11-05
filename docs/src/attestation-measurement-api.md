@@ -99,13 +99,14 @@ On `FW_HITLESS_UPD_RESET`, the stores are not reset or reinitialized. Boot initi
 
 The image loader handles flash/PLDM retrieval and `SET_OWNER_AUTH_MANIFEST` installation; the Measurement API manages the resulting measurement state:
 
-1. Boot initialization measures the Vendor Authorization Key (`0x4`) when configured in `MCAM`.
+1. Boot initialization measures the Vendor Authorization Key (`0x4`) under `MCU_RT` (`0x2`) when configured in `MCAM`.
 2. The loader installs the Owner Authorization Manifest via `SET_OWNER_AUTH_MANIFEST`, authenticates the Owner Measurement Policy (`0x5`) against `GET_IMAGE_INFO(0x5).digest`, and attaches it with `validate_and_set_owner_policy()`.
-3. The loader records the control chain in order via `measure_owsm()`, `measure_owner_measurement_policy()`, and `measure_owner_auth_key()`:
+3. The loader records the Owner control chain in a separate branch rooted at `MCU_RT` (`0x2`) via `measure_owsm()`, `measure_owner_measurement_policy()`, and `measure_owner_auth_key()`:
 
 ```text
-MCU_RT (0x2) -> Vendor Auth Key (0x4) -> OWSM (0x3)
-            -> Owner Measurement Policy (0x5) -> Owner Auth Key (0x6)
+MCU_RT (0x2)
+  ├── Vendor+Owner branch: Vendor Auth Key (0x4) -> Base/Vendor+Owner SoC TCB components
+  └── Owner branch:        OWSM (0x3) -> Owner Measurement Policy (0x5) -> Owner Auth Key (0x6) -> Owner SoC TCB components
 ```
 
 On hitless update, `measure_owner_measurement_policy()` runs **before** updating `OWSM` or the Owner Authorization Key and verifies that the policy digest matches the preserved DPE measurement:
@@ -190,7 +191,7 @@ sequenceDiagram
         Mailbox-->>MApi: Authorization result
 
         alt SoC TCB component
-            MApi->>DpeStore: READ_LEAF_RECORD
+            MApi->>DpeStore: READ_RECORD(branch_parent_fw_id)
             DpeStore-->>MApi: parent DPE record
             MApi->>Mailbox: DeriveContext(parent_handle, tci_type=fw_id, measurement, RETAIN_PARENT_CONTEXT)
             Mailbox-->>MApi: child_handle, rotated_parent_handle
@@ -208,7 +209,7 @@ sequenceDiagram
     end
 ```
 
-SoC TCB derivations use the active leaf as the parent, update the parent handle, append and tag the child record, and mark the attestation target when configured. SoC non-TCB components create a Software PCR record (failing if one already exists during initial load). PCR31 is extended after authorization and store updates succeed; any post-command persistence failure transitions the API to `Error`.
+SoC TCB derivations use the active leaf of the component's branch (Vendor+Owner or Owner) as the parent, update the parent handle, append and tag the child record, and mark the attestation target when configured. SoC non-TCB components create a Software PCR record (failing if one already exists during initial load). PCR31 is extended after authorization and store updates succeed; any post-command persistence failure transitions the API to `Error`.
 
 ## SoC component update
 

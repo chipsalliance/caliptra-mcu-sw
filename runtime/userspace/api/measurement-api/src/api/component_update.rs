@@ -336,15 +336,15 @@ mod tests {
     #[test]
     fn tcb_records_with_updated_handles_for_owsm() {
         let parent = DpeHandleRecord {
-            fw_id: V_AUTH_KEY_ID,
-            parent_fw_id: Some(MCU_RT_FW_ID),
+            fw_id: MCU_RT_FW_ID,
+            parent_fw_id: None,
             context_handle: [0x11; 16],
-            tci_tag: V_AUTH_KEY_ID,
+            tci_tag: MCU_RT_FW_ID,
             flags: 0,
         };
         let component = DpeHandleRecord {
             fw_id: OWSM_FW_ID,
-            parent_fw_id: Some(V_AUTH_KEY_ID),
+            parent_fw_id: Some(MCU_RT_FW_ID),
             context_handle: [0x22; 16],
             tci_tag: OWSM_FW_ID,
             flags: 0,
@@ -359,9 +359,9 @@ mod tests {
 
         assert_eq!(updated_parent.context_handle, [0x66; 16]);
         assert_eq!(updated_component.context_handle, [0x55; 16]);
-        assert_eq!(updated_parent.fw_id, V_AUTH_KEY_ID);
+        assert_eq!(updated_parent.fw_id, MCU_RT_FW_ID);
         assert_eq!(updated_component.fw_id, OWSM_FW_ID);
-        assert_eq!(updated_component.parent_fw_id, Some(V_AUTH_KEY_ID));
+        assert_eq!(updated_component.parent_fw_id, Some(MCU_RT_FW_ID));
         assert_eq!(updated_component.tci_tag, OWSM_FW_ID);
     }
 
