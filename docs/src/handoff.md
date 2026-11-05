@@ -26,7 +26,10 @@ the ROM and Runtime layouts identical across feature combinations.
 
 ## Validation and Versioning
 
-Runtime accepts a handoff only when the marker and major version match. A
+Runtime accepts a handoff only when the marker and major version match. Runtime
+code must reach `HANDOFF` through `HandoffData::get()` (or `HandOff::new()`, which
+calls it): its volatile header read keeps LTO from folding the ROM-written table to
+its zero initializer in builds where nothing else uses the table's address. A
 consumer of a field added in a later minor version must also verify that the
 producer's minor version includes that field and validate any field-specific
 validity marker.

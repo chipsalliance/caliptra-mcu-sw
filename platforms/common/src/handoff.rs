@@ -40,22 +40,12 @@ impl HandOff<ReadOnly> {
     /// Read handoff data from DCCM
     /// This returns a read-only handle to the static handoff data.
     pub fn new() -> Option<Self> {
-        // Safety: Linker MUST place this static object in the `.handoff` section.
-        let data = unsafe { &mut *addr_of_mut!(caliptra_mcu_romtime::handoff::HANDOFF) };
         caliptra_mcu_romtime::println!(
             "[mcu-runtime] Checking handoff at {:p}",
             addr_of!(caliptra_mcu_romtime::handoff::HANDOFF)
         );
-        if data.rom.fht_marker != caliptra_mcu_romtime::handoff::FHT_MARKER {
-            return None;
-        }
-        if data.rom.fht_major_ver != caliptra_mcu_romtime::handoff::FHT_MAJOR_VERSION {
-            caliptra_mcu_romtime::println!(
-                "[mcu-runtime] ERROR: Invalid handoff major version: {}",
-                data.rom.fht_major_ver
-            );
-            return None;
-        }
+        // `HandoffData::get()` validates the marker and major version with volatile reads.
+        HandoffData::get()?;
         Some(Self {
             _access: PhantomData,
         })
