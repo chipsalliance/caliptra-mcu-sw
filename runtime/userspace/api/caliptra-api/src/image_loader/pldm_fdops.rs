@@ -61,37 +61,58 @@ impl<'a, D: DMAMapping> StreamingFdOps<'a, D> {
             source: DMASource::Address(source_address),
             dest_addr: load_address + offset as u64,
         };
-        dma_syscall.xfer(&transaction).await.unwrap();
+        dma_syscall
+            .xfer(&transaction)
+            .await
+            .map_err(|_| pldm_errors::FW_DOWNLOAD_ERROR)?;
 
         Ok(())
     }
 
     async fn copy_data_to_buffer(&self, _offset: usize, data: &[u8]) -> McuResult<()> {
         let state = PLDM_STATE.lock(|state| *state.borrow());
-        let dma_params = DOWNLOAD_CTX.lock(|ctx| {
+        let dma_params = DOWNLOAD_CTX.lock(|ctx| -> McuResult<Option<(AXIAddr, usize)>> {
             let mut ctx = ctx.borrow_mut();
             let start = ctx.current_offset - ctx.initial_offset;
 
             if state == State::DownloadingHeader {
                 ctx.total_downloaded += data.len();
                 let end = (start + data.len()).min(ctx.header.len());
-                ctx.header[start..end].copy_from_slice(&data[..end - start]);
+                let dst = ctx
+                    .header
+                    .get_mut(start..end)
+                    .ok_or(pldm_errors::FW_DOWNLOAD_ERROR)?;
+                for (out, byte) in dst.iter_mut().zip(data) {
+                    *out = *byte;
+                }
             } else if state == State::DownloadingToc {
                 ctx.total_downloaded += data.len();
                 let end = (start + data.len()).min(ctx.image_info.len());
-                ctx.image_info[start..end].copy_from_slice(&data[..end - start]);
+                let dst = ctx
+                    .image_info
+                    .get_mut(start..end)
+                    .ok_or(pldm_errors::FW_DOWNLOAD_ERROR)?;
+                for (out, byte) in dst.iter_mut().zip(data) {
+                    *out = *byte;
+                }
             } else if state == State::DownloadingImage {
                 ctx.total_downloaded += data.len();
-                return Some((ctx.load_address, start));
+                return Ok(Some((ctx.load_address, start)));
             } else if state == State::DownloadingPayload {
                 let bytes_to_copy = data.len().min(ctx.total_length - ctx.total_downloaded);
                 let end = start + bytes_to_copy;
-                ctx.payload[start..end].copy_from_slice(&data[..bytes_to_copy]);
+                let dst = ctx
+                    .payload
+                    .get_mut(start..end)
+                    .ok_or(pldm_errors::FW_DOWNLOAD_ERROR)?;
+                for (out, byte) in dst.iter_mut().zip(data) {
+                    *out = *byte;
+                }
                 ctx.total_downloaded += bytes_to_copy;
             }
 
-            None
-        });
+            Ok(None)
+        })?;
         if let Some(dma_params) = dma_params {
             return self
                 .copy_buffer_to_load_address(dma_params.0, dma_params.1, data, self.dma_mapping)

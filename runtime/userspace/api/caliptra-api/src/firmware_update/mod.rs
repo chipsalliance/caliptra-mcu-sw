@@ -56,8 +56,9 @@ async fn read_flash_header(
 ) -> Result<FlashHeader, ErrorCode> {
     let mut bytes = [0; MAX_FLASH_HEADER_SIZE];
     let read_len = image_len.min(bytes.len());
-    staging_memory.read(0, &mut bytes[..read_len]).await?;
-    FlashHeader::parse(&bytes[..read_len]).map_err(|error| {
+    let bytes = bytes.get_mut(..read_len).ok_or(ErrorCode::Size)?;
+    staging_memory.read(0, bytes).await?;
+    FlashHeader::parse(bytes).map_err(|error| {
         console_writeln!(
             Console::<DefaultSyscalls>::writer(),
             "[FW Upd] Invalid flash header: {:?}",
