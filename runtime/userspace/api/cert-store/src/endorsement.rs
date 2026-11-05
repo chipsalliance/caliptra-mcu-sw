@@ -162,10 +162,6 @@ impl<S: EndorsementStorage> CertSlot<S> {
         }
     }
 
-    pub(crate) fn configured_key_pair_id(&self) -> Option<u8> {
-        self.key_pair_id
-    }
-
     #[cfg(any(test, feature = "set-certificate"))]
     pub(crate) fn write_in_progress(&self, algo: CertificateAlgorithm) -> bool {
         self.state(algo).write_in_progress.load(Ordering::Relaxed)
@@ -218,7 +214,7 @@ impl<S: EndorsementStorage> CertSlot<S> {
 
     #[inline]
     fn state(&self, algo: CertificateAlgorithm) -> &AlgoSlotState {
-        &self.algo_state[(algo as usize) - 1]
+        &self.algo_state[algo.index()]
     }
 }
 

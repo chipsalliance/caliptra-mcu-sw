@@ -84,6 +84,7 @@ release = [
 	"kernel/no_debug_panics",
 	"caliptra-mcu-romtime/no-print",
 ]
+vendor-certs-oob = []
 hw-2-1 = []
 # Example app test features
 test-caliptra-certs = []

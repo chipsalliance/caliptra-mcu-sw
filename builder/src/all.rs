@@ -336,6 +336,20 @@ fn pre_generate_attestation_manifest_config_to_target_dir(
     )
 }
 
+pub(crate) fn generated_user_app_config_fingerprint(target_dir: &Path) -> Result<String> {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut fingerprint = String::new();
+    for file_name in ["attestation_manifest.toml", "soc_image_descriptors.toml"] {
+        let bytes = std::fs::read(target_dir.join("generated").join(file_name))?;
+        for byte in bytes {
+            fingerprint.push(HEX[(byte >> 4) as usize] as char);
+            fingerprint.push(HEX[(byte & 0x0f) as usize] as char);
+        }
+        fingerprint.push('-');
+    }
+    Ok(fingerprint)
+}
+
 #[derive(Default)]
 pub struct FirmwareBinaries {
     pub caliptra_rom: Vec<u8>,
@@ -812,6 +826,8 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         effective_model,
         effective_soc_images.as_deref().unwrap_or(&[]),
     )?;
+    let base_user_app_config_fingerprint =
+        generated_user_app_config_fingerprint(&crate::target_dir())?;
 
     let base_runtime_file = tempfile::NamedTempFile::new().unwrap();
     let base_runtime_path = base_runtime_file.path().to_str().unwrap();
@@ -844,6 +860,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
         platform: Some(platform),
         profile,
         no_default_features: base_no_default,
+        user_app_config_fingerprint: Some(base_user_app_config_fingerprint),
         ..Default::default()
     })?;
     let user_app_profile = profile.unwrap_or("devel");
@@ -995,7 +1012,9 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
 
     let test_runtimes: Result<Vec<FeatureTestResource>> = maybe_par_iter(&separate_features)
         .map(|feature| {
-            let target_dir = if cfg!(feature = "parallel-build") {
+            let target_dir = if cfg!(feature = "parallel-build")
+                || FEATURES_REQUIRING_SOC_IMAGES.contains(feature)
+            {
                 Some(crate::target_dir().join(format!("target-runtime-{}", feature)))
             } else {
                 None
@@ -1042,6 +1061,8 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                 effective_model,
                 feature_soc_images.as_deref().unwrap_or(&[]),
             )?;
+            let user_app_config_fingerprint =
+                generated_user_app_config_fingerprint(&generated_target_dir)?;
 
             let feature_str = if is_release && !feature.contains("release") {
                 format!("{},release", feature)
@@ -1056,6 +1077,7 @@ pub fn all_build(args: AllBuildArgs) -> Result<()> {
                 profile,
                 target_dir: target_dir.clone(),
                 no_default_features: true,
+                user_app_config_fingerprint: Some(user_app_config_fingerprint),
                 ..Default::default()
             })?;
 
@@ -1693,6 +1715,37 @@ fn get_default_pldm_fw_manifest(dev_uuid: &[u8], image: &[u8]) -> FirmwareManife
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn generated_config_fingerprint_tracks_both_inputs_without_mtime_changes() {
+        let target_dir = tempfile::tempdir().unwrap();
+        pre_generate_attestation_manifest_config_to_target_dir(
+            target_dir.path(),
+            "vendor",
+            "model",
+            &[],
+        )
+        .unwrap();
+        let mut fingerprint = generated_user_app_config_fingerprint(target_dir.path()).unwrap();
+
+        for file_name in ["attestation_manifest.toml", "soc_image_descriptors.toml"] {
+            let path = target_dir.path().join("generated").join(file_name);
+            let modified = std::fs::metadata(&path).unwrap().modified().unwrap();
+            let mut contents = std::fs::read(&path).unwrap();
+            contents.extend_from_slice(b"\n# changed input\n");
+            std::fs::write(&path, contents).unwrap();
+            std::fs::File::options()
+                .write(true)
+                .open(&path)
+                .unwrap()
+                .set_modified(modified)
+                .unwrap();
+
+            let updated = generated_user_app_config_fingerprint(target_dir.path()).unwrap();
+            assert_ne!(fingerprint, updated, "{file_name}");
+            fingerprint = updated;
+        }
+    }
 
     #[test]
     fn attestation_soc_image_ids_do_not_overlap_reserved_components() {

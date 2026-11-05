@@ -59,8 +59,30 @@ pub fn runtime_build_with_apps(args: &CaliptraBuildArgs) -> Result<PathBuf> {
     let example_app = args.example_app;
     let platform = args.platform;
     let svn = args.svn;
-    let target_dir = args.target_dir.clone();
+    // Keep generated configuration and nested Cargo builds in the same directory.
+    let target_dir =
+        std::path::absolute(args.target_dir.clone().unwrap_or_else(crate::target_dir))?;
     let profile = args.profile.unwrap_or("devel").to_string();
+    let user_app_config_fingerprint = if args.user_app_config_fingerprint.is_some() {
+        args.user_app_config_fingerprint.clone()
+    } else {
+        if !["attestation_manifest.toml", "soc_image_descriptors.toml"]
+            .iter()
+            .all(|name| target_dir.join("generated").join(name).exists())
+        {
+            crate::attestation_manifest::write_config_to_target_dir(
+                &target_dir,
+                args.vendor.as_deref().unwrap_or("ChipsAlliance"),
+                args.model.as_deref().unwrap_or("Caliptra-SS"),
+                args.soc_images.as_deref().unwrap_or(&[]),
+                "runtime_build_with_apps",
+                "Pre-generated",
+            )?;
+        }
+        Some(crate::all::generated_user_app_config_fingerprint(
+            &target_dir,
+        )?)
+    };
 
     let manifest = manifest_file_for_profile(platform, example_app, args.profile)?;
     let platform_str = platform.unwrap_or("emulator");
@@ -69,7 +91,7 @@ pub fn runtime_build_with_apps(args: &CaliptraBuildArgs) -> Result<PathBuf> {
     let common = Common {
         manifest,
         svn,
-        target_dir,
+        target_dir: Some(target_dir),
         profile,
         ..Default::default()
     };
@@ -89,6 +111,7 @@ pub fn runtime_build_with_apps(args: &CaliptraBuildArgs) -> Result<PathBuf> {
             runtime_features,
             no_default_features: args.no_default_features,
             skip_rom: true,
+            user_app_config_fingerprint,
             ..Default::default()
         },
         bundle: BundleArgs {

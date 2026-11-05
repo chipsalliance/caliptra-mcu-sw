@@ -66,6 +66,7 @@ release = [
 	"kernel/no_debug_panics",
 	"caliptra-mcu-romtime/no-print",
 ]
+vendor-certs-oob = []
 test-caliptra-certs = []
 test-get-caliptra-idev-csr = []
 test-caliptra-crypto = []

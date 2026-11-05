@@ -66,6 +66,7 @@ fn main() {
     println!("cargo:rerun-if-env-changed=CARGO_FEATURE_USERSPACE_LOG");
     println!("cargo:rerun-if-env-changed=CARGO_FEATURE_TEST_DEFMT_LOGGING_MAILBOX");
     println!("cargo:rerun-if-env-changed=CARGO_FEATURE_TEST_DEFMT_LOGGING_VDM");
+    println!("cargo:rerun-if-env-changed=MCU_USER_APP_CONFIG_FINGERPRINT");
     if env::var_os("CARGO_FEATURE_USERSPACE_LOG").is_some()
         && env::var("CARGO_CFG_TARGET_ARCH").as_deref() == Ok("riscv32")
     {
