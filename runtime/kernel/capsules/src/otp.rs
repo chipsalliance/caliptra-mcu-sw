@@ -198,6 +198,14 @@ impl Otp {
         }
     }
 
+    fn read_u32(buffer: &[u8], offset: usize) -> Result<u32, ErrorCode> {
+        buffer
+            .get(offset..)
+            .and_then(|bytes| bytes.first_chunk::<4>())
+            .map(|bytes| u32::from_le_bytes(*bytes))
+            .ok_or(ErrorCode::FAIL)
+    }
+
     fn read_reg(&self, processid: ProcessId) -> CommandReturn {
         match self.apps.enter(processid, |app, _| match app.reg_offset {
             // TODO: investigate using a cache instead of the actual fuses to reduce wear and
@@ -248,9 +256,10 @@ impl Otp {
                     Err(_) => return CommandReturn::failure(ErrorCode::FAIL),
                 };
                 let offset = app.reg_index as usize * 4;
-                CommandReturn::success_u32(u32::from_le_bytes(
-                    svn[offset..offset + 4].try_into().unwrap(),
-                ))
+                match Self::read_u32(&svn, offset) {
+                    Ok(value) => CommandReturn::success_u32(value),
+                    Err(error) => CommandReturn::failure(error),
+                }
             }
             reg::SOC_MANIFEST_SVN => {
                 let svn_fuses = OTP_CPTRA_CORE_SOC_MANIFEST_SVN;
@@ -264,9 +273,10 @@ impl Otp {
                     Err(_) => return CommandReturn::failure(ErrorCode::FAIL),
                 };
                 let offset = app.reg_index as usize * 4;
-                CommandReturn::success_u32(u32::from_le_bytes(
-                    svn[offset..offset + 4].try_into().unwrap(),
-                ))
+                match Self::read_u32(&svn, offset) {
+                    Ok(value) => CommandReturn::success_u32(value),
+                    Err(error) => CommandReturn::failure(error),
+                }
             }
             reg::SOC_MANIFEST_MAX_SVN => {
                 if app.reg_index != 0 {
@@ -333,9 +343,10 @@ impl Otp {
                 }
 
                 let offset = app.reg_index as usize * 4;
-                CommandReturn::success_u32(u32::from_le_bytes(
-                    hash[offset..offset + 4].try_into().unwrap(),
-                ))
+                match Self::read_u32(&hash, offset) {
+                    Ok(value) => CommandReturn::success_u32(value),
+                    Err(error) => CommandReturn::failure(error),
+                }
             }
             reg::VENDOR_ECC_REVOCATION => {
                 match self
@@ -874,5 +885,30 @@ impl Otp {
             Ok(Err(e)) => CommandReturn::failure(e),
             Err(e) => CommandReturn::failure(e.into()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn read_u32_rejects_missing_backing_bytes() {
+        for (buffer, offset) in [
+            (&[][..], 0),
+            (&[1, 2, 3][..], 0),
+            (&[1, 2, 3, 4][..], 1),
+            (&[1, 2, 3, 4][..], 4),
+            (&[1, 2, 3, 4][..], usize::MAX),
+        ] {
+            assert_eq!(Otp::read_u32(buffer, offset), Err(ErrorCode::FAIL));
+        }
+    }
+
+    #[test]
+    fn read_u32_preserves_little_endian_word_offsets() {
+        let buffer = [0x78, 0x56, 0x34, 0x12, 0xef, 0xcd, 0xab, 0x90];
+        assert_eq!(Otp::read_u32(&buffer, 0), Ok(0x1234_5678));
+        assert_eq!(Otp::read_u32(&buffer, 4), Ok(0x90ab_cdef));
     }
 }
