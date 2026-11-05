@@ -160,7 +160,7 @@ At system startup, Caliptra MCU coordinates authorization, loading, and measurem
          │
  3. Install & Measure Owner SoC Manifest (OWSM)
     ├── Caliptra Core verifies Owner Auth Manifest signature via SET_OWNER_AUTH_MANIFEST
-    └── MCU extends Owner SoC Manifest preamble to DPE (creating OWSM context)
+    └── MCU extends Owner SoC Manifest preamble under MCU_RT context (creating OWSM branch context)
          │
  4. Load, Authorize & Measure Owner Measurement Policy (0x00000005)
     ├── Fetch Component 0x5 from [Flash TOC](./flash_layout.md) / PLDM package
@@ -173,12 +173,12 @@ At system startup, Caliptra MCU coordinates authorization, loading, and measurem
  6. Load Base Firmware Images
     └── For each fw_id in SOC_IMAGE_LOAD_LIST:
         ├── Authorize via Caliptra Core (Base SoC Manifest with SKIP_STASH)
-        └── Record DPE / Software PCR measurement; extend PCR31
+        └── Record DPE (under Vendor+Owner branch) / Software PCR measurement; extend PCR31
          │
  7. Load Owner Firmware Images
     └── For each fw_id in Owner SoC Image Load List (MOLL):
         ├── Authorize via Caliptra Core (Owner SoC Manifest with SKIP_STASH)
-        └── Record DPE / Software PCR measurement; extend PCR31
+        └── Record DPE (under Owner branch) / Software PCR measurement; extend PCR31
 ```
 
 ---
