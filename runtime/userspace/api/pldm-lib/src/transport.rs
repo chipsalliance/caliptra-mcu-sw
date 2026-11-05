@@ -43,7 +43,10 @@ impl MctpTransport {
     }
 
     pub async fn send_request(&mut self, dest_eid: u8, req: &[u8]) -> McuResult<()> {
-        let mctp_hdr = MctpCommonHeader(req[MCTP_COMMON_HEADER_OFFSET]);
+        let mctp_hdr = MctpCommonHeader(
+            *req.get(MCTP_COMMON_HEADER_OFFSET)
+                .ok_or(errors::BUFFER_TOO_SMALL)?,
+        );
         if mctp_hdr.ic() != 0 || mctp_hdr.msg_type() != MCTP_PLDM_MSG_TYPE {
             Err(errors::UNEXPECTED_MESSAGE_TYPE)?;
         }
@@ -76,7 +79,10 @@ impl MctpTransport {
         }
 
         // Check common header
-        let mctp_hdr = MctpCommonHeader(rsp[MCTP_COMMON_HEADER_OFFSET]);
+        let mctp_hdr = MctpCommonHeader(
+            *rsp.get(MCTP_COMMON_HEADER_OFFSET)
+                .ok_or(errors::BUFFER_TOO_SMALL)?,
+        );
         if mctp_hdr.ic() != 0 || mctp_hdr.msg_type() != MCTP_PLDM_MSG_TYPE {
             Err(errors::UNEXPECTED_MESSAGE_TYPE)?;
         }
@@ -99,7 +105,10 @@ impl MctpTransport {
         }
 
         // Check common header
-        let mctp_hdr = MctpCommonHeader(req[MCTP_COMMON_HEADER_OFFSET]);
+        let mctp_hdr = MctpCommonHeader(
+            *req.get(MCTP_COMMON_HEADER_OFFSET)
+                .ok_or(errors::BUFFER_TOO_SMALL)?,
+        );
         if mctp_hdr.ic() != 0 || mctp_hdr.msg_type() != MCTP_PLDM_MSG_TYPE {
             Err(errors::UNEXPECTED_MESSAGE_TYPE)?;
         }
@@ -111,7 +120,11 @@ impl MctpTransport {
     }
 
     pub async fn send_response(&mut self, resp: &[u8]) -> McuResult<()> {
-        let mctp_hdr = MctpCommonHeader(resp[MCTP_COMMON_HEADER_OFFSET]);
+        let mctp_hdr = MctpCommonHeader(
+            *resp
+                .get(MCTP_COMMON_HEADER_OFFSET)
+                .ok_or(errors::BUFFER_TOO_SMALL)?,
+        );
         if mctp_hdr.ic() != 0 || mctp_hdr.msg_type() != MCTP_PLDM_MSG_TYPE {
             Err(errors::UNEXPECTED_MESSAGE_TYPE)?;
         }
@@ -134,6 +147,43 @@ impl MctpTransport {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures::executor::block_on;
+
+    #[test]
+    fn empty_sends_reject_before_transport_and_preserve_contexts() {
+        let mut transport = MctpTransport::new(1);
+        transport.cur_req_ctx = Some(MessageInfo { eid: 9, tag: 1 });
+        transport.cur_resp_ctx = Some(MessageInfo { eid: 10, tag: 2 });
+
+        assert_eq!(
+            block_on(transport.send_request(11, &[])),
+            Err(errors::BUFFER_TOO_SMALL)
+        );
+        assert_eq!(
+            block_on(transport.send_response(&[])),
+            Err(errors::BUFFER_TOO_SMALL)
+        );
+        assert_eq!(
+            transport
+                .cur_req_ctx
+                .as_ref()
+                .map(|info| (info.eid, info.tag)),
+            Some((9, 1))
+        );
+        assert_eq!(
+            transport
+                .cur_resp_ctx
+                .as_ref()
+                .map(|info| (info.eid, info.tag)),
+            Some((10, 2))
+        );
+
+        transport.cur_req_ctx = None;
+        assert_eq!(
+            block_on(transport.receive_response(&mut [])),
+            Err(errors::RESPONSE_NOT_EXPECTED)
+        );
+    }
 
     #[test]
     fn ua_eid_is_shared_across_transport_instances() {

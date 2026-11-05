@@ -353,8 +353,14 @@ async fn run_optimized_download(
     session.mark_sent(cmd_interface.now(), FwUpdateCmd::RequestFirmwareData as u8);
 
     // Send request
+    let msg_len = msg_len
+        .checked_add(MCTP_PLDM_MSG_HDR_LEN)
+        .ok_or(errors::BUFFER_TOO_SMALL)?;
     transport
-        .send_request(ua_eid, &msg_buffer[..msg_len + MCTP_PLDM_MSG_HDR_LEN])
+        .send_request(
+            ua_eid,
+            msg_buffer.get(..msg_len).ok_or(errors::BUFFER_TOO_SMALL)?,
+        )
         .await
         .map_err(|_| errors::TRANSPORT_ERROR)?;
 
