@@ -22,7 +22,7 @@ pub const MCTP_BASELINE_TRANSMISSION_UNIT: usize = 64;
 
 // Maximum number of message types this stack can advertise. The MCTP mux
 // filters this list based on the board's registered MCTP driver capsules.
-pub const MCTP_NUM_MSG_TYPES_SUPPORTED: usize = 5;
+pub const MCTP_NUM_MSG_TYPES_SUPPORTED: usize = MCTP_DISCOVERABLE_MSG_TYPES.len() + 1;
 pub const MCTP_DISCOVERABLE_MSG_TYPES: [MessageType; 4] = [
     MessageType::Pldm,
     MessageType::Spdm,
@@ -111,11 +111,13 @@ pub fn supported_msg_types(
     supported[count] = MessageType::MctpControl;
     count += 1;
 
-    for msg_type in MCTP_DISCOVERABLE_MSG_TYPES {
-        if is_registered(msg_type) {
-            supported[count] = msg_type;
-            count += 1;
-        }
+    for (destination, msg_type) in supported.iter_mut().skip(1).zip(
+        MCTP_DISCOVERABLE_MSG_TYPES
+            .into_iter()
+            .filter(|msg_type| is_registered(*msg_type)),
+    ) {
+        *destination = msg_type;
+        count += 1;
     }
 
     (supported, count)
