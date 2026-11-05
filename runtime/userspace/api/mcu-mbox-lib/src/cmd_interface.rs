@@ -204,7 +204,7 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer> CmdInterface<'a, H, A> {
 
         let mut resp_buf = match self
             .scratch
-            .alloc_bytes(response_buffer_size::<H>(cmd_id, &req_buf[..req_len]))
+            .alloc_bytes(response_buffer_size::<H>(cmd_id, &req_buf))
         {
             Ok(buf) => buf,
             Err(err) => {
