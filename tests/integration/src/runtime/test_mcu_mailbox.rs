@@ -10,12 +10,13 @@ use caliptra_api::{
 use caliptra_image_types::MLDSA87_SIGNATURE_BYTE_SIZE;
 use caliptra_mcu_hw_model::{DefaultHwModel, LifecycleControllerState, McuHwModel};
 use caliptra_mcu_mbox_common::messages::{
-    CmEcdhFinishReq, CmEcdhGenerateReq, CmEcdsaPublicKeyReq, CmEcdsaSignReq, CmEcdsaVerifyReq,
-    CmImportReq, CmKeyUsage, CmMldsaPublicKeyReq, CmMldsaSignReq, CmMldsaVerifyReq, Cmk,
-    CommandId as McuCommandId, DeviceCapsReq, DeviceCapsResp, DpeSignerContextCertReq,
-    DpeSignerContextSignReq, EcdsaVerifyReq, EndorsementAlgorithm, ExportAttestedCsrReq,
-    FirmwareVersionReq, GetAttestationReq, GetAuthCmdChallengeResp, GetCertChainInfoReq,
-    GetCertChainInfoResp, GetCertChainReq, GetDpeCertChainReq, HekStatusReq, LmsVerifyReq,
+    AuthSetCertChainPayload, AuthSetCertChainReq, CmEcdhFinishReq, CmEcdhGenerateReq,
+    CmEcdsaPublicKeyReq, CmEcdsaSignReq, CmEcdsaVerifyReq, CmImportReq, CmKeyUsage,
+    CmMldsaPublicKeyReq, CmMldsaSignReq, CmMldsaVerifyReq, Cmk, CommandId as McuCommandId,
+    DeviceCapsReq, DeviceCapsResp, DpeSignerContextCertReq, DpeSignerContextSignReq,
+    EcdsaVerifyReq, EndorsementAlgorithm, ExportAttestedCsrReq, FirmwareVersionReq,
+    GetAttestationReq, GetAuthCmdChallengeResp, GetCertChainInfoReq, GetCertChainInfoResp,
+    GetCertChainReq, GetDpeCertChainReq, HekStatusReq, LmsVerifyReq,
     MailboxReqHeader as McuMailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize,
     McuCmImportReq, McuEcdhFinishReq, McuEcdhFinishResp, McuEcdhGenerateReq, McuEcdhGenerateResp,
     McuEcdsa384SigVerifyReq, McuEcdsaCmkPublicKeyReq, McuEcdsaCmkPublicKeyResp, McuEcdsaCmkSignReq,
@@ -1810,6 +1811,86 @@ fn test_fe_prog_authorized_req() -> Result<()> {
     assert!(
         result.is_ok(),
         "FE_PROG authorized request failed: {result:?}"
+    );
+
+    // Verify MC_AUTH_SET_CERT_CHAIN (0x4D41_5343) + MC_SET_CERT_CHAIN SHA-384 enforcement:
+    // 1) Owner-signed MC_AUTH_SET_CERT_CHAIN on Vendor slot (slot 0) is rejected.
+    use sha2::{Digest, Sha384};
+    let auth_endorsement = synthetic_der_cert(240, 0x44);
+    let auth_digest: [u8; 48] = Sha384::digest(&auth_endorsement).into();
+    assert!(
+        execute_authorized_req(
+            &mut hw,
+            AuthSetCertChainReq {
+                payload: AuthSetCertChainPayload {
+                    pki_entity_slot: 0, // Vendor
+                    algorithm: 1,       // ECC384
+                    total_size: auth_endorsement.len() as u32,
+                    expected_sha384: auth_digest,
+                },
+                ..Default::default()
+            }
+        )
+        .is_err(),
+        "Owner-signed MC_AUTH_SET_CERT_CHAIN must be rejected for Vendor slot"
+    );
+
+    // 2) Arm Owner slot (slot 1) with expected (total_size, expected_sha384).
+    let arm_owner_req = AuthSetCertChainReq {
+        payload: AuthSetCertChainPayload {
+            pki_entity_slot: 1, // Owner
+            algorithm: 1,       // ECC384
+            total_size: auth_endorsement.len() as u32,
+            expected_sha384: auth_digest,
+        },
+        ..Default::default()
+    };
+    execute_authorized_req(&mut hw, arm_owner_req)?;
+
+    // Streaming a tampered endorsement whose SHA-384 does not match the armed digest fails.
+    let mut tampered_endorsement = auth_endorsement.clone();
+    *tampered_endorsement.last_mut().unwrap() ^= 0xFF;
+    let mut tampered_set_req = SetCertChainReq {
+        pki_entity_slot: 1,
+        algorithm: 1,
+        device_key_id: 1,
+        offset: 0,
+        total_size: tampered_endorsement.len() as u32,
+        data_len: tampered_endorsement.len() as u32,
+        ..Default::default()
+    };
+    tampered_set_req.cert_data[..tampered_endorsement.len()].copy_from_slice(&tampered_endorsement);
+    assert_mcu_req_fails(&mut hw, McuMailboxReq::SetCertChain(tampered_set_req));
+
+    // Re-arm and stream the matching endorsement chain -> succeeds and commits to flash.
+    execute_authorized_req(
+        &mut hw,
+        AuthSetCertChainReq {
+            payload: AuthSetCertChainPayload {
+                pki_entity_slot: 1,
+                algorithm: 1,
+                total_size: auth_endorsement.len() as u32,
+                expected_sha384: auth_digest,
+            },
+            ..Default::default()
+        },
+    )?;
+    let mut valid_set_req = SetCertChainReq {
+        pki_entity_slot: 1,
+        algorithm: 1,
+        device_key_id: 1,
+        offset: 0,
+        total_size: auth_endorsement.len() as u32,
+        data_len: auth_endorsement.len() as u32,
+        ..Default::default()
+    };
+    valid_set_req.cert_data[..auth_endorsement.len()].copy_from_slice(&auth_endorsement);
+    let set_resp = execute_raw_mcu_req(&mut hw, McuMailboxReq::SetCertChain(valid_set_req))?;
+    assert_eq!(
+        assert_fixed_response::<SetCertChainResp>(&set_resp)
+            .hdr
+            .fips_status,
+        MailboxRespHeader::FIPS_STATUS_APPROVED
     );
 
     Ok(())
