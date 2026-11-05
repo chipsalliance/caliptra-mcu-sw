@@ -350,12 +350,9 @@ impl PayloadStream for PldmMailboxPayloadStream<'_> {
         if bytes_to_read == 0 {
             return Ok(0);
         }
-        pldm_client::pldm_download_payload_chunk(
-            self.offset + self.cursor,
-            &mut buffer[..bytes_to_read],
-        )
-        .await?;
-        self.capture.record(&buffer[..bytes_to_read]);
+        let chunk = buffer.get_mut(..bytes_to_read).ok_or(ErrorCode::Size)?;
+        pldm_client::pldm_download_payload_chunk(self.offset + self.cursor, chunk).await?;
+        self.capture.record(chunk);
         self.cursor += bytes_to_read;
         Ok(bytes_to_read)
     }
@@ -472,11 +469,10 @@ impl PayloadStream for FlashMailboxPayloadStream<'_> {
         }
 
         let bytes_to_read = (self.len - (self.cursor - self.offset)).min(buffer.len());
-        self.flash
-            .read(self.cursor, bytes_to_read, &mut buffer[..bytes_to_read])
-            .await?;
+        let chunk = buffer.get_mut(..bytes_to_read).ok_or(ErrorCode::Size)?;
+        self.flash.read(self.cursor, bytes_to_read, chunk).await?;
         if let Some(capture) = &mut self.capture {
-            capture.record(&buffer[..bytes_to_read]);
+            capture.record(chunk);
         }
         self.cursor += bytes_to_read;
         Ok(bytes_to_read)

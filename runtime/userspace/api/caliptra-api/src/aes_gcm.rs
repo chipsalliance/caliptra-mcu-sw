@@ -20,6 +20,7 @@ use mcu_error::codes::{INTERNAL_BUG, INVARIANT};
 use mcu_error::McuResult;
 use zerocopy::{little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
 
+use crate::slice::{copy_bytes, internal_slice};
 use crate::types::{Cmk, CMK_SIZE};
 use crate::wire::{
     mbox_execute_in_place, pad4, populate_checksum, CMD_CM_AES_GCM_DECRYPT_FINAL,
@@ -144,6 +145,18 @@ const DECRYPT_FINAL_RSP_HDR: usize = MBOX_RESP_HEADER_SIZE + 4 + 4;
 // Internal helpers
 // ---------------------------------------------------------------------------
 
+fn response_u32(buf: &[u8], offset: usize) -> McuResult<u32> {
+    let bytes = buf
+        .get(offset..)
+        .and_then(|bytes| bytes.first_chunk::<4>())
+        .ok_or(INTERNAL_BUG)?;
+    Ok(u32::from_le_bytes(*bytes))
+}
+
+fn copy_response(buf: &[u8], offset: usize, len: usize, out: &mut [u8]) -> McuResult<()> {
+    copy_bytes(out, internal_slice(buf, offset, len)?)
+}
+
 /// Execute SPDM AES-GCM init (encrypt or decrypt variant).
 ///
 /// Returns the 128-byte encrypted context on success.
@@ -184,7 +197,7 @@ async fn spdm_init<'a, A: ScratchAlloc>(
     }
 
     let mut ctx = alloc.alloc(AES_GCM_CTX_SIZE)?;
-    ctx.copy_from_slice(&buf[MBOX_RESP_HEADER_SIZE..SPDM_INIT_RSP_SIZE]);
+    copy_response(&buf, MBOX_RESP_HEADER_SIZE, AES_GCM_CTX_SIZE, &mut ctx)?;
     Ok(ctx)
 }
 
@@ -265,12 +278,7 @@ pub async fn spdm_aes_gcm_encrypt_update<'a, A: ScratchAlloc>(
     }
 
     let ct_size_off = MBOX_RESP_HEADER_SIZE + AES_GCM_CTX_SIZE;
-    let ct_size = u32::from_le_bytes([
-        buf[ct_size_off],
-        buf[ct_size_off + 1],
-        buf[ct_size_off + 2],
-        buf[ct_size_off + 3],
-    ]) as usize;
+    let ct_size = response_u32(&buf, ct_size_off)? as usize;
     if ct_size > MAX_OUTPUT_SIZE || ct_size > out.len() {
         return Err(INVARIANT);
     }
@@ -279,10 +287,15 @@ pub async fn spdm_aes_gcm_encrypt_update<'a, A: ScratchAlloc>(
     if ct_start + ct_size > rsp_len {
         return Err(INTERNAL_BUG);
     }
-    out[..ct_size].copy_from_slice(&buf[ct_start..ct_start + ct_size]);
+    copy_response(
+        &buf,
+        ct_start,
+        ct_size,
+        out.get_mut(..ct_size).ok_or(INVARIANT)?,
+    )?;
 
     let mut new_ctx = alloc.alloc(AES_GCM_CTX_SIZE)?;
-    new_ctx.copy_from_slice(&buf[MBOX_RESP_HEADER_SIZE..MBOX_RESP_HEADER_SIZE + AES_GCM_CTX_SIZE]);
+    copy_response(&buf, MBOX_RESP_HEADER_SIZE, AES_GCM_CTX_SIZE, &mut new_ctx)?;
     Ok((ct_size, new_ctx))
 }
 
@@ -330,12 +343,7 @@ pub async fn spdm_aes_gcm_encrypt_final<A: ScratchAlloc>(
         .ok_or(INTERNAL_BUG)?;
 
     let ct_size_off = MBOX_RESP_HEADER_SIZE + 16;
-    let ct_size = u32::from_le_bytes([
-        buf[ct_size_off],
-        buf[ct_size_off + 1],
-        buf[ct_size_off + 2],
-        buf[ct_size_off + 3],
-    ]) as usize;
+    let ct_size = response_u32(&buf, ct_size_off)? as usize;
     if ct_size > MAX_OUTPUT_SIZE {
         return Err(INTERNAL_BUG);
     }
@@ -347,7 +355,12 @@ pub async fn spdm_aes_gcm_encrypt_final<A: ScratchAlloc>(
     if ct_start + ct_size > rsp_len {
         return Err(INTERNAL_BUG);
     }
-    out[..ct_size].copy_from_slice(&buf[ct_start..ct_start + ct_size]);
+    copy_response(
+        &buf,
+        ct_start,
+        ct_size,
+        out.get_mut(..ct_size).ok_or(INVARIANT)?,
+    )?;
     Ok((ct_size, tag))
 }
 
@@ -390,12 +403,7 @@ pub async fn spdm_aes_gcm_decrypt_update<'a, A: ScratchAlloc>(
     }
 
     let pt_size_off = MBOX_RESP_HEADER_SIZE + AES_GCM_CTX_SIZE;
-    let pt_size = u32::from_le_bytes([
-        buf[pt_size_off],
-        buf[pt_size_off + 1],
-        buf[pt_size_off + 2],
-        buf[pt_size_off + 3],
-    ]) as usize;
+    let pt_size = response_u32(&buf, pt_size_off)? as usize;
     if pt_size > MAX_OUTPUT_SIZE || pt_size > out.len() {
         return Err(INVARIANT);
     }
@@ -404,10 +412,15 @@ pub async fn spdm_aes_gcm_decrypt_update<'a, A: ScratchAlloc>(
     if pt_start + pt_size > rsp_len {
         return Err(INTERNAL_BUG);
     }
-    out[..pt_size].copy_from_slice(&buf[pt_start..pt_start + pt_size]);
+    copy_response(
+        &buf,
+        pt_start,
+        pt_size,
+        out.get_mut(..pt_size).ok_or(INVARIANT)?,
+    )?;
 
     let mut new_ctx = alloc.alloc(AES_GCM_CTX_SIZE)?;
-    new_ctx.copy_from_slice(&buf[MBOX_RESP_HEADER_SIZE..MBOX_RESP_HEADER_SIZE + AES_GCM_CTX_SIZE]);
+    copy_response(&buf, MBOX_RESP_HEADER_SIZE, AES_GCM_CTX_SIZE, &mut new_ctx)?;
     Ok((pt_size, new_ctx))
 }
 
@@ -453,18 +466,13 @@ pub async fn spdm_aes_gcm_decrypt_final<A: ScratchAlloc>(
     }
 
     // tag_verified at offset 8
-    let tv = u32::from_le_bytes([buf[8], buf[9], buf[10], buf[11]]);
+    let tv = response_u32(&buf, MBOX_RESP_HEADER_SIZE)?;
     if tv == 0 {
         return Err(INTERNAL_BUG);
     }
 
     let pt_size_off = MBOX_RESP_HEADER_SIZE + 4;
-    let pt_size = u32::from_le_bytes([
-        buf[pt_size_off],
-        buf[pt_size_off + 1],
-        buf[pt_size_off + 2],
-        buf[pt_size_off + 3],
-    ]) as usize;
+    let pt_size = response_u32(&buf, pt_size_off)? as usize;
     if pt_size > MAX_OUTPUT_SIZE || pt_size > out.len() {
         return Err(INVARIANT);
     }
@@ -473,7 +481,12 @@ pub async fn spdm_aes_gcm_decrypt_final<A: ScratchAlloc>(
     if pt_start + pt_size > rsp_len {
         return Err(INTERNAL_BUG);
     }
-    out[..pt_size].copy_from_slice(&buf[pt_start..pt_start + pt_size]);
+    copy_response(
+        &buf,
+        pt_start,
+        pt_size,
+        out.get_mut(..pt_size).ok_or(INVARIANT)?,
+    )?;
     Ok(pt_size)
 }
 
@@ -532,4 +545,35 @@ pub async fn spdm_aes_gcm_decrypt<A: ScratchAlloc>(
     }
     let ctx = spdm_aes_gcm_decrypt_init(alloc, cmk, spdm_version, seq_number, aad).await?;
     spdm_aes_gcm_decrypt_final(alloc, &ctx, tag, ciphertext, plaintext).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn response_word_rejects_truncated_and_missing_fields() {
+        let buf = [0xff, 0x78, 0x56, 0x34, 0x12];
+        assert_eq!(response_u32(&buf, 1), Ok(0x1234_5678));
+        for offset in [2, buf.len(), buf.len() + 1, usize::MAX] {
+            assert_eq!(response_u32(&buf, offset), Err(INTERNAL_BUG));
+        }
+    }
+
+    #[test]
+    fn response_copy_rejects_invalid_ranges_without_writing_output() {
+        let buf = [0, 1, 2, 3];
+        let mut out = [0xa5; 2];
+        for (offset, len) in [(3, 2), (5, 0), (usize::MAX, 2)] {
+            assert_eq!(
+                copy_response(&buf, offset, len, &mut out),
+                Err(INTERNAL_BUG)
+            );
+            assert_eq!(out, [0xa5; 2]);
+        }
+        assert_eq!(copy_response(&buf, 0, 1, &mut out), Err(INVARIANT));
+        assert_eq!(out, [0xa5; 2]);
+        assert_eq!(copy_response(&buf, 1, 2, &mut out), Ok(()));
+        assert_eq!(out, [1, 2]);
+    }
 }
