@@ -22,10 +22,11 @@ pub use caliptra_mcu_spdm_codec::vendor_defined::iana::ocp::caliptra::{
     CALIPTRA_VDM_COMMAND_VERSION, CALIPTRA_VENDOR_ID,
 };
 pub use commands::authorized_command::{
-    DEVICE_OWNERSHIP_TRANSFER_CMD_ID, DOT_DISABLE_CMD_ID, DOT_ENABLE_CMD_ID, DOT_LOCK_CMD_ID,
-    DOT_ROTATE_CMD_ID, FE_PROG_CMD_ID, FUSE_LOCK_PARTITION_CMD_ID, GET_AUTH_CHALLENGE_CMD_ID,
-    GET_DOT_BACKUP_BLOB_CMD_ID, INCREASE_MIN_SVN_CMD_ID, PROVISION_OWNER_PK_HASH_CMD_ID,
-    PROVISION_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PUB_KEY_CMD_ID,
+    AUTH_SET_CERT_CHAIN_CMD_ID, DEVICE_OWNERSHIP_TRANSFER_CMD_ID, DOT_DISABLE_CMD_ID,
+    DOT_ENABLE_CMD_ID, DOT_LOCK_CMD_ID, DOT_ROTATE_CMD_ID, FE_PROG_CMD_ID,
+    FUSE_LOCK_PARTITION_CMD_ID, GET_AUTH_CHALLENGE_CMD_ID, GET_DOT_BACKUP_BLOB_CMD_ID,
+    INCREASE_MIN_SVN_CMD_ID, PROVISION_OWNER_PK_HASH_CMD_ID, PROVISION_VENDOR_PK_HASH_CMD_ID,
+    REVOKE_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PUB_KEY_CMD_ID,
 };
 #[cfg(feature = "ocp-lock")]
 pub use commands::authorized_command::{
@@ -605,6 +606,12 @@ mod tests {
             cak: [u8; 48],
             lak_hash: [u8; 48],
         },
+        AuthSetCertChain {
+            entity: PkiEntitySlot,
+            algorithm: AsymAlgo,
+            total_size: u32,
+            expected_sha384: [u8; 48],
+        },
         #[cfg(feature = "ocp-lock")]
         OcpLockRotateHek {
             slot: u32,
@@ -944,6 +951,21 @@ mod tests {
             partition: u32,
         ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
             self.complete_authorized(AuthorizedOperation::FuseLockPartition { partition })
+        }
+
+        async fn auth_set_cert_chain(
+            &self,
+            entity: PkiEntitySlot,
+            algorithm: AsymAlgo,
+            total_size: u32,
+            expected_sha384: &[u8; 48],
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            self.complete_authorized(AuthorizedOperation::AuthSetCertChain {
+                entity,
+                algorithm,
+                total_size,
+                expected_sha384: *expected_sha384,
+            })
         }
 
         async fn dot_lock<Alloc: mcu_caliptra_api::ScratchAlloc>(
@@ -2258,6 +2280,119 @@ mod tests {
 
         assert_inline(response, 3);
         assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+    }
+
+    #[test]
+    fn auth_set_cert_chain_enforces_per_slot_authority_and_dispatches() {
+        use caliptra_mcu_mbox_common::authorization::CommandAuthority;
+        use caliptra_mcu_mbox_common::messages::AuthSetCertChainPayload;
+
+        let cmds = TestCommands::new(0).with_authorization();
+        let expected_sha384 = [0xAB; 48];
+
+        // Vendor (slot 0) accepts both VendorOwner and Owner.
+        let vendor_payload = AuthSetCertChainPayload {
+            pki_entity_slot: PkiEntitySlot::Vendor as u32,
+            algorithm: AsymAlgo::EccP384 as u32,
+            total_size: 1024,
+            expected_sha384,
+        };
+        for authority in [CommandAuthority::VendorOwner, CommandAuthority::Owner] {
+            issue_test_challenge(&cmds);
+            let vendor_ok_req = authorized_request_with_context(
+                AUTH_SET_CERT_CHAIN_CMD_ID,
+                vendor_payload.as_bytes(),
+                AuthorizationMetadata::new(authority, [0x42; 16]),
+                TEST_AUTH_CHALLENGE,
+            );
+            let (response, inline, _) = dispatch(&cmds, &vendor_ok_req, 16, 0);
+            assert_inline(response, 3);
+            assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+            assert_eq!(
+                cmds.authorized_operation.lock().unwrap().take(),
+                Some(AuthorizedOperation::AuthSetCertChain {
+                    entity: PkiEntitySlot::Vendor,
+                    algorithm: AsymAlgo::EccP384,
+                    total_size: 1024,
+                    expected_sha384,
+                })
+            );
+        }
+
+        // Owner (slot 1) accepts Owner and rejects VendorOwner.
+        let owner_payload = AuthSetCertChainPayload {
+            pki_entity_slot: PkiEntitySlot::Owner as u32,
+            algorithm: AsymAlgo::Mldsa87 as u32,
+            total_size: 2048,
+            expected_sha384,
+        };
+        let owner_vendor_req = authorized_request_with_context(
+            AUTH_SET_CERT_CHAIN_CMD_ID,
+            owner_payload.as_bytes(),
+            AuthorizationMetadata::new(CommandAuthority::VendorOwner, [0x42; 16]),
+            [0; AUTH_CMD_NONCE_LEN],
+        );
+        let (response, inline, _) = dispatch(&cmds, &owner_vendor_req, 16, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::AccessDenied as u8);
+        assert!(cmds.authorized_operation.lock().unwrap().is_none());
+
+        let owner_req = authorized_request_with_context(
+            AUTH_SET_CERT_CHAIN_CMD_ID,
+            owner_payload.as_bytes(),
+            AuthorizationMetadata::new(CommandAuthority::Owner, [0x42; 16]),
+            [0; AUTH_CMD_NONCE_LEN],
+        );
+        let (response, inline, _) = dispatch(&cmds, &owner_req, 16, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+        assert_eq!(
+            cmds.authorized_operation.lock().unwrap().take(),
+            Some(AuthorizedOperation::AuthSetCertChain {
+                entity: PkiEntitySlot::Owner,
+                algorithm: AsymAlgo::Mldsa87,
+                total_size: 2048,
+                expected_sha384,
+            })
+        );
+
+        // Tenant (slot 2) has no authority and rejects both VendorOwner and Owner.
+        let tenant_payload = AuthSetCertChainPayload {
+            pki_entity_slot: PkiEntitySlot::Tenant as u32,
+            algorithm: AsymAlgo::Mldsa87 as u32,
+            total_size: 2048,
+            expected_sha384,
+        };
+        for authority in [CommandAuthority::VendorOwner, CommandAuthority::Owner] {
+            let tenant_req = authorized_request_with_context(
+                AUTH_SET_CERT_CHAIN_CMD_ID,
+                tenant_payload.as_bytes(),
+                AuthorizationMetadata::new(authority, [0x42; 16]),
+                [0; AUTH_CMD_NONCE_LEN],
+            );
+            let (response, inline, _) = dispatch(&cmds, &tenant_req, 16, 0);
+            assert_inline(response, 3);
+            assert_eq!(inline[2], CaliptraCompletionCode::AccessDenied as u8);
+            assert!(cmds.authorized_operation.lock().unwrap().is_none());
+        }
+
+        // Out-of-range algorithm returns InvalidParameter.
+        let bad_algo = AuthSetCertChainPayload {
+            pki_entity_slot: PkiEntitySlot::Owner as u32,
+            algorithm: 99,
+            total_size: 1024,
+            expected_sha384,
+        };
+        let bad_req = authorized_request_with_context(
+            AUTH_SET_CERT_CHAIN_CMD_ID,
+            bad_algo.as_bytes(),
+            AuthorizationMetadata::new(CommandAuthority::Owner, [0x42; 16]),
+            [0; AUTH_CMD_NONCE_LEN],
+        );
+        let (response, inline, _) = dispatch(&cmds, &bad_req, 16, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::InvalidParameter as u8);
+        assert!(cmds.authorized_operation.lock().unwrap().is_none());
     }
 
     #[cfg(feature = "attested-csr")]

@@ -69,12 +69,39 @@ pub(crate) const CERT_MODEL_ALIAS_CERT: u8 = 2;
 /// managed `(role, algorithm)` allocation.
 pub(crate) const MANAGED_REGION_COUNT: usize = 2;
 
+/// One-shot endorsement write or erase (`total_size == 0`) authorized via
+/// `MC_AUTH_SET_CERT_CHAIN`.
+#[cfg(feature = "set-certificate")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ArmedEndorsementWrite {
+    pub(crate) total_size: usize,
+    pub(crate) expected_sha384: [u8; 48],
+}
+
+/// Transport-independent staging state for one endorsement update.
+#[cfg(feature = "set-certificate")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ActiveEndorsementStream {
+    pub(crate) generation: u32,
+    pub(crate) key_pair_id: u8,
+    pub(crate) total_size: usize,
+    pub(crate) next_offset: usize,
+    pub(crate) claimed_auth: Option<ArmedEndorsementWrite>,
+}
+
 /// Per-algorithm concurrency and generation state within a [`CertSlot`].
-struct AlgoSlotState {
-    /// State lock held high while an async write (flash erase/write) is
-    /// in progress for this algorithm.
+struct CertChainState {
+    /// Held across one mutation, including awaits and shared-state publication.
     #[cfg(any(test, feature = "set-certificate"))]
-    write_in_progress: AtomicBool,
+    operation_in_progress: AtomicBool,
+    /// One-shot authorized write/erase parameters set by `MC_AUTH_SET_CERT_CHAIN`.
+    #[cfg(feature = "set-certificate")]
+    armed_write: core::cell::Cell<Option<ArmedEndorsementWrite>>,
+    /// An open stream remains here between chunk operations.
+    #[cfg(feature = "set-certificate")]
+    active_stream: core::cell::Cell<Option<ActiveEndorsementStream>>,
+    #[cfg(feature = "set-certificate")]
+    stream_generation: core::cell::Cell<u32>,
     /// Monotonic generation counter incremented whenever this algorithm's
     /// endorsement is configured, published, or removed.
     generation_counter: AtomicU32,
@@ -83,11 +110,17 @@ struct AlgoSlotState {
     region_readers: [AtomicU32; MANAGED_REGION_COUNT],
 }
 
-impl AlgoSlotState {
+impl CertChainState {
     const fn new() -> Self {
         Self {
             #[cfg(any(test, feature = "set-certificate"))]
-            write_in_progress: AtomicBool::new(false),
+            operation_in_progress: AtomicBool::new(false),
+            #[cfg(feature = "set-certificate")]
+            armed_write: core::cell::Cell::new(None),
+            #[cfg(feature = "set-certificate")]
+            active_stream: core::cell::Cell::new(None),
+            #[cfg(feature = "set-certificate")]
+            stream_generation: core::cell::Cell::new(0),
             generation_counter: AtomicU32::new(0),
             region_readers: [const { AtomicU32::new(0) }; MANAGED_REGION_COUNT],
         }
@@ -107,8 +140,10 @@ pub struct CertSlot<S: EndorsementStorage = NoEndorsementStorage> {
     pub(crate) endorsement: SlotEndorsement<S>,
     /// Immutable logical device-key binding shared by both algorithms.
     key_pair_id: Option<u8>,
+    /// Whether mutating this slot requires a prior `MC_AUTH_SET_CERT_CHAIN` command.
+    auth_required: core::cell::Cell<bool>,
     /// Per-algorithm write lock, generation counter, and active-region reader counts.
-    algo_state: [AlgoSlotState; NUM_ASYM_ALGOS],
+    chain_state: [CertChainState; NUM_ASYM_ALGOS],
 }
 
 impl<S: EndorsementStorage> CertSlot<S> {
@@ -118,6 +153,27 @@ impl<S: EndorsementStorage> CertSlot<S> {
 
     pub fn is_writable(&self) -> bool {
         self.endorsement.is_writable()
+    }
+
+    /// Whether mutating this slot requires a prior `MC_AUTH_SET_CERT_CHAIN`.
+    pub fn is_auth_required(&self) -> bool {
+        self.auth_required.get()
+    }
+
+    /// Configure whether mutating this slot requires a prior `MC_AUTH_SET_CERT_CHAIN`.
+    pub fn set_auth_required(&self, required: bool) {
+        self.auth_required.set(required);
+    }
+
+    /// Whether this slot currently permits a certificate write/erase operation
+    /// (writable backing storage, and either `auth_required` is false or at
+    /// least one algorithm has an armed `MC_AUTH_SET_CERT_CHAIN` token).
+    #[cfg(feature = "set-certificate")]
+    pub fn is_write_authorized(&self) -> bool {
+        self.is_writable()
+            && (!self.is_auth_required()
+                || self.armed_write(CertificateAlgorithm::EccP384).is_some()
+                || self.armed_write(CertificateAlgorithm::MlDsa87).is_some())
     }
 
     /// Whether this slot can serve a cert chain for `algo` right now.
@@ -154,24 +210,92 @@ impl<S: EndorsementStorage> CertSlot<S> {
         self.endorsement.root_cert_hash(algo, out)
     }
 
+    #[cfg(test)]
     pub(crate) const fn empty(key_pair_id: Option<u8>) -> Self {
+        Self::empty_with_auth(key_pair_id, matches!(key_pair_id, Some(0)))
+    }
+
+    pub(crate) const fn empty_with_auth(key_pair_id: Option<u8>, auth_required: bool) -> Self {
         Self {
             endorsement: SlotEndorsement::Empty,
             key_pair_id,
-            algo_state: [const { AlgoSlotState::new() }; NUM_ASYM_ALGOS],
+            auth_required: core::cell::Cell::new(auth_required),
+            chain_state: [const { CertChainState::new() }; NUM_ASYM_ALGOS],
         }
     }
 
-    #[cfg(any(test, feature = "set-certificate"))]
-    pub(crate) fn write_in_progress(&self, algo: CertificateAlgorithm) -> bool {
-        self.state(algo).write_in_progress.load(Ordering::Relaxed)
+    #[cfg(feature = "set-certificate")]
+    pub(crate) fn armed_write(&self, algo: CertificateAlgorithm) -> Option<ArmedEndorsementWrite> {
+        self.state(algo).armed_write.get()
+    }
+
+    #[cfg(feature = "set-certificate")]
+    pub(crate) fn set_armed_write(
+        &self,
+        algo: CertificateAlgorithm,
+        armed: Option<ArmedEndorsementWrite>,
+    ) {
+        self.state(algo).armed_write.set(armed);
+    }
+
+    #[cfg(feature = "set-certificate")]
+    pub(crate) fn take_armed_write(
+        &self,
+        algo: CertificateAlgorithm,
+    ) -> Option<ArmedEndorsementWrite> {
+        self.state(algo).armed_write.take()
+    }
+
+    #[cfg(feature = "set-certificate")]
+    pub(crate) fn active_stream(
+        &self,
+        algo: CertificateAlgorithm,
+    ) -> Option<ActiveEndorsementStream> {
+        self.state(algo).active_stream.get()
+    }
+
+    #[cfg(feature = "set-certificate")]
+    pub(crate) fn set_active_stream(
+        &self,
+        algo: CertificateAlgorithm,
+        stream: Option<ActiveEndorsementStream>,
+    ) {
+        self.state(algo).active_stream.set(stream);
+    }
+
+    #[cfg(feature = "set-certificate")]
+    pub(crate) fn next_stream_generation(&self, algo: CertificateAlgorithm) -> McuResult<u32> {
+        let counter = &self.state(algo).stream_generation;
+        let next = counter
+            .get()
+            .checked_add(1)
+            .ok_or(cert_errors::STORAGE_BUSY)?;
+        counter.set(next);
+        Ok(next)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn operation_in_progress(&self, algo: CertificateAlgorithm) -> bool {
+        self.state(algo)
+            .operation_in_progress
+            .load(Ordering::Relaxed)
     }
 
     #[cfg(any(test, feature = "set-certificate"))]
-    pub(crate) fn set_write_in_progress(&self, algo: CertificateAlgorithm, value: bool) {
+    pub(crate) fn set_operation_in_progress(&self, algo: CertificateAlgorithm, value: bool) {
         self.state(algo)
-            .write_in_progress
+            .operation_in_progress
             .store(value, Ordering::Relaxed);
+    }
+
+    #[cfg(feature = "set-certificate")]
+    pub(crate) fn try_start_operation(&self, algo: CertificateAlgorithm) -> McuResult<()> {
+        let flag = &self.state(algo).operation_in_progress;
+        if flag.load(Ordering::Relaxed) {
+            return Err(cert_errors::STORAGE_BUSY);
+        }
+        flag.store(true, Ordering::Relaxed);
+        Ok(())
     }
 
     pub(crate) fn generation_counter(&self, algo: CertificateAlgorithm) -> u32 {
@@ -213,8 +337,8 @@ impl<S: EndorsementStorage> CertSlot<S> {
     }
 
     #[inline]
-    fn state(&self, algo: CertificateAlgorithm) -> &AlgoSlotState {
-        &self.algo_state[algo.index()]
+    fn state(&self, algo: CertificateAlgorithm) -> &CertChainState {
+        &self.chain_state[algo.index()]
     }
 }
 
@@ -476,14 +600,27 @@ impl<S: EndorsementStorage> ManagedReadSnapshot<S> {
     }
 }
 
+#[allow(dead_code)]
+#[derive(Clone, Copy)]
+struct ActiveRegion {
+    region: u8,
+    sequence: u32,
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Copy)]
+struct StagingRegion {
+    region: u8,
+    checksum: u32,
+}
+
 /// One managed storage-backed endorsement/root chain installed by
 /// SET_CERTIFICATE.
 ///
 /// An allocation is dedicated to a single asymmetric algorithm for its
 /// lifetime, fixed when the platform wires it up, and subdivided into two
-/// equal A/B ping-pong regions (`active_region` and `staging_region`) so
-/// replacement writes stage in `staging_region` while `active_region`
-/// remains readable.
+/// equal A/B ping-pong regions. Replacement writes use `staging` while
+/// `active` remains readable.
 #[allow(dead_code)]
 #[derive(Clone, Copy)]
 pub(crate) struct ManagedEndorsementChain<S: EndorsementStorage = NoEndorsementStorage> {
@@ -492,10 +629,8 @@ pub(crate) struct ManagedEndorsementChain<S: EndorsementStorage = NoEndorsementS
     base: usize,
     capacity: usize,
     initialized: bool,
-    active_region: u8,
-    active_sequence: u32,
-    staging_region: Option<u8>,
-    staging_checksum: u32,
+    active: ActiveRegion,
+    staging: Option<StagingRegion>,
     algo: CertificateAlgorithm,
     len: usize,
     root_hash: [u8; 48],
@@ -535,9 +670,9 @@ impl<S: EndorsementStorage> ManagedEndorsementChain<S> {
         }
         Ok(ManagedReadSnapshot {
             storage: self.storage,
-            data_base: self.region_data_base(self.active_region),
+            data_base: self.region_data_base(self.active.region),
             len: self.len,
-            active_region: self.active_region,
+            active_region: self.active.region,
         })
     }
 
@@ -574,10 +709,11 @@ impl<S: EndorsementStorage> ManagedEndorsementChain<S> {
             base,
             capacity,
             initialized: false,
-            active_region: 0,
-            active_sequence: 0,
-            staging_region: None,
-            staging_checksum: 0,
+            active: ActiveRegion {
+                region: 0,
+                sequence: 0,
+            },
+            staging: None,
             algo,
             len: 0,
             root_hash: [0; 48],
@@ -615,8 +751,10 @@ impl<S: EndorsementStorage> ManagedEndorsementChain<S> {
         }
         if let Some((region, record)) = selected {
             self.initialized = true;
-            self.active_region = region;
-            self.active_sequence = record.sequence;
+            self.active = ActiveRegion {
+                region,
+                sequence: record.sequence,
+            };
             self.len = record.cert_len;
             self.root_hash = record.root_hash;
             self.key_pair_id = record.key_pair_id;
@@ -660,6 +798,15 @@ impl<S: EndorsementStorage> ManagedEndorsementChain<S> {
     }
 
     fn validate_metadata(&self, key_pair_id: u8, cert_info: u8) -> McuResult<()> {
+        if self.role == crate::EndorsementRole::Vendor {
+            if key_pair_id != 0 {
+                return Err(cert_errors::KEY_MISMATCH);
+            }
+            if cert_info != CERT_MODEL_ALIAS_CERT {
+                return Err(cert_errors::INVALID_ENDORSEMENT);
+            }
+            return Ok(());
+        }
         let key = DeviceKey::try_from(key_pair_id).map_err(|_| cert_errors::KEY_MISMATCH)?;
         if let Some(expected) = self.device_key {
             if key != expected {
@@ -682,27 +829,27 @@ impl<S: EndorsementStorage> ManagedEndorsementChain<S> {
 
     pub(crate) fn discard(&mut self) {
         self.initialized = false;
-        self.active_region = 0;
-        self.active_sequence = 0;
-        self.staging_region = None;
-        self.staging_checksum = 0;
+        self.active = ActiveRegion {
+            region: 0,
+            sequence: 0,
+        };
+        self.staging = None;
         self.len = 0;
         self.root_hash = [0; 48];
         self.key_pair_id = 0;
     }
 
     pub(crate) fn abort_stream_update(&mut self) -> McuResult<()> {
-        self.staging_region
+        self.staging
             .take()
             .ok_or(cert_errors::INVALID_ENDORSEMENT)?;
-        self.staging_checksum = 0;
         Ok(())
     }
 
     #[cfg(test)]
     pub(crate) const fn active_region(&self) -> Option<u8> {
         if self.initialized {
-            Some(self.active_region)
+            Some(self.active.region)
         } else {
             None
         }
@@ -710,14 +857,14 @@ impl<S: EndorsementStorage> ManagedEndorsementChain<S> {
 
     pub(crate) const fn inactive_region(&self) -> u8 {
         if self.initialized {
-            1 - (self.active_region & 1)
+            1 - (self.active.region & 1)
         } else {
             0
         }
     }
 
     const fn next_sequence(&self) -> u32 {
-        self.active_sequence.wrapping_add(1)
+        self.active.sequence.wrapping_add(1)
     }
 
     /// The algorithm this region is dedicated to.
@@ -747,13 +894,15 @@ impl<S: EndorsementStorage> ManagedEndorsementChain<S> {
         self.storage
             .erase(self.region_base(target_region), self.region_capacity())
             .await?;
-        self.staging_region = Some(target_region);
-        self.staging_checksum = 0;
+        self.staging = Some(StagingRegion {
+            region: target_region,
+            checksum: 0,
+        });
         Ok(self)
     }
 
     pub(crate) async fn write_stream_chunk(&mut self, offset: usize, data: &[u8]) -> McuResult<()> {
-        let region = self.staging_region.ok_or(mcu_error::codes::INVARIANT)?;
+        let mut staging = self.staging.ok_or(mcu_error::codes::INVARIANT)?;
         let end = offset
             .checked_add(data.len())
             .ok_or(mcu_error::codes::INVARIANT)?;
@@ -762,9 +911,10 @@ impl<S: EndorsementStorage> ManagedEndorsementChain<S> {
         }
         if !data.is_empty() {
             self.storage
-                .write(self.region_data_base(region) + offset, data)
+                .write(self.region_data_base(staging.region) + offset, data)
                 .await?;
-            self.staging_checksum = self.staging_checksum.wrapping_add(checksum(data));
+            staging.checksum = staging.checksum.wrapping_add(checksum(data));
+            self.staging = Some(staging);
         }
         Ok(())
     }
@@ -774,7 +924,7 @@ impl<S: EndorsementStorage> ManagedEndorsementChain<S> {
         offset: usize,
         buf: &mut [u8],
     ) -> McuResult<usize> {
-        let region = self.staging_region.ok_or(mcu_error::codes::INVARIANT)?;
+        let region = self.staging.ok_or(mcu_error::codes::INVARIANT)?.region;
         if offset >= self.der_capacity() || buf.is_empty() {
             return Ok(0);
         }
@@ -799,9 +949,10 @@ impl<S: EndorsementStorage> ManagedEndorsementChain<S> {
         {
             return Err(cert_errors::INVALID_ENDORSEMENT);
         }
-        let region = self.staging_region.ok_or(mcu_error::codes::INVARIANT)?;
+        let staging = self.staging.ok_or(mcu_error::codes::INVARIANT)?;
+        let region = staging.region;
         let data_checksum = self.stored_checksum(region, data_len).await?;
-        if data_checksum != self.staging_checksum {
+        if data_checksum != staging.checksum {
             return Err(cert_errors::STORAGE_ERROR);
         }
         let sequence = self.next_sequence();
@@ -820,10 +971,8 @@ impl<S: EndorsementStorage> ManagedEndorsementChain<S> {
         };
         self.commit_record_to_region(region, &record).await?;
         self.initialized = true;
-        self.active_region = region;
-        self.active_sequence = sequence;
-        self.staging_region = None;
-        self.staging_checksum = 0;
+        self.active = ActiveRegion { region, sequence };
+        self.staging = None;
         self.len = data_len;
         self.root_hash = *root_hash;
         self.key_pair_id = key_pair_id;
@@ -874,10 +1023,8 @@ impl<S: EndorsementStorage> ManagedEndorsementChain<S> {
         self.commit_record_to_region(region, &record).await?;
 
         self.initialized = true;
-        self.active_region = region;
-        self.active_sequence = sequence;
-        self.staging_region = None;
-        self.staging_checksum = 0;
+        self.active = ActiveRegion { region, sequence };
+        self.staging = None;
         self.len = data.len();
         self.root_hash = *root_hash;
         self.key_pair_id = key_pair_id;
@@ -889,7 +1036,7 @@ impl<S: EndorsementStorage> ManagedEndorsementChain<S> {
         if !self.capacity.is_multiple_of(MANAGED_REGION_COUNT) {
             return Err(mcu_error::codes::INVARIANT);
         }
-        let active_region = self.active_region & 1;
+        let active_region = self.active.region & 1;
         let staging_region = 1 - active_region;
         let region_cap = self.region_capacity();
         // Erase the staging (superseded) region first, then the active region, so
@@ -1722,7 +1869,7 @@ mod tests {
             let mut recovered = chain_with(storage, SpdmPalAsymAlgo::EccP384, 0);
             block_on(recovered.load()).unwrap();
             assert_eq!(recovered.active_region(), Some(0));
-            assert_eq!(recovered.active_sequence, 1);
+            assert_eq!(recovered.active.sequence, 1);
             let mut data = [0; 16];
             block_on(recovered.read(0, &mut data)).unwrap();
             assert_eq!(data, [0xAA; 16]);
@@ -1767,11 +1914,18 @@ mod tests {
                 .unwrap();
         assert_eq!(region.active_region(), Some(0));
         assert_eq!(region.inactive_region(), 1);
+        assert_eq!(region.active.sequence, 1);
+        assert!(region.staging.is_none());
 
         // 2. Begin streaming replacement into region 1 while region 0 stays active and readable.
         let mut staging =
             block_on(region.begin_stream_update(1, CERT_MODEL_ALIAS_CERT, 16)).unwrap();
+        assert_eq!(staging.staging.unwrap().region, 1);
+        assert_eq!(staging.staging.unwrap().checksum, 0);
         block_on(staging.write_stream_chunk(0, &[0xBB; 16])).unwrap();
+        assert_eq!(staging.staging.unwrap().region, 1);
+        assert_eq!(staging.staging.unwrap().checksum, checksum(&[0xBB; 16]));
+        assert_eq!(staging.active.sequence, 1);
 
         let mut active_bytes = [0u8; 16];
         assert_eq!(block_on(staging.read(0, &mut active_bytes)), Ok(16));
@@ -1789,10 +1943,13 @@ mod tests {
         staging.abort_stream_update().unwrap();
         assert!(staging.is_initialized());
         assert_eq!(staging.active_region(), Some(0));
+        assert_eq!(staging.active.sequence, 1);
+        assert!(staging.staging.is_none());
 
         // 3. Re-stream and commit to region 1 (sequence 2).
         let mut staging =
             block_on(staging.begin_stream_update(1, CERT_MODEL_ALIAS_CERT, 16)).unwrap();
+        assert_eq!(staging.staging.unwrap().checksum, 0);
         block_on(staging.write_stream_chunk(0, &[0xBB; 16])).unwrap();
 
         // Corrupted flash payload during streaming is rejected before committing the header.
@@ -1810,6 +1967,8 @@ mod tests {
             block_on(staging.finish_stream_update(1, CERT_MODEL_ALIAS_CERT, &[0x22; 48], 16))
                 .unwrap();
         assert_eq!(region.active_region(), Some(1));
+        assert_eq!(region.active.sequence, 2);
+        assert!(region.staging.is_none());
         block_on(region.read(0, &mut active_bytes)).unwrap();
         assert_eq!(active_bytes, [0xBB; 16]);
 
@@ -1817,6 +1976,8 @@ mod tests {
         let mut recovered = chain_with(storage, SpdmPalAsymAlgo::EccP384, 0);
         block_on(recovered.load()).unwrap();
         assert_eq!(recovered.active_region(), Some(1));
+        assert_eq!(recovered.active.sequence, 2);
+        assert!(recovered.staging.is_none());
         block_on(recovered.read(0, &mut rec_bytes)).unwrap();
         assert_eq!(rec_bytes, [0xBB; 16]);
 
@@ -1889,9 +2050,9 @@ mod algo_tests {
 
         // When a write is in progress for ECC, the writer lock is active for ECC only,
         // while active-region metadata remains readable for both algorithms.
-        slot.set_write_in_progress(CertificateAlgorithm::EccP384, true);
-        assert!(slot.write_in_progress(CertificateAlgorithm::EccP384));
-        assert!(!slot.write_in_progress(CertificateAlgorithm::MlDsa87));
+        slot.set_operation_in_progress(CertificateAlgorithm::EccP384, true);
+        assert!(slot.operation_in_progress(CertificateAlgorithm::EccP384));
+        assert!(!slot.operation_in_progress(CertificateAlgorithm::MlDsa87));
         assert_eq!(slot.key_pair_id(CertificateAlgorithm::EccP384), Some(1));
         assert_eq!(
             slot.cert_info(CertificateAlgorithm::EccP384),
@@ -1903,8 +2064,8 @@ mod algo_tests {
             Some(CERT_MODEL_ALIAS_CERT)
         );
 
-        slot.set_write_in_progress(CertificateAlgorithm::EccP384, false);
-        assert!(!slot.write_in_progress(CertificateAlgorithm::EccP384));
+        slot.set_operation_in_progress(CertificateAlgorithm::EccP384, false);
+        assert!(!slot.operation_in_progress(CertificateAlgorithm::EccP384));
     }
 
     #[test]
