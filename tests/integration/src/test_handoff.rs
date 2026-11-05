@@ -22,6 +22,11 @@ mod test {
             ..Default::default()
         });
 
+        // A firmware exit ends the emulator test process, so check the boot log first.
+        hw.step_until(|m| m.output().peek().contains("Executing test-handoff"));
+        assert!(hw.output().peek().contains(
+            "[mcu-runtime] HEK state from handoff: active_state=Programmed, active_slot=2, total_slots=8"
+        ));
         hw.step_until_exit_success()
             .expect("HandOff verification failed in runtime");
     }
