@@ -44,10 +44,19 @@ use std::vec;
 use zerocopy::{transmute, FromBytes, IntoBytes};
 
 pub const CRC8_SMBUS: crc::Crc<u8> = crc::Crc::<u8>::new(&crc::CRC_8_SMBUS);
+pub const I3C_SOCKET_LISTENING: &str = "I3C socket listening on port ";
 
 pub fn start_i3c_socket(port: u16) -> (Receiver<I3cBusCommand>, Sender<I3cBusResponse>) {
     let listener = TcpListener::bind(format!("127.0.0.1:{}", port))
         .expect("Failed to bind TCP socket for port");
+    println!(
+        "{}{}",
+        I3C_SOCKET_LISTENING,
+        listener
+            .local_addr()
+            .expect("Failed to get I3C socket address")
+            .port()
+    );
 
     let (bus_command_tx, bus_command_rx) = mpsc::channel::<I3cBusCommand>();
     let (bus_response_tx, bus_response_rx) = mpsc::channel::<I3cBusResponse>();
