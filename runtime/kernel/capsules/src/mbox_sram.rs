@@ -41,6 +41,21 @@ pub struct MboxSram<'a, A: Alarm<'a>> {
     alarm: &'a A,
 }
 
+/// Number of words to move for a request that starts at `offset` words into the
+/// mailbox SRAM and uses an application buffer of `app_buffer_bytes` bytes.
+///
+/// `offset` comes straight from a userspace command argument, so it is checked
+/// against the SRAM length before the subtraction. An offset past the end
+/// returns `INVAL` instead of wrapping around.
+fn transfer_len(
+    sram_words: usize,
+    offset: usize,
+    app_buffer_bytes: usize,
+) -> Result<usize, ErrorCode> {
+    let available = sram_words.checked_sub(offset).ok_or(ErrorCode::INVAL)?;
+    Ok(core::cmp::min(available, app_buffer_bytes / 4))
+}
+
 impl<'a, A: Alarm<'a>> MboxSram<'a, A> {
     const DEFER_SEND_DONE_TICKS: u32 = 1000;
 
@@ -117,7 +132,7 @@ impl<'a, A: Alarm<'a>> MboxSram<'a, A> {
         app_buffer: &ReadableProcessSlice,
     ) -> Result<(), ErrorCode> {
         let mut mem_ref = self.mem_ref.borrow_mut();
-        let len = core::cmp::min(mem_ref.len() - offset, app_buffer.len() / 4);
+        let len = transfer_len(mem_ref.len(), offset, app_buffer.len())?;
         for i in 0..len {
             let mut dword = [0u8; 4];
             app_buffer
@@ -135,7 +150,7 @@ impl<'a, A: Alarm<'a>> MboxSram<'a, A> {
         app_buffer: &WriteableProcessSlice,
     ) -> Result<(), ErrorCode> {
         let mem_ref = self.mem_ref.borrow();
-        let len = core::cmp::min(mem_ref.len() - offset, app_buffer.len() / 4);
+        let len = transfer_len(mem_ref.len(), offset, app_buffer.len())?;
         for i in 0..len {
             let dword = mem_ref[offset + i].to_le_bytes();
             app_buffer
@@ -258,4 +273,36 @@ mod ro_allow {
 mod rw_allow {
     pub const READ_BUFFER: usize = 0;
     pub const COUNT: u8 = 1;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    const SRAM_WORDS: usize = 4;
+
+    #[test]
+    fn transfer_len_clamps_to_the_shorter_of_sram_and_buffer() {
+        assert_eq!(transfer_len(SRAM_WORDS, 0, 16), Ok(4));
+        assert_eq!(transfer_len(SRAM_WORDS, 0, 64), Ok(4));
+        assert_eq!(transfer_len(SRAM_WORDS, 2, 64), Ok(2));
+        assert_eq!(transfer_len(SRAM_WORDS, 0, 8), Ok(2));
+    }
+
+    #[test]
+    fn transfer_len_accepts_an_offset_at_the_end_as_an_empty_transfer() {
+        assert_eq!(transfer_len(SRAM_WORDS, SRAM_WORDS, 16), Ok(0));
+    }
+
+    #[test]
+    fn transfer_len_rejects_an_offset_past_the_end() {
+        assert_eq!(
+            transfer_len(SRAM_WORDS, SRAM_WORDS + 1, 16),
+            Err(ErrorCode::INVAL)
+        );
+        assert_eq!(
+            transfer_len(SRAM_WORDS, usize::MAX, 16),
+            Err(ErrorCode::INVAL)
+        );
+    }
 }
