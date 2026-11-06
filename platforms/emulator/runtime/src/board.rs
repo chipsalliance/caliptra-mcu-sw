@@ -1282,10 +1282,7 @@ fn run_kernel_tests(
             use caliptra_mcu_romtime::ocp_lock::HekSeedState;
 
             let ho_addr = ho.addr() as u32;
-            #[cfg(not(feature = "release"))]
-            let expected_addr = 0x5000_3800;
-            #[cfg(feature = "release")]
-            let expected_addr = 0x5000_3C00;
+            let expected_addr = MCU_MEMORY_MAP.handoff_offset;
             if ho.rom.ocp_lock.hek_state.active_slot == 2
                 && ho.rom.ocp_lock.hek_state.active_state == HekSeedState::Programmed
                 && ho.rom.ocp_lock.hek_state.total_slots == 8
