@@ -203,7 +203,11 @@ impl HandoffData {
     pub fn get() -> Option<&'static Self> {
         // SAFETY: Runtime treats ROM-owned handoff data as read-only.
         let handoff = unsafe { &*core::ptr::addr_of!(HANDOFF) };
-        if handoff.rom.fht_marker != FHT_MARKER || handoff.rom.fht_major_ver != FHT_MAJOR_VERSION {
+        // ROM writes this static in another image; volatile prevents LTO from
+        // folding these reads to the zero initializer.
+        if unsafe { core::ptr::read_volatile(&handoff.rom.fht_marker) } != FHT_MARKER
+            || unsafe { core::ptr::read_volatile(&handoff.rom.fht_major_ver) } != FHT_MAJOR_VERSION
+        {
             return None;
         }
         Some(handoff)
