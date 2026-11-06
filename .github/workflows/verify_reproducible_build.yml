@@ -11,8 +11,14 @@ jobs:
   check_rom_hash:
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        hw-revision: ["2.1", "latest"]
 
     env:
+      CALIPTRA_HW_REV: ${{ matrix.hw-revision }}
+      ROM_BINARY: target/riscv32imc-unknown-none-elf/release/${{ matrix.hw-revision == 'latest' && 'latest-' || '' }}caliptra-mcu-rom-emulator.bin
       CARGO_INCREMENTAL: 0
       EXTRA_CARGO_CONFIG: 'target.''cfg(all())''.rustflags = ["-Dwarnings"]'
 
@@ -30,12 +36,13 @@ jobs:
 
       - name: Build
         run: |
+          CALIPTRA_HW_REV=latest cargo xtask switch-version "${{ matrix.hw-revision }}"
           cargo xtask rom-build
           cargo xtask runtime-build --profile release
 
       - name: Calculate ROM and runtime digests
         run: |
-          echo "rom_hash=$(sha384sum target/riscv32imc-unknown-none-elf/release/caliptra-mcu-rom-emulator.bin)" >> $GITHUB_ENV
+          echo "rom_hash=$(sha384sum "$ROM_BINARY")" >> $GITHUB_ENV
           echo "runtime_hash=$(sha384sum target/riscv32imc-unknown-none-elf/release/caliptra-mcu-runtime-emulator.bin)" >> $GITHUB_ENV
 
       - name: Clean
@@ -49,6 +56,6 @@ jobs:
       - name: Calculate digests again and ensure it hasn't changed
         run: |
           echo "Comparing ROM hash"
-          test "$rom_hash" = "$(sha384sum target/riscv32imc-unknown-none-elf/release/caliptra-mcu-rom-emulator.bin)"
+          test "$rom_hash" = "$(sha384sum "$ROM_BINARY")"
           echo "Comparing runtime hash"
           test "$runtime_hash" = "$(sha384sum target/riscv32imc-unknown-none-elf/release/caliptra-mcu-runtime-emulator.bin)"

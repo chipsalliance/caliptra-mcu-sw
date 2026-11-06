@@ -1,0 +1,94 @@
+addrmap axicdma {
+    reg {
+        field {
+            sw = rw;
+            desc = "Reset DMA engine";
+        } RESET[2:2];
+        field {
+            sw = rw;
+            desc = "Scatter-gather mode enable";
+        } SGMODE[3:3];
+        field {
+            sw = rw;
+            desc = "Keyhole Read feature enable";
+        } KHOLE_RD[4:4];
+        field {
+            sw = rw;
+            desc = "Keyhole Write feature enable";
+        } KHOLE_WR[5:5];
+        field {
+            sw = rw;
+            desc = " Complete Interrupt Enable. When set to 1, it allows CDMASR.IOC_Irq to generate an interrupt out for completed DMA transfers";
+        } IOC_IRQ_EN[12:12];
+        field {
+            sw = rw;
+            desc = "Error Interrupt Enable. When set to 1, it allows the CDMASR.Err_Irq to generate an interrupt out";
+        } ERR_IRQ_EN[14:14];
+    } AXICDMA_CONTROL @ 0x00;
+
+    reg {
+        field {
+            sw = r;
+            desc = "DMA channel idle";
+        } IDLE[1:1];
+        field {
+            sw = r;
+            desc = "Hybrid (SG included) build";
+        } SGINCLD[3:3];
+        field {
+            sw = r;
+            desc = "Datamover internal error";
+        } ERR_INTERNAL[4:4];
+        field {
+            sw = r;
+            desc = "Datamover slave error";
+        } ERR_SLAVE[5:5];
+        field {
+            sw = r;
+            desc = "Datamover decode error";
+        } ERR_DECODE[6:6];
+        field {
+            sw = rw;
+            desc = "Interrupt on completion";
+        } IRQ_IOC[12:12];
+        field {
+            sw = rw;
+            desc = "Error interrupt";
+        } IRQ_ERROR[14:14];
+    } AXICDMA_STATUS @ 0x04;
+
+    reg {
+        field {
+            sw = rw;
+            desc = "Source address LSB (lower 32 bits, simple mode)";
+        } SRCADDR[31:0];
+    } AXICDMA_SRC_ADDR @ 0x18;
+
+    reg {
+        field {
+            sw = rw;
+            desc = "Source address MSB (upper 32 bits, simple mode, for 64-bit)";
+        } SRCADDR_MSB[31:0];
+    } AXICDMA_SRC_ADDR_MSB @ 0x1C;
+
+    reg {
+        field {
+            sw = rw;
+            desc = "Destination address LSB (lower 32 bits, simple mode)";
+        } DSTADDR[31:0];
+    } AXICDMA_DST_ADDR @ 0x20;
+
+    reg {
+        field {
+            sw = rw;
+            desc = "Destination address MSB (upper 32 bits, simple mode, for 64-bit)";
+        } DSTADDR_MSB[31:0];
+    } AXICDMA_DST_ADDR_MSB @ 0x24;
+
+    reg {
+        field {
+            sw = rw;
+            desc = "Bytes to transfer (bits [23:0], simple mode)";
+        } BTT[23:0];
+    } AXICDMA_BYTES_TO_TRANSFER @ 0x28;
+};

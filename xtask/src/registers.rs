@@ -3,9 +3,10 @@
 use anyhow::{anyhow, bail, Result};
 use caliptra_mcu_builder::PROJECT_ROOT;
 use caliptra_mcu_fusegen::{HEADER_PREFIX, HEADER_SUFFIX};
+use caliptra_mcu_hw_revision::HardwareRevision;
 use caliptra_mcu_registers_generator::{
-    camel_case, has_single_32_bit_field, hex_const, snake_case, FieldType, Register, RegisterBlock,
-    RegisterBlockInstance, RegisterWidth, ValidatedRegisterBlock,
+    camel_case, has_single_32_bit_field, hex_const, snake_case, FieldType, OnWriteSemantics,
+    Register, RegisterBlock, RegisterBlockInstance, RegisterWidth, ValidatedRegisterBlock,
 };
 use caliptra_mcu_registers_systemrdl::ParentScope;
 use proc_macro2::{Ident, Literal, TokenStream};
@@ -38,24 +39,31 @@ pub(crate) fn autogen(
     fuses_hjson_path: Option<&Path>,
     otp_mmap_hjson_path: Option<&Path>,
 ) -> Result<()> {
-    let sub_dir = &PROJECT_ROOT.join("hw").join("caliptra-ss").to_path_buf();
+    let revision = HardwareRevision::from_env().map_err(anyhow::Error::msg)?;
+    let inputs_dir = PROJECT_ROOT.join(revision.inputs_path());
+    let semantics = match revision {
+        HardwareRevision::V2_1 => OnWriteSemantics::Legacy,
+        HardwareRevision::Latest => OnWriteSemantics::SystemRdl,
+    };
+    let sub_dir = &PROJECT_ROOT.join(revision.hardware_path());
     let registers_dest_dir = &PROJECT_ROOT
         .join("registers")
         .join("generated-firmware")
         .join("src")
+        .join(revision.directory())
         .to_path_buf();
     let bus_dest_dir = &PROJECT_ROOT
         .join("registers")
         .join("generated-emulator")
         .join("src")
+        .join(revision.directory())
         .to_path_buf();
 
-    let rdl_files = [
-        "hw/caliptra-ss/src/integration/rtl/soc_address_map.rdl",
-        "hw/mcu.rdl",
-        "hw/network.rdl",
+    let mut rdl_files = vec![
+        sub_dir.join("src/integration/rtl/soc_address_map.rdl"),
+        inputs_dir.join("mcu.rdl"),
+        inputs_dir.join("network.rdl"),
     ];
-    let mut rdl_files: Vec<PathBuf> = rdl_files.iter().map(|s| PROJECT_ROOT.join(s)).collect();
     rdl_files.extend_from_slice(extra_files);
 
     let mut temp_rdl = tempfile::NamedTempFile::new()?;
@@ -83,58 +91,48 @@ pub(crate) fn autogen(
     // eliminate duplicate type names
     let patches = [
         (
-            PROJECT_ROOT.join("hw/caliptra-ss/src/mci/rtl/mci_top.rdl"),
+            sub_dir.join("src/mci/rtl/mci_top.rdl"),
             // this is legal but our parser doesn't understand it
             r#"mem {name="MCU SRAM";"#,
             r#"external mem {name="MCU SRAM";"#,
         ),
         (
-            PROJECT_ROOT.join("hw/caliptra-ss/src/mci/rtl/mci_top.rdl"),
+            sub_dir.join("src/mci/rtl/mci_top.rdl"),
             r"external mcu_sram @ 0xC0_0000;",
             r"mcu_sram @ 0xC0_0000;",
         ),
         (
-            PROJECT_ROOT.join(
-                "hw/caliptra-ss/third_party/i3c-core/src/rdl/target_transaction_interface.rdl",
-            ),
+            sub_dir.join("third_party/i3c-core/src/rdl/target_transaction_interface.rdl"),
             "QUEUE_THLD_CTRL",
             "TTI_QUEUE_THLD_CTRL",
         ),
         (
-            PROJECT_ROOT.join(
-                "hw/caliptra-ss/third_party/i3c-core/src/rdl/target_transaction_interface.rdl",
-            ),
+            sub_dir.join("third_party/i3c-core/src/rdl/target_transaction_interface.rdl"),
             "QUEUE_SIZE",
             "TTI_QUEUE_SIZE",
         ),
         (
-            PROJECT_ROOT.join(
-                "hw/caliptra-ss/third_party/i3c-core/src/rdl/target_transaction_interface.rdl",
-            ),
+            sub_dir.join("third_party/i3c-core/src/rdl/target_transaction_interface.rdl"),
             "IBI_PORT",
             "TTI_IBI_PORT",
         ),
         (
-            PROJECT_ROOT.join(
-                "hw/caliptra-ss/third_party/i3c-core/src/rdl/target_transaction_interface.rdl",
-            ),
+            sub_dir.join("third_party/i3c-core/src/rdl/target_transaction_interface.rdl"),
             "DATA_BUFFER_THLD_CTRL",
             "TTI_DATA_BUFFER_THLD_CTRL",
         ),
         (
-            PROJECT_ROOT.join(
-                "hw/caliptra-ss/third_party/i3c-core/src/rdl/target_transaction_interface.rdl",
-            ),
+            sub_dir.join("third_party/i3c-core/src/rdl/target_transaction_interface.rdl"),
             "RESET_CONTROL",
             "TTI_RESET_CONTROL",
         ),
         (
-            PROJECT_ROOT.join("hw/caliptra-ss/src/fuse_ctrl/rtl/otp_ctrl.rdl"),
+            sub_dir.join("src/fuse_ctrl/rtl/otp_ctrl.rdl"),
             "INTERRUPT_ENABLE",
             "OTP_INTERRUPT_ENABLE",
         ),
         (
-            PROJECT_ROOT.join("hw/caliptra-ss/src/fuse_ctrl/rtl/otp_ctrl.rdl"),
+            sub_dir.join("src/fuse_ctrl/rtl/otp_ctrl.rdl"),
             "STATUS",
             "OTP_STATUS",
         ),
@@ -192,15 +190,22 @@ pub(crate) fn autogen(
     let addrmap = scope.lookup_typedef("soc").unwrap();
     let addrmap2 = scope.lookup_typedef("mcu").unwrap();
     let addrmap_network = scope.lookup_typedef("network").unwrap();
-    let mut scopes = vec![addrmap, addrmap2, addrmap_network];
+    // Local synthetic peripherals retain the contract used by their existing models.
+    let mut scopes = vec![
+        (addrmap, semantics),
+        (addrmap2, OnWriteSemantics::Legacy),
+        (addrmap_network, OnWriteSemantics::Legacy),
+    ];
     if !extra_addrmap.is_empty() {
         let addrmap3 = scope.lookup_typedef("extra").unwrap();
-        scopes.push(addrmap3);
+        scopes.push((addrmap3, semantics));
     }
 
     // These are types like kv_read_ctrl_reg that are used by multiple crates
     let root_block = RegisterBlock {
-        declared_register_types: caliptra_mcu_registers_generator::translate_types(scope)?,
+        declared_register_types: caliptra_mcu_registers_generator::translate_types_with_semantics(
+            scope, semantics,
+        )?,
         ..Default::default()
     };
     let root_block = root_block.validate_and_dedup()?;
@@ -215,7 +220,7 @@ pub(crate) fn autogen(
         registers_dest_dir,
         &mut register_types_to_crates,
     )?;
-    let _defines = generate_defines(check, header.clone(), registers_dest_dir)?;
+    let _defines = generate_defines(check, header.clone(), registers_dest_dir, sub_dir)?;
     generate_emulator_types(
         check,
         &scopes,
@@ -234,7 +239,7 @@ pub(crate) fn autogen(
 /// Generate types used by the emulator.
 fn generate_emulator_types(
     check: bool,
-    scopes: &[ParentScope],
+    scopes: &[(ParentScope, OnWriteSemantics)],
     dest_dir: &Path,
     header: String,
     register_types_to_crates: &HashMap<String, Vec<String>>,
@@ -247,8 +252,10 @@ fn generate_emulator_types(
     };
     let mut lib_code = TokenStream::new();
     let mut blocks = vec![];
-    for scope in scopes.iter() {
-        blocks.extend(caliptra_mcu_registers_generator::translate_addrmap(*scope)?);
+    for (scope, semantics) in scopes.iter() {
+        blocks.extend(
+            caliptra_mcu_registers_generator::translate_addrmap_with_semantics(*scope, *semantics)?,
+        );
     }
     let mut validated_blocks = vec![];
 
@@ -1251,7 +1258,7 @@ fn delete_rust_files(dir: &Path) -> Result<()> {
 fn generate_fw_registers(
     check: bool,
     mut root_block: ValidatedRegisterBlock,
-    scopes: &[ParentScope],
+    scopes: &[(ParentScope, OnWriteSemantics)],
     header: String,
     dest_dir: &Path,
     register_types_to_crates: &mut HashMap<String, Vec<String>>,
@@ -1264,8 +1271,10 @@ fn generate_fw_registers(
     };
 
     let mut blocks = vec![];
-    for scope in scopes.iter() {
-        blocks.extend(caliptra_mcu_registers_generator::translate_addrmap(*scope)?);
+    for (scope, semantics) in scopes.iter() {
+        blocks.extend(
+            caliptra_mcu_registers_generator::translate_addrmap_with_semantics(*scope, *semantics)?,
+        );
     }
     let mut validated_blocks = vec![];
     for mut block in blocks {
@@ -1353,11 +1362,10 @@ fn generate_fw_registers(
     let root_type_tokens = caliptra_mcu_registers_generator::generate_code(
         "crate::",
         &root_block,
-        true,
+        false,
         register_types_to_crates,
         false,
     );
-    let recursion = "#![recursion_limit = \"2048\"]\n";
     let root_tokens = root_type_tokens;
     let defines_mod = "pub mod defines;\n";
     let fuses_tokens = "pub mod fuses;\n";
@@ -1365,7 +1373,6 @@ fn generate_fw_registers(
         &dest_dir.join("lib.rs"),
         &rustfmt(
             &(header.clone()
-                + recursion
                 + &root_tokens.to_string()
                 + &root_submod_tokens
                 + defines_mod
@@ -1375,7 +1382,12 @@ fn generate_fw_registers(
     Ok(())
 }
 
-fn generate_defines(check: bool, header: String, dest_dir: &Path) -> Result<HashMap<String, u32>> {
+fn generate_defines(
+    check: bool,
+    header: String,
+    dest_dir: &Path,
+    sub_dir: &Path,
+) -> Result<HashMap<String, u32>> {
     let file_action = if check {
         file_check_contents
     } else {
@@ -1384,8 +1396,7 @@ fn generate_defines(check: bool, header: String, dest_dir: &Path) -> Result<Hash
 
     let mut defines_map = HashMap::new();
 
-    let define_files = ["hw/caliptra-ss/src/riscv_core/veer_el2/rtl/defines/css_mcu0_defines.h"];
-    let define_files: Vec<PathBuf> = define_files.iter().map(|s| PROJECT_ROOT.join(s)).collect();
+    let define_files = [sub_dir.join("src/riscv_core/veer_el2/rtl/defines/css_mcu0_defines.h")];
     for define_file in define_files.iter() {
         if !define_file.exists() {
             bail!("Define file not found: {:?} -- ensure that you have run `git submodule init` and `git submodule update --recursive`", define_file);

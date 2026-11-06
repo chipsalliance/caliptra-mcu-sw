@@ -33,7 +33,7 @@ fn rom_build_inner(
         "caliptra-mcu-rom-{}",
         platform.clone().unwrap_or_else(|| "emulator".to_string())
     );
-    let rom = format!("{target_name}{feature_suffix}");
+    let rom = crate::revisioned_name(&format!("{target_name}{feature_suffix}"))?;
     let manifest = manifest_file(platform.as_deref(), false)?;
     let common = Common {
         manifest,
@@ -46,26 +46,19 @@ fn rom_build_inner(
         common,
         ld: LdArgs::default(),
         build: BuildArgs {
+            binary_output: Some(rom_binary.clone()),
             rom_features: features.filter(|s| !s.is_empty()).map(|s| s.to_string()),
             no_default_features: true,
             ..Default::default()
         },
-        target: Some(target_name.clone()),
+        target: Some(target_name),
     };
 
     caliptra_mcu_firmware_bundler::execute(build_cmd)?;
-    let bundler_output = rom_binary.with_file_name(format!("{target_name}.bin"));
-    if bundler_output != rom_binary {
-        // The bundler always writes to the base binary name (e.g.
-        // mcu-rom-emulator.bin). When building a feature variant we need to
-        // place the output at the feature-suffixed path. Use copy instead of
-        // rename so the base binary is preserved for other builds that depend
-        // on the default ROM.
-        std::fs::copy(&bundler_output, &rom_binary)?;
-    }
     assert!(rom_binary.exists(), "{rom_binary:?} does not exist");
     append_rom_digest(&rom_binary, rom_size)?;
     write_legacy_rom_alias(&rom_binary)?;
+    crate::write_hardware_provenance(&rom_binary)?;
     Ok(rom_binary)
 }
 
@@ -130,7 +123,10 @@ pub fn test_rom_build(args: &crate::CaliptraBuildArgs) -> Result<String> {
         ..Default::default()
     };
 
-    let platform_bin = format!("mcu-test-rom-{}-{}.bin", fwid.crate_name, fwid.bin_name);
+    let platform_bin = crate::revisioned_name(&format!(
+        "mcu-test-rom-{}-{}.bin",
+        fwid.crate_name, fwid.bin_name
+    ))?;
     let rom_binary = common.release_dir().map(|t| t.join(&platform_bin))?;
 
     let mut features = fwid.features().to_vec();
