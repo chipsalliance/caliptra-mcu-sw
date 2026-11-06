@@ -55,10 +55,6 @@ use mcu_caliptra_api::{
 use mcu_caliptra_api::{ScratchAlloc, POPULATE_IDEV_MLDSA87_MAX_CERT_SIZE};
 use mcu_error::McuResult;
 
-/// IDevID ECC cert size in OTP partition 1.
-#[cfg(not(feature = "vendor-certs-oob"))]
-const ECC_DEVID_CERT_SIZE: usize = 547;
-
 /// OTP partition ID for the IDevID ECC certificate.
 #[cfg(not(feature = "vendor-certs-oob"))]
 const OTP_IDEVID_ECC_PARTITION: u32 = 0x01;
@@ -182,8 +178,8 @@ const MANAGED_SLOT_REGION_SIZE: usize = {
 pub(crate) async fn init(scratch: &BitmapAllocator) -> McuResult<()> {
     #[cfg(not(feature = "vendor-certs-oob"))]
     {
-        let mldsa_populated = populate_idev(scratch).await?;
-        CERT_STORE.set_idevid_populated(CertificateAlgorithm::EccP384, true);
+        let (ecc_populated, mldsa_populated) = populate_idev(scratch).await?;
+        CERT_STORE.set_idevid_populated(CertificateAlgorithm::EccP384, ecc_populated);
         CERT_STORE.set_idevid_populated(CertificateAlgorithm::MlDsa87, mldsa_populated);
     }
     setup_endorsements(&CERT_STORE, scratch).await?;
@@ -201,28 +197,31 @@ pub(crate) fn mci_store() -> &'static TaskCertStore<CertStoreStorage> {
 }
 
 /// One-time Caliptra setup: read the IDevID certs from OTP and install them,
-/// returning `Ok(mldsa_populated)`.
+/// returning `Ok((ecc_populated, mldsa_populated))`.
 ///
 /// Boot initialization invokes this before spawning any mailbox-using task, so
 /// the installs cannot contend with an SPDM responder or the MCU mailbox
-/// service. ECC-384 is required; ML-DSA-87 remains best-effort until SPDM can
-/// negotiate that algorithm.
+/// service. ECC-384 is required when present in OTP; ML-DSA-87 remains
+/// best-effort until SPDM can negotiate that algorithm.
 #[cfg(not(feature = "vendor-certs-oob"))]
-async fn populate_idev<A: ScratchAlloc>(alloc: &A) -> McuResult<bool> {
-    populate_idev_cert_from_otp_ecc(alloc).await?;
-    let mldsa_populated = match populate_idev_cert_from_otp_mldsa(alloc).await {
-        Ok(populated) => populated,
-        Err(e) => {
-            let mut cw = Console::<DefaultSyscalls>::writer();
-            crate::log_warn!(
-                cw,
-                "CERT_STORE: ML-DSA-87 IDevID cert not installed: 0x{}",
-                crate::Hex32(u32::from(e))
-            );
-            false
-        }
-    };
-    Ok(mldsa_populated)
+async fn populate_idev<A: ScratchAlloc>(alloc: &A) -> McuResult<(bool, bool)> {
+    let otp = ExternalOtp::<DefaultSyscalls>::new();
+    let ecc_populated =
+        populate_idev_cert_from_otp(alloc, &otp, CertificateAlgorithm::EccP384).await?;
+    let mldsa_populated =
+        match populate_idev_cert_from_otp(alloc, &otp, CertificateAlgorithm::MlDsa87).await {
+            Ok(populated) => populated,
+            Err(e) => {
+                let mut cw = Console::<DefaultSyscalls>::writer();
+                crate::log_warn!(
+                    cw,
+                    "CERT_STORE: ML-DSA-87 IDevID cert not installed: 0x{}",
+                    crate::Hex32(u32::from(e))
+                );
+                false
+            }
+        };
+    Ok((ecc_populated, mldsa_populated))
 }
 
 /// Configure endorsement chains on the shared cert store, for all 3 slots.
@@ -272,72 +271,120 @@ async fn setup_endorsements<A: ScratchAlloc>(
     Ok(())
 }
 
-/// Read the IDevID ECC-384 cert from OTP and install it into Caliptra.
 #[cfg(not(feature = "vendor-certs-oob"))]
-async fn populate_idev_cert_from_otp_ecc<A: ScratchAlloc>(alloc: &A) -> McuResult<()> {
-    let mut cert_buf = [0u8; ECC_DEVID_CERT_SIZE];
-    let otp = ExternalOtp::<DefaultSyscalls>::new();
-
-    // Same word-at-a-time read as the ML-DSA path; 547 is not a word multiple,
-    // so the final word contributes 3 bytes.
-    read_otp_range(&otp, OTP_IDEVID_ECC_PARTITION, &mut cert_buf).await?;
-
-    populate_idev_ecc384_cert(alloc, &cert_buf).await
+const fn otp_partition(algo: CertificateAlgorithm) -> u32 {
+    match algo {
+        CertificateAlgorithm::EccP384 => OTP_IDEVID_ECC_PARTITION,
+        CertificateAlgorithm::MlDsa87 => OTP_IDEVID_MLDSA_PARTITION,
+    }
 }
 
-/// Read the IDevID ML-DSA-87 cert from OTP and install it into Caliptra.
-///
-/// Best-effort: if the partition holds no usable DER certificate the install is
-/// skipped and `Ok(false)` is returned so the ECC chain still comes up.
+#[cfg(not(feature = "vendor-certs-oob"))]
+async fn populate_idev_cert<A: ScratchAlloc>(
+    alloc: &A,
+    algo: CertificateAlgorithm,
+    cert: &[u8],
+) -> McuResult<()> {
+    match algo {
+        CertificateAlgorithm::EccP384 => populate_idev_ecc384_cert(alloc, cert).await,
+        CertificateAlgorithm::MlDsa87 => populate_idev_mldsa87_cert(alloc, cert).await,
+    }
+}
+
+/// Read an IDevID cert from OTP and install it into Caliptra if a valid DER
+/// certificate is present in the partition.
 ///
 /// The certificate is staged in scratch and sent as one contiguous payload
-/// rather than streamed out of OTP. `execute_with_payload_stream` takes the
-/// mailbox mutex *before* pulling from the stream, so streaming would hold the
-/// Caliptra mailbox with EXECUTE asserted across ~1,900 sequential 4-byte OTP
-/// syscalls. Staging keeps the mailbox held only for the transfer itself.
+/// rather than streamed out of OTP so the Caliptra mailbox lock is held only
+/// for the transfer itself.
 #[cfg(not(feature = "vendor-certs-oob"))]
-async fn populate_idev_cert_from_otp_mldsa<A: ScratchAlloc>(alloc: &A) -> McuResult<bool> {
-    let otp = ExternalOtp::<DefaultSyscalls>::new();
-
-    // Submit the cert's own DER length, not the whole partition: a production
-    // cert shorter than its partition would otherwise splice the 0xFF fill into
-    // the chain.
-    let Some(cert_size) = mldsa_cert_der_len(&otp).await? else {
-        // An empty ML-DSA partition is a supported configuration.
-        return Ok(false);
-    };
-
-    // Stage the cert outside the mailbox lock. The scratch pool is untouched at
-    // cert-store init, so the ~7.7 KiB fits without a stack buffer.
-    let mut cert = alloc.alloc(cert_size)?;
-    read_otp_range(&otp, OTP_IDEVID_MLDSA_PARTITION, &mut cert).await?;
-
-    populate_idev_mldsa87_cert(alloc, &cert).await?;
-    Ok(true)
-}
-
-/// Determine the ML-DSA-87 IDevID cert length from its own DER header.
-///
-/// A certificate is an ASN.1 SEQUENCE: tag `0x30`, then a long-form length.
-/// `0x82` (2 length bytes) is the only form these certs can take: the ML-DSA-87
-/// signature alone exceeds 4 KiB, so the body is always in `128..=65535`.
-///
-/// Returns `Ok(None)` for anything that is not a cert this device can install —
-/// erased OTP, a truncated header, or a length that overruns the partition.
-/// All of those mean "no usable PQC cert provisioned", which the caller skips;
-/// none of them should be able to take down the ECC chain.
-#[cfg(not(feature = "vendor-certs-oob"))]
-async fn mldsa_cert_der_len(otp: &ExternalOtp<DefaultSyscalls>) -> McuResult<Option<usize>> {
+async fn populate_idev_cert_from_otp<A: ScratchAlloc>(
+    alloc: &A,
+    otp: &ExternalOtp<DefaultSyscalls>,
+    algo: CertificateAlgorithm,
+) -> McuResult<bool> {
+    let partition_id = otp_partition(algo);
     let word = otp
-        .read(OTP_IDEVID_MLDSA_PARTITION, 0)
+        .read(partition_id, 0)
         .await
         .map_err(|_| mcu_error::codes::INTERNAL_BUG)?;
     let partition_size = otp
-        .partition_size(OTP_IDEVID_MLDSA_PARTITION)
+        .partition_size(partition_id)
         .map_err(|_| mcu_error::codes::INTERNAL_BUG)? as usize;
-    // Length policy lives in mcu-caliptra-api so it is covered by host unit tests;
-    // user-app itself is excluded from `cargo test` (xtask/src/test.rs).
-    Ok(mldsa87_cert_der_len(word, partition_size))
+    let Some(cert_size) = mldsa87_cert_der_len(word, partition_size) else {
+        return Ok(false);
+    };
+    let mut cert = alloc.alloc(cert_size)?;
+    read_otp_range(otp, partition_id, &mut cert).await?;
+    populate_idev_cert(alloc, algo, &cert).await?;
+    Ok(true)
+}
+
+/// Populate and/or write to external OTP the `IDevID` certificate for `algo`.
+#[cfg(all(feature = "cert-provisioning", not(feature = "vendor-certs-oob")))]
+pub(crate) async fn provision_idevid_cert<A: ScratchAlloc>(
+    alloc: &A,
+    algo: CertificateAlgorithm,
+    write_otp: bool,
+    data: &[u8],
+) -> Result<(), caliptra_mcu_common_commands::CaliptraCompletionCode> {
+    use caliptra_mcu_common_commands::CaliptraCompletionCode;
+
+    let Some(&first_word) = data.first_chunk::<4>() else {
+        return Err(CaliptraCompletionCode::InvalidParameter);
+    };
+    let otp = ExternalOtp::<DefaultSyscalls>::new();
+    let partition_id = otp_partition(algo);
+    let partition_size = otp
+        .partition_size(partition_id)
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)? as usize;
+    if mldsa87_cert_der_len(u32::from_le_bytes(first_word), partition_size) != Some(data.len()) {
+        return Err(CaliptraCompletionCode::InvalidParameter);
+    }
+
+    let already_populated = CERT_STORE.is_idevid_populated(algo);
+    if write_otp {
+        if otp
+            .is_partition_locked(partition_id)
+            .await
+            .map_err(|_| CaliptraCompletionCode::OperationFailed)?
+        {
+            return Err(CaliptraCompletionCode::InvalidState);
+        }
+    } else if already_populated {
+        return Err(CaliptraCompletionCode::InvalidState);
+    }
+
+    if !already_populated {
+        populate_idev_cert(alloc, algo, data)
+            .await
+            .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+        CERT_STORE.set_idevid_populated(algo, true);
+    }
+
+    if write_otp {
+        let mut offset = 0usize;
+        for chunk in data.chunks(4) {
+            let mut word_bytes = [0xFFu8; 4];
+            word_bytes[..chunk.len()].copy_from_slice(chunk);
+            otp.write(partition_id, offset as u32, u32::from_le_bytes(word_bytes))
+                .await
+                .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+            let actual = otp
+                .read(partition_id, offset as u32)
+                .await
+                .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+            if actual.to_le_bytes()[..chunk.len()] != *chunk {
+                return Err(CaliptraCompletionCode::OperationFailed);
+            }
+            offset += 4;
+        }
+        otp.lock_partition(partition_id)
+            .await
+            .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+    }
+
+    Ok(())
 }
 
 /// Read `out.len()` bytes from the start of an OTP partition.

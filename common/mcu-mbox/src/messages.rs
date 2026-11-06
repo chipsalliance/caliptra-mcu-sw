@@ -180,6 +180,7 @@ impl CommandId {
     pub const MC_GET_CERT_CHAIN_INFO: Self = Self(0x4D47_4349); // "MGCI"
     pub const MC_GET_CERT_CHAIN: Self = Self(0x4D47_4343); // "MGCC"
     pub const MC_SET_CERT_CHAIN: Self = Self(0x4D53_4343); // "MSCC"
+    pub const MC_PROVISION_IDEV_CERT: Self = Self(0x4D50_4943); // "MPIC"
 
     // OCP Lock commands
     pub const MC_OCP_LOCK: Self = Self(0x0000_0013);
@@ -291,6 +292,7 @@ pub enum McuMailboxReq {
     GetCertChainInfo(GetCertChainInfoReq),
     GetCertChain(GetCertChainReq),
     SetCertChain(SetCertChainReq),
+    ProvisionIdevCert(ProvisionIdevCertReq),
     GetAttestation(GetAttestationReq),
 
     // OCP Lock
@@ -381,6 +383,7 @@ impl McuMailboxReq {
             McuMailboxReq::GetCertChainInfo(req) => Ok(req.as_bytes()),
             McuMailboxReq::GetCertChain(req) => Ok(req.as_bytes()),
             McuMailboxReq::SetCertChain(req) => req.as_bytes_partial(),
+            McuMailboxReq::ProvisionIdevCert(req) => req.as_bytes_partial(),
             McuMailboxReq::GetAttestation(req) => Ok(req.as_bytes()),
 
             McuMailboxReq::OcpLockProgramHek(req) => Ok(req.as_bytes()),
@@ -469,6 +472,7 @@ impl McuMailboxReq {
             McuMailboxReq::GetCertChainInfo(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::GetCertChain(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::SetCertChain(req) => req.as_bytes_partial_mut(),
+            McuMailboxReq::ProvisionIdevCert(req) => req.as_bytes_partial_mut(),
             McuMailboxReq::GetAttestation(req) => Ok(req.as_mut_bytes()),
 
             McuMailboxReq::OcpLockProgramHek(req) => Ok(req.as_mut_bytes()),
@@ -557,6 +561,7 @@ impl McuMailboxReq {
             McuMailboxReq::GetCertChainInfo(_) => CommandId::MC_GET_CERT_CHAIN_INFO,
             McuMailboxReq::GetCertChain(_) => CommandId::MC_GET_CERT_CHAIN,
             McuMailboxReq::SetCertChain(_) => CommandId::MC_SET_CERT_CHAIN,
+            McuMailboxReq::ProvisionIdevCert(_) => CommandId::MC_PROVISION_IDEV_CERT,
             McuMailboxReq::GetAttestation(_) => CommandId::MC_GET_ATTESTATION,
 
             McuMailboxReq::OcpLockProgramHek(_) => CommandId::MC_OCP_LOCK,
@@ -666,6 +671,7 @@ pub enum McuMailboxResp {
     GetCertChainInfo(GetCertChainInfoResp),
     GetCertChain(GetCertChainResp),
     SetCertChain(SetCertChainResp),
+    ProvisionIdevCert(ProvisionIdevCertResp),
 
     // OCP Lock
     OcpLockProgramHek(OcpLockProgramHekResp),
@@ -809,6 +815,7 @@ impl McuMailboxResp {
             McuMailboxResp::GetCertChainInfo(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::GetCertChain(resp) => resp.as_bytes_partial(),
             McuMailboxResp::SetCertChain(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::ProvisionIdevCert(resp) => Ok(resp.as_bytes()),
 
             McuMailboxResp::OcpLockProgramHek(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::OcpLockZeroHek(resp) => Ok(resp.as_bytes()),
@@ -890,6 +897,7 @@ impl McuMailboxResp {
             McuMailboxResp::GetCertChainInfo(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::GetCertChain(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::SetCertChain(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::ProvisionIdevCert(resp) => Ok(resp.as_mut_bytes()),
 
             McuMailboxResp::OcpLockProgramHek(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::OcpLockZeroHek(resp) => Ok(resp.as_mut_bytes()),
@@ -2294,6 +2302,70 @@ impl McuRequestVarSize for SetCertChainReq {
 pub struct SetCertChainResp {
     pub hdr: MailboxRespHeader,
 }
+
+/// Maximum `IDevID` certificate or signature payload bytes carried in a single
+/// `MC_PROVISION_IDEV_CERT` request (covers the 7,741-byte ML-DSA-87 DER
+/// certificate while keeping both the MCI request struct and the SPDM VDM
+/// chunked request buffer within their existing static pools).
+pub const MAX_IDEV_CERT_SIZE: usize = 8000;
+
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+pub struct ProvisionIdevCertReq {
+    pub hdr: MailboxReqHeader,
+    pub algorithm: u32,
+    pub mode: u32,
+    pub data_len: u32,
+    pub data: [u8; MAX_IDEV_CERT_SIZE],
+}
+
+impl Default for ProvisionIdevCertReq {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxReqHeader::default(),
+            algorithm: 0,
+            mode: 0,
+            data_len: 0,
+            data: [0u8; MAX_IDEV_CERT_SIZE],
+        }
+    }
+}
+
+impl ProvisionIdevCertReq {
+    pub const HEADER_SIZE: usize = size_of::<MailboxReqHeader>() + 3 * size_of::<u32>();
+}
+
+impl Request for ProvisionIdevCertReq {
+    const ID: CommandId = CommandId::MC_PROVISION_IDEV_CERT;
+    type Resp = ProvisionIdevCertResp;
+}
+
+impl McuRequestVarSize for ProvisionIdevCertReq {
+    fn as_bytes_partial(&self) -> McuMboxResult<&[u8]> {
+        let len = Self::HEADER_SIZE
+            .checked_add(self.data_len as usize)
+            .ok_or(McuMboxError::MCU_MBOX_REQUEST_DATA_LEN_TOO_LARGE)?;
+        self.as_bytes()
+            .get(..len)
+            .ok_or(McuMboxError::MCU_MBOX_REQUEST_DATA_LEN_TOO_LARGE)
+    }
+
+    fn as_bytes_partial_mut(&mut self) -> McuMboxResult<&mut [u8]> {
+        let len = Self::HEADER_SIZE
+            .checked_add(self.data_len as usize)
+            .ok_or(McuMboxError::MCU_MBOX_REQUEST_DATA_LEN_TOO_LARGE)?;
+        self.as_mut_bytes()
+            .get_mut(..len)
+            .ok_or(McuMboxError::MCU_MBOX_REQUEST_DATA_LEN_TOO_LARGE)
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+pub struct ProvisionIdevCertResp {
+    pub hdr: MailboxRespHeader,
+}
+impl Response for ProvisionIdevCertResp {}
 impl Response for SetCertChainResp {}
 
 // ============================================================================

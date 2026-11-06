@@ -2,8 +2,14 @@
 
 //! Per-command handlers for the Caliptra VDM protocol.
 
-use caliptra_mcu_common_commands::CaliptraCompletionCode as CommonCompletionCode;
-use caliptra_mcu_spdm_codec::vendor_defined::iana::ocp::caliptra::CaliptraCompletionCode;
+use caliptra_mcu_common_commands::{
+    AsymAlgo, CaliptraCmdHandler, CaliptraCompletionCode as CommonCompletionCode,
+    ProvisionIdevCertMode,
+};
+use caliptra_mcu_spdm_codec::vendor_defined::iana::ocp::caliptra::{
+    CaliptraCompletionCode, CaliptraVdmCmdResult,
+};
+use caliptra_mcu_spdm_traits::SpdmPalAlloc;
 
 pub(crate) mod authorized_command;
 pub(crate) mod debug_unlock;
@@ -14,6 +20,45 @@ pub(crate) mod export_attested_csr;
 pub(crate) mod get_attestation;
 #[cfg(feature = "ocp-lock")]
 pub(crate) mod ocp_lock;
+
+/// Handles `PROVISION_IDEV_CERT (0x09)`:
+/// `[algorithm: u32, mode: u32, data_len: u32, data[..data_len]]`.
+pub(crate) async fn handle_provision_idevid_cert<H, A>(
+    cmds: &H,
+    req: &[u8],
+    scratch: &A,
+    out: &mut [u8],
+) -> CaliptraVdmCmdResult
+where
+    H: CaliptraCmdHandler,
+    A: SpdmPalAlloc,
+{
+    let Some((hdr, data)) = req.split_first_chunk::<12>() else {
+        return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidPayloadSize);
+    };
+    let data_len = u32::from_le_bytes([hdr[8], hdr[9], hdr[10], hdr[11]]) as usize;
+    if data_len == 0 || data.len() != data_len {
+        return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidPayloadSize);
+    }
+    let algorithm = u32::from_le_bytes([hdr[0], hdr[1], hdr[2], hdr[3]]);
+    let mode = u32::from_le_bytes([hdr[4], hdr[5], hdr[6], hdr[7]]);
+    let (Ok(algorithm), Ok(mode)) = (
+        AsymAlgo::try_from(algorithm),
+        ProvisionIdevCertMode::try_from(mode),
+    ) else {
+        return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidParameter);
+    };
+    match cmds
+        .provision_idevid_cert(scratch.allocator(), algorithm, mode, data)
+        .await
+    {
+        Ok(()) => match write_success(out) {
+            Ok(_) => CaliptraVdmCmdResult::Response(1),
+            Err(code) => CaliptraVdmCmdResult::Error(code),
+        },
+        Err(code) => CaliptraVdmCmdResult::Error(map_common_completion(code)),
+    }
+}
 
 pub(crate) fn write_success(out: &mut [u8]) -> Result<&mut [u8], CaliptraCompletionCode> {
     let Some((completion, rest)) = out.split_first_mut() else {
