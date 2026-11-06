@@ -26,7 +26,7 @@ use crate::RomEnv;
 use crate::WarmBoot;
 use caliptra_api::mailbox::CmStableKeyType;
 #[cfg(all(not(test), feature = "cfi"))]
-use caliptra_cfi_derive::{cfi_impl_fn, cfi_mod_fn};
+use caliptra_cfi_derive::cfi_impl_fn;
 use caliptra_cfi_lib::{cfi_assert_eq, cfi_launder, CfiCounter, CfiError};
 use caliptra_drivers::AxiAddr;
 use caliptra_mcu_error::{McuError, McuResult};
@@ -755,53 +755,98 @@ pub struct McuMboxAxiUserConfig {
     pub mbox0_users: [Option<u32>; MCU_MBOX_USERS],
     /// Expected values for MBOX1 valid AXI users (None = not configured)
     pub mbox1_users: [Option<u32>; MCU_MBOX_USERS],
-    /// Expected lock status for MBOX0 AXI users
-    pub mbox0_locks: [bool; MCU_MBOX_USERS],
-    /// Expected lock status for MBOX1 AXI users
-    pub mbox1_locks: [bool; MCU_MBOX_USERS],
 }
 
-/// Configures MCU mailbox AXI users in MCI and returns the configuration for later verification.
-pub fn configure_mcu_mbox_axi_users(
-    mci: &caliptra_mcu_romtime::Mci,
-    mbox0_axi_users: &[u32; 5],
-    mbox1_axi_users: &[u32; 5],
-) -> McuMboxAxiUserConfig {
-    let mut config = McuMboxAxiUserConfig::default();
+impl McuMboxAxiUserConfig {
+    /// Builds the expected MCU mailbox AXI user configuration from the
+    /// integrator-provided valid AXI user lists. A value of 0 marks a slot as
+    /// unconfigured.
+    pub fn new(
+        mbox0_axi_users: &[u32; MCU_MBOX_USERS],
+        mbox1_axi_users: &[u32; MCU_MBOX_USERS],
+    ) -> Self {
+        let mut config = McuMboxAxiUserConfig::default();
 
-    // Configure MBOX0 AXI users
-    for (i, user) in mbox0_axi_users.iter().enumerate() {
-        // skip unconfigured users and avoid impossible panics
-        if *user != 0 && i < config.mbox0_users.len() && i < config.mbox0_locks.len() {
-            caliptra_mcu_romtime::println!(
-                "[mcu-rom] Setting MCI mailbox 0 user {} to {}",
-                i,
-                HexWord(*user)
-            );
-            config.mbox0_users[i] = Some(*user);
-            config.mbox0_locks[i] = true;
-            mci.write_mbox0_valid_axi_user(i, *user);
-            mci.lock_mbox0_axi_user(i);
+        for (i, user) in mbox0_axi_users.iter().enumerate() {
+            if *user != 0 {
+                config.mbox0_users[i] = Some(*user);
+            }
+        }
+
+        for (i, user) in mbox1_axi_users.iter().enumerate() {
+            if *user != 0 {
+                config.mbox1_users[i] = Some(*user);
+            }
+        }
+
+        config
+    }
+
+    /// Writes the configured MCU mailbox AXI users into MCI and locks them.
+    pub fn lock(&self, mci: &caliptra_mcu_romtime::Mci) {
+        for (i, user) in self.mbox0_users.iter().enumerate() {
+            if let Some(user) = *user {
+                caliptra_mcu_romtime::println!(
+                    "[mcu-rom] Setting MCI mailbox 0 user {} to {}",
+                    i,
+                    HexWord(user)
+                );
+                mci.write_mbox0_valid_axi_user(i, user);
+                mci.lock_mbox0_axi_user(i);
+            }
+        }
+
+        for (i, user) in self.mbox1_users.iter().enumerate() {
+            if let Some(user) = *user {
+                caliptra_mcu_romtime::println!(
+                    "[mcu-rom] Setting MCI mailbox 1 user {} to {}",
+                    i,
+                    HexWord(user)
+                );
+                mci.write_mbox1_valid_axi_user(i, user);
+                mci.lock_mbox1_axi_user(i);
+            }
         }
     }
 
-    // Configure MBOX1 AXI users
-    for (i, user) in mbox1_axi_users.iter().enumerate() {
-        // skip unconfigured users and avoid impossible panics
-        if *user != 0 && i < config.mbox1_users.len() && i < config.mbox1_locks.len() {
-            caliptra_mcu_romtime::println!(
-                "[mcu-rom] Setting MCI mailbox 1 user {} to {}",
-                i,
-                HexWord(*user)
-            );
-            config.mbox1_users[i] = Some(*user);
-            config.mbox1_locks[i] = true;
-            mci.write_mbox1_valid_axi_user(i, *user);
-            mci.lock_mbox1_axi_user(i);
+    /// Verifies that the MCU mailbox AXI user configuration hasn't been tampered
+    /// with after SS_CONFIG_DONE_STICKY is set. A configured slot must hold its
+    /// expected user and be locked; an unconfigured slot must be unlocked.
+    #[cfg_attr(all(not(test), feature = "cfi"), cfi_impl_fn)]
+    pub fn verify(&self, mci: &caliptra_mcu_romtime::Mci) -> Result<(), McuError> {
+        // Verify MBOX0 AXI users and locks
+        for (i, expected_user) in self.mbox0_users.iter().enumerate() {
+            let actual_locked = mci.read_mbox0_axi_user_lock(i).unwrap_or(false);
+            if let Some(expected_val) = *expected_user {
+                let actual_val = mci.read_mbox0_valid_axi_user(i).unwrap_or(0);
+                if expected_val != actual_val {
+                    return Err(McuError::ROM_SOC_MCU_MBOX0_AXI_USER_VERIFY_FAILED);
+                }
+            }
+            // A slot is locked iff it is configured.
+            if expected_user.is_some() != actual_locked {
+                return Err(McuError::ROM_SOC_MCU_MBOX0_AXI_USER_LOCK_VERIFY_FAILED);
+            }
         }
-    }
 
-    config
+        // Verify MBOX1 AXI users and locks
+        for (i, expected_user) in self.mbox1_users.iter().enumerate() {
+            let actual_locked = mci.read_mbox1_axi_user_lock(i).unwrap_or(false);
+            if let Some(expected_val) = *expected_user {
+                let actual_val = mci.read_mbox1_valid_axi_user(i).unwrap_or(0);
+                if expected_val != actual_val {
+                    return Err(McuError::ROM_SOC_MCU_MBOX1_AXI_USER_VERIFY_FAILED);
+                }
+            }
+            // A slot is locked iff it is configured.
+            if expected_user.is_some() != actual_locked {
+                return Err(McuError::ROM_SOC_MCU_MBOX1_AXI_USER_LOCK_VERIFY_FAILED);
+            }
+        }
+
+        caliptra_mcu_romtime::println!("[mcu-rom] MCU mailbox AXI user verification passed");
+        Ok(())
+    }
 }
 
 /// Verifies that the production debug unlock PK hashes haven't been tampered with
@@ -843,59 +888,6 @@ pub fn verify_prod_debug_unlock_pk_hash(
         return Err(McuError::ROM_SOC_PK_HASH_VERIFY_MISMATCH);
     }
     caliptra_mcu_romtime::println!("[mcu-rom] Prod debug unlock PK hash verification passed");
-    Ok(())
-}
-
-/// Verifies that the MCU mailbox AXI user configuration hasn't been tampered with
-/// after SS_CONFIG_DONE_STICKY is set.
-#[cfg_attr(all(not(test), feature = "cfi"), cfi_mod_fn)]
-pub fn verify_mcu_mbox_axi_users(
-    mci: &caliptra_mcu_romtime::Mci,
-    expected: &McuMboxAxiUserConfig,
-) -> Result<(), McuError> {
-    // Verify MBOX0 AXI users and locks
-    for (i, (expected_user, expected_lock)) in expected
-        .mbox0_users
-        .iter()
-        .zip(expected.mbox0_locks.iter())
-        .enumerate()
-    {
-        // Verify AXI user value if configured
-        if let Some(expected_val) = *expected_user {
-            let actual_val = mci.read_mbox0_valid_axi_user(i).unwrap_or(0);
-            if expected_val != actual_val {
-                return Err(McuError::ROM_SOC_MCU_MBOX0_AXI_USER_VERIFY_FAILED);
-            }
-        }
-        // Verify lock status matches expected
-        let actual_locked = mci.read_mbox0_axi_user_lock(i).unwrap_or(false);
-        if *expected_lock != actual_locked {
-            return Err(McuError::ROM_SOC_MCU_MBOX0_AXI_USER_LOCK_VERIFY_FAILED);
-        }
-    }
-
-    // Verify MBOX1 AXI users and locks
-    for (i, (expected_user, expected_lock)) in expected
-        .mbox1_users
-        .iter()
-        .zip(expected.mbox1_locks.iter())
-        .enumerate()
-    {
-        // Verify AXI user value if configured
-        if let Some(expected_val) = *expected_user {
-            let actual_val = mci.read_mbox1_valid_axi_user(i).unwrap_or(0);
-            if expected_val != actual_val {
-                return Err(McuError::ROM_SOC_MCU_MBOX1_AXI_USER_VERIFY_FAILED);
-            }
-        }
-        // Verify lock status matches expected
-        let actual_locked = mci.read_mbox1_axi_user_lock(i).unwrap_or(false);
-        if *expected_lock != actual_locked {
-            return Err(McuError::ROM_SOC_MCU_MBOX1_AXI_USER_LOCK_VERIFY_FAILED);
-        }
-    }
-
-    caliptra_mcu_romtime::println!("[mcu-rom] MCU mailbox AXI user verification passed");
     Ok(())
 }
 
