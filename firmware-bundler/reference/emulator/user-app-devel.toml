@@ -5,6 +5,7 @@
 # `user-app.toml`) so debug-only Tock components fit alongside the kernel +
 # app, and is paired with the default cargo features (without the `release` cargo feature).  Selected by
 # `xtask runtime-build --profile devel` and `xtask runtime`.
+# DCCM and the handoff region match the release layout.
 
 [platform]
 name = "emulator-user-app"
