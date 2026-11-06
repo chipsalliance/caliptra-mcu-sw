@@ -14,7 +14,7 @@ Abstract:
 
 --*/
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
 use caliptra_emu_bus::ReadWriteRegister;
@@ -51,7 +51,9 @@ const STATUS_TRANSITION_SUCCESSFUL: u32 = 1 << 3;
 const STATUS_TRANSITION_COUNT_ERROR: u32 = 1 << 4;
 const STATUS_TRANSITION_ERROR: u32 = 1 << 5;
 const STATUS_TOKEN_ERROR: u32 = 1 << 6;
+const STATUS_FLASH_RMA_ERROR: u32 = 1 << 7;
 const STATUS_OTP_ERROR: u32 = 1 << 8;
+const STATUS_STATE_ERROR: u32 = 1 << 9;
 
 // Lifecycle state indices from the shared otp-lifecycle crate.
 use caliptra_mcu_otp_lifecycle::LifecycleControllerState as LcState;
@@ -154,6 +156,7 @@ pub struct LcCtrl {
 
     /// Shared reference to OTP partition data for token reads and state writes.
     otp_partitions: Option<Rc<RefCell<Vec<u8>>>>,
+    physical_presence: Option<Rc<Cell<bool>>>,
 }
 
 impl Default for LcCtrl {
@@ -185,12 +188,48 @@ impl LcCtrl {
             transition_target: 0,
             token: [0; 4],
             otp_partitions: None,
+            physical_presence: None,
         }
     }
 
     /// Provide OTP partition access after construction.
     pub fn set_otp_partitions(&mut self, otp: Rc<RefCell<Vec<u8>>>) {
         self.otp_partitions = Some(otp);
+    }
+
+    /// Connect the active-high `Allow_RMA_or_SCRAP_on_PPD` input.
+    ///
+    /// With no input connected, the model preserves its existing transition
+    /// behavior. This compatibility default is not a hardware tie-off: hardware
+    /// integrations must tie an unused pin low. Connecting a cell opts into
+    /// physical-presence gating; `false` denies RMA and SCRAP, and `true` only
+    /// permits them subject to all existing transition and token checks.
+    ///
+    /// Retain a clone of the cell and call `set` to drive the input dynamically.
+    /// The cell is sampled when a transition command executes, not latched on
+    /// connection or reset. Transitions are synchronous in this model; hardware
+    /// requires the pin to remain high until the transition completes.
+    ///
+    /// See the Caliptra Subsystem Integration Specification, "Life Cycle
+    /// Controller", and `src/lc_ctrl/rtl/lc_ctrl_fsm.sv`.
+    ///
+    /// ```
+    /// use caliptra_mcu_emulator_periph::LcCtrl;
+    /// use std::{cell::Cell, rc::Rc};
+    ///
+    /// let mut lc = LcCtrl::default();
+    /// let presence = Rc::new(Cell::new(false));
+    /// lc.set_physical_presence_input(presence.clone());
+    /// presence.set(true);
+    /// ```
+    pub fn set_physical_presence_input(&mut self, input: Rc<Cell<bool>>) {
+        self.physical_presence = Some(input);
+    }
+
+    fn physical_presence_denied(&self) -> bool {
+        self.physical_presence
+            .as_ref()
+            .is_some_and(|input| !input.get())
     }
 
     /// Re-read lifecycle state from OTP and reset transient state.
@@ -271,6 +310,13 @@ impl LcCtrl {
             }
         };
 
+        // RTL rejects SCRAP without PPD in CntIncrSt, before programming
+        // the counter or checking tokens, and reports STATE_ERROR.
+        if target_index == SCRAP && self.physical_presence_denied() {
+            self.transition_error(STATUS_STATE_ERROR);
+            return;
+        }
+
         if self.lc_transition_cnt >= MAX_TRANSITION_COUNT {
             self.transition_error(STATUS_TRANSITION_COUNT_ERROR);
             return;
@@ -310,6 +356,13 @@ impl LcCtrl {
                     return;
                 }
             }
+        }
+
+        // RTL checks RMA presence after token verification, in TokenCheck*St,
+        // and reports FLASH_RMA_ERROR when the physical handshake is denied.
+        if target_index == RMA && self.physical_presence_denied() {
+            self.transition_error(STATUS_FLASH_RMA_ERROR);
+            return;
         }
 
         // Success: update OTP, enter PostTransition.
@@ -556,6 +609,209 @@ mod tests {
         let token_words = token_to_words(&TEST_RAW_TOKEN);
         let status = do_transition(&mut lc, RMA, token_words);
         assert_ne!(status & STATUS_TRANSITION_SUCCESSFUL, 0);
+    }
+
+    #[test]
+    fn test_physical_presence_rma() {
+        for from in [DEV, PROD] {
+            for presence in [None, Some(false), Some(true)] {
+                for valid_token in [false, true] {
+                    let mut lc = make_lc_ctrl(from, 10, &TEST_RAW_TOKEN);
+                    if let Some(asserted) = presence {
+                        lc.set_physical_presence_input(Rc::new(Cell::new(asserted)));
+                    }
+                    let otp = lc.otp_partitions.as_ref().unwrap().clone();
+                    let before = otp.borrow().clone();
+                    let token = if valid_token {
+                        token_to_words(&TEST_RAW_TOKEN)
+                    } else {
+                        [0; 4]
+                    };
+                    let expected = if !valid_token {
+                        STATUS_TOKEN_ERROR
+                    } else if presence == Some(false) {
+                        STATUS_FLASH_RMA_ERROR
+                    } else {
+                        STATUS_READY | STATUS_TRANSITION_SUCCESSFUL
+                    };
+                    assert_eq!(
+                        do_transition(&mut lc, RMA, token),
+                        STATUS_INITIALIZED | expected,
+                        "from={from}, presence={presence:?}, valid_token={valid_token}"
+                    );
+                    assert_eq!(lc.lc_state_index, POST_TRANSITION);
+                    assert_eq!(lc.lc_transition_cnt, 11);
+                    if expected & STATUS_TRANSITION_SUCCESSFUL == 0 {
+                        assert_eq!(*otp.borrow(), before);
+                    } else {
+                        lc.reload_from_otp();
+                        assert_eq!(lc.lc_state_index, RMA);
+                        assert_eq!(lc.lc_transition_cnt, 11);
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_physical_presence_scrap() {
+        // Every currently supported non-terminal source can reach SCRAP.
+        for from in RAW..=RMA {
+            for presence in [None, Some(false), Some(true)] {
+                let mut lc = make_lc_ctrl(from, 10, &TEST_RAW_TOKEN);
+                if let Some(asserted) = presence {
+                    lc.set_physical_presence_input(Rc::new(Cell::new(asserted)));
+                }
+                let otp = lc.otp_partitions.as_ref().unwrap().clone();
+                let before = otp.borrow().clone();
+                let expected = if presence == Some(false) {
+                    STATUS_STATE_ERROR
+                } else {
+                    STATUS_READY | STATUS_TRANSITION_SUCCESSFUL
+                };
+                assert_eq!(
+                    do_transition(&mut lc, SCRAP, [0; 4]),
+                    STATUS_INITIALIZED | expected,
+                    "from={from}, presence={presence:?}"
+                );
+                assert_eq!(lc.lc_state_index, POST_TRANSITION);
+                if presence == Some(false) {
+                    assert_eq!(lc.lc_transition_cnt, 10);
+                    assert_eq!(*otp.borrow(), before);
+                } else {
+                    lc.reload_from_otp();
+                    assert_eq!(lc.lc_state_index, SCRAP);
+                    assert_eq!(lc.lc_transition_cnt, 11);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn test_physical_presence_dynamic_and_reset() {
+        use caliptra_mcu_emulator_registers_generated::lc::LcPeripheral;
+
+        for (target, error) in [(RMA, STATUS_FLASH_RMA_ERROR), (SCRAP, STATUS_STATE_ERROR)] {
+            let mut lc = make_lc_ctrl(PROD, 10, &TEST_RAW_TOKEN);
+            let presence = Rc::new(Cell::new(true));
+            lc.set_physical_presence_input(presence.clone());
+            presence.set(false);
+            let token = token_to_words(&TEST_RAW_TOKEN);
+            assert_eq!(
+                do_transition(&mut lc, target, token),
+                STATUS_INITIALIZED | error
+            );
+
+            lc.warm_reset();
+            // Reset must not disconnect or assert the external input.
+            assert!(!presence.get());
+            assert_eq!(
+                do_transition(&mut lc, target, token),
+                STATUS_INITIALIZED | error
+            );
+            lc.warm_reset();
+            presence.set(true);
+            assert_eq!(
+                do_transition(&mut lc, target, token),
+                STATUS_INITIALIZED | STATUS_READY | STATUS_TRANSITION_SUCCESSFUL
+            );
+            assert!(presence.get());
+            lc.warm_reset();
+            assert_eq!(lc.lc_state_index, target);
+        }
+    }
+
+    #[test]
+    fn test_physical_presence_unrelated_transitions_and_tokens() {
+        // All supported non-RMA/SCRAP edges form this consecutive sequence.
+        for from in RAW..PROD_END {
+            for presence in [None, Some(false), Some(true)] {
+                let mut lc = make_lc_ctrl(from, 1, &TEST_RAW_TOKEN);
+                if let Some(asserted) = presence {
+                    lc.set_physical_presence_input(Rc::new(Cell::new(asserted)));
+                }
+                let token = if from == RAW {
+                    token_to_words(&RAW_UNLOCK_TOKEN)
+                } else {
+                    token_to_words(&TEST_RAW_TOKEN)
+                };
+                assert_eq!(
+                    do_transition(&mut lc, from + 1, token),
+                    STATUS_INITIALIZED | STATUS_READY | STATUS_TRANSITION_SUCCESSFUL,
+                    "from={from}, presence={presence:?}"
+                );
+
+                lc = make_lc_ctrl(from, 1, &TEST_RAW_TOKEN);
+                if let Some(asserted) = presence {
+                    lc.set_physical_presence_input(Rc::new(Cell::new(asserted)));
+                }
+                let token_required = from == RAW || from % 2 == 0 || from >= TEST_UNLOCKED7;
+                let expected = if token_required {
+                    STATUS_TOKEN_ERROR
+                } else {
+                    STATUS_READY | STATUS_TRANSITION_SUCCESSFUL
+                };
+                assert_eq!(
+                    do_transition(&mut lc, from + 1, [0; 4]),
+                    STATUS_INITIALIZED | expected,
+                    "from={from}, presence={presence:?}, wrong token"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_physical_presence_does_not_enable_illegal_rma_transitions() {
+        for from in RAW..=POST_TRANSITION {
+            if from == DEV || from == PROD {
+                continue;
+            }
+            for asserted in [false, true] {
+                let mut lc = make_lc_ctrl(RAW, 10, &TEST_RAW_TOKEN);
+                lc.lc_state_index = from;
+                lc.set_physical_presence_input(Rc::new(Cell::new(asserted)));
+                assert_eq!(
+                    do_transition(&mut lc, RMA, token_to_words(&TEST_RAW_TOKEN)),
+                    STATUS_INITIALIZED | STATUS_TRANSITION_ERROR,
+                    "from={from}, asserted={asserted}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn test_physical_presence_retains_transition_guards() {
+        use caliptra_mcu_emulator_registers_generated::lc::LcPeripheral;
+
+        for asserted in [false, true] {
+            let mut lc = make_lc_ctrl(PROD, MAX_TRANSITION_COUNT, &TEST_RAW_TOKEN);
+            lc.set_physical_presence_input(Rc::new(Cell::new(asserted)));
+            assert_eq!(
+                do_transition(&mut lc, RMA, token_to_words(&TEST_RAW_TOKEN)),
+                STATUS_INITIALIZED | STATUS_TRANSITION_COUNT_ERROR
+            );
+            assert_eq!(lc.lc_transition_cnt, MAX_TRANSITION_COUNT);
+
+            let mut lc = LcCtrl::with_state(PROD, 10);
+            lc.set_physical_presence_input(Rc::new(Cell::new(asserted)));
+            assert_eq!(
+                do_transition(&mut lc, RMA, token_to_words(&TEST_RAW_TOKEN)),
+                STATUS_INITIALIZED | STATUS_OTP_ERROR
+            );
+
+            for target in [RMA, SCRAP] {
+                let mut lc = make_lc_ctrl(PROD, 10, &TEST_RAW_TOKEN);
+                lc.set_physical_presence_input(Rc::new(Cell::new(asserted)));
+                lc.write_transition_target(calc_lc_state_mnemonic(target).into());
+                lc.write_transition_cmd(1.into());
+                assert_eq!(lc.lc_state_index, PROD);
+                assert_eq!(lc.lc_transition_cnt, 10);
+                assert_eq!(
+                    lc.read_status().reg.get(),
+                    STATUS_INITIALIZED | STATUS_READY
+                );
+            }
+        }
     }
 
     #[test]
