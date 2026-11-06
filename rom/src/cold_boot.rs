@@ -845,7 +845,7 @@ impl ColdBoot {
 
         let mut req = CmAesGcmDecryptDmaReq {
             hdr: MailboxReqHeader { chksum: 0 },
-            cmk: cmk.clone(),
+            cmk: *cmk,
             iv: iv_u32,
             tag: tag_u32,
             encrypted_data_sha384: *encrypted_data_sha384,

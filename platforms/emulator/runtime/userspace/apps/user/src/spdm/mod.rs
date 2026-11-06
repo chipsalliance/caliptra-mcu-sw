@@ -128,7 +128,7 @@ const MAX_STREAMED_SPDM_REQUEST_LEN: usize = {
 /// Maximum logical size of the streamed debug-unlock VDM request.
 const MAX_STREAMED_VDM_REQUEST_LEN: usize =
     caliptra_mcu_spdm_vdm_handler::iana::ocp::caliptra_vdm::SPDM_REQUEST_FRAMING_LEN
-        + core::mem::size_of::<mcu_caliptra_api::mailbox::ProductionAuthDebugUnlockToken>();
+        + core::mem::size_of::<caliptra_api::mailbox::ProductionAuthDebugUnlockToken>();
 
 /// Maximum streamed SET_CERTIFICATE request for a CertChain.
 ///
