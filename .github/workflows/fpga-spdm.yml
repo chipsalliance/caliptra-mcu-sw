@@ -3,7 +3,13 @@
 name: FPGA SPDM Tests
 
 on:
-  pull_request:
+  workflow_call:
+    inputs:
+      artifact-suffix:
+        description: Suffix for uploaded artifact names
+        required: false
+        type: string
+        default: ""
   workflow_dispatch:
 
 env:
