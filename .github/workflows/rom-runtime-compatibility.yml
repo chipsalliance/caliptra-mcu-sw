@@ -3,10 +3,6 @@
 name: Released ROM/runtime compatibility
 
 on:
-  # Temporary validation trigger; remove before merging.
-  push:
-    branches:
-      - v-focutter/runtime-compat
   workflow_call:
     inputs:
       fixture-agreement:
