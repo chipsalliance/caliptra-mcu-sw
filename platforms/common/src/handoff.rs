@@ -46,10 +46,15 @@ impl HandOff<ReadOnly> {
             "[mcu-runtime] Checking handoff at {:p}",
             addr_of!(caliptra_mcu_romtime::handoff::HANDOFF)
         );
-        if data.rom.fht_marker != caliptra_mcu_romtime::handoff::FHT_MARKER {
+        // Read ROM-produced fields from memory, not HANDOFF's static initializer.
+        if unsafe { core::ptr::read_volatile(&data.rom.fht_marker) }
+            != caliptra_mcu_romtime::handoff::FHT_MARKER
+        {
             return None;
         }
-        if data.rom.fht_major_ver != caliptra_mcu_romtime::handoff::FHT_MAJOR_VERSION {
+        if unsafe { core::ptr::read_volatile(&data.rom.fht_major_ver) }
+            != caliptra_mcu_romtime::handoff::FHT_MAJOR_VERSION
+        {
             caliptra_mcu_romtime::println!(
                 "[mcu-runtime] ERROR: Invalid handoff major version: {}",
                 data.rom.fht_major_ver
