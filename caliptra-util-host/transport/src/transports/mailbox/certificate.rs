@@ -8,9 +8,11 @@
 use super::checksum::calc_checksum;
 use super::command_traits::*;
 use caliptra_mcu_core_util_host_command_types::certificate::{
-    ExportAttestedCsrRequest, ExportAttestedCsrResponse, GetCertChainInfoRequest,
-    GetCertChainInfoResponse, GetCertChainRequest, GetCertChainResponse, SetCertChainRequest,
-    SetCertChainResponse, CERT_CHAIN_DIGEST_SIZE, MAX_CERT_CHAIN_CHUNK_SIZE, MAX_CSR_DATA_SIZE,
+    AuthSetCertChainRequest, AuthSetCertChainResponse, ExportAttestedCsrRequest,
+    ExportAttestedCsrResponse, GetCertChainInfoRequest, GetCertChainInfoResponse,
+    GetCertChainRequest, GetCertChainResponse, SetCertChainRequest, SetCertChainResponse,
+    CERT_CHAIN_DIGEST_SIZE, MAX_CERT_CHAIN_CHUNK_SIZE, MAX_CSR_DATA_SIZE,
+    MC_AUTH_SET_CERT_CHAIN_CANONICAL_CMD_ID,
 };
 use caliptra_mcu_core_util_host_command_types::CommonResponse;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
@@ -376,6 +378,61 @@ define_command!(
     ExtCmdSetCertChainResponse
 );
 
+// ============================================================================
+// MC_AUTH_SET_CERT_CHAIN Command (0x0000_0012 -> target 0x4D41_5343 "MASC")
+// ============================================================================
+
+/// External mailbox request for `MC_AUTH_SET_CERT_CHAIN` (`0x0000_0012`, target `"MASC"`).
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+pub struct ExtCmdAuthSetCertChainRequest {
+    pub chksum: u32,
+    pub target: u32,
+    pub internal: AuthSetCertChainRequest,
+}
+
+/// External mailbox response for `MC_AUTH_SET_CERT_CHAIN`.
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+pub struct ExtCmdAuthSetCertChainResponse {
+    pub chksum: u32,
+    pub fips_status: u32,
+}
+
+impl FromInternalRequest<AuthSetCertChainRequest> for ExtCmdAuthSetCertChainRequest {
+    fn from_internal(internal: &AuthSetCertChainRequest, command_code: u32) -> Self {
+        let mut req = Self {
+            chksum: 0,
+            target: MC_AUTH_SET_CERT_CHAIN_CANONICAL_CMD_ID,
+            internal: internal.clone(),
+        };
+        req.chksum = calc_checksum(command_code, &req.as_bytes()[4..]);
+        req
+    }
+}
+
+impl ToInternalResponse<AuthSetCertChainResponse> for ExtCmdAuthSetCertChainResponse {
+    fn to_internal(&self) -> AuthSetCertChainResponse {
+        AuthSetCertChainResponse {
+            common: CommonResponse {
+                fips_status: self.fips_status,
+            },
+        }
+    }
+}
+
+impl VariableSizeBytes for ExtCmdAuthSetCertChainRequest {}
+impl VariableSizeBytes for ExtCmdAuthSetCertChainResponse {}
+
+define_command!(
+    AuthSetCertChainCmd,
+    0x0000_0012, // MC_AUTHORIZED_COMMAND -> MC_AUTH_SET_CERT_CHAIN ("MASC")
+    AuthSetCertChainRequest,
+    AuthSetCertChainResponse,
+    ExtCmdAuthSetCertChainRequest,
+    ExtCmdAuthSetCertChainResponse
+);
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -449,5 +506,24 @@ mod tests {
             ext.chksum,
             calc_checksum(0x4D53_4343, &ext.as_bytes()[4..28 + chunk.len()])
         );
+    }
+
+    #[test]
+    fn auth_set_cert_chain_request_wraps_target_and_checksum() {
+        let req = AuthSetCertChainRequest {
+            pki_entity_slot: PkiEntitySlot::Owner as u32,
+            algorithm: AsymAlgo::EccP384 as u32,
+            total_size: 512,
+            expected_sha384: [0x5A; CERT_CHAIN_DIGEST_SIZE],
+            metadata: Default::default(),
+            nonce: [0x11; 48],
+            ecc_pub_x: [0x22; 48],
+            ecc_pub_y: [0x33; 48],
+            mldsa_pub: [0x44; 2592],
+            sig: Default::default(),
+        };
+        let ext = ExtCmdAuthSetCertChainRequest::from_internal(&req, 0x0000_0012);
+        assert_eq!(ext.target, MC_AUTH_SET_CERT_CHAIN_CANONICAL_CMD_ID);
+        assert_eq!(ext.chksum, calc_checksum(0x0000_0012, &ext.as_bytes()[4..]));
     }
 }

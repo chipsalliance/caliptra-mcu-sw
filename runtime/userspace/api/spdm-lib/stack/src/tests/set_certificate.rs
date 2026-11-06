@@ -497,3 +497,51 @@ fn test_handle_set_certificate_preserves_wire_erase_error() {
     assert_eq!(err, SPDM_RESET_REQUIRED);
     assert_eq!(pal.op.take(), None);
 }
+
+#[test]
+fn test_handle_set_certificate_slot_0_delegates_to_pal_authorization() {
+    let der = der_chain();
+    let root_hash = test_digest(&der[..5]);
+    let payload = cert_payload(&der, root_hash);
+
+    // Unauthorized slot 0 returns SPDM_SESSION_REQUIRED.
+    let unauthorized_pal = TestPal {
+        supported_slots: 0b0000_0111,
+        authorized: false,
+        ..TestPal::default()
+    };
+    let mut conn = state(SpdmVersion::V12);
+    let io = set_certificate_io(SpdmVersion::V12, 0, 0, &payload);
+    let err = block_on(handle_set_certificate(&mut conn, &unauthorized_pal, &io)).unwrap_err();
+    assert_eq!(err, SPDM_SESSION_REQUIRED);
+    assert_eq!(unauthorized_pal.op.take(), None);
+
+    // Authorized slot 0 writes the endorsement chain.
+    let authorized_pal = TestPal {
+        supported_slots: 0b0000_0111,
+        authorized: true,
+        ..TestPal::default()
+    };
+    let mut conn = state(SpdmVersion::V12);
+    let io = set_certificate_io(SpdmVersion::V12, 0, 0, &payload);
+    let rsp = block_on(handle_set_certificate(&mut conn, &authorized_pal, &io)).unwrap();
+    assert_eq!(
+        &rsp[..],
+        &[
+            SpdmVersion::V12.to_u8(),
+            ReqRespCode::SET_CERTIFICATE_RSP.0,
+            0,
+            0,
+        ]
+    );
+    assert_eq!(
+        authorized_pal.op.take(),
+        Some(StoreOp::Write {
+            slot: 0,
+            key_pair_id: 0,
+            cert_model: CERT_MODEL_ALIAS_CERT,
+            root_hash,
+            cert_chain: der,
+        })
+    );
+}

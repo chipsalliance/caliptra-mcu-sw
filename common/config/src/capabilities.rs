@@ -48,6 +48,7 @@ bitflags::bitflags! {
         const OCP_LOCK_PROGRAM_HEK = 1 << 15;
         const OCP_LOCK_ZERO_HEK = 1 << 16;
         const ZEROIZE_UDS_FE_AND_ENTER_RMA = 1 << 17;
+        const AUTH_SET_CERT_CHAIN = 1 << 18;
     }
 }
 
@@ -137,6 +138,10 @@ mod tests {
         assert_eq!(
             AuthorizedSubcommandCapabilities::FUSE_INCREASE_MIN_SVN.bits(),
             1 << 2
+        );
+        assert_eq!(
+            AuthorizedSubcommandCapabilities::AUTH_SET_CERT_CHAIN.bits(),
+            1 << 18
         );
     }
 

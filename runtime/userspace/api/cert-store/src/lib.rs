@@ -36,6 +36,7 @@ pub mod errors {
     pub const INVALID_ENDORSEMENT: McuErrorCode = McuErrorCode::new(domain::CERT_STORE, 0, 4);
     pub const STORAGE_BUSY: McuErrorCode = McuErrorCode::new(domain::CERT_STORE, 0, 5);
     pub const STORAGE_ERROR: McuErrorCode = McuErrorCode::new(domain::CERT_STORE, 0, 6);
+    pub const UNAUTHORIZED: McuErrorCode = McuErrorCode::new(domain::CERT_STORE, 0, 7);
 }
 
 #[repr(u8)]
@@ -191,9 +192,6 @@ impl CertificateProvisioningPolicy {
 
     #[cfg(any(feature = "set-certificate", test))]
     pub(crate) fn validate_role(self, role: EndorsementRole) -> McuResult<()> {
-        if role == EndorsementRole::Vendor {
-            return Err(errors::PROVISIONING_DISABLED);
-        }
         if let Some(key) = self.anchor_point(role) {
             key.validate_anchor_point()?;
         }
@@ -228,6 +226,21 @@ impl CertificateProvisioningPolicy {
             }
         }
     }
+
+    /// Resolve and validate `key_pair_id` for `role`:
+    /// - `Vendor`: `key_pair_id == 0` is required (`IDevID` / Vendor chain).
+    /// - `Owner` / `Tenant`: delegates to [`Self::validate_key`].
+    #[cfg(any(feature = "set-certificate", test))]
+    pub(crate) fn validate_key_id(self, role: EndorsementRole, key_pair_id: u8) -> McuResult<u8> {
+        if role == EndorsementRole::Vendor {
+            return if key_pair_id == 0 {
+                Ok(0)
+            } else {
+                Err(errors::KEY_MISMATCH)
+            };
+        }
+        self.validate_key(role, key_pair_id).map(|k| k as u8)
+    }
 }
 
 impl Default for CertificateProvisioningPolicy {
@@ -250,9 +263,11 @@ mod tests {
         assert_eq!(policy.anchor_point(EndorsementRole::Tenant), None);
         assert_eq!(policy.validate_role(EndorsementRole::Owner), Ok(()));
         assert_eq!(policy.validate_role(EndorsementRole::Tenant), Ok(()));
+        assert_eq!(policy.validate_role(EndorsementRole::Vendor), Ok(()));
+        assert_eq!(policy.validate_key_id(EndorsementRole::Vendor, 0), Ok(0));
         assert_eq!(
-            policy.validate_role(EndorsementRole::Vendor),
-            Err(errors::PROVISIONING_DISABLED)
+            policy.validate_key_id(EndorsementRole::Vendor, 1),
+            Err(errors::KEY_MISMATCH)
         );
     }
 

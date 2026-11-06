@@ -180,6 +180,7 @@ impl CommandId {
     pub const MC_GET_CERT_CHAIN_INFO: Self = Self(0x4D47_4349); // "MGCI"
     pub const MC_GET_CERT_CHAIN: Self = Self(0x4D47_4343); // "MGCC"
     pub const MC_SET_CERT_CHAIN: Self = Self(0x4D53_4343); // "MSCC"
+    pub const MC_AUTH_SET_CERT_CHAIN: Self = Self(0x4D41_5343); // "MASC"
 
     // OCP Lock commands
     pub const MC_OCP_LOCK: Self = Self(0x0000_0013);
@@ -2296,6 +2297,54 @@ pub struct SetCertChainResp {
 }
 impl Response for SetCertChainResp {}
 
+/// Payload carried inside `MC_AUTHORIZED_COMMAND` (`0x12` on VDM) for
+/// `CommandId::MC_AUTH_SET_CERT_CHAIN` (`0x4D41_5343` - `"MASC"`).
+///
+/// Authorizes a subsequent `SET_CERTIFICATE` / `MC_SET_CERT_CHAIN` update or
+/// erase on `(pki_entity_slot, algorithm)` matching `(total_size, expected_sha384)`.
+#[repr(C)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, FromBytes, IntoBytes, Immutable, KnownLayout)]
+pub struct AuthSetCertChainPayload {
+    /// PKI entity slot (0=Vendor, 1=Owner, 2=Tenant).
+    pub pki_entity_slot: u32,
+    /// Asymmetric algorithm (1=ECC384, 2=MLDSA87).
+    pub algorithm: u32,
+    /// Total DER endorsement chain byte length (`0` for erase).
+    pub total_size: u32,
+    /// Expected SHA-384 digest over the raw DER endorsement chain (`[0; 48]` when `total_size == 0`).
+    pub expected_sha384: [u8; 48],
+}
+impl Default for AuthSetCertChainPayload {
+    fn default() -> Self {
+        Self {
+            pki_entity_slot: 0,
+            algorithm: 0,
+            total_size: 0,
+            expected_sha384: [0u8; 48],
+        }
+    }
+}
+
+/// MC_AUTH_SET_CERT_CHAIN request (`0x4D41_5343`, `"MASC"`, authorized via `0x12`).
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct AuthSetCertChainReq {
+    pub hdr: MailboxReqHeader,
+    pub payload: AuthSetCertChainPayload,
+}
+impl Request for AuthSetCertChainReq {
+    const ID: CommandId = CommandId::MC_AUTH_SET_CERT_CHAIN;
+    type Resp = AuthSetCertChainResp;
+}
+
+/// MC_AUTH_SET_CERT_CHAIN response (`0x4D41_5343`, `"MASC"`).
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct AuthSetCertChainResp {
+    pub hdr: MailboxRespHeader,
+}
+impl Response for AuthSetCertChainResp {}
+
 // ============================================================================
 // MC_GET_ATTESTATION Command (0x4D47_4154 - "MGAT")
 // ============================================================================
@@ -3249,6 +3298,14 @@ impl Response for GetDotBackupBlobResp {}
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn auth_set_cert_chain_wire_layout() {
+        assert_eq!(CommandId::MC_AUTH_SET_CERT_CHAIN.0, 0x4D41_5343); // "MASC"
+        assert_eq!(core::mem::size_of::<AuthSetCertChainPayload>(), 60);
+        assert_eq!(core::mem::size_of::<AuthSetCertChainReq>(), 64);
+        assert_eq!(core::mem::size_of::<AuthSetCertChainResp>(), 8);
+    }
 
     #[test]
     fn get_attestation_wire_layout() {

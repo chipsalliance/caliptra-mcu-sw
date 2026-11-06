@@ -69,12 +69,24 @@ pub(crate) const CERT_MODEL_ALIAS_CERT: u8 = 2;
 /// managed `(role, algorithm)` allocation.
 pub(crate) const MANAGED_REGION_COUNT: usize = 2;
 
+/// One-shot endorsement write or erase (`total_size == 0`) authorized via
+/// `MC_AUTH_SET_CERT_CHAIN`.
+#[cfg(feature = "set-certificate")]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct ArmedEndorsementWrite {
+    pub(crate) total_size: usize,
+    pub(crate) expected_sha384: [u8; 48],
+}
+
 /// Per-algorithm concurrency and generation state within a [`CertSlot`].
 struct AlgoSlotState {
     /// State lock held high while an async write (flash erase/write) is
     /// in progress for this algorithm.
     #[cfg(any(test, feature = "set-certificate"))]
     write_in_progress: AtomicBool,
+    /// One-shot authorized write/erase parameters set by `MC_AUTH_SET_CERT_CHAIN`.
+    #[cfg(feature = "set-certificate")]
+    armed_write: core::cell::Cell<Option<ArmedEndorsementWrite>>,
     /// Monotonic generation counter incremented whenever this algorithm's
     /// endorsement is configured, published, or removed.
     generation_counter: AtomicU32,
@@ -88,6 +100,8 @@ impl AlgoSlotState {
         Self {
             #[cfg(any(test, feature = "set-certificate"))]
             write_in_progress: AtomicBool::new(false),
+            #[cfg(feature = "set-certificate")]
+            armed_write: core::cell::Cell::new(None),
             generation_counter: AtomicU32::new(0),
             region_readers: [const { AtomicU32::new(0) }; MANAGED_REGION_COUNT],
         }
@@ -107,6 +121,8 @@ pub struct CertSlot<S: EndorsementStorage = NoEndorsementStorage> {
     pub(crate) endorsement: SlotEndorsement<S>,
     /// Immutable logical device-key binding shared by both algorithms.
     key_pair_id: Option<u8>,
+    /// Whether mutating this slot requires a prior `MC_AUTH_SET_CERT_CHAIN` command.
+    auth_required: core::cell::Cell<bool>,
     /// Per-algorithm write lock, generation counter, and active-region reader counts.
     algo_state: [AlgoSlotState; NUM_ASYM_ALGOS],
 }
@@ -118,6 +134,27 @@ impl<S: EndorsementStorage> CertSlot<S> {
 
     pub fn is_writable(&self) -> bool {
         self.endorsement.is_writable()
+    }
+
+    /// Whether mutating this slot requires a prior `MC_AUTH_SET_CERT_CHAIN`.
+    pub fn is_auth_required(&self) -> bool {
+        self.auth_required.get()
+    }
+
+    /// Configure whether mutating this slot requires a prior `MC_AUTH_SET_CERT_CHAIN`.
+    pub fn set_auth_required(&self, required: bool) {
+        self.auth_required.set(required);
+    }
+
+    /// Whether this slot currently permits a certificate write/erase operation
+    /// (writable backing storage, and either `auth_required` is false or at
+    /// least one algorithm has an armed `MC_AUTH_SET_CERT_CHAIN` token).
+    #[cfg(feature = "set-certificate")]
+    pub fn is_write_authorized(&self) -> bool {
+        self.is_writable()
+            && (!self.is_auth_required()
+                || self.armed_write(CertificateAlgorithm::EccP384).is_some()
+                || self.armed_write(CertificateAlgorithm::MlDsa87).is_some())
     }
 
     /// Whether this slot can serve a cert chain for `algo` right now.
@@ -154,12 +191,40 @@ impl<S: EndorsementStorage> CertSlot<S> {
         self.endorsement.root_cert_hash(algo, out)
     }
 
+    #[cfg(test)]
     pub(crate) const fn empty(key_pair_id: Option<u8>) -> Self {
+        Self::empty_with_auth(key_pair_id, matches!(key_pair_id, Some(0)))
+    }
+
+    pub(crate) const fn empty_with_auth(key_pair_id: Option<u8>, auth_required: bool) -> Self {
         Self {
             endorsement: SlotEndorsement::Empty,
             key_pair_id,
+            auth_required: core::cell::Cell::new(auth_required),
             algo_state: [const { AlgoSlotState::new() }; NUM_ASYM_ALGOS],
         }
+    }
+
+    #[cfg(feature = "set-certificate")]
+    pub(crate) fn armed_write(&self, algo: CertificateAlgorithm) -> Option<ArmedEndorsementWrite> {
+        self.state(algo).armed_write.get()
+    }
+
+    #[cfg(feature = "set-certificate")]
+    pub(crate) fn set_armed_write(
+        &self,
+        algo: CertificateAlgorithm,
+        armed: Option<ArmedEndorsementWrite>,
+    ) {
+        self.state(algo).armed_write.set(armed);
+    }
+
+    #[cfg(feature = "set-certificate")]
+    pub(crate) fn take_armed_write(
+        &self,
+        algo: CertificateAlgorithm,
+    ) -> Option<ArmedEndorsementWrite> {
+        self.state(algo).armed_write.take()
     }
 
     #[cfg(any(test, feature = "set-certificate"))]
@@ -660,6 +725,15 @@ impl<S: EndorsementStorage> ManagedEndorsementChain<S> {
     }
 
     fn validate_metadata(&self, key_pair_id: u8, cert_info: u8) -> McuResult<()> {
+        if self.role == crate::EndorsementRole::Vendor {
+            if key_pair_id != 0 {
+                return Err(cert_errors::KEY_MISMATCH);
+            }
+            if cert_info != CERT_MODEL_ALIAS_CERT {
+                return Err(cert_errors::INVALID_ENDORSEMENT);
+            }
+            return Ok(());
+        }
         let key = DeviceKey::try_from(key_pair_id).map_err(|_| cert_errors::KEY_MISMATCH)?;
         if let Some(expected) = self.device_key {
             if key != expected {

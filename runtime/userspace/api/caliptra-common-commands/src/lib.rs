@@ -8,8 +8,9 @@ pub mod command;
 #[cfg(feature = "ocp-lock")]
 use caliptra_api::mailbox::HpkeHandle;
 use caliptra_mcu_mbox_common::authorization::{AuthorizationMetadata, CommandAuthority};
+pub use caliptra_mcu_mbox_common::messages::AuthSetCertChainPayload;
 use caliptra_mcu_mbox_common::messages::{
-    DotDisablePayload, DotLockPayload, DotOverrideChallengePayload, DotOverridePayload,
+    CommandId, DotDisablePayload, DotLockPayload, DotOverrideChallengePayload, DotOverridePayload,
     DotRotatePayload, DotStatus, DotUnlockPayload, HybridSignature, SvnTarget, AUTH_CMD_NONCE_LEN,
     DOT_BLOB_SIZE,
 };
@@ -458,6 +459,19 @@ pub trait CaliptraCmdHandler {
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 
+    /// Arms `(entity, algorithm)` for an authorized endorsement chain write or
+    /// erase (`total_size == 0`) matching `(total_size, expected_sha384)`.
+    async fn auth_set_cert_chain(
+        &self,
+        entity: PkiEntitySlot,
+        algorithm: AsymAlgo,
+        total_size: u32,
+        expected_sha384: &[u8; 48],
+    ) -> CaliptraCmdResult<()> {
+        let _ = (entity, algorithm, total_size, expected_sha384);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
     /// Requests a production debug unlock challenge.
     ///
     /// # Arguments
@@ -818,13 +832,24 @@ pub struct AuthorizationError;
 pub type AuthorizationResult<T> = Result<T, AuthorizationError>;
 
 pub trait CommandAuthorizer {
-    fn permits_authority(
-        &self,
-        _cmd_id: u32,
-        _payload: &[u8],
-        authority: CommandAuthority,
-    ) -> bool {
-        authority == CommandAuthority::Owner
+    fn permits_authority(&self, cmd_id: u32, payload: &[u8], authority: CommandAuthority) -> bool {
+        match CommandId(cmd_id) {
+            CommandId::MC_AUTH_SET_CERT_CHAIN => match payload
+                .first_chunk::<4>()
+                .and_then(|bytes| PkiEntitySlot::try_from(u32::from_le_bytes(*bytes)).ok())
+            {
+                Some(PkiEntitySlot::Vendor) => {
+                    matches!(
+                        authority,
+                        CommandAuthority::VendorOwner | CommandAuthority::Owner
+                    )
+                }
+                Some(PkiEntitySlot::Owner | PkiEntitySlot::Tenant) | None => {
+                    authority == CommandAuthority::Owner
+                }
+            },
+            _ => authority == CommandAuthority::Owner,
+        }
     }
 
     fn device_ueid(&self) -> AuthorizationResult<[u8; 16]> {
