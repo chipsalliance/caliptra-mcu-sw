@@ -505,11 +505,23 @@ fn rx_drains_queue_without_notification() {
 #[test]
 fn zero_length_rx_keeps_buffer_and_empty_tx_retries() {
     let h = Harness::new();
-    h.driver.set_rx_buffer(buffer(4));
-    h.receive(0, 0);
-    assert!(!h.driver.handle_incoming_write());
-    assert!(h.driver.rx_buffer.is_some());
-    assert_eq!(h.rx.calls.get(), 0);
+    let buf = buffer(4);
+    let ptr = buf.as_ptr();
+    h.driver.set_rx_buffer(buf);
+    for error in [0, 1] {
+        h.receive(0, error);
+        assert!(h.driver.handle_incoming_write());
+        // Test RAM does not model the descriptor pop.
+        h.registers.set_rx_queue_empty(true);
+        h.driver.rx_buffer.map(|buf| {
+            assert_eq!(buf.as_ptr(), ptr);
+            assert_eq!(buf, &[0xcc; 4]);
+        });
+        assert!(h.driver.rx_buffer.is_some());
+        assert_eq!(h.rx.calls.get(), 0);
+        assert!(!h.driver.retry_incoming_write.get());
+        assert!(!h.alarm.is_armed());
+    }
     h.driver.handle_outgoing_read();
     assert!(h.driver.retry_outgoing_read.get());
     h.alarm.fire();

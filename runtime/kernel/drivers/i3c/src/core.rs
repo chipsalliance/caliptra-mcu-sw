@@ -156,7 +156,8 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
     }
 
     // called when TTI has a private Write with data for us to grab
-    // Returns false if we could not process the write (e.g., no buffer available)
+    // Returns true if a descriptor was consumed, so the caller can keep draining.
+    // Returns false if no buffer is available; a retry is armed in that case.
     pub fn handle_incoming_write(&self) -> bool {
         self.retry_incoming_write.set(false);
         if self.rx_buffer.is_none() {
@@ -176,8 +177,9 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         let desc = LocalRegisterCopy::<u32, RxDesc::Register>::new(desc);
         let len = desc.read(RxDesc::DataLength) as usize;
         if len == 0 {
-            // we're done
-            return false;
+            // Discard empty/aborted writes without giving up the receive buffer.
+            // The descriptor read cleared RX_DESC_STAT; more may still be queued.
+            return true;
         }
         let rx_buffer = self.rx_buffer.take().unwrap();
         let valid = desc.read(RxDesc::Error) == 0

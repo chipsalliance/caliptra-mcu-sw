@@ -8,6 +8,9 @@ mod test {
     use crate::test::{start_runtime_hw_model, TestParams, TEST_LOCK};
     use caliptra_mcu_emulator_periph::{I3cIbiOutcome, I3cIbiStatus, I3cTarget};
     use caliptra_mcu_hw_model::McuHwModel;
+    use caliptra_mcu_testing_common::i3c::{
+        I3cTcriCommand, I3cTcriCommandXfer, ReguDataTransferCommand,
+    };
     use caliptra_mcu_testing_common::i3c_socket::BufferedStream;
     use caliptra_mcu_testing_common::{
         emulator_ticks_elapsed, get_emulator_ticks, is_emulator_running, sleep_emulator_ticks,
@@ -44,6 +47,10 @@ mod test {
 
     fn echo(stream: &mut BufferedStream, addr: u8, payload: Vec<u8>) {
         assert!(stream.send_private_write(addr, payload.clone()));
+        receive_echo(stream, addr, payload);
+    }
+
+    fn receive_echo(stream: &mut BufferedStream, addr: u8, payload: Vec<u8>) {
         let (mdb, ibi) = wait_for(|| stream.receive_ibi_packet(addr));
         assert_eq!(mdb, 0xae);
         assert_eq!(ibi, ((payload.len() + 1) as u16).to_be_bytes());
@@ -57,6 +64,13 @@ mod test {
     }
 
     fn run_echo_test(scenario: impl FnOnce(&mut BufferedStream, u8, I3cTarget) + Send + 'static) {
+        run_echo_test_with_setup(|_, _| {}, scenario);
+    }
+
+    fn run_echo_test_with_setup(
+        setup: impl FnOnce(u8, I3cTarget),
+        scenario: impl FnOnce(&mut BufferedStream, u8, I3cTarget) + Send + 'static,
+    ) {
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, Ordering::Relaxed);
         let mut hw = start_runtime_hw_model(TestParams {
@@ -75,6 +89,7 @@ mod test {
         let addr = hw.i3c_address().unwrap();
         let port = hw.i3c_port().unwrap();
         let target = hw.i3c_target();
+        setup(addr, target.clone());
         let worker = spawn_with_emulator_state(move || {
             let result = catch_unwind(AssertUnwindSafe(|| {
                 let stream = TcpStream::connect(SocketAddr::from(([127, 0, 0, 1], port))).unwrap();
@@ -100,6 +115,39 @@ mod test {
         assert_eq!(hw.mci_fw_fatal_error(), None, "I3C firmware fatal error");
         assert!(hw.step_until_exit_success().is_ok());
         lock.fetch_add(1, Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_i3c_echo_zero_length_then_valid_queued_write() {
+        for error in [0, 1] {
+            run_echo_test_with_setup(
+                move |addr, mut target| {
+                    // Queue both writes before CPU stepping resumes. The peripheral
+                    // polls them on consecutive ticks, before the RX handler runs.
+                    target.queue_rx_error(error);
+                    let payload = [1, 2, 3, 4];
+                    let pec = payload
+                        .iter()
+                        .fold(caliptra_mcu_romtime::crc8(0, addr << 1), |crc, byte| {
+                            caliptra_mcu_romtime::crc8(crc, *byte)
+                        });
+                    for data in [vec![], vec![1, 2, 3, 4, pec]] {
+                        let mut cmd = ReguDataTransferCommand(0);
+                        cmd.set_data_length(data.len() as u16);
+                        target.send_command(I3cTcriCommandXfer {
+                            cmd: I3cTcriCommand::Regular(cmd),
+                            data,
+                        });
+                    }
+                },
+                |stream, addr, target| {
+                    // No further write may wake up the valid packet after the
+                    // zero-length descriptor clears RX_DESC_STAT.
+                    receive_echo(stream, addr, vec![1, 2, 3, 4]);
+                    assert_eq!(target.ibi_attempts(), 1);
+                },
+            );
+        }
     }
 
     #[test]
