@@ -7,6 +7,13 @@ use caliptra_mcu_libtock_platform::allow_ro::AllowRo;
 use caliptra_mcu_libtock_platform::share;
 use caliptra_mcu_libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
 use core::marker::PhantomData;
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
+
+/// Serializes physical SVN writes and firmware activation within this process.
+///
+/// Acquire before any mailbox lock and retain across asynchronous I/O until
+/// the complete fuse update or activation transaction finishes. Non-reentrant.
+pub static SVN_UPDATE_LOCK: Mutex<CriticalSectionRawMutex, ()> = Mutex::new(());
 
 pub const VENDOR_PK_HASH_SIZE: usize =
     caliptra_mcu_registers_generated::fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_0.byte_size;
@@ -82,6 +89,7 @@ impl<S: Syscalls> Otp<S> {
             .map(|value| (value & 1) != 0)
     }
 
+    /// Callers updating SVN floors must hold [`SVN_UPDATE_LOCK`].
     pub fn write(&self, reg_offset: u32, index: u32, value: u32) -> Result<(), ErrorCode> {
         S::command(self.driver_num, cmd::OTP_SET_REGISTER, reg_offset, index)
             .to_result::<(), ErrorCode>()?;
@@ -92,6 +100,9 @@ impl<S: Syscalls> Otp<S> {
     ///
     /// Only bits specified with `mask` are written.
     /// Bits outside of `mask` are ignored.
+    ///
+    /// Callers writing SVN floors or the anti-rollback disable fuse must hold
+    /// [`SVN_UPDATE_LOCK`] for the complete transaction.
     ///
     /// # Arguments
     /// - `word_addr`: word address to write to

@@ -11,6 +11,7 @@ use core::cell::{Cell, RefCell};
 use core::mem::size_of;
 use core::sync::atomic::AtomicUsize;
 use std::{boxed::Box, collections::VecDeque, rc::Rc, vec::Vec};
+use zerocopy::FromZeros;
 
 #[derive(Clone, Copy)]
 struct Component {
@@ -46,6 +47,7 @@ struct TestOtp {
     selected: Cell<(u32, u32)>,
     failed_word: Cell<Option<(u32, u32)>>,
     reads: RefCell<Vec<(u32, u32)>>,
+    writes: RefCell<Vec<(u32, u32, u32)>>,
 }
 
 impl TestOtp {
@@ -57,6 +59,7 @@ impl TestOtp {
             selected: Cell::new((0, 0)),
             failed_word: Cell::new(None),
             reads: RefCell::new(Vec::new()),
+            writes: RefCell::new(Vec::new()),
         }
     }
 
@@ -102,6 +105,16 @@ impl SyscallDriver for TestOtp {
                 } else {
                     command_return::success_u32(self.words(arg0).get()[arg1 as usize])
                 }
+            }
+            otp::cmd::OTP_WRITE => {
+                let (reg, index) = self.selected.get();
+                assert_eq!(arg1, 0);
+                let mut words = self.words(reg).get();
+                assert_eq!(words[index as usize] & arg0, words[index as usize]);
+                words[index as usize] = arg0;
+                self.words(reg).set(words);
+                self.writes.borrow_mut().push((reg, index, arg0));
+                command_return::success()
             }
             _ => panic!("unexpected OTP command {command}"),
         }
@@ -204,6 +217,7 @@ impl SyscallDriver for TestMailbox {
 struct SvnStagingMemory {
     bytes: Vec<u8>,
     failed_offset: AtomicUsize,
+    paused_offset: AtomicUsize,
     reads: AtomicUsize,
 }
 
@@ -239,6 +253,7 @@ impl SvnStagingMemory {
         Self {
             bytes,
             failed_offset: AtomicUsize::new(usize::MAX),
+            paused_offset: AtomicUsize::new(usize::MAX),
             reads: AtomicUsize::new(0),
         }
     }
@@ -251,6 +266,14 @@ impl StagingMemory for SvnStagingMemory {
         if self.failed_offset.load(Ordering::SeqCst) == offset {
             return Err(ErrorCode::NoMem);
         }
+        core::future::poll_fn(|_| {
+            if self.paused_offset.load(Ordering::SeqCst) == offset {
+                Poll::Pending
+            } else {
+                Poll::Ready(())
+            }
+        })
+        .await;
         data.copy_from_slice(&self.bytes[offset..offset + data.len()]);
         Ok(())
     }
@@ -366,7 +389,7 @@ impl Fixture {
         ))
     }
 
-    fn verify(&mut self) -> Result<FlashHeader, ErrorCode> {
+    fn expect_rom_version(&self) {
         self.kernel.add_expected_syscall(ExpectedSyscall::Command {
             driver_id: system::DRIVER_NUM,
             command_id: 4,
@@ -374,10 +397,15 @@ impl Fixture {
             argument1: 0,
             override_return: Some(command_return::failure(ErrorCode::NoSupport)),
         });
+    }
+
+    fn verify(&mut self) -> Result<FlashHeader, ErrorCode> {
+        self.expect_rom_version();
         run_with_upcalls(self.updater.verify(self.staging.size()))
     }
 
     fn activate(&mut self, component: Component, header: &FlashHeader) -> Result<(), ErrorCode> {
+        let _svn_guard = run_ready(otp::SVN_UPDATE_LOCK.lock());
         if component.otp_reg == otp::reg::CALIPTRA_FW_SVN {
             self.mailbox.respond(
                 CommandId::FIRMWARE_LOAD,
@@ -393,6 +421,54 @@ impl Fixture {
             );
             run_with_upcalls(self.updater.set_auth_manifest())
         }
+    }
+
+    fn prepare_bundle_activation(&mut self) -> &'static ActivationHooks {
+        self.mailbox.respond(
+            CommandId::FIRMWARE_LOAD,
+            &[0; size_of::<FirmwareVerifyResp>()],
+        );
+        self.mailbox
+            .respond(CommandId::FW_INFO, &[0; size_of::<FwInfoResp>()]);
+        self.mailbox.respond(
+            CommandId::SET_AUTH_MANIFEST,
+            &[0; size_of::<caliptra_api::mailbox::MailboxRespHeader>()],
+        );
+        let hooks = Box::leak(Box::new(ActivationHooks::default()));
+        self.updater.set_hooks(hooks);
+        hooks
+    }
+}
+
+#[derive(Default)]
+struct ActivationHooks {
+    calls: std::sync::Mutex<Vec<&'static str>>,
+}
+
+#[async_trait]
+impl FirmwareUpdateHooks for ActivationHooks {
+    async fn pre_caliptra_activation(&self) -> Result<(), ErrorCode> {
+        self.calls.lock().unwrap().push("caliptra");
+        Ok(())
+    }
+
+    async fn pre_auth_manifest_activation(&self) -> Result<(), ErrorCode> {
+        assert!(otp::SVN_UPDATE_LOCK.try_lock().is_err());
+        self.calls.lock().unwrap().push("manifest");
+        Ok(())
+    }
+
+    async fn pre_mcu_activation(&self) -> Result<(), ErrorCode> {
+        assert!(otp::SVN_UPDATE_LOCK.try_lock().is_err());
+        self.calls.lock().unwrap().push("mcu");
+        Err(ErrorCode::NoMem)
+    }
+}
+
+fn burn_floor(reg: u32, svn: u32) {
+    let otp = Otp::<DefaultSyscalls>::new();
+    for (index, word) in encode_linear_or_svn(svn).into_iter().enumerate() {
+        otp.write(reg, index as u32, word).unwrap();
     }
 }
 
@@ -622,4 +698,181 @@ fn activation_allows_candidates_at_or_above_each_physical_floor() {
             assert_eq!(*fixture.mailbox.commands.borrow(), expected);
         }
     }
+}
+
+#[test]
+fn bundle_rejects_stale_manifest_before_loading_any_firmware() {
+    let _guard = PLDM_TEST_LOCK.lock().unwrap();
+    let mut fixture = Fixture::new(4, 4);
+    let header = fixture.verify().unwrap();
+    let hooks = fixture.prepare_bundle_activation();
+    fixture.otp.set_floor(otp::reg::SOC_MANIFEST_SVN, 5);
+
+    assert_eq!(
+        run_with_upcalls(fixture.updater.activate_bundle(&header)),
+        Err(ErrorCode::Fail)
+    );
+    assert_eq!(
+        *fixture.mailbox.commands.borrow(),
+        [
+            CommandId::FIRMWARE_VERIFY.0,
+            CommandId::VERIFY_AUTH_MANIFEST.0
+        ]
+    );
+    assert_eq!(*hooks.calls.lock().unwrap(), ["caliptra"]);
+    assert!(otp::SVN_UPDATE_LOCK.try_lock().is_ok());
+}
+
+#[test]
+fn bundle_preflight_read_errors_release_the_guard_without_loading_firmware() {
+    let _guard = PLDM_TEST_LOCK.lock().unwrap();
+    for staging_error in [false, true] {
+        let mut fixture = Fixture::new(4, 4);
+        let header = fixture.verify().unwrap();
+        fixture.prepare_bundle_activation();
+        let manifest = COMPONENTS[1];
+        let error = if staging_error {
+            fixture
+                .staging
+                .failed_offset
+                .store(manifest.offset + manifest.svn_offset, Ordering::SeqCst);
+            ErrorCode::NoMem
+        } else {
+            fixture.otp.failed_word.set(Some((manifest.otp_reg, 2)));
+            ErrorCode::NoDevice
+        };
+        assert_eq!(
+            run_with_upcalls(fixture.updater.activate_bundle(&header)),
+            Err(error)
+        );
+        assert_eq!(
+            *fixture.mailbox.commands.borrow(),
+            [
+                CommandId::FIRMWARE_VERIFY.0,
+                CommandId::VERIFY_AUTH_MANIFEST.0
+            ]
+        );
+        assert!(otp::SVN_UPDATE_LOCK.try_lock().is_ok());
+    }
+}
+
+#[test]
+fn activation_waits_for_a_floor_writer_paused_in_fw_info() {
+    let _guard = PLDM_TEST_LOCK.lock().unwrap();
+    let mut fixture = Fixture::new(4, 4);
+    let header = fixture.verify().unwrap();
+    let mut info = FwInfoResp {
+        fw_svn: 6,
+        ..FwInfoResp::new_zeroed()
+    };
+    info.hdr.chksum = caliptra_api::calc_checksum(0, &info.as_bytes()[4..]);
+    fixture.mailbox.respond(CommandId::FW_INFO, info.as_bytes());
+    fixture.prepare_bundle_activation();
+    fixture.otp.reads.borrow_mut().clear();
+
+    let mut writer = core::pin::pin!(async {
+        let _svn_guard = otp::SVN_UPDATE_LOCK.lock().await;
+        let info = crate::fw_info(&TestAlloc).await.unwrap();
+        assert!(info.fw_svn >= 5);
+        burn_floor(otp::reg::CALIPTRA_FW_SVN, 5);
+    });
+    let mut context = Context::from_waker(Waker::noop());
+    assert!(writer.as_mut().poll(&mut context).is_pending());
+    let mut activation = core::pin::pin!(fixture.updater.activate_bundle(&header));
+    assert!(activation.as_mut().poll(&mut context).is_pending());
+    let deferred_reads = fixture.otp.reads.borrow().is_empty();
+
+    run_with_upcalls(writer.as_mut());
+    let result = run_with_upcalls(activation.as_mut());
+    assert!(deferred_reads);
+    assert_eq!(result, Err(ErrorCode::Fail));
+    assert_eq!(fixture.otp.firmware_words.get(), encode_linear_or_svn(5));
+    assert_eq!(
+        *fixture.mailbox.commands.borrow(),
+        [
+            CommandId::FIRMWARE_VERIFY.0,
+            CommandId::VERIFY_AUTH_MANIFEST.0,
+            CommandId::FW_INFO.0
+        ]
+    );
+    assert!(otp::SVN_UPDATE_LOCK.try_lock().is_ok());
+}
+
+#[test]
+fn activation_blocks_both_floor_writers_across_async_staging() {
+    let _guard = PLDM_TEST_LOCK.lock().unwrap();
+    for component in COMPONENTS {
+        let mut fixture = Fixture::new(4, 4);
+        let header = fixture.verify().unwrap();
+        let hooks = fixture.prepare_bundle_activation();
+        fixture
+            .staging
+            .paused_offset
+            .store(COMPONENTS[0].offset, Ordering::SeqCst);
+        let mut activation = core::pin::pin!(fixture.updater.activate_bundle(&header));
+        let mut context = Context::from_waker(Waker::noop());
+        assert!(activation.as_mut().poll(&mut context).is_pending());
+
+        let mut writer = core::pin::pin!(async {
+            let _svn_guard = otp::SVN_UPDATE_LOCK.lock().await;
+            burn_floor(component.otp_reg, 5);
+        });
+        assert!(writer.as_mut().poll(&mut context).is_pending());
+        assert!(fixture.otp.writes.borrow().is_empty());
+        assert_eq!(
+            fixture.otp.words(component.otp_reg).get(),
+            encode_linear_or_svn(3)
+        );
+
+        fixture
+            .staging
+            .paused_offset
+            .store(usize::MAX, Ordering::SeqCst);
+        assert_eq!(run_with_upcalls(activation.as_mut()), Err(ErrorCode::NoMem));
+        assert_eq!(
+            *hooks.calls.lock().unwrap(),
+            ["caliptra", "manifest", "mcu"]
+        );
+        run_with_upcalls(writer.as_mut());
+        assert_eq!(
+            fixture.otp.words(component.otp_reg).get(),
+            encode_linear_or_svn(5)
+        );
+        assert_eq!(
+            *fixture.mailbox.commands.borrow(),
+            [
+                CommandId::FIRMWARE_VERIFY.0,
+                CommandId::VERIFY_AUTH_MANIFEST.0,
+                CommandId::FIRMWARE_LOAD.0,
+                CommandId::FW_INFO.0,
+                CommandId::SET_AUTH_MANIFEST.0
+            ]
+        );
+        assert!(otp::SVN_UPDATE_LOCK.try_lock().is_ok());
+    }
+}
+
+#[test]
+fn manifest_only_activation_waits_for_the_same_transaction_guard() {
+    let _guard = PLDM_TEST_LOCK.lock().unwrap();
+    let mut fixture = Fixture::new(4, 4);
+    let header = fixture.verify().unwrap();
+    fixture.otp.set_floor(otp::reg::SOC_MANIFEST_SVN, 5);
+    fixture.otp.reads.borrow_mut().clear();
+    fixture.expect_rom_version();
+    let svn_guard = run_ready(otp::SVN_UPDATE_LOCK.lock());
+    let mut activation = core::pin::pin!(fixture.updater.update_mcu_with_auth_manifest(&header));
+    let mut context = Context::from_waker(Waker::noop());
+    assert!(activation.as_mut().poll(&mut context).is_pending());
+    assert!(fixture.otp.reads.borrow().is_empty());
+    drop(svn_guard);
+    assert_eq!(run_with_upcalls(activation.as_mut()), Err(ErrorCode::Fail));
+    assert_eq!(
+        *fixture.mailbox.commands.borrow(),
+        [
+            CommandId::FIRMWARE_VERIFY.0,
+            CommandId::VERIFY_AUTH_MANIFEST.0
+        ]
+    );
+    assert!(otp::SVN_UPDATE_LOCK.try_lock().is_ok());
 }

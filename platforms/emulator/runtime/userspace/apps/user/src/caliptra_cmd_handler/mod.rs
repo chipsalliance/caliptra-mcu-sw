@@ -386,6 +386,9 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
     }
 
     async fn fuse_write(&self, word_addr: u32, data: u32, mask: u32) -> CaliptraCmdResult<()> {
+        let _svn_guard = caliptra_mcu_libsyscall_caliptra::otp::SVN_UPDATE_LOCK
+            .lock()
+            .await;
         Otp::<DefaultSyscalls>::new()
             .write_raw(word_addr, data, mask)
             .map_err(|error| match error {

@@ -310,11 +310,17 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
             return Ok(());
         }
 
+        self.activate_bundle(&flash_header).await
+    }
+
+    async fn activate_bundle(&mut self, flash_header: &FlashHeader) -> Result<(), ErrorCode> {
         // Update Caliptra
         if let Some(hooks) = self.hooks {
             hooks.pre_caliptra_activation().await?;
         }
-        let result = self.update_caliptra(&flash_header).await;
+        let _svn_guard = otp::SVN_UPDATE_LOCK.lock().await;
+        self.verify_soc_manifest_svn(flash_header).await?;
+        let result = self.update_caliptra(flash_header).await;
         if result.is_err() {
             // Abort firmware update
             return Err(ErrorCode::Fail);
@@ -330,7 +336,7 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
         if let Some(hooks) = self.hooks {
             hooks.pre_mcu_activation().await?;
         }
-        self.update_mcu(&flash_header).await?;
+        self.update_mcu(flash_header).await?;
 
         Ok(())
     }
@@ -419,16 +425,15 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
         flash_header: &FlashHeader,
     ) -> Result<(), ErrorCode> {
         Self::check_rom_compatibility(flash_header)?;
+        let _svn_guard = otp::SVN_UPDATE_LOCK.lock().await;
         self.set_auth_manifest().await?;
         self.update_mcu(flash_header).await
     }
 
-    async fn set_auth_manifest(&mut self) -> Result<(), ErrorCode> {
-        let flash_header = self.read_flash_header().await?;
-        console_writeln!(
-            Console::<DefaultSyscalls>::writer(),
-            "[FW Upd] Setting Manifest"
-        );
+    async fn verify_soc_manifest_svn(
+        &self,
+        flash_header: &FlashHeader,
+    ) -> Result<StagedAuthManifest, ErrorCode> {
         let (manifest_offset, manifest_len) = self
             .get_image_toc(
                 flash_header.image_count as usize,
@@ -445,19 +450,25 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
             "SoC authorization manifest",
         )
         .await?;
-        self.validate_auth_manifest_soc_fw_id_set(&StagedAuthManifest::soc(
-            manifest_offset,
-            manifest_len,
-        ))
-        .await?;
+        Ok(StagedAuthManifest::soc(manifest_offset, manifest_len))
+    }
+
+    async fn set_auth_manifest(&mut self) -> Result<(), ErrorCode> {
+        let flash_header = self.read_flash_header().await?;
+        console_writeln!(
+            Console::<DefaultSyscalls>::writer(),
+            "[FW Upd] Setting Manifest"
+        );
+        let manifest = self.verify_soc_manifest_svn(&flash_header).await?;
+        self.validate_auth_manifest_soc_fw_id_set(&manifest).await?;
 
         let mut payload_stream =
-            MailboxPayloadStream::new(self.staging_memory, manifest_offset, manifest_len);
+            MailboxPayloadStream::new(self.staging_memory, manifest.offset, manifest.len);
         crate::image_loader::execute_auth_manifest_command(
             &self.mailbox,
             CommandId::SET_AUTH_MANIFEST,
             &mut payload_stream,
-            manifest_len as u32,
+            manifest.len as u32,
         )
         .await
     }
@@ -523,24 +534,9 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
             Console::<DefaultSyscalls>::writer(),
             "[FW Upd] Verifying Manifest"
         );
-        let (manifest_offset, manifest_len) = self
-            .get_image_toc(
-                flash_header.image_count as usize,
-                flash_header.image_headers_offset as usize,
-                SOC_MANIFEST_IDENTIFIER,
-            )
-            .await
-            .map_err(|_| ErrorCode::Fail)?;
-        self.verify_staged_svn_against_otp(
-            manifest_offset,
-            manifest_len,
-            offset_of!(AuthorizationManifest, preamble) + offset_of!(AuthManifestPreamble, svn),
-            otp::reg::SOC_MANIFEST_SVN,
-            "SoC authorization manifest",
-        )
-        .await?;
-        self.verify_manifest(manifest_offset, manifest_len).await?;
-        let soc_manifest = StagedAuthManifest::soc(manifest_offset, manifest_len);
+        let soc_manifest = self.verify_soc_manifest_svn(&flash_header).await?;
+        self.verify_manifest(soc_manifest.offset, soc_manifest.len)
+            .await?;
         self.validate_auth_manifest_soc_fw_id_set(&soc_manifest)
             .await?;
 
@@ -1249,11 +1245,13 @@ pub trait FirmwareUpdateHooks: Send + Sync {
     }
 
     /// Called before setting the SoC authorization manifest. Returning an error aborts the update.
+    /// Runs under the SVN guard; must not re-enter fuse-writing or activation APIs.
     async fn pre_auth_manifest_activation(&self) -> Result<(), ErrorCode> {
         Ok(())
     }
 
     /// Called before updating the MCU firmware and activating. Returning an error aborts the update.
+    /// Runs under the SVN guard; must not re-enter fuse-writing or activation APIs.
     async fn pre_mcu_activation(&self) -> Result<(), ErrorCode> {
         Ok(())
     }

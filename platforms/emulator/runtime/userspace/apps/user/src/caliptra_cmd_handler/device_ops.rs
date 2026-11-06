@@ -182,17 +182,75 @@ fn mailbox_checksum_segments<const N: usize>(command: u32, segments: [&[u8]; N])
 mod tests {
     extern crate std;
 
+    use super::super::CaliptraCmdBackend;
     use super::*;
     use caliptra_api::mailbox::FwInfoResp;
+    use caliptra_mcu_common_commands::CaliptraCmdHandler;
     use caliptra_mcu_libsyscall_caliptra::mailbox::MAILBOX_DRIVER_NUM;
     use caliptra_mcu_libtock_platform::{CommandReturn, Syscalls};
     use caliptra_mcu_libtock_unittest::{command_return, fake, DriverInfo};
     use caliptra_mcu_scratch_alloc::BitmapAllocator;
     use core::cell::Cell;
+    use core::future::Future;
     use core::ptr::NonNull;
+    use core::task::{Context, Waker};
     use std::rc::Rc;
     use std::vec::Vec;
     use zerocopy::FromZeros;
+
+    static SVN_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    struct TestAlloc;
+
+    impl ScratchAlloc for TestAlloc {
+        type Buf<'a> = Vec<u8>;
+
+        fn alloc(&self, len: usize) -> mcu_error::McuResult<Self::Buf<'_>> {
+            Ok(std::vec![0; len])
+        }
+    }
+
+    #[test]
+    fn svn_transaction_blocks_typed_floor_writers_before_any_io() {
+        let _test_guard = SVN_TEST_LOCK.lock().unwrap();
+        for target in [
+            SvnTarget::CaliptraRuntime,
+            SvnTarget::SocManifest,
+            SvnTarget::OwnerSocManifest,
+        ] {
+            let kernel = crate::kernel();
+            let svn_guard = otp::SVN_UPDATE_LOCK.try_lock().unwrap();
+            let mut writer = Box::pin(increase_min_svn(&TestAlloc, target, 1));
+            let mut context = Context::from_waker(Waker::noop());
+            assert!(writer.as_mut().poll(&mut context).is_pending());
+            assert!(kernel.take_syscall_log().is_empty());
+            drop(svn_guard);
+            assert_eq!(
+                fake::wait_for_future_ready(writer),
+                Err(CaliptraCompletionCode::OperationFailed)
+            );
+            assert!(otp::SVN_UPDATE_LOCK.try_lock().is_ok());
+        }
+    }
+
+    #[test]
+    fn svn_transaction_blocks_the_raw_fuse_writer_before_any_io() {
+        let _test_guard = SVN_TEST_LOCK.lock().unwrap();
+        let kernel = crate::kernel();
+        let backend = CaliptraCmdBackend;
+        let svn_guard = otp::SVN_UPDATE_LOCK.try_lock().unwrap();
+        let word_addr = (fuses::OTP_CPTRA_CORE_RUNTIME_SVN.byte_offset / 4) as u32;
+        let mut writer = Box::pin(backend.fuse_write(word_addr, 0x1f, u32::MAX));
+        let mut context = Context::from_waker(Waker::noop());
+        assert!(writer.as_mut().poll(&mut context).is_pending());
+        assert!(kernel.take_syscall_log().is_empty());
+        drop(svn_guard);
+        assert_eq!(
+            fake::wait_for_future_ready(writer),
+            Err(CaliptraCompletionCode::OperationFailed)
+        );
+        assert!(otp::SVN_UPDATE_LOCK.try_lock().is_ok());
+    }
 
     #[derive(Default)]
     struct OwnerSvnOtp {
@@ -251,6 +309,7 @@ mod tests {
 
     #[test]
     fn owner_svn_runtime_word_updates() {
+        let _test_guard = SVN_TEST_LOCK.lock().unwrap();
         let kernel = crate::kernel();
         let mailbox = Rc::new(fake::FakeMailboxDriver::new());
         let otp = Rc::new(OwnerSvnOtp::default());
@@ -278,14 +337,15 @@ mod tests {
                 response.as_bytes(),
             );
             otp.reads.set(0);
-            let result = fake::wait_for_future_ready(Box::pin(increase_min_svn(
-                &pool,
-                SvnTarget::OwnerSocManifest,
-                svn,
-            )));
+            let mut writer = Box::pin(increase_min_svn(&pool, SvnTarget::OwnerSocManifest, svn));
+            let mut context = Context::from_waker(Waker::noop());
+            assert!(writer.as_mut().poll(&mut context).is_pending());
+            let guarded_while_waiting = otp::SVN_UPDATE_LOCK.try_lock().is_err();
+            let result = fake::wait_for_future_ready(writer);
             // The fake mailbox retains its allowed buffers after completion.
             DefaultSyscalls::unallow_ro(MAILBOX_DRIVER_NUM, 0);
             DefaultSyscalls::unallow_rw(MAILBOX_DRIVER_NUM, 0);
+            assert!(guarded_while_waiting);
             result
         };
 
@@ -1017,6 +1077,7 @@ pub async fn increase_min_svn<A: ScratchAlloc>(
         return Err(CaliptraCompletionCode::InvalidParameter);
     }
 
+    let _svn_guard = otp::SVN_UPDATE_LOCK.lock().await;
     let otp_reg = match target {
         SvnTarget::CaliptraRuntime => {
             let caliptra_fw_info = fw_info(alloc)

@@ -418,10 +418,23 @@ manifest-vs-image cross-check (a logged warning) but still get the
 opaque or pre-existing component formats to participate in fuse-level
 rollback protection without forcing the integrator to parse them.
 
-The Caliptra firmware and SoC manifest physical-floor checks are repeated
-immediately before `FIRMWARE_LOAD` and `SET_AUTH_MANIFEST`, respectively, so
-an OTP floor increase between Verify Component and activation cannot admit a
-candidate below the new floor.
+Before loading Caliptra firmware, activation rechecks the SoC manifest floor
+so a stale manifest cannot leave the bundle partially activated. The Caliptra
+firmware and SoC manifest checks are also repeated immediately before
+`FIRMWARE_LOAD` and `SET_AUTH_MANIFEST`, respectively.
+
+The updater holds a shared asynchronous SVN transaction guard from the
+preflight check through MCU activation, including staging reads and mailbox
+waits. Both the minimum-SVN command and raw fuse-write command acquire that
+same guard before accessing the mailbox or programming OTP. This prevents a
+physical floor increase between the final check and activation. The alternate
+manifest/MCU activation entrypoint uses the same guard. Lock ordering is SVN
+guard before mailbox lock.
+
+The pre-Caliptra activation hook runs before acquiring the guard. Later
+activation hooks retain their existing ordering but run inside the guarded
+transaction and must not re-enter fuse-writing or activation APIs that acquire
+the same non-reentrant guard.
 
 These checks use only bit 0 of `CPTRA_CORE_ANTI_ROLLBACK_DISABLE`, matching
 Caliptra's hardware disable field. Other bits do not bypass enforcement.
