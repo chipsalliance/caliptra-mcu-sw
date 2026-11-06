@@ -26,7 +26,7 @@ pub use commands::authorized_command::{
     DOT_ROTATE_CMD_ID, FE_PROG_CMD_ID, FUSE_LOCK_PARTITION_CMD_ID, GET_AUTH_CHALLENGE_CMD_ID,
     GET_DOT_BACKUP_BLOB_CMD_ID, INCREASE_MIN_SVN_CMD_ID, PROVISION_OWNER_PK_HASH_CMD_ID,
     PROVISION_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PUB_KEY_CMD_ID,
-    ZEROIZE_UDS_FE_AND_ENTER_RMA_CMD_ID,
+    ZEROIZE_UDS_FE_AND_ENTER_RMA_CMD_ID, ZEROIZE_UDS_FE_CMD_ID,
 };
 #[cfg(feature = "ocp-lock")]
 pub use commands::authorized_command::{
@@ -586,6 +586,10 @@ mod tests {
         FuseLockPartition {
             partition: u32,
         },
+        ZeroizeUdsFe,
+        ZeroizeUdsFeAndEnterRma {
+            rma_token: [u8; 16],
+        },
         DotEnable,
         DotLock {
             cak: [u8; 48],
@@ -894,6 +898,19 @@ mod tests {
             partition: u32,
         ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
             self.complete_authorized(AuthorizedOperation::FuseLockPartition { partition })
+        }
+
+        async fn zeroize_uds_fe(&self) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            self.complete_authorized(AuthorizedOperation::ZeroizeUdsFe)
+        }
+
+        async fn zeroize_uds_fe_and_enter_rma(
+            &self,
+            rma_token: &[u8; 16],
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            self.complete_authorized(AuthorizedOperation::ZeroizeUdsFeAndEnterRma {
+                rma_token: *rma_token,
+            })
         }
 
         async fn dot_lock<Alloc: mcu_caliptra_api::ScratchAlloc>(
@@ -2379,6 +2396,18 @@ mod tests {
                 0x0Eu32.to_le_bytes().to_vec(),
                 AuthorizedOperation::FuseLockPartition { partition: 0x0E },
             ),
+            (
+                ZEROIZE_UDS_FE_CMD_ID,
+                vec![],
+                AuthorizedOperation::ZeroizeUdsFe,
+            ),
+            (
+                ZEROIZE_UDS_FE_AND_ENTER_RMA_CMD_ID,
+                vec![0xD4; 16],
+                AuthorizedOperation::ZeroizeUdsFeAndEnterRma {
+                    rma_token: [0xD4; 16],
+                },
+            ),
         ];
 
         for (sub_cmd, payload, expected) in cases {
@@ -2407,6 +2436,20 @@ mod tests {
     }
 
     #[test]
+    fn zeroize_uds_fe_rejects_command_payload() {
+        let cmds = TestCommands::new(0).with_authorization();
+        issue_test_challenge(&cmds);
+        let payload = [0xA5];
+        let sig = test_signature(ZEROIZE_UDS_FE_CMD_ID, &payload, &TEST_AUTH_CHALLENGE);
+        let req = authorized_req_with_sig(ZEROIZE_UDS_FE_CMD_ID, &payload, &sig);
+
+        let (response, inline, _) = dispatch(&cmds, &req, 16, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::InvalidPayloadSize as u8);
+        assert_eq!(cmds.authorized_operation.lock().unwrap().take(), None);
+    }
+
+    #[test]
     fn authorized_commands_reject_missing_truncated_and_oversized_signatures() {
         let payloads = [
             (PROVISION_VENDOR_PK_HASH_CMD_ID, vec![0u8; 52]),
@@ -2415,6 +2458,8 @@ mod tests {
             (REVOKE_VENDOR_PUB_KEY_CMD_ID, vec![0u8; 16]),
             (REVOKE_VENDOR_PK_HASH_CMD_ID, vec![0u8; 8]),
             (FUSE_LOCK_PARTITION_CMD_ID, vec![0u8; 4]),
+            (ZEROIZE_UDS_FE_CMD_ID, vec![]),
+            (ZEROIZE_UDS_FE_AND_ENTER_RMA_CMD_ID, vec![0u8; 16]),
             #[cfg(feature = "device-ownership-transfer")]
             (
                 DEVICE_OWNERSHIP_TRANSFER_CMD_ID,

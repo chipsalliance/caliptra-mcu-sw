@@ -182,6 +182,7 @@ fn authorized_subcommand_capabilities() -> AuthorizedSubcommandCapabilities {
             | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PK_HASH
             | AuthorizedSubcommandCapabilities::FUSE_LOCK_PARTITION
             | AuthorizedSubcommandCapabilities::PROVISION_OWNER_PK_HASH
+            | AuthorizedSubcommandCapabilities::ZEROIZE_UDS_FE
             | AuthorizedSubcommandCapabilities::ZEROIZE_UDS_FE_AND_ENTER_RMA;
     }
     if cfg!(feature = "dot-spdm-vdm") || cfg!(feature = "dot-mci-mailbox") {
@@ -400,6 +401,10 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
 
     async fn fuse_lock_partition(&self, partition: u32) -> CaliptraCmdResult<()> {
         device_ops::fuse_lock_partition(partition)
+    }
+
+    async fn zeroize_uds_fe(&self) -> CaliptraCmdResult<()> {
+        device_ops::zeroize_uds_fe().await
     }
 
     async fn zeroize_uds_fe_and_enter_rma(&self, rma_token: &[u8; 16]) -> CaliptraCmdResult<()> {
@@ -759,6 +764,7 @@ mod tests {
                     | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PK_HASH
                     | AuthorizedSubcommandCapabilities::FUSE_LOCK_PARTITION
                     | AuthorizedSubcommandCapabilities::PROVISION_OWNER_PK_HASH
+                    | AuthorizedSubcommandCapabilities::ZEROIZE_UDS_FE
                     | AuthorizedSubcommandCapabilities::ZEROIZE_UDS_FE_AND_ENTER_RMA
             ),
             authorized_transport

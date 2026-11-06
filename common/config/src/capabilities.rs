@@ -48,6 +48,7 @@ bitflags::bitflags! {
         const OCP_LOCK_PROGRAM_HEK = 1 << 15;
         const OCP_LOCK_ZERO_HEK = 1 << 16;
         const ZEROIZE_UDS_FE_AND_ENTER_RMA = 1 << 17;
+        const ZEROIZE_UDS_FE = 1 << 18;
     }
 }
 
@@ -133,6 +134,10 @@ mod tests {
             AuthorizedSubcommandCapabilities::ZEROIZE_UDS_FE_AND_ENTER_RMA.bits(),
             1 << 17
         );
+        assert_eq!(
+            AuthorizedSubcommandCapabilities::ZEROIZE_UDS_FE.bits(),
+            1 << 18
+        );
         assert_eq!(ExternalCommandCapabilities::OCP_LOCK.bits(), 1 << 18);
         assert_eq!(
             AuthorizedSubcommandCapabilities::FUSE_INCREASE_MIN_SVN.bits(),
@@ -149,10 +154,11 @@ mod tests {
 
         let new_commands = AuthorizedSubcommandCapabilities::OCP_LOCK_PROGRAM_HEK
             | AuthorizedSubcommandCapabilities::OCP_LOCK_ZERO_HEK
-            | AuthorizedSubcommandCapabilities::ZEROIZE_UDS_FE_AND_ENTER_RMA;
+            | AuthorizedSubcommandCapabilities::ZEROIZE_UDS_FE_AND_ENTER_RMA
+            | AuthorizedSubcommandCapabilities::ZEROIZE_UDS_FE;
         assert_eq!(
             encode_capabilities(new_commands.bits()),
-            [0x00, 0x03, 0x80, 0x00]
+            [0x00, 0x07, 0x80, 0x00]
         );
         assert!(!new_commands.intersects(AuthorizedSubcommandCapabilities::DOT_ENABLE));
     }
