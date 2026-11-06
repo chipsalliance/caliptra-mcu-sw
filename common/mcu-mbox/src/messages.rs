@@ -1,8 +1,29 @@
 // Licensed under the Apache-2.0 license
 
+use caliptra_api::mailbox::CommandId as CaliptraCommandId;
 pub use caliptra_api::mailbox::{
-    HpkeHandle, OcpLockEnumerateHpkeHandlesResp, MAX_ATTESTED_CSR_RESP_DATA_SIZE,
+    CmAesDecryptInitReq, CmAesDecryptUpdateReq, CmAesEncryptInitReq, CmAesEncryptInitResp,
+    CmAesEncryptInitRespHeader, CmAesEncryptUpdateReq, CmAesGcmDecryptFinalReq,
+    CmAesGcmDecryptFinalResp, CmAesGcmDecryptFinalRespHeader, CmAesGcmDecryptInitReq,
+    CmAesGcmDecryptInitResp, CmAesGcmDecryptUpdateReq, CmAesGcmDecryptUpdateResp,
+    CmAesGcmDecryptUpdateRespHeader, CmAesGcmEncryptFinalReq, CmAesGcmEncryptFinalResp,
+    CmAesGcmEncryptFinalRespHeader, CmAesGcmEncryptInitReq, CmAesGcmEncryptInitResp,
+    CmAesGcmEncryptUpdateReq, CmAesGcmEncryptUpdateResp, CmAesGcmEncryptUpdateRespHeader,
+    CmAesMode, CmAesResp, CmAesRespHeader, CmDeleteReq, CmEcdhFinishReq, CmEcdhFinishResp,
+    CmEcdhGenerateReq, CmEcdhGenerateResp, CmEcdsaPublicKeyReq, CmEcdsaPublicKeyResp,
+    CmEcdsaSignReq, CmEcdsaSignResp, CmEcdsaVerifyReq, CmHkdfExpandReq, CmHkdfExpandResp,
+    CmHkdfExtractReq, CmHkdfExtractResp, CmHmacKdfCounterReq, CmHmacKdfCounterResp, CmHmacReq,
+    CmHmacResp, CmImportReq, CmImportResp, CmKeyUsage, CmMldsaPublicKeyReq, CmMldsaPublicKeyResp,
+    CmMldsaSignReq, CmMldsaSignResp, CmMldsaVerifyReq, CmRandomGenerateReq, CmRandomGenerateResp,
+    CmRandomStirReq, CmShaFinalReq, CmShaFinalResp, CmShaInitReq, CmShaInitResp, CmShaUpdateReq,
+    CmStatusResp, Cmk, EcdsaVerifyReq, HpkeHandle, LmsVerifyReq, MailboxReqHeader,
+    MailboxRespHeader, MailboxRespHeaderVarSize, OcpLockEnumerateHpkeHandlesResp,
+    ProductionAuthDebugUnlockChallenge, ProductionAuthDebugUnlockReq,
+    ProductionAuthDebugUnlockToken, ResponseVarSize, CMB_AES_ENCRYPTED_CONTEXT_SIZE,
+    CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, CMB_HMAC_MAX_SIZE,
+    MAX_ATTESTED_CSR_RESP_DATA_SIZE, MAX_CMB_DATA_SIZE,
 };
+pub use caliptra_api::{calc_checksum, verify_checksum};
 use caliptra_image_types::{ECC384_SCALAR_BYTE_SIZE, MLDSA87_SIGNATURE_BYTE_SIZE};
 use caliptra_mcu_registers_generated::fuses::{
     OTP_CPTRA_CORE_VENDOR_PK_HASH_0, OTP_CPTRA_SS_OWNER_PK_HASH,
@@ -10,29 +31,6 @@ use caliptra_mcu_registers_generated::fuses::{
 use core::convert::From;
 use core::mem::size_of;
 use core::num::NonZeroU32;
-use mcu_caliptra_api::mailbox::CommandId as CaliptraCommandId;
-pub use mcu_caliptra_api::mailbox::{
-    calc_checksum, verify_checksum, CmAesDecryptInitReq, CmAesDecryptUpdateReq,
-    CmAesEncryptInitReq, CmAesEncryptInitResp, CmAesEncryptInitRespHeader, CmAesEncryptUpdateReq,
-    CmAesGcmDecryptFinalReq, CmAesGcmDecryptFinalResp, CmAesGcmDecryptFinalRespHeader,
-    CmAesGcmDecryptInitReq, CmAesGcmDecryptInitResp, CmAesGcmDecryptUpdateReq,
-    CmAesGcmDecryptUpdateResp, CmAesGcmDecryptUpdateRespHeader, CmAesGcmEncryptFinalReq,
-    CmAesGcmEncryptFinalResp, CmAesGcmEncryptFinalRespHeader, CmAesGcmEncryptInitReq,
-    CmAesGcmEncryptInitResp, CmAesGcmEncryptUpdateReq, CmAesGcmEncryptUpdateResp,
-    CmAesGcmEncryptUpdateRespHeader, CmAesMode, CmAesResp, CmAesRespHeader, CmDeleteReq,
-    CmEcdhFinishReq, CmEcdhFinishResp, CmEcdhGenerateReq, CmEcdhGenerateResp, CmEcdsaPublicKeyReq,
-    CmEcdsaPublicKeyResp, CmEcdsaSignReq, CmEcdsaSignResp, CmEcdsaVerifyReq, CmHkdfExpandReq,
-    CmHkdfExpandResp, CmHkdfExtractReq, CmHkdfExtractResp, CmHmacKdfCounterReq,
-    CmHmacKdfCounterResp, CmHmacReq, CmHmacResp, CmImportReq, CmImportResp, CmKeyUsage,
-    CmMldsaPublicKeyReq, CmMldsaPublicKeyResp, CmMldsaSignReq, CmMldsaSignResp, CmMldsaVerifyReq,
-    CmRandomGenerateReq, CmRandomGenerateResp, CmRandomStirReq, CmShaFinalReq, CmShaFinalResp,
-    CmShaInitReq, CmShaInitResp, CmShaUpdateReq, CmStatusResp, Cmk, EcdsaVerifyReq, LmsVerifyReq,
-    MailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize,
-    ProductionAuthDebugUnlockChallenge, ProductionAuthDebugUnlockReq,
-    ProductionAuthDebugUnlockToken, ResponseVarSize, CMB_AES_ENCRYPTED_CONTEXT_SIZE,
-    CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE, CMB_ECDH_EXCHANGE_DATA_MAX_SIZE, CMB_HMAC_MAX_SIZE,
-    MAX_CMB_DATA_SIZE,
-};
 use zerocopy::{FromBytes, FromZeros, Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
 pub const MAX_RESP_DATA_SIZE: usize = 4 * 1024;
@@ -3246,9 +3244,78 @@ impl Default for GetDotBackupBlobResp {
 
 impl Response for GetDotBackupBlobResp {}
 
+/// Wire sizes of the Caliptra mailbox structs re-exported from `caliptra-api`.
+///
+/// The MCU mailbox wrappers (`Mcu*Req`/`Mcu*Resp`) pass these layouts through
+/// to Caliptra unchanged, so a size change in the pinned `caliptra-api`
+/// revision is a wire-format change and must fail the build here.
+const _: () = {
+    assert!(size_of::<MailboxReqHeader>() == 4);
+    assert!(size_of::<MailboxRespHeader>() == 8);
+    assert!(size_of::<MailboxRespHeaderVarSize>() == 12);
+    assert!(size_of::<Cmk>() == 128);
+    assert!(size_of::<ProductionAuthDebugUnlockReq>() == 12);
+    assert!(size_of::<ProductionAuthDebugUnlockChallenge>() == 92);
+    assert!(size_of::<ProductionAuthDebugUnlockToken>() == 7504);
+    assert!(size_of::<CmImportReq>() == 76);
+    assert!(size_of::<CmImportResp>() == 136);
+    assert!(size_of::<CmDeleteReq>() == 132);
+    assert!(size_of::<CmStatusResp>() == 16);
+    assert!(size_of::<CmShaInitReq>() == 4108);
+    assert!(size_of::<CmShaUpdateReq>() == 4304);
+    assert!(size_of::<CmShaFinalReq>() == 4304);
+    assert!(size_of::<CmShaInitResp>() == 208);
+    assert!(size_of::<CmShaFinalResp>() == 76);
+    assert!(size_of::<CmRandomGenerateReq>() == 8);
+    assert!(size_of::<CmRandomGenerateResp>() == 4108);
+    assert!(size_of::<CmRandomStirReq>() == 4104);
+    assert!(size_of::<CmAesEncryptInitReq>() == 4236);
+    assert!(size_of::<CmAesEncryptInitRespHeader>() == 184);
+    assert!(size_of::<CmAesEncryptInitResp>() == 4280);
+    assert!(size_of::<CmAesRespHeader>() == 168);
+    assert!(size_of::<CmAesResp>() == 4264);
+    assert!(size_of::<CmAesGcmEncryptInitReq>() == 4236);
+    assert!(size_of::<CmAesGcmEncryptInitResp>() == 148);
+    assert!(size_of::<CmAesGcmEncryptUpdateRespHeader>() == 140);
+    assert!(size_of::<CmAesGcmEncryptUpdateResp>() == 4252);
+    assert!(size_of::<CmAesGcmEncryptFinalRespHeader>() == 28);
+    assert!(size_of::<CmAesGcmEncryptFinalResp>() == 4140);
+    assert!(size_of::<CmAesGcmDecryptFinalReq>() == 4252);
+    assert!(size_of::<CmAesGcmDecryptFinalRespHeader>() == 16);
+    assert!(size_of::<CmAesGcmDecryptFinalResp>() == 4128);
+    assert!(size_of::<CmEcdhGenerateReq>() == 4);
+    assert!(size_of::<CmEcdhGenerateResp>() == 180);
+    assert!(size_of::<CmEcdhFinishReq>() == 180);
+    assert!(size_of::<CmEcdhFinishResp>() == 136);
+    assert!(size_of::<CmHmacReq>() == 4236);
+    assert!(size_of::<CmHmacResp>() == 76);
+    assert!(size_of::<CmHmacKdfCounterReq>() == 4244);
+    assert!(size_of::<CmHmacKdfCounterResp>() == 136);
+    assert!(size_of::<CmHkdfExtractReq>() == 264);
+    assert!(size_of::<CmHkdfExtractResp>() == 136);
+    assert!(size_of::<CmHkdfExpandReq>() == 4244);
+    assert!(size_of::<CmHkdfExpandResp>() == 136);
+    assert!(size_of::<CmMldsaPublicKeyReq>() == 132);
+    assert!(size_of::<CmMldsaPublicKeyResp>() == 2600);
+    assert!(size_of::<CmMldsaSignReq>() == 4232);
+    assert!(size_of::<CmMldsaSignResp>() == 4636);
+    assert!(size_of::<CmMldsaVerifyReq>() == 8860);
+    assert!(size_of::<CmEcdsaPublicKeyReq>() == 132);
+    assert!(size_of::<CmEcdsaPublicKeyResp>() == 104);
+    assert!(size_of::<CmEcdsaSignReq>() == 4232);
+    assert!(size_of::<CmEcdsaSignResp>() == 104);
+    assert!(size_of::<CmEcdsaVerifyReq>() == 4328);
+};
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn checksum_matches_caliptra_api_vector() {
+        assert_eq!(calc_checksum(0xe8dc3994, &[0x83, 0xe7, 0x25]), 0xfffffbe0);
+        assert!(verify_checksum(0xfffffbe0, 0xe8dc3994, &[0x83, 0xe7, 0x25]));
+    }
 
     #[test]
     fn get_attestation_wire_layout() {
