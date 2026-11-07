@@ -217,9 +217,6 @@ async fn process_chunk_send<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     session_id: Option<u32>,
     set_certificate_allowed: bool,
 ) -> Result<ChunkInfo, ChunkProcessError> {
-    // GET_VERSION, GET_CAPABILITIES and NEGOTIATE_ALGORITHMS must all precede any
-    // other request (DSP0274 section 17, General ordering rules), so a CHUNK_SEND
-    // before algorithms are negotiated is out of order.
     if state.large_msg_ctx.response_in_progress()
         || (state.phase as u8) < (Phase::AfterAlgorithms as u8)
         || !state.chunking_enabled()
@@ -1995,10 +1992,8 @@ mod tests {
         assert_eq!(rsp[1], ReqRespCode::CHUNK_SEND_ACK.0);
     }
 
-    /// GET_VERSION, GET_CAPABILITIES and NEGOTIATE_ALGORITHMS must all precede
-    /// CHUNK_SEND (DSP0274 section 17, General ordering rules): a CHUNK_SEND that
-    /// arrives between CAPABILITIES and ALGORITHMS is rejected before any chunk
-    /// state is created.
+    /// A CHUNK_SEND that arrives between CAPABILITIES and ALGORITHMS is rejected
+    /// before any chunk state is created.
     #[test]
     fn chunk_send_before_algorithms_is_unexpected_request() {
         let pal = TestPal::default();
