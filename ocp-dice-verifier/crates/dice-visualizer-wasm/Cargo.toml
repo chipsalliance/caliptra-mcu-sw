@@ -1,0 +1,23 @@
+# Licensed under the Apache-2.0 license
+
+[package]
+name = "dice-visualizer-wasm"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "WebAssembly interactive visualizer for SPDM and DICE certificate chains"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+dice-rs.workspace = true
+spdm-cert-rs.workspace = true
+x509-parser.workspace = true
+asn1.workspace = true
+hex.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+wasm-bindgen.workspace = true
