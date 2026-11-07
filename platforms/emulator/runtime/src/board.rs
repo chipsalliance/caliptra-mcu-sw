@@ -644,6 +644,7 @@ pub unsafe fn main() {
         Some(100_000),
         #[cfg(not(feature = "test-caliptra-mailbox"))]
         Some(5_000_000),
+        false,
     )
     .finalize(mailbox_component_static!(
         InternalTimers<'static>,

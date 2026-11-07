@@ -31,6 +31,7 @@ pub struct MailboxComponent<A: Alarm<'static> + 'static> {
     mux_alarm: &'static MuxAlarm<'static, A>,
     dma: &'static dyn DmaHal,
     timeout_ticks: Option<u32>,
+    force_external_mailbox: bool,
 }
 
 impl<A: Alarm<'static>> MailboxComponent<A> {
@@ -40,6 +41,7 @@ impl<A: Alarm<'static>> MailboxComponent<A> {
         mux_alarm: &'static MuxAlarm<'static, A>,
         dma: &'static dyn DmaHal,
         timeout_ticks: Option<u32>,
+        force_external_mailbox: bool,
     ) -> Self {
         Self {
             board_kernel,
@@ -47,6 +49,7 @@ impl<A: Alarm<'static>> MailboxComponent<A> {
             mux_alarm,
             dma,
             timeout_ticks,
+            force_external_mailbox,
         }
     }
 }
@@ -83,6 +86,7 @@ impl<A: Alarm<'static>> Component for MailboxComponent<A> {
                     self.board_kernel.create_grant(self.driver_num, &grant_cap),
                     caliptra_soc,
                     static_buffer.6,
+                    self.force_external_mailbox,
                     self.dma,
                     self.timeout_ticks,
                 ));
