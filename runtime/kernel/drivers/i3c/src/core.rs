@@ -5,7 +5,7 @@
 use crate::hil::I3CTargetInfo;
 use crate::hil::{RxClient, TxClient};
 use caliptra_mcu_registers_generated::i3c::bits::{
-    InterruptEnable, InterruptStatus, Status, StbyCrDeviceAddr,
+    InterruptEnable, InterruptStatus, QueueStatus, Status, StbyCrDeviceAddr,
 };
 use caliptra_mcu_registers_generated::i3c::regs::I3c;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
@@ -112,6 +112,8 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
                 + InterruptEnable::IbiDoneEn::SET
                 + InterruptEnable::TxDescCompleteEn::SET,
         );
+        // Writes received while RX_DESC_STAT_EN was clear raised no interrupt.
+        self.handle_interrupt();
     }
 
     pub fn disable_interrupts(&self) {
@@ -120,7 +122,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
     }
 
     pub fn handle_interrupt(&self) {
-        let mut tti_interrupts = self.registers.tti_interrupt_status.extract();
+        let tti_interrupts = self.registers.tti_interrupt_status.extract();
         if tti_interrupts.get() != 0 {
             if tti_interrupts.read(InterruptStatus::IbiDone) != 0 {
                 // we have to read the IBI status to clear the interrupt
@@ -134,12 +136,16 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
                 self.tx_desc_complete.set(true);
                 self.try_complete_tx();
             }
-            // There is a pending Write Transaction. Software should read data from the RX Descriptor Queue and the RX Data Queue
-            while tti_interrupts.read(InterruptStatus::RxDescStat) != 0 {
-                if !self.handle_incoming_write() {
-                    break;
-                }
-                tti_interrupts = self.registers.tti_interrupt_status.extract();
+        }
+        // RX_DESC_STAT is cleared by any descriptor read, even if more writes
+        // are queued, so drain by queue occupancy instead.
+        while !self
+            .registers
+            .tti_queue_status
+            .is_set(QueueStatus::RxDescQueueEmpty)
+        {
+            if !self.handle_incoming_write() {
+                break;
             }
         }
     }
@@ -150,7 +156,8 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
     }
 
     // called when TTI has a private Write with data for us to grab
-    // Returns false if we could not process the write (e.g., no buffer available)
+    // Returns true if a descriptor was consumed, so the caller can keep draining.
+    // Returns false if no buffer is available; a retry is armed in that case.
     pub fn handle_incoming_write(&self) -> bool {
         self.retry_incoming_write.set(false);
         if self.rx_buffer.is_none() {
@@ -170,8 +177,9 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         let desc = LocalRegisterCopy::<u32, RxDesc::Register>::new(desc);
         let len = desc.read(RxDesc::DataLength) as usize;
         if len == 0 {
-            // we're done
-            return false;
+            // Discard empty/aborted writes without giving up the receive buffer.
+            // The descriptor read cleared RX_DESC_STAT; more may still be queued.
+            return true;
         }
         let rx_buffer = self.rx_buffer.take().unwrap();
         let valid = desc.read(RxDesc::Error) == 0

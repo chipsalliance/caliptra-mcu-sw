@@ -15,8 +15,8 @@ use caliptra_emu_types::RvData;
 use caliptra_mcu_emulator_registers_generated::i3c::{I3cGenerated, I3cPeripheral};
 use caliptra_mcu_registers_generated::i3c::bits::{
     DeviceStatus0, ExtcapHeader, IndirectFifoCtrl0, IndirectFifoStatus0, InterruptEnable,
-    InterruptStatus, RecIntfCfg, RecoveryCtrl, Status, StbyCrCapabilities, StbyCrDeviceAddr,
-    TtiQueueSize,
+    InterruptStatus, QueueStatus, RecIntfCfg, RecoveryCtrl, Status, StbyCrCapabilities,
+    StbyCrDeviceAddr, TtiQueueSize,
 };
 use caliptra_mcu_testing_common::i3c::{
     DynamicI3cAddress, I3cTcriCommand, I3cTcriResponseXfer, IbiDescriptor, ResponseDescriptor,
@@ -221,6 +221,16 @@ impl I3c {
             let error = self.i3c_target.next_rx_error();
             self.tti_rx_desc_queue_raw
                 .push_back(data_len as u32 | ((error as u32) << 28));
+            // Like hardware, latch RX_DESC_STAT per write, only while enabled.
+            if self
+                .interrupt_enable
+                .reg
+                .is_set(InterruptEnable::RxDescStatEn)
+            {
+                self.interrupt_status
+                    .reg
+                    .modify(InterruptStatus::RxDescStat::SET);
+            }
             let data = match xfer.cmd.clone() {
                 I3cTcriCommand::Immediate(imm) => vec![
                     imm.data_byte_1(),
@@ -253,15 +263,6 @@ impl I3c {
                 InterruptStatus::IbiDone::SET
             } else {
                 InterruptStatus::IbiDone::CLEAR
-            });
-
-        // Set RxDescStat interrupt if there is a pending write (i.e., data to read from rx registers)
-        self.interrupt_status
-            .reg
-            .modify(if self.tti_rx_desc_queue_raw.is_empty() {
-                InterruptStatus::RxDescStat::CLEAR
-            } else {
-                InterruptStatus::RxDescStat::SET
             });
 
         let status: ReadWriteRegister<u32, InterruptStatus::Register> = ReadWriteRegister::new(
@@ -700,8 +701,20 @@ impl I3cPeripheral for I3c {
         ReadWriteRegister::new(ExtcapHeader::CapId.val(0xc4).value)
     }
 
+    fn read_i3c_ec_tti_queue_status(&mut self) -> ReadWriteRegister<u32, QueueStatus::Register> {
+        ReadWriteRegister::new(
+            QueueStatus::RxDescQueueEmpty
+                .val(self.tti_rx_desc_queue_raw.is_empty() as u32)
+                .value,
+        )
+    }
+
     fn read_i3c_ec_tti_rx_desc_queue_port(&mut self) -> u32 {
         let desc = self.tti_rx_desc_queue_raw.pop_front().unwrap_or(0);
+        // Any descriptor read clears RX_DESC_STAT, even if more are queued.
+        self.interrupt_status
+            .reg
+            .modify(InterruptStatus::RxDescStat::CLEAR);
         self.check_interrupts();
         desc
     }

@@ -93,6 +93,35 @@ impl Fixture {
 }
 
 #[test]
+fn rx_descriptor_read_clears_notification_but_not_queue() {
+    let mut f = Fixture::new();
+    f.i3c
+        .write_i3c_ec_tti_interrupt_enable(ReadWriteRegister::new(
+            InterruptEnable::RxDescStatEn::SET.value,
+        ));
+    f.command(false, 1, vec![0x11]);
+    f.command(false, 1, vec![0x22]);
+    assert!(f
+        .i3c
+        .interrupt_status
+        .reg
+        .is_set(InterruptStatus::RxDescStat));
+    assert_eq!(f.i3c.read_i3c_ec_tti_rx_desc_queue_port(), 1);
+    assert_eq!(f.i3c.read_i3c_ec_tti_rx_data_port(), 0x11);
+    f.poll();
+    assert!(!f
+        .i3c
+        .interrupt_status
+        .reg
+        .is_set(InterruptStatus::RxDescStat));
+    assert!(!f
+        .i3c
+        .read_i3c_ec_tti_queue_status()
+        .reg
+        .is_set(QueueStatus::RxDescQueueEmpty));
+}
+
+#[test]
 fn tx_waits_for_explicit_read_and_strips_word_padding() {
     let mut f = Fixture::new();
     f.tx(&[1, 2, 3, 4, 5]);
