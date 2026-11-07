@@ -461,18 +461,7 @@ impl VeeRProtectionMMLEPMP {
                     );
                     pmp_entry += 2;
                 }
-                PMPRegion::UserMMIO(r) => {
-                    // NAPOT region: user-accessible MMIO (R+W for both user and machine)
-                    write_pmpaddr_pmpcfg(
-                        pmp_entry,
-                        (pmpcfg_octet::a::NAPOT
-                            + pmpcfg_octet::r::CLEAR
-                            + pmpcfg_octet::w::SET
-                            + pmpcfg_octet::x::SET
-                            + pmpcfg_octet::l::CLEAR) // Not locked - accessible to both user and machine
-                            .into(),
-                        r.0.napot_addr(),
-                    );
+                PMPRegion::UserMMIO(_) => {
                     pmp_entry += 1;
                 }
                 PMPRegion::MachineMMIO(r) => {
@@ -492,13 +481,10 @@ impl VeeRProtectionMMLEPMP {
             }
         }
 
-        // Finally, attempt to enable the MSECCFG security bits, and verify
+        // Next, attempt to enable the MSECCFG security bits, and verify
         // that they have been set correctly. If they have not been set to
         // the written value, this means that this hardware either does not
-        // support ePMP, or it was in some invalid state otherwise. We don't
-        // need to read back the above regions, as we previous verified that
-        // none of their entries were locked -- so writing to them must work
-        // even without RLB set.
+        // support ePMP, or it was in some invalid state otherwise.
         //
         // Set RLB(2) = 0, MMWP(1) = 1, MML(0) = 1
         csr::CSR.mseccfg.set(0x00000003);
@@ -511,6 +497,26 @@ impl VeeRProtectionMMLEPMP {
         // userspace code!
         if csr::CSR.mseccfg.get() != 0x00000003 {
             return Err(()); // Hardware doesn't support ePMP or configuration failed
+        }
+
+        // Shared data encoding (RW=01) is only valid once MML is set.
+        pmp_entry = kernel_start_entry;
+        for region in pmp_regions.iter() {
+            if let PMPRegion::UserMMIO(r) = region {
+                let pmpcfg = (pmpcfg_octet::a::NAPOT
+                    + pmpcfg_octet::r::CLEAR
+                    + pmpcfg_octet::w::SET
+                    + pmpcfg_octet::x::SET
+                    + pmpcfg_octet::l::CLEAR)
+                    .into();
+                write_pmpaddr_pmpcfg(pmp_entry, pmpcfg, r.0.napot_addr());
+                let actual_pmpcfg =
+                    (csr::CSR.pmpconfig_get(pmp_entry / 4) >> ((pmp_entry % 4) * 8)) as u8;
+                if actual_pmpcfg != pmpcfg || csr::CSR.pmpaddr_get(pmp_entry) != r.0.napot_addr() {
+                    return Err(());
+                }
+            }
+            pmp_entry += region.entry_count();
         }
 
         // Initialize user PMP shadow configuration (entries 0..(MPU_REGIONS*2-1) for dynamic user regions)
