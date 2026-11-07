@@ -262,6 +262,13 @@ impl Default for DebugUnlockChallenge {
     }
 }
 
+/// Vendor command body limits, excluding authorization and transport framing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VendorCommandLimits {
+    pub max_payload_len: usize,
+    pub max_response_len: usize,
+}
+
 /// Asynchronous trait for handling Caliptra common commands across all transport protocols.
 ///
 /// Each function represents a transport-agnostic command handler. Implementors should provide
@@ -292,6 +299,32 @@ pub trait CaliptraCmdHandler {
         &self,
         capabilities: &mut DeviceCapabilities,
     ) -> CaliptraCmdResult<()>;
+
+    /// Describes a supported `VUxy` target inside `AuthorizedCommand`.
+    ///
+    /// This side-effect-free lookup runs before authorization. Payloads must fit
+    /// [`command::MAX_AUTHORIZED_PAYLOAD_LEN`]. The declared response limit must
+    /// fit the transport's existing response buffer; no resizing is done.
+    /// The default registers no vendor commands.
+    fn vendor_command_limits(_cmd_id: u32) -> Option<VendorCommandLimits> {
+        None
+    }
+
+    /// Executes a vendor command after the common authorization checks pass.
+    ///
+    /// `payload` excludes the target ID and authorization block. `response`
+    /// contains only body space, bounded by the registered response limit.
+    /// Return the number of bytes written, never greater than `response.len()`.
+    /// Transport headers and checksums remain the frontend's responsibility.
+    async fn handle_vendor_command<Alloc: ScratchAlloc>(
+        &self,
+        _alloc: &Alloc,
+        _cmd_id: u32,
+        _payload: &[u8],
+        _response: &mut [u8],
+    ) -> CaliptraCmdResult<usize> {
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
 
     /// Exports an attested CSR or performs keypair discovery.
     ///
