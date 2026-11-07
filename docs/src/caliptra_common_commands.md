@@ -468,6 +468,28 @@ The reference MCU assigns no behavior to this namespace and returns
 `UnsupportedOperation`. Vendor implementations may define payloads and behavior
 within this reserved namespace without colliding with Caliptra-defined FourCCs.
 
+##### Platform Extension Hooks
+
+Platforms opt in through their existing `CaliptraCmdHandler` backend:
+`vendor_command_limits(cmd_id)` declares body limits for supported `VUxy` IDs,
+and `handle_vendor_command(alloc, cmd_id, payload, response)` implements them.
+The metadata lookup must have no side effects. Its default returns `None`;
+the execution hook defaults to `UnsupportedOperation` and runs only after the
+normal authorization checks pass.
+
+The payload excludes the target ID and Authorization Block. It must fit the
+declared limit and `command::MAX_AUTHORIZED_PAYLOAD_LEN` (52 bytes, or 104 with
+`device-ownership-transfer`). The response buffer excludes transport framing;
+the hook returns its written length, bounded by the declared response limit.
+Exact payload lengths and semantics remain the platform's responsibility.
+
+Transport buffers and framing are unchanged. The declared response limit must
+fit the buffer already supplied by the frontend: the normal MCU mailbox scratch
+service provides four vendor response-body bytes, and SPDM uses its existing
+inline response capacity. Insufficient space returns `InsufficientResources`
+(mailbox command failure). Vendor hooks do not enable large responses, resize
+buffers, override standard IDs, or expose top-level `VUxy` mailbox opcodes.
+
 ### Get Auth Challenge
 
 Returns a one-use 48-byte nonce for Challenge-bound authorization. Offline
