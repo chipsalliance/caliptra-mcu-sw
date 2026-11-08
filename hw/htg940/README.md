@@ -37,6 +37,8 @@ uses the existing `bitstream-builder` runner label and
 `/vck190-tools/Vivado/2024.2`. That runner must have UltraScale+ device
 support and appropriate licensing for the XCVU13P. The upstream handoff used
 a 128 GB memory allocation; resource availability still needs confirmation.
+The workflow installs Python 3.12 for source preparation and ROM conversion;
+the shared Vivado runner does not need a preinstalled Python interpreter.
 
 The workflow is manual-only and also callable. Before the new workflow is
 registered on the default branch, dispatch the existing FPGA workflow on the

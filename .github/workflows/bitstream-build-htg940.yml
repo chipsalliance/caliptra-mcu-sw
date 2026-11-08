@@ -45,6 +45,11 @@ jobs:
             -journal "$STAGING_DIR/preflight.jou" \
             -source hw/htg940/fpga/check_tools.tcl
 
+      - name: Install Python for RTL preparation and ROM conversion
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
       - name: Prepare pinned HTG-940 RTL
         run: bash hw/htg940/prepare_sources.sh
 
