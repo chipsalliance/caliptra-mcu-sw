@@ -9,6 +9,14 @@ use std::fmt::Display;
 use std::rc::Rc;
 use systemrdl::{AccessType, InstanceRef, ParentScope, RdlError};
 
+#[derive(Clone, Copy, Default)]
+pub enum OnWriteSemantics {
+    #[default]
+    SystemRdl,
+    /// Preserve snapshots generated before onwrite properties were interpreted.
+    Legacy,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Error {
     UnexpectedScopeType {
@@ -202,7 +210,10 @@ fn translate_enum(name: &str, enm: systemrdl::ParentScope) -> Result<Enum, Error
     })
 }
 
-fn translate_field(iref: systemrdl::InstanceRef) -> Result<RegisterField, Error> {
+fn translate_field(
+    iref: systemrdl::InstanceRef,
+    semantics: OnWriteSemantics,
+) -> Result<RegisterField, Error> {
     let wrap_err = |err: Error| Error::FieldError {
         field_name: iref.instance.name.clone(),
         err: Box::new(err),
@@ -213,11 +224,23 @@ fn translate_field(iref: systemrdl::InstanceRef) -> Result<RegisterField, Error>
     let access_ty: AccessType = get_property_opt(&inst.scope, "sw")?.unwrap_or_default();
     let mut field_type = translate_access_type(access_ty).map_err(wrap_err)?;
 
-    if let Some(true) = get_property_opt::<bool>(&inst.scope, "woclr")? {
+    let onwrite = match semantics {
+        OnWriteSemantics::SystemRdl => {
+            get_property_opt::<systemrdl::OnWriteType>(&inst.scope, "onwrite")?
+        }
+        OnWriteSemantics::Legacy => None,
+    };
+    if get_property_opt::<bool>(&inst.scope, "woclr")? == Some(true)
+        || onwrite == Some(systemrdl::OnWriteType::WoClr)
+    {
         field_type = FieldType::W1C;
-    } else if let Some(true) = get_property_opt::<bool>(&inst.scope, "woset")? {
+    } else if get_property_opt::<bool>(&inst.scope, "woset")? == Some(true)
+        || onwrite == Some(systemrdl::OnWriteType::WoSet)
+    {
         field_type = FieldType::W1S;
-    } else if let Some(true) = get_property_opt::<bool>(&inst.scope, "wclr")? {
+    } else if get_property_opt::<bool>(&inst.scope, "wclr")? == Some(true)
+        || onwrite == Some(systemrdl::OnWriteType::WClr)
+    {
         field_type = FieldType::WC;
     }
 
@@ -265,7 +288,10 @@ fn translate_field(iref: systemrdl::InstanceRef) -> Result<RegisterField, Error>
     Ok(result)
 }
 
-fn translate_register(iref: systemrdl::InstanceRef) -> Result<Register, Error> {
+fn translate_register(
+    iref: systemrdl::InstanceRef,
+    semantics: OnWriteSemantics,
+) -> Result<Register, Error> {
     let wrap_err = |err: Error| Error::RegisterError {
         register_name: iref.instance.name.clone(),
         err: Box::new(err),
@@ -284,7 +310,12 @@ fn translate_register(iref: systemrdl::InstanceRef) -> Result<Register, Error> {
         return Err(wrap_err(Error::ResetValueOnRegisterUnsupported));
     }
 
-    let ty = translate_register_ty(inst.type_name.clone(), iref.scope)?;
+    let type_name = if inst.alias_of.is_some() {
+        Some(inst.name.clone())
+    } else {
+        inst.type_name.clone()
+    };
+    let ty = translate_register_ty(type_name, iref.scope, semantics)?;
 
     let result = crate::schema::Register {
         name: inst.name.clone(),
@@ -388,6 +419,7 @@ fn translate_mem(iref: systemrdl::InstanceRef, start_offset: u64) -> Result<Regi
 fn translate_register_ty(
     type_name: Option<String>,
     scope: ParentScope,
+    semantics: OnWriteSemantics,
 ) -> Result<Rc<crate::schema::RegisterType>, Error> {
     let wrap_err = |err: Error| {
         if let Some(ref type_name) = type_name {
@@ -412,7 +444,7 @@ fn translate_register_ty(
 
     let mut fields = vec![];
     for field in scope.instance_iter() {
-        match translate_field(field).map_err(wrap_err) {
+        match translate_field(field, semantics).map_err(wrap_err) {
             Ok(field) => fields.push(field),
             Err(err) => {
                 if matches!(err.root_cause(), Error::AccessTypeNaUnsupported) {
@@ -431,10 +463,21 @@ fn translate_register_ty(
 }
 
 pub fn translate_types(scope: systemrdl::ParentScope) -> Result<Vec<Rc<RegisterType>>, Error> {
+    translate_types_with_semantics(scope, OnWriteSemantics::SystemRdl)
+}
+
+pub fn translate_types_with_semantics(
+    scope: systemrdl::ParentScope,
+    semantics: OnWriteSemantics,
+) -> Result<Vec<Rc<RegisterType>>, Error> {
     let mut result = vec![];
     for (name, subscope) in scope.type_iter() {
         if subscope.scope.ty == ComponentType::Reg.into() {
-            result.push(translate_register_ty(Some(name.into()), subscope)?);
+            result.push(translate_register_ty(
+                Some(name.into()),
+                subscope,
+                semantics,
+            )?);
         }
     }
     Ok(result)
@@ -469,7 +512,10 @@ fn calculate_mem_size(iref: systemrdl::InstanceRef) -> u64 {
     bits / 8 * entries
 }
 
-fn translate_block(iref: InstanceRef) -> Result<Option<RegisterBlock>, Error> {
+fn translate_block(
+    iref: InstanceRef,
+    semantics: OnWriteSemantics,
+) -> Result<Option<RegisterBlock>, Error> {
     let wrap_err = |err: Error| Error::BlockError {
         block_name: iref.instance.name.clone(),
         err: Box::new(err),
@@ -489,20 +535,19 @@ fn translate_block(iref: InstanceRef) -> Result<Option<RegisterBlock>, Error> {
         if ty.scope.ty == ComponentType::Reg.into() {
             block
                 .declared_register_types
-                .push(translate_register_ty(Some(name.into()), ty).map_err(wrap_err)?);
+                .push(translate_register_ty(Some(name.into()), ty, semantics).map_err(wrap_err)?);
         }
     }
 
     // special cases: this is a single memory or register instance
     if iref.instance.scope.ty == ComponentType::Mem.into() {
-        let start_offset = iref.instance.offset.unwrap_or(0);
-        block.registers.push(Rc::new(
-            translate_mem(iref, start_offset).map_err(wrap_err)?,
-        ));
+        let mut memory = translate_mem(iref, 0).map_err(wrap_err)?;
+        memory.offset = 0;
+        block.registers.push(Rc::new(memory));
         return Ok(Some(block));
     } else if iref.instance.scope.ty == ComponentType::Reg.into() {
         let child = iref;
-        let mut reg = translate_register(child).map_err(wrap_err)?;
+        let mut reg = translate_register(child, semantics).map_err(wrap_err)?;
         if inst.offset.is_some() {
             reg.offset = 0; // the offset will be built into the block
         }
@@ -513,7 +558,7 @@ fn translate_block(iref: InstanceRef) -> Result<Option<RegisterBlock>, Error> {
     let mut next_offset = Some(0u64);
     for child in iref.scope.instance_iter() {
         if child.instance.scope.ty == ComponentType::Reg.into() {
-            let reg = translate_register(child).map_err(wrap_err)?;
+            let reg = translate_register(child, semantics).map_err(wrap_err)?;
             block.registers.push(Rc::new(reg));
             next_offset = Some(
                 child.instance.offset.unwrap()
@@ -535,7 +580,8 @@ fn translate_block(iref: InstanceRef) -> Result<Option<RegisterBlock>, Error> {
                 translate_mem(child, start_offset).map_err(wrap_err)?,
             ));
         } else if child.instance.scope.ty == ComponentType::RegFile.into() {
-            let next_block = translate_block(child)?.expect("Register file must have registers");
+            let next_block =
+                translate_block(child, semantics)?.expect("Register file must have registers");
             let next_block_size = calculate_reg_size(&next_block);
             let start_offset = child
                 .instance
@@ -562,7 +608,8 @@ fn translate_block(iref: InstanceRef) -> Result<Option<RegisterBlock>, Error> {
             // ignore
             //next_offset = None;
         } else if child.instance.scope.ty == ComponentType::AddrMap.into() {
-            let next_block = translate_block(child)?.expect("Addrmap must have registers");
+            let next_block =
+                translate_block(child, semantics)?.expect("Addrmap must have registers");
             let next_block_size = calculate_reg_size(&next_block);
             let start_offset = child
                 .instance
@@ -593,12 +640,95 @@ fn translate_block(iref: InstanceRef) -> Result<Option<RegisterBlock>, Error> {
 }
 
 pub fn translate_addrmap(addrmap: systemrdl::ParentScope) -> Result<Vec<RegisterBlock>, Error> {
+    translate_addrmap_with_semantics(addrmap, OnWriteSemantics::SystemRdl)
+}
+
+pub fn translate_addrmap_with_semantics(
+    addrmap: systemrdl::ParentScope,
+    semantics: OnWriteSemantics,
+) -> Result<Vec<RegisterBlock>, Error> {
     expect_instance_type(addrmap, ComponentType::AddrMap.into())?;
     let mut blocks = vec![];
     for iref in addrmap.instance_iter() {
-        if let Some(b) = translate_block(iref)? {
+        if let Some(b) = translate_block(iref, semantics)? {
             blocks.push(b);
         }
     }
     Ok(blocks)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    struct Source<'a>(&'a str);
+
+    impl systemrdl::FileSource for Source<'_> {
+        fn read_to_string(&self, _: &std::path::Path) -> std::io::Result<&str> {
+            Ok(self.0)
+        }
+    }
+
+    fn parse(source: &str) -> systemrdl::Scope {
+        systemrdl::Scope::parse_root(&Source(source), &["test.rdl".into()]).unwrap()
+    }
+
+    #[test]
+    fn aliases_preserve_write_one_semantics_and_legacy_mode() {
+        let scope = parse(
+            r#"
+            addrmap soc {
+                reg status_t {field {sw = rw; onwrite = woclr;} pending[29:0] = 0;};
+                status_t status @ 0x20;
+                alias status status_t set_status @ 0x28;
+                set_status.pending->onwrite = woset;
+            } instance @ 0x20000000;
+        "#,
+        );
+        let parent = scope.as_parent();
+        let instance = parent.instance_iter().next().unwrap();
+        let block = translate_block(instance, OnWriteSemantics::SystemRdl)
+            .unwrap()
+            .unwrap();
+        assert_eq!(block.registers[0].ty.fields[0].ty, FieldType::W1C);
+        assert_eq!(block.registers[1].ty.fields[0].ty, FieldType::W1S);
+        assert_eq!(block.registers[0].ty.fields[0].width, 30);
+        assert_eq!(block.registers[0].offset, 0x20);
+        assert_eq!(block.registers[1].offset, 0x28);
+        block.validate_and_dedup().unwrap();
+        let legacy = translate_block(instance, OnWriteSemantics::Legacy)
+            .unwrap()
+            .unwrap();
+        assert_eq!(legacy.registers[0].ty.fields[0].ty, FieldType::RW);
+        assert_eq!(legacy.registers[1].ty.fields[0].ty, FieldType::RW);
+    }
+
+    #[test]
+    fn standalone_memory_has_relative_offsets_and_full_64_bit_capacity() {
+        let scope = parse(
+            r#"
+            mem packet #(longint unsigned ENTRIES = 4) {
+                memwidth = 64; mementries = ENTRIES; sw = rw;
+            };
+            addrmap soc {
+                external packet #(.ENTRIES(8192)) packet0 @ 0x30000000;
+                external packet #(.ENTRIES(8192)) packet1 @ 0x30010000;
+            };
+        "#,
+        );
+        let parent = scope.as_parent();
+        let blocks = translate_addrmap(parent.lookup_typedef("soc").unwrap()).unwrap();
+        for (block, address) in blocks.iter().zip([0x30000000, 0x30010000]) {
+            assert_eq!(block.instances[0].address, address);
+            assert_eq!(block.registers.len(), 1);
+            let memory = &block.registers[0];
+            assert_eq!(memory.offset, 0);
+            assert_eq!(memory.ty.width, RegisterWidth::_32);
+            assert_eq!(memory.array_dimensions, [16384]);
+            assert_eq!(
+                memory.array_dimensions[0] * memory.ty.width.in_bytes(),
+                0x10000
+            );
+        }
+    }
 }
