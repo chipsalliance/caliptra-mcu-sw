@@ -210,7 +210,7 @@ impl MciPeripheral for Mci {
         Self::cancel_poll(&mut self.timer, &mut self.op_wdt_timer2_expired_action);
 
         // Reset the mci_rst_b domain, retaining mci_pwrgood state (including errors).
-        self.generated.write_mci_reg_hw_capabilities(0);
+        self.generated.write_mci_reg_hw_capabilities(0.into());
         self.generated.write_mci_reg_fw_capabilities(0);
         self.generated.write_mci_reg_cap_lock(0.into());
         self.generated.write_mci_reg_ss_config_done(0.into());
