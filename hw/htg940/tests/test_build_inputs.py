@@ -3,6 +3,8 @@
 import hashlib
 import importlib.util
 import json
+import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -12,6 +14,56 @@ from unittest.mock import patch
 
 
 FPGA = Path(__file__).resolve().parents[1] / "fpga"
+
+
+class TclPythonTests(unittest.TestCase):
+    def invoke_helper(self, environment):
+        tclsh = shutil.which("tclsh")
+        if tclsh is None:
+            self.fail("tclsh is required to validate the Vivado Python boundary")
+        return subprocess.run(
+            [tclsh],
+            input="""
+if {[catch {
+    source [file join $::env(TEST_FPGA) htg940 python.tcl]
+    puts [exec $htgPython -c {import sys; print(sys.executable)}]
+} message]} {
+    puts stderr $message
+    exit 1
+}
+""",
+            env={**environment, "TEST_FPGA": str(FPGA)},
+            capture_output=True, text=True,
+        )
+
+    def test_explicit_interpreter_ignores_vivado_python_on_path(self):
+        with tempfile.TemporaryDirectory() as directory:
+            bundled_python = Path(directory) / "python3"
+            bundled_python.write_text("#!/bin/sh\necho Wrong Python >&2\nexit 99\n")
+            bundled_python.chmod(0o755)
+            environment = dict(os.environ)
+            environment["HTG_PYTHON"] = sys.executable
+            environment["PATH"] = directory + os.pathsep + environment["PATH"]
+            result = self.invoke_helper(environment)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("HTG940_PYTHON_READY:", result.stdout)
+            self.assertIn(sys.executable, result.stdout)
+            self.assertNotIn("Wrong Python", result.stderr)
+
+    def test_missing_or_relative_interpreter_is_rejected(self):
+        environment = dict(os.environ)
+        environment.pop("HTG_PYTHON", None)
+        result = self.invoke_helper(environment)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Set HTG_PYTHON", result.stderr)
+        environment["HTG_PYTHON"] = "python3"
+        result = self.invoke_helper(environment)
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("executable absolute path", result.stderr)
+
+    def test_tcl_helpers_do_not_use_path_selected_python(self):
+        for script in FPGA.rglob("*.tcl"):
+            self.assertNotIn("exec python3", script.read_text(), str(script))
 
 
 class SnapshotTests(unittest.TestCase):

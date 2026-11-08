@@ -1,6 +1,7 @@
 set VERSION [exec git rev-parse --short=8 HEAD]
 set htgReleaseDir [file dirname [file normalize [info script]]]
-puts [exec python3 [file join $htgReleaseDir prepare_sources.py] --check]
+source [file join $htgReleaseDir python.tcl]
+puts [exec $htgPython [file join $htgReleaseDir prepare_sources.py] --check]
 if {[llength [lsearch -all -inline -glob $argv FW_IMAGE_DIR=*]] == 0} {
     lappend argv "FW_IMAGE_DIR=[file join $htgReleaseDir firmware]"
 }

@@ -80,6 +80,7 @@ jobs:
       - name: Build HTG-940 bitstream
         id: build
         run: |
+          export HTG_PYTHON="$pythonLocation/bin/python3"
           source "$VIVADO_DIR/settings64.sh"
           cd hw/htg940/fpga
           "$VIVADO_DIR/bin/vivado" -mode batch \
@@ -97,7 +98,7 @@ jobs:
           done
 
       - name: Upload HTG-940 bitstream and debug files
-        if: ${{ always() && steps.build.outcome != 'skipped' }}
+        if: ${{ always() && steps.build.outcome == 'success' }}
         uses: actions/upload-artifact@v7
         with:
           name: htg940-bitstream-zero-firmware-${{ github.run_id }}

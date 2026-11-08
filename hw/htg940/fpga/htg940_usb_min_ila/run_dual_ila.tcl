@@ -1,5 +1,6 @@
 set diagnosticDir [file dirname [file normalize [info script]]]
 set fpgaDir [file dirname $diagnosticDir]
+source [file join $fpgaDir htg940 python.tcl]
 cd $fpgaDir
 set firmwareArgs [lsearch -all -inline -glob $argv FW_IMAGE_DIR=*]
 if {[llength $firmwareArgs] > 1} {error "Only one FW_IMAGE_DIR is allowed"}

@@ -39,6 +39,8 @@ support and appropriate licensing for the XCVU13P. The upstream handoff used
 a 128 GB memory allocation; resource availability still needs confirmation.
 The workflow installs Python 3.12 for source preparation and ROM conversion;
 the shared Vivado runner does not need a preinstalled Python interpreter.
+All Tcl subprocesses use the explicit `HTG_PYTHON` executable, not Vivado's
+older bundled Python. Local builds require Python 3.9 or newer.
 
 The workflow is manual-only and also callable. Before the new workflow is
 registered on the default branch, dispatch the existing FPGA workflow on the
@@ -76,6 +78,7 @@ and build metadata, with their SHA-256 hashes. No firmware is committed.
 ```sh
 bash hw/htg940/prepare_sources.sh
 python3 hw/htg940/fpga/htg940/prepare_sources.py --check
+export HTG_PYTHON="$(command -v python3)"
 source /vck190-tools/Vivado/2024.2/settings64.sh
 cd hw/htg940/fpga
 vivado -mode batch -source htg940/run_full.tcl \
@@ -96,7 +99,8 @@ Outputs under `fpga/htg940_usb_min_ila/build_full_<suffix>/caliptra_htg940_proje
 - `htg940_board_top.mmi`
 - `htg940_timing_summary.rpt` and `htg940_drc.rpt`
 
-CI uploads these outputs and the build logs, including reports on failure.
+CI uploads bitstream/debug artifacts only after all three nonempty outputs
+are validated. Build logs and reports are uploaded even on failure.
 The upstream handoff did not close timing and did not qualify full USB
 recovery. Bitstream generation is not timing or hardware qualification.
 

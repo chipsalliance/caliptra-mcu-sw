@@ -57,6 +57,7 @@ if {![info exists VERSION]} {
 # Paths and generated output
 # -----------------------------------------------------------------------------
 set fpgaDir            [file normalize [file dirname [info script]]]
+source [file join $fpgaDir htg940 python.tcl]
 set outputDir          [file normalize [file join $fpgaDir $OUTPUT_DIR]]
 set caliptrapackageDir [file join $outputDir caliptra_package]
 set ssrtlDir           [file normalize [file join $fpgaDir .. caliptra-ss]]
@@ -99,7 +100,7 @@ if {![file isfile $flashImageBin]} {
 if {![file isfile $flashConverter]} {
   error "Missing HTG-940 flash converter: $flashConverter"
 }
-exec python3 $flashConverter \
+exec $htgPython $flashConverter \
   --input $flashImageBin \
   --output $flashImageCoe \
   --capacity 2097152
