@@ -7,7 +7,7 @@ if {[llength $original] == 1} {
     set synthUse [get_property USED_IN_SYNTHESIS $original]
     set implUse [get_property USED_IN_IMPLEMENTATION $original]
     set order [get_property PROCESSING_ORDER $original]
-    puts [exec $htgPython [file join $diagnosticDir prepare_dual_ila_constraints.py] \
+    puts [exec {*}$htgPython [file join $diagnosticDir prepare_dual_ila_constraints.py] \
         $boardSource $localDir]
     remove_files $original
     add_files -fileset constrs_1 -norecurse $localBoard

@@ -26,7 +26,7 @@ class TclPythonTests(unittest.TestCase):
             input="""
 if {[catch {
     source [file join $::env(TEST_FPGA) htg940 python.tcl]
-    puts [exec $htgPython -c {import sys; print(sys.executable)}]
+    puts [exec {*}$htgPython -c {import sys; print(sys.executable)}]
 } message]} {
     puts stderr $message
     exit 1
@@ -61,9 +61,21 @@ if {[catch {
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("executable absolute path", result.stderr)
 
+    def test_explicit_interpreter_ignores_vivado_python_home_and_path(self):
+        with tempfile.TemporaryDirectory() as directory:
+            environment = dict(os.environ)
+            environment["HTG_PYTHON"] = sys.executable
+            environment["PYTHONHOME"] = directory
+            environment["PYTHONPATH"] = directory
+            result = self.invoke_helper(environment)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn("HTG940_PYTHON_READY:", result.stdout)
+            self.assertIn(sys.executable, result.stdout)
+
     def test_tcl_helpers_do_not_use_path_selected_python(self):
         for script in FPGA.rglob("*.tcl"):
             self.assertNotIn("exec python3", script.read_text(), str(script))
+            self.assertNotIn("exec $htgPython", script.read_text(), str(script))
 
 
 class SnapshotTests(unittest.TestCase):

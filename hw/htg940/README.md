@@ -40,7 +40,9 @@ a 128 GB memory allocation; resource availability still needs confirmation.
 The workflow installs Python 3.12 for source preparation and ROM conversion;
 the shared Vivado runner does not need a preinstalled Python interpreter.
 All Tcl subprocesses use the explicit `HTG_PYTHON` executable, not Vivado's
-older bundled Python. Local builds require Python 3.9 or newer.
+older bundled Python. The shared command prefix includes Python's `-E` flag
+to ignore Vivado's `PYTHONHOME`/`PYTHONPATH` overrides without changing
+Vivado's own environment. Local builds require Python 3.9 or newer.
 
 The workflow is manual-only and also callable. Before the new workflow is
 registered on the default branch, dispatch the existing FPGA workflow on the

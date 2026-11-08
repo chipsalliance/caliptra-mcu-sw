@@ -111,7 +111,7 @@ if {$BOARD eq "HTG940"} {
     }
 
     puts "Generating $memName from $binName"
-    exec $htgPython $romConverter \
+    exec {*}$htgPython $romConverter \
       --input $binPath --output $memPath --size $expectedBytes
 
     set memFile [open $memPath r]
@@ -242,12 +242,12 @@ if {[info exists HTG_ULPI_DIAGNOSTICS] && $HTG_ULPI_DIAGNOSTICS} {
 set htgInterfaceTop [file join $fpgaDir src caliptra_package_top.v]
 if {$BOARD eq "HTG940" && [lsearch -exact $VERILOG_OPTIONS HTG940_ENTROPY_CONTROL] >= 0} {
   set specializer [file join $fpgaDir specialize_htg940_interface.py]
-  puts [exec $htgPython $specializer $wrapperGenerated $wrapperGenerated]
+  puts [exec {*}$htgPython $specializer $wrapperGenerated $wrapperGenerated]
   set originalTop [get_files -quiet $htgInterfaceTop]
   if {[llength $originalTop] != 1} {error "Cannot identify package top source"}
   set topSource $htgInterfaceTop
   set htgInterfaceTop [file join $outputDir caliptra_package_top_hw.v]
-  puts [exec $htgPython $specializer $topSource $htgInterfaceTop]
+  puts [exec {*}$htgPython $specializer $topSource $htgInterfaceTop]
   remove_files $originalTop
   add_files -norecurse $htgInterfaceTop
 }

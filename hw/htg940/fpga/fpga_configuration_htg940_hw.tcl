@@ -100,7 +100,7 @@ if {![file isfile $flashImageBin]} {
 if {![file isfile $flashConverter]} {
   error "Missing HTG-940 flash converter: $flashConverter"
 }
-exec $htgPython $flashConverter \
+exec {*}$htgPython $flashConverter \
   --input $flashImageBin \
   --output $flashImageCoe \
   --capacity 2097152
