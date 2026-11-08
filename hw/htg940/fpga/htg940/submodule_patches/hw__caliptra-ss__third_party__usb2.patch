@@ -1,0 +1,13 @@
+diff --git a/src/integration/rtl/ip_xxx_3511_hs_mem_compound_wrapper.sv b/src/integration/rtl/ip_xxx_3511_hs_mem_compound_wrapper.sv
+index 523303d..05ddd0b 100755
+--- a/src/integration/rtl/ip_xxx_3511_hs_mem_compound_wrapper.sv
++++ b/src/integration/rtl/ip_xxx_3511_hs_mem_compound_wrapper.sv
+@@ -616,7 +616,7 @@ module ip_xxx_3511_hs_mem_compound_wrapper
+     .C_PLL_ENABLE(0),      // FALSE: no on-chip PLL
+     // C_PLL_DIVIDER left at the IP default: C_PLL_ENABLE is FALSE
+     .C_ULPI_SUPPORT(1),    // TRUE
+-    .C_UTMI_SUPPORT(1),    // TRUE
++    .C_UTMI_SUPPORT(0),    // TRUE
+     .C_EXTEND_TX_DELAY(1), // TRUE
+     .G_SIM_CHIRP_TIMERS(G_SIM_CHIRP_TIMERS)
+   ) u_hub_compound (

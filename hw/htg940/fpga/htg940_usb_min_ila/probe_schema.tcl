@@ -1,0 +1,54 @@
+# Each entry is {instance signal width}; order defines the ILA probe index.
+set htg_ulpi_schema {
+    {usb_synchronizer_1 sync_phy_start_s 1}
+    {usb_synchronizer_1 sync_phy_start_ss 1}
+    {usb_synchronizer_1 sync_phy_start_sss 1}
+    {usb_pie_1 phy_start 1}
+    {usb_pie_1 reset_n 1}
+    {usb_pie_1 phy_address 8}
+    {usb_pie_1 phy_write 1}
+    {usb_pie_1 phy_writedata 8}
+    {usb_pie_1 htg_ulpi_state 5}
+    {usb_pie_1 ulpi_pwrst_det_r 1}
+    {usb_pie_1 ulpi_req_xreg_rd_r 1}
+    {usb_pie_1 ulpi_arb_reg_pending_r 1}
+    {usb_pie_1 ulpi_arb_reg_r 4}
+    {usb_pie_1 ulpi_arb_reg_nxt 4}
+    {usb_pie_1 ulpi_reg_access_req 1}
+    {usb_pie_1 ulpi_req_txcmd_fct_ctrl_reset_r 1}
+    {usb_pie_1 ulpi_req_txcmd_fct_ctrl_susp_r 1}
+    {usb_pie_1 ulpi_req_txcmd_fct_ctrl_wr_r 1}
+    {usb_pie_1 ulpi_req_txcmd_otg_ctrl_wr_r 1}
+    {usb_pie_1 ulpi_req_txcmd_int_stat_r 1}
+    {usb_pie_1 ulpi_req_txcmd_dbg_r 1}
+    {usb_pie_1 ulpi_packet_idle 1}
+    {usb_pie_1 txvalid_nxt 1}
+    {usb_pie_1 suspendm_nxt 1}
+    {usb_pie_1 ulpi_req_low_power_mode_r 1}
+    {usb_pie_1 ulpi_async_mode_r 1}
+    {usb_pie_1 ulpi_pwrctrl_wakeup 1}
+    {usb_pie_1 pie_lowpower_n 1}
+    {usb_pie_1 set_ulpi_reg_rdata_vld 1}
+    {usb_pie_1 ulpi_xreg_rdata_r 8}
+    {usb_pie_1 set_ulpi_phy_endtoggle 1}
+    {usb_pie_1 phy_endtoggle_r 1}
+}
+set htg_core_schema {
+    {usb_reg_if_1 reg_write 1}
+    {usb_reg_if_1 reg_waddr 4}
+    {usb_reg_if_1 reg_wdata 32}
+    {usb_reg_if_1 reg_phy_start 1}
+    {usb_synchronizer_1 sync_phy_endtoggle_s 1}
+    {usb_synchronizer_1 sync_phy_endtoggle_ss 1}
+    {usb_synchronizer_1 sync_phy_endtoggle_sss 1}
+    {usb_reg_if_1 sync_phy_endtoggle 1}
+    {usb_reg_if_1 sync_phy_rdata 8}
+    {usb_reg_if_1 reg_phy_rdata 8}
+    {usb_reg_if_1 reg_raddr 4}
+    {usb_reg_if_1 reg_rdata 32}
+    {usb_reg_if_1 hresetn 1}
+    {usb_reg_if_1 reg_dev_pll_on 1}
+    {u_hub_compound clock_on 1}
+    {u_hub_compound dataline_low_power_en 1}
+    {u_hub_compound usb_needclk_int 1}
+}

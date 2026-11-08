@@ -12,6 +12,14 @@ on:
       - "hw/*.rdl"
 
   workflow_dispatch:
+    inputs:
+      board:
+        description: FPGA board to build (HTG-940 uses non-bootable all-zero firmware)
+        type: choice
+        options:
+          - vck190
+          - htg940
+        default: vck190
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
@@ -19,6 +27,7 @@ concurrency:
 
 jobs:
   build-bitstream:
+    if: ${{ github.event_name != 'workflow_dispatch' || inputs.board != 'htg940' }}
     runs-on: [bitstream-builder]
     timeout-minutes: 1440
     strategy:
@@ -104,3 +113,7 @@ jobs:
       - name: Clean up bundle for non-segmented build
         if: matrix.segmented == false
         run: rm -rf manifest-bundle
+
+  build-htg940:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.board == 'htg940' }}
+    uses: ./.github/workflows/bitstream-build-htg940.yml

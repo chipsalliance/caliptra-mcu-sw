@@ -1,0 +1,58 @@
+diff --git a/src/fuse_ctrl/rtl/fuse_ctrl_filter.sv b/src/fuse_ctrl/rtl/fuse_ctrl_filter.sv
+index ade60af3..3065320f 100644
+--- a/src/fuse_ctrl/rtl/fuse_ctrl_filter.sv
++++ b/src/fuse_ctrl/rtl/fuse_ctrl_filter.sv
+@@ -114,18 +114,25 @@ end
+ // Combinational Block: Generate the allowed vector based on the access control table.
+ // For each entry in the table, check if the latched fuse address is within the allowed range
+ // and if the AXI user ID matches the allowed ID. Each bit in wr_allowed_vec corresponds to an entry.
+-logic [FC_TABLE_NUM_RANGES-1:0][31:0] AXI_user_id_arr;
+-always_comb begin
+-    wr_allowed_vec = '0;
+-    AXI_user_id_arr[0] = cptra_ss_strap_cptra_axi_user_i;
+-    AXI_user_id_arr[1] = cptra_ss_strap_mcu_lsu_axi_user_i;
+-    AXI_user_id_arr[2] = cptra_ss_strap_mcu_lsu_axi_user_i;
+-    for (int i = 0; i < FC_TABLE_NUM_RANGES; i = i + 1) begin : gen_wr_allowed
+-        wr_allowed_vec[i] = ( (latched_fuse_addr >= access_control_table[i].lower_addr)
+-                             && (latched_fuse_addr <= access_control_table[i].upper_addr)
+-                             && (latched_cmd_id == AXI_user_id_arr[i]));
+-    end
+-end
++// HTG940_EXPLICIT_FUSE_ACCESS
++// Explicit form of otp_ctrl_pkg::access_control_table.
++// Avoids incorrect structure-array bound evaluation observed in XSim.
++// Keep these bounds synchronized with the package access table.
++assign wr_allowed_vec[0] =
++    (latched_fuse_addr >= 32'h00000000) &&
++    (latched_fuse_addr <= 32'h00003FD8) &&
++    (latched_cmd_id == cptra_ss_strap_cptra_axi_user_i);
++
++assign wr_allowed_vec[1] =
++    (latched_fuse_addr >= 32'h000000F8) &&
++    (latched_fuse_addr <= 32'h00003FD8) &&
++    (latched_cmd_id == cptra_ss_strap_mcu_lsu_axi_user_i);
++
++assign wr_allowed_vec[2] =
++    (latched_fuse_addr >= 32'h00000000) &&
++    (latched_fuse_addr <= 32'h00000040) &&
++    (latched_cmd_id == cptra_ss_strap_mcu_lsu_axi_user_i);
++
+ 
+ always_comb begin
+     case (table_fsm_current_st)
+diff --git a/src/integration/rtl/caliptra_ss_top.sv b/src/integration/rtl/caliptra_ss_top.sv
+index f069e31b..7c2ec624 100644
+--- a/src/integration/rtl/caliptra_ss_top.sv
++++ b/src/integration/rtl/caliptra_ss_top.sv
+@@ -1106,6 +1106,11 @@ module caliptra_ss_top
+         .C_HUB_FIFO_SIZE     (USB_C_HUB_FIFO_SIZE),
+         .G_SIM_CHIRP_TIMERS  (USB_G_SIM_CHIRP_TIMERS)
+     ) usb_core_i (
++        // HTG940 debug compatibility: preserve previous unfiltered AXI access.
++        .combo_enable_axi_user_filtering_i(1'b0),
++        .combo_priv_axi_users_i('{default: '0}),
++        .dev1_enable_axi_user_filtering_i(1'b0),
++        .dev1_priv_axi_users_i('{default: '0}),
+         // ---- Clock / Reset ----
+         .usb_axi_aclk     (cptra_ss_clk_i),
+         .usb_axi_aresetn  (cptra_ss_rst_b_o),
