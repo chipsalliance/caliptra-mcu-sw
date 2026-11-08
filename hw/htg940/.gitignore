@@ -1,3 +1,4 @@
 /caliptra-ss/
 /firmware/
 __pycache__/
+!/fpga/htg940/submodule_pins.json

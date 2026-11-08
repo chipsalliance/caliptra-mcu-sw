@@ -15,6 +15,16 @@ FPGA = Path(__file__).resolve().parents[1] / "fpga"
 
 
 class SnapshotTests(unittest.TestCase):
+    def test_pin_manifest_is_not_ignored(self):
+        result = subprocess.run(
+            [
+                "git", "check-ignore", "--no-index", "-q",
+                str(FPGA / "htg940" / "submodule_pins.json"),
+            ],
+            cwd=FPGA.parents[2], capture_output=True, text=True,
+        )
+        self.assertEqual(result.returncode, 1, result.stderr)
+
     def test_pins_stay_in_isolated_hardware_tree_and_match_patch_checksums(self):
         pins = json.loads((FPGA / "htg940" / "submodule_pins.json").read_text())
         paths = [pin["path"] for pin in pins]
