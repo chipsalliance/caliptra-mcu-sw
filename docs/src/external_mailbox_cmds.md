@@ -102,7 +102,6 @@ framing and is not changed by this Runtime ABI.
 | MC_HEK_STATUS                 | 0x4D48_4B53 ("MHKS") | Reports used HEK slots and the total number of configured HEK slots.                    |
 | MC_FUSE_REVOKE_VENDOR_PUB_KEY | 0x4D52_564B ("MRVK") | Target ID under `MC_AUTHORIZED_COMMAND`; see [fuses spec](fuses.md).                    |
 | MC_FUSE_REVOKE_VENDOR_PK_HASH | 0x5256_4b48 ("RVKH") | Target ID under `MC_AUTHORIZED_COMMAND`; see [fuses spec](fuses.md).                    |
-| MC_ZEROIZE_UDS_FE_AND_ENTER_RMA | 0x4D5A_524D ("MZRM") | Target ID under `MC_AUTHORIZED_COMMAND`; zeroizes UDS and field entropy, then requests entry into RMA. |
 | MC_DEVICE_OWNERSHIP_TRANSFER  | 0x0000_0011          | Native Device Ownership Transfer family; subcommand is carried in mailbox SRAM.         |
 | MC_OCP_LOCK                   | 0x0000_0013          | Native OCP LOCK family; subcommand is carried in mailbox SRAM.                          |
 | VENDOR_UNIQUE_COMMANDS        | "VU00"-"VUFF"        | Reserved for vendor-unique innermost commands; unsupported by the reference MCU.       |
@@ -549,20 +548,6 @@ of configured HEK slots. This command does not require authorization.
 Command Code: `0x4D48_4B53` ("MHKS")
 
 Payload semantics are defined by [HEK Status](caliptra_common_commands.md#hek-status).
-
-### MC_ZEROIZE_UDS_FE_AND_ENTER_RMA
-
-Zeroizes the UDS and all four field-entropy partitions, records the
-field-entropy partitions as zeroized, and then requests entry into RMA using
-the supplied token. Zeroization occurs before the RMA transition is requested
-and is not rolled back if that transition fails.
-
-Command Code: `0x4D5A_524D` ("MZRM")
-
-This command requires the authorization flow described in
-[Authorization-Gated Subcommand Wrapper](caliptra_common_commands.md#authorization-gated-subcommand-wrapper).
-Payload semantics are defined by
-[Zeroize UDS, Field Entropy, and Enter RMA](caliptra_common_commands.md#zeroize-uds-field-entropy-and-enter-rma).
 
 ### MC_OCP_LOCK_PROGRAM_HEK
 

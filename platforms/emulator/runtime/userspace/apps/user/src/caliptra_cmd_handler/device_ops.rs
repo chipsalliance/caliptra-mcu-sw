@@ -7,10 +7,7 @@ extern crate alloc;
 use alloc::boxed::Box;
 use arrayvec::ArrayVec;
 use async_trait::async_trait;
-use caliptra_api::mailbox::{
-    EcdsaVerifyReq, MailboxReqHeader, MailboxRespHeader, ZeroizeUdsFeReq, ZeroizeUdsFeResp,
-    ZEROIZE_FE0_FLAG, ZEROIZE_FE1_FLAG, ZEROIZE_FE2_FLAG, ZEROIZE_FE3_FLAG, ZEROIZE_UDS_FLAG,
-};
+use caliptra_api::mailbox::{EcdsaVerifyReq, MailboxReqHeader, MailboxRespHeader};
 #[cfg(feature = "pcr-quote")]
 use caliptra_mcu_attestation_evidence::pcr_quote::{encode_pcr_quote, PcrQuoteAlgorithm};
 use caliptra_mcu_attestation_evidence::{encode_signed_ocp_eat, OcpEatAlgorithm};
@@ -22,7 +19,7 @@ use caliptra_mcu_common_commands::{
 use caliptra_mcu_libsyscall_caliptra::flash::SpiFlash;
 use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError, PayloadStream};
 use caliptra_mcu_libsyscall_caliptra::otp::{Otp, RevokeVendorPubKeyType};
-use caliptra_mcu_libsyscall_caliptra::{caliptra, mci, otp, DefaultSyscalls};
+use caliptra_mcu_libsyscall_caliptra::{caliptra, otp, DefaultSyscalls};
 use caliptra_mcu_libtock_platform::ErrorCode;
 // The AK label lives with the cert store because that is what mints the leaf
 // certificate; attestation evidence must be signed under the same label so the
@@ -1585,47 +1582,6 @@ pub fn hek_status() -> CaliptraCmdResult<(u32, u32)> {
     Otp::<DefaultSyscalls>::new()
         .hek_status()
         .map_err(|_| CaliptraCompletionCode::OperationFailed)
-}
-
-pub(crate) async fn zeroize_uds_fe() -> CaliptraCmdResult<()> {
-    let mut req = ZeroizeUdsFeReq {
-        flags: ZEROIZE_UDS_FLAG
-            | ZEROIZE_FE0_FLAG
-            | ZEROIZE_FE1_FLAG
-            | ZEROIZE_FE2_FLAG
-            | ZEROIZE_FE3_FLAG,
-        ..Default::default()
-    };
-    let mut resp = ZeroizeUdsFeResp::default();
-    mcu_caliptra_api::raw::raw_mailbox_execute(
-        caliptra_api::mailbox::CommandId::ZEROIZE_UDS_FE.into(),
-        req.as_mut_bytes(),
-        resp.as_mut_bytes(),
-    )
-    .await
-    .map_err(|_| CaliptraCompletionCode::ZeroizeFailed)?;
-
-    if resp.dpe_result != 0 {
-        return Err(CaliptraCompletionCode::ZeroizeFailed);
-    }
-
-    Otp::<DefaultSyscalls>::new()
-        .mark_field_entropy_zeroized()
-        .map_err(|_| CaliptraCompletionCode::ZeroizeFailed)
-}
-
-pub(crate) fn enter_rma(rma_token: &[u8; 16]) -> CaliptraCmdResult<()> {
-    mci::Mci::<DefaultSyscalls>::new()
-        .enter_rma(rma_token)
-        .map_err(|error| match error {
-            ErrorCode::Invalid => CaliptraCompletionCode::ZeroizeFailed,
-            _ => CaliptraCompletionCode::RmaTransitionFailed,
-        })
-}
-
-pub(crate) async fn zeroize_uds_fe_and_enter_rma(rma_token: &[u8; 16]) -> CaliptraCmdResult<()> {
-    zeroize_uds_fe().await?;
-    enter_rma(rma_token)
 }
 
 #[cfg(feature = "ocp-lock")]

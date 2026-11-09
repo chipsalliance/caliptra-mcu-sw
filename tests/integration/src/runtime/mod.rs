@@ -59,7 +59,6 @@ pub(crate) fn expected_mcu_mailbox_capabilities(core_capabilities: [u8; 16]) -> 
             | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PK_HASH
             | AuthorizedSubcommandCapabilities::FUSE_LOCK_PARTITION
             | AuthorizedSubcommandCapabilities::PROVISION_OWNER_PK_HASH
-            | AuthorizedSubcommandCapabilities::ZEROIZE_UDS_FE_AND_ENTER_RMA
             | AuthorizedSubcommandCapabilities::DOT_ENABLE
             | AuthorizedSubcommandCapabilities::DOT_LOCK
             | AuthorizedSubcommandCapabilities::DOT_DISABLE

@@ -108,12 +108,6 @@ struct FuseWritePayload {
     mask: U32,
 }
 
-#[repr(C)]
-#[derive(FromBytes, Immutable, KnownLayout)]
-struct ZeroizeUdsFeAndEnterRmaPayload {
-    rma_token: [u8; 16],
-}
-
 #[cfg(feature = "ocp-lock")]
 #[repr(C)]
 #[derive(FromBytes, Immutable, KnownLayout)]
@@ -373,14 +367,6 @@ where
                 .await?;
             Ok(CommandResponse::Empty)
         }
-        value if value == CommandId::MC_ZEROIZE_UDS_FE_AND_ENTER_RMA.0 => {
-            let payload = ZeroizeUdsFeAndEnterRmaPayload::ref_from_bytes(parsed.payload)
-                .map_err(|_| CaliptraCompletionCode::InvalidPayloadSize)?;
-            commands
-                .zeroize_uds_fe_and_enter_rma(&payload.rma_token)
-                .await?;
-            Ok(CommandResponse::Empty)
-        }
         value if value == CommandId::MC_DEVICE_OWNERSHIP_TRANSFER.0 => {
             execute_authorized_dot(commands, alloc, parsed.payload, output).await
         }
@@ -536,9 +522,6 @@ fn authorized_payload_len(target_id: u32, request: &[u8]) -> CaliptraCmdResult<u
         value if value == CommandId::MC_FUSE_READ.0 => Ok(core::mem::size_of::<FuseReadPayload>()),
         value if value == CommandId::MC_FUSE_WRITE.0 => {
             Ok(core::mem::size_of::<FuseWritePayload>())
-        }
-        value if value == CommandId::MC_ZEROIZE_UDS_FE_AND_ENTER_RMA.0 => {
-            Ok(core::mem::size_of::<ZeroizeUdsFeAndEnterRmaPayload>())
         }
         value if value == CommandId::MC_DEVICE_OWNERSHIP_TRANSFER.0 => {
             authorized_dot_payload_len(request)

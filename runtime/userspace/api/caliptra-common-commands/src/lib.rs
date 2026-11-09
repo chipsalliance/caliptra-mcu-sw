@@ -60,8 +60,6 @@ pub enum CaliptraCompletionCode {
     // Caliptra project-specific codes (0xC0-0xFF)
     CaliptraMailboxBusy = 0xC0,
     CaliptraBufferTooSmall = 0xC1,
-    ZeroizeFailed = 0xC2,
-    RmaTransitionFailed = 0xC3,
 }
 
 /// Result type for Caliptra command handlers.
@@ -714,12 +712,6 @@ pub trait CaliptraCmdHandler {
     /// Lock an OTP partition against further writes.
     async fn fuse_lock_partition(&self, partition: u32) -> CaliptraCmdResult<()> {
         let _ = partition;
-        Err(CaliptraCompletionCode::UnsupportedOperation)
-    }
-
-    /// Zeroize UDS and field entropy, then transition the device to RMA.
-    async fn zeroize_uds_fe_and_enter_rma(&self, rma_token: &[u8; 16]) -> CaliptraCmdResult<()> {
-        let _ = rma_token;
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 

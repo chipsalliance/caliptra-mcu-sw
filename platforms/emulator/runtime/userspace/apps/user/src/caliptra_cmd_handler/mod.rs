@@ -181,8 +181,7 @@ fn authorized_subcommand_capabilities() -> AuthorizedSubcommandCapabilities {
             | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PUBLIC_KEY
             | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PK_HASH
             | AuthorizedSubcommandCapabilities::FUSE_LOCK_PARTITION
-            | AuthorizedSubcommandCapabilities::PROVISION_OWNER_PK_HASH
-            | AuthorizedSubcommandCapabilities::ZEROIZE_UDS_FE_AND_ENTER_RMA;
+            | AuthorizedSubcommandCapabilities::PROVISION_OWNER_PK_HASH;
     }
     if cfg!(feature = "dot-spdm-vdm") || cfg!(feature = "dot-mci-mailbox") {
         capabilities |= AuthorizedSubcommandCapabilities::DOT_ENABLE
@@ -400,10 +399,6 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
 
     async fn fuse_lock_partition(&self, partition: u32) -> CaliptraCmdResult<()> {
         device_ops::fuse_lock_partition(partition)
-    }
-
-    async fn zeroize_uds_fe_and_enter_rma(&self, rma_token: &[u8; 16]) -> CaliptraCmdResult<()> {
-        device_ops::zeroize_uds_fe_and_enter_rma(rma_token).await
     }
 
     async fn fuse_read(
@@ -724,6 +719,7 @@ mod tests {
         let dot_transport = cfg!(feature = "dot-spdm-vdm") || cfg!(feature = "dot-mci-mailbox");
         let ocp_lock_transport = cfg!(feature = "ocp-lock") && authorized_transport;
 
+        assert_eq!(authorized.bits() & (1 << 17), 0);
         assert_eq!(
             runtime.contains(McuRuntimeCapabilities::MCTP_VDM_RESPONDER),
             cfg!(feature = "mctp-vdm-service")
@@ -759,7 +755,6 @@ mod tests {
                     | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PK_HASH
                     | AuthorizedSubcommandCapabilities::FUSE_LOCK_PARTITION
                     | AuthorizedSubcommandCapabilities::PROVISION_OWNER_PK_HASH
-                    | AuthorizedSubcommandCapabilities::ZEROIZE_UDS_FE_AND_ENTER_RMA
             ),
             authorized_transport
         );
