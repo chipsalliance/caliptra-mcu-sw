@@ -52,6 +52,7 @@ The following subcommands are assigned to the SPDM VDM IANA authorization-gated 
 | Fuse Lock Partition            | SPDM VDM IANA, MCI Mailbox | Lock fuse partition.                               |
 | OCP LOCK Program HEK           | SPDM VDM IANA, MCI Mailbox | Program an unused HEK slot.                        |
 | OCP LOCK Zero HEK              | SPDM VDM IANA, MCI Mailbox | Permanently sanitize an unused HEK slot.           |
+| Auth Set Cert Chain            | SPDM VDM IANA, MCI Mailbox | Authorize a certificate-chain write or erase for a managed PKI slot. |
 | Dot Enable                     | SPDM VDM IANA, MCI Mailbox | Program the one-time DOT initialization gate.      |
 | Dot Lock                       | SPDM VDM IANA, MCI Mailbox | Lock the DOT after ownership validation.          |
 | Dot Disable                    | SPDM VDM IANA, MCI Mailbox | Enter ODD state with no DOT-supplied CAK.          |
@@ -142,7 +143,9 @@ This table defines the bit assignment for every allocated command code. A respon
 | 14         | `DotEnable`                  | Implemented |
 | 15         | `OcpLockProgramHek`          | Implemented |
 | 16         | `OcpLockZeroHek`             | Implemented |
-| 17:31      | Reserved                     | —           |
+| 17         | Reserved                     | —           |
+| 18         | `AuthSetCertChain`           | Implemented |
+| 19:31      | Reserved                     | —           |
 
 The authorized-subcommand assignments are stable capability indexes; they are not transport command IDs. A responder sets a bit only when that subcommand is implemented under `AuthorizedCommand`. Authorization, lifecycle, or policy restrictions do not clear an implementation capability bit; execution can still return `AccessDenied`, `PolicyViolation`, or `InvalidState`.
 
@@ -506,7 +509,7 @@ the execution hook defaults to `UnsupportedOperation` and runs only after the
 normal authorization checks pass.
 
 The payload excludes the target ID and Authorization Block. It must fit the
-declared limit and `command::MAX_AUTHORIZED_PAYLOAD_LEN` (52 bytes, or 104 with
+declared limit and `command::MAX_AUTHORIZED_PAYLOAD_LEN` (60 bytes, or 104 with
 `device-ownership-transfer`). The response buffer excludes transport framing;
 the hook returns its written length, bounded by the declared response limit.
 Exact payload lengths and semantics remain the platform's responsibility.
@@ -684,6 +687,43 @@ not be protected by the permanent HEK lock.
 eight slots and reject an index beyond the configured slot count.
 
 **Response Payload**: Empty
+
+### Auth Set Cert Chain
+
+Pre-authorizes and arms a single certificate-chain write or erase transaction
+for a managed `(pki_entity_slot, algorithm)` slot using command code
+`0x4D41_5343` (`MASC`). After `Auth Set Cert Chain` succeeds, the caller
+transfers the DER certificate chain via `MC_SET_CERT_CHAIN` (in-band MCI
+mailbox) or SPDM `SET_CERTIFICATE` (out-of-band).
+
+**Request Payload**: `pki_entity_slot:u32 | algorithm:u32 | total_size:u32 | expected_sha384:u8[48] | AuthorizationBlock`
+
+| Byte(s) | Name            | Type   | Description                                                                                                          |
+| ------- | --------------- | ------ | -------------------------------------------------------------------------------------------------------------------- |
+| 0:3     | pki_entity_slot | u32    | Target PKI entity slot: <br>- `0x0000` = `Vendor` <br>- `0x0001` = `Owner` <br>- `0x0002` = `Tenant`                 |
+| 4:7     | algorithm       | u32    | Asymmetric Algorithm: <br>- `0x0001` = ECC P-384 <br>- `0x0002` = ML-DSA-87                                          |
+| 8:11    | total_size      | u32    | Total DER endorsement byte length to write, or `0` to authorize an erase                                             |
+| 12:59   | expected_sha384 | u8[48] | Expected SHA-384 digest over the complete DER endorsement bytes (`0` when `total_size == 0` is permitted for erase)  |
+
+**Response Payload**: Empty
+
+**Per-Slot Authority Policy and Execution Semantics**:
+
+| `pki_entity_slot` | Required `CommandAuthority`                 | Authorized Key Source |
+| ----------------- | ------------------------------------------- | --------------------- |
+| `0` (`Vendor`)    | `VendorOwner` (`1`) or `Owner` (`2`)        | Base SoC Manifest IME `0x4` (`V_AUTH_KEY_ID`) or Owner SoC Manifest IME `0x6` (`O_AUTH_KEY_ID`) |
+| `1` (`Owner`)     | `Owner` (`2`)                               | Owner SoC Manifest IME `0x6` (`O_AUTH_KEY_ID`) |
+| `2` (`Tenant`)    | None (allowed without `MC_AUTH_SET_CERT_CHAIN` by default) | `MC_AUTH_SET_CERT_CHAIN` rejected with `AccessDenied` (`0x0C`) |
+
+- Any other `CommandAuthority` for the requested `pki_entity_slot` is rejected with `AccessDenied` (`0x0C`).
+- If the targeted `(pki_entity_slot, algorithm)` slot is not configured as a managed endorsement slot, the command returns `UnsupportedOperation` (`0x07`). If `total_size` exceeds the slot's configured capacity, it returns `InvalidParameter` (`0x02`).
+- While a mutation is executing on a `(pki_entity_slot, algorithm)` slot (including hashing and storage I/O), re-arming or another mutation returns `STORAGE_BUSY` without changing the stream or authorization.
+- Between chunks, a valid re-arm aborts an idle multi-chunk stream on that slot, whether started over MCI or SPDM, and replaces the pending grant. An invalid re-arm leaves both unchanged.
+- During the subsequent `MC_SET_CERT_CHAIN` or SPDM `SET_CERTIFICATE` operation on a slot with `auth_required` enabled:
+  - A write or erase without a matching armed `(pki_entity_slot, algorithm)` or with a mismatched `total_size` is rejected.
+  - Admission claims the matching grant for that transaction. It cannot authorize another transaction, and is not restored after an abort or failure. Rejected admission leaves the pending grant unchanged.
+  - Multi-chunk writes retain the claimed authorization across intermediate chunks. A mismatched continuation is rejected without aborting the current stream.
+  - At commit, the certificate store verifies that the staged DER endorsement's SHA-384 digest matches the claimed `expected_sha384` before switching the active region. Changing `auth_required` does not change an already-admitted transaction's authorization.
 
 ### Device Ownership Transfer (DOT)
 
