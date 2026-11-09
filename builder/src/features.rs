@@ -34,6 +34,7 @@ pub const EMULATOR_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-defmt-logging-release",
     "test-defmt-logging-vdm",
     "test-mctp-ctrl-cmds",
+    "test-mctp-linux-i3c",
     "test-mctp-user-loopback",
     "test-mctp-vdm-cmds",
     "test-mctp-vdm-production",
