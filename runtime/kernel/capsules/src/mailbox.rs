@@ -69,7 +69,6 @@ fn log_caliptra_error(err: &CaliptraApiError) {
 
 /// The driver number for Caliptra mailbox commands.
 pub const DRIVER_NUM: usize = 0x8000_0009;
-const CALIPTRA_SUBSYSTEM_MAILBOX_SIZE: usize = 16 * 1024;
 
 /// IDs for subscribed upcalls.
 mod upcall {
@@ -173,9 +172,12 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
         }
     }
 
-    fn staging_addr_for_request(&self, request_len: usize) -> Option<u64> {
+    /// Returns the staging SRAM AXI address if `request_len` does not fit in
+    /// the Caliptra mailbox (`mailbox_size`) and must use the external
+    /// mailbox path.
+    fn staging_addr_for_request(&self, request_len: usize, mailbox_size: usize) -> Option<u64> {
         self.staging_sram_axi_addr
-            .filter(|_| request_len > CALIPTRA_SUBSYSTEM_MAILBOX_SIZE)
+            .filter(|_| request_len > mailbox_size)
     }
 
     // Check if any command is pending. If not, this command is executed.
@@ -288,10 +290,10 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
     ) -> Result<(), ErrorCode> {
         self.current_app.set(processid);
 
-        self.use_external_mailbox
-            .set(self.staging_addr_for_request(app_buffer.len()).is_some());
+        let staging_addr = self.staging_addr_for_request(app_buffer.len(), driver.mailbox_size());
+        self.use_external_mailbox.set(staging_addr.is_some());
 
-        if let Some(staging_axi_addr) = self.staging_addr_for_request(app_buffer.len()) {
+        if let Some(staging_axi_addr) = staging_addr {
             // Copy payload to staging SRAM
             self.copy_app_buffer_to_staging_sram(app_buffer, 0)?;
 
@@ -348,13 +350,19 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
         if self.state.get() != MailboxState::Idle {
             return Err(ErrorCode::BUSY);
         }
+        let mailbox_size = self
+            .driver
+            .map(|driver| driver.mailbox_size())
+            .ok_or(ErrorCode::BUSY)?;
         self.current_app.set(processid);
         self.current_cmd.set(command);
         self.state.set(MailboxState::Initiated);
         self.current_request_offset.set(0);
         self.clear_pending();
-        self.use_external_mailbox
-            .set(self.staging_addr_for_request(payload_size).is_some());
+        self.use_external_mailbox.set(
+            self.staging_addr_for_request(payload_size, mailbox_size)
+                .is_some(),
+        );
 
         if !self.use_external_mailbox.get() {
             // If not using staging SRAM, then the mailbox command can be initiated directly.

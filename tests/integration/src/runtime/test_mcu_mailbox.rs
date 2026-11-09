@@ -1274,7 +1274,7 @@ fn test_mcu_mbox_ecdsa_cmk_commands() -> Result<()> {
     let public_key_response = execute_raw_mcu_req(
         &mut hw,
         McuMailboxReq::EcdsaCmkPublicKey(McuEcdsaCmkPublicKeyReq(CmEcdsaPublicKeyReq {
-            cmk,
+            cmk: cmk.clone(),
             ..Default::default()
         })),
     )?;
@@ -1288,7 +1288,7 @@ fn test_mcu_mbox_ecdsa_cmk_commands() -> Result<()> {
 
     let message = b"ECDSA mailbox test";
     let mut sign_request = CmEcdsaSignReq {
-        cmk,
+        cmk: cmk.clone(),
         message_size: message.len() as u32,
         ..Default::default()
     };
@@ -1308,7 +1308,7 @@ fn test_mcu_mbox_ecdsa_cmk_commands() -> Result<()> {
     let verify_response = execute_raw_mcu_req(
         &mut hw,
         McuMailboxReq::EcdsaCmkVerify(ecdsa_verify_req(
-            cmk,
+            cmk.clone(),
             message,
             signature.0.signature_r,
             signature.0.signature_s,
@@ -1335,11 +1335,11 @@ fn test_mcu_mbox_ecdsa_cmk_commands() -> Result<()> {
     for invalid_cmk in [Cmk::default(), aes_cmk] {
         for request in [
             McuMailboxReq::EcdsaCmkPublicKey(McuEcdsaCmkPublicKeyReq(CmEcdsaPublicKeyReq {
-                cmk: invalid_cmk,
+                cmk: invalid_cmk.clone(),
                 ..Default::default()
             })),
             McuMailboxReq::EcdsaCmkSign(McuEcdsaCmkSignReq(CmEcdsaSignReq {
-                cmk: invalid_cmk,
+                cmk: invalid_cmk.clone(),
                 ..Default::default()
             })),
             McuMailboxReq::EcdsaCmkVerify(ecdsa_verify_req(invalid_cmk, &[], [0; 48], [0; 48])),
@@ -1389,7 +1389,7 @@ fn test_mcu_mbox_mldsa_cmk_commands() -> Result<()> {
     let public_key_response = execute_raw_mcu_req(
         &mut hw,
         McuMailboxReq::MldsaCmkPublicKey(McuMldsaCmkPublicKeyReq(CmMldsaPublicKeyReq {
-            cmk,
+            cmk: cmk.clone(),
             ..Default::default()
         })),
     )?;
@@ -1402,7 +1402,7 @@ fn test_mcu_mbox_mldsa_cmk_commands() -> Result<()> {
 
     let message = b"ML-DSA mailbox test";
     let mut sign_request = CmMldsaSignReq {
-        cmk,
+        cmk: cmk.clone(),
         message_size: message.len() as u32,
         ..Default::default()
     };
@@ -1420,7 +1420,11 @@ fn test_mcu_mbox_mldsa_cmk_commands() -> Result<()> {
 
     let verify_response = execute_raw_mcu_req(
         &mut hw,
-        McuMailboxReq::MldsaCmkVerify(mldsa_verify_req(cmk, message, signature.0.signature)),
+        McuMailboxReq::MldsaCmkVerify(mldsa_verify_req(
+            cmk.clone(),
+            message,
+            signature.0.signature,
+        )),
     )?;
     assert_eq!(
         assert_fixed_response::<MailboxRespHeader>(&verify_response).fips_status,
@@ -1438,11 +1442,11 @@ fn test_mcu_mbox_mldsa_cmk_commands() -> Result<()> {
     for invalid_cmk in [Cmk::default(), aes_cmk] {
         for request in [
             McuMailboxReq::MldsaCmkPublicKey(McuMldsaCmkPublicKeyReq(CmMldsaPublicKeyReq {
-                cmk: invalid_cmk,
+                cmk: invalid_cmk.clone(),
                 ..Default::default()
             })),
             McuMailboxReq::MldsaCmkSign(McuMldsaCmkSignReq(CmMldsaSignReq {
-                cmk: invalid_cmk,
+                cmk: invalid_cmk.clone(),
                 ..Default::default()
             })),
             McuMailboxReq::MldsaCmkVerify(mldsa_verify_req(
