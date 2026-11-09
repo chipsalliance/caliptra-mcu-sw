@@ -1901,7 +1901,6 @@ dependencies = [
  "caliptra-image-types",
  "caliptra-mcu-flash-image",
  "caliptra-mcu-registers-generated",
- "mcu-caliptra-api",
  "zerocopy",
 ]
 
