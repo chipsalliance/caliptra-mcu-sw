@@ -26,6 +26,13 @@ value larger than the 69-byte baseline must only be selected when the
 controller uses the same negotiated MRL or MWL. The MCTP mux remains
 transport-independent and obtains its transmit MTU from the transport binding.
 
+The PEC of each packet covers the target address byte. The I3C binding reads the
+address the controller currently uses for the target for every packet: the
+dynamic address if one is assigned, otherwise the static address. The controller
+may run DAA after the MCTP component is initialized, or reassign the dynamic
+address later (for example, RSTDAA followed by a new DAA), so the address must
+not be cached at initialization.
+
 ## MCTP Control Messages
 
 The MCTP capsule handles the following MCTP Control Protocol commands:
