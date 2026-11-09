@@ -28,6 +28,7 @@ zerocopy = { workspace = true }
 
 [dev-dependencies]
 caliptra-mcu-libtock_unittest.workspace = true
+caliptra-mcu-registers-generated.workspace = true
 
 [features]
 default = ["mailbox-io"]
