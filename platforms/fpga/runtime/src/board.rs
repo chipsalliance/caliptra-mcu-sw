@@ -725,6 +725,10 @@ pub unsafe fn main() {
             "[mcu-runtime] Active I3C core for MCTP: {}",
             MCU_STRAPS.active_i3c
         );
+        #[cfg(feature = "i3c-mctp-mdb-only")]
+        active_i3c_core
+            .set_pending_read_ibi_mdb_only(true)
+            .expect("I3C must be idle during MCTP initialization");
         caliptra_mcu_components::mux_mctp::MCTPMuxComponent::new(active_i3c_core, mux_alarm)
             .with_uuid(mctp_endpoint_uuid)
             .finalize(mctp_mux_component_static!(InternalTimers, MCTPI3CBinding))

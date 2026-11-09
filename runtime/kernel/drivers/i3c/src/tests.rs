@@ -390,6 +390,92 @@ fn failed_ibi_resends_without_completing_or_releasing_buffer() {
 }
 
 #[test]
+fn mdb_only_ibi_retries_and_preserves_completion_order() {
+    for read_first in [false, true] {
+        let h = Harness::new();
+        h.driver.set_pending_read_ibi_mdb_only(true).unwrap();
+        let first = buffer(256);
+        let first_ptr = first.as_ptr();
+        h.driver.transmit_read(first, 256).unwrap();
+        let descriptor = IbiDescriptor::Mdb.val(MDB_PENDING_READ_MCTP as u32).value;
+        assert_eq!(h.registers.port(0x278).get(), 256);
+        assert_eq!(h.registers.port(0x280).get(), descriptor);
+
+        for status in 1..=4 {
+            h.registers.port(0x280).set(0);
+            h.ibi_done(status);
+            assert_eq!(h.registers.port(0x280).get(), descriptor);
+            assert_eq!(
+                h.driver.pending_ibi.get(),
+                Some((MDB_PENDING_READ_MCTP, 256))
+            );
+            assert_eq!(h.tx.calls.get(), 0);
+            assert!(!DeferredCall::has_tasks());
+        }
+
+        if read_first {
+            h.private_read_done();
+        } else {
+            h.ibi_done(0);
+        }
+        assert_eq!(h.tx.calls.get(), 0);
+        assert!(!DeferredCall::has_tasks());
+        assert!(h.driver.tx_buffer.is_some());
+        if read_first {
+            h.ibi_done(0);
+        } else {
+            h.private_read_done();
+        }
+
+        let second = buffer(4);
+        let second_ptr = second.as_ptr();
+        h.tx.next.replace(second);
+        h.registers.port(0x280).set(0);
+        assert!(DeferredCall::service_next_pending().is_some());
+        assert_eq!(h.tx.calls.get(), 1);
+        assert_eq!(h.tx.buffer.take().unwrap().as_ptr(), first_ptr);
+        assert_eq!(h.registers.port(0x280).get(), descriptor);
+        assert_eq!(h.driver.pending_ibi.get(), Some((MDB_PENDING_READ_MCTP, 4)));
+        h.complete_tx();
+        assert_eq!(h.tx.calls.get(), 2);
+        assert_eq!(h.tx.buffer.take().unwrap().as_ptr(), second_ptr);
+    }
+}
+
+#[test]
+fn pending_read_ibi_format_is_busy_until_buffer_returned() {
+    for mdb_only in [false, true] {
+        let h = Harness::new();
+        h.driver.set_pending_read_ibi_mdb_only(mdb_only).unwrap();
+        h.driver.transmit_read(buffer(5), 5).unwrap();
+        for stage in 0..3 {
+            if stage == 1 {
+                h.ibi_done(0);
+            } else if stage == 2 {
+                h.private_read_done();
+            }
+            assert_eq!(
+                h.driver.set_pending_read_ibi_mdb_only(!mdb_only),
+                Err(ErrorCode::BUSY)
+            );
+            assert_eq!(h.driver.pending_read_ibi_mdb_only.get(), mdb_only);
+        }
+        assert!(DeferredCall::service_next_pending().is_some());
+        assert_eq!(h.tx.calls.get(), 1);
+        h.driver.set_pending_read_ibi_mdb_only(!mdb_only).unwrap();
+        h.driver.transmit_read(buffer(256), 256).unwrap();
+        let expected = if mdb_only {
+            256u16.swap_bytes() as u32
+        } else {
+            IbiDescriptor::Mdb.val(MDB_PENDING_READ_MCTP as u32).value
+        };
+        assert_eq!(h.registers.port(0x280).get(), expected);
+        h.complete_tx();
+        assert_eq!(h.tx.calls.get(), 2);
+    }
+}
+
+#[test]
 fn spurious_ibi_does_not_complete_twice() {
     let h = Harness::new();
     h.ibi_done(0);
