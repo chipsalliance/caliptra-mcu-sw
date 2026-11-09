@@ -537,6 +537,10 @@ pub trait McuHwModel {
 
     fn set_axi_user(&mut self, axi_user: u32);
 
+    fn set_mcu_mbox_axi_user(&mut self, axi_user: u32) {
+        self.set_axi_user(axi_user);
+    }
+
     fn set_itrng_divider(&mut self, _divider: u32) {}
 
     fn set_generic_input_wires(&mut self, _value: &[u32; 2]) {}

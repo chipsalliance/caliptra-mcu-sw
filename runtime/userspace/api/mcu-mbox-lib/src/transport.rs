@@ -26,7 +26,7 @@ impl McuMboxTransport {
     pub async fn receive_request<'a>(
         &mut self,
         buf: &'a mut [u8],
-    ) -> McuResult<(CmdCode, &'a [u8])> {
+    ) -> McuResult<(CmdCode, u32, &'a [u8])> {
         if buf.len() < size_of::<MailboxReqHeader>() {
             return Err(errors::BUFFER_TOO_SMALL);
         }
@@ -43,7 +43,7 @@ impl McuMboxTransport {
             None
         };
 
-        let (cmd_opcode, req_len) = self
+        let (cmd_opcode, req_len, axi_user) = self
             .mbox
             .receive_command(buf, on_listening_cb)
             .await
@@ -68,6 +68,7 @@ impl McuMboxTransport {
 
         Ok((
             cmd_opcode,
+            axi_user,
             buf.get(..req_len).ok_or(errors::INVALID_REQUEST)?,
         ))
     }
@@ -101,5 +102,9 @@ impl McuMboxTransport {
         self.mbox
             .finish_response(status)
             .map_err(|_| errors::DRIVER_TX_ERROR)
+    }
+
+    pub fn is_pl0_axi_user(&self, axi_user: u32) -> bool {
+        self.mbox.is_pl0_axi_user(axi_user).unwrap_or(false)
     }
 }

@@ -109,6 +109,7 @@ impl<'a, A: Alarm<'a>> McuMailbox<'a, A> {
             return;
         }
         let command = self.registers.mcu_mbox0_csr_mbox_cmd.get();
+        let axi_user = self.registers.mcu_mbox0_csr_mbox_user.get();
         let dlen = self.registers.mcu_mbox0_csr_mbox_dlen.get() as usize;
         let dw_len = dlen.div_ceil(4);
         if dw_len > self.data_buf_len {
@@ -122,7 +123,7 @@ impl<'a, A: Alarm<'a>> McuMailbox<'a, A> {
         if let Some(client) = self.client.get() {
             if let Some(buf) = self.data_buf.take() {
                 // It is expected that the client will call restore_rx_buffer().
-                client.request_received(command, buf, dlen);
+                client.request_received(command, axi_user, buf, dlen);
                 // Set state to RespFinishPending so that failure status can be set directly, bypassing send_done.
                 self.state.set(McuMboxState::RespFinishPending);
             } else {
