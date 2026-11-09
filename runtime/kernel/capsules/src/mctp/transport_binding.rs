@@ -101,6 +101,20 @@ impl<'a> MCTPI3CBinding<'a> {
         );
     }
 
+    /// Returns the address the controller currently uses for this target.
+    ///
+    /// The controller may assign the dynamic address after `setup_mctp_i3c()`
+    /// or reassign it later (RSTDAA + DAA), so read it from the target for
+    /// every PEC instead of relying on the value cached at setup.
+    fn current_device_address(&self) -> u8 {
+        let info = self.i3c_target.get_device_info();
+        let addr = info
+            .dynamic_addr
+            .unwrap_or(info.static_addr.unwrap_or(self.device_address.get()));
+        self.device_address.set(addr);
+        addr
+    }
+
     /// SMBus CRC8 calculation.
     fn compute_pec(addr: u8, buf: &[u8], len: usize) -> u8 {
         let mut crc = 0u8;
@@ -142,7 +156,7 @@ impl<'a> MCTPTransportBinding<'a> for MCTPI3CBinding<'a> {
         }
 
         // Tx is a read operation from the I3C controller. Set the R/W bit at LSB to 1.
-        let addr = (self.device_address.get() << 1) | 0x01;
+        let addr = (self.current_device_address() << 1) | 0x01;
         match self.tx_buffer.take() {
             Some(tx_buffer) => {
                 if tx_buffer.len() > len {
@@ -203,7 +217,7 @@ impl RxClient for MCTPI3CBinding<'_> {
             return;
         }
         // Rx is a write operation from the I3C controller. Set the R/W bit at LSB to 0.
-        let addr = self.device_address.get() << 1;
+        let addr = self.current_device_address() << 1;
         let pec = MCTPI3CBinding::compute_pec(addr, rx_buffer, len - 1);
         if pec == rx_buffer[len - 1] {
             self.rx_client.map(|client| {
@@ -358,5 +372,124 @@ mod tests {
             MCTPI3CBinding::compute_pec(dev_addr, &pkt[1..pkt_buf_len], pkt_buf_len - 1);
         let exp_pec = calculate_crc8(&pkt[..pkt_buf_len]);
         assert_eq!(exp_pec, computed_pec);
+    }
+
+    const STATIC_ADDR: u8 = 0x3a;
+
+    /// I3C target whose dynamic address the test can assign or change at any time.
+    struct AddressTarget {
+        dynamic_addr: Cell<Option<u8>>,
+        tx_pec: Cell<Option<u8>>,
+        rx_buffer_returned: Cell<bool>,
+    }
+
+    impl AddressTarget {
+        fn new() -> Self {
+            Self {
+                dynamic_addr: Cell::new(None),
+                tx_pec: Cell::new(None),
+                rx_buffer_returned: Cell::new(false),
+            }
+        }
+    }
+
+    impl<'a> I3CTarget<'a> for AddressTarget {
+        fn set_tx_client(&self, _client: &'a dyn TxClient) {}
+        fn set_rx_client(&self, _client: &'a dyn RxClient) {}
+        fn set_rx_buffer(&self, _buffer: &'static mut [u8]) {
+            self.rx_buffer_returned.set(true);
+        }
+        fn transmit_read(
+            &self,
+            buffer: &'static mut [u8],
+            len: usize,
+        ) -> Result<(), (ErrorCode, &'static mut [u8])> {
+            self.tx_pec.set(Some(buffer[len - 1]));
+            Ok(())
+        }
+        fn enable(&self) {}
+        fn disable(&self) {}
+        fn get_device_info(&self) -> caliptra_mcu_i3c_driver::hil::I3CTargetInfo {
+            caliptra_mcu_i3c_driver::hil::I3CTargetInfo {
+                static_addr: Some(STATIC_ADDR),
+                dynamic_addr: self.dynamic_addr.get(),
+                max_read_len: MCTP_I3C_MAXBUF,
+                max_write_len: MCTP_I3C_MAXBUF,
+            }
+        }
+    }
+
+    struct RxRecorder {
+        received_len: Cell<Option<usize>>,
+    }
+
+    impl TransportRxClient for RxRecorder {
+        fn receive(&self, _rx_buffer: &'static mut [u8], len: usize) {
+            self.received_len.set(Some(len));
+        }
+        fn write_expected(&self) {}
+    }
+
+    /// A private write as the controller sends it: payload followed by the PEC
+    /// computed with the address it assigned to the target.
+    fn write_with_pec(addr: u8, payload: &[u8]) -> &'static mut [u8] {
+        let buf = Box::leak(vec![0u8; payload.len() + 1].into_boxed_slice());
+        buf[..payload.len()].copy_from_slice(payload);
+        buf[payload.len()] = MCTPI3CBinding::compute_pec(addr << 1, payload, payload.len());
+        buf
+    }
+
+    #[test]
+    fn tx_pec_follows_dynamic_address_assigned_after_setup() {
+        let target = AddressTarget::new();
+        let binding = MCTPI3CBinding::new(&target);
+        // DAA has not happened yet, so setup only sees the static address.
+        binding.setup_mctp_i3c();
+
+        for dynamic_addr in [0x09, 0x0a] {
+            target.dynamic_addr.set(Some(dynamic_addr));
+            let tx = Box::leak(vec![0x5a; 9].into_boxed_slice());
+            let expected = MCTPI3CBinding::compute_pec((dynamic_addr << 1) | 1, tx, 8);
+            binding.transmit(tx, 8).unwrap();
+            assert_eq!(target.tx_pec.get(), Some(expected));
+        }
+    }
+
+    #[test]
+    fn pec_uses_static_address_without_dynamic_address() {
+        let target = AddressTarget::new();
+        let binding = MCTPI3CBinding::new(&target);
+        binding.setup_mctp_i3c();
+
+        // Before any DAA, and after RSTDAA clears the dynamic address.
+        for dynamic_addr in [None, Some(0x09), None] {
+            target.dynamic_addr.set(dynamic_addr);
+            let addr = dynamic_addr.unwrap_or(STATIC_ADDR);
+            let tx = Box::leak(vec![0x5a; 9].into_boxed_slice());
+            let expected = MCTPI3CBinding::compute_pec((addr << 1) | 1, tx, 8);
+            binding.transmit(tx, 8).unwrap();
+            assert_eq!(target.tx_pec.get(), Some(expected));
+        }
+    }
+
+    #[test]
+    fn rx_pec_follows_dynamic_address_assigned_after_setup() {
+        let target = AddressTarget::new();
+        let rx = RxRecorder {
+            received_len: Cell::new(None),
+        };
+        let binding = MCTPI3CBinding::new(&target);
+        binding.set_rx_client(&rx);
+        binding.setup_mctp_i3c();
+        target.dynamic_addr.set(Some(0x09));
+        let payload = [0x01, 0x00, 0x08, 0xc8, 0x00, 0x82, 0x02];
+
+        // A PEC computed with the address cached at setup no longer matches.
+        binding.receive_write(write_with_pec(STATIC_ADDR, &payload), payload.len() + 1);
+        assert_eq!(rx.received_len.get(), None);
+        assert!(target.rx_buffer_returned.get());
+
+        binding.receive_write(write_with_pec(0x09, &payload), payload.len() + 1);
+        assert_eq!(rx.received_len.get(), Some(payload.len()));
     }
 }
