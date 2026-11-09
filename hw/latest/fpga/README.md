@@ -101,7 +101,7 @@ Vivado exposes the `STEPS.PLACE_DESIGN.ARGS.SUBDIRECTIVE` run property. Otherwis
 it prints a warning and uses the `Explore` directive alone. Check placement and
 timing results before using the generated image.
 
-This checkout uses Caliptra SS `main` at `726db5ba` and its pinned submodules.
+This checkout uses Caliptra SS at `cadc77b6` and its pinned submodules.
 The FPGA wrapper preserves the existing I3C and backdoor ROM/OTP interfaces,
 provides the new 4 KiB MCU ROM-patch SRAM, and uses TRNG source 0 with source 1
 disabled. The USB PHY and USB memory interfaces are inactive: no ULPI daughter
