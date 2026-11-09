@@ -26,6 +26,33 @@ value larger than the 69-byte baseline must only be selected when the
 controller uses the same negotiated MRL or MWL. The MCTP mux remains
 transport-independent and obtains its transmit MTU from the transport binding.
 
+## Pending-Read IBIs
+
+By default, the I3C target driver sends MDB `0xAE` followed by a two-byte
+big-endian pending-read length, including PEC, for compatibility with the
+Xilinx FPGA controller's exact-length reads.
+
+Linux `mctp-i3c` expects only MDB `0xAE`, as defined in
+[DSP0233 v1.0.0 section 5.2.2.1, Table 2](https://www.dmtf.org/sites/default/files/standards/documents/DSP0233_1.0.0.pdf#page=19).
+For controllers supporting target-terminated reads, select MDB-only mode before
+initializing the MCTP mux:
+
+```rust
+active_i3c_core.set_pending_read_ibi_mdb_only(true).unwrap();
+```
+
+The setter returns `ErrorCode::BUSY` while TX or an IBI is outstanding.
+For Linux-facing FPGA builds, the default-off `i3c-mctp-mdb-only` feature applies
+the setting to the active MCTP port. For example, with the VDM service enabled:
+
+```bash
+cargo xtask-fpga runtime-build --platform fpga --profile release \
+    --features mctp-vdm-service --features i3c-mctp-mdb-only
+```
+
+The option enables no services itself. Leave it disabled for Xilinx CI;
+existing builds retain the length-bearing IBI.
+
 ## MCTP Control Messages
 
 The MCTP capsule handles the following MCTP Control Protocol commands:
