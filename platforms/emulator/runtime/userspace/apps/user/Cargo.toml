@@ -123,6 +123,7 @@ mcu-mbox-test-handlers = ["mcu-mbox-service"]
 # rewired to track the rotated handle.
 measurement-boot-init = []
 mctp-vdm-service = []
+i3c-mctp-mdb-only = []
 # Enables the Caliptra PCR quote evidence generator. Adds `PcrQuote` to the
 # `GET_ATTESTATION` supported-format bitmap on both transports and, through
 # spdm-pal, allows the SPDM measurement block to carry a quote.
@@ -256,4 +257,5 @@ test-doe-spdm-tdisp-ide-validator = ["spdm", "doe"]
 # --- Test features: pass-through (no cfg in source, host-side only) ---
 test-doe-discovery = []
 test-mctp-ctrl-cmds = []
+test-mctp-linux-i3c = []
 active-i3c1 = []

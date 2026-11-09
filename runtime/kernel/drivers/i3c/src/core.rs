@@ -54,6 +54,7 @@ pub struct I3CCore<'a, A: Alarm<'a>> {
     retry_outgoing_read: Cell<bool>,
     retry_incoming_write: Cell<bool>,
     pending_ibi: OptionalCell<(u8, u16)>,
+    pending_read_ibi_mdb_only: Cell<bool>,
     tx_desc_complete: Cell<bool>,
     max_read_len: Cell<usize>,
     max_write_len: Cell<usize>,
@@ -79,6 +80,7 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
             retry_outgoing_read: Cell::new(false),
             retry_incoming_write: Cell::new(false),
             pending_ibi: OptionalCell::empty(),
+            pending_read_ibi_mdb_only: Cell::new(false),
             tx_desc_complete: Cell::new(false),
             max_read_len: Cell::new(MAX_READ_WRITE_SIZE),
             max_write_len: Cell::new(MAX_READ_WRITE_SIZE),
@@ -96,6 +98,16 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
     pub fn set_max_write_len(&self, max_write_len: usize) {
         assert!((1..=MAX_READ_WRITE_SIZE).contains(&max_write_len));
         self.max_write_len.set(max_write_len);
+    }
+
+    /// Selects MDB-only pending-read IBIs instead of the default two-byte length payload.
+    /// Returns BUSY while a transmit buffer or IBI is outstanding.
+    pub fn set_pending_read_ibi_mdb_only(&self, mdb_only: bool) -> Result<(), ErrorCode> {
+        if self.tx_buffer.is_some() || self.pending_ibi.is_some() {
+            return Err(ErrorCode::BUSY);
+        }
+        self.pending_read_ibi_mdb_only.set(mdb_only);
+        Ok(())
     }
 
     pub fn init(&'static self) {
@@ -265,14 +277,21 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
             // we can only have one IBI pending at a time
             return;
         }
+        let data_len = if self.pending_read_ibi_mdb_only.get() {
+            0
+        } else {
+            2
+        };
         // write the descriptor first
-        self.registers
-            .tti_tti_ibi_port
-            .set((IbiDescriptor::Mdb.val(mdb as u32) + IbiDescriptor::DataLength.val(2)).into());
+        self.registers.tti_tti_ibi_port.set(
+            (IbiDescriptor::Mdb.val(mdb as u32) + IbiDescriptor::DataLength.val(data_len)).into(),
+        );
 
         // Note: we only write 2 bytes so that the IBI is <=4 bytes long so that
         // the controller can read it in one dword.
-        self.registers.tti_tti_ibi_port.set(len.swap_bytes() as u32);
+        if data_len != 0 {
+            self.registers.tti_tti_ibi_port.set(len.swap_bytes() as u32);
+        }
         self.pending_ibi.set((mdb, len));
     }
 
