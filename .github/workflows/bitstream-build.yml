@@ -29,6 +29,11 @@ on:
         description: Target branch recorded in the manifest
         required: true
         type: string
+      entropy-ila:
+        description: Build a lab-only ES0 entropy ILA image and matching probes
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   build-bitstream:
@@ -36,7 +41,8 @@ jobs:
     timeout-minutes: 1440
     strategy:
       matrix:
-        segmented: [true, false]
+        # The entropy capture image is full/nonsegmented, never a stock CI image.
+        segmented: ${{ inputs.entropy-ila && fromJSON('[false]') || fromJSON('[true, false]') }}
     steps:
       - name: Checkout repo
         uses: actions/checkout@v7
@@ -49,16 +55,29 @@ jobs:
         env:
           STAGING_DIR: ${{ runner.temp }}/bitstream
           FPGA_PATH: ${{ inputs.fpga-path }}
+          ENTROPY_ILA: ${{ inputs.entropy-ila && 'TRUE' || 'FALSE' }}
         run: |
           source /vck190-tools/Vivado/2024.2/settings64.sh
           mkdir -p "$STAGING_DIR"
           cd "$FPGA_PATH"
-          /vck190-tools/Vivado/2024.2/bin/vivado -mode batch -source fpga_configuration.tcl -tclargs BUILD=TRUE SEGMENTED=${{ matrix.segmented }}
+          if [ "$ENTROPY_ILA" = TRUE ]; then
+            python3 -m unittest discover -s tests -v
+          fi
+          /vck190-tools/Vivado/2024.2/bin/vivado -mode batch -source fpga_configuration.tcl -tclargs BUILD=TRUE SEGMENTED=${{ matrix.segmented }} ENTROPY_ILA="$ENTROPY_ILA"
           cp caliptra_build/*.xsa "$STAGING_DIR/"
           shopt -s nullglob
           PDI_FILES=(caliptra_build/*.pdi)
           if [ "${#PDI_FILES[@]}" -gt 0 ]; then
             cp "${PDI_FILES[@]}" "$STAGING_DIR/"
+          fi
+          if [ "$ENTROPY_ILA" = TRUE ]; then
+            for file in caliptra_build/entropy_ila.ltx \
+                        caliptra_build/entropy_ila_timing.txt \
+                        caliptra_build/entropy_ila/entropy_ila_layout.json \
+                        caliptra_build/entropy_ila/entropy_ila_connected.txt; do
+              test -s "$file"
+              cp "$file" "$STAGING_DIR/"
+            done
           fi
 
       - name: 'Upload bitstream'
@@ -68,6 +87,9 @@ jobs:
           path: |
             ${{ runner.temp }}/bitstream/*.xsa
             ${{ runner.temp }}/bitstream/*.pdi
+            ${{ runner.temp }}/bitstream/entropy_ila.ltx
+            ${{ runner.temp }}/bitstream/entropy_ila_*.json
+            ${{ runner.temp }}/bitstream/entropy_ila_*.txt
           retention-days: 7
 
       - name: Bundle bitstream

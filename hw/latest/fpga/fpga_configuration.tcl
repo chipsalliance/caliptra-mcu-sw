@@ -10,6 +10,8 @@ set RTL_VERSION latest
 set BOARD VCK190
 set ITRNG TRUE
 set DEBUG FALSE
+# Lab-only ES0 probes; deliberately independent of broad bus/PC debug capture.
+set ENTROPY_ILA FALSE
 set FAST_I3C TRUE
 set CORE_CLK_MHZ 18
 # Xilinx core requires 100 - 300MHz. Actual clock usually rounds down
@@ -24,6 +26,9 @@ set SEGMENTED_WRITE_NCR FALSE
 foreach arg $argv {
   regexp {(.*)=(.*)} $arg fullmatch option value
   set $option "$value"
+}
+if {$ENTROPY_ILA && (!$ITRNG || $CG_EN || $DEBUG || $SEGMENTED)} {
+  error "ENTROPY_ILA requires ITRNG=TRUE, CG_EN=FALSE, DEBUG=FALSE, SEGMENTED=FALSE"
 }
 # If VERSION was not set by tclargs, set it from the commit ID.
 # This assumes it is run from within caliptra-sw. If building from outside caliptra-sw call with "VERSION=[hex number]"
@@ -464,6 +469,15 @@ if {$SEGMENTED} {
   read_noc_solution -file $fpgaDir/saved_noc_solution.ncr
 }
 
+if {$ENTROPY_ILA} {
+  # Run insertion in the implementation process, not an unsaved open synth run.
+  set entropy_ila_hook [open $outputDir/entropy_ila_insert.tcl w]
+  puts $entropy_ila_hook [list set entropy_ila_output_dir [file normalize $outputDir/entropy_ila]]
+  puts $entropy_ila_hook [list source [file normalize $fpgaDir/entropy_ila.tcl]]
+  close $entropy_ila_hook
+  set_property STEPS.OPT_DESIGN.TCL.PRE [file normalize $outputDir/entropy_ila_insert.tcl] [get_runs impl_1]
+}
+
 # Start build
 if {$BUILD} {
   set time_start_synth [clock clicks -millisec]
@@ -479,6 +493,13 @@ if {$BUILD} {
   set time_start_hw_platform [clock clicks -millisec]
   open_run impl_1
   report_utilization -file $outputDir/utilization.txt
+  if {$ENTROPY_ILA} {
+    if {[llength [get_debug_cores -quiet entropy_ila]] != 1} {
+      error "Refusing to export an entropy ILA image without the requested core"
+    }
+    write_debug_probes -force $outputDir/entropy_ila.ltx
+    report_timing_summary -file $outputDir/entropy_ila_timing.txt
+  }
   if {$SEGMENTED} {
     if {$SEGMENTED_WRITE_NCR} {
       # Lock the NoC path segments and save the solution for later builds.
