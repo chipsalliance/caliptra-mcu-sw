@@ -123,6 +123,21 @@ exec sed -i {/`ifdef CALIPTRA_FUSE_GRANULARITY_32/,/`endif/calways_comb soc_ifc_
 remove_files [ glob $caliptrartlDir/src/soc_ifc/rtl/soc_ifc_top.sv ]
 add_files $outputDir/soc_ifc_top.sv
 
+if {$ENTROPY_ILA} {
+  # Generate observation-only copies; leave the pinned submodule untouched.
+  set entropy_ila_dir $outputDir/entropy_ila
+  exec python3 $fpgaDir/entropy_ila.py --rtl-root $caliptrartlDir --output-dir $entropy_ila_dir
+  foreach relative {
+    src/integration/rtl/caliptra_top.sv
+    src/entropy_src/rtl/entropy_src_core.sv
+    src/entropy_src/rtl/entropy_src_reg_top.sv
+    src/entropy_combiner/rtl/entropy_combiner.sv
+  } {
+    remove_files $caliptrartlDir/$relative
+    add_files $entropy_ila_dir/[file tail $relative]
+  }
+}
+
 # Mark all Verilog sources as SystemVerilog because some of them have SystemVerilog syntax.
 set_property file_type SystemVerilog [get_files *.v]
 
