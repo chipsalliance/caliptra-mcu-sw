@@ -19,6 +19,8 @@ jobs:
     uses: ./.github/workflows/bitstream-build.yml
     with:
       hw-version: "2.2"
+      # This draft is for entropy-reset capture, not a stock replacement image.
+      entropy-ila: true
       repository: ${{ github.repository }}
       ref: ${{ github.sha }}
       fpga-path: hw/latest/fpga
