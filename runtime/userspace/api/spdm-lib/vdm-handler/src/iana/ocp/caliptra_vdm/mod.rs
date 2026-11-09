@@ -2437,7 +2437,7 @@ mod tests {
     }
 
     #[test]
-    fn retired_zeroization_command_is_rejected_by_both_transports() {
+    fn retired_zeroization_command_is_rejected_by_shared_dispatch_and_spdm() {
         use caliptra_mcu_common_commands::command::{execute_authorized, CommandPolicy};
 
         let cmds = TestCommands::new(0).with_authorization();

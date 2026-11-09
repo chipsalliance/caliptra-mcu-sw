@@ -208,6 +208,66 @@ fn test_command_authorization_modes_and_scopes() -> Result<()> {
     Ok(())
 }
 
+#[test]
+fn test_retired_zeroization_preserves_mailbox_authorization_challenge() -> Result<()> {
+    use super::{authorize_cmd_with_context, get_auth_cmd_challenge};
+    use crate::test::TEST_LOCK;
+    use caliptra_mcu_mbox_common::authorization::AuthorizationMetadata;
+    use caliptra_mcu_mbox_common::messages::{CommandId, AUTH_CMD_NONCE_LEN};
+
+    let _lock = TEST_LOCK.lock().unwrap();
+    let mut hw = start_command_authorized_runtime(TestParams {
+        feature: Some("test-mcu-mbox-cmds"),
+        ..Default::default()
+    });
+    let challenge = get_auth_cmd_challenge(&mut hw)?;
+    assert_ne!(challenge, [0; AUTH_CMD_NONCE_LEN]);
+    let metadata = AuthorizationMetadata::default();
+
+    let mut retired = MailboxReqHeader::default().as_bytes().to_vec();
+    retired.extend_from_slice(&[0x5A; 16]);
+    let mut retired_request =
+        authorize_cmd_with_context(0x4D5A_524D, &retired, &metadata, &challenge)?;
+    let read = FuseReadReq {
+        partition: VENDOR_NON_SECRET_PROD_PARTITION,
+        entry: 0,
+        ..Default::default()
+    };
+    let mut supported_request = authorize_cmd_with_context(
+        CommandId::MC_FUSE_READ.0,
+        read.as_bytes(),
+        &metadata,
+        &challenge,
+    )?;
+    for request in [&mut retired_request, &mut supported_request] {
+        let checksum = calc_checksum(
+            CommandId::MC_AUTHORIZED_COMMAND.0,
+            &request[size_of::<MailboxReqHeader>()..],
+        );
+        request[..size_of::<MailboxReqHeader>()].copy_from_slice(&checksum.to_le_bytes());
+    }
+
+    let error = hw
+        .mailbox_execute(CommandId::MC_AUTHORIZED_COMMAND.0, &retired_request)
+        .expect_err("retired MZRM command must be rejected");
+    assert!(
+        !error.to_string().contains("timed out"),
+        "retired MZRM command should fail without timing out: {error}"
+    );
+
+    let response = hw
+        .mailbox_execute(CommandId::MC_AUTHORIZED_COMMAND.0, &supported_request)?
+        .ok_or_else(|| anyhow::anyhow!("Challenge-bound fuse read returned no data"))?;
+    let otp = hw.read_otp_memory();
+    let expected = &otp[VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET
+        ..VENDOR_NON_SECRET_PROD_PARTITION_BYTE_OFFSET + 128];
+    assert_fuse_read_response(&response, 128 * 8, expected);
+    assert!(hw
+        .mailbox_execute(CommandId::MC_AUTHORIZED_COMMAND.0, &supported_request)
+        .is_err());
+    Ok(())
+}
+
 fn assert_response_checksum(response: &[u8]) {
     assert!(response.len() >= size_of::<u32>());
     assert_eq!(
