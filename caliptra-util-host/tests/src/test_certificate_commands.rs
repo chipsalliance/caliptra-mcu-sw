@@ -2,9 +2,11 @@
 
 use crate::common::MockMailbox;
 use caliptra_mcu_core_util_host_command_types::attestation::{AsymAlgo, PkiEntitySlot};
+use caliptra_mcu_core_util_host_command_types::certificate::ProvisionIdevCertMode;
 use caliptra_mcu_core_util_host_transport::{Mailbox, MailboxDriver, Transport};
 use caliptra_util_host_commands::api::certificate::{
-    caliptra_cmd_get_cert_chain, caliptra_cmd_get_cert_chain_info, caliptra_cmd_set_cert_chain,
+    caliptra_cmd_get_cert_chain, caliptra_cmd_get_cert_chain_info,
+    caliptra_cmd_provision_idevid_cert, caliptra_cmd_set_cert_chain,
 };
 use caliptra_util_host_session::CaliptraSession;
 
@@ -50,5 +52,14 @@ fn certificate_chain_commands_round_trip_through_session() {
         )
         .expect("SetCertChain failed");
         assert_eq!(set_resp.common.fips_status, 0);
+
+        let prov_resp = caliptra_cmd_provision_idevid_cert(
+            session,
+            AsymAlgo::EccP384,
+            ProvisionIdevCertMode::PopulateOnly,
+            &[0x30u8; 24],
+        )
+        .expect("ProvisionIdevCert failed");
+        assert_eq!(prov_resp.common.fips_status, 0);
     });
 }
