@@ -7,6 +7,13 @@ use caliptra_mcu_libtock_platform::allow_ro::AllowRo;
 use caliptra_mcu_libtock_platform::share;
 use caliptra_mcu_libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
 use core::marker::PhantomData;
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
+
+/// Serializes physical SVN writes and firmware activation within this process.
+///
+/// Acquire before any mailbox lock and retain across asynchronous I/O until
+/// the complete fuse update or activation transaction finishes. Non-reentrant.
+pub static SVN_UPDATE_LOCK: Mutex<CriticalSectionRawMutex, ()> = Mutex::new(());
 
 pub const VENDOR_PK_HASH_SIZE: usize =
     caliptra_mcu_registers_generated::fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_0.byte_size;
@@ -76,6 +83,13 @@ impl<S: Syscalls> Otp<S> {
             .to_result::<u32, ErrorCode>()
     }
 
+    pub fn anti_rollback_disabled(&self) -> Result<bool, ErrorCode> {
+        let entry = caliptra_mcu_registers_generated::fuses::OTP_CPTRA_CORE_ANTI_ROLLBACK_DISABLE;
+        self.read_raw((entry.byte_offset / 4) as u32, 0)
+            .map(|value| (value & 1) != 0)
+    }
+
+    /// Callers updating SVN floors must hold [`SVN_UPDATE_LOCK`].
     pub fn write(&self, reg_offset: u32, index: u32, value: u32) -> Result<(), ErrorCode> {
         S::command(self.driver_num, cmd::OTP_SET_REGISTER, reg_offset, index)
             .to_result::<(), ErrorCode>()?;
@@ -86,6 +100,9 @@ impl<S: Syscalls> Otp<S> {
     ///
     /// Only bits specified with `mask` are written.
     /// Bits outside of `mask` are ignored.
+    ///
+    /// Callers writing SVN floors or the anti-rollback disable fuse must hold
+    /// [`SVN_UPDATE_LOCK`] for the complete transaction.
     ///
     /// # Arguments
     /// - `word_addr`: word address to write to
@@ -520,4 +537,41 @@ pub mod reg {
     pub const SOC_MANIFEST_MAX_SVN: u32 = 37;
     /// Owner SoC Manifest SVN words; index must be 0 or 1.
     pub const OWNER_SOC_MANIFEST_MIN_SVN: u32 = 38;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn anti_rollback_disabled_reads_physical_fuse_and_preserves_errors() {
+        use caliptra_mcu_libtock_unittest::{command_return, fake, ExpectedSyscall};
+
+        let kernel = fake::Kernel::new();
+        let otp = Otp::<fake::Syscalls>::new();
+        let entry = caliptra_mcu_registers_generated::fuses::OTP_CPTRA_CORE_ANTI_ROLLBACK_DISABLE;
+        for (read_result, expected) in [
+            (Ok(0), Ok(false)),
+            (Ok(1), Ok(true)),
+            (Ok(2), Ok(false)),
+            (Ok(4), Ok(false)),
+            (Ok(7), Ok(true)),
+            (Ok(0x8000_0000), Ok(false)),
+            (Ok(0x8000_0001), Ok(true)),
+            (Err(ErrorCode::Fail), Err(ErrorCode::Fail)),
+            (Err(ErrorCode::NoDevice), Err(ErrorCode::NoDevice)),
+        ] {
+            kernel.add_expected_syscall(ExpectedSyscall::Command {
+                driver_id: OTP_DRIVER_NUM,
+                command_id: cmd::OTP_READ_RAW,
+                argument0: (entry.byte_offset / 4) as u32,
+                argument1: 0,
+                override_return: Some(match read_result {
+                    Ok(value) => command_return::success_u32(value),
+                    Err(error) => command_return::failure(error),
+                }),
+            });
+            assert_eq!(otp.anti_rollback_disabled(), expected);
+        }
+    }
 }
