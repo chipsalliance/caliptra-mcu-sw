@@ -4,14 +4,16 @@ use core::mem;
 
 use caliptra_api::{
     calc_checksum,
-    mailbox::{ExternalMailboxCmdReq, MailboxReqHeader, MailboxRespHeader, Request},
+    mailbox::{
+        ExternalMailboxCmdReq, MailboxReqHeader, MailboxRespHeader, Request,
+        PASSIVE_MAILBOX_SIZE_LIMIT, SUBSYSTEM_MAILBOX_SIZE_LIMIT,
+    },
     CaliptraApiError, SocManager,
 };
 use caliptra_mcu_registers_generated::{mbox, soc};
 use caliptra_ureg::RealMmioMut;
 use zerocopy::{transmute, FromBytes, IntoBytes};
 
-const MAILBOX_SIZE: usize = 256 * 1024;
 pub struct CaliptraSoC {
     _private: (), // ensure that this struct cannot be instantiated directly except through new
     soc_ifc_addr: *mut u32,
@@ -89,6 +91,25 @@ impl CaliptraSoC {
         }
     }
 
+    /// Returns `true` if Caliptra is configured in subsystem mode
+    /// (`CPTRA_HW_CONFIG.SUBSYSTEM_MODE_EN`).
+    pub fn subsystem_mode(&mut self) -> bool {
+        self.soc_ifc().cptra_hw_config().read().subsystem_mode_en()
+    }
+
+    /// Size of the Caliptra SoC mailbox SRAM in bytes.
+    ///
+    /// The mailbox is 16 KiB in subsystem mode and 256 KiB in passive mode.
+    /// Requests larger than this must use the external mailbox (AXI staging)
+    /// path, see [`Self::execute_ext_mailbox_req`].
+    pub fn mailbox_size(&mut self) -> usize {
+        if self.subsystem_mode() {
+            SUBSYSTEM_MAILBOX_SIZE_LIMIT
+        } else {
+            PASSIVE_MAILBOX_SIZE_LIMIT
+        }
+    }
+
     pub fn is_mailbox_busy(&mut self) -> bool {
         self.soc_mbox().status().read().status().cmd_busy()
     }
@@ -100,7 +121,7 @@ impl CaliptraSoC {
         len_bytes: usize,
         buf: impl Iterator<Item = u32>,
     ) -> core::result::Result<(), CaliptraApiError> {
-        if len_bytes > MAILBOX_SIZE {
+        if len_bytes > self.mailbox_size() {
             return Err(CaliptraApiError::BufferTooLargeForMailbox);
         }
 
@@ -186,7 +207,7 @@ impl CaliptraSoC {
         cmd: u32,
         len_bytes: usize,
     ) -> core::result::Result<(), CaliptraApiError> {
-        if len_bytes > MAILBOX_SIZE {
+        if len_bytes > self.mailbox_size() {
             return Err(CaliptraApiError::BufferTooLargeForMailbox);
         }
 
