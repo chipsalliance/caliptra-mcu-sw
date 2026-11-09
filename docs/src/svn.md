@@ -384,20 +384,25 @@ attempt never makes it to the hitless reset.
 
 For each component in the bundle:
 
-1. **MCU Runtime image** — obtain the bundle's SoC manifest SVN
-   (`soc_manifest_svn`) from the new SoC manifest. Reject if
-   `soc_manifest_svn < fuse_min_svn (CPTRA_CORE_SOC_MANIFEST_SVN)`. The
-   floor itself is owned by Caliptra Core; MCU Runtime only consults it
-   here as a fast-fail before the bundle is handed to Caliptra Core for
-   authentication.
-2. **MCU Component SVN Manifest** — if the new MCU runtime image contains
+1. **Caliptra Core firmware** — obtain the bundle's signed-header `fw_svn`.
+   When anti-rollback is enabled, reject if
+   `fw_svn < fuse_min_svn (CPTRA_CORE_RUNTIME_SVN)`. This is a fast-fail
+   against the physical OTP floor; the bundle must still pass `FIRMWARE_VERIFY`
+   for cryptographic authentication.
+2. **MCU Runtime image** — obtain the bundle's SoC manifest SVN
+   (`soc_manifest_svn`) from the new SoC manifest. When anti-rollback is
+   enabled, reject if
+   `soc_manifest_svn < fuse_min_svn (CPTRA_CORE_SOC_MANIFEST_SVN)`. The floor
+   itself is owned by Caliptra Core; MCU Runtime only consults it here as a
+   fast-fail before the bundle is handed to Caliptra Core for authentication.
+3. **MCU Component SVN Manifest** — if the new MCU runtime image contains
    the manifest header (identified by magic), validate Magic / Format
    Version and the header constraints (see [Format](#format)). Reject if
    `manifest.current_svn < fuse_min_svn
    (MCU_COMPONENT_SVN_MANIFEST_MIN_SVN)` or if any per-entry constraint
    is violated. If no manifest header is present, skip per-component SVN
    verification for this bundle.
-3. **SoC component images** — for each component whose `component_id` is in
+4. **SoC component images** — for each component whose `component_id` is in
    both the MCU Component SVN Manifest and `SVN_FUSE_MAP`:
    - Use the platform's `SocComponentSvn` trait (below) to extract the SVN
      directly from the component bytes.
@@ -412,6 +417,29 @@ manifest-vs-image cross-check (a logged warning) but still get the
 `current_svn < fuse_min_svn` check using the manifest's value. This allows
 opaque or pre-existing component formats to participate in fuse-level
 rollback protection without forcing the integrator to parse them.
+
+Before loading Caliptra firmware, activation rechecks the SoC manifest floor
+so a stale manifest cannot leave the bundle partially activated. The Caliptra
+firmware and SoC manifest checks are also repeated immediately before
+`FIRMWARE_LOAD` and `SET_AUTH_MANIFEST`, respectively.
+
+The updater holds a shared asynchronous SVN transaction guard from the
+preflight check through MCU activation, including staging reads and mailbox
+waits. Both the minimum-SVN command and raw fuse-write command acquire that
+same guard before accessing the mailbox or programming OTP. This prevents a
+physical floor increase between the final check and activation. The alternate
+manifest/MCU activation entrypoint uses the same guard. Lock ordering is SVN
+guard before mailbox lock.
+
+The pre-Caliptra activation hook runs before acquiring the guard. Later
+activation hooks retain their existing ordering but run inside the guarded
+transaction and must not re-enter fuse-writing or activation APIs that acquire
+the same non-reentrant guard.
+
+These checks use only bit 0 of `CPTRA_CORE_ANTI_ROLLBACK_DISABLE`, matching
+Caliptra's hardware disable field. Other bits do not bypass enforcement.
+Failure to read the disable fuse or either physical SVN floor rejects the
+update.
 
 After PLDM verification succeeds, the bundle is applied and activated. The
 hitless update reset then triggers MCU ROM, which performs the actual
