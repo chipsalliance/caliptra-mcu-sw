@@ -577,6 +577,7 @@ mod tests {
         let authorized_transport = cfg!(feature = "spdm") || cfg!(feature = "mcu-mbox-service");
         let dot_transport = cfg!(feature = "dot-spdm-vdm") || cfg!(feature = "dot-mci-mailbox");
 
+        assert_eq!(authorized.bits() & (1 << 17), 0);
         assert_eq!(
             runtime.contains(McuRuntimeCapabilities::MCTP_VDM_RESPONDER),
             cfg!(feature = "mctp-vdm-service")

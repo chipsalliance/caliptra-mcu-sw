@@ -307,9 +307,11 @@ mod tests {
             VdmCompletionCode::try_from(0x08),
             Ok(VdmCompletionCode::DeviceNotReady)
         );
-        assert_eq!(
-            VdmCompletionCode::try_from(0xFF),
-            Err(VdmError::InvalidCompletionCode)
-        );
+        for code in [0xC2, 0xC3, 0xFF] {
+            assert_eq!(
+                VdmCompletionCode::try_from(code),
+                Err(VdmError::InvalidCompletionCode)
+            );
+        }
     }
 }

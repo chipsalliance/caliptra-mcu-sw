@@ -59,6 +59,14 @@ mod tests {
     use super::*;
 
     #[test]
+    fn retired_zeroization_capability_is_reserved() {
+        assert_eq!(
+            AuthorizedSubcommandCapabilities::all().bits() & (1 << 17),
+            0
+        );
+    }
+
+    #[test]
     fn capability_domains_are_independent() {
         let features =
             McuRuntimeCapabilities::FLASH_BOOT | McuRuntimeCapabilities::MCTP_VDM_RESPONDER;
