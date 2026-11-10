@@ -10,6 +10,8 @@ use zerocopy::{FromBytes, Immutable, IntoBytes};
 pub const PLDM_FWUP_COMPONENT_RELEASE_DATA_LEN: usize = 8;
 pub const PLDM_FWUP_BASELINE_TRANSFER_SIZE: usize = 32;
 pub const PLDM_FWUP_MAX_PADDING_SIZE: usize = PLDM_FWUP_BASELINE_TRANSFER_SIZE;
+/// Longest version string this crate can hold. DSP0267 allows up to 255 bytes;
+/// this is our limit, not the protocol's, and longer strings are rejected.
 pub const PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN: usize = 32;
 pub const DESCRIPTOR_DATA_MAX_LEN: usize = 64; // Arbitrary limit for static storage
 pub const MAX_COMPONENT_COUNT: usize = 8; // Arbitrary limit, change as needed
@@ -360,11 +362,14 @@ impl PldmCodec for Descriptor {
         offset += core::mem::size_of::<u16>();
 
         let mut descriptor_data = [0u8; DESCRIPTOR_DATA_MAX_LEN];
-        descriptor_data[..descriptor_length as usize].copy_from_slice(
-            buffer
-                .get(offset..offset + descriptor_length as usize)
-                .ok_or(PldmCodecError::BufferTooShort)?,
-        );
+        descriptor_data
+            .get_mut(..descriptor_length as usize)
+            .ok_or(PldmCodecError::InvalidData)?
+            .copy_from_slice(
+                buffer
+                    .get(offset..offset + descriptor_length as usize)
+                    .ok_or(PldmCodecError::BufferTooShort)?,
+            );
 
         Ok(Descriptor {
             descriptor_type,
@@ -693,21 +698,26 @@ impl PldmCodec for ComponentParameterEntry {
 
         let active_comp_ver_str_len = comp_param_entry_fixed.active_comp_ver_str_len as usize;
         let mut active_comp_ver_str = [0u8; PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN];
-        active_comp_ver_str[..active_comp_ver_str_len].copy_from_slice(
-            buffer
-                .get(offset..offset + active_comp_ver_str_len)
-                .ok_or(PldmCodecError::BufferTooShort)?,
-        );
+        active_comp_ver_str
+            .get_mut(..active_comp_ver_str_len)
+            .ok_or(PldmCodecError::InvalidData)?
+            .copy_from_slice(
+                buffer
+                    .get(offset..offset + active_comp_ver_str_len)
+                    .ok_or(PldmCodecError::BufferTooShort)?,
+            );
         offset += active_comp_ver_str_len;
 
         let pending_comp_ver_str = if comp_param_entry_fixed.pending_comp_ver_str_len > 0 {
             let len = comp_param_entry_fixed.pending_comp_ver_str_len as usize;
             let mut arr = [0u8; PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN];
-            arr[..len].copy_from_slice(
-                buffer
-                    .get(offset..offset + len)
-                    .ok_or(PldmCodecError::BufferTooShort)?,
-            );
+            arr.get_mut(..len)
+                .ok_or(PldmCodecError::InvalidData)?
+                .copy_from_slice(
+                    buffer
+                        .get(offset..offset + len)
+                        .ok_or(PldmCodecError::BufferTooShort)?,
+                );
             Some(arr)
         } else {
             None

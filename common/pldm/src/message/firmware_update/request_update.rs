@@ -69,12 +69,15 @@ impl RequestUpdateRequest {
     pub fn get_comp_image_set_ver_str(&self) -> PldmFirmwareString {
         PldmFirmwareString {
             str_type: self.fixed.comp_image_set_ver_str_type,
-            str_len: self.fixed.comp_image_set_ver_str_len,
+            str_len: self
+                .fixed
+                .comp_image_set_ver_str_len
+                .min(PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN as u8),
             str_data: {
                 let mut arr = [0u8; PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN];
-                arr.copy_from_slice(
-                    &self.comp_image_set_ver_str[..self.fixed.comp_image_set_ver_str_len as usize],
-                );
+                let len = (self.fixed.comp_image_set_ver_str_len as usize)
+                    .min(PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN);
+                arr[..len].copy_from_slice(&self.comp_image_set_ver_str[..len]);
                 arr
             },
         }
@@ -118,11 +121,14 @@ impl PldmCodec for RequestUpdateRequest {
 
         let str_len = fixed.comp_image_set_ver_str_len as usize;
         let mut comp_image_set_ver_str = [0u8; PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN];
-        comp_image_set_ver_str[..str_len].copy_from_slice(
-            &buffer
-                .get(offset..offset + str_len)
-                .ok_or(PldmCodecError::BufferTooShort)?[..str_len],
-        );
+        comp_image_set_ver_str
+            .get_mut(..str_len)
+            .ok_or(PldmCodecError::InvalidData)?
+            .copy_from_slice(
+                buffer
+                    .get(offset..offset + str_len)
+                    .ok_or(PldmCodecError::BufferTooShort)?,
+            );
 
         Ok(RequestUpdateRequest {
             fixed,
@@ -256,6 +262,10 @@ mod tests {
 
         let decoded_request = RequestUpdateRequest::decode(&buffer[..encoded_size]).unwrap();
         assert_eq!(request, decoded_request);
+
+        let ver_str = decoded_request.get_comp_image_set_ver_str();
+        assert_eq!(ver_str.str_len, 9);
+        assert_eq!(&ver_str.str_data[..9], b"mcu-1.0.0");
     }
 
     #[test]

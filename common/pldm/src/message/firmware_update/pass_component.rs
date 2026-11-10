@@ -107,11 +107,14 @@ impl PldmCodec for PassComponentTableRequest {
 
         let str_len = fixed.comp_ver_str_len as usize;
         let mut comp_ver_str = [0u8; PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN];
-        comp_ver_str[..str_len].copy_from_slice(
-            &buffer
-                .get(offset..offset + str_len)
-                .ok_or(PldmCodecError::BufferTooShort)?[..str_len],
-        );
+        comp_ver_str
+            .get_mut(..str_len)
+            .ok_or(PldmCodecError::InvalidData)?
+            .copy_from_slice(
+                buffer
+                    .get(offset..offset + str_len)
+                    .ok_or(PldmCodecError::BufferTooShort)?,
+            );
 
         Ok(PassComponentTableRequest {
             fixed,
