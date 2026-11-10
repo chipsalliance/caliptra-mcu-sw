@@ -53,6 +53,14 @@ jobs:
       - name: Prepare pinned HTG-940 RTL
         run: bash hw/htg940/prepare_sources.sh
 
+      - name: Install Tcl for build-input validation
+        run: |
+          if ! command -v tclsh >/dev/null 2>&1; then
+            sudo apt-get update -qy
+            sudo apt-get install -qy --no-install-recommends tcl
+          fi
+          tclsh <<< 'puts "Tcl validation interpreter: [info patchlevel]"'
+
       - name: Validate HTG-940 build inputs and debug generation
         run: |
           python3 -m unittest discover -s hw/htg940/tests -p 'test_*.py'

@@ -171,6 +171,11 @@ removing a trigger cannot make a stopped sampling clock run.
 
 ## Focused validation
 
+These tests require Python 3.9 or newer, Git, `patch`, and `tclsh` (the `tcl`
+package on Debian/Ubuntu). CI installs Tcl when it is absent from the runner.
+Prepare the isolated RTL first to include the real-source debug-generation
+and FPGA-top patch tests.
+
 ```sh
 python3 -m unittest discover -s hw/htg940/fpga/htg940_usb_min_ila -p 'test_*.py'
 python3 -m unittest discover -s hw/htg940/tests -p 'test_*.py'
