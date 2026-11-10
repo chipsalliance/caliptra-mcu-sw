@@ -39,7 +39,9 @@ use anyhow::Result;
 use caliptra_mcu_core_util_host_command_types::attestation::{
     AsymAlgo, EvidenceFormat, GetAttestationResponse, PkiEntitySlot,
 };
-use caliptra_mcu_core_util_host_command_types::certificate::ExportAttestedCsrResponse;
+use caliptra_mcu_core_util_host_command_types::certificate::{
+    ExportAttestedCsrResponse, ProvisionIdevCertMode, ProvisionIdevCertResponse,
+};
 use caliptra_mcu_core_util_host_command_types::debug_unlock::{
     ProdDebugUnlockReqResponse, ProdDebugUnlockTokenRequest, ProdDebugUnlockTokenResponse,
 };
@@ -65,7 +67,9 @@ use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
 use caliptra_util_host_commands::api::attestation::{
     caliptra_cmd_get_attestation, caliptra_cmd_get_attestation_formats,
 };
-use caliptra_util_host_commands::api::certificate::caliptra_cmd_export_attested_csr;
+use caliptra_util_host_commands::api::certificate::{
+    caliptra_cmd_export_attested_csr, caliptra_cmd_provision_idevid_cert,
+};
 use caliptra_util_host_commands::api::debug_unlock::{
     caliptra_cmd_prod_debug_unlock_req, caliptra_cmd_prod_debug_unlock_token,
 };
@@ -138,6 +142,18 @@ impl<'a> SpdmVdmClient<'a> {
         let mut session = self.create_session()?;
         caliptra_cmd_export_attested_csr(&mut session, device_key_id, algorithm, nonce)
             .map_err(|e| anyhow::anyhow!("ExportAttestedCsr failed: {:?}", e))
+    }
+
+    /// Provision an `IDevID` certificate or signature payload (`PopulateOnly` or `WriteOtp`).
+    pub fn provision_idevid_cert(
+        &mut self,
+        algorithm: AsymAlgo,
+        mode: ProvisionIdevCertMode,
+        data: &[u8],
+    ) -> Result<ProvisionIdevCertResponse> {
+        let mut session = self.create_session()?;
+        caliptra_cmd_provision_idevid_cert(&mut session, algorithm, mode, data)
+            .map_err(|e| anyhow::anyhow!("ProvisionIdevCert failed: {:?}", e))
     }
 
     /// Retrieve signed attestation evidence from the device.

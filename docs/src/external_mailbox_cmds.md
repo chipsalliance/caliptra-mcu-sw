@@ -48,6 +48,7 @@ framing and is not changed by this Runtime ABI.
 | MC_GET_CERT_CHAIN_INFO        | 0x4D47_4349 ("MGCI") | Retrieves certificate-chain metadata, length, and raw DER SHA-384 digest.             |
 | MC_GET_CERT_CHAIN             | 0x4D47_4343 ("MGCC") | Retrieves a chunk of the complete raw DER certificate chain.                          |
 | MC_SET_CERT_CHAIN             | 0x4D53_4343 ("MSCC") | Provisions, replaces, or erases a managed PKI endorsement chain.                      |
+| MC_PROVISION_IDEV_CERT        | 0x4D50_4943 ("MPIC") | Populates an IDevID certificate into Caliptra Core and optionally OTP.                |
 | MC_GET_LOG                    | 0x4D47_4C47 ("MGLG") | Retrieves the debug log                                                               |
 | MC_CLEAR_LOG                  | 0x4D43_4C47 ("MCLG") | Clears the debug log                                                                  |
 | MC_FIPS_SELF_TEST_START       | 0x4D46_5354 ("MFST") | Starts the FIPS self-test to exercise the crypto engine.                              |
@@ -353,6 +354,29 @@ Command Code: `0x4D53_4343` ("MSCC")
 | cert_data     | u8[data_len] | Raw DER endorsement bytes for this chunk.                                                                    |
 
 *Table: `MC_SET_CERT_CHAIN` output arguments*
+| **Name**    | **Type** | **Description**            |
+| ----------- | -------- | -------------------------- |
+| chksum      | u32      | Response checksum.         |
+| fips_status | u32      | FIPS approved or an error. |
+
+### MC_PROVISION_IDEV_CERT
+
+Populates a DER-encoded `IDevID` certificate into Caliptra Core (`POPULATE_IDEV_ECC384_CERT` / `POPULATE_IDEV_MLDSA87_CERT`) and optionally persists and locks it in OTP.
+
+Command Code: `0x4D50_4943` ("MPIC")
+
+Payload semantics, operation modes, and state rules are defined by [Provision IDevID Certificate](caliptra_common_commands.md#provision-idevid-certificate).
+
+*Table: `MC_PROVISION_IDEV_CERT` input arguments*
+| **Name**  | **Type**      | **Description**                                                                                      |
+| --------- | ------------- | ---------------------------------------------------------------------------------------------------- |
+| chksum    | u32           | Checksum over input data.                                                                            |
+| algorithm | u32           | Asymmetric algorithm (`0x0001` = ECC P-384, `0x0002` = ML-DSA-87).                                   |
+| operation | u32           | Provisioning mode (`0x0000` = `PopulateOnly`, `0x0001` = `WriteOtp`).                                |
+| cert_size | u32           | Length in bytes of the DER-encoded `IDevID` certificate (`1..=8192`).                                |
+| cert_data | u8[cert_size] | Raw DER-encoded `IDevID` certificate (zero-padded in the fixed request structure up to `8192` bytes). |
+
+*Table: `MC_PROVISION_IDEV_CERT` output arguments*
 | **Name**    | **Type** | **Description**            |
 | ----------- | -------- | -------------------------- |
 | chksum      | u32      | Response checksum.         |

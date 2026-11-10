@@ -117,10 +117,20 @@ implementation provides `SpiFlashEndorsementStorage` (`user/src/cert_store/mod.r
 The Vendor slot (`EndorsementRole::Vendor`, Slot 0) is established during
 manufacturing and is strictly read-only:
 
-- **Default (in-band Root/Int CA + OTP `IDevID`)**: Embed the Vendor CA
-  certificates in the application image and supply the manufacturing-signed
-  `IDevID` certificates (e.g., from OTP) via `populate_idev_ecc384_cert` /
-  `populate_idev_mldsa87_cert` before calling `init_readonly_endorsement`.
+- **Default (in-band Root/Int CA + OTP `IDevID`)**:
+  - **In-band CA chain**: Embed the Vendor Root and Intermediate CA certificates
+    in the application image and register them with `init_readonly_endorsement`.
+  - **Boot-time `IDevID` population (normal flow)**: Read the
+    manufacturing-signed `IDevID` certificates from OTP and pass them to
+    Caliptra Core via `populate_idev_ecc384_cert` / `populate_idev_mldsa87_cert`
+    before calling `init_readonly_endorsement`.
+  - **Manufacturing-time `IDevID` provisioning (`cert-provisioning`)**: When OTP
+    is unpopulated at boot during manufacturing, `ProvisionIdevCert`
+    (`MC_PROVISION_IDEV_CERT` / SPDM VDM `0x09`) can either:
+    - `PopulateOnly`: Populate `IDevID` into Caliptra Core for the current boot
+      without modifying OTP.
+    - `WriteOtp`: Burn, readback-verify, and lock the OTP partition first, then
+      populate `IDevID` into Caliptra Core.
 - **All Vendor certificates out-of-band (`vendor-certs-oob`)**: For deployments
   where the verifier holds the Vendor CA chain and `IDevID` out-of-band, skip
   `POPULATE_IDEV_*` and call `init_oob_endorsement`. Slot 0 serves `LDevID ->

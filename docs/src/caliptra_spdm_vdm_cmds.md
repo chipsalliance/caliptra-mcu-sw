@@ -82,6 +82,7 @@ These command codes are assigned from the Caliptra range reserved in the [OCP co
 | `0x06`       | RequestDebugUnlock        | O   | Request debug unlock in production environment.                            |
 | `0x07`       | AuthorizeDebugUnlockToken | O   | Send debug unlock token to device for authorization.                       |
 | `0x08`       | ExportAttestedCsr         | O   | Discover device identity keys or export an attested CSR.                   |
+| `0x09`       | ProvisionIdevCert         | O   | Populate an IDevID certificate into Caliptra Core and optionally OTP.      |
 | `0x11`       | DeviceOwnershipTransfer   | O   | Carry DOT commands with native authentication.                             |
 | `0x12`       | AuthorizedCommand         | O   | Carry manifest-authorized provisioning and fuse subcommands.               |
 

@@ -180,6 +180,32 @@ impl TryFrom<u32> for PkiEntitySlot {
     }
 }
 
+/// Operation mode for `MC_PROVISION_IDEV_CERT` / VDM `PROVISION_IDEV_CERT`.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
+pub enum ProvisionIdevCertMode {
+    /// Populate the `IDevID` certificate into Caliptra Core RAM only without
+    /// burning or locking OTP.
+    #[default]
+    PopulateOnly = 0,
+    /// Write the `IDevID` certificate (or signature) to the external OTP
+    /// partition, verify the readback, lock the partition, and populate
+    /// Caliptra Core.
+    WriteOtp = 1,
+}
+
+impl TryFrom<u32> for ProvisionIdevCertMode {
+    type Error = CaliptraCompletionCode;
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::PopulateOnly),
+            1 => Ok(Self::WriteOtp),
+            _ => Err(CaliptraCompletionCode::InvalidParameter),
+        }
+    }
+}
+
 /// Metadata, byte length, and raw DER SHA-384 digest for a certificate chain slot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CertChainInfo {
@@ -474,6 +500,18 @@ pub trait CaliptraCmdHandler {
             total_size,
             data,
         );
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Populates and/or writes to OTP the Vendor `IDevID` certificate for `algorithm`.
+    async fn provision_idevid_cert<Alloc: ScratchAlloc>(
+        &self,
+        alloc: &Alloc,
+        algorithm: AsymAlgo,
+        mode: ProvisionIdevCertMode,
+        data: &[u8],
+    ) -> CaliptraCmdResult<()> {
+        let _ = (alloc, algorithm, mode, data);
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 
