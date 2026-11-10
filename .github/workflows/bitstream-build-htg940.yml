@@ -56,16 +56,30 @@ jobs:
       - name: Install Tcl for build-input validation
         run: |
           if ! command -v tclsh >/dev/null 2>&1; then
-            if [[ "$(id -u)" == 0 ]]; then
-              apt-get update -qy
-              apt-get install -qy --no-install-recommends tcl
-            elif command -v sudo >/dev/null 2>&1; then
-              sudo -n apt-get update -qy
-              sudo -n apt-get install -qy --no-install-recommends tcl
-            else
-              echo "Error: tclsh is missing; install tcl in the runner image or provide root/sudo access." >&2
+            tcl_dir="$RUNNER_TEMP/htg940-tcl-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+            mkdir -p "$tcl_dir/lists/partial" "$tcl_dir/cache" "$tcl_dir/packages" "$tcl_dir/bin"
+            apt-get -o "Dir::State::lists=$tcl_dir/lists" \
+              -o "Dir::Cache=$tcl_dir/cache" \
+              -o APT::Get::List-Cleanup=0 update
+            (
+              cd "$tcl_dir/packages"
+              apt-get -o "Dir::State::lists=$tcl_dir/lists" \
+                -o "Dir::Cache=$tcl_dir/cache" download tcl8.6 libtcl8.6
+              for package in ./*.deb; do
+                dpkg-deb --extract "$package" "$tcl_dir/root"
+              done
+            )
+            library=$(find "$tcl_dir/root/usr/lib" -name libtcl8.6.so -print -quit)
+            if [[ -z "$library" ]]; then
+              echo "Error: downloaded Tcl packages contain no libtcl8.6.so." >&2
               exit 1
             fi
+            printf '#!/usr/bin/env bash\nexport TCL_LIBRARY=%q\nexport LD_LIBRARY_PATH=%q"${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"\nexec %q "$@"\n' \
+              "$tcl_dir/root/usr/share/tcltk/tcl8.6" "$(dirname "$library")" \
+              "$tcl_dir/root/usr/bin/tclsh8.6" > "$tcl_dir/bin/tclsh"
+            chmod +x "$tcl_dir/bin/tclsh"
+            echo "$tcl_dir/bin" >> "$GITHUB_PATH"
+            export PATH="$tcl_dir/bin:$PATH"
           fi
           tclsh <<< 'puts "Tcl validation interpreter: [info patchlevel]"'
 

@@ -176,8 +176,11 @@ removing a trigger cannot make a stopped sampling clock run.
 ## Focused validation
 
 These tests require Python 3.9 or newer, Git, `patch`, and `tclsh` (the `tcl`
-package on Debian/Ubuntu). CI installs Tcl when it is absent from the runner,
-using root directly or non-interactive sudo for an unprivileged runner.
+package on Debian/Ubuntu). If Tcl is absent, CI downloads the distro's
+`tcl8.6` and `libtcl8.6` packages using job-local APT lists and extracts them
+under the job's temporary directory. No root/sudo access or system package
+changes are needed. A private launcher scopes Tcl's library paths to the
+test interpreter so Vivado's Tcl environment is unchanged.
 Prepare the isolated RTL first to include the real-source debug-generation
 and FPGA-top patch tests.
 
