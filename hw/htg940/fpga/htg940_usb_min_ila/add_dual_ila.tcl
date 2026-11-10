@@ -24,6 +24,16 @@ proc min_hier_pin_net {pattern} {
 proc min_signal {instance signal width} {
     set expression [format {^.*/%s/%s(\[[0-9]+\])?$} $instance $signal]
     set nets [lsort -dictionary [get_nets -quiet -hier -regexp $expression]]
+    if {[llength $nets] == 0} {
+        # Synthesis may merge a port's local net into its parent's net.
+        set pins [lsort -dictionary [get_pins -quiet -hier -regexp $expression]]
+        if {[llength $pins] != 0 && [llength $pins] != $width} {
+            error "$instance/$signal: expected $width port bits, found $pins. Do not continue implementation."
+        }
+        foreach pin $pins {
+            lappend nets [min_pin_net $pin]
+        }
+    }
     if {[llength $nets] != $width} {
         error "$instance/$signal: expected $width bits, found $nets. Do not continue implementation."
     }

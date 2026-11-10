@@ -138,6 +138,10 @@ Use the BIT, LTX, and MMI from the **same build**, and insert compatible real
 firmware before testing. The artifact includes the revision manifest and
 [probe_schema.tcl](fpga/htg940_usb_min_ila/probe_schema.tcl); the Vivado log
 prints every resolved probe name and index (`HTG_ILA`).
+If synthesis merges a hierarchy port's local net into a parent net, the
+resolver follows that port's connection instead. Missing probes, ambiguous
+connections, and width mismatches still stop the build; probes are never
+silently omitted or replaced with constants.
 
 - `ulpi_min_ila` uses the selected PHY `pie_clk`. It captures actual pad
   DATA/DIR/NXT/STP, drive enable, the request synchronizer stages, current
