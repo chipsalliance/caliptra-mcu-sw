@@ -1944,6 +1944,48 @@ mcu_rom (
         .wea(cptra_ss_mcu_mbox1_sram_req_if.req.we)
     );
 
+    // ROM patch storage is 4 KiB of 32-bit words plus seven ECC bits per word.
+    localparam int HTG_ROM_PATCH_SIZE_KB = 4;
+    localparam int HTG_ROM_PATCH_ADDR_W = $clog2(HTG_ROM_PATCH_SIZE_KB * 1024 / 4);
+    mci_mcu_sram_if #(
+        .ADDR_WIDTH(HTG_ROM_PATCH_ADDR_W),
+        .DATA_WIDTH(32),
+        .ECC_WIDTH(7)
+    ) cptra_ss_mcu_rom_patch_sram_req_if (
+        .clk(core_clk),
+        .rst_b(axi_reset)
+    );
+    xpm_memory_spram #(
+        .ADDR_WIDTH_A(HTG_ROM_PATCH_ADDR_W),
+        .BYTE_WRITE_WIDTH_A(39),
+        .ECC_MODE("no_ecc"),
+        .MEMORY_INIT_FILE("none"),
+        .MEMORY_INIT_PARAM("0"),
+        .MEMORY_PRIMITIVE("block"),
+        .MEMORY_SIZE(HTG_ROM_PATCH_SIZE_KB * 1024 / 4 * 39),
+        .READ_DATA_WIDTH_A(39),
+        .READ_LATENCY_A(1),
+        .RST_MODE_A("SYNC"),
+        .USE_MEM_INIT(1),
+        .USE_MEM_INIT_MMI(0),
+        .WRITE_DATA_WIDTH_A(39),
+        .WRITE_MODE_A("no_change")
+    ) mcu_rom_patch_sram (
+        .dbiterra(),
+        .douta(cptra_ss_mcu_rom_patch_sram_req_if.resp.rdata),
+        .sbiterra(),
+        .addra(cptra_ss_mcu_rom_patch_sram_req_if.req.addr),
+        .clka(core_clk),
+        .dina(cptra_ss_mcu_rom_patch_sram_req_if.req.wdata),
+        .ena(cptra_ss_mcu_rom_patch_sram_req_if.req.cs),
+        .injectdbiterra(1'b0),
+        .injectsbiterra(1'b0),
+        .regcea(1'b1),
+        .rsta(!axi_reset),
+        .sleep(1'b0),
+        .wea(cptra_ss_mcu_rom_patch_sram_req_if.req.we)
+    );
+
     // OTP interface
     logic        otp_mem_en;
     logic        otp_mem_we;
@@ -2722,6 +2764,8 @@ caliptra_ss_top #(
     .USB_C_DEV0_RAM_ADDRWIDTH(HTG_USB_RAM_AW),
     .USB_C_DEV1_RAM_ADDRWIDTH(HTG_USB_RAM_AW),
     .MCU_MBOX0_SIZE_KB(16),
+    .MCU_ROM_PATCH_SRAM_SIZE_KB(HTG_ROM_PATCH_SIZE_KB),
+    .USB_AXI_USER_WIDTH(32),
     .MCU_MBOX1_SIZE_KB(16)
 ) caliptra_ss_top_0 (
     .cptra_ss_clk_i(core_clk),
@@ -2881,6 +2925,7 @@ caliptra_ss_top #(
     .cptra_ss_mci_mcu_sram_req_if,
     .cptra_ss_mcu_mbox0_sram_req_if,
     .cptra_ss_mcu_mbox1_sram_req_if,
+    .cptra_ss_mcu_rom_patch_sram_req_if,
     .cptra_ss_mcu0_el2_mem_export(cptra_ss_mcu0_el2_mem_export.veer_sram_icache_src),
 
     .cptra_ss_soc_mcu_mbox0_data_avail(),

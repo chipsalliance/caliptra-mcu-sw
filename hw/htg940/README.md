@@ -39,6 +39,11 @@ subsystem AXI-filter compatibility patch is obsolete; native upstream fuse
 and USB access policies are retained. The SHA accelerator lock fix is
 already upstream. The build-local subsystem-top patch retains the FPGA I3C
 clock/reset adaptation without reverting upstream interface/policy changes.
+It imports port types in the module header and uses an explicit 32-bit USB
+AXI-user parameter instead of interface-member `$bits` in port declarations,
+which Vivado 2024.2 cannot elaborate here. The wrapper supplies the new 4 KiB
+ROM-patch SRAM with 32 data bits plus seven stored ECC bits per word and
+one-cycle synchronous reads; the controller owns ECC generation/checking.
 The FPGA wrapper follows the updated subsystem ports: removed SPI/UART
 interfaces and the obsolete I3C header are no longer referenced.
 **For this debug-only image, both USB AXI-user filters are intentionally

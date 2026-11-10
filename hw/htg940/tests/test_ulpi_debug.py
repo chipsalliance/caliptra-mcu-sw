@@ -199,6 +199,20 @@ if {[catch {
             )
             self.assertGreater(len(inputs), 50)
             self.assertFalse(set(inputs) - bindings, f"Unconnected subsystem inputs: {set(inputs) - bindings}")
+            interfaces = re.findall(r"^\s*\w+\.\w+\s+(\w+)\s*,?\s*$", header, re.M)
+            self.assertGreater(len(interfaces), 20)
+            self.assertFalse(
+                set(interfaces) - bindings,
+                f"Unconnected subsystem interfaces: {set(interfaces) - bindings}",
+            )
+            self.assertNotRegex(header, r"\$bits\(")
+            self.assertNotRegex(header, r"(?:input|output)\s+(?:lc_ctrl_pkg|lc_ctrl_state_pkg|otp_ctrl_pkg)::")
+            self.assertIn(".MCU_ROM_PATCH_SRAM_SIZE_KB(HTG_ROM_PATCH_SIZE_KB)", instance)
+            self.assertIn(".USB_AXI_USER_WIDTH(32)", instance)
+            self.assertIn(".douta(cptra_ss_mcu_rom_patch_sram_req_if.resp.rdata)", wrapper)
+            self.assertIn(".dina(cptra_ss_mcu_rom_patch_sram_req_if.req.wdata)", wrapper)
+            self.assertIn(".wea(cptra_ss_mcu_rom_patch_sram_req_if.req.we)", wrapper)
+            self.assertIn(".MEMORY_SIZE(HTG_ROM_PATCH_SIZE_KB * 1024 / 4 * 39)", wrapper)
             for policy in ("combo", "dev1"):
                 self.assertIn(
                     f".cptra_ss_usb_{policy}_enable_axi_user_filtering_i(1'b0)",
