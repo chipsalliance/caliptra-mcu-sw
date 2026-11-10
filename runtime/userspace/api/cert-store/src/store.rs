@@ -157,9 +157,14 @@ impl<S: EndorsementStorage> SharedCertStore<S> {
     }
 
     /// Record whether `IDevID` has been populated into Caliptra's DPE
-    /// certificate chain for `algo` during boot initialization.
+    /// certificate chain for `algo`, invalidating cached slot metadata when the
+    /// populated state changes.
     pub fn set_idevid_populated(&self, algo: CertificateAlgorithm, populated: bool) {
-        self.idevid_populated[algo.index()].set(populated);
+        if self.idevid_populated[algo.index()].replace(populated) != populated {
+            for role in EndorsementRole::ALL {
+                self.cert_slot(role).bump_generation_counter(algo);
+            }
+        }
     }
 
     /// Whether `IDevID` is populated in Caliptra's DPE certificate chain for `algo`.
@@ -1714,6 +1719,54 @@ mod tests {
             task_a.cached_chain_digest(EndorsementRole::Owner, CertificateAlgorithm::MlDsa87),
             Some([0xBB; 48])
         );
+    }
+
+    #[test]
+    fn set_idevid_populated_invalidates_cached_metadata_across_all_roles() {
+        static SHARED: SharedCertStore = SharedCertStore::new();
+        let task = TaskCertStore::new(&SHARED);
+
+        for role in EndorsementRole::ALL {
+            task.set_cached_chain_len(role, CertificateAlgorithm::EccP384, 512);
+            task.cache_chain_digest(role, CertificateAlgorithm::EccP384, &[0xAA; 48]);
+            task.set_cached_chain_len(role, CertificateAlgorithm::MlDsa87, 2048);
+            task.cache_chain_digest(role, CertificateAlgorithm::MlDsa87, &[0xBB; 48]);
+        }
+
+        SHARED.set_idevid_populated(CertificateAlgorithm::EccP384, true);
+        assert!(SHARED.is_idevid_populated(CertificateAlgorithm::EccP384));
+        assert!(!SHARED.is_idevid_populated(CertificateAlgorithm::MlDsa87));
+
+        for role in EndorsementRole::ALL {
+            assert_eq!(
+                task.cached_chain_len(role, CertificateAlgorithm::EccP384),
+                None
+            );
+            assert_eq!(
+                task.cached_chain_digest(role, CertificateAlgorithm::EccP384),
+                None
+            );
+            assert_eq!(
+                task.cached_chain_len(role, CertificateAlgorithm::MlDsa87),
+                Some(2048)
+            );
+            assert_eq!(
+                task.cached_chain_digest(role, CertificateAlgorithm::MlDsa87),
+                Some([0xBB; 48])
+            );
+
+            // Re-cache EccP384 and verify an idempotent `set_idevid_populated(..., true)`
+            // does not bump generation counters again.
+            task.set_cached_chain_len(role, CertificateAlgorithm::EccP384, 1060);
+        }
+
+        SHARED.set_idevid_populated(CertificateAlgorithm::EccP384, true);
+        for role in EndorsementRole::ALL {
+            assert_eq!(
+                task.cached_chain_len(role, CertificateAlgorithm::EccP384),
+                Some(1060)
+            );
+        }
     }
 
     #[test]

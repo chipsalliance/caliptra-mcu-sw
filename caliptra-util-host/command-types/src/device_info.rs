@@ -147,7 +147,7 @@ mod tests {
         caps[12..16].copy_from_slice(&0x2122_2324u32.to_be_bytes());
         caps[16..20].copy_from_slice(&0x3132_3334u32.to_be_bytes());
         caps[20..24].copy_from_slice(&0x0000_00FFu32.to_be_bytes());
-        caps[24..28].copy_from_slice(&0x0002_00EFu32.to_be_bytes());
+        caps[24..28].copy_from_slice(&0x0002_01EFu32.to_be_bytes());
         caps[28..32].copy_from_slice(&0x0000_0009u32.to_be_bytes());
         caps[32..48].copy_from_slice(&[0xA5; 16]);
         caps[48..64].copy_from_slice(&[0x5A; 16]);
@@ -164,7 +164,7 @@ mod tests {
         assert_eq!(response.caliptra_rom_capabilities(), 0x2122_2324);
         assert_eq!(response.mcu_runtime_capabilities(), 0x0000_00FF);
         assert_eq!(response.mcu_rom_capabilities(), 0x3132_3334);
-        assert_eq!(response.external_command_capabilities(), 0x0002_00EF);
+        assert_eq!(response.external_command_capabilities(), 0x0002_01EF);
         assert_eq!(response.authorized_subcommand_capabilities(), 0x0000_0009);
         assert_eq!(response.reserved_capabilities(), &[0xA5; 16]);
         assert_eq!(response.vendor_capabilities(), &[0x5A; 16]);
