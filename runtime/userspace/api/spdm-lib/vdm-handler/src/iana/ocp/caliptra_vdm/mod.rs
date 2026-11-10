@@ -26,7 +26,6 @@ pub use commands::authorized_command::{
     DOT_ROTATE_CMD_ID, FE_PROG_CMD_ID, FUSE_LOCK_PARTITION_CMD_ID, GET_AUTH_CHALLENGE_CMD_ID,
     GET_DOT_BACKUP_BLOB_CMD_ID, INCREASE_MIN_SVN_CMD_ID, PROVISION_OWNER_PK_HASH_CMD_ID,
     PROVISION_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PK_HASH_CMD_ID, REVOKE_VENDOR_PUB_KEY_CMD_ID,
-    ZEROIZE_UDS_FE_AND_ENTER_RMA_CMD_ID,
 };
 #[cfg(feature = "ocp-lock")]
 pub use commands::authorized_command::{
@@ -2435,6 +2434,45 @@ mod tests {
                 Some(expected)
             );
         }
+    }
+
+    #[test]
+    fn retired_zeroization_command_is_rejected_by_shared_dispatch_and_spdm() {
+        use caliptra_mcu_common_commands::command::{execute_authorized, CommandPolicy};
+
+        let cmds = TestCommands::new(0).with_authorization();
+        issue_test_challenge(&cmds);
+        let command_id = 0x4D5A_524D;
+        let payload = [0x5A; 16];
+        let signature = test_signature(command_id, &payload, &TEST_AUTH_CHALLENGE);
+        let req = authorized_req_with_sig(command_id, &payload, &signature);
+        let mut output = [0xCC; 8];
+
+        assert_eq!(
+            block_on(execute_authorized(
+                &cmds,
+                &cmds,
+                &TestAlloc,
+                &req[VDM_HEADER_LEN..],
+                &mut output,
+                CommandPolicy::MCI,
+            )),
+            Err(CommonCompletionCode::InvalidParameter)
+        );
+        assert_eq!(output, [0xCC; 8]);
+
+        let (response, inline, _) = dispatch(&cmds, &req, 16, 0);
+        assert_inline(response, 3);
+        assert_eq!(
+            &inline[..3],
+            &[
+                CALIPTRA_VDM_COMMAND_VERSION,
+                CaliptraVdmCommand::AuthorizedCommand as u8,
+                CaliptraCompletionCode::InvalidParameter as u8,
+            ]
+        );
+        assert_eq!(*cmds.challenge.lock().unwrap(), Some(TEST_AUTH_CHALLENGE));
+        assert_eq!(*cmds.authorized_operation.lock().unwrap(), None);
     }
 
     #[test]

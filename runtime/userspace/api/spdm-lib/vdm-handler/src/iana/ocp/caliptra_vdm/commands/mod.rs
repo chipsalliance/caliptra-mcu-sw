@@ -49,7 +49,5 @@ pub(crate) fn map_common_completion(code: CommonCompletionCode) -> CaliptraCompl
         CommonCompletionCode::CaliptraBufferTooSmall => {
             CaliptraCompletionCode::CaliptraBufferTooSmall
         }
-        CommonCompletionCode::ZeroizeFailed => CaliptraCompletionCode::ZeroizeFailed,
-        CommonCompletionCode::RmaTransitionFailed => CaliptraCompletionCode::RmaTransitionFailed,
     }
 }

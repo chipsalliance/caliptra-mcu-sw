@@ -49,7 +49,6 @@ The following subcommands are assigned to the SPDM VDM IANA authorization-gated 
 | Fuse Revoke Vendor Public Key  | SPDM VDM IANA, MCI Mailbox | Revoke vendor public key.                          |
 | Fuse Revoke Vendor PK Hash     | SPDM VDM IANA, MCI Mailbox | Revoke vendor public key hash.                     |
 | Fuse Lock Partition            | SPDM VDM IANA, MCI Mailbox | Lock fuse partition.                               |
-| Zeroize UDS/FE and Enter RMA   | SPDM VDM IANA, MCI Mailbox | Zeroize UDS and field entropy, then enter RMA.     |
 | OCP LOCK Program HEK           | SPDM VDM IANA, MCI Mailbox | Program an unused HEK slot.                        |
 | OCP LOCK Zero HEK              | SPDM VDM IANA, MCI Mailbox | Permanently sanitize an unused HEK slot.           |
 | Dot Enable                     | SPDM VDM IANA, MCI Mailbox | Program the one-time DOT initialization gate.      |
@@ -141,10 +140,13 @@ This table defines the bit assignment for every allocated command code. A respon
 | 14         | `DotEnable`                  | Implemented |
 | 15         | `OcpLockProgramHek`          | Implemented |
 | 16         | `OcpLockZeroHek`             | Implemented |
-| 17         | `ZeroizeUdsFeAndEnterRma`     | Implemented |
-| 18:31      | Reserved                     | —           |
+| 17:31      | Reserved                     | —           |
 
 The authorized-subcommand assignments are stable capability indexes; they are not transport command IDs. A responder sets a bit only when that subcommand is implemented under `AuthorizedCommand`. Authorization, lifecycle, or policy restrictions do not clear an implementation capability bit; execution can still return `AccessDenied`, `PolicyViolation`, or `InvalidState`.
+
+The former `0x4D5A_524D` (`MZRM`) UDS/field-entropy zeroization command is no
+longer supported over SPDM VDM or MCI mailbox. Bit 17 remains reserved and must
+be clear. ROM FIPS cold-boot zeroization is unchanged.
 
 **MCU Runtime Capability Flags**:
 
@@ -630,17 +632,6 @@ Locks a fuse partition.
 
 **Response Payload**: Empty
 
-### Zeroize UDS, Field Entropy, and Enter RMA
-
-Zeroizes the UDS and all four field-entropy partitions, records the
-field-entropy partitions as zeroized, and then requests entry into RMA.
-Zeroization occurs before the RMA transition is requested and is not rolled
-back if that transition fails.
-
-**Request Payload**: `rma_token:u8[16] | AuthorizationBlock`
-
-**Response Payload**: Empty
-
 ### OCP LOCK Program HEK
 
 Programs an unused HEK slot with an internally generated 256-bit random seed
@@ -724,5 +715,3 @@ Command responses include a completion code indicating the result of the operati
 | ------ | ------------------------- | ----------------------------- |
 | `0xC0` | Caliptra Mailbox Busy     | Caliptra mailbox is not ready |
 | `0xC1` | Caliptra Buffer Too Small | Response buffer too small     |
-| `0xC2` | Zeroize Failed            | UDS or field entropy zeroization failed; RMA was not attempted |
-| `0xC3` | RMA Transition Failed     | UDS and field entropy were zeroized, but the lifecycle transition to RMA failed |
