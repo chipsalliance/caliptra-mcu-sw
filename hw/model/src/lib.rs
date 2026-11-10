@@ -816,6 +816,7 @@ pub trait McuHwModel {
         cmd: u32,
         buf: &[u8],
     ) -> std::result::Result<Option<Vec<u8>>, ModelError> {
+        // TOOD: later inline the wrapper functions to get rid of them
         self.caliptra_start_mailbox_execute(cmd, buf)?;
         self.caliptra_finish_mailbox_execute()
     }
@@ -826,17 +827,6 @@ pub trait McuHwModel {
         cmd: u32,
         buf: &[u8],
     ) -> std::result::Result<(), ModelError> {
-        // Read a 0 to get the lock
-        if self.caliptra_soc_manager().soc_mbox().lock().read().lock() {
-            return Err(ModelError::UnableToLockMailbox);
-        }
-
-        // Mailbox lock value should read 1 now
-        // If not, the reads are likely being blocked by the AXI_USER check or some other issue
-        if !(self.caliptra_soc_manager().soc_mbox().lock().read().lock()) {
-            return Err(ModelError::UnableToReadMailbox);
-        }
-
         writeln!(
             self.output().logger(),
             "<<< Executing Caliptra mbox cmd 0x{cmd:08x} ({} bytes) from SoC",
@@ -844,15 +834,9 @@ pub trait McuHwModel {
         )
         .unwrap();
 
-        self.caliptra_soc_manager().soc_mbox().cmd().write(|_| cmd);
-        mbox_write_fifo(&self.caliptra_soc_manager().soc_mbox(), buf).map_err(ModelError::from)?;
-
-        // Ask the microcontroller to execute this command
         self.caliptra_soc_manager()
-            .soc_mbox()
-            .execute()
-            .write(|w| w.execute(true));
-
+            .start_mailbox_exec(cmd, buf)
+            .map_err(ModelError::from)?;
         Ok(())
     }
 
@@ -870,6 +854,7 @@ pub trait McuHwModel {
             .status()
             .cmd_busy()
         {
+            // SM: self.delay()
             self.step();
             timeout_cycles -= 1;
             if timeout_cycles == 0 {
