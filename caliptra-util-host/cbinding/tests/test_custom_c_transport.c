@@ -78,7 +78,7 @@ static const uint8_t MOCK_DEVICE_CAPABILITIES_RESPONSE[] = {
     0x00, 0x00, 0x00, 0x01,                         // Caliptra ROM
     0x00, 0x00, 0x00, 0x00,                         // MCU ROM unavailable
     0x00, 0x00, 0x00, 0xFF,                         // MCU RT
-    0x00, 0x02, 0x00, 0xEF,                         // External commands
+    0x00, 0x02, 0x01, 0xEF,                         // External commands
     0x00, 0x00, 0x00, 0x09,                         // Authorized subcommands
     // Reserved
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
@@ -271,6 +271,7 @@ int test_custom_c_transport_device_capabilities(void) {
     TEST_ASSERT(capabilities_response.common.fips_status == 1, "FIPS status should match expected mock value");
     TEST_ASSERT(capabilities_response.caps[23] == 0xFF, "MCU Runtime capabilities should match expected mock value");
     TEST_ASSERT(capabilities_response.caps[19] == 0x00, "MCU ROM capabilities should be unavailable");
+    TEST_ASSERT(capabilities_response.caps[26] == 0x01, "External commands should include ProvisionIdevCert");
     TEST_ASSERT(capabilities_response.caps[27] == 0xEF, "External commands should match expected mock value");
     TEST_ASSERT(capabilities_response.caps[31] == 0x09, "Authorized subcommands should match expected mock value");
     TEST_ASSERT(capabilities_response.caps[47] == 0x00, "Reserved capabilities should be zero");

@@ -7,7 +7,7 @@ use caliptra_mcu_attestation_evidence::SIGNED_OCP_EAT_MAX_SIZE;
 use caliptra_mcu_common_commands::{
     AsymAlgo, CaliptraCmdHandler, CaliptraCmdResult, CaliptraCompletionCode, CertChainInfo,
     DebugUnlockChallenge, DeviceCapabilities, EvidenceFormat, FirmwareVersion, GetLogResult,
-    PkiEntitySlot, ATTESTATION_NONCE_LEN,
+    PkiEntitySlot, ProvisionIdevCertMode, ATTESTATION_NONCE_LEN,
 };
 use caliptra_mcu_config::capabilities::{
     encode_capabilities, AuthorizedSubcommandCapabilities, ExternalCommandCapabilities,
@@ -91,6 +91,12 @@ fn external_command_capabilities() -> ExternalCommandCapabilities {
         && (cfg!(feature = "spdm") || cfg!(feature = "mcu-mbox-service"))
     {
         capabilities |= ExternalCommandCapabilities::EXPORT_ATTESTED_CSR;
+    }
+    if cfg!(feature = "cert-provisioning")
+        && !cfg!(feature = "vendor-certs-oob")
+        && (cfg!(feature = "spdm") || cfg!(feature = "mcu-mbox-service"))
+    {
+        capabilities |= ExternalCommandCapabilities::PROVISION_IDEV_CERT;
     }
     // GET_ATTESTATION is transport-agnostic: it is reachable over the SPDM VDM
     // transport and the MCU mailbox, so advertise it whenever either responder
@@ -372,6 +378,16 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
             data,
         )
         .await
+    }
+
+    async fn provision_idevid_cert<Alloc: ScratchAlloc>(
+        &self,
+        alloc: &Alloc,
+        algorithm: AsymAlgo,
+        mode: ProvisionIdevCertMode,
+        data: &[u8],
+    ) -> CaliptraCmdResult<()> {
+        device_ops::provision_idevid_cert(alloc, algorithm, mode, data).await
     }
 
     /// Drain entries of `log_type` from the backing store.
@@ -743,6 +759,12 @@ mod tests {
         assert_eq!(
             commands.contains(ExternalCommandCapabilities::EXPORT_ATTESTED_CSR),
             authorized_transport && cfg!(feature = "attested-csr")
+        );
+        assert_eq!(
+            commands.contains(ExternalCommandCapabilities::PROVISION_IDEV_CERT),
+            authorized_transport
+                && cfg!(feature = "cert-provisioning")
+                && !cfg!(feature = "vendor-certs-oob")
         );
         assert_eq!(
             commands.contains(ExternalCommandCapabilities::DEVICE_OWNERSHIP_TRANSFER),

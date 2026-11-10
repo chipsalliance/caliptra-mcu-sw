@@ -45,6 +45,7 @@ pub(crate) fn expected_mcu_mailbox_capabilities(core_capabilities: [u8; 16]) -> 
     caps[24..28].copy_from_slice(
         &(ExternalCommandCapabilities::GET_ATTESTATION
             | ExternalCommandCapabilities::EXPORT_ATTESTED_CSR
+            | ExternalCommandCapabilities::PROVISION_IDEV_CERT
             | ExternalCommandCapabilities::AUTHORIZED_COMMAND
             | ExternalCommandCapabilities::DEVICE_OWNERSHIP_TRANSFER)
             .bits()

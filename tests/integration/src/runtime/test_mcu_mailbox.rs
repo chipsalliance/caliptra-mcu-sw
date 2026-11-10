@@ -25,8 +25,9 @@ use caliptra_mcu_mbox_common::messages::{
     McuMldsaCmkPublicKeyReq, McuMldsaCmkPublicKeyResp, McuMldsaCmkSignReq, McuMldsaCmkSignResp,
     McuMldsaCmkVerifyReq, McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp,
     McuProdDebugUnlockTokenReq, ProductionAuthDebugUnlockReq, ProductionAuthDebugUnlockToken,
-    SetCertChainReq, SetCertChainResp, VendorPkHashStatusReq, GET_ATTESTATION_RESP_PREFIX_LEN,
-    MAX_RESP_DATA_SIZE, VENDOR_PQC_KEY_TYPE_LMS,
+    ProvisionIdevCertReq, ProvisionIdevCertResp, SetCertChainReq, SetCertChainResp,
+    VendorPkHashStatusReq, GET_ATTESTATION_RESP_PREFIX_LEN, MAX_RESP_DATA_SIZE,
+    VENDOR_PQC_KEY_TYPE_LMS,
 };
 use caliptra_mcu_romtime::McuBootMilestones;
 use minicbor::Decoder;
@@ -2844,6 +2845,159 @@ fn test_cert_chain_and_attestation_vendor_certs_oob() -> Result<()> {
             ..Default::default()
         }),
     );
+
+    Ok(())
+}
+
+#[cfg_attr(feature = "fpga_realtime", ignore)]
+#[test]
+fn test_provision_idev_cert_cmd() -> Result<()> {
+    use crate::test::{ECC_DEVID_CERT_DER, MLDSA_IDEVID_CERT};
+    use sha2::{Digest, Sha384};
+
+    const ALGO_ECC384: u32 = 1;
+    const ALGO_MLDSA87: u32 = 2;
+    const SLOT_VENDOR: u32 = 0;
+    const MODE_POPULATE_ONLY: u32 = 0;
+    const MODE_WRITE_OTP: u32 = 1;
+
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-mcu-mbox-cmds"),
+        unprovisioned_idevid_otp: true,
+        ..Default::default()
+    });
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    // 1. Before IDevID provisioning, OTP partitions 0x01 and 0x02 are erased (0xFF),
+    //    so Slot 0 omits IDevID from the DPE chain.
+    let mut initial_lens = [0u32; 2];
+    let mut initial_digests = [[0u8; 48]; 2];
+    for (idx, algo) in [(0usize, ALGO_ECC384), (1usize, ALGO_MLDSA87)] {
+        let info_resp = execute_raw_mcu_req(
+            &mut hw,
+            McuMailboxReq::GetCertChainInfo(GetCertChainInfoReq {
+                pki_entity_slot: SLOT_VENDOR,
+                algorithm: algo,
+                ..Default::default()
+            }),
+        )?;
+        let info = assert_fixed_response::<GetCertChainInfoResp>(&info_resp);
+        initial_lens[idx] = info.chain_len;
+        initial_digests[idx] = info.chain_digest;
+    }
+
+    // 2. Reject malformed DER length, invalid algorithm, invalid mode, and empty payload.
+    let mut truncated_ecc = ProvisionIdevCertReq {
+        algorithm: ALGO_ECC384,
+        mode: MODE_POPULATE_ONLY,
+        data_len: (ECC_DEVID_CERT_DER.len() - 1) as u32,
+        ..Default::default()
+    };
+    truncated_ecc.data[..ECC_DEVID_CERT_DER.len() - 1]
+        .copy_from_slice(&ECC_DEVID_CERT_DER[..ECC_DEVID_CERT_DER.len() - 1]);
+    let mut bad_algo = ProvisionIdevCertReq {
+        algorithm: u32::MAX,
+        mode: MODE_POPULATE_ONLY,
+        data_len: ECC_DEVID_CERT_DER.len() as u32,
+        ..Default::default()
+    };
+    bad_algo.data[..ECC_DEVID_CERT_DER.len()].copy_from_slice(&ECC_DEVID_CERT_DER);
+    let mut bad_mode = ProvisionIdevCertReq {
+        algorithm: ALGO_ECC384,
+        mode: 2,
+        data_len: ECC_DEVID_CERT_DER.len() as u32,
+        ..Default::default()
+    };
+    bad_mode.data[..ECC_DEVID_CERT_DER.len()].copy_from_slice(&ECC_DEVID_CERT_DER);
+    for bad_req in [
+        truncated_ecc,
+        bad_algo,
+        bad_mode,
+        ProvisionIdevCertReq {
+            algorithm: ALGO_ECC384,
+            mode: MODE_POPULATE_ONLY,
+            data_len: 0,
+            ..Default::default()
+        },
+    ] {
+        assert_mcu_req_fails(&mut hw, McuMailboxReq::ProvisionIdevCert(bad_req));
+    }
+
+    // 3. Provision ECC-384 with WriteOtp (mode = 1) and ML-DSA-87 with PopulateOnly (mode = 0),
+    //    then verify any subsequent PopulateOnly or WriteOtp for either algorithm is rejected.
+    for (idx, algo, mode, cert_der, chunk_size) in [
+        (
+            0usize,
+            ALGO_ECC384,
+            MODE_WRITE_OTP,
+            ECC_DEVID_CERT_DER.as_slice(),
+            512u32,
+        ),
+        (
+            1usize,
+            ALGO_MLDSA87,
+            MODE_POPULATE_ONLY,
+            MLDSA_IDEVID_CERT.as_slice(),
+            MAX_RESP_DATA_SIZE as u32,
+        ),
+    ] {
+        let mut req = ProvisionIdevCertReq {
+            algorithm: algo,
+            mode,
+            data_len: cert_der.len() as u32,
+            ..Default::default()
+        };
+        req.data[..cert_der.len()].copy_from_slice(cert_der);
+        let resp = execute_raw_mcu_req(&mut hw, McuMailboxReq::ProvisionIdevCert(req))?;
+        assert_eq!(
+            assert_fixed_response::<ProvisionIdevCertResp>(&resp)
+                .hdr
+                .fips_status,
+            MailboxRespHeader::FIPS_STATUS_APPROVED
+        );
+
+        // Verify Slot 0 cache was invalidated (`generation_counter` bumped) and chain now includes IDevID.
+        let info_resp = execute_raw_mcu_req(
+            &mut hw,
+            McuMailboxReq::GetCertChainInfo(GetCertChainInfoReq {
+                pki_entity_slot: SLOT_VENDOR,
+                algorithm: algo,
+                ..Default::default()
+            }),
+        )?;
+        let info = assert_fixed_response::<GetCertChainInfoResp>(&info_resp);
+        assert_eq!(
+            info.chain_len,
+            initial_lens[idx] + cert_der.len() as u32,
+            "Slot 0 chain_len must grow by IDevID DER length for algo {algo}"
+        );
+        assert_ne!(info.chain_digest, initial_digests[idx]);
+
+        let chain =
+            read_full_mci_cert_chain(&mut hw, SLOT_VENDOR, algo, info.chain_len, chunk_size)?;
+        assert_eq!(chain.len(), info.chain_len as usize);
+        let expected_digest: [u8; 48] = Sha384::digest(&chain).into();
+        assert_eq!(info.chain_digest, expected_digest);
+        assert!(
+            chain.windows(cert_der.len()).any(|w| w == cert_der),
+            "Slot 0 chain must contain the provisioned IDevID certificate for algo {algo}"
+        );
+
+        // 4. Subsequent PopulateOnly and WriteOtp must both be rejected (InvalidState).
+        for retry_mode in [MODE_POPULATE_ONLY, MODE_WRITE_OTP] {
+            let mut retry_req = ProvisionIdevCertReq {
+                algorithm: algo,
+                mode: retry_mode,
+                data_len: cert_der.len() as u32,
+                ..Default::default()
+            };
+            retry_req.data[..cert_der.len()].copy_from_slice(cert_der);
+            assert_mcu_req_fails(&mut hw, McuMailboxReq::ProvisionIdevCert(retry_req));
+        }
+    }
 
     Ok(())
 }

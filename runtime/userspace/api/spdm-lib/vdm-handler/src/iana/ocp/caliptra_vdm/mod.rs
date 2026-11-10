@@ -192,6 +192,7 @@ where
             }
             CaliptraVdmCommand::RequestDebugUnlock
             | CaliptraVdmCommand::AuthorizeDebugUnlockToken
+            | CaliptraVdmCommand::ProvisionIdevCert
             | CaliptraVdmCommand::DeviceOwnershipTransfer
             | CaliptraVdmCommand::AuthorizedCommand
             | CaliptraVdmCommand::OcpLock => 0,
@@ -353,6 +354,10 @@ where
                 )
                 .await
             }
+            Ok(CaliptraVdmCommand::ProvisionIdevCert) => {
+                commands::handle_provision_idevid_cert(self.commands, cmd_req, scratch, payload)
+                    .await
+            }
             #[cfg(feature = "attested-csr")]
             Ok(CaliptraVdmCommand::ExportAttestedCsr) => {
                 commands::export_attested_csr::handle(
@@ -430,7 +435,7 @@ mod tests {
     use caliptra_mcu_common_commands::{
         AsymAlgo, AuthorizationError, CaliptraCompletionCode as CommonCompletionCode,
         CommandAuthorizer, DeviceCapabilities, EvidenceFormat, FirmwareVersion, PkiEntitySlot,
-        VendorCommandLimits,
+        ProvisionIdevCertMode, VendorCommandLimits,
     };
     use caliptra_mcu_mbox_common::authorization::{AuthorizationMetadata, CommandAuthMode};
     use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
@@ -638,6 +643,7 @@ mod tests {
         generated_nonce: [u8; AUTH_CMD_NONCE_LEN],
         challenge: Mutex<Option<[u8; 48]>>,
         last_attested_csr_args: Mutex<Option<AttestedCsrArgs>>,
+        last_provision_idev_args: Mutex<Option<(AsymAlgo, ProvisionIdevCertMode, Vec<u8>)>>,
     }
 
     impl TestCommands {
@@ -663,6 +669,7 @@ mod tests {
                 generated_nonce: TEST_AUTH_CHALLENGE,
                 challenge: Mutex::new(None),
                 last_attested_csr_args: Mutex::new(None),
+                last_provision_idev_args: Mutex::new(None),
             }
         }
 
@@ -688,6 +695,7 @@ mod tests {
                 generated_nonce: TEST_AUTH_CHALLENGE,
                 challenge: Mutex::new(None),
                 last_attested_csr_args: Mutex::new(None),
+                last_provision_idev_args: Mutex::new(None),
             }
         }
 
@@ -847,6 +855,20 @@ mod tests {
                 .lock()
                 .unwrap()
                 .replace(token_data.to_vec());
+            Ok(())
+        }
+
+        async fn provision_idevid_cert<Alloc: mcu_caliptra_api::ScratchAlloc>(
+            &self,
+            _alloc: &Alloc,
+            algorithm: AsymAlgo,
+            mode: ProvisionIdevCertMode,
+            data: &[u8],
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            if data == [0xFF; 4] {
+                return Err(CommonCompletionCode::InvalidState);
+            }
+            *self.last_provision_idev_args.lock().unwrap() = Some((algorithm, mode, data.to_vec()));
             Ok(())
         }
 
@@ -1304,10 +1326,127 @@ mod tests {
             CaliptraVdmCommand::GetAttestation,
             CaliptraVdmCommand::RequestDebugUnlock,
             CaliptraVdmCommand::AuthorizeDebugUnlockToken,
+            CaliptraVdmCommand::ProvisionIdevCert,
             CaliptraVdmCommand::AuthorizedCommand,
         ] {
             let req = [CALIPTRA_VDM_COMMAND_VERSION, command as u8];
             assert_eq!(backend_capacity(&req), 0, "{command:?} must stay inline");
+        }
+    }
+
+    #[test]
+    fn provision_idevid_cert_dispatches_and_validates_payload() {
+        let cmds = TestCommands::new(0);
+        let cert_bytes = [0x30u8, 0x03, 0x02, 0x01, 0x01];
+
+        for (algo, mode) in [
+            (AsymAlgo::EccP384, ProvisionIdevCertMode::PopulateOnly),
+            (AsymAlgo::Mldsa87, ProvisionIdevCertMode::WriteOtp),
+        ] {
+            let mut req = vec![
+                CALIPTRA_VDM_COMMAND_VERSION,
+                CaliptraVdmCommand::ProvisionIdevCert as u8,
+            ];
+            req.extend_from_slice(&(algo as u32).to_le_bytes());
+            req.extend_from_slice(&(mode as u32).to_le_bytes());
+            req.extend_from_slice(&(cert_bytes.len() as u32).to_le_bytes());
+            req.extend_from_slice(&cert_bytes);
+
+            let (response, inline, _) = dispatch(&cmds, &req, 16, 0);
+            assert_inline(response, 3);
+            assert_eq!(inline[0], CALIPTRA_VDM_COMMAND_VERSION);
+            assert_eq!(inline[1], CaliptraVdmCommand::ProvisionIdevCert as u8);
+            assert_eq!(inline[2], CaliptraCompletionCode::Success as u8);
+            assert_eq!(
+                cmds.last_provision_idev_args.lock().unwrap().take(),
+                Some((algo, mode, cert_bytes.to_vec())),
+            );
+        }
+
+        // Handler InvalidState propagates as CaliptraCompletionCode::InvalidState.
+        let mut locked_req = vec![
+            CALIPTRA_VDM_COMMAND_VERSION,
+            CaliptraVdmCommand::ProvisionIdevCert as u8,
+        ];
+        locked_req.extend_from_slice(&(AsymAlgo::EccP384 as u32).to_le_bytes());
+        locked_req.extend_from_slice(&(ProvisionIdevCertMode::WriteOtp as u32).to_le_bytes());
+        locked_req.extend_from_slice(&4u32.to_le_bytes());
+        locked_req.extend_from_slice(&[0xFF; 4]);
+        let (response, inline, _) = dispatch(&cmds, &locked_req, 16, 0);
+        assert_inline(response, 3);
+        assert_eq!(inline[2], CaliptraCompletionCode::InvalidState as u8);
+
+        // Truncated header, zero data_len, mismatched data_len, bad algo, or bad mode fail.
+        let bad_cases = [
+            (
+                vec![
+                    CALIPTRA_VDM_COMMAND_VERSION,
+                    CaliptraVdmCommand::ProvisionIdevCert as u8,
+                    0,
+                ],
+                CaliptraCompletionCode::InvalidPayloadSize,
+            ),
+            (
+                {
+                    let mut r = vec![
+                        CALIPTRA_VDM_COMMAND_VERSION,
+                        CaliptraVdmCommand::ProvisionIdevCert as u8,
+                    ];
+                    r.extend_from_slice(&(AsymAlgo::EccP384 as u32).to_le_bytes());
+                    r.extend_from_slice(&0u32.to_le_bytes());
+                    r.extend_from_slice(&0u32.to_le_bytes());
+                    r
+                },
+                CaliptraCompletionCode::InvalidPayloadSize,
+            ),
+            (
+                {
+                    let mut r = vec![
+                        CALIPTRA_VDM_COMMAND_VERSION,
+                        CaliptraVdmCommand::ProvisionIdevCert as u8,
+                    ];
+                    r.extend_from_slice(&(AsymAlgo::EccP384 as u32).to_le_bytes());
+                    r.extend_from_slice(&0u32.to_le_bytes());
+                    r.extend_from_slice(&5u32.to_le_bytes());
+                    r.extend_from_slice(&[0x30, 0x02, 0x05, 0x00]);
+                    r
+                },
+                CaliptraCompletionCode::InvalidPayloadSize,
+            ),
+            (
+                {
+                    let mut r = vec![
+                        CALIPTRA_VDM_COMMAND_VERSION,
+                        CaliptraVdmCommand::ProvisionIdevCert as u8,
+                    ];
+                    r.extend_from_slice(&99u32.to_le_bytes());
+                    r.extend_from_slice(&0u32.to_le_bytes());
+                    r.extend_from_slice(&4u32.to_le_bytes());
+                    r.extend_from_slice(&[0x30, 0x02, 0x05, 0x00]);
+                    r
+                },
+                CaliptraCompletionCode::InvalidParameter,
+            ),
+            (
+                {
+                    let mut r = vec![
+                        CALIPTRA_VDM_COMMAND_VERSION,
+                        CaliptraVdmCommand::ProvisionIdevCert as u8,
+                    ];
+                    r.extend_from_slice(&(AsymAlgo::EccP384 as u32).to_le_bytes());
+                    r.extend_from_slice(&2u32.to_le_bytes());
+                    r.extend_from_slice(&4u32.to_le_bytes());
+                    r.extend_from_slice(&[0x30, 0x02, 0x05, 0x00]);
+                    r
+                },
+                CaliptraCompletionCode::InvalidParameter,
+            ),
+        ];
+
+        for (req, expected) in bad_cases {
+            let (response, inline, _) = dispatch(&cmds, &req, 16, 0);
+            assert_inline(response, 3);
+            assert_eq!(inline[2], expected as u8);
         }
     }
 

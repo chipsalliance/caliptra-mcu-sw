@@ -13,8 +13,8 @@ use caliptra_mcu_attestation_evidence::pcr_quote::{encode_pcr_quote, PcrQuoteAlg
 use caliptra_mcu_attestation_evidence::{encode_signed_ocp_eat, OcpEatAlgorithm};
 use caliptra_mcu_common_commands::{
     AsymAlgo, CaliptraCmdResult, CaliptraCompletionCode, CertChainInfo, EvidenceFormat,
-    GetLogResult, LogType, PkiEntitySlot, ATTESTATION_NONCE_LEN, DEBUG_UNLOCK_CHALLENGE_SIZE,
-    DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE,
+    GetLogResult, LogType, PkiEntitySlot, ProvisionIdevCertMode, ATTESTATION_NONCE_LEN,
+    DEBUG_UNLOCK_CHALLENGE_SIZE, DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE,
 };
 use caliptra_mcu_libsyscall_caliptra::flash::SpiFlash;
 use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError, PayloadStream};
@@ -688,6 +688,29 @@ pub async fn set_cert_chain<A: ScratchAlloc>(
             total_size,
             data,
         );
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+}
+
+pub async fn provision_idevid_cert<A: ScratchAlloc>(
+    alloc: &A,
+    algorithm: AsymAlgo,
+    mode: ProvisionIdevCertMode,
+    data: &[u8],
+) -> CaliptraCmdResult<()> {
+    #[cfg(all(feature = "cert-provisioning", not(feature = "vendor-certs-oob")))]
+    {
+        crate::cert_store::provision_idevid_cert(
+            alloc,
+            algorithm.into(),
+            mode == ProvisionIdevCertMode::WriteOtp,
+            data,
+        )
+        .await
+    }
+    #[cfg(not(all(feature = "cert-provisioning", not(feature = "vendor-certs-oob"))))]
+    {
+        let _ = (alloc, algorithm, mode, data);
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 }
