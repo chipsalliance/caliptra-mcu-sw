@@ -38,10 +38,15 @@ pub trait VariableSizeBytes: IntoBytes + FromBytes + Immutable + Sized {
 }
 
 /// Trait for converting internal Caliptra commands to external mailbox format
-pub trait FromInternalRequest<T> {
+pub trait FromInternalRequest<T>: IntoBytes + Immutable {
     /// Convert from internal request type to external request type
     /// The command_code is used for checksum calculation
     fn from_internal(internal: &T, command_code: u32) -> Self;
+
+    /// Serialized request bytes to transmit on the wire (defaults to `self.as_bytes()`).
+    fn as_wire_bytes(&self) -> &[u8] {
+        self.as_bytes()
+    }
 }
 
 /// Trait for converting external mailbox responses to internal Caliptra format  
@@ -108,7 +113,7 @@ where
 
     // Send to mailbox
     let response = mailbox
-        .send_command(external_cmd_code, external_req.as_bytes())
+        .send_command(external_cmd_code, external_req.as_wire_bytes())
         .map_err(crate::TransportError::from)?;
 
     // Parse external response using variable-size aware parsing

@@ -8,7 +8,7 @@ use caliptra_mcu_common_commands::command::{execute_authorized, CommandPolicy, C
 use caliptra_mcu_common_commands::{
     AsymAlgo, CaliptraCmdHandler, CaliptraCompletionCode, CertChainInfo, CommandAuthorizer,
     DebugUnlockChallenge, DeviceCapabilities, EvidenceFormat, FirmwareVersion, GetLogResult,
-    PkiEntitySlot, EVIDENCE_FORMAT_QUERY,
+    PkiEntitySlot, ProvisionIdevCertMode, EVIDENCE_FORMAT_QUERY,
 };
 use caliptra_mcu_libsyscall_caliptra::mcu_mbox::MbxCmdStatus;
 #[cfg(feature = "unsafe-allow-mcu-signing-oracle")]
@@ -22,9 +22,10 @@ use caliptra_mcu_mbox_common::messages::{
     GetDpeCertChainReq, GetDpeCertChainResp, GetLogReq, LogType, MailboxReqHeader,
     MailboxRespHeader, MailboxRespHeaderVarSize, McuMailboxReq, McuMailboxResp,
     McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq,
-    McuResponseVarSize, SetCertChainReq, SetCertChainResp, VendorPkHashStatusReq,
-    VendorPkHashStatusResp, DEVICE_CAPS_SIZE, GET_ATTESTATION_RESP_PREFIX_LEN,
-    MAX_FW_VERSION_STR_LEN, MAX_RESP_DATA_SIZE,
+    McuResponseVarSize, ProvisionIdevCertReq, ProvisionIdevCertResp, SetCertChainReq,
+    SetCertChainResp, VendorPkHashStatusReq, VendorPkHashStatusResp, DEVICE_CAPS_SIZE,
+    GET_ATTESTATION_RESP_PREFIX_LEN, MAX_FW_VERSION_STR_LEN, MAX_IDEV_CERT_SIZE,
+    MAX_RESP_DATA_SIZE,
 };
 #[cfg(feature = "allow-mcu-signer-cert")]
 use caliptra_mcu_mbox_common::messages::{DpeSignerContextCertReq, EndorsementAlgorithm};
@@ -298,6 +299,9 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer> CmdInterface<'a, H, A> {
                 }
                 CommandId::MC_GET_CERT_CHAIN => self.handle_get_cert_chain(req, resp_buf).await,
                 CommandId::MC_SET_CERT_CHAIN => self.handle_set_cert_chain(req, resp_buf).await,
+                CommandId::MC_PROVISION_IDEV_CERT => {
+                    self.handle_provision_idevid_cert(req, resp_buf).await
+                }
                 CommandId::MC_PROD_DEBUG_UNLOCK_TOKEN => {
                     self.handle_prod_debug_unlock_token(req, resp_buf).await
                 }
@@ -691,6 +695,18 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer> CmdInterface<'a, H, A> {
         let len =
             stage_set_cert_chain(self.non_crypto_cmds_handler, self.scratch, req, resp_buf).await?;
         Ok((&mut resp_buf[..len], MbxCmdStatus::Complete))
+    }
+
+    async fn handle_provision_idevid_cert<'r>(
+        &self,
+        req: &[u8],
+        resp_buf: &'r mut [u8],
+    ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
+        let len =
+            stage_provision_idevid_cert(self.non_crypto_cmds_handler, self.scratch, req, resp_buf)
+                .await?;
+        let resp = resp_buf.get_mut(..len).ok_or(errors::INVALID_PARAMS)?;
+        Ok((resp, MbxCmdStatus::Complete))
     }
 
     /// Handles `MC_GET_ATTESTATION`.
@@ -1089,6 +1105,7 @@ fn response_buffer_size<H: CaliptraCmdHandler>(cmd: u32, req: &[u8]) -> usize {
         c if c == CommandId::MC_GET_CERT_CHAIN_INFO => size_of::<GetCertChainInfoResp>(),
         c if c == CommandId::MC_GET_CERT_CHAIN => size_of::<GetCertChainResp>(),
         c if c == CommandId::MC_SET_CERT_CHAIN => size_of::<SetCertChainResp>(),
+        c if c == CommandId::MC_PROVISION_IDEV_CERT => size_of::<ProvisionIdevCertResp>(),
         #[cfg(feature = "attested-csr")]
         c if c == CommandId::MC_EXPORT_ATTESTED_CSR => size_of::<ExportAttestedCsrResp>(),
         c if c == CommandId::MC_GET_DPE_CERTIFICATE_CHAIN => size_of::<GetDpeCertChainResp>(),
@@ -1329,6 +1346,43 @@ async fn stage_set_cert_chain<H: CaliptraCmdHandler, Alloc: ScratchAlloc>(
     Ok(size_of::<SetCertChainResp>())
 }
 
+#[repr(C)]
+#[derive(FromBytes, Immutable, KnownLayout)]
+struct ProvisionIdevCertReqPrefix {
+    hdr: MailboxReqHeader,
+    algorithm: u32,
+    mode: u32,
+    data_len: u32,
+}
+
+async fn stage_provision_idevid_cert<H: CaliptraCmdHandler, Alloc: ScratchAlloc>(
+    handler: &H,
+    alloc: &Alloc,
+    req: &[u8],
+    resp_buf: &mut [u8],
+) -> McuResult<usize> {
+    let (prefix, rest) =
+        ProvisionIdevCertReqPrefix::ref_from_prefix(req).map_err(|_| errors::INVALID_PARAMS)?;
+    let _ = prefix.hdr;
+    let data_len = prefix.data_len as usize;
+    if data_len > MAX_IDEV_CERT_SIZE
+        || (rest.len() != data_len && req.len() != size_of::<ProvisionIdevCertReq>())
+    {
+        return Err(errors::INVALID_PARAMS);
+    }
+    let data = rest.get(..data_len).ok_or(errors::INVALID_PARAMS)?;
+    let algorithm = AsymAlgo::try_from(prefix.algorithm).map_err(|_| errors::INVALID_PARAMS)?;
+    let mode = ProvisionIdevCertMode::try_from(prefix.mode).map_err(|_| errors::INVALID_PARAMS)?;
+    let (resp, _) =
+        ProvisionIdevCertResp::mut_from_prefix(resp_buf).map_err(|_| errors::INVALID_PARAMS)?;
+    handler
+        .provision_idevid_cert(alloc, algorithm, mode, data)
+        .await
+        .map_err(map_common_cmd_error)?;
+    *resp = ProvisionIdevCertResp::default();
+    Ok(size_of::<ProvisionIdevCertResp>())
+}
+
 fn populate_response_checksum(resp: &mut [u8]) -> McuResult<()> {
     if resp.len() < size_of::<MailboxRespHeader>() {
         return Err(errors::INVALID_PARAMS);
@@ -1501,6 +1555,22 @@ mod tests {
                 return Ok(());
             }
             if data.is_empty() || offset + (data.len() as u32) > total_size {
+                return Err(CaliptraCompletionCode::InvalidParameter);
+            }
+            Ok(())
+        }
+
+        async fn provision_idevid_cert<Alloc: ScratchAlloc>(
+            &self,
+            _alloc: &Alloc,
+            _algorithm: AsymAlgo,
+            _mode: ProvisionIdevCertMode,
+            data: &[u8],
+        ) -> caliptra_mcu_common_commands::CaliptraCmdResult<()> {
+            if data == [0xFF; 4] {
+                return Err(CaliptraCompletionCode::InvalidState);
+            }
+            if data.first() != Some(&0x30) {
                 return Err(CaliptraCompletionCode::InvalidParameter);
             }
             Ok(())
@@ -1805,6 +1875,106 @@ mod tests {
                 &mut resp_buf,
             )),
             Err(errors::UNSUPPORTED_COMMAND),
+        );
+    }
+
+    #[test]
+    fn provision_idevid_cert_parses_variable_payload_and_validates_bounds() {
+        assert_eq!(
+            response_buffer_size::<TestHandler>(CommandId::MC_PROVISION_IDEV_CERT.0, &[]),
+            size_of::<ProvisionIdevCertResp>(),
+        );
+
+        let mut req = ProvisionIdevCertReq {
+            hdr: MailboxReqHeader::default(),
+            algorithm: AsymAlgo::EccP384 as u32,
+            mode: ProvisionIdevCertMode::PopulateOnly as u32,
+            data_len: 4,
+            data: [0u8; MAX_IDEV_CERT_SIZE],
+        };
+        req.data[..4].copy_from_slice(&[0x30, 0x02, 0x05, 0x00]);
+        let mut resp_buf = vec![0u8; size_of::<ProvisionIdevCertResp>()];
+
+        for mode in [
+            ProvisionIdevCertMode::PopulateOnly as u32,
+            ProvisionIdevCertMode::WriteOtp as u32,
+        ] {
+            req.mode = mode;
+            let len = block_on(stage_provision_idevid_cert(
+                &TestHandler,
+                &TestAlloc,
+                req.as_bytes_partial().unwrap(),
+                &mut resp_buf,
+            ))
+            .unwrap();
+            assert_eq!(len, size_of::<ProvisionIdevCertResp>());
+        }
+
+        // Locked / already-populated state maps InvalidState to MCU_MBOX_COMMON.
+        req.data[..4].fill(0xFF);
+        assert_eq!(
+            block_on(stage_provision_idevid_cert(
+                &TestHandler,
+                &TestAlloc,
+                req.as_bytes_partial().unwrap(),
+                &mut resp_buf,
+            )),
+            Err(errors::MCU_MBOX_COMMON),
+        );
+        req.data[..4].copy_from_slice(&[0x30, 0x02, 0x05, 0x00]);
+
+        // Empty payload, unknown algorithm, unknown mode, or trailing-byte mismatch are rejected.
+        let empty_req = ProvisionIdevCertReq {
+            hdr: MailboxReqHeader::default(),
+            data_len: 0,
+            ..req
+        };
+        assert_eq!(
+            block_on(stage_provision_idevid_cert(
+                &TestHandler,
+                &TestAlloc,
+                empty_req.as_bytes_partial().unwrap(),
+                &mut resp_buf,
+            )),
+            Err(errors::INVALID_PARAMS),
+        );
+
+        for bad_req in [
+            ProvisionIdevCertReq {
+                hdr: MailboxReqHeader::default(),
+                algorithm: 99,
+                ..req
+            },
+            ProvisionIdevCertReq {
+                hdr: MailboxReqHeader::default(),
+                mode: 2,
+                ..req
+            },
+        ] {
+            assert_eq!(
+                block_on(stage_provision_idevid_cert(
+                    &TestHandler,
+                    &TestAlloc,
+                    bad_req.as_bytes_partial().unwrap(),
+                    &mut resp_buf,
+                )),
+                Err(errors::INVALID_PARAMS),
+            );
+        }
+
+        // Truncated request (< HEADER_SIZE) is rejected.
+        let truncated_req = ProvisionIdevCertReq {
+            hdr: MailboxReqHeader::default(),
+            ..req
+        };
+        assert_eq!(
+            block_on(stage_provision_idevid_cert(
+                &TestHandler,
+                &TestAlloc,
+                &truncated_req.as_bytes_partial().unwrap()[..ProvisionIdevCertReq::HEADER_SIZE - 1],
+                &mut resp_buf,
+            )),
+            Err(errors::INVALID_PARAMS),
         );
     }
 

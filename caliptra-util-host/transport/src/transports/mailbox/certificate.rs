@@ -9,8 +9,9 @@ use super::checksum::calc_checksum;
 use super::command_traits::*;
 use caliptra_mcu_core_util_host_command_types::certificate::{
     ExportAttestedCsrRequest, ExportAttestedCsrResponse, GetCertChainInfoRequest,
-    GetCertChainInfoResponse, GetCertChainRequest, GetCertChainResponse, SetCertChainRequest,
-    SetCertChainResponse, CERT_CHAIN_DIGEST_SIZE, MAX_CERT_CHAIN_CHUNK_SIZE, MAX_CSR_DATA_SIZE,
+    GetCertChainInfoResponse, GetCertChainRequest, GetCertChainResponse, ProvisionIdevCertRequest,
+    ProvisionIdevCertResponse, SetCertChainRequest, SetCertChainResponse, CERT_CHAIN_DIGEST_SIZE,
+    MAX_CERT_CHAIN_CHUNK_SIZE, MAX_CSR_DATA_SIZE, MAX_IDEV_CERT_SIZE,
 };
 use caliptra_mcu_core_util_host_command_types::CommonResponse;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
@@ -376,6 +377,74 @@ define_command!(
     ExtCmdSetCertChainResponse
 );
 
+// ============================================================================
+// MC_PROVISION_IDEV_CERT Command (0x4D50_4943 - "MPIC")
+// ============================================================================
+
+/// External command: Provision IDevID certificate request (16 + `data_len` bytes)
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+pub struct ExtCmdProvisionIdevCertRequest {
+    pub chksum: u32,
+    pub algorithm: u32,
+    pub mode: u32,
+    pub data_len: u32,
+    pub data: [u8; MAX_IDEV_CERT_SIZE],
+}
+
+/// External command: Provision IDevID certificate response (8 bytes)
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, IntoBytes, FromBytes, Immutable)]
+pub struct ExtCmdProvisionIdevCertResponse {
+    pub chksum: u32,
+    pub fips_status: u32,
+}
+
+impl FromInternalRequest<ProvisionIdevCertRequest> for ExtCmdProvisionIdevCertRequest {
+    fn from_internal(internal: &ProvisionIdevCertRequest, command_code: u32) -> Self {
+        let mut data = [0u8; MAX_IDEV_CERT_SIZE];
+        let valid_len = (internal.data_len as usize).min(MAX_IDEV_CERT_SIZE);
+        data[..valid_len].copy_from_slice(&internal.data[..valid_len]);
+
+        let mut req = Self {
+            chksum: 0,
+            algorithm: internal.algorithm,
+            mode: internal.mode,
+            data_len: internal.data_len,
+            data,
+        };
+        req.chksum = calc_checksum(command_code, &req.as_wire_bytes()[4..]);
+        req
+    }
+
+    fn as_wire_bytes(&self) -> &[u8] {
+        let valid_len = (self.data_len as usize).min(MAX_IDEV_CERT_SIZE);
+        &self.as_bytes()[..16 + valid_len]
+    }
+}
+
+impl ToInternalResponse<ProvisionIdevCertResponse> for ExtCmdProvisionIdevCertResponse {
+    fn to_internal(&self) -> ProvisionIdevCertResponse {
+        ProvisionIdevCertResponse {
+            common: CommonResponse {
+                fips_status: self.fips_status,
+            },
+        }
+    }
+}
+
+impl VariableSizeBytes for ExtCmdProvisionIdevCertRequest {}
+impl VariableSizeBytes for ExtCmdProvisionIdevCertResponse {}
+
+define_command!(
+    ProvisionIdevCertCmd,
+    0x4D50_4943, // MC_PROVISION_IDEV_CERT - "MPIC"
+    ProvisionIdevCertRequest,
+    ProvisionIdevCertResponse,
+    ExtCmdProvisionIdevCertRequest,
+    ExtCmdProvisionIdevCertResponse
+);
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -449,5 +518,31 @@ mod tests {
             ext.chksum,
             calc_checksum(0x4D53_4343, &ext.as_bytes()[4..28 + chunk.len()])
         );
+    }
+
+    #[test]
+    fn provision_idevid_cert_request_serializes_variable_payload_and_checksum() {
+        use caliptra_mcu_core_util_host_command_types::certificate::ProvisionIdevCertMode;
+
+        assert_eq!(
+            core::mem::size_of::<ExtCmdProvisionIdevCertRequest>(),
+            16 + MAX_IDEV_CERT_SIZE
+        );
+        assert_eq!(core::mem::size_of::<ExtCmdProvisionIdevCertResponse>(), 8);
+
+        let cert = [0x30u8, 0x03, 0x02, 0x01, 0x01];
+        let mut req = ProvisionIdevCertRequest::new(
+            AsymAlgo::EccP384,
+            ProvisionIdevCertMode::WriteOtp,
+            &cert,
+        )
+        .unwrap();
+        req.data[cert.len()..cert.len() + 4].copy_from_slice(&[0xFF; 4]);
+
+        let ext = ExtCmdProvisionIdevCertRequest::from_internal(&req, 0x4D50_4943);
+        let wire = ext.as_wire_bytes();
+        assert_eq!(wire.len(), 16 + cert.len());
+        assert_eq!(&wire[16..], &cert);
+        assert_eq!(ext.chksum, calc_checksum(0x4D50_4943, &wire[4..]));
     }
 }

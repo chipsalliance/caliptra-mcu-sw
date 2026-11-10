@@ -373,6 +373,89 @@ impl CommandRequest for SetCertChainRequest {
 
 impl CommandResponse for SetCertChainResponse {}
 
+// ============================================================================
+// MC_PROVISION_IDEV_CERT Command (0x4D50_4943 - "MPIC" / VDM 0x09)
+// ============================================================================
+
+/// Maximum `IDevID` certificate or signature payload size.
+pub const MAX_IDEV_CERT_SIZE: usize = caliptra_mcu_mbox_common::messages::MAX_IDEV_CERT_SIZE;
+
+/// Operation mode for `MC_PROVISION_IDEV_CERT` (`0x4D50_4943`) and SPDM VDM
+/// `PROVISION_IDEV_CERT` (`0x09`).
+#[repr(u32)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum ProvisionIdevCertMode {
+    /// Populate the `IDevID` certificate into Caliptra Core DPE and update
+    /// runtime `SharedCertStore` metadata without writing OTP.
+    #[default]
+    PopulateOnly = 0,
+    /// Persist the payload into the external OTP `IDevID` partition, lock the
+    /// partition, and populate the `IDevID` certificate into Caliptra Core DPE.
+    WriteOtp = 1,
+}
+
+impl TryFrom<u32> for ProvisionIdevCertMode {
+    type Error = ();
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::PopulateOnly),
+            1 => Ok(Self::WriteOtp),
+            _ => Err(()),
+        }
+    }
+}
+
+/// Request for `MC_PROVISION_IDEV_CERT` (`0x4D50_4943`, `"MPIC"`).
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+pub struct ProvisionIdevCertRequest {
+    /// Asymmetric algorithm (`AsymAlgo` wire value).
+    pub algorithm: u32,
+    /// Provisioning mode (`ProvisionIdevCertMode` wire value).
+    pub mode: u32,
+    /// Number of valid bytes in `data` (`1..=MAX_IDEV_CERT_SIZE`).
+    pub data_len: u32,
+    /// Opaque `IDevID` DER certificate or signature payload bytes.
+    pub data: [u8; MAX_IDEV_CERT_SIZE],
+}
+
+impl ProvisionIdevCertRequest {
+    pub fn new(algorithm: AsymAlgo, mode: ProvisionIdevCertMode, payload: &[u8]) -> Option<Self> {
+        if payload.is_empty() || payload.len() > MAX_IDEV_CERT_SIZE {
+            return None;
+        }
+        let mut data = [0u8; MAX_IDEV_CERT_SIZE];
+        data[..payload.len()].copy_from_slice(payload);
+        Some(Self {
+            algorithm: algorithm as u32,
+            mode: mode as u32,
+            data_len: payload.len() as u32,
+            data,
+        })
+    }
+
+    /// Returns the valid slice of `data` (`..data_len`).
+    pub fn data_bytes(&self) -> &[u8] {
+        let len = (self.data_len as usize).min(MAX_IDEV_CERT_SIZE);
+        &self.data[..len]
+    }
+}
+
+/// Response for `MC_PROVISION_IDEV_CERT` (`0x4D50_4943`, `"MPIC"`).
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+pub struct ProvisionIdevCertResponse {
+    pub common: CommonResponse,
+}
+
+impl CommandRequest for ProvisionIdevCertRequest {
+    type Response = ProvisionIdevCertResponse;
+    const COMMAND_ID: CaliptraCommandId = CaliptraCommandId::ProvisionIdevCert;
+}
+
+impl CommandResponse for ProvisionIdevCertResponse {}
+
 #[cfg(test)]
 mod tests {
     use super::*;
