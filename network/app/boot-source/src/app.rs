@@ -66,8 +66,8 @@ pub struct BootSourceApp<'a, M: NetworkMailbox<'a>> {
     mbox: &'a M,
     state: Cell<AppState>,
     toc: UnsafeCell<Toc>,
-    /// Active TFTP transfer state: firmware ID being downloaded.
-    active_firmware_id: Cell<u8>,
+    /// Active TFTP transfer state: identifier being downloaded.
+    active_identifier: Cell<u32>,
     /// Sequence number for the current image transfer.
     sequence_number: Cell<u16>,
     /// Byte offset into the current image transfer.
@@ -89,7 +89,7 @@ impl<'a, M: NetworkMailbox<'a>> BootSourceApp<'a, M> {
             mbox,
             state: Cell::new(AppState::Idle),
             toc: UnsafeCell::new(Toc::new()),
-            active_firmware_id: Cell::new(0),
+            active_identifier: Cell::new(0),
             sequence_number: Cell::new(0),
             transfer_offset: Cell::new(0),
             max_chunk_size,
@@ -339,7 +339,7 @@ impl<'a, M: NetworkMailbox<'a>> BootSourceApp<'a, M> {
         // This is deferred from handle_image_download to avoid filling the
         // TFTP buffer while the MCU processes the zero-payload header.
         if !self.tftp_started.get() {
-            let entry = match self.toc_ref().find(self.active_firmware_id.get()) {
+            let entry = match self.toc_ref().find(self.active_identifier.get()) {
                 Some(e) => e,
                 None => {
                     let _ = handler::send_error(
@@ -383,7 +383,7 @@ impl<'a, M: NetworkMailbox<'a>> BootSourceApp<'a, M> {
             return; // No data yet, keep polling.
         }
 
-        let expected_size = match self.toc_ref().find(self.active_firmware_id.get()) {
+        let expected_size = match self.toc_ref().find(self.active_identifier.get()) {
             Some(entry) => entry.image_size,
             None => {
                 let _ = handler::send_error(
@@ -443,14 +443,14 @@ impl<'a, M: NetworkMailbox<'a>> BootSourceApp<'a, M> {
                 handler::handle_image_metadata(self.mbox, data, self.toc_ref())
             }
             (AppState::Ready, MessageType::ImageDownloadRequest) => {
-                let fw_id = handler::handle_image_download(
+                let identifier = handler::handle_image_download(
                     self.mbox,
                     data,
                     self.toc_ref(),
                     &self.sequence_number,
                     &self.transfer_offset,
                 )?;
-                self.active_firmware_id.set(fw_id);
+                self.active_identifier.set(identifier);
                 self.tftp_started.set(false);
                 self.state.set(AppState::Streaming);
                 Ok(())
@@ -468,7 +468,7 @@ impl<'a, M: NetworkMailbox<'a>> BootSourceApp<'a, M> {
             (_, MessageType::Finalize) => {
                 handler::handle_finalize(self.mbox, data, self.toc_mut())?;
                 self.state.set(AppState::Idle);
-                self.active_firmware_id.set(0);
+                self.active_identifier.set(0);
                 self.sequence_number.set(0);
                 self.transfer_offset.set(0);
                 Ok(())
