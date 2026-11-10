@@ -201,6 +201,14 @@ mod tests {
             CaliptraVdmCompletionCode::try_from(0xC1).unwrap(),
             CaliptraVdmCompletionCode::CaliptraBufferTooSmall
         );
+        assert_eq!(
+            CaliptraVdmCompletionCode::try_from(0xC2),
+            Err(SpdmVdmProtocolError::UnknownCompletionCode(0xC2))
+        );
+        assert_eq!(
+            CaliptraVdmCompletionCode::try_from(0xC3),
+            Err(SpdmVdmProtocolError::UnknownCompletionCode(0xC3))
+        );
         assert!(CaliptraVdmCompletionCode::try_from(0x10).is_err());
     }
 

@@ -2479,6 +2479,45 @@ mod tests {
     }
 
     #[test]
+    fn retired_zeroization_command_is_rejected_by_shared_dispatch_and_spdm() {
+        use caliptra_mcu_common_commands::command::{execute_authorized, CommandPolicy};
+
+        let cmds = TestCommands::new(0).with_authorization();
+        issue_test_challenge(&cmds);
+        let command_id = 0x4D5A_524D;
+        let payload = [0x5A; 16];
+        let signature = test_signature(command_id, &payload, &TEST_AUTH_CHALLENGE);
+        let req = authorized_req_with_sig(command_id, &payload, &signature);
+        let mut output = [0xCC; 8];
+
+        assert_eq!(
+            block_on(execute_authorized(
+                &cmds,
+                &cmds,
+                &TestAlloc,
+                &req[VDM_HEADER_LEN..],
+                &mut output,
+                CommandPolicy::MCI,
+            )),
+            Err(CommonCompletionCode::InvalidParameter)
+        );
+        assert_eq!(output, [0xCC; 8]);
+
+        let (response, inline, _) = dispatch(&cmds, &req, 16, 0);
+        assert_inline(response, 3);
+        assert_eq!(
+            &inline[..3],
+            &[
+                CALIPTRA_VDM_COMMAND_VERSION,
+                CaliptraVdmCommand::AuthorizedCommand as u8,
+                CaliptraCompletionCode::InvalidParameter as u8,
+            ]
+        );
+        assert_eq!(*cmds.challenge.lock().unwrap(), Some(TEST_AUTH_CHALLENGE));
+        assert_eq!(*cmds.authorized_operation.lock().unwrap(), None);
+    }
+
+    #[test]
     fn authorized_commands_reject_missing_truncated_and_oversized_signatures() {
         let payloads = [
             (PROVISION_VENDOR_PK_HASH_CMD_ID, vec![0u8; 52]),

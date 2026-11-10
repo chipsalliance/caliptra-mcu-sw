@@ -136,6 +136,10 @@ This table defines the bit assignment for every allocated command code. A respon
 
 The authorized-subcommand assignments are stable capability indexes; they are not transport command IDs. A responder sets a bit only when that subcommand is implemented under `AuthorizedCommand`. Authorization, lifecycle, or policy restrictions do not clear an implementation capability bit; execution can still return `AccessDenied`, `PolicyViolation`, or `InvalidState`.
 
+The `0x4D5A_524D` (`MZRM`) UDS/field-entropy OTP zeroization command is not
+implemented on Caliptra 2.0 over SPDM VDM or MCI mailbox. Bit 17 remains
+reserved and must be clear.
+
 **MCU Runtime Capability Flags**:
 
 | Bit | Name                  | Description                                           |
