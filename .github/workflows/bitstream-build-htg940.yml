@@ -56,8 +56,16 @@ jobs:
       - name: Install Tcl for build-input validation
         run: |
           if ! command -v tclsh >/dev/null 2>&1; then
-            sudo apt-get update -qy
-            sudo apt-get install -qy --no-install-recommends tcl
+            if [[ "$(id -u)" == 0 ]]; then
+              apt-get update -qy
+              apt-get install -qy --no-install-recommends tcl
+            elif command -v sudo >/dev/null 2>&1; then
+              sudo -n apt-get update -qy
+              sudo -n apt-get install -qy --no-install-recommends tcl
+            else
+              echo "Error: tclsh is missing; install tcl in the runner image or provide root/sudo access." >&2
+              exit 1
+            fi
           fi
           tclsh <<< 'puts "Tcl validation interpreter: [info patchlevel]"'
 

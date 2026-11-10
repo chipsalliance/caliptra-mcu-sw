@@ -58,7 +58,7 @@ Vivado's own environment. Local builds require Python 3.9 or newer.
 
 The workflow is manual-only and also callable. Before the new workflow is
 registered on the default branch, dispatch the existing FPGA workflow on the
-HTG branch with `board=htg940`; its VCK190 job is skipped:
+HTG branch with `board=htg940`:
 
 ```sh
 gh workflow run bitstream-build.yml \
@@ -73,7 +73,11 @@ gh workflow run bitstream-build-htg940.yml \
   --repo chipsalliance/caliptra-mcu-sw --ref <branch>
 ```
 
-Other dispatches and pull requests retain the VCK190 build behavior.
+This debug-only branch disables unrelated workflows by renaming them to
+`*.yml.disabled`. Its dispatch entry point is manual-only and invokes only
+the HTG-940 build; there is no VCK190 job or pull-request trigger. Restore
+the unrelated workflows and normal dispatch behavior before merging this
+branch into a shared development branch.
 HTG builds are serialized per branch and never cancel an in-progress build.
 HTG artifacts are not sent through the VCK190 manifest/GCS publishing path.
 
@@ -172,7 +176,8 @@ removing a trigger cannot make a stopped sampling clock run.
 ## Focused validation
 
 These tests require Python 3.9 or newer, Git, `patch`, and `tclsh` (the `tcl`
-package on Debian/Ubuntu). CI installs Tcl when it is absent from the runner.
+package on Debian/Ubuntu). CI installs Tcl when it is absent from the runner,
+using root directly or non-interactive sudo for an unprivileged runner.
 Prepare the isolated RTL first to include the real-source debug-generation
 and FPGA-top patch tests.
 
