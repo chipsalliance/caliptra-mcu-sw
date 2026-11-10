@@ -244,11 +244,16 @@ async fn process_chunk_send<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     let (chunk_req, rest) = ChunkSendReqBody::ref_from_prefix(body)
         .map_err(|_| ChunkProcessError::Spdm(SPDM_INVALID_REQUEST))?;
     let handle = chunk_req.handle;
-    let chunk_seq_num = chunk_req.chunk_seq_num.get();
+    // Reassembly state still tracks 16-bit sequence numbers, so values above
+    // `u16::MAX` are rejected on SPDM 1.4 as well (see issue #2165).
+    let chunk_seq_num = chunk_req
+        .get_chunk_seq_num(state.version)
+        .ok()
+        .and_then(|seq_num| u16::try_from(seq_num).ok())
+        .ok_or(ChunkProcessError::Spdm(SPDM_INVALID_REQUEST))?;
     let chunk_size = chunk_req.chunk_size.get() as usize;
     let last_chunk = (chunk_req.chunk_sender_attr & CHUNK_ATTR_LAST_CHUNK) != 0;
-    if chunk_req.reserved.get() != 0 || (chunk_req.chunk_sender_attr & !CHUNK_ATTR_LAST_CHUNK) != 0
-    {
+    if (chunk_req.chunk_sender_attr & !CHUNK_ATTR_LAST_CHUNK) != 0 {
         return Err(ChunkProcessError::Early {
             handle,
             chunk_seq_num,

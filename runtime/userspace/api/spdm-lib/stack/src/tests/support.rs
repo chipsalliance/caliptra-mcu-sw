@@ -928,7 +928,10 @@ pub async fn drain_chunked_response(
         let (body, chunk_data) = ChunkResponseBody::ref_from_prefix(rest)
             .map_err(|_| crate::error::SPDM_INVALID_REQUEST)?;
         assert_eq!(body.handle, handle);
-        assert_eq!(body.chunk_seq_num.get(), chunk_seq_num);
+        assert_eq!(
+            body.get_chunk_seq_num(state.version),
+            Ok(u32::from(chunk_seq_num))
+        );
 
         let payload = if chunk_seq_num == 0 {
             // First chunk is prepended with 4-byte large_response_size
