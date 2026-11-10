@@ -21,7 +21,6 @@ import caliptra_fpga_realtime_regs_pkg::*;
 `include "config_defines.svh"
 `include "caliptra_reg_defines.svh"
 `include "caliptra_macros.svh"
-`include "i3c_defines.svh"
 `include "caliptra_ss_includes.svh"
 
 module caliptra_wrapper_top (
@@ -2718,108 +2717,13 @@ for (genvar ulpi_bit = 0; ulpi_bit < 8; ulpi_bit++) begin : g_usb_ulpi_iobuf
 end
 
 // TODO: Unconnected signals issue: https://github.com/chipsalliance/caliptra-mcu-sw/issues/370
-// HTG940_UNUSED_SPI_UART_AXI
-
-axi_if #(
-    .AW(axi_struct_pkg::TLUL_AXI_STRUCT_ADDR_WIDTH),
-    .DW(`AXI_DATA_WIDTH),
-    .IW(`AXI_ID_WIDTH),
-    .UW(`AXI_USER_WIDTH)
-) htg940_unused_spi_host_axi (
-    .clk(core_clk),
-    .rst_n(axi_reset)
-);
-assign htg940_unused_spi_host_axi.awid = '0;
-assign htg940_unused_spi_host_axi.awaddr = '0;
-assign htg940_unused_spi_host_axi.awlen = '0;
-assign htg940_unused_spi_host_axi.awsize = '0;
-assign htg940_unused_spi_host_axi.awburst = '0;
-assign htg940_unused_spi_host_axi.awlock = '0;
-assign htg940_unused_spi_host_axi.awcache = '0;
-assign htg940_unused_spi_host_axi.awprot = '0;
-assign htg940_unused_spi_host_axi.awqos = '0;
-assign htg940_unused_spi_host_axi.awregion = '0;
-assign htg940_unused_spi_host_axi.awuser = '0;
-assign htg940_unused_spi_host_axi.awvalid = '0;
-assign htg940_unused_spi_host_axi.wdata = '0;
-assign htg940_unused_spi_host_axi.wstrb = '0;
-assign htg940_unused_spi_host_axi.wlast = '0;
-assign htg940_unused_spi_host_axi.wuser = '0;
-assign htg940_unused_spi_host_axi.wvalid = '0;
-assign htg940_unused_spi_host_axi.bready = '0;
-assign htg940_unused_spi_host_axi.arid = '0;
-assign htg940_unused_spi_host_axi.araddr = '0;
-assign htg940_unused_spi_host_axi.arlen = '0;
-assign htg940_unused_spi_host_axi.arsize = '0;
-assign htg940_unused_spi_host_axi.arburst = '0;
-assign htg940_unused_spi_host_axi.arlock = '0;
-assign htg940_unused_spi_host_axi.arcache = '0;
-assign htg940_unused_spi_host_axi.arprot = '0;
-assign htg940_unused_spi_host_axi.arqos = '0;
-assign htg940_unused_spi_host_axi.arregion = '0;
-assign htg940_unused_spi_host_axi.aruser = '0;
-assign htg940_unused_spi_host_axi.arvalid = '0;
-assign htg940_unused_spi_host_axi.rready = '0;
-
-axi_if #(
-    .AW(axi_struct_pkg::TLUL_AXI_STRUCT_ADDR_WIDTH),
-    .DW(`AXI_DATA_WIDTH),
-    .IW(`AXI_ID_WIDTH),
-    .UW(`AXI_USER_WIDTH)
-) htg940_unused_uart_axi (
-    .clk(core_clk),
-    .rst_n(axi_reset)
-);
-assign htg940_unused_uart_axi.awid = '0;
-assign htg940_unused_uart_axi.awaddr = '0;
-assign htg940_unused_uart_axi.awlen = '0;
-assign htg940_unused_uart_axi.awsize = '0;
-assign htg940_unused_uart_axi.awburst = '0;
-assign htg940_unused_uart_axi.awlock = '0;
-assign htg940_unused_uart_axi.awcache = '0;
-assign htg940_unused_uart_axi.awprot = '0;
-assign htg940_unused_uart_axi.awqos = '0;
-assign htg940_unused_uart_axi.awregion = '0;
-assign htg940_unused_uart_axi.awuser = '0;
-assign htg940_unused_uart_axi.awvalid = '0;
-assign htg940_unused_uart_axi.wdata = '0;
-assign htg940_unused_uart_axi.wstrb = '0;
-assign htg940_unused_uart_axi.wlast = '0;
-assign htg940_unused_uart_axi.wuser = '0;
-assign htg940_unused_uart_axi.wvalid = '0;
-assign htg940_unused_uart_axi.bready = '0;
-assign htg940_unused_uart_axi.arid = '0;
-assign htg940_unused_uart_axi.araddr = '0;
-assign htg940_unused_uart_axi.arlen = '0;
-assign htg940_unused_uart_axi.arsize = '0;
-assign htg940_unused_uart_axi.arburst = '0;
-assign htg940_unused_uart_axi.arlock = '0;
-assign htg940_unused_uart_axi.arcache = '0;
-assign htg940_unused_uart_axi.arprot = '0;
-assign htg940_unused_uart_axi.arqos = '0;
-assign htg940_unused_uart_axi.arregion = '0;
-assign htg940_unused_uart_axi.aruser = '0;
-assign htg940_unused_uart_axi.arvalid = '0;
-assign htg940_unused_uart_axi.rready = '0;
 
 caliptra_ss_top #(
     .USB_C_DEV0_RAM_ADDRWIDTH(HTG_USB_RAM_AW),
     .USB_C_DEV1_RAM_ADDRWIDTH(HTG_USB_RAM_AW),
     .MCU_MBOX0_SIZE_KB(16),
-    .MCU_MBOX1_SIZE_KB(16),
-    // SPI/UART are not part of the first HTG-940 platform image. They can be
-    // enabled after their AXI and physical ports are added to the board top.
-    .SPI_HOST_ENA(0),
-    .UART_ENA(0)
+    .MCU_MBOX1_SIZE_KB(16)
 ) caliptra_ss_top_0 (
-    .cptra_ss_spi_host_s_axi_if_w_sub(htg940_unused_spi_host_axi.w_sub),
-    .cptra_ss_spi_host_s_axi_if_r_sub(htg940_unused_spi_host_axi.r_sub),
-    .cptra_ss_uart_s_axi_if_w_sub(htg940_unused_uart_axi.w_sub),
-    .cptra_ss_uart_s_axi_if_r_sub(htg940_unused_uart_axi.r_sub),
-
-
-    .cptra_ss_sd_i(4'h0),
-    .cptra_ss_uart_rx_i(1'b1),
     .cptra_ss_clk_i(core_clk),
     .cptra_i3c_clk_i(i3c_clk),
     .cptra_ss_rdc_clk_cg_o(), // TODO: Should this be connected?
@@ -3122,15 +3026,16 @@ caliptra_ss_top #(
 
     // USB VBus/recovery tie-offs
     .cptra_ss_usb_USB_VBus_i(1'b1),
-    .cptra_ss_usb_vbuscomp_on_o(),
-    .cptra_ss_usb_chrgvbus_o(),
-    .cptra_ss_usb_dischrgvbus_o(),
-    .cptra_ss_usb_sessend_i(1'b0),
+    .cptra_ss_usb_frametoggle_o(),
     .cptra_ss_usb_recovery_payload_available_o(usb_recovery_payload_available),
     .cptra_ss_usb_recovery_payload_available_i(usb_recovery_payload_available),
     .cptra_ss_usb_recovery_image_activated_o(usb_recovery_image_activated),
     .cptra_ss_usb_recovery_image_activated_i(usb_recovery_image_activated),
-    .cptra_usb_axi_user_id_filtering_enable_i(1'b1),
+    // Unrestricted AXI access is intentional for this debug-only bitstream.
+    .cptra_ss_usb_combo_enable_axi_user_filtering_i(1'b0),
+    .cptra_ss_usb_combo_priv_axi_users_i('{default: 32'h0}),
+    .cptra_ss_usb_dev1_enable_axi_user_filtering_i(1'b0),
+    .cptra_ss_usb_dev1_priv_axi_users_i('{default: 32'h0}),
 
     .cptra_ss_cptra_core_generic_input_wires_i({hwif_out.interface_regs.generic_input_wires[1].value.value, hwif_out.interface_regs.generic_input_wires[0].value.value}),
     .cptra_ss_cptra_core_generic_output_wires_o({hwif_in.interface_regs.generic_output_wires[1].value.next, hwif_in.interface_regs.generic_output_wires[0].value.next}),

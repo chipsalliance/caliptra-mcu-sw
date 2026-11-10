@@ -184,6 +184,45 @@ if {[catch {
             text = top.read_text()
             self.assertIn(".clk_i                          (cptra_i3c_clk_i)", text)
             self.assertIn("assign priv_ids[0] = cptra_ss_strap_caliptra_dma_axi_user_i_synch;", text)
+            header = text.split("module caliptra_ss_top", 1)[1].split("\n);", 1)[0]
+            header = re.sub(r"//[^\n]*|/\*.*?\*/", "", header, flags=re.S)
+            wrapper = (FPGA / "src" / "caliptra_wrapper_top.sv").read_text()
+            instance = wrapper.split("caliptra_ss_top #(", 1)[1].split("\n);", 1)[0]
+            instance = re.sub(r"//[^\n]*|/\*.*?\*/", "", instance, flags=re.S)
+            bindings = set(re.findall(r"^\s*\.(\w+)\b", instance, re.M))
+            for name in bindings:
+                with self.subTest(binding=name):
+                    self.assertRegex(header, rf"\b{re.escape(name)}\b")
+            inputs = re.findall(
+                r"^\s*input\b[^\n]*?\b(\w+)\s*(?:\[[^\]\n]*\])?\s*,?\s*$",
+                header, re.M,
+            )
+            self.assertGreater(len(inputs), 50)
+            self.assertFalse(set(inputs) - bindings, f"Unconnected subsystem inputs: {set(inputs) - bindings}")
+            for policy in ("combo", "dev1"):
+                self.assertIn(
+                    f".cptra_ss_usb_{policy}_enable_axi_user_filtering_i(1'b0)",
+                    instance,
+                )
+                self.assertIn(
+                    f".cptra_ss_usb_{policy}_priv_axi_users_i('{{default: 32'h0}})",
+                    instance,
+                )
+
+    @unittest.skipUnless(USB.is_dir(), "prepare the isolated HTG RTL to test wrapper headers")
+    def test_wrapper_headers_exist_in_selected_source_set(self):
+        source = (FPGA / "src" / "caliptra_wrapper_top.sv").read_text()
+        core = ROOT / "caliptra-ss" / "third_party" / "caliptra-rtl"
+        directories = [
+            core / "src" / "riscv_core" / "veer_el2" / "rtl",
+            core / "src" / "integration" / "rtl",
+            core / "src" / "integration" / "rtl" / "caliptra_reg_ss",
+            core / "src" / "libs" / "rtl",
+            ROOT / "caliptra-ss" / "src" / "integration" / "rtl",
+        ]
+        for header in re.findall(r'`include\s+"([^"]+)"', source):
+            with self.subTest(header=header):
+                self.assertTrue(any((directory / header).is_file() for directory in directories))
 
 
 if __name__ == "__main__":

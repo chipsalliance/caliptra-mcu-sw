@@ -39,6 +39,11 @@ subsystem AXI-filter compatibility patch is obsolete; native upstream fuse
 and USB access policies are retained. The SHA accelerator lock fix is
 already upstream. The build-local subsystem-top patch retains the FPGA I3C
 clock/reset adaptation without reverting upstream interface/policy changes.
+The FPGA wrapper follows the updated subsystem ports: removed SPI/UART
+interfaces and the obsolete I3C header are no longer referenced.
+**For this debug-only image, both USB AXI-user filters are intentionally
+disabled**, preserving the previous unrestricted bring-up behavior; the
+allowlist inputs are tied off. This is not a production access policy.
 The helper refuses to replace an existing checkout. Prepare a fresh tree
 when changing snapshots; do not reuse an older patched checkout.
 
