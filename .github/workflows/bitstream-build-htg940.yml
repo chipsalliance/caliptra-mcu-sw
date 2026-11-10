@@ -53,6 +53,11 @@ jobs:
       - name: Prepare pinned HTG-940 RTL
         run: bash hw/htg940/prepare_sources.sh
 
+      - name: Validate HTG-940 build inputs and debug generation
+        run: |
+          python3 -m unittest discover -s hw/htg940/tests -p 'test_*.py'
+          python3 -m unittest discover -s hw/htg940/fpga/htg940_usb_min_ila -p 'test_*.py'
+
       - name: Create all-zero firmware placeholders (not bootable)
         run: |
           echo "::warning::All-zero ROM and flash placeholders: this bitstream is NOT bootable and does not validate USB recovery."
@@ -66,10 +71,12 @@ jobs:
             echo "Firmware: ALL-ZERO PLACEHOLDERS; NOT BOOTABLE"
             echo "USB recovery: NOT VALIDATED"
             echo "Source commit: $GITHUB_SHA"
-            echo "Upstream hardware snapshot: faydn23/caliptra-mcu-sw@1d79b4a636438d3bdfcf7b273e81ea4a93ae739a"
+            echo "FPGA integration origin: faydn23/caliptra-mcu-sw@1d79b4a636438d3bdfcf7b273e81ea4a93ae739a"
+            echo "RTL revisions: see submodule_pins.json (upstream caliptra-ss/main, USB Hub 2.6)"
             sha256sum "$FW_IMAGE_DIR/"*.bin
           } | tee "$STAGING_DIR/build-info.txt"
           cp hw/htg940/fpga/htg940/submodule_pins.json "$STAGING_DIR/"
+          cp hw/htg940/fpga/htg940_usb_min_ila/probe_schema.tcl "$STAGING_DIR/"
           {
             echo "## HTG-940 bitstream"
             echo "**All-zero ROM/flash inputs: NOT BOOTABLE. USB recovery is not validated.**"
@@ -108,6 +115,7 @@ jobs:
             hw/htg940/fpga/htg940_usb_min_ila/build_full_ci/caliptra_htg940_project.runs/impl_1/htg940_board_top.mmi
             ${{ env.STAGING_DIR }}/build-info.txt
             ${{ env.STAGING_DIR }}/submodule_pins.json
+            ${{ env.STAGING_DIR }}/probe_schema.tcl
           if-no-files-found: error
           retention-days: 7
 

@@ -3,7 +3,7 @@
 This is an isolated HTG-940 / `xcvu13p-fhgb2104-3-e` build tree on
 `main-2.1`. It does not change the VCK190 sources, the existing
 `hw/caliptra-ss` submodule, or the 2.1 firmware. USB hardware support here is
-specific to the imported 2.2 snapshot.
+specific to the selected 2.2 hardware snapshot.
 
 ## Source provenance
 
@@ -24,11 +24,23 @@ and fixed-key development provisioning are deliberately not applied to the
 
 [prepare_sources.sh](prepare_sources.sh) creates an independent, ignored
 `caliptra-ss` checkout beside `fpga`. It fetches the exact commits in
-[submodule_pins.json](fpga/htg940/submodule_pins.json), including USB2
-`87a1a3789604dd5a611693a6ba97fff871498593`, then verifies/applies the three
-checksum-pinned RTL patches. The unused lwIP pin was omitted. Do not run
-recursive submodule update on the prepared tree afterward: it would reset the
-USB2 override. The helper refuses to replace an existing checkout.
+[submodule_pins.json](fpga/htg940/submodule_pins.json):
+
+- upstream `chipsalliance/caliptra-ss/main` at
+  `b9909edc83eefbbbd01d1616720dd2500a807eac`;
+- its Caliptra RTL `f9bc5ab97b885b5e31ccb062eca16634a8e61b5a`
+  and matching Adams Bridge;
+- its USB2 Hub 2.6 `97aa9616f50d6adfb17e45053d1f16feb44792d7`,
+  I3C, and remaining recursive dependencies.
+
+The helper verifies/applies two checksum-pinned synthesis patches: explicit
+AES array slices for Vivado and ULPI-only USB configuration. The former
+subsystem AXI-filter compatibility patch is obsolete; native upstream fuse
+and USB access policies are retained. The SHA accelerator lock fix is
+already upstream. The build-local subsystem-top patch retains the FPGA I3C
+clock/reset adaptation without reverting upstream interface/policy changes.
+The helper refuses to replace an existing checkout. Prepare a fresh tree
+when changing snapshots; do not reuse an older patched checkout.
 
 ## Manual CI
 
@@ -105,6 +117,57 @@ CI uploads bitstream/debug artifacts only after all three nonempty outputs
 are validated. Build logs and reports are uploaded even on failure.
 The upstream handoff did not close timing and did not qualify full USB
 recovery. Bitstream generation is not timing or hardware qualification.
+
+## ULPI startup debug
+
+Use the BIT, LTX, and MMI from the **same build**, and insert compatible real
+firmware before testing. The artifact includes the revision manifest and
+[probe_schema.tcl](fpga/htg940_usb_min_ila/probe_schema.tcl); the Vivado log
+prints every resolved probe name and index (`HTG_ILA`).
+
+- `ulpi_min_ila` uses the selected PHY `pie_clk`. It captures actual pad
+  DATA/DIR/NXT/STP, drive enable, the request synchronizer stages, current
+  and next startup state, registered DIR/NXT/RXDATA, power/reset detection,
+  and both extended-register write/read pending bits.
+- `usb_core_ila` and the debug hub use the free-running 40 MHz core clock.
+  The source request is now the **hub** gateway (`usbreg_phy_*`), not the
+  disconnected Device 0 gateway. Hub bus-write address/data, PLL/hub control,
+  return handshake, divided ULPI-clock activity, external PHY reset
+  input/output, and synchronized DIR/NXT/STP remain observable even if the
+  PHY clock stops. The pin snapshot is `{DIR, NXT, STP}` (bits 2, 1, 0);
+  it is delayed and can miss short transitions, not a replacement for the
+  PHY-clock waveform. The external reset input is sampled asynchronously.
+
+The named state monitors encode the RTL enum ordinal directly, independent
+of Vivado's FSM encoding or optional vendor debug ports:
+
+| Hex | `htg_ulpi_state` / `htg_ulpi_state_next` |
+|---|---|
+| 00 | `ULPI_OPER_RESET_PWR_INIT` |
+| 01 | `ULPI_OPER_RESET_IREG_WR_TX_CMD` |
+| 02 | `ULPI_OPER_RESET_REG_WR_TX_DATA` |
+| 03 | `ULPI_OPER_RESET_WF_START_RESET_PHY` |
+| 04 | `ULPI_OPER_RESET_WF_END_RESET_PHY` |
+| 05 | `ULPI_OPER_RESET_WF_RXCMD_UPDATE` |
+| 06 | `ULPI_OPER_RESET_CMD_RCV` |
+| 07 | `ULPI_OPER_IDLE` |
+| 09 / 0A / 0B | Extended write command / address / data |
+| 0D / 0E / 0F | Extended read command / address / data |
+
+For scratch-write capture, arm both ILAs **before** releasing the subsystem
+from reset. Use capture mode ALWAYS and trigger `usbreg_phy_start == 1`
+(core ILA) and `phy_start == 1` (ULPI ILA), optionally qualified by address
+`0x16` and write `1`. The expected source data is `0xA5`; the hub register
+write uses word address `0x0F` (byte offset `0x103C`), with prepare/start
+values `0x8100A516` / `0x8300A516`.
+
+For the state-05 startup hang, hold the subsystem in reset, arm the core ILA
+on the rising edge of `PHY_RESET_N_OUTPUT`, then release reset. Separately
+capture the ULPI ILA on entry to state 05, with pre-trigger samples, to see
+the preceding reset/RXCMD sequence. State 05 advances to 06 when registered
+DIR is 1 and NXT is 0, then to idle when DIR is 0. If the ULPI ILA reports a
+stopped clock, use the core ILA's clock-activity and reset traces first;
+removing a trigger cannot make a stopped sampling clock run.
 
 ## Focused validation
 

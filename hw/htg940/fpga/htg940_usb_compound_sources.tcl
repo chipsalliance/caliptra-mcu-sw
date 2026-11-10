@@ -1,4 +1,4 @@
-# USB source set for usb2 4d4c3d54: compound variants replace legacy units.
+# USB Hub 2.6 compound source set.
 set htgUsbRoot [file join $ssrtlDir third_party usb2 src]
 set htgUsbVhdl {
     usb_hub_composite_device/RTL/INTERFACE/usb_ep_config_hub_pkg.p.vhdl

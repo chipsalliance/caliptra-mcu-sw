@@ -3,7 +3,6 @@ source [file join $fpgaDir htg940_usb_min_ila probe_schema.tcl]
 foreach {instance filename} {
     usb_pie_1 usb_pie.m.vhdl
     usb_synchronizer_1 usb_synchronizer.m.vhdl
-    usb_reg_if_1 usb_reg_if.m.vhdl
     u_hub_compound ip_xxx_3511_hs_mem_compound_structure.a.vhdl
 } {
     set matches {}
@@ -25,6 +24,7 @@ foreach {instance filename} {
     set attributes "\n"
     if {$instance eq "usb_pie_1"} {
         append attributes "signal htg_ulpi_state : std_logic_vector(4 downto 0);\n"
+        append attributes "signal htg_ulpi_state_next : std_logic_vector(4 downto 0);\n"
     }
     append attributes "attribute mark_debug : string;\nattribute keep : string;\n"
     set signals {}
@@ -39,8 +39,7 @@ foreach {instance filename} {
     switch $instance {
         usb_pie_1 {set anchorSignal pie_success_int}
         usb_synchronizer_1 {set anchorSignal pie_lowpower_n_s}
-        usb_reg_if_1 {set anchorSignal reg_dev_force_fullspeed}
-        u_hub_compound {set anchorSignal zero7}
+        u_hub_compound {set anchorSignal dataline_low_power_en}
     }
     set expression [format {\n[ \t]*signal %s[^\n]*\n} $anchorSignal]
     set anchors [regexp -all -inline $expression $text]
@@ -53,8 +52,12 @@ foreach {instance filename} {
         if {![regexp {end function test_paket_decod;[\r\n \t]*begin} $text anchor]} {
             error "PIE architecture body not found"
         }
-        set text [string map [list $anchor \
-            "$anchor\nhtg_ulpi_state <= usb_pie_fpga(21 downto 17);\n"] $text]
+        set monitor {
+-- Enum ordinals, independent of Vivado's FSM encoding and optional debug ports.
+htg_ulpi_state <= std_logic_vector(to_unsigned(t_ulpi_oper_state'pos(ulpi_oper_state_r), 5));
+htg_ulpi_state_next <= std_logic_vector(to_unsigned(t_ulpi_oper_state'pos(ulpi_oper_state_nxt), 5));
+}
+        set text [string map [list $anchor "$anchor\n$monitor"] $text]
     }
     set generated [file join $outputDir htg_debug_$filename]
     set fh [open $generated w]
@@ -78,6 +81,10 @@ set monitor {
 logic [7:0] htg_ulpi_count;
 (* ASYNC_REG = "TRUE", SHREG_EXTRACT = "NO" *)
 logic [1:0] htg_ulpi_clock_sync;
+(* ASYNC_REG = "TRUE", SHREG_EXTRACT = "NO" *)
+logic [2:0] htg_ulpi_pins_meta;
+(* ASYNC_REG = "TRUE", SHREG_EXTRACT = "NO", mark_debug = "true", keep = "true" *)
+logic [2:0] htg_ulpi_pins_sync;
 (* mark_debug = "true", keep = "true" *)
 wire htg_ulpi_clock_activity = htg_ulpi_clock_sync[1];
 always_ff @(posedge USB_ULPI_CLK or negedge axi_reset) begin
@@ -85,8 +92,15 @@ always_ff @(posedge USB_ULPI_CLK or negedge axi_reset) begin
     else htg_ulpi_count <= htg_ulpi_count + 1'b1;
 end
 always_ff @(posedge core_clk or negedge axi_reset) begin
-    if (!axi_reset) htg_ulpi_clock_sync <= '0;
-    else htg_ulpi_clock_sync <= {htg_ulpi_clock_sync[0], htg_ulpi_count[7]};
+    if (!axi_reset) begin
+        htg_ulpi_clock_sync <= '0;
+        htg_ulpi_pins_meta <= '0;
+        htg_ulpi_pins_sync <= '0;
+    end else begin
+        htg_ulpi_clock_sync <= {htg_ulpi_clock_sync[0], htg_ulpi_count[7]};
+        htg_ulpi_pins_meta <= {USB_ULPI_DIR, USB_ULPI_NXT, USB_ULPI_STP};
+        htg_ulpi_pins_sync <= htg_ulpi_pins_meta;
+    end
 end
 }
 set text [string map [list $anchor "$monitor\n$anchor"] $text]

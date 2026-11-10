@@ -1,19 +1,17 @@
 [
   {
     "path": "caliptra-ss",
-    "commit": "4fb99b4dadc235e5989fa594dcd38894851676a1",
-    "patch": "hw__caliptra-ss.patch",
-    "patch_sha256": "a8b379c1b71ba977a52eccffc3696e8db21e68262b9c544501cd585b06dae789"
+    "commit": "b9909edc83eefbbbd01d1616720dd2500a807eac"
   },
   {
     "path": "caliptra-ss/third_party/caliptra-rtl",
-    "commit": "c46bf7ca8e0b6dd1c82aa812073c02d6cd8c4fbd",
+    "commit": "f9bc5ab97b885b5e31ccb062eca16634a8e61b5a",
     "patch": "hw__caliptra-ss__third_party__caliptra-rtl.patch",
-    "patch_sha256": "9414a7dcb7e4035d8b26717f84e8c5b3247ebd4e67d43d43807882aad02d806f"
+    "patch_sha256": "27b8102481ec21934d9af9002bc24efa68417cec41005336ce7f0230984416ac"
   },
   {
     "path": "caliptra-ss/third_party/caliptra-rtl/submodules/adams-bridge",
-    "commit": "2f15ffb1a2e9bd99652fa04d434a48ffcdc23f42"
+    "commit": "1d85b8e0df62cbb2f91228f68815f02295ac668a"
   },
   {
     "path": "caliptra-ss/third_party/cocotbext-i3c",
@@ -21,7 +19,7 @@
   },
   {
     "path": "caliptra-ss/third_party/i3c-core",
-    "commit": "067bfe14ea8bb54470b6af9af154bee5cda6ded7"
+    "commit": "9a8a322582444fed63ae3fe9a86230f32b478375"
   },
   {
     "path": "caliptra-ss/third_party/i3c-core/third_party/axi-vip",
@@ -41,8 +39,16 @@
   },
   {
     "path": "caliptra-ss/third_party/usb2",
-    "commit": "87a1a3789604dd5a611693a6ba97fff871498593",
+    "commit": "97aa9616f50d6adfb17e45053d1f16feb44792d7",
     "patch": "hw__caliptra-ss__third_party__usb2.patch",
-    "patch_sha256": "fc735af4c6b06d111448b8770c05113f26e5430ef22d7647e5134aa414ecde18"
+    "patch_sha256": "bc1f2d9ff38e9df2a5657ef9d4d939445ae1971692e4ef96887a181f830c3bfa"
+  },
+  {
+    "path": "caliptra-ss/third_party/usb2/submodules/caliptra-rtl",
+    "commit": "1f272de5be683cce9146614a1537bb0db45ec392"
+  },
+  {
+    "path": "caliptra-ss/third_party/usb2/submodules/caliptra-rtl/submodules/adams-bridge",
+    "commit": "2f15ffb1a2e9bd99652fa04d434a48ffcdc23f42"
   }
 ]

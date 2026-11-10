@@ -74,7 +74,7 @@ for {set k 0} {$k < 8} {incr k} {
 set tnet [min_one [lsort -unique $tristate] "shared ULPI IOBUF tristate"]
 set hub */usb_core_i/u_hub_compound
 set ulpiClock [min_hier_pin_net $hub/usb_pie_1/pie_clk]
-set coreClock [min_hier_pin_net $hub/usb_reg_if_1/hclk]
+set coreClock [min_hier_pin_net $hub/usb_ep0_hub_descr_1/sys_clk]
 set dirCell [min_pad_buffer cptra_ss_usb_ulpi_dir_i IBUF I]
 set nxtCell [min_pad_buffer cptra_ss_usb_ulpi_nxt_i IBUF I]
 set stpCell [min_pad_buffer cptra_ss_usb_ulpi_stp_o OBUF O]
@@ -91,6 +91,12 @@ set coreProbes [min_schema_probes $htg_core_schema]
 set heartbeat [min_one [get_nets -quiet -hier -filter \
     {NAME =~ */cptra_wrapper/htg_ulpi_clock_activity}] "synchronized ULPI activity"]
 lappend coreProbes [list ULPI_CLOCK_ACTIVITY_SYNC [list $heartbeat]]
+set pins [min_signal cptra_wrapper htg_ulpi_pins_sync 3]
+lappend coreProbes [list ULPI_DIR_NXT_STP_SYNC $pins]
+set resetIn [min_pad_buffer usb_phy_resetn_i IBUF I]
+set resetOut [min_pad_buffer usb_phy_resetn_o OBUF O]
+lappend coreProbes [list PHY_RESET_N_INPUT_ASYNC [list [min_pin_net [get_pins "$resetIn/O"]]]]
+lappend coreProbes [list PHY_RESET_N_OUTPUT [list [min_pin_net [get_pins "$resetOut/I"]]]]
 puts "HTG_PROBES_VALIDATED: eight IOBUFs, ULPI and core-domain probes resolved."
 if {![info exists htgValidateOnly] || !$htgValidateOnly} {
     min_add_ila ulpi_min_ila $ulpiClock $ulpiProbes

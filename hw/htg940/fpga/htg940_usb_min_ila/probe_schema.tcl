@@ -32,23 +32,37 @@ set htg_ulpi_schema {
     {usb_pie_1 ulpi_xreg_rdata_r 8}
     {usb_pie_1 set_ulpi_phy_endtoggle 1}
     {usb_pie_1 phy_endtoggle_r 1}
+    {usb_pie_1 htg_ulpi_state_next 5}
+    {usb_pie_1 ulpi_dir_r 1}
+    {usb_pie_1 ulpi_nxt_r 1}
+    {usb_pie_1 ulpi_rxdata_r 8}
+    {usb_pie_1 ulpi_req_xreg_wr_r 1}
+    {usb_pie_1 ulpi_pwrst_r 1}
+    {usb_pie_1 ulpi_pwrst_r_s 1}
+    {usb_pie_1 set_ulpi_pwrst_det 1}
+    {usb_synchronizer_1 Reset_N 1}
+    {u_hub_compound utmiclk_reset_n 1}
 }
 set htg_core_schema {
-    {usb_reg_if_1 reg_write 1}
-    {usb_reg_if_1 reg_waddr 4}
-    {usb_reg_if_1 reg_wdata 32}
-    {usb_reg_if_1 reg_phy_start 1}
+    {u_hub_compound hub_reg_write 1}
+    {u_hub_compound hub_reg_waddr 8}
+    {u_hub_compound hub_reg_wdata 32}
+    {u_hub_compound usbreg_phy_start 1}
     {usb_synchronizer_1 sync_phy_endtoggle_s 1}
     {usb_synchronizer_1 sync_phy_endtoggle_ss 1}
     {usb_synchronizer_1 sync_phy_endtoggle_sss 1}
-    {usb_reg_if_1 sync_phy_endtoggle 1}
-    {usb_reg_if_1 sync_phy_rdata 8}
-    {usb_reg_if_1 reg_phy_rdata 8}
-    {usb_reg_if_1 reg_raddr 4}
-    {usb_reg_if_1 reg_rdata 32}
-    {usb_reg_if_1 hresetn 1}
-    {usb_reg_if_1 reg_dev_pll_on 1}
+    {u_hub_compound sync_phy_endtoggle 1}
+    {u_hub_compound sync_phy_rdata 8}
+    {u_hub_compound usbreg_phy_addr 8}
+    {u_hub_compound usbreg_phy_wdata 8}
+    {u_hub_compound usbreg_phy_write 1}
+    {u_hub_compound hresetn 1}
+    {u_hub_compound hub_pll_on 1}
     {u_hub_compound clock_on 1}
     {u_hub_compound dataline_low_power_en 1}
     {u_hub_compound usb_needclk_int 1}
+    {u_hub_compound usbreg_phy_mode 1}
+    {u_hub_compound hub_enable_q 1}
+    {u_hub_compound hub_dcon_q 1}
+    {usb_synchronizer_1 sync_pie_lowpower_n_ss 1}
 }

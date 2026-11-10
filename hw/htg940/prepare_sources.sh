@@ -12,7 +12,7 @@ if [[ -e "$rtl" ]]; then
 fi
 
 ss_commit=$(python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))[0]["commit"])' "$pins")
-git clone --filter=blob:none --no-checkout https://github.com/faydn23/caliptra-ss.git "$rtl"
+git clone --filter=blob:none --no-checkout https://github.com/chipsalliance/caliptra-ss.git "$rtl"
 git -C "$rtl" fetch --depth=1 origin "$ss_commit"
 git -C "$rtl" checkout --detach "$ss_commit"
 git -C "$rtl" submodule update --init --recursive --depth=1

@@ -1,5 +1,5 @@
 diff --git a/src/aes/rtl/aes_mix_single_column.sv b/src/aes/rtl/aes_mix_single_column.sv
-index 6b7cfd1f..cfad8d06 100644
+index 6b7cfd1..cfad8d0 100644
 --- a/src/aes/rtl/aes_mix_single_column.sv
 +++ b/src/aes/rtl/aes_mix_single_column.sv
 @@ -26,45 +26,45 @@ module aes_mix_single_column (
@@ -67,25 +67,3 @@ index 6b7cfd1f..cfad8d06 100644
 +  assign data_o[3][7:0] = data_i[2][7:0] ^ x_mul2[0][7:0] ^ x[3][7:0] ^ z_muxed[0][7:0];
  
  endmodule
-diff --git a/src/soc_ifc/rtl/sha512_acc_iccm_hash.sv b/src/soc_ifc/rtl/sha512_acc_iccm_hash.sv
-index 0bbff094..a78cc8b5 100644
---- a/src/soc_ifc/rtl/sha512_acc_iccm_hash.sv
-+++ b/src/soc_ifc/rtl/sha512_acc_iccm_hash.sv
-@@ -96,7 +96,7 @@ module sha512_acc_iccm_hash
- // iccm_lock_i for the zero-length case. The OR with the live trigger
- // engages the same cycle the snoop fires to capture the first dword
- // without a one-cycle slip.
--always_comb iccm_mode = (iccm_armed | ((iccm_hash_dv_i | iccm_lock_i) & ~soc_has_lock)) & ~iccm_mode_done;
-+always_comb iccm_mode = (iccm_armed | ((iccm_hash_dv_i | iccm_lock_i) & ~soc_has_lock & ~lock_value)) & ~iccm_mode_done;
- 
- // HW SHA acc lock acquire: pulse hwset on the very first ICCM activity
- // (snoop or iccm_lock_i). Gated by ~iccm_armed so the pulse fires exactly
-@@ -138,7 +138,7 @@ always_ff @(posedge clk or negedge rst_b) begin
-     iccm_armed <= 1'b0;
-   else if (iccm_unlock_i)
-     iccm_armed <= 1'b0;
--  else if ((iccm_hash_dv_i | iccm_lock_i) & ~soc_has_lock & ~iccm_mode_done)
-+  else if ((iccm_hash_dv_i | iccm_lock_i) & ~soc_has_lock & ~lock_value & ~iccm_mode_done)
-     iccm_armed <= 1'b1;
- end
- 
