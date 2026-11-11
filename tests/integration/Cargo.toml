@@ -20,7 +20,7 @@ caliptra-api-types.workspace = true
 caliptra-auth-man-types.workspace = true
 caliptra-builder.workspace = true
 caliptra-hw-model-types.workspace = true
-caliptra-hw-model.workspace = true
+caliptra-hw-model = { workspace = true, features = ["coverage"] }
 caliptra-image-crypto.workspace = true
 caliptra-image-gen.workspace = true
 caliptra-image-types = { workspace = true, features = ["std"] }
