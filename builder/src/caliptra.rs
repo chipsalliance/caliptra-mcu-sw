@@ -874,6 +874,9 @@ impl CaliptraBuilder {
     }
 
     fn compile_caliptra_rom_current_uncached(fpga: bool) -> Result<PathBuf> {
+        if std::env::var_os("CALIPTRA_HW_REV").is_none() {
+            std::env::set_var("CALIPTRA_HW_REV", "2.1");
+        }
         let path = target_dir().join("caliptra-rom.bin");
         let rom_bytes = if fpga {
             caliptra_builder::build_firmware_rom(
@@ -1164,6 +1167,9 @@ fn main() -> Result<()> {
         pqc_key_type: FwVerificationPqcKeyType,
         use_second_key: bool,
     ) -> Result<(PathBuf, String)> {
+        if std::env::var_os("CALIPTRA_HW_REV").is_none() {
+            std::env::set_var("CALIPTRA_HW_REV", "2.1");
+        }
         let opts = caliptra_builder::ImageOptions {
             pqc_key_type,
             fw_svn: svn.unwrap_or(0) as u32,
