@@ -258,7 +258,15 @@ impl McuHwModel for ModelEmulated {
 
         let create_flash_controller =
             |default_path: &str, error_irq: u8, event_irq: u8, initial_content: Option<&[u8]>| {
-                // Use a temporary file for flash storage if we're running a test
+                // Use a temporary file for flash storage if we're running a test.
+                // wasm32 has no filesystem; DummyFlashCtrl keeps the contents
+                // in memory when no file is given.
+                #[cfg(target_arch = "wasm32")]
+                let flash_file = {
+                    let _ = default_path;
+                    None
+                };
+                #[cfg(not(target_arch = "wasm32"))]
                 let flash_file = Some(PathBuf::from(default_path));
 
                 DummyFlashCtrl::new(
