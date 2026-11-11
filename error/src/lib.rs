@@ -876,11 +876,6 @@ impl McuError {
         ),
         (ROM_COLD_BOOT_DOT_ERROR, 0x1_0046, "DOT cold boot error"),
         (
-            ROM_SOC_RECOVERY_INTERFACE_VERIFY_FAILED,
-            0x5_001F,
-            "Recovery interface selection readback failed"
-        ),
-        (
             ROM_USB_RECOVERY_ERROR,
             0x1_0048,
             "USB recovery initialization or service failed"

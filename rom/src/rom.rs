@@ -1249,10 +1249,10 @@ pub struct RomParameters<'a> {
     /// Defaults to I3C, including flash and AXI-bypass boot. USB platforms must
     /// opt in explicitly; this selects routing, not USB controller initialization.
     #[cfg(hw_capability = "recovery-interface-select")]
+    pub recovery_interface: RecoveryInterface,
     pub lifecycle_transition: Option<(LifecycleControllerState, LifecycleToken)>,
     pub burn_lifecycle_tokens: Option<LifecycleHashedTokens>,
     pub image_provider_manager: Option<crate::recovery::ImageProviderManager<'a>>,
-    pub recovery_interface: RecoveryInterface,
     /// Platform-supplied Device 0 MMIO, USB identity and power configuration.
     /// Required exactly when selecting hardware-assisted USB recovery.
     #[cfg(all(hw_rev = "latest", feature = "usb-recovery"))]
