@@ -32,6 +32,7 @@ pub use vmem::read_otp_vmem_data;
 use zerocopy::FromBytes;
 
 // Re-export flash image builder for creating flash images from firmware bytes
+#[cfg(feature = "builder")]
 pub use caliptra_mcu_builder::flash_image::build_flash_image_bytes;
 
 mod bus_logger;
