@@ -460,7 +460,7 @@ impl Emulator {
 
         let use_mcu_recovery_interface = is_flash_based_boot;
 
-        let (mut caliptra_cpu, soc_to_caliptra, _, ext_mci) = start_caliptra(&StartCaliptraArgs {
+        let (mut caliptra_cpu, soc_to_caliptra, _, ext_mci) = start_caliptra(StartCaliptraArgs {
             rom: BytesOrPath::Path(cli.caliptra_rom),
             device_lifecycle: device_lifecycle_str,
             req_idevid_csr,
@@ -470,6 +470,7 @@ impl Emulator {
             debug_intent: true, // Emulator app defaults to debug intent enabled
             prod_dbg_unlock_keypairs: vec![],
             cptra_obf_key: DEFAULT_CPTRA_OBF_KEY,
+            tb_services_cb: None,
         })
         .expect("Failed to start Caliptra CPU");
 
