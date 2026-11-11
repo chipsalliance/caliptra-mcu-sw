@@ -96,6 +96,24 @@ This script provides a number of configuration options for features that can be 
 | BUILD=TRUE  | Automatically start building the FPGA.
 | GUI=TRUE    | Open the Vivado GUI.
 
+The build applies additional placement spreading and congestion settings when
+Vivado exposes the `STEPS.PLACE_DESIGN.ARGS.SUBDIRECTIVE` run property. Otherwise,
+it prints a warning and uses the `Explore` directive alone. Check placement and
+timing results before using the generated image.
+
+This checkout uses Caliptra SS at `cadc77b6` and its pinned submodules.
+The FPGA wrapper preserves the existing I3C and backdoor ROM/OTP interfaces,
+provides the new 4 KiB MCU ROM-patch SRAM, and uses TRNG source 0 with source 1
+disabled. The USB PHY and USB memory interfaces are inactive: no ULPI daughter
+card is required or supported by this configuration, and USB recovery is not
+available. The subsystem SPI host and UART are disabled; the existing external
+flash controllers and Versal console are unchanged. USB RTL is included to
+resolve the subsystem's instances, but its AXI ports accept no requests and its
+PHY is held disabled. ROM/firmware compatibility with this SS revision still
+requires separate runtime validation.
+The IP packager also preserves the `lib/` and `generated/` header paths used by
+the Core RTL and USB sources, so their relative includes resolve during synthesis.
+
 ### Build boot.bin: ###
 
 Note: If using the Calptra CI Image (or PetaLinux image), you can skip this step. Instead use a segmented bitstream and load the PDI file directly.
@@ -153,20 +171,27 @@ Caliptra Subsystem toplevel. To add additional registers simply:
 [FPGA Wrapper Registers](fpga_wrapper_regs.md)
 
 #### Versal Memory Map ####
-| IP/Peripheral                       | Accessibility        | Address size | Start address | End address |
-| :---------------------------------- | -------------------- | :----------- | :------------ | :---------- |
-| Caliptra core ROM Backdoor          | Always               | 96 KiB       | 0xB000_0000   | 0xB001_7FFF |
-| MCU ROM Backdoor                    | Always               | 128 KiB      | 0xB002_0000   | 0xB003_FFFF |
-| MCU ROM AXI Sub (provided by SS)    | cptra_ss_rst_b       | 128 KiB      | 0xB004_0000   | 0xB005_FFFF |
-| MCU SRAM                            | Always               | 96 KiB       | 0xB008_0000   | 0xB005_FFFF |
-| FPGA Wrapper Registers              | Always               | 8 KiB        | 0xA401_0000   | 0xA401_1FFF |
-| SS I3C                              | cptra_ss_rst_b       | 8 KiB        | 0xA403_0000   | 0xA403_1FFF |
-| LCC                                 | cptra_ss_rst_b       | 8 KiB        | 0xA404_0000   | 0xA404_1FFF |
-| OTP                                 | cptra_ss_rst_b       | 8 KiB        | 0xA406_0000   | 0xA406_1FFF |
-| Xilinx I3C                          | cptra_ss_rst_b       | 4 KiB        | 0xA408_0000   | 0xA408_0FFF |
-| AXI Firewall Control                | Always               | 4 KiB        | 0xA409_0000   | 0xA409_0FFF |
-| Caliptra                            | SS reset to Caliptra | 1 MiB        | 0xA410_0000   | 0xA41F_FFFF |
-| MCI                                 | cptra_ss_rst_b       | 16 MiB       | 0xA800_0000   | 0xA8FF_FFFF |
+These AXI address windows are defined by `register_axi_subordinate` in
+[fpga_configuration.tcl](fpga_configuration.tcl). End addresses are inclusive.
+Window sizes do not necessarily indicate implemented physical memory capacity.
+This table does not specify reset or accessibility requirements.
+
+| IP/Peripheral                       | Address size | Start address | End address |
+| :---------------------------------- | :----------- | :------------ | :---------- |
+| Caliptra core ROM Backdoor           | 96 KiB       | 0xB000_0000   | 0xB001_7FFF |
+| MCU ROM Backdoor                    | 128 KiB      | 0xB002_0000   | 0xB003_FFFF |
+| MCU ROM AXI Sub (provided by SS)     | 128 KiB      | 0xB004_0000   | 0xB005_FFFF |
+| OTP RAM Backdoor                    | 64 KiB       | 0xB008_0000   | 0xB008_FFFF |
+| Staging SRAM                        | 256 KiB      | 0xB00C_0000   | 0xB00F_FFFF |
+| FPGA Wrapper Registers              | 16 KiB       | 0xA401_0000   | 0xA401_3FFF |
+| SS I3C                              | 8 KiB        | 0xA403_0000   | 0xA403_1FFF |
+| SS I3C Spare                        | 8 KiB        | 0xA403_2000   | 0xA403_3FFF |
+| LCC                                 | 8 KiB        | 0xA404_0000   | 0xA404_1FFF |
+| OTP Registers                       | 8 KiB        | 0xA406_0000   | 0xA406_1FFF |
+| Xilinx I3C                          | 4 KiB        | 0xA408_0000   | 0xA408_0FFF |
+| Xilinx AXI CDMA Control              | 4 KiB        | 0xA408_1000   | 0xA408_1FFF |
+| Caliptra                            | 1 MiB        | 0xA410_0000   | 0xA41F_FFFF |
+| MCI                                 | 16 MiB       | 0xA800_0000   | 0xA8FF_FFFF |
 
 ### Waveform Debug ###
 If built with DEBUG=TRUE common signals for debug will be connected to ILAs. In addition images may be built with additional debug signals. This is a general procedure for loading a probes file when consuming an image built by someone else. If the image was built locally, this is unnecessary because the probes file will be loaded automatically.
