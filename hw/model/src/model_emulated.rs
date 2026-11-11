@@ -685,6 +685,10 @@ impl McuHwModel for ModelEmulated {
         self.otp_partitions.borrow().clone()
     }
 
+    fn key_vault_snapshot(&self) -> Option<caliptra_emu_periph::KeyVaultSnapshot> {
+        Some(self.caliptra_cpu.bus.key_vault.snapshot())
+    }
+
     fn take_otp_dai_log(&mut self) -> Vec<String> {
         self.otp_dai_log
             .as_ref()
