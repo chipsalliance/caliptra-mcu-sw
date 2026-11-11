@@ -95,6 +95,7 @@ pub struct ModelEmulated {
     i3c_controller_join_handle: Option<JoinHandle<()>>,
     dot_flash: Rc<RefCell<Ram>>,
     otp_partitions: Rc<RefCell<Vec<u8>>>,
+    otp_dai_log: Option<Rc<RefCell<Vec<String>>>>,
     mci_regs: Rc<RefCell<caliptra_emu_periph::mci::MciRegs>>,
     check_booted_to_runtime: bool,
     // Synchronises cross-thread timer scheduling (I3C controller thread)
@@ -256,7 +257,7 @@ impl McuHwModel for ModelEmulated {
             None
         };
 
-        let otp = Otp::new(
+        let mut otp = Otp::new(
             &clock.clone(),
             OtpArgs {
                 fips_zeroization_cmd: fips_zeroization_cmd.clone(),
@@ -271,6 +272,7 @@ impl McuHwModel for ModelEmulated {
 
         // Get the partitions reference before passing OTP to the bus
         let otp_partitions = otp.partitions_ref();
+        let otp_dai_log = params.log_otp_dai.then(|| otp.enable_dai_log());
 
         // Share OTP partition data with the LC controller for transitions.
         let mut lc = lc;
@@ -582,6 +584,7 @@ impl McuHwModel for ModelEmulated {
             i3c_controller_join_handle: None,
             dot_flash,
             otp_partitions,
+            otp_dai_log,
             mci_regs,
             check_booted_to_runtime: params.check_booted_to_runtime,
             step_lock,
@@ -749,6 +752,13 @@ impl McuHwModel for ModelEmulated {
 
     fn read_otp_memory(&self) -> Vec<u8> {
         self.otp_partitions.borrow().clone()
+    }
+
+    fn take_otp_dai_log(&mut self) -> Vec<String> {
+        self.otp_dai_log
+            .as_ref()
+            .map(|log| std::mem::take(&mut *log.borrow_mut()))
+            .unwrap_or_default()
     }
 
     fn read_dot_flash(&self) -> Vec<u8> {
