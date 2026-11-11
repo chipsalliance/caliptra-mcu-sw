@@ -43,7 +43,6 @@ where
             0,
         ));
     }
-    tdisp.state.set_nonce(req_hdr.interface_id, Some(*nonce));
 
     let param = TdispLockInterfaceParam::decode(req_payload)?;
     match tdisp
@@ -51,7 +50,11 @@ where
         .lock_interface(req_hdr.interface_id.function_id, param, scratch)
         .await
     {
-        Ok(0) => Ok(TdispHandlerResult::Response(START_INTERFACE_NONCE_SIZE)),
+        Ok(0) => {
+            // Only an accepted LOCK replaces the nonce that START_INTERFACE expects.
+            tdisp.state.set_nonce(req_hdr.interface_id, Some(*nonce));
+            Ok(TdispHandlerResult::Response(START_INTERFACE_NONCE_SIZE))
+        }
         Ok(e) => Ok(TdispHandlerResult::Error(tdisp_error_code(e), 0)),
         Err(_) => Ok(TdispHandlerResult::Error(TDISP_ERROR_UNSPECIFIED, 0)),
     }

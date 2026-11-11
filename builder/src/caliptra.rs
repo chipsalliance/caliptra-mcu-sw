@@ -405,6 +405,9 @@ impl CaliptraBuilder {
             if img.is_ak_target {
                 bail!("Owner firmware components cannot be attestation key targets");
             }
+            if img.is_export_cdi_target {
+                bail!("Owner firmware components cannot be exported-CDI targets");
+            }
             if img.is_tcb {
                 tcb_entries.push((img.image_id, ATTESTATION_FLAG_SOC_TCB_DPE));
             } else {
@@ -1584,6 +1587,7 @@ pub struct ImageCfg {
     pub component_id: u32,
     pub is_tcb: bool,
     pub is_ak_target: bool,
+    pub is_export_cdi_target: bool,
     pub feature: String,
 }
 impl Default for ImageCfg {
@@ -1599,6 +1603,7 @@ impl Default for ImageCfg {
             component_id: 0,
             is_tcb: false,
             is_ak_target: false,
+            is_export_cdi_target: false,
             feature: String::new(),
         }
     }
@@ -1649,6 +1654,7 @@ impl FromStr for ImageCfg {
             component_id,
             is_tcb,
             is_ak_target,
+            is_export_cdi_target: false,
             feature,
         })
     }

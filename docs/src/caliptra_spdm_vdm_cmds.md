@@ -82,6 +82,7 @@ These command codes are assigned from the Caliptra range reserved in the [OCP co
 | `0x06`       | RequestDebugUnlock        | O   | Request debug unlock in production environment.                            |
 | `0x07`       | AuthorizeDebugUnlockToken | O   | Send debug unlock token to device for authorization.                       |
 | `0x08`       | ExportAttestedCsr         | O   | Discover device identity keys or export an attested CSR.                   |
+| `0x09`       | ProvisionIdevCert         | O   | Populate an IDevID certificate into Caliptra Core and optionally OTP.      |
 | `0x11`       | DeviceOwnershipTransfer   | O   | Carry DOT commands with native authentication.                             |
 | `0x12`       | AuthorizedCommand         | O   | Carry manifest-authorized provisioning and fuse subcommands.               |
 | `0x13`       | OcpLock                   | O   | Carry OCP LOCK commands.                                                   |
@@ -104,7 +105,6 @@ The following subcommands are assigned to the SPDM VDM IANA authorization-gated 
 | `0x4D52_564B` (`MRVK`) | FuseRevokeVendorPubKey     | Supported     | Revoke vendor public key.                           |
 | `0x5256_4B48` (`RVKH`) | FuseRevokeVendorPkHash     | Supported     | Revoke vendor public key hash.                      |
 | `0x4946_504B` (`IFPK`) | FuseLockPartition          | Supported     | Lock fuse partition.                                |
-| `0x4D5A_524D` (`MZRM`) | ZeroizeUdsFeAndEnterRma    | Supported     | Zeroize UDS and field entropy, then enter RMA.      |
 | `0x0000_0011`          | DeviceOwnershipTransfer    | Supported     | Carry authorization-gated DOT subcommands.          |
 | `0x0000_0013`          | OcpLock                    | Supported     | Carry authorization-gated [OCP LOCK subcommands](#ocp-lock-commands). |
 | `VU00`-`VUFF`           | VendorUnique               | Reserved      | Vendor-unique innermost commands; unsupported by the reference MCU. |
@@ -258,12 +258,6 @@ mismatches return `AccessDenied`; operational and resource failures retain
 their normal completion codes. Version 1 requires coordinated host, Runtime,
 and manifest-key-digest updates; there is no legacy hash or trailer fallback.
 
-`ZeroizeUdsFeAndEnterRma` reports `ZeroizeFailed` if the zeroization command
-fails or the kernel cannot confirm by OTP readback that UDS and all field
-entropy partitions are zeroized. In that case, RMA is not attempted. It reports
-`RmaTransitionFailed` if zeroization is confirmed but the lifecycle-controller
-transition to RMA fails.
-
 ### Implemented Subcommand Payloads
 
 These operation payloads exclude the Authorization Block, which is appended
@@ -280,7 +274,6 @@ and [OCP LOCK Commands](#ocp-lock-commands).
 | MRVK | `reserved:u32 \|\| slot:u32 \|\| key_type:u32 \|\| key_index:u32`; reserved must be zero | 16 |
 | RVKH | `reserved:u32 \|\| slot:u32`; reserved must be zero | 8 |
 | IFPK | `partition:u32` | 4 |
-| MZRM | `rma_token:u8[16]` | 16 |
 
 ## Device Ownership Transfer Commands
 

@@ -117,14 +117,14 @@ impl<'a, A: Alarm<'a>> MboxSram<'a, A> {
         app_buffer: &ReadableProcessSlice,
     ) -> Result<(), ErrorCode> {
         let mut mem_ref = self.mem_ref.borrow_mut();
-        let len = core::cmp::min(mem_ref.len() - offset, app_buffer.len() / 4);
-        for i in 0..len {
+        let words = mem_ref.get_mut(offset..).ok_or(ErrorCode::INVAL)?;
+        for (i, word) in words.iter_mut().take(app_buffer.len() / 4).enumerate() {
             let mut dword = [0u8; 4];
             app_buffer
                 .get(i * 4..i * 4 + 4)
                 .ok_or(ErrorCode::INVAL)?
                 .copy_to_slice(&mut dword);
-            mem_ref[offset + i] = u32::from_le_bytes(dword);
+            *word = u32::from_le_bytes(dword);
         }
         Ok(())
     }
@@ -135,9 +135,9 @@ impl<'a, A: Alarm<'a>> MboxSram<'a, A> {
         app_buffer: &WriteableProcessSlice,
     ) -> Result<(), ErrorCode> {
         let mem_ref = self.mem_ref.borrow();
-        let len = core::cmp::min(mem_ref.len() - offset, app_buffer.len() / 4);
-        for i in 0..len {
-            let dword = mem_ref[offset + i].to_le_bytes();
+        let words = mem_ref.get(offset..).ok_or(ErrorCode::INVAL)?;
+        for (i, word) in words.iter().take(app_buffer.len() / 4).enumerate() {
+            let dword = word.to_le_bytes();
             app_buffer
                 .get(i * 4..i * 4 + 4)
                 .ok_or(ErrorCode::INVAL)?

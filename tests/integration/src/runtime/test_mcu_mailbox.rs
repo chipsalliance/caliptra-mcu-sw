@@ -13,8 +13,9 @@ use caliptra_mcu_mbox_common::messages::{
     CmEcdhFinishReq, CmEcdhGenerateReq, CmEcdsaPublicKeyReq, CmEcdsaSignReq, CmEcdsaVerifyReq,
     CmImportReq, CmKeyUsage, CmMldsaPublicKeyReq, CmMldsaSignReq, CmMldsaVerifyReq, Cmk,
     CommandId as McuCommandId, DeviceCapsReq, DeviceCapsResp, DpeSignerContextCertReq,
-    EcdsaVerifyReq, EndorsementAlgorithm, ExportAttestedCsrReq, FirmwareVersionReq,
-    GetAttestationReq, GetAuthCmdChallengeResp, GetDpeCertChainReq, HekStatusReq, LmsVerifyReq,
+    DpeSignerContextSignReq, EcdsaVerifyReq, EndorsementAlgorithm, ExportAttestedCsrReq,
+    FirmwareVersionReq, GetAttestationReq, GetAuthCmdChallengeResp, GetCertChainInfoReq,
+    GetCertChainInfoResp, GetCertChainReq, GetDpeCertChainReq, HekStatusReq, LmsVerifyReq,
     MailboxReqHeader as McuMailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize,
     McuCmImportReq, McuEcdhFinishReq, McuEcdhFinishResp, McuEcdhGenerateReq, McuEcdhGenerateResp,
     McuEcdsa384SigVerifyReq, McuEcdsaCmkPublicKeyReq, McuEcdsaCmkPublicKeyResp, McuEcdsaCmkSignReq,
@@ -24,6 +25,7 @@ use caliptra_mcu_mbox_common::messages::{
     McuMldsaCmkPublicKeyReq, McuMldsaCmkPublicKeyResp, McuMldsaCmkSignReq, McuMldsaCmkSignResp,
     McuMldsaCmkVerifyReq, McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp,
     McuProdDebugUnlockTokenReq, ProductionAuthDebugUnlockReq, ProductionAuthDebugUnlockToken,
+    ProvisionIdevCertReq, ProvisionIdevCertResp, SetCertChainReq, SetCertChainResp,
     VendorPkHashStatusReq, GET_ATTESTATION_RESP_PREFIX_LEN, MAX_RESP_DATA_SIZE,
     VENDOR_PQC_KEY_TYPE_LMS,
 };
@@ -2067,10 +2069,61 @@ fn test_dpe_signer_context_cert_cmd() -> Result<()> {
     let pubkey = expected_signer.public_key().unwrap();
     assert!(cert.verify(&pubkey).is_ok());
 
-    assert_mcu_req_fails(
+    // A repeat MC_DPE_SIGNER_CONTEXT_CERT automatically revokes the prior exported CDI
+    // handle in Caliptra and derives a fresh certificate.
+    let rederived_cert_der = execute_var_mcu_req(
         &mut hw,
         McuMailboxReq::DpeSignerContextCert(DpeSignerContextCertReq::default()),
+    )?;
+    let rederived_cert = openssl::x509::X509::from_der(&rederived_cert_der)
+        .expect("Failed to parse re-derived DPE leaf certificate as DER");
+    assert!(rederived_cert.verify(&pubkey).is_ok());
+
+    // 3. Sign a 48-byte SHA-384 digest via MC_DPE_SIGNER_CONTEXT_SIGN (ECDSA_384)
+    // and verify against the derived leaf certificate public key.
+    let ecdsa_digest = [0x42u8; 48];
+    let mut ecdsa_sign_req = DpeSignerContextSignReq {
+        algorithm: EndorsementAlgorithm::ECDSA_384,
+        data_len: ecdsa_digest.len() as u32,
+        ..Default::default()
+    };
+    ecdsa_sign_req.data[..ecdsa_digest.len()].copy_from_slice(&ecdsa_digest);
+    let ecdsa_sig =
+        execute_var_mcu_req(&mut hw, McuMailboxReq::DpeSignerContextSign(ecdsa_sign_req))?;
+    assert_eq!(
+        ecdsa_sig.len(),
+        96,
+        "ECDSA P-384 signature must be 96 bytes"
     );
+    let sig_r = openssl::bn::BigNum::from_slice(&ecdsa_sig[..48]).unwrap();
+    let sig_s = openssl::bn::BigNum::from_slice(&ecdsa_sig[48..96]).unwrap();
+    let ossl_ecdsa_sig = openssl::ecdsa::EcdsaSig::from_private_components(sig_r, sig_s).unwrap();
+    let leaf_ec_key = rederived_cert.public_key().unwrap().ec_key().unwrap();
+    assert!(
+        ossl_ecdsa_sig.verify(&ecdsa_digest, &leaf_ec_key).unwrap(),
+        "ECDSA signature from MC_DPE_SIGNER_CONTEXT_SIGN failed verification against leaf cert"
+    );
+
+    // Invalid algorithm and wrong ECDSA digest length must fail.
+    for bad_req in [
+        DpeSignerContextSignReq {
+            algorithm: EndorsementAlgorithm(u32::MAX),
+            data_len: 48,
+            ..Default::default()
+        },
+        DpeSignerContextSignReq {
+            algorithm: EndorsementAlgorithm::ECDSA_384,
+            data_len: 32,
+            ..Default::default()
+        },
+        DpeSignerContextSignReq {
+            algorithm: EndorsementAlgorithm::MLDSA_87,
+            data_len: 0,
+            ..Default::default()
+        },
+    ] {
+        assert_mcu_req_fails(&mut hw, McuMailboxReq::DpeSignerContextSign(bad_req));
+    }
 
     for request in [
         McuMailboxReq::GetDpeCertChain(GetDpeCertChainReq {
@@ -2111,6 +2164,840 @@ fn test_dpe_signer_context_cert_cmd() -> Result<()> {
         mldsa87_oid
     );
     assert_eq!(cert.signature_algorithm.algorithm, mldsa87_oid);
+
+    // 4. Sign a raw TBS payload via MC_DPE_SIGNER_CONTEXT_SIGN (MLDSA_87)
+    // and verify against the ML-DSA-87 leaf certificate public key.
+    use fips204::traits::{SerDes, Verifier as MldsaVerifier};
+    let mldsa_tbs = b"Caliptra MCU Exported-CDI ML-DSA-87 test message";
+    let mut mldsa_sign_req = DpeSignerContextSignReq {
+        algorithm: EndorsementAlgorithm::MLDSA_87,
+        data_len: mldsa_tbs.len() as u32,
+        ..Default::default()
+    };
+    mldsa_sign_req.data[..mldsa_tbs.len()].copy_from_slice(mldsa_tbs);
+    let mldsa_sig = execute_var_mcu_req(
+        &mut mldsa_hw,
+        McuMailboxReq::DpeSignerContextSign(mldsa_sign_req),
+    )?;
+    assert_eq!(
+        mldsa_sig.len(),
+        4627,
+        "ML-DSA-87 signature must be 4627 bytes"
+    );
+    let mldsa_pubkey_bytes: [u8; fips204::ml_dsa_87::PK_LEN] = cert
+        .tbs_certificate
+        .subject_pki
+        .subject_public_key
+        .data
+        .as_ref()
+        .try_into()
+        .expect("unexpected ML-DSA-87 subject public key length");
+    let mldsa_pubkey = fips204::ml_dsa_87::PublicKey::try_from_bytes(mldsa_pubkey_bytes)
+        .expect("invalid ML-DSA-87 public key in leaf cert");
+    let mldsa_sig_arr: [u8; fips204::ml_dsa_87::SIG_LEN] = mldsa_sig.as_slice().try_into().unwrap();
+    assert!(
+        mldsa_pubkey.verify(mldsa_tbs, &mldsa_sig_arr, &[]),
+        "ML-DSA-87 signature from MC_DPE_SIGNER_CONTEXT_SIGN failed verification against leaf cert"
+    );
+
+    Ok(())
+}
+
+fn synthetic_der_cert(body_len: usize, fill: u8) -> Vec<u8> {
+    let mut der = Vec::with_capacity(4 + body_len);
+    der.push(0x30);
+    der.push(0x82);
+    der.extend_from_slice(&(body_len as u16).to_be_bytes());
+    der.extend(std::iter::repeat_n(fill, body_len));
+    der
+}
+
+fn read_full_mci_cert_chain(
+    hw: &mut impl McuHwModel,
+    pki_entity_slot: u32,
+    algorithm: u32,
+    expected_len: u32,
+    chunk_size: u32,
+) -> Result<Vec<u8>> {
+    let mut chain = Vec::with_capacity(expected_len as usize);
+    let mut offset = 0u32;
+    while offset < expected_len {
+        let chunk = execute_var_mcu_req(
+            hw,
+            McuMailboxReq::GetCertChain(GetCertChainReq {
+                pki_entity_slot,
+                algorithm,
+                offset,
+                length: chunk_size,
+                ..Default::default()
+            }),
+        )?;
+        assert!(!chunk.is_empty() && chunk.len() <= chunk_size as usize);
+        chain.extend_from_slice(&chunk);
+        offset += chunk.len() as u32;
+        if (chunk.len() as u32) < chunk_size {
+            break;
+        }
+    }
+    Ok(chain)
+}
+
+#[test]
+fn test_cert_chain_and_all_role_attestation_cmds() -> Result<()> {
+    use sha2::{Digest, Sha384};
+
+    const FORMAT_OCP_EAT: u32 = 1;
+    const ALGO_ECC384: u32 = 1;
+    const ALGO_MLDSA87: u32 = 2;
+    const SLOT_VENDOR: u32 = 0;
+    const SLOT_OWNER: u32 = 1;
+    const SLOT_TENANT: u32 = 2;
+    const KEY_ID_DEFAULT: u32 = 0;
+    const KEY_ID_LDEV_ID: u32 = 1;
+    const KEY_ID_FMC_ALIAS: u32 = 2;
+
+    let mut hw = start_crypto_mailbox_hw();
+
+    // 1. Vendor slot: read-only, anchored at IDevID (device_key_id == 0).
+    //    Use MAX_RESP_DATA_SIZE (4096) for ML-DSA-87 to exercise >1024-byte reads across the DPE leaf cert.
+    for (algo, chunk_size) in [
+        (ALGO_ECC384, 512u32),
+        (ALGO_MLDSA87, MAX_RESP_DATA_SIZE as u32),
+    ] {
+        let info_resp = execute_raw_mcu_req(
+            &mut hw,
+            McuMailboxReq::GetCertChainInfo(GetCertChainInfoReq {
+                pki_entity_slot: SLOT_VENDOR,
+                algorithm: algo,
+                ..Default::default()
+            }),
+        )?;
+        let info = assert_fixed_response::<GetCertChainInfoResp>(&info_resp);
+        assert_eq!(
+            info.hdr.fips_status,
+            MailboxRespHeader::FIPS_STATUS_APPROVED
+        );
+        assert_eq!(info.device_key_id, 0);
+        assert!(info.chain_len > 0);
+
+        let chain =
+            read_full_mci_cert_chain(&mut hw, SLOT_VENDOR, algo, info.chain_len, chunk_size)?;
+        assert_eq!(chain.len(), info.chain_len as usize);
+        let expected_digest: [u8; 48] = Sha384::digest(&chain).into();
+        assert_eq!(info.chain_digest, expected_digest);
+
+        // Reading at offset == chain_len (0 remaining bytes) is rejected.
+        assert_mcu_req_fails(
+            &mut hw,
+            McuMailboxReq::GetCertChain(GetCertChainReq {
+                pki_entity_slot: SLOT_VENDOR,
+                algorithm: algo,
+                offset: info.chain_len,
+                length: 64,
+                ..Default::default()
+            }),
+        );
+    }
+
+    // Writing to Vendor slot must fail (read-only).
+    let vendor_write_der = synthetic_der_cert(128, 0xAA);
+    let mut vendor_set_req = SetCertChainReq {
+        pki_entity_slot: SLOT_VENDOR,
+        algorithm: ALGO_ECC384,
+        device_key_id: KEY_ID_LDEV_ID,
+        offset: 0,
+        total_size: vendor_write_der.len() as u32,
+        data_len: vendor_write_der.len() as u32,
+        ..Default::default()
+    };
+    vendor_set_req.cert_data[..vendor_write_der.len()].copy_from_slice(&vendor_write_der);
+    assert_mcu_req_fails(&mut hw, McuMailboxReq::SetCertChain(vendor_set_req));
+
+    // 2. Unprovisioned Owner and Tenant slots reject info, chain read, and attestation.
+    for slot in [SLOT_OWNER, SLOT_TENANT] {
+        assert_mcu_req_fails(
+            &mut hw,
+            McuMailboxReq::GetCertChainInfo(GetCertChainInfoReq {
+                pki_entity_slot: slot,
+                algorithm: ALGO_ECC384,
+                ..Default::default()
+            }),
+        );
+        assert_mcu_req_fails(
+            &mut hw,
+            McuMailboxReq::GetCertChain(GetCertChainReq {
+                pki_entity_slot: slot,
+                algorithm: ALGO_ECC384,
+                offset: 0,
+                length: 256,
+                ..Default::default()
+            }),
+        );
+        assert_mcu_req_fails(
+            &mut hw,
+            McuMailboxReq::GetAttestation(GetAttestationReq {
+                evidence_format: FORMAT_OCP_EAT,
+                algorithm: ALGO_ECC384,
+                pki_entity_slot: slot,
+                nonce: [0x11; 32],
+                ..Default::default()
+            }),
+        );
+    }
+
+    // 3. Provision Owner slot in two chunks with policy default device_key_id == 0 (resolves to LDevID == 1).
+    let mut owner_endorsement = synthetic_der_cert(300, 0x21);
+    owner_endorsement.extend_from_slice(&synthetic_der_cert(260, 0x22));
+    let split = 256usize;
+    for (offset, chunk) in [
+        (0usize, &owner_endorsement[..split]),
+        (split, &owner_endorsement[split..]),
+    ] {
+        let mut req = SetCertChainReq {
+            pki_entity_slot: SLOT_OWNER,
+            algorithm: ALGO_ECC384,
+            device_key_id: KEY_ID_DEFAULT,
+            offset: offset as u32,
+            total_size: owner_endorsement.len() as u32,
+            data_len: chunk.len() as u32,
+            ..Default::default()
+        };
+        req.cert_data[..chunk.len()].copy_from_slice(chunk);
+        let resp = execute_raw_mcu_req(&mut hw, McuMailboxReq::SetCertChain(req))?;
+        assert_eq!(
+            assert_fixed_response::<SetCertChainResp>(&resp)
+                .hdr
+                .fips_status,
+            MailboxRespHeader::FIPS_STATUS_APPROVED
+        );
+    }
+
+    let owner_info_resp = execute_raw_mcu_req(
+        &mut hw,
+        McuMailboxReq::GetCertChainInfo(GetCertChainInfoReq {
+            pki_entity_slot: SLOT_OWNER,
+            algorithm: ALGO_ECC384,
+            ..Default::default()
+        }),
+    )?;
+    let owner_info = assert_fixed_response::<GetCertChainInfoResp>(&owner_info_resp);
+    assert_eq!(owner_info.device_key_id, KEY_ID_LDEV_ID);
+    assert!((owner_info.chain_len as usize) > owner_endorsement.len());
+
+    let owner_chain =
+        read_full_mci_cert_chain(&mut hw, SLOT_OWNER, ALGO_ECC384, owner_info.chain_len, 400)?;
+    assert_eq!(owner_chain.len(), owner_info.chain_len as usize);
+    assert!(owner_chain.starts_with(&owner_endorsement));
+    let owner_digest: [u8; 48] = Sha384::digest(&owner_chain).into();
+    assert_eq!(owner_info.chain_digest, owner_digest);
+
+    // After the endorsement prefix, an LDevID-anchored chain has 3 X.509 DER certs:
+    // FMC Alias, RT Alias, and DPE Leaf.
+    let mut rem = &owner_chain[owner_endorsement.len()..];
+    let mut dpe_cert_count = 0usize;
+    while !rem.is_empty() {
+        let (rest, _) =
+            x509_parser::parse_x509_certificate(rem).expect("invalid appended DPE certificate DER");
+        rem = rest;
+        dpe_cert_count += 1;
+    }
+    assert_eq!(dpe_cert_count, 3);
+
+    let owner_nonce = [0x51u8; 32];
+    let owner_att = execute_var_mcu_req(
+        &mut hw,
+        McuMailboxReq::GetAttestation(GetAttestationReq {
+            evidence_format: FORMAT_OCP_EAT,
+            algorithm: ALGO_ECC384,
+            pki_entity_slot: SLOT_OWNER,
+            nonce: owner_nonce,
+            ..Default::default()
+        }),
+    )?;
+    assert_signed_eat(
+        &owner_att[GET_ATTESTATION_RESP_PREFIX_LEN..],
+        &owner_nonce,
+        &[-51],
+        false,
+    );
+
+    // Provision Owner ML-DSA-87 endorsement and verify 4 KB chain read + ML-DSA EAT attestation.
+    let owner_mldsa_endorsement = synthetic_der_cert(512, 0x29);
+    let mut owner_mldsa_req = SetCertChainReq {
+        pki_entity_slot: SLOT_OWNER,
+        algorithm: ALGO_MLDSA87,
+        device_key_id: KEY_ID_DEFAULT,
+        offset: 0,
+        total_size: owner_mldsa_endorsement.len() as u32,
+        data_len: owner_mldsa_endorsement.len() as u32,
+        ..Default::default()
+    };
+    owner_mldsa_req.cert_data[..owner_mldsa_endorsement.len()]
+        .copy_from_slice(&owner_mldsa_endorsement);
+    let owner_mldsa_set_resp =
+        execute_raw_mcu_req(&mut hw, McuMailboxReq::SetCertChain(owner_mldsa_req))?;
+    assert_eq!(
+        assert_fixed_response::<SetCertChainResp>(&owner_mldsa_set_resp)
+            .hdr
+            .fips_status,
+        MailboxRespHeader::FIPS_STATUS_APPROVED
+    );
+    let owner_mldsa_info_resp = execute_raw_mcu_req(
+        &mut hw,
+        McuMailboxReq::GetCertChainInfo(GetCertChainInfoReq {
+            pki_entity_slot: SLOT_OWNER,
+            algorithm: ALGO_MLDSA87,
+            ..Default::default()
+        }),
+    )?;
+    let owner_mldsa_info = assert_fixed_response::<GetCertChainInfoResp>(&owner_mldsa_info_resp);
+    assert_eq!(owner_mldsa_info.device_key_id, KEY_ID_LDEV_ID);
+    let owner_mldsa_chain = read_full_mci_cert_chain(
+        &mut hw,
+        SLOT_OWNER,
+        ALGO_MLDSA87,
+        owner_mldsa_info.chain_len,
+        MAX_RESP_DATA_SIZE as u32,
+    )?;
+    assert_eq!(owner_mldsa_chain.len(), owner_mldsa_info.chain_len as usize);
+    assert!(owner_mldsa_chain.starts_with(&owner_mldsa_endorsement));
+    let owner_mldsa_digest: [u8; 48] = Sha384::digest(&owner_mldsa_chain).into();
+    assert_eq!(owner_mldsa_info.chain_digest, owner_mldsa_digest);
+    let owner_mldsa_nonce = [0x52u8; 32];
+    let owner_mldsa_att = execute_var_mcu_req(
+        &mut hw,
+        McuMailboxReq::GetAttestation(GetAttestationReq {
+            evidence_format: FORMAT_OCP_EAT,
+            algorithm: ALGO_MLDSA87,
+            pki_entity_slot: SLOT_OWNER,
+            nonce: owner_mldsa_nonce,
+            ..Default::default()
+        }),
+    )?;
+    assert_signed_eat(
+        &owner_mldsa_att[GET_ATTESTATION_RESP_PREFIX_LEN..],
+        &owner_mldsa_nonce,
+        &[-50],
+        false,
+    );
+
+    // 4. Tenant slot policy: device_key_id == 0 and unsupported key IDs (e.g. FmcAlias == 2) are rejected.
+    let tenant_endorsement = synthetic_der_cert(340, 0x33);
+    for bad_key_id in [KEY_ID_DEFAULT, KEY_ID_FMC_ALIAS, 99] {
+        let mut bad_req = SetCertChainReq {
+            pki_entity_slot: SLOT_TENANT,
+            algorithm: ALGO_ECC384,
+            device_key_id: bad_key_id,
+            offset: 0,
+            total_size: tenant_endorsement.len() as u32,
+            data_len: tenant_endorsement.len() as u32,
+            ..Default::default()
+        };
+        bad_req.cert_data[..tenant_endorsement.len()].copy_from_slice(&tenant_endorsement);
+        assert_mcu_req_fails(&mut hw, McuMailboxReq::SetCertChain(bad_req));
+    }
+
+    // Provision Tenant using variable-length request framing (`SetCertChainReq::HEADER_SIZE + data_len`).
+    let mut tenant_req = SetCertChainReq {
+        pki_entity_slot: SLOT_TENANT,
+        algorithm: ALGO_ECC384,
+        device_key_id: KEY_ID_LDEV_ID,
+        offset: 0,
+        total_size: tenant_endorsement.len() as u32,
+        data_len: tenant_endorsement.len() as u32,
+        ..Default::default()
+    };
+    tenant_req.cert_data[..tenant_endorsement.len()].copy_from_slice(&tenant_endorsement);
+    let set_cmd = McuCommandId::MC_SET_CERT_CHAIN.0;
+    let var_len = SetCertChainReq::HEADER_SIZE + tenant_endorsement.len();
+    let var_payload = &tenant_req.as_bytes()[4..var_len];
+    let tenant_set_resp = hw
+        .mailbox_execute(set_cmd, &raw_request(set_cmd, var_payload))?
+        .expect("MC_SET_CERT_CHAIN returned no response");
+    assert_eq!(
+        assert_fixed_response::<SetCertChainResp>(&tenant_set_resp)
+            .hdr
+            .fips_status,
+        MailboxRespHeader::FIPS_STATUS_APPROVED
+    );
+
+    let tenant_info_resp = execute_raw_mcu_req(
+        &mut hw,
+        McuMailboxReq::GetCertChainInfo(GetCertChainInfoReq {
+            pki_entity_slot: SLOT_TENANT,
+            algorithm: ALGO_ECC384,
+            ..Default::default()
+        }),
+    )?;
+    let tenant_info = assert_fixed_response::<GetCertChainInfoResp>(&tenant_info_resp);
+    assert_eq!(tenant_info.device_key_id, KEY_ID_LDEV_ID);
+    let tenant_chain = read_full_mci_cert_chain(
+        &mut hw,
+        SLOT_TENANT,
+        ALGO_ECC384,
+        tenant_info.chain_len,
+        1024,
+    )?;
+    assert_eq!(tenant_chain.len(), tenant_info.chain_len as usize);
+    assert!(tenant_chain.starts_with(&tenant_endorsement));
+    let tenant_digest: [u8; 48] = Sha384::digest(&tenant_chain).into();
+    assert_eq!(tenant_info.chain_digest, tenant_digest);
+
+    let tenant_nonce = [0x62u8; 32];
+    let tenant_att = execute_var_mcu_req(
+        &mut hw,
+        McuMailboxReq::GetAttestation(GetAttestationReq {
+            evidence_format: FORMAT_OCP_EAT,
+            algorithm: ALGO_ECC384,
+            pki_entity_slot: SLOT_TENANT,
+            nonce: tenant_nonce,
+            ..Default::default()
+        }),
+    )?;
+    assert_signed_eat(
+        &tenant_att[GET_ATTESTATION_RESP_PREFIX_LEN..],
+        &tenant_nonce,
+        &[-51],
+        false,
+    );
+
+    // 5. Erase Tenant and Owner slots (`offset == 0 && total_size == 0 && data_len == 0`) and verify they are unprovisioned again.
+    for (slot, algo) in [
+        (SLOT_TENANT, ALGO_ECC384),
+        (SLOT_OWNER, ALGO_ECC384),
+        (SLOT_OWNER, ALGO_MLDSA87),
+    ] {
+        let erase_resp = execute_raw_mcu_req(
+            &mut hw,
+            McuMailboxReq::SetCertChain(SetCertChainReq {
+                pki_entity_slot: slot,
+                algorithm: algo,
+                device_key_id: KEY_ID_LDEV_ID,
+                offset: 0,
+                total_size: 0,
+                data_len: 0,
+                ..Default::default()
+            }),
+        )?;
+        assert_eq!(
+            assert_fixed_response::<SetCertChainResp>(&erase_resp)
+                .hdr
+                .fips_status,
+            MailboxRespHeader::FIPS_STATUS_APPROVED
+        );
+        assert_mcu_req_fails(
+            &mut hw,
+            McuMailboxReq::GetCertChainInfo(GetCertChainInfoReq {
+                pki_entity_slot: slot,
+                algorithm: algo,
+                ..Default::default()
+            }),
+        );
+    }
+
+    // 6. Negative boundary checks for GetCertChainInfo, GetCertChain, and SetCertChain.
+    for req in [
+        McuMailboxReq::GetCertChainInfo(GetCertChainInfoReq {
+            pki_entity_slot: u32::MAX,
+            algorithm: ALGO_ECC384,
+            ..Default::default()
+        }),
+        McuMailboxReq::GetCertChainInfo(GetCertChainInfoReq {
+            pki_entity_slot: SLOT_VENDOR,
+            algorithm: u32::MAX,
+            ..Default::default()
+        }),
+        McuMailboxReq::GetCertChain(GetCertChainReq {
+            pki_entity_slot: SLOT_VENDOR,
+            algorithm: ALGO_ECC384,
+            offset: 0,
+            length: 0,
+            ..Default::default()
+        }),
+        McuMailboxReq::GetCertChain(GetCertChainReq {
+            pki_entity_slot: SLOT_VENDOR,
+            algorithm: ALGO_ECC384,
+            offset: 0,
+            length: MAX_RESP_DATA_SIZE as u32 + 1,
+            ..Default::default()
+        }),
+        McuMailboxReq::GetCertChain(GetCertChainReq {
+            pki_entity_slot: SLOT_VENDOR,
+            algorithm: ALGO_ECC384,
+            offset: u32::MAX,
+            length: 64,
+            ..Default::default()
+        }),
+        McuMailboxReq::SetCertChain(SetCertChainReq {
+            pki_entity_slot: SLOT_OWNER,
+            algorithm: ALGO_ECC384,
+            device_key_id: KEY_ID_LDEV_ID,
+            offset: 16,
+            total_size: 32,
+            data_len: 16,
+            ..Default::default()
+        }),
+    ] {
+        assert_mcu_req_fails(&mut hw, req);
+    }
+
+    Ok(())
+}
+
+#[cfg_attr(feature = "fpga_realtime", ignore)]
+#[test]
+fn test_cert_chain_and_attestation_vendor_certs_oob() -> Result<()> {
+    use sha2::{Digest, Sha384};
+
+    const ISOLATED_PROCESS_ENV: &str = "CALIPTRA_MCU_ISOLATED_VENDOR_CERTS_OOB_TEST";
+    const TEST_NAME: &str =
+        "runtime::test_mcu_mailbox::test_cert_chain_and_attestation_vendor_certs_oob";
+
+    if std::env::var_os(ISOLATED_PROCESS_ENV).is_none() {
+        let working_dir = tempfile::tempdir_in(std::env::current_dir()?)?;
+        let status = std::process::Command::new(std::env::current_exe()?)
+            .args(["--exact", TEST_NAME, "--nocapture"])
+            .env(ISOLATED_PROCESS_ENV, "1")
+            .current_dir(working_dir.path())
+            .status()?;
+        assert!(status.success(), "isolated vendor-certs-oob test failed");
+        return Ok(());
+    }
+
+    const FORMAT_OCP_EAT: u32 = 1;
+    const ALGO_ECC384: u32 = 1;
+    const ALGO_MLDSA87: u32 = 2;
+    const SLOT_VENDOR: u32 = 0;
+    const SLOT_OWNER: u32 = 1;
+    const KEY_ID_DEFAULT: u32 = 0;
+    const KEY_ID_LDEV_ID: u32 = 1;
+
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-mcu-mbox-cmds,vendor-certs-oob"),
+        ..Default::default()
+    });
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    // 1. With `vendor-certs-oob`, Slot 0 skips OTP IDevID cert population and static
+    //    Root CA endorsements, serving `[LDevID, FMC Alias, RT Alias, DPE Leaf]` (4 certs).
+    for (algo, chunk_size, expected_alg_id) in [
+        (ALGO_ECC384, 512u32, -51i64),
+        (ALGO_MLDSA87, MAX_RESP_DATA_SIZE as u32, -50i64),
+    ] {
+        let info_resp = execute_raw_mcu_req(
+            &mut hw,
+            McuMailboxReq::GetCertChainInfo(GetCertChainInfoReq {
+                pki_entity_slot: SLOT_VENDOR,
+                algorithm: algo,
+                ..Default::default()
+            }),
+        )?;
+        let info = assert_fixed_response::<GetCertChainInfoResp>(&info_resp);
+        assert_eq!(
+            info.hdr.fips_status,
+            MailboxRespHeader::FIPS_STATUS_APPROVED
+        );
+        assert_eq!(info.device_key_id, 0);
+        assert!(info.chain_len > 0);
+
+        let chain =
+            read_full_mci_cert_chain(&mut hw, SLOT_VENDOR, algo, info.chain_len, chunk_size)?;
+        assert_eq!(chain.len(), info.chain_len as usize);
+        let expected_digest: [u8; 48] = Sha384::digest(&chain).into();
+        assert_eq!(info.chain_digest, expected_digest);
+
+        let mut rem = chain.as_slice();
+        let mut cert_subjects = Vec::new();
+        while !rem.is_empty() {
+            let (rest, cert) = x509_parser::parse_x509_certificate(rem)
+                .expect("invalid X.509 DER certificate in OOB Vendor chain");
+            cert_subjects.push(cert.subject().to_string());
+            rem = rest;
+        }
+        assert_eq!(
+            cert_subjects.len(),
+            4,
+            "expected [LDevID, FMC Alias, RT Alias, DPE Leaf] for algo {algo}, got {cert_subjects:?}"
+        );
+        assert!(
+            cert_subjects[0].contains("LDevID"),
+            "expected first cert in OOB Vendor chain to be LDevID, got {}",
+            cert_subjects[0]
+        );
+
+        let vendor_nonce = [0x41u8; 32];
+        let vendor_att = execute_var_mcu_req(
+            &mut hw,
+            McuMailboxReq::GetAttestation(GetAttestationReq {
+                evidence_format: FORMAT_OCP_EAT,
+                algorithm: algo,
+                pki_entity_slot: SLOT_VENDOR,
+                nonce: vendor_nonce,
+                ..Default::default()
+            }),
+        )?;
+        assert_signed_eat(
+            &vendor_att[GET_ATTESTATION_RESP_PREFIX_LEN..],
+            &vendor_nonce,
+            &[expected_alg_id],
+            false,
+        );
+    }
+
+    // Vendor slot remains read-only under `vendor-certs-oob`.
+    let vendor_write_der = synthetic_der_cert(128, 0xAA);
+    let mut vendor_set_req = SetCertChainReq {
+        pki_entity_slot: SLOT_VENDOR,
+        algorithm: ALGO_ECC384,
+        device_key_id: KEY_ID_LDEV_ID,
+        offset: 0,
+        total_size: vendor_write_der.len() as u32,
+        data_len: vendor_write_der.len() as u32,
+        ..Default::default()
+    };
+    vendor_set_req.cert_data[..vendor_write_der.len()].copy_from_slice(&vendor_write_der);
+    assert_mcu_req_fails(&mut hw, McuMailboxReq::SetCertChain(vendor_set_req));
+
+    // 2. Owner slot (anchored at LDevID) still skips LDevID and appends the 3 remaining
+    //    device certs `[FMC Alias, RT Alias, DPE Leaf]` when IDevID is unpopulated in Core.
+    let owner_endorsement = synthetic_der_cert(280, 0x31);
+    let mut owner_set_req = SetCertChainReq {
+        pki_entity_slot: SLOT_OWNER,
+        algorithm: ALGO_ECC384,
+        device_key_id: KEY_ID_DEFAULT,
+        offset: 0,
+        total_size: owner_endorsement.len() as u32,
+        data_len: owner_endorsement.len() as u32,
+        ..Default::default()
+    };
+    owner_set_req.cert_data[..owner_endorsement.len()].copy_from_slice(&owner_endorsement);
+    let owner_set_resp = execute_raw_mcu_req(&mut hw, McuMailboxReq::SetCertChain(owner_set_req))?;
+    assert_eq!(
+        assert_fixed_response::<SetCertChainResp>(&owner_set_resp)
+            .hdr
+            .fips_status,
+        MailboxRespHeader::FIPS_STATUS_APPROVED
+    );
+
+    let owner_info_resp = execute_raw_mcu_req(
+        &mut hw,
+        McuMailboxReq::GetCertChainInfo(GetCertChainInfoReq {
+            pki_entity_slot: SLOT_OWNER,
+            algorithm: ALGO_ECC384,
+            ..Default::default()
+        }),
+    )?;
+    let owner_info = assert_fixed_response::<GetCertChainInfoResp>(&owner_info_resp);
+    assert_eq!(owner_info.device_key_id, KEY_ID_LDEV_ID);
+    let owner_chain =
+        read_full_mci_cert_chain(&mut hw, SLOT_OWNER, ALGO_ECC384, owner_info.chain_len, 512)?;
+    assert_eq!(owner_chain.len(), owner_info.chain_len as usize);
+    assert!(owner_chain.starts_with(&owner_endorsement));
+    let owner_digest: [u8; 48] = Sha384::digest(&owner_chain).into();
+    assert_eq!(owner_info.chain_digest, owner_digest);
+
+    let mut rem = &owner_chain[owner_endorsement.len()..];
+    let mut dpe_subjects = Vec::new();
+    while !rem.is_empty() {
+        let (rest, cert) =
+            x509_parser::parse_x509_certificate(rem).expect("invalid appended DPE certificate DER");
+        dpe_subjects.push(cert.subject().to_string());
+        rem = rest;
+    }
+    assert_eq!(
+        dpe_subjects.len(),
+        3,
+        "expected [FMC Alias, RT Alias, DPE Leaf] after Owner endorsement, got {dpe_subjects:?}"
+    );
+    assert!(
+        !dpe_subjects[0].contains("LDevID"),
+        "Owner chain must skip LDevID when anchored at LDevID, got {}",
+        dpe_subjects[0]
+    );
+
+    // Erase Owner slot so persistent flash state stays clean across tests.
+    let erase_resp = execute_raw_mcu_req(
+        &mut hw,
+        McuMailboxReq::SetCertChain(SetCertChainReq {
+            pki_entity_slot: SLOT_OWNER,
+            algorithm: ALGO_ECC384,
+            device_key_id: KEY_ID_LDEV_ID,
+            offset: 0,
+            total_size: 0,
+            data_len: 0,
+            ..Default::default()
+        }),
+    )?;
+    assert_eq!(
+        assert_fixed_response::<SetCertChainResp>(&erase_resp)
+            .hdr
+            .fips_status,
+        MailboxRespHeader::FIPS_STATUS_APPROVED
+    );
+    assert_mcu_req_fails(
+        &mut hw,
+        McuMailboxReq::GetCertChainInfo(GetCertChainInfoReq {
+            pki_entity_slot: SLOT_OWNER,
+            algorithm: ALGO_ECC384,
+            ..Default::default()
+        }),
+    );
+
+    Ok(())
+}
+
+#[cfg_attr(feature = "fpga_realtime", ignore)]
+#[test]
+fn test_provision_idev_cert_cmd() -> Result<()> {
+    use crate::test::{ECC_DEVID_CERT_DER, MLDSA_IDEVID_CERT};
+    use sha2::{Digest, Sha384};
+
+    const ALGO_ECC384: u32 = 1;
+    const ALGO_MLDSA87: u32 = 2;
+    const SLOT_VENDOR: u32 = 0;
+    const MODE_POPULATE_ONLY: u32 = 0;
+    const MODE_WRITE_OTP: u32 = 1;
+
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-mcu-mbox-cmds"),
+        unprovisioned_idevid_otp: true,
+        ..Default::default()
+    });
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    // 1. Before IDevID provisioning, OTP partitions 0x01 and 0x02 are erased (0xFF),
+    //    so Slot 0 omits IDevID from the DPE chain.
+    let mut initial_lens = [0u32; 2];
+    let mut initial_digests = [[0u8; 48]; 2];
+    for (idx, algo) in [(0usize, ALGO_ECC384), (1usize, ALGO_MLDSA87)] {
+        let info_resp = execute_raw_mcu_req(
+            &mut hw,
+            McuMailboxReq::GetCertChainInfo(GetCertChainInfoReq {
+                pki_entity_slot: SLOT_VENDOR,
+                algorithm: algo,
+                ..Default::default()
+            }),
+        )?;
+        let info = assert_fixed_response::<GetCertChainInfoResp>(&info_resp);
+        initial_lens[idx] = info.chain_len;
+        initial_digests[idx] = info.chain_digest;
+    }
+
+    // 2. Reject malformed DER length, invalid algorithm, invalid mode, and empty payload.
+    let mut truncated_ecc = ProvisionIdevCertReq {
+        algorithm: ALGO_ECC384,
+        mode: MODE_POPULATE_ONLY,
+        data_len: (ECC_DEVID_CERT_DER.len() - 1) as u32,
+        ..Default::default()
+    };
+    truncated_ecc.data[..ECC_DEVID_CERT_DER.len() - 1]
+        .copy_from_slice(&ECC_DEVID_CERT_DER[..ECC_DEVID_CERT_DER.len() - 1]);
+    let mut bad_algo = ProvisionIdevCertReq {
+        algorithm: u32::MAX,
+        mode: MODE_POPULATE_ONLY,
+        data_len: ECC_DEVID_CERT_DER.len() as u32,
+        ..Default::default()
+    };
+    bad_algo.data[..ECC_DEVID_CERT_DER.len()].copy_from_slice(&ECC_DEVID_CERT_DER);
+    let mut bad_mode = ProvisionIdevCertReq {
+        algorithm: ALGO_ECC384,
+        mode: 2,
+        data_len: ECC_DEVID_CERT_DER.len() as u32,
+        ..Default::default()
+    };
+    bad_mode.data[..ECC_DEVID_CERT_DER.len()].copy_from_slice(&ECC_DEVID_CERT_DER);
+    for bad_req in [
+        truncated_ecc,
+        bad_algo,
+        bad_mode,
+        ProvisionIdevCertReq {
+            algorithm: ALGO_ECC384,
+            mode: MODE_POPULATE_ONLY,
+            data_len: 0,
+            ..Default::default()
+        },
+    ] {
+        assert_mcu_req_fails(&mut hw, McuMailboxReq::ProvisionIdevCert(bad_req));
+    }
+
+    // 3. Provision ECC-384 with WriteOtp (mode = 1) and ML-DSA-87 with PopulateOnly (mode = 0),
+    //    then verify any subsequent PopulateOnly or WriteOtp for either algorithm is rejected.
+    for (idx, algo, mode, cert_der, chunk_size) in [
+        (
+            0usize,
+            ALGO_ECC384,
+            MODE_WRITE_OTP,
+            ECC_DEVID_CERT_DER.as_slice(),
+            512u32,
+        ),
+        (
+            1usize,
+            ALGO_MLDSA87,
+            MODE_POPULATE_ONLY,
+            MLDSA_IDEVID_CERT.as_slice(),
+            MAX_RESP_DATA_SIZE as u32,
+        ),
+    ] {
+        let mut req = ProvisionIdevCertReq {
+            algorithm: algo,
+            mode,
+            data_len: cert_der.len() as u32,
+            ..Default::default()
+        };
+        req.data[..cert_der.len()].copy_from_slice(cert_der);
+        let resp = execute_raw_mcu_req(&mut hw, McuMailboxReq::ProvisionIdevCert(req))?;
+        assert_eq!(
+            assert_fixed_response::<ProvisionIdevCertResp>(&resp)
+                .hdr
+                .fips_status,
+            MailboxRespHeader::FIPS_STATUS_APPROVED
+        );
+
+        // Verify Slot 0 cache was invalidated (`generation_counter` bumped) and chain now includes IDevID.
+        let info_resp = execute_raw_mcu_req(
+            &mut hw,
+            McuMailboxReq::GetCertChainInfo(GetCertChainInfoReq {
+                pki_entity_slot: SLOT_VENDOR,
+                algorithm: algo,
+                ..Default::default()
+            }),
+        )?;
+        let info = assert_fixed_response::<GetCertChainInfoResp>(&info_resp);
+        assert_eq!(
+            info.chain_len,
+            initial_lens[idx] + cert_der.len() as u32,
+            "Slot 0 chain_len must grow by IDevID DER length for algo {algo}"
+        );
+        assert_ne!(info.chain_digest, initial_digests[idx]);
+
+        let chain =
+            read_full_mci_cert_chain(&mut hw, SLOT_VENDOR, algo, info.chain_len, chunk_size)?;
+        assert_eq!(chain.len(), info.chain_len as usize);
+        let expected_digest: [u8; 48] = Sha384::digest(&chain).into();
+        assert_eq!(info.chain_digest, expected_digest);
+        assert!(
+            chain.windows(cert_der.len()).any(|w| w == cert_der),
+            "Slot 0 chain must contain the provisioned IDevID certificate for algo {algo}"
+        );
+
+        // 4. Subsequent PopulateOnly and WriteOtp must both be rejected (InvalidState).
+        for retry_mode in [MODE_POPULATE_ONLY, MODE_WRITE_OTP] {
+            let mut retry_req = ProvisionIdevCertReq {
+                algorithm: algo,
+                mode: retry_mode,
+                data_len: cert_der.len() as u32,
+                ..Default::default()
+            };
+            retry_req.data[..cert_der.len()].copy_from_slice(cert_der);
+            assert_mcu_req_fails(&mut hw, McuMailboxReq::ProvisionIdevCert(retry_req));
+        }
+    }
 
     Ok(())
 }

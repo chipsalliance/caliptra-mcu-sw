@@ -316,9 +316,8 @@ SoC manifest digest into PCR31. If an integrator needs that specific digest in
 PCR31, add an explicit Caliptra RT-side stash after manifest verification rather
 than asking MCU ROM to stash unverified manifest bytes.
 
-MCU ROM does stash ROM-owned measurements that only it can observe. When
-`RomParameters::stash_rom_digest` is set, ROM stashes its own ROM digest. ROM
-also hashes and stashes `FIELD_ENTROPY_STATE` after Caliptra RT is ready for
+When `RomParameters::stash_rom_digest` is enabled, MCU ROM stashes its own ROM
+digest with four-byte ASCII metadata `MROM` after Caliptra RT is ready for
 runtime mailbox commands.
 
 ## Security-State Integration
@@ -329,8 +328,7 @@ The ROM has several security-state hooks that require integrator policy.
 
 | Feature | Integrator responsibility | ROM behavior |
 |---|---|---|
-| Field entropy programming | Decide which FE partitions ROM programs at cold boot (`RomParameters::program_field_entropy`) versus which are left to the in-field runtime `MC_FE_PROG` authorized command. | For each selected partition, ROM sends Caliptra's `FE_PROG` mailbox command during cold boot and tracks progress via `FIELD_ENTROPY_STATE` (`Empty` → `Started` → `Finished`). It then measures and stashes `FIELD_ENTROPY_STATE`. |
-| FIPS zeroization | Route the FIPS PPD signal and provide `RomParameters::fips_zeroization_mask` before MCI configuration locks. | ROM writes `FC_FIPS_ZEROZATION`, executes Caliptra `ZEROIZE_UDS_FE`, marks `FIELD_ENTROPY_STATE` zeroized, requests LC SCRAP, and halts for cold reset. |
+| FIPS zeroization | Route the FIPS PPD signal and provide `RomParameters::fips_zeroization_mask` before MCI configuration locks. | ROM writes `FC_FIPS_ZEROZATION`, executes Caliptra `ZEROIZE_UDS_FE`, requests LC SCRAP, and halts for cold reset. |
 
 ### HEK-Related Hooks
 

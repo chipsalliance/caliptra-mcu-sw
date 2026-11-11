@@ -7,22 +7,19 @@ extern crate alloc;
 use alloc::boxed::Box;
 use arrayvec::ArrayVec;
 use async_trait::async_trait;
-use caliptra_api::mailbox::{
-    EcdsaVerifyReq, MailboxReqHeader, MailboxRespHeader, ZeroizeUdsFeReq, ZeroizeUdsFeResp,
-    ZEROIZE_FE0_FLAG, ZEROIZE_FE1_FLAG, ZEROIZE_FE2_FLAG, ZEROIZE_FE3_FLAG, ZEROIZE_UDS_FLAG,
-};
+use caliptra_api::mailbox::{EcdsaVerifyReq, MailboxReqHeader, MailboxRespHeader};
 #[cfg(feature = "pcr-quote")]
 use caliptra_mcu_attestation_evidence::pcr_quote::{encode_pcr_quote, PcrQuoteAlgorithm};
 use caliptra_mcu_attestation_evidence::{encode_signed_ocp_eat, OcpEatAlgorithm};
 use caliptra_mcu_common_commands::{
     AsymAlgo, CaliptraCmdResult, CaliptraCompletionCode, CertChainInfo, EvidenceFormat,
-    GetLogResult, LogType, PkiEntitySlot, ATTESTATION_NONCE_LEN, DEBUG_UNLOCK_CHALLENGE_SIZE,
-    DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE,
+    GetLogResult, LogType, PkiEntitySlot, ProvisionIdevCertMode, ATTESTATION_NONCE_LEN,
+    DEBUG_UNLOCK_CHALLENGE_SIZE, DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE,
 };
 use caliptra_mcu_libsyscall_caliptra::flash::SpiFlash;
 use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError, PayloadStream};
 use caliptra_mcu_libsyscall_caliptra::otp::{Otp, RevokeVendorPubKeyType};
-use caliptra_mcu_libsyscall_caliptra::{caliptra, mci, otp, DefaultSyscalls};
+use caliptra_mcu_libsyscall_caliptra::{caliptra, otp, DefaultSyscalls};
 use caliptra_mcu_libtock_platform::ErrorCode;
 // The AK label lives with the cert store because that is what mints the leaf
 // certificate; attestation evidence must be signed under the same label so the
@@ -183,17 +180,75 @@ fn mailbox_checksum_segments<const N: usize>(command: u32, segments: [&[u8]; N])
 mod tests {
     extern crate std;
 
+    use super::super::CaliptraCmdBackend;
     use super::*;
     use caliptra_api::mailbox::FwInfoResp;
+    use caliptra_mcu_common_commands::CaliptraCmdHandler;
     use caliptra_mcu_libsyscall_caliptra::mailbox::MAILBOX_DRIVER_NUM;
     use caliptra_mcu_libtock_platform::{CommandReturn, Syscalls};
     use caliptra_mcu_libtock_unittest::{command_return, fake, DriverInfo};
     use caliptra_mcu_scratch_alloc::BitmapAllocator;
     use core::cell::Cell;
+    use core::future::Future;
     use core::ptr::NonNull;
+    use core::task::{Context, Waker};
     use std::rc::Rc;
     use std::vec::Vec;
     use zerocopy::FromZeros;
+
+    static SVN_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    struct TestAlloc;
+
+    impl ScratchAlloc for TestAlloc {
+        type Buf<'a> = Vec<u8>;
+
+        fn alloc(&self, len: usize) -> mcu_error::McuResult<Self::Buf<'_>> {
+            Ok(std::vec![0; len])
+        }
+    }
+
+    #[test]
+    fn svn_transaction_blocks_typed_floor_writers_before_any_io() {
+        let _test_guard = SVN_TEST_LOCK.lock().unwrap();
+        for target in [
+            SvnTarget::CaliptraRuntime,
+            SvnTarget::SocManifest,
+            SvnTarget::OwnerSocManifest,
+        ] {
+            let kernel = crate::kernel();
+            let svn_guard = otp::SVN_UPDATE_LOCK.try_lock().unwrap();
+            let mut writer = Box::pin(increase_min_svn(&TestAlloc, target, 1));
+            let mut context = Context::from_waker(Waker::noop());
+            assert!(writer.as_mut().poll(&mut context).is_pending());
+            assert!(kernel.take_syscall_log().is_empty());
+            drop(svn_guard);
+            assert_eq!(
+                fake::wait_for_future_ready(writer),
+                Err(CaliptraCompletionCode::OperationFailed)
+            );
+            assert!(otp::SVN_UPDATE_LOCK.try_lock().is_ok());
+        }
+    }
+
+    #[test]
+    fn svn_transaction_blocks_the_raw_fuse_writer_before_any_io() {
+        let _test_guard = SVN_TEST_LOCK.lock().unwrap();
+        let kernel = crate::kernel();
+        let backend = CaliptraCmdBackend;
+        let svn_guard = otp::SVN_UPDATE_LOCK.try_lock().unwrap();
+        let word_addr = (fuses::OTP_CPTRA_CORE_RUNTIME_SVN.byte_offset / 4) as u32;
+        let mut writer = Box::pin(backend.fuse_write(word_addr, 0x1f, u32::MAX));
+        let mut context = Context::from_waker(Waker::noop());
+        assert!(writer.as_mut().poll(&mut context).is_pending());
+        assert!(kernel.take_syscall_log().is_empty());
+        drop(svn_guard);
+        assert_eq!(
+            fake::wait_for_future_ready(writer),
+            Err(CaliptraCompletionCode::OperationFailed)
+        );
+        assert!(otp::SVN_UPDATE_LOCK.try_lock().is_ok());
+    }
 
     #[derive(Default)]
     struct OwnerSvnOtp {
@@ -252,6 +307,7 @@ mod tests {
 
     #[test]
     fn owner_svn_runtime_word_updates() {
+        let _test_guard = SVN_TEST_LOCK.lock().unwrap();
         let kernel = crate::kernel();
         let mailbox = Rc::new(fake::FakeMailboxDriver::new());
         let otp = Rc::new(OwnerSvnOtp::default());
@@ -279,14 +335,15 @@ mod tests {
                 response.as_bytes(),
             );
             otp.reads.set(0);
-            let result = fake::wait_for_future_ready(Box::pin(increase_min_svn(
-                &pool,
-                SvnTarget::OwnerSocManifest,
-                svn,
-            )));
+            let mut writer = Box::pin(increase_min_svn(&pool, SvnTarget::OwnerSocManifest, svn));
+            let mut context = Context::from_waker(Waker::noop());
+            assert!(writer.as_mut().poll(&mut context).is_pending());
+            let guarded_while_waiting = otp::SVN_UPDATE_LOCK.try_lock().is_err();
+            let result = fake::wait_for_future_ready(writer);
             // The fake mailbox retains its allowed buffers after completion.
             DefaultSyscalls::unallow_ro(MAILBOX_DRIVER_NUM, 0);
             DefaultSyscalls::unallow_rw(MAILBOX_DRIVER_NUM, 0);
+            assert!(guarded_while_waiting);
             result
         };
 
@@ -631,6 +688,29 @@ pub async fn set_cert_chain<A: ScratchAlloc>(
             total_size,
             data,
         );
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+}
+
+pub async fn provision_idevid_cert<A: ScratchAlloc>(
+    alloc: &A,
+    algorithm: AsymAlgo,
+    mode: ProvisionIdevCertMode,
+    data: &[u8],
+) -> CaliptraCmdResult<()> {
+    #[cfg(all(feature = "cert-provisioning", not(feature = "vendor-certs-oob")))]
+    {
+        crate::cert_store::provision_idevid_cert(
+            alloc,
+            algorithm.into(),
+            mode == ProvisionIdevCertMode::WriteOtp,
+            data,
+        )
+        .await
+    }
+    #[cfg(not(all(feature = "cert-provisioning", not(feature = "vendor-certs-oob"))))]
+    {
+        let _ = (alloc, algorithm, mode, data);
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 }
@@ -1115,6 +1195,7 @@ pub async fn increase_min_svn<A: ScratchAlloc>(
         return Err(CaliptraCompletionCode::InvalidParameter);
     }
 
+    let _svn_guard = otp::SVN_UPDATE_LOCK.lock().await;
     let otp_reg = match target {
         SvnTarget::CaliptraRuntime => {
             let caliptra_fw_info = fw_info(alloc)
@@ -1585,47 +1666,6 @@ pub fn hek_status() -> CaliptraCmdResult<(u32, u32)> {
     Otp::<DefaultSyscalls>::new()
         .hek_status()
         .map_err(|_| CaliptraCompletionCode::OperationFailed)
-}
-
-pub(crate) async fn zeroize_uds_fe() -> CaliptraCmdResult<()> {
-    let mut req = ZeroizeUdsFeReq {
-        flags: ZEROIZE_UDS_FLAG
-            | ZEROIZE_FE0_FLAG
-            | ZEROIZE_FE1_FLAG
-            | ZEROIZE_FE2_FLAG
-            | ZEROIZE_FE3_FLAG,
-        ..Default::default()
-    };
-    let mut resp = ZeroizeUdsFeResp::default();
-    mcu_caliptra_api::raw::raw_mailbox_execute(
-        caliptra_api::mailbox::CommandId::ZEROIZE_UDS_FE.into(),
-        req.as_mut_bytes(),
-        resp.as_mut_bytes(),
-    )
-    .await
-    .map_err(|_| CaliptraCompletionCode::ZeroizeFailed)?;
-
-    if resp.dpe_result != 0 {
-        return Err(CaliptraCompletionCode::ZeroizeFailed);
-    }
-
-    Otp::<DefaultSyscalls>::new()
-        .mark_field_entropy_zeroized()
-        .map_err(|_| CaliptraCompletionCode::ZeroizeFailed)
-}
-
-pub(crate) fn enter_rma(rma_token: &[u8; 16]) -> CaliptraCmdResult<()> {
-    mci::Mci::<DefaultSyscalls>::new()
-        .enter_rma(rma_token)
-        .map_err(|error| match error {
-            ErrorCode::Invalid => CaliptraCompletionCode::ZeroizeFailed,
-            _ => CaliptraCompletionCode::RmaTransitionFailed,
-        })
-}
-
-pub(crate) async fn zeroize_uds_fe_and_enter_rma(rma_token: &[u8; 16]) -> CaliptraCmdResult<()> {
-    zeroize_uds_fe().await?;
-    enter_rma(rma_token)
 }
 
 #[cfg(feature = "ocp-lock")]

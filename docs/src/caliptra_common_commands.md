@@ -30,6 +30,7 @@ The following table describes the commands defined under this specification. The
 | Request Debug Unlock            | O   | SPDM VDM, MCI Mailbox | Request debug unlock in production environment.                                                                                      |
 | Authorize Debug Unlock Token    | O   | SPDM VDM, MCI Mailbox | Send debug unlock token to device for authorization.                                                                                 |
 | Export Attested CSR             | O   | SPDM VDM, MCI Mailbox | Discover Caliptra identity keys or export an attested CSR for LDevID, FMC Alias, or RT Alias.                                        |
+| Provision IDevID Certificate    | O   | SPDM VDM, MCI Mailbox | Populate a DER-encoded IDevID certificate into Caliptra Core and optionally persist and lock it in OTP.                              |
 | Device Ownership Transfer       | O   | SPDM VDM, MCI Mailbox | Query and change the implemented DOT state.                                                                                          |
 | Field Entropy Status            | O   | MCI Mailbox           | Report whether all field entropy partitions are provisioned.                                                                        |
 | Vendor PK Hash Status           | O   | MCI Mailbox           | Report occupied vendor PK hash slots and each slot's PQC key type.                                                                   |
@@ -49,7 +50,6 @@ The following subcommands are assigned to the SPDM VDM IANA authorization-gated 
 | Fuse Revoke Vendor Public Key  | SPDM VDM IANA, MCI Mailbox | Revoke vendor public key.                          |
 | Fuse Revoke Vendor PK Hash     | SPDM VDM IANA, MCI Mailbox | Revoke vendor public key hash.                     |
 | Fuse Lock Partition            | SPDM VDM IANA, MCI Mailbox | Lock fuse partition.                               |
-| Zeroize UDS/FE and Enter RMA   | SPDM VDM IANA, MCI Mailbox | Zeroize UDS and field entropy, then enter RMA.     |
 | OCP LOCK Program HEK           | SPDM VDM IANA, MCI Mailbox | Program an unused HEK slot.                        |
 | OCP LOCK Zero HEK              | SPDM VDM IANA, MCI Mailbox | Permanently sanitize an unused HEK slot.           |
 | Dot Enable                     | SPDM VDM IANA, MCI Mailbox | Program the one-time DOT initialization gate.      |
@@ -113,7 +113,8 @@ Versions use `major.minor.patch` ASCII format. Index `02h` returns `UnsupportedO
 | 4          | `05h`        | `GetAttestation`            | SPDM VDM, MCU mailbox |
 | 5          | `06h`        | `RequestDebugUnlock`        | SPDM VDM              |
 | 6          | `07h`        | `AuthorizeDebugUnlockToken` | SPDM VDM              |
-| 7          | `08h`        | `ExportAttestedCsr`         | SPDM VDM              |
+| 7          | `08h`        | `ExportAttestedCsr`         | SPDM VDM, MCI mailbox |
+| 8          | `09h`        | `ProvisionIdevCert`         | SPDM VDM, MCI mailbox |
 | 16         | `11h`        | `DeviceOwnershipTransfer`   | SPDM VDM, MCI mailbox |
 | 17         | `12h`        | `AuthorizedCommand`         | SPDM VDM, MCI mailbox |
 | 18         | `13h`        | `OcpLock`                   | SPDM VDM, MCI mailbox |
@@ -141,10 +142,13 @@ This table defines the bit assignment for every allocated command code. A respon
 | 14         | `DotEnable`                  | Implemented |
 | 15         | `OcpLockProgramHek`          | Implemented |
 | 16         | `OcpLockZeroHek`             | Implemented |
-| 17         | `ZeroizeUdsFeAndEnterRma`     | Implemented |
-| 18:31      | Reserved                     | —           |
+| 17:31      | Reserved                     | —           |
 
 The authorized-subcommand assignments are stable capability indexes; they are not transport command IDs. A responder sets a bit only when that subcommand is implemented under `AuthorizedCommand`. Authorization, lifecycle, or policy restrictions do not clear an implementation capability bit; execution can still return `AccessDenied`, `PolicyViolation`, or `InvalidState`.
+
+The former `0x4D5A_524D` (`MZRM`) UDS/field-entropy zeroization command is no
+longer supported over SPDM VDM or MCI mailbox. Bit 17 remains reserved and must
+be clear. ROM FIPS cold-boot zeroization is unchanged.
 
 **MCU Runtime Capability Flags**:
 
@@ -405,6 +409,30 @@ algorithm. Its payload contains the request nonce (claim `10`), the DER-encoded
 CSR (private claim `-70001`), and the key's derivation-attribute map (private
 claim `-70002`).
 
+### Provision IDevID Certificate
+
+Populates a DER-encoded `IDevID` certificate into Caliptra Core (`POPULATE_IDEV_ECC384_CERT` / `POPULATE_IDEV_MLDSA87_CERT`) and optionally burns, readback-verifies, and locks the platform's `IDevID` OTP partition for `algorithm`.
+
+This command is optional and compiled in only when `cert-provisioning` is enabled (and `vendor-certs-oob` is not enabled); without it, the command is rejected as `UnsupportedOperation` and the `PROVISION_IDEV_CERT` capability bit (`09h`, bit 8) is clear.
+
+**Request Payload**:
+
+| Byte(s) | Name      | Type          | Description                                                                                                                               |
+| ------- | --------- | ------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
+| 0:3     | algorithm | u32           | Asymmetric Algorithm: <br>- `0x0001` = ECC P-384 <br>- `0x0002` = ML-DSA-87                                                               |
+| 4:7     | operation | u32           | Provisioning Mode: <br>- `0x0000` = `PopulateOnly` (populate Caliptra Core only; do not write OTP) <br>- `0x0001` = `WriteOtp` (write, readback-verify, and lock the `IDevID` OTP partition, then populate Caliptra Core) |
+| 8:11    | cert_size | u32           | Length in bytes of the DER-encoded `IDevID` certificate (`1..=8192`)                                                                      |
+| 12:N    | cert_data | u8[cert_size] | Raw DER-encoded `IDevID` certificate                                                                                                      |
+
+**Response Payload**: Empty. Command completion status is carried by the transport-specific response framing.
+
+**State and Authorization Rules**:
+
+- Both `PopulateOnly` and `WriteOtp` return `InvalidState` (`0x0F`) if the algorithm's `IDevID` OTP partition is already locked (`is_partition_locked(partition_id) == true`). `PopulateOnly` also returns `InvalidState` (`0x0F`) if `IDevID` for `algorithm` is already populated in Caliptra Core (`is_idevid_populated(algorithm) == true`). If `IDevID` is already populated while the OTP partition is still unlocked (for example, after a reset between saving the certificate to OTP and locking the partition), `WriteOtp` verifies that the stored OTP certificate matches `cert_data` and completes locking the partition (returning `InvalidState` if the stored bytes do not match).
+- `cert_data` must begin with a valid ASN.1 `SEQUENCE` (`0x30`) whose outer DER length equals `cert_size`; otherwise `InvalidParameter` (`0x02`) is returned.
+- In `WriteOtp` mode (`0x0001`), the MCU writes the word-padded DER certificate to the algorithm's `IDevID` OTP partition, reads back and verifies every word, and locks the partition before invoking `POPULATE_IDEV_ECC384_CERT` / `POPULATE_IDEV_MLDSA87_CERT` on Caliptra Core.
+- On success, the certificate store marks `IDevID` populated for `algorithm`, making `EndorsementRole::Vendor` (`Slot 0`) provisioned if its CA endorsement chain is also configured.
+
 ### Authorization-Gated Subcommand Wrapper
 
 Security-sensitive provisioning and fuse subcommands are assigned to the SPDM
@@ -467,6 +495,28 @@ code.
 The reference MCU assigns no behavior to this namespace and returns
 `UnsupportedOperation`. Vendor implementations may define payloads and behavior
 within this reserved namespace without colliding with Caliptra-defined FourCCs.
+
+##### Platform Extension Hooks
+
+Platforms opt in through their existing `CaliptraCmdHandler` backend:
+`vendor_command_limits(cmd_id)` declares body limits for supported `VUxy` IDs,
+and `handle_vendor_command(alloc, cmd_id, payload, response)` implements them.
+The metadata lookup must have no side effects. Its default returns `None`;
+the execution hook defaults to `UnsupportedOperation` and runs only after the
+normal authorization checks pass.
+
+The payload excludes the target ID and Authorization Block. It must fit the
+declared limit and `command::MAX_AUTHORIZED_PAYLOAD_LEN` (52 bytes, or 104 with
+`device-ownership-transfer`). The response buffer excludes transport framing;
+the hook returns its written length, bounded by the declared response limit.
+Exact payload lengths and semantics remain the platform's responsibility.
+
+Transport buffers and framing are unchanged. The declared response limit must
+fit the buffer already supplied by the frontend: the normal MCU mailbox scratch
+service provides four vendor response-body bytes, and SPDM uses its existing
+inline response capacity. Insufficient space returns `InsufficientResources`
+(mailbox command failure). Vendor hooks do not enable large responses, resize
+buffers, override standard IDs, or expose top-level `VUxy` mailbox opcodes.
 
 ### Get Auth Challenge
 
@@ -608,17 +658,6 @@ Locks a fuse partition.
 
 **Response Payload**: Empty
 
-### Zeroize UDS, Field Entropy, and Enter RMA
-
-Zeroizes the UDS and all four field-entropy partitions, records the
-field-entropy partitions as zeroized, and then requests entry into RMA.
-Zeroization occurs before the RMA transition is requested and is not rolled
-back if that transition fails.
-
-**Request Payload**: `rma_token:u8[16] | AuthorizationBlock`
-
-**Response Payload**: Empty
-
 ### OCP LOCK Program HEK
 
 Programs an unused HEK slot with an internally generated 256-bit random seed
@@ -702,5 +741,3 @@ Command responses include a completion code indicating the result of the operati
 | ------ | ------------------------- | ----------------------------- |
 | `0xC0` | Caliptra Mailbox Busy     | Caliptra mailbox is not ready |
 | `0xC1` | Caliptra Buffer Too Small | Response buffer too small     |
-| `0xC2` | Zeroize Failed            | UDS or field entropy zeroization failed; RMA was not attempted |
-| `0xC3` | RMA Transition Failed     | UDS and field entropy were zeroized, but the lifecycle transition to RMA failed |

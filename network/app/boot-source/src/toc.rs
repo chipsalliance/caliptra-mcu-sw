@@ -2,7 +2,7 @@
 
 //! Table of Contents (TOC) management.
 //!
-//! Maps firmware IDs to filenames and metadata obtained from the
+//! Maps identifiers to filenames and metadata obtained from the
 //! boot configuration file downloaded via TFTP.
 //!
 //! The TOC binary format reuses the flash image layout defined in the
@@ -15,10 +15,10 @@ use zerocopy::FromBytes;
 /// Maximum number of firmware images in the TOC.
 pub const MAX_TOC_ENTRIES: usize = 8;
 
-/// A single entry mapping a firmware ID to its TFTP filename and metadata.
+/// A single entry mapping a identifier to its TFTP filename and metadata.
 #[derive(Clone)]
 pub struct TocEntry {
-    pub firmware_id: u8,
+    pub identifier: u32,
     pub filename: [u8; MAX_FILENAME_LEN],
     pub filename_len: usize,
     pub image_size: u32,
@@ -28,7 +28,7 @@ pub struct TocEntry {
 impl Default for TocEntry {
     fn default() -> Self {
         Self {
-            firmware_id: 0,
+            identifier: 0,
             filename: [0u8; MAX_FILENAME_LEN],
             filename_len: 0,
             image_size: 0,
@@ -54,7 +54,7 @@ impl Toc {
         Self {
             entries: [const {
                 TocEntry {
-                    firmware_id: 0,
+                    identifier: 0,
                     filename: [0u8; MAX_FILENAME_LEN],
                     filename_len: 0,
                     image_size: 0,
@@ -68,7 +68,7 @@ impl Toc {
     /// Add an entry to the TOC. Returns `false` if the table is full.
     pub fn add(
         &mut self,
-        firmware_id: u8,
+        identifier: u32,
         filename: &[u8],
         image_size: u32,
         image_checksum: u32,
@@ -78,7 +78,7 @@ impl Toc {
         }
         let fname_len = filename.len().min(MAX_FILENAME_LEN - 1);
         let entry = &mut self.entries[self.count];
-        entry.firmware_id = firmware_id;
+        entry.identifier = identifier;
         entry.filename[..fname_len].copy_from_slice(&filename[..fname_len]);
         entry.filename[fname_len] = 0;
         entry.filename_len = fname_len;
@@ -88,11 +88,11 @@ impl Toc {
         true
     }
 
-    /// Look up an entry by firmware ID.
-    pub fn find(&self, firmware_id: u8) -> Option<&TocEntry> {
+    /// Look up an entry by identifier.
+    pub fn find(&self, identifier: u32) -> Option<&TocEntry> {
         self.entries[..self.count]
             .iter()
-            .find(|e| e.firmware_id == firmware_id)
+            .find(|e| e.identifier == identifier)
     }
 
     /// Clear all entries.
@@ -108,7 +108,7 @@ impl Toc {
     ///
     /// The buffer must contain a valid [`FlashHeaderV3`] followed by
     /// [`ImageHeaderV3`] entries.  Each image header's `identifier` is
-    /// mapped to `firmware_id` (truncated to `u8`) and its `filename`
+    /// preserved as `identifier` and its `filename`
     /// field provides the TFTP path.
     ///
     /// Returns `true` if parsing succeeded.
@@ -162,7 +162,7 @@ impl Toc {
                 .unwrap_or(img_hdr.filename.len());
 
             let entry = &mut self.entries[self.count];
-            entry.firmware_id = img_hdr.identifier as u8;
+            entry.identifier = img_hdr.identifier;
             entry.filename[..fname_len].copy_from_slice(&img_hdr.filename[..fname_len]);
             if fname_len < MAX_FILENAME_LEN {
                 entry.filename[fname_len] = 0;
@@ -184,6 +184,58 @@ mod tests {
         calculate_checksum, FlashHeaderV1, FlashHeaderV2, FlashImageVersion,
     };
     use zerocopy::IntoBytes;
+
+    #[test]
+    fn add_preserves_full_identifiers() {
+        let mut toc = Toc::new();
+        for identifier in [2, 0x1002, 0xFFFF, 0x10000, u32::MAX] {
+            assert!(toc.add(identifier, b"image.bin", 4, 0));
+            assert_eq!(toc.find(identifier).unwrap().identifier, identifier);
+        }
+        assert_eq!(toc.count(), 5);
+        assert!(toc.find(0xFF).is_none());
+    }
+
+    #[test]
+    fn parse_preserves_full_identifiers() {
+        let mut bytes = [0u32; 45];
+        let bytes = bytes.as_mut_bytes();
+        let header = FlashHeaderV3::new(2);
+        bytes[..header.as_bytes().len()].copy_from_slice(header.as_bytes());
+        let mut image = ImageHeaderV3 {
+            identifier: 0,
+            offset: 180,
+            size: 4,
+            filename: [0; MAX_FILENAME_LEN],
+            image_checksum: 0,
+            image_header_checksum: 0,
+        };
+        image.filename[..9].copy_from_slice(b"image.bin");
+
+        for identifier in [0x1000, 0xFFFF, 0x10000, u32::MAX] {
+            let mut offset = header.image_headers_offset as usize;
+            for entry_identifier in [identifier & 0xFF, identifier] {
+                image.identifier = entry_identifier;
+                image.image_header_checksum = calculate_checksum(
+                    &image.as_bytes()
+                        [..core::mem::offset_of!(ImageHeaderV3, image_header_checksum)],
+                );
+                let end = offset + image.as_bytes().len();
+                bytes[offset..end].copy_from_slice(image.as_bytes());
+                offset = end;
+            }
+
+            let mut toc = Toc::new();
+            assert!(toc.parse(bytes));
+            assert_eq!(toc.count(), 2);
+            assert_eq!(toc.find(identifier).unwrap().identifier, identifier);
+            assert_eq!(
+                toc.find(identifier & 0xFF).unwrap().identifier,
+                identifier & 0xFF
+            );
+            assert_eq!(toc.find(identifier).unwrap().filename_len, 9);
+        }
+    }
 
     #[test]
     fn network_toc_requires_v3_filenames() {

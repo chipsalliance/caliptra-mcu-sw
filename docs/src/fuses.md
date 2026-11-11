@@ -106,10 +106,7 @@ These commands reference partition, fuse, and bit numbers that must use the same
 
 Field entropy can only be programmed by Caliptra. MCU Runtime exposes the
 authorized `MC_FE_PROG` (`MCFP`) command, which accepts one partition index and
-forwards Caliptra's `FE_PROG` mailbox command. MCU ROM can also program the
-partitions selected by `RomParameters::program_field_entropy` during cold boot;
-that path records `Started` and `Finished` state in `FIELD_ENTROPY_STATE` and
-rejects partial or zeroized slots.
+forwards Caliptra's `FE_PROG` mailbox command.
 
 The reference DOT configuration derives its effective key from the stable
 IDevID root, so Field Entropy programming does not invalidate the DOT_BLOB.
@@ -240,6 +237,12 @@ Entire u32 words are duplicated. Each bit position across the duplicated words i
 - OR calculations treat any non-zero duplicate as a 1
 
 ### Default Platform Configuration
+
+Generic fuse-entry reads use the generated per-field layouts from
+`hw/fuses.hjson`, not `McuFuseLayoutPolicy`. See
+[Reference SDK Layouts](rom-fuses.md#reference-sdk-layouts) for those defaults.
+The policy defaults below do not override the generated entries; for example,
+the SDK `perma_hek_en` entry remains 3x `LinearMajorityVote`.
 
 The default `McuFuseLayoutPolicy` uses:
 - `Single`: For certificate data, identifiers, and validity flags that are assumed to be protected by ECC

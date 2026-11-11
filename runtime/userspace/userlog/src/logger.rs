@@ -49,13 +49,18 @@ fn stage(bytes: &[u8]) {
     // SAFETY: only ever called between `acquire` and `release`, i.e. inside the
     // critical section, so access to the statics is exclusive.
     unsafe {
-        let used = STAGE_USED;
-        let n = core::cmp::min(bytes.len(), STAGE_LEN - used);
+        let Some(dst) = STAGE.get_mut(STAGE_USED..) else {
+            STAGE_TRUNCATED = true;
+            return;
+        };
+        let n = core::cmp::min(bytes.len(), dst.len());
         if n < bytes.len() {
             STAGE_TRUNCATED = true;
         }
-        STAGE[used..used + n].copy_from_slice(&bytes[..n]);
-        STAGE_USED = used + n;
+        for (out, byte) in dst.iter_mut().zip(bytes) {
+            *out = *byte;
+        }
+        STAGE_USED += n;
     }
 }
 
@@ -111,14 +116,11 @@ unsafe impl defmt::Logger for Logger {
         // SAFETY: still inside the critical section established by `acquire`.
         #[allow(static_mut_refs)]
         ENCODER.end_frame(stage);
-        if !STAGE_TRUNCATED {
-            #[allow(static_mut_refs)]
-            let frame = &STAGE[..STAGE_USED];
-            if !RING.push_slice(frame) {
-                DROPPED.fetch_add(1, Ordering::Relaxed);
-            }
-        } else {
-            // Frame overflowed the staging buffer; drop it.
+        let pushed = !STAGE_TRUNCATED
+            && STAGE
+                .get(..STAGE_USED)
+                .is_some_and(|frame| RING.push_slice(frame));
+        if !pushed {
             DROPPED.fetch_add(1, Ordering::Relaxed);
         }
         TAKEN.store(false, Ordering::Relaxed);

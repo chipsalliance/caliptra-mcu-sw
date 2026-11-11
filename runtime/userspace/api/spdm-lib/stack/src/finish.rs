@@ -67,10 +67,18 @@ pub(crate) async fn handle_finish<Pal: SpdmPal>(
     }
 
     // ── Feed FINISH header + params + V1.4 OpaqueData (without verify_data) to TH ──
-    let finish_prefix_len = SpdmMsgHdrPdu::SIZE + request_prefix_len;
+    let finish_prefix_len = SpdmMsgHdrPdu::SIZE
+        .checked_add(request_prefix_len)
+        .ok_or(SPDM_INVALID_REQUEST)?;
     session
         .transcript
-        .append(pal, io, &spdm_msg[..finish_prefix_len])
+        .append(
+            pal,
+            io,
+            spdm_msg
+                .get(..finish_prefix_len)
+                .ok_or(SPDM_INVALID_REQUEST)?,
+        )
         .await?;
 
     // ── Verify requester HMAC ───────────────────────────────────────

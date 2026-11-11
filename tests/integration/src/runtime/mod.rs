@@ -45,6 +45,7 @@ pub(crate) fn expected_mcu_mailbox_capabilities(core_capabilities: [u8; 16]) -> 
     caps[24..28].copy_from_slice(
         &(ExternalCommandCapabilities::GET_ATTESTATION
             | ExternalCommandCapabilities::EXPORT_ATTESTED_CSR
+            | ExternalCommandCapabilities::PROVISION_IDEV_CERT
             | ExternalCommandCapabilities::AUTHORIZED_COMMAND
             | ExternalCommandCapabilities::DEVICE_OWNERSHIP_TRANSFER)
             .bits()
@@ -59,7 +60,6 @@ pub(crate) fn expected_mcu_mailbox_capabilities(core_capabilities: [u8; 16]) -> 
             | AuthorizedSubcommandCapabilities::FUSE_REVOKE_VENDOR_PK_HASH
             | AuthorizedSubcommandCapabilities::FUSE_LOCK_PARTITION
             | AuthorizedSubcommandCapabilities::PROVISION_OWNER_PK_HASH
-            | AuthorizedSubcommandCapabilities::ZEROIZE_UDS_FE_AND_ENTER_RMA
             | AuthorizedSubcommandCapabilities::DOT_ENABLE
             | AuthorizedSubcommandCapabilities::DOT_LOCK
             | AuthorizedSubcommandCapabilities::DOT_DISABLE
@@ -91,6 +91,7 @@ pub(crate) fn start_command_authorized_runtime(
         .vendor_pqc_type
         .unwrap_or(caliptra_image_types::FwVerificationPqcKeyType::LMS);
     let mut hw = crate::test::start_runtime_hw_model(params);
+    crate::test::run_imaginary_flash_controller_service(&mut hw);
     hw.step_until(|hw| {
         hw.mci_boot_milestones()
             .contains(caliptra_mcu_romtime::McuBootMilestones::FIRMWARE_MAILBOX_READY)

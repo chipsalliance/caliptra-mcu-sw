@@ -60,8 +60,6 @@ pub enum CaliptraCompletionCode {
     // Caliptra project-specific codes (0xC0-0xFF)
     CaliptraMailboxBusy = 0xC0,
     CaliptraBufferTooSmall = 0xC1,
-    ZeroizeFailed = 0xC2,
-    RmaTransitionFailed = 0xC3,
 }
 
 /// Result type for Caliptra command handlers.
@@ -186,6 +184,32 @@ impl TryFrom<u32> for PkiEntitySlot {
     }
 }
 
+/// Operation mode for `MC_PROVISION_IDEV_CERT` / VDM `PROVISION_IDEV_CERT`.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
+pub enum ProvisionIdevCertMode {
+    /// Populate the `IDevID` certificate into Caliptra Core RAM only without
+    /// burning or locking OTP.
+    #[default]
+    PopulateOnly = 0,
+    /// Write the `IDevID` certificate (or signature) to the external OTP
+    /// partition, verify the readback, lock the partition, and populate
+    /// Caliptra Core.
+    WriteOtp = 1,
+}
+
+impl TryFrom<u32> for ProvisionIdevCertMode {
+    type Error = CaliptraCompletionCode;
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::PopulateOnly),
+            1 => Ok(Self::WriteOtp),
+            _ => Err(CaliptraCompletionCode::InvalidParameter),
+        }
+    }
+}
+
 /// Metadata, byte length, and raw DER SHA-384 digest for a certificate chain slot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct CertChainInfo {
@@ -268,6 +292,13 @@ impl Default for DebugUnlockChallenge {
     }
 }
 
+/// Vendor command body limits, excluding authorization and transport framing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VendorCommandLimits {
+    pub max_payload_len: usize,
+    pub max_response_len: usize,
+}
+
 /// Asynchronous trait for handling Caliptra common commands across all transport protocols.
 ///
 /// Each function represents a transport-agnostic command handler. Implementors should provide
@@ -298,6 +329,32 @@ pub trait CaliptraCmdHandler {
         &self,
         capabilities: &mut DeviceCapabilities,
     ) -> CaliptraCmdResult<()>;
+
+    /// Describes a supported `VUxy` target inside `AuthorizedCommand`.
+    ///
+    /// This side-effect-free lookup runs before authorization. Payloads must fit
+    /// [`command::MAX_AUTHORIZED_PAYLOAD_LEN`]. The declared response limit must
+    /// fit the transport's existing response buffer; no resizing is done.
+    /// The default registers no vendor commands.
+    fn vendor_command_limits(_cmd_id: u32) -> Option<VendorCommandLimits> {
+        None
+    }
+
+    /// Executes a vendor command after the common authorization checks pass.
+    ///
+    /// `payload` excludes the target ID and authorization block. `response`
+    /// contains only body space, bounded by the registered response limit.
+    /// Return the number of bytes written, never greater than `response.len()`.
+    /// Transport headers and checksums remain the frontend's responsibility.
+    async fn handle_vendor_command<Alloc: ScratchAlloc>(
+        &self,
+        _alloc: &Alloc,
+        _cmd_id: u32,
+        _payload: &[u8],
+        _response: &mut [u8],
+    ) -> CaliptraCmdResult<usize> {
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
 
     /// Exports an attested CSR or performs keypair discovery.
     ///
@@ -455,6 +512,18 @@ pub trait CaliptraCmdHandler {
             total_size,
             data,
         );
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Populates and/or writes to OTP the Vendor `IDevID` certificate for `algorithm`.
+    async fn provision_idevid_cert<Alloc: ScratchAlloc>(
+        &self,
+        alloc: &Alloc,
+        algorithm: AsymAlgo,
+        mode: ProvisionIdevCertMode,
+        data: &[u8],
+    ) -> CaliptraCmdResult<()> {
+        let _ = (alloc, algorithm, mode, data);
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 
@@ -681,12 +750,6 @@ pub trait CaliptraCmdHandler {
     /// Lock an OTP partition against further writes.
     async fn fuse_lock_partition(&self, partition: u32) -> CaliptraCmdResult<()> {
         let _ = partition;
-        Err(CaliptraCompletionCode::UnsupportedOperation)
-    }
-
-    /// Zeroize UDS and field entropy, then transition the device to RMA.
-    async fn zeroize_uds_fe_and_enter_rma(&self, rma_token: &[u8; 16]) -> CaliptraCmdResult<()> {
-        let _ = rma_token;
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 

@@ -61,37 +61,58 @@ impl<'a, D: DMAMapping> StreamingFdOps<'a, D> {
             source: DMASource::Address(source_address),
             dest_addr: load_address + offset as u64,
         };
-        dma_syscall.xfer(&transaction).await.unwrap();
+        dma_syscall
+            .xfer(&transaction)
+            .await
+            .map_err(|_| pldm_errors::FW_DOWNLOAD_ERROR)?;
 
         Ok(())
     }
 
     async fn copy_data_to_buffer(&self, _offset: usize, data: &[u8]) -> McuResult<()> {
         let state = PLDM_STATE.lock(|state| *state.borrow());
-        let dma_params = DOWNLOAD_CTX.lock(|ctx| {
+        let dma_params = DOWNLOAD_CTX.lock(|ctx| -> McuResult<Option<(AXIAddr, usize)>> {
             let mut ctx = ctx.borrow_mut();
             let start = ctx.current_offset - ctx.initial_offset;
 
             if state == State::DownloadingHeader {
-                ctx.total_downloaded += data.len();
                 let end = (start + data.len()).min(ctx.header.len());
-                ctx.header[start..end].copy_from_slice(&data[..end - start]);
-            } else if state == State::DownloadingToc {
+                let dst = ctx
+                    .header
+                    .get_mut(start..end)
+                    .ok_or(pldm_errors::FW_DOWNLOAD_ERROR)?;
+                for (out, byte) in dst.iter_mut().zip(data) {
+                    *out = *byte;
+                }
                 ctx.total_downloaded += data.len();
+            } else if state == State::DownloadingToc {
                 let end = (start + data.len()).min(ctx.image_info.len());
-                ctx.image_info[start..end].copy_from_slice(&data[..end - start]);
+                let dst = ctx
+                    .image_info
+                    .get_mut(start..end)
+                    .ok_or(pldm_errors::FW_DOWNLOAD_ERROR)?;
+                for (out, byte) in dst.iter_mut().zip(data) {
+                    *out = *byte;
+                }
+                ctx.total_downloaded += data.len();
             } else if state == State::DownloadingImage {
                 ctx.total_downloaded += data.len();
-                return Some((ctx.load_address, start));
+                return Ok(Some((ctx.load_address, start)));
             } else if state == State::DownloadingPayload {
                 let bytes_to_copy = data.len().min(ctx.total_length - ctx.total_downloaded);
                 let end = start + bytes_to_copy;
-                ctx.payload[start..end].copy_from_slice(&data[..bytes_to_copy]);
+                let dst = ctx
+                    .payload
+                    .get_mut(start..end)
+                    .ok_or(pldm_errors::FW_DOWNLOAD_ERROR)?;
+                for (out, byte) in dst.iter_mut().zip(data) {
+                    *out = *byte;
+                }
                 ctx.total_downloaded += bytes_to_copy;
             }
 
-            None
-        });
+            Ok(None)
+        })?;
         if let Some(dma_params) = dma_params {
             return self
                 .copy_buffer_to_load_address(dma_params.0, dma_params.1, data, self.dma_mapping)
@@ -266,5 +287,91 @@ impl<D: DMAMapping> FdOps for StreamingFdOps<'_, D> {
         *estimated_time = 0;
         // Activate is not applicable for streaming boot, so we return success.
         Ok(0) // PLDM completion code for success
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use caliptra_mcu_libtock_platform::ErrorCode;
+    use core::future::Future;
+    use core::task::{Context, Poll, Waker};
+
+    struct NoDma;
+
+    impl DMAMapping for NoDma {
+        fn mcu_sram_to_mcu_axi(&self, _addr: u32) -> Result<AXIAddr, ErrorCode> {
+            panic!("Header and TOC copies must not use DMA");
+        }
+
+        fn cptra_axi_to_mcu_axi(&self, _addr: AXIAddr) -> Result<AXIAddr, ErrorCode> {
+            panic!("Header and TOC copies must not use DMA");
+        }
+    }
+
+    fn run_ready<F: Future>(future: F) -> F::Output {
+        let mut future = core::pin::pin!(future);
+        match future
+            .as_mut()
+            .poll(&mut Context::from_waker(Waker::noop()))
+        {
+            Poll::Ready(output) => output,
+            Poll::Pending => panic!("test future unexpectedly yielded"),
+        }
+    }
+
+    #[test]
+    fn header_and_toc_copies_update_progress_only_on_success() {
+        let params = FirmwareParameters::default();
+        let ops = StreamingFdOps::new(&[], &params, &NoDma);
+        let saved_ctx = DOWNLOAD_CTX.lock(|ctx| *ctx.borrow());
+        let saved_state = PLDM_STATE.lock(|state| *state.borrow());
+        let data = [0x11, 0x22, 0x33];
+
+        for state in [State::DownloadingHeader, State::DownloadingToc] {
+            PLDM_STATE.lock(|current| *current.borrow_mut() = state);
+            let len = DOWNLOAD_CTX.lock(|ctx| {
+                let mut ctx = ctx.borrow_mut();
+                ctx.header.fill(0xa5);
+                ctx.image_info.fill(0xa5);
+                let len = if state == State::DownloadingHeader {
+                    ctx.header.len()
+                } else {
+                    ctx.image_info.len()
+                };
+                ctx.initial_offset = 100;
+                ctx.current_offset = ctx.initial_offset + len + 1;
+                ctx.total_downloaded = 7;
+                len
+            });
+            assert_eq!(
+                run_ready(ops.copy_data_to_buffer(0, &data)),
+                Err(pldm_errors::FW_DOWNLOAD_ERROR)
+            );
+            DOWNLOAD_CTX.lock(|ctx| {
+                let mut ctx = ctx.borrow_mut();
+                assert_eq!(ctx.total_downloaded, 7);
+                assert!(ctx.header.iter().all(|byte| *byte == 0xa5));
+                assert!(ctx.image_info.iter().all(|byte| *byte == 0xa5));
+                ctx.current_offset = ctx.initial_offset + len - 2;
+                ctx.total_downloaded = len - 2;
+            });
+
+            assert_eq!(run_ready(ops.copy_data_to_buffer(0, &data)), Ok(()));
+            DOWNLOAD_CTX.lock(|ctx| {
+                let ctx = ctx.borrow();
+                assert_eq!(ctx.total_downloaded, len - 2 + data.len());
+                let buffer = if state == State::DownloadingHeader {
+                    ctx.header.as_slice()
+                } else {
+                    ctx.image_info.as_slice()
+                };
+                assert!(buffer[..len - 2].iter().all(|byte| *byte == 0xa5));
+                assert_eq!(&buffer[len - 2..], &data[..2]);
+            });
+        }
+
+        DOWNLOAD_CTX.lock(|ctx| *ctx.borrow_mut() = saved_ctx);
+        PLDM_STATE.lock(|state| *state.borrow_mut() = saved_state);
     }
 }

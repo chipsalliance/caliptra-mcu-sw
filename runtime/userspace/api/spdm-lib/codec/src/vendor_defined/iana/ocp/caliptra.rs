@@ -20,6 +20,7 @@ pub enum CaliptraVdmCommand {
     RequestDebugUnlock = 0x06,
     AuthorizeDebugUnlockToken = 0x07,
     ExportAttestedCsr = 0x08,
+    ProvisionIdevCert = 0x09,
     DeviceOwnershipTransfer = 0x11,
     /// Single entry point for authorization-related sub-commands.
     AuthorizedCommand = 0x12,
@@ -35,6 +36,7 @@ impl TryFrom<u8> for CaliptraVdmCommand {
             0x06 => Self::RequestDebugUnlock,
             0x07 => Self::AuthorizeDebugUnlockToken,
             0x08 => Self::ExportAttestedCsr,
+            0x09 => Self::ProvisionIdevCert,
             0x11 => Self::DeviceOwnershipTransfer,
             0x12 => Self::AuthorizedCommand,
             0x13 => Self::OcpLock,
@@ -77,8 +79,6 @@ pub enum CaliptraCompletionCode {
     // Caliptra project-specific codes (0xC0–0xFF).
     CaliptraMailboxBusy = 0xC0,
     CaliptraBufferTooSmall = 0xC1,
-    ZeroizeFailed = 0xC2,
-    RmaTransitionFailed = 0xC3,
 }
 
 /// Device-operation result: bytes written on success, or a completion code on failure.

@@ -139,12 +139,11 @@ impl<'b> WireReader<'b> {
     /// Take `n` raw bytes (opaque blobs, signatures, transcript
     /// material).
     pub fn take(&mut self, n: usize) -> Result<&'b [u8], WireError> {
-        if self.remaining() < n {
-            return Err(WireError);
-        }
         let start = self.pos;
-        self.pos += n;
-        Ok(&self.buf[start..self.pos])
+        let end = start.checked_add(n).ok_or(WireError)?;
+        let bytes = self.buf.get(start..end).ok_or(WireError)?;
+        self.pos = end;
+        Ok(bytes)
     }
 
     /// Skip `n` bytes; bounds-checked.
@@ -157,5 +156,23 @@ impl<'b> WireReader<'b> {
     #[inline]
     pub fn rest(&self) -> &'b [u8] {
         &self.buf[self.pos..]
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reader_failed_take_preserves_cursor() {
+        let mut reader = WireReader::new(&[1, 2, 3]);
+        assert_eq!(reader.take(1), Ok(&[1][..]));
+        assert_eq!(reader.take(3), Err(WireError));
+        assert_eq!(reader.position(), 1);
+        assert_eq!(reader.take(usize::MAX), Err(WireError));
+        assert_eq!(reader.position(), 1);
+        assert_eq!(reader.take(2), Ok(&[2, 3][..]));
+        assert_eq!(reader.take(0), Ok(&[][..]));
+        assert!(reader.is_empty());
     }
 }

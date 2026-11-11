@@ -45,6 +45,8 @@ mod test_ocp_dev_identity_provision_tool;
 mod test_owner_stable_key;
 mod test_pldm_fw_update;
 mod test_raw_lifecycle_boot;
+#[cfg(all(test, not(feature = "fpga_realtime")))]
+mod test_rom_runtime_compatibility;
 mod test_soc_boot;
 mod test_svn_manifest;
 mod test_sw_pcr_store;
@@ -156,6 +158,9 @@ mod test {
         /// Caliptra FW) so the reported `FW_INFO.fw_svn` is known. Only
         /// honored on the `firmware_prefix` build path.
         pub caliptra_svn: Option<u16>,
+        /// If true, leave external OTP partitions 0x01/0x02 erased (`0xFF`) at boot
+        /// instead of pre-seeding `ECC_DEVID_CERT_DER` and `MLDSA_IDEVID_CERT`.
+        pub unprovisioned_idevid_otp: bool,
     }
 
     impl Default for TestParams<'_> {
@@ -194,6 +199,7 @@ mod test {
                 example_app: false,
                 profile: None,
                 caliptra_svn: None,
+                unprovisioned_idevid_otp: false,
             }
         }
     }
@@ -913,12 +919,12 @@ mod test {
         let primary_flash_initial_contents = build_primary_flash_initial_contents(
             primary_flash_image,
             #[cfg(not(feature = "fpga_realtime"))]
-            Some(ECC_DEVID_CERT_DER.as_slice()),
+            (!params.unprovisioned_idevid_otp).then_some(ECC_DEVID_CERT_DER.as_slice()),
             #[cfg(feature = "fpga_realtime")]
             // Initialized in run_imaginary_flash_controller_service
             None,
             #[cfg(not(feature = "fpga_realtime"))]
-            Some(MLDSA_IDEVID_CERT.as_slice()),
+            (!params.unprovisioned_idevid_otp).then_some(MLDSA_IDEVID_CERT.as_slice()),
             #[cfg(feature = "fpga_realtime")]
             // Initialized in run_imaginary_flash_controller_service
             None,

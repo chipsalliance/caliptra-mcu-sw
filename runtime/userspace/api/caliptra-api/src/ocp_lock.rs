@@ -1,10 +1,6 @@
 // Licensed under the Apache-2.0 license
 
 use crate::error::{CaliptraApiError, CaliptraApiResult, OcpLockError};
-use crate::signer::DpeTransport;
-use alloc::boxed::Box;
-use async_trait::async_trait;
-use caliptra_api::mailbox::MailboxRespHeader;
 pub use caliptra_api::mailbox::{
     HpkeAlgorithms, HpkeHandle, InvokeDpeReq, OcpLockClearKeyCacheReq, OcpLockClearKeyCacheResp,
     OcpLockDeriveMekReq, OcpLockDeriveMekResp, OcpLockEnableMpkReq, OcpLockEnableMpkResp,
@@ -25,13 +21,9 @@ use caliptra_mcu_libsyscall_caliptra::mailbox::MailboxError;
 use caliptra_mcu_libsyscall_caliptra::otp::Otp;
 use caliptra_mcu_libtock_platform::ErrorCode;
 use caliptra_ocp_eat::CborEncoder;
-use core::mem::size_of;
 use core::str::FromStr;
-use dpe::commands::{Command, CommandHdr};
-use dpe::response::ResponseHdr;
-use dpe::DpeProfile;
 
-use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout, TryFromBytes};
+use zerocopy::{Immutable, IntoBytes, KnownLayout, TryFromBytes};
 
 use const_oid::db::rfc5912::{ECDSA_WITH_SHA_384, ID_EC_PUBLIC_KEY, SECP_384_R_1};
 use der::{
@@ -42,8 +34,6 @@ use sha2::{Digest, Sha384};
 use spki::{AlgorithmIdentifier, SubjectPublicKeyInfo};
 
 const SHA384_HASH_SIZE: usize = 48;
-const MAX_DPE_RESP_DATA_SIZE: usize = 4096;
-const DPE_PROFILE: DpeProfile = DpeProfile::P384Sha384;
 const MAX_HEK_SLOTS: usize = 8;
 const MIN_HEK_SLOTS: usize = 4;
 
@@ -103,24 +93,6 @@ pub trait RuntimeConfig: Send + Sync {
     }
 }
 
-#[repr(C)]
-#[derive(Debug, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
-struct DpeEcResp {
-    hdr: MailboxRespHeader,
-    data_size: u32,
-    data: [u8; MAX_DPE_RESP_DATA_SIZE],
-}
-
-impl Default for DpeEcResp {
-    fn default() -> Self {
-        Self {
-            hdr: MailboxRespHeader::default(),
-            data_size: 0,
-            data: [0; MAX_DPE_RESP_DATA_SIZE],
-        }
-    }
-}
-
 async fn execute_mailbox_cmd(
     mailbox: &Mailbox,
     cmd: u32,
@@ -144,8 +116,9 @@ const ID_ALG_HYBRID_MLKEM_1024_ECDH_P384: ObjectIdentifier =
     ObjectIdentifier::new_unwrap("1.3.6.1.5.5.7.6.63");
 pub const ID_ML_DSA_87: ObjectIdentifier = ObjectIdentifier::new_unwrap("2.16.840.1.101.3.4.3.19");
 
-#[derive(Copy, Clone, Debug, Eq, PartialEq)]
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq)]
 pub enum EndorsementAlgorithm {
+    #[default]
     EcdsaP384Sha384,
     MlDsa87,
 }
@@ -858,60 +831,6 @@ impl<'a> OcpLock<'a> {
         report_buf[report_len..].fill(0);
 
         Ok(report_len)
-    }
-}
-#[async_trait]
-impl DpeTransport for Mailbox {
-    async fn invoke(&self, cmd: &Command, resp_buf: &mut [u8]) -> CaliptraApiResult<usize> {
-        let mut mbox_req = InvokeDpeReq::default();
-        let cmd_hdr = CommandHdr::new(DPE_PROFILE, cmd.id());
-
-        let cmd_hdr_bytes = cmd_hdr.as_bytes();
-        let dpe_cmd_bytes = cmd.as_bytes();
-        let total_req_len = cmd_hdr_bytes.len() + dpe_cmd_bytes.len();
-        if total_req_len > mbox_req.data.len() {
-            return Err(CaliptraApiError::InvalidArgBufferTooSmall);
-        }
-        mbox_req.data[..cmd_hdr_bytes.len()].copy_from_slice(cmd_hdr_bytes);
-        mbox_req.data[cmd_hdr_bytes.len()..total_req_len].copy_from_slice(dpe_cmd_bytes);
-        mbox_req.data_size = total_req_len as u32;
-
-        let mut mbox_resp = DpeEcResp::default();
-
-        self.populate_checksum(InvokeDpeReq::ID.into(), mbox_req.as_mut_bytes())
-            .map_err(CaliptraApiError::Syscall)?;
-
-        let size = self
-            .execute(
-                InvokeDpeReq::ID.into(),
-                mbox_req.as_mut_bytes(),
-                mbox_resp.as_mut_bytes(),
-            )
-            .await
-            .map_err(|e| match e {
-                MailboxError::ErrorCode(ErrorCode::Busy) => CaliptraApiError::MailboxBusy,
-                _ => CaliptraApiError::Mailbox(e),
-            })?;
-
-        let dpe_resp_len = mbox_resp.data_size as usize;
-        let expected_min_mbox_size = size_of::<MailboxRespHeader>() + size_of::<u32>(); // MailboxRespHeader + data_size field
-        if size < expected_min_mbox_size || dpe_resp_len < size_of::<ResponseHdr>() {
-            return Err(CaliptraApiError::InvalidResponse);
-        }
-
-        let hdr = ResponseHdr::try_read_from_bytes(&mbox_resp.data[..size_of::<ResponseHdr>()])
-            .map_err(|_| CaliptraApiError::InvalidResponse)?;
-
-        if hdr.status != 0 {
-            return Err(CaliptraApiError::InvalidResponse);
-        }
-
-        if resp_buf.len() < dpe_resp_len {
-            return Err(CaliptraApiError::InvalidArgBufferTooSmall);
-        }
-        resp_buf[..dpe_resp_len].copy_from_slice(&mbox_resp.data[..dpe_resp_len]);
-
-        Ok(dpe_resp_len)
     }
 }
 

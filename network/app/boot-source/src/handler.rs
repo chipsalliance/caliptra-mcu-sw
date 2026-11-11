@@ -222,7 +222,7 @@ pub fn handle_image_metadata<'a, M: NetworkMailbox<'a>>(
         }
     };
 
-    match toc.find(req.firmware_id) {
+    match toc.find(req.identifier) {
         Some(entry) => {
             let mut checksum = [0u8; 32];
             checksum[..4].copy_from_slice(&entry.image_checksum.to_le_bytes());
@@ -244,7 +244,7 @@ pub fn handle_image_download<'a, M: NetworkMailbox<'a>>(
     toc: &Toc,
     seq: &core::cell::Cell<u16>,
     offset: &core::cell::Cell<u32>,
-) -> core::result::Result<u8, NetworkMboxError> {
+) -> core::result::Result<u32, NetworkMboxError> {
     let req: &ImageDownloadRequest = match parse_fixed(data) {
         Some(r) => r,
         None => {
@@ -253,7 +253,7 @@ pub fn handle_image_download<'a, M: NetworkMailbox<'a>>(
         }
     };
 
-    if toc.find(req.firmware_id).is_none() {
+    if toc.find(req.identifier).is_none() {
         let _ = send_error(mbox, MessageType::ImageChunk, ErrorCode::ImageNotFound);
         return Err(NetworkMboxError::InvalidArgument);
     }
@@ -266,7 +266,7 @@ pub fn handle_image_download<'a, M: NetworkMailbox<'a>>(
     // before the MCU can drain it.
     let hdr = ImageChunkHeader::new(0, 0, 0);
     send_packet_response(mbox, &hdr)?;
-    Ok(req.firmware_id)
+    Ok(req.identifier)
 }
 
 /// Polls for TFTP data and sends the next chunk. Returns `true` if last chunk.

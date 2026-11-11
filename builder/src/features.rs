@@ -34,6 +34,7 @@ pub const EMULATOR_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-defmt-logging-release",
     "test-defmt-logging-vdm",
     "test-mctp-ctrl-cmds",
+    "test-mctp-linux-i3c",
     "test-mctp-user-loopback",
     "test-mctp-vdm-cmds",
     "test-mctp-vdm-production",
@@ -106,6 +107,7 @@ pub const ROM_ONLY_TEST_FEATURES: &[&str] = &[
     "test-i3c-services",
     "test-dot-recovery-reset-flow",
     "test-rom-hooks",
+    "test-stash-rom-digest",
     "test-force-hitless-update",
     "test-svn-manifest",
     "test-usb-ocp-recovery",
@@ -161,6 +163,7 @@ pub const ROM_VARIANTS: &[RomVariant] = &[
     RomVariant::new(None, Some("test-dot-recovery")),
     RomVariant::new(None, Some("test-dot-recovery-reset-flow")),
     RomVariant::new(None, Some("test-rom-hooks")),
+    RomVariant::new(None, Some("test-stash-rom-digest")),
     RomVariant::new(None, Some("test-usb-ocp-recovery")),
     // Explicit-feature ROMs tested by precheckin / all-build.
     RomVariant::new(None, Some("test-flash-based-boot")),
@@ -170,6 +173,7 @@ pub const ROM_VARIANTS: &[RomVariant] = &[
     RomVariant::new(Some("fpga"), None),
     RomVariant::new(Some("fpga"), Some("hw-2-1")),
     RomVariant::new(Some("fpga"), Some("hw-2-1,test-rom-hooks")),
+    RomVariant::new(Some("fpga"), Some("hw-2-1,test-stash-rom-digest")),
 ];
 
 /// Parse a `--variants` CLI value into a list of [`RomVariant`].

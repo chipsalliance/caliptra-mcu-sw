@@ -24,9 +24,11 @@ const U32_LEN: usize = core::mem::size_of::<u32>();
 const AUTHORIZATION_TRAILER_LEN: usize = core::mem::size_of::<AuthorizationBlock>();
 
 #[cfg(feature = "device-ownership-transfer")]
-const MAX_AUTHORIZED_PAYLOAD_LEN: usize = U32_LEN + core::mem::size_of::<DotRotatePayload>();
+/// Largest payload supported by the canonical authorization buffers.
+pub const MAX_AUTHORIZED_PAYLOAD_LEN: usize = U32_LEN + core::mem::size_of::<DotRotatePayload>();
 #[cfg(not(feature = "device-ownership-transfer"))]
-const MAX_AUTHORIZED_PAYLOAD_LEN: usize = U32_LEN + 48;
+/// Largest payload supported by the canonical authorization buffers.
+pub const MAX_AUTHORIZED_PAYLOAD_LEN: usize = U32_LEN + 48;
 
 /// Largest canonical AuthorizedCommand body, including its target ID.
 pub const MAX_AUTHORIZED_REQUEST_LEN: usize =
@@ -106,12 +108,6 @@ struct FuseWritePayload {
     mask: U32,
 }
 
-#[repr(C)]
-#[derive(FromBytes, Immutable, KnownLayout)]
-struct ZeroizeUdsFeAndEnterRmaPayload {
-    rma_token: [u8; 16],
-}
-
 #[cfg(feature = "ocp-lock")]
 #[repr(C)]
 #[derive(FromBytes, Immutable, KnownLayout)]
@@ -179,9 +175,14 @@ where
     Alloc: ScratchAlloc,
 {
     let (target_id, request) = split_id(request)?;
-    if CommandId::from(target_id).is_vendor_unique() {
-        return Err(CaliptraCompletionCode::UnsupportedOperation);
-    }
+    let vendor_limits = if CommandId::from(target_id).is_vendor_unique() {
+        Some(
+            H::vendor_command_limits(target_id)
+                .ok_or(CaliptraCompletionCode::UnsupportedOperation)?,
+        )
+    } else {
+        None
+    };
 
     if target_id == CommandId::MC_GET_AUTH_CMD_CHALLENGE.0 {
         if !request.is_empty() {
@@ -220,8 +221,26 @@ where
         return Err(CaliptraCompletionCode::UnsupportedOperation);
     }
 
-    let payload_len = authorized_payload_len(target_id, request)?;
+    let payload_len = if let Some(limits) = vendor_limits {
+        let len = request
+            .len()
+            .checked_sub(AUTHORIZATION_TRAILER_LEN)
+            .ok_or(CaliptraCompletionCode::InvalidPayloadSize)?;
+        if len > limits.max_payload_len || len > MAX_AUTHORIZED_PAYLOAD_LEN {
+            return Err(CaliptraCompletionCode::InvalidPayloadSize);
+        }
+        len
+    } else {
+        authorized_payload_len(target_id, request)?
+    };
     let parsed = split_authorized_request(request, payload_len)?;
+    let output = if let Some(limits) = vendor_limits {
+        output
+            .get_mut(..limits.max_response_len)
+            .ok_or(CaliptraCompletionCode::InsufficientResources)?
+    } else {
+        output
+    };
     let authority = parsed
         .authorization
         .validate_format()
@@ -253,6 +272,16 @@ where
         )
         .await
         .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
+
+    if vendor_limits.is_some() {
+        let len = commands
+            .handle_vendor_command(alloc, target_id, parsed.payload, output)
+            .await?;
+        if len > output.len() {
+            return Err(CaliptraCompletionCode::OperationFailed);
+        }
+        return Ok(CommandResponse::Data(len));
+    }
 
     match target_id {
         value if value == CommandId::MC_PROVISION_VENDOR_PK_HASH.0 => {
@@ -335,14 +364,6 @@ where
                     payload.data.get(),
                     payload.mask.get(),
                 )
-                .await?;
-            Ok(CommandResponse::Empty)
-        }
-        value if value == CommandId::MC_ZEROIZE_UDS_FE_AND_ENTER_RMA.0 => {
-            let payload = ZeroizeUdsFeAndEnterRmaPayload::ref_from_bytes(parsed.payload)
-                .map_err(|_| CaliptraCompletionCode::InvalidPayloadSize)?;
-            commands
-                .zeroize_uds_fe_and_enter_rma(&payload.rma_token)
                 .await?;
             Ok(CommandResponse::Empty)
         }
@@ -501,9 +522,6 @@ fn authorized_payload_len(target_id: u32, request: &[u8]) -> CaliptraCmdResult<u
         value if value == CommandId::MC_FUSE_READ.0 => Ok(core::mem::size_of::<FuseReadPayload>()),
         value if value == CommandId::MC_FUSE_WRITE.0 => {
             Ok(core::mem::size_of::<FuseWritePayload>())
-        }
-        value if value == CommandId::MC_ZEROIZE_UDS_FE_AND_ENTER_RMA.0 => {
-            Ok(core::mem::size_of::<ZeroizeUdsFeAndEnterRmaPayload>())
         }
         value if value == CommandId::MC_DEVICE_OWNERSHIP_TRANSFER.0 => {
             authorized_dot_payload_len(request)
