@@ -37,6 +37,7 @@ struct BootstrapArgs<'a> {
 
 struct BuildTestArgs<'a> {
     package_filter: &'a Option<String>,
+    no_container: bool,
 }
 struct TestArgs<'a> {
     test_filter: &'a Option<String>,
@@ -174,6 +175,11 @@ pub(crate) enum Fpga {
         /// Uses a `cargo-nextest` package filter-set, e.g. `package(caliptra-rom)`.
         #[arg(long)]
         package_filter: Option<String>,
+
+        /// Build test binaries locally without a container.
+        /// Requires aarch64-linux-gnu-gcc and the aarch64-unknown-linux-gnu Rust target.
+        #[arg(long)]
+        no_container: bool,
     },
     /// Run FPGA tests
     Test {
@@ -290,6 +296,7 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
             configuration,
             target_host,
             package_filter,
+            no_container,
         } => {
             println!("Building FPGA tests");
             let resolved_target = resolve_target_host(target_host.as_deref());
@@ -297,8 +304,11 @@ pub(crate) fn fpga_entry(args: &Fpga) -> Result<()> {
                 get_and_validate_configuration(*configuration, resolved_target.as_deref())?;
             config
                 .executor()
-                .set_target_host(resolved_target.as_deref())
-                .build_test(&BuildTestArgs { package_filter })?;
+                .set_target_host(target_host.as_deref())
+                .build_test(&BuildTestArgs {
+                    package_filter,
+                    no_container: *no_container,
+                })?;
         }
         Fpga::Bootstrap {
             target_host,
