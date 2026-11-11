@@ -118,17 +118,9 @@ pub(crate) async fn handle_chunk_send<
         }) => {
             abort_active_streaming_request(state, pal, io, vdm).await;
             let mut error = [0u8; 4];
-            let error_len = encode_error_response(&mut error, state.version, SPDM_INVALID_REQUEST)?;
+            let error = encode_error_response(&mut error, state.version, SPDM_INVALID_REQUEST)?;
             state.reset_chunk_assembly();
-            build_chunk_send_ack(
-                pal,
-                io,
-                state.version,
-                true,
-                handle,
-                chunk_seq_num,
-                &error[..error_len],
-            )
+            build_chunk_send_ack(pal, io, state.version, true, handle, chunk_seq_num, error)
         }
     }
 }
@@ -185,16 +177,8 @@ fn build_chunk_send_error_ack<'a, Pal: SpdmPal>(
     error: SpdmError,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
     let mut response = [0u8; SpdmMsgHdrPdu::SIZE + 2 + CALIPTRA_EXTENDED_ERROR_SIZE];
-    let response_len = encode_error_response(&mut response[..], version, error)?;
-    build_chunk_send_ack(
-        pal,
-        io,
-        version,
-        false,
-        handle,
-        chunk_seq_num,
-        &response[..response_len],
-    )
+    let response = encode_error_response(&mut response[..], version, error)?;
+    build_chunk_send_ack(pal, io, version, false, handle, chunk_seq_num, response)
 }
 
 /// Staging buffer size for `ResponseToLargeRequest` inside CHUNK_SEND_ACK.
@@ -849,7 +833,7 @@ async fn finish_buffered_request<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     {
         Ok(response_len) => Ok((response_len, false)),
         Err(err) => Ok((
-            encode_error_response(response_to_large_request, state.version, err.spdm)?,
+            encode_error_response(response_to_large_request, state.version, err.spdm)?.len(),
             err.early_error,
         )),
     }
@@ -885,7 +869,8 @@ async fn finish_streamed_request<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
                             &mut response_to_large_request[..],
                             state.version,
                             spdm,
-                        )?,
+                        )?
+                        .len(),
                         false,
                     )
                 }
@@ -911,7 +896,8 @@ async fn finish_streamed_request<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
                         &mut response_to_large_request[..],
                         state.version,
                         SPDM_UNSPECIFIED,
-                    )?,
+                    )?
+                    .len(),
                     false,
                 )
             } else {
@@ -943,7 +929,8 @@ async fn finish_streamed_request<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
                                     &mut response_to_large_request[..],
                                     state.version,
                                     SPDM_UNSPECIFIED,
-                                )?,
+                                )?
+                                .len(),
                                 false,
                             )
                         } else {
@@ -955,7 +942,8 @@ async fn finish_streamed_request<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
                             &mut response_to_large_request[..],
                             state.version,
                             SPDM_UNSPECIFIED,
-                        )?,
+                        )?
+                        .len(),
                         false,
                     ),
                 }
@@ -966,7 +954,8 @@ async fn finish_streamed_request<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
                 &mut response_to_large_request[..],
                 state.version,
                 SPDM_INVALID_REQUEST,
-            )?,
+            )?
+            .len(),
             false,
         ),
         #[cfg(any(test, feature = "generic-large-request"))]
@@ -975,7 +964,8 @@ async fn finish_streamed_request<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
                 &mut response_to_large_request[..],
                 state.version,
                 SPDM_INVALID_REQUEST,
-            )?,
+            )?
+            .len(),
             false,
         ),
         #[cfg(not(any(test, feature = "generic-large-request")))]
@@ -984,7 +974,8 @@ async fn finish_streamed_request<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
                 &mut response_to_large_request[..],
                 state.version,
                 SPDM_UNSUPPORTED_REQUEST,
-            )?,
+            )?
+            .len(),
             false,
         ),
     })

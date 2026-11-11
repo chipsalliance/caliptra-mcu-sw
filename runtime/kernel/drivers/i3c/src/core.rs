@@ -171,21 +171,21 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
             });
         }
 
-        if self.rx_buffer.is_none() {
+        let Some(rx_buffer) = self.rx_buffer.take() else {
             // try again later
             self.retry_incoming_write.set(true);
             self.set_alarm(Self::RETRY_WAIT_TICKS);
             return false;
-        }
+        };
 
         let desc = self.registers.tti_rx_desc_queue_port.get();
         let desc = LocalRegisterCopy::<u32, RxDesc::Register>::new(desc);
         let len = desc.read(RxDesc::DataLength) as usize;
         if len == 0 {
             // we're done
+            self.rx_buffer.replace(rx_buffer);
             return false;
         }
-        let rx_buffer = self.rx_buffer.take().unwrap();
         let valid = desc.read(RxDesc::Error) == 0
             && len <= rx_buffer.len()
             && len <= self.max_write_len.get();
@@ -193,11 +193,14 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         // Drain every word, including rejected packets, so the next descriptor
         // stays aligned with its data. Never deliver a truncated packet to the
         // transport: a coincidental PEC match could otherwise accept it.
+        let mut output = rx_buffer.iter_mut();
         for i in (0..len).step_by(4) {
             let data = self.registers.tti_rx_data_port.get().to_le_bytes();
             if valid {
                 let count = (len - i).min(4);
-                rx_buffer[i..i + count].copy_from_slice(&data[..count]);
+                for (destination, byte) in output.by_ref().take(count).zip(data) {
+                    *destination = byte;
+                }
             }
         }
 
@@ -217,25 +220,38 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
     pub fn handle_outgoing_read(&self) {
         self.retry_outgoing_read.set(false);
 
-        if self.tx_buffer.is_none() {
+        let Some(buf) = self.tx_buffer.take() else {
             // we have nothing to send, retry in a little while
             self.retry_outgoing_read.set(true);
             self.set_alarm(Self::RETRY_WAIT_TICKS);
             return;
-        }
+        };
 
-        let buf = self.tx_buffer.take().unwrap();
-        let mut idx = self.tx_buffer_idx.replace(0);
+        let idx = self.tx_buffer_idx.replace(0);
         let size = self.tx_buffer_size.replace(0);
-        if idx < size {
+        let payload = match buf.get(idx..size) {
+            Some(payload) => payload,
+            None => {
+                caliptra_mcu_romtime::println!(
+                    "[mcu-runtime-i3c] Invalid TX buffer range {}..{} for length {}",
+                    idx,
+                    size,
+                    buf.len()
+                );
+                self.tx_buffer_idx.set(idx);
+                self.tx_buffer_size.set(size);
+                self.tx_buffer.put(Some(buf));
+                return;
+            }
+        };
+        if !payload.is_empty() {
             self.registers
                 .tti_tx_desc_queue_port
-                .set((size - idx) as u32);
-            while idx < size {
+                .set(payload.len() as u32);
+            for chunk in payload.chunks(4) {
                 let mut bytes = [0; 4];
-                for b in bytes[0..4.min(size - idx)].iter_mut() {
-                    *b = buf[idx];
-                    idx += 1;
+                for (byte, source) in bytes.iter_mut().zip(chunk) {
+                    *byte = *source;
                 }
                 let word = u32::from_le_bytes(bytes);
                 self.registers.tti_tx_data_port.set(word);
@@ -257,11 +273,14 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
     }
 
     fn deferred_done(&self) {
-        if self.tx_buffer.is_none() {
+        if self.tx_client.is_none() {
             return;
         }
+        let Some(tx_buffer) = self.tx_buffer.take() else {
+            return;
+        };
         self.tx_client.map(|client| {
-            client.send_done(self.tx_buffer.take().unwrap(), Ok(()));
+            client.send_done(tx_buffer, Ok(()));
         });
     }
 

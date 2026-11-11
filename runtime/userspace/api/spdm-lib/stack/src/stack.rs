@@ -787,7 +787,7 @@ async fn handle_secured_request<
                 SessionState::Established => SessionKeyType::ResponseDataKey,
             };
             let mut error_rsp = [0u8; SpdmMsgHdrPdu::SIZE + 2 + CALIPTRA_EXTENDED_ERROR_SIZE];
-            let Ok(error_rsp_len) = encode_error_response(&mut error_rsp, state.version, e) else {
+            let Ok(error_rsp) = encode_error_response(&mut error_rsp, state.version, e) else {
                 return Ok(None);
             };
             let rsp = encrypt_secured_spdm_response(
@@ -797,7 +797,7 @@ async fn handle_secured_request<
                 session_id,
                 state.version,
                 key_type,
-                &error_rsp[..error_rsp_len],
+                error_rsp,
             )
             .await
             .ok();
@@ -860,7 +860,7 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_S
                 aad,
                 ciphertext,
                 tag,
-                &mut plaintext[..ct_len],
+                plaintext.get_mut(..ct_len).ok_or(SPDM_UNSPECIFIED)?,
             )
             .await
             .map_err(|_| SPDM_DECRYPT_ERROR)?
@@ -874,11 +874,12 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_S
     if ct_len < 2 {
         return Err(SPDM_INVALID_REQUEST);
     }
-    let app_data_len = u16::from_le_bytes([plaintext[0], plaintext[1]]) as usize;
+    let app_data_len =
+        u16::from_le_bytes(*plaintext.first_chunk::<2>().ok_or(SPDM_UNSPECIFIED)?) as usize;
     if app_data_len + 2 != ct_len {
         return Err(SPDM_INVALID_REQUEST);
     }
-    let spdm_msg = &plaintext[2..2 + app_data_len];
+    let spdm_msg = plaintext.get(2..2 + app_data_len).ok_or(SPDM_UNSPECIFIED)?;
 
     // ── Dispatch on SPDM code ───────────────────────────────────────
     let (spdm_hdr, _) =

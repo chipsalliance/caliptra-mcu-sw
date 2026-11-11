@@ -53,15 +53,23 @@ impl McuMboxTransport {
             return Err(errors::INVALID_REQUEST);
         }
 
-        let hdr = MailboxReqHeader::ref_from_bytes(&buf[..size_of::<MailboxReqHeader>()])
-            .map_err(|_| errors::INVALID_REQUEST)?;
+        let hdr = MailboxReqHeader::ref_from_bytes(
+            buf.get(..size_of::<MailboxReqHeader>())
+                .ok_or(errors::INVALID_REQUEST)?,
+        )
+        .map_err(|_| errors::INVALID_REQUEST)?;
         // Retrieve payload for checksum verification
-        let payload = &buf[size_of::<u32>()..req_len];
+        let payload = buf
+            .get(size_of::<u32>()..req_len)
+            .ok_or(errors::INVALID_REQUEST)?;
         if !verify_checksum(hdr.chksum, cmd_opcode, payload) {
             return Err(errors::CHKSUM_MISMATCH);
         }
 
-        Ok((cmd_opcode, &buf[..req_len]))
+        Ok((
+            cmd_opcode,
+            buf.get(..req_len).ok_or(errors::INVALID_REQUEST)?,
+        ))
     }
 
     pub async fn send_response(&mut self, resp: &[u8]) -> McuResult<()> {
@@ -69,9 +77,14 @@ impl McuMboxTransport {
             return Err(errors::BUFFER_TOO_SMALL);
         }
 
-        let hdr = MailboxRespHeader::ref_from_bytes(&resp[..size_of::<MailboxRespHeader>()])
-            .map_err(|_| errors::INVALID_RESPONSE)?;
-        let payload = &resp[size_of::<u32>()..];
+        let hdr = MailboxRespHeader::ref_from_bytes(
+            resp.get(..size_of::<MailboxRespHeader>())
+                .ok_or(errors::INVALID_RESPONSE)?,
+        )
+        .map_err(|_| errors::INVALID_RESPONSE)?;
+        let payload = resp
+            .get(size_of::<u32>()..)
+            .ok_or(errors::INVALID_RESPONSE)?;
         if !verify_checksum(hdr.chksum, 0, payload) {
             return Err(errors::CHKSUM_MISMATCH);
         }

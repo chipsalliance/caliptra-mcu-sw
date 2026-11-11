@@ -428,3 +428,68 @@ fn test_get_certificate_v14_with_mldsa87_negotiated() {
     assert_eq!(body, &wanted_body);
     assert!(payload.is_empty());
 }
+
+#[test]
+fn test_get_digests_short_multi_key_tail_returns_error() {
+    for shortfall in [0, 4] {
+        let pal = TestPal {
+            byte_alloc_shortfall: shortfall,
+            ..TestPal::default()
+        };
+        let mut state = init_cert_test_state(SpdmVersion::V13, &pal);
+        state.advertised_cap_flags |= CapFlags::MULTI_KEY_CONN_RSP;
+        state.other_param_sel |= caliptra_mcu_spdm_codec::OtherParamSupport::MULTI_KEY_CONN;
+        let io = TestIo::message(vec![
+            SpdmVersion::V13.to_u8(),
+            ReqRespCode::GET_DIGESTS.0,
+            0,
+            0,
+        ]);
+        let result = block_on(crate::digests::handle_get_digests(
+            &mut state,
+            &pal,
+            &io,
+            &io.request,
+        ));
+        if shortfall == 0 {
+            let (response, _) = result.unwrap();
+            assert_eq!(response.len(), SpdmMsgHdrPdu::SIZE + 2 + 48 + 4);
+            assert_eq!(
+                &response[..4],
+                &[
+                    SpdmVersion::V13.to_u8(),
+                    ReqRespCode::DIGESTS.0,
+                    pal.supported_slots,
+                    pal.provisioned_slots,
+                ]
+            );
+        } else {
+            assert_eq!(
+                result.unwrap_err().spec_byte(),
+                SPDM_UNSPECIFIED.spec_byte()
+            );
+        }
+    }
+}
+
+#[test]
+fn test_cert_chain_hash_rejects_oversized_read_length() {
+    let pal = TestPal {
+        cert_read_len_override: Some(usize::MAX),
+        ..TestPal::default()
+    };
+    let io = TestIo::message(Vec::new());
+    let mut digest = [0; 48];
+    assert_eq!(
+        block_on(crate::digests::cert_chain_hash(
+            &pal,
+            &io,
+            0,
+            caliptra_mcu_spdm_traits::SpdmPalAsymAlgo::EccP384,
+            caliptra_mcu_spdm_traits::SpdmPalHashAlgo::Sha384,
+            &mut digest,
+        )),
+        Err(mcu_error::codes::INVARIANT)
+    );
+    assert!(pal.hash_finishes.borrow().is_empty());
+}

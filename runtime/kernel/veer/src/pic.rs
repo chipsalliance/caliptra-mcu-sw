@@ -196,7 +196,7 @@ impl Pic {
         let offset = (index / 32) as usize;
         let irq = index % 32;
 
-        if offset > self.saved.len() {
+        if offset >= self.saved.len() {
             // Impossible but helps remove panic.
             return;
         }

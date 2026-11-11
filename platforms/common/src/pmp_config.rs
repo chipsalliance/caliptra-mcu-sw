@@ -89,20 +89,23 @@ fn try_convert_to_napot(region: PlatformRegion) -> Result<PlatformRegion, Platfo
 }
 
 /// Convert MMIO regions to NAPOT where possible (best effort)
-fn optimize_mmio_napot(regions: &mut [Option<PlatformRegion>; 32], region_count: usize) -> usize {
+fn optimize_mmio_napot(
+    regions: &mut [Option<PlatformRegion>; 32],
+    region_count: usize,
+) -> Result<usize, ()> {
     // Try to convert each MMIO region to NAPOT (best effort)
     for i in 0..region_count {
-        if let Some(original_region) = regions[i] {
+        if let Some(original_region) = regions.get(i).copied().ok_or(())? {
             if original_region.is_mmio {
                 if let Ok(napot_region) = try_convert_to_napot(original_region) {
                     // Temporarily set the NAPOT version
-                    regions[i] = Some(napot_region);
+                    *regions.get_mut(i).ok_or(())? = Some(napot_region);
 
                     // Check if this NAPOT version overlaps with any other MMIO region
                     let mut has_overlap = false;
                     for j in 0..region_count {
                         if i != j {
-                            if let Some(other_region) = regions[j] {
+                            if let Some(other_region) = regions.get(j).copied().ok_or(())? {
                                 if other_region.is_mmio
                                     && regions_overlap(&napot_region, &other_region)
                                 {
@@ -115,7 +118,7 @@ fn optimize_mmio_napot(regions: &mut [Option<PlatformRegion>; 32], region_count:
 
                     if has_overlap {
                         // Revert to original region if NAPOT causes overlap
-                        regions[i] = Some(original_region);
+                        *regions.get_mut(i).ok_or(())? = Some(original_region);
                     }
                     // Otherwise keep the NAPOT version
                 }
@@ -124,23 +127,23 @@ fn optimize_mmio_napot(regions: &mut [Option<PlatformRegion>; 32], region_count:
         }
     }
 
-    region_count
+    Ok(region_count)
 }
 
 /// Coalesce adjacent regions with identical properties in-place
 fn coalesce_regions_in_place(
     regions: &mut [Option<PlatformRegion>; 32],
     region_count: usize,
-) -> usize {
+) -> Result<usize, ()> {
     if region_count <= 1 {
-        return region_count;
+        return Ok(region_count);
     }
 
     let mut write_pos = 0;
-    let mut current_region = regions[0].unwrap();
+    let mut current_region = regions.first().copied().flatten().ok_or(())?;
 
     for read_pos in 1..region_count {
-        let next_region = regions[read_pos].unwrap();
+        let next_region = regions.get(read_pos).copied().flatten().ok_or(())?;
 
         // Check if regions are adjacent and have same properties
         let regions_adjacent =
@@ -156,22 +159,22 @@ fn coalesce_regions_in_place(
             current_region.size += next_region.size;
         } else {
             // Write current region and start new one
-            regions[write_pos] = Some(current_region);
+            *regions.get_mut(write_pos).ok_or(())? = Some(current_region);
             write_pos += 1;
             current_region = next_region;
         }
     }
 
     // Don't forget the last region
-    regions[write_pos] = Some(current_region);
+    *regions.get_mut(write_pos).ok_or(())? = Some(current_region);
     write_pos += 1;
 
     // Clear any remaining slots
-    for i in write_pos..region_count {
-        regions[i] = None;
+    for slot in regions.get_mut(write_pos..region_count).ok_or(())? {
+        *slot = None;
     }
 
-    write_pos
+    Ok(write_pos)
 }
 
 /// Convert processed platform regions to PMP regions and add them to the list
@@ -181,7 +184,7 @@ fn convert_platform_regions_to_pmp(
 ) -> Result<(), ()> {
     // Do the kernel text region first
     for region_opt in platform_regions.iter() {
-        let platform_region = region_opt.as_ref().unwrap();
+        let platform_region = region_opt.as_ref().ok_or(())?;
 
         // Convert PlatformRegion to appropriate PMPRegion variant
         match (
@@ -214,7 +217,7 @@ fn convert_platform_regions_to_pmp(
 
     // Next do memories.
     for region_opt in platform_regions {
-        let platform_region = region_opt.unwrap();
+        let platform_region = region_opt.as_ref().ok_or(())?;
 
         // Convert PlatformRegion to appropriate PMPRegion variant
         let pmp_region = match (
@@ -265,7 +268,7 @@ fn convert_platform_regions_to_pmp(
 
     // Finally do MMIO regions.
     for region_opt in platform_regions {
-        let platform_region = region_opt.unwrap();
+        let platform_region = region_opt.as_ref().ok_or(())?;
 
         // Convert PlatformRegion to appropriate PMPRegion variant
         let pmp_region = match (
@@ -496,7 +499,7 @@ pub fn create_pmp_regions(config: PlatformPMPConfig<'_>) -> Result<PMPRegionList
 
             // For MMIO regions: check for overlaps with existing MMIO regions
             for i in 0..region_count {
-                let existing = &all_regions[i].unwrap();
+                let existing = all_regions.get(i).and_then(Option::as_ref).ok_or(())?;
                 if existing.is_mmio && regions_overlap(region, existing) {
                     caliptra_mcu_romtime::println!(
                         "[mcu-runtime-pmp] Region {:?} overlaps with {:?}",
@@ -561,8 +564,8 @@ pub fn create_pmp_regions(config: PlatformPMPConfig<'_>) -> Result<PMPRegionList
             // For non-MMIO regions: check for overlaps with existing non-MMIO regions
             // Earlier entries in the platform region list have higher priority
             for i in 0..region_count {
-                let existing = all_regions[i].unwrap();
-                if !existing.is_mmio && regions_overlap(region, &existing) {
+                let existing = all_regions.get(i).and_then(Option::as_ref).ok_or(())?;
+                if !existing.is_mmio && regions_overlap(region, existing) {
                     // Non-MMIO overlap detected: earlier region takes priority
                     // This is allowed for cases like KernelTextRegion overlapping with ReadOnlyRegion
                     // where fine-grained regions should override broader regions
@@ -602,19 +605,19 @@ pub fn create_pmp_regions(config: PlatformPMPConfig<'_>) -> Result<PMPRegionList
         }
 
         // Step 3b: Add validated region
-        all_regions[region_count] = Some(*region);
+        *all_regions.get_mut(region_count).ok_or(())? = Some(*region);
         region_count += 1;
     }
 
     // Step 4: Coalesce adjacent regions with identical properties in-place
-    let coalesced_count = coalesce_regions_in_place(&mut all_regions, region_count);
+    let coalesced_count = coalesce_regions_in_place(&mut all_regions, region_count)?;
 
     // Step 5: Optimize MMIO regions to NAPOT format where possible (best effort)
-    let final_count = optimize_mmio_napot(&mut all_regions, coalesced_count);
+    let final_count = optimize_mmio_napot(&mut all_regions, coalesced_count)?;
 
     // Step 6: Convert processed platform regions to PMP regions
     let mut pmp_list = PMPRegionList::new();
-    convert_platform_regions_to_pmp(&mut pmp_list, &all_regions[..final_count])?;
+    convert_platform_regions_to_pmp(&mut pmp_list, all_regions.get(..final_count).ok_or(())?)?;
 
     Ok(pmp_list)
 }

@@ -108,9 +108,7 @@ pub(crate) async fn handle_get_measurements_req<'a, Pal: SpdmPal>(
             0
         }
         + requester_context_len;
-    if req.len() < spdm_req_len {
-        return Err(SPDM_INVALID_REQUEST);
-    }
+    let spdm_req = req.get(..spdm_req_len).ok_or(SPDM_INVALID_REQUEST)?;
 
     // Measurement enumeration from PAL.
     let meas_info = pal.measurement_info();
@@ -141,7 +139,7 @@ pub(crate) async fn handle_get_measurements_req<'a, Pal: SpdmPal>(
         .await
         .map_err(|_| SPDM_UNSPECIFIED)?;
     let plan = MeasurementsResponseCtx {
-        spdm_req: &req[..spdm_req_len],
+        spdm_req,
         meas_info,
         meas_op,
         meas_nonce: requester_nonce,

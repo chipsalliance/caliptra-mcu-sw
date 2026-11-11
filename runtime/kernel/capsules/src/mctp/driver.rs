@@ -337,7 +337,9 @@ impl<'a> MCTPDriver<'a> {
 
         // Take the kernel rx buffer to store the message
         if let Some(rx_buf) = self.kernel_rx_buf.take() {
-            if msg_len > rx_buf.len() {
+            let (Some(destination), Some(payload)) =
+                (rx_buf.get_mut(..msg_len), msg_payload.get(..msg_len))
+            else {
                 // Message too large, restore buffer and drop message
                 self.kernel_rx_buf.replace(rx_buf);
                 capsule_debug!(
@@ -345,10 +347,10 @@ impl<'a> MCTPDriver<'a> {
                     "buffer_message message too large for buffer. Dropping message."
                 );
                 return false;
-            }
+            };
 
             // Copy message to buffer (this overwrites any existing message)
-            rx_buf[..msg_len].copy_from_slice(&msg_payload[..msg_len]);
+            destination.copy_from_slice(payload);
 
             // Store message metadata (this replaces any existing buffered message)
             let buffered_msg = BufferedMessage {
@@ -423,13 +425,12 @@ impl<'a> MCTPDriver<'a> {
                         .get_readwrite_processbuffer(rw_buffer)
                         .and_then(|read| {
                             read.mut_enter(|rmsg_payload| {
-                                if rmsg_payload.len() < buffered_msg.msg_len {
-                                    Err(ErrorCode::SIZE)
-                                } else {
-                                    rmsg_payload[..buffered_msg.msg_len]
-                                        .copy_from_slice(&rx_buf[..buffered_msg.msg_len]);
-                                    Ok(())
-                                }
+                                let destination = rmsg_payload
+                                    .get(..buffered_msg.msg_len)
+                                    .ok_or(ErrorCode::SIZE)?;
+                                let payload =
+                                    rx_buf.get(..buffered_msg.msg_len).ok_or(ErrorCode::SIZE)?;
+                                destination.copy_from_slice_or_err(payload)
                             })
                         })
                         .unwrap_or(Err(ErrorCode::NOMEM));
@@ -683,12 +684,9 @@ impl MCTPRxClient for MCTPDriver<'_> {
                 .get_readwrite_processbuffer(rw_buffer)
                 .and_then(|read| {
                     read.mut_enter(|rmsg_payload| {
-                        if rmsg_payload.len() < msg_len {
-                            Err(ErrorCode::SIZE)
-                        } else {
-                            rmsg_payload[..msg_len].copy_from_slice(&msg_payload[..msg_len]);
-                            Ok(())
-                        }
+                        let destination = rmsg_payload.get(..msg_len).ok_or(ErrorCode::SIZE)?;
+                        let payload = msg_payload.get(..msg_len).ok_or(ErrorCode::SIZE)?;
+                        destination.copy_from_slice_or_err(payload)
                     })
                 })
                 .unwrap_or(Err(ErrorCode::NOMEM));
