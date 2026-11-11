@@ -105,10 +105,8 @@ The following subcommands are assigned to the SPDM VDM IANA authorization-gated 
 | `0x4D52_564B` (`MRVK`) | FuseRevokeVendorPubKey     | Supported     | Revoke vendor public key.                           |
 | `0x5256_4B48` (`RVKH`) | FuseRevokeVendorPkHash     | Supported     | Revoke vendor public key hash.                      |
 | `0x4946_504B` (`IFPK`) | FuseLockPartition          | Supported     | Lock fuse partition.                                |
-| `0x4F4C_5048` (`OLPH`) | OcpLockProgramHek          | Supported     | Program an unused HEK slot.                         |
-| `0x4F4C_5A48` (`OLZH`) | OcpLockZeroHek             | Supported     | Permanently sanitize an unused HEK slot.            |
 | `0x0000_0011`          | DeviceOwnershipTransfer    | Supported     | Carry authorization-gated DOT subcommands.          |
-| `0x0000_0013`          | OcpLock                    | Supported     | Carry authorization-gated OCP LOCK subcommands.     |
+| `0x0000_0013`          | OcpLock                    | Supported     | Carry authorization-gated [OCP LOCK subcommands](#ocp-lock-commands). |
 | `VU00`-`VUFF`           | VendorUnique               | Reserved      | Vendor-unique innermost commands; unsupported by the reference MCU. |
 
 `VU00` through `VUFF` represent exactly 256 IDs of the form `VUxy`, where both
@@ -242,8 +240,8 @@ the additional word-storage conversion used for fuse/register buffers.
    a challenge.
 4. Sign the canonical transcript with both authorized keys.
 5. Append the Authorization Block and submit through `AuthorizedCommand`.
-6. Runtime checks format, authority policy, target, key digest, both signatures,
-   and live-challenge freshness when requested, before executing the operation.
+6. Runtime checks format, authority policy, target, live-challenge freshness
+   when requested, key digest, and both signatures before executing the operation.
 
 After format, policy, and target checks succeed, a Challenge-bound
 verification attempt consumes the stored challenge before key/signature
@@ -263,8 +261,9 @@ and manifest-key-digest updates; there is no legacy hash or trailer fallback.
 ### Implemented Subcommand Payloads
 
 These operation payloads exclude the Authorization Block, which is appended
-immediately afterwards. All payload integers are little-endian. Family
-operations additionally prefix their FourCC as described above.
+immediately afterwards. All payload integers are little-endian. For family
+operation payloads, see [Device Ownership Transfer Commands](#device-ownership-transfer-commands)
+and [OCP LOCK Commands](#ocp-lock-commands).
 
 | Subcommand | Operation payload | Payload bytes |
 | ---------- | ----------------- | ------------- |
@@ -275,8 +274,6 @@ operations additionally prefix their FourCC as described above.
 | MRVK | `reserved:u32 \|\| slot:u32 \|\| key_type:u32 \|\| key_index:u32`; reserved must be zero | 16 |
 | RVKH | `reserved:u32 \|\| slot:u32`; reserved must be zero | 8 |
 | IFPK | `partition:u32` | 4 |
-| OLPH | `hek_slot:u32`, slot 0 through 7 | 4 |
-| OLZH | `hek_slot:u32`, slot 0 through 7 | 4 |
 
 ## Device Ownership Transfer Commands
 
@@ -330,10 +327,16 @@ Authorization-gated OCP LOCK request:
 [OCP LOCK payload][authorization trailer]
 ```
 
-| FourCC | Command | Path | OCP LOCK payload | Description |
-| ------ | ------- | ---- | ---------------- | ----------- |
-| `OLRH` | Rotate HEK | Authorized | `slot:u32` | Sanitize active HEK and program next slot |
-| `OLSP` | Set Perma HEK | Authorized | Empty | Program permanent HEK lock fuse (`PERMA_HEK_EN`) |
+The signed command ID is the family ID `0x0000_0013`; the FourCC is part of the
+signed payload. Payload byte counts below exclude the four-byte FourCC and
+the Authorization Block.
+
+| FourCC | Command | Path | OCP LOCK payload | Payload bytes | Description |
+| ------ | ------- | ---- | ---------------- | ------------- | ----------- |
+| `OLPH` (`0x4F4C_5048`) | Program HEK | Authorized | `hek_slot:u32` | 4 | Program an unused HEK slot, slot 0 through 7 |
+| `OLZH` (`0x4F4C_5A48`) | Zero HEK | Authorized | `hek_slot:u32` | 4 | Permanently sanitize an unused HEK slot, slot 0 through 7 |
+| `OLRH` | Rotate HEK | Authorized | `slot:u32` | 4 | Sanitize active HEK and program next slot |
+| `OLSP` | Set Perma HEK | Authorized | Empty | 0 | Program permanent HEK lock fuse (`PERMA_HEK_EN`) |
 
 `OLRH` and `OLSP` are rejected with `AccessDenied` when sent directly under
 top-level command `0x13`.
