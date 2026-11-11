@@ -360,6 +360,11 @@ impl McuHwModel for ModelEmulated {
         // Use MCU recovery interface when flash-based boot or network boot is enabled
         let use_mcu_recovery_interface = params.flash_boot || params.network_boot;
 
+        // wasm32 cannot set environment variables, so set the offset in the
+        // Caliptra emulator directly there.
+        #[cfg(target_arch = "wasm32")]
+        caliptra_emu_periph::dma::axi_root_bus::set_ss_mci_offset(0x0000_0000_a800_0000);
+        #[cfg(not(target_arch = "wasm32"))]
         if std::env::var("CPTRA_EMULATOR_SS_MCI_OFFSET").is_err() {
             std::env::set_var("CPTRA_EMULATOR_SS_MCI_OFFSET", "0x00000000a8000000");
         }
