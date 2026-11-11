@@ -10,7 +10,6 @@ use caliptra_mcu_registers_generated::i3c::bits::{
 use caliptra_mcu_registers_generated::i3c::regs::I3c;
 use capsules_core::virtualizers::virtual_alarm::{MuxAlarm, VirtualMuxAlarm};
 use core::cell::Cell;
-use kernel::deferred_call::{DeferredCall, DeferredCallClient};
 use kernel::hil::time::{Alarm, AlarmClient, Time};
 use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeable};
@@ -58,7 +57,6 @@ pub struct I3CCore<'a, A: Alarm<'a>> {
     tx_desc_complete: Cell<bool>,
     max_read_len: Cell<usize>,
     max_write_len: Cell<usize>,
-    deferred_call: DeferredCall,
 }
 
 impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
@@ -84,7 +82,6 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
             tx_desc_complete: Cell::new(false),
             max_read_len: Cell::new(MAX_READ_WRITE_SIZE),
             max_write_len: Cell::new(MAX_READ_WRITE_SIZE),
-            deferred_call: DeferredCall::new(),
         }
     }
 
@@ -114,7 +111,6 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         // Most of the I3C setup is done by the ROM.
         self.alarm.setup();
         self.alarm.set_alarm_client(self);
-        self.register();
     }
 
     pub fn enable_interrupts(&self) {
@@ -272,22 +268,12 @@ impl<'a, A: Alarm<'a>> I3CCore<'a, A> {
         // TODO: if no tx_client then we just drop the buffer?
     }
 
-    fn deferred_done(&self) {
-        if self.tx_client.is_none() {
-            return;
-        }
-        let Some(tx_buffer) = self.tx_buffer.take() else {
-            return;
-        };
-        self.tx_client.map(|client| {
-            client.send_done(tx_buffer, Ok(()));
-        });
-    }
-
     fn try_complete_tx(&self) {
         if self.pending_ibi.is_none() && self.tx_desc_complete.get() && self.tx_buffer.is_some() {
             self.tx_desc_complete.set(false);
-            self.deferred_call.set();
+            if let (Some(client), Some(tx_buffer)) = (self.tx_client.get(), self.tx_buffer.take()) {
+                client.send_done(tx_buffer, Ok(()));
+            }
         }
     }
 
@@ -421,16 +407,6 @@ impl<'a, A: Alarm<'a>> AlarmClient for I3CCore<'a, A> {
         if self.retry_incoming_write.get() {
             self.handle_interrupt();
         }
-    }
-}
-
-impl<'a, A: Alarm<'a>> DeferredCallClient for I3CCore<'a, A> {
-    fn handle_deferred_call(&self) {
-        self.deferred_done();
-    }
-
-    fn register(&'static self) {
-        self.deferred_call.register(self);
     }
 }
 
