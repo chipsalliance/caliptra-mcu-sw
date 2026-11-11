@@ -345,7 +345,7 @@ caliptra-emu-derive = { git = "https://github.com/chipsalliance/caliptra-sw", re
 caliptra-emu-periph = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "4a9c80c4d577ebf6a7d105796b13437aae08013f" }
 caliptra-emu-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "4a9c80c4d577ebf6a7d105796b13437aae08013f" }
 caliptra-error = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "4a9c80c4d577ebf6a7d105796b13437aae08013f", default-features = false }
-caliptra-hw-model = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "4a9c80c4d577ebf6a7d105796b13437aae08013f" }
+caliptra-hw-model = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "4a9c80c4d577ebf6a7d105796b13437aae08013f", default-features = false }
 caliptra-hw-model-types = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "4a9c80c4d577ebf6a7d105796b13437aae08013f" }
 caliptra-image-crypto = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "4a9c80c4d577ebf6a7d105796b13437aae08013f", default-features = false, features = ["rustcrypto"] }
 caliptra-image-fake-keys = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "4a9c80c4d577ebf6a7d105796b13437aae08013f" }

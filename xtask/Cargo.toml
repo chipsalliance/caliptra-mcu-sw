@@ -25,7 +25,7 @@ cargo_metadata.workspace = true
 cc.workspace = true
 caliptra-image-gen.workspace = true
 caliptra-image-types = { workspace = true, features = ["std"] }
-caliptra-hw-model = { workspace = true, optional = true }
+caliptra-hw-model = { workspace = true, optional = true, features = ["coverage"] }
 clap.workspace = true
 clap-num.workspace = true
 ecdsa.workspace = true
