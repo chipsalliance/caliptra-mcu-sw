@@ -8,10 +8,12 @@ use crate::api::{CaliptraApiError, CaliptraResult};
 use caliptra_mcu_core_util_host_command_types::{
     attestation::{AsymAlgo, PkiEntitySlot},
     certificate::{
-        ExportAttestedCsrRequest, ExportAttestedCsrResponse, ExportIdevidCsrRequest,
-        ExportIdevidCsrResponse, GetCertChainInfoRequest, GetCertChainInfoResponse,
-        GetCertChainRequest, GetCertChainResponse, ProvisionIdevCertMode, ProvisionIdevCertRequest,
-        ProvisionIdevCertResponse, SetCertChainRequest, SetCertChainResponse,
+        DpeSignerContextCertRequest, DpeSignerContextCertResponse, DpeSignerContextSignRequest,
+        DpeSignerContextSignResponse, ExportAttestedCsrRequest, ExportAttestedCsrResponse,
+        ExportIdevidCsrRequest, ExportIdevidCsrResponse, GetCertChainInfoRequest,
+        GetCertChainInfoResponse, GetCertChainRequest, GetCertChainResponse, ProvisionIdevCertMode,
+        ProvisionIdevCertRequest, ProvisionIdevCertResponse, SetCertChainRequest,
+        SetCertChainResponse,
     },
     CaliptraCommandId,
 };
@@ -135,4 +137,33 @@ pub fn caliptra_cmd_provision_idevid_cert(
     session
         .execute_command_with_id(CaliptraCommandId::ProvisionIdevCert, &request)
         .map_err(|_| CaliptraApiError::SessionError("ProvisionIdevCert command failed"))
+}
+
+/// Derive an Exported-CDI leaf X.509 certificate for `target_fw_id` (`0` for the default `EXPORT_CDI_TARGET`).
+pub fn caliptra_cmd_dpe_signer_context_cert(
+    session: &mut CaliptraSession,
+    target_fw_id: u32,
+    algorithm: AsymAlgo,
+) -> CaliptraResult<DpeSignerContextCertResponse> {
+    let request = DpeSignerContextCertRequest::new(target_fw_id, algorithm);
+    session
+        .execute_command_with_id(CaliptraCommandId::DpeSignerContextCert, &request)
+        .map_err(|_| CaliptraApiError::SessionError("DpeSignerContextCert command failed"))
+}
+
+/// Sign `data` using the stashed Exported-CDI key for `target_fw_id` (`0` for the default `EXPORT_CDI_TARGET`).
+pub fn caliptra_cmd_dpe_signer_context_sign(
+    session: &mut CaliptraSession,
+    target_fw_id: u32,
+    algorithm: AsymAlgo,
+    data: &[u8],
+) -> CaliptraResult<DpeSignerContextSignResponse> {
+    let request = DpeSignerContextSignRequest::new(target_fw_id, algorithm, data).ok_or(
+        CaliptraApiError::InvalidParameter(
+            "DpeSignerContextSign payload must be 1..=MAX_DPE_SIGNER_SIGN_DATA_SIZE bytes",
+        ),
+    )?;
+    session
+        .execute_command_with_id(CaliptraCommandId::DpeSignerContextSign, &request)
+        .map_err(|_| CaliptraApiError::SessionError("DpeSignerContextSign command failed"))
 }

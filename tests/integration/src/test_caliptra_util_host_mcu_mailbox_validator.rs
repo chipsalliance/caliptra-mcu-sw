@@ -328,6 +328,9 @@ pub mod test {
                         "SetCertChain(Tenant/ECC_P384)",
                         "GetCertChainInfo(Tenant/ECC_P384)",
                         "GetCertChain(Tenant/ECC_P384)",
+                        "DpeSignerContextCert(ECC_P384)",
+                        "DpeSignerContextSign(ECC_P384)",
+                        "DpeSignerContextSign(ECC_P384/invalid_len_rejected)",
                     ];
                     let all_cert_results_passed = fuse_only
                         || required_cert_results.iter().all(|test_name| {

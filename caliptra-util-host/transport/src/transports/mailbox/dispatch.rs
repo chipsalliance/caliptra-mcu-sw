@@ -15,8 +15,8 @@ use super::aes::{
 };
 use super::attestation::GetAttestationCmd;
 use super::certificate::{
-    ExportAttestedCsrCmd, GetCertChainCmd, GetCertChainInfoCmd, ProvisionIdevCertCmd,
-    SetCertChainCmd,
+    DpeSignerContextCertCmd, DpeSignerContextSignCmd, ExportAttestedCsrCmd, GetCertChainCmd,
+    GetCertChainInfoCmd, ProvisionIdevCertCmd, SetCertChainCmd,
 };
 use super::crypto_asymmetric::{
     EcdhFinishCmd, EcdhGenerateCmd, EcdsaPublicKeyCmd, EcdsaSignCmd, EcdsaVerifyCmd,
@@ -100,13 +100,15 @@ pub fn get_command_handler(command_id: u32) -> Option<CommandHandlerFn> {
         // Debug Unlock Commands (0x7010-0x7011)
         0x7010 => Some(process_command_with_metadata::<ProdDebugUnlockReqCmd>), // ProdDebugUnlockReq
         0x7011 => Some(process_command_with_metadata::<ProdDebugUnlockTokenCmd>), // ProdDebugUnlockToken
-        // Certificate / Attestation Commands (0x1005, 0x1007-0x1015)
+        // Certificate / Attestation Commands (0x1005, 0x1007-0x1017)
         0x1005 => Some(process_command_with_metadata::<ExportAttestedCsrCmd>), // ExportAttestedCsr
         0x1007 => Some(process_command_with_metadata::<GetAttestationCmd>),    // GetAttestation
         0x1008 => Some(process_command_with_metadata::<GetCertChainInfoCmd>),  // GetCertChainInfo
         0x1010 => Some(process_command_with_metadata::<GetCertChainCmd>),      // GetCertChain
         0x1014 => Some(process_command_with_metadata::<SetCertChainCmd>),      // SetCertChain
         0x1015 => Some(process_command_with_metadata::<ProvisionIdevCertCmd>), // ProvisionIdevCert
+        0x1016 => Some(process_command_with_metadata::<DpeSignerContextCertCmd>), // DpeSignerContextCert
+        0x1017 => Some(process_command_with_metadata::<DpeSignerContextSignCmd>), // DpeSignerContextSign
         // Authorized / Fuse Commands (0x8010-0x8016)
         0x8010 => Some(process_command_with_metadata::<GetAuthCmdChallengeCmd>), // GetAuthCmdChallenge
         0x8011 => Some(process_command_with_metadata::<FeProgCmd>),              // FeProg
@@ -192,6 +194,8 @@ pub fn get_external_cmd_code(command_id: u32) -> Option<u32> {
         0x1010 => Some(0x4D47_4343), // GetCertChain -> MC_GET_CERT_CHAIN ("MGCC")
         0x1014 => Some(0x4D53_4343), // SetCertChain -> MC_SET_CERT_CHAIN ("MSCC")
         0x1015 => Some(0x4D50_4943), // ProvisionIdevCert -> MC_PROVISION_IDEV_CERT ("MPIC")
+        0x1016 => Some(0x4D44_5343), // DpeSignerContextCert -> MC_DPE_SIGNER_CONTEXT_CERT ("MDSC")
+        0x1017 => Some(0x4D44_5353), // DpeSignerContextSign -> MC_DPE_SIGNER_CONTEXT_SIGN ("MDSS")
         // Authorized / Fuse Commands
         0x8010..=0x8017 => Some(0x0000_0012),
         0x8018..=0x8019 => Some(0x0000_0012),
