@@ -262,10 +262,10 @@ where
         Alloc: SpdmPalAlloc,
         Io: SpdmPalIo,
     {
-        let out = rsp.inline;
-        if out.len() < VDM_HEADER_LEN + 1 {
-            return Err(INVARIANT);
-        }
+        let out = rsp
+            .inline
+            .first_chunk_mut::<{ VDM_HEADER_LEN + 1 }>()
+            .ok_or(INVARIANT)?;
         let completion = match self
             .stream
             .finish_authorize_debug_unlock_token_stream(rsp.alloc)
@@ -303,12 +303,8 @@ where
         // truncated header leaves no command code to echo, so no vendor-defined
         // response can be formed; the handler returns a plain McuError and the
         // stack classifies it into an SPDM ERROR PDU.
-        if req.len() < VDM_HEADER_LEN {
-            return Err(INVARIANT);
-        }
-        let command_version = req[0];
-        let command_code = req[1];
-        let cmd_req = &req[VDM_HEADER_LEN..];
+        let (header, cmd_req) = req.split_first_chunk::<VDM_HEADER_LEN>().ok_or(INVARIANT)?;
+        let [command_version, command_code] = *header;
 
         let VdmResponseBuffer {
             inline: out,
@@ -320,18 +316,20 @@ where
         // No room for even the response header + completion code → no
         // vendor-defined response can be formed; surfaced as an SPDM error by
         // the stack.
-        if out.len() < VDM_HEADER_LEN + 1 {
+        let (header, payload) = out
+            .split_first_chunk_mut::<VDM_HEADER_LEN>()
+            .ok_or(INVARIANT)?;
+        if payload.is_empty() {
             return Err(INVARIANT);
         }
         // Echo the response header (version + command code).
-        out[0] = CALIPTRA_VDM_COMMAND_VERSION;
-        out[1] = command_code;
-        let payload = &mut out[VDM_HEADER_LEN..];
+        *header = [CALIPTRA_VDM_COMMAND_VERSION, command_code];
 
         // A mismatched command version is reported as a VDM completion, not an
         // SPDM error (the envelope itself is well-formed).
         if command_version != CALIPTRA_VDM_COMMAND_VERSION {
-            payload[0] = CaliptraCompletionCode::InvalidCommandVersion as u8;
+            *payload.first_mut().ok_or(INVARIANT)? =
+                CaliptraCompletionCode::InvalidCommandVersion as u8;
             return Ok(VdmResponse::Inline(VDM_HEADER_LEN + 1));
         }
 
@@ -415,7 +413,7 @@ where
             // The command wrote the complete VDM payload (header + data) into `large`.
             CaliptraVdmCmdResult::Large(n) => Ok(VdmResponse::Large(n)),
             CaliptraVdmCmdResult::Error(code) => {
-                payload[0] = code as u8;
+                *payload.first_mut().ok_or(INVARIANT)? = code as u8;
                 Ok(VdmResponse::Inline(VDM_HEADER_LEN + 1))
             }
         }

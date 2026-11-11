@@ -1260,10 +1260,8 @@ impl DeviceChainPrefixScanner {
                 continue;
             }
 
-            if self.header_len == self.header.len() {
-                return Err(INVARIANT);
-            }
-            self.header[self.header_len] = chunk[pos];
+            let header_byte = self.header.get_mut(self.header_len).ok_or(INVARIANT)?;
+            *header_byte = chunk[pos];
             self.header_len += 1;
             self.skip_len = self.skip_len.checked_add(1).ok_or(INVARIANT)?;
             pos += 1;
@@ -2386,5 +2384,19 @@ mod tests {
         store.set_idevid_populated(CertificateAlgorithm::EccP384, true);
         assert!(store.is_idevid_populated(CertificateAlgorithm::EccP384));
         assert!(!store.is_idevid_populated(CertificateAlgorithm::MlDsa87));
+    }
+
+    #[test]
+    fn device_chain_prefix_scanner_rejects_invalid_header_length_without_progress() {
+        for header_len in [6, 7, usize::MAX] {
+            let mut scanner = DeviceChainPrefixScanner::new(1);
+            scanner.header_len = header_len;
+
+            assert_eq!(scanner.consume(&[0x30]), Err(INVARIANT));
+            assert_eq!(scanner.header_len, header_len);
+            assert_eq!(scanner.header, [0; 6]);
+            assert_eq!(scanner.certs_left, 1);
+            assert_eq!(scanner.skip_len, 0);
+        }
     }
 }

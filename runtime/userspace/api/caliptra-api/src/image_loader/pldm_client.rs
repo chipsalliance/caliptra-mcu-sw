@@ -180,7 +180,9 @@ pub async fn pldm_download_payload_chunk(
         return Err(ErrorCode::Fail);
     }
     DOWNLOAD_CTX.lock(|ctx| {
-        buffer.copy_from_slice(&ctx.borrow().payload[..buffer.len()]);
+        for (out, byte) in buffer.iter_mut().zip(ctx.borrow().payload.iter()) {
+            *out = *byte;
+        }
     });
     Ok(())
 }

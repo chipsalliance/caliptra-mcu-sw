@@ -183,18 +183,24 @@ impl<'a, A: Alarm<'a>> Mailbox<'a> for McuMailbox<'a, A> {
             return Err(ErrorCode::INVAL);
         }
 
-        self.state.set(McuMboxState::TxInProgress);
-
         if let Some(buf) = self.data_buf.take() {
+            let Some(response_buf) = buf.get_mut(..dw_len) else {
+                self.data_buf.replace(buf);
+                return Err(ErrorCode::INVAL);
+            };
             // Copy response data into driver buffer which maps to mailbox sram directly.
-            for (i, data) in response_data.take(dw_len).enumerate() {
-                buf[i] = data;
+            for (out, data) in response_buf.iter_mut().zip(response_data.take(dw_len)) {
+                *out = data;
             }
 
             // If dlen is not 4-byte aligned, mask the last dword
             if !dlen.is_multiple_of(4) {
                 let mask = (1u32 << (dlen % 4 * 8)) - 1;
-                buf[dw_len - 1] &= mask;
+                let Some(last) = response_buf.last_mut() else {
+                    self.data_buf.replace(buf);
+                    return Err(ErrorCode::FAIL);
+                };
+                *last &= mask;
             }
 
             self.data_buf.replace(buf);
@@ -202,6 +208,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a> for McuMailbox<'a, A> {
             // Set mbox data length register (in bytes).
             self.registers.mcu_mbox0_csr_mbox_dlen.set(dlen as u32);
 
+            self.state.set(McuMboxState::TxInProgress);
             self.schedule_send_done();
             Ok(())
         } else {
