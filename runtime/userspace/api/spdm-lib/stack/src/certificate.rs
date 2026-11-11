@@ -372,10 +372,9 @@ pub(crate) async fn handle_get_certificate<'a, Pal: SpdmPal>(
 
     let head = pal.header_size();
     state.transcript.append_m1(pal, io, spdm_msg).await?;
-    state
-        .transcript
-        .append_m1(pal, io, &resp[head..head + spdm_len])
-        .await?;
+    let end = head.checked_add(spdm_len).ok_or(SPDM_UNSPECIFIED)?;
+    let response = resp.get(head..end).ok_or(SPDM_UNSPECIFIED)?;
+    state.transcript.append_m1(pal, io, response).await?;
 
     state.phase = Phase::AfterCertificate;
     Ok((resp, spdm_len))

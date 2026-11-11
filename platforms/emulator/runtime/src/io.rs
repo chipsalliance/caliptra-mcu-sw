@@ -147,7 +147,20 @@ impl<'a> SemihostUart<'a> {
                 let len = self.rx_len.get();
                 let mut index = self.rx_index.get();
                 if index < len {
-                    rx_buffer[index] = b;
+                    let Some(byte) = rx_buffer.get_mut(index) else {
+                        let received_len = index.min(rx_buffer.len());
+                        self.rx_client.map(move |client| {
+                            client.received_buffer(
+                                rx_buffer,
+                                received_len,
+                                Err(ErrorCode::SIZE),
+                                hil::uart::Error::None,
+                            )
+                        });
+                        b = read_byte();
+                        continue;
+                    };
+                    *byte = b;
                     index += 1;
                 }
                 if index == len {
@@ -186,8 +199,11 @@ impl<'a> hil::uart::Transmit<'a> for SemihostUart<'a> {
         } else if self.tx_buffer.is_some() {
             Err((ErrorCode::BUSY, tx_buffer))
         } else {
+            let Some(bytes) = tx_buffer.get(..tx_len) else {
+                return Err((ErrorCode::SIZE, tx_buffer));
+            };
             unsafe {
-                WRITER.write(&tx_buffer[..tx_len]);
+                WRITER.write(bytes);
             }
             self.tx_len.set(tx_len);
             self.tx_buffer.replace(tx_buffer);

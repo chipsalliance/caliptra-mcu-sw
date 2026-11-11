@@ -220,8 +220,8 @@ impl<S: Syscalls> SpiFlash<S> {
         let mut offset = 0;
         while remaining > 0 {
             let len = core::cmp::min(remaining, chunk_size);
-            self.write_chunk(address + offset, len, &buf[offset..offset + len])
-                .await?;
+            let chunk = buf.get(offset..offset + len).ok_or(ErrorCode::NoMem)?;
+            self.write_chunk(address + offset, len, chunk).await?;
             remaining -= len;
             offset += len;
         }

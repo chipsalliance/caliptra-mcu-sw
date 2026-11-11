@@ -79,7 +79,12 @@ pub(crate) async fn handle_get_digests<'a, Pal: SpdmPal>(
         cursor += digest_size;
     }
     if multi_key {
-        fill_multi_key_conn_rsp_data(pal, provisioned, asym_algo, &mut tail[digests_len..]);
+        fill_multi_key_conn_rsp_data(
+            pal,
+            provisioned,
+            asym_algo,
+            tail.get_mut(digests_len..).ok_or(SPDM_UNSPECIFIED)?,
+        )?;
     }
 
     let digests_body = DigestsRsp {
@@ -93,10 +98,9 @@ pub(crate) async fn handle_get_digests<'a, Pal: SpdmPal>(
 
     let head = pal.header_size();
     state.transcript.append_m1(pal, io, spdm_msg).await?;
-    state
-        .transcript
-        .append_m1(pal, io, &resp[head..head + spdm_len])
-        .await?;
+    let end = head.checked_add(spdm_len).ok_or(SPDM_UNSPECIFIED)?;
+    let response = resp.get(head..end).ok_or(SPDM_UNSPECIFIED)?;
+    state.transcript.append_m1(pal, io, response).await?;
 
     state.phase = Phase::AfterDigests;
     Ok((resp, spdm_len))
@@ -107,19 +111,25 @@ fn fill_multi_key_conn_rsp_data<Pal: SpdmPal>(
     provisioned: u8,
     algo: SpdmPalAsymAlgo,
     dst: &mut [u8],
-) {
+) -> SpdmResult<()> {
     let slot_cnt = provisioned.count_ones() as usize;
-    debug_assert_eq!(dst.len(), slot_cnt * 4);
-    let (key_pair_ids, rest) = dst.split_at_mut(slot_cnt);
-    let (cert_infos, key_usage_masks) = rest.split_at_mut(slot_cnt);
+    if dst.len() != slot_cnt * 4 {
+        return Err(SPDM_UNSPECIFIED);
+    }
+    let (key_pair_ids, rest) = dst.split_at_mut_checked(slot_cnt).ok_or(SPDM_UNSPECIFIED)?;
+    let (cert_infos, key_usage_masks) = rest
+        .split_at_mut_checked(slot_cnt)
+        .ok_or(SPDM_UNSPECIFIED)?;
 
     let mut index = 0;
     for slot in 0..MAX_SLOTS {
         if provisioned & (1 << slot) == 0 {
             continue;
         }
-        key_pair_ids[index] = pal.key_pair_id(slot, algo).unwrap_or_default();
-        cert_infos[index] = pal.cert_info(slot, algo).unwrap_or_default() & 0x07;
+        *key_pair_ids.get_mut(index).ok_or(SPDM_UNSPECIFIED)? =
+            pal.key_pair_id(slot, algo).unwrap_or_default();
+        *cert_infos.get_mut(index).ok_or(SPDM_UNSPECIFIED)? =
+            pal.cert_info(slot, algo).unwrap_or_default() & 0x07;
         let usage = index * 2;
         write_fixed(
             key_usage_masks,
@@ -130,6 +140,7 @@ fn fill_multi_key_conn_rsp_data<Pal: SpdmPal>(
         );
         index += 1;
     }
+    Ok(())
 }
 /// Stream a slot's SPDM cert-chain bytes through the negotiated
 /// hash and write the digest into `out`.
@@ -176,7 +187,12 @@ pub(crate) async fn cert_chain_hash<Pal: SpdmPal>(
         if n == 0 {
             break;
         }
-        pal.hash_update(io, &mut state, &buf[..n]).await?;
+        pal.hash_update(
+            io,
+            &mut state,
+            buf.get(..n).ok_or(mcu_error::codes::INVARIANT)?,
+        )
+        .await?;
         offset += n;
         if n < buf.len() {
             break;

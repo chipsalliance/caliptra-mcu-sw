@@ -166,17 +166,23 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, A, M> {
         let mctp_ctrl_hdr_start = mctp_hdr_start + MCTP_HDR_SIZE;
         let (advertised_msg_types, advertised_msg_types_count) =
             supported_msg_types(|msg_type| self.is_msg_type_registered(msg_type));
-        let advertised_msg_types = &advertised_msg_types[..advertised_msg_types_count];
+        let advertised_msg_types = advertised_msg_types
+            .get(..advertised_msg_types_count)
+            .ok_or(ErrorCode::INVAL)?;
 
         self.tx_pkt_buffer
             .take()
             .map_or(Err(ErrorCode::NOMEM), |resp_buf| {
+                let Some(control_buf) = resp_buf.get_mut(mctp_ctrl_hdr_start..) else {
+                    self.tx_pkt_buffer.replace(resp_buf);
+                    return Err(ErrorCode::INVAL);
+                };
                 let result = process_mctp_control_msg(
                     msg_buf,
                     self.get_local_eid(),
                     advertised_msg_types,
                     &self.uuid,
-                    &mut resp_buf[mctp_ctrl_hdr_start..],
+                    control_buf,
                 );
 
                 match result {
@@ -185,10 +191,13 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, A, M> {
                             self.set_local_eid(eid);
                         }
 
-                        let res = self.fill_mctp_hdr_resp(
-                            mctp_hdr_resp,
-                            &mut resp_buf[mctp_hdr_start..mctp_hdr_start + MCTP_HDR_SIZE],
-                        );
+                        let Some(header_buf) =
+                            resp_buf.get_mut(mctp_hdr_start..mctp_ctrl_hdr_start)
+                        else {
+                            self.tx_pkt_buffer.replace(resp_buf);
+                            return Err(ErrorCode::INVAL);
+                        };
+                        let res = self.fill_mctp_hdr_resp(mctp_hdr_resp, header_buf);
 
                         match res {
                             Ok(_) => {
@@ -345,46 +354,42 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> TransportTxClient for MuxMCT
 
 impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> TransportRxClient for MuxMCTPDriver<'a, A, M> {
     fn receive(&self, rx_buffer: &'static mut [u8], len: usize) {
-        if len == 0 || len > rx_buffer.len() {
+        let Some(packet) = rx_buffer.get(..len).filter(|packet| !packet.is_empty()) else {
             capsule_debug!("MCTP-MUX", "Invalid packet length. Dropping packet.");
             self.rx_pkt_buffer.replace(rx_buffer);
             return;
-        }
+        };
 
-        let (mctp_header, msg_type, payload_offset) = parse_packet(&rx_buffer[0..len]);
+        let (mctp_header, msg_type, payload_offset) = parse_packet(packet);
+        let Some(payload) = packet.get(payload_offset..) else {
+            self.rx_pkt_buffer.replace(rx_buffer);
+            return;
+        };
         if let Some(msg_type) = msg_type {
             match msg_type {
-                MessageType::MctpControl => {
+                MessageType::MctpControl
                     if mctp_header.tag_owner() == 1
                         && mctp_header.som() == 1
-                        && mctp_header.eom() == 1
-                    {
-                        let _ = self
-                            .process_mctp_control_msg(mctp_header, &rx_buffer[payload_offset..len]);
-                    } else {
-                        capsule_debug!(
-                            "MCTP-MUX",
-                            "Invalid MCTP Control message. Dropping packet."
-                        );
-                    }
+                        && mctp_header.eom() == 1 =>
+                {
+                    let _ = self.process_mctp_control_msg(mctp_header, payload);
+                }
+                MessageType::MctpControl => {
+                    capsule_debug!("MCTP-MUX", "Invalid MCTP Control message. Dropping packet.");
                 }
                 MessageType::Pldm
                 | MessageType::Spdm
                 | MessageType::SecureSpdm
                 | MessageType::Caliptra
                 | MessageType::TestMsgType => {
-                    self.process_first_packet(
-                        mctp_header,
-                        msg_type,
-                        &rx_buffer[payload_offset..len],
-                    );
+                    self.process_first_packet(mctp_header, msg_type, payload);
                 }
                 _ => {
                     capsule_debug!("MCTP-MUX", "Unsupported message type. Dropping packet.");
                 }
             }
         } else {
-            self.process_packet(mctp_header, &rx_buffer[payload_offset..len]);
+            self.process_packet(mctp_header, payload);
         }
         self.rx_pkt_buffer.replace(rx_buffer);
     }

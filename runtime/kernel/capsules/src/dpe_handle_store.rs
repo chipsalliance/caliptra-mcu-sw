@@ -221,15 +221,15 @@ impl DpeHandleStore {
         stride: usize,
         count: usize,
         fw_id: u32,
-    ) -> Option<usize> {
+    ) -> Result<Option<usize>, ErrorCode> {
         let mut off = base;
         for i in 0..count {
-            if read_u32_le(mem, off) == fw_id {
-                return Some(i);
+            if read_u32_le(mem, off)? == fw_id {
+                return Ok(Some(i));
             }
             off += stride;
         }
-        None
+        Ok(None)
     }
 
     fn copy_record_to_slice(
@@ -237,18 +237,22 @@ impl DpeHandleStore {
         off: usize,
         slice: &WriteableProcessSlice,
     ) -> Result<(), ErrorCode> {
-        slice
+        let out_slice = slice
             .get(0..DPE_HANDLE_RECORD_SIZE)
-            .ok_or(ErrorCode::SIZE)?
-            .copy_from_slice(&mem[off..off + DPE_HANDLE_RECORD_SIZE]);
+            .ok_or(ErrorCode::SIZE)?;
+        let record = mem
+            .get(off..)
+            .and_then(|record| record.first_chunk::<DPE_HANDLE_RECORD_SIZE>())
+            .ok_or(ErrorCode::FAIL)?;
+        out_slice.copy_from_slice(record);
         Ok(())
     }
 
     fn do_read_record(&self, fw_id: u32, slice: &WriteableProcessSlice) -> Result<(), ErrorCode> {
         let records_base = self.records_base();
         let mem = self.mem.borrow();
-        let count = read_u32_le(&mem, META_RECORD_COUNT) as usize;
-        let index = Self::find_fw_id(&mem, records_base, DPE_HANDLE_RECORD_SIZE, count, fw_id)
+        let count = read_u32_le(&mem, META_RECORD_COUNT)? as usize;
+        let index = Self::find_fw_id(&mem, records_base, DPE_HANDLE_RECORD_SIZE, count, fw_id)?
             .ok_or(ErrorCode::FAIL)?;
         Self::copy_record_to_slice(&mem, Self::record_offset_from(records_base, index), slice)
     }
@@ -259,22 +263,25 @@ impl DpeHandleStore {
             .ok_or(ErrorCode::SIZE)?;
         let records_base = self.records_base();
         let mut mem = self.mem.borrow_mut();
-        let count = read_u32_le(&mem, META_RECORD_COUNT) as usize;
-        let index = match Self::find_fw_id(&mem, records_base, DPE_HANDLE_RECORD_SIZE, count, fw_id)
-        {
-            Some(idx) => idx,
-            None => {
-                if count >= self.record_capacity_in(mem.len()) {
-                    return Err(ErrorCode::NOMEM);
+        let count = read_u32_le(&mem, META_RECORD_COUNT)? as usize;
+        let index =
+            match Self::find_fw_id(&mem, records_base, DPE_HANDLE_RECORD_SIZE, count, fw_id)? {
+                Some(idx) => idx,
+                None => {
+                    if count >= self.record_capacity_in(mem.len()) {
+                        return Err(ErrorCode::NOMEM);
+                    }
+                    write_u32_le(&mut mem, META_RECORD_COUNT, count as u32 + 1)?;
+                    count
                 }
-                write_u32_le(&mut mem, META_RECORD_COUNT, count as u32 + 1);
-                count
-            }
-        };
+            };
         let off = Self::record_offset_from(records_base, index);
-        in_slice.copy_to_slice(&mut mem[off..off + DPE_HANDLE_RECORD_SIZE]);
-        write_u32_le(&mut mem, off + REC_FW_ID, fw_id);
-        Ok(())
+        in_slice.copy_to_slice(
+            mem.get_mut(off..)
+                .and_then(|record| record.first_chunk_mut::<DPE_HANDLE_RECORD_SIZE>())
+                .ok_or(ErrorCode::FAIL)?,
+        );
+        write_u32_le(&mut mem, off + REC_FW_ID, fw_id)
     }
 
     fn do_initialize_store(&self, digest_slice: &ReadableProcessSlice) -> Result<(), ErrorCode> {
@@ -287,24 +294,28 @@ impl DpeHandleStore {
             return Err(ErrorCode::NOMEM);
         }
         let capacity = self.record_capacity_in(mem.len());
-        write_u32_le(&mut mem, META_MAGIC, HEADER_MAGIC);
-        mem[META_VERSION] = HEADER_VERSION;
-        mem[5] = 0;
-        write_u16_le(&mut mem, META_HEADER_SIZE, META_SIZE as u16);
-        write_u16_le(&mut mem, META_RECORD_SIZE, DPE_HANDLE_RECORD_SIZE as u16);
-        write_u16_le(&mut mem, META_RECORD_CAPACITY, capacity as u16);
-        write_u32_le(&mut mem, META_RECORD_COUNT, 0);
-        write_u32_le(&mut mem, META_ATTEST_TARGET, SENTINEL_NONE);
+        write_u32_le(&mut mem, META_MAGIC, HEADER_MAGIC)?;
+        *mem.get_mut(META_VERSION).ok_or(ErrorCode::SIZE)? = HEADER_VERSION;
+        *mem.get_mut(5).ok_or(ErrorCode::SIZE)? = 0;
+        write_u16_le(&mut mem, META_HEADER_SIZE, META_SIZE as u16)?;
+        write_u16_le(&mut mem, META_RECORD_SIZE, DPE_HANDLE_RECORD_SIZE as u16)?;
+        write_u16_le(&mut mem, META_RECORD_CAPACITY, capacity as u16)?;
+        write_u32_le(&mut mem, META_RECORD_COUNT, 0)?;
+        write_u32_le(&mut mem, META_ATTEST_TARGET, SENTINEL_NONE)?;
         write_u16_le(
             &mut mem,
             META_EXPORTED_CDI_CAPACITY,
             self.exported_cdi_capacity as u16,
-        );
-        write_u16_le(&mut mem, META_EXPORTED_CDI_COUNT, 0);
-        in_digest
-            .copy_to_slice(&mut mem[META_POLICY_DIGEST..META_POLICY_DIGEST + POLICY_DIGEST_SIZE]);
+        )?;
+        write_u16_le(&mut mem, META_EXPORTED_CDI_COUNT, 0)?;
+        let policy_digest = mem
+            .get_mut(META_POLICY_DIGEST..META_POLICY_DIGEST + POLICY_DIGEST_SIZE)
+            .ok_or(ErrorCode::SIZE)?;
+        in_digest.copy_to_slice(policy_digest);
         let slots_end = (records_base + capacity * DPE_HANDLE_RECORD_SIZE).min(mem.len());
-        mem[META_SIZE..slots_end].fill(0);
+        mem.get_mut(META_SIZE..slots_end)
+            .ok_or(ErrorCode::SIZE)?
+            .fill(0);
         Ok(())
     }
 
@@ -315,17 +326,17 @@ impl DpeHandleStore {
         let records_base = self.records_base();
         let mem = self.mem.borrow();
         if mem.len() < records_base
-            || read_u32_le(&mem, META_MAGIC) != HEADER_MAGIC
-            || mem[META_VERSION] != HEADER_VERSION
-            || read_u16_le(&mem, META_HEADER_SIZE) != META_SIZE as u16
-            || read_u16_le(&mem, META_RECORD_SIZE) != DPE_HANDLE_RECORD_SIZE as u16
+            || read_u32_le(&mem, META_MAGIC)? != HEADER_MAGIC
+            || mem.get(META_VERSION).copied() != Some(HEADER_VERSION)
+            || read_u16_le(&mem, META_HEADER_SIZE)? != META_SIZE as u16
+            || read_u16_le(&mem, META_RECORD_SIZE)? != DPE_HANDLE_RECORD_SIZE as u16
         {
             return Err(ErrorCode::FAIL);
         }
-        let stored_cdi_capacity = read_u16_le(&mem, META_EXPORTED_CDI_CAPACITY) as usize;
-        let cdi_count = read_u16_le(&mem, META_EXPORTED_CDI_COUNT) as usize;
-        let stored_capacity = read_u16_le(&mem, META_RECORD_CAPACITY) as usize;
-        let record_count = read_u32_le(&mem, META_RECORD_COUNT) as usize;
+        let stored_cdi_capacity = read_u16_le(&mem, META_EXPORTED_CDI_CAPACITY)? as usize;
+        let cdi_count = read_u16_le(&mem, META_EXPORTED_CDI_COUNT)? as usize;
+        let stored_capacity = read_u16_le(&mem, META_RECORD_CAPACITY)? as usize;
+        let record_count = read_u32_le(&mem, META_RECORD_COUNT)? as usize;
         if stored_cdi_capacity != self.exported_cdi_capacity
             || cdi_count > stored_cdi_capacity
             || stored_capacity != self.record_capacity_in(mem.len())
@@ -335,10 +346,14 @@ impl DpeHandleStore {
         }
         let mut provided = [0u8; POLICY_DIGEST_SIZE];
         in_digest.copy_to_slice(&mut provided);
-        if mem[META_POLICY_DIGEST..META_POLICY_DIGEST + POLICY_DIGEST_SIZE] != provided[..] {
+        if mem
+            .get(META_POLICY_DIGEST..META_POLICY_DIGEST + POLICY_DIGEST_SIZE)
+            .ok_or(ErrorCode::FAIL)?
+            != provided.as_slice()
+        {
             return Err(ErrorCode::FAIL);
         }
-        let attest_target = read_u32_le(&mem, META_ATTEST_TARGET);
+        let attest_target = read_u32_le(&mem, META_ATTEST_TARGET)?;
         if attest_target != SENTINEL_NONE
             && Self::find_fw_id(
                 &mem,
@@ -346,15 +361,17 @@ impl DpeHandleStore {
                 DPE_HANDLE_RECORD_SIZE,
                 record_count,
                 attest_target,
-            )
+            )?
             .is_none()
         {
             return Err(ErrorCode::FAIL);
         }
         let mut slot_off = META_SIZE;
         for slot_idx in 0..cdi_count {
-            let slot_fw_id = read_u32_le(&mem, slot_off + SLOT_FW_ID);
-            let handle = &mem[slot_off + SLOT_HANDLE..slot_off + SLOT_HANDLE + EXPORTED_CDI_SIZE];
+            let slot_fw_id = read_u32_le(&mem, slot_off + SLOT_FW_ID)?;
+            let handle = mem
+                .get(slot_off + SLOT_HANDLE..slot_off + SLOT_HANDLE + EXPORTED_CDI_SIZE)
+                .ok_or(ErrorCode::FAIL)?;
             if !handle.iter().any(|&b| b != 0)
                 || Self::find_fw_id(
                     &mem,
@@ -362,7 +379,7 @@ impl DpeHandleStore {
                     DPE_HANDLE_RECORD_SIZE,
                     record_count,
                     slot_fw_id,
-                )
+                )?
                 .is_none()
                 || Self::find_fw_id(
                     &mem,
@@ -370,7 +387,7 @@ impl DpeHandleStore {
                     EXPORTED_CDI_SLOT_SIZE,
                     slot_idx,
                     slot_fw_id,
-                )
+                )?
                 .is_some()
             {
                 return Err(ErrorCode::FAIL);
@@ -383,7 +400,7 @@ impl DpeHandleStore {
     fn do_read_leaf_record(&self, slice: &WriteableProcessSlice) -> Result<(), ErrorCode> {
         let records_base = self.records_base();
         let mem = self.mem.borrow();
-        let count = read_u32_le(&mem, META_RECORD_COUNT) as usize;
+        let count = read_u32_le(&mem, META_RECORD_COUNT)? as usize;
         if count == 0 {
             return Err(ErrorCode::FAIL);
         }
@@ -397,29 +414,28 @@ impl DpeHandleStore {
     fn do_mark_attestation_target(&self, fw_id: u32) -> Result<(), ErrorCode> {
         let records_base = self.records_base();
         let mut mem = self.mem.borrow_mut();
-        let count = read_u32_le(&mem, META_RECORD_COUNT) as usize;
-        if Self::find_fw_id(&mem, records_base, DPE_HANDLE_RECORD_SIZE, count, fw_id).is_none() {
+        let count = read_u32_le(&mem, META_RECORD_COUNT)? as usize;
+        if Self::find_fw_id(&mem, records_base, DPE_HANDLE_RECORD_SIZE, count, fw_id)?.is_none() {
             return Err(ErrorCode::FAIL);
         }
-        write_u32_le(&mut mem, META_ATTEST_TARGET, fw_id);
-        Ok(())
+        write_u32_le(&mut mem, META_ATTEST_TARGET, fw_id)
     }
 
     fn do_read_attestation_target(&self, slice: &WriteableProcessSlice) -> Result<(), ErrorCode> {
         let records_base = self.records_base();
         let mem = self.mem.borrow();
-        let attest_fw_id = read_u32_le(&mem, META_ATTEST_TARGET);
+        let attest_fw_id = read_u32_le(&mem, META_ATTEST_TARGET)?;
         if attest_fw_id == SENTINEL_NONE {
             return Err(ErrorCode::FAIL);
         }
-        let count = read_u32_le(&mem, META_RECORD_COUNT) as usize;
+        let count = read_u32_le(&mem, META_RECORD_COUNT)? as usize;
         let index = Self::find_fw_id(
             &mem,
             records_base,
             DPE_HANDLE_RECORD_SIZE,
             count,
             attest_fw_id,
-        )
+        )?
         .ok_or(ErrorCode::FAIL)?;
         Self::copy_record_to_slice(&mem, Self::record_offset_from(records_base, index), slice)
     }
@@ -431,7 +447,7 @@ impl DpeHandleStore {
     ) -> Result<(), ErrorCode> {
         let out_slice = slice.get(0..EXPORTED_CDI_SIZE).ok_or(ErrorCode::SIZE)?;
         let mem = self.mem.borrow();
-        let count = read_u16_le(&mem, META_EXPORTED_CDI_COUNT) as usize;
+        let count = read_u16_le(&mem, META_EXPORTED_CDI_COUNT)? as usize;
         let slot_idx = if fw_id == SENTINEL_NONE {
             if count > 0 {
                 0
@@ -439,11 +455,15 @@ impl DpeHandleStore {
                 return Err(ErrorCode::FAIL);
             }
         } else {
-            Self::find_fw_id(&mem, META_SIZE, EXPORTED_CDI_SLOT_SIZE, count, fw_id)
+            Self::find_fw_id(&mem, META_SIZE, EXPORTED_CDI_SLOT_SIZE, count, fw_id)?
                 .ok_or(ErrorCode::FAIL)?
         };
         let off = Self::exported_cdi_slot_offset(slot_idx) + SLOT_HANDLE;
-        out_slice.copy_from_slice(&mem[off..off + EXPORTED_CDI_SIZE]);
+        let exported_cdi = mem
+            .get(off..)
+            .and_then(|bytes| bytes.first_chunk::<EXPORTED_CDI_SIZE>())
+            .ok_or(ErrorCode::FAIL)?;
+        out_slice.copy_from_slice(exported_cdi);
         Ok(())
     }
 
@@ -460,44 +480,61 @@ impl DpeHandleStore {
         }
         let records_base = self.records_base();
         let mut mem = self.mem.borrow_mut();
-        let rec_count = read_u32_le(&mem, META_RECORD_COUNT) as usize;
-        if Self::find_fw_id(&mem, records_base, DPE_HANDLE_RECORD_SIZE, rec_count, fw_id).is_none()
+        let rec_count = read_u32_le(&mem, META_RECORD_COUNT)? as usize;
+        if Self::find_fw_id(&mem, records_base, DPE_HANDLE_RECORD_SIZE, rec_count, fw_id)?.is_none()
         {
             return Err(ErrorCode::FAIL);
         }
-        let count = read_u16_le(&mem, META_EXPORTED_CDI_COUNT) as usize;
-        let slot_idx = match Self::find_fw_id(&mem, META_SIZE, EXPORTED_CDI_SLOT_SIZE, count, fw_id)
-        {
-            Some(idx) => idx,
-            None => {
-                if count >= self.exported_cdi_capacity {
-                    return Err(ErrorCode::NOMEM);
+        let count = read_u16_le(&mem, META_EXPORTED_CDI_COUNT)? as usize;
+        let slot_idx =
+            match Self::find_fw_id(&mem, META_SIZE, EXPORTED_CDI_SLOT_SIZE, count, fw_id)? {
+                Some(idx) => idx,
+                None => {
+                    if count >= self.exported_cdi_capacity {
+                        return Err(ErrorCode::NOMEM);
+                    }
+                    write_u16_le(&mut mem, META_EXPORTED_CDI_COUNT, count as u16 + 1)?;
+                    let off = Self::exported_cdi_slot_offset(count);
+                    write_u32_le(&mut mem, off + SLOT_FW_ID, fw_id)?;
+                    count
                 }
-                write_u16_le(&mut mem, META_EXPORTED_CDI_COUNT, count as u16 + 1);
-                let off = Self::exported_cdi_slot_offset(count);
-                write_u32_le(&mut mem, off + SLOT_FW_ID, fw_id);
-                count
-            }
-        };
+            };
         let off = Self::exported_cdi_slot_offset(slot_idx) + SLOT_HANDLE;
-        mem[off..off + EXPORTED_CDI_SIZE].copy_from_slice(&handle);
+        mem.get_mut(off..)
+            .and_then(|bytes| bytes.first_chunk_mut::<EXPORTED_CDI_SIZE>())
+            .ok_or(ErrorCode::FAIL)?
+            .copy_from_slice(&handle);
         Ok(())
     }
 
     fn do_clear_exported_cdi(&self, fw_id: u32) -> Result<(), ErrorCode> {
-        let mut mem = self.mem.borrow_mut();
-        let count = read_u16_le(&mem, META_EXPORTED_CDI_COUNT) as usize;
-        let slot_idx = Self::find_fw_id(&mem, META_SIZE, EXPORTED_CDI_SLOT_SIZE, count, fw_id)
-            .ok_or(ErrorCode::FAIL)?;
-        for i in slot_idx..(count - 1) {
-            let dst_off = Self::exported_cdi_slot_offset(i);
-            let src_off = dst_off + EXPORTED_CDI_SLOT_SIZE;
-            mem.copy_within(src_off..src_off + EXPORTED_CDI_SLOT_SIZE, dst_off);
+        Self::clear_exported_cdi_in(
+            &mut self.mem.borrow_mut(),
+            self.exported_cdi_capacity,
+            fw_id,
+        )
+    }
+
+    fn clear_exported_cdi_in(mem: &mut [u8], capacity: usize, fw_id: u32) -> Result<(), ErrorCode> {
+        let count = read_u16_le(mem, META_EXPORTED_CDI_COUNT)? as usize;
+        if count > capacity {
+            return Err(ErrorCode::FAIL);
         }
-        let last_off = Self::exported_cdi_slot_offset(count - 1);
-        mem[last_off..last_off + EXPORTED_CDI_SLOT_SIZE].fill(0);
-        write_u16_le(&mut mem, META_EXPORTED_CDI_COUNT, (count - 1) as u16);
-        Ok(())
+        // Validate the full active range before moving any slots.
+        let slots = mem
+            .get_mut(META_SIZE..Self::exported_cdi_slot_offset(count))
+            .ok_or(ErrorCode::FAIL)?;
+        let slot_idx = Self::find_fw_id(slots, 0, EXPORTED_CDI_SLOT_SIZE, count, fw_id)?
+            .ok_or(ErrorCode::FAIL)?;
+        let (slots, _) = slots.as_chunks_mut::<EXPORTED_CDI_SLOT_SIZE>();
+        let mut slots = slots.iter_mut().skip(slot_idx);
+        let mut slot = slots.next().ok_or(ErrorCode::FAIL)?;
+        for next in slots {
+            *slot = *next;
+            slot = next;
+        }
+        slot.fill(0);
+        write_u16_le(mem, META_EXPORTED_CDI_COUNT, (count - 1) as u16)
     }
 }
 
@@ -584,34 +621,41 @@ impl SyscallDriver for DpeHandleStore {
 }
 
 #[inline]
-fn read_u16_le(mem: &[u8], offset: usize) -> u16 {
-    u16::from_le_bytes([mem[offset], mem[offset + 1]])
+fn read_u16_le(mem: &[u8], offset: usize) -> Result<u16, ErrorCode> {
+    let bytes = mem
+        .get(offset..)
+        .and_then(|bytes| bytes.first_chunk::<2>())
+        .ok_or(ErrorCode::FAIL)?;
+    Ok(u16::from_le_bytes(*bytes))
 }
 
 #[inline]
-fn write_u16_le(mem: &mut [u8], offset: usize, val: u16) {
-    let b = val.to_le_bytes();
-    mem[offset] = b[0];
-    mem[offset + 1] = b[1];
+fn write_u16_le(mem: &mut [u8], offset: usize, val: u16) -> Result<(), ErrorCode> {
+    let bytes = mem
+        .get_mut(offset..)
+        .and_then(|bytes| bytes.first_chunk_mut::<2>())
+        .ok_or(ErrorCode::FAIL)?;
+    *bytes = val.to_le_bytes();
+    Ok(())
 }
 
 #[inline]
-fn read_u32_le(mem: &[u8], offset: usize) -> u32 {
-    u32::from_le_bytes([
-        mem[offset],
-        mem[offset + 1],
-        mem[offset + 2],
-        mem[offset + 3],
-    ])
+fn read_u32_le(mem: &[u8], offset: usize) -> Result<u32, ErrorCode> {
+    let bytes = mem
+        .get(offset..)
+        .and_then(|bytes| bytes.first_chunk::<4>())
+        .ok_or(ErrorCode::FAIL)?;
+    Ok(u32::from_le_bytes(*bytes))
 }
 
 #[inline]
-fn write_u32_le(mem: &mut [u8], offset: usize, val: u32) {
-    let b = val.to_le_bytes();
-    mem[offset] = b[0];
-    mem[offset + 1] = b[1];
-    mem[offset + 2] = b[2];
-    mem[offset + 3] = b[3];
+fn write_u32_le(mem: &mut [u8], offset: usize, val: u32) -> Result<(), ErrorCode> {
+    let bytes = mem
+        .get_mut(offset..)
+        .and_then(|bytes| bytes.first_chunk_mut::<4>())
+        .ok_or(ErrorCode::FAIL)?;
+    *bytes = val.to_le_bytes();
+    Ok(())
 }
 
 mod cmd {
@@ -631,5 +675,117 @@ mod cmd {
 impl DpeHandleStore {
     pub fn get_driver_num(&self) -> usize {
         self.driver_num
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn clear_exported_cdi_rejects_invalid_storage_without_mutation() {
+        const MEM_LEN: usize = META_SIZE + 3 * EXPORTED_CDI_SLOT_SIZE + DPE_HANDLE_RECORD_SIZE;
+        for (count, capacity, len, fw_id) in [
+            (2, 1, MEM_LEN, 1),
+            (1, 1, META_SIZE + 4, 1),
+            (3, 3, META_SIZE + 2 * EXPORTED_CDI_SLOT_SIZE + 4, 1),
+            (0, 3, MEM_LEN, 1),
+            (3, 3, MEM_LEN, 99),
+        ] {
+            let mut mem = [0xa5; MEM_LEN];
+            write_u16_le(&mut mem, META_EXPORTED_CDI_COUNT, count).unwrap();
+            for index in 0..3 {
+                write_u32_le(
+                    &mut mem,
+                    DpeHandleStore::exported_cdi_slot_offset(index),
+                    index as u32 + 1,
+                )
+                .unwrap();
+            }
+            let before = mem;
+            assert_eq!(
+                DpeHandleStore::clear_exported_cdi_in(&mut mem[..len], capacity, fw_id),
+                Err(ErrorCode::FAIL)
+            );
+            assert_eq!(mem, before);
+        }
+    }
+
+    #[test]
+    fn clear_exported_cdi_compacts_slots_without_touching_records() {
+        for removed in 0..3 {
+            let mut mem = [0xa5; META_SIZE + 3 * EXPORTED_CDI_SLOT_SIZE + DPE_HANDLE_RECORD_SIZE];
+            write_u16_le(&mut mem, META_EXPORTED_CDI_COUNT, 3).unwrap();
+            for index in 0..3 {
+                let off = DpeHandleStore::exported_cdi_slot_offset(index);
+                mem[off..off + EXPORTED_CDI_SLOT_SIZE].fill(index as u8 + 1);
+                write_u32_le(&mut mem, off, index as u32 + 1).unwrap();
+            }
+            let before = mem;
+            let mut expected = before;
+            for (dst, src) in (0..3).filter(|index| *index != removed).enumerate() {
+                let dst = DpeHandleStore::exported_cdi_slot_offset(dst);
+                let src = DpeHandleStore::exported_cdi_slot_offset(src);
+                expected[dst..dst + EXPORTED_CDI_SLOT_SIZE]
+                    .copy_from_slice(&before[src..src + EXPORTED_CDI_SLOT_SIZE]);
+            }
+            let last = DpeHandleStore::exported_cdi_slot_offset(2);
+            expected[last..last + EXPORTED_CDI_SLOT_SIZE].fill(0);
+            write_u16_le(&mut expected, META_EXPORTED_CDI_COUNT, 2).unwrap();
+
+            assert_eq!(
+                DpeHandleStore::clear_exported_cdi_in(&mut mem, 3, removed as u32 + 1),
+                Ok(())
+            );
+            assert_eq!(mem, expected);
+        }
+    }
+
+    #[test]
+    fn fw_id_search_preserves_stride_and_rejects_truncated_records() {
+        let mut mem = [0u8; 16];
+        write_u32_le(&mut mem, 0, 11).unwrap();
+        write_u32_le(&mut mem, 8, 22).unwrap();
+        for (fw_id, expected) in [(11, Some(0)), (22, Some(1)), (33, None)] {
+            assert_eq!(
+                DpeHandleStore::find_fw_id(&mem, 0, 8, 2, fw_id),
+                Ok(expected)
+            );
+        }
+        assert_eq!(
+            DpeHandleStore::find_fw_id(&mem, 0, 8, 3, 33),
+            Err(ErrorCode::FAIL)
+        );
+        for base in [mem.len(), usize::MAX] {
+            assert_eq!(
+                DpeHandleStore::find_fw_id(&mem, base, 8, 1, 11),
+                Err(ErrorCode::FAIL)
+            );
+        }
+    }
+
+    #[test]
+    fn little_endian_access_rejects_truncated_ranges() {
+        let mut mem = [0xa5; 4];
+        for offset in [3, mem.len(), usize::MAX] {
+            assert_eq!(read_u16_le(&mem, offset), Err(ErrorCode::FAIL));
+            assert_eq!(write_u16_le(&mut mem, offset, 0), Err(ErrorCode::FAIL));
+            assert_eq!(mem, [0xa5; 4]);
+        }
+        for offset in [1, mem.len(), usize::MAX] {
+            assert_eq!(read_u32_le(&mem, offset), Err(ErrorCode::FAIL));
+            assert_eq!(write_u32_le(&mut mem, offset, 0), Err(ErrorCode::FAIL));
+            assert_eq!(mem, [0xa5; 4]);
+        }
+    }
+
+    #[test]
+    fn little_endian_access_preserves_neighboring_bytes() {
+        let mut mem = [0xa5; 8];
+        write_u16_le(&mut mem, 1, 0x1234).unwrap();
+        write_u32_le(&mut mem, 3, 0x5678_9abc).unwrap();
+        assert_eq!(read_u16_le(&mem, 1), Ok(0x1234));
+        assert_eq!(read_u32_le(&mem, 3), Ok(0x5678_9abc));
+        assert_eq!(mem, [0xa5, 0x34, 0x12, 0xbc, 0x9a, 0x78, 0x56, 0xa5]);
     }
 }

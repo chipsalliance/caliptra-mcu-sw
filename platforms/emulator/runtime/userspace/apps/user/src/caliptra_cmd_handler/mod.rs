@@ -214,17 +214,16 @@ fn push_decimal(buf: &mut [u8], len: &mut usize, value: u32) -> CaliptraCmdResul
     let mut digits = [0u8; 10];
     let mut remaining = value;
     let mut count = 0;
-    loop {
-        digits[count] = b'0' + (remaining % 10) as u8;
+    for digit in &mut digits {
+        *digit = b'0' + (remaining % 10) as u8;
         remaining /= 10;
         count += 1;
         if remaining == 0 {
             break;
         }
     }
-    while count > 0 {
-        count -= 1;
-        push_byte(buf, len, digits[count])?;
+    for &digit in digits.iter().take(count).rev() {
+        push_byte(buf, len, digit)?;
     }
     Ok(())
 }
@@ -578,6 +577,38 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn decimal_boundaries_preserve_output_and_short_buffer_errors() {
+        for (value, expected) in [(0, &b"0"[..]), (u32::MAX, &b"4294967295"[..])] {
+            let mut buf = [0xa5; 12];
+            let mut len = 1;
+            push_decimal(&mut buf, &mut len, value).unwrap();
+            assert_eq!(&buf[1..len], expected);
+            assert_eq!(buf[0], 0xa5);
+            assert!(buf[len..].iter().all(|&byte| byte == 0xa5));
+        }
+
+        let mut buf = [0xa5; 3];
+        let mut len = 1;
+        assert_eq!(
+            push_decimal(&mut buf, &mut len, 1234),
+            Err(CaliptraCompletionCode::InvalidPayloadSize)
+        );
+        assert_eq!(buf, [0xa5, b'1', b'2']);
+        assert_eq!(len, 3);
+    }
+
+    #[test]
+    fn firmware_version_extremes_preserve_fields_and_zero_padding() {
+        let mut version = FirmwareVersion::default();
+        for (packed, expected) in [(0, &b"0.0.0"[..]), (u32::MAX, &b"255.255.65535"[..])] {
+            version.ver_str.fill(0xa5);
+            write_firmware_version(&mut version, packed).unwrap();
+            assert_eq!(&version.ver_str[..version.len], expected);
+            assert!(version.ver_str[version.len..].iter().all(|&byte| byte == 0));
+        }
+    }
 
     #[test]
     fn capability_masks_follow_compiled_services() {

@@ -198,7 +198,7 @@ impl RxClient for MCTPI3CBinding<'_> {
         // if yes, compute PEC and check if it matches with the last byte of the buffer
         // if yes, call the client's receive_write function
         // if no, drop the packet and set_rx_buffer on i3c_target to receive the next packet
-        if len == 0 || len > self.max_write_len.get() {
+        if len == 0 || len > self.max_write_len.get() || len > rx_buffer.len() {
             self.i3c_target.set_rx_buffer(rx_buffer);
             return;
         }
@@ -236,12 +236,15 @@ mod tests {
 
     struct TestTarget {
         wire_len: Cell<usize>,
+        rx_buffer: TakeCell<'static, [u8]>,
     }
 
     impl<'a> I3CTarget<'a> for TestTarget {
         fn set_tx_client(&self, _client: &'a dyn TxClient) {}
         fn set_rx_client(&self, _client: &'a dyn RxClient) {}
-        fn set_rx_buffer(&self, _buffer: &'static mut [u8]) {}
+        fn set_rx_buffer(&self, buffer: &'static mut [u8]) {
+            self.rx_buffer.replace(buffer);
+        }
         fn transmit_read(
             &self,
             _buffer: &'static mut [u8],
@@ -266,6 +269,7 @@ mod tests {
     fn transmit_uses_read_limit_including_pec() {
         let target = TestTarget {
             wire_len: Cell::new(0),
+            rx_buffer: TakeCell::empty(),
         };
         let binding = MCTPI3CBinding::new(&target);
         binding.setup_mctp_i3c();
@@ -281,6 +285,26 @@ mod tests {
             .transmit(buffer, MCTP_I3C_MIN_PACKET_SIZE - 1)
             .unwrap();
         assert_eq!(target.wire_len.get(), MCTP_I3C_MIN_PACKET_SIZE);
+    }
+
+    #[test]
+    fn receive_returns_buffer_for_invalid_lengths() {
+        for len in [0, 3, MCTP_I3C_MAXBUF + 1] {
+            let target = TestTarget {
+                wire_len: Cell::new(0),
+                rx_buffer: TakeCell::empty(),
+            };
+            let binding = MCTPI3CBinding::new(&target);
+            binding.setup_mctp_i3c();
+            let buffer = Box::leak(Box::new([0xA5; 2]));
+            let ptr = buffer.as_ptr();
+
+            binding.receive_write(buffer, len);
+
+            let buffer = target.rx_buffer.take().unwrap();
+            assert_eq!(buffer.as_ptr(), ptr);
+            assert_eq!(buffer, &[0xA5; 2]);
+        }
     }
 
     fn calculate_crc8(data: &[u8]) -> u8 {

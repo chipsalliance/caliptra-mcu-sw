@@ -351,7 +351,8 @@ impl<'a> FirmwareDeviceContext<'a> {
             } else {
                 ComponentCompatibilityResponse::CompCannotBeUpdated
             },
-            ComponentCompatibilityResponseCode::try_from(comp_resp_code as u8).unwrap(),
+            ComponentCompatibilityResponseCode::try_from(comp_resp_code as u8)
+                .map_err(|_| errors::FD_OPS_ERROR)?,
             UpdateOptionFlags(req.fixed.update_option_flags),
             0,
             None,
@@ -577,7 +578,7 @@ impl<'a> FirmwareDeviceContext<'a> {
             }
             FirmwareDeviceState::Verify => {
                 let progress = if let Some(percent) = self.internal.get_fd_verify_progress() {
-                    ProgressPercent::new(percent).unwrap()
+                    ProgressPercent::new(percent).map_err(|_| errors::FD_INITIATOR_MODE_ERROR)?
                 } else {
                     ProgressPercent::default()
                 };
@@ -586,7 +587,7 @@ impl<'a> FirmwareDeviceContext<'a> {
             }
             FirmwareDeviceState::Apply => {
                 let progress = if let Some(percent) = self.internal.get_fd_apply_progress() {
-                    ProgressPercent::new(percent).unwrap()
+                    ProgressPercent::new(percent).map_err(|_| errors::FD_INITIATOR_MODE_ERROR)?
                 } else {
                     ProgressPercent::default()
                 };
@@ -763,7 +764,10 @@ impl<'a> FirmwareDeviceContext<'a> {
             }
         }
 
-        let (offset, length) = self.internal.get_fd_download_state().unwrap();
+        let (offset, length) = self
+            .internal
+            .get_fd_download_state()
+            .ok_or(errors::FD_INITIATOR_MODE_ERROR)?;
 
         let fw_data = payload[core::mem::size_of::<RequestFirmwareDataResponseFixed>()..]
             .get(..length as usize)
@@ -915,7 +919,7 @@ impl<'a> FirmwareDeviceContext<'a> {
             let msg_len = TransferCompleteRequest::new(
                 info.instance_id,
                 PldmMsgType::Request,
-                TransferResult::try_from(result).unwrap(),
+                TransferResult::try_from(result).map_err(|_| errors::FD_INITIATOR_MODE_ERROR)?,
             )
             .encode(payload)
             .map_err(|_| errors::CODEC_ERROR)?;
@@ -1071,7 +1075,9 @@ impl<'a> FirmwareDeviceContext<'a> {
             FdReqState::Ready => true,
             FdReqState::Failed => false,
             FdReqState::Sent => {
-                let fd_req_sent_time = self.internal.get_fd_sent_time().unwrap();
+                let Some(fd_req_sent_time) = self.internal.get_fd_sent_time() else {
+                    return false;
+                };
                 if now < fd_req_sent_time {
                     // Time went backwards
                     return false;
@@ -1153,6 +1159,7 @@ mod test {
     struct MockFdOps {
         outcome: Option<ApplyOutcome>,
         progress: u8,
+        component_response: ComponentResponseCode,
         apply_calls: core::cell::Cell<usize>,
         apply_reported: core::cell::Cell<Option<McuResult<()>>>,
     }
@@ -1162,6 +1169,7 @@ mod test {
             Self {
                 outcome: None,
                 progress: 100,
+                component_response: ComponentResponseCode::CompCanBeUpdated,
                 apply_calls: core::cell::Cell::new(0),
                 apply_reported: core::cell::Cell::new(None),
             }
@@ -1192,7 +1200,7 @@ mod test {
             _op: ComponentOperation,
         ) -> McuResult<caliptra_mcu_pldm_common::protocol::firmware_update::ComponentResponseCode>
         {
-            Ok(caliptra_mcu_pldm_common::protocol::firmware_update::ComponentResponseCode::CompCanBeUpdated)
+            Ok(self.component_response)
         }
         async fn query_download_offset_and_length(
             &self,
@@ -1637,6 +1645,144 @@ mod test {
             Some(FwUpdateCmd::RequestFirmwareData as u8),
             Some(0),
         );
+    }
+
+    #[test]
+    fn test_unconvertible_component_response_uses_ops_error() {
+        let mock_ops = MockFdOps {
+            component_response: ComponentResponseCode::VendorDefined,
+            ..MockFdOps::default()
+        };
+        let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
+        fd_ctx.internal.set_fd_state(FirmwareDeviceState::ReadyXfer);
+        let mut payload = [0u8; 256];
+        encode_update_component_request(&mut payload);
+        let before = payload;
+
+        assert_eq!(
+            block_on(fd_ctx.update_component_rsp(&mut payload)),
+            Err(errors::FD_OPS_ERROR)
+        );
+        assert_eq!(payload, before);
+        assert_eq!(
+            fd_ctx.internal.get_fd_state(),
+            FirmwareDeviceState::ReadyXfer
+        );
+    }
+
+    #[test]
+    fn test_invalid_stored_progress_uses_initiator_error() {
+        for apply in [false, true] {
+            let mock_ops = MockFdOps::default();
+            let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
+            if apply {
+                fd_ctx.internal.set_fd_state(FirmwareDeviceState::Apply);
+                fd_ctx
+                    .internal
+                    .set_initiator_mode(InitiatorModeState::Apply(ApplyState::default()));
+                fd_ctx.internal.set_fd_apply_progress(102);
+            } else {
+                fd_ctx.internal.set_fd_state(FirmwareDeviceState::Verify);
+                fd_ctx
+                    .internal
+                    .set_initiator_mode(InitiatorModeState::Verify(VerifyState::default()));
+                fd_ctx.internal.set_fd_verify_progress(102);
+            }
+            let mut payload = [0u8; 256];
+            GetStatusRequest::new(1, PldmMsgType::Request)
+                .encode(&mut payload)
+                .unwrap();
+            let before = payload;
+
+            assert_eq!(
+                block_on(fd_ctx.get_status_rsp(&mut payload)),
+                Err(errors::FD_INITIATOR_MODE_ERROR)
+            );
+            assert_eq!(payload, before);
+
+            if apply {
+                fd_ctx.internal.set_fd_apply_progress(101);
+            } else {
+                fd_ctx.internal.set_fd_verify_progress(101);
+            }
+            assert!(block_on(fd_ctx.get_status_rsp(&mut payload)).is_ok());
+        }
+    }
+
+    #[test]
+    fn test_missing_download_mode_uses_initiator_error() {
+        let mock_ops = MockFdOps::default();
+        let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
+        fd_ctx.internal.set_fd_state(FirmwareDeviceState::Download);
+        fd_ctx
+            .internal
+            .set_initiator_mode(InitiatorModeState::Verify(VerifyState::default()));
+        fd_ctx.internal.set_fd_req(
+            FdReqState::Sent,
+            false,
+            None,
+            Some(3),
+            Some(FwUpdateCmd::RequestFirmwareData as u8),
+            Some(0),
+        );
+        let mut payload = [0u8; 256];
+        let response =
+            RequestFirmwareDataResponse::new(3, PldmBaseCompletionCode::Success as u8, &[0x5a; 32]);
+        let response_len = response.encode(&mut payload).unwrap();
+        let before = payload;
+
+        assert_eq!(
+            block_on(fd_ctx.handle_response(&mut payload[..response_len])),
+            Err(errors::FD_INITIATOR_MODE_ERROR)
+        );
+        assert_eq!(payload, before);
+        assert_eq!(fd_ctx.internal.get_fd_req_state(), FdReqState::Sent);
+        assert!(!fd_ctx.internal.is_fd_req_complete());
+    }
+
+    #[test]
+    fn test_invalid_transfer_result_uses_initiator_error() {
+        let mock_ops = MockFdOps::default();
+        let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
+        fd_ctx.internal.set_fd_state(FirmwareDeviceState::Download);
+        fd_ctx
+            .internal
+            .set_initiator_mode(InitiatorModeState::Download(DownloadState::default()));
+        fd_ctx
+            .internal
+            .set_fd_req(FdReqState::Ready, true, Some(0xff), None, None, None);
+        let mut payload = [0xa5; 256];
+
+        assert_eq!(
+            block_on(fd_ctx.fd_progress_download(&mut payload)),
+            Err(errors::FD_INITIATOR_MODE_ERROR)
+        );
+        assert_eq!(payload, [0xa5; 256]);
+        assert_eq!(fd_ctx.internal.get_fd_req_state(), FdReqState::Ready);
+    }
+
+    #[test]
+    fn test_missing_sent_time_keeps_progress_in_error_path() {
+        for apply in [false, true] {
+            for sent_time in [None, Some(1)] {
+                let mock_ops = MockFdOps::default();
+                let fd_ctx = FirmwareDeviceContext::new(&mock_ops);
+                fd_ctx
+                    .internal
+                    .set_fd_req(FdReqState::Sent, false, None, None, None, sent_time);
+                let mut payload = [0xa5; 256];
+                let result = if apply {
+                    block_on(fd_ctx.pldm_fd_progress_apply(&mut payload))
+                } else {
+                    block_on(fd_ctx.pldm_fd_progress_verify(&mut payload))
+                };
+
+                assert_eq!(result, Err(errors::FD_INITIATOR_MODE_ERROR));
+                assert_eq!(payload, [0xa5; 256]);
+                assert_eq!(fd_ctx.internal.get_fd_req_state(), FdReqState::Sent);
+                assert_eq!(mock_ops.apply_calls.get(), 0);
+            }
+        }
     }
 
     #[test]

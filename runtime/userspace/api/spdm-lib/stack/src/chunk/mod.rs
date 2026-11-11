@@ -506,10 +506,39 @@ mod tests {
     extern crate alloc;
 
     use alloc::vec::Vec;
-    use caliptra_mcu_spdm_codec::{CapFlags, ReqRespCode, SpdmVersion};
+    use caliptra_mcu_spdm_codec::{CapFlags, ReqRespCode, SpdmMsgHdrPdu, SpdmVersion};
 
     use super::*;
     use crate::build::encode_error_response;
+
+    #[test]
+    fn encoded_error_prefix_excludes_padding_and_rejects_short_output() {
+        for error in [
+            crate::error::SPDM_INVALID_REQUEST,
+            crate::error::SPDM_VENDOR_DEFINED.with_extended_data([1, 2, 3, 4]),
+        ] {
+            let mut output = [0xa5; 12];
+            let expected_len = SpdmMsgHdrPdu::SIZE + 2 + error.extended_data().len();
+            let prefix = encode_error_response(&mut output, SpdmVersion::V12, error).unwrap();
+            assert_eq!(prefix.len(), expected_len);
+            assert_eq!(
+                &prefix[..4],
+                &[
+                    SpdmVersion::V12.to_u8(),
+                    ReqRespCode::ERROR.0,
+                    error.spec_byte(),
+                    error.error_data(),
+                ]
+            );
+            assert_eq!(&prefix[4..], error.extended_data());
+            assert!(output[expected_len..].iter().all(|byte| *byte == 0xa5));
+            for length in 0..expected_len {
+                assert!(
+                    encode_error_response(&mut output[..length], SpdmVersion::V12, error).is_err()
+                );
+            }
+        }
+    }
 
     #[test]
     fn buffered_response_distinguishes_peer_and_local_limits() {
@@ -523,7 +552,9 @@ mod tests {
         assert_eq!(err.extended_data(), 1025u32.to_le_bytes());
 
         let mut error_rsp = [0u8; 8];
-        let error_rsp_len = encode_error_response(&mut error_rsp, SpdmVersion::V12, err).unwrap();
+        let error_rsp_len = encode_error_response(&mut error_rsp, SpdmVersion::V12, err)
+            .unwrap()
+            .len();
         assert_eq!(error_rsp_len, error_rsp.len());
         assert_eq!(
             error_rsp,

@@ -309,13 +309,18 @@ async fn image_loading<D: DMAMapping>(
                     .await;
                 let load_result = match set_result {
                     Ok(retained_len) => {
-                        let measure_res = measure_owner_artifacts(
-                            &pldm_image_loader,
-                            &allocator,
-                            boot_kind,
-                            &preamble_buf[..retained_len],
-                        )
-                        .await;
+                        let measure_res = match preamble_buf.get(..retained_len) {
+                            Some(preamble) => {
+                                measure_owner_artifacts(
+                                    &pldm_image_loader,
+                                    &allocator,
+                                    boot_kind,
+                                    preamble,
+                                )
+                                .await
+                            }
+                            None => Err(ErrorCode::Size),
+                        };
                         drop(preamble_buf);
                         match measure_res {
                             Ok(owner_policy_bytes) => {
@@ -419,13 +424,18 @@ async fn image_loading<D: DMAMapping>(
                 let retained_len = flash_image_loader
                     .set_owner_auth_manifest(preamble_buf.as_mut_slice())
                     .await?;
-                let measure_res = measure_owner_artifacts(
-                    &flash_image_loader,
-                    &allocator,
-                    boot_kind,
-                    &preamble_buf[..retained_len],
-                )
-                .await;
+                let measure_res = match preamble_buf.get(..retained_len) {
+                    Some(preamble) => {
+                        measure_owner_artifacts(
+                            &flash_image_loader,
+                            &allocator,
+                            boot_kind,
+                            preamble,
+                        )
+                        .await
+                    }
+                    None => Err(ErrorCode::Size),
+                };
                 drop(preamble_buf);
                 let owner_policy_bytes = measure_res?;
                 let owner_soc_image_load_list = load_soc_images(
@@ -821,7 +831,9 @@ async fn activate_soc_images(
 ) -> Result<(), ErrorCode> {
     for chunk in fw_id_list.chunks(ActivateFirmwareReq::MAX_FW_ID_COUNT) {
         let mut fw_ids = [0u32; ActivateFirmwareReq::MAX_FW_ID_COUNT];
-        fw_ids[..chunk.len()].copy_from_slice(chunk);
+        for (out, id) in fw_ids.iter_mut().zip(chunk) {
+            *out = *id;
+        }
         let mut req = ActivateFirmwareReq {
             hdr: MailboxReqHeader { chksum: 0 },
             fw_id_count: chunk.len() as u32,

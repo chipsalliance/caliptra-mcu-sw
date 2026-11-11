@@ -214,7 +214,11 @@ impl<'a> ClaimsWriter<'a> {
     fn write_type_value(&mut self, major_type: u8, value: u64) -> McuResult<()> {
         let mut header = [0u8; 9];
         let header_len = write_type_header(&mut header, major_type, value)?;
-        self.write(&header[..header_len])
+        self.write(
+            header
+                .get(..header_len)
+                .ok_or(mcu_error::codes::INTERNAL_BUG)?,
+        )
     }
 
     fn write(&mut self, bytes: &[u8]) -> McuResult<()> {

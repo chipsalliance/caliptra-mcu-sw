@@ -12,6 +12,31 @@ mod support;
 use support::{established_session, secured_io, secured_spdm_response, TestIo, TestPal};
 
 #[test]
+fn short_plaintext_allocation_returns_error_before_decryption() {
+    for shortfall in [1, usize::MAX] {
+        let mut pal = TestPal::default();
+        let (mut state, mut sessions, session_id) = established_session(&pal);
+        pal.byte_alloc_shortfall = shortfall;
+        let io = secured_io(
+            session_id,
+            &[SpdmVersion::V12.to_u8(), ReqRespCode::GET_DIGESTS.0, 0, 0],
+        );
+        let error = block_on(handle_secured_inner(
+            &mut state,
+            &mut sessions,
+            &pal,
+            &io,
+            session_id,
+            &NoVdmBackend,
+        ))
+        .unwrap_err();
+        assert_eq!(error.spec_byte(), SPDM_UNSPECIFIED.spec_byte());
+        assert_eq!(pal.last_aead_decrypt_sequence.get(), None);
+        assert!(sessions.find(session_id).is_some());
+    }
+}
+
+#[test]
 fn replay_authentication_failure_destroys_session_and_rejects_stale_record() {
     for (header_size, send_len_alignment) in [(0, 1), (1, 1), (8, 4)] {
         replay_authentication_failure(header_size, send_len_alignment);

@@ -13,7 +13,7 @@
 //! reserve the transport-framing header.
 
 use caliptra_mcu_spdm_codec::{
-    ReqRespCode, ResponseBody, SpdmMsgHdrPdu, SpdmVersion, WireWriter, SHA384_HASH_SIZE,
+    ReqRespCode, ResponseBody, SpdmMsgHdrPdu, SpdmVersion, WireError, WireWriter, SHA384_HASH_SIZE,
 };
 use caliptra_mcu_spdm_traits::{
     PalBytes, SigningInput, SpdmPal, SpdmPalAsymAlgo, SpdmPalHashAlgo, SpdmPalIoTransport,
@@ -123,18 +123,18 @@ where
     Ok(buf)
 }
 
-/// Encodes an SPDM ERROR PDU into an existing buffer.
+/// Encodes an SPDM ERROR PDU and returns the populated buffer prefix.
 pub(crate) fn encode_error_response(
     out: &mut [u8],
     version: SpdmVersion,
     error: SpdmError,
-) -> SpdmResult<usize> {
+) -> Result<&[u8], WireError> {
     let extended_data = error.extended_data();
     let mut w = WireWriter::new(out);
     w.write(&SpdmMsgHdrPdu::new(version, ReqRespCode::ERROR))?;
     w.write(&[error.spec_byte(), error.error_data()])?;
     w.write(extended_data)?;
-    Ok(SpdmMsgHdrPdu::SIZE + 2 + extended_data.len())
+    Ok(w.into_bytes())
 }
 
 /// Non-generic helper for the error path. Builds an ERROR PDU without going
