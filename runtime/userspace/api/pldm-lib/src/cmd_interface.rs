@@ -74,7 +74,7 @@ impl<'a> CmdInterface<'a> {
 
         // Send the response
         transport
-            .send_response(&msg_buf[..resp_len])
+            .send_response(msg_buf.get(..resp_len).ok_or(errors::BUFFER_TOO_SMALL)?)
             .await
             .map_err(|_| errors::TRANSPORT_ERROR)?;
 
@@ -113,8 +113,14 @@ impl<'a> CmdInterface<'a> {
 
         let result = async {
             // Send the request
+            let msg_len = req_len
+                .checked_add(reserved_len)
+                .ok_or(errors::BUFFER_TOO_SMALL)?;
             transport
-                .send_request(ua_eid, &msg_buf[..req_len + reserved_len])
+                .send_request(
+                    ua_eid,
+                    msg_buf.get(..msg_len).ok_or(errors::BUFFER_TOO_SMALL)?,
+                )
                 .await
                 .map_err(|_| errors::TRANSPORT_ERROR)?;
 
@@ -191,7 +197,10 @@ impl<'a> CmdInterface<'a> {
         self.busy.store(true, Ordering::SeqCst);
 
         // Get the pldm payload from msg_buf
-        let payload = &mut msg_buf[MCTP_PLDM_MSG_HDR_LEN..];
+        let Some(payload) = msg_buf.get_mut(MCTP_PLDM_MSG_HDR_LEN..) else {
+            self.busy.store(false, Ordering::SeqCst);
+            return Err(errors::BUFFER_TOO_SMALL);
+        };
         let reserved_len = MCTP_PLDM_MSG_HDR_LEN;
 
         let (pldm_type, cmd_opcode) = match self.preprocess_request(payload) {

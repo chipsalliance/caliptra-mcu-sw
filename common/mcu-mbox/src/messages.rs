@@ -170,10 +170,12 @@ impl CommandId {
     // Certificate commands
     pub const MC_EXPORT_ATTESTED_CSR: Self = Self(0x4D45_4143); // "MEAC"
     pub const MC_DPE_SIGNER_CONTEXT_CERT: Self = Self(0x4D44_5343); // "MDSC"
+    pub const MC_DPE_SIGNER_CONTEXT_SIGN: Self = Self(0x4D44_5353); // "MDSS"
     pub const MC_GET_DPE_CERTIFICATE_CHAIN: Self = Self(0x4D44_4343); // "MDCC"
     pub const MC_GET_CERT_CHAIN_INFO: Self = Self(0x4D47_4349); // "MGCI"
     pub const MC_GET_CERT_CHAIN: Self = Self(0x4D47_4343); // "MGCC"
     pub const MC_SET_CERT_CHAIN: Self = Self(0x4D53_4343); // "MSCC"
+    pub const MC_PROVISION_IDEV_CERT: Self = Self(0x4D50_4943); // "MPIC"
 
     // Attestation commands
     pub const MC_GET_ATTESTATION: Self = Self(0x4D47_4154); // "MGAT"
@@ -267,10 +269,12 @@ pub enum McuMailboxReq {
     // Certificate commands
     ExportAttestedCsr(ExportAttestedCsrReq),
     DpeSignerContextCert(DpeSignerContextCertReq),
+    DpeSignerContextSign(DpeSignerContextSignReq),
     GetDpeCertChain(GetDpeCertChainReq),
     GetCertChainInfo(GetCertChainInfoReq),
     GetCertChain(GetCertChainReq),
     SetCertChain(SetCertChainReq),
+    ProvisionIdevCert(ProvisionIdevCertReq),
     GetAttestation(GetAttestationReq),
     // Device Ownership Transfer commands
     DotEnable(DotEnableReq),
@@ -344,10 +348,12 @@ impl McuMailboxReq {
             McuMailboxReq::FuseRevokeVendorPkHash(req) => Ok(req.as_bytes()),
             McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_bytes()),
             McuMailboxReq::DpeSignerContextCert(req) => Ok(req.as_bytes()),
+            McuMailboxReq::DpeSignerContextSign(req) => req.as_bytes_partial(),
             McuMailboxReq::GetDpeCertChain(req) => Ok(req.as_bytes()),
             McuMailboxReq::GetCertChainInfo(req) => Ok(req.as_bytes()),
             McuMailboxReq::GetCertChain(req) => Ok(req.as_bytes()),
             McuMailboxReq::SetCertChain(req) => req.as_bytes_partial(),
+            McuMailboxReq::ProvisionIdevCert(req) => req.as_bytes_partial(),
             McuMailboxReq::GetAttestation(req) => Ok(req.as_bytes()),
             McuMailboxReq::DotEnable(req) => Ok(req.as_bytes()),
             McuMailboxReq::DotLock(req) => Ok(req.as_bytes()),
@@ -420,10 +426,12 @@ impl McuMailboxReq {
             McuMailboxReq::FuseRevokeVendorPkHash(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::ExportAttestedCsr(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::DpeSignerContextCert(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::DpeSignerContextSign(req) => req.as_bytes_partial_mut(),
             McuMailboxReq::GetDpeCertChain(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::GetCertChainInfo(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::GetCertChain(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::SetCertChain(req) => req.as_bytes_partial_mut(),
+            McuMailboxReq::ProvisionIdevCert(req) => req.as_bytes_partial_mut(),
             McuMailboxReq::GetAttestation(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::DotEnable(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::DotLock(req) => Ok(req.as_mut_bytes()),
@@ -496,10 +504,12 @@ impl McuMailboxReq {
             McuMailboxReq::FuseRevokeVendorPkHash(_) => CommandId::MC_FUSE_REVOKE_VENDOR_PK_HASH,
             McuMailboxReq::ExportAttestedCsr(_) => CommandId::MC_EXPORT_ATTESTED_CSR,
             McuMailboxReq::DpeSignerContextCert(_) => CommandId::MC_DPE_SIGNER_CONTEXT_CERT,
+            McuMailboxReq::DpeSignerContextSign(_) => CommandId::MC_DPE_SIGNER_CONTEXT_SIGN,
             McuMailboxReq::GetDpeCertChain(_) => CommandId::MC_GET_DPE_CERTIFICATE_CHAIN,
             McuMailboxReq::GetCertChainInfo(_) => CommandId::MC_GET_CERT_CHAIN_INFO,
             McuMailboxReq::GetCertChain(_) => CommandId::MC_GET_CERT_CHAIN,
             McuMailboxReq::SetCertChain(_) => CommandId::MC_SET_CERT_CHAIN,
+            McuMailboxReq::ProvisionIdevCert(_) => CommandId::MC_PROVISION_IDEV_CERT,
             McuMailboxReq::GetAttestation(_) => CommandId::MC_GET_ATTESTATION,
             McuMailboxReq::DotEnable(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
             McuMailboxReq::DotLock(_) => CommandId::MC_DEVICE_OWNERSHIP_TRANSFER,
@@ -598,6 +608,7 @@ pub enum McuMailboxResp {
     GetCertChainInfo(GetCertChainInfoResp),
     GetCertChain(GetCertChainResp),
     SetCertChain(SetCertChainResp),
+    ProvisionIdevCert(ProvisionIdevCertResp),
     // Device Ownership Transfer commands
     DotEnable(DotEnableResp),
     DotLock(DotLockResp),
@@ -731,6 +742,7 @@ impl McuMailboxResp {
             McuMailboxResp::GetCertChainInfo(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::GetCertChain(resp) => resp.as_bytes_partial(),
             McuMailboxResp::SetCertChain(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::ProvisionIdevCert(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::DotEnable(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::DotLock(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::DotDisable(resp) => Ok(resp.as_bytes()),
@@ -803,6 +815,7 @@ impl McuMailboxResp {
             McuMailboxResp::GetCertChainInfo(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::GetCertChain(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::SetCertChain(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::ProvisionIdevCert(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::DotEnable(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::DotLock(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::DotDisable(resp) => Ok(resp.as_mut_bytes()),
@@ -1884,6 +1897,8 @@ impl Default for EndorsementAlgorithm {
 #[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq, Default)]
 pub struct DpeSignerContextCertReq {
     pub hdr: MailboxReqHeader,
+    /// Target DPE node `fw_id` (`0` uses the default `EXPORT_CDI_TARGET` configured in `MCAM`).
+    pub target_fw_id: u32,
     pub algorithm: EndorsementAlgorithm,
 }
 
@@ -1910,6 +1925,92 @@ impl Default for DpeSignerContextCertResp {
 }
 
 impl McuResponseVarSize for DpeSignerContextCertResp {}
+
+pub const MAX_DPE_SIGNER_CONTEXT_SIGN_DATA_SIZE: usize = MAX_RESP_DATA_SIZE;
+
+/// MC_DPE_SIGNER_CONTEXT_SIGN Command (0x4D44_5353 - "MDSS")
+///
+/// Signs `data[..data_len]` using the stored Exported-CDI key for `target_fw_id`
+/// (`0` uses the default `EXPORT_CDI_TARGET` configured in `MCAM`;
+/// `EndorsementAlgorithm::ECDSA_384` requires a 48-byte SHA-384 digest;
+/// ML-DSA-87 exported-CDI signing is unsupported on Caliptra 2.0).
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+pub struct DpeSignerContextSignReq {
+    pub hdr: MailboxReqHeader,
+    /// Target DPE node `fw_id` (`0` uses the default `EXPORT_CDI_TARGET` configured in `MCAM`).
+    pub target_fw_id: u32,
+    pub algorithm: EndorsementAlgorithm,
+    pub data_len: u32,
+    pub data: [u8; MAX_DPE_SIGNER_CONTEXT_SIGN_DATA_SIZE],
+}
+
+impl Default for DpeSignerContextSignReq {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxReqHeader::default(),
+            target_fw_id: 0,
+            algorithm: EndorsementAlgorithm::default(),
+            data_len: 0,
+            data: [0u8; MAX_DPE_SIGNER_CONTEXT_SIGN_DATA_SIZE],
+        }
+    }
+}
+
+impl DpeSignerContextSignReq {
+    pub const HEADER_SIZE: usize = size_of::<MailboxReqHeader>() + 3 * size_of::<u32>();
+    pub const MAX_DATA_SIZE: usize = MAX_DPE_SIGNER_CONTEXT_SIGN_DATA_SIZE;
+
+    pub fn partial_len(&self) -> McuMboxResult<usize> {
+        let data_len = self.data_len as usize;
+        if data_len > Self::MAX_DATA_SIZE {
+            return Err(McuMboxError::MCU_MBOX_REQUEST_DATA_LEN_TOO_LARGE);
+        }
+        Ok(Self::HEADER_SIZE + data_len)
+    }
+}
+
+impl Request for DpeSignerContextSignReq {
+    const ID: CommandId = CommandId::MC_DPE_SIGNER_CONTEXT_SIGN;
+    type Resp = DpeSignerContextSignResp;
+}
+
+impl McuRequestVarSize for DpeSignerContextSignReq {
+    fn as_bytes_partial(&self) -> McuMboxResult<&[u8]> {
+        self.as_bytes()
+            .get(..self.partial_len()?)
+            .ok_or(McuMboxError::MCU_MBOX_REQUEST_DATA_LEN_TOO_LARGE)
+    }
+
+    fn as_bytes_partial_mut(&mut self) -> McuMboxResult<&mut [u8]> {
+        let partial_len = self.partial_len()?;
+        self.as_mut_bytes()
+            .get_mut(..partial_len)
+            .ok_or(McuMboxError::MCU_MBOX_REQUEST_DATA_LEN_TOO_LARGE)
+    }
+}
+
+/// MC_DPE_SIGNER_CONTEXT_SIGN response.
+///
+/// Deliberately absent from [`McuMailboxResp`]: `signature` is variable-length
+/// (`96` bytes `r || s` for `ECDSA_384`, `4627` bytes for `MLDSA_87`).
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+pub struct DpeSignerContextSignResp {
+    pub hdr: MailboxRespHeaderVarSize,
+    pub signature: [u8; MLDSA87_SIGNATURE_BYTE_SIZE],
+}
+
+impl Default for DpeSignerContextSignResp {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxRespHeaderVarSize::default(),
+            signature: [0u8; MLDSA87_SIGNATURE_BYTE_SIZE],
+        }
+    }
+}
+
+impl McuResponseVarSize for DpeSignerContextSignResp {}
 
 /// MC_GET_DPE_CERTIFICATE_CHAIN request: retrieve a DPE certificate-chain chunk.
 #[repr(C)]
@@ -2073,6 +2174,68 @@ impl McuRequestVarSize for SetCertChainReq {
 pub struct SetCertChainResp {
     pub hdr: MailboxRespHeader,
 }
+
+/// Maximum `IDevID` certificate or signature payload bytes carried in a single
+/// `MC_PROVISION_IDEV_CERT` request.
+pub const MAX_IDEV_CERT_SIZE: usize = 8192;
+
+#[repr(C)]
+#[derive(Debug, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+pub struct ProvisionIdevCertReq {
+    pub hdr: MailboxReqHeader,
+    pub algorithm: u32,
+    pub mode: u32,
+    pub data_len: u32,
+    pub data: [u8; MAX_IDEV_CERT_SIZE],
+}
+
+impl Default for ProvisionIdevCertReq {
+    fn default() -> Self {
+        Self {
+            hdr: MailboxReqHeader::default(),
+            algorithm: 0,
+            mode: 0,
+            data_len: 0,
+            data: [0u8; MAX_IDEV_CERT_SIZE],
+        }
+    }
+}
+
+impl ProvisionIdevCertReq {
+    pub const HEADER_SIZE: usize = size_of::<MailboxReqHeader>() + 3 * size_of::<u32>();
+}
+
+impl Request for ProvisionIdevCertReq {
+    const ID: CommandId = CommandId::MC_PROVISION_IDEV_CERT;
+    type Resp = ProvisionIdevCertResp;
+}
+
+impl McuRequestVarSize for ProvisionIdevCertReq {
+    fn as_bytes_partial(&self) -> McuMboxResult<&[u8]> {
+        let len = Self::HEADER_SIZE
+            .checked_add(self.data_len as usize)
+            .ok_or(McuMboxError::MCU_MBOX_REQUEST_DATA_LEN_TOO_LARGE)?;
+        self.as_bytes()
+            .get(..len)
+            .ok_or(McuMboxError::MCU_MBOX_REQUEST_DATA_LEN_TOO_LARGE)
+    }
+
+    fn as_bytes_partial_mut(&mut self) -> McuMboxResult<&mut [u8]> {
+        let len = Self::HEADER_SIZE
+            .checked_add(self.data_len as usize)
+            .ok_or(McuMboxError::MCU_MBOX_REQUEST_DATA_LEN_TOO_LARGE)?;
+        self.as_mut_bytes()
+            .get_mut(..len)
+            .ok_or(McuMboxError::MCU_MBOX_REQUEST_DATA_LEN_TOO_LARGE)
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, Immutable, KnownLayout, PartialEq, Eq)]
+pub struct ProvisionIdevCertResp {
+    pub hdr: MailboxRespHeader,
+}
+impl Response for ProvisionIdevCertResp {}
 impl Response for SetCertChainResp {}
 
 // ============================================================================
@@ -3102,6 +3265,57 @@ mod tests {
         for command in [*b"VU0G", *b"VU0a", *b"VU/0", *b"VT00", *b"VV00"] {
             assert!(!CommandId(u32::from_be_bytes(command)).is_vendor_unique());
         }
+    }
+
+    #[test]
+    fn test_get_dpe_cert_chain_req_serialization() {
+        let req = GetDpeCertChainReq {
+            hdr: MailboxReqHeader { chksum: 0x1234 },
+            offset: 0,
+            size: 1024,
+        };
+
+        let bytes = req.as_bytes();
+        assert_eq!(bytes.len(), core::mem::size_of::<GetDpeCertChainReq>());
+
+        let parsed = GetDpeCertChainReq::read_from_bytes(bytes).unwrap();
+        assert_eq!(parsed.hdr.chksum, 0x1234);
+        assert_eq!(parsed.size, 1024);
+    }
+
+    #[test]
+    fn test_dpe_signer_context_cert_req_serialization() {
+        let req = DpeSignerContextCertReq {
+            hdr: MailboxReqHeader { chksum: 0xABCD },
+            target_fw_id: 0,
+            algorithm: EndorsementAlgorithm::ECDSA_384,
+        };
+
+        let bytes = req.as_bytes();
+        assert_eq!(bytes.len(), core::mem::size_of::<DpeSignerContextCertReq>());
+
+        let parsed = DpeSignerContextCertReq::read_from_bytes(bytes).unwrap();
+        assert_eq!(parsed.hdr.chksum, 0xABCD);
+        assert_eq!(parsed.target_fw_id, 0);
+        assert_eq!(parsed.algorithm, EndorsementAlgorithm::ECDSA_384);
+    }
+
+    #[test]
+    fn test_dpe_signer_context_cert_resp_serialization() {
+        let mut resp = DpeSignerContextCertResp::default();
+        resp.hdr.data_len = 128;
+        resp.cert_data[..4].copy_from_slice(&[0x30, 0x82, 0x01, 0x00]);
+
+        let bytes = resp.as_bytes_partial().unwrap();
+        assert_eq!(
+            bytes.len(),
+            core::mem::size_of::<MailboxRespHeaderVarSize>() + 128
+        );
+        assert_eq!(
+            &bytes[core::mem::size_of::<MailboxRespHeaderVarSize>()
+                ..core::mem::size_of::<MailboxRespHeaderVarSize>() + 4],
+            &[0x30, 0x82, 0x01, 0x00]
+        );
     }
 
     #[test]

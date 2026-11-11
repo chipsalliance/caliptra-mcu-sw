@@ -23,7 +23,8 @@ use zerocopy::FromBytes;
 
 use crate::build::build_response;
 use crate::error::{
-    SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SPDM_VERSION_MISMATCH,
+    SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED,
+    SPDM_VERSION_MISMATCH,
 };
 use crate::stack::{ConnectionState, Phase};
 use crate::version::SUPPORTED_VERSIONS;
@@ -113,10 +114,9 @@ pub(crate) async fn handle_get_capabilities<'a, Pal: SpdmPal>(
     // SPDM: GET_CAPABILITIES + CAPABILITIES contribute to VCA.
     let head = pal.header_size();
     state.transcript.append_vca(pal, io, io.request()).await?;
-    state
-        .transcript
-        .append_vca(pal, io, &resp[head..head + spdm_len])
-        .await?;
+    let end = head.checked_add(spdm_len).ok_or(SPDM_UNSPECIFIED)?;
+    let response = resp.get(head..end).ok_or(SPDM_UNSPECIFIED)?;
+    state.transcript.append_vca(pal, io, response).await?;
 
     state.phase = Phase::AfterCapabilities;
     Ok(resp)

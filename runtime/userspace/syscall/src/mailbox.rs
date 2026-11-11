@@ -250,7 +250,10 @@ impl<S: Syscalls> Mailbox<S> {
         }
         let mutex = MAILBOX_MUTEX.lock().await;
         self.start_chunked_request(command, req_len).await?;
-        for chunk in buffer[..req_len].chunks(PAYLOAD_CHUNK_SIZE) {
+        let request = buffer
+            .get(..req_len)
+            .ok_or(MailboxError::ErrorCode(ErrorCode::Invalid))?;
+        for chunk in request.chunks(PAYLOAD_CHUNK_SIZE) {
             if !chunk.is_empty() {
                 if let Err(err) = self.send_chunk(chunk).await {
                     let _ = self.abort_chunked_request().await;
@@ -258,10 +261,11 @@ impl<S: Syscalls> Mailbox<S> {
                 }
             }
         }
-        buffer[..resp_len].fill(0);
-        let result = self
-            .execute_chunked_request(command, &mut buffer[..resp_len])
-            .await;
+        let response = buffer
+            .get_mut(..resp_len)
+            .ok_or(MailboxError::ErrorCode(ErrorCode::Invalid))?;
+        response.fill(0);
+        let result = self.execute_chunked_request(command, response).await;
         black_box(*mutex);
         result
     }

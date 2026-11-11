@@ -10,7 +10,8 @@ use caliptra_mcu_core_util_host_command_types::{
     certificate::{
         ExportAttestedCsrRequest, ExportAttestedCsrResponse, ExportIdevidCsrRequest,
         ExportIdevidCsrResponse, GetCertChainInfoRequest, GetCertChainInfoResponse,
-        GetCertChainRequest, GetCertChainResponse, SetCertChainRequest, SetCertChainResponse,
+        GetCertChainRequest, GetCertChainResponse, ProvisionIdevCertMode, ProvisionIdevCertRequest,
+        ProvisionIdevCertResponse, SetCertChainRequest, SetCertChainResponse,
     },
     CaliptraCommandId,
 };
@@ -117,4 +118,21 @@ pub fn caliptra_cmd_set_cert_chain(
     session
         .execute_command_with_id(CaliptraCommandId::SetCertChain, &request)
         .map_err(|_| CaliptraApiError::SessionError("SetCertChain command failed"))
+}
+
+/// Provision an `IDevID` certificate or signature payload (`PopulateOnly` or `WriteOtp`).
+pub fn caliptra_cmd_provision_idevid_cert(
+    session: &mut CaliptraSession,
+    algorithm: AsymAlgo,
+    mode: ProvisionIdevCertMode,
+    data: &[u8],
+) -> CaliptraResult<ProvisionIdevCertResponse> {
+    let request = ProvisionIdevCertRequest::new(algorithm, mode, data).ok_or(
+        CaliptraApiError::InvalidParameter(
+            "ProvisionIdevCert payload must be 1..=MAX_IDEV_CERT_SIZE bytes",
+        ),
+    )?;
+    session
+        .execute_command_with_id(CaliptraCommandId::ProvisionIdevCert, &request)
+        .map_err(|_| CaliptraApiError::SessionError("ProvisionIdevCert command failed"))
 }

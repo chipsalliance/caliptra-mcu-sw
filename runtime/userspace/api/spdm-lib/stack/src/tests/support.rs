@@ -115,6 +115,8 @@ pub struct TestPal {
     pub write_error: Option<McuErrorCode>,
     pub erase_error: Option<McuErrorCode>,
     pub typed_alloc_error: Option<McuErrorCode>,
+    pub byte_alloc_shortfall: usize,
+    pub cert_read_len_override: Option<usize>,
     pub cert_chain: &'static [u8],
     pub measurement_info: &'static [MeasurementInfo],
     pub measurement_value: &'static [u8],
@@ -170,6 +172,8 @@ impl Default for TestPal {
             write_error: None,
             erase_error: None,
             typed_alloc_error: None,
+            byte_alloc_shortfall: 0,
+            cert_read_len_override: None,
             cert_chain: TEST_CERT_CHAIN,
             measurement_info: &[],
             measurement_value: &[],
@@ -229,7 +233,7 @@ impl SpdmPalAlloc for TestPal {
     }
 
     fn alloc_bytes(&self, _io: &impl SpdmPalIo, len: usize) -> McuResult<Self::Bytes<'_>> {
-        Ok(vec![0u8; len])
+        Ok(vec![0u8; len.saturating_sub(self.byte_alloc_shortfall)])
     }
 
     fn large_buffered_msg_capacity(&self) -> usize {
@@ -426,7 +430,7 @@ impl SpdmPalCertStore for TestPal {
         let end = (offset + dst.len()).min(self.cert_chain.len());
         let src = &self.cert_chain[offset..end];
         dst[..src.len()].copy_from_slice(src);
-        Ok(src.len())
+        Ok(self.cert_read_len_override.unwrap_or(src.len()))
     }
 
     async fn sign(

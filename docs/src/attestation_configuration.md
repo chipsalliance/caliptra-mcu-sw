@@ -51,11 +51,12 @@ Consists of a 28-byte fixed header prefix, a 200-byte platform information regio
 | Offset | Field | Size | Description |
 |---:|---|---:|---|
 | 0 | `fw_id` | 4 bytes | Firmware identifier. |
-| 4 | `attestation_flags` | 4 bytes | `Bit 0 (SOC_TCB_DPE)`: 1 = DPE context, 0 = Software PCR.<br>`Bit 1 (AK_TARGET)`: 1 = Attestation Key target (max 1, requires Bit 0).<br>`Bits 2-31`: Reserved (must be zero). |
+| 4 | `attestation_flags` | 4 bytes | `Bit 0 (SOC_TCB_DPE)`: 1 = DPE context, 0 = Software PCR.<br>`Bit 1 (AK_TARGET)`: 1 = Attestation Key target (max 1, requires Bit 0).<br>`Bit 2 (EXPORT_CDI_TARGET)`: 1 = DPE Exported-CDI target (max 1, requires Bit 0).<br>`Bits 3-31`: Reserved (must be zero). |
 
 If no entry asserts `AK_TARGET`, `MCU_RT` (`0x0000_0002`) is the default AK target.
+If no entry asserts `EXPORT_CDI_TARGET`, `MCU_RT` (`0x0000_0002`) is the default Exported-CDI target. Because `MCU_RT` is the root of the MCU-managed DPE lineage, any configured `EXPORT_CDI_TARGET` always includes `MCU_RT` in its DPE context chain. `AK_TARGET` and `EXPORT_CDI_TARGET` are configured independently and may select the same TCB entry or distinct TCB entries.
 
-**Currently, only the base manifest supports AK-target selection.**
+**Currently, only the base manifest (`MCAM`) supports `AK_TARGET` and `EXPORT_CDI_TARGET` selection.**
 
 ### Base SoC Image Load List (`SOC_IMAGE_LOAD_LIST`)
 
@@ -159,7 +160,7 @@ At system startup, Caliptra MCU coordinates authorization, loading, and measurem
          │
  3. Install & Measure Owner SoC Manifest (OWSM)
     ├── Caliptra Core verifies Owner Auth Manifest signature via SET_OWNER_AUTH_MANIFEST
-    └── MCU extends Owner SoC Manifest preamble to DPE (creating OWSM context)
+    └── MCU extends Owner SoC Manifest preamble under MCU_RT context (creating OWSM branch context)
          │
  4. Load, Authorize & Measure Owner Measurement Policy (0x00000005)
     ├── Fetch Component 0x5 from [Flash TOC](./flash_layout.md) / PLDM package
@@ -172,12 +173,12 @@ At system startup, Caliptra MCU coordinates authorization, loading, and measurem
  6. Load Base Firmware Images
     └── For each fw_id in SOC_IMAGE_LOAD_LIST:
         ├── Authorize via Caliptra Core (Base SoC Manifest with SKIP_STASH)
-        └── Record DPE / Software PCR measurement; extend PCR31
+        └── Record DPE (under Vendor+Owner branch) / Software PCR measurement; extend PCR31
          │
  7. Load Owner Firmware Images
     └── For each fw_id in Owner SoC Image Load List (MOLL):
         ├── Authorize via Caliptra Core (Owner SoC Manifest with SKIP_STASH)
-        └── Record DPE / Software PCR measurement; extend PCR31
+        └── Record DPE (under Owner branch) / Software PCR measurement; extend PCR31
 ```
 
 ---

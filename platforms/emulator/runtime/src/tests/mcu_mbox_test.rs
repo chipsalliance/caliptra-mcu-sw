@@ -271,6 +271,8 @@ impl<'a> EmulatedMbxSender<'a> {
 pub fn test_mcu_mbox() -> Option<u32> {
     test_mcu_mbox_loopback();
     test_mcu_mbox_custom_response();
+    // Run last: this intentionally replaces the driver's SRAM backing buffer.
+    test_mcu_mbox_short_response_buffer();
     caliptra_mcu_romtime::println!("MCU mailbox tests pass");
     Some(0)
 }
@@ -300,6 +302,51 @@ fn test_mcu_mbox_custom_response() {
         reverse_half,
         mci::bits::MboxCmdStatus::Status::CmdComplete.value,
     );
+}
+
+fn test_mcu_mbox_short_response_buffer() {
+    let tester = get_mailbox_tester();
+    let buffer = tester.tx_buf.take().expect("tx_buf is missing");
+    let (buffer, _) = buffer.split_at_mut(1);
+    buffer[0] = 0xa5a5_a5a5;
+    tester.driver.restore_rx_buffer(buffer);
+    let soc_sender = EmulatedMbxSender::new(&tester.driver.registers);
+
+    // Empty requests let us reject and finalize each response directly.
+    for command in [0x88, 0x99] {
+        tester.reset();
+        soc_sender.send_request(command, &[]);
+        for _ in 0..50_000 {
+            run_kernel_op(1);
+            if tester.get_io_state() == IoState::Received {
+                break;
+            }
+        }
+        assert_eq!(tester.get_io_state(), IoState::Received);
+        assert_eq!(tester.cmd.get(), command);
+        let dlen = tester.driver.registers.mcu_mbox0_csr_mbox_dlen.get();
+
+        assert_eq!(
+            tester.driver.send_response([1, 2].into_iter(), 8),
+            Err(kernel::ErrorCode::INVAL)
+        );
+        assert_eq!(
+            tester
+                .driver
+                .map_rx_buffer(|buf| (buf.len(), buf.first().copied())),
+            Some((1, Some(0xa5a5_a5a5)))
+        );
+        assert_eq!(tester.driver.registers.mcu_mbox0_csr_mbox_dlen.get(), dlen);
+        assert_eq!(
+            tester.driver.set_mbox_cmd_status(MailboxStatus::Failure),
+            Ok(())
+        );
+        assert_eq!(
+            tester.driver.registers.mcu_mbox0_csr_mbox_cmd_status.get(),
+            mci::bits::MboxCmdStatus::Status::CmdFailure.value
+        );
+        soc_sender.finish();
+    }
 }
 
 fn run_mcu_mailbox_test(

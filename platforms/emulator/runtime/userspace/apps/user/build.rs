@@ -13,9 +13,10 @@ Abstract:
 --*/
 
 use caliptra_mcu_measurement_api::attestation_manifest::{
-    ATTESTATION_FLAG_AK_TARGET, ATTESTATION_FLAG_SOC_TCB_DPE, ATTESTATION_MANIFEST_ENTRY_SIZE,
-    ATTESTATION_MANIFEST_FIXED_HEADER_SIZE, ATTESTATION_MANIFEST_MARKER,
-    ATTESTATION_MANIFEST_PLATFORM_INFO_MAX_LEN, ATTESTATION_MANIFEST_VERSION, V_AUTH_KEY_ID,
+    ATTESTATION_FLAG_AK_TARGET, ATTESTATION_FLAG_EXPORT_CDI_TARGET, ATTESTATION_FLAG_SOC_TCB_DPE,
+    ATTESTATION_MANIFEST_ENTRY_SIZE, ATTESTATION_MANIFEST_FIXED_HEADER_SIZE,
+    ATTESTATION_MANIFEST_MARKER, ATTESTATION_MANIFEST_PLATFORM_INFO_MAX_LEN,
+    ATTESTATION_MANIFEST_VERSION, V_AUTH_KEY_ID,
 };
 use serde::Deserialize;
 use std::{
@@ -38,6 +39,8 @@ struct AttestationManifestComponentConfig {
     fw_id: u32,
     is_tcb: bool,
     is_ak_target: bool,
+    #[serde(default)]
+    is_export_cdi_target: bool,
 }
 
 #[derive(Deserialize)]
@@ -298,6 +301,7 @@ fn validate_attestation_manifest_config(config: &AttestationManifestConfig) {
 
     let mut seen_fw_ids = HashSet::new();
     let mut ak_target_count = 0usize;
+    let mut export_cdi_target_count = 0usize;
 
     for component in &config.components {
         if !seen_fw_ids.insert(component.fw_id) {
@@ -316,10 +320,26 @@ fn validate_attestation_manifest_config(config: &AttestationManifestConfig) {
                 );
             }
         }
+
+        if component.is_export_cdi_target {
+            export_cdi_target_count += 1;
+            if !component.is_tcb {
+                panic!(
+                    "attestation_manifest.toml component fw_id {} is Export-CDI target but is_tcb is false",
+                    component.fw_id
+                );
+            }
+        }
     }
 
     if ak_target_count > 1 {
         panic!("attestation_manifest.toml must not contain more than one AK target component");
+    }
+
+    if export_cdi_target_count > 1 {
+        panic!(
+            "attestation_manifest.toml must not contain more than one Export-CDI target component"
+        );
     }
 }
 
@@ -458,6 +478,9 @@ fn attestation_flags(component: &AttestationManifestComponentConfig) -> u32 {
     }
     if component.is_ak_target {
         flags |= ATTESTATION_FLAG_AK_TARGET;
+    }
+    if component.is_export_cdi_target {
+        flags |= ATTESTATION_FLAG_EXPORT_CDI_TARGET;
     }
     flags
 }

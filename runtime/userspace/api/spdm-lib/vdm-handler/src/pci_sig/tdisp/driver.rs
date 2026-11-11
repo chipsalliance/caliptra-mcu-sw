@@ -38,6 +38,10 @@ pub enum TdispDriverError {
 pub type TdispDriverResult<T> = Result<T, TdispDriverError>;
 
 /// Platform abstraction used by the TDISP responder.
+///
+/// The driver owns the TDI state machine of each interface and must reject any
+/// request that is not valid in the interface's current state, for example with
+/// `TDISP_ERROR_INVALID_INTERFACE_STATE`.
 #[allow(async_fn_in_trait)]
 pub trait TdispDriver {
     /// Fills `out` with a START_INTERFACE nonce.

@@ -12,10 +12,10 @@ use caliptra_api::mailbox::{
     FwInfoResp, GetImageInfoReq, GetImageInfoResp, MailboxReqHeader, Request,
 };
 use caliptra_auth_man_types::{
-    AuthManifestImageMetadata, AuthManifestImageMetadataCollection, AuthorizationManifest,
-    OwnerAuthManifestImageMetadataCollection, OwnerAuthorizationManifest,
+    AuthManifestImageMetadata, AuthManifestImageMetadataCollection, AuthManifestPreamble,
+    AuthorizationManifest, OwnerAuthManifestImageMetadataCollection, OwnerAuthorizationManifest,
 };
-use caliptra_image_types::ImageManifest;
+use caliptra_image_types::{ImageHeader as CaliptraImageHeader, ImageManifest};
 use caliptra_mcu_flash_image::{
     FlashHeader, ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, MAX_FLASH_HEADER_SIZE,
     MAX_IMAGE_HEADER_SIZE, MCU_RT_IDENTIFIER, OWNER_AUTH_MANIFEST_IDENTIFIER,
@@ -28,6 +28,7 @@ use caliptra_mcu_libsyscall_caliptra::dma::{
 };
 use caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox;
 use caliptra_mcu_libsyscall_caliptra::mailbox::{MailboxError, PayloadStream};
+use caliptra_mcu_libsyscall_caliptra::otp::{self, Otp};
 use caliptra_mcu_libtock_platform::ErrorCode;
 use caliptra_mcu_libtockasync::TockExecutor;
 pub use caliptra_mcu_pldm_common::message::firmware_update::apply_complete::ApplyOutcome;
@@ -56,8 +57,9 @@ async fn read_flash_header(
 ) -> Result<FlashHeader, ErrorCode> {
     let mut bytes = [0; MAX_FLASH_HEADER_SIZE];
     let read_len = image_len.min(bytes.len());
-    staging_memory.read(0, &mut bytes[..read_len]).await?;
-    FlashHeader::parse(&bytes[..read_len]).map_err(|error| {
+    let bytes = bytes.get_mut(..read_len).ok_or(ErrorCode::Size)?;
+    staging_memory.read(0, bytes).await?;
+    FlashHeader::parse(bytes).map_err(|error| {
         console_writeln!(
             Console::<DefaultSyscalls>::writer(),
             "[FW Upd] Invalid flash header: {:?}",
@@ -151,6 +153,22 @@ pub enum CaliptraFwAction {
     Load = 2,
 }
 
+const SVN_FUSE_WORD_COUNT: usize = core::mem::size_of::<u128>() / core::mem::size_of::<u32>();
+
+fn decode_linear_or_svn(words: &[u32; SVN_FUSE_WORD_COUNT]) -> u32 {
+    let mut bytes = [0u8; SVN_FUSE_WORD_COUNT * core::mem::size_of::<u32>()];
+    for (dst, word) in bytes.chunks_exact_mut(4).zip(words) {
+        dst.copy_from_slice(&word.to_le_bytes());
+    }
+    u128::BITS - u128::from_le_bytes(bytes).leading_zeros()
+}
+
+fn verify_candidate_svn(candidate_svn: u32, physical_min_svn: u32) -> Result<(), ErrorCode> {
+    (candidate_svn >= physical_min_svn)
+        .then_some(())
+        .ok_or(ErrorCode::Fail)
+}
+
 impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
     pub fn new(
         staging_memory: &'static dyn StagingMemory,
@@ -185,6 +203,54 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
 
     pub fn set_hooks(&mut self, hooks: &'a dyn FirmwareUpdateHooks) {
         self.hooks = Some(hooks);
+    }
+
+    async fn verify_staged_svn_against_otp(
+        &self,
+        image_offset: usize,
+        image_len: usize,
+        svn_offset: usize,
+        otp_reg: u32,
+        image_name: &str,
+    ) -> Result<(), ErrorCode> {
+        let otp = Otp::<DefaultSyscalls>::new();
+        if otp.anti_rollback_disabled()? {
+            return Ok(());
+        }
+
+        let svn_end = svn_offset
+            .checked_add(core::mem::size_of::<u32>())
+            .ok_or(ErrorCode::Fail)?;
+        if svn_end > image_len {
+            return Err(ErrorCode::Fail);
+        }
+        let staged_svn_offset = image_offset
+            .checked_add(svn_offset)
+            .ok_or(ErrorCode::Fail)?;
+        let mut candidate_svn = [0u8; core::mem::size_of::<u32>()];
+        self.staging_memory
+            .read(staged_svn_offset, &mut candidate_svn)
+            .await?;
+        let candidate_svn = u32::from_le_bytes(candidate_svn);
+
+        let mut fuse_words = [0u32; SVN_FUSE_WORD_COUNT];
+        for (index, word) in fuse_words.iter_mut().enumerate() {
+            *word = otp.read(otp_reg, index as u32)?;
+        }
+        let physical_min_svn = decode_linear_or_svn(&fuse_words);
+
+        if verify_candidate_svn(candidate_svn, physical_min_svn).is_err() {
+            console_writeln!(
+                Console::<DefaultSyscalls>::writer(),
+                "[FW Upd] ERROR: {} SVN {} is below physical OTP minimum {}",
+                image_name,
+                candidate_svn,
+                physical_min_svn
+            );
+            return Err(ErrorCode::Fail);
+        }
+
+        Ok(())
     }
 
     pub async fn start(&mut self) -> Result<(), ErrorCode> {
@@ -245,11 +311,17 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
             return Ok(());
         }
 
+        self.activate_bundle(&flash_header).await
+    }
+
+    async fn activate_bundle(&mut self, flash_header: &FlashHeader) -> Result<(), ErrorCode> {
         // Update Caliptra
         if let Some(hooks) = self.hooks {
             hooks.pre_caliptra_activation().await?;
         }
-        let result = self.update_caliptra(&flash_header).await;
+        let _svn_guard = otp::SVN_UPDATE_LOCK.lock().await;
+        self.verify_soc_manifest_svn(flash_header).await?;
+        let result = self.update_caliptra(flash_header).await;
         if result.is_err() {
             // Abort firmware update
             return Err(ErrorCode::Fail);
@@ -265,7 +337,7 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
         if let Some(hooks) = self.hooks {
             hooks.pre_mcu_activation().await?;
         }
-        self.update_mcu(&flash_header).await?;
+        self.update_mcu(flash_header).await?;
 
         Ok(())
     }
@@ -339,16 +411,15 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
         flash_header: &FlashHeader,
     ) -> Result<(), ErrorCode> {
         Self::check_rom_compatibility(flash_header)?;
+        let _svn_guard = otp::SVN_UPDATE_LOCK.lock().await;
         self.set_auth_manifest().await?;
         self.update_mcu(flash_header).await
     }
 
-    async fn set_auth_manifest(&mut self) -> Result<(), ErrorCode> {
-        let flash_header = self.read_flash_header().await?;
-        console_writeln!(
-            Console::<DefaultSyscalls>::writer(),
-            "[FW Upd] Setting Manifest"
-        );
+    async fn verify_soc_manifest_svn(
+        &self,
+        flash_header: &FlashHeader,
+    ) -> Result<StagedAuthManifest, ErrorCode> {
         let (manifest_offset, manifest_len) = self
             .get_image_toc(
                 flash_header.image_count as usize,
@@ -357,19 +428,33 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
             )
             .await
             .map_err(|_| ErrorCode::Fail)?;
-        self.validate_auth_manifest_soc_fw_id_set(&StagedAuthManifest::soc(
+        self.verify_staged_svn_against_otp(
             manifest_offset,
             manifest_len,
-        ))
+            offset_of!(AuthorizationManifest, preamble) + offset_of!(AuthManifestPreamble, svn),
+            otp::reg::SOC_MANIFEST_SVN,
+            "SoC authorization manifest",
+        )
         .await?;
+        Ok(StagedAuthManifest::soc(manifest_offset, manifest_len))
+    }
+
+    async fn set_auth_manifest(&mut self) -> Result<(), ErrorCode> {
+        let flash_header = self.read_flash_header().await?;
+        console_writeln!(
+            Console::<DefaultSyscalls>::writer(),
+            "[FW Upd] Setting Manifest"
+        );
+        let manifest = self.verify_soc_manifest_svn(&flash_header).await?;
+        self.validate_auth_manifest_soc_fw_id_set(&manifest).await?;
 
         let mut payload_stream =
-            MailboxPayloadStream::new(self.staging_memory, manifest_offset, manifest_len);
+            MailboxPayloadStream::new(self.staging_memory, manifest.offset, manifest.len);
         crate::image_loader::execute_auth_manifest_command(
             &self.mailbox,
             CommandId::SET_AUTH_MANIFEST,
             &mut payload_stream,
-            manifest_len as u32,
+            manifest.len as u32,
         )
         .await
     }
@@ -407,6 +492,14 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
             cptra_image_offset,
             cptra_image_len
         );
+        self.verify_staged_svn_against_otp(
+            cptra_image_offset,
+            cptra_image_len,
+            offset_of!(ImageManifest, header) + offset_of!(CaliptraImageHeader, svn),
+            otp::reg::CALIPTRA_FW_SVN,
+            "Caliptra firmware",
+        )
+        .await?;
         let verify_result = self
             .process_caliptra_fw(
                 cptra_image_offset,
@@ -427,16 +520,9 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
             Console::<DefaultSyscalls>::writer(),
             "[FW Upd] Verifying Manifest"
         );
-        let (manifest_offset, manifest_len) = self
-            .get_image_toc(
-                flash_header.image_count as usize,
-                flash_header.image_headers_offset as usize,
-                SOC_MANIFEST_IDENTIFIER,
-            )
-            .await
-            .map_err(|_| ErrorCode::Fail)?;
-        self.verify_manifest(manifest_offset, manifest_len).await?;
-        let soc_manifest = StagedAuthManifest::soc(manifest_offset, manifest_len);
+        let soc_manifest = self.verify_soc_manifest_svn(&flash_header).await?;
+        self.verify_manifest(soc_manifest.offset, soc_manifest.len)
+            .await?;
         self.validate_auth_manifest_soc_fw_id_set(&soc_manifest)
             .await?;
 
@@ -838,6 +924,14 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
             .await
             .map_err(|_| ErrorCode::Fail)?;
 
+        self.verify_staged_svn_against_otp(
+            image_offset,
+            image_len,
+            offset_of!(ImageManifest, header) + offset_of!(CaliptraImageHeader, svn),
+            otp::reg::CALIPTRA_FW_SVN,
+            "Caliptra firmware",
+        )
+        .await?;
         self.process_caliptra_fw(image_offset, image_len, CaliptraFwAction::Load)
             .await?;
         self.wait_caliptra_rt_execution().await
@@ -1137,11 +1231,13 @@ pub trait FirmwareUpdateHooks: Send + Sync {
     }
 
     /// Called before setting the SoC authorization manifest. Returning an error aborts the update.
+    /// Runs under the SVN guard; must not re-enter fuse-writing or activation APIs.
     async fn pre_auth_manifest_activation(&self) -> Result<(), ErrorCode> {
         Ok(())
     }
 
     /// Called before updating the MCU firmware and activating. Returning an error aborts the update.
+    /// Runs under the SVN guard; must not re-enter fuse-writing or activation APIs.
     async fn pre_mcu_activation(&self) -> Result<(), ErrorCode> {
         Ok(())
     }
@@ -1351,6 +1447,8 @@ impl StagedAuthManifest {
 mod tests {
     extern crate std;
 
+    mod svn;
+
     use super::*;
     use caliptra_mcu_flash_image::{
         calculate_checksum, FlashHeaderV1, FlashHeaderV2, FlashHeaderV3, FlashImageVersion,
@@ -1552,6 +1650,40 @@ mod tests {
     const B: u32 = 0x2000;
     const C: u32 = 0x3000;
     const D: u32 = 0x4000;
+
+    fn encode_linear_or_svn(svn: u32) -> [u32; SVN_FUSE_WORD_COUNT] {
+        let encoded = if svn == 128 {
+            u128::MAX
+        } else {
+            (1u128 << svn) - 1
+        };
+        let bytes = encoded.to_le_bytes();
+        let mut words = [0u32; SVN_FUSE_WORD_COUNT];
+        for (word, bytes) in words.iter_mut().zip(bytes.chunks_exact(4)) {
+            *word = u32::from_le_bytes(bytes.try_into().unwrap());
+        }
+        words
+    }
+
+    #[test]
+    fn decode_linear_or_svn_fuse() {
+        for svn in 0..=u128::BITS {
+            assert_eq!(decode_linear_or_svn(&encode_linear_or_svn(svn)), svn);
+        }
+    }
+
+    #[test]
+    fn physical_svn_check_rejects_only_rollback() {
+        for candidate_svn in [3, 4] {
+            assert_eq!(verify_candidate_svn(candidate_svn, 5), Err(ErrorCode::Fail));
+        }
+        for candidate_svn in [5, 6] {
+            assert_eq!(verify_candidate_svn(candidate_svn, 5), Ok(()));
+        }
+        assert_eq!(verify_candidate_svn(0, 0), Ok(()));
+        assert_eq!(verify_candidate_svn(127, 128), Err(ErrorCode::Fail));
+        assert_eq!(verify_candidate_svn(128, 128), Ok(()));
+    }
 
     #[derive(Debug)]
     struct LayoutStagingMemory {

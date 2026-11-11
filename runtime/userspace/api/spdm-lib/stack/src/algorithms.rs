@@ -31,7 +31,7 @@ use caliptra_mcu_spdm_traits::{PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalIo, SpdmP
 use zerocopy::FromBytes;
 
 use crate::build::build_response;
-use crate::error::{SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST};
+use crate::error::{SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNEXPECTED_REQUEST, SPDM_UNSPECIFIED};
 use crate::stack::{ConnectionState, Phase};
 
 /// Peer-advertised algorithm bitmaps, one per family the responder
@@ -104,10 +104,9 @@ pub(crate) async fn handle_negotiate_algorithms<'a, Pal: SpdmPal>(
     // SPDM: NEGOTIATE_ALGORITHMS + ALGORITHMS contribute to VCA.
     let head = pal.header_size();
     state.transcript.append_vca(pal, io, io.request()).await?;
-    state
-        .transcript
-        .append_vca(pal, io, &resp[head..head + spdm_len])
-        .await?;
+    let end = head.checked_add(spdm_len).ok_or(SPDM_UNSPECIFIED)?;
+    let response = resp.get(head..end).ok_or(SPDM_UNSPECIFIED)?;
+    state.transcript.append_vca(pal, io, response).await?;
 
     state.phase = Phase::AfterAlgorithms;
     Ok(resp)

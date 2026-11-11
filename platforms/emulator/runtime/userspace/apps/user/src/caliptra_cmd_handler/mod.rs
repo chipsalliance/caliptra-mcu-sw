@@ -7,7 +7,7 @@ use caliptra_mcu_attestation_evidence::SIGNED_OCP_EAT_MAX_SIZE;
 use caliptra_mcu_common_commands::{
     AsymAlgo, CaliptraCmdHandler, CaliptraCmdResult, CaliptraCompletionCode, CertChainInfo,
     DebugUnlockChallenge, DeviceCapabilities, EvidenceFormat, FirmwareVersion, GetLogResult,
-    PkiEntitySlot, ATTESTATION_NONCE_LEN,
+    PkiEntitySlot, ProvisionIdevCertMode, ATTESTATION_NONCE_LEN,
 };
 use caliptra_mcu_config::capabilities::{
     encode_capabilities, AuthorizedSubcommandCapabilities, ExternalCommandCapabilities,
@@ -77,6 +77,12 @@ fn external_command_capabilities() -> ExternalCommandCapabilities {
         && (cfg!(feature = "spdm") || cfg!(feature = "mcu-mbox-service"))
     {
         capabilities |= ExternalCommandCapabilities::EXPORT_ATTESTED_CSR;
+    }
+    if cfg!(feature = "cert-provisioning")
+        && !cfg!(feature = "vendor-certs-oob")
+        && (cfg!(feature = "spdm") || cfg!(feature = "mcu-mbox-service"))
+    {
+        capabilities |= ExternalCommandCapabilities::PROVISION_IDEV_CERT;
     }
     // GET_ATTESTATION is transport-agnostic: it is reachable over the SPDM VDM
     // transport and the MCU mailbox, so advertise it whenever either responder
@@ -208,17 +214,16 @@ fn push_decimal(buf: &mut [u8], len: &mut usize, value: u32) -> CaliptraCmdResul
     let mut digits = [0u8; 10];
     let mut remaining = value;
     let mut count = 0;
-    loop {
-        digits[count] = b'0' + (remaining % 10) as u8;
+    for digit in &mut digits {
+        *digit = b'0' + (remaining % 10) as u8;
         remaining /= 10;
         count += 1;
         if remaining == 0 {
             break;
         }
     }
-    while count > 0 {
-        count -= 1;
-        push_byte(buf, len, digits[count])?;
+    for &digit in digits.iter().take(count).rev() {
+        push_byte(buf, len, digit)?;
     }
     Ok(())
 }
@@ -349,6 +354,16 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         .await
     }
 
+    async fn provision_idevid_cert<Alloc: ScratchAlloc>(
+        &self,
+        alloc: &Alloc,
+        algorithm: AsymAlgo,
+        mode: ProvisionIdevCertMode,
+        data: &[u8],
+    ) -> CaliptraCmdResult<()> {
+        device_ops::provision_idevid_cert(alloc, algorithm, mode, data).await
+    }
+
     /// Drain entries of `log_type` from the backing store.
     ///
     /// The debug log is backed by the Tock logging-flash capsule via
@@ -399,6 +414,9 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
     }
 
     async fn fuse_write(&self, word_addr: u32, data: u32, mask: u32) -> CaliptraCmdResult<()> {
+        let _svn_guard = caliptra_mcu_libsyscall_caliptra::otp::SVN_UPDATE_LOCK
+            .lock()
+            .await;
         Otp::<DefaultSyscalls>::new()
             .write_raw(word_addr, data, mask)
             .map_err(|error| match error {
@@ -561,6 +579,38 @@ mod tests {
     use super::*;
 
     #[test]
+    fn decimal_boundaries_preserve_output_and_short_buffer_errors() {
+        for (value, expected) in [(0, &b"0"[..]), (u32::MAX, &b"4294967295"[..])] {
+            let mut buf = [0xa5; 12];
+            let mut len = 1;
+            push_decimal(&mut buf, &mut len, value).unwrap();
+            assert_eq!(&buf[1..len], expected);
+            assert_eq!(buf[0], 0xa5);
+            assert!(buf[len..].iter().all(|&byte| byte == 0xa5));
+        }
+
+        let mut buf = [0xa5; 3];
+        let mut len = 1;
+        assert_eq!(
+            push_decimal(&mut buf, &mut len, 1234),
+            Err(CaliptraCompletionCode::InvalidPayloadSize)
+        );
+        assert_eq!(buf, [0xa5, b'1', b'2']);
+        assert_eq!(len, 3);
+    }
+
+    #[test]
+    fn firmware_version_extremes_preserve_fields_and_zero_padding() {
+        let mut version = FirmwareVersion::default();
+        for (packed, expected) in [(0, &b"0.0.0"[..]), (u32::MAX, &b"255.255.65535"[..])] {
+            version.ver_str.fill(0xa5);
+            write_firmware_version(&mut version, packed).unwrap();
+            assert_eq!(&version.ver_str[..version.len], expected);
+            assert!(version.ver_str[version.len..].iter().all(|&byte| byte == 0));
+        }
+    }
+
+    #[test]
     fn capability_masks_follow_compiled_services() {
         let runtime = mcu_runtime_capabilities();
         let commands = external_command_capabilities();
@@ -574,6 +624,7 @@ mod tests {
         let authorized_transport = cfg!(feature = "spdm") || cfg!(feature = "mcu-mbox-service");
         let dot_transport = cfg!(feature = "dot-spdm-vdm") || cfg!(feature = "dot-mci-mailbox");
 
+        assert_eq!(authorized.bits() & (1 << 17), 0);
         assert_eq!(
             runtime.contains(McuRuntimeCapabilities::MCTP_VDM_RESPONDER),
             cfg!(feature = "mctp-vdm-service")
@@ -594,6 +645,12 @@ mod tests {
         assert_eq!(
             commands.contains(ExternalCommandCapabilities::EXPORT_ATTESTED_CSR),
             authorized_transport && cfg!(feature = "attested-csr")
+        );
+        assert_eq!(
+            commands.contains(ExternalCommandCapabilities::PROVISION_IDEV_CERT),
+            authorized_transport
+                && cfg!(feature = "cert-provisioning")
+                && !cfg!(feature = "vendor-certs-oob")
         );
         assert_eq!(
             commands.contains(ExternalCommandCapabilities::DEVICE_OWNERSHIP_TRANSFER),

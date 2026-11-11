@@ -11,21 +11,22 @@
 //! is tracked with atomics.
 
 #[cfg(feature = "set-certificate")]
-use crate::endorsement::{
-    managed_endorsement_der_capacity, ManagedEndorsementChain, ManagedEndorsementSlot,
-    CERT_MODEL_ALIAS_CERT, MANAGED_REGION_COUNT,
+use crate::{
+    endorsement::{
+        managed_endorsement_der_capacity, ManagedEndorsementChain, ManagedEndorsementSlot,
+        CERT_MODEL_ALIAS_CERT, MANAGED_REGION_COUNT,
+    },
+    errors as cert_errors,
 };
 use crate::{
     endorsement::{
         CertSlot, EndorsementStorage, NoEndorsementStorage, ReadOnlyEndorsementSlot,
         SlotEndorsement, NUM_ASYM_ALGOS, NUM_CERT_SLOTS,
     },
-    errors as cert_errors, CertChainInfo, CertificateAlgorithm, CertificateProvisioningPolicy,
-    DeviceKey, EndorsementRole, DPE_LEAF_LABEL,
+    CertChainInfo, CertificateAlgorithm, CertificateProvisioningPolicy, DeviceKey, EndorsementRole,
+    DPE_LEAF_LABEL,
 };
-#[cfg(feature = "set-certificate")]
-use core::cell::Cell;
-use core::cell::UnsafeCell;
+use core::cell::{Cell, UnsafeCell};
 use core::ops::Range;
 
 use mcu_caliptra_api::{
@@ -38,6 +39,13 @@ use mcu_error::{
 };
 
 const CERT_DIGEST_CHUNK_SIZE: usize = 1024;
+const SHA384_HASH_SIZE: usize = 48;
+const DER_SEQUENCE_TAG: u8 = 0x30;
+const DER_LEN_LONG_FORM_BIT: u8 = 0x80;
+const DER_LEN_OCTET_COUNT_MASK: u8 = 0x7f;
+const DER_MAX_LEN_OCTETS: usize = 4;
+const DER_MIN_SEQ_HEADER_LEN: usize = 2;
+const DER_MAX_SEQ_HEADER_LEN: usize = DER_MIN_SEQ_HEADER_LEN + DER_MAX_LEN_OCTETS;
 
 struct NoInlineFut<F>(F);
 
@@ -54,10 +62,52 @@ impl<F: core::future::Future> core::future::Future for NoInlineFut<F> {
     }
 }
 
-async fn compute_root_hash<A: ScratchAlloc>(alloc: &A, root_cert: &[u8]) -> McuResult<[u8; 48]> {
+async fn compute_root_hash<A: ScratchAlloc>(
+    alloc: &A,
+    root_cert: &[u8],
+) -> McuResult<[u8; SHA384_HASH_SIZE]> {
     let sha_buf = alloc.alloc(SHA_CONTEXT_SIZE)?;
     let mut state = sha_init(alloc, sha_buf, HashAlgo::Sha384, root_cert).await?;
-    let mut hash = [0u8; 48];
+    let mut hash = [0u8; SHA384_HASH_SIZE];
+    sha_finish(alloc, &mut state, &mut hash).await?;
+    Ok(hash)
+}
+
+async fn compute_dpe_first_cert_hash<A: ScratchAlloc>(
+    alloc: &A,
+    profile: DpeProfile,
+) -> McuResult<[u8; SHA384_HASH_SIZE]> {
+    let sha_buf = alloc.alloc(SHA_CONTEXT_SIZE)?;
+    let mut state = sha_init(alloc, sha_buf, HashAlgo::Sha384, &[]).await?;
+    let mut chunk = alloc.alloc(DPE_MAX_CHUNK_SIZE)?;
+    let mut offset = 0usize;
+    let mut cert_len = 0usize;
+    loop {
+        let req_len = if offset == 0 {
+            DPE_MAX_CHUNK_SIZE
+        } else {
+            (cert_len - offset).min(DPE_MAX_CHUNK_SIZE)
+        };
+        let got = dpe_get_cert_chain_chunk(
+            alloc,
+            profile,
+            offset as u32,
+            checked_slice_mut(&mut chunk, 0, req_len)?,
+        )
+        .await?;
+        if offset == 0 {
+            cert_len = der_first_seq_len(checked_slice(&chunk, 0, got)?).ok_or(INVARIANT)?;
+        } else if got != req_len {
+            return Err(INTERNAL_BUG);
+        }
+        let take = (cert_len - offset).min(got);
+        sha_update(alloc, &mut state, checked_slice(&chunk, 0, take)?).await?;
+        offset += take;
+        if offset >= cert_len {
+            break;
+        }
+    }
+    let mut hash = [0u8; SHA384_HASH_SIZE];
     sha_finish(alloc, &mut state, &mut hash).await?;
     Ok(hash)
 }
@@ -70,6 +120,7 @@ async fn compute_root_hash<A: ScratchAlloc>(alloc: &A, root_cert: &[u8]) -> McuR
 pub struct SharedCertStore<S: EndorsementStorage = NoEndorsementStorage> {
     cert_slots: UnsafeCell<[CertSlot<S>; NUM_CERT_SLOTS]>,
     policy: CertificateProvisioningPolicy,
+    idevid_populated: [Cell<bool>; NUM_ASYM_ALGOS],
 }
 
 // SAFETY: Tasks run on a single-core cooperative Embassy executor and never
@@ -101,10 +152,53 @@ impl<S: EndorsementStorage> SharedCertStore<S> {
                 }),
             ]),
             policy,
+            idevid_populated: [const { Cell::new(false) }; NUM_ASYM_ALGOS],
         }
     }
 
-    /// Configure a read-only endorsement chain with ECC and optional ML-DSA roots.
+    /// Record whether `IDevID` has been populated into Caliptra's DPE
+    /// certificate chain for `algo`, invalidating cached slot metadata when the
+    /// populated state changes.
+    pub fn set_idevid_populated(&self, algo: CertificateAlgorithm, populated: bool) {
+        if self.idevid_populated[algo.index()].replace(populated) != populated {
+            for role in EndorsementRole::ALL {
+                self.cert_slot(role).bump_generation_counter(algo);
+            }
+        }
+    }
+
+    /// Whether `IDevID` is populated in Caliptra's DPE certificate chain for `algo`.
+    pub fn is_idevid_populated(&self, algo: CertificateAlgorithm) -> bool {
+        self.idevid_populated[algo.index()].get()
+    }
+
+    fn validate_vendor_readonly_init(&self, role: EndorsementRole) -> McuResult<()> {
+        self.policy.validate()?;
+        if role != EndorsementRole::Vendor
+            || !matches!(self.cert_slot(role).endorsement, SlotEndorsement::Empty)
+        {
+            return Err(mcu_error::codes::INVARIANT);
+        }
+        Ok(())
+    }
+
+    fn finish_vendor_readonly_init(
+        &self,
+        role: EndorsementRole,
+        ro: ReadOnlyEndorsementSlot,
+        has_mldsa: bool,
+    ) {
+        let slot = self.cert_slot_mut(role);
+        slot.endorsement = SlotEndorsement::ReadOnly(ro);
+        slot.bump_generation_counter(CertificateAlgorithm::EccP384);
+        if has_mldsa {
+            slot.bump_generation_counter(CertificateAlgorithm::MlDsa87);
+        }
+    }
+
+    /// Configure the Vendor (Slot 0) read-only endorsement chain with static
+    /// ECC and optional ML-DSA roots.
+    #[inline]
     pub async fn init_readonly_endorsement<A: ScratchAlloc>(
         &self,
         alloc: &A,
@@ -112,35 +206,57 @@ impl<S: EndorsementStorage> SharedCertStore<S> {
         ecc_chain: &'static [&'static [u8]],
         mldsa_chain: Option<&'static [&'static [u8]]>,
     ) -> McuResult<()> {
-        self.policy.validate()?;
-        if !matches!(self.cert_slot(role).endorsement, SlotEndorsement::Empty) {
-            return Err(mcu_error::codes::INVARIANT);
+        self.validate_vendor_readonly_init(role)?;
+        let ecc_first = ecc_chain.first().copied().ok_or(INVARIANT)?;
+        if ecc_first.is_empty() {
+            return Err(INVARIANT);
         }
-        self.cert_slot(role)
-            .configured_key_pair_id()
-            .ok_or(cert_errors::KEY_MISMATCH)?;
-        let &first_ecc = ecc_chain.first().ok_or(mcu_error::codes::INVARIANT)?;
-        if first_ecc.is_empty() {
-            return Err(mcu_error::codes::INVARIANT);
-        }
-        let ecc_hash = compute_root_hash(alloc, first_ecc).await?;
+        let ecc_hash = NoInlineFut(compute_root_hash(alloc, ecc_first)).await?;
         let mut ro = ReadOnlyEndorsementSlot::new(ecc_chain, ecc_hash);
 
         if let Some(mldsa) = mldsa_chain {
-            let &first_mldsa = mldsa.first().ok_or(mcu_error::codes::INVARIANT)?;
-            if first_mldsa.is_empty() {
-                return Err(mcu_error::codes::INVARIANT);
+            let mldsa_first = mldsa.first().copied().ok_or(INVARIANT)?;
+            if mldsa_first.is_empty() {
+                return Err(INVARIANT);
             }
-            let mldsa_hash = compute_root_hash(alloc, first_mldsa).await?;
+            let mldsa_hash = NoInlineFut(compute_root_hash(alloc, mldsa_first)).await?;
             ro = ro.with_mldsa(mldsa, mldsa_hash);
         }
 
-        let slot = self.cert_slot_mut(role);
-        slot.endorsement = SlotEndorsement::ReadOnly(ro);
-        slot.bump_generation_counter(CertificateAlgorithm::EccP384);
-        if mldsa_chain.is_some() {
-            slot.bump_generation_counter(CertificateAlgorithm::MlDsa87);
+        self.finish_vendor_readonly_init(role, ro, mldsa_chain.is_some());
+        Ok(())
+    }
+
+    /// Configure the Vendor (Slot 0) endorsement chain for out-of-band (OOB)
+    /// CAs: no endorsement bytes are stored on-device (`&[]`), and
+    /// `root_cert_hash` is computed from the first certificate in Caliptra's
+    /// DPE certificate chain (`LDevID` when all Vendor certificates are OOB,
+    /// or `IDevID` when only Vendor CAs are OOB).
+    #[inline]
+    pub async fn init_oob_endorsement<A: ScratchAlloc>(
+        &self,
+        alloc: &A,
+        role: EndorsementRole,
+        include_mldsa: bool,
+    ) -> McuResult<()> {
+        self.validate_vendor_readonly_init(role)?;
+        let ecc_hash = NoInlineFut(compute_dpe_first_cert_hash(
+            alloc,
+            CertificateAlgorithm::EccP384.dpe_profile(),
+        ))
+        .await?;
+        let mut ro = ReadOnlyEndorsementSlot::new(&[], ecc_hash);
+
+        if include_mldsa {
+            let mldsa_hash = NoInlineFut(compute_dpe_first_cert_hash(
+                alloc,
+                CertificateAlgorithm::MlDsa87.dpe_profile(),
+            ))
+            .await?;
+            ro = ro.with_mldsa(&[], mldsa_hash);
         }
+
+        self.finish_vendor_readonly_init(role, ro, include_mldsa);
         Ok(())
     }
 
@@ -392,10 +508,11 @@ impl<S: EndorsementStorage> TaskCertStore<S> {
                 let slot = self.cert_slot(role);
                 let gen = slot.generation_counter(algo);
                 let len = slot.endorsement.size(algo).map_err(|_| INVARIANT)?;
+                let idevid_populated = self.shared.is_idevid_populated(algo);
                 let skip_certs = slot
                     .key_pair_id(algo)
                     .and_then(|id| DeviceKey::try_from(id).ok())
-                    .map_or(0, |k| k.device_cert_skip_count());
+                    .map_or(0, |k| k.device_cert_skip_count(idevid_populated));
                 (gen, skip_certs, len)
             };
             self.invalidate_algo_cache(role, algo);
@@ -442,25 +559,18 @@ impl<S: EndorsementStorage> TaskCertStore<S> {
                 return Ok(0);
             }
 
-            let (gen, skip_certs, endorsement_len) = {
+            let (gen, endorsement_len) = {
                 let slot = self.cert_slot(role);
                 let gen = slot.generation_counter(algo);
                 let len = slot.endorsement.size(algo).map_err(|_| INVARIANT)?;
-                let skip_certs = slot
-                    .key_pair_id(algo)
-                    .and_then(|id| DeviceKey::try_from(id).ok())
-                    .map_or(0, |k| k.device_cert_skip_count());
-                (gen, skip_certs, len)
+                (gen, len)
             };
             let want = (total - offset).min(dst.len());
             let profile = algo.dpe_profile();
             let leaf_len = self.cached_leaf_len(role, algo).ok_or(INVARIANT)? as usize;
-            let device_chain_offset = if skip_certs > 0 {
-                self.cached_device_chain_offset(role, algo)
-                    .ok_or(INVARIANT)? as usize
-            } else {
-                0
-            };
+            let device_chain_offset = self
+                .cached_device_chain_offset(role, algo)
+                .ok_or(INVARIANT)? as usize;
             let layout =
                 ChainLayout::from_total(endorsement_len, total, device_chain_offset, leaf_len)?;
             if total != layout.total_len() {
@@ -1017,7 +1127,7 @@ impl<S: EndorsementStorage> TaskCertStore<S> {
         role: EndorsementRole,
         algo: CertificateAlgorithm,
     ) -> &mut CertChainCache {
-        unsafe { &mut (*self.caches.get())[role as usize][(algo as usize) - 1] }
+        unsafe { &mut (*self.caches.get())[role as usize][algo.index()] }
     }
 
     fn valid_chain_cache(
@@ -1121,7 +1231,7 @@ pub(crate) struct DeviceChainPrefixScanner {
     pub(crate) certs_left: usize,
     cert_bytes_left: usize,
     pub(crate) skip_len: usize,
-    header: [u8; 6],
+    header: [u8; DER_MAX_SEQ_HEADER_LEN],
     header_len: usize,
 }
 
@@ -1131,7 +1241,7 @@ impl DeviceChainPrefixScanner {
             certs_left: certs,
             cert_bytes_left: 0,
             skip_len: 0,
-            header: [0; 6],
+            header: [0; DER_MAX_SEQ_HEADER_LEN],
             header_len: 0,
         }
     }
@@ -1150,10 +1260,8 @@ impl DeviceChainPrefixScanner {
                 continue;
             }
 
-            if self.header_len == self.header.len() {
-                return Err(INVARIANT);
-            }
-            self.header[self.header_len] = chunk[pos];
+            let header_byte = self.header.get_mut(self.header_len).ok_or(INVARIANT)?;
+            *header_byte = chunk[pos];
             self.header_len += 1;
             self.skip_len = self.skip_len.checked_add(1).ok_or(INVARIANT)?;
             pos += 1;
@@ -1234,7 +1342,11 @@ async fn compute_endorsement_root_hash<A: ScratchAlloc>(
     cert_chain: &[u8],
 ) -> McuResult<[u8; 48]> {
     let root_cert_len = der_first_seq_len(cert_chain).ok_or(cert_errors::INVALID_ENDORSEMENT)?;
-    compute_root_hash(alloc, checked_slice(cert_chain, 0, root_cert_len)?).await
+    NoInlineFut(compute_root_hash(
+        alloc,
+        checked_slice(cert_chain, 0, root_cert_len)?,
+    ))
+    .await
 }
 
 #[cfg(feature = "set-certificate")]
@@ -1296,34 +1408,44 @@ async fn streamed_first_der_len<S: EndorsementStorage>(
     managed: &ManagedEndorsementChain<S>,
     data_len: usize,
 ) -> McuResult<usize> {
-    let mut header = [0u8; 6];
-    if data_len < 2 {
+    let mut header = [0u8; DER_MAX_SEQ_HEADER_LEN];
+    if data_len < DER_MIN_SEQ_HEADER_LEN {
         return Err(cert_errors::INVALID_ENDORSEMENT);
     }
     if managed
-        .read_stream_chunk(0, checked_slice_mut(&mut header, 0, 2)?)
+        .read_stream_chunk(
+            0,
+            checked_slice_mut(&mut header, 0, DER_MIN_SEQ_HEADER_LEN)?,
+        )
         .await?
-        != 2
+        != DER_MIN_SEQ_HEADER_LEN
     {
         return Err(INVARIANT);
     }
-    if header[0] != 0x30 {
+    if header[0] != DER_SEQUENCE_TAG {
         return Err(cert_errors::INVALID_ENDORSEMENT);
     }
     let len_byte = header[1];
-    let (header_len, content_len) = if len_byte & 0x80 == 0 {
-        (2usize, len_byte as usize)
+    let (header_len, content_len) = if len_byte & DER_LEN_LONG_FORM_BIT == 0 {
+        (DER_MIN_SEQ_HEADER_LEN, len_byte as usize)
     } else {
-        let len_len = (len_byte & 0x7f) as usize;
-        if len_len == 0 || len_len > 4 || data_len < 2 + len_len {
+        let len_len = (len_byte & DER_LEN_OCTET_COUNT_MASK) as usize;
+        if len_len == 0
+            || len_len > DER_MAX_LEN_OCTETS
+            || data_len < DER_MIN_SEQ_HEADER_LEN + len_len
+        {
             return Err(cert_errors::INVALID_ENDORSEMENT);
         }
-        let len_buf = checked_slice_mut(&mut header, 2, len_len)?;
-        if managed.read_stream_chunk(2, len_buf).await? != len_len {
+        let len_buf = checked_slice_mut(&mut header, DER_MIN_SEQ_HEADER_LEN, len_len)?;
+        if managed
+            .read_stream_chunk(DER_MIN_SEQ_HEADER_LEN, len_buf)
+            .await?
+            != len_len
+        {
             return Err(INVARIANT);
         }
         let mut content_len = 0usize;
-        for &byte in checked_slice(&header, 2, len_len)? {
+        for &byte in checked_slice(&header, DER_MIN_SEQ_HEADER_LEN, len_len)? {
             content_len = content_len
                 .checked_shl(8)
                 .ok_or(cert_errors::INVALID_ENDORSEMENT)?;
@@ -1331,7 +1453,7 @@ async fn streamed_first_der_len<S: EndorsementStorage>(
                 .checked_add(byte as usize)
                 .ok_or(cert_errors::INVALID_ENDORSEMENT)?;
         }
-        (2 + len_len, content_len)
+        (DER_MIN_SEQ_HEADER_LEN + len_len, content_len)
     };
     if content_len == 0 {
         return Err(cert_errors::INVALID_ENDORSEMENT);
@@ -1382,30 +1504,32 @@ async fn device_chain_len_and_offset<A: ScratchAlloc>(
 }
 
 pub(crate) fn der_first_seq_len(buf: &[u8]) -> Option<usize> {
-    if buf.len() < 2 || buf[0] != 0x30 {
+    if buf.len() < DER_MIN_SEQ_HEADER_LEN || buf[0] != DER_SEQUENCE_TAG {
         return None;
     }
     let len_byte = buf[1];
-    let total = if len_byte & 0x80 == 0 {
+    let total = if len_byte & DER_LEN_LONG_FORM_BIT == 0 {
         let content = len_byte as usize;
         if content == 0 {
             return None;
         }
-        2usize.checked_add(content)?
+        DER_MIN_SEQ_HEADER_LEN.checked_add(content)?
     } else {
-        let n = (len_byte & 0x7f) as usize;
-        if n == 0 || n > 4 || buf.len() < 2 + n {
+        let n = (len_byte & DER_LEN_OCTET_COUNT_MASK) as usize;
+        if n == 0 || n > DER_MAX_LEN_OCTETS || buf.len() < DER_MIN_SEQ_HEADER_LEN + n {
             return None;
         }
         let mut content = 0usize;
-        for &byte in buf.get(2..2 + n)? {
+        for &byte in buf.get(DER_MIN_SEQ_HEADER_LEN..DER_MIN_SEQ_HEADER_LEN + n)? {
             content = content.checked_shl(8)?;
             content = content.checked_add(byte as usize)?;
         }
         if content == 0 {
             return None;
         }
-        2usize.checked_add(n)?.checked_add(content)?
+        DER_MIN_SEQ_HEADER_LEN
+            .checked_add(n)?
+            .checked_add(content)?
     };
     Some(total)
 }
@@ -1593,6 +1717,54 @@ mod tests {
             task_a.cached_chain_digest(EndorsementRole::Owner, CertificateAlgorithm::MlDsa87),
             Some([0xBB; 48])
         );
+    }
+
+    #[test]
+    fn set_idevid_populated_invalidates_cached_metadata_across_all_roles() {
+        static SHARED: SharedCertStore = SharedCertStore::new();
+        let task = TaskCertStore::new(&SHARED);
+
+        for role in EndorsementRole::ALL {
+            task.set_cached_chain_len(role, CertificateAlgorithm::EccP384, 512);
+            task.cache_chain_digest(role, CertificateAlgorithm::EccP384, &[0xAA; 48]);
+            task.set_cached_chain_len(role, CertificateAlgorithm::MlDsa87, 2048);
+            task.cache_chain_digest(role, CertificateAlgorithm::MlDsa87, &[0xBB; 48]);
+        }
+
+        SHARED.set_idevid_populated(CertificateAlgorithm::EccP384, true);
+        assert!(SHARED.is_idevid_populated(CertificateAlgorithm::EccP384));
+        assert!(!SHARED.is_idevid_populated(CertificateAlgorithm::MlDsa87));
+
+        for role in EndorsementRole::ALL {
+            assert_eq!(
+                task.cached_chain_len(role, CertificateAlgorithm::EccP384),
+                None
+            );
+            assert_eq!(
+                task.cached_chain_digest(role, CertificateAlgorithm::EccP384),
+                None
+            );
+            assert_eq!(
+                task.cached_chain_len(role, CertificateAlgorithm::MlDsa87),
+                Some(2048)
+            );
+            assert_eq!(
+                task.cached_chain_digest(role, CertificateAlgorithm::MlDsa87),
+                Some([0xBB; 48])
+            );
+
+            // Re-cache EccP384 and verify an idempotent `set_idevid_populated(..., true)`
+            // does not bump generation counters again.
+            task.set_cached_chain_len(role, CertificateAlgorithm::EccP384, 1060);
+        }
+
+        SHARED.set_idevid_populated(CertificateAlgorithm::EccP384, true);
+        for role in EndorsementRole::ALL {
+            assert_eq!(
+                task.cached_chain_len(role, CertificateAlgorithm::EccP384),
+                Some(1060)
+            );
+        }
     }
 
     #[test]
@@ -2144,5 +2316,87 @@ mod tests {
 
         assert_eq!(scanner.certs_left, 0);
         assert_eq!(scanner.skip_len, 9);
+    }
+
+    #[test]
+    fn readonly_endorsement_empty_chain_is_provisioned_with_zero_size() {
+        let hash = [0x77_u8; 48];
+        let endorsement: SlotEndorsement =
+            SlotEndorsement::ReadOnly(ReadOnlyEndorsementSlot::new(&[], hash));
+
+        assert!(endorsement.is_supported());
+        assert!(endorsement.is_provisioned(CertificateAlgorithm::EccP384));
+        assert_eq!(endorsement.size(CertificateAlgorithm::EccP384).unwrap(), 0);
+
+        let mut out = [0u8; 48];
+        endorsement
+            .root_cert_hash(CertificateAlgorithm::EccP384, &mut out)
+            .unwrap();
+        assert_eq!(out, hash);
+    }
+
+    #[test]
+    fn init_readonly_endorsement_rejects_non_vendor_roles() {
+        struct NoopAlloc;
+        impl ScratchAlloc for NoopAlloc {
+            type Buf<'a>
+                = &'a mut [u8]
+            where
+                Self: 'a;
+
+            fn alloc(&self, _size: usize) -> McuResult<Self::Buf<'_>> {
+                Err(INVARIANT)
+            }
+        }
+
+        let store: SharedCertStore = SharedCertStore::new();
+        for role in [EndorsementRole::Owner, EndorsementRole::Tenant] {
+            assert_eq!(
+                futures::executor::block_on(
+                    store.init_readonly_endorsement(&NoopAlloc, role, TEST_CHAIN, None,)
+                ),
+                Err(INVARIANT),
+            );
+            assert_eq!(
+                futures::executor::block_on(store.init_oob_endorsement(&NoopAlloc, role, false)),
+                Err(INVARIANT),
+            );
+        }
+        assert_eq!(
+            futures::executor::block_on(store.init_readonly_endorsement(
+                &NoopAlloc,
+                EndorsementRole::Vendor,
+                &[],
+                None,
+            )),
+            Err(INVARIANT),
+        );
+    }
+
+    #[test]
+    fn set_idevid_populated_tracks_per_algo() {
+        let store: SharedCertStore = SharedCertStore::new();
+        assert!(!store.is_idevid_populated(CertificateAlgorithm::EccP384));
+        assert!(!store.is_idevid_populated(CertificateAlgorithm::MlDsa87));
+        assert_eq!(DeviceKey::LDevId.device_cert_skip_count(false), 1);
+        assert_eq!(DeviceKey::LDevId.device_cert_skip_count(true), 2);
+
+        store.set_idevid_populated(CertificateAlgorithm::EccP384, true);
+        assert!(store.is_idevid_populated(CertificateAlgorithm::EccP384));
+        assert!(!store.is_idevid_populated(CertificateAlgorithm::MlDsa87));
+    }
+
+    #[test]
+    fn device_chain_prefix_scanner_rejects_invalid_header_length_without_progress() {
+        for header_len in [6, 7, usize::MAX] {
+            let mut scanner = DeviceChainPrefixScanner::new(1);
+            scanner.header_len = header_len;
+
+            assert_eq!(scanner.consume(&[0x30]), Err(INVARIANT));
+            assert_eq!(scanner.header_len, header_len);
+            assert_eq!(scanner.header, [0; 6]);
+            assert_eq!(scanner.certs_left, 1);
+            assert_eq!(scanner.skip_len, 0);
+        }
     }
 }

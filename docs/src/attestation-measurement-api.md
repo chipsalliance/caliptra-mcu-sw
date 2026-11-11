@@ -20,7 +20,10 @@ The API surface is grouped by consumer:
 | **SPDM cert store / Responder** | `leaf_cert_size()` | Returns the DPE leaf certificate size and persists the rotated target handle. |
 | **SPDM cert store / Responder** | `leaf_cert_slice()` | Returns one DPE leaf certificate slice and persists the rotated target handle. |
 | **SPDM cert store / Responder** | `sign()` | Signs a typed input with the selected AK, persists its rotated handle, and returns the signature length. |
-| **Exported-CDI consumers** | `export_cdi_and_stash()` | Derives an exported CDI, stores its handle, persists the rotated target handle, and returns the certificate length. |
+| **Exported-CDI consumers** | `export_cdi_and_stash()` | Derives an exported CDI from `EXPORT_CDI_TARGET`, auto-revokes an existing handle for that target, stores the new handle, and returns its leaf certificate. |
+| **Exported-CDI consumers** | `sign_with_exported_cdi()` | Signs an ECC P-384 digest using the stored exported CDI handle and returns the signature length. |
+| **Exported-CDI consumers** | `revoke_exported_cdi()` | Revokes the stored exported CDI handle in Caliptra and clears its slot in DPE Handle Storage. |
+| **Exported-CDI consumers** | `read_exported_cdi()` | Reads the stored 32-byte exported CDI handle for `target_fw_id`, or returns `ExportedCdiNotDerived`. |
 | **Image loading / Firmware update** | `validate_and_set_owner_policy()` | Parses and attaches already-authenticated `MOAM`/`MOLL` bytes without resetting base state. |
 | **Image loading / Firmware update** | `measure_owsm()` | Creates or synchronizes the MCU-managed Owner Authorization Manifest preamble measurement. |
 | **Image loading / Firmware update** | `measure_owner_measurement_policy()` | Creates the owner-policy measurement on cold boot; verifies it is unchanged on hitless update. |
@@ -96,13 +99,14 @@ On `FW_HITLESS_UPD_RESET`, the stores are not reset or reinitialized. Boot initi
 
 The image loader handles flash/PLDM retrieval and `SET_OWNER_AUTH_MANIFEST` installation; the Measurement API manages the resulting measurement state:
 
-1. Boot initialization measures the Vendor Authorization Key (`0x4`) when configured in `MCAM`.
+1. Boot initialization measures the Vendor Authorization Key (`0x4`) under `MCU_RT` (`0x2`) when configured in `MCAM`.
 2. The loader installs the Owner Authorization Manifest via `SET_OWNER_AUTH_MANIFEST`, authenticates the Owner Measurement Policy (`0x5`) against `GET_IMAGE_INFO(0x5).digest`, and attaches it with `validate_and_set_owner_policy()`.
-3. The loader records the control chain in order via `measure_owsm()`, `measure_owner_measurement_policy()`, and `measure_owner_auth_key()`:
+3. The loader records the Owner control chain in a separate branch rooted at `MCU_RT` (`0x2`) via `measure_owsm()`, `measure_owner_measurement_policy()`, and `measure_owner_auth_key()`:
 
 ```text
-MCU_RT (0x2) -> Vendor Auth Key (0x4) -> OWSM (0x3)
-            -> Owner Measurement Policy (0x5) -> Owner Auth Key (0x6)
+MCU_RT (0x2)
+  ├── Vendor+Owner branch: Vendor Auth Key (0x4) -> Base/Vendor+Owner SoC TCB components
+  └── Owner branch:        OWSM (0x3) -> Owner Measurement Policy (0x5) -> Owner Auth Key (0x6) -> Owner SoC TCB components
 ```
 
 On hitless update, `measure_owner_measurement_policy()` runs **before** updating `OWSM` or the Owner Authorization Key and verifies that the policy digest matches the preserved DPE measurement:
@@ -115,7 +119,52 @@ On hitless update, `measure_owner_measurement_policy()` runs **before** updating
 
 ## Attestation key operations
 
-Callers do not invoke DPE `CertifyKeyChunks`, `CertifyKey`, `Sign`, or `DeriveContext` with `EXPORT_CDI` directly on Measurement API-managed contexts. Each AK or Exported-CDI entry point reads the current attestation target record, issues one DPE command, and writes the rotated context handle back to DPE Handle Storage before returning (`GetCertificateChain` does not take or rotate a DPE context handle). If the DPE command succeeds but persisting the rotated handle fails, the API enters `Error` to prevent reuse of a stale handle.
+Callers do not invoke DPE `CertifyKeyChunks`, `CertifyKey`, `Sign`, or `DeriveContext` with `EXPORT_CDI` directly on Measurement API-managed contexts. Each AK or Exported-CDI entry point reads the current target record (`AK_TARGET` for SPDM/OCP EAT operations; `EXPORT_CDI_TARGET` for Exported-CDI operations), issues the DPE command, and writes the rotated context handle back to DPE Handle Storage before returning (`GetCertificateChain` and `SIGN_WITH_EXPORTED_*` do not rotate a DPE context handle). If the DPE command succeeds but persisting the rotated handle fails, the API enters `Error` to prevent reuse of a stale handle.
+
+## Exported-CDI derivation, signing, and revocation
+
+The Measurement API supports on-demand derivation, signing, and revocation for a DPE Exported-CDI identity (`EXPORT_CDI | CREATE_CERTIFICATE | RETAIN_PARENT_CONTEXT`).
+
+- **Target selection (`EXPORT_CDI_TARGET`)**: The parent DPE context is selected by `ATTESTATION_FLAG_EXPORT_CDI_TARGET` (`Bit 2`) in the Base Attestation Manifest (`MCAM`), defaulting to `MCU_RT` (`0x0000_0002`) when omitted. `AK_TARGET` and `EXPORT_CDI_TARGET` are configured independently in `MCAM` and may reference the same or different DPE TCB nodes.
+- **Derivation (`export_cdi_and_stash()`)**: `export_cdi_and_stash(alloc, target_fw_id, profile, cert_out)` (`target_fw_id = None` for the default configured `EXPORT_CDI_TARGET`, or `Some(fw_id)` for an explicit target) derives the Exported-CDI context from the target DPE node, writes the DER-encoded X.509 leaf certificate into `cert_out`, and persists the 32-byte `exported_cdi` handle and rotated parent context handle in DPE Handle Storage keyed by the target `fw_id`.
+- **Signing (`sign_with_exported_cdi()` and `MC_DPE_SIGNER_CONTEXT_SIGN`)**: `sign_with_exported_cdi(alloc, target_fw_id, input, signature)` signs ECC P-384 digests using the stored `exported_cdi` handle without re-deriving the context or rotating DPE handles. Exported-CDI ML-DSA signing remains unsupported on Caliptra 2.0; normal DPE ML-DSA attestation continues to use raw-message signing.
+- **Automatic and explicit revocation**:
+  - **Repeat derivation**: If `export_cdi_and_stash()` is called when an exported CDI handle is already stored for the target `fw_id`, the Measurement API automatically revokes the existing handle in Caliptra (`REVOKE_EXPORTED_CDI_HANDLE`) and clears its `DpeHandleStore` slot before deriving the new handle and certificate.
+  - **TCB lineage updates**: When `authorize_and_stash()` (`ComponentUpdate`) updates a SoC TCB component that lies on the `EXPORT_CDI_TARGET` lineage, the Measurement API automatically revokes and clears the active exported CDI handle so subsequent endorsements re-derive a certificate with updated TCB measurements. Updates to sibling TCB branches do not revoke the exported CDI.
+  - **Explicit revocation**: Callers may invoke `revoke_exported_cdi(alloc, target_fw_id)` at any time to revoke the cached handle in Caliptra and clear its slot in `DpeHandleStore`.
+
+```mermaid
+sequenceDiagram
+    participant Consumer as "Exported-CDI consumer<br/>(e.g., OCP LOCK)"
+    participant MApi as "Measurement API"
+    box rgb(239, 248, 255) Tock syscall capsules
+        participant Mailbox as "Mailbox<br/>to Caliptra Core/DPE"
+        participant DpeStore as "DPE Handle Storage"
+    end
+
+    Consumer->>MApi: export_cdi_and_stash(alloc, target_fw_id, profile, cert_out)
+    MApi->>DpeStore: READ_RECORD(export_cdi_target_fw_id)
+    DpeStore-->>MApi: target DPE record
+    MApi->>DpeStore: READ_EXPORTED_CDI(export_cdi_target_fw_id)
+    opt Existing exported CDI present
+        MApi->>Mailbox: REVOKE_EXPORTED_CDI_HANDLE(existing_cdi)
+        MApi->>DpeStore: CLEAR_EXPORTED_CDI(export_cdi_target_fw_id)
+    end
+    MApi->>Mailbox: DeriveContext(EXPORT_CDI | CREATE_CERTIFICATE | RETAIN_PARENT_CONTEXT)
+    Mailbox-->>MApi: exported_cdi, rotated_parent_handle, cert_out
+    MApi->>DpeStore: WRITE_EXPORTED_CDI(export_cdi_target_fw_id, exported_cdi)
+    MApi->>DpeStore: WRITE_RECORD(export_cdi_target_fw_id, rotated_parent_handle)
+    MApi-->>Consumer: cert_size (DER leaf certificate in cert_out)
+
+    loop Per endorsement / key-attestation signature
+        Consumer->>MApi: sign_with_exported_cdi(alloc, target_fw_id, input, signature)
+        MApi->>DpeStore: READ_EXPORTED_CDI(export_cdi_target_fw_id)
+        DpeStore-->>MApi: exported_cdi
+        MApi->>Mailbox: SIGN_WITH_EXPORTED_ECDSA(exported_cdi, digest)
+        Mailbox-->>MApi: signature
+        MApi-->>Consumer: signature_len
+    end
+```
 
 ## Initial image loading
 
@@ -142,7 +191,7 @@ sequenceDiagram
         Mailbox-->>MApi: Authorization result
 
         alt SoC TCB component
-            MApi->>DpeStore: READ_LEAF_RECORD
+            MApi->>DpeStore: READ_RECORD(branch_parent_fw_id)
             DpeStore-->>MApi: parent DPE record
             MApi->>Mailbox: DeriveContext(parent_handle, tci_type=fw_id, measurement, RETAIN_PARENT_CONTEXT)
             Mailbox-->>MApi: child_handle, rotated_parent_handle
@@ -160,7 +209,7 @@ sequenceDiagram
     end
 ```
 
-SoC TCB derivations use the active leaf as the parent, update the parent handle, append and tag the child record, and mark the attestation target when configured. SoC non-TCB components create a Software PCR record (failing if one already exists during initial load). PCR31 is extended after authorization and store updates succeed; any post-command persistence failure transitions the API to `Error`.
+SoC TCB derivations use the active leaf of the component's branch (Vendor+Owner or Owner) as the parent, update the parent handle, append and tag the child record, and mark the attestation target when configured. SoC non-TCB components create a Software PCR record (failing if one already exists during initial load). PCR31 is extended after authorization and store updates succeed; any post-command persistence failure transitions the API to `Error`.
 
 ## SoC component update
 
@@ -193,6 +242,10 @@ sequenceDiagram
         Mailbox-->>MApi: new_context_handle, new_parent_context_handle
         MApi->>DpeStore: WRITE_RECORD(parent_fw_id, new_parent_context_handle)
         MApi->>DpeStore: WRITE_RECORD(fw_id, new_context_handle)
+        opt Active exported CDI and fw_id in EXPORT_CDI_TARGET lineage
+            MApi->>Mailbox: REVOKE_EXPORTED_CDI_HANDLE(existing_cdi)
+            MApi->>DpeStore: CLEAR_EXPORTED_CDI(export_cdi_target_fw_id)
+        end
     else SoC non-TCB component
         MApi->>PcrStore: READ_MEASUREMENT(fw_id)
         MApi->>MApi: Compute current and extended journey values
