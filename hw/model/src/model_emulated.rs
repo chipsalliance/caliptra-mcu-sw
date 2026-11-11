@@ -22,6 +22,7 @@ use caliptra_emu_cpu::{Cpu, CpuArgs, CpuOrgArgs, InstrTracer, Pic};
 use caliptra_emu_periph::CaliptraRootBus as CaliptraMainRootBus;
 use caliptra_emu_periph::MailboxRequester;
 use caliptra_emu_periph::SocToCaliptraBus;
+use caliptra_emu_periph::TbServicesCb;
 use caliptra_emu_types::RvAddr;
 use caliptra_emu_types::RvData;
 use caliptra_emu_types::RvSize;
@@ -353,6 +354,15 @@ impl McuHwModel for ModelEmulated {
             std::env::set_var("CPTRA_EMULATOR_SS_MCI_OFFSET", "0x00000000a8000000");
         }
 
+        let caliptra_tb_services_cb = params.caliptra_uart_to_output.then(|| {
+            let output_sink = output.sink().clone();
+            let timer = clock.timer();
+            TbServicesCb::new(move |ch| {
+                output_sink.set_now(timer.now());
+                output_sink.push_uart_char(ch);
+            })
+        });
+
         let (mut caliptra_cpu, soc_to_caliptra, soc_to_caliptra_bus, ext_mci) =
             start_caliptra(StartCaliptraArgs {
                 rom: BytesOrPath::Bytes(params.caliptra_rom.to_vec()),
@@ -364,7 +374,7 @@ impl McuHwModel for ModelEmulated {
                 debug_intent: params.debug_intent,
                 prod_dbg_unlock_keypairs: params.prod_dbg_unlock_keypairs.clone(),
                 cptra_obf_key: params.cptra_obf_key,
-                tb_services_cb: None,
+                tb_services_cb: caliptra_tb_services_cb,
             })
             .expect("Failed to start Caliptra CPU");
         let soc_to_caliptra_bus = soc_to_caliptra_bus.unwrap();

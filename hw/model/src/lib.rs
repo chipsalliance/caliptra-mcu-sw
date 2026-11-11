@@ -227,6 +227,11 @@ pub struct InitParams<'a> {
     pub i3c_port: Option<u16>,
     /// Observe MCU emulator termination instead of exiting the test process.
     pub capture_mcu_exit: bool,
+    /// Send Caliptra's UART output to this model's `Output` (alongside the
+    /// MCU's) instead of printing it to stdout. Caliptra's test pass/fail
+    /// bytes then set the `Output` exit status rather than exiting the
+    /// process.
+    pub caliptra_uart_to_output: bool,
 
     /// Initial contents of DOT flash.
     pub dot_flash_initial_contents: Option<Vec<u8>>,
@@ -337,6 +342,7 @@ impl Default for InitParams<'_> {
             vendor_pqc_type: None,
             i3c_port: None,
             capture_mcu_exit: false,
+            caliptra_uart_to_output: false,
             dot_flash_initial_contents: None,
             primary_flash_initial_contents: None,
             check_booted_to_runtime: true,
