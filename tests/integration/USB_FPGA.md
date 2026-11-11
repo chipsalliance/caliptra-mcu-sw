@@ -18,6 +18,24 @@ not involved.
   includes this feature. Do not reuse Carl's older firmware bundle.
 - Exclusive use of the FPGA; no concurrent recovery tools or test processes.
 
+### Current development-branch compatibility
+
+This branch follows `caliptra-mcu-dev-2.2` with Core
+`1a5ed709808ab5bd77372dd9cee66f8833936901` and subsystem
+`743d5f7eaa9a946f405b9087c7ffd2fbb38e1543`. Core's upstream OTP tooling now
+accepts the selected map through `CALIPTRA_MCU_OTP_MMAP_HJSON`; no local Core
+OTP patch or alternate board-specific fuse map is required.
+
+The generated map allocates 56 bytes to the SVN partition, places vendor hash
+slot 0 at `0x430`, and places lifecycle at `0xE40`. MCU DAI access widths come
+from the linked partition metadata, keeping the preceding digest's 64-bit
+accesses separate from the public hash's 32-bit accesses.
+
+Use an Architecture B bitstream built with the same subsystem pin. Carl's
+older `a22b0001`/`a22b0005` images use `cadc77b6` and are not the matching
+baseline. Rebuild the firmware bundle and ARM archive before testing; do not
+reuse artifacts from the old pin.
+
 For example, build the bundle locally:
 
 ```bash
@@ -30,6 +48,8 @@ Cross-build the integration executable/archive on the workstation:
 
 ```bash
 CALIPTRA_HW_REV=latest \
+CALIPTRA_MCU_FUSES_HJSON="$PWD/hw/latest/fuses.hjson" \
+CALIPTRA_MCU_OTP_MMAP_HJSON="$PWD/hw/latest/caliptra-ss/src/fuse_ctrl/data/otp_ctrl_mmap.hjson" \
 CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc \
 cargo nextest archive \
   -p caliptra-mcu-tests-integration --lib --features fpga_realtime \

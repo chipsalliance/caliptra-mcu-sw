@@ -56,8 +56,14 @@ enabling `hw-2-1`. The normal FPGA runtime and ROM test lists are preserved,
 including the latest-only USB enumeration and recovery ROMs; this is not a
 USB-only build.
 
-Test archives are reused only when `test-hw-revision.txt` records `latest`.
-Older archives without this marker are rebuilt automatically. To force a
+Local builds explicitly select the MCU checkout's latest `fuses.hjson` and OTP
+memory map. The pinned Core generator honors that map and explicit partition
+sizes/padding; the lifecycle partition is at `0xE30`.
+
+Test archives are reused only when `test-hw-revision.txt` records both `latest`
+and the current Core commit. Older archives without this matching marker are
+rebuilt automatically, preventing reuse of binaries with old provisioning
+offsets after a Core update. To force a
 rebuild regardless of the marker:
 
 ```bash

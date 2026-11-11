@@ -335,12 +335,16 @@ impl Container {
         let revision =
             caliptra_mcu_hw_revision::HardwareRevision::from_env().map_err(anyhow::Error::msg)?;
         let fuses = revision.fuses_hjson(Path::new("/work-dir"));
+        let otp_mmap = revision.otp_mmap(Path::new("/work-dir"));
+        let caliptra_sw_rev = caliptra_mcu_builder::caliptra_source_revision()?;
 
         self.run()
             .rm()
             .env("TERM", "xterm-256color")
             .env("CALIPTRA_HW_REV", revision.as_str())
+            .env("CALIPTRA_SW_REVISION", &caliptra_sw_rev)
             .env("CALIPTRA_MCU_FUSES_HJSON", &fuses.to_string_lossy())
+            .env("CALIPTRA_MCU_OTP_MMAP_HJSON", &otp_mmap.to_string_lossy())
             .volume(&project_root.to_string(), "/work-dir")
             .workdir("/work-dir")
             .volume(&format!("{home}/.cargo/registry"), "/root/.cargo/registry")
@@ -369,7 +373,31 @@ pub fn build_base_container_command() -> Result<Container> {
 
 /// Run a nextest archive command locally (no container).
 pub fn run_local_nextest_archive(cmd: &str) -> Result<()> {
-    run_command(None, cmd)
+    let revision =
+        caliptra_mcu_hw_revision::HardwareRevision::from_env().map_err(anyhow::Error::msg)?;
+    println!("[HOST] Running command: {cmd}");
+    let status = Command::new("sh")
+        .current_dir(&*PROJECT_ROOT)
+        .args(["-c", cmd])
+        .env("CALIPTRA_HW_REV", revision.as_str())
+        .env(
+            "CALIPTRA_SW_REVISION",
+            caliptra_mcu_builder::caliptra_source_revision()?,
+        )
+        .env(
+            "CALIPTRA_MCU_FUSES_HJSON",
+            revision.fuses_hjson(&PROJECT_ROOT),
+        )
+        .env(
+            "CALIPTRA_MCU_OTP_MMAP_HJSON",
+            revision.otp_mmap(&PROJECT_ROOT),
+        )
+        .status()
+        .context("run local nextest archive with selected OTP inputs")?;
+    if !status.success() {
+        bail!("local nextest archive failed: {status}");
+    }
+    Ok(())
 }
 
 pub fn run_test_suite(
@@ -549,10 +577,30 @@ mod tests {
                 "CALIPTRA_MCU_FUSES_HJSON={}",
                 revision.fuses_hjson(Path::new("/work-dir")).display()
             ),
+            format!(
+                "CALIPTRA_MCU_OTP_MMAP_HJSON={}",
+                revision.otp_mmap(Path::new("/work-dir")).display()
+            ),
         ] {
             assert!(args.windows(2).any(|pair| {
                 pair[0] == std::ffi::OsStr::new("-e") && pair[1] == std::ffi::OsStr::new(&expected)
             }));
         }
+    }
+
+    #[test]
+    fn local_archive_receives_readable_selected_otp_inputs() {
+        run_local_nextest_archive(
+            r#"test -r "$CALIPTRA_MCU_FUSES_HJSON" &&
+               test -r "$CALIPTRA_MCU_OTP_MMAP_HJSON" &&
+               test "$CALIPTRA_MCU_FUSES_HJSON" = "$PWD/hw/$([ "$CALIPTRA_HW_REV" = latest ] && echo latest || echo rev-2_1)/fuses.hjson" &&
+               test -n "$CALIPTRA_SW_REVISION""#,
+        )
+        .unwrap();
+    }
+
+    #[test]
+    fn local_archive_propagates_command_failure() {
+        assert!(run_local_nextest_archive("exit 23").is_err());
     }
 }

@@ -38,6 +38,8 @@ CONFIGURATION="subsystem"
 WITH_BITSTREAM=false
 REBUILD_TEST=false
 export CALIPTRA_HW_REV=latest
+export CALIPTRA_MCU_FUSES_HJSON="${REPO_ROOT}/hw/latest/fuses.hjson"
+export CALIPTRA_MCU_OTP_MMAP_HJSON="${REPO_ROOT}/hw/latest/caliptra-ss/src/fuse_ctrl/data/otp_ctrl_mmap.hjson"
 
 # Remote paths on the FPGA board
 REMOTE_DIR="/tmp/caliptra-binaries"
@@ -200,8 +202,11 @@ build_firmware() {
 
 build_test_binaries() {
     local revision_file="${ARTIFACTS_DIR}/test-hw-revision.txt"
+    local core_revision build_revision
+    core_revision=$(git -C "${REPO_ROOT}/core/caliptra-sw" rev-parse HEAD)
+    build_revision="${CALIPTRA_HW_REV}:${core_revision}"
     if [[ -f "${ARTIFACTS_DIR}/caliptra-test-binaries.sqsh" &&
-          -f "$revision_file" && "$(< "$revision_file")" == "$CALIPTRA_HW_REV" ]] && ! $REBUILD_TEST; then
+          -f "$revision_file" && "$(< "$revision_file")" == "$build_revision" ]] && ! $REBUILD_TEST; then
         echo "[*] Test binaries squashfs already exists, skipping. Use --rebuild-test to force rebuild."
         return
     fi
@@ -231,7 +236,7 @@ build_test_binaries() {
 
     # Also keep the raw archive for direct extraction if preferred
     cp caliptra-test-binaries.tar.zst "${ARTIFACTS_DIR}/caliptra-test-binaries.tar.zst"
-    printf '%s\n' "$CALIPTRA_HW_REV" > "$revision_file"
+    printf '%s\n' "$build_revision" > "$revision_file"
 
     echo "[+] Test binaries built."
 }
