@@ -43,6 +43,8 @@ mod bus_logger;
 pub mod debug_unlock;
 #[cfg(feature = "fpga_realtime")]
 pub mod flash_ctrl;
+#[cfg(all(feature = "fpga_realtime", hw_rev = "latest"))]
+pub mod fpga_ulpi_usb;
 mod fpga_regs;
 #[cfg(feature = "fpga_realtime")]
 pub mod jtag;
