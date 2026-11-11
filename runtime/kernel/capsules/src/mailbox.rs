@@ -405,7 +405,9 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
                         if start < out_len {
                             let end = (start + 4).min(out_len);
                             if let Some(out) = output.get(start..end) {
-                                out.copy_from_slice(&word.to_le_bytes()[..end - start]);
+                                for (byte, value) in out.iter().zip(word.to_le_bytes()) {
+                                    byte.set(value);
+                                }
                             }
                         }
                     }

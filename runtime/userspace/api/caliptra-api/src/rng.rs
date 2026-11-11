@@ -56,6 +56,9 @@ pub async fn rng_generate<A: ScratchAlloc>(_alloc: &A, out: &mut [u8]) -> McuRes
     if n != out.len() || RSP_HEADER_SIZE + n > rsp_len {
         return Err(INVARIANT);
     }
-    out.copy_from_slice(&rsp[RSP_HEADER_SIZE..RSP_HEADER_SIZE + n]);
+    let data = rsp
+        .get(RSP_HEADER_SIZE..RSP_HEADER_SIZE + n)
+        .ok_or(INVARIANT)?;
+    out.copy_from_slice(data);
     Ok(())
 }
