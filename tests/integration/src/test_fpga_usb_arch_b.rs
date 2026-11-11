@@ -7,7 +7,7 @@ use anyhow::{ensure, Context, Result};
 use caliptra_image_types::FwVerificationPqcKeyType;
 use caliptra_mcu_builder::FirmwareBinaries;
 use caliptra_mcu_hw_model::fpga_ulpi_usb::FpgaUlpiUsbHost;
-use caliptra_mcu_hw_model::{new, DefaultHwModel, Fuses, InitParams, McuHwModel};
+use caliptra_mcu_hw_model::{new_unbooted, DefaultHwModel, Fuses, InitParams, McuHwModel};
 use caliptra_mcu_ocp::protocol::RecoveryCommand;
 use caliptra_mcu_romtime::McuBootMilestones;
 use caliptra_mcu_usb_recovery::{
@@ -16,6 +16,25 @@ use caliptra_mcu_usb_recovery::{
 };
 use std::sync::atomic::Ordering;
 use std::time::{Duration, Instant};
+use tock_registers::interfaces::Readable;
+
+fn log_host_otp_lc_snapshot(hw: &DefaultHwModel, phase: &str) -> Result<()> {
+    println!("[arch-b-recovery] Reading host OTP/LCC snapshot: {phase}");
+    let lc_ptr = hw.base.mmio.lc_mmio().context("LCC MMIO is disabled")?;
+    let otp_ptr = hw.base.mmio.otp_mmio().context("OTP MMIO is disabled")?;
+    // Both mappings are owned by the live model; only read-only CSRs are used.
+    let lc = unsafe { &*lc_ptr.cast::<caliptra_mcu_registers_generated::lc_ctrl::regs::LcCtrl>() };
+    let otp =
+        unsafe { &*otp_ptr.cast::<caliptra_mcu_registers_generated::otp_ctrl::regs::OtpCtrl>() };
+    let lc_status = lc.status.get();
+    let lc_state = lc.lc_state.get();
+    let lc_count = lc.lc_transition_cnt.get();
+    let otp_status = otp.otp_status.get();
+    println!(
+        "[arch-b-recovery] {phase}: LC_STATUS=0x{lc_status:08x} LC_STATE=0x{lc_state:08x} LC_TRANSITION_CNT=0x{lc_count:08x} OTP_STATUS=0x{otp_status:08x}"
+    );
+    Ok(())
+}
 
 struct FpgaUlpiRecoveryTransport<'a> {
     host: FpgaUlpiUsbHost,
@@ -37,10 +56,17 @@ impl<'a> FpgaUlpiRecoveryTransport<'a> {
         let mut transport = Self { host, hw };
         transport.host.soft_reset();
         let hw = &mut *transport.hw;
-        let device = transport
+        let enumeration = transport
             .host
             .wait_and_enumerate(7, || hw.step(), Duration::from_secs(30))
-            .context("enumerate Device 0 through the internal ULPI host")?;
+            .context("enumerate Device 0 through the internal ULPI host");
+        if let Err(error) = &enumeration {
+            log_host_otp_lc_snapshot(hw, "After enumeration failure, before teardown")
+                .with_context(|| {
+                    format!("host snapshot failed; enumeration also failed: {error:#}")
+                })?;
+        }
+        let device = enumeration?;
         println!(
             "[arch-b-recovery] Device address={} VID:PID={:04x}:{:04x} OCP interface={}",
             device.address, device.vendor_id, device.product_id, device.ocp_interface
@@ -134,7 +160,7 @@ fn test_fpga_usb_arch_b_ocp_recovery_boot() -> Result<()> {
 
     // Empty firmware slices suppress the model's automatic I3C recovery.
     // The feature ROM selects USB and supplies no software image provider.
-    let mut hw = new(InitParams {
+    let mut hw = new_unbooted(InitParams {
         fuses: Fuses {
             fuse_pqc_key_type: FwVerificationPqcKeyType::LMS as u32,
             vendor_pk_hash,
@@ -149,6 +175,8 @@ fn test_fpga_usb_arch_b_ocp_recovery_boot() -> Result<()> {
         check_booted_to_runtime: false,
         ..Default::default()
     })?;
+    log_host_otp_lc_snapshot(&hw, "After new_unbooted(), before boot()")?;
+    hw.boot()?;
     let transport = FpgaUlpiRecoveryTransport::enumerate(&mut hw)?;
     let mut agent = RecoveryAgent::new(
         transport,

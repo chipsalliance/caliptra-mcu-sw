@@ -102,12 +102,24 @@ impl Lifecycle {
 
     pub fn init(&self) -> McuResult<()> {
         crate::println!("[mcu-lcc] Initializing Lifecycle controller...");
+        crate::println!("[mcu-lcc] Before LC_STATUS read");
+        let status = self.registers.status.get();
+        crate::println!("[mcu-lcc] After LC_STATUS read: {}", HexWord(status));
+        crate::println!("[mcu-lcc] Before LC_STATE read");
+        let state = self.registers.lc_state.get();
+        crate::println!("[mcu-lcc] Raw LC_STATE: {}", HexWord(state));
+        crate::println!("[mcu-lcc] Before LC_TRANSITION_CNT read");
+        let count = self.registers.lc_transition_cnt.get();
+        crate::println!("[mcu-lcc] Raw LC_TRANSITION_CNT: {}", HexWord(count));
+        crate::println!("[mcu-lcc] Waiting for LC_STATUS.Ready");
         while !self.registers.status.is_set(lc_ctrl::bits::Status::Ready) {}
+        crate::println!("[mcu-lcc] LC_STATUS.Ready observed; waiting for Initialized");
         while !self
             .registers
             .status
             .is_set(lc_ctrl::bits::Status::Initialized)
         {}
+        crate::println!("[mcu-lcc] LC_STATUS.Initialized observed");
 
         crate::println!(
             "[mcu-lcc] Lifecycle state: {} (count {})",

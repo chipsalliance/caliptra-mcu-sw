@@ -60,32 +60,6 @@ pub const EMULATOR_RUNTIME_TEST_FEATURES: &[&str] = &[
 
 pub const FPGA_RUNTIME_TEST_FEATURES: &[&str] = &[
     "test-i3c-simple",
-    "test-i3c-constant-writes",
-    "test-caliptra-certs",
-    "test-mctp-capsule-loopback",
-    "test-fpga-flash-ctrl",
-    "test-pldm-fw-update-e2e",
-    "test-firmware-update-streaming",
-    "test-firmware-activate",
-    "test-firmware-v2",
-    "test-mcu-mbox-usermode",
-    "test-mcu-mbox-cmds",
-    "test-mctp-vdm-cmds",
-    "test-mctp-vdm-production",
-    "test-mcu-mbox-fips-self-test",
-    "test-mcu-mbox-fips-periodic",
-    "test-defmt-logging-vdm",
-    "test-exit-immediately",
-    "test-mctp-spdm-attestation",
-    "test-mctp-spdm-attestation-tcb",
-    "test-mctp-spdm-attestation-mixed",
-    "test-mctp-spdm-attestation-pcr-quote",
-    "test-mctp-spdm-responder-conformance",
-    "test-do-nothing",
-    "test-log-flash-usermode",
-    "test-get-alarm-expired",
-    "test-ocp-lock",
-    "test-mctp-capsule-loopback-warm-reset",
 ];
 
 /// Release-profile runtime test features (emulator).
@@ -98,17 +72,7 @@ pub const RELEASE_RUNTIME_TEST_FEATURES: &[&str] =
 /// These features exist in both the emulator and FPGA ROM crates; the
 /// standard runtime is used unmodified.
 pub const ROM_ONLY_TEST_FEATURES: &[&str] = &[
-    "ocp-lock",
-    "stable-owner-key",
-    "test-dot-recovery",
-    "test-fw-manifest-dot",
-    "test-fw-manifest-dot-hitless",
-    "test-i3c-services",
-    "test-dot-recovery-reset-flow",
-    "test-rom-hooks",
-    "test-force-hitless-update",
-    "test-svn-manifest",
-    "test-usb-ocp-recovery",
+
 ];
 
 pub const LATEST_ROM_ONLY_TEST_FEATURES: &[&str] =

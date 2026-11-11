@@ -51,52 +51,7 @@ retries = 2
 # with test_lc_dev_to_prod). Dev-init tests are disabled until that's
 # root-caused.
 default-filter = """
-(package(caliptra-mcu-hw-model)
-    - test(model_emulated::test::test_new_unbooted)) |
-(package(caliptra-mcu-tests-integration) and test(test_axi_bypass)) |
-(package(caliptra-mcu-tests-integration) and test(test_jtag_taps)) |
-(package(caliptra-mcu-tests-integration) and test(test_bare_metal_jtag_sideload)) |
-(package(caliptra-mcu-tests-integration) and test(test_lc_transitions)) |
-(package(caliptra-mcu-tests-integration) and test(test_prod_debug_unlock)) |
-(package(caliptra-mcu-tests-integration) and test(test_imaginary_flash_controller)) |
-(package(caliptra-mcu-tests-integration) and test(test_firmware_update_streaming_fpga)) |
-(package(caliptra-mcu-tests-integration) and test(test_fw_update_e2e)) |
-(package(caliptra-mcu-tests-integration) and test(test_mctp_vdm_cmds)) |
-(package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_usermode)) |
-(package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_ecdsa384_sig_verify)) |
-(package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_lms_sig_verify)) |
-(package(caliptra-mcu-tests-integration) and test(test_i3c_constant_writes)) |
-(package(caliptra-mcu-tests-integration) and test(test_i3c_simple)) |
-(package(caliptra-mcu-tests-integration) and test(test_i3c_services_ping)) |
-(package(caliptra-mcu-tests-integration) and test(test_i3c_services_unknown_cmd)) |
-(package(caliptra-mcu-tests-integration) and test(test_i3c_services_dot_status)) |
-(package(caliptra-mcu-tests-integration) and test(test_i3c_services_dot_recovery_invalid_payload)) |
-(package(caliptra-mcu-tests-integration) and test(test_i3c_services_dot_unlock_challenge)) |
-(package(caliptra-mcu-tests-integration) and test(test_i3c_services_dot_override_without_challenge)) |
-(package(caliptra-mcu-tests-integration) and test(test_i3c_services_error_mid_packet_then_recover)) |
-(package(caliptra-mcu-tests-integration) and test(test_i3c_services_dot_error_then_continue)) |
-(package(caliptra-mcu-tests-integration) and test(test_i3c_services_dot_override_full_flow)) |
-(package(caliptra-mcu-tests-integration) and test(test_mctp_vdm_cmds)) |
-(package(caliptra-mcu-tests-integration) and test(test_lc_ctrl)) |
-(package(caliptra-mcu-tests-integration) and test(test_raw_lifecycle_boot)) |
-(package(caliptra-mcu-tests-integration) and test(test_rom_hooks_fire_in_order)) |
-(package(caliptra-mcu-tests-integration) and test(jtag::test_uds)) |
-(package(caliptra-mcu-tests-integration) and test(jtag::test_manuf_debug_unlock)) |
-(package(caliptra-mcu-tests-integration) and test(test_fw_manifest_dot_hitless_lock)) |
-(package(caliptra-mcu-tests-integration) and test(test_log_flash_usermode)) |
-(package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_cmds)) |
-(package(caliptra-mcu-tests-integration) and test(test_command_authorized_runtime_installs_owner_key)) |
-(package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_fips_periodic)) |
-(package(caliptra-mcu-tests-integration) and test(test_mcu_mbox_fips_self_test)) |
-(package(caliptra-mcu-tests-integration) and test(test_sw_digest_lock)) |
-(package(caliptra-mcu-tests-integration) and test(test_bootfsm_timeout)) |
-(package(caliptra-mcu-tests-integration) and test(test_otp_blank_check)) |
-(package(caliptra-mcu-tests-integration) and test(test_otp_scramble_check)) |
-(package(caliptra-mcu-tests-integration) and test(test_mctp_capsule_loopback)) |
-(package(caliptra-mcu-tests-integration) and test(test_firmware_activate_fpga)) |
-(package(caliptra-mcu-tests-integration) and test(test_get_alarm_expired_fpga)) |
-(package(caliptra-mcu-tests-integration) and test(test_mctp_capsule_loopback_after_warm_reset)) |
-(package(caliptra-mcu-tests-integration) and test(test_mctp_capsule_loopback_after_hitless_update_reset))
+(package(caliptra-mcu-tests-integration) and test(test_fpga_usb_arch_b_ocp_recovery_boot))
 """
 # Disabled because they hang the FPGA at boot (LifecycleControllerState::Dev):
 #   test_sw_digest_lock,

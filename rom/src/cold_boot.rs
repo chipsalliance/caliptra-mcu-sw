@@ -1439,13 +1439,46 @@ impl BootFlow for ColdBoot {
         caliptra_mcu_romtime::println!("[mcu-rom] Setting Caliptra boot go");
 
         crate::call_hook(params.hooks, |h| h.pre_caliptra_boot());
+        #[cfg(all(hw_rev = "latest", feature = "usb-recovery"))]
+        let usb_status_before_boot_go = direct_usb.then(|| {
+            caliptra_mcu_romtime::println!("[mcu-rom] Capturing status around Caliptra boot go");
+            (otp.status(), lc.status())
+        });
         mci.caliptra_boot_go();
+        #[cfg(all(hw_rev = "latest", feature = "usb-recovery"))]
+        if let Some((otp_before, lc_before)) = usb_status_before_boot_go {
+            let otp_after = otp.status();
+            let lc_after = lc.status();
+            caliptra_mcu_romtime::println!(
+                "[mcu-rom] Before Caliptra boot go: OTP_STATUS={} LC_STATUS={}",
+                HexWord(otp_before),
+                HexWord(lc_before)
+            );
+            caliptra_mcu_romtime::println!(
+                "[mcu-rom] After Caliptra boot go: OTP_STATUS={} LC_STATUS={}",
+                HexWord(otp_after),
+                HexWord(lc_after)
+            );
+        }
         mci.set_flow_checkpoint(McuRomBootStatus::CaliptraBootGoAsserted.into());
         mci.set_flow_milestone(McuBootMilestones::CPTRA_BOOT_GO_ASSERTED.into());
 
         // If testing Caliptra Core, hang here until the test signals it to continue.
         if cfg!(feature = "core_test") {
             while mci.registers.mci_reg_generic_input_wires[1].get() & (1 << 30) == 0 {}
+        }
+
+        #[cfg(all(hw_rev = "latest", feature = "usb-recovery"))]
+        if direct_usb {
+            caliptra_mcu_romtime::println!("[mcu-rom] Before OTP status read");
+            let status = otp.status();
+            caliptra_mcu_romtime::println!(
+                "[mcu-rom] OTP status before lifecycle wait: {}",
+                HexWord(status)
+            );
+            caliptra_mcu_romtime::println!("[mcu-rom] Reading nonzero OTP error codes");
+            otp.print_errors();
+            caliptra_mcu_romtime::println!("[mcu-rom] OTP error-code snapshot complete");
         }
 
         lc.init().unwrap();

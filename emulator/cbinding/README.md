@@ -2,6 +2,9 @@
 
 This crate provides C bindings for the Caliptra MCU Emulator, allowing C applications to control the emulator with real-time UART streaming and console input support.
 
+The C API does not expose USB recovery or USB/IP listener configuration; both
+remain disabled when creating an emulator through these bindings.
+
 ## Overview
 
 The C bindings provide:

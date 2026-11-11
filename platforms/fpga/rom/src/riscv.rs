@@ -182,6 +182,31 @@ pub extern "C" fn rom_entry() -> ! {
         caliptra_mcu_romtime::set_exiter(&mut EXITER);
     }
 
+    #[cfg(all(hw_rev = "latest", feature = "test-lpcip-usb-ocp-recovery"))]
+    {
+        use caliptra_mcu_registers_generated::{lc_ctrl, otp_ctrl};
+        use caliptra_mcu_romtime::{HexWord, StaticRef};
+        use tock_registers::interfaces::Readable;
+
+        caliptra_mcu_romtime::println!("[mcu-rom] Before ROM-entry OTP/LCC snapshot");
+        // Use the FPGA MCU address map, not the ARM host's UIO mappings.
+        let otp: StaticRef<otp_ctrl::regs::OtpCtrl> =
+            unsafe { StaticRef::new(MCU_MEMORY_MAP.otp_offset as *const _) };
+        let lc: StaticRef<lc_ctrl::regs::LcCtrl> =
+            unsafe { StaticRef::new(MCU_MEMORY_MAP.lc_offset as *const _) };
+        let otp_status = otp.otp_status.get();
+        let lc_status = lc.status.get();
+        let lc_state = lc.lc_state.get();
+        let lc_count = lc.lc_transition_cnt.get();
+        caliptra_mcu_romtime::println!(
+            "[mcu-rom] ROM-entry snapshot: OTP_STATUS={} LC_STATUS={} LC_STATE={} LC_TRANSITION_CNT={}",
+            HexWord(otp_status),
+            HexWord(lc_status),
+            HexWord(lc_state),
+            HexWord(lc_count)
+        );
+    }
+
     caliptra_mcu_romtime::println!("[mcu-rom] Starting FPGA MCU ROM");
 
     #[cfg(all(hw_rev = "latest", feature = "test-lpcip-usb-enumeration"))]
