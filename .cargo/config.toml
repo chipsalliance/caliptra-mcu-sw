@@ -4,6 +4,12 @@
 xtask = "run --package caliptra-mcu-xtask --"
 xtask-fpga = "run --package caliptra-mcu-xtask --features=fpga_realtime --"
 
+# This branch targets Caliptra Core 2.1 hardware. caliptra-sw builds for the
+# `latest` RTL unless told otherwise, and `latest` is no longer the 2.1
+# register map.
+[env]
+CALIPTRA_HW_REV = "2.1"
+
 [target.riscv32imc-unknown-none-elf]
 rustflags = [
     "-C",
