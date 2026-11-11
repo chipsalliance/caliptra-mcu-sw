@@ -1355,10 +1355,7 @@ dependencies = [
  "caliptra-mcu-emulator-consts",
  "caliptra-registers",
  "clap 4.5.51",
- "ctrlc",
  "elf",
- "gdbstub",
- "gdbstub_arch",
  "hex",
  "tock-registers",
 ]
