@@ -232,6 +232,9 @@ pub struct InitParams<'a> {
     /// bytes then set the `Output` exit status rather than exiting the
     /// process.
     pub caliptra_uart_to_output: bool,
+    /// Log OTP DAI read / write / digest commands; drain the log with
+    /// `McuHwModel::take_otp_dai_log`.
+    pub log_otp_dai: bool,
 
     /// Initial contents of DOT flash.
     pub dot_flash_initial_contents: Option<Vec<u8>>,
@@ -343,6 +346,7 @@ impl Default for InitParams<'_> {
             i3c_port: None,
             capture_mcu_exit: false,
             caliptra_uart_to_output: false,
+            log_otp_dai: false,
             dot_flash_initial_contents: None,
             primary_flash_initial_contents: None,
             check_booted_to_runtime: true,
@@ -415,6 +419,12 @@ pub trait McuHwModel {
 
     fn save_otp_memory(&self, path: &Path) -> Result<()>;
     fn read_otp_memory(&self) -> Vec<u8>;
+
+    /// The OTP DAI commands logged since the last call, when
+    /// `InitParams::log_otp_dai` is set. Empty otherwise, and by default.
+    fn take_otp_dai_log(&mut self) -> Vec<String> {
+        Vec::new()
+    }
 
     fn read_dot_flash(&self) -> Vec<u8>;
     fn write_dot_flash(&mut self, data: &[u8]) -> Result<()>;
