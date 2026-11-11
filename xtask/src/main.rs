@@ -652,6 +652,9 @@ fn resolve_variants(
 }
 
 fn main() {
+    if std::env::var_os("CALIPTRA_HW_REV").is_none() {
+        std::env::set_var("CALIPTRA_HW_REV", "2.1");
+    }
     let cli = Xtask::parse();
     let result = match &cli.xtask {
         Commands::AllBuild {
