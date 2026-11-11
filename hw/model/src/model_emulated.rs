@@ -70,6 +70,7 @@ pub struct ModelEmulated {
     caliptra_trace_fn: Option<Box<InstrTracer<'static>>>,
     ready_for_fw: Rc<Cell<bool>>,
     cpu_enabled: Rc<Cell<bool>>,
+    mcu_exit_status: Rc<Cell<Option<i32>>>,
     trace_path: Option<PathBuf>,
     mcu_uart_output: Rc<RefCell<Vec<u8>>>,
 
@@ -154,7 +155,11 @@ impl McuHwModel for ModelEmulated {
             straps,
             ..Default::default()
         };
-        let mcu_root_bus = McuRootBus::new(bus_args).unwrap();
+        let mut mcu_root_bus = McuRootBus::new(bus_args).unwrap();
+        let mcu_exit_status = Rc::new(Cell::new(None));
+        if params.capture_mcu_exit {
+            mcu_root_bus.ctrl.capture_exit(mcu_exit_status.clone());
+        }
 
         let mut i3c_controller = if let Some(i3c_port) = params.i3c_port {
             let (rx, tx) = start_i3c_socket(i3c_port);
@@ -500,6 +505,7 @@ impl McuHwModel for ModelEmulated {
             caliptra_trace_fn: None,
             ready_for_fw,
             cpu_enabled,
+            mcu_exit_status,
             trace_path: trace_path_or_env(params.trace_path),
             mcu_uart_output,
             _rom_image_tag: image_tag,
@@ -565,6 +571,10 @@ impl McuHwModel for ModelEmulated {
         self.ready_for_fw.get()
     }
 
+    fn mcu_exit_status(&self) -> Option<i32> {
+        self.mcu_exit_status.get()
+    }
+
     fn step(&mut self) {
         if self.cpu_enabled.get() {
             {
@@ -572,7 +582,9 @@ impl McuHwModel for ModelEmulated {
                 // cross-thread callers (e.g. I3C PollScheduler::incoming)
                 // cannot observe a mid-step clock value.
                 let _guard = self.step_lock.lock().unwrap();
-                self.cpu.step(self.caliptra_trace_fn.as_deref_mut());
+                if self.mcu_exit_status.get().is_none() {
+                    self.cpu.step(self.caliptra_trace_fn.as_deref_mut());
+                }
                 self.caliptra_cpu
                     .step(self.caliptra_trace_fn.as_deref_mut());
             }
@@ -718,6 +730,7 @@ impl McuHwModel for ModelEmulated {
     }
 
     fn warm_reset(&mut self) {
+        self.mcu_exit_status.set(None);
         self.cpu.warm_reset();
         self.step();
     }

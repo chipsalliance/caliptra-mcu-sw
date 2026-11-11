@@ -211,6 +211,8 @@ pub struct InitParams<'a> {
     pub enable_mcu_uart_log: bool,
 
     pub i3c_port: Option<u16>,
+    /// Observe MCU emulator termination instead of exiting the test process.
+    pub capture_mcu_exit: bool,
     /// Send Caliptra's UART output to this model's `Output` (alongside the
     /// MCU's) instead of printing it to stdout. Caliptra's test pass/fail
     /// bytes then set the `Output` exit status rather than exiting the
@@ -312,6 +314,7 @@ impl Default for InitParams<'_> {
             vendor_pk_hash: None,
             vendor_pqc_type: None,
             i3c_port: None,
+            capture_mcu_exit: false,
             caliptra_uart_to_output: false,
             log_otp_dai: false,
             dot_flash_initial_contents: None,
@@ -525,6 +528,10 @@ pub trait McuHwModel {
     fn set_caliptra_boot_go(&mut self, _value: bool) {}
 
     fn events_from_caliptra(&mut self) -> Vec<Event>;
+
+    fn mcu_exit_status(&self) -> Option<i32> {
+        None
+    }
 
     fn events_to_caliptra(&mut self) -> mpsc::Sender<Event>;
 
