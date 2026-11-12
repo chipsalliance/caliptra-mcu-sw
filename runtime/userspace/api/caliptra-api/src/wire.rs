@@ -94,36 +94,32 @@ pub(crate) const CMD_SIGN_WITH_EXPORTED_MLDSA: u32 =
 pub(crate) const CMD_REVOKE_EXPORTED_CDI_HANDLE: u32 =
     caliptra_api::mailbox::CommandId::REVOKE_EXPORTED_CDI_HANDLE.0;
 
-/// DPE per-command-header magic (`CommandHdr::DPE_COMMAND_MAGIC`).
-pub(crate) const DPE_COMMAND_MAGIC: u32 = 0x4450_4543; // "DPEC"
-
-/// DPE per-response-header magic (`ResponseHdr::DPE_RESPONSE_MAGIC`).
-pub(crate) const DPE_RESPONSE_MAGIC: u32 = 0x4450_4552; // "DPER"
+/// DPE per-response-header magic.
+pub(crate) const DPE_RESPONSE_MAGIC: u32 = caliptra_dpe::response::ResponseHdr::DPE_RESPONSE_MAGIC;
 
 /// DPE profile used by Caliptra's runtime DPE — P-384 / SHA-384.
-/// Mirrored from `caliptra-api::DPE_PROFILE` (`DpeProfile::P384Sha384 = 4`).
-pub const DPE_PROFILE_P384_SHA384: u32 = 4;
+pub const DPE_PROFILE_P384_SHA384: u32 = caliptra_dpe::DpeProfile::P384Sha384 as u32;
 
 /// DPE profile used by Caliptra's runtime DPE — ML-DSA-87.
-/// Mirrored from `caliptra-api::DpeProfile::Mldsa87 = 5`.
-pub const DPE_PROFILE_MLDSA87: u32 = 5;
+pub const DPE_PROFILE_MLDSA87: u32 = caliptra_dpe::DpeProfile::Mldsa87 as u32;
 
-/// DPE `DeriveContext` command ID (`dpe::commands::Command::DERIVE_CONTEXT`).
-pub(crate) const DPE_CMD_DERIVE_CONTEXT: u32 = 0x08;
+/// DPE `DeriveContext` command ID.
+pub(crate) const DPE_CMD_DERIVE_CONTEXT: u32 = caliptra_dpe::commands::Command::DERIVE_CONTEXT;
 
 /// DPE vendor `UpdateContextMeasurement` command ID.
-pub(crate) const DPE_CMD_UPDATE_CONTEXT_MEASUREMENT: u32 = 0x8000_0000;
+pub(crate) const DPE_CMD_UPDATE_CONTEXT_MEASUREMENT: u32 =
+    caliptra_dpe::commands::Command::UPDATE_CONTEXT_MEASUREMENT;
 
-/// DPE `GetCertificateChain` command ID
-/// (`dpe::commands::Command::GET_CERTIFICATE_CHAIN`).
-pub(crate) const DPE_CMD_GET_CERTIFICATE_CHAIN: u32 = 0x10;
+/// DPE `GetCertificateChain` command ID.
+pub(crate) const DPE_CMD_GET_CERTIFICATE_CHAIN: u32 =
+    caliptra_dpe::commands::Command::GET_CERTIFICATE_CHAIN;
 
-/// DPE `Sign` command ID (`dpe::commands::Command::SIGN`).
-pub(crate) const DPE_CMD_SIGN: u32 = 0x0A;
+/// DPE `Sign` command ID.
+pub(crate) const DPE_CMD_SIGN: u32 = caliptra_dpe::commands::Command::SIGN;
 
-/// DPE `RotateContextHandle` command ID
-/// (`dpe::commands::Command::ROTATE_CONTEXT_HANDLE`).
-pub(crate) const DPE_CMD_ROTATE_CONTEXT_HANDLE: u32 = 0x0e;
+/// DPE `RotateContextHandle` command ID.
+pub(crate) const DPE_CMD_ROTATE_CONTEXT_HANDLE: u32 =
+    caliptra_dpe::commands::Command::ROTATE_CONTEXT_HANDLE;
 
 /// `QUOTE_PCRS_ECC384` command ID.
 pub(crate) const CMD_QUOTE_PCRS_ECC384: u32 = 0x5043_5251; // "PCRQ"
