@@ -1817,7 +1817,7 @@ impl Request for McuFeProgReq {
     type Resp = FuseWriteResp; // Reuse FuseWriteResp as it only contains header
 }
 
-/// MC_FE_STATUS request: Query whether all field entropy partitions are provisioned.
+/// MC_FE_STATUS request: Query field entropy partition status.
 #[repr(transparent)]
 #[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
 pub struct McuFeStatusReq(pub MailboxReqHeader);
@@ -1831,7 +1831,7 @@ impl Request for McuFeStatusReq {
 #[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
 pub struct McuFeStatusResp {
     pub hdr: MailboxRespHeader,
-    pub already_provisioned: u32,
+    pub fe_status: u32,
 }
 impl Response for McuFeStatusResp {}
 

@@ -123,8 +123,8 @@ pub struct FieldEntropyStatusRequest;
 pub struct FieldEntropyStatusResponse {
     /// Common response metadata, including FIPS status.
     pub common: CommonResponse,
-    /// One when every field-entropy partition is provisioned; otherwise zero.
-    pub already_provisioned: u32,
+    /// Packed `FW_INFO.fe_status` word; partition `i` (`0..3`) occupies bits `[2*i+1:2*i]`.
+    pub fe_status: u32,
 }
 
 impl CommandRequest for FieldEntropyStatusRequest {
