@@ -5,6 +5,13 @@ name: FPGA SPDM Tests
 on:
   pull_request:
   workflow_dispatch:
+  workflow_call:
+    inputs:
+      artifact-suffix:
+        description: Suffix to distinguish artifacts within a shared workflow run
+        required: false
+        type: string
+        default: ""
 
 env:
   # Pin the Caliptra core ROM to a release tag; image/update crates continue
@@ -12,7 +19,7 @@ env:
   CALIPTRA_ROM_REF: rom-2.1.2
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
+  group: ${{ github.workflow }}-fpga-spdm-${{ github.event_name == 'pull_request' && github.ref || github.run_id }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
