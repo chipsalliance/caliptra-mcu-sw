@@ -1190,7 +1190,7 @@ fn caliptra_passthrough_cmd(cmd: CommandId) -> Option<u32> {
 /// It is deliberately not a [`McuMailboxResp`] variant: that enum sizes *every*
 /// command's allocation by its largest variant, so folding attestation in would
 /// inflate all of them.
-/// The `InvokeDpeRespPrefix` (12 B) + `DeriveContextExportedCdiRespHdr` (80 B)
+/// The `InvokeDpeResp` framing (12 B) + `DeriveContextExportedCdiRespHdr` (80 B)
 /// staged ahead of the leaf certificate when `dpe_derive_context_exported_cdi`
 /// receives the response in-place in `resp_buf`.
 const DPE_EXPORTED_CDI_IN_PLACE_PREFIX_LEN: usize = 92;
