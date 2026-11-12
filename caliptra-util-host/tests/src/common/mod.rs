@@ -107,6 +107,18 @@ impl MockMailbox {
                 self.response_buffer[0..response_len].copy_from_slice(&response);
                 Ok(&self.response_buffer[0..response_len])
             }
+            0x4D43_4653 => {
+                let mut payload = Vec::new();
+                payload.extend_from_slice(&1u32.to_le_bytes());
+                payload.extend_from_slice(&1u32.to_le_bytes());
+                let chksum = calc_checksum(0, &payload);
+                let mut response = Vec::new();
+                response.extend_from_slice(&chksum.to_le_bytes());
+                response.extend_from_slice(&payload);
+                let response_len = response.len();
+                self.response_buffer[..response_len].copy_from_slice(&response);
+                Ok(&self.response_buffer[..response_len])
+            }
             0x4D56_5053 => {
                 let mut payload = Vec::new();
                 payload.extend_from_slice(&1u32.to_le_bytes());

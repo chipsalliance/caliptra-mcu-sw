@@ -17,6 +17,7 @@ const VENDOR_ECC384_PUB_KEY_INDEX_OFFSET: usize = 368;
 const VENDOR_PQC_PUB_KEY_INDEX_OFFSET: usize = 372;
 const OWNER_AUTH_MANIFEST_CURRENT_SVN_OFFSET: usize =
     offset_of!(FwInfoResp, owner_auth_manifest_current_svn);
+const FE_STATUS_OFFSET: usize = offset_of!(FwInfoResp, fe_status);
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct FwInfo {
@@ -25,6 +26,7 @@ pub struct FwInfo {
     pub vendor_ecc384_pub_key_index: u32,
     pub vendor_pqc_pub_key_index: u32,
     pub owner_auth_manifest_current_svn: u32,
+    pub fe_status: u32,
 }
 
 pub async fn fw_info<A: ScratchAlloc>(alloc: &A) -> McuResult<FwInfo> {
@@ -47,6 +49,7 @@ fn parse_fw_info(rsp: &[u8]) -> McuResult<FwInfo> {
         vendor_ecc384_pub_key_index: read_u32(rsp, VENDOR_ECC384_PUB_KEY_INDEX_OFFSET)?,
         vendor_pqc_pub_key_index: read_u32(rsp, VENDOR_PQC_PUB_KEY_INDEX_OFFSET)?,
         owner_auth_manifest_current_svn: read_u32(rsp, OWNER_AUTH_MANIFEST_CURRENT_SVN_OFFSET)?,
+        fe_status: read_u32(rsp, FE_STATUS_OFFSET)?,
     })
 }
 
@@ -64,7 +67,7 @@ mod tests {
     use zerocopy::{FromZeros, IntoBytes};
 
     #[test]
-    fn parses_owner_svn_from_the_complete_fw_info_response() {
+    fn parses_owner_svn_and_fe_status_from_the_complete_fw_info_response() {
         let response = FwInfoResp {
             fw_svn: 7,
             image_manifest_pqc_type: 2,
@@ -72,6 +75,7 @@ mod tests {
             vendor_pqc_pub_key_index: 4,
             owner_auth_manifest_current_svn: 64,
             owner_auth_manifest_min_svn: 12,
+            fe_status: 0x55,
             ..FwInfoResp::new_zeroed()
         };
         assert_eq!(
@@ -82,6 +86,7 @@ mod tests {
                 vendor_ecc384_pub_key_index: 3,
                 vendor_pqc_pub_key_index: 4,
                 owner_auth_manifest_current_svn: 64,
+                fe_status: 0x55,
             }
         );
     }

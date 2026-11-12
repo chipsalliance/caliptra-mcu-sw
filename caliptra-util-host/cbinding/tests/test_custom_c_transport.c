@@ -99,6 +99,11 @@ static const uint8_t MOCK_FIRMWARE_VERSION_RESPONSE[] = {
     0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00
 };
 
+static const uint8_t MOCK_FIELD_ENTROPY_STATUS_RESPONSE[] = {
+    0x01, 0x00, 0x00, 0x00,
+    0x01, 0x00, 0x00, 0x00
+};
+
 static const uint8_t MOCK_VENDOR_PK_HASH_STATUS_RESPONSE[] = {
     0x01, 0x00, 0x00, 0x00,
     0x05, 0x00, 0x00, 0x00,
@@ -141,6 +146,11 @@ static enum CaliptraError mock_send(void *ctx, uint32_t command_id, const uint8_
                    sizeof(MOCK_DEVICE_CAPABILITIES_RESPONSE));
             transport->response_len = sizeof(MOCK_DEVICE_CAPABILITIES_RESPONSE);
             printf("  Custom transport: Prepared device capabilities response\n");
+            break;
+        case 0x0003:
+            memcpy(transport->response_buffer, MOCK_FIELD_ENTROPY_STATUS_RESPONSE,
+                   sizeof(MOCK_FIELD_ENTROPY_STATUS_RESPONSE));
+            transport->response_len = sizeof(MOCK_FIELD_ENTROPY_STATUS_RESPONSE);
             break;
         case 0x0004:
             memcpy(transport->response_buffer, MOCK_VENDOR_PK_HASH_STATUS_RESPONSE,
@@ -271,6 +281,12 @@ int test_custom_c_transport_device_capabilities(void) {
         printf("✓ Successfully executed get_firmware_version through custom transport\n");
         printf("  Retrieved firmware version: %u.%u.%u\n",
             version_response.version[0], version_response.version[1], version_response.version[2]);
+
+    struct FieldEntropyStatusResponse field_entropy_status = {0};
+    result = caliptra_cmd_field_entropy_status_c_impl(session, &field_entropy_status);
+    TEST_ASSERT_EQ(result, Success, "Field entropy status command should succeed");
+    TEST_ASSERT_EQ(field_entropy_status.common.fips_status, 1, "Field entropy FIPS status should match");
+    TEST_ASSERT_EQ(field_entropy_status.already_provisioned, 1, "Field entropy should be provisioned");
 
     struct VendorPkHashStatusResponse vendor_status = {0};
     result = caliptra_cmd_vendor_pk_hash_status_c_impl(session, &vendor_status);

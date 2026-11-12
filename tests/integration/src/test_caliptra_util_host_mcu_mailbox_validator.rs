@@ -57,6 +57,7 @@ pub mod test {
         config.device_capabilities = None;
         config.firmware_version = None;
         config.fe_prog.enabled = fuse_suite.is_none() || fuse_suite == Some("fe-prog");
+        config.field_entropy_status.enabled = fuse_suite.is_none();
         config.vendor_pk_hash_status.enabled = fuse_suite.is_none();
 
         match fuse_suite {
@@ -302,9 +303,12 @@ pub mod test {
                             .iter()
                             .any(|result| result.test_name == *test_name && result.passed)
                     });
-                    let vendor_status_passed = fuse_only
-                        || results.iter().any(|result| {
-                            result.test_name == "VendorPkHashStatus" && result.passed
+                    let required_status_results = ["FieldEntropyStatus", "VendorPkHashStatus"];
+                    let all_status_results_passed = fuse_only
+                        || required_status_results.iter().all(|test_name| {
+                            results
+                                .iter()
+                                .any(|result| result.test_name == *test_name && result.passed)
                         });
                     let required_cert_results = [
                         "GetCertChainInfo(Vendor/ECC_P384)",
@@ -327,7 +331,7 @@ pub mod test {
                         });
                     if all_passed
                         && all_dot_results_passed
-                        && vendor_status_passed
+                        && all_status_results_passed
                         && all_cert_results_passed
                     {
                         println!("✓ Caliptra Mailbox validator PASSED");
@@ -346,8 +350,15 @@ pub mod test {
                                 println!("  FAIL: missing successful DOT result {test_name}");
                             }
                         }
-                        if !vendor_status_passed {
-                            println!("  FAIL: missing successful VendorPkHashStatus result");
+                        if !all_status_results_passed {
+                            for test_name in required_status_results {
+                                if !results
+                                    .iter()
+                                    .any(|result| result.test_name == test_name && result.passed)
+                                {
+                                    println!("  FAIL: missing successful {test_name} result");
+                                }
+                            }
                         }
                         validator_failed_clone.store(true, Ordering::Relaxed);
                     }

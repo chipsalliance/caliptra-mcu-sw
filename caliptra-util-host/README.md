@@ -15,6 +15,13 @@ The library is organized into several focused crates:
 - `apps/mailbox`: Mailbox client/server applications
 - `apps/spdm`: SPDM VDM client and requester library for Caliptra VDM over SPDM
 
+## Field Entropy Status
+
+The Rust and C APIs query field-entropy provisioning status over the mailbox
+transport using Core's live `FW_INFO` status. Enable `[field_entropy_status]` in
+the mailbox validator configuration to include this query; it is disabled by
+default.
+
 ## Vendor Key Status
 
 The Rust and C APIs support vendor-PK-hash slot occupancy and PQC key-type

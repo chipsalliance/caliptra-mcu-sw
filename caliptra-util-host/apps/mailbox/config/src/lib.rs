@@ -29,6 +29,8 @@ pub struct TestConfig {
     #[serde(default)]
     pub firmware_version: Option<FirmwareVersionConfig>,
     #[serde(default)]
+    pub field_entropy_status: StatusCommandConfig,
+    #[serde(default)]
     pub vendor_pk_hash_status: StatusCommandConfig,
     #[serde(default)]
     pub fe_prog: FeProgConfig,
@@ -292,6 +294,7 @@ impl Default for TestConfig {
                 rom_firmware_id: 0,
                 runtime_firmware_id: 1,
             }),
+            field_entropy_status: StatusCommandConfig::default(),
             vendor_pk_hash_status: StatusCommandConfig::default(),
             fe_prog: FeProgConfig::default(),
             provision_vendor_pk_hash: ProvisionVendorPkHashConfig::default(),

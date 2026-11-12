@@ -98,6 +98,7 @@ framing and is not changed by this Runtime ABI.
 | MC_PROVISION_VENDOR_PK_HASH   | 0x5056_504b ("PVPK") | Target ID under `MC_AUTHORIZED_COMMAND`; see [fuses spec](fuses.md).                    |
 | MC_PROVISION_OWNER_PK_HASH    | 0x504F_504B ("POPK") | Target ID under `MC_AUTHORIZED_COMMAND`; see [fuses spec](fuses.md).                    |
 | MC_FE_PROG                    | 0x4D43_4650 ("MCFP") | Target ID under `MC_AUTHORIZED_COMMAND`; see [fuses spec](fuses.md).                    |
+| MC_FE_STATUS                  | 0x4D43_4653 ("MCFS") | Reports whether all field entropy partitions are provisioned.                          |
 | MC_VENDOR_PK_HASH_STATUS      | 0x4D56_5053 ("MVPS") | Reports occupied vendor PK hash slots and their PQC key types.                         |
 | MC_FUSE_REVOKE_VENDOR_PUB_KEY | 0x4D52_564B ("MRVK") | Target ID under `MC_AUTHORIZED_COMMAND`; see [fuses spec](fuses.md).                    |
 | MC_FUSE_REVOKE_VENDOR_PK_HASH | 0x5256_4b48 ("RVKH") | Target ID under `MC_AUTHORIZED_COMMAND`; see [fuses spec](fuses.md).                    |
@@ -514,6 +515,21 @@ Programs field entropy for the selected fuse partition.
 Authorized target ID: `0x4D43_4650` ("MCFP")
 
 Payload semantics are defined by [Program Field Entropy](caliptra_common_commands.md#program-field-entropy).
+
+### MC_FE_STATUS
+
+Reports whether all four field entropy partitions are provisioned without
+requiring authorization. On Caliptra 2.0, status comes from Core's live
+`FW_INFO.fe_status`; the command fails if any partition status is unreadable.
+
+Command Code: `0x4D43_4653` ("MCFS")
+
+The request contains only the mailbox checksum header. The response contains
+the standard mailbox response header followed by:
+
+| Byte(s) | Name                | Type | Description |
+| ------- | ------------------- | ---- | ----------- |
+| 0:3     | already_provisioned | u32  | `1` when every FE partition is provisioned; otherwise `0`. |
 
 ### MC_VENDOR_PK_HASH_STATUS
 

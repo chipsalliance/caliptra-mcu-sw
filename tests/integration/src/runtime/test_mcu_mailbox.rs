@@ -19,14 +19,15 @@ use caliptra_mcu_mbox_common::messages::{
     MailboxReqHeader as McuMailboxReqHeader, MailboxRespHeader, MailboxRespHeaderVarSize,
     McuCmImportReq, McuEcdhFinishReq, McuEcdhFinishResp, McuEcdhGenerateReq, McuEcdhGenerateResp,
     McuEcdsa384SigVerifyReq, McuEcdsaCmkPublicKeyReq, McuEcdsaCmkPublicKeyResp, McuEcdsaCmkSignReq,
-    McuEcdsaCmkSignResp, McuEcdsaCmkVerifyReq, McuFeProgReq, McuFipsPeriodicEnableReq,
-    McuFipsPeriodicEnableResp, McuFipsPeriodicStatusResp, McuFipsSelfTestGetResultsResp,
-    McuFipsSelfTestStartResp, McuLmsSigVerifyReq, McuMailboxReq, McuMldsaCmkPublicKeyReq,
-    McuMldsaCmkPublicKeyResp, McuMldsaCmkSignReq, McuMldsaCmkSignResp, McuMldsaCmkVerifyReq,
-    McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp, McuProdDebugUnlockTokenReq,
-    ProductionAuthDebugUnlockReq, ProductionAuthDebugUnlockToken, ProvisionIdevCertReq,
-    ProvisionIdevCertResp, SetCertChainReq, SetCertChainResp, VendorPkHashStatusReq,
-    GET_ATTESTATION_RESP_PREFIX_LEN, MAX_RESP_DATA_SIZE, VENDOR_PQC_KEY_TYPE_LMS,
+    McuEcdsaCmkSignResp, McuEcdsaCmkVerifyReq, McuFeProgReq, McuFeStatusReq,
+    McuFipsPeriodicEnableReq, McuFipsPeriodicEnableResp, McuFipsPeriodicStatusResp,
+    McuFipsSelfTestGetResultsResp, McuFipsSelfTestStartResp, McuLmsSigVerifyReq, McuMailboxReq,
+    McuMldsaCmkPublicKeyReq, McuMldsaCmkPublicKeyResp, McuMldsaCmkSignReq, McuMldsaCmkSignResp,
+    McuMldsaCmkVerifyReq, McuProdDebugUnlockReqReq, McuProdDebugUnlockReqResp,
+    McuProdDebugUnlockTokenReq, ProductionAuthDebugUnlockReq, ProductionAuthDebugUnlockToken,
+    ProvisionIdevCertReq, ProvisionIdevCertResp, SetCertChainReq, SetCertChainResp,
+    VendorPkHashStatusReq, GET_ATTESTATION_RESP_PREFIX_LEN, MAX_RESP_DATA_SIZE,
+    VENDOR_PQC_KEY_TYPE_LMS,
 };
 use caliptra_mcu_romtime::McuBootMilestones;
 use minicbor::Decoder;
@@ -1422,6 +1423,32 @@ fn test_mcu_mbox_mldsa_cmk_commands() -> Result<()> {
             assert_mcu_req_fails(&mut hw, request);
         }
     }
+    Ok(())
+}
+
+#[test]
+fn test_fe_status_cmd_does_not_require_authorization() -> Result<()> {
+    let mut hw = start_runtime_hw_model(TestParams {
+        feature: Some("test-mcu-mbox-cmds"),
+        ..Default::default()
+    });
+    crate::test::run_imaginary_flash_controller_service(&mut hw);
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    let resp = hw.mailbox_execute_req(McuFeStatusReq::default())?;
+    assert!(matches!(resp.already_provisioned, 0 | 1));
+
+    let cmd = McuCommandId::MC_FE_STATUS.into();
+    assert!(hw.mailbox_execute(cmd, &[0u8; 3]).is_err());
+    let mut oversized = [0u8; 8];
+    oversized[4..].copy_from_slice(&0x1234_5678u32.to_le_bytes());
+    let checksum = calc_checksum(cmd, &oversized[4..]);
+    oversized[..4].copy_from_slice(&checksum.to_le_bytes());
+    assert!(hw.mailbox_execute(cmd, &oversized).is_err());
+    assert!(hw.mailbox_execute(cmd, &[0u8; 4]).is_err());
     Ok(())
 }
 

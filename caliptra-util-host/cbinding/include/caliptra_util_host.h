@@ -69,6 +69,17 @@ typedef struct GetFirmwareVersionResponse {
 } GetFirmwareVersionResponse;
 
 /**
+ * Field-entropy provisioning status returned by the MCU.
+ */
+typedef struct FieldEntropyStatusResponse {
+  struct CommonResponse common;
+  /**
+   * One when every field-entropy partition is provisioned; otherwise zero.
+   */
+  uint32_t already_provisioned;
+} FieldEntropyStatusResponse;
+
+/**
  * Vendor public-key hash slot occupancy and key types.
  */
 typedef struct VendorPkHashStatusResponse {
@@ -203,6 +214,12 @@ enum CaliptraError caliptra_cmd_get_device_capabilities_c_impl(struct CaliptraSe
 enum CaliptraError caliptra_cmd_get_firmware_version_c_impl(struct CaliptraSession *session_ptr,
                                                             uint32_t index,
                                                             struct GetFirmwareVersionResponse *firmware_version);
+
+/**
+ * Query whether every field-entropy partition is provisioned.
+ */
+enum CaliptraError caliptra_cmd_field_entropy_status_c_impl(struct CaliptraSession *session_ptr,
+                                                            struct FieldEntropyStatusResponse *status);
 
 /**
  * Query vendor public-key hash slot occupancy and key types.

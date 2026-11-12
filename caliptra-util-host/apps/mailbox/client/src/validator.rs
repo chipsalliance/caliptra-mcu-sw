@@ -175,6 +175,13 @@ impl Validator {
             if self
                 .config
                 .as_ref()
+                .is_some_and(|config| config.field_entropy_status.enabled)
+            {
+                results.push(self.validate_field_entropy_status(&mut client));
+            }
+            if self
+                .config
+                .as_ref()
                 .is_some_and(|config| config.vendor_pk_hash_status.enabled)
             {
                 results.push(self.validate_vendor_pk_hash_status(&mut client));
@@ -812,6 +819,38 @@ impl Validator {
                     error_message: Some(e.to_string()),
                 }
             }
+        }
+    }
+
+    fn validate_field_entropy_status(&self, client: &mut MailboxClient) -> ValidationResult {
+        let test_name = "FieldEntropyStatus".to_string();
+        let (passed, error_message) = match client.field_entropy_status() {
+            Ok(response) => {
+                let valid = response.already_provisioned <= 1;
+                (
+                    valid,
+                    (!valid).then(|| {
+                        format!(
+                            "invalid already_provisioned value {}",
+                            response.already_provisioned
+                        )
+                    }),
+                )
+            }
+            Err(error) => (false, Some(error.to_string())),
+        };
+        if passed {
+            println!("FieldEntropyStatus validation PASSED");
+        } else {
+            eprintln!(
+                "FieldEntropyStatus validation FAILED: {}",
+                error_message.as_deref().unwrap_or("invalid status")
+            );
+        }
+        ValidationResult {
+            test_name,
+            passed,
+            error_message,
         }
     }
 
