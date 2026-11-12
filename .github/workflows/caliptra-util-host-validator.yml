@@ -5,7 +5,19 @@ name: Caliptra Util Host Validator Tests
 on:
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
+    inputs:
+      run-validator-tests:
+        description: Run the Caliptra Util Host validator tests
+        required: false
+        type: boolean
+        default: true
   workflow_call:
+    inputs:
+      run-validator-tests:
+        description: Run the Caliptra Util Host validator tests
+        required: false
+        type: boolean
+        default: true
 
 env:
   # Pin the Caliptra core ROM to a release tag; image/update crates continue
@@ -78,6 +90,7 @@ jobs:
           popd
 
   caliptra_util_host_validator_tests:
+    if: inputs.run-validator-tests
     runs-on: ubuntu-24.04
 
     env:

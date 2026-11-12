@@ -48,6 +48,11 @@ jobs:
       - name: Run precheckin
         run: cargo xtask precheckin
 
+  caliptra-util-host-precheckin:
+    uses: ./.github/workflows/caliptra-util-host-validator.yml
+    with:
+      run-validator-tests: false
+
   build-firmware:
     runs-on: [e2-standard-16-big-disk]
     # Changes to shared userspace code invalidate every feature-specific runtime;
