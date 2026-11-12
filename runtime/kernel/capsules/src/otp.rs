@@ -23,10 +23,7 @@ use kernel::{ErrorCode, ProcessId};
 
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_romtime::ocp_lock::KernelConfig;
-use caliptra_mcu_romtime::{
-    fuse_lock_partition_dai, fuse_write_dai,
-    otp::{FieldEntropySlot, PqcKeyType},
-};
+use caliptra_mcu_romtime::{fuse_lock_partition_dai, fuse_write_dai, otp::PqcKeyType};
 
 #[cfg(feature = "ocp-lock")]
 mod ro_allow {
@@ -52,11 +49,10 @@ pub mod cmd {
     pub const OTP_ROTATE_HEK: u32 = 9;
     pub const OTP_PROGRAM_HEK: u32 = 10;
     pub const OTP_ZERO_HEK: u32 = 11;
-    pub const OTP_MARK_FIELD_ENTROPY_ZEROIZED: u32 = 12;
+    // 12 is reserved for retired field-entropy bookkeeping.
 }
 
 pub mod reg {
-    pub(super) use caliptra_mcu_registers_generated::fuses::FIELD_ENTROPY_STATE as OTP_FIELD_ENTROPY_STATE;
     use caliptra_mcu_registers_generated::fuses::{
         FuseEntryInfo, OTP_CPTRA_CORE_VENDOR_PK_HASH_0, OTP_CPTRA_CORE_VENDOR_PK_HASH_1,
         OTP_CPTRA_CORE_VENDOR_PK_HASH_10, OTP_CPTRA_CORE_VENDOR_PK_HASH_11,
@@ -135,7 +131,7 @@ pub mod reg {
     pub const VENDOR_LMS_REVOCATION: u32 = 28;
     pub const VENDOR_MLDSA_REVOCATION: u32 = 29;
     pub const PERMA_HEK_EN: u32 = 33;
-    pub const FIELD_ENTROPY_STATE: u32 = 34;
+    // 34 is reserved for retired field-entropy bookkeeping.
     pub const VENDOR_PQC_KEY_TYPE: u32 = 35;
     pub const SOC_MANIFEST_SVN: u32 = 36;
     pub const SOC_MANIFEST_MAX_SVN: u32 = 37;
@@ -373,12 +369,6 @@ impl Otp {
                 {
                     Ok(val) => CommandReturn::success_u32(val),
                     Err(_) => CommandReturn::failure(ErrorCode::INVAL),
-                }
-            }
-            reg::FIELD_ENTROPY_STATE => {
-                match self.driver.read_entry(reg::OTP_FIELD_ENTROPY_STATE) {
-                    Ok(value) => CommandReturn::success_u32(value),
-                    Err(_) => CommandReturn::failure(ErrorCode::FAIL),
                 }
             }
             reg::VENDOR_PQC_KEY_TYPE => {
@@ -693,29 +683,12 @@ impl SyscallDriver for Otp {
             cmd::OTP_PROGRAM_HEK => self.program_hek(arg1, processid),
             #[cfg(feature = "ocp-lock")]
             cmd::OTP_ZERO_HEK => self.zero_hek(arg1, processid),
-            cmd::OTP_MARK_FIELD_ENTROPY_ZEROIZED => self.mark_field_entropy_zeroized(),
             _ => CommandReturn::failure(ErrorCode::NOSUPPORT),
         }
     }
 
     fn allocate_grant(&self, processid: ProcessId) -> Result<(), kernel::process::Error> {
         self.apps.enter(processid, |_, _| {})
-    }
-}
-
-impl Otp {
-    fn mark_field_entropy_zeroized(&self) -> CommandReturn {
-        for slot in [
-            FieldEntropySlot::Slot0,
-            FieldEntropySlot::Slot1,
-            FieldEntropySlot::Slot2,
-            FieldEntropySlot::Slot3,
-        ] {
-            if self.driver.mark_field_entropy_zeroized(slot).is_err() {
-                return CommandReturn::failure(ErrorCode::FAIL);
-            }
-        }
-        CommandReturn::success()
     }
 }
 
