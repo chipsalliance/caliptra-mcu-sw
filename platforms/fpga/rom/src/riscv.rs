@@ -173,6 +173,10 @@ pub extern "C" fn rom_entry() -> ! {
         #[allow(static_mut_refs)]
         caliptra_mcu_romtime::set_printer(&mut FPGA_WRITER);
     }
+    caliptra_mcu_romtime::println!(
+        "[mcu-rom] FPGA version: 0x{}",
+        caliptra_mcu_romtime::HexWord(crate::io::fpga_version())
+    );
     unsafe {
         #[allow(static_mut_refs)]
         caliptra_mcu_rom_common::set_fatal_error_handler(&mut FATAL_ERROR_HANDLER);

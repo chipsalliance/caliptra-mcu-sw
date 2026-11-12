@@ -9,6 +9,12 @@ pub(crate) struct FpgaWriter {}
 pub(crate) static mut FPGA_WRITER: FpgaWriter = FpgaWriter {};
 
 const FPGA_UART_OUTPUT: *mut u32 = 0xa401_1014 as *mut u32;
+const FPGA_VERSION: *const u32 = 0xa401_0004 as *const u32;
+
+pub(crate) fn fpga_version() -> u32 {
+    // The FPGA wrapper is mapped into the MCU LSU AXI address space.
+    unsafe { core::ptr::read_volatile(FPGA_VERSION) }
+}
 
 impl Write for FpgaWriter {
     fn write_str(&mut self, s: &str) -> core::fmt::Result {

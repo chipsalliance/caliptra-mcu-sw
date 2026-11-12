@@ -1,5 +1,9 @@
 # VCK190 internal-ULPI recovery test
 
+FPGA MCU ROM prints the live wrapper `FPGA_VERSION` register (`0xA4010004`)
+at startup, for example `[mcu-rom] FPGA version: 0xA22B0005`. This identifies
+the loaded image's version tag, not its SHA-256 or the underlying base image.
+
 This test reuses `RecoveryAgent` from `caliptra-mcu-usb-recovery`. Its transport
 uses Carl's `caliptra_fpga_ulpi_host` MMIO engine at wrapper offset `0x4000`
 (physical address `0xA4014000`), rather than libusb. The ARM PS drives USB
