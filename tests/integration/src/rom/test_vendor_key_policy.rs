@@ -84,10 +84,19 @@ mod test {
     }
 
     fn setup_hw_model(valid_mask: u16, slot_configs: &[(usize, SlotConfig)]) -> DefaultHwModel {
+        setup_hw_model_with_straps(valid_mask, slot_configs, [0; 2])
+    }
+
+    fn setup_hw_model_with_straps(
+        valid_mask: u16,
+        slot_configs: &[(usize, SlotConfig)],
+        mcu_generic_input_wires: [u32; 2],
+    ) -> DefaultHwModel {
         let otp_memory = build_otp_memory(valid_mask, slot_configs);
 
         start_runtime_hw_model(TestParams {
             otp_memory: Some(otp_memory),
+            mcu_generic_input_wires,
             rom_only: true,
             vendor_pqc_type: None,
             ..Default::default()
@@ -248,10 +257,8 @@ mod test {
 
     #[test]
     fn test_vendor_pk_lock_not_applied() -> Result<()> {
-        let mut hw = setup_hw_model(0x0000, &[(0, SlotConfig::default())]);
-
-        // Set input wire bit to not lock the pk hashes
-        hw.set_mcu_generic_input_wires(&[0, 0x1]);
+        // Drive the skip-lock strap before boot, not after the ROM has read it.
+        let mut hw = setup_hw_model_with_straps(0x0000, &[(0, SlotConfig::default())], [0, 0x1]);
 
         hw.step_until_output_contains("[mcu-fuse-write] Selected vendor PK slot 0")?;
 
@@ -269,12 +276,12 @@ mod test {
 
     #[test]
     fn test_key_rotation_strap() -> Result<()> {
-        let mut hw = setup_hw_model(
+        // Drive rotation before boot; preserve the model's fuse/runtime go bits.
+        let mut hw = setup_hw_model_with_straps(
             0x0002,
             &[(0, SlotConfig::default()), (2, SlotConfig::default())],
+            [0, 0x2],
         );
-        // Set input wire bit to jump 1 PK hash slot
-        hw.set_mcu_generic_input_wires(&[0, 0x2]);
 
         // Slot 0 is the first functional slot which we skip
         // Slot 1 is marked invalid
