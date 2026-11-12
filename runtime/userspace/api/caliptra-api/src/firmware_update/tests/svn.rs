@@ -311,6 +311,13 @@ impl DMAMapping for TestDmaMapping {
     fn cptra_axi_to_mcu_axi(&self, _addr: AXIAddr) -> Result<AXIAddr, ErrorCode> {
         panic!("SVN verification must not perform DMA");
     }
+
+    fn validate_image_load_range(
+        &self,
+        _range: core::ops::Range<AXIAddr>,
+    ) -> Result<(), ErrorCode> {
+        panic!("SVN verification must not perform DMA");
+    }
 }
 
 fn run_with_upcalls<T>(future: impl Future<Output = T>) -> T {
