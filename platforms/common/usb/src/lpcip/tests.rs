@@ -21,6 +21,7 @@ fn params() -> UsbParams {
         remote_wakeup: false,
         force_full_speed: false,
         enable_hub: false,
+        enable_logs: false,
         poll_limit: 100,
     }
 }
@@ -67,6 +68,40 @@ fn direct_device_initialization_does_not_change_hub_policy() {
 fn bytes(params: &UsbParams, raw: [u8; 8]) -> ([u8; 64], usize) {
     let response = request(params, &setup(raw), 7, 1).unwrap();
     (response.data, response.length)
+}
+
+#[test]
+fn verbose_logs_are_opt_in_and_do_not_change_initialization_errors() {
+    use std::string::String;
+    use std::sync::{Arc, Mutex};
+
+    struct Capture(Arc<Mutex<String>>);
+    impl core::fmt::Write for Capture {
+        fn write_str(&mut self, text: &str) -> core::fmt::Result {
+            self.0.lock().unwrap().push_str(text);
+            Ok(())
+        }
+    }
+
+    // Other driver tests leave enable_logs false, so only this test uses
+    // romtime's global writer.
+    let output = Arc::new(Mutex::new(String::new()));
+    caliptra_mcu_romtime::set_printer(Box::leak(Box::new(Capture(output.clone()))));
+    for enabled in [false, true] {
+        output.lock().unwrap().clear();
+        let mut params = params();
+        params.enable_hub = true;
+        params.enable_logs = enabled;
+        let mut driver = LpcipUsbDriver::new(params);
+        assert_eq!(driver.initialize(), Err(UsbError::UnsupportedPhyInterface));
+        let output = output.lock().unwrap();
+        if enabled {
+            assert!(output.contains("[usb] Initializing Device 0: hub=true"));
+            assert!(output.contains("[usb] Hub enabled, connected=false, HUB_CONTROL="));
+        } else {
+            assert!(output.is_empty(), "{output}");
+        }
+    }
 }
 
 #[test]

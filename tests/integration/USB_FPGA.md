@@ -19,6 +19,12 @@ power fields updated to the platform's `UsbParams` policy; these are bring-up
 identities, not production USB identities. Hub connection requires real
 VBUS, and LPM remains disabled.
 
+`UsbParams::enable_logs` controls verbose USB initialization and state-change
+diagnostics. FPGA ROM sets it to `true`; set it to `false` in the platform's
+USB parameters for quiet operation. Emulator fixtures default to `false`.
+PHY identity, hub connection, VBUS, reset, address and configuration are logged;
+firmware payloads and idle polls are not. Error diagnostics remain enabled.
+
 The FPGA ROM uses VCK190 AXI addresses `0xA4200000` for USB registers and
 `0xA4300000` for Device 0 packet SRAM. The generated subsystem-local bases
 (`0x20000000` and `0x30000000`) must not be used by this FPGA ROM.

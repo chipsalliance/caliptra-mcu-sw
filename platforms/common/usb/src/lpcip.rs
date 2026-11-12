@@ -3,7 +3,7 @@
 use caliptra_mcu_ocp::usb::descriptors::*;
 use caliptra_mcu_ocp::usb::setup::SetupPacket;
 use caliptra_mcu_registers_generated::{usb_combo, usb_dev0_mem};
-use caliptra_mcu_romtime::StaticRef;
+use caliptra_mcu_romtime::{HexWord, StaticRef};
 use tock_registers::interfaces::{Readable, Writeable};
 use usb_combo::bits::{ConfigT, Control, DevcmdstatT, UlpidebugT};
 use zerocopy::IntoBytes;
@@ -34,6 +34,9 @@ pub struct UsbParams {
     pub force_full_speed: bool,
     /// Select the hardware hub upstream, with Device 0 on downstream port 1.
     pub enable_hub: bool,
+    /// Emit bring-up and link-state diagnostics. Caller-reported errors remain
+    /// visible independently of this verbose logging setting.
+    pub enable_logs: bool,
     /// Maximum MMIO polls per PHY access, VBUS wait or endpoint cancellation.
     pub poll_limit: u32,
 }
@@ -143,6 +146,13 @@ impl LpcipUsbDriver {
     /// Disconnect, initialize SRAM/ULPI, validate USB3320 and wait for real VBUS
     /// before asserting DCON. Errors leave Device 0 disconnected with its clock on.
     pub fn initialize(&mut self) -> Result<(), UsbError> {
+        if self.params.enable_logs {
+            caliptra_mcu_romtime::println!(
+                "[usb] Initializing Device 0: hub={} force_full_speed={}",
+                self.params.enable_hub,
+                self.params.force_full_speed
+            );
+        }
         self.initialized = false;
         self.address = 0;
         self.configuration = 0;
@@ -154,6 +164,13 @@ impl LpcipUsbDriver {
         }
         if !self.params.registers.dev0_csr_config.is_set(ConfigT::Ulpi) {
             return Err(UsbError::UnsupportedPhyInterface);
+        }
+        if self.params.enable_logs {
+            caliptra_mcu_romtime::println!(
+                "[usb] CONFIG={} ULPIDEBUG={}",
+                HexWord(self.params.registers.dev0_csr_config.get()),
+                HexWord(self.params.registers.hub_ulpidebug.get())
+            );
         }
         let memory = (&*self.params.packet_memory as *const _ as usize)
             .try_into()
@@ -174,9 +191,22 @@ impl LpcipUsbDriver {
             self.write_word(index, if index >= 4 { DISABLED } else { 0 })?;
         }
         self.write_word(1, self.descriptor(SETUP_OFFSET, 0)?)?;
+        if self.params.enable_logs {
+            caliptra_mcu_romtime::println!(
+                "[usb] Endpoint SRAM initialized at {}; reading USB3320 identity",
+                HexWord(memory)
+            );
+        }
         let mut identity = [0; 4];
         for (address, value) in identity.iter_mut().enumerate() {
             *value = self.ulpi(address as u8, None)?;
+        }
+        if self.params.enable_logs {
+            caliptra_mcu_romtime::println!(
+                "[usb] PHY VID={} PID={}",
+                HexWord(u32::from(u16::from_le_bytes([identity[0], identity[1]]))),
+                HexWord(u32::from(u16::from_le_bytes([identity[2], identity[3]])))
+            );
         }
         if identity != [0x24, 0x04, 0x07, 0] {
             return Err(UsbError::PhyIdentityMismatch);
@@ -185,6 +215,9 @@ impl LpcipUsbDriver {
         self.ulpi(0x0a, Some(0))?; // No pull-downs, VBUS drive or discharge.
         if self.ulpi(4, None)? != 0x40 || self.ulpi(0x0a, None)? != 0 {
             return Err(UsbError::PhyConfigurationMismatch);
+        }
+        if self.params.enable_logs {
+            caliptra_mcu_romtime::println!("[usb] PHY configured; waiting for VBUS");
         }
         self.wait(
             || {
@@ -200,6 +233,12 @@ impl LpcipUsbDriver {
             self.configure_hub(true)?;
         }
         self.initialized = true;
+        if self.params.enable_logs {
+            caliptra_mcu_romtime::println!(
+                "[usb] VBUS detected; Device 0 connected, DEVCMDSTAT={}",
+                HexWord(self.params.registers.dev0_csr_devcmdstat.get())
+            );
+        }
         Ok(())
     }
 
@@ -246,6 +285,13 @@ impl LpcipUsbDriver {
         let mask = Control::Enable::SET.value | Control::Dcon::SET.value;
         if registers.hub_control.get() & mask != control & mask {
             return Err(UsbError::HubConfigurationMismatch);
+        }
+        if self.params.enable_logs {
+            caliptra_mcu_romtime::println!(
+                "[usb] Hub enabled, connected={}, HUB_CONTROL={}",
+                connected,
+                HexWord(registers.hub_control.get())
+            );
         }
         Ok(())
     }
@@ -412,6 +458,9 @@ impl LpcipUsbDriver {
             self.initialized = false;
             self.configuration = 0;
             self.stage = Stage::Idle;
+            if self.params.enable_logs {
+                caliptra_mcu_romtime::println!("[usb] VBUS lost; Device 0 disconnected");
+            }
             return Ok(UsbPoll::Disconnected);
         }
         if command & DevcmdstatT::DresC::SET.value != 0 {
@@ -420,6 +469,11 @@ impl LpcipUsbDriver {
             self.configuration = 0;
             self.stage = Stage::Idle;
             self.command(true, DevcmdstatT::DresC::SET.value);
+            if self.params.enable_logs {
+                caliptra_mcu_romtime::println!(
+                    "[usb] Bus reset; address and configuration cleared"
+                );
+            }
             return Ok(UsbPoll::BusReset);
         }
         if command & DevcmdstatT::Setup::SET.value != 0 {
@@ -454,10 +508,19 @@ impl LpcipUsbDriver {
                         // Selected RTL latches the next SETUP token's address.
                         self.address = address;
                         self.command(true, 0);
+                        if self.params.enable_logs {
+                            caliptra_mcu_romtime::println!("[usb] Address set to {}", address);
+                        }
                         Ok(UsbPoll::Progress)
                     }
                     Action::Configuration(configuration) => {
                         self.configuration = configuration;
+                        if self.params.enable_logs {
+                            caliptra_mcu_romtime::println!(
+                                "[usb] Configuration set to {}",
+                                configuration
+                            );
+                        }
                         Ok(UsbPoll::ConfigurationChanged(configuration))
                     }
                     Action::None => Ok(UsbPoll::Progress),

@@ -21,6 +21,8 @@
 //! `UsbParams::enable_hub` selects the hardware-serviced hub upstream, using
 //! its reset descriptor/request tables and the caller's power policy. FPGA
 //! ROM enables this by default; emulator fixtures retain direct Device 0.
+//! `UsbParams::enable_logs` enables verbose initialization and link-state logs
+//! without logging payloads or every poll. Error reporting remains caller-owned.
 //! The driver does not configure Device 1, recovery images or boot policy.
 //! `LpcipUsbDriver::poll` is nonblocking between host transactions;
 //! ROM and runtime can schedule it without a persistent compliance-mode loop.

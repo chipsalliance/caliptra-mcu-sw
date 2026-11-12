@@ -39,11 +39,13 @@ pub(crate) fn validate(params: &RomParameters, mci: &Mci) -> McuResult<()> {
 pub(crate) struct UsbRecovery {
     driver: LpcipUsbDriver,
     registers: StaticRef<UsbCombo>,
+    enable_logs: bool,
 }
 
 impl UsbRecovery {
     pub(crate) fn initialize(params: UsbParams) -> McuResult<Self> {
         let enable_hub = params.enable_hub;
+        let enable_logs = params.enable_logs;
         let registers = params.registers;
         registers
             .recovery_caliptra_ctrl
@@ -60,11 +62,17 @@ impl UsbRecovery {
             caliptra_mcu_romtime::println!("[mcu-rom-usb] initialization failed: {:?}", error);
             return Err(McuError::ROM_USB_RECOVERY_ERROR);
         }
-        caliptra_mcu_romtime::println!("[mcu-rom-usb] Device 0 ready for hardware recovery");
-        if enable_hub {
+        if enable_logs {
+            caliptra_mcu_romtime::println!("[mcu-rom-usb] Device 0 ready for hardware recovery");
+        }
+        if enable_hub && enable_logs {
             caliptra_mcu_romtime::println!("[mcu-rom-usb] Hub connected; Device 0 on port 1");
         }
-        Ok(Self { driver, registers })
+        Ok(Self {
+            driver,
+            registers,
+            enable_logs,
+        })
     }
 
     pub(crate) fn poll(&mut self) {
@@ -79,7 +87,9 @@ impl UsbRecovery {
         }
         match self.driver.poll() {
             Ok(UsbPoll::ConfigurationChanged(configuration)) => {
-                caliptra_mcu_romtime::println!("[mcu-rom-usb] configuration {}", configuration);
+                if self.enable_logs {
+                    caliptra_mcu_romtime::println!("[mcu-rom-usb] configuration {}", configuration);
+                }
             }
             Ok(UsbPoll::Disconnected) => {
                 caliptra_mcu_romtime::println!("[mcu-rom-usb] disconnected during recovery");
@@ -166,6 +176,7 @@ mod tests {
                 remote_wakeup: false,
                 force_full_speed: false,
                 enable_hub: false,
+                enable_logs: false,
                 poll_limit: 10,
             }),
             ..Default::default()
