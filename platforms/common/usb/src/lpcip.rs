@@ -5,7 +5,7 @@ use caliptra_mcu_ocp::usb::setup::SetupPacket;
 use caliptra_mcu_registers_generated::{usb_combo, usb_dev0_mem};
 use caliptra_mcu_romtime::StaticRef;
 use tock_registers::interfaces::{Readable, Writeable};
-use usb_combo::bits::{ConfigT, DevcmdstatT, UlpidebugT};
+use usb_combo::bits::{ConfigT, Control, DevcmdstatT, UlpidebugT};
 use zerocopy::IntoBytes;
 
 const PACKET_SIZE: usize = 64;
@@ -32,6 +32,8 @@ pub struct UsbParams {
     /// Currently unsupported: initialization rejects `true`.
     pub remote_wakeup: bool,
     pub force_full_speed: bool,
+    /// Select the hardware hub upstream, with Device 0 on downstream port 1.
+    pub enable_hub: bool,
     /// Maximum MMIO polls per PHY access, VBUS wait or endpoint cancellation.
     pub poll_limit: u32,
 }
@@ -46,6 +48,7 @@ pub enum UsbError {
     PhyAccessTimeout,
     PhyIdentityMismatch,
     PhyConfigurationMismatch,
+    HubConfigurationMismatch,
     VbusTimeout,
     CancellationTimeout,
     NotInitialized,
@@ -146,6 +149,9 @@ impl LpcipUsbDriver {
         self.stage = Stage::Idle;
         self.command(false, 0);
         self.validate()?;
+        if self.params.enable_hub {
+            self.configure_hub(false)?;
+        }
         if !self.params.registers.dev0_csr_config.is_set(ConfigT::Ulpi) {
             return Err(UsbError::UnsupportedPhyInterface);
         }
@@ -190,7 +196,57 @@ impl LpcipUsbDriver {
             UsbError::VbusTimeout,
         )?;
         self.command(true, 0);
+        if self.params.enable_hub {
+            self.configure_hub(true)?;
+        }
         self.initialized = true;
+        Ok(())
+    }
+
+    fn configure_hub(&self, connected: bool) -> Result<(), UsbError> {
+        let control = Control::Enable::SET.value
+            | Control::ForceNeedclk::SET.value
+            | if self.params.self_powered {
+                Control::SelfPowered::SET.value
+            } else {
+                0
+            }
+            | if self.params.force_full_speed {
+                Control::ForceFullspeed::SET.value
+            } else {
+                0
+            }
+            | if connected {
+                Control::Dcon::SET.value
+            } else {
+                0
+            };
+        let registers = self.params.registers;
+        if !connected {
+            registers.hub_control.set(control);
+            // Hardware reset descriptors/request tables implement the hub.
+            // Match the caller's power budget in both speed configurations.
+            for index in [1, 49] {
+                let word = registers.hub_descriptor_high[index].get();
+                registers.hub_descriptor_high[index].set(
+                    (word & 0x00ff_ffff)
+                        | (u32::from(if self.params.self_powered {
+                            0xc0u8
+                        } else {
+                            0x80
+                        }) << 24),
+                );
+                let word = registers.hub_descriptor_high[index + 1].get();
+                registers.hub_descriptor_high[index + 1]
+                    .set((word & !0xff) | u32::from(self.params.max_power_2ma));
+            }
+        } else {
+            registers.hub_control.set(control);
+        }
+        let mask = Control::Enable::SET.value | Control::Dcon::SET.value;
+        if registers.hub_control.get() & mask != control & mask {
+            return Err(UsbError::HubConfigurationMismatch);
+        }
         Ok(())
     }
 

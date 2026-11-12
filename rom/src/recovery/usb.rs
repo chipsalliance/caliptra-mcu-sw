@@ -43,6 +43,7 @@ pub(crate) struct UsbRecovery {
 
 impl UsbRecovery {
     pub(crate) fn initialize(params: UsbParams) -> McuResult<Self> {
+        let enable_hub = params.enable_hub;
         let registers = params.registers;
         registers
             .recovery_caliptra_ctrl
@@ -60,6 +61,9 @@ impl UsbRecovery {
             return Err(McuError::ROM_USB_RECOVERY_ERROR);
         }
         caliptra_mcu_romtime::println!("[mcu-rom-usb] Device 0 ready for hardware recovery");
+        if enable_hub {
+            caliptra_mcu_romtime::println!("[mcu-rom-usb] Hub connected; Device 0 on port 1");
+        }
         Ok(Self { driver, registers })
     }
 
@@ -161,6 +165,7 @@ mod tests {
                 max_power_2ma: 0,
                 remote_wakeup: false,
                 force_full_speed: false,
+                enable_hub: false,
                 poll_limit: 10,
             }),
             ..Default::default()

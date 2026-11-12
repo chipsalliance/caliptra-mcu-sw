@@ -20,12 +20,48 @@ fn params() -> UsbParams {
         max_power_2ma: 5,
         remote_wakeup: false,
         force_full_speed: false,
+        enable_hub: false,
         poll_limit: 100,
     }
 }
 
 fn setup(raw: [u8; 8]) -> SetupPacket {
     zerocopy::transmute!(raw)
+}
+
+#[test]
+fn hub_is_selected_disconnected_then_connected_without_forcing_vbus_or_lpm() {
+    let mut params = params();
+    params.enable_hub = true;
+    let registers = params.registers;
+    let driver = LpcipUsbDriver::new(params);
+    registers.hub_descriptor_high[1].set(0x8000_0000);
+    registers.hub_descriptor_high[2].set(250);
+    registers.hub_descriptor_high[49].set(0x8000_0000);
+    registers.hub_descriptor_high[50].set(250);
+    driver.configure_hub(false).unwrap();
+    assert!(registers.hub_control.is_set(Control::Enable));
+    assert!(!registers.hub_control.is_set(Control::Dcon));
+    assert!(!registers.hub_control.is_set(Control::ForceVbus));
+    assert!(!registers.hub_control.is_set(Control::LpmSup));
+    for (attributes, power) in [(1, 2), (49, 50)] {
+        assert_eq!(registers.hub_descriptor_high[attributes].get() >> 24, 0xc0);
+        assert_eq!(registers.hub_descriptor_high[power].get() & 0xff, 5);
+    }
+    let before = registers.hub_descriptor_high[1].get();
+    driver.configure_hub(true).unwrap();
+    assert!(registers.hub_control.is_set(Control::Dcon));
+    assert_eq!(registers.hub_descriptor_high[1].get(), before);
+}
+
+#[test]
+fn direct_device_initialization_does_not_change_hub_policy() {
+    let params = params();
+    let registers = params.registers;
+    registers.hub_control.set(0x1234_5678);
+    let mut driver = LpcipUsbDriver::new(params);
+    assert_eq!(driver.initialize(), Err(UsbError::UnsupportedPhyInterface));
+    assert_eq!(registers.hub_control.get(), 0x1234_5678);
 }
 
 fn bytes(params: &UsbParams, raw: [u8; 8]) -> ([u8; 64], usize) {

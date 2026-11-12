@@ -103,6 +103,7 @@ impl From<u32> for UlpiHostDiag {
 
 #[derive(Clone, Debug)]
 pub struct EnumeratedDevice {
+    pub hub_address: Option<u8>,
     pub address: u8,
     pub vendor_id: u16,
     pub product_id: u16,
@@ -483,8 +484,8 @@ impl FpgaUlpiUsbHost {
         }
     }
 
-    /// Wait for MCU ROM to assert DCON on Device 0, negotiate High-Speed (480 Mbps)
-    /// via Chirp K/J, and run full USB 2.0 Chapter 9 + OCP Recovery interface enumeration.
+    /// Enumerate either direct Device 0 or the hardware hub and its port 1,
+    /// then configure the downstream OCP Recovery interface.
     pub fn wait_and_enumerate<F: FnMut()>(
         &mut self,
         assigned_addr: u8,
@@ -500,7 +501,7 @@ impl FpgaUlpiUsbHost {
             step_fn();
             if start.elapsed() > timeout {
                 bail!(
-                    "Timed out waiting for Caliptra USB Device 0 DCON: status={:?}, diag={:?}",
+                    "Timed out waiting for Caliptra USB upstream connection: status={:?}, diag={:?}",
                     self.status(),
                     self.diag()
                 );
@@ -532,6 +533,62 @@ impl FpgaUlpiUsbHost {
             "Expected EP0 bMaxPacketSize0=64, got {}",
             dev_desc[7]
         );
+        let hub_address = if dev_desc[4] == 9 {
+            let hub_address = if assigned_addr == 127 { 126 } else { 127 };
+            enumerate_hub_port(hub_address, timeout, |address, setup, remaining| {
+                if setup[0] & 0x80 != 0 {
+                    let mut data = [0; 64];
+                    let length = self.control_read_raw(
+                        address,
+                        setup[0],
+                        setup[1],
+                        u16::from_le_bytes([setup[2], setup[3]]),
+                        u16::from_le_bytes([setup[4], setup[5]]),
+                        u16::from_le_bytes([setup[6], setup[7]]),
+                        &mut data,
+                        &mut step_fn,
+                        remaining,
+                    )?;
+                    Ok(data[..length].to_vec())
+                } else {
+                    self.control_write_raw(
+                        address,
+                        setup[0],
+                        setup[1],
+                        u16::from_le_bytes([setup[2], setup[3]]),
+                        u16::from_le_bytes([setup[4], setup[5]]),
+                        &[],
+                        &mut step_fn,
+                        remaining,
+                    )?;
+                    Ok(Vec::new())
+                }
+            })
+            .context("enumerate hardware hub and enable Device 0 port")?;
+            let length = self.control_read_raw(
+                0,
+                0x80,
+                6,
+                0x0100,
+                0,
+                18,
+                &mut dev_desc,
+                &mut step_fn,
+                Duration::from_secs(2),
+            )?;
+            ensure!(
+                length == 18
+                    && dev_desc[0] == 18
+                    && dev_desc[1] == 1
+                    && dev_desc[4] != 9
+                    && dev_desc[7] == 64,
+                "Invalid downstream Device 0 descriptor: {dev_desc:02x?}"
+            );
+            println!("[usb-host] Hub address={hub_address}, Device 0 connected on port 1");
+            Some(hub_address)
+        } else {
+            None
+        };
         let vendor_id = u16::from_le_bytes([dev_desc[8], dev_desc[9]]);
         let product_id = u16::from_le_bytes([dev_desc[10], dev_desc[11]]);
         let bcd_device = u16::from_le_bytes([dev_desc[12], dev_desc[13]]);
@@ -616,6 +673,7 @@ impl FpgaUlpiUsbHost {
 
         self.ocp_interface = ocp_interface;
         Ok(EnumeratedDevice {
+            hub_address,
             address: assigned_addr,
             vendor_id,
             product_id,
@@ -625,6 +683,84 @@ impl FpgaUlpiUsbHost {
             config_descriptor: cfg_buf[..cfg_len].to_vec(),
         })
     }
+}
+
+fn enumerate_hub_port(
+    hub_address: u8,
+    timeout: Duration,
+    mut control: impl FnMut(u8, [u8; 8], Duration) -> Result<Vec<u8>>,
+) -> Result<()> {
+    let deadline = Instant::now() + timeout;
+    // SET_ADDRESS is the only request directed to the hub's default address.
+    control(0, [0, 5, hub_address, 0, 0, 0, 0, 0], timeout)?;
+    std::thread::sleep(Duration::from_millis(2));
+    let mut transfer = |setup| {
+        let remaining = deadline
+            .checked_duration_since(Instant::now())
+            .filter(|duration| !duration.is_zero())
+            .context("hub enumeration timed out")?;
+        control(hub_address, setup, remaining.min(Duration::from_secs(2)))
+    };
+    let config = transfer([0x80, 6, 0, 2, 0, 0, 64, 0])?;
+    ensure!(
+        config.len() >= 18
+            && config[0] == 9
+            && config[1] == 2
+            && usize::from(u16::from_le_bytes([config[2], config[3]])) == config.len()
+            && config[5] != 0
+            && config[9] == 9
+            && config[10] == 4
+            && config[14] == 9,
+        "Invalid hub configuration descriptor: {config:02x?}"
+    );
+    transfer([0, 9, config[5], 0, 0, 0, 0, 0])?;
+    let hub = transfer([0xa0, 6, 0, 0x29, 0, 0, 9, 0])?;
+    ensure!(
+        hub.len() == 9 && hub[0] == 9 && hub[1] == 0x29 && hub[2] == 2,
+        "Expected an internal two-port hub: {hub:02x?}"
+    );
+    let port2 = transfer([0xa3, 0, 0, 0, 2, 0, 4, 0])?;
+    ensure!(
+        port2.len() == 4 && port2[0] & 3 == 0,
+        "Device 1 must remain disconnected/disabled on hub port 2: {port2:02x?}"
+    );
+    transfer([0x23, 3, 8, 0, 1, 0, 0, 0])?; // PORT_POWER
+    let power_delay = Duration::from_millis(u64::from(hub[5]) * 2);
+    ensure!(
+        Instant::now() + power_delay < deadline,
+        "hub power-on delay exceeds deadline"
+    );
+    std::thread::sleep(power_delay);
+    loop {
+        let status = transfer([0xa3, 0, 0, 0, 1, 0, 4, 0])?;
+        ensure!(status.len() == 4, "Invalid hub port status: {status:02x?}");
+        if status[0] & 1 != 0 {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    transfer([0x23, 3, 4, 0, 1, 0, 0, 0])?; // PORT_RESET
+    loop {
+        let status = transfer([0xa3, 0, 0, 0, 1, 0, 4, 0])?;
+        ensure!(status.len() == 4, "Invalid hub port status: {status:02x?}");
+        let status = u32::from_le_bytes(status.try_into().unwrap());
+        if status & (1 << 4) == 0 && status & (1 << 20) != 0 {
+            ensure!(
+                status & 3 == 3,
+                "Hub port 1 not connected/enabled: 0x{status:08x}"
+            );
+            ensure!(
+                status & (1 << 10) != 0,
+                "Device 0 is not high-speed: 0x{status:08x}"
+            );
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
+    transfer([0x23, 1, 20, 0, 1, 0, 0, 0])?; // C_PORT_RESET
+    transfer([0x23, 1, 16, 0, 1, 0, 0, 0])?; // C_PORT_CONNECTION
+    std::thread::sleep(Duration::from_millis(2));
+    Ok(())
 }
 
 fn parse_ocp_interface(config: &[u8]) -> Result<u8> {
@@ -679,6 +815,85 @@ fn parse_ocp_interface(config: &[u8]) -> Result<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn enumerates_hardware_hub_and_enables_only_device_zero_port() {
+        use caliptra_emu_bus::Bus;
+        use caliptra_emu_types::RvSize;
+        use caliptra_mcu_emulator_periph::{LpcipUsbError, LpcipUsbSpeed, UsbCombo};
+        use caliptra_mcu_emulator_registers_generated::{
+            usb_combo::UsbComboBus, usb_dev0_mem::UsbDev0MemBus,
+        };
+        use caliptra_mcu_registers_generated::usb_dev0_mem::USB_DEV0_MEM_ADDR;
+
+        let combo = UsbCombo::new();
+        let hub = combo.hub_host_controller();
+        let mut memory = UsbDev0MemBus {
+            periph: Box::new(combo.device0_memory()),
+        };
+        let mut bus = UsbComboBus {
+            periph: Box::new(combo),
+        };
+        bus.write(RvSize::Word, 8, USB_DEV0_MEM_ADDR).unwrap();
+        bus.write(RvSize::Word, 12, USB_DEV0_MEM_ADDR & !0x1ffff)
+            .unwrap();
+        memory
+            .write(
+                RvSize::Word,
+                4,
+                ((USB_DEV0_MEM_ADDR & 0x1ffff) + 0x100) >> 6,
+            )
+            .unwrap();
+        bus.write(RvSize::Word, 0, (1 << 7) | (1 << 16)).unwrap();
+        bus.write(RvSize::Word, 0x1030, 1 | (1 << 16)).unwrap();
+        hub.set_vbus(true);
+        hub.bus_reset(LpcipUsbSpeed::High).unwrap();
+        let mut requests = Vec::new();
+        enumerate_hub_port(127, Duration::from_secs(1), |address, setup, _| {
+            requests.push((address, setup));
+            hub.host_setup(address, &setup)?;
+            if setup[0] & 0x80 != 0 {
+                let data = hub.host_in(address, 0)?;
+                hub.host_out(address, 0, &[])?;
+                Ok(data)
+            } else {
+                ensure!(hub.host_in(address, 0)?.is_empty(), "expected status ZLP");
+                Ok(Vec::new())
+            }
+        })
+        .unwrap();
+        assert_eq!(hub.device_address(), 127);
+        hub.port_setup(1, 0, &[0x80, 6, 0, 1, 0, 0, 18, 0]).unwrap();
+        assert_eq!(
+            hub.port_setup(2, 0, &[0x80, 6, 0, 1, 0, 0, 18, 0]),
+            Err(LpcipUsbError::Disconnected)
+        );
+        assert!(requests
+            .iter()
+            .any(|(_, setup)| *setup == [0x23, 3, 4, 0, 1, 0, 0, 0]));
+        assert!(requests
+            .iter()
+            .any(|(_, setup)| *setup == [0x23, 1, 20, 0, 1, 0, 0, 0]));
+    }
+
+    #[test]
+    fn hub_enumeration_rejects_bad_descriptors_and_missing_port() {
+        assert!(
+            enumerate_hub_port(127, Duration::from_secs(1), |_, _, _| { Ok(Vec::new()) }).is_err()
+        );
+        let error = enumerate_hub_port(127, Duration::from_millis(5), |_, setup, _| {
+            Ok(match setup[1] {
+                6 if setup[3] == 2 => {
+                    vec![9, 2, 18, 0, 1, 1, 0, 0x80, 0, 9, 4, 0, 0, 1, 9, 0, 0, 0]
+                }
+                6 => vec![9, 0x29, 2, 0x14, 0, 0, 0, 6, 0xff],
+                0 => vec![0; 4],
+                _ => Vec::new(),
+            })
+        })
+        .unwrap_err();
+        assert!(error.to_string().contains("timed out"), "{error:#}");
+    }
 
     #[test]
     fn hs_out_nyet_accepts_the_packet_without_requesting_replay() {

@@ -72,6 +72,10 @@ impl<'a> FpgaUlpiRecoveryTransport<'a> {
             device.address, device.vendor_id, device.product_id, device.ocp_interface
         );
         ensure!(
+            device.hub_address.is_some(),
+            "FPGA recovery must enumerate Device 0 through the internal hub"
+        );
+        ensure!(
             transport.host.status().hs_active,
             "USB did not enter HS mode"
         );

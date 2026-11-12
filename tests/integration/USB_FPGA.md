@@ -6,6 +6,19 @@ uses Carl's `caliptra_fpga_ulpi_host` MMIO engine at wrapper offset `0x4000`
 enumeration explicitly; Linux USB enumeration and the PS USB controller are
 not involved.
 
+FPGA ROM enables the hardware-serviced internal two-port hub by default,
+connects Device 0 on port 1, and leaves Device 1 in its reset-disabled state.
+The host enumerates the hub at address 127 (126 if needed to avoid an address
+collision), validates its descriptors, powers/resets port 1, then enumerates
+Device 0 at address 7. The test requires the hub path, not direct-device
+fallback. Physical HTG hosts perform this enumeration through their OS USB
+stack. Emulator ROM fixtures keep their existing direct-Device-0 topology.
+
+The hub uses its RTL reset descriptors and request table, with configuration
+power fields updated to the platform's `UsbParams` policy; these are bring-up
+identities, not production USB identities. Hub connection requires real
+VBUS, and LPM remains disabled.
+
 The FPGA ROM uses VCK190 AXI addresses `0xA4200000` for USB registers and
 `0xA4300000` for Device 0 packet SRAM. The generated subsystem-local bases
 (`0x20000000` and `0x30000000`) must not be used by this FPGA ROM.
@@ -79,7 +92,7 @@ running without a source checkout.
 
 The test loads the USB recovery feature ROM and supplies no firmware through
 the model's automatic I3C path. The ROM selects USB recovery itself. The MMIO
-host enumerates Device 0, then the shared recovery agent discovers capabilities
+host enumerates the hub and downstream Device 0, then the shared recovery agent discovers capabilities
 and streams all three requested images using 64-byte control transfers.
 Success requires `RecoveryOutcome::Confirmed`, MCU firmware-boot completion,
 and no MCU fatal error.

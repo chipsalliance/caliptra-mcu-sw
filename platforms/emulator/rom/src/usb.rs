@@ -22,6 +22,7 @@ pub fn test_parameters() -> caliptra_mcu_usb_common::UsbParams {
         max_power_2ma: 0,
         remote_wakeup: false,
         force_full_speed: false,
+        enable_hub: false,
         poll_limit: 10_000,
     }
 }
