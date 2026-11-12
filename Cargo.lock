@@ -579,17 +579,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "caliptra-cfi-derive"
-version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-cfi.git?rev=767d4ef59a106aea683b883c07bd65456fb3ba6b#767d4ef59a106aea683b883c07bd65456fb3ba6b"
-dependencies = [
- "paste",
- "proc-macro2",
- "quote",
- "syn 1.0.109",
-]
-
-[[package]]
 name = "caliptra-cfi-lib"
 version = "0.1.0"
 source = "git+https://github.com/chipsalliance/caliptra-cfi.git?rev=72c75dc70cde4120a9ce149d4f5cb21621399958#72c75dc70cde4120a9ce149d4f5cb21621399958"
@@ -598,11 +587,6 @@ source = "git+https://github.com/chipsalliance/caliptra-cfi.git?rev=72c75dc70cde
 name = "caliptra-cfi-lib"
 version = "0.1.0"
 source = "git+https://github.com/chipsalliance/caliptra-cfi.git?rev=767d4ef59a106aea683b883c07bd65456fb3ba#767d4ef59a106aea683b883c07bd65456fb3ba6b"
-
-[[package]]
-name = "caliptra-cfi-lib"
-version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-cfi.git?rev=767d4ef59a106aea683b883c07bd65456fb3ba6b#767d4ef59a106aea683b883c07bd65456fb3ba6b"
 
 [[package]]
 name = "caliptra-common"
@@ -1504,7 +1488,6 @@ dependencies = [
  "caliptra-mcu-scratch-alloc",
  "caliptra-mcu-spdm-pal",
  "critical-section",
- "dpe",
  "embassy-executor",
  "embedded-alloc",
  "mcu-caliptra-api",
@@ -1930,7 +1913,6 @@ dependencies = [
  "caliptra-mcu-scratch-alloc",
  "caliptra-mcu-userlog",
  "defmt",
- "dpe",
  "embassy-executor",
  "embassy-sync",
  "futures",
@@ -2664,6 +2646,7 @@ dependencies = [
  "caliptra-api-types",
  "caliptra-auth-man-types",
  "caliptra-builder",
+ "caliptra-dpe",
  "caliptra-emu-bus",
  "caliptra-emu-cpu",
  "caliptra-emu-types",
@@ -2709,7 +2692,6 @@ dependencies = [
  "chrono",
  "crc",
  "defmt-decoder",
- "dpe",
  "ecdsa",
  "fips204",
  "hex",
@@ -3621,19 +3603,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "460fbee9c2c2f33933d720630a6a0bac33ba7053db5344fac858d4b8952d77d5"
 
 [[package]]
-name = "crypto"
-version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-dpe?rev=337f7e4151f60add8e97445f71fc1393afc661a8#337f7e4151f60add8e97445f71fc1393afc661a8"
-dependencies = [
- "arrayvec",
- "caliptra-cfi-derive 0.1.0 (git+https://github.com/chipsalliance/caliptra-cfi.git?rev=767d4ef59a106aea683b883c07bd65456fb3ba6b)",
- "caliptra-cfi-lib 0.1.0 (git+https://github.com/chipsalliance/caliptra-cfi.git?rev=767d4ef59a106aea683b883c07bd65456fb3ba6b)",
- "constant_time_eq 0.3.1",
- "zerocopy",
- "zeroize",
-]
-
-[[package]]
 name = "crypto-bigint"
 version = "0.5.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4003,23 +3972,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d4b8a88685455ed29a21542a33abd9cb6510b6b129abadabdcef0f4c55bc8f61"
 dependencies = [
  "litrs",
-]
-
-[[package]]
-name = "dpe"
-version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-dpe?rev=337f7e4151f60add8e97445f71fc1393afc661a8#337f7e4151f60add8e97445f71fc1393afc661a8"
-dependencies = [
- "bitflags 2.13.0",
- "caliptra-cfi-derive 0.1.0 (git+https://github.com/chipsalliance/caliptra-cfi.git?rev=767d4ef59a106aea683b883c07bd65456fb3ba6b)",
- "caliptra-cfi-lib 0.1.0 (git+https://github.com/chipsalliance/caliptra-cfi.git?rev=767d4ef59a106aea683b883c07bd65456fb3ba6b)",
- "cfg-if",
- "constant_time_eq 0.3.1",
- "crypto",
- "platform",
- "ufmt 0.2.0",
- "zerocopy",
- "zeroize",
 ]
 
 [[package]]
@@ -5460,6 +5412,7 @@ dependencies = [
  "async-trait",
  "caliptra-api",
  "caliptra-auth-man-types",
+ "caliptra-dpe",
  "caliptra-image-types",
  "caliptra-mcu-flash-image",
  "caliptra-mcu-libsyscall-caliptra",
@@ -6038,16 +5991,6 @@ name = "pkg-config"
 version = "0.3.32"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7edddbd0b52d732b21ad9a5fab5c704c14cd949e5e9a1ec5929a24fded1b904c"
-
-[[package]]
-name = "platform"
-version = "0.1.0"
-source = "git+https://github.com/chipsalliance/caliptra-dpe?rev=337f7e4151f60add8e97445f71fc1393afc661a8#337f7e4151f60add8e97445f71fc1393afc661a8"
-dependencies = [
- "arrayvec",
- "cfg-if",
- "ufmt 0.2.0",
-]
 
 [[package]]
 name = "poly1305"

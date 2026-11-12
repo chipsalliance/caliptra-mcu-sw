@@ -399,7 +399,7 @@ caliptra-ocp-eat = { git = "https://github.com/chipsalliance/caliptra-sw", rev =
 caliptra-ureg = { git = "https://github.com/chipsalliance/caliptra-sw", rev = "e5d1f27b15ba02e4e0a57b942bbde39b74cab2eb" }
 
 # caliptra-dpe dependencies; keep git revs in sync with version pulled into caliptra-sw
-dpe = { git = "https://github.com/chipsalliance/caliptra-dpe", rev = "337f7e4151f60add8e97445f71fc1393afc661a8", default-features = false, features = ["p384"] }
+caliptra-dpe = { git = "https://github.com/chipsalliance/caliptra-dpe", rev = "f2b7121b69aa2bd05e69cee57f7a6993a07e5fef", default-features = false, features = ["hybrid"] }
 
 # caliptra-infra dependencies; keep git revs in sync
 caliptra-bitstream-downloader = { git = "https://github.com/chipsalliance/caliptra-infra", rev = "e061f229d5d284ce39387eb104f3022053c6c772" }
@@ -430,7 +430,7 @@ size-history = { git = "https://github.com/chipsalliance/caliptra-infra.git", pa
 # caliptra-test = { path = "../caliptra-sw/test" }
 # caliptra-test-harness-types = { path = "../caliptra-sw/test-harness/types" }
 # ureg = { path = "../caliptra-sw/ureg" }
-# dpe = { path = "../caliptra-sw/dpe/dpe", default-features = false, features = ["dpe_profile_p384_sha384"] }
+# caliptra-dpe = { path = "../caliptra-dpe/dpe", default-features = false, features = ["hybrid"] }
 # ocp-eat = { path = "../caliptra-sw/common/eat",  default-features = false  }
 
 # caliptra-infra deps:

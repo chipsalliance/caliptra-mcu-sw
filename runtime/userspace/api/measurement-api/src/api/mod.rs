@@ -1914,7 +1914,7 @@ mod tests {
             let mut dpe_payload = std::vec![0u8; 4]; // data_size
             dpe_payload.extend_from_slice(&0x4450_4552u32.to_le_bytes()); // DPE_RESPONSE_MAGIC
             dpe_payload.extend_from_slice(&0u32.to_le_bytes()); // status
-            dpe_payload.extend_from_slice(&0u32.to_le_bytes()); // profile
+            dpe_payload.extend_from_slice(&mcu_caliptra_api::DPE_PROFILE_P384_SHA384.to_le_bytes()); // profile
             dpe_payload.extend_from_slice(&[step; DPE_CONTEXT_HANDLE_SIZE]);
             dpe_payload.extend_from_slice(&[step | 0x80; DPE_CONTEXT_HANDLE_SIZE]);
             add_ok_resp(*b"DPEC", &dpe_payload);
