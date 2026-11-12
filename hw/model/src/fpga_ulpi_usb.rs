@@ -4,7 +4,7 @@
 //! physical address `0xA401_4000`), providing zero-cable internal FPGA ULPI
 //! USB3320 PHY emulation + USB 2.0 High-Speed Host transactions ("Architecture B").
 
-use anyhow::{bail, ensure, Result};
+use anyhow::{bail, ensure, Context, Result};
 use std::time::{Duration, Instant};
 
 pub const ULPI_HOST_WRAPPER_WORD_OFFSET: usize = 0x4000 / 4;
@@ -29,9 +29,21 @@ const OP_OUT: u32 = 3;
 const OP_IN: u32 = 4;
 
 const PID_NIB_ACK: u8 = 0x2;
+const PID_NIB_NYET: u8 = 0x6;
 const PID_NIB_NAK: u8 = 0xA;
 const PID_NIB_DATA1: u8 = 0xB;
 const PID_NIB_STALL: u8 = 0xE;
+
+fn out_packet_accepted(pid: u8) -> Result<bool> {
+    // This HS controller returns NYET after accepting an OUT packet when its
+    // endpoint buffer is exhausted. Do not replay the accepted payload.
+    match pid {
+        PID_NIB_ACK | PID_NIB_NYET => Ok(true),
+        PID_NIB_NAK => Ok(false),
+        PID_NIB_STALL => bail!("OUT packet STALL"),
+        other => bail!("Unexpected PID 0x{other:x} on OUT packet"),
+    }
+}
 
 #[derive(Clone, Copy, Debug)]
 pub struct UlpiHostStatus {
@@ -356,14 +368,14 @@ impl FpgaUlpiUsbHost {
                 .ok_or_else(|| anyhow::anyhow!("Control Read STATUS OUT timeout"))?;
             let st = self.exec_cmd(Self::make_cmd(OP_OUT, true, addr, 0, 0), rem)?;
             if !st.timeout_err {
-                match st.rx_pid {
-                    PID_NIB_ACK => return Ok(rx_len),
-                    PID_NIB_NAK => {
+                match out_packet_accepted(st.rx_pid)
+                    .with_context(|| format!("Control Read STATUS OUT: {st:?}"))?
+                {
+                    true => return Ok(rx_len),
+                    false => {
                         step_fn();
                         std::thread::sleep(Duration::from_micros(20));
                     }
-                    PID_NIB_STALL => bail!("Control Read STATUS OUT STALL"),
-                    other => bail!("Unexpected PID 0x{other:x} on STATUS OUT: {st:?}"),
                 }
             } else {
                 bail!("Ambiguous Control Read STATUS OUT timeout: {st:?}");
@@ -420,19 +432,13 @@ impl FpgaUlpiUsbHost {
                     })?;
                 let st = self.exec_cmd(Self::make_cmd(OP_OUT, true, addr, 0, data.len()), rem)?;
                 if !st.timeout_err {
-                    match st.rx_pid {
-                        PID_NIB_ACK => break,
-                        PID_NIB_NAK => {
+                    match out_packet_accepted(st.rx_pid).with_context(|| {
+                        format!("Control Write DATA OUT (val=0x{w_value:04x}): {st:?}")
+                    })? {
+                        true => break,
+                        false => {
                             step_fn();
                             std::thread::sleep(Duration::from_micros(20));
-                        }
-                        PID_NIB_STALL => {
-                            bail!(
-                                "Control Write DATA OUT STALL (req=0x{bm_request_type:02x}/0x{b_request:02x} val=0x{w_value:04x})"
-                            );
-                        }
-                        other => {
-                            bail!("Unexpected PID 0x{other:x} on Control Write DATA OUT: {st:?}");
                         }
                     }
                 } else {
@@ -673,6 +679,15 @@ fn parse_ocp_interface(config: &[u8]) -> Result<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hs_out_nyet_accepts_the_packet_without_requesting_replay() {
+        assert!(out_packet_accepted(PID_NIB_ACK).unwrap());
+        assert!(out_packet_accepted(PID_NIB_NYET).unwrap());
+        assert!(!out_packet_accepted(PID_NIB_NAK).unwrap());
+        assert!(out_packet_accepted(PID_NIB_STALL).is_err());
+        assert!(out_packet_accepted(PID_NIB_DATA1).is_err());
+    }
 
     fn config() -> Vec<u8> {
         vec![

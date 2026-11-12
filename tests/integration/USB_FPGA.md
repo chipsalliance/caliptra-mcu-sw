@@ -6,6 +6,10 @@ uses Carl's `caliptra_fpga_ulpi_host` MMIO engine at wrapper offset `0x4000`
 enumeration explicitly; Linux USB enumeration and the PS USB controller are
 not involved.
 
+The FPGA ROM uses VCK190 AXI addresses `0xA4200000` for USB registers and
+`0xA4300000` for Device 0 packet SRAM. The generated subsystem-local bases
+(`0x20000000` and `0x30000000`) must not be used by this FPGA ROM.
+
 ## Requirements
 
 - Latest (Caliptra 2.2) hardware and Carl's Architecture B bitstream with host
@@ -90,3 +94,7 @@ the bounded enumeration wait with host status and diagnostics.
 
 This validates the digital recovery path, not libusb, a physical USB PHY,
 electrical compliance, or independent USB-host interoperability.
+
+The internal HS device may return NYET after accepting an OUT packet, including
+the status OUT zero-length packet. The MMIO adapter treats ACK and NYET as
+accepted, retries only NAK, and does not replay accepted OUT payloads.
