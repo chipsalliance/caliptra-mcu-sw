@@ -782,7 +782,10 @@ caliptra_veer_sram_export veer_sram_export_inst (
     .el2_mem_export(el2_mem_export.veer_sram_sink)
 );
 
-abr_mem_top abr_mem_top_inst (
+// Match abr_top's MASKING_EN=1 default, including all masked-share RAMs.
+abr_mem_top #(
+    .MASKING_EN(1'b1)
+) abr_mem_top_inst (
     .clk_i(core_clk),
     .abr_memory_export(abr_memory_export.resp)
 );
