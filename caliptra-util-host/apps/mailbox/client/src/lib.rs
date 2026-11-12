@@ -64,7 +64,8 @@ use caliptra_mcu_core_util_host_command_types::fuse::{
     GetAuthCmdChallengeResponse, ProvisionVendorPkHashRequest, ProvisionVendorPkHashResponse,
 };
 use caliptra_mcu_core_util_host_command_types::{
-    GetDeviceCapabilitiesResponse, GetFirmwareVersionResponse, VendorPkHashStatusResponse,
+    FieldEntropyStatusResponse, GetDeviceCapabilitiesResponse, GetFirmwareVersionResponse,
+    VendorPkHashStatusResponse,
 };
 use caliptra_mcu_core_util_host_transport::Mailbox;
 use caliptra_util_host_commands::api::attestation::{
@@ -95,8 +96,8 @@ use caliptra_util_host_commands::api::debug_unlock::{
     caliptra_cmd_prod_debug_unlock_req, caliptra_cmd_prod_debug_unlock_token,
 };
 use caliptra_util_host_commands::api::device_info::{
-    caliptra_cmd_get_device_capabilities, caliptra_cmd_get_firmware_version,
-    caliptra_cmd_vendor_pk_hash_status,
+    caliptra_cmd_field_entropy_status, caliptra_cmd_get_device_capabilities,
+    caliptra_cmd_get_firmware_version, caliptra_cmd_vendor_pk_hash_status,
 };
 use caliptra_util_host_commands::api::device_ownership_transfer::{
     caliptra_cmd_dot_disable, caliptra_cmd_dot_enable, caliptra_cmd_dot_lock,
@@ -176,6 +177,17 @@ impl<'a> MailboxClient<'a> {
                 ))
             }
         }
+    }
+
+    /// Query whether every field-entropy partition is provisioned.
+    pub fn field_entropy_status(&mut self) -> Result<FieldEntropyStatusResponse> {
+        let mut session = CaliptraSession::new(1, &mut self.transport)
+            .map_err(|e| anyhow::anyhow!("Failed to create session: {e:?}"))?;
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {e:?}"))?;
+        caliptra_cmd_field_entropy_status(&mut session)
+            .map_err(|e| anyhow::anyhow!("FieldEntropyStatus command failed: {e:?}"))
     }
 
     /// Query vendor public-key hash slot occupancy and key types.

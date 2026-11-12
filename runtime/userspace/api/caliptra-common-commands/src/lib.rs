@@ -646,6 +646,15 @@ pub trait CaliptraCmdHandler {
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 
+    /// Reports whether all field entropy partitions are provisioned.
+    async fn field_entropy_already_provisioned<Alloc: ScratchAlloc>(
+        &self,
+        alloc: &Alloc,
+    ) -> CaliptraCmdResult<bool> {
+        let _ = alloc;
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
     /// Reports occupied vendor public-key hash slots and their PQC key types.
     async fn vendor_pk_hash_status(&self) -> CaliptraCmdResult<(u32, [u8; 16])> {
         Err(CaliptraCompletionCode::UnsupportedOperation)

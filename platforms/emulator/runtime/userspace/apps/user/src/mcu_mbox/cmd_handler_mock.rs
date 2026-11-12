@@ -148,6 +148,15 @@ impl CaliptraCmdHandler for NonCryptoCmdHandlerMock {
             .await
     }
 
+    async fn field_entropy_already_provisioned<Alloc: ScratchAlloc>(
+        &self,
+        alloc: &Alloc,
+    ) -> CaliptraCmdResult<bool> {
+        CaliptraCmdBackend
+            .field_entropy_already_provisioned(alloc)
+            .await
+    }
+
     async fn vendor_pk_hash_status(&self) -> CaliptraCmdResult<(u32, [u8; 16])> {
         CaliptraCmdBackend.vendor_pk_hash_status().await
     }

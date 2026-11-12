@@ -92,10 +92,10 @@ pub fn version() -> semver::Version {
 
 // Re-export main public APIs for convenience
 pub use caliptra_mcu_core_util_host_command_types::{
-    CaliptraCommandId, GetDeviceCapabilitiesRequest, GetDeviceCapabilitiesResponse,
-    GetFirmwareVersionRequest, GetFirmwareVersionResponse, VendorPkHashStatusRequest,
-    VendorPkHashStatusResponse, VENDOR_PK_HASH_SLOT_COUNT, VENDOR_PQC_KEY_TYPE_LMS,
-    VENDOR_PQC_KEY_TYPE_MLDSA,
+    CaliptraCommandId, FieldEntropyStatusRequest, FieldEntropyStatusResponse,
+    GetDeviceCapabilitiesRequest, GetDeviceCapabilitiesResponse, GetFirmwareVersionRequest,
+    GetFirmwareVersionResponse, VendorPkHashStatusRequest, VendorPkHashStatusResponse,
+    VENDOR_PK_HASH_SLOT_COUNT, VENDOR_PQC_KEY_TYPE_LMS, VENDOR_PQC_KEY_TYPE_MLDSA,
 };
 // Re-export SHA types
 pub use caliptra_mcu_core_util_host_command_types::crypto_hash::{
@@ -103,8 +103,8 @@ pub use caliptra_mcu_core_util_host_command_types::crypto_hash::{
     ShaUpdateRequest, ShaUpdateResponse, MAX_HASH_SIZE, MAX_SHA_INPUT_SIZE, SHA_CONTEXT_SIZE,
 };
 pub use caliptra_util_host_commands::api::device_info::{
-    caliptra_cmd_get_device_capabilities, caliptra_cmd_get_firmware_version,
-    caliptra_cmd_vendor_pk_hash_status,
+    caliptra_cmd_field_entropy_status, caliptra_cmd_get_device_capabilities,
+    caliptra_cmd_get_firmware_version, caliptra_cmd_vendor_pk_hash_status,
 };
 // Re-export SHA API functions
 pub use caliptra_mcu_core_util_host_transport::{Mailbox, Transport};

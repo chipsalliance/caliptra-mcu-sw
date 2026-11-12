@@ -108,6 +108,27 @@ impl CommandRequest for GetDeviceCapabilitiesRequest {
 
 impl CommandResponse for GetDeviceCapabilitiesResponse {}
 
+/// Empty request for the field-entropy provisioning status.
+#[repr(C)]
+#[derive(Debug, Clone, Default, IntoBytes, FromBytes, Immutable)]
+pub struct FieldEntropyStatusRequest;
+
+/// Field-entropy provisioning status returned by the MCU.
+#[repr(C)]
+#[derive(Debug, Clone, Default, IntoBytes, FromBytes, Immutable)]
+pub struct FieldEntropyStatusResponse {
+    pub common: CommonResponse,
+    /// One when every field-entropy partition is provisioned; otherwise zero.
+    pub already_provisioned: u32,
+}
+
+impl CommandRequest for FieldEntropyStatusRequest {
+    type Response = FieldEntropyStatusResponse;
+    const COMMAND_ID: CaliptraCommandId = CaliptraCommandId::FieldEntropyStatus;
+}
+
+impl CommandResponse for FieldEntropyStatusResponse {}
+
 pub const VENDOR_PK_HASH_SLOT_COUNT: usize = 16;
 pub const VENDOR_PQC_KEY_TYPE_LMS: u8 = 1;
 pub const VENDOR_PQC_KEY_TYPE_MLDSA: u8 = 3;

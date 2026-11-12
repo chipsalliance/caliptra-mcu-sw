@@ -8,9 +8,31 @@
 use crate::common::{test_constants::*, MockMailbox};
 use caliptra_mcu_core_util_host_transport::Mailbox;
 use caliptra_util_host_commands::api::device_info::{
-    caliptra_cmd_get_device_capabilities, caliptra_cmd_vendor_pk_hash_status,
+    caliptra_cmd_field_entropy_status, caliptra_cmd_get_device_capabilities,
+    caliptra_cmd_vendor_pk_hash_status,
 };
 use caliptra_util_host_session::CaliptraSession;
+
+#[test]
+fn test_field_entropy_status_returns_typed_response() {
+    let mut mock_mailbox = MockMailbox::new_default();
+    let mut transport = Mailbox::new(&mut mock_mailbox);
+    let mut session = CaliptraSession::new(1, &mut transport).unwrap();
+    session.connect().unwrap();
+
+    let response = caliptra_cmd_field_entropy_status(&mut session).unwrap();
+    assert_eq!(response.common.fips_status, 1);
+    assert_eq!(response.already_provisioned, 1);
+}
+
+#[test]
+fn test_field_entropy_status_requires_connected_session() {
+    let mut mock_mailbox = MockMailbox::new_default();
+    let mut transport = Mailbox::new(&mut mock_mailbox);
+    let mut session = CaliptraSession::new(1, &mut transport).unwrap();
+
+    assert!(caliptra_cmd_field_entropy_status(&mut session).is_err());
+}
 
 #[test]
 fn test_vendor_pk_hash_status_returns_typed_response() {

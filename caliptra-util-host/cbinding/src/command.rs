@@ -6,7 +6,8 @@
 
 use crate::error::CaliptraError;
 use caliptra_mcu_core_util_host_command_types::device_info::{
-    GetDeviceCapabilitiesResponse, GetFirmwareVersionResponse, VendorPkHashStatusResponse,
+    FieldEntropyStatusResponse, GetDeviceCapabilitiesResponse, GetFirmwareVersionResponse,
+    VendorPkHashStatusResponse,
 };
 use caliptra_util_host_session::CaliptraSession;
 
@@ -91,6 +92,29 @@ pub extern "C" fn caliptra_cmd_get_firmware_version_c_impl(
         ) {
             Ok(response) => {
                 *firmware_version = response;
+                CaliptraError::Success
+            }
+            Err(_) => CaliptraError::Device,
+        }
+    }
+}
+
+/// Query whether every field-entropy partition is provisioned.
+#[no_mangle]
+pub extern "C" fn caliptra_cmd_field_entropy_status_c_impl(
+    session_ptr: *mut CaliptraSession<'static>,
+    status: *mut FieldEntropyStatusResponse,
+) -> CaliptraError {
+    if session_ptr.is_null() || status.is_null() {
+        return CaliptraError::InvalidArgument;
+    }
+
+    unsafe {
+        match caliptra_util_host_commands::api::device_info::caliptra_cmd_field_entropy_status(
+            &mut *session_ptr,
+        ) {
+            Ok(response) => {
+                *status = response;
                 CaliptraError::Success
             }
             Err(_) => CaliptraError::Device,

@@ -163,6 +163,7 @@ impl CommandId {
     pub const MC_PROVISION_OWNER_PK_HASH: Self = Self(0x504F_504B); // "POPK"
     pub const MC_FUSE_INCREASE_MIN_SVN: Self = Self(0x4D43_4D53); // "MCMS"
     pub const MC_FE_PROG: Self = Self(0x4D43_4650); // "MCFP"
+    pub const MC_FE_STATUS: Self = Self(0x4D43_4653); // "MCFS"
     pub const MC_VENDOR_PK_HASH_STATUS: Self = Self(0x4D56_5053); // "MVPS"
     pub const MC_FUSE_REVOKE_VENDOR_PUB_KEY: Self = Self(0x4D52_564B); // "MRVK"
     pub const MC_FUSE_REVOKE_VENDOR_PK_HASH: Self = Self(0x5256_4b48); // "RVKH"
@@ -260,6 +261,7 @@ pub enum McuMailboxReq {
     FuseLockPartition(FuseLockPartitionReq),
     FuseIncreaseMinSvn(FuseIncreaseMinSvnReq),
     FeProg(McuFeProgReq),
+    FeStatus(McuFeStatusReq),
     VendorPkHashStatus(VendorPkHashStatusReq),
     GetAuthCmdChallenge(GetAuthCmdChallengeReq),
     FuseRevokeVendorPubKey(FuseRevokeVendorPubKeyReq),
@@ -340,6 +342,7 @@ impl McuMailboxReq {
             McuMailboxReq::FuseLockPartition(req) => Ok(req.as_bytes()),
             McuMailboxReq::FuseIncreaseMinSvn(req) => Ok(req.as_bytes()),
             McuMailboxReq::FeProg(req) => Ok(req.as_bytes()),
+            McuMailboxReq::FeStatus(req) => Ok(req.as_bytes()),
             McuMailboxReq::VendorPkHashStatus(req) => Ok(req.as_bytes()),
             McuMailboxReq::GetAuthCmdChallenge(req) => Ok(req.as_bytes()),
             McuMailboxReq::FuseRevokeVendorPubKey(req) => Ok(req.as_bytes()),
@@ -418,6 +421,7 @@ impl McuMailboxReq {
             McuMailboxReq::FuseLockPartition(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FuseIncreaseMinSvn(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FeProg(req) => Ok(req.as_mut_bytes()),
+            McuMailboxReq::FeStatus(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::VendorPkHashStatus(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::GetAuthCmdChallenge(req) => Ok(req.as_mut_bytes()),
             McuMailboxReq::FuseRevokeVendorPubKey(req) => Ok(req.as_mut_bytes()),
@@ -496,6 +500,7 @@ impl McuMailboxReq {
             McuMailboxReq::FuseLockPartition(_) => CommandId::MC_FUSE_LOCK_PARTITION,
             McuMailboxReq::FuseIncreaseMinSvn(_) => CommandId::MC_FUSE_INCREASE_MIN_SVN,
             McuMailboxReq::FeProg(_) => CommandId::MC_FE_PROG,
+            McuMailboxReq::FeStatus(_) => CommandId::MC_FE_STATUS,
             McuMailboxReq::VendorPkHashStatus(_) => CommandId::MC_VENDOR_PK_HASH_STATUS,
             McuMailboxReq::GetAuthCmdChallenge(_) => CommandId::MC_GET_AUTH_CMD_CHALLENGE,
             McuMailboxReq::FuseRevokeVendorPubKey(_) => CommandId::MC_FUSE_REVOKE_VENDOR_PUB_KEY,
@@ -597,6 +602,7 @@ pub enum McuMailboxResp {
     FuseRead(FuseReadResp),
     FuseWrite(FuseWriteResp),
     FuseLockPartition(FuseLockPartitionResp),
+    FeStatus(McuFeStatusResp),
     VendorPkHashStatus(VendorPkHashStatusResp),
     GetAuthCmdChallenge(GetAuthCmdChallengeResp),
     FuseRevokeVendorPubKey(FuseRevokeVendorPubKeyResp),
@@ -732,6 +738,7 @@ impl McuMailboxResp {
             McuMailboxResp::FuseRead(resp) => resp.as_bytes_partial(),
             McuMailboxResp::FuseWrite(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FuseLockPartition(resp) => Ok(resp.as_bytes()),
+            McuMailboxResp::FeStatus(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::VendorPkHashStatus(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::GetAuthCmdChallenge(resp) => Ok(resp.as_bytes()),
             McuMailboxResp::FuseRevokeVendorPubKey(resp) => Ok(resp.as_bytes()),
@@ -805,6 +812,7 @@ impl McuMailboxResp {
             McuMailboxResp::FuseRead(resp) => resp.as_bytes_partial_mut(),
             McuMailboxResp::FuseWrite(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FuseLockPartition(resp) => Ok(resp.as_mut_bytes()),
+            McuMailboxResp::FeStatus(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::VendorPkHashStatus(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::GetAuthCmdChallenge(resp) => Ok(resp.as_mut_bytes()),
             McuMailboxResp::FuseRevokeVendorPubKey(resp) => Ok(resp.as_mut_bytes()),
@@ -1806,6 +1814,24 @@ pub struct FuseRevokeVendorPkHashResp {
     pub hdr: MailboxRespHeader,
 }
 impl Response for FuseRevokeVendorPkHashResp {}
+
+/// MC_FE_STATUS request: Query whether all field entropy partitions are provisioned.
+#[repr(transparent)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuFeStatusReq(pub MailboxReqHeader);
+impl Request for McuFeStatusReq {
+    const ID: CommandId = CommandId::MC_FE_STATUS;
+    type Resp = McuFeStatusResp;
+}
+
+/// MC_FE_STATUS response.
+#[repr(C)]
+#[derive(Debug, Default, IntoBytes, FromBytes, KnownLayout, Immutable, PartialEq, Eq)]
+pub struct McuFeStatusResp {
+    pub hdr: MailboxRespHeader,
+    pub already_provisioned: u32,
+}
+impl Response for McuFeStatusResp {}
 
 pub const VENDOR_PK_HASH_SLOT_COUNT: usize = 16;
 pub const VENDOR_PQC_KEY_TYPE_LMS: u8 = 1;

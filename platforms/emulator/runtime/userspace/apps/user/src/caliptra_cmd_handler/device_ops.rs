@@ -7,7 +7,9 @@ extern crate alloc;
 use alloc::boxed::Box;
 use arrayvec::ArrayVec;
 use async_trait::async_trait;
-use caliptra_api::mailbox::{EcdsaVerifyReq, MailboxReqHeader, MailboxRespHeader};
+use caliptra_api::mailbox::{
+    EcdsaVerifyReq, FePartitionStatus, MailboxReqHeader, MailboxRespHeader,
+};
 #[cfg(feature = "pcr-quote")]
 use caliptra_mcu_attestation_evidence::pcr_quote::{encode_pcr_quote, PcrQuoteAlgorithm};
 use caliptra_mcu_attestation_evidence::{encode_signed_ocp_eat, OcpEatAlgorithm};
@@ -197,6 +199,24 @@ mod tests {
     use zerocopy::FromZeros;
 
     static SVN_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    #[test]
+    fn field_entropy_status_requires_all_four_partitions() {
+        assert_eq!(field_entropy_provisioned(0x55), Ok(true));
+        for status in [0, 0x54, 0x45, 0x15, 0x56] {
+            assert_eq!(field_entropy_provisioned(status), Ok(false));
+        }
+    }
+
+    #[test]
+    fn field_entropy_status_rejects_unreadable_partitions() {
+        for status in [0xff, 0xc0, 0x57] {
+            assert_eq!(
+                field_entropy_provisioned(status),
+                Err(CaliptraCompletionCode::OperationFailed)
+            );
+        }
+    }
 
     struct TestAlloc;
 
@@ -1641,6 +1661,27 @@ pub async fn program_field_entropy<A: ScratchAlloc>(
     partition: u32,
 ) -> CaliptraCmdResult<()> {
     fe_prog(alloc, partition).await.map_err(map_mcu_err)
+}
+
+pub async fn field_entropy_already_provisioned<A: ScratchAlloc>(
+    alloc: &A,
+) -> CaliptraCmdResult<bool> {
+    let info = fw_info(alloc)
+        .await
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+    field_entropy_provisioned(info.fe_status)
+}
+
+fn field_entropy_provisioned(fe_status: u32) -> CaliptraCmdResult<bool> {
+    let mut all_provisioned = true;
+    for partition in 0..4 {
+        let status = (fe_status >> (partition * 2)) & 3;
+        if status == FePartitionStatus::Error as u32 {
+            return Err(CaliptraCompletionCode::OperationFailed);
+        }
+        all_provisioned &= status == FePartitionStatus::Provisioned as u32;
+    }
+    Ok(all_provisioned)
 }
 
 pub fn vendor_pk_hash_status() -> CaliptraCmdResult<(u32, [u8; 16])> {

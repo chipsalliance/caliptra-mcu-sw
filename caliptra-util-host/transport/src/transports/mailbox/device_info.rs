@@ -76,6 +76,39 @@ impl ToInternalResponse<GetDeviceCapabilitiesResponse> for ExtCmdGetDeviceCapabi
 
 #[repr(C)]
 #[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+pub struct ExtCmdFieldEntropyStatusRequest {
+    pub chksum: u32,
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+pub struct ExtCmdFieldEntropyStatusResponse {
+    pub chksum: u32,
+    pub fips_status: u32,
+    pub already_provisioned: u32,
+}
+
+impl FromInternalRequest<FieldEntropyStatusRequest> for ExtCmdFieldEntropyStatusRequest {
+    fn from_internal(_internal: &FieldEntropyStatusRequest, command_code: u32) -> Self {
+        Self {
+            chksum: calc_checksum(command_code, &[]),
+        }
+    }
+}
+
+impl ToInternalResponse<FieldEntropyStatusResponse> for ExtCmdFieldEntropyStatusResponse {
+    fn to_internal(&self) -> FieldEntropyStatusResponse {
+        FieldEntropyStatusResponse {
+            common: CommonResponse {
+                fips_status: self.fips_status,
+            },
+            already_provisioned: self.already_provisioned,
+        }
+    }
+}
+
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
 pub struct ExtCmdVendorPkHashStatusRequest {
     pub chksum: u32,
 }
@@ -263,10 +296,12 @@ impl VariableSizeBytes for ExtCmdGetFirmwareVersionResponse {
 // Implement VariableSizeBytes for all request types (they are all fixed-size)
 impl VariableSizeBytes for ExtCmdGetDeviceCapabilitiesRequest {}
 impl VariableSizeBytes for ExtCmdGetFirmwareVersionRequest {}
+impl VariableSizeBytes for ExtCmdFieldEntropyStatusRequest {}
 impl VariableSizeBytes for ExtCmdVendorPkHashStatusRequest {}
 
 // Fixed-size response types
 impl VariableSizeBytes for ExtCmdGetDeviceCapabilitiesResponse {}
+impl VariableSizeBytes for ExtCmdFieldEntropyStatusResponse {}
 impl VariableSizeBytes for ExtCmdVendorPkHashStatusResponse {}
 
 // ============================================================================
@@ -294,6 +329,15 @@ define_command!(
 );
 
 define_command!(
+    FieldEntropyStatusCmd,
+    0x4D43_4653,
+    FieldEntropyStatusRequest,
+    FieldEntropyStatusResponse,
+    ExtCmdFieldEntropyStatusRequest,
+    ExtCmdFieldEntropyStatusResponse
+);
+
+define_command!(
     VendorPkHashStatusCmd,
     0x4D56_5053,
     VendorPkHashStatusRequest,
@@ -314,6 +358,24 @@ mod tests {
 
         assert_eq!(internal.version, [2, 0, 0, 0]);
         assert_eq!(internal.commit_id, [0; 20]);
+    }
+
+    #[test]
+    fn field_entropy_status_uses_empty_payload_checksum_and_decodes_response() {
+        let request =
+            ExtCmdFieldEntropyStatusRequest::from_internal(&FieldEntropyStatusRequest, 0x4D43_4653);
+        assert_eq!(
+            request.as_bytes(),
+            &calc_checksum(0x4D43_4653, &[]).to_le_bytes()
+        );
+        let response = ExtCmdFieldEntropyStatusResponse {
+            chksum: 0,
+            fips_status: 1,
+            already_provisioned: 1,
+        }
+        .to_internal();
+        assert_eq!(response.common.fips_status, 1);
+        assert_eq!(response.already_provisioned, 1);
     }
 
     #[test]
