@@ -106,7 +106,7 @@ pub use debug_unlock::{
     PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_RSP_LEN,
 };
 #[cfg(feature = "mailbox-io")]
-pub use dma::{mcu_sram_to_axi_dma, AxiDmaTarget};
+pub use dma::AxiDmaTarget;
 #[cfg(feature = "mailbox-io")]
 pub use dpe::{
     dpe_certify_key, dpe_certify_key_cert_size, dpe_certify_key_cert_slice,

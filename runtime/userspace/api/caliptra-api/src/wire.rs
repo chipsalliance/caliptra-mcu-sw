@@ -103,24 +103,6 @@ pub const DPE_PROFILE_P384_SHA384: u32 = caliptra_dpe::DpeProfile::P384Sha384 as
 /// DPE profile used by Caliptra's runtime DPE — ML-DSA-87.
 pub const DPE_PROFILE_MLDSA87: u32 = caliptra_dpe::DpeProfile::Mldsa87 as u32;
 
-/// DPE `DeriveContext` command ID.
-pub(crate) const DPE_CMD_DERIVE_CONTEXT: u32 = caliptra_dpe::commands::Command::DERIVE_CONTEXT;
-
-/// DPE vendor `UpdateContextMeasurement` command ID.
-pub(crate) const DPE_CMD_UPDATE_CONTEXT_MEASUREMENT: u32 =
-    caliptra_dpe::commands::Command::UPDATE_CONTEXT_MEASUREMENT;
-
-/// DPE `GetCertificateChain` command ID.
-pub(crate) const DPE_CMD_GET_CERTIFICATE_CHAIN: u32 =
-    caliptra_dpe::commands::Command::GET_CERTIFICATE_CHAIN;
-
-/// DPE `Sign` command ID.
-pub(crate) const DPE_CMD_SIGN: u32 = caliptra_dpe::commands::Command::SIGN;
-
-/// DPE `RotateContextHandle` command ID.
-pub(crate) const DPE_CMD_ROTATE_CONTEXT_HANDLE: u32 =
-    caliptra_dpe::commands::Command::ROTATE_CONTEXT_HANDLE;
-
 /// `QUOTE_PCRS_ECC384` command ID.
 pub(crate) const CMD_QUOTE_PCRS_ECC384: u32 = 0x5043_5251; // "PCRQ"
 
