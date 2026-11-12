@@ -125,7 +125,7 @@ define_status_command!(
     ExtCmdFieldEntropyStatusResponse,
     FieldEntropyStatusRequest,
     FieldEntropyStatusResponse,
-    { already_provisioned: u32 }
+    { fe_status: u32 }
 );
 define_status_command!(
     ExtCmdVendorPkHashStatusRequest,
@@ -380,11 +380,11 @@ mod tests {
             ExtCmdFieldEntropyStatusResponse {
                 chksum: 0,
                 fips_status: 0,
-                already_provisioned: 1,
+                fe_status: 0x55,
             }
             .to_internal()
-            .already_provisioned,
-            1
+            .fe_status,
+            0x55
         );
 
         let vendor = ExtCmdVendorPkHashStatusResponse {

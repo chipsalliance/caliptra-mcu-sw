@@ -1017,30 +1017,6 @@ impl Otp {
         }
         Ok(())
     }
-
-    /// Mark a field entropy slot as started in OTP memory.
-    pub fn mark_field_entropy_started(&self, slot: FieldEntropySlot) -> McuResult<()> {
-        let bit = (slot as usize) * 3 + FieldEntropySlot::STARTED_BIT_OFFSET;
-        let val = self.read_entry(fuses::FIELD_ENTROPY_STATE)?;
-        self.write_entry(fuses::FIELD_ENTROPY_STATE, val | (1 << bit))?;
-        Ok(())
-    }
-
-    /// Mark a field entropy slot as finished in OTP memory.
-    pub fn mark_field_entropy_finished(&self, slot: FieldEntropySlot) -> McuResult<()> {
-        let bit = (slot as usize) * 3 + FieldEntropySlot::FINISHED_BIT_OFFSET;
-        let val = self.read_entry(fuses::FIELD_ENTROPY_STATE)?;
-        self.write_entry(fuses::FIELD_ENTROPY_STATE, val | (1 << bit))?;
-        Ok(())
-    }
-
-    /// Mark a field entropy slot as zeroized in OTP memory.
-    pub fn mark_field_entropy_zeroized(&self, slot: FieldEntropySlot) -> McuResult<()> {
-        let bit = (slot as usize) * 3 + FieldEntropySlot::ZEROIZED_BIT_OFFSET;
-        let val = self.read_entry(fuses::FIELD_ENTROPY_STATE)?;
-        self.write_entry(fuses::FIELD_ENTROPY_STATE, val | (1 << bit))?;
-        Ok(())
-    }
 }
 
 fn sw_digest_data_size(partition: &OtpPartitionInfo) -> McuResult<usize> {
@@ -1244,59 +1220,6 @@ pub fn vendor_mldsa_revocation_entry(index: usize) -> McuResult<&'static FuseEnt
         14 => Ok(fuses::VENDOR_MLDSA_REVOCATION_14),
         15 => Ok(fuses::VENDOR_MLDSA_REVOCATION_15),
         _ => Err(McuError::ROM_OTP_INVALID_DATA_ERROR),
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum FieldEntropySlot {
-    Slot0 = 0,
-    Slot1 = 1,
-    Slot2 = 2,
-    Slot3 = 3,
-}
-
-impl TryFrom<usize> for FieldEntropySlot {
-    type Error = ();
-    fn try_from(value: usize) -> Result<Self, Self::Error> {
-        match value {
-            0 => Ok(Self::Slot0),
-            1 => Ok(Self::Slot1),
-            2 => Ok(Self::Slot2),
-            3 => Ok(Self::Slot3),
-            _ => Err(()),
-        }
-    }
-}
-
-impl FieldEntropySlot {
-    pub const STARTED_BIT_OFFSET: usize = 0;
-    pub const FINISHED_BIT_OFFSET: usize = 1;
-    pub const ZEROIZED_BIT_OFFSET: usize = 2;
-}
-
-pub enum FieldEntropyState {
-    Empty,
-    Started,
-    Finished,
-    Zeroized,
-}
-
-impl FieldEntropyState {
-    pub fn read(otp: &Otp, slot: FieldEntropySlot) -> McuResult<FieldEntropyState> {
-        let val = otp.read_entry(fuses::FIELD_ENTROPY_STATE)?;
-        let base_bit = (slot as usize) * 3;
-        let started = (val & (1 << (base_bit + FieldEntropySlot::STARTED_BIT_OFFSET))) != 0;
-        let finished = (val & (1 << (base_bit + FieldEntropySlot::FINISHED_BIT_OFFSET))) != 0;
-        let zeroized = (val & (1 << (base_bit + FieldEntropySlot::ZEROIZED_BIT_OFFSET))) != 0;
-        if zeroized {
-            Ok(FieldEntropyState::Zeroized)
-        } else if started && !finished {
-            Ok(FieldEntropyState::Started)
-        } else if started && finished {
-            Ok(FieldEntropyState::Finished)
-        } else {
-            Ok(FieldEntropyState::Empty)
-        }
     }
 }
 

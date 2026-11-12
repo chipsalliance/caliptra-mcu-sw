@@ -800,13 +800,8 @@ impl Validator {
         Self::validate_status_response(
             "FieldEntropyStatus",
             client.field_entropy_status(),
-            |response| response.already_provisioned <= 1,
-            |response| {
-                format!(
-                    "invalid already_provisioned value {}",
-                    response.already_provisioned
-                )
-            },
+            |response| response.fe_status >> 8 == 0,
+            |response| format!("invalid fe_status value {:#010x}", response.fe_status),
         )
     }
 

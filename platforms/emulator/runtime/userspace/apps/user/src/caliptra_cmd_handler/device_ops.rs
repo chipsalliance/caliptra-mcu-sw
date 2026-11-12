@@ -176,304 +176,6 @@ fn mailbox_checksum_segments<const N: usize>(command: u32, segments: [&[u8]; N])
     0u32.wrapping_sub(sum)
 }
 
-#[cfg(test)]
-mod tests {
-    extern crate std;
-
-    use super::super::CaliptraCmdBackend;
-    use super::*;
-    use caliptra_api::mailbox::FwInfoResp;
-    use caliptra_mcu_common_commands::CaliptraCmdHandler;
-    use caliptra_mcu_libsyscall_caliptra::mailbox::MAILBOX_DRIVER_NUM;
-    use caliptra_mcu_libtock_platform::{CommandReturn, Syscalls};
-    use caliptra_mcu_libtock_unittest::{command_return, fake, DriverInfo};
-    use caliptra_mcu_scratch_alloc::BitmapAllocator;
-    use core::cell::Cell;
-    use core::future::Future;
-    use core::ptr::NonNull;
-    use core::task::{Context, Waker};
-    use std::rc::Rc;
-    use std::vec::Vec;
-    use zerocopy::FromZeros;
-
-    static SVN_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
-    struct TestAlloc;
-
-    impl ScratchAlloc for TestAlloc {
-        type Buf<'a> = Vec<u8>;
-
-        fn alloc(&self, len: usize) -> mcu_error::McuResult<Self::Buf<'_>> {
-            Ok(std::vec![0; len])
-        }
-    }
-
-    #[test]
-    fn svn_transaction_blocks_typed_floor_writers_before_any_io() {
-        let _test_guard = SVN_TEST_LOCK.lock().unwrap();
-        for target in [
-            SvnTarget::CaliptraRuntime,
-            SvnTarget::SocManifest,
-            SvnTarget::OwnerSocManifest,
-        ] {
-            let kernel = crate::kernel();
-            let svn_guard = otp::SVN_UPDATE_LOCK.try_lock().unwrap();
-            let mut writer = Box::pin(increase_min_svn(&TestAlloc, target, 1));
-            let mut context = Context::from_waker(Waker::noop());
-            assert!(writer.as_mut().poll(&mut context).is_pending());
-            assert!(kernel.take_syscall_log().is_empty());
-            drop(svn_guard);
-            assert_eq!(
-                fake::wait_for_future_ready(writer),
-                Err(CaliptraCompletionCode::OperationFailed)
-            );
-            assert!(otp::SVN_UPDATE_LOCK.try_lock().is_ok());
-        }
-    }
-
-    #[test]
-    fn svn_transaction_blocks_the_raw_fuse_writer_before_any_io() {
-        let _test_guard = SVN_TEST_LOCK.lock().unwrap();
-        let kernel = crate::kernel();
-        let backend = CaliptraCmdBackend;
-        let svn_guard = otp::SVN_UPDATE_LOCK.try_lock().unwrap();
-        let word_addr = (fuses::OTP_CPTRA_CORE_RUNTIME_SVN.byte_offset / 4) as u32;
-        let mut writer = Box::pin(backend.fuse_write(word_addr, 0x1f, u32::MAX));
-        let mut context = Context::from_waker(Waker::noop());
-        assert!(writer.as_mut().poll(&mut context).is_pending());
-        assert!(kernel.take_syscall_log().is_empty());
-        drop(svn_guard);
-        assert_eq!(
-            fake::wait_for_future_ready(writer),
-            Err(CaliptraCompletionCode::OperationFailed)
-        );
-        assert!(otp::SVN_UPDATE_LOCK.try_lock().is_ok());
-    }
-
-    #[derive(Default)]
-    struct OwnerSvnOtp {
-        words: Cell<[u32; 2]>,
-        index: Cell<usize>,
-        reads: Cell<usize>,
-        writes: RefCell<Vec<(usize, u32)>>,
-        fail_read: Cell<Option<usize>>,
-        fail_write: Cell<Option<usize>>,
-        readback_xor: Cell<u32>,
-    }
-
-    impl fake::SyscallDriver for OwnerSvnOtp {
-        fn info(&self) -> DriverInfo {
-            DriverInfo::new(otp::OTP_DRIVER_NUM)
-        }
-
-        fn command(&self, command: u32, arg0: u32, arg1: u32) -> CommandReturn {
-            match command {
-                otp::cmd::OTP_SET_REGISTER => {
-                    assert_eq!(arg0, otp::reg::OWNER_SOC_MANIFEST_MIN_SVN);
-                    assert!(arg1 < 2, "Access outside the Owner SoC Manifest counter");
-                    self.index.set(arg1 as usize);
-                    command_return::success()
-                }
-                otp::cmd::OTP_READ => {
-                    assert_eq!(arg0, otp::reg::OWNER_SOC_MANIFEST_MIN_SVN);
-                    assert_eq!(arg1 as usize, self.index.get());
-                    let read = self.reads.get();
-                    self.reads.set(read + 1);
-                    if self.fail_read.get() == Some(read) {
-                        return command_return::failure(ErrorCode::Fail);
-                    }
-                    let mut value = self.words.get()[self.index.get()];
-                    if read >= 2 && self.index.get() == 0 {
-                        value ^= self.readback_xor.get();
-                    }
-                    command_return::success_u32(value)
-                }
-                otp::cmd::OTP_WRITE => {
-                    let index = self.index.get();
-                    self.writes.borrow_mut().push((index, arg0));
-                    if self.fail_write.get() == Some(index) {
-                        return command_return::failure(ErrorCode::Fail);
-                    }
-                    let mut words = self.words.get();
-                    assert_eq!(arg0 & words[index], words[index]);
-                    words[index] = arg0;
-                    self.words.set(words);
-                    command_return::success()
-                }
-                _ => panic!("Unexpected OTP command {command}"),
-            }
-        }
-    }
-
-    #[test]
-    fn owner_svn_runtime_word_updates() {
-        let _test_guard = SVN_TEST_LOCK.lock().unwrap();
-        let kernel = crate::kernel();
-        let mailbox = Rc::new(fake::FakeMailboxDriver::new());
-        let otp = Rc::new(OwnerSvnOtp::default());
-        kernel.add_driver(&mailbox);
-        kernel.add_driver(&otp);
-
-        #[repr(align(64))]
-        struct Scratch([u8; 1024]);
-        let mut scratch = Scratch([0; 1024]);
-        // SAFETY: The aligned storage is exclusive to the pool and outlives every request.
-        let pool = unsafe {
-            BitmapAllocator::new(
-                NonNull::new(scratch.0.as_mut_ptr()).unwrap(),
-                scratch.0.len(),
-            )
-        };
-        let advance = |svn, accepted_svn| {
-            let mut response = FwInfoResp {
-                owner_auth_manifest_current_svn: accepted_svn,
-                ..FwInfoResp::new_zeroed()
-            };
-            response.hdr.chksum = caliptra_api::calc_checksum(0, &response.as_bytes()[4..]);
-            mailbox.add_ready_response(
-                caliptra_api::mailbox::CommandId::FW_INFO.into(),
-                response.as_bytes(),
-            );
-            otp.reads.set(0);
-            let mut writer = Box::pin(increase_min_svn(&pool, SvnTarget::OwnerSocManifest, svn));
-            let mut context = Context::from_waker(Waker::noop());
-            assert!(writer.as_mut().poll(&mut context).is_pending());
-            let guarded_while_waiting = otp::SVN_UPDATE_LOCK.try_lock().is_err();
-            let result = fake::wait_for_future_ready(writer);
-            // The fake mailbox retains its allowed buffers after completion.
-            DefaultSyscalls::unallow_ro(MAILBOX_DRIVER_NUM, 0);
-            DefaultSyscalls::unallow_rw(MAILBOX_DRIVER_NUM, 0);
-            assert!(guarded_while_waiting);
-            result
-        };
-
-        for svn in [0, 65, u32::MAX] {
-            assert_eq!(
-                fake::wait_for_future_ready(Box::pin(increase_min_svn(
-                    &pool,
-                    SvnTarget::OwnerSocManifest,
-                    svn,
-                ))),
-                Err(CaliptraCompletionCode::InvalidParameter)
-            );
-        }
-        assert_eq!(mailbox.get_last_command(), None);
-        assert_eq!(advance(1, 0), Err(CaliptraCompletionCode::InvalidParameter));
-        assert_eq!(advance(8, 7), Err(CaliptraCompletionCode::InvalidParameter));
-        assert_eq!(otp.reads.get(), 0);
-        assert!(otp.writes.borrow().is_empty());
-
-        for svn in 1..=64 {
-            assert_eq!(advance(svn, 64), Ok(()), "SVN {svn}");
-            let words = otp.words.get();
-            assert_eq!(words[0].count_ones() + words[1].count_ones(), svn);
-            let writes = otp.writes.borrow().len();
-            assert_eq!(advance(svn, 64), Ok(()));
-            if svn > 1 {
-                assert_eq!(
-                    advance(svn - 1, 64),
-                    Err(CaliptraCompletionCode::InvalidParameter)
-                );
-            }
-            assert_eq!(otp.writes.borrow().len(), writes);
-            assert_eq!(otp.words.get(), words);
-        }
-        assert_eq!(otp.words.get(), [u32::MAX; 2]);
-
-        let partial = [0b1010, 1 << 31];
-        otp.words.set(partial);
-        assert_eq!(advance(7, 64), Ok(()));
-        let words = otp.words.get();
-        assert_eq!(words[0].count_ones() + words[1].count_ones(), 7);
-        assert_eq!(words[0] & partial[0], partial[0]);
-        assert_eq!(words[1] & partial[1], partial[1]);
-
-        otp.words.set([0; 2]);
-        otp.writes.borrow_mut().clear();
-        otp.fail_write.set(Some(1));
-        assert_eq!(
-            advance(64, 64),
-            Err(CaliptraCompletionCode::OperationFailed)
-        );
-        assert_eq!(otp.words.get(), [u32::MAX, 0]);
-        assert_eq!(*otp.writes.borrow(), [(0, u32::MAX), (1, u32::MAX)]);
-        otp.fail_write.set(None);
-        otp.writes.borrow_mut().clear();
-        assert_eq!(advance(64, 64), Ok(()));
-        assert_eq!(otp.words.get(), [u32::MAX; 2]);
-        assert_eq!(*otp.writes.borrow(), [(1, u32::MAX)]);
-
-        otp.words.set([0; 2]);
-        otp.fail_write.set(Some(0));
-        assert_eq!(
-            advance(33, 64),
-            Err(CaliptraCompletionCode::OperationFailed)
-        );
-        assert_eq!(otp.words.get(), [0; 2]);
-        otp.fail_write.set(None);
-
-        for read in 0..4 {
-            otp.words.set([0; 2]);
-            otp.writes.borrow_mut().clear();
-            otp.fail_read.set(Some(read));
-            assert_eq!(
-                advance(33, 64),
-                Err(CaliptraCompletionCode::OperationFailed),
-                "read {read}"
-            );
-            if read < 2 {
-                assert!(otp.writes.borrow().is_empty());
-                assert_eq!(otp.words.get(), [0; 2]);
-            } else {
-                assert_eq!(otp.words.get(), [u32::MAX, 1]);
-            }
-        }
-        otp.fail_read.set(None);
-
-        // The readback has the right bit count but not the intended bit pattern.
-        otp.words.set([0; 2]);
-        otp.readback_xor.set(0b11);
-        assert_eq!(advance(1, 64), Err(CaliptraCompletionCode::OperationFailed));
-        assert_eq!(otp.words.get(), [1, 0]);
-        otp.readback_xor.set(0);
-        assert_eq!(advance(1, 64), Ok(()));
-        assert_eq!(pool.live_slots(), 0);
-    }
-
-    #[test]
-    fn segmented_payload_preserves_wire_order_and_checksum() {
-        let command = 0x4d4c_4453;
-        let segments: [&[u8]; 4] = [&[1, 2, 3], &[], &[4, 5], &[6]];
-        let mut stream = SegmentedPayloadStream::new(segments);
-        let mut actual = Vec::new();
-        let mut chunk = [0u8; 2];
-
-        loop {
-            let len = stream.read_into(&mut chunk);
-            if len == 0 {
-                break;
-            }
-            actual.extend_from_slice(&chunk[..len]);
-        }
-
-        assert_eq!(actual, [1, 2, 3, 4, 5, 6]);
-        let mut request = Vec::from([0u8; 4]);
-        request.extend_from_slice(&actual);
-        assert_eq!(
-            mailbox_checksum_segments(command, segments),
-            caliptra_api::calc_checksum(command, &request)
-        );
-    }
-
-    #[test]
-    fn field_entropy_is_provisioned_only_when_every_slot_is_finished() {
-        assert!(!is_field_entropy_provisioned(0));
-        assert!(!is_field_entropy_provisioned(0x036d));
-        assert!(is_field_entropy_provisioned(0x06db));
-        assert!(!is_field_entropy_provisioned(0x0fff));
-    }
-}
-
 pub async fn get_debug_log(log_type: u32, data: &mut [u8]) -> CaliptraCmdResult<GetLogResult> {
     LogType::try_from(log_type)?;
     super::debug_log::drain(data).await
@@ -1642,18 +1344,8 @@ pub async fn program_field_entropy<A: ScratchAlloc>(
     fe_prog(alloc, partition).await.map_err(map_mcu_err)
 }
 
-fn is_field_entropy_provisioned(state: u32) -> bool {
-    const FINISHED_MASK: u32 = 0x06db;
-    const ZEROIZED_MASK: u32 = 0x0924;
-
-    state & FINISHED_MASK == FINISHED_MASK && state & ZEROIZED_MASK == 0
-}
-
-pub fn field_entropy_already_provisioned() -> CaliptraCmdResult<bool> {
-    let state = Otp::<DefaultSyscalls>::new()
-        .read(otp::reg::FIELD_ENTROPY_STATE, 0)
-        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
-    Ok(is_field_entropy_provisioned(state))
+pub async fn field_entropy_status<A: ScratchAlloc>(alloc: &A) -> CaliptraCmdResult<u32> {
+    Ok(fw_info(alloc).await.map_err(map_mcu_err)?.fe_status)
 }
 
 pub fn vendor_pk_hash_status() -> CaliptraCmdResult<(u32, [u8; 16])> {
@@ -1732,5 +1424,349 @@ pub(crate) fn map_mailbox_error(e: MailboxError) -> CaliptraCompletionCode {
         MailboxError::ErrorCode(_) | MailboxError::MailboxError(_) => {
             CaliptraCompletionCode::OperationFailed
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    extern crate std;
+
+    use super::super::CaliptraCmdBackend;
+    use super::*;
+    use caliptra_api::mailbox::FwInfoResp;
+    use caliptra_mcu_common_commands::CaliptraCmdHandler;
+    use caliptra_mcu_libsyscall_caliptra::mailbox::MAILBOX_DRIVER_NUM;
+    use caliptra_mcu_libtock_platform::{CommandReturn, Syscalls};
+    use caliptra_mcu_libtock_unittest::{command_return, fake, DriverInfo};
+    use caliptra_mcu_scratch_alloc::BitmapAllocator;
+    use core::cell::Cell;
+    use core::future::Future;
+    use core::ptr::NonNull;
+    use core::task::{Context, Waker};
+    use std::rc::Rc;
+    use std::vec::Vec;
+    use zerocopy::FromZeros;
+
+    // These fake-kernel tests share process-wide SVN and mailbox state.
+    static DEVICE_OPS_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    struct TestAlloc;
+
+    impl ScratchAlloc for TestAlloc {
+        type Buf<'a> = Vec<u8>;
+
+        fn alloc(&self, len: usize) -> mcu_error::McuResult<Self::Buf<'_>> {
+            Ok(std::vec![0; len])
+        }
+    }
+
+    #[test]
+    fn svn_transaction_blocks_typed_floor_writers_before_any_io() {
+        let _test_guard = DEVICE_OPS_TEST_LOCK.lock().unwrap();
+        for target in [
+            SvnTarget::CaliptraRuntime,
+            SvnTarget::SocManifest,
+            SvnTarget::OwnerSocManifest,
+        ] {
+            let kernel = crate::kernel();
+            let svn_guard = otp::SVN_UPDATE_LOCK.try_lock().unwrap();
+            let mut writer = Box::pin(increase_min_svn(&TestAlloc, target, 1));
+            let mut context = Context::from_waker(Waker::noop());
+            assert!(writer.as_mut().poll(&mut context).is_pending());
+            assert!(kernel.take_syscall_log().is_empty());
+            drop(svn_guard);
+            assert_eq!(
+                fake::wait_for_future_ready(writer),
+                Err(CaliptraCompletionCode::OperationFailed)
+            );
+            assert!(otp::SVN_UPDATE_LOCK.try_lock().is_ok());
+        }
+    }
+
+    #[test]
+    fn svn_transaction_blocks_the_raw_fuse_writer_before_any_io() {
+        let _test_guard = DEVICE_OPS_TEST_LOCK.lock().unwrap();
+        let kernel = crate::kernel();
+        let backend = CaliptraCmdBackend;
+        let svn_guard = otp::SVN_UPDATE_LOCK.try_lock().unwrap();
+        let word_addr = (fuses::OTP_CPTRA_CORE_RUNTIME_SVN.byte_offset / 4) as u32;
+        let mut writer = Box::pin(backend.fuse_write(word_addr, 0x1f, u32::MAX));
+        let mut context = Context::from_waker(Waker::noop());
+        assert!(writer.as_mut().poll(&mut context).is_pending());
+        assert!(kernel.take_syscall_log().is_empty());
+        drop(svn_guard);
+        assert_eq!(
+            fake::wait_for_future_ready(writer),
+            Err(CaliptraCompletionCode::OperationFailed)
+        );
+        assert!(otp::SVN_UPDATE_LOCK.try_lock().is_ok());
+    }
+
+    #[derive(Default)]
+    struct OwnerSvnOtp {
+        words: Cell<[u32; 2]>,
+        index: Cell<usize>,
+        reads: Cell<usize>,
+        writes: RefCell<Vec<(usize, u32)>>,
+        fail_read: Cell<Option<usize>>,
+        fail_write: Cell<Option<usize>>,
+        readback_xor: Cell<u32>,
+    }
+
+    impl fake::SyscallDriver for OwnerSvnOtp {
+        fn info(&self) -> DriverInfo {
+            DriverInfo::new(otp::OTP_DRIVER_NUM)
+        }
+
+        fn command(&self, command: u32, arg0: u32, arg1: u32) -> CommandReturn {
+            match command {
+                otp::cmd::OTP_SET_REGISTER => {
+                    assert_eq!(arg0, otp::reg::OWNER_SOC_MANIFEST_MIN_SVN);
+                    assert!(arg1 < 2, "Access outside the Owner SoC Manifest counter");
+                    self.index.set(arg1 as usize);
+                    command_return::success()
+                }
+                otp::cmd::OTP_READ => {
+                    assert_eq!(arg0, otp::reg::OWNER_SOC_MANIFEST_MIN_SVN);
+                    assert_eq!(arg1 as usize, self.index.get());
+                    let read = self.reads.get();
+                    self.reads.set(read + 1);
+                    if self.fail_read.get() == Some(read) {
+                        return command_return::failure(ErrorCode::Fail);
+                    }
+                    let mut value = self.words.get()[self.index.get()];
+                    if read >= 2 && self.index.get() == 0 {
+                        value ^= self.readback_xor.get();
+                    }
+                    command_return::success_u32(value)
+                }
+                otp::cmd::OTP_WRITE => {
+                    let index = self.index.get();
+                    self.writes.borrow_mut().push((index, arg0));
+                    if self.fail_write.get() == Some(index) {
+                        return command_return::failure(ErrorCode::Fail);
+                    }
+                    let mut words = self.words.get();
+                    assert_eq!(arg0 & words[index], words[index]);
+                    words[index] = arg0;
+                    self.words.set(words);
+                    command_return::success()
+                }
+                _ => panic!("Unexpected OTP command {command}"),
+            }
+        }
+    }
+
+    #[test]
+    fn owner_svn_runtime_word_updates() {
+        let _test_guard = DEVICE_OPS_TEST_LOCK.lock().unwrap();
+        let kernel = crate::kernel();
+        let mailbox = Rc::new(fake::FakeMailboxDriver::new());
+        let otp = Rc::new(OwnerSvnOtp::default());
+        kernel.add_driver(&mailbox);
+        kernel.add_driver(&otp);
+
+        #[repr(align(64))]
+        struct Scratch([u8; 1024]);
+        let mut scratch = Scratch([0; 1024]);
+        // SAFETY: The aligned storage is exclusive to the pool and outlives every request.
+        let pool = unsafe {
+            BitmapAllocator::new(
+                NonNull::new(scratch.0.as_mut_ptr()).unwrap(),
+                scratch.0.len(),
+            )
+        };
+        let advance = |svn, accepted_svn| {
+            let mut response = FwInfoResp {
+                owner_auth_manifest_current_svn: accepted_svn,
+                ..FwInfoResp::new_zeroed()
+            };
+            response.hdr.chksum = caliptra_api::calc_checksum(0, &response.as_bytes()[4..]);
+            mailbox.add_ready_response(
+                caliptra_api::mailbox::CommandId::FW_INFO.into(),
+                response.as_bytes(),
+            );
+            otp.reads.set(0);
+            let mut writer = Box::pin(increase_min_svn(&pool, SvnTarget::OwnerSocManifest, svn));
+            let mut context = Context::from_waker(Waker::noop());
+            assert!(writer.as_mut().poll(&mut context).is_pending());
+            let guarded_while_waiting = otp::SVN_UPDATE_LOCK.try_lock().is_err();
+            let result = fake::wait_for_future_ready(writer);
+            // The fake mailbox retains its allowed buffers after completion.
+            DefaultSyscalls::unallow_ro(MAILBOX_DRIVER_NUM, 0);
+            DefaultSyscalls::unallow_rw(MAILBOX_DRIVER_NUM, 0);
+            assert!(guarded_while_waiting);
+            result
+        };
+
+        for svn in [0, 65, u32::MAX] {
+            assert_eq!(
+                fake::wait_for_future_ready(Box::pin(increase_min_svn(
+                    &pool,
+                    SvnTarget::OwnerSocManifest,
+                    svn,
+                ))),
+                Err(CaliptraCompletionCode::InvalidParameter)
+            );
+        }
+        assert_eq!(mailbox.get_last_command(), None);
+        assert_eq!(advance(1, 0), Err(CaliptraCompletionCode::InvalidParameter));
+        assert_eq!(advance(8, 7), Err(CaliptraCompletionCode::InvalidParameter));
+        assert_eq!(otp.reads.get(), 0);
+        assert!(otp.writes.borrow().is_empty());
+
+        for svn in 1..=64 {
+            assert_eq!(advance(svn, 64), Ok(()), "SVN {svn}");
+            let words = otp.words.get();
+            assert_eq!(words[0].count_ones() + words[1].count_ones(), svn);
+            let writes = otp.writes.borrow().len();
+            assert_eq!(advance(svn, 64), Ok(()));
+            if svn > 1 {
+                assert_eq!(
+                    advance(svn - 1, 64),
+                    Err(CaliptraCompletionCode::InvalidParameter)
+                );
+            }
+            assert_eq!(otp.writes.borrow().len(), writes);
+            assert_eq!(otp.words.get(), words);
+        }
+        assert_eq!(otp.words.get(), [u32::MAX; 2]);
+
+        let partial = [0b1010, 1 << 31];
+        otp.words.set(partial);
+        assert_eq!(advance(7, 64), Ok(()));
+        let words = otp.words.get();
+        assert_eq!(words[0].count_ones() + words[1].count_ones(), 7);
+        assert_eq!(words[0] & partial[0], partial[0]);
+        assert_eq!(words[1] & partial[1], partial[1]);
+
+        otp.words.set([0; 2]);
+        otp.writes.borrow_mut().clear();
+        otp.fail_write.set(Some(1));
+        assert_eq!(
+            advance(64, 64),
+            Err(CaliptraCompletionCode::OperationFailed)
+        );
+        assert_eq!(otp.words.get(), [u32::MAX, 0]);
+        assert_eq!(*otp.writes.borrow(), [(0, u32::MAX), (1, u32::MAX)]);
+        otp.fail_write.set(None);
+        otp.writes.borrow_mut().clear();
+        assert_eq!(advance(64, 64), Ok(()));
+        assert_eq!(otp.words.get(), [u32::MAX; 2]);
+        assert_eq!(*otp.writes.borrow(), [(1, u32::MAX)]);
+
+        otp.words.set([0; 2]);
+        otp.fail_write.set(Some(0));
+        assert_eq!(
+            advance(33, 64),
+            Err(CaliptraCompletionCode::OperationFailed)
+        );
+        assert_eq!(otp.words.get(), [0; 2]);
+        otp.fail_write.set(None);
+
+        for read in 0..4 {
+            otp.words.set([0; 2]);
+            otp.writes.borrow_mut().clear();
+            otp.fail_read.set(Some(read));
+            assert_eq!(
+                advance(33, 64),
+                Err(CaliptraCompletionCode::OperationFailed),
+                "read {read}"
+            );
+            if read < 2 {
+                assert!(otp.writes.borrow().is_empty());
+                assert_eq!(otp.words.get(), [0; 2]);
+            } else {
+                assert_eq!(otp.words.get(), [u32::MAX, 1]);
+            }
+        }
+        otp.fail_read.set(None);
+
+        // The readback has the right bit count but not the intended bit pattern.
+        otp.words.set([0; 2]);
+        otp.readback_xor.set(0b11);
+        assert_eq!(advance(1, 64), Err(CaliptraCompletionCode::OperationFailed));
+        assert_eq!(otp.words.get(), [1, 0]);
+        otp.readback_xor.set(0);
+        assert_eq!(advance(1, 64), Ok(()));
+        assert_eq!(pool.live_slots(), 0);
+    }
+
+    #[test]
+    fn segmented_payload_preserves_wire_order_and_checksum() {
+        let command = 0x4d4c_4453;
+        let segments: [&[u8]; 4] = [&[1, 2, 3], &[], &[4, 5], &[6]];
+        let mut stream = SegmentedPayloadStream::new(segments);
+        let mut actual = Vec::new();
+        let mut chunk = [0u8; 2];
+
+        loop {
+            let len = stream.read_into(&mut chunk);
+            if len == 0 {
+                break;
+            }
+            actual.extend_from_slice(&chunk[..len]);
+        }
+
+        assert_eq!(actual, [1, 2, 3, 4, 5, 6]);
+        let mut request = Vec::from([0u8; 4]);
+        request.extend_from_slice(&actual);
+        assert_eq!(
+            mailbox_checksum_segments(command, segments),
+            caliptra_api::calc_checksum(command, &request)
+        );
+    }
+
+    #[test]
+    fn field_entropy_status_queries_live_core_metadata() {
+        let _guard = DEVICE_OPS_TEST_LOCK.lock().unwrap();
+        let kernel = crate::kernel();
+        let mailbox = Rc::new(fake::FakeMailboxDriver::new());
+        kernel.add_driver(&mailbox);
+
+        #[repr(align(64))]
+        struct Scratch([u8; 1024]);
+        let mut scratch = Scratch([0; 1024]);
+        // SAFETY: The aligned storage is exclusive to the pool and outlives every request.
+        let pool = unsafe {
+            BitmapAllocator::new(
+                NonNull::new(scratch.0.as_mut_ptr()).unwrap(),
+                scratch.0.len(),
+            )
+        };
+        let query = |fe_status, response_len| {
+            let mut response = FwInfoResp {
+                fe_status,
+                ..FwInfoResp::new_zeroed()
+            };
+            response.hdr.chksum =
+                caliptra_api::calc_checksum(0, &response.as_bytes()[4..response_len]);
+            mailbox.add_ready_response(
+                caliptra_api::mailbox::CommandId::FW_INFO.into(),
+                &response.as_bytes()[..response_len],
+            );
+            let result = fake::wait_for_future_ready(Box::pin(field_entropy_status(&pool)));
+            DefaultSyscalls::unallow_ro(MAILBOX_DRIVER_NUM, 0);
+            DefaultSyscalls::unallow_rw(MAILBOX_DRIVER_NUM, 0);
+            result
+        };
+
+        let response_len = core::mem::size_of::<FwInfoResp>();
+        for status in [0x00, 0x55, 0xe4, 0xff] {
+            assert_eq!(
+                query(status, response_len),
+                Ok(status),
+                "status {status:#x}"
+            );
+        }
+        assert_eq!(
+            query(0x55, core::mem::offset_of!(FwInfoResp, fe_status)),
+            Err(CaliptraCompletionCode::OperationFailed)
+        );
+        assert_eq!(
+            mailbox.get_last_command(),
+            Some(caliptra_api::mailbox::CommandId::FW_INFO.into())
+        );
+        assert_eq!(pool.live_slots(), 0);
     }
 }
