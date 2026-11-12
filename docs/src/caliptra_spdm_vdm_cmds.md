@@ -238,8 +238,8 @@ the additional word-storage conversion used for fuse/register buffers.
    a challenge.
 4. Sign the canonical transcript with both authorized keys.
 5. Append the Authorization Block and submit through `AuthorizedCommand`.
-6. Runtime checks format, authority policy, target, key digest, both signatures,
-   and live-challenge freshness when requested, before executing the operation.
+6. Runtime checks format, authority policy, target, live-challenge freshness
+   when requested, key digest, and both signatures before executing the operation.
 
 After format, policy, and target checks succeed, a Challenge-bound
 verification attempt consumes the stored challenge before key/signature
@@ -259,8 +259,8 @@ and manifest-key-digest updates; there is no legacy hash or trailer fallback.
 ### Implemented Subcommand Payloads
 
 These operation payloads exclude the Authorization Block, which is appended
-immediately afterwards. All payload integers are little-endian. Family
-operations additionally prefix their FourCC as described above.
+immediately afterwards. All payload integers are little-endian. For family
+operation payloads, see [Device Ownership Transfer Commands](#device-ownership-transfer-commands).
 
 | Subcommand | Operation payload | Payload bytes |
 | ---------- | ----------------- | ------------- |
