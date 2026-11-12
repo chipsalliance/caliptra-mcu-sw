@@ -7,6 +7,19 @@ The Image Loading module is a component of the MCU Runtime SDK designed for mana
 - Loading SOC images to target components. The SOC images could come from a [flash storage](./flash_layout.md) or from another platform capable of streaming images through PLDM T5 (e.g., a BMC Recovery Agent).
 - Verifying and authenticating the SOC Images through the Caliptra Core. Images that are loaded to the target SOC components will be authenticated using a mailbox command to the Caliptra core and are verified against the measurements in the SOC Manifest.
 
+Flash and PLDM image loaders validate the complete destination range before
+transferring an image or requesting Core authorization. Empty images, address
+overflow, and ranges outside platform-approved memory are rejected.
+`DMAMapping::validate_image_load_range` supplies the platform policy in
+Caliptra's AXI address space; integrators must implement it for their SoC memory
+map. The reference mappings permit the MCU mailbox SRAM windows and the
+platform's external test/staging SRAM, without allowing a transfer to span
+separate windows.
+
+**Known limitation:** Address validation does not provide Core DMA error
+recovery. Bus faults within an approved range can still leave Core waiting
+indefinitely; resolving those failures requires a Core firmware fix.
+
 The diagram below provides an **example** of how the Caliptra subsystem, integrated with custom SOC elements (highlighted in green), facilitates the loading of SOC images to vendor components.
 
 Custom SOC elements:

@@ -456,10 +456,26 @@ mod test {
             .unwrap();
 
         // Update the SOC manifest in the flash image
-        let (_, flash_image_path) = create_flash_image(
+        let owner_auth_manifest = new_options
+            .builder
+            .as_mut()
+            .unwrap()
+            .get_owner_auth_manifest(None)
+            .unwrap();
+        let owner_measurement_policy = new_options
+            .builder
+            .as_mut()
+            .unwrap()
+            .get_owner_measurement_policy(None)
+            .unwrap();
+        let (_, flash_image_path) = create_flash_image_with_owner_manifest(
             new_options.builder.as_mut().unwrap().get_caliptra_fw().ok(),
             Some(soc_manifest),
             Some(new_options.runtime.clone()),
+            Some(owner_auth_manifest),
+            Some(owner_measurement_policy),
+            Some(new_options.soc_images.clone()),
+            Some(new_options.owner_soc_images.clone()),
             new_options.partition_table.clone(),
             new_options.flash_offset,
             new_options.soc_images_paths.clone(),
@@ -471,7 +487,7 @@ mod test {
         };
 
         let test = run_runtime_with_options(&new_options);
-        assert_ne!(0, test);
+        assert_eq!(1, test, "invalid image range must fail in MCU firmware");
     }
 
     // Test case: Test booting from secondary flash
