@@ -64,6 +64,11 @@ Both supported Evidence formats are self-contained: each binds to a requester-su
 - **Signed OCP EAT (default)**: A `COSE_Sign1`-signed CBOR Web Token (CWT) carrying the OCP EAT profile OID, requester nonce, debug state, and structured `concise-evidence-map` measurements (`svn`, current digest, and journey digest per target environment), signed by the DPE leaf attestation key (`AK`) (see [OCP IETF EAT Profile](https://opencomputeproject.github.io/Security/ietf-eat-profile/HEAD/)).
 - **Signed PCR Quote**: Hardware PCR values (`PCR[0..31]`), PCR reset counters, requester nonce, and aggregate digest, signed by the Caliptra `AliasFMC` key (see Caliptra Runtime [`QUOTE_PCRS_ECC384`](https://github.com/chipsalliance/caliptra-sw/blob/main/runtime/README.md#quote_pcrs_ecc384) and [`QUOTE_PCRS_MLDSA87`](https://github.com/chipsalliance/caliptra-sw/blob/main/runtime/README.md#quote_pcrs_mldsa87)).
 
+Platforms can optionally include live FE status as raw HW-configuration
+evidence in OCP EAT, separate from firmware measurements. See
+[OCP EAT Hardware Configuration Evidence](./attestation_configuration.md#6-ocp-eat-hardware-configuration-evidence)
+for class identity, configuration, and the versioned status format.
+
 Because authenticity rests on the Evidence token's own cryptographic signature and nonce binding, Evidence in the configured format can be retrieved over multiple transport paths:
 
 | Retrieval path | Command |

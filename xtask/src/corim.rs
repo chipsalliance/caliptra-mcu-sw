@@ -23,7 +23,6 @@ const DEFAULT_TEST_KEY_SEED: &str = "caliptra-corim-default-test-signing-key";
 /// See common/flash-image/src/lib.rs: MCU_RT_IDENTIFIER = 0x00000002
 #[cfg(test)]
 const MCU_RT_FW_ID: u32 = 0x00000002;
-const MEASUREMENT_API_MEASUREMENT_KEY: usize = 1;
 
 fn default_vendor() -> String {
     "ChipsAlliance".to_string()
@@ -166,8 +165,6 @@ pub struct SigningConfig {
 struct EvidenceComponent {
     /// Class-ID string derived from the IME firmware ID (e.g. "0x00000002").
     class_id: String,
-    /// Measurement key matching the evidence mkey.
-    mkey: usize,
     /// Vendor string (only set for SOC firmware components).
     vendor: Option<String>,
     /// Model string (only set for SOC firmware components).
@@ -259,7 +256,6 @@ fn read_evidence_components(
 
         base_components.push(EvidenceComponent {
             class_id: format!("0x{:08X}", metadata.fw_id),
-            mkey: MEASUREMENT_API_MEASUREMENT_KEY,
             vendor: Some(config.vendor.clone()),
             model: Some(config.model.clone()),
             digest,
@@ -290,7 +286,6 @@ fn read_evidence_components(
         for metadata in metadata {
             owner_components.push(EvidenceComponent {
                 class_id: format!("0x{:08X}", metadata.fw_id),
-                mkey: MEASUREMENT_API_MEASUREMENT_KEY,
                 vendor: Some(config.vendor.clone()),
                 model: Some(config.model.clone()),
                 digest: sha384_raw_to_digest_str(&metadata.digest),
@@ -355,10 +350,6 @@ fn generate_comid_template(components: &[EvidenceComponent]) -> serde_json::Valu
                 },
                 "measurements": [
                     {
-                        "key": {
-                            "type": "uint",
-                            "value": comp.mkey
-                        },
                         "value": meas_value
                     }
                 ]
@@ -542,9 +533,8 @@ fn remove_corim_artifacts(output_dir: &Path, name: &str) -> Result<()> {
 
 /// Generate separate Vendor and Owner CoRIMs from a firmware bundle ZIP using cocli.
 ///
-/// The generated CoMID reference values use each IME's firmware ID and digest:
-///
-///   mkey 1: SoC FW        - Vendor/Owner image metadata entries, including MCU RT
+/// The generated CoMID reference values use each IME's firmware class ID and digest.
+/// Measurement keys are omitted.
 ///
 /// Manifest preambles are not included.
 ///
@@ -588,8 +578,7 @@ pub fn generate(
         println!("Generating {} reference-value CoRIM...", name);
         for comp in &components {
             println!(
-                "  [mkey {}] {} ({})",
-                comp.mkey,
+                "  {} ({})",
                 comp.class_id,
                 comp.digest.split(':').next().unwrap_or("unknown"),
             );
@@ -966,7 +955,7 @@ mod tests {
                 assert_eq!(class["vendor"], config.vendor);
                 assert_eq!(class["model"], config.model);
                 let measurement = &reference["measurements"][0];
-                assert_eq!(measurement["key"]["value"], 1);
+                assert!(measurement.get("key").is_none());
                 assert_eq!(measurement["value"]["digests"][0], component.digest);
                 assert!(measurement["value"].get("svn").is_none());
             }

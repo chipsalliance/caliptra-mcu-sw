@@ -579,8 +579,8 @@ Reads the all-build ZIP bundle (from `cargo xtask all-build`) and produces
 CoMID/CoRIM CBOR files with reference value digests for each firmware component.
 
 Components are auto-discovered from image metadata entries in the bundle's Base
-and optional Owner SoC manifests, including MCU runtime:
-    mkey 1: SoC firmware  - Vendor and Owner image reference measurements
+and optional Owner SoC manifests, including MCU runtime. Each measurement is
+identified by its firmware class ID; measurement keys are omitted.
 
 Manifest preambles are not included. References may include components absent
 from EAT evidence; missing evidence does not pass appraisal.

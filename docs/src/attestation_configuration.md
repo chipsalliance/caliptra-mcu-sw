@@ -208,3 +208,40 @@ On a hitless-update reset:
 1. MCU Runtime recomputes the base-policy digest and validates it against the digest preserved in the `DpeHandleStore` header.
 2. MCU Runtime authenticates and validates the incoming Owner Measurement Policy, recomputes its digest, and compares it against the policy component's preserved DPE context measurement.
 3. If the policy digest mismatches or the preserved measurement is missing or invalid, the update is rejected. If the policy is unchanged, the preserved measurement is retained.
+
+## 6. OCP EAT Hardware Configuration Evidence
+
+The build-time TOML file selected by `CALIPTRA_EAT_CLAIMS_CONFIG` can enable
+request-scoped FE status in the OCP EAT `CALIPTRA_2_X_FUSE_OWNER_INFO`
+hardware class:
+
+```toml
+[hardware_class]
+include_fe_status = true
+# Optional platform override of the Caliptra-defined class ID:
+# class_id_hex = "00112233445566778899aabbccddeeff"
+```
+
+Inclusion is disabled by default. When enabled, the default `class_id` is
+tagged bytes (`560`) containing ASCII `CALIPTRA_2_X_FUSE_OWNER_INFO`, matching
+the FMC Alias certificate's `TcbInfo.type`. A platform may override it with
+`class_id_hex` (1–100 bytes; firmware class IDs of the form
+`0x` followed by eight uppercase hexadecimal digits are rejected). Class
+`vendor` and `model` come from the authenticated Base Attestation Manifest.
+
+Firmware and hardware measurement maps omit `mkey`. FE status is carried
+directly in `mval.raw_value` as a six-byte string:
+
+| Config toggle | `raw-value` byte | Field | Encoding |
+|---|---:|---|---|
+| `include_fe_status = true` | 0 | Schema version | `1` |
+| | 1 | Availability | `1` when Core returned `FW_INFO`; otherwise `0` |
+| | 2–5 | FE0–FE3 status | `0` Unprovisioned, `1` Provisioned, `2` Zeroized, `3` Error; all `0xFF` when unavailable |
+
+Each signed OCP EAT request queries `FW_INFO` when `include_fe_status` is
+enabled. If the query fails, `mval.raw_value` reports Availability `0` with
+`0xFF` for all partitions.
+
+The HW class is budgeted separately from `[measurements].measurement_count`
+(or `CALIPTRA_CONCISE_EVIDENCE_MEASUREMENT_COUNT`), and generated token-size
+bounds include enabled HW records.
