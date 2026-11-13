@@ -2897,7 +2897,7 @@ pub mod test {
                 McuCommandId::MC_AES_GCM_DECRYPT_INIT.0,
                 &CmAesGcmDecryptInitReq {
                     cmk: cmk.clone(),
-                    iv: *iv,
+                    iv: <[u32; 3]>::read_from_bytes(iv.as_bytes()).unwrap(),
                     aad_size: (MAX_CMB_DATA_SIZE + 1) as u32,
                     ..Default::default()
                 },
@@ -2984,7 +2984,7 @@ pub mod test {
                 let mut request = CmAesGcmDecryptFinalReq {
                     context,
                     tag_len,
-                    tag: *tag,
+                    tag: <[u32; 4]>::read_from_bytes(tag.as_bytes()).unwrap(),
                     ciphertext_size: ciphertext.len() as u32,
                     ..Default::default()
                 };
@@ -3011,7 +3011,7 @@ pub mod test {
             let mut request = CmAesGcmDecryptFinalReq {
                 context,
                 tag_len,
-                tag,
+                tag: <[u32; 4]>::read_from_bytes(tag.as_bytes()).unwrap(),
                 ciphertext_size: ciphertext.len() as u32,
                 ..Default::default()
             };
@@ -3055,7 +3055,7 @@ pub mod test {
         ) -> Result<[u8; CMB_AES_GCM_ENCRYPTED_CONTEXT_SIZE], ()> {
             let mut request = CmAesGcmDecryptInitReq {
                 cmk: cmk.clone(),
-                iv: *iv,
+                iv: <[u32; 3]>::read_from_bytes(iv.as_bytes()).unwrap(),
                 aad_size: aad.len() as u32,
                 ..Default::default()
             };
