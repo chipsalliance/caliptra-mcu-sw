@@ -48,7 +48,8 @@ use core::fmt::Write;
 use core::mem::offset_of;
 
 use crate::{
-    sha_finish, sha_init, sha_update, HashAlgo, ScratchAlloc, SHA_CHUNK_SIZE, SHA_CONTEXT_SIZE,
+    core_capabilities, sha_dma, sha_finish, sha_init, sha_update, supports_sha_dma, HashAlgo,
+    ScratchAlloc, SHA_CHUNK_SIZE, SHA_CONTEXT_SIZE,
 };
 
 async fn read_flash_header(
@@ -552,6 +553,7 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
                 .await?;
         }
 
+        let sha_dma_base = self.sha_dma_base().await;
         for i in 0..flash_header.image_count as usize {
             let image_header = self
                 .get_image_toc_by_index(
@@ -574,8 +576,10 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
                 .await?;
 
             self.verify_mcu_or_soc_image(
+                sha_dma_base,
                 image_header.offset as usize,
                 image_header.size as usize,
+                image_len,
                 &metadata,
             )
             .await?;
@@ -675,6 +679,7 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
         let soc_manifest = StagedAuthManifest::soc(manifest_offset, manifest_len);
         let owner_manifest = self.get_staged_owner_manifest(flash_header).await;
 
+        let sha_dma_base = self.sha_dma_base().await;
         for i in 0..flash_header.image_count as usize {
             let image_header = self
                 .get_image_toc_by_index(
@@ -688,32 +693,14 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
                 continue;
             }
 
-            // Compute SHA-384 of the downloaded image
-            let hash_context = self
-                .alloc
-                .alloc(SHA_CONTEXT_SIZE)
-                .map_err(|_| ErrorCode::Fail)?;
-            let mut hasher = sha_init(self.alloc, hash_context, HashAlgo::Sha384, &[])
-                .await
-                .map_err(|_| ErrorCode::Fail)?;
-            let mut buffer = [0u8; SHA_CHUNK_SIZE];
-            let mut total_bytes_read = 0;
-            let img_offset = image_header.offset as usize;
-            let img_size = image_header.size as usize;
-            while total_bytes_read < img_size {
-                let bytes_to_read = (img_size - total_bytes_read).min(SHA_CHUNK_SIZE);
-                self.staging_memory
-                    .read(img_offset + total_bytes_read, &mut buffer[..bytes_to_read])
-                    .await?;
-                sha_update(self.alloc, &mut hasher, &buffer[..bytes_to_read])
-                    .await
-                    .map_err(|_| ErrorCode::Fail)?;
-                total_bytes_read += bytes_to_read;
-            }
-            let mut hash = [0u8; 48];
-            sha_finish(self.alloc, &mut hasher, &mut hash)
-                .await
-                .map_err(|_| ErrorCode::Fail)?;
+            let hash = self
+                .hash_staged_image(
+                    sha_dma_base,
+                    image_header.offset as usize,
+                    image_header.size as usize,
+                    self.staging_memory.size(),
+                )
+                .await?;
 
             // Compare against the digest in the staged auth manifest
             let metadata = self
@@ -1055,10 +1042,101 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
 
     async fn verify_mcu_or_soc_image(
         &mut self,
+        sha_dma_base: Option<u64>,
         image_offset: usize,
         len: usize,
+        downloaded_len: usize,
         metadata: &AuthManifestImageMetadata,
     ) -> Result<(), ErrorCode> {
+        let hash = self
+            .hash_staged_image(sha_dma_base, image_offset, len, downloaded_len)
+            .await?;
+
+        // Compare the computed hash with the expected hash from the metadata
+        if hash != metadata.digest {
+            console_writeln!(
+                Console::<DefaultSyscalls>::writer(),
+                "[FW Upd] Image 0x{:x} digest mismatch",
+                metadata.component_id
+            );
+            return Err(ErrorCode::Fail);
+        }
+
+        Ok(())
+    }
+
+    /// Caliptra's AXI address of the staging memory if staged images can be
+    /// hashed with `SHA_DMA`, else `None` for `CM_SHA`.
+    async fn sha_dma_base(&self) -> Option<u64> {
+        let base = self.staging_memory.caliptra_axi_base()?;
+        let reason = match core_capabilities().await {
+            Ok(caps) if supports_sha_dma(&caps) => {
+                console_writeln!(
+                    Console::<DefaultSyscalls>::writer(),
+                    "[FW Upd] Hashing staged images with SHA_DMA"
+                );
+                return Some(base);
+            }
+            Ok(_) => "not supported by Caliptra",
+            Err(_) => "CAPABILITIES failed",
+        };
+        console_writeln!(
+            Console::<DefaultSyscalls>::writer(),
+            "[FW Upd] SHA_DMA {}, hashing with CM_SHA",
+            reason
+        );
+        None
+    }
+
+    /// SHA-384 of the `len` staged bytes at `offset`, which must end within `limit`.
+    ///
+    /// Uses `SHA_DMA` when `sha_dma_base` is set and Caliptra accepts the range,
+    /// else streams the bytes through `CM_SHA`. A `SHA_DMA` error is not retried
+    /// with `CM_SHA`, so a wrong staging address fails verification.
+    async fn hash_staged_image(
+        &self,
+        sha_dma_base: Option<u64>,
+        offset: usize,
+        len: usize,
+        limit: usize,
+    ) -> Result<[u8; 48], ErrorCode> {
+        // The TOC is re-read from staging, so bound it again before hashing.
+        if offset.checked_add(len).is_none_or(|end| end > limit) {
+            console_writeln!(
+                Console::<DefaultSyscalls>::writer(),
+                "[FW Upd] Image at offset {} len {} exceeds {}",
+                offset,
+                len,
+                limit
+            );
+            return Err(ErrorCode::Size);
+        }
+        let mut hash = [0u8; 48];
+        if let Some(base) = sha_dma_base {
+            match sha_dma_range(base, offset, len) {
+                Ok((axi_addr, len)) => {
+                    sha_dma(self.alloc, HashAlgo::Sha384, axi_addr, len, &mut hash)
+                        .await
+                        .map_err(|error| {
+                            console_writeln!(
+                                Console::<DefaultSyscalls>::writer(),
+                                "[FW Upd] ERROR: SHA_DMA at offset {} failed: {:?}",
+                                offset,
+                                error
+                            );
+                            ErrorCode::Fail
+                        })?;
+                    return Ok(hash);
+                }
+                Err(reason) => console_writeln!(
+                    Console::<DefaultSyscalls>::writer(),
+                    "[FW Upd] Image at offset {} {}, hashing with CM_SHA",
+                    offset,
+                    reason
+                ),
+            }
+        }
+
         let hash_context = self
             .alloc
             .alloc(SHA_CONTEXT_SIZE)
@@ -1067,15 +1145,11 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
             .await
             .map_err(|_| ErrorCode::Fail)?;
         let mut buffer = [0u8; SHA_CHUNK_SIZE];
-        let mut hash = [0u8; 48]; // SHA-384 produces a 48-byte hash
         let mut total_bytes_read = 0;
         while total_bytes_read < len {
             let bytes_to_read = (len - total_bytes_read).min(SHA_CHUNK_SIZE);
             self.staging_memory
-                .read(
-                    image_offset + total_bytes_read,
-                    &mut buffer[..bytes_to_read],
-                )
+                .read(offset + total_bytes_read, &mut buffer[..bytes_to_read])
                 .await
                 .map_err(|_| ErrorCode::Fail)?;
             sha_update(self.alloc, &mut hasher, &buffer[..bytes_to_read])
@@ -1083,17 +1157,10 @@ impl<'a, D: DMAMapping, A: ScratchAlloc> FirmwareUpdater<'a, D, A> {
                 .map_err(|_| ErrorCode::Fail)?;
             total_bytes_read += bytes_to_read;
         }
-
         sha_finish(self.alloc, &mut hasher, &mut hash)
             .await
             .map_err(|_| ErrorCode::Fail)?;
-
-        // Compare the computed hash with the expected hash from the metadata
-        if hash != metadata.digest {
-            return Err(ErrorCode::Fail);
-        }
-
-        Ok(())
+        Ok(hash)
     }
 
     pub async fn update_mcu(&mut self, flash_header: &FlashHeader) -> Result<(), ErrorCode> {
@@ -1197,6 +1264,35 @@ pub trait StagingMemory: core::fmt::Debug + Send + Sync {
     async fn read(&self, offset: usize, data: &mut [u8]) -> Result<(), ErrorCode>;
     async fn image_valid(&self, img_sz: usize) -> Result<(), ErrorCode>;
     fn size(&self) -> usize;
+
+    /// AXI address at which Caliptra's DMA reads the same bytes that `read()`
+    /// returns from offset 0, or `None` to hash staged images with `CM_SHA`.
+    /// Caliptra's DMA must be able to burst-read all of `size()` within its
+    /// command watchdog.
+    fn caliptra_axi_base(&self) -> Option<u64> {
+        None
+    }
+}
+
+/// Caliptra's AXI range for the staged bytes `[offset, offset + len)`, or why
+/// `SHA_DMA` cannot hash it: Caliptra needs a non-empty, 4-byte aligned range
+/// inside one 4 GiB block.
+fn sha_dma_range(base: u64, offset: usize, len: usize) -> Result<(u64, u32), &'static str> {
+    let len = u32::try_from(len).map_err(|_| "is too large")?;
+    if len == 0 {
+        return Err("is empty");
+    }
+    let addr = base.checked_add(offset as u64).ok_or("is out of range")?;
+    if (addr | u64::from(len)) & 3 != 0 {
+        return Err("is not 4-byte aligned");
+    }
+    let last = addr
+        .checked_add(u64::from(len) - 1)
+        .ok_or("is out of range")?;
+    if addr >> 32 != last >> 32 {
+        return Err("crosses a 4 GiB boundary");
+    }
+    Ok((addr, len))
 }
 
 async fn apply_image(
@@ -1462,6 +1558,7 @@ impl StagedAuthManifest {
 mod tests {
     extern crate std;
 
+    mod sha_dma;
     mod svn;
 
     use super::*;
