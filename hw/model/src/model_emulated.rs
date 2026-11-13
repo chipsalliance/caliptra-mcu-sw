@@ -944,11 +944,17 @@ impl SocManager for &mut ModelEmulated {
         BusMmio::new(self.caliptra_axi_bus())
     }
 
+    fn log_mailbox(&mut self, args: core::fmt::Arguments<'_>) {
+        // Go through `McuHwModel::output()` rather than the field, stamping the
+        // log sink with the current emulator time.
+        writeln!(self.output().logger(), "{args}").unwrap()
+    }
+
     const SOC_IFC_ADDR: u32 = 0x3003_0000;
     const SOC_IFC_TRNG_ADDR: u32 = 0x3003_0000;
     const SOC_MBOX_ADDR: u32 = 0x3002_0000;
 
-    const MAX_WAIT_CYCLES: u32 = 20_000_000;
+    const MAX_WAIT_CYCLES: u32 = 40_000_000; // 100ms @400MHz
 }
 
 impl NetworkManager for &mut ModelEmulated {

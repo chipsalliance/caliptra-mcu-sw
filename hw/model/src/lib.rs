@@ -24,14 +24,12 @@ pub use network_mgr::NetworkManager;
 use rand::{rngs::StdRng, SeedableRng};
 use sha2::Digest;
 use std::io::stdout;
-use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::sync::mpsc;
 use std::sync::{Arc, Mutex};
 
 use caliptra_mcu_emulator_periph::TapDevice;
-use caliptra_ureg::MmioMut;
 pub use vmem::read_otp_vmem_data;
 use zerocopy::FromBytes;
 
@@ -816,107 +814,20 @@ pub trait McuHwModel {
         cmd: u32,
         buf: &[u8],
     ) -> std::result::Result<Option<Vec<u8>>, ModelError> {
-        // TOOD: later inline the wrapper functions to get rid of them
-        self.caliptra_start_mailbox_execute(cmd, buf)?;
-        self.caliptra_finish_mailbox_execute()
-    }
-
-    /// Send a command to the Caliptra mailbox but don't wait for the response
-    fn caliptra_start_mailbox_execute(
-        &mut self,
-        cmd: u32,
-        buf: &[u8],
-    ) -> std::result::Result<(), ModelError> {
-        writeln!(
-            self.output().logger(),
-            "<<< Executing Caliptra mbox cmd 0x{cmd:08x} ({} bytes) from SoC",
-            buf.len(),
-        )
-        .unwrap();
-
         self.caliptra_soc_manager()
             .start_mailbox_exec(cmd, buf)
             .map_err(ModelError::from)?;
-        Ok(())
-    }
 
-    /// Wait for the response to a previous call to `start_mailbox_execute()`.
-    fn caliptra_finish_mailbox_execute(
-        &mut self,
-    ) -> std::result::Result<Option<Vec<u8>>, ModelError> {
-        // Wait for the microcontroller to finish executing
-        let mut timeout_cycles = 40_000_000; // 100ms @400MHz
-        while self
+        // `finish_mailbox_exec` reads the response into a caller-provided
+        // buffer, so size it for the largest response the mailbox can hold.
+        let mut resp_buf = vec![0u8; api::mailbox::PASSIVE_MAILBOX_SIZE_LIMIT];
+        let response = self
             .caliptra_soc_manager()
-            .soc_mbox()
-            .status()
-            .read()
-            .status()
-            .cmd_busy()
-        {
-            // SM: self.delay()
-            self.step();
-            timeout_cycles -= 1;
-            if timeout_cycles == 0 {
-                return Err(ModelError::MailboxTimeout);
-            }
-        }
-        let status = self
-            .caliptra_soc_manager()
-            .soc_mbox()
-            .status()
-            .read()
-            .status();
-        if status.cmd_failure() {
-            writeln!(
-                self.output().logger(),
-                ">>> Caliptra mbox cmd response: failed"
-            )
-            .unwrap();
-            self.caliptra_soc_manager()
-                .soc_mbox()
-                .execute()
-                .write(|w| w.execute(false));
-            let mut soc_mgr = self.caliptra_soc_manager();
-            let soc_ifc = soc_mgr.soc_ifc();
-            return Err(ModelError::MailboxCmdFailed(
-                if soc_ifc.cptra_fw_error_fatal().read() != 0 {
-                    soc_ifc.cptra_fw_error_fatal().read()
-                } else {
-                    soc_ifc.cptra_fw_error_non_fatal().read()
-                },
-            ));
-        }
-        if status.cmd_complete() {
-            writeln!(
-                self.output().logger(),
-                ">>> Caliptra mbox cmd response: success"
-            )
-            .unwrap();
-            self.caliptra_soc_manager()
-                .soc_mbox()
-                .execute()
-                .write(|w| w.execute(false));
-            return Ok(None);
-        }
-        if !status.data_ready() {
-            return Err(ModelError::UnknownCommandStatus(status as u32));
-        }
+            .finish_mailbox_exec(&mut resp_buf)
+            .map_err(ModelError::from)?
+            .map(<[u8]>::to_vec);
 
-        let dlen = self.caliptra_soc_manager().soc_mbox().dlen().read();
-        writeln!(
-            self.output().logger(),
-            ">>> mbox cmd response data ({dlen} bytes)"
-        )
-        .unwrap();
-        let result = mbox_read_fifo(self.caliptra_soc_manager().soc_mbox());
-
-        self.caliptra_soc_manager()
-            .soc_mbox()
-            .execute()
-            .write(|w| w.execute(false));
-
-        if cfg!(not(any(feature = "fpga_realtime",))) {
+        if response.is_some() && cfg!(not(feature = "fpga_realtime")) {
             // Don't check for mbox_idle() unless the hw-model supports
             // fine-grained timing control; the firmware may proceed to lock the
             // mailbox shortly after the mailbox transcation finishes.
@@ -932,15 +843,8 @@ pub trait McuHwModel {
                 .mbox_fsm_ps()
                 .mbox_idle());
         }
-        Ok(Some(result))
+        Ok(response)
     }
-}
-
-fn mbox_read_fifo(mbox: caliptra_registers::mbox::RegisterBlock<impl MmioMut>) -> Vec<u8> {
-    let dlen = mbox.dlen().read() as usize;
-    let mut buf = vec![0; dlen];
-    let _ = caliptra_api::mailbox::mbox_read_fifo(mbox, buf.as_mut_slice());
-    buf
 }
 
 #[ignore]
