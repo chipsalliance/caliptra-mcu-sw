@@ -1612,6 +1612,10 @@ mod tests {
         mci.generated.write_mci_reg_ss_config_done(1.into());
         mci.generated.write_mci_reg_mbox0_axi_user_lock(1.into(), 0);
         mci.generated.write_mci_reg_mbox0_valid_axi_user(7, 0);
+        #[cfg(hw_rev = "2.1")]
+        mci.generated.write_mci_reg_hw_capabilities(u32::MAX);
+        #[cfg(hw_rev = "latest")]
+        mci.generated.write_mci_reg_hw_capabilities(u32::MAX.into());
         ext.regs.borrow_mut().fw_error_non_fatal = 0x1234;
         ext.regs.borrow_mut().flow_status = u32::MAX;
         mci.write_mci_reg_wdt_timer1_en(1.into());
@@ -1634,6 +1638,10 @@ mod tests {
             1
         );
         assert_eq!(mci.generated.read_mci_reg_ss_config_done().reg.get(), 0);
+        #[cfg(hw_rev = "2.1")]
+        assert_eq!(mci.generated.read_mci_reg_hw_capabilities(), 0);
+        #[cfg(hw_rev = "latest")]
+        assert_eq!(mci.generated.read_mci_reg_hw_capabilities().reg.get(), 0);
         assert_eq!(
             mci.generated.read_mci_reg_mbox0_axi_user_lock(0).reg.get(),
             0
