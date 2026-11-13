@@ -1880,6 +1880,7 @@ fn test_dpe_signer_context_cert_cmd() -> Result<()> {
         "invalid exported-CDI certificate signature"
     );
 
+    hw.set_mcu_mbox_axi_user(2);
     let rederived_cert_der = execute_var_mcu_req(
         &mut hw,
         McuMailboxReq::DpeSignerContextCert(DpeSignerContextCertReq::default()),
@@ -1888,19 +1889,43 @@ fn test_dpe_signer_context_cert_cmd() -> Result<()> {
     assert!(rederived_cert.verify(&public_key)?);
 
     let digest = [0x42u8; 48];
-    let mut sign_req = DpeSignerContextSignReq {
-        algorithm: EndorsementAlgorithm::ECDSA_384,
-        data_len: digest.len() as u32,
-        ..Default::default()
+    let make_sign_req = || {
+        let mut request = DpeSignerContextSignReq {
+            algorithm: EndorsementAlgorithm::ECDSA_384,
+            data_len: digest.len() as u32,
+            ..Default::default()
+        };
+        request.data[..digest.len()].copy_from_slice(&digest);
+        request
     };
-    sign_req.data[..digest.len()].copy_from_slice(&digest);
-    let signature = execute_var_mcu_req(&mut hw, McuMailboxReq::DpeSignerContextSign(sign_req))?;
-    assert_eq!(signature.len(), 96);
-    let sig_r = openssl::bn::BigNum::from_slice(&signature[..48])?;
-    let sig_s = openssl::bn::BigNum::from_slice(&signature[48..])?;
-    let signature = openssl::ecdsa::EcdsaSig::from_private_components(sig_r, sig_s)?;
-    let leaf_key = rederived_cert.public_key()?.ec_key()?;
-    assert!(signature.verify(&digest, &leaf_key)?);
+    #[cfg(feature = "fpga_realtime")]
+    let (pl1_users, pl0_users): (&[u32], &[u32]) =
+        (&[2], caliptra_mcu_config_fpga::FPGA_MCU_MBOX0_PL0_AXI_USERS);
+    #[cfg(not(feature = "fpga_realtime"))]
+    let (pl1_users, pl0_users): (&[u32], &[u32]) = (
+        &[2, 0xeeee_eeee],
+        caliptra_mcu_config_emulator::EMULATOR_MCU_MBOX0_PL0_AXI_USERS,
+    );
+    for &axi_user in pl1_users {
+        hw.set_mcu_mbox_axi_user(axi_user);
+        assert_mcu_req_fails(
+            &mut hw,
+            McuMailboxReq::DpeSignerContextSign(make_sign_req()),
+        );
+    }
+    for &axi_user in pl0_users {
+        hw.set_mcu_mbox_axi_user(axi_user);
+        let signature = execute_var_mcu_req(
+            &mut hw,
+            McuMailboxReq::DpeSignerContextSign(make_sign_req()),
+        )?;
+        assert_eq!(signature.len(), 96);
+        let sig_r = openssl::bn::BigNum::from_slice(&signature[..48])?;
+        let sig_s = openssl::bn::BigNum::from_slice(&signature[48..])?;
+        let signature = openssl::ecdsa::EcdsaSig::from_private_components(sig_r, sig_s)?;
+        let leaf_key = rederived_cert.public_key()?.ec_key()?;
+        assert!(signature.verify(&digest, &leaf_key)?);
+    }
 
     for bad_req in [
         DpeSignerContextSignReq {
