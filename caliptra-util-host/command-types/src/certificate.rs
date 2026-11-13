@@ -456,6 +456,128 @@ impl CommandRequest for ProvisionIdevCertRequest {
 
 impl CommandResponse for ProvisionIdevCertResponse {}
 
+// ============================================================================
+// MC_DPE_SIGNER_CONTEXT_CERT / MC_DPE_SIGNER_CONTEXT_SIGN Commands
+// ============================================================================
+
+/// Maximum exported-CDI leaf certificate size (8 KiB).
+pub const MAX_DPE_SIGNER_CERT_SIZE: usize =
+    caliptra_mcu_mbox_common::messages::MAX_ENDORSEMENT_CERT_SIZE;
+
+/// Maximum payload size for `MC_DPE_SIGNER_CONTEXT_SIGN` (4 KiB).
+pub const MAX_DPE_SIGNER_SIGN_DATA_SIZE: usize =
+    caliptra_mcu_mbox_common::messages::MAX_DPE_SIGNER_CONTEXT_SIGN_DATA_SIZE;
+
+/// Maximum signature buffer size for `MC_DPE_SIGNER_CONTEXT_SIGN` (4-byte aligned for `IntoBytes`).
+pub const MAX_DPE_SIGNER_SIG_SIZE: usize = 4628;
+
+/// Expected byte length of an ECDSA P-384 `r || s` signature.
+pub const ECDSA384_SIGNATURE_SIZE: usize = 96;
+
+/// Expected byte length of an ML-DSA-87 signature on the wire.
+pub const MLDSA87_SIGNATURE_SIZE: usize = 4627;
+
+/// Request for `MC_DPE_SIGNER_CONTEXT_CERT` (`0x4D44_5343`, `"MDSC"`).
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, IntoBytes, FromBytes, Immutable)]
+pub struct DpeSignerContextCertRequest {
+    /// Target DPE node `fw_id` (`0` uses the default `EXPORT_CDI_TARGET` configured in `MCAM`).
+    pub target_fw_id: u32,
+    /// Asymmetric algorithm (`AsymAlgo` wire value).
+    pub algorithm: u32,
+}
+
+impl DpeSignerContextCertRequest {
+    pub const fn new(target_fw_id: u32, algorithm: AsymAlgo) -> Self {
+        Self {
+            target_fw_id,
+            algorithm: algorithm as u32,
+        }
+    }
+}
+
+/// Response for `MC_DPE_SIGNER_CONTEXT_CERT` (`0x4D44_5343`, `"MDSC"`).
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+pub struct DpeSignerContextCertResponse {
+    pub common: CommonResponse,
+    /// Number of valid DER bytes in `cert_data`.
+    pub data_len: u32,
+    /// Derived Exported-CDI leaf X.509 certificate in DER format.
+    pub cert_data: [u8; MAX_DPE_SIGNER_CERT_SIZE],
+}
+
+impl DpeSignerContextCertResponse {
+    /// Returns the valid DER certificate slice (`..data_len`).
+    pub fn cert_bytes(&self) -> &[u8] {
+        let len = (self.data_len as usize).min(MAX_DPE_SIGNER_CERT_SIZE);
+        &self.cert_data[..len]
+    }
+}
+
+impl CommandRequest for DpeSignerContextCertRequest {
+    type Response = DpeSignerContextCertResponse;
+    const COMMAND_ID: CaliptraCommandId = CaliptraCommandId::DpeSignerContextCert;
+}
+
+impl CommandResponse for DpeSignerContextCertResponse {}
+
+/// Request for `MC_DPE_SIGNER_CONTEXT_SIGN` (`0x4D44_5353`, `"MDSS"`).
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+pub struct DpeSignerContextSignRequest {
+    /// Target DPE node `fw_id` (`0` uses the default `EXPORT_CDI_TARGET` configured in `MCAM`).
+    pub target_fw_id: u32,
+    /// Asymmetric algorithm (`AsymAlgo` wire value).
+    pub algorithm: u32,
+    /// Number of valid bytes in `data`.
+    pub data_len: u32,
+    /// Signing input (`48`-byte SHA-384 digest for `EccP384`; raw TBS up to `MAX_DPE_SIGNER_SIGN_DATA_SIZE` for `Mldsa87`).
+    pub data: [u8; MAX_DPE_SIGNER_SIGN_DATA_SIZE],
+}
+
+impl DpeSignerContextSignRequest {
+    pub fn new(target_fw_id: u32, algorithm: AsymAlgo, payload: &[u8]) -> Option<Self> {
+        if payload.is_empty() || payload.len() > MAX_DPE_SIGNER_SIGN_DATA_SIZE {
+            return None;
+        }
+        let mut data = [0u8; MAX_DPE_SIGNER_SIGN_DATA_SIZE];
+        data[..payload.len()].copy_from_slice(payload);
+        Some(Self {
+            target_fw_id,
+            algorithm: algorithm as u32,
+            data_len: payload.len() as u32,
+            data,
+        })
+    }
+}
+
+/// Response for `MC_DPE_SIGNER_CONTEXT_SIGN` (`0x4D44_5353`, `"MDSS"`).
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+pub struct DpeSignerContextSignResponse {
+    pub common: CommonResponse,
+    /// Number of valid signature bytes in `signature` (`96` for `EccP384`, `4627` for `Mldsa87`).
+    pub data_len: u32,
+    /// Signature bytes (`r || s` for `EccP384`, raw FIPS-204 signature for `Mldsa87`).
+    pub signature: [u8; MAX_DPE_SIGNER_SIG_SIZE],
+}
+
+impl DpeSignerContextSignResponse {
+    /// Returns the valid signature slice (`..data_len`).
+    pub fn signature_bytes(&self) -> &[u8] {
+        let len = (self.data_len as usize).min(MAX_DPE_SIGNER_SIG_SIZE);
+        &self.signature[..len]
+    }
+}
+
+impl CommandRequest for DpeSignerContextSignRequest {
+    type Response = DpeSignerContextSignResponse;
+    const COMMAND_ID: CaliptraCommandId = CaliptraCommandId::DpeSignerContextSign;
+}
+
+impl CommandResponse for DpeSignerContextSignResponse {}
+
 #[cfg(test)]
 mod tests {
     use super::*;

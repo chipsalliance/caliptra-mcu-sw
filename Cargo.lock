@@ -979,6 +979,7 @@ dependencies = [
  "hex",
  "p384",
  "sha2",
+ "x509-parser",
  "zerocopy",
 ]
 
@@ -1559,6 +1560,7 @@ dependencies = [
  "caliptra-image-types",
  "caliptra-mcu-builder",
  "caliptra-mcu-config",
+ "caliptra-mcu-config-emulator",
  "caliptra-mcu-config-fpga",
  "caliptra-mcu-coverage",
  "caliptra-mcu-emulator-bmc",
