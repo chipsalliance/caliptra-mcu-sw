@@ -725,8 +725,19 @@ impl I3cPeripheral for I3c {
     }
 
     fn write_i3c_ec_tti_tx_data_port(&mut self, val: u32) {
-        if self.hw_revision == Version::new(2, 0, 0) {
-            // for HW revision 2.0.0, data is written to i3c core target
+        let bypass_cfg = self
+            .i3c_ec_soc_mgmt_if_rec_intf_cfg
+            .reg
+            .read(RecIntfCfg::RecIntfBypass);
+        // The i3c-core in both HW revisions sends these writes to the
+        // recovery FIFO while REC_INTF_BYPASS is set, so the 2.0.x path below,
+        // which sends data to the i3c core target, is only for writes without
+        // bypass.
+        if self.hw_revision >= Version::new(2, 0, 0)
+            && self.hw_revision < Version::new(2, 1, 0)
+            && bypass_cfg != I3C_REC_INT_BYPASS_AXI_DIRECT
+        {
+            // for HW revision 2.0.x, data is written to i3c core target
             self.tti_tx_data_raw
                 .back_mut()
                 .unwrap()
@@ -734,10 +745,6 @@ impl I3cPeripheral for I3c {
             self.write_tx_data_into_target();
         } else {
             // for HW revision 2.1.0 and later, data can be written to i3c core or recovery interface
-            let bypass_cfg = self
-                .i3c_ec_soc_mgmt_if_rec_intf_cfg
-                .reg
-                .read(RecIntfCfg::RecIntfBypass);
             if bypass_cfg == I3C_REC_INT_BYPASS_I3C_CORE {
                 let to_append = val.to_le_bytes();
                 let idx = self.tti_tx_data_raw.len() - 1;
@@ -931,6 +938,22 @@ impl I3cPeripheral for I3c {
         u32,
         caliptra_mcu_registers_generated::i3c::bits::IndirectFifoStatus0::Register,
     > {
+        // Without Caliptra connected (streaming boot), only MCU firmware can
+        // drain the FIFO, so report EMPTY and FULL from the FIFO level as the
+        // i3c-core does. With Caliptra connected (flash boot), return the
+        // stored register, which keeps EMPTY set: the MCU ROM waits for EMPTY
+        // before writing each chunk, and the emulated Caliptra drains the
+        // FIFO only after the whole image is loaded.
+        if self.events_to_caliptra.is_none() {
+            let used = self
+                .indirect_fifo_words_written
+                .saturating_sub(self.indirect_fifo_words_read);
+            return caliptra_emu_bus::ReadWriteRegister::new(
+                (IndirectFifoStatus0::Empty.val(u32::from(used == 0))
+                    + IndirectFifoStatus0::Full.val(u32::from(used >= INDIRECT_FIFO_DEPTH)))
+                .value,
+            );
+        }
         caliptra_emu_bus::ReadWriteRegister::new(
             self.i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0
                 .reg
@@ -1193,6 +1216,93 @@ mod tests {
             read_back.iter().map(|&(word, _)| word).collect::<Vec<_>>(),
             image
         );
+    }
+
+    /// With bypass set, the i3c-core sends TTI_TX_DATA_PORT writes to the
+    /// recovery FIFO in both HW revisions.
+    #[test]
+    fn bypass_tx_data_goes_to_recovery_fifo() {
+        for version in [Version::new(2, 0, 0), Version::new(2, 1, 0)] {
+            let clock = Clock::new();
+            let pic = Pic::new();
+            let mut i3c_controller = I3cController::default();
+            let mut i3c = I3c::new(
+                &clock,
+                &mut i3c_controller,
+                pic.register_irq(2),
+                version.clone(),
+                Arc::new(Mutex::new(())),
+            );
+            i3c.write_i3c_ec_soc_mgmt_if_rec_intf_cfg(ReadWriteRegister::new(
+                I3C_REC_INT_BYPASS_AXI_DIRECT,
+            ));
+            i3c.write_i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1(2);
+            i3c.write_i3c_ec_tti_tx_data_port(0x1234_5678);
+            i3c.write_i3c_ec_tti_tx_data_port(0x9abc_def0);
+
+            assert_eq!(
+                i3c.read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_1(),
+                2,
+                "HW revision {version}"
+            );
+            assert_eq!(
+                i3c.read_i3c_ec_sec_fw_recovery_if_indirect_fifo_data(),
+                0x1234_5678,
+                "HW revision {version}"
+            );
+            assert_eq!(
+                i3c.read_i3c_ec_sec_fw_recovery_if_indirect_fifo_data(),
+                0x9abc_def0,
+                "HW revision {version}"
+            );
+        }
+    }
+
+    /// When the MCU drains the recovery FIFO (Caliptra not connected), EMPTY
+    /// and FULL follow the FIFO level.
+    #[test]
+    fn recovery_fifo_status_follows_level() {
+        for version in [Version::new(2, 0, 0), Version::new(2, 1, 0)] {
+            let clock = Clock::new();
+            let pic = Pic::new();
+            let mut i3c_controller = I3cController::default();
+            let mut i3c = I3c::new(
+                &clock,
+                &mut i3c_controller,
+                pic.register_irq(2),
+                version.clone(),
+                Arc::new(Mutex::new(())),
+            );
+            let empty_full = |i3c: &mut I3c| {
+                let status = i3c.read_i3c_ec_sec_fw_recovery_if_indirect_fifo_status_0();
+                (
+                    status.reg.is_set(IndirectFifoStatus0::Empty),
+                    status.reg.is_set(IndirectFifoStatus0::Full),
+                )
+            };
+            i3c.write_i3c_ec_soc_mgmt_if_rec_intf_cfg(ReadWriteRegister::new(
+                I3C_REC_INT_BYPASS_AXI_DIRECT,
+            ));
+            i3c.write_i3c_ec_sec_fw_recovery_if_indirect_fifo_ctrl_1(INDIRECT_FIFO_DEPTH);
+            assert_eq!(empty_full(&mut i3c), (true, false), "HW revision {version}");
+
+            for word in 0..INDIRECT_FIFO_DEPTH {
+                i3c.write_i3c_ec_tti_tx_data_port(word);
+            }
+            assert_eq!(empty_full(&mut i3c), (false, true), "HW revision {version}");
+
+            i3c.read_i3c_ec_sec_fw_recovery_if_indirect_fifo_data();
+            assert_eq!(
+                empty_full(&mut i3c),
+                (false, false),
+                "HW revision {version}"
+            );
+
+            for _ in 1..INDIRECT_FIFO_DEPTH {
+                i3c.read_i3c_ec_sec_fw_recovery_if_indirect_fifo_data();
+            }
+            assert_eq!(empty_full(&mut i3c), (true, false), "HW revision {version}");
+        }
     }
 
     #[test]
