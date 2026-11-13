@@ -152,6 +152,7 @@ impl BufferedStream {
         // toggling it from one clone parks any concurrent read on a sibling clone in the
         // kernel until both the flag is restored AND data arrives. Keep the flag stable.
         stream.set_nonblocking(true).unwrap();
+        let _ = stream.set_nodelay(true);
         Self {
             stream,
             read_buffer: VecDeque::new(),
@@ -249,18 +250,16 @@ impl BufferedStream {
 
         let pec = calculate_crc8(addr << 1, data.as_slice());
 
-        let mut pkt = Vec::new();
-        pkt.extend_from_slice(data.as_slice());
-        pkt.push(pec);
+        let payload_len = data.len() + 1;
+        let pvt_write_cmd = prepare_private_write_cmd(addr, payload_len as u16);
+        let mut frame = Vec::with_capacity(pvt_write_cmd.len() + payload_len);
+        frame.extend_from_slice(&pvt_write_cmd);
+        frame.extend_from_slice(data.as_slice());
+        frame.push(pec);
 
-        let pvt_write_cmd = prepare_private_write_cmd(addr, pkt.len() as u16);
-        if !self.set_blocking_tolerant(true) || !self.write_all_tolerant(&pvt_write_cmd) {
-            return false;
-        }
-        if !self.set_blocking_tolerant(false) {
-            return false;
-        }
-        self.write_all_tolerant(&pkt)
+        self.set_blocking_tolerant(true)
+            && self.write_all_tolerant(&frame)
+            && self.set_blocking_tolerant(false)
     }
 
     /// Send a command with payload using the packetized protocol.

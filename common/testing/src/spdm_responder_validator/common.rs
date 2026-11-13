@@ -62,6 +62,7 @@ impl SpdmValidatorRunner {
         self.state = SpdmServerState::Start;
         self.passed = false;
         self.responder_ready = false;
+        let _ = stream.set_nodelay(true);
         while crate::is_emulator_running() {
             match self.state {
                 SpdmServerState::Start => {
@@ -159,20 +160,20 @@ impl SpdmValidatorRunner {
         command: u32,
         payload: &[u8],
     ) {
-        let mut buffer = [0u8; SOCKET_HEADER_LEN];
         let payload_len = payload.len() as u32;
         let header = SpdmSocketHeader {
             command: command.to_be(),
             transport_type: transport_type.to_be(),
             payload_size: payload_len.to_be(),
         };
-        buffer[..SOCKET_HEADER_LEN].copy_from_slice(header.as_bytes());
-        spdm_stream.write_all(&buffer[..SOCKET_HEADER_LEN]).unwrap();
-        spdm_stream.write_all(payload).unwrap();
+        let mut frame = Vec::with_capacity(SOCKET_HEADER_LEN + payload.len());
+        frame.extend_from_slice(header.as_bytes());
+        frame.extend_from_slice(payload);
+        spdm_stream.write_all(&frame).unwrap();
         spdm_stream.flush().unwrap();
         println!(
             "write to SPDM client: {:02X?}{:02X?}",
-            &buffer[..SOCKET_HEADER_LEN],
+            &frame[..SOCKET_HEADER_LEN],
             payload
         );
     }
