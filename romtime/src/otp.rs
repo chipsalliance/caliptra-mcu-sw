@@ -66,6 +66,25 @@ pub enum PqcKeyType {
     LMS = 2,
 }
 
+/// Number of vendor PK hash slots: slot 0 is the manufacturing hash and
+/// slots 1.. are production hashes.
+pub const VENDOR_PK_HASH_SLOTS: u32 = 16;
+
+/// Returns the (MANUF, PROD) volatile lock masks that lock slot `index` and
+/// all higher slots. MANUF bit 0 locks slot 0; PROD bit i locks slot i + 1.
+#[cfg(any(test, hw_capability = "vendor-pk-hash-lock-masks"))]
+pub const fn vendor_pk_hash_lock_masks(index: u32) -> (u32, u32) {
+    let prod_all = (1 << (VENDOR_PK_HASH_SLOTS - 1)) - 1;
+    if index == 0 {
+        (1, prod_all)
+    } else if index < VENDOR_PK_HASH_SLOTS {
+        (0, prod_all & !((1 << (index - 1)) - 1))
+    } else {
+        // Not a valid selection: lock everything.
+        (1, prod_all)
+    }
+}
+
 pub struct Otp {
     registers: StaticRef<otp_ctrl::regs::OtpCtrl>,
 }
@@ -75,8 +94,16 @@ impl Otp {
         Otp { registers }
     }
 
+    /// Lock vendor PK hash slot `index` and all higher slots until reset.
     pub fn volatile_lock(&self, index: u32) {
-        // the register is 1-indexed in hardware
+        #[cfg(hw_capability = "vendor-pk-hash-lock-masks")]
+        {
+            let (manuf, prod) = vendor_pk_hash_lock_masks(index);
+            self.registers.manuf_pk_hash_volatile_lock.set(manuf);
+            self.registers.vendor_pk_hash_volatile_lock.set(prod);
+        }
+        // The register holds the 1-based first locked production slot.
+        #[cfg(not(hw_capability = "vendor-pk-hash-lock-masks"))]
         self.registers.vendor_pk_hash_volatile_lock.set(index + 1);
     }
 
@@ -1303,6 +1330,15 @@ impl FieldEntropyState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn vendor_pk_hash_lock_masks_lock_selected_and_higher_slots() {
+        assert_eq!(vendor_pk_hash_lock_masks(0), (1, 0x7fff));
+        assert_eq!(vendor_pk_hash_lock_masks(1), (0, 0x7fff));
+        assert_eq!(vendor_pk_hash_lock_masks(2), (0, 0x7ffe));
+        assert_eq!(vendor_pk_hash_lock_masks(15), (0, 0x4000));
+        assert_eq!(vendor_pk_hash_lock_masks(16), (1, 0x7fff));
+    }
 
     #[test]
     fn owner_svn_allocation_preserves_existing_fields_and_digest() {
