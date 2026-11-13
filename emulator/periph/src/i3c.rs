@@ -730,12 +730,14 @@ impl I3cPeripheral for I3c {
             .reg
             .read(RecIntfCfg::RecIntfBypass);
         // The i3c-core in both HW revisions sends these writes to the
-        // recovery FIFO while REC_INTF_BYPASS is set, so the 2.0.0 path below,
+        // recovery FIFO while REC_INTF_BYPASS is set, so the 2.0.x path below,
         // which sends data to the i3c core target, is only for writes without
         // bypass.
-        if self.hw_revision == Version::new(2, 0, 0) && bypass_cfg != I3C_REC_INT_BYPASS_AXI_DIRECT
+        if self.hw_revision >= Version::new(2, 0, 0)
+            && self.hw_revision < Version::new(2, 1, 0)
+            && bypass_cfg != I3C_REC_INT_BYPASS_AXI_DIRECT
         {
-            // for HW revision 2.0.0, data is written to i3c core target
+            // for HW revision 2.0.x, data is written to i3c core target
             self.tti_tx_data_raw
                 .back_mut()
                 .unwrap()
