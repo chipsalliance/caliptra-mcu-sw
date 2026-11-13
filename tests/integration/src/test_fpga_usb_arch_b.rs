@@ -72,6 +72,12 @@ impl<'a> FpgaUlpiRecoveryTransport<'a> {
             device.address, device.vendor_id, device.product_id, device.ocp_interface
         );
         ensure!(
+            device.vendor_id == 0x0424 && device.product_id == 0x0007,
+            "Expected FPGA Device 0 VID:PID 0424:0007, got {:04x}:{:04x}",
+            device.vendor_id,
+            device.product_id
+        );
+        ensure!(
             device.hub_address.is_some(),
             "FPGA recovery must enumerate Device 0 through the internal hub"
         );

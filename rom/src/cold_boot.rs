@@ -2038,6 +2038,7 @@ impl BootFlow for ColdBoot {
                     .cmd_busy()
                 {
                     recovery.poll();
+                    recovery.log_failure(soc);
                     soc.check_hw_errors();
                     if soc.cptra_fw_fatal_error() {
                         fatal_error(McuError::ROM_SOC_CALIPTRA_FATAL_ERROR_BEFORE_FW_READY);
@@ -2125,6 +2126,7 @@ impl BootFlow for ColdBoot {
                 #[cfg(all(hw_rev = "latest", feature = "usb-recovery"))]
                 if let Some(recovery) = usb_recovery.as_mut() {
                     recovery.poll();
+                    recovery.log_failure(soc);
                 }
                 soc.check_hw_errors();
             }
@@ -2161,6 +2163,7 @@ impl BootFlow for ColdBoot {
                 #[cfg(all(hw_rev = "latest", feature = "usb-recovery"))]
                 if let Some(recovery) = usb_recovery.as_mut() {
                     recovery.poll();
+                    recovery.log_failure(soc);
                 }
             });
             caliptra_mcu_romtime::println!("[mcu-rom] Firmware is ready");
@@ -2202,6 +2205,7 @@ impl BootFlow for ColdBoot {
                 #[cfg(all(hw_rev = "latest", feature = "usb-recovery"))]
                 if let Some(recovery) = usb_recovery.as_mut() {
                     recovery.poll();
+                    recovery.log_failure(soc);
                 }
                 soc.check_hw_errors();
             }

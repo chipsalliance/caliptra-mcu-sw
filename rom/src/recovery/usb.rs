@@ -40,6 +40,7 @@ pub(crate) struct UsbRecovery {
     driver: LpcipUsbDriver,
     registers: StaticRef<UsbCombo>,
     enable_logs: bool,
+    failure_logged: bool,
 }
 
 impl UsbRecovery {
@@ -72,7 +73,26 @@ impl UsbRecovery {
             driver,
             registers,
             enable_logs,
+            failure_logged: false,
         })
+    }
+
+    pub(crate) fn log_failure(&mut self, soc: &crate::Soc) {
+        if self.failure_logged {
+            return;
+        }
+        let device = self.registers.recovery_device_status_0.get();
+        let status = self.registers.recovery_recovery_status.get();
+        if matches!(device & 0xff, 2 | 14 | 15) || soc.cptra_fw_fatal_error() {
+            self.failure_logged = true;
+            caliptra_mcu_romtime::println!(
+                "[mcu-rom-usb] Recovery failure: DEVICE_STATUS_0={} DEVICE_STATUS_1={} RECOVERY_STATUS={}",
+                caliptra_mcu_romtime::HexWord(device),
+                caliptra_mcu_romtime::HexWord(self.registers.recovery_device_status_1.get()),
+                caliptra_mcu_romtime::HexWord(status)
+            );
+            soc.log_usb_recovery_errors();
+        }
     }
 
     pub(crate) fn poll(&mut self) {

@@ -1,5 +1,75 @@
 # VCK190 internal-ULPI recovery test
 
+## Opt-in HTG940 bring-up build
+
+For HTG gateware rebuilt from the same linked subsystem revision as this
+firmware, use:
+
+```bash
+CALIPTRA_HW_REV=latest cargo xtask rom-build --platform fpga \
+  --features htg940
+```
+
+Use the resulting `latest-caliptra-mcu-rom-fpga-htg940.bin`
+instead of the default VCK190 recovery ROM. Pins are not changed. Both boards
+use the normal generated fuse map from the linked subsystem, and DAI access
+widths follow that map's partition metadata. FMC key-manifest SVN is read
+normally from its generated entry; there is no floor-zero compatibility path.
+
+`htg940` is disabled by default and includes the USB recovery test feature.
+It selects development vendor-hash RAM initialization and absence of a DOT
+flash backend. Normal VCK190 recovery builds use
+`test-lpcip-usb-ocp-recovery`, the linked subsystem's generated fuse map,
+host-side OTP provisioning, and the normal DOT flash backend.
+Regenerate fuse definitions from the linked hardware using the normal
+`CALIPTRA_HW_REV=latest cargo xtask registers-autogen` workflow when changing
+the pin. The fuse-only `--fuses-output-dir` option is also available for
+generation/comparison without overwriting the checked-in definitions.
+
+The old `test-htg940-otp-164dfbd6` feature and separate legacy fuse module
+have been removed. This ROM is NOT compatible with the earlier HTG image's
+`164dfbd6` OTP layout. Rebuild that bitstream with matching hardware before
+using this ROM. Board flash/provisioning policy remains development-only.
+
+Temporary HTG development provisioning: only the `htg940` FPGA ROM
+checks vendor hash slot 0 through OTP backing RAM at `0xB0080000` plus the
+generated slot offset (`0x420` with the current pin). A zero slot is filled with the fixed test-key
+digest verified against this bundle; a matching slot is left unchanged, and a
+different slot or failed readback is fatal. This is RAM-backdoor initialization,
+not physical OTP programming. It must not be used for production provisioning
+or firmware signed with other vendor keys. The slot's PQC selection and other
+OTP policy fields are not changed. Remove this temporary initialization when
+the HTG OTP image is supplied through the board's provisioning flow.
+
+On USB recovery device-error, boot-failure, fatal-error, or a Core firmware
+fatal error, MCU ROM prints a one-time raw recovery-status and Core error
+register snapshot while polling. Error snapshots are independent of
+`UsbParams::enable_logs`. Preserve the target state and continue console
+capture after host failure; do not automatically reset before collecting it.
+
+Temporary USB recovery fuse diagnostics also print all 12 selected vendor-hash
+words read through OTP DAI alongside Core fuse-register readback immediately
+after writing them. Three lines cover words 0-3, 4-7, and 8-11. These are public
+trust-anchor digest values, not secret fuse contents.
+
+FPGA Device 0 advertises bring-up VID:PID `0424:0007`. These match the
+USB3320 PHY identification values but are not a production device allocation.
+Select `0424:0007` in the host recovery tool; the hub identity is unchanged.
+Emulator fixtures retain their existing identity.
+
+For temporary standalone HTG USB recovery bring-up, `htg940`
+supplies no DOT flash backend. This skips DOT blob processing and uses the
+common ROM's fuse-owner fallback rather than issuing host-serviced secondary
+flash reads on standalone HTG-940. Other FPGA ROM features retain DOT flash.
+
+Both VCK190 and HTG FPGA USB recovery ROMs enable the MCU watchdog with
+3,600,000,000 cycles for debug, manufacturing, and production states. This is
+60 seconds at the intended 60 MHz MCU clock, or 200 seconds at 18 MHz.
+The watchdog starts during cold-boot setup, not when the host clicks recovery;
+there is no temporary watchdog disable or periodic petting. Other FPGA ROM
+features retain their original watchdog straps. Core watchdog settings are
+unchanged. `test-rom-hooks` retains its usual milestone logging on either board.
+
 FPGA MCU ROM prints the live wrapper `FPGA_VERSION` register (`0xA4010004`)
 at startup, for example `[mcu-rom] FPGA version: 0xA22B0005`. This identifies
 the loaded image's version tag, not its SHA-256 or the underlying base image.

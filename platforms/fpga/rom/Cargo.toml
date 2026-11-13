@@ -12,6 +12,7 @@ caliptra-mcu-builder.workspace = true
 caliptra-mcu-config-fpga.workspace = true
 
 [dependencies]
+caliptra-mcu-error = { workspace = true, optional = true }
 caliptra-mcu-usb-common = { workspace = true, optional = true }
 caliptra-mcu-config.workspace = true
 caliptra-mcu-config-fpga.workspace = true
@@ -26,6 +27,8 @@ riscv-csr.workspace = true
 rv32i.workspace = true
 
 [features]
+# Standalone HTG development provisioning and flash policy; OTP uses linked hardware.
+htg940 = ["test-lpcip-usb-ocp-recovery"]
 core_test = ["caliptra-mcu-rom-common/core_test"]
 hw-2-1 = ["caliptra-mcu-rom-common/hw-2-1"]
 test-i3c-services = ["caliptra-mcu-rom-common/test-i3c-services"]
@@ -53,4 +56,4 @@ test-ocp-lock = []
 test-streaming-boot-flash-write-back = []
 test-usb-ocp-recovery = ["hw-2-1"]
 test-lpcip-usb-enumeration = ["dep:caliptra-mcu-usb-common", "caliptra-mcu-usb-common/test-enumeration"]
-test-lpcip-usb-ocp-recovery = ["dep:caliptra-mcu-usb-common", "caliptra-mcu-rom-common/usb-recovery"]
+test-lpcip-usb-ocp-recovery = ["dep:caliptra-mcu-error", "dep:caliptra-mcu-usb-common", "caliptra-mcu-rom-common/usb-recovery"]

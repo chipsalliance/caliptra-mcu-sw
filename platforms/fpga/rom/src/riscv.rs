@@ -160,11 +160,67 @@ pub static MCU_MEMORY_MAP: McuMemoryMap = caliptra_mcu_config_fpga::FPGA_MEMORY_
 
 #[no_mangle]
 #[used]
-pub static MCU_STRAPS: McuStraps = caliptra_mcu_config_fpga::FPGA_MCU_STRAPS;
+pub static MCU_STRAPS: McuStraps = {
+    let mut straps = caliptra_mcu_config_fpga::FPGA_MCU_STRAPS;
+    if cfg!(feature = "test-lpcip-usb-ocp-recovery") {
+        // 60 seconds at the intended 60 MHz MCU clock; 200 seconds at 18 MHz.
+        straps.mcu_wdt_cfg0 = 3_600_000_000;
+        straps.mcu_wdt_cfg0_manufacturing = 3_600_000_000;
+        straps.mcu_wdt_cfg0_debug = 3_600_000_000;
+    }
+    straps
+};
 
 #[cfg_attr(not(feature = "test-i3c-services"), allow(dead_code))]
 unsafe fn init_static<T>(s: *mut core::mem::MaybeUninit<T>, value: T) -> &'static mut T {
     (*s).write(value)
+}
+
+#[cfg(all(hw_rev = "latest", feature = "htg940"))]
+fn initialize_development_vendor_hash() {
+    use caliptra_mcu_error::McuError;
+    use caliptra_mcu_registers_generated::fuses;
+
+    // FPGA RAM backdoor only: these are the fixed test signing-key digest
+    // words, not production provisioning or an OTP DAI programming sequence.
+    const EXPECTED: [u32; 12] = [
+        0xb17ca877, 0x666657cc, 0xd100e692, 0x6c7206b6, 0x0c995cb6, 0x8992c6c9, 0xbaefce72,
+        0x8af05441, 0xdee1ff41, 0x5adfc187, 0xe1e4edb4, 0xd3b2d909,
+    ];
+    const OTP_RAM_BASE: usize = 0xb008_0000;
+    let base = (OTP_RAM_BASE + fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_0.byte_offset) as *mut u32;
+    caliptra_mcu_romtime::println!(
+        "[otp-debug] DEVELOPMENT ONLY: checking vendor hash slot 0 backing RAM"
+    );
+    let mut current = [0; 12];
+    for (index, word) in current.iter_mut().enumerate() {
+        // The FPGA maps the OTP backing RAM into the MCU AXI address space.
+        *word = unsafe { core::ptr::read_volatile(base.add(index)) };
+    }
+    if current.iter().all(|word| *word == 0) {
+        caliptra_mcu_romtime::println!(
+            "[otp-debug] Slot 0 blank; installing fixed development vendor hash"
+        );
+        for (index, word) in EXPECTED.iter().enumerate() {
+            unsafe { core::ptr::write_volatile(base.add(index), *word) };
+        }
+        core::sync::atomic::fence(core::sync::atomic::Ordering::SeqCst);
+    } else if current != EXPECTED {
+        caliptra_mcu_romtime::println!(
+            "[otp-debug] Vendor hash differs from development keys; refusing overwrite"
+        );
+        caliptra_mcu_rom_common::fatal_error(McuError::ROM_OTP_READ_ERROR);
+    }
+    for (index, expected) in EXPECTED.iter().enumerate() {
+        if unsafe { core::ptr::read_volatile(base.add(index)) } != *expected {
+            caliptra_mcu_romtime::println!(
+                "[otp-debug] Vendor hash backing-RAM readback failed at word {}",
+                index
+            );
+            caliptra_mcu_rom_common::fatal_error(McuError::ROM_OTP_READ_ERROR);
+        }
+    }
+    caliptra_mcu_romtime::println!("[otp-debug] Vendor hash backing-RAM readback passed");
 }
 
 pub extern "C" fn rom_entry() -> ! {
@@ -185,6 +241,9 @@ pub extern "C" fn rom_entry() -> ! {
         #[allow(static_mut_refs)]
         caliptra_mcu_romtime::set_exiter(&mut EXITER);
     }
+
+    #[cfg(all(hw_rev = "latest", feature = "htg940"))]
+    initialize_development_vendor_hash();
 
     #[cfg(all(hw_rev = "latest", feature = "test-lpcip-usb-ocp-recovery"))]
     {
@@ -212,6 +271,10 @@ pub extern "C" fn rom_entry() -> ! {
     }
 
     caliptra_mcu_romtime::println!("[mcu-rom] Starting FPGA MCU ROM");
+    #[cfg(feature = "test-lpcip-usb-ocp-recovery")]
+    caliptra_mcu_romtime::println!(
+        "[mcu-rom] USB recovery MCU watchdog: 3600000000 cycles (60 s at 60 MHz)"
+    );
 
     #[cfg(all(hw_rev = "latest", feature = "test-lpcip-usb-enumeration"))]
     if cfg!(feature = "test-lpcip-usb-enumeration") {
@@ -461,7 +524,11 @@ pub extern "C" fn rom_entry() -> ! {
         recovery_interface: caliptra_mcu_rom_common::RecoveryInterface::Usb,
         #[cfg(all(hw_rev = "latest", feature = "test-lpcip-usb-ocp-recovery"))]
         usb: Some(crate::usb::test_parameters()),
-        dot_flash: Some(dot_flash),
+        dot_flash: if cfg!(feature = "htg940") {
+            None
+        } else {
+            Some(dot_flash)
+        },
         fw_manifest_dot_enabled: cfg!(feature = "test-fw-manifest-dot"),
         owner_pk_hash_policy: read_owner_pk_hash_policy(),
         cptra_mbox_axi_users: mbox_axi_users,

@@ -23,8 +23,8 @@ pub fn test_parameters() -> caliptra_mcu_usb_common::UsbParams {
     UsbParams {
         registers: unsafe { StaticRef::new(FPGA_USB_COMBO_ADDR as *const _) },
         packet_memory: unsafe { StaticRef::new(FPGA_USB_DEV0_MEM_ADDR as *const _) },
-        vendor_id: 0xffff,
-        product_id: 0xffff,
+        vendor_id: 0x0424,
+        product_id: 0x0007,
         device_revision: 0x0100,
         self_powered: true,
         max_power_2ma: 0,

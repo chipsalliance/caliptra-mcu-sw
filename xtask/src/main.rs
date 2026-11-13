@@ -369,6 +369,9 @@ enum Commands {
         /// Path to otp_ctrl_mmap.hjson. Defaults to the CALIPTRA_HW_REV-selected subsystem.
         #[arg(long)]
         otp_mmap_hjson: Option<PathBuf>,
+        /// Generate only fuse definitions/docs into this directory.
+        #[arg(long)]
+        fuses_output_dir: Option<PathBuf>,
     },
     /// Check dependencies
     Deps,
@@ -852,13 +855,29 @@ fn main() {
             addrmap,
             fuses_hjson,
             otp_mmap_hjson,
-        } => registers::autogen(
-            *check,
-            files,
-            addrmap,
-            fuses_hjson.as_deref(),
-            otp_mmap_hjson.as_deref(),
-        ),
+            fuses_output_dir,
+        } => {
+            if let Some(dest) = fuses_output_dir {
+                std::fs::create_dir_all(dest)
+                    .map_err(anyhow::Error::from)
+                    .and_then(|_| {
+                        fuses::autogen_fuses(
+                            *check,
+                            dest,
+                            fuses_hjson.as_deref(),
+                            otp_mmap_hjson.as_deref(),
+                        )
+                    })
+            } else {
+                registers::autogen(
+                    *check,
+                    files,
+                    addrmap,
+                    fuses_hjson.as_deref(),
+                    otp_mmap_hjson.as_deref(),
+                )
+            }
+        }
         Commands::Deps => deps::check(),
         #[cfg(feature = "fpga_realtime")]
         Commands::Fpga { subcommand } => fpga::fpga_entry(subcommand),

@@ -394,6 +394,17 @@ impl Soc {
         self.registers.cptra_fw_error_fatal.get() != 0
     }
 
+    #[cfg(all(hw_rev = "latest", feature = "usb-recovery"))]
+    pub(crate) fn log_usb_recovery_errors(&self) {
+        caliptra_mcu_romtime::println!(
+            "[mcu-rom-usb] Core FW_FATAL={} FW_NON_FATAL={} HW_FATAL={} BOOT_STATUS={}",
+            HexWord(self.registers.cptra_fw_error_fatal.get()),
+            HexWord(self.registers.cptra_fw_error_non_fatal.get()),
+            HexWord(self.registers.cptra_hw_error_fatal.get()),
+            HexWord(self.registers.cptra_boot_status.get())
+        );
+    }
+
     pub fn check_hw_errors(&self) {
         let hw_error = self.registers.cptra_hw_error_fatal.extract();
         if hw_error.is_set(soc::bits::CptraHwErrorFatal::IccmEccUnc) {
@@ -547,6 +558,35 @@ impl Soc {
             );
 
             reg.set(word);
+        }
+
+        #[cfg(all(hw_rev = "latest", feature = "usb-recovery"))]
+        {
+            let otp_words: [u32; 12] = core::array::from_fn(|index| {
+                u32::from_le_bytes([
+                    hash_buf[index * 4],
+                    hash_buf[index * 4 + 1],
+                    hash_buf[index * 4 + 2],
+                    hash_buf[index * 4 + 3],
+                ])
+            });
+            let core_words: [u32; 12] =
+                core::array::from_fn(|index| self.registers.fuse_vendor_pk_hash[index].get());
+            for index in (0..12).step_by(4) {
+                caliptra_mcu_romtime::println!(
+                    "[mcu-fuse-write] Vendor hash words {}-{} OTP_DAI={} {} {} {} CORE={} {} {} {}",
+                    index,
+                    index + 3,
+                    HexWord(otp_words[index]),
+                    HexWord(otp_words[index + 1]),
+                    HexWord(otp_words[index + 2]),
+                    HexWord(otp_words[index + 3]),
+                    HexWord(core_words[index]),
+                    HexWord(core_words[index + 1]),
+                    HexWord(core_words[index + 2]),
+                    HexWord(core_words[index + 3])
+                );
+            }
         }
 
         // Runtime SVN.
