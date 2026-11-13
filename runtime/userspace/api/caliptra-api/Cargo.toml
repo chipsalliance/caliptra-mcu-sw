@@ -10,6 +10,7 @@ edition.workspace = true
 async-trait = { workspace = true, optional = true }
 caliptra-api = { workspace = true, optional = true }
 caliptra-auth-man-types = { workspace = true, optional = true }
+caliptra-dpe = { workspace = true, optional = true }
 caliptra-image-types = { workspace = true, default-features = false, optional = true }
 caliptra-mcu-flash-image = { workspace = true, optional = true }
 caliptra-mcu-libtock_alarm = { workspace = true, optional = true }
@@ -37,6 +38,7 @@ mailbox-io = [
     "dep:async-trait",
     "dep:caliptra-api",
     "dep:caliptra-auth-man-types",
+    "dep:caliptra-dpe",
     "dep:caliptra-image-types",
     "dep:caliptra-mcu-flash-image",
     "dep:caliptra-mcu-libtock_alarm",
