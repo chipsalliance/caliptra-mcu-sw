@@ -376,7 +376,8 @@ impl Emulator {
         let test_feature = cli.test_feature.as_deref().unwrap_or("");
         let is_flash_based_boot = cli.flash_based_boot
             || test_feature == "test-flash-based-boot"
-            || test_feature == "test-firmware-update-flash";
+            || test_feature == "test-firmware-update-flash"
+            || test_feature == "test-firmware-update-axi-staging";
 
         // Configure stub warnings based on CLI flag
         caliptra_mcu_emulator_registers_generated::stub_warnings::set_stub_warnings(

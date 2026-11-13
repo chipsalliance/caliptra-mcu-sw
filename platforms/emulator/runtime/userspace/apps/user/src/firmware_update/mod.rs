@@ -17,7 +17,10 @@ use crate::EXECUTOR;
 #[cfg(feature = "firmware-update")]
 use mcu_caliptra_api::firmware_update::{FirmwareUpdater, PldmFirmwareDeviceParams};
 
-#[cfg(feature = "flash-boot")]
+#[cfg(all(
+    feature = "flash-boot",
+    not(feature = "test-firmware-update-axi-staging")
+))]
 use mcu_caliptra_api::firmware_update::FirmwareUpdateHooks;
 
 use caliptra_mcu_libtock_platform::ErrorCode;
@@ -82,7 +85,10 @@ pub async fn firmware_update<D: DMAMapping>(
         updater.start().await?;
     }
 
-    #[cfg(feature = "flash-boot")]
+    #[cfg(all(
+        feature = "flash-boot",
+        not(feature = "test-firmware-update-axi-staging")
+    ))]
     {
         use alloc::boxed::Box;
         use core::sync::atomic::{AtomicBool, Ordering};
@@ -146,6 +152,28 @@ pub async fn firmware_update<D: DMAMapping>(
             Some(&hooks),
         );
         updater.start().await?;
+    }
+
+    // Verify only: test-firmware-update-flash covers activation.
+    #[cfg(feature = "test-firmware-update-axi-staging")]
+    {
+        let fw_params = PldmFirmwareDeviceParams {
+            descriptors: &config::fw_update_consts::DESCRIPTOR.get()[..],
+            fw_params: config::fw_update_consts::FIRMWARE_PARAMS.get(),
+        };
+        let mut updater = FirmwareUpdater::new(
+            external_memory::STAGING_MEMORY.get(),
+            allocator,
+            &fw_params,
+            soc_image_load_list,
+            dma_mapping,
+            EXECUTOR.get().spawner(),
+            None,
+        );
+        updater.set_skip_activation(true);
+        updater.start().await?;
+        crate::log_info!(console_writer, "[FW Upd] AXI-staged update verified");
+        return Ok(());
     }
 
     #[cfg(feature = "test-streaming-boot-flash-write-back")]
@@ -220,12 +248,14 @@ fn get_reset_reason() -> Result<u32, ErrorCode> {
     Ok(reason)
 }
 
-#[cfg(feature = "streaming-boot")]
-#[allow(dead_code)]
+/// Update staging in the external SRAM. The MCU and Caliptra DMA engines both
+/// reach it at the same AXI address, so verification can hash it with SHA_DMA.
+#[cfg(feature = "test-firmware-update-axi-staging")]
 mod external_memory {
     extern crate alloc;
     use alloc::boxed::Box;
     use async_trait::async_trait;
+    use caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP;
     use caliptra_mcu_libsyscall_caliptra::dma::{
         DMAMapping, DMASource, DMATransaction, DMA as DMASyscall,
     };
@@ -236,7 +266,17 @@ mod external_memory {
     use crate::image_loader::EMULATED_DMA_MAPPING;
 
     const DMA_TRANSFER_SIZE: usize = 512;
-    const DEVICE_EXTERNAL_SRAM_BASE: u64 = 0xB00C0000;
+    // The kernel mailbox driver stages requests over 16 KiB, such as the
+    // Caliptra bundle, from the start of this SRAM.
+    const KERNEL_STAGING_SIZE: u32 = 320 * 1024;
+    // Largest bundle: the manifest plus Caliptra's FMC_SIZE (32 KiB) and
+    // RUNTIME_SIZE (210 KiB) limits.
+    const _: () = assert!(
+        KERNEL_STAGING_SIZE as usize
+            >= caliptra_image_types::IMAGE_MANIFEST_BYTE_SIZE + (32 + 210) * 1024
+    );
+    const BASE: u64 = (EMULATOR_MEMORY_MAP.staging_sram_offset + KERNEL_STAGING_SIZE) as u64;
+    const SIZE: usize = (EMULATOR_MEMORY_MAP.staging_sram_size - KERNEL_STAGING_SIZE) as usize;
 
     pub static STAGING_MEMORY: embassy_sync::lazy_lock::LazyLock<ExternalRAM> =
         embassy_sync::lazy_lock::LazyLock::new(|| ExternalRAM::new(&EMULATED_DMA_MAPPING));
@@ -253,34 +293,42 @@ mod external_memory {
                 dma_mapping,
             }
         }
+
+        fn address(offset: usize, len: usize) -> Result<u64, ErrorCode> {
+            match offset.checked_add(len) {
+                Some(end) if end <= SIZE => Ok(BASE + offset as u64),
+                _ => Err(ErrorCode::Size),
+            }
+        }
     }
 
     #[async_trait]
     impl StagingMemory for ExternalRAM {
         async fn write(&self, offset: usize, data: &[u8]) -> Result<(), ErrorCode> {
-            let mut current_offset = offset;
-            while current_offset < offset + data.len() {
-                let transfer_size = (offset + data.len() - current_offset).min(DMA_TRANSFER_SIZE);
-                let source_address = self.dma_mapping.mcu_sram_to_mcu_axi(data.as_ptr() as u32)?;
+            let mut dest_addr = Self::address(offset, data.len())?;
+            for chunk in data.chunks(DMA_TRANSFER_SIZE) {
+                let source_address = self
+                    .dma_mapping
+                    .mcu_sram_to_mcu_axi(chunk.as_ptr() as u32)?;
                 let transaction = DMATransaction {
-                    byte_count: transfer_size,
+                    byte_count: chunk.len(),
                     source: DMASource::Address(source_address),
-                    dest_addr: DEVICE_EXTERNAL_SRAM_BASE + current_offset as u64,
+                    dest_addr,
                 };
                 self.dma_syscall.xfer(&transaction).await?;
-                current_offset += transfer_size;
+                dest_addr += chunk.len() as u64;
             }
-
             Ok(())
         }
 
         async fn read(&self, offset: usize, data: &mut [u8]) -> Result<(), ErrorCode> {
+            let source_addr = Self::address(offset, data.len())?;
             let dest_address = self
                 .dma_mapping
                 .mcu_sram_to_mcu_axi(data.as_mut_ptr() as u32)?;
             let transaction: DMATransaction<'_> = DMATransaction {
                 byte_count: data.len(),
-                source: DMASource::Address(DEVICE_EXTERNAL_SRAM_BASE + offset as u64),
+                source: DMASource::Address(source_addr),
                 dest_addr: dest_address,
             };
             self.dma_syscall.xfer(&transaction).await
@@ -291,8 +339,11 @@ mod external_memory {
         }
 
         fn size(&self) -> usize {
-            // Return the size of the staging memory. Replace with actual value if needed.
-            256 * 1024 // 256 KiB as an example
+            SIZE
+        }
+
+        fn caliptra_axi_base(&self) -> Option<u64> {
+            Some(BASE)
         }
     }
 
@@ -358,7 +409,10 @@ mod dummy_flash {
     }
 }
 
-#[cfg(feature = "flash-boot")]
+#[cfg(all(
+    feature = "flash-boot",
+    not(feature = "test-firmware-update-axi-staging")
+))]
 mod flash_memory {
     extern crate alloc;
     use alloc::boxed::Box;
