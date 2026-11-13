@@ -507,13 +507,13 @@ impl<'a, H: CaliptraCmdHandler, A: CommandAuthorizer> CmdInterface<'a, H, A> {
         resp_buf: &'r mut [u8],
     ) -> McuResult<(&'r mut [u8], MbxCmdStatus)> {
         McuFeStatusReq::ref_from_bytes(req).map_err(|_| errors::INVALID_PARAMS)?;
-        let already_provisioned = self
+        let fe_status = self
             .non_crypto_cmds_handler
-            .field_entropy_already_provisioned()
+            .field_entropy_status(self.scratch)
             .await
             .map_err(map_common_cmd_error)?;
         let resp = McuFeStatusResp {
-            already_provisioned: already_provisioned.into(),
+            fe_status,
             ..Default::default()
         };
         let resp = resp.as_bytes();

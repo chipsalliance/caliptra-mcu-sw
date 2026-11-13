@@ -32,7 +32,7 @@ The following table describes the commands defined under this specification. The
 | Export Attested CSR             | O   | SPDM VDM, MCI Mailbox | Discover Caliptra identity keys or export an attested CSR for LDevID, FMC Alias, or RT Alias.                                        |
 | Provision IDevID Certificate    | O   | SPDM VDM, MCI Mailbox | Populate a DER-encoded IDevID certificate into Caliptra Core and optionally persist and lock it in OTP.                              |
 | Device Ownership Transfer       | O   | SPDM VDM, MCI Mailbox | Query and change the implemented DOT state.                                                                                          |
-| Field Entropy Status            | O   | MCI Mailbox           | Report whether all field entropy partitions are provisioned.                                                                        |
+| Field Entropy Status            | O   | MCI Mailbox           | Report field entropy partition status.                                                                                              |
 | Vendor PK Hash Status           | O   | MCI Mailbox           | Report occupied vendor PK hash slots and each slot's PQC key type.                                                                   |
 | HEK Status                      | O   | MCI Mailbox           | Report used HEK slots and the total number of configured HEK slots.                                                                  |
 | Authorization-Gated Subcommands | O   | SPDM VDM, MCI Mailbox | Security-sensitive provisioning and fuse subcommands using a manifest-backed hybrid signature and signer-selected nonce form.          |
@@ -584,7 +584,8 @@ activation, see
 
 ### Program Field Entropy
 
-Programs field entropy.
+Programs field entropy by forwarding Caliptra Core's `FE_PROG` command after
+authorization and request validation.
 
 **Request Payload**: `partition:u32 | AuthorizationBlock`
 
@@ -592,17 +593,18 @@ Programs field entropy.
 
 ### Field Entropy Status
 
-Reports whether all four field entropy partitions are in the finished state.
-Zeroized field entropy is not reported as provisioned. This command does not
-require authorization.
+Queries Caliptra Core's `FW_INFO.fe_status` and returns the packed status word.
+Partition `i` (`0..3`) occupies bits `[2*i+1:2*i]` (`0` = Unprovisioned,
+`1` = Provisioned, `2` = Zeroized, `3` = Error); bits `31:8` are reserved (`0`).
+This command does not require authorization.
 
 **Request Payload**: Empty
 
 **Response Payload**:
 
-| Byte(s) | Name                | Type | Description                                             |
-| ------- | ------------------- | ---- | ------------------------------------------------------- |
-| 0:3     | already_provisioned | u32  | `1` if all four partitions are provisioned; otherwise 0 |
+| Byte(s) | Name      | Type | Description                                                                                      |
+| ------- | --------- | ---- | ------------------------------------------------------------------------------------------------ |
+| 0:3     | fe_status | u32  | Packed status from `FW_INFO.fe_status`; partition `i` (`0..3`) is encoded in bits `[2*i+1:2*i]`. |
 
 ### Vendor PK Hash Status
 

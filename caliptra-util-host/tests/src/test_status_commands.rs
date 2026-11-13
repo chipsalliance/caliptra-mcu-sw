@@ -22,7 +22,7 @@ fn status_commands_return_typed_responses() {
         let field_entropy =
             caliptra_cmd_field_entropy_status(session).expect("field entropy status failed");
         assert_eq!(field_entropy.common.fips_status, 1);
-        assert_eq!(field_entropy.already_provisioned, 1);
+        assert_eq!(field_entropy.fe_status, 0x55);
 
         let vendor_pk_hash =
             caliptra_cmd_vendor_pk_hash_status(session).expect("vendor PK hash status failed");

@@ -77,9 +77,9 @@ typedef struct FieldEntropyStatusResponse {
    */
   struct CommonResponse common;
   /**
-   * One when every field-entropy partition is provisioned; otherwise zero.
+   * Packed `FW_INFO.fe_status` word; partition `i` (`0..3`) occupies bits `[2*i+1:2*i]`.
    */
-  uint32_t already_provisioned;
+  uint32_t fe_status;
 } FieldEntropyStatusResponse;
 
 /**

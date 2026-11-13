@@ -111,7 +111,7 @@ impl MockMailbox {
                 // MC_FE_STATUS ("MCFS")
                 let mut payload = Vec::new();
                 payload.extend_from_slice(&0x00000001u32.to_le_bytes()); // fips_status
-                payload.extend_from_slice(&1u32.to_le_bytes()); // already_provisioned
+                payload.extend_from_slice(&0x55u32.to_le_bytes()); // fe_status
 
                 let chksum = calc_checksum(0, &payload);
                 let mut response = Vec::new();

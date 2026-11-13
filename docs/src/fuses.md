@@ -108,6 +108,9 @@ Field entropy can only be programmed by Caliptra. MCU Runtime exposes the
 authorized `MC_FE_PROG` (`MCFP`) command, which accepts one partition index and
 forwards Caliptra's `FE_PROG` mailbox command.
 
+FE status is queried from Caliptra Core's `FW_INFO.fe_status`. The legacy
+`FIELD_ENTROPY_STATE` fuse allocation remains reserved.
+
 The reference DOT configuration derives its effective key from the stable
 IDevID root, so Field Entropy programming does not invalidate the DOT_BLOB.
 `RomParameters::dot_stable_key_type` can select LDevID for ROM paths, but the

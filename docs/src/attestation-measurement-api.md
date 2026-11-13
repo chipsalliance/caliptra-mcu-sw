@@ -260,6 +260,11 @@ Component updates do not re-tag DPE contexts; the existing `fw_id` tag stays wit
 
 For signed inventory Evidence, the OCP EAT provider calls `signed_measurement_evidence()` with an `EvidenceBuilder`. The Measurement API holds its mutex across selected-AK identification, concise-evidence encoding (excluding TCB components on the selected-AK lineage), payload construction, and signing so concurrent component updates cannot interleave between reading measurements and signing. If encoding fails, callers must discard the output buffer rather than returning partial Evidence.
 
+An evidence producer can supply additional request-scoped `RawValueEvidence`
+records through `EvidenceBuilder::concise_evidence_with_additional_mut()`. The
+Measurement API counts and encodes these records in their specified tagged-bytes
+classes using the Base manifest's vendor and model.
+
 ```mermaid
 sequenceDiagram
     participant Transport as "Evidence transport"
