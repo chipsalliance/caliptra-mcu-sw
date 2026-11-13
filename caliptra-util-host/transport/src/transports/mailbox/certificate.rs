@@ -8,10 +8,12 @@
 use super::checksum::calc_checksum;
 use super::command_traits::*;
 use caliptra_mcu_core_util_host_command_types::certificate::{
-    ExportAttestedCsrRequest, ExportAttestedCsrResponse, GetCertChainInfoRequest,
-    GetCertChainInfoResponse, GetCertChainRequest, GetCertChainResponse, ProvisionIdevCertRequest,
-    ProvisionIdevCertResponse, SetCertChainRequest, SetCertChainResponse, CERT_CHAIN_DIGEST_SIZE,
-    MAX_CERT_CHAIN_CHUNK_SIZE, MAX_CSR_DATA_SIZE, MAX_IDEV_CERT_SIZE,
+    DpeSignerContextCertRequest, DpeSignerContextCertResponse, DpeSignerContextSignRequest,
+    DpeSignerContextSignResponse, ExportAttestedCsrRequest, ExportAttestedCsrResponse,
+    GetCertChainInfoRequest, GetCertChainInfoResponse, GetCertChainRequest, GetCertChainResponse,
+    ProvisionIdevCertRequest, ProvisionIdevCertResponse, SetCertChainRequest, SetCertChainResponse,
+    CERT_CHAIN_DIGEST_SIZE, MAX_CERT_CHAIN_CHUNK_SIZE, MAX_CSR_DATA_SIZE, MAX_DPE_SIGNER_CERT_SIZE,
+    MAX_DPE_SIGNER_SIGN_DATA_SIZE, MAX_DPE_SIGNER_SIG_SIZE, MAX_IDEV_CERT_SIZE,
 };
 use caliptra_mcu_core_util_host_command_types::CommonResponse;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
@@ -445,6 +447,225 @@ define_command!(
     ExtCmdProvisionIdevCertResponse
 );
 
+// ============================================================================
+// MC_DPE_SIGNER_CONTEXT_CERT Command (0x4D44_5343 - "MDSC")
+// ============================================================================
+
+/// External command: DPE signer context certificate request (12 bytes)
+#[repr(C)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, IntoBytes, FromBytes, Immutable)]
+pub struct ExtCmdDpeSignerContextCertRequest {
+    pub chksum: u32,
+    pub target_fw_id: u32,
+    pub algorithm: u32,
+}
+
+/// External command: DPE signer context certificate response (12 + `data_len` bytes)
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+pub struct ExtCmdDpeSignerContextCertResponse {
+    pub chksum: u32,
+    pub fips_status: u32,
+    pub data_len: u32,
+    pub cert_data: [u8; MAX_DPE_SIGNER_CERT_SIZE],
+}
+
+impl FromInternalRequest<DpeSignerContextCertRequest> for ExtCmdDpeSignerContextCertRequest {
+    fn from_internal(internal: &DpeSignerContextCertRequest, command_code: u32) -> Self {
+        let chksum = calc_checksum(command_code, internal.as_bytes());
+        Self {
+            chksum,
+            target_fw_id: internal.target_fw_id,
+            algorithm: internal.algorithm,
+        }
+    }
+}
+
+impl ToInternalResponse<DpeSignerContextCertResponse> for ExtCmdDpeSignerContextCertResponse {
+    fn to_internal(&self) -> DpeSignerContextCertResponse {
+        let mut cert_data = [0u8; MAX_DPE_SIGNER_CERT_SIZE];
+        let data_len = (self.data_len as usize).min(MAX_DPE_SIGNER_CERT_SIZE);
+        cert_data[..data_len].copy_from_slice(&self.cert_data[..data_len]);
+
+        DpeSignerContextCertResponse {
+            common: CommonResponse {
+                fips_status: self.fips_status,
+            },
+            data_len: self.data_len,
+            cert_data,
+        }
+    }
+}
+
+impl VariableSizeBytes for ExtCmdDpeSignerContextCertRequest {}
+
+impl VariableSizeBytes for ExtCmdDpeSignerContextCertResponse {
+    fn from_bytes_variable(bytes: &[u8]) -> Result<Self, crate::TransportError> {
+        if bytes.len() < 12 {
+            return Err(crate::TransportError::InvalidMessage);
+        }
+
+        let chksum = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+        let fips_status = u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
+        let data_len = u32::from_le_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]);
+
+        let data_len_usize = data_len as usize;
+        if data_len_usize > MAX_DPE_SIGNER_CERT_SIZE || bytes.len() < 12 + data_len_usize {
+            return Err(crate::TransportError::InvalidMessage);
+        }
+
+        let mut cert_data = [0u8; MAX_DPE_SIGNER_CERT_SIZE];
+        cert_data[..data_len_usize].copy_from_slice(&bytes[12..12 + data_len_usize]);
+
+        Ok(Self {
+            chksum,
+            fips_status,
+            data_len,
+            cert_data,
+        })
+    }
+
+    fn to_bytes_variable(&self, buffer: &mut [u8]) -> usize {
+        let header_size = 12;
+        let actual_len = (self.data_len as usize).min(MAX_DPE_SIGNER_CERT_SIZE);
+        let total_size = header_size + actual_len;
+
+        if buffer.len() < total_size {
+            return 0;
+        }
+
+        buffer[0..4].copy_from_slice(&self.chksum.to_le_bytes());
+        buffer[4..8].copy_from_slice(&self.fips_status.to_le_bytes());
+        buffer[8..12].copy_from_slice(&self.data_len.to_le_bytes());
+        buffer[12..12 + actual_len].copy_from_slice(&self.cert_data[..actual_len]);
+
+        total_size
+    }
+}
+
+define_command!(
+    DpeSignerContextCertCmd,
+    0x4D44_5343, // MC_DPE_SIGNER_CONTEXT_CERT - "MDSC"
+    DpeSignerContextCertRequest,
+    DpeSignerContextCertResponse,
+    ExtCmdDpeSignerContextCertRequest,
+    ExtCmdDpeSignerContextCertResponse
+);
+
+// ============================================================================
+// MC_DPE_SIGNER_CONTEXT_SIGN Command (0x4D44_5353 - "MDSS")
+// ============================================================================
+
+/// External command: DPE signer context sign request (16 + 4096 = 4112 bytes)
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+pub struct ExtCmdDpeSignerContextSignRequest {
+    pub chksum: u32,
+    pub target_fw_id: u32,
+    pub algorithm: u32,
+    pub data_len: u32,
+    pub data: [u8; MAX_DPE_SIGNER_SIGN_DATA_SIZE],
+}
+
+/// External command: DPE signer context sign response (12 + `data_len` bytes)
+#[repr(C)]
+#[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
+pub struct ExtCmdDpeSignerContextSignResponse {
+    pub chksum: u32,
+    pub fips_status: u32,
+    pub data_len: u32,
+    pub signature: [u8; MAX_DPE_SIGNER_SIG_SIZE],
+}
+
+impl FromInternalRequest<DpeSignerContextSignRequest> for ExtCmdDpeSignerContextSignRequest {
+    fn from_internal(internal: &DpeSignerContextSignRequest, command_code: u32) -> Self {
+        let mut data = [0u8; MAX_DPE_SIGNER_SIGN_DATA_SIZE];
+        let valid_len = (internal.data_len as usize).min(MAX_DPE_SIGNER_SIGN_DATA_SIZE);
+        data[..valid_len].copy_from_slice(&internal.data[..valid_len]);
+
+        let mut req = Self {
+            chksum: 0,
+            target_fw_id: internal.target_fw_id,
+            algorithm: internal.algorithm,
+            data_len: internal.data_len,
+            data,
+        };
+        req.chksum = calc_checksum(command_code, &req.as_bytes()[4..]);
+        req
+    }
+}
+
+impl ToInternalResponse<DpeSignerContextSignResponse> for ExtCmdDpeSignerContextSignResponse {
+    fn to_internal(&self) -> DpeSignerContextSignResponse {
+        let mut signature = [0u8; MAX_DPE_SIGNER_SIG_SIZE];
+        let data_len = (self.data_len as usize).min(MAX_DPE_SIGNER_SIG_SIZE);
+        signature[..data_len].copy_from_slice(&self.signature[..data_len]);
+
+        DpeSignerContextSignResponse {
+            common: CommonResponse {
+                fips_status: self.fips_status,
+            },
+            data_len: self.data_len,
+            signature,
+        }
+    }
+}
+
+impl VariableSizeBytes for ExtCmdDpeSignerContextSignRequest {}
+
+impl VariableSizeBytes for ExtCmdDpeSignerContextSignResponse {
+    fn from_bytes_variable(bytes: &[u8]) -> Result<Self, crate::TransportError> {
+        if bytes.len() < 12 {
+            return Err(crate::TransportError::InvalidMessage);
+        }
+
+        let chksum = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
+        let fips_status = u32::from_le_bytes([bytes[4], bytes[5], bytes[6], bytes[7]]);
+        let data_len = u32::from_le_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]);
+
+        let data_len_usize = data_len as usize;
+        if data_len_usize > MAX_DPE_SIGNER_SIG_SIZE || bytes.len() < 12 + data_len_usize {
+            return Err(crate::TransportError::InvalidMessage);
+        }
+
+        let mut signature = [0u8; MAX_DPE_SIGNER_SIG_SIZE];
+        signature[..data_len_usize].copy_from_slice(&bytes[12..12 + data_len_usize]);
+
+        Ok(Self {
+            chksum,
+            fips_status,
+            data_len,
+            signature,
+        })
+    }
+
+    fn to_bytes_variable(&self, buffer: &mut [u8]) -> usize {
+        let header_size = 12;
+        let actual_len = (self.data_len as usize).min(MAX_DPE_SIGNER_SIG_SIZE);
+        let total_size = header_size + actual_len;
+
+        if buffer.len() < total_size {
+            return 0;
+        }
+
+        buffer[0..4].copy_from_slice(&self.chksum.to_le_bytes());
+        buffer[4..8].copy_from_slice(&self.fips_status.to_le_bytes());
+        buffer[8..12].copy_from_slice(&self.data_len.to_le_bytes());
+        buffer[12..12 + actual_len].copy_from_slice(&self.signature[..actual_len]);
+
+        total_size
+    }
+}
+
+define_command!(
+    DpeSignerContextSignCmd,
+    0x4D44_5353, // MC_DPE_SIGNER_CONTEXT_SIGN - "MDSS"
+    DpeSignerContextSignRequest,
+    DpeSignerContextSignResponse,
+    ExtCmdDpeSignerContextSignRequest,
+    ExtCmdDpeSignerContextSignResponse
+);
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -544,5 +765,61 @@ mod tests {
         assert_eq!(wire.len(), 16 + cert.len());
         assert_eq!(&wire[16..], &cert);
         assert_eq!(ext.chksum, calc_checksum(0x4D50_4943, &wire[4..]));
+    }
+
+    #[test]
+    fn dpe_signer_context_cert_round_trips() {
+        assert_eq!(
+            core::mem::size_of::<ExtCmdDpeSignerContextCertRequest>(),
+            12
+        );
+
+        let internal = DpeSignerContextCertRequest::new(0x10, AsymAlgo::EccP384);
+        let ext_req = ExtCmdDpeSignerContextCertRequest::from_internal(&internal, 0x4D44_5343);
+        let req_bytes = ext_req.as_bytes();
+        assert_eq!(req_bytes[4..8], 0x10u32.to_le_bytes());
+        assert_eq!(req_bytes[8..12], (AsymAlgo::EccP384 as u32).to_le_bytes());
+
+        let cert = [0x30u8, 0x82, 0x01, 0x10, 0xAA, 0xBB];
+        let mut raw = vec![0u8; 12 + cert.len()];
+        raw[8..12].copy_from_slice(&(cert.len() as u32).to_le_bytes());
+        raw[12..].copy_from_slice(&cert);
+
+        let ext_resp = ExtCmdDpeSignerContextCertResponse::from_bytes_variable(&raw).unwrap();
+        let internal_resp = ext_resp.to_internal();
+        assert_eq!(internal_resp.cert_bytes(), &cert);
+
+        let mut roundtrip = vec![0u8; raw.len()];
+        let n = ext_resp.to_bytes_variable(&mut roundtrip);
+        assert_eq!(n, raw.len());
+        assert_eq!(roundtrip, raw);
+    }
+
+    #[test]
+    fn dpe_signer_context_sign_zero_pads_tail_and_round_trips() {
+        assert_eq!(
+            core::mem::size_of::<ExtCmdDpeSignerContextSignRequest>(),
+            4112
+        );
+
+        let digest = [0x42u8; 48];
+        let mut req = DpeSignerContextSignRequest::new(0, AsymAlgo::EccP384, &digest).unwrap();
+        req.data[digest.len()..digest.len() + 4].copy_from_slice(&[0xFF; 4]);
+
+        let ext_req = ExtCmdDpeSignerContextSignRequest::from_internal(&req, 0x4D44_5353);
+        assert!(ext_req.data[digest.len()..].iter().all(|&b| b == 0));
+        assert_eq!(
+            ext_req.chksum,
+            calc_checksum(0x4D44_5353, &ext_req.as_bytes()[4..16 + digest.len()])
+        );
+
+        let sig = [0x5Au8; 96];
+        let mut raw = vec![0u8; 12 + sig.len()];
+        raw[8..12].copy_from_slice(&(sig.len() as u32).to_le_bytes());
+        raw[12..].copy_from_slice(&sig);
+
+        let ext_resp = ExtCmdDpeSignerContextSignResponse::from_bytes_variable(&raw).unwrap();
+        let internal_resp = ext_resp.to_internal();
+        assert_eq!(internal_resp.signature_bytes(), &sig);
     }
 }

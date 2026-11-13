@@ -607,6 +607,7 @@ dependencies = [
  "hex",
  "p384",
  "sha2",
+ "x509-parser",
  "zerocopy",
 ]
 

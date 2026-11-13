@@ -2070,7 +2070,10 @@ fn test_dpe_signer_context_cert_cmd() -> Result<()> {
     assert!(cert.verify(&pubkey).is_ok());
 
     // A repeat MC_DPE_SIGNER_CONTEXT_CERT automatically revokes the prior exported CDI
-    // handle in Caliptra and derives a fresh certificate.
+    // handle in Caliptra and derives a fresh certificate. Verify that a non-PL0 (PL1)
+    // mailbox AXI user (2) is allowed to call MC_DPE_SIGNER_CONTEXT_CERT, but is rejected
+    // when attempting MC_DPE_SIGNER_CONTEXT_SIGN.
+    hw.set_mcu_mbox_axi_user(2);
     let rederived_cert_der = execute_var_mcu_req(
         &mut hw,
         McuMailboxReq::DpeSignerContextCert(DpeSignerContextCertReq::default()),
@@ -2082,27 +2085,54 @@ fn test_dpe_signer_context_cert_cmd() -> Result<()> {
     // 3. Sign a 48-byte SHA-384 digest via MC_DPE_SIGNER_CONTEXT_SIGN (ECDSA_384)
     // and verify against the derived leaf certificate public key.
     let ecdsa_digest = [0x42u8; 48];
-    let mut ecdsa_sign_req = DpeSignerContextSignReq {
-        algorithm: EndorsementAlgorithm::ECDSA_384,
-        data_len: ecdsa_digest.len() as u32,
-        ..Default::default()
+    let make_ecdsa_sign_req = || {
+        let mut req = DpeSignerContextSignReq {
+            algorithm: EndorsementAlgorithm::ECDSA_384,
+            data_len: ecdsa_digest.len() as u32,
+            ..Default::default()
+        };
+        req.data[..ecdsa_digest.len()].copy_from_slice(&ecdsa_digest);
+        req
     };
-    ecdsa_sign_req.data[..ecdsa_digest.len()].copy_from_slice(&ecdsa_digest);
-    let ecdsa_sig =
-        execute_var_mcu_req(&mut hw, McuMailboxReq::DpeSignerContextSign(ecdsa_sign_req))?;
-    assert_eq!(
-        ecdsa_sig.len(),
-        96,
-        "ECDSA P-384 signature must be 96 bytes"
+    #[cfg(feature = "fpga_realtime")]
+    let (pl1_users, pl0_users): (&[u32], &[u32]) =
+        (&[2], caliptra_mcu_config_fpga::FPGA_MCU_MBOX0_PL0_AXI_USERS);
+    #[cfg(not(feature = "fpga_realtime"))]
+    let (pl1_users, pl0_users): (&[u32], &[u32]) = (
+        &[2, 0xeeee_eeee],
+        caliptra_mcu_config_emulator::EMULATOR_MCU_MBOX0_PL0_AXI_USERS,
     );
-    let sig_r = openssl::bn::BigNum::from_slice(&ecdsa_sig[..48]).unwrap();
-    let sig_s = openssl::bn::BigNum::from_slice(&ecdsa_sig[48..96]).unwrap();
-    let ossl_ecdsa_sig = openssl::ecdsa::EcdsaSig::from_private_components(sig_r, sig_s).unwrap();
-    let leaf_ec_key = rederived_cert.public_key().unwrap().ec_key().unwrap();
-    assert!(
-        ossl_ecdsa_sig.verify(&ecdsa_digest, &leaf_ec_key).unwrap(),
-        "ECDSA signature from MC_DPE_SIGNER_CONTEXT_SIGN failed verification against leaf cert"
-    );
+
+    // Non-PL0 callers must be rejected on MC_DPE_SIGNER_CONTEXT_SIGN.
+    for &pl1_user in pl1_users {
+        hw.set_mcu_mbox_axi_user(pl1_user);
+        assert_mcu_req_fails(
+            &mut hw,
+            McuMailboxReq::DpeSignerContextSign(make_ecdsa_sign_req()),
+        );
+    }
+    // All platform-configured PL0 callers must succeed.
+    for &pl0_user in pl0_users {
+        hw.set_mcu_mbox_axi_user(pl0_user);
+        let ecdsa_sig = execute_var_mcu_req(
+            &mut hw,
+            McuMailboxReq::DpeSignerContextSign(make_ecdsa_sign_req()),
+        )?;
+        assert_eq!(
+            ecdsa_sig.len(),
+            96,
+            "ECDSA P-384 signature must be 96 bytes"
+        );
+        let sig_r = openssl::bn::BigNum::from_slice(&ecdsa_sig[..48]).unwrap();
+        let sig_s = openssl::bn::BigNum::from_slice(&ecdsa_sig[48..96]).unwrap();
+        let ossl_ecdsa_sig =
+            openssl::ecdsa::EcdsaSig::from_private_components(sig_r, sig_s).unwrap();
+        let leaf_ec_key = rederived_cert.public_key().unwrap().ec_key().unwrap();
+        assert!(
+            ossl_ecdsa_sig.verify(&ecdsa_digest, &leaf_ec_key).unwrap(),
+            "ECDSA signature from MC_DPE_SIGNER_CONTEXT_SIGN failed verification against leaf cert"
+        );
+    }
 
     // Invalid algorithm and wrong ECDSA digest length must fail.
     for bad_req in [

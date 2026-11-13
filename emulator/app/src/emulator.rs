@@ -24,6 +24,7 @@ use caliptra_emu_periph::CaliptraRootBus as CaliptraMainRootBus;
 use caliptra_emu_periph::MailboxRequester;
 use caliptra_hw_model_types::DEFAULT_CPTRA_OBF_KEY;
 use caliptra_image_types::FwVerificationPqcKeyType;
+use caliptra_mcu_config_emulator::DEFAULT_MCU_MBOX_AXI_PAUSER;
 use caliptra_mcu_emulator_bmc::Bmc;
 use caliptra_mcu_emulator_caliptra::BytesOrPath;
 use caliptra_mcu_emulator_caliptra::{start_caliptra, StartCaliptraArgs};
@@ -932,7 +933,8 @@ impl Emulator {
         let mut lc = lc;
         lc.set_otp_partitions(otp.partitions_ref());
 
-        let ext_mcu_mailbox0 = mcu_mailbox0.as_external(MciMailboxRequester::SocAgent(1));
+        let ext_mcu_mailbox0 =
+            mcu_mailbox0.as_external(MciMailboxRequester::SocAgent(DEFAULT_MCU_MBOX_AXI_PAUSER));
         let soc_ifc = unsafe {
             caliptra_registers::soc_ifc::RegisterBlock::new_with_mmio(
                 cli.soc_offset.unwrap_or(0x3003_0000) as *mut u32,

@@ -325,6 +325,81 @@ impl MockMailbox {
                 self.response_buffer[0..response_len].copy_from_slice(&response);
                 Ok(&self.response_buffer[0..response_len])
             }
+            0x4D44_5343 => {
+                // MC_DPE_SIGNER_CONTEXT_CERT ("MDSC")
+                if _payload.len() != 12 {
+                    return Err(MailboxError::InvalidCommand);
+                }
+                let req_chksum = u32::from_le_bytes(_payload[0..4].try_into().unwrap());
+                if req_chksum != calc_checksum(external_cmd, &_payload[4..]) {
+                    return Err(MailboxError::InvalidCommand);
+                }
+                let target_fw_id = u32::from_le_bytes(_payload[4..8].try_into().unwrap());
+                let algorithm = u32::from_le_bytes(_payload[8..12].try_into().unwrap());
+                if algorithm != 1 && algorithm != 2 {
+                    return Err(MailboxError::InvalidCommand);
+                }
+
+                let cert_data = [
+                    0x30u8,
+                    0x82,
+                    0x00,
+                    0x04,
+                    (target_fw_id & 0xFF) as u8,
+                    algorithm as u8,
+                    0xAA,
+                    0x55,
+                ];
+                let mut payload = Vec::new();
+                payload.extend_from_slice(&0u32.to_le_bytes()); // fips_status
+                payload.extend_from_slice(&(cert_data.len() as u32).to_le_bytes()); // data_len
+                payload.extend_from_slice(&cert_data);
+
+                let chksum = calc_checksum(0, &payload);
+                let mut response = Vec::new();
+                response.extend_from_slice(&chksum.to_le_bytes());
+                response.extend_from_slice(&payload);
+
+                let response_len = response.len();
+                self.response_buffer[0..response_len].copy_from_slice(&response);
+                Ok(&self.response_buffer[0..response_len])
+            }
+            0x4D44_5353 => {
+                // MC_DPE_SIGNER_CONTEXT_SIGN ("MDSS")
+                if _payload.len() < 16 {
+                    return Err(MailboxError::InvalidCommand);
+                }
+                let req_chksum = u32::from_le_bytes(_payload[0..4].try_into().unwrap());
+                if req_chksum != calc_checksum(external_cmd, &_payload[4..]) {
+                    return Err(MailboxError::InvalidCommand);
+                }
+                let algorithm = u32::from_le_bytes(_payload[8..12].try_into().unwrap());
+                let data_len = u32::from_le_bytes(_payload[12..16].try_into().unwrap()) as usize;
+                if algorithm != 1 || data_len != 48 || _payload.len() < 16 + data_len {
+                    return Err(MailboxError::InvalidCommand);
+                }
+
+                let digest = &_payload[16..16 + 48];
+                let mut sig = [0u8; 96];
+                sig[..48].copy_from_slice(digest);
+                for (i, b) in digest.iter().enumerate() {
+                    sig[48 + i] = b ^ 0xA5;
+                }
+
+                let mut payload = Vec::new();
+                payload.extend_from_slice(&0u32.to_le_bytes()); // fips_status
+                payload.extend_from_slice(&(sig.len() as u32).to_le_bytes()); // data_len
+                payload.extend_from_slice(&sig);
+
+                let chksum = calc_checksum(0, &payload);
+                let mut response = Vec::new();
+                response.extend_from_slice(&chksum.to_le_bytes());
+                response.extend_from_slice(&payload);
+
+                let response_len = response.len();
+                self.response_buffer[0..response_len].copy_from_slice(&response);
+                Ok(&self.response_buffer[0..response_len])
+            }
             _ => Err(MailboxError::InvalidCommand),
         }
     }

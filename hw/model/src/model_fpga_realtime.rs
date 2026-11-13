@@ -781,6 +781,10 @@ impl McuHwModel for ModelFpgaRealtime {
         self.base.wrapper.regs().sram_config_user.set(pauser);
     }
 
+    fn set_mcu_mbox_axi_user(&mut self, pauser: u32) {
+        self.base.wrapper.regs().arm_user.set(pauser);
+    }
+
     fn set_caliptra_boot_go(&mut self, go: bool) {
         self.base
             .mmio

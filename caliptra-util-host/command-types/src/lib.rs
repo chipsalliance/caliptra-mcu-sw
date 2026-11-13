@@ -70,6 +70,8 @@ pub enum CaliptraCommandId {
     SetCertificate = 0x1013, // Generic set certificate
     SetCertChain = 0x1014,
     ProvisionIdevCert = 0x1015,
+    DpeSignerContextCert = 0x1016,
+    DpeSignerContextSign = 0x1017,
 
     // Hash Commands (0x2001-0x2003)
     HashInit = 0x2001,

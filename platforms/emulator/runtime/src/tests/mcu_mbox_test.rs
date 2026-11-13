@@ -97,7 +97,13 @@ impl McuMailboxTester {
 }
 
 impl MailboxClient for McuMailboxTester {
-    fn request_received(&self, command: u32, rx_buf: &'static mut [u32], dlen: usize) {
+    fn request_received(
+        &self,
+        command: u32,
+        _axi_user: u32,
+        rx_buf: &'static mut [u32],
+        dlen: usize,
+    ) {
         let recv = self.rx_buf.take().expect("rx_buf missing");
         let dw_len = dlen.div_ceil(4);
         if dw_len > recv.len() {
