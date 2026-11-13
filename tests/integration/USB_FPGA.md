@@ -13,8 +13,9 @@ CALIPTRA_HW_REV=latest cargo xtask rom-build --platform fpga \
 Use the resulting `latest-caliptra-mcu-rom-fpga-htg940.bin`
 instead of the default VCK190 recovery ROM. Pins are not changed. Both boards
 use the normal generated fuse map from the linked subsystem, and DAI access
-widths follow that map's partition metadata. FMC key-manifest SVN is read
-normally from its generated entry; there is no floor-zero compatibility path.
+widths follow that map's partition metadata. FMC key-manifest SVN forwarding
+is retained only on 2.1; the latest map no longer contains that field. Active
+Core firmware and SoC SVN checks are unchanged.
 
 `htg940` is disabled by default and includes the USB recovery test feature.
 It selects development vendor-hash RAM initialization and absence of a DOT
@@ -27,13 +28,17 @@ the pin. The fuse-only `--fuses-output-dir` option is also available for
 generation/comparison without overwriting the checked-in definitions.
 
 The old `test-htg940-otp-164dfbd6` feature and separate legacy fuse module
-have been removed. This ROM is NOT compatible with the earlier HTG image's
-`164dfbd6` OTP layout. Rebuild that bitstream with matching hardware before
-using this ROM. Board flash/provisioning policy remains development-only.
+have been removed. The complete `otp_ctrl_mmap.hjson` in the earlier HTG source
+pin `164dfbd6` is byte-for-byte identical to the linked `743d5f7e` map:
+SHA-256 `ab78f3f8a14de43693af8267fc0f021e037fff0b35ce281e2cfd03a447ea1328`.
+The common generated map therefore covers that known HTG OTP layout without
+an alternate fuse module. This comparison does not verify the actual loaded
+image or compatibility of other RTL interfaces; use matching hardware for full
+qualification. Board flash/provisioning policy remains development-only.
 
 Temporary HTG development provisioning: only the `htg940` FPGA ROM
 checks vendor hash slot 0 through OTP backing RAM at `0xB0080000` plus the
-generated slot offset (`0x420` with the current pin). A zero slot is filled with the fixed test-key
+generated slot offset (`0x430` with the current pin). A zero slot is filled with the fixed test-key
 digest verified against this bundle; a matching slot is left unchanged, and a
 different slot or failed readback is fatal. This is RAM-backdoor initialization,
 not physical OTP programming. It must not be used for production provisioning
