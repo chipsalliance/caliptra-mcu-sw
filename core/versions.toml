@@ -4,4 +4,4 @@
 # 2.1 is the official baseline; latest pins upstream's caliptra-2.2-dev branch.
 [versions]
 "2.1" = "e5d1f27b15ba02e4e0a57b942bbde39b74cab2eb"
-latest = "2340635355b9835f912c5a47c52cb1db9fdebcad"
+latest = "1a5ed709808ab5bd77372dd9cee66f8833936901"

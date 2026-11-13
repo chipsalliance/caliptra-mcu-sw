@@ -10,7 +10,14 @@ fn main() {
         .unwrap_or_else(|error| panic!("{error}"));
     revision.emit_build_configuration();
     let otp_mmap = revision.otp_mmap(&project_root);
-    let otp_values = project_root.join(caliptra_mcu_fusegen::FUSE_VALUES_DEFAULT_PATH);
+    let otp_values = project_root.join(match revision {
+        caliptra_mcu_hw_revision::HardwareRevision::Latest => {
+            "provisioning/fuses/test-latest.hjson"
+        }
+        caliptra_mcu_hw_revision::HardwareRevision::V2_1 => {
+            caliptra_mcu_fusegen::FUSE_VALUES_DEFAULT_PATH
+        }
+    });
 
     let dest_path = PathBuf::from(std::env::var_os("OUT_DIR").unwrap()).join("test.rs");
 

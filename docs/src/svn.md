@@ -69,16 +69,19 @@ during cold boot; Caliptra Core enforces anti-rollback internally.
 
 | Fuse | Size | Purpose |
 |---|---|---|
-| `CPTRA_CORE_FMC_KEY_MANIFEST_SVN` | 4 B | FMC key manifest (currently unused — see note below) |
+| `CPTRA_CORE_FMC_KEY_MANIFEST_SVN` | 4 B | 2.1 only; reserved FMC key-manifest field (see note below) |
+| `MCU_RUNTIME_SVN` | 16 B | Latest only; allocated MCU runtime bitmap, not independently enforced by this MCU ROM |
 | `CPTRA_CORE_RUNTIME_SVN` | 16 B | Caliptra Runtime firmware |
 | `CPTRA_CORE_SOC_MANIFEST_SVN` | 16 B | SoC manifest |
 | `CPTRA_CORE_SOC_MANIFEST_MAX_SVN` | 4 B | Maximum allowed SoC manifest SVN |
 
-> **Note:** `CPTRA_CORE_FMC_KEY_MANIFEST_SVN` is reserved in the OTP map. MCU
-> ROM forwards it to Caliptra's `FUSE_FMC_KEY_MANIFEST_SVN` register (alongside
-> the other SVN fuses), but neither MCU nor Caliptra Core currently consumes
-> the value for any check. It is documented here for completeness;
-> integrators do not need to provision it for current behavior.
+> **Note:** The 2.1 ROM retains its forwarding of the reserved
+> `CPTRA_CORE_FMC_KEY_MANIFEST_SVN` field. The latest hardware map replaces
+> that field with `MCU_RUNTIME_SVN`; latest MCU ROM no longer reads or forwards
+> an FMC key-manifest floor. The pinned latest Core checks firmware SVN using
+> `CPTRA_CORE_RUNTIME_SVN`, not this removed FMC field. Do not reinterpret the
+> new MCU bitmap as an FMC floor. Existing firmware and SoC SVN checks remain
+> unchanged.
 
 #### Core register handoff on 2.2
 
@@ -343,7 +346,7 @@ sequenceDiagram
 ### Cold Boot — Caliptra Core SVNs
 
 MCU ROM reads the Caliptra Core SVN fuses from OTP and writes them to
-Caliptra's fuse registers (`CPTRA_CORE_FMC_KEY_MANIFEST_SVN` is forwarded but
+Caliptra's fuse registers (`CPTRA_CORE_FMC_KEY_MANIFEST_SVN` is forwarded on 2.1 but
 unused; see the note above). Caliptra Core ROM authenticates its firmware
 and compares image SVN against fuse SVN, rejecting on mismatch.
 

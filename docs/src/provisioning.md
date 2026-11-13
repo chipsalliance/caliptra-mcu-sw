@@ -265,7 +265,8 @@ The fuse partition below corresponds to the Caliptra Subsystem 2.1.1 [reference 
 |                                   |        CPTRA_SS_MANUF_TO_PROD_TOKEN         |      16      | TEST_UNLOCKED       |
 |                                   |       CPTRA_SS_PROD_TO_PROD_END_TOKEN       |      16      | TEST_UNLOCKED       |
 |                                   |             CPTRA_SS_RMA_TOKEN              |      16      | TEST_UNLOCKED       |
-|           SVN_PARTITION           |       CPTRA_CORE_FMC_KEY_MANIFEST_SVN       |      4       | In-Field            |
+|           SVN_PARTITION           |       CPTRA_CORE_FMC_KEY_MANIFEST_SVN (2.1 only) |      4       | Reserved            |
+|                                   |       MCU_RUNTIME_SVN (latest only)         |      16      | In-Field            |
 |                                   |           CPTRA_CORE_RUNTIME_SVN            |      16      | In-Field            |
 |                                   |         CPTRA_CORE_SOC_MANIFEST_SVN         |      16      | In-Field            |
 |                                   |       CPTRA_CORE_SOC_MANIFEST_MAX_SVN       |      4       | In-Field            |

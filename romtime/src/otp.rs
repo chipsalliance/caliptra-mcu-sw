@@ -530,6 +530,7 @@ impl Otp {
     }
 
     /// Read cptra_core_fmc_key_manifest_svn (4 bytes).
+    #[cfg(hw_rev = "2.1")]
     pub fn read_cptra_core_fmc_key_manifest_svn(&self) -> McuResult<[u8; 4]> {
         let mut data = [0u8; 4];
         self.read_entry_raw(fuses::OTP_CPTRA_CORE_FMC_KEY_MANIFEST_SVN, &mut data)?;
@@ -1069,25 +1070,14 @@ fn sw_digest_data_size(partition: &OtpPartitionInfo) -> McuResult<usize> {
 }
 
 fn is_64bit_granule(byte_addr: usize) -> bool {
-    matches!(
-        byte_addr,
-        // Secret partitions and digest/zeroization fields require 64-bit DAI granules.
-        0x40..=0xf7
-            | 0x2f8..=0x3b7
-            | 0x418..=0x41f
-            | 0x458..=0x45f
-            | 0x7b8..=0x7bf
-            | 0x890..=0xaa7
-            | 0xca8..=0xcaf
-            | 0xcd0..=0xcdf
-            | 0xd00..=0xd0f
-            | 0xd30..=0xd3f
-            | 0xd60..=0xd6f
-            | 0xd90..=0xd9f
-            | 0xdc0..=0xdcf
-            | 0xdf0..=0xdff
-            | 0xe20..=0xe2f
-    )
+    fuses::OTP_PARTITIONS.iter().any(|partition| {
+        let end = partition.byte_offset + partition.byte_size;
+        (partition.secret && (partition.byte_offset..end).contains(&byte_addr))
+            || partition
+                .digest_offset
+                .is_some_and(|offset| (offset..offset + 8).contains(&byte_addr))
+            || (partition.zeroizable && (end - 8..end).contains(&byte_addr))
+    })
 }
 
 fn read_data_with(
@@ -1303,6 +1293,36 @@ impl FieldEntropyState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(hw_rev = "latest")]
+    #[test]
+    fn vendor_hash_and_preceding_digest_use_distinct_dai_granules() {
+        let entry = fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_0;
+        let digest = fuses::VENDOR_TEST_PARTITION.digest_offset.unwrap();
+        assert_eq!(entry.byte_offset, 0x430);
+        assert_eq!(digest, 0x428);
+        assert!(is_64bit_granule(digest));
+        assert!(is_64bit_granule(digest + 4));
+        let mut reads = std::vec::Vec::new();
+        let mut data = [0; 8];
+        read_data_with(
+            entry.byte_offset + 8,
+            8,
+            &mut data,
+            |addr| {
+                reads.push(addr * 4);
+                Ok(if addr * 4 == entry.byte_offset + 8 {
+                    0xd100e692
+                } else {
+                    0x6c7206b6
+                })
+            },
+            |_| panic!("vendor public hash payload must use 32-bit DAI reads"),
+        )
+        .unwrap();
+        assert_eq!(reads, [0x438, 0x43c]);
+        assert_eq!(data, 0x6c7206b6_d100e692u64.to_le_bytes());
+    }
 
     #[test]
     fn owner_svn_allocation_preserves_existing_fields_and_digest() {
