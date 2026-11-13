@@ -115,6 +115,12 @@ impl<S: Syscalls> Mailbox<S> {
             })?
             .await;
 
+            // Release the buffers now that the upcall has been delivered. The
+            // error path above does this before returning; without it here the
+            // success path leaves both allow registrations active after the call.
+            S::unallow_ro(self.driver_num, mailbox_ro_buffer::INPUT);
+            S::unallow_rw(self.driver_num, mailbox_rw_buffer::RESPONSE);
+
             black_box(*mutex); // Ensure the mutex is not optimized away
 
             result
@@ -160,7 +166,7 @@ impl<S: Syscalls> Mailbox<S> {
 
     /// Sends a chunk of data for a previously started chunked mailbox request.
     pub async fn send_chunk(&self, buffer: &[u8]) -> Result<(u32, u32, u32), MailboxError> {
-        share::scope::<(), _, _>(|_handle| {
+        let result = share::scope::<(), _, _>(|_handle| {
             let mut sub = TockSubscribe::subscribe_allow_ro::<S, DefaultConfig>(
                 self.driver_num,
                 mailbox_subscribe::COMMAND_DONE,
@@ -180,8 +186,14 @@ impl<S: Syscalls> Mailbox<S> {
                 }
             }
         })?
-        .await
-        .map_err(MailboxError::ErrorCode)
+        .await;
+
+        // Release the buffer on success too. The payload-stream path refills one
+        // stack buffer and calls send_chunk() on it in a loop, so a registration
+        // left from the previous chunk would overlap the next one.
+        S::unallow_ro(self.driver_num, mailbox_ro_buffer::INPUT);
+
+        result.map_err(MailboxError::ErrorCode)
     }
 
     /// Aborts a previously started chunked mailbox request.
@@ -222,6 +234,10 @@ impl<S: Syscalls> Mailbox<S> {
             }
         })?
         .await;
+
+        // Release the response buffer on success as well as on the error path.
+        S::unallow_rw(self.driver_num, mailbox_rw_buffer::RESPONSE);
+
         match result {
             Ok((bytes, error_code, _)) => {
                 if error_code != 0 {
