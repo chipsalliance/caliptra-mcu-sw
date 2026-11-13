@@ -213,11 +213,52 @@ mod test {
         Ok(())
     }
 
+    /// Returns (MANUF_PK_HASH_VOLATILE_LOCK, VENDOR_PK_HASH_VOLATILE_LOCK).
+    fn vendor_pk_locks(hw: &mut DefaultHwModel) -> (u32, u32) {
+        #[cfg(hw_rev = "latest")]
+        let manuf = hw
+            .mcu_manager()
+            .with_otp(|otp| otp.manuf_pk_hash_volatile_lock().read());
+        #[cfg(not(hw_rev = "latest"))]
+        let manuf = 0;
+        let prod = hw
+            .mcu_manager()
+            .with_otp(|otp| otp.vendor_pk_hash_volatile_lock().read());
+        (manuf, prod)
+    }
+
+    /// Waits for ROM to select `slot` and lock the vendor PK hashes, then
+    /// returns the lock registers.
+    fn wait_for_vendor_pk_lock(hw: &mut DefaultHwModel, slot: usize) -> (u32, u32) {
+        // ROM locks after Caliptra runtime is ready. Poll the registers: on
+        // FPGA, ROM-only boot can step past the log messages before returning.
+        let start = hw.cycle_count();
+        hw.step_until(|hw| {
+            vendor_pk_locks(hw).1 != 0
+                || hw.mci_fw_fatal_error().is_some()
+                || hw.cycle_count() - start > 800_000_000
+        });
+        assert_eq!(hw.mci_fw_fatal_error(), None);
+        let output = hw.output().peek();
+        assert!(output.contains(&format!("[mcu-fuse-write] Selected vendor PK slot {slot}")));
+        assert!(output.contains(&format!(
+            "[mcu-fuse-write] Locking vendor PK hash slots from index {slot}"
+        )));
+        let locks = vendor_pk_locks(hw);
+
+        // The 2.2 lock bits are sticky until reset.
+        #[cfg(hw_rev = "latest")]
+        {
+            hw.mcu_manager().with_otp(|otp| {
+                otp.manuf_pk_hash_volatile_lock().write(|_| 0);
+                otp.vendor_pk_hash_volatile_lock().write(|_| 0);
+            });
+            assert_eq!(vendor_pk_locks(hw), locks);
+        }
+        locks
+    }
+
     #[test]
-    #[cfg_attr(
-        hw_rev = "latest",
-        ignore = "Caliptra 2.2 vendor-lock investigation: https://github.com/chipsalliance/caliptra-mcu-sw/issues/2279"
-    )]
     fn test_vendor_pk_lock_applied() -> Result<()> {
         let mut hw = setup_hw_model(
             0x0000,
@@ -229,41 +270,87 @@ mod test {
                 },
             )],
         );
-        hw.step_until_output_contains("[mcu-fuse-write] Selected vendor PK slot 0")?;
-        hw.step_until_output_contains(
-            "[mcu-fuse-write] Locking vendor PK hash slots from index 0",
-        )?;
+        let locks = wait_for_vendor_pk_lock(&mut hw, 0);
+        // Slot 0 and all production slots are locked.
+        #[cfg(hw_rev = "latest")]
+        assert_eq!(locks, (1, 0x7fff));
+        #[cfg(not(hw_rev = "latest"))]
+        assert_eq!(locks, (0, 1));
+        Ok(())
+    }
 
-        // Step a few cycles to ensure the write is executed
-        for _ in 0..100 {
-            hw.step();
+    #[test]
+    fn test_vendor_pk_lock_applied_production_slot() -> Result<()> {
+        // Mark slot 0 invalid and put the image's vendor key hash in slot 1.
+        let mut otp = build_otp_memory(
+            0x0001,
+            &[(
+                1,
+                SlotConfig {
+                    pqc_type: Some(PqcKeyType::LMS),
+                    ..SlotConfig::default()
+                },
+            )],
+        );
+        let hash: [u8; 48] = match caliptra_mcu_builder::FirmwareBinaries::from_env() {
+            Ok(binaries) => binaries.vendor_pk_hash().unwrap(),
+            Err(_) => crate::test::build_test_binaries(&TestParams::default())
+                .vendor_pk_hash_u8
+                .try_into()
+                .unwrap(),
+        };
+        let entry = fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_1;
+        for (dst, src) in otp[entry.byte_offset..entry.byte_offset + 48]
+            .chunks_exact_mut(4)
+            .zip(hash.chunks_exact(4))
+        {
+            dst.copy_from_slice(&[src[3], src[2], src[1], src[0]]);
         }
-
-        let lock_val = hw
-            .mcu_manager()
-            .with_otp(|otp| otp.vendor_pk_hash_volatile_lock().read());
-        assert_eq!(lock_val, 1);
+        let mut hw = start_runtime_hw_model(TestParams {
+            otp_memory: Some(otp),
+            rom_only: true,
+            vendor_pqc_type: None,
+            ..Default::default()
+        });
+        let locks = wait_for_vendor_pk_lock(&mut hw, 1);
+        // Slot 1 and all higher slots are locked; slot 0 is not.
+        #[cfg(hw_rev = "latest")]
+        assert_eq!(locks, (0, 0x7fff));
+        #[cfg(not(hw_rev = "latest"))]
+        assert_eq!(locks, (0, 2));
         Ok(())
     }
 
     #[test]
     fn test_vendor_pk_lock_not_applied() -> Result<()> {
-        let mut hw = setup_hw_model(0x0000, &[(0, SlotConfig::default())]);
+        let mut hw = setup_hw_model(
+            0x0000,
+            &[(
+                0,
+                SlotConfig {
+                    pqc_type: Some(PqcKeyType::LMS),
+                    ..SlotConfig::default()
+                },
+            )],
+        );
 
         // Set input wire bit to not lock the pk hashes
         hw.set_mcu_generic_input_wires(&[0, 0x1]);
 
-        hw.step_until_output_contains("[mcu-fuse-write] Selected vendor PK slot 0")?;
-
-        // Step a few cycles
-        for _ in 0..100 {
-            hw.step();
+        // Wait for ROM to take the skip-lock path.
+        const SKIPPED: &str = "[mcu-fuse-write] PK Hash provisioning mode detected";
+        if !hw.output().peek().contains(SKIPPED) {
+            hw.output().set_search_term(SKIPPED);
+            let start = hw.cycle_count();
+            hw.step_until(|hw| {
+                hw.output().search_matched()
+                    || hw.mci_fw_fatal_error().is_some()
+                    || hw.cycle_count() - start > 800_000_000
+            });
         }
-
-        let lock_val = hw
-            .mcu_manager()
-            .with_otp(|otp| otp.vendor_pk_hash_volatile_lock().read());
-        assert_eq!(lock_val, 0);
+        assert_eq!(hw.mci_fw_fatal_error(), None);
+        assert!(hw.output().peek().contains(SKIPPED));
+        assert_eq!(vendor_pk_locks(&mut hw), (0, 0));
         Ok(())
     }
 
