@@ -15,8 +15,7 @@ Abstract:
 #![allow(clippy::empty_loop)]
 
 use crate::{
-    configure_mcu_mbox_axi_users, fatal_error, verify_mcu_mbox_axi_users, AxiUsers, BootFlow,
-    RomEnv, RomParameters, MCU_MEMORY_MAP,
+    fatal_error, AxiUsers, BootFlow, McuMboxAxiUserConfig, RomEnv, RomParameters, MCU_MEMORY_MAP,
 };
 use caliptra_api_types::{DeviceLifecycle, SecurityState};
 use caliptra_mcu_error::McuError;
@@ -103,11 +102,9 @@ impl BootFlow for WarmBoot {
 
         // Configure MCU mailbox AXI users before locking
         caliptra_mcu_romtime::println!("[mcu-rom] Configuring MCU mailbox AXI users");
-        let mcu_mbox_config = configure_mcu_mbox_axi_users(
-            mci,
-            &params.mci_mbox0_axi_users,
-            &params.mci_mbox1_axi_users,
-        );
+        let mcu_mbox_config =
+            McuMboxAxiUserConfig::new(&params.mci_mbox0_axi_users, &params.mci_mbox1_axi_users);
+        mcu_mbox_config.lock(mci);
         mci.set_flow_checkpoint(McuRomBootStatus::McuMboxAxiUsersConfigured.into());
 
         let size_value = params.mcu_fw_sram_exec_region_size.unwrap_or(
@@ -142,7 +139,7 @@ impl BootFlow for WarmBoot {
 
         // Verify MCU mailbox AXI users haven't been tampered with after locking
         caliptra_mcu_romtime::println!("[mcu-rom] Verifying MCU mailbox AXI users");
-        if let Err(err) = verify_mcu_mbox_axi_users(mci, &mcu_mbox_config) {
+        if let Err(err) = mcu_mbox_config.verify(mci) {
             fatal_error(err);
         }
         mci.set_flow_checkpoint(McuRomBootStatus::McuMboxAxiUsersVerified.into());

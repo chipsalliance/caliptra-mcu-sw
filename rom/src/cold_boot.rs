@@ -17,9 +17,9 @@ Abstract:
 use crate::fuses::OwnerPkHash;
 use crate::mailbox;
 use crate::{
-    configure_mcu_mbox_axi_users, device_ownership_transfer, fatal_error,
-    verify_mcu_mbox_axi_users, verify_prod_debug_unlock_pk_hash, AxiUsers, BootFlow, DotBlob,
-    FuseParams, I3cMailboxHandler, I3cServicesModes, RomEnv, RomParameters, MCU_MEMORY_MAP,
+    device_ownership_transfer, fatal_error, verify_prod_debug_unlock_pk_hash, AxiUsers, BootFlow,
+    DotBlob, FuseParams, I3cMailboxHandler, I3cServicesModes, McuMboxAxiUserConfig, RomEnv,
+    RomParameters, MCU_MEMORY_MAP,
 };
 use caliptra_api::mailbox::{
     ActivateFirmwareFlags, ActivateFirmwareReq, ActivateFirmwareResp, CmImportReq, CmImportResp,
@@ -1444,11 +1444,9 @@ impl BootFlow for ColdBoot {
 
         // Configure MCU mailbox AXI users before locking
         caliptra_mcu_romtime::println!("[mcu-rom] Configuring MCU mailbox AXI users");
-        let mcu_mbox_config = configure_mcu_mbox_axi_users(
-            mci,
-            &params.mci_mbox0_axi_users,
-            &params.mci_mbox1_axi_users,
-        );
+        let mcu_mbox_config =
+            McuMboxAxiUserConfig::new(&params.mci_mbox0_axi_users, &params.mci_mbox1_axi_users);
+        mcu_mbox_config.lock(mci);
         mci.set_flow_checkpoint(McuRomBootStatus::McuMboxAxiUsersConfigured.into());
 
         let size_value = params.mcu_fw_sram_exec_region_size.unwrap_or(
@@ -1501,7 +1499,7 @@ impl BootFlow for ColdBoot {
 
         // Verify MCU mailbox AXI users haven't been tampered with after locking
         caliptra_mcu_romtime::println!("[mcu-rom] Verifying MCU mailbox AXI users");
-        let result = verify_mcu_mbox_axi_users(mci, &mcu_mbox_config);
+        let result = mcu_mbox_config.verify(mci);
         if cfi_launder(result.is_ok()) {
             cfi_assert!(result.is_ok());
         } else if let Err(err) = result {
