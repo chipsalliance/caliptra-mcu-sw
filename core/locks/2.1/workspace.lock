@@ -2307,6 +2307,7 @@ dependencies = [
  "caliptra-cfi-derive 0.1.0 (git+https://github.com/chipsalliance/caliptra-cfi.git?rev=767d4ef59a106aea683b883c07bd65456fb3ba)",
  "caliptra-cfi-lib 0.1.0 (git+https://github.com/chipsalliance/caliptra-cfi.git?rev=767d4ef59a106aea683b883c07bd65456fb3ba)",
  "caliptra-mcu-error",
+ "caliptra-mcu-hw-revision",
  "caliptra-mcu-mbox-common",
  "caliptra-mcu-otp-digest",
  "caliptra-mcu-otp-fuse",

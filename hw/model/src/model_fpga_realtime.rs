@@ -13,6 +13,7 @@ use caliptra_hw_model::{
     CaliptraHwVersion, DeviceLifecycle, HwModel, InitParams as CaliptraInitParams,
     ModelFpgaSubsystem, Output, SecurityState, SubsystemInitParams, XI3CWrapper,
 };
+use caliptra_image_types::FwVerificationPqcKeyType;
 use caliptra_mcu_emulator_registers_generated::network_mbox::NetworkMboxPeripheral;
 use caliptra_mcu_romtime::LifecycleControllerState;
 use caliptra_mcu_romtime::McuBootMilestones;
@@ -47,6 +48,33 @@ const DEFAULT_PRIVATE_READ_LEN: u16 = 256;
 /// Maximum number of step() calls to retry a client-requested private
 /// read before giving up (target may not have data queued yet).
 const CLIENT_READ_MAX_RETRIES: u32 = 5000;
+
+/// Explicit vendor key parameters override `otp_memory`, as on the emulator.
+fn apply_vendor_key_overrides(
+    otp: &mut [u8],
+    vendor_pk_hash: Option<[u8; 48]>,
+    vendor_pqc_type: Option<FwVerificationPqcKeyType>,
+) {
+    use caliptra_mcu_registers_generated::fuses;
+    if let Some(hash) = vendor_pk_hash {
+        let offset = fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_0.byte_offset;
+        for (dst, src) in otp[offset..offset + 48]
+            .chunks_exact_mut(4)
+            .zip(hash.chunks_exact(4))
+        {
+            dst.copy_from_slice(&[src[3], src[2], src[1], src[0]]);
+        }
+    }
+    if let Some(pqc_type) = vendor_pqc_type {
+        // Two-bit one-hot linear value, duplicated three times.
+        let value: u8 = match pqc_type {
+            FwVerificationPqcKeyType::MLDSA => 0x07,
+            FwVerificationPqcKeyType::LMS => 0x3f,
+        };
+        let offset = fuses::OTP_CPTRA_CORE_PQC_KEY_TYPE_0.byte_offset;
+        otp[offset..offset + 4].copy_from_slice(&[value, 0, 0, 0]);
+    }
+}
 
 struct CaliptraMmio {
     ptr: *mut u32,
@@ -552,6 +580,11 @@ impl McuHwModel for ModelFpgaRealtime {
             for (dst, src) in otp_data.iter_mut().zip(otp_memory.iter()) {
                 *dst |= *src;
             }
+            apply_vendor_key_overrides(
+                &mut otp_data,
+                params.vendor_pk_hash,
+                params.vendor_pqc_type,
+            );
             base.otp_slice().copy_from_slice(&otp_data);
             base.set_subsystem_reset(false);
         }
