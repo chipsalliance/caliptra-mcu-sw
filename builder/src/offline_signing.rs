@@ -1,7 +1,10 @@
 // Licensed under the Apache-2.0 license
 
 use anyhow::{anyhow, Context, Result};
-use caliptra_auth_man_types::{AuthManifestFlags, AuthManifestPreamble, AuthorizationManifest};
+use caliptra_auth_man_types::{
+    AuthManifestFlags, AuthManifestPreamble, AuthorizationManifest,
+    AUTH_MANIFEST_OWNER_SIGNED_DATA_SIZE,
+};
 use caliptra_image_crypto::RustCrypto as Crypto;
 use caliptra_image_gen::{from_hw_format, to_hw_format, ImageGeneratorCrypto};
 use caliptra_image_types::{
@@ -82,11 +85,10 @@ pub fn create_signing_request(
         .ok_or_else(|| anyhow!("Invalid vendor signed data range"))?;
     let vendor_digest = sha384_hex(vendor_payload);
 
-    let owner_range = AuthManifestPreamble::owner_pub_keys_range();
-    let owner_payload = preamble_bytes
-        .get(owner_range.start as usize..owner_range.end as usize)
-        .ok_or_else(|| anyhow!("Invalid owner pub keys range"))?;
-    let owner_digest = sha384_hex(owner_payload);
+    // The owner signs version, svn, flags and owner_pub_keys.
+    let mut owner_payload = [0u8; AUTH_MANIFEST_OWNER_SIGNED_DATA_SIZE];
+    manifest.preamble.owner_signed_data(&mut owner_payload);
+    let owner_digest = sha384_hex(&owner_payload);
 
     let imc_payload = manifest.image_metadata_col.as_bytes();
     let imc_digest = sha384_hex(imc_payload);
@@ -335,7 +337,8 @@ pub fn attach_auth_manifest_signatures(
         }
     }
 
-    // Owner Pub Keys Signatures (signed by Owner FW Root key over Owner Manifest Public Keys)
+    // Owner Pub Keys Signatures (signed by Owner FW Root key over version, svn, flags and
+    // Owner Manifest Public Keys)
     let owner_pub_sigs = sigs_json
         .owner_pub_keys_signatures
         .as_ref()
@@ -358,7 +361,8 @@ pub fn attach_auth_manifest_signatures(
 
     if let Some(owner_fw_pub_path) = owner_fw_pub_key_path {
         let owner_fw_pub = Crypto::ecc_pub_key_from_pem(owner_fw_pub_path)?;
-        let owner_data = manifest.preamble.owner_pub_keys.as_bytes();
+        let mut owner_data = [0u8; AUTH_MANIFEST_OWNER_SIGNED_DATA_SIZE];
+        manifest.preamble.owner_signed_data(&mut owner_data);
         let digest: [u8; 48] = sha2::Sha384::digest(owner_data).into();
         verify_ecdsa384_signature(
             &digest,
@@ -442,6 +446,27 @@ pub fn attach_auth_manifest_signatures(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_owner_signing_request_covers_policy_fields() {
+        let owner_digest = |manifest: &AuthorizationManifest| {
+            create_signing_request(manifest)
+                .unwrap()
+                .requests
+                .owner_pub_keys_signatures
+                .digest_sha384
+        };
+        let manifest = AuthorizationManifest::default();
+        for change in [
+            |p: &mut AuthManifestPreamble| p.version += 1,
+            |p: &mut AuthManifestPreamble| p.svn += 1,
+            |p: &mut AuthManifestPreamble| p.flags ^= 1,
+        ] {
+            let mut changed = manifest;
+            change(&mut changed.preamble);
+            assert_ne!(owner_digest(&manifest), owner_digest(&changed));
+        }
+    }
 
     #[test]
     fn test_signing_request_json_serde() {
