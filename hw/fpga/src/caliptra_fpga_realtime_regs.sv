@@ -473,6 +473,10 @@ module caliptra_fpga_realtime_regs (
                 struct {
                     logic next;
                     logic load_next;
+                } trigger_fabric_reset;
+                struct {
+                    logic next;
+                    logic load_next;
                 } trigger_axi_reset;
             } control;
             struct {
@@ -1044,6 +1048,9 @@ module caliptra_fpga_realtime_regs (
                 struct {
                     logic value;
                 } FIPS_ZEROIZATION_PPD;
+                struct {
+                    logic value;
+                } trigger_fabric_reset;
                 struct {
                     logic value;
                 } trigger_axi_reset;
@@ -1797,6 +1804,32 @@ module caliptra_fpga_realtime_regs (
         end
     end
     assign hwif_out.interface_regs.control.FIPS_ZEROIZATION_PPD.value = field_storage.interface_regs.control.FIPS_ZEROIZATION_PPD.value;
+    // Field: caliptra_fpga_realtime_regs.interface_regs.control.trigger_fabric_reset
+    always_comb begin
+        automatic logic [0:0] next_c;
+        automatic logic load_next_c;
+        next_c = field_storage.interface_regs.control.trigger_fabric_reset.value;
+        load_next_c = '0;
+        if(decoded_reg_strb.interface_regs.control && decoded_req_is_wr) begin // SW write
+            next_c = (field_storage.interface_regs.control.trigger_fabric_reset.value & ~decoded_wr_biten[30:30]) | (decoded_wr_data[30:30] & decoded_wr_biten[30:30]);
+            load_next_c = '1;
+        end else begin // singlepulse clears back to 0
+            next_c = '0;
+            load_next_c = '1;
+        end
+        field_combo.interface_regs.control.trigger_fabric_reset.next = next_c;
+        field_combo.interface_regs.control.trigger_fabric_reset.load_next = load_next_c;
+    end
+    always_ff @(posedge clk) begin
+        if(rst) begin
+            field_storage.interface_regs.control.trigger_fabric_reset.value <= 1'h0;
+        end else begin
+            if(field_combo.interface_regs.control.trigger_fabric_reset.load_next) begin
+                field_storage.interface_regs.control.trigger_fabric_reset.value <= field_combo.interface_regs.control.trigger_fabric_reset.next;
+            end
+        end
+    end
+    assign hwif_out.interface_regs.control.trigger_fabric_reset.value = field_storage.interface_regs.control.trigger_fabric_reset.value;
     // Field: caliptra_fpga_realtime_regs.interface_regs.control.trigger_axi_reset
     always_comb begin
         automatic logic [0:0] next_c;
@@ -4077,7 +4110,8 @@ module caliptra_fpga_realtime_regs (
     assign readback_array[2][18:18] = (decoded_reg_strb.interface_regs.control && !decoded_req_is_wr) ? field_storage.interface_regs.control.ocp_lock_en.value : '0;
     assign readback_array[2][19:19] = (decoded_reg_strb.interface_regs.control && !decoded_req_is_wr) ? field_storage.interface_regs.control.lc_Allow_RMA_or_SCRAP_on_PPD.value : '0;
     assign readback_array[2][20:20] = (decoded_reg_strb.interface_regs.control && !decoded_req_is_wr) ? field_storage.interface_regs.control.FIPS_ZEROIZATION_PPD.value : '0;
-    assign readback_array[2][30:21] = '0;
+    assign readback_array[2][29:21] = '0;
+    assign readback_array[2][30:30] = (decoded_reg_strb.interface_regs.control && !decoded_req_is_wr) ? field_storage.interface_regs.control.trigger_fabric_reset.value : '0;
     assign readback_array[2][31:31] = (decoded_reg_strb.interface_regs.control && !decoded_req_is_wr) ? field_storage.interface_regs.control.trigger_axi_reset.value : '0;
     assign readback_array[3][0:0] = (decoded_reg_strb.interface_regs.status && !decoded_req_is_wr) ? field_storage.interface_regs.status.cptra_error_fatal.value : '0;
     assign readback_array[3][1:1] = (decoded_reg_strb.interface_regs.status && !decoded_req_is_wr) ? field_storage.interface_regs.status.cptra_error_non_fatal.value : '0;
@@ -4087,7 +4121,8 @@ module caliptra_fpga_realtime_regs (
     assign readback_array[3][5:5] = (decoded_reg_strb.interface_regs.status && !decoded_req_is_wr) ? field_storage.interface_regs.status.mailbox_data_avail.value : '0;
     assign readback_array[3][6:6] = (decoded_reg_strb.interface_regs.status && !decoded_req_is_wr) ? field_storage.interface_regs.status.mailbox_flow_done.value : '0;
     assign readback_array[3][7:7] = (decoded_reg_strb.interface_regs.status && !decoded_req_is_wr) ? field_storage.interface_regs.status.cptra_ss_mcu_halt_status_o.value : '0;
-    assign readback_array[3][31:8] = '0;
+    assign readback_array[3][8:8] = (decoded_reg_strb.interface_regs.status && !decoded_req_is_wr) ? 1'h1 : '0;
+    assign readback_array[3][31:9] = '0;
     assign readback_array[4][31:0] = (decoded_reg_strb.interface_regs.arm_user && !decoded_req_is_wr) ? field_storage.interface_regs.arm_user.arm_user.value : '0;
     assign readback_array[5][31:0] = (decoded_reg_strb.interface_regs.itrng_divisor && !decoded_req_is_wr) ? field_storage.interface_regs.itrng_divisor.itrng_divisor.value : '0;
     assign readback_array[6][31:0] = (decoded_reg_strb.interface_regs.cycle_count && !decoded_req_is_wr) ? field_storage.interface_regs.cycle_count.cycle_count.value : '0;
