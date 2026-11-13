@@ -833,6 +833,11 @@ fn make_register_write_logic(
     tokens
 }
 
+/// W1S and W1C fields are writable too; their generated handlers apply the semantics.
+fn field_accepts_writes(ty: &FieldType) -> bool {
+    ty.can_write() || ty.can_set() || ty.can_clear()
+}
+
 /// Make a peripheral Bus implementation that can be hooked up to a root bus.
 fn emu_make_peripheral_bus_impl(block: RegisterBlock) -> Result<TokenStream> {
     let base = camel_ident(block.name.as_str());
@@ -848,7 +853,7 @@ fn emu_make_peripheral_bus_impl(block: RegisterBlock) -> Result<TokenStream> {
         let has_writer = if has_single_32_bit_field(&r.ty) {
             r.ty.fields
                 .first()
-                .map(|f| f.ty.can_write())
+                .map(|f| field_accepts_writes(&f.ty))
                 .unwrap_or(false)
         } else {
             r.can_write()
@@ -905,7 +910,7 @@ fn emu_make_peripheral_bus_impl(block: RegisterBlock) -> Result<TokenStream> {
                     });
                 }
             }
-            if r.ty.fields[0].ty.can_write() {
+            if field_accepts_writes(&r.ty.fields[0].ty) {
                 if emitted_write_ranges.insert((start, end)) {
                     if r.is_array() {
                         if start == 0 {
