@@ -19,3 +19,25 @@ jobs:
 
   spdm_validator_tests:
     uses: ./.github/workflows/spdm-validator.yml
+
+  bitstream_build_tests:
+    uses: ./.github/workflows/bitstream-build.yml
+
+  caliptra_smoke_tests:
+    uses: ./.github/workflows/caliptra-sw-smoke-test.yml
+
+  size_history:
+    uses: ./.github/workflows/size-history.yml
+
+  verify_reproducible_build:
+    uses: ./.github/workflows/verify_reproducible_build.yml
+
+  fpga_tests:
+    uses: ./.github/workflows/fpga.yml
+    with:
+      artifact-suffix: -fpga
+
+  fpga_spdm_tests:
+    uses: ./.github/workflows/fpga-spdm.yml
+    with:
+      artifact-suffix: -fpga-spdm

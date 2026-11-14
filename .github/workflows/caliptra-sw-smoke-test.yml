@@ -5,6 +5,7 @@ name: Caliptra SW Smoke Test (Optional)
 on:
   pull_request:
   workflow_dispatch:
+  workflow_call:
 
 jobs:
   caliptra-sw-mcu-rom-smoke-test:
