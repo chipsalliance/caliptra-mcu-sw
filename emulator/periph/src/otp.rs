@@ -82,6 +82,9 @@ pub struct Otp {
     calculate_digests_on_reset: HashSet<usize>,
     generated: OtpGenerated,
     fips_zeroization_cmd: Rc<Cell<bool>>,
+    /// Log of DAI read / write / digest commands, if enabled with
+    /// `enable_dai_log`.
+    dai_log: Option<Rc<RefCell<Vec<String>>>>,
 }
 
 // Ensure that we save the state before we drop the OTP instance.
@@ -138,6 +141,7 @@ impl Otp {
             digests: [0; fuses::OTP_PARTITIONS.len() * 2],
             generated: OtpGenerated::default(),
             fips_zeroization_cmd: args.fips_zeroization_cmd.clone(),
+            dai_log: None,
         };
         otp.read_from_file()?;
         if let Some(mut vendor_pk_hash) = args.vendor_pk_hash {
@@ -257,6 +261,20 @@ impl Otp {
         file.read_to_end(&mut contents).ok()?;
         let state: OtpState = serde_json::from_slice(&contents).ok()?;
         Self::lifecycle_bytes_from_partitions(&state.partitions)
+    }
+
+    /// Start logging DAI read / write / digest commands, one line per
+    /// command, and return the shared log. Callers drain it as they go.
+    pub fn enable_dai_log(&mut self) -> Rc<RefCell<Vec<String>>> {
+        self.dai_log
+            .get_or_insert_with(|| Rc::new(RefCell::new(Vec::new())))
+            .clone()
+    }
+
+    fn log_dai(&self, entry: impl FnOnce() -> String) {
+        if let Some(log) = &self.dai_log {
+            log.borrow_mut().push(entry());
+        }
     }
 
     fn calculate_digests(&mut self) -> Result<(), std::io::Error> {
@@ -580,6 +598,15 @@ impl caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral for Otp {
                     .set(OtpStatus::DaiIdle::SET.value | OtpStatus::DaiError::SET.value);
             }
 
+            self.log_dai(|| {
+                format!(
+                    "DAI WR  @ 0x{:04x}: data=0x{:08x}_{:08x}{}",
+                    addr,
+                    self.direct_access_buffer_hi,
+                    self.direct_access_buffer,
+                    if blank_error { " (blank error)" } else { "" }
+                )
+            });
             // reset direct access
             self.direct_access_cmd.reg.set(0);
             self.direct_access_address = 0;
@@ -620,6 +647,12 @@ impl caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral for Otp {
                     }
                 }
             }
+            self.log_dai(|| {
+                format!(
+                    "DAI RD  @ 0x{:04x}: data=0x{:08x}_{:08x}",
+                    addr, self.direct_access_buffer_hi, self.direct_access_buffer
+                )
+            });
             // reset direct access
             self.direct_access_cmd.reg.set(0);
             self.direct_access_address = 0;
@@ -636,6 +669,15 @@ impl caliptra_mcu_emulator_registers_generated::otp::OtpPeripheral for Otp {
                     self.calculate_digests_on_reset.insert(partition);
                 }
             }
+            self.log_dai(|| {
+                format!(
+                    "DAI DIG @ 0x{:04x}: partition={:?}",
+                    addr,
+                    fuses::OTP_PARTITIONS
+                        .iter()
+                        .position(|p| addr == p.byte_offset)
+                )
+            });
         }
 
         // Set idle status so that users know operations have completed.

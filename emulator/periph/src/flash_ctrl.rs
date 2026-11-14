@@ -91,6 +91,10 @@ pub struct DummyFlashCtrl {
     dma_rom_sram: Option<Rc<RefCell<Ram>>>,
     timer: Timer,
     file: Option<File>,
+    /// In-memory backing store used when no file is configured (for
+    /// example on wasm32, which has no filesystem). Grown lazily; bytes
+    /// beyond its length read as erased (0xFF).
+    mem: Vec<u8>,
     buffer: Vec<u8>,
     operation_start: Option<ActionHandle>,
     error_irq: Irq,
@@ -171,6 +175,11 @@ impl DummyFlashCtrl {
             op_status: ReadWriteRegister::new(0x0000_0000),
             ctrl_regwen: ReadOnlyRegister::new(CtrlRegwen::En::SET.value),
             timer,
+            mem: if file.is_none() {
+                initial_content.map(|c| c.to_vec()).unwrap_or_default()
+            } else {
+                Vec::new()
+            },
             file,
             buffer: vec![0; Self::PAGE_SIZE],
             operation_start: None,
@@ -254,21 +263,44 @@ impl DummyFlashCtrl {
         }
     }
 
+    /// Read one page at `offset` from the backing store into `self.buffer`.
+    fn storage_read(&mut self, offset: usize) -> std::io::Result<()> {
+        if let Some(file) = self.file.as_mut() {
+            file.seek(std::io::SeekFrom::Start(offset as u64))?;
+            return file.read_exact(&mut self.buffer);
+        }
+        self.buffer.fill(0xFF);
+        if offset < self.mem.len() {
+            let end = (offset + self.buffer.len()).min(self.mem.len());
+            self.buffer[..end - offset].copy_from_slice(&self.mem[offset..end]);
+        }
+        Ok(())
+    }
+
+    /// Write `data` at `offset` to the backing store.
+    fn storage_write(&mut self, offset: usize, data: &[u8]) -> std::io::Result<()> {
+        if let Some(file) = self.file.as_mut() {
+            file.seek(std::io::SeekFrom::Start(offset as u64))?;
+            return file.write_all(data);
+        }
+        let end = offset + data.len();
+        if self.mem.len() < end {
+            self.mem.resize(end, 0xFF);
+        }
+        self.mem[offset..end].copy_from_slice(data);
+        Ok(())
+    }
+
     fn read_page(&mut self) -> Result<(), FlashOpError> {
         let page_num = self.page_num.reg.get();
         let page_addr = self.page_addr.reg.get();
 
-        // Sanity check for the page number, page size and file
-        if page_num >= Self::MAX_PAGES
-            || self.page_size.reg.get() < Self::PAGE_SIZE as u32
-            || self.file.is_none()
-        {
+        // Sanity check for the page number and page size
+        if page_num >= Self::MAX_PAGES || self.page_size.reg.get() < Self::PAGE_SIZE as u32 {
             return Err(FlashOpError::ReadError);
         }
         let offset = (page_num * Self::PAGE_SIZE as u32) as usize;
-        let file = self.file.as_mut().unwrap();
-        file.seek(std::io::SeekFrom::Start(offset as u64))
-            .and_then(|_| file.read_exact(&mut self.buffer))
+        self.storage_read(offset)
             .map_err(|_| FlashOpError::ReadError)?;
 
         let access_type = self.dma_ram_access_check(page_addr);
@@ -306,11 +338,8 @@ impl DummyFlashCtrl {
         // Get the address from the register
         let page_addr = self.page_addr.reg.get();
 
-        // Sanity check for the page number, page size and file
-        if page_num >= Self::MAX_PAGES
-            || self.page_size.reg.get() < Self::PAGE_SIZE as u32
-            || self.file.is_none()
-        {
+        // Sanity check for the page number and page size
+        if page_num >= Self::MAX_PAGES || self.page_size.reg.get() < Self::PAGE_SIZE as u32 {
             return Err(FlashOpError::WriteError);
         }
 
@@ -344,11 +373,10 @@ impl DummyFlashCtrl {
         }
 
         let offset = (page_num * Self::PAGE_SIZE as u32) as usize;
-        // Write to file first
-        let file = self.file.as_mut().unwrap();
-        file.seek(std::io::SeekFrom::Start(offset as u64))
-            .and_then(|_| file.write_all(&self.buffer))
-            .map_err(|_| FlashOpError::WriteError)?;
+        let buffer = std::mem::take(&mut self.buffer);
+        let result = self.storage_write(offset, &buffer);
+        self.buffer = buffer;
+        result.map_err(|_| FlashOpError::WriteError)?;
 
         Ok(())
     }
@@ -357,11 +385,8 @@ impl DummyFlashCtrl {
         // Get the page number from the register
         let page_num = self.page_num.reg.get();
 
-        // Sanity check for the page number and file
-        if page_num >= Self::MAX_PAGES
-            || self.page_size.reg.get() < Self::PAGE_SIZE as u32
-            || self.file.is_none()
-        {
+        // Sanity check for the page number and page size
+        if page_num >= Self::MAX_PAGES || self.page_size.reg.get() < Self::PAGE_SIZE as u32 {
             return Err(FlashOpError::EraseError);
         }
 
@@ -370,9 +395,7 @@ impl DummyFlashCtrl {
         // containing the given page.
         let byte_offset = (page_num as usize) * Self::PAGE_SIZE;
         let sector_start = byte_offset - (byte_offset % Self::ERASE_SECTOR_SIZE);
-        let file = self.file.as_mut().unwrap();
-        file.seek(std::io::SeekFrom::Start(sector_start as u64))
-            .and_then(|_| file.write_all(&vec![0xFF; Self::ERASE_SECTOR_SIZE]))
+        self.storage_write(sector_start, &[0xFF; Self::ERASE_SECTOR_SIZE])
             .map_err(|_| FlashOpError::EraseError)?;
 
         Ok(())

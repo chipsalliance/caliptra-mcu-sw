@@ -876,10 +876,16 @@ impl DMAMapping for EmulatedDMAMap {
         const CPTRA_EXT_SRAM_BASE: u64 = 0x8000_0000;
         const CPTRA_EXT_SRAM_SIZE: u64 = 0x0010_0000; // 1MB
         const MCU_EXT_SRAM_BASE: u64 = 0xB00C_0000;
+        // The MCU mailbox SRAMs have the same address for Caliptra and the MCU.
+        const MCU_MBOX0_SRAM: core::ops::Range<u64> = 0xA840_0000..0xA860_0000;
+        const MCU_MBOX1_SRAM: core::ops::Range<u64> = 0xA880_0000..0xA8A0_0000;
         if (CPTRA_EXT_SRAM_BASE..CPTRA_EXT_SRAM_BASE + CPTRA_EXT_SRAM_SIZE).contains(&addr) {
             Ok(MCU_EXT_SRAM_BASE + (addr - CPTRA_EXT_SRAM_BASE))
-        } else {
+        } else if MCU_MBOX0_SRAM.contains(&addr) || MCU_MBOX1_SRAM.contains(&addr) {
             Ok(addr)
+        } else {
+            // The MCU's AXI CDMA cannot write any other Caliptra address.
+            Err(ErrorCode::Invalid)
         }
     }
 }
