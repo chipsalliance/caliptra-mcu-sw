@@ -23,6 +23,7 @@ pub enum State {
     ImageDownloadReady,
     DownloadingImage,
     ImageDownloadComplete,
+    ImageDownloadFailed,
     DownloadingPayload,
     PayloadDownloadComplete,
 }
