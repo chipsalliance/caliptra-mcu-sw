@@ -18,6 +18,7 @@ pub struct McuMboxComponent<T: hil::Mailbox<'static> + 'static> {
     board_kernel: &'static kernel::Kernel,
     driver_num: usize,
     physical_driver: &'static T,
+    pl0_axi_users: &'static [u32],
 }
 
 impl<T: hil::Mailbox<'static>> McuMboxComponent<T> {
@@ -25,11 +26,13 @@ impl<T: hil::Mailbox<'static>> McuMboxComponent<T> {
         board_kernel: &'static kernel::Kernel,
         driver_num: usize,
         physical_driver: &'static T,
+        pl0_axi_users: &'static [u32],
     ) -> Self {
         Self {
             board_kernel,
             driver_num,
             physical_driver,
+            pl0_axi_users,
         }
     }
 }
@@ -43,6 +46,7 @@ impl<T: hil::Mailbox<'static>> Component for McuMboxComponent<T> {
         let caliptra_mcu_mbox_driver = static_input.0.write(McuMboxDriver::new(
             self.physical_driver,
             self.board_kernel.create_grant(self.driver_num, &grant_cap),
+            self.pl0_axi_users,
         ));
 
         self.physical_driver.set_client(caliptra_mcu_mbox_driver);

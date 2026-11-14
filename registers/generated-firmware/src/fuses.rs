@@ -574,6 +574,10 @@ pub const VENDOR_TEST_PARTITION_FUSES: &[Fuse] = &[
         name: "field_entropy_state",
         size: Bytes(4),
     },
+    Fuse {
+        name: "owner_soc_manifest_min_svn",
+        size: Bytes(8),
+    },
 ];
 pub const FUSE_FIELDS: &[FuseField] = &[
     FuseField {
@@ -619,6 +623,10 @@ pub const FUSE_FIELDS: &[FuseField] = &[
     FuseField {
         name: "soc_image_min_svn_1",
         bits: Bits(10),
+    },
+    FuseField {
+        name: "owner_soc_manifest_min_svn",
+        bits: Bits(64),
     },
     FuseField {
         name: "vendor_pk_hash_valid",
@@ -1010,6 +1018,15 @@ pub const SOC_IMAGE_MIN_SVN_1: &FuseEntryInfo = &FuseEntryInfo {
         bits: 10,
         duplication: 3,
     },
+};
+/// Fuse entry for `owner_soc_manifest_min_svn`.
+pub const OWNER_SOC_MANIFEST_MIN_SVN: &FuseEntryInfo = &FuseEntryInfo {
+    partition_num: 9,
+    entry_num: 0,
+    byte_offset: 0x410,
+    byte_size: 8,
+    name: "owner_soc_manifest_min_svn",
+    layout: FuseLayoutType::OneHot { bits: 64 },
 };
 /// Fuse entry for `vendor_pk_hash_valid`.
 pub const VENDOR_PK_HASH_VALID: &FuseEntryInfo = &FuseEntryInfo {

@@ -60,7 +60,7 @@ fn test_get_device_capabilities_basic() {
                 "External commands: 0x{:08X}",
                 capabilities.external_command_capabilities()
             );
-            assert_eq!(capabilities.external_command_capabilities(), 0x0002_00EF);
+            assert_eq!(capabilities.external_command_capabilities(), 0x0002_01EF);
             assert_eq!(
                 capabilities.authorized_subcommand_capabilities(),
                 0x0000_0009

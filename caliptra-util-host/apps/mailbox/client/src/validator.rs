@@ -9,6 +9,10 @@ use caliptra_mcu_core_util_host_command_types::attestation::{
 use caliptra_mcu_core_util_host_command_types::certificate::AttestedCsrValidationError;
 use caliptra_mcu_core_util_host_command_types::crypto_aes::AesMode;
 use caliptra_mcu_core_util_host_command_types::crypto_hmac::CmKeyUsage;
+use caliptra_mcu_core_util_host_command_types::device_info::{
+    VendorPkHashStatusResponse, VENDOR_PK_HASH_SLOT_COUNT, VENDOR_PQC_KEY_TYPE_LMS,
+    VENDOR_PQC_KEY_TYPE_MLDSA,
+};
 use caliptra_mcu_core_util_host_command_types::device_ownership_transfer::{
     DotAuthorizationTrailer, DotDisableRequest, DotLockRequest, DotRotateRequest, DotUnlockRequest,
     GetDotBackupBlobRequest, DOT_FAMILY_ID, MC_DOT_DISABLE_CANONICAL_CMD_ID,
@@ -41,6 +45,28 @@ struct AuthorizedCommandAuthorization {
     ecc_pub_x: [u8; AUTH_PUB_ECC_COORD_SIZE],
     ecc_pub_y: [u8; AUTH_PUB_ECC_COORD_SIZE],
     mldsa_pub: [u8; AUTH_PUB_MLDSA_SIZE],
+}
+
+fn vendor_pk_hash_status_is_valid(response: &VendorPkHashStatusResponse) -> bool {
+    let valid_slot_mask = (1u32 << VENDOR_PK_HASH_SLOT_COUNT) - 1;
+    if response.used_slots_bitmap & !valid_slot_mask != 0 {
+        return false;
+    }
+
+    response
+        .key_types
+        .iter()
+        .enumerate()
+        .all(|(slot, key_type)| {
+            if response.used_slots_bitmap & (1u32 << slot) == 0 {
+                *key_type == 0
+            } else {
+                matches!(
+                    *key_type,
+                    VENDOR_PQC_KEY_TYPE_LMS | VENDOR_PQC_KEY_TYPE_MLDSA
+                )
+            }
+        })
 }
 
 /// Caliptra Mailbox Validator
@@ -169,6 +195,25 @@ impl Validator {
         if !fuse_only {
             results.push(self.validate_get_device_capabilities(&mut client));
             results.push(self.validate_get_firmware_version(&mut client));
+            let config = self.config.as_ref();
+            if config
+                .map(|config| config.field_entropy_status.enabled)
+                .unwrap_or(false)
+            {
+                results.push(self.validate_field_entropy_status(&mut client));
+            }
+            if config
+                .map(|config| config.vendor_pk_hash_status.enabled)
+                .unwrap_or(false)
+            {
+                results.push(self.validate_vendor_pk_hash_status(&mut client));
+            }
+            if config
+                .map(|config| config.hek_status.enabled)
+                .unwrap_or(false)
+            {
+                results.push(self.validate_hek_status(&mut client));
+            }
             results.push(self.validate_sha384(&mut client));
             results.push(self.validate_sha512(&mut client));
             results.push(self.validate_hmac_sha384(&mut client));
@@ -235,7 +280,9 @@ impl Validator {
 
         if !fuse_only {
             results.extend(self.validate_export_attested_csr_all(&mut client));
+            results.extend(self.validate_cert_chain_all(&mut client));
             results.extend(self.validate_get_attestation_all(&mut client));
+            results.extend(self.validate_dpe_signer_context_all(&mut client));
         }
 
         // Run DOT last: FE_PROG changes field entropy and would invalidate a
@@ -266,6 +313,7 @@ impl Validator {
         let signature = authorizer.authorize(DOT_FAMILY_ID, payload, &challenge)?;
         let (ecc_pub_x, ecc_pub_y, mldsa_pub) = authorizer.public_keys()?;
         Ok(DotAuthorizationTrailer {
+            metadata: Default::default(),
             nonce: challenge,
             ecc_pub_x,
             ecc_pub_y,
@@ -607,6 +655,7 @@ impl Validator {
             |auth| ProvisionVendorPkHashRequest {
                 slot,
                 hash,
+                metadata: Default::default(),
                 nonce: auth.nonce,
                 ecc_pub_x: auth.ecc_pub_x,
                 ecc_pub_y: auth.ecc_pub_y,
@@ -641,6 +690,7 @@ impl Validator {
                 flags,
                 target,
                 svn,
+                metadata: Default::default(),
                 nonce: auth.nonce,
                 ecc_pub_x: auth.ecc_pub_x,
                 ecc_pub_y: auth.ecc_pub_y,
@@ -677,6 +727,7 @@ impl Validator {
                 vendor_pk_hash_slot,
                 key_type,
                 key_index,
+                metadata: Default::default(),
                 nonce: auth.nonce,
                 ecc_pub_x: auth.ecc_pub_x,
                 ecc_pub_y: auth.ecc_pub_y,
@@ -708,6 +759,7 @@ impl Validator {
             |auth| FuseRevokeVendorPkHashRequest {
                 reserved,
                 vendor_pk_hash_slot,
+                metadata: Default::default(),
                 nonce: auth.nonce,
                 ecc_pub_x: auth.ecc_pub_x,
                 ecc_pub_y: auth.ecc_pub_y,
@@ -734,6 +786,7 @@ impl Validator {
             &partition.to_le_bytes(),
             |auth| FuseLockPartitionRequest {
                 partition,
+                metadata: Default::default(),
                 nonce: auth.nonce,
                 ecc_pub_x: auth.ecc_pub_x,
                 ecc_pub_y: auth.ecc_pub_y,
@@ -742,6 +795,77 @@ impl Validator {
             },
             |client, request| client.fuse_lock_partition(request).map(|_| ()),
         )
+    }
+
+    fn validate_field_entropy_status(&self, client: &mut MailboxClient) -> ValidationResult {
+        Self::validate_status_response(
+            "FieldEntropyStatus",
+            client.field_entropy_status(),
+            |response| response.already_provisioned <= 1,
+            |response| {
+                format!(
+                    "invalid already_provisioned value {}",
+                    response.already_provisioned
+                )
+            },
+        )
+    }
+
+    fn validate_vendor_pk_hash_status(&self, client: &mut MailboxClient) -> ValidationResult {
+        Self::validate_status_response(
+            "VendorPkHashStatus",
+            client.vendor_pk_hash_status(),
+            vendor_pk_hash_status_is_valid,
+            |response| {
+                format!(
+                    "invalid vendor PK hash status bitmap={:#010x}, key_types={:?}",
+                    response.used_slots_bitmap, response.key_types
+                )
+            },
+        )
+    }
+
+    fn validate_hek_status(&self, client: &mut MailboxClient) -> ValidationResult {
+        Self::validate_status_response(
+            "HekStatus",
+            client.hek_status(),
+            |response| {
+                response.total_slots <= 32
+                    && (response.total_slots == 32
+                        || response.used_slots_bitmap >> response.total_slots == 0)
+            },
+            |response| {
+                format!(
+                    "invalid HEK status bitmap={:#010x}, total_slots={}",
+                    response.used_slots_bitmap, response.total_slots
+                )
+            },
+        )
+    }
+
+    fn validate_status_response<T>(
+        test_name: &str,
+        result: Result<T>,
+        is_valid: impl FnOnce(&T) -> bool,
+        invalid_message: impl FnOnce(&T) -> String,
+    ) -> ValidationResult {
+        match result {
+            Ok(response) if is_valid(&response) => ValidationResult {
+                test_name: test_name.to_string(),
+                passed: true,
+                error_message: None,
+            },
+            Ok(response) => ValidationResult {
+                test_name: test_name.to_string(),
+                passed: false,
+                error_message: Some(invalid_message(&response)),
+            },
+            Err(error) => ValidationResult {
+                test_name: test_name.to_string(),
+                passed: false,
+                error_message: Some(error.to_string()),
+            },
+        }
     }
 
     /// Validate GetDeviceCapabilities command
@@ -2160,6 +2284,7 @@ impl Validator {
         // Step 3: Submit FE_PROG with the signatures
         let request = FeProgRequest {
             partition,
+            metadata: Default::default(),
             sig,
             nonce: challenge_resp.challenge,
             ecc_pub_x,
@@ -2362,7 +2487,14 @@ impl Validator {
         };
 
         for format in formats_from_bitmap(bitmap) {
-            results.push(self.validate_get_attestation(client, format, algorithm, &nonce));
+            for entity in [
+                PkiEntitySlot::Vendor,
+                PkiEntitySlot::Owner,
+                PkiEntitySlot::Tenant,
+            ] {
+                results
+                    .push(self.validate_get_attestation(client, format, algorithm, entity, &nonce));
+            }
         }
 
         // Negative case: a format the device did not advertise must be refused
@@ -2406,19 +2538,26 @@ impl Validator {
         client: &mut MailboxClient,
         format: EvidenceFormat,
         algorithm: AsymAlgo,
+        entity: PkiEntitySlot,
         nonce: &[u8; 32],
     ) -> ValidationResult {
-        let test_name = format!("GetAttestation({}/{})", format.name(), algorithm.name());
+        let test_name = format!(
+            "GetAttestation({}/{}/{})",
+            entity.name(),
+            format.name(),
+            algorithm.name()
+        );
 
         if self.verbose {
             println!(
-                "\n=== Validating GetAttestation: {} {} ===",
+                "\n=== Validating GetAttestation: {} {} {} ===",
+                entity.name(),
                 format.name(),
                 algorithm.name()
             );
         }
 
-        match client.get_attestation(format, algorithm, PkiEntitySlot::Vendor, nonce) {
+        match client.get_attestation(format, algorithm, entity, nonce) {
             Ok(response) => match response.validate_evidence_payload(format) {
                 Ok(len) => {
                     println!(
@@ -2453,6 +2592,356 @@ impl Validator {
             }
         }
     }
+
+    /// Build a synthetic valid ASN.1 DER `SEQUENCE` (`0x30`, long-form 2-byte length)
+    /// filled with `tag_byte` for testing endorsement provisioning.
+    fn synthetic_der_cert(body_len: usize, tag_byte: u8) -> Vec<u8> {
+        let mut der = Vec::with_capacity(4 + body_len);
+        der.push(0x30);
+        der.push(0x82);
+        der.extend_from_slice(&(body_len as u16).to_be_bytes());
+        der.extend(std::iter::repeat_n(tag_byte, body_len));
+        der
+    }
+
+    /// Validate `MC_GET_CERT_CHAIN_INFO`, `MC_GET_CERT_CHAIN`, and `MC_SET_CERT_CHAIN`
+    /// across `Vendor`, `Owner`, and `Tenant`.
+    ///
+    /// Leaves `Owner` and `Tenant` provisioned so the subsequent
+    /// `validate_get_attestation_all` run exercises all three PKI entity slots.
+    fn validate_cert_chain_all(&self, client: &mut MailboxClient) -> Vec<ValidationResult> {
+        use sha2::{Digest, Sha384};
+
+        let mut results = Vec::new();
+        let algo = AsymAlgo::EccP384;
+        let pass = |test_name: &str| ValidationResult {
+            test_name: test_name.to_string(),
+            passed: true,
+            error_message: None,
+        };
+        let fail = |test_name: &str, msg: String| ValidationResult {
+            test_name: test_name.to_string(),
+            passed: false,
+            error_message: Some(msg),
+        };
+
+        // 1. Vendor slot: read-only, anchored at IDevID (device_key_id == 0).
+        let vendor_info_test = "GetCertChainInfo(Vendor/ECC_P384)";
+        let vendor_chain_test = "GetCertChain(Vendor/ECC_P384)";
+        let vendor_chain_len = match client.get_cert_chain_info(PkiEntitySlot::Vendor, algo) {
+            Ok(info) => {
+                if info.device_key_id != 0 || info.chain_len == 0 || info.chain_digest == [0u8; 48]
+                {
+                    results.push(fail(
+                        vendor_info_test,
+                        format!(
+                            "unexpected Vendor info: key_id={}, chain_len={}",
+                            info.device_key_id, info.chain_len
+                        ),
+                    ));
+                    None
+                } else {
+                    results.push(pass(vendor_info_test));
+                    match client.get_full_cert_chain(PkiEntitySlot::Vendor, algo, 512) {
+                        Ok(chain) => {
+                            let digest: [u8; 48] = Sha384::digest(&chain).into();
+                            if chain.len() != info.chain_len as usize {
+                                results.push(fail(
+                                    vendor_chain_test,
+                                    format!(
+                                        "Vendor chain length {} != info.chain_len {}",
+                                        chain.len(),
+                                        info.chain_len
+                                    ),
+                                ));
+                            } else if digest != info.chain_digest {
+                                results.push(fail(
+                                    vendor_chain_test,
+                                    "Vendor DER chain SHA-384 mismatch with info.chain_digest"
+                                        .to_string(),
+                                ));
+                            } else {
+                                results.push(pass(vendor_chain_test));
+                            }
+                            Some(chain.len())
+                        }
+                        Err(e) => {
+                            results.push(fail(vendor_chain_test, e.to_string()));
+                            None
+                        }
+                    }
+                }
+            }
+            Err(e) => {
+                results.push(fail(vendor_info_test, e.to_string()));
+                None
+            }
+        };
+
+        // Vendor slot must reject writes.
+        let vendor_write_test = "SetCertChain(Vendor/readonly)";
+        let dummy_der = Self::synthetic_der_cert(256, 0xAA);
+        match client.set_full_cert_chain(PkiEntitySlot::Vendor, algo, 0, &dummy_der, 256) {
+            Ok(()) => results.push(fail(
+                vendor_write_test,
+                "Vendor slot unexpectedly accepted SetCertChain".to_string(),
+            )),
+            Err(_) => results.push(pass(vendor_write_test)),
+        }
+
+        // 2. Owner slot: initially unprovisioned, then provisioned via policy default (key_id == 0 -> LDevID == 1).
+        let owner_unprov_test = "GetCertChainInfo(Owner/unprovisioned)";
+        match client.get_cert_chain_info(PkiEntitySlot::Owner, algo) {
+            Ok(_) => results.push(fail(
+                owner_unprov_test,
+                "unprovisioned Owner slot unexpectedly succeeded".to_string(),
+            )),
+            Err(_) => results.push(pass(owner_unprov_test)),
+        }
+
+        let mut owner_endorsement = Self::synthetic_der_cert(300, 0x11);
+        owner_endorsement.extend_from_slice(&Self::synthetic_der_cert(280, 0x22));
+        let owner_set_test = "SetCertChain(Owner/ECC_P384)";
+        let owner_info_test = "GetCertChainInfo(Owner/ECC_P384)";
+        let owner_get_test = "GetCertChain(Owner/ECC_P384)";
+        match client.set_full_cert_chain(PkiEntitySlot::Owner, algo, 0, &owner_endorsement, 256) {
+            Ok(()) => {
+                results.push(pass(owner_set_test));
+                match client.get_cert_chain_info(PkiEntitySlot::Owner, algo) {
+                    Ok(info) => {
+                        if info.device_key_id != 1
+                            || (info.chain_len as usize) <= owner_endorsement.len()
+                        {
+                            results.push(fail(
+                                owner_info_test,
+                                format!(
+                                    "unexpected Owner info: key_id={}, chain_len={}",
+                                    info.device_key_id, info.chain_len
+                                ),
+                            ));
+                        } else {
+                            results.push(pass(owner_info_test));
+                        }
+                        match client.get_full_cert_chain(PkiEntitySlot::Owner, algo, 512) {
+                            Ok(chain) => {
+                                let digest: [u8; 48] = Sha384::digest(&chain).into();
+                                if chain.len() != info.chain_len as usize
+                                    || !chain.starts_with(&owner_endorsement)
+                                    || digest != info.chain_digest
+                                {
+                                    results.push(fail(
+                                        owner_get_test,
+                                        "Owner cert chain content or digest mismatch".to_string(),
+                                    ));
+                                } else {
+                                    results.push(pass(owner_get_test));
+                                }
+                            }
+                            Err(e) => results.push(fail(owner_get_test, e.to_string())),
+                        }
+                    }
+                    Err(e) => results.push(fail(owner_info_test, e.to_string())),
+                }
+            }
+            Err(e) => results.push(fail(owner_set_test, e.to_string())),
+        }
+
+        // 3. Tenant slot: requires explicit key_id == 1 (LDevID); key_id == 0 must be rejected.
+        let tenant_zero_key_test = "SetCertChain(Tenant/key_id_0_rejected)";
+        let tenant_endorsement = Self::synthetic_der_cert(320, 0x33);
+        match client.set_full_cert_chain(PkiEntitySlot::Tenant, algo, 0, &tenant_endorsement, 256) {
+            Ok(()) => results.push(fail(
+                tenant_zero_key_test,
+                "Tenant slot unexpectedly accepted device_key_id=0".to_string(),
+            )),
+            Err(_) => results.push(pass(tenant_zero_key_test)),
+        }
+
+        let tenant_set_test = "SetCertChain(Tenant/ECC_P384)";
+        let tenant_info_test = "GetCertChainInfo(Tenant/ECC_P384)";
+        let tenant_get_test = "GetCertChain(Tenant/ECC_P384)";
+        match client.set_full_cert_chain(PkiEntitySlot::Tenant, algo, 1, &tenant_endorsement, 200) {
+            Ok(()) => {
+                results.push(pass(tenant_set_test));
+                match client.get_cert_chain_info(PkiEntitySlot::Tenant, algo) {
+                    Ok(info) => {
+                        if info.device_key_id != 1
+                            || (info.chain_len as usize) <= tenant_endorsement.len()
+                        {
+                            results.push(fail(
+                                tenant_info_test,
+                                format!(
+                                    "unexpected Tenant info: key_id={}, chain_len={}",
+                                    info.device_key_id, info.chain_len
+                                ),
+                            ));
+                        } else {
+                            results.push(pass(tenant_info_test));
+                        }
+                        match client.get_full_cert_chain(PkiEntitySlot::Tenant, algo, 512) {
+                            Ok(chain) => {
+                                let digest: [u8; 48] = Sha384::digest(&chain).into();
+                                let vendor_len_ok = vendor_chain_len
+                                    .map(|v_len| chain.len() != v_len)
+                                    .unwrap_or(true);
+                                if chain.len() != info.chain_len as usize
+                                    || !chain.starts_with(&tenant_endorsement)
+                                    || digest != info.chain_digest
+                                    || !vendor_len_ok
+                                {
+                                    results.push(fail(
+                                        tenant_get_test,
+                                        "Tenant cert chain content or digest mismatch".to_string(),
+                                    ));
+                                } else {
+                                    results.push(pass(tenant_get_test));
+                                }
+                            }
+                            Err(e) => results.push(fail(tenant_get_test, e.to_string())),
+                        }
+                    }
+                    Err(e) => results.push(fail(tenant_info_test, e.to_string())),
+                }
+            }
+            Err(e) => results.push(fail(tenant_set_test, e.to_string())),
+        }
+
+        results
+    }
+
+    /// Validate `MC_DPE_SIGNER_CONTEXT_CERT` and `MC_DPE_SIGNER_CONTEXT_SIGN`.
+    ///
+    /// Derives an Exported-CDI leaf X.509 certificate for the default target
+    /// (`target_fw_id == 0`), decodes the X.509 DER structure to verify its
+    /// Subject CN and extract the P-384 public key from `SubjectPublicKeyInfo`,
+    /// signs a 48-byte SHA-384 digest, verifies the returned ECDSA P-384
+    /// signature against the leaf public key, and checks that an invalid digest
+    /// length is rejected.
+    fn validate_dpe_signer_context_all(&self, client: &mut MailboxClient) -> Vec<ValidationResult> {
+        use caliptra_mcu_core_util_host_command_types::certificate::ECDSA384_SIGNATURE_SIZE;
+        use ecdsa::signature::hazmat::PrehashVerifier;
+        use x509_parser::prelude::{FromDer, X509Certificate};
+
+        const CERT_TEST: &str = "DpeSignerContextCert(ECC_P384)";
+        const SIGN_TEST: &str = "DpeSignerContextSign(ECC_P384)";
+        const INVALID_LEN_TEST: &str = "DpeSignerContextSign(ECC_P384/invalid_len_rejected)";
+
+        let pass = |test_name: &str| ValidationResult {
+            test_name: test_name.to_string(),
+            passed: true,
+            error_message: None,
+        };
+        let fail = |test_name: &str, msg: String| ValidationResult {
+            test_name: test_name.to_string(),
+            passed: false,
+            error_message: Some(msg),
+        };
+
+        let mut results = Vec::new();
+        let algo = AsymAlgo::EccP384;
+
+        let verifying_key = match client.dpe_signer_context_cert(0, algo) {
+            Ok(resp) => {
+                let cert_der = resp.cert_bytes();
+                match X509Certificate::from_der(cert_der) {
+                    Ok((rem, cert)) => {
+                        let has_expected_cn = cert
+                            .subject()
+                            .iter_common_name()
+                            .filter_map(|cn| cn.as_str().ok())
+                            .any(|cn| cn.contains("DPE Exported CDI"));
+                        if !rem.is_empty() {
+                            results.push(fail(
+                                CERT_TEST,
+                                format!("trailing bytes after DER certificate: {}", rem.len()),
+                            ));
+                            None
+                        } else if !has_expected_cn {
+                            results.push(fail(
+                                CERT_TEST,
+                                "leaf certificate missing 'DPE Exported CDI' Subject CN"
+                                    .to_string(),
+                            ));
+                            None
+                        } else {
+                            let spki_bytes = cert.public_key().subject_public_key.data.as_ref();
+                            match p384::ecdsa::VerifyingKey::from_sec1_bytes(spki_bytes) {
+                                Ok(vk) => {
+                                    results.push(pass(CERT_TEST));
+                                    Some(vk)
+                                }
+                                Err(e) => {
+                                    results.push(fail(
+                                        CERT_TEST,
+                                        format!("failed to parse leaf P-384 public key: {e}"),
+                                    ));
+                                    None
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        results.push(fail(
+                            CERT_TEST,
+                            format!("failed to decode X.509 DER leaf cert: {e}"),
+                        ));
+                        None
+                    }
+                }
+            }
+            Err(e) => {
+                results.push(fail(CERT_TEST, e.to_string()));
+                None
+            }
+        };
+
+        let digest = [0x42u8; 48];
+        match client.dpe_signer_context_sign(0, algo, &digest) {
+            Ok(resp) => {
+                let sig_bytes = resp.signature_bytes();
+                if sig_bytes.len() != ECDSA384_SIGNATURE_SIZE {
+                    results.push(fail(
+                        SIGN_TEST,
+                        format!(
+                            "unexpected ECDSA P-384 signature length: {}",
+                            sig_bytes.len()
+                        ),
+                    ));
+                } else if let Some(vk) = verifying_key {
+                    match p384::ecdsa::Signature::from_slice(sig_bytes) {
+                        Ok(sig) => match vk.verify_prehash(&digest, &sig) {
+                            Ok(()) => results.push(pass(SIGN_TEST)),
+                            Err(e) => results.push(fail(
+                                SIGN_TEST,
+                                format!("signature verification against leaf cert failed: {e}"),
+                            )),
+                        },
+                        Err(e) => {
+                            results.push(fail(SIGN_TEST, format!("invalid ECDSA signature: {e}")))
+                        }
+                    }
+                } else {
+                    results.push(fail(
+                        SIGN_TEST,
+                        "cannot verify signature without valid leaf cert public key".to_string(),
+                    ));
+                }
+            }
+            Err(e) => results.push(fail(SIGN_TEST, e.to_string())),
+        }
+
+        // Wrong digest length (32 bytes instead of 48 bytes for ECDSA P-384) must be rejected.
+        let bad_digest = [0x42u8; 32];
+        match client.dpe_signer_context_sign(0, algo, &bad_digest) {
+            Ok(_) => results.push(fail(
+                INVALID_LEN_TEST,
+                "device unexpectedly accepted 32-byte digest for ECC_P384".to_string(),
+            )),
+            Err(_) => results.push(pass(INVALID_LEN_TEST)),
+        }
+
+        results
+    }
 }
 
 /// Convenience function to run basic validation with default values
@@ -2467,4 +2956,58 @@ pub fn run_verbose_validation(server_addr: SocketAddr) -> Result<bool> {
     let validator = Validator::new(server_addr).set_verbose(true);
     let results = validator.start()?;
     Ok(results.iter().all(|r| r.passed))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use caliptra_mcu_core_util_host_command_types::CommonResponse;
+
+    fn vendor_status(
+        used_slots_bitmap: u32,
+        key_types: [u8; VENDOR_PK_HASH_SLOT_COUNT],
+    ) -> VendorPkHashStatusResponse {
+        VendorPkHashStatusResponse {
+            common: CommonResponse::default(),
+            used_slots_bitmap,
+            key_types,
+        }
+    }
+
+    #[test]
+    fn vendor_pk_hash_status_validation_checks_bitmap_and_key_types() {
+        let mut valid_key_types = [0; VENDOR_PK_HASH_SLOT_COUNT];
+        valid_key_types[0] = VENDOR_PQC_KEY_TYPE_LMS;
+        valid_key_types[2] = VENDOR_PQC_KEY_TYPE_MLDSA;
+        assert!(vendor_pk_hash_status_is_valid(&vendor_status(
+            0b0101,
+            valid_key_types
+        )));
+
+        let mut unused_slot_has_key_type = valid_key_types;
+        unused_slot_has_key_type[1] = VENDOR_PQC_KEY_TYPE_LMS;
+        assert!(!vendor_pk_hash_status_is_valid(&vendor_status(
+            0b0101,
+            unused_slot_has_key_type
+        )));
+
+        let mut occupied_slot_has_no_key_type = valid_key_types;
+        occupied_slot_has_no_key_type[2] = 0;
+        assert!(!vendor_pk_hash_status_is_valid(&vendor_status(
+            0b0101,
+            occupied_slot_has_no_key_type
+        )));
+
+        let mut unsupported_key_type = valid_key_types;
+        unsupported_key_type[2] = 2;
+        assert!(!vendor_pk_hash_status_is_valid(&vendor_status(
+            0b0101,
+            unsupported_key_type
+        )));
+
+        assert!(!vendor_pk_hash_status_is_valid(&vendor_status(
+            1 << VENDOR_PK_HASH_SLOT_COUNT,
+            [0; VENDOR_PK_HASH_SLOT_COUNT]
+        )));
+    }
 }

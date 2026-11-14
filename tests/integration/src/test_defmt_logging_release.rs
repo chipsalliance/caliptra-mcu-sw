@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! Release-profile round-trip test for userspace defmt logging.
+//! Release-profile checks for userspace defmt logging and ROM handoff capabilities.
 
 #[cfg(all(test, not(feature = "fpga_realtime")))]
 mod test {
@@ -9,8 +9,9 @@ mod test {
     };
     use caliptra_mcu_hw_model::{McuHwModel, McuManager};
     use caliptra_mcu_mbox_common::messages::{
-        GetLogReq, MailboxReqHeader, MailboxRespHeaderVarSize, McuMailboxReq,
+        DeviceCapsReq, GetLogReq, MailboxReqHeader, MailboxRespHeaderVarSize, McuMailboxReq,
     };
+    use caliptra_mcu_romtime::handoff::McuRomCapabilities;
     use caliptra_mcu_romtime::McuBootMilestones;
     use std::mem::size_of;
     use std::sync::atomic::Ordering;
@@ -125,6 +126,8 @@ mod test {
         let mut hw = start_runtime_hw_model(TestParams {
             profile: Some("release"),
             custom_mcu_runtime: Some(runtime),
+            // Use a known ROM configuration for the expected capability bitmap.
+            rom_feature: Some("hw-2-1"),
             ..Default::default()
         });
 
@@ -132,6 +135,19 @@ mod test {
             hw.mci_boot_milestones()
                 .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
         });
+
+        let caps = hw
+            .mailbox_execute_req(DeviceCapsReq::default())
+            .expect("Release MC_DEVICE_CAPABILITIES command failed");
+        let rom_capabilities = u32::from_be_bytes(caps.caps[16..20].try_into().unwrap());
+        assert_eq!(
+            rom_capabilities,
+            (McuRomCapabilities::STREAMING_BOOT_I3C
+                | McuRomCapabilities::FLASH_BOOT
+                | McuRomCapabilities::DOT_BOOT)
+                .bits(),
+            "Release Runtime must report capabilities from the ROM handoff"
+        );
 
         let mut req = McuMailboxReq::GetLog(GetLogReq {
             hdr: MailboxReqHeader::default(),

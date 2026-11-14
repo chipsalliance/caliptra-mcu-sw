@@ -29,3 +29,6 @@ test-network-rom-lwip-tftp = ["caliptra-mcu-network-app-rom-test/lwip-tftp", "ca
 test-network-rom-lwip-tftpv6 = ["caliptra-mcu-network-app-rom-test/lwip-tftpv6", "caliptra-mcu-network-app-rom-test"]
 test-network-mbox-comm = ["caliptra-mcu-network-app-rom-test/test-network-mbox-comm", "caliptra-mcu-network-app-rom-test"]
 test-network-boot-ipv6 = ["network-boot", "caliptra-mcu-network-app-boot-source/ipv6-boot"]
+test-network-boot-timeouts = ["network-boot", "caliptra-mcu-network-app-boot-source/test-short-timeouts"]
+test-network-boot-ipv6-dhcp-timeout = ["test-network-boot-ipv6", "caliptra-mcu-network-app-boot-source/test-ipv6-dhcp-timeout"]
+test-network-boot-ipv6-tftp-timeouts = ["test-network-boot-ipv6", "caliptra-mcu-network-app-boot-source/test-ipv6-tftp-timeouts"]

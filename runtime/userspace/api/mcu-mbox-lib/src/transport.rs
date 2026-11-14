@@ -26,7 +26,7 @@ impl McuMboxTransport {
     pub async fn receive_request<'a>(
         &mut self,
         buf: &'a mut [u8],
-    ) -> McuResult<(CmdCode, &'a [u8])> {
+    ) -> McuResult<(CmdCode, u32, &'a [u8])> {
         if buf.len() < size_of::<MailboxReqHeader>() {
             return Err(errors::BUFFER_TOO_SMALL);
         }
@@ -43,7 +43,7 @@ impl McuMboxTransport {
             None
         };
 
-        let (cmd_opcode, req_len) = self
+        let (cmd_opcode, req_len, axi_user) = self
             .mbox
             .receive_command(buf, on_listening_cb)
             .await
@@ -53,15 +53,24 @@ impl McuMboxTransport {
             return Err(errors::INVALID_REQUEST);
         }
 
-        let hdr = MailboxReqHeader::ref_from_bytes(&buf[..size_of::<MailboxReqHeader>()])
-            .map_err(|_| errors::INVALID_REQUEST)?;
+        let hdr = MailboxReqHeader::ref_from_bytes(
+            buf.get(..size_of::<MailboxReqHeader>())
+                .ok_or(errors::INVALID_REQUEST)?,
+        )
+        .map_err(|_| errors::INVALID_REQUEST)?;
         // Retrieve payload for checksum verification
-        let payload = &buf[size_of::<u32>()..req_len];
+        let payload = buf
+            .get(size_of::<u32>()..req_len)
+            .ok_or(errors::INVALID_REQUEST)?;
         if !verify_checksum(hdr.chksum, cmd_opcode, payload) {
             return Err(errors::CHKSUM_MISMATCH);
         }
 
-        Ok((cmd_opcode, &buf[..req_len]))
+        Ok((
+            cmd_opcode,
+            axi_user,
+            buf.get(..req_len).ok_or(errors::INVALID_REQUEST)?,
+        ))
     }
 
     pub async fn send_response(&mut self, resp: &[u8]) -> McuResult<()> {
@@ -69,9 +78,14 @@ impl McuMboxTransport {
             return Err(errors::BUFFER_TOO_SMALL);
         }
 
-        let hdr = MailboxRespHeader::ref_from_bytes(&resp[..size_of::<MailboxRespHeader>()])
-            .map_err(|_| errors::INVALID_RESPONSE)?;
-        let payload = &resp[size_of::<u32>()..];
+        let hdr = MailboxRespHeader::ref_from_bytes(
+            resp.get(..size_of::<MailboxRespHeader>())
+                .ok_or(errors::INVALID_RESPONSE)?,
+        )
+        .map_err(|_| errors::INVALID_RESPONSE)?;
+        let payload = resp
+            .get(size_of::<u32>()..)
+            .ok_or(errors::INVALID_RESPONSE)?;
         if !verify_checksum(hdr.chksum, 0, payload) {
             return Err(errors::CHKSUM_MISMATCH);
         }
@@ -88,5 +102,9 @@ impl McuMboxTransport {
         self.mbox
             .finish_response(status)
             .map_err(|_| errors::DRIVER_TX_ERROR)
+    }
+
+    pub fn is_pl0_axi_user(&self, axi_user: u32) -> bool {
+        self.mbox.is_pl0_axi_user(axi_user).unwrap_or(false)
     }
 }

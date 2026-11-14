@@ -16,7 +16,7 @@ use crate::wire::{
     CMD_GET_IDEV_ECC384_CSR, CMD_GET_IDEV_MLDSA87_CSR, CMD_POPULATE_IDEV_MLDSA87_CERT,
     MBOX_RESP_HEADER_SIZE,
 };
-use crate::ApiAlloc;
+use crate::ScratchAlloc;
 
 /// Caliptra command ID for `POPULATE_IDEV_ECC384_CERT`.
 const CMD_POPULATE_IDEV_ECC384_CERT: u32 = 0x4944_4550; // "IDEP"
@@ -79,7 +79,7 @@ const _: () =
 /// Populate the signed IDevID ECC-384 certificate into Caliptra via
 /// the `POPULATE_IDEV_ECC384_CERT` mailbox command.
 #[inline(never)]
-pub async fn populate_idev_ecc384_cert<A: ApiAlloc>(alloc: &A, cert: &[u8]) -> McuResult<()> {
+pub async fn populate_idev_ecc384_cert<A: ScratchAlloc>(alloc: &A, cert: &[u8]) -> McuResult<()> {
     if cert.is_empty() || cert.len() > POPULATE_IDEV_MAX_CERT_SIZE {
         return Err(INVARIANT);
     }
@@ -149,7 +149,7 @@ pub fn mldsa87_cert_der_len(header_word: u32, partition_size: usize) -> Option<u
 /// syscall) would hold the Caliptra mailbox with EXECUTE asserted long enough to
 /// starve other mailbox users. The caller stages the certificate first.
 #[inline(never)]
-pub async fn populate_idev_mldsa87_cert<A: ApiAlloc>(alloc: &A, cert: &[u8]) -> McuResult<()> {
+pub async fn populate_idev_mldsa87_cert<A: ScratchAlloc>(alloc: &A, cert: &[u8]) -> McuResult<()> {
     if cert.is_empty() || cert.len() > POPULATE_IDEV_MLDSA87_MAX_CERT_SIZE {
         return Err(INVARIANT);
     }

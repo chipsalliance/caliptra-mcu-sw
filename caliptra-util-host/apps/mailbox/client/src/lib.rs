@@ -29,7 +29,11 @@ use anyhow::Result;
 use caliptra_mcu_core_util_host_command_types::attestation::{
     AsymAlgo, EvidenceFormat, GetAttestationResponse, PkiEntitySlot,
 };
-use caliptra_mcu_core_util_host_command_types::certificate::ExportAttestedCsrResponse;
+use caliptra_mcu_core_util_host_command_types::certificate::{
+    DpeSignerContextCertResponse, DpeSignerContextSignResponse, ExportAttestedCsrResponse,
+    GetCertChainInfoResponse, GetCertChainResponse, ProvisionIdevCertMode,
+    ProvisionIdevCertResponse, SetCertChainResponse, MAX_CERT_CHAIN_CHUNK_SIZE,
+};
 use caliptra_mcu_core_util_host_command_types::crypto_aes::{
     AesMode, AES_GCM_IV_SIZE, AES_GCM_TAG_SIZE, AES_IV_SIZE,
 };
@@ -49,8 +53,9 @@ use caliptra_mcu_core_util_host_command_types::debug_unlock::{
     ProdDebugUnlockReqResponse, ProdDebugUnlockTokenRequest, ProdDebugUnlockTokenResponse,
 };
 use caliptra_mcu_core_util_host_command_types::device_ownership_transfer::{
-    DotChallengeResponse, DotDisableRequest, DotLockRequest, DotRotateRequest, DotStatusResponse,
-    DotTransitionResponse, DotUnlockRequest, GetDotBackupBlobRequest, GetDotBackupBlobResponse,
+    DotChallengeResponse, DotDisableRequest, DotEnableRequest, DotLockRequest, DotRotateRequest,
+    DotStatusResponse, DotTransitionResponse, DotUnlockRequest, GetDotBackupBlobRequest,
+    GetDotBackupBlobResponse,
 };
 use caliptra_mcu_core_util_host_command_types::fuse::{
     FeProgRequest, FeProgResponse, FuseIncreaseMinSvnRequest, FuseIncreaseMinSvnResponse,
@@ -61,13 +66,19 @@ use caliptra_mcu_core_util_host_command_types::fuse::{
     ProvisionVendorPkHashResponse,
 };
 use caliptra_mcu_core_util_host_command_types::{
-    GetDeviceCapabilitiesResponse, GetFirmwareVersionResponse,
+    FieldEntropyStatusResponse, GetDeviceCapabilitiesResponse, GetFirmwareVersionResponse,
+    HekStatusResponse, VendorPkHashStatusResponse,
 };
 use caliptra_mcu_core_util_host_transport::Mailbox;
 use caliptra_util_host_commands::api::attestation::{
     caliptra_cmd_get_attestation, caliptra_cmd_get_attestation_formats,
 };
-use caliptra_util_host_commands::api::certificate::caliptra_cmd_export_attested_csr;
+use caliptra_util_host_commands::api::certificate::{
+    caliptra_cmd_dpe_signer_context_cert, caliptra_cmd_dpe_signer_context_sign,
+    caliptra_cmd_export_attested_csr, caliptra_cmd_get_cert_chain,
+    caliptra_cmd_get_cert_chain_info, caliptra_cmd_provision_idevid_cert,
+    caliptra_cmd_set_cert_chain,
+};
 use caliptra_util_host_commands::api::crypto_aes::{
     caliptra_aes_decrypt, caliptra_aes_encrypt, caliptra_aes_gcm_decrypt, caliptra_aes_gcm_encrypt,
     AesEncryptResult, AesGcmDecryptResult, AesGcmEncryptResult,
@@ -88,12 +99,13 @@ use caliptra_util_host_commands::api::debug_unlock::{
     caliptra_cmd_prod_debug_unlock_req, caliptra_cmd_prod_debug_unlock_token,
 };
 use caliptra_util_host_commands::api::device_info::{
-    caliptra_cmd_get_device_capabilities, caliptra_cmd_get_firmware_version,
+    caliptra_cmd_field_entropy_status, caliptra_cmd_get_device_capabilities,
+    caliptra_cmd_get_firmware_version, caliptra_cmd_hek_status, caliptra_cmd_vendor_pk_hash_status,
 };
 use caliptra_util_host_commands::api::device_ownership_transfer::{
-    caliptra_cmd_dot_disable, caliptra_cmd_dot_lock, caliptra_cmd_dot_rotate,
-    caliptra_cmd_dot_status, caliptra_cmd_dot_unlock, caliptra_cmd_dot_unlock_challenge,
-    caliptra_cmd_get_dot_backup_blob,
+    caliptra_cmd_dot_disable, caliptra_cmd_dot_enable, caliptra_cmd_dot_lock,
+    caliptra_cmd_dot_rotate, caliptra_cmd_dot_status, caliptra_cmd_dot_unlock,
+    caliptra_cmd_dot_unlock_challenge, caliptra_cmd_get_dot_backup_blob,
 };
 use caliptra_util_host_commands::api::fuse::{
     caliptra_cmd_fe_prog, caliptra_cmd_fuse_increase_min_svn, caliptra_cmd_fuse_lock_partition,
@@ -102,6 +114,8 @@ use caliptra_util_host_commands::api::fuse::{
     caliptra_cmd_ocp_lock_set_perma_hek, caliptra_cmd_provision_vendor_pk_hash,
 };
 use caliptra_util_host_session::CaliptraSession;
+
+const DEFAULT_SESSION_ID: u32 = 1;
 
 /// High-level Mailbox Client for communicating with Caliptra devices
 pub struct MailboxClient<'a> {
@@ -169,6 +183,39 @@ impl<'a> MailboxClient<'a> {
                 ))
             }
         }
+    }
+
+    /// Query whether all field-entropy partitions have been provisioned.
+    pub fn field_entropy_status(&mut self) -> Result<FieldEntropyStatusResponse> {
+        let mut session = CaliptraSession::new(1, &mut self.transport)
+            .map_err(|e| anyhow::anyhow!("Failed to create session: {e:?}"))?;
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {e:?}"))?;
+        caliptra_cmd_field_entropy_status(&mut session)
+            .map_err(|e| anyhow::anyhow!("FieldEntropyStatus command failed: {e:?}"))
+    }
+
+    /// Query vendor public-key hash slot occupancy and key types.
+    pub fn vendor_pk_hash_status(&mut self) -> Result<VendorPkHashStatusResponse> {
+        let mut session = CaliptraSession::new(1, &mut self.transport)
+            .map_err(|e| anyhow::anyhow!("Failed to create session: {e:?}"))?;
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {e:?}"))?;
+        caliptra_cmd_vendor_pk_hash_status(&mut session)
+            .map_err(|e| anyhow::anyhow!("VendorPkHashStatus command failed: {e:?}"))
+    }
+
+    /// Query hardware-exported key slot occupancy and configured slot count.
+    pub fn hek_status(&mut self) -> Result<HekStatusResponse> {
+        let mut session = CaliptraSession::new(1, &mut self.transport)
+            .map_err(|e| anyhow::anyhow!("Failed to create session: {e:?}"))?;
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {e:?}"))?;
+        caliptra_cmd_hek_status(&mut session)
+            .map_err(|e| anyhow::anyhow!("HekStatus command failed: {e:?}"))
     }
 
     /// Execute the GetFirmwareVersion command and return the response
@@ -966,6 +1013,189 @@ impl<'a> MailboxClient<'a> {
         }
     }
 
+    /// Query certificate chain metadata, total byte length, and raw DER SHA-384 digest.
+    pub fn get_cert_chain_info(
+        &mut self,
+        entity: PkiEntitySlot,
+        algorithm: AsymAlgo,
+    ) -> Result<GetCertChainInfoResponse> {
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+        caliptra_cmd_get_cert_chain_info(&mut session, entity, algorithm)
+            .map_err(|e| anyhow::anyhow!("GetCertChainInfo command failed: {:?}", e))
+    }
+
+    /// Read a chunk of the full raw DER certificate chain.
+    pub fn get_cert_chain(
+        &mut self,
+        entity: PkiEntitySlot,
+        algorithm: AsymAlgo,
+        offset: u32,
+        length: u32,
+    ) -> Result<GetCertChainResponse> {
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+        caliptra_cmd_get_cert_chain(&mut session, entity, algorithm, offset, length)
+            .map_err(|e| anyhow::anyhow!("GetCertChain command failed: {:?}", e))
+    }
+
+    /// Read the complete raw DER certificate chain in chunks of `chunk_size` bytes.
+    pub fn get_full_cert_chain(
+        &mut self,
+        entity: PkiEntitySlot,
+        algorithm: AsymAlgo,
+        chunk_size: u32,
+    ) -> Result<Vec<u8>> {
+        let step = chunk_size.clamp(1, MAX_CERT_CHAIN_CHUNK_SIZE as u32);
+        let mut chain = Vec::new();
+        let mut offset = 0u32;
+        loop {
+            let resp = self.get_cert_chain(entity, algorithm, offset, step)?;
+            let bytes = resp.cert_bytes();
+            if bytes.is_empty() {
+                break;
+            }
+            chain.extend_from_slice(bytes);
+            offset = offset
+                .checked_add(bytes.len() as u32)
+                .ok_or_else(|| anyhow::anyhow!("certificate chain offset overflow"))?;
+            if (bytes.len() as u32) < step {
+                break;
+            }
+        }
+        Ok(chain)
+    }
+
+    /// Write a single endorsement certificate chain chunk (or erase when `offset == 0 && total_size == 0 && chunk.is_empty()`).
+    pub fn set_cert_chain(
+        &mut self,
+        entity: PkiEntitySlot,
+        algorithm: AsymAlgo,
+        device_key_id: u32,
+        offset: u32,
+        total_size: u32,
+        chunk: &[u8],
+    ) -> Result<SetCertChainResponse> {
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+        caliptra_cmd_set_cert_chain(
+            &mut session,
+            entity,
+            algorithm,
+            device_key_id,
+            offset,
+            total_size,
+            chunk,
+        )
+        .map_err(|e| anyhow::anyhow!("SetCertChain command failed: {:?}", e))
+    }
+
+    /// Provision a complete endorsement certificate chain in chunks of `chunk_size` bytes.
+    pub fn set_full_cert_chain(
+        &mut self,
+        entity: PkiEntitySlot,
+        algorithm: AsymAlgo,
+        device_key_id: u32,
+        endorsement: &[u8],
+        chunk_size: usize,
+    ) -> Result<()> {
+        let total_size = u32::try_from(endorsement.len())
+            .map_err(|_| anyhow::anyhow!("endorsement chain length overflow"))?;
+        if endorsement.is_empty() {
+            self.set_cert_chain(entity, algorithm, device_key_id, 0, 0, &[])?;
+            return Ok(());
+        }
+        let step = chunk_size.clamp(1, MAX_CERT_CHAIN_CHUNK_SIZE);
+        let mut offset = 0usize;
+        while offset < endorsement.len() {
+            let end = (offset + step).min(endorsement.len());
+            self.set_cert_chain(
+                entity,
+                algorithm,
+                device_key_id,
+                offset as u32,
+                total_size,
+                &endorsement[offset..end],
+            )?;
+            offset = end;
+        }
+        Ok(())
+    }
+
+    /// Provision an `IDevID` certificate or signature payload (`PopulateOnly` or `WriteOtp`).
+    pub fn provision_idevid_cert(
+        &mut self,
+        algorithm: AsymAlgo,
+        mode: ProvisionIdevCertMode,
+        data: &[u8],
+    ) -> Result<ProvisionIdevCertResponse> {
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+        caliptra_cmd_provision_idevid_cert(&mut session, algorithm, mode, data)
+            .map_err(|e| anyhow::anyhow!("ProvisionIdevCert command failed: {:?}", e))
+    }
+
+    /// Derive an Exported-CDI leaf X.509 certificate for `target_fw_id` (`0` uses the default `EXPORT_CDI_TARGET`).
+    pub fn dpe_signer_context_cert(
+        &mut self,
+        target_fw_id: u32,
+        algorithm: AsymAlgo,
+    ) -> Result<DpeSignerContextCertResponse> {
+        let mut session = CaliptraSession::new(
+            DEFAULT_SESSION_ID,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+        caliptra_cmd_dpe_signer_context_cert(&mut session, target_fw_id, algorithm)
+            .map_err(|e| anyhow::anyhow!("DpeSignerContextCert command failed: {:?}", e))
+    }
+
+    /// Sign `data` using the stashed Exported-CDI key for `target_fw_id` (`0` uses the default `EXPORT_CDI_TARGET`).
+    pub fn dpe_signer_context_sign(
+        &mut self,
+        target_fw_id: u32,
+        algorithm: AsymAlgo,
+        data: &[u8],
+    ) -> Result<DpeSignerContextSignResponse> {
+        let mut session = CaliptraSession::new(
+            DEFAULT_SESSION_ID,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+        )
+        .map_err(|e| anyhow::anyhow!("Failed to create session: {:?}", e))?;
+        session
+            .connect()
+            .map_err(|e| anyhow::anyhow!("Failed to connect to device: {:?}", e))?;
+        caliptra_cmd_dpe_signer_context_sign(&mut session, target_fw_id, algorithm, data)
+            .map_err(|e| anyhow::anyhow!("DpeSignerContextSign command failed: {:?}", e))
+    }
+
     /// Request an authorization command challenge nonce
     ///
     /// Returns a 48-byte random challenge that must be included in the
@@ -1001,7 +1231,7 @@ impl<'a> MailboxClient<'a> {
     /// Program field entropy for an OTP partition (authorized command)
     ///
     /// The request carries a valid hybrid signature over
-    /// `cmd_id(BE) || partition(LE) || challenge` and the corresponding public
+    /// `cmd_id(BE) || partition(LE) || metadata || nonce` and the corresponding public
     /// keys.
     pub fn fe_prog(&mut self, request: &FeProgRequest) -> Result<FeProgResponse> {
         println!(
@@ -1042,6 +1272,19 @@ impl<'a> MailboxClient<'a> {
             .map_err(|error| anyhow::anyhow!("Failed to connect to device: {error:?}"))?;
         caliptra_cmd_dot_status(&mut session)
             .map_err(|error| anyhow::anyhow!("DOT_STATUS command failed: {error:?}"))
+    }
+
+    pub fn dot_enable(&mut self, request: &DotEnableRequest) -> Result<DotTransitionResponse> {
+        let mut session = CaliptraSession::new(
+            1,
+            &mut self.transport as &mut dyn caliptra_mcu_core_util_host_transport::Transport,
+        )
+        .map_err(|error| anyhow::anyhow!("Failed to create session: {error:?}"))?;
+        session
+            .connect()
+            .map_err(|error| anyhow::anyhow!("Failed to connect to device: {error:?}"))?;
+        caliptra_cmd_dot_enable(&mut session, request)
+            .map_err(|error| anyhow::anyhow!("DOT_ENABLE command failed: {error:?}"))
     }
 
     pub fn dot_lock(&mut self, request: &DotLockRequest) -> Result<DotTransitionResponse> {

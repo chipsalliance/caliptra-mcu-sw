@@ -12,7 +12,7 @@
 //! hard dependency of the `mailbox-io` feature, used by
 //! [`crate::firmware_update`] and [`crate::image_loader`] — but `caliptra-api`'s
 //! large fixed-size request/response **values**, which would put multi-kilobyte
-//! `[u8; N]` arrays on the stack of every consumer of [`crate::ApiAlloc`].
+//! `[u8; N]` arrays on the stack of every consumer of [`crate::ScratchAlloc`].
 //! Mirroring the constants and building slim wire prefixes here keeps those
 //! types out of the code paths, while `const _: () = assert!(...)` cross-checks
 //! against `caliptra-api`'s `size_of` / `offset_of` (see [`crate::cert`]) keep
@@ -78,6 +78,21 @@ pub(crate) const CMD_DPE_TAG_TCI: u32 = 0x5451_4754; // "TGQT"
 /// Caliptra mailbox command ID for the top-level `DPE_GET_TAGGED_TCI` command.
 /// Mirrored from `caliptra-api::CommandId::DPE_GET_TAGGED_TCI`.
 pub(crate) const CMD_DPE_GET_TAGGED_TCI: u32 = 0x4754_4744; // "GTGD"
+
+/// Caliptra mailbox command ID for `SIGN_WITH_EXPORTED_ECDSA`.
+/// Mirrored from `caliptra-api::CommandId::SIGN_WITH_EXPORTED_ECDSA`.
+pub(crate) const CMD_SIGN_WITH_EXPORTED_ECDSA: u32 =
+    caliptra_api::mailbox::CommandId::SIGN_WITH_EXPORTED_ECDSA.0;
+
+/// Caliptra mailbox command ID for `SIGN_WITH_EXPORTED_MLDSA`.
+/// Mirrored from `caliptra-api::CommandId::SIGN_WITH_EXPORTED_MLDSA`.
+pub(crate) const CMD_SIGN_WITH_EXPORTED_MLDSA: u32 =
+    caliptra_api::mailbox::CommandId::SIGN_WITH_EXPORTED_MLDSA.0;
+
+/// Caliptra mailbox command ID for `REVOKE_EXPORTED_CDI_HANDLE`.
+/// Mirrored from `caliptra-api::CommandId::REVOKE_EXPORTED_CDI_HANDLE`.
+pub(crate) const CMD_REVOKE_EXPORTED_CDI_HANDLE: u32 =
+    caliptra_api::mailbox::CommandId::REVOKE_EXPORTED_CDI_HANDLE.0;
 
 /// DPE per-command-header magic (`CommandHdr::DPE_COMMAND_MAGIC`).
 pub(crate) const DPE_COMMAND_MAGIC: u32 = 0x4450_4543; // "DPEC"
@@ -212,6 +227,21 @@ pub(crate) async fn mbox_execute(
         caliptra_mcu_libsyscall_caliptra::DefaultSyscalls,
     >::new();
     mbox.execute(cmd, req, rsp).await.map_err(map_mbox_err)
+}
+
+/// Execute a Caliptra mailbox command using a single buffer for both request and response.
+pub(crate) async fn mbox_execute_in_place(
+    cmd: u32,
+    req_len: usize,
+    rsp_len: usize,
+    buf: &mut [u8],
+) -> mcu_error::McuResult<usize> {
+    let mbox = caliptra_mcu_libsyscall_caliptra::mailbox::Mailbox::<
+        caliptra_mcu_libsyscall_caliptra::DefaultSyscalls,
+    >::new();
+    mbox.execute_in_place(cmd, req_len, rsp_len, buf)
+        .await
+        .map_err(map_mbox_err)
 }
 
 /// Execute a mailbox command whose request is a header followed by a separate

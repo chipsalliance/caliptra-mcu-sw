@@ -35,6 +35,7 @@ getrandom.workspace = true
 hex.workspace = true
 log.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 sha2.workspace = true
 simple_logger.workspace = true
 toml.workspace = true
