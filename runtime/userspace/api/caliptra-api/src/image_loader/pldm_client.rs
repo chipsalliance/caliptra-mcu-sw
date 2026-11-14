@@ -226,6 +226,9 @@ pub async fn initialize_pldm<'a, D: DMAMapping + 'static>(
 }
 
 pub fn finalize(verify_result: VerifyResult) -> Result<(), ErrorCode> {
+    if PLDM_STATE.lock(|state| *state.borrow() == State::ImageDownloadFailed) {
+        return Err(ErrorCode::Fail);
+    }
     DOWNLOAD_CTX.lock(|ctx| {
         let mut ctx = ctx.borrow_mut();
         ctx.download_complete = true;

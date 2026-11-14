@@ -200,6 +200,12 @@ pub trait FdOps {
         })
     }
 
+    /// Called after the TransferComplete request/response transaction finishes.
+    fn transfer_complete_reported(&self, _result: McuResult<()>) {}
+
+    /// Called after the CancelUpdate or CancelUpdateComponent response finishes.
+    fn cancel_update_reported(&self, _result: McuResult<()>) {}
+
     /// Called after the ApplyComplete request/response transaction finishes.
     ///
     /// An error means the outcome could not be reported successfully. Platforms
