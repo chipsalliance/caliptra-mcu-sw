@@ -135,6 +135,12 @@ pub struct ConnectionState<S, L> {
     pub peer_cap_flags: CapFlags,
     /// Negotiated OtherParamsSel from NEGOTIATE_ALGORITHMS.
     pub other_param_sel: OtherParamSupport,
+    /// Negotiated `MULTI_KEY_CONN_RSP`: whether this connection uses multiple
+    /// Responder key pairs. Resolved at NEGOTIATE_ALGORITHMS from the request's
+    /// `ResponderMultiKeyConn` and our `MULTI_KEY_CAP` (DSP0274 1.3.0 Table 32).
+    /// Not derivable from `other_param_sel`: bit 4 of the ALGORITHMS
+    /// `OtherParamsSelection` is `RequesterMultiKeyConnSel`, a different field.
+    pub multi_key_conn_rsp: bool,
     /// Negotiated BaseAsymSel from NEGOTIATE_ALGORITHMS.
     pub negotiated_base_asym_sel: AsymAlgos,
     /// Negotiated BaseHashSel from NEGOTIATE_ALGORITHMS.
@@ -203,6 +209,7 @@ impl<S, L> ConnectionState<S, L> {
             advertised_cap_flags: CapFlags::EMPTY,
             peer_cap_flags: CapFlags::EMPTY,
             other_param_sel: OtherParamSupport::EMPTY,
+            multi_key_conn_rsp: false,
             negotiated_base_asym_sel: AsymAlgos::EMPTY,
             negotiated_base_hash_sel: HashAlgos::EMPTY,
             negotiated_pqc_asym_sel: PqcAsymAlgos::EMPTY,
@@ -265,6 +272,7 @@ impl<S, L: core::ops::DerefMut<Target = [u8]>> ConnectionState<S, L> {
         self.advertised_cap_flags = CapFlags::EMPTY;
         self.peer_cap_flags = CapFlags::EMPTY;
         self.other_param_sel = OtherParamSupport::EMPTY;
+        self.multi_key_conn_rsp = false;
         self.negotiated_base_asym_sel = AsymAlgos::EMPTY;
         self.negotiated_base_hash_sel = HashAlgos::EMPTY;
         self.negotiated_pqc_asym_sel = PqcAsymAlgos::EMPTY;
@@ -285,19 +293,48 @@ impl<S, L> Default for ConnectionState<S, L> {
     }
 }
 
+/// Returns the `MULTI_KEY_CONN_RSP` resolved at NEGOTIATE_ALGORITHMS.
 pub(crate) fn multi_key_conn_rsp<S, L>(state: &ConnectionState<S, L>) -> SpdmResult<bool> {
-    let selected = state
-        .other_param_sel
-        .contains(OtherParamSupport::MULTI_KEY_CONN);
-    if state.version < SpdmVersion::V13 {
-        return if selected {
+    Ok(state.multi_key_conn_rsp)
+}
+
+/// Resolves `MULTI_KEY_CONN_RSP` from a `ResponderMultiKeyConn` bit and
+/// the responder's own `MULTI_KEY_CAP`.
+///
+/// This is the DSP0274 1.3.0 Table 32 (MULTI_KEY_CONN_RSP value
+/// calculation) truth table. Two of the six rows are **invalid**
+/// rather than false: `MULTI_KEY_CAP = 00b` (not supported) with the
+/// bit set, and `01b` (multi-key only) with the bit clear. `10b`
+/// leaves the choice to the Requester, so either value is legal.
+///
+/// # Parameters
+///
+/// * `version` — Negotiated (or, at NEGOTIATE_ALGORITHMS time,
+///   selected) SPDM version. `MultiKeyConn` is a V1.3 addition, so
+///   earlier versions must not carry the bit at all.
+/// * `advertised_cap_flags` — The responder's own CAPABILITIES flags,
+///   whose `MULTI_KEY_CAP` field drives the table.
+/// * `multi_key_conn` — The `ResponderMultiKeyConn` bit: as requested
+///   in NEGOTIATE_ALGORITHMS, or as negotiated afterwards.
+///
+/// # Errors
+///
+/// * [`SPDM_INVALID_REQUEST`] — the combination is one the table marks
+///   invalid, or `MULTI_KEY_CAP` holds the reserved value `11b`.
+pub(crate) fn multi_key_conn_value(
+    version: SpdmVersion,
+    advertised_cap_flags: CapFlags,
+    multi_key_conn: bool,
+) -> SpdmResult<bool> {
+    if version < SpdmVersion::V13 {
+        return if multi_key_conn {
             Err(SPDM_INVALID_REQUEST)
         } else {
             Ok(false)
         };
     }
 
-    match (state.advertised_cap_flags.multi_key_field(), selected) {
+    match (advertised_cap_flags.multi_key_field(), multi_key_conn) {
         (0b00, false) => Ok(false),
         (0b00, true) => Err(SPDM_INVALID_REQUEST),
         (0b01, false) => Err(SPDM_INVALID_REQUEST),

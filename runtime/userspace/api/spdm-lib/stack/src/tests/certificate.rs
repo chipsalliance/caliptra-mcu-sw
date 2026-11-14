@@ -438,7 +438,8 @@ fn test_get_digests_short_multi_key_tail_returns_error() {
         };
         let mut state = init_cert_test_state(SpdmVersion::V13, &pal);
         state.advertised_cap_flags |= CapFlags::MULTI_KEY_CONN_RSP;
-        state.other_param_sel |= caliptra_mcu_spdm_codec::OtherParamSupport::MULTI_KEY_CONN;
+        // MULTI_KEY_CONN_RSP as NEGOTIATE_ALGORITHMS resolves it.
+        state.multi_key_conn_rsp = true;
         let io = TestIo::message(vec![
             SpdmVersion::V13.to_u8(),
             ReqRespCode::GET_DIGESTS.0,
