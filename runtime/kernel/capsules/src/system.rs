@@ -13,6 +13,7 @@ mod cmd {
     pub const EXIT: u32 = 1;
     pub const GET_FIRMWARE_BOOT_TYPE: u32 = 2;
     pub const GET_MCU_ROM_CAPABILITIES: u32 = 3;
+    pub const GET_MCU_ROM_VERSION: u32 = 4;
 }
 
 pub struct System<'a, E: caliptra_mcu_romtime::Exit> {
@@ -37,6 +38,16 @@ impl<E: caliptra_mcu_romtime::Exit> SyscallDriver for System<'_, E> {
         _processid: ProcessId,
     ) -> CommandReturn {
         match cmd as u32 {
+            cmd::GET_MCU_ROM_VERSION => {
+                let Some(handoff) = caliptra_mcu_romtime::handoff::HandoffData::get() else {
+                    return CommandReturn::failure(ErrorCode::INVAL);
+                };
+                match handoff.mcu_rom_version() {
+                    Some(0) => CommandReturn::failure(ErrorCode::INVAL),
+                    Some(version) => CommandReturn::success_u32(version),
+                    None => CommandReturn::failure(ErrorCode::NOSUPPORT),
+                }
+            }
             cmd::EXIT => {
                 self.exiter.borrow_mut().exit(arg1 as u32);
                 CommandReturn::success()

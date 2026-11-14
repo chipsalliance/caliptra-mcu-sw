@@ -14,22 +14,29 @@ use super::aes::{
     AesGcmEncryptInitCmd, AesGcmEncryptUpdateCmd,
 };
 use super::attestation::GetAttestationCmd;
-use super::certificate::ExportAttestedCsrCmd;
+use super::certificate::{
+    DpeSignerContextCertCmd, DpeSignerContextSignCmd, ExportAttestedCsrCmd, GetCertChainCmd,
+    GetCertChainInfoCmd, ProvisionIdevCertCmd, SetCertChainCmd,
+};
 use super::crypto_asymmetric::{
     EcdhFinishCmd, EcdhGenerateCmd, EcdsaPublicKeyCmd, EcdsaSignCmd, EcdsaVerifyCmd,
 };
 use super::debug_unlock::{ProdDebugUnlockReqCmd, ProdDebugUnlockTokenCmd};
 use super::delete::DeleteCmd;
-use super::device_info::{GetDeviceCapabilitiesCmd, GetFirmwareVersionCmd};
+use super::device_info::{
+    FieldEntropyStatusCmd, GetDeviceCapabilitiesCmd, GetFirmwareVersionCmd, HekStatusCmd,
+    VendorPkHashStatusCmd,
+};
 use super::device_log::{DebugClearLogCmd, DebugGetLogCmd};
 use super::device_ownership_transfer::{
-    DotDisableCmd, DotLockCmd, DotOverrideChallengeCmd, DotOverrideCmd, DotRecoveryCmd,
-    DotRotateCmd, DotStatusCmd, DotUnlockChallengeCmd, DotUnlockCmd, GetDotBackupBlobCmd,
+    DotDisableCmd, DotEnableCmd, DotLockCmd, DotOverrideChallengeCmd, DotOverrideCmd,
+    DotRecoveryCmd, DotRotateCmd, DotStatusCmd, DotUnlockChallengeCmd, DotUnlockCmd,
+    GetDotBackupBlobCmd,
 };
 use super::fuse::{
     FeProgCmd, FuseIncreaseMinSvnCmd, FuseLockPartitionCmd, FuseRevokeVendorPkHashCmd,
     FuseRevokeVendorPubKeyCmd, GetAuthCmdChallengeCmd, OcpLockRotateHekCmd, OcpLockSetPermaHekCmd,
-    ProvisionVendorPkHashCmd,
+    ProvisionOwnerPkHashCmd, ProvisionVendorPkHashCmd,
 };
 use super::hmac::{HmacCmd, HmacKdfCounterCmd};
 use super::import::ImportCmd;
@@ -55,6 +62,9 @@ pub fn get_command_handler(command_id: u32) -> Option<CommandHandlerFn> {
         // Device Info Commands
         1 => Some(process_command_with_metadata::<GetFirmwareVersionCmd>), // GetFirmwareVersion
         2 => Some(process_command_with_metadata::<GetDeviceCapabilitiesCmd>), // GetDeviceCapabilities
+        3 => Some(process_command_with_metadata::<FieldEntropyStatusCmd>),
+        4 => Some(process_command_with_metadata::<VendorPkHashStatusCmd>),
+        5 => Some(process_command_with_metadata::<HekStatusCmd>),
         // SHA Commands (0x2001-0x2003)
         0x2001 => Some(process_command_with_metadata::<ShaInitCmd>), // HashInit
         0x2002 => Some(process_command_with_metadata::<ShaUpdateCmd>), // HashUpdate
@@ -90,9 +100,15 @@ pub fn get_command_handler(command_id: u32) -> Option<CommandHandlerFn> {
         // Debug Unlock Commands (0x7010-0x7011)
         0x7010 => Some(process_command_with_metadata::<ProdDebugUnlockReqCmd>), // ProdDebugUnlockReq
         0x7011 => Some(process_command_with_metadata::<ProdDebugUnlockTokenCmd>), // ProdDebugUnlockToken
-        // Certificate / Attestation Commands (0x1005, 0x1007)
+        // Certificate / Attestation Commands (0x1005, 0x1007-0x1017)
         0x1005 => Some(process_command_with_metadata::<ExportAttestedCsrCmd>), // ExportAttestedCsr
         0x1007 => Some(process_command_with_metadata::<GetAttestationCmd>),    // GetAttestation
+        0x1008 => Some(process_command_with_metadata::<GetCertChainInfoCmd>),  // GetCertChainInfo
+        0x1010 => Some(process_command_with_metadata::<GetCertChainCmd>),      // GetCertChain
+        0x1014 => Some(process_command_with_metadata::<SetCertChainCmd>),      // SetCertChain
+        0x1015 => Some(process_command_with_metadata::<ProvisionIdevCertCmd>), // ProvisionIdevCert
+        0x1016 => Some(process_command_with_metadata::<DpeSignerContextCertCmd>), // DpeSignerContextCert
+        0x1017 => Some(process_command_with_metadata::<DpeSignerContextSignCmd>), // DpeSignerContextSign
         // Authorized / Fuse Commands (0x8010-0x8016)
         0x8010 => Some(process_command_with_metadata::<GetAuthCmdChallengeCmd>), // GetAuthCmdChallenge
         0x8011 => Some(process_command_with_metadata::<FeProgCmd>),              // FeProg
@@ -101,9 +117,10 @@ pub fn get_command_handler(command_id: u32) -> Option<CommandHandlerFn> {
         0x8014 => Some(process_command_with_metadata::<FuseRevokeVendorPubKeyCmd>),
         0x8015 => Some(process_command_with_metadata::<FuseRevokeVendorPkHashCmd>),
         0x8016 => Some(process_command_with_metadata::<FuseLockPartitionCmd>),
+        0x8017 => Some(process_command_with_metadata::<ProvisionOwnerPkHashCmd>),
         0x8018 => Some(process_command_with_metadata::<OcpLockRotateHekCmd>),
         0x8019 => Some(process_command_with_metadata::<OcpLockSetPermaHekCmd>),
-        // Device Ownership Transfer Commands (0x8020-0x8029)
+        // Device Ownership Transfer Commands (0x8020-0x802A)
         0x8020 => Some(process_command_with_metadata::<DotLockCmd>),
         0x8021 => Some(process_command_with_metadata::<DotDisableCmd>),
         0x8022 => Some(process_command_with_metadata::<DotUnlockChallengeCmd>),
@@ -114,6 +131,7 @@ pub fn get_command_handler(command_id: u32) -> Option<CommandHandlerFn> {
         0x8027 => Some(process_command_with_metadata::<DotRecoveryCmd>),
         0x8028 => Some(process_command_with_metadata::<DotOverrideChallengeCmd>),
         0x8029 => Some(process_command_with_metadata::<DotOverrideCmd>),
+        0x802A => Some(process_command_with_metadata::<DotEnableCmd>),
         _ => None,
     }
 }
@@ -131,6 +149,9 @@ pub fn get_external_cmd_code(command_id: u32) -> Option<u32> {
         // Device Info Commands
         1 => Some(0x4D46_5756), // GetFirmwareVersion -> MC_FIRMWARE_VERSION ("MFWV")
         2 => Some(0x4D43_4150), // GetDeviceCapabilities -> MC_DEVICE_CAPABILITIES ("MCAP")
+        3 => Some(0x4D43_4653), // FieldEntropyStatus -> MC_FE_STATUS ("MCFS")
+        4 => Some(0x4D56_5053), // VendorPkHashStatus -> MC_VENDOR_PK_HASH_STATUS ("MVPS")
+        5 => Some(0x4D48_4B53), // HekStatus -> MC_HEK_STATUS ("MHKS")
         // SHA Commands
         0x2001 => Some(0x4D43_5349), // HashInit -> MC_SHA_INIT ("MCSI")
         0x2002 => Some(0x4D43_5355), // HashUpdate -> MC_SHA_UPDATE ("MCSU")
@@ -169,18 +190,17 @@ pub fn get_external_cmd_code(command_id: u32) -> Option<u32> {
         // Certificate Commands
         0x1005 => Some(0x4D45_4143), // ExportAttestedCsr -> MC_EXPORT_ATTESTED_CSR ("MEAC")
         0x1007 => Some(0x4D47_4154), // GetAttestation -> MC_GET_ATTESTATION ("MGAT")
+        0x1008 => Some(0x4D47_4349), // GetCertChainInfo -> MC_GET_CERT_CHAIN_INFO ("MGCI")
+        0x1010 => Some(0x4D47_4343), // GetCertChain -> MC_GET_CERT_CHAIN ("MGCC")
+        0x1014 => Some(0x4D53_4343), // SetCertChain -> MC_SET_CERT_CHAIN ("MSCC")
+        0x1015 => Some(0x4D50_4943), // ProvisionIdevCert -> MC_PROVISION_IDEV_CERT ("MPIC")
+        0x1016 => Some(0x4D44_5343), // DpeSignerContextCert -> MC_DPE_SIGNER_CONTEXT_CERT ("MDSC")
+        0x1017 => Some(0x4D44_5353), // DpeSignerContextSign -> MC_DPE_SIGNER_CONTEXT_SIGN ("MDSS")
         // Authorized / Fuse Commands
-        0x8010 => Some(0x4D41_4343), // GetAuthCmdChallenge -> MC_GET_AUTH_CMD_CHALLENGE ("MACC")
-        0x8011 => Some(0x4D43_4650), // FeProg -> MC_FE_PROG ("MCFP")
-        0x8012 => Some(0x5056_504B), // ProvisionVendorPkHash -> MC_PROVISION_VENDOR_PK_HASH ("PVPK")
-        0x8013 => Some(0x4D43_4D53), // FuseIncreaseMinSvn -> MC_FUSE_INCREASE_MIN_SVN ("MCMS")
-        0x8014 => Some(0x4D52_564B), // FuseRevokeVendorPubKey -> MC_FUSE_REVOKE_VENDOR_PUB_KEY ("MRVK")
-        0x8015 => Some(0x5256_4B48), // FuseRevokeVendorPkHash -> MC_FUSE_REVOKE_VENDOR_PK_HASH ("RVKH")
-        0x8016 => Some(0x4946_504B), // FuseLockPartition -> MC_FUSE_LOCK_PARTITION ("IFPK")
-        // OCP Lock Commands share the MCI OCP LOCK family ID.
-        0x8018..=0x8019 => Some(0x0000_0013),
-        // Device Ownership Transfer Commands share the MCI DOT family ID.
-        0x8020..=0x8029 => Some(0x0000_0011),
+        0x8010..=0x8017 => Some(0x0000_0012),
+        0x8018..=0x8019 => Some(0x0000_0012),
+        0x8020 | 0x8021 | 0x8024 | 0x8025 | 0x802A => Some(0x0000_0012),
+        0x8022 | 0x8023 | 0x8026..=0x8029 => Some(0x0000_0011),
         _ => None,
     }
 }
@@ -189,32 +209,38 @@ pub fn get_external_cmd_code(command_id: u32) -> Option<u32> {
 mod tests {
     use super::*;
     use caliptra_mcu_core_util_host_command_types::device_ownership_transfer::DOT_FAMILY_ID;
-    use caliptra_mcu_core_util_host_command_types::fuse::OCP_LOCK_FAMILY_ID;
     use caliptra_mcu_core_util_host_command_types::CaliptraCommandId;
 
     #[test]
-    fn all_dot_commands_are_dispatched_to_the_family_command() {
-        let commands = [
+    fn dot_commands_use_authorized_or_native_envelopes() {
+        let authorized = [
+            CaliptraCommandId::DotEnable,
             CaliptraCommandId::DotLock,
             CaliptraCommandId::DotDisable,
-            CaliptraCommandId::DotUnlockChallenge,
-            CaliptraCommandId::DotUnlock,
             CaliptraCommandId::DotRotate,
             CaliptraCommandId::GetDotBackupBlob,
+        ];
+        let native = [
+            CaliptraCommandId::DotUnlockChallenge,
+            CaliptraCommandId::DotUnlock,
             CaliptraCommandId::DotStatus,
             CaliptraCommandId::DotRecovery,
             CaliptraCommandId::DotOverrideChallenge,
             CaliptraCommandId::DotOverride,
         ];
 
-        for command in commands {
+        for command in authorized {
+            assert!(get_command_handler(command as u32).is_some());
+            assert_eq!(get_external_cmd_code(command as u32), Some(0x12));
+        }
+        for command in native {
             assert!(get_command_handler(command as u32).is_some());
             assert_eq!(get_external_cmd_code(command as u32), Some(DOT_FAMILY_ID));
         }
     }
 
     #[test]
-    fn all_ocp_lock_commands_are_dispatched_to_the_family_command() {
+    fn authorized_ocp_lock_commands_use_authorized_envelope() {
         let commands = [
             CaliptraCommandId::OcpLockRotateHek,
             CaliptraCommandId::OcpLockSetPermaHek,
@@ -222,10 +248,26 @@ mod tests {
 
         for command in commands {
             assert!(get_command_handler(command as u32).is_some());
-            assert_eq!(
-                get_external_cmd_code(command as u32),
-                Some(OCP_LOCK_FAMILY_ID)
-            );
+            assert_eq!(get_external_cmd_code(command as u32), Some(0x12));
+        }
+    }
+
+    #[test]
+    fn owner_hash_provisioning_uses_authorized_envelope() {
+        let command = CaliptraCommandId::ProvisionOwnerPkHash;
+        assert!(get_command_handler(command as u32).is_some());
+        assert_eq!(get_external_cmd_code(command as u32), Some(0x12));
+    }
+
+    #[test]
+    fn status_commands_are_dispatched() {
+        for (command, external) in [
+            (CaliptraCommandId::FieldEntropyStatus, 0x4D43_4653),
+            (CaliptraCommandId::VendorPkHashStatus, 0x4D56_5053),
+            (CaliptraCommandId::HekStatus, 0x4D48_4B53),
+        ] {
+            assert!(get_command_handler(command as u32).is_some());
+            assert_eq!(get_external_cmd_code(command as u32), Some(external));
         }
     }
 }

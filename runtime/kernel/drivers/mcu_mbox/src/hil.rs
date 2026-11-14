@@ -121,9 +121,16 @@ pub trait MailboxClient {
     /// # Arguments
     ///
     /// * `command` - The command identifier of the received request.
+    /// * `axi_user` - The AXI user ID of the sender latched when the mailbox lock was acquired.
     /// * `rx_buf` - Buffer containing the received data.
     /// * `dlen` - Number of valid bytes in `rx_buf`.
-    fn request_received(&self, command: u32, rx_buf: &'static mut [u32], dlen: usize);
+    fn request_received(
+        &self,
+        command: u32,
+        axi_user: u32,
+        rx_buf: &'static mut [u32],
+        dlen: usize,
+    );
 
     /// Called when a response is received (Sender mode).
     ///

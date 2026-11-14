@@ -38,7 +38,7 @@ impl<S: Syscalls, C: platform::subscribe::Config> AsyncAlarm<S, C> {
         let ticks = Self::get_ticks()? as u64;
         let freq = (Self::get_frequency()?).0 as u64;
 
-        Ok(ticks.saturating_div(freq / 1000))
+        ticks.checked_div(freq / 1000).ok_or(ErrorCode::Invalid)
     }
 
     pub async fn sleep_for<T: Convert>(time: T) -> Result<(), ErrorCode> {
@@ -86,4 +86,66 @@ mod command {
 #[allow(unused)]
 mod subscribe {
     pub const CALLBACK: u32 = 0;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use caliptra_mcu_libtock_unittest::{command_return, fake, ExpectedSyscall};
+
+    #[test]
+    fn milliseconds_rejects_unusable_frequency_and_preserves_rounding() {
+        for (frequency, expected) in [
+            (0, Err(ErrorCode::Invalid)),
+            (999, Err(ErrorCode::Invalid)),
+            (1000, Ok(12345)),
+            (1001, Ok(12345)),
+            (2000, Ok(6172)),
+            (1_000_000, Ok(12)),
+        ] {
+            let kernel = fake::Kernel::new();
+            let alarm = fake::Alarm::new(frequency);
+            kernel.add_driver(&alarm);
+            kernel.add_expected_syscall(ExpectedSyscall::Command {
+                driver_id: DRIVER_NUM,
+                command_id: command::TIME,
+                argument0: 0,
+                argument1: 0,
+                override_return: Some(command_return::success_u32(12345)),
+            });
+
+            assert_eq!(AsyncAlarm::<fake::Syscalls>::get_milliseconds(), expected);
+        }
+    }
+
+    #[test]
+    fn milliseconds_preserves_syscall_errors() {
+        let kernel = fake::Kernel::new();
+        let alarm = fake::Alarm::new(1_000_000);
+        kernel.add_driver(&alarm);
+
+        assert_eq!(
+            AsyncAlarm::<fake::Syscalls>::get_milliseconds(),
+            Err(ErrorCode::NoSupport)
+        );
+
+        kernel.add_expected_syscall(ExpectedSyscall::Command {
+            driver_id: DRIVER_NUM,
+            command_id: command::TIME,
+            argument0: 0,
+            argument1: 0,
+            override_return: Some(command_return::success_u32(12345)),
+        });
+        kernel.add_expected_syscall(ExpectedSyscall::Command {
+            driver_id: DRIVER_NUM,
+            command_id: command::FREQUENCY,
+            argument0: 0,
+            argument1: 0,
+            override_return: Some(command_return::failure(ErrorCode::Busy)),
+        });
+        assert_eq!(
+            AsyncAlarm::<fake::Syscalls>::get_milliseconds(),
+            Err(ErrorCode::Busy)
+        );
+    }
 }

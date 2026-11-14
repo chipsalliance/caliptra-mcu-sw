@@ -13,9 +13,9 @@
 
 #[cfg(test)]
 mod test {
+    use crate::runtime::start_command_authorized_runtime;
     use crate::test::{
-        compile_runtime, finish_runtime_hw_model, start_runtime_hw_model, CustomCaliptraFw,
-        TestParams, TEST_LOCK,
+        compile_runtime, finish_runtime_hw_model, CustomCaliptraFw, TestParams, TEST_LOCK,
     };
     use caliptra_api::SocManager;
     use caliptra_mcu_builder::{CaliptraBuildArgs, CaliptraBuilder, FirmwareBinaries};
@@ -255,7 +255,7 @@ mod test {
         let lock = TEST_LOCK.lock().unwrap();
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-        let mut hw = start_runtime_hw_model(TestParams {
+        let mut hw = start_command_authorized_runtime(TestParams {
             feature: Some(TEST_FEATURE),
             i3c_port: Some(PortPicker::new().pick().unwrap()),
             ..Default::default()
@@ -341,10 +341,30 @@ mod test {
             .expect("Failed to write debug unlock keys");
         let keys_path = keys_file.path().to_str().unwrap().to_string();
 
+        let otp_memory = match suite {
+            "ocp-lock-rotate-hek" => {
+                let mut otp = vec![0; 4096];
+                crate::test_hek::test::setup_otp_hek(&mut otp, 0, false, false);
+                Some(otp)
+            }
+            "ocp-lock-set-perma-hek" => {
+                let mut otp = vec![0; 4096];
+                for slot in 0..8 {
+                    crate::test_hek::test::setup_otp_hek(&mut otp, slot, true, false);
+                }
+                Some(otp)
+            }
+            _ => None,
+        };
+        let ocp_lock_en = otp_memory.is_some();
+
         // --- Start hw_model with keys provisioned in fuses ---
-        let mut hw = start_runtime_hw_model(TestParams {
+        let mut hw = start_command_authorized_runtime(TestParams {
             feature: Some(TEST_FEATURE),
-            custom_caliptra_fw: Some(caliptra_fw_svn7()),
+            rom_feature: ocp_lock_en.then_some("ocp-lock"),
+            custom_caliptra_fw: (!ocp_lock_en).then(caliptra_fw_svn7),
+            ocp_lock_en,
+            otp_memory,
             i3c_port: Some(PortPicker::new().pick().unwrap()),
             dot_enabled: true,
             use_strap_secrets: true,

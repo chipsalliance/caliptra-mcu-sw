@@ -269,17 +269,19 @@ the firmware-boot reset path, or in the hitless-update reset path, after
 Caliptra Core has loaded the runtime image into MCU SRAM.
 
 There is also an authorized runtime mailbox command,
-`MC_FUSE_INCREASE_MIN_SVN`, that advances either the Caliptra Runtime floor or
-`CPTRA_CORE_SOC_MANIFEST_SVN`. The reference runtime exposes this command
-through both the in-band MCI mailbox and OOB SPDM VDM paths and requires the
-runtime authorization flow. The Owner SoC Manifest target is reserved but not
-implemented. Caliptra Runtime requests that are zero, above 128, lower than the
+`MC_FUSE_INCREASE_MIN_SVN`, that advances the Caliptra Runtime, Base SoC Manifest,
+or Owner SoC Manifest floor. The reference runtime exposes this command through
+both the in-band MCI mailbox and OOB SPDM VDM paths and requires the runtime
+authorization flow. Caliptra Runtime requests that are zero, above 128, lower than the
 current fuse floor, or higher than the currently running Caliptra firmware SVN
 reported by `FW_INFO` are rejected. Because `FW_INFO` does not expose the running
 SoC Manifest SVN, the SoC Manifest target can enforce range, monotonicity, and
 the `CPTRA_CORE_SOC_MANIFEST_MAX_SVN` ceiling, but cannot reject a requested
 floor above the currently running image. Platforms should prefer the
 authenticated SVN-header workflow when that assurance is required.
+
+For Owner SoC Manifest storage, customization, and activation, see
+[Owner SoC Manifest SVN](svn.md#owner-soc-manifest-svn).
 
 ## Management Command Transport Expectations
 
@@ -314,9 +316,8 @@ SoC manifest digest into PCR31. If an integrator needs that specific digest in
 PCR31, add an explicit Caliptra RT-side stash after manifest verification rather
 than asking MCU ROM to stash unverified manifest bytes.
 
-MCU ROM does stash ROM-owned measurements that only it can observe. When
-`RomParameters::stash_rom_digest` is set, ROM stashes its own ROM digest. ROM
-also hashes and stashes `FIELD_ENTROPY_STATE` after Caliptra RT is ready for
+When `RomParameters::stash_rom_digest` is enabled, MCU ROM stashes its own ROM
+digest with four-byte ASCII metadata `MROM` after Caliptra RT is ready for
 runtime mailbox commands.
 
 ## Security-State Integration
@@ -327,8 +328,7 @@ The ROM has several security-state hooks that require integrator policy.
 
 | Feature | Integrator responsibility | ROM behavior |
 |---|---|---|
-| Field entropy programming | Decide which FE partitions ROM programs at cold boot (`RomParameters::program_field_entropy`) versus which are left to the in-field runtime `MC_FE_PROG` authorized command. | For each selected partition, ROM sends Caliptra's `FE_PROG` mailbox command during cold boot and tracks progress via `FIELD_ENTROPY_STATE` (`Empty` → `Started` → `Finished`). It then measures and stashes `FIELD_ENTROPY_STATE`. |
-| FIPS zeroization | Route the FIPS PPD signal and provide `RomParameters::fips_zeroization_mask` before MCI configuration locks. | ROM writes `FC_FIPS_ZEROZATION`, executes Caliptra `ZEROIZE_UDS_FE`, marks `FIELD_ENTROPY_STATE` zeroized, requests LC SCRAP, and halts for cold reset. |
+| FIPS zeroization | Route the FIPS PPD signal and provide `RomParameters::fips_zeroization_mask` before MCI configuration locks. | ROM writes `FC_FIPS_ZEROZATION`, executes Caliptra `ZEROIZE_UDS_FE`, requests LC SCRAP, and halts for cold reset. |
 
 ### HEK-Related Hooks
 
@@ -403,9 +403,16 @@ authorized MCI mailbox commands for the supported in-field flows:
 - `MC_FUSE_REVOKE_VENDOR_PUB_KEY` revokes an individual firmware
     verification key within a vendor PK hash slot. The command supports ECC
     P-384, LMS, and MLDSA-87 key types and burns the corresponding bit in the
-    slot's revocation field.
+    slot's revocation field. Use it when the other keys covered by that hash
+    remain trusted.
 - `MC_FUSE_REVOKE_VENDOR_PK_HASH` revokes an entire vendor PK hash slot by
-    setting the corresponding bit in `VENDOR_PK_HASH_VALID` to `1`.
+    setting the corresponding bit in `VENDOR_PK_HASH_VALID` to `1`. Use it when
+    trust in the entire associated key set must be withdrawn.
+
+See the Runtime fuse API documentation for
+[per-key revocation](./fuses.md#mc_fuse_revoke_vendor_pub_key) and
+[whole-slot revocation](./fuses.md#mc_fuse_revoke_vendor_pk_hash), including
+command payloads and restrictions.
 
 Both commands use the runtime authorization flow. They reject requests that
 target the key or PK hash slot used to boot the currently running firmware. This
@@ -416,34 +423,91 @@ booted with a replacement key or replacement PK hash slot.
 These revocation commands are exposed through the OOB SPDM VDM
 `AuthorizedCommand` path over MCTP/I3C as well as through the MCI mailbox path.
 
+#### Boot Failure and Recovery Planning
+
+Before revoking an old key or slot:
+
+1. Deploy a Caliptra FMC + Runtime bundle signed with the replacement vendor
+   key or key set. Cold boot and verify that both Caliptra Core and MCU Runtime
+   start successfully using the replacement key or slot.
+2. Update fallback and recovery images to use still-trusted keys and satisfy
+   the applicable [SVN anti-rollback requirements](./svn.md). Keep a known-good
+   recovery bundle that remains valid after the planned revocation.
+3. Verify that a supported platform recovery agent can supply that bundle and,
+   when needed, select a valid vendor hash slot without relying on MCU Runtime.
+   Do not assume automatic slot or image fallback after an authentication
+   failure.
+
+On subsequent cold boots, Caliptra Core rejects firmware signed with a revoked
+key. MCU ROM skips revoked vendor hash slots; firmware whose keys match only a
+revoked slot cannot authenticate against a surviving slot, and boot fails if no
+usable slot remains. These failures can prevent normal Caliptra and MCU Runtime
+startup, making Runtime-only recovery commands unavailable.
+
+Revocation is permanent: a reset or restoring an older image cannot clear the
+OTP revocation state. Recovery must use a still-trusted key or slot; it cannot
+undo revocation.
+
 #### Command Authorization Mechanism
 
-Command authorization across both MCU mailbox and SPDM VDM transports uses an
-asymmetric challenge-response signature flow. To execute an authorized command
-(e.g., key revocation or field entropy programming), the requester must:
+MCU mailbox and SPDM VDM use the same versioned
+[Authorization Block](caliptra_spdm_vdm_cmds.md#authorization-block). Each request
+carries its public keys and both ECDSA P-384 and ML-DSA-87 signatures. Runtime
+authenticates the supplied key pair against an existing, authenticated SoC
+Manifest IME:
 
-1. Request a one-use 48-byte challenge nonce from the device via `Get Auth Challenge`.
-2. Compute dual asymmetric signatures (ECC P-384 and ML-DSA-87) over
-   `cmd_id(BE) || payload(LE) || challenge(48)`.
-3. Submit the command payload accompanied by the resulting hybrid signature.
+- Vendor+Owner authority selects IME `0x4` in the original SoC Manifest.
+- Owner-only authority selects IME `0x6` in the Owner-only SoC Manifest.
 
-Integrators configure the authorizer policy by implementing the platform
-authorizer trait (`CommandAuthorizer` for mailbox or `CaliptraVdmAuthorization` for
-SPDM VDM) and provisioning the corresponding verification public keys in OTP
-fuses, secure platform storage, or embedded in firmware directly.
+The reference policy keeps all existing protected commands **Owner-only**.
+Integrators may explicitly enable Vendor+Owner for individual operations through
+`CommandAuthorizer::permits_authority`. There is no arbitrary IME selector,
+cross-manifest fallback, compiled-in verification-key fallback, or separate
+command-key installation command. The Owner manifest must be active in Core
+before an Owner command can succeed. Existing DPE identities and logic are
+unchanged; configured key digests update the existing IMEs in place.
+
+The signer selects Challenge-bound or Offline authorization independently for
+each request, without rebuilding firmware or querying a mode capability.
+A nonzero nonce must be a live 48-byte device challenge; an all-zero nonce
+selects replayable Offline authorization. Both forms require the same key,
+authority, scope, and signature checks. A nonzero 16-byte target UEID must match local OTP;
+zero UEID selects Fleet scope. Fleet online signatures are still bound to the
+individual device's nonce.
+
+The signed transcript is
+`cmd_id(BE) || payload || version(LE) || authority(LE) || UEID[16] || nonce[48]`.
+ECDSA signs SHA-384 of these bytes. ML-DSA signs their 64-byte SHA-512 digest
+using pure ML-DSA with an empty context. Public keys are bound separately by
+`SHA384(CoreWordEncode(ECC_X) || CoreWordEncode(ECC_Y) || MLDSA_public_key)`.
+Store the standard 48 digest bytes in the selected IME, not their fuse-word
+storage representation.
+
+Configure these entries through the builder's `with_command_auth_key_digests`
+API, or `--command-auth-key-digest HEX_DIGEST` on `xtask auth-manifest create`
+and `xtask owner-manifest create` respectively. The digest is exactly 96 hex
+digits (an optional `0x` prefix is accepted). Repository signing defaults are
+test fixtures; real deployment manifests must use the platform's production
+vendor/owner signing pipeline and dedicated command keys. Existing legacy
+digest fixtures must be reprovisioned in the canonical format for authorization.
+For an Owner command-key-only manifest, supply `--command-auth-key-digest`
+without `--owner_soc_image`; firmware image inputs are not required.
+Authorization integration fixtures explicitly activate an authenticated Owner
+manifest containing the test signer digest on both emulator and FPGA. This is
+test setup, not a Runtime command-key fallback.
 
 The `caliptra-spdm-validator` host tool supports the authorized fuse VDMs
 through the `[provision_vendor_pk_hash]`, `[increase_min_svn]`,
 `[revoke_vendor_pub_key]`, and `[revoke_vendor_pk_hash]` configuration sections.
-All integer fields below are little-endian, and the signature covers exactly the
-bytes before `HybridSignature`:
+Payload integers below are little-endian. The signed transcript is the one
+defined above; supplied public keys and signatures are not included in it.
 
 | Subcommand | Canonical ID | Authorized payload |
 |---|---:|---|
-| Provision Vendor PK Hash | `0x5056504b` (`PVPK`) | `slot:u32 \| hash:[u8;48] \| HybridSignature` |
-| Increase Min SVN | `0x4d434d53` (`MCMS`) | `flags:u32 \| target:u32 \| svn:u32 \| HybridSignature` |
-| Revoke Vendor Public Key | `0x4d52564b` (`MRVK`) | `reserved:u32 \| slot:u32 \| key_type:u32 \| key_index:u32 \| HybridSignature` |
-| Revoke Vendor PK Hash | `0x52564b48` (`RVKH`) | `reserved:u32 \| slot:u32 \| HybridSignature` |
+| Provision Vendor PK Hash | `0x5056504b` (`PVPK`) | `slot:u32 \| hash:[u8;48] \| AuthorizationBlock` |
+| Increase Min SVN | `0x4d434d53` (`MCMS`) | `flags:u32 \| target:u32 \| svn:u32 \| AuthorizationBlock` |
+| Revoke Vendor Public Key | `0x4d52564b` (`MRVK`) | `reserved:u32 \| slot:u32 \| key_type:u32 \| key_index:u32 \| AuthorizationBlock` |
+| Revoke Vendor PK Hash | `0x52564b48` (`RVKH`) | `reserved:u32 \| slot:u32 \| AuthorizationBlock` |
 
 The shared `[authorized_commands]` section supplies the test signer keys. The
 integration harness selects `authorization`, `provision-vendor-pk-hash`,
@@ -453,7 +517,7 @@ asserts responder completion codes for malformed, authorization, and policy
 failures rather than treating transport/session failures as expected rejection.
 These operations burn OTP state: validation must use disposable devices or a
 fresh emulator instance for each independently destructive scenario. The
-checked-in test keys are emulator fixtures only and must not be used as
+checked-in test keys are test fixtures only and must not be used as
 production authorization credentials.
 
 For per-key revocation, the reference implementation rejects the maximum key

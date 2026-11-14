@@ -1,8 +1,8 @@
 // Licensed under the Apache-2.0 license
 
-//! Subdomain registry for the SPDM-Lite stack.
+//! Subdomain registry for the SPDM stack.
 //!
-//! Every SPDM-Lite crate that produces errors picks a [subdomain
+//! Every SPDM crate that produces errors picks a [subdomain
 //! byte](#subdomains) from this central registry, then defines its
 //! own concrete [`McuErrorCode`] constants in its own `errors` module
 //! using `mcu_error::McuErrorCode::new(domain::SPDM, SUBDOMAIN_*, code)`.
@@ -35,7 +35,7 @@ use mcu_error::{domain, McuErrorCode};
 /// * `caliptra-mcu-spdm-stack` for dispatch/state-machine errors
 pub const SUBDOMAIN_LOCAL: u8 = 0x00;
 
-/// SPDM wire errors per DSP0274 §10.10.2.
+/// SPDM wire errors per DSP0274.
 ///
 /// The low byte of the resulting [`McuErrorCode::code`] carries the
 /// spec-defined SPDM error byte; responders extract it with
@@ -69,7 +69,7 @@ pub const fn is_vdm_no_response(e: McuErrorCode) -> bool {
 
 // ----- Wire-byte convention --------------------------------------------------
 
-/// Builds an [`McuErrorCode`] from a DSP0274 §10.10.2 SPDM error byte.
+/// Builds an [`McuErrorCode`] from a DSP0274 SPDM error byte.
 ///
 /// The byte is preserved in the low 8 bits of the resulting `code`,
 /// so SPDM responders can recover it via [`as_spdm_wire`] and write
@@ -97,7 +97,7 @@ pub const fn is_spdm_local(e: McuErrorCode) -> bool {
     e.domain() == domain::SPDM && e.subdomain() == SUBDOMAIN_LOCAL
 }
 
-/// `true` if `e` is an SPDM wire error (DSP0274 §10.10.2).
+/// `true` if `e` is an SPDM wire error.
 #[inline]
 pub const fn is_spdm_wire(e: McuErrorCode) -> bool {
     e.domain() == domain::SPDM && e.subdomain() == SUBDOMAIN_WIRE

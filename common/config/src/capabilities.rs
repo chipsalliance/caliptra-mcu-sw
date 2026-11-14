@@ -23,6 +23,7 @@ bitflags::bitflags! {
         const REQUEST_DEBUG_UNLOCK = command_capability(0x06);
         const AUTHORIZE_DEBUG_UNLOCK_TOKEN = command_capability(0x07);
         const EXPORT_ATTESTED_CSR = command_capability(0x08);
+        const PROVISION_IDEV_CERT = command_capability(0x09);
         const DEVICE_OWNERSHIP_TRANSFER = command_capability(0x11);
         const AUTHORIZED_COMMAND = command_capability(0x12);
         const OCP_LOCK = command_capability(0x13);
@@ -44,6 +45,9 @@ bitflags::bitflags! {
         const GET_DOT_BACKUP_BLOB = 1 << 11;
         const OCP_LOCK_ROTATE_HEK = 1 << 12;
         const OCP_LOCK_SET_PERMA_HEK = 1 << 13;
+        const DOT_ENABLE = 1 << 14;
+        const OCP_LOCK_PROGRAM_HEK = 1 << 15;
+        const OCP_LOCK_ZERO_HEK = 1 << 16;
     }
 }
 
@@ -116,10 +120,47 @@ mod tests {
             AuthorizedSubcommandCapabilities::OCP_LOCK_SET_PERMA_HEK.bits(),
             1 << 13
         );
+        assert_eq!(AuthorizedSubcommandCapabilities::DOT_ENABLE.bits(), 1 << 14);
+        assert_eq!(
+            AuthorizedSubcommandCapabilities::OCP_LOCK_PROGRAM_HEK.bits(),
+            1 << 15
+        );
+        assert_eq!(
+            AuthorizedSubcommandCapabilities::OCP_LOCK_ZERO_HEK.bits(),
+            1 << 16
+        );
+        assert_eq!(
+            ExternalCommandCapabilities::PROVISION_IDEV_CERT.bits(),
+            1 << 8
+        );
         assert_eq!(ExternalCommandCapabilities::OCP_LOCK.bits(), 1 << 18);
         assert_eq!(
             AuthorizedSubcommandCapabilities::FUSE_INCREASE_MIN_SVN.bits(),
             1 << 2
+        );
+    }
+
+    #[test]
+    fn authorized_subcommand_extensions_preserve_dot_enable_wire_bit() {
+        assert_eq!(
+            encode_capabilities(AuthorizedSubcommandCapabilities::DOT_ENABLE.bits()),
+            [0x00, 0x00, 0x40, 0x00]
+        );
+
+        let new_commands = AuthorizedSubcommandCapabilities::OCP_LOCK_PROGRAM_HEK
+            | AuthorizedSubcommandCapabilities::OCP_LOCK_ZERO_HEK;
+        assert_eq!(
+            encode_capabilities(new_commands.bits()),
+            [0x00, 0x01, 0x80, 0x00]
+        );
+        assert!(!new_commands.intersects(AuthorizedSubcommandCapabilities::DOT_ENABLE));
+    }
+
+    #[test]
+    fn retired_zeroization_capability_is_reserved() {
+        assert_eq!(
+            AuthorizedSubcommandCapabilities::all().bits() & (1 << 17),
+            0
         );
     }
 }

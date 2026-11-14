@@ -100,6 +100,34 @@ Checks performed:
 
 TODO: cryptographic verification of the evidence.
 
+## OCP Device Identity Provisioning tool
+
+`ocp_dev_identity_provision_tool` retrieves OCP DIP evidence over SPDM VDM.
+Every command first authenticates Vendor slot 0 against `--vendor-trust-anchor`
+(required for `discover` and `export-csr`) with CHALLENGE, then verifies each
+signed EAT (COSE_Sign1/CWT) with the RT alias certificate from that chain: the
+protected `kid` must equal the RT alias subject key identifier, the unprotected
+header must be empty, and the nonce must match a fresh per-request nonce.
+
+```bash
+# Verify and print the keypair inventory (ExportAttestedCsr key pair ID 0)
+ocp_dev_identity_provision_tool discover --server HOST:PORT \
+    --vendor-trust-anchor vendor.der [--report-json inventory.json]
+
+# Export a verified attested CSR for offline CA issuance
+ocp_dev_identity_provision_tool export-csr --server HOST:PORT \
+    --vendor-trust-anchor vendor.der --key-pair-id 1 \
+    --out-csr csr.der --out-eat evidence.cbor [--report-json csr.json]
+```
+
+`export-csr` only requests key pairs listed in a freshly verified inventory and
+requires the CSR's derivation attributes to match that inventory entry. Only
+P-384 evidence is supported: the SPDM Vendor chain carries the ECC RT alias
+certificate only, so ML-DSA-87 evidence cannot be authenticated yet.
+
+`provision-test` is a **demo-only** SET_CERTIFICATE flow: it issues an Owner
+chain from a fixed test CA key. Do not use it for production provisioning.
+
 ## Integration Tests
 
 The validator is automatically spawned by the integration test harness:

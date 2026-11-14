@@ -2,11 +2,27 @@
 
 //! A collection of useful utilities for xtask operations.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Result};
 
 use caliptra_mcu_firmware_bundler::utils::find_workspace_directory;
+
+/// Write `contents` to `path` only if the file is missing or differs.
+///
+/// Firmware build scripts track generated inputs (e.g. the files under
+/// `target/generated/`) with `cargo:rerun-if-changed`, which compares mtimes.
+/// Rewriting identical bytes would bump the mtime and force cargo to rebuild
+/// the firmware, so leave unchanged files untouched. Returns whether the file
+/// was written.
+pub(crate) fn write_if_changed(path: &Path, contents: impl AsRef<[u8]>) -> std::io::Result<bool> {
+    let contents = contents.as_ref();
+    if std::fs::read(path).is_ok_and(|existing| existing == contents) {
+        return Ok(false);
+    }
+    std::fs::write(path, contents)?;
+    Ok(true)
+}
 
 // Default emulator manifests use the constrained 512 KB SRAM layout (matches
 // the real device).  Built by the default `release` cargo profile.
@@ -69,4 +85,54 @@ pub fn bare_metal_manifest_file(platform: Option<&str>) -> Result<PathBuf> {
     };
 
     find_workspace_directory().map(|w| w.join(manifest))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use caliptra_mcu_config_emulator::EMULATOR_MEMORY_MAP;
+
+    #[test]
+    fn emulator_rom_and_runtime_share_handoff_layout() {
+        for example_app in [false, true] {
+            for profile in [None, Some("devel"), Some("release")] {
+                let path = match profile {
+                    None => manifest_file(Some("emulator"), example_app),
+                    Some(_) => manifest_file_for_profile(Some("emulator"), example_app, profile),
+                }
+                .unwrap();
+                let manifest: toml::Value =
+                    toml::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+                let dccm = &manifest["platform"]["dccm"];
+                let handoff = &manifest["platform"]["handoff"];
+                let offset = handoff["offset"].as_integer().unwrap();
+                let size = handoff["size"].as_integer().unwrap();
+
+                assert_eq!(
+                    offset,
+                    i64::from(EMULATOR_MEMORY_MAP.handoff_offset),
+                    "{}",
+                    path.display()
+                );
+                assert_eq!(size, i64::from(EMULATOR_MEMORY_MAP.handoff_size));
+                assert_eq!(
+                    dccm["offset"].as_integer().unwrap() + dccm["size"].as_integer().unwrap(),
+                    offset
+                );
+                assert_eq!(
+                    offset + size,
+                    i64::from(EMULATOR_MEMORY_MAP.dccm_offset)
+                        + i64::from(EMULATOR_MEMORY_MAP.dccm_size)
+                );
+                assert_eq!(
+                    manifest["platform"]["runtime_memory"]["sram"]["size"].as_integer(),
+                    Some(if profile == Some("release") {
+                        0x8_0000
+                    } else {
+                        0x10_0000
+                    })
+                );
+            }
+        }
+    }
 }

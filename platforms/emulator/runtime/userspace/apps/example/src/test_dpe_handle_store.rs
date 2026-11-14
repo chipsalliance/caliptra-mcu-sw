@@ -3,8 +3,8 @@
 // NOTE: Do not call `caliptra_mcu_romtime::println!` from this test.
 
 use caliptra_mcu_libsyscall_caliptra::dpe_handle_store::{
-    DpeHandleRecord, DpeHandleStore, DPE_HANDLE_STORE_DRIVER_NUM, EXPORTED_CDI_SIZE,
-    POLICY_DIGEST_SIZE,
+    DpeHandleRecord, DpeHandleStore, DPE_HANDLE_STORE_DRIVER_NUM, EXPORTED_CDI_ANY_FW_ID,
+    EXPORTED_CDI_SIZE, POLICY_DIGEST_SIZE,
 };
 use caliptra_mcu_libsyscall_caliptra::DefaultSyscalls;
 
@@ -23,15 +23,15 @@ pub(crate) fn test_dpe_handle_store() {
     // Wrong digest must fail.
     assert!(store.validate_store(&[0xFFu8; POLICY_DIGEST_SIZE]).is_err());
 
-    // Empty store: leaf and attestation target must fail.
+    // Empty store: leaf, attestation target, and exported CDI must fail.
     let mut out = DpeHandleRecord::default();
     assert!(store.read_leaf_record(&mut out).is_err());
     assert!(store.read_attestation_target(&mut out).is_err());
-
-    // Exported CDI must be all zeros after initialization.
     let mut cdi_out = [0xFFu8; EXPORTED_CDI_SIZE];
-    store.read_exported_cdi(&mut cdi_out).unwrap();
-    assert_eq!(cdi_out, [0u8; EXPORTED_CDI_SIZE]);
+    assert!(store.read_exported_cdi(0x0001, &mut cdi_out).is_err());
+    assert!(store
+        .read_exported_cdi(EXPORTED_CDI_ANY_FW_ID, &mut cdi_out)
+        .is_err());
 
     // Write a root record (fw_id 0x0001, no parent).
     let root = DpeHandleRecord {
@@ -90,10 +90,50 @@ pub(crate) fn test_dpe_handle_store() {
     // validate_store still succeeds (state is consistent).
     store.validate_store(&policy_digest).unwrap();
 
-    // Test writing and reading exported CDI.
+    // Exported CDI validation: all-zero handle and unknown fw_id must fail.
+    assert!(store
+        .write_exported_cdi(child_v2.fw_id, &[0u8; EXPORTED_CDI_SIZE])
+        .is_err());
     let test_cdi = [0x55u8; EXPORTED_CDI_SIZE];
-    store.write_exported_cdi(&test_cdi).unwrap();
-    store.read_exported_cdi(&mut cdi_out).unwrap();
+    assert!(store.write_exported_cdi(0xDEAD_BEEF, &test_cdi).is_err());
+
+    // Write and read exported CDI for child_v2.
+    store.write_exported_cdi(child_v2.fw_id, &test_cdi).unwrap();
+    store
+        .read_exported_cdi(child_v2.fw_id, &mut cdi_out)
+        .unwrap();
+    assert_eq!(cdi_out, test_cdi);
+    cdi_out = [0u8; EXPORTED_CDI_SIZE];
+    store
+        .read_exported_cdi(EXPORTED_CDI_ANY_FW_ID, &mut cdi_out)
+        .unwrap();
+    assert_eq!(cdi_out, test_cdi);
+    assert!(store.read_exported_cdi(root.fw_id, &mut cdi_out).is_err());
+
+    // Updating the same fw_id in place must succeed.
+    let updated_cdi = [0x66u8; EXPORTED_CDI_SIZE];
+    store
+        .write_exported_cdi(child_v2.fw_id, &updated_cdi)
+        .unwrap();
+    store
+        .read_exported_cdi(child_v2.fw_id, &mut cdi_out)
+        .unwrap();
+    assert_eq!(cdi_out, updated_cdi);
+
+    // Writing a second distinct fw_id when exported_cdi_capacity == 1 must fail.
+    assert!(store.write_exported_cdi(root.fw_id, &test_cdi).is_err());
+
+    // validate_store succeeds with active exported CDI slot.
+    store.validate_store(&policy_digest).unwrap();
+
+    // Clearing the slot frees capacity for another fw_id.
+    assert!(store.clear_exported_cdi(root.fw_id).is_err());
+    store.clear_exported_cdi(child_v2.fw_id).unwrap();
+    assert!(store
+        .read_exported_cdi(child_v2.fw_id, &mut cdi_out)
+        .is_err());
+    store.write_exported_cdi(root.fw_id, &test_cdi).unwrap();
+    store.read_exported_cdi(root.fw_id, &mut cdi_out).unwrap();
     assert_eq!(cdi_out, test_cdi);
 
     // Re-initialize clears everything.
@@ -106,7 +146,9 @@ pub(crate) fn test_dpe_handle_store() {
     assert!(store.validate_store(&policy_digest).is_err());
     store.validate_store(&new_digest).unwrap();
 
-    // Exported CDI must be cleared after re-initialization.
-    store.read_exported_cdi(&mut cdi_out).unwrap();
-    assert_eq!(cdi_out, [0u8; EXPORTED_CDI_SIZE]);
+    // Exported CDI slots must be cleared after re-initialization.
+    assert!(store.read_exported_cdi(root.fw_id, &mut cdi_out).is_err());
+    assert!(store
+        .read_exported_cdi(EXPORTED_CDI_ANY_FW_ID, &mut cdi_out)
+        .is_err());
 }

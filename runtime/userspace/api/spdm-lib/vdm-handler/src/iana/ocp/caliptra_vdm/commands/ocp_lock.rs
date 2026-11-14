@@ -1,27 +1,42 @@
 // Licensed under the Apache-2.0 license
 
-use caliptra_mcu_mbox_common::messages::CommandId;
+use caliptra_mcu_common_commands::command::{execute_ocp_lock, CommandPolicy, CommandResponse};
+use caliptra_mcu_common_commands::CaliptraCmdHandler;
 use caliptra_mcu_spdm_codec::vendor_defined::iana::ocp::caliptra::{
     CaliptraCompletionCode, CaliptraVdmCmdResult,
 };
+use caliptra_mcu_spdm_traits::SpdmPalAlloc;
 
-pub const OCP_LOCK_ROTATE_HEK_CMD_ID: u32 = CommandId::MC_OCP_LOCK_ROTATE_HEK.0;
-pub const OCP_LOCK_SET_PERMA_HEK_CMD_ID: u32 = CommandId::MC_OCP_LOCK_SET_PERMA_HEK.0;
-
-pub(crate) fn handle(request: &[u8]) -> CaliptraVdmCmdResult {
-    let Some(subcommand) = request.get(..4) else {
-        return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidPayloadSize);
+pub(crate) async fn handle<H, Alloc>(
+    commands: &H,
+    request: &[u8],
+    scratch: &Alloc,
+    output: &mut [u8],
+) -> CaliptraVdmCmdResult
+where
+    H: CaliptraCmdHandler,
+    Alloc: SpdmPalAlloc,
+{
+    let Some((completion, response)) = output.split_first_mut() else {
+        return CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InsufficientResources);
     };
-    let subcommand =
-        u32::from_le_bytes([subcommand[0], subcommand[1], subcommand[2], subcommand[3]]);
-
-    // Protected commands must arrive as AuthorizedCommand(0x12) -> family
-    // 0x13. Rejecting them on this native 0x13 path prevents authorization
-    // bypass.
-    match subcommand {
-        OCP_LOCK_ROTATE_HEK_CMD_ID | OCP_LOCK_SET_PERMA_HEK_CMD_ID => {
-            CaliptraVdmCmdResult::Error(CaliptraCompletionCode::AccessDenied)
+    match execute_ocp_lock(
+        commands,
+        scratch.allocator(),
+        request,
+        response,
+        CommandPolicy::SPDM,
+    )
+    .await
+    {
+        Ok(CommandResponse::Data(len)) => {
+            *completion = CaliptraCompletionCode::Success as u8;
+            CaliptraVdmCmdResult::Response(1 + len)
         }
-        _ => CaliptraVdmCmdResult::Error(CaliptraCompletionCode::InvalidParameter),
+        Ok(CommandResponse::Empty | CommandResponse::ResetRequired) => {
+            *completion = CaliptraCompletionCode::Success as u8;
+            CaliptraVdmCmdResult::Response(1)
+        }
+        Err(error) => CaliptraVdmCmdResult::Error(super::map_common_completion(error)),
     }
 }

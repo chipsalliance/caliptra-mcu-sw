@@ -50,7 +50,9 @@ impl EndSessionReqBody {
 pub struct EndSessionAck;
 
 impl ResponseBody for EndSessionAck {
-    const RESPONSE_CODE: ReqRespCode = ReqRespCode::END_SESSION_ACK;
+    fn response_code(&self) -> ReqRespCode {
+        ReqRespCode::END_SESSION_ACK
+    }
 
     fn body_size(&self) -> usize {
         2

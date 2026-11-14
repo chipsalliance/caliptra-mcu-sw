@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! PCI-SIG IDE-KM VDM responder for SPDM-Lite.
+//! PCI-SIG IDE-KM VDM responder for the SPDM stack.
 
 use caliptra_mcu_spdm_codec::{
     IdeKmCommand, IdeKmHdr, PciSigProtocolHdr, StandardsBodyId, WireReader, WireWriter,
@@ -773,7 +773,7 @@ mod tests {
 
     struct TestAlloc;
 
-    impl mcu_caliptra_api::ApiAlloc for TestAlloc {
+    impl mcu_caliptra_api::ScratchAlloc for TestAlloc {
         type Buf<'a>
             = Vec<u8>
         where
@@ -784,10 +784,10 @@ mod tests {
         }
     }
 
-    impl mcu_caliptra_api::ApiAllocPool for TestAlloc {
-        type Pool = Self;
+    impl mcu_caliptra_api::ScratchAllocProvider for TestAlloc {
+        type Alloc = Self;
 
-        fn pool(&self) -> &Self::Pool {
+        fn allocator(&self) -> &Self::Alloc {
             self
         }
     }

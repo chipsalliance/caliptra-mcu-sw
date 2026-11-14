@@ -5,6 +5,7 @@
 
 use crate::offline_signing::{create_signing_request, SigningRequestJson};
 use crate::target_dir;
+use crate::utils::write_if_changed;
 use anyhow::{bail, Context, Result};
 use caliptra_auth_man_gen::{
     AuthManifestGenerator, AuthManifestGeneratorConfig, AuthManifestGeneratorKeyConfig,
@@ -24,7 +25,9 @@ use caliptra_image_gen::{
 use caliptra_image_types::{
     FwVerificationPqcKeyType, ImageBundle, ImageManifest, ImageRevision, IMAGE_MANIFEST_BYTE_SIZE,
 };
-use caliptra_mcu_flash_image::MCU_RT_IDENTIFIER;
+use caliptra_mcu_flash_image::{
+    MCU_RT_IDENTIFIER, OWNER_MEASUREMENT_POLICY_IDENTIFIER, O_AUTH_KEY_ID, V_AUTH_KEY_ID,
+};
 use cargo_metadata::MetadataCommand;
 use hex::ToHex;
 use std::{
@@ -37,6 +40,25 @@ use std::{
 use zerocopy::{transmute, FromBytes, IntoBytes};
 
 const DEFAULT_PQC_KEY_TYPE: FwVerificationPqcKeyType = FwVerificationPqcKeyType::LMS;
+
+/// Default SHA-384 test vendor authorization-key digest, derived from
+/// label "caliptra-mcu-test-vendor-authorization-keys".
+/// The original SoC Manifest authorizes this vendor key under Vendor+Owner
+/// authority.
+/// Explicit command-key digest configuration overrides this default.
+pub const VENDOR_AUTH_KEY_ANCHOR: [u8; 48] = [
+    0xa2, 0x68, 0x7c, 0xf2, 0x45, 0x99, 0xb8, 0xf0, 0xf8, 0x26, 0x81, 0xd9, 0xbf, 0x6d, 0x77, 0xac,
+    0x22, 0x47, 0x09, 0x4d, 0x1e, 0x9a, 0x2d, 0x81, 0x41, 0x55, 0x5f, 0xc6, 0x0d, 0x05, 0xc3, 0x0a,
+    0x9f, 0xbd, 0x23, 0x46, 0x18, 0x09, 0xbf, 0xa5, 0x7d, 0xc7, 0x28, 0xd7, 0xbc, 0xc1, 0x7d, 0xea,
+];
+
+/// Default SHA-384 test Owner authorization-key digest.
+/// An explicit owner key image or command-key digest overrides this default.
+pub const OWNER_AUTH_KEY_ANCHOR: [u8; 48] = [
+    0x29, 0x04, 0x41, 0x6e, 0xf2, 0x71, 0x31, 0x40, 0xd4, 0xa2, 0x21, 0x14, 0x48, 0xa3, 0xa8, 0x42,
+    0x73, 0x7b, 0xf1, 0x8c, 0x6f, 0x84, 0x3f, 0x56, 0x5b, 0x5c, 0xe5, 0x35, 0xea, 0x69, 0xef, 0x2a,
+    0x8c, 0xc1, 0x14, 0xb1, 0xbe, 0xb2, 0xe6, 0x5f, 0x5f, 0x0f, 0x35, 0x4b, 0x30, 0x9b, 0xed, 0x17,
+];
 
 /// A wrapper for raw firmware bytes that implements ImageGeneratorExecutable.
 /// Used to re-sign existing FW bundles without recompiling.
@@ -104,6 +126,7 @@ pub struct CaliptraBuilder {
     caliptra_firmware: Option<PathBuf>,
     soc_manifest: Option<PathBuf>,
     owner_auth_manifest: Option<PathBuf>,
+    owner_measurement_policy: Option<PathBuf>,
     vendor_pk_hash: Option<String>,
     owner_pk_hash: Option<String>,
     mcu_firmware: Option<PathBuf>,
@@ -112,6 +135,7 @@ pub struct CaliptraBuilder {
     mcu_image_cfg: Option<ImageCfg>,
     soc_manifest_svn: Option<u32>,
     owner_manifest_svn: Option<u32>,
+    target_dir: Option<PathBuf>,
     vendor: String,
     model: String,
     /// Optional custom owner configuration for re-signing FW bundles.
@@ -123,6 +147,8 @@ pub struct CaliptraBuilder {
     svn: Option<u16>,
     pqc_key_type: FwVerificationPqcKeyType,
     use_second_key: bool,
+    command_auth_vendor_owner_digest: Option<[u8; 48]>,
+    command_auth_owner_digest: Option<[u8; 48]>,
 }
 
 impl CaliptraBuilder {
@@ -135,6 +161,7 @@ impl CaliptraBuilder {
             caliptra_firmware: args.caliptra_firmware.clone(),
             soc_manifest: args.soc_manifest.clone(),
             owner_auth_manifest: args.owner_auth_manifest.clone(),
+            owner_measurement_policy: args.owner_measurement_policy.clone(),
             vendor_pk_hash: args.vendor_pk_hash.clone(),
             owner_pk_hash: None,
             mcu_firmware: args.mcu_firmware.clone(),
@@ -143,6 +170,7 @@ impl CaliptraBuilder {
             mcu_image_cfg: args.mcu_image_cfg.clone(),
             soc_manifest_svn: args.soc_manifest_svn,
             owner_manifest_svn: args.owner_manifest_svn,
+            target_dir: args.target_dir.clone(),
             vendor: args
                 .vendor
                 .clone()
@@ -156,11 +184,22 @@ impl CaliptraBuilder {
             svn: args.svn,
             pqc_key_type: args.pqc_key_type.unwrap_or(DEFAULT_PQC_KEY_TYPE),
             use_second_key: args.use_second_key,
+            command_auth_vendor_owner_digest: None,
+            command_auth_owner_digest: None,
         }
     }
 
     pub fn from_args(args: &crate::CaliptraBuildArgs) -> Self {
         Self::new(args)
+    }
+
+    pub fn with_target_dir(mut self, target_dir: impl Into<PathBuf>) -> Self {
+        self.target_dir = Some(target_dir.into());
+        self
+    }
+
+    fn target_dir(&self) -> PathBuf {
+        self.target_dir.clone().unwrap_or_else(crate::target_dir)
     }
 
     /// Sets a custom owner configuration for re-signing the FW bundle.
@@ -178,6 +217,23 @@ impl CaliptraBuilder {
     ) -> Self {
         self.auth_manifest_owner_config = Some(auth_manifest_owner_config);
         self
+    }
+
+    /// Configure the existing auth-key IME digests before generating signed manifests.
+    pub fn with_command_auth_key_digests(
+        mut self,
+        vendor_owner: Option<[u8; 48]>,
+        owner: Option<[u8; 48]>,
+    ) -> Result<Self> {
+        if self.soc_manifest.is_some() && vendor_owner != self.command_auth_vendor_owner_digest {
+            bail!("Cannot change command-key metadata in an existing original SoC Manifest");
+        }
+        if self.owner_auth_manifest.is_some() && owner != self.command_auth_owner_digest {
+            bail!("Cannot change command-key metadata in an existing Owner SoC Manifest");
+        }
+        self.command_auth_vendor_owner_digest = vendor_owner;
+        self.command_auth_owner_digest = owner;
+        Ok(self)
     }
 
     /// Returns the owner public key hash if available.
@@ -231,7 +287,7 @@ impl CaliptraBuilder {
             )?;
 
             // Write the re-signed bundle to a new path
-            let path = target_dir().join("caliptra-fw-bundle-resigned.bin");
+            let path = self.target_dir().join("caliptra-fw-bundle-resigned.bin");
             let fw_bytes = new_bundle.to_bytes()?;
             if let Some(parent) = path.parent() {
                 std::fs::create_dir_all(parent)?;
@@ -298,14 +354,229 @@ impl CaliptraBuilder {
         Ok(metadata)
     }
 
-    fn get_owner_soc_images_metadata(&self) -> Result<Vec<AuthManifestImageMetadata>> {
+    fn configured_vendor_auth_key_metadata(&self) -> AuthManifestImageMetadata {
+        let mut metadata = Self::get_vendor_auth_key_metadata();
+        if let Some(digest) = self.command_auth_vendor_owner_digest {
+            metadata.digest = digest;
+        }
+        metadata
+    }
+
+    pub fn get_vendor_auth_key_metadata() -> AuthManifestImageMetadata {
+        AuthManifestImageMetadata {
+            fw_id: V_AUTH_KEY_ID,
+            flags: 0,
+            component_id: V_AUTH_KEY_ID,
+            digest: VENDOR_AUTH_KEY_ANCHOR,
+            ..Default::default()
+        }
+    }
+
+    pub fn get_owner_auth_key_metadata() -> AuthManifestImageMetadata {
+        AuthManifestImageMetadata {
+            fw_id: O_AUTH_KEY_ID,
+            flags: 0,
+            component_id: O_AUTH_KEY_ID,
+            digest: OWNER_AUTH_KEY_ANCHOR,
+            ..Default::default()
+        }
+    }
+
+    pub fn generate_owner_measurement_policy(owner_soc_images: &[ImageCfg]) -> Result<Vec<u8>> {
+        const OWNER_ATTESTATION_MANIFEST_MARKER: u32 = 0x4D41_4F4D; // MOAM
+        const OWNER_ATTESTATION_MANIFEST_FIXED_HEADER_SIZE: usize = 28;
+        const ATTESTATION_FLAG_SOC_TCB_DPE: u32 = 1 << 0;
+
+        let mut tcb_entries = vec![
+            (
+                OWNER_MEASUREMENT_POLICY_IDENTIFIER,
+                ATTESTATION_FLAG_SOC_TCB_DPE,
+            ),
+            (O_AUTH_KEY_ID, ATTESTATION_FLAG_SOC_TCB_DPE),
+        ];
+        let mut non_tcb_entries = Vec::new();
+        let mut fw_load_list = Vec::new();
+
+        for img in owner_soc_images {
+            if img.image_id == OWNER_MEASUREMENT_POLICY_IDENTIFIER || img.image_id == O_AUTH_KEY_ID
+            {
+                continue;
+            }
+            if img.is_ak_target {
+                bail!("Owner firmware components cannot be attestation key targets");
+            }
+            if img.is_export_cdi_target {
+                bail!("Owner firmware components cannot be exported-CDI targets");
+            }
+            if img.is_tcb {
+                tcb_entries.push((img.image_id, ATTESTATION_FLAG_SOC_TCB_DPE));
+            } else {
+                non_tcb_entries.push((img.image_id, 0u32));
+            }
+            fw_load_list.push(img.image_id);
+        }
+
+        let entry_count = (tcb_entries.len() + non_tcb_entries.len()) as u32;
+        let tcb_entry_count = tcb_entries.len() as u32;
+        let manifest_size =
+            (OWNER_ATTESTATION_MANIFEST_FIXED_HEADER_SIZE + (entry_count as usize * 8)) as u32;
+
+        const OWNER_FW_LOAD_LIST_MARKER: u32 = 0x4C4C_4F4D; // MOLL
+        const OWNER_FW_LOAD_LIST_HEADER_SIZE: usize = 16;
+        let load_list_entry_count = fw_load_list.len() as u32;
+        let load_list_size =
+            (OWNER_FW_LOAD_LIST_HEADER_SIZE + (load_list_entry_count as usize * 4)) as u32;
+
+        let total_size = manifest_size as usize + load_list_size as usize;
+        let mut policy_bytes = Vec::with_capacity(total_size);
+
+        policy_bytes.extend_from_slice(&OWNER_ATTESTATION_MANIFEST_MARKER.to_le_bytes());
+        policy_bytes.extend_from_slice(&manifest_size.to_le_bytes());
+        policy_bytes.extend_from_slice(&1u32.to_le_bytes());
+        policy_bytes.extend_from_slice(
+            &(OWNER_ATTESTATION_MANIFEST_FIXED_HEADER_SIZE as u32).to_le_bytes(),
+        );
+        policy_bytes.extend_from_slice(&entry_count.to_le_bytes());
+        policy_bytes.extend_from_slice(&tcb_entry_count.to_le_bytes());
+        policy_bytes.extend_from_slice(&0u16.to_le_bytes());
+        policy_bytes.extend_from_slice(&0u16.to_le_bytes());
+
+        for (fw_id, flags) in &tcb_entries {
+            policy_bytes.extend_from_slice(&fw_id.to_le_bytes());
+            policy_bytes.extend_from_slice(&flags.to_le_bytes());
+        }
+
+        for (fw_id, flags) in &non_tcb_entries {
+            policy_bytes.extend_from_slice(&fw_id.to_le_bytes());
+            policy_bytes.extend_from_slice(&flags.to_le_bytes());
+        }
+
+        // Owner FW load list section: 16-byte MOLL header followed by the ordered
+        // sequence of little-endian u32 firmware IDs for runtime image loading.
+        policy_bytes.extend_from_slice(&OWNER_FW_LOAD_LIST_MARKER.to_le_bytes());
+        policy_bytes.extend_from_slice(&load_list_size.to_le_bytes());
+        policy_bytes.extend_from_slice(&1u32.to_le_bytes());
+        policy_bytes.extend_from_slice(&load_list_entry_count.to_le_bytes());
+
+        for fw_id in &fw_load_list {
+            policy_bytes.extend_from_slice(&fw_id.to_le_bytes());
+        }
+
+        Ok(policy_bytes)
+    }
+
+    pub fn get_owner_measurement_policy(&mut self, name: Option<&str>) -> Result<PathBuf> {
+        if self.owner_measurement_policy.is_none() {
+            let policy_bytes = Self::generate_owner_measurement_policy(
+                self.owner_soc_images.as_deref().unwrap_or(&[]),
+            )?;
+            let path = name
+                .map(PathBuf::from)
+                .unwrap_or_else(|| self.target_dir().join("owner-measurement-policy.bin"));
+            if let Some(parent) = path.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            // user-app's build script tracks this file by mtime; don't touch
+            // it unless the policy changed.
+            write_if_changed(&path, &policy_bytes)?;
+            self.owner_measurement_policy = Some(path);
+        } else if let Some(target) = name {
+            let target_path = PathBuf::from(target);
+            if let Some(ref cached) = self.owner_measurement_policy {
+                if target_path != *cached {
+                    if let Some(parent) = target_path.parent() {
+                        std::fs::create_dir_all(parent)?;
+                    }
+                    std::fs::copy(cached, &target_path)?;
+                    return Ok(target_path);
+                }
+            }
+        }
+        Ok(self.owner_measurement_policy.clone().unwrap())
+    }
+
+    fn get_owner_soc_images_metadata(&mut self) -> Result<Vec<AuthManifestImageMetadata>> {
         let mut metadata = Vec::new();
+
+        let has_policy = self
+            .owner_soc_images
+            .as_ref()
+            .map(|imgs| {
+                imgs.iter()
+                    .any(|img| img.image_id == OWNER_MEASUREMENT_POLICY_IDENTIFIER)
+            })
+            .unwrap_or(false);
+
+        if has_policy {
+            let policy_img = self
+                .owner_soc_images
+                .as_ref()
+                .unwrap()
+                .iter()
+                .find(|img| img.image_id == OWNER_MEASUREMENT_POLICY_IDENTIFIER)
+                .unwrap();
+            metadata.push(Self::get_soc_manifest_metadata(policy_img)?);
+        } else {
+            let policy_path = self.get_owner_measurement_policy(None)?;
+            let policy_data = std::fs::read(&policy_path)?;
+            let crypto = Crypto::default();
+            let digest = from_hw_format(&crypto.sha384_digest(&policy_data)?);
+            metadata.push(AuthManifestImageMetadata {
+                fw_id: OWNER_MEASUREMENT_POLICY_IDENTIFIER,
+                flags: 0,
+                component_id: OWNER_MEASUREMENT_POLICY_IDENTIFIER,
+                digest,
+                ..Default::default()
+            });
+        }
+
+        let has_owner_auth_key = self
+            .owner_soc_images
+            .as_ref()
+            .map(|imgs| imgs.iter().any(|img| img.image_id == O_AUTH_KEY_ID))
+            .unwrap_or(false);
+
+        let mut owner_key = if has_owner_auth_key {
+            let key_img = self
+                .owner_soc_images
+                .as_ref()
+                .unwrap()
+                .iter()
+                .find(|img| img.image_id == O_AUTH_KEY_ID)
+                .unwrap();
+            Self::get_soc_manifest_metadata(key_img)?
+        } else {
+            Self::get_owner_auth_key_metadata()
+        };
+
+        if let Some(digest) = self.command_auth_owner_digest {
+            if has_owner_auth_key && owner_key.digest != digest {
+                bail!(
+                    "Owner auth-key IME 0x6 has conflicting digests in owner_soc_images and command-auth-key-digest"
+                );
+            }
+            owner_key.digest = digest;
+        }
+        metadata.push(owner_key);
+
         if let Some(owner_soc_images) = &self.owner_soc_images {
             Self::validate_owner_soc_images(owner_soc_images)?;
             for owner_soc_image in owner_soc_images {
-                metadata.push(Self::get_soc_manifest_metadata(owner_soc_image)?);
+                if owner_soc_image.image_id != OWNER_MEASUREMENT_POLICY_IDENTIFIER
+                    && owner_soc_image.image_id != O_AUTH_KEY_ID
+                {
+                    metadata.push(Self::get_soc_manifest_metadata(owner_soc_image)?);
+                }
             }
         }
+
+        if metadata.len() > 32 {
+            bail!(
+                "Owner authorization manifest exceeds maximum capacity of 32 entries (has {})",
+                metadata.len()
+            );
+        }
+
         Ok(metadata)
     }
 
@@ -314,7 +585,10 @@ impl CaliptraBuilder {
 
         let mut fw_ids = HashSet::new();
         for image in owner_soc_images {
-            if image.image_id < OWNER_FW_ID_MIN {
+            if image.image_id < OWNER_FW_ID_MIN
+                && image.image_id != OWNER_MEASUREMENT_POLICY_IDENTIFIER
+                && image.image_id != O_AUTH_KEY_ID
+            {
                 bail!(
                     "Owner firmware ID {:#010x} is outside the owner-only range {:#010x}..={:#010x}",
                     image.image_id,
@@ -341,10 +615,10 @@ impl CaliptraBuilder {
             let mcu_fw_metadata =
                 self.get_mcu_manifest_metadata(self.mcu_firmware.as_ref().unwrap())?;
             let soc_images_metadata = self.get_soc_images_metadata()?;
-            let mut metadata = vec![mcu_fw_metadata];
+            let mut metadata = vec![mcu_fw_metadata, self.configured_vendor_auth_key_metadata()];
             metadata.extend(soc_images_metadata);
 
-            let path = Self::write_soc_manifest(
+            let path = self.write_soc_manifest(
                 metadata,
                 self.soc_manifest_svn.unwrap_or(0),
                 name,
@@ -353,6 +627,17 @@ impl CaliptraBuilder {
             )?;
             self.write_attestation_manifest_config(self.soc_images.as_deref().unwrap_or(&[]))?;
             self.soc_manifest = Some(path);
+        } else if let Some(target) = name {
+            let target_path = PathBuf::from(target);
+            if let Some(ref cached) = self.soc_manifest {
+                if target_path != *cached {
+                    if let Some(parent) = target_path.parent() {
+                        std::fs::create_dir_all(parent)?;
+                    }
+                    std::fs::copy(cached, &target_path)?;
+                    return Ok(target_path);
+                }
+            }
         }
         Ok(self.soc_manifest.clone().unwrap())
     }
@@ -369,12 +654,23 @@ impl CaliptraBuilder {
             )?;
             let path = name
                 .map(PathBuf::from)
-                .unwrap_or_else(|| target_dir().join("owner-auth-manifest"));
+                .unwrap_or_else(|| self.target_dir().join("owner-auth-manifest"));
             if let Some(parent) = path.parent() {
                 std::fs::create_dir_all(parent)?;
             }
             std::fs::write(&path, manifest.as_bytes())?;
             self.owner_auth_manifest = Some(path);
+        } else if let Some(target) = name {
+            let target_path = PathBuf::from(target);
+            if let Some(ref cached) = self.owner_auth_manifest {
+                if target_path != *cached {
+                    if let Some(parent) = target_path.parent() {
+                        std::fs::create_dir_all(parent)?;
+                    }
+                    std::fs::copy(cached, &target_path)?;
+                    return Ok(target_path);
+                }
+            }
         }
         Ok(self.owner_auth_manifest.clone().unwrap())
     }
@@ -389,11 +685,11 @@ impl CaliptraBuilder {
         self.soc_images = Some(metadata);
         self.soc_manifest_svn = svn;
 
-        self.soc_manifest = None; // Clear the cached manifest
+        let previous_path = self.soc_manifest.take();
 
         // Rebuild the SoC manifest
         println!("Rebuilding SoC manifest with new metadata");
-        self.get_soc_manifest(None)
+        self.get_soc_manifest(previous_path.as_deref().and_then(|p| p.to_str()))
     }
 
     pub fn get_vendor_pk_hash(&mut self) -> Result<&str> {
@@ -499,6 +795,7 @@ impl CaliptraBuilder {
     }
 
     fn write_soc_manifest(
+        &self,
         metadata: Vec<AuthManifestImageMetadata>,
         svn: u32,
         name: Option<&str>,
@@ -514,7 +811,7 @@ impl CaliptraBuilder {
 
         let path = name
             .map(PathBuf::from)
-            .unwrap_or(target_dir().join("soc-manifest"));
+            .unwrap_or_else(|| self.target_dir().join("soc-manifest"));
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -523,7 +820,8 @@ impl CaliptraBuilder {
     }
 
     pub fn write_attestation_manifest_config(&self, soc_images: &[ImageCfg]) -> Result<()> {
-        crate::attestation_manifest::write_config(
+        crate::attestation_manifest::write_config_to_target_dir(
+            &self.target_dir(),
             &self.vendor,
             &self.model,
             soc_images,
@@ -1114,7 +1412,7 @@ fn main() -> Result<()> {
         let mcu_fw_metadata =
             self.get_mcu_manifest_metadata(self.mcu_firmware.as_ref().unwrap())?;
         let soc_images_metadata = self.get_soc_images_metadata()?;
-        let mut metadata = vec![mcu_fw_metadata];
+        let mut metadata = vec![mcu_fw_metadata, self.configured_vendor_auth_key_metadata()];
         metadata.extend(soc_images_metadata);
 
         let manifest = Self::create_unsigned_auth_manifest_with_metadata(
@@ -1127,7 +1425,7 @@ fn main() -> Result<()> {
 
         let path = name
             .map(PathBuf::from)
-            .unwrap_or_else(|| target_dir().join("soc-manifest"));
+            .unwrap_or_else(|| self.target_dir().join("soc-manifest"));
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
@@ -1289,6 +1587,7 @@ pub struct ImageCfg {
     pub component_id: u32,
     pub is_tcb: bool,
     pub is_ak_target: bool,
+    pub is_export_cdi_target: bool,
     pub feature: String,
 }
 impl Default for ImageCfg {
@@ -1304,6 +1603,7 @@ impl Default for ImageCfg {
             component_id: 0,
             is_tcb: false,
             is_ak_target: false,
+            is_export_cdi_target: false,
             feature: String::new(),
         }
     }
@@ -1354,6 +1654,7 @@ impl FromStr for ImageCfg {
             component_id,
             is_tcb,
             is_ak_target,
+            is_export_cdi_target: false,
             feature,
         })
     }
@@ -1364,6 +1665,179 @@ mod tests {
     use super::*;
     use caliptra_auth_man_types::OWNER_AUTH_MANIFEST_MARKER;
     use tempfile::tempdir;
+
+    #[test]
+    fn command_auth_reuses_existing_reserved_key_metadata() {
+        use caliptra_auth_man_types::AUTH_MANIFEST_UEID_FW_ID;
+
+        assert_eq!(AUTH_MANIFEST_UEID_FW_ID, 0x0000_0FFF);
+        assert_eq!(V_AUTH_KEY_ID, 4);
+        assert_eq!(OWNER_MEASUREMENT_POLICY_IDENTIFIER, 5);
+        assert_eq!(O_AUTH_KEY_ID, 6);
+        let builder = CaliptraBuilder::new(&crate::CaliptraBuildArgs::default())
+            .with_command_auth_key_digests(Some([0x11; 48]), None)
+            .unwrap();
+        let metadata = builder.configured_vendor_auth_key_metadata();
+        assert_eq!(metadata.fw_id, V_AUTH_KEY_ID);
+        assert_eq!(metadata.component_id, V_AUTH_KEY_ID);
+        assert_eq!(metadata.digest, [0x11; 48]);
+        assert_eq!(metadata.flags, 0);
+        assert_eq!(metadata.image_load_address.lo, 0);
+        assert_eq!(metadata.image_load_address.hi, 0);
+        assert_eq!(metadata.image_staging_address.lo, 0);
+        assert_eq!(metadata.image_staging_address.hi, 0);
+    }
+
+    #[test]
+    fn command_auth_configuration_updates_existing_imes_without_duplicates() {
+        let directory = tempdir().unwrap();
+        let firmware = directory.path().join("mcu.bin");
+        std::fs::write(&firmware, b"command authorization test firmware").unwrap();
+        let args = crate::CaliptraBuildArgs {
+            mcu_firmware: Some(firmware),
+            owner_soc_images: Some(Vec::new()),
+            target_dir: Some(directory.path().to_path_buf()),
+            ..Default::default()
+        };
+        let mut unconfigured = CaliptraBuilder::new(&args);
+        let original_path = directory.path().join("without-command-keys.bin");
+        let (path, _) = unconfigured
+            .get_unsigned_auth_manifest(original_path.to_str(), None)
+            .unwrap();
+        let bytes = std::fs::read(path).unwrap();
+        let manifest = AuthorizationManifest::read_from_bytes(&bytes).unwrap();
+        assert_eq!(manifest.image_metadata_col.entry_count, 2);
+        assert_eq!(
+            manifest
+                .image_metadata_col
+                .image_metadata_list
+                .iter()
+                .find(|entry| entry.fw_id == V_AUTH_KEY_ID)
+                .unwrap()
+                .digest,
+            VENDOR_AUTH_KEY_ANCHOR
+        );
+        let legacy_owner = unconfigured.get_owner_soc_images_metadata().unwrap();
+        assert_eq!(legacy_owner.len(), 2);
+
+        let mut configured = CaliptraBuilder::new(&args)
+            .with_command_auth_key_digests(Some([0x11; 48]), Some([0x22; 48]))
+            .unwrap();
+        let original_path = directory.path().join("with-command-keys.bin");
+        let (path, _) = configured
+            .get_unsigned_auth_manifest(original_path.to_str(), None)
+            .unwrap();
+        let bytes = std::fs::read(path).unwrap();
+        let manifest = AuthorizationManifest::read_from_bytes(&bytes).unwrap();
+        let entries = &manifest.image_metadata_col.image_metadata_list
+            [..manifest.image_metadata_col.entry_count as usize];
+        assert_eq!(entries.len(), 2);
+        assert_eq!(
+            entries
+                .iter()
+                .find(|entry| entry.fw_id == V_AUTH_KEY_ID)
+                .unwrap()
+                .digest,
+            [0x11; 48]
+        );
+        assert_eq!(
+            entries
+                .iter()
+                .filter(|entry| entry.fw_id == V_AUTH_KEY_ID)
+                .count(),
+            1
+        );
+        assert!(entries.iter().all(|entry| entry.fw_id != O_AUTH_KEY_ID));
+        assert!(AuthManifestFlags::from(manifest.preamble.flags)
+            .contains(AuthManifestFlags::VENDOR_SIGNATURE_REQUIRED));
+
+        let owner = configured.get_owner_soc_images_metadata().unwrap();
+        assert_eq!(owner.len(), 2);
+        assert_eq!(
+            owner
+                .iter()
+                .find(|entry| entry.fw_id == O_AUTH_KEY_ID)
+                .unwrap()
+                .digest,
+            [0x22; 48]
+        );
+        assert_eq!(
+            owner
+                .iter()
+                .filter(|entry| entry.fw_id == O_AUTH_KEY_ID)
+                .count(),
+            1
+        );
+        for legacy in legacy_owner {
+            let entry = owner
+                .iter()
+                .find(|entry| entry.fw_id == legacy.fw_id)
+                .unwrap();
+            let expected = if legacy.fw_id == O_AUTH_KEY_ID {
+                [0x22; 48]
+            } else {
+                legacy.digest
+            };
+            assert_eq!(entry.digest, expected);
+            assert_eq!(entry.component_id, legacy.component_id);
+            assert_eq!(entry.flags, legacy.flags);
+        }
+        assert!(owner.iter().all(|entry| entry.fw_id != V_AUTH_KEY_ID));
+    }
+
+    #[test]
+    fn command_auth_owner_key_image_and_digest_must_agree() {
+        let directory = tempdir().unwrap();
+        let key_path = directory.path().join("owner-key.bin");
+        std::fs::write(&key_path, b"owner command authorization key").unwrap();
+        let image = ImageCfg {
+            path: key_path,
+            image_id: O_AUTH_KEY_ID,
+            component_id: O_AUTH_KEY_ID,
+            ..Default::default()
+        };
+        let digest = CaliptraBuilder::get_soc_manifest_metadata(&image)
+            .unwrap()
+            .digest;
+        let args = crate::CaliptraBuildArgs {
+            owner_soc_images: Some(vec![image]),
+            target_dir: Some(directory.path().to_path_buf()),
+            ..Default::default()
+        };
+        let mut matching = CaliptraBuilder::new(&args)
+            .with_command_auth_key_digests(None, Some(digest))
+            .unwrap();
+        let entries = matching.get_owner_soc_images_metadata().unwrap();
+        assert_eq!(
+            entries
+                .iter()
+                .filter(|entry| entry.fw_id == O_AUTH_KEY_ID)
+                .count(),
+            1
+        );
+        let mut conflicting = CaliptraBuilder::new(&args)
+            .with_command_auth_key_digests(None, Some([0; 48]))
+            .unwrap();
+        assert!(conflicting.get_owner_soc_images_metadata().is_err());
+    }
+
+    #[test]
+    fn command_auth_configuration_cannot_silently_change_cached_manifests() {
+        let args = crate::CaliptraBuildArgs {
+            soc_manifest: Some(PathBuf::from("existing-original-manifest")),
+            owner_auth_manifest: Some(PathBuf::from("existing-owner-manifest")),
+            ..Default::default()
+        };
+        assert!(CaliptraBuilder::new(&args)
+            .with_command_auth_key_digests(Some([0x11; 48]), None)
+            .is_err());
+        assert!(CaliptraBuilder::new(&args)
+            .with_command_auth_key_digests(None, Some([0x22; 48]))
+            .is_err());
+        assert!(CaliptraBuilder::new(&args)
+            .with_command_auth_key_digests(None, None)
+            .is_ok());
+    }
 
     #[test]
     fn test_image_cfg_optional_network_filename() {
@@ -1414,11 +1888,62 @@ mod tests {
 
         assert_eq!(manifest.preamble.marker, OWNER_AUTH_MANIFEST_MARKER);
         assert_eq!(manifest.preamble.svn, 11);
-        assert_eq!(manifest.image_metadata_col.entry_count, 1);
+        assert_eq!(manifest.image_metadata_col.entry_count, 3);
         assert_eq!(
             manifest.image_metadata_col.image_metadata_list[0].fw_id,
+            OWNER_MEASUREMENT_POLICY_IDENTIFIER
+        );
+        assert_eq!(
+            manifest.image_metadata_col.image_metadata_list[1].fw_id,
+            O_AUTH_KEY_ID
+        );
+        assert_eq!(
+            manifest.image_metadata_col.image_metadata_list[2].fw_id,
             0x10000
         );
+    }
+
+    #[test]
+    fn test_get_owner_measurement_policy_copies_cached_to_requested_path() {
+        let temp_dir = tempdir().unwrap();
+        let vendor_image_path = temp_dir.path().join("vendor-image.bin");
+        let owner_image_path = temp_dir.path().join("owner-image.bin");
+        let manifest_file = tempfile::NamedTempFile::new().unwrap();
+        let policy_file = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(&vendor_image_path, b"vendor image").unwrap();
+        std::fs::write(&owner_image_path, b"owner image").unwrap();
+
+        let mut builder = CaliptraBuilder::new(&crate::CaliptraBuildArgs {
+            soc_images: Some(vec![ImageCfg {
+                path: vendor_image_path,
+                image_id: 0x1000,
+                component_id: 0x1000,
+                ..Default::default()
+            }]),
+            owner_soc_images: Some(vec![ImageCfg {
+                path: owner_image_path,
+                image_id: 0x10000,
+                component_id: 0x10000,
+                ..Default::default()
+            }]),
+            ..Default::default()
+        });
+
+        // First call get_owner_auth_manifest, which internally generates and caches
+        // the owner measurement policy at default location.
+        let _ = builder
+            .get_owner_auth_manifest(manifest_file.path().to_str())
+            .unwrap();
+
+        // Second call requests the policy at a specific destination (e.g. tempfile).
+        let policy_path = builder
+            .get_owner_measurement_policy(policy_file.path().to_str())
+            .unwrap();
+        assert_eq!(policy_path, policy_file.path());
+
+        // Verify the file was actually written/copied and is NOT empty (0 bytes).
+        let metadata = std::fs::metadata(&policy_path).unwrap();
+        assert!(metadata.len() > 0, "Policy file must not be 0 bytes");
     }
 
     #[test]
@@ -1428,7 +1953,13 @@ mod tests {
             ..Default::default()
         };
 
-        CaliptraBuilder::validate_owner_soc_images(&[image(0x0001_0000), image(u32::MAX)]).unwrap();
+        CaliptraBuilder::validate_owner_soc_images(&[
+            image(OWNER_MEASUREMENT_POLICY_IDENTIFIER),
+            image(O_AUTH_KEY_ID),
+            image(0x0001_0000),
+            image(u32::MAX),
+        ])
+        .unwrap();
 
         let err = CaliptraBuilder::validate_owner_soc_images(&[image(0x0000_ffff)]).unwrap_err();
         assert!(err.to_string().contains("outside the owner-only range"));
@@ -1437,6 +1968,129 @@ mod tests {
             CaliptraBuilder::validate_owner_soc_images(&[image(0x0001_0000), image(0x0001_0000)])
                 .unwrap_err();
         assert!(err.to_string().contains("Duplicate owner firmware ID"));
+    }
+
+    #[test]
+    fn test_generate_owner_measurement_policy() {
+        let owner_images = vec![
+            ImageCfg {
+                image_id: 0x10000,
+                is_tcb: false,
+                ..Default::default()
+            },
+            ImageCfg {
+                image_id: 0x11000,
+                is_tcb: true,
+                ..Default::default()
+            },
+        ];
+
+        let policy = CaliptraBuilder::generate_owner_measurement_policy(&owner_images).unwrap();
+
+        // 28-byte header + (4 entries * 8 bytes) + 16-byte load list header + (2 fw_ids * 4 bytes)
+        // = 28 + 32 + 16 + 8 = 84 bytes
+        assert_eq!(policy.len(), 84);
+
+        let marker = u32::from_le_bytes(policy[0..4].try_into().unwrap());
+        assert_eq!(marker, 0x4D41_4F4D); // MOAM
+
+        let manifest_size = u32::from_le_bytes(policy[4..8].try_into().unwrap());
+        assert_eq!(manifest_size, 60); // 28 + 32
+
+        let version = u32::from_le_bytes(policy[8..12].try_into().unwrap());
+        assert_eq!(version, 1);
+
+        let header_size = u32::from_le_bytes(policy[12..16].try_into().unwrap());
+        assert_eq!(header_size, 28);
+
+        let entry_count = u32::from_le_bytes(policy[16..20].try_into().unwrap());
+        assert_eq!(entry_count, 4);
+
+        let tcb_entry_count = u32::from_le_bytes(policy[20..24].try_into().unwrap());
+        assert_eq!(tcb_entry_count, 3); // 0x5, 0x6, 0x11000
+
+        let vendor_len = u16::from_le_bytes(policy[24..26].try_into().unwrap());
+        let model_len = u16::from_le_bytes(policy[26..28].try_into().unwrap());
+        assert_eq!(vendor_len, 0);
+        assert_eq!(model_len, 0);
+
+        // Verify entries order: 0x5 (TCB), 0x6 (TCB), 0x11000 (TCB), 0x10000 (non-TCB)
+        let e0_id = u32::from_le_bytes(policy[28..32].try_into().unwrap());
+        let e0_flags = u32::from_le_bytes(policy[32..36].try_into().unwrap());
+        assert_eq!(e0_id, OWNER_MEASUREMENT_POLICY_IDENTIFIER);
+        assert_eq!(e0_flags, 1);
+
+        let e1_id = u32::from_le_bytes(policy[36..40].try_into().unwrap());
+        let e1_flags = u32::from_le_bytes(policy[40..44].try_into().unwrap());
+        assert_eq!(e1_id, O_AUTH_KEY_ID);
+        assert_eq!(e1_flags, 1);
+
+        let e2_id = u32::from_le_bytes(policy[44..48].try_into().unwrap());
+        let e2_flags = u32::from_le_bytes(policy[48..52].try_into().unwrap());
+        assert_eq!(e2_id, 0x11000);
+        assert_eq!(e2_flags, 1);
+
+        let e3_id = u32::from_le_bytes(policy[52..56].try_into().unwrap());
+        let e3_flags = u32::from_le_bytes(policy[56..60].try_into().unwrap());
+        assert_eq!(e3_id, 0x10000);
+        assert_eq!(e3_flags, 0);
+
+        // Verify Owner FW load list header: [marker: MOLL, size: 24, version: 1, entry_count: 2]
+        let ll_marker = u32::from_le_bytes(policy[60..64].try_into().unwrap());
+        assert_eq!(ll_marker, 0x4C4C_4F4D); // MOLL
+
+        let ll_size = u32::from_le_bytes(policy[64..68].try_into().unwrap());
+        assert_eq!(ll_size, 24); // 16 + (2 * 4)
+
+        let ll_version = u32::from_le_bytes(policy[68..72].try_into().unwrap());
+        assert_eq!(ll_version, 1);
+
+        let ll_count = u32::from_le_bytes(policy[72..76].try_into().unwrap());
+        assert_eq!(ll_count, 2);
+
+        // Verify FW load list IDs: [0x10000, 0x11000]
+        let fw0 = u32::from_le_bytes(policy[76..80].try_into().unwrap());
+        let fw1 = u32::from_le_bytes(policy[80..84].try_into().unwrap());
+        assert_eq!(fw0, 0x10000);
+        assert_eq!(fw1, 0x11000);
+    }
+
+    #[test]
+    fn test_owner_policy_rejects_ak_target() {
+        let owner_images = vec![ImageCfg {
+            image_id: 0x10000,
+            is_ak_target: true,
+            ..Default::default()
+        }];
+        let err = CaliptraBuilder::generate_owner_measurement_policy(&owner_images).unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("cannot be attestation key targets"));
+    }
+
+    #[test]
+    fn test_owner_manifest_enforces_32_entry_limit() {
+        let temp_dir = tempdir().unwrap();
+        let dummy_path = temp_dir.path().join("dummy.bin");
+        std::fs::write(&dummy_path, b"test").unwrap();
+
+        // 31 owner images + 0x5 policy + 0x6 key = 33 entries (> 32)
+        let mut owner_images = Vec::new();
+        for i in 0..31 {
+            owner_images.push(ImageCfg {
+                path: dummy_path.clone(),
+                image_id: 0x10000 + i,
+                ..Default::default()
+            });
+        }
+        let mut builder = CaliptraBuilder::new(&crate::CaliptraBuildArgs {
+            owner_soc_images: Some(owner_images),
+            ..Default::default()
+        });
+        let err = builder.get_owner_soc_images_metadata().unwrap_err();
+        assert!(err
+            .to_string()
+            .contains("exceeds maximum capacity of 32 entries"));
     }
 
     #[test]

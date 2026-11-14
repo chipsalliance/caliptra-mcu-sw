@@ -1,21 +1,30 @@
 // Licensed under the Apache-2.0 license
 
-//! OCP device identity provisioning over SPDM SET_CERTIFICATE.
+//! OCP Device Identity Provisioning (DIP) host flows over SPDM.
+//!
+//! - [`discover`] and [`export_csr`] retrieve and verify DIP evidence (the
+//!   keypair inventory and attested CSRs) so a CA can issue certificates
+//!   offline. No CA secrets are involved.
+//! - [`provision_device_identity`] is a demo-only SET_CERTIFICATE flow that
+//!   issues an Owner chain from a fixed test CA key. It is not a production
+//!   provisioning path.
+//!
+//! Every flow first authenticates Vendor slot 0 against a pinned trust anchor
+//! with CHALLENGE and verifies evidence against that authenticated chain.
 
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::str::FromStr;
 use std::time::Duration;
 
 use anyhow::{anyhow, bail, Context, Result};
-use caliptra_mcu_core_util_host_command_types::certificate::ExportAttestedCsrResponse;
+use caliptra_mcu_core_util_host_command_types::certificate::ExportAttestedCsrRequest;
 use caliptra_spdm_requester::{
     split_der_certificates, verify_x509_certificate_chain, PeerRootCert, SpdmConfig, SpdmRequester,
     SpdmSocketDeviceIo, SpdmVdmDriverImpl,
 };
-use coset::{cbor::value::Value, iana::Algorithm, AsCborValue, CoseSign1};
-use p384::ecdsa::signature::Verifier;
-use p384::ecdsa::{Signature, SigningKey, VerifyingKey};
+use p384::ecdsa::SigningKey;
+use serde_json::json;
 use sha2::{Digest, Sha384};
 use x509_cert::builder::{Builder, CertificateBuilder, Profile};
 use x509_cert::der::{Decode, Encode};
@@ -27,137 +36,188 @@ use x509_cert::spki::SubjectPublicKeyInfoOwned;
 use x509_cert::time::Validity;
 use x509_cert::Certificate;
 
+use crate::ocp_dip::{self, AttestedCsr, DerivationAttribute, KeyPair};
 use crate::SpdmVdmClient;
 
+macro_rules! status {
+    ($($arg:tt)*) => {
+        println!("[ocp_dev_identity_provision_tool] {}", format_args!($($arg)*))
+    };
+}
+
+pub const DEFAULT_SERVER: &str = "127.0.0.1:2323";
 pub const DEFAULT_OWNER_SLOT_ID: u8 = 2;
 pub const DEFAULT_LDEVID_KEY_PAIR_ID: u8 = 1;
 const VENDOR_SLOT_ID: u8 = 0;
-const CSR_ALGORITHM_ECC384: u32 = 1;
+/// Evidence is requested and verified as P-384 only: the SPDM Vendor chain
+/// carries just the ECC RT alias certificate that signs it.
+const EVIDENCE_ALGORITHM: &str = "P-384";
 const CERT_MODEL_ALIAS_CERT: u8 = 2;
 const SPDM_CERT_CHAIN_HEADER_LEN: usize = 4;
 const SHA384_DIGEST_LEN: usize = 48;
-const EAT_CLAIM_NONCE: i128 = 10;
-const OCP_CLAIM_CSR: i128 = -70001;
 const OWNER_SLOT_DYNAMIC_TAIL_CERTS: usize = 3; // FMC alias + RT alias + DPE leaf
 const TEST_OWNER_ROOT_KEY_BYTES: [u8; 48] = [0x0B; 48];
 
-/// Request parameters for provisioning an OCP device identity certificate slot.
-pub struct ProvisionOptions {
+/// How to reach and authenticate the device.
+#[derive(Debug, Clone)]
+pub struct DeviceOptions {
     /// Server address (host:port) of the SPDM bridge.
     pub server: String,
+    /// DER X.509 root certificate that authenticates the Vendor slot.
+    pub vendor_trust_anchor: PathBuf,
+}
+
+/// Request parameters for exporting an attested CSR.
+#[derive(Debug, Clone)]
+pub struct ExportCsrOptions {
+    pub device: DeviceOptions,
+    /// Key pair to export; must be listed in the keypair inventory.
+    pub key_pair_id: u8,
+    /// Destination for the DER PKCS#10 CSR.
+    pub out_csr: PathBuf,
+    /// Destination for the signed EAT carrying the CSR.
+    pub out_eat: PathBuf,
+    /// Optional destination for a JSON report.
+    pub report_json: Option<PathBuf>,
+}
+
+/// Request parameters for the demo SET_CERTIFICATE flow.
+#[derive(Debug, Clone)]
+pub struct ProvisionOptions {
+    pub device: DeviceOptions,
     /// SPDM certificate slot to provision.
     pub slot_id: u8,
     /// SPDM key pair ID to associate with the slot.
     pub key_pair_id: u8,
-    /// DER X.509 root certificate that authenticates the initial Vendor slot.
-    pub vendor_trust_anchor: PathBuf,
 }
 
 impl Default for ProvisionOptions {
     fn default() -> Self {
         Self {
-            server: "127.0.0.1:2323".to_string(),
+            device: DeviceOptions {
+                server: DEFAULT_SERVER.to_string(),
+                vendor_trust_anchor: default_vendor_trust_anchor_path(),
+            },
             slot_id: DEFAULT_OWNER_SLOT_ID,
             key_pair_id: DEFAULT_LDEVID_KEY_PAIR_ID,
-            vendor_trust_anchor: default_vendor_trust_anchor_path(),
         }
     }
 }
 
-/// Provision an OCP device identity certificate slot.
-///
-/// This authenticates Vendor slot 0, validates an attested LDevID CSR, issues
-/// and installs an Owner/LDevID chain, verifies the returned chain, performs
-/// Owner-slot attestation, and sends STOP to the test bridge.
-pub fn provision_device_identity(options: &ProvisionOptions) -> Result<()> {
-    println!(
-        "[ocp_dev_identity_provision_tool] Connecting to bridge at {}",
-        options.server
-    );
-    let mut device_io = SpdmSocketDeviceIo::connect_mctp(&options.server)?;
-    device_io.handshake()?;
-    let mut stop_io = device_io.try_clone()?;
+/// Retrieve and verify the device's keypair inventory (key pair ID 0).
+pub fn discover(device: &DeviceOptions, report_json: Option<&Path>) -> Result<Vec<KeyPair>> {
+    let mut session = AuthenticatedDevice::connect(device, Vec::new())?;
+    let (evidence, key_pairs) = session.discover()?;
 
-    let owner_root = test_owner_root_cert_der()?;
-    let vendor_root = fs::read(&options.vendor_trust_anchor).with_context(|| {
-        format!(
-            "failed to read vendor trust anchor {}",
-            options.vendor_trust_anchor.display()
-        )
-    })?;
-
-    let spdm_config = SpdmConfig {
-        slot_id: VENDOR_SLOT_ID,
-        peer_root_certs: vec![
-            PeerRootCert {
-                slot_id: VENDOR_SLOT_ID,
-                cert_der: vendor_root,
-            },
-            PeerRootCert {
-                slot_id: options.slot_id,
-                cert_der: owner_root.clone(),
-            },
-        ],
-        ..SpdmConfig::default()
-    };
-    let mut requester = SpdmRequester::new(spdm_config, Box::new(device_io))?;
-
-    println!(
-        "[ocp_dev_identity_provision_tool] Establishing SPDM connection using Vendor slot {}",
-        VENDOR_SLOT_ID
-    );
-    requester.connect_authenticated()?;
-    println!(
-        "[ocp_dev_identity_provision_tool] Initial CHALLENGE attestation passed for Vendor slot {}",
-        VENDOR_SLOT_ID
-    );
-
-    let vendor_spdm_chain = requester.get_certificate(None, VENDOR_SLOT_ID).context(
-        "failed to read authenticated Vendor slot certificate chain for CSR attestation",
-    )?;
-    let vendor_chain = parse_spdm_cert_chain(&vendor_spdm_chain)
-        .context("failed to parse Vendor slot SPDM certificate chain")?;
-    let vendor_certs = split_der_certificates(vendor_chain.der)
-        .context("failed to split Vendor slot DER certificate chain")?;
-    if vendor_certs.is_empty() {
-        bail!("Vendor slot {VENDOR_SLOT_ID} returned an empty certificate chain");
+    print_inventory(&key_pairs);
+    if let Some(path) = report_json {
+        write_json(
+            path,
+            json!({
+                "algorithm": EVIDENCE_ALGORITHM,
+                "nonce": hex::encode(evidence.nonce),
+                "eat_sha384": hex::encode(Sha384::digest(&evidence.token)),
+                "key_pairs": key_pairs
+                    .iter()
+                    .map(|kp| json!({ "id": kp.id, "attributes": attributes_json(&kp.attributes) }))
+                    .collect::<Vec<_>>(),
+            }),
+        )?;
     }
-    verify_spdm_root_hash(vendor_chain.root_hash, vendor_certs[0])
-        .context("Vendor slot SPDM certificate chain root hash mismatch")?;
+    session.stop()?;
+    Ok(key_pairs)
+}
 
-    let nonce = random_nonce()?;
-    let csr = export_attested_csr(
-        &mut requester,
-        options.key_pair_id as u32,
-        CSR_ALGORITHM_ECC384,
-        &nonce,
+/// Export a verified attested CSR and its signed evidence for offline issuance.
+///
+/// The key pair must appear in a freshly verified keypair inventory, and the
+/// CSR's derivation attributes must match the inventory entry.
+pub fn export_csr(options: &ExportCsrOptions) -> Result<()> {
+    let mut session = AuthenticatedDevice::connect(&options.device, Vec::new())?;
+    let (_, key_pairs) = session.discover()?;
+    print_inventory(&key_pairs);
+    let key_pair = find_key_pair(&key_pairs, options.key_pair_id)?;
+
+    let (evidence, csr) = session.attested_csr(options.key_pair_id)?;
+    if !same_attributes(&csr.attributes, &key_pair.attributes) {
+        bail!(
+            "attested CSR derivation attributes for key pair {} differ from the keypair inventory",
+            options.key_pair_id
+        );
+    }
+
+    let subject = CertReq::from_der(&csr.csr_der)
+        .context("failed to parse attested CSR DER")?
+        .info
+        .subject
+        .to_string();
+    status!(
+        "Verified attested CSR for key pair {} ({EVIDENCE_ALGORITHM}), subject \"{subject}\"",
+        options.key_pair_id
+    );
+    csr.attributes
+        .iter()
+        .for_each(|attr| status!("  derivation: {attr}"));
+
+    write_file(&options.out_csr, &csr.csr_der)?;
+    write_file(&options.out_eat, &evidence.token)?;
+    if let Some(path) = &options.report_json {
+        write_json(
+            path,
+            json!({
+                "key_pair_id": options.key_pair_id,
+                "algorithm": EVIDENCE_ALGORITHM,
+                "nonce": hex::encode(evidence.nonce),
+                "eat_sha384": hex::encode(Sha384::digest(&evidence.token)),
+                "csr_sha384": hex::encode(Sha384::digest(&csr.csr_der)),
+                "csr_subject": subject,
+                "attributes": attributes_json(&csr.attributes),
+            }),
+        )?;
+    }
+    session.stop()
+}
+
+/// Demo-only: provision an Owner certificate slot from an attested CSR.
+///
+/// Issues an Owner/LDevID chain with a fixed test CA key, installs it with
+/// SET_CERTIFICATE, verifies the returned chain, performs Owner-slot
+/// CHALLENGE attestation, and sends STOP to the test bridge.
+pub fn provision_device_identity(options: &ProvisionOptions) -> Result<()> {
+    let owner_root = test_owner_root_cert_der()?;
+    let mut session = AuthenticatedDevice::connect(
+        &options.device,
+        vec![PeerRootCert {
+            slot_id: options.slot_id,
+            cert_der: owner_root.clone(),
+        }],
     )?;
-    let csr_der = validate_attested_csr(&csr, &nonce, &vendor_certs)?;
-    println!(
-        "[ocp_dev_identity_provision_tool] ExportAttestedCsr key_pair_id={} returned {} bytes",
-        options.key_pair_id, csr.data_len
+
+    let (evidence, csr) = session.attested_csr(options.key_pair_id)?;
+    status!(
+        "ExportAttestedCsr key_pair_id={} returned {} bytes",
+        options.key_pair_id,
+        evidence.token.len()
     );
 
-    let cert_chain = issue_test_owner_ldev_id_chain_from_csr(&csr_der, &owner_root)
+    let cert_chain = issue_test_owner_ldev_id_chain_from_csr(&csr.csr_der, &owner_root)
         .context("failed to issue test Owner/LDevID certificate chain from attested CSR")?;
-    println!(
-        "[ocp_dev_identity_provision_tool] Issued test Owner/LDevID certificate chain from attested CSR ({} bytes)",
+    status!(
+        "Issued test Owner/LDevID certificate chain from attested CSR ({} bytes)",
         cert_chain.len()
     );
 
     let provisioned_certs = validate_owner_chain(&cert_chain, "attested CSR")?;
-    verify_csr_matches_owner_leaf(&csr_der, &provisioned_certs)?;
-    println!(
-        "[ocp_dev_identity_provision_tool] Attested CSR public key matches owner/LDevID leaf certificate"
-    );
+    verify_csr_matches_owner_leaf(&csr.csr_der, &provisioned_certs)?;
+    status!("Attested CSR public key matches owner/LDevID leaf certificate");
 
-    println!(
-        "[ocp_dev_identity_provision_tool] SET_CERTIFICATE slot_id={} key_pair_id={} cert_chain=attested CSR ({} bytes)",
+    status!(
+        "SET_CERTIFICATE slot_id={} key_pair_id={} cert_chain=attested CSR ({} bytes)",
         options.slot_id,
         options.key_pair_id,
         cert_chain.len()
     );
-    requester.set_certificate(
+    session.requester.set_certificate(
         None,
         options.slot_id,
         options.key_pair_id,
@@ -165,29 +225,218 @@ pub fn provision_device_identity(options: &ProvisionOptions) -> Result<()> {
         &cert_chain,
     )?;
 
-    let provisioned = requester.get_certificate(None, options.slot_id)?;
-    verify_returned_owner_chain(options.slot_id, &cert_chain, &vendor_certs, &provisioned)?;
-
-    println!(
-        "[ocp_dev_identity_provision_tool] Provisioning verified (GET_CERTIFICATE returned {} bytes)",
+    let provisioned = session.requester.get_certificate(None, options.slot_id)?;
+    verify_returned_owner_chain(
+        options.slot_id,
+        &cert_chain,
+        &session.vendor_certs()?,
+        &provisioned,
+    )?;
+    status!(
+        "Owner slot {} certificate chain verified via GET_CERTIFICATE ({} bytes)",
+        options.slot_id,
         provisioned.len()
     );
 
-    println!(
-        "[ocp_dev_identity_provision_tool] Owner slot {} certificate chain verified via GET_CERTIFICATE",
-        options.slot_id
-    );
-    requester
+    session
+        .requester
         .challenge(options.slot_id)
         .with_context(|| format!("Owner-slot CHALLENGE failed for slot {}", options.slot_id))?;
-    println!(
-        "[ocp_dev_identity_provision_tool] Owner-slot CHALLENGE passed for slot {}",
-        options.slot_id
-    );
+    status!("Owner-slot CHALLENGE passed for slot {}", options.slot_id);
 
-    println!("[ocp_dev_identity_provision_tool] Sending STOP to bridge");
-    stop_io.send_stop()?;
+    session.stop()
+}
+
+/// Nonce and raw signed EAT returned by one ExportAttestedCsr request.
+struct Evidence {
+    nonce: [u8; 32],
+    token: Vec<u8>,
+}
+
+/// SPDM connection whose Vendor slot has been authenticated with CHALLENGE.
+struct AuthenticatedDevice {
+    requester: SpdmRequester,
+    /// Second handle on the bridge socket, used for the test-bridge STOP.
+    bridge: SpdmSocketDeviceIo,
+    /// Verified Vendor slot DER certificate chain.
+    vendor_chain: Vec<u8>,
+}
+
+impl AuthenticatedDevice {
+    fn connect(options: &DeviceOptions, extra_roots: Vec<PeerRootCert>) -> Result<Self> {
+        status!("Connecting to bridge at {}", options.server);
+        let mut device_io = SpdmSocketDeviceIo::connect_mctp(&options.server)?;
+        device_io.handshake()?;
+        let bridge = device_io.try_clone()?;
+
+        let vendor_root = fs::read(&options.vendor_trust_anchor).with_context(|| {
+            format!(
+                "failed to read vendor trust anchor {}",
+                options.vendor_trust_anchor.display()
+            )
+        })?;
+        let peer_root_certs = std::iter::once(PeerRootCert {
+            slot_id: VENDOR_SLOT_ID,
+            cert_der: vendor_root,
+        })
+        .chain(extra_roots)
+        .collect();
+        let mut requester = SpdmRequester::new(
+            SpdmConfig {
+                slot_id: VENDOR_SLOT_ID,
+                peer_root_certs,
+                ..SpdmConfig::default()
+            },
+            Box::new(device_io),
+        )?;
+
+        status!("Establishing SPDM connection using Vendor slot {VENDOR_SLOT_ID}");
+        requester.connect_authenticated()?;
+        status!("CHALLENGE attestation passed for Vendor slot {VENDOR_SLOT_ID}");
+
+        let spdm_chain = requester
+            .get_certificate(None, VENDOR_SLOT_ID)
+            .context("failed to read authenticated Vendor slot certificate chain")?;
+        let chain = parse_spdm_cert_chain(&spdm_chain)
+            .context("failed to parse Vendor slot SPDM certificate chain")?;
+        let certs = split_der_certificates(chain.der)
+            .context("failed to split Vendor slot DER certificate chain")?;
+        let root = certs.first().ok_or_else(|| {
+            anyhow!("Vendor slot {VENDOR_SLOT_ID} returned an empty certificate chain")
+        })?;
+        verify_spdm_root_hash(chain.root_hash, root)
+            .context("Vendor slot SPDM certificate chain root hash mismatch")?;
+        let vendor_chain = chain.der.to_vec();
+
+        Ok(Self {
+            requester,
+            bridge,
+            vendor_chain,
+        })
+    }
+
+    fn vendor_certs(&self) -> Result<Vec<&[u8]>> {
+        split_der_certificates(&self.vendor_chain)
+            .context("failed to split Vendor slot DER certificate chain")
+    }
+
+    /// The Vendor chain ends with RT alias + DPE leaf; the RT alias key signs
+    /// DIP evidence.
+    fn rt_alias_cert(&self) -> Result<&[u8]> {
+        let certs = self.vendor_certs()?;
+        match certs.len() {
+            n if n >= 2 => Ok(certs[n - 2]),
+            _ => bail!("Vendor chain is too short to contain the RT alias and DPE leaf"),
+        }
+    }
+
+    fn signed_eat(&mut self, key_id: u32) -> Result<Evidence> {
+        let nonce = random_nonce()?;
+        let mut vdm = SpdmVdmDriverImpl::new(&mut self.requester, None);
+        let response = SpdmVdmClient::new(&mut vdm).export_attested_csr(
+            key_id,
+            ExportAttestedCsrRequest::ALGO_ECC384,
+            &nonce,
+        )?;
+        response
+            .validate_csr_payload()
+            .map_err(|e| anyhow!("invalid ExportAttestedCsr payload: {e:?}"))?;
+        Ok(Evidence {
+            nonce,
+            token: response.csr_bytes().to_vec(),
+        })
+    }
+
+    fn discover(&mut self) -> Result<(Evidence, Vec<KeyPair>)> {
+        let evidence = self.signed_eat(ExportAttestedCsrRequest::KEY_ID_DISCOVERY)?;
+        let key_pairs =
+            ocp_dip::verify_inventory(&evidence.token, &evidence.nonce, self.rt_alias_cert()?)
+                .context("keypair inventory verification failed")?;
+        Ok((evidence, key_pairs))
+    }
+
+    fn attested_csr(&mut self, key_pair_id: u8) -> Result<(Evidence, AttestedCsr)> {
+        if key_pair_id == 0 {
+            bail!("key pair ID 0 is reserved for keypair inventory discovery");
+        }
+        let evidence = self.signed_eat(key_pair_id.into())?;
+        let csr =
+            ocp_dip::verify_attested_csr(&evidence.token, &evidence.nonce, self.rt_alias_cert()?)
+                .with_context(|| {
+                format!("attested CSR verification failed for key pair {key_pair_id}")
+            })?;
+        Ok((evidence, csr))
+    }
+
+    /// Send STOP to the test bridge. Call this last: the bridge treats STOP as
+    /// success and ends the test harness.
+    fn stop(mut self) -> Result<()> {
+        status!("Sending STOP to bridge");
+        self.bridge.send_stop()
+    }
+}
+
+fn find_key_pair(key_pairs: &[KeyPair], id: u8) -> Result<&KeyPair> {
+    key_pairs.iter().find(|kp| kp.id == id).ok_or_else(|| {
+        let listed = key_pairs
+            .iter()
+            .map(|kp| kp.id.to_string())
+            .collect::<Vec<_>>()
+            .join(", ");
+        anyhow!("key pair {id} is not in the device's keypair inventory (listed: {listed})")
+    })
+}
+
+/// Attribute maps are unordered, so compare them as sets.
+fn same_attributes(a: &[DerivationAttribute], b: &[DerivationAttribute]) -> bool {
+    let sorted = |attrs: &[DerivationAttribute]| {
+        let mut attrs = attrs
+            .iter()
+            .map(|attr| (attr.oid, attr.bitfield))
+            .collect::<Vec<_>>();
+        attrs.sort();
+        attrs
+    };
+    sorted(a) == sorted(b)
+}
+
+fn print_inventory(key_pairs: &[KeyPair]) {
+    status!("Verified keypair inventory ({EVIDENCE_ALGORITHM}):");
+    key_pairs.iter().for_each(|kp| {
+        kp.attributes
+            .iter()
+            .for_each(|attr| status!("  key pair {}: {attr}", kp.id))
+    });
+}
+
+fn attributes_json(attributes: &[DerivationAttribute]) -> serde_json::Value {
+    attributes
+        .iter()
+        .map(|attr| {
+            json!({
+                "oid": attr.oid.to_string(),
+                "ocp": attr.is_ocp(),
+                "bitfield": attr.bitfield,
+                "components": attr.components(),
+            })
+        })
+        .collect()
+}
+
+fn write_file(path: &Path, data: &[u8]) -> Result<()> {
+    fs::write(path, data).with_context(|| format!("failed to write {}", path.display()))?;
+    status!("Wrote {} ({} bytes)", path.display(), data.len());
     Ok(())
+}
+
+fn write_json(path: &Path, value: serde_json::Value) -> Result<()> {
+    write_file(path, &serde_json::to_vec_pretty(&value)?)
+}
+
+fn random_nonce() -> Result<[u8; 32]> {
+    let mut nonce = [0u8; 32];
+    getrandom::getrandom(&mut nonce).context("failed to generate freshness nonce")?;
+    Ok(nonce)
 }
 
 pub fn default_vendor_trust_anchor_path() -> PathBuf {
@@ -296,206 +545,6 @@ fn build_test_ca_certificate(
         .context("failed to sign test certificate")?
         .to_der()
         .context("failed to encode test certificate")
-}
-
-fn export_attested_csr(
-    requester: &mut SpdmRequester,
-    device_key_id: u32,
-    algorithm: u32,
-    nonce: &[u8; 32],
-) -> Result<ExportAttestedCsrResponse> {
-    let mut vdm = SpdmVdmDriverImpl::new(requester, None);
-    let mut client = SpdmVdmClient::new(&mut vdm);
-    client.export_attested_csr(device_key_id, algorithm, nonce)
-}
-
-fn random_nonce() -> Result<[u8; 32]> {
-    let mut nonce = [0u8; 32];
-    getrandom::getrandom(&mut nonce).context("failed to generate CSR freshness nonce")?;
-    Ok(nonce)
-}
-
-fn validate_attested_csr(
-    response: &ExportAttestedCsrResponse,
-    nonce: &[u8; 32],
-    attestation_certs: &[&[u8]],
-) -> Result<Vec<u8>> {
-    response
-        .validate_csr_payload()
-        .map_err(|e| anyhow!("invalid attested CSR payload: {:?}", e))?;
-    let payload = response.csr_bytes();
-
-    if parse_csr(payload).is_ok() {
-        bail!(
-            "attested CSR payload must be a COSE_Sign1/CWT envelope; raw PKCS#10 CSR is not accepted for provisioning"
-        );
-    }
-
-    let cose = parse_cose_sign1(payload)
-        .context("attested CSR payload is not a COSE_Sign1/CWT envelope")?;
-    let rt_alias_cert = rt_alias_signing_cert(attestation_certs)?;
-    let claims = verify_attested_csr_cose(&cose, rt_alias_cert)?;
-    if claims.nonce.as_slice() != nonce {
-        bail!("attested CSR COSE payload nonce does not match requested freshness nonce");
-    }
-    let csr = claims.csr;
-    // Caliptra's attested CSR envelope authenticates the PKCS#10 bytes with the
-    // SPDM attestation key. Current firmware emits a placeholder PKCS#10
-    // self-signature, so do not require CSR self-signature validity on this
-    // attested path. The CSR is still parsed strictly and later bound to the
-    // provisioned owner/LDevID leaf public key.
-    parse_csr(&csr)?;
-    Ok(csr)
-}
-
-struct AttestedCsrClaims {
-    nonce: Vec<u8>,
-    csr: Vec<u8>,
-}
-
-fn parse_cose_sign1(data: &[u8]) -> Result<CoseSign1> {
-    let mut value: Value =
-        ciborium::from_reader(data).context("attested CSR payload is not valid CBOR")?;
-    if matches!(value, Value::Tag(55799, _)) {
-        value = unwrap_cbor_tag(value, 55799)?;
-    }
-    value = unwrap_cbor_tag(value, 61)?;
-    value = unwrap_cbor_tag(value, 18)?;
-    CoseSign1::from_cbor_value(value)
-        .map_err(|e| anyhow!("attested CSR payload is not a COSE_Sign1 envelope: {e}"))
-}
-
-fn unwrap_cbor_tag(value: Value, expected: u64) -> Result<Value> {
-    match value {
-        Value::Tag(tag, value) if tag == expected => Ok(*value),
-        Value::Tag(tag, _) => bail!("expected CBOR tag {expected}, found {tag}"),
-        _ => bail!("attested CSR COSE envelope missing CBOR tag {expected}"),
-    }
-}
-
-fn verify_attested_csr_cose(cose: &CoseSign1, rt_alias_cert: &[u8]) -> Result<AttestedCsrClaims> {
-    if !matches!(
-        cose.protected.header.alg,
-        Some(coset::RegisteredLabelWithPrivate::Assigned(
-            Algorithm::ES384 | Algorithm::ESP384
-        ))
-    ) {
-        bail!("unsupported attested CSR COSE algorithm, expected ES384/ESP384");
-    }
-    let payload = cose
-        .payload
-        .as_deref()
-        .ok_or_else(|| anyhow!("attested CSR COSE envelope has no payload"))?;
-    let kid = (!cose.protected.header.key_id.is_empty())
-        .then_some(cose.protected.header.key_id.as_slice());
-    verify_cose_signature_with_authenticated_chain(
-        &cose.signature,
-        &cose.tbs_data(&[]),
-        kid,
-        &[rt_alias_cert],
-    )?;
-    parse_attested_csr_claims(payload)
-}
-
-fn rt_alias_signing_cert<'a>(attestation_certs: &'a [&'a [u8]]) -> Result<&'a [u8]> {
-    if attestation_certs.len() < 2 {
-        bail!(
-            "attested CSR RT-alias signature validation requires Vendor chain with RT alias and DPE leaf"
-        );
-    }
-    Ok(attestation_certs[attestation_certs.len() - 2])
-}
-
-fn parse_attested_csr_claims(payload: &[u8]) -> Result<AttestedCsrClaims> {
-    let value: Value =
-        ciborium::from_reader(payload).context("attested CSR COSE payload is not valid CBOR")?;
-    let Value::Map(entries) = value else {
-        bail!("attested CSR COSE payload is not a map");
-    };
-    let mut nonce = None;
-    let mut csr = None;
-    for (key, value) in entries {
-        let Value::Integer(key) = key else { continue };
-        let key: i128 = key.into();
-        match (key, value) {
-            (EAT_CLAIM_NONCE, Value::Bytes(bytes)) => nonce = Some(bytes),
-            (OCP_CLAIM_CSR, Value::Bytes(bytes)) => csr = Some(bytes),
-            _ => {}
-        }
-    }
-    let nonce = nonce.ok_or_else(|| anyhow!("attested CSR COSE payload missing nonce claim"))?;
-    let csr = csr.ok_or_else(|| anyhow!("attested CSR COSE payload missing CSR claim"))?;
-    if nonce.len() != 32 {
-        bail!(
-            "attested CSR COSE nonce is {} bytes, expected 32",
-            nonce.len()
-        );
-    }
-    Ok(AttestedCsrClaims { nonce, csr })
-}
-
-fn verify_cose_signature_with_authenticated_chain(
-    signature: &[u8],
-    sig_structure: &[u8],
-    kid: Option<&[u8]>,
-    attestation_certs: &[&[u8]],
-) -> Result<()> {
-    if attestation_certs.is_empty() {
-        bail!("attested CSR COSE verification requires the authenticated Vendor certificate chain");
-    }
-    let signature = Signature::from_slice(signature)
-        .map_err(|e| anyhow!("invalid attested CSR COSE ECDSA signature length/encoding: {e:?}"))?;
-
-    let mut saw_kid_match = kid.is_none();
-    let mut saw_signature_match = false;
-    for cert_der in attestation_certs {
-        if let Some(kid) = kid {
-            if !certificate_matches_cose_kid(cert_der, kid)? {
-                continue;
-            }
-            saw_kid_match = true;
-        }
-        let public_key = parse_certificate_public_key_sec1(cert_der)?;
-        let verifying_key = VerifyingKey::from_sec1_bytes(&public_key)
-            .map_err(|e| anyhow!("failed to load P-384 public key from attestation cert: {e:?}"))?;
-        if verifying_key.verify(sig_structure, &signature).is_ok() {
-            saw_signature_match = true;
-            break;
-        }
-    }
-
-    if !saw_kid_match {
-        bail!("attested CSR COSE kid did not match any authenticated Vendor-chain certificate");
-    }
-    if !saw_signature_match {
-        bail!("attested CSR COSE signature did not verify with authenticated Vendor-chain certificates");
-    }
-    Ok(())
-}
-
-fn certificate_matches_cose_kid(cert_der: &[u8], kid: &[u8]) -> Result<bool> {
-    if cert_der.windows(kid.len()).any(|window| window == kid) {
-        return Ok(true);
-    }
-    let public_key = parse_certificate_public_key_sec1(cert_der)?;
-    if kid.len() == SHA384_DIGEST_LEN && public_key.first() == Some(&0x04) {
-        let digest = Sha384::digest(&public_key[1..]);
-        return Ok(kid == &digest[..]);
-    }
-    Ok(false)
-}
-
-fn parse_certificate_public_key_sec1(cert_der: &[u8]) -> Result<Vec<u8>> {
-    let cert = Certificate::from_der(cert_der).context("failed to parse X.509 certificate DER")?;
-    let public_key = cert
-        .tbs_certificate
-        .subject_public_key_info
-        .subject_public_key
-        .raw_bytes();
-    if public_key.first() != Some(&0x04) {
-        bail!("attestation certificate public key is not an uncompressed P-384 point");
-    }
-    Ok(public_key.to_vec())
 }
 
 fn verify_csr_matches_owner_leaf(csr_der: &[u8], owner_chain: &[&[u8]]) -> Result<()> {
@@ -632,12 +681,9 @@ fn verify_spdm_root_hash(root_hash: &[u8], root_cert_der: &[u8]) -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use caliptra_mcu_core_util_host_command_types::certificate::MAX_CSR_DATA_SIZE;
-    use caliptra_mcu_core_util_host_command_types::CommonResponse;
-    use coset::{CborSerializable, CoseSign1Builder, HeaderBuilder, TaggedCborSerializable};
-    use p384::ecdsa::signature::Signer;
-    use p384::ecdsa::{Signature, SigningKey};
+    use crate::ocp_dip::OCP_KDA_OID;
     use x509_cert::builder::RequestBuilder;
+    use x509_cert::der::asn1::ObjectIdentifier;
 
     fn test_owner_chain() -> Vec<u8> {
         let key = SigningKey::from_bytes((&[0x07u8; 48]).into()).unwrap();
@@ -690,68 +736,36 @@ mod tests {
         assert!(err.to_string().contains("subject is empty"));
     }
 
-    #[test]
-    fn test_validate_attested_csr_rejects_raw_der_csr_with_nonce() {
-        let nonce = [0x5Au8; 32];
-        let key = SigningKey::from_bytes((&[0x07u8; 48]).into()).unwrap();
-        let csr = test_csr(&key, "CN=Caliptra LDevID");
-        let response = csr_response(&csr);
+    fn kda(bitfield: u64) -> DerivationAttribute {
+        DerivationAttribute {
+            oid: OCP_KDA_OID,
+            bitfield,
+        }
+    }
 
-        let err = validate_attested_csr(&response, &nonce, &[]).unwrap_err();
-        assert!(err.to_string().contains("raw PKCS#10 CSR is not accepted"));
+    fn vendor(bitfield: u64) -> DerivationAttribute {
+        DerivationAttribute {
+            oid: ObjectIdentifier::new_unwrap("1.3.6.1.4.1.99999.1"),
+            bitfield,
+        }
     }
 
     #[test]
-    fn test_validate_attested_csr_rejects_unsigned_envelope_with_der_csr() {
-        let nonce = [0x5Au8; 32];
-        let key = SigningKey::from_bytes((&[0x07u8; 48]).into()).unwrap();
-        let csr = test_csr(&key, "CN=Caliptra LDevID");
-        let mut envelope = vec![0xd8, 0x3d, 0xd2, 0x84, 0x58, 0x04, 0xde, 0xad, 0xbe, 0xef];
-        envelope.extend_from_slice(&csr);
-        envelope.extend_from_slice(&[0x58, 0x04, 0xca, 0xfe, 0xba, 0xbe]);
-        let response = csr_response(&envelope);
-
-        let err = validate_attested_csr(&response, &nonce, &[]).unwrap_err();
-        assert!(err.to_string().contains("COSE_Sign1"));
+    fn test_find_key_pair_rejects_unlisted_id() {
+        let key_pairs = [KeyPair {
+            id: 1,
+            attributes: vec![kda(3)],
+        }];
+        assert_eq!(find_key_pair(&key_pairs, 1).unwrap().id, 1);
+        let err = find_key_pair(&key_pairs, 4).unwrap_err();
+        assert!(err.to_string().contains("listed: 1"), "{err}");
     }
 
     #[test]
-    fn test_validate_attested_csr_accepts_cose_attested_placeholder_csr_signature() {
-        let nonce = [0x5Au8; 32];
-        let signer_key = SigningKey::from_bytes((&[0x09u8; 48]).into()).unwrap();
-        let signer_cert = synthetic_cert_for_key(&signer_key);
-        let csr_key = SigningKey::from_bytes((&[0x07u8; 48]).into()).unwrap();
-        let mut csr = test_csr(&csr_key, "CN=Caliptra LDevID");
-        *csr.last_mut().unwrap() ^= 0x01;
-        let envelope = signed_cose_attested_csr(&signer_key, &nonce, &csr);
-        let response = csr_response(&envelope);
-
-        let vendor_root = signer_cert.clone();
-        let dpe_leaf = signer_cert.clone();
-        let extracted =
-            validate_attested_csr(&response, &nonce, &[&vendor_root, &signer_cert, &dpe_leaf])
-                .unwrap();
-        assert_eq!(extracted, csr);
-    }
-
-    #[test]
-    fn test_validate_attested_csr_rejects_bad_cose_signature() {
-        let nonce = [0x5Au8; 32];
-        let signer_key = SigningKey::from_bytes((&[0x09u8; 48]).into()).unwrap();
-        let signer_cert = synthetic_cert_for_key(&signer_key);
-        let csr_key = SigningKey::from_bytes((&[0x07u8; 48]).into()).unwrap();
-        let mut csr = test_csr(&csr_key, "CN=Caliptra LDevID");
-        *csr.last_mut().unwrap() ^= 0x01;
-        let mut envelope = signed_cose_attested_csr(&signer_key, &nonce, &csr);
-        *envelope.last_mut().unwrap() ^= 0x01;
-        let response = csr_response(&envelope);
-
-        let vendor_root = signer_cert.clone();
-        let dpe_leaf = signer_cert.clone();
-        let err =
-            validate_attested_csr(&response, &nonce, &[&vendor_root, &signer_cert, &dpe_leaf])
-                .unwrap_err();
-        assert!(err.to_string().contains("COSE signature"));
+    fn test_same_attributes_ignores_order_but_not_bits() {
+        assert!(same_attributes(&[kda(3), vendor(1)], &[vendor(1), kda(3)]));
+        assert!(!same_attributes(&[kda(3)], &[kda(0x13)]));
+        assert!(!same_attributes(&[kda(3)], &[kda(3), vendor(1)]));
     }
 
     #[test]
@@ -814,17 +828,6 @@ mod tests {
         chain
     }
 
-    fn csr_response(csr: &[u8]) -> ExportAttestedCsrResponse {
-        assert!(csr.len() <= MAX_CSR_DATA_SIZE);
-        let mut csr_data = [0u8; MAX_CSR_DATA_SIZE];
-        csr_data[..csr.len()].copy_from_slice(csr);
-        ExportAttestedCsrResponse {
-            common: CommonResponse { fips_status: 0 },
-            data_len: csr.len() as u32,
-            csr_data,
-        }
-    }
-
     fn test_csr(signing_key: &SigningKey, subject: &str) -> Vec<u8> {
         RequestBuilder::new(Name::from_str(subject).unwrap(), signing_key)
             .unwrap()
@@ -832,42 +835,5 @@ mod tests {
             .unwrap()
             .to_der()
             .unwrap()
-    }
-
-    fn signed_cose_attested_csr(signing_key: &SigningKey, nonce: &[u8; 32], csr: &[u8]) -> Vec<u8> {
-        let public_key = signing_key.verifying_key().to_encoded_point(false);
-        let kid = Sha384::digest(&public_key.as_bytes()[1..]);
-        let payload = Value::Map(vec![
-            (
-                Value::Integer(EAT_CLAIM_NONCE.try_into().unwrap()),
-                Value::Bytes(nonce.to_vec()),
-            ),
-            (
-                Value::Integer(OCP_CLAIM_CSR.try_into().unwrap()),
-                Value::Bytes(csr.to_vec()),
-            ),
-        ])
-        .to_vec()
-        .unwrap();
-        let sign1 = CoseSign1Builder::new()
-            .protected(
-                HeaderBuilder::new()
-                    .algorithm(Algorithm::ESP384)
-                    .key_id(kid.to_vec())
-                    .build(),
-            )
-            .payload(payload)
-            .create_signature(&[], |data| {
-                let signature: Signature = signing_key.sign(data);
-                signature.to_bytes().to_vec()
-            })
-            .build();
-        let sign1 = Value::from_slice(&sign1.to_tagged_vec().unwrap()).unwrap();
-        Value::Tag(61, Box::new(sign1)).to_vec().unwrap()
-    }
-
-    fn synthetic_cert_for_key(signing_key: &SigningKey) -> Vec<u8> {
-        let name = Name::from_str("CN=COSE signer").unwrap();
-        build_test_ca_certificate(1, name.clone(), name, None, 0, signing_key).unwrap()
     }
 }

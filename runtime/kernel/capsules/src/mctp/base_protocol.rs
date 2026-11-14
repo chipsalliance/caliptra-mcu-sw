@@ -22,7 +22,7 @@ pub const MCTP_BASELINE_TRANSMISSION_UNIT: usize = 64;
 
 // Maximum number of message types this stack can advertise. The MCTP mux
 // filters this list based on the board's registered MCTP driver capsules.
-pub const MCTP_NUM_MSG_TYPES_SUPPORTED: usize = 5;
+pub const MCTP_NUM_MSG_TYPES_SUPPORTED: usize = MCTP_DISCOVERABLE_MSG_TYPES.len() + 1;
 pub const MCTP_DISCOVERABLE_MSG_TYPES: [MessageType; 4] = [
     MessageType::Pldm,
     MessageType::Spdm,
@@ -111,18 +111,20 @@ pub fn supported_msg_types(
     supported[count] = MessageType::MctpControl;
     count += 1;
 
-    for msg_type in MCTP_DISCOVERABLE_MSG_TYPES {
-        if is_registered(msg_type) {
-            supported[count] = msg_type;
-            count += 1;
-        }
+    for (destination, msg_type) in supported.iter_mut().skip(1).zip(
+        MCTP_DISCOVERABLE_MSG_TYPES
+            .into_iter()
+            .filter(|msg_type| is_registered(*msg_type)),
+    ) {
+        *destination = msg_type;
+        count += 1;
     }
 
     (supported, count)
 }
 
 pub fn valid_eid(eid: u8) -> bool {
-    eid != MCTP_BROADCAST_EID && !(1..7).contains(&eid)
+    eid != MCTP_BROADCAST_EID && !(1..=7).contains(&eid)
 }
 
 pub fn valid_msg_tag(tag: u8) -> bool {
@@ -144,5 +146,20 @@ mod tests {
         assert_eq!(header.pkt_seq(), 0);
         assert_eq!(header.tag_owner(), 0);
         assert_eq!(header.msg_tag(), 0);
+    }
+
+    #[test]
+    fn validates_endpoint_ids_and_message_tags_at_boundaries() {
+        assert!(valid_eid(0));
+        assert!(!valid_eid(1));
+        assert!(!valid_eid(6));
+        assert!(!valid_eid(7));
+        assert!(valid_eid(8));
+        assert!(valid_eid(0xfe));
+        assert!(!valid_eid(MCTP_BROADCAST_EID));
+
+        assert!(valid_msg_tag(0));
+        assert!(valid_msg_tag(MCTP_TAG_MASK));
+        assert!(!valid_msg_tag(MCTP_TAG_MASK + 1));
     }
 }

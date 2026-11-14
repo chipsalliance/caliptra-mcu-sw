@@ -72,11 +72,9 @@ impl MCTPCtrlMsgHdr {
     }
 
     fn write_to_buf(&self, resp_buf: &mut [u8]) -> Result<(), ErrorCode> {
-        if resp_buf.len() < MCTP_CTRL_MSG_HEADER_LEN {
-            return Err(ErrorCode::INVAL);
-        }
-
-        resp_buf[..MCTP_CTRL_MSG_HEADER_LEN]
+        resp_buf
+            .get_mut(..MCTP_CTRL_MSG_HEADER_LEN)
+            .ok_or(ErrorCode::INVAL)?
             .copy_from_slice(&self.0.to_le_bytes()[..MCTP_CTRL_MSG_HEADER_LEN]);
         Ok(())
     }
@@ -94,12 +92,11 @@ pub fn process_mctp_control_msg(
     uuid: &[u8; 16],
     resp_buf: &mut [u8],
 ) -> Result<MCTPCtrlMsgResp, ErrorCode> {
-    if msg_buf.len() < MCTP_CTRL_MSG_HEADER_LEN {
-        return Err(ErrorCode::INVAL);
-    }
-
+    let (header, req_buf) = msg_buf
+        .split_at_checked(MCTP_CTRL_MSG_HEADER_LEN)
+        .ok_or(ErrorCode::INVAL)?;
     let mut hdr = [0; 4];
-    hdr[..MCTP_CTRL_MSG_HEADER_LEN].copy_from_slice(&msg_buf[..MCTP_CTRL_MSG_HEADER_LEN]);
+    hdr[..MCTP_CTRL_MSG_HEADER_LEN].copy_from_slice(header);
     let mctp_ctrl_msg_hdr = MCTPCtrlMsgHdr(u32::from_le_bytes(hdr));
 
     if mctp_ctrl_msg_hdr.rq() != 1 || mctp_ctrl_msg_hdr.datagram() != 0 {
@@ -114,7 +111,6 @@ pub fn process_mctp_control_msg(
         mctp_ctrl_msg_hdr.cmd(),
     );
 
-    let req_buf = &msg_buf[MCTP_CTRL_MSG_HEADER_LEN..];
     let mut assigned_eid = None;
     let resp_data_len = match MCTPCtrlCmd::try_from(mctp_ctrl_msg_hdr.cmd()) {
         Ok(mctp_ctrl_cmd) => {
@@ -126,7 +122,9 @@ pub fn process_mctp_control_msg(
                 return Err(ErrorCode::NOMEM);
             }
 
-            let rsp_payload = &mut resp_buf[MCTP_CTRL_MSG_HEADER_LEN..];
+            let rsp_payload = resp_buf
+                .get_mut(MCTP_CTRL_MSG_HEADER_LEN..)
+                .ok_or(ErrorCode::NOMEM)?;
             match mctp_ctrl_cmd {
                 MCTPCtrlCmd::SetEID => mctp_ctrl_cmd
                     .process_set_endpoint_id(req_buf, rsp_payload)
@@ -164,8 +162,11 @@ pub fn process_mctp_control_msg(
                 return Err(ErrorCode::NOMEM);
             }
 
-            let rsp_payload = &mut resp_buf[MCTP_CTRL_MSG_HEADER_LEN..];
-            rsp_payload[0] = CmdCompletionCode::ErrorNotSupportedCmd as u8;
+            let rsp_payload = resp_buf
+                .get_mut(MCTP_CTRL_MSG_HEADER_LEN..)
+                .ok_or(ErrorCode::NOMEM)?;
+            *rsp_payload.first_mut().ok_or(ErrorCode::NOMEM)? =
+                CmdCompletionCode::ErrorNotSupportedCmd as u8;
             Ok(1)
         }
     }?;
@@ -232,12 +233,12 @@ impl MCTPCtrlCmd {
         req: &[u8],
         rsp_buf: &mut [u8],
     ) -> Result<Option<u8>, ErrorCode> {
-        if req.len() < self.req_data_len() || rsp_buf.len() < self.resp_data_len() {
-            return Err(ErrorCode::NOMEM);
-        }
-
+        let req = req.get(..self.req_data_len()).ok_or(ErrorCode::NOMEM)?;
+        let rsp_buf = rsp_buf
+            .get_mut(..self.resp_data_len())
+            .ok_or(ErrorCode::NOMEM)?;
         let req: SetEIDReq<[u8; 2]> =
-            SetEIDReq::read_from_bytes(&req[..self.req_data_len()]).map_err(|_| ErrorCode::FAIL)?;
+            SetEIDReq::read_from_bytes(req).map_err(|_| ErrorCode::FAIL)?;
         let op = req.op().into();
         let eid = req.eid();
         let mut resp = SetEIDResp::new();
@@ -264,8 +265,7 @@ impl MCTPCtrlCmd {
         resp.set_eid_assign_status(set_status as u8);
         resp.set_completion_code(completion_code as u8);
 
-        resp.write_to(&mut rsp_buf[..self.resp_data_len()])
-            .map_err(|_| ErrorCode::FAIL)?;
+        resp.write_to(rsp_buf).map_err(|_| ErrorCode::FAIL)?;
 
         if resp.eid_assign_status() == SetEIDStatus::Accepted as u8 {
             Ok(Some(eid))
@@ -279,17 +279,16 @@ impl MCTPCtrlCmd {
         local_eid: u8,
         rsp_buf: &mut [u8],
     ) -> Result<(), ErrorCode> {
-        if rsp_buf.len() < self.resp_data_len() {
-            return Err(ErrorCode::NOMEM);
-        }
+        let rsp_buf = rsp_buf
+            .get_mut(..self.resp_data_len())
+            .ok_or(ErrorCode::NOMEM)?;
         let mut resp = GetEIDResp::new();
 
         resp.set_completion_code(CmdCompletionCode::Success as u8);
         resp.set_eid(local_eid);
         resp.set_eid_type(EIDType::DynamicOnly as u8);
 
-        resp.write_to(&mut rsp_buf[..self.resp_data_len()])
-            .map_err(|_| ErrorCode::FAIL)
+        resp.write_to(rsp_buf).map_err(|_| ErrorCode::FAIL)
     }
 
     pub fn process_get_endpoint_uuid(
@@ -297,13 +296,12 @@ impl MCTPCtrlCmd {
         uuid: &[u8; 16],
         rsp_buf: &mut [u8],
     ) -> Result<(), ErrorCode> {
-        if rsp_buf.len() < self.resp_data_len() {
-            return Err(ErrorCode::NOMEM);
-        }
-
-        rsp_buf[0] = CmdCompletionCode::Success as u8;
-        rsp_buf[1..self.resp_data_len()].copy_from_slice(uuid);
-        Ok(())
+        let response = rsp_buf
+            .get_mut(..self.resp_data_len())
+            .ok_or(ErrorCode::NOMEM)?;
+        let (completion, payload) = response.split_first_mut().ok_or(ErrorCode::NOMEM)?;
+        *completion = CmdCompletionCode::Success as u8;
+        uuid.write_to(payload).map_err(|_| ErrorCode::FAIL)
     }
 
     pub fn process_get_version_support(
@@ -315,12 +313,11 @@ impl MCTPCtrlCmd {
         if req.len() < self.req_data_len() {
             return Err(ErrorCode::INVAL);
         }
-        if rsp_buf.len() < self.resp_data_len() {
-            return Err(ErrorCode::NOMEM);
-        }
-
-        rsp_buf[..self.resp_data_len()].fill(0);
-        match VersionSupportType::from(req[0]) {
+        rsp_buf
+            .get_mut(..self.resp_data_len())
+            .ok_or(ErrorCode::NOMEM)?
+            .fill(0);
+        match VersionSupportType::from(*req.first().ok_or(ErrorCode::INVAL)?) {
             VersionSupportType::BaseSpec | VersionSupportType::ControlProtocolMessage => {
                 Self::write_get_version_support_success(rsp_buf, &MCTP_BASE_CONTROL_VERSIONS)
             }
@@ -347,13 +344,11 @@ impl MCTPCtrlCmd {
             completion_code: 0x00,
             entry_counter: versions.len() as u8,
         };
-        header
-            .write_to(&mut rsp_buf[..2])
-            .map_err(|_| ErrorCode::FAIL)?;
-
-        for (i, ver) in versions.iter().enumerate() {
-            let offset = 2 + i * 4;
-            rsp_buf[offset..offset + 4].copy_from_slice(ver);
+        let (header_buf, body) = rsp_buf.split_at_mut_checked(2).ok_or(ErrorCode::NOMEM)?;
+        header.write_to(header_buf).map_err(|_| ErrorCode::FAIL)?;
+        let body = body.get_mut(..versions.len() * 4).ok_or(ErrorCode::NOMEM)?;
+        for (destination, version) in body.chunks_exact_mut(4).zip(versions) {
+            destination.copy_from_slice(version);
         }
 
         Ok(2 + versions.len() * 4)
@@ -365,7 +360,7 @@ impl MCTPCtrlCmd {
             entry_counter: 0,
         };
         header
-            .write_to(&mut rsp_buf[..2])
+            .write_to(rsp_buf.get_mut(..2).ok_or(ErrorCode::NOMEM)?)
             .map_err(|_| ErrorCode::FAIL)?;
         Ok(2)
     }
@@ -376,13 +371,15 @@ impl MCTPCtrlCmd {
         rsp_buf: &mut [u8],
         supported_msg_types: &[MessageType],
     ) -> Result<usize, ErrorCode> {
-        if rsp_buf.len() < 2 + supported_msg_types.len() {
-            return Err(ErrorCode::NOMEM);
-        }
-        rsp_buf[0] = 0x00; // Completion code: Success
-        rsp_buf[1] = supported_msg_types.len() as u8;
-        for (i, msg_type) in supported_msg_types.iter().enumerate() {
-            rsp_buf[2 + i] = *msg_type as u8;
+        let response = rsp_buf
+            .get_mut(..2 + supported_msg_types.len())
+            .ok_or(ErrorCode::NOMEM)?;
+        let (header, types) = response
+            .split_first_chunk_mut::<2>()
+            .ok_or(ErrorCode::NOMEM)?;
+        *header = [0x00, supported_msg_types.len() as u8];
+        for (destination, msg_type) in types.iter_mut().zip(supported_msg_types) {
+            *destination = *msg_type as u8;
         }
 
         Ok(2 + supported_msg_types.len())
@@ -400,19 +397,16 @@ impl MCTPCtrlCmd {
         if req[0] != VENDOR_ID_SET_SELECTOR_FIRST
             || !supported_msg_types.contains(&MessageType::Caliptra)
         {
-            if rsp_buf.len() < GET_VENDOR_DEFINED_MSG_SUPPORT_EMPTY_RESP.len() {
-                return Err(ErrorCode::NOMEM);
-            }
-            rsp_buf[..GET_VENDOR_DEFINED_MSG_SUPPORT_EMPTY_RESP.len()]
+            rsp_buf
+                .get_mut(..GET_VENDOR_DEFINED_MSG_SUPPORT_EMPTY_RESP.len())
+                .ok_or(ErrorCode::NOMEM)?
                 .copy_from_slice(&GET_VENDOR_DEFINED_MSG_SUPPORT_EMPTY_RESP);
             return Ok(GET_VENDOR_DEFINED_MSG_SUPPORT_EMPTY_RESP.len());
         }
 
-        if rsp_buf.len() < GET_VENDOR_DEFINED_MSG_SUPPORT_CALIPTRA_RESP.len() {
-            return Err(ErrorCode::NOMEM);
-        }
-
-        rsp_buf[..GET_VENDOR_DEFINED_MSG_SUPPORT_CALIPTRA_RESP.len()]
+        rsp_buf
+            .get_mut(..GET_VENDOR_DEFINED_MSG_SUPPORT_CALIPTRA_RESP.len())
+            .ok_or(ErrorCode::NOMEM)?
             .copy_from_slice(&GET_VENDOR_DEFINED_MSG_SUPPORT_CALIPTRA_RESP);
 
         Ok(GET_VENDOR_DEFINED_MSG_SUPPORT_CALIPTRA_RESP.len())
@@ -931,6 +925,27 @@ mod tests {
                 GetVersionSupportHeaderResp::read_from_bytes(&rsp_buf[..2]).unwrap();
             assert_eq!(header.completion_code, 0x80); // Unsupported
             assert_eq!(header.entry_counter, 0);
+        }
+    }
+
+    #[test]
+    fn test_version_response_writers_reject_short_buffers() {
+        for len in [0, 1, 2, 17] {
+            let mut response = [0; 18];
+            assert_eq!(
+                MCTPCtrlCmd::write_get_version_support_success(
+                    &mut response[..len],
+                    &MCTP_BASE_CONTROL_VERSIONS,
+                ),
+                Err(ErrorCode::NOMEM)
+            );
+        }
+        for len in [0, 1] {
+            let mut response = [0; 2];
+            assert_eq!(
+                MCTPCtrlCmd::write_get_version_support_unsupported(&mut response[..len]),
+                Err(ErrorCode::NOMEM)
+            );
         }
     }
 

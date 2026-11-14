@@ -8,13 +8,13 @@ use alloc::boxed::Box;
 use arrayvec::ArrayVec;
 use async_trait::async_trait;
 use caliptra_api::mailbox::{EcdsaVerifyReq, MailboxReqHeader, MailboxRespHeader};
-use caliptra_mcu_attestation_evidence::encode_signed_ocp_eat;
 #[cfg(feature = "pcr-quote")]
 use caliptra_mcu_attestation_evidence::pcr_quote::{encode_pcr_quote, PcrQuoteAlgorithm};
+use caliptra_mcu_attestation_evidence::{encode_signed_ocp_eat, OcpEatAlgorithm};
 use caliptra_mcu_common_commands::{
-    AsymAlgo, CaliptraCmdResult, CaliptraCompletionCode, EvidenceFormat, GetLogResult, LogType,
-    PkiEntitySlot, ATTESTATION_NONCE_LEN, DEBUG_UNLOCK_CHALLENGE_SIZE,
-    DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE,
+    AsymAlgo, CaliptraCmdResult, CaliptraCompletionCode, CertChainInfo, EvidenceFormat,
+    GetLogResult, LogType, PkiEntitySlot, ProvisionIdevCertMode, ATTESTATION_NONCE_LEN,
+    DEBUG_UNLOCK_CHALLENGE_SIZE, DEBUG_UNLOCK_UNIQUE_DEVICE_ID_SIZE,
 };
 use caliptra_mcu_libsyscall_caliptra::flash::SpiFlash;
 use caliptra_mcu_libsyscall_caliptra::mailbox::{Mailbox, MailboxError, PayloadStream};
@@ -24,22 +24,24 @@ use caliptra_mcu_libtock_platform::ErrorCode;
 // The AK label lives with the cert store because that is what mints the leaf
 // certificate; attestation evidence must be signed under the same label so the
 // leaf cert in the device's chain is the one that verifies it.
+use caliptra_mcu_cert_store::DPE_LEAF_LABEL;
+use caliptra_mcu_mbox_common::authorization::{ecc_public_key_core_bytes, AuthorizationMetadata};
 use caliptra_mcu_mbox_common::messages::{
     CommandId, DotDisablePayload, DotLockPayload, DotOverrideChallengePayload, DotOverridePayload,
     DotRotatePayload, DotStatus, DotUnlockPayload, HybridSignature, SvnTarget, AUTH_CMD_NONCE_LEN,
     DOT_BLOB_SIZE, DOT_KEY_HASH_SIZE, DOT_MLDSA_PUBLIC_KEY_SIZE,
 };
 use caliptra_mcu_registers_generated::fuses;
-use caliptra_mcu_spdm_pal::cert::DPE_LEAF_LABEL;
 use core::cell::RefCell;
 use embassy_sync::blocking_mutex::{raw::CriticalSectionRawMutex, Mutex as BlockingMutex};
 use mcu_caliptra_api::{
-    cm_hmac_sha512, derive_stable_key, fe_prog, fw_info, get_attested_csr_ecc384,
-    get_attested_csr_mldsa87, get_idev_csr_ecc384, hash_all, request_debug_unlock_challenge,
-    rng_generate, sha_finish, sha_init, sha_update, ApiAlloc, HashAlgo, McuErrorCode,
-    StableKeyType, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD,
+    cm_hmac_sha512, derive_stable_key, fe_prog, fw_info, get_idev_csr_ecc384, hash_all,
+    request_debug_unlock_challenge, rng_generate, sha_finish, sha_init, sha_update, HashAlgo,
+    McuErrorCode, ScratchAlloc, StableKeyType, PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_CMD,
     PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_RSP_LEN, SHA_CONTEXT_SIZE,
 };
+#[cfg(feature = "attested-csr")]
+use mcu_caliptra_api::{get_attested_csr_ecc384, get_attested_csr_mldsa87};
 use portable_atomic::{AtomicBool, Ordering};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
@@ -178,8 +180,265 @@ fn mailbox_checksum_segments<const N: usize>(command: u32, segments: [&[u8]; N])
 mod tests {
     extern crate std;
 
+    use super::super::CaliptraCmdBackend;
     use super::*;
+    use caliptra_api::mailbox::FwInfoResp;
+    use caliptra_mcu_common_commands::CaliptraCmdHandler;
+    use caliptra_mcu_libsyscall_caliptra::mailbox::MAILBOX_DRIVER_NUM;
+    use caliptra_mcu_libtock_platform::{CommandReturn, Syscalls};
+    use caliptra_mcu_libtock_unittest::{command_return, fake, DriverInfo};
+    use caliptra_mcu_scratch_alloc::BitmapAllocator;
+    use core::cell::Cell;
+    use core::future::Future;
+    use core::ptr::NonNull;
+    use core::task::{Context, Waker};
+    use std::rc::Rc;
     use std::vec::Vec;
+    use zerocopy::FromZeros;
+
+    static SVN_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    struct TestAlloc;
+
+    impl ScratchAlloc for TestAlloc {
+        type Buf<'a> = Vec<u8>;
+
+        fn alloc(&self, len: usize) -> mcu_error::McuResult<Self::Buf<'_>> {
+            Ok(std::vec![0; len])
+        }
+    }
+
+    #[test]
+    fn svn_transaction_blocks_typed_floor_writers_before_any_io() {
+        let _test_guard = SVN_TEST_LOCK.lock().unwrap();
+        for target in [
+            SvnTarget::CaliptraRuntime,
+            SvnTarget::SocManifest,
+            SvnTarget::OwnerSocManifest,
+        ] {
+            let kernel = crate::kernel();
+            let svn_guard = otp::SVN_UPDATE_LOCK.try_lock().unwrap();
+            let mut writer = Box::pin(increase_min_svn(&TestAlloc, target, 1));
+            let mut context = Context::from_waker(Waker::noop());
+            assert!(writer.as_mut().poll(&mut context).is_pending());
+            assert!(kernel.take_syscall_log().is_empty());
+            drop(svn_guard);
+            assert_eq!(
+                fake::wait_for_future_ready(writer),
+                Err(CaliptraCompletionCode::OperationFailed)
+            );
+            assert!(otp::SVN_UPDATE_LOCK.try_lock().is_ok());
+        }
+    }
+
+    #[test]
+    fn svn_transaction_blocks_the_raw_fuse_writer_before_any_io() {
+        let _test_guard = SVN_TEST_LOCK.lock().unwrap();
+        let kernel = crate::kernel();
+        let backend = CaliptraCmdBackend;
+        let svn_guard = otp::SVN_UPDATE_LOCK.try_lock().unwrap();
+        let word_addr = (fuses::OTP_CPTRA_CORE_RUNTIME_SVN.byte_offset / 4) as u32;
+        let mut writer = Box::pin(backend.fuse_write(word_addr, 0x1f, u32::MAX));
+        let mut context = Context::from_waker(Waker::noop());
+        assert!(writer.as_mut().poll(&mut context).is_pending());
+        assert!(kernel.take_syscall_log().is_empty());
+        drop(svn_guard);
+        assert_eq!(
+            fake::wait_for_future_ready(writer),
+            Err(CaliptraCompletionCode::OperationFailed)
+        );
+        assert!(otp::SVN_UPDATE_LOCK.try_lock().is_ok());
+    }
+
+    #[derive(Default)]
+    struct OwnerSvnOtp {
+        words: Cell<[u32; 2]>,
+        index: Cell<usize>,
+        reads: Cell<usize>,
+        writes: RefCell<Vec<(usize, u32)>>,
+        fail_read: Cell<Option<usize>>,
+        fail_write: Cell<Option<usize>>,
+        readback_xor: Cell<u32>,
+    }
+
+    impl fake::SyscallDriver for OwnerSvnOtp {
+        fn info(&self) -> DriverInfo {
+            DriverInfo::new(otp::OTP_DRIVER_NUM)
+        }
+
+        fn command(&self, command: u32, arg0: u32, arg1: u32) -> CommandReturn {
+            match command {
+                otp::cmd::OTP_SET_REGISTER => {
+                    assert_eq!(arg0, otp::reg::OWNER_SOC_MANIFEST_MIN_SVN);
+                    assert!(arg1 < 2, "Access outside the Owner SoC Manifest counter");
+                    self.index.set(arg1 as usize);
+                    command_return::success()
+                }
+                otp::cmd::OTP_READ => {
+                    assert_eq!(arg0, otp::reg::OWNER_SOC_MANIFEST_MIN_SVN);
+                    assert_eq!(arg1 as usize, self.index.get());
+                    let read = self.reads.get();
+                    self.reads.set(read + 1);
+                    if self.fail_read.get() == Some(read) {
+                        return command_return::failure(ErrorCode::Fail);
+                    }
+                    let mut value = self.words.get()[self.index.get()];
+                    if read >= 2 && self.index.get() == 0 {
+                        value ^= self.readback_xor.get();
+                    }
+                    command_return::success_u32(value)
+                }
+                otp::cmd::OTP_WRITE => {
+                    let index = self.index.get();
+                    self.writes.borrow_mut().push((index, arg0));
+                    if self.fail_write.get() == Some(index) {
+                        return command_return::failure(ErrorCode::Fail);
+                    }
+                    let mut words = self.words.get();
+                    assert_eq!(arg0 & words[index], words[index]);
+                    words[index] = arg0;
+                    self.words.set(words);
+                    command_return::success()
+                }
+                _ => panic!("Unexpected OTP command {command}"),
+            }
+        }
+    }
+
+    #[test]
+    fn owner_svn_runtime_word_updates() {
+        let _test_guard = SVN_TEST_LOCK.lock().unwrap();
+        let kernel = crate::kernel();
+        let mailbox = Rc::new(fake::FakeMailboxDriver::new());
+        let otp = Rc::new(OwnerSvnOtp::default());
+        kernel.add_driver(&mailbox);
+        kernel.add_driver(&otp);
+
+        #[repr(align(64))]
+        struct Scratch([u8; 1024]);
+        let mut scratch = Scratch([0; 1024]);
+        // SAFETY: The aligned storage is exclusive to the pool and outlives every request.
+        let pool = unsafe {
+            BitmapAllocator::new(
+                NonNull::new(scratch.0.as_mut_ptr()).unwrap(),
+                scratch.0.len(),
+            )
+        };
+        let advance = |svn, accepted_svn| {
+            let mut response = FwInfoResp {
+                owner_auth_manifest_current_svn: accepted_svn,
+                ..FwInfoResp::new_zeroed()
+            };
+            response.hdr.chksum = caliptra_api::calc_checksum(0, &response.as_bytes()[4..]);
+            mailbox.add_ready_response(
+                caliptra_api::mailbox::CommandId::FW_INFO.into(),
+                response.as_bytes(),
+            );
+            otp.reads.set(0);
+            let mut writer = Box::pin(increase_min_svn(&pool, SvnTarget::OwnerSocManifest, svn));
+            let mut context = Context::from_waker(Waker::noop());
+            assert!(writer.as_mut().poll(&mut context).is_pending());
+            let guarded_while_waiting = otp::SVN_UPDATE_LOCK.try_lock().is_err();
+            let result = fake::wait_for_future_ready(writer);
+            // The fake mailbox retains its allowed buffers after completion.
+            DefaultSyscalls::unallow_ro(MAILBOX_DRIVER_NUM, 0);
+            DefaultSyscalls::unallow_rw(MAILBOX_DRIVER_NUM, 0);
+            assert!(guarded_while_waiting);
+            result
+        };
+
+        for svn in [0, 65, u32::MAX] {
+            assert_eq!(
+                fake::wait_for_future_ready(Box::pin(increase_min_svn(
+                    &pool,
+                    SvnTarget::OwnerSocManifest,
+                    svn,
+                ))),
+                Err(CaliptraCompletionCode::InvalidParameter)
+            );
+        }
+        assert_eq!(mailbox.get_last_command(), None);
+        assert_eq!(advance(1, 0), Err(CaliptraCompletionCode::InvalidParameter));
+        assert_eq!(advance(8, 7), Err(CaliptraCompletionCode::InvalidParameter));
+        assert_eq!(otp.reads.get(), 0);
+        assert!(otp.writes.borrow().is_empty());
+
+        for svn in 1..=64 {
+            assert_eq!(advance(svn, 64), Ok(()), "SVN {svn}");
+            let words = otp.words.get();
+            assert_eq!(words[0].count_ones() + words[1].count_ones(), svn);
+            let writes = otp.writes.borrow().len();
+            assert_eq!(advance(svn, 64), Ok(()));
+            if svn > 1 {
+                assert_eq!(
+                    advance(svn - 1, 64),
+                    Err(CaliptraCompletionCode::InvalidParameter)
+                );
+            }
+            assert_eq!(otp.writes.borrow().len(), writes);
+            assert_eq!(otp.words.get(), words);
+        }
+        assert_eq!(otp.words.get(), [u32::MAX; 2]);
+
+        let partial = [0b1010, 1 << 31];
+        otp.words.set(partial);
+        assert_eq!(advance(7, 64), Ok(()));
+        let words = otp.words.get();
+        assert_eq!(words[0].count_ones() + words[1].count_ones(), 7);
+        assert_eq!(words[0] & partial[0], partial[0]);
+        assert_eq!(words[1] & partial[1], partial[1]);
+
+        otp.words.set([0; 2]);
+        otp.writes.borrow_mut().clear();
+        otp.fail_write.set(Some(1));
+        assert_eq!(
+            advance(64, 64),
+            Err(CaliptraCompletionCode::OperationFailed)
+        );
+        assert_eq!(otp.words.get(), [u32::MAX, 0]);
+        assert_eq!(*otp.writes.borrow(), [(0, u32::MAX), (1, u32::MAX)]);
+        otp.fail_write.set(None);
+        otp.writes.borrow_mut().clear();
+        assert_eq!(advance(64, 64), Ok(()));
+        assert_eq!(otp.words.get(), [u32::MAX; 2]);
+        assert_eq!(*otp.writes.borrow(), [(1, u32::MAX)]);
+
+        otp.words.set([0; 2]);
+        otp.fail_write.set(Some(0));
+        assert_eq!(
+            advance(33, 64),
+            Err(CaliptraCompletionCode::OperationFailed)
+        );
+        assert_eq!(otp.words.get(), [0; 2]);
+        otp.fail_write.set(None);
+
+        for read in 0..4 {
+            otp.words.set([0; 2]);
+            otp.writes.borrow_mut().clear();
+            otp.fail_read.set(Some(read));
+            assert_eq!(
+                advance(33, 64),
+                Err(CaliptraCompletionCode::OperationFailed),
+                "read {read}"
+            );
+            if read < 2 {
+                assert!(otp.writes.borrow().is_empty());
+                assert_eq!(otp.words.get(), [0; 2]);
+            } else {
+                assert_eq!(otp.words.get(), [u32::MAX, 1]);
+            }
+        }
+        otp.fail_read.set(None);
+
+        // The readback has the right bit count but not the intended bit pattern.
+        otp.words.set([0; 2]);
+        otp.readback_xor.set(0b11);
+        assert_eq!(advance(1, 64), Err(CaliptraCompletionCode::OperationFailed));
+        assert_eq!(otp.words.get(), [1, 0]);
+        otp.readback_xor.set(0);
+        assert_eq!(advance(1, 64), Ok(()));
+        assert_eq!(pool.live_slots(), 0);
+    }
 
     #[test]
     fn segmented_payload_preserves_wire_order_and_checksum() {
@@ -205,6 +464,14 @@ mod tests {
             caliptra_api::calc_checksum(command, &request)
         );
     }
+
+    #[test]
+    fn field_entropy_is_provisioned_only_when_every_slot_is_finished() {
+        assert!(!is_field_entropy_provisioned(0));
+        assert!(!is_field_entropy_provisioned(0x036d));
+        assert!(is_field_entropy_provisioned(0x06db));
+        assert!(!is_field_entropy_provisioned(0x0fff));
+    }
 }
 
 pub async fn get_debug_log(log_type: u32, data: &mut [u8]) -> CaliptraCmdResult<GetLogResult> {
@@ -217,7 +484,7 @@ pub async fn clear_debug_log(log_type: u32) -> CaliptraCmdResult<()> {
     super::debug_log::clear().await
 }
 
-pub async fn request_debug_unlock<A: ApiAlloc>(
+pub async fn request_debug_unlock<A: ScratchAlloc>(
     alloc: &A,
     unlock_level: u8,
     out: &mut [u8],
@@ -241,7 +508,7 @@ pub async fn request_debug_unlock<A: ApiAlloc>(
 /// SPDM VDM) relay it as a pure pass-through — firmware never synthesizes a
 /// header. This differs from other Caliptra commands, whose checksum the lite
 /// API builds from in-firmware parameters.
-pub async fn authorize_debug_unlock_token<A: ApiAlloc>(
+pub async fn authorize_debug_unlock_token<A: ScratchAlloc>(
     _alloc: &A,
     token_request: &[u8],
 ) -> CaliptraCmdResult<()> {
@@ -260,6 +527,7 @@ pub async fn authorize_debug_unlock_token<A: ApiAlloc>(
     Ok(())
 }
 
+#[cfg(feature = "attested-csr")]
 pub async fn export_attested_csr(
     device_key_id: u32,
     algorithm: u32,
@@ -280,12 +548,10 @@ pub async fn export_attested_csr(
 /// `CaliptraCmdHandler::attestation_evidence_len` before they reach here; the
 /// arms below are the same set, so the two stay consistent.
 ///
-/// Only [`PkiEntitySlot::Vendor`] is served. Signing is not slot-aware yet —
-/// every entity resolves to the same vendor DPE leaf — so honoring `Owner`
-/// would return evidence claiming an owner endorsement that was never
-/// selected or provisioned. It is refused until slot-aware key and
-/// certificate selection exists.
-pub async fn get_attestation<A: ApiAlloc>(
+/// Every entity signs with the same DPE leaf key; whether an entity can be
+/// served follows the provisioning state of its `(entity, algorithm)`
+/// certificate chain in the common certificate store.
+pub async fn get_attestation<A: ScratchAlloc>(
     alloc: &A,
     format: EvidenceFormat,
     algorithm: AsymAlgo,
@@ -293,16 +559,21 @@ pub async fn get_attestation<A: ApiAlloc>(
     nonce: &[u8; ATTESTATION_NONCE_LEN],
     out: &mut [u8],
 ) -> CaliptraCmdResult<usize> {
+    #[cfg(any(feature = "spdm", feature = "mcu-mbox-service"))]
+    if !crate::cert_store::shared().is_provisioned(entity.into(), algorithm.into()) {
+        return Err(CaliptraCompletionCode::InvalidState);
+    }
+    #[cfg(not(any(feature = "spdm", feature = "mcu-mbox-service")))]
     if entity != PkiEntitySlot::Vendor {
-        return Err(CaliptraCompletionCode::UnsupportedOperation);
+        return Err(CaliptraCompletionCode::InvalidState);
     }
     match (format, algorithm) {
-        // The EAT signer emits only ES384 today, so there is no ML-DSA EAT to
-        // dispatch to yet.
-        // TODO: add an (OcpEat, Mldsa87) arm when the EAT signer supports
-        // ML-DSA-87, and a matching bound in `evidence_len`.
-        (EvidenceFormat::OcpEat, AsymAlgo::EccP384) => {
-            encode_signed_ocp_eat(alloc, &DPE_LEAF_LABEL, entity as u8, nonce, out)
+        (EvidenceFormat::OcpEat, algo) => {
+            let eat_algo = match algo {
+                AsymAlgo::EccP384 => OcpEatAlgorithm::Esp384,
+                AsymAlgo::Mldsa87 => OcpEatAlgorithm::Mldsa87,
+            };
+            encode_signed_ocp_eat(alloc, eat_algo, &DPE_LEAF_LABEL, entity as u8, nonce, out)
                 .await
                 .map_err(map_mcu_err)
         }
@@ -320,6 +591,144 @@ pub async fn get_attestation<A: ApiAlloc>(
     }
 }
 
+pub async fn get_cert_chain_info<A: ScratchAlloc>(
+    alloc: &A,
+    entity: PkiEntitySlot,
+    algorithm: AsymAlgo,
+    info: &mut CertChainInfo,
+) -> CaliptraCmdResult<()> {
+    #[cfg(feature = "mcu-mbox-service")]
+    {
+        let store = crate::cert_store::mci_store();
+        let role = entity.into();
+        let algo = algorithm.into();
+        if !store.cert_slot(role).is_provisioned(algo) {
+            return Err(CaliptraCompletionCode::InvalidState);
+        }
+        store
+            .cert_chain_info(alloc, role, algo, info)
+            .await
+            .map_err(map_cert_store_err)
+    }
+    #[cfg(not(feature = "mcu-mbox-service"))]
+    {
+        let _ = (alloc, entity, algorithm, info);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+}
+
+pub async fn get_cert_chain<A: ScratchAlloc>(
+    alloc: &A,
+    entity: PkiEntitySlot,
+    algorithm: AsymAlgo,
+    offset: u32,
+    out: &mut [u8],
+) -> CaliptraCmdResult<usize> {
+    #[cfg(feature = "mcu-mbox-service")]
+    {
+        if out.is_empty() {
+            return Err(CaliptraCompletionCode::InvalidParameter);
+        }
+        let store = crate::cert_store::mci_store();
+        let role = entity.into();
+        let algo = algorithm.into();
+        if !store.cert_slot(role).is_provisioned(algo) {
+            return Err(CaliptraCompletionCode::InvalidState);
+        }
+        let n = store
+            .read_cert_chain(alloc, role, algo, offset as usize, out)
+            .await
+            .map_err(map_cert_store_err)?;
+        if n == 0 {
+            return Err(CaliptraCompletionCode::InvalidParameter);
+        }
+        Ok(n)
+    }
+    #[cfg(not(feature = "mcu-mbox-service"))]
+    {
+        let _ = (alloc, entity, algorithm, offset, out);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+}
+
+pub async fn set_cert_chain<A: ScratchAlloc>(
+    alloc: &A,
+    entity: PkiEntitySlot,
+    algorithm: AsymAlgo,
+    device_key_id: u32,
+    offset: u32,
+    total_size: u32,
+    data: &[u8],
+) -> CaliptraCmdResult<()> {
+    #[cfg(all(feature = "mcu-mbox-service", feature = "cert-provisioning"))]
+    {
+        let key_pair_id =
+            u8::try_from(device_key_id).map_err(|_| CaliptraCompletionCode::InvalidParameter)?;
+        crate::cert_store::mci_store()
+            .set_raw_endorsement_chain(
+                alloc,
+                entity.into(),
+                algorithm.into(),
+                key_pair_id,
+                offset as usize,
+                total_size as usize,
+                data,
+            )
+            .await
+            .map_err(map_cert_store_err)
+    }
+    #[cfg(not(all(feature = "mcu-mbox-service", feature = "cert-provisioning")))]
+    {
+        let _ = (
+            alloc,
+            entity,
+            algorithm,
+            device_key_id,
+            offset,
+            total_size,
+            data,
+        );
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+}
+
+pub async fn provision_idevid_cert<A: ScratchAlloc>(
+    alloc: &A,
+    algorithm: AsymAlgo,
+    mode: ProvisionIdevCertMode,
+    data: &[u8],
+) -> CaliptraCmdResult<()> {
+    #[cfg(all(feature = "cert-provisioning", not(feature = "vendor-certs-oob")))]
+    {
+        crate::cert_store::provision_idevid_cert(
+            alloc,
+            algorithm.into(),
+            mode == ProvisionIdevCertMode::WriteOtp,
+            data,
+        )
+        .await
+    }
+    #[cfg(not(all(feature = "cert-provisioning", not(feature = "vendor-certs-oob"))))]
+    {
+        let _ = (alloc, algorithm, mode, data);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+}
+
+#[cfg(feature = "mcu-mbox-service")]
+fn map_cert_store_err(err: McuErrorCode) -> CaliptraCompletionCode {
+    use caliptra_mcu_cert_store::errors as cert_errors;
+    match err {
+        cert_errors::PROVISIONING_DISABLED => CaliptraCompletionCode::UnsupportedOperation,
+        cert_errors::KEY_MISMATCH
+        | cert_errors::UNSUPPORTED_KEY
+        | cert_errors::INVALID_ENDORSEMENT => CaliptraCompletionCode::InvalidParameter,
+        cert_errors::STORAGE_BUSY => CaliptraCompletionCode::InvalidState,
+        cert_errors::STORAGE_ERROR => CaliptraCompletionCode::OperationFailed,
+        _ => map_mcu_err(err),
+    }
+}
+
 pub async fn export_idevid_csr(algorithm: u32, out: &mut [u8]) -> CaliptraCmdResult<usize> {
     match algorithm {
         ALGO_ECC_P384 => get_idev_csr_ecc384(out)
@@ -331,7 +740,7 @@ pub async fn export_idevid_csr(algorithm: u32, out: &mut [u8]) -> CaliptraCmdRes
     }
 }
 
-pub async fn generate_auth_challenge<A: ApiAlloc>(
+pub async fn generate_auth_challenge<A: ScratchAlloc>(
     alloc: &A,
 ) -> CaliptraCmdResult<[u8; AUTH_CMD_NONCE_LEN]> {
     let mut challenge = [0u8; AUTH_CMD_NONCE_LEN];
@@ -342,45 +751,40 @@ pub async fn generate_auth_challenge<A: ApiAlloc>(
 }
 
 #[allow(clippy::too_many_arguments)]
-pub async fn verify_authorized_signatures<A: ApiAlloc>(
+pub async fn verify_authorized_signatures<A: ScratchAlloc>(
     alloc: &A,
     cmd_id: u32,
     payload: &[u8],
+    metadata: &AuthorizationMetadata,
     challenge: &[u8; AUTH_CMD_NONCE_LEN],
-    ecc_pub_x: [u8; 48],
-    ecc_pub_y: [u8; 48],
+    ecc_pub_x: &[u8; 48],
+    ecc_pub_y: &[u8; 48],
     mldsa_pub: &[u8; 2592],
     sig: &HybridSignature,
 ) -> CaliptraCmdResult<()> {
-    let context = alloc
-        .alloc(SHA_CONTEXT_SIZE)
-        .map_err(|_| CaliptraCompletionCode::InsufficientResources)?;
-    let mut anchor = sha_init(alloc, context, HashAlgo::Sha384, &ecc_pub_x)
-        .await
-        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
-    sha_update(alloc, &mut anchor, &ecc_pub_y)
-        .await
-        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
-    sha_update(alloc, &mut anchor, mldsa_pub)
-        .await
-        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
-    let mut pk_hash = [0u8; 48];
-    sha_finish(alloc, &mut anchor, &mut pk_hash)
-        .await
-        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
-    if pk_hash != crate::auth_keys::AUTH_PK_HASH {
+    let authority = metadata
+        .validate()
+        .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
+    let expected =
+        mcu_caliptra_api::core_image_info_from(authority.key_fw_id(), authority.manifest_source())
+            .await
+            .map_err(|_| CaliptraCompletionCode::AccessDenied)?;
+    let pk_hash = dot_lak_hash(alloc, ecc_pub_x, ecc_pub_y, mldsa_pub).await?;
+    if pk_hash != expected.digest {
         return Err(CaliptraCompletionCode::AccessDenied);
     }
 
-    // Pre-image = cmd_id(BE,4) || payload || challenge(48), built from the raw
-    // payload (no inner hash), mirroring prod-debug-unlock. Each leg verifies a
-    // digest of it: ECDSA over SHA-384(pre-image), ML-DSA over SHA-512(pre-image).
-    let mut pre_image = ArrayVec::<u8, 256>::new();
+    let mut pre_image =
+        ArrayVec::<u8, { caliptra_mcu_common_commands::command::MAX_AUTHORIZED_MESSAGE_LEN }>::new(
+        );
     pre_image
         .try_extend_from_slice(&cmd_id.to_be_bytes())
         .map_err(|_| CaliptraCompletionCode::InsufficientResources)?;
     pre_image
         .try_extend_from_slice(payload)
+        .map_err(|_| CaliptraCompletionCode::InsufficientResources)?;
+    pre_image
+        .try_extend_from_slice(metadata.as_bytes())
         .map_err(|_| CaliptraCompletionCode::InsufficientResources)?;
     pre_image
         .try_extend_from_slice(challenge)
@@ -400,15 +804,15 @@ pub async fn verify_authorized_signatures<A: ApiAlloc>(
         alloc,
         pre_image.as_slice(),
         &mldsa_digest,
-        &ecc_pub_x,
-        &ecc_pub_y,
+        ecc_pub_x,
+        ecc_pub_y,
         mldsa_pub,
         sig,
     )
     .await
 }
 
-async fn verify_hybrid_message_parts<A: ApiAlloc>(
+async fn verify_hybrid_message_parts<A: ScratchAlloc>(
     alloc: &A,
     ecc_message: &[u8],
     mldsa_message: &[u8],
@@ -468,7 +872,7 @@ async fn verify_hybrid_message_parts<A: ApiAlloc>(
     Ok(())
 }
 
-async fn verify_hybrid_message<A: ApiAlloc>(
+async fn verify_hybrid_message<A: ScratchAlloc>(
     alloc: &A,
     message: &[u8],
     ecc_pub_x: &[u8; 48],
@@ -482,29 +886,13 @@ async fn verify_hybrid_message<A: ApiAlloc>(
     .await
 }
 
-async fn dot_lak_hash<A: ApiAlloc>(
+async fn dot_lak_hash<A: ScratchAlloc>(
     alloc: &A,
     ecc_pub_x: &[u8; 48],
     ecc_pub_y: &[u8; 48],
     mldsa_pub: &[u8; DOT_MLDSA_PUBLIC_KEY_SIZE],
 ) -> CaliptraCmdResult<[u8; DOT_KEY_HASH_SIZE]> {
-    // DOT hashes ECC coordinates in Caliptra's hardware word layout: reverse
-    // bytes within each 32-bit word, then append ML-DSA in its wire byte order.
-    let mut ecc_key = [0u8; 96];
-    for (dst, src) in ecc_key[..48]
-        .chunks_exact_mut(4)
-        .zip(ecc_pub_x.chunks_exact(4))
-    {
-        dst.copy_from_slice(src);
-        dst.reverse();
-    }
-    for (dst, src) in ecc_key[48..]
-        .chunks_exact_mut(4)
-        .zip(ecc_pub_y.chunks_exact(4))
-    {
-        dst.copy_from_slice(src);
-        dst.reverse();
-    }
+    let ecc_key = ecc_public_key_core_bytes(ecc_pub_x, ecc_pub_y);
     let context = alloc
         .alloc(SHA_CONTEXT_SIZE)
         .map_err(|_| CaliptraCompletionCode::InsufficientResources)?;
@@ -549,7 +937,29 @@ pub fn dot_status() -> CaliptraCmdResult<DotStatus> {
     })
 }
 
-pub async fn dot_recovery<A: ApiAlloc>(
+pub fn dot_enable() -> CaliptraCmdResult<()> {
+    const DOT_INITIALIZED_MASK: u32 = 0x7;
+
+    let _guard = DotTransactionGuard::acquire()?;
+    let status = dot_status()?;
+    if status.enabled != 0 || status.burned != 0 {
+        return Err(CaliptraCompletionCode::InvalidState);
+    }
+
+    let otp = Otp::<DefaultSyscalls>::new();
+    let word_addr = (fuses::DOT_INITIALIZED.byte_offset / 4) as u32;
+    otp.write_raw(word_addr, DOT_INITIALIZED_MASK, DOT_INITIALIZED_MASK)
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+    let initialized = otp
+        .read_raw(word_addr, 0)
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+    if initialized & DOT_INITIALIZED_MASK != DOT_INITIALIZED_MASK {
+        return Err(CaliptraCompletionCode::OperationFailed);
+    }
+    Ok(())
+}
+
+pub async fn dot_recovery<A: ScratchAlloc>(
     alloc: &A,
     blob: &[u8; DOT_BLOB_SIZE],
 ) -> CaliptraCmdResult<()> {
@@ -582,7 +992,7 @@ fn read_recovery_pk_hash() -> CaliptraCmdResult<[u8; DOT_KEY_HASH_SIZE]> {
     Ok(hash)
 }
 
-pub async fn dot_override_challenge<A: ApiAlloc>(
+pub async fn dot_override_challenge<A: ScratchAlloc>(
     alloc: &A,
     request: &DotOverrideChallengePayload,
 ) -> CaliptraCmdResult<[u8; AUTH_CMD_NONCE_LEN]> {
@@ -620,7 +1030,7 @@ pub async fn dot_override_challenge<A: ApiAlloc>(
     Ok(challenge)
 }
 
-pub async fn dot_override<A: ApiAlloc>(
+pub async fn dot_override<A: ScratchAlloc>(
     alloc: &A,
     request: &DotOverridePayload,
 ) -> CaliptraCmdResult<()> {
@@ -693,7 +1103,7 @@ fn dot_effective_key_derivation_value(fuse_count: u32) -> CaliptraCmdResult<u32>
     }
 }
 
-async fn seal_dot_blob<A: ApiAlloc>(
+async fn seal_dot_blob<A: ScratchAlloc>(
     alloc: &A,
     fuse_count: u32,
     cak: [u8; DOT_KEY_HASH_SIZE],
@@ -770,15 +1180,22 @@ pub fn fuse_lock_partition(partition: u32) -> CaliptraCmdResult<()> {
         })
 }
 
-pub async fn increase_min_svn<A: ApiAlloc>(
+pub async fn increase_min_svn<A: ScratchAlloc>(
     alloc: &A,
     target: SvnTarget,
     svn: u32,
 ) -> CaliptraCmdResult<()> {
-    if svn == 0 || svn > 128 {
+    let is_owner_soc_manifest = target == SvnTarget::OwnerSocManifest;
+    let max_svn = if is_owner_soc_manifest {
+        u64::BITS
+    } else {
+        u128::BITS
+    };
+    if svn == 0 || svn > max_svn {
         return Err(CaliptraCompletionCode::InvalidParameter);
     }
 
+    let _svn_guard = otp::SVN_UPDATE_LOCK.lock().await;
     let otp_reg = match target {
         SvnTarget::CaliptraRuntime => {
             let caliptra_fw_info = fw_info(alloc)
@@ -798,19 +1215,32 @@ pub async fn increase_min_svn<A: ApiAlloc>(
             }
             otp::reg::SOC_MANIFEST_SVN
         }
-        SvnTarget::OwnerSocManifest => return Err(CaliptraCompletionCode::UnsupportedOperation),
+        SvnTarget::OwnerSocManifest => {
+            let caliptra_fw_info = fw_info(alloc)
+                .await
+                .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+            if svn > caliptra_fw_info.owner_auth_manifest_current_svn {
+                return Err(CaliptraCompletionCode::InvalidParameter);
+            }
+            otp::reg::OWNER_SOC_MANIFEST_MIN_SVN
+        }
     };
 
     let otp = Otp::<DefaultSyscalls>::new();
+    let svn_num_words = (max_svn / u32::BITS) as usize;
     let mut current_fuses = [0u32; 4];
-    for (i, fuse) in current_fuses.iter_mut().enumerate() {
+    for (i, fuse) in current_fuses.iter_mut().take(svn_num_words).enumerate() {
         *fuse = otp
             .read(otp_reg, i as u32)
             .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
     }
 
     let fuse = u128::from_le_bytes(current_fuses.as_bytes().try_into().unwrap());
-    let fused_min_svn = 128 - fuse.leading_zeros();
+    let fused_min_svn = if is_owner_soc_manifest {
+        fuse.count_ones()
+    } else {
+        128 - fuse.leading_zeros()
+    };
     if svn < fused_min_svn {
         return Err(CaliptraCompletionCode::InvalidParameter);
     }
@@ -818,7 +1248,13 @@ pub async fn increase_min_svn<A: ApiAlloc>(
         return Ok(());
     }
 
-    let new_fuse_svn = if svn == 128 {
+    let new_fuse_svn = if is_owner_soc_manifest {
+        let mut updated = fuse;
+        for _ in fused_min_svn..svn {
+            updated |= 1u128 << updated.trailing_ones();
+        }
+        updated
+    } else if svn == 128 {
         u128::MAX
     } else {
         !(u128::MAX << svn)
@@ -826,18 +1262,32 @@ pub async fn increase_min_svn<A: ApiAlloc>(
     for (i, (current, new_bytes)) in current_fuses
         .iter()
         .zip(new_fuse_svn.as_bytes().chunks_exact(4))
+        .take(svn_num_words)
         .enumerate()
     {
         let new_svn_word = u32::from_le_bytes(new_bytes.try_into().unwrap());
         if *current != new_svn_word {
-            otp.write(otp_reg, i as u32, new_svn_word)
-                .map_err(|_| CaliptraCompletionCode::InvalidParameter)?;
+            otp.write(otp_reg, i as u32, new_svn_word).map_err(|_| {
+                if is_owner_soc_manifest {
+                    CaliptraCompletionCode::OperationFailed
+                } else {
+                    CaliptraCompletionCode::InvalidParameter
+                }
+            })?;
         }
+    }
+    for (i, fuse) in current_fuses.iter_mut().take(svn_num_words).enumerate() {
+        *fuse = otp
+            .read(otp_reg, i as u32)
+            .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+    }
+    if current_fuses.as_bytes() != new_fuse_svn.to_le_bytes().as_slice() {
+        return Err(CaliptraCompletionCode::OperationFailed);
     }
     Ok(())
 }
 
-async fn read_and_verify_dot_blob<A: ApiAlloc>(
+async fn read_and_verify_dot_blob<A: ScratchAlloc>(
     alloc: &A,
     derivation_value: u32,
 ) -> CaliptraCmdResult<RuntimeDotBlob> {
@@ -856,7 +1306,7 @@ async fn read_and_verify_dot_blob<A: ApiAlloc>(
     Ok(blob)
 }
 
-async fn verify_dot_blob<A: ApiAlloc>(
+async fn verify_dot_blob<A: ScratchAlloc>(
     alloc: &A,
     derivation_value: u32,
     blob: &RuntimeDotBlob,
@@ -899,7 +1349,7 @@ fn burn_next_dot_fuse(current_fuse_count: u32) -> CaliptraCmdResult<()> {
     Ok(())
 }
 
-async fn commit_dot_transition<A: ApiAlloc>(
+async fn commit_dot_transition<A: ScratchAlloc>(
     alloc: &A,
     current_fuse_count: u32,
     target_fuse_count: u32,
@@ -924,12 +1374,18 @@ async fn commit_dot_transition<A: ApiAlloc>(
     })
 }
 
-pub async fn dot_lock<A: ApiAlloc>(alloc: &A, request: &DotLockPayload) -> CaliptraCmdResult<()> {
+pub async fn dot_lock<A: ScratchAlloc>(
+    alloc: &A,
+    request: &DotLockPayload,
+) -> CaliptraCmdResult<()> {
     let _guard = DotTransactionGuard::acquire()?;
     dot_lock_impl(alloc, request).await
 }
 
-async fn dot_lock_impl<A: ApiAlloc>(alloc: &A, request: &DotLockPayload) -> CaliptraCmdResult<()> {
+async fn dot_lock_impl<A: ScratchAlloc>(
+    alloc: &A,
+    request: &DotLockPayload,
+) -> CaliptraCmdResult<()> {
     if request.cak.iter().all(|byte| *byte == 0) {
         return Err(CaliptraCompletionCode::InvalidParameter);
     }
@@ -953,7 +1409,7 @@ async fn dot_lock_impl<A: ApiAlloc>(alloc: &A, request: &DotLockPayload) -> Cali
     .await
 }
 
-pub async fn dot_disable<A: ApiAlloc>(
+pub async fn dot_disable<A: ScratchAlloc>(
     alloc: &A,
     request: &DotDisablePayload,
 ) -> CaliptraCmdResult<()> {
@@ -977,7 +1433,7 @@ pub async fn dot_disable<A: ApiAlloc>(
     .await
 }
 
-pub async fn dot_rotate<A: ApiAlloc>(
+pub async fn dot_rotate<A: ScratchAlloc>(
     alloc: &A,
     request: &DotRotatePayload,
 ) -> CaliptraCmdResult<()> {
@@ -1008,7 +1464,7 @@ pub async fn dot_rotate<A: ApiAlloc>(
     write_and_verify_dot_blob(&blob).await
 }
 
-pub async fn dot_unlock_challenge<A: ApiAlloc>(
+pub async fn dot_unlock_challenge<A: ScratchAlloc>(
     alloc: &A,
 ) -> CaliptraCmdResult<[u8; AUTH_CMD_NONCE_LEN]> {
     let _guard = DotTransactionGuard::acquire()?;
@@ -1038,7 +1494,7 @@ pub async fn dot_unlock_challenge<A: ApiAlloc>(
     Ok(challenge)
 }
 
-pub async fn dot_unlock<A: ApiAlloc>(
+pub async fn dot_unlock<A: ScratchAlloc>(
     alloc: &A,
     request: &DotUnlockPayload,
 ) -> CaliptraCmdResult<()> {
@@ -1089,7 +1545,7 @@ pub async fn dot_unlock<A: ApiAlloc>(
     Ok(())
 }
 
-pub async fn dot_get_backup_blob<A: ApiAlloc>(
+pub async fn dot_get_backup_blob<A: ScratchAlloc>(
     alloc: &A,
     output: &mut [u8; DOT_BLOB_SIZE],
 ) -> CaliptraCmdResult<()> {
@@ -1104,7 +1560,7 @@ pub async fn dot_get_backup_blob<A: ApiAlloc>(
     Ok(())
 }
 
-pub async fn revoke_vendor_pub_key<A: ApiAlloc>(
+pub async fn revoke_vendor_pub_key<A: ScratchAlloc>(
     alloc: &A,
     vendor_pk_hash_slot: u32,
     key_type: u32,
@@ -1179,15 +1635,63 @@ pub fn revoke_vendor_pk_hash(vendor_pk_hash_slot: u32) -> CaliptraCmdResult<()> 
         .map_err(|_| CaliptraCompletionCode::OperationFailed)
 }
 
-pub async fn program_field_entropy<A: ApiAlloc>(
+pub async fn program_field_entropy<A: ScratchAlloc>(
     alloc: &A,
     partition: u32,
 ) -> CaliptraCmdResult<()> {
     fe_prog(alloc, partition).await.map_err(map_mcu_err)
 }
 
+fn is_field_entropy_provisioned(state: u32) -> bool {
+    const FINISHED_MASK: u32 = 0x06db;
+    const ZEROIZED_MASK: u32 = 0x0924;
+
+    state & FINISHED_MASK == FINISHED_MASK && state & ZEROIZED_MASK == 0
+}
+
+pub fn field_entropy_already_provisioned() -> CaliptraCmdResult<bool> {
+    let state = Otp::<DefaultSyscalls>::new()
+        .read(otp::reg::FIELD_ENTROPY_STATE, 0)
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
+    Ok(is_field_entropy_provisioned(state))
+}
+
+pub fn vendor_pk_hash_status() -> CaliptraCmdResult<(u32, [u8; 16])> {
+    Otp::<DefaultSyscalls>::new()
+        .vendor_pk_hash_status()
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)
+}
+
+pub fn hek_status() -> CaliptraCmdResult<(u32, u32)> {
+    Otp::<DefaultSyscalls>::new()
+        .hek_status()
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)
+}
+
 #[cfg(feature = "ocp-lock")]
-pub(crate) async fn ocp_lock_rotate_hek<Alloc: ApiAlloc>(
+pub(crate) async fn ocp_lock_program_hek<Alloc: ScratchAlloc>(
+    alloc: &Alloc,
+    slot: u32,
+) -> CaliptraCmdResult<()> {
+    let mut seed = [0u8; 32];
+    rng_generate(alloc, &mut seed).await.map_err(map_mcu_err)?;
+    Otp::<DefaultSyscalls>::new()
+        .program_hek(slot, &seed)
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)
+}
+
+#[cfg(feature = "ocp-lock")]
+pub(crate) async fn ocp_lock_zero_hek<Alloc: ScratchAlloc>(
+    _alloc: &Alloc,
+    slot: u32,
+) -> CaliptraCmdResult<()> {
+    Otp::<DefaultSyscalls>::new()
+        .zero_hek(slot)
+        .map_err(|_| CaliptraCompletionCode::OperationFailed)
+}
+
+#[cfg(feature = "ocp-lock")]
+pub(crate) async fn ocp_lock_rotate_hek<Alloc: ScratchAlloc>(
     alloc: &Alloc,
     slot: u32,
 ) -> CaliptraCmdResult<()> {

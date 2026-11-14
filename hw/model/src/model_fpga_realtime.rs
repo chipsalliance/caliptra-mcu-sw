@@ -122,6 +122,8 @@ impl ModelFpgaRealtime {
             SpdmResponderTransport::Doe,
             milestones.contains(McuBootMilestones::FIRMWARE_SPDM_DOE_READY),
         );
+        self.state
+            .set_pldm_ready(milestones.contains(McuBootMilestones::FIRMWARE_PLDM_READY));
     }
 
     /// Set or clear the FIPS zeroization PPD signal in the FPGA wrapper
@@ -777,6 +779,10 @@ impl McuHwModel for ModelFpgaRealtime {
         self.base.wrapper.regs().dma_axi_user.set(pauser);
         self.base.wrapper.regs().soc_config_user.set(pauser);
         self.base.wrapper.regs().sram_config_user.set(pauser);
+    }
+
+    fn set_mcu_mbox_axi_user(&mut self, pauser: u32) {
+        self.base.wrapper.regs().arm_user.set(pauser);
     }
 
     fn set_caliptra_boot_go(&mut self, go: bool) {

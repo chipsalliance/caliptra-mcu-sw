@@ -30,6 +30,8 @@ mod test_handoff;
 mod test_hek;
 mod test_i3c_constant_writes;
 mod test_i3c_dcr;
+#[cfg(not(feature = "fpga_realtime"))]
+mod test_i3c_faults;
 mod test_i3c_simple;
 mod test_log_flash_usermode;
 mod test_mctp_capsule_loopback;
@@ -43,6 +45,8 @@ mod test_ocp_dev_identity_provision_tool;
 mod test_owner_stable_key;
 mod test_pldm_fw_update;
 mod test_raw_lifecycle_boot;
+#[cfg(all(test, not(feature = "fpga_realtime")))]
+mod test_rom_runtime_compatibility;
 mod test_soc_boot;
 mod test_svn_manifest;
 mod test_sw_pcr_store;
@@ -108,6 +112,8 @@ mod test {
         pub network_boot: bool,
         /// Seed primary flash for a runtime flash loader while ROM boots via recovery.
         pub seed_primary_flash_image: bool,
+        /// Override the generated or prebuilt primary flash image.
+        pub primary_flash_image: Option<Vec<u8>>,
         pub network_tap_device: Option<Arc<Mutex<Box<dyn TapDevice>>>>,
         /// If true, set the DOT initialized fuse to enable DOT flow
         pub dot_enabled: bool,
@@ -131,6 +137,8 @@ mod test {
         #[allow(dead_code)]
         pub active_i3c1: bool,
         pub lifecycle_controller_state: Option<caliptra_mcu_romtime::LifecycleControllerState>,
+        /// Override the emulator host's requester ID for direct Core commands.
+        pub caliptra_soc_axi_user: Option<u32>,
         pub vendor_pqc_type: Option<caliptra_image_types::FwVerificationPqcKeyType>,
         /// Assert the debug intent strap.
         pub debug_intent: bool,
@@ -150,6 +158,9 @@ mod test {
         /// Caliptra FW) so the reported `FW_INFO.fw_svn` is known. Only
         /// honored on the `firmware_prefix` build path.
         pub caliptra_svn: Option<u16>,
+        /// If true, leave external OTP partitions 0x01/0x02 erased (`0xFF`) at boot
+        /// instead of pre-seeding `ECC_DEVID_CERT_DER` and `MLDSA_IDEVID_CERT`.
+        pub unprovisioned_idevid_otp: bool,
     }
 
     impl Default for TestParams<'_> {
@@ -165,6 +176,7 @@ mod test {
                 flash_boot: false,
                 network_boot: false,
                 seed_primary_flash_image: false,
+                primary_flash_image: None,
                 network_tap_device: None,
                 dot_enabled: false,
                 custom_caliptra_fw: None,
@@ -178,6 +190,7 @@ mod test {
                 fw_manifest_dot_hitless: false,
                 active_i3c1: false,
                 lifecycle_controller_state: None,
+                caliptra_soc_axi_user: None,
                 vendor_pqc_type: Some(caliptra_image_types::FwVerificationPqcKeyType::LMS),
                 debug_intent: false,
                 prod_dbg_unlock_keypairs: Vec::new(),
@@ -186,6 +199,7 @@ mod test {
                 example_app: false,
                 profile: None,
                 caliptra_svn: None,
+                unprovisioned_idevid_otp: false,
             }
         }
     }
@@ -227,10 +241,22 @@ mod test {
                     format!("mcu_rom_prebuilt_{}.bin", safe_name)
                 };
                 let output = target_binary(&filename);
-                if let Some(parent) = output.parent() {
-                    std::fs::create_dir_all(parent).ok();
+                if !output.exists() {
+                    if let Some(parent) = output.parent() {
+                        std::fs::create_dir_all(parent).ok();
+                    }
+                    let temp_output = output.with_extension(format!(
+                        "tmp.{}.{}",
+                        std::process::id(),
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_nanos()
+                    ));
+                    if std::fs::write(&temp_output, &rom_data).is_ok() {
+                        let _ = std::fs::rename(&temp_output, &output);
+                    }
                 }
-                std::fs::write(&output, &rom_data).expect("Failed to write prebuilt ROM to file");
                 return output;
             }
         }
@@ -781,11 +807,20 @@ mod test {
             .collect();
         let vendor_pk_hash: [u32; 12] = vendor_pk_hash.as_slice().try_into().unwrap();
 
-        // Only include network ROM if requested
-        let network_rom = match caliptra_mcu_builder::network_rom_build(params.network_rom_feature)
-        {
-            Ok(path) => std::fs::read(path).unwrap_or_default(),
-            Err(_) => Vec::new(),
+        // Only include network ROM if requested. Prefer the prebuilt variant to
+        // avoid concurrent tests rebuilding feature variants to a shared path.
+        let network_rom = if params.include_network_rom {
+            FirmwareBinaries::from_env()
+                .ok()
+                .and_then(|binaries| binaries.network_rom(params.network_rom_feature).ok())
+                .unwrap_or_else(|| {
+                    caliptra_mcu_builder::network_rom_build(params.network_rom_feature)
+                        .ok()
+                        .and_then(|path| std::fs::read(path).ok())
+                        .unwrap_or_default()
+                })
+        } else {
+            Vec::new()
         };
         let network_rom_slice: &[u8] = if params.include_network_rom {
             &network_rom
@@ -853,14 +888,17 @@ mod test {
         };
 
         let primary_flash_image = if params.flash_boot || params.seed_primary_flash_image {
-            let mut flash = flash_image.unwrap_or_else(|| {
-                build_flash_image_bytes(
-                    Some(&caliptra_fw),
-                    Some(&soc_manifest),
-                    Some(&mcu_runtime),
-                    None,
-                )
-            });
+            let mut flash = params
+                .primary_flash_image
+                .or(flash_image)
+                .unwrap_or_else(|| {
+                    build_flash_image_bytes(
+                        Some(&caliptra_fw),
+                        Some(&soc_manifest),
+                        Some(&mcu_runtime),
+                        None,
+                    )
+                });
             if params.seed_primary_flash_image && !params.flash_boot {
                 write_valid_partition_table_for_runtime_flash_load(&mut flash);
             }
@@ -881,12 +919,12 @@ mod test {
         let primary_flash_initial_contents = build_primary_flash_initial_contents(
             primary_flash_image,
             #[cfg(not(feature = "fpga_realtime"))]
-            Some(ECC_DEVID_CERT_DER.as_slice()),
+            (!params.unprovisioned_idevid_otp).then_some(ECC_DEVID_CERT_DER.as_slice()),
             #[cfg(feature = "fpga_realtime")]
             // Initialized in run_imaginary_flash_controller_service
             None,
             #[cfg(not(feature = "fpga_realtime"))]
-            Some(MLDSA_IDEVID_CERT.as_slice()),
+            (!params.unprovisioned_idevid_otp).then_some(MLDSA_IDEVID_CERT.as_slice()),
             #[cfg(feature = "fpga_realtime")]
             // Initialized in run_imaginary_flash_controller_service
             None,
@@ -913,6 +951,7 @@ mod test {
             enable_mcu_uart_log: true,
             dot_flash_initial_contents: params.dot_flash_initial_contents,
             lifecycle_controller_state: params.lifecycle_controller_state,
+            caliptra_soc_axi_user: params.caliptra_soc_axi_user,
             check_booted_to_runtime: !params.rom_only,
             otp_memory: otp_memory.as_deref(),
             primary_flash_initial_contents,
@@ -934,7 +973,7 @@ mod test {
         .unwrap()
     }
 
-    fn write_valid_partition_table_for_runtime_flash_load(flash: &mut Vec<u8>) {
+    pub(crate) fn write_valid_partition_table_for_runtime_flash_load(flash: &mut Vec<u8>) {
         if !has_valid_partition_table(flash) {
             let unpartitioned_flash = std::mem::take(flash);
             flash.resize(IMAGE_A_PARTITION.offset + unpartitioned_flash.len(), 0xff);
@@ -1046,7 +1085,7 @@ mod test {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn runtime_command(
+    pub(crate) fn runtime_command(
         feature: &str,
         rom_path: PathBuf,
         runtime_path: PathBuf,
@@ -1663,19 +1702,29 @@ mod test {
     /// Uses the CPTRA_EMULATOR_BUNDLE environment variable.
     fn get_prebuilt_emulator(feature: &str) -> Option<PathBuf> {
         let binaries = EmulatorBinaries::from_env().ok()?;
-        let emulator_bytes = binaries.emulator().ok()?;
-
-        // Write prebuilt emulator to target directory
         let output = target_binary("emulator");
-        if let Some(parent) = output.parent() {
-            std::fs::create_dir_all(parent).ok()?;
-        }
-        std::fs::write(&output, emulator_bytes).ok()?;
-        // Make executable
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&output, std::fs::Permissions::from_mode(0o755)).ok()?;
+
+        if !output.exists() {
+            let emulator_bytes = binaries.emulator().ok()?;
+            if let Some(parent) = output.parent() {
+                std::fs::create_dir_all(parent).ok()?;
+            }
+            let temp_output = output.with_extension(format!(
+                "tmp.{}.{}",
+                std::process::id(),
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_nanos()
+            ));
+            std::fs::write(&temp_output, emulator_bytes).ok()?;
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                std::fs::set_permissions(&temp_output, std::fs::Permissions::from_mode(0o755))
+                    .ok()?;
+            }
+            let _ = std::fs::rename(&temp_output, &output);
         }
         println!("Using prebuilt emulator for feature {}", feature);
         Some(output)
@@ -1689,11 +1738,22 @@ mod test {
             if let Ok(runtime_bytes) = binaries.test_runtime(feature) {
                 // Write prebuilt runtime to target directory
                 let output = target_binary(&format!("runtime-{}-emulator.bin", feature));
-                if let Some(parent) = output.parent() {
-                    std::fs::create_dir_all(parent).ok();
+                if !output.exists() {
+                    if let Some(parent) = output.parent() {
+                        std::fs::create_dir_all(parent).ok();
+                    }
+                    let temp_output = output.with_extension(format!(
+                        "tmp.{}.{}",
+                        std::process::id(),
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default()
+                            .as_nanos()
+                    ));
+                    if std::fs::write(&temp_output, runtime_bytes).is_ok() {
+                        let _ = std::fs::rename(&temp_output, &output);
+                    }
                 }
-                std::fs::write(&output, runtime_bytes)
-                    .expect("Failed to write prebuilt runtime to file");
                 println!("Using prebuilt test firmware {}", feature);
                 return output;
             }

@@ -3,10 +3,11 @@
 use crate::doe_mbox_fsm::{DoeTestState, DoeTransportTest};
 use caliptra_mcu_testing_common::sleep_emulator_ticks;
 use rand::Rng;
+use std::sync::mpsc::{Receiver, Sender};
+
 const NUM_TEST_VECTORS: usize = 10;
 const MIN_TEST_DATA_DWORDS: usize = 2; // minimum size of test vectors
 const MAX_TEST_DATA_DWORDS: usize = 128; // maximum size of test vectors
-use std::sync::mpsc::{Receiver, Sender};
 
 struct Test {
     test_vector: Vec<u8>,
@@ -16,12 +17,22 @@ struct Test {
 
 pub fn generate_tests() -> Vec<Box<dyn DoeTransportTest + Send>> {
     let mut rng = rand::thread_rng();
-    let mut tests: Vec<Box<dyn DoeTransportTest + Send>> = Vec::new();
-    for _ in 0..NUM_TEST_VECTORS {
-        // Generate a random size (multiple of 4 bytes)
-        let num_words = rng.gen_range((MIN_TEST_DATA_DWORDS)..=(MAX_TEST_DATA_DWORDS));
+    let random_vectors = (0..NUM_TEST_VECTORS).map(|_| {
+        let num_words = rng.gen_range(MIN_TEST_DATA_DWORDS..=MAX_TEST_DATA_DWORDS);
         let mut vector = vec![0u8; num_words * 4];
         rng.fill(vector.as_mut_slice());
+        vector
+    });
+    let boundary_vectors = [2, 3, 4, 127, 128, 2, 128, 3, 127, 2]
+        .into_iter()
+        .enumerate()
+        .map(|(index, num_words)| {
+            (0..num_words * 4)
+                .map(|offset| (offset as u8).wrapping_add(index as u8))
+                .collect()
+        });
+    let mut tests: Vec<Box<dyn DoeTransportTest + Send>> = Vec::new();
+    for vector in random_vectors.chain(boundary_vectors) {
         tests.push(Box::new(Test {
             test_vector: vector,
             state: DoeTestState::Start,

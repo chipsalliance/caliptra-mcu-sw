@@ -15,7 +15,7 @@ use crate::types::{CmKeyUsage, Cmk, CMK_SIZE};
 use crate::wire::{
     mbox_execute, pad4, populate_checksum, CMD_CM_DELETE, CMD_CM_IMPORT, MBOX_RESP_HEADER_SIZE,
 };
-use crate::ApiAlloc;
+use crate::ScratchAlloc;
 
 // ---------------------------------------------------------------------------
 // Wire types
@@ -58,7 +58,11 @@ const DELETE_RSP_SIZE: usize = MBOX_RESP_HEADER_SIZE;
 ///
 /// `data` must be ≤ 64 bytes (512-bit max key).
 #[inline(never)]
-pub async fn cm_import<A: ApiAlloc>(alloc: &A, usage: CmKeyUsage, data: &[u8]) -> McuResult<Cmk> {
+pub async fn cm_import<A: ScratchAlloc>(
+    alloc: &A,
+    usage: CmKeyUsage,
+    data: &[u8],
+) -> McuResult<Cmk> {
     if data.len() > CM_IMPORT_MAX_KEY_SIZE {
         return Err(INVARIANT);
     }
@@ -88,7 +92,7 @@ pub async fn cm_import<A: ApiAlloc>(alloc: &A, usage: CmKeyUsage, data: &[u8]) -
 
 /// Delete a CMK blob.
 #[inline(never)]
-pub async fn cm_delete<A: ApiAlloc>(alloc: &A, cmk: &Cmk) -> McuResult<()> {
+pub async fn cm_delete<A: ScratchAlloc>(alloc: &A, cmk: &Cmk) -> McuResult<()> {
     let wire_len = size_of::<DeleteReq>();
 
     let mut req = alloc.alloc(wire_len)?;
