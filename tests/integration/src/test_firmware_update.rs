@@ -3,7 +3,7 @@
 #[cfg(test)]
 mod test {
     use crate::test::{
-        compile_runtime, get_rom_with_feature, has_prebuilt_binaries, run_runtime, TEST_LOCK,
+        compile_runtime, get_rom_with_feature, has_prebuilt_binaries, runtime_command, TEST_LOCK,
     };
     use caliptra_image_types::ImageManifest;
     use caliptra_mcu_builder::{CaliptraBuildArgs, CaliptraBuilder, FirmwareBinaries, ImageCfg};
@@ -11,7 +11,9 @@ mod test {
     use caliptra_mcu_config_emulator::flash::{
         PartitionTable, StandAloneChecksumCalculator, STAGING_PARTITION,
     };
-    use caliptra_mcu_flash_image::{MCU_RT_IDENTIFIER, SOC_IMAGES_BASE_IDENTIFIER};
+    use caliptra_mcu_flash_image::{
+        FlashImageVersion, MCU_RT_IDENTIFIER, SOC_IMAGES_BASE_IDENTIFIER,
+    };
     use caliptra_mcu_pldm_fw_pkg::manifest::{
         ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
         PackageHeaderInformation, StringType,
@@ -23,6 +25,7 @@ mod test {
     use random_port::PortPicker;
     use std::env;
     use std::path::PathBuf;
+    use std::process::Command;
     use zerocopy::transmute;
 
     const MCI_BASE_AXI_ADDRESS: u64 = 0xA800_0000;
@@ -183,12 +186,20 @@ mod test {
     }
 
     fn run_runtime_with_options(opts: &TestOptions) -> i32 {
+        runtime_command_with_options(opts)
+            .status()
+            .expect("Failed to run emulator")
+            .code()
+            .unwrap_or(1)
+    }
+
+    fn runtime_command_with_options(opts: &TestOptions) -> Command {
         // prevent warning on unused options, this will be used in the future
         let _ = &opts.soc_images_paths;
         let _ = &opts.partition_table;
         let _ = &opts.flash_offset;
 
-        run_runtime(
+        runtime_command(
             opts.feature,
             opts.rom.clone(),
             opts.runtime.clone(),
@@ -294,58 +305,25 @@ mod test {
         )
     }
 
-    fn fast_update_options(success_opts: &TestOptions) -> TestOptions {
-        // Note: This is a hack to speed up testing.
-        // This function creates a new option that essentially skips the PLDM download phase of the firmware package.
-        // In a full update test, the PLDM FW package contains all the necessary firmware components (e.g., Caliptra Image, MCU Image, etc)
-        // The device downloads the flash image component of the PLDM FW package in the staging area, which is the secondary flash.
-        // For this hack, we will initialize the secondary flash already with the update flash image.
-        // We will truncate the flash image component of the PLDM FW package to the first 1024 bytes.
-        // The device will then download only the first 1024 bytes of the full flash image to the secondary flash.
-        // But since the secondary flash already contains the full flash image, it essentially didn't change after the PLDM download.
-        // The device will then continue with the firmware update with the full flash update image in the secondary flash.
-
-        let mut new_opts = success_opts.clone();
-        let update_flash_image_path = new_opts.update_flash_image_path.as_ref().unwrap().clone();
-        let flash_image =
-            std::fs::read(update_flash_image_path.clone()).expect("Failed to read flash image");
-        // Retain the first 1024 bytes flash_image in the PLDM package.
-        let truncated_flash_image = &flash_image[..1024];
-        let pldm_manifest =
-            get_streaming_boot_pldm_fw_manifest(&get_device_uuid(), truncated_flash_image);
+    fn update_package_options(opts: &TestOptions) -> TestOptions {
+        let mut new_opts = opts.clone();
+        let flash_image = std::fs::read(new_opts.update_flash_image_path.as_ref().unwrap())
+            .expect("Failed to read flash image");
+        let pldm_manifest = get_streaming_boot_pldm_fw_manifest(&get_device_uuid(), &flash_image);
         let pldm_fw_pkg_path = create_pldm_fw_package(&pldm_manifest);
         new_opts.pldm_fw_pkg_path = Some(pldm_fw_pkg_path);
-        let secondary_flash_image_path = tempfile::NamedTempFile::new()
-            .expect("Failed to create temp file")
-            .path()
-            .to_path_buf();
-
-        // Copy flash image to partition B and download partition
-        let mut secondary_flash_content = flash_image.clone().to_vec();
-        // Pad with zeros until the DOWNLOAD partition offset
-        let download_partition_offset = STAGING_PARTITION.offset;
-        if secondary_flash_content.len() < download_partition_offset {
-            secondary_flash_content.resize(download_partition_offset, 0);
-        }
-        // Append the full flash image in the DOWNLOAD partition
-        secondary_flash_content.append(&mut flash_image.clone());
-
-        std::fs::write(secondary_flash_image_path.clone(), secondary_flash_content)
-            .expect("Failed to write secondary flash image");
-
-        new_opts.secondary_flash_image_path = Some(secondary_flash_image_path.clone());
         new_opts
     }
 
-    /// Like fast_update_options but with a configurable transfer size for benchmarking.
-    /// Pre-populates secondary flash so verify/apply succeeds regardless of transfer size.
-    fn benchmark_options(success_opts: &TestOptions, transfer_size: usize) -> TestOptions {
+    /// Leave a valid stale tail in staging; verification must still reject the truncated download.
+    fn truncated_update_options(success_opts: &TestOptions, transfer_size: usize) -> TestOptions {
         let mut new_opts = success_opts.clone();
         let update_flash_image_path = new_opts.update_flash_image_path.as_ref().unwrap().clone();
         let flash_image =
             std::fs::read(update_flash_image_path.clone()).expect("Failed to read flash image");
 
-        let truncated_flash_image = &flash_image[..transfer_size.min(flash_image.len())];
+        assert!(transfer_size < flash_image.len());
+        let truncated_flash_image = &flash_image[..transfer_size];
         let pldm_manifest =
             get_streaming_boot_pldm_fw_manifest(&get_device_uuid(), truncated_flash_image);
         let pldm_fw_pkg_path = create_pldm_fw_package(&pldm_manifest);
@@ -377,12 +355,6 @@ mod test {
         assert_eq!(0, test);
     }
 
-    fn test_successful_fast_update(opts: &TestOptions) {
-        let fast_update_opts = fast_update_options(opts);
-        let test = run_runtime_with_options(&fast_update_opts);
-        assert_eq!(0, test);
-    }
-
     fn test_missing_caliptra_image(opts: &TestOptions) {
         let mut opts = opts.clone();
 
@@ -397,7 +369,7 @@ mod test {
         );
 
         opts.update_flash_image_path = Some(update_flash_image_path);
-        let opts = fast_update_options(&opts);
+        let opts = update_package_options(&opts);
         let test = run_runtime_with_options(&opts);
         assert_ne!(0, test);
     }
@@ -426,7 +398,7 @@ mod test {
         );
 
         opts.update_flash_image_path = Some(update_flash_image_path);
-        let opts = fast_update_options(&opts);
+        let opts = update_package_options(&opts);
         let test = run_runtime_with_options(&opts);
         assert_ne!(0, test);
     }
@@ -456,7 +428,7 @@ mod test {
         );
 
         opts.update_flash_image_path = Some(update_flash_image_path);
-        let opts = fast_update_options(&opts);
+        let opts = update_package_options(&opts);
         let test = run_runtime_with_options(&opts);
         assert_ne!(0, test);
     }
@@ -483,7 +455,7 @@ mod test {
         );
 
         opts.update_flash_image_path = Some(update_flash_image_path);
-        let opts = fast_update_options(&opts);
+        let opts = update_package_options(&opts);
         let test = run_runtime_with_options(&opts);
         assert_ne!(0, test);
     }
@@ -512,7 +484,7 @@ mod test {
         );
 
         opts.update_flash_image_path = Some(update_flash_image_path);
-        let opts = fast_update_options(&opts);
+        let opts = update_package_options(&opts);
         let test = run_runtime_with_options(&opts);
         assert_ne!(0, test);
     }
@@ -538,7 +510,7 @@ mod test {
         }
 
         println!("Building binaries for feature: {}", feature);
-        create_firmware_update_test_options_build(feature, use_flash, i3c_port)
+        create_firmware_update_test_options_build(feature, use_flash, i3c_port, None)
     }
 
     // Creates test options using prebuilt binaries from CPTRA_FIRMWARE_BUNDLE
@@ -733,6 +705,7 @@ mod test {
         feature: &'static str,
         use_flash: bool,
         i3c_port: u32,
+        rom: Option<PathBuf>,
     ) -> TestOptions {
         let soc_image_fw_1 = [0x55u8; 512]; // Example firmware data for SOC image 1
         let soc_image_fw_2 = [0xAAu8; 256]; // Example firmware data for SOC image 2
@@ -837,7 +810,7 @@ mod test {
             None
         };
 
-        let mcu_rom = get_rom_with_feature(feature);
+        let mcu_rom = rom.unwrap_or_else(|| get_rom_with_feature(feature));
 
         // These are the options for a successful boot
         // Each test case will override the options to simulate different scenarios
@@ -871,11 +844,185 @@ mod test {
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
+    fn repackage_flash_image(bytes: &[u8], version: FlashImageVersion) -> Vec<u8> {
+        use caliptra_mcu_builder::flash_image::{FirmwareImage, FlashImage};
+        use caliptra_mcu_flash_image::{FlashHeader, ImageHeader};
+
+        let header = FlashHeader::parse(bytes).unwrap();
+        let format = header.format().unwrap();
+        let images: Vec<_> = (0..header.image_count as usize)
+            .map(|index| {
+                let offset = header.image_header_offset(index).unwrap();
+                let image = ImageHeader::parse(&bytes[offset..], format).unwrap();
+                FirmwareImage::new(
+                    image.identifier,
+                    &bytes[image.offset as usize..image.offset as usize + image.size as usize],
+                    None,
+                )
+                .unwrap()
+            })
+            .collect();
+        let bytes = FlashImage::with_version(&images, version).to_bytes();
+        FlashImage::verify_flash_image(&bytes).unwrap();
+        bytes
+    }
+
     #[test]
-    fn test_firmware_update_flash_successful_fast() {
+    fn test_repackage_flash_image_to_v2_preserves_payloads() {
+        use caliptra_mcu_builder::flash_image::{FirmwareImage, FlashImage};
+
+        let images = [
+            FirmwareImage::new(MCU_RT_IDENTIFIER, &[1, 2, 3, 4], None).unwrap(),
+            FirmwareImage::new(SOC_IMAGES_BASE_IDENTIFIER, &[5, 6, 7], None).unwrap(),
+        ];
+        let expected = FlashImage::with_version(&images, FlashImageVersion::V2).to_bytes();
+        for version in [
+            FlashImageVersion::V1,
+            FlashImageVersion::V2,
+            FlashImageVersion::V3,
+        ] {
+            let original = FlashImage::with_version(&images, version).to_bytes();
+            assert_eq!(
+                repackage_flash_image(&original, FlashImageVersion::V2),
+                expected
+            );
+        }
+    }
+
+    /// Set MCU_ROM_V2_1_0 to an emulator-compatible legacy ROM binary, then run
+    /// this test with `--ignored --nocapture`. Runtime is built from current sources.
+    #[cfg(not(feature = "fpga_realtime"))]
+    #[test]
+    #[ignore = "requires an external v2-compatible MCU ROM in MCU_ROM_V2_1_0"]
+    fn test_firmware_update_v2_with_external_rom_and_cold_boot() {
+        use caliptra_mcu_config_emulator::flash::{IMAGE_A_PARTITION, IMAGE_B_PARTITION};
+        use zerocopy::FromBytes;
+
+        let rom = env::var_os("MCU_ROM_V2_1_0")
+            .expect("Set MCU_ROM_V2_1_0 to the released v2.1.0 MCU ROM binary");
+        let rom = std::fs::canonicalize(rom).expect("Cannot access MCU_ROM_V2_1_0");
+        assert!(rom.is_file(), "MCU_ROM_V2_1_0 must name a ROM binary file");
+
+        let lock = TEST_LOCK.lock().unwrap();
+        env::set_var(
+            "CPTRA_EMULATOR_SS_MCI_OFFSET",
+            format!("0x{:016x}", MCI_BASE_AXI_ADDRESS),
+        );
+        let i3c_port = PortPicker::new().random(true).pick().unwrap().into();
+        let mut opts = create_firmware_update_test_options_build(
+            "test-firmware-update-flash",
+            true,
+            i3c_port,
+            Some(rom),
+        );
+        let temp_dir = tempfile::tempdir().expect("Failed to create legacy ROM test directory");
+        let initial_path = temp_dir.path().join("initial-v2.bin");
+        let update_path = temp_dir.path().join("update-v2.bin");
+        let blank_secondary_path = temp_dir.path().join("blank-secondary.bin");
+        let primary_path = temp_dir.path().join("primary_flash");
+        let secondary_path = temp_dir.path().join("secondary_flash");
+
+        let mut initial = std::fs::read(opts.primary_flash_image_path.as_ref().unwrap()).unwrap();
+        let initial_v2 =
+            repackage_flash_image(&initial[IMAGE_A_PARTITION.offset..], FlashImageVersion::V2);
+        initial.truncate(IMAGE_A_PARTITION.offset);
+        initial.extend_from_slice(&initial_v2);
+        std::fs::write(&initial_path, initial).unwrap();
+        std::fs::write(&blank_secondary_path, []).unwrap();
+
+        let update = std::fs::read(opts.update_flash_image_path.as_ref().unwrap()).unwrap();
+        let update_v2 = repackage_flash_image(&update, FlashImageVersion::V2);
+        std::fs::write(&update_path, &update_v2).unwrap();
+        opts.primary_flash_image_path = Some(initial_path);
+        opts.secondary_flash_image_path = Some(blank_secondary_path);
+        opts.update_flash_image_path = Some(update_path);
+        opts = update_package_options(&opts);
+
+        let status = runtime_command_with_options(&opts)
+            .arg("--flash-based-boot")
+            .arg("--flash-storage-dir")
+            .arg(temp_dir.path())
+            .status()
+            .expect("Failed to run v2 update with external ROM");
+        assert!(
+            status.success(),
+            "V2 update with external ROM failed: {status}"
+        );
+
+        let primary = std::fs::read(&primary_path).expect("Missing persisted primary flash");
+        let (table, _) = PartitionTable::read_from_prefix(&primary).unwrap();
+        assert!(table.verify_checksum(&StandAloneChecksumCalculator::new()));
+        assert_eq!(table.get_active_partition().0, PartitionId::B);
+        assert_eq!(
+            table.get_partition_status(PartitionId::B),
+            PartitionStatus::BootSuccessful
+        );
+        let secondary = std::fs::read(&secondary_path).expect("Missing persisted secondary flash");
+        assert_eq!(
+            &secondary[IMAGE_B_PARTITION.offset..IMAGE_B_PARTITION.offset + update_v2.len()],
+            update_v2.as_slice(),
+            "Installed partition must contain the complete v2 update"
+        );
+
+        opts.feature = "test-flash-based-boot";
+        opts.runtime = opts.update_runtime_firmware.clone().unwrap();
+        opts.pldm_fw_pkg_path = None;
+        // Reopen the emulator's backing files without reinitializing either flash.
+        opts.primary_flash_image_path = None;
+        opts.secondary_flash_image_path = None;
+        opts.i3c_port = PortPicker::new().random(true).pick().unwrap().into();
+        let output = runtime_command_with_options(&opts)
+            .arg("--flash-based-boot")
+            .arg("--flash-storage-dir")
+            .arg(temp_dir.path())
+            .output()
+            .expect("Failed to cold boot with external ROM");
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        assert!(
+            output.status.success(),
+            "Cold boot failed: {}\n{stdout}\n{stderr}",
+            output.status
+        );
+        assert!(
+            stdout.contains("[mcu-rom] Booting from Partition B")
+                || stderr.contains("[mcu-rom] Booting from Partition B"),
+            "Legacy ROM did not boot the updated partition\n{stdout}\n{stderr}"
+        );
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    fn test_firmware_update_rejects_legacy_flash_format(version: FlashImageVersion) {
+        let lock = TEST_LOCK.lock().unwrap();
+        let original_opts = create_firmware_update_test_options(true);
+        let original =
+            std::fs::read(original_opts.update_flash_image_path.as_ref().unwrap()).unwrap();
+        let bytes = repackage_flash_image(&original, version);
+        let output = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(output.path(), bytes).unwrap();
+        let mut opts = original_opts.clone();
+        opts.update_flash_image_path = Some(output.path().to_path_buf());
+        let opts = update_package_options(&opts);
+        assert_ne!(run_runtime_with_options(&opts), 0);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_firmware_update_rejects_v1_with_v3_rom() {
+        test_firmware_update_rejects_legacy_flash_format(FlashImageVersion::V1);
+    }
+
+    #[test]
+    fn test_firmware_update_rejects_v2_with_v3_rom() {
+        test_firmware_update_rejects_legacy_flash_format(FlashImageVersion::V2);
+    }
+
+    #[test]
+    fn test_firmware_update_flash_rejects_truncated_download() {
         let lock = TEST_LOCK.lock().unwrap();
         let opts = create_firmware_update_test_options(true);
-        test_successful_fast_update(&opts);
+        let opts = truncated_update_options(&opts, 1024);
+        assert_ne!(0, run_runtime_with_options(&opts));
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
@@ -898,8 +1045,8 @@ mod test {
             format!("0x{:016x}", MCI_BASE_AXI_ADDRESS),
         );
         let i3c_port: u32 = PortPicker::new().random(true).pick().unwrap().into();
-        let opts = create_firmware_update_test_options_build(feature, true, i3c_port);
-        let opts = fast_update_options(&opts);
+        let opts = create_firmware_update_test_options_build(feature, true, i3c_port, None);
+        let opts = update_package_options(&opts);
         let test = run_runtime_with_options(&opts);
         // The UA exits with 0 when the FD rejects the component update
         assert_eq!(0, test);
@@ -938,15 +1085,15 @@ mod test {
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
-    /// PLDM transfer benchmark: transfers 64KB to measure throughput.
+    /// PLDM transfer benchmark: transfers 64KB, then rejects the incomplete image.
     /// Run with RUST_LOG=info to see KB/s output from the UA.
     #[test]
     fn test_firmware_update_benchmark_64k() {
         let lock = TEST_LOCK.lock().unwrap();
         let opts = create_firmware_update_test_options(true);
-        let bench_opts = benchmark_options(&opts, 64 * 1024);
+        let bench_opts = truncated_update_options(&opts, 64 * 1024);
         let test = run_runtime_with_options(&bench_opts);
-        assert_eq!(0, test);
+        assert_ne!(0, test);
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 

@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! SPDM cert-store abstraction (DSP0274 §10.5 / §10.6).
+//! SPDM cert-store abstraction.
 //!
 //! All cert-chain methods take an [`SpdmPalAsymAlgo`] parameter
 //! so each slot can hold chains and signing keys for multiple algorithms
@@ -10,8 +10,7 @@ use crate::SpdmPalHashAlgo;
 pub use mcu_caliptra_api::SigningInput;
 use mcu_error::McuResult;
 
-/// Maximum number of cert-chain slots the responder advertises.
-/// DSP0274 §10.5 caps this at 8 (`SlotMask` is one byte).
+/// Maximum number of cert-chain slots the responder advertises (`SlotMask` is one byte).
 pub const MAX_SLOTS: u8 = 8;
 
 /// Asymmetric algorithm selector.
@@ -27,57 +26,14 @@ pub enum SpdmPalAsymAlgo {
     MlDsa87,
 }
 
-impl From<SpdmPalAsymAlgo> for mcu_caliptra_api::DpeProfile {
-    fn from(algo: SpdmPalAsymAlgo) -> Self {
-        match algo {
-            SpdmPalAsymAlgo::EccP384 => mcu_caliptra_api::DpeProfile::P384Sha384,
-            SpdmPalAsymAlgo::MlDsa87 => mcu_caliptra_api::DpeProfile::Mldsa87,
+impl SpdmPalAsymAlgo {
+    /// `SigLen` for this algorithm.
+    pub const fn signature_size(self) -> usize {
+        match self {
+            Self::EccP384 => 96,
+            Self::MlDsa87 => 4627,
         }
     }
-}
-
-impl From<mcu_caliptra_api::DpeProfile> for SpdmPalAsymAlgo {
-    fn from(profile: mcu_caliptra_api::DpeProfile) -> Self {
-        match profile {
-            mcu_caliptra_api::DpeProfile::P384Sha384 => SpdmPalAsymAlgo::EccP384,
-            mcu_caliptra_api::DpeProfile::Mldsa87 => SpdmPalAsymAlgo::MlDsa87,
-        }
-    }
-}
-
-/// Endorsement certificate chain provider for a single slot.
-///
-/// Integrators implement this for each endorsement type:
-/// - `ReadOnlyEndorsement` — static root CA certs (slot 0)
-/// - `MutableEndorsement` — flash-backed certs (slots 1-2, SET_CERTIFICATE)
-///
-/// The PAL uses this to compose the full SPDM cert chain:
-/// `endorsement (this) + DPE device chain + leaf (CertifyKey)`
-#[allow(async_fn_in_trait)]
-pub trait EndorsementCertChain {
-    /// Hash of the root certificate under the given algorithm.
-    async fn root_cert_hash(&self, algo: SpdmPalAsymAlgo, out: &mut [u8]) -> McuResult<()>;
-
-    /// Total byte length of the endorsement cert chain for the
-    /// given algorithm.
-    async fn size(&mut self, algo: SpdmPalAsymAlgo) -> McuResult<usize>;
-
-    /// Read endorsement chain bytes at `offset` into `buf`.
-    /// Returns bytes written.
-    async fn read(
-        &mut self,
-        algo: SpdmPalAsymAlgo,
-        offset: usize,
-        buf: &mut [u8],
-    ) -> McuResult<usize>;
-
-    /// Write endorsement cert chain data for the given algorithm.
-    /// `ReadOnlyEndorsement` rejects this; `MutableEndorsement`
-    /// persists to flash.
-    async fn write(&mut self, algo: SpdmPalAsymAlgo, data: &[u8]) -> McuResult<()>;
-
-    /// Erase the endorsement cert chain for the given algorithm.
-    async fn erase(&mut self, algo: SpdmPalAsymAlgo) -> McuResult<()>;
 }
 
 /// Slot-indexed cert-store backend.
@@ -86,10 +42,14 @@ pub trait SpdmPalCertStore: crate::SpdmPalIoTransport {
     /// Bitmask of supported slots, bits 0..=7.
     fn supported_slots(&self) -> u8;
 
-    /// Bitmask of provisioned slots, bits 0..=7. Drives DIGESTS's
-    /// `SupportedSlotMask` / `ProvisionedSlotMask` (DSP0274 §10.5
-    /// Table 25).
-    fn provisioned_slots(&self) -> u8;
+    /// Bitmask of slots provisioned with a cert chain for `algo`, bits
+    /// 0..=7. Drives DIGESTS's `ProvisionedSlotMask` and gates every
+    /// slot-addressed read path.
+    ///
+    /// A connection negotiates exactly one asymmetric algorithm, so a
+    /// slot holding no chain for `algo` reports as unprovisioned: the
+    /// responder has nothing it can serve for that slot.
+    fn provisioned_slots(&self, algo: SpdmPalAsymAlgo) -> u8;
 
     /// Raw DER capacity/size for a slot-size query.
     async fn cert_chain_slot_size(
@@ -159,13 +119,10 @@ pub trait SpdmPalCertStore: crate::SpdmPalIoTransport {
     ) -> McuResult<usize>;
 
     /// Sign the caller-prepared input using the key in `slot`.
-    ///
-    /// `algo` must identify the same DPE profile as `signing_input`.
     async fn sign(
         &self,
         io: &Self::Io<'_>,
         slot: u8,
-        algo: SpdmPalAsymAlgo,
         signing_input: SigningInput<'_>,
         signature: &mut [u8],
     ) -> McuResult<usize>;
@@ -250,17 +207,20 @@ pub trait SpdmPalCertStore: crate::SpdmPalIoTransport {
         algo: SpdmPalAsymAlgo,
     ) -> McuResult<()>;
 
-    /// KeyPairID associated with the slot.
-    /// Returns `None` for unprovisioned slots.
-    fn key_pair_id(&self, slot: u8) -> Option<u8>;
+    /// KeyPairID associated with the slot's `algo` chain.
+    ///
+    /// A slot may be provisioned for one algorithm and not another, so
+    /// this is scoped to the connection's negotiated algorithm.
+    /// Returns `None` where that chain is unprovisioned.
+    fn key_pair_id(&self, slot: u8, algo: SpdmPalAsymAlgo) -> Option<u8>;
 
-    /// CertificateInfo for the slot.
-    /// Returns `None` for unprovisioned slots.
-    fn cert_info(&self, slot: u8) -> Option<u8>;
+    /// CertificateInfo for the slot's `algo` chain.
+    /// Returns `None` where that chain is unprovisioned.
+    fn cert_info(&self, slot: u8, algo: SpdmPalAsymAlgo) -> Option<u8>;
 
-    /// KeyUsageMask for the slot.
-    /// Returns `None` for unprovisioned slots.
-    fn key_usage_mask(&self, slot: u8) -> Option<u16>;
+    /// KeyUsageMask for the slot's `algo` chain.
+    /// Returns `None` where that chain is unprovisioned.
+    fn key_usage_mask(&self, slot: u8, algo: SpdmPalAsymAlgo) -> Option<u16>;
 
     /// Optional cache hook: return a previously stored full
     /// SPDM-cert-chain digest for `(slot, asym_algo, hash_algo)`, or `None` to
@@ -288,7 +248,4 @@ pub trait SpdmPalCertStore: crate::SpdmPalIoTransport {
         _digest: &[u8],
     ) {
     }
-
-    /// Fill `out` with random bytes from the platform RNG.
-    async fn generate_nonce(&self, io: &Self::Io<'_>, out: &mut [u8]) -> McuResult<()>;
 }

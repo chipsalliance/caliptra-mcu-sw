@@ -20,9 +20,11 @@ pub enum CaliptraVdmCommand {
     RequestDebugUnlock = 0x06,
     AuthorizeDebugUnlockToken = 0x07,
     ExportAttestedCsr = 0x08,
+    ProvisionIdevCert = 0x09,
     DeviceOwnershipTransfer = 0x11,
     /// Single entry point for authorization-related sub-commands.
     AuthorizedCommand = 0x12,
+    OcpLock = 0x13,
 }
 
 impl TryFrom<u8> for CaliptraVdmCommand {
@@ -34,8 +36,10 @@ impl TryFrom<u8> for CaliptraVdmCommand {
             0x06 => Self::RequestDebugUnlock,
             0x07 => Self::AuthorizeDebugUnlockToken,
             0x08 => Self::ExportAttestedCsr,
+            0x09 => Self::ProvisionIdevCert,
             0x11 => Self::DeviceOwnershipTransfer,
             0x12 => Self::AuthorizedCommand,
+            0x13 => Self::OcpLock,
             _ => return Err(()),
         })
     }

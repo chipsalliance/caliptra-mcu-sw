@@ -133,7 +133,9 @@ pub struct CapabilitiesRsp {
 }
 
 impl ResponseBody for CapabilitiesRsp {
-    const RESPONSE_CODE: ReqRespCode = ReqRespCode::CAPABILITIES;
+    fn response_code(&self) -> ReqRespCode {
+        ReqRespCode::CAPABILITIES
+    }
 
     fn body_size(&self) -> usize {
         CapabilitiesBody::SIZE

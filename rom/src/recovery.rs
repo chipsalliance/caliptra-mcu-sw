@@ -12,7 +12,7 @@ use caliptra_mcu_registers_generated::i3c;
 use caliptra_mcu_registers_generated::i3c::bits::{
     DeviceReset, IndirectFifoStatus0, RecIntfCfg, RecIntfRegW1cAccess,
 };
-use caliptra_mcu_romtime::handoff::{FirmwareBootType, McuRomCapabilities};
+use caliptra_mcu_romtime::handoff::FirmwareBootType;
 use caliptra_mcu_romtime::StaticRef;
 use smlang::statemachine;
 use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
@@ -71,7 +71,7 @@ pub struct ImageProviderEntry<'a> {
 /// Manages a sequence of [`ImageProviderEntry`]s, tracking the active provider
 /// and retry count.
 pub struct ImageProviderManager<'a> {
-    entries: &'a mut [ImageProviderEntry<'a>],
+    pub(crate) entries: &'a mut [ImageProviderEntry<'a>],
     current: usize,
     retries: u8,
 }
@@ -83,21 +83,6 @@ impl<'a> ImageProviderManager<'a> {
             current: 0,
             retries: 0,
         }
-    }
-
-    /// Return the boot capabilities represented by the configured providers.
-    pub(crate) fn capabilities(&self) -> McuRomCapabilities {
-        self.entries
-            .iter()
-            .fold(McuRomCapabilities::empty(), |capabilities, entry| {
-                capabilities
-                    | match entry.boot_type {
-                        FirmwareBootType::Unknown => McuRomCapabilities::empty(),
-                        FirmwareBootType::Flash => McuRomCapabilities::FLASH_BOOT,
-                        FirmwareBootType::Streaming => McuRomCapabilities::STREAMING_BOOT_I3C,
-                        FirmwareBootType::Network => McuRomCapabilities::NETWORK_BOOT,
-                    }
-            })
     }
 
     /// Returns the current provider, incrementing the retry counter.
@@ -117,14 +102,14 @@ impl<'a> ImageProviderManager<'a> {
             match policy {
                 ErrorPolicy::Continue => {
                     self.current += 1;
-                    self.retries = 0;
+                    self.retries = 1;
                 }
                 ErrorPolicy::Retry(n) => {
                     if self.retries < n.get() {
                         self.retries += 1;
                     } else {
                         self.current += 1;
-                        self.retries = 0;
+                        self.retries = 1;
                     }
                 }
                 ErrorPolicy::RetryForever => {
@@ -386,6 +371,10 @@ pub(crate) fn load_image_to_recovery(
 
     let mut next_print_checkpoint = 0;
     let mut start_cycle = None;
+    // Bytes pushed into the recovery FIFO for the current image. Tracked here
+    // rather than read from INDIRECT_FIFO_STATUS_1: that is a FIFO write
+    // pointer which wraps at the FIFO depth on hardware.
+    let mut bytes_written = 0;
 
     while *state_machine.state() != States::Done {
         match *state_machine.state() {
@@ -409,6 +398,7 @@ pub(crate) fn load_image_to_recovery(
                 let res = state_machine.process_event(Events::RecoveryStatus(recovery_status));
                 if res.is_ok() {
                     next_print_checkpoint = 0;
+                    bytes_written = 0;
                     let recovery_image_index = recovery_status.rec_img_index();
                     caliptra_mcu_romtime::println!(
                         "[mcu-rom] Starting recovery with image index {}",
@@ -431,19 +421,16 @@ pub(crate) fn load_image_to_recovery(
                     start_cycle = Some(caliptra_mcu_romtime::mcycle());
                 }
 
-                let fifo_bytes_written =
-                    i3c_periph.sec_fw_recovery_if_indirect_fifo_status_1.get() as usize * 4;
-                if fifo_bytes_written >= next_print_checkpoint {
+                if bytes_written >= next_print_checkpoint {
                     caliptra_mcu_romtime::println!(
                         "[mcu-rom] Transferring image data at offset {} out of {}",
-                        fifo_bytes_written,
+                        bytes_written,
                         state_machine.context().image_size
                     );
-                    next_print_checkpoint =
-                        fifo_bytes_written + state_machine.context().image_size / 10;
+                    next_print_checkpoint = bytes_written + state_machine.context().image_size / 10;
                 }
 
-                if fifo_bytes_written >= state_machine.context().image_size {
+                if bytes_written >= state_machine.context().image_size {
                     // Set REC_INTF_CFG.REC_PAYLOAD_DONE bit to indicate transfer complete
                     i3c_periph
                         .soc_mgmt_if_rec_intf_cfg
@@ -475,6 +462,7 @@ pub(crate) fn load_image_to_recovery(
                         for dword in buf.iter().take(dwords_loaded) {
                             i3c_periph.tti_tx_data_port.set(*dword);
                         }
+                        bytes_written += dwords_loaded * 4;
                     }
                 }
             }
@@ -557,11 +545,6 @@ mod tests {
         let mut manager = ImageProviderManager::new(&mut entries);
 
         assert_eq!(
-            manager.capabilities(),
-            McuRomCapabilities::FLASH_BOOT | McuRomCapabilities::NETWORK_BOOT
-        );
-
-        assert_eq!(
             manager.provider().map(|(boot_type, _)| boot_type),
             Some(FirmwareBootType::Flash)
         );
@@ -569,5 +552,6 @@ mod tests {
             manager.provider().map(|(boot_type, _)| boot_type),
             Some(FirmwareBootType::Network)
         );
+        assert!(manager.provider().is_none());
     }
 }

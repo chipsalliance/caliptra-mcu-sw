@@ -10,6 +10,8 @@ pub const DPE_HANDLE_STORE_DRIVER_NUM: u32 = 0x8000_0020;
 pub const DPE_HANDLE_RECORD_SIZE: usize = 32;
 pub const POLICY_DIGEST_SIZE: usize = 48;
 pub const EXPORTED_CDI_SIZE: usize = 32;
+pub const EXPORTED_CDI_SLOT_SIZE: usize = 36;
+pub const EXPORTED_CDI_ANY_FW_ID: u32 = 0xFFFF_FFFF;
 
 // ---------------------------------------------------------------------------
 // Record type
@@ -134,12 +136,24 @@ impl<S: Syscalls> DpeHandleStore<S> {
         allow_ro_command_unallow::<S>(self.driver_num, cmd::VALIDATE_STORE, 0, policy_digest)
     }
 
-    pub fn read_exported_cdi(&self, out: &mut [u8; EXPORTED_CDI_SIZE]) -> Result<(), ErrorCode> {
-        allow_rw_command_unallow::<S>(self.driver_num, cmd::READ_EXPORTED_CDI, 0, out)
+    pub fn read_exported_cdi(
+        &self,
+        fw_id: u32,
+        out: &mut [u8; EXPORTED_CDI_SIZE],
+    ) -> Result<(), ErrorCode> {
+        allow_rw_command_unallow::<S>(self.driver_num, cmd::READ_EXPORTED_CDI, fw_id, out)
     }
 
-    pub fn write_exported_cdi(&self, cdi: &[u8; EXPORTED_CDI_SIZE]) -> Result<(), ErrorCode> {
-        allow_ro_command_unallow::<S>(self.driver_num, cmd::WRITE_EXPORTED_CDI, 0, cdi)
+    pub fn write_exported_cdi(
+        &self,
+        fw_id: u32,
+        cdi: &[u8; EXPORTED_CDI_SIZE],
+    ) -> Result<(), ErrorCode> {
+        allow_ro_command_unallow::<S>(self.driver_num, cmd::WRITE_EXPORTED_CDI, fw_id, cdi)
+    }
+
+    pub fn clear_exported_cdi(&self, fw_id: u32) -> Result<(), ErrorCode> {
+        S::command(self.driver_num, cmd::CLEAR_EXPORTED_CDI, fw_id, 0).to_result()
     }
 }
 
@@ -210,6 +224,7 @@ mod cmd {
     pub const VALIDATE_STORE: u32 = 7;
     pub const READ_EXPORTED_CDI: u32 = 8;
     pub const WRITE_EXPORTED_CDI: u32 = 9;
+    pub const CLEAR_EXPORTED_CDI: u32 = 10;
 }
 
 mod rw_allow {

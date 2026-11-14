@@ -35,9 +35,11 @@ pub enum CaliptraVdmCommand {
     RequestDebugUnlock = 0x06,
     AuthorizeDebugUnlockToken = 0x07,
     ExportAttestedCsr = 0x08,
+    ProvisionIdevCert = 0x09,
     DeviceOwnershipTransfer = 0x11,
     /// Single entry point for all authorized sub-commands (GetAuthChallenge, ProgramFieldEntropy).
     AuthorizedCommand = 0x12,
+    OcpLock = 0x13,
 }
 
 impl TryFrom<u8> for CaliptraVdmCommand {
@@ -49,8 +51,10 @@ impl TryFrom<u8> for CaliptraVdmCommand {
             0x06 => Ok(Self::RequestDebugUnlock),
             0x07 => Ok(Self::AuthorizeDebugUnlockToken),
             0x08 => Ok(Self::ExportAttestedCsr),
+            0x09 => Ok(Self::ProvisionIdevCert),
             0x11 => Ok(Self::DeviceOwnershipTransfer),
             0x12 => Ok(Self::AuthorizedCommand),
+            0x13 => Ok(Self::OcpLock),
             _ => Err(SpdmVdmProtocolError::UnknownCommand(value)),
         }
     }
@@ -129,6 +133,9 @@ pub fn command_id_to_vdm(command_id: u32) -> Option<CaliptraVdmCommand> {
         x if x == CaliptraCommandId::ExportAttestedCsr as u32 => {
             Some(CaliptraVdmCommand::ExportAttestedCsr)
         }
+        x if x == CaliptraCommandId::ProvisionIdevCert as u32 => {
+            Some(CaliptraVdmCommand::ProvisionIdevCert)
+        }
         x if x == CaliptraCommandId::ProdDebugUnlockReq as u32 => {
             Some(CaliptraVdmCommand::RequestDebugUnlock)
         }
@@ -137,7 +144,7 @@ pub fn command_id_to_vdm(command_id: u32) -> Option<CaliptraVdmCommand> {
         }
         x if x == CaliptraCommandId::FeProg as u32
             || x == CaliptraCommandId::ProvisionVendorPkHash as u32
-            || x == CaliptraCommandId::FuseIncreaseCaliptraMinSvn as u32
+            || x == CaliptraCommandId::FuseIncreaseMinSvn as u32
             || x == CaliptraCommandId::FuseRevokeVendorPubKey as u32
             || x == CaliptraCommandId::FuseRevokeVendorPkHash as u32
             || x == CaliptraCommandId::FuseLockPartition as u32
@@ -150,7 +157,8 @@ pub fn command_id_to_vdm(command_id: u32) -> Option<CaliptraVdmCommand> {
         x if x == CaliptraCommandId::GetAuthCmdChallenge as u32 => {
             Some(CaliptraVdmCommand::AuthorizedCommand)
         }
-        x if x == CaliptraCommandId::DotLock as u32
+        x if x == CaliptraCommandId::DotEnable as u32
+            || x == CaliptraCommandId::DotLock as u32
             || x == CaliptraCommandId::DotDisable as u32
             || x == CaliptraCommandId::DotRotate as u32
             || x == CaliptraCommandId::GetDotBackupBlob as u32 =>
@@ -176,7 +184,7 @@ mod tests {
 
     #[test]
     fn test_command_roundtrip() {
-        let valid_codes: &[u8] = &[0x05, 0x06, 0x07, 0x08, 0x11, 0x12];
+        let valid_codes: &[u8] = &[0x05, 0x06, 0x07, 0x08, 0x09, 0x11, 0x12, 0x13];
         for &code in valid_codes {
             let cmd = CaliptraVdmCommand::try_from(code).unwrap();
             assert_eq!(cmd as u8, code);
@@ -184,7 +192,7 @@ mod tests {
         assert!(CaliptraVdmCommand::try_from(0x00).is_err());
         assert!(CaliptraVdmCommand::try_from(0x01).is_err());
         assert!(CaliptraVdmCommand::try_from(0x10).is_err());
-        assert!(CaliptraVdmCommand::try_from(0x13).is_err());
+        assert!(CaliptraVdmCommand::try_from(0x14).is_err());
         assert!(CaliptraVdmCommand::try_from(0xFF).is_err());
     }
 
@@ -202,6 +210,14 @@ mod tests {
             CaliptraVdmCompletionCode::try_from(0xC1).unwrap(),
             CaliptraVdmCompletionCode::CaliptraBufferTooSmall
         );
+        assert_eq!(
+            CaliptraVdmCompletionCode::try_from(0xC2),
+            Err(SpdmVdmProtocolError::UnknownCompletionCode(0xC2))
+        );
+        assert_eq!(
+            CaliptraVdmCompletionCode::try_from(0xC3),
+            Err(SpdmVdmProtocolError::UnknownCompletionCode(0xC3))
+        );
         assert!(CaliptraVdmCompletionCode::try_from(0x10).is_err());
     }
 
@@ -217,6 +233,7 @@ mod tests {
             Some(CaliptraVdmCommand::RequestDebugUnlock)
         );
         for id in [
+            CaliptraCommandId::DotEnable,
             CaliptraCommandId::DotLock,
             CaliptraCommandId::DotDisable,
             CaliptraCommandId::DotRotate,
@@ -244,7 +261,7 @@ mod tests {
             CaliptraCommandId::GetAuthCmdChallenge,
             CaliptraCommandId::FeProg,
             CaliptraCommandId::ProvisionVendorPkHash,
-            CaliptraCommandId::FuseIncreaseCaliptraMinSvn,
+            CaliptraCommandId::FuseIncreaseMinSvn,
             CaliptraCommandId::FuseRevokeVendorPubKey,
             CaliptraCommandId::FuseRevokeVendorPkHash,
             CaliptraCommandId::OcpLockRotateHek,

@@ -10,7 +10,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{Context, Result};
+use anyhow::{anyhow, Context, Result};
 use caliptra_mcu_tbf_header::TbfHeader;
 
 use crate::{
@@ -89,10 +89,20 @@ pub fn generate_maximal_link_scripts(
     LdGeneration::new(manifest, common, ld)?.maximal()
 }
 
+/// Generate only the ROM linker script.  The ROM's memory doesn't overlap with the runtime or apps,
+/// so this doesn't require them to be sized first.
+///
+/// This fails if the manifest does not specify a ROM, or a hard drive operation fails.
+pub fn generate_rom(manifest: &Manifest, common: &Common, ld: &LdArgs) -> Result<LinkerScript> {
+    LdGeneration::new(manifest, common, ld)?
+        .rom()?
+        .ok_or_else(|| anyhow!("Manifest does not specify a ROM"))
+}
+
 fn split_sram_for_sizing(mut memory: Memory) -> Result<(Memory, Memory)> {
     // Initialized data is also stored in the instruction image, so reserve
-    // 9/16 of SRAM for instructions while retaining 7/16 for runtime data.
-    let split = (memory.offset + memory.size / 2 + memory.size / 16)
+    // 10/16 of SRAM for instructions while retaining 6/16 for runtime data.
+    let split = (memory.offset + memory.size / 2 + memory.size / 8)
         .next_multiple_of(TOCK_ALIGNMENT)
         - memory.offset;
     let instructions = memory.consume(split)?;
@@ -197,6 +207,17 @@ impl<'a> LdGeneration<'a> {
             });
         }
 
+        // When apps exist, provide a non-zero application memory region so that
+        // linker symbols like _sapps and _eapps resolve to full 32-bit addresses
+        // during sizing. Otherwise, they resolve to 0 in Pass 1, emitting 4-byte
+        // `li` instructions instead of 8-byte `lui + mv` pairs, which causes the
+        // kernel's .text section to expand by 16 bytes in Pass 2.
+        let first_app_instructions = if self.manifest.apps.is_empty() {
+            None
+        } else {
+            Some(itcm.clone())
+        };
+
         let runtime_binary = self.manifest.runtime.inner();
         let content = if self.manifest.runtime.is_bare_metal() {
             let mut combined = itcm.clone();
@@ -205,7 +226,7 @@ impl<'a> LdGeneration<'a> {
         } else {
             self.kernel_linker_content(
                 itcm.clone(),
-                None,
+                first_app_instructions,
                 dtcm.clone(),
                 itcm.clone(),
                 dtcm.clone(),
@@ -232,17 +253,13 @@ impl<'a> LdGeneration<'a> {
         })
     }
 
-    /// Execute an Ld Generation pass.  This includes allocting memory from the various spaces to
-    /// accomadate the application.  Utilizing this allocated memory generate respective linker
-    /// files which can be used to build a complete application.
-    fn run(&self) -> Result<BuildDefinition> {
+    /// Generate the ROM linker script if an application is specified.
+    fn rom(&self) -> Result<Option<LinkerScript>> {
         let binary_context = |name: &str, stage: &str| {
             format!("Linker generation failed for application {name} at stage {stage} with error:")
         };
 
-        // First generate the ROM linker script if an application is specified.
-        let rom_def = self
-            .manifest
+        self.manifest
             .rom
             .as_ref()
             .map(|binary| -> Result<LinkerScript> {
@@ -266,7 +283,19 @@ impl<'a> LdGeneration<'a> {
                     linker_script: path,
                 })
             })
-            .transpose()?;
+            .transpose()
+    }
+
+    /// Execute an Ld Generation pass.  This includes allocating memory from the various spaces to
+    /// accommodate the application.  Utilizing this allocated memory generate respective linker
+    /// files which can be used to build a complete application.
+    fn run(&self) -> Result<BuildDefinition> {
+        let binary_context = |name: &str, stage: &str| {
+            format!("Linker generation failed for application {name} at stage {stage} with error:")
+        };
+
+        // First generate the ROM linker script if an application is specified.
+        let rom_def = self.rom()?;
 
         // Now get trackers for runtime instruction and data memory.
         let (mut itcm_tracker, mut dtcm_tracker) =
@@ -762,9 +791,9 @@ mod tests {
         let (instructions, data) = split_sram_for_sizing(memory).unwrap();
 
         assert_eq!(instructions.offset, 0xa8c0_0000);
-        assert_eq!(instructions.size, 0x4_8000);
-        assert_eq!(data.offset, 0xa8c4_8000);
-        assert_eq!(data.size, 0x3_8000);
+        assert_eq!(instructions.size, 0x5_0000);
+        assert_eq!(data.offset, 0xa8c5_0000);
+        assert_eq!(data.size, 0x3_0000);
     }
 
     #[test]

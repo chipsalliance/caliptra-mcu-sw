@@ -4,6 +4,10 @@
 This document outlines the external mailbox commands that enable SoC agents to interact with the MCU via [MCI mailbox](https://github.com/chipsalliance/caliptra-ss/blob/main/docs/CaliptraSSHardwareSpecification.md#mcu-mailbox).
 These commands support common Caliptra management functions, including querying firmware information, retrieving debug and attestation logs, exporting attested CSRs, utilizing cryptographic services, secure debug unlock, and in-field fuse provisioning.
 
+The `MC_AUTHORIZED_COMMAND` envelope described here is an MCU Runtime protocol.
+MCU ROM's boot-time fuse mailbox retains its ROM-specific direct command
+framing and is not changed by this Runtime ABI.
+
 - **Device Identification and Capabilities**
     - Retrieve firmware versions and device capabilities to ensure compatibility and proper configuration.
 
@@ -13,6 +17,7 @@ These commands support common Caliptra management functions, including querying 
 
 - **Certificate Management**
     - Export attested Certificate Signing Requests (CSRs) for device keys to facilitate secure provisioning.
+    - Query certificate-chain metadata and SHA-384 digests, retrieve complete DER certificate chains, and provision or erase managed Owner and Tenant endorsements.
 
 - **Cryptographic Services**
     - AES encryption and decryption
@@ -36,11 +41,14 @@ These commands support common Caliptra management functions, including querying 
 | MC_FIRMWARE_VERSION           | 0x4D46_5756 ("MFWV") | Retrieves the version of the target firmware.                                         |
 | MC_DEVICE_CAPABILITIES        | 0x4D43_4150 ("MCAP") | Retrieve the device capabilities.                                                     |
 | MC_EXPORT_ATTESTED_CSR        | 0x4D45_4143 ("MEAC") | Discovers supported device keys or exports an attested CSR, wrapped in a CoseSign1 structure. |
-| MC_DPE_SIGNER_CONTEXT_CERT    | 0x4D44_5343 ("MDSC") | Derives DPE signer context and returns the derived leaf certificate.                  |
+| MC_DPE_SIGNER_CONTEXT_CERT    | 0x4D44_5343 ("MDSC") | Derives DPE signer context from `EXPORT_CDI_TARGET` and returns the derived leaf certificate. |
+| MC_DPE_SIGNER_CONTEXT_SIGN    | 0x4D44_5353 ("MDSS") | Signs caller-supplied data with the stored DPE Exported-CDI key (ECC P-384 or ML-DSA-87).     |
 | MC_GET_DPE_CERTIFICATE_CHAIN  | 0x4D44_4343 ("MDCC") | Retrieves the DPE certificate chain.                                                  |
 | MC_GET_ATTESTATION            | 0x4D47_4154 ("MGAT") | Retrieves signed attestation evidence in a requester-selected format.                 |
-| MC_GET_CERT_CHAIN             | 0x4D47_4343 ("MGCC") | Reserved for future certificate-chain retrieval; not implemented.                    |
-| MC_SET_CERT_CHAIN             | 0x4D53_4343 ("MSCC") | Reserved for future certificate-chain updates; not implemented.                      |
+| MC_GET_CERT_CHAIN_INFO        | 0x4D47_4349 ("MGCI") | Retrieves certificate-chain metadata, length, and raw DER SHA-384 digest.             |
+| MC_GET_CERT_CHAIN             | 0x4D47_4343 ("MGCC") | Retrieves a chunk of the complete raw DER certificate chain.                          |
+| MC_SET_CERT_CHAIN             | 0x4D53_4343 ("MSCC") | Provisions, replaces, or erases a managed PKI endorsement chain.                      |
+| MC_PROVISION_IDEV_CERT        | 0x4D50_4943 ("MPIC") | Populates an IDevID certificate into Caliptra Core and optionally OTP.                |
 | MC_GET_LOG                    | 0x4D47_4C47 ("MGLG") | Retrieves the debug log                                                               |
 | MC_CLEAR_LOG                  | 0x4D43_4C47 ("MCLG") | Clears the debug log                                                                  |
 | MC_FIPS_SELF_TEST_START       | 0x4D46_5354 ("MFST") | Starts the FIPS self-test to exercise the crypto engine.                              |
@@ -81,31 +89,69 @@ These commands support common Caliptra management functions, including querying 
 | MC_LMS_SIG_VERIFY             | 0x4D4C_4D56 ("MLMV") | Verifies an LMS signature.                                                            |
 | MC_PROD_DEBUG_UNLOCK_REQ      | 0x4D50_5552 ("MPUR") | Requests debug unlock in a production environment.                                    |
 | MC_PROD_DEBUG_UNLOCK_TOKEN    | 0x4D50_5554 ("MPUT") | Sends the debug unlock token.                                                         |
-| MC_GET_AUTH_CMD_CHALLENGE     | 0x4D41_4343 ("MACC") | Requests a challenge for security-sensitive commands.                                 |
-| MC_FUSE_INCREASE_CALIPTRA_MIN_SVN | 0x4D43_4D53 ("MCMS") | Increases the minimum bootable Caliptra firmware SVN.                             |
-| MC_FUSE_READ                  | 0x4946_5052 ("IFPR") | See [fuses spec](fuses.md) for details                                                |
-| MC_FUSE_WRITE                 | 0x4946_5057 ("IFPW") | See [fuses spec](fuses.md) for details                                                |
-| MC_FUSE_LOCK_PARTITION        | 0x4946_504B ("IFPK") | See [fuses spec](fuses.md) for details                                                |
-| MC_PROVISION_VENDOR_PK_HASH   | 0x5056_504b ("PVPK") | See [fuses spec](fuses.md) for details                                                |
-| MC_PROVISION_OWNER_PK_HASH    | 0x504F_504B ("POPK") | See [fuses spec](fuses.md) for details                                                |
-| MC_FE_PROG                    | 0x4D43_4650 ("MCFP") | See [fuses spec](fuses.md) for details                                                |
-| MC_FUSE_REVOKE_VENDOR_PUB_KEY | 0x4D52_564B ("MRVK") | See [fuses spec](fuses.md) for details                                                |
-| MC_FUSE_REVOKE_VENDOR_PK_HASH | 0x5256_4b48 ("RVKH") | See [fuses spec](fuses.md) for details                                                |
-| MC_DEVICE_OWNERSHIP_TRANSFER  | 0x0000_0011          | Device Ownership Transfer family; subcommand is carried in mailbox SRAM                |
+| MC_AUTHORIZED_COMMAND         | 0x0000_0012          | Carries every authorization-related target ID, payload, and authorization trailer.     |
+| MC_GET_AUTH_CMD_CHALLENGE     | 0x4D41_4343 ("MACC") | Target ID under `MC_AUTHORIZED_COMMAND`; requests a one-use challenge.                  |
+| MC_FUSE_INCREASE_MIN_SVN      | 0x4D43_4D53 ("MCMS") | Target ID under `MC_AUTHORIZED_COMMAND`; increases the selected minimum SVN.            |
+| MC_FUSE_READ                  | 0x4946_5052 ("IFPR") | MCI-only target ID under `MC_AUTHORIZED_COMMAND`; see [fuses spec](fuses.md).            |
+| MC_FUSE_WRITE                 | 0x4946_5057 ("IFPW") | MCI-only target ID under `MC_AUTHORIZED_COMMAND`; see [fuses spec](fuses.md).            |
+| MC_FUSE_LOCK_PARTITION        | 0x4946_504B ("IFPK") | Target ID under `MC_AUTHORIZED_COMMAND`; see [fuses spec](fuses.md).                    |
+| MC_PROVISION_VENDOR_PK_HASH   | 0x5056_504b ("PVPK") | Target ID under `MC_AUTHORIZED_COMMAND`; see [fuses spec](fuses.md).                    |
+| MC_PROVISION_OWNER_PK_HASH    | 0x504F_504B ("POPK") | Target ID under `MC_AUTHORIZED_COMMAND`; see [fuses spec](fuses.md).                    |
+| MC_FE_PROG                    | 0x4D43_4650 ("MCFP") | Target ID under `MC_AUTHORIZED_COMMAND`; see [fuses spec](fuses.md).                    |
+| MC_FE_STATUS                  | 0x4D43_4653 ("MCFS") | Reports whether all field entropy partitions are provisioned.                          |
+| MC_VENDOR_PK_HASH_STATUS      | 0x4D56_5053 ("MVPS") | Reports occupied vendor PK hash slots and their PQC key types.                          |
+| MC_HEK_STATUS                 | 0x4D48_4B53 ("MHKS") | Reports used HEK slots and the total number of configured HEK slots.                    |
+| MC_FUSE_REVOKE_VENDOR_PUB_KEY | 0x4D52_564B ("MRVK") | Target ID under `MC_AUTHORIZED_COMMAND`; see [fuses spec](fuses.md).                    |
+| MC_FUSE_REVOKE_VENDOR_PK_HASH | 0x5256_4b48 ("RVKH") | Target ID under `MC_AUTHORIZED_COMMAND`; see [fuses spec](fuses.md).                    |
+| MC_DEVICE_OWNERSHIP_TRANSFER  | 0x0000_0011          | Native Device Ownership Transfer family; subcommand is carried in mailbox SRAM.         |
+| MC_OCP_LOCK                   | 0x0000_0013          | Native OCP LOCK family; subcommand is carried in mailbox SRAM.                          |
+| VENDOR_UNIQUE_COMMANDS        | "VU00"-"VUFF"        | Reserved for vendor-unique innermost commands; unsupported by the reference MCU.       |
+
+### Vendor-Unique Command IDs
+
+`VU00` through `VUFF` reserve exactly 256 four-byte command IDs for
+vendor-unique use. The first two bytes are the ASCII characters `VU`; each
+suffix byte is one uppercase ASCII hexadecimal digit (`0`-`9` or `A`-`F`).
+Consequently, the numeric values between `0x5655_3030` (`VU00`) and
+`0x5655_4646` (`VUFF`) are not one contiguous allocation.
+
+These are innermost command IDs. Both MCI and SPDM carry the ID inside
+`AuthorizedCommand`; it is not a top-level transport command code. The
+reference MCU does not implement vendor-specific behavior and returns an
+unsupported-command error.
 
 ## Command Format
 
 Common command payloads are defined in [Caliptra Common Commands](caliptra_common_commands.md#command-definitions). This section lists the MCI mailbox command code for each common command and keeps mailbox-only command definitions in this document. MCI mailbox checksum, `fips_status`, and variable-length `data_len` fields are transport-specific response framing and are not part of the common command payload tables.
 
+### MC_AUTHORIZED_COMMAND
+
+Every MCI authorization-related request uses command register value
+`0x00000012`. The first payload dword is always a little-endian target ID.
+Direct commands carry their operation payload next; family commands carry a
+second little-endian family subcommand.
+
+```text
+Direct: checksum || target_id:u32 || command_payload || authorization_trailer
+Family: checksum || family_id:u32 || family_subcommand:u32
+        || command_payload || authorization_trailer
+MACC:   checksum || 0x4D41_4343:u32
+```
+
+`MACC` has no command payload or authorization trailer. For signed requests,
+the preimage is `target_id(BE) || signed_payload || nonce`; for a family target,
+the signed payload begins with the family subcommand.
+
 ### MC_DEVICE_OWNERSHIP_TRANSFER
 
-All MCU Runtime DOT requests use MCI command register value `0x00000011`.
-Mailbox SRAM begins with the normal checksum followed by a little-endian DOT
-FourCC and its payload.
+Native MCU Runtime DOT requests use MCI command register value `0x00000011`.
+Authorized DOT requests use `MC_AUTHORIZED_COMMAND` with family target
+`0x00000011`.
 
 ```text
 Native:     checksum || DOT_FourCC || DOT_payload
-Authorized: checksum || DOT_FourCC || DOT_payload || authorization_trailer
+Authorized: checksum || 0x00000011 || DOT_FourCC
+            || DOT_payload || authorization_trailer
 ```
 
 The authorized trailer is
@@ -115,6 +161,7 @@ For authorized DOT commands the signed preimage is
 
 | FourCC | Command | Classification |
 | ------ | ------- | -------------- |
+| `MDEN` (`0x4D44_454E`) | Enable | Authorized |
 | `MDLK` | Lock | Authorized |
 | `MDDS` | Disable | Authorized |
 | `MDRT` | Rotate | Authorized |
@@ -129,6 +176,33 @@ For authorized DOT commands the signed preimage is
 Payload semantics match [Caliptra SPDM VDM DOT commands](caliptra_spdm_vdm_cmds.md#device-ownership-transfer-commands).
 
 **For detailed command flows, state transitions, security properties, and use cases**, see [Device Ownership Transfer (DOT)](dot.md#runtime-commands)
+
+### MC_OCP_LOCK
+
+Native MCU Runtime OCP LOCK requests use MCI command register value
+`0x00000013`. Authorized OCP LOCK requests use `MC_AUTHORIZED_COMMAND` with
+family target `0x00000013`.
+
+```text
+Authorized: checksum || 0x00000013 || OCP_LOCK_FourCC
+            || OCP_LOCK_payload || authorization_trailer
+Native:     checksum || OCP_LOCK_FourCC || OCP_LOCK_payload
+```
+
+For authorized OCP LOCK commands the signed preimage is
+`0x00000013(BE) || OCP_LOCK_FourCC(LE) || OCP_LOCK_payload || nonce`.
+
+| FourCC | Command | Classification |
+| ------ | ------- | -------------- |
+| `OLPH` | Program HEK | Authorized |
+| `OLZH` | Zero HEK | Authorized |
+| `OLRH` | Rotate HEK | Authorized |
+| `OLSP` | Set Perma HEK | Authorized |
+| `OLEC` | Get Endorsement Cert | Native/read-only |
+| `OLEH` | Enumerate HPKE Handles | Native/read-only |
+| `OLER` | Get Epoch Key Report | Native/read-only |
+
+Payload semantics match [Caliptra SPDM VDM OCP LOCK commands](caliptra_spdm_vdm_cmds.md#ocp-lock-commands).
 
 ### MC_FIRMWARE_VERSION
 
@@ -164,6 +238,54 @@ Command Code: `0x4D45_4143` ("MEAC")
 
 Payload semantics are defined by [Export Attested CSR](caliptra_common_commands.md#export-attested-csr).
 
+### MC_DPE_SIGNER_CONTEXT_CERT
+
+Derives a DPE Exported-CDI context (`EXPORT_CDI | CREATE_CERTIFICATE | RETAIN_PARENT_CONTEXT`) from the configured `EXPORT_CDI_TARGET` in the MCU Attestation Manifest (`MCAM`), stashes the 32-byte `exported_cdi` handle in DPE Handle Storage, and returns the derived X.509 leaf certificate. Calling this command again automatically revokes any previously derived Exported-CDI handle in Caliptra before deriving a fresh context.
+
+This command is optional and compiled in only with the `allow-mcu-signer-cert` cargo feature (`caliptra-mcu-mbox-lib/allow-mcu-signer-cert`, which is also enabled by `ocp-lock` and `unsafe-allow-mcu-signing-oracle`); without it, the MCI mailbox rejects the command as unsupported (`UNSUPPORTED_COMMAND`).
+
+Command Code: `0x4D44_5343` ("MDSC")
+
+*Table: `MC_DPE_SIGNER_CONTEXT_CERT` input arguments*
+| **Name**     | **Type** | **Description**                                                                                  |
+| ------------ | -------- | ------------------------------------------------------------------------------------------------ |
+| chksum       | u32      | Checksum over input data.                                                                        |
+| target_fw_id | u32      | Target DPE node `fw_id` (`0` = default `EXPORT_CDI_TARGET` configured in `MCAM`).                |
+| algorithm    | u32      | Endorsement algorithm (`0x0001` = ECDSA P-384, `0x0002` = ML-DSA-87).                            |
+
+*Table: `MC_DPE_SIGNER_CONTEXT_CERT` output arguments*
+| **Name**    | **Type**     | **Description**                                       |
+| ----------- | ------------ | ----------------------------------------------------- |
+| chksum      | u32          | Response checksum.                                    |
+| fips_status | u32          | FIPS approved or an error.                            |
+| data_len    | u32          | Length in bytes of the DER-encoded leaf certificate.  |
+| cert_data   | u8[data_len] | DER-encoded DPE Exported-CDI X.509 leaf certificate.  |
+
+### MC_DPE_SIGNER_CONTEXT_SIGN
+
+Signs caller-supplied data using the stored DPE Exported-CDI handle for `target_fw_id` (`0` uses the default `EXPORT_CDI_TARGET` configured in `MCAM`; `MC_DPE_SIGNER_CONTEXT_CERT` must have been executed first, and no TCB update on the `EXPORT_CDI_TARGET` lineage may have revoked the handle since derivation).
+
+This command is optional and compiled in only with the `unsafe-allow-mcu-signing-oracle` cargo feature (`caliptra-mcu-mbox-lib/unsafe-allow-mcu-signing-oracle`); without it, the MCI mailbox rejects the command as unsupported (`UNSUPPORTED_COMMAND`).
+
+Command Code: `0x4D44_5353` ("MDSS")
+
+*Table: `MC_DPE_SIGNER_CONTEXT_SIGN` input arguments*
+| **Name**     | **Type**     | **Description**                                                                                          |
+| ------------ | ------------ | -------------------------------------------------------------------------------------------------------- |
+| chksum       | u32          | Checksum over input data.                                                                                |
+| target_fw_id | u32          | Target DPE node `fw_id` (`0` = default `EXPORT_CDI_TARGET` configured in `MCAM`).                        |
+| algorithm    | u32          | Endorsement algorithm (`0x0001` = ECDSA P-384, `0x0002` = ML-DSA-87).                                    |
+| data_len     | u32          | Length of `data` in bytes (`48` for ECDSA P-384 SHA-384 digest; `1..=4096` for ML-DSA-87 TBS message).   |
+| data         | u8[data_len] | 48-byte SHA-384 digest (`ECDSA_384`) or to-be-signed message up to `4096` bytes (`MLDSA_87`).            |
+
+*Table: `MC_DPE_SIGNER_CONTEXT_SIGN` output arguments*
+| **Name**    | **Type**     | **Description**                                                                         |
+| ----------- | ------------ | --------------------------------------------------------------------------------------- |
+| chksum      | u32          | Response checksum.                                                                      |
+| fips_status | u32          | FIPS approved or an error.                                                              |
+| data_len    | u32          | Signature length in bytes (`96` for ECDSA P-384 `r \|\| s`; `4627` for ML-DSA-87).      |
+| signature   | u8[data_len] | Signature bytes verifiable under the `MC_DPE_SIGNER_CONTEXT_CERT` leaf public key.      |
+
 ### MC_GET_ATTESTATION
 
 Retrieves signed attestation evidence bound to a requester-supplied nonce.
@@ -182,6 +304,113 @@ MCI mailbox response payload:
 | data_len        | u32            | Length in bytes of `evidence_format` plus `evidence`.                                 |
 | evidence_format | u32            | Echo of the requested `evidence_format`.                                              |
 | evidence        | u8[data_len-4] | Signed evidence blob, or a `u32` supported-format bitmap when responding to the query. |
+
+### MC_GET_CERT_CHAIN_INFO
+
+Retrieves the metadata, total byte length, and SHA-384 digest of the complete DER certificate chain for a provisioned `(role, algorithm)` slot in the common certificate store. `chain_digest` is computed over the concatenated DER certificates from Root CA to leaf.
+
+Fails if `role` or `algorithm` is invalid, or if the requested `(role, algorithm)` chain is not provisioned.
+
+Command Code: `0x4D47_4349` ("MGCI")
+
+*Table: `MC_GET_CERT_CHAIN_INFO` input arguments*
+| **Name**  | **Type** | **Description**                                                                 |
+| --------- | -------- | ------------------------------------------------------------------------------- |
+| chksum    | u32      | Checksum over input data.                                                       |
+| role      | u32      | Endorsement role (`0x0000` = Vendor, `0x0001` = Owner, `0x0002` = Tenant).      |
+| algorithm | u32      | Asymmetric algorithm (`0x0001` = ECC P-384, `0x0002` = ML-DSA-87).              |
+
+*Table: `MC_GET_CERT_CHAIN_INFO` output arguments*
+| **Name**       | **Type** | **Description**                                                                                      |
+| -------------- | -------- | ---------------------------------------------------------------------------------------------------- |
+| chksum         | u32      | Response checksum.                                                                                   |
+| fips_status    | u32      | FIPS approved or an error.                                                                           |
+| device_key_id  | u32      | Caliptra identity key certified by the endorsement (`0` = Vendor IDevID, `1` = LDevID, `2` = FMC Alias, `3` = RT Alias). |
+| chain_len      | u32      | Total length in bytes of the complete DER certificate chain.                                         |
+| chain_digest   | u8[48]   | SHA-384 digest over the complete raw DER certificate chain.                                          |
+
+### MC_GET_CERT_CHAIN
+
+Retrieves a contiguous byte slice of the complete raw DER certificate chain (`PKI endorsement + Caliptra device certificates below the anchor point + DPE leaf`) for a provisioned `(role, algorithm)` slot. Callers typically query `MC_GET_CERT_CHAIN_INFO` first to obtain `chain_len` and `chain_digest`, then read the chain in chunks up to `MAX_RESP_DATA_SIZE` (`4096` bytes) per request.
+
+If `role` or `algorithm` is invalid, `size` exceeds `MAX_RESP_DATA_SIZE`, the chain is not provisioned, or a concurrent endorsement update invalidates the chain mid-pagination, the command fails.
+
+Command Code: `0x4D47_4343` ("MGCC")
+
+*Table: `MC_GET_CERT_CHAIN` input arguments*
+| **Name**  | **Type** | **Description**                                                                 |
+| --------- | -------- | ------------------------------------------------------------------------------- |
+| chksum    | u32      | Checksum over input data.                                                       |
+| role      | u32      | Endorsement role (`0x0000` = Vendor, `0x0001` = Owner, `0x0002` = Tenant).      |
+| algorithm | u32      | Asymmetric algorithm (`0x0001` = ECC P-384, `0x0002` = ML-DSA-87).              |
+| offset    | u32      | Byte offset into the complete DER certificate chain (`0` starts a fresh read).  |
+| size      | u32      | Maximum number of bytes to return (up to `4096`).                               |
+
+*Table: `MC_GET_CERT_CHAIN` output arguments*
+| **Name**    | **Type**     | **Description**                                           |
+| ----------- | ------------ | --------------------------------------------------------- |
+| chksum      | u32          | Response checksum.                                        |
+| fips_status | u32          | FIPS approved or an error.                                |
+| data_len    | u32          | Number of DER certificate-chain bytes returned.           |
+| cert_data   | u8[data_len] | Requested slice of the complete raw DER certificate chain. |
+
+### MC_SET_CERT_CHAIN
+
+Provisions, replaces, or erases the PKI endorsement chain for a managed `(role, algorithm)` slot (`Owner` or `Tenant`). Writes to the read-only `Vendor` slot (`role = 0`) are always rejected. This command is currently compiled in only for test configurations until production requester authorization is enabled.
+
+`cert_data` contains the concatenated DER endorsement certificates starting from the Root CA.
+
+- **Erase (`total_size == 0`)**: Requires `offset == 0` and `data_len == 0`. Durably erases the managed endorsement for `(role, algorithm)`.
+- **Single-chunk write (`offset == 0` and `data_len == total_size > 0`)**: Validates and atomically commits the endorsement into the `staging_region` in one transaction.
+- **Multi-chunk streamed write (`total_size > data_len`)**:
+  - `offset == 0` begins a staged write in the `staging_region` for `total_size` bytes and writes the first chunk (`data_len > 0`).
+  - Intermediate chunks (`0 < offset` and `offset + data_len < total_size`) append sequential chunks (`data_len > 0`).
+  - The final chunk (`offset + data_len == total_size`) finishes the stream, computes the root certificate hash, atomically switches the `active_region`, and increments the slot's generation counter.
+
+When the role has a configured key anchor point (such as `Owner` pinned to `LDevID`), `device_key_id = 0` resolves to that anchor point and any nonzero value must match it; when the role has no fixed anchor point (such as `Tenant` in the default policy), a nonzero `device_key_id` for a supported anchor point is required.
+
+Command Code: `0x4D53_4343` ("MSCC")
+
+*Table: `MC_SET_CERT_CHAIN` input arguments*
+| **Name**      | **Type**     | **Description**                                                                                              |
+| ------------- | ------------ | ------------------------------------------------------------------------------------------------------------ |
+| chksum        | u32          | Checksum over input data.                                                                                    |
+| role          | u32          | Endorsement role (`0x0001` = Owner, `0x0002` = Tenant; `0x0000` = Vendor is rejected).                       |
+| algorithm     | u32          | Asymmetric algorithm (`0x0001` = ECC P-384, `0x0002` = ML-DSA-87).                                           |
+| device_key_id | u32          | Caliptra identity key (`0` = use role's configured anchor point, `1` = LDevID, `2` = FMC Alias, `3` = RT Alias). |
+| offset        | u32          | Byte offset of this chunk within the endorsement chain (`0` for single-chunk write, stream start, or erase). |
+| total_size    | u32          | Total byte length of the DER endorsement chain, or `0` to erase the managed endorsement.                     |
+| data_len      | u32          | Number of endorsement bytes in `cert_data` for this request (up to `4096`; `0` when `total_size == 0`).      |
+| cert_data     | u8[data_len] | Raw DER endorsement bytes for this chunk.                                                                    |
+
+*Table: `MC_SET_CERT_CHAIN` output arguments*
+| **Name**    | **Type** | **Description**            |
+| ----------- | -------- | -------------------------- |
+| chksum      | u32      | Response checksum.         |
+| fips_status | u32      | FIPS approved or an error. |
+
+### MC_PROVISION_IDEV_CERT
+
+Populates a DER-encoded `IDevID` certificate into Caliptra Core (`POPULATE_IDEV_ECC384_CERT` / `POPULATE_IDEV_MLDSA87_CERT`) and optionally persists and locks it in OTP.
+
+Command Code: `0x4D50_4943` ("MPIC")
+
+Payload semantics, operation modes, and state rules are defined by [Provision IDevID Certificate](caliptra_common_commands.md#provision-idevid-certificate).
+
+*Table: `MC_PROVISION_IDEV_CERT` input arguments*
+| **Name**  | **Type**      | **Description**                                                                                      |
+| --------- | ------------- | ---------------------------------------------------------------------------------------------------- |
+| chksum    | u32           | Checksum over input data.                                                                            |
+| algorithm | u32           | Asymmetric algorithm (`0x0001` = ECC P-384, `0x0002` = ML-DSA-87).                                   |
+| operation | u32           | Provisioning mode (`0x0000` = `PopulateOnly`, `0x0001` = `WriteOtp`).                                |
+| cert_size | u32           | Length in bytes of the DER-encoded `IDevID` certificate (`1..=8192`).                                |
+| cert_data | u8[cert_size] | Raw DER-encoded `IDevID` certificate (zero-padded in the fixed request structure up to `8192` bytes). |
+
+*Table: `MC_PROVISION_IDEV_CERT` output arguments*
+| **Name**    | **Type** | **Description**            |
+| ----------- | -------- | -------------------------- |
+| chksum      | u32      | Response checksum.         |
+| fips_status | u32      | FIPS approved or an error. |
 
 ### MC_GET_LOG
 
@@ -293,28 +522,86 @@ Payload semantics are defined by [Authorize Debug Unlock Token](caliptra_common_
 
 ### MC_GET_AUTH_CMD_CHALLENGE
 
-Command Code: `0x4D41_4343` ("MACC")
+Authorized target ID: `0x4D41_4343` ("MACC")
 
 Payload semantics are defined by [Get Auth Challenge](caliptra_common_commands.md#get-auth-challenge).
-The MCI request appends `flags:u32` and `reserved:u32` after the mailbox checksum header; both
-fields are reserved and must be zero. The MCI response inserts a zero `reserved:u32` between the
-mailbox response header and the common 48-byte challenge payload.
+The MCI request contains no fields after the target ID. The response inserts a
+zero `reserved:u32` between the mailbox response header and the common 48-byte
+challenge payload.
 
-### MC_FUSE_INCREASE_CALIPTRA_MIN_SVN
+### MC_FUSE_INCREASE_MIN_SVN
 
-Increases the minimum bootable Caliptra firmware SVN.
+Increases the selected minimum SVN.
 
-Command Code: `0x4D43_4D53` ("MCMS")
+Authorized target ID: `0x4D43_4D53` ("MCMS")
 
-Payload semantics are defined by [Fuse Increase Caliptra Min SVN](caliptra_common_commands.md#fuse-increase-caliptra-min-svn).
+Payload semantics and target assignments are defined by [Fuse Increase Min SVN](caliptra_common_commands.md#fuse-increase-min-svn).
 
 ### MC_FE_PROG
 
 Programs field entropy for the selected fuse partition.
 
-Command Code: `0x4D43_4650` ("MCFP")
+Authorized target ID: `0x4D43_4650` ("MCFP")
 
 Payload semantics are defined by [Program Field Entropy](caliptra_common_commands.md#program-field-entropy).
+
+### MC_FE_STATUS
+
+Reports whether all four field entropy partitions have been completely
+provisioned and have not been zeroized. This command does not require
+authorization.
+
+Command Code: `0x4D43_4653` ("MCFS")
+
+Payload semantics are defined by [Field Entropy Status](caliptra_common_commands.md#field-entropy-status).
+
+### MC_VENDOR_PK_HASH_STATUS
+
+Reports which vendor public-key hash slots have been programmed and the PQC key
+type associated with each slot. This command does not require authorization.
+
+Command Code: `0x4D56_5053` ("MVPS")
+
+Payload semantics are defined by [Vendor PK Hash Status](caliptra_common_commands.md#vendor-pk-hash-status).
+
+### MC_HEK_STATUS
+
+Reports which HEK slots have been programmed or sanitized and the total number
+of configured HEK slots. This command does not require authorization.
+
+Command Code: `0x4D48_4B53` ("MHKS")
+
+Payload semantics are defined by [HEK Status](caliptra_common_commands.md#hek-status).
+
+### MC_OCP_LOCK_PROGRAM_HEK
+
+Programs an unused HEK slot with a 256-bit seed generated by the device RNG and
+the corresponding OTP digest. The requested slot must be implemented, unused,
+and not protected by the permanent HEK lock.
+
+Command Code: `0x0000_0013` (`MC_OCP_LOCK`)
+
+Subcommand: `0x4F4C_5048` ("OLPH")
+
+This command requires the authorization flow described in
+[Authorization-Gated Subcommand Wrapper](caliptra_common_commands.md#authorization-gated-subcommand-wrapper).
+Payload semantics are defined by
+[OCP LOCK Program HEK](caliptra_common_commands.md#ocp-lock-program-hek).
+
+### MC_OCP_LOCK_ZERO_HEK
+
+Permanently sanitizes an unused HEK slot by programming the slot's
+sanitization pattern. The requested slot must be implemented, unused, and not
+protected by the permanent HEK lock.
+
+Command Code: `0x0000_0013` (`MC_OCP_LOCK`)
+
+Subcommand: `0x4F4C_5A48` ("OLZH")
+
+This command requires the authorization flow described in
+[Authorization-Gated Subcommand Wrapper](caliptra_common_commands.md#authorization-gated-subcommand-wrapper).
+Payload semantics are defined by
+[OCP LOCK Zero HEK](caliptra_common_commands.md#ocp-lock-zero-hek).
 
 {{#include fuse_api_cmd.md}}
 

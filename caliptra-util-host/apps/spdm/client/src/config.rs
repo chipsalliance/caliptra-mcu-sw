@@ -32,7 +32,7 @@ pub struct TestConfig {
     #[serde(default)]
     pub provision_owner_pk_hash: ProvisionOwnerPkHashConfig,
     #[serde(default)]
-    pub increase_caliptra_min_svn: IncreaseCaliptraMinSvnConfig,
+    pub increase_min_svn: IncreaseMinSvnConfig,
     #[serde(default)]
     pub revoke_vendor_pub_key: RevokeVendorPubKeyConfig,
     #[serde(default)]
@@ -228,11 +228,13 @@ pub struct ProvisionOwnerPkHashConfig {
 }
 
 #[derive(Debug, Clone, Default, Deserialize)]
-pub struct IncreaseCaliptraMinSvnConfig {
+pub struct IncreaseMinSvnConfig {
     #[serde(default)]
     pub enabled: bool,
     #[serde(default)]
     pub flags: u32,
+    #[serde(default)]
+    pub target: u32,
     #[serde(default)]
     pub svn: u32,
 }

@@ -10,7 +10,7 @@ use zerocopy::{little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout,
 use crate::wire::{
     mbox_execute, populate_checksum, CMD_ECDSA384_SIGNATURE_VERIFY, MBOX_RESP_HEADER_SIZE,
 };
-use crate::ApiAlloc;
+use crate::ScratchAlloc;
 
 pub const ECDSA_P384_COORD_SIZE: usize = 48;
 pub const ECDSA_P384_SIGNATURE_SIZE: usize = 96;
@@ -29,7 +29,7 @@ struct EcdsaVerifyReq {
 const _: () = assert!(size_of::<EcdsaVerifyReq>() == 4 + 5 * ECDSA_P384_COORD_SIZE);
 
 #[inline(never)]
-pub async fn ecdsa_verify<A: ApiAlloc>(
+pub async fn ecdsa_verify<A: ScratchAlloc>(
     alloc: &A,
     pubkey_x: &[u8; ECDSA_P384_COORD_SIZE],
     pubkey_y: &[u8; ECDSA_P384_COORD_SIZE],

@@ -241,9 +241,54 @@ fn test_get_certificate_composed_chain_length_limits() {
     assert_eq!(err.spec_byte(), SPDM_DATA_TOO_LARGE.spec_byte());
     assert_eq!(err.extended_data(), actual_size.to_le_bytes());
 
+    // SPDM 1.4 reinterprets the chain-format `Reserved` bytes as the
+    // upper half of `Length`, so the LargeCertChain form can carry the
+    // same chain that the standard form has to reject.
     let req = large_cert_request(SpdmVersion::V14, 0, 0, 0, u32::MAX);
-    let err = dispatch_cert_request(&mut state, &mut sessions, &pal, req).unwrap_err();
-    assert_eq!(err.spec_byte(), SPDM_UNSPECIFIED.spec_byte());
+    let rsp = dispatch_cert_request(&mut state, &mut sessions, &pal, req).unwrap();
+
+    let (hdr, rest) = SpdmMsgHdrPdu::ref_from_prefix(&rsp).unwrap();
+    assert_eq!(hdr.code, ReqRespCode::CERTIFICATE);
+    let (body, payload) = CertificateLargeRspBody::ref_from_prefix(rest).unwrap();
+    let portion = body.large_portion_length.get();
+    assert_eq!(portion + body.large_remainder_length.get(), actual_size);
+    assert_eq!(payload.len(), portion as usize);
+
+    // The served header must encode the full length as a LE u32; the
+    // pre-1.4 truncation to u16 would have written 0x0000 here.
+    assert!(actual_size > u16::MAX as u32);
+    assert_eq!(&payload[..4], &actual_size.to_le_bytes());
+}
+
+/// A chain of exactly `u16::MAX` total bytes is still served by the
+/// pre-1.4 standard form — the widening must not move the boundary for
+/// chains that already fit.
+#[test]
+fn test_get_certificate_chain_at_u16_boundary_uses_identical_header() {
+    const MAX_FITTING_CHAIN: &[u8] = &[0xA5; u16::MAX as usize - SPDM_CERT_CHAIN_HDR_LEN];
+    let pal = TestPal {
+        cert_chain: MAX_FITTING_CHAIN,
+        ..TestPal::default()
+    };
+    let total_len = u16::MAX as usize;
+
+    for version in [SpdmVersion::V13, SpdmVersion::V14] {
+        let mut state = init_cert_test_state(version, &pal);
+        state.advertised_cap_flags |= CapFlags::LARGE_RESP;
+        let mut sessions = SessionManager::new();
+
+        let req = standard_cert_request(version, 0, 0, 0, u16::MAX);
+        let rsp = dispatch_cert_request(&mut state, &mut sessions, &pal, req).unwrap();
+        let (_, rest) = SpdmMsgHdrPdu::ref_from_prefix(&rsp).unwrap();
+        let (body, payload) = CertificateRspBody::ref_from_prefix(rest).unwrap();
+        assert_eq!(
+            body.portion_length.get() as usize + body.remainder_length.get() as usize,
+            total_len
+        );
+        // Upper two bytes are zero, which is exactly the pre-1.4
+        // `Reserved = 0` encoding.
+        assert_eq!(&payload[..4], &(total_len as u32).to_le_bytes());
+    }
 }
 
 #[test]
@@ -382,4 +427,69 @@ fn test_get_certificate_v14_with_mldsa87_negotiated() {
     };
     assert_eq!(body, &wanted_body);
     assert!(payload.is_empty());
+}
+
+#[test]
+fn test_get_digests_short_multi_key_tail_returns_error() {
+    for shortfall in [0, 4] {
+        let pal = TestPal {
+            byte_alloc_shortfall: shortfall,
+            ..TestPal::default()
+        };
+        let mut state = init_cert_test_state(SpdmVersion::V13, &pal);
+        state.advertised_cap_flags |= CapFlags::MULTI_KEY_CONN_RSP;
+        state.other_param_sel |= caliptra_mcu_spdm_codec::OtherParamSupport::MULTI_KEY_CONN;
+        let io = TestIo::message(vec![
+            SpdmVersion::V13.to_u8(),
+            ReqRespCode::GET_DIGESTS.0,
+            0,
+            0,
+        ]);
+        let result = block_on(crate::digests::handle_get_digests(
+            &mut state,
+            &pal,
+            &io,
+            &io.request,
+        ));
+        if shortfall == 0 {
+            let (response, _) = result.unwrap();
+            assert_eq!(response.len(), SpdmMsgHdrPdu::SIZE + 2 + 48 + 4);
+            assert_eq!(
+                &response[..4],
+                &[
+                    SpdmVersion::V13.to_u8(),
+                    ReqRespCode::DIGESTS.0,
+                    pal.supported_slots,
+                    pal.provisioned_slots,
+                ]
+            );
+        } else {
+            assert_eq!(
+                result.unwrap_err().spec_byte(),
+                SPDM_UNSPECIFIED.spec_byte()
+            );
+        }
+    }
+}
+
+#[test]
+fn test_cert_chain_hash_rejects_oversized_read_length() {
+    let pal = TestPal {
+        cert_read_len_override: Some(usize::MAX),
+        ..TestPal::default()
+    };
+    let io = TestIo::message(Vec::new());
+    let mut digest = [0; 48];
+    assert_eq!(
+        block_on(crate::digests::cert_chain_hash(
+            &pal,
+            &io,
+            0,
+            caliptra_mcu_spdm_traits::SpdmPalAsymAlgo::EccP384,
+            caliptra_mcu_spdm_traits::SpdmPalHashAlgo::Sha384,
+            &mut digest,
+        )),
+        Err(mcu_error::codes::INVARIANT)
+    );
+    assert!(pal.hash_finishes.borrow().is_empty());
 }

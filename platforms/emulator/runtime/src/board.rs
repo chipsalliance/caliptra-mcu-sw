@@ -709,6 +709,8 @@ pub unsafe fn main() {
         board_kernel,
         caliptra_mcu_capsules_runtime::mci::DRIVER_NUM,
         &peripherals.mci,
+        &peripherals.lifecycle,
+        &peripherals.otp,
     )
     .finalize(kernel::static_buf!(caliptra_mcu_capsules_runtime::mci::Mci));
 
@@ -841,6 +843,10 @@ pub unsafe fn main() {
             "[mcu-runtime] Active I3C core for MCTP: {}",
             MCU_STRAPS.active_i3c
         );
+        #[cfg(feature = "test-mctp-linux-i3c")]
+        active_i3c_core
+            .set_pending_read_ibi_mdb_only(true)
+            .expect("I3C must be idle during MCTP initialization");
         caliptra_mcu_components::mux_mctp::MCTPMuxComponent::new(active_i3c_core, mux_alarm)
             .with_uuid(mctp_endpoint_uuid)
             .finalize(mctp_mux_component_static!(InternalTimers, MCTPI3CBinding))
@@ -1089,6 +1095,7 @@ pub unsafe fn main() {
         board_kernel,
         caliptra_mcu_capsules_runtime::mcu_mbox::MCU_MBOX0_DRIVER_NUM,
         &peripherals.mcu_mbox0,
+        caliptra_mcu_config_emulator::EMULATOR_MCU_MBOX0_PL0_AXI_USERS,
     )
     .finalize(mcu_mbox_component_static!(
         caliptra_mcu_mbox_driver::McuMailbox<'static, InternalTimers<'static>>
@@ -1280,10 +1287,7 @@ fn run_kernel_tests(
             use caliptra_mcu_romtime::ocp_lock::HekSeedState;
 
             let ho_addr = ho.addr() as u32;
-            #[cfg(not(feature = "release"))]
-            let expected_addr = 0x5000_3800;
-            #[cfg(feature = "release")]
-            let expected_addr = 0x5000_3C00;
+            let expected_addr = MCU_MEMORY_MAP.handoff_offset;
             if ho.rom.ocp_lock.hek_state.active_slot == 2
                 && ho.rom.ocp_lock.hek_state.active_state == HekSeedState::Programmed
                 && ho.rom.ocp_lock.hek_state.total_slots == 8
@@ -1343,6 +1347,10 @@ fn run_kernel_tests(
     {
         caliptra_mcu_romtime::println!("Executing test-i3c-constant-writes");
         exit = crate::tests::i3c_target_test::run_test_i3c_constant_writes();
+    }
+    #[cfg(feature = "test-i3c-echo")]
+    {
+        exit = crate::tests::i3c_target_test::run_test_i3c_echo();
     }
     #[cfg(feature = "test-flash-ctrl-init")]
     {

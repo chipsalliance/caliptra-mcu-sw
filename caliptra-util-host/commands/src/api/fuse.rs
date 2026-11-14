@@ -13,13 +13,13 @@
 
 use crate::api::{CaliptraApiError, CaliptraResult};
 use caliptra_mcu_core_util_host_command_types::fuse::{
-    FeProgRequest, FeProgResponse, FuseIncreaseCaliptraMinSvnRequest,
-    FuseIncreaseCaliptraMinSvnResponse, FuseLockPartitionRequest, FuseLockPartitionResponse,
-    FuseRevokeVendorPkHashRequest, FuseRevokeVendorPkHashResponse, FuseRevokeVendorPubKeyRequest,
-    FuseRevokeVendorPubKeyResponse, GetAuthCmdChallengeRequest, GetAuthCmdChallengeResponse,
-    OcpLockRotateHekRequest, OcpLockRotateHekResponse, OcpLockSetPermaHekRequest,
-    OcpLockSetPermaHekResponse, ProvisionOwnerPkHashRequest, ProvisionOwnerPkHashResponse,
-    ProvisionVendorPkHashRequest, ProvisionVendorPkHashResponse,
+    FeProgRequest, FeProgResponse, FuseIncreaseMinSvnRequest, FuseIncreaseMinSvnResponse,
+    FuseLockPartitionRequest, FuseLockPartitionResponse, FuseRevokeVendorPkHashRequest,
+    FuseRevokeVendorPkHashResponse, FuseRevokeVendorPubKeyRequest, FuseRevokeVendorPubKeyResponse,
+    GetAuthCmdChallengeRequest, GetAuthCmdChallengeResponse, OcpLockRotateHekRequest,
+    OcpLockRotateHekResponse, OcpLockSetPermaHekRequest, OcpLockSetPermaHekResponse,
+    ProvisionOwnerPkHashRequest, ProvisionOwnerPkHashResponse, ProvisionVendorPkHashRequest,
+    ProvisionVendorPkHashResponse,
 };
 use caliptra_mcu_core_util_host_command_types::CaliptraCommandId;
 use caliptra_util_host_session::{CaliptraSession, SessionError};
@@ -48,7 +48,7 @@ fn map_session_error(error: SessionError, context: &'static str) -> CaliptraApiE
 pub fn caliptra_cmd_get_auth_challenge(
     session: &mut CaliptraSession,
 ) -> CaliptraResult<GetAuthCmdChallengeResponse> {
-    let request = GetAuthCmdChallengeRequest::default();
+    let request = GetAuthCmdChallengeRequest;
     session
         .execute_command_with_id(CaliptraCommandId::GetAuthCmdChallenge, &request)
         .map_err(|error| map_session_error(error, "Get auth command challenge execution failed"))
@@ -99,11 +99,11 @@ authorized_fuse_api!(
     "ProvisionVendorPkHash command execution failed"
 );
 authorized_fuse_api!(
-    caliptra_cmd_fuse_increase_caliptra_min_svn,
-    FuseIncreaseCaliptraMinSvnRequest,
-    FuseIncreaseCaliptraMinSvnResponse,
-    FuseIncreaseCaliptraMinSvn,
-    "FuseIncreaseCaliptraMinSvn command execution failed"
+    caliptra_cmd_fuse_increase_min_svn,
+    FuseIncreaseMinSvnRequest,
+    FuseIncreaseMinSvnResponse,
+    FuseIncreaseMinSvn,
+    "FuseIncreaseMinSvn command execution failed"
 );
 authorized_fuse_api!(
     caliptra_cmd_fuse_revoke_vendor_pub_key,

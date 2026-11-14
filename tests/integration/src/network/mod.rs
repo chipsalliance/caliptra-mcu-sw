@@ -1,5 +1,6 @@
 // Licensed under the Apache-2.0 license
 
+mod fault_injection;
 mod test_lwip_dhcp_tftp;
 mod test_lwip_dhcpv6_tftp;
 mod test_network_boot;

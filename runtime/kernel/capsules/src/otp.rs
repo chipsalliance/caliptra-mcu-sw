@@ -8,8 +8,9 @@ use caliptra_mcu_otp_digest::{caliptra_mcu_otp_digest, OTP_DIGEST_CONST, OTP_DIG
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_registers_generated::fuses;
 use caliptra_mcu_registers_generated::fuses::{
-    OTP_CPTRA_CORE_RUNTIME_SVN, OTP_CPTRA_CORE_VENDOR_PK_HASH_0,
-    OTP_CPTRA_CORE_VENDOR_PK_HASH_VALID,
+    OTP_CPTRA_CORE_RUNTIME_SVN, OTP_CPTRA_CORE_SOC_MANIFEST_MAX_SVN,
+    OTP_CPTRA_CORE_SOC_MANIFEST_SVN, OTP_CPTRA_CORE_VENDOR_PK_HASH_0,
+    OTP_CPTRA_CORE_VENDOR_PK_HASH_VALID, OWNER_SOC_MANIFEST_MIN_SVN,
 };
 use caliptra_mcu_romtime::println;
 #[cfg(feature = "ocp-lock")]
@@ -22,7 +23,10 @@ use kernel::{ErrorCode, ProcessId};
 
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_romtime::ocp_lock::KernelConfig;
-use caliptra_mcu_romtime::{fuse_lock_partition_dai, fuse_write_dai};
+use caliptra_mcu_romtime::{
+    fuse_lock_partition_dai, fuse_write_dai,
+    otp::{FieldEntropySlot, PqcKeyType},
+};
 
 #[cfg(feature = "ocp-lock")]
 mod ro_allow {
@@ -46,9 +50,13 @@ pub mod cmd {
     pub const OTP_LOCK_PARTITION: u32 = 6;
     pub const OTP_GET_HEK_METADATA: u32 = 8; // Returns (total_slots, active_slot)
     pub const OTP_ROTATE_HEK: u32 = 9;
+    pub const OTP_PROGRAM_HEK: u32 = 10;
+    pub const OTP_ZERO_HEK: u32 = 11;
+    pub const OTP_MARK_FIELD_ENTROPY_ZEROIZED: u32 = 12;
 }
 
 pub mod reg {
+    pub(super) use caliptra_mcu_registers_generated::fuses::FIELD_ENTROPY_STATE as OTP_FIELD_ENTROPY_STATE;
     use caliptra_mcu_registers_generated::fuses::{
         FuseEntryInfo, OTP_CPTRA_CORE_VENDOR_PK_HASH_0, OTP_CPTRA_CORE_VENDOR_PK_HASH_1,
         OTP_CPTRA_CORE_VENDOR_PK_HASH_10, OTP_CPTRA_CORE_VENDOR_PK_HASH_11,
@@ -127,6 +135,12 @@ pub mod reg {
     pub const VENDOR_LMS_REVOCATION: u32 = 28;
     pub const VENDOR_MLDSA_REVOCATION: u32 = 29;
     pub const PERMA_HEK_EN: u32 = 33;
+    pub const FIELD_ENTROPY_STATE: u32 = 34;
+    pub const VENDOR_PQC_KEY_TYPE: u32 = 35;
+    pub const SOC_MANIFEST_SVN: u32 = 36;
+    pub const SOC_MANIFEST_MAX_SVN: u32 = 37;
+    /// Owner SoC Manifest SVN words; index must be 0 or 1.
+    pub const OWNER_SOC_MANIFEST_MIN_SVN: u32 = 38;
 }
 
 #[derive(Default)]
@@ -184,6 +198,14 @@ impl Otp {
         }
     }
 
+    fn read_u32(buffer: &[u8], offset: usize) -> Result<u32, ErrorCode> {
+        buffer
+            .get(offset..)
+            .and_then(|bytes| bytes.first_chunk::<4>())
+            .map(|bytes| u32::from_le_bytes(*bytes))
+            .ok_or(ErrorCode::FAIL)
+    }
+
     fn read_reg(&self, processid: ProcessId) -> CommandReturn {
         match self.apps.enter(processid, |app, _| match app.reg_offset {
             // TODO: investigate using a cache instead of the actual fuses to reduce wear and
@@ -234,9 +256,55 @@ impl Otp {
                     Err(_) => return CommandReturn::failure(ErrorCode::FAIL),
                 };
                 let offset = app.reg_index as usize * 4;
-                CommandReturn::success_u32(u32::from_le_bytes(
-                    svn[offset..offset + 4].try_into().unwrap(),
-                ))
+                match Self::read_u32(&svn, offset) {
+                    Ok(value) => CommandReturn::success_u32(value),
+                    Err(error) => CommandReturn::failure(error),
+                }
+            }
+            reg::SOC_MANIFEST_SVN => {
+                let svn_fuses = OTP_CPTRA_CORE_SOC_MANIFEST_SVN;
+                let svn_num_words = svn_fuses.byte_size / 4;
+                if app.reg_index >= svn_num_words as u32 {
+                    return CommandReturn::failure(ErrorCode::INVAL);
+                }
+
+                let svn = match self.driver.read_cptra_core_soc_manifest_svn() {
+                    Ok(svn) => svn,
+                    Err(_) => return CommandReturn::failure(ErrorCode::FAIL),
+                };
+                let offset = app.reg_index as usize * 4;
+                match Self::read_u32(&svn, offset) {
+                    Ok(value) => CommandReturn::success_u32(value),
+                    Err(error) => CommandReturn::failure(error),
+                }
+            }
+            reg::SOC_MANIFEST_MAX_SVN => {
+                if app.reg_index != 0 {
+                    return CommandReturn::failure(ErrorCode::INVAL);
+                }
+                match self
+                    .driver
+                    .read_word(OTP_CPTRA_CORE_SOC_MANIFEST_MAX_SVN.byte_offset / 4)
+                {
+                    Ok(value) => CommandReturn::success_u32(value),
+                    Err(_) => CommandReturn::failure(ErrorCode::FAIL),
+                }
+            }
+            reg::OWNER_SOC_MANIFEST_MIN_SVN => {
+                let svn_fuses = OWNER_SOC_MANIFEST_MIN_SVN;
+                let svn_num_words = svn_fuses.byte_size / 4;
+                if app.reg_index >= svn_num_words as u32 {
+                    return CommandReturn::failure(ErrorCode::INVAL);
+                }
+
+                let word_addr = svn_fuses.byte_offset / 4 + app.reg_index as usize;
+                match self.driver.read_word(word_addr) {
+                    Ok(value) => CommandReturn::success_u32(value),
+                    Err(error) => {
+                        capsule_error!("OTP", "Error reading Owner SoC Manifest SVN: {:?}", error);
+                        CommandReturn::failure(ErrorCode::FAIL)
+                    }
+                }
             }
             reg::VENDOR_PK_HASH_VALID => match self.driver.read_vendor_pk_hash_valid() {
                 Ok(valid) => CommandReturn::success_u32(valid),
@@ -275,9 +343,10 @@ impl Otp {
                 }
 
                 let offset = app.reg_index as usize * 4;
-                CommandReturn::success_u32(u32::from_le_bytes(
-                    hash[offset..offset + 4].try_into().unwrap(),
-                ))
+                match Self::read_u32(&hash, offset) {
+                    Ok(value) => CommandReturn::success_u32(value),
+                    Err(error) => CommandReturn::failure(error),
+                }
             }
             reg::VENDOR_ECC_REVOCATION => {
                 match self
@@ -303,6 +372,19 @@ impl Otp {
                     .read_vendor_mldsa_revocation(app.reg_index as usize)
                 {
                     Ok(val) => CommandReturn::success_u32(val),
+                    Err(_) => CommandReturn::failure(ErrorCode::INVAL),
+                }
+            }
+            reg::FIELD_ENTROPY_STATE => {
+                match self.driver.read_entry(reg::OTP_FIELD_ENTROPY_STATE) {
+                    Ok(value) => CommandReturn::success_u32(value),
+                    Err(_) => CommandReturn::failure(ErrorCode::FAIL),
+                }
+            }
+            reg::VENDOR_PQC_KEY_TYPE => {
+                match self.driver.read_pqc_key_type(app.reg_index as usize) {
+                    Ok(PqcKeyType::LMS) => CommandReturn::success_u32(1),
+                    Ok(PqcKeyType::MLDSA) => CommandReturn::success_u32(3),
                     Err(_) => CommandReturn::failure(ErrorCode::INVAL),
                 }
             }
@@ -355,6 +437,35 @@ impl Otp {
                 match self.driver.write_word(word_addr, value) {
                     Ok(_) => CommandReturn::success(),
                     Err(_) => CommandReturn::failure(ErrorCode::FAIL),
+                }
+            }
+            reg::SOC_MANIFEST_SVN => {
+                let svn_fuses = OTP_CPTRA_CORE_SOC_MANIFEST_SVN;
+                let svn_num_words = svn_fuses.byte_size / 4;
+                if app.reg_index >= svn_num_words as u32 {
+                    return CommandReturn::failure(ErrorCode::INVAL);
+                }
+
+                let word_addr = svn_fuses.byte_offset / 4 + app.reg_index as usize;
+                match self.driver.write_word(word_addr, value) {
+                    Ok(_) => CommandReturn::success(),
+                    Err(_) => CommandReturn::failure(ErrorCode::FAIL),
+                }
+            }
+            reg::OWNER_SOC_MANIFEST_MIN_SVN => {
+                let svn_fuses = OWNER_SOC_MANIFEST_MIN_SVN;
+                let svn_num_words = svn_fuses.byte_size / 4;
+                if app.reg_index >= svn_num_words as u32 {
+                    return CommandReturn::failure(ErrorCode::INVAL);
+                }
+
+                let word_addr = svn_fuses.byte_offset / 4 + app.reg_index as usize;
+                match self.driver.write_word(word_addr, value) {
+                    Ok(_) => CommandReturn::success(),
+                    Err(error) => {
+                        capsule_error!("OTP", "Error writing Owner SoC Manifest SVN: {:?}", error);
+                        CommandReturn::failure(ErrorCode::FAIL)
+                    }
                 }
             }
             reg::VENDOR_PK_HASH_VALID => {
@@ -578,6 +689,11 @@ impl SyscallDriver for Otp {
             cmd::OTP_GET_HEK_METADATA => self.get_hek_metadata(),
             #[cfg(feature = "ocp-lock")]
             cmd::OTP_ROTATE_HEK => self.rotate_hek(arg1, processid),
+            #[cfg(feature = "ocp-lock")]
+            cmd::OTP_PROGRAM_HEK => self.program_hek(arg1, processid),
+            #[cfg(feature = "ocp-lock")]
+            cmd::OTP_ZERO_HEK => self.zero_hek(arg1, processid),
+            cmd::OTP_MARK_FIELD_ENTROPY_ZEROIZED => self.mark_field_entropy_zeroized(),
             _ => CommandReturn::failure(ErrorCode::NOSUPPORT),
         }
     }
@@ -587,8 +703,109 @@ impl SyscallDriver for Otp {
     }
 }
 
+impl Otp {
+    fn mark_field_entropy_zeroized(&self) -> CommandReturn {
+        for slot in [
+            FieldEntropySlot::Slot0,
+            FieldEntropySlot::Slot1,
+            FieldEntropySlot::Slot2,
+            FieldEntropySlot::Slot3,
+        ] {
+            if self.driver.mark_field_entropy_zeroized(slot).is_err() {
+                return CommandReturn::failure(ErrorCode::FAIL);
+            }
+        }
+        CommandReturn::success()
+    }
+}
+
 #[cfg(feature = "ocp-lock")]
 impl Otp {
+    fn program_hek(&self, slot: usize, processid: ProcessId) -> CommandReturn {
+        let ocp_lock_ctx = match self.ocp_lock_ctx.as_ref() {
+            Some(ctrl) => ctrl,
+            None => return CommandReturn::failure(ErrorCode::NOSUPPORT),
+        };
+        if slot >= ocp_lock_ctx.state.total_slots as usize {
+            return CommandReturn::failure(ErrorCode::INVAL);
+        }
+        if self.is_perma_hek_locked().unwrap_or(true) {
+            return CommandReturn::failure(ErrorCode::INVAL);
+        }
+
+        let offset = match ocp_lock_ctx.platform.get_hek_slot_offset(slot) {
+            Ok(offset) => offset,
+            Err(_) => return CommandReturn::failure(ErrorCode::INVAL),
+        };
+        for word in 0..(caliptra_mcu_romtime::HEK_PARTITION_SIZE / 4) {
+            match self.driver.read_word(offset / 4 + word) {
+                Ok(0) => {}
+                Ok(_) => return CommandReturn::failure(ErrorCode::ALREADY),
+                Err(_) => return CommandReturn::failure(ErrorCode::FAIL),
+            }
+        }
+
+        let res = self.apps.enter(processid, |_, kernel_data| {
+            let seed_buf = kernel_data
+                .get_readonly_processbuffer(ro_allow::SEED)
+                .map_err(|_| ErrorCode::INVAL)?;
+            let mut seed = [0u8; 32];
+            seed_buf
+                .enter(|buf| {
+                    if buf.len() != seed.len() {
+                        return Err(ErrorCode::INVAL);
+                    }
+                    buf.copy_to_slice(&mut seed);
+                    Ok(())
+                })
+                .map_err(|_| ErrorCode::FAIL)??;
+
+            let digest = caliptra_mcu_otp_digest(&seed, OTP_DIGEST_IV, OTP_DIGEST_CONST);
+            ocp_lock_ctx
+                .platform
+                .program_hek_slot(self.driver, slot, &seed, digest)
+                .map_err(|_| ErrorCode::FAIL)
+        });
+
+        match res {
+            Ok(Ok(())) => CommandReturn::success(),
+            Ok(Err(error)) => CommandReturn::failure(error),
+            Err(error) => CommandReturn::failure(error.into()),
+        }
+    }
+
+    fn zero_hek(&self, slot: usize, _processid: ProcessId) -> CommandReturn {
+        let ocp_lock_ctx = match self.ocp_lock_ctx.as_ref() {
+            Some(ctrl) => ctrl,
+            None => return CommandReturn::failure(ErrorCode::NOSUPPORT),
+        };
+
+        if slot >= ocp_lock_ctx.state.total_slots as usize {
+            return CommandReturn::failure(ErrorCode::INVAL);
+        }
+        if self.is_perma_hek_locked().unwrap_or(true) {
+            return CommandReturn::failure(ErrorCode::INVAL);
+        }
+
+        let offset = match ocp_lock_ctx.platform.get_hek_slot_offset(slot) {
+            Ok(offset) => offset,
+            Err(_) => return CommandReturn::failure(ErrorCode::INVAL),
+        };
+
+        for word in 0..(caliptra_mcu_romtime::HEK_PARTITION_SIZE / 4) {
+            match self.driver.read_word(offset / 4 + word) {
+                Ok(0) => {}
+                Ok(_) => return CommandReturn::failure(ErrorCode::ALREADY),
+                Err(_) => return CommandReturn::failure(ErrorCode::FAIL),
+            }
+        }
+
+        match ocp_lock_ctx.platform.sanitize_hek_slot(self.driver, slot) {
+            Ok(()) => CommandReturn::success(),
+            Err(_) => CommandReturn::failure(ErrorCode::FAIL),
+        }
+    }
+
     fn is_perma_hek_locked(&self) -> Result<bool, ErrorCode> {
         let ocp_lock_ctx = self.ocp_lock_ctx.as_ref().ok_or(ErrorCode::NOSUPPORT)?;
         ocp_lock_ctx
@@ -668,5 +885,30 @@ impl Otp {
             Ok(Err(e)) => CommandReturn::failure(e),
             Err(e) => CommandReturn::failure(e.into()),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn read_u32_rejects_missing_backing_bytes() {
+        for (buffer, offset) in [
+            (&[][..], 0),
+            (&[1, 2, 3][..], 0),
+            (&[1, 2, 3, 4][..], 1),
+            (&[1, 2, 3, 4][..], 4),
+            (&[1, 2, 3, 4][..], usize::MAX),
+        ] {
+            assert_eq!(Otp::read_u32(buffer, offset), Err(ErrorCode::FAIL));
+        }
+    }
+
+    #[test]
+    fn read_u32_preserves_little_endian_word_offsets() {
+        let buffer = [0x78, 0x56, 0x34, 0x12, 0xef, 0xcd, 0xab, 0x90];
+        assert_eq!(Otp::read_u32(&buffer, 0), Ok(0x1234_5678));
+        assert_eq!(Otp::read_u32(&buffer, 4), Ok(0x90ab_cdef));
     }
 }

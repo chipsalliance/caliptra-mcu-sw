@@ -2,8 +2,8 @@
 
 ## Purpose
 
-This document defines the target in-field workflow for provisioning and
-managing Caliptra Owner and Tenant endorsements over SPDM and planned MCI
+This document defines the in-field workflow for provisioning and
+managing Caliptra Owner and Tenant endorsements over SPDM and MCI
 certificate commands. The workflow is protocol-neutral; SPDM-specific SlotID
 allocation and commands are identified where applicable.
 
@@ -15,14 +15,6 @@ Specification](https://opencomputeproject.github.io/Security/device-identity-pro
 The Vendor endorsement is provisioned once during manufacturing and remains
 read-only for the lifetime of the device. In-field provisioning applies only
 to managed Owner and Tenant slots.
-
-## Implementation status
-
-The current source implements Vendor ECC P-384 certificate retrieval through
-SPDM. SPDM managed Owner and Tenant provisioning is test-only and does not
-provide production authorization. Production authorization and managed
-backing contracts are deferred. ML-DSA-87 certificate chains, MCI certificate
-commands, and configurable Tenant SlotIDs are planned.
 
 ## Trust bootstrap
 
@@ -82,8 +74,10 @@ SlotID for subsequent Tenant operations.
 | `2` | Owner | OCP allocated; provisionable by an authorized Owner |
 | `3` | Tenant | Current fixed Tenant slot; configurable Tenant SlotIDs are planned |
 
-This SlotID allocation applies only to SPDM. The planned MCI certificate
-commands identify the `EndorsementRole` directly and do not use SPDM SlotIDs.
+This SlotID allocation applies only to SPDM. The MCI certificate commands
+(`MC_GET_CERT_CHAIN_INFO`, `MC_GET_CERT_CHAIN`, and `MC_SET_CERT_CHAIN`)
+identify the `EndorsementRole` directly (`0` = Vendor, `1` = Owner, `2` =
+Tenant) and do not use SPDM SlotIDs.
 
 The current implementation fixes Tenant to Slot 3. The target design adds
 compile-time platform configuration for other eligible, otherwise unallocated
@@ -102,11 +96,11 @@ The same workflow applies to Owner and Tenant. The selected slot and PKI
 anchor point differ.
 
 The target workflow supports certificate management over SPDM and MCI mailbox
-transports. The sequence below shows the SPDM commands. SPDM managed updates
-are currently test-only, and MCI certificate commands are planned. Once both
-transports are implemented, they use the same certificate-store state. MCI
-command codes are reserved in [External Mailbox
-Commands](./external_mailbox_cmds.md).
+transports. The sequence below shows the SPDM commands; the MCI mailbox path
+uses `MC_GET_CERT_CHAIN_INFO`, `MC_GET_CERT_CHAIN`, and `MC_SET_CERT_CHAIN` with
+the same certificate-store state (see [External Mailbox
+Commands](./external_mailbox_cmds.md)). Managed updates on both transports are
+currently test-only until production authorization is enabled.
 
 ```mermaid
 sequenceDiagram
@@ -173,9 +167,9 @@ The PKI owner SHALL NOT issue an endorsement if any validation fails.
 
 ## Provisioning the endorsement certificate chain
 
-The SPDM `SET_CERTIFICATE` command currently supports test-only managed
-provisioning. The planned MCI `MC_SET_CERT_CHAIN` command follows the same
-target rule: provisioning accepts only the PKI endorsement.
+The SPDM `SET_CERTIFICATE` and MCI `MC_SET_CERT_CHAIN` commands currently
+support test-only managed provisioning. Both follow the same rule: provisioning
+accepts only the PKI endorsement.
 
 ```text
 PKI Root CA
@@ -193,14 +187,14 @@ The certificate provisioning path validates that:
 - The requester is authorized for that endorsement role.
 - The selected device key, certificate algorithm, and certificate model are
   permitted for that endorsement role.
-- The endorsement is a well-formed DER certificate sequence.
-- The final endorsement certificate contains the public key of the selected
-  Caliptra device key.
 - The endorsement does not exceed the configured maximum stored endorsement
   size.
 
 The platform profile uses the SPDM AliasCert certificate model for managed
 Owner and Tenant endorsements.
+
+The integrator is responsible for validating certificate contents, required
+extensions, and public-key binding to the selected Caliptra device key.
 
 After provisioning, the operator should validate the complete chain against
 the expected PKI Root CA and perform an attestation with the provisioned

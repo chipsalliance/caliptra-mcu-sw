@@ -7,8 +7,9 @@
 use crate::api::{CaliptraApiError, CaliptraResult};
 use caliptra_mcu_core_util_host_command_types::{
     device_info::{
-        GetDeviceCapabilitiesRequest, GetDeviceCapabilitiesResponse, GetFirmwareVersionRequest,
-        GetFirmwareVersionResponse,
+        FieldEntropyStatusRequest, FieldEntropyStatusResponse, GetDeviceCapabilitiesRequest,
+        GetDeviceCapabilitiesResponse, GetFirmwareVersionRequest, GetFirmwareVersionResponse,
+        HekStatusRequest, HekStatusResponse, VendorPkHashStatusRequest, VendorPkHashStatusResponse,
     },
     CaliptraCommandId,
 };
@@ -73,4 +74,35 @@ fn caliptra_cmd_get_firmware_version_impl(
     session
         .execute_command_with_id(CaliptraCommandId::GetFirmwareVersion, &request)
         .map_err(|_| CaliptraApiError::SessionError("Command execution failed"))
+}
+
+/// Query whether all field-entropy partitions have been provisioned.
+pub fn caliptra_cmd_field_entropy_status(
+    session: &mut CaliptraSession,
+) -> CaliptraResult<FieldEntropyStatusResponse> {
+    session
+        .execute_command_with_id(
+            CaliptraCommandId::FieldEntropyStatus,
+            &FieldEntropyStatusRequest,
+        )
+        .map_err(|_| CaliptraApiError::SessionError("FieldEntropyStatus command execution failed"))
+}
+
+/// Query vendor public-key hash slot occupancy and key types.
+pub fn caliptra_cmd_vendor_pk_hash_status(
+    session: &mut CaliptraSession,
+) -> CaliptraResult<VendorPkHashStatusResponse> {
+    session
+        .execute_command_with_id(
+            CaliptraCommandId::VendorPkHashStatus,
+            &VendorPkHashStatusRequest,
+        )
+        .map_err(|_| CaliptraApiError::SessionError("VendorPkHashStatus command execution failed"))
+}
+
+/// Query hardware-exported key slot occupancy and configured slot count.
+pub fn caliptra_cmd_hek_status(session: &mut CaliptraSession) -> CaliptraResult<HekStatusResponse> {
+    session
+        .execute_command_with_id(CaliptraCommandId::HekStatus, &HekStatusRequest)
+        .map_err(|_| CaliptraApiError::SessionError("HekStatus command execution failed"))
 }

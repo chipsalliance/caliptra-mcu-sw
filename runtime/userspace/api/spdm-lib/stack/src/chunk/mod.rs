@@ -33,6 +33,93 @@ impl<L: core::ops::DerefMut<Target = [u8]>> Drop for WipeOnDrop<L> {
     }
 }
 
+impl<L: core::ops::DerefMut<Target = [u8]>> WipeOnDrop<L> {
+    pub(crate) fn as_ref(&self) -> SpdmResult<&[u8]> {
+        self.buf.as_deref().ok_or(SPDM_UNSPECIFIED)
+    }
+
+    pub(crate) fn as_mut(&mut self) -> SpdmResult<&mut [u8]> {
+        self.buf.as_deref_mut().ok_or(SPDM_UNSPECIFIED)
+    }
+
+    /// Zero `buf[start..end]`.
+    pub(crate) fn zero_slice(&mut self, start: usize, end: usize) -> SpdmResult<()> {
+        let buf = self.as_mut()?;
+        let dst = buf.get_mut(start..end).ok_or(SPDM_UNSPECIFIED)?;
+        dst.fill(0);
+        Ok(())
+    }
+
+    /// Move `buf[src..src + len]` down to offset 0, dropping transport headroom.
+    pub(crate) fn shift_left(&mut self, src: usize, len: usize) -> SpdmResult<()> {
+        let buf = self.as_mut()?;
+        let end = src.checked_add(len).ok_or(SPDM_UNSPECIFIED)?;
+        if end > buf.len() || len > buf.len() {
+            return Err(SPDM_UNSPECIFIED);
+        }
+
+        buf.copy_within(src..end, 0);
+        Ok(())
+    }
+
+    /// Finish a response allocated in this large buffer: either convert to standard
+    /// response if within transfer size, or start chunking.
+    pub(crate) fn finish_response<'a, Pal>(
+        self,
+        state: &mut ConnectionState<Pal::State, L>,
+        pal: &'a Pal,
+        io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+        head: usize,
+        spdm_len: usize,
+    ) -> SpdmResult<(PalBytes<'a, Pal>, usize)>
+    where
+        Pal: SpdmPal<LargeBuf = L>,
+    {
+        let inline_response_limit = state.effective_data_transfer_size(pal);
+        self.finish_response_with_limit(state, pal, io, head, spdm_len, inline_response_limit)
+    }
+
+    /// Finish a response against a caller-supplied inline payload limit.
+    #[inline(never)]
+    pub(crate) fn finish_response_with_limit<'a, Pal>(
+        mut self,
+        state: &mut ConnectionState<Pal::State, L>,
+        pal: &'a Pal,
+        io: &<Pal as SpdmPalIoTransport>::Io<'_>,
+        head: usize,
+        spdm_len: usize,
+        inline_response_limit: usize,
+    ) -> SpdmResult<(PalBytes<'a, Pal>, usize)>
+    where
+        Pal: SpdmPal<LargeBuf = L>,
+    {
+        let raw_len = head.checked_add(spdm_len).ok_or(SPDM_UNSPECIFIED)?;
+        let use_normal_response = spdm_len <= inline_response_limit;
+
+        if use_normal_response {
+            let padded_len = crate::build::align_send_len(pal, raw_len)?;
+            self.zero_slice(raw_len, padded_len)?;
+            let final_buf = self.buf.take().ok_or(SPDM_UNSPECIFIED)?;
+            let resp = pal
+                .large_buf_into_bytes(final_buf, padded_len)
+                .map_err(|_| SPDM_UNSPECIFIED)?;
+            return Ok((resp, spdm_len));
+        }
+
+        self.shift_left(head, spdm_len)?;
+        let final_buf = self.buf.take().ok_or(SPDM_UNSPECIFIED)?;
+        state.large_msg_ctx.set_buffer(final_buf);
+        let (resp, spdm_len) = match start_buffered_large_response(state, pal, io, spdm_len) {
+            Ok(res) => res,
+            Err(err) => {
+                state.large_msg_ctx.reset();
+                return Err(err);
+            }
+        };
+        Ok((resp, spdm_len))
+    }
+}
+
 #[derive(Copy, Clone)]
 pub(crate) enum LargeResponse {
     Certificate(CertificateLargeResponse),
@@ -419,10 +506,39 @@ mod tests {
     extern crate alloc;
 
     use alloc::vec::Vec;
-    use caliptra_mcu_spdm_codec::{CapFlags, ReqRespCode, SpdmVersion};
+    use caliptra_mcu_spdm_codec::{CapFlags, ReqRespCode, SpdmMsgHdrPdu, SpdmVersion};
 
     use super::*;
     use crate::build::encode_error_response;
+
+    #[test]
+    fn encoded_error_prefix_excludes_padding_and_rejects_short_output() {
+        for error in [
+            crate::error::SPDM_INVALID_REQUEST,
+            crate::error::SPDM_VENDOR_DEFINED.with_extended_data([1, 2, 3, 4]),
+        ] {
+            let mut output = [0xa5; 12];
+            let expected_len = SpdmMsgHdrPdu::SIZE + 2 + error.extended_data().len();
+            let prefix = encode_error_response(&mut output, SpdmVersion::V12, error).unwrap();
+            assert_eq!(prefix.len(), expected_len);
+            assert_eq!(
+                &prefix[..4],
+                &[
+                    SpdmVersion::V12.to_u8(),
+                    ReqRespCode::ERROR.0,
+                    error.spec_byte(),
+                    error.error_data(),
+                ]
+            );
+            assert_eq!(&prefix[4..], error.extended_data());
+            assert!(output[expected_len..].iter().all(|byte| *byte == 0xa5));
+            for length in 0..expected_len {
+                assert!(
+                    encode_error_response(&mut output[..length], SpdmVersion::V12, error).is_err()
+                );
+            }
+        }
+    }
 
     #[test]
     fn buffered_response_distinguishes_peer_and_local_limits() {
@@ -436,7 +552,9 @@ mod tests {
         assert_eq!(err.extended_data(), 1025u32.to_le_bytes());
 
         let mut error_rsp = [0u8; 8];
-        let error_rsp_len = encode_error_response(&mut error_rsp, SpdmVersion::V12, err).unwrap();
+        let error_rsp_len = encode_error_response(&mut error_rsp, SpdmVersion::V12, err)
+            .unwrap()
+            .len();
         assert_eq!(error_rsp_len, error_rsp.len());
         assert_eq!(
             error_rsp,

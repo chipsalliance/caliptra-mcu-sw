@@ -5,7 +5,7 @@
 use mcu_error::McuResult;
 
 use crate::wire::{calc_checksum, CMD_FE_PROG, MBOX_RESP_HEADER_SIZE};
-use crate::ApiAlloc;
+use crate::ScratchAlloc;
 
 /// Request layout: `chksum(4) | partition(4)` = 8 B.
 const FE_PROG_REQ_LEN: usize = 8;
@@ -13,7 +13,7 @@ const FE_PROG_REQ_LEN: usize = 8;
 /// Program field entropy for `partition`. Returns once Caliptra has
 /// completed the operation.
 #[inline(never)]
-pub async fn fe_prog<A: ApiAlloc>(_alloc: &A, partition: u32) -> McuResult<()> {
+pub async fn fe_prog<A: ScratchAlloc>(_alloc: &A, partition: u32) -> McuResult<()> {
     // Fixed 8-byte buffers stay inline; scratch allocation costs more code here.
     let mut req = [0u8; FE_PROG_REQ_LEN];
     req.fill(0);

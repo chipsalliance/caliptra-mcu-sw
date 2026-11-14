@@ -1,6 +1,8 @@
 // Licensed under the Apache-2.0 license
 
-use crate::runtime::execute_authorized_req;
+use crate::runtime::{
+    execute_authorized_req, execute_authorized_req_raw, start_command_authorized_runtime,
+};
 use crate::test::{
     compile_runtime, start_runtime_hw_model, CustomCaliptraFw, TestParams, TEST_LOCK,
 };
@@ -8,10 +10,191 @@ use anyhow::Result;
 use caliptra_api::{calc_checksum, error::CaliptraError, mailbox::FwInfoResp, SocManager};
 use caliptra_mcu_builder::{CaliptraBuildArgs, CaliptraBuilder, FirmwareBinaries};
 use caliptra_mcu_hw_model::{LifecycleControllerState, McuHwModel};
-use caliptra_mcu_mbox_common::messages::FuseIncreaseCaliptraMinSvnReq;
+use caliptra_mcu_mbox_common::messages::{
+    FuseIncreaseMinSvnReq, FuseIncreaseMinSvnResp, FuseWriteReq, MailboxRespHeader, SvnTarget,
+};
+use caliptra_mcu_registers_generated::fuses::{
+    FuseEntryInfo, OTP_CPTRA_CORE_RUNTIME_SVN, OTP_CPTRA_CORE_SOC_MANIFEST_MAX_SVN,
+    OTP_CPTRA_CORE_SOC_MANIFEST_SVN,
+};
 use caliptra_mcu_romtime::McuBootMilestones;
+use core::mem::size_of;
 use std::sync::atomic::Ordering;
 use zerocopy::{FromBytes, IntoBytes};
+
+fn linear_or_svn_from_otp(otp: &[u8], entry: &FuseEntryInfo) -> u32 {
+    let bytes: [u8; 16] = otp[entry.byte_offset..entry.byte_offset + 16]
+        .try_into()
+        .unwrap();
+    128 - u128::from_le_bytes(bytes).leading_zeros()
+}
+
+fn assert_increase_svn_response(response: &[u8]) {
+    assert_eq!(response.len(), size_of::<FuseIncreaseMinSvnResp>());
+    assert_eq!(
+        u32::from_le_bytes(response[..size_of::<u32>()].try_into().unwrap()),
+        calc_checksum(0, &response[size_of::<u32>()..])
+    );
+    let response =
+        FuseIncreaseMinSvnResp::read_from_bytes(response).expect("invalid increase SVN response");
+    assert_eq!(
+        response.hdr.fips_status,
+        MailboxRespHeader::FIPS_STATUS_APPROVED
+    );
+}
+
+// The direct Core requester override used for PL0 installation is emulator-only.
+#[cfg(not(feature = "fpga_realtime"))]
+mod owner {
+    use super::*;
+    use crate::runtime::core_request;
+    use anyhow::anyhow;
+    use caliptra_api::mailbox::{CommandId, MailboxReqHeader};
+    use caliptra_image_types::FwVerificationPqcKeyType;
+    use caliptra_mcu_registers_generated::fuses::OWNER_SOC_MANIFEST_MIN_SVN;
+
+    fn read_fw_info(hw: &mut impl McuHwModel) -> Result<FwInfoResp> {
+        let request = MailboxReqHeader {
+            chksum: calc_checksum(CommandId::FW_INFO.into(), &[]),
+        };
+        let response = core_request(hw, CommandId::FW_INFO, request.as_bytes())?;
+        FwInfoResp::read_from_bytes(&response).map_err(|_| anyhow!("Invalid FW_INFO response"))
+    }
+
+    fn install_owner_manifest(
+        hw: &mut impl McuHwModel,
+        pqc_key_type: FwVerificationPqcKeyType,
+        svn: u32,
+    ) -> Result<()> {
+        crate::runtime::install_test_owner_auth_manifest(hw, pqc_key_type, svn)
+    }
+
+    #[test]
+    fn test_increase_owner_soc_manifest_svn() -> Result<()> {
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, Ordering::Relaxed);
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            lifecycle_controller_state: Some(LifecycleControllerState::Prod),
+            caliptra_soc_axi_user: Some(1),
+            ..Default::default()
+        });
+        hw.step_until(|hw| {
+            hw.mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+
+        let info = read_fw_info(&mut hw)?;
+        assert_eq!(info.pl0_pauser, 1);
+        assert_eq!(info.owner_auth_manifest_current_svn, 0);
+        assert_eq!(info.owner_auth_manifest_min_svn, 0);
+        let pqc_key_type =
+            FwVerificationPqcKeyType::from_u8(u8::try_from(info.image_manifest_pqc_type)?)
+                .ok_or_else(|| anyhow!("Invalid firmware PQC key type"))?;
+        let request = |svn| FuseIncreaseMinSvnReq {
+            target: SvnTarget::OwnerSocManifest as u32,
+            svn,
+            ..Default::default()
+        };
+        let before = hw.read_otp_memory();
+        for svn in [0, 1, 65] {
+            assert!(execute_authorized_req(&mut hw, request(svn)).is_err());
+        }
+        assert_eq!(hw.read_otp_memory(), before);
+
+        install_owner_manifest(&mut hw, pqc_key_type, 7)?;
+        assert_eq!(read_fw_info(&mut hw)?.owner_auth_manifest_current_svn, 7);
+        assert!(hw.mailbox_execute_req(request(1)).is_err());
+        assert!(execute_authorized_req(&mut hw, request(8)).is_err());
+        assert_eq!(hw.read_otp_memory(), before);
+
+        // Resume from a partial counter with noncontiguous bits in both words.
+        let start = OWNER_SOC_MANIFEST_MIN_SVN.byte_offset;
+        let end = start + OWNER_SOC_MANIFEST_MIN_SVN.byte_size;
+        let partial_bits = (1u64 << 63) | 0b1010;
+        for (index, data) in [0b1010, 1 << 31].into_iter().enumerate() {
+            execute_authorized_req(
+                &mut hw,
+                FuseWriteReq {
+                    word_addr: (start / 4 + index) as u32,
+                    data,
+                    mask: u32::MAX,
+                    ..Default::default()
+                },
+            )?;
+        }
+        execute_authorized_req(&mut hw, request(7))?;
+        let otp = hw.read_otp_memory();
+        let raw = u64::from_le_bytes(otp[start..end].try_into().unwrap());
+        assert_eq!(raw.count_ones(), 7);
+        assert_eq!(raw & partial_bits, partial_bits);
+        execute_authorized_req(&mut hw, request(7))?;
+        assert!(execute_authorized_req(&mut hw, request(6)).is_err());
+
+        install_owner_manifest(&mut hw, pqc_key_type, 64)?;
+        for svn in [31, 32, 33, 64] {
+            execute_authorized_req(&mut hw, request(svn))?;
+            let otp = hw.read_otp_memory();
+            let raw = u64::from_le_bytes(otp[start..end].try_into().unwrap());
+            assert_eq!(raw.count_ones(), svn);
+            assert_eq!(raw & partial_bits, partial_bits);
+            assert_eq!(&otp[..start], &before[..start]);
+            assert_eq!(&otp[end..], &before[end..]);
+        }
+        execute_authorized_req(&mut hw, request(64))?;
+        let persisted = hw.read_otp_memory();
+        for svn in [0, 63, 65] {
+            assert!(execute_authorized_req(&mut hw, request(svn)).is_err());
+        }
+        assert_eq!(hw.read_otp_memory(), persisted);
+
+        // Programming OTP must not claim to update the already-locked Core strap.
+        assert_eq!(read_fw_info(&mut hw)?.owner_auth_manifest_min_svn, 0);
+        let original_strap = hw
+            .caliptra_soc_manager()
+            .soc_ifc()
+            .ss_strap_generic()
+            .at(3)
+            .read();
+        drop(hw);
+
+        let mut hw = start_runtime_hw_model(TestParams {
+            feature: Some("test-mcu-mbox-cmds"),
+            lifecycle_controller_state: Some(LifecycleControllerState::Prod),
+            caliptra_soc_axi_user: Some(1),
+            otp_memory: Some(persisted),
+            ..Default::default()
+        });
+        hw.step_until(|hw| {
+            hw.mci_boot_milestones()
+                .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+        });
+        assert_eq!(read_fw_info(&mut hw)?.owner_auth_manifest_min_svn, 64);
+        let strap = hw
+            .caliptra_soc_manager()
+            .soc_ifc()
+            .ss_strap_generic()
+            .at(3)
+            .read();
+        assert_eq!((strap >> 8) & 0xff, 64);
+        assert_eq!(strap & !(0xff << 8), original_strap & !(0xff << 8));
+
+        assert!(install_owner_manifest(&mut hw, pqc_key_type, 63).is_err());
+        assert_eq!(
+            hw.caliptra_soc_manager()
+                .soc_ifc()
+                .cptra_fw_error_non_fatal()
+                .read(),
+            u32::from(CaliptraError::RUNTIME_OWNER_AUTH_MANIFEST_SVN_LESS_THAN_MIN)
+        );
+        install_owner_manifest(&mut hw, pqc_key_type, 64)?;
+        assert_eq!(read_fw_info(&mut hw)?.owner_auth_manifest_current_svn, 64);
+
+        lock.fetch_add(1, Ordering::Relaxed);
+        Ok(())
+    }
+}
 
 #[test]
 fn test_increase_caliptra_svn() -> Result<()> {
@@ -50,7 +233,7 @@ fn test_increase_caliptra_svn() -> Result<()> {
         };
 
     // Start the hardware model with the custom Caliptra firmware (SVN 7).
-    let mut hw = start_runtime_hw_model(TestParams {
+    let mut hw = start_command_authorized_runtime(TestParams {
         feature: Some("test-mcu-mbox-cmds"),
         custom_caliptra_fw: Some(CustomCaliptraFw {
             fw_bytes: caliptra_fw_svn7.clone(),
@@ -68,7 +251,8 @@ fn test_increase_caliptra_svn() -> Result<()> {
     });
 
     // Check setting the SVN to 0 fails
-    let cmd = FuseIncreaseCaliptraMinSvnReq {
+    let cmd = FuseIncreaseMinSvnReq {
+        target: SvnTarget::CaliptraRuntime as u32,
         svn: 0,
         ..Default::default()
     };
@@ -77,7 +261,8 @@ fn test_increase_caliptra_svn() -> Result<()> {
 
     // Check requesting to increase SVN past what is currently running returns an error.
     // Running SVN is 7, so requesting 8 should fail.
-    let cmd = FuseIncreaseCaliptraMinSvnReq {
+    let cmd = FuseIncreaseMinSvnReq {
+        target: SvnTarget::CaliptraRuntime as u32,
         svn: 8,
         ..Default::default()
     };
@@ -85,7 +270,8 @@ fn test_increase_caliptra_svn() -> Result<()> {
     assert!(result.is_err());
 
     // Check trying to burn a value greater than 128 returns an error.
-    let cmd = FuseIncreaseCaliptraMinSvnReq {
+    let cmd = FuseIncreaseMinSvnReq {
+        target: SvnTarget::CaliptraRuntime as u32,
         svn: 129,
         ..Default::default()
     };
@@ -93,24 +279,28 @@ fn test_increase_caliptra_svn() -> Result<()> {
     assert!(result.is_err());
 
     // Send a command to increase the Caliptra minimum SVN fuses to 7.
-    let cmd = FuseIncreaseCaliptraMinSvnReq {
+    let cmd = FuseIncreaseMinSvnReq {
+        target: SvnTarget::CaliptraRuntime as u32,
         svn: 7,
         ..Default::default()
     };
-    let _resp = execute_authorized_req(&mut hw, cmd)?;
+    let response = execute_authorized_req_raw(&mut hw, cmd)?;
+    assert_increase_svn_response(&response);
 
     // Check requesting twice to burn the SVN of the value currently in fuses passes.
-    let cmd = FuseIncreaseCaliptraMinSvnReq {
+    let cmd = FuseIncreaseMinSvnReq {
+        target: SvnTarget::CaliptraRuntime as u32,
         svn: 7,
         ..Default::default()
     };
-    let _resp = execute_authorized_req(&mut hw, cmd)?;
+    let response = execute_authorized_req_raw(&mut hw, cmd)?;
+    assert_increase_svn_response(&response);
 
     // Read OTP memory so we can use the same config in later boots.
     let otp = hw.read_otp_memory();
 
     // Step 2: Cold boot with the burned fuses and verify the firmware with SVN 7 can still boot.
-    let mut hw = start_runtime_hw_model(TestParams {
+    let mut hw = start_command_authorized_runtime(TestParams {
         feature: Some("test-mcu-mbox-cmds"),
         custom_caliptra_fw: Some(CustomCaliptraFw {
             fw_bytes: caliptra_fw_svn7,
@@ -154,7 +344,8 @@ fn test_increase_caliptra_svn() -> Result<()> {
 
     // Check trying to burn a lower SVN returns an error.
     // Current fuses are 7, so trying to burn 6 should fail.
-    let cmd = FuseIncreaseCaliptraMinSvnReq {
+    let cmd = FuseIncreaseMinSvnReq {
+        target: SvnTarget::CaliptraRuntime as u32,
         svn: 6,
         ..Default::default()
     };
@@ -175,6 +366,7 @@ fn test_increase_caliptra_svn() -> Result<()> {
         }),
         otp_memory: Some(otp),
         rom_only: true,
+        rom_feature: Some(""),
         ..Default::default()
     });
 
@@ -230,7 +422,7 @@ fn test_increase_caliptra_svn_max() -> Result<()> {
         };
 
     // Start the hardware model with the custom Caliptra firmware (SVN 128).
-    let mut hw = start_runtime_hw_model(TestParams {
+    let mut hw = start_command_authorized_runtime(TestParams {
         feature: Some("test-mcu-mbox-cmds"),
         custom_caliptra_fw: Some(CustomCaliptraFw {
             fw_bytes: caliptra_fw_svn128.clone(),
@@ -248,7 +440,8 @@ fn test_increase_caliptra_svn_max() -> Result<()> {
     });
 
     // Send a command to increase the Caliptra minimum SVN fuses to 128.
-    let cmd = FuseIncreaseCaliptraMinSvnReq {
+    let cmd = FuseIncreaseMinSvnReq {
+        target: SvnTarget::CaliptraRuntime as u32,
         svn: 128,
         ..Default::default()
     };
@@ -267,7 +460,7 @@ fn test_increase_caliptra_svn_max() -> Result<()> {
     assert_eq!(svn, 128);
 
     // Verify persistence across cold boot.
-    let mut hw = start_runtime_hw_model(TestParams {
+    let mut hw = start_command_authorized_runtime(TestParams {
         feature: Some("test-mcu-mbox-cmds"),
         custom_caliptra_fw: Some(CustomCaliptraFw {
             fw_bytes: caliptra_fw_svn128,
@@ -311,6 +504,85 @@ fn test_increase_caliptra_svn_max() -> Result<()> {
     assert_eq!(caliptra_fw_info.min_fw_svn, 128);
 
     // force the compiler to keep the lock
+    lock.fetch_add(1, Ordering::Relaxed);
+    Ok(())
+}
+
+#[test]
+fn test_increase_soc_manifest_svn() -> Result<()> {
+    let lock = TEST_LOCK.lock().unwrap();
+    lock.fetch_add(1, Ordering::Relaxed);
+
+    let mut hw = start_command_authorized_runtime(TestParams {
+        feature: Some("test-mcu-mbox-cmds"),
+        lifecycle_controller_state: Some(LifecycleControllerState::Prod),
+        ..Default::default()
+    });
+    hw.step_until(|hw| {
+        hw.mci_boot_milestones()
+            .contains(McuBootMilestones::FIRMWARE_MAILBOX_READY)
+    });
+
+    let max_svn = FuseWriteReq {
+        word_addr: (OTP_CPTRA_CORE_SOC_MANIFEST_MAX_SVN.byte_offset / 4) as u32,
+        data: 6,
+        mask: u32::MAX,
+        ..Default::default()
+    };
+    let _resp = execute_authorized_req(&mut hw, max_svn)?;
+
+    let cmd = FuseIncreaseMinSvnReq {
+        target: SvnTarget::SocManifest as u32,
+        svn: 5,
+        ..Default::default()
+    };
+    let _resp = execute_authorized_req(&mut hw, cmd)?;
+
+    let otp = hw.read_otp_memory();
+    assert_eq!(
+        linear_or_svn_from_otp(&otp, OTP_CPTRA_CORE_SOC_MANIFEST_SVN),
+        5
+    );
+    assert_eq!(linear_or_svn_from_otp(&otp, OTP_CPTRA_CORE_RUNTIME_SVN), 0);
+
+    for cmd in [
+        FuseIncreaseMinSvnReq {
+            target: SvnTarget::SocManifest as u32,
+            svn: 4,
+            ..Default::default()
+        },
+        FuseIncreaseMinSvnReq {
+            target: SvnTarget::OwnerSocManifest as u32,
+            svn: 5,
+            ..Default::default()
+        },
+        FuseIncreaseMinSvnReq {
+            target: u32::MAX,
+            svn: 5,
+            ..Default::default()
+        },
+        FuseIncreaseMinSvnReq {
+            flags: 1,
+            target: SvnTarget::SocManifest as u32,
+            svn: 6,
+            ..Default::default()
+        },
+        FuseIncreaseMinSvnReq {
+            target: SvnTarget::SocManifest as u32,
+            svn: 7,
+            ..Default::default()
+        },
+    ] {
+        assert!(execute_authorized_req(&mut hw, cmd).is_err());
+    }
+
+    let otp = hw.read_otp_memory();
+    assert_eq!(
+        linear_or_svn_from_otp(&otp, OTP_CPTRA_CORE_SOC_MANIFEST_SVN),
+        5
+    );
+    assert_eq!(linear_or_svn_from_otp(&otp, OTP_CPTRA_CORE_RUNTIME_SVN), 0);
+
     lock.fetch_add(1, Ordering::Relaxed);
     Ok(())
 }

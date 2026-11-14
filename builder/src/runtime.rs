@@ -65,15 +65,23 @@ pub fn runtime_build_with_apps(args: &CaliptraBuildArgs) -> Result<PathBuf> {
     let config_target_dir = target_dir.clone().unwrap_or_else(crate::target_dir);
     let user_app_config_fingerprint = if args.user_app_config_fingerprint.is_some() {
         args.user_app_config_fingerprint.clone()
-    } else if ["attestation_manifest.toml", "soc_image_descriptors.toml"]
-        .iter()
-        .all(|name| config_target_dir.join("generated").join(name).exists())
-    {
+    } else {
+        if !["attestation_manifest.toml", "soc_image_descriptors.toml"]
+            .iter()
+            .all(|name| config_target_dir.join("generated").join(name).exists())
+        {
+            crate::attestation_manifest::write_config_to_target_dir(
+                &config_target_dir,
+                args.vendor.as_deref().unwrap_or("ChipsAlliance"),
+                args.model.as_deref().unwrap_or("Caliptra-SS"),
+                args.soc_images.as_deref().unwrap_or(&[]),
+                "runtime_build_with_apps",
+                "Pre-generated",
+            )?;
+        }
         Some(crate::all::generated_user_app_config_fingerprint(
             &config_target_dir,
         )?)
-    } else {
-        None
     };
 
     let manifest = manifest_file_for_profile(platform, example_app, args.profile)?;
@@ -102,6 +110,7 @@ pub fn runtime_build_with_apps(args: &CaliptraBuildArgs) -> Result<PathBuf> {
         build: BuildArgs {
             runtime_features,
             no_default_features: args.no_default_features,
+            skip_rom: true,
             user_app_config_fingerprint,
             ..Default::default()
         },
@@ -111,15 +120,6 @@ pub fn runtime_build_with_apps(args: &CaliptraBuildArgs) -> Result<PathBuf> {
     };
 
     caliptra_mcu_firmware_bundler::execute(bundle_cmd)?;
-
-    // The bundle step rebuilds the ROM via objcopy, which strips the SHA-384
-    // digest appended by rom_build(). Re-apply the digest so the ROM binary
-    // stays valid regardless of build order.
-    let rom_binary = release_dir.join(format!("caliptra-mcu-rom-{platform_str}.bin"));
-    if rom_binary.exists() {
-        let rom_size = crate::rom::rom_size_for_platform(platform_str);
-        crate::rom::append_rom_digest(&rom_binary, rom_size)?;
-    }
 
     Ok(runtime_bin)
 }

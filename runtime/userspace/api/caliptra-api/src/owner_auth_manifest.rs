@@ -13,7 +13,7 @@ use mcu_error::McuResult;
 use zerocopy::{little_endian::U32, FromBytes, Immutable, IntoBytes, KnownLayout, Unaligned};
 
 use crate::wire::{calc_checksum, CMD_SET_OWNER_AUTH_MANIFEST, MBOX_RESP_HEADER_SIZE};
-use crate::ApiAlloc;
+use crate::ScratchAlloc;
 
 /// Maximum Owner Authorization Manifest payload accepted by Caliptra.
 ///
@@ -72,7 +72,7 @@ const _: () =
 /// Only `manifest_size` bytes are placed on the wire; the caller never
 /// materializes the 24 KiB fixed-size upstream request value.
 #[inline(never)]
-pub async fn set_owner_auth_manifest<A: ApiAlloc>(alloc: &A, manifest: &[u8]) -> McuResult<()> {
+pub async fn set_owner_auth_manifest<A: ScratchAlloc>(alloc: &A, manifest: &[u8]) -> McuResult<()> {
     check_manifest_len(manifest.len())?;
 
     let mut bytesum = 0u32;

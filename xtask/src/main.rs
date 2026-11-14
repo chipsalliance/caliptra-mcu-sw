@@ -22,6 +22,7 @@ mod fpga;
 mod fuses;
 mod header;
 mod network;
+mod owner_manifest;
 mod pldm_fw_pkg;
 mod precheckin;
 mod registers;
@@ -36,6 +37,7 @@ mod vertex_ai;
 use fpga::Fpga;
 
 use auth_manifest::AuthManifestCommands;
+use owner_manifest::OwnerManifestCommands;
 
 #[derive(Parser)]
 #[command(version, about, long_about = None)]
@@ -180,7 +182,7 @@ enum Commands {
         #[arg(long)]
         test_rom_features: Option<String>,
 
-        /// Comma-separated list of feature flags to build Network ROMs with
+        /// Comma-separated list of feature flags to build Network ROMs with; also packages the default Network ROM
         #[arg(long)]
         network_rom_features: Option<String>,
 
@@ -194,6 +196,10 @@ enum Commands {
         /// Example: --soc_image image1.bin,0x80000000,0x60000000,2,2,2,test-flash-based-boot
         #[arg(long = "soc_image", value_name = "SOC_IMAGE", num_args = 1.., required = false)]
         soc_images: Option<Vec<ImageCfg>>,
+
+        /// Owner-only SoC images, using the same format as --soc_image.
+        #[arg(long = "owner_soc_image", value_name = "OWNER_SOC_IMAGE", num_args = 1.., required = false)]
+        owner_soc_images: Option<Vec<ImageCfg>>,
 
         // MCU configuration to include in the SoC manifest
         // format: mcu,<load_addr>,<staging_addr>,<image_id>,<exec_bit>,<component_id>,<feature>[,<is_tcb>[,<is_ak_target>[,<network_filename>]]]
@@ -421,6 +427,11 @@ enum Commands {
         #[command(subcommand)]
         subcommand: AuthManifestCommands,
     },
+    /// Owner Authorization Manifest generation and parsing
+    OwnerManifest {
+        #[command(subcommand)]
+        subcommand: OwnerManifestCommands,
+    },
     /// Commands related to firmware bundling.
     FirmwareBundler {
         #[command(subcommand)]
@@ -466,6 +477,9 @@ pub enum CICommands {
 enum FlashImageCommands {
     /// Create a new flash image
     Create {
+        /// Flash container format; legacy ROMs require v1 or v2
+        #[arg(long, default_value_t = 3, value_parser = clap::value_parser!(u16).range(1..=3))]
+        format_version: u16,
         /// Path to the Caliptra firmware file
         #[arg(long, value_name = "CALIPTRA_FW", required = true)]
         caliptra_fw: Option<String>,
@@ -477,6 +491,10 @@ enum FlashImageCommands {
         /// Path to the MCU runtime file
         #[arg(long, value_name = "MCU_RUNTIME", required = true)]
         mcu_runtime: Option<String>,
+
+        /// Path to the optional Owner Authorization Manifest file
+        #[arg(long, value_name = "OWNER_AUTH_MANIFEST")]
+        owner_auth_manifest: Option<String>,
 
         /// List of SoC images
         /// Example: --soc-images /tmp/a.bin --soc-images /tmp/b.bin
@@ -553,16 +571,24 @@ enum EmulatorCbindingCommands {
 
 #[derive(Subcommand)]
 enum CorimCommands {
-    /// Generate a reference-value CoRIM from a firmware bundle
+    /// Generate separate Vendor and Owner reference-value CoRIMs from a firmware bundle
     #[command(long_about = "\
-Generate a reference-value CoRIM from a firmware bundle.
+Generate separate Vendor and Owner reference-value CoRIMs from a firmware bundle.
 
 Reads the all-build ZIP bundle (from `cargo xtask all-build`) and produces
 CoMID/CoRIM CBOR files with reference value digests for each firmware component.
 
-Components are auto-discovered from the bundle's SoC manifest metadata and
-encoded to match Measurement API evidence:
-    mkey 1: SoC firmware  - Auto-discovered from AuthManifest metadata
+Components are auto-discovered from image metadata entries in the bundle's Base
+and optional Owner SoC manifests, including MCU runtime:
+    mkey 1: SoC firmware  - Vendor and Owner image reference measurements
+
+Manifest preambles are not included. References may include components absent
+from EAT evidence; missing evidence does not pass appraisal.
+
+The Vendor references are written to signed-corim-refval-vendor.cbor.
+When an Owner manifest is present, its image references are written separately
+to signed-corim-refval-owner.cbor.
+Both CoRIMs use the configured signing key and certificate.
 
 CONFIG FILE (--config):
   Optional JSON file controlling vendor/model, hash algorithm, output
@@ -596,14 +622,15 @@ EXAMPLES:
 
         /// Feature name to select per-feature entries from the bundle
         /// (e.g. "test-mctp-spdm-attestation").
-        /// When set, reads mcu-test-runtime-<feature>.bin and
-        /// mcu-test-soc-manifest-<feature>.bin instead of the generic entries.
+        /// When set, reads mcu-test-soc-manifest-<feature>.bin and the optional
+        /// mcu-test-owner-soc-manifest-<feature>.bin instead of the generic entries.
         #[arg(long, value_name = "FEATURE")]
         feature: Option<String>,
 
         /// Generate reference values for the payload shipped in the hitless
         /// update package instead of the cold-boot payload. Reads
-        /// mcu-test-soc-manifest-update-<feature>.bin from the bundle.
+        /// mcu-test-soc-manifest-update-<feature>.bin and the optional
+        /// mcu-test-owner-soc-manifest-update-<feature>.bin from the bundle.
         #[arg(long)]
         post_update: bool,
     },
@@ -632,10 +659,11 @@ fn main() {
             platform,
             rom_features,
             test_rom_features: _,
-            network_rom_features: _,
+            network_rom_features,
             runtime_features,
             separate_runtimes,
             soc_images,
+            owner_soc_images,
             mcu_cfgs,
             caliptra_firmware_network_filename,
             soc_manifest_network_filename,
@@ -649,9 +677,11 @@ fn main() {
             output: output.as_deref(),
             platform: platform.as_deref(),
             rom_features: rom_features.as_deref(),
+            network_rom_features: network_rom_features.as_deref(),
             runtime_features: runtime_features.as_deref(),
             separate_runtimes: *separate_runtimes,
             soc_images: soc_images.clone(),
+            owner_soc_images: owner_soc_images.clone(),
             mcu_cfgs: mcu_cfgs.clone(),
             caliptra_firmware_network_filename: caliptra_firmware_network_filename.as_deref(),
             soc_manifest_network_filename: soc_manifest_network_filename.as_deref(),
@@ -734,15 +764,19 @@ fn main() {
         }
         Commands::FlashImage { subcommand } => match subcommand {
             FlashImageCommands::Create {
+                format_version,
                 caliptra_fw,
                 soc_manifest,
                 mcu_runtime,
+                owner_auth_manifest,
                 soc_images,
                 output,
             } => caliptra_mcu_builder::flash_image::flash_image_create(&CaliptraBuildArgs {
+                flash_image_version: Some(*format_version),
                 caliptra_firmware: caliptra_fw.as_ref().map(PathBuf::from),
                 soc_manifest: soc_manifest.as_ref().map(PathBuf::from),
                 mcu_firmware: mcu_runtime.as_ref().map(PathBuf::from),
+                owner_auth_manifest: owner_auth_manifest.as_ref().map(PathBuf::from),
                 soc_image_paths: soc_images.clone(),
                 output_path: Some(output.clone()),
                 ..Default::default()
@@ -854,6 +888,15 @@ fn main() {
             ),
             AuthManifestCommands::Parse { file } => auth_manifest::parse(file),
         },
+        Commands::OwnerManifest { subcommand } => match subcommand {
+            OwnerManifestCommands::Create {
+                images,
+                output,
+                svn,
+                command_auth_key_digest,
+            } => owner_manifest::create(images, output, *svn, command_auth_key_digest.as_deref()),
+            OwnerManifestCommands::Parse { file } => owner_manifest::parse(file),
+        },
         Commands::Corim { subcommand } => match subcommand {
             CorimCommands::GenRefval {
                 bundle,
@@ -884,4 +927,37 @@ fn main() {
         eprintln!("Error: {:?}", e);
         std::process::exit(1);
     });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn all_build_accepts_separate_owner_images() {
+        let cli = Xtask::try_parse_from([
+            "xtask",
+            "all-build",
+            "--owner_soc_image",
+            "tcb.bin,0xA8801000,0x0,65536,7,65536,test-mctp-spdm-attestation-mixed,true,false",
+            "non-tcb.bin,0xA8801200,0x0,65537,8,65537,test-mctp-spdm-attestation-mixed,false,false",
+        ])
+        .unwrap();
+        match cli.xtask {
+            Commands::AllBuild {
+                soc_images,
+                owner_soc_images: Some(images),
+                ..
+            } => {
+                assert!(soc_images.is_none());
+                assert_eq!(images.len(), 2);
+                assert_eq!(images[0].image_id, 0x10000);
+                assert!(images[0].is_tcb);
+                assert_eq!(images[1].image_id, 0x10001);
+                assert!(!images[1].is_tcb);
+                assert!(images.iter().all(|image| !image.is_ak_target));
+            }
+            _ => panic!("Expected all-build with Owner images"),
+        }
+    }
 }

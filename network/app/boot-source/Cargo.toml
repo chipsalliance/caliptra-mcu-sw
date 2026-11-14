@@ -13,6 +13,9 @@ zerocopy.workspace = true
 [features]
 default = []
 ipv6-boot = ["caliptra-mcu-lwip-rs/baremetal-dhcp6-stateful"]
+test-short-timeouts = []
+test-ipv6-dhcp-timeout = []
+test-ipv6-tftp-timeouts = []
 
 [target.'cfg(target_arch = "riscv32")'.dependencies]
 caliptra-mcu-boot-source-protocol.workspace = true

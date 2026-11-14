@@ -32,6 +32,9 @@ pub struct CaliptraBuildArgs<'a> {
     pub output_name: Option<String>,
     pub example_app: bool,
     pub svn: Option<u16>,
+    /// PQC key type shared by the Caliptra firmware and authorization manifests.
+    /// Defaults to LMS when not specified.
+    pub pqc_key_type: Option<caliptra_image_types::FwVerificationPqcKeyType>,
     /// Cargo profile name to build with (e.g. `"release"` or `"devel"`).
     /// When `None`, builds use `release`.  Drives both the `cargo --profile
     /// <name>` invocation and the bundler manifest selection (`devel` swaps to
@@ -44,14 +47,21 @@ pub struct CaliptraBuildArgs<'a> {
     pub caliptra_firmware_network_filename: Option<String>,
     pub soc_manifest: Option<PathBuf>,
     pub soc_manifest_network_filename: Option<String>,
+    pub owner_auth_manifest: Option<PathBuf>,
+    pub owner_measurement_policy: Option<PathBuf>,
     pub vendor_pk_hash: Option<String>,
     pub mcu_firmware: Option<PathBuf>,
     pub soc_images: Option<Vec<ImageCfg>>,
+    /// Owner-only SoC images included in the Owner Authorization Manifest.
+    pub owner_soc_images: Option<Vec<ImageCfg>>,
     pub mcu_image_cfg: Option<ImageCfg>,
     pub soc_manifest_svn: Option<u32>,
+    pub owner_manifest_svn: Option<u32>,
     pub vendor: Option<String>,
     pub model: Option<String>,
     pub offset: usize,
+    /// Flash container format (1, 2, or 3). Defaults to the current format.
+    pub flash_image_version: Option<u16>,
     pub output_path: Option<String>,
     pub soc_image_paths: Option<Vec<String>>,
     pub use_second_key: bool,

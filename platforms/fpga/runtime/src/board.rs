@@ -765,6 +765,10 @@ pub unsafe fn main() {
             "[mcu-runtime] Active I3C core for MCTP: {}",
             MCU_STRAPS.active_i3c
         );
+        #[cfg(feature = "i3c-mctp-mdb-only")]
+        active_i3c_core
+            .set_pending_read_ibi_mdb_only(true)
+            .expect("I3C must be idle during MCTP initialization");
         caliptra_mcu_components::mux_mctp::MCTPMuxComponent::new(active_i3c_core, mux_alarm)
             .with_uuid(mctp_endpoint_uuid)
             .finalize(mctp_mux_component_static!(InternalTimers, MCTPI3CBinding))
@@ -827,6 +831,8 @@ pub unsafe fn main() {
         board_kernel,
         caliptra_mcu_capsules_runtime::mci::DRIVER_NUM,
         &peripherals.mci,
+        &peripherals.lifecycle,
+        &peripherals.otp,
     )
     .finalize(kernel::static_buf!(caliptra_mcu_capsules_runtime::mci::Mci));
     caliptra_mcu_romtime::println!("[mcu-runtime] MCI driver component initialized");
@@ -1028,6 +1034,7 @@ pub unsafe fn main() {
         board_kernel,
         caliptra_mcu_capsules_runtime::mcu_mbox::MCU_MBOX0_DRIVER_NUM,
         &peripherals.mcu_mbox0,
+        caliptra_mcu_config_fpga::FPGA_MCU_MBOX0_PL0_AXI_USERS,
     )
     .finalize(mcu_mbox_component_static!(
         caliptra_mcu_mbox_driver::McuMailbox<'static, InternalTimers<'static>>

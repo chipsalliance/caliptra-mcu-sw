@@ -12,7 +12,13 @@ pub const FHT_MARKER: u32 = 0x4855434D;
 pub const FHT_MAJOR_VERSION: u16 = 1;
 
 /// Minor version of the handoff table.
-pub const FHT_MINOR_VERSION: u16 = 3;
+pub const FHT_MINOR_VERSION: u16 = 4;
+
+/// MCU ROM version, packed as major (8), minor (8), patch (16) bits.
+pub const MCU_ROM_VERSION: u32 = 0x0201_0001;
+
+/// Minor version that introduced the MCU ROM version handoff.
+pub const MCU_ROM_VERSION_FHT_MINOR_VERSION: u16 = 4;
 
 /// Minor version that introduced the stable owner key handoff.
 pub const STABLE_OWNER_KEY_FHT_MINOR_VERSION: u16 = 1;
@@ -39,6 +45,20 @@ bitflags::bitflags! {
         const FLASH_BOOT = 1 << 1;
         /// MCU ROM supports network boot.
         const NETWORK_BOOT = 1 << 2;
+        /// MCU ROM supports OCP LOCK key management.
+        const OCP_LOCK = 1 << 3;
+        /// MCU ROM supports Device Ownership Transfer firmware manifests.
+        const FW_MANIFEST_DOT = 1 << 4;
+        /// MCU ROM supports component SVN manifests.
+        const COMPONENT_SVN_MANIFEST = 1 << 5;
+        /// MCU ROM derives and hands off a stable owner key.
+        const STABLE_OWNER_KEY = 1 << 6;
+        /// MCU ROM supports DOT blob authentication during boot.
+        const DOT_BOOT = 1 << 7;
+        /// MCU ROM has a configured DOT locked-state recovery path.
+        const DOT_LOCKED_RECOVERY = 1 << 8;
+        /// MCU ROM supports DOT recovery over I3C.
+        const I3C_DOT_RECOVERY = 1 << 9;
     }
 }
 
@@ -105,8 +125,11 @@ pub struct RomHandoffTable {
     /// Capabilities implemented by this MCU ROM image.
     mcu_rom_capabilities: u32,
 
+    /// Packed MCU ROM version.
+    mcu_rom_version: u32,
+
     /// Padding to reach 64 bytes total.
-    pub padding: [u8; 36],
+    pub padding: [u8; 32],
 }
 
 impl Default for RomHandoffTable {
@@ -122,7 +145,8 @@ impl Default for RomHandoffTable {
             firmware_boot_type: FirmwareBootType::Unknown as u8,
             reserved: [0; 3],
             mcu_rom_capabilities: McuRomCapabilities::empty().bits(),
-            padding: [0; 36],
+            mcu_rom_version: MCU_ROM_VERSION,
+            padding: [0; 32],
         }
     }
 }
@@ -206,6 +230,7 @@ pub struct HandoffData {
 const _: () = assert!(core::mem::size_of::<RomHandoffTable>() == 64);
 const _: () = assert!(core::mem::offset_of!(RomHandoffTable, firmware_boot_type) == 20);
 const _: () = assert!(core::mem::offset_of!(RomHandoffTable, mcu_rom_capabilities) == 24);
+const _: () = assert!(core::mem::offset_of!(RomHandoffTable, mcu_rom_version) == 28);
 const _: () = assert!(core::mem::size_of::<RuntimeHandoffTable>() == 64);
 const _: () = assert!(core::mem::size_of::<StableOwnerKeyHandoff>() == 132);
 const _: () = assert!(core::mem::offset_of!(HandoffData, rom) == 0);
@@ -237,6 +262,11 @@ impl HandoffData {
     /// Size of the handoff data structure.
     pub const SIZE: usize = core::mem::size_of::<Self>();
 
+    pub fn mcu_rom_version(&self) -> Option<u32> {
+        (self.rom.fht_minor_ver >= MCU_ROM_VERSION_FHT_MINOR_VERSION)
+            .then_some(self.rom.mcu_rom_version)
+    }
+
     /// Return the source used to boot the MCU firmware.
     pub fn firmware_boot_type(&self) -> Option<FirmwareBootType> {
         self.read_firmware_boot_type().ok()
@@ -265,7 +295,11 @@ impl HandoffData {
     pub fn get() -> Option<&'static Self> {
         // SAFETY: Runtime treats ROM-owned handoff data as read-only.
         let handoff = unsafe { &*core::ptr::addr_of!(HANDOFF) };
-        if handoff.rom.fht_marker != FHT_MARKER || handoff.rom.fht_major_ver != FHT_MAJOR_VERSION {
+        // ROM writes this static in another image; volatile prevents LTO from
+        // folding these reads to the zero initializer.
+        if unsafe { core::ptr::read_volatile(&handoff.rom.fht_marker) } != FHT_MARKER
+            || unsafe { core::ptr::read_volatile(&handoff.rom.fht_major_ver) } != FHT_MAJOR_VERSION
+        {
             return None;
         }
         Some(handoff)
@@ -351,7 +385,8 @@ pub static mut HANDOFF: HandoffData = HandoffData {
         firmware_boot_type: FirmwareBootType::Unknown as u8,
         reserved: [0; 3],
         mcu_rom_capabilities: McuRomCapabilities::empty().bits(),
-        padding: [0; 36],
+        mcu_rom_version: 0,
+        padding: [0; 32],
     },
     runtime: RuntimeHandoffTable { reserved: [0; 64] },
     rom_stable_owner_key: StableOwnerKeyHandoff {
@@ -392,12 +427,23 @@ mod tests {
         assert_eq!(size_of::<RomHandoffTable>(), 64);
         assert_eq!(offset_of!(RomHandoffTable, firmware_boot_type), 20);
         assert_eq!(offset_of!(RomHandoffTable, mcu_rom_capabilities), 24);
+        assert_eq!(offset_of!(RomHandoffTable, mcu_rom_version), 28);
         assert_eq!(size_of::<RuntimeHandoffTable>(), 64);
         assert_eq!(size_of::<StableOwnerKeyHandoff>(), 132);
         assert_eq!(offset_of!(HandoffData, rom), 0);
         assert_eq!(offset_of!(HandoffData, runtime), 64);
         assert_eq!(offset_of!(HandoffData, rom_stable_owner_key), 128);
         assert_eq!(size_of::<HandoffData>(), 260);
+    }
+
+    #[test]
+    fn rom_version_requires_supported_handoff() {
+        let mut handoff = HandoffData::default();
+        assert_eq!(handoff.mcu_rom_version(), Some(MCU_ROM_VERSION));
+        handoff.rom.fht_minor_ver = MCU_ROM_VERSION_FHT_MINOR_VERSION - 1;
+        assert_eq!(handoff.mcu_rom_version(), None);
+        handoff.rom.mcu_rom_version = u32::MAX;
+        assert_eq!(handoff.mcu_rom_version(), None);
     }
 
     #[test]
@@ -464,5 +510,19 @@ mod tests {
 
         handoff.rom.fht_minor_ver = MCU_ROM_CAPABILITIES_FHT_MINOR_VERSION - 1;
         assert_eq!(handoff.mcu_rom_capabilities(), None);
+    }
+
+    #[test]
+    fn mcu_rom_capability_assignments_are_stable() {
+        assert_eq!(McuRomCapabilities::STREAMING_BOOT_I3C.bits(), 1 << 0);
+        assert_eq!(McuRomCapabilities::FLASH_BOOT.bits(), 1 << 1);
+        assert_eq!(McuRomCapabilities::NETWORK_BOOT.bits(), 1 << 2);
+        assert_eq!(McuRomCapabilities::OCP_LOCK.bits(), 1 << 3);
+        assert_eq!(McuRomCapabilities::FW_MANIFEST_DOT.bits(), 1 << 4);
+        assert_eq!(McuRomCapabilities::COMPONENT_SVN_MANIFEST.bits(), 1 << 5);
+        assert_eq!(McuRomCapabilities::STABLE_OWNER_KEY.bits(), 1 << 6);
+        assert_eq!(McuRomCapabilities::DOT_BOOT.bits(), 1 << 7);
+        assert_eq!(McuRomCapabilities::DOT_LOCKED_RECOVERY.bits(), 1 << 8);
+        assert_eq!(McuRomCapabilities::I3C_DOT_RECOVERY.bits(), 1 << 9);
     }
 }

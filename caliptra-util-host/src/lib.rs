@@ -82,10 +82,21 @@
 //!     firmware_version.version[2], firmware_version.version[3]);
 //! ```
 
+/// Caliptra Utility Host Library version from the package manifest.
+pub const VERSION: &str = env!("CARGO_PKG_VERSION");
+
+/// Return the Caliptra Utility Host Library version.
+pub fn version() -> semver::Version {
+    semver::Version::parse(VERSION).expect("Cargo package version must be valid semver")
+}
+
 // Re-export main public APIs for convenience
 pub use caliptra_mcu_core_util_host_command_types::{
-    CaliptraCommandId, GetDeviceCapabilitiesRequest, GetDeviceCapabilitiesResponse,
-    GetFirmwareVersionRequest, GetFirmwareVersionResponse,
+    CaliptraCommandId, FieldEntropyStatusRequest, FieldEntropyStatusResponse,
+    GetDeviceCapabilitiesRequest, GetDeviceCapabilitiesResponse, GetFirmwareVersionRequest,
+    GetFirmwareVersionResponse, HekStatusRequest, HekStatusResponse, VendorPkHashStatusRequest,
+    VendorPkHashStatusResponse, VENDOR_PK_HASH_SLOT_COUNT, VENDOR_PQC_KEY_TYPE_LMS,
+    VENDOR_PQC_KEY_TYPE_MLDSA,
 };
 // Re-export SHA types
 pub use caliptra_mcu_core_util_host_command_types::crypto_hash::{
@@ -93,7 +104,8 @@ pub use caliptra_mcu_core_util_host_command_types::crypto_hash::{
     ShaUpdateRequest, ShaUpdateResponse, MAX_HASH_SIZE, MAX_SHA_INPUT_SIZE, SHA_CONTEXT_SIZE,
 };
 pub use caliptra_util_host_commands::api::device_info::{
-    caliptra_cmd_get_device_capabilities, caliptra_cmd_get_firmware_version,
+    caliptra_cmd_field_entropy_status, caliptra_cmd_get_device_capabilities,
+    caliptra_cmd_get_firmware_version, caliptra_cmd_hek_status, caliptra_cmd_vendor_pk_hash_status,
 };
 // Re-export SHA API functions
 pub use caliptra_mcu_core_util_host_transport::{Mailbox, Transport};
@@ -105,3 +117,13 @@ pub use caliptra_util_host_session::CaliptraSession;
 // Re-export error types
 pub use caliptra_mcu_core_util_host_transport::TransportError;
 pub use caliptra_util_host_session::SessionError;
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn version_matches_package_manifest() {
+        let version = super::version();
+        println!("Caliptra Utility Host Library version: {version}");
+        std::assert_eq!(version.to_string(), env!("CARGO_PKG_VERSION"));
+    }
+}

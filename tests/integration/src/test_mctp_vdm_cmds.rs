@@ -218,15 +218,18 @@ pub mod test {
                 &McuRuntimeCapabilities::MCTP_VDM_RESPONDER.bits(),
                 "MCU Runtime capabilities",
             )?;
-            let expected_rom =
-                (McuRomCapabilities::STREAMING_BOOT_I3C | McuRomCapabilities::FLASH_BOOT).bits();
+            let expected_rom = (McuRomCapabilities::STREAMING_BOOT_I3C
+                | McuRomCapabilities::FLASH_BOOT
+                | McuRomCapabilities::DOT_BOOT)
+                .bits();
             Self::assert_eq(&rom, &expected_rom, "MCU ROM capabilities")?;
             Self::assert_eq(
                 &authorized,
                 &AuthorizedSubcommandCapabilities::empty().bits(),
                 "Authorized subcommands",
             )?;
-            Self::assert_eq(&response.caps[32..], &[0; 4], "Reserved capabilities")?;
+            Self::assert_eq(&response.caps[32..48], &[0; 16], "Reserved capabilities")?;
+            Self::assert_eq(&response.caps[48..64], &[0; 16], "Vendor capabilities")?;
             info!("  Capabilities: {:?} (matches expected)", response.caps);
 
             Ok(())

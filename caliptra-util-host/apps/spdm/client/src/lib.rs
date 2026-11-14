@@ -19,6 +19,7 @@
 
 pub mod config;
 pub mod ocp_dev_identity_provision;
+pub mod ocp_dip;
 pub mod validator;
 
 pub use config::TestConfig;
@@ -38,17 +39,20 @@ use anyhow::Result;
 use caliptra_mcu_core_util_host_command_types::attestation::{
     AsymAlgo, EvidenceFormat, GetAttestationResponse, PkiEntitySlot,
 };
-use caliptra_mcu_core_util_host_command_types::certificate::ExportAttestedCsrResponse;
+use caliptra_mcu_core_util_host_command_types::certificate::{
+    ExportAttestedCsrResponse, ProvisionIdevCertMode, ProvisionIdevCertResponse,
+};
 use caliptra_mcu_core_util_host_command_types::debug_unlock::{
     ProdDebugUnlockReqResponse, ProdDebugUnlockTokenRequest, ProdDebugUnlockTokenResponse,
 };
 use caliptra_mcu_core_util_host_command_types::device_ownership_transfer::{
-    DotChallengeResponse, DotDisableRequest, DotLockRequest, DotOverrideChallengeRequest,
-    DotOverrideRequest, DotRecoveryRequest, DotRotateRequest, DotStatusResponse,
-    DotTransitionResponse, DotUnlockRequest, GetDotBackupBlobRequest, GetDotBackupBlobResponse,
+    DotChallengeResponse, DotDisableRequest, DotEnableRequest, DotLockRequest,
+    DotOverrideChallengeRequest, DotOverrideRequest, DotRecoveryRequest, DotRotateRequest,
+    DotStatusResponse, DotTransitionResponse, DotUnlockRequest, GetDotBackupBlobRequest,
+    GetDotBackupBlobResponse,
 };
 use caliptra_mcu_core_util_host_command_types::fuse::{
-    FeProgResponse, FuseIncreaseCaliptraMinSvnRequest, FuseIncreaseCaliptraMinSvnResponse,
+    FeProgResponse, FuseIncreaseMinSvnRequest, FuseIncreaseMinSvnResponse,
     FuseLockPartitionRequest, FuseLockPartitionResponse, FuseRevokeVendorPkHashRequest,
     FuseRevokeVendorPkHashResponse, FuseRevokeVendorPubKeyRequest, FuseRevokeVendorPubKeyResponse,
     GetAuthCmdChallengeResponse, OcpLockRotateHekRequest, OcpLockRotateHekResponse,
@@ -59,26 +63,29 @@ use caliptra_mcu_core_util_host_transport::transports::spdm_vdm::transport::{
     SpdmVdmDriver, SpdmVdmError, SpdmVdmTransport,
 };
 use caliptra_mcu_core_util_host_transport::Transport;
+use caliptra_mcu_mbox_common::authorization::AuthorizationMetadata;
 use caliptra_mcu_mbox_common::messages::{HybridSignature, AUTH_CMD_NONCE_LEN};
 use caliptra_util_host_commands::api::attestation::{
     caliptra_cmd_get_attestation, caliptra_cmd_get_attestation_formats,
 };
-use caliptra_util_host_commands::api::certificate::caliptra_cmd_export_attested_csr;
+use caliptra_util_host_commands::api::certificate::{
+    caliptra_cmd_export_attested_csr, caliptra_cmd_provision_idevid_cert,
+};
 use caliptra_util_host_commands::api::debug_unlock::{
     caliptra_cmd_prod_debug_unlock_req, caliptra_cmd_prod_debug_unlock_token,
 };
 use caliptra_util_host_commands::api::device_ownership_transfer::{
-    caliptra_cmd_dot_disable, caliptra_cmd_dot_lock, caliptra_cmd_dot_override,
-    caliptra_cmd_dot_override_challenge, caliptra_cmd_dot_recovery, caliptra_cmd_dot_rotate,
-    caliptra_cmd_dot_status, caliptra_cmd_dot_unlock, caliptra_cmd_dot_unlock_challenge,
-    caliptra_cmd_get_dot_backup_blob,
+    caliptra_cmd_dot_disable, caliptra_cmd_dot_enable, caliptra_cmd_dot_lock,
+    caliptra_cmd_dot_override, caliptra_cmd_dot_override_challenge, caliptra_cmd_dot_recovery,
+    caliptra_cmd_dot_rotate, caliptra_cmd_dot_status, caliptra_cmd_dot_unlock,
+    caliptra_cmd_dot_unlock_challenge, caliptra_cmd_get_dot_backup_blob,
 };
 use caliptra_util_host_commands::api::fuse::{
-    caliptra_cmd_fe_prog, caliptra_cmd_fuse_increase_caliptra_min_svn,
-    caliptra_cmd_fuse_lock_partition, caliptra_cmd_fuse_revoke_vendor_pk_hash,
-    caliptra_cmd_fuse_revoke_vendor_pub_key, caliptra_cmd_get_auth_challenge,
-    caliptra_cmd_ocp_lock_rotate_hek, caliptra_cmd_ocp_lock_set_perma_hek,
-    caliptra_cmd_provision_owner_pk_hash, caliptra_cmd_provision_vendor_pk_hash,
+    caliptra_cmd_fe_prog, caliptra_cmd_fuse_increase_min_svn, caliptra_cmd_fuse_lock_partition,
+    caliptra_cmd_fuse_revoke_vendor_pk_hash, caliptra_cmd_fuse_revoke_vendor_pub_key,
+    caliptra_cmd_get_auth_challenge, caliptra_cmd_ocp_lock_rotate_hek,
+    caliptra_cmd_ocp_lock_set_perma_hek, caliptra_cmd_provision_owner_pk_hash,
+    caliptra_cmd_provision_vendor_pk_hash,
 };
 use caliptra_util_host_commands::api::{CaliptraApiError, CaliptraResult};
 use caliptra_util_host_session::CaliptraSession;
@@ -91,12 +98,14 @@ pub struct SpdmVdmClient<'a> {
     transport: SpdmVdmTransport<'a>,
 }
 
+/// Host-side authorization inputs, listed in wire order.
 pub struct AuthorizedCommandData<'a> {
-    pub sig: &'a HybridSignature,
+    pub metadata: AuthorizationMetadata,
     pub nonce: &'a [u8; AUTH_CMD_NONCE_LEN],
     pub ecc_pub_x: &'a [u8; 48],
     pub ecc_pub_y: &'a [u8; 48],
     pub mldsa_pub: &'a [u8; 2592],
+    pub sig: &'a HybridSignature,
 }
 
 impl<'a> SpdmVdmClient<'a> {
@@ -135,6 +144,18 @@ impl<'a> SpdmVdmClient<'a> {
         let mut session = self.create_session()?;
         caliptra_cmd_export_attested_csr(&mut session, device_key_id, algorithm, nonce)
             .map_err(|e| anyhow::anyhow!("ExportAttestedCsr failed: {:?}", e))
+    }
+
+    /// Provision an `IDevID` certificate or signature payload (`PopulateOnly` or `WriteOtp`).
+    pub fn provision_idevid_cert(
+        &mut self,
+        algorithm: AsymAlgo,
+        mode: ProvisionIdevCertMode,
+        data: &[u8],
+    ) -> Result<ProvisionIdevCertResponse> {
+        let mut session = self.create_session()?;
+        caliptra_cmd_provision_idevid_cert(&mut session, algorithm, mode, data)
+            .map_err(|e| anyhow::anyhow!("ProvisionIdevCert failed: {:?}", e))
     }
 
     /// Retrieve signed attestation evidence from the device.
@@ -203,9 +224,9 @@ impl<'a> SpdmVdmClient<'a> {
     /// # Parameters
     /// - `partition`: OTP partition to program (0-3)
     /// - `sig`: hybrid ECC-P384 + ML-DSA-87 signature over the transcript
-    /// - `nonce`: the 48-byte challenge received from `get_auth_challenge`,
-    ///   echoed back on the wire (device compares it to its stored one-time
-    ///   challenge, then rebuilds the transcript from this wire copy)
+    /// - `nonce`: a live 48-byte challenge from `get_auth_challenge`, or all
+    ///   zeroes for Offline authorization; both signatures bind the selected
+    ///   nonce in the transcript.
     /// - `ecc_pub_x`/`ecc_pub_y`/`mldsa_pub`: the public keys that travel on the
     ///   wire; the device holds only their SHA-384 anchor and re-derives it from
     ///   these received bytes before verifying
@@ -218,14 +239,33 @@ impl<'a> SpdmVdmClient<'a> {
         ecc_pub_y: &[u8; 48],
         mldsa_pub: &[u8; 2592],
     ) -> CaliptraResult<FeProgResponse> {
+        self.fe_prog_with_authorization(
+            partition,
+            AuthorizedCommandData {
+                metadata: AuthorizationMetadata::default(),
+                nonce,
+                ecc_pub_x,
+                ecc_pub_y,
+                mldsa_pub,
+                sig,
+            },
+        )
+    }
+
+    pub fn fe_prog_with_authorization(
+        &mut self,
+        partition: u32,
+        auth: AuthorizedCommandData<'_>,
+    ) -> CaliptraResult<FeProgResponse> {
         use caliptra_mcu_core_util_host_command_types::fuse::FeProgRequest;
         let request = FeProgRequest {
             partition,
-            sig: sig.clone(),
-            nonce: *nonce,
-            ecc_pub_x: *ecc_pub_x,
-            ecc_pub_y: *ecc_pub_y,
-            mldsa_pub: *mldsa_pub,
+            metadata: auth.metadata,
+            nonce: *auth.nonce,
+            ecc_pub_x: *auth.ecc_pub_x,
+            ecc_pub_y: *auth.ecc_pub_y,
+            mldsa_pub: *auth.mldsa_pub,
+            sig: auth.sig.clone(),
         };
         let mut session = self
             .create_session()
@@ -242,11 +282,12 @@ impl<'a> SpdmVdmClient<'a> {
         let request = ProvisionVendorPkHashRequest {
             slot,
             hash: *hash,
-            sig: auth.sig.clone(),
+            metadata: auth.metadata,
             nonce: *auth.nonce,
             ecc_pub_x: *auth.ecc_pub_x,
             ecc_pub_y: *auth.ecc_pub_y,
             mldsa_pub: *auth.mldsa_pub,
+            sig: auth.sig.clone(),
         };
         let mut session = self
             .create_session()
@@ -263,13 +304,32 @@ impl<'a> SpdmVdmClient<'a> {
         ecc_pub_y: &[u8; 48],
         mldsa_pub: &[u8; 2592],
     ) -> CaliptraResult<FuseLockPartitionResponse> {
+        self.fuse_lock_partition_with_authorization(
+            partition,
+            AuthorizedCommandData {
+                metadata: AuthorizationMetadata::default(),
+                nonce,
+                ecc_pub_x,
+                ecc_pub_y,
+                mldsa_pub,
+                sig,
+            },
+        )
+    }
+
+    pub fn fuse_lock_partition_with_authorization(
+        &mut self,
+        partition: u32,
+        auth: AuthorizedCommandData<'_>,
+    ) -> CaliptraResult<FuseLockPartitionResponse> {
         let request = FuseLockPartitionRequest {
             partition,
-            sig: sig.clone(),
-            nonce: *nonce,
-            ecc_pub_x: *ecc_pub_x,
-            ecc_pub_y: *ecc_pub_y,
-            mldsa_pub: *mldsa_pub,
+            metadata: auth.metadata,
+            nonce: *auth.nonce,
+            ecc_pub_x: *auth.ecc_pub_x,
+            ecc_pub_y: *auth.ecc_pub_y,
+            mldsa_pub: *auth.mldsa_pub,
+            sig: auth.sig.clone(),
         };
         let mut session = self
             .create_session()
@@ -286,13 +346,32 @@ impl<'a> SpdmVdmClient<'a> {
         ecc_pub_y: &[u8; 48],
         mldsa_pub: &[u8; 2592],
     ) -> CaliptraResult<ProvisionOwnerPkHashResponse> {
+        self.provision_owner_pk_hash_with_authorization(
+            hash,
+            AuthorizedCommandData {
+                metadata: AuthorizationMetadata::default(),
+                nonce,
+                ecc_pub_x,
+                ecc_pub_y,
+                mldsa_pub,
+                sig,
+            },
+        )
+    }
+
+    pub fn provision_owner_pk_hash_with_authorization(
+        &mut self,
+        hash: &[u8; 48],
+        auth: AuthorizedCommandData<'_>,
+    ) -> CaliptraResult<ProvisionOwnerPkHashResponse> {
         let request = ProvisionOwnerPkHashRequest {
             hash: *hash,
-            sig: sig.clone(),
-            nonce: *nonce,
-            ecc_pub_x: *ecc_pub_x,
-            ecc_pub_y: *ecc_pub_y,
-            mldsa_pub: *mldsa_pub,
+            metadata: auth.metadata,
+            nonce: *auth.nonce,
+            ecc_pub_x: *auth.ecc_pub_x,
+            ecc_pub_y: *auth.ecc_pub_y,
+            mldsa_pub: *auth.mldsa_pub,
+            sig: auth.sig.clone(),
         };
         let mut session = self
             .create_session()
@@ -300,25 +379,28 @@ impl<'a> SpdmVdmClient<'a> {
         caliptra_cmd_provision_owner_pk_hash(&mut session, &request)
     }
 
-    pub fn fuse_increase_caliptra_min_svn(
+    pub fn fuse_increase_min_svn(
         &mut self,
         flags: u32,
+        target: u32,
         svn: u32,
         auth: AuthorizedCommandData<'_>,
-    ) -> CaliptraResult<FuseIncreaseCaliptraMinSvnResponse> {
-        let request = FuseIncreaseCaliptraMinSvnRequest {
+    ) -> CaliptraResult<FuseIncreaseMinSvnResponse> {
+        let request = FuseIncreaseMinSvnRequest {
             flags,
+            target,
             svn,
-            sig: auth.sig.clone(),
+            metadata: auth.metadata,
             nonce: *auth.nonce,
             ecc_pub_x: *auth.ecc_pub_x,
             ecc_pub_y: *auth.ecc_pub_y,
             mldsa_pub: *auth.mldsa_pub,
+            sig: auth.sig.clone(),
         };
         let mut session = self
             .create_session()
             .map_err(|_| CaliptraApiError::SessionError("Failed to create session"))?;
-        caliptra_cmd_fuse_increase_caliptra_min_svn(&mut session, &request)
+        caliptra_cmd_fuse_increase_min_svn(&mut session, &request)
     }
 
     pub fn fuse_revoke_vendor_pub_key(
@@ -334,11 +416,12 @@ impl<'a> SpdmVdmClient<'a> {
             vendor_pk_hash_slot,
             key_type,
             key_index,
-            sig: auth.sig.clone(),
+            metadata: auth.metadata,
             nonce: *auth.nonce,
             ecc_pub_x: *auth.ecc_pub_x,
             ecc_pub_y: *auth.ecc_pub_y,
             mldsa_pub: *auth.mldsa_pub,
+            sig: auth.sig.clone(),
         };
         let mut session = self
             .create_session()
@@ -355,11 +438,12 @@ impl<'a> SpdmVdmClient<'a> {
         let request = FuseRevokeVendorPkHashRequest {
             reserved,
             vendor_pk_hash_slot,
-            sig: auth.sig.clone(),
+            metadata: auth.metadata,
             nonce: *auth.nonce,
             ecc_pub_x: *auth.ecc_pub_x,
             ecc_pub_y: *auth.ecc_pub_y,
             mldsa_pub: *auth.mldsa_pub,
+            sig: auth.sig.clone(),
         };
         let mut session = self
             .create_session()
@@ -374,11 +458,12 @@ impl<'a> SpdmVdmClient<'a> {
     ) -> CaliptraResult<OcpLockRotateHekResponse> {
         let request = OcpLockRotateHekRequest {
             slot,
-            sig: auth.sig.clone(),
+            metadata: auth.metadata,
             nonce: *auth.nonce,
             ecc_pub_x: *auth.ecc_pub_x,
             ecc_pub_y: *auth.ecc_pub_y,
             mldsa_pub: *auth.mldsa_pub,
+            sig: auth.sig.clone(),
         };
         let mut session = self
             .create_session()
@@ -391,11 +476,12 @@ impl<'a> SpdmVdmClient<'a> {
         auth: AuthorizedCommandData<'_>,
     ) -> CaliptraResult<OcpLockSetPermaHekResponse> {
         let request = OcpLockSetPermaHekRequest {
-            sig: auth.sig.clone(),
+            metadata: auth.metadata,
             nonce: *auth.nonce,
             ecc_pub_x: *auth.ecc_pub_x,
             ecc_pub_y: *auth.ecc_pub_y,
             mldsa_pub: *auth.mldsa_pub,
+            sig: auth.sig.clone(),
         };
         let mut session = self
             .create_session()
@@ -410,6 +496,13 @@ impl<'a> SpdmVdmClient<'a> {
         response: &mut [u8],
     ) -> Result<usize, SpdmVdmError> {
         self.transport.send_raw_vdm(request, response)
+    }
+
+    /// Enable device ownership using generic command authorization.
+    pub fn dot_enable(&mut self, request: &DotEnableRequest) -> Result<DotTransitionResponse> {
+        let mut session = self.create_session()?;
+        caliptra_cmd_dot_enable(&mut session, request)
+            .map_err(|e| anyhow::anyhow!("DOT_ENABLE failed: {:?}", e))
     }
 
     /// Lock device ownership using generic command authorization.

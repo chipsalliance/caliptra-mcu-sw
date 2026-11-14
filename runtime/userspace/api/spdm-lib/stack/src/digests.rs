@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! GET_DIGESTS → DIGESTS handler (DSP0274 §10.5).
+//! GET_DIGESTS → DIGESTS handler.
 //!
 //! Streams each provisioned slot's SPDM cert-chain wire bytes
 //! through the negotiated hash and emits a concatenated digest
@@ -9,12 +9,13 @@
 
 use caliptra_mcu_spdm_codec::{DigestsRsp, ResponseBody, SpdmMsgHdrPdu, SHA384_HASH_SIZE};
 use caliptra_mcu_spdm_traits::{
-    PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalAsymAlgo, SpdmPalHashAlgo, SpdmPalIo,
-    SpdmPalIoTransport, MAX_SLOTS,
+    PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalAsymAlgo, SpdmPalHashAlgo, SpdmPalIoTransport,
+    MAX_SLOTS,
 };
 use zerocopy::FromBytes;
 
 use crate::build::{build_response, write_fixed};
+use crate::certificate::cert_chain_length_field;
 use crate::error::{SpdmResult, SPDM_INVALID_REQUEST, SPDM_UNSPECIFIED};
 use crate::stack::{multi_key_conn_rsp, ConnectionState, Phase};
 
@@ -23,15 +24,6 @@ use crate::stack::{multi_key_conn_rsp, ConnectionState, Phase};
 const CERT_CHUNK_SIZE: usize = 1024;
 
 pub(crate) async fn handle_get_digests<'a, Pal: SpdmPal>(
-    state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
-    pal: &'a Pal,
-    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
-) -> SpdmResult<PalBytes<'a, Pal>> {
-    let (resp, _) = handle_get_digests_req(state, pal, io, io.request()).await?;
-    Ok(resp)
-}
-
-pub(crate) async fn handle_get_digests_req<'a, Pal: SpdmPal>(
     state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
@@ -44,8 +36,7 @@ pub(crate) async fn handle_get_digests_req<'a, Pal: SpdmPal>(
         return Err(state.out_of_order());
     }
 
-    // DSP0274 §10.5 Table 24: GET_DIGESTS header version shall match
-    // the negotiated VCA version.
+    // GET_DIGESTS header version shall match the negotiated VCA version.
     let (hdr, rest) = SpdmMsgHdrPdu::ref_from_prefix(spdm_msg).map_err(|_| SPDM_INVALID_REQUEST)?;
     if hdr.version != state.version.to_u8() {
         return Err(crate::error::SPDM_VERSION_MISMATCH);
@@ -54,12 +45,12 @@ pub(crate) async fn handle_get_digests_req<'a, Pal: SpdmPal>(
         return Err(SPDM_INVALID_REQUEST);
     }
 
+    let asym_algo = state.asym_algo();
     let supported = pal.supported_slots();
-    let provisioned = pal.provisioned_slots();
+    let provisioned = pal.provisioned_slots(asym_algo);
     let digest_size = SpdmPalHashAlgo::Sha384.hash_size();
     let num_slots = provisioned.count_ones() as usize;
     let digests_len = num_slots * digest_size;
-    let asym_algo = state.asym_algo();
     let multi_key = multi_key_conn_rsp(state)?;
     let multi_key_len = if multi_key { num_slots * 4 } else { 0 };
 
@@ -91,7 +82,12 @@ pub(crate) async fn handle_get_digests_req<'a, Pal: SpdmPal>(
         cursor += digest_size;
     }
     if multi_key {
-        fill_multi_key_conn_rsp_data(pal, provisioned, &mut tail[digests_len..]);
+        fill_multi_key_conn_rsp_data(
+            pal,
+            provisioned,
+            asym_algo,
+            tail.get_mut(digests_len..).ok_or(SPDM_UNSPECIFIED)?,
+        )?;
     }
 
     let digests_body = DigestsRsp {
@@ -105,42 +101,59 @@ pub(crate) async fn handle_get_digests_req<'a, Pal: SpdmPal>(
 
     let head = pal.header_size();
     state.transcript.append_m1(pal, io, spdm_msg).await?;
-    state
-        .transcript
-        .append_m1(pal, io, &resp[head..head + spdm_len])
-        .await?;
+    let end = head.checked_add(spdm_len).ok_or(SPDM_UNSPECIFIED)?;
+    let response = resp.get(head..end).ok_or(SPDM_UNSPECIFIED)?;
+    state.transcript.append_m1(pal, io, response).await?;
 
     state.phase = Phase::AfterDigests;
     Ok((resp, spdm_len))
 }
 
-fn fill_multi_key_conn_rsp_data<Pal: SpdmPal>(pal: &Pal, provisioned: u8, dst: &mut [u8]) {
+fn fill_multi_key_conn_rsp_data<Pal: SpdmPal>(
+    pal: &Pal,
+    provisioned: u8,
+    algo: SpdmPalAsymAlgo,
+    dst: &mut [u8],
+) -> SpdmResult<()> {
     let slot_cnt = provisioned.count_ones() as usize;
-    debug_assert_eq!(dst.len(), slot_cnt * 4);
-    let (key_pair_ids, rest) = dst.split_at_mut(slot_cnt);
-    let (cert_infos, key_usage_masks) = rest.split_at_mut(slot_cnt);
+    if dst.len() != slot_cnt * 4 {
+        return Err(SPDM_UNSPECIFIED);
+    }
+    let (key_pair_ids, rest) = dst.split_at_mut_checked(slot_cnt).ok_or(SPDM_UNSPECIFIED)?;
+    let (cert_infos, key_usage_masks) = rest
+        .split_at_mut_checked(slot_cnt)
+        .ok_or(SPDM_UNSPECIFIED)?;
 
     let mut index = 0;
     for slot in 0..MAX_SLOTS {
         if provisioned & (1 << slot) == 0 {
             continue;
         }
-        key_pair_ids[index] = pal.key_pair_id(slot).unwrap_or_default();
-        cert_infos[index] = pal.cert_info(slot).unwrap_or_default() & 0x07;
+        *key_pair_ids.get_mut(index).ok_or(SPDM_UNSPECIFIED)? =
+            pal.key_pair_id(slot, algo).unwrap_or_default();
+        *cert_infos.get_mut(index).ok_or(SPDM_UNSPECIFIED)? =
+            pal.cert_info(slot, algo).unwrap_or_default() & 0x07;
         let usage = index * 2;
         write_fixed(
             key_usage_masks,
             usage,
-            &pal.key_usage_mask(slot).unwrap_or_default().to_le_bytes(),
+            &pal.key_usage_mask(slot, algo)
+                .unwrap_or_default()
+                .to_le_bytes(),
         );
         index += 1;
     }
+    Ok(())
 }
 /// Stream a slot's SPDM cert-chain bytes through the negotiated
 /// hash and write the digest into `out`.
 ///
 /// The current SPDM cert-chain wire format is
-/// `Length(2) | Reserved(2) | RootHash(48) | DER chain[..]`.
+/// `Length(4) | RootHash(48) | DER chain[..]`, where `Length` is the
+/// pre-1.4 `Length(2) | Reserved(2)` pair reinterpreted as a 32-bit
+/// value. The header must be byte-identical to the one emitted by
+/// GET_CERTIFICATE or the requester's recomputed digest will not
+/// match.
 #[inline(never)]
 pub(crate) async fn cert_chain_hash<Pal: SpdmPal>(
     pal: &Pal,
@@ -150,7 +163,7 @@ pub(crate) async fn cert_chain_hash<Pal: SpdmPal>(
     algo: SpdmPalHashAlgo,
     out: &mut [u8],
 ) -> mcu_error::McuResult<()> {
-    if (pal.provisioned_slots() & (1 << slot)) == 0 {
+    if (pal.provisioned_slots(asym_algo) & (1 << slot)) == 0 {
         return Err(mcu_error::codes::INVARIANT);
     }
 
@@ -162,8 +175,7 @@ pub(crate) async fn cert_chain_hash<Pal: SpdmPal>(
         .len()
         .checked_add(der_len)
         .ok_or(mcu_error::codes::INVARIANT)?;
-    let length = u16::try_from(total_len).map_err(|_| mcu_error::codes::INVARIANT)?;
-    write_fixed(&mut hdr, 0, &length.to_le_bytes());
+    write_fixed(&mut hdr, 0, &cert_chain_length_field(total_len)?);
     pal.root_cert_hash(io, slot, asym_algo, algo, &mut hdr[4..4 + digest_size])
         .await?;
 
@@ -178,14 +190,19 @@ pub(crate) async fn cert_chain_hash<Pal: SpdmPal>(
         if n == 0 {
             break;
         }
-        pal.hash_update(io, &mut state, &buf[..n]).await?;
+        pal.hash_update(
+            io,
+            &mut state,
+            buf.get(..n).ok_or(mcu_error::codes::INVARIANT)?,
+        )
+        .await?;
         offset += n;
         if n < buf.len() {
             break;
         }
     }
 
-    if (pal.provisioned_slots() & (1 << slot)) == 0 {
+    if (pal.provisioned_slots(asym_algo) & (1 << slot)) == 0 {
         return Err(mcu_error::codes::INVARIANT);
     }
 

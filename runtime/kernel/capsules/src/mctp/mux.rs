@@ -17,6 +17,30 @@ use kernel::utilities::cells::TakeCell;
 use kernel::utilities::leasable_buffer::SubSliceMut;
 use kernel::ErrorCode;
 
+fn parse_packet(packet: &[u8]) -> (MCTPHeader, Option<MessageType>, usize) {
+    let mut msg_type = None;
+
+    if packet.len() < MCTP_HDR_SIZE {
+        return (MCTPHeader::default(), None, 0);
+    }
+
+    let mctp_header = MCTPHeader(u32::from_le_bytes(
+        packet[0..MCTP_HDR_SIZE].try_into().unwrap_or([0u8; 4]),
+    ));
+
+    if mctp_header.hdr_version() != 1 {
+        return (MCTPHeader::default(), None, 0);
+    }
+
+    if mctp_header.som() == 1 {
+        if packet.len() < MCTP_HDR_SIZE + 1 {
+            return (MCTPHeader::default(), None, 0);
+        }
+        msg_type = Some((packet[MCTP_HDR_SIZE] & 0x7F).into());
+    }
+    (mctp_header, msg_type, MCTP_HDR_SIZE)
+}
+
 /// MUX struct that manages multiple MCTP driver users (clients).
 ///
 /// This struct implements a FIFO queue for the
@@ -111,30 +135,6 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, A, M> {
         msg_tag
     }
 
-    fn interpret_packet(&self, packet: &[u8]) -> (MCTPHeader, Option<MessageType>, usize) {
-        let mut msg_type = None;
-
-        if packet.len() < MCTP_HDR_SIZE {
-            return (MCTPHeader::default(), None, 0);
-        }
-
-        let mctp_header = MCTPHeader(u32::from_le_bytes(
-            packet[0..MCTP_HDR_SIZE].try_into().unwrap_or([0u8; 4]),
-        ));
-
-        if mctp_header.hdr_version() != 1 {
-            return (MCTPHeader::default(), None, 0);
-        }
-
-        if mctp_header.som() == 1 {
-            if packet.len() < MCTP_HDR_SIZE + 1 {
-                return (MCTPHeader::default(), None, 0);
-            }
-            msg_type = Some((packet[MCTP_HDR_SIZE] & 0x7F).into());
-        }
-        (mctp_header, msg_type, MCTP_HDR_SIZE)
-    }
-
     fn fill_mctp_hdr_resp(
         &self,
         mctp_hdr_resp: MCTPHeader,
@@ -166,17 +166,23 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, A, M> {
         let mctp_ctrl_hdr_start = mctp_hdr_start + MCTP_HDR_SIZE;
         let (advertised_msg_types, advertised_msg_types_count) =
             supported_msg_types(|msg_type| self.is_msg_type_registered(msg_type));
-        let advertised_msg_types = &advertised_msg_types[..advertised_msg_types_count];
+        let advertised_msg_types = advertised_msg_types
+            .get(..advertised_msg_types_count)
+            .ok_or(ErrorCode::INVAL)?;
 
         self.tx_pkt_buffer
             .take()
             .map_or(Err(ErrorCode::NOMEM), |resp_buf| {
+                let Some(control_buf) = resp_buf.get_mut(mctp_ctrl_hdr_start..) else {
+                    self.tx_pkt_buffer.replace(resp_buf);
+                    return Err(ErrorCode::INVAL);
+                };
                 let result = process_mctp_control_msg(
                     msg_buf,
                     self.get_local_eid(),
                     advertised_msg_types,
                     &self.uuid,
-                    &mut resp_buf[mctp_ctrl_hdr_start..],
+                    control_buf,
                 );
 
                 match result {
@@ -185,10 +191,13 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, A, M> {
                             self.set_local_eid(eid);
                         }
 
-                        let res = self.fill_mctp_hdr_resp(
-                            mctp_hdr_resp,
-                            &mut resp_buf[mctp_hdr_start..mctp_hdr_start + MCTP_HDR_SIZE],
-                        );
+                        let Some(header_buf) =
+                            resp_buf.get_mut(mctp_hdr_start..mctp_ctrl_hdr_start)
+                        else {
+                            self.tx_pkt_buffer.replace(resp_buf);
+                            return Err(ErrorCode::INVAL);
+                        };
+                        let res = self.fill_mctp_hdr_resp(mctp_hdr_resp, header_buf);
 
                         match res {
                             Ok(_) => {
@@ -234,12 +243,18 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> MuxMCTPDriver<'a, A, M> {
                     Err((err, buf)) => {
                         capsule_error!("MCTP-MUX", "Failed to transmit: 0x{:x}", err as u32);
                         self.tx_pkt_buffer.replace(buf);
+                        cur_sender.send_done(Err(err));
+                        self.sender_list.pop_head();
+                        self.deferred_call.set();
                     }
                 }
             }
             Err(err) => {
                 capsule_error!("MCTP-MUX", "Failed to start transmit: 0x{:x}", err as u32);
                 self.tx_pkt_buffer.replace(tx_pkt.take());
+                cur_sender.send_done(Err(err));
+                self.sender_list.pop_head();
+                self.deferred_call.set();
             }
         }
     }
@@ -339,13 +354,17 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> TransportTxClient for MuxMCT
 
 impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> TransportRxClient for MuxMCTPDriver<'a, A, M> {
     fn receive(&self, rx_buffer: &'static mut [u8], len: usize) {
-        if len == 0 || len > rx_buffer.len() {
+        let Some(packet) = rx_buffer.get(..len).filter(|packet| !packet.is_empty()) else {
             capsule_debug!("MCTP-MUX", "Invalid packet length. Dropping packet.");
             self.rx_pkt_buffer.replace(rx_buffer);
             return;
-        }
+        };
 
-        let (mctp_header, msg_type, payload_offset) = self.interpret_packet(&rx_buffer[0..len]);
+        let (mctp_header, msg_type, payload_offset) = parse_packet(packet);
+        let Some(payload) = packet.get(payload_offset..) else {
+            self.rx_pkt_buffer.replace(rx_buffer);
+            return;
+        };
         if let Some(msg_type) = msg_type {
             match msg_type {
                 MessageType::MctpControl
@@ -353,8 +372,7 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> TransportRxClient for MuxMCT
                         && mctp_header.som() == 1
                         && mctp_header.eom() == 1 =>
                 {
-                    let _ =
-                        self.process_mctp_control_msg(mctp_header, &rx_buffer[payload_offset..len]);
+                    let _ = self.process_mctp_control_msg(mctp_header, payload);
                 }
                 MessageType::MctpControl => {
                     capsule_debug!("MCTP-MUX", "Invalid MCTP Control message. Dropping packet.");
@@ -364,18 +382,14 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> TransportRxClient for MuxMCT
                 | MessageType::SecureSpdm
                 | MessageType::Caliptra
                 | MessageType::TestMsgType => {
-                    self.process_first_packet(
-                        mctp_header,
-                        msg_type,
-                        &rx_buffer[payload_offset..len],
-                    );
+                    self.process_first_packet(mctp_header, msg_type, payload);
                 }
                 _ => {
                     capsule_debug!("MCTP-MUX", "Unsupported message type. Dropping packet.");
                 }
             }
         } else {
-            self.process_packet(mctp_header, &rx_buffer[payload_offset..len]);
+            self.process_packet(mctp_header, payload);
         }
         self.rx_pkt_buffer.replace(rx_buffer);
     }
@@ -394,5 +408,66 @@ impl<'a, A: Alarm<'a>, M: MCTPTransportBinding<'a>> DeferredCallClient for MuxMC
 
     fn register(&'static self) {
         self.deferred_call.register(self);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    extern crate std;
+
+    use super::*;
+
+    fn packet(header: MCTPHeader, payload: &[u8]) -> std::vec::Vec<u8> {
+        let mut packet = header.0.to_le_bytes().to_vec();
+        packet.extend_from_slice(payload);
+        packet
+    }
+
+    #[test]
+    fn parser_marks_truncated_header_invalid_version_and_missing_message_type_invalid() {
+        for malformed in [&[][..], &[1, 2, 3][..]] {
+            let (header, msg_type, offset) = parse_packet(malformed);
+            assert_eq!(header.0, 0);
+            assert_eq!(msg_type, None);
+            assert_eq!(offset, 0);
+        }
+
+        let mut invalid_version = MCTPHeader::new(8, 0x20, 1, 1, 0, 1, 0);
+        invalid_version.set_hdr_version(2);
+        let (header, msg_type, offset) = parse_packet(&packet(invalid_version, &[5]));
+        assert_eq!(header.0, 0);
+        assert_eq!(msg_type, None);
+        assert_eq!(offset, 0);
+
+        let (header, msg_type, offset) =
+            parse_packet(&packet(MCTPHeader::new(8, 0x20, 1, 1, 0, 1, 0), &[]));
+        assert_eq!(header.0, 0);
+        assert_eq!(msg_type, None);
+        assert_eq!(offset, 0);
+    }
+
+    #[test]
+    fn parser_identifies_spdm_and_secured_spdm_first_packets() {
+        for (wire_type, expected) in [
+            (MessageType::Spdm as u8, MessageType::Spdm),
+            (MessageType::SecureSpdm as u8, MessageType::SecureSpdm),
+        ] {
+            let header = MCTPHeader::new(8, 0x20, 1, 0, 3, 1, 7);
+            let (parsed, msg_type, offset) = parse_packet(&packet(header, &[wire_type, 0x12]));
+
+            assert_eq!(parsed.0, header.0);
+            assert_eq!(msg_type, Some(expected));
+            assert_eq!(offset, MCTP_HDR_SIZE);
+        }
+    }
+
+    #[test]
+    fn parser_does_not_consume_payload_from_continuation_packet() {
+        let header = MCTPHeader::new(8, 0x20, 0, 1, 1, 1, 2);
+        let (parsed, msg_type, offset) = parse_packet(&packet(header, &[0xaa, 0xbb]));
+
+        assert_eq!(parsed.0, header.0);
+        assert_eq!(msg_type, None);
+        assert_eq!(offset, MCTP_HDR_SIZE);
     }
 }

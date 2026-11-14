@@ -8,9 +8,9 @@
 use core::cell::Cell;
 
 use caliptra_mcu_boot_source_protocol::messages::{
-    BootFlags, ChunkAck, ChunkAckFlags, FinalizeRequest, ImageChunkHeader, ImageDownloadRequest,
+    ChunkAck, ChunkAckFlags, FinalizeRequest, ImageChunkHeader, ImageDownloadRequest,
     ImageMetadataRequest, ImageMetadataResponse, InitiateBootRequest, InitiateBootResponse, Status,
-    FIRMWARE_ID_CALIPTRA_FMC_RT, FIRMWARE_ID_MCU_RT, FIRMWARE_ID_SOC_MANIFEST,
+    CALIPTRA_FMC_RT_IDENTIFIER, MCU_RT_IDENTIFIER, SOC_MANIFEST_IDENTIFIER,
 };
 use caliptra_mcu_network_hil::network_mbox::{
     NetworkMailbox, NetworkMailboxClient, NetworkMboxError, NetworkMboxStatus,
@@ -58,8 +58,8 @@ pub struct NetworkImageProvider<'a, M: NetworkMailbox<'a>> {
     initiated: Cell<bool>,
     /// Whether the first ImageDownloadRequest has been sent for the current image.
     download_started: Cell<bool>,
-    /// Firmware ID of the current download.
-    firmware_id: Cell<u8>,
+    /// Identifier of the current download.
+    identifier: Cell<u32>,
     /// Buffer for the latest received chunk payload.
     chunk_buf: core::cell::UnsafeCell<[u8; 1024]>,
     /// Number of valid bytes in chunk_buf.
@@ -80,7 +80,7 @@ impl<'a, M: NetworkMailbox<'a>> NetworkImageProvider<'a, M> {
             last_seq: Cell::new(0),
             initiated: Cell::new(false),
             download_started: Cell::new(false),
-            firmware_id: Cell::new(0),
+            identifier: Cell::new(0),
             chunk_buf: core::cell::UnsafeCell::new([0u8; 1024]),
             chunk_len: Cell::new(0),
             chunk_consumed: Cell::new(0),
@@ -145,7 +145,7 @@ impl<'a, M: NetworkMailbox<'a>> NetworkImageProvider<'a, M> {
         if self.initiated.get() {
             return Ok(());
         }
-        let pkt = InitiateBootRequest::new(1, BootFlags(0));
+        let pkt = InitiateBootRequest::new(1);
         self.phase.set(Phase::WaitInitiateBootResponse);
         match self.send_with_retry(&pkt) {
             Ok(()) => {}
@@ -163,18 +163,18 @@ impl<'a, M: NetworkMailbox<'a>> NetworkImageProvider<'a, M> {
         Ok(())
     }
 
-    /// Request metadata for the given firmware ID and return the image size.
-    fn request_metadata(&self, firmware_id: u8) -> Result<u32> {
-        let pkt = ImageMetadataRequest::new(firmware_id);
+    /// Request metadata for the given identifier and return the image size.
+    fn request_metadata(&self, identifier: u32) -> Result<u32> {
+        let pkt = ImageMetadataRequest::new(identifier);
         self.phase.set(Phase::WaitMetadataResponse);
         self.send_with_retry(&pkt)?;
         self.poll_until_phase_change(Phase::WaitMetadataResponse)?;
         Ok(self.image_size.get())
     }
 
-    /// Start the image download for the current firmware_id.
+    /// Start the image download for the current identifier.
     fn start_download(&self) -> Result<()> {
-        let pkt = ImageDownloadRequest::new(self.firmware_id.get());
+        let pkt = ImageDownloadRequest::new(self.identifier.get());
         self.phase.set(Phase::WaitImageChunk);
         self.send_with_retry(&pkt)?;
         self.poll_until_phase_change(Phase::WaitImageChunk)?;
@@ -186,7 +186,7 @@ impl<'a, M: NetworkMailbox<'a>> NetworkImageProvider<'a, M> {
     fn request_next_chunk(&self) -> Result<()> {
         let mut flags = ChunkAckFlags(0);
         flags.set_ready_for_next(true);
-        let pkt = ChunkAck::new(self.firmware_id.get(), self.last_seq.get(), flags);
+        let pkt = ChunkAck::new(self.identifier.get(), self.last_seq.get(), flags);
         self.phase.set(Phase::WaitImageChunk);
         self.send_with_retry(&pkt)?;
         self.poll_until_phase_change(Phase::WaitImageChunk)?;
@@ -340,20 +340,20 @@ impl<'a, M: NetworkMailbox<'a>> NetworkMailboxClient for NetworkImageProvider<'a
     fn send_done(&self, _result: Result<()>) {}
 }
 
-/// Convert a recovery image index to a boot-source protocol firmware ID.
-fn recovery_img_index_to_firmware_id(recovery_image_index: u32) -> core::result::Result<u8, ()> {
+/// Convert a recovery image index to a boot-source protocol identifier.
+fn recovery_img_index_to_identifier(recovery_image_index: u32) -> core::result::Result<u32, ()> {
     match recovery_image_index {
-        0 => Ok(FIRMWARE_ID_CALIPTRA_FMC_RT),
-        1 => Ok(FIRMWARE_ID_SOC_MANIFEST),
-        2 => Ok(FIRMWARE_ID_MCU_RT),
+        0 => Ok(CALIPTRA_FMC_RT_IDENTIFIER),
+        1 => Ok(SOC_MANIFEST_IDENTIFIER),
+        2 => Ok(MCU_RT_IDENTIFIER),
         _ => Err(()),
     }
 }
 
 impl<'a, M: NetworkMailbox<'a>> ImageProvider for NetworkImageProvider<'a, M> {
     fn image_ready(&mut self, image_index: u32) -> core::result::Result<usize, ()> {
-        let firmware_id = recovery_img_index_to_firmware_id(image_index)?;
-        self.firmware_id.set(firmware_id);
+        let identifier = recovery_img_index_to_identifier(image_index)?;
+        self.identifier.set(identifier);
         self.bytes_received.set(0);
         self.last_seq.set(0);
         self.download_started.set(false);
@@ -362,7 +362,7 @@ impl<'a, M: NetworkMailbox<'a>> ImageProvider for NetworkImageProvider<'a, M> {
         self.had_error.set(false);
 
         self.ensure_initiated().map_err(|_| ())?;
-        let size = self.request_metadata(firmware_id).map_err(|_| ())?;
+        let size = self.request_metadata(identifier).map_err(|_| ())?;
         Ok(size as usize)
     }
 
@@ -417,8 +417,8 @@ pub struct NetworkImageProviderRef<'a, 'b, M: NetworkMailbox<'a>>(
 
 impl<'a, M: NetworkMailbox<'a>> ImageProvider for NetworkImageProviderRef<'a, '_, M> {
     fn image_ready(&mut self, image_index: u32) -> core::result::Result<usize, ()> {
-        let firmware_id = recovery_img_index_to_firmware_id(image_index)?;
-        self.0.firmware_id.set(firmware_id);
+        let identifier = recovery_img_index_to_identifier(image_index)?;
+        self.0.identifier.set(identifier);
         self.0.bytes_received.set(0);
         self.0.last_seq.set(0);
         self.0.download_started.set(false);
@@ -427,7 +427,7 @@ impl<'a, M: NetworkMailbox<'a>> ImageProvider for NetworkImageProviderRef<'a, '_
         self.0.had_error.set(false);
 
         self.0.ensure_initiated().map_err(|_| ())?;
-        let size = self.0.request_metadata(firmware_id).map_err(|_| ())?;
+        let size = self.0.request_metadata(identifier).map_err(|_| ())?;
         Ok(size as usize)
     }
 

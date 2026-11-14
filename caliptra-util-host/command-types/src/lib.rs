@@ -51,6 +51,9 @@ pub enum CaliptraCommandId {
     // Device Info Commands (0x0001-0x000F)
     GetFirmwareVersion = 0x0001,
     GetDeviceCapabilities = 0x0002,
+    FieldEntropyStatus = 0x0003,
+    VendorPkHashStatus = 0x0004,
+    HekStatus = 0x0005,
 
     // Certificate Commands (0x1001-0x101F)
     GetIdevidCert = 0x1001,
@@ -60,10 +63,15 @@ pub enum CaliptraCommandId {
     ExportAttestedCsr = 0x1005,
     ExportIdevidCsr = 0x1006,
     GetAttestation = 0x1007,
+    GetCertChainInfo = 0x1008,
     GetCertChain = 0x1010,
     StoreCertificate = 0x1011,
     GetCertificate = 0x1012, // Generic get certificate
     SetCertificate = 0x1013, // Generic set certificate
+    SetCertChain = 0x1014,
+    ProvisionIdevCert = 0x1015,
+    DpeSignerContextCert = 0x1016,
+    DpeSignerContextSign = 0x1017,
 
     // Hash Commands (0x2001-0x2003)
     HashInit = 0x2001,
@@ -127,7 +135,7 @@ pub enum CaliptraCommandId {
     GetAuthCmdChallenge = 0x8010,
     FeProg = 0x8011,
     ProvisionVendorPkHash = 0x8012,
-    FuseIncreaseCaliptraMinSvn = 0x8013,
+    FuseIncreaseMinSvn = 0x8013,
     FuseRevokeVendorPubKey = 0x8014,
     FuseRevokeVendorPkHash = 0x8015,
     FuseLockPartition = 0x8016,
@@ -135,7 +143,7 @@ pub enum CaliptraCommandId {
     OcpLockRotateHek = 0x8018,
     OcpLockSetPermaHek = 0x8019,
 
-    // Device Ownership Transfer Commands (0x8020-0x8029)
+    // Device Ownership Transfer Commands (0x8020-0x802A)
     DotLock = 0x8020,
     DotDisable = 0x8021,
     DotUnlockChallenge = 0x8022,
@@ -146,6 +154,7 @@ pub enum CaliptraCommandId {
     DotRecovery = 0x8027,
     DotOverrideChallenge = 0x8028,
     DotOverride = 0x8029,
+    DotEnable = 0x802A,
 }
 
 /// Common response header for all commands

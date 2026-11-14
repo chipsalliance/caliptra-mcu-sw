@@ -333,11 +333,10 @@ mod test {
         let sek_state = SekState::Programmed;
 
         let req = GetOcpLockEpochKeyReportReq {
-            hdr: MailboxReqHeader::default(),
             nonce,
             sek_state: sek_state as u16,
-            reserved: 0,
             algorithm: algo,
+            ..Default::default()
         };
         let resp = hw
             .mailbox_execute_req(req)

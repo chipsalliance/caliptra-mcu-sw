@@ -7,6 +7,13 @@ use caliptra_mcu_libtock_platform::allow_ro::AllowRo;
 use caliptra_mcu_libtock_platform::share;
 use caliptra_mcu_libtock_platform::{DefaultConfig, ErrorCode, Syscalls};
 use core::marker::PhantomData;
+use embassy_sync::{blocking_mutex::raw::CriticalSectionRawMutex, mutex::Mutex};
+
+/// Serializes physical SVN writes and firmware activation within this process.
+///
+/// Acquire before any mailbox lock and retain across asynchronous I/O until
+/// the complete fuse update or activation transaction finishes. Non-reentrant.
+pub static SVN_UPDATE_LOCK: Mutex<CriticalSectionRawMutex, ()> = Mutex::new(());
 
 pub const VENDOR_PK_HASH_SIZE: usize =
     caliptra_mcu_registers_generated::fuses::OTP_CPTRA_CORE_VENDOR_PK_HASH_0.byte_size;
@@ -76,6 +83,13 @@ impl<S: Syscalls> Otp<S> {
             .to_result::<u32, ErrorCode>()
     }
 
+    pub fn anti_rollback_disabled(&self) -> Result<bool, ErrorCode> {
+        let entry = caliptra_mcu_registers_generated::fuses::OTP_CPTRA_CORE_ANTI_ROLLBACK_DISABLE;
+        self.read_raw((entry.byte_offset / 4) as u32, 0)
+            .map(|value| (value & 1) != 0)
+    }
+
+    /// Callers updating SVN floors must hold [`SVN_UPDATE_LOCK`].
     pub fn write(&self, reg_offset: u32, index: u32, value: u32) -> Result<(), ErrorCode> {
         S::command(self.driver_num, cmd::OTP_SET_REGISTER, reg_offset, index)
             .to_result::<(), ErrorCode>()?;
@@ -86,6 +100,9 @@ impl<S: Syscalls> Otp<S> {
     ///
     /// Only bits specified with `mask` are written.
     /// Bits outside of `mask` are ignored.
+    ///
+    /// Callers writing SVN floors or the anti-rollback disable fuse must hold
+    /// [`SVN_UPDATE_LOCK`] for the complete transaction.
     ///
     /// # Arguments
     /// - `word_addr`: word address to write to
@@ -100,6 +117,12 @@ impl<S: Syscalls> Otp<S> {
             .to_result::<(), ErrorCode>()?;
 
         S::command(self.driver_num, cmd::OTP_WRITE_RAW, data, mask).to_result::<(), ErrorCode>()
+    }
+
+    /// Mark all four field-entropy slots as zeroized.
+    pub fn mark_field_entropy_zeroized(&self) -> Result<(), ErrorCode> {
+        S::command(self.driver_num, cmd::OTP_MARK_FIELD_ENTROPY_ZEROIZED, 0, 0)
+            .to_result::<(), ErrorCode>()
     }
 
     /// Check whether a given vendor pk hash slot is marked valid (has not been marked invalid).
@@ -132,6 +155,31 @@ impl<S: Syscalls> Otp<S> {
         }
 
         Ok(fuse_value)
+    }
+
+    pub fn vendor_pk_hash_status(&self) -> Result<(u32, [u8; MAX_NUM_VENDOR_PK_HASH]), ErrorCode> {
+        let mut used_slots_bitmap = 0u32;
+        let mut key_types = [0u8; MAX_NUM_VENDOR_PK_HASH];
+
+        for (slot, key_type) in key_types.iter_mut().enumerate() {
+            let reg = reg::vendor_pk_hash_reg_by_slot(slot as u32).ok_or(ErrorCode::Invalid)?;
+            let mut used = false;
+            for word in 0..VENDOR_PK_HASH_SIZE / core::mem::size_of::<u32>() {
+                if self.read(reg, word as u32)? != 0 {
+                    used = true;
+                    break;
+                }
+            }
+            if used {
+                used_slots_bitmap |= 1 << slot;
+                *key_type = self
+                    .read(reg::VENDOR_PQC_KEY_TYPE, slot as u32)?
+                    .try_into()
+                    .map_err(|_| ErrorCode::Fail)?;
+            }
+        }
+
+        Ok((used_slots_bitmap, key_types))
     }
 
     /// Revoke an individual key within a PK hash slot
@@ -326,12 +374,46 @@ impl<S: Syscalls> Otp<S> {
             .to_result::<(u32, u32), ErrorCode>()
     }
 
+    pub fn hek_status(&self) -> Result<(u32, u32), ErrorCode> {
+        let (total_slots, _) = self.get_hek_metadata()?;
+        if total_slots as usize > reg::LOCK_HEK_PROD_ALL.len() {
+            return Err(ErrorCode::Invalid);
+        }
+
+        let mut used_slots_bitmap = 0;
+        for (slot, reg) in reg::LOCK_HEK_PROD_ALL[..total_slots as usize]
+            .iter()
+            .enumerate()
+        {
+            for word in 0..12 {
+                if self.read(*reg, word)? != 0 {
+                    used_slots_bitmap |= 1 << slot;
+                    break;
+                }
+            }
+        }
+
+        Ok((used_slots_bitmap, total_slots))
+    }
+
     pub fn rotate_hek(&self, slot: u32, seed: &[u8; 32]) -> Result<(), ErrorCode> {
         share::scope::<AllowRo<S, OTP_DRIVER_NUM, { ro_allow::SEED }>, _, _>(|allow_ro| {
             S::allow_ro::<DefaultConfig, OTP_DRIVER_NUM, { ro_allow::SEED }>(allow_ro, seed)?;
 
             S::command(self.driver_num, cmd::OTP_ROTATE_HEK, slot, 0).to_result::<(), ErrorCode>()
         })
+    }
+
+    pub fn program_hek(&self, slot: u32, seed: &[u8; 32]) -> Result<(), ErrorCode> {
+        share::scope::<AllowRo<S, OTP_DRIVER_NUM, { ro_allow::SEED }>, _, _>(|allow_ro| {
+            S::allow_ro::<DefaultConfig, OTP_DRIVER_NUM, { ro_allow::SEED }>(allow_ro, seed)?;
+
+            S::command(self.driver_num, cmd::OTP_PROGRAM_HEK, slot, 0).to_result::<(), ErrorCode>()
+        })
+    }
+
+    pub fn zero_hek(&self, slot: u32) -> Result<(), ErrorCode> {
+        S::command(self.driver_num, cmd::OTP_ZERO_HEK, slot, 0).to_result::<(), ErrorCode>()
     }
 
     pub fn is_hek_perma_set(&self) -> Result<bool, ErrorCode> {
@@ -359,6 +441,9 @@ pub mod cmd {
     pub const OTP_LOCK_PARTITION: u32 = 6;
     pub const OTP_GET_HEK_METADATA: u32 = 8; // Returns (total_slots, active_slot)
     pub const OTP_ROTATE_HEK: u32 = 9;
+    pub const OTP_PROGRAM_HEK: u32 = 10;
+    pub const OTP_ZERO_HEK: u32 = 11;
+    pub const OTP_MARK_FIELD_ENTROPY_ZEROIZED: u32 = 12;
 }
 
 mod ro_allow {
@@ -446,4 +531,47 @@ pub mod reg {
     pub const FUSE_WRITE: u32 = 31;
     pub const FUSE_LOCK_PARTITION: u32 = 32;
     pub const PERMA_HEK_EN: u32 = 33;
+    pub const FIELD_ENTROPY_STATE: u32 = 34;
+    pub const VENDOR_PQC_KEY_TYPE: u32 = 35;
+    pub const SOC_MANIFEST_SVN: u32 = 36;
+    pub const SOC_MANIFEST_MAX_SVN: u32 = 37;
+    /// Owner SoC Manifest SVN words; index must be 0 or 1.
+    pub const OWNER_SOC_MANIFEST_MIN_SVN: u32 = 38;
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn anti_rollback_disabled_reads_physical_fuse_and_preserves_errors() {
+        use caliptra_mcu_libtock_unittest::{command_return, fake, ExpectedSyscall};
+
+        let kernel = fake::Kernel::new();
+        let otp = Otp::<fake::Syscalls>::new();
+        let entry = caliptra_mcu_registers_generated::fuses::OTP_CPTRA_CORE_ANTI_ROLLBACK_DISABLE;
+        for (read_result, expected) in [
+            (Ok(0), Ok(false)),
+            (Ok(1), Ok(true)),
+            (Ok(2), Ok(false)),
+            (Ok(4), Ok(false)),
+            (Ok(7), Ok(true)),
+            (Ok(0x8000_0000), Ok(false)),
+            (Ok(0x8000_0001), Ok(true)),
+            (Err(ErrorCode::Fail), Err(ErrorCode::Fail)),
+            (Err(ErrorCode::NoDevice), Err(ErrorCode::NoDevice)),
+        ] {
+            kernel.add_expected_syscall(ExpectedSyscall::Command {
+                driver_id: OTP_DRIVER_NUM,
+                command_id: cmd::OTP_READ_RAW,
+                argument0: (entry.byte_offset / 4) as u32,
+                argument1: 0,
+                override_return: Some(match read_result {
+                    Ok(value) => command_return::success_u32(value),
+                    Err(error) => command_return::failure(error),
+                }),
+            });
+            assert_eq!(otp.anti_rollback_disabled(), expected);
+        }
+    }
 }

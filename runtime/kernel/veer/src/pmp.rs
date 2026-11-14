@@ -367,9 +367,9 @@ impl VeeRProtectionMMLEPMP {
         // we re-check below as defence in depth.
         let actual_kernel_entries = pmp_regions.total_entries();
 
-        // Ensure we don't exceed available PMP entries (reserve MPU_REGIONS*2 for user MPU)
-        if actual_kernel_entries > MAX_KERNEL_ENTRIES {
-            return Err(()); // Too many kernel entries
+        // Check the region storage bound and PMP entry budget (reserve MPU_REGIONS*2 for user MPU).
+        if actual_kernel_entries > MAX_KERNEL_ENTRIES || pmp_regions.count() > MAX_KERNEL_REGIONS {
+            return Err(());
         }
 
         // Calculate starting entry for kernel regions (at the end of PMP entries)

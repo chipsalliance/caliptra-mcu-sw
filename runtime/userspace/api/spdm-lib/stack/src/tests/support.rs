@@ -5,9 +5,9 @@
 extern crate std;
 
 use caliptra_mcu_spdm_codec::{
-    AsymAlgos, CapFlags, ChunkGetReqBody, ChunkResponseBody, HashAlgos, ReqRespCode, SpdmMsgHdrPdu,
-    SpdmVersion, WireWriter, AES_256_GCM_TAG_SIZE, CHUNK_ATTR_LAST_CHUNK,
-    LARGE_RESPONSE_SIZE_FIELD_SIZE, SECURED_MSG_HDR_SIZE,
+    AsymAlgos, CapFlags, ChunkGetReqBodyV13, ChunkGetReqBodyV14, ChunkResponseBody, HashAlgos,
+    ReqRespCode, SpdmMsgHdrPdu, SpdmVersion, WireWriter, AES_256_GCM_TAG_SIZE,
+    CHUNK_ATTR_LAST_CHUNK, LARGE_RESPONSE_SIZE_FIELD_SIZE, SECURED_MSG_HDR_SIZE,
 };
 use caliptra_mcu_spdm_traits::{
     MeasurementInfo, SigningInput, SpdmPalAlloc, SpdmPalAsymAlgo, SpdmPalCertStore, SpdmPalHash,
@@ -33,6 +33,7 @@ pub const TEST_CERT_CHAIN: &[u8] = &[0x30, 0x03, 1, 2, 3, 0x30, 0x01, 4];
 #[derive(Clone)]
 pub struct TestHashState {
     digest: [u8; SHA384_DIGEST_SIZE],
+    pub bytes: Vec<u8>,
 }
 
 pub struct TestIo {
@@ -100,48 +101,87 @@ impl<T> DerefMut for TestBox<'_, T> {
 }
 
 pub struct TestPal {
+    pub header_size: usize,
+    pub send_len_alignment: usize,
     pub mtu: usize,
     pub large_buffered_msg_capacity: usize,
     pub max_inbound_spdm_request_size: usize,
     pub supported_slots: u8,
     pub provisioned_slots: u8,
+    pub mldsa_provisioned_slots: Option<u8>,
     pub authorized: bool,
     pub validate_error: Option<McuErrorCode>,
     pub write_error: Option<McuErrorCode>,
     pub erase_error: Option<McuErrorCode>,
     pub typed_alloc_error: Option<McuErrorCode>,
+    pub byte_alloc_shortfall: usize,
+    pub cert_read_len_override: Option<usize>,
     pub cert_chain: &'static [u8],
     pub measurement_info: &'static [MeasurementInfo],
     pub measurement_value: &'static [u8],
     pub op: RefCell<Option<StoreOp>>,
     pub stream_cert: RefCell<Vec<u8>>,
     pub stream_aborts: Cell<usize>,
+    /// Algorithm the most recent cert-chain write was routed to.
+    pub write_algo: Cell<Option<SpdmPalAsymAlgo>>,
+    /// Algorithm passed to the most recent measurement value retrieval.
+    pub meas_algo: Cell<Option<SpdmPalAsymAlgo>>,
+    pub sign_ops: RefCell<Vec<RecordedSign>>,
+    pub hash_finishes: RefCell<Vec<Vec<u8>>>,
+    pub aead_decrypt_error: Cell<Option<McuErrorCode>>,
+    pub last_aead_decrypt_sequence: Cell<Option<u64>>,
+}
+
+/// Signing input captured by [`TestPal::sign`], owned so tests can assert on it
+/// after the borrow ends.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum RecordedSigningInput {
+    EccP384Digest(Vec<u8>),
+    Mldsa87Message { context: Vec<u8>, message: Vec<u8> },
+    Mldsa87Mu(Vec<u8>),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct RecordedSign {
+    pub input: RecordedSigningInput,
+    pub sig_len: usize,
 }
 
 impl Default for TestPal {
     fn default() -> Self {
         Self {
+            header_size: 0,
+            send_len_alignment: 1,
             mtu: 1024,
             large_buffered_msg_capacity: 1024,
             max_inbound_spdm_request_size: 1024,
             supported_slots: u8::MAX,
             provisioned_slots: 1,
+            mldsa_provisioned_slots: None,
             authorized: true,
             validate_error: None,
             write_error: None,
             erase_error: None,
             typed_alloc_error: None,
+            byte_alloc_shortfall: 0,
+            cert_read_len_override: None,
             cert_chain: TEST_CERT_CHAIN,
             measurement_info: &[],
             measurement_value: &[],
             op: RefCell::new(None),
             stream_cert: RefCell::new(Vec::new()),
             stream_aborts: Cell::new(0),
+            write_algo: Cell::new(None),
+            meas_algo: Cell::new(None),
+            sign_ops: RefCell::new(Vec::new()),
+            hash_finishes: RefCell::new(Vec::new()),
+            aead_decrypt_error: Cell::new(None),
+            last_aead_decrypt_sequence: Cell::new(None),
         }
     }
 }
 
-impl mcu_caliptra_api::ApiAlloc for TestPal {
+impl mcu_caliptra_api::ScratchAlloc for TestPal {
     type Buf<'a>
         = Vec<u8>
     where
@@ -152,10 +192,10 @@ impl mcu_caliptra_api::ApiAlloc for TestPal {
     }
 }
 
-impl mcu_caliptra_api::ApiAllocPool for TestPal {
-    type Pool = Self;
+impl mcu_caliptra_api::ScratchAllocProvider for TestPal {
+    type Alloc = Self;
 
-    fn pool(&self) -> &Self::Pool {
+    fn allocator(&self) -> &Self::Alloc {
         self
     }
 }
@@ -183,7 +223,7 @@ impl SpdmPalAlloc for TestPal {
     }
 
     fn alloc_bytes(&self, _io: &impl SpdmPalIo, len: usize) -> McuResult<Self::Bytes<'_>> {
-        Ok(vec![0u8; len])
+        Ok(vec![0u8; len.saturating_sub(self.byte_alloc_shortfall)])
     }
 
     fn large_buffered_msg_capacity(&self) -> usize {
@@ -221,7 +261,11 @@ impl SpdmPalIoTransport for TestPal {
     }
 
     fn header_size(&self) -> usize {
-        0
+        self.header_size
+    }
+
+    fn send_len_alignment(&self) -> usize {
+        self.send_len_alignment
     }
 
     fn mtu(&self) -> usize {
@@ -253,6 +297,7 @@ impl SpdmPalHash for TestPal {
     ) -> McuResult<Self::State> {
         Ok(TestHashState {
             digest: test_digest(seed),
+            bytes: seed.to_vec(),
         })
     }
 
@@ -263,6 +308,7 @@ impl SpdmPalHash for TestPal {
         data: &[u8],
     ) -> McuResult<()> {
         state.digest = test_digest(data);
+        state.bytes.extend_from_slice(data);
         Ok(())
     }
 
@@ -276,14 +322,20 @@ impl SpdmPalHash for TestPal {
         state: &mut Self::State,
         out: &mut [u8],
     ) -> McuResult<()> {
+        self.hash_finishes.borrow_mut().push(state.bytes.clone());
         out[..SHA384_DIGEST_SIZE].copy_from_slice(&state.digest);
         Ok(())
     }
 }
 
 impl SpdmPalCertStore for TestPal {
-    fn provisioned_slots(&self) -> u8 {
-        self.provisioned_slots
+    fn provisioned_slots(&self, algo: SpdmPalAsymAlgo) -> u8 {
+        match algo {
+            SpdmPalAsymAlgo::EccP384 => self.provisioned_slots,
+            SpdmPalAsymAlgo::MlDsa87 => self
+                .mldsa_provisioned_slots
+                .unwrap_or(self.provisioned_slots),
+        }
     }
 
     fn supported_slots(&self) -> u8 {
@@ -360,17 +412,38 @@ impl SpdmPalCertStore for TestPal {
         let end = (offset + dst.len()).min(self.cert_chain.len());
         let src = &self.cert_chain[offset..end];
         dst[..src.len()].copy_from_slice(src);
-        Ok(src.len())
+        Ok(self.cert_read_len_override.unwrap_or(src.len()))
     }
 
     async fn sign(
         &self,
         _io: &Self::Io<'_>,
         _slot: u8,
-        _algo: SpdmPalAsymAlgo,
-        _signing_input: SigningInput<'_>,
+        signing_input: SigningInput<'_>,
         signature: &mut [u8],
     ) -> McuResult<usize> {
+        let input = match signing_input {
+            SigningInput::EccP384Digest(digest) => {
+                RecordedSigningInput::EccP384Digest(digest.to_vec())
+            }
+            SigningInput::Mldsa87Message {
+                context,
+                prefix,
+                hash,
+            } => {
+                let mut message = prefix.to_vec();
+                message.extend_from_slice(hash);
+                RecordedSigningInput::Mldsa87Message {
+                    context: context.to_vec(),
+                    message,
+                }
+            }
+            SigningInput::Mldsa87Mu(mu) => RecordedSigningInput::Mldsa87Mu(mu.to_vec()),
+        };
+        self.sign_ops.borrow_mut().push(RecordedSign {
+            input,
+            sig_len: signature.len(),
+        });
         signature.fill(0x77);
         Ok(signature.len())
     }
@@ -380,7 +453,7 @@ impl SpdmPalCertStore for TestPal {
         &self,
         _io: &Self::Io<'_>,
         slot: u8,
-        _algo: SpdmPalAsymAlgo,
+        algo: SpdmPalAsymAlgo,
         key_pair_id: u8,
         cert_model: u8,
         root_hash: &[u8; SHA384_DIGEST_SIZE],
@@ -389,6 +462,7 @@ impl SpdmPalCertStore for TestPal {
         if let Some(err) = self.write_error {
             return Err(err);
         }
+        self.write_algo.set(Some(algo));
         self.op.replace(Some(StoreOp::Write {
             slot,
             key_pair_id,
@@ -492,21 +566,16 @@ impl SpdmPalCertStore for TestPal {
         Ok(())
     }
 
-    fn key_pair_id(&self, _slot: u8) -> Option<u8> {
+    fn key_pair_id(&self, _slot: u8, _algo: SpdmPalAsymAlgo) -> Option<u8> {
         None
     }
 
-    fn cert_info(&self, _slot: u8) -> Option<u8> {
+    fn cert_info(&self, _slot: u8, _algo: SpdmPalAsymAlgo) -> Option<u8> {
         None
     }
 
-    fn key_usage_mask(&self, _slot: u8) -> Option<u16> {
+    fn key_usage_mask(&self, _slot: u8, _algo: SpdmPalAsymAlgo) -> Option<u16> {
         None
-    }
-
-    async fn generate_nonce(&self, _io: &Self::Io<'_>, out: &mut [u8]) -> McuResult<()> {
-        out.fill(0xA5);
-        Ok(())
     }
 }
 
@@ -520,8 +589,10 @@ impl SpdmPalMeasurements for TestPal {
         _io: &Self::Io<'_>,
         index: u8,
         _nonce: Option<&[u8; SPDM_NONCE_LEN]>,
+        asym_algo: SpdmPalAsymAlgo,
         out: &mut [u8],
     ) -> McuResult<usize> {
+        self.meas_algo.set(Some(asym_algo));
         if !self.measurement_info.iter().any(|info| info.index == index)
             || self.measurement_value.len() > out.len()
         {
@@ -543,8 +614,9 @@ impl SpdmPalSessionCrypto for TestPal {
         &self,
         _io: &impl SpdmPalIo,
         _context: &mut [u8],
-        _exchange_data: &mut [u8],
+        exchange_data: &mut [u8],
     ) -> McuResult<()> {
+        exchange_data.fill(0x4d);
         Ok(())
     }
 
@@ -620,20 +692,39 @@ impl SpdmPalSessionCrypto for TestPal {
         _io: &impl SpdmPalIo,
         _key: &Self::Key,
         _spdm_version: u8,
-        _seq: u64,
+        seq: u64,
         _aad: &[u8],
         ciphertext: &[u8],
         _tag: &[u8; 16],
         plaintext: &mut [u8],
     ) -> McuResult<usize> {
+        self.last_aead_decrypt_sequence.set(Some(seq));
+        if let Some(error) = self.aead_decrypt_error.get() {
+            return Err(error);
+        }
         plaintext[..ciphertext.len()].copy_from_slice(ciphertext);
         Ok(ciphertext.len())
+    }
+
+    async fn mlkem_encapsulate(
+        &self,
+        _io: &impl SpdmPalIo,
+        _encaps_key: &[u8],
+        ciphertext: &mut [u8],
+    ) -> McuResult<Self::Key> {
+        ciphertext.fill(0x6b);
+        Ok(1)
     }
 }
 
 impl caliptra_mcu_spdm_traits::SpdmPal for TestPal {
     fn max_inbound_spdm_request_size(&self) -> usize {
         self.max_inbound_spdm_request_size
+    }
+
+    async fn generate_nonce(&self, _io: &Self::Io<'_>, out: &mut [u8]) -> McuResult<()> {
+        out.fill(0xA5);
+        Ok(())
     }
 }
 
@@ -763,7 +854,7 @@ pub fn handshake_session(
         .create_session(0x1234, SpdmVersion::V12, |info| pal.alloc_persistent(info))
         .unwrap();
     let session = sessions.find_mut(session_id).unwrap();
-    session.key_schedule.set_dhe_secret(1);
+    session.key_schedule.set_shared_secret(1);
     block_on(session.key_schedule.generate_handshake_keys(
         pal,
         &empty_io,
@@ -805,21 +896,33 @@ pub async fn drain_chunked_response(
     let mut reassembled = Vec::new();
 
     loop {
-        let mut chunk_get_buf = [0u8; SpdmMsgHdrPdu::SIZE + ChunkGetReqBody::SIZE];
+        let mut chunk_get_buf = [0u8; SpdmMsgHdrPdu::SIZE + ChunkGetReqBodyV14::SIZE];
         let mut writer = WireWriter::new(&mut chunk_get_buf);
         writer
             .write(&SpdmMsgHdrPdu::new(state.version, ReqRespCode::CHUNK_GET))
             .map_err(|_| crate::error::SPDM_INVALID_REQUEST)?;
-        writer
-            .write(&ChunkGetReqBody {
-                param1: 0,
-                handle,
-                chunk_seq_num: zerocopy::little_endian::U16::new(chunk_seq_num),
-            })
-            .map_err(|_| crate::error::SPDM_INVALID_REQUEST)?;
+
+        if state.version <= SpdmVersion::V13 {
+            writer
+                .write(&ChunkGetReqBodyV13 {
+                    param1: 0,
+                    handle,
+                    chunk_seq_num: zerocopy::little_endian::U16::new(chunk_seq_num),
+                })
+                .map_err(|_| crate::error::SPDM_INVALID_REQUEST)?;
+        } else {
+            writer
+                .write(&ChunkGetReqBodyV14 {
+                    param1: 0,
+                    handle,
+                    chunk_seq_num: zerocopy::little_endian::U32::new(chunk_seq_num as u32),
+                })
+                .map_err(|_| crate::error::SPDM_INVALID_REQUEST)?;
+        }
 
         let chunk_rsp = crate::chunk::handle_chunk_get(state, pal, io, &chunk_get_buf).await?;
         let head = pal.header_size();
+        assert_eq!(chunk_rsp.len() % pal.send_len_alignment(), 0);
         let spdm_msg = &chunk_rsp[head..];
 
         let (hdr, rest) = SpdmMsgHdrPdu::ref_from_prefix(spdm_msg)
@@ -838,7 +941,9 @@ pub async fn drain_chunked_response(
         } else {
             chunk_data
         };
-        reassembled.extend_from_slice(payload);
+        let chunk_len = body.chunk_size.get() as usize;
+        assert!(payload[chunk_len..].iter().all(|&byte| byte == 0));
+        reassembled.extend_from_slice(&payload[..chunk_len]);
 
         let is_last = (body.chunk_sender_attr & CHUNK_ATTR_LAST_CHUNK) != 0;
         if is_last {

@@ -3,20 +3,22 @@
 //! Fuse Commands
 //!
 //! Command structures for fuse operations including authorized commands
-//! that require a dual asymmetric challenge-response.
+//! that require manifest-backed hybrid command authorization.
 //!
 //! ## Authorization Flow
 //!
 //! Authorized commands (e.g., `FeProg`) require the caller to:
-//! 1. Request a challenge nonce via `GetAuthCmdChallenge`.
-//! 2. Build the pre-image `cmd_id(BE) || cmd_body || nonce` and sign it with
+//! 1. Obtain a live nonce for Challenge-bound mode, or use zeroes for Offline mode.
+//! 2. Build `cmd_id(BE) || cmd_body || metadata || nonce` and sign it with
 //!    both ECC P-384 (over `SHA-384(pre-image)`) and ML-DSA-87 (over
-//!    `SHA-512(pre-image)`), mirroring the prod-debug-unlock idiom.
-//! 3. Send the command with the hybrid signature and the vendor public keys
-//!    appended (the device holds only their SHA-384 anchor).
+//!    `SHA-512(pre-image)`).
+//! 3. Append the versioned Authorization Block. Its metadata, nonce, public keys,
+//!    and signatures must match the signed command and configured manifest IME.
 
 use crate::{CaliptraCommandId, CommandRequest, CommandResponse, CommonResponse};
+pub use caliptra_mcu_mbox_common::authorization::{AuthorizationMetadata, CommandAuthority};
 use caliptra_mcu_mbox_common::messages::HybridSignature;
+pub use caliptra_mcu_mbox_common::messages::SvnTarget;
 use zerocopy::{FromBytes, Immutable, IntoBytes};
 
 /// Size of the authorization challenge nonce in bytes.
@@ -34,7 +36,7 @@ pub const AUTH_PUB_MLDSA_SIZE: usize = 2592;
 /// Canonical command identifier for the GET_AUTH_CMD_CHALLENGE command used in sub-command dispatch.
 ///
 /// This is the MCU mailbox FOURCC for `MC_GET_AUTH_CMD_CHALLENGE` (`0x4D41_4343` = "MACC").
-/// Used as the `sub_cmd_id` in the SPDM VDM AuthorizedCommand (`0x12`) dispatch.
+/// Used as the target ID in the MCI and SPDM VDM AuthorizedCommand (`0x12`) dispatch.
 pub const MC_GET_AUTH_CMD_CHALLENGE_CANONICAL_CMD_ID: u32 = 0x4D41_4343;
 
 /// Canonical command identifier for the FE_PROG command used in challenge signing.
@@ -46,11 +48,12 @@ pub const MC_FE_PROG_CANONICAL_CMD_ID: u32 = 0x4D43_4650;
 
 /// Canonical FOURCC command identifiers used for authorized fuse operations.
 pub const MC_PROVISION_VENDOR_PK_HASH_CANONICAL_CMD_ID: u32 = 0x5056_504B;
-pub const MC_FUSE_INCREASE_CALIPTRA_MIN_SVN_CANONICAL_CMD_ID: u32 = 0x4D43_4D53;
+pub const MC_FUSE_INCREASE_MIN_SVN_CANONICAL_CMD_ID: u32 = 0x4D43_4D53;
 pub const MC_FUSE_REVOKE_VENDOR_PUB_KEY_CANONICAL_CMD_ID: u32 = 0x4D52_564B;
 pub const MC_FUSE_REVOKE_VENDOR_PK_HASH_CANONICAL_CMD_ID: u32 = 0x5256_4B48;
 pub const MC_FUSE_LOCK_PARTITION_CANONICAL_CMD_ID: u32 = 0x4946_504B;
 pub const MC_PROVISION_OWNER_PK_HASH_CANONICAL_CMD_ID: u32 = 0x504F_504B;
+pub const OCP_LOCK_FAMILY_ID: u32 = 0x0000_0013;
 pub const MC_OCP_LOCK_ROTATE_HEK_CANONICAL_CMD_ID: u32 = 0x4F4C_5248;
 pub const MC_OCP_LOCK_SET_PERMA_HEK_CANONICAL_CMD_ID: u32 = 0x4F4C_5350;
 
@@ -59,13 +62,10 @@ pub const MC_OCP_LOCK_SET_PERMA_HEK_CANONICAL_CMD_ID: u32 = 0x4F4C_5350;
 /// Request a challenge nonce for authorizing privileged commands.
 ///
 /// The returned challenge must be bound into the signed pre-image
-/// (`cmd_id(BE) || cmd_body || nonce`) for the subsequent authorized command.
+/// (`cmd_id(BE) || cmd_body || metadata || nonce`) for the subsequent command.
 #[repr(C)]
 #[derive(Debug, Clone, Default, IntoBytes, FromBytes, Immutable)]
-pub struct GetAuthCmdChallengeRequest {
-    pub flags: u32,
-    pub reserved: u32,
-}
+pub struct GetAuthCmdChallengeRequest;
 
 /// Response containing the challenge nonce.
 #[repr(C)]
@@ -97,22 +97,42 @@ impl CommandResponse for GetAuthCmdChallengeResponse {}
 
 /// Request to program field entropy for a given OTP partition.
 ///
-/// This is an authorized command — the caller must first obtain a challenge
-/// via `GetAuthCmdChallenge`, build the pre-image `cmd_id(BE) || partition(LE) ||
-/// nonce`, sign it with ECC P-384 (over `SHA-384(pre-image)`) and ML-DSA-87
-/// (over `SHA-512(pre-image)`), and place the resulting signatures in `sig`.
+/// This is an authorized command. For Challenge-bound mode, first obtain a live
+/// 48-byte nonce via `GetAuthCmdChallenge`. For Offline mode, use 48 zero bytes;
+/// Offline authorization intentionally permits replay. Both modes require the
+/// same manifest-backed key and signature checks.
 ///
-/// The public keys travel on the wire (the device holds only their SHA-384
-/// anchor) and the `nonce` echoes the challenge back (prod-debug-unlock idiom):
-/// the device compares it to its stored one-time challenge, then rebuilds the
-/// pre-image from this wire copy. Canonical wire layout (after the transport
-/// header): `partition(4) | nonce(48) | ecc_pub_x(48) | ecc_pub_y(48) | mldsa_pub(2592) | sig`.
-/// The signatures come LAST (nonce + public keys precede them), matching the
-/// caliptra-sw `ProductionAuthDebugUnlockToken` field order.
+/// Build the pre-image `cmd_id(BE) || partition(LE) || metadata || nonce`,
+/// using `MC_FE_PROG_CANONICAL_CMD_ID` as `cmd_id`. Metadata contains
+/// `version(u32 LE) || authority(u32 LE) || soc_ueid[16]`; these fields are
+/// signed along with the partition and nonce.
+///
+/// Sign with ECC P-384 over `SHA-384(pre-image)` and pure ML-DSA-87 with an
+/// empty context, using the 64-byte `SHA-512(pre-image)` digest as its message.
+/// Place the resulting signatures in `sig`.
+///
+/// The public keys travel on the wire. The device hashes them using the
+/// canonical hybrid-key encoding and compares that digest with the selected
+/// authenticated, active manifest IME before accepting the signatures.
+///
+/// A Challenge-bound verification attempt consumes the stored one-time
+/// challenge before key/signature checks; a failed attempt requires a fresh
+/// challenge. Offline requests do not consume an outstanding challenge.
+///
+/// Command-specific wire layout, excluding transport/wrapper framing and the
+/// target command ID:
+///
+/// ```text
+/// partition(4) | metadata(24) | nonce(48) | ecc_pub_x(48) |
+/// ecc_pub_y(48) | mldsa_pub(2592) | sig
+/// ```
+///
+/// The signatures come LAST, after the metadata, nonce, and public keys.
 #[repr(C)]
 #[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
 pub struct FeProgRequest {
     pub partition: u32,
+    pub metadata: AuthorizationMetadata,
     /// Freshness nonce echoed back from `GetAuthCmdChallenge`.
     pub nonce: [u8; AUTH_CMD_CHALLENGE_SIZE],
     /// ECC P-384 verifier public key X coordinate (hashed into the anchor).
@@ -130,6 +150,7 @@ impl Default for FeProgRequest {
     fn default() -> Self {
         Self {
             partition: 0,
+            metadata: AuthorizationMetadata::default(),
             nonce: [0u8; AUTH_CMD_CHALLENGE_SIZE],
             ecc_pub_x: [0u8; AUTH_PUB_ECC_COORD_SIZE],
             ecc_pub_y: [0u8; AUTH_PUB_ECC_COORD_SIZE],
@@ -139,17 +160,21 @@ impl Default for FeProgRequest {
     }
 }
 
-// Canonical wire layout: partition(4) | nonce(48) | ecc_pub_x(48) | ecc_pub_y(48) | mldsa_pub(2592) | sig
+// Canonical layout: partition(4) | metadata(24) | nonce(48) | ECC key(96) | ML-DSA key(2592) | sig.
 const _: () = assert!(
     core::mem::size_of::<FeProgRequest>()
         == core::mem::size_of::<u32>()
+            + core::mem::size_of::<AuthorizationMetadata>()
             + AUTH_CMD_CHALLENGE_SIZE
             + AUTH_PUB_ECC_COORD_SIZE
             + AUTH_PUB_ECC_COORD_SIZE
             + AUTH_PUB_MLDSA_SIZE
             + core::mem::size_of::<HybridSignature>()
 );
-const _: () = assert!(core::mem::offset_of!(FeProgRequest, nonce) == core::mem::size_of::<u32>());
+const _: () = assert!(
+    core::mem::offset_of!(FeProgRequest, nonce)
+        == core::mem::size_of::<u32>() + core::mem::size_of::<AuthorizationMetadata>()
+);
 const _: () = assert!(
     core::mem::offset_of!(FeProgRequest, ecc_pub_x)
         == core::mem::offset_of!(FeProgRequest, nonce) + AUTH_CMD_CHALLENGE_SIZE
@@ -187,11 +212,20 @@ macro_rules! authorized_fuse_command {
         #[derive(Debug, Clone, IntoBytes, FromBytes, Immutable)]
         pub struct $request {
             $(pub $field: $ty,)*
+            pub metadata: AuthorizationMetadata,
             pub nonce: [u8; AUTH_CMD_CHALLENGE_SIZE],
             pub ecc_pub_x: [u8; AUTH_PUB_ECC_COORD_SIZE],
             pub ecc_pub_y: [u8; AUTH_PUB_ECC_COORD_SIZE],
             pub mldsa_pub: [u8; AUTH_PUB_MLDSA_SIZE],
             pub sig: HybridSignature,
+        }
+
+        impl Default for $request {
+            fn default() -> Self {
+                let mut request: Self = zerocopy::FromZeros::new_zeroed();
+                request.metadata = AuthorizationMetadata::default();
+                request
+            }
         }
 
         #[repr(C)]
@@ -216,10 +250,10 @@ authorized_fuse_command!(
     { slot: u32, hash: [u8; 48] }
 );
 authorized_fuse_command!(
-    FuseIncreaseCaliptraMinSvnRequest,
-    FuseIncreaseCaliptraMinSvnResponse,
-    FuseIncreaseCaliptraMinSvn,
-    { flags: u32, svn: u32 }
+    FuseIncreaseMinSvnRequest,
+    FuseIncreaseMinSvnResponse,
+    FuseIncreaseMinSvn,
+    { flags: u32, target: u32, svn: u32 }
 );
 authorized_fuse_command!(
     FuseRevokeVendorPubKeyRequest,

@@ -3,10 +3,13 @@
 //! Transport-neutral Caliptra PCR quote evidence format.
 
 use mcu_caliptra_api::{
-    pcr_quote_ecc384, pcr_quote_mldsa87, ApiAlloc, PCR_QUOTE_MAX_BUF_LEN, PCR_QUOTE_MAX_LEN,
+    pcr_quote_ecc384, pcr_quote_mldsa87, ScratchAlloc, PCR_QUOTE_ECC384_BUF_LEN,
+    PCR_QUOTE_ECC384_LEN, PCR_QUOTE_MAX_BUF_LEN, PCR_QUOTE_MAX_LEN,
 };
 use mcu_error::McuResult;
 
+pub const PCR_QUOTE_ECC384_SIZE: usize = PCR_QUOTE_ECC384_LEN;
+pub const PCR_QUOTE_ECC384_BUF_SIZE: usize = PCR_QUOTE_ECC384_BUF_LEN;
 pub const PCR_QUOTE_MAX_SIZE: usize = PCR_QUOTE_MAX_LEN;
 /// Buffer capacity `encode_pcr_quote` requires in `out`, which exceeds
 /// [`PCR_QUOTE_MAX_SIZE`] by the mailbox response header. Callers allocating a
@@ -21,7 +24,7 @@ pub enum PcrQuoteAlgorithm {
 }
 
 /// Encode a Caliptra ECC PCR quote into `out`.
-pub async fn encode_pcr_quote<A: ApiAlloc>(
+pub async fn encode_pcr_quote<A: ScratchAlloc>(
     alloc: &A,
     algorithm: PcrQuoteAlgorithm,
     nonce: Option<&[u8; NONCE_LEN]>,
