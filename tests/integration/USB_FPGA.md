@@ -47,8 +47,13 @@ OTP policy fields are not changed. Remove this temporary initialization when
 the HTG OTP image is supplied through the board's provisioning flow.
 
 On USB recovery device-error, boot-failure, fatal-error, or a Core firmware
-fatal error, MCU ROM prints a one-time raw recovery-status and Core error
-register snapshot while polling. Error snapshots are independent of
+or hardware fatal error, MCU ROM prints a one-time raw recovery-status and Core
+error register snapshot while polling. It includes Core boot/flow status and
+the MCU cycle count. Hardware-only faults are reported even when firmware
+fatal/nonfatal status remains zero; `HW_FATAL=00000010` is the key-vault error
+bit, whose RTL sources include boot-flow monitoring and key-vault monitoring.
+The snapshot only reads status and does not clear errors or reset the target.
+Error snapshots are independent of
 `UsbParams::enable_logs`. Preserve the target state and continue console
 capture after host failure; do not automatically reset before collecting it.
 

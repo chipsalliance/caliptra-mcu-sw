@@ -83,7 +83,10 @@ impl UsbRecovery {
         }
         let device = self.registers.recovery_device_status_0.get();
         let status = self.registers.recovery_recovery_status.get();
-        if matches!(device & 0xff, 2 | 14 | 15) || soc.cptra_fw_fatal_error() {
+        if matches!(device & 0xff, 2 | 14 | 15)
+            || soc.cptra_fw_fatal_error()
+            || soc.cptra_hw_fatal_error()
+        {
             self.failure_logged = true;
             caliptra_mcu_romtime::println!(
                 "[mcu-rom-usb] Recovery failure: DEVICE_STATUS_0={} DEVICE_STATUS_1={} RECOVERY_STATUS={}",
@@ -266,5 +269,35 @@ mod tests {
         finish(registers, false);
         assert_eq!(registers.recovery_recovery_status.get(), 3);
         assert_eq!(registers.recovery_device_status_0.get(), 1);
+    }
+
+    #[test]
+    fn hardware_only_fatal_is_reported_without_mutating_recovery_or_error_state() {
+        let usb = params().usb.unwrap();
+        let registers = usb.registers;
+        let mut recovery = UsbRecovery {
+            driver: LpcipUsbDriver::new(usb),
+            registers,
+            enable_logs: false,
+            failure_logged: false,
+        };
+        let words = Box::leak(Box::new(
+            [0u32; core::mem::size_of::<caliptra_mcu_registers_generated::soc::regs::Soc>() / 4],
+        ));
+        let soc_registers: StaticRef<caliptra_mcu_registers_generated::soc::regs::Soc> =
+            unsafe { StaticRef::new(words.as_ptr().cast()) };
+        let soc = crate::Soc::new(soc_registers);
+        registers.recovery_device_status_0.set(3);
+        registers.recovery_recovery_status.set(0x11);
+        recovery.log_failure(&soc);
+        assert!(!recovery.failure_logged);
+
+        soc_registers.cptra_hw_error_fatal.set(0x10);
+        recovery.log_failure(&soc);
+        assert!(recovery.failure_logged);
+        assert_eq!(soc_registers.cptra_hw_error_fatal.get(), 0x10);
+        assert_eq!(soc_registers.cptra_fw_error_fatal.get(), 0);
+        assert_eq!(registers.recovery_device_status_0.get(), 3);
+        assert_eq!(registers.recovery_recovery_status.get(), 0x11);
     }
 }

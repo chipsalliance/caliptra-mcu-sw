@@ -1,0 +1,97 @@
+HTG-940 forced-ULPI recovery workflow
+===================================
+
+Run from the MCU repository in WSL. Core is the pinned core/caliptra-sw
+submodule; do not build ROMs from a separate Caliptra workspace.
+
+The existing Windows helper directory supplies:
+  htg940_board_top_forced_ulpi.bit
+  htg940_board_top_forced_ulpi.mmi
+  htg940_usb_dual_ila_forced_ulpi.ltx
+  htg940_update_roms.py, update-htg940-roms.ps1
+  program-htg940.sh, program-htg940.ps1, program-htg940.tcl
+
+The working USB Python directory supplies:
+  usb_recovery.py, htg940_console_updated.py, entropy_host.py
+
+Defaults are the current Windows HTG "marco" helper folder, its
+htg940-fpga-test-bundle-working/usb-recovery-python subdirectory, and COM8.
+Use --helper-dir, --recovery-dir, and --port to override them.
+Windows Python defaults to the interpreter selected by "py -3"; a copied .venv
+is not assumed to be usable. The selected interpreter needs the working
+application's requirements.txt (PySerial, PyUSB, and libusb-package).
+--python /mnt/c/path/to/python.exe overrides the interpreter explicitly.
+Preflight checks imports and exclusive COM-port access before repacking or
+programming. It does not install dependencies or silently switch interpreters.
+
+Build all five matching images and package them:
+  bash tools/fpga-bundle/build-htg940-fpga-artifacts.sh
+  bash tools/fpga-bundle/create-htg940-fpga-bundle.sh
+
+The build uses latest and --rom-features htg940 through cargo xtask all-build.
+It selects the pinned Core, supplies the linked fuse/map inputs, and uses the
+standalone HTG flash/provisioning policy. Core ROM, MCU ROM, FMC/runtime,
+SoC manifest, and MCU runtime must stay together.
+
+Verify only (the default, no Windows tools or hardware needed):
+  bash tools/fpga-bundle/test-htg940-fpga-bundle.sh --verify-only
+
+Repack the forced-ULPI BIT/MMI pair without programming:
+  bash tools/fpga-bundle/test-htg940-fpga-bundle.sh --prepare-only
+
+One-command build, package, repack, volatile JTAG programming, and recovery:
+  bash tools/fpga-bundle/test-htg940-fpga-bundle.sh --build --program --port COM8
+
+Run an already-built bundle through the same hardware flow:
+  bash tools/fpga-bundle/test-htg940-fpga-bundle.sh \
+    target/htg940-fpga-test-bundle.zip --program
+
+This configures volatile FPGA memory via JTAG, NOT persistent configuration
+flash. Stop other UART/USB clients before running. Programming changes the
+device state, and the console intentionally restarts the subsystem once.
+
+Base overrides are explicit and must refer to one matching implementation:
+  --base-bitstream /path/to/matching.bit --memory-map /path/to/matching.mmi
+  --probes /path/to/matching.ltx --device UNIQUE_DEVICE_PATTERN
+
+New bitstreams default to timestamped files in the Windows helper directory.
+Existing bitstreams and their .json provenance reports are never overwritten.
+The ROM updater validates MMI coverage first; this cannot prove that arbitrary
+BIT and MMI files belong together. Firmware source provenance also cannot
+prove that a loaded base image has matching RTL.
+
+For MCU-only iteration, retaining the existing Core and runtime artifacts:
+  bash tools/fpga-bundle/build-htg940-fpga-artifacts.sh --mcu-rom-only
+  bash tools/fpga-bundle/create-htg940-fpga-bundle.sh
+  bash tools/fpga-bundle/test-htg940-fpga-bundle.sh --program
+
+Artifacts are staged under target/htg940-fpga. The final bundle includes
+SHA384SUMS, build information, and both full-build and MCU-ROM provenance.
+Legacy bundles and the old compliance-ROM mode are not accepted by this flow.
+
+UART and recovery logs are retained beside the generated bitstream.
+Only one console and one recovery process are launched. The console owns the
+UART; recovery starts after console startup, not after a potentially lost MCU
+or Core log marker. Before recovery, a bounded helper waits for a successful interface claim and
+standard GET_DESCRIPTOR reply. It does not send OCP commands or reset the
+device. This avoids starting against a stale Windows device handle while MCU
+ROM is still initializing USB. Recovery explicitly uses --retries 0 and a 15-second progress
+timeout by default. Change --state-timeout deliberately if needed.
+Console startup has a separate 90-second limit (--startup-timeout), since
+discarding retained logs over UART can take tens of seconds while reset is
+held. This does not extend the MCU watchdog or retry image transfers.
+
+Success requires BOTH recovery exit status zero and the fresh UART marker
+"[mcu-runtime] Hello from MCU runtime". Missing markers, console failures,
+USB failures, and timeouts are failures. On failure, logs are retained and
+there is no automatic board reset or recovery replay. Only owned child PIDs
+are stopped; no unrelated GUI/serial processes are killed.
+
+The MCU watchdog remains active. A Production/debug-locked ML-KEM startup
+hang is not fixed by these scripts; such a run must fail and retain its logs.
+For slow diagnostic UART draining, --diagnostic-seconds 20 keeps the owned
+console running for twenty seconds after a recovery failure without resetting
+or retrying the device. This does not extend the MCU watchdog.
+
+Offline regression tests:
+  python3 -m unittest discover -s tools/fpga-bundle/tests -v

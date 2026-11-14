@@ -395,13 +395,20 @@ impl Soc {
     }
 
     #[cfg(all(hw_rev = "latest", feature = "usb-recovery"))]
+    pub(crate) fn cptra_hw_fatal_error(&self) -> bool {
+        self.registers.cptra_hw_error_fatal.get() != 0
+    }
+
+    #[cfg(all(hw_rev = "latest", feature = "usb-recovery"))]
     pub(crate) fn log_usb_recovery_errors(&self) {
         caliptra_mcu_romtime::println!(
-            "[mcu-rom-usb] Core FW_FATAL={} FW_NON_FATAL={} HW_FATAL={} BOOT_STATUS={}",
+            "[mcu-rom-usb] Core FW_FATAL={} FW_NON_FATAL={} HW_FATAL={} BOOT_STATUS={} FLOW_STATUS={} MCU_CYCLE={}",
             HexWord(self.registers.cptra_fw_error_fatal.get()),
             HexWord(self.registers.cptra_fw_error_non_fatal.get()),
             HexWord(self.registers.cptra_hw_error_fatal.get()),
-            HexWord(self.registers.cptra_boot_status.get())
+            HexWord(self.registers.cptra_boot_status.get()),
+            HexWord(self.flow_status()),
+            caliptra_mcu_romtime::mcycle()
         );
     }
 
