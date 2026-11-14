@@ -37,6 +37,10 @@ The ARM CPU takes the place of an SOC manager and can drive stimulus to Caliptra
  - FPGA
    - [VCK190](https://www.xilinx.com/products/boards-and-kits/vck190.html)
 
+For the separate HTG-940 / XCVU13P build using Caliptra 2.2 hardware, see the
+[HTG-940 guide](../htg940/README.md). Its manual CI reuses the bitstream
+builder but currently embeds non-bootable all-zero ROM/flash placeholders.
+
 ### Versal ###
 #### Processing system one time setup: ####
 1. Download VCK-190 image
