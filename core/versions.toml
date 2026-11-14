@@ -1,7 +1,8 @@
 # Licensed under the Apache-2.0 license
 
 # Immutable caliptra-sw commits. The submodule gitlink defaults to latest.
-# 2.1 is the official baseline; latest pins upstream's caliptra-2.2-dev branch.
+# 2.1 is the official baseline. This verification branch's latest pin includes
+# a temporary Core-ROM branch-prediction workaround on upstream 1a5ed709.
 [versions]
 "2.1" = "e5d1f27b15ba02e4e0a57b942bbde39b74cab2eb"
-latest = "1a5ed709808ab5bd77372dd9cee66f8833936901"
+latest = "4d451b367974d6e17fd57ee6f5fabdae676929e0"

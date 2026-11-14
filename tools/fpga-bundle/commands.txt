@@ -89,6 +89,13 @@ are stopped; no unrelated GUI/serial processes are killed.
 
 The MCU watchdog remains active. A Production/debug-locked ML-KEM startup
 hang is not fixed by these scripts; such a run must fail and retain its logs.
+This verification branch now selects the tested Core-ROM workaround at
+4d451b367974d6e17fd57ee6f5fabdae676929e0 (upstream 1a5ed709 plus MFDC[3]
+branch-prediction disable and CSR readback logging). The 2.1 pin is unchanged.
+The workaround passed host recovery of all three images on HTG; complete
+MCU runtime boot and the permanent RTL fix remain unconfirmed. This Core
+revision is local-only until explicitly published. Rebuild all five images
+after switching pins; do not combine an old recovery ZIP with the new ROM.
 For slow diagnostic UART draining, --diagnostic-seconds 20 keeps the owned
 console running for twenty seconds after a recovery failure without resetting
 or retrying the device. This does not extend the MCU watchdog.

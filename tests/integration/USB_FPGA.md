@@ -1,5 +1,27 @@
 # VCK190 internal-ULPI recovery test
 
+## Verification-branch Core workaround
+
+This local verification branch pins latest Core to
+`4d451b367974d6e17fd57ee6f5fabdae676929e0`, based on upstream `1a5ed709`.
+The Core ROM sets VeeR `MFDC[3]` before startup to disable branch prediction
+and prints the CSR readback. This applies to Core ROMs built from this latest
+pin, not only to the MCU `htg940` feature. The 2.1 pin and subsystem RTL pin
+are unchanged.
+
+On HTG, the matched predictor-enabled control reproduced `HW_FATAL=0x10`
+and an ML-KEM startup stall. The predictor-disabled ROM passed ML-KEM and
+completed host recovery of all three images with Production/debug-lock,
+the MCU ROM, recovery images, and base BIT/MMI unchanged. This is a temporary
+bring-up workaround, not a confirmed permanent RTL fix. The final MCU runtime
+Hello marker was not captured, so full MCU runtime boot is still unconfirmed.
+
+The debug Core revision currently exists only in the local Core repository.
+Before sharing this MCU branch, publish that Core revision to a repository
+from which the configured Core submodule URL can fetch it. Do not silently
+substitute the upstream pin or reuse old bundles: rebuild the complete
+five-image HTG bundle after this pin change.
+
 ## Opt-in HTG940 bring-up build
 
 For HTG gateware rebuilt from the same linked subsystem revision as this
@@ -11,7 +33,8 @@ CALIPTRA_HW_REV=latest cargo xtask rom-build --platform fpga \
 ```
 
 Use the resulting `latest-caliptra-mcu-rom-fpga-htg940.bin`
-instead of the default VCK190 recovery ROM. Pins are not changed. Both boards
+instead of the default VCK190 recovery ROM. Selecting the feature does not
+change the pins. Both boards
 use the normal generated fuse map from the linked subsystem, and DAI access
 widths follow that map's partition metadata. FMC key-manifest SVN forwarding
 is retained only on 2.1; the latest map no longer contains that field. Active
@@ -127,9 +150,9 @@ The FPGA ROM uses VCK190 AXI addresses `0xA4200000` for USB registers and
 
 ### Current development-branch compatibility
 
-This branch follows `caliptra-mcu-dev-2.2` with Core
-`1a5ed709808ab5bd77372dd9cee66f8833936901` and subsystem
-`743d5f7eaa9a946f405b9087c7ffd2fbb38e1543`. Core's upstream OTP tooling now
+This branch follows the `caliptra-mcu-dev-2.2` baseline with the temporary
+Core workaround described above and subsystem
+`743d5f7eaa9a946f405b9087c7ffd2fbb38e1543`. Core's upstream OTP tooling
 accepts the selected map through `CALIPTRA_MCU_OTP_MMAP_HJSON`; no local Core
 OTP patch or alternate board-specific fuse map is required.
 
