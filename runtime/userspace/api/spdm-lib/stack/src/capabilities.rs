@@ -105,7 +105,13 @@ pub(crate) async fn handle_get_capabilities<'a, Pal: SpdmPal>(
 
     // SPDM: GET_CAPABILITIES + CAPABILITIES contribute to VCA.
     let head = pal.header_size();
-    state.transcript.append_vca(pal, io, io.request()).await?;
+    // Trim transport padding (e.g. PCIe-VDM DWORD alignment): feed only the
+    // exact GET_CAPABILITIES bytes (header + 18-byte body) to VCA, matching the
+    // exact-length bytes the requester hashes.
+    let req_msg = req
+        .get(..SpdmMsgHdrPdu::SIZE + CapabilitiesBody::SIZE)
+        .ok_or(SPDM_INVALID_REQUEST)?;
+    state.transcript.append_vca(pal, io, req_msg).await?;
     let end = head.checked_add(spdm_len).ok_or(SPDM_UNSPECIFIED)?;
     let response = resp.get(head..end).ok_or(SPDM_UNSPECIFIED)?;
     state.transcript.append_vca(pal, io, response).await?;
