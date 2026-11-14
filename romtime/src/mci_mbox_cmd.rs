@@ -19,7 +19,7 @@ use caliptra_mcu_mbox_common::messages::{
 };
 use caliptra_mcu_registers_generated::mci;
 use core::mem::size_of;
-use tock_registers::interfaces::{ReadWriteable, Readable, Writeable};
+use tock_registers::interfaces::{Readable, Writeable};
 use zerocopy::{FromBytes, Immutable, IntoBytes, KnownLayout};
 
 /// Wire-format response for MC_FUSE_READ.
@@ -304,9 +304,9 @@ pub fn process_fuse_mbox_commands(mci: &Mci, otp: &Otp) {
         );
 
         if is_mbox0 {
-            notif0.modify(mci::bits::Notif0IntrT::NotifMbox0CmdAvailSts::SET);
+            notif0.write(mci::bits::Notif0IntrT::NotifMbox0CmdAvailSts::SET);
         } else {
-            notif0.modify(mci::bits::Notif0IntrT::NotifMbox1CmdAvailSts::SET);
+            notif0.write(mci::bits::Notif0IntrT::NotifMbox1CmdAvailSts::SET);
         }
 
         let cmd = active_mbox.cmd.get();
