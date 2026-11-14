@@ -15,6 +15,10 @@ caliptra-mcu-measurement-api = { workspace = true }
 mcu-caliptra-api = { workspace = true, features = ["mailbox-io"] }
 caliptra-mcu-scratch-alloc = { workspace = true }
 mcu-error = { workspace = true }
+caliptra-mcu-libsyscall-caliptra = { workspace = true, optional = true }
+caliptra-mcu-libtock_platform = { workspace = true, optional = true }
+caliptra-mcu-libtock_alarm = { workspace = true, optional = true }
+caliptra-mcu-libtockasync = { workspace = true, optional = true }
 zerocopy = { workspace = true }
 
 [dev-dependencies]
@@ -26,4 +30,12 @@ pcr-quote = ["caliptra-mcu-attestation-evidence/pcr-quote"]
 set-certificate = [
   "caliptra-mcu-cert-store/set-certificate",
   "caliptra-mcu-spdm-traits/set-certificate",
+]
+# HEARTBEAT liveness watchdog: pulls in the libtock alarm capsule so the PAL
+# can provide a real monotonic clock (now_ms/sleep_ms) to the stack.
+spdm-set-heartbeat = [
+  "caliptra-mcu-libsyscall-caliptra",
+  "caliptra-mcu-libtock_platform",
+  "caliptra-mcu-libtock_alarm",
+  "caliptra-mcu-libtockasync",
 ]

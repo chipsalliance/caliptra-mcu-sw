@@ -15,8 +15,8 @@
 //! 9. Build final response with signature + verify_data
 
 use caliptra_mcu_spdm_codec::{
-    encode_version_selection, parse_supported_versions, select_version, KeyExSel, KeyExchangeReq,
-    KeyExchangeRsp, ResponseBody, SmVersion, SpdmMsgHdrPdu, WireWriter,
+    encode_version_selection, parse_supported_versions, select_version, HeartBeatPeriod, KeyExSel,
+    KeyExchangeReq, KeyExchangeRsp, ResponseBody, SmVersion, SpdmMsgHdrPdu, WireWriter,
     ECDH_P384_EXCHANGE_DATA_SIZE, KEY_EXCHANGE_RANDOM_DATA_LEN, KEY_EXCHANGE_RSP_FIXED_BODY_SIZE,
     ML_KEM_1024_EXCHANGE_DATA_SIZE, OPAQUE_VERSION_SELECTION_SIZE, SHA384_HASH_SIZE,
 };
@@ -431,7 +431,11 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
     exchange_data_size: usize,
     inline_response_limit: usize,
 ) -> SpdmResult<(PalBytes<'a, Pal>, usize)> {
+    // Same HeartbeatPeriod byte must feed the transcript and the response.
+    let hb_period = heartbeat_period_for::<Pal>(state);
+
     let session = sessions.find_mut(session_id).ok_or(SPDM_UNSPECIFIED)?;
+    session.heartbeat_period = hb_period;
     let mut workspace = pal.alloc_bytes(io, KEY_EXCHANGE_WORKSPACE_SIZE)?;
     workspace.fill(0);
     let mut rest = &mut workspace[..];
@@ -518,6 +522,7 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
             None => None,
         };
         let no_sig_body = KeyExchangeRsp {
+            heartbeat_period: hb_period,
             rsp_session_id,
             random_data: nonce,
             exchange_data_len: exchange_data_size,
@@ -603,6 +608,22 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
     let (resp, returned_len) =
         guard.finish_response_with_limit(state, pal, io, head, spdm_len, inline_response_limit)?;
     Ok((resp, returned_len))
+}
+
+/// HeartbeatPeriod to advertise in KEY_EXCHANGE_RSP for this connection.
+/// Enabled only when both the responder and the peer set HBEAT_CAP; otherwise
+/// `DISABLED` (per DSP0274, zero when either endpoint lacks Heartbeat support).
+/// Always `DISABLED` when the `spdm-set-heartbeat` feature is off.
+fn heartbeat_period_for<Pal: SpdmPal>(state: &ConnState<'_, Pal>) -> HeartBeatPeriod {
+    use caliptra_mcu_spdm_codec::CapFlags;
+    if cfg!(feature = "spdm-set-heartbeat")
+        && state.cap_flags.contains(CapFlags::HBEAT)
+        && state.peer_cap_flags.contains(CapFlags::HBEAT)
+    {
+        HeartBeatPeriod(crate::heartbeat::DEFAULT_HEARTBEAT_PERIOD_SECS)
+    } else {
+        HeartBeatPeriod::DISABLED
+    }
 }
 
 #[cfg(test)]

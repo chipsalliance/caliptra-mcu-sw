@@ -11,7 +11,7 @@
 //! 3. Session used for secured message framing
 //! 4. GET_VERSION or error → [`SessionManager::remove_all_and_destroy`]
 
-use caliptra_mcu_spdm_codec::{errors::SPDM_SESSION_LIMIT_EXCEEDED, SpdmVersion};
+use caliptra_mcu_spdm_codec::{errors::SPDM_SESSION_LIMIT_EXCEEDED, HeartBeatPeriod, SpdmVersion};
 use caliptra_mcu_spdm_traits::{McuResult, SpdmPalHash, SpdmPalIo};
 use core::ops::{Deref, DerefMut};
 
@@ -145,6 +145,11 @@ pub struct SessionInfo<K: Clone, S> {
     pub key_schedule: KeySchedule<K>,
     /// Per-session TH transcript hash state.
     pub transcript: SessionTranscript<S>,
+    /// HeartbeatPeriod negotiated for this session; `DISABLED` (zero) disables
+    /// the watchdog.
+    pub heartbeat_period: HeartBeatPeriod,
+    /// Absolute watchdog deadline (monotonic ms); `None` while unarmed.
+    pub deadline_ms: Option<u64>,
 }
 
 impl<K: Clone, S> Drop for SessionInfo<K, S> {
@@ -164,7 +169,35 @@ impl<K: Clone, S> SessionInfo<K, S> {
             state: SessionState::HandshakeInProgress,
             key_schedule: KeySchedule::new(spdm_version_str(version)),
             transcript: SessionTranscript::new(),
+            heartbeat_period: HeartBeatPeriod::DISABLED,
+            deadline_ms: None,
         }
+    }
+
+    /// Arm the liveness watchdog at session establishment. Sets the deadline to
+    /// `now_ms + HEARTBEAT_TIMEOUT_MULTIPLIER * period` (the DSP0274 "terminate
+    /// after two successive missed HeartbeatPeriods" rule). No-op when the
+    /// negotiated period is zero (heartbeat disabled for this session).
+    pub fn arm_heartbeat(&mut self, now_ms: u64) {
+        self.deadline_ms = self.heartbeat_deadline(now_ms);
+    }
+
+    /// Restart the liveness watchdog on any secured traffic. Only re-arms an
+    /// already-armed watchdog; a session with heartbeat disabled stays inert.
+    pub fn touch_heartbeat(&mut self, now_ms: u64) {
+        if self.deadline_ms.is_some() {
+            self.deadline_ms = self.heartbeat_deadline(now_ms);
+        }
+    }
+
+    fn heartbeat_deadline(&self, now_ms: u64) -> Option<u64> {
+        if !self.heartbeat_period.is_enabled() {
+            return None;
+        }
+        let window_ms = crate::heartbeat::HEARTBEAT_TIMEOUT_MULTIPLIER
+            .saturating_mul(self.heartbeat_period.secs() as u64)
+            .saturating_mul(1000);
+        Some(now_ms.saturating_add(window_ms))
     }
 }
 
@@ -257,6 +290,38 @@ impl<K: Clone, S, B: Deref<Target = SessionInfo<K, S>> + DerefMut, const N: usiz
                 return;
             }
         }
+    }
+
+    /// Nearest liveness-watchdog deadline (monotonic ms) across all armed
+    /// sessions, or `None` if no session has an armed watchdog. The run loop
+    /// uses this to schedule its timeout wake.
+    pub fn nearest_deadline_ms(&self) -> Option<u64> {
+        self.sessions
+            .iter()
+            .flatten()
+            .filter_map(|s| s.deadline_ms)
+            .min()
+    }
+
+    /// Tear down every session whose liveness watchdog has expired at `now_ms`
+    /// (deadline reached). Keys are erased via the same path as
+    /// [`Self::remove_and_destroy`]. Returns the number of sessions cleared.
+    pub fn expire_due(&mut self, now_ms: u64) -> usize {
+        let mut cleared = 0;
+        for slot in self.sessions.iter_mut() {
+            let expired = slot
+                .as_ref()
+                .and_then(|s| s.deadline_ms)
+                .is_some_and(|d| now_ms >= d);
+            if expired {
+                if let Some(info) = slot.as_mut() {
+                    info.key_schedule.destroy_all();
+                }
+                *slot = None;
+                cleared += 1;
+            }
+        }
+        cleared
     }
 
     /// Remove all sessions and clear all local key blobs.

@@ -35,6 +35,8 @@
 
 mod alloc;
 pub mod cert;
+#[cfg(feature = "spdm-set-heartbeat")]
+mod clock;
 mod hash;
 mod io;
 pub mod measurements;
