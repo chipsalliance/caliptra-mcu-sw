@@ -201,10 +201,10 @@ impl Mci {
         const NOTIF_CPTRA_MCU_RESET_REQ_STS_MASK: u32 = 0x2;
         let intr_status = self.registers.intr_block_rf_notif0_internal_intr_r.get();
         if intr_status & NOTIF_CPTRA_MCU_RESET_REQ_STS_MASK != 0 {
-            // Clear interrupt
+            // Write 1 to clear: write only this bit so other pending bits are kept.
             self.registers
                 .intr_block_rf_notif0_internal_intr_r
-                .modify(mci::bits::Notif0IntrT::NotifCptraMcuResetReqSts::SET);
+                .write(mci::bits::Notif0IntrT::NotifCptraMcuResetReqSts::SET);
             // Request MCU reset
             self.registers
                 .mci_reg_reset_request

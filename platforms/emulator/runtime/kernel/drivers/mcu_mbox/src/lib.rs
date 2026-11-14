@@ -88,9 +88,10 @@ impl<'a, A: Alarm<'a>> McuMailbox<'a, A> {
         self.disable_interrupts();
 
         if intr_status.is_set(Notif0IntrT::NotifMbox0CmdAvailSts) {
+            // Write 1 to clear: write only this bit so other pending bits are kept.
             self.registers
                 .intr_block_rf_notif0_internal_intr_r
-                .modify(Notif0IntrT::NotifMbox0CmdAvailSts::SET);
+                .write(Notif0IntrT::NotifMbox0CmdAvailSts::SET);
 
             self.handle_incoming_request();
         }
