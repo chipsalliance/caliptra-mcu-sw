@@ -17,7 +17,9 @@ use caliptra_mcu_command_auth_challenge_signer::{CommandAuthChallengeSigner, Hyb
 use caliptra_mcu_core_util_host_command_types::attestation::{
     formats_from_bitmap, AsymAlgo, AttestationValidationError, EvidenceFormat, PkiEntitySlot,
 };
-use caliptra_mcu_core_util_host_command_types::certificate::AttestedCsrValidationError;
+use caliptra_mcu_core_util_host_command_types::certificate::{
+    AttestedCsrValidationError, CERT_CHAIN_DIGEST_SIZE, MC_AUTH_SET_CERT_CHAIN_CANONICAL_CMD_ID,
+};
 use caliptra_mcu_core_util_host_command_types::device_ownership_transfer::{
     DotAuthorizationTrailer, DotDisableRequest, DotLockRequest, DotRotateRequest, DotUnlockRequest,
     GetDotBackupBlobRequest, DOT_FAMILY_ID, MC_DOT_DISABLE_CANONICAL_CMD_ID,
@@ -1280,6 +1282,38 @@ fn signed_ocp_lock_set_perma_hek(
         .map_err(AuthorizedCommandError::Command)
 }
 
+fn signed_auth_set_cert_chain(
+    client: &mut SpdmVdmClient,
+    pki_entity_slot: u32,
+    algorithm: u32,
+    total_size: u32,
+    expected_sha384: &[u8; CERT_CHAIN_DIGEST_SIZE],
+    authorizer: &dyn CommandAuthChallengeSigner,
+) -> Result<(), AuthorizedCommandError> {
+    let mut payload = Vec::with_capacity(60);
+    payload.extend_from_slice(&pki_entity_slot.to_le_bytes());
+    payload.extend_from_slice(&algorithm.to_le_bytes());
+    payload.extend_from_slice(&total_size.to_le_bytes());
+    payload.extend_from_slice(expected_sha384);
+    let auth = authorize_command(
+        client,
+        MC_AUTH_SET_CERT_CHAIN_CANONICAL_CMD_ID,
+        &payload,
+        Some(authorizer),
+    )
+    .map_err(AuthorizedCommandError::Preparation)?;
+    client
+        .auth_set_cert_chain(
+            pki_entity_slot,
+            algorithm,
+            total_size,
+            expected_sha384,
+            auth.as_command_data(),
+        )
+        .map(|_| ())
+        .map_err(AuthorizedCommandError::Command)
+}
+
 fn send_native_ocp_lock_command(
     client: &mut SpdmVdmClient,
     subcommand: u32,
@@ -1521,6 +1555,30 @@ fn run_fuse_suite(
                 client,
                 Some(authorizer),
                 verbose,
+            ));
+            results.push(expect_completion(
+                "AuthSetCertChain rejects Tenant slot with Owner authority",
+                signed_auth_set_cert_chain(
+                    client,
+                    PkiEntitySlot::Tenant as u32,
+                    AsymAlgo::EccP384 as u32,
+                    512,
+                    &hash,
+                    authorizer,
+                ),
+                CaliptraVdmCompletionCode::AccessDenied,
+            ));
+            results.push(expect_completion(
+                "AuthSetCertChain rejects invalid algorithm",
+                signed_auth_set_cert_chain(
+                    client,
+                    PkiEntitySlot::Owner as u32,
+                    99,
+                    512,
+                    &hash,
+                    authorizer,
+                ),
+                CaliptraVdmCompletionCode::InvalidParameter,
             ));
             results
         }

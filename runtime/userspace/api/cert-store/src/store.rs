@@ -13,8 +13,9 @@
 #[cfg(feature = "set-certificate")]
 use crate::{
     endorsement::{
-        managed_endorsement_der_capacity, ManagedEndorsementChain, ManagedEndorsementSlot,
-        CERT_MODEL_ALIAS_CERT, MANAGED_REGION_COUNT,
+        managed_endorsement_der_capacity, ActiveEndorsementStream, ArmedEndorsementWrite,
+        ManagedEndorsementChain, ManagedEndorsementSlot, CERT_MODEL_ALIAS_CERT,
+        MANAGED_REGION_COUNT,
     },
     errors as cert_errors,
 };
@@ -62,15 +63,56 @@ impl<F: core::future::Future> core::future::Future for NoInlineFut<F> {
     }
 }
 
+#[cfg(test)]
+struct TestSha384([u8; SHA384_HASH_SIZE], usize);
+
+#[cfg(test)]
+impl TestSha384 {
+    const fn new() -> Self {
+        Self([0u8; SHA384_HASH_SIZE], 0)
+    }
+
+    fn update(&mut self, bytes: &[u8]) {
+        for &b in bytes {
+            let idx = self.1 % SHA384_HASH_SIZE;
+            self.0[idx] = self.0[idx]
+                .wrapping_mul(31)
+                .wrapping_add(b ^ (self.1 as u8));
+            self.1 += 1;
+        }
+    }
+
+    fn finish(self, out: &mut [u8; SHA384_HASH_SIZE]) {
+        *out = self.0;
+    }
+}
+
+#[cfg(test)]
+fn test_sha384(bytes: &[u8]) -> [u8; SHA384_HASH_SIZE] {
+    let mut hasher = TestSha384::new();
+    hasher.update(bytes);
+    let mut out = [0u8; SHA384_HASH_SIZE];
+    hasher.finish(&mut out);
+    out
+}
+
 async fn compute_root_hash<A: ScratchAlloc>(
     alloc: &A,
     root_cert: &[u8],
 ) -> McuResult<[u8; SHA384_HASH_SIZE]> {
     let sha_buf = alloc.alloc(SHA_CONTEXT_SIZE)?;
-    let mut state = sha_init(alloc, sha_buf, HashAlgo::Sha384, root_cert).await?;
-    let mut hash = [0u8; SHA384_HASH_SIZE];
-    sha_finish(alloc, &mut state, &mut hash).await?;
-    Ok(hash)
+    #[cfg(not(test))]
+    {
+        let mut state = sha_init(alloc, sha_buf, HashAlgo::Sha384, root_cert).await?;
+        let mut hash = [0u8; SHA384_HASH_SIZE];
+        sha_finish(alloc, &mut state, &mut hash).await?;
+        Ok(hash)
+    }
+    #[cfg(test)]
+    {
+        let _ = sha_buf;
+        Ok(test_sha384(root_cert))
+    }
 }
 
 async fn compute_dpe_first_cert_hash<A: ScratchAlloc>(
@@ -127,6 +169,50 @@ pub struct SharedCertStore<S: EndorsementStorage = NoEndorsementStorage> {
 // hold borrows into `cert_slots` across `.await` points.
 unsafe impl<S: EndorsementStorage> Sync for SharedCertStore<S> {}
 
+#[cfg(feature = "set-certificate")]
+struct OperationGuard<'a, S: EndorsementStorage> {
+    shared: &'a SharedCertStore<S>,
+    role: EndorsementRole,
+    algo: CertificateAlgorithm,
+    completed: bool,
+    keep_locked: Cell<bool>,
+}
+
+#[cfg(feature = "set-certificate")]
+impl<'a, S: EndorsementStorage> OperationGuard<'a, S> {
+    fn acquire(
+        shared: &'a SharedCertStore<S>,
+        role: EndorsementRole,
+        algo: CertificateAlgorithm,
+    ) -> McuResult<Self> {
+        shared.cert_slot(role).try_start_operation(algo)?;
+        Ok(Self {
+            shared,
+            role,
+            algo,
+            completed: false,
+            keep_locked: Cell::new(false),
+        })
+    }
+
+    fn finish<T>(mut self, result: McuResult<T>) -> McuResult<T> {
+        self.completed = true;
+        result
+    }
+}
+
+#[cfg(feature = "set-certificate")]
+impl<S: EndorsementStorage> Drop for OperationGuard<'_, S> {
+    fn drop(&mut self) {
+        // A dropped future may leave storage I/O outstanding. Fail closed until reset.
+        if self.completed && !self.keep_locked.get() {
+            self.shared
+                .cert_slot(self.role)
+                .set_operation_in_progress(self.algo, false);
+        }
+    }
+}
+
 impl<S: EndorsementStorage> Default for SharedCertStore<S> {
     fn default() -> Self {
         Self::new()
@@ -141,19 +227,99 @@ impl<S: EndorsementStorage> SharedCertStore<S> {
     pub const fn with_policy(policy: CertificateProvisioningPolicy) -> Self {
         Self {
             cert_slots: UnsafeCell::new([
-                CertSlot::empty(Some(0)),
-                CertSlot::empty(match policy.owner_anchor_point {
-                    Some(key) => Some(key as u8),
-                    None => None,
-                }),
-                CertSlot::empty(match policy.tenant_anchor_point {
-                    Some(key) => Some(key as u8),
-                    None => None,
-                }),
+                CertSlot::empty_with_auth(
+                    Some(0),
+                    policy.is_auth_required(EndorsementRole::Vendor),
+                ),
+                CertSlot::empty_with_auth(
+                    match policy.owner.anchor_point {
+                        Some(key) => Some(key as u8),
+                        None => None,
+                    },
+                    policy.is_auth_required(EndorsementRole::Owner),
+                ),
+                CertSlot::empty_with_auth(
+                    match policy.tenant.anchor_point {
+                        Some(key) => Some(key as u8),
+                        None => None,
+                    },
+                    policy.is_auth_required(EndorsementRole::Tenant),
+                ),
             ]),
             policy,
             idevid_populated: [const { Cell::new(false) }; NUM_ASYM_ALGOS],
         }
+    }
+
+    /// Whether mutating `role` requires a prior `MC_AUTH_SET_CERT_CHAIN` command.
+    pub fn is_auth_required(&self, role: EndorsementRole) -> bool {
+        self.cert_slot(role).is_auth_required()
+    }
+
+    /// Configure whether mutating `role` requires a prior `MC_AUTH_SET_CERT_CHAIN` command.
+    pub fn set_auth_required(&self, role: EndorsementRole, required: bool) {
+        self.cert_slot(role).set_auth_required(required);
+    }
+
+    #[cfg(feature = "set-certificate")]
+    fn abort_stream_under_guard(&self, guard: &OperationGuard<'_, S>) -> McuResult<()> {
+        let (role, algo) = (guard.role, guard.algo);
+        if self.cert_slot(role).active_stream(algo).is_some() {
+            let mut chain = match &self.cert_slot(role).endorsement {
+                SlotEndorsement::Managed(m) => m.get_endorsement(algo).copied().ok_or(INVARIANT)?,
+                SlotEndorsement::ReadOnly(_) => return Err(mcu_error::codes::NOT_IMPLEMENTED),
+                SlotEndorsement::Empty => return Err(INVARIANT),
+            };
+            chain.abort_stream_update()?;
+            match &mut self.cert_slot_mut(role).endorsement {
+                SlotEndorsement::Managed(m) => m.set_endorsement(chain),
+                _ => return Err(INVARIANT),
+            }
+        }
+        self.cert_slot(role).set_active_stream(algo, None);
+        Ok(())
+    }
+
+    /// Arm `(role, algo)` for a single authorized endorsement chain write or
+    /// erase (`total_size == 0`) matching `(total_size, expected_sha384)`.
+    #[cfg(feature = "set-certificate")]
+    pub fn arm_endorsement_write(
+        &self,
+        role: EndorsementRole,
+        algo: CertificateAlgorithm,
+        total_size: usize,
+        expected_sha384: &[u8; 48],
+    ) -> McuResult<()> {
+        let guard = OperationGuard::acquire(self, role, algo)?;
+        let result = (|| {
+            self.policy.validate_role(role)?;
+            let slot = self.cert_slot(role);
+            let endorsement_chain = match &slot.endorsement {
+                SlotEndorsement::Managed(m) => m
+                    .get_endorsement(algo)
+                    .ok_or(cert_errors::PROVISIONING_DISABLED)?,
+                SlotEndorsement::ReadOnly(_) | SlotEndorsement::Empty => {
+                    return Err(cert_errors::PROVISIONING_DISABLED);
+                }
+            };
+            if total_size == 0 {
+                if *expected_sha384 != [0u8; 48] {
+                    return Err(cert_errors::INVALID_ENDORSEMENT);
+                }
+            } else if total_size > endorsement_chain.der_capacity() {
+                return Err(cert_errors::INVALID_ENDORSEMENT);
+            }
+            self.abort_stream_under_guard(&guard)?;
+            self.cert_slot(role).set_armed_write(
+                algo,
+                Some(ArmedEndorsementWrite {
+                    total_size,
+                    expected_sha384: *expected_sha384,
+                }),
+            );
+            Ok(())
+        })();
+        guard.finish(result)
     }
 
     /// Record whether `IDevID` has been populated into Caliptra's DPE
@@ -341,12 +507,8 @@ impl<S: EndorsementStorage> SharedCertStore<S> {
     }
 
     #[cfg(feature = "set-certificate")]
-    pub(crate) fn validate_key(
-        &self,
-        role: EndorsementRole,
-        key_pair_id: u8,
-    ) -> McuResult<DeviceKey> {
-        self.policy.validate_key(role, key_pair_id)
+    pub(crate) fn validate_key_id(&self, role: EndorsementRole, key_pair_id: u8) -> McuResult<u8> {
+        self.policy.validate_key_id(role, key_pair_id)
     }
 
     #[allow(clippy::mut_from_ref)]
@@ -426,16 +588,6 @@ impl<S: EndorsementStorage> Drop for RegionReadGuard<'_, S> {
     }
 }
 
-#[cfg(feature = "set-certificate")]
-#[derive(Clone, Copy, PartialEq, Eq)]
-struct RawEndorsementStream {
-    role: EndorsementRole,
-    algo: CertificateAlgorithm,
-    key_pair_id: u8,
-    total_size: usize,
-    next_offset: usize,
-}
-
 /// Per-task cert store wrapper.
 ///
 /// Wraps a reference to the global `'static SharedCertStore<S>` alongside
@@ -444,7 +596,7 @@ pub struct TaskCertStore<S: EndorsementStorage = NoEndorsementStorage> {
     shared: &'static SharedCertStore<S>,
     caches: UnsafeCell<[[CertChainCache; NUM_ASYM_ALGOS]; NUM_CERT_SLOTS]>,
     #[cfg(feature = "set-certificate")]
-    active_stream: Cell<Option<RawEndorsementStream>>,
+    stream_generations: [[Cell<Option<u32>>; NUM_ASYM_ALGOS]; NUM_CERT_SLOTS],
 }
 
 impl<S: EndorsementStorage> TaskCertStore<S> {
@@ -453,7 +605,8 @@ impl<S: EndorsementStorage> TaskCertStore<S> {
             shared,
             caches: UnsafeCell::new([[CertChainCache::empty(); NUM_ASYM_ALGOS]; NUM_CERT_SLOTS]),
             #[cfg(feature = "set-certificate")]
-            active_stream: Cell::new(None),
+            stream_generations: [const { [const { Cell::new(None) }; NUM_ASYM_ALGOS] };
+                NUM_CERT_SLOTS],
         }
     }
 
@@ -746,6 +899,109 @@ impl<S: EndorsementStorage> TaskCertStore<S> {
     // ---------------------------------------------------------------
 
     #[cfg(feature = "set-certificate")]
+    fn check_write_preauth(
+        &self,
+        role: EndorsementRole,
+        algo: CertificateAlgorithm,
+        total_size: usize,
+    ) -> McuResult<()> {
+        let slot = self.cert_slot(role);
+        if let Some(armed) = slot.armed_write(algo) {
+            if armed.total_size != total_size {
+                return Err(cert_errors::INVALID_ENDORSEMENT);
+            }
+            Ok(())
+        } else if slot.is_auth_required() {
+            Err(cert_errors::UNAUTHORIZED)
+        } else {
+            Ok(())
+        }
+    }
+
+    #[cfg(feature = "set-certificate")]
+    fn owned_stream(
+        &self,
+        role: EndorsementRole,
+        algo: CertificateAlgorithm,
+    ) -> McuResult<ActiveEndorsementStream> {
+        let stream = self
+            .cert_slot(role)
+            .active_stream(algo)
+            .ok_or(cert_errors::INVALID_ENDORSEMENT)?;
+        if self.stream_generations[role as usize][algo.index()].get() != Some(stream.generation) {
+            return Err(cert_errors::INVALID_ENDORSEMENT);
+        }
+        Ok(stream)
+    }
+
+    #[cfg(feature = "set-certificate")]
+    fn abort_owned_stream_under_guard(&self, guard: &OperationGuard<'_, S>) -> McuResult<()> {
+        self.owned_stream(guard.role, guard.algo)?;
+        self.shared.abort_stream_under_guard(guard)?;
+        self.stream_generations[guard.role as usize][guard.algo.index()].set(None);
+        Ok(())
+    }
+
+    #[cfg(feature = "set-certificate")]
+    fn prepare_write_under_guard(
+        &self,
+        guard: &OperationGuard<'_, S>,
+        key_pair_id: u8,
+        cert_info: u8,
+        total_size: usize,
+        restart: bool,
+    ) -> McuResult<(
+        u8,
+        ManagedEndorsementChain<S>,
+        Option<ArmedEndorsementWrite>,
+    )> {
+        let (role, algo) = (guard.role, guard.algo);
+        if self.cert_slot(role).active_stream(algo).is_some()
+            && (!restart || self.owned_stream(role, algo).is_err())
+        {
+            return Err(cert_errors::STORAGE_BUSY);
+        }
+        let key_pair_id = self.shared.validate_key_id(role, key_pair_id)?;
+        if cert_info != CERT_MODEL_ALIAS_CERT {
+            return Err(cert_errors::INVALID_ENDORSEMENT);
+        }
+        let chain = managed_endorsement(self, role, algo)?;
+        if total_size == 0 || total_size > chain.der_capacity() {
+            return Err(cert_errors::INVALID_ENDORSEMENT);
+        }
+        if self
+            .cert_slot(role)
+            .region_has_readers(algo, chain.inactive_region())
+        {
+            return Err(cert_errors::STORAGE_BUSY);
+        }
+        self.check_write_preauth(role, algo, total_size)?;
+        self.shared.abort_stream_under_guard(guard)?;
+        self.stream_generations[role as usize][algo.index()].set(None);
+        Ok((
+            key_pair_id,
+            managed_endorsement(self, role, algo)?,
+            self.cert_slot(role).take_armed_write(algo),
+        ))
+    }
+
+    #[cfg(feature = "set-certificate")]
+    async fn verify_stream_auth<A: ScratchAlloc>(
+        &self,
+        alloc: &A,
+        stream: ActiveEndorsementStream,
+        chain: &ManagedEndorsementChain<S>,
+    ) -> McuResult<()> {
+        if let Some(armed) = stream.claimed_auth {
+            let digest = compute_streamed_hash(alloc, chain, stream.total_size).await?;
+            if digest != armed.expected_sha384 {
+                return Err(cert_errors::INVALID_ENDORSEMENT);
+            }
+        }
+        Ok(())
+    }
+
+    #[cfg(feature = "set-certificate")]
     pub async fn validate_endorsement_chain<A: ScratchAlloc>(
         &self,
         alloc: &A,
@@ -755,7 +1011,10 @@ impl<S: EndorsementStorage> TaskCertStore<S> {
         root_hash: &[u8; 48],
         cert_chain: &[u8],
     ) -> McuResult<()> {
-        self.shared.validate_key(role, key_pair_id)?;
+        if !self.cert_slot(role).is_writable() {
+            return Err(cert_errors::PROVISIONING_DISABLED);
+        }
+        self.shared.validate_key_id(role, key_pair_id)?;
         if cert_model != CERT_MODEL_ALIAS_CERT {
             return Err(cert_errors::INVALID_ENDORSEMENT);
         }
@@ -763,8 +1022,10 @@ impl<S: EndorsementStorage> TaskCertStore<S> {
     }
 
     #[cfg(feature = "set-certificate")]
-    pub async fn write_endorsement_chain(
+    #[allow(clippy::too_many_arguments)]
+    pub async fn write_endorsement_chain<A: ScratchAlloc>(
         &self,
+        alloc: &A,
         role: EndorsementRole,
         algo: CertificateAlgorithm,
         key_pair_id: u8,
@@ -772,30 +1033,50 @@ impl<S: EndorsementStorage> TaskCertStore<S> {
         root_hash: &[u8; 48],
         data: &[u8],
     ) -> McuResult<()> {
-        let key = self.shared.validate_key(role, key_pair_id)?;
-        if cert_info != CERT_MODEL_ALIAS_CERT {
-            return Err(cert_errors::INVALID_ENDORSEMENT);
+        let guard = OperationGuard::acquire(self.shared, role, algo)?;
+        let result = self
+            .write_chain_under_guard(
+                alloc,
+                &guard,
+                key_pair_id,
+                cert_info,
+                Some(root_hash),
+                data,
+                false,
+            )
+            .await;
+        guard.finish(result)
+    }
+
+    #[cfg(feature = "set-certificate")]
+    #[allow(clippy::too_many_arguments)]
+    async fn write_chain_under_guard<A: ScratchAlloc>(
+        &self,
+        alloc: &A,
+        guard: &OperationGuard<'_, S>,
+        key_pair_id: u8,
+        cert_info: u8,
+        root_hash: Option<&[u8; 48]>,
+        data: &[u8],
+        restart: bool,
+    ) -> McuResult<()> {
+        let (key_pair_id, chain, claimed_auth) =
+            self.prepare_write_under_guard(guard, key_pair_id, cert_info, data.len(), restart)?;
+        if let Some(armed) = claimed_auth {
+            let digest = NoInlineFut(compute_root_hash(alloc, data)).await?;
+            if digest != armed.expected_sha384 {
+                return Err(cert_errors::INVALID_ENDORSEMENT);
+            }
         }
-        if self.cert_slot(role).write_in_progress(algo) {
-            return Err(cert_errors::STORAGE_BUSY);
-        }
-        let chain = managed_endorsement(self, role, algo)?;
-        let target_region = chain.inactive_region();
-        if self.cert_slot(role).region_has_readers(algo, target_region) {
-            return Err(cert_errors::STORAGE_BUSY);
-        }
-        self.cert_slot(role).set_write_in_progress(algo, true);
-        let result: McuResult<()> = async {
-            let chain = chain
-                .write_updated(key as u8, cert_info, root_hash, data)
-                .await?;
-            commit_managed_endorsement(self, role, chain)?;
-            Ok(())
-        }
-        .await;
-        self.cert_slot(role).set_write_in_progress(algo, false);
-        result?;
-        self.invalidate_algo_cache(role, algo);
+        let root_hash = match root_hash {
+            Some(hash) => *hash,
+            None => compute_endorsement_root_hash(alloc, data).await?,
+        };
+        let chain = chain
+            .write_updated(key_pair_id, cert_info, &root_hash, data)
+            .await?;
+        commit_managed_endorsement(self, guard.role, chain)?;
+        self.invalidate_algo_cache(guard.role, guard.algo);
         Ok(())
     }
 
@@ -808,31 +1089,43 @@ impl<S: EndorsementStorage> TaskCertStore<S> {
         cert_info: u8,
         data_len: usize,
     ) -> McuResult<()> {
-        let key = self.shared.validate_key(role, key_pair_id)?;
-        if cert_info != CERT_MODEL_ALIAS_CERT {
-            return Err(cert_errors::INVALID_ENDORSEMENT);
-        }
-        if self.cert_slot(role).write_in_progress(algo) {
-            return Err(cert_errors::STORAGE_BUSY);
-        }
-        let chain = managed_endorsement(self, role, algo)?;
-        let target_region = chain.inactive_region();
-        if self.cert_slot(role).region_has_readers(algo, target_region) {
-            return Err(cert_errors::STORAGE_BUSY);
-        }
-        self.cert_slot(role).set_write_in_progress(algo, true);
-        let result: McuResult<()> = async {
-            let chain = chain
-                .begin_stream_update(key as u8, cert_info, data_len)
-                .await?;
-            stage_managed_endorsement(self, role, chain)?;
-            Ok(())
-        }
-        .await;
-        if result.is_err() {
-            self.cert_slot(role).set_write_in_progress(algo, false);
-        }
-        result
+        let guard = OperationGuard::acquire(self.shared, role, algo)?;
+        let result = self
+            .begin_stream_under_guard(&guard, key_pair_id, cert_info, data_len, false)
+            .await;
+        guard.finish(result)
+    }
+
+    #[cfg(feature = "set-certificate")]
+    async fn begin_stream_under_guard(
+        &self,
+        guard: &OperationGuard<'_, S>,
+        key_pair_id: u8,
+        cert_info: u8,
+        data_len: usize,
+        restart: bool,
+    ) -> McuResult<()> {
+        let (key_pair_id, chain, claimed_auth) =
+            self.prepare_write_under_guard(guard, key_pair_id, cert_info, data_len, restart)?;
+        let generation = self
+            .cert_slot(guard.role)
+            .next_stream_generation(guard.algo)?;
+        let chain = chain
+            .begin_stream_update(key_pair_id, cert_info, data_len)
+            .await?;
+        stage_managed_endorsement(self, guard.role, chain)?;
+        self.cert_slot(guard.role).set_active_stream(
+            guard.algo,
+            Some(ActiveEndorsementStream {
+                generation,
+                key_pair_id,
+                total_size: data_len,
+                next_offset: 0,
+                claimed_auth,
+            }),
+        );
+        self.stream_generations[guard.role as usize][guard.algo.index()].set(Some(generation));
+        Ok(())
     }
 
     #[cfg(feature = "set-certificate")]
@@ -843,12 +1136,44 @@ impl<S: EndorsementStorage> TaskCertStore<S> {
         offset: usize,
         data: &[u8],
     ) -> McuResult<()> {
-        if !self.cert_slot(role).write_in_progress(algo) {
+        let guard = OperationGuard::acquire(self.shared, role, algo)?;
+        let result = self.append_stream_under_guard(&guard, offset, data).await;
+        guard.finish(result)
+    }
+
+    #[cfg(feature = "set-certificate")]
+    async fn append_stream_under_guard(
+        &self,
+        guard: &OperationGuard<'_, S>,
+        offset: usize,
+        data: &[u8],
+    ) -> McuResult<()> {
+        let (role, algo) = (guard.role, guard.algo);
+        let stream = self.owned_stream(role, algo)?;
+        let end = offset
+            .checked_add(data.len())
+            .ok_or(cert_errors::INVALID_ENDORSEMENT)?;
+        if offset != stream.next_offset || data.is_empty() || end > stream.total_size {
             return Err(cert_errors::INVALID_ENDORSEMENT);
         }
-        let mut chain = managed_endorsement(self, role, algo)?;
-        chain.write_stream_chunk(offset, data).await?;
-        stage_managed_endorsement(self, role, chain)
+        let result = async {
+            let mut chain = managed_endorsement(self, role, algo)?;
+            chain.write_stream_chunk(offset, data).await?;
+            stage_managed_endorsement(self, role, chain)?;
+            self.cert_slot(role).set_active_stream(
+                algo,
+                Some(ActiveEndorsementStream {
+                    next_offset: end,
+                    ..stream
+                }),
+            );
+            Ok(())
+        }
+        .await;
+        if result.is_err() {
+            self.abort_owned_stream_under_guard(guard)?;
+        }
+        result
     }
 
     #[cfg(feature = "set-certificate")]
@@ -863,28 +1188,63 @@ impl<S: EndorsementStorage> TaskCertStore<S> {
         root_hash: &[u8; 48],
         data_len: usize,
     ) -> McuResult<()> {
-        if !self.cert_slot(role).write_in_progress(algo) {
+        let guard = OperationGuard::acquire(self.shared, role, algo)?;
+        let result = self
+            .finish_stream_under_guard(
+                alloc,
+                &guard,
+                key_pair_id,
+                cert_info,
+                Some(root_hash),
+                data_len,
+            )
+            .await;
+        guard.finish(result)
+    }
+
+    #[cfg(feature = "set-certificate")]
+    async fn finish_stream_under_guard<A: ScratchAlloc>(
+        &self,
+        alloc: &A,
+        guard: &OperationGuard<'_, S>,
+        key_pair_id: u8,
+        cert_info: u8,
+        root_hash: Option<&[u8; 48]>,
+        data_len: usize,
+    ) -> McuResult<()> {
+        let (role, algo) = (guard.role, guard.algo);
+        let stream = self.owned_stream(role, algo)?;
+        let key_pair_id = self.shared.validate_key_id(role, key_pair_id)?;
+        if key_pair_id != stream.key_pair_id
+            || cert_info != CERT_MODEL_ALIAS_CERT
+            || data_len != stream.total_size
+            || stream.next_offset != data_len
+        {
             return Err(cert_errors::INVALID_ENDORSEMENT);
         }
         let result: McuResult<()> = async {
-            let key = self.shared.validate_key(role, key_pair_id)?;
-            if cert_info != CERT_MODEL_ALIAS_CERT {
-                return Err(cert_errors::INVALID_ENDORSEMENT);
-            }
             let chain = managed_endorsement(self, role, algo)?;
-            validate_streamed_root_hash(alloc, &chain, root_hash, data_len).await?;
+            self.verify_stream_auth(alloc, stream, &chain).await?;
+            let computed_root = match root_hash {
+                Some(expected) => {
+                    validate_streamed_root_hash(alloc, &chain, expected, data_len).await?;
+                    *expected
+                }
+                None => compute_streamed_root_hash(alloc, &chain, data_len).await?,
+            };
             let chain = chain
-                .finish_stream_update(key as u8, cert_info, root_hash, data_len)
+                .finish_stream_update(key_pair_id, cert_info, &computed_root, data_len)
                 .await?;
             commit_managed_endorsement(self, role, chain)?;
             Ok(())
         }
         .await;
         if let Err(err) = result {
-            self.abort_write_endorsement_stream(role, algo).await?;
+            self.abort_owned_stream_under_guard(guard)?;
             return Err(err);
         }
-        self.cert_slot(role).set_write_in_progress(algo, false);
+        self.cert_slot(role).set_active_stream(algo, None);
+        self.stream_generations[role as usize][algo.index()].set(None);
         self.invalidate_algo_cache(role, algo);
         Ok(())
     }
@@ -895,13 +1255,9 @@ impl<S: EndorsementStorage> TaskCertStore<S> {
         role: EndorsementRole,
         algo: CertificateAlgorithm,
     ) -> McuResult<()> {
-        if self.cert_slot(role).write_in_progress(algo) {
-            let mut chain = managed_endorsement(self, role, algo)?;
-            chain.abort_stream_update()?;
-            stage_managed_endorsement(self, role, chain)?;
-        }
-        self.cert_slot(role).set_write_in_progress(algo, false);
-        Ok(())
+        let guard = OperationGuard::acquire(self.shared, role, algo)?;
+        let result = self.abort_owned_stream_under_guard(&guard);
+        guard.finish(result)
     }
 
     #[cfg(feature = "set-certificate")]
@@ -910,31 +1266,49 @@ impl<S: EndorsementStorage> TaskCertStore<S> {
         role: EndorsementRole,
         algo: CertificateAlgorithm,
     ) -> McuResult<()> {
+        let guard = OperationGuard::acquire(self.shared, role, algo)?;
+        let result = self.erase_under_guard(&guard, false).await;
+        guard.finish(result)
+    }
+
+    #[cfg(feature = "set-certificate")]
+    async fn erase_under_guard(
+        &self,
+        guard: &OperationGuard<'_, S>,
+        restart: bool,
+    ) -> McuResult<()> {
+        let (role, algo) = (guard.role, guard.algo);
         self.shared.policy.validate_role(role)?;
-        if self.cert_slot(role).write_in_progress(algo)
+        if (self.cert_slot(role).active_stream(algo).is_some()
+            && (!restart || self.owned_stream(role, algo).is_err()))
             || self.cert_slot(role).any_region_has_readers(algo)
         {
             return Err(cert_errors::STORAGE_BUSY);
         }
         let chain = managed_endorsement(self, role, algo)?;
+        self.check_write_preauth(role, algo, 0)?;
         chain.validate_erase()?;
-        self.cert_slot(role).set_write_in_progress(algo, true);
+        self.shared.abort_stream_under_guard(guard)?;
+        self.stream_generations[role as usize][algo.index()].set(None);
+        self.cert_slot(role).take_armed_write(algo);
+        let chain = managed_endorsement(self, role, algo)?;
         let mut unpublished = chain;
         unpublished.discard();
         commit_managed_endorsement(self, role, unpublished)?;
         self.invalidate_algo_cache(role, algo);
-        let result = match chain.erase_updated().await {
+        match chain.erase_updated().await {
             Ok(erased) => stage_managed_endorsement(self, role, erased),
             Err(err) => {
                 let mut recovered = chain;
                 // Keep the slot unpublished and locked if recovery also fails.
-                recovered.recover().await?;
+                if let Err(recovery_err) = recovered.recover().await {
+                    guard.keep_locked.set(true);
+                    return Err(recovery_err);
+                }
                 commit_managed_endorsement(self, role, recovered)?;
                 Err(err)
             }
-        };
-        self.cert_slot(role).set_write_in_progress(algo, false);
-        result
+        }
     }
 
     /// Provision, replace, or erase a raw DER endorsement chain for `(role, algo)`.
@@ -957,114 +1331,82 @@ impl<S: EndorsementStorage> TaskCertStore<S> {
         total_size: usize,
         data: &[u8],
     ) -> McuResult<()> {
+        let guard = OperationGuard::acquire(self.shared, role, algo)?;
+        let result = self
+            .set_raw_chain_under_guard(alloc, &guard, key_pair_id, offset, total_size, data)
+            .await;
+        guard.finish(result)
+    }
+
+    #[cfg(feature = "set-certificate")]
+    async fn set_raw_chain_under_guard<A: ScratchAlloc>(
+        &self,
+        alloc: &A,
+        guard: &OperationGuard<'_, S>,
+        key_pair_id: u8,
+        offset: usize,
+        total_size: usize,
+        data: &[u8],
+    ) -> McuResult<()> {
+        let (role, algo) = (guard.role, guard.algo);
         if offset == 0 {
-            if let Some(prev) = self.active_stream.take() {
-                self.abort_write_endorsement_stream(prev.role, prev.algo)
-                    .await?;
+            if self.cert_slot(role).active_stream(algo).is_some()
+                && self.owned_stream(role, algo).is_err()
+            {
+                return Err(cert_errors::STORAGE_BUSY);
             }
             if total_size == 0 {
                 if !data.is_empty() {
                     return Err(cert_errors::INVALID_ENDORSEMENT);
                 }
-                return self.erase_endorsement_chain(role, algo).await;
+                return self.erase_under_guard(guard, true).await;
             }
             if data.is_empty() || data.len() > total_size {
                 return Err(cert_errors::INVALID_ENDORSEMENT);
             }
             if data.len() == total_size {
-                let key = self.shared.validate_key(role, key_pair_id)?;
-                let root_hash = compute_endorsement_root_hash(alloc, data).await?;
                 return self
-                    .write_endorsement_chain(
-                        role,
-                        algo,
-                        key as u8,
+                    .write_chain_under_guard(
+                        alloc,
+                        guard,
+                        key_pair_id,
                         CERT_MODEL_ALIAS_CERT,
-                        &root_hash,
+                        None,
                         data,
+                        true,
                     )
                     .await;
             }
-            self.begin_write_endorsement_stream(
-                role,
-                algo,
+            self.begin_stream_under_guard(
+                guard,
                 key_pair_id,
                 CERT_MODEL_ALIAS_CERT,
                 total_size,
+                true,
             )
             .await?;
-            if let Err(err) = self
-                .write_endorsement_stream_chunk(role, algo, 0, data)
-                .await
-            {
-                let _ = self.abort_write_endorsement_stream(role, algo).await;
-                return Err(err);
-            }
-            self.active_stream.set(Some(RawEndorsementStream {
-                role,
-                algo,
-                key_pair_id,
-                total_size,
-                next_offset: data.len(),
-            }));
+            return self.append_stream_under_guard(guard, 0, data).await;
+        }
+
+        let stream = self.owned_stream(role, algo)?;
+        let key_pair_id = self.shared.validate_key_id(role, key_pair_id)?;
+        if stream.key_pair_id != key_pair_id || stream.total_size != total_size {
+            return Err(cert_errors::INVALID_ENDORSEMENT);
+        }
+        self.append_stream_under_guard(guard, offset, data).await?;
+        if self.owned_stream(role, algo)?.next_offset < total_size {
             return Ok(());
         }
 
-        let Some(stream) = self.active_stream.get() else {
-            return Err(cert_errors::INVALID_ENDORSEMENT);
-        };
-        let end = offset
-            .checked_add(data.len())
-            .ok_or(cert_errors::INVALID_ENDORSEMENT)?;
-        if stream.role != role
-            || stream.algo != algo
-            || stream.key_pair_id != key_pair_id
-            || stream.total_size != total_size
-            || offset != stream.next_offset
-            || data.is_empty()
-            || end > total_size
-        {
-            self.active_stream.set(None);
-            let _ = self
-                .abort_write_endorsement_stream(stream.role, stream.algo)
-                .await;
-            return Err(cert_errors::INVALID_ENDORSEMENT);
-        }
-        if let Err(err) = self
-            .write_endorsement_stream_chunk(role, algo, offset, data)
-            .await
-        {
-            self.active_stream.set(None);
-            let _ = self.abort_write_endorsement_stream(role, algo).await;
-            return Err(err);
-        }
-        if end < total_size {
-            self.active_stream.set(Some(RawEndorsementStream {
-                next_offset: end,
-                ..stream
-            }));
-            return Ok(());
-        }
-
-        self.active_stream.set(None);
-        let result: McuResult<()> = async {
-            let key = self.shared.validate_key(role, key_pair_id)?;
-            let chain = managed_endorsement(self, role, algo)?;
-            let root_hash = compute_streamed_root_hash(alloc, &chain, total_size).await?;
-            let chain = chain
-                .finish_stream_update(key as u8, CERT_MODEL_ALIAS_CERT, &root_hash, total_size)
-                .await?;
-            commit_managed_endorsement(self, role, chain)?;
-            Ok(())
-        }
-        .await;
-        if let Err(err) = result {
-            self.abort_write_endorsement_stream(role, algo).await?;
-            return Err(err);
-        }
-        self.cert_slot(role).set_write_in_progress(algo, false);
-        self.invalidate_algo_cache(role, algo);
-        Ok(())
+        self.finish_stream_under_guard(
+            alloc,
+            guard,
+            key_pair_id,
+            CERT_MODEL_ALIAS_CERT,
+            None,
+            total_size,
+        )
+        .await
     }
 
     #[inline]
@@ -1363,30 +1705,51 @@ async fn validate_root_hash<A: ScratchAlloc>(
 }
 
 #[cfg(feature = "set-certificate")]
-async fn compute_streamed_root_hash<A: ScratchAlloc, S: EndorsementStorage>(
+async fn compute_streamed_hash<A: ScratchAlloc, S: EndorsementStorage>(
     alloc: &A,
     managed: &ManagedEndorsementChain<S>,
-    data_len: usize,
+    len: usize,
 ) -> McuResult<[u8; 48]> {
-    let first_cert_len = streamed_first_der_len(managed, data_len).await?;
     let sha_buf = alloc.alloc(SHA_CONTEXT_SIZE)?;
+    #[cfg(not(test))]
     let mut state = sha_init(alloc, sha_buf, HashAlgo::Sha384, &[]).await?;
+    #[cfg(test)]
+    let mut state = {
+        let _ = sha_buf;
+        TestSha384::new()
+    };
     let mut offset = 0usize;
     let mut buf = [0u8; 256];
-    while offset < first_cert_len {
-        let n = (first_cert_len - offset).min(buf.len());
+    while offset < len {
+        let n = (len - offset).min(buf.len());
         let read = managed
             .read_stream_chunk(offset, checked_slice_mut(&mut buf, 0, n)?)
             .await?;
         if read != n {
             return Err(INVARIANT);
         }
+        #[cfg(not(test))]
         sha_update(alloc, &mut state, checked_slice(&buf, 0, n)?).await?;
+        #[cfg(test)]
+        state.update(checked_slice(&buf, 0, n)?);
         offset += n;
     }
     let mut digest = [0u8; 48];
+    #[cfg(not(test))]
     sha_finish(alloc, &mut state, &mut digest).await?;
+    #[cfg(test)]
+    state.finish(&mut digest);
     Ok(digest)
+}
+
+#[cfg(feature = "set-certificate")]
+async fn compute_streamed_root_hash<A: ScratchAlloc, S: EndorsementStorage>(
+    alloc: &A,
+    managed: &ManagedEndorsementChain<S>,
+    data_len: usize,
+) -> McuResult<[u8; 48]> {
+    let first_cert_len = streamed_first_der_len(managed, data_len).await?;
+    compute_streamed_hash(alloc, managed, first_cert_len).await
 }
 
 #[cfg(feature = "set-certificate")]
@@ -1682,7 +2045,7 @@ mod tests {
         // Because the active_region remains untouched until commit, Task A's
         // cached values for the active_region stay valid while staging is in progress.
         let owner_slot = task_b.cert_slot(EndorsementRole::Owner);
-        owner_slot.set_write_in_progress(CertificateAlgorithm::EccP384, true);
+        owner_slot.set_operation_in_progress(CertificateAlgorithm::EccP384, true);
         assert_eq!(
             task_a.cached_chain_len(EndorsementRole::Owner, CertificateAlgorithm::EccP384),
             Some(512)
@@ -1699,7 +2062,7 @@ mod tests {
         // When Task B atomically commits the new region, it bumps the generation counter
         // for EccP384, invalidating Task A's EccP384 cache while MlDsa87 stays valid.
         owner_slot.bump_generation_counter(CertificateAlgorithm::EccP384);
-        owner_slot.set_write_in_progress(CertificateAlgorithm::EccP384, false);
+        owner_slot.set_operation_in_progress(CertificateAlgorithm::EccP384, false);
 
         assert_eq!(
             task_a.cached_chain_len(EndorsementRole::Owner, CertificateAlgorithm::EccP384),
@@ -1768,7 +2131,7 @@ mod tests {
     }
 
     #[test]
-    fn active_region_remains_readable_while_write_in_progress() {
+    fn active_region_remains_readable_while_operation_in_progress() {
         static SHARED: SharedCertStore = SharedCertStore::new();
         let store = TaskCertStore::new(&SHARED);
         let slot = store.cert_slot_mut(EndorsementRole::Vendor);
@@ -1778,7 +2141,7 @@ mod tests {
 
         store
             .cert_slot(EndorsementRole::Vendor)
-            .set_write_in_progress(CertificateAlgorithm::EccP384, true);
+            .set_operation_in_progress(CertificateAlgorithm::EccP384, true);
 
         let mut hash = [0u8; 48];
         store
@@ -1789,7 +2152,7 @@ mod tests {
 
         store
             .cert_slot(EndorsementRole::Vendor)
-            .set_write_in_progress(CertificateAlgorithm::EccP384, false);
+            .set_operation_in_progress(CertificateAlgorithm::EccP384, false);
     }
 
     #[test]
@@ -1821,32 +2184,33 @@ mod tests {
     fn validate_key_resolves_zero_for_some_policy_and_requires_explicit_for_none() {
         let store: SharedCertStore = SharedCertStore::new();
         assert_eq!(
-            store.validate_key(EndorsementRole::Owner, 0),
-            Ok(DeviceKey::LDevId)
+            store.validate_key_id(EndorsementRole::Owner, 0),
+            Ok(DeviceKey::LDevId as u8)
         );
         assert_eq!(
-            store.validate_key(EndorsementRole::Owner, 1),
-            Ok(DeviceKey::LDevId)
+            store.validate_key_id(EndorsementRole::Owner, 1),
+            Ok(DeviceKey::LDevId as u8)
         );
         assert_eq!(
-            store.validate_key(EndorsementRole::Owner, 2),
+            store.validate_key_id(EndorsementRole::Owner, 2),
             Err(cert_errors::KEY_MISMATCH)
         );
         assert_eq!(
-            store.validate_key(EndorsementRole::Tenant, 0),
+            store.validate_key_id(EndorsementRole::Tenant, 0),
             Err(cert_errors::KEY_MISMATCH)
         );
         assert_eq!(
-            store.validate_key(EndorsementRole::Tenant, 1),
-            Ok(DeviceKey::LDevId)
+            store.validate_key_id(EndorsementRole::Tenant, 1),
+            Ok(DeviceKey::LDevId as u8)
         );
         assert_eq!(
-            store.validate_key(EndorsementRole::Tenant, 2),
+            store.validate_key_id(EndorsementRole::Tenant, 2),
             Err(cert_errors::UNSUPPORTED_KEY)
         );
+        assert_eq!(store.validate_key_id(EndorsementRole::Vendor, 0), Ok(0));
         assert_eq!(
-            store.validate_key(EndorsementRole::Vendor, 1),
-            Err(cert_errors::PROVISIONING_DISABLED)
+            store.validate_key_id(EndorsementRole::Vendor, 1),
+            Err(cert_errors::KEY_MISMATCH)
         );
     }
 
@@ -1855,6 +2219,11 @@ mod tests {
         extern crate std;
 
         use super::*;
+        use core::{
+            future::Future,
+            pin::Pin,
+            task::{Context, Poll},
+        };
         use futures::executor::block_on;
         use std::{
             boxed::Box,
@@ -1871,6 +2240,7 @@ mod tests {
             successful_erases_before_failure: Cell<Option<usize>>,
             fail_reads: Cell<bool>,
             short_header_write: Cell<bool>,
+            pause_io: Cell<bool>,
         }
 
         // Safety: each FaultyStorage instance in unit tests is used on a single thread.
@@ -1897,6 +2267,7 @@ mod tests {
                     successful_erases_before_failure: Cell::new(None),
                     fail_reads: Cell::new(false),
                     short_header_write: Cell::new(false),
+                    pause_io: Cell::new(false),
                 }));
                 Self {
                     id: TEST_DRIVER,
@@ -1907,6 +2278,7 @@ mod tests {
 
         impl EndorsementStorage for FaultyStorage {
             async fn read(&self, offset: usize, buf: &mut [u8]) -> McuResult<()> {
+                self.wait_for_io().await;
                 if self.flash.fail_reads.get() {
                     return Err(cert_errors::STORAGE_ERROR);
                 }
@@ -1922,6 +2294,7 @@ mod tests {
             }
 
             async fn write(&self, offset: usize, data: &[u8]) -> McuResult<()> {
+                self.wait_for_io().await;
                 let mut bytes = self.flash.bytes.borrow_mut();
                 let len = if offset.is_multiple_of(TEST_REGION / MANAGED_REGION_COUNT)
                     && self.flash.short_header_write.replace(false)
@@ -1939,6 +2312,7 @@ mod tests {
             }
 
             async fn erase(&self, offset: usize, len: usize) -> McuResult<()> {
+                self.wait_for_io().await;
                 if let Some(remaining) = self.flash.successful_erases_before_failure.get() {
                     if remaining == 0 {
                         self.flash.successful_erases_before_failure.set(None);
@@ -1958,11 +2332,30 @@ mod tests {
             }
         }
 
+        impl FaultyStorage {
+            async fn wait_for_io(&self) {
+                core::future::poll_fn(|_| {
+                    if self.flash.pause_io.get() {
+                        Poll::Pending
+                    } else {
+                        Poll::Ready(())
+                    }
+                })
+                .await
+            }
+        }
+
+        fn assert_pending<F: Future>(future: Pin<&mut F>) {
+            let mut context = Context::from_waker(futures::task::noop_waker_ref());
+            assert!(future.poll(&mut context).is_pending());
+        }
+
         fn provisioned_store(
             shared: &'static SharedCertStore<FaultyStorage>,
             storage: FaultyStorage,
         ) -> TaskCertStore<FaultyStorage> {
             *storage.flash.bytes.borrow_mut() = vec![0xFF; TEST_REGION];
+            shared.set_auth_required(EndorsementRole::Owner, false);
             block_on(shared.init_managed_endorsement(
                 EndorsementRole::Owner,
                 CertificateAlgorithm::EccP384,
@@ -1974,6 +2367,7 @@ mod tests {
             let store = TaskCertStore::new(shared);
             for byte in [0xAA, 0xBB] {
                 block_on(store.write_endorsement_chain(
+                    &DummyAlloc,
                     EndorsementRole::Owner,
                     CertificateAlgorithm::EccP384,
                     1,
@@ -2027,7 +2421,7 @@ mod tests {
                     Err(cert_errors::STORAGE_ERROR),
                 );
                 let slot = store.cert_slot(EndorsementRole::Owner);
-                assert!(!slot.write_in_progress(CertificateAlgorithm::EccP384));
+                assert!(!slot.operation_in_progress(CertificateAlgorithm::EccP384));
                 assert!(slot.is_provisioned(CertificateAlgorithm::EccP384));
                 assert_eq!(
                     other_task
@@ -2036,6 +2430,7 @@ mod tests {
                 );
 
                 block_on(store.write_endorsement_chain(
+                    &DummyAlloc,
                     EndorsementRole::Owner,
                     CertificateAlgorithm::EccP384,
                     1,
@@ -2065,16 +2460,17 @@ mod tests {
             );
             let slot = store.cert_slot(EndorsementRole::Owner);
             assert!(!slot.is_provisioned(CertificateAlgorithm::EccP384));
-            assert!(slot.write_in_progress(CertificateAlgorithm::EccP384));
+            assert!(slot.operation_in_progress(CertificateAlgorithm::EccP384));
             assert_eq!(
                 block_on(store.abort_write_endorsement_stream(
                     EndorsementRole::Owner,
                     CertificateAlgorithm::EccP384,
                 )),
-                Err(cert_errors::INVALID_ENDORSEMENT),
+                Err(cert_errors::STORAGE_BUSY),
             );
             assert_eq!(
                 block_on(store.write_endorsement_chain(
+                    &DummyAlloc,
                     EndorsementRole::Owner,
                     CertificateAlgorithm::EccP384,
                     1,
@@ -2108,6 +2504,7 @@ mod tests {
 
             assert_eq!(
                 block_on(store.write_endorsement_chain(
+                    &DummyAlloc,
                     EndorsementRole::Owner,
                     CertificateAlgorithm::EccP384,
                     1,
@@ -2119,7 +2516,7 @@ mod tests {
             );
             let slot = store.cert_slot(EndorsementRole::Owner);
             assert!(slot.is_provisioned(CertificateAlgorithm::EccP384));
-            assert!(!slot.write_in_progress(CertificateAlgorithm::EccP384));
+            assert!(!slot.operation_in_progress(CertificateAlgorithm::EccP384));
             assert_eq!(recovered_data(storage), [0xBB; 16]);
         }
 
@@ -2166,11 +2563,14 @@ mod tests {
                 &[0x30, 0x0E, 1, 2],
             ))
             .unwrap();
-            assert!(store
+            assert!(!store
                 .cert_slot(EndorsementRole::Owner)
-                .write_in_progress(CertificateAlgorithm::EccP384));
+                .operation_in_progress(CertificateAlgorithm::EccP384));
+            let stream = store
+                .owned_stream(EndorsementRole::Owner, CertificateAlgorithm::EccP384)
+                .unwrap();
 
-            // Parameter mismatch at offset > 0 aborts the active stream.
+            // Mismatched continuations leave the active stream untouched.
             assert_eq!(
                 block_on(store.set_raw_endorsement_chain(
                     &DummyAlloc,
@@ -2185,9 +2585,13 @@ mod tests {
             );
             assert!(!store
                 .cert_slot(EndorsementRole::Owner)
-                .write_in_progress(CertificateAlgorithm::EccP384));
+                .operation_in_progress(CertificateAlgorithm::EccP384));
+            assert_eq!(
+                store.owned_stream(EndorsementRole::Owner, CertificateAlgorithm::EccP384),
+                Ok(stream)
+            );
 
-            // Skipped/non-contiguous offset at offset > 0 aborts the active stream.
+            // Restart at offset 0, then reject a skipped offset without aborting.
             block_on(store.set_raw_endorsement_chain(
                 &DummyAlloc,
                 EndorsementRole::Owner,
@@ -2212,7 +2616,14 @@ mod tests {
             );
             assert!(!store
                 .cert_slot(EndorsementRole::Owner)
-                .write_in_progress(CertificateAlgorithm::EccP384));
+                .operation_in_progress(CertificateAlgorithm::EccP384));
+            assert_eq!(
+                store
+                    .owned_stream(EndorsementRole::Owner, CertificateAlgorithm::EccP384)
+                    .unwrap()
+                    .next_offset,
+                4
+            );
 
             // Begin another stream, advance next_offset across chunks, then restart at offset == 0 with total_size == 0 (erase).
             block_on(store.set_raw_endorsement_chain(
@@ -2247,7 +2658,7 @@ mod tests {
             .unwrap();
             let slot = store.cert_slot(EndorsementRole::Owner);
             assert!(!slot.is_provisioned(CertificateAlgorithm::EccP384));
-            assert!(!slot.write_in_progress(CertificateAlgorithm::EccP384));
+            assert!(!slot.operation_in_progress(CertificateAlgorithm::EccP384));
         }
 
         #[test]
@@ -2290,6 +2701,745 @@ mod tests {
                     &mut buf,
                 )),
                 Err(INVARIANT),
+            );
+        }
+
+        struct VecAlloc;
+        impl ScratchAlloc for VecAlloc {
+            type Buf<'a>
+                = Vec<u8>
+            where
+                Self: 'a;
+
+            fn alloc(&self, size: usize) -> McuResult<Self::Buf<'_>> {
+                Ok(vec![0u8; size])
+            }
+        }
+
+        #[test]
+        fn raw_single_shot_rejects_before_hashing_and_preserves_pending_grants() {
+            static SHARED: SharedCertStore<FaultyStorage> = SharedCertStore::new();
+            let storage = FaultyStorage::new();
+            let task = provisioned_store(&SHARED, storage);
+            let role = EndorsementRole::Owner;
+            let algo = CertificateAlgorithm::EccP384;
+            let cert = [0x30, 0x06, 1, 2, 3, 4, 5, 6];
+            let malformed = [0x31, 0x06, 1, 2, 3, 4, 5, 6];
+            SHARED.set_auth_required(role, true);
+
+            // DummyAlloc fails if hashing is attempted.
+            for data in [&cert, &malformed] {
+                assert_eq!(
+                    block_on(task.set_raw_endorsement_chain(
+                        &DummyAlloc,
+                        role,
+                        algo,
+                        1,
+                        0,
+                        data.len(),
+                        data,
+                    )),
+                    Err(cert_errors::UNAUTHORIZED),
+                );
+                assert!(!SHARED.cert_slot(role).operation_in_progress(algo));
+            }
+
+            for (key, size, expected) in [
+                (2, cert.len(), cert_errors::KEY_MISMATCH),
+                (1, cert.len() + 1, cert_errors::INVALID_ENDORSEMENT),
+            ] {
+                SHARED
+                    .arm_endorsement_write(role, algo, size, &test_sha384(&cert))
+                    .unwrap();
+                let pending = SHARED.cert_slot(role).armed_write(algo);
+                for data in [&cert, &malformed] {
+                    assert_eq!(
+                        block_on(task.set_raw_endorsement_chain(
+                            &DummyAlloc,
+                            role,
+                            algo,
+                            key,
+                            0,
+                            data.len(),
+                            data,
+                        )),
+                        Err(expected),
+                    );
+                    assert_eq!(SHARED.cert_slot(role).armed_write(algo), pending);
+                    assert!(!SHARED.cert_slot(role).operation_in_progress(algo));
+                }
+            }
+            assert_eq!(recovered_data(storage), [0xBB; 16]);
+        }
+
+        #[test]
+        fn raw_single_shot_malformed_der_consumes_claimed_grant_without_publication() {
+            static SHARED: SharedCertStore<FaultyStorage> = SharedCertStore::new();
+            let storage = FaultyStorage::new();
+            let task = provisioned_store(&SHARED, storage);
+            let role = EndorsementRole::Owner;
+            let algo = CertificateAlgorithm::EccP384;
+            let malformed = [0x31, 0x06, 1, 2, 3, 4, 5, 6];
+            let generation = SHARED.cert_slot(role).generation_counter(algo);
+            SHARED.set_auth_required(role, true);
+            SHARED
+                .arm_endorsement_write(role, algo, malformed.len(), &test_sha384(&malformed))
+                .unwrap();
+
+            assert_eq!(
+                block_on(task.set_raw_endorsement_chain(
+                    &VecAlloc,
+                    role,
+                    algo,
+                    1,
+                    0,
+                    malformed.len(),
+                    &malformed,
+                )),
+                Err(cert_errors::INVALID_ENDORSEMENT),
+            );
+            let slot = SHARED.cert_slot(role);
+            assert!(slot.armed_write(algo).is_none());
+            assert!(slot.active_stream(algo).is_none());
+            assert!(!slot.operation_in_progress(algo));
+            assert_eq!(slot.generation_counter(algo), generation);
+            assert_eq!(recovered_data(storage), [0xBB; 16]);
+            assert_eq!(
+                block_on(task.set_raw_endorsement_chain(
+                    &DummyAlloc,
+                    role,
+                    algo,
+                    1,
+                    0,
+                    malformed.len(),
+                    &malformed,
+                )),
+                Err(cert_errors::UNAUTHORIZED),
+            );
+        }
+
+        #[test]
+        fn rearm_replaces_idle_streams_and_rejects_stale_task_operations() {
+            static SHARED: [SharedCertStore<FaultyStorage>; 2] =
+                [const { SharedCertStore::new() }; 2];
+            let role = EndorsementRole::Owner;
+            let algo = CertificateAlgorithm::EccP384;
+            let cert = [0x30, 0x06, 1, 2, 3, 4, 5, 6];
+            let digest = test_sha384(&cert);
+
+            for (raw, shared) in [false, true].into_iter().zip(&SHARED) {
+                let old_task = provisioned_store(shared, FaultyStorage::new());
+                let new_task = TaskCertStore::new(shared);
+                shared.set_auth_required(role, true);
+                shared
+                    .arm_endorsement_write(role, algo, cert.len(), &digest)
+                    .unwrap();
+                if raw {
+                    block_on(old_task.set_raw_endorsement_chain(
+                        &VecAlloc,
+                        role,
+                        algo,
+                        1,
+                        0,
+                        cert.len(),
+                        &cert[..4],
+                    ))
+                    .unwrap();
+                } else {
+                    block_on(old_task.begin_write_endorsement_stream(
+                        role,
+                        algo,
+                        1,
+                        CERT_MODEL_ALIAS_CERT,
+                        cert.len(),
+                    ))
+                    .unwrap();
+                    block_on(old_task.write_endorsement_stream_chunk(role, algo, 0, &cert[..4]))
+                        .unwrap();
+                }
+                let stream = old_task.owned_stream(role, algo).unwrap();
+                assert!(stream.claimed_auth.is_some());
+                assert!(shared.cert_slot(role).armed_write(algo).is_none());
+                assert!(!shared.cert_slot(role).operation_in_progress(algo));
+
+                // Invalid re-arming and unapproved replacement leave the old stream intact.
+                assert_eq!(
+                    shared.arm_endorsement_write(role, algo, TEST_REGION, &digest),
+                    Err(cert_errors::INVALID_ENDORSEMENT),
+                );
+                assert_eq!(
+                    block_on(new_task.begin_write_endorsement_stream(
+                        role,
+                        algo,
+                        1,
+                        CERT_MODEL_ALIAS_CERT,
+                        cert.len(),
+                    )),
+                    Err(cert_errors::STORAGE_BUSY),
+                );
+                assert_eq!(
+                    block_on(old_task.set_raw_endorsement_chain(
+                        &VecAlloc,
+                        role,
+                        algo,
+                        1,
+                        0,
+                        cert.len(),
+                        &cert[..4],
+                    )),
+                    Err(cert_errors::UNAUTHORIZED),
+                );
+                assert_eq!(old_task.owned_stream(role, algo), Ok(stream));
+
+                shared
+                    .arm_endorsement_write(role, algo, cert.len(), &digest)
+                    .unwrap();
+                let pending = shared.cert_slot(role).armed_write(algo);
+                assert_eq!(
+                    block_on(old_task.abort_write_endorsement_stream(role, algo)),
+                    Err(cert_errors::INVALID_ENDORSEMENT),
+                );
+                assert_eq!(shared.cert_slot(role).armed_write(algo), pending);
+
+                block_on(new_task.begin_write_endorsement_stream(
+                    role,
+                    algo,
+                    1,
+                    CERT_MODEL_ALIAS_CERT,
+                    cert.len(),
+                ))
+                .unwrap();
+                block_on(new_task.write_endorsement_stream_chunk(role, algo, 0, &cert[..4]))
+                    .unwrap();
+                let replacement = new_task.owned_stream(role, algo).unwrap();
+                assert_ne!(replacement.generation, stream.generation);
+                assert_eq!(
+                    block_on(old_task.write_endorsement_stream_chunk(role, algo, 4, &cert[4..])),
+                    Err(cert_errors::INVALID_ENDORSEMENT),
+                );
+                assert_eq!(
+                    block_on(old_task.finish_write_endorsement_stream(
+                        &VecAlloc,
+                        role,
+                        algo,
+                        1,
+                        CERT_MODEL_ALIAS_CERT,
+                        &digest,
+                        cert.len(),
+                    )),
+                    Err(cert_errors::INVALID_ENDORSEMENT),
+                );
+                assert_eq!(
+                    block_on(old_task.abort_write_endorsement_stream(role, algo)),
+                    Err(cert_errors::INVALID_ENDORSEMENT),
+                );
+                assert_eq!(new_task.owned_stream(role, algo), Ok(replacement));
+                block_on(new_task.write_endorsement_stream_chunk(role, algo, 4, &cert[4..]))
+                    .unwrap();
+                block_on(new_task.finish_write_endorsement_stream(
+                    &VecAlloc,
+                    role,
+                    algo,
+                    1,
+                    CERT_MODEL_ALIAS_CERT,
+                    &digest,
+                    cert.len(),
+                ))
+                .unwrap();
+                assert!(shared.cert_slot(role).active_stream(algo).is_none());
+                assert!(!shared.cert_slot(role).is_write_authorized());
+            }
+        }
+
+        #[test]
+        fn in_flight_storage_operations_block_rearm_and_other_mutations() {
+            static SHARED: SharedCertStore<FaultyStorage> = SharedCertStore::new();
+            let storage = FaultyStorage::new();
+            let task = provisioned_store(&SHARED, storage);
+            let other_task = TaskCertStore::new(&SHARED);
+            let role = EndorsementRole::Owner;
+            let algo = CertificateAlgorithm::EccP384;
+            let cert = [0x30, 0x06, 1, 2, 3, 4, 5, 6];
+            let digest = test_sha384(&cert);
+            SHARED.set_auth_required(role, true);
+            SHARED
+                .arm_endorsement_write(role, algo, cert.len(), &digest)
+                .unwrap();
+
+            let assert_busy = || {
+                let slot = SHARED.cert_slot(role);
+                let stream = slot.active_stream(algo);
+                let armed = slot.armed_write(algo);
+                assert_eq!(
+                    SHARED.arm_endorsement_write(role, algo, cert.len(), &digest),
+                    Err(cert_errors::STORAGE_BUSY),
+                );
+                assert_eq!(
+                    block_on(task.abort_write_endorsement_stream(role, algo)),
+                    Err(cert_errors::STORAGE_BUSY),
+                );
+                assert_eq!(
+                    block_on(other_task.erase_endorsement_chain(role, algo)),
+                    Err(cert_errors::STORAGE_BUSY),
+                );
+                assert_eq!(
+                    block_on(other_task.write_endorsement_chain(
+                        &VecAlloc,
+                        role,
+                        algo,
+                        1,
+                        CERT_MODEL_ALIAS_CERT,
+                        &digest,
+                        &cert,
+                    )),
+                    Err(cert_errors::STORAGE_BUSY),
+                );
+                assert_eq!(
+                    block_on(other_task.set_raw_endorsement_chain(
+                        &VecAlloc,
+                        role,
+                        algo,
+                        1,
+                        0,
+                        cert.len(),
+                        &cert[..4],
+                    )),
+                    Err(cert_errors::STORAGE_BUSY),
+                );
+                assert_eq!(
+                    block_on(task.write_endorsement_stream_chunk(role, algo, 4, &cert[4..])),
+                    Err(cert_errors::STORAGE_BUSY),
+                );
+                assert_eq!(slot.active_stream(algo), stream);
+                assert_eq!(slot.armed_write(algo), armed);
+            };
+
+            storage.flash.pause_io.set(true);
+            let mut start = Box::pin(task.set_raw_endorsement_chain(
+                &VecAlloc,
+                role,
+                algo,
+                1,
+                0,
+                cert.len(),
+                &cert[..4],
+            ));
+            assert_pending(start.as_mut());
+            assert_busy();
+            storage.flash.pause_io.set(false);
+            block_on(start).unwrap();
+
+            storage.flash.pause_io.set(true);
+            let mut append =
+                Box::pin(task.write_endorsement_stream_chunk(role, algo, 4, &cert[4..]));
+            assert_pending(append.as_mut());
+            assert_busy();
+            storage.flash.pause_io.set(false);
+            block_on(append).unwrap();
+
+            storage.flash.pause_io.set(true);
+            let mut finish = Box::pin(task.finish_write_endorsement_stream(
+                &VecAlloc,
+                role,
+                algo,
+                1,
+                CERT_MODEL_ALIAS_CERT,
+                &digest,
+                cert.len(),
+            ));
+            assert_pending(finish.as_mut());
+            assert_busy();
+            storage.flash.pause_io.set(false);
+            block_on(finish).unwrap();
+
+            SHARED
+                .arm_endorsement_write(role, algo, 0, &[0; 48])
+                .unwrap();
+            storage.flash.pause_io.set(true);
+            let mut erase = Box::pin(task.erase_endorsement_chain(role, algo));
+            assert_pending(erase.as_mut());
+            assert_busy();
+            storage.flash.pause_io.set(false);
+            block_on(erase).unwrap();
+            assert!(!SHARED.cert_slot(role).operation_in_progress(algo));
+        }
+
+        #[test]
+        fn claimed_authorization_survives_policy_changes_and_failed_streams_release_slot() {
+            static SHARED: SharedCertStore<FaultyStorage> = SharedCertStore::new();
+            let storage = FaultyStorage::new();
+            let task = provisioned_store(&SHARED, storage);
+            let role = EndorsementRole::Owner;
+            let algo = CertificateAlgorithm::EccP384;
+            let cert = [0x30, 0x06, 1, 2, 3, 4, 5, 6];
+
+            // An unarmed stream admitted by policy remains unarmed through completion.
+            block_on(task.set_raw_endorsement_chain(
+                &VecAlloc,
+                role,
+                algo,
+                1,
+                0,
+                cert.len(),
+                &cert[..4],
+            ))
+            .unwrap();
+            SHARED.set_auth_required(role, true);
+            block_on(task.set_raw_endorsement_chain(
+                &VecAlloc,
+                role,
+                algo,
+                1,
+                4,
+                cert.len(),
+                &cert[4..],
+            ))
+            .unwrap();
+
+            // A claimed digest remains mandatory even if policy is subsequently relaxed.
+            SHARED
+                .arm_endorsement_write(role, algo, cert.len(), &[0; 48])
+                .unwrap();
+            block_on(task.set_raw_endorsement_chain(
+                &VecAlloc,
+                role,
+                algo,
+                1,
+                0,
+                cert.len(),
+                &cert[..4],
+            ))
+            .unwrap();
+            SHARED.set_auth_required(role, false);
+            assert_eq!(
+                block_on(task.set_raw_endorsement_chain(
+                    &VecAlloc,
+                    role,
+                    algo,
+                    1,
+                    4,
+                    cert.len(),
+                    &cert[4..],
+                )),
+                Err(cert_errors::INVALID_ENDORSEMENT),
+            );
+            assert!(SHARED.cert_slot(role).active_stream(algo).is_none());
+            assert!(SHARED.cert_slot(role).armed_write(algo).is_none());
+            assert!(!SHARED.cert_slot(role).operation_in_progress(algo));
+
+            SHARED
+                .arm_endorsement_write(role, algo, cert.len(), &test_sha384(&cert))
+                .unwrap();
+            storage.flash.successful_erases_before_failure.set(Some(0));
+            assert_eq!(
+                block_on(task.begin_write_endorsement_stream(
+                    role,
+                    algo,
+                    1,
+                    CERT_MODEL_ALIAS_CERT,
+                    cert.len(),
+                )),
+                Err(cert_errors::STORAGE_ERROR),
+            );
+            assert!(SHARED.cert_slot(role).active_stream(algo).is_none());
+            assert!(SHARED.cert_slot(role).armed_write(algo).is_none());
+            assert!(!SHARED.cert_slot(role).operation_in_progress(algo));
+        }
+
+        #[test]
+        fn dropping_an_in_flight_update_does_not_unlock_outstanding_io() {
+            static SHARED: SharedCertStore<FaultyStorage> = SharedCertStore::new();
+            let storage = FaultyStorage::new();
+            let task = provisioned_store(&SHARED, storage);
+            let role = EndorsementRole::Owner;
+            let algo = CertificateAlgorithm::EccP384;
+            storage.flash.pause_io.set(true);
+            let mut start = Box::pin(task.begin_write_endorsement_stream(
+                role,
+                algo,
+                1,
+                CERT_MODEL_ALIAS_CERT,
+                8,
+            ));
+            assert_pending(start.as_mut());
+            drop(start);
+            assert_eq!(
+                SHARED.arm_endorsement_write(role, algo, 8, &[0; 48]),
+                Err(cert_errors::STORAGE_BUSY),
+            );
+        }
+
+        #[test]
+        fn vendor_slot_requires_armed_write_and_verifies_sha384() {
+            static SHARED: SharedCertStore<FaultyStorage> = SharedCertStore::new();
+            let storage = FaultyStorage::new();
+            *storage.flash.bytes.borrow_mut() = vec![0xFF; TEST_REGION];
+            block_on(SHARED.init_managed_endorsement(
+                EndorsementRole::Vendor,
+                CertificateAlgorithm::EccP384,
+                storage,
+                0,
+                TEST_REGION,
+            ))
+            .unwrap();
+            let store = TaskCertStore::new(&SHARED);
+            let slot = store.cert_slot(EndorsementRole::Vendor);
+            assert!(slot.is_auth_required());
+            assert!(!slot.is_write_authorized());
+
+            let chain = [0x30u8, 0x06, 1, 2, 3, 4, 5, 6];
+            let root_hash = test_sha384(&chain);
+            let chain_hash = test_sha384(&chain);
+
+            // Unarmed writes and erases fail with UNAUTHORIZED.
+            assert_eq!(
+                block_on(store.write_endorsement_chain(
+                    &VecAlloc,
+                    EndorsementRole::Vendor,
+                    CertificateAlgorithm::EccP384,
+                    0,
+                    CERT_MODEL_ALIAS_CERT,
+                    &root_hash,
+                    &chain,
+                )),
+                Err(cert_errors::UNAUTHORIZED),
+            );
+            assert_eq!(
+                block_on(store.set_raw_endorsement_chain(
+                    &VecAlloc,
+                    EndorsementRole::Vendor,
+                    CertificateAlgorithm::EccP384,
+                    0,
+                    0,
+                    chain.len(),
+                    &chain,
+                )),
+                Err(cert_errors::UNAUTHORIZED),
+            );
+            assert_eq!(
+                block_on(store.erase_endorsement_chain(
+                    EndorsementRole::Vendor,
+                    CertificateAlgorithm::EccP384,
+                )),
+                Err(cert_errors::UNAUTHORIZED),
+            );
+
+            // Arming with mismatched SHA-384 fails single-shot write and consumes the armed token.
+            let mut bad_hash = chain_hash;
+            bad_hash[0] ^= 0xFF;
+            SHARED
+                .arm_endorsement_write(
+                    EndorsementRole::Vendor,
+                    CertificateAlgorithm::EccP384,
+                    chain.len(),
+                    &bad_hash,
+                )
+                .unwrap();
+            assert!(slot.is_write_authorized());
+            assert_eq!(
+                block_on(store.write_endorsement_chain(
+                    &VecAlloc,
+                    EndorsementRole::Vendor,
+                    CertificateAlgorithm::EccP384,
+                    0,
+                    CERT_MODEL_ALIAS_CERT,
+                    &root_hash,
+                    &chain,
+                )),
+                Err(cert_errors::INVALID_ENDORSEMENT),
+            );
+            assert!(!slot.is_write_authorized());
+            assert!(!slot.is_provisioned(CertificateAlgorithm::EccP384));
+
+            // Arming with matching size and SHA-384 succeeds on single-shot write and consumes token.
+            SHARED
+                .arm_endorsement_write(
+                    EndorsementRole::Vendor,
+                    CertificateAlgorithm::EccP384,
+                    chain.len(),
+                    &chain_hash,
+                )
+                .unwrap();
+            block_on(store.write_endorsement_chain(
+                &VecAlloc,
+                EndorsementRole::Vendor,
+                CertificateAlgorithm::EccP384,
+                0,
+                CERT_MODEL_ALIAS_CERT,
+                &root_hash,
+                &chain,
+            ))
+            .unwrap();
+            assert!(slot.is_provisioned(CertificateAlgorithm::EccP384));
+            assert!(!slot.is_write_authorized());
+
+            // Streamed update with mismatched SHA-384 is rejected before A/B commit, preserving prior chain.
+            let chain2 = [0x30u8, 0x06, 9, 8, 7, 6, 5, 4];
+            SHARED
+                .arm_endorsement_write(
+                    EndorsementRole::Vendor,
+                    CertificateAlgorithm::EccP384,
+                    chain2.len(),
+                    &bad_hash,
+                )
+                .unwrap();
+            block_on(store.set_raw_endorsement_chain(
+                &VecAlloc,
+                EndorsementRole::Vendor,
+                CertificateAlgorithm::EccP384,
+                0,
+                0,
+                chain2.len(),
+                &chain2[..4],
+            ))
+            .unwrap();
+            assert_eq!(
+                block_on(store.set_raw_endorsement_chain(
+                    &VecAlloc,
+                    EndorsementRole::Vendor,
+                    CertificateAlgorithm::EccP384,
+                    0,
+                    4,
+                    chain2.len(),
+                    &chain2[4..],
+                )),
+                Err(cert_errors::INVALID_ENDORSEMENT),
+            );
+            let mut stored_hash = [0u8; 48];
+            slot.root_cert_hash(CertificateAlgorithm::EccP384, &mut stored_hash)
+                .unwrap();
+            assert_eq!(stored_hash, root_hash);
+
+            // Interrupted raw stream can be re-armed and restarted at offset == 0.
+            let chain2_hash = test_sha384(&chain2);
+            SHARED
+                .arm_endorsement_write(
+                    EndorsementRole::Vendor,
+                    CertificateAlgorithm::EccP384,
+                    chain2.len(),
+                    &chain2_hash,
+                )
+                .unwrap();
+            block_on(store.set_raw_endorsement_chain(
+                &VecAlloc,
+                EndorsementRole::Vendor,
+                CertificateAlgorithm::EccP384,
+                0,
+                0,
+                chain2.len(),
+                &chain2[..4],
+            ))
+            .unwrap();
+            // Re-arm while partial stream is active, then restart from offset 0.
+            SHARED
+                .arm_endorsement_write(
+                    EndorsementRole::Vendor,
+                    CertificateAlgorithm::EccP384,
+                    chain2.len(),
+                    &chain2_hash,
+                )
+                .unwrap();
+            block_on(store.set_raw_endorsement_chain(
+                &VecAlloc,
+                EndorsementRole::Vendor,
+                CertificateAlgorithm::EccP384,
+                0,
+                0,
+                chain2.len(),
+                &chain2[..4],
+            ))
+            .unwrap();
+            block_on(store.set_raw_endorsement_chain(
+                &VecAlloc,
+                EndorsementRole::Vendor,
+                CertificateAlgorithm::EccP384,
+                0,
+                4,
+                chain2.len(),
+                &chain2[4..],
+            ))
+            .unwrap();
+            slot.root_cert_hash(CertificateAlgorithm::EccP384, &mut stored_hash)
+                .unwrap();
+            assert_eq!(stored_hash, chain2_hash);
+
+            // Armed erase (total_size == 0, expected_sha384 == [0; 48]) succeeds.
+            assert_eq!(
+                SHARED.arm_endorsement_write(
+                    EndorsementRole::Vendor,
+                    CertificateAlgorithm::EccP384,
+                    0,
+                    &[1u8; 48],
+                ),
+                Err(cert_errors::INVALID_ENDORSEMENT),
+            );
+            SHARED
+                .arm_endorsement_write(
+                    EndorsementRole::Vendor,
+                    CertificateAlgorithm::EccP384,
+                    0,
+                    &[0u8; 48],
+                )
+                .unwrap();
+            block_on(
+                store.erase_endorsement_chain(
+                    EndorsementRole::Vendor,
+                    CertificateAlgorithm::EccP384,
+                ),
+            )
+            .unwrap();
+            assert!(!slot.is_provisioned(CertificateAlgorithm::EccP384));
+        }
+
+        #[test]
+        fn owner_slot_enforces_armed_write_when_armed_or_when_auth_required() {
+            static SHARED: SharedCertStore<FaultyStorage> = SharedCertStore::new();
+            assert!(SHARED.is_auth_required(EndorsementRole::Vendor));
+            assert!(SHARED.is_auth_required(EndorsementRole::Owner));
+            assert!(!SHARED.is_auth_required(EndorsementRole::Tenant));
+            let storage = FaultyStorage::new();
+            let store = provisioned_store(&SHARED, storage);
+            let chain = [0x30u8, 0x06, 1, 2, 3, 4, 5, 6];
+            let chain_hash = test_sha384(&chain);
+
+            // Even when auth_required is false, an armed write enforces size and SHA-384.
+            SHARED
+                .arm_endorsement_write(
+                    EndorsementRole::Owner,
+                    CertificateAlgorithm::EccP384,
+                    chain.len(),
+                    &chain_hash,
+                )
+                .unwrap();
+            assert_eq!(
+                block_on(store.erase_endorsement_chain(
+                    EndorsementRole::Owner,
+                    CertificateAlgorithm::EccP384,
+                )),
+                Err(cert_errors::INVALID_ENDORSEMENT),
+            );
+
+            // Failed admission preserves the grant; consume it with the matching update.
+            block_on(store.set_raw_endorsement_chain(
+                &VecAlloc,
+                EndorsementRole::Owner,
+                CertificateAlgorithm::EccP384,
+                1,
+                0,
+                chain.len(),
+                &chain,
+            ))
+            .unwrap();
+
+            // Enabling auth_required on Owner rejects unarmed writes with UNAUTHORIZED.
+            SHARED.set_auth_required(EndorsementRole::Owner, true);
+            assert!(SHARED.is_auth_required(EndorsementRole::Owner));
+            assert_eq!(
+                block_on(store.erase_endorsement_chain(
+                    EndorsementRole::Owner,
+                    CertificateAlgorithm::EccP384,
+                )),
+                Err(cert_errors::UNAUTHORIZED),
             );
         }
     }
