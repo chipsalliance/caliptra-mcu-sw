@@ -133,6 +133,7 @@ pub struct Mailbox<'a, A: Alarm<'a>> {
     resp_size: Cell<usize>,
     /// AXI address of the staging SRAM
     staging_sram_axi_addr: Option<u64>,
+    force_external_mailbox: bool,
     current_request_offset: Cell<usize>,
     use_external_mailbox: Cell<bool>,
     current_cmd: Cell<u32>,
@@ -151,6 +152,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
         >,
         driver: &'static mut CaliptraSoC,
         staging_sram_axi_addr: Option<u64>,
+        force_external_mailbox: bool,
         dma_driver: &'static dyn Dma,
         timeout_ticks: Option<u32>,
     ) -> Mailbox<'a, A> {
@@ -166,6 +168,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
             resp_min_size: Cell::new(0),
             resp_size: Cell::new(0),
             staging_sram_axi_addr,
+            force_external_mailbox,
             current_request_offset: Cell::new(0),
             use_external_mailbox: Cell::new(false),
             current_cmd: Cell::new(0),
@@ -174,8 +177,9 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
     }
 
     fn staging_addr_for_request(&self, request_len: usize) -> Option<u64> {
-        self.staging_sram_axi_addr
-            .filter(|_| request_len > CALIPTRA_SUBSYSTEM_MAILBOX_SIZE)
+        self.staging_sram_axi_addr.filter(|_| {
+            self.force_external_mailbox || request_len > CALIPTRA_SUBSYSTEM_MAILBOX_SIZE
+        })
     }
 
     // Check if any command is pending. If not, this command is executed.
