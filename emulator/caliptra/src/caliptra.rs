@@ -70,6 +70,7 @@ pub struct StartCaliptraArgs<'a> {
     pub debug_intent: bool,
     pub prod_dbg_unlock_keypairs: Vec<(&'a [u8; 96], &'a [u8; 2592])>,
     pub cptra_obf_key: [u32; 8],
+    pub tb_services_cb: Option<TbServicesCb>,
 }
 
 register_bitfields! [
@@ -87,7 +88,7 @@ register_bitfields! [
 
 /// Creates and returns an initialized a Caliptra emulator CPU.
 pub fn start_caliptra(
-    args: &StartCaliptraArgs<'_>,
+    args: StartCaliptraArgs<'_>,
 ) -> io::Result<(
     Cpu<CaliptraRootBus>,
     SocToCaliptraBus,
@@ -169,10 +170,12 @@ pub fn start_caliptra(
         pic: pic.clone(),
         rom: rom_buffer,
         log_dir: args_log_dir.clone(),
-        tb_services_cb: TbServicesCb::new(move |val| match val {
-            0x01 => exit(0xFF),
-            0xFF => exit(0x00),
-            _ => print!("{}", val as char),
+        tb_services_cb: args.tb_services_cb.unwrap_or_else(|| {
+            TbServicesCb::new(move |val| match val {
+                0x01 => exit(0xFF),
+                0xFF => exit(0x00),
+                _ => print!("{}", val as char),
+            })
         }),
         ready_for_fw_cb,
         security_state,

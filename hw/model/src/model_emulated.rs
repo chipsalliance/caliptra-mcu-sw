@@ -21,6 +21,7 @@ use caliptra_emu_cpu::{Cpu, CpuArgs, CpuOrgArgs, InstrTracer, Pic};
 use caliptra_emu_periph::CaliptraRootBus as CaliptraMainRootBus;
 use caliptra_emu_periph::MailboxRequester;
 use caliptra_emu_periph::SocToCaliptraBus;
+use caliptra_emu_periph::TbServicesCb;
 use caliptra_emu_types::RvAddr;
 use caliptra_emu_types::RvData;
 use caliptra_emu_types::RvSize;
@@ -69,6 +70,7 @@ pub struct ModelEmulated {
     caliptra_trace_fn: Option<Box<InstrTracer<'static>>>,
     ready_for_fw: Rc<Cell<bool>>,
     cpu_enabled: Rc<Cell<bool>>,
+    mcu_exit_status: Rc<Cell<Option<i32>>>,
     trace_path: Option<PathBuf>,
     mcu_uart_output: Rc<RefCell<Vec<u8>>>,
 
@@ -87,6 +89,7 @@ pub struct ModelEmulated {
     i3c_controller_join_handle: Option<JoinHandle<()>>,
     dot_flash: Rc<RefCell<Ram>>,
     otp_partitions: Rc<RefCell<Vec<u8>>>,
+    otp_dai_log: Option<Rc<RefCell<Vec<String>>>>,
     mci_regs: Rc<RefCell<caliptra_emu_periph::mci::MciRegs>>,
     check_booted_to_runtime: bool,
     // Synchronises cross-thread timer scheduling (I3C controller thread)
@@ -152,7 +155,11 @@ impl McuHwModel for ModelEmulated {
             straps,
             ..Default::default()
         };
-        let mcu_root_bus = McuRootBus::new(bus_args).unwrap();
+        let mut mcu_root_bus = McuRootBus::new(bus_args).unwrap();
+        let mcu_exit_status = Rc::new(Cell::new(None));
+        if params.capture_mcu_exit {
+            mcu_root_bus.ctrl.capture_exit(mcu_exit_status.clone());
+        }
 
         let mut i3c_controller = if let Some(i3c_port) = params.i3c_port {
             let (rx, tx) = start_i3c_socket(i3c_port);
@@ -236,7 +243,7 @@ impl McuHwModel for ModelEmulated {
             bytes
         };
 
-        let otp = Otp::new(
+        let mut otp = Otp::new(
             &clock.clone(),
             OtpArgs {
                 raw_memory: Some(otp_mem),
@@ -250,6 +257,7 @@ impl McuHwModel for ModelEmulated {
 
         // Get the partitions reference before passing OTP to the bus
         let otp_partitions = otp.partitions_ref();
+        let otp_dai_log = params.log_otp_dai.then(|| otp.enable_dai_log());
 
         // Share OTP partition data with the LC controller for transitions.
         let mut lc = lc;
@@ -257,7 +265,15 @@ impl McuHwModel for ModelEmulated {
 
         let create_flash_controller =
             |default_path: &str, error_irq: u8, event_irq: u8, initial_content: Option<&[u8]>| {
-                // Use a temporary file for flash storage if we're running a test
+                // Use a temporary file for flash storage if we're running a test.
+                // wasm32 has no filesystem; DummyFlashCtrl keeps the contents
+                // in memory when no file is given.
+                #[cfg(target_arch = "wasm32")]
+                let flash_file = {
+                    let _ = default_path;
+                    None
+                };
+                #[cfg(not(target_arch = "wasm32"))]
                 let flash_file = Some(PathBuf::from(default_path));
 
                 DummyFlashCtrl::new(
@@ -329,8 +345,17 @@ impl McuHwModel for ModelEmulated {
         // Use MCU recovery interface when flash-based boot is enabled
         let use_mcu_recovery_interface = params.flash_boot;
 
+        let caliptra_tb_services_cb = params.caliptra_uart_to_output.then(|| {
+            let output_sink = output.sink().clone();
+            let timer = clock.timer();
+            TbServicesCb::new(move |ch| {
+                output_sink.set_now(timer.now());
+                output_sink.push_uart_char(ch);
+            })
+        });
+
         let (mut caliptra_cpu, soc_to_caliptra, soc_to_caliptra_bus, ext_mci) =
-            start_caliptra(&StartCaliptraArgs {
+            start_caliptra(StartCaliptraArgs {
                 rom: BytesOrPath::Bytes(params.caliptra_rom.to_vec()),
                 device_lifecycle,
                 req_idevid_csr,
@@ -339,6 +364,7 @@ impl McuHwModel for ModelEmulated {
                 debug_intent: params.debug_intent,
                 prod_dbg_unlock_keypairs: params.prod_dbg_unlock_keypairs.clone(),
                 cptra_obf_key: params.cptra_obf_key,
+                tb_services_cb: caliptra_tb_services_cb,
             })
             .expect("Failed to start Caliptra CPU");
         let soc_to_caliptra_bus = soc_to_caliptra_bus.unwrap();
@@ -479,6 +505,7 @@ impl McuHwModel for ModelEmulated {
             caliptra_trace_fn: None,
             ready_for_fw,
             cpu_enabled,
+            mcu_exit_status,
             trace_path: trace_path_or_env(params.trace_path),
             mcu_uart_output,
             _rom_image_tag: image_tag,
@@ -493,6 +520,7 @@ impl McuHwModel for ModelEmulated {
             i3c_controller_join_handle: None,
             dot_flash,
             otp_partitions,
+            otp_dai_log,
             mci_regs,
             check_booted_to_runtime: params.check_booted_to_runtime,
             step_lock,
@@ -543,6 +571,10 @@ impl McuHwModel for ModelEmulated {
         self.ready_for_fw.get()
     }
 
+    fn mcu_exit_status(&self) -> Option<i32> {
+        self.mcu_exit_status.get()
+    }
+
     fn step(&mut self) {
         if self.cpu_enabled.get() {
             {
@@ -550,7 +582,9 @@ impl McuHwModel for ModelEmulated {
                 // cross-thread callers (e.g. I3C PollScheduler::incoming)
                 // cannot observe a mid-step clock value.
                 let _guard = self.step_lock.lock().unwrap();
-                self.cpu.step(self.caliptra_trace_fn.as_deref_mut());
+                if self.mcu_exit_status.get().is_none() {
+                    self.cpu.step(self.caliptra_trace_fn.as_deref_mut());
+                }
                 self.caliptra_cpu
                     .step(self.caliptra_trace_fn.as_deref_mut());
             }
@@ -651,6 +685,17 @@ impl McuHwModel for ModelEmulated {
         self.otp_partitions.borrow().clone()
     }
 
+    fn key_vault_snapshot(&self) -> Option<caliptra_emu_periph::KeyVaultSnapshot> {
+        Some(self.caliptra_cpu.bus.key_vault.snapshot())
+    }
+
+    fn take_otp_dai_log(&mut self) -> Vec<String> {
+        self.otp_dai_log
+            .as_ref()
+            .map(|log| std::mem::take(&mut *log.borrow_mut()))
+            .unwrap_or_default()
+    }
+
     fn read_dot_flash(&self) -> Vec<u8> {
         self.dot_flash.borrow().data().to_vec()
     }
@@ -689,6 +734,7 @@ impl McuHwModel for ModelEmulated {
     }
 
     fn warm_reset(&mut self) {
+        self.mcu_exit_status.set(None);
         self.cpu.warm_reset();
         self.step();
     }
