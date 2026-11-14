@@ -1,0 +1,63 @@
+215a216,225
+> signal sync_pie_dev_selected_s : integer range 0 to C_NBDEV - 1;
+> signal epinfo_active_s           : std_logic;
+> signal epinfo_disabled_s         : std_logic;
+> signal epinfo_toggle_s           : std_logic;
+> signal epinfo_stall_s            : std_logic;
+> signal epinfo_iso_s              : std_logic;
+> signal epinfo_ratefeedbackmode_s : std_logic;
+> signal epinfo_nbytes_s           : std_logic_vector(TXNBYTES_BITS-1 downto 0);
+> signal epinfo_maxpacket_s        : std_logic_vector(1 downto 0);
+> signal epinfo_txdata_s           : std_logic_vector(USB_DATAWIDTH-1 downto 0);
+225a236,243
+>       epinfo_active_s        <= '0';
+>       epinfo_disabled_s      <= '0';
+>       epinfo_toggle_s        <= '0';
+>       epinfo_stall_s         <= '0';
+>       epinfo_iso_s           <= '0';
+>       epinfo_ratefeedbackmode_s <= '0';
+>       epinfo_nbytes_s        <= (others => '0');
+>       epinfo_maxpacket_s     <= (others => '0');
+228a247
+>       epinfo_txdata_s        <= (others => '0');
+263a283,290
+>       epinfo_active_s        <= epinfo_sync_active;
+>       epinfo_disabled_s      <= epinfo_sync_disabled;
+>       epinfo_toggle_s        <= epinfo_sync_toggle;
+>       epinfo_stall_s         <= epinfo_sync_stall;
+>       epinfo_iso_s           <= epinfo_sync_iso;
+>       epinfo_ratefeedbackmode_s <= epinfo_sync_ratefeedbackmode;
+>       epinfo_nbytes_s        <= epinfo_sync_nbytes;
+>       epinfo_maxpacket_s     <= epinfo_sync_maxpacket;
+266a294
+>       epinfo_txdata_s        <= epinfo_sync_txdata;
+372a401
+>       sync_pie_dev_selected_s <= 0;
+389a419
+>       sync_pie_dev_selected_s       <= pie_dev_selected;
+492,499c522,529
+<   epinfo_active            <= epinfo_sync_active;
+<   epinfo_disabled          <= epinfo_sync_disabled;
+<   epinfo_toggle            <= epinfo_sync_toggle;
+<   epinfo_stall             <= epinfo_sync_stall;
+<   epinfo_iso               <= epinfo_sync_iso;
+<   epinfo_ratefeedbackmode  <= epinfo_sync_ratefeedbackmode;
+<   epinfo_nbytes            <= epinfo_sync_nbytes;
+<   epinfo_maxpacket         <= epinfo_sync_maxpacket;
+---
+>   epinfo_active            <= epinfo_active_s;
+>   epinfo_disabled          <= epinfo_disabled_s;
+>   epinfo_toggle            <= epinfo_toggle_s;
+>   epinfo_stall             <= epinfo_stall_s;
+>   epinfo_iso               <= epinfo_iso_s;
+>   epinfo_ratefeedbackmode  <= epinfo_ratefeedbackmode_s;
+>   epinfo_nbytes            <= epinfo_nbytes_s;
+>   epinfo_maxpacket         <= epinfo_maxpacket_s;
+501c531
+<   epinfo_txdata            <= epinfo_sync_txdata;
+---
+>   epinfo_txdata            <= epinfo_txdata_s;
+560c590
+<   sync_pie_dev_selected   <= pie_dev_selected;
+---
+>   sync_pie_dev_selected   <= sync_pie_dev_selected_s;

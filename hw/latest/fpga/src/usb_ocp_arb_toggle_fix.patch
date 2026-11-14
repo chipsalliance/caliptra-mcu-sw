@@ -1,0 +1,10 @@
+539c539
+<         '0' when (st = T_META_WAIT) else
+---
+>         '0' when (st = T_IDLE) or (st = T_MIRROR) or (st = T_META_WAIT) else
+808c808
+<         elsif ep0_ocp_owner_r = '0' then
+---
+>         elsif (ep0_ocp_owner_r = '0') or (new_setup_c = '1') then
+815a816
+>             in_data_toggle_r <= '1';
