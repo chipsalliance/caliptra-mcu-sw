@@ -197,16 +197,13 @@ impl<'a> ActionHandler<'a> for Subsystem {
         handle_bitstream_bootstrap(
             target_host,
             args.bitstream.as_deref(),
-            &bitstream_manifest_path(&PROJECT_ROOT, "subsystem.toml"),
+            &subsystem_bitstream_manifest_path(&PROJECT_ROOT)?,
         )?;
         Ok(())
     }
 
     fn download_bitstream(&self) -> Result<()> {
-        download_bitstream(
-            None,
-            &bitstream_manifest_path(&PROJECT_ROOT, "subsystem.toml"),
-        )?;
+        download_bitstream(None, &subsystem_bitstream_manifest_path(&PROJECT_ROOT)?)?;
         Ok(())
     }
 
@@ -523,6 +520,12 @@ impl<'a> ActionHandler<'a> for Core {
     }
 }
 
+fn subsystem_bitstream_manifest_path(root: &std::path::Path) -> Result<std::path::PathBuf> {
+    Ok(root
+        .join(caliptra_mcu_builder::hardware_revision()?.fpga_path())
+        .join("bitstream_manifests/subsystem.toml"))
+}
+
 fn bitstream_manifest_path(root: &std::path::Path, toml_name: &str) -> std::path::PathBuf {
     root.join("hw")
         .join("fpga")
@@ -552,4 +555,33 @@ fn handle_bitstream_bootstrap(
     }
     load_bitstream(target_host)?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn subsystem_manifest_uses_selected_hardware() {
+        let revision = caliptra_mcu_builder::hardware_revision().unwrap();
+        let manifest = subsystem_bitstream_manifest_path(&PROJECT_ROOT).unwrap();
+        assert_eq!(
+            manifest,
+            PROJECT_ROOT
+                .join(revision.fpga_path())
+                .join("bitstream_manifests/subsystem.toml")
+        );
+        assert!(manifest.is_file());
+    }
+
+    #[test]
+    fn core_manifests_keep_upstream_layout() {
+        let root = std::path::Path::new("caliptra-sw");
+        for name in ["core.toml", "subsystem.toml"] {
+            assert_eq!(
+                bitstream_manifest_path(root, name),
+                root.join("hw/fpga/bitstream_manifests").join(name)
+            );
+        }
+    }
 }
