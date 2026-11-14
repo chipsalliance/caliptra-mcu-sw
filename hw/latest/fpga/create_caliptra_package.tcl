@@ -88,14 +88,45 @@ add_files [ glob $i3cDir/src/*/*/*.sv ]
 add_files [ glob $i3cDir/src/*/*.sv ]
 add_files [ glob $i3cDir/src/*.sv ]
 
-# USB remains physically disconnected, but its instantiated RTL must resolve.
+# USB (Architecture B internal ULPI USB3320 PHY + High-Speed Host Loopback)
 set usbDir $ssrtlDir/third_party/usb2/src
 add_files [ glob $usbDir/integration/rtl/generated/*.svh ]
 add_files [ glob $usbDir/integration/rtl/*.sv ]
 add_files [ glob $usbDir/integration/rtl/generated/*.sv ]
 add_files [ glob $usbDir/usb_hub_composite_device/RTL/INTERFACE/*.vhdl ]
 add_files [ glob $usbDir/usb_hub_composite_device/RTL/RTL/*.vhdl ]
+# FPGA 60 MHz ULPI timing + CDC + OCP EP0 toggle fixes:
+# - usb_pie_sync_stp.patch: drive ULPI STP from registered ulpi_stp_r instead of
+#   the 17-LUT-level ulpi_stp_async low-power wake cone.
+# - usb_compound_ulpi_clk.patch: drive pie_clk directly from ulpi_clk instead of
+#   a glitchy behavioral utmi_clk/ulpi_clk LUT mux.
+# - usb_synchronizer_60mhz.patch: register pie_dev_selected into hclk and
+#   epinfo_* into FsClk (ulpi_clk) so the pie_clk -> hclk -> pie_clk cone is cut.
+# - usb_ocp_arb_toggle_fix.patch: keep rsp_live_active_c deasserted in
+#   T_IDLE/T_MIRROR and reset in_data_toggle_r to DATA1 on SETUP / ZLP end.
+if {![info exists USB_ULPI_SYNC_STP] || $USB_ULPI_SYNC_STP} {
+  file copy -force $usbDir/usb_hub_composite_device/RTL/RTL/usb_pie.m.vhdl $outputDir/usb_pie.m.vhdl
+  exec patch $outputDir/usb_pie.m.vhdl $fpgaDir/src/usb_pie_sync_stp.patch
+  remove_files [ glob $usbDir/usb_hub_composite_device/RTL/RTL/usb_pie.m.vhdl ]
+  add_files $outputDir/usb_pie.m.vhdl
+
+  file copy -force $usbDir/usb_hub_composite_device/RTL/RTL/usb_synchronizer.m.vhdl $outputDir/usb_synchronizer.m.vhdl
+  exec patch $outputDir/usb_synchronizer.m.vhdl $fpgaDir/src/usb_synchronizer_60mhz.patch
+  remove_files [ glob $usbDir/usb_hub_composite_device/RTL/RTL/usb_synchronizer.m.vhdl ]
+  add_files $outputDir/usb_synchronizer.m.vhdl
+
+  file copy -force $usbDir/usb_hub_composite_device/RTL/RTL/usb_ocp_recovery_post_sync_arb.m.vhdl $outputDir/usb_ocp_recovery_post_sync_arb.m.vhdl
+  exec patch $outputDir/usb_ocp_recovery_post_sync_arb.m.vhdl $fpgaDir/src/usb_ocp_arb_toggle_fix.patch
+  remove_files [ glob $usbDir/usb_hub_composite_device/RTL/RTL/usb_ocp_recovery_post_sync_arb.m.vhdl ]
+  add_files $outputDir/usb_ocp_recovery_post_sync_arb.m.vhdl
+}
 add_files [ glob $usbDir/usb_hub_composite_device/RTL/STRUCTURE/*.vhdl ]
+if {![info exists USB_ULPI_SYNC_STP] || $USB_ULPI_SYNC_STP} {
+  file copy -force $usbDir/usb_hub_composite_device/RTL/STRUCTURE/ip_xxx_3511_hs_mem_compound_structure.a.vhdl $outputDir/ip_xxx_3511_hs_mem_compound_structure.a.vhdl
+  exec patch $outputDir/ip_xxx_3511_hs_mem_compound_structure.a.vhdl $fpgaDir/src/usb_compound_ulpi_clk.patch
+  remove_files [ glob $usbDir/usb_hub_composite_device/RTL/STRUCTURE/ip_xxx_3511_hs_mem_compound_structure.a.vhdl ]
+  add_files $outputDir/ip_xxx_3511_hs_mem_compound_structure.a.vhdl
+}
 set_property file_type {VHDL 2008} [get_files *.vhdl]
 
 # Add FPGA specific sources
@@ -184,6 +215,8 @@ ipx::associate_bus_interfaces -busif S_AXI_MCI -clock core_clk [ipx::current_cor
 ipx::associate_bus_interfaces -busif S_AXI_MCU_ROM -clock core_clk [ipx::current_core]
 ipx::associate_bus_interfaces -busif S_AXI_OTP -clock core_clk [ipx::current_core]
 ipx::associate_bus_interfaces -busif S_AXI_LCC -clock core_clk [ipx::current_core]
+ipx::associate_bus_interfaces -busif S_AXI_USB_COMBO -clock core_clk [ipx::current_core]
+ipx::associate_bus_interfaces -busif S_AXI_USB_DEV0_MEM -clock core_clk [ipx::current_core]
 # Different clock used for I3C
 ipx::associate_bus_interfaces -busif S_AXI_I3C -clock i3c_clk [ipx::current_core]
 ipx::associate_bus_interfaces -busif S_AXI_I3C_SPARE -clock i3c_clk [ipx::current_core]

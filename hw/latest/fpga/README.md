@@ -26,6 +26,8 @@ The ARM CPU takes the place of an SOC manager and can drive stimulus to Caliptra
   - The Caliptra Core, MCU, and OTP ROMs are implemented as dual port SRAM's to allow them to be reconfigured without rebuilding. These SRAMs are mapped into the ARM CPU to allow them to be written by the hw-model before taking SS out of reset.
 - Xilinx I3C
   - The FPGA instantiates an I3C host controller to communicate with the SS I3C. In order for the I3C controllers to reach I3C bus speeds a higher clock is needed. The FPGA modifies caliptra_ss_top to insert CDC logic and run the SS I3C at the same clock.
+- Internal ULPI USB 2.0 High-Speed Host (Architecture B)
+  - `caliptra_fpga_ulpi_host` (`0xA401_4000`) instantiates a synthesizable Microchip USB3320 ULPI PHY register responder, High-Speed (`480 Mbps`) Chirp engine, autonomous `Auto-SOF` microframe keepalive generator, and CRC5/CRC16 USB token transceiver wired internally to `caliptra_ss_top`'s ULPI interface—enabling end-to-end High-Speed USB enumeration and hardware-assisted OCP Recovery v1.1 on a stock VCK-190 with zero external daughter cards or loopback cables.
 
 ![](./images/caliptra_ss_fpga_block_diagram.svg)
 
@@ -101,17 +103,17 @@ Vivado exposes the `STEPS.PLACE_DESIGN.ARGS.SUBDIRECTIVE` run property. Otherwis
 it prints a warning and uses the `Explore` directive alone. Check placement and
 timing results before using the generated image.
 
-This checkout uses Caliptra SS at `cadc77b6` and its pinned submodules.
-The FPGA wrapper preserves the existing I3C and backdoor ROM/OTP interfaces,
-provides the new 4 KiB MCU ROM-patch SRAM, and uses TRNG source 0 with source 1
-disabled. The USB PHY and USB memory interfaces are inactive: no ULPI daughter
-card is required or supported by this configuration, and USB recovery is not
-available. The subsystem SPI host and UART are disabled; the existing external
-flash controllers and Versal console are unchanged. USB RTL is included to
-resolve the subsystem's instances, but its AXI ports accept no requests and its
-PHY is held disabled. ROM/firmware compatibility with this SS revision still
-requires separate runtime validation.
-The IP packager also preserves the `lib/` and `generated/` header paths used by
+This checkout uses Caliptra SS `743d5f7e` and its pinned `third_party/usb2`
+(`97aa9616`) submodule. The FPGA wrapper preserves the existing I3C and backdoor
+ROM/OTP interfaces, provides the 4 KiB MCU ROM-patch SRAM, and uses TRNG source 0
+with source 1 disabled. In **Architecture B**, the FPGA fabric also instantiates
+`caliptra_fpga_ulpi_host` (`0xA401_4000`), an internal synthesizable ULPI USB3320
+PHY responder + USB 2.0 High-Speed (`480 Mbps`) Host loopback wired directly to
+the Caliptra 2.2 USB Compound Wrapper (`0xA420_0000`, OCP Recovery at `0xA420_0800`)
+and 64 KiB `dev0_mem` Block RAM (`0xA430_0000`). No external ULPI FMC/PMOD daughter
+card or loopback cable is required on the VCK-190 to run High-Speed USB 2.0
+enumeration or hardware-assisted OCP USB Recovery v1.1 alongside I3C recovery.
+The IP packager preserves the `lib/` and `generated/` header paths used by
 the Core RTL and USB sources, so their relative includes resolve during synthesis.
 
 ### Build boot.bin: ###
@@ -184,6 +186,7 @@ This table does not specify reset or accessibility requirements.
 | OTP RAM Backdoor                    | 64 KiB       | 0xB008_0000   | 0xB008_FFFF |
 | Staging SRAM                        | 256 KiB      | 0xB00C_0000   | 0xB00F_FFFF |
 | FPGA Wrapper Registers              | 16 KiB       | 0xA401_0000   | 0xA401_3FFF |
+| FPGA Internal ULPI USB 2.0 HS Host  | 16 KiB       | 0xA401_4000   | 0xA401_7FFF |
 | SS I3C                              | 8 KiB        | 0xA403_0000   | 0xA403_1FFF |
 | SS I3C Spare                        | 8 KiB        | 0xA403_2000   | 0xA403_3FFF |
 | LCC                                 | 8 KiB        | 0xA404_0000   | 0xA404_1FFF |
@@ -191,7 +194,51 @@ This table does not specify reset or accessibility requirements.
 | Xilinx I3C                          | 4 KiB        | 0xA408_0000   | 0xA408_0FFF |
 | Xilinx AXI CDMA Control              | 4 KiB        | 0xA408_1000   | 0xA408_1FFF |
 | Caliptra                            | 1 MiB        | 0xA410_0000   | 0xA41F_FFFF |
+| Caliptra 2.2 USB Combo + OCP Recv   | 64 KiB       | 0xA420_0000   | 0xA420_FFFF |
+| Caliptra 2.2 USB Dev0 Block RAM     | 64 KiB       | 0xA430_0000   | 0xA430_FFFF |
 | MCI                                 | 16 MiB       | 0xA800_0000   | 0xA8FF_FFFF |
+
+### Caliptra 2.2 USB Architecture B (Internal ULPI PHY & High-Speed Host Loopback) ###
+
+The VCK-190 board does not populate a physical ULPI USB transceiver on its FMC/PMOD headers out of the box. **Architecture B** solves this purely inside the Versal programmable logic so that unmodified Caliptra 2.2 USB compound RTL (`ip_xxx_3511_hs_mem_compound_wrapper`), Caliptra Core AXI DMA recovery, and the MCU ROM `LpcipUsbDriver` can be validated end-to-end on any stock VCK-190 alongside XI3C recovery—with **zero external breakout cards, cables, Linux kernel module edits, or device-tree changes**.
+
+#### How It Works ####
+
+1. **Synthesizable 60 MHz ULPI USB3320 PHY + High-Speed Host (`src/caliptra_fpga_ulpi_host.sv`, `src/axil_cdc_bridge.sv`)**
+   - **Spec-Accurate 60.0 MHz ULPI Domain (`ULPI_CLK_DIV = 2`):** Because Versal Segmented Configuration locks the boot-PDI PS-to-PL clock pins, `caliptra_wrapper_top.sv` derives a dedicated **60.0 MHz** `ulpi_clk` in-PL via a `BUFGCE_DIV` (`÷2` from the 120 MHz `i3c_clk`), bridged from the 18 MHz `core_clk` AXI4-Lite fabric through `axil_cdc_bridge.sv`. Both `usb_pie` and `caliptra_fpga_ulpi_host` run at the true 60 MHz ULPI 1.1 rate with **full USB 2.0 spec chirp/suspend timers** (`USB_SIM_CHIRP_TIMERS = 0`), while standard ULPI 1.1 `NXT` flow control paces multi-byte packets across the asynchronous `60 MHz <-> 18 MHz` `usb_synchronizer` / BRAM DMA boundary. Set `ULPI_CLK_DIV=0 USB_SIM_CHIRP_TIMERS=1` only if building the legacy single-clock 18 MHz variant.
+   - **ULPI Register, Low-Power & `RXCMD` Emulation:** Connects directly to `caliptra_ss_top`'s synchronous 8-bit SDR ULPI signals (`DATA[7:0]`, `DIR`, `NXT`, `STP`). Emulates a Microchip USB3320 PHY register file (`VID = 0x0424`, `PID = 0x0007`, `FuncCtrl`, `IfcCtrl`, `OtgCtrl`, `Scratch`) with set (`+0x01`) and clear (`+0x02`) aliases, ULPI 1.1 §3.9 Low-Power Mode (`SuspendM = 0`), passive `TermSelect` `linestate` (`J` when FS pull-up is enabled, `SE0` otherwise), and automatic `RXCMD` status bytes (`VbusValid`, `HostDisconnect`, `LineState`).
+   - **USB 2.0 High-Speed Reset & Chirp Handshake:** Assertions of `OP_BUS_RESET_HS` drive `SE0`, detect the Device Chirp `K` transmitted by the LPCIP controller (`XcvrSelect = HS`, `TermSelect = FS`, `OpMode = DisableBitStuffing`), reply with the spec-timed (`50 µs`/chirp) alternating `K-J-K-J-K-J` Host Chirp sequence, and latch `hs_active = 1` once the device switches to High-Speed terminations (`FuncCtrl = 0x40`).
+   - **Autonomous `Auto-SOF` Keepalive:** When `CTRL.AUTO_SOF_EN` is set in High-Speed mode, the RTL autonomously injects CRC5-checked `SOF` tokens every `125 µs` microframe between host transactions so the LPCIP USB device controller never enters High-Speed suspend (`DSUS` after `3 ms` of idle) while Caliptra Core verifies SHA-384, ECC-384, and ML-DSA/LMS firmware signatures.
+   - **Hardware Token & Packet Engine:** Generates CRC5 `SETUP`, `IN`, and `OUT` tokens plus CRC16 `DATA0`/`DATA1` payloads from a 64-byte TX buffer (`+0x40`), captures device `DATA0`/`DATA1` responses into a 64-byte RX buffer (`+0x80`) with hardware CRC-16 residual verification (`0x800D`), automatically returns host `ACK` on valid `IN` data, and reports handshake PIDs (`ACK`, `NAK`, `NYET`, `STALL`).
+   - **60 MHz Timing, CDC & OCP EP0 RTL Patches (`create_caliptra_package.tcl`):** Applies four surgical patches to `third_party/usb2` during IP packaging: `src/usb_pie_sync_stp.patch` (registered `ulpi_stp` cutting a 17-LUT async wake cone + fixing orphaned `FuncCtrl Clear SuspendM` after reset), `src/usb_compound_ulpi_clk.patch` (direct `ulpi_clk` routing without LUT clock-mux skew/glitches), `src/usb_synchronizer_60mhz.patch` (`hclk`/`FsClk` staging on `pie_dev_selected` and `epinfo_*`), and `src/usb_ocp_arb_toggle_fix.patch` (preventing stale `DATA0` responses in `T_IDLE`/`T_MIRROR` and resetting `in_data_toggle_r` to `DATA1` on `SETUP` / ZLP completion).
+
+2. **Zero-Kernel-Change AXI Demux & Subsystem Memory Wiring (`src/caliptra_wrapper_top.sv`, `src/usb_bram_64_512.sv`, `fpga_configuration.tcl`)**
+   - **1-to-2 AXI4-Lite Wrapper Demux (`M06_AXI`):** Widens `S_AXI_WRAPPER` to `32 KiB` and routes `addr[14] == 0` (`0xA401_0000..0xA401_3FFF`) to `caliptra_fpga_realtime_regs` and `addr[14] == 1` (`0xA401_4000..0xA401_7FFF`) to `caliptra_fpga_ulpi_host`. Because `/dev/uio0` `map0` already maps `64 KiB` at `0xA401_0000` in the standard CI image, `ModelFpgaRealtime` accesses the USB host at `uio0 map0 + 0x4000` with no kernel or DTB rebuild.
+   - **USB CSRs & Dual-Accessed Block RAM (`M14_AXI` & `M15_AXI`):** Maps `S_AXI_USB_COMBO` at `0xA420_0000` (with hardware OCP Recovery registers strapped at `0xA420_0800` via `cptra_ss_strap_usb_recovery_ifc_base_addr_i`) and a parameterized byte-lane synchronous Block RAM (`usb_bram_64_512`, `64 KiB` at `0xA430_0000` for `dev0_mem` plus internal `4 KiB` for `dev1_mem`) across `M_AXI_ARM`, `M_AXI_MCU_*`, `M_AXI_CALIPTRA`, and `axi_cdma_0`.
+   - **Hardware OCP Recovery Sideband Loopback:** Connects `cptra_ss_usb_recovery_payload_available_o` and `cptra_ss_usb_recovery_image_activated_o` back into `caliptra_ss_top` so Caliptra Core's AXI DMA engine drains firmware images directly from the USB OCP FIFO into ICCM/DCCM and MCU SRAM.
+
+#### `caliptra_fpga_ulpi_host` Register Map (`0xA401_4000`) ####
+
+| Offset | Name | Access | Description |
+| :----- | :--- | :----- | :---------- |
+| `0x00` | `MAGIC` | RO | Constant `0x5553_4248` (`"USBH"`) identifying Architecture B bitstream support |
+| `0x04` | `CTRL` | RW | `[0]` `VBUS_VALID`, `[1]` `AUTO_SOF_EN`, `[2]` `SOFT_RESET` (self-clearing) |
+| `0x08` | `STATUS` | RO | `[0]` `busy`, `[1]` `done`, `[2]` `timeout_err`, `[3]` `ulpi_init_done`, `[4]` `dev_connected`, `[5]` `hs_active`, `[6]` `recovery_payload_avail`, `[7]` `recovery_image_activated`, `[11:8]` `rx_pid`, `[19:12]` `rx_len`, `[27:20]` `ulpi_func_ctrl`, `[31:28]` `hl_state` |
+| `0x0C` | `CMD` | WO | `[2:0]` `op` (`1=BUS_RESET_HS`, `2=SETUP`, `3=OUT`, `4=IN`, `5=SEND_RXCMD`), `[3]` `data_toggle` (`0=DATA0`, `1=DATA1`), `[5:4]` `rxcmd_ls`, `[14:8]` `dev_addr`, `[19:16]` `endp`, `[26:20]` `tx_len` |
+| `0x10` | `TIMEOUT` | RW | Per-transaction ULPI response timeout in `ulpi_clk` cycles |
+| `0x14` | `DIAG` | RO | `[15:0]` `sof_count`, `[23:16]` `ulpi_reg_op_count`, `[31:24]` `last_ulpi_cmd` |
+| `0x40..0x7F` | `TX_BUF` | RW | 64-byte (`16 x u32`) host-to-device packet payload buffer |
+| `0x80..0xBF` | `RX_BUF` | RO | 64-byte (`16 x u32`) device-to-host packet payload buffer |
+
+#### Building the 60 MHz Architecture B Bitstream ####
+
+To build a 60 MHz segmented Architecture B bitstream (`ULPI_CLK_DIV=2`, `USB_SIM_CHIRP_TIMERS=0`, default in `fpga_configuration.tcl`) from RTL in Vivado 2024.2:
+
+```shell
+cd hw/latest/fpga
+vivado -mode batch -source fpga_configuration.tcl \
+  -tclargs BUILD=TRUE SEGMENTED=TRUE VERSION=a22b0005 ULPI_CLK_DIV=2 USB_SIM_CHIRP_TIMERS=0
+```
 
 ### Waveform Debug ###
 If built with DEBUG=TRUE common signals for debug will be connected to ILAs. In addition images may be built with additional debug signals. This is a general procedure for loading a probes file when consuming an image built by someone else. If the image was built locally, this is unnecessary because the probes file will be loaded automatically.
