@@ -16,7 +16,7 @@ mod config;
 
 use async_trait::async_trait;
 use caliptra_api::mailbox::{
-    ActivateFirmwareReq, ActivateFirmwareResp, CommandId, MailboxReqHeader,
+    ActivateFirmwareReq, ActivateFirmwareResp, AuthManifestSource, CommandId, MailboxReqHeader,
 };
 #[allow(unused)]
 use caliptra_mcu_config::boot;
@@ -309,19 +309,25 @@ async fn image_loading<D: DMAMapping>(
                     .await;
                 let load_result = match set_result {
                     Ok(retained_len) => {
-                        let measure_res = measure_owner_artifacts(
-                            &pldm_image_loader,
-                            &allocator,
-                            boot_kind,
-                            &preamble_buf[..retained_len],
-                        )
-                        .await;
+                        let measure_res = match preamble_buf.get(..retained_len) {
+                            Some(preamble) => {
+                                measure_owner_artifacts(
+                                    &pldm_image_loader,
+                                    &allocator,
+                                    boot_kind,
+                                    preamble,
+                                )
+                                .await
+                            }
+                            None => Err(ErrorCode::Size),
+                        };
                         drop(preamble_buf);
                         match measure_res {
-                            Ok(()) => {
+                            Ok(owner_policy_bytes) => {
                                 load_soc_images(
                                     &pldm_image_loader,
                                     soc_image_load_list,
+                                    owner_policy_bytes,
                                     false,
                                     &allocator,
                                 )
@@ -335,23 +341,27 @@ async fn image_loading<D: DMAMapping>(
                         Err(error)
                     }
                 };
-                if let Err(error) = load_result {
-                    caliptra_mcu_measurement_api::disable_attestation().await;
-                    // Report load/authorization failure to the PLDM Update Agent
-                    if pldm_image_loader
-                        .finalize(VerifyResult::VerifyFailedFdSecurityChecks)
-                        .is_ok()
-                    {
-                        pldm_image_loader.wait_for_service_stopped().await;
+                let owner_soc_image_load_list = match load_result {
+                    Ok(owner_soc_image_load_list) => owner_soc_image_load_list,
+                    Err(error) => {
+                        caliptra_mcu_measurement_api::disable_attestation().await;
+                        // Report load/authorization failure to the PLDM Update Agent
+                        if pldm_image_loader
+                            .finalize(VerifyResult::VerifyFailedFdSecurityChecks)
+                            .is_ok()
+                        {
+                            pldm_image_loader.wait_for_service_stopped().await;
+                        }
+                        return Err(error);
                     }
-                    return Err(error);
-                }
+                };
                 // Close the PLDM session on success
                 pldm_image_loader.finalize(VerifyResult::VerifySuccess)?;
                 // Wait for the PLDM service to fully complete the protocol before proceeding
                 pldm_image_loader.wait_for_service_stopped().await;
                 // Activate the SoC Images (set FW_EXEC_CTRL bit of the corresponding SoC)
-                activate_soc_images(soc_image_load_list).await?;
+                activate_soc_images(soc_image_load_list, AuthManifestSource::VendorOwner).await?;
+                activate_soc_images(&owner_soc_image_load_list, AuthManifestSource::Owner).await?;
             }
             #[cfg(not(feature = "streaming-boot"))]
             return Err(ErrorCode::NoSupport);
@@ -414,18 +424,24 @@ async fn image_loading<D: DMAMapping>(
                 let retained_len = flash_image_loader
                     .set_owner_auth_manifest(preamble_buf.as_mut_slice())
                     .await?;
-                let measure_res = measure_owner_artifacts(
-                    &flash_image_loader,
-                    &allocator,
-                    boot_kind,
-                    &preamble_buf[..retained_len],
-                )
-                .await;
+                let measure_res = match preamble_buf.get(..retained_len) {
+                    Some(preamble) => {
+                        measure_owner_artifacts(
+                            &flash_image_loader,
+                            &allocator,
+                            boot_kind,
+                            preamble,
+                        )
+                        .await
+                    }
+                    None => Err(ErrorCode::Size),
+                };
                 drop(preamble_buf);
-                measure_res?;
-                load_soc_images(
+                let owner_policy_bytes = measure_res?;
+                let owner_soc_image_load_list = load_soc_images(
                     &flash_image_loader,
                     soc_image_load_list,
+                    owner_policy_bytes,
                     component_update,
                     &allocator,
                 )
@@ -449,7 +465,8 @@ async fn image_loading<D: DMAMapping>(
                 {
                     return Ok(());
                 }
-                activate_soc_images(soc_image_load_list).await?;
+                activate_soc_images(soc_image_load_list, AuthManifestSource::VendorOwner).await?;
+                activate_soc_images(&owner_soc_image_load_list, AuthManifestSource::Owner).await?;
             }
             #[cfg(not(feature = "flash-boot"))]
             return Err(ErrorCode::NoSupport);
@@ -496,7 +513,7 @@ struct OwnerPreambleHeader {
 }
 
 #[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
-async fn measure_owner_soc_manifest_preamble<A: mcu_caliptra_api::ApiAlloc>(
+async fn measure_owner_soc_manifest_preamble<A: mcu_caliptra_api::ScratchAlloc>(
     preamble_bytes: &[u8],
     allocator: &A,
     boot_kind: caliptra_mcu_measurement_api::BootKind,
@@ -574,7 +591,7 @@ async fn read_owner_measurement_policy(
 }
 
 #[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
-async fn authenticate_and_measure_owner_artifacts<A: mcu_caliptra_api::ApiAlloc>(
+async fn authenticate_and_measure_owner_artifacts<A: mcu_caliptra_api::ScratchAlloc>(
     static_policy_bytes: &'static [u8],
     allocator: &A,
     boot_kind: caliptra_mcu_measurement_api::BootKind,
@@ -584,7 +601,7 @@ async fn authenticate_and_measure_owner_artifacts<A: mcu_caliptra_api::ApiAlloc>
         measure_owner_measurement_policy, validate_and_set_owner_policy, BootKind,
         IMAGE_MEASUREMENT_DIGEST_SIZE, OWNER_MEASUREMENT_POLICY_IDENTIFIER,
     };
-    use mcu_caliptra_api::{core_image_info, hash_all, HashAlgo};
+    use mcu_caliptra_api::{core_image_info_from, hash_all, HashAlgo};
 
     let mut policy_digest = [0u8; IMAGE_MEASUREMENT_DIGEST_SIZE];
     hash_all(
@@ -596,10 +613,13 @@ async fn authenticate_and_measure_owner_artifacts<A: mcu_caliptra_api::ApiAlloc>
     .await
     .map_err(|_| ErrorCode::Fail)?;
 
-    let policy_image_digest = core_image_info(OWNER_MEASUREMENT_POLICY_IDENTIFIER)
-        .await
-        .map_err(|_| ErrorCode::Fail)?
-        .digest;
+    let policy_image_digest = core_image_info_from(
+        OWNER_MEASUREMENT_POLICY_IDENTIFIER,
+        AuthManifestSource::Owner,
+    )
+    .await
+    .map_err(|_| ErrorCode::Fail)?
+    .digest;
     if policy_digest != policy_image_digest {
         return Err(ErrorCode::Fail);
     }
@@ -625,14 +645,14 @@ async fn authenticate_and_measure_owner_artifacts<A: mcu_caliptra_api::ApiAlloc>
 }
 
 #[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
-async fn measure_owner_auth_key_component<A: mcu_caliptra_api::ApiAlloc>(
+async fn measure_owner_auth_key_component<A: mcu_caliptra_api::ScratchAlloc>(
     allocator: &A,
     boot_kind: caliptra_mcu_measurement_api::BootKind,
 ) -> Result<(), ErrorCode> {
     use caliptra_mcu_measurement_api::{measure_owner_auth_key, O_AUTH_KEY_ID};
-    use mcu_caliptra_api::core_image_info;
+    use mcu_caliptra_api::core_image_info_from;
 
-    let digest = core_image_info(O_AUTH_KEY_ID)
+    let digest = core_image_info_from(O_AUTH_KEY_ID, AuthManifestSource::Owner)
         .await
         .map_err(|_| ErrorCode::Fail)?
         .digest;
@@ -644,12 +664,12 @@ async fn measure_owner_auth_key_component<A: mcu_caliptra_api::ApiAlloc>(
 }
 
 #[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
-async fn measure_owner_artifacts<A: mcu_caliptra_api::ApiAlloc>(
+async fn measure_owner_artifacts<A: mcu_caliptra_api::ScratchAlloc>(
     loader: &dyn ImageLoader,
     allocator: &A,
     boot_kind: caliptra_mcu_measurement_api::BootKind,
     retained_preamble: &[u8],
-) -> Result<(), ErrorCode> {
+) -> Result<&'static [u8], ErrorCode> {
     let static_policy_bytes = read_owner_measurement_policy(loader).await?;
     authenticate_and_measure_owner_artifacts(
         static_policy_bytes,
@@ -657,18 +677,49 @@ async fn measure_owner_artifacts<A: mcu_caliptra_api::ApiAlloc>(
         boot_kind,
         retained_preamble,
     )
-    .await
+    .await?;
+    Ok(static_policy_bytes)
 }
 
+/// Loads the vendor `soc_image_load_list` followed by the Owner SoC Image Load
+/// List (`MOLL`) carried in the authenticated Owner Measurement Policy.
+///
+/// Vendor images are resolved in Caliptra's base (vendor+owner) Image Metadata
+/// Collection, owner images in the owner-only collection. Returns the owner image
+/// IDs so the caller can activate them with the owner manifest source.
 #[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
-async fn load_soc_images<A: mcu_caliptra_api::ApiAlloc>(
+async fn load_soc_images<A: mcu_caliptra_api::ScratchAlloc>(
     loader: &impl ImageLoader,
     soc_image_load_list: &'static [u32],
+    owner_policy_bytes: &[u8],
     component_update: bool,
     allocator: &A,
-) -> Result<(), ErrorCode> {
-    for fw_id in soc_image_load_list {
-        let loaded = loader.load(*fw_id).await?;
+) -> Result<Vec<u32>, ErrorCode> {
+    let owner_soc_image_load_list: Vec<u32> =
+        caliptra_mcu_measurement_api::parse_and_validate_owner_measurement_policy(
+            owner_policy_bytes,
+        )
+        .map_err(|_| ErrorCode::Fail)?
+        .load_list()
+        .entries()
+        .collect();
+    let fw_ids = soc_image_load_list
+        .iter()
+        .map(|fw_id| (*fw_id, AuthManifestSource::VendorOwner))
+        .chain(
+            owner_soc_image_load_list
+                .iter()
+                .map(|fw_id| (*fw_id, AuthManifestSource::Owner)),
+        );
+    for (fw_id, source) in fw_ids {
+        let loaded = loader.load(fw_id, source).await.inspect_err(|_| {
+            let mut console_writer = Console::<DefaultSyscalls>::writer();
+            crate::log_error!(
+                console_writer,
+                "IMAGE_LOADER_APP: load failed for 0x{}",
+                crate::Hex32(fw_id)
+            );
+        })?;
         let metadata = if component_update {
             ImageMetadata::component_update(
                 ImageHashSource::LoadAddress,
@@ -680,14 +731,14 @@ async fn load_soc_images<A: mcu_caliptra_api::ApiAlloc>(
         } else {
             ImageMetadata::initial_load_from_load_address(loaded.image_size, loaded.measurement)
         };
-        caliptra_mcu_measurement_api::authorize_and_stash(allocator, *fw_id, metadata)
+        caliptra_mcu_measurement_api::authorize_and_stash(allocator, fw_id, metadata)
             .await
             .inspect_err(|_| {
                 let mut console_writer = Console::<DefaultSyscalls>::writer();
                 crate::log_error!(
                     console_writer,
                     "IMAGE_LOADER_APP: authorize_and_stash failed for 0x{}",
-                    crate::Hex32(*fw_id)
+                    crate::Hex32(fw_id)
                 );
             })
             .map_err(|_| ErrorCode::Fail)?;
@@ -702,7 +753,7 @@ async fn load_soc_images<A: mcu_caliptra_api::ApiAlloc>(
             );
         })
         .map_err(|_| ErrorCode::Fail)?;
-    Ok(())
+    Ok(owner_soc_image_load_list)
 }
 
 #[cfg(any(
@@ -771,44 +822,46 @@ async fn hitless_attestation_firmware_update_task(soc_image_load_list: &'static 
     }
 }
 
+/// Activates `fw_id_list` (sets the FW_EXEC_CTRL bit of each SoC image) using the
+/// Image Metadata Collection selected by `source`. Caliptra applies one manifest
+/// source per request, so vendor and owner images are activated separately.
 #[allow(dead_code)]
-async fn activate_soc_images(fw_id_list: &[u32]) -> Result<(), ErrorCode> {
-    if fw_id_list.is_empty() {
-        return Ok(());
-    }
-
-    let fw_ids = {
-        let mut ids = [0u32; ActivateFirmwareReq::MAX_FW_ID_COUNT];
-        for (i, fw_id) in fw_id_list.iter().enumerate() {
-            ids[i] = *fw_id;
+async fn activate_soc_images(
+    fw_id_list: &[u32],
+    source: AuthManifestSource,
+) -> Result<(), ErrorCode> {
+    for chunk in fw_id_list.chunks(ActivateFirmwareReq::MAX_FW_ID_COUNT) {
+        let mut fw_ids = [0u32; ActivateFirmwareReq::MAX_FW_ID_COUNT];
+        for (out, id) in fw_ids.iter_mut().zip(chunk) {
+            *out = *id;
         }
-        ids
-    };
-    let mut req = ActivateFirmwareReq {
-        hdr: MailboxReqHeader { chksum: 0 },
-        fw_id_count: fw_id_list.len() as u32,
-        fw_ids,
-        mcu_fw_image_size: 0, // MCU image is not activated here
-        flags: 0,
-    };
+        let mut req = ActivateFirmwareReq {
+            hdr: MailboxReqHeader { chksum: 0 },
+            fw_id_count: chunk.len() as u32,
+            fw_ids,
+            mcu_fw_image_size: 0, // MCU image is not activated here
+            flags: source.flag_bits(),
+        };
 
-    let req = req.as_mut_bytes();
-    let mailbox = Mailbox::<DefaultSyscalls>::new();
+        let req = req.as_mut_bytes();
+        let mailbox = Mailbox::<DefaultSyscalls>::new();
 
-    mailbox
-        .populate_checksum(CommandId::ACTIVATE_FIRMWARE.into(), req)
-        .unwrap();
-    let response_buffer = &mut [0u8; core::mem::size_of::<ActivateFirmwareResp>()];
-    loop {
-        let result = mailbox
-            .execute(CommandId::ACTIVATE_FIRMWARE.into(), req, response_buffer)
-            .await;
-        match result {
-            Ok(_) => return Ok(()),
-            Err(MailboxError::ErrorCode(ErrorCode::Busy)) => continue,
-            Err(_) => return Err(ErrorCode::Fail),
+        mailbox
+            .populate_checksum(CommandId::ACTIVATE_FIRMWARE.into(), req)
+            .unwrap();
+        let response_buffer = &mut [0u8; core::mem::size_of::<ActivateFirmwareResp>()];
+        loop {
+            let result = mailbox
+                .execute(CommandId::ACTIVATE_FIRMWARE.into(), req, response_buffer)
+                .await;
+            match result {
+                Ok(_) => break,
+                Err(MailboxError::ErrorCode(ErrorCode::Busy)) => continue,
+                Err(_) => return Err(ErrorCode::Fail),
+            }
         }
     }
+    Ok(())
 }
 
 pub struct EmulatedDMAMap {}

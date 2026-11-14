@@ -60,7 +60,8 @@ The 64-byte `RomHandoffTable` has the following layout:
 | 20 | 1 byte | `firmware_boot_type` | Source used to boot MCU firmware |
 | 21 | 3 bytes | `reserved` | Reserved for alignment and future byte-sized fields |
 | 24 | 4 bytes | `mcu_rom_capabilities` | MCU ROM capability bitmap |
-| 28 | 36 bytes | `padding` | Reserved for backward-compatible fields |
+| 28 | 4 bytes | `mcu_rom_version` | Packed ROM version, available starting with handoff ABI 1.4 |
+| 32 | 32 bytes | `padding` | Reserved for backward-compatible fields |
 
 Handoff version 1.2 defines `firmware_boot_type` as follows:
 
@@ -91,6 +92,18 @@ Handoff version 1.3 defines `mcu_rom_capabilities` as follows:
 The bitmap describes capabilities implemented by the ROM image, independent of
 the source selected for the current boot. Runtime reports zero when paired with
 a handoff version before 1.3.
+
+Handoff version 1.4 adds `mcu_rom_version`. ROM v2.1.1 reports `0x02010001`:
+major occupies bits 31:24, minor bits 23:16, and patch bits 15:0.
+`System::mcu_rom_version()` exposes this value through System command 4.
+A valid older handoff returns `NoSupport`; an invalid handoff or a reported
+zero version returns `Invalid`. Runtime preserves this ROM-owned data across
+hitless updates.
+
+The firmware updater uses this field to gate flash image formats. With a valid
+legacy handoff that lacks the field, v1 and v2 are allowed, but customers must
+select the format their ROM actually supports. New ROM builds report v2.1.1 and
+support v3 only; Runtime rejects v1/v2 updates when paired with those ROMs.
 
 ## Stable Owner Key
 

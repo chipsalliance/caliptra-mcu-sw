@@ -76,13 +76,13 @@ impl<S: Syscalls> McuMbox<S> {
     ///
     /// # Returns
     ///
-    /// Returns a tuple containing the command code and the number of bytes received,
-    /// or an error if the operation fails.
+    /// Returns a tuple containing the command code, the number of bytes received,
+    /// and the sender's AXI user ID, or an error if the operation fails.
     pub async fn receive_command(
         &self,
         data: &mut [u8],
         on_listening_cb: Option<impl FnOnce()>,
-    ) -> Result<(CmdCode, usize), ErrorCode> {
+    ) -> Result<(CmdCode, usize, u32), ErrorCode> {
         if data.is_empty() {
             return Err(ErrorCode::Invalid);
         }
@@ -110,11 +110,11 @@ impl<S: Syscalls> McuMbox<S> {
             on_listening_cb();
         }
 
-        let (command, recv_len, _) = rx_fut.await?;
+        let (command, recv_len, axi_user) = rx_fut.await?;
 
         black_box(*mutex); // Ensure the mutex is not optimized away
 
-        Ok((command, recv_len as usize))
+        Ok((command, recv_len as usize, axi_user))
     }
 
     /// Sends a response to the MCU mailbox sender asynchronously (receiver mode).
@@ -169,6 +169,14 @@ impl<S: Syscalls> McuMbox<S> {
         S::command(self.driver_num, command::FINISH_RESP, status.into(), 0)
             .to_result::<(), ErrorCode>()
     }
+
+    /// Checks whether the given AXI user is configured as a privileged (PL0) user
+    /// for MCI mailbox 0.
+    pub fn is_pl0_axi_user(&self, axi_user: u32) -> Result<bool, ErrorCode> {
+        S::command(self.driver_num, command::IS_PL0_AXI_USER, axi_user, 0)
+            .to_result::<u32, ErrorCode>()
+            .map(|v| v != 0)
+    }
 }
 
 // -----------------------------------------------------------------------------
@@ -182,11 +190,13 @@ pub const MCU_MBOX0_DRIVER_NUM: u32 = 0x8000_0010;
 /// - `1` - Receive request
 /// - `2` - Send response
 /// - `3` - Finish response by setting mailbox command status
+/// - `4` - Check if an AXI user is a privileged (PL0) user
 mod command {
     pub const EXISTS: u32 = 0;
     pub const RECEIVE_REQUEST: u32 = 1;
     pub const SEND_RESPONSE: u32 = 2;
     pub const FINISH_RESP: u32 = 3;
+    pub const IS_PL0_AXI_USER: u32 = 4;
 }
 
 // Read-only buffer to read the response from.

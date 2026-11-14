@@ -3,16 +3,19 @@
 #![cfg_attr(target_arch = "riscv32", no_std)]
 #![allow(async_fn_in_trait)]
 
+pub mod command;
+
 #[cfg(feature = "ocp-lock")]
-use caliptra_api::mailbox::{HpkeHandle, OcpLockEnumerateHpkeHandlesResp};
+use caliptra_api::mailbox::HpkeHandle;
+use caliptra_mcu_mbox_common::authorization::{AuthorizationMetadata, CommandAuthority};
 use caliptra_mcu_mbox_common::messages::{
-    CommandId, DotDisablePayload, DotLockPayload, DotOverrideChallengePayload, DotOverridePayload,
+    DotDisablePayload, DotLockPayload, DotOverrideChallengePayload, DotOverridePayload,
     DotRotatePayload, DotStatus, DotUnlockPayload, HybridSignature, SvnTarget, AUTH_CMD_NONCE_LEN,
     DOT_BLOB_SIZE,
 };
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_mbox_common::messages::{EndorsementAlgorithm, SekState};
-use mcu_caliptra_api::ApiAlloc;
+use mcu_caliptra_api::ScratchAlloc;
 use zerocopy::{Immutable, IntoBytes};
 
 pub use caliptra_api::mailbox::MAX_ATTESTED_CSR_RESP_DATA_SIZE as MAX_ATTESTED_CSR_DATA_LEN;
@@ -154,21 +157,19 @@ impl TryFrom<u32> for AsymAlgo {
 /// PKI entity whose hierarchy endorses the evidence's signing key.
 ///
 /// This selects an endorsement hierarchy, not a signing key: every slot signs
-/// with the same DPE leaf key today.
-///
-/// Because signing is not slot-aware yet, only [`PkiEntitySlot::Vendor`] is
-/// served; responders reject [`PkiEntitySlot::Owner`] with
-/// `UNSUPPORTED_OPERATION` rather than return evidence claiming an endorsement
-/// that was never selected. Once signing is slot-aware, whether an entity can
-/// be served follows the provisioning state of its endorsement slot.
+/// with the same DPE leaf key, and whether an entity can be served follows the
+/// provisioning state of its `(role, algorithm)` certificate chain in the
+/// common certificate store.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[repr(u32)]
 pub enum PkiEntitySlot {
     /// Vendor (device manufacturer) hierarchy.
     #[default]
     Vendor = 0,
-    /// Owner hierarchy. Reserved.
+    /// Owner hierarchy.
     Owner = 1,
+    /// Tenant hierarchy.
+    Tenant = 2,
 }
 
 impl TryFrom<u32> for PkiEntitySlot {
@@ -177,7 +178,52 @@ impl TryFrom<u32> for PkiEntitySlot {
         match value {
             0 => Ok(PkiEntitySlot::Vendor),
             1 => Ok(PkiEntitySlot::Owner),
+            2 => Ok(PkiEntitySlot::Tenant),
             _ => Err(CaliptraCompletionCode::InvalidParameter),
+        }
+    }
+}
+
+/// Operation mode for `MC_PROVISION_IDEV_CERT` / VDM `PROVISION_IDEV_CERT`.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
+pub enum ProvisionIdevCertMode {
+    /// Populate the `IDevID` certificate into Caliptra Core RAM only without
+    /// burning or locking OTP.
+    #[default]
+    PopulateOnly = 0,
+    /// Write the `IDevID` certificate (or signature) to the external OTP
+    /// partition, verify the readback, lock the partition, and populate
+    /// Caliptra Core.
+    WriteOtp = 1,
+}
+
+impl TryFrom<u32> for ProvisionIdevCertMode {
+    type Error = CaliptraCompletionCode;
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::PopulateOnly),
+            1 => Ok(Self::WriteOtp),
+            _ => Err(CaliptraCompletionCode::InvalidParameter),
+        }
+    }
+}
+
+/// Metadata, byte length, and raw DER SHA-384 digest for a certificate chain slot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CertChainInfo {
+    pub device_key_id: u32,
+    pub chain_len: u32,
+    pub chain_digest: [u8; 48],
+}
+
+impl Default for CertChainInfo {
+    fn default() -> Self {
+        Self {
+            device_key_id: 0,
+            chain_len: 0,
+            chain_digest: [0u8; 48],
         }
     }
 }
@@ -246,6 +292,13 @@ impl Default for DebugUnlockChallenge {
     }
 }
 
+/// Vendor command body limits, excluding authorization and transport framing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VendorCommandLimits {
+    pub max_payload_len: usize,
+    pub max_response_len: usize,
+}
+
 /// Asynchronous trait for handling Caliptra common commands across all transport protocols.
 ///
 /// Each function represents a transport-agnostic command handler. Implementors should provide
@@ -277,6 +330,32 @@ pub trait CaliptraCmdHandler {
         capabilities: &mut DeviceCapabilities,
     ) -> CaliptraCmdResult<()>;
 
+    /// Describes a supported `VUxy` target inside `AuthorizedCommand`.
+    ///
+    /// This side-effect-free lookup runs before authorization. Payloads must fit
+    /// [`command::MAX_AUTHORIZED_PAYLOAD_LEN`]. The declared response limit must
+    /// fit the transport's existing response buffer; no resizing is done.
+    /// The default registers no vendor commands.
+    fn vendor_command_limits(_cmd_id: u32) -> Option<VendorCommandLimits> {
+        None
+    }
+
+    /// Executes a vendor command after the common authorization checks pass.
+    ///
+    /// `payload` excludes the target ID and authorization block. `response`
+    /// contains only body space, bounded by the registered response limit.
+    /// Return the number of bytes written, never greater than `response.len()`.
+    /// Transport headers and checksums remain the frontend's responsibility.
+    async fn handle_vendor_command<Alloc: ScratchAlloc>(
+        &self,
+        _alloc: &Alloc,
+        _cmd_id: u32,
+        _payload: &[u8],
+        _response: &mut [u8],
+    ) -> CaliptraCmdResult<usize> {
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
     /// Exports an attested CSR or performs keypair discovery.
     ///
     /// # Arguments
@@ -287,14 +366,19 @@ pub trait CaliptraCmdHandler {
     ///
     /// # Returns
     /// * `CaliptraCmdResult<usize>` - Number of bytes written on success, or an error.
-    async fn export_attested_csr<Alloc: ApiAlloc>(
+    ///
+    /// The default implementation returns `UnsupportedOperation`, for
+    /// integrations that do not export attested CSRs.
+    async fn export_attested_csr<Alloc: ScratchAlloc>(
         &self,
-        alloc: &Alloc,
-        device_key_id: u32,
-        algorithm: u32,
-        nonce: &[u8; 32],
-        csr_buf: &mut [u8],
-    ) -> CaliptraCmdResult<usize>;
+        _alloc: &Alloc,
+        _device_key_id: u32,
+        _algorithm: u32,
+        _nonce: &[u8; 32],
+        _csr_buf: &mut [u8],
+    ) -> CaliptraCmdResult<usize> {
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
 
     /// Exports an IDevID CSR (manufacturing mode only).
     ///
@@ -305,7 +389,7 @@ pub trait CaliptraCmdHandler {
     ///
     /// # Returns
     /// * `CaliptraCmdResult<usize>` - Number of bytes written on success, or an error.
-    async fn export_idevid_csr<Alloc: ApiAlloc>(
+    async fn export_idevid_csr<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         algorithm: u32,
@@ -366,7 +450,7 @@ pub trait CaliptraCmdHandler {
     ///   build.
     /// * `Err(CaliptraCompletionCode::InsufficientResources)` - `out` is too
     ///   small for the generated evidence.
-    async fn get_attestation<Alloc: ApiAlloc>(
+    async fn get_attestation<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         format: EvidenceFormat,
@@ -379,6 +463,70 @@ pub trait CaliptraCmdHandler {
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 
+    /// Retrieves metadata, total byte length, and raw DER SHA-384 digest for a
+    /// provisioned `(entity, algorithm)` certificate chain slot.
+    async fn get_cert_chain_info<Alloc: ScratchAlloc>(
+        &self,
+        alloc: &Alloc,
+        entity: PkiEntitySlot,
+        algorithm: AsymAlgo,
+        info: &mut CertChainInfo,
+    ) -> CaliptraCmdResult<()> {
+        let _ = (alloc, entity, algorithm, info);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Reads a contiguous byte slice of the complete raw DER certificate chain
+    /// for a provisioned `(entity, algorithm)` slot into `out`.
+    async fn get_cert_chain<Alloc: ScratchAlloc>(
+        &self,
+        alloc: &Alloc,
+        entity: PkiEntitySlot,
+        algorithm: AsymAlgo,
+        offset: u32,
+        out: &mut [u8],
+    ) -> CaliptraCmdResult<usize> {
+        let _ = (alloc, entity, algorithm, offset, out);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Provisions, replaces, or erases the PKI endorsement chain for a managed
+    /// `(entity, algorithm)` slot.
+    #[allow(clippy::too_many_arguments)]
+    async fn set_cert_chain<Alloc: ScratchAlloc>(
+        &self,
+        alloc: &Alloc,
+        entity: PkiEntitySlot,
+        algorithm: AsymAlgo,
+        device_key_id: u32,
+        offset: u32,
+        total_size: u32,
+        data: &[u8],
+    ) -> CaliptraCmdResult<()> {
+        let _ = (
+            alloc,
+            entity,
+            algorithm,
+            device_key_id,
+            offset,
+            total_size,
+            data,
+        );
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Populates and/or writes to OTP the Vendor `IDevID` certificate for `algorithm`.
+    async fn provision_idevid_cert<Alloc: ScratchAlloc>(
+        &self,
+        alloc: &Alloc,
+        algorithm: AsymAlgo,
+        mode: ProvisionIdevCertMode,
+        data: &[u8],
+    ) -> CaliptraCmdResult<()> {
+        let _ = (alloc, algorithm, mode, data);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
     /// Requests a production debug unlock challenge.
     ///
     /// # Arguments
@@ -387,7 +535,7 @@ pub trait CaliptraCmdHandler {
     ///
     /// # Returns
     /// * `CaliptraCmdResult<()>` - Ok on success, or an error.
-    async fn request_debug_unlock<Alloc: ApiAlloc>(
+    async fn request_debug_unlock<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         unlock_level: u8,
@@ -404,7 +552,7 @@ pub trait CaliptraCmdHandler {
     ///
     /// # Returns
     /// * `CaliptraCmdResult<()>` - Ok on success, or an error.
-    async fn authorize_debug_unlock_token<Alloc: ApiAlloc>(
+    async fn authorize_debug_unlock_token<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         token_data: &[u8],
@@ -461,7 +609,7 @@ pub trait CaliptraCmdHandler {
     }
 
     /// Increase the selected minimum SVN.
-    async fn increase_min_svn<Alloc: ApiAlloc>(
+    async fn increase_min_svn<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         target: SvnTarget,
@@ -472,7 +620,7 @@ pub trait CaliptraCmdHandler {
     }
 
     /// Revoke one vendor public key in a provisioned public-key-hash slot.
-    async fn revoke_vendor_pub_key<Alloc: ApiAlloc>(
+    async fn revoke_vendor_pub_key<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         vendor_pk_hash_slot: u32,
@@ -500,7 +648,7 @@ pub trait CaliptraCmdHandler {
     ///
     /// # Returns
     /// * `CaliptraCmdResult<()>` - Ok on success, or an error.
-    async fn program_field_entropy<Alloc: ApiAlloc>(
+    async fn program_field_entropy<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         partition: u32,
@@ -509,10 +657,25 @@ pub trait CaliptraCmdHandler {
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 
+    /// Reports whether all field entropy partitions have been provisioned.
+    async fn field_entropy_already_provisioned(&self) -> CaliptraCmdResult<bool> {
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Reports occupied vendor public-key hash slots and their PQC key types.
+    async fn vendor_pk_hash_status(&self) -> CaliptraCmdResult<(u32, [u8; 16])> {
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Reports used HEK slots and the total number of configured HEK slots.
+    async fn hek_status(&self) -> CaliptraCmdResult<(u32, u32)> {
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
     /// Retrieves the OCP Lock endorsement certificate using task-local scratch
     /// for the signing request and response.
     #[cfg(feature = "ocp-lock")]
-    async fn get_ocp_lock_endorsement_cert<Alloc: ApiAlloc>(
+    async fn get_ocp_lock_endorsement_cert<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         hpke_handle: &HpkeHandle,
@@ -525,18 +688,15 @@ pub trait CaliptraCmdHandler {
 
     /// Enumerates the OCP Lock HPKE handles.
     #[cfg(feature = "ocp-lock")]
-    async fn ocp_lock_enumerate_hpke_handles(
-        &self,
-        resp: &mut OcpLockEnumerateHpkeHandlesResp,
-    ) -> CaliptraCmdResult<()> {
-        let _ = resp;
+    async fn ocp_lock_enumerate_hpke_handles(&self, data: &mut [u8]) -> CaliptraCmdResult<usize> {
+        let _ = data;
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 
     /// Retrieves the OCP Lock Epoch Key Report using task-local scratch for the
     /// signing request and response.
     #[cfg(feature = "ocp-lock")]
-    async fn get_ocp_lock_epoch_key_report<Alloc: ApiAlloc>(
+    async fn get_ocp_lock_epoch_key_report<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         nonce: &[u8; 32],
@@ -550,7 +710,29 @@ pub trait CaliptraCmdHandler {
 
     /// Rotate the active HEK to the specified slot.
     #[cfg(feature = "ocp-lock")]
-    async fn ocp_lock_rotate_hek<Alloc: ApiAlloc>(
+    async fn ocp_lock_program_hek<Alloc: ScratchAlloc>(
+        &self,
+        alloc: &Alloc,
+        slot: u32,
+    ) -> CaliptraCmdResult<()> {
+        let _ = (alloc, slot);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Zero the specified HEK slot.
+    #[cfg(feature = "ocp-lock")]
+    async fn ocp_lock_zero_hek<Alloc: ScratchAlloc>(
+        &self,
+        alloc: &Alloc,
+        slot: u32,
+    ) -> CaliptraCmdResult<()> {
+        let _ = (alloc, slot);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Rotate the active HEK to the specified slot.
+    #[cfg(feature = "ocp-lock")]
+    async fn ocp_lock_rotate_hek<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         slot: u32,
@@ -571,8 +753,30 @@ pub trait CaliptraCmdHandler {
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 
+    /// Read one raw OTP entry for the MCI-only fuse command.
+    async fn fuse_read(
+        &self,
+        partition: u32,
+        entry: u32,
+        data: &mut [u8],
+    ) -> CaliptraCmdResult<u32> {
+        let _ = (partition, entry, data);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Write one raw OTP word for the MCI-only fuse command.
+    async fn fuse_write(&self, word_addr: u32, data: u32, mask: u32) -> CaliptraCmdResult<()> {
+        let _ = (word_addr, data, mask);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Permanently enable the DOT boot flow.
+    async fn dot_enable(&self) -> CaliptraCmdResult<()> {
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
     /// Verify and commit a persistent DOT lock transition.
-    async fn dot_lock<Alloc: ApiAlloc>(
+    async fn dot_lock<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         request: &DotLockPayload,
@@ -582,7 +786,7 @@ pub trait CaliptraCmdHandler {
     }
 
     /// Verify and commit a persistent DOT disabled-state transition.
-    async fn dot_disable<Alloc: ApiAlloc>(
+    async fn dot_disable<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         request: &DotDisablePayload,
@@ -592,7 +796,7 @@ pub trait CaliptraCmdHandler {
     }
 
     /// Rotate the DOT epoch by two fuse bits and reseal ownership state.
-    async fn dot_rotate<Alloc: ApiAlloc>(
+    async fn dot_rotate<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         request: &DotRotatePayload,
@@ -608,7 +812,7 @@ pub trait CaliptraCmdHandler {
     }
 
     /// Authenticate and restore a DOT blob for the current locked fuse epoch.
-    async fn dot_recovery<Alloc: ApiAlloc>(
+    async fn dot_recovery<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         blob: &[u8; DOT_BLOB_SIZE],
@@ -618,7 +822,7 @@ pub trait CaliptraCmdHandler {
     }
 
     /// Validate recovery public keys and generate an override challenge.
-    async fn dot_override_challenge<Alloc: ApiAlloc>(
+    async fn dot_override_challenge<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         request: &DotOverrideChallengePayload,
@@ -628,7 +832,7 @@ pub trait CaliptraCmdHandler {
     }
 
     /// Verify recovery-key signatures and apply a DOT override transition.
-    async fn dot_override<Alloc: ApiAlloc>(
+    async fn dot_override<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         request: &DotOverridePayload,
@@ -638,7 +842,7 @@ pub trait CaliptraCmdHandler {
     }
 
     /// Authenticate the current DOT blob and generate a one-time unlock challenge.
-    async fn dot_unlock_challenge<Alloc: ApiAlloc>(
+    async fn dot_unlock_challenge<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
     ) -> CaliptraCmdResult<[u8; AUTH_CMD_NONCE_LEN]> {
@@ -647,7 +851,7 @@ pub trait CaliptraCmdHandler {
     }
 
     /// Verify and commit an ODD-to-EVEN DOT unlock transition.
-    async fn dot_unlock<Alloc: ApiAlloc>(
+    async fn dot_unlock<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         request: &DotUnlockPayload,
@@ -662,7 +866,7 @@ pub trait CaliptraCmdHandler {
     /// hashes and an HMAC, not secret key material. Transport access remains a
     /// platform policy decision, and implementations must verify the HMAC
     /// before returning bytes.
-    async fn dot_get_backup_blob<Alloc: ApiAlloc>(
+    async fn dot_get_backup_blob<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         blob: &mut [u8; DOT_BLOB_SIZE],
@@ -677,32 +881,41 @@ pub struct AuthorizationError;
 pub type AuthorizationResult<T> = Result<T, AuthorizationError>;
 
 pub trait CommandAuthorizer {
-    /// Validates if a message is authorized.
-    ///
-    /// The request can contain authorization data (e.g. a verification).
-    /// This method is responsible for unpacking the contained
-    /// request message and returning it as a slice.
-    ///
-    /// # Arguments
-    /// * `cmd_id` - Command identifier
-    /// * `req` - Message to be authorized
-    ///
-    /// # Returns
-    /// * `Result<&[u8], CommandError>` - Unpacked command or Error
-    async fn is_authorized<'a, Alloc: ApiAlloc>(
-        &mut self,
-        alloc: &Alloc,
-        cmd_id: CommandId,
-        req: &'a [u8],
-    ) -> Result<&'a [u8], AuthorizationError>;
+    fn permits_authority(
+        &self,
+        _cmd_id: u32,
+        _payload: &[u8],
+        authority: CommandAuthority,
+    ) -> bool {
+        authority == CommandAuthority::Owner
+    }
 
-    /// Verify signatures over a command using the stored challenge and wire keys.
+    fn device_ueid(&self) -> AuthorizationResult<[u8; 16]> {
+        Err(AuthorizationError)
+    }
+
+    /// Generate the one-use challenge returned by `MACC`.
+    async fn generate_challenge<Alloc: ScratchAlloc>(
+        &self,
+        alloc: &Alloc,
+    ) -> Result<[u8; AUTH_CMD_NONCE_LEN], AuthorizationError> {
+        let mut challenge = [0u8; AUTH_CMD_NONCE_LEN];
+        mcu_caliptra_api::rng_generate(alloc, &mut challenge)
+            .await
+            .map_err(|_| AuthorizationError)?;
+        Ok(challenge)
+    }
+
+    /// Validate manifest-backed keys and both signatures, consuming a live
+    /// challenge when the signed nonce is nonzero. Authority and UEID checks
+    /// run before this; an all-zero nonce selects replayable Offline authorization.
     #[allow(clippy::too_many_arguments)]
-    async fn verify_signatures<Alloc: ApiAlloc>(
-        &mut self,
+    async fn verify_signatures<Alloc: ScratchAlloc>(
+        &self,
         alloc: &Alloc,
         cmd_id: u32,
         payload: &[u8],
+        metadata: &AuthorizationMetadata,
         nonce: &[u8; AUTH_CMD_NONCE_LEN],
         ecc_pub_x: &[u8; 48],
         ecc_pub_y: &[u8; 48],
@@ -713,8 +926,8 @@ pub trait CommandAuthorizer {
     /// Get the challenge from the last call to `MC_GET_AUTH_CMD_CHALLENGE`.
     ///
     /// This consumes the challenge so it can only be used once.
-    fn take_challenge(&mut self) -> Option<[u8; AUTH_CMD_NONCE_LEN]>;
+    fn take_challenge(&self) -> Option<[u8; AUTH_CMD_NONCE_LEN]>;
 
     /// Set the challenge nonce to be used on the next authorized command.
-    fn set_challenge(&mut self, challenge: [u8; AUTH_CMD_NONCE_LEN]);
+    fn set_challenge(&self, challenge: [u8; AUTH_CMD_NONCE_LEN]);
 }

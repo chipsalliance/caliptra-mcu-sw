@@ -7,6 +7,7 @@ authors.workspace = true
 edition.workspace = true
 
 [dependencies]
+caliptra-mcu-cert-store = { workspace = true }
 caliptra-mcu-attestation-evidence = { workspace = true }
 caliptra-mcu-spdm-traits = { workspace = true }
 caliptra-mcu-spdm-codec = { workspace = true }
@@ -20,13 +21,15 @@ caliptra-mcu-libtock_alarm = { workspace = true, optional = true }
 caliptra-mcu-libtockasync = { workspace = true, optional = true }
 zerocopy = { workspace = true }
 
+[dev-dependencies]
+futures.workspace = true
+
 [features]
 default = []
 pcr-quote = ["caliptra-mcu-attestation-evidence/pcr-quote"]
 set-certificate = [
+  "caliptra-mcu-cert-store/set-certificate",
   "caliptra-mcu-spdm-traits/set-certificate",
-  "caliptra-mcu-libsyscall-caliptra",
-  "caliptra-mcu-libtock_platform",
 ]
 # HEARTBEAT liveness watchdog: pulls in the libtock alarm capsule so the PAL
 # can provide a real monotonic clock (now_ms/sleep_ms) to the stack.

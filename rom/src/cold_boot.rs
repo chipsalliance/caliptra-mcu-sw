@@ -23,7 +23,7 @@ use crate::{
 };
 use caliptra_api::mailbox::{
     ActivateFirmwareFlags, ActivateFirmwareReq, ActivateFirmwareResp, CmImportReq, CmImportResp,
-    CmKeyUsage, CmStableKeyType, Cmk, CommandId, FeProgReq, MailboxReqHeader, MailboxRespHeader,
+    CmKeyUsage, CmStableKeyType, Cmk, CommandId, MailboxReqHeader, MailboxRespHeader,
     StashMeasurementReq, StashMeasurementResp, CMK_SIZE_BYTES, MAX_CMB_DATA_SIZE,
 };
 #[cfg(feature = "ocp-lock")]
@@ -45,8 +45,8 @@ use caliptra_mcu_romtime::handoff::{HandoffData, STABLE_OWNER_KEY_CMK_SIZE};
 #[cfg(feature = "ocp-lock")]
 use caliptra_mcu_romtime::ocp_lock::HekState;
 use caliptra_mcu_romtime::{
-    CaliptraSoC, FieldEntropySlot, FieldEntropyState, HexBytes, HexWord, LifecycleControllerState,
-    LifecycleToken, McuBootMilestones, McuRomBootStatus, Otp,
+    CaliptraSoC, HexBytes, HexWord, LifecycleControllerState, LifecycleToken, McuBootMilestones,
+    McuRomBootStatus,
 };
 use core::ops::Deref;
 
@@ -534,118 +534,6 @@ fn recover_locked_dot_or_fail(
 }
 
 impl ColdBoot {
-    fn program_field_entropy(
-        program_field_entropy: &[bool; 4],
-        soc_manager: &mut CaliptraSoC,
-        mci: &caliptra_mcu_romtime::Mci,
-        otp: &Otp,
-    ) {
-        for (partition, _) in program_field_entropy
-            .iter()
-            .enumerate()
-            .filter(|(_, partition)| **partition)
-        {
-            // Convert partition index to FieldEntropySlot enum safely
-            let slot = FieldEntropySlot::try_from(partition).unwrap_or_else(|_| {
-                fatal_error(McuError::ROM_COLD_BOOT_FIELD_ENTROPY_INVALID_PARTITION);
-            });
-            let state = FieldEntropyState::read(otp, slot).unwrap_or_else(|_| {
-                fatal_error(McuError::ROM_COLD_BOOT_READ_FIELD_ENTROPY_STATE_ERROR);
-            });
-
-            match state {
-                // Started but not finished means the previous programming attempt was interrupted.
-                // This is an error state because we don't know if the field entropy is valid or
-                // not. Restarting a partially programmed slot risks overwriting valid entropy, but
-                // skipping it risks leaving the system without necessary entropy. Given these
-                // risks, we choose to treat this as a fatal error that requires manual
-                // intervention.
-                FieldEntropyState::Started => {
-                    fatal_error(McuError::ROM_COLD_BOOT_FIELD_ENTROPY_PARTIAL);
-                }
-                // Zeroized means the field entropy has been cleared and is not available.
-                FieldEntropyState::Zeroized => {
-                    fatal_error(McuError::ROM_COLD_BOOT_FIELD_ENTROPY_ZEROIZED);
-                }
-                // If slot is fully programmed, skip it and mark it as successful.
-                FieldEntropyState::Finished => {
-                    Self::set_field_entropy_prog_flow_checkpoint(mci, partition);
-                    continue;
-                }
-                FieldEntropyState::Empty => (),
-            }
-
-            // Only execute the command if the slot is empty.
-            caliptra_mcu_romtime::println!(
-                "[mcu-rom] Executing FE_PROG command for partition {}",
-                partition
-            );
-
-            // Before starting the command to caliptra mark the slot as started
-            otp.mark_field_entropy_started(slot).unwrap_or_else(|_| {
-                fatal_error(McuError::ROM_COLD_BOOT_WRITE_FIELD_ENTROPY_STATE_STARTED_ERROR);
-            });
-
-            Self::send_program_field_entropy_mailbox_cmd(soc_manager, partition);
-
-            // mark it as finished when Caliptra returns success
-            otp.mark_field_entropy_finished(slot).unwrap_or_else(|_| {
-                fatal_error(McuError::ROM_COLD_BOOT_WRITE_FIELD_ENTROPY_STATE_FINISHED_ERROR);
-            });
-
-            Self::set_field_entropy_prog_flow_checkpoint(mci, partition);
-        }
-    }
-
-    fn send_program_field_entropy_mailbox_cmd(soc_manager: &mut CaliptraSoC, partition: usize) {
-        let mut req = FeProgReq {
-            partition: partition as u32,
-            ..Default::default()
-        };
-        let chksum = caliptra_api::calc_checksum(
-            CommandId::FE_PROG.into(),
-            &req.as_bytes()[core::mem::size_of::<MailboxReqHeader>()..],
-        );
-        req.hdr.chksum = chksum;
-        if let Err(err) =
-            soc_manager.start_mailbox_req_bytes(CommandId::FE_PROG.into(), req.as_bytes())
-        {
-            match err {
-                CaliptraApiError::MailboxCmdFailed(_) => {
-                    fatal_error(McuError::ROM_COLD_BOOT_FIELD_ENTROPY_PROG_START_MBOX_CMD_FAILED);
-                }
-                _ => {
-                    fatal_error(McuError::ROM_COLD_BOOT_FIELD_ENTROPY_PROG_START_FAILED);
-                }
-            }
-        }
-        {
-            let mut resp_buf = [0u8; core::mem::size_of::<MailboxRespHeader>()];
-            if let Err(err) = soc_manager.finish_mailbox_resp_bytes(&mut resp_buf) {
-                match err {
-                    CaliptraApiError::MailboxCmdFailed(_) => {
-                        fatal_error(
-                            McuError::ROM_COLD_BOOT_FIELD_ENTROPY_PROG_FINISH_MBOX_CMD_FAILED,
-                        );
-                    }
-                    _ => {
-                        fatal_error(McuError::ROM_COLD_BOOT_FIELD_ENTROPY_PROG_FINISH_FAILED);
-                    }
-                }
-            }
-        }
-    }
-
-    fn set_field_entropy_prog_flow_checkpoint(mci: &caliptra_mcu_romtime::Mci, partition: usize) {
-        let base = McuRomBootStatus::FieldEntropyProgrammingStarted as u16;
-        let partition_status = if partition < 4 {
-            base + 1 + partition as u16
-        } else {
-            mci.flow_checkpoint()
-        };
-        mci.set_flow_checkpoint(partition_status);
-    }
-
     /// Decrypt the encrypted MCU firmware in SRAM using DMA-based decryption:
     ///   1. Import the AES key via CM_IMPORT
     ///   2. Issue CM_AES_GCM_DECRYPT_DMA to decrypt in-place via DMA
@@ -697,17 +585,19 @@ impl ColdBoot {
         const DIGEST_SIZE: usize = 48;
         // Safety: MCU_MEMORY_MAP fields are linker-provided constants.
         let rom_size = unsafe { MCU_MEMORY_MAP.rom_size } as usize;
+        let rom_offset = unsafe { MCU_MEMORY_MAP.rom_offset } as usize;
         let hashable_len = rom_size - DIGEST_SIZE;
-        let rom = unsafe {
-            core::slice::from_raw_parts(MCU_MEMORY_MAP.rom_offset as *const u32, hashable_len / 4)
-        };
+        // Do not form a slice: the platform may map ROM at address zero.
+        let rom = (0..hashable_len / 4).map(|i| {
+            // Safety: the platform ROM range is readable and word-aligned.
+            unsafe { core::ptr::read_volatile((rom_offset + i * 4) as *const u32) }
+        });
 
         let digest = mailbox::cm_sha384(soc_manager, rom);
         caliptra_mcu_romtime::println!("[mcu-rom] MCU ROM digest: {}", HexBytes(&digest));
 
-        let expected_digest: &[u8; DIGEST_SIZE] = unsafe {
-            &*((MCU_MEMORY_MAP.rom_offset as usize + hashable_len) as *const [u8; DIGEST_SIZE])
-        };
+        let expected_digest: &[u8; DIGEST_SIZE] =
+            unsafe { &*((rom_offset + hashable_len) as *const [u8; DIGEST_SIZE]) };
         caliptra_mcu_romtime::println!(
             "[mcu-rom] MCU ROM expected digest: {}",
             HexBytes(expected_digest)
@@ -722,14 +612,14 @@ impl ColdBoot {
         cfi_assert_eq_12_words(&digest_words, &expected_words);
 
         if stash {
-            Self::stash_measurement(soc_manager, &digest);
+            Self::stash_measurement(soc_manager, *b"MROM", &digest);
         }
     }
 
-    fn stash_measurement(soc_manager: &mut CaliptraSoC, measurement: &[u8; 48]) {
+    fn stash_measurement(soc_manager: &mut CaliptraSoC, metadata: [u8; 4], measurement: &[u8; 48]) {
         let mut req = StashMeasurementReq {
             hdr: MailboxReqHeader { chksum: 0 },
-            metadata: [0u8; 4],
+            metadata,
             measurement: *measurement,
             context: [0u8; 48],
             svn: 0,
@@ -770,17 +660,6 @@ impl ColdBoot {
             );
             fatal_error(McuError::GENERIC_EXCEPTION);
         }
-    }
-
-    /// Measure the field_entropy_state fuses and stash it to DPE.
-    fn report_field_entropy_state(soc_manager: &mut CaliptraSoC, otp: &Otp) {
-        let Ok(word) = otp.read_entry(fuses::FIELD_ENTROPY_STATE) else {
-            fatal_error(McuError::ROM_COLD_BOOT_READ_FIELD_ENTROPY_STATE_ERROR);
-        };
-
-        let measurement = mailbox::cm_sha384(soc_manager, &[word]);
-
-        Self::stash_measurement(soc_manager, &measurement);
     }
 
     /// Import the test AES key via CM_IMPORT and return the CMK handle.
@@ -998,7 +877,6 @@ impl ColdBoot {
         mci: &caliptra_mcu_romtime::Mci,
         lc: &caliptra_mcu_romtime::Lifecycle,
         soc_manager: &mut CaliptraSoC,
-        otp: &Otp,
     ) -> ! {
         caliptra_mcu_romtime::println!("[mcu-rom] Executing FIPS zeroization flow");
 
@@ -1044,21 +922,6 @@ impl ColdBoot {
         }
         caliptra_mcu_romtime::println!("[mcu-rom] ZEROIZE_UDS_FE completed successfully");
         mci.set_flow_checkpoint(McuRomBootStatus::FipsZeroizationUdsFeComplete.into());
-
-        // Set the zeroized bits for all field entropy slots in OTP.
-        let all_slots = [
-            FieldEntropySlot::Slot0,
-            FieldEntropySlot::Slot1,
-            FieldEntropySlot::Slot2,
-            FieldEntropySlot::Slot3,
-        ];
-        for slot in all_slots {
-            otp.mark_field_entropy_zeroized(slot).unwrap_or_else(|_| {
-                fatal_error(
-                    McuError::ROM_FIPS_ZEROIZATION_WRITE_FIELD_ENTROPY_STATE_ZEROIZED_ERROR,
-                );
-            });
-        }
 
         // Note: FC_FIPS_ZEROZATION mask was already set before
         // SS_CONFIG_DONE_STICKY (in ColdBoot::run) because the register is
@@ -1520,14 +1383,7 @@ impl BootFlow for ColdBoot {
 
         caliptra_mcu_romtime::println!("[mcu-rom] Writing fuses to Caliptra");
 
-        soc.set_axi_users(AxiUsers {
-            mbox_users: params
-                .cptra_mbox_axi_users
-                .map(|u| if u != 0 { Some(u) } else { None }),
-            fuse_user: params.cptra_fuse_axi_user,
-            trng_user: params.cptra_trng_axi_user,
-            dma_user: params.cptra_dma_axi_user,
-        });
+        soc.set_axi_users(AxiUsers::from(&params), mci);
         mci.set_flow_checkpoint(McuRomBootStatus::AxiUsersConfigured.into());
 
         // Configure iTRNG
@@ -1690,7 +1546,7 @@ impl BootFlow for ColdBoot {
         // Execute full FIPS zeroization flow now that Caliptra is ready for
         // mailbox commands. This never returns (halts for cold reset).
         if fips_zeroization {
-            ColdBoot::handle_fips_zeroization(mci, lc, &mut env.soc_manager, otp);
+            ColdBoot::handle_fips_zeroization(mci, lc, &mut env.soc_manager);
         }
 
         // Report HEK metadata to Caliptra ROM
@@ -2065,23 +1921,8 @@ impl BootFlow for ColdBoot {
         // Re-borrow for the common tail section.
         let mci = &env.mci;
 
-        // --- Common tail: field entropy, disable recovery, reset ---
+        // --- Common tail: disable recovery, reset ---
         caliptra_mcu_romtime::println!("[mcu-rom] Finished boot-mode-specific initialization");
-
-        // program field entropy if requested
-        if params.program_field_entropy.iter().any(|x| *x) {
-            caliptra_mcu_romtime::println!("[mcu-rom] Programming field entropy");
-            mci.set_flow_checkpoint(McuRomBootStatus::FieldEntropyProgrammingStarted.into());
-            Self::program_field_entropy(
-                &params.program_field_entropy,
-                &mut env.soc_manager,
-                mci,
-                &env.otp,
-            );
-            mci.set_flow_checkpoint(McuRomBootStatus::FieldEntropyProgrammingComplete.into());
-        }
-
-        Self::report_field_entropy_state(&mut env.soc_manager, &env.otp);
 
         if params.recovery_status_open {
             caliptra_mcu_romtime::println!("[mcu-rom] Leaving recovery interface open");

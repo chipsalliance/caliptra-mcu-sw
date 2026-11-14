@@ -3,7 +3,7 @@
 //! MCU-side [`SpdmPalIo`] / [`SpdmPalIoTransport`] implementations.
 //!
 //! This module bridges the framed-request/response interface that the
-//! SPDM-Lite stack drives
+//! SPDM stack drives
 //! ([`SpdmPalIoTransport`](caliptra_mcu_spdm_traits::SpdmPalIoTransport))
 //! onto the byte-oriented platform transport
 //! ([`SpdmPalTransport`](caliptra_mcu_spdm_traits::SpdmPalTransport))
@@ -34,6 +34,7 @@
 
 use super::measurements::MeasurementProvider;
 use super::*;
+use caliptra_mcu_cert_store::EndorsementStorage;
 
 /// Per-IO handle returned by [`McuSpdmPal::recv_request`].
 ///
@@ -81,7 +82,7 @@ impl SpdmPalIo for McuSpdmIo<'_> {
     }
 }
 
-impl<M: MeasurementProvider> SpdmPalIoTransport for McuSpdmPal<M> {
+impl<M: MeasurementProvider, S: EndorsementStorage> SpdmPalIoTransport for McuSpdmPal<M, S> {
     type Io<'a>
         = McuSpdmIo<'a>
     where

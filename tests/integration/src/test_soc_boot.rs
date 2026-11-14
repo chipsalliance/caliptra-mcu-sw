@@ -11,6 +11,7 @@ mod test {
     use caliptra_mcu_config_emulator::flash::{
         PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
     };
+    use caliptra_mcu_flash_image::FlashHeaderV3;
     use caliptra_mcu_pldm_fw_pkg::manifest::{
         ComponentImageInformation, Descriptor, DescriptorType, FirmwareDeviceIdRecord,
         PackageHeaderInformation, StringType,
@@ -22,7 +23,7 @@ mod test {
     use random_port::PortPicker;
     use std::env;
     use std::path::PathBuf;
-    use zerocopy::transmute;
+    use zerocopy::{transmute, IntoBytes};
 
     // Set an arbitrary MCI base address
     const MCI_BASE_AXI_ADDRESS: u64 = 0xA800_0000;
@@ -38,6 +39,7 @@ mod test {
         i3c_port: u32,
         soc_images: Vec<ImageCfg>,
         soc_images_paths: Vec<PathBuf>,
+        owner_soc_images: Vec<ImageCfg>,
         primary_flash_image_path: Option<PathBuf>,
         secondary_flash_image_path: Option<PathBuf>,
         pldm_fw_pkg_path: Option<PathBuf>,
@@ -63,6 +65,21 @@ mod test {
             .collect();
         soc_images_paths
     }
+
+    fn create_partition_table_flash(partition_table: &PartitionTable) -> PathBuf {
+        let (_, flash_image_path) = tempfile::NamedTempFile::new()
+            .expect("Failed to create flash image file")
+            .keep()
+            .expect("Failed to keep temp file");
+        caliptra_mcu_builder::flash_image::write_partition_table(
+            partition_table,
+            0,
+            flash_image_path.to_str().unwrap(),
+        )
+        .expect("Failed to write partition table");
+        flash_image_path
+    }
+
     // Helper function to create a flash image from the provided SOC images
     fn create_flash_image(
         caliptra_fw_path: Option<PathBuf>,
@@ -79,6 +96,7 @@ mod test {
             None,
             None,
             None,
+            None,
             partition_table,
             flash_offset,
             soc_images_paths,
@@ -92,6 +110,7 @@ mod test {
         owner_auth_manifest_path: Option<PathBuf>,
         owner_measurement_policy_path: Option<PathBuf>,
         soc_images: Option<Vec<ImageCfg>>,
+        owner_soc_images: Option<Vec<ImageCfg>>,
         partition_table: Option<PartitionTable>,
         flash_offset: usize,
         soc_images_paths: Vec<PathBuf>,
@@ -108,6 +127,7 @@ mod test {
             owner_auth_manifest: owner_auth_manifest_path,
             owner_measurement_policy: owner_measurement_policy_path,
             soc_images,
+            owner_soc_images,
             soc_image_paths: Some(
                 soc_images_paths
                     .iter()
@@ -308,6 +328,7 @@ mod test {
                 owner_auth_manifest.clone(),
                 owner_measurement_policy.clone(),
                 Some(new_options.soc_images.clone()),
+                Some(new_options.owner_soc_images.clone()),
                 opts.partition_table.clone(),
                 flash_offset,
                 new_options.soc_images_paths.clone(),
@@ -324,6 +345,7 @@ mod test {
                 owner_auth_manifest,
                 owner_measurement_policy,
                 Some(new_options.soc_images.clone()),
+                Some(new_options.owner_soc_images.clone()),
                 None,
                 0,
                 new_options.soc_images_paths.clone(),
@@ -494,6 +516,7 @@ mod test {
                 Some(owner_auth_manifest),
                 owner_measurement_policy,
                 None,
+                Some(new_options.owner_soc_images.clone()),
                 None,
                 0,
                 soc_images_paths.clone(),
@@ -506,15 +529,7 @@ mod test {
 
         // Update the partition table in the primary flash
         let primary_flash_image_path = if opts.primary_flash_image_path.is_some() {
-            let (_, primary_flash_image_path) = create_flash_image(
-                None,
-                None,
-                None,
-                Some(new_partition_table),
-                IMAGE_A_PARTITION.offset,
-                vec![],
-            );
-            Some(primary_flash_image_path)
+            Some(create_partition_table_flash(&new_partition_table))
         } else {
             None
         };
@@ -522,6 +537,73 @@ mod test {
 
         let test = run_runtime_with_options(&new_options);
         assert_eq!(0, test);
+    }
+
+    fn create_flash_rollback_options(
+        opts: &TestOptions,
+        active_partition: PartitionId,
+        fallback_status: PartitionStatus,
+    ) -> TestOptions {
+        let mut new_options = opts.clone();
+        let mut primary_flash = std::fs::read(
+            opts.primary_flash_image_path
+                .as_ref()
+                .expect("Primary flash image is required"),
+        )
+        .expect("Failed to read primary flash image");
+        let mut secondary_flash = primary_flash
+            .get(IMAGE_A_PARTITION.offset..)
+            .expect("Primary flash image does not contain partition A")
+            .to_vec();
+
+        let mut partition_table = PartitionTable {
+            active_partition: active_partition as u32,
+            partition_a_status: if active_partition == PartitionId::A {
+                PartitionStatus::Valid as u16
+            } else {
+                fallback_status as u16
+            },
+            partition_b_status: if active_partition == PartitionId::B {
+                PartitionStatus::Valid as u16
+            } else {
+                fallback_status as u16
+            },
+            rollback_enable: RollbackEnable::Enabled as u32,
+            ..Default::default()
+        };
+        partition_table.populate_checksum(&StandAloneChecksumCalculator::new());
+        primary_flash[..core::mem::size_of::<PartitionTable>()]
+            .copy_from_slice(partition_table.as_bytes());
+
+        let corrupt_header = [0u8; core::mem::size_of::<FlashHeaderV3>()];
+        match active_partition {
+            PartitionId::A => {
+                let header = &mut primary_flash
+                    [IMAGE_A_PARTITION.offset..IMAGE_A_PARTITION.offset + corrupt_header.len()];
+                header.copy_from_slice(&corrupt_header);
+            }
+            PartitionId::B => {
+                secondary_flash[..corrupt_header.len()].copy_from_slice(&corrupt_header);
+            }
+            _ => panic!("Unsupported active partition"),
+        }
+
+        let primary_path = new_options._temp_dir.path().join(format!(
+            "rollback-primary-{:?}-{:?}.bin",
+            active_partition, fallback_status
+        ));
+        let secondary_path = new_options._temp_dir.path().join(format!(
+            "rollback-secondary-{:?}-{:?}.bin",
+            active_partition, fallback_status
+        ));
+        std::fs::write(&primary_path, primary_flash).expect("Failed to write primary flash image");
+        std::fs::write(&secondary_path, secondary_flash)
+            .expect("Failed to write secondary flash image");
+
+        new_options.primary_flash_image_path = Some(primary_path);
+        new_options.secondary_flash_image_path = Some(secondary_path);
+        new_options.partition_table = Some(partition_table);
+        new_options
     }
 
     // Test case: Partition table has invalid checksum
@@ -562,15 +644,7 @@ mod test {
         // Update the partition table in the primary flash
 
         new_options.primary_flash_image_path = if opts.primary_flash_image_path.is_some() {
-            let (_, primary_flash_image_path) = create_flash_image(
-                None,
-                None,
-                None,
-                Some(new_partition_table),
-                IMAGE_A_PARTITION.offset,
-                vec![],
-            );
-            Some(primary_flash_image_path)
+            Some(create_partition_table_flash(&new_partition_table))
         } else {
             None
         };
@@ -732,6 +806,7 @@ mod test {
             Some(owner_auth_manifest.clone()),
             owner_measurement_policy.clone(),
             Some(new_options.soc_images.clone()),
+            Some(new_options.owner_soc_images.clone()),
             opts.partition_table.clone(),
             flash_offset,
             soc_images_paths.clone(),
@@ -749,6 +824,7 @@ mod test {
                 Some(owner_auth_manifest),
                 owner_measurement_policy,
                 Some(new_options.soc_images.clone()),
+                Some(new_options.owner_soc_images.clone()),
                 None,
                 0,
                 soc_images_paths.clone(),
@@ -929,7 +1005,7 @@ mod test {
             vendor_pk_hash: Some(vendor_pk_hash),
             mcu_firmware: Some(test_runtime.clone()),
             soc_images: Some(soc_images.clone()),
-            owner_soc_images: Some(owner_soc_images),
+            owner_soc_images: Some(owner_soc_images.clone()),
             ..Default::default()
         });
 
@@ -963,6 +1039,7 @@ mod test {
             i3c_port,
             soc_images,
             soc_images_paths,
+            owner_soc_images,
             primary_flash_image_path: primary_flash_image_path.clone(),
             secondary_flash_image_path: primary_flash_image_path,
             pldm_fw_pkg_path,
@@ -1082,7 +1159,7 @@ mod test {
             vendor_pk_hash: prebuilt_vendor_pk_hash,
             mcu_firmware: Some(test_runtime.clone()),
             soc_images: Some(soc_images.clone()),
-            owner_soc_images: Some(owner_soc_images),
+            owner_soc_images: Some(owner_soc_images.clone()),
             ..Default::default()
         });
 
@@ -1091,11 +1168,21 @@ mod test {
             .get_caliptra_fw()
             .expect("Failed to build Caliptra firmware");
 
+        let soc_manifest_path = tempfile::NamedTempFile::new()
+            .expect("Failed to create SoC manifest temp file")
+            .into_temp_path()
+            .keep()
+            .expect("Failed to persist SoC manifest temp file");
         let soc_manifest = builder
-            .get_soc_manifest(None)
+            .get_soc_manifest(soc_manifest_path.to_str())
             .expect("Failed to build SOC manifest");
+        let owner_auth_manifest_path = tempfile::NamedTempFile::new()
+            .expect("Failed to create Owner Authorization Manifest temp file")
+            .into_temp_path()
+            .keep()
+            .expect("Failed to persist Owner Authorization Manifest temp file");
         let owner_auth_manifest = builder
-            .get_owner_auth_manifest(None)
+            .get_owner_auth_manifest(owner_auth_manifest_path.to_str())
             .expect("Failed to build Owner Authorization Manifest");
 
         // Generate a valid flash image file
@@ -1123,6 +1210,7 @@ mod test {
             Some(owner_auth_manifest.clone()),
             Some(owner_measurement_policy.clone()),
             Some(soc_image_load_list.clone()),
+            Some(owner_soc_images.clone()),
             Some(partition_table.clone()),
             flash_offset,
             soc_images_paths.clone(),
@@ -1140,6 +1228,7 @@ mod test {
                 Some(owner_auth_manifest.clone()),
                 Some(owner_measurement_policy.clone()),
                 Some(soc_image_load_list),
+                Some(owner_soc_images.clone()),
                 None,
                 0,
                 soc_images_paths.clone(),
@@ -1167,6 +1256,7 @@ mod test {
             i3c_port,
             soc_images: soc_images.clone(),
             soc_images_paths: soc_images_paths.clone(),
+            owner_soc_images,
             primary_flash_image_path: flash_image_path.clone(),
             secondary_flash_image_path: flash_image_path.clone(),
             pldm_fw_pkg_path: pldm_fw_pkg_path.clone(),
@@ -1203,6 +1293,36 @@ mod test {
         let lock = TEST_LOCK.lock().unwrap();
         let opts = create_soc_boot_options(true);
         test_boot_secondary_flash(opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_flash_soc_boot_rolls_back_from_partition_a_to_b() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_soc_boot_options(true);
+        let recovery_opts =
+            create_flash_rollback_options(&opts, PartitionId::A, PartitionStatus::Valid);
+        test_successful_boot(&recovery_opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_flash_soc_boot_rolls_back_from_partition_b_to_a() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_soc_boot_options(true);
+        let recovery_opts =
+            create_flash_rollback_options(&opts, PartitionId::B, PartitionStatus::Valid);
+        test_successful_boot(&recovery_opts);
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    #[test]
+    fn test_flash_soc_boot_does_not_use_invalid_rollback_partition() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let opts = create_soc_boot_options(true);
+        let recovery_opts =
+            create_flash_rollback_options(&opts, PartitionId::A, PartitionStatus::Invalid);
+        assert_ne!(0, run_runtime_with_options(&recovery_opts));
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 

@@ -323,6 +323,7 @@ pub unsafe extern "C" fn emulator_init(
             Some(config.gdb_port as u16)
         },
         log_dir: convert_optional_c_string(config.log_dir_path).map(|s| s.into()),
+        flash_storage_dir: None,
         trace_instr: config.trace_instr != 0,
         stdin_uart: config.stdin_uart != 0,
         _no_stdin_uart: false,

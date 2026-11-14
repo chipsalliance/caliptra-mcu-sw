@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! GET_CERTIFICATE → CERTIFICATE handler (DSP0274 §10.8).
+//! GET_CERTIFICATE → CERTIFICATE handler.
 //!
 //! Splices the 52-byte SPDM cert-chain header (Length | Reserved |
 //! RootHash) with raw DER bytes from the cert store into a single
@@ -16,7 +16,7 @@ use caliptra_mcu_spdm_codec::{
     WireWriter,
 };
 use caliptra_mcu_spdm_traits::{
-    PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalAsymAlgo, SpdmPalIo, SpdmPalIoTransport, MAX_SLOTS,
+    PalBytes, SpdmPal, SpdmPalAlloc, SpdmPalAsymAlgo, SpdmPalIoTransport, MAX_SLOTS,
 };
 use zerocopy::{little_endian::U16, FromBytes};
 
@@ -213,15 +213,6 @@ pub(crate) async fn handle_get_certificate<'a, Pal: SpdmPal>(
     state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
     pal: &'a Pal,
     io: &<Pal as SpdmPalIoTransport>::Io<'_>,
-) -> SpdmResult<PalBytes<'a, Pal>> {
-    let (resp, _) = handle_get_certificate_req(state, pal, io, io.request()).await?;
-    Ok(resp)
-}
-
-pub(crate) async fn handle_get_certificate_req<'a, Pal: SpdmPal>(
-    state: &mut ConnectionState<Pal::State, <Pal as SpdmPalAlloc>::LargeBuf>,
-    pal: &'a Pal,
-    io: &<Pal as SpdmPalIoTransport>::Io<'_>,
     spdm_msg: &[u8],
 ) -> SpdmResult<(PalBytes<'a, Pal>, usize)> {
     // GET_CERTIFICATE is legal once algorithms are negotiated, and
@@ -381,10 +372,9 @@ pub(crate) async fn handle_get_certificate_req<'a, Pal: SpdmPal>(
 
     let head = pal.header_size();
     state.transcript.append_m1(pal, io, spdm_msg).await?;
-    state
-        .transcript
-        .append_m1(pal, io, &resp[head..head + spdm_len])
-        .await?;
+    let end = head.checked_add(spdm_len).ok_or(SPDM_UNSPECIFIED)?;
+    let response = resp.get(head..end).ok_or(SPDM_UNSPECIFIED)?;
+    state.transcript.append_m1(pal, io, response).await?;
 
     state.phase = Phase::AfterCertificate;
     Ok((resp, spdm_len))

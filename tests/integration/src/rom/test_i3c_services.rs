@@ -143,6 +143,52 @@ mod test {
         lock.fetch_add(1, Ordering::Relaxed);
     }
 
+    /// Rejected packets must not leave bytes ahead of the next command.
+    /// Oversized raw writes are a model-only boundary, not finite-FIFO testing.
+    #[cfg(not(feature = "fpga_realtime"))]
+    #[test]
+    fn test_i3c_services_short_and_oversized_packets_then_ping() {
+        let lock = TEST_LOCK.lock().unwrap();
+        lock.fetch_add(1, Ordering::Relaxed);
+        let mut hw = start_runtime_hw_model(TestParams {
+            rom_feature: Some("test-i3c-services"),
+            rom_only: true,
+            i3c_port: Some(PortPicker::new().random(true).pick().unwrap()),
+            ..Default::default()
+        });
+        hw.start_i3c_controller();
+        let target_addr = hw.i3c_address().unwrap();
+        let socket =
+            TcpStream::connect(SocketAddr::from(([127, 0, 0, 1], hw.i3c_port().unwrap()))).unwrap();
+        let mut stream = BufferedStream::new(socket);
+        wait_for_i3c_ready(&mut hw);
+
+        for wire_len in [1, 2, 3, 257, 259] {
+            // send_private_write adds one PEC byte to the supplied payload.
+            assert!(stream.send_private_write(target_addr, vec![0xff; wire_len - 1]));
+            let end = hw.cycle_count() + 100_000;
+            hw.step_until(|m| m.cycle_count() >= end || m.mci_fw_fatal_error().is_some());
+            assert_eq!(hw.mci_fw_fatal_error(), None);
+            let _ = hw.output().take(usize::MAX);
+
+            hw.output()
+                .set_search_term("[mcu-rom-i3c-svc] PING received");
+            stream.send_packetized_write(target_addr, 0x00, &[]);
+            let start = std::time::Instant::now();
+            hw.step_until(|m| {
+                m.output().search_matched()
+                    || m.mci_fw_fatal_error().is_some()
+                    || start.elapsed().as_secs() > 60
+            });
+            assert_eq!(hw.mci_fw_fatal_error(), None);
+            assert!(
+                hw.output().search_matched(),
+                "PING lost after {wire_len}-byte packet"
+            );
+        }
+        lock.fetch_add(1, Ordering::Relaxed);
+    }
+
     /// Test that the ROM responds with INVALID_CMD for unknown commands.
     #[test]
     fn test_i3c_services_unknown_cmd() {
@@ -225,6 +271,10 @@ mod test {
     /// 4. Sign challenge with both ECDSA P-384 and MLDSA-87
     /// 5. Send DOT_OVERRIDE with public keys and signatures
     /// 6. Verify ROM logs success
+    #[cfg_attr(
+        not(feature = "fpga_realtime"),
+        ignore = "ROM DOT challenge stack overflow: https://github.com/chipsalliance/caliptra-mcu-sw/issues/2203"
+    )]
     #[test]
     fn test_i3c_services_dot_override_full_flow() {
         use caliptra_mcu_rom_common::DOT_BLOB_SIZE;
@@ -290,7 +340,7 @@ mod test {
 
         // Step 2: Read the challenge via private read. The ROM queues the
         // response (status + 48-byte challenge) via the TX descriptor path.
-        // The I3C controller thread pushes it to the socket automatically.
+        // The controller must issue a private read to retrieve the queued data.
         let start = std::time::Instant::now();
 
         // First wait for the ROM to process the command and log the challenge.

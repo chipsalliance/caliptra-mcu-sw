@@ -25,7 +25,7 @@
    ---------- Memory options ----------
    ------------------------------------
 */
-#define MEM_ALIGNMENT                   4
+#define MEM_ALIGNMENT                   8
 #define MEM_SIZE                        (16 * 1024)
 
 #define MEMP_NUM_PBUF                   32

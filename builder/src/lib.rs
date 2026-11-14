@@ -60,6 +60,8 @@ pub struct CaliptraBuildArgs<'a> {
     pub vendor: Option<String>,
     pub model: Option<String>,
     pub offset: usize,
+    /// Flash container format (1, 2, or 3). Defaults to the current format.
+    pub flash_image_version: Option<u16>,
     pub output_path: Option<String>,
     pub soc_image_paths: Option<Vec<String>>,
     pub use_second_key: bool,

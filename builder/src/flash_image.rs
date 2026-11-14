@@ -5,27 +5,30 @@ use caliptra_mcu_config_emulator::flash::{
     PartitionTable, StandAloneChecksumCalculator, IMAGE_A_PARTITION, IMAGE_B_PARTITION,
 };
 use caliptra_mcu_flash_image::{
-    FlashHeader, ImageHeader, CALIPTRA_FMC_RT_IDENTIFIER, HEADER_VERSION, MAX_FILENAME_LEN,
-    MCU_RT_IDENTIFIER, OWNER_AUTH_MANIFEST_IDENTIFIER, OWNER_MEASUREMENT_POLICY_IDENTIFIER,
+    FlashHeader, FlashImageVersion, ImageHeader, ImageHeaderV1V2, ImageHeaderV3,
+    CALIPTRA_FMC_RT_IDENTIFIER, HEADER_VERSION, MAX_FILENAME_LEN, MCU_RT_IDENTIFIER,
+    OWNER_AUTH_MANIFEST_IDENTIFIER, OWNER_MEASUREMENT_POLICY_IDENTIFIER,
     SOC_IMAGES_BASE_IDENTIFIER, SOC_MANIFEST_IDENTIFIER,
 };
 use std::fs::{File, OpenOptions};
 use std::io::{self, Error, ErrorKind, Read, Seek, Write};
 use std::mem::offset_of;
-use zerocopy::{FromBytes, IntoBytes};
+use zerocopy::{FromBytes, Immutable, IntoBytes};
 
-const HEADER_SIZE: usize = std::mem::size_of::<FlashHeader>();
-const IMAGE_INFO_SIZE: usize = std::mem::size_of::<ImageHeader>();
+mod v1;
+mod v2;
+mod v3;
 
-pub struct FlashImage<'a> {
-    header: FlashHeader,
-    payload: FlashImagePayload<'a>,
+pub use v1::FlashImageV1;
+pub use v2::FlashImageV2;
+pub use v3::{generate_image_info, FlashImageV3};
+
+pub enum FlashImage<'a> {
+    V1(FlashImageV1<'a>),
+    V2(FlashImageV2<'a>),
+    V3(FlashImageV3<'a>),
 }
 
-pub struct FlashImagePayload<'a> {
-    image_info: &'a [ImageHeader],
-    images: &'a [FirmwareImage<'a>],
-}
 #[derive(Clone)]
 pub struct FirmwareImage<'a> {
     pub identifier: u32,
@@ -53,32 +56,39 @@ impl<'a> FirmwareImage<'a> {
     }
 }
 
+fn encode_toc(
+    header: &(impl IntoBytes + Immutable),
+    entries: &[impl IntoBytes + Immutable],
+) -> Vec<u8> {
+    let mut bytes = header.as_bytes().to_vec();
+    for entry in entries {
+        bytes.extend_from_slice(entry.as_bytes());
+    }
+    bytes
+}
+
 impl<'a> FlashImage<'a> {
-    pub fn new(images: &'a [FirmwareImage<'a>], image_info: &'a [ImageHeader]) -> Self {
-        let mut header = FlashHeader {
-            version: HEADER_VERSION,
-            image_count: image_info.len() as u16,
-            image_headers_offset: core::mem::size_of::<FlashHeader>() as u32,
-            header_checksum: 0,
-        };
+    pub fn new(images: &'a [FirmwareImage<'a>], image_info: &[ImageHeaderV3]) -> Self {
+        Self::V3(FlashImageV3::new(images, image_info))
+    }
 
-        let header_checksum = calculate_checksum(
-            header.as_bytes()[..offset_of!(FlashHeader, header_checksum)].as_ref(),
-        );
-        header.header_checksum = header_checksum;
-        let payload = FlashImagePayload::new(image_info, images);
-
-        Self { header, payload }
+    pub fn with_version(images: &'a [FirmwareImage<'a>], version: FlashImageVersion) -> Self {
+        match version {
+            FlashImageVersion::V1 => Self::V1(FlashImageV1::new(images)),
+            FlashImageVersion::V2 => Self::V2(FlashImageV2::new(images)),
+            FlashImageVersion::V3 => Self::new(images, &generate_image_info(images.to_vec())),
+        }
     }
 
     /// Convert the flash image to a byte vector
     pub fn to_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::new();
-        bytes.extend_from_slice(self.header.as_bytes());
-        for info in self.payload.image_info {
-            bytes.extend_from_slice(info.as_bytes());
-        }
-        for image in self.payload.images {
+        let mut bytes = self.to_toc_bytes();
+        let images = match self {
+            Self::V1(image) => image.images(),
+            Self::V2(image) => image.images(),
+            Self::V3(image) => image.images(),
+        };
+        for image in images {
             bytes.extend_from_slice(image.data);
         }
         bytes
@@ -86,12 +96,11 @@ impl<'a> FlashImage<'a> {
 
     /// Convert just the flash header and image headers to a byte vector.
     pub fn to_toc_bytes(&self) -> Vec<u8> {
-        let mut bytes = Vec::new();
-        bytes.extend_from_slice(self.header.as_bytes());
-        for info in self.payload.image_info {
-            bytes.extend_from_slice(info.as_bytes());
+        match self {
+            Self::V1(image) => image.to_toc_bytes(),
+            Self::V2(image) => image.to_toc_bytes(),
+            Self::V3(image) => image.to_toc_bytes(),
         }
-        bytes
     }
 
     pub fn write_to_file(&self, offset: usize, filename: &str) -> Result<()> {
@@ -110,13 +119,7 @@ impl<'a> FlashImage<'a> {
                     offset, filename, e
                 ))
             })?;
-        file.write_all(self.header.as_bytes())?;
-        for info in self.payload.image_info {
-            file.write_all(info.as_bytes())?;
-        }
-        for image in self.payload.images {
-            file.write_all(image.data)?;
-        }
+        file.write_all(&self.to_bytes())?;
 
         Ok(())
     }
@@ -136,43 +139,33 @@ impl<'a> FlashImage<'a> {
 
     pub fn verify_flash_image(image: &[u8]) -> Result<()> {
         // Parse and verify header
-        if image.len() < HEADER_SIZE {
-            bail!("Image too small to contain the header.");
-        }
-        let header = FlashHeader::read_from_bytes(&image[..HEADER_SIZE])
-            .map_err(|_| anyhow!("Failed to parse header: invalid format or size"))?;
-
-        if header.version != HEADER_VERSION {
-            bail!("Unsupported header version");
-        }
-        // Parse and verify checksums
-        let calculated_header_checksum = calculate_checksum(
-            header.as_bytes()[..offset_of!(FlashHeader, header_checksum)].as_ref(),
-        );
-        if calculated_header_checksum != header.header_checksum {
-            bail!("Header checksum mismatch.");
+        let header =
+            FlashHeader::parse(image).map_err(|e| anyhow!("Invalid flash header: {e:?}"))?;
+        let version = header.format().map_err(|e| anyhow!("{e:?}"))?;
+        let table_end = header
+            .table_end()
+            .ok_or_else(|| anyhow!("Image table overflow"))?;
+        if table_end > image.len() {
+            bail!("Truncated image table");
         }
 
         // Parse and verify image info and data
         for i in 0..header.image_count as usize {
-            let offset = header.image_headers_offset as usize + (IMAGE_INFO_SIZE * i);
-            let info = ImageHeader::read_from_bytes(&image[offset..offset + IMAGE_INFO_SIZE])
-                .map_err(|_| anyhow!("Failed to read image info"))?;
-            let image_checksum = calculate_checksum(
-                &image[info.offset as usize..info.offset as usize + info.size as usize],
-            );
+            let offset = header
+                .image_header_offset(i)
+                .ok_or_else(|| anyhow!("Image table overflow"))?;
+            let info = ImageHeader::parse(&image[offset..], version)
+                .map_err(|e| anyhow!("Invalid image entry: {e:?}"))?;
+            let end = (info.offset as usize)
+                .checked_add(info.size as usize)
+                .ok_or_else(|| anyhow!("Image payload overflow"))?;
+            if (info.offset as usize) < table_end || end > image.len() {
+                bail!("Image payload outside valid range");
+            }
+            let image_checksum = calculate_checksum(&image[info.offset as usize..end]);
             if image_checksum != info.image_checksum {
                 bail!(
                     "Image checksum mismatch for image with identifier: {}",
-                    info.identifier
-                );
-            }
-            let header_checksum = calculate_checksum(
-                info.as_bytes()[..offset_of!(ImageHeader, image_header_checksum)].as_ref(),
-            );
-            if header_checksum != info.image_header_checksum {
-                bail!(
-                    "Image header checksum mismatch for image with identifier: {}",
                     info.identifier
                 );
             }
@@ -184,18 +177,7 @@ impl<'a> FlashImage<'a> {
     }
 }
 
-pub fn calculate_checksum(data: &[u8]) -> u32 {
-    let sum = data
-        .iter()
-        .fold(0u32, |acc, &byte| acc.wrapping_add(byte as u32));
-    0u32.wrapping_sub(sum)
-}
-
-impl<'a> FlashImagePayload<'a> {
-    pub fn new(image_info: &'a [ImageHeader], images: &'a [FirmwareImage<'a>]) -> Self {
-        Self { image_info, images }
-    }
-}
+pub use caliptra_mcu_flash_image::calculate_checksum;
 
 fn load_file(filename: &str) -> Result<Vec<u8>> {
     let mut buffer = Vec::new();
@@ -217,6 +199,8 @@ fn load_file(filename: &str) -> Result<Vec<u8>> {
 use crate::CaliptraBuildArgs;
 
 pub fn flash_image_create(args: &CaliptraBuildArgs) -> Result<()> {
+    let version = FlashImageVersion::try_from(args.flash_image_version.unwrap_or(HEADER_VERSION))
+        .map_err(|e| anyhow!("Invalid flash image format: {e:?}"))?;
     let caliptra_fw_path = &args.caliptra_firmware;
     let soc_manifest_path = &args.soc_manifest;
     let mcu_runtime_path = &args.mcu_firmware;
@@ -294,12 +278,10 @@ pub fn flash_image_create(args: &CaliptraBuildArgs) -> Result<()> {
         }
     }
 
-    // Generate FirmwareImage from soc image buffer
-    // Use image_id from soc_images config when available; otherwise fall back to
-    // SOC_IMAGES_BASE_IDENTIFIER + index for backward compatibility.
+    // SoC TOC entries use component_id, matching runtime image lookup.
     for (i, soc_img) in soc_img_buffers.iter().enumerate() {
         let identifier = if let Some(ref soc_images) = args.soc_images {
-            soc_images[i].image_id
+            soc_images[i].component_id
         } else {
             SOC_IMAGES_BASE_IDENTIFIER + i as u32
         };
@@ -312,29 +294,45 @@ pub fn flash_image_create(args: &CaliptraBuildArgs) -> Result<()> {
         images.push(FirmwareImage::new(identifier, soc_img, filename)?);
     }
 
-    let image_info = generate_image_info(images.clone());
+    let owner_soc_images = args.owner_soc_images.as_deref().unwrap_or(&[]);
+    let owner_img_buffers = owner_soc_images
+        .iter()
+        .map(|image| load_file(&image.path.to_string_lossy()))
+        .collect::<Result<Vec<_>>>()?;
+    for (image, owner_img) in owner_soc_images.iter().zip(owner_img_buffers.iter()) {
+        images.push(FirmwareImage::new(
+            image.component_id,
+            owner_img,
+            image.network_filename.as_deref().map(str::as_bytes),
+        )?);
+    }
 
-    let flash_image = FlashImage::new(&images, &image_info);
+    if images.is_empty() || images.len() > u16::MAX as usize {
+        bail!("Flash image must contain between 1 and {} images", u16::MAX);
+    }
+    let flash_image = FlashImage::with_version(&images, version);
     flash_image.write_to_file(offset, output_path)?;
 
     Ok(())
 }
 
-pub fn generate_image_info(images: Vec<FirmwareImage>) -> Vec<ImageHeader> {
+fn generate_legacy_image_info(
+    images: &[FirmwareImage],
+    version: FlashImageVersion,
+) -> Vec<ImageHeaderV1V2> {
     let mut info = Vec::new();
-    let mut offset = std::mem::size_of::<FlashHeader>() as u32
-        + (std::mem::size_of::<ImageHeader>() * images.len()) as u32;
+    let mut offset =
+        version.header_size() as u32 + (version.image_header_size() * images.len()) as u32;
     for image in images.iter() {
-        let mut header = ImageHeader {
+        let mut header = ImageHeaderV1V2 {
             identifier: image.identifier,
             offset,
             size: image.data.len() as u32,
-            filename: image.filename,
             image_checksum: calculate_checksum(image.data),
             image_header_checksum: 0,
         };
         header.image_header_checksum = calculate_checksum(
-            header.as_bytes()[..offset_of!(ImageHeader, image_header_checksum)].as_ref(),
+            &header.as_bytes()[..offset_of!(ImageHeaderV1V2, image_header_checksum)],
         );
         info.push(header);
         offset += image.data.len() as u32;
@@ -463,419 +461,4 @@ pub fn write_partition_table(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::{ImageCfg, PROJECT_ROOT};
-    use std::fs::{self, File};
-    use std::io::{self, Write};
-    use tempfile::NamedTempFile;
-
-    /// Helper function to create a temporary file with specific content
-    fn create_temp_file(content: &[u8]) -> io::Result<NamedTempFile> {
-        let mut temp_file = NamedTempFile::new().expect("Failed to create temp file");
-
-        temp_file
-            .write_all(content)
-            .expect("Failed to write to temp file");
-        Ok(temp_file)
-    }
-
-    #[test]
-    fn test_flash_image_build() {
-        // Generate test contents for temporary files
-        let caliptra_fw_content = b"Caliptra Firmware Data - ABCDEFGH";
-        let soc_manifest_content = b"Soc Manifest Data - 123456789";
-        let mcu_runtime_content = b"MCU Runtime Data - QWERTYUI";
-        let owner_auth_manifest_content = b"Owner Auth Manifest Data - ASDFGHJK";
-        let soc_image1_content = b"Soc Image 1 Data - ZXCVBNMLKJ";
-        let soc_image2_content = b"Soc Image 2 Data - POIUYTREWQ";
-
-        // Create temporary files with the generated content
-        let caliptra_fw =
-            create_temp_file(caliptra_fw_content).expect("Failed to create caliptra_fw");
-        let soc_manifest =
-            create_temp_file(soc_manifest_content).expect("Failed to create soc_manifest");
-        let mcu_runtime =
-            create_temp_file(mcu_runtime_content).expect("Failed to create mcu_runtime");
-        let owner_auth_manifest = create_temp_file(owner_auth_manifest_content)
-            .expect("Failed to create owner_auth_manifest");
-        let soc_image1 = create_temp_file(soc_image1_content).expect("Failed to create soc_image1");
-        let soc_image2 = create_temp_file(soc_image2_content).expect("Failed to create soc_image2");
-
-        // Collect SoC image paths
-        let soc_image_paths = Some(vec![
-            soc_image1.path().to_str().unwrap().to_string(),
-            soc_image2.path().to_str().unwrap().to_string(),
-        ]);
-
-        // Specify the output file path
-        let output_file = NamedTempFile::new().expect("Failed to create temp file");
-        let output_path = output_file.path().to_str().unwrap();
-
-        // Build the flash image
-        flash_image_create(&CaliptraBuildArgs {
-            caliptra_firmware: Some(caliptra_fw.path().to_path_buf()),
-            caliptra_firmware_network_filename: Some("caliptra.bin".into()),
-            soc_manifest: Some(soc_manifest.path().to_path_buf()),
-            soc_manifest_network_filename: Some("soc-manifest.bin".into()),
-            mcu_firmware: Some(mcu_runtime.path().to_path_buf()),
-            mcu_image_cfg: Some(ImageCfg {
-                network_filename: Some("mcu-runtime.bin".into()),
-                ..Default::default()
-            }),
-            owner_auth_manifest: Some(owner_auth_manifest.path().to_path_buf()),
-            soc_image_paths,
-            soc_images: Some(vec![
-                ImageCfg {
-                    image_id: SOC_IMAGES_BASE_IDENTIFIER,
-                    network_filename: Some("soc-image-1.bin".into()),
-                    ..Default::default()
-                },
-                ImageCfg {
-                    image_id: SOC_IMAGES_BASE_IDENTIFIER + 1,
-                    network_filename: Some("soc-image-2.bin".into()),
-                    ..Default::default()
-                },
-            ]),
-            offset: 0,
-            output_path: Some(output_path.to_string()),
-            ..Default::default()
-        })
-        .expect("Failed to build flash image");
-
-        // Read and verify the generated flash image
-        let mut file = File::open(output_path).expect("Failed to open generated flash image");
-        let mut data = Vec::new();
-
-        file.read_to_end(&mut data)
-            .expect("Failed to read flash image");
-
-        // Verify header
-        let header = FlashHeader::read_from_bytes(&data[..HEADER_SIZE])
-            .expect("Failed to parse flash header");
-
-        assert_eq!(header.version, HEADER_VERSION);
-        assert_eq!(header.image_count, 6); // 4 main images + 2 SoC images
-
-        // Verify checksums
-        let calculated_header_checksum =
-            calculate_checksum(&data[0..offset_of!(FlashHeader, header_checksum)]);
-        assert_eq!(header.header_checksum, calculated_header_checksum);
-
-        let expected_images: Vec<(u32, &[u8])> = vec![
-            (CALIPTRA_FMC_RT_IDENTIFIER, caliptra_fw_content),
-            (SOC_MANIFEST_IDENTIFIER, soc_manifest_content),
-            (MCU_RT_IDENTIFIER, mcu_runtime_content),
-            (OWNER_AUTH_MANIFEST_IDENTIFIER, owner_auth_manifest_content),
-            (SOC_IMAGES_BASE_IDENTIFIER, soc_image1_content),
-            (SOC_IMAGES_BASE_IDENTIFIER + 1, soc_image2_content),
-        ];
-        let expected_filenames = [
-            b"caliptra.bin".as_slice(),
-            b"soc-manifest.bin".as_slice(),
-            b"mcu-runtime.bin".as_slice(),
-            b"owner-auth-manifest.bin".as_slice(),
-            b"soc-image-1.bin".as_slice(),
-            b"soc-image-2.bin".as_slice(),
-        ];
-        let mut image_headers = Vec::new();
-
-        for (i, _item) in expected_images
-            .iter()
-            .enumerate()
-            .take(header.image_count as usize)
-        {
-            let offset =
-                header.image_headers_offset as usize + (std::mem::size_of::<ImageHeader>() * i);
-            let image_header =
-                ImageHeader::read_from_bytes(&data[offset..offset + IMAGE_INFO_SIZE])
-                    .expect("Failed to read image header");
-
-            // Verify identifier and size
-            assert_eq!(image_header.identifier, expected_images[i].0);
-            assert_eq!(
-                image_header.size as usize,
-                expected_images[i].1.len().next_multiple_of(4)
-            );
-            assert_eq!(
-                &image_header.filename[..expected_filenames[i].len()],
-                expected_filenames[i]
-            );
-            assert!(image_header.filename[expected_filenames[i].len()..]
-                .iter()
-                .all(|byte| *byte == 0));
-            image_headers.push(image_header);
-        }
-
-        // Verify image data using offsets
-        for (i, header) in image_headers.iter().enumerate() {
-            let actual_data =
-                &data[header.offset as usize..header.offset as usize + header.size as usize];
-            assert_eq!(
-                &actual_data[..expected_images[i].1.len()],
-                expected_images[i].1
-            );
-        }
-    }
-
-    #[test]
-    fn test_build_flash_image_bytes_with_owner_auth_manifest() {
-        let image = build_flash_image_bytes(
-            Some(b"caliptra"),
-            Some(b"soc-manifest"),
-            Some(b"mcu-runtime"),
-            Some(b"owner-auth-manifest"),
-        );
-
-        let header = FlashHeader::read_from_bytes(&image[..HEADER_SIZE]).unwrap();
-        assert_eq!(header.image_count, 4);
-
-        let expected_identifiers = [
-            CALIPTRA_FMC_RT_IDENTIFIER,
-            SOC_MANIFEST_IDENTIFIER,
-            MCU_RT_IDENTIFIER,
-            OWNER_AUTH_MANIFEST_IDENTIFIER,
-        ];
-        let mut image_headers = Vec::new();
-        for (index, expected_identifier) in expected_identifiers.iter().enumerate() {
-            let offset = header.image_headers_offset as usize + IMAGE_INFO_SIZE * index;
-            let image_header =
-                ImageHeader::read_from_bytes(&image[offset..offset + IMAGE_INFO_SIZE]).unwrap();
-            assert_eq!(image_header.identifier, *expected_identifier);
-            assert_eq!(image_header.size, 256);
-            image_headers.push(image_header);
-        }
-
-        let owner_auth_header = image_headers.last().unwrap();
-        let owner_auth_data = &image[owner_auth_header.offset as usize
-            ..(owner_auth_header.offset + owner_auth_header.size) as usize];
-        assert_eq!(
-            &owner_auth_data[..b"owner-auth-manifest".len()],
-            b"owner-auth-manifest"
-        );
-        assert!(owner_auth_data[b"owner-auth-manifest".len()..]
-            .iter()
-            .all(|byte| *byte == 0));
-    }
-
-    #[test]
-    fn test_flash_image_build_with_owner_measurement_policy() {
-        let caliptra_fw = create_temp_file(b"caliptra").unwrap();
-        let soc_manifest = create_temp_file(b"soc-manifest").unwrap();
-        let mcu_runtime = create_temp_file(b"mcu-runtime").unwrap();
-        let owner_auth_manifest = create_temp_file(b"owner-auth-manifest").unwrap();
-        let owner_policy = create_temp_file(b"owner-measurement-policy").unwrap();
-
-        let output_file = NamedTempFile::new().unwrap();
-        let output_path = output_file.path().to_str().unwrap();
-
-        flash_image_create(&CaliptraBuildArgs {
-            caliptra_firmware: Some(caliptra_fw.path().to_path_buf()),
-            soc_manifest: Some(soc_manifest.path().to_path_buf()),
-            mcu_firmware: Some(mcu_runtime.path().to_path_buf()),
-            owner_auth_manifest: Some(owner_auth_manifest.path().to_path_buf()),
-            owner_measurement_policy: Some(owner_policy.path().to_path_buf()),
-            output_path: Some(output_path.to_string()),
-            ..Default::default()
-        })
-        .unwrap();
-
-        let data = std::fs::read(output_path).unwrap();
-        let header = FlashHeader::read_from_bytes(&data[..HEADER_SIZE]).unwrap();
-        assert_eq!(header.image_count, 5);
-
-        let expected_identifiers = [
-            CALIPTRA_FMC_RT_IDENTIFIER,
-            SOC_MANIFEST_IDENTIFIER,
-            MCU_RT_IDENTIFIER,
-            OWNER_AUTH_MANIFEST_IDENTIFIER,
-            OWNER_MEASUREMENT_POLICY_IDENTIFIER,
-        ];
-
-        for (i, expected_id) in expected_identifiers.iter().enumerate() {
-            let offset = header.image_headers_offset as usize + (IMAGE_INFO_SIZE * i);
-            let info =
-                ImageHeader::read_from_bytes(&data[offset..offset + IMAGE_INFO_SIZE]).unwrap();
-            assert_eq!(info.identifier, *expected_id);
-        }
-    }
-
-    #[test]
-    fn test_flash_image_verify_happy_path() {
-        let tmp_dir = PROJECT_ROOT.join("target").join("tmp");
-        fs::create_dir_all(&tmp_dir).expect("Failed to create tmp directory");
-        let image_path = tmp_dir.join("flash_image_happy_path.bin");
-        let image_path = image_path.to_str().unwrap();
-
-        // Create a valid firmware image
-        let expected_images = [
-            FirmwareImage {
-                identifier: CALIPTRA_FMC_RT_IDENTIFIER,
-                data: b"Caliptra Firmware Data - ABCDEFGH",
-                filename: [0u8; MAX_FILENAME_LEN],
-            },
-            FirmwareImage {
-                identifier: SOC_MANIFEST_IDENTIFIER,
-                data: b"Soc Manifest Data - 123456789",
-                filename: [0u8; MAX_FILENAME_LEN],
-            },
-            FirmwareImage {
-                identifier: MCU_RT_IDENTIFIER,
-                data: b"MCU Runtime Data - QWERTYUI",
-                filename: [0u8; MAX_FILENAME_LEN],
-            },
-            FirmwareImage {
-                identifier: SOC_IMAGES_BASE_IDENTIFIER,
-                data: b"Soc Image 1 Data - ZXCVBNMLKJ",
-                filename: [0u8; MAX_FILENAME_LEN],
-            },
-            FirmwareImage {
-                identifier: SOC_IMAGES_BASE_IDENTIFIER + 1,
-                data: b"Soc Image 2 Data - POIUYTREWQ",
-                filename: [0u8; MAX_FILENAME_LEN],
-            },
-        ];
-        // Create a flash image from the mutable slice
-        let image_info = generate_image_info(expected_images.to_vec());
-        let flash_image = FlashImage::new(&expected_images, &image_info);
-        flash_image
-            .write_to_file(0, image_path)
-            .expect("Failed to write flash image");
-
-        // Verify the firmware image
-        let result = flash_image_verify(image_path, 0);
-        result.unwrap_or_else(|e| {
-            eprintln!("Error: {}", e);
-            std::process::exit(1);
-        });
-
-        // Cleanup
-        fs::remove_file(image_path).expect("Failed to clean up test file");
-    }
-
-    #[test]
-    fn test_flash_image_verify_corrupted_case() {
-        let tmp_dir = PROJECT_ROOT.join("target").join("tmp");
-        fs::create_dir_all(&tmp_dir).expect("Failed to create tmp directory");
-        let image_path = tmp_dir.join("flash_image_corrupted.bin");
-        let image_path = image_path.to_str().unwrap();
-
-        // Create a corrupted firmware image (tamper with the header or data)
-        let images = [
-            FirmwareImage {
-                identifier: CALIPTRA_FMC_RT_IDENTIFIER,
-                data: b"Valid Caliptra Firmware Data",
-                filename: [0u8; MAX_FILENAME_LEN],
-            },
-            FirmwareImage {
-                identifier: SOC_MANIFEST_IDENTIFIER,
-                data: b"Valid SOC Manifest Data",
-                filename: [0u8; MAX_FILENAME_LEN],
-            },
-        ];
-        let image_info = generate_image_info(images.to_vec());
-        let flash_image = FlashImage::new(&images, &image_info);
-        flash_image
-            .write_to_file(0, image_path)
-            .expect("Failed to write flash image");
-
-        // Corrupt the file by modifying the data
-        let mut file = File::options()
-            .write(true)
-            .open(image_path)
-            .expect("Failed to open firmware image for tampering");
-        file.write_all(b"Corrupted Data")
-            .expect("Failed to corrupt data");
-
-        // Verify the corrupted firmware image
-        let result = flash_image_verify(image_path, 0);
-        assert!(
-            result.is_err(),
-            "Expected verification to fail for corrupted firmware image"
-        );
-
-        if let Err(e) = result {
-            println!("Expected error: {}", e);
-        }
-
-        // Cleanup
-        fs::remove_file(image_path).expect("Failed to clean up test file");
-    }
-
-    #[test]
-    fn test_flash_image_uses_image_id_from_config() {
-        // Regression test for #1580: when ImageCfg provides nonsequential image_id
-        // values (e.g. 12 and 6), flash_image_create must use those as the flash
-        // TOC identifiers instead of SOC_IMAGES_BASE_IDENTIFIER + index.
-        let soc_image1_content = b"Soc Image 1 - custom id";
-        let soc_image2_content = b"Soc Image 2 - custom id";
-
-        let soc_image1 = create_temp_file(soc_image1_content).unwrap();
-        let soc_image2 = create_temp_file(soc_image2_content).unwrap();
-
-        let soc_image_paths = Some(vec![
-            soc_image1.path().to_str().unwrap().to_string(),
-            soc_image2.path().to_str().unwrap().to_string(),
-        ]);
-
-        let soc_images = Some(vec![
-            ImageCfg {
-                path: soc_image1.path().to_path_buf(),
-                image_id: 12,
-                ..Default::default()
-            },
-            ImageCfg {
-                path: soc_image2.path().to_path_buf(),
-                image_id: 6,
-                ..Default::default()
-            },
-        ]);
-
-        let output_file = NamedTempFile::new().unwrap();
-        let output_path = output_file.path().to_str().unwrap();
-
-        flash_image_create(&CaliptraBuildArgs {
-            soc_image_paths,
-            soc_images,
-            offset: 0,
-            output_path: Some(output_path.to_string()),
-            ..Default::default()
-        })
-        .expect("Failed to build flash image");
-
-        // Read and verify identifiers
-        let mut file = File::open(output_path).unwrap();
-        let mut data = Vec::new();
-        file.read_to_end(&mut data).unwrap();
-
-        let header =
-            FlashHeader::read_from_bytes(&data[..HEADER_SIZE]).expect("Failed to parse header");
-        assert_eq!(header.image_count, 2);
-
-        // First SOC image should have identifier 12
-        let offset0 = header.image_headers_offset as usize;
-        let img0 = ImageHeader::read_from_bytes(&data[offset0..offset0 + IMAGE_INFO_SIZE]).unwrap();
-        assert_eq!(img0.identifier, 12);
-
-        // Second SOC image should have identifier 6
-        let offset1 = offset0 + IMAGE_INFO_SIZE;
-        let img1 = ImageHeader::read_from_bytes(&data[offset1..offset1 + IMAGE_INFO_SIZE]).unwrap();
-        assert_eq!(img1.identifier, 6);
-    }
-
-    #[test]
-    fn test_firmware_image_filename() {
-        let filename = vec![b'a'; MAX_FILENAME_LEN];
-        let image = FirmwareImage::new(1, b"image", Some(&filename)).unwrap();
-        assert_eq!(image.filename, filename[..]);
-
-        let image_info = generate_image_info(vec![image]);
-        assert_eq!(image_info[0].filename, filename[..]);
-
-        let filename = vec![b'a'; MAX_FILENAME_LEN + 1];
-        let err = FirmwareImage::new(1, b"image", Some(&filename))
-            .err()
-            .unwrap();
-        assert_eq!(err.kind(), ErrorKind::InvalidInput);
-    }
-}
+mod tests;

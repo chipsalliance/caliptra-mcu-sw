@@ -33,4 +33,5 @@ getrandom.workspace = true
 hex.workspace = true
 p384 = { workspace = true, features = ["ecdsa"] }
 sha2.workspace = true
+x509-parser.workspace = true
 zerocopy.workspace = true

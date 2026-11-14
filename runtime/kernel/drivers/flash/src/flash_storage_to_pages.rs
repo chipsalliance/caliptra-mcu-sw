@@ -24,6 +24,31 @@ use kernel::utilities::cells::NumericCellExt;
 use kernel::utilities::cells::{OptionalCell, TakeCell};
 use kernel::ErrorCode;
 
+fn copy_range(
+    destination: &mut [u8],
+    destination_offset: usize,
+    source: &[u8],
+    source_offset: usize,
+    length: usize,
+) -> bool {
+    let Some(destination) = destination
+        .get_mut(destination_offset..)
+        .and_then(|destination| destination.get_mut(..length))
+    else {
+        return false;
+    };
+    let Some(source) = source
+        .get(source_offset..)
+        .and_then(|source| source.get(..length))
+    else {
+        return false;
+    };
+    for (destination, source) in destination.iter_mut().zip(source) {
+        *destination = *source;
+    }
+    true
+}
+
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum State {
     Idle,
@@ -92,6 +117,9 @@ impl<'a, F: hil::flash::Flash> crate::hil::FlashStorage<'a> for FlashStorageToPa
         if self.state.get() != State::Idle {
             return Err((ErrorCode::BUSY, buffer));
         }
+        if length > buffer.len() {
+            return Err((ErrorCode::SIZE, buffer));
+        }
 
         let page_buffer = match self.page_buffer.take() {
             Some(pb) => pb,
@@ -128,6 +156,9 @@ impl<'a, F: hil::flash::Flash> crate::hil::FlashStorage<'a> for FlashStorageToPa
         if self.state.get() != State::Idle {
             return Err((ErrorCode::BUSY, buffer));
         }
+        if length > buffer.len() {
+            return Err((ErrorCode::SIZE, buffer));
+        }
 
         let page_buffer = match self.page_buffer.take() {
             Some(pb) => pb,
@@ -142,7 +173,11 @@ impl<'a, F: hil::flash::Flash> crate::hil::FlashStorage<'a> for FlashStorageToPa
         if address.is_multiple_of(page_size) && length >= page_size {
             // This write is aligned to a page and we are writing an entire page.
             // Copy data into page buffer.
-            page_buffer.as_mut()[..page_size].copy_from_slice(&buffer[..page_size]);
+            if !copy_range(page_buffer.as_mut(), 0, buffer, 0, page_size) {
+                self.page_buffer.replace(page_buffer);
+                self.state.set(State::Idle);
+                return Err((ErrorCode::SIZE, buffer));
+            }
 
             self.buffer.replace(buffer);
             self.address.set(address + page_size);
@@ -184,8 +219,8 @@ impl<'a, F: hil::flash::Flash> crate::hil::FlashStorage<'a> for FlashStorageToPa
 
         let erase_size = self.erase_size;
 
-        // Validate that the erase address is aligned to the erase size.
-        if !address.is_multiple_of(erase_size) {
+        // Validate erase granularity and address alignment.
+        if erase_size == 0 || !address.is_multiple_of(erase_size) {
             return Err(ErrorCode::INVAL);
         }
 
@@ -249,8 +284,14 @@ impl<F: hil::flash::Flash> hil::flash::Client<F> for FlashStorageToPages<'_, F> 
                     let buffer_index = self.buffer_index.get();
 
                     // Copy data read from the page buffer to the user buffer.
-                    buffer[buffer_index..(len + buffer_index)]
-                        .copy_from_slice(&page_buffer.as_mut()[page_index..(len + page_index)]);
+                    if !copy_range(buffer, buffer_index, page_buffer.as_mut(), page_index, len) {
+                        self.page_buffer.replace(page_buffer);
+                        self.state.set(State::Idle);
+                        self.remaining_length.set(0);
+                        self.client
+                            .map(move |client| client.read_done(buffer, buffer_index));
+                        return;
+                    }
 
                     // Decide if the operation is done.
                     let new_len = self.remaining_length.get() - len;
@@ -291,8 +332,14 @@ impl<F: hil::flash::Flash> hil::flash::Client<F> for FlashStorageToPages<'_, F> 
                     let page_number = self.address.get() / page_size;
 
                     // Copy data from the user buffer to the page buffer.
-                    page_buffer.as_mut()[page_index..(len + page_index)]
-                        .copy_from_slice(&buffer[buffer_index..(len + buffer_index)]);
+                    if !copy_range(page_buffer.as_mut(), page_index, buffer, buffer_index, len) {
+                        self.page_buffer.replace(page_buffer);
+                        self.state.set(State::Idle);
+                        self.remaining_length.set(0);
+                        self.client
+                            .map(move |client| client.write_done(buffer, buffer_index));
+                        return;
+                    }
 
                     // Do the write.
                     self.buffer.replace(buffer);
@@ -338,8 +385,14 @@ impl<F: hil::flash::Flash> hil::flash::Client<F> for FlashStorageToPages<'_, F> 
                         let buffer_index = self.buffer_index.get();
                         let page_number = self.address.get() / page_size;
                         // Copy data into page buffer.
-                        page_buffer.as_mut()[..page_size]
-                            .copy_from_slice(&buffer[buffer_index..(page_size + buffer_index)]);
+                        if !copy_range(page_buffer.as_mut(), 0, buffer, buffer_index, page_size) {
+                            self.page_buffer.replace(page_buffer);
+                            self.state.set(State::Idle);
+                            self.remaining_length.set(0);
+                            self.client
+                                .map(move |client| client.write_done(buffer, buffer_index));
+                            return;
+                        }
 
                         self.buffer.replace(buffer);
                         self.remaining_length.subtract(page_size);
@@ -404,5 +457,91 @@ impl<F: hil::flash::Flash> hil::flash::Client<F> for FlashStorageToPages<'_, F> 
         } else {
             panic!("internal page buffer must have been set for erase operation");
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{FlashStorageToPages, State};
+    use crate::hil::FlashStorage;
+    use core::cell::Cell;
+    use kernel::{hil, ErrorCode};
+
+    #[derive(Default)]
+    struct MockFlash {
+        erased_page: Cell<Option<usize>>,
+    }
+
+    impl hil::flash::Flash for MockFlash {
+        type Page = [u8; 8];
+
+        fn read_page(
+            &self,
+            _page_number: usize,
+            buffer: &'static mut Self::Page,
+        ) -> Result<(), (ErrorCode, &'static mut Self::Page)> {
+            Err((ErrorCode::FAIL, buffer))
+        }
+
+        fn write_page(
+            &self,
+            _page_number: usize,
+            buffer: &'static mut Self::Page,
+        ) -> Result<(), (ErrorCode, &'static mut Self::Page)> {
+            Err((ErrorCode::FAIL, buffer))
+        }
+
+        fn erase_page(&self, page_number: usize) -> Result<(), ErrorCode> {
+            self.erased_page.set(Some(page_number));
+            Ok(())
+        }
+    }
+
+    #[test]
+    fn zero_erase_granularity_returns_invalid_without_starting_io() {
+        let driver = MockFlash::default();
+        let storage = FlashStorageToPages::new(&driver, Box::leak(Box::new([0; 8])), 0);
+        for length in [1, 8, 0] {
+            assert_eq!(storage.erase(0, length), Err(ErrorCode::INVAL));
+            assert_eq!(storage.state.get(), State::Idle);
+            assert!(storage.page_buffer.is_some());
+            assert_eq!(driver.erased_page.get(), None);
+        }
+        storage.state.set(State::Read);
+        assert_eq!(storage.erase(0, 1), Err(ErrorCode::BUSY));
+    }
+
+    #[test]
+    fn valid_erase_granularity_preserves_rounding_and_completion() {
+        for (length, aligned) in [(1, 16), (16, 16), (17, 32)] {
+            let driver = MockFlash::default();
+            let storage = FlashStorageToPages::new(&driver, Box::leak(Box::new([0; 8])), 16);
+            assert_eq!(storage.erase(16, length), Ok(()));
+            assert_eq!(driver.erased_page.get(), Some(2));
+            assert_eq!(storage.remaining_length.get(), aligned - 16);
+
+            hil::flash::Client::erase_complete(&storage, Ok(()));
+            if aligned == 32 {
+                assert_eq!(driver.erased_page.get(), Some(4));
+                assert_eq!(storage.state.get(), State::Erase);
+                assert_eq!(storage.remaining_length.get(), 0);
+                hil::flash::Client::erase_complete(&storage, Ok(()));
+            }
+            assert_eq!(storage.state.get(), State::Idle);
+            assert!(storage.page_buffer.is_some());
+        }
+    }
+
+    #[test]
+    fn valid_erase_granularity_preserves_noop_and_alignment_error() {
+        let driver = MockFlash::default();
+        let storage = FlashStorageToPages::new(&driver, Box::leak(Box::new([0; 8])), 16);
+        assert_eq!(storage.erase(1, 17), Err(ErrorCode::INVAL));
+        assert_eq!(storage.state.get(), State::Idle);
+        assert!(storage.page_buffer.is_some());
+        assert_eq!(storage.erase(16, 0), Ok(()));
+        assert_eq!(storage.state.get(), State::Idle);
+        assert!(storage.page_buffer.is_some());
+        assert_eq!(driver.erased_page.get(), None);
     }
 }
