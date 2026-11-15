@@ -594,6 +594,9 @@ pub unsafe fn main() {
     kernel::debug::assign_gpios(None, None, None);
 
     let timers = &*addr_of!(TIMERS);
+    // Alarms run on the MCI machine timer: its interrupt stays pending while masked.
+    timers
+        .init_mtimer(unsafe { StaticRef::new(MCU_MEMORY_MAP.mci_offset as *const mci::regs::Mci) });
 
     // Create a shared virtualization mux layer on top of a single hardware
     // alarm.
@@ -1114,7 +1117,7 @@ pub unsafe fn main() {
     // enable interrupts globally
     csr::CSR
         .mie
-        .modify(csr::mie::mie::mext::SET + csr::mie::mie::msoft::SET + csr::mie::mie::BIT29::SET);
+        .modify(csr::mie::mie::mext::SET + csr::mie::mie::msoft::SET + csr::mie::mie::mtimer::SET);
     csr::CSR.mstatus.modify(csr::mstatus::mstatus::mie::SET);
 
     #[cfg(any(
