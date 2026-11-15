@@ -10,8 +10,8 @@ use caliptra_mcu_libsyscall_caliptra::soft_pcr_store::{
 };
 use caliptra_mcu_libtock_platform::Syscalls;
 use mcu_caliptra_api::{
-    dpe_derive_context, dpe_tag_tci, extend_pcr31, ApiAlloc, DpeContextHandle,
-    DpeDeriveContextFlags, DpeDeriveContextParams,
+    dpe_derive_context, dpe_tag_tci, extend_pcr31, AuthManifestSource, DpeContextHandle,
+    DpeDeriveContextFlags, DpeDeriveContextParams, ScratchAlloc,
 };
 
 use super::MeasurementApi;
@@ -20,10 +20,11 @@ use crate::errors::{MeasurementApiError, MeasurementApiResult};
 use crate::ImageMetadata;
 
 #[inline(never)]
-pub(super) async fn create_dpe_context<S: Syscalls, A: ApiAlloc>(
+pub(super) async fn create_dpe_context<S: Syscalls, A: ScratchAlloc>(
     api: &mut MeasurementApi<'_, S>,
     alloc: &A,
     fw_id: u32,
+    parent_fw_id: u32,
     measurement: &[u8; crate::IMAGE_MEASUREMENT_DIGEST_SIZE],
     svn: u32,
     is_ak_target: bool,
@@ -34,7 +35,7 @@ pub(super) async fn create_dpe_context<S: Syscalls, A: ApiAlloc>(
 
     let mut parent = DpeHandleRecord::default();
     dpe_store
-        .read_leaf_record(&mut parent)
+        .read_record(parent_fw_id, &mut parent)
         .map_err(|_| MeasurementApiError::InvalidDpeHandleStoreState)?;
 
     let derived = dpe_derive_context(
@@ -75,22 +76,33 @@ pub(super) async fn create_dpe_context<S: Syscalls, A: ApiAlloc>(
         .map_err(|_| api.enter_error_state(MeasurementApiError::PcrExtendFailed))
 }
 
-pub(super) async fn record_authorized_image<S: Syscalls, A: ApiAlloc>(
+pub(super) async fn record_authorized_image<S: Syscalls, A: ScratchAlloc>(
     api: &mut MeasurementApi<'_, S>,
     alloc: &A,
     entry: AttestationManifestEntry,
+    manifest_source: AuthManifestSource,
     metadata: ImageMetadata,
 ) -> MeasurementApiResult {
     if entry.is_tcb() {
+        let parent_fw_id = match manifest_source {
+            AuthManifestSource::VendorOwner => api.vendor_owner_leaf_fw_id,
+            AuthManifestSource::Owner => api.owner_leaf_fw_id,
+        };
         create_dpe_context(
             api,
             alloc,
             entry.fw_id,
+            parent_fw_id,
             &metadata.measurement,
             metadata.svn,
             entry.is_ak_target(),
         )
-        .await
+        .await?;
+        match manifest_source {
+            AuthManifestSource::VendorOwner => api.vendor_owner_leaf_fw_id = entry.fw_id,
+            AuthManifestSource::Owner => api.owner_leaf_fw_id = entry.fw_id,
+        }
+        Ok(())
     } else {
         create_software_pcr_record(api, alloc, entry, metadata).await?;
         extend_pcr31(&metadata.measurement)
@@ -99,7 +111,7 @@ pub(super) async fn record_authorized_image<S: Syscalls, A: ApiAlloc>(
     }
 }
 
-async fn create_software_pcr_record<S: Syscalls, A: ApiAlloc>(
+async fn create_software_pcr_record<S: Syscalls, A: ScratchAlloc>(
     api: &mut MeasurementApi<'_, S>,
     alloc: &A,
     entry: AttestationManifestEntry,
@@ -184,14 +196,14 @@ mod tests {
     use crate::attestation_manifest::{
         MCU_RT_FW_ID, OWNER_MEASUREMENT_POLICY_IDENTIFIER, OWSM_FW_ID, O_AUTH_KEY_ID, V_AUTH_KEY_ID,
     };
-    use mcu_caliptra_api::AuthorizeAndStashFlags;
+    use mcu_caliptra_api::{AuthManifestSource, AuthorizeAndStashFlags};
 
     #[test]
     fn caliptra_authorize_params_force_skip_stash_for_initial_load() {
         let measurement = [0xa5; crate::IMAGE_MEASUREMENT_DIGEST_SIZE];
         let metadata = ImageMetadata::initial_load_from_load_address(0x1234, measurement);
 
-        let params = caliptra_authorize_params(0x1000, metadata);
+        let params = caliptra_authorize_params(0x1000, metadata, AuthManifestSource::VendorOwner);
 
         assert_eq!(params.fw_id, 0x1000);
         assert_eq!(params.measurement, measurement);
@@ -200,6 +212,7 @@ mod tests {
         assert_eq!(params.flags, AuthorizeAndStashFlags::SKIP_STASH);
         assert_eq!(params.source, crate::ImageHashSource::LoadAddress);
         assert_eq!(params.image_size, 0x1234);
+        assert_eq!(params.manifest_source, AuthManifestSource::VendorOwner);
     }
 
     #[test]
@@ -222,11 +235,11 @@ mod tests {
     }
 
     #[test]
-    fn tcb_child_record_for_owsm_uses_vendor_key_parent() {
-        let child = tcb_child_record(OWSM_FW_ID, V_AUTH_KEY_ID, [0x33; 16]);
+    fn tcb_child_record_for_owsm_uses_mcu_rt_parent() {
+        let child = tcb_child_record(OWSM_FW_ID, MCU_RT_FW_ID, [0x33; 16]);
 
         assert_eq!(child.fw_id, OWSM_FW_ID);
-        assert_eq!(child.parent_fw_id, Some(V_AUTH_KEY_ID));
+        assert_eq!(child.parent_fw_id, Some(MCU_RT_FW_ID));
         assert_eq!(child.tci_tag, OWSM_FW_ID);
         assert_eq!(child.context_handle, [0x33; 16]);
     }

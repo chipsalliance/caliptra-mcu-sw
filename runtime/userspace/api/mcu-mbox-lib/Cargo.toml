@@ -22,7 +22,7 @@ caliptra-mcu-libtock_platform.workspace = true
 caliptra-mcu-libtock_runtime.workspace = true
 caliptra-mcu-libtockasync.workspace = true
 caliptra-mcu-mbox-common.workspace = true
-caliptra-mcu-otp-fuse.workspace = true
+caliptra-mcu-scratch-alloc.workspace = true
 caliptra-mcu-userlog.workspace = true
 zerocopy.workspace = true
 
@@ -32,9 +32,12 @@ futures = { workspace = true }
 [features]
 default = []
 disable-lms-sig-verify = []
-device-ownership-transfer = []
+device-ownership-transfer = ["caliptra-mcu-common-commands/device-ownership-transfer"]
 periodic-fips-self-test = []
-ocp-lock = ["caliptra-mcu-common-commands/ocp-lock"]
+attested-csr = []
+allow-mcu-signer-cert = []
+unsafe-allow-mcu-signing-oracle = ["allow-mcu-signer-cert"]
+ocp-lock = ["caliptra-mcu-common-commands/ocp-lock", "allow-mcu-signer-cert"]
 release = [
 	"dep:defmt",
 	"caliptra-mcu-userlog/defmt-transport",

@@ -573,6 +573,13 @@ impl Otp {
         Ok(data)
     }
 
+    /// Decode the SDK Owner SoC Manifest floor by counting all programmed bits.
+    pub fn read_owner_soc_manifest_min_svn(&self) -> McuResult<u32> {
+        let mut data = [0u8; fuses::OWNER_SOC_MANIFEST_MIN_SVN.byte_size];
+        self.read_entry_raw(fuses::OWNER_SOC_MANIFEST_MIN_SVN, &mut data)?;
+        Ok(u64::from_le_bytes(data).count_ones())
+    }
+
     /// Read cptra_ss_manuf_debug_unlock_token (64 bytes).
     pub fn read_cptra_ss_manuf_debug_unlock_token(
         &self,
@@ -1296,6 +1303,24 @@ impl FieldEntropyState {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn owner_svn_allocation_preserves_existing_fields_and_digest() {
+        let entry = fuses::OWNER_SOC_MANIFEST_MIN_SVN;
+        assert_eq!(entry.byte_size, 8);
+        assert_eq!(
+            entry.byte_offset,
+            fuses::FIELD_ENTROPY_STATE.byte_offset + fuses::FIELD_ENTROPY_STATE.byte_size
+        );
+        assert_eq!(
+            Some(entry.byte_offset + entry.byte_size),
+            fuses::VENDOR_TEST_PARTITION.digest_offset
+        );
+        assert!(matches!(
+            entry.layout,
+            fuses::FuseLayoutType::OneHot { bits: 64 }
+        ));
+    }
 
     #[test]
     fn test_sw_digest_data_size_uses_digest_offset_before_zer() {

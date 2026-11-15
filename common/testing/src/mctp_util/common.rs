@@ -620,6 +620,9 @@ mod tests {
         assert!(verify_packetize_assembly(245, 2, 245));
         assert!(verify_packetize_assembly(244, 3, 245));
         assert!(verify_packetize_assembly(1, 4, 245));
+        assert!(verify_packetize_assembly(1024, 5, 251));
+        assert!(verify_packetize_assembly(1004, 6, 251));
+        assert!(verify_packetize_assembly(1005, 0, 251));
     }
 
     fn verify_packetize_assembly(msg_size: usize, tag: u8, pkt_payload_size: usize) -> bool {

@@ -10,6 +10,7 @@
 
 use anyhow::Result;
 use caliptra_image_types::{MLDSA87_PUB_KEY_BYTE_SIZE, MLDSA87_SIGNATURE_BYTE_SIZE};
+use caliptra_mcu_mbox_common::authorization::{ecc_public_key_core_bytes, AuthorizationMetadata};
 use caliptra_mcu_mbox_common::messages::{
     HybridSignature, DOT_ECC_PUBLIC_KEY_COORD_SIZE, DOT_MLDSA_PUBLIC_KEY_SIZE,
 };
@@ -17,6 +18,7 @@ use fips204::ml_dsa_87;
 use fips204::traits::{KeyGen, SerDes, Signer as MldsaSigner};
 use p384::ecdsa::{signature::Signer, Signature, SigningKey};
 use sha2::{Digest, Sha384, Sha512};
+use zerocopy::IntoBytes;
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 /// Width of the authorization challenge nonce in bytes. Re-exported from
@@ -29,17 +31,34 @@ const _: () = assert!(AUTH_CMD_NONCE_LEN == 48);
 
 /// Trait for authorizing Caliptra commands that require challenge-response signatures.
 pub trait CommandAuthChallengeSigner: Send + Sync {
+    /// Sign Owner-only/Fleet metadata; use `authorize_with_metadata` for an explicit target.
     fn authorize(
         &self,
         cmd_id: u32,
         payload: &[u8],
         challenge: &[u8; AUTH_CMD_NONCE_LEN],
+    ) -> Result<HybridSignature> {
+        self.authorize_with_metadata(
+            cmd_id,
+            payload,
+            &AuthorizationMetadata::default(),
+            challenge,
+        )
+    }
+
+    fn authorize_with_metadata(
+        &self,
+        cmd_id: u32,
+        payload: &[u8],
+        metadata: &AuthorizationMetadata,
+        nonce: &[u8; AUTH_CMD_NONCE_LEN],
     ) -> Result<HybridSignature>;
 
     /// The public keys that must travel on the wire so the device can verify the
     /// signatures. The device holds only their SHA-384 anchor and checks that the
     /// received keys hash to it before using them. Returns
-    /// `(ecc_pub_x, ecc_pub_y, mldsa_pub)` in standard big-endian `u8` form.
+    /// `(ecc_pub_x, ecc_pub_y, mldsa_pub)` with standard big-endian ECC
+    /// coordinates and the algorithm-defined ML-DSA byte representation.
     ///
     /// On the trait so both the mailbox and SPDM validators can obtain the keys
     /// through a `Box<dyn CommandAuthChallengeSigner>`.
@@ -67,24 +86,8 @@ impl HybridPublicKeys {
     /// byte ordering: each ECC coordinate word is byte-reversed before SHA-384,
     /// while the ML-DSA public key remains in its natural wire order.
     pub fn dot_lak_hash(&self) -> [u8; 48] {
-        let mut ecc_key = [0u8; 2 * DOT_ECC_PUBLIC_KEY_COORD_SIZE];
-        for (dst, src) in ecc_key[..DOT_ECC_PUBLIC_KEY_COORD_SIZE]
-            .chunks_exact_mut(4)
-            .zip(self.ecc_pub_x.chunks_exact(4))
-        {
-            dst.copy_from_slice(src);
-            dst.reverse();
-        }
-        for (dst, src) in ecc_key[DOT_ECC_PUBLIC_KEY_COORD_SIZE..]
-            .chunks_exact_mut(4)
-            .zip(self.ecc_pub_y.chunks_exact(4))
-        {
-            dst.copy_from_slice(src);
-            dst.reverse();
-        }
-
         let mut hasher = Sha384::new();
-        hasher.update(ecc_key);
+        hasher.update(ecc_public_key_core_bytes(&self.ecc_pub_x, &self.ecc_pub_y));
         hasher.update(self.mldsa_pub);
         hasher.finalize().into()
     }
@@ -136,17 +139,9 @@ impl AsymmetricCommandAuthorizer {
         })
     }
 
-    /// The device-side anchor: `SHA-384(ecc_pub_x || ecc_pub_y || mldsa_pub)` over the
-    /// standard big-endian `u8` serialization of the public keys (the exact bytes
-    /// returned by [`public_keys`] and transmitted on the wire). The device embeds
-    /// this 48-byte digest and matches the received keys against it.
+    /// SHA-384 of the Core-encoded ECC coordinates followed by the raw ML-DSA key.
     pub fn anchor(&self) -> Result<[u8; 48]> {
-        let (ecc_pub_x, ecc_pub_y, mldsa_pub) = self.public_keys()?;
-        let mut hasher = Sha384::new();
-        hasher.update(ecc_pub_x);
-        hasher.update(ecc_pub_y);
-        hasher.update(mldsa_pub);
-        Ok(hasher.finalize().into())
+        Ok(self.dot_public_keys()?.dot_lak_hash())
     }
 }
 
@@ -186,23 +181,23 @@ impl HybridMessageSigner for AsymmetricCommandAuthorizer {
 }
 
 impl CommandAuthChallengeSigner for AsymmetricCommandAuthorizer {
-    fn authorize(
+    fn authorize_with_metadata(
         &self,
         cmd_id: u32,
         payload: &[u8],
-        challenge: &[u8; AUTH_CMD_NONCE_LEN],
+        metadata: &AuthorizationMetadata,
+        nonce: &[u8; AUTH_CMD_NONCE_LEN],
     ) -> Result<HybridSignature> {
-        // Build the pre-image: cmd_id(BE,4) || payload || nonce(48). This mirrors the
-        // prod-debug-unlock authorization idiom: each leg signs a digest of the raw
-        // pre-image (ECDSA over SHA-384, ML-DSA over SHA-512), rather than signing an
-        // inner-hashed transcript. The nonce TRAVELS on the wire (prod-debug-unlock
-        // idiom): the device compares the wire nonce to its stored one-time challenge,
-        // then rebuilds this identical pre-image from the wire copy before verifying.
-        let mut pre_image =
-            Zeroizing::new(Vec::with_capacity(4 + payload.len() + AUTH_CMD_NONCE_LEN));
+        metadata
+            .validate()
+            .map_err(|error| anyhow::anyhow!("Invalid authorization metadata: {error:?}"))?;
+        let mut pre_image = Zeroizing::new(Vec::with_capacity(
+            4 + payload.len() + metadata.as_bytes().len() + AUTH_CMD_NONCE_LEN,
+        ));
         pre_image.extend_from_slice(&cmd_id.to_be_bytes());
         pre_image.extend_from_slice(payload);
-        pre_image.extend_from_slice(challenge);
+        pre_image.extend_from_slice(metadata.as_bytes());
+        pre_image.extend_from_slice(nonce);
 
         // 1. ECC P-384 over SHA-384(pre-image). `sign` hashes the pre-image with the
         //    curve's SHA-384 digest internally, matching the device's ECDSA verify
@@ -264,9 +259,7 @@ impl CommandAuthChallengeSigner for AsymmetricCommandAuthorizer {
 mod tests {
     use super::*;
 
-    /// The test vendor keypair. These MUST match the constants the device firmware
-    /// (`auth_keys.rs`) derives its embedded `AUTH_PK_HASH` from and the integration
-    /// tests sign with.
+    /// Test keypair used by host validators and explicitly provisioned test manifests.
     const TEST_ECC_PRIV_KEY: [u8; 48] = [
         61, 169, 230, 128, 175, 245, 161, 206, 169, 106, 62, 137, 129, 2, 134, 251, 59, 48, 48,
         169, 201, 36, 173, 47, 32, 49, 160, 125, 41, 64, 82, 169, 124, 175, 161, 252, 110, 167, 96,
@@ -289,8 +282,7 @@ mod tests {
         pk
     }
 
-    /// `anchor()` must equal `SHA-384(ecc_pub_x || ecc_pub_y || mldsa_pub)` computed
-    /// independently from `public_keys()` — the exact invariant the device relies on.
+    /// Independently reconstruct Core's key encoding rather than reuse its helper.
     #[test]
     fn anchor_matches_hash_of_public_keys() {
         let signer =
@@ -298,28 +290,39 @@ mod tests {
         let (x, y, mldsa) = signer.public_keys().unwrap();
 
         let mut hasher = Sha384::new();
-        hasher.update(x);
-        hasher.update(y);
+        for coordinate in [&x, &y] {
+            for word in coordinate.chunks_exact(4) {
+                hasher.update([word[3], word[2], word[1], word[0]]);
+            }
+        }
         hasher.update(mldsa);
         let expected: [u8; 48] = hasher.finalize().into();
 
         assert_eq!(signer.anchor().unwrap(), expected);
     }
 
-    /// Known-Answer Test: emit the device-side `AUTH_PK_HASH` for the test keypair.
-    /// Run with `--nocapture` to copy the 48-byte array into `auth_keys.rs`.
+    /// Emit public key digests for explicit test-manifest provisioning.
     #[test]
     fn print_auth_pk_hash_for_test_keypair() {
         let signer =
             AsymmetricCommandAuthorizer::new(&TEST_ECC_PRIV_KEY, &TEST_MLDSA_SEED).unwrap();
         let anchor = signer.anchor().unwrap();
-        println!("AUTH_PK_HASH (SHA-384(ecc_x||ecc_y||mldsa_pub)) for the test keypair:");
-        println!("pub const AUTH_PK_HASH: [u8; 48] = [");
+        println!("Core-compatible command-authorization anchor for the test keypair:");
+        println!("pub const TEST_OWNER_COMMAND_KEY_DIGEST: [u8; 48] = [");
         for chunk in anchor.chunks(8) {
             let line: String = chunk.iter().map(|b| format!("0x{b:02x}, ")).collect();
             println!("    {line}");
         }
         println!("];");
+        for label in [
+            "caliptra-mcu-test-vendor-authorization-keys",
+            "caliptra-mcu-test-owner-authorization-keys",
+        ] {
+            let mldsa_seed = sha2::Sha256::digest(label.as_bytes());
+            let ecc_key = sha2::Sha384::digest([label.as_bytes(), b"\x00"].concat());
+            let signer = AsymmetricCommandAuthorizer::new(&ecc_key, &mldsa_seed).unwrap();
+            println!("{label}: {:02x?}", signer.anchor().unwrap());
+        }
     }
 
     #[test]
@@ -327,10 +330,10 @@ mod tests {
         let signer =
             AsymmetricCommandAuthorizer::new(&TEST_ECC_PRIV_KEY, &TEST_MLDSA_SEED).unwrap();
         let expected_auth_pk_hash: [u8; 48] = [
-            0x29, 0x04, 0x41, 0x6e, 0xf2, 0x71, 0x31, 0x40, 0xd4, 0xa2, 0x21, 0x14, 0x48, 0xa3,
-            0xa8, 0x42, 0x73, 0x7b, 0xf1, 0x8c, 0x6f, 0x84, 0x3f, 0x56, 0x5b, 0x5c, 0xe5, 0x35,
-            0xea, 0x69, 0xef, 0x2a, 0x8c, 0xc1, 0x14, 0xb1, 0xbe, 0xb2, 0xe6, 0x5f, 0x5f, 0x0f,
-            0x35, 0x4b, 0x30, 0x9b, 0xed, 0x17,
+            0xb7, 0xad, 0x44, 0xdd, 0x5f, 0x13, 0xf6, 0x9e, 0x30, 0xe3, 0xf4, 0x82, 0x6d, 0xe7,
+            0x30, 0xbb, 0x54, 0x2d, 0x49, 0x28, 0xb5, 0x2d, 0x85, 0xab, 0xc5, 0xb0, 0xf5, 0x92,
+            0x52, 0x48, 0x92, 0xd5, 0xdd, 0x6f, 0xe7, 0xa2, 0x48, 0x16, 0x7f, 0x71, 0xb8, 0x32,
+            0xf0, 0x81, 0xab, 0x0a, 0x6e, 0x9b,
         ];
         assert_eq!(signer.anchor().unwrap(), expected_auth_pk_hash);
     }
@@ -341,10 +344,10 @@ mod tests {
         let ecc_key = sha2::Sha384::digest(b"caliptra-mcu-test-vendor-authorization-keys\x00");
         let signer = AsymmetricCommandAuthorizer::new(&ecc_key, &mldsa_seed).unwrap();
         let expected_vendor_anchor: [u8; 48] = [
-            0xa2, 0x68, 0x7c, 0xf2, 0x45, 0x99, 0xb8, 0xf0, 0xf8, 0x26, 0x81, 0xd9, 0xbf, 0x6d,
-            0x77, 0xac, 0x22, 0x47, 0x09, 0x4d, 0x1e, 0x9a, 0x2d, 0x81, 0x41, 0x55, 0x5f, 0xc6,
-            0x0d, 0x05, 0xc3, 0x0a, 0x9f, 0xbd, 0x23, 0x46, 0x18, 0x09, 0xbf, 0xa5, 0x7d, 0xc7,
-            0x28, 0xd7, 0xbc, 0xc1, 0x7d, 0xea,
+            0x6f, 0xbc, 0xc7, 0xbe, 0x9f, 0x97, 0xe0, 0xab, 0x6c, 0x4c, 0x54, 0x70, 0xee, 0xce,
+            0x7e, 0xa9, 0x48, 0x8b, 0xab, 0xd9, 0x90, 0xfa, 0x36, 0x60, 0x82, 0xd5, 0xc1, 0xa7,
+            0xc3, 0x7d, 0x6f, 0x5e, 0x9d, 0x7f, 0x6c, 0x43, 0x31, 0xea, 0xfa, 0x07, 0xfa, 0x60,
+            0x3b, 0x1c, 0xf1, 0x8b, 0xec, 0x20,
         ];
         assert_eq!(signer.anchor().unwrap(), expected_vendor_anchor);
     }
@@ -355,10 +358,10 @@ mod tests {
         let ecc_key = sha2::Sha384::digest(b"caliptra-mcu-test-owner-authorization-keys\x00");
         let signer = AsymmetricCommandAuthorizer::new(&ecc_key, &mldsa_seed).unwrap();
         let expected_owner_anchor: [u8; 48] = [
-            0xa4, 0xb9, 0x4c, 0xeb, 0xdf, 0x4e, 0x5f, 0xcb, 0x86, 0xbf, 0xdf, 0x9b, 0xdc, 0x30,
-            0xc0, 0x51, 0xf5, 0x78, 0xa9, 0x9e, 0xa2, 0x17, 0xc1, 0x1e, 0xfa, 0x24, 0xd8, 0xf7,
-            0x2f, 0x0d, 0x54, 0x9e, 0xc9, 0x58, 0x11, 0x9e, 0xa7, 0x33, 0x16, 0xa4, 0x46, 0xb1,
-            0x52, 0xc0, 0x24, 0xb4, 0x6b, 0x03,
+            0xd4, 0x9b, 0x2e, 0x99, 0xc7, 0xe1, 0xa1, 0x37, 0x30, 0x91, 0xaa, 0x18, 0xbe, 0xd7,
+            0x30, 0xd0, 0x1e, 0xab, 0x7f, 0xc8, 0x04, 0x07, 0x7c, 0xc7, 0x27, 0xda, 0xa8, 0x74,
+            0x58, 0xb1, 0xa7, 0xfd, 0x2b, 0x12, 0x64, 0x60, 0x39, 0xe2, 0xfa, 0x85, 0xd8, 0x2b,
+            0xe8, 0x08, 0xbc, 0x05, 0x78, 0xfd,
         ];
         assert_eq!(signer.anchor().unwrap(), expected_owner_anchor);
     }
@@ -379,7 +382,7 @@ mod tests {
     }
 
     /// The ECDSA leg verifies over SHA-384(pre-image) where
-    /// pre-image = cmd_id(BE) || payload || nonce (raw, no inner payload hash) —
+    /// pre-image = cmd_id(BE) || payload || metadata || nonce —
     /// mirroring the prod-debug-unlock idiom. Proves host/device agree on the ECC
     /// pre-image and that the 48-byte nonce is bound.
     #[test]
@@ -396,6 +399,7 @@ mod tests {
         let mut pre_image = Vec::new();
         pre_image.extend_from_slice(&cmd_id.to_be_bytes());
         pre_image.extend_from_slice(&payload);
+        pre_image.extend_from_slice(AuthorizationMetadata::default().as_bytes());
         pre_image.extend_from_slice(&nonce);
 
         let vk = VerifyingKey::from(&SigningKey::from_slice(&TEST_ECC_PRIV_KEY).unwrap());
@@ -411,12 +415,13 @@ mod tests {
         let mut other = Vec::new();
         other.extend_from_slice(&cmd_id.to_be_bytes());
         other.extend_from_slice(&payload);
+        other.extend_from_slice(AuthorizationMetadata::default().as_bytes());
         other.extend_from_slice(&[0x22u8; AUTH_CMD_NONCE_LEN]);
         assert!(vk.verify(&other, &ecdsa_sig).is_err());
     }
 
     /// The ML-DSA-87 leg verifies over SHA-512(pre-image) where
-    /// pre-image = cmd_id(BE) || payload || nonce — the same digest the device
+    /// pre-image = cmd_id(BE) || payload || metadata || nonce — the same digest the device
     /// feeds to the Caliptra MLDSA87_SIGNATURE_VERIFY mailbox command. Proves the
     /// PQC leg is present, correct, and bound to the 48-byte nonce.
     #[test]
@@ -433,6 +438,7 @@ mod tests {
         let mut pre_image = Vec::new();
         pre_image.extend_from_slice(&cmd_id.to_be_bytes());
         pre_image.extend_from_slice(&payload);
+        pre_image.extend_from_slice(AuthorizationMetadata::default().as_bytes());
         pre_image.extend_from_slice(&nonce);
 
         // fips204 sig is the first 4627 bytes (the HybridSignature struct pads to 4628).
@@ -446,9 +452,57 @@ mod tests {
         let mut other = Vec::new();
         other.extend_from_slice(&cmd_id.to_be_bytes());
         other.extend_from_slice(&payload);
+        other.extend_from_slice(AuthorizationMetadata::default().as_bytes());
         other.extend_from_slice(&[0x22u8; AUTH_CMD_NONCE_LEN]);
         let wrong_msg: [u8; 64] = Sha512::digest(&other).into();
         assert!(!mldsa_pubkey().verify(&wrong_msg, &mldsa_sig, &[]));
+    }
+
+    #[test]
+    fn signatures_bind_authority_scope_and_nonce_in_every_mode() {
+        use caliptra_mcu_mbox_common::authorization::CommandAuthority;
+        use fips204::traits::Verifier as MldsaVerifier;
+        use p384::ecdsa::{signature::Verifier, Signature as EcdsaSignature, VerifyingKey};
+
+        let signer =
+            AsymmetricCommandAuthorizer::new(&TEST_ECC_PRIV_KEY, &TEST_MLDSA_SEED).unwrap();
+        let ecc_key = VerifyingKey::from(&SigningKey::from_slice(&TEST_ECC_PRIV_KEY).unwrap());
+        let mldsa_key = mldsa_pubkey();
+        let cmd_id = 0x4D43_4650u32;
+        let payload = [0x15; 4];
+
+        for authority in [CommandAuthority::VendorOwner, CommandAuthority::Owner] {
+            for ueid in [[0; 16], [0x42; 16]] {
+                for nonce in [[0; AUTH_CMD_NONCE_LEN], [0x73; AUTH_CMD_NONCE_LEN]] {
+                    let metadata = AuthorizationMetadata::new(authority, ueid);
+                    let signature = signer
+                        .authorize_with_metadata(cmd_id, &payload, &metadata, &nonce)
+                        .unwrap();
+                    let mut ecc_signature = [0; 96];
+                    ecc_signature[..48].copy_from_slice(&signature.ecc_sig_r);
+                    ecc_signature[48..].copy_from_slice(&signature.ecc_sig_s);
+                    let ecc_signature = EcdsaSignature::from_slice(&ecc_signature).unwrap();
+                    let mldsa_signature: [u8; 4627] =
+                        signature.mldsa_sig[..4627].try_into().unwrap();
+
+                    let mut message = cmd_id.to_be_bytes().to_vec();
+                    message.extend_from_slice(&payload);
+                    message.extend_from_slice(metadata.as_bytes());
+                    message.extend_from_slice(&nonce);
+                    assert!(ecc_key.verify(&message, &ecc_signature).is_ok());
+                    let digest: [u8; 64] = Sha512::digest(&message).into();
+                    assert!(mldsa_key.verify(&digest, &mldsa_signature, &[]));
+
+                    for offset in 4 + payload.len()..message.len() {
+                        message[offset] ^= 1;
+                        assert!(ecc_key.verify(&message, &ecc_signature).is_err());
+                        let digest: [u8; 64] = Sha512::digest(&message).into();
+                        assert!(!mldsa_key.verify(&digest, &mldsa_signature, &[]));
+                        message[offset] ^= 1;
+                    }
+                }
+            }
+        }
     }
 
     #[test]

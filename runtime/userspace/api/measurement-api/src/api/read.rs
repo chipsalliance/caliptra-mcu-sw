@@ -10,11 +10,12 @@ use caliptra_mcu_libsyscall_caliptra::soft_pcr_store::{
 };
 use caliptra_mcu_libtock_platform::Syscalls;
 use mcu_caliptra_api::{
-    dpe_get_tagged_tci, ApiAlloc, DpeTaggedTci, DPE_CONTEXT_HANDLE_SIZE, DPE_TCI_MEASUREMENT_SIZE,
+    dpe_get_tagged_tci, DpeTaggedTci, ScratchAlloc, DPE_CONTEXT_HANDLE_SIZE,
+    DPE_TCI_MEASUREMENT_SIZE,
 };
 
-use super::{is_mcu_root_record, MeasurementApi};
-use crate::attestation_manifest::{AttestationManifestEntry, MCU_RT_FW_ID};
+use super::{is_mcu_root_record, MeasurementApi, OWSM_ENTRY};
+use crate::attestation_manifest::{AttestationManifestEntry, MCU_RT_FW_ID, OWSM_FW_ID};
 use crate::errors::{MeasurementApiError, MeasurementApiResult};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
@@ -25,7 +26,7 @@ pub(crate) struct MeasurementValue {
     pub svn: u64,
 }
 
-pub(super) async fn read_measurement<S: Syscalls, A: ApiAlloc>(
+pub(super) async fn read_measurement<S: Syscalls, A: ScratchAlloc>(
     api: &MeasurementApi<'_, S>,
     alloc: &A,
     fw_id: u32,
@@ -52,11 +53,43 @@ pub(super) fn should_include_tcb_measurement<S: Syscalls>(
     let target = api.read_attestation_target_record()?;
     let expected_target_fw_id = api.manifest.attestation_target_fw_id();
     let dpe_store = DpeHandleStore::<S>::new(DPE_HANDLE_STORE_DRIVER_NUM);
-    should_include_tcb_candidate(
+    dpe_store_lineage_contains(api, &dpe_store, target, expected_target_fw_id, fw_id, 0)
+        .map(|in_lineage| !in_lineage)
+}
+
+pub(super) fn export_cdi_target_lineage_contains<S: Syscalls>(
+    api: &MeasurementApi<'_, S>,
+    target_fw_id: u32,
+    fw_id: u32,
+) -> MeasurementApiResult<bool> {
+    let dpe_store = DpeHandleStore::<S>::new(DPE_HANDLE_STORE_DRIVER_NUM);
+    let mut target = DpeHandleRecord::default();
+    dpe_store
+        .read_record(target_fw_id, &mut target)
+        .map_err(|_| MeasurementApiError::InvalidDpeHandleStoreState)?;
+    dpe_store_lineage_contains(api, &dpe_store, target, target_fw_id, fw_id, 16)
+}
+
+fn dpe_store_lineage_contains<S: Syscalls>(
+    api: &MeasurementApi<'_, S>,
+    dpe_store: &DpeHandleStore<S>,
+    target: DpeHandleRecord,
+    expected_target_fw_id: u32,
+    candidate_fw_id: u32,
+    min_steps: u32,
+) -> MeasurementApiResult<bool> {
+    let mut tcb_entry_count = api.manifest.header().tcb_entry_count;
+    if let Some(owner) = &api.owner_policy {
+        tcb_entry_count = tcb_entry_count
+            .checked_add(owner.manifest().header().tcb_entry_count)
+            .and_then(|count| count.checked_add(1))
+            .ok_or(MeasurementApiError::InvalidManifest)?;
+    }
+    selected_ak_lineage_contains(
         target,
         expected_target_fw_id,
-        fw_id,
-        api.manifest.header().tcb_entry_count,
+        candidate_fw_id,
+        tcb_entry_count.max(min_steps),
         |parent_fw_id, out| {
             dpe_store
                 .read_record(parent_fw_id, out)
@@ -65,7 +98,7 @@ pub(super) fn should_include_tcb_measurement<S: Syscalls>(
     )
 }
 
-async fn read_tcb_measurement<S: Syscalls, A: ApiAlloc>(
+async fn read_tcb_measurement<S: Syscalls, A: ScratchAlloc>(
     alloc: &A,
     entry: AttestationManifestEntry,
 ) -> MeasurementApiResult<MeasurementValue> {
@@ -98,12 +131,13 @@ fn manifest_entry<S: Syscalls>(
     api: &MeasurementApi<'_, S>,
     fw_id: u32,
 ) -> MeasurementApiResult<AttestationManifestEntry> {
-    api.manifest
-        .lookup(fw_id)
-        .map_err(|_| MeasurementApiError::UnknownFwId)
+    if fw_id == OWSM_FW_ID && api.owner_policy.is_some() {
+        return Ok(OWSM_ENTRY);
+    }
+    api.manifest_lookup(fw_id).map(|(entry, _)| entry)
 }
 
-fn validate_tcb_handle_record(
+pub(super) fn validate_tcb_handle_record(
     record: &DpeHandleRecord,
     expected_fw_id: u32,
 ) -> MeasurementApiResult {
@@ -163,6 +197,7 @@ fn non_tcb_measurement_from_record(record: &MeasurementRecord) -> MeasurementVal
     }
 }
 
+#[cfg(test)]
 fn should_include_tcb_candidate<F>(
     target: DpeHandleRecord,
     expected_target_fw_id: u32,
@@ -511,5 +546,47 @@ mod tests {
             should_include_tcb_measurement(&api, TCB_FW_ID).unwrap_err(),
             MeasurementApiError::AttestationDisabled
         );
+    }
+
+    #[test]
+    fn export_cdi_lineage_tracks_target_ancestors_and_excludes_siblings() {
+        let root = root_record();
+        let vendor_parent = tcb_record(TCB_FW_ID, Some(MCU_RT_FW_ID));
+        let export_target = tcb_record(CHILD_TCB_FW_ID, Some(TCB_FW_ID));
+        let sibling = tcb_record(SIBLING_TCB_FW_ID, Some(MCU_RT_FW_ID));
+        let records = [root, vendor_parent, export_target, sibling];
+
+        assert!(selected_ak_lineage_contains(
+            export_target,
+            CHILD_TCB_FW_ID,
+            CHILD_TCB_FW_ID,
+            4,
+            |fw_id, out| read_record_from(&records, fw_id, out)
+        )
+        .unwrap());
+        assert!(selected_ak_lineage_contains(
+            export_target,
+            CHILD_TCB_FW_ID,
+            TCB_FW_ID,
+            4,
+            |fw_id, out| read_record_from(&records, fw_id, out)
+        )
+        .unwrap());
+        assert!(selected_ak_lineage_contains(
+            export_target,
+            CHILD_TCB_FW_ID,
+            MCU_RT_FW_ID,
+            4,
+            |fw_id, out| read_record_from(&records, fw_id, out)
+        )
+        .unwrap());
+        assert!(!selected_ak_lineage_contains(
+            export_target,
+            CHILD_TCB_FW_ID,
+            SIBLING_TCB_FW_ID,
+            4,
+            |fw_id, out| read_record_from(&records, fw_id, out)
+        )
+        .unwrap());
     }
 }

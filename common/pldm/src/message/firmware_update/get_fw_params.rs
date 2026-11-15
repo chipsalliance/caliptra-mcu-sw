@@ -122,28 +122,44 @@ impl FirmwareParameters {
 
 impl PldmCodec for FirmwareParameters {
     fn encode(&self, buffer: &mut [u8]) -> Result<usize, PldmCodecError> {
-        let mut offset = 0;
+        let entries = self
+            .comp_param_table
+            .get(..self.params_fixed.comp_count as usize)
+            .ok_or(PldmCodecError::BufferTooShort)?;
         if buffer.len() < self.codec_size_in_bytes() {
             return Err(PldmCodecError::BufferTooShort);
         }
-        self.params_fixed
-            .write_to(&mut buffer[offset..offset + core::mem::size_of::<FirmwareParamFixed>()])
-            .unwrap();
-
-        offset += core::mem::size_of::<FirmwareParamFixed>();
+        let mut offset = self.params_fixed.encode(buffer)?;
 
         let len = self.params_fixed.active_comp_image_set_ver_str_len as usize;
-        buffer[offset..offset + len].copy_from_slice(&self.active_comp_image_set_ver_str[..len]);
+        let active = self
+            .active_comp_image_set_ver_str
+            .get(..len)
+            .ok_or(PldmCodecError::BufferTooShort)?;
+        buffer
+            .get_mut(offset..offset + len)
+            .ok_or(PldmCodecError::BufferTooShort)?
+            .copy_from_slice(active);
         offset += len;
 
         if let Some(pending_comp_image_set_ver_str) = &self.pending_comp_image_set_ver_str {
             let len = self.params_fixed.pending_comp_image_set_ver_str_len as usize;
-            buffer[offset..offset + len].copy_from_slice(&pending_comp_image_set_ver_str[..len]);
+            let pending = pending_comp_image_set_ver_str
+                .get(..len)
+                .ok_or(PldmCodecError::BufferTooShort)?;
+            buffer
+                .get_mut(offset..offset + len)
+                .ok_or(PldmCodecError::BufferTooShort)?
+                .copy_from_slice(pending);
             offset += len;
         }
 
-        for i in 0..self.params_fixed.comp_count as usize {
-            let bytes = self.comp_param_table[i].encode(&mut buffer[offset..])?;
+        for entry in entries {
+            let bytes = entry.encode(
+                buffer
+                    .get_mut(offset..)
+                    .ok_or(PldmCodecError::BufferTooShort)?,
+            )?;
             offset += bytes;
         }
 
@@ -242,21 +258,25 @@ impl GetFirmwareParametersResponse {
 
 impl PldmCodec for GetFirmwareParametersResponse {
     fn encode(&self, buffer: &mut [u8]) -> Result<usize, PldmCodecError> {
-        let mut offset = 0;
+        if self.parms.params_fixed.comp_count as usize > self.parms.comp_param_table.len() {
+            return Err(PldmCodecError::BufferTooShort);
+        }
         if buffer.len() < self.codec_size_in_bytes() {
             return Err(PldmCodecError::BufferTooShort);
         }
-        self.hdr
-            .write_to(&mut buffer[offset..offset + PLDM_MSG_HEADER_LEN])
-            .unwrap();
-        offset += PLDM_MSG_HEADER_LEN;
+        let mut offset = self.hdr.encode(buffer)?;
 
-        self.completion_code
-            .write_to(&mut buffer[offset..offset + core::mem::size_of::<u8>()])
-            .unwrap();
-        offset += core::mem::size_of::<u8>();
+        offset += self.completion_code.encode(
+            buffer
+                .get_mut(offset..)
+                .ok_or(PldmCodecError::BufferTooShort)?,
+        )?;
 
-        let bytes = self.parms.encode(&mut buffer[offset..])?;
+        let bytes = self.parms.encode(
+            buffer
+                .get_mut(offset..)
+                .ok_or(PldmCodecError::BufferTooShort)?,
+        )?;
         offset += bytes;
         Ok(offset)
     }
@@ -358,5 +378,47 @@ mod test {
         assert_eq!(size, response.codec_size_in_bytes());
         let decoded_response = GetFirmwareParametersResponse::decode(&buffer[..size]).unwrap();
         assert_eq!(response, decoded_response);
+    }
+
+    #[test]
+    fn test_encode_firmware_parameters_oversized_count() {
+        let mut parameters = FirmwareParameters::default();
+        parameters.params_fixed.comp_count = (MAX_COMPONENT_COUNT + 1) as u16;
+        let mut buffer = [0u8; 1024];
+        assert_eq!(
+            parameters.encode(&mut buffer),
+            Err(PldmCodecError::BufferTooShort)
+        );
+        let response = GetFirmwareParametersResponse::new(0, 0, &parameters);
+        assert_eq!(
+            response.encode(&mut buffer),
+            Err(PldmCodecError::BufferTooShort)
+        );
+    }
+
+    #[test]
+    fn test_encode_firmware_parameters_oversized_versions() {
+        for pending in [false, true] {
+            let mut parameters = FirmwareParameters::default();
+            if pending {
+                parameters.params_fixed.pending_comp_image_set_ver_str_len =
+                    (PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN + 1) as u8;
+                parameters.pending_comp_image_set_ver_str =
+                    Some([0; PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN]);
+            } else {
+                parameters.params_fixed.active_comp_image_set_ver_str_len =
+                    (PLDM_FWUP_IMAGE_SET_VER_STR_MAX_LEN + 1) as u8;
+            }
+            let mut buffer = [0u8; 1024];
+            assert_eq!(
+                parameters.encode(&mut buffer),
+                Err(PldmCodecError::BufferTooShort)
+            );
+            let response = GetFirmwareParametersResponse::new(0, 0, &parameters);
+            assert_eq!(
+                response.encode(&mut buffer),
+                Err(PldmCodecError::BufferTooShort)
+            );
+        }
     }
 }

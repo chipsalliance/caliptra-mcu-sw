@@ -17,7 +17,6 @@ aes-gcm.workspace = true
 anyhow.workspace = true
 caliptra-api.workspace = true
 caliptra-api-types.workspace = true
-caliptra-mcu-libapi-caliptra.workspace = true
 dpe.workspace = true
 caliptra-auth-man-types.workspace = true
 caliptra-builder.workspace = true
@@ -90,3 +89,6 @@ libc.workspace = true
 
 [dev-dependencies]
 minicbor = { version = "0.24", features = ["std", "alloc"] }
+caliptra-ureg.workspace = true
+serde.workspace = true
+serde_json.workspace = true

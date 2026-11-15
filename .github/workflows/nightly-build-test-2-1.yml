@@ -15,12 +15,12 @@ jobs:
   dispatch-and-monitor:
     name: ${{ matrix.workflow }} (main-2.1)
     runs-on: ubuntu-latest
+    timeout-minutes: 310
     strategy:
       fail-fast: false
       matrix:
         workflow:
           - build-test.yml
-          - nightly.yml
     env:
       TARGET_REF: main-2.1
       TARGET_WORKFLOW: ${{ matrix.workflow }}
@@ -93,7 +93,7 @@ jobs:
               `Tracking ${dispatchedRun.html_url} (run #${dispatchedRun.run_number}, id ${dispatchedRun.id})`,
             );
 
-            const maxTrackAttempts = 240;
+            const maxTrackAttempts = 600;
             const trackDelayMs = 30000;
 
             for (let attempt = 1; attempt <= maxTrackAttempts; attempt++) {

@@ -15,6 +15,7 @@ The Caliptra MCU firmware provides three external command interfaces: [MCTP VDM 
 | Request Debug Unlock         | SPDM VDM          | MC_PROD_DEBUG_UNLOCK_REQ   | Requests debug unlock in a production environment. |
 | Authorize Debug Unlock Token | SPDM VDM          | MC_PROD_DEBUG_UNLOCK_TOKEN | Sends the debug unlock token for authorization.    |
 | Export Attested CSR          | SPDM VDM          | MC_EXPORT_ATTESTED_CSR     | Discovers device keys or exports an attested CSR.  |
+| Provision IDevID Certificate | SPDM VDM          | MC_PROVISION_IDEV_CERT     | Populates an IDevID certificate into Core and OTP. |
 
 To ensure consistent command behavior and maximize code reuse, we define a protocol-agnostic command handler trait (`CaliptraCmdHandler`) with unified input/output types in the `caliptra-mcu-common-commands` crate. All protocol frontends parse their respective protocol, then call the same backend handler, ensuring code reuse and consistent behavior.
 

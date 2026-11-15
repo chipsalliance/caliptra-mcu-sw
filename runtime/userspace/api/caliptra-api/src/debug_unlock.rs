@@ -9,7 +9,7 @@ use crate::wire::{
     calc_checksum, mbox_execute, CMD_PRODUCTION_AUTH_DEBUG_UNLOCK_REQ,
     CMD_PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN, MBOX_RESP_HEADER_SIZE,
 };
-use crate::ApiAlloc;
+use crate::ScratchAlloc;
 
 const REQ_LEN: usize = 12;
 const RSP_LEN: usize = MBOX_RESP_HEADER_SIZE + 4 + DEBUG_UNLOCK_CHALLENGE_LEN;
@@ -28,7 +28,7 @@ pub const PRODUCTION_AUTH_DEBUG_UNLOCK_TOKEN_RSP_LEN: usize = MBOX_RESP_HEADER_S
 /// On success, writes `unique_device_identifier(32) | challenge(48)` into
 /// `out` and returns [`DEBUG_UNLOCK_CHALLENGE_LEN`].
 #[inline(never)]
-pub async fn request_debug_unlock_challenge<A: ApiAlloc>(
+pub async fn request_debug_unlock_challenge<A: ScratchAlloc>(
     _alloc: &A,
     unlock_level: u8,
     out: &mut [u8],

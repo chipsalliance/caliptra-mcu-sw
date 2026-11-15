@@ -278,6 +278,11 @@ pub fn start_dhcp() -> Result<(), NetworkError> {
     })
 }
 
+/// Stop DHCPv4 after a completed or timed-out boot attempt.
+pub fn stop_dhcp() {
+    LWIP.lock(|s| s.netif.borrow_mut().dhcp_stop());
+}
+
 /// Start stateful DHCPv6 discovery. Call [`dhcp6_has_address`] from the main loop
 /// to check when a global IPv6 address has been obtained.
 #[cfg(feature = "ipv6-boot")]
@@ -288,6 +293,12 @@ pub fn start_dhcp6() -> Result<(), NetworkError> {
             .dhcp6_enable_stateful()
             .map_err(|_| NetworkError::Dhcpv6Failed)
     })
+}
+
+/// Stop DHCPv6 after a completed or timed-out boot attempt.
+#[cfg(feature = "ipv6-boot")]
+pub fn stop_dhcp6() {
+    LWIP.lock(|s| s.netif.borrow_mut().dhcp6_stop());
 }
 
 /// Returns true when DHCPv4 has obtained an IP address.
@@ -514,6 +525,19 @@ pub fn tftp_is_complete() -> bool {
 /// Returns `true` if the TFTP transfer ended with an error.
 pub fn tftp_has_error() -> bool {
     LWIP.lock(|s| s.tftp.borrow().has_error())
+}
+
+/// Abort an active TFTP transfer and clear its buffered state.
+pub fn abort_tftp() {
+    LWIP.lock(|s| {
+        s.tftp.borrow_mut().abort();
+        s.chunk_buf_len.set(0);
+        s.tftp_complete.set(false);
+        s.tftp_has_error.set(false);
+        s.tftp_write_count.set(0);
+        s.tftp_close_count.set(0);
+        s.tftp_total_bytes.set(0);
+    });
 }
 
 /// Take buffered TFTP data, copying up to `out.len()` bytes.

@@ -13,4 +13,5 @@ mcu-caliptra-api = { workspace = true, features = ["mailbox-io"] }
 zerocopy.workspace = true
 
 [features]
+device-ownership-transfer = []
 ocp-lock = []

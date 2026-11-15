@@ -21,10 +21,16 @@ impl McuMailboxTransport {
         }
 
         // Sender attempts to lock mailbox by reading MBOX_LOCK register
-        if self.mbox.regs.lock().unwrap().is_locked() {
-            return Err(McuMailboxError::Locked);
+        {
+            let mut regs = self.mbox.regs.lock().unwrap();
+            if regs.is_locked() {
+                return Err(McuMailboxError::Locked);
+            }
+            let prev_requester = regs.requester;
+            regs.set_requester(self.mbox.soc_agent);
+            regs.read_mcu_mbox0_csr_mbox_lock();
+            regs.set_requester(prev_requester);
         }
-        self.mbox.regs.lock().unwrap().lock();
 
         // Sender writes data to MBOX_SRAM
         for (index, chunk) in payload.chunks(4).enumerate() {
@@ -161,4 +167,41 @@ pub enum McuMailboxError {
     Overflow,
     NotInitialized,
     StatusCode(u32),
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use caliptra_emu_bus::Clock;
+    use caliptra_mcu_emulator_periph::{MciMailboxRequester, McuMailbox0Internal};
+
+    #[test]
+    fn execute_latches_soc_agent_and_restores_mcu_requester() {
+        let clock = Clock::new();
+        let internal = McuMailbox0Internal::new(&clock);
+        internal.regs.lock().unwrap().reset();
+
+        let soc_user = 0xcccc_cccc;
+        let transport =
+            McuMailboxTransport::new(internal.as_external(MciMailboxRequester::SocAgent(soc_user)));
+
+        transport.execute(0x4D44_5353, &[1, 2, 3, 4]).unwrap();
+        {
+            let mut regs = internal.regs.lock().unwrap();
+            assert_eq!(regs.read_mcu_mbox0_csr_mbox_user(), soc_user);
+            assert_eq!(regs.requester, MciMailboxRequester::Mcu);
+        }
+
+        // After releasing the transaction, a subsequent MCU lock acquisition must
+        // latch the MCU requester ID (0xFFFF_FFFF) rather than the previous host ID.
+        transport.finalize();
+        {
+            let mut regs = internal.regs.lock().unwrap();
+            regs.read_mcu_mbox0_csr_mbox_lock();
+            assert_eq!(
+                regs.read_mcu_mbox0_csr_mbox_user(),
+                u32::from(MciMailboxRequester::Mcu)
+            );
+        }
+    }
 }

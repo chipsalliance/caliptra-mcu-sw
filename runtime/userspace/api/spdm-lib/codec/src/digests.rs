@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! DIGESTS response (DSP0274 §10.5 Table 25).
+//! DIGESTS response.
 //!
 //! ```text
 //!  byte 0           byte 1           byte 2..end
@@ -49,7 +49,9 @@ pub struct DigestsRsp<'a> {
 }
 
 impl ResponseBody for DigestsRsp<'_> {
-    const RESPONSE_CODE: ReqRespCode = ReqRespCode::DIGESTS;
+    fn response_code(&self) -> ReqRespCode {
+        ReqRespCode::DIGESTS
+    }
 
     fn body_size(&self) -> usize {
         DigestsRspBody::SIZE + self.digests.len()

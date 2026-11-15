@@ -41,7 +41,7 @@ use embassy_executor::Spawner;
 ///
 /// It contributes to `MaxSPDMmsgSize` only when buffered large requests are
 /// enabled. Raising it requires larger scratch pools.
-#[cfg(feature = "cert-provisioning")]
+#[cfg(feature = "attested-csr")]
 const MAX_BUFFERED_SPDM_MSG_SIZE: usize = {
     let declared = 14 * 1024;
     assert!(
@@ -55,7 +55,7 @@ const MAX_BUFFERED_SPDM_MSG_SIZE: usize = {
     declared
 };
 
-#[cfg(not(feature = "cert-provisioning"))]
+#[cfg(not(feature = "attested-csr"))]
 const MAX_BUFFERED_SPDM_MSG_SIZE: usize = {
     let declared = 8 * 1024;
     assert!(
@@ -110,7 +110,7 @@ const _: () = assert!(
 /// Maximum across streaming request handlers. Add new streamed request limits
 /// to this block.
 const MAX_STREAMED_SPDM_REQUEST_LEN: usize = {
-    #[cfg(feature = "test-mctp-spdm-set-certificate")]
+    #[cfg(feature = "cert-provisioning")]
     {
         if MAX_STREAMED_SET_CERTIFICATE_REQUEST_LEN > MAX_STREAMED_VDM_REQUEST_LEN {
             MAX_STREAMED_SET_CERTIFICATE_REQUEST_LEN
@@ -119,7 +119,7 @@ const MAX_STREAMED_SPDM_REQUEST_LEN: usize = {
         }
     }
 
-    #[cfg(not(feature = "test-mctp-spdm-set-certificate"))]
+    #[cfg(not(feature = "cert-provisioning"))]
     {
         MAX_STREAMED_VDM_REQUEST_LEN
     }
@@ -133,9 +133,9 @@ const MAX_STREAMED_VDM_REQUEST_LEN: usize =
 /// Maximum streamed SET_CERTIFICATE request for a CertChain.
 ///
 /// This limit is tunable based on the integrator's requirements.
-#[cfg(feature = "test-mctp-spdm-set-certificate")]
+#[cfg(feature = "cert-provisioning")]
 const MAX_STANDARD_CERT_CHAIN_LEN: usize = u16::MAX as usize;
-#[cfg(feature = "test-mctp-spdm-set-certificate")]
+#[cfg(feature = "cert-provisioning")]
 const MAX_STREAMED_SET_CERTIFICATE_REQUEST_LEN: usize = caliptra_mcu_spdm_codec::SpdmMsgHdrPdu::SIZE
     + caliptra_mcu_spdm_codec::SetCertificateReqBody::SIZE
     + MAX_STANDARD_CERT_CHAIN_LEN;
@@ -143,6 +143,10 @@ const MAX_STREAMED_SET_CERTIFICATE_REQUEST_LEN: usize = caliptra_mcu_spdm_codec:
 /// Conservative upper bound on transport MTU. The real MTU is a runtime
 /// transport property, so the budget uses a declared ceiling instead.
 const MAX_TRANSPORT_MTU: usize = 1024;
+
+const fn scratch_alloc_size(size: usize) -> usize {
+    size.div_ceil(BITMAP_SLOT_SIZE) * BITMAP_SLOT_SIZE
+}
 
 /// Pool-resident state that survives across requests once a secure session is
 /// established: the `SessionInfo` box (key schedule holds up to nine 128-byte
@@ -171,21 +175,132 @@ const LARGE_MSG_PATH_PEAK: usize =
     MAX_BUFFERED_SPDM_MSG_SIZE + MAX_TRANSPORT_MTU + PQC_SIGNING_PEAK;
 
 /// Peak DPE working set during ML-DSA-87 signing, including bitmap slot rounding.
-const PQC_SIGNING_PEAK: usize = mcu_caliptra_api::DPE_MLDSA87_SIGN_SCRATCH_PEAK + 4 * 64;
+const PQC_SIGNING_PEAK: usize =
+    mcu_caliptra_api::DPE_MLDSA87_SIGN_SCRATCH_PEAK + 4 * BITMAP_SLOT_SIZE;
 
 /// Peak concurrent allocation on the certificate / secure-session path: the
 /// mailbox working set plus the secured-message plaintext and ciphertext
 /// staging buffers.
 const CRYPTO_PATH_PEAK: usize = TRANSIENT_MAILBOX_PEAK + 2 * MAX_TRANSPORT_MTU;
 
-/// Minimum scratch pool that can satisfy [`MAX_BUFFERED_SPDM_MSG_SIZE`].
+/// Logical size of an ML-KEM-1024 KEY_EXCHANGE request.
 ///
-/// The two request paths are mutually exclusive: a single request either
-/// builds a large chunked response or runs the certificate/crypto path, never
-/// both. Likewise the stack rents exactly one large buffer, for a `CHUNK_SEND`
-/// reassembly or a `CHUNK_GET` response but not both. So the transient term is
-/// a max, not a sum, laid on top of the session state that persists across
-/// requests.
+/// At 1568 bytes of `ExchangeData` this always exceeds the transport MTU, so the
+/// request arrives via `CHUNK_SEND` and is reassembled into a rented buffer.
+const MAX_KEY_EXCHANGE_REQ_LEN: usize = caliptra_mcu_spdm_codec::SpdmMsgHdrPdu::SIZE
+    + core::mem::size_of::<caliptra_mcu_spdm_codec::KeyExchangeReqBodyFixed>()
+    + caliptra_mcu_spdm_codec::MAX_EXCHANGE_DATA_SIZE
+    + 2 // OpaqueDataLength
+    + caliptra_mcu_spdm_codec::MAX_SUPPORTED_VERSION_LIST_OPAQUE_SIZE;
+
+/// Logical size of the largest KEY_EXCHANGE_RSP: ML-KEM-1024 exchange data
+/// signed with ML-DSA-87.
+///
+/// Fixed body (6) + RandomData + ExchangeData + MeasurementSummaryHash +
+/// OpaqueDataLength + OpaqueData + Signature + ResponderVerifyData. At 6347
+/// bytes it always exceeds the MTU and is built in a rented large buffer, then
+/// served through `CHUNK_GET`.
+const MAX_KEY_EXCHANGE_RSP_LEN: usize = caliptra_mcu_spdm_codec::SpdmMsgHdrPdu::SIZE
+    + caliptra_mcu_spdm_codec::KEY_EXCHANGE_RSP_FIXED_BODY_SIZE
+    + caliptra_mcu_spdm_codec::MAX_EXCHANGE_DATA_SIZE
+    + caliptra_mcu_spdm_codec::SHA384_HASH_SIZE
+    + 2
+    + caliptra_mcu_spdm_codec::OPAQUE_VERSION_SELECTION_SIZE
+    + caliptra_mcu_spdm_codec::MLDSA87_SIGNATURE_SIZE
+    + caliptra_mcu_spdm_codec::SHA384_HASH_SIZE;
+
+/// Maximum temporary DMTF measurement block used to compute the KEY_EXCHANGE
+/// measurement summary hash.
+const MAX_MEASUREMENT_SUMMARY_BLOCK_LEN: usize = caliptra_mcu_spdm_codec::MEAS_BLOCK_METADATA_SIZE
+    + caliptra_mcu_attestation_evidence::SIGNED_OCP_EAT_MAX_SIZE;
+
+/// Logical size of the largest signed MEASUREMENTS response: one signed OCP EAT
+/// measurement block, the largest single provider block, signed with ML-DSA-87.
+///
+/// Fixed body (6) + MeasurementRecord + Nonce + OpaqueDataLength +
+/// RequesterContext + Signature. At about 12 KiB it always exceeds the MTU and
+/// is built in a rented large buffer, then served through `CHUNK_GET`.
+const MAX_MEASUREMENTS_RSP_LEN: usize = caliptra_mcu_spdm_codec::SpdmMsgHdrPdu::SIZE
+    + 6
+    + MAX_MEASUREMENT_SUMMARY_BLOCK_LEN
+    + caliptra_mcu_spdm_traits::SPDM_NONCE_LEN
+    + 2
+    + caliptra_mcu_spdm_codec::REQUESTER_CONTEXT_LEN
+    + caliptra_mcu_spdm_codec::MLDSA87_SIGNATURE_SIZE;
+
+/// Peak concurrent allocation while handling a signed GET_MEASUREMENTS over
+/// MCTP.
+///
+/// MCTP carries no secured messages, so no `SessionInfo` or TH context exists
+/// and only the VCA / M1 / L1 hash contexts can persist. The one-slot receive
+/// frame and the rented response, including its one-byte MCTP header, stay
+/// live while the provider signs the OCP EAT and the responder then signs the
+/// L1 transcript. The two ML-DSA-87 signing phases are sequential.
+const MCTP_SIGNED_MEASUREMENTS_PEAK: usize =
+    3 * scratch_alloc_size(mcu_caliptra_api::SHA_CONTEXT_SIZE)
+        + BITMAP_SLOT_SIZE
+        + scratch_alloc_size(1 + MAX_MEASUREMENTS_RSP_LEN)
+        + PQC_SIGNING_PEAK;
+
+/// Transient peak while generating a KEY_EXCHANGE measurement summary.
+///
+/// The large response has not been rented yet. The reassembled request, final
+/// receive frame, summary output, signed OCP EAT block, and the provider's DPE
+/// signing working set coexist.
+const KEY_EXCHANGE_MEASUREMENT_PHASE: usize = scratch_alloc_size(MAX_KEY_EXCHANGE_REQ_LEN)
+    + scratch_alloc_size(MAX_TRANSPORT_MTU)
+    + scratch_alloc_size(caliptra_mcu_spdm_codec::SHA384_HASH_SIZE)
+    + scratch_alloc_size(MAX_MEASUREMENT_SUMMARY_BLOCK_LEN)
+    + PQC_SIGNING_PEAK;
+
+/// Transient peak while encapsulating a chunked ML-KEM KEY_EXCHANGE.
+///
+/// The response owns the ciphertext destination. The already-computed summary
+/// hash remains live, and the mailbox request and response are additional
+/// allocations during encapsulation.
+const KEY_EXCHANGE_ENCAPS_PHASE: usize = scratch_alloc_size(MAX_KEY_EXCHANGE_REQ_LEN)
+    + scratch_alloc_size(MAX_KEY_EXCHANGE_RSP_LEN)
+    + scratch_alloc_size(MAX_TRANSPORT_MTU)
+    + scratch_alloc_size(caliptra_mcu_spdm_codec::SHA384_HASH_SIZE)
+    + scratch_alloc_size(mcu_caliptra_api::MLKEM_ENCAPSULATE_REQ_SIZE)
+    + scratch_alloc_size(mcu_caliptra_api::MLKEM_ENCAPSULATE_RSP_SIZE);
+
+/// Transient peak while signing.
+///
+/// The reassembled request is released after it is added to the transcript and
+/// the KEY_EXCHANGE path does not allocate the generic `CHUNK_SEND_ACK` staging
+/// buffer. Only the receive frame, response, handler workspace, and signing
+/// working set remain.
+const KEY_EXCHANGE_SIGNING_PHASE: usize = scratch_alloc_size(MAX_TRANSPORT_MTU)
+    + scratch_alloc_size(MAX_KEY_EXCHANGE_RSP_LEN)
+    + scratch_alloc_size(caliptra_mcu_spdm_stack::KEY_EXCHANGE_WORKSPACE_SIZE)
+    + PQC_SIGNING_PEAK;
+
+/// Peak concurrent allocation while handling a chunked ML-KEM KEY_EXCHANGE.
+///
+/// Measurement generation, encapsulation, and signing are sequential, so the
+/// transient term is the largest phase.
+const KEY_EXCHANGE_CRYPTO_PHASE: usize = if KEY_EXCHANGE_SIGNING_PHASE > KEY_EXCHANGE_ENCAPS_PHASE {
+    KEY_EXCHANGE_SIGNING_PHASE
+} else {
+    KEY_EXCHANGE_ENCAPS_PHASE
+};
+const KEY_EXCHANGE_CHUNKED_PEAK: usize =
+    if KEY_EXCHANGE_MEASUREMENT_PHASE > KEY_EXCHANGE_CRYPTO_PHASE {
+        KEY_EXCHANGE_MEASUREMENT_PHASE
+    } else {
+        KEY_EXCHANGE_CRYPTO_PHASE
+    };
+
+/// Minimum scratch pool for a responder task, independent of transport.
+///
+/// The request paths are mutually exclusive: a single request either builds a
+/// large chunked response or runs the certificate/crypto path, never both. So
+/// the transient term is a max, not a sum, laid on top of the session state
+/// that persists across requests.
+///
+/// This excludes KEY_EXCHANGE, which only a transport with secured-message
+/// support can reach; see [`required_session_scratch`].
 const fn required_scratch() -> usize {
     let transient_peak = if LARGE_MSG_PATH_PEAK > CRYPTO_PATH_PEAK {
         LARGE_MSG_PATH_PEAK
@@ -195,47 +310,77 @@ const fn required_scratch() -> usize {
     SESSION_WORKING_SET + transient_peak
 }
 
+/// Minimum scratch pool for a responder task whose transport carries secured
+/// messages, and can therefore negotiate a key exchange.
+///
+/// Adds [`KEY_EXCHANGE_CHUNKED_PEAK`] to the paths in [`required_scratch`].
+/// Chunked KEY_EXCHANGE releases its reassembled request before signing its
+/// buffered response.
+///
+/// MCTP does not need this: its transport has no secured messages, so
+/// NEGOTIATE_ALGORITHMS selects neither DHE nor KEM, and the KEY_EXCHANGE
+/// handler rejects the request before allocating anything beyond the
+/// reassembled request.
+const fn required_session_scratch() -> usize {
+    let key_exchange = SESSION_WORKING_SET + KEY_EXCHANGE_CHUNKED_PEAK;
+    if key_exchange > required_scratch() {
+        key_exchange
+    } else {
+        required_scratch()
+    }
+}
+
 /// Bitmap allocator pool size per responder task.
 ///
 /// MCTP hosts Caliptra VDM and must hold a buffered large request while its
-/// handler uses transient DPE/SHA mailbox workspaces.
-#[cfg(feature = "cert-provisioning")]
+/// handler uses transient DPE/SHA mailbox workspaces. It must also hold a
+/// signed MEASUREMENTS response while ML-DSA-87 signing runs.
+#[cfg(feature = "attested-csr")]
 const MCTP_SPDM_SCRATCH_SIZE: usize = {
     let declared = 24 * 1024;
     assert!(
         declared >= required_scratch(),
-        "MCTP SPDM scratch pool is too small for MAX_BUFFERED_SPDM_MSG_SIZE"
+        "MCTP SPDM scratch pool is too small for required_scratch()"
+    );
+    assert!(
+        declared >= MCTP_SIGNED_MEASUREMENTS_PEAK,
+        "MCTP SPDM scratch pool is too small for MCTP_SIGNED_MEASUREMENTS_PEAK"
     );
     declared
 };
 
-#[cfg(not(feature = "cert-provisioning"))]
+#[cfg(not(feature = "attested-csr"))]
 const MCTP_SPDM_SCRATCH_SIZE: usize = {
     let declared = 18 * 1024;
     assert!(
         declared >= required_scratch(),
-        "MCTP SPDM scratch pool is too small for MAX_BUFFERED_SPDM_MSG_SIZE"
+        "MCTP SPDM scratch pool is too small for required_scratch()"
+    );
+    assert!(
+        declared >= MCTP_SIGNED_MEASUREMENTS_PEAK,
+        "MCTP SPDM scratch pool is too small for MCTP_SIGNED_MEASUREMENTS_PEAK"
     );
     declared
 };
 
-/// DOE needs room for measurement records and secure-session crypto workspaces.
-#[cfg(feature = "cert-provisioning")]
+/// DOE needs room for measurement records and secure-session crypto workspaces,
+/// including the chunked ML-KEM / ML-DSA-87 KEY_EXCHANGE path.
+#[cfg(feature = "attested-csr")]
 const DOE_SPDM_SCRATCH_SIZE: usize = {
     let declared = 24 * 1024;
     assert!(
-        declared >= required_scratch(),
-        "DOE SPDM scratch pool is too small for MAX_BUFFERED_SPDM_MSG_SIZE"
+        declared >= required_session_scratch(),
+        "DOE SPDM scratch pool is too small for required_session_scratch()"
     );
     declared
 };
 
-#[cfg(not(feature = "cert-provisioning"))]
+#[cfg(not(feature = "attested-csr"))]
 const DOE_SPDM_SCRATCH_SIZE: usize = {
-    let declared = 18 * 1024;
+    let declared = 19 * 1024;
     assert!(
-        declared >= required_scratch(),
-        "DOE SPDM scratch pool is too small for MAX_BUFFERED_SPDM_MSG_SIZE"
+        declared >= required_session_scratch(),
+        "DOE SPDM scratch pool is too small for required_session_scratch()"
     );
     declared
 };
@@ -246,17 +391,13 @@ const TEST_PCI_SIG_VENDOR_ID: u16 = 0x0001;
 const SUPPORTED_TDISP_VERSIONS: &[TdispVersion] = &[TdispVersion::V10];
 
 #[cfg(feature = "test-mctp-spdm-attestation-pcr-quote")]
-fn measurement_provider(
-) -> caliptra_mcu_spdm_pal::measurements::providers::pcr_quote::PcrQuoteMeasurementProvider {
-    caliptra_mcu_spdm_pal::measurements::providers::pcr_quote::PcrQuoteMeasurementProvider::new()
+fn measurement_provider() -> caliptra_mcu_spdm_pal::PcrQuoteMeasurementProvider {
+    caliptra_mcu_spdm_pal::PcrQuoteMeasurementProvider::new()
 }
 
 #[cfg(not(feature = "test-mctp-spdm-attestation-pcr-quote"))]
-fn measurement_provider(
-) -> caliptra_mcu_spdm_pal::measurements::providers::ocp_eat::OcpEatMeasurementProvider {
-    caliptra_mcu_spdm_pal::measurements::providers::ocp_eat::OcpEatMeasurementProvider::new(
-        caliptra_mcu_spdm_pal::cert::DPE_LEAF_LABEL,
-    )
+fn measurement_provider() -> caliptra_mcu_spdm_pal::OcpEatMeasurementProvider {
+    caliptra_mcu_spdm_pal::OcpEatMeasurementProvider::new(caliptra_mcu_cert_store::DPE_LEAF_LABEL)
 }
 
 #[repr(C, align(64))]
@@ -286,7 +427,7 @@ pub(crate) unsafe fn borrow_boot_scratch() -> BootScratch {
     )
 }
 
-/// Spawn SPDM responder tasks after [`crate::cert_store::boot_init`] succeeds,
+/// Spawn SPDM responder tasks after [`crate::cert_store::init`] succeeds,
 /// consuming the boot owner before the MCTP responder starts.
 pub(crate) fn spawn_spdm_tasks(spawner: &Spawner, boot_owner: BootScratch) {
     let mut cw = Console::<DefaultSyscalls>::writer();
@@ -346,8 +487,8 @@ async fn spdm_mctp_responder() {
     static COMMANDS: crate::caliptra_cmd_handler::CaliptraCmdBackend =
         crate::caliptra_cmd_handler::CaliptraCmdBackend;
     static STREAM: caliptra_vdm::CaliptraVdmStreamHook = caliptra_vdm::CaliptraVdmStreamHook;
-    static AUTHORIZATION: caliptra_vdm::CaliptraVdmAuthorizationHook =
-        caliptra_vdm::CaliptraVdmAuthorizationHook;
+    static AUTHORIZATION: crate::mcu_mbox::cmd_auth::RuntimeCommandAuthorizer =
+        crate::mcu_mbox::cmd_auth::RuntimeCommandAuthorizer;
     let vdm = caliptra_vdm::AppVdmBackend::enabled(&COMMANDS, &STREAM, &AUTHORIZATION);
     let mut stack = SpdmStack::<_, 1, _>::with_vdm_backend(pal, vdm);
 

@@ -14,6 +14,7 @@ const DEFAULT_DEVICE_CAPABILITIES: [u8; DEVICE_CAPABILITIES_SIZE] = {
     capabilities[15] = 1;
     capabilities[23] = 0xFF;
     capabilities[25] = 2;
+    capabilities[26] = 1;
     capabilities[27] = 0xEF;
     capabilities[31] = 9;
     capabilities
@@ -196,7 +197,7 @@ mod tests {
 
         assert_eq!(capabilities.len(), DEVICE_CAPABILITIES_SIZE);
         assert_eq!(&capabilities[20..24], &0x0000_00FFu32.to_be_bytes());
-        assert_eq!(&capabilities[24..28], &0x0002_00EFu32.to_be_bytes());
+        assert_eq!(&capabilities[24..28], &0x0002_01EFu32.to_be_bytes());
         assert_eq!(&capabilities[28..32], &0x0000_0009u32.to_be_bytes());
         assert_eq!(&capabilities[32..48], &[0; 16]);
         assert_eq!(&capabilities[48..64], &[0; 16]);

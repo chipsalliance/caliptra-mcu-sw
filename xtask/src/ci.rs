@@ -15,19 +15,28 @@ const CACHE_FORMAT_VERSION: &str = "main-2.1-v2";
 pub const MCU_KERNEL_FPGA: FwId = FwId {
     crate_name: "caliptra-mcu-runtime-fpga",
     bin_name: "caliptra-mcu-runtime-fpga",
-    fw_type: FirmwareType::Source { features: &[] },
+    fw_type: FirmwareType::Source {
+        features: &[],
+        hw_revision: None,
+    },
 };
 
 pub const MCU_ROM_FPGA: FwId = FwId {
     crate_name: "caliptra-mcu-rom-fpga",
     bin_name: "caliptra-mcu-rom-fpga",
-    fw_type: FirmwareType::Source { features: &[] },
+    fw_type: FirmwareType::Source {
+        features: &[],
+        hw_revision: None,
+    },
 };
 
 pub const MCU_USER_FPGA: FwId = FwId {
     crate_name: "user-app",
     bin_name: "user-app",
-    fw_type: FirmwareType::Source { features: &[] },
+    fw_type: FirmwareType::Source {
+        features: &[],
+        hw_revision: None,
+    },
 };
 
 pub(crate) fn size_history() -> Result<(), anyhow::Error> {
@@ -47,37 +56,38 @@ pub(crate) fn size_history() -> Result<(), anyhow::Error> {
             "Kernel size",
             MCU_KERNEL_FPGA,
             SizeType::Instruction,
-            true,
+            Build::Runtime,
         )))
+        // Runtime builds skip the ROM, so the ROM must be built explicitly.
         .add_builder(Box::new(CaliptraElfSizeGenerator::new(
             "ROM size",
             MCU_ROM_FPGA,
             SizeType::Instruction,
-            false,
+            Build::Rom,
         )))
         .add_builder(Box::new(CaliptraElfSizeGenerator::new(
             "App size",
             MCU_USER_FPGA,
             SizeType::Instruction,
-            false,
+            Build::None,
         )))
         .add_builder(Box::new(CaliptraElfSizeGenerator::new(
             "Kernel stack size",
             MCU_KERNEL_FPGA,
             SizeType::Stack,
-            false,
+            Build::None,
         )))
         .add_builder(Box::new(CaliptraElfSizeGenerator::new(
             "User stack size",
             MCU_USER_FPGA,
             SizeType::Stack,
-            false,
+            Build::None,
         )))
         .add_builder(Box::new(CaliptraElfSizeGenerator::new(
             "App .bss size",
             MCU_USER_FPGA,
             SizeType::Bss,
-            false,
+            Build::None,
         )))
         .add_builder(Box::new(SramOverflowGenerator))
         .run()
@@ -124,6 +134,14 @@ fn build_runtime(target_dir: &Path) -> Result<PathBuf> {
     result
 }
 
+fn build_rom(target_dir: &Path) -> Result<PathBuf> {
+    caliptra_mcu_builder::rom_build(&caliptra_mcu_builder::CaliptraBuildArgs {
+        platform: Some("fpga"),
+        target_dir: Some(target_dir.to_path_buf()),
+        ..Default::default()
+    })
+}
+
 fn get_elf_bytes(target_dir: &Path, fwid: FwId<'_>) -> io::Result<Vec<u8>> {
     fs::read(
         target_dir
@@ -167,16 +185,30 @@ enum SizeType {
     Bss,
 }
 
-/// Builds Caliptra firmware using runtime_build_with_apps and measures ELF size.
+/// Which firmware (if any) a generator builds before measuring.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Build {
+    /// Reuse artifacts produced by an earlier generator.
+    None,
+    Runtime,
+    Rom,
+}
+
+/// Builds Caliptra firmware and measures ELF size.
 struct CaliptraElfSizeGenerator {
     name: String,
     fwid: FwId<'static>,
     size_type: SizeType,
-    build: bool,
+    build: Build,
 }
 
 impl CaliptraElfSizeGenerator {
-    fn new(name: impl Into<String>, fwid: FwId<'static>, size_type: SizeType, build: bool) -> Self {
+    fn new(
+        name: impl Into<String>,
+        fwid: FwId<'static>,
+        size_type: SizeType,
+        build: Build,
+    ) -> Self {
         Self {
             name: name.into(),
             fwid,
@@ -188,8 +220,14 @@ impl CaliptraElfSizeGenerator {
     fn build_elf(&self, workspace: &Path) -> io::Result<u64> {
         let target_dir = workspace.join("target");
 
-        if self.build {
-            build_runtime(&target_dir).map_err(other_err)?;
+        match self.build {
+            Build::None => {}
+            Build::Runtime => {
+                build_runtime(&target_dir).map_err(other_err)?;
+            }
+            Build::Rom => {
+                build_rom(&target_dir).map_err(other_err)?;
+            }
         }
 
         let elf_bytes = get_elf_bytes(&target_dir, self.fwid)?;

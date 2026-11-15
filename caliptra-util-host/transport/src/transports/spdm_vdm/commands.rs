@@ -15,6 +15,7 @@
 //! - RequestDebugUnlock (0x06)
 //! - AuthorizeDebugUnlockToken (0x07)
 //! - ExportAttestedCsr (0x08)
+//! - ProvisionIdevCert (0x09)
 //! - DeviceOwnershipTransfer (0x11)
 //! - AuthorizedCommand (0x12)
 
@@ -142,6 +143,18 @@ fn write_dot_transition_response(
 // ---------------------------------------------------------------------------
 // DeviceOwnershipTransfer (CaliptraVdmCommand::DeviceOwnershipTransfer)
 // ---------------------------------------------------------------------------
+
+pub fn handle_dot_enable(
+    payload: &[u8],
+    driver: &mut dyn SpdmVdmDriver,
+    response_buffer: &mut [u8],
+) -> Result<usize, TransportError> {
+    let request =
+        DotEnableRequest::from_bytes(payload).map_err(|_| TransportError::InvalidMessage)?;
+    let data =
+        send_authorized_dot_request(MC_DOT_ENABLE_CANONICAL_CMD_ID, request.as_bytes(), driver)?;
+    write_dot_transition_response(&data, response_buffer)
+}
 
 pub fn handle_dot_lock(
     payload: &[u8],
@@ -402,6 +415,56 @@ pub fn handle_export_attested_csr(
     let copy_len = resp_bytes.len().min(response_buffer.len());
     response_buffer[..copy_len].copy_from_slice(&resp_bytes[..copy_len]);
     Ok(copy_len)
+}
+
+// ---------------------------------------------------------------------------
+// ProvisionIdevCert (CaliptraCommandId::ProvisionIdevCert)
+// ---------------------------------------------------------------------------
+
+/// Encode a `PROVISION_IDEV_CERT (0x09)` request and decode the empty response.
+///
+/// VDM wire format request:
+///   `[version(1), 0x09(1), algorithm: u32 LE, mode: u32 LE, data_len: u32 LE, data[..data_len]]`
+/// VDM wire format response:
+///   `[version(1), 0x09(1), completion_code(1)]`
+pub fn handle_provision_idevid_cert(
+    payload: &[u8],
+    driver: &mut dyn SpdmVdmDriver,
+    response_buffer: &mut [u8],
+) -> Result<usize, TransportError> {
+    let req = certificate::ProvisionIdevCertRequest::from_bytes(payload)
+        .map_err(|_| TransportError::InvalidMessage)?;
+    let data_len = req.data_len as usize;
+    if data_len == 0 || data_len > certificate::MAX_IDEV_CERT_SIZE {
+        return Err(TransportError::InvalidMessage);
+    }
+
+    let mut vdm_payload = Vec::with_capacity(12 + data_len);
+    vdm_payload.extend_from_slice(&req.algorithm.to_le_bytes());
+    vdm_payload.extend_from_slice(&req.mode.to_le_bytes());
+    vdm_payload.extend_from_slice(&req.data_len.to_le_bytes());
+    vdm_payload.extend_from_slice(&req.data[..data_len]);
+
+    let mut resp_buf = [0u8; MAX_VDM_RESPONSE_SIZE];
+    let resp_len = send_vdm_request(
+        CaliptraVdmCommand::ProvisionIdevCert,
+        &vdm_payload,
+        driver,
+        &mut resp_buf,
+    )?;
+    if resp_len != VDM_RESPONSE_HEADER_SIZE {
+        return Err(TransportError::InvalidMessage);
+    }
+
+    let internal_resp = certificate::ProvisionIdevCertResponse {
+        common: CommonResponse { fips_status: 0 },
+    };
+    let resp_bytes = internal_resp.as_bytes();
+    if response_buffer.len() < resp_bytes.len() {
+        return Err(TransportError::BufferError("Response buffer too small"));
+    }
+    response_buffer[..resp_bytes.len()].copy_from_slice(resp_bytes);
+    Ok(resp_bytes.len())
 }
 
 // ---------------------------------------------------------------------------
@@ -991,6 +1054,74 @@ mod tests {
     }
 
     #[test]
+    fn provision_idevid_cert_encodes_variable_vdm_payload_and_validates_bounds() {
+        use certificate::{
+            ProvisionIdevCertMode, ProvisionIdevCertRequest, ProvisionIdevCertResponse,
+        };
+
+        let cert = [0x30u8, 0x82, 0x02, 0x1F, 0xAA, 0x55];
+        let req = ProvisionIdevCertRequest::new(
+            attestation::AsymAlgo::EccP384,
+            ProvisionIdevCertMode::PopulateOnly,
+            &cert,
+        )
+        .unwrap();
+
+        let mut driver = FakeDriver {
+            response: success_response(CaliptraVdmCommand::ProvisionIdevCert, &[]),
+            last_request: Vec::new(),
+        };
+        let mut response_buffer = [0u8; core::mem::size_of::<ProvisionIdevCertResponse>()];
+
+        let written =
+            handle_provision_idevid_cert(req.as_bytes(), &mut driver, &mut response_buffer)
+                .expect("ProvisionIdevCert should succeed");
+        assert_eq!(written, response_buffer.len());
+        assert_eq!(
+            &driver.last_request[..2],
+            &[
+                CALIPTRA_VDM_COMMAND_VERSION,
+                CaliptraVdmCommand::ProvisionIdevCert as u8,
+            ]
+        );
+        assert_eq!(driver.last_request.len(), 2 + 12 + cert.len());
+        assert_eq!(
+            &driver.last_request[2..6],
+            &(attestation::AsymAlgo::EccP384 as u32).to_le_bytes()
+        );
+        assert_eq!(
+            &driver.last_request[6..10],
+            &(ProvisionIdevCertMode::PopulateOnly as u32).to_le_bytes()
+        );
+        assert_eq!(
+            &driver.last_request[10..14],
+            &(cert.len() as u32).to_le_bytes()
+        );
+        assert_eq!(&driver.last_request[14..], &cert);
+
+        // Zero data_len or trailing response bytes must fail.
+        let mut bad_req = req.clone();
+        bad_req.data_len = 0;
+        assert!(matches!(
+            handle_provision_idevid_cert(bad_req.as_bytes(), &mut driver, &mut response_buffer),
+            Err(TransportError::InvalidMessage),
+        ));
+
+        let mut trailing_driver = FakeDriver {
+            response: success_response(CaliptraVdmCommand::ProvisionIdevCert, &[0xFF]),
+            last_request: Vec::new(),
+        };
+        assert!(matches!(
+            handle_provision_idevid_cert(
+                req.as_bytes(),
+                &mut trailing_driver,
+                &mut response_buffer
+            ),
+            Err(TransportError::InvalidMessage),
+        ));
+    }
+
+    #[test]
     fn authorized_fuse_commands_preserve_exact_wire_layout() {
         let mut sig = caliptra_mcu_mbox_common::messages::HybridSignature::default();
         sig.ecc_sig_r.fill(0x11);
@@ -998,6 +1129,7 @@ mod tests {
         sig.mldsa_sig.fill(0x33);
 
         let pvpk = fuse::ProvisionVendorPkHashRequest {
+            metadata: Default::default(),
             slot: 0x0102_0304,
             hash: [0xA5; 48],
             sig: sig.clone(),
@@ -1007,6 +1139,7 @@ mod tests {
             mldsa_pub: [0; fuse::AUTH_PUB_MLDSA_SIZE],
         };
         let mcms = fuse::FuseIncreaseMinSvnRequest {
+            metadata: Default::default(),
             flags: 0x1122_3344,
             target: 0x99AA_BBCC,
             svn: 0x5566_7788,
@@ -1017,6 +1150,7 @@ mod tests {
             mldsa_pub: [0; fuse::AUTH_PUB_MLDSA_SIZE],
         };
         let mrvk = fuse::FuseRevokeVendorPubKeyRequest {
+            metadata: Default::default(),
             reserved: 0x0102_0304,
             vendor_pk_hash_slot: 0x1112_1314,
             key_type: 0x2122_2324,
@@ -1028,6 +1162,7 @@ mod tests {
             mldsa_pub: [0; fuse::AUTH_PUB_MLDSA_SIZE],
         };
         let rvkh = fuse::FuseRevokeVendorPkHashRequest {
+            metadata: Default::default(),
             reserved: 0x4142_4344,
             vendor_pk_hash_slot: 0x5152_5354,
             sig: sig.clone(),
@@ -1037,6 +1172,7 @@ mod tests {
             mldsa_pub: [0; fuse::AUTH_PUB_MLDSA_SIZE],
         };
         let ifpk = fuse::FuseLockPartitionRequest {
+            metadata: Default::default(),
             partition: 0x6162_6364,
             sig: sig.clone(),
             nonce: [0; fuse::AUTH_CMD_CHALLENGE_SIZE],
@@ -1045,6 +1181,7 @@ mod tests {
             mldsa_pub: [0; fuse::AUTH_PUB_MLDSA_SIZE],
         };
         let popk = fuse::ProvisionOwnerPkHashRequest {
+            metadata: Default::default(),
             hash: [0xC3; 48],
             sig: sig.clone(),
             nonce: [0; fuse::AUTH_CMD_CHALLENGE_SIZE],
@@ -1066,6 +1203,9 @@ mod tests {
             ];
             packet.extend_from_slice(&command_id.to_le_bytes());
             packet.extend_from_slice(fields);
+            packet.extend_from_slice(&1u32.to_le_bytes());
+            packet.extend_from_slice(&2u32.to_le_bytes());
+            packet.extend_from_slice(&[0; 16]);
             packet.extend_from_slice(&[0u8; fuse::AUTH_CMD_CHALLENGE_SIZE]);
             packet.extend_from_slice(&[0u8; fuse::AUTH_PUB_ECC_COORD_SIZE]);
             packet.extend_from_slice(&[0u8; fuse::AUTH_PUB_ECC_COORD_SIZE]);
@@ -1163,6 +1303,7 @@ mod tests {
     #[test]
     fn authorized_command_rejects_trailing_response_and_small_output_buffer() {
         let req = fuse::FuseIncreaseMinSvnRequest {
+            metadata: Default::default(),
             flags: 0,
             target: 0,
             svn: 1,
@@ -1236,7 +1377,12 @@ mod tests {
 
     #[test]
     fn authorized_dot_commands_preserve_family_subcommand_and_payload() {
-        let cases: [(u32, Vec<u8>, VdmCommandHandlerFn); 3] = [
+        let cases: [(u32, Vec<u8>, VdmCommandHandlerFn); 4] = [
+            (
+                MC_DOT_ENABLE_CANONICAL_CMD_ID,
+                DotEnableRequest::default().as_bytes().to_vec(),
+                handle_dot_enable,
+            ),
             (
                 MC_DOT_LOCK_CANONICAL_CMD_ID,
                 DotLockRequest::default().as_bytes().to_vec(),
@@ -1374,6 +1520,7 @@ mod tests {
         const NATIVE_ENVELOPE: usize = 2 + 4;
 
         let largest_request = [
+            core::mem::size_of::<DotEnableRequest>() + AUTHORIZED_ENVELOPE,
             core::mem::size_of::<DotLockRequest>() + AUTHORIZED_ENVELOPE,
             core::mem::size_of::<DotDisableRequest>() + AUTHORIZED_ENVELOPE,
             core::mem::size_of::<DotRotateRequest>() + AUTHORIZED_ENVELOPE,

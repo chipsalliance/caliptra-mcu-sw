@@ -372,6 +372,107 @@ mod tests {
 
     const DOE_MBOX_SRAM_BASE_ADDR: u32 = DOE_MBOX_BASE_ADDR + 0x1000;
 
+    #[test]
+    fn test_doe_mbox_write_boundaries_and_recovery() {
+        let mut periph = DoeMboxPeriph::default();
+        let capacity = periph.inner.lock().unwrap().max_sram_dword_size * 4;
+        for length in [4, 8, 12, capacity - 4, capacity, 4] {
+            let data: Vec<u8> = (0..length).map(|offset| offset as u8).collect();
+            periph.write_data(data.clone()).unwrap();
+            let inner = periph.inner.lock().unwrap();
+            assert_eq!(inner.mbox_dlen.reg.get() as usize, length / 4);
+            let actual: Vec<u8> = (0..length / 4)
+                .flat_map(|index| inner.read_doe_sram(index).to_le_bytes())
+                .collect();
+            assert_eq!(actual, data);
+            inner
+                .mbox_status
+                .reg
+                .set(DoeMboxStatus::DataReady::SET.value);
+            drop(inner);
+            assert_eq!(periph.read_data().unwrap(), Some(data));
+            assert_eq!(periph.read_data().unwrap(), None);
+        }
+
+        assert!(periph.write_data(vec![0xff; capacity + 4]).is_err());
+        {
+            let inner = periph.inner.lock().unwrap();
+            assert_eq!(inner.mbox_dlen.reg.get(), 1);
+            assert_eq!(inner.read_doe_sram(0), 0x0302_0100);
+        }
+        periph.write_data(vec![0x5a; 4]).unwrap();
+        assert_eq!(periph.inner.lock().unwrap().read_doe_sram(0), 0x5a5a_5a5a);
+    }
+
+    #[test]
+    #[ignore = "Known emulator bug: unaligned writes silently truncate the DWORD length"]
+    fn test_doe_mbox_unaligned_write_preserves_previous_object() {
+        let mut periph = DoeMboxPeriph::default();
+        periph.write_data(vec![0x5a; 4]).unwrap();
+        for length in [1, 3, 5] {
+            assert!(periph.write_data(vec![0xff; length]).is_err());
+            let inner = periph.inner.lock().unwrap();
+            assert_eq!(inner.mbox_dlen.reg.get(), 1);
+            assert_eq!(inner.read_doe_sram(0), 0x5a5a_5a5a);
+        }
+    }
+
+    #[test]
+    fn test_doe_mbox_reset_ack_clears_interrupted_object_and_allows_reuse() {
+        let mut periph = DoeMboxPeriph::default();
+        periph.write_data(vec![0xa5; 512]).unwrap();
+        periph.request_reset();
+        assert!(!periph.check_reset_ack());
+        {
+            let inner = periph.inner.lock().unwrap();
+            assert!(inner.mbox_event.reg.is_set(DoeMboxEvent::ResetReq));
+            assert!(inner.mbox_event.reg.is_set(DoeMboxEvent::DataReady));
+            inner
+                .mbox_status
+                .reg
+                .set(DoeMboxStatus::ResetAck::SET.value);
+        }
+        assert!(periph.check_reset_ack());
+        assert!(!periph.check_reset_ack());
+        assert_eq!(periph.read_data().unwrap(), None);
+        {
+            let inner = periph.inner.lock().unwrap();
+            assert_eq!(inner.mbox_dlen.reg.get(), 0);
+            assert_eq!(inner.mbox_event.reg.get(), 0);
+            assert_eq!(inner.mbox_status.reg.get(), 0);
+            assert!(inner.mbox_sram.iter().all(|&word| word == 0));
+        }
+        periph.write_data(vec![0x5a; 4]).unwrap();
+        let inner = periph.inner.lock().unwrap();
+        assert_eq!(inner.mbox_dlen.reg.get(), 1);
+        assert_eq!(inner.read_doe_sram(0), 0x5a5a_5a5a);
+        assert_eq!(inner.read_doe_sram(1), 0);
+    }
+
+    #[test]
+    fn test_doe_mbox_error_is_consumed_once_and_next_response_is_readable() {
+        let mut periph = DoeMboxPeriph::default();
+        periph
+            .inner
+            .lock()
+            .unwrap()
+            .mbox_status
+            .reg
+            .set(DoeMboxStatus::Error::SET.value);
+        assert!(periph.read_data().is_err());
+        assert_eq!(periph.read_data().unwrap(), None);
+        periph.write_data(vec![1, 2, 3, 4]).unwrap();
+        periph
+            .inner
+            .lock()
+            .unwrap()
+            .mbox_status
+            .reg
+            .set(DoeMboxStatus::DataReady::SET.value);
+        assert_eq!(periph.read_data().unwrap(), Some(vec![1, 2, 3, 4]));
+        assert_eq!(periph.read_data().unwrap(), None);
+    }
+
     fn test_helper_setup_autobus(clock: &Clock) -> AutoRootBus {
         let pic = Pic::new();
         let doe_event_irq = pic.register_irq(McuRootBus::DOE_MBOX_EVENT_IRQ);

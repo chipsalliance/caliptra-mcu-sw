@@ -15,7 +15,11 @@ pub(crate) mod flash_ctrl_test;
     feature = "test-flash-storage-erase",
 ))]
 pub(crate) mod flash_storage_test;
-#[cfg(any(feature = "test-i3c-simple", feature = "test-i3c-constant-writes",))]
+#[cfg(any(
+    feature = "test-i3c-simple",
+    feature = "test-i3c-constant-writes",
+    feature = "test-i3c-echo"
+))]
 pub(crate) mod i3c_target_test;
 #[cfg(any(feature = "test-log-flash-circular", feature = "test-log-flash-linear",))]
 pub(crate) mod linear_log_test;

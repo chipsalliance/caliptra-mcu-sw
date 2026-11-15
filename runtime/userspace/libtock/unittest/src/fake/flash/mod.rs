@@ -97,6 +97,14 @@ impl SyscallDriver for FakeFlashDriver {
                 crate::command_return::success()
             }
             flash_storage_cmd::WRITE => {
+                let address = arg0 as usize;
+                let len = arg1 as usize;
+                let mut content = self.flash_content.borrow_mut();
+                let input = self.write_buffer.borrow();
+                if address + len > content.len() || len > input.len() {
+                    return crate::command_return::failure(ErrorCode::NoMem);
+                }
+                content[address..address + len].copy_from_slice(&input[..len]);
                 // Schedule upcall for write completion
                 self.share_ref
                     .schedule_upcall(subscribe::WRITE_DONE, (arg1, 0, 0))
@@ -104,8 +112,13 @@ impl SyscallDriver for FakeFlashDriver {
                 crate::command_return::success()
             }
             flash_storage_cmd::ERASE => {
-                // Simulate erase completion
+                let address = arg0 as usize;
                 let len = arg1 as usize;
+                let mut content = self.flash_content.borrow_mut();
+                if address + len > content.len() {
+                    return crate::command_return::failure(ErrorCode::NoMem);
+                }
+                content[address..address + len].fill(0xff);
                 self.share_ref
                     .schedule_upcall(subscribe::ERASE_DONE, (len as u32, 0, 0))
                     .expect("Failed to schedule ERASE_DONE upcall");

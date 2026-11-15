@@ -19,7 +19,7 @@ use crate::wire::{
     mbox_execute, populate_checksum, CMD_CM_ECDH_FINISH, CMD_CM_ECDH_GENERATE,
     MBOX_RESP_HEADER_SIZE,
 };
-use crate::ApiAlloc;
+use crate::ScratchAlloc;
 
 // ---------------------------------------------------------------------------
 // Public constants
@@ -68,7 +68,7 @@ const FINISH_RSP_SIZE: usize = MBOX_RESP_HEADER_SIZE + CMK_SIZE;
 /// Writes the encrypted context (needed for [`ecdh_finish`]) and our
 /// public exchange data (to be sent to the peer in KEY_EXCHANGE_RSP).
 #[inline(never)]
-pub async fn ecdh_generate<A: ApiAlloc>(
+pub async fn ecdh_generate<A: ScratchAlloc>(
     alloc: &A,
     context: &mut [u8],
     exchange_data: &mut [u8],
@@ -115,7 +115,7 @@ pub async fn ecdh_generate<A: ApiAlloc>(
 /// * `peer_exchange_data` — the peer's public exchange data from
 ///   KEY_EXCHANGE request.
 #[inline(never)]
-pub async fn ecdh_finish<A: ApiAlloc>(
+pub async fn ecdh_finish<A: ScratchAlloc>(
     alloc: &A,
     context: &[u8],
     key_usage: CmKeyUsage,

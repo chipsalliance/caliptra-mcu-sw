@@ -25,10 +25,13 @@ Fuses are grouped by how essential they are to a working production part:
   (Device Ownership Transfer, MCU-side SVN anti-rollback, OCP LOCK). MCU only
   reads them when the corresponding feature is enabled by the integrator.
 
-Sizes given are the logical (decoded) bit width. Physical OTP cost is larger
-when the field uses a redundancy layout (e.g., `LinearOr{bits:N, dupe:3}` takes
-`N×3` physical bits). See [OTP Encoding Recommendations](#otp-encoding-recommendations)
-for the recommended layout and physical footprint of each fuse.
+Sizes given are the logical (decoded) bit width unless counter storage is
+specified explicitly. For bit-count layouts, `bits:N` denotes N counter bits,
+representing values from 0 through N before redundancy is applied. Physical OTP
+cost is larger when the field uses a redundancy layout (e.g.,
+`LinearOr{bits:N, dupe:3}` takes `N×3` physical bits). See
+[OTP Encoding Recommendations](#otp-encoding-recommendations) for the reference
+SDK layouts and separate integrator recommendations.
 
 ### Mandatory fuses
 
@@ -40,7 +43,7 @@ and written to Caliptra's `FUSE_*` registers or `SS_STRAP_GENERIC[*]` /
 | Fuse | Logical size | Notes |
 |---|---|---|
 | `CPTRA_CORE_VENDOR_PK_HASH_{0..N}` | 384 bits each | One slot active per boot; reference map has 16 slots |
-| `CPTRA_CORE_VENDOR_PK_HASH_VALID` | 16 bits | Slot validity bitmask used to pick the active slot |
+| `CPTRA_CORE_VENDOR_PK_HASH_VALID` | 16 bits | Slot revocation bitmask used to pick the active slot: 0 means valid; 1 means revoked |
 | `CPTRA_CORE_PQC_KEY_TYPE_{0..N}` | 2 bits each | Per-slot; selects MLDSA vs LMS for that vendor PK |
 | `CPTRA_CORE_RUNTIME_SVN` | 128 bits | Caliptra Runtime SVN |
 | `CPTRA_CORE_SOC_MANIFEST_SVN` | 128 bits | SoC manifest SVN (also drives MCU Runtime SVN) |
@@ -53,7 +56,7 @@ and written to Caliptra's `FUSE_*` registers or `SS_STRAP_GENERIC[*]` /
 | `cptra_itrng_health_test_window_size` | 16 bits | Written to `SS_STRAP_GENERIC[2]` bits\[15:0\] |
 | `cptra_itrng_entropy_config_0` | 32 bits | Written to `CPTRA_I_TRNG_ENTROPY_CONFIG_0` |
 | `cptra_itrng_entropy_config_1` | 32 bits | Written to `CPTRA_I_TRNG_ENTROPY_CONFIG_1` |
-| `CPTRA_CORE_OWNER_MANIFEST_MIN_SVN` | 8 bits | Owner manifest min SVN floor (upcoming Caliptra requirement). Planned for `SS_STRAP_GENERIC[3]` bits\[7:0\]; the reference MCU ROM does not yet forward it. PK-hash skip-lock and rotation are already read from `mci_reg_generic_input_wires[1]` bits\[0\] and \[1\], respectively. |
+| `owner_soc_manifest_min_svn` | 8-bit strap value (0-64) | Owner SoC Manifest min SVN floor. Stored in a 64-bit OTP bit-count counter and forwarded by MCU ROM to `SS_STRAP_GENERIC[3]` bits\[15:8\] on full subsystem cold boot |
 
 ### Optional fuses
 
@@ -84,7 +87,7 @@ can be reclaimed.
 |---|---|---|---|
 | `dot_initialized` | 1 bit | DOT | Gate flag indicating DOT flow is active for this part |
 | `dot_fuse_array` | 256 bits | DOT | Monotonic bit-count DOT state counter; must reside in a non-ECC protected partition; supports 128 lock/unlock cycles; more or less can be allocated depending on use cases |
-| `vendor_recovery_pk_hash` | 384 bits | DOT | Vendor master key for `DOT_OVERRIDE` catastrophic recovery (lives in `VENDOR_SECRET_PROD_PARTITION`). One slot today; integrators that need rotation should add `vendor_recovery_pk_hash_{0..N}` + a `vendor_recovery_pk_hash_valid` bitmask and/or revocation bits |
+| `vendor_recovery_pk_hash` | 384 bits | DOT | Vendor recovery public-key hash for `DOT_OVERRIDE` catastrophic recovery (lives in `VENDOR_NON_SECRET_PROD_PARTITION`). One slot today; integrators that need rotation should add `vendor_recovery_pk_hash_{0..N}` + a `vendor_recovery_pk_hash_valid` bitmask and/or revocation bits |
 | `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN` | 32 bits (recommended) | MCU SVN anti-rollback | Min SVN for the MCU Component SVN Manifest itself; must reside in a non-ECC protected partition |
 | `SOC_IMAGE_MIN_SVN[0..M]` | 32 bits each (recommended) | MCU SVN anti-rollback | Per-slot SoC image min SVN; must reside in a non-ECC protected partition; M is integrator-defined (reference map examples like slots 0 and 1 should be scaled per platform needs) |
 | `perma_hek_en` | 1 bit | OCP LOCK (2.1+) | Permanent HEK enable flag |
@@ -106,7 +109,7 @@ transformation from raw OTP bytes to written value. ✓ = Caliptra core fuse reg
   → OTP bytes `77 a8 7c b1 cc 57 66 66 …` → `FUSE_VENDOR_PK_HASH[0] = 0xb17ca877`_
 
 - **`CPTRA_CORE_PQC_KEY_TYPE`** (selected slot) ✓ → `FUSE_PQC_KEY_TYPE`
-  `OneHotLinearMajorityVote{bits:2, dupe:3}` decoded to logical value, then mapped to a Caliptra
+  `OneHotLinearOr{bits:2, dupe:3}` decoded to logical value, then mapped to a Caliptra
   constant: MLDSA → 1, LMS → 3.
   _Example: LMS → OTP bytes `3f 00 00 00` → `FUSE_PQC_KEY_TYPE = 3`_
 
@@ -119,13 +122,13 @@ transformation from raw OTP bytes to written value. ✓ = Caliptra core fuse reg
 - **`CPTRA_CORE_SOC_MANIFEST_MAX_SVN`** ✓ → `FUSE_SOC_MANIFEST_MAX_SVN`: raw u32
 
 - **`CPTRA_CORE_ECC_REVOCATION`** (selected slot) ✓ → `FUSE_ECC_REVOCATION`:
-  `LinearMajorityVote{bits:4, dupe:3}` → decoded u4
+  `LinearOr{bits:4, dupe:3}` → decoded u4
 
 - **`CPTRA_CORE_LMS_REVOCATION`** (selected slot) ✓ → `FUSE_LMS_REVOCATION`:
-  `LinearMajorityVote{bits:16, dupe:2}` → decoded u16
+  `LinearOr{bits:16, dupe:2}` → decoded u16
 
 - **`CPTRA_CORE_MLDSA_REVOCATION`** (selected slot) ✓ → `FUSE_MLDSA_REVOCATION`:
-  `LinearMajorityVote{bits:4, dupe:3}` → decoded u4
+  `LinearOr{bits:4, dupe:3}` → decoded u4
 
 - **`CPTRA_CORE_SOC_STEPPING_ID`** ✓ → `FUSE_SOC_STEPPING_ID`: raw u32, bits\[15:0\] only
 
@@ -162,16 +165,15 @@ transformation from raw OTP bytes to written value. ✓ = Caliptra core fuse reg
 - **`cptra_itrng_entropy_config_1`** ✓ →
   `CPTRA_I_TRNG_ENTROPY_CONFIG_1`: `Single{bits:32}` raw u32.
 
-- **`CPTRA_CORE_OWNER_MANIFEST_MIN_SVN`** (planned) ✓ → `SS_STRAP_GENERIC[3]` bits\[7:0\].
-  `Single{bits:8}` raw u8 (recommended `LinearOr{bits:8, dupe:3}` since this is
-  a monotonically increasing anti-rollback value — see encoding table below).
-  Required by an upcoming Caliptra ROM change that reads the owner manifest min
-  SVN floor from this strap during owner manifest verification. The reference
-  MCU ROM does not yet read this OTP field or forward it. PK-hash skip-lock and
-  rotation no longer occupy this strap: MCU ROM reads
-  `mci_reg_generic_input_wires[1]` bits\[0\] and \[1\], respectively. Builds
-  with `stable-owner-key` currently set `SS_STRAP_GENERIC[3]` bit\[0\], so the
-  owner manifest min SVN implementation must preserve or reconcile that use.
+- **`owner_soc_manifest_min_svn`** ✓ → `SS_STRAP_GENERIC[3]` bits\[15:8\].
+  `OneHot{bits:64}` in non-ECC `VENDOR_TEST_PARTITION`: count programmed bits
+  across 8 bytes to obtain a minimum SVN from 0 through 64. MCU ROM forwards
+  this count as an 8-bit binary value before `CPTRA_FUSE_WR_DONE` on full
+  subsystem cold boot. Other strap bits are preserved, including
+  `stable-owner-key` bit\[0\]. PK-hash skip-lock and rotation are read from
+  `mci_reg_generic_input_wires[1]` bits\[0\] and \[1\], respectively.
+  See [Owner SoC Manifest SVN](svn.md#owner-soc-manifest-svn) for programming
+  and activation requirements.
 
 - **OTP status register offset** — hard-coded in MCU ROM (not from OTP).
   Written to `SS_STRAP_GENERIC[0]` bits\[15:0\]; Caliptra ROM reads this strap
@@ -181,10 +183,11 @@ transformation from raw OTP bytes to written value. ✓ = Caliptra core fuse reg
   [caliptra-sw#3723](https://github.com/chipsalliance/caliptra-sw/pull/3723).
 
 - **`CPTRA_CORE_VENDOR_PK_HASH_VALID`** (all slots) — slot selection only, not written to any
-  register. `LinearMajorityVote{bits:16, dupe:8}` → decoded u16 bitmask.
+  register. `LinearOr{bits:16, dupe:3}` → decoded u16 revocation bitmask:
+  unburnt bits (0) are valid; burnt bits (1) are revoked.
 
 - **`dot_initialized`** — MCU
-  internal use only, not written to any register. `LinearMajorityVote{bits:1, dupe:3}` → logical
+  internal use only, not written to any register. `LinearOr{bits:1, dupe:3}` → logical
   0 or 1, used as the DOT flow gate.
 
 - **`dot_fuse_array`** — MCU internal
@@ -216,9 +219,14 @@ transformation from raw OTP bytes to written value. ✓ = Caliptra core fuse reg
   not accessible to non-MCU bus masters.
 
 - **`vendor_recovery_pk_hash`** — MCU internal use only, not written to any
-  Caliptra register. `Single{bits:384}` raw 48 bytes. Vendor master key used by
+  Caliptra register. `Single{bits:384}` raw 48 bytes. Vendor public-key hash used by
   the `DOT_OVERRIDE` catastrophic recovery flow; lives in
-  `VENDOR_SECRET_PROD_PARTITION` (`CPTRA_SS_VENDOR_SPECIFIC_SECRET_FUSE_0`).
+  `VENDOR_NON_SECRET_PROD_PARTITION`, starting at
+  `CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_8` and spanning that 32-byte slot
+  plus the first 16 bytes of `CPTRA_SS_VENDOR_SPECIFIC_NON_SECRET_FUSE_9`.
+  This is public-key hash data, not private key material, and MCU ROM reads
+  all 48 bytes directly from OTP. Moving it to a secret partition requires
+  matching platform access and provisioning changes.
   The stored value is `SHA-384(ECC P-384 pubkey X ‖ Y ‖ MLDSA-87 pubkey)`
   — see [Vendor Recovery PK Hash Format](dot.md#vendor-recovery-pk-hash-format)
   in the DOT spec for the exact byte layout. The current reference design
@@ -244,24 +252,59 @@ transformation from raw OTP bytes to written value. ✓ = Caliptra core fuse reg
 
 ### OTP Encoding Recommendations
 
+#### Reference SDK Layouts
+
+The following layouts describe the current SDK defaults in `hw/fuses.hjson`
+and the generated `registers/generated-firmware/src/fuse_map.md`. Generic ROM
+fuse-entry reads use these generated per-field layouts. They are separate from
+the integration recommendations below.
+
+| OTP field | Reference layout | Storage / notes |
+|---|---|---|
+| `CPTRA_CORE_VENDOR_PK_HASH_VALID` | `LinearOr{bits:16, dupe:3}` | 48 physical bits used out of the 16-byte OTP allocation; 0 means valid, 1 means revoked |
+| `CPTRA_CORE_ECC_REVOCATION_{0..N}` | `LinearOr{bits:4, dupe:3}` | 12 physical bits per slot |
+| `CPTRA_CORE_LMS_REVOCATION_{0..N}` | `LinearOr{bits:16, dupe:2}` | 32 physical bits per slot, yielding 16 logical revocation bits |
+| `CPTRA_CORE_MLDSA_REVOCATION_{0..N}` | `LinearOr{bits:4, dupe:3}` | 12 physical bits per slot |
+| `CPTRA_CORE_PQC_KEY_TYPE_{0..N}` | `OneHotLinearOr{bits:2, dupe:3}` | 6 physical bits per slot; decoded 1 selects MLDSA, decoded 2 selects LMS |
+| `dot_initialized` | `LinearOr{bits:1, dupe:3}` | 3 physical bits in `VENDOR_NON_SECRET_PROD_PARTITION` |
+| `dot_fuse_array` | `OneHot{bits:256}` | 256 counter bits in non-ECC `VENDOR_TEST_PARTITION` |
+| `perma_hek_en` (2.1 only) | `LinearMajorityVote{bits:1, dupe:3}` | Existing majority-vote policy; 3 physical bits in `VENDOR_NON_SECRET_PROD_PARTITION` |
+| `owner_soc_manifest_min_svn` | `OneHot{bits:64}` | 64 counter bits in non-ECC `VENDOR_TEST_PARTITION`; decoded floor forwarded to `SS_STRAP_GENERIC[3]` bits\[15:8\] |
+| `vendor_recovery_pk_hash` | `Single{bits:384}` | 48 bytes in `VENDOR_NON_SECRET_PROD_PARTITION`, spanning FUSE_8 and part of FUSE_9 |
+
+OR redundancy tolerates failed OTP programming when at least one copy of a bit
+is burned. Majority-vote layouts remain supported, but are not interchangeable
+with OR layouts for partially programmed groups. The existing `perma_hek_en`
+majority-vote layout is retained; changing its policy requires a separate
+decision.
+
+Changing an encoding, duplication factor, partition, or strap mapping can
+reinterpret already-programmed OTP and break ROM compatibility. Such changes
+require matching ROM/runtime and provisioning support; the recommendations
+below are not instructions to re-encode existing devices.
+
+#### Integrator Recommendations
+
 OTP ECC protects against read and write errors, but **must not** be used on
 monotonically-increasing fields (SVNs, the DOT state counter) or revocation
 bitmasks, as ECC integrity checks will most likely fail after two bits are
 burned. For those fields, either HW or SW redundant encoding provides
 fault tolerance without causing ECC integrity issues.
 
+The following are recommendations for custom integrations, not a complete list
+of reference SDK layouts. They may require a customized OTP map and matching
+software decoding. An integrator may use `Single` for an ECC-protected flag or
+choose another redundant layout according to the platform's fault model, but
+must preserve compatible read and write paths. See
+[Fuse Layout Options](fuses.md#fuse-layout-options) for supported alternatives.
+
 | OTP field | ECC | Recommended layout |
 |---|:---:|---|
 | `CPTRA_CORE_VENDOR_PK_HASH_{0..N}` | ✅ | `Single{bits:384}` |
-| `CPTRA_CORE_PQC_KEY_TYPE_{0..N}` | ✅ | `OneHotLinearMajorityVote{bits:2, dupe:3}` |
 | `CPTRA_CORE_FMC_KEY_MANIFEST_SVN` | ❌ | `LinearMajorityVote{bits:32, dupe:3}` |
 | `CPTRA_CORE_RUNTIME_SVN` | ❌ | `LinearMajorityVote{bits:128, dupe:3}` |
 | `CPTRA_CORE_SOC_MANIFEST_SVN` | ❌ | `LinearMajorityVote{bits:128, dupe:3}` |
 | `CPTRA_CORE_SOC_MANIFEST_MAX_SVN` | ❌ | `LinearMajorityVote{bits:32, dupe:3}` |
-| `CPTRA_CORE_ECC_REVOCATION_{0..N}` | ❌ | `LinearMajorityVote{bits:4, dupe:3}` |
-| `CPTRA_CORE_LMS_REVOCATION_{0..N}` | ❌ | `LinearMajorityVote{bits:16, dupe:2}` |
-| `CPTRA_CORE_MLDSA_REVOCATION_{0..N}` | ❌ | `LinearMajorityVote{bits:4, dupe:3}` |
-| `CPTRA_CORE_VENDOR_PK_HASH_VALID` | ❌ | `LinearMajorityVote{bits:16, dupe:8}` |
 | `CPTRA_CORE_SOC_STEPPING_ID` | ✅ | `Single{bits:16}` |
 | `CPTRA_CORE_ANTI_ROLLBACK_DISABLE` | ✅ | `Single{bits:1}` |
 | `CPTRA_CORE_IDEVID_CERT_IDEVID_ATTR` | ✅ | `Single{bits:512}` for the 16 used entries (or `Single{bits:768}` to match the full Caliptra register array) |
@@ -269,25 +312,16 @@ fault tolerance without causing ECC integrity issues.
 | `CPTRA_SS_MANUF_DEBUG_UNLOCK_TOKEN` | ✅ | `Single{bits:512}` |
 | `CPTRA_SS_OWNER_PK_HASH` | ✅ | `Single{bits:384}` |
 | `CPTRA_SS_PROD_DEBUG_UNLOCK_PKS_{0..7}` | ✅ | `Single{bits:384}` each |
-| `dot_initialized` | ✅ | `Single{bits:1}` or if no ECC, `LinearMajorityVote{bits:1, dupe:3}` |
-| `dot_fuse_array` | ❌ | `OneHot{bits:256}` or `OneHotLinearMajorityVote{bits:256, dupe: 3}` (current layout names for bit-count encodings) |
 | `cptra_itrng_health_test_window_size` | ✅ | `Single{bits:16}` |
 | `cptra_itrng_entropy_config_0` | ✅ | `Single{bits:32}` |
 | `cptra_itrng_entropy_config_1` | ✅ | `Single{bits:32}` |
-| `CPTRA_CORE_OWNER_MANIFEST_MIN_SVN` | ❌ | `LinearOr{bits:8, dupe:3}` |
-| `perma_hek_en` (2.1 only) | ✅ | `Single{bits:1}` or if no ECC, `LinearOr{bits:1, dupe:3}` |
 | `CPTRA_SS_LOCK_HEK_PROD_{0..7}` (2.1 only) | ✅ | `Single{bits:256}` each (per-slot `CPTRA_SS_LOCK_HEK_PROD_N_RATCHET_SEED`) |
-| `vendor_recovery_pk_hash` | ✅ | `Single{bits:384}` |
 | `vendor_recovery_pk_hash_valid` (optional, if multiple slots) | ❌ | `LinearOr{bits:N, dupe:3}` |
 | `fw_encryption_key` | ✅ | `Single{bits:256}` (or 128/192 to match the chosen AES key length) |
 | `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN` | ❌ | `OneHotLinearOr{bits:N, dupe:3}` (N up to 32) |
 | `SOC_IMAGE_MIN_SVN_{0..M}` | ❌ | `OneHotLinearOr{bits:N, dupe:3}` (N up to 32) each |
 
-*Note: Fields with `OneHot` or `OneHotLinearOr` monotonic bit-count layouts (`dot_fuse_array`, `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN`, `SOC_IMAGE_MIN_SVN_{0..M}`) must reside in a non-ECC protected partition (e.g., `VENDOR_TEST_PARTITION` in the reference map) because ECC calculation forbids subsequent write operations once a partition has been programmed.*
-
-TODO: there are only 32 LMS revocation bits specificed in the reference fuse map, but with redundant encoding, we would get 16 or fewer bits, unless  they are backed with HW redundancy.
-
-TODO: the vendor_pk_hash_valid is inconsistent with the HW subsystem specification. Tracking in https://github.com/chipsalliance/caliptra-mcu-sw/issues/1186
+*Note: Fields with `OneHot` or `OneHotLinearOr` monotonic bit-count layouts (`dot_fuse_array`, `owner_soc_manifest_min_svn`, `MCU_COMPONENT_SVN_MANIFEST_MIN_SVN`, `SOC_IMAGE_MIN_SVN_{0..M}`) must reside in a non-ECC protected partition (e.g., `VENDOR_TEST_PARTITION` in the reference map) because ECC calculation forbids subsequent write operations once a partition has been programmed.*
 
 
 ## Vendor PK Hash Fuse Encoding Example
@@ -468,7 +502,8 @@ encoding. It encodes a logical integer using two stages:
 In this example, we assume that MCU ROM is implementing this replication layout in software.
 **An integrator may choose to have this replication implemented at a
 lower level in the hardware's fuse macro layer**.
-If that is the case, then the duplication and majority vote in this example can be ignored.
+If that is the case, the software layout must be adjusted to match the
+hardware-visible encoding instead of applying the same redundancy twice.
 
 ### Example: CPTRA_CORE_PQC_KEY_TYPE_0 (LMS)
 
@@ -506,13 +541,13 @@ which sets `direct_access_address = 0x428` and reads `dai_rdata_0`:
 
 #### Layer 3: MCU ROM Decode
 
-`read_entry` applies `extract_single_fuse_value(OneHotLinearMajorityVote{bits:2, dupe:3}, 0x3F)`:
+`read_entry` applies `extract_single_fuse_value(OneHotLinearOr{bits:2, dupe:3}, 0x3F)`:
 
 ```
-extract_majority_vote_u32(bits=2, dupe=3, raw=0x3F):
-  bit 0: votes = (0x3F & 0x07).count_ones() = 3, threshold 2 → bit 0 = 1
-  bit 1: votes = (0x3F & 0x38).count_ones() = 3, threshold 2 → bit 1 = 1
-  majority result = 0b11
+extract_or_u32(bits=2, dupe=3, raw=0x3F):
+  bit 0: (0x3F & 0x07) != 0 → bit 0 = 1
+  bit 1: (0x3F & 0x38) != 0 → bit 1 = 1
+  OR result = 0b11
 
 count_ones(0b11) = 2  →  2 ≠ 1  →  PqcKeyType::LMS
 ```

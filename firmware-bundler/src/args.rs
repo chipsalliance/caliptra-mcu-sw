@@ -139,6 +139,10 @@ pub struct BuildArgs {
     #[arg(long)]
     pub no_default_features: bool,
 
+    /// If set, don't build the ROM, even if the manifest specifies one.
+    #[arg(long)]
+    pub skip_rom: bool,
+
     /// Content fingerprint for generated user-app configuration.
     #[arg(skip)]
     pub user_app_config_fingerprint: Option<String>,

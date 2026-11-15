@@ -24,6 +24,7 @@ use caliptra_emu_periph::CaliptraRootBus as CaliptraMainRootBus;
 use caliptra_emu_periph::MailboxRequester;
 use caliptra_hw_model_types::DEFAULT_CPTRA_OBF_KEY;
 use caliptra_image_types::FwVerificationPqcKeyType;
+use caliptra_mcu_config_emulator::DEFAULT_MCU_MBOX_AXI_PAUSER;
 use caliptra_mcu_emulator_bmc::Bmc;
 use caliptra_mcu_emulator_caliptra::BytesOrPath;
 use caliptra_mcu_emulator_caliptra::{start_caliptra, StartCaliptraArgs};
@@ -121,6 +122,10 @@ pub struct EmulatorArgs {
     /// Directory in which to log execution artifacts.
     #[arg(short, long)]
     pub log_dir: Option<PathBuf>,
+
+    /// Directory for persistent primary and secondary flash backing files.
+    #[arg(long)]
+    pub flash_storage_dir: Option<PathBuf>,
 
     /// Trace instructions.
     #[arg(short, long, default_value_t = false)]
@@ -796,7 +801,12 @@ impl Emulator {
                             .to_path_buf(),
                     )
                 } else {
-                    Some(PathBuf::from(default_path))
+                    Some(
+                        cli.flash_storage_dir
+                            .as_deref()
+                            .unwrap_or_else(|| std::path::Path::new("."))
+                            .join(default_path),
+                    )
                 };
 
                 DummyFlashCtrl::new(
@@ -923,7 +933,8 @@ impl Emulator {
         let mut lc = lc;
         lc.set_otp_partitions(otp.partitions_ref());
 
-        let ext_mcu_mailbox0 = mcu_mailbox0.as_external(MciMailboxRequester::SocAgent(1));
+        let ext_mcu_mailbox0 =
+            mcu_mailbox0.as_external(MciMailboxRequester::SocAgent(DEFAULT_MCU_MBOX_AXI_PAUSER));
         let soc_ifc = unsafe {
             caliptra_registers::soc_ifc::RegisterBlock::new_with_mmio(
                 cli.soc_offset.unwrap_or(0x3003_0000) as *mut u32,
@@ -1343,6 +1354,8 @@ impl Emulator {
                 SpdmResponderTransport::Doe,
                 milestones.contains(McuBootMilestones::FIRMWARE_SPDM_DOE_READY),
             );
+            self.state
+                .set_pldm_ready(milestones.contains(McuBootMilestones::FIRMWARE_PLDM_READY));
         }
 
         if let Some(ref stdin_uart) = self.stdin_uart {

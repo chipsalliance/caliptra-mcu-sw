@@ -3,7 +3,7 @@
 //! `caliptra-mcu-spdm-stack` — SPDM responder state machine and dispatcher.
 //!
 //! This crate implements the responder side of the SPDM protocol on
-//! top of the SPDM-Lite Platform Abstraction Layer
+//! top of the SPDM Platform Abstraction Layer
 //! ([`caliptra_mcu_spdm_traits`]). It owns:
 //!
 //! * A [`SpdmStack`] — the main `run()` loop that receives an SPDM
@@ -56,3 +56,9 @@ mod version;
 pub use error::*;
 pub use stack::*;
 pub use transcript::*;
+
+/// Scratch workspace the KEY_EXCHANGE handler holds while building its response.
+///
+/// It stays allocated through signing, alongside the response buffer, so
+/// integrators sizing a scratch pool must count it in the signing-phase peak.
+pub const KEY_EXCHANGE_WORKSPACE_SIZE: usize = key_exchange::KEY_EXCHANGE_WORKSPACE_SIZE;

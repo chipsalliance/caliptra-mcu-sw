@@ -134,7 +134,7 @@ fn handle_i3c_socket_connection(
                 let cmd: I3cTcriCommand = incoming_header.command.try_into().unwrap();
                 // For read commands (rnw=1), data_length specifies how much to
                 // read FROM the target — no payload follows on the socket.
-                let is_read = matches!(&cmd, I3cTcriCommand::Regular(r) if r.rnw() == 1);
+                let is_read = cmd.is_read();
                 let wire_data_len = if is_read { 0 } else { cmd.data_len() };
                 let mut data = vec![0u8; wire_data_len];
                 stream.set_nonblocking(false).unwrap();
@@ -174,9 +174,6 @@ fn handle_i3c_socket_connection(
         match bus_response_rx.try_recv() {
             Ok(response) => {
                 let data_len = response.resp.resp.data_length() as usize;
-                if data_len > 255 {
-                    panic!("Cannot write more than 255 bytes to socket");
-                }
                 let outgoing_header = OutgoingHeader {
                     ibi: response.ibi.unwrap_or_default(),
                     from_addr: response.addr.into(),
