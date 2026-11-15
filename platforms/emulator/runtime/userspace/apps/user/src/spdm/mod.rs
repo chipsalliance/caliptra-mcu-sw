@@ -555,7 +555,8 @@ async fn spdm_doe_responder() {
         // panicking deep in the transport.
         let doe_mtu = SpdmPalTransport::mtu(&doe_transport);
         if doe_mtu < PROFILE_MIN_DATA_TRANSFER_SIZE {
-            crate::log_info!(
+            // Error, not info: this leaves the DOE responder disabled for good.
+            crate::log_error!(
                 cw,
                 "SPDM_DOE: DataTransferSize 0x{} < profile min, exiting",
                 crate::Hex32(doe_mtu as u32)
