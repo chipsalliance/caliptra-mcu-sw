@@ -328,7 +328,8 @@ impl<S, L> Default for ConnectionState<S, L> {
 ///
 /// * [`SPDM_REQUEST_RESYNCH`] — the request came from a transport that does not
 ///   own the connection. Tells that requester to restart from `GET_VERSION`,
-///   which is exactly what it must do to take ownership.
+///   which is exactly what it must do to take ownership. For a secured message,
+///   `handle_secured_request` drops the request silently instead.
 pub(crate) fn check_transport_owner<S, L>(
     state: &ConnectionState<S, L>,
     tid: Option<u8>,
@@ -340,6 +341,35 @@ pub(crate) fn check_transport_owner<S, L>(
         Some(_) => Err(SPDM_REQUEST_RESYNCH),
     }
 }
+
+/// Gate-refusal print, `debug-trace` builds only: owner id, requester id and, for a
+/// plain request, its code (a secured message has none: it is not decrypted).
+#[cfg(feature = "debug-trace")]
+fn trace_gate_refusal(owner: Option<u8>, requester: Option<u8>, code: Option<ReqRespCode>) {
+    use core::fmt::Write;
+    fn write_tid<W: Write>(w: &mut W, tid: Option<u8>) {
+        let _ = match tid {
+            Some(tid) => write!(w, "0x{:02x}", tid),
+            None => write!(w, "none"),
+        };
+    }
+    let mut console = caliptra_mcu_libtock_console::Console::<
+        caliptra_mcu_libsyscall_caliptra::DefaultSyscalls,
+    >::writer();
+    let _ = write!(&mut console, "[spdm] gate refused: owner=");
+    write_tid(&mut console, owner);
+    let _ = write!(&mut console, " requester=");
+    write_tid(&mut console, requester);
+    let _ = match code {
+        Some(code) => writeln!(&mut console, " code=0x{:02x}", code.0),
+        None => writeln!(&mut console, " secured"),
+    };
+}
+
+/// Without `debug-trace` a gate refusal prints nothing.
+#[cfg(not(feature = "debug-trace"))]
+#[inline(always)]
+fn trace_gate_refusal(_owner: Option<u8>, _requester: Option<u8>, _code: Option<ReqRespCode>) {}
 
 pub(crate) fn multi_key_conn_rsp<S, L>(state: &ConnectionState<S, L>) -> SpdmResult<bool> {
     let selected = state
@@ -675,7 +705,9 @@ async fn dispatch<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_SESSIONS: usi
     }
 
     // Every other plaintext request must come from the transport that ran VCA.
-    check_transport_owner(state, io.transport_id())?;
+    check_transport_owner(state, io.transport_id()).inspect_err(|_| {
+        trace_gate_refusal(state.active_transport_id, io.transport_id(), Some(code))
+    })?;
 
     abort_chunk_reassembly_if_interrupted(state, pal, io, vdm, code).await;
     if code != ReqRespCode::CHUNK_GET
@@ -773,8 +805,14 @@ async fn handle_secured_request<
     // A secured message only exists because some transport ran VCA and then
     // KEY_EXCHANGE/FINISH. No exemption here: there is no plaintext
     // `GET_VERSION` inside a secured message, so a secured message from a
-    // non-owning transport is always invalid.
-    check_transport_owner(state, io.transport_id())?;
+    // non-owning transport is always invalid. It is dropped silently, like a
+    // message for an unknown session ID: the requester has no session keys for
+    // this connection, so it could not read an encrypted ERROR, and a plaintext
+    // one would be out of place in a secured exchange.
+    if check_transport_owner(state, io.transport_id()).is_err() {
+        trace_gate_refusal(state.active_transport_id, io.transport_id(), None);
+        return Ok(None);
+    }
 
     let req = io.request();
 

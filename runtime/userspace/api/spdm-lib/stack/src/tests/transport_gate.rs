@@ -177,27 +177,35 @@ fn get_version_from_second_transport_takes_ownership() {
     assert_eq!(state.phase, Phase::AfterVersion);
 }
 
-// ── Case 6: foreign secured message is rejected ─────────────────────
+// ── Case 6: foreign secured message is dropped silently ─────────────
 
+/// A foreign secured message gets no answer at all, not even an error PDU.
 #[test]
-fn foreign_transport_secured_message_rejected() {
+fn foreign_transport_secured_message_dropped_silently() {
     let pal = TestPal::default();
     let (mut state, mut sessions, session_id) = established_session(&pal);
     state.active_transport_id = Some(TID_OWNER);
 
     let heartbeat = plain_request(SpdmVersion::V12, ReqRespCode::HEARTBEAT);
     let io = secured_io(session_id, &heartbeat).from_transport(TID_OTHER);
-    let err = block_on(handle_secured_request(
+    let result = block_on(handle_secured_request(
         &mut state,
         &mut sessions,
         &pal,
         &io,
         &NoVdmBackend,
-    ))
-    .expect_err("secured traffic from a non-owning transport must be refused");
+    ));
 
-    assert_eq!(err.spec_byte(), SPDM_REQUEST_RESYNCH.spec_byte());
-    // The owner's session survives — rejection is not a session teardown.
+    match result {
+        Ok(None) => {}
+        Ok(Some(_)) => panic!("a foreign secured message must not be answered"),
+        Err(e) => panic!(
+            "a foreign secured message must be dropped, not refused with an error PDU (spec 0x{:02x})",
+            e.spec_byte()
+        ),
+    }
+    // The owner keeps the connection and its session: the drop is not a teardown.
+    assert_eq!(state.active_transport_id, Some(TID_OWNER));
     assert!(sessions.find(session_id).is_some());
 }
 
