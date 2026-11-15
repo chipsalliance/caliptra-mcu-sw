@@ -43,6 +43,7 @@ bitflags::bitflags! {
         const DOT_ROTATE = 1 << 10;
         const GET_DOT_BACKUP_BLOB = 1 << 11;
         const DOT_ENABLE = 1 << 14;
+        const AUTH_SET_CERT_CHAIN = 1 << 18;
     }
 }
 
@@ -124,5 +125,9 @@ mod tests {
             1 << 2
         );
         assert_eq!(AuthorizedSubcommandCapabilities::DOT_ENABLE.bits(), 1 << 14);
+        assert_eq!(
+            AuthorizedSubcommandCapabilities::AUTH_SET_CERT_CHAIN.bits(),
+            1 << 18
+        );
     }
 }

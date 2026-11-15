@@ -36,6 +36,7 @@ pub mod errors {
     pub const INVALID_ENDORSEMENT: McuErrorCode = McuErrorCode::new(domain::CERT_STORE, 0, 4);
     pub const STORAGE_BUSY: McuErrorCode = McuErrorCode::new(domain::CERT_STORE, 0, 5);
     pub const STORAGE_ERROR: McuErrorCode = McuErrorCode::new(domain::CERT_STORE, 0, 6);
+    pub const UNAUTHORIZED: McuErrorCode = McuErrorCode::new(domain::CERT_STORE, 0, 7);
 }
 
 #[repr(u8)]
@@ -159,28 +160,50 @@ impl DeviceKey {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct RoleProvisioningPolicy {
+    pub anchor_point: Option<DeviceKey>,
+    pub auth_required: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct CertificateProvisioningPolicy {
-    pub owner_anchor_point: Option<DeviceKey>,
-    pub tenant_anchor_point: Option<DeviceKey>,
+    pub vendor_auth_required: bool,
+    pub owner: RoleProvisioningPolicy,
+    pub tenant: RoleProvisioningPolicy,
 }
 
 impl CertificateProvisioningPolicy {
     pub const DEFAULT: Self = Self {
-        owner_anchor_point: Some(DeviceKey::LDevId),
-        tenant_anchor_point: None,
+        vendor_auth_required: true,
+        owner: RoleProvisioningPolicy {
+            anchor_point: Some(DeviceKey::LDevId),
+            auth_required: true,
+        },
+        tenant: RoleProvisioningPolicy {
+            anchor_point: None,
+            auth_required: false,
+        },
     };
+
+    pub const fn is_auth_required(self, role: EndorsementRole) -> bool {
+        match role {
+            EndorsementRole::Vendor => self.vendor_auth_required,
+            EndorsementRole::Owner => self.owner.auth_required,
+            EndorsementRole::Tenant => self.tenant.auth_required,
+        }
+    }
 
     #[cfg(any(feature = "set-certificate", test))]
     pub(crate) const fn anchor_point(self, role: EndorsementRole) -> Option<DeviceKey> {
         match role {
             EndorsementRole::Vendor => None,
-            EndorsementRole::Owner => self.owner_anchor_point,
-            EndorsementRole::Tenant => self.tenant_anchor_point,
+            EndorsementRole::Owner => self.owner.anchor_point,
+            EndorsementRole::Tenant => self.tenant.anchor_point,
         }
     }
 
     pub(crate) fn validate(self) -> McuResult<()> {
-        for key in [self.owner_anchor_point, self.tenant_anchor_point]
+        for key in [self.owner.anchor_point, self.tenant.anchor_point]
             .into_iter()
             .flatten()
         {
@@ -191,9 +214,6 @@ impl CertificateProvisioningPolicy {
 
     #[cfg(any(feature = "set-certificate", test))]
     pub(crate) fn validate_role(self, role: EndorsementRole) -> McuResult<()> {
-        if role == EndorsementRole::Vendor {
-            return Err(errors::PROVISIONING_DISABLED);
-        }
         if let Some(key) = self.anchor_point(role) {
             key.validate_anchor_point()?;
         }
@@ -228,6 +248,21 @@ impl CertificateProvisioningPolicy {
             }
         }
     }
+
+    /// Resolve and validate `key_pair_id` for `role`:
+    /// - `Vendor`: `key_pair_id == 0` is required (`IDevID` / Vendor chain).
+    /// - `Owner` / `Tenant`: delegates to [`Self::validate_key`].
+    #[cfg(any(feature = "set-certificate", test))]
+    pub(crate) fn validate_key_id(self, role: EndorsementRole, key_pair_id: u8) -> McuResult<u8> {
+        if role == EndorsementRole::Vendor {
+            return if key_pair_id == 0 {
+                Ok(0)
+            } else {
+                Err(errors::KEY_MISMATCH)
+            };
+        }
+        self.validate_key(role, key_pair_id).map(|k| k as u8)
+    }
 }
 
 impl Default for CertificateProvisioningPolicy {
@@ -248,11 +283,16 @@ mod tests {
             Some(DeviceKey::LDevId)
         );
         assert_eq!(policy.anchor_point(EndorsementRole::Tenant), None);
+        assert!(policy.is_auth_required(EndorsementRole::Vendor));
+        assert!(policy.is_auth_required(EndorsementRole::Owner));
+        assert!(!policy.is_auth_required(EndorsementRole::Tenant));
         assert_eq!(policy.validate_role(EndorsementRole::Owner), Ok(()));
         assert_eq!(policy.validate_role(EndorsementRole::Tenant), Ok(()));
+        assert_eq!(policy.validate_role(EndorsementRole::Vendor), Ok(()));
+        assert_eq!(policy.validate_key_id(EndorsementRole::Vendor, 0), Ok(0));
         assert_eq!(
-            policy.validate_role(EndorsementRole::Vendor),
-            Err(errors::PROVISIONING_DISABLED)
+            policy.validate_key_id(EndorsementRole::Vendor, 1),
+            Err(errors::KEY_MISMATCH)
         );
     }
 
@@ -306,8 +346,11 @@ mod tests {
     fn unsupported_anchors_are_rejected() {
         for key in [DeviceKey::FmcAlias, DeviceKey::RtAlias] {
             let policy = CertificateProvisioningPolicy {
-                owner_anchor_point: Some(key),
-                tenant_anchor_point: None,
+                owner: RoleProvisioningPolicy {
+                    anchor_point: Some(key),
+                    ..CertificateProvisioningPolicy::DEFAULT.owner
+                },
+                ..CertificateProvisioningPolicy::DEFAULT
             };
             assert_eq!(policy.validate(), Err(errors::UNSUPPORTED_KEY));
             assert_eq!(

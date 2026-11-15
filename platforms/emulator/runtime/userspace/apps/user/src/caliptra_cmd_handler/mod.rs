@@ -178,6 +178,11 @@ fn authorized_subcommand_capabilities() -> AuthorizedSubcommandCapabilities {
             | AuthorizedSubcommandCapabilities::DOT_ROTATE
             | AuthorizedSubcommandCapabilities::GET_DOT_BACKUP_BLOB;
     }
+    if cfg!(feature = "cert-provisioning")
+        && (cfg!(feature = "spdm") || cfg!(feature = "mcu-mbox-service"))
+    {
+        capabilities |= AuthorizedSubcommandCapabilities::AUTH_SET_CERT_CHAIN;
+    }
     capabilities
 }
 
@@ -362,6 +367,16 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         data: &[u8],
     ) -> CaliptraCmdResult<()> {
         device_ops::provision_idevid_cert(alloc, algorithm, mode, data).await
+    }
+
+    async fn auth_set_cert_chain(
+        &self,
+        entity: PkiEntitySlot,
+        algorithm: AsymAlgo,
+        total_size: u32,
+        expected_sha384: &[u8; 48],
+    ) -> CaliptraCmdResult<()> {
+        device_ops::auth_set_cert_chain(entity, algorithm, total_size, expected_sha384).await
     }
 
     /// Drain entries of `log_type` from the backing store.
@@ -685,6 +700,10 @@ mod tests {
                     | AuthorizedSubcommandCapabilities::GET_DOT_BACKUP_BLOB
             ),
             dot_transport
+        );
+        assert_eq!(
+            authorized.contains(AuthorizedSubcommandCapabilities::AUTH_SET_CERT_CHAIN),
+            authorized_transport && cfg!(feature = "cert-provisioning")
         );
         assert_eq!(
             runtime.contains(McuRuntimeCapabilities::DOE),
