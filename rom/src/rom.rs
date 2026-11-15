@@ -43,7 +43,6 @@ use caliptra_mcu_romtime::PqcKeyType;
 use caliptra_mcu_romtime::{HexWord, McuBootMilestones, StaticRef};
 use core::marker::PhantomData;
 
-use tock_registers::interfaces::ReadWriteable;
 use tock_registers::interfaces::{Readable, Writeable};
 
 // values when setting in Caliptra
@@ -716,7 +715,7 @@ impl Soc {
             self.check_hw_errors();
         }
         // Clear the reset request interrupt
-        notif0.modify(mci::bits::Notif0IntrT::NotifCptraMcuResetReqSts::SET);
+        notif0.write(mci::bits::Notif0IntrT::NotifCptraMcuResetReqSts::SET);
     }
 
     /// Configure the Caliptra iTRNG parameters.
