@@ -400,6 +400,32 @@ impl MockMailbox {
                 self.response_buffer[0..response_len].copy_from_slice(&response);
                 Ok(&self.response_buffer[0..response_len])
             }
+            0x0000_0012 => {
+                // MC_AUTHORIZED_COMMAND (0x12)
+                if _payload.len() < 8 {
+                    return Err(MailboxError::InvalidCommand);
+                }
+                let req_chksum = u32::from_le_bytes(_payload[0..4].try_into().unwrap());
+                if req_chksum != calc_checksum(external_cmd, &_payload[4..]) {
+                    return Err(MailboxError::InvalidCommand);
+                }
+                let target = u32::from_le_bytes(_payload[4..8].try_into().unwrap());
+                if target != 0x4D41_5343 {
+                    return Err(MailboxError::InvalidCommand);
+                }
+
+                let mut payload = Vec::new();
+                payload.extend_from_slice(&0u32.to_le_bytes()); // fips_status
+
+                let chksum = calc_checksum(0, &payload);
+                let mut response = Vec::new();
+                response.extend_from_slice(&chksum.to_le_bytes());
+                response.extend_from_slice(&payload);
+
+                let response_len = response.len();
+                self.response_buffer[0..response_len].copy_from_slice(&response);
+                Ok(&self.response_buffer[0..response_len])
+            }
             _ => Err(MailboxError::InvalidCommand),
         }
     }

@@ -715,11 +715,42 @@ pub async fn provision_idevid_cert<A: ScratchAlloc>(
     }
 }
 
-#[cfg(feature = "mcu-mbox-service")]
+pub async fn auth_set_cert_chain(
+    entity: PkiEntitySlot,
+    algorithm: AsymAlgo,
+    total_size: u32,
+    expected_sha384: &[u8; 48],
+) -> CaliptraCmdResult<()> {
+    #[cfg(all(
+        feature = "cert-provisioning",
+        any(feature = "spdm", feature = "mcu-mbox-service")
+    ))]
+    {
+        return crate::cert_store::shared()
+            .arm_endorsement_write(
+                entity.into(),
+                algorithm.into(),
+                total_size as usize,
+                expected_sha384,
+            )
+            .map_err(map_cert_store_err);
+    }
+    #[cfg(not(all(
+        feature = "cert-provisioning",
+        any(feature = "spdm", feature = "mcu-mbox-service")
+    )))]
+    {
+        let _ = (entity, algorithm, total_size, expected_sha384);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+}
+
+#[cfg(any(feature = "spdm", feature = "mcu-mbox-service"))]
 fn map_cert_store_err(err: McuErrorCode) -> CaliptraCompletionCode {
     use caliptra_mcu_cert_store::errors as cert_errors;
     match err {
         cert_errors::PROVISIONING_DISABLED => CaliptraCompletionCode::UnsupportedOperation,
+        cert_errors::UNAUTHORIZED => CaliptraCompletionCode::AccessDenied,
         cert_errors::KEY_MISMATCH
         | cert_errors::UNSUPPORTED_KEY
         | cert_errors::INVALID_ENDORSEMENT => CaliptraCompletionCode::InvalidParameter,

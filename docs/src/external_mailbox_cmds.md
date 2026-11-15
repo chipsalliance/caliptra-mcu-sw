@@ -103,6 +103,7 @@ framing and is not changed by this Runtime ABI.
 | MC_HEK_STATUS                 | 0x4D48_4B53 ("MHKS") | Reports used HEK slots and the total number of configured HEK slots.                    |
 | MC_FUSE_REVOKE_VENDOR_PUB_KEY | 0x4D52_564B ("MRVK") | Target ID under `MC_AUTHORIZED_COMMAND`; see [fuses spec](fuses.md).                    |
 | MC_FUSE_REVOKE_VENDOR_PK_HASH | 0x5256_4b48 ("RVKH") | Target ID under `MC_AUTHORIZED_COMMAND`; see [fuses spec](fuses.md).                    |
+| MC_AUTH_SET_CERT_CHAIN        | 0x4D41_5343 ("MASC") | Target ID under `MC_AUTHORIZED_COMMAND`; authorizes a certificate-chain write or erase for a managed PKI slot. |
 | MC_DEVICE_OWNERSHIP_TRANSFER  | 0x0000_0011          | Native Device Ownership Transfer family; subcommand is carried in mailbox SRAM.         |
 | MC_OCP_LOCK                   | 0x0000_0013          | Native OCP LOCK family; subcommand is carried in mailbox SRAM.                          |
 | VENDOR_UNIQUE_COMMANDS        | "VU00"-"VUFF"        | Reserved for vendor-unique innermost commands; unsupported by the reference MCU.       |
@@ -356,7 +357,7 @@ Command Code: `0x4D47_4343` ("MGCC")
 
 ### MC_SET_CERT_CHAIN
 
-Provisions, replaces, or erases the PKI endorsement chain for a managed `(role, algorithm)` slot (`Owner` or `Tenant`). Writes to the read-only `Vendor` slot (`role = 0`) are always rejected. This command is currently compiled in only for test configurations until production requester authorization is enabled.
+Provisions, replaces, or erases the PKI endorsement chain for a managed `(role, algorithm)` slot (`Vendor` when configured as a managed slot, `Owner`, or `Tenant`). Writes to a read-only `Vendor` slot (`role = 0`) are rejected. When `auth_required` is enabled on the targeted slot, the operation must first be pre-authorized via `MC_AUTH_SET_CERT_CHAIN` (`0x4D41_5343` / `"MASC"` under `MC_AUTHORIZED_COMMAND`), which arms the expected `(role, algorithm, total_size, expected_sha384)` and verifies the staged DER SHA-384 digest at commit time; see [Auth Set Cert Chain](caliptra_common_commands.md#auth-set-cert-chain).
 
 `cert_data` contains the concatenated DER endorsement certificates starting from the Root CA.
 
@@ -365,9 +366,16 @@ Provisions, replaces, or erases the PKI endorsement chain for a managed `(role, 
 - **Multi-chunk streamed write (`total_size > data_len`)**:
   - `offset == 0` begins a staged write in the `staging_region` for `total_size` bytes and writes the first chunk (`data_len > 0`).
   - Intermediate chunks (`0 < offset` and `offset + data_len < total_size`) append sequential chunks (`data_len > 0`).
-  - The final chunk (`offset + data_len == total_size`) finishes the stream, computes the root certificate hash, atomically switches the `active_region`, and increments the slot's generation counter.
+  - The final chunk (`offset + data_len == total_size`) finishes the stream, verifies the `expected_sha384` claimed at admission (if a grant was present), computes the root certificate hash, atomically switches the `active_region`, and increments the slot's generation counter.
 
-When the role has a configured key anchor point (such as `Owner` pinned to `LDevID`), `device_key_id = 0` resolves to that anchor point and any nonzero value must match it; when the role has no fixed anchor point (such as `Tenant` in the default policy), a nonzero `device_key_id` for a supported anchor point is required.
+**Restart and ordering**:
+
+- While a write, erase, or finalization is executing, another mutation or re-arm on the same slot returns `STORAGE_BUSY`. Between messages, a valid `MC_AUTH_SET_CERT_CHAIN` can abandon an idle MCI or SPDM stream and arm its replacement.
+- An MCI request at `offset == 0` can restart an idle stream owned by the MCI responder, but cannot displace another responder's stream without re-arming. If authorization is required, the restart needs a fresh grant; the abandoned stream's claimed grant is not reused.
+- Continuations must match the resolved key ID, total size, and exact next offset. Mismatches are rejected without destroying the current stream.
+- Callers must use a single ordered requester per `(role, algorithm)` and finish or retire all outstanding old requests before restarting. The command has no transfer ID: a delayed old chunk with identical key, size, and expected offset cannot be distinguished from a chunk of the replacement transfer.
+
+For a managed `Vendor` slot (`role = 0`), `device_key_id` must be `0` (`IDevID`). When an `Owner` or `Tenant` role has a configured key anchor point (such as `Owner` pinned to `LDevID`), `device_key_id = 0` resolves to that anchor point and any nonzero value must match it; when the role has no fixed anchor point (such as `Tenant` in the default policy), a nonzero `device_key_id` for a supported anchor point is required.
 
 Command Code: `0x4D53_4343` ("MSCC")
 
@@ -375,9 +383,9 @@ Command Code: `0x4D53_4343` ("MSCC")
 | **Name**      | **Type**     | **Description**                                                                                              |
 | ------------- | ------------ | ------------------------------------------------------------------------------------------------------------ |
 | chksum        | u32          | Checksum over input data.                                                                                    |
-| role          | u32          | Endorsement role (`0x0001` = Owner, `0x0002` = Tenant; `0x0000` = Vendor is rejected).                       |
+| role          | u32          | Endorsement role (`0x0000` = Vendor when configured as managed, `0x0001` = Owner, `0x0002` = Tenant).        |
 | algorithm     | u32          | Asymmetric algorithm (`0x0001` = ECC P-384, `0x0002` = ML-DSA-87).                                           |
-| device_key_id | u32          | Caliptra identity key (`0` = use role's configured anchor point, `1` = LDevID, `2` = FMC Alias, `3` = RT Alias). |
+| device_key_id | u32          | Caliptra identity key (`0` = Vendor `IDevID` or role's configured anchor point, `1` = LDevID, `2` = FMC Alias, `3` = RT Alias). |
 | offset        | u32          | Byte offset of this chunk within the endorsement chain (`0` for single-chunk write, stream start, or erase). |
 | total_size    | u32          | Total byte length of the DER endorsement chain, or `0` to erase the managed endorsement.                     |
 | data_len      | u32          | Number of endorsement bytes in `cert_data` for this request (up to `4096`; `0` when `total_size == 0`).      |
