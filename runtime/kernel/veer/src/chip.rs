@@ -9,7 +9,7 @@
 
 use crate::pic::Pic;
 use crate::pmp::{VeeRPMP, VeeRProtectionMMLEPMP};
-use crate::timers::{InternalTimers, TimerInterrupts};
+use crate::timers::InternalTimers;
 use caliptra_mcu_config::McuMemoryMap;
 use caliptra_mcu_registers_generated::i3c::regs::I3c;
 use caliptra_mcu_registers_generated::lc_ctrl;
@@ -186,24 +186,25 @@ impl<'a, I: InterruptService + 'a> kernel::platform::chip::Chip for VeeR<'a, I> 
                     self.handle_pic_interrupts();
                 }
             }
-            if self.timers.get_saved_interrupts() != TimerInterrupts::None {
+            if self.timers.has_pending_interrupt() {
                 self.handle_timer_interrupts();
             }
-            if self.pic.get_saved_interrupts().is_none()
-                && self.timers.get_saved_interrupts() == TimerInterrupts::None
-            {
+            if self.pic.get_saved_interrupts().is_none() && !self.timers.has_pending_interrupt() {
                 break;
             }
         }
 
         // Re-enable all MIE interrupts that we care about. Since we looped
         // until we handled them all, we can re-enable all of them.
-        CSR.mie.modify(mie::mext::SET + mie::BIT29::SET);
+        if self.timers.uses_mtimer() {
+            CSR.mie.modify(mie::mext::SET + mie::mtimer::SET);
+        } else {
+            CSR.mie.modify(mie::mext::SET + mie::BIT29::SET);
+        }
     }
 
     fn has_pending_interrupts(&self) -> bool {
-        self.pic.get_saved_interrupts().is_some()
-            || self.timers.get_saved_interrupts() != TimerInterrupts::None
+        self.pic.get_saved_interrupts().is_some() || self.timers.has_pending_interrupt()
     }
 
     fn sleep(&self) {
@@ -273,6 +274,8 @@ unsafe fn handle_interrupt(intr: mcause::Interrupt, mcause: u32) {
         }
         mcause::Interrupt::MachineTimer => {
             CSR.mie.modify(mie::mtimer::CLEAR);
+            // Saved in timer 0's slot: the machine timer replaces internal timer 0.
+            TIMERS.save_interrupt(0);
         }
         mcause::Interrupt::MachineExternal => {
             // We received an interrupt, disable interrupts while we handle them

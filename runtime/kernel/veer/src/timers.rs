@@ -4,8 +4,14 @@
 // Copyright Tock Contributors 2022.
 
 //! Create a timer using the VeeR EL2 Internal Timer registers.
+//!
+//! A board that calls `init_mtimer` gets the MCI machine timer (MTIME / MTIMECMP) instead. Its
+//! interrupt (MTIP) is a level that stays pending while interrupts are masked, unlike the
+//! one-cycle internal-timer pulse, which is lost if it lands while MIE or MITIE0 is clear.
 
 use crate::chip::TIMER_FREQUENCY_HZ;
+use caliptra_mcu_registers_generated::mci;
+use caliptra_mcu_romtime::StaticRef;
 use core::cell::Cell;
 use core::num::NonZero;
 use kernel::hil::time::{self, Alarm, ConvertTicks, Frequency, Ticks, Ticks64, Time};
@@ -14,6 +20,8 @@ use kernel::utilities::registers::interfaces::{ReadWriteable, Readable, Writeabl
 use kernel::utilities::registers::register_bitfields;
 use kernel::ErrorCode;
 use riscv_csr::csr::ReadWriteRiscvCsr;
+use rv32i::csr::{mip::mip, CSR};
+use rv32i::machine_timer::MachineTimer;
 
 register_bitfields![usize,
     /// Internal Timer Counter 0
@@ -54,6 +62,8 @@ pub struct InternalTimers<'a> {
     /// Used by get_alarm() to return the correct expiration time
     /// regardless of whether the hardware timer has expired.
     fire_at: Cell<u64>,
+    /// MCI registers when the machine timer is in use; empty = internal timer 0.
+    mci: OptionalCell<StaticRef<mci::regs::Mci>>,
     mitcnt0: ReadWriteRiscvCsr<usize, mitcnt0::Register, 0x7D2>,
     #[allow(dead_code)]
     mitcnt1: ReadWriteRiscvCsr<usize, mitcnt1::Register, 0x7D5>,
@@ -86,6 +96,7 @@ impl<'a> InternalTimers<'a> {
             client: OptionalCell::empty(),
             saved: Cell::new(TimerInterrupts::None),
             fire_at: Cell::new(0),
+            mci: OptionalCell::empty(),
             mitcnt0: ReadWriteRiscvCsr::new(),
             mitcnt1: ReadWriteRiscvCsr::new(),
             mitb0: ReadWriteRiscvCsr::new(),
@@ -97,12 +108,49 @@ impl<'a> InternalTimers<'a> {
         }
     }
 
+    /// Use the MCI machine timer for all alarms from now on; leaves it disarmed.
+    pub fn init_mtimer(&self, mci: StaticRef<mci::regs::Mci>) {
+        self.mci.set(mci);
+        // MTIMECMP to the maximum (MTIP low) and the internal timers stopped.
+        self.disable_timers();
+    }
+
+    /// True when the machine timer is in use.
+    pub fn uses_mtimer(&self) -> bool {
+        self.mci.is_some()
+    }
+
+    /// The machine-timer compare matched (mip.MTIP is a level), whether or not its trap was taken.
+    pub fn mtimer_pending(&self) -> bool {
+        self.uses_mtimer() && CSR.mip.is_set(mip::mtimer)
+    }
+
+    /// A timer interrupt is saved or the machine-timer compare is pending.
+    pub fn has_pending_interrupt(&self) -> bool {
+        self.saved.get() != TimerInterrupts::None || self.mtimer_pending()
+    }
+
+    fn with_mtimer<R>(&self, f: impl FnOnce(&MachineTimer) -> R) -> Option<R> {
+        self.mci.map(|regs| {
+            f(&MachineTimer::new(
+                &regs.mci_reg_mcu_rv_mtimecmp_l,
+                &regs.mci_reg_mcu_rv_mtimecmp_h,
+                &regs.mci_reg_mcu_rv_mtime_l,
+                &regs.mci_reg_mcu_rv_mtime_h,
+            ))
+        })
+    }
+
     pub fn disable_timers(&self) {
+        self.with_mtimer(|t| t.disable_machine_timer());
         self.disable_timer0();
         self.disable_timer1();
     }
 
     pub fn enable_timer0(&self) {
+        if self.uses_mtimer() {
+            return;
+        }
         self.mitctl0
             .read_and_set_bits(mitctl0::enable.mask << mitctl0::enable.shift);
     }
@@ -136,6 +184,12 @@ impl<'a> InternalTimers<'a> {
 
     pub fn service_interrupts(&self) {
         let saved = self.saved.replace(TimerInterrupts::None);
+        // A pending machine-timer compare is serviced even if its trap has not been taken yet.
+        let saved = if saved == TimerInterrupts::None && self.mtimer_pending() {
+            TimerInterrupts::Timer0
+        } else {
+            saved
+        };
         match saved {
             TimerInterrupts::None => {}
             _ => {
@@ -163,6 +217,9 @@ impl Time for InternalTimers<'_> {
     type Ticks = Ticks64;
 
     fn now(&self) -> Ticks64 {
+        if let Some(t) = self.with_mtimer(|t| t.now()) {
+            return t;
+        }
         // Race-free 64-bit read: retry if mcycleh changed between reads
         loop {
             let hi = self.mcycleh.get() as u64;
@@ -183,6 +240,11 @@ impl<'a> time::Alarm<'a> for InternalTimers<'a> {
         // Store the absolute fire time for get_alarm() to return.
         let expire = reference.wrapping_add(dt);
         self.fire_at.set(expire.into_u64());
+
+        // An expiry already in the past sets the compare to now, so MTIP asserts and stays pending.
+        if self.with_mtimer(|t| t.set_alarm(reference, dt)).is_some() {
+            return;
+        }
 
         // Compute remaining ticks from now to expiration.
         let now = self.now();
@@ -213,6 +275,7 @@ impl<'a> time::Alarm<'a> for InternalTimers<'a> {
     }
 
     fn disarm(&self) -> Result<(), ErrorCode> {
+        self.with_mtimer(|t| t.disable_machine_timer());
         self.mitctl0.modify(mitctl0::enable::CLEAR);
         self.mitctl1.modify(mitctl1::enable::CLEAR);
         self.fire_at.set(0);
@@ -220,6 +283,9 @@ impl<'a> time::Alarm<'a> for InternalTimers<'a> {
     }
 
     fn is_armed(&self) -> bool {
+        if let Some(armed) = self.with_mtimer(|t| t.is_armed()) {
+            return armed;
+        }
         self.mitctl0.read(mitctl0::enable) == 1
     }
 
