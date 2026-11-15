@@ -22,7 +22,7 @@ use crate::error::{SpdmResult, SPDM_INVALID_REQUEST, SPDM_VERSION_MISMATCH};
 pub(crate) const HEARTBEAT_ACK_SPDM_SIZE: usize = SpdmMsgHdrPdu::SIZE + 2;
 
 /// Default HeartbeatPeriod (seconds) advertised in KEY_EXCHANGE_RSP when both
-/// endpoints support HEARTBEAT. Matches the Micron Aegis6 reference default.
+/// endpoints support HEARTBEAT.
 /// Not feature-gated so `heartbeat_period_for` can select on it with `cfg!()`
 /// (both branches must compile); the value is dead-code-eliminated when the
 /// `spdm-set-heartbeat` feature is off.
