@@ -118,17 +118,9 @@ pub(crate) async fn handle_chunk_send<
         }) => {
             abort_active_streaming_request(state, pal, io, vdm).await;
             let mut error = [0u8; 4];
-            let error_len = encode_error_response(&mut error, state.version, SPDM_INVALID_REQUEST)?;
+            let error = encode_error_response(&mut error, state.version, SPDM_INVALID_REQUEST)?;
             state.reset_chunk_assembly();
-            build_chunk_send_ack(
-                pal,
-                io,
-                state.version,
-                true,
-                handle,
-                chunk_seq_num,
-                &error[..error_len],
-            )
+            build_chunk_send_ack(pal, io, state.version, true, handle, chunk_seq_num, error)
         }
     }
 }
@@ -185,16 +177,8 @@ fn build_chunk_send_error_ack<'a, Pal: SpdmPal>(
     error: SpdmError,
 ) -> SpdmResult<PalBytes<'a, Pal>> {
     let mut response = [0u8; SpdmMsgHdrPdu::SIZE + 2 + CALIPTRA_EXTENDED_ERROR_SIZE];
-    let response_len = encode_error_response(&mut response[..], version, error)?;
-    build_chunk_send_ack(
-        pal,
-        io,
-        version,
-        false,
-        handle,
-        chunk_seq_num,
-        &response[..response_len],
-    )
+    let response = encode_error_response(&mut response[..], version, error)?;
+    build_chunk_send_ack(pal, io, version, false, handle, chunk_seq_num, response)
 }
 
 /// Staging buffer size for `ResponseToLargeRequest` inside CHUNK_SEND_ACK.
@@ -849,7 +833,7 @@ async fn finish_buffered_request<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
     {
         Ok(response_len) => Ok((response_len, false)),
         Err(err) => Ok((
-            encode_error_response(response_to_large_request, state.version, err.spdm)?,
+            encode_error_response(response_to_large_request, state.version, err.spdm)?.len(),
             err.early_error,
         )),
     }
@@ -885,7 +869,8 @@ async fn finish_streamed_request<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
                             &mut response_to_large_request[..],
                             state.version,
                             spdm,
-                        )?,
+                        )?
+                        .len(),
                         false,
                     )
                 }
@@ -911,7 +896,8 @@ async fn finish_streamed_request<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
                         &mut response_to_large_request[..],
                         state.version,
                         SPDM_UNSPECIFIED,
-                    )?,
+                    )?
+                    .len(),
                     false,
                 )
             } else {
@@ -943,7 +929,8 @@ async fn finish_streamed_request<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
                                     &mut response_to_large_request[..],
                                     state.version,
                                     SPDM_UNSPECIFIED,
-                                )?,
+                                )?
+                                .len(),
                                 false,
                             )
                         } else {
@@ -955,7 +942,8 @@ async fn finish_streamed_request<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
                             &mut response_to_large_request[..],
                             state.version,
                             SPDM_UNSPECIFIED,
-                        )?,
+                        )?
+                        .len(),
                         false,
                     ),
                 }
@@ -966,7 +954,8 @@ async fn finish_streamed_request<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
                 &mut response_to_large_request[..],
                 state.version,
                 SPDM_INVALID_REQUEST,
-            )?,
+            )?
+            .len(),
             false,
         ),
         #[cfg(any(test, feature = "generic-large-request"))]
@@ -975,7 +964,8 @@ async fn finish_streamed_request<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
                 &mut response_to_large_request[..],
                 state.version,
                 SPDM_INVALID_REQUEST,
-            )?,
+            )?
+            .len(),
             false,
         ),
         #[cfg(not(any(test, feature = "generic-large-request")))]
@@ -984,7 +974,8 @@ async fn finish_streamed_request<Pal: SpdmPal, Vdm: SpdmVdmBackend>(
                 &mut response_to_large_request[..],
                 state.version,
                 SPDM_UNSUPPORTED_REQUEST,
-            )?,
+            )?
+            .len(),
             false,
         ),
     })
@@ -1248,6 +1239,138 @@ mod tests {
                 None,
             )
             .unwrap();
+    }
+
+    #[test]
+    fn aligned_chunk_send_faults_release_buffer_and_allow_fresh_key_exchange() {
+        let mut baseline = None;
+        for (header_size, send_len_alignment) in [(1, 1), (8, 4)] {
+            let mut results = Vec::new();
+            for fault in 0..6 {
+                let pal = TestPal {
+                    header_size,
+                    send_len_alignment,
+                    large_buffered_msg_capacity: 8192,
+                    max_inbound_spdm_request_size: 8192,
+                    ..TestPal::default()
+                };
+                let io = TestIo::message(Vec::new());
+                let mut state = chunking_state();
+                state.version = SpdmVersion::V14;
+                state.peer_max_spdm_msg_size = 8192;
+                state.negotiated_key_ex_sel = KeyExSel::Kem;
+                block_on(state.transcript.append_vca(&pal, &io, b"VCA")).unwrap();
+                let request = key_exchange_request(ML_KEM_1024_EXCHANGE_DATA_SIZE);
+                let make_chunk = |sequence: usize| {
+                    let start = sequence * 253;
+                    let end = (start + 253).min(request.len());
+                    let mut chunk = chunk_send_request(
+                        7,
+                        sequence as u16,
+                        end == request.len(),
+                        (sequence == 0).then_some(request.len()),
+                        &request[start..end],
+                    );
+                    chunk[0] = SpdmVersion::V14.to_u8();
+                    chunk.resize(chunk.len().next_multiple_of(send_len_alignment), 0xa5);
+                    chunk
+                };
+                let mut sessions = test_sessions();
+                let first = make_chunk(0);
+                let ack = block_on(handle_chunk_send(
+                    &mut state,
+                    &mut sessions,
+                    &pal,
+                    &io,
+                    &caliptra_mcu_spdm_traits::NoVdmBackend,
+                    &first,
+                    None,
+                    false,
+                ))
+                .unwrap();
+                assert_eq!(ack[header_size + 1], ReqRespCode::CHUNK_SEND_ACK.0);
+                assert_eq!(state.large_msg_ctx.state.bytes_received, 253);
+                assert_eq!(
+                    &state.large_msg_ctx.get_buffer().unwrap()[..253],
+                    &request[..253]
+                );
+                let foreign = block_on(handle_chunk_send(
+                    &mut state,
+                    &mut sessions,
+                    &pal,
+                    &io,
+                    &caliptra_mcu_spdm_traits::NoVdmBackend,
+                    &make_chunk(1),
+                    Some(0x1234_5678),
+                    false,
+                ));
+                assert_eq!(foreign.err(), Some(SPDM_UNEXPECTED_REQUEST));
+                assert_eq!(state.large_msg_ctx.state.bytes_received, 253);
+                assert_eq!(
+                    &state.large_msg_ctx.get_buffer().unwrap()[..253],
+                    &request[..253]
+                );
+                let mut bad = make_chunk(1);
+                match fault {
+                    0 => bad[4..6].copy_from_slice(&0u16.to_le_bytes()),
+                    1 => bad[4..6].copy_from_slice(&2u16.to_le_bytes()),
+                    2 => bad[3] = 8,
+                    3 => bad[6] = 1,
+                    4 => bad.truncate(bad.len() - 4),
+                    _ => bad.extend_from_slice(&[0; 4]),
+                }
+                let error_ack = block_on(handle_chunk_send(
+                    &mut state,
+                    &mut sessions,
+                    &pal,
+                    &io,
+                    &caliptra_mcu_spdm_traits::NoVdmBackend,
+                    &bad,
+                    None,
+                    false,
+                ))
+                .unwrap();
+                assert_eq!(error_ack[header_size + 1], ReqRespCode::CHUNK_SEND_ACK.0);
+                assert_ne!(error_ack[header_size + 2] & CHUNK_ACK_ATTR_EARLY_ERROR, 0);
+                assert!(state.large_msg_ctx.is_idle());
+                assert!(state.large_msg_ctx.get_buffer().is_none());
+                assert!(!sessions.has_handshake_in_progress());
+                assert_eq!(state.transcript.vca.as_ref().unwrap().bytes, b"VCA");
+
+                let mut response = Vec::new();
+                for sequence in 0..request.len().div_ceil(253) {
+                    response = block_on(handle_chunk_send(
+                        &mut state,
+                        &mut sessions,
+                        &pal,
+                        &io,
+                        &caliptra_mcu_spdm_traits::NoVdmBackend,
+                        &make_chunk(sequence),
+                        None,
+                        false,
+                    ))
+                    .unwrap();
+                    assert_eq!(response.len() % send_len_alignment, 0);
+                }
+                assert_eq!(response[header_size + 1], ReqRespCode::ERROR.0);
+                assert_eq!(response[header_size + 2], SPDM_LARGE_RESPONSE.spec_byte());
+                let handle = response[header_size + 4];
+                let payload = block_on(support::drain_chunked_response(
+                    &mut state, &pal, &io, handle,
+                ))
+                .unwrap();
+                assert_eq!(payload[1], ReqRespCode::KEY_EXCHANGE_RSP.0);
+                assert!(state.large_msg_ctx.is_idle());
+                assert!(state.large_msg_ctx.get_buffer().is_none());
+                assert!(sessions.has_handshake_in_progress());
+                results.push((payload, pal.hash_finishes.borrow().clone()));
+            }
+            if let Some(expected) = &baseline {
+                assert_eq!(&results, expected);
+            } else {
+                baseline = Some(results);
+            }
+        }
     }
 
     #[test]

@@ -203,3 +203,65 @@ impl Default for CancellationFlag {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use caliptra_mcu_pldm_common::protocol::firmware_update::PldmFirmwareString;
+
+    fn component(size: u32) -> FirmwareComponent {
+        FirmwareComponent {
+            comp_image_size: Some(size),
+            comp_version: PldmFirmwareString::new("UTF-8", "1.0").unwrap(),
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn partial_transfer_advances_only_after_complete_chunks() {
+        let mut session = TransferSession::new(64, component(100), 1_000, 10, 0, 0);
+
+        assert_eq!(session.get_download_chunk(0, 64), Some((0, 64)));
+        session.offset = 0;
+        session.length = 64;
+        session.mark_ready_for_next();
+        assert!(!session.complete);
+
+        assert_eq!(session.get_download_chunk(64, 36), Some((64, 36)));
+        session.offset = 64;
+        session.length = 36;
+        session.mark_complete(TransferResult::TransferSuccess);
+        assert!(session.complete);
+        assert_eq!(session.result, Some(TransferResult::TransferSuccess));
+    }
+
+    #[test]
+    fn invalid_or_overflowing_transfer_range_is_rejected() {
+        let session = TransferSession::new(64, component(100), 1_000, 10, 0, 0);
+
+        assert_eq!(session.get_download_chunk(101, 1), None);
+        assert_eq!(session.get_download_chunk(u32::MAX, 2), None);
+    }
+
+    #[test]
+    fn request_is_retried_only_after_t2_delay() {
+        let mut session = TransferSession::new(64, component(100), 1_000, 10, 0, 0);
+
+        session.mark_sent(100, 0);
+        assert!(!session.should_send_request(109));
+        assert!(session.should_send_request(110));
+
+        session.mark_ready_for_next();
+        assert!(session.should_send_request(110));
+    }
+
+    #[test]
+    fn cancellation_flag_can_be_cleared_for_retry() {
+        let flag = CancellationFlag::new();
+
+        flag.cancel();
+        assert!(flag.is_cancelled());
+        flag.reset();
+        assert!(!flag.is_cancelled());
+    }
+}

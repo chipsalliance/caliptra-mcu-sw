@@ -7,6 +7,11 @@ mod api;
 pub mod attestation_manifest;
 pub mod errors;
 pub mod image_metadata;
+#[cfg(feature = "ocp-lock")]
+pub mod signer;
+
+#[cfg(feature = "ocp-lock")]
+pub use signer::CaliptraDpeSigner;
 
 pub use attestation_manifest::{
     parse_and_validate_owner, parse_and_validate_owner_fw_load_list,
@@ -23,7 +28,10 @@ use errors::{MeasurementApiError, MeasurementApiResult};
 pub use image_metadata::{
     ImageMetadata, ImageMetadataFlags, MeasurementOperation, IMAGE_MEASUREMENT_DIGEST_SIZE,
 };
-pub use mcu_caliptra_api::{DpeProfile, ImageHashSource, SigningInput};
+pub use mcu_caliptra_api::{
+    DpeProfile, ExportedCdiSigningInput, ImageHashSource, SigningInput,
+    EXPORTED_CDI_MAX_MLDSA87_TBS_SIZE,
+};
 use mcu_caliptra_api::{ScratchAlloc, DPE_LABEL_LEN};
 use mcu_error::McuResult;
 
@@ -49,7 +57,7 @@ pub enum MeasurementSigningAlgo {
 /// API keeps measurement state locked.
 ///
 /// Implementations must not call back into Measurement API, because
-/// [`measure_and_sign_evidence`] holds the global Measurement API lock while
+/// [`signed_measurement_evidence`] holds the global Measurement API lock while
 /// invoking this hook.
 pub trait EvidenceBuilder<A: ScratchAlloc> {
     /// Return the target signing algorithm.
@@ -318,7 +326,7 @@ pub async fn sign<A: ScratchAlloc>(
 /// TODO: it is unused while every slot signs with the same DPE leaf key; pass
 /// it to the cert store once signing is slot-aware.
 #[inline(never)]
-pub async fn measure_and_sign_evidence<A, B>(
+pub async fn signed_measurement_evidence<A, B>(
     alloc: &A,
     key_label: &[u8; DPE_LABEL_LEN],
     _pki_entity_slot: u8,
@@ -394,11 +402,15 @@ pub async fn encode_measurement_evidence<A: ScratchAlloc>(
     api.encode_measurement_evidence(alloc, buffer).await
 }
 
-/// Derive an exported CDI context from the configured attestation target, persist the
-/// 32-byte exported CDI handle in DPE handle storage, update the rotated target handle,
-/// and write the emitted leaf certificate into `cert_out`.
+/// Derive an exported CDI context from `target_fw_id`, persist the 32-byte exported CDI
+/// handle in DPE handle storage, update the rotated target handle, and write the emitted
+/// leaf certificate into `cert_out`.
+///
+/// `target_fw_id`: pass `None` to use the default `EXPORT_CDI_TARGET` configured in `MCAM`,
+/// or `Some(fw_id)` to select an explicit `EXPORT_CDI_TARGET` DPE node (for multi-CDI use).
 pub async fn export_cdi_and_stash<A: ScratchAlloc>(
     alloc: &A,
+    target_fw_id: Option<u32>,
     profile: DpeProfile,
     cert_out: &mut [u8],
 ) -> MeasurementApiResult<usize> {
@@ -406,14 +418,55 @@ pub async fn export_cdi_and_stash<A: ScratchAlloc>(
     let api = guard
         .as_mut()
         .ok_or(MeasurementApiError::AttestationDisabled)?;
-    api.export_cdi_and_stash(alloc, profile, cert_out).await
+    api.export_cdi_and_stash(alloc, target_fw_id, profile, cert_out)
+        .await
 }
 
 /// Retrieve the stashed 32-byte exported CDI handle via an outparam.
-pub async fn read_exported_cdi(cdi_out: &mut [u8; EXPORTED_CDI_SIZE]) -> MeasurementApiResult {
+///
+/// `target_fw_id`: pass `None` to use the default `EXPORT_CDI_TARGET` configured in `MCAM`,
+/// or `Some(fw_id)` to select an explicit `EXPORT_CDI_TARGET` DPE node.
+pub async fn read_exported_cdi(
+    target_fw_id: Option<u32>,
+    cdi_out: &mut [u8; EXPORTED_CDI_SIZE],
+) -> MeasurementApiResult {
     let guard = MEASUREMENT_API.lock().await;
     let api = guard
         .as_ref()
         .ok_or(MeasurementApiError::AttestationDisabled)?;
-    api.read_exported_cdi(cdi_out)
+    api.read_exported_cdi(target_fw_id, cdi_out)
+}
+
+/// Revoke the stored exported CDI handle in Caliptra and clear its slot in
+/// DPE handle storage.
+///
+/// `target_fw_id`: pass `None` to use the default `EXPORT_CDI_TARGET` configured in `MCAM`,
+/// or `Some(fw_id)` to select an explicit `EXPORT_CDI_TARGET` DPE node.
+pub async fn revoke_exported_cdi<A: ScratchAlloc>(
+    alloc: &A,
+    target_fw_id: Option<u32>,
+) -> MeasurementApiResult {
+    let mut guard = MEASUREMENT_API.lock().await;
+    let api = guard
+        .as_mut()
+        .ok_or(MeasurementApiError::AttestationDisabled)?;
+    api.revoke_exported_cdi(alloc, target_fw_id).await
+}
+
+/// Sign a typed input with the stored exported CDI handle for `target_fw_id`.
+///
+/// `target_fw_id`: pass `None` to use the default `EXPORT_CDI_TARGET` configured in `MCAM`,
+/// or `Some(fw_id)` to select an explicit `EXPORT_CDI_TARGET` DPE node.
+pub async fn sign_with_exported_cdi<A: ScratchAlloc>(
+    alloc: &A,
+    target_fw_id: Option<u32>,
+    signing_input: ExportedCdiSigningInput<'_>,
+    signature: &mut [u8],
+) -> MeasurementApiResult<usize> {
+    let guard = MEASUREMENT_API.lock().await;
+    let api = guard
+        .as_ref()
+        .ok_or(MeasurementApiError::AttestationDisabled)?;
+    api.sign_with_exported_cdi(alloc, target_fw_id, signing_input, signature)
+        .await
 }

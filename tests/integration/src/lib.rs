@@ -30,6 +30,8 @@ mod test_handoff;
 mod test_hek;
 mod test_i3c_constant_writes;
 mod test_i3c_dcr;
+#[cfg(not(feature = "fpga_realtime"))]
+mod test_i3c_faults;
 mod test_i3c_simple;
 mod test_log_flash_usermode;
 mod test_mctp_capsule_loopback;
@@ -43,6 +45,8 @@ mod test_ocp_dev_identity_provision_tool;
 mod test_owner_stable_key;
 mod test_pldm_fw_update;
 mod test_raw_lifecycle_boot;
+#[cfg(all(test, not(feature = "fpga_realtime")))]
+mod test_rom_runtime_compatibility;
 mod test_soc_boot;
 mod test_svn_manifest;
 mod test_sw_pcr_store;
@@ -108,6 +112,8 @@ mod test {
         pub network_boot: bool,
         /// Seed primary flash for a runtime flash loader while ROM boots via recovery.
         pub seed_primary_flash_image: bool,
+        /// Override the generated or prebuilt primary flash image.
+        pub primary_flash_image: Option<Vec<u8>>,
         pub network_tap_device: Option<Arc<Mutex<Box<dyn TapDevice>>>>,
         /// If true, set the DOT initialized fuse to enable DOT flow
         pub dot_enabled: bool,
@@ -152,6 +158,9 @@ mod test {
         /// Caliptra FW) so the reported `FW_INFO.fw_svn` is known. Only
         /// honored on the `firmware_prefix` build path.
         pub caliptra_svn: Option<u16>,
+        /// If true, leave external OTP partitions 0x01/0x02 erased (`0xFF`) at boot
+        /// instead of pre-seeding `ECC_DEVID_CERT_DER` and `MLDSA_IDEVID_CERT`.
+        pub unprovisioned_idevid_otp: bool,
     }
 
     impl Default for TestParams<'_> {
@@ -167,6 +176,7 @@ mod test {
                 flash_boot: false,
                 network_boot: false,
                 seed_primary_flash_image: false,
+                primary_flash_image: None,
                 network_tap_device: None,
                 dot_enabled: false,
                 custom_caliptra_fw: None,
@@ -189,6 +199,7 @@ mod test {
                 example_app: false,
                 profile: None,
                 caliptra_svn: None,
+                unprovisioned_idevid_otp: false,
             }
         }
     }
@@ -877,14 +888,17 @@ mod test {
         };
 
         let primary_flash_image = if params.flash_boot || params.seed_primary_flash_image {
-            let mut flash = flash_image.unwrap_or_else(|| {
-                build_flash_image_bytes(
-                    Some(&caliptra_fw),
-                    Some(&soc_manifest),
-                    Some(&mcu_runtime),
-                    None,
-                )
-            });
+            let mut flash = params
+                .primary_flash_image
+                .or(flash_image)
+                .unwrap_or_else(|| {
+                    build_flash_image_bytes(
+                        Some(&caliptra_fw),
+                        Some(&soc_manifest),
+                        Some(&mcu_runtime),
+                        None,
+                    )
+                });
             if params.seed_primary_flash_image && !params.flash_boot {
                 write_valid_partition_table_for_runtime_flash_load(&mut flash);
             }
@@ -905,12 +919,12 @@ mod test {
         let primary_flash_initial_contents = build_primary_flash_initial_contents(
             primary_flash_image,
             #[cfg(not(feature = "fpga_realtime"))]
-            Some(ECC_DEVID_CERT_DER.as_slice()),
+            (!params.unprovisioned_idevid_otp).then_some(ECC_DEVID_CERT_DER.as_slice()),
             #[cfg(feature = "fpga_realtime")]
             // Initialized in run_imaginary_flash_controller_service
             None,
             #[cfg(not(feature = "fpga_realtime"))]
-            Some(MLDSA_IDEVID_CERT.as_slice()),
+            (!params.unprovisioned_idevid_otp).then_some(MLDSA_IDEVID_CERT.as_slice()),
             #[cfg(feature = "fpga_realtime")]
             // Initialized in run_imaginary_flash_controller_service
             None,
@@ -959,7 +973,7 @@ mod test {
         .unwrap()
     }
 
-    fn write_valid_partition_table_for_runtime_flash_load(flash: &mut Vec<u8>) {
+    pub(crate) fn write_valid_partition_table_for_runtime_flash_load(flash: &mut Vec<u8>) {
         if !has_valid_partition_table(flash) {
             let unpartitioned_flash = std::mem::take(flash);
             flash.resize(IMAGE_A_PARTITION.offset + unpartitioned_flash.len(), 0xff);
@@ -1071,7 +1085,7 @@ mod test {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn runtime_command(
+    pub(crate) fn runtime_command(
         feature: &str,
         rom_path: PathBuf,
         runtime_path: PathBuf,

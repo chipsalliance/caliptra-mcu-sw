@@ -10,7 +10,7 @@
 use caliptra_mcu_spdm_errors::{spdm_wire, SUBDOMAIN_LOCAL};
 use mcu_error::{domain, McuErrorCode};
 
-// ---- SPDM wire errors (DSP0274 §10.10.2) ------------------------------------
+// ---- SPDM wire errors (DSP0274) ---------------------------------------------
 
 pub const SPDM_INVALID_REQUEST: McuErrorCode = spdm_wire(0x01);
 pub const SPDM_BUSY: McuErrorCode = spdm_wire(0x03);

@@ -112,7 +112,7 @@ const _: () = assert!(
 /// Maximum across streaming request handlers. Add new streamed request limits
 /// to this block.
 const MAX_STREAMED_SPDM_REQUEST_LEN: usize = {
-    #[cfg(feature = "test-mctp-spdm-set-certificate")]
+    #[cfg(feature = "cert-provisioning")]
     {
         if MAX_STREAMED_SET_CERTIFICATE_REQUEST_LEN > MAX_STREAMED_VDM_REQUEST_LEN {
             MAX_STREAMED_SET_CERTIFICATE_REQUEST_LEN
@@ -121,7 +121,7 @@ const MAX_STREAMED_SPDM_REQUEST_LEN: usize = {
         }
     }
 
-    #[cfg(not(feature = "test-mctp-spdm-set-certificate"))]
+    #[cfg(not(feature = "cert-provisioning"))]
     {
         MAX_STREAMED_VDM_REQUEST_LEN
     }
@@ -135,9 +135,9 @@ const MAX_STREAMED_VDM_REQUEST_LEN: usize =
 /// Maximum streamed SET_CERTIFICATE request for a CertChain.
 ///
 /// This limit is tunable based on the integrator's requirements.
-#[cfg(feature = "test-mctp-spdm-set-certificate")]
+#[cfg(feature = "cert-provisioning")]
 const MAX_STANDARD_CERT_CHAIN_LEN: usize = u16::MAX as usize;
-#[cfg(feature = "test-mctp-spdm-set-certificate")]
+#[cfg(feature = "cert-provisioning")]
 const MAX_STREAMED_SET_CERTIFICATE_REQUEST_LEN: usize = caliptra_mcu_spdm_codec::SpdmMsgHdrPdu::SIZE
     + caliptra_mcu_spdm_codec::SetCertificateReqBody::SIZE
     + MAX_STANDARD_CERT_CHAIN_LEN;
@@ -414,17 +414,13 @@ const TEST_PCI_SIG_VENDOR_ID: u16 = 0x0001;
 const SUPPORTED_TDISP_VERSIONS: &[TdispVersion] = &[TdispVersion::V10];
 
 #[cfg(feature = "test-mctp-spdm-attestation-pcr-quote")]
-fn measurement_provider(
-) -> caliptra_mcu_spdm_pal::measurements::providers::pcr_quote::PcrQuoteMeasurementProvider {
-    caliptra_mcu_spdm_pal::measurements::providers::pcr_quote::PcrQuoteMeasurementProvider::new()
+fn measurement_provider() -> caliptra_mcu_spdm_pal::PcrQuoteMeasurementProvider {
+    caliptra_mcu_spdm_pal::PcrQuoteMeasurementProvider::new()
 }
 
 #[cfg(not(feature = "test-mctp-spdm-attestation-pcr-quote"))]
-fn measurement_provider(
-) -> caliptra_mcu_spdm_pal::measurements::providers::ocp_eat::OcpEatMeasurementProvider {
-    caliptra_mcu_spdm_pal::measurements::providers::ocp_eat::OcpEatMeasurementProvider::new(
-        caliptra_mcu_spdm_pal::cert::DPE_LEAF_LABEL,
-    )
+fn measurement_provider() -> caliptra_mcu_spdm_pal::OcpEatMeasurementProvider {
+    caliptra_mcu_spdm_pal::OcpEatMeasurementProvider::new(caliptra_mcu_cert_store::DPE_LEAF_LABEL)
 }
 
 #[repr(C, align(64))]
@@ -454,7 +450,7 @@ pub(crate) unsafe fn borrow_boot_scratch() -> BootScratch {
     )
 }
 
-/// Spawn SPDM responder tasks after [`crate::cert_store::boot_init`] succeeds,
+/// Spawn SPDM responder tasks after [`crate::cert_store::init`] succeeds,
 /// consuming the boot owner before the MCTP responder starts.
 pub(crate) fn spawn_spdm_tasks(spawner: &Spawner, boot_owner: BootScratch) {
     let mut cw = Console::<DefaultSyscalls>::writer();
@@ -514,8 +510,8 @@ async fn spdm_mctp_responder() {
     static COMMANDS: crate::caliptra_cmd_handler::CaliptraCmdBackend =
         crate::caliptra_cmd_handler::CaliptraCmdBackend;
     static STREAM: caliptra_vdm::CaliptraVdmStreamHook = caliptra_vdm::CaliptraVdmStreamHook;
-    static AUTHORIZATION: crate::mcu_mbox::cmd_auth_mock::MockCommandAuthorizer =
-        crate::mcu_mbox::cmd_auth_mock::MockCommandAuthorizer;
+    static AUTHORIZATION: crate::mcu_mbox::cmd_auth::RuntimeCommandAuthorizer =
+        crate::mcu_mbox::cmd_auth::RuntimeCommandAuthorizer;
     let vdm = caliptra_vdm::AppVdmBackend::enabled(&COMMANDS, &STREAM, &AUTHORIZATION);
     let mut stack = SpdmStack::<_, 1, _>::with_vdm_backend(pal, vdm);
 

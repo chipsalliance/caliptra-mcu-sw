@@ -19,7 +19,7 @@ pub async fn test_mcu_mbox_usermode_loopback() {
             "Failed to receive command: {:?}",
             recv_result.err()
         );
-        let (_cmd, payload_len) = recv_result.unwrap();
+        let (_cmd, payload_len, _axi_user) = recv_result.unwrap();
         assert!(
             payload_len <= request_buffer.len(),
             "Payload length exceeds buffer size"

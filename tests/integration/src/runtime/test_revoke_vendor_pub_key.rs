@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 use crate::{
-    runtime::execute_authorized_req,
+    runtime::{execute_authorized_req, start_command_authorized_runtime},
     test::{compile_runtime, start_runtime_hw_model, CustomCaliptraFw, TestParams},
 };
 use anyhow::Result;
@@ -48,7 +48,7 @@ fn test_revoke_vendor_pub_key0_ecdsa() -> Result<()> {
     let (caliptra_fw, caliptra_fw_key2, vendor_pk_hash_arr, soc_manifest) = get_fw()?;
 
     // Boot with default caliptra_fw (key_index = 0)
-    let mut hw = start_runtime_hw_model(TestParams {
+    let mut hw = start_command_authorized_runtime(TestParams {
         feature: Some("test-mcu-mbox-cmds"),
         custom_caliptra_fw: Some(CustomCaliptraFw {
             fw_bytes: caliptra_fw,
@@ -135,7 +135,7 @@ fn test_revoke_vendor_pub_key0_lms() -> Result<()> {
     let (caliptra_fw, caliptra_fw_key2, vendor_pk_hash_arr, soc_manifest) = get_fw()?;
 
     // Boot with default caliptra_fw (key_index = 0)
-    let mut hw = start_runtime_hw_model(TestParams {
+    let mut hw = start_command_authorized_runtime(TestParams {
         feature: Some("test-mcu-mbox-cmds"),
         custom_caliptra_fw: Some(CustomCaliptraFw {
             fw_bytes: caliptra_fw,
@@ -212,7 +212,7 @@ fn test_rotate_vendor_pk_hash() -> Result<()> {
     let (caliptra_fw, _caliptra_fw_key2, vendor_pk_hash_arr, soc_manifest) = get_fw()?;
 
     // Boot with default caliptra_fw
-    let mut hw = start_runtime_hw_model(TestParams {
+    let mut hw = start_command_authorized_runtime(TestParams {
         feature: Some("test-mcu-mbox-cmds"),
         custom_caliptra_fw: Some(CustomCaliptraFw {
             fw_bytes: caliptra_fw.clone(),
@@ -261,7 +261,7 @@ fn test_rotate_vendor_pk_hash() -> Result<()> {
     let otp = hw.read_otp_memory();
 
     // Boot with caliptra_fw again
-    let mut hw = start_runtime_hw_model(TestParams {
+    let mut hw = start_command_authorized_runtime(TestParams {
         feature: Some("test-mcu-mbox-cmds"),
         custom_caliptra_fw: Some(CustomCaliptraFw {
             fw_bytes: caliptra_fw,

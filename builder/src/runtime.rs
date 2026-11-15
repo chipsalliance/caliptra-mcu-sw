@@ -65,15 +65,23 @@ pub fn runtime_build_with_apps(args: &CaliptraBuildArgs) -> Result<PathBuf> {
     let config_target_dir = target_dir.clone().unwrap_or_else(crate::target_dir);
     let user_app_config_fingerprint = if args.user_app_config_fingerprint.is_some() {
         args.user_app_config_fingerprint.clone()
-    } else if ["attestation_manifest.toml", "soc_image_descriptors.toml"]
-        .iter()
-        .all(|name| config_target_dir.join("generated").join(name).exists())
-    {
+    } else {
+        if !["attestation_manifest.toml", "soc_image_descriptors.toml"]
+            .iter()
+            .all(|name| config_target_dir.join("generated").join(name).exists())
+        {
+            crate::attestation_manifest::write_config_to_target_dir(
+                &config_target_dir,
+                args.vendor.as_deref().unwrap_or("ChipsAlliance"),
+                args.model.as_deref().unwrap_or("Caliptra-SS"),
+                args.soc_images.as_deref().unwrap_or(&[]),
+                "runtime_build_with_apps",
+                "Pre-generated",
+            )?;
+        }
         Some(crate::all::generated_user_app_config_fingerprint(
             &config_target_dir,
         )?)
-    } else {
-        None
     };
 
     let manifest = manifest_file_for_profile(platform, example_app, args.profile)?;

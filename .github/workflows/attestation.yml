@@ -145,8 +145,32 @@ jobs:
 
       # ---- Build firmware with test features enabled -------------------------------
       - name: Build firmware with test SPDM responder features
+        env:
+          RUNTIME_FEATURE: ${{ matrix.runtime_feature }}
         run: |
-          cargo xtask all-build --separate-runtimes --runtime-features ${{ matrix.runtime_feature }} \
+          python3 - <<'PY'
+          import os
+          from pathlib import Path
+
+          feature = os.environ["RUNTIME_FEATURE"]
+          tcb_flags = [True, False] if feature.endswith("-mixed") else [feature.endswith("-tcb")]
+          output_dir = Path("attestation-artifacts/owner-components")
+          output_dir.mkdir(parents=True, exist_ok=True)
+          image_args = []
+          for index, is_tcb in enumerate(tcb_flags):
+              fw_id = 0x10000 + index
+              path = output_dir / f"owner-soc-image-{fw_id:08x}.bin"
+              path.write_bytes(bytes([0xCC + index]) * 512)
+              load_addr = 0xA8801000 + index * 512
+              image_args.append(
+                  f"{path},0x{load_addr:x},0x0,{fw_id},{7 + index},{fw_id},"
+                  f"{feature},{str(is_tcb).lower()},false"
+              )
+          (output_dir / "images.csv").write_text("\n".join(image_args) + "\n")
+          PY
+          mapfile -t owner_images < attestation-artifacts/owner-components/images.csv
+          cargo xtask all-build --separate-runtimes --runtime-features "$RUNTIME_FEATURE" \
+            --owner_soc_image "${owner_images[@]}" \
             --vendor "$ATTESTATION_VENDOR" --model "$ATTESTATION_MODEL"
 
       # ---- Generate reference CoRIM values -------------------------------

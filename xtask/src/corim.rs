@@ -3,7 +3,7 @@
 use anyhow::{bail, Result};
 use base64::engine::general_purpose::{STANDARD, URL_SAFE_NO_PAD};
 use base64::Engine;
-use caliptra_auth_man_types::AuthorizationManifest;
+use caliptra_auth_man_types::{AuthorizationManifest, OwnerAuthorizationManifest};
 use p384::elliptic_curve::sec1::ToEncodedPoint;
 use p384::pkcs8::EncodePrivateKey;
 use serde::Deserialize;
@@ -14,12 +14,14 @@ use std::process::Command;
 use zerocopy::FromBytes;
 
 const SOC_MANIFEST_NAME: &str = "soc_manifest.bin";
+const OWNER_SOC_MANIFEST_NAME: &str = "owner_soc_manifest.bin";
 
 /// Default seed string for test signing key generation when no signing config is provided.
 const DEFAULT_TEST_KEY_SEED: &str = "caliptra-corim-default-test-signing-key";
 
 /// MCU runtime firmware identifier.
 /// See common/flash-image/src/lib.rs: MCU_RT_IDENTIFIER = 0x00000002
+#[cfg(test)]
 const MCU_RT_FW_ID: u32 = 0x00000002;
 const MEASUREMENT_API_MEASUREMENT_KEY: usize = 1;
 
@@ -160,10 +162,9 @@ pub struct SigningConfig {
     pub meta: Option<String>,
 }
 
-/// A firmware component whose reference values will appear in the CoMID,
-/// structured to match the OCP EAT evidence triples from the device.
+/// A manifest image metadata entry whose reference values will appear in the CoMID.
 struct EvidenceComponent {
-    /// Class-ID string matching the evidence environment (e.g. "0x00000003").
+    /// Class-ID string derived from the IME firmware ID (e.g. "0x00000002").
     class_id: String,
     /// Measurement key matching the evidence mkey.
     mkey: usize,
@@ -182,17 +183,15 @@ fn sha384_raw_to_digest_str(digest: &[u8; 48]) -> String {
     format!("sha-384:{}", STANDARD.encode(digest))
 }
 
-/// Read firmware binaries from the all-build ZIP bundle and decompose them
-/// into evidence-matching components.
+/// Read image metadata entries from the all-build ZIP bundle's manifests.
 ///
-/// Returns SoC firmware components matching Measurement API evidence:
-///   mkey 1: SoC firmware measurement map - auto-discovered from AuthManifest metadata.
+/// Returns separate Vendor and Owner inventories, including MCU runtime.
 fn read_evidence_components(
     bundle_path: &Path,
     config: &CorimConfig,
     feature: Option<&str>,
     post_update: bool,
-) -> Result<Vec<EvidenceComponent>> {
+) -> Result<(Vec<EvidenceComponent>, Vec<EvidenceComponent>)> {
     let file = std::fs::File::open(bundle_path)?;
     let mut zip = zip::ZipArchive::new(file)?;
 
@@ -206,7 +205,20 @@ fn read_evidence_components(
             }
         })
         .unwrap_or_else(|| SOC_MANIFEST_NAME.to_string());
+    let owner_soc_manifest_name = feature
+        .map(|f| {
+            if post_update {
+                format!("mcu-test-owner-soc-manifest-update-{}.bin", f)
+            } else {
+                format!("mcu-test-owner-soc-manifest-{}.bin", f)
+            }
+        })
+        .unwrap_or_else(|| OWNER_SOC_MANIFEST_NAME.to_string());
+    let cold_owner_soc_manifest_name =
+        feature.map(|f| format!("mcu-test-owner-soc-manifest-{}.bin", f));
     let mut soc_manifest_data: Option<Vec<u8>> = None;
+    let mut owner_soc_manifest_data: Option<Vec<u8>> = None;
+    let mut has_cold_owner_manifest = false;
 
     for i in 0..zip.len() {
         let mut file = zip.by_index(i)?;
@@ -216,6 +228,11 @@ fn read_evidence_components(
 
         if name == soc_manifest_name {
             soc_manifest_data = Some(data);
+        } else if name == owner_soc_manifest_name {
+            owner_soc_manifest_data = Some(data);
+        }
+        if cold_owner_soc_manifest_name.as_deref() == Some(name.as_str()) {
+            has_cold_owner_manifest = true;
         }
     }
 
@@ -229,7 +246,7 @@ fn read_evidence_components(
             e
         )
     })?;
-    let mut components = Vec::new();
+    let mut base_components = Vec::new();
 
     // Auto-discover SoC firmware components from the AuthManifest metadata
     let entry_count = auth_manifest.image_metadata_col.entry_count as usize;
@@ -238,13 +255,9 @@ fn read_evidence_components(
             break;
         }
         let metadata = &auth_manifest.image_metadata_col.image_metadata_list[i];
-        if metadata.fw_id == MCU_RT_FW_ID {
-            continue;
-        }
-
         let digest = sha384_raw_to_digest_str(&metadata.digest);
 
-        components.push(EvidenceComponent {
+        base_components.push(EvidenceComponent {
             class_id: format!("0x{:08X}", metadata.fw_id),
             mkey: MEASUREMENT_API_MEASUREMENT_KEY,
             vendor: Some(config.vendor.clone()),
@@ -254,7 +267,39 @@ fn read_evidence_components(
         });
     }
 
-    Ok(components)
+    if post_update && has_cold_owner_manifest && owner_soc_manifest_data.is_none() {
+        bail!("{} not found in bundle", owner_soc_manifest_name);
+    }
+
+    let mut owner_components = Vec::new();
+    if let Some(owner_soc_manifest) = owner_soc_manifest_data {
+        let owner =
+            OwnerAuthorizationManifest::read_from_bytes(&owner_soc_manifest).map_err(|e| {
+                anyhow::anyhow!(
+                    "Failed to parse {} as OwnerAuthorizationManifest: {:?}",
+                    owner_soc_manifest_name,
+                    e
+                )
+            })?;
+        let entry_count = owner.image_metadata_col.entry_count as usize;
+        let metadata = owner
+            .image_metadata_col
+            .image_metadata_list
+            .get(..entry_count)
+            .ok_or_else(|| anyhow::anyhow!("Owner manifest entry count exceeds capacity"))?;
+        for metadata in metadata {
+            owner_components.push(EvidenceComponent {
+                class_id: format!("0x{:08X}", metadata.fw_id),
+                mkey: MEASUREMENT_API_MEASUREMENT_KEY,
+                vendor: Some(config.vendor.clone()),
+                model: Some(config.model.clone()),
+                digest: sha384_raw_to_digest_str(&metadata.digest),
+                svn: None,
+            });
+        }
+    }
+
+    Ok((base_components, owner_components))
 }
 
 /// Generate the CoMID JSON template with reference values structured to match
@@ -478,14 +523,30 @@ fn generate_meta_template(output_dir: &Path) -> Result<PathBuf> {
     Ok(meta_path)
 }
 
-/// Generate CoRIM from a firmware bundle ZIP using cocli.
+fn remove_corim_artifacts(output_dir: &Path, name: &str) -> Result<()> {
+    for filename in [
+        format!("comid-{}.json", name),
+        format!("corim-{}.json", name),
+        format!("comid-{}.cbor", name),
+        format!("corim-{}.cbor", name),
+        format!("signed-corim-refval-{}.cbor", name),
+    ] {
+        match std::fs::remove_file(output_dir.join(filename)) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+            Err(e) => return Err(e.into()),
+        }
+    }
+    Ok(())
+}
+
+/// Generate separate Vendor and Owner CoRIMs from a firmware bundle ZIP using cocli.
 ///
-/// The generated CoMID reference values are structured to match Measurement API
-/// evidence triples produced by the Caliptra subsystem:
+/// The generated CoMID reference values use each IME's firmware ID and digest:
 ///
-///   mkey 1: SoC FW        - Auto-discovered from AuthManifest metadata
+///   mkey 1: SoC FW        - Vendor/Owner image metadata entries, including MCU RT
 ///
-/// Each measurement includes svn and digest fields.
+/// Manifest preambles are not included.
 ///
 /// Note: integrity-registers (journey PCR values) are runtime-computed and
 /// cannot be pre-determined from static build artifacts. They are not included
@@ -509,217 +570,498 @@ pub fn generate(
 
     // Step 1: Read and decompose firmware binaries to match evidence structure
     println!("Reading firmware binaries from: {}", bundle);
-    let components = read_evidence_components(bundle_path, &config, feature, post_update)?;
-    for comp in &components {
+    let (base_components, owner_components) =
+        read_evidence_components(bundle_path, &config, feature, post_update)?;
+    remove_corim_artifacts(output_path, "caliptra")?;
+    for (name, components) in [("vendor", base_components), ("owner", owner_components)] {
+        if name == "owner" && components.is_empty() {
+            remove_corim_artifacts(output_path, name)?;
+            continue;
+        }
+
+        let comid_template_path = output_path.join(format!("comid-{}.json", name));
+        let corim_template_path = output_path.join(format!("corim-{}.json", name));
+        let comid_cbor_path = output_path.join(format!("comid-{}.cbor", name));
+        let corim_output_path = output_path.join(format!("corim-{}.cbor", name));
+        let signed_corim_path = output_path.join(format!("signed-corim-refval-{}.cbor", name));
+
+        println!("Generating {} reference-value CoRIM...", name);
+        for comp in &components {
+            println!(
+                "  [mkey {}] {} ({})",
+                comp.mkey,
+                comp.class_id,
+                comp.digest.split(':').next().unwrap_or("unknown"),
+            );
+        }
+        println!();
+        println!("Note: integrity-registers (journey PCR values) are runtime-computed");
+        println!("and are not included in the reference values.");
+
+        // Step 2: Generate CoMID JSON template
+        let comid_template = generate_comid_template(&components);
+        let comid_json = serde_json::to_string_pretty(&comid_template)?;
+        std::fs::write(&comid_template_path, &comid_json)?;
         println!(
-            "  [mkey {}] {} ({})",
-            comp.mkey,
-            comp.class_id,
-            comp.digest.split(':').next().unwrap_or("unknown"),
+            "Generated CoMID template: {}",
+            comid_template_path.display()
         );
-    }
-    println!();
-    println!("Note: integrity-registers (journey PCR values) are runtime-computed");
-    println!("and are not included in the reference values.");
 
-    // Step 2: Generate CoMID JSON template
-    let comid_template = generate_comid_template(&components);
-    let comid_template_path = output_path.join("comid-caliptra.json");
-    let comid_json = serde_json::to_string_pretty(&comid_template)?;
-    std::fs::write(&comid_template_path, &comid_json)?;
-    println!(
-        "Generated CoMID template: {}",
-        comid_template_path.display()
-    );
+        // Step 3: Generate CoRIM JSON template
+        let corim_template = generate_corim_template();
+        let corim_json = serde_json::to_string_pretty(&corim_template)?;
+        std::fs::write(&corim_template_path, &corim_json)?;
+        println!(
+            "Generated CoRIM template: {}",
+            corim_template_path.display()
+        );
 
-    // Step 3: Generate CoRIM JSON template
-    let corim_template = generate_corim_template();
-    let corim_template_path = output_path.join("corim-caliptra.json");
-    let corim_json = serde_json::to_string_pretty(&corim_template)?;
-    std::fs::write(&corim_template_path, &corim_json)?;
-    println!(
-        "Generated CoRIM template: {}",
-        corim_template_path.display()
-    );
+        // Step 4: Create CBOR-encoded CoMID using cocli
+        println!("Creating CBOR-encoded CoMID...");
+        let comid_create = Command::new("cocli")
+            .args([
+                "comid",
+                "create",
+                "--template",
+                comid_template_path.to_str().unwrap(),
+                "--output-dir",
+                output_path.to_str().unwrap(),
+            ])
+            .output();
 
-    // Step 4: Create CBOR-encoded CoMID using cocli
-    println!("Creating CBOR-encoded CoMID...");
-    let comid_create = Command::new("cocli")
-        .args([
-            "comid",
-            "create",
-            "--template",
-            comid_template_path.to_str().unwrap(),
-            "--output-dir",
-            output_path.to_str().unwrap(),
-        ])
-        .output();
-
-    let comid_cbor_path = output_path.join("comid-caliptra.cbor");
-    match comid_create {
-        Ok(output) if output.status.success() => {
-            println!("  CoMID CBOR created successfully");
-        }
-        Ok(output) => {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            bail!("cocli comid create failed: {}", stderr);
-        }
-        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            bail!(
+        match comid_create {
+            Ok(output) if output.status.success() => {
+                println!("  CoMID CBOR created successfully");
+            }
+            Ok(output) => {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                bail!("cocli comid create failed: {}", stderr);
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
+                bail!(
                 "cocli not found in PATH. Install it with: go install github.com/veraison/cocli@latest"
             );
-        }
-        Err(e) => {
-            bail!("Failed to run cocli: {}", e);
-        }
-    }
-
-    // Step 5: Create unsigned CoRIM from CoMID + template
-    println!("Creating unsigned CoRIM...");
-    let corim_output_path = output_path.join("corim-caliptra.cbor");
-    let corim_create = Command::new("cocli")
-        .args([
-            "corim",
-            "create",
-            "--template",
-            corim_template_path.to_str().unwrap(),
-            "--comid",
-            comid_cbor_path.to_str().unwrap(),
-            "--output",
-            corim_output_path.to_str().unwrap(),
-        ])
-        .output();
-
-    match corim_create {
-        Ok(output) if output.status.success() => {
-            println!(
-                "CoRIM created successfully: {}",
-                corim_output_path.display()
-            );
-        }
-        Ok(output) => {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            bail!("cocli corim create failed: {}", stderr);
-        }
-        Err(e) => {
-            bail!("Failed to run cocli: {}", e);
-        }
-    }
-
-    // Display the unsigned CoRIM contents for verification
-    println!("\nDisplaying unsigned CoRIM contents...");
-    let display = Command::new("cocli")
-        .args([
-            "corim",
-            "display",
-            "--file",
-            corim_output_path.to_str().unwrap(),
-            "--show-tags",
-        ])
-        .output();
-
-    if let Ok(output) = display {
-        if output.status.success() {
-            println!("{}", String::from_utf8_lossy(&output.stdout));
-        }
-    }
-
-    // Resolve signing key and certificate paths — always sign the CoRIM.
-    // When no signing config is provided, use a default test key seed.
-    let test_keys_dir = |sign_cfg: Option<&SigningConfig>| {
-        sign_cfg
-            .and_then(|c| c.keys_dir.as_ref())
-            .map(PathBuf::from)
-            .unwrap_or_else(|| output_path.join("fake_keys"))
-    };
-    let (jwk_path, cert_path) = if let Some(ref sign_cfg) = config.signing {
-        if let Some(ref seed_str) = sign_cfg.test_key {
-            // Generate deterministic test keys from seed
-            let keys_dir = test_keys_dir(Some(sign_cfg));
-            println!("Generating deterministic P-384 test signing keys...");
-            let seed: [u8; 48] = Sha384::digest(seed_str.as_bytes()).into();
-            generate_test_keys(&keys_dir, &seed, "/CN=Caliptra Test Signer/O=ChipsAlliance")?
-        } else if let Some(ref key_path) = sign_cfg.key {
-            // Use provided key and certificate
-            let jwk_path = PathBuf::from(key_path);
-            let cert_path = PathBuf::from(sign_cfg.cert.as_ref().unwrap());
-            if !jwk_path.exists() {
-                bail!("Signing key not found: {}", jwk_path.display());
             }
-            if !cert_path.exists() {
-                bail!("Signing certificate not found: {}", cert_path.display());
+            Err(e) => {
+                bail!("Failed to run cocli: {}", e);
             }
-            (jwk_path, cert_path)
+        }
+
+        // Step 5: Create unsigned CoRIM from CoMID + template
+        println!("Creating unsigned CoRIM...");
+        let corim_create = Command::new("cocli")
+            .args([
+                "corim",
+                "create",
+                "--template",
+                corim_template_path.to_str().unwrap(),
+                "--comid",
+                comid_cbor_path.to_str().unwrap(),
+                "--output",
+                corim_output_path.to_str().unwrap(),
+            ])
+            .output();
+
+        match corim_create {
+            Ok(output) if output.status.success() => {
+                println!(
+                    "CoRIM created successfully: {}",
+                    corim_output_path.display()
+                );
+            }
+            Ok(output) => {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                bail!("cocli corim create failed: {}", stderr);
+            }
+            Err(e) => {
+                bail!("Failed to run cocli: {}", e);
+            }
+        }
+
+        // Display the unsigned CoRIM contents for verification
+        println!("\nDisplaying unsigned CoRIM contents...");
+        let display = Command::new("cocli")
+            .args([
+                "corim",
+                "display",
+                "--file",
+                corim_output_path.to_str().unwrap(),
+                "--show-tags",
+            ])
+            .output();
+
+        if let Ok(output) = display {
+            if output.status.success() {
+                println!("{}", String::from_utf8_lossy(&output.stdout));
+            }
+        }
+
+        // Resolve signing key and certificate paths — always sign the CoRIM.
+        // When no signing config is provided, use a default test key seed.
+        let test_keys_dir = |sign_cfg: Option<&SigningConfig>| {
+            sign_cfg
+                .and_then(|c| c.keys_dir.as_ref())
+                .map(PathBuf::from)
+                .unwrap_or_else(|| output_path.join("fake_keys"))
+        };
+        let (jwk_path, cert_path) = if let Some(ref sign_cfg) = config.signing {
+            if let Some(ref seed_str) = sign_cfg.test_key {
+                // Generate deterministic test keys from seed
+                let keys_dir = test_keys_dir(Some(sign_cfg));
+                println!("Generating deterministic P-384 test signing keys...");
+                let seed: [u8; 48] = Sha384::digest(seed_str.as_bytes()).into();
+                generate_test_keys(&keys_dir, &seed, "/CN=Caliptra Test Signer/O=ChipsAlliance")?
+            } else if let Some(ref key_path) = sign_cfg.key {
+                // Use provided key and certificate
+                let jwk_path = PathBuf::from(key_path);
+                let cert_path = PathBuf::from(sign_cfg.cert.as_ref().unwrap());
+                if !jwk_path.exists() {
+                    bail!("Signing key not found: {}", jwk_path.display());
+                }
+                if !cert_path.exists() {
+                    bail!("Signing certificate not found: {}", cert_path.display());
+                }
+                (jwk_path, cert_path)
+            } else {
+                // signing config present but no key specified — use default test key
+                let keys_dir = test_keys_dir(Some(sign_cfg));
+                println!("Generating deterministic P-384 test signing keys (default seed)...");
+                let seed: [u8; 48] = Sha384::digest(DEFAULT_TEST_KEY_SEED.as_bytes()).into();
+                generate_test_keys(&keys_dir, &seed, "/CN=Caliptra Test Signer/O=ChipsAlliance")?
+            }
         } else {
-            // signing config present but no key specified — use default test key
-            let keys_dir = test_keys_dir(Some(sign_cfg));
+            // No signing config at all — use default test key
+            let keys_dir = test_keys_dir(None);
             println!("Generating deterministic P-384 test signing keys (default seed)...");
             let seed: [u8; 48] = Sha384::digest(DEFAULT_TEST_KEY_SEED.as_bytes()).into();
             generate_test_keys(&keys_dir, &seed, "/CN=Caliptra Test Signer/O=ChipsAlliance")?
+        };
+        println!("  JWK key:     {}", jwk_path.display());
+        println!("  Certificate: {}", cert_path.display());
+
+        // Resolve meta path
+        let meta_path = if let Some(ref m) = config.signing.as_ref().and_then(|s| s.meta.as_ref()) {
+            let p = PathBuf::from(m);
+            if !p.exists() {
+                bail!("Meta file not found: {}", p.display());
+            }
+            p
+        } else {
+            generate_meta_template(output_path)?
+        };
+        println!("  Meta:        {}", meta_path.display());
+
+        // Sign the CoRIM
+        println!("\nSigning CoRIM...");
+        let corim_sign = Command::new("cocli")
+            .args([
+                "corim",
+                "sign",
+                "--file",
+                corim_output_path.to_str().unwrap(),
+                "--key",
+                jwk_path.to_str().unwrap(),
+                "--meta",
+                meta_path.to_str().unwrap(),
+                "--cert",
+                cert_path.to_str().unwrap(),
+                "--output",
+                signed_corim_path.to_str().unwrap(),
+            ])
+            .output();
+
+        match corim_sign {
+            Ok(output) if output.status.success() => {
+                println!("Signed CoRIM created: {}", signed_corim_path.display());
+            }
+            Ok(output) => {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                bail!("cocli corim sign failed: {}", stderr);
+            }
+            Err(e) => {
+                bail!("Failed to run cocli: {}", e);
+            }
         }
-    } else {
-        // No signing config at all — use default test key
-        let keys_dir = test_keys_dir(None);
-        println!("Generating deterministic P-384 test signing keys (default seed)...");
-        let seed: [u8; 48] = Sha384::digest(DEFAULT_TEST_KEY_SEED.as_bytes()).into();
-        generate_test_keys(&keys_dir, &seed, "/CN=Caliptra Test Signer/O=ChipsAlliance")?
+
+        println!("\nOutput files:");
+        println!("  CoMID template:  {}", comid_template_path.display());
+        println!("  CoRIM template:  {}", corim_template_path.display());
+        println!("  CoMID CBOR:      {}", comid_cbor_path.display());
+        println!("  CoRIM CBOR:      {}", corim_output_path.display());
+        println!("  Signed CoRIM:    {}", signed_corim_path.display());
+        println!("  Signing key:     {}", jwk_path.display());
+        println!("  Certificate:     {}", cert_path.display());
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use caliptra_auth_man_types::{
+        AuthManifestImageMetadata, OwnerAuthManifestPreamble, OWNER_AUTH_MANIFEST_MARKER,
     };
-    println!("  JWK key:     {}", jwk_path.display());
-    println!("  Certificate: {}", cert_path.display());
+    use std::io::Write;
+    use zerocopy::IntoBytes;
 
-    // Resolve meta path
-    let meta_path = if let Some(ref m) = config.signing.as_ref().and_then(|s| s.meta.as_ref()) {
-        let p = PathBuf::from(m);
-        if !p.exists() {
-            bail!("Meta file not found: {}", p.display());
+    fn manifests() -> (AuthorizationManifest, OwnerAuthorizationManifest) {
+        let mut base = AuthorizationManifest::default();
+        let base_entries = [
+            (MCU_RT_FW_ID, 0x22),
+            (4, 0x44),
+            (0x1000, 0x10),
+            (0x2000, 0x20),
+        ];
+        base.image_metadata_col.entry_count = base_entries.len() as u32;
+        for (i, (fw_id, digest)) in base_entries.into_iter().enumerate() {
+            base.image_metadata_col.image_metadata_list[i] = AuthManifestImageMetadata {
+                fw_id,
+                component_id: fw_id,
+                digest: [digest; 48],
+                ..Default::default()
+            };
         }
-        p
-    } else {
-        generate_meta_template(output_path)?
-    };
-    println!("  Meta:        {}", meta_path.display());
 
-    // Sign the CoRIM
-    println!("\nSigning CoRIM...");
-    let signed_corim_path = output_path.join("signed-corim-refval-caliptra.cbor");
-    let corim_sign = Command::new("cocli")
-        .args([
-            "corim",
-            "sign",
-            "--file",
-            corim_output_path.to_str().unwrap(),
-            "--key",
-            jwk_path.to_str().unwrap(),
-            "--meta",
-            meta_path.to_str().unwrap(),
-            "--cert",
-            cert_path.to_str().unwrap(),
-            "--output",
-            signed_corim_path.to_str().unwrap(),
-        ])
-        .output();
+        let mut owner = OwnerAuthorizationManifest::default();
+        owner.preamble.marker = OWNER_AUTH_MANIFEST_MARKER;
+        owner.preamble.size = std::mem::size_of::<OwnerAuthManifestPreamble>() as u32;
+        owner.preamble.version = 1;
+        owner.preamble.svn = 7;
+        let owner_entries = [(5, 0x55), (6, 0x66), (0x10000, 0xAA), (0x10001, 0xAA)];
+        owner.image_metadata_col.entry_count = owner_entries.len() as u32;
+        for (i, (fw_id, digest)) in owner_entries.into_iter().enumerate() {
+            owner.image_metadata_col.image_metadata_list[i] = AuthManifestImageMetadata {
+                fw_id,
+                component_id: if fw_id >= 0x10000 { 0x10000 } else { fw_id },
+                digest: [digest; 48],
+                ..Default::default()
+            };
+        }
+        (base, owner)
+    }
 
-    match corim_sign {
-        Ok(output) if output.status.success() => {
-            println!("Signed CoRIM created: {}", signed_corim_path.display());
+    fn bundle(entries: &[(&str, &[u8])]) -> tempfile::NamedTempFile {
+        let bundle = tempfile::NamedTempFile::new().unwrap();
+        let mut zip = zip::ZipWriter::new(bundle.reopen().unwrap());
+        for (name, data) in entries {
+            zip.start_file(*name, zip::write::SimpleFileOptions::default())
+                .unwrap();
+            zip.write_all(data).unwrap();
         }
-        Ok(output) => {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            bail!("cocli corim sign failed: {}", stderr);
+        zip.finish().unwrap();
+        bundle
+    }
+
+    #[test]
+    fn remove_corim_artifacts_preserves_other_outputs_and_signing_files() {
+        let output_dir = tempfile::tempdir().unwrap();
+        let stale = [
+            "comid-caliptra.json",
+            "corim-caliptra.json",
+            "comid-caliptra.cbor",
+            "corim-caliptra.cbor",
+            "signed-corim-refval-caliptra.cbor",
+        ];
+        let preserved = [
+            "signed-corim-refval-vendor.cbor",
+            "signed-corim-refval-owner.cbor",
+            "signing-key.jwk",
+            "meta-caliptra.json",
+        ];
+        for filename in stale.into_iter().chain(preserved) {
+            std::fs::write(output_dir.path().join(filename), b"test artifact").unwrap();
         }
-        Err(e) => {
-            bail!("Failed to run cocli: {}", e);
+
+        remove_corim_artifacts(output_dir.path(), "caliptra").unwrap();
+        for filename in stale {
+            assert!(!output_dir.path().join(filename).exists());
+        }
+        for filename in preserved {
+            assert_eq!(
+                std::fs::read(output_dir.path().join(filename)).unwrap(),
+                b"test artifact"
+            );
+        }
+        remove_corim_artifacts(output_dir.path(), "caliptra").unwrap();
+    }
+
+    #[test]
+    fn base_only_bundles_and_features_preserve_existing_inventory() {
+        let (base, owner) = manifests();
+        let base_bundle = bundle(&[(SOC_MANIFEST_NAME, base.as_bytes())]);
+        let (components, owner_components) =
+            read_evidence_components(base_bundle.path(), &CorimConfig::default(), None, false)
+                .unwrap();
+        assert_eq!(components.len(), 4);
+        assert_eq!(components[0].class_id, "0x00000002");
+        assert_eq!(components[0].digest, sha384_raw_to_digest_str(&[0x22; 48]));
+        assert!(owner_components.is_empty());
+
+        let feature_bundle = bundle(&[
+            (SOC_MANIFEST_NAME, base.as_bytes()),
+            ("owner_soc_manifest.bin", owner.as_bytes()),
+            ("mcu-test-soc-manifest-attestation.bin", base.as_bytes()),
+            (
+                "mcu-test-soc-manifest-update-attestation.bin",
+                base.as_bytes(),
+            ),
+            ("mcu-test-owner-soc-manifest-other.bin", &[0xFF]),
+        ]);
+        for post_update in [false, true] {
+            let (components, owner_components) = read_evidence_components(
+                feature_bundle.path(),
+                &CorimConfig::default(),
+                Some("attestation"),
+                post_update,
+            )
+            .unwrap();
+            assert_eq!(components.len(), 4);
+            assert!(owner_components.is_empty());
         }
     }
 
-    println!("\nOutput files:");
-    println!("  CoMID template:  {}", comid_template_path.display());
-    println!("  CoRIM template:  {}", corim_template_path.display());
-    println!("  CoMID CBOR:      {}", comid_cbor_path.display());
-    println!("  CoRIM CBOR:      {}", corim_output_path.display());
-    println!("  Signed CoRIM:    {}", signed_corim_path.display());
-    println!("  Signing key:     {}", jwk_path.display());
-    println!("  Certificate:     {}", cert_path.display());
+    #[test]
+    fn base_and_owner_reference_values_are_separate() {
+        let (base, owner) = manifests();
+        let bundle = bundle(&[
+            (SOC_MANIFEST_NAME, base.as_bytes()),
+            ("owner_soc_manifest.bin", owner.as_bytes()),
+        ]);
+        let config = CorimConfig {
+            vendor: "ACME Corp".to_string(),
+            model: "DeviceX".to_string(),
+            ..Default::default()
+        };
+        let (base_components, components) =
+            read_evidence_components(bundle.path(), &config, None, false).unwrap();
+        assert_eq!(
+            base_components
+                .iter()
+                .map(|c| c.class_id.as_str())
+                .collect::<Vec<_>>(),
+            ["0x00000002", "0x00000004", "0x00001000", "0x00002000"]
+        );
+        assert_eq!(
+            components
+                .iter()
+                .map(|c| c.class_id.as_str())
+                .collect::<Vec<_>>(),
+            ["0x00000005", "0x00000006", "0x00010000", "0x00010001",]
+        );
+        for (component, digest) in components.iter().zip([0x55, 0x66, 0xAA, 0xAA]) {
+            assert_eq!(component.digest, sha384_raw_to_digest_str(&[digest; 48]));
+        }
 
-    Ok(())
+        for components in [&base_components, &components] {
+            let template = generate_comid_template(components);
+            let references = template["triples"]["reference-values"].as_array().unwrap();
+            assert_eq!(references.len(), components.len());
+            for (reference, component) in references.iter().zip(components) {
+                let class = &reference["environment"]["class"];
+                assert_eq!(
+                    class["id"]["value"],
+                    STANDARD.encode(component.class_id.as_bytes())
+                );
+                assert_eq!(class["vendor"], config.vendor);
+                assert_eq!(class["model"], config.model);
+                let measurement = &reference["measurements"][0];
+                assert_eq!(measurement["key"]["value"], 1);
+                assert_eq!(measurement["value"]["digests"][0], component.digest);
+                assert!(measurement["value"].get("svn").is_none());
+            }
+        }
+    }
+
+    #[test]
+    fn feature_and_post_update_select_matching_owner_manifests() {
+        let (base, owner) = manifests();
+        let mut updated_base = base;
+        updated_base.image_metadata_col.image_metadata_list[2].digest = [0x31; 48];
+        let mut updated_owner = owner;
+        updated_owner.preamble.svn += 1;
+        updated_owner.image_metadata_col.image_metadata_list[2].digest = [0xBC; 48];
+        let bundle = bundle(&[
+            (SOC_MANIFEST_NAME, base.as_bytes()),
+            ("owner_soc_manifest.bin", &[0xFF]),
+            ("mcu-test-soc-manifest-attestation.bin", base.as_bytes()),
+            (
+                "mcu-test-owner-soc-manifest-attestation.bin",
+                owner.as_bytes(),
+            ),
+            (
+                "mcu-test-soc-manifest-update-attestation.bin",
+                updated_base.as_bytes(),
+            ),
+            (
+                "mcu-test-owner-soc-manifest-update-attestation.bin",
+                updated_owner.as_bytes(),
+            ),
+        ]);
+        let (cold_base, cold_owner) = read_evidence_components(
+            bundle.path(),
+            &CorimConfig::default(),
+            Some("attestation"),
+            false,
+        )
+        .unwrap();
+        let (post_base, post_owner) = read_evidence_components(
+            bundle.path(),
+            &CorimConfig::default(),
+            Some("attestation"),
+            true,
+        )
+        .unwrap();
+        assert_eq!(cold_base.len(), 4);
+        assert_eq!(post_base.len(), 4);
+        assert_eq!(cold_owner.len(), 4);
+        assert_eq!(post_owner.len(), 4);
+        assert_eq!(cold_base[2].digest, sha384_raw_to_digest_str(&[0x10; 48]));
+        assert_eq!(post_base[2].digest, sha384_raw_to_digest_str(&[0x31; 48]));
+        assert_eq!(cold_owner[2].digest, sha384_raw_to_digest_str(&[0xAA; 48]));
+        assert_eq!(post_owner[2].digest, sha384_raw_to_digest_str(&[0xBC; 48]));
+    }
+
+    #[test]
+    fn malformed_owner_manifests_are_not_ignored() {
+        let (base, owner) = manifests();
+        let mut invalid_count = owner;
+        invalid_count.image_metadata_col.entry_count =
+            invalid_count.image_metadata_col.image_metadata_list.len() as u32 + 1;
+        for data in [
+            &owner.as_bytes()[..owner.as_bytes().len() - 1],
+            invalid_count.as_bytes(),
+        ] {
+            let bundle = bundle(&[
+                (SOC_MANIFEST_NAME, base.as_bytes()),
+                ("owner_soc_manifest.bin", data),
+            ]);
+            assert!(
+                read_evidence_components(bundle.path(), &CorimConfig::default(), None, false)
+                    .is_err()
+            );
+        }
+    }
+
+    #[test]
+    fn post_update_rejects_missing_owner_manifest_when_cold_has_one() {
+        let (base, owner) = manifests();
+        let bundle = bundle(&[
+            (
+                "mcu-test-soc-manifest-update-attestation.bin",
+                base.as_bytes(),
+            ),
+            (
+                "mcu-test-owner-soc-manifest-attestation.bin",
+                owner.as_bytes(),
+            ),
+        ]);
+        assert!(read_evidence_components(
+            bundle.path(),
+            &CorimConfig::default(),
+            Some("attestation"),
+            true,
+        )
+        .is_err());
+    }
 }

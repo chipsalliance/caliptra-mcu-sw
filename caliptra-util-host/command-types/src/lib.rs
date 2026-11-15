@@ -51,6 +51,9 @@ pub enum CaliptraCommandId {
     // Device Info Commands (0x0001-0x000F)
     GetFirmwareVersion = 0x0001,
     GetDeviceCapabilities = 0x0002,
+    FieldEntropyStatus = 0x0003,
+    VendorPkHashStatus = 0x0004,
+    HekStatus = 0x0005,
 
     // Certificate Commands (0x1001-0x101F)
     GetIdevidCert = 0x1001,
@@ -60,10 +63,15 @@ pub enum CaliptraCommandId {
     ExportAttestedCsr = 0x1005,
     ExportIdevidCsr = 0x1006,
     GetAttestation = 0x1007,
+    GetCertChainInfo = 0x1008,
     GetCertChain = 0x1010,
     StoreCertificate = 0x1011,
     GetCertificate = 0x1012, // Generic get certificate
     SetCertificate = 0x1013, // Generic set certificate
+    SetCertChain = 0x1014,
+    ProvisionIdevCert = 0x1015,
+    DpeSignerContextCert = 0x1016,
+    DpeSignerContextSign = 0x1017,
 
     // Hash Commands (0x2001-0x2003)
     HashInit = 0x2001,

@@ -210,6 +210,23 @@ impl MciMailboxImpl {
         }
     }
 
+    pub fn warm_reset(&mut self) {
+        self.lock.reg.set(Self::LOCK_VAL);
+        self.user.reg.set(Self::USER_VAL);
+        self.target_user.reg.set(Self::TARGET_USER_VAL);
+        self.target_user_valid.reg.set(Self::TARGET_USER_VALID_VAL);
+        self.cmd.reg.set(Self::CMD_VAL);
+        self.dlen.reg.set(Self::DLEN_VAL);
+        self.execute.reg.set(Self::EXECUTE_VAL);
+        self.target_status.reg.set(Self::TARGET_STATUS_VAL);
+        self.cmd_status.reg.set(Self::CMD_STATUS_VAL);
+        self.hw_status.reg.set(Self::HW_STATUS_VAL);
+        self.requester = MciMailboxRequester::Mcu;
+        self.max_dlen_in_lock_session = 0;
+        self.irq = false;
+        self.last_irq_event = None;
+    }
+
     // The mailbox starts locked by the MCU to prevent data leaks across warm resets.
     // The MCU must set MBOX_DLEN to the full SRAM size and write 0 to MBOX_EXECUTE
     // to release and wipe the mailbox SRAM before allowing further use.

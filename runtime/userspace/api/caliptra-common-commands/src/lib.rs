@@ -7,6 +7,7 @@ pub mod command;
 
 #[cfg(feature = "ocp-lock")]
 use caliptra_api::mailbox::HpkeHandle;
+use caliptra_mcu_mbox_common::authorization::{AuthorizationMetadata, CommandAuthority};
 use caliptra_mcu_mbox_common::messages::{
     DotDisablePayload, DotLockPayload, DotOverrideChallengePayload, DotOverridePayload,
     DotRotatePayload, DotStatus, DotUnlockPayload, HybridSignature, SvnTarget, AUTH_CMD_NONCE_LEN,
@@ -156,21 +157,19 @@ impl TryFrom<u32> for AsymAlgo {
 /// PKI entity whose hierarchy endorses the evidence's signing key.
 ///
 /// This selects an endorsement hierarchy, not a signing key: every slot signs
-/// with the same DPE leaf key today.
-///
-/// Because signing is not slot-aware yet, only [`PkiEntitySlot::Vendor`] is
-/// served; responders reject [`PkiEntitySlot::Owner`] with
-/// `UNSUPPORTED_OPERATION` rather than return evidence claiming an endorsement
-/// that was never selected. Once signing is slot-aware, whether an entity can
-/// be served follows the provisioning state of its endorsement slot.
+/// with the same DPE leaf key, and whether an entity can be served follows the
+/// provisioning state of its `(role, algorithm)` certificate chain in the
+/// common certificate store.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 #[repr(u32)]
 pub enum PkiEntitySlot {
     /// Vendor (device manufacturer) hierarchy.
     #[default]
     Vendor = 0,
-    /// Owner hierarchy. Reserved.
+    /// Owner hierarchy.
     Owner = 1,
+    /// Tenant hierarchy.
+    Tenant = 2,
 }
 
 impl TryFrom<u32> for PkiEntitySlot {
@@ -179,7 +178,52 @@ impl TryFrom<u32> for PkiEntitySlot {
         match value {
             0 => Ok(PkiEntitySlot::Vendor),
             1 => Ok(PkiEntitySlot::Owner),
+            2 => Ok(PkiEntitySlot::Tenant),
             _ => Err(CaliptraCompletionCode::InvalidParameter),
+        }
+    }
+}
+
+/// Operation mode for `MC_PROVISION_IDEV_CERT` / VDM `PROVISION_IDEV_CERT`.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[repr(u32)]
+pub enum ProvisionIdevCertMode {
+    /// Populate the `IDevID` certificate into Caliptra Core RAM only without
+    /// burning or locking OTP.
+    #[default]
+    PopulateOnly = 0,
+    /// Write the `IDevID` certificate (or signature) to the external OTP
+    /// partition, verify the readback, lock the partition, and populate
+    /// Caliptra Core.
+    WriteOtp = 1,
+}
+
+impl TryFrom<u32> for ProvisionIdevCertMode {
+    type Error = CaliptraCompletionCode;
+
+    fn try_from(value: u32) -> Result<Self, Self::Error> {
+        match value {
+            0 => Ok(Self::PopulateOnly),
+            1 => Ok(Self::WriteOtp),
+            _ => Err(CaliptraCompletionCode::InvalidParameter),
+        }
+    }
+}
+
+/// Metadata, byte length, and raw DER SHA-384 digest for a certificate chain slot.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CertChainInfo {
+    pub device_key_id: u32,
+    pub chain_len: u32,
+    pub chain_digest: [u8; 48],
+}
+
+impl Default for CertChainInfo {
+    fn default() -> Self {
+        Self {
+            device_key_id: 0,
+            chain_len: 0,
+            chain_digest: [0u8; 48],
         }
     }
 }
@@ -248,6 +292,13 @@ impl Default for DebugUnlockChallenge {
     }
 }
 
+/// Vendor command body limits, excluding authorization and transport framing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct VendorCommandLimits {
+    pub max_payload_len: usize,
+    pub max_response_len: usize,
+}
+
 /// Asynchronous trait for handling Caliptra common commands across all transport protocols.
 ///
 /// Each function represents a transport-agnostic command handler. Implementors should provide
@@ -278,6 +329,32 @@ pub trait CaliptraCmdHandler {
         &self,
         capabilities: &mut DeviceCapabilities,
     ) -> CaliptraCmdResult<()>;
+
+    /// Describes a supported `VUxy` target inside `AuthorizedCommand`.
+    ///
+    /// This side-effect-free lookup runs before authorization. Payloads must fit
+    /// [`command::MAX_AUTHORIZED_PAYLOAD_LEN`]. The declared response limit must
+    /// fit the transport's existing response buffer; no resizing is done.
+    /// The default registers no vendor commands.
+    fn vendor_command_limits(_cmd_id: u32) -> Option<VendorCommandLimits> {
+        None
+    }
+
+    /// Executes a vendor command after the common authorization checks pass.
+    ///
+    /// `payload` excludes the target ID and authorization block. `response`
+    /// contains only body space, bounded by the registered response limit.
+    /// Return the number of bytes written, never greater than `response.len()`.
+    /// Transport headers and checksums remain the frontend's responsibility.
+    async fn handle_vendor_command<Alloc: ScratchAlloc>(
+        &self,
+        _alloc: &Alloc,
+        _cmd_id: u32,
+        _payload: &[u8],
+        _response: &mut [u8],
+    ) -> CaliptraCmdResult<usize> {
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
 
     /// Exports an attested CSR or performs keypair discovery.
     ///
@@ -383,6 +460,70 @@ pub trait CaliptraCmdHandler {
         out: &mut [u8],
     ) -> CaliptraCmdResult<usize> {
         let _ = (alloc, format, algorithm, entity, nonce, out);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Retrieves metadata, total byte length, and raw DER SHA-384 digest for a
+    /// provisioned `(entity, algorithm)` certificate chain slot.
+    async fn get_cert_chain_info<Alloc: ScratchAlloc>(
+        &self,
+        alloc: &Alloc,
+        entity: PkiEntitySlot,
+        algorithm: AsymAlgo,
+        info: &mut CertChainInfo,
+    ) -> CaliptraCmdResult<()> {
+        let _ = (alloc, entity, algorithm, info);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Reads a contiguous byte slice of the complete raw DER certificate chain
+    /// for a provisioned `(entity, algorithm)` slot into `out`.
+    async fn get_cert_chain<Alloc: ScratchAlloc>(
+        &self,
+        alloc: &Alloc,
+        entity: PkiEntitySlot,
+        algorithm: AsymAlgo,
+        offset: u32,
+        out: &mut [u8],
+    ) -> CaliptraCmdResult<usize> {
+        let _ = (alloc, entity, algorithm, offset, out);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Provisions, replaces, or erases the PKI endorsement chain for a managed
+    /// `(entity, algorithm)` slot.
+    #[allow(clippy::too_many_arguments)]
+    async fn set_cert_chain<Alloc: ScratchAlloc>(
+        &self,
+        alloc: &Alloc,
+        entity: PkiEntitySlot,
+        algorithm: AsymAlgo,
+        device_key_id: u32,
+        offset: u32,
+        total_size: u32,
+        data: &[u8],
+    ) -> CaliptraCmdResult<()> {
+        let _ = (
+            alloc,
+            entity,
+            algorithm,
+            device_key_id,
+            offset,
+            total_size,
+            data,
+        );
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Populates and/or writes to OTP the Vendor `IDevID` certificate for `algorithm`.
+    async fn provision_idevid_cert<Alloc: ScratchAlloc>(
+        &self,
+        alloc: &Alloc,
+        algorithm: AsymAlgo,
+        mode: ProvisionIdevCertMode,
+        data: &[u8],
+    ) -> CaliptraCmdResult<()> {
+        let _ = (alloc, algorithm, mode, data);
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 
@@ -516,6 +657,21 @@ pub trait CaliptraCmdHandler {
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 
+    /// Reports whether all field entropy partitions have been provisioned.
+    async fn field_entropy_already_provisioned(&self) -> CaliptraCmdResult<bool> {
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Reports occupied vendor public-key hash slots and their PQC key types.
+    async fn vendor_pk_hash_status(&self) -> CaliptraCmdResult<(u32, [u8; 16])> {
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Reports used HEK slots and the total number of configured HEK slots.
+    async fn hek_status(&self) -> CaliptraCmdResult<(u32, u32)> {
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
     /// Retrieves the OCP Lock endorsement certificate using task-local scratch
     /// for the signing request and response.
     #[cfg(feature = "ocp-lock")]
@@ -549,6 +705,28 @@ pub trait CaliptraCmdHandler {
         report_buf: &mut [u8],
     ) -> CaliptraCmdResult<usize> {
         let _ = (alloc, nonce, sek_state, algorithm, report_buf);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Rotate the active HEK to the specified slot.
+    #[cfg(feature = "ocp-lock")]
+    async fn ocp_lock_program_hek<Alloc: ScratchAlloc>(
+        &self,
+        alloc: &Alloc,
+        slot: u32,
+    ) -> CaliptraCmdResult<()> {
+        let _ = (alloc, slot);
+        Err(CaliptraCompletionCode::UnsupportedOperation)
+    }
+
+    /// Zero the specified HEK slot.
+    #[cfg(feature = "ocp-lock")]
+    async fn ocp_lock_zero_hek<Alloc: ScratchAlloc>(
+        &self,
+        alloc: &Alloc,
+        slot: u32,
+    ) -> CaliptraCmdResult<()> {
+        let _ = (alloc, slot);
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 
@@ -703,6 +881,19 @@ pub struct AuthorizationError;
 pub type AuthorizationResult<T> = Result<T, AuthorizationError>;
 
 pub trait CommandAuthorizer {
+    fn permits_authority(
+        &self,
+        _cmd_id: u32,
+        _payload: &[u8],
+        authority: CommandAuthority,
+    ) -> bool {
+        authority == CommandAuthority::Owner
+    }
+
+    fn device_ueid(&self) -> AuthorizationResult<[u8; 16]> {
+        Err(AuthorizationError)
+    }
+
     /// Generate the one-use challenge returned by `MACC`.
     async fn generate_challenge<Alloc: ScratchAlloc>(
         &self,
@@ -715,13 +906,16 @@ pub trait CommandAuthorizer {
         Ok(challenge)
     }
 
-    /// Verify signatures over a command using the stored challenge and wire keys.
+    /// Validate manifest-backed keys and both signatures, consuming a live
+    /// challenge when the signed nonce is nonzero. Authority and UEID checks
+    /// run before this; an all-zero nonce selects replayable Offline authorization.
     #[allow(clippy::too_many_arguments)]
     async fn verify_signatures<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
         cmd_id: u32,
         payload: &[u8],
+        metadata: &AuthorizationMetadata,
         nonce: &[u8; AUTH_CMD_NONCE_LEN],
         ecc_pub_x: &[u8; 48],
         ecc_pub_y: &[u8; 48],

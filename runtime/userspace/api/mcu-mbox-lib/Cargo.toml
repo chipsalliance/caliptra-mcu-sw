@@ -35,7 +35,9 @@ disable-lms-sig-verify = []
 device-ownership-transfer = ["caliptra-mcu-common-commands/device-ownership-transfer"]
 periodic-fips-self-test = []
 attested-csr = []
-ocp-lock = ["caliptra-mcu-common-commands/ocp-lock"]
+allow-mcu-signer-cert = []
+unsafe-allow-mcu-signing-oracle = ["allow-mcu-signer-cert"]
+ocp-lock = ["caliptra-mcu-common-commands/ocp-lock", "allow-mcu-signer-cert"]
 release = [
 	"dep:defmt",
 	"caliptra-mcu-userlog/defmt-transport",

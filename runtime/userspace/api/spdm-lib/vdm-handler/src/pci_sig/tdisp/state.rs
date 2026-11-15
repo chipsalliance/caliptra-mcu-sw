@@ -63,6 +63,16 @@ impl TdispState {
         }
         false
     }
+
+    pub(crate) fn release_interface(&self, interface_id: InterfaceId) {
+        if let Some(slot) = self
+            .interfaces
+            .iter()
+            .find(|slot| matches!(slot.get(), Some(state) if state.interface_id == interface_id))
+        {
+            slot.set(None);
+        }
+    }
 }
 
 #[derive(Clone, Copy)]

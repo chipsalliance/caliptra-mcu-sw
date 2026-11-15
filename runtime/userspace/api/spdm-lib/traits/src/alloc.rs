@@ -1,8 +1,8 @@
 // Licensed under the Apache-2.0 license
 
-//! Platform-specific allocator traits for SPDM-Lite.
+//! Platform-specific allocator traits for the SPDM stack.
 //!
-//! The SPDM-Lite stack often needs to allocate scratch buffers and
+//! The SPDM stack often needs to allocate scratch buffers and
 //! protocol state from a platform-managed memory pool rather than the
 //! global heap. This module defines:
 //!

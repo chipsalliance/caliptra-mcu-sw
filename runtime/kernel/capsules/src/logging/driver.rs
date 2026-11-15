@@ -194,10 +194,10 @@ impl<'a> LoggingFlashDriver<'a> {
                 // At this point, buffer is guaranteed to be available and pre-filled if needed
                 let buffer = self.buffer.take().ok_or(ErrorCode::RESERVE)?;
                 let len = arg1.min(buffer.len());
-                let res = match command {
-                    LoggingOps::Read => self.driver.read(buffer, len),
-                    LoggingOps::Append => self.driver.append(buffer, len),
-                    _ => unreachable!(),
+                let res = if command == LoggingOps::Read {
+                    self.driver.read(buffer, len)
+                } else {
+                    self.driver.append(buffer, len)
                 };
                 match res {
                     Ok(()) => Ok(()),
@@ -240,7 +240,12 @@ impl<'a> LoggingFlashDriver<'a> {
 }
 
 impl LogReadClient for LoggingFlashDriver<'_> {
-    fn read_done(&self, buffer: &'static mut [u8], length: usize, error: Result<(), ErrorCode>) {
+    fn read_done(
+        &self,
+        buffer: &'static mut [u8],
+        length: usize,
+        mut error: Result<(), ErrorCode>,
+    ) {
         if let Some(pid) = self.current_app.take() {
             let _ = self.apps.enter(pid, move |_, kernel_data| {
                 let _ = kernel_data
@@ -249,7 +254,10 @@ impl LogReadClient for LoggingFlashDriver<'_> {
                         app_buf.mut_enter(|app_data| {
                             let read_len = length.min(app_data.len());
                             if error.is_ok() {
-                                app_data[..read_len].copy_from_slice(&buffer[..read_len]);
+                                match buffer.get(..read_len) {
+                                    Some(data) => app_data[..read_len].copy_from_slice(data),
+                                    None => error = Err(ErrorCode::SIZE),
+                                }
                             }
                         })
                     });

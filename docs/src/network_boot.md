@@ -2,7 +2,7 @@
 
 This document outlines the design for a lightweight network recovery boot mechanism for the Caliptra subsystem. The system enables the Caliptra SS to download firmware images over the network through a dedicated Network Boot Coprocessor within a ROM environment, providing a resilient fallback path when flash memory is corrupted.
 
-The network boot coprocessor acts as an intermediary between remote image servers and the Caliptra SS, handling network communications including DHCP configuration, TFTP server discovery, and firmware image downloads. The system supports downloading multiple firmware components that includes the Caliptra SS and SoC images through a firmware ID-based mapping system.
+The network boot coprocessor acts as an intermediary between remote image servers and the Caliptra SS, handling network communications including DHCP configuration, TFTP server discovery, and firmware image downloads. The system supports downloading multiple firmware components that includes the Caliptra SS and SoC images through an identifier-based mapping system.
 
 ## Motivation
 
@@ -247,6 +247,14 @@ The Boot Source Provider Interface defines a generic contract for boot image pro
 
 The boot source provider communication uses a simple request-response messaging protocol, with the MCU ROM initiating requests and the `BootSourceProvider` responding. The following section defines the message types, packet formats, and field definitions.
 
+The `identifier` is a 4-byte unsigned integer containing the same identifier
+used in the [Flash Layout image information](./flash_layout.md#image-information).
+It selects the corresponding TOC entry and image to download.
+
+Multi-byte fields use little-endian encoding. The 4-byte `identifier` layouts
+below replace the former 1-byte `firmware_id` layouts; both the MCU client and
+boot source provider must use the updated layouts.
+
 ### Message Types and Packet Formats
 
 #### 1. Initiate Boot Request
@@ -276,8 +284,8 @@ Queries metadata about a specific firmware image.
 | Offset | Size | Field | Description |
 |--------|------|-------|-------------|
 | 0 | 1 | Message Type | 0x02 - Image Info Request |
-| 1 | 1 | Firmware ID | 0=CaliptraFmcRt, 1=SocManifest, 2=McuRt, 0x10000000..-SoC |
-| 2 | 2 | Reserved | Must be 0 |
+| 1 | 3 | Reserved | Must be 0 |
+| 4 | 4 | Identifier | TOC image identifier; see [Flash Layout](./flash_layout.md#image-information) |
 
 **Response Packet:**
 
@@ -300,9 +308,8 @@ Initiates download of a firmware image. The image is transferred in chunks. The 
 | Offset | Size | Field | Description |
 |--------|------|-------|-------------|
 | 0 | 1 | Message Type | 0x03 - Image Download Request |
-| 1 | 1 | Firmware ID | 0=CaliptraFmcRt, 1=SocManifest, 2=McuRt, 0x10000000..-SoC |
-| 2 | 2 | Reserved | Must be 0 |
-| 4 | 4 | Reserved | Can be extended to support flash-based boot |
+| 1 | 3 | Reserved | Must be 0 |
+| 4 | 4 | Identifier | TOC image identifier; see [Flash Layout](./flash_layout.md#image-information) |
 | 8 | 4 | Reserved | Can be extended to support flash-based boot |
 
 **Response Packet (per chunk):**
@@ -324,9 +331,9 @@ Acknowledges receipt of an image chunk and provides flow control.
 | Offset | Size | Field | Description |
 |--------|------|-------|-------------|
 | 0 | 1 | Message Type | 0x04 - Chunk ACK |
-| 1 | 1 | Firmware ID | Firmware being transferred |
+| 1 | 1 | Reserved | Must be 0 |
 | 2 | 2 | Sequence Number | Sequence number to be acknowledged |
-| 4 | 4 | Reserved | |
+| 4 | 4 | Identifier | Component being transferred |
 | 8 | 4 | Flags | Bit 0: Ready for next, Bit 1: Error detected |
 
 #### 5. Finalize
@@ -372,7 +379,7 @@ Error Code  Description
 ----------  -----------
 0x00        Success / No Error
 0x01        Invalid Message Type
-0x02        Invalid Firmware ID
+0x02        Invalid Identifier
 0x03        Image Not Found / Not Available
 0x04        Checksum Mismatch
 0x05        Transfer Timeout
@@ -399,14 +406,18 @@ Boot source providers implement the following core operations:
 
 #### Image Provisioning
 - **Image Metadata Query**: Query information about available firmware images (size, checksums, etc.)
-- **Image Download**: Download firmware images by firmware ID
+- **Image Download**: Download firmware images by identifier
 - **Data Streaming**: Stream image data to the MCU ROM for direct transfer to Caliptra SS
 
-#### Supported Firmware IDs
+#### Supported Identifiers
 - **ID 0**: Caliptra FMC+RT image
 - **ID 1**: SoC Manifest
 - **ID 2**: MCU RT image
-- **ID 0x10000000 - 0x1FFFFFFF**: Reserved for SoC Images (range supports up to 268,435,456 distinct SoC image IDs)
+
+Additional subsystem identifiers and the vendor-defined (`0x00001000`-`0x0000FFFF`)
+and owner-only (`0x00010000`-`0xFFFFFFFF`) SoC image ranges follow the
+[Flash Layout identifier assignments](./flash_layout.md#image-information),
+including its reserved values.
 
 ### Boot Source Provider Interface
 
@@ -421,11 +432,11 @@ pub trait BootSourceProvider {
     fn initiate_boot(&mut self) -> Result<BootSourceStatus, Self::Error>;
 
     /// Get information about a firmware image
-    fn get_image_metadata(&self, firmware_id: FirmwareId) -> Result<ImageInfo, Self::Error>;
+    fn get_image_metadata(&self, identifier: Identifier) -> Result<ImageInfo, Self::Error>;
 
     /// Download firmware image by ID
     /// Returns a stream for reading image data in chunks
-    fn download_image(&mut self, firmware_id: FirmwareId) -> Result<ImageStream, Self::Error>;
+    fn download_image(&mut self, identifier: Identifier) -> Result<ImageStream, Self::Error>;
 
     /// Get boot source status and capabilities
     fn get_boot_source_status(&self) -> Result<BootSourceStatus, Self::Error>;
@@ -434,18 +445,12 @@ pub trait BootSourceProvider {
     fn finalize(&self) -> Result<BootSourceStatus, Self::Error>;
 }
 
-/// Firmware ID enumeration
-#[derive(Debug, Clone, Copy)]
-pub enum FirmwareId {
-    /// Caliptra FMC+RT image
-    CaliptraFmcRt = 0,
-    /// SoC Manifest
-    SocManifest = 1,
-    /// MCU RT image
-    McuRt = 2,
-    /// SoC Image (raw u32 value in range 0x10000000 - 0x1FFFFFFF)
-    SocImage(u32),
-}
+/// Identifier matching the flash layout / TOC image identifier.
+pub type Identifier = u32;
+
+pub const CALIPTRA_FMC_RT_IDENTIFIER: Identifier = 0;
+pub const SOC_MANIFEST_IDENTIFIER: Identifier = 1;
+pub const MCU_RT_IDENTIFIER: Identifier = 2;
 
 /// Boot source initialization and capability status
 #[derive(Debug)]
@@ -459,7 +464,7 @@ pub struct BootSourceStatus {
 /// Metadata for a firmware image
 #[derive(Debug, Clone)]
 pub struct ImageInfo {
-    pub firmware_id: FirmwareId,
+    pub identifier: Identifier,
     pub size: u64,
     pub checksum: Option<[u8; 32]>,
     pub version: Option<u32>,
@@ -513,18 +518,18 @@ impl BootSourceProvider for NetworkBootSource {
         })
     }
 
-    fn get_image_metadata(&self, firmware_id: FirmwareId) -> Result<ImageInfo, Self::Error> {
-        let mapping = self.toc.get_mapping(firmware_id)?;
+    fn get_image_metadata(&self, identifier: Identifier) -> Result<ImageInfo, Self::Error> {
+        let mapping = self.toc.get_mapping(identifier)?;
         Ok(ImageInfo {
-            firmware_id,
+            identifier,
             size: mapping.size,
             checksum: mapping.checksum,
             version: mapping.version.clone(),
         })
     }
 
-    fn download_image(&mut self, firmware_id: FirmwareId) -> Result<ImageStream, Self::Error> {
-        let mapping = self.toc.get_mapping(firmware_id)?;
+    fn download_image(&mut self, identifier: Identifier) -> Result<ImageStream, Self::Error> {
+        let mapping = self.toc.get_mapping(identifier)?;
         self.tftp_client.get_file(&mapping.filename)
     }
 
@@ -557,15 +562,19 @@ fn recovery_boot(mut boot_source: &mut dyn BootSourceProvider) -> Result<(), Err
     }
 
     // 2. Download each firmware image
-    for firmware_id in [FirmwareId::CaliptraFmcRt, FirmwareId::SocManifest, FirmwareId::McuRt] {
+    for identifier in [
+        CALIPTRA_FMC_RT_IDENTIFIER,
+        SOC_MANIFEST_IDENTIFIER,
+        MCU_RT_IDENTIFIER,
+    ] {
         // Get image metadata
-        let image_info = boot_source.get_image_metadata(firmware_id)?;
+        let image_info = boot_source.get_image_metadata(identifier)?;
 
         // Set up recovery interface with image size
         set_recovery_image_size(image_info.size)?;
 
         // Download image
-        let mut stream = boot_source.download_image(firmware_id)?;
+        let mut stream = boot_source.download_image(identifier)?;
 
         // Stream image chunks to recovery interface
         load_image_stream(stream, ImageDestination::Recovery)?;
@@ -592,7 +601,7 @@ fn load_image_stream(mut stream: ImageStream, dest: ImageDestination) -> Result<
 
 ### Configuration File Format (TOC - Table of Contents)
 
-During network boot, the coprocessor first downloads a Table of Contents (TOC) configuration file. This file maps firmware IDs to their corresponding filenames and metadata, allowing the boot process to locate and retrieve the correct firmware images. The TOC follows the same format used for FLASH storage, as described in the [Flash Layout specification](./flash_layout.md).
+During network boot, the coprocessor first downloads a Table of Contents (TOC) configuration file. This file maps identifiers to their corresponding filenames and metadata, allowing the boot process to locate and retrieve the correct firmware images. The TOC follows the same format used for FLASH storage, as described in the [Flash Layout specification](./flash_layout.md).
 
 ## Network Stack Implementation
 

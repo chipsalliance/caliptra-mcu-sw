@@ -5,6 +5,7 @@
 //! Measurement data is supplied by the platform via a generic
 //! [`MeasurementProvider`] type parameter on [`McuSpdmPal`].
 
+use caliptra_mcu_cert_store::EndorsementStorage;
 use caliptra_mcu_scratch_alloc::BitmapAllocator;
 use caliptra_mcu_spdm_traits::{
     MeasurementInfo, SpdmPalAsymAlgo, SpdmPalMeasurements, SPDM_NONCE_LEN,
@@ -13,7 +14,13 @@ use mcu_error::McuResult;
 
 use crate::pal::McuSpdmPal;
 
-pub mod providers;
+pub mod ocp_eat;
+#[cfg(feature = "pcr-quote")]
+pub mod pcr_quote;
+
+pub use ocp_eat::OcpEatMeasurementProvider;
+#[cfg(feature = "pcr-quote")]
+pub use pcr_quote::PcrQuoteMeasurementProvider;
 
 /// Platform-specific measurement data provider.
 ///
@@ -54,7 +61,7 @@ pub trait MeasurementProvider: Sync + 'static {
     ) -> McuResult<usize>;
 }
 
-impl<M: MeasurementProvider> SpdmPalMeasurements for McuSpdmPal<M> {
+impl<M: MeasurementProvider, S: EndorsementStorage> SpdmPalMeasurements for McuSpdmPal<M, S> {
     fn measurement_info(&self) -> &[MeasurementInfo] {
         self.meas_provider.measurement_info()
     }

@@ -108,9 +108,7 @@ pub(crate) async fn handle_get_measurements_req<'a, Pal: SpdmPal>(
             0
         }
         + requester_context_len;
-    if req.len() < spdm_req_len {
-        return Err(SPDM_INVALID_REQUEST);
-    }
+    let spdm_req = req.get(..spdm_req_len).ok_or(SPDM_INVALID_REQUEST)?;
 
     // Measurement enumeration from PAL.
     let meas_info = pal.measurement_info();
@@ -141,7 +139,7 @@ pub(crate) async fn handle_get_measurements_req<'a, Pal: SpdmPal>(
         .await
         .map_err(|_| SPDM_UNSPECIFIED)?;
     let plan = MeasurementsResponseCtx {
-        spdm_req: &req[..spdm_req_len],
+        spdm_req,
         meas_info,
         meas_op,
         meas_nonce: requester_nonce,
@@ -522,7 +520,10 @@ mod tests {
 
         let ops = pal.sign_ops.borrow();
         assert_eq!(ops.len(), 1);
-        assert_eq!(ops[0].algo, SpdmPalAsymAlgo::EccP384);
+        assert!(matches!(
+            ops[0].input,
+            support::RecordedSigningInput::EccP384Digest(_)
+        ));
         assert_eq!(ops[0].sig_len, 96);
 
         // The 96-byte signature is the tail of the response.
@@ -556,7 +557,10 @@ mod tests {
 
         let ops = pal.sign_ops.borrow();
         assert_eq!(ops.len(), 1);
-        assert_eq!(ops[0].algo, SpdmPalAsymAlgo::MlDsa87);
+        assert!(matches!(
+            ops[0].input,
+            support::RecordedSigningInput::Mldsa87Message { .. }
+        ));
         assert_eq!(ops[0].sig_len, 4627);
 
         let sig = &resp[spdm_len - 4627..spdm_len];
@@ -603,40 +607,59 @@ mod tests {
 
     #[test]
     fn measurements_v14_mldsa87_response_is_chunked_when_over_data_transfer_size() {
-        let pal = support::TestPal {
-            mtu: 1024,
-            large_buffered_msg_capacity: 16384,
-            measurement_info: &MEASUREMENT_INFO,
-            measurement_value: &MEASUREMENT_VALUE,
-            ..Default::default()
-        };
-        let mut state = mldsa_state(SpdmVersion::V14);
-        state.peer_cap_flags = caliptra_mcu_spdm_codec::CapFlags::CHUNK;
-        state.peer_data_transfer_size = 1024;
-        state.peer_max_spdm_msg_size = 16384;
+        let mut baseline = None;
+        for (header_size, send_len_alignment) in [(0, 1), (1, 1), (8, 4)] {
+            let pal = support::TestPal {
+                header_size,
+                send_len_alignment,
+                mtu: 1024,
+                large_buffered_msg_capacity: 16384,
+                measurement_info: &MEASUREMENT_INFO,
+                measurement_value: &MEASUREMENT_VALUE,
+                ..Default::default()
+            };
+            let mut state = mldsa_state(SpdmVersion::V14);
+            state.peer_cap_flags = caliptra_mcu_spdm_codec::CapFlags::CHUNK;
+            state.peer_data_transfer_size = 1024;
+            state.peer_max_spdm_msg_size = 16384;
 
-        let io = support::TestIo::message(get_measurements_request(SpdmVersion::V14, true));
-        block_on(state.transcript.append_vca(&pal, &io, &[0xAA, 0xBB])).unwrap();
-        let (err_rsp, _) = block_on(handle_get_measurements_req(
-            &mut state,
-            &pal,
-            &io,
-            io.request(),
-        ))
-        .unwrap();
+            let mut request = get_measurements_request(SpdmVersion::V14, true);
+            request.resize(request.len().next_multiple_of(send_len_alignment), 0);
+            let io = support::TestIo::message(request);
+            block_on(state.transcript.append_vca(&pal, &io, &[0xAA, 0xBB])).unwrap();
+            let (err_rsp, _) = block_on(handle_get_measurements_req(
+                &mut state,
+                &pal,
+                &io,
+                io.request(),
+            ))
+            .unwrap();
 
-        assert_eq!(err_rsp[1], ReqRespCode::ERROR.0);
-        let handle = err_rsp[4];
+            assert_eq!(err_rsp[header_size + 1], ReqRespCode::ERROR.0);
+            let handle = err_rsp[header_size + 4];
 
-        let drain_io = support::TestIo::message(Vec::new());
-        let msg = block_on(support::drain_chunked_response(
-            &mut state, &pal, &drain_io, handle,
-        ))
-        .unwrap();
+            let drain_io = support::TestIo::message(Vec::new());
+            let msg = block_on(support::drain_chunked_response(
+                &mut state, &pal, &drain_io, handle,
+            ))
+            .unwrap();
 
-        assert_eq!(msg[1], ReqRespCode::MEASUREMENTS.0);
-        let sig = &msg[msg.len() - 4627..];
-        assert!(sig.iter().all(|&b| b == 0x77));
+            assert_eq!(msg[1], ReqRespCode::MEASUREMENTS.0);
+            let sig = &msg[msg.len() - 4627..];
+            assert!(sig.iter().all(|&b| b == 0x77));
+            assert!(state.large_msg_ctx.is_idle());
+            assert!(state.large_msg_ctx.get_buffer().is_none());
+            let result = (
+                msg,
+                pal.sign_ops.borrow().clone(),
+                pal.hash_finishes.borrow().clone(),
+            );
+            if let Some(expected) = &baseline {
+                assert_eq!(&result, expected);
+            } else {
+                baseline = Some(result);
+            }
+        }
     }
 
     #[test]

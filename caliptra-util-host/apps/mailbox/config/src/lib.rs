@@ -12,6 +12,7 @@ pub const DEFAULT_DEVICE_CAPABILITIES: [u8; DEVICE_CAPABILITIES_SIZE] = {
     capabilities[15] = 1;
     capabilities[23] = 0xFF;
     capabilities[25] = 2;
+    capabilities[26] = 1;
     capabilities[27] = 0xEF;
     capabilities[31] = 9;
     capabilities
@@ -28,6 +29,12 @@ pub struct TestConfig {
     #[serde(default)]
     pub firmware_version: Option<FirmwareVersionConfig>,
     #[serde(default)]
+    pub field_entropy_status: StatusCommandConfig,
+    #[serde(default)]
+    pub vendor_pk_hash_status: StatusCommandConfig,
+    #[serde(default)]
+    pub hek_status: StatusCommandConfig,
+    #[serde(default)]
     pub fe_prog: FeProgConfig,
     #[serde(default)]
     pub provision_vendor_pk_hash: ProvisionVendorPkHashConfig,
@@ -39,6 +46,12 @@ pub struct TestConfig {
     pub revoke_vendor_pk_hash: RevokeVendorPkHashConfig,
     #[serde(default)]
     pub fuse_lock_partition: FuseLockPartitionConfig,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct StatusCommandConfig {
+    #[serde(default)]
+    pub enabled: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -283,6 +296,9 @@ impl Default for TestConfig {
                 rom_firmware_id: 0,
                 runtime_firmware_id: 1,
             }),
+            field_entropy_status: StatusCommandConfig::default(),
+            vendor_pk_hash_status: StatusCommandConfig::default(),
+            hek_status: StatusCommandConfig::default(),
             fe_prog: FeProgConfig::default(),
             provision_vendor_pk_hash: ProvisionVendorPkHashConfig::default(),
             increase_min_svn: IncreaseMinSvnConfig::default(),
@@ -304,9 +320,12 @@ mod tests {
 
         assert_eq!(capabilities.len(), DEVICE_CAPABILITIES_SIZE);
         assert_eq!(&capabilities[20..24], &0x0000_00FFu32.to_be_bytes());
-        assert_eq!(&capabilities[24..28], &0x0002_00EFu32.to_be_bytes());
+        assert_eq!(&capabilities[24..28], &0x0002_01EFu32.to_be_bytes());
         assert_eq!(&capabilities[28..32], &0x0000_0009u32.to_be_bytes());
         assert_eq!(&capabilities[32..48], &[0; 16]);
         assert_eq!(&capabilities[48..64], &[0; 16]);
+        assert!(!config.field_entropy_status.enabled);
+        assert!(!config.vendor_pk_hash_status.enabled);
+        assert!(!config.hek_status.enabled);
     }
 }

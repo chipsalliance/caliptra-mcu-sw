@@ -18,6 +18,7 @@ struct AttestationManifestComponentToml {
     fw_id: u32,
     is_tcb: bool,
     is_ak_target: bool,
+    is_export_cdi_target: bool,
 }
 
 #[derive(Serialize)]
@@ -91,6 +92,7 @@ fn config_source(
         fw_id: caliptra_mcu_flash_image::V_AUTH_KEY_ID,
         is_tcb: true,
         is_ak_target: false,
+        is_export_cdi_target: false,
     });
     seen_fw_ids.insert(caliptra_mcu_flash_image::V_AUTH_KEY_ID);
     for image in soc_images {
@@ -104,6 +106,7 @@ fn config_source(
             fw_id: image.image_id,
             is_tcb: image.is_tcb,
             is_ak_target: image.is_ak_target,
+            is_export_cdi_target: image.is_export_cdi_target,
         });
     }
 

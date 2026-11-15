@@ -179,20 +179,23 @@ impl<'a> hil::uart::Transmit<'a> for SemihostUart<'a> {
         tx_buffer: &'static mut [u8],
         tx_len: usize,
     ) -> Result<(), (ErrorCode, &'static mut [u8])> {
-        if tx_len == 0 || tx_len > tx_buffer.len() {
-            Err((ErrorCode::SIZE, tx_buffer))
-        } else if self.tx_buffer.is_some() {
-            Err((ErrorCode::BUSY, tx_buffer))
-        } else {
-            unsafe {
-                WRITER.write(&tx_buffer[..tx_len]);
-            }
-            self.tx_len.set(tx_len);
-            self.tx_buffer.replace(tx_buffer);
-            // The whole buffer was transmitted immediately
-            self.deferred_call.set();
-            Ok(())
+        if tx_len == 0 {
+            return Err((ErrorCode::SIZE, tx_buffer));
         }
+        let Some(payload) = tx_buffer.get(..tx_len) else {
+            return Err((ErrorCode::SIZE, tx_buffer));
+        };
+        if self.tx_buffer.is_some() {
+            return Err((ErrorCode::BUSY, tx_buffer));
+        }
+        unsafe {
+            WRITER.write(payload);
+        }
+        self.tx_len.set(tx_len);
+        self.tx_buffer.replace(tx_buffer);
+        // The whole buffer was transmitted immediately
+        self.deferred_call.set();
+        Ok(())
     }
 
     fn transmit_word(&self, _word: u32) -> Result<(), ErrorCode> {

@@ -18,7 +18,7 @@ use mcu_caliptra_api::{
 };
 
 use crate::caliptra_cmd_handler::CaliptraCmdBackend;
-use crate::mcu_mbox::cmd_auth_mock;
+use crate::mcu_mbox::cmd_auth;
 
 static DEBUG_UNLOCK_TOKEN_STREAM: Mutex<CriticalSectionRawMutex, bool> = Mutex::new(false);
 
@@ -28,7 +28,7 @@ type EnabledVdm = CaliptraVdm<
     'static,
     CaliptraCmdBackend,
     CaliptraVdmStreamHook,
-    cmd_auth_mock::MockCommandAuthorizer,
+    cmd_auth::RuntimeCommandAuthorizer,
 >;
 
 pub struct AppVdmBackend(Option<EnabledVdm>);
@@ -37,7 +37,7 @@ impl AppVdmBackend {
     pub fn enabled(
         commands: &'static CaliptraCmdBackend,
         stream: &'static CaliptraVdmStreamHook,
-        authorization: &'static cmd_auth_mock::MockCommandAuthorizer,
+        authorization: &'static cmd_auth::RuntimeCommandAuthorizer,
     ) -> Self {
         Self(Some(CaliptraVdm::new(commands, stream, authorization)))
     }

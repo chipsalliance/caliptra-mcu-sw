@@ -1,6 +1,6 @@
 // Licensed under the Apache-2.0 license
 
-//! GET_CERTIFICATE → CERTIFICATE handler (DSP0274 §10.8).
+//! GET_CERTIFICATE → CERTIFICATE handler.
 //!
 //! Splices the 52-byte SPDM cert-chain header (Length | Reserved |
 //! RootHash) with raw DER bytes from the cert store into a single
@@ -372,10 +372,9 @@ pub(crate) async fn handle_get_certificate<'a, Pal: SpdmPal>(
 
     let head = pal.header_size();
     state.transcript.append_m1(pal, io, spdm_msg).await?;
-    state
-        .transcript
-        .append_m1(pal, io, &resp[head..head + spdm_len])
-        .await?;
+    let end = head.checked_add(spdm_len).ok_or(SPDM_UNSPECIFIED)?;
+    let response = resp.get(head..end).ok_or(SPDM_UNSPECIFIED)?;
+    state.transcript.append_m1(pal, io, response).await?;
 
     state.phase = Phase::AfterCertificate;
     Ok((resp, spdm_len))

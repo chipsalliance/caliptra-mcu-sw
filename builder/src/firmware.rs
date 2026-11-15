@@ -8,61 +8,91 @@ pub mod hw_model_tests {
     pub const MAILBOX_RESPONDER: FwId = FwId {
         crate_name: "caliptra-mcu-test-fw-mailbox-responder",
         bin_name: "caliptra-mcu-test-fw-mailbox-responder",
-        fw_type: FirmwareType::Source { features: &["emu"] },
+        fw_type: FirmwareType::Source {
+            features: &["emu"],
+            hw_revision: None,
+        },
     };
 
     pub const HITLESS_UPDATE_FLOW: FwId = FwId {
         crate_name: "caliptra-mcu-test-fw-hitless-update-flow",
         bin_name: "caliptra-mcu-test-fw-hitless-update-flow",
-        fw_type: FirmwareType::Source { features: &["emu"] },
+        fw_type: FirmwareType::Source {
+            features: &["emu"],
+            hw_revision: None,
+        },
     };
 
     pub const AXI_BYPASS: FwId = FwId {
         crate_name: "caliptra-mcu-test-fw-axi-bypass",
         bin_name: "caliptra-mcu-test-fw-axi-bypass",
-        fw_type: FirmwareType::Source { features: &["emu"] },
+        fw_type: FirmwareType::Source {
+            features: &["emu"],
+            hw_revision: None,
+        },
     };
 
     pub const EXCEPTION_HANDLER: FwId = FwId {
         crate_name: "caliptra-mcu-test-fw-exception-handler",
         bin_name: "caliptra-mcu-test-fw-exception-handler",
-        fw_type: FirmwareType::Source { features: &["emu"] },
+        fw_type: FirmwareType::Source {
+            features: &["emu"],
+            hw_revision: None,
+        },
     };
 
     pub const USB_RESPONDER: FwId = FwId {
         crate_name: "caliptra-mcu-test-fw-usb-responder",
         bin_name: "caliptra-mcu-test-fw-usb-responder",
-        fw_type: FirmwareType::Source { features: &["emu"] },
+        fw_type: FirmwareType::Source {
+            features: &["emu"],
+            hw_revision: None,
+        },
     };
 
     pub const USB_OCP_RECOVERY: FwId = FwId {
         crate_name: "caliptra-mcu-test-fw-usb-ocp-recovery",
         bin_name: "caliptra-mcu-test-fw-usb-ocp-recovery",
-        fw_type: FirmwareType::Source { features: &["emu"] },
+        fw_type: FirmwareType::Source {
+            features: &["emu"],
+            hw_revision: None,
+        },
     };
 
     pub const SW_DIGEST_LOCK: FwId = FwId {
         crate_name: "caliptra-mcu-test-fw-sw-digest-lock",
         bin_name: "caliptra-mcu-test-fw-sw-digest-lock",
-        fw_type: FirmwareType::Source { features: &["emu"] },
+        fw_type: FirmwareType::Source {
+            features: &["emu"],
+            hw_revision: None,
+        },
     };
 
     pub const OTP_BLANK_CHECK: FwId = FwId {
         crate_name: "caliptra-mcu-test-fw-otp-blank-check",
         bin_name: "caliptra-mcu-test-fw-otp-blank-check",
-        fw_type: FirmwareType::Source { features: &["emu"] },
+        fw_type: FirmwareType::Source {
+            features: &["emu"],
+            hw_revision: None,
+        },
     };
 
     pub const OTP_SCRAMBLE_CHECK: FwId = FwId {
         crate_name: "caliptra-mcu-test-fw-otp-scramble-check",
         bin_name: "caliptra-mcu-test-fw-otp-scramble-check",
-        fw_type: FirmwareType::Source { features: &["emu"] },
+        fw_type: FirmwareType::Source {
+            features: &["emu"],
+            hw_revision: None,
+        },
     };
 
     pub const LC_CTRL: FwId = FwId {
         crate_name: "caliptra-mcu-test-fw-lc-ctrl",
         bin_name: "caliptra-mcu-test-fw-lc-ctrl",
-        fw_type: FirmwareType::Source { features: &["emu"] },
+        fw_type: FirmwareType::Source {
+            features: &["emu"],
+            hw_revision: None,
+        },
     };
 }
 

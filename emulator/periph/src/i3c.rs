@@ -6,7 +6,7 @@ Abstract:
     File contains I3C peripheral implementation.
 --*/
 
-use crate::i3c_protocol::I3cController;
+use crate::i3c_protocol::{I3cController, I3cIbiOutcome, I3cIbiStatus};
 use crate::{I3cIncomingCommandClient, I3cTarget};
 use caliptra_emu_bus::{Clock, ReadWriteRegister, Timer};
 use caliptra_emu_bus::{Device, Event, EventData};
@@ -47,6 +47,13 @@ impl I3cIncomingCommandClient for PollScheduler {
     }
 }
 
+struct PendingIbi {
+    mdb: u8,
+    data: Vec<u8>,
+    status: I3cIbiStatus,
+    polls_remaining: Option<u32>,
+}
+
 pub struct I3c {
     /// Timer
     timer: Timer,
@@ -66,6 +73,7 @@ pub struct I3c {
     tx_desc_in_flight: bool,
     /// IBI buffer
     tti_ibi_buffer: Vec<u8>,
+    pending_ibi: Option<PendingIbi>,
     /// interrupt
     irq: Irq,
     hw_revision: Version,
@@ -150,6 +158,7 @@ impl I3c {
             tti_tx_data_raw: VecDeque::new(),
             tx_desc_in_flight: false,
             tti_ibi_buffer: vec![],
+            pending_ibi: None,
             irq,
             hw_revision,
             i3c_ec_sec_fw_recovery_if_prot_cap_2: ReadWriteRegister::new(0),
@@ -195,7 +204,9 @@ impl I3c {
                     self.tti_tx_desc_queue_raw.pop_front();
                     let resp = I3cTcriResponseXfer {
                         resp: resp_desc,
-                        data: self.tti_tx_data_raw.pop_front().unwrap(),
+                        // Strip word padding before handing the packet to the
+                        // controller; its descriptor counts only actual bytes.
+                        data: self.tti_tx_data_raw.pop_front().unwrap()[..data_size].to_vec(),
                     };
                     self.i3c_target.set_response(resp);
                     self.tx_desc_in_flight = true;
@@ -206,10 +217,10 @@ impl I3c {
 
     fn read_rx_data_into_buffer(&mut self) {
         if let Some(xfer) = self.i3c_target.read_command() {
-            // TODO: we don't request data using rnw
-            let rnw = (u64::from(xfer.cmd.clone()) & (1 << 29)) as u32;
             let data_len = xfer.cmd.raw_data_len();
-            self.tti_rx_desc_queue_raw.push_back(data_len as u32 | rnw);
+            let error = self.i3c_target.next_rx_error();
+            self.tti_rx_desc_queue_raw
+                .push_back(data_len as u32 | ((error as u32) << 28));
             let data = match xfer.cmd.clone() {
                 I3cTcriCommand::Immediate(imm) => vec![
                     imm.data_byte_1(),
@@ -219,7 +230,10 @@ impl I3c {
                 ],
                 _ => xfer.data,
             };
-            self.tti_rx_data_raw.push_back(data);
+            // Empty writes have a descriptor but no data words in the FIFO.
+            if !data.is_empty() {
+                self.tti_rx_data_raw.push_back(data);
+            }
         }
     }
 
@@ -275,25 +289,49 @@ impl I3c {
             .write(IndirectFifoStatus0::Empty::SET);
     }
 
-    // check if there area valid IBI descriptors and messages
     fn check_ibi_buffer(&mut self) {
-        loop {
-            if self.tti_ibi_buffer.len() < 4 {
-                return;
-            }
+        if self.pending_ibi.is_some() || self.tti_ibi_buffer.len() < 4 {
+            return;
+        }
+        let desc = IbiDescriptor::read_from_bytes(&self.tti_ibi_buffer[..4]).unwrap();
+        let len = desc.data_length() as usize;
+        let padded_len = (len + 4).next_multiple_of(4);
+        if self.tti_ibi_buffer.len() < padded_len {
+            return;
+        }
+        let (status, polls_remaining) = match self.i3c_target.next_ibi_outcome() {
+            I3cIbiOutcome::Complete {
+                status,
+                after_polls,
+            } => (status, Some(after_polls.max(1))),
+            I3cIbiOutcome::Missing => (I3cIbiStatus::Success, None),
+        };
+        self.pending_ibi = Some(PendingIbi {
+            mdb: (desc.0 >> 24) as u8,
+            data: self.tti_ibi_buffer[4..4 + len].to_vec(),
+            status,
+            polls_remaining,
+        });
+        self.tti_ibi_buffer.drain(..padded_len);
+    }
 
-            let desc = IbiDescriptor::read_from_bytes(&self.tti_ibi_buffer[0..4]).unwrap();
-            let len = desc.data_length() as usize;
-            if self.tti_ibi_buffer.len() < len + 4 {
-                // wait for more data
-                return;
+    fn complete_pending_ibi(&mut self) {
+        let Some(mut pending) = self.pending_ibi.take() else {
+            return;
+        };
+        match pending.polls_remaining {
+            Some(0 | 1) => {
+                if pending.status == I3cIbiStatus::Success {
+                    self.i3c_target.send_ibi(pending.mdb, pending.data);
+                }
+                self.ibi_status = Some(ReadWriteRegister::new(
+                    Status::LastIbiStatus.val(pending.status as u32).value,
+                ));
             }
-
-            // TODO: support sending more bytes of IBI to target
-            let mdb = (desc.0 >> 24) as u8;
-            self.i3c_target.send_ibi(mdb);
-            self.ibi_status = Some(ReadWriteRegister::new(0));
-            self.tti_ibi_buffer.drain(0..(len + 4).next_multiple_of(4));
+            remaining => {
+                pending.polls_remaining = remaining.map(|n| n - 1);
+                self.pending_ibi = Some(pending);
+            }
         }
     }
 
@@ -663,11 +701,17 @@ impl I3cPeripheral for I3c {
     }
 
     fn read_i3c_ec_tti_rx_desc_queue_port(&mut self) -> u32 {
-        self.tti_rx_current = self.tti_rx_data_raw.pop_front().unwrap_or_default().into();
-        self.tti_rx_desc_queue_raw.pop_front().unwrap_or(0)
+        let desc = self.tti_rx_desc_queue_raw.pop_front().unwrap_or(0);
+        self.check_interrupts();
+        desc
     }
 
     fn read_i3c_ec_tti_rx_data_port(&mut self) -> u32 {
+        // Descriptor pops must not flush unread data. Otherwise a driver that
+        // fails to drain a rejected packet would appear to recover correctly.
+        if self.tti_rx_current.is_empty() {
+            self.tti_rx_current = self.tti_rx_data_raw.pop_front().unwrap_or_default().into();
+        }
         let mut data = self.tti_rx_current.pop_front().unwrap_or(0) as u32;
         data |= (self.tti_rx_current.pop_front().unwrap_or(0) as u32) << 8;
         data |= (self.tti_rx_current.pop_front().unwrap_or(0) as u32) << 16;
@@ -1010,9 +1054,11 @@ impl I3cPeripheral for I3c {
     }
 
     fn poll(&mut self) {
-        self.check_interrupts();
+        self.complete_pending_ibi();
+        self.check_ibi_buffer();
         self.read_rx_data_into_buffer();
         self.write_tx_data_into_target();
+        self.check_interrupts();
         let next_poll = if self.incoming_poll_pending.swap(false, Ordering::Relaxed) {
             1
         } else {
@@ -1074,6 +1120,10 @@ impl I3cPeripheral for I3c {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "i3c_tests.rs"]
+mod target_tests;
 
 #[cfg(test)]
 mod tests {
@@ -1236,6 +1286,19 @@ mod tests {
             0
         );
 
+        // Consuming the queued response requires an explicit controller read.
+        let mut cmd = caliptra_mcu_testing_common::i3c::ReguDataTransferCommand(0);
+        cmd.set_rnw(1);
+        cmd.set_data_length(4);
+        i3c_controller
+            .tcri_send(
+                target_addr,
+                I3cTcriCommandXfer {
+                    cmd: I3cTcriCommand::Regular(cmd),
+                    data: vec![],
+                },
+            )
+            .unwrap();
         let response = i3c_controller.tcri_receive(target_addr).unwrap();
         assert_eq!(response.data, [1, 2, 3, 4]);
 

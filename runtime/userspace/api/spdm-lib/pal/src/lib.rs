@@ -1,7 +1,7 @@
 // Licensed under the Apache-2.0 license
 
 //! `caliptra-mcu-spdm-pal` — MCU-side Platform Abstraction Layer for the
-//! SPDM-Lite stack.
+//! SPDM stack.
 //!
 //! This crate provides the concrete implementations of the
 //! [`SpdmPal`](caliptra_mcu_spdm_traits::SpdmPal) super-trait family
@@ -41,7 +41,9 @@ pub mod measurements;
 mod pal;
 mod session_crypto;
 
-pub use measurements::MeasurementProvider;
+#[cfg(feature = "pcr-quote")]
+pub use measurements::PcrQuoteMeasurementProvider;
+pub use measurements::{MeasurementProvider, OcpEatMeasurementProvider};
 pub use pal::*;
 
 pub use caliptra_mcu_spdm_codec as codec;

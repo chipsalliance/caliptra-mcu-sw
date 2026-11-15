@@ -232,8 +232,8 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
 
                 // Configure and execute DMA transfer for this chunk
                 let src_addr = chunk_buf.as_ptr() as u64;
-                let dest_addr =
-                    self.staging_sram_axi_addr.unwrap() + (offset + bytes_written) as u64;
+                let dest_addr = self.staging_sram_axi_addr.ok_or(ErrorCode::FAIL)?
+                    + (offset + bytes_written) as u64;
                 self.dma_driver.configure_transfer(
                     chunk_len,
                     chunk_len,
@@ -554,7 +554,9 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
                         if start < out_len {
                             let end = (start + 4).min(out_len);
                             if let Some(out) = output.get(start..end) {
-                                out.copy_from_slice(&word.to_le_bytes()[..end - start]);
+                                for (byte, value) in out.iter().zip(word.to_le_bytes()) {
+                                    byte.set(value);
+                                }
                             }
                         }
                     }
