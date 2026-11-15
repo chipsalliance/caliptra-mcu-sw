@@ -139,6 +139,7 @@ pub enum CaliptraCommandId {
     FuseRevokeVendorPkHash = 0x8015,
     FuseLockPartition = 0x8016,
     ProvisionOwnerPkHash = 0x8017,
+    AuthSetCertChain = 0x801A,
 
     // Device Ownership Transfer Commands (0x8020-0x802A)
     DotLock = 0x8020,
