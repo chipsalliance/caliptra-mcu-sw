@@ -343,13 +343,43 @@ fn heartbeat_cap_flags() -> CapFlags {
     }
 }
 
+/// Tear down every session whose liveness deadline has passed at `now_ms`.
+/// `expire_due` erases their keys. With `debug-trace`, this also writes a
+/// console line, so a watchdog teardown can be told apart from other session
+/// losses.
+#[cfg(feature = "spdm-set-heartbeat")]
+fn expire_sessions<Pal: SpdmPal, const N: usize>(sessions: &mut Sessions<Pal, N>, now_ms: u64) {
+    let cleared = sessions.expire_due(now_ms);
+    #[cfg(feature = "debug-trace")]
+    {
+        if cleared != 0 {
+            use core::fmt::Write;
+            let mut console = caliptra_mcu_libtock_console::Console::<
+                caliptra_mcu_libsyscall_caliptra::DefaultSyscalls,
+            >::writer();
+            let _ = writeln!(
+                &mut console,
+                "[spdm] watchdog (heartbeat/handshake timeout) expired {} session(s) at now_ms={}",
+                cleared, now_ms
+            );
+        }
+    }
+    #[cfg(not(feature = "debug-trace"))]
+    let _ = cleared;
+}
+
 /// Receive the next request for the run loop.
 ///
-/// With the heartbeat liveness watchdog compiled in and at least one session
-/// armed, this races `recv_request` against the nearest liveness deadline; if
-/// the timer wins, every expired session is torn down and the wait restarts.
-/// With no armed session — or with the feature off — it is a plain blocking
-/// receive, unchanged.
+/// With the heartbeat liveness watchdog compiled in, this reaps expired
+/// sessions before every wait and again as soon as a request arrives. A busy
+/// session therefore cannot keep a silent session's keys alive. While any
+/// session is armed, the receive is raced against a timer for the nearest
+/// deadline. When the timer wins, expired sessions are torn down and the timer
+/// is re-armed, but the same receive future is kept and polled again:
+/// `recv_request` holds a kernel subscription and buffer and is not
+/// cancellation-safe, so it is never dropped. Only the timer future is ever
+/// dropped, and the PAL's `sleep` is cancellation-safe. With no armed session,
+/// or with the feature off, this is a plain blocking receive.
 ///
 /// Taken as a free function over split borrows (`pal` shared, `sessions`
 /// mutable) rather than a `&mut self` method: the returned `Io` borrows only
@@ -361,19 +391,20 @@ async fn recv_next<'p, Pal: SpdmPal, const N: usize>(
     sessions: &mut Sessions<Pal, N>,
 ) -> McuResult<<Pal as SpdmPalIoTransport>::Io<'p>> {
     use crate::select::{select, Either};
+    let mut recv = core::pin::pin!(pal.recv_request());
     loop {
-        match sessions.nearest_deadline_ms() {
-            Some(deadline) => {
-                let delay = deadline.saturating_sub(pal.now().0);
-                match select(pal.recv_request(), pal.sleep(Milliseconds(delay))).await {
-                    Either::First(io) => return io,
-                    Either::Second(()) => {
-                        sessions.expire_due(pal.now().0);
-                        continue;
-                    }
-                }
-            }
-            None => return pal.recv_request().await,
+        let now = pal.now().0;
+        expire_sessions::<Pal, N>(sessions, now);
+        let Some(deadline) = sessions.nearest_deadline_ms() else {
+            return recv.await;
+        };
+        let delay = Milliseconds(deadline.saturating_sub(now));
+        if let Either::First(io) = select(recv.as_mut(), pal.sleep(delay)).await {
+            // A session may have expired while we waited. Reap it before
+            // dispatching, so a request that arrives after its session's
+            // deadline is not served on that session.
+            expire_sessions::<Pal, N>(sessions, pal.now().0);
+            return io;
         }
     }
 }
@@ -929,7 +960,9 @@ async fn handle_secured_inner<'a, Pal: SpdmPal, Vdm: SpdmVdmBackend, const MAX_S
             session.state = SessionState::Established;
             // Arm the liveness watchdog at the FINISH_RSP transmission point
             // (DSP0274 1.3.0 section 10.20). No-op when the negotiated period
-            // is zero (heartbeat disabled / feature off).
+            // is zero (heartbeat disabled / feature off). This also replaces
+            // the handshake timeout armed at KEY_EXCHANGE (cleared when the
+            // period is zero).
             session.arm_heartbeat(pal.now().0);
             return Ok(rsp);
         }

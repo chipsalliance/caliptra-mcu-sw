@@ -436,6 +436,10 @@ async fn key_exchange_inner<'a, Pal: SpdmPal, const N: usize>(
 
     let session = sessions.find_mut(session_id).ok_or(SPDM_UNSPECIFIED)?;
     session.heartbeat_period = hb_period;
+    // Bound the half-open session: torn down if FINISH does not complete it in
+    // time. Only the heartbeat build has a clock and a run-loop timer.
+    #[cfg(feature = "spdm-set-heartbeat")]
+    session.arm_handshake_timeout(pal.now().0);
     let mut workspace = pal.alloc_bytes(io, KEY_EXCHANGE_WORKSPACE_SIZE)?;
     workspace.fill(0);
     let mut rest = &mut workspace[..];

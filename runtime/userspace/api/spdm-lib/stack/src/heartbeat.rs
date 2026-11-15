@@ -32,6 +32,23 @@ pub(crate) const DEFAULT_HEARTBEAT_PERIOD_SECS: u8 = 3;
 /// tears the session down. The watchdog fires at this multiple of the period.
 pub(crate) const HEARTBEAT_TIMEOUT_MULTIPLIER: u64 = 2;
 
+/// Handshake-completion timeout (ms): a session still in HandshakeInProgress
+/// this long after KEY_EXCHANGE_RSP (no valid FINISH yet) is torn down and its
+/// handshake secrets erased. It is fixed and independent of the negotiated
+/// HeartbeatPeriod, so it also applies when heartbeat is off for the session.
+///
+/// DSP0274 sets no handshake-completion deadline. Its timing table only bounds
+/// single exchanges (ST1 = 100 ms; CT = 2^CTExponent us, this responder's CT
+/// is 2^20 us, about 1 s). So this value is an implementation choice: it allows
+/// many CT-bounded requester retries of FINISH, and is kept longer than the
+/// 2 x HeartbeatPeriod window at the default period (checked below).
+pub(crate) const HANDSHAKE_TIMEOUT_MS: u64 = 30_000;
+
+const _: () = assert!(
+    HANDSHAKE_TIMEOUT_MS
+        > HEARTBEAT_TIMEOUT_MULTIPLIER * DEFAULT_HEARTBEAT_PERIOD_SECS as u64 * 1000
+);
+
 /// Handle a decrypted HEARTBEAT request and produce the HEARTBEAT_ACK bytes.
 pub(crate) fn handle_heartbeat(
     version: SpdmVersion,

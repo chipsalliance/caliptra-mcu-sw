@@ -131,6 +131,12 @@ pub struct TestPal {
     pub aead_decrypt_error: Cell<Option<McuErrorCode>>,
     pub last_aead_decrypt_sequence: Cell<Option<u64>>,
     pub now_ms: RefCell<u64>,
+    /// Polls `recv_request` stays pending for before it completes (with
+    /// `NOT_IMPLEMENTED`). Lets a test make the timer win the run-loop race.
+    pub recv_pending_polls: Cell<usize>,
+    /// Number of `recv_request` futures created. The run loop must create one
+    /// per received request and never drop and re-create it on a timer wake.
+    pub recv_calls: Cell<usize>,
 }
 
 impl TestPal {
@@ -186,6 +192,8 @@ impl Default for TestPal {
             aead_decrypt_error: Cell::new(None),
             last_aead_decrypt_sequence: Cell::new(None),
             now_ms: RefCell::new(0),
+            recv_pending_polls: Cell::new(0),
+            recv_calls: Cell::new(0),
         }
     }
 }
@@ -282,6 +290,17 @@ impl SpdmPalIoTransport for TestPal {
     }
 
     async fn recv_request(&self) -> McuResult<Self::Io<'_>> {
+        self.recv_calls.set(self.recv_calls.get() + 1);
+        core::future::poll_fn(|cx| {
+            let left = self.recv_pending_polls.get();
+            if left == 0 {
+                return core::task::Poll::Ready(());
+            }
+            self.recv_pending_polls.set(left - 1);
+            cx.waker().wake_by_ref();
+            core::task::Poll::Pending
+        })
+        .await;
         Err(mcu_error::codes::NOT_IMPLEMENTED)
     }
 
@@ -298,8 +317,11 @@ impl SpdmPalIoTransport for TestPal {
         Milliseconds(*self.now_ms.borrow())
     }
 
-    async fn sleep(&self, _dur: Milliseconds) {
-        // Tests drive the clock explicitly via `set_now_ms`; never block.
+    async fn sleep(&self, dur: Milliseconds) {
+        // Never blocks: the sleep "elapses" at once by moving the fake clock
+        // forward by `dur`. Only the run loop's recv_next sleeps.
+        let now = *self.now_ms.borrow();
+        self.set_now_ms(now.saturating_add(dur.0));
     }
 }
 

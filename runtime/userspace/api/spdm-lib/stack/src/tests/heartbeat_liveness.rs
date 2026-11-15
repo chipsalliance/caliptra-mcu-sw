@@ -95,6 +95,154 @@ fn expire_due_clears_only_expired_sessions() {
     assert!(sessions.find(session_id).is_none());
 }
 
+// Armed established session at `now = 0` for the run-loop tests below.
+#[cfg(feature = "spdm-set-heartbeat")]
+fn armed_session(pal: &TestPal) -> (Sessions<TestPal, 1>, u32) {
+    let (_state, mut sessions, session_id) = established_session(pal);
+    let session = sessions.find_mut(session_id).unwrap();
+    session.heartbeat_period = HeartBeatPeriod(PERIOD_SECS);
+    session.arm_heartbeat(0);
+    (sessions, session_id)
+}
+
+// A request that arrives after a session's deadline does not keep that session
+// alive. The run loop reaps it even though the receive, not the timer, won.
+#[cfg(feature = "spdm-set-heartbeat")]
+#[test]
+fn recv_next_reaps_expired_session_when_request_arrives() {
+    let pal = TestPal::default();
+    let (mut sessions, session_id) = armed_session(&pal);
+    pal.set_now_ms(WINDOW_MS);
+    let r = block_on(recv_next(&pal, &mut sessions));
+    assert_eq!(r.err(), Some(mcu_error::codes::NOT_IMPLEMENTED));
+    assert!(sessions.find(session_id).is_none());
+    assert_eq!(pal.recv_calls.get(), 1);
+}
+
+// A request that arrives before the deadline leaves the session in place.
+#[cfg(feature = "spdm-set-heartbeat")]
+#[test]
+fn recv_next_keeps_live_session() {
+    let pal = TestPal::default();
+    let (mut sessions, session_id) = armed_session(&pal);
+    pal.set_now_ms(WINDOW_MS - 1);
+    let r = block_on(recv_next(&pal, &mut sessions));
+    assert_eq!(r.err(), Some(mcu_error::codes::NOT_IMPLEMENTED));
+    assert!(sessions.find(session_id).is_some());
+}
+
+// Silent peer: the timer wins while the receive is still pending, so the
+// session is torn down. The same receive is then polled to completion. It is
+// not dropped and re-created, which the real transport would not survive.
+#[cfg(feature = "spdm-set-heartbeat")]
+#[test]
+fn recv_next_timer_win_expires_session_and_keeps_receive() {
+    let pal = TestPal::default();
+    let (mut sessions, session_id) = armed_session(&pal);
+    pal.recv_pending_polls.set(1);
+    let r = block_on(recv_next(&pal, &mut sessions));
+    assert_eq!(r.err(), Some(mcu_error::codes::NOT_IMPLEMENTED));
+    assert!(sessions.find(session_id).is_none());
+    assert_eq!(pal.recv_calls.get(), 1);
+    assert_eq!(pal.recv_pending_polls.get(), 0);
+}
+
+const HANDSHAKE_MS: u64 = crate::heartbeat::HANDSHAKE_TIMEOUT_MS;
+
+// KEY_EXCHANGE arms the handshake timeout whatever the HeartbeatPeriod. (A const
+// assert in heartbeat.rs keeps the timeout longer than the heartbeat window.)
+#[test]
+fn handshake_timeout_armed_independent_of_period() {
+    let pal = TestPal::default();
+    let (_state, mut sessions, session_id) = handshake_session(&pal);
+    let session = sessions.find_mut(session_id).unwrap();
+    session.heartbeat_period = HeartBeatPeriod::DISABLED;
+    session.arm_handshake_timeout(1000);
+    assert_eq!(session.deadline_ms, Some(1000 + HANDSHAKE_MS));
+    session.heartbeat_period = HeartBeatPeriod(PERIOD_SECS);
+    session.arm_handshake_timeout(1000);
+    assert_eq!(session.deadline_ms, Some(1000 + HANDSHAKE_MS));
+}
+
+// The handshake timeout is never put on an established session.
+#[test]
+fn handshake_timeout_not_armed_on_established_session() {
+    let pal = TestPal::default();
+    let (_state, mut sessions, session_id) = established_session(&pal);
+    let session = sessions.find_mut(session_id).unwrap();
+    session.arm_handshake_timeout(1000);
+    assert_eq!(session.deadline_ms, None);
+}
+
+// Traffic before FINISH neither extends nor clears the handshake deadline.
+#[test]
+fn touch_does_not_move_handshake_deadline() {
+    let pal = TestPal::default();
+    let (_state, mut sessions, session_id) = handshake_session(&pal);
+    let session = sessions.find_mut(session_id).unwrap();
+    session.heartbeat_period = HeartBeatPeriod(PERIOD_SECS);
+    session.arm_handshake_timeout(0);
+    session.touch_heartbeat(5000);
+    assert_eq!(session.deadline_ms, Some(HANDSHAKE_MS));
+    session.heartbeat_period = HeartBeatPeriod::DISABLED;
+    session.touch_heartbeat(6000);
+    assert_eq!(session.deadline_ms, Some(HANDSHAKE_MS));
+}
+
+// An abandoned handshake outlives the heartbeat window and is torn down at the
+// handshake deadline.
+#[test]
+fn expire_due_tears_down_abandoned_handshake() {
+    let pal = TestPal::default();
+    let (_state, mut sessions, session_id) = handshake_session(&pal);
+    sessions
+        .find_mut(session_id)
+        .unwrap()
+        .arm_handshake_timeout(0);
+    assert_eq!(sessions.expire_due(WINDOW_MS), 0);
+    assert_eq!(sessions.expire_due(HANDSHAKE_MS - 1), 0);
+    assert!(sessions.find(session_id).is_some());
+    assert_eq!(sessions.expire_due(HANDSHAKE_MS), 1);
+    assert!(sessions.find(session_id).is_none());
+}
+
+// FINISH: arm_heartbeat replaces the handshake deadline with the heartbeat
+// deadline, or clears it when the period is zero.
+#[test]
+fn finish_replaces_handshake_deadline() {
+    for (period, expected) in [
+        (HeartBeatPeriod(PERIOD_SECS), Some(100 + WINDOW_MS)),
+        (HeartBeatPeriod::DISABLED, None),
+    ] {
+        let pal = TestPal::default();
+        let (_state, mut sessions, session_id) = handshake_session(&pal);
+        let session = sessions.find_mut(session_id).unwrap();
+        session.heartbeat_period = period;
+        session.arm_handshake_timeout(0);
+        session.state = crate::session::SessionState::Established;
+        session.arm_heartbeat(100);
+        assert_eq!(session.deadline_ms, expected);
+    }
+}
+
+// Run loop: a requester that goes silent after KEY_EXCHANGE. The timer wins and
+// the half-open session is torn down, freeing the slot.
+#[cfg(feature = "spdm-set-heartbeat")]
+#[test]
+fn recv_next_tears_down_abandoned_handshake() {
+    let pal = TestPal::default();
+    let (_state, mut sessions, session_id) = handshake_session(&pal);
+    sessions
+        .find_mut(session_id)
+        .unwrap()
+        .arm_handshake_timeout(0);
+    pal.recv_pending_polls.set(1);
+    let r = block_on(recv_next(&pal, &mut sessions));
+    assert_eq!(r.err(), Some(mcu_error::codes::NOT_IMPLEMENTED));
+    assert!(sessions.find(session_id).is_none());
+    assert!(pal.now().0 >= HANDSHAKE_MS);
+}
+
 // Keep-alive through the secured dispatch path: a HEARTBEAT received after the
 // clock advances pushes the deadline forward rather than letting it expire.
 #[cfg(feature = "spdm-set-heartbeat")]

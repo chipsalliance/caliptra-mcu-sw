@@ -2445,6 +2445,7 @@ dependencies = [
  "caliptra-mcu-scratch-alloc",
  "caliptra-mcu-spdm-codec",
  "caliptra-mcu-spdm-traits",
+ "embassy-sync",
  "futures",
  "mcu-caliptra-api",
  "zerocopy",

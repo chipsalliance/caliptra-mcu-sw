@@ -185,7 +185,9 @@ impl<K: Clone, S> SessionInfo<K, S> {
     /// Restart the liveness watchdog on any secured traffic. Only re-arms an
     /// already-armed watchdog; a session with heartbeat disabled stays inert.
     pub fn touch_heartbeat(&mut self, now_ms: u64) {
-        if self.deadline_ms.is_some() {
+        // A HandshakeInProgress session's deadline is the fixed handshake
+        // timeout; traffic before FINISH must not extend or clear it.
+        if self.state == SessionState::Established && self.deadline_ms.is_some() {
             self.deadline_ms = self.heartbeat_deadline(now_ms);
         }
     }
@@ -198,6 +200,17 @@ impl<K: Clone, S> SessionInfo<K, S> {
             .saturating_mul(self.heartbeat_period.secs() as u64)
             .saturating_mul(1000);
         Some(now_ms.saturating_add(window_ms))
+    }
+
+    /// Arm the handshake-completion timeout when KEY_EXCHANGE_RSP is built:
+    /// deadline `now_ms + HANDSHAKE_TIMEOUT_MS`, whatever the HeartbeatPeriod.
+    /// [`Self::arm_heartbeat`] at FINISH replaces it with the heartbeat
+    /// deadline, or clears it when the period is zero. Until then
+    /// [`SessionManager::expire_due`] tears the session down at the deadline.
+    pub fn arm_handshake_timeout(&mut self, now_ms: u64) {
+        if self.state == SessionState::HandshakeInProgress {
+            self.deadline_ms = Some(now_ms.saturating_add(crate::heartbeat::HANDSHAKE_TIMEOUT_MS));
+        }
     }
 }
 

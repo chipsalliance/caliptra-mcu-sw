@@ -130,8 +130,9 @@ pub trait SpdmPalIoTransport {
     /// Used by the SPDM stack's HEARTBEAT liveness watchdog to compute and
     /// check per-session deadlines. The default returns 0; a PAL that wants
     /// heartbeat-driven session teardown must override this with a real
-    /// monotonic source (e.g. the libtock alarm capsule). With the default,
-    /// `now` never advances so no watchdog deadline is ever reached.
+    /// monotonic source, ideally one that does not wrap (e.g. a 64-bit
+    /// millisecond counter). With the default, `now` never advances, so no watchdog
+    /// deadline is ever reached.
     fn now(&self) -> Milliseconds {
         Milliseconds(0)
     }
@@ -139,7 +140,12 @@ pub trait SpdmPalIoTransport {
     /// Sleep until at least `dur` has elapsed.
     ///
     /// Raced against [`Self::recv_request`] in the responder run loop so a
-    /// silent peer's session can be torn down on watchdog expiry. The default
+    /// silent peer's session can be torn down on watchdog expiry.
+    ///
+    /// Must be cancellation-safe: the run loop drops it whenever a request
+    /// arrives first. It may wake early, because the run loop re-checks
+    /// [`Self::now`] and sleeps again. It must not resolve immediately in a
+    /// loop: if no delay is possible, never resolve. The default
     /// never resolves, so a PAL that does not provide a real clock simply
     /// waits on `recv_request` alone (the pre-heartbeat behavior).
     async fn sleep(&self, dur: Milliseconds) {

@@ -214,9 +214,9 @@ impl<M: MeasurementProvider, S: EndorsementStorage> SpdmPalIoTransport for McuSp
         Milliseconds(super::clock::now_ms())
     }
 
-    /// Sleep until at least `dur` elapses, via the libtock alarm capsule.
-    /// Raced against `recv_request` in the responder run loop so an idle
-    /// session is torn down on watchdog expiry.
+    /// Sleep for about `dur`, via the libtock alarm. The run loop races this
+    /// against `recv_request` and drops it when a request arrives first.
+    /// Dropping it is safe: the alarm is stopped and its upcall unsubscribed.
     #[cfg(feature = "spdm-set-heartbeat")]
     async fn sleep(&self, dur: Milliseconds) {
         super::clock::sleep_ms(u32::try_from(dur.0).unwrap_or(u32::MAX)).await

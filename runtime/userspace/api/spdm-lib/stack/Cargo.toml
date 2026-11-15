@@ -28,7 +28,9 @@ set-certificate = ["caliptra-mcu-spdm-traits/set-certificate"]
 # HeartbeatPeriod, and race the run loop against a per-session deadline so an
 # idle session is torn down. Off by default (spec-legal "heartbeat not
 # supported"); the PAL must provide a real now_ms/sleep_ms clock for the
-# watchdog to advance.
+# watchdog to advance. Do not enable this directly: use the user app's
+# `spdm-set-heartbeat`, which also enables the PAL feature that provides that
+# clock.
 spdm-set-heartbeat = []
 generic-large-request = []
 debug-trace = [

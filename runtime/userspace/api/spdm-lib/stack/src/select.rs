@@ -23,8 +23,10 @@ pub(crate) enum Either<A, B> {
 }
 
 /// Poll `a` and `b` concurrently, resolving to [`Either`] as soon as one
-/// completes. The loser is dropped (its side effects, if any, are abandoned),
-/// so both futures must be cancellation-safe.
+/// completes. The loser is dropped, so each argument must be cancellation-safe.
+/// To race a future that is not, pass it as `Pin<&mut F>`: losing then drops
+/// only the reference, and the caller can poll the same future again. The run
+/// loop does this with `recv_request`.
 pub(crate) fn select<A, B>(a: A, b: B) -> Select<A, B> {
     Select { a, b }
 }
