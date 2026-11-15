@@ -405,7 +405,7 @@ impl Bus for McuRootBus {
             let start = start_addr as usize;
             let len = len as usize;
             if start >= self.offsets.ram_size as usize
-                || start + len >= self.offsets.ram_size as usize
+                || start + len > self.offsets.ram_size as usize
             {
                 println!(
                     "Ignoring invalid MCU RAM read from {}..{}",
@@ -437,7 +437,7 @@ impl Bus for McuRootBus {
         {
             let start = start_addr as usize;
             if start >= self.offsets.ram_size as usize
-                || start + data.len() >= self.offsets.ram_size as usize
+                || start + data.len() > self.offsets.ram_size as usize
             {
                 println!(
                     "Ignoring invalid MCU RAM write to {}..{}",
@@ -458,7 +458,7 @@ impl Bus for McuRootBus {
             let start = start_addr as usize;
             let len = len as usize;
             if start >= MCU_MAILBOX0_SRAM_SIZE as usize
-                || start + len >= MCU_MAILBOX0_SRAM_SIZE as usize
+                || start + len > MCU_MAILBOX0_SRAM_SIZE as usize
             {
                 println!(
                     "Ignoring invalid MCU MBOX0 SRAM read from {}..{}",
@@ -499,7 +499,7 @@ impl Bus for McuRootBus {
             let start = start_addr as usize;
             let len = len as usize;
             if start >= MCU_MAILBOX1_SRAM_SIZE as usize
-                || start + len >= MCU_MAILBOX1_SRAM_SIZE as usize
+                || start + len > MCU_MAILBOX1_SRAM_SIZE as usize
             {
                 println!(
                     "Ignoring invalid MCU MBOX1 SRAM read from {}..{}",
@@ -531,7 +531,7 @@ impl Bus for McuRootBus {
             let start = start_addr as usize;
             let len = len as usize;
             if start >= EXTERNAL_TEST_SRAM_SIZE as usize
-                || start + len >= EXTERNAL_TEST_SRAM_SIZE as usize
+                || start + len > EXTERNAL_TEST_SRAM_SIZE as usize
             {
                 println!(
                     "Ignoring invalid MCU TEST RAM read from {}..{}",
@@ -560,6 +560,56 @@ impl Bus for McuRootBus {
             (event.dest, event.event.clone())
         {
             self.mci_irq.borrow_mut().set_level(asserted);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn dma_access_ending_at_the_top_of_a_memory_is_served() {
+        let mut bus = McuRootBus::new(McuRootBusArgs::default()).unwrap();
+        let (sender, receiver) = mpsc::channel();
+        bus.register_outgoing_events(sender);
+        let ram_size = bus.offsets.ram_size;
+        let request = |dest, event| {
+            Rc::new(Event {
+                src: Device::CaliptraCore,
+                dest,
+                event,
+            })
+        };
+
+        bus.incoming_event(request(
+            Device::MCU,
+            EventData::MemoryWrite {
+                start_addr: ram_size - 4,
+                data: vec![1, 2, 3, 4],
+            },
+        ));
+        for (dest, size) in [
+            (Device::MCU, ram_size),
+            (Device::McuMbox0Sram, MCU_MAILBOX0_SRAM_SIZE),
+            (Device::McuMbox1Sram, MCU_MAILBOX1_SRAM_SIZE),
+            (Device::ExternalTestSram, EXTERNAL_TEST_SRAM_SIZE),
+        ] {
+            bus.incoming_event(request(
+                dest,
+                EventData::MemoryRead {
+                    start_addr: size - 4,
+                    len: 4,
+                },
+            ));
+            let response = receiver.try_recv().expect("read was dropped");
+            let EventData::MemoryReadResponse { start_addr, data } = response.event else {
+                panic!("unexpected event {:?}", response.event);
+            };
+            assert_eq!((start_addr, data.len()), (size - 4, 4));
+            if dest == Device::MCU {
+                assert_eq!(data, [1, 2, 3, 4]);
+            }
         }
     }
 }

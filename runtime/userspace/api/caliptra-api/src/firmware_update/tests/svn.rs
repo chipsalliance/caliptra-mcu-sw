@@ -40,8 +40,8 @@ const COMPONENTS: [Component; 2] = [
     },
 ];
 
-struct TestOtp {
-    disable: Cell<Result<u32, ErrorCode>>,
+pub(super) struct TestOtp {
+    pub(super) disable: Cell<Result<u32, ErrorCode>>,
     firmware_words: Cell<[u32; SVN_FUSE_WORD_COUNT]>,
     manifest_words: Cell<[u32; SVN_FUSE_WORD_COUNT]>,
     selected: Cell<(u32, u32)>,
@@ -51,7 +51,7 @@ struct TestOtp {
 }
 
 impl TestOtp {
-    fn new() -> Self {
+    pub(super) fn new() -> Self {
         Self {
             disable: Cell::new(Ok(0)),
             firmware_words: Cell::new(encode_linear_or_svn(3)),
@@ -122,15 +122,18 @@ impl SyscallDriver for TestOtp {
 }
 
 #[derive(Default)]
-struct TestMailbox {
+pub(super) struct TestMailbox {
     share_ref: DriverShareRef,
     responses: RefCell<VecDeque<(u32, Vec<u8>)>>,
     started: Cell<Option<u32>>,
-    commands: RefCell<Vec<u32>>,
+    pub(super) commands: RefCell<Vec<u32>>,
+    last_request: RefCell<Vec<u8>>,
+    /// Request bytes of each single-buffer command, in order.
+    pub(super) requests: RefCell<Vec<(u32, Vec<u8>)>>,
 }
 
 impl TestMailbox {
-    fn respond(&self, command: CommandId, response: &[u8]) {
+    pub(super) fn respond(&self, command: CommandId, response: &[u8]) {
         self.responses
             .borrow_mut()
             .push_back((command.into(), response.to_vec()));
@@ -164,6 +167,9 @@ impl SyscallDriver for TestMailbox {
         match command {
             1 => {
                 self.commands.borrow_mut().push(arg0);
+                self.requests
+                    .borrow_mut()
+                    .push((arg0, self.last_request.take()));
                 self.complete(arg0)
             }
             2 => {
@@ -194,6 +200,9 @@ impl SyscallDriver for TestMailbox {
         buffer: RoAllowBuffer,
     ) -> Result<RoAllowBuffer, (RoAllowBuffer, ErrorCode)> {
         assert_eq!(number, 0);
+        if !buffer.is_empty() {
+            self.last_request.replace(buffer.to_vec());
+        }
         Ok(buffer)
     }
 
@@ -291,7 +300,7 @@ impl StagingMemory for SvnStagingMemory {
     }
 }
 
-struct TestAlloc;
+pub(super) struct TestAlloc;
 
 impl ScratchAlloc for TestAlloc {
     type Buf<'a> = Vec<u8>;
@@ -301,7 +310,7 @@ impl ScratchAlloc for TestAlloc {
     }
 }
 
-struct TestDmaMapping;
+pub(super) struct TestDmaMapping;
 
 impl DMAMapping for TestDmaMapping {
     fn mcu_sram_to_mcu_axi(&self, _addr: u32) -> Result<AXIAddr, ErrorCode> {
@@ -313,7 +322,7 @@ impl DMAMapping for TestDmaMapping {
     }
 }
 
-fn run_with_upcalls<T>(future: impl Future<Output = T>) -> T {
+pub(super) fn run_with_upcalls<T>(future: impl Future<Output = T>) -> T {
     let mut future = core::pin::pin!(future);
     let mut context = Context::from_waker(Waker::noop());
     for _ in 0..1024 {

@@ -1085,6 +1085,59 @@ mod test {
         lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
     }
 
+    // Stages the update in SRAM that Caliptra's DMA can read, so verification
+    // hashes each image with SHA_DMA. The firmware stops after verification.
+    fn run_axi_staging_update(soc_images: Option<Vec<PathBuf>>) -> (Option<i32>, String) {
+        let feature = "test-firmware-update-axi-staging";
+        env::set_var(
+            "CPTRA_EMULATOR_SS_MCI_OFFSET",
+            format!("0x{:016x}", MCI_BASE_AXI_ADDRESS),
+        );
+        let i3c_port = PortPicker::new().random(true).pick().unwrap().into();
+        let mut opts = create_firmware_update_test_options_build(feature, true, i3c_port, None);
+        if let Some(soc_images) = soc_images {
+            let (_, update_flash_image_path) = create_flash_image(
+                opts.update_caliptra_fw.clone(),
+                opts.update_soc_manifest.clone(),
+                opts.update_runtime_firmware.clone(),
+                None,
+                0,
+                soc_images,
+            );
+            opts.update_flash_image_path = Some(update_flash_image_path);
+            opts = update_package_options(&opts);
+        }
+        let output = runtime_command_with_options(&opts)
+            .output()
+            .expect("Failed to run emulator");
+        let log = format!(
+            "{}{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+        assert!(
+            log.contains("[FW Upd] Hashing staged images with SHA_DMA"),
+            "{log}"
+        );
+        assert!(!log.contains("hashing with CM_SHA"), "{log}");
+        (output.status.code(), log)
+    }
+
+    // One test, so that only one process builds this feature's firmware.
+    #[test]
+    fn test_firmware_update_axi_staging_with_sha_dma() {
+        let lock = TEST_LOCK.lock().unwrap();
+        let (status, log) = run_axi_staging_update(None);
+        assert_eq!(status, Some(0), "{log}");
+        assert!(log.contains("[FW Upd] AXI-staged update verified"), "{log}");
+
+        let invalid_soc_image = create_soc_images(vec![[0xde, 0xad, 0xbe, 0xef].repeat(1024)]);
+        let (status, log) = run_axi_staging_update(Some(invalid_soc_image));
+        assert_ne!(status, Some(0), "{log}");
+        assert!(log.contains("digest mismatch"), "{log}");
+        lock.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
     /// PLDM transfer benchmark: transfers 64KB, then rejects the incomplete image.
     /// Run with RUST_LOG=info to see KB/s output from the UA.
     #[test]
