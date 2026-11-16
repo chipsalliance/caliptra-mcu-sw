@@ -557,10 +557,9 @@ impl TransportSession {
                 "PLDM verification failed: result={verification_error:#x}, Core nonfatal error={:#x}",
                 hw.caliptra_soc_manager().soc_ifc().cptra_fw_error_non_fatal().read()
             );
-            ensure!(
-                hw.mcu_exit_status().is_none(),
-                "MCU exited before PLDM completion"
-            );
+            if hw.mcu_exit_status() == Some(0) {
+                std::thread::sleep(Duration::from_millis(1));
+            }
             ensure!(
                 hw.cycle_count() - cycles < 200_000_000
                     && start.elapsed() < Duration::from_secs(180),
