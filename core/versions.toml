@@ -5,4 +5,4 @@
 # chipsalliance/caliptra-sw#4428 for broader 2.2 FPGA validation.
 [versions]
 "2.1" = "e5d1f27b15ba02e4e0a57b942bbde39b74cab2eb"
-latest = "ab26838b4036dd7520d2812afa40ed6cd865ef7a"
+latest = "d381170ca447404a2c57c968a87e2ad70ba3ef6f"
