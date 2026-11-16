@@ -76,7 +76,7 @@ fn caliptra_cmd_get_firmware_version_impl(
         .map_err(|_| CaliptraApiError::SessionError("Command execution failed"))
 }
 
-/// Query whether every field-entropy partition is provisioned.
+/// Query packed field-entropy partition status.
 pub fn caliptra_cmd_field_entropy_status(
     session: &mut CaliptraSession,
 ) -> CaliptraResult<FieldEntropyStatusResponse> {

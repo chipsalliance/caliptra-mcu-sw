@@ -7,9 +7,7 @@ extern crate alloc;
 use alloc::boxed::Box;
 use arrayvec::ArrayVec;
 use async_trait::async_trait;
-use caliptra_api::mailbox::{
-    EcdsaVerifyReq, FePartitionStatus, MailboxReqHeader, MailboxRespHeader,
-};
+use caliptra_api::mailbox::{EcdsaVerifyReq, MailboxReqHeader, MailboxRespHeader};
 #[cfg(feature = "pcr-quote")]
 use caliptra_mcu_attestation_evidence::pcr_quote::{encode_pcr_quote, PcrQuoteAlgorithm};
 use caliptra_mcu_attestation_evidence::{encode_signed_ocp_eat, OcpEatAlgorithm};
@@ -201,21 +199,56 @@ mod tests {
     static SVN_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
     #[test]
-    fn field_entropy_status_requires_all_four_partitions() {
-        assert_eq!(field_entropy_provisioned(0x55), Ok(true));
-        for status in [0, 0x54, 0x45, 0x15, 0x56] {
-            assert_eq!(field_entropy_provisioned(status), Ok(false));
-        }
-    }
+    fn field_entropy_status_queries_live_core_metadata() {
+        let _guard = SVN_TEST_LOCK.lock().unwrap();
+        let kernel = crate::kernel();
+        let mailbox = Rc::new(fake::FakeMailboxDriver::new());
+        kernel.add_driver(&mailbox);
 
-    #[test]
-    fn field_entropy_status_rejects_unreadable_partitions() {
-        for status in [0xff, 0xc0, 0x57] {
+        #[repr(align(64))]
+        struct Scratch([u8; 1024]);
+        let mut scratch = Scratch([0; 1024]);
+        // SAFETY: The aligned storage is exclusive to the pool and outlives every request.
+        let pool = unsafe {
+            BitmapAllocator::new(
+                NonNull::new(scratch.0.as_mut_ptr()).unwrap(),
+                scratch.0.len(),
+            )
+        };
+        let query = |fe_status, response_len| {
+            let mut response = FwInfoResp {
+                fe_status,
+                ..FwInfoResp::new_zeroed()
+            };
+            response.hdr.chksum =
+                caliptra_api::calc_checksum(0, &response.as_bytes()[4..response_len]);
+            mailbox.add_ready_response(
+                caliptra_api::mailbox::CommandId::FW_INFO.into(),
+                &response.as_bytes()[..response_len],
+            );
+            let result = fake::wait_for_future_ready(Box::pin(field_entropy_status(&pool)));
+            DefaultSyscalls::unallow_ro(MAILBOX_DRIVER_NUM, 0);
+            DefaultSyscalls::unallow_rw(MAILBOX_DRIVER_NUM, 0);
+            result
+        };
+
+        let response_len = core::mem::size_of::<FwInfoResp>();
+        for status in [0x00, 0x55, 0xe4, 0xff] {
             assert_eq!(
-                field_entropy_provisioned(status),
-                Err(CaliptraCompletionCode::OperationFailed)
+                query(status, response_len),
+                Ok(status),
+                "status {status:#x}"
             );
         }
+        assert_eq!(
+            query(0x55, core::mem::offset_of!(FwInfoResp, fe_status)),
+            Err(CaliptraCompletionCode::OperationFailed)
+        );
+        assert_eq!(
+            mailbox.get_last_command(),
+            Some(caliptra_api::mailbox::CommandId::FW_INFO.into())
+        );
+        assert_eq!(pool.live_slots(), 0);
     }
 
     struct TestAlloc;
@@ -1694,25 +1727,11 @@ pub async fn program_field_entropy<A: ScratchAlloc>(
     fe_prog(alloc, partition).await.map_err(map_mcu_err)
 }
 
-pub async fn field_entropy_already_provisioned<A: ScratchAlloc>(
-    alloc: &A,
-) -> CaliptraCmdResult<bool> {
+pub async fn field_entropy_status<A: ScratchAlloc>(alloc: &A) -> CaliptraCmdResult<u32> {
     let info = fw_info(alloc)
         .await
         .map_err(|_| CaliptraCompletionCode::OperationFailed)?;
-    field_entropy_provisioned(info.fe_status)
-}
-
-fn field_entropy_provisioned(fe_status: u32) -> CaliptraCmdResult<bool> {
-    let mut all_provisioned = true;
-    for partition in 0..4 {
-        let status = (fe_status >> (partition * 2)) & 3;
-        if status == FePartitionStatus::Error as u32 {
-            return Err(CaliptraCompletionCode::OperationFailed);
-        }
-        all_provisioned &= status == FePartitionStatus::Provisioned as u32;
-    }
-    Ok(all_provisioned)
+    Ok(info.fe_status)
 }
 
 pub fn vendor_pk_hash_status() -> CaliptraCmdResult<(u32, [u8; 16])> {

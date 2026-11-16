@@ -829,15 +829,11 @@ impl Validator {
         let test_name = "FieldEntropyStatus".to_string();
         let (passed, error_message) = match client.field_entropy_status() {
             Ok(response) => {
-                let valid = response.already_provisioned <= 1;
+                let valid = response.fe_status >> 8 == 0;
                 (
                     valid,
-                    (!valid).then(|| {
-                        format!(
-                            "invalid already_provisioned value {}",
-                            response.already_provisioned
-                        )
-                    }),
+                    (!valid)
+                        .then(|| format!("invalid fe_status value {:#010x}", response.fe_status)),
                 )
             }
             Err(error) => (false, Some(error.to_string())),

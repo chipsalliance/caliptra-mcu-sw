@@ -98,7 +98,7 @@ framing and is not changed by this Runtime ABI.
 | MC_PROVISION_VENDOR_PK_HASH   | 0x5056_504b ("PVPK") | Target ID under `MC_AUTHORIZED_COMMAND`; see [fuses spec](fuses.md).                    |
 | MC_PROVISION_OWNER_PK_HASH    | 0x504F_504B ("POPK") | Target ID under `MC_AUTHORIZED_COMMAND`; see [fuses spec](fuses.md).                    |
 | MC_FE_PROG                    | 0x4D43_4650 ("MCFP") | Target ID under `MC_AUTHORIZED_COMMAND`; see [fuses spec](fuses.md).                    |
-| MC_FE_STATUS                  | 0x4D43_4653 ("MCFS") | Reports whether all field entropy partitions are provisioned.                          |
+| MC_FE_STATUS                  | 0x4D43_4653 ("MCFS") | Reports field entropy partition status.                                                |
 | MC_VENDOR_PK_HASH_STATUS      | 0x4D56_5053 ("MVPS") | Reports occupied vendor PK hash slots and their PQC key types.                         |
 | MC_FUSE_REVOKE_VENDOR_PUB_KEY | 0x4D52_564B ("MRVK") | Target ID under `MC_AUTHORIZED_COMMAND`; see [fuses spec](fuses.md).                    |
 | MC_FUSE_REVOKE_VENDOR_PK_HASH | 0x5256_4b48 ("RVKH") | Target ID under `MC_AUTHORIZED_COMMAND`; see [fuses spec](fuses.md).                    |
@@ -526,18 +526,18 @@ Payload semantics are defined by [Program Field Entropy](caliptra_common_command
 
 ### MC_FE_STATUS
 
-Reports whether all four field entropy partitions are provisioned without
-requiring authorization. On Caliptra 2.0, status comes from Core's live
-`FW_INFO.fe_status`; the command fails if any partition status is unreadable.
+Reports the field entropy partition status from Caliptra Core's live
+`FW_INFO.fe_status`. This command does not require authorization. A partition's
+Error state is returned in the status word; a failed Core query fails the command.
 
 Command Code: `0x4D43_4653` ("MCFS")
 
 The request contains only the mailbox checksum header. The response contains
 the standard mailbox response header followed by:
 
-| Byte(s) | Name                | Type | Description |
-| ------- | ------------------- | ---- | ----------- |
-| 0:3     | already_provisioned | u32  | `1` when every FE partition is provisioned; otherwise `0`. |
+| Byte(s) | Name      | Type | Description |
+| ------- | --------- | ---- | ----------- |
+| 0:3     | fe_status | u32  | Partition `i` occupies bits `[2*i+1:2*i]`: `0` Unprovisioned, `1` Provisioned, `2` Zeroized, `3` Error. Bits `31:8` are reserved (`0`). |
 
 ### MC_VENDOR_PK_HASH_STATUS
 

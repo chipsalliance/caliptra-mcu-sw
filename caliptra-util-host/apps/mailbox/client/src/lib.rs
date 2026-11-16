@@ -183,7 +183,7 @@ impl<'a> MailboxClient<'a> {
         }
     }
 
-    /// Query whether every field-entropy partition is provisioned.
+    /// Query packed field-entropy partition status.
     pub fn field_entropy_status(&mut self) -> Result<FieldEntropyStatusResponse> {
         let mut session = CaliptraSession::new(1, &mut self.transport)
             .map_err(|e| anyhow::anyhow!("Failed to create session: {e:?}"))?;

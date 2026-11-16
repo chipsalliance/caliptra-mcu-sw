@@ -477,11 +477,11 @@ impl CaliptraCmdHandler for CaliptraCmdBackend {
         device_ops::dot_enable()
     }
 
-    async fn field_entropy_already_provisioned<Alloc: ScratchAlloc>(
+    async fn field_entropy_status<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
-    ) -> CaliptraCmdResult<bool> {
-        device_ops::field_entropy_already_provisioned(alloc).await
+    ) -> CaliptraCmdResult<u32> {
+        device_ops::field_entropy_status(alloc).await
     }
 
     async fn vendor_pk_hash_status(&self) -> CaliptraCmdResult<(u32, [u8; 16])> {

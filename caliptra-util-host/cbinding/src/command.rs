@@ -99,7 +99,7 @@ pub extern "C" fn caliptra_cmd_get_firmware_version_c_impl(
     }
 }
 
-/// Query whether every field-entropy partition is provisioned.
+/// Query packed field-entropy partition status.
 #[no_mangle]
 pub extern "C" fn caliptra_cmd_field_entropy_status_c_impl(
     session_ptr: *mut CaliptraSession<'static>,

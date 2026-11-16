@@ -660,11 +660,11 @@ pub trait CaliptraCmdHandler {
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
 
-    /// Reports whether all field entropy partitions are provisioned.
-    async fn field_entropy_already_provisioned<Alloc: ScratchAlloc>(
+    /// Reports the packed field entropy partition status from `FW_INFO.fe_status`.
+    async fn field_entropy_status<Alloc: ScratchAlloc>(
         &self,
         alloc: &Alloc,
-    ) -> CaliptraCmdResult<bool> {
+    ) -> CaliptraCmdResult<u32> {
         let _ = alloc;
         Err(CaliptraCompletionCode::UnsupportedOperation)
     }
