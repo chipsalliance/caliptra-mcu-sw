@@ -110,7 +110,7 @@ impl MockMailbox {
             0x4D43_4653 => {
                 let mut payload = Vec::new();
                 payload.extend_from_slice(&1u32.to_le_bytes());
-                payload.extend_from_slice(&1u32.to_le_bytes());
+                payload.extend_from_slice(&0x55u32.to_le_bytes());
                 let chksum = calc_checksum(0, &payload);
                 let mut response = Vec::new();
                 response.extend_from_slice(&chksum.to_le_bytes());

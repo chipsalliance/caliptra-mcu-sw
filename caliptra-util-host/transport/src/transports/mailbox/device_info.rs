@@ -85,7 +85,7 @@ pub struct ExtCmdFieldEntropyStatusRequest {
 pub struct ExtCmdFieldEntropyStatusResponse {
     pub chksum: u32,
     pub fips_status: u32,
-    pub already_provisioned: u32,
+    pub fe_status: u32,
 }
 
 impl FromInternalRequest<FieldEntropyStatusRequest> for ExtCmdFieldEntropyStatusRequest {
@@ -102,7 +102,7 @@ impl ToInternalResponse<FieldEntropyStatusResponse> for ExtCmdFieldEntropyStatus
             common: CommonResponse {
                 fips_status: self.fips_status,
             },
-            already_provisioned: self.already_provisioned,
+            fe_status: self.fe_status,
         }
     }
 }
@@ -368,14 +368,16 @@ mod tests {
             request.as_bytes(),
             &calc_checksum(0x4D43_4653, &[]).to_le_bytes()
         );
-        let response = ExtCmdFieldEntropyStatusResponse {
-            chksum: 0,
-            fips_status: 1,
-            already_provisioned: 1,
+        for fe_status in [0x00, 0x55, 0xe4, 0xff] {
+            let response = ExtCmdFieldEntropyStatusResponse {
+                chksum: 0,
+                fips_status: 1,
+                fe_status,
+            }
+            .to_internal();
+            assert_eq!(response.common.fips_status, 1);
+            assert_eq!(response.fe_status, fe_status);
         }
-        .to_internal();
-        assert_eq!(response.common.fips_status, 1);
-        assert_eq!(response.already_provisioned, 1);
     }
 
     #[test]

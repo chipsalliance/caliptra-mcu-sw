@@ -22,7 +22,7 @@ fn test_field_entropy_status_returns_typed_response() {
 
     let response = caliptra_cmd_field_entropy_status(&mut session).unwrap();
     assert_eq!(response.common.fips_status, 1);
-    assert_eq!(response.already_provisioned, 1);
+    assert_eq!(response.fe_status, 0x55);
 }
 
 #[test]

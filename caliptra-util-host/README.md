@@ -17,8 +17,10 @@ The library is organized into several focused crates:
 
 ## Field Entropy Status
 
-The Rust and C APIs query field-entropy provisioning status over the mailbox
-transport using Core's live `FW_INFO` status. Enable `[field_entropy_status]` in
+The Rust and C APIs query packed field-entropy partition status over the mailbox
+transport using Core's live `FW_INFO.fe_status` word. Each partition occupies
+two bits (`0` Unprovisioned, `1` Provisioned, `2` Zeroized, `3` Error).
+Enable `[field_entropy_status]` in
 the mailbox validator configuration to include this query; it is disabled by
 default.
 

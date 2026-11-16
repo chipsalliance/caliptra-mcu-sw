@@ -69,14 +69,14 @@ typedef struct GetFirmwareVersionResponse {
 } GetFirmwareVersionResponse;
 
 /**
- * Field-entropy provisioning status returned by the MCU.
+ * Packed field-entropy partition status returned by the MCU.
  */
 typedef struct FieldEntropyStatusResponse {
   struct CommonResponse common;
   /**
-   * One when every field-entropy partition is provisioned; otherwise zero.
+   * Packed `FW_INFO.fe_status` word; partition `i` (`0..3`) occupies bits `[2*i+1:2*i]`.
    */
-  uint32_t already_provisioned;
+  uint32_t fe_status;
 } FieldEntropyStatusResponse;
 
 /**
@@ -216,7 +216,7 @@ enum CaliptraError caliptra_cmd_get_firmware_version_c_impl(struct CaliptraSessi
                                                             struct GetFirmwareVersionResponse *firmware_version);
 
 /**
- * Query whether every field-entropy partition is provisioned.
+ * Query packed field-entropy partition status.
  */
 enum CaliptraError caliptra_cmd_field_entropy_status_c_impl(struct CaliptraSession *session_ptr,
                                                             struct FieldEntropyStatusResponse *status);

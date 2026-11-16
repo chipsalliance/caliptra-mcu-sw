@@ -1439,7 +1439,7 @@ fn test_fe_status_cmd_does_not_require_authorization() -> Result<()> {
     });
 
     let resp = hw.mailbox_execute_req(McuFeStatusReq::default())?;
-    assert!(matches!(resp.already_provisioned, 0 | 1));
+    assert_eq!(resp.fe_status >> 8, 0);
 
     let cmd = McuCommandId::MC_FE_STATUS.into();
     assert!(hw.mailbox_execute(cmd, &[0u8; 3]).is_err());
