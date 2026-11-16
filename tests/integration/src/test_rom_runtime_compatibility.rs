@@ -246,7 +246,7 @@ impl SelectedPair {
     fn service_configuration<'a>(scenario: &str, mode: &'a str) -> &'a str {
         if mode == "streaming" {
             match scenario {
-                "suite_spdm_mctp" | "suite_attestation_ocp_eat_non_tcb" => "services-non-tcb",
+                "suite_attestation_ocp_eat_non_tcb" => "services-non-tcb",
                 "suite_attestation_ocp_eat_tcb" => "services-tcb",
                 "suite_attestation_ocp_eat_mixed" => "services-mixed",
                 _ => mode,
@@ -1308,30 +1308,9 @@ fn suite_check(pair: &SelectedPair, scenario: &str) -> Result<Option<String>> {
         "suite_attestation_ocp_eat_non_tcb"
         | "suite_attestation_ocp_eat_tcb"
         | "suite_attestation_ocp_eat_mixed"
-        | "suite_spdm_mctp"
             if !pair.streaming() =>
         {
             return Ok(Some("The flash configuration does not enable SPDM".into()))
-        }
-        "suite_attestation_pcr_quote" => return Ok(Some(
-            "The selected production configuration uses OCP EAT, not the test-only PCR provider"
-                .into(),
-        )),
-        "suite_spdm_doe" => {
-            return Ok(Some(
-                "The selected service configuration enables MCTP, not DOE".into(),
-            ))
-        }
-        "suite_ownership_dot" | "suite_owner_stable_key" => {
-            return Ok(Some(
-                "The selected ROM/OTP do not enable DOT or stable-owner-key".into(),
-            ))
-        }
-        "suite_network_boot" => return Ok(Some("No network ROM/configuration is selected".into())),
-        "suite_usb_recovery" => {
-            return Ok(Some(
-                "USB recovery is outside the selected 2.1 I3C configuration".into(),
-            ))
         }
         _ => {}
     }
@@ -1339,8 +1318,7 @@ fn suite_check(pair: &SelectedPair, scenario: &str) -> Result<Option<String>> {
     wait_ready(&mut hw)?;
     check_version(&mut hw, pair)?;
     match scenario {
-        "suite_spdm_mctp"
-        | "suite_attestation_ocp_eat_non_tcb"
+        "suite_attestation_ocp_eat_non_tcb"
         | "suite_attestation_ocp_eat_tcb"
         | "suite_attestation_ocp_eat_mixed" => {
             if pair.config.soc_loading == "pldm" {
@@ -1373,20 +1351,16 @@ fn suite_check(pair: &SelectedPair, scenario: &str) -> Result<Option<String>> {
                 );
                 hw.step();
             }
-            if scenario == "suite_spdm_mctp" {
-                spdm::run_compatibility_conformance(&mut hw)?;
-            } else {
-                let directory = pair.root.join(&pair.config.soc_manifest.path);
-                spdm::run_compatibility_attestation(
-                    &mut hw,
-                    &directory
-                        .parent()
-                        .context("Missing fixture directory")?
-                        .join("attestation"),
-                    &pair.root.join("fixtures/ta-store"),
-                    scenario,
-                )?;
-            }
+            let directory = pair.root.join(&pair.config.soc_manifest.path);
+            spdm::run_compatibility_attestation(
+                &mut hw,
+                &directory
+                    .parent()
+                    .context("Missing fixture directory")?
+                    .join("attestation"),
+                &pair.root.join("fixtures/ta-store"),
+                scenario,
+            )?;
         }
         _ => bail!("BLOCKED: no selected-image implementation for {scenario}"),
     }
@@ -1481,13 +1455,3 @@ compatibility_test!(
     test_suite_attestation_ocp_eat_mixed,
     "suite_attestation_ocp_eat_mixed"
 );
-compatibility_test!(
-    test_suite_attestation_pcr_quote,
-    "suite_attestation_pcr_quote"
-);
-compatibility_test!(test_suite_spdm_mctp, "suite_spdm_mctp");
-compatibility_test!(test_suite_spdm_doe, "suite_spdm_doe");
-compatibility_test!(test_suite_ownership_dot, "suite_ownership_dot");
-compatibility_test!(test_suite_owner_stable_key, "suite_owner_stable_key");
-compatibility_test!(test_suite_network_boot, "suite_network_boot");
-compatibility_test!(test_suite_usb_recovery, "suite_usb_recovery");

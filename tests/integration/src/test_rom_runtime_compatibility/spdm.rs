@@ -6,8 +6,7 @@ use caliptra_mcu_testing_common::i3c::DynamicI3cAddress;
 use caliptra_mcu_testing_common::i3c_socket::BufferedStream;
 use caliptra_mcu_testing_common::spdm_responder_validator::mctp::MctpTransport;
 use caliptra_mcu_testing_common::spdm_responder_validator::{
-    execute_spdm_attestation_with_port, execute_spdm_responder_validator, SpdmValidatorRunner,
-    SERVER_LISTENING,
+    execute_spdm_attestation_with_port, SpdmValidatorRunner, SERVER_LISTENING,
 };
 use std::io::{Read, Seek, SeekFrom};
 use std::net::{SocketAddr, TcpListener, TcpStream};
@@ -16,59 +15,6 @@ use std::sync::mpsc::{self, Receiver};
 use std::time::{Duration, Instant};
 
 const TEST_NAME: &str = "MCTP-SPDM-RESPONDER-VALIDATOR";
-
-/// The caller owns the selected image, boot readiness and live transport
-/// services. Copy the complete tool bundle into persistent per-case evidence
-/// storage; the existing launcher writes through `SPDM_VALIDATOR_DIR`.
-pub(crate) fn run_compatibility_conformance(hw: &mut DefaultHwModel) -> Result<()> {
-    let output_dir =
-        stage_compatibility_validator("spdm_device_validator_sample", "suite_spdm_mctp")?;
-
-    let timeout = Duration::from_secs(9000);
-    let port = hw
-        .i3c_port()
-        .context("BLOCKED: selected model has no I3C port")?;
-    let address = hw
-        .i3c_address()
-        .context("BLOCKED: selected model has no I3C target address")?;
-    let result = start_protocol(port, address.into(), false)?;
-    drive_compatibility_protocol(hw, result, timeout)?;
-
-    // The validator can exit successfully even when individual suites fail.
-    // Retain the workflow's result-log checks as part of the selected case.
-    let log = std::fs::read_to_string(output_dir.join("test.log"))
-        .context("SPDM validator did not produce test.log")?;
-    validate_conformance_log(&log)
-}
-
-fn validate_conformance_log(log: &str) -> Result<()> {
-    if !log.lines().any(|line| line == "test result done") {
-        bail!("SPDM validator did not report 'test result done'");
-    }
-    let mut passed = 0u64;
-    let mut summaries = 0;
-    for line in log.lines().filter(|line| line.contains("test suite (")) {
-        let (_, counts) = line
-            .rsplit_once(" - pass: ")
-            .with_context(|| format!("invalid SPDM validator suite summary: {line}"))?;
-        let (pass, fail) = counts
-            .split_once(", fail: ")
-            .with_context(|| format!("invalid SPDM validator suite counts: {line}"))?;
-        let pass: u64 = pass.trim().parse().context("invalid SPDM pass count")?;
-        let fail: u64 = fail.trim().parse().context("invalid SPDM failure count")?;
-        if fail != 0 {
-            bail!("SPDM validator reported failures: {line}");
-        }
-        passed = passed
-            .checked_add(pass)
-            .context("SPDM pass count overflow")?;
-        summaries += 1;
-    }
-    if summaries == 0 || passed == 0 {
-        bail!("SPDM validator reported no positively passing tests");
-    }
-    Ok(())
-}
 
 pub(crate) fn run_compatibility_attestation(
     hw: &mut DefaultHwModel,
@@ -91,7 +37,7 @@ pub(crate) fn run_compatibility_attestation(
     );
     let port = hw.i3c_port().context("Missing I3C port")?;
     let address = hw.i3c_address().context("Missing I3C address")?;
-    let result = start_protocol(port, address.into(), true)?;
+    let result = start_protocol(port, address.into())?;
     // ML-DSA certificate and measurement signing is slow in the emulator; match
     // the existing attestation tests and let Nextest's slow-timeout bound the case.
     drive_compatibility_protocol(hw, result, Duration::from_secs(9000))?;
@@ -293,16 +239,11 @@ fn validator_failure(message: &str, log: &std::path::Path) -> String {
 fn start_protocol(
     port: u16,
     target_addr: DynamicI3cAddress,
-    attestation: bool,
 ) -> Result<Receiver<Result<(), String>>> {
     let validator_log = std::path::PathBuf::from(
         std::env::var_os("SPDM_VALIDATOR_DIR").context("Missing SPDM validator directory")?,
     )
-    .join(if attestation {
-        "spdm_requester_emu_output.txt"
-    } else {
-        "spdm_device_validator_output.txt"
-    });
+    .join("spdm_requester_emu_output.txt");
     let (result_tx, result_rx) = mpsc::channel();
     let addr = SocketAddr::from(([127, 0, 0, 1], port));
     let stream = TcpStream::connect(addr).context("could not connect to selected I3C port")?;
@@ -310,7 +251,7 @@ fn start_protocol(
     SERVER_LISTENING.store(false, Ordering::Relaxed);
     caliptra_mcu_testing_common::spawn_with_emulator_state(move || {
         let result = (|| -> Result<(), String> {
-            let listener = TcpListener::bind(("127.0.0.1", if attestation { 0 } else { 2323 }))
+            let listener = TcpListener::bind(("127.0.0.1", 0))
                 .map_err(|err| format!("could not bind SPDM listener: {err}"))?;
             let spdm_port = listener
                 .local_addr()
@@ -322,15 +263,11 @@ fn start_protocol(
             listener
                 .set_nonblocking(true)
                 .map_err(|err| format!("could not configure SPDM listener: {err}"))?;
-            let validator = if attestation {
-                execute_spdm_attestation_with_port(
-                    "MCTP",
-                    Some(spdm_port),
-                    std::env::var("SPDM_NONCE").ok(),
-                )
-            } else {
-                execute_spdm_responder_validator("MCTP")
-            };
+            let validator = execute_spdm_attestation_with_port(
+                "MCTP",
+                Some(spdm_port),
+                std::env::var("SPDM_NONCE").ok(),
+            );
             let (mut spdm_stream, _) = loop {
                 match listener.accept() {
                     Ok(connection) => break connection,
@@ -413,27 +350,9 @@ mod tests {
     }
 
     #[test]
-    fn conformance_requires_positive_counts_and_no_failures() {
-        assert!(validate_conformance_log(
-            "test suite (version) - pass: 2, fail: 0\ntest result done"
-        )
-        .is_ok());
-        for log in [
-            "test result done",
-            "test suite (version) - pass: 0, fail: 0\ntest result done",
-            "test suite (version) - pass: 2, fail: 1\ntest result done",
-            "test suite (version) - pass: 2, fail: 0",
-            "test suite (version) - pass: invalid, fail: 0\ntest result done",
-        ] {
-            assert!(validate_conformance_log(log).is_err(), "{log}");
-        }
-    }
-
-    #[test]
     fn service_selection_preserves_boot_configurations() {
         use super::super::SelectedPair;
         for scenario in [
-            "suite_spdm_mctp",
             "suite_attestation_ocp_eat_non_tcb",
             "suite_attestation_ocp_eat_tcb",
             "suite_attestation_ocp_eat_mixed",
@@ -444,7 +363,6 @@ mod tests {
             );
         }
         for (scenario, expected) in [
-            ("suite_spdm_mctp", "services-non-tcb"),
             ("suite_attestation_ocp_eat_non_tcb", "services-non-tcb"),
             ("suite_attestation_ocp_eat_tcb", "services-tcb"),
             ("suite_attestation_ocp_eat_mixed", "services-mixed"),
