@@ -4,11 +4,14 @@
 
 //! Transport-neutral signed attestation evidence generation.
 
+mod hardware_class;
 pub mod ocp_eat;
 #[cfg(feature = "pcr-quote")]
 pub mod pcr_quote;
 
-use caliptra_mcu_measurement_api::{EvidenceBuilder, MeasurementSigningAlgo, ATTESTATION_KID_SIZE};
+use caliptra_mcu_measurement_api::{
+    EvidenceBuffer, EvidenceBuilder, MeasurementSigningAlgo, RawValueEvidence, ATTESTATION_KID_SIZE,
+};
 use mcu_caliptra_api::{ScratchAlloc, DPE_LABEL_LEN};
 use mcu_error::McuResult;
 use ocp_eat::{cose_sign1_len, ClaimsPayloadLayout, SignedEat};
@@ -27,15 +30,22 @@ struct SignedOcpEatBuilder<'a> {
     nonce: &'a [u8],
     eat_buffer: &'a mut [u8],
     claims_layout: Option<ClaimsPayloadLayout>,
+    additional_evidence: &'a [RawValueEvidence<'a>],
 }
 
 impl<'a> SignedOcpEatBuilder<'a> {
-    fn new(algo: OcpEatAlgorithm, nonce: &'a [u8], eat_buffer: &'a mut [u8]) -> Self {
+    fn new(
+        algo: OcpEatAlgorithm,
+        nonce: &'a [u8],
+        eat_buffer: &'a mut [u8],
+        additional_evidence: &'a [RawValueEvidence<'a>],
+    ) -> Self {
         Self {
             signed_eat: SignedEat::new(algo),
             nonce,
             eat_buffer,
             claims_layout: None,
+            additional_evidence,
         }
     }
 }
@@ -59,6 +69,14 @@ impl<A: ScratchAlloc> EvidenceBuilder<A> for SignedOcpEatBuilder<'_> {
         let layout = ocp_eat::start_claims_payload(payload, self.nonce)?;
         self.claims_layout = Some(layout);
         ocp_eat::concise_evidence_buffer_mut(payload, layout)
+    }
+
+    fn concise_evidence_with_additional_mut(&mut self) -> McuResult<EvidenceBuffer<'_>> {
+        let additional_evidence = self.additional_evidence;
+        Ok(EvidenceBuffer {
+            buffer: <Self as EvidenceBuilder<A>>::concise_evidence_buffer_mut(self)?,
+            additional_evidence,
+        })
     }
 
     async fn prepare_signing_input(
@@ -104,7 +122,16 @@ pub async fn encode_signed_ocp_eat<A: ScratchAlloc>(
     nonce: &[u8],
     out: &mut [u8],
 ) -> McuResult<usize> {
-    let mut builder = SignedOcpEatBuilder::new(algo, nonce, out);
+    let hardware_config = hardware_class::collect_hardware_config(
+        hardware_class::INCLUDE_HARDWARE_CONFIG,
+        mcu_caliptra_api::fw_info(alloc),
+    )
+    .await;
+    let hardware_evidence = hardware_config.as_ref().map(|raw_value| RawValueEvidence {
+        class_id: hardware_class::HARDWARE_CLASS_ID,
+        raw_value,
+    });
+    let mut builder = SignedOcpEatBuilder::new(algo, nonce, out, hardware_evidence.as_slice());
     caliptra_mcu_measurement_api::signed_measurement_evidence(
         alloc,
         key_label,
