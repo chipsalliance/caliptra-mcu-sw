@@ -3,6 +3,10 @@
 name: Released ROM/runtime compatibility
 
 on:
+  # Temporary validation trigger; remove before merging.
+  push:
+    branches:
+      - compat/rom-runtime-2-0
   workflow_call:
     inputs:
       expected-capabilities:
