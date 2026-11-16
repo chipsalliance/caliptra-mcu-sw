@@ -7,11 +7,11 @@ use mcu_caliptra_api::DPE_TCI_MEASUREMENT_SIZE;
 use super::read::MeasurementValue;
 use crate::attestation_manifest::AttestationManifestEntry;
 use crate::errors::{MeasurementApiError, MeasurementApiResult};
+use crate::RawValueEvidence;
 
 include!(concat!(env!("OUT_DIR"), "/evidence_templates.rs"));
 
 pub(super) const EVIDENCE_DIGEST_SIZE: usize = DPE_TCI_MEASUREMENT_SIZE;
-pub(super) const EVIDENCE_MEASUREMENT_KEY: u64 = 1;
 pub(super) const EVIDENCE_INTEGRITY_REGISTER_ID: u64 = 0;
 pub(super) const EVIDENCE_SHA384_ALG_ID: i32 = 7;
 pub(super) const TCB_EVIDENCE_SVN: u64 = 0;
@@ -75,15 +75,30 @@ impl<'a> MeasurementEvidenceEncoder<'a> {
         measurement: &MeasurementValue,
     ) -> MeasurementApiResult {
         let class_id = fw_id_class_id(measurement.target_env_id);
+        self.encode_class(&class_id)?;
+        encode_measurement_value_to(&mut self.writer, measurement)?;
+        self.writer.write(EVIDENCE_TRIPLE_SUFFIX)
+    }
+
+    pub(super) fn encode_raw_value(
+        &mut self,
+        measurement: &RawValueEvidence<'_>,
+    ) -> MeasurementApiResult {
+        self.encode_class(measurement.class_id)?;
+        self.writer.write(RAW_MEASUREMENT_PREFIX)?;
+        self.writer.write_bytes(measurement.raw_value)?;
+        self.writer.write(RAW_MEASUREMENT_SUFFIX)?;
+        self.writer.write(EVIDENCE_TRIPLE_SUFFIX)
+    }
+
+    fn encode_class(&mut self, class_id: &[u8]) -> MeasurementApiResult {
         self.writer.write(EVIDENCE_TRIPLE_CLASS_PREFIX)?;
-        self.writer.write(&class_id)?;
+        self.writer.write_bytes(class_id)?;
         self.writer.write(CLASS_VENDOR_KEY)?;
         self.writer.write_text(self.vendor)?;
         self.writer.write(CLASS_MODEL_KEY)?;
         self.writer.write_text(self.model)?;
-        self.writer.write(SINGLE_MEASUREMENT_ARRAY_PREFIX)?;
-        encode_measurement_value_to(&mut self.writer, measurement)?;
-        self.writer.write(EVIDENCE_TRIPLE_SUFFIX)
+        self.writer.write(SINGLE_MEASUREMENT_ARRAY_PREFIX)
     }
 
     pub(super) fn finish(mut self) -> MeasurementApiResult<usize> {
@@ -146,6 +161,11 @@ impl<'a> TemplateWriter<'a> {
     fn write_text(&mut self, text: &str) -> MeasurementApiResult {
         self.write_type_value(3, text.len() as u64)?;
         self.write(text.as_bytes())
+    }
+
+    fn write_bytes(&mut self, bytes: &[u8]) -> MeasurementApiResult {
+        self.write_type_value(2, bytes.len() as u64)?;
+        self.write(bytes)
     }
 
     fn write_type_value(&mut self, major_type: u8, value: u64) -> MeasurementApiResult {
@@ -211,6 +231,16 @@ mod tests {
             .position(|window| window == needle)
     }
 
+    fn without_measurement_keys(encoded: &[u8]) -> std::vec::Vec<u8> {
+        let mut evidence = corim_rs::coev::TaggedConciseEvidence::from_cbor(encoded).unwrap();
+        for triple in evidence.ev_triples.evidence_triples.as_mut().unwrap() {
+            for measurement in &mut triple.ref_claims {
+                measurement.mkey = None;
+            }
+        }
+        evidence.to_cbor().unwrap()
+    }
+
     fn encode_ocp_measurement_value(measurement: &MeasurementValue, encoded: &mut [u8]) -> usize {
         let digest = [DigestEntry {
             alg_id: EVIDENCE_SHA384_ALG_ID,
@@ -224,19 +254,18 @@ mod tests {
             id: IntegrityRegisterIdChoice::Uint(EVIDENCE_INTEGRITY_REGISTER_ID),
             digests: &integrity_digest,
         }];
-        let measurement_map = MeasurementMap {
-            key: EVIDENCE_MEASUREMENT_KEY,
-            mval: OcpMeasurementValue {
-                version: None,
-                svn: Some(measurement.svn),
-                digests: Some(&digest),
-                integrity_registers: Some(&integrity_registers),
-                raw_value: None,
-                raw_value_mask: None,
-            },
+        let measurement_value = OcpMeasurementValue {
+            version: None,
+            svn: Some(measurement.svn),
+            digests: Some(&digest),
+            integrity_registers: Some(&integrity_registers),
+            raw_value: None,
+            raw_value_mask: None,
         };
         let mut encoder = CborEncoder::new(encoded);
-        measurement_map.encode(&mut encoder).unwrap();
+        encoder.encode_map_header(1).unwrap();
+        encoder.encode_int(1).unwrap();
+        measurement_value.encode(&mut encoder).unwrap();
         encoder.len()
     }
 
@@ -324,8 +353,8 @@ mod tests {
 
         assert_eq!(encoded, &expected[..expected_len]);
         assert_eq!(
-            encoded.get(..8),
-            Some(&[0xa2, 0x00, 0x01, 0x01, 0xa3, 0x01, 0x03, 0x02][..])
+            encoded.get(..6),
+            Some(&[0xa1, 0x01, 0xa3, 0x01, 0x03, 0x02][..])
         );
         assert!(find_subslice(encoded, &current).is_some());
         assert!(find_subslice(encoded, &journey).is_some());
@@ -352,7 +381,7 @@ mod tests {
             digests: &integrity_digest,
         }];
         let measurements = [MeasurementMap {
-            key: EVIDENCE_MEASUREMENT_KEY,
+            key: 1,
             mval: OcpMeasurementValue {
                 version: None,
                 svn: Some(3),
@@ -407,7 +436,8 @@ mod tests {
             evidence.encode(&mut encoder).unwrap();
             encoder.len()
         };
-        let encoded = &encoded[..encoded_len];
+        let reference = without_measurement_keys(&encoded[..encoded_len]);
+        let encoded = reference.as_slice();
 
         let first_measurement = MeasurementValue {
             target_env_id: 0x0000_1000,
@@ -442,5 +472,81 @@ mod tests {
         assert!(find_subslice(encoded, MANIFEST_MODEL.as_bytes()).is_some());
         assert!(find_subslice(encoded, &current).is_some());
         assert!(find_subslice(encoded, &integrity).is_some());
+    }
+
+    #[test]
+    fn raw_value_evidence_omits_mkey_and_respects_buffer_bounds() {
+        for (class_len, raw_len) in [(18, 6), (24, 24), (28, 6), (100, 256)] {
+            let class_id = std::vec![0x5a; class_len];
+            let raw_value = std::vec![0xa5; raw_len];
+            let measurements = [MeasurementMap {
+                key: 1,
+                mval: OcpMeasurementValue {
+                    version: None,
+                    svn: None,
+                    digests: None,
+                    integrity_registers: None,
+                    raw_value: Some(&raw_value),
+                    raw_value_mask: None,
+                },
+            }];
+            let triples = [EvidenceTripleRecord {
+                environment: EnvironmentMap {
+                    class: ClassMap {
+                        class_id: ClassIdTypeChoice::TaggedBytes(TaggedBytes::new(&class_id)),
+                        vendor: Some("vendor"),
+                        model: Some("model"),
+                    },
+                },
+                measurements: &measurements,
+            }];
+            let evidence = ConciseEvidence::Tagged(TaggedConciseEvidence {
+                concise_evidence: ConciseEvidenceMap {
+                    ev_triples: EvTriplesMap {
+                        evidence_triples: Some(&triples),
+                        identity_triples: None,
+                        dependency_triples: None,
+                        membership_triples: None,
+                        coswid_triples: None,
+                        attest_key_triples: None,
+                    },
+                    evidence_id: None,
+                    profile: None,
+                },
+            });
+            let mut template_buf = [0u8; 1024];
+            let template_len = {
+                let mut encoder = CborEncoder::new(&mut template_buf);
+                evidence.encode(&mut encoder).unwrap();
+                encoder.len()
+            };
+            let reference = without_measurement_keys(&template_buf[..template_len]);
+            let expected_len = reference.len();
+            let measurement = RawValueEvidence {
+                class_id: &class_id,
+                raw_value: &raw_value,
+            };
+            let mut actual = std::vec![0; expected_len];
+            let mut encoder =
+                MeasurementEvidenceEncoder::new(&mut actual, "vendor", "model", 1).unwrap();
+            encoder.encode_raw_value(&measurement).unwrap();
+            assert_eq!(encoder.finish().unwrap(), expected_len);
+            assert_eq!(actual, reference.as_slice());
+            corim_rs::coev::TaggedConciseEvidence::from_cbor(actual.as_slice()).unwrap();
+
+            let mut short = std::vec![0xcc; expected_len];
+            let result = (|| {
+                let mut encoder = MeasurementEvidenceEncoder::new(
+                    &mut short[..expected_len - 1],
+                    "vendor",
+                    "model",
+                    1,
+                )?;
+                encoder.encode_raw_value(&measurement)?;
+                encoder.finish()
+            })();
+            assert_eq!(result, Err(MeasurementApiError::EvidenceBufferTooSmall));
+            assert_eq!(short[expected_len - 1], 0xcc);
+        }
     }
 }
