@@ -6,6 +6,7 @@
 use crate::dma::hil::{Dma, DmaRoute, DmaStatus};
 use caliptra_api::mailbox::SUBSYSTEM_MAILBOX_SIZE_LIMIT;
 use caliptra_api::CaliptraApiError;
+use caliptra_api::SocManager;
 use caliptra_mcu_romtime::println;
 use caliptra_mcu_romtime::CaliptraSoC;
 use core::cell::Cell;
@@ -468,7 +469,7 @@ impl<'a, A: Alarm<'a>> Mailbox<'a, A> {
     }
 
     fn abort_and_reset(&self, driver: &mut CaliptraSoC) {
-        driver.abort_request();
+        driver.unlock_mailbox();
         self.reset_to_idle();
     }
 
@@ -642,7 +643,7 @@ impl<'a, A: Alarm<'a>> AlarmClient for Mailbox<'a, A> {
                 capsule_debug!("MBOX", "Mailbox initiate timeout: resetting to idle");
                 // Release the HW mailbox lock by clearing the execute bit.
                 self.driver.map(|driver| {
-                    driver.abort_request();
+                    driver.unlock_mailbox();
                 });
                 self.reset_to_idle();
             }
