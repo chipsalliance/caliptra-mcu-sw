@@ -62,6 +62,7 @@ use caliptra_mcu_pldm_lib::daemon::PldmService;
 use caliptra_mcu_scratch_alloc::{BitmapAllocator, BITMAP_SLOT_SIZE};
 #[allow(unused_imports)]
 use core::fmt::Write;
+use core::ops::Range;
 #[cfg(any(feature = "streaming-boot", feature = "flash-boot"))]
 use core::ptr::NonNull;
 
@@ -863,6 +864,27 @@ async fn activate_soc_images(
     Ok(())
 }
 
+fn validate_reference_image_load_range(
+    range: Range<AXIAddr>,
+    external_sram: Range<AXIAddr>,
+) -> Result<(), ErrorCode> {
+    const MCI_BASE: u64 = caliptra_mcu_config_fpga::FPGA_MEMORY_MAP.mci_offset as u64;
+    let regions = [
+        MCI_BASE + 0x40_0000..MCI_BASE + 0x60_0000,
+        MCI_BASE + 0x80_0000..MCI_BASE + 0xa0_0000,
+        external_sram,
+    ];
+    if !range.is_empty()
+        && regions
+            .iter()
+            .any(|region| range.start >= region.start && range.end <= region.end)
+    {
+        Ok(())
+    } else {
+        Err(ErrorCode::Invalid)
+    }
+}
+
 pub struct EmulatedDMAMap {}
 impl DMAMapping for EmulatedDMAMap {
     fn mcu_sram_to_mcu_axi(&self, addr: u32) -> Result<AXIAddr, ErrorCode> {
@@ -881,6 +903,10 @@ impl DMAMapping for EmulatedDMAMap {
             Ok(addr)
         }
     }
+
+    fn validate_image_load_range(&self, range: Range<AXIAddr>) -> Result<(), ErrorCode> {
+        validate_reference_image_load_range(range, 0x8000_0000..0x8010_0000)
+    }
 }
 
 #[allow(dead_code)]
@@ -895,6 +921,11 @@ impl DMAMapping for FpgaDMAMap {
     fn cptra_axi_to_mcu_axi(&self, addr: AXIAddr) -> Result<AXIAddr, ErrorCode> {
         // FPGA: Caliptra and MCU share the same AXI address space
         Ok(addr)
+    }
+
+    fn validate_image_load_range(&self, range: Range<AXIAddr>) -> Result<(), ErrorCode> {
+        // Native FPGA staging SRAM is defined in hw/fpga/fpga_configuration.tcl.
+        validate_reference_image_load_range(range, 0xb00c_0000..0xb010_0000)
     }
 }
 
@@ -926,6 +957,56 @@ impl<D: DMAMapping + 'static> DMAMapping for FlashReaderDma<D> {
 
     fn cptra_axi_to_mcu_axi(&self, cptra_addr: u64) -> Result<AXIAddr, ErrorCode> {
         self.dma_mapping.cptra_axi_to_mcu_axi(cptra_addr)
+    }
+
+    fn validate_image_load_range(&self, range: Range<AXIAddr>) -> Result<(), ErrorCode> {
+        self.dma_mapping.validate_image_load_range(range)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn image_load_ranges_stay_within_one_mailbox_sram_window() {
+        for mapping in [&EMULATED_DMA_MAPPING as &dyn DMAMapping, &FPGA_DMA_MAPPING] {
+            for range in [0xa840_0000..0xa860_0000, 0xa880_0000..0xa8a0_0000] {
+                assert_eq!(mapping.validate_image_load_range(range), Ok(()));
+            }
+            for range in [
+                0xffff..0x101ff,
+                0x10000..0x10200,
+                0xa880_0000..0xa880_0000,
+                0xa89f_fffc..0xa8a0_0004,
+                0xa840_0000..0xa880_0004,
+            ] {
+                assert_eq!(
+                    mapping.validate_image_load_range(range),
+                    Err(ErrorCode::Invalid)
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn image_load_ranges_use_platform_external_sram_bounds() {
+        assert_eq!(
+            EMULATED_DMA_MAPPING.validate_image_load_range(0x8000_0000..0x8010_0000),
+            Ok(())
+        );
+        assert_eq!(
+            EMULATED_DMA_MAPPING.validate_image_load_range(0x800f_fffc..0x8010_0004),
+            Err(ErrorCode::Invalid)
+        );
+        assert_eq!(
+            FPGA_DMA_MAPPING.validate_image_load_range(0xb00c_0000..0xb010_0000),
+            Ok(())
+        );
+        assert_eq!(
+            FPGA_DMA_MAPPING.validate_image_load_range(0xb00f_fffc..0xb010_0004),
+            Err(ErrorCode::Invalid)
+        );
     }
 }
 

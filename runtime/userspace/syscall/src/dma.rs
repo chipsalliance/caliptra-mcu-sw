@@ -8,7 +8,7 @@
 use crate::DefaultSyscalls;
 use caliptra_mcu_libtock_platform::{share, AllowRo, DefaultConfig, ErrorCode, Syscalls};
 use caliptra_mcu_libtockasync::TockSubscribe;
-use core::marker::PhantomData;
+use core::{marker::PhantomData, ops::Range};
 /// DMA interface.
 pub struct DMA<S: Syscalls = DefaultSyscalls> {
     syscall: PhantomData<S>,
@@ -24,6 +24,9 @@ pub trait DMAMapping: Send + Sync {
     fn mcu_sram_to_mcu_axi(&self, addr: u32) -> Result<AXIAddr, ErrorCode>;
     /// Convert a Caliptra AXI address to the MCU DMA accessible address.
     fn cptra_axi_to_mcu_axi(&self, addr: AXIAddr) -> Result<AXIAddr, ErrorCode>;
+    /// Validate an entire SoC image range in Caliptra's AXI address space.
+    /// The range must be writable through the MCU mapping and readable by Caliptra.
+    fn validate_image_load_range(&self, range: Range<AXIAddr>) -> Result<(), ErrorCode>;
 }
 
 /// Configuration parameters for a DMA transfer.
