@@ -1,0 +1,27 @@
+1073,1074c1073,1080
+< ulpi_stp <= ulpi_stp_r when ulpi_async_mode_r = '0' else
+<             ulpi_stp_async;
+---
+> -- FPGA (caliptra-mcu-sw hw/latest/fpga/src/usb_pie_sync_stp.patch):
+> -- ulpi_stp_async is a combinational decode of ulpi_oper_state_nxt used only to
+> -- wake a ULPI PHY whose clock has stopped (ULPI_OPER_EXIT_LOW_POWER). The
+> -- in-fabric PHY never stops its clock, but the deep next-state cone muxed onto
+> -- the STP output (~17 LUT levels on the VCK-190) prevents the 60 MHz ULPI
+> -- domain from closing timing. Drive STP from the registered copy only;
+> -- EXIT_LOW_POWER asserts ulpi_stp_r while waiting for DIR to fall.
+> ulpi_stp <= ulpi_stp_r;
+4338c4344
+< set_ulpi_req_low_power_mode <= '1' when suspendm_nxt = '0' and (ulpi_suspendm_r = '1' or -- enter into suspend ouside the ULPI reset cycle
+---
+> set_ulpi_req_low_power_mode <= '1' when ULPI_SUPPORT and phy_mode = '1' and suspendm_nxt = '0' and (ulpi_suspendm_r = '1' or -- enter into suspend ouside the ULPI reset cycle
+4835a4842,4843
+>       else
+>          ulpi_stp_nxt <= '1'; -- FPGA: registered STP replaces ulpi_stp_async (see usb_pie_sync_stp.patch)
+4982c4990
+<       elsif clear_ulpi_req_txcmd = '1' and ulpi_arb_reg_r = ULPI_ARB_FCTCTRL_REG_SUSP then
+---
+>       elsif (clear_ulpi_req_txcmd = '1' and ulpi_arb_reg_r = ULPI_ARB_FCTCTRL_REG_SUSP) or clear_ulpi_req_low_power_mode = '1' then
+5013c5021
+<       elsif clear_ulpi_req_txcmd = '1' then
+---
+>       elsif clear_ulpi_req_txcmd = '1' or (clear_ulpi_req_low_power_mode = '1' and ulpi_oper_state_r = ULPI_OPER_IDLE and ulpi_arb_reg_r = ULPI_ARB_FCTCTRL_REG_SUSP) then

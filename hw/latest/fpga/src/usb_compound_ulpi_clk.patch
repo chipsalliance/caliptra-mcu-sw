@@ -1,0 +1,10 @@
+2450,2454c2450,2452
+<   --UTMI/ULPI clock selection
+<   pie_clk <= utmi_clk when (testmode = '1' and C_UTMI_SUPPORT) else
+<              ulpi_clk when (testmode = '1' and C_ULPI_SUPPORT) else
+<              utmi_clk when phy_mode = '0'                      else
+<              ulpi_clk;
+---
+>   --UTMI/ULPI clock selection (FPGA 60 MHz ULPI: drive pie_clk directly from
+>   --ulpi_clk to avoid a glitchy fabric LUT clock mux and extra BUFG skew)
+>   pie_clk <= ulpi_clk;

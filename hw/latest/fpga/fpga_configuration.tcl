@@ -20,6 +20,22 @@ set I3C_SCL_RATE_KHZ 1000
 set I3C_OUTSIDE FALSE
 set SEGMENTED FALSE
 set SEGMENTED_WRITE_NCR FALSE
+# ULPI PHY clock for the Caliptra 2.2 USB link and the internal FPGA USB host
+# (Architecture B). 60 MHz is the ULPI spec rate and the frequency all usb_pie
+# chirp/suspend timers are written for, so USB_SIM_CHIRP_TIMERS=0 (spec timers)
+# is the default. The clock is generated inside the PL by caliptra_wrapper_top
+# (BUFGCE_DIV, I3C_CLK_MHZ / ULPI_CLK_DIV) because the segmented-configuration
+# flow forbids adding a new PS->PL clock (pl2_ref_clk) to the runtime segment.
+# ULPI_CLK_DIV=0 keeps the ULPI domain synchronous to core_clk (original image;
+# combine with USB_SIM_CHIRP_TIMERS=1).
+# Default 2 (60 MHz): exact ULPI 1.1 PHY clock rate from 120 MHz i3c_clk / 2,
+# paired with USB_SIM_CHIRP_TIMERS=0 and the 60 MHz timing/CDC VHDL patches in
+# create_caliptra_package.tcl (USB_ULPI_SYNC_STP).
+set ULPI_CLK_DIV 2
+set USB_SIM_CHIRP_TIMERS 0
+# Clock regions the in-fabric ULPI host is pinned to (next to usb_pie, which
+# the placer puts in X0Y2/X1Y3 for this design). Empty string disables the pblock.
+set ULPI_HOST_PBLOCK "CLOCKREGION_X0Y2:CLOCKREGION_X1Y3"
 # Simplistic processing of command line arguments to override defaults
 foreach arg $argv {
   regexp {(.*)=(.*)} $arg fullmatch option value
@@ -68,6 +84,15 @@ if {$I3C_OUTSIDE} {
   lappend VERILOG_OPTIONS I3C_OUTSIDE
 }
 lappend VERILOG_OPTIONS FPGA_VERSION=32'h$VERSION
+if {$ULPI_CLK_DIV > 0} {
+  set ULPI_CLK_MHZ [expr {double($I3C_CLK_MHZ) / $ULPI_CLK_DIV}]
+} else {
+  set ULPI_CLK_MHZ $CORE_CLK_MHZ
+}
+puts "ULPI_CLK_MHZ: $ULPI_CLK_MHZ (ULPI_CLK_DIV=$ULPI_CLK_DIV from I3C clock $I3C_CLK_MHZ MHz)"
+lappend VERILOG_OPTIONS ULPI_CLK_DIV=$ULPI_CLK_DIV
+lappend VERILOG_OPTIONS ULPI_CLK_HZ=[expr {int($ULPI_CLK_MHZ * 1000000)}]
+lappend VERILOG_OPTIONS USB_SIM_CHIRP_TIMERS=$USB_SIM_CHIRP_TIMERS
 lappend VERILOG_OPTIONS DIGITAL_IO_I3C
 lappend VERILOG_OPTIONS CALIPTRA_MODE_SUBSYSTEM
 # Set CALIPTRA to ABR knows it is being used in Caliptra
@@ -127,12 +152,31 @@ puts $xdc_fd {set_false_path -from [get_clocks {clk_pl_0}] -to [get_clocks {mcu_
 puts $xdc_fd {set_false_path -from [get_clocks {cal_jtag_clk}] -to [get_clocks {clk_pl_0}]}
 puts $xdc_fd {set_false_path -from [get_clocks {lcc_jtag_clk}] -to [get_clocks {clk_pl_0}]}
 puts $xdc_fd {set_false_path -from [get_clocks {mcu_jtag_clk}] -to [get_clocks {clk_pl_0}]}
+# The ULPI PHY domain (ulpi_clk, BUFGCE_DIV of clk_pl_1 inside the wrapper) is
+# bridged to/from core_clk (clk_pl_0) exclusively through synchronizers
+# (axil_cdc_bridge toggle handshakes, xpm_cdc_async_rst, 2-FF sideband syncs,
+# and usb_pie's own usb_synchronizer), so the two clocks are declared
+# asynchronous. The generated clock is auto-derived by Vivado from the BUFGCE_DIV.
+# Written to a separate, implementation-only XDC: the packaged IP is synthesized
+# out-of-context, so the BUFGCE_DIV pin only exists in the implementation netlist.
+if {$ULPI_CLK_DIV > 0} {
+  set ulpi_xdc_fd [ open $outputDir/ulpi_clk_constraints.xdc w ]
+  puts $ulpi_xdc_fd {set ulpi_clk_pin [get_pins -hierarchical -filter {NAME =~ */cptra_wrapper/gen_ulpi_clk_div.u_ulpi_clk_div/O}]}
+  puts $ulpi_xdc_fd {set_clock_groups -asynchronous -group [get_clocks -of_objects $ulpi_clk_pin] -group [get_clocks {clk_pl_0}]}
+  if {$ULPI_HOST_PBLOCK ne ""} {
+    puts $ulpi_xdc_fd "create_pblock pblock_ulpi_host"
+    puts $ulpi_xdc_fd {add_cells_to_pblock [get_pblocks pblock_ulpi_host] [get_cells -hierarchical -filter {NAME =~ */cptra_wrapper/u_ulpi_host}]}
+    puts $ulpi_xdc_fd "resize_pblock \[get_pblocks pblock_ulpi_host\] -add {$ULPI_HOST_PBLOCK}"
+    puts $ulpi_xdc_fd {set_property IS_SOFT TRUE [get_pblocks pblock_ulpi_host]}
+  }
+  close $ulpi_xdc_fd
+}
 close $xdc_fd
 
 #### Add AXI Infrastructure
 create_bd_cell -type ip -vlnv xilinx.com:ip:smartconnect:1.0 axi_interconnect_0
 set_property -dict [list \
-  CONFIG.NUM_MI {14} \
+  CONFIG.NUM_MI {16} \
   CONFIG.NUM_SI {6} \
   CONFIG.NUM_CLKS {2} \
   ] [get_bd_cells axi_interconnect_0]
@@ -164,13 +208,15 @@ register_axi_subordinate axi_interconnect_0 M02_AXI  0xA4040000 0x00002000 calip
 register_axi_subordinate axi_interconnect_0 M03_AXI  0xA8000000 0x01000000 caliptra_package_top_0/S_AXI_MCI       reg0    S_AXI_MCI          TRUE   "/ps_0/pl0_ref_clk"
 register_axi_subordinate axi_interconnect_0 M04_AXI  0xB0040000 0x00020000 caliptra_package_top_0/S_AXI_MCU_ROM   reg0    S_AXI_MCU_ROM      TRUE   "/ps_0/pl0_ref_clk"
 register_axi_subordinate axi_interconnect_0 M05_AXI  0xA4060000 0x00002000 caliptra_package_top_0/S_AXI_OTP       reg0    S_AXI_OTP          TRUE   "/ps_0/pl0_ref_clk"
-register_axi_subordinate axi_interconnect_0 M06_AXI  0xA4010000 0x00004000 caliptra_package_top_0/S_AXI_WRAPPER   reg0    S_AXI_WRAPPER      FALSE  "/ps_0/pl0_ref_clk"
+register_axi_subordinate axi_interconnect_0 M06_AXI  0xA4010000 0x00008000 caliptra_package_top_0/S_AXI_WRAPPER   reg0    S_AXI_WRAPPER      FALSE  "/ps_0/pl0_ref_clk"
 register_axi_subordinate axi_interconnect_0 M07_AXI  0xB0080000 0x00010000 otp_ram_bram_ctrl_0/S_AXI              Mem0    S_AXI_OTP_RAM      TRUE   "/ps_0/pl0_ref_clk"
 register_axi_subordinate axi_interconnect_0 M08_AXI  0xB00C0000 0x00040000 staging_sram_bram_ctrl_0/S_AXI         Mem0    S_AXI_STAGING_SRAM FALSE  "/ps_0/pl0_ref_clk"
 register_axi_subordinate axi_interconnect_0 M09_AXI  0xA4080000 0x00001000 xilinx_i3c_0/S_AXI                     Reg     S_AXI_XILINX_I3C   FALSE  "/ps_0/pl1_ref_clk"
 register_axi_subordinate axi_interconnect_0 M10_AXI  0xA4081000 0x00001000 axi_cdma_0/S_AXI_LITE                  Reg     S_AXI_XILINX_DMA   FALSE  "/ps_0/pl0_ref_clk"
 register_axi_subordinate axi_interconnect_0 M11_AXI  0xB0000000 0x00018000 cptra_rom_backdoor_bram_0/S_AXI        Mem0    S_AXI_CALIPTRA_ROM FALSE  "/ps_0/pl0_ref_clk"
 register_axi_subordinate axi_interconnect_0 M12_AXI  0xB0020000 0x00020000 mcu_rom_backdoor_bram_0/S_AXI          Mem0    S_AXI_SS_ROM       FALSE  "/ps_0/pl0_ref_clk"
+register_axi_subordinate axi_interconnect_0 M14_AXI  0xA4200000 0x00010000 caliptra_package_top_0/S_AXI_USB_COMBO    reg0 S_AXI_USB_COMBO    FALSE  "/ps_0/pl0_ref_clk"
+register_axi_subordinate axi_interconnect_0 M15_AXI  0xA4300000 0x00010000 caliptra_package_top_0/S_AXI_USB_DEV0_MEM reg0 S_AXI_USB_DEV0_MEM FALSE  "/ps_0/pl0_ref_clk"
 
 # Create reset block
 create_bd_cell -type ip -vlnv xilinx.com:ip:proc_sys_reset:5.0 proc_sys_reset_0
@@ -348,6 +394,10 @@ connect_bd_net [get_bd_pins caliptra_package_top_0/jtag_in] [get_bd_pins $ps_gpi
 
 # Add constraints for JTAG signals
 add_files -fileset constrs_1 $outputDir/jtag_constraints.xdc
+if {$ULPI_CLK_DIV > 0} {
+  add_files -fileset constrs_1 $outputDir/ulpi_clk_constraints.xdc
+  set_property USED_IN_SYNTHESIS false [get_files $outputDir/ulpi_clk_constraints.xdc]
+}
 
 save_bd_design
 puts "Fileset when setting defines the second time: [current_fileset]"
@@ -488,7 +538,9 @@ if {$BUILD} {
       puts stderr "Replace file in GCS bucket: [exec realpath $fpgaDir/ss_golden_segmented_routed.dcp]"
     } else {
       # Verify that the NoC Solutions are identical and the PLD images are compatible.
-      exec curl -s -O "https://storage.googleapis.com/caliptra-github-ci-bitstreams/scratch/ss_golden_segmented_routed.dcp"
+      if {![file exists $fpgaDir/ss_golden_segmented_routed.dcp]} {
+        exec curl -s -o $fpgaDir/ss_golden_segmented_routed.dcp "https://storage.googleapis.com/caliptra-github-ci-bitstreams/scratch/ss_golden_segmented_routed.dcp"
+      }
       pr_verify -initial $fpgaDir/ss_golden_segmented_routed.dcp -additional $outputDir/caliptra_fpga_project.runs/impl_1/caliptra_fpga_project_bd_wrapper_routed.dcp
     }
     # Copy the PDI containing runtime info to a more convenient location.
